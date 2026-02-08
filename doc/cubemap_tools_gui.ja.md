@@ -35,6 +35,8 @@ start_cubemap_tools_gui.bat
   - 連携先ツール向けのプリセットです。
   - `Postshot / Brush`: `--no_transform` をOFF、前処理`--ply`をOFFにします。
   - `LichtFeld Studio`: `--no_transform` をON、前処理`--ply`をONにします。
+  - `Custom (manual)`: 上記2項目を手動で編集できます。
+  - プリセット時は不一致防止のため、該当チェックボックスはロックされます。
 - `Preprocess`:
   - 有効時、キューブマップ変換の前に同梱の
     `vendor/metashape_360_lfs/metashape_360_lfs.py` を実行します。

@@ -35,6 +35,8 @@ start_cubemap_tools_gui.bat
   - Preset for downstream tool.
   - `Postshot / Brush`: sets `--no_transform` OFF and preprocess `--ply` OFF.
   - `LichtFeld Studio`: sets `--no_transform` ON and preprocess `--ply` ON.
+  - `Custom (manual)`: leaves both options editable.
+  - In preset modes, those related checkboxes are locked to prevent accidental mismatch.
 - `Preprocess`:
   - If enabled, run bundled `vendor/metashape_360_lfs/metashape_360_lfs.py` before cubemap conversion.
 - `MS Images Dir`:

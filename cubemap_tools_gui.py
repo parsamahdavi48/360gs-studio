@@ -69,6 +69,7 @@ _WARN_ENABLED_VIEWS = 24
 _BLOCK_ENABLED_VIEWS = 40
 _PROFILE_POSTSHOT = "postshot"
 _PROFILE_LICHTFELD = "lichtfeld"
+_PROFILE_CUSTOM = "custom"
 
 
 def _normalize_angle(angle_deg: float) -> float:
@@ -165,6 +166,7 @@ if QMainWindow is not None:
             self.target_profile_combo = QComboBox()
             self.target_profile_combo.addItem("Postshot / Brush", _PROFILE_POSTSHOT)
             self.target_profile_combo.addItem("LichtFeld Studio", _PROFILE_LICHTFELD)
+            self.target_profile_combo.addItem("Custom (manual)", _PROFILE_CUSTOM)
             form.addRow("Target Profile", self.target_profile_combo)
 
             self.target_profile_hint = QLabel("")
@@ -413,20 +415,36 @@ if QMainWindow is not None:
             if profile == _PROFILE_LICHTFELD:
                 self.no_transform_check.setChecked(True)
                 self.ms_use_ply_check.setChecked(True)
+                self.no_transform_check.setEnabled(False)
+                self.ms_use_ply_check.setEnabled(False)
                 self.target_profile_hint.setText(
-                    "LichtFeld preset: --no_transform ON, preprocess --ply ON."
+                    "LichtFeld preset (locked): --no_transform ON, preprocess --ply ON."
                 )
-            else:
+            elif profile == _PROFILE_POSTSHOT:
                 self.no_transform_check.setChecked(False)
                 self.ms_use_ply_check.setChecked(False)
+                self.no_transform_check.setEnabled(False)
+                self.ms_use_ply_check.setEnabled(False)
                 self.target_profile_hint.setText(
-                    "Postshot/Brush preset: --no_transform OFF, preprocess --ply OFF."
+                    "Postshot/Brush preset (locked): --no_transform OFF, preprocess --ply OFF."
                 )
+            else:
+                self.no_transform_check.setEnabled(True)
+                self.ms_use_ply_check.setEnabled(True)
+                self.target_profile_hint.setText(
+                    "Custom profile: edit --no_transform and preprocess --ply manually."
+                )
+            if not self.preprocess_enable_check.isChecked():
+                self.ms_use_ply_check.setEnabled(False)
             self._refresh_preprocess_ply_path_widgets()
 
         def _on_preprocess_toggle(self, enabled: bool) -> None:
             for w in self._preprocess_widgets:
                 w.setEnabled(enabled)
+            if enabled:
+                profile = self._target_profile_id()
+                if profile in {_PROFILE_POSTSHOT, _PROFILE_LICHTFELD}:
+                    self.ms_use_ply_check.setEnabled(False)
             self._refresh_preprocess_ply_path_widgets()
 
         def _browse_scene_dir(self) -> None:
