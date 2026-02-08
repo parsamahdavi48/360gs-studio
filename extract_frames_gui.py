@@ -692,6 +692,9 @@ if QMainWindow is not None:
             if not line:
                 return
             self._append_log(line)
+            progress_prefix = "[progress] "
+            if line.startswith(progress_prefix):
+                self.status_label.setText(line[len(progress_prefix):])
 
             prefix = "SUMMARY_JSON:"
             if line.startswith(prefix):

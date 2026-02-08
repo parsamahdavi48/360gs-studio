@@ -158,6 +158,9 @@ def analyze_video_window(
     start_sec: Optional[float] = None,
     duration_sec: Optional[float] = None,
     sample_fps: float = 0.0,
+    progress_phase: str = "",
+    progress_total_frames: int = 0,
+    progress_step_frames: int = 0,
 ) -> Tuple[List[float], List[float], int, int, float]:
     out_w, out_h = scaled_dimensions(src_w, src_h, analysis_width)
     vf_parts = [f"scale={out_w}:{out_h}:flags=bilinear", "format=gray"]
@@ -198,6 +201,26 @@ def analyze_video_window(
     prev_frame: Optional[np.ndarray] = None
     blur_scores: List[float] = []
     change_scores: List[float] = []
+    last_progress_report = 0
+
+    def emit_progress(processed_frames: int, force: bool = False) -> None:
+        nonlocal last_progress_report
+        if not progress_phase:
+            return
+        if not force:
+            if progress_step_frames <= 0:
+                return
+            if processed_frames - last_progress_report < progress_step_frames:
+                return
+        if progress_total_frames > 0:
+            pct = min(100.0, (processed_frames / float(progress_total_frames)) * 100.0)
+            print(
+                f"[progress] {progress_phase} {processed_frames}/{progress_total_frames} frames ({pct:.1f}%)",
+                flush=True,
+            )
+        else:
+            print(f"[progress] {progress_phase} {processed_frames} frames", flush=True)
+        last_progress_report = processed_frames
 
     try:
         while True:
@@ -218,6 +241,11 @@ def analyze_video_window(
                 change_scores.append(float(np.mean(diff) / 255.0))
 
             prev_frame = frame
+            processed = len(change_scores)
+            if processed == 1:
+                emit_progress(processed, force=True)
+            else:
+                emit_progress(processed)
     finally:
         stderr_text = proc.stderr.read().decode("utf-8", errors="replace")
         ret = proc.wait()
@@ -226,6 +254,7 @@ def analyze_video_window(
         raise RuntimeError(f"ffmpeg analysis failed: {stderr_text.strip()}")
     if not blur_scores:
         raise RuntimeError("No frames decoded during analysis")
+    emit_progress(len(blur_scores), force=True)
 
     return blur_scores, change_scores, out_w, out_h, effective_fps
 
@@ -237,6 +266,9 @@ def analyze_video(
     src_w: int,
     src_h: int,
     analysis_width: int,
+    progress_phase: str = "",
+    progress_total_frames: int = 0,
+    progress_step_frames: int = 0,
 ) -> Tuple[List[float], List[float], int, int]:
     blur_scores, change_scores, out_w, out_h, _ = analyze_video_window(
         video_path=video_path,
@@ -248,6 +280,9 @@ def analyze_video(
         start_sec=None,
         duration_sec=None,
         sample_fps=0.0,
+        progress_phase=progress_phase,
+        progress_total_frames=progress_total_frames,
+        progress_step_frames=progress_step_frames,
     )
     return blur_scores, change_scores, out_w, out_h
 
@@ -986,6 +1021,9 @@ def main() -> None:
 
     try:
         ensure_python_deps()
+        progress_step = max(10, video_info.total_frames // 100) if video_info.total_frames > 0 else max(
+            10, int(round(video_info.fps * 2.0))
+        )
         blur_scores, change_scores, analysis_w, analysis_h = analyze_video(
             input_video,
             args.ffmpeg,
@@ -993,6 +1031,9 @@ def main() -> None:
             video_info.width,
             video_info.height,
             args.analysis_width,
+            progress_phase="analyze",
+            progress_total_frames=video_info.total_frames,
+            progress_step_frames=progress_step,
         )
     except Exception as e:
         print(f"Error during analysis: {e}")
