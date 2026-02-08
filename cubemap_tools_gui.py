@@ -107,6 +107,8 @@ if QMainWindow is not None:
             self._converted_total = 0
             self._processed_sources = 0
             self._preview_pixmap: QPixmap | None = None
+            self.preview_images: list[Path] = []
+            self._preview_slider_sync = False
 
             self.pitch_rows: list[dict] = []
             self.yaw_slot_labels: list[QLabel] = []
@@ -178,22 +180,48 @@ if QMainWindow is not None:
             form.addRow("FOV", self.fov_label)
 
             self.sample_image_edit = QLineEdit()
-            self.sample_image_edit.textChanged.connect(lambda _: self._render_preview())
+            self.sample_image_edit.textChanged.connect(self._on_sample_image_changed)
             browse_sample_btn = QPushButton("Browse")
             browse_sample_btn.clicked.connect(self._browse_sample_image)
             auto_sample_btn = QPushButton("Auto")
             auto_sample_btn.clicked.connect(self._auto_select_sample_image)
+            reload_sample_btn = QPushButton("Reload")
+            reload_sample_btn.clicked.connect(self._refresh_preview_image_list)
             row = QHBoxLayout()
             row.addWidget(self.sample_image_edit)
             row.addWidget(browse_sample_btn)
             row.addWidget(auto_sample_btn)
+            row.addWidget(reload_sample_btn)
             form.addRow("Preview Image", row)
+
+            self.preview_timeline_slider = QSlider(Qt.Horizontal)
+            self.preview_timeline_slider.setRange(0, 0)
+            self.preview_timeline_slider.setValue(0)
+            self.preview_timeline_slider.setEnabled(False)
+            self.preview_timeline_slider.valueChanged.connect(self._on_preview_timeline_changed)
+            self.preview_timeline_label = QLabel("0 / 0")
+            timeline_row = QHBoxLayout()
+            timeline_row.addWidget(self.preview_timeline_slider, stretch=1)
+            timeline_row.addWidget(self.preview_timeline_label)
+            form.addRow("Preview Timeline", timeline_row)
 
             self.mask_overlay_slider = QSlider(Qt.Horizontal)
             self.mask_overlay_slider.setRange(0, 100)
             self.mask_overlay_slider.setValue(35)
             self.mask_overlay_slider.valueChanged.connect(lambda _: self._render_preview())
             form.addRow("Mask Overlay (%)", self.mask_overlay_slider)
+
+            self.preview_mask_edit = QLineEdit()
+            self.preview_mask_edit.textChanged.connect(lambda _: self._render_preview())
+            browse_preview_mask_btn = QPushButton("Browse")
+            browse_preview_mask_btn.clicked.connect(self._browse_preview_mask_image)
+            clear_preview_mask_btn = QPushButton("Clear")
+            clear_preview_mask_btn.clicked.connect(self._clear_preview_mask_image)
+            row = QHBoxLayout()
+            row.addWidget(self.preview_mask_edit)
+            row.addWidget(browse_preview_mask_btn)
+            row.addWidget(clear_preview_mask_btn)
+            form.addRow("Preview Mask Image", row)
 
             options_row = QHBoxLayout()
             self.mask_from_alpha_check = QCheckBox("Extract mask from alpha (--mask_from_alpha)")
@@ -291,6 +319,7 @@ if QMainWindow is not None:
             path = QFileDialog.getExistingDirectory(self, "Select scene directory")
             if path:
                 self.scene_dir_edit.setText(path)
+                self._refresh_preview_image_list(prefer_current=False)
 
         def _browse_output_dir(self) -> None:
             path = QFileDialog.getExistingDirectory(self, "Select output directory")
@@ -312,27 +341,147 @@ if QMainWindow is not None:
             if path:
                 self.sample_image_edit.setText(path)
 
+        def _browse_preview_mask_image(self) -> None:
+            path, _ = QFileDialog.getOpenFileName(
+                self,
+                "Select preview mask image",
+                "",
+                "Image files (*.png *.jpg *.jpeg);;All files (*.*)",
+            )
+            if path:
+                self.preview_mask_edit.setText(path)
+
+        def _clear_preview_mask_image(self) -> None:
+            self.preview_mask_edit.setText("")
+
         def _apply_scene_paths(self) -> None:
             scene_dir = Path(self.scene_dir_edit.text().strip() or ".")
             self.output_dir_edit.setText(str(scene_dir / "cubic"))
             self.mask_dir_edit.setText(str(scene_dir / "masks"))
-            self._auto_select_sample_image()
+            self._refresh_preview_image_list(prefer_current=False)
             self._refresh_action_buttons()
             self._update_output_estimate()
 
         def _auto_select_sample_image(self) -> None:
+            if not self.preview_images:
+                self._refresh_preview_image_list(prefer_current=False)
+                return
+            self._set_preview_index(0)
+
+        def _iter_scene_preview_images(self) -> list[Path]:
             scene_dir = Path(self.scene_dir_edit.text().strip() or ".")
-            roots = [scene_dir / "images", scene_dir]
-            patterns = ("*.jpg", "*.jpeg", "*.png")
+            images_dir = scene_dir / "images"
+            roots = [images_dir] if images_dir.is_dir() else [scene_dir]
+            exts = {".jpg", ".jpeg", ".png"}
+
+            candidates: list[Path] = []
+            seen: set[str] = set()
             for root in roots:
                 if not root.is_dir():
                     continue
-                for pattern in patterns:
-                    files = sorted(root.rglob(pattern))
-                    if files:
-                        self.sample_image_edit.setText(str(files[0]))
-                        return
-            self.sample_image_edit.setText("")
+                for p in root.rglob("*"):
+                    if not p.is_file() or p.suffix.lower() not in exts:
+                        continue
+                    key = str(p.resolve()).lower()
+                    if key in seen:
+                        continue
+                    seen.add(key)
+                    candidates.append(p)
+            candidates.sort(key=lambda x: str(x).lower())
+            return candidates
+
+        def _update_preview_timeline_label(self, idx: int = -1) -> None:
+            total = len(self.preview_images)
+            if total <= 0:
+                self.preview_timeline_label.setText("0 / 0")
+                return
+            if idx < 0:
+                try:
+                    idx = self.preview_timeline_slider.value()
+                except Exception:
+                    idx = 0
+            idx = max(0, min(idx, total - 1))
+            name = self.preview_images[idx].name
+            self.preview_timeline_label.setText(f"{idx + 1} / {total} : {name}")
+
+        def _set_preview_index(self, idx: int) -> None:
+            if not self.preview_images:
+                self.sample_image_edit.setText("")
+                self._update_preview_timeline_label(-1)
+                return
+            idx = max(0, min(idx, len(self.preview_images) - 1))
+            self._preview_slider_sync = True
+            self.preview_timeline_slider.setValue(idx)
+            self._preview_slider_sync = False
+            self.sample_image_edit.setText(str(self.preview_images[idx]))
+            self._update_preview_timeline_label(idx)
+
+        def _sync_preview_slider_from_sample(self) -> None:
+            sample_text = self.sample_image_edit.text().strip()
+            if not sample_text:
+                self._update_preview_timeline_label(-1)
+                return
+            try:
+                sample_key = str(Path(sample_text).resolve()).lower()
+            except Exception:
+                self._update_preview_timeline_label(-1)
+                return
+
+            for idx, path in enumerate(self.preview_images):
+                if str(path.resolve()).lower() == sample_key:
+                    self._preview_slider_sync = True
+                    self.preview_timeline_slider.setValue(idx)
+                    self._preview_slider_sync = False
+                    self._update_preview_timeline_label(idx)
+                    return
+
+            total = len(self.preview_images)
+            if total > 0:
+                self.preview_timeline_label.setText(f"custom / {total} : {Path(sample_text).name}")
+            else:
+                self.preview_timeline_label.setText("custom / 0")
+
+        def _refresh_preview_image_list(self, prefer_current: bool = True) -> None:
+            current_text = self.sample_image_edit.text().strip()
+            self.preview_images = self._iter_scene_preview_images()
+            total = len(self.preview_images)
+
+            self.preview_timeline_slider.setEnabled(total > 0)
+            self.preview_timeline_slider.setRange(0, max(0, total - 1))
+
+            if total <= 0:
+                self.preview_timeline_slider.setValue(0)
+                self._update_preview_timeline_label(-1)
+                if not current_text:
+                    self.sample_image_edit.setText("")
+                self._render_preview()
+                return
+
+            target_idx = 0
+            if prefer_current and current_text:
+                try:
+                    current_key = str(Path(current_text).resolve()).lower()
+                    for idx, p in enumerate(self.preview_images):
+                        if str(p.resolve()).lower() == current_key:
+                            target_idx = idx
+                            break
+                except Exception:
+                    pass
+
+            self._set_preview_index(target_idx)
+            self._render_preview()
+
+        def _on_preview_timeline_changed(self, idx: int) -> None:
+            if self._preview_slider_sync:
+                return
+            if idx < 0 or idx >= len(self.preview_images):
+                self._update_preview_timeline_label(-1)
+                return
+            self._set_preview_index(idx)
+
+        def _on_sample_image_changed(self, _text: str) -> None:
+            self._sync_preview_slider_from_sample()
+            self._render_preview()
 
         @staticmethod
         def _parse_float(text: str, label: str) -> float:
@@ -592,6 +741,14 @@ if QMainWindow is not None:
                     return c
             return None
 
+        def _resolve_preview_mask_path(self, sample_path: Path) -> Path | None:
+            manual = self.preview_mask_edit.text().strip()
+            if manual:
+                manual_path = Path(manual)
+                if manual_path.exists() and manual_path.is_file():
+                    return manual_path
+            return self._find_mask_for_sample(sample_path)
+
         def _view_boundary_segments(
             self,
             width: int,
@@ -667,7 +824,7 @@ if QMainWindow is not None:
                     interpolation=cv2.INTER_AREA,
                 )
 
-            mask_path = self._find_mask_for_sample(sample_path)
+            mask_path = self._resolve_preview_mask_path(sample_path)
             if mask_path is not None:
                 mask = cv2.imread(str(mask_path), cv2.IMREAD_GRAYSCALE)
                 if mask is not None:

@@ -45,8 +45,16 @@ start_cubemap_tools_gui.bat
   - このGUIでは `90.0` 固定。
 - `Preview Image`:
   - プレビュー対象のエクイレクタングラー画像。
+  - `Auto` でシーン画像の先頭を自動選択します。
+  - `Reload` でシーン画像一覧を再スキャンします。
+- `Preview Timeline`:
+  - シーン画像（優先: `images/`、無ければシーン直下）をスライダーで切り替えます。
+  - フレームごとの視点ON/OFF確認に便利です。
 - `Mask Overlay (%)`:
   - マスク重ね表示の不透明度。
+- `Preview Mask Image`:
+  - プレビュー合成に使うマスク画像を手動指定できます。
+  - 空欄なら `Mask Directory` から対応ファイルを自動探索します。
 
 ## 視点選択
 

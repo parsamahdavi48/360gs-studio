@@ -45,8 +45,16 @@ start_cubemap_tools_gui.bat
   - Fixed to `90.0` in this GUI.
 - `Preview Image`:
   - Equirectangular image used for overlay preview.
+  - `Auto` picks the first image from scene images.
+  - `Reload` rescans scene images.
+- `Preview Timeline`:
+  - Slider to switch preview image from scene images (`images/` preferred, otherwise scene root).
+  - Useful for checking per-view on/off decisions across different frames.
 - `Mask Overlay (%)`:
   - Opacity of mask overlay in preview.
+- `Preview Mask Image`:
+  - Optional manual mask file for preview overlay.
+  - If empty, GUI auto-searches a matching mask from `Mask Directory`.
 
 ## View selection
 
