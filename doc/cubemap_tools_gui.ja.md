@@ -54,6 +54,9 @@ start_cubemap_tools_gui.bat
   - `Disable rotation fix (--no-fix-rotation)` を前処理に渡します。
 - `Mask Directory`:
   - 変換時のマスク入力先。プレビュー合成にも使用。
+- `View Mode`:
+  - `Custom Pitch/Yaw`: 既存のピッチ行 + YAWスロット方式。
+  - `Cube6 (4 sides + top/bottom)`: 6面キューブ固定方式（FOV 90）。
 - `Yaw Offset (deg)`:
   - スロット角度の基準値。
 - `Yaw Slots`:
@@ -62,6 +65,9 @@ start_cubemap_tools_gui.bat
 - `Pitch Rows (deg CSV)`:
   - ピッチ一覧。例: `-30,0,30`。
   - 最大9行まで。
+- `Cube6 Options`:
+  - `Drop Top (+90deg)`: 上面を無効化。
+  - `Drop Bottom (-90deg)`: 下面を無効化。
 - `FOV`:
   - このGUIでは `90.0` 固定。
 - `Preview Image`:
@@ -102,6 +108,10 @@ start_cubemap_tools_gui.bat
   `cubemap_transforms_json.py --fov 90 --views-json <そのファイル>` を呼び出します。
 - OFFのスロットは `enabled=false` として保存され、変換時に無視されます。
 - `Postshot / Brush` プロファイルでは、点群とカメラの不一致を避けるため、前処理`--ply`が既定でOFFになります。
+- 変換後、GUIはPLYを `<output_dir>` に同梱し、`<output_dir>/transforms.json` の `ply_file_path` を更新します。
+  - `Postshot / Brush`: MetashapeのPLY（例: `metashape.ply` / `sparse.ply`）をコピー
+  - `LichtFeld Studio`: `pointcloud.ply` をコピー
+- 選択プロファイルで必要なPLYが見つからない場合は、実行前にエラーで停止します。
 
 ## 注意
 

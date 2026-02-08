@@ -53,6 +53,9 @@ start_cubemap_tools_gui.bat
   - `Disable rotation fix (--no-fix-rotation)` for metashape preprocess.
 - `Mask Directory`:
   - Optional mask input folder used by conversion and preview overlay.
+- `View Mode`:
+  - `Custom Pitch/Yaw`: existing mode with pitch rows and yaw slots.
+  - `Cube6 (4 sides + top/bottom)`: fixed six-face mode (FOV 90).
 - `Yaw Offset (deg)`:
   - Base yaw for slot generation.
 - `Yaw Slots`:
@@ -61,6 +64,9 @@ start_cubemap_tools_gui.bat
 - `Pitch Rows (deg CSV)`:
   - Pitch list. Example: `-30,0,30`.
   - Max 9 rows.
+- `Cube6 Options`:
+  - `Drop Top (+90deg)`: disable top face.
+  - `Drop Bottom (-90deg)`: disable bottom face.
 - `FOV`:
   - Fixed to `90.0` in this GUI.
 - `Preview Image`:
@@ -100,6 +106,10 @@ start_cubemap_tools_gui.bat
   - `cubemap_transforms_json.py --fov 90 --views-json <that file>`
 - Disabled slots are written with `enabled=false` and ignored by converter.
 - With `Postshot / Brush` profile, preprocess `--ply` is disabled by default to avoid point-cloud/camera mismatch.
+- After conversion, GUI packages PLY into `<output_dir>` and rewrites `<output_dir>/transforms.json` `ply_file_path`.
+  - `Postshot / Brush`: copies Metashape PLY (for example `metashape.ply` / `sparse.ply`).
+  - `LichtFeld Studio`: copies `pointcloud.ply`.
+- If required PLY is missing for selected profile, run is blocked.
 
 ## Notes
 

@@ -5,6 +5,7 @@ import argparse
 import json
 import math
 import re
+import shutil
 import sys
 from pathlib import Path
 
@@ -70,6 +71,8 @@ _BLOCK_ENABLED_VIEWS = 40
 _PROFILE_POSTSHOT = "postshot"
 _PROFILE_LICHTFELD = "lichtfeld"
 _PROFILE_CUSTOM = "custom"
+_VIEW_MODE_CUSTOM = "custom_views"
+_VIEW_MODE_CUBE6 = "cube6"
 
 
 def _normalize_angle(angle_deg: float) -> float:
@@ -121,6 +124,8 @@ if QMainWindow is not None:
             self.yaw_slot_labels: list[QLabel] = []
             self._preprocess_widgets: list[QWidget] = []
             self._preprocess_ply_path_widgets: list[QWidget] = []
+            self._custom_view_widgets: list[QWidget] = []
+            self._cube6_widgets: list[QWidget] = []
 
             self.setWindowTitle("Cubemap Tools")
             self.resize(1380, 940)
@@ -233,6 +238,11 @@ if QMainWindow is not None:
             row.addWidget(browse_mask_btn)
             form.addRow("Mask Directory", row)
 
+            self.view_mode_combo = QComboBox()
+            self.view_mode_combo.addItem("Custom Pitch/Yaw", _VIEW_MODE_CUSTOM)
+            self.view_mode_combo.addItem("Cube6 (4 sides + top/bottom)", _VIEW_MODE_CUBE6)
+            form.addRow("View Mode", self.view_mode_combo)
+
             self.yaw_offset_edit = QLineEdit("45.0")
             self.yaw_offset_edit.textChanged.connect(self._on_yaw_or_pitch_changed)
             form.addRow("Yaw Offset (deg)", self.yaw_offset_edit)
@@ -242,9 +252,25 @@ if QMainWindow is not None:
             self.yaw_slots_combo.setCurrentText(str(_DEFAULT_YAW_SLOTS))
             self.yaw_slots_combo.currentTextChanged.connect(lambda _: self._on_yaw_slots_changed())
             form.addRow("Yaw Slots", self.yaw_slots_combo)
+            self._custom_view_widgets.append(self.yaw_slots_combo)
 
             self.pitch_list_edit = QLineEdit("-30,0,30")
             form.addRow("Pitch Rows (deg CSV)", self.pitch_list_edit)
+            self._custom_view_widgets.append(self.pitch_list_edit)
+
+            cube6_row = QHBoxLayout()
+            self.cube6_drop_top_check = QCheckBox("Drop Top (+90deg)")
+            self.cube6_drop_top_check.setChecked(False)
+            self.cube6_drop_top_check.toggled.connect(self._on_view_selection_changed)
+            cube6_row.addWidget(self.cube6_drop_top_check)
+            self._cube6_widgets.append(self.cube6_drop_top_check)
+            self.cube6_drop_bottom_check = QCheckBox("Drop Bottom (-90deg)")
+            self.cube6_drop_bottom_check.setChecked(False)
+            self.cube6_drop_bottom_check.toggled.connect(self._on_view_selection_changed)
+            cube6_row.addWidget(self.cube6_drop_bottom_check)
+            self._cube6_widgets.append(self.cube6_drop_bottom_check)
+            cube6_row.addStretch(1)
+            form.addRow("Cube6 Options", cube6_row)
 
             self.fov_label = QLabel("90.0 (fixed)")
             form.addRow("FOV", self.fov_label)
@@ -315,17 +341,20 @@ if QMainWindow is not None:
             layout.addLayout(form)
 
             view_ctrl_row = QHBoxLayout()
-            apply_pitch_btn = QPushButton("Apply Pitch Rows")
-            apply_pitch_btn.clicked.connect(self._apply_pitch_rows)
-            view_ctrl_row.addWidget(apply_pitch_btn)
+            self.apply_pitch_btn = QPushButton("Apply Pitch Rows")
+            self.apply_pitch_btn.clicked.connect(self._apply_pitch_rows)
+            view_ctrl_row.addWidget(self.apply_pitch_btn)
+            self._custom_view_widgets.append(self.apply_pitch_btn)
 
-            all_on_btn = QPushButton("All On")
-            all_on_btn.clicked.connect(self._all_on)
-            view_ctrl_row.addWidget(all_on_btn)
+            self.all_on_btn = QPushButton("All On")
+            self.all_on_btn.clicked.connect(self._all_on)
+            view_ctrl_row.addWidget(self.all_on_btn)
+            self._custom_view_widgets.append(self.all_on_btn)
 
-            all_off_btn = QPushButton("All Off")
-            all_off_btn.clicked.connect(self._all_off)
-            view_ctrl_row.addWidget(all_off_btn)
+            self.all_off_btn = QPushButton("All Off")
+            self.all_off_btn.clicked.connect(self._all_off)
+            view_ctrl_row.addWidget(self.all_off_btn)
+            self._custom_view_widgets.append(self.all_off_btn)
 
             refresh_preview_btn = QPushButton("Refresh Preview")
             refresh_preview_btn.clicked.connect(self._render_preview)
@@ -345,6 +374,7 @@ if QMainWindow is not None:
             self.view_grid_widget = QWidget()
             self.view_grid_layout = QGridLayout(self.view_grid_widget)
             layout.addWidget(self.view_grid_widget)
+            self._custom_view_widgets.append(self.view_grid_widget)
 
             self.preview_label = QLabel("Preview unavailable")
             self.preview_label.setAlignment(Qt.AlignCenter)
@@ -372,8 +402,10 @@ if QMainWindow is not None:
             layout.addWidget(self.log_text, stretch=1)
 
             self.target_profile_combo.currentIndexChanged.connect(self._on_target_profile_changed)
+            self.view_mode_combo.currentIndexChanged.connect(self._on_view_mode_changed)
             self._on_preprocess_toggle(self.preprocess_enable_check.isChecked())
             self._on_target_profile_changed(self.target_profile_combo.currentIndex())
+            self._on_view_mode_changed(self.view_mode_combo.currentIndex())
 
         def _is_running(self) -> bool:
             return self.proc is not None and self.proc.state() != QProcess.NotRunning
@@ -401,6 +433,31 @@ if QMainWindow is not None:
             if isinstance(data, str) and data:
                 return data
             return _PROFILE_POSTSHOT
+
+        def _view_mode_id(self) -> str:
+            data = self.view_mode_combo.currentData()
+            if isinstance(data, str) and data:
+                return data
+            return _VIEW_MODE_CUSTOM
+
+        def _effective_bundle_profile(self) -> str:
+            profile = self._target_profile_id()
+            if profile in {_PROFILE_POSTSHOT, _PROFILE_LICHTFELD}:
+                return profile
+            if self.no_transform_check.isChecked() or self.ms_use_ply_check.isChecked():
+                return _PROFILE_LICHTFELD
+            return _PROFILE_POSTSHOT
+
+        def _on_view_mode_changed(self, _index: int) -> None:
+            is_custom = self._view_mode_id() == _VIEW_MODE_CUSTOM
+            for w in self._custom_view_widgets:
+                w.setEnabled(is_custom)
+                if w is self.view_grid_widget:
+                    w.setVisible(is_custom)
+            for w in self._cube6_widgets:
+                w.setEnabled(not is_custom)
+            self._update_selected_views_label()
+            self._render_preview()
 
         def _refresh_preprocess_ply_path_widgets(self) -> None:
             enabled = self.preprocess_enable_check.isChecked() and self.ms_use_ply_check.isChecked()
@@ -501,7 +558,7 @@ if QMainWindow is not None:
 
         @staticmethod
         def _guess_metashape_ply(scene_dir: Path) -> str:
-            candidates = [scene_dir / "pointcloud.ply", scene_dir / "sparse.ply"]
+            candidates = [scene_dir / "metashape.ply", scene_dir / "sparse.ply", scene_dir / "pointcloud.ply"]
             for c in candidates:
                 if c.is_file():
                     return str(c)
@@ -509,6 +566,99 @@ if QMainWindow is not None:
             if plys:
                 return str(plys[0])
             return ""
+
+        @staticmethod
+        def _first_existing(paths: list[Path]) -> Path | None:
+            for p in paths:
+                if p.is_file():
+                    return p
+            return None
+
+        @staticmethod
+        def _resolve_postshot_ply_source(scene_dir: Path) -> Path | None:
+            preferred = [scene_dir / "metashape.ply", scene_dir / "sparse.ply"]
+            hit = CubemapToolsWindow._first_existing(preferred)
+            if hit is not None:
+                return hit
+
+            plys = sorted([p for p in scene_dir.glob("*.ply") if p.is_file()], key=lambda x: x.name.lower())
+            non_pointcloud = [p for p in plys if p.name.lower() != "pointcloud.ply"]
+            if len(non_pointcloud) == 1:
+                return non_pointcloud[0]
+            if non_pointcloud:
+                return non_pointcloud[0]
+            if len(plys) == 1 and plys[0].name.lower() != "pointcloud.ply":
+                return plys[0]
+            return None
+
+        @staticmethod
+        def _resolve_lichtfeld_ply_source(scene_dir: Path) -> Path | None:
+            preferred = [scene_dir / "pointcloud.ply"]
+            hit = CubemapToolsWindow._first_existing(preferred)
+            if hit is not None:
+                return hit
+
+            plys = sorted([p for p in scene_dir.glob("*.ply") if p.is_file()], key=lambda x: x.name.lower())
+            named = [p for p in plys if "pointcloud" in p.name.lower()]
+            if named:
+                return named[0]
+            if len(plys) == 1:
+                return plys[0]
+            return None
+
+        def _resolve_profile_ply_source(self) -> Path | None:
+            scene_dir = Path(self.scene_dir_edit.text().strip() or ".")
+            profile = self._effective_bundle_profile()
+            if profile == _PROFILE_LICHTFELD:
+                return self._resolve_lichtfeld_ply_source(scene_dir)
+            return self._resolve_postshot_ply_source(scene_dir)
+
+        def _validate_bundle_requirements(self) -> None:
+            profile = self._effective_bundle_profile()
+            source = self._resolve_profile_ply_source()
+            if source is not None:
+                return
+
+            if profile == _PROFILE_LICHTFELD and self.preprocess_enable_check.isChecked() and self.ms_use_ply_check.isChecked():
+                # pointcloud.ply will be generated by preprocess step.
+                return
+
+            if profile == _PROFILE_LICHTFELD:
+                raise ValueError(
+                    "LichtFeld profile requires pointcloud.ply in Scene Directory, "
+                    "or enable preprocess with MS PLY Usage."
+                )
+            raise ValueError(
+                "Postshot profile requires Metashape PLY in Scene Directory "
+                "(e.g. metashape.ply or sparse.ply)."
+            )
+
+        def _rewrite_output_ply_file_path(self, output_dir: Path, ply_name: str) -> None:
+            transforms_path = output_dir / "transforms.json"
+            if not transforms_path.is_file():
+                raise FileNotFoundError(f"Output transforms.json not found: {transforms_path}")
+            data = json.loads(transforms_path.read_text(encoding="utf-8"))
+            data["ply_file_path"] = ply_name
+            transforms_path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+
+        def _finalize_output_bundle(self) -> None:
+            scene_dir = Path(self.scene_dir_edit.text().strip() or ".")
+            output_dir = Path(self.output_dir_edit.text().strip() or (scene_dir / "cubic"))
+            output_dir.mkdir(parents=True, exist_ok=True)
+
+            source = self._resolve_profile_ply_source()
+            if source is None:
+                raise FileNotFoundError("No source PLY found for selected target profile")
+
+            dest = output_dir / source.name
+            if source.resolve() != dest.resolve():
+                shutil.copy2(source, dest)
+                self._append_log(f"[bundle] copied PLY: {source} -> {dest}")
+            else:
+                self._append_log(f"[bundle] PLY already in output: {dest}")
+
+            self._rewrite_output_ply_file_path(output_dir, dest.name)
+            self._append_log(f"[bundle] set transforms.json ply_file_path: {dest.name}")
 
         def _browse_sample_image(self) -> None:
             path, _ = QFileDialog.getOpenFileName(
@@ -850,8 +1000,40 @@ if QMainWindow is not None:
             token = f"{value:g}".replace(".", "d")
             return f"{sign}{token}"
 
+        def _cube6_views(self, yaw_offset: float) -> list[dict]:
+            drop_top = self.cube6_drop_top_check.isChecked()
+            drop_bottom = self.cube6_drop_bottom_check.isChecked()
+            return [
+                {"name": "px", "yaw": 90.0 - yaw_offset, "pitch": 0.0, "enabled": True, "slot": 0, "label": "px"},
+                {"name": "nx", "yaw": -90.0 - yaw_offset, "pitch": 0.0, "enabled": True, "slot": 1, "label": "nx"},
+                {"name": "pz", "yaw": 0.0 - yaw_offset, "pitch": 0.0, "enabled": True, "slot": 2, "label": "pz"},
+                {"name": "nz", "yaw": 180.0 - yaw_offset, "pitch": 0.0, "enabled": True, "slot": 3, "label": "nz"},
+                {
+                    "name": "top",
+                    "yaw": 0.0 - yaw_offset,
+                    "pitch": 90.0,
+                    "enabled": (not drop_top),
+                    "slot": 4,
+                    "label": "top",
+                },
+                {
+                    "name": "bottom",
+                    "yaw": 0.0 - yaw_offset,
+                    "pitch": -90.0,
+                    "enabled": (not drop_bottom),
+                    "slot": 5,
+                    "label": "bottom",
+                },
+            ]
+
         def _collect_views(self, include_disabled: bool) -> list[dict]:
             yaw_offset = self._parse_float(self.yaw_offset_edit.text(), "Yaw Offset")
+            if self._view_mode_id() == _VIEW_MODE_CUBE6:
+                views = self._cube6_views(yaw_offset)
+                if include_disabled:
+                    return views
+                return [v for v in views if v["enabled"]]
+
             yaw_step = self._yaw_step_deg()
             views: list[dict] = []
 
@@ -868,6 +1050,7 @@ if QMainWindow is not None:
                             "pitch": pitch,
                             "enabled": enabled,
                             "slot": slot,
+                            "label": f"p{pitch:g}/s{slot}",
                         }
                     )
             return views
@@ -875,6 +1058,7 @@ if QMainWindow is not None:
         def _update_selected_views_label(self) -> None:
             try:
                 views = self._collect_views(include_disabled=True)
+                mode = self._view_mode_id()
                 slot_count = self._yaw_slot_count()
             except Exception:
                 self.selected_views_label.setText("Selected views: -")
@@ -887,9 +1071,12 @@ if QMainWindow is not None:
                 warn = " [limit exceeded]"
             elif selected > _WARN_ENABLED_VIEWS:
                 warn = " [high]"
-            self.selected_views_label.setText(
-                f"Selected views: {selected} / {len(views)} (slots={slot_count}){warn}"
-            )
+            if mode == _VIEW_MODE_CUBE6:
+                self.selected_views_label.setText(f"Selected views: {selected} / {len(views)} (cube6){warn}")
+            else:
+                self.selected_views_label.setText(
+                    f"Selected views: {selected} / {len(views)} (slots={slot_count}){warn}"
+                )
             self._update_output_estimate()
 
         def _find_mask_for_sample(self, sample_path: Path) -> Path | None:
@@ -1050,7 +1237,7 @@ if QMainWindow is not None:
                     merged = np.concatenate(all_points, axis=0)
                     cx = int(np.clip(np.mean(merged[:, 0]), 0, w - 1))
                     cy = int(np.clip(np.mean(merged[:, 1]), 0, h - 1))
-                    label = f"p{view['pitch']:g}/s{view['slot']}"
+                    label = str(view.get("label", f"p{view['pitch']:g}/s{view['slot']}"))
                     cv2.putText(
                         img,
                         label,
@@ -1320,6 +1507,14 @@ if QMainWindow is not None:
                     if self.pending_steps:
                         self._run_next_step()
                         return
+                    if phase == "cubemap":
+                        try:
+                            self._finalize_output_bundle()
+                        except Exception as e:
+                            self.pending_steps = []
+                            self._append_log(f"[bundle] failed: {e}")
+                            self._set_running_state(False, "Failed: bundle")
+                            return
                     self._set_running_state(False, f"Done: {phase}")
             else:
                 if was_canceled:
@@ -1354,6 +1549,12 @@ if QMainWindow is not None:
                 )
                 if reply != QMessageBox.Yes:
                     return
+
+            try:
+                self._validate_bundle_requirements()
+            except Exception as e:
+                QMessageBox.critical(self, "Missing Bundle Input", str(e))
+                return
 
             try:
                 cubemap_cmd = self._build_cmd()
