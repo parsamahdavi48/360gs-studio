@@ -94,6 +94,12 @@ python cubemap_transforms_json.py . ./cubic \
   --fov 90
 ```
 
+With custom view list (name/yaw/pitch):
+
+```bash
+python cubemap_transforms_json.py . ./cubic --views-json views_config.json --fov 90
+```
+
 Specifying `--yaw 45 --stitch DEGREE` will prevent the stitching area between two fisheye images from crossing the center of the cubemap image. These options are effective for Insta360 and OSMO 360 images **without any image correction** like camera tilt and stitching.
 
 The following images illustrate how each face of the cubemap and the boundary between two fisheye images occupy a portion of the equirectangular image.
@@ -122,11 +128,12 @@ python cubemap_transforms_json.py . ./cubic --no_tranform
 |Option|Argument|Description|
 |------|----|-----------|
 |--json|filename|transforms.json with a different filename (default='transforms.json')|
-|--mask_dir|directory name|Input mask images directory (default='./cubic')|
+|--mask_dir|directory name|Input mask images directory (default='<input_dir>/masks')|
 |--mask_from_alpha|(no)|Extract masks from alpha channel in images|
 |--yaw|degrees|Shift the horizontal angle (default=45.0 degrees)|
 |--stitch|degrees|Angle to avoid stitching areas (default=0.0 degrees)|
 |--fov|degrees|Field of view for cubemap faces (default=90.0 degrees)|
+|--views-json|path|Use custom views list JSON (`[{name,yaw,pitch,enabled}]` or `{\"views\":[...]}`)|
 |--no_bottom|(no)|Output without a bottom face of cube-map.|
 |--no_top|(no)|Output without a top face of cube-map.|
 |--no_image|(no)|Disable image conversion. Only transforms.json will be converted.|

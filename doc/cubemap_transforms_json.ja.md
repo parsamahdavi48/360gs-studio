@@ -80,6 +80,12 @@ python cubemap_transforms_json.py . ./cubic \
   --fov 90
 ```
 
+カスタム視点リスト（name/yaw/pitch）を使う場合:
+
+```bash
+python cubemap_transforms_json.py . ./cubic --views-json views_config.json --fov 90
+```
+
  `--yaw 45 --stitch DEGREE` を指定することで、2つの魚眼画像間の縫い目部分がキューブマップ画像の中心を横切るのを防ぎます。これらのオプションは、カメラの傾きやステッチングなどの**補正なし**で出力されたInsta360やOSMO 360の画像に効果的です。
 
 次の画像はキューブマップの各面と２つの魚眼画像の辺縁部が全球画像のうちどの領域を占めるかを図示しています。
@@ -109,11 +115,12 @@ python cubemap_transforms_json.py . ./cubic --no_tranform
 |オプション|引数|説明|
 |------|---|-----------|
 |--json|ファイル名|transforms.jsonを別名で扱う場合のファイル名 (default='transforms.json')|
-|--mask_dir|ディレクトリ名|Input mask images directory (default='./cubic')|
+|--mask_dir|ディレクトリ名|入力マスク画像ディレクトリ (default='<input_dir>/masks')|
 |--mask_from_alpha|(no)|Extract masks from alpha channel in images|
 |--yaw|角度°|水平方向の角度をシフトします (default=45.0 degrees)|
 |--stitch|角度°|スティッチング領域を除外するための角度 (default=0.0 degrees)|
 |--fov|角度°|各キューブマップ面の画像のFOV (default=90.0 degrees)|
+|--views-json|パス|カスタム視点リストJSON（`[{name,yaw,pitch,enabled}]` または `{\"views\":[...]}`）を使用|
 |--no_bottom|(no)|キューブマップの底面を除外して出力|
 |--no_top|(no)|キューブマップの上面を除外して出力|
 |--no_image|(no)|画像の変換を行わず、transforms.json の変換のみ行います|

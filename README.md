@@ -40,6 +40,7 @@ If Python 3.11 is missing, `setup_windows.bat` tries to install Python 3.11.8 vi
 setup_windows.bat
 start_extract_frames_gui.bat
 start_mask_tools_gui.bat
+start_cubemap_tools_gui.bat
 ```
 
 ## Summary of scripts
@@ -49,6 +50,11 @@ start_mask_tools_gui.bat
 Convert transforms.json produced for 360° equirectangular data (by `metashape_360_lfs`) into a cubemap-friendly format usable by common 3DGS tools.<br>
 See detailed documentation: [doc/cubemap_transforms_json.md](doc/cubemap_transforms_json.md).<br>
 ![mask example](images/yaw45.jpg)
+
+### `cubemap_tools_gui.py`
+
+GUI wrapper for cubemap conversion with preview-based view selection (multiple pitch rows x 6 slots each, per-slot on/off, mask overlay preview, FOV fixed at 90).<br>
+See details: [doc/cubemap_tools_gui.md](doc/cubemap_tools_gui.md)
 
 ### `stitch_mask.py`
 

@@ -39,6 +39,7 @@ Python 3.11 が無い場合、`setup_windows.bat` は `winget` で Python 3.11.8
 setup_windows.bat
 start_extract_frames_gui.bat
 start_mask_tools_gui.bat
+start_cubemap_tools_gui.bat
 ```
 
 ## 各スクリプトの概要
@@ -48,6 +49,11 @@ start_mask_tools_gui.bat
 Metashapeが出力する**360度画像用**xmlファイルからtransforms.jsonに変換したものを元に、さらにキューブマップ用に変換し、一般的な3DGSソフトで入力できるようにします。<br>
 [→詳細を見る](doc/cubemap_transforms_json.ja.md)<br>
 ![mask example](images/yaw45.jpg)
+
+### cubemap_tools_gui.py
+
+キューブマップ変換用のラッパーGUIです。複数ピッチ行 x 6スロットの視点ON/OFF、マスク半透明合成付きプレビュー、FOV=90固定での実行に対応します。<br>
+[→詳細を見る](doc/cubemap_tools_gui.ja.md)<br>
 
 ### stitch_mask.py
 

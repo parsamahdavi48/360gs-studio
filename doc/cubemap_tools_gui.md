@@ -1,0 +1,71 @@
+# cubemap_tools_gui.py — GUI wrapper for cubemap conversion
+
+`cubemap_tools_gui.py` is a PySide6 wrapper around `cubemap_transforms_json.py` for preview-driven view selection.
+
+## Purpose
+
+Use this GUI when you want to:
+- keep FOV fixed at `90°`
+- define multiple pitch rows (for example `-30,0,30`)
+- choose enabled/disabled view slots per pitch row
+- preview extraction regions on an equirectangular image
+- overlay an existing mask with adjustable opacity
+
+## Launch
+
+```bash
+python cubemap_tools_gui.py --scene-dir ./scene01
+```
+
+On Windows (recommended):
+
+```bat
+start_cubemap_tools_gui.bat
+```
+
+## Main fields
+
+- `Scene Directory`:
+  - Directory containing `transforms.json` and `images/`.
+- `Output Directory`:
+  - Cubemap output directory. Default: `<scene>/cubic`.
+- `Transforms JSON`:
+  - JSON filename in scene dir. Default: `transforms.json`.
+- `Mask Directory`:
+  - Optional mask input folder used by conversion and preview overlay.
+- `Yaw Offset (deg)`:
+  - Base yaw for slot generation. Slot yaw = `offset + slot*60`.
+- `Pitch Rows (deg CSV)`:
+  - Pitch list. Example: `-30,0,30`.
+- `FOV`:
+  - Fixed to `90.0` in this GUI.
+- `Preview Image`:
+  - Equirectangular image used for overlay preview.
+- `Mask Overlay (%)`:
+  - Opacity of mask overlay in preview.
+
+## View selection
+
+- After `Apply Pitch Rows`, each pitch row gets 6 slots (`S0..S5`).
+- Checkboxes control whether each slot is exported.
+- Typical setup:
+  - pitch `0`: enable all 6
+  - pitch `+/-30`: enable only needed slots
+
+## Run options
+
+- `Extract mask from alpha (--mask_from_alpha)`
+- `Transforms only (--no_image)`
+- `No axis transform (--no_transform)`
+- `Allow duplicate (--duplicate)`
+
+## Execution behavior
+
+- On run, GUI writes `<output_dir>/views_config.json` and calls:
+  - `cubemap_transforms_json.py --fov 90 --views-json <that file>`
+- Disabled slots are written with `enabled=false` and ignored by converter.
+
+## Notes
+
+- If no view is enabled, run is blocked.
+- Preview is guidance only; final conversion follows `views_config.json` exactly.
