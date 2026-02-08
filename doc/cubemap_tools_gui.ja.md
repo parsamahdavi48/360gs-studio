@@ -31,6 +31,10 @@ start_cubemap_tools_gui.bat
   - 出力先。既定は `<scene>/cubic`。
 - `Transforms JSON`:
   - 入力JSONファイル名。既定は `transforms.json`。
+- `Target Profile`:
+  - 連携先ツール向けのプリセットです。
+  - `Postshot / Brush`: `--no_transform` をOFF、前処理`--ply`をOFFにします。
+  - `LichtFeld Studio`: `--no_transform` をON、前処理`--ply`をONにします。
 - `Preprocess`:
   - 有効時、キューブマップ変換の前に同梱の
     `vendor/metashape_360_lfs/metashape_360_lfs.py` を実行します。
@@ -39,7 +43,9 @@ start_cubemap_tools_gui.bat
 - `MS XML`:
   - `metashape_360_lfs.py --xml` に渡すMetashape XML。
 - `MS PLY (optional)`:
-  - `metashape_360_lfs.py --ply` に渡す任意のPLY。
+  - `MS PLY Usage` が有効なときに使うPLYパス。
+- `MS PLY Usage`:
+  - 前処理で `--ply` を渡すかどうかを制御します。
 - `MS Scale`:
   - `metashape_360_lfs.py --scale` の値（正の値が必要）。
 - `MS Options`:
@@ -93,6 +99,7 @@ start_cubemap_tools_gui.bat
 - その後
   `cubemap_transforms_json.py --fov 90 --views-json <そのファイル>` を呼び出します。
 - OFFのスロットは `enabled=false` として保存され、変換時に無視されます。
+- `Postshot / Brush` プロファイルでは、点群とカメラの不一致を避けるため、前処理`--ply`が既定でOFFになります。
 
 ## 注意
 

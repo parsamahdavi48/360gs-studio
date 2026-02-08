@@ -67,6 +67,8 @@ _DEFAULT_YAW_SLOTS = 6
 _MAX_PITCH_ROWS = 9
 _WARN_ENABLED_VIEWS = 24
 _BLOCK_ENABLED_VIEWS = 40
+_PROFILE_POSTSHOT = "postshot"
+_PROFILE_LICHTFELD = "lichtfeld"
 
 
 def _normalize_angle(angle_deg: float) -> float:
@@ -117,6 +119,7 @@ if QMainWindow is not None:
             self.pitch_rows: list[dict] = []
             self.yaw_slot_labels: list[QLabel] = []
             self._preprocess_widgets: list[QWidget] = []
+            self._preprocess_ply_path_widgets: list[QWidget] = []
 
             self.setWindowTitle("Cubemap Tools")
             self.resize(1380, 940)
@@ -159,6 +162,15 @@ if QMainWindow is not None:
             self.json_name_edit = QLineEdit("transforms.json")
             form.addRow("Transforms JSON", self.json_name_edit)
 
+            self.target_profile_combo = QComboBox()
+            self.target_profile_combo.addItem("Postshot / Brush", _PROFILE_POSTSHOT)
+            self.target_profile_combo.addItem("LichtFeld Studio", _PROFILE_LICHTFELD)
+            form.addRow("Target Profile", self.target_profile_combo)
+
+            self.target_profile_hint = QLabel("")
+            self.target_profile_hint.setWordWrap(True)
+            form.addRow("Profile Hint", self.target_profile_hint)
+
             self.preprocess_enable_check = QCheckBox("Run metashape_360_lfs preprocess")
             self.preprocess_enable_check.setChecked(True)
             self.preprocess_enable_check.toggled.connect(self._on_preprocess_toggle)
@@ -192,7 +204,14 @@ if QMainWindow is not None:
             row.addWidget(browse_ms_ply_btn)
             row.addWidget(clear_ms_ply_btn)
             form.addRow("MS PLY (optional)", row)
+            self._preprocess_ply_path_widgets.extend([self.ms_ply_edit, browse_ms_ply_btn, clear_ms_ply_btn])
             self._preprocess_widgets.extend([self.ms_ply_edit, browse_ms_ply_btn, clear_ms_ply_btn])
+
+            self.ms_use_ply_check = QCheckBox("Include PLY in preprocess (--ply)")
+            self.ms_use_ply_check.setChecked(False)
+            self.ms_use_ply_check.toggled.connect(self._on_ms_use_ply_toggle)
+            form.addRow("MS PLY Usage", self.ms_use_ply_check)
+            self._preprocess_widgets.append(self.ms_use_ply_check)
 
             self.ms_scale_edit = QLineEdit("1.0")
             form.addRow("MS Scale", self.ms_scale_edit)
@@ -350,7 +369,9 @@ if QMainWindow is not None:
             self.log_text.setReadOnly(True)
             layout.addWidget(self.log_text, stretch=1)
 
+            self.target_profile_combo.currentIndexChanged.connect(self._on_target_profile_changed)
             self._on_preprocess_toggle(self.preprocess_enable_check.isChecked())
+            self._on_target_profile_changed(self.target_profile_combo.currentIndex())
 
         def _is_running(self) -> bool:
             return self.proc is not None and self.proc.state() != QProcess.NotRunning
@@ -373,9 +394,40 @@ if QMainWindow is not None:
             self.run_button.setEnabled(Path(self.scene_dir_edit.text().strip()).is_dir())
             self.cancel_button.setEnabled(False)
 
+        def _target_profile_id(self) -> str:
+            data = self.target_profile_combo.currentData()
+            if isinstance(data, str) and data:
+                return data
+            return _PROFILE_POSTSHOT
+
+        def _refresh_preprocess_ply_path_widgets(self) -> None:
+            enabled = self.preprocess_enable_check.isChecked() and self.ms_use_ply_check.isChecked()
+            for w in self._preprocess_ply_path_widgets:
+                w.setEnabled(enabled)
+
+        def _on_ms_use_ply_toggle(self, _enabled: bool) -> None:
+            self._refresh_preprocess_ply_path_widgets()
+
+        def _on_target_profile_changed(self, _index: int) -> None:
+            profile = self._target_profile_id()
+            if profile == _PROFILE_LICHTFELD:
+                self.no_transform_check.setChecked(True)
+                self.ms_use_ply_check.setChecked(True)
+                self.target_profile_hint.setText(
+                    "LichtFeld preset: --no_transform ON, preprocess --ply ON."
+                )
+            else:
+                self.no_transform_check.setChecked(False)
+                self.ms_use_ply_check.setChecked(False)
+                self.target_profile_hint.setText(
+                    "Postshot/Brush preset: --no_transform OFF, preprocess --ply OFF."
+                )
+            self._refresh_preprocess_ply_path_widgets()
+
         def _on_preprocess_toggle(self, enabled: bool) -> None:
             for w in self._preprocess_widgets:
                 w.setEnabled(enabled)
+            self._refresh_preprocess_ply_path_widgets()
 
         def _browse_scene_dir(self) -> None:
             path = QFileDialog.getExistingDirectory(self, "Select scene directory")
@@ -1063,8 +1115,10 @@ if QMainWindow is not None:
                 f"{scale:g}",
             ]
 
-            ply_text = self.ms_ply_edit.text().strip()
-            if ply_text:
+            if self.ms_use_ply_check.isChecked():
+                ply_text = self.ms_ply_edit.text().strip()
+                if not ply_text:
+                    raise ValueError("MS PLY Usage is enabled, but MS PLY path is empty")
                 ply_path = Path(ply_text)
                 if not ply_path.is_file():
                     raise ValueError(f"MS PLY not found: {ply_path}")

@@ -31,6 +31,10 @@ start_cubemap_tools_gui.bat
   - Cubemap output directory. Default: `<scene>/cubic`.
 - `Transforms JSON`:
   - JSON filename in scene dir. Default: `transforms.json`.
+- `Target Profile`:
+  - Preset for downstream tool.
+  - `Postshot / Brush`: sets `--no_transform` OFF and preprocess `--ply` OFF.
+  - `LichtFeld Studio`: sets `--no_transform` ON and preprocess `--ply` ON.
 - `Preprocess`:
   - If enabled, run bundled `vendor/metashape_360_lfs/metashape_360_lfs.py` before cubemap conversion.
 - `MS Images Dir`:
@@ -38,7 +42,9 @@ start_cubemap_tools_gui.bat
 - `MS XML`:
   - Metashape XML path passed to `metashape_360_lfs.py --xml`.
 - `MS PLY (optional)`:
-  - Optional PLY path passed to `metashape_360_lfs.py --ply`.
+  - PLY path used when `MS PLY Usage` is enabled.
+- `MS PLY Usage`:
+  - Controls whether preprocess passes `--ply`.
 - `MS Scale`:
   - Scale value passed to `metashape_360_lfs.py --scale` (must be positive).
 - `MS Options`:
@@ -91,6 +97,7 @@ start_cubemap_tools_gui.bat
 - Then GUI runs:
   - `cubemap_transforms_json.py --fov 90 --views-json <that file>`
 - Disabled slots are written with `enabled=false` and ignored by converter.
+- With `Postshot / Brush` profile, preprocess `--ply` is disabled by default to avoid point-cloud/camera mismatch.
 
 ## Notes
 
