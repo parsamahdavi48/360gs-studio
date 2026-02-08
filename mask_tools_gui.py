@@ -482,6 +482,7 @@ if QMainWindow is not None:
             level = self.yolo_level_combo.currentText()
             cmd = [
                 sys.executable,
+                "-u",
                 str(yolo_script),
                 str(images_dir),
                 str(masks_dir),
@@ -515,6 +516,7 @@ if QMainWindow is not None:
 
             cmd = [
                 sys.executable,
+                "-u",
                 str(stitch_script),
                 str(masks_dir),
                 str(masks_dir),

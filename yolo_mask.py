@@ -30,8 +30,8 @@ LEVEL = args.level
 EXPAND = args.expand
 
 if not os.path.isdir(INPUT_DIR):
-    print("python yolo_mask.py {images_dir} {masks_dir}")
-    print(os.getcwd())
+    print("python yolo_mask.py {images_dir} {masks_dir}", flush=True)
+    print(os.getcwd(), flush=True)
     sys.exit()
 
 YOLO_MODEL = "yolo26l.pt" if LEVEL >= 2 else "yolo26m.pt"
@@ -52,10 +52,10 @@ def parse_classes(text):
 try:
     CLASS_IDS = parse_classes(args.classes)
 except Exception as e:
-    print(f"Invalid --classes value: {e}")
+    print(f"Invalid --classes value: {e}", flush=True)
     sys.exit(1)
 
-print("YOLO classes:", ",".join(str(x) for x in CLASS_IDS))
+print("YOLO classes:", ",".join(str(x) for x in CLASS_IDS), flush=True)
 
 px, py = None, None
 ux, uy = None, None
@@ -177,7 +177,7 @@ sam = SAM(os.path.join(script_dir, SAM_MODEL))
 # =========================
 proc_count = 0
 def process_file(input_dir, output_dir, fname, add_ext=True):
-    print(f"Processing: {fname}")
+    print(f"Processing: {fname}", flush=True)
 
     # 画像読み込み
     img_path = os.path.join(input_dir, fname)
@@ -214,9 +214,9 @@ def process_file(input_dir, output_dir, fname, add_ext=True):
                 y1 = max(0, top_y + j * subh - pad)
                 y2 = min(h, y1 + subh + pad)
                 # 一部を切り出して検出
-                print(f"  Processing region {i*nj+j}/{ni * nj} ...")
+                print(f"  Processing region {i*nj+j}/{ni * nj} ...", flush=True)
                 if proc_count == 0:
-                    print(f"  HQ extraction: region [{y1}:{y2}, {x1}:{x2}]")
+                    print(f"  HQ extraction: region [{y1}:{y2}, {x1}:{x2}]", flush=True)
                 subimg = img[y1:y2, x1:x2]
                 submask = np.zeros((y2 - y1, x2 - x1), dtype=np.uint8)
                 submask, has_submask = add_yolo_mask(subimg, submask)
@@ -281,4 +281,3 @@ else:
     fname = os.path.basename(INPUT_DIR)
     input_dir = os.path.dirname(INPUT_DIR)
     process_file(input_dir, OUTPUT_DIR, fname, ADD_EXT)
-
