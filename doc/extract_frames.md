@@ -40,17 +40,35 @@ python extract_frames.py input.mp4 ./scene01 \
   --max-gap-sec 2.2
 ```
 
+Specify custom filename prefix:
+
+```bash
+python extract_frames.py input.mp4 ./scene01 --filename-prefix walk01
+```
+
 Estimate only (no image extraction):
 
 ```bash
 python extract_frames.py input.mp4 ./scene01 --estimate-only --print-summary-json
 ```
 
+Sampled estimate only (faster):
+
+```bash
+python extract_frames.py input.mp4 ./scene01 \
+  --estimate-only \
+  --estimate-mode sampled \
+  --sample-segments 5 \
+  --sample-segment-sec 12 \
+  --sample-fps 8 \
+  --print-summary-json
+```
+
 ## Outputs
 
 Under `output_dir`:
 
-- `images/frame_XXXXXX.jpg` (or `.png`)
+- `images/<video_stem>_XXXXXX.jpg` (or `.png`) by default
 - `selected_frames.csv`
 - `extract_report.json`
 
@@ -65,6 +83,8 @@ Under `output_dir`:
 ## Notes
 
 - Auto blur replacement window uses a conservative default based on FPS and selected minimum gap.
+- Default filename prefix is input video filename stem; override with `--filename-prefix`.
 - `--image-ext jpg` is recommended for speed during iteration.
 - This script does not modify existing mask files.
-- `--estimate-only` runs analysis and selection without creating `images/` or CSV/report files.
+- `--estimate-only --estimate-mode full` analyzes all frames for the estimate.
+- `--estimate-only --estimate-mode sampled` analyzes temporal windows only and extrapolates.

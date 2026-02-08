@@ -73,7 +73,8 @@ See details: [doc/review_frames.md](doc/review_frames.md)
 
 ### `apply_frame_decisions.py`
 
-Apply keep/drop decisions in `selected_frames.csv` and export only keep images for Metashape import.<br>
+Apply keep/drop decisions in `selected_frames.csv`.<br>
+Default workflow is in-place finalize in `images/` (drop remove + keep renumber + CSV update), with optional copy mode to another folder.<br>
 See details: [doc/apply_frame_decisions.md](doc/apply_frame_decisions.md)
 
 ### `extract_frames_gui.py`

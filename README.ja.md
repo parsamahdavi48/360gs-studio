@@ -73,11 +73,12 @@ FFmpegでエクイレクタングラー動画から静止画を切り出し、�
 
 ### apply_frame_decisions.py
 
-`selected_frames.csv` の keep/drop 判定を反映し、keep のみを Metashape 読み込み用に出力します。<br>
+`selected_frames.csv` の keep/drop 判定を反映します。<br>
+既定は `images/` をその場で確定（drop削除・keep連番化・CSV更新）し、必要なら別フォルダへのコピー出力もできます。<br>
 [→詳細を見る](doc/apply_frame_decisions.md)<br>
 
 ### extract_frames_gui.py
 
 抽出ワークフロー用ラッパーGUIです。抽出実行、レビューGUI起動、keep画像の確定出力まで行えます。<br>
 動画メタ情報（fps/再生時間/総フレーム数）表示と、現在パラメータでの推定出力枚数表示に対応しています。<br>
-[→詳細を見る](doc/extract_frames_gui.md)<br>
+[→詳細を見る](doc/extract_frames_gui.ja.md)<br>

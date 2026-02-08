@@ -3,12 +3,13 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import subprocess
 import sys
 from pathlib import Path
 
 try:
-    from PySide6.QtCore import QProcess, Qt
+    from PySide6.QtCore import QProcess, Qt, QTimer
     from PySide6.QtGui import QCloseEvent
     from PySide6.QtWidgets import (
         QApplication,
@@ -29,6 +30,7 @@ try:
 except Exception as e:  # pragma: no cover - environment-dependent import
     QProcess = None
     Qt = None
+    QTimer = None
     QCloseEvent = None
     QApplication = None
     QFileDialog = None
@@ -57,8 +59,18 @@ if QMainWindow is not None:
             self.proc: QProcess | None = None
             self.current_phase = ""
             self._process_buffer = ""
+            self.sample_proc: QProcess | None = None
+            self._sample_buffer = ""
             self.video_info: dict | None = None
             self.last_estimate_summary: dict | None = None
+            self.instant_estimate_text = "-"
+            self.sampled_estimate_text = "-"
+            self.sample_segments = 5
+            self.sample_segment_sec = 12.0
+            self.sample_fps = 8.0
+            self.sample_timer = QTimer(self)
+            self.sample_timer.setSingleShot(True)
+            self.sample_timer.timeout.connect(self._start_sample_estimate)
 
             self.setWindowTitle("Frame Extractor")
             self.resize(1160, 860)
@@ -147,16 +159,21 @@ if QMainWindow is not None:
             self.ffprobe_edit.textChanged.connect(self._mark_estimate_stale)
             form_layout.addRow("ffprobe", self.ffprobe_edit)
 
-            self.metashape_output_edit = QLineEdit("metashape_images")
-            form_layout.addRow("Metashape Output Folder", self.metashape_output_edit)
+            self.metashape_output_edit = QLineEdit("images")
+            form_layout.addRow("Export Target Folder", self.metashape_output_edit)
+
+            self.filename_prefix_edit = QLineEdit("")
+            self.filename_prefix_edit.setPlaceholderText("auto (video filename)")
+            self.filename_prefix_edit.textChanged.connect(self._mark_estimate_stale)
+            form_layout.addRow("Filename Prefix", self.filename_prefix_edit)
 
             meta_row = QHBoxLayout()
             self.load_info_button = QPushButton("Load Video Info")
             self.load_info_button.clicked.connect(lambda: self._load_video_info(show_error_popup=True))
             meta_row.addWidget(self.load_info_button)
 
-            self.estimate_button = QPushButton("Estimate Count")
-            self.estimate_button.clicked.connect(self._run_estimate)
+            self.estimate_button = QPushButton("Refresh Sampled")
+            self.estimate_button.clicked.connect(self._run_sampled_estimate_now)
             meta_row.addWidget(self.estimate_button)
             meta_row.addStretch(1)
             form_layout.addRow("Analysis Tools", meta_row)
@@ -165,8 +182,10 @@ if QMainWindow is not None:
             self.video_info_label.setStyleSheet("color: #333;")
             form_layout.addRow("Video Info", self.video_info_label)
 
-            self.estimate_label = QLabel("Estimate: -")
+            self.estimate_label = QLabel()
             self.estimate_label.setStyleSheet("color: #333;")
+            self.estimate_label.setWordWrap(True)
+            self._refresh_estimate_label()
             form_layout.addRow("Estimated Output", self.estimate_label)
 
             layout.addLayout(form_layout)
@@ -208,6 +227,7 @@ if QMainWindow is not None:
             self.change_threshold_edit.setEnabled(not is_fixed)
             self.min_gap_edit.setEnabled(not is_fixed)
             self.max_gap_edit.setEnabled(not is_fixed)
+            self._refresh_action_buttons()
 
         def _refresh_action_buttons(self) -> None:
             if self._is_running():
@@ -226,7 +246,7 @@ if QMainWindow is not None:
             self.review_button.setEnabled(has_csv)
             self.export_button.setEnabled(has_csv)
             self.load_info_button.setEnabled(has_video)
-            self.estimate_button.setEnabled(has_video)
+            self.estimate_button.setEnabled(has_video and self._mode() == "change")
 
         def _append_log(self, text: str) -> None:
             self.log_text.appendPlainText(text)
@@ -254,16 +274,216 @@ if QMainWindow is not None:
             if path:
                 self.input_video_edit.setText(path)
                 self._load_video_info(show_error_popup=False)
-                self._mark_estimate_stale()
 
         def _browse_scene_dir(self) -> None:
             path = QFileDialog.getExistingDirectory(self, "Select scene directory")
             if path:
                 self.scene_dir_edit.setText(path)
 
+        def _refresh_estimate_label(self) -> None:
+            self.estimate_label.setText(
+                f"Instant: {self.instant_estimate_text}\n"
+                f"Sampled: {self.sampled_estimate_text}"
+            )
+
+        def _cancel_sample_estimate(self, reason: str | None = None, log: bool = False) -> None:
+            self.sample_timer.stop()
+            proc = self.sample_proc
+            self.sample_proc = None
+            self._sample_buffer = ""
+            if proc is not None and proc.state() != QProcess.NotRunning:
+                proc.kill()
+                proc.waitForFinished(2000)
+                if log and reason:
+                    self._append_log(f"[sample] canceled: {reason}")
+
+        def _estimate_change_range(self, duration_sec: float, min_gap_sec: float, max_gap_sec: float) -> tuple[int, int]:
+            if min_gap_sec <= 0 or max_gap_sec <= 0:
+                raise ValueError("Min/Max gap must be > 0")
+            if max_gap_sec < min_gap_sec:
+                raise ValueError("Max Gap must be >= Min Gap")
+            if duration_sec <= 0:
+                return 1, 1
+            min_count = max(1, int(math.ceil(duration_sec / max_gap_sec)))
+            max_count = max(min_count, int(math.ceil(duration_sec / min_gap_sec)))
+            return min_count, max_count
+
+        @staticmethod
+        def _threshold_to_weight(threshold: float) -> float:
+            low = 0.01
+            high = 0.12
+            if threshold <= low:
+                return 0.0
+            if threshold >= high:
+                return 1.0
+            return (threshold - low) / (high - low)
+
+        def _update_instant_estimate(self) -> None:
+            if not self.video_info:
+                self.instant_estimate_text = "-"
+                self._refresh_estimate_label()
+                return
+
+            duration_sec = float(self.video_info.get("duration_sec", 0.0))
+            fps = float(self.video_info.get("fps", 0.0))
+            total_frames = int(self.video_info.get("total_frames", 0))
+
+            if self._mode() == "fixed":
+                try:
+                    interval_sec = float(self.interval_sec_edit.text().strip())
+                    if interval_sec <= 0:
+                        raise ValueError("interval <= 0")
+                    if total_frames <= 0 and duration_sec > 0 and fps > 0:
+                        total_frames = max(1, int(round(duration_sec * fps)))
+                    step = max(1, int(round(interval_sec * fps)))
+                    indices = list(range(0, max(total_frames, 1), step))
+                    if indices[-1] != max(total_frames - 1, 0):
+                        indices.append(max(total_frames - 1, 0))
+                    self.instant_estimate_text = f"{len(indices)} frames (fixed exact)"
+                except Exception:
+                    self.instant_estimate_text = "- (invalid fixed params)"
+                self._refresh_estimate_label()
+                return
+
+            try:
+                threshold = float(self.change_threshold_edit.text().strip())
+                min_gap = float(self.min_gap_edit.text().strip())
+                max_gap = float(self.max_gap_edit.text().strip())
+                min_count, max_count = self._estimate_change_range(duration_sec, min_gap, max_gap)
+                weight = self._threshold_to_weight(threshold)
+                est_gap = min_gap + weight * (max_gap - min_gap)
+                est_count = max(1, int(math.ceil(duration_sec / max(est_gap, 1e-6)))) if duration_sec > 0 else 1
+                est_count = max(min_count, min(max_count, est_count))
+                self.instant_estimate_text = f"{min_count}-{max_count} frames (thr~{est_count})"
+            except Exception:
+                self.instant_estimate_text = "- (invalid change params)"
+            self._refresh_estimate_label()
+
+        def _build_sampled_estimate_cmd(self) -> list[str]:
+            cmd = self._build_extract_cmd()
+            cmd.extend(
+                [
+                    "--estimate-only",
+                    "--estimate-mode",
+                    "sampled",
+                    "--sample-segments",
+                    str(self.sample_segments),
+                    "--sample-segment-sec",
+                    str(self.sample_segment_sec),
+                    "--sample-fps",
+                    str(self.sample_fps),
+                    "--print-summary-json",
+                ]
+            )
+            return cmd
+
+        def _schedule_sample_estimate(self, delay_ms: int = 500) -> None:
+            if self._mode() != "change":
+                self._cancel_sample_estimate()
+                self.sampled_estimate_text = "- (not used in fixed mode)"
+                self._refresh_estimate_label()
+                return
+            if self._is_running():
+                return
+            if not self.video_info:
+                self.sampled_estimate_text = "-"
+                self._refresh_estimate_label()
+                return
+
+            self._cancel_sample_estimate()
+            self.sampled_estimate_text = "calculating..."
+            self._refresh_estimate_label()
+            self.sample_timer.start(max(0, delay_ms))
+
+        def _start_sample_estimate(self) -> None:
+            if self._is_running() or self._mode() != "change":
+                return
+            if not self.video_info:
+                return
+
+            try:
+                cmd = self._build_sampled_estimate_cmd()
+            except Exception as e:
+                self.sampled_estimate_text = f"- ({e})"
+                self._refresh_estimate_label()
+                return
+
+            self._cancel_sample_estimate()
+            self._append_log("$ " + " ".join(cmd))
+
+            proc = QProcess(self)
+            proc.setProgram(cmd[0])
+            proc.setArguments(cmd[1:])
+            proc.setProcessChannelMode(QProcess.MergedChannels)
+            proc.readyReadStandardOutput.connect(lambda p=proc: self._on_sample_output(p))
+            proc.finished.connect(lambda code, status, p=proc: self._on_sample_finished(p, code, status))
+            self.sample_proc = proc
+            proc.start()
+
+        def _on_sample_output(self, proc: QProcess) -> None:
+            if proc is not self.sample_proc:
+                return
+
+            data = bytes(proc.readAllStandardOutput()).decode("utf-8", errors="replace")
+            self._sample_buffer += data
+            while "\n" in self._sample_buffer:
+                line, self._sample_buffer = self._sample_buffer.split("\n", 1)
+                self._handle_sample_line(line.rstrip("\r"))
+
+        def _handle_sample_line(self, line: str) -> None:
+            if not line:
+                return
+            self._append_log(f"[sample] {line}")
+
+            prefix = "SUMMARY_JSON:"
+            if not line.startswith(prefix):
+                return
+
+            payload = line[len(prefix):]
+            try:
+                summary = json.loads(payload)
+            except Exception as e:
+                self._append_log(f"[sample] summary parse failed: {e}")
+                return
+
+            self.last_estimate_summary = summary
+            self._apply_summary(summary)
+
+        def _on_sample_finished(self, proc: QProcess, exit_code: int, _status) -> None:
+            if proc is not self.sample_proc:
+                return
+
+            if self._sample_buffer:
+                self._handle_sample_line(self._sample_buffer.rstrip("\r"))
+                self._sample_buffer = ""
+
+            if exit_code == 0:
+                self._append_log("[sample] completed successfully")
+            else:
+                self._append_log(f"[sample] failed (exit={exit_code})")
+                if self._mode() == "change" and not self._is_running():
+                    self.sampled_estimate_text = "- (sampled failed)"
+                    self._refresh_estimate_label()
+
+            self.sample_proc = None
+
         def _mark_estimate_stale(self, *_args) -> None:
             self.last_estimate_summary = None
-            self.estimate_label.setText("Estimate: - (stale)")
+            self._update_instant_estimate()
+
+            if self._mode() == "fixed":
+                self.sampled_estimate_text = "- (not used in fixed mode)"
+                self._cancel_sample_estimate()
+                self._refresh_estimate_label()
+                return
+
+            if not self.video_info:
+                self.sampled_estimate_text = "- (load video first)"
+                self._cancel_sample_estimate()
+                self._refresh_estimate_label()
+                return
+
+            self._schedule_sample_estimate()
 
         @staticmethod
         def _parse_fraction(value: str) -> float:
@@ -335,6 +555,8 @@ if QMainWindow is not None:
                 fps = total_frames / duration
             if fps <= 0:
                 raise RuntimeError("Could not determine FPS from video")
+            if duration <= 0 and total_frames > 0:
+                duration = total_frames / fps
             if total_frames <= 0 and duration > 0:
                 total_frames = max(1, int(round(duration * fps)))
 
@@ -363,10 +585,15 @@ if QMainWindow is not None:
                 self.video_info = self._probe_video_info()
                 self._update_video_info_label()
                 self._append_log("[probe] loaded video metadata")
+                self._mark_estimate_stale()
                 return True
             except Exception as e:
                 self.video_info = None
                 self._update_video_info_label()
+                self._cancel_sample_estimate()
+                self.instant_estimate_text = "-"
+                self.sampled_estimate_text = "-"
+                self._refresh_estimate_label()
                 if show_error_popup:
                     QMessageBox.critical(self, "Video Info Error", str(e))
                 else:
@@ -411,6 +638,10 @@ if QMainWindow is not None:
                 self.ffprobe_edit.text().strip(),
             ]
 
+            prefix_text = self.filename_prefix_edit.text().strip()
+            if prefix_text:
+                cmd.extend(["--filename-prefix", prefix_text])
+
             if self._mode() == "fixed":
                 cmd.extend(["--interval-sec", self.interval_sec_edit.text().strip()])
             else:
@@ -427,15 +658,12 @@ if QMainWindow is not None:
 
             return cmd
 
-        def _build_estimate_cmd(self) -> list[str]:
-            cmd = self._build_extract_cmd()
-            cmd.extend(["--estimate-only", "--print-summary-json"])
-            return cmd
-
         def _start_process(self, cmd: list[str], phase: str) -> None:
             if self._is_running():
                 QMessageBox.warning(self, "Busy", "Another process is running.")
                 return
+
+            self._cancel_sample_estimate(reason=f"{phase} started", log=True)
 
             self.current_phase = phase
             self._process_buffer = ""
@@ -494,11 +722,18 @@ if QMainWindow is not None:
             selected = int(result.get("selected_count", 0))
             total = int(video.get("total_frames", 0))
             ratio = (selected / total * 100.0) if total > 0 else 0.0
-            replaced = int(result.get("replaced_count", 0))
-            fallback = int(result.get("fallback_keep_count", 0))
-            self.estimate_label.setText(
-                f"{selected} frames ({ratio:.1f}% of total, replaced={replaced}, fallback={fallback})"
-            )
+            estimate = summary.get("estimate", {})
+            used = estimate.get("sampled_segments_used")
+            requested = estimate.get("sampled_segments_requested")
+            range_min = estimate.get("range_min_count")
+            range_max = estimate.get("range_max_count")
+            detail_parts = [f"{selected} frames ({ratio:.1f}% of total)"]
+            if used is not None and requested is not None:
+                detail_parts.append(f"segments={used}/{requested}")
+            if range_min is not None and range_max is not None:
+                detail_parts.append(f"range={range_min}-{range_max}")
+            self.sampled_estimate_text = ", ".join(detail_parts)
+            self._refresh_estimate_label()
 
         def _on_process_error(self, _error) -> None:
             if self.proc is None:
@@ -520,18 +755,17 @@ if QMainWindow is not None:
 
             self.proc = None
 
-        def _run_estimate(self) -> None:
+        def _run_sampled_estimate_now(self) -> None:
+            if self._mode() != "change":
+                self.sampled_estimate_text = "- (not used in fixed mode)"
+                self._refresh_estimate_label()
+                return
+
             if not self.video_info:
                 if not self._load_video_info(show_error_popup=True):
                     return
 
-            try:
-                cmd = self._build_estimate_cmd()
-            except Exception as e:
-                QMessageBox.critical(self, "Invalid Input", str(e))
-                return
-
-            self._start_process(cmd, "estimate")
+            self._schedule_sample_estimate(delay_ms=0)
 
         def _run_extraction(self) -> None:
             try:
@@ -563,7 +797,7 @@ if QMainWindow is not None:
 
         def _export_keep(self) -> None:
             scene_dir = self.scene_dir_edit.text().strip() or "."
-            output_name = self.metashape_output_edit.text().strip() or "metashape_images"
+            output_name = self.metashape_output_edit.text().strip() or "images"
 
             script = self.base_dir / "apply_frame_decisions.py"
             csv_path = Path(scene_dir) / "selected_frames.csv"
@@ -574,28 +808,53 @@ if QMainWindow is not None:
                 QMessageBox.critical(self, "Error", f"CSV not found: {csv_path}")
                 return
 
-            result = QMessageBox.question(
-                self,
-                "Clean Output",
-                f"Clean existing image files in '{output_name}' before export?",
-                QMessageBox.Yes | QMessageBox.No,
-                QMessageBox.Yes,
-            )
-            should_clean = result == QMessageBox.Yes
+            if output_name.lower() == "images":
+                result = QMessageBox.question(
+                    self,
+                    "Finalize Images",
+                    "Apply keep/drop in-place?\n\n"
+                    "This will delete dropped files in images/, renumber keep files, "
+                    "and rewrite selected_frames.csv.\n"
+                    "A backup CSV will be created.",
+                    QMessageBox.Yes | QMessageBox.No,
+                    QMessageBox.Yes,
+                )
+                if result != QMessageBox.Yes:
+                    return
 
-            cmd = [
-                sys.executable,
-                str(script),
-                scene_dir,
-                "--output",
-                output_name,
-            ]
-            if should_clean:
-                cmd.append("--clean-output")
+                cmd = [
+                    sys.executable,
+                    str(script),
+                    scene_dir,
+                    "--finalize-in-place",
+                ]
+                prefix_text = self.filename_prefix_edit.text().strip()
+                if prefix_text:
+                    cmd.extend(["--filename-prefix", prefix_text])
+            else:
+                result = QMessageBox.question(
+                    self,
+                    "Clean Output",
+                    f"Clean existing image files in '{output_name}' before export?",
+                    QMessageBox.Yes | QMessageBox.No,
+                    QMessageBox.Yes,
+                )
+                should_clean = result == QMessageBox.Yes
+
+                cmd = [
+                    sys.executable,
+                    str(script),
+                    scene_dir,
+                    "--output",
+                    output_name,
+                ]
+                if should_clean:
+                    cmd.append("--clean-output")
 
             self._start_process(cmd, "export")
 
         def closeEvent(self, event: QCloseEvent) -> None:  # pragma: no cover - UI event
+            self._cancel_sample_estimate()
             if self._is_running() and self.proc is not None:
                 self.proc.kill()
                 self.proc.waitForFinished(3000)
