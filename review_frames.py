@@ -5,200 +5,232 @@ import argparse
 import csv
 import sys
 from pathlib import Path
-from typing import Dict, List, Tuple
+from typing import Dict, List
 
 try:
-    from PIL import Image, ImageTk
+    from PySide6.QtCore import Qt
+    from PySide6.QtGui import QKeySequence, QPixmap, QShortcut
+    from PySide6.QtWidgets import (
+        QApplication,
+        QHBoxLayout,
+        QLabel,
+        QMainWindow,
+        QMessageBox,
+        QPushButton,
+        QVBoxLayout,
+        QWidget,
+    )
 except Exception as e:  # pragma: no cover - environment-dependent import
-    Image = None
-    ImageTk = None
-    _PIL_IMPORT_ERROR = e
+    Qt = None
+    QKeySequence = None
+    QPixmap = None
+    QShortcut = None
+    QApplication = None
+    QHBoxLayout = None
+    QLabel = None
+    QMainWindow = None
+    QMessageBox = None
+    QPushButton = None
+    QVBoxLayout = None
+    QWidget = None
+    _PYSIDE_IMPORT_ERROR = e
 else:
-    _PIL_IMPORT_ERROR = None
-
-try:
-    import tkinter as tk
-    from tkinter import ttk, messagebox
-except Exception as e:  # pragma: no cover - environment-dependent import
-    tk = None
-    ttk = None
-    messagebox = None
-    _TK_IMPORT_ERROR = e
-else:
-    _TK_IMPORT_ERROR = None
-
-if Image is not None and hasattr(Image, "Resampling"):
-    RESAMPLE_BILINEAR = Image.Resampling.BILINEAR
-else:
-    RESAMPLE_BILINEAR = Image.BILINEAR if Image is not None else None
+    _PYSIDE_IMPORT_ERROR = None
 
 
-class ReviewApp:
-    def __init__(self, root: tk.Tk, scene_dir: Path, csv_path: Path) -> None:
-        self.root = root
-        self.scene_dir = scene_dir
-        self.csv_path = csv_path
+if QMainWindow is not None:
+    class ReviewWindow(QMainWindow):
+        def __init__(self, scene_dir: Path, csv_path: Path) -> None:
+            super().__init__()
+            self.scene_dir = scene_dir
+            self.csv_path = csv_path
+            self.rows = self._load_rows(csv_path)
+            if not self.rows:
+                raise RuntimeError(f"No rows found in {csv_path}")
 
-        self.rows = self._load_rows(csv_path)
-        if not self.rows:
-            raise RuntimeError(f"No rows found in {csv_path}")
+            self.index = 0
+            self.current_pixmap: QPixmap | None = None
 
-        self.index = 0
-        self.current_photo = None
+            self.setWindowTitle("Frame Review")
+            self.resize(1280, 860)
 
-        self._build_ui()
-        self._bind_keys()
-        self._render_current()
-
-    def _load_rows(self, path: Path) -> List[Dict[str, str]]:
-        with path.open("r", encoding="utf-8", newline="") as f:
-            reader = csv.DictReader(f)
-            rows = list(reader)
-
-        for row in rows:
-            decision = row.get("decision", "keep").strip().lower()
-            row["decision"] = "drop" if decision == "drop" else "keep"
-        return rows
-
-    def _build_ui(self) -> None:
-        self.root.title("Frame Review")
-        self.root.geometry("1200x820")
-
-        main = ttk.Frame(self.root, padding=10)
-        main.pack(fill=tk.BOTH, expand=True)
-
-        top = ttk.Frame(main)
-        top.pack(fill=tk.X)
-
-        self.title_var = tk.StringVar()
-        ttk.Label(top, textvariable=self.title_var, font=("Segoe UI", 11, "bold")).pack(side=tk.LEFT)
-
-        self.decision_var = tk.StringVar()
-        self.decision_label = ttk.Label(top, textvariable=self.decision_var, foreground="#1f6f1f", font=("Segoe UI", 11, "bold"))
-        self.decision_label.pack(side=tk.RIGHT)
-
-        self.canvas = tk.Canvas(main, bg="#111111", highlightthickness=0)
-        self.canvas.pack(fill=tk.BOTH, expand=True, pady=(10, 10))
-
-        info_row = ttk.Frame(main)
-        info_row.pack(fill=tk.X)
-        self.info_var = tk.StringVar()
-        ttk.Label(info_row, textvariable=self.info_var).pack(side=tk.LEFT)
-
-        button_row = ttk.Frame(main)
-        button_row.pack(fill=tk.X, pady=(10, 0))
-
-        ttk.Button(button_row, text="Prev (Left)", command=self.prev_row).pack(side=tk.LEFT)
-        ttk.Button(button_row, text="Next (Right)", command=self.next_row).pack(side=tk.LEFT, padx=(8, 0))
-        ttk.Button(button_row, text="Toggle Keep/Drop (Space)", command=self.toggle_decision).pack(side=tk.LEFT, padx=(8, 0))
-        ttk.Button(button_row, text="Save (S)", command=self.save).pack(side=tk.RIGHT)
-
-        hint = ttk.Label(
-            main,
-            text="Keys: Left/Right=move, Space=toggle keep/drop, S=save, Q=quit",
-            foreground="#555555",
-        )
-        hint.pack(anchor="w", pady=(8, 0))
-
-    def _bind_keys(self) -> None:
-        self.root.bind("<Left>", lambda _: self.prev_row())
-        self.root.bind("<Right>", lambda _: self.next_row())
-        self.root.bind("<space>", lambda _: self.toggle_decision())
-        self.root.bind("s", lambda _: self.save())
-        self.root.bind("S", lambda _: self.save())
-        self.root.bind("q", lambda _: self.quit())
-        self.root.bind("Q", lambda _: self.quit())
-
-    def _current_row(self) -> Dict[str, str]:
-        return self.rows[self.index]
-
-    def _load_image(self, path: Path) -> Image.Image:
-        if not path.exists():
-            raise FileNotFoundError(f"Image not found: {path}")
-        return Image.open(path).convert("RGB")
-
-    def _fit_size(self, width: int, height: int, max_w: int, max_h: int) -> Tuple[int, int]:
-        ratio = min(max_w / max(width, 1), max_h / max(height, 1), 1.0)
-        return max(1, int(width * ratio)), max(1, int(height * ratio))
-
-    def _render_current(self) -> None:
-        row = self._current_row()
-        seq = int(row.get("seq", self.index + 1))
-        total = len(self.rows)
-
-        image_rel = row.get("output_file", "")
-        image_path = self.scene_dir / image_rel
-
-        self.title_var.set(f"{seq}/{total}  {image_rel}")
-        decision = row.get("decision", "keep")
-        self.decision_var.set(f"Decision: {decision.upper()}")
-
-        color = "#b30000" if decision == "drop" else "#1f6f1f"
-        self.decision_label.configure(foreground=color)
-
-        info_text = (
-            f"orig={row.get('original_index', '-')}, final={row.get('final_index', '-')}, "
-            f"ts={row.get('timestamp_sec', '-')}, status={row.get('status', '-')}, "
-            f"blur(orig/final)={row.get('blur_score_original', '-')}/{row.get('blur_score_final', '-')}, "
-            f"change(orig/final)={row.get('change_score_original', '-')}/{row.get('change_score_final', '-')}"
-        )
-        self.info_var.set(info_text)
-
-        self.canvas.delete("all")
-        try:
-            img = self._load_image(image_path)
-            canvas_w = max(self.canvas.winfo_width(), 100)
-            canvas_h = max(self.canvas.winfo_height(), 100)
-            fit_w, fit_h = self._fit_size(img.width, img.height, canvas_w - 20, canvas_h - 20)
-            resized = img.resize((fit_w, fit_h), RESAMPLE_BILINEAR)
-            self.current_photo = ImageTk.PhotoImage(resized)
-            x = canvas_w // 2
-            y = canvas_h // 2
-            self.canvas.create_image(x, y, image=self.current_photo, anchor=tk.CENTER)
-        except Exception as e:
-            self.canvas.create_text(20, 20, anchor=tk.NW, fill="#ffffff", text=str(e))
-
-    def prev_row(self) -> None:
-        if self.index > 0:
-            self.index -= 1
+            self._build_ui()
+            self._bind_shortcuts()
             self._render_current()
 
-    def next_row(self) -> None:
-        if self.index < len(self.rows) - 1:
-            self.index += 1
+        def _load_rows(self, path: Path) -> List[Dict[str, str]]:
+            with path.open("r", encoding="utf-8", newline="") as f:
+                reader = csv.DictReader(f)
+                rows = list(reader)
+
+            for row in rows:
+                decision = row.get("decision", "keep").strip().lower()
+                row["decision"] = "drop" if decision == "drop" else "keep"
+            return rows
+
+        def _build_ui(self) -> None:
+            root = QWidget()
+            self.setCentralWidget(root)
+            layout = QVBoxLayout(root)
+
+            top_row = QHBoxLayout()
+            self.title_label = QLabel()
+            self.title_label.setStyleSheet("font-weight: 700;")
+            top_row.addWidget(self.title_label)
+
+            top_row.addStretch(1)
+
+            self.decision_label = QLabel()
+            self.decision_label.setStyleSheet("font-weight: 700;")
+            top_row.addWidget(self.decision_label)
+            layout.addLayout(top_row)
+
+            self.image_label = QLabel()
+            self.image_label.setAlignment(Qt.AlignCenter)
+            self.image_label.setStyleSheet("background-color: #101010; border: 1px solid #333;")
+            self.image_label.setMinimumHeight(560)
+            layout.addWidget(self.image_label, stretch=1)
+
+            self.info_label = QLabel()
+            self.info_label.setWordWrap(True)
+            layout.addWidget(self.info_label)
+
+            btn_row = QHBoxLayout()
+            self.prev_button = QPushButton("Prev (Left)")
+            self.prev_button.clicked.connect(self.prev_row)
+            btn_row.addWidget(self.prev_button)
+
+            self.next_button = QPushButton("Next (Right)")
+            self.next_button.clicked.connect(self.next_row)
+            btn_row.addWidget(self.next_button)
+
+            self.toggle_button = QPushButton("Toggle Keep/Drop (Space)")
+            self.toggle_button.clicked.connect(self.toggle_decision)
+            btn_row.addWidget(self.toggle_button)
+
+            btn_row.addStretch(1)
+
+            self.save_button = QPushButton("Save (S)")
+            self.save_button.clicked.connect(self.save)
+            btn_row.addWidget(self.save_button)
+            layout.addLayout(btn_row)
+
+            hint = QLabel("Keys: Left/Right=move, Space=toggle keep/drop, S=save, Q=quit")
+            hint.setStyleSheet("color: #666;")
+            layout.addWidget(hint)
+
+        def _bind_shortcuts(self) -> None:
+            QShortcut(QKeySequence(Qt.Key_Left), self, activated=self.prev_row)
+            QShortcut(QKeySequence(Qt.Key_Right), self, activated=self.next_row)
+            QShortcut(QKeySequence(Qt.Key_Space), self, activated=self.toggle_decision)
+            QShortcut(QKeySequence("S"), self, activated=self.save)
+            QShortcut(QKeySequence("Q"), self, activated=self.close)
+
+        def _current_row(self) -> Dict[str, str]:
+            return self.rows[self.index]
+
+        def _decision_color(self, decision: str) -> str:
+            return "#b00020" if decision == "drop" else "#1b7f3b"
+
+        def _render_current(self) -> None:
+            row = self._current_row()
+            seq = int(row.get("seq", self.index + 1))
+            total = len(self.rows)
+
+            image_rel = row.get("output_file", "")
+            image_path = self.scene_dir / image_rel
+
+            self.title_label.setText(f"{seq}/{total}  {image_rel}")
+
+            decision = row.get("decision", "keep")
+            self.decision_label.setText(f"Decision: {decision.upper()}")
+            self.decision_label.setStyleSheet(f"font-weight: 700; color: {self._decision_color(decision)};")
+
+            info_text = (
+                f"orig={row.get('original_index', '-')}, final={row.get('final_index', '-')}, "
+                f"ts={row.get('timestamp_sec', '-')}, status={row.get('status', '-')}, "
+                f"blur(orig/final)={row.get('blur_score_original', '-')}/{row.get('blur_score_final', '-')}, "
+                f"change(orig/final)={row.get('change_score_original', '-')}/{row.get('change_score_final', '-')}"
+            )
+            self.info_label.setText(info_text)
+
+            if not image_path.exists():
+                self.current_pixmap = None
+                self.image_label.setText(f"Image not found:\n{image_path}")
+                self.image_label.setPixmap(QPixmap())
+                return
+
+            pixmap = QPixmap(str(image_path))
+            if pixmap.isNull():
+                self.current_pixmap = None
+                self.image_label.setText(f"Failed to load image:\n{image_path}")
+                self.image_label.setPixmap(QPixmap())
+                return
+
+            self.current_pixmap = pixmap
+            self._update_pixmap_view()
+
+        def _update_pixmap_view(self) -> None:
+            if self.current_pixmap is None:
+                return
+
+            target_size = self.image_label.size()
+            if target_size.width() <= 1 or target_size.height() <= 1:
+                return
+
+            scaled = self.current_pixmap.scaled(
+                target_size,
+                Qt.KeepAspectRatio,
+                Qt.SmoothTransformation,
+            )
+            self.image_label.setText("")
+            self.image_label.setPixmap(scaled)
+
+        def resizeEvent(self, event) -> None:  # pragma: no cover - UI event
+            super().resizeEvent(event)
+            self._update_pixmap_view()
+
+        def prev_row(self) -> None:
+            if self.index > 0:
+                self.index -= 1
+                self._render_current()
+
+        def next_row(self) -> None:
+            if self.index < len(self.rows) - 1:
+                self.index += 1
+                self._render_current()
+
+        def toggle_decision(self) -> None:
+            row = self._current_row()
+            row["decision"] = "drop" if row.get("decision", "keep") == "keep" else "keep"
             self._render_current()
 
-    def toggle_decision(self) -> None:
-        row = self._current_row()
-        row["decision"] = "drop" if row.get("decision", "keep") == "keep" else "keep"
-        self._render_current()
+        def save(self) -> None:
+            if not self.rows:
+                return
 
-    def save(self) -> None:
-        if not self.rows:
-            return
+            fieldnames = list(self.rows[0].keys())
+            with self.csv_path.open("w", encoding="utf-8", newline="") as f:
+                writer = csv.DictWriter(f, fieldnames=fieldnames)
+                writer.writeheader()
+                writer.writerows(self.rows)
 
-        fieldnames = list(self.rows[0].keys())
-        with self.csv_path.open("w", encoding="utf-8", newline="") as f:
-            writer = csv.DictWriter(f, fieldnames=fieldnames)
-            writer.writeheader()
-            writer.writerows(self.rows)
+            keep_count = sum(1 for r in self.rows if r.get("decision") != "drop")
+            drop_count = len(self.rows) - keep_count
+            QMessageBox.information(
+                self,
+                "Saved",
+                f"Updated {self.csv_path}\nkeep={keep_count}, drop={drop_count}",
+            )
 
-        keep_count = sum(1 for r in self.rows if r.get("decision") != "drop")
-        drop_count = len(self.rows) - keep_count
-        messagebox.showinfo("Saved", f"Updated {self.csv_path}\nkeep={keep_count}, drop={drop_count}")
-
-    def quit(self) -> None:
-        self.root.destroy()
+else:
+    class ReviewWindow:  # pragma: no cover - placeholder when PySide6 missing
+        pass
 
 
 def ensure_gui_deps() -> None:
-    missing = []
-    if Image is None or ImageTk is None:
-        missing.append(f"Pillow (import failed: {_PIL_IMPORT_ERROR})")
-    if tk is None or ttk is None or messagebox is None:
-        missing.append(f"tkinter (import failed: {_TK_IMPORT_ERROR})")
-    if missing:
-        raise RuntimeError("Missing GUI dependencies: " + "; ".join(missing))
+    if QApplication is None:
+        raise RuntimeError(f"PySide6 is required to run this GUI: {_PYSIDE_IMPORT_ERROR}")
 
 
 def parse_args() -> argparse.Namespace:
@@ -232,14 +264,15 @@ def main() -> None:
         print(f"Error: {e}")
         sys.exit(1)
 
-    root = tk.Tk()
+    app = QApplication(sys.argv)
     try:
-        app = ReviewApp(root, scene_dir, csv_path)
+        window = ReviewWindow(scene_dir, csv_path)
     except Exception as e:
         print(f"Error: {e}")
         sys.exit(1)
 
-    root.mainloop()
+    window.show()
+    sys.exit(app.exec())
 
 
 if __name__ == "__main__":

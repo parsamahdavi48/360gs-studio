@@ -7,7 +7,7 @@
 以下のソフト・モジュールをインストールしてください。すべてのスクリプトで共通です。
 
 - [CUDA Toolkit 12.8](https://developer.nvidia.com/cuda-12-8-0-download-archive) (他のバージョンは不可)
-- [Python 3.x](https://www.python.org/) (3.11.8で確認)
+- [Python 3.x](https://www.python.org/) (3.11.8で確認、3.11推奨)
 - [FFmpeg / FFprobe](https://ffmpeg.org/) (動画から静止画切り出しで使用)
 - [metashape_360_lfs.py (フォーク版)](https://github.com/tetraface/metashape_360_lfs) 
   - このリポジトリ内に同梱: `vendor/metashape_360_lfs/metashape_360_lfs.py`
@@ -18,6 +18,7 @@
 - NumPy
 - OpenCV
 - Pillow
+- PySide6 (GUIラッパーで使用)
 - Open3D (metashape_360_lfs内で使用)
 - PyTorch 2.8.0 (with CUDA 12.8)
 - ultralytics
@@ -26,7 +27,17 @@
 インストール例:
 ```
 pip install torch==2.8.0 torchvision==0.23.0 torchaudio==2.8.0 --index-url https://download.pytorch.org/whl/cu128
-pip install numpy opencv-python Pillow open3d ultralytics tqdm
+pip install numpy opencv-python Pillow open3d ultralytics tqdm PySide6
+```
+
+## Windows クイックスタート
+
+このリポでは Python 3.11 の venv 運用を推奨します。`open3d` は Python 3.12 必須ではありません。
+Python 3.11 が無い場合、`setup_windows.bat` は `winget` で Python 3.11.8 の導入を試みます。
+
+```bat
+setup_windows.bat
+start_extract_frames_gui.bat
 ```
 
 ## 各スクリプトの概要

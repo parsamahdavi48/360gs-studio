@@ -7,7 +7,7 @@ A collection of scripts I use and develop as part of a 3D Gaussian Splatting (3D
 ## Requirements
 
 - [CUDA Toolkit 12.8](https://developer.nvidia.com/cuda-12-8-0-download-archive) (for GPU-enabled PyTorch workflows)
-- [Python 3.x](https://www.python.org/) (confirmed with 3.11.8)
+- [Python 3.x](https://www.python.org/) (confirmed with 3.11.8, 3.11 recommended)
 - [FFmpeg / FFprobe](https://ffmpeg.org/) (for video frame extraction workflow)
 - [metashape_360_lfs.py (fork)](https://github.com/tetraface/metashape_360_lfs)
   - Bundled in this repository: `vendor/metashape_360_lfs/metashape_360_lfs.py`
@@ -18,6 +18,7 @@ A collection of scripts I use and develop as part of a 3D Gaussian Splatting (3D
 - NumPy
 - OpenCV
 - Pillow
+- PySide6 (used by GUI wrappers)
 - Open3D (used by `metashape_360_lfs`)
 - PyTorch 2.8.0 (with CUDA 12.8)
 - ultralytics
@@ -27,7 +28,17 @@ Install example (CUDA 12.8 PyTorch wheel + other deps):
 
 ```bash
 pip install torch==2.8.0 torchvision==0.23.0 torchaudio==2.8.0 --index-url https://download.pytorch.org/whl/cu128
-pip install numpy opencv-python Pillow open3d ultralytics tqdm
+pip install numpy opencv-python Pillow open3d ultralytics tqdm PySide6
+```
+
+## Windows quick start
+
+For this repository, use Python 3.11 in a virtual environment. `open3d` is not Python 3.12-only.
+If Python 3.11 is missing, `setup_windows.bat` tries to install Python 3.11.8 via `winget`.
+
+```bat
+setup_windows.bat
+start_extract_frames_gui.bat
 ```
 
 ## Summary of scripts

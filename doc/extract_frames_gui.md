@@ -10,6 +10,10 @@ It provides three actions:
 2. Open visual review (`review_frames.py`)
 3. Export keep frames for Metashape (`apply_frame_decisions.py`)
 
+Requirements:
+
+- `PySide6`
+
 ## Usage
 
 ```bash

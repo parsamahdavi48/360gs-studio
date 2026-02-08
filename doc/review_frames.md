@@ -2,7 +2,11 @@
 
 ## Overview
 
-`review_frames.py` opens a lightweight GUI to inspect extracted frames and edit keep/drop decisions in `selected_frames.csv`.
+`review_frames.py` opens a PySide6 GUI to inspect extracted frames and edit keep/drop decisions in `selected_frames.csv`.
+
+Requirements:
+
+- `PySide6`
 
 ## Usage
 
