@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 import json
 import math
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -21,6 +22,7 @@ try:
         QMainWindow,
         QMessageBox,
         QPlainTextEdit,
+        QProgressBar,
         QPushButton,
         QRadioButton,
         QVBoxLayout,
@@ -41,6 +43,7 @@ except Exception as e:  # pragma: no cover - environment-dependent import
     QMainWindow = None
     QMessageBox = None
     QPlainTextEdit = None
+    QProgressBar = None
     QPushButton = None
     QRadioButton = None
     QVBoxLayout = None
@@ -215,6 +218,12 @@ if QMainWindow is not None:
 
             layout.addLayout(btn_row)
 
+            self.progress_bar = QProgressBar()
+            self.progress_bar.setRange(0, 100)
+            self.progress_bar.setValue(0)
+            self.progress_bar.setFormat("Idle")
+            layout.addWidget(self.progress_bar)
+
             self.log_text = QPlainTextEdit()
             self.log_text.setReadOnly(True)
             layout.addWidget(self.log_text, stretch=1)
@@ -268,8 +277,15 @@ if QMainWindow is not None:
                 self.export_button.setEnabled(False)
                 self.load_info_button.setEnabled(False)
                 self.estimate_button.setEnabled(False)
+                self.progress_bar.setRange(0, 100)
+                self.progress_bar.setValue(0)
+                self.progress_bar.setFormat("0%")
             else:
                 self.cancel_button.setEnabled(False)
+                if status_text.startswith("Done"):
+                    self.progress_bar.setRange(0, 100)
+                    self.progress_bar.setValue(100)
+                self.progress_bar.setFormat(status_text)
                 self._refresh_action_buttons()
 
         def _browse_video(self) -> None:
@@ -726,7 +742,9 @@ if QMainWindow is not None:
             self._append_log(line)
             progress_prefix = "[progress] "
             if line.startswith(progress_prefix):
-                self.status_label.setText(line[len(progress_prefix):])
+                progress_text = line[len(progress_prefix):]
+                self.status_label.setText(progress_text)
+                self._update_progress_bar(progress_text)
 
             prefix = "SUMMARY_JSON:"
             if line.startswith(prefix):
@@ -738,6 +756,27 @@ if QMainWindow is not None:
                     return
                 self.last_estimate_summary = summary
                 self._apply_summary(summary)
+
+        def _update_progress_bar(self, progress_text: str) -> None:
+            match = re.search(r"^(\S+)\s+(\d+)/(\d+)\s+\S+\s+\(([\d.]+)%\)$", progress_text)
+            if match:
+                phase = match.group(1)
+                done = int(match.group(2))
+                total = int(match.group(3))
+                pct = float(match.group(4))
+                pct_clamped = max(0.0, min(100.0, pct))
+                self.progress_bar.setRange(0, 100)
+                self.progress_bar.setValue(int(round(pct_clamped)))
+                self.progress_bar.setFormat(f"{phase}: {pct_clamped:.1f}% ({done}/{total})")
+                return
+
+            pct_match = re.search(r"([\d.]+)%", progress_text)
+            if pct_match:
+                pct = float(pct_match.group(1))
+                pct_clamped = max(0.0, min(100.0, pct))
+                self.progress_bar.setRange(0, 100)
+                self.progress_bar.setValue(int(round(pct_clamped)))
+                self.progress_bar.setFormat(progress_text)
 
         def _apply_summary(self, summary: dict) -> None:
             video = summary.get("video", {})

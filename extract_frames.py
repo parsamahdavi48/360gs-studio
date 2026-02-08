@@ -82,6 +82,83 @@ def run_cmd(cmd: List[str], capture: bool = False) -> subprocess.CompletedProces
     )
 
 
+def run_cmd_with_ffmpeg_progress(cmd: List[str], phase: str, total_items: int) -> subprocess.CompletedProcess:
+    if total_items <= 0:
+        return run_cmd(cmd, capture=True)
+
+    proc = subprocess.Popen(
+        cmd,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.PIPE,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        bufsize=1,
+    )
+    assert proc.stderr is not None
+
+    progress_step = max(1, total_items // 100)
+    last_reported = -1
+    observed_frame = 0
+    stderr_lines: List[str] = []
+
+    print(f"[progress] {phase} 0/{total_items} frames (0.0%)", flush=True)
+    for raw in proc.stderr:
+        line = raw.strip()
+        if not line:
+            continue
+        if "=" not in line:
+            stderr_lines.append(line)
+            continue
+        key, value = line.split("=", 1)
+        key = key.strip()
+        value = value.strip()
+        if key not in {
+            "frame",
+            "fps",
+            "stream_0_0_q",
+            "bitrate",
+            "total_size",
+            "out_time_us",
+            "out_time_ms",
+            "out_time",
+            "dup_frames",
+            "drop_frames",
+            "speed",
+            "progress",
+        }:
+            stderr_lines.append(line)
+        if key != "frame":
+            continue
+        try:
+            frame_count = int(value)
+        except ValueError:
+            continue
+
+        if frame_count < observed_frame:
+            continue
+        observed_frame = frame_count
+        if observed_frame == 0:
+            continue
+
+        if observed_frame - last_reported >= progress_step or observed_frame >= total_items:
+            shown = min(total_items, observed_frame)
+            pct = min(100.0, (shown / float(total_items)) * 100.0)
+            print(f"[progress] {phase} {shown}/{total_items} frames ({pct:.1f}%)", flush=True)
+            last_reported = observed_frame
+
+    proc.wait()
+    if proc.returncode == 0 and last_reported < total_items:
+        print(f"[progress] {phase} {total_items}/{total_items} frames (100.0%)", flush=True)
+
+    return subprocess.CompletedProcess(
+        args=cmd,
+        returncode=proc.returncode,
+        stdout="",
+        stderr="\n".join(stderr_lines),
+    )
+
+
 def ensure_binary(path: str, name: str) -> None:
     proc = run_cmd([path, "-version"], capture=True)
     if proc.returncode != 0:
@@ -589,6 +666,9 @@ def extract_selected_frames(
             "-hide_banner",
             "-loglevel",
             "error",
+            "-nostats",
+            "-progress",
+            "pipe:2",
             "-y",
             "-i",
             str(video_path),
@@ -599,7 +679,7 @@ def extract_selected_frames(
             *quality_args,
             out_pattern,
         ]
-        proc = run_cmd(cmd, capture=True)
+        proc = run_cmd_with_ffmpeg_progress(cmd, phase="extract", total_items=len(frame_indices))
 
         if proc.returncode != 0:
             # Fallback when filter_script:v is unsupported by ffmpeg build.
@@ -608,6 +688,9 @@ def extract_selected_frames(
                 "-hide_banner",
                 "-loglevel",
                 "error",
+                "-nostats",
+                "-progress",
+                "pipe:2",
                 "-y",
                 "-i",
                 str(video_path),
@@ -618,7 +701,25 @@ def extract_selected_frames(
                 *quality_args,
                 out_pattern,
             ]
-            proc = run_cmd(cmd, capture=True)
+            proc = run_cmd_with_ffmpeg_progress(cmd, phase="extract", total_items=len(frame_indices))
+            stderr_text = (proc.stderr or "").lower()
+            if proc.returncode != 0 and "unrecognized option" in stderr_text and "progress" in stderr_text:
+                cmd = [
+                    ffmpeg_bin,
+                    "-hide_banner",
+                    "-loglevel",
+                    "error",
+                    "-y",
+                    "-i",
+                    str(video_path),
+                    "-vf",
+                    f"select='{select_expr}'",
+                    "-vsync",
+                    "vfr",
+                    *quality_args,
+                    out_pattern,
+                ]
+                proc = run_cmd(cmd, capture=True)
             if proc.returncode != 0:
                 raise RuntimeError(f"ffmpeg extraction failed: {proc.stderr.strip()}")
     finally:
@@ -630,12 +731,20 @@ def extract_selected_frames(
             f"Expected {len(frame_indices)} extracted files, got {len(extracted_files)}"
         )
 
+    rename_total = len(frame_indices)
+    rename_step = max(1, rename_total // 100)
+    last_rename_report = 0
+    print(f"[progress] finalize 0/{rename_total} files (0.0%)", flush=True)
     for seq, (src, frame_idx) in enumerate(zip(extracted_files, frame_indices), start=1):
         dst_name = f"{filename_prefix}_{frame_idx:06d}.{image_ext}"
         dst_path = output_dir / dst_name
         if dst_path.exists():
             dst_path.unlink()
         src.rename(dst_path)
+        if seq - last_rename_report >= rename_step or seq == rename_total:
+            pct = min(100.0, (seq / float(rename_total)) * 100.0)
+            print(f"[progress] finalize {seq}/{rename_total} files ({pct:.1f}%)", flush=True)
+            last_rename_report = seq
 
     tmp_dir.rmdir()
 
