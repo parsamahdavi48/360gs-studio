@@ -8,7 +8,7 @@ import sys
 from pathlib import Path
 
 try:
-    from PySide6.QtCore import QProcess, Qt
+    from PySide6.QtCore import QProcess, Qt, QTimer
     from PySide6.QtGui import QCloseEvent
     from PySide6.QtWidgets import (
         QApplication,
@@ -33,6 +33,7 @@ try:
 except Exception as e:  # pragma: no cover - environment-dependent import
     QProcess = None
     Qt = None
+    QTimer = None
     QCloseEvent = None
     QApplication = None
     QFileDialog = None
@@ -90,6 +91,7 @@ if QMainWindow is not None:
             self._stitch_chunk_total = 0
             self._stitch_chunk_done = 0
             self._stitch_done_before_chunk = 0
+            self.cancel_requested = False
 
             self.setWindowTitle("Mask Tools")
             self.resize(1120, 820)
@@ -225,6 +227,11 @@ if QMainWindow is not None:
             self.run_both_button.clicked.connect(self._run_both)
             btn_row.addWidget(self.run_both_button)
 
+            self.cancel_button = QPushButton("Cancel")
+            self.cancel_button.clicked.connect(self._cancel_running_process)
+            self.cancel_button.setEnabled(False)
+            btn_row.addWidget(self.cancel_button)
+
             btn_row.addStretch(1)
 
             self.status_label = QLabel("Idle")
@@ -265,7 +272,9 @@ if QMainWindow is not None:
                 self.run_yolo_button.setEnabled(False)
                 self.run_stitch_button.setEnabled(False)
                 self.run_both_button.setEnabled(False)
+                self.cancel_button.setEnabled(True)
             else:
+                self.cancel_button.setEnabled(False)
                 self._refresh_action_buttons()
 
         def _toggle_yolo_classes_panel(self, show: bool) -> None:
@@ -422,6 +431,7 @@ if QMainWindow is not None:
                 self.run_yolo_button.setEnabled(False)
                 self.run_stitch_button.setEnabled(False)
                 self.run_both_button.setEnabled(False)
+                self.cancel_button.setEnabled(True)
                 return
 
             has_images = Path(self.images_dir_edit.text().strip()).is_dir()
@@ -430,6 +440,7 @@ if QMainWindow is not None:
             self.run_yolo_button.setEnabled(has_images and has_class)
             self.run_stitch_button.setEnabled(has_masks)
             self.run_both_button.setEnabled(has_images and has_class)
+            self.cancel_button.setEnabled(False)
 
         def _browse_scene_dir(self) -> None:
             path = QFileDialog.getExistingDirectory(self, "Select scene directory")
@@ -533,8 +544,31 @@ if QMainWindow is not None:
                 return
             if not steps:
                 return
+            self.cancel_requested = False
             self.pending_steps = list(steps)
             self._run_next_step()
+
+        def _terminate_process_gracefully(self, proc: QProcess, phase: str, timeout_ms: int = 3000) -> None:
+            if proc.state() == QProcess.NotRunning:
+                return
+            self._append_log(f"[{phase}] cancel requested; sending terminate")
+            proc.terminate()
+            QTimer.singleShot(timeout_ms, lambda p=proc, ph=phase: self._force_kill_if_running(p, ph))
+
+        def _force_kill_if_running(self, proc: QProcess, phase: str) -> None:
+            if proc.state() == QProcess.NotRunning:
+                return
+            self._append_log(f"[{phase}] terminate timeout; killing process")
+            proc.kill()
+
+        def _cancel_running_process(self) -> None:
+            if not self._is_running() or self.proc is None:
+                return
+            self.cancel_requested = True
+            self.pending_steps = []
+            self.cancel_button.setEnabled(False)
+            self.status_label.setText("Canceling...")
+            self._terminate_process_gracefully(self.proc, self.current_phase)
 
         def _run_next_step(self) -> None:
             if not self.pending_steps:
@@ -587,20 +621,34 @@ if QMainWindow is not None:
                 self._process_buffer = ""
 
             phase = self.current_phase
+            was_canceled = self.cancel_requested
+            self.cancel_requested = False
             if exit_code == 0:
-                if self.phase_total_items > 0:
-                    self._set_phase_progress(self.phase_total_items, self.phase_total_items)
-                self._append_log(f"[{phase}] completed successfully")
-                self.proc = None
-                if self.pending_steps:
-                    self._run_next_step()
+                if was_canceled:
+                    self._append_log(f"[{phase}] canceled by user")
+                    self.pending_steps = []
+                    self.proc = None
+                    self._set_running_state(False, f"Canceled: {phase}")
                 else:
-                    self._set_running_state(False, f"Done: {phase}")
+                    if self.phase_total_items > 0:
+                        self._set_phase_progress(self.phase_total_items, self.phase_total_items)
+                    self._append_log(f"[{phase}] completed successfully")
+                    self.proc = None
+                    if self.pending_steps:
+                        self._run_next_step()
+                    else:
+                        self._set_running_state(False, f"Done: {phase}")
             else:
-                self._append_log(f"[{phase}] failed (exit={exit_code})")
-                self.pending_steps = []
-                self.proc = None
-                self._set_running_state(False, f"Failed: {phase}")
+                if was_canceled:
+                    self._append_log(f"[{phase}] canceled by user")
+                    self.pending_steps = []
+                    self.proc = None
+                    self._set_running_state(False, f"Canceled: {phase}")
+                else:
+                    self._append_log(f"[{phase}] failed (exit={exit_code})")
+                    self.pending_steps = []
+                    self.proc = None
+                    self._set_running_state(False, f"Failed: {phase}")
 
         def _run_yolo(self) -> None:
             try:
@@ -629,8 +677,10 @@ if QMainWindow is not None:
 
         def closeEvent(self, event: QCloseEvent) -> None:  # pragma: no cover - UI event
             if self._is_running() and self.proc is not None:
-                self.proc.kill()
-                self.proc.waitForFinished(3000)
+                self.proc.terminate()
+                if not self.proc.waitForFinished(2000):
+                    self.proc.kill()
+                    self.proc.waitForFinished(2000)
             super().closeEvent(event)
 
 else:

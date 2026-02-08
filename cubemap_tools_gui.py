@@ -11,7 +11,7 @@ import cv2
 import numpy as np
 
 try:
-    from PySide6.QtCore import QProcess, Qt
+    from PySide6.QtCore import QProcess, Qt, QTimer
     from PySide6.QtGui import QCloseEvent, QImage, QPixmap
     from PySide6.QtWidgets import (
         QApplication,
@@ -34,6 +34,7 @@ try:
 except Exception as e:  # pragma: no cover - environment-dependent import
     QProcess = None
     Qt = None
+    QTimer = None
     QCloseEvent = None
     QImage = None
     QPixmap = None
@@ -109,6 +110,7 @@ if QMainWindow is not None:
             self._preview_pixmap: QPixmap | None = None
             self.preview_images: list[Path] = []
             self._preview_slider_sync = False
+            self.cancel_requested = False
 
             self.pitch_rows: list[dict] = []
             self.yaw_slot_labels: list[QLabel] = []
@@ -286,6 +288,10 @@ if QMainWindow is not None:
             self.run_button = QPushButton("Run Cubemap Convert")
             self.run_button.clicked.connect(self._run_convert)
             btn_row.addWidget(self.run_button)
+            self.cancel_button = QPushButton("Cancel")
+            self.cancel_button.clicked.connect(self._cancel_running_process)
+            self.cancel_button.setEnabled(False)
+            btn_row.addWidget(self.cancel_button)
             btn_row.addStretch(1)
 
             self.status_label = QLabel("Idle")
@@ -308,12 +314,15 @@ if QMainWindow is not None:
         def _set_running_state(self, running: bool, status_text: str) -> None:
             self.status_label.setText(status_text)
             self.run_button.setEnabled(not running and Path(self.scene_dir_edit.text().strip()).is_dir())
+            self.cancel_button.setEnabled(running)
 
         def _refresh_action_buttons(self) -> None:
             if self._is_running():
                 self.run_button.setEnabled(False)
+                self.cancel_button.setEnabled(True)
                 return
             self.run_button.setEnabled(Path(self.scene_dir_edit.text().strip()).is_dir())
+            self.cancel_button.setEnabled(False)
 
         def _browse_scene_dir(self) -> None:
             path = QFileDialog.getExistingDirectory(self, "Select scene directory")
@@ -968,6 +977,7 @@ if QMainWindow is not None:
                 QMessageBox.warning(self, "Busy", "Another process is running.")
                 return
 
+            self.cancel_requested = False
             self.current_phase = phase
             self._process_buffer = ""
             self._converted_total = 0
@@ -985,6 +995,27 @@ if QMainWindow is not None:
 
             self._set_running_state(True, f"Running: {phase}")
             proc.start()
+
+        def _terminate_process_gracefully(self, proc: QProcess, phase: str, timeout_ms: int = 3000) -> None:
+            if proc.state() == QProcess.NotRunning:
+                return
+            self._append_log(f"[{phase}] cancel requested; sending terminate")
+            proc.terminate()
+            QTimer.singleShot(timeout_ms, lambda p=proc, ph=phase: self._force_kill_if_running(p, ph))
+
+        def _force_kill_if_running(self, proc: QProcess, phase: str) -> None:
+            if proc.state() == QProcess.NotRunning:
+                return
+            self._append_log(f"[{phase}] terminate timeout; killing process")
+            proc.kill()
+
+        def _cancel_running_process(self) -> None:
+            if not self._is_running() or self.proc is None:
+                return
+            self.cancel_requested = True
+            self.cancel_button.setEnabled(False)
+            self.status_label.setText("Canceling...")
+            self._terminate_process_gracefully(self.proc, self.current_phase)
 
         def _handle_process_line(self, line: str) -> None:
             if not line:
@@ -1031,12 +1062,22 @@ if QMainWindow is not None:
                 self._process_buffer = ""
 
             phase = self.current_phase
+            was_canceled = self.cancel_requested
+            self.cancel_requested = False
             if exit_code == 0:
-                self._append_log(f"[{phase}] completed successfully")
-                self._set_running_state(False, f"Done: {phase}")
+                if was_canceled:
+                    self._append_log(f"[{phase}] canceled by user")
+                    self._set_running_state(False, f"Canceled: {phase}")
+                else:
+                    self._append_log(f"[{phase}] completed successfully")
+                    self._set_running_state(False, f"Done: {phase}")
             else:
-                self._append_log(f"[{phase}] failed (exit={exit_code})")
-                self._set_running_state(False, f"Failed: {phase}")
+                if was_canceled:
+                    self._append_log(f"[{phase}] canceled by user")
+                    self._set_running_state(False, f"Canceled: {phase}")
+                else:
+                    self._append_log(f"[{phase}] failed (exit={exit_code})")
+                    self._set_running_state(False, f"Failed: {phase}")
             self.proc = None
 
         def _run_convert(self) -> None:
@@ -1071,8 +1112,10 @@ if QMainWindow is not None:
 
         def closeEvent(self, event: QCloseEvent) -> None:  # pragma: no cover - UI event
             if self._is_running() and self.proc is not None:
-                self.proc.kill()
-                self.proc.waitForFinished(3000)
+                self.proc.terminate()
+                if not self.proc.waitForFinished(2000):
+                    self.proc.kill()
+                    self.proc.waitForFinished(2000)
             super().closeEvent(event)
 
 else:
