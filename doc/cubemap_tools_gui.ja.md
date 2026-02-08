@@ -33,7 +33,7 @@ start_cubemap_tools_gui.bat
   - 入力JSONファイル名。既定は `transforms.json`。
 - `Target Profile`:
   - 連携先ツール向けのプリセットです。
-  - `Postshot / Brush`: `--no_transform` をOFF、前処理`--ply`をOFF、出力マスクを自動反転（`--invert_masks`）します。
+  - `Postshot / Brush`: `--no_transform` をOFF、前処理`--ply`をOFFにします。
   - `LichtFeld Studio`: `--no_transform` をON、前処理`--ply`をONにします。
   - `Custom (manual)`: 上記2項目を手動で編集できます。
   - プリセット時は不一致防止のため、該当チェックボックスはロックされます。
@@ -97,6 +97,7 @@ start_cubemap_tools_gui.bat
 - `Transforms only (--no_image)`
 - `No axis transform (--no_transform)`
 - `Allow duplicate (--duplicate)`
+- `Invert masks (--invert_masks)`
 
 ## 実行時の挙動
 
@@ -108,7 +109,7 @@ start_cubemap_tools_gui.bat
   `cubemap_transforms_json.py --fov 90 --views-json <そのファイル>` を呼び出します。
 - OFFのスロットは `enabled=false` として保存され、変換時に無視されます。
 - `Postshot / Brush` プロファイルでは、点群とカメラの不一致を避けるため、前処理`--ply`が既定でOFFになります。
-- `Postshot / Brush` プロファイルでは、Metashape系マスク（黒=不要）をPostshot向け極性に合わせるため、出力マスクを自動反転します。
+- マスク反転は自動では行われません。必要な場合のみ `Invert masks (--invert_masks)` を有効にしてください。
 - 変換後、GUIはPLYを `<output_dir>` に同梱し、`<output_dir>/transforms.json` の `ply_file_path` を更新します。
   - `Postshot / Brush`: MetashapeのPLY（例: `metashape.ply` / `sparse.ply`）をコピー
   - `LichtFeld Studio`: `pointcloud.ply` をコピー
