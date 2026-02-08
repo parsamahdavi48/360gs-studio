@@ -19,6 +19,7 @@ try:
         QApplication,
         QCheckBox,
         QComboBox,
+        QFrame,
         QFileDialog,
         QFormLayout,
         QGridLayout,
@@ -29,8 +30,11 @@ try:
         QMessageBox,
         QPlainTextEdit,
         QPushButton,
+        QScrollArea,
         QSlider,
+        QSplitter,
         QTabWidget,
+        QToolButton,
         QVBoxLayout,
         QWidget,
     )
@@ -44,6 +48,7 @@ except Exception as e:  # pragma: no cover - environment-dependent import
     QApplication = None
     QCheckBox = None
     QComboBox = None
+    QFrame = None
     QFileDialog = None
     QFormLayout = None
     QGridLayout = None
@@ -54,8 +59,11 @@ except Exception as e:  # pragma: no cover - environment-dependent import
     QMessageBox = None
     QPlainTextEdit = None
     QPushButton = None
+    QScrollArea = None
     QSlider = None
+    QSplitter = None
     QTabWidget = None
+    QToolButton = None
     QVBoxLayout = None
     QWidget = None
     _PYSIDE_IMPORT_ERROR = e
@@ -108,6 +116,35 @@ def _rotation_matrix(yaw_deg: float, pitch_deg: float) -> np.ndarray:
     return r
 
 
+if QWidget is not None:
+    class CollapsibleSection(QWidget):
+        def __init__(self, title: str, expanded: bool = False) -> None:
+            super().__init__()
+            root = QVBoxLayout(self)
+            root.setContentsMargins(0, 0, 0, 0)
+            root.setSpacing(4)
+
+            self.toggle_button = QToolButton()
+            self.toggle_button.setText(title)
+            self.toggle_button.setCheckable(True)
+            self.toggle_button.setChecked(expanded)
+            self.toggle_button.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
+            self.toggle_button.setArrowType(Qt.DownArrow if expanded else Qt.RightArrow)
+            self.toggle_button.toggled.connect(self.set_expanded)
+            root.addWidget(self.toggle_button)
+
+            self.content_widget = QWidget()
+            self.content_widget.setVisible(expanded)
+            self.content_layout = QVBoxLayout(self.content_widget)
+            self.content_layout.setContentsMargins(16, 0, 0, 0)
+            self.content_layout.setSpacing(6)
+            root.addWidget(self.content_widget)
+
+        def set_expanded(self, expanded: bool) -> None:
+            self.toggle_button.setArrowType(Qt.DownArrow if expanded else Qt.RightArrow)
+            self.content_widget.setVisible(expanded)
+
+
 if QMainWindow is not None:
     class CubemapToolsWindow(QMainWindow):
         def __init__(self, initial_scene_dir: str | None = None) -> None:
@@ -145,9 +182,42 @@ if QMainWindow is not None:
         def _build_ui(self, initial_scene_dir: str) -> None:
             root = QWidget()
             self.setCentralWidget(root)
-            layout = QVBoxLayout(root)
+            root_layout = QVBoxLayout(root)
+            root_layout.setContentsMargins(10, 10, 10, 10)
+            root_layout.setSpacing(8)
+
+            main_splitter = QSplitter(Qt.Horizontal)
+            main_splitter.setChildrenCollapsible(False)
+            root_layout.addWidget(main_splitter, stretch=1)
+
+            left_panel = QWidget()
+            left_panel_layout = QVBoxLayout(left_panel)
+            left_panel_layout.setContentsMargins(0, 0, 0, 0)
+            left_panel_layout.setSpacing(8)
+
+            settings_scroll = QScrollArea()
+            settings_scroll.setWidgetResizable(True)
+            settings_scroll.setFrameShape(QFrame.NoFrame)
+            settings_container = QWidget()
+            settings_scroll.setWidget(settings_container)
+            settings_layout = QVBoxLayout(settings_container)
+            settings_layout.setContentsMargins(0, 0, 0, 0)
+            settings_layout.setSpacing(8)
+            left_panel_layout.addWidget(settings_scroll, stretch=1)
+
+            right_panel = QWidget()
+            right_panel_layout = QVBoxLayout(right_panel)
+            right_panel_layout.setContentsMargins(0, 0, 0, 0)
+            right_panel_layout.setSpacing(8)
+
+            main_splitter.addWidget(left_panel)
+            main_splitter.addWidget(right_panel)
+            main_splitter.setStretchFactor(0, 0)
+            main_splitter.setStretchFactor(1, 1)
+            main_splitter.setSizes([560, 900])
 
             form = QFormLayout()
+            form.setFieldGrowthPolicy(QFormLayout.AllNonFixedFieldsGrow)
 
             self.scene_dir_edit = QLineEdit(initial_scene_dir)
             self.scene_dir_edit.textChanged.connect(lambda _: self._refresh_action_buttons())
@@ -188,52 +258,6 @@ if QMainWindow is not None:
             self.preprocess_enable_check.setChecked(True)
             self.preprocess_enable_check.toggled.connect(self._on_preprocess_toggle)
             form.addRow("Preprocess", self.preprocess_enable_check)
-
-            self.ms_images_edit = QLineEdit()
-            browse_ms_images_btn = QPushButton("Browse")
-            browse_ms_images_btn.clicked.connect(self._browse_ms_images_dir)
-            row = QHBoxLayout()
-            row.addWidget(self.ms_images_edit)
-            row.addWidget(browse_ms_images_btn)
-            form.addRow("MS Images Dir", row)
-            self._preprocess_widgets.extend([self.ms_images_edit, browse_ms_images_btn])
-
-            self.ms_xml_edit = QLineEdit()
-            browse_ms_xml_btn = QPushButton("Browse")
-            browse_ms_xml_btn.clicked.connect(self._browse_ms_xml_file)
-            row = QHBoxLayout()
-            row.addWidget(self.ms_xml_edit)
-            row.addWidget(browse_ms_xml_btn)
-            form.addRow("MS XML", row)
-            self._preprocess_widgets.extend([self.ms_xml_edit, browse_ms_xml_btn])
-
-            self.ms_ply_edit = QLineEdit()
-            browse_ms_ply_btn = QPushButton("Browse")
-            browse_ms_ply_btn.clicked.connect(self._browse_ms_ply_file)
-            clear_ms_ply_btn = QPushButton("Clear")
-            clear_ms_ply_btn.clicked.connect(lambda: self.ms_ply_edit.setText(""))
-            row = QHBoxLayout()
-            row.addWidget(self.ms_ply_edit)
-            row.addWidget(browse_ms_ply_btn)
-            row.addWidget(clear_ms_ply_btn)
-            form.addRow("MS PLY (optional)", row)
-            self._preprocess_ply_path_widgets.extend([self.ms_ply_edit, browse_ms_ply_btn, clear_ms_ply_btn])
-            self._preprocess_widgets.extend([self.ms_ply_edit, browse_ms_ply_btn, clear_ms_ply_btn])
-
-            self.ms_use_ply_check = QCheckBox("Include PLY in preprocess (--ply)")
-            self.ms_use_ply_check.setChecked(False)
-            self.ms_use_ply_check.toggled.connect(self._on_ms_use_ply_toggle)
-            form.addRow("MS PLY Usage", self.ms_use_ply_check)
-            self._preprocess_widgets.append(self.ms_use_ply_check)
-
-            self.ms_scale_edit = QLineEdit("1.0")
-            form.addRow("MS Scale", self.ms_scale_edit)
-            self._preprocess_widgets.append(self.ms_scale_edit)
-
-            self.ms_no_fix_rotation_check = QCheckBox("Disable rotation fix (--no-fix-rotation)")
-            self.ms_no_fix_rotation_check.setChecked(False)
-            form.addRow("MS Options", self.ms_no_fix_rotation_check)
-            self._preprocess_widgets.append(self.ms_no_fix_rotation_check)
 
             self.mask_dir_edit = QLineEdit()
             self.mask_dir_edit.textChanged.connect(lambda _: self._render_preview())
@@ -307,11 +331,71 @@ if QMainWindow is not None:
             timeline_row.addWidget(self.preview_timeline_label)
             form.addRow("Preview Timeline", timeline_row)
 
+            settings_layout.addLayout(form)
+
+            preprocess_section = CollapsibleSection("Metashape Preprocess Details", expanded=False)
+            preprocess_form = QFormLayout()
+            preprocess_form.setFieldGrowthPolicy(QFormLayout.AllNonFixedFieldsGrow)
+
+            self.ms_images_edit = QLineEdit()
+            browse_ms_images_btn = QPushButton("Browse")
+            browse_ms_images_btn.clicked.connect(self._browse_ms_images_dir)
+            row = QHBoxLayout()
+            row.addWidget(self.ms_images_edit)
+            row.addWidget(browse_ms_images_btn)
+            preprocess_form.addRow("MS Images Dir", row)
+            self._preprocess_widgets.extend([self.ms_images_edit, browse_ms_images_btn])
+
+            self.ms_xml_edit = QLineEdit()
+            browse_ms_xml_btn = QPushButton("Browse")
+            browse_ms_xml_btn.clicked.connect(self._browse_ms_xml_file)
+            row = QHBoxLayout()
+            row.addWidget(self.ms_xml_edit)
+            row.addWidget(browse_ms_xml_btn)
+            preprocess_form.addRow("MS XML", row)
+            self._preprocess_widgets.extend([self.ms_xml_edit, browse_ms_xml_btn])
+
+            self.ms_ply_edit = QLineEdit()
+            browse_ms_ply_btn = QPushButton("Browse")
+            browse_ms_ply_btn.clicked.connect(self._browse_ms_ply_file)
+            clear_ms_ply_btn = QPushButton("Clear")
+            clear_ms_ply_btn.clicked.connect(lambda: self.ms_ply_edit.setText(""))
+            row = QHBoxLayout()
+            row.addWidget(self.ms_ply_edit)
+            row.addWidget(browse_ms_ply_btn)
+            row.addWidget(clear_ms_ply_btn)
+            preprocess_form.addRow("MS PLY (optional)", row)
+            self._preprocess_ply_path_widgets.extend([self.ms_ply_edit, browse_ms_ply_btn, clear_ms_ply_btn])
+            self._preprocess_widgets.extend([self.ms_ply_edit, browse_ms_ply_btn, clear_ms_ply_btn])
+
+            self.ms_use_ply_check = QCheckBox("Include PLY in preprocess (--ply)")
+            self.ms_use_ply_check.setChecked(False)
+            self.ms_use_ply_check.toggled.connect(self._on_ms_use_ply_toggle)
+            preprocess_form.addRow("MS PLY Usage", self.ms_use_ply_check)
+            self._preprocess_widgets.append(self.ms_use_ply_check)
+
+            self.ms_scale_edit = QLineEdit("1.0")
+            preprocess_form.addRow("MS Scale", self.ms_scale_edit)
+            self._preprocess_widgets.append(self.ms_scale_edit)
+
+            self.ms_no_fix_rotation_check = QCheckBox("Disable rotation fix (--no-fix-rotation)")
+            self.ms_no_fix_rotation_check.setChecked(False)
+            preprocess_form.addRow("MS Options", self.ms_no_fix_rotation_check)
+            self._preprocess_widgets.append(self.ms_no_fix_rotation_check)
+
+            preprocess_section.content_layout.addLayout(preprocess_form)
+            settings_layout.addWidget(preprocess_section)
+            self._preprocess_widgets.append(preprocess_section)
+
+            preview_section = CollapsibleSection("Preview Overlay / Conversion Options", expanded=False)
+            preview_form = QFormLayout()
+            preview_form.setFieldGrowthPolicy(QFormLayout.AllNonFixedFieldsGrow)
+
             self.mask_overlay_slider = QSlider(Qt.Horizontal)
             self.mask_overlay_slider.setRange(0, 100)
             self.mask_overlay_slider.setValue(35)
             self.mask_overlay_slider.valueChanged.connect(lambda _: self._render_preview())
-            form.addRow("Mask Overlay (%)", self.mask_overlay_slider)
+            preview_form.addRow("Mask Overlay (%)", self.mask_overlay_slider)
 
             self.preview_mask_edit = QLineEdit()
             self.preview_mask_edit.textChanged.connect(lambda _: self._render_preview())
@@ -323,7 +407,7 @@ if QMainWindow is not None:
             row.addWidget(self.preview_mask_edit)
             row.addWidget(browse_preview_mask_btn)
             row.addWidget(clear_preview_mask_btn)
-            form.addRow("Preview Mask Image", row)
+            preview_form.addRow("Preview Mask Image", row)
 
             options_row = QHBoxLayout()
             self.mask_from_alpha_check = QCheckBox("Extract mask from alpha (--mask_from_alpha)")
@@ -347,9 +431,10 @@ if QMainWindow is not None:
             options_row.addWidget(self.invert_masks_check)
 
             options_row.addStretch(1)
-            form.addRow("Options", options_row)
+            preview_form.addRow("Options", options_row)
 
-            layout.addLayout(form)
+            preview_section.content_layout.addLayout(preview_form)
+            settings_layout.addWidget(preview_section)
 
             self.workflow_tabs = QTabWidget()
             cubemap_tab = QWidget()
@@ -364,7 +449,20 @@ if QMainWindow is not None:
             self.workflow_tabs.addTab(cubemap_tab, "Cubemap")
 
             colmap_tab = QWidget()
-            colmap_form = QFormLayout(colmap_tab)
+            colmap_tab_layout = QVBoxLayout(colmap_tab)
+            colmap_tab_layout.setContentsMargins(0, 0, 0, 0)
+            colmap_tab_layout.setSpacing(8)
+            colmap_hint = QLabel(
+                "COLMAP is collapsed by default. Expand only when running rig export/SfM."
+            )
+            colmap_hint.setWordWrap(True)
+            colmap_tab_layout.addWidget(colmap_hint)
+
+            colmap_section = CollapsibleSection("COLMAP Rig Pipeline Settings", expanded=False)
+            colmap_tab_layout.addWidget(colmap_section)
+
+            colmap_form = QFormLayout()
+            colmap_form.setFieldGrowthPolicy(QFormLayout.AllNonFixedFieldsGrow)
 
             self.colmap_output_dir_edit = QLineEdit()
             self.colmap_output_dir_edit.textChanged.connect(lambda _: self._refresh_action_buttons())
@@ -396,11 +494,15 @@ if QMainWindow is not None:
             row.addWidget(auto_colmap_bin_btn)
             colmap_form.addRow("COLMAP Binary", row)
 
-            self.colmap_matcher_combo = QComboBox()
-            self.colmap_matcher_combo.addItem("Exhaustive Matcher", "exhaustive")
-            self.colmap_matcher_combo.addItem("Sequential Matcher", "sequential")
-            self.colmap_matcher_combo.currentIndexChanged.connect(self._on_colmap_matcher_changed)
-            colmap_form.addRow("Matcher", self.colmap_matcher_combo)
+            self.colmap_run_until_combo = QComboBox()
+            self.colmap_run_until_combo.addItem("Export Only", "export")
+            self.colmap_run_until_combo.addItem("Feature Extractor", "feature")
+            self.colmap_run_until_combo.addItem("Rig Configurator", "rig")
+            self.colmap_run_until_combo.addItem("Matcher", "match")
+            self.colmap_run_until_combo.addItem("Mapper (SfM)", "mapper")
+            self.colmap_run_until_combo.setCurrentIndex(4)
+            self.colmap_run_until_combo.currentIndexChanged.connect(lambda _: self._refresh_action_buttons())
+            colmap_form.addRow("Run Until", self.colmap_run_until_combo)
 
             self.colmap_preset_combo = QComboBox()
             self.colmap_preset_combo.addItem("Fast (Recommended)", "fast")
@@ -410,23 +512,41 @@ if QMainWindow is not None:
             self.colmap_preset_combo.currentIndexChanged.connect(self._on_colmap_preset_changed)
             colmap_form.addRow("Pipeline Preset", self.colmap_preset_combo)
 
+            self.colmap_matcher_combo = QComboBox()
+            self.colmap_matcher_combo.addItem("Exhaustive Matcher", "exhaustive")
+            self.colmap_matcher_combo.addItem("Sequential Matcher", "sequential")
+            self.colmap_matcher_combo.currentIndexChanged.connect(self._on_colmap_matcher_changed)
+            colmap_form.addRow("Matcher", self.colmap_matcher_combo)
+
+            self.colmap_workspace_hint = QLabel("")
+            self.colmap_workspace_hint.setWordWrap(True)
+            colmap_form.addRow("Output Layout", self.colmap_workspace_hint)
+
+            colmap_section.content_layout.addLayout(colmap_form)
+
+            colmap_advanced = CollapsibleSection("Advanced COLMAP Tuning", expanded=False)
+            colmap_section.content_layout.addWidget(colmap_advanced)
+
+            colmap_advanced_form = QFormLayout()
+            colmap_advanced_form.setFieldGrowthPolicy(QFormLayout.AllNonFixedFieldsGrow)
+
             self.colmap_seq_overlap_edit = QLineEdit("6")
             self.colmap_seq_overlap_edit.textChanged.connect(self._on_colmap_advanced_changed)
-            colmap_form.addRow("Sequential Overlap", self.colmap_seq_overlap_edit)
+            colmap_advanced_form.addRow("Sequential Overlap", self.colmap_seq_overlap_edit)
             self._colmap_sequential_widgets.append(self.colmap_seq_overlap_edit)
 
             self.colmap_sift_max_features_edit = QLineEdit("4096")
             self.colmap_sift_max_features_edit.textChanged.connect(self._on_colmap_advanced_changed)
-            colmap_form.addRow("SIFT Max Features", self.colmap_sift_max_features_edit)
+            colmap_advanced_form.addRow("SIFT Max Features", self.colmap_sift_max_features_edit)
 
             self.colmap_mapper_ba_global_iter_edit = QLineEdit("20")
             self.colmap_mapper_ba_global_iter_edit.textChanged.connect(self._on_colmap_advanced_changed)
-            colmap_form.addRow("Mapper BA Global Iter", self.colmap_mapper_ba_global_iter_edit)
+            colmap_advanced_form.addRow("Mapper BA Global Iter", self.colmap_mapper_ba_global_iter_edit)
 
             self.colmap_loop_detection_check = QCheckBox("Sequential loop detection (optional)")
             self.colmap_loop_detection_check.setChecked(False)
             self.colmap_loop_detection_check.toggled.connect(self._on_colmap_advanced_changed)
-            colmap_form.addRow("Loop Detection", self.colmap_loop_detection_check)
+            colmap_advanced_form.addRow("Loop Detection", self.colmap_loop_detection_check)
             self._colmap_sequential_widgets.append(self.colmap_loop_detection_check)
 
             self.colmap_vocab_tree_edit = QLineEdit()
@@ -439,40 +559,29 @@ if QMainWindow is not None:
             row.addWidget(self.colmap_vocab_tree_edit)
             row.addWidget(browse_vocab_btn)
             row.addWidget(clear_vocab_btn)
-            colmap_form.addRow("Vocab Tree (optional)", row)
+            colmap_advanced_form.addRow("Vocab Tree (optional)", row)
             self._colmap_sequential_widgets.extend([self.colmap_vocab_tree_edit, browse_vocab_btn, clear_vocab_btn])
-
-            self.colmap_run_until_combo = QComboBox()
-            self.colmap_run_until_combo.addItem("Export Only", "export")
-            self.colmap_run_until_combo.addItem("Feature Extractor", "feature")
-            self.colmap_run_until_combo.addItem("Rig Configurator", "rig")
-            self.colmap_run_until_combo.addItem("Matcher", "match")
-            self.colmap_run_until_combo.addItem("Mapper (SfM)", "mapper")
-            self.colmap_run_until_combo.setCurrentIndex(4)
-            self.colmap_run_until_combo.currentIndexChanged.connect(lambda _: self._refresh_action_buttons())
-            colmap_form.addRow("Run Until", self.colmap_run_until_combo)
 
             self.colmap_use_masks_check = QCheckBox("Use masks in feature extraction")
             self.colmap_use_masks_check.setChecked(True)
             self.colmap_use_masks_check.toggled.connect(self._on_colmap_advanced_changed)
-            colmap_form.addRow("Mask Usage", self.colmap_use_masks_check)
+            colmap_advanced_form.addRow("Mask Usage", self.colmap_use_masks_check)
 
             self.colmap_invert_masks_check = QCheckBox("Invert exported masks")
             self.colmap_invert_masks_check.setChecked(False)
-            colmap_form.addRow("Mask Export", self.colmap_invert_masks_check)
+            colmap_advanced_form.addRow("Mask Export", self.colmap_invert_masks_check)
 
             self.colmap_refine_sensor_check = QCheckBox("Mapper: refine sensor from rig")
             self.colmap_refine_sensor_check.setChecked(False)
             self.colmap_refine_sensor_check.toggled.connect(self._on_colmap_advanced_changed)
-            colmap_form.addRow("Mapper Option", self.colmap_refine_sensor_check)
+            colmap_advanced_form.addRow("Mapper Option", self.colmap_refine_sensor_check)
 
-            self.colmap_workspace_hint = QLabel("")
-            self.colmap_workspace_hint.setWordWrap(True)
-            colmap_form.addRow("Output Layout", self.colmap_workspace_hint)
+            colmap_advanced.content_layout.addLayout(colmap_advanced_form)
+            colmap_tab_layout.addStretch(1)
 
             self.workflow_tabs.addTab(colmap_tab, "COLMAP Rig SfM")
             self.workflow_tabs.currentChanged.connect(self._on_workflow_tab_changed)
-            layout.addWidget(self.workflow_tabs)
+            settings_layout.addWidget(self.workflow_tabs)
 
             view_ctrl_row = QHBoxLayout()
             self.apply_pitch_btn = QPushButton("Apply Pitch Rows")
@@ -499,22 +608,22 @@ if QMainWindow is not None:
             self.selected_views_label = QLabel("Selected views: 0")
             self.selected_views_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
             view_ctrl_row.addWidget(self.selected_views_label)
-            layout.addLayout(view_ctrl_row)
+            settings_layout.addLayout(view_ctrl_row)
 
             self.estimate_label = QLabel("Estimated output images: -")
             self.estimate_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
-            layout.addWidget(self.estimate_label)
+            settings_layout.addWidget(self.estimate_label)
 
             self.view_grid_widget = QWidget()
             self.view_grid_layout = QGridLayout(self.view_grid_widget)
-            layout.addWidget(self.view_grid_widget)
+            settings_layout.addWidget(self.view_grid_widget)
             self._custom_view_widgets.append(self.view_grid_widget)
+            settings_layout.addStretch(1)
 
             self.preview_label = QLabel("Preview unavailable")
             self.preview_label.setAlignment(Qt.AlignCenter)
-            self.preview_label.setMinimumSize(960, 440)
+            self.preview_label.setMinimumSize(640, 320)
             self.preview_label.setStyleSheet("border: 1px solid palette(mid);")
-            layout.addWidget(self.preview_label, stretch=1)
 
             btn_row = QHBoxLayout()
             self.run_button = QPushButton("Run Cubemap Convert")
@@ -529,11 +638,26 @@ if QMainWindow is not None:
             self.status_label = QLabel("Idle")
             self.status_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
             btn_row.addWidget(self.status_label)
-            layout.addLayout(btn_row)
+
+            preview_panel = QWidget()
+            preview_panel_layout = QVBoxLayout(preview_panel)
+            preview_panel_layout.setContentsMargins(0, 0, 0, 0)
+            preview_panel_layout.setSpacing(8)
+            preview_panel_layout.addWidget(self.preview_label, stretch=1)
+            preview_panel_layout.addLayout(btn_row)
 
             self.log_text = QPlainTextEdit()
             self.log_text.setReadOnly(True)
-            layout.addWidget(self.log_text, stretch=1)
+            self.log_text.setMinimumHeight(170)
+
+            right_splitter = QSplitter(Qt.Vertical)
+            right_splitter.setChildrenCollapsible(False)
+            right_splitter.addWidget(preview_panel)
+            right_splitter.addWidget(self.log_text)
+            right_splitter.setStretchFactor(0, 3)
+            right_splitter.setStretchFactor(1, 2)
+            right_splitter.setSizes([620, 240])
+            right_panel_layout.addWidget(right_splitter, stretch=1)
 
             self.target_profile_combo.currentIndexChanged.connect(self._on_target_profile_changed)
             self.view_mode_combo.currentIndexChanged.connect(self._on_view_mode_changed)
