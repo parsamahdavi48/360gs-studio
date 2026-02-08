@@ -915,8 +915,14 @@ if QMainWindow is not None:
             return segments
 
         def _render_preview(self) -> None:
-            sample_path = Path(self.sample_image_edit.text().strip())
-            if not sample_path.exists():
+            sample_text = self.sample_image_edit.text().strip()
+            if not sample_text:
+                self.preview_label.setText("Preview image not selected")
+                self._preview_pixmap = None
+                return
+
+            sample_path = Path(sample_text)
+            if not sample_path.exists() or not sample_path.is_file():
                 self.preview_label.setText("Preview image not found")
                 self._preview_pixmap = None
                 return
