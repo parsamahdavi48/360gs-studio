@@ -33,7 +33,7 @@ start_cubemap_tools_gui.bat
   - JSON filename in scene dir. Default: `transforms.json`.
 - `Target Profile`:
   - Preset for downstream tool.
-  - `Postshot / Brush`: sets `--no_transform` OFF and preprocess `--ply` OFF.
+  - `Postshot / Brush`: sets `--no_transform` OFF, preprocess `--ply` OFF, and auto-inverts output masks (`--invert_masks`).
   - `LichtFeld Studio`: sets `--no_transform` ON and preprocess `--ply` ON.
   - `Custom (manual)`: leaves both options editable.
   - In preset modes, those related checkboxes are locked to prevent accidental mismatch.
@@ -106,6 +106,7 @@ start_cubemap_tools_gui.bat
   - `cubemap_transforms_json.py --fov 90 --views-json <that file>`
 - Disabled slots are written with `enabled=false` and ignored by converter.
 - With `Postshot / Brush` profile, preprocess `--ply` is disabled by default to avoid point-cloud/camera mismatch.
+- With `Postshot / Brush` profile, output masks are auto-inverted to match Postshot mask polarity.
 - After conversion, GUI packages PLY into `<output_dir>` and rewrites `<output_dir>/transforms.json` `ply_file_path`.
   - `Postshot / Brush`: copies Metashape PLY (for example `metashape.ply` / `sparse.ply`).
   - `LichtFeld Studio`: copies `pointcloud.ply`.

@@ -117,6 +117,7 @@ python cubemap_transforms_json.py . ./cubic --no_tranform
 |--json|ファイル名|transforms.jsonを別名で扱う場合のファイル名 (default='transforms.json')|
 |--mask_dir|ディレクトリ名|入力マスク画像ディレクトリ (default='<input_dir>/masks')|
 |--mask_from_alpha|(no)|Extract masks from alpha channel in images|
+|--invert_masks|(no)|出力マスクの白黒極性を反転します|
 |--yaw|角度°|水平方向の角度をシフトします (default=45.0 degrees)|
 |--stitch|角度°|スティッチング領域を除外するための角度 (default=0.0 degrees)|
 |--fov|角度°|各キューブマップ面の画像のFOV (default=90.0 degrees)|

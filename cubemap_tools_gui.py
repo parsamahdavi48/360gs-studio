@@ -483,7 +483,7 @@ if QMainWindow is not None:
                 self.no_transform_check.setEnabled(False)
                 self.ms_use_ply_check.setEnabled(False)
                 self.target_profile_hint.setText(
-                    "Postshot/Brush preset (locked): --no_transform OFF, preprocess --ply OFF."
+                    "Postshot/Brush preset (locked): --no_transform OFF, preprocess --ply OFF, output masks inverted."
                 )
             else:
                 self.no_transform_check.setEnabled(True)
@@ -1383,6 +1383,8 @@ if QMainWindow is not None:
                 cmd.append("--no_transform")
             if self.duplicate_check.isChecked():
                 cmd.append("--duplicate")
+            if self._target_profile_id() == _PROFILE_POSTSHOT:
+                cmd.append("--invert_masks")
 
             return cmd
 

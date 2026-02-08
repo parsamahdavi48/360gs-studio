@@ -130,6 +130,7 @@ python cubemap_transforms_json.py . ./cubic --no_tranform
 |--json|filename|transforms.json with a different filename (default='transforms.json')|
 |--mask_dir|directory name|Input mask images directory (default='<input_dir>/masks')|
 |--mask_from_alpha|(no)|Extract masks from alpha channel in images|
+|--invert_masks|(no)|Invert output masks (black/white polarity)|
 |--yaw|degrees|Shift the horizontal angle (default=45.0 degrees)|
 |--stitch|degrees|Angle to avoid stitching areas (default=0.0 degrees)|
 |--fov|degrees|Field of view for cubemap faces (default=90.0 degrees)|

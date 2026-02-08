@@ -25,6 +25,7 @@ _WORKER_MASK_DIR = ""
 _WORKER_OUTPUT_IMAGE_DIR = ""
 _WORKER_OUTPUT_MASK_DIR = ""
 _WORKER_MASK_FROM_ALPHA = False
+_WORKER_INVERT_MASKS = False
 
 
 class MyParser(argparse.ArgumentParser):
@@ -45,6 +46,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--json", help="transforms.json filename override (default='transforms.json')")
     parser.add_argument("--mask_dir", help="Input mask images directory (default=<input_dir>/masks)")
     parser.add_argument("--mask_from_alpha", action="store_true", help="Extract masks from alpha channel")
+    parser.add_argument("--invert_masks", action="store_true", help="Invert output masks (black/white)")
     parser.add_argument("--yaw", type=float, default=45.0, help="Yaw offset for default 6 views")
     parser.add_argument("--stitch", type=float, default=0.0, help="Stitch avoid angle for default 6 views")
     parser.add_argument("--fov", type=float, default=90.0, help="Field of view for each output view")
@@ -199,6 +201,7 @@ def remap_image(
     views: list[dict],
     mask_from_alpha: bool,
     output_mask_dir: str,
+    invert_masks: bool,
 ) -> None:
     basename, ext2, ext = split_filename_for_output(input_file)
 
@@ -228,6 +231,8 @@ def remap_image(
 
         if mode_for_pil == "L":
             _, converted = cv2.threshold(converted, 127, 255, cv2.THRESH_BINARY)
+            if invert_masks:
+                converted = cv2.bitwise_not(converted)
 
         out_path = os.path.join(output_dir, f"{basename}_{view_name}{ext2}{ext}")
         if mask_from_alpha and mode_for_pil == "RGBA":
@@ -236,6 +241,8 @@ def remap_image(
 
             alpha_channel = converted[..., -1]
             _, mask = cv2.threshold(alpha_channel, 127, 255, cv2.THRESH_BINARY)
+            if invert_masks:
+                mask = cv2.bitwise_not(mask)
             mask_out_path = os.path.join(output_mask_dir, f"{basename}_{view_name}{ext2}.png")
             Image.fromarray(mask, mode="L").save(mask_out_path)
         else:
@@ -404,6 +411,7 @@ def worker_init(
     output_image_dir: str,
     output_mask_dir: str,
     mask_from_alpha: bool,
+    invert_masks: bool,
 ) -> None:
     global _WORKER_REMAP_TABLES
     global _WORKER_VIEWS
@@ -412,6 +420,7 @@ def worker_init(
     global _WORKER_OUTPUT_IMAGE_DIR
     global _WORKER_OUTPUT_MASK_DIR
     global _WORKER_MASK_FROM_ALPHA
+    global _WORKER_INVERT_MASKS
 
     _WORKER_REMAP_TABLES = {}
     for view in views:
@@ -429,6 +438,7 @@ def worker_init(
     _WORKER_OUTPUT_IMAGE_DIR = output_image_dir
     _WORKER_OUTPUT_MASK_DIR = output_mask_dir
     _WORKER_MASK_FROM_ALPHA = mask_from_alpha
+    _WORKER_INVERT_MASKS = invert_masks
 
 
 def proc_convert_images(frame_file: str) -> None:
@@ -444,6 +454,7 @@ def proc_convert_images(frame_file: str) -> None:
             _WORKER_VIEWS,
             _WORKER_MASK_FROM_ALPHA,
             _WORKER_OUTPUT_MASK_DIR,
+            _WORKER_INVERT_MASKS,
         )
 
     if _WORKER_MASK_FROM_ALPHA or not _WORKER_MASK_DIR or not os.path.isdir(_WORKER_MASK_DIR):
@@ -458,6 +469,7 @@ def proc_convert_images(frame_file: str) -> None:
                 _WORKER_VIEWS,
                 False,
                 _WORKER_OUTPUT_MASK_DIR,
+                _WORKER_INVERT_MASKS,
             )
             break
 
@@ -473,6 +485,7 @@ def convert_images(
     output_image_dir: str,
     output_mask_dir: str,
     mask_from_alpha: bool,
+    invert_masks: bool,
 ) -> None:
     print(f"Converting {len(image_files)} images...")
 
@@ -495,6 +508,7 @@ def convert_images(
             output_image_dir,
             output_mask_dir,
             mask_from_alpha,
+            invert_masks,
         ),
     ) as executor:
         futures = [executor.submit(proc_convert_images, frame_file) for frame_file in image_files]
@@ -567,6 +581,7 @@ def main() -> None:
             output_image_dir=output_image_dir,
             output_mask_dir=output_mask_dir,
             mask_from_alpha=args.mask_from_alpha,
+            invert_masks=args.invert_masks,
         )
 
 
