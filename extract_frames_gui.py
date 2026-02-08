@@ -190,9 +190,8 @@ if QMainWindow is not None:
 
         def _append_log(self, text: str) -> None:
             self.log_text.appendPlainText(text)
-            cursor = self.log_text.textCursor()
-            cursor.movePosition(cursor.End)
-            self.log_text.setTextCursor(cursor)
+            scrollbar = self.log_text.verticalScrollBar()
+            scrollbar.setValue(scrollbar.maximum())
 
         def _set_running_state(self, running: bool, status_text: str) -> None:
             self.status_label.setText(status_text)
