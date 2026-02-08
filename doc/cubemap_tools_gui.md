@@ -34,9 +34,13 @@ start_cubemap_tools_gui.bat
 - `Mask Directory`:
   - Optional mask input folder used by conversion and preview overlay.
 - `Yaw Offset (deg)`:
-  - Base yaw for slot generation. Slot yaw = `offset + slot*60`.
+  - Base yaw for slot generation.
+- `Yaw Slots`:
+  - Number of yaw slots per pitch row (`4..8`).
+  - Slot yaw = `offset + slot*(360 / yaw_slots)`.
 - `Pitch Rows (deg CSV)`:
   - Pitch list. Example: `-30,0,30`.
+  - Max 9 rows.
 - `FOV`:
   - Fixed to `90.0` in this GUI.
 - `Preview Image`:
@@ -46,10 +50,10 @@ start_cubemap_tools_gui.bat
 
 ## View selection
 
-- After `Apply Pitch Rows`, each pitch row gets 6 slots (`S0..S5`).
+- After `Apply Pitch Rows`, each pitch row gets `Yaw Slots` slots.
 - Checkboxes control whether each slot is exported.
 - Typical setup:
-  - pitch `0`: enable all 6
+  - pitch `0`: enable all slots
   - pitch `+/-30`: enable only needed slots
 
 ## Run options
@@ -68,4 +72,6 @@ start_cubemap_tools_gui.bat
 ## Notes
 
 - If no view is enabled, run is blocked.
+- Soft warning appears when enabled views exceed 24.
+- Run is blocked when enabled views exceed 40.
 - Preview is guidance only; final conversion follows `views_config.json` exactly.

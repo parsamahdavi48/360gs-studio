@@ -16,6 +16,7 @@ try:
     from PySide6.QtWidgets import (
         QApplication,
         QCheckBox,
+        QComboBox,
         QFileDialog,
         QFormLayout,
         QGridLayout,
@@ -38,6 +39,7 @@ except Exception as e:  # pragma: no cover - environment-dependent import
     QPixmap = None
     QApplication = None
     QCheckBox = None
+    QComboBox = None
     QFileDialog = None
     QFormLayout = None
     QGridLayout = None
@@ -57,6 +59,12 @@ else:
 
 
 _CONVERT_RE = re.compile(r"^Converting\s+(\d+)\s+images\.\.\.$")
+_MIN_YAW_SLOTS = 4
+_MAX_YAW_SLOTS = 8
+_DEFAULT_YAW_SLOTS = 6
+_MAX_PITCH_ROWS = 9
+_WARN_ENABLED_VIEWS = 24
+_BLOCK_ENABLED_VIEWS = 40
 
 
 def _normalize_angle(angle_deg: float) -> float:
@@ -121,6 +129,7 @@ if QMainWindow is not None:
 
             self.scene_dir_edit = QLineEdit(initial_scene_dir)
             self.scene_dir_edit.textChanged.connect(lambda _: self._refresh_action_buttons())
+            self.scene_dir_edit.textChanged.connect(lambda _: self._update_output_estimate())
             browse_scene_btn = QPushButton("Browse")
             browse_scene_btn.clicked.connect(self._browse_scene_dir)
             apply_scene_btn = QPushButton("Apply Scene Paths")
@@ -155,6 +164,12 @@ if QMainWindow is not None:
             self.yaw_offset_edit = QLineEdit("45.0")
             self.yaw_offset_edit.textChanged.connect(self._on_yaw_or_pitch_changed)
             form.addRow("Yaw Offset (deg)", self.yaw_offset_edit)
+
+            self.yaw_slots_combo = QComboBox()
+            self.yaw_slots_combo.addItems([str(v) for v in range(_MIN_YAW_SLOTS, _MAX_YAW_SLOTS + 1)])
+            self.yaw_slots_combo.setCurrentText(str(_DEFAULT_YAW_SLOTS))
+            self.yaw_slots_combo.currentTextChanged.connect(lambda _: self._on_yaw_slots_changed())
+            form.addRow("Yaw Slots", self.yaw_slots_combo)
 
             self.pitch_list_edit = QLineEdit("-30,0,30")
             form.addRow("Pitch Rows (deg CSV)", self.pitch_list_edit)
@@ -224,6 +239,10 @@ if QMainWindow is not None:
             self.selected_views_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
             view_ctrl_row.addWidget(self.selected_views_label)
             layout.addLayout(view_ctrl_row)
+
+            self.estimate_label = QLabel("Estimated output images: -")
+            self.estimate_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+            layout.addWidget(self.estimate_label)
 
             self.view_grid_widget = QWidget()
             self.view_grid_layout = QGridLayout(self.view_grid_widget)
@@ -299,6 +318,7 @@ if QMainWindow is not None:
             self.mask_dir_edit.setText(str(scene_dir / "masks"))
             self._auto_select_sample_image()
             self._refresh_action_buttons()
+            self._update_output_estimate()
 
         def _auto_select_sample_image(self) -> None:
             scene_dir = Path(self.scene_dir_edit.text().strip() or ".")
@@ -321,6 +341,59 @@ if QMainWindow is not None:
             except Exception as e:
                 raise ValueError(f"{label} is invalid: {e}") from e
 
+        def _yaw_slot_count(self) -> int:
+            text = self.yaw_slots_combo.currentText().strip()
+            try:
+                value = int(text)
+            except Exception as e:
+                raise ValueError(f"Yaw Slots is invalid: {e}") from e
+            if value < _MIN_YAW_SLOTS or value > _MAX_YAW_SLOTS:
+                raise ValueError(f"Yaw Slots must be in [{_MIN_YAW_SLOTS}, {_MAX_YAW_SLOTS}]")
+            return value
+
+        def _yaw_step_deg(self) -> float:
+            return 360.0 / float(self._yaw_slot_count())
+
+        def _count_input_images(self) -> int:
+            scene_dir = Path(self.scene_dir_edit.text().strip() or ".")
+            images_dir = scene_dir / "images"
+
+            roots: list[Path] = [images_dir] if images_dir.is_dir() else [scene_dir]
+            exts = {".jpg", ".jpeg", ".png"}
+            seen: set[str] = set()
+            count = 0
+            for root in roots:
+                if not root.is_dir():
+                    continue
+                for p in root.rglob("*"):
+                    if not p.is_file() or p.suffix.lower() not in exts:
+                        continue
+                    key = str(p.resolve()).lower()
+                    if key in seen:
+                        continue
+                    seen.add(key)
+                    count += 1
+            return count
+
+        def _update_output_estimate(self) -> None:
+            try:
+                views = self._collect_views(include_disabled=True)
+            except Exception:
+                self.estimate_label.setText("Estimated output images: -")
+                return
+
+            enabled = sum(1 for v in views if v["enabled"])
+            source_count = self._count_input_images()
+            estimated = source_count * enabled
+            warn = ""
+            if enabled > _BLOCK_ENABLED_VIEWS:
+                warn = " [too many selected]"
+            elif enabled > _WARN_ENABLED_VIEWS:
+                warn = " [high]"
+            self.estimate_label.setText(
+                f"Estimated output images: {estimated} ({source_count} x {enabled}){warn}"
+            )
+
         def _parse_pitches(self) -> list[float]:
             raw = self.pitch_list_edit.text().strip()
             if not raw:
@@ -341,7 +414,12 @@ if QMainWindow is not None:
 
             if not pitches:
                 raise ValueError("No valid pitches")
+            if len(pitches) > _MAX_PITCH_ROWS:
+                raise ValueError(f"Pitch rows are limited to {_MAX_PITCH_ROWS}")
             return pitches
+
+        def _on_yaw_slots_changed(self) -> None:
+            self._apply_pitch_rows()
 
         def _clear_view_grid(self) -> None:
             while self.view_grid_layout.count():
@@ -367,6 +445,7 @@ if QMainWindow is not None:
                 QMessageBox.critical(self, "Pitch Error", str(e))
                 return
 
+            slot_count = self._yaw_slot_count()
             self.pitch_rows = []
             self.yaw_slot_labels = []
             self._clear_view_grid()
@@ -374,7 +453,7 @@ if QMainWindow is not None:
             head_pitch = QLabel("Pitch / Slot")
             self.view_grid_layout.addWidget(head_pitch, 0, 0)
 
-            for slot in range(6):
+            for slot in range(slot_count):
                 lab = QLabel(f"S{slot}")
                 lab.setAlignment(Qt.AlignCenter)
                 self.yaw_slot_labels.append(lab)
@@ -388,9 +467,9 @@ if QMainWindow is not None:
                 checks: list[QCheckBox] = []
                 key = f"{pitch:.6f}"
                 restored = old_state.get(key)
-                for slot in range(6):
+                for slot in range(slot_count):
                     cb = QCheckBox()
-                    if restored is not None:
+                    if restored is not None and slot < len(restored):
                         checked = restored[slot]
                     else:
                         checked = abs(pitch) < 1e-6
@@ -424,13 +503,14 @@ if QMainWindow is not None:
         def _update_yaw_slot_labels(self) -> None:
             try:
                 yaw_offset = self._parse_float(self.yaw_offset_edit.text(), "Yaw Offset")
+                yaw_step = self._yaw_step_deg()
             except Exception:
                 for idx, lab in enumerate(self.yaw_slot_labels):
                     lab.setText(f"S{idx}")
                 return
 
             for idx, lab in enumerate(self.yaw_slot_labels):
-                yaw = _normalize_angle(yaw_offset + idx * 60.0)
+                yaw = _normalize_angle(yaw_offset + idx * yaw_step)
                 lab.setText(f"S{idx}\n{yaw:.1f}deg")
 
         def _angle_token(self, angle: float) -> str:
@@ -441,6 +521,7 @@ if QMainWindow is not None:
 
         def _collect_views(self, include_disabled: bool) -> list[dict]:
             yaw_offset = self._parse_float(self.yaw_offset_edit.text(), "Yaw Offset")
+            yaw_step = self._yaw_step_deg()
             views: list[dict] = []
 
             for row in self.pitch_rows:
@@ -452,7 +533,7 @@ if QMainWindow is not None:
                     views.append(
                         {
                             "name": f"pit{self._angle_token(pitch)}_s{slot}",
-                            "yaw": float(yaw_offset + slot * 60.0),
+                            "yaw": float(yaw_offset + slot * yaw_step),
                             "pitch": pitch,
                             "enabled": enabled,
                             "slot": slot,
@@ -463,12 +544,22 @@ if QMainWindow is not None:
         def _update_selected_views_label(self) -> None:
             try:
                 views = self._collect_views(include_disabled=True)
+                slot_count = self._yaw_slot_count()
             except Exception:
                 self.selected_views_label.setText("Selected views: -")
+                self._update_output_estimate()
                 return
 
             selected = sum(1 for v in views if v["enabled"])
-            self.selected_views_label.setText(f"Selected views: {selected} / {len(views)}")
+            warn = ""
+            if selected > _BLOCK_ENABLED_VIEWS:
+                warn = " [limit exceeded]"
+            elif selected > _WARN_ENABLED_VIEWS:
+                warn = " [high]"
+            self.selected_views_label.setText(
+                f"Selected views: {selected} / {len(views)} (slots={slot_count}){warn}"
+            )
+            self._update_output_estimate()
 
         def _find_mask_for_sample(self, sample_path: Path) -> Path | None:
             mask_dir = Path(self.mask_dir_edit.text().strip())
@@ -679,6 +770,11 @@ if QMainWindow is not None:
             enabled_count = sum(1 for v in all_views if v["enabled"])
             if enabled_count <= 0:
                 raise ValueError("At least one view must be enabled")
+            if enabled_count > _BLOCK_ENABLED_VIEWS:
+                raise ValueError(
+                    f"Too many enabled views ({enabled_count}). "
+                    f"Reduce to <= {_BLOCK_ENABLED_VIEWS}."
+                )
 
             views_json = self._write_views_config(output_dir, all_views)
 
@@ -787,6 +883,28 @@ if QMainWindow is not None:
             self.proc = None
 
         def _run_convert(self) -> None:
+            try:
+                all_views = self._collect_views(include_disabled=True)
+            except Exception as e:
+                QMessageBox.critical(self, "Invalid Input", str(e))
+                return
+
+            enabled_count = sum(1 for v in all_views if v["enabled"])
+            if enabled_count > _WARN_ENABLED_VIEWS and enabled_count <= _BLOCK_ENABLED_VIEWS:
+                reply = QMessageBox.question(
+                    self,
+                    "Large View Count",
+                    (
+                        f"{enabled_count} views are enabled. "
+                        "This may increase processing time and output size.\n\n"
+                        "Continue?"
+                    ),
+                    QMessageBox.Yes | QMessageBox.No,
+                    QMessageBox.No,
+                )
+                if reply != QMessageBox.Yes:
+                    return
+
             try:
                 cmd = self._build_cmd()
             except Exception as e:

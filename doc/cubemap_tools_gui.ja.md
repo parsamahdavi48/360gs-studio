@@ -34,9 +34,13 @@ start_cubemap_tools_gui.bat
 - `Mask Directory`:
   - 変換時のマスク入力先。プレビュー合成にも使用。
 - `Yaw Offset (deg)`:
-  - スロット角度の基準値。各スロットは `offset + slot*60`。
+  - スロット角度の基準値。
+- `Yaw Slots`:
+  - 各ピッチ行のYAWスロット数（`4..8`）。
+  - 各スロット角度は `offset + slot*(360 / yaw_slots)`。
 - `Pitch Rows (deg CSV)`:
   - ピッチ一覧。例: `-30,0,30`。
+  - 最大9行まで。
 - `FOV`:
   - このGUIでは `90.0` 固定。
 - `Preview Image`:
@@ -46,10 +50,10 @@ start_cubemap_tools_gui.bat
 
 ## 視点選択
 
-- `Apply Pitch Rows` で各ピッチ行に6スロット（`S0..S5`）が生成されます。
+- `Apply Pitch Rows` で各ピッチ行に `Yaw Slots` 分のスロットが生成されます。
 - 各チェックボックスで出力対象をON/OFFできます。
 - 典型例:
-  - pitch `0`: 6視点すべてON
+  - pitch `0`: その行の全スロットON
   - pitch `+/-30`: 必要なスロットだけON
 
 ## 実行オプション
@@ -68,4 +72,6 @@ start_cubemap_tools_gui.bat
 ## 注意
 
 - 1視点もONになっていない場合は実行できません。
+- 有効視点数が24を超えると警告を表示します。
+- 有効視点数が40を超えると実行できません。
 - プレビューは確認用で、最終出力は `views_config.json` の内容に従います。

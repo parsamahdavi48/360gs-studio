@@ -53,7 +53,7 @@ See detailed documentation: [doc/cubemap_transforms_json.md](doc/cubemap_transfo
 
 ### `cubemap_tools_gui.py`
 
-GUI wrapper for cubemap conversion with preview-based view selection (multiple pitch rows x 6 slots each, per-slot on/off, mask overlay preview, FOV fixed at 90).<br>
+GUI wrapper for cubemap conversion with preview-based view selection (multiple pitch rows x configurable yaw slots [4-8], per-slot on/off, mask overlay preview, FOV fixed at 90).<br>
 See details: [doc/cubemap_tools_gui.md](doc/cubemap_tools_gui.md)
 
 ### `stitch_mask.py`

@@ -52,7 +52,7 @@ Metashapeが出力する**360度画像用**xmlファイルからtransforms.json�
 
 ### cubemap_tools_gui.py
 
-キューブマップ変換用のラッパーGUIです。複数ピッチ行 x 6スロットの視点ON/OFF、マスク半透明合成付きプレビュー、FOV=90固定での実行に対応します。<br>
+キューブマップ変換用のラッパーGUIです。複数ピッチ行 x 可変YAWスロット（4〜8）の視点ON/OFF、マスク半透明合成付きプレビュー、FOV=90固定での実行に対応します。<br>
 [→詳細を見る](doc/cubemap_tools_gui.ja.md)<br>
 
 ### stitch_mask.py
