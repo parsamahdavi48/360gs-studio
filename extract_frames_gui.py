@@ -352,7 +352,7 @@ if QMainWindow is not None:
                 est_gap = min_gap + weight * (max_gap - min_gap)
                 est_count = max(1, int(math.ceil(duration_sec / max(est_gap, 1e-6)))) if duration_sec > 0 else 1
                 est_count = max(min_count, min(max_count, est_count))
-                self.instant_estimate_text = f"{min_count}-{max_count} frames (thr~{est_count})"
+                self.instant_estimate_text = f"{min_count}-{max_count} frames (thr: {est_count})"
             except Exception:
                 self.instant_estimate_text = "- (invalid change params)"
             self._refresh_estimate_label()
