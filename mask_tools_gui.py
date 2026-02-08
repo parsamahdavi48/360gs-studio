@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import re
 import sys
 from pathlib import Path
 
@@ -21,6 +22,7 @@ try:
         QMainWindow,
         QMessageBox,
         QPlainTextEdit,
+        QProgressBar,
         QPushButton,
         QVBoxLayout,
         QWidget,
@@ -40,6 +42,7 @@ except Exception as e:  # pragma: no cover - environment-dependent import
     QMainWindow = None
     QMessageBox = None
     QPlainTextEdit = None
+    QProgressBar = None
     QPushButton = None
     QVBoxLayout = None
     QWidget = None
@@ -49,6 +52,10 @@ else:
 
 
 if QMainWindow is not None:
+    _YOLO_LINE_RE = re.compile(r"^Processing:\s+")
+    _STITCH_TASK_RE = re.compile(r"^Processing\s+(\d+)\s+images\s+with\s+\d+\s+workers\.\.\.$")
+    _STITCH_TQDM_RE = re.compile(r"\|\s*(\d+)/(\d+)\s*\[")
+
     class MaskToolsWindow(QMainWindow):
         def __init__(self, initial_scene_dir: str | None = None) -> None:
             super().__init__()
@@ -57,6 +64,11 @@ if QMainWindow is not None:
             self.current_phase = ""
             self._process_buffer = ""
             self.pending_steps: list[tuple[str, list[str]]] = []
+            self.phase_total_items = 0
+            self.phase_done_items = 0
+            self._stitch_chunk_total = 0
+            self._stitch_chunk_done = 0
+            self._stitch_done_before_chunk = 0
 
             self.setWindowTitle("Mask Tools")
             self.resize(1120, 820)
@@ -143,6 +155,20 @@ if QMainWindow is not None:
 
             layout.addLayout(btn_row)
 
+            progress_row = QHBoxLayout()
+            self.progress_bar = QProgressBar()
+            self.progress_bar.setMinimum(0)
+            self.progress_bar.setMaximum(100)
+            self.progress_bar.setValue(0)
+            self.progress_bar.setFormat("%p%")
+            progress_row.addWidget(self.progress_bar, stretch=1)
+
+            self.progress_text_label = QLabel("0 / 0")
+            self.progress_text_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+            progress_row.addWidget(self.progress_text_label)
+
+            layout.addLayout(progress_row)
+
             self.log_text = QPlainTextEdit()
             self.log_text.setReadOnly(True)
             layout.addWidget(self.log_text, stretch=1)
@@ -163,6 +189,109 @@ if QMainWindow is not None:
                 self.run_both_button.setEnabled(False)
             else:
                 self._refresh_action_buttons()
+
+        def _count_matching_files(self, root: Path, suffixes: tuple[str, ...]) -> int:
+            if not root.is_dir():
+                return 0
+            return sum(
+                1
+                for p in root.rglob("*")
+                if p.is_file() and p.suffix.lower() in suffixes
+            )
+
+        def _set_phase_progress(self, done: int, total: int) -> None:
+            done = max(0, done)
+            total = max(0, total)
+            self.phase_done_items = done
+            self.phase_total_items = total
+
+            if total > 0:
+                self.progress_bar.setMinimum(0)
+                self.progress_bar.setMaximum(total)
+                self.progress_bar.setValue(min(done, total))
+                self.progress_bar.setFormat("%v / %m (%p%)")
+                self.progress_text_label.setText(f"{min(done, total)} / {total}")
+                if self._is_running():
+                    self.status_label.setText(
+                        f"Running: {self.current_phase} ({min(done, total)}/{total})"
+                    )
+            else:
+                self.progress_bar.setMinimum(0)
+                self.progress_bar.setMaximum(100)
+                self.progress_bar.setValue(0)
+                self.progress_bar.setFormat("%p%")
+                self.progress_text_label.setText("0 / 0")
+                if self._is_running():
+                    self.status_label.setText(f"Running: {self.current_phase}")
+
+        def _init_progress_for_phase(self, phase: str) -> None:
+            self._stitch_chunk_total = 0
+            self._stitch_chunk_done = 0
+            self._stitch_done_before_chunk = 0
+
+            if phase == "yolo":
+                total = self._count_matching_files(
+                    Path(self.images_dir_edit.text().strip()),
+                    (".jpg", ".jpeg", ".png"),
+                )
+                self._set_phase_progress(0, total)
+                return
+
+            if phase == "stitch":
+                total = self._count_matching_files(
+                    Path(self.masks_dir_edit.text().strip()),
+                    (".png",),
+                )
+                self._set_phase_progress(0, total)
+                return
+
+            self._set_phase_progress(0, 0)
+
+        def _track_progress_from_line(self, line: str) -> None:
+            if self.current_phase == "yolo":
+                if _YOLO_LINE_RE.match(line):
+                    next_done = self.phase_done_items + 1
+                    self._set_phase_progress(next_done, self.phase_total_items)
+                return
+
+            if self.current_phase != "stitch":
+                return
+
+            task_match = _STITCH_TASK_RE.match(line)
+            if task_match:
+                chunk_total = int(task_match.group(1))
+                if self._stitch_chunk_total > 0:
+                    self._stitch_done_before_chunk += self._stitch_chunk_total
+                self._stitch_chunk_total = chunk_total
+                self._stitch_chunk_done = 0
+                self._set_phase_progress(
+                    self._stitch_done_before_chunk,
+                    self.phase_total_items,
+                )
+                return
+
+            tqdm_match = _STITCH_TQDM_RE.search(line)
+            if not tqdm_match:
+                return
+
+            chunk_done = int(tqdm_match.group(1))
+            chunk_total = int(tqdm_match.group(2))
+            if chunk_total <= 0:
+                return
+
+            if self._stitch_chunk_total == 0:
+                self._stitch_chunk_total = chunk_total
+
+            # tqdm output can reset when moving to the next directory.
+            if chunk_done < self._stitch_chunk_done:
+                self._stitch_done_before_chunk += self._stitch_chunk_total
+                self._stitch_chunk_total = chunk_total
+
+            self._stitch_chunk_done = chunk_done
+            self._set_phase_progress(
+                self._stitch_done_before_chunk + self._stitch_chunk_done,
+                self.phase_total_items,
+            )
 
         def _refresh_action_buttons(self) -> None:
             if self._is_running():
@@ -282,6 +411,7 @@ if QMainWindow is not None:
             phase, cmd = self.pending_steps.pop(0)
             self.current_phase = phase
             self._process_buffer = ""
+            self._init_progress_for_phase(phase)
             self._append_log("$ " + " ".join(cmd))
 
             proc = QProcess(self)
@@ -308,6 +438,7 @@ if QMainWindow is not None:
                 line = line.rstrip("\r")
                 if line:
                     self._append_log(line)
+                    self._track_progress_from_line(line)
 
         def _on_process_error(self, _error) -> None:
             if self.proc is None:
@@ -324,6 +455,8 @@ if QMainWindow is not None:
 
             phase = self.current_phase
             if exit_code == 0:
+                if self.phase_total_items > 0:
+                    self._set_phase_progress(self.phase_total_items, self.phase_total_items)
                 self._append_log(f"[{phase}] completed successfully")
                 self.proc = None
                 if self.pending_steps:
