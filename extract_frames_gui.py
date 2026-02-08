@@ -179,11 +179,9 @@ if QMainWindow is not None:
             form_layout.addRow("Analysis Tools", meta_row)
 
             self.video_info_label = QLabel("Video: -")
-            self.video_info_label.setStyleSheet("color: #333;")
             form_layout.addRow("Video Info", self.video_info_label)
 
             self.estimate_label = QLabel()
-            self.estimate_label.setStyleSheet("color: #333;")
             self.estimate_label.setWordWrap(True)
             self._refresh_estimate_label()
             form_layout.addRow("Estimated Output", self.estimate_label)
