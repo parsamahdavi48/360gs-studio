@@ -38,6 +38,7 @@ Python 3.11 が無い場合、`setup_windows.bat` は `winget` で Python 3.11.8
 ```bat
 setup_windows.bat
 start_extract_frames_gui.bat
+start_mask_tools_gui.bat
 ```
 
 ## 各スクリプトの概要
@@ -60,6 +61,11 @@ Metashapeが出力する**360度画像用**xmlファイルからtransforms.json�
 360度画像内の人物を検知してマスクを生成します。<br>
 [→詳細を見る](doc/yolo_mask.ja.md)<br>
 ![マスク例](images/yolo_mask.png)
+
+### mask_tools_gui.py
+
+マスク生成ワークフロー（`yolo_mask.py` + `stitch_mask.py`）をまとめて実行するGUIです。<br>
+[→詳細を見る](doc/mask_tools_gui.ja.md)<br>
 
 ### extract_frames.py
 

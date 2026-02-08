@@ -39,6 +39,7 @@ If Python 3.11 is missing, `setup_windows.bat` tries to install Python 3.11.8 vi
 ```bat
 setup_windows.bat
 start_extract_frames_gui.bat
+start_mask_tools_gui.bat
 ```
 
 ## Summary of scripts
@@ -60,6 +61,11 @@ See details: [doc/stitch_mask.md](doc/stitch_mask.md)<br>
 Detect people in 360° images and generate mask PNGs.<br>
 See details: [doc/yolo_mask.md](doc/yolo_mask.md)<br>
 ![mask example](images/yolo_mask.png)
+
+### `mask_tools_gui.py`
+
+GUI wrapper for mask generation workflow (`yolo_mask.py` + `stitch_mask.py`).<br>
+See details: [doc/mask_tools_gui.md](doc/mask_tools_gui.md)
 
 ### `extract_frames.py`
 
