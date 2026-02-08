@@ -30,6 +30,7 @@ try:
         QPlainTextEdit,
         QPushButton,
         QSlider,
+        QTabWidget,
         QVBoxLayout,
         QWidget,
     )
@@ -54,6 +55,7 @@ except Exception as e:  # pragma: no cover - environment-dependent import
     QPlainTextEdit = None
     QPushButton = None
     QSlider = None
+    QTabWidget = None
     QVBoxLayout = None
     QWidget = None
     _PYSIDE_IMPORT_ERROR = e
@@ -73,6 +75,8 @@ _PROFILE_LICHTFELD = "lichtfeld"
 _PROFILE_CUSTOM = "custom"
 _VIEW_MODE_CUSTOM = "custom_views"
 _VIEW_MODE_CUBE6 = "cube6"
+_TASK_MODE_CUBEMAP = "cubemap"
+_TASK_MODE_COLMAP = "colmap"
 
 
 def _normalize_angle(angle_deg: float) -> float:
@@ -340,6 +344,86 @@ if QMainWindow is not None:
 
             layout.addLayout(form)
 
+            self.workflow_tabs = QTabWidget()
+            cubemap_tab = QWidget()
+            cubemap_tab_layout = QVBoxLayout(cubemap_tab)
+            cubemap_hint = QLabel(
+                "Cubemap tab: Run existing preprocess + cubemap conversion pipeline.\n"
+                "COLMAP Rig tab: Export COLMAP rig dataset and optionally run SfM."
+            )
+            cubemap_hint.setWordWrap(True)
+            cubemap_tab_layout.addWidget(cubemap_hint)
+            cubemap_tab_layout.addStretch(1)
+            self.workflow_tabs.addTab(cubemap_tab, "Cubemap")
+
+            colmap_tab = QWidget()
+            colmap_form = QFormLayout(colmap_tab)
+
+            self.colmap_output_dir_edit = QLineEdit()
+            self.colmap_output_dir_edit.textChanged.connect(lambda _: self._refresh_action_buttons())
+            self.colmap_output_dir_edit.textChanged.connect(lambda _: self._update_colmap_workspace_hint())
+            browse_colmap_output_btn = QPushButton("Browse")
+            browse_colmap_output_btn.clicked.connect(self._browse_colmap_output_dir)
+            row = QHBoxLayout()
+            row.addWidget(self.colmap_output_dir_edit)
+            row.addWidget(browse_colmap_output_btn)
+            colmap_form.addRow("COLMAP Output Root", row)
+
+            self.colmap_repo_dir_edit = QLineEdit()
+            browse_colmap_repo_btn = QPushButton("Browse")
+            browse_colmap_repo_btn.clicked.connect(self._browse_colmap_repo_dir)
+            row = QHBoxLayout()
+            row.addWidget(self.colmap_repo_dir_edit)
+            row.addWidget(browse_colmap_repo_btn)
+            colmap_form.addRow("COLMAP Repo (optional)", row)
+
+            self.colmap_binary_edit = QLineEdit()
+            self.colmap_binary_edit.textChanged.connect(lambda _: self._refresh_action_buttons())
+            browse_colmap_bin_btn = QPushButton("Browse")
+            browse_colmap_bin_btn.clicked.connect(self._browse_colmap_binary)
+            auto_colmap_bin_btn = QPushButton("Auto Detect")
+            auto_colmap_bin_btn.clicked.connect(self._auto_detect_colmap_binary)
+            row = QHBoxLayout()
+            row.addWidget(self.colmap_binary_edit)
+            row.addWidget(browse_colmap_bin_btn)
+            row.addWidget(auto_colmap_bin_btn)
+            colmap_form.addRow("COLMAP Binary", row)
+
+            self.colmap_matcher_combo = QComboBox()
+            self.colmap_matcher_combo.addItem("Exhaustive Matcher", "exhaustive")
+            self.colmap_matcher_combo.addItem("Sequential Matcher", "sequential")
+            colmap_form.addRow("Matcher", self.colmap_matcher_combo)
+
+            self.colmap_run_until_combo = QComboBox()
+            self.colmap_run_until_combo.addItem("Export Only", "export")
+            self.colmap_run_until_combo.addItem("Feature Extractor", "feature")
+            self.colmap_run_until_combo.addItem("Rig Configurator", "rig")
+            self.colmap_run_until_combo.addItem("Matcher", "match")
+            self.colmap_run_until_combo.addItem("Mapper (SfM)", "mapper")
+            self.colmap_run_until_combo.setCurrentIndex(4)
+            self.colmap_run_until_combo.currentIndexChanged.connect(lambda _: self._refresh_action_buttons())
+            colmap_form.addRow("Run Until", self.colmap_run_until_combo)
+
+            self.colmap_use_masks_check = QCheckBox("Use masks in feature extraction")
+            self.colmap_use_masks_check.setChecked(True)
+            colmap_form.addRow("Mask Usage", self.colmap_use_masks_check)
+
+            self.colmap_invert_masks_check = QCheckBox("Invert exported masks")
+            self.colmap_invert_masks_check.setChecked(False)
+            colmap_form.addRow("Mask Export", self.colmap_invert_masks_check)
+
+            self.colmap_refine_sensor_check = QCheckBox("Mapper: refine sensor from rig")
+            self.colmap_refine_sensor_check.setChecked(False)
+            colmap_form.addRow("Mapper Option", self.colmap_refine_sensor_check)
+
+            self.colmap_workspace_hint = QLabel("")
+            self.colmap_workspace_hint.setWordWrap(True)
+            colmap_form.addRow("Output Layout", self.colmap_workspace_hint)
+
+            self.workflow_tabs.addTab(colmap_tab, "COLMAP Rig SfM")
+            self.workflow_tabs.currentChanged.connect(self._on_workflow_tab_changed)
+            layout.addWidget(self.workflow_tabs)
+
             view_ctrl_row = QHBoxLayout()
             self.apply_pitch_btn = QPushButton("Apply Pitch Rows")
             self.apply_pitch_btn.clicked.connect(self._apply_pitch_rows)
@@ -406,6 +490,7 @@ if QMainWindow is not None:
             self._on_preprocess_toggle(self.preprocess_enable_check.isChecked())
             self._on_target_profile_changed(self.target_profile_combo.currentIndex())
             self._on_view_mode_changed(self.view_mode_combo.currentIndex())
+            self._on_workflow_tab_changed(self.workflow_tabs.currentIndex())
 
         def _is_running(self) -> bool:
             return self.proc is not None and self.proc.state() != QProcess.NotRunning
@@ -417,15 +502,39 @@ if QMainWindow is not None:
 
         def _set_running_state(self, running: bool, status_text: str) -> None:
             self.status_label.setText(status_text)
-            self.run_button.setEnabled(not running and Path(self.scene_dir_edit.text().strip()).is_dir())
-            self.cancel_button.setEnabled(running)
+            if running:
+                self.run_button.setEnabled(False)
+                self.cancel_button.setEnabled(True)
+            else:
+                self.cancel_button.setEnabled(False)
+                self._refresh_action_buttons()
 
         def _refresh_action_buttons(self) -> None:
+            if not hasattr(self, "run_button") or not hasattr(self, "cancel_button"):
+                return
             if self._is_running():
                 self.run_button.setEnabled(False)
                 self.cancel_button.setEnabled(True)
                 return
-            self.run_button.setEnabled(Path(self.scene_dir_edit.text().strip()).is_dir())
+            scene_ok = Path(self.scene_dir_edit.text().strip()).is_dir()
+            if self._task_mode_id() == _TASK_MODE_COLMAP:
+                if not hasattr(self, "colmap_output_dir_edit") or not hasattr(self, "colmap_binary_edit"):
+                    self.run_button.setEnabled(scene_ok)
+                    self.cancel_button.setEnabled(False)
+                    return
+                output_ok = bool(self.colmap_output_dir_edit.text().strip())
+                run_until = self._colmap_run_until_id()
+                needs_colmap = run_until != "export"
+                colmap_ok = True
+                if needs_colmap:
+                    colmap_text = self.colmap_binary_edit.text().strip()
+                    if colmap_text:
+                        colmap_ok = Path(colmap_text).is_file()
+                    else:
+                        colmap_ok = self._guess_colmap_binary() is not None
+                self.run_button.setEnabled(scene_ok and output_ok and colmap_ok)
+            else:
+                self.run_button.setEnabled(scene_ok)
             self.cancel_button.setEnabled(False)
 
         def _target_profile_id(self) -> str:
@@ -440,6 +549,22 @@ if QMainWindow is not None:
                 return data
             return _VIEW_MODE_CUSTOM
 
+        def _task_mode_id(self) -> str:
+            if not hasattr(self, "workflow_tabs") or self.workflow_tabs is None:
+                return _TASK_MODE_CUBEMAP
+            idx = self.workflow_tabs.currentIndex()
+            if idx == 1:
+                return _TASK_MODE_COLMAP
+            return _TASK_MODE_CUBEMAP
+
+        def _colmap_run_until_id(self) -> str:
+            if not hasattr(self, "colmap_run_until_combo"):
+                return "mapper"
+            data = self.colmap_run_until_combo.currentData()
+            if isinstance(data, str) and data:
+                return data
+            return "mapper"
+
         def _effective_bundle_profile(self) -> str:
             profile = self._target_profile_id()
             if profile in {_PROFILE_POSTSHOT, _PROFILE_LICHTFELD}:
@@ -447,6 +572,51 @@ if QMainWindow is not None:
             if self.no_transform_check.isChecked() or self.ms_use_ply_check.isChecked():
                 return _PROFILE_LICHTFELD
             return _PROFILE_POSTSHOT
+
+        def _on_workflow_tab_changed(self, _index: int) -> None:
+            if not hasattr(self, "run_button"):
+                return
+            is_colmap = self._task_mode_id() == _TASK_MODE_COLMAP
+            self.run_button.setText("Run COLMAP Rig Pipeline" if is_colmap else "Run Cubemap Convert")
+            self._update_colmap_workspace_hint()
+            self._refresh_action_buttons()
+
+        @staticmethod
+        def _guess_colmap_binary(repo_dir: Path | None = None) -> Path | None:
+            candidates: list[Path] = []
+            if repo_dir is not None and str(repo_dir).strip():
+                root = repo_dir.resolve()
+                candidates.extend(
+                    [
+                        root / "build" / "src" / "exe" / "colmap",
+                        root / "build" / "src" / "exe" / "Release" / "colmap.exe",
+                        root / "build" / "src" / "colmap",
+                        root / "build" / "src" / "colmap.exe",
+                        root / "build" / "src" / "exe" / "Debug" / "colmap.exe",
+                    ]
+                )
+
+            which_hit = shutil.which("colmap")
+            if which_hit:
+                candidates.append(Path(which_hit))
+
+            for c in candidates:
+                if c.is_file():
+                    return c
+            return None
+
+        def _update_colmap_workspace_hint(self) -> None:
+            if not hasattr(self, "colmap_workspace_hint"):
+                return
+            root = Path(self.colmap_output_dir_edit.text().strip() or ".")
+            dataset = root / "dataset"
+            workspace = root / "workspace"
+            self.colmap_workspace_hint.setText(
+                "All COLMAP files are kept under this root:\n"
+                f"- {dataset}\n"
+                f"- {workspace / 'database.db'}\n"
+                f"- {workspace / 'sparse'}"
+            )
 
         def _on_view_mode_changed(self, _index: int) -> None:
             is_custom = self._view_mode_id() == _VIEW_MODE_CUSTOM
@@ -514,6 +684,40 @@ if QMainWindow is not None:
             path = QFileDialog.getExistingDirectory(self, "Select output directory")
             if path:
                 self.output_dir_edit.setText(path)
+
+        def _browse_colmap_output_dir(self) -> None:
+            path = QFileDialog.getExistingDirectory(self, "Select COLMAP output root")
+            if path:
+                self.colmap_output_dir_edit.setText(path)
+                self._update_colmap_workspace_hint()
+
+        def _browse_colmap_repo_dir(self) -> None:
+            path = QFileDialog.getExistingDirectory(self, "Select COLMAP repository directory")
+            if path:
+                self.colmap_repo_dir_edit.setText(path)
+
+        def _browse_colmap_binary(self) -> None:
+            path, _ = QFileDialog.getOpenFileName(
+                self,
+                "Select COLMAP binary",
+                "",
+                "Executable files (*.exe *.bin *);;All files (*.*)",
+            )
+            if path:
+                self.colmap_binary_edit.setText(path)
+
+        def _auto_detect_colmap_binary(self) -> None:
+            repo_text = self.colmap_repo_dir_edit.text().strip()
+            repo_dir = Path(repo_text) if repo_text else None
+            hit = self._guess_colmap_binary(repo_dir)
+            if hit is None:
+                QMessageBox.warning(
+                    self,
+                    "COLMAP Not Found",
+                    "Could not auto-detect COLMAP binary from the given repo or PATH.",
+                )
+                return
+            self.colmap_binary_edit.setText(str(hit))
 
         def _browse_mask_dir(self) -> None:
             path = QFileDialog.getExistingDirectory(self, "Select mask directory")
@@ -690,6 +894,12 @@ if QMainWindow is not None:
             self.ms_images_edit.setText(str(scene_dir / "images"))
             self.ms_xml_edit.setText(str(self._guess_metashape_xml(scene_dir)))
             self.ms_ply_edit.setText(self._guess_metashape_ply(scene_dir))
+            self.colmap_output_dir_edit.setText(str(scene_dir / "colmap_rig"))
+            if not self.colmap_binary_edit.text().strip():
+                hit = self._guess_colmap_binary()
+                if hit is not None:
+                    self.colmap_binary_edit.setText(str(hit))
+            self._update_colmap_workspace_hint()
             self._refresh_preview_image_list(prefer_current=False)
             self._refresh_action_buttons()
             self._update_output_estimate()
@@ -1388,6 +1598,102 @@ if QMainWindow is not None:
 
             return cmd
 
+        def _build_colmap_export_cmd(self) -> list[str]:
+            script = self.base_dir / "colmap_rig_export.py"
+            if not script.exists():
+                raise FileNotFoundError(f"colmap_rig_export.py not found: {script}")
+
+            input_dir = Path(self.scene_dir_edit.text().strip() or ".")
+            if not input_dir.is_dir():
+                raise ValueError(f"Scene directory not found: {input_dir}")
+
+            output_dir_text = self.colmap_output_dir_edit.text().strip()
+            if not output_dir_text:
+                raise ValueError("COLMAP Output Root is empty")
+            output_dir = Path(output_dir_text)
+
+            all_views = self._collect_views(include_disabled=True)
+            enabled_count = sum(1 for v in all_views if v["enabled"])
+            if enabled_count <= 0:
+                raise ValueError("At least one view must be enabled")
+            if enabled_count > _BLOCK_ENABLED_VIEWS:
+                raise ValueError(
+                    f"Too many enabled views ({enabled_count}). "
+                    f"Reduce to <= {_BLOCK_ENABLED_VIEWS}."
+                )
+
+            views_json = self._write_views_config(output_dir, all_views)
+            json_name = self.json_name_edit.text().strip() or "transforms.json"
+
+            cmd = [
+                sys.executable,
+                str(script),
+                str(input_dir),
+                str(output_dir),
+                "--json",
+                json_name,
+                "--fov",
+                "90",
+                "--views-json",
+                str(views_json),
+            ]
+
+            mask_dir = Path(self.mask_dir_edit.text().strip())
+            if mask_dir.is_dir():
+                cmd.extend(["--mask_dir", str(mask_dir)])
+
+            if self.mask_from_alpha_check.isChecked():
+                cmd.append("--mask_from_alpha")
+            if self.duplicate_check.isChecked():
+                cmd.append("--duplicate")
+            if self.colmap_invert_masks_check.isChecked():
+                cmd.append("--invert_masks")
+            return cmd
+
+        def _build_colmap_pipeline_cmd(self) -> list[str]:
+            script = self.base_dir / "colmap_rig_pipeline.py"
+            if not script.exists():
+                raise FileNotFoundError(f"colmap_rig_pipeline.py not found: {script}")
+
+            output_dir_text = self.colmap_output_dir_edit.text().strip()
+            if not output_dir_text:
+                raise ValueError("COLMAP Output Root is empty")
+
+            colmap_bin = self.colmap_binary_edit.text().strip()
+            if not colmap_bin:
+                hit = self._guess_colmap_binary()
+                if hit is None:
+                    raise ValueError("COLMAP binary is not set and could not be auto-detected from PATH")
+                colmap_bin = str(hit)
+                self.colmap_binary_edit.setText(colmap_bin)
+            elif not Path(colmap_bin).is_file():
+                raise ValueError(f"COLMAP binary not found: {colmap_bin}")
+
+            matcher = self.colmap_matcher_combo.currentData()
+            if not isinstance(matcher, str) or not matcher:
+                matcher = "exhaustive"
+
+            run_until = self._colmap_run_until_id()
+            if run_until not in {"feature", "rig", "match", "mapper"}:
+                raise ValueError(f"Unsupported COLMAP run stage: {run_until}")
+
+            cmd = [
+                sys.executable,
+                str(script),
+                str(output_dir_text),
+                "--colmap_bin",
+                colmap_bin,
+                "--matcher",
+                matcher,
+                "--run_until",
+                run_until,
+            ]
+            if self.colmap_use_masks_check.isChecked():
+                cmd.append("--use_masks")
+            if self.colmap_refine_sensor_check.isChecked():
+                cmd.append("--refine_sensor_from_rig")
+            return cmd
+
         def _start_step_queue(self, steps: list[tuple[str, list[str]]]) -> None:
             if self._is_running():
                 QMessageBox.warning(self, "Busy", "Another process is running.")
@@ -1552,6 +1858,25 @@ if QMainWindow is not None:
                 if reply != QMessageBox.Yes:
                     return
 
+            if self._task_mode_id() == _TASK_MODE_COLMAP:
+                try:
+                    export_cmd = self._build_colmap_export_cmd()
+                except Exception as e:
+                    QMessageBox.critical(self, "Invalid COLMAP Export Input", str(e))
+                    return
+
+                steps: list[tuple[str, list[str]]] = [("colmap_export", export_cmd)]
+                if self._colmap_run_until_id() != "export":
+                    try:
+                        pipeline_cmd = self._build_colmap_pipeline_cmd()
+                    except Exception as e:
+                        QMessageBox.critical(self, "Invalid COLMAP Pipeline Input", str(e))
+                        return
+                    steps.append(("colmap_sfm", pipeline_cmd))
+
+                self._start_step_queue(steps)
+                return
+
             try:
                 self._validate_bundle_requirements()
             except Exception as e:
@@ -1564,7 +1889,7 @@ if QMainWindow is not None:
                 QMessageBox.critical(self, "Invalid Input", str(e))
                 return
 
-            steps: list[tuple[str, list[str]]] = []
+            steps = []
             if self.preprocess_enable_check.isChecked():
                 try:
                     preprocess_cmd = self._build_preprocess_cmd()
