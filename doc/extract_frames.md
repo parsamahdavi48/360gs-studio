@@ -40,6 +40,12 @@ python extract_frames.py input.mp4 ./scene01 \
   --max-gap-sec 2.2
 ```
 
+Estimate only (no image extraction):
+
+```bash
+python extract_frames.py input.mp4 ./scene01 --estimate-only --print-summary-json
+```
+
 ## Outputs
 
 Under `output_dir`:
@@ -61,3 +67,4 @@ Under `output_dir`:
 - Auto blur replacement window uses a conservative default based on FPS and selected minimum gap.
 - `--image-ext jpg` is recommended for speed during iteration.
 - This script does not modify existing mask files.
+- `--estimate-only` runs analysis and selection without creating `images/` or CSV/report files.

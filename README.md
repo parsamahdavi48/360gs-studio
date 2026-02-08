@@ -79,4 +79,5 @@ See details: [doc/apply_frame_decisions.md](doc/apply_frame_decisions.md)
 ### `extract_frames_gui.py`
 
 Wrapper GUI for extraction workflow: run extraction, open review GUI, and export keep images.<br>
+Includes video metadata display (fps/duration/frame count) and estimated output count for current parameters.<br>
 See details: [doc/extract_frames_gui.md](doc/extract_frames_gui.md)

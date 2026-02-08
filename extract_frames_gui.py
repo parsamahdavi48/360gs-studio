@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import subprocess
 import sys
 from pathlib import Path
@@ -55,6 +56,9 @@ if QMainWindow is not None:
             self.base_dir = Path(__file__).resolve().parent
             self.proc: QProcess | None = None
             self.current_phase = ""
+            self._process_buffer = ""
+            self.video_info: dict | None = None
+            self.last_estimate_summary: dict | None = None
 
             self.setWindowTitle("Frame Extractor")
             self.resize(1160, 860)
@@ -91,6 +95,7 @@ if QMainWindow is not None:
             self.fixed_radio = QRadioButton("Fixed Interval")
             self.change_radio.setChecked(True)
             self.change_radio.toggled.connect(self._update_mode_widgets)
+            self.change_radio.toggled.connect(self._mark_estimate_stale)
             row = QHBoxLayout()
             row.addWidget(self.change_radio)
             row.addWidget(self.fixed_radio)
@@ -98,41 +103,71 @@ if QMainWindow is not None:
             form_layout.addRow("Mode", row)
 
             self.interval_sec_edit = QLineEdit("0.5")
+            self.interval_sec_edit.textChanged.connect(self._mark_estimate_stale)
             form_layout.addRow("Fixed Interval (sec)", self.interval_sec_edit)
 
             self.change_threshold_edit = QLineEdit("0.04")
+            self.change_threshold_edit.textChanged.connect(self._mark_estimate_stale)
             form_layout.addRow("Change Threshold", self.change_threshold_edit)
 
             self.min_gap_edit = QLineEdit("0.25")
+            self.min_gap_edit.textChanged.connect(self._mark_estimate_stale)
             form_layout.addRow("Min Gap (sec)", self.min_gap_edit)
 
             self.max_gap_edit = QLineEdit("2.0")
+            self.max_gap_edit.textChanged.connect(self._mark_estimate_stale)
             form_layout.addRow("Max Gap (sec)", self.max_gap_edit)
 
             self.analysis_width_edit = QLineEdit("960")
+            self.analysis_width_edit.textChanged.connect(self._mark_estimate_stale)
             form_layout.addRow("Analysis Width", self.analysis_width_edit)
 
             self.blur_percentile_edit = QLineEdit("25.0")
+            self.blur_percentile_edit.textChanged.connect(self._mark_estimate_stale)
             form_layout.addRow("Blur Percentile", self.blur_percentile_edit)
 
             self.blur_window_edit = QLineEdit("0")
+            self.blur_window_edit.textChanged.connect(self._mark_estimate_stale)
             form_layout.addRow("Blur Window (frames)", self.blur_window_edit)
 
             self.image_ext_combo = QComboBox()
             self.image_ext_combo.addItems(["jpg", "png"])
+            self.image_ext_combo.currentIndexChanged.connect(self._mark_estimate_stale)
             form_layout.addRow("Image Ext", self.image_ext_combo)
 
             self.jpg_quality_edit = QLineEdit("2")
+            self.jpg_quality_edit.textChanged.connect(self._mark_estimate_stale)
             form_layout.addRow("JPEG Quality (ffmpeg -q:v)", self.jpg_quality_edit)
 
             self.ffmpeg_edit = QLineEdit("ffmpeg")
+            self.ffmpeg_edit.textChanged.connect(self._mark_estimate_stale)
             form_layout.addRow("ffmpeg", self.ffmpeg_edit)
 
             self.ffprobe_edit = QLineEdit("ffprobe")
+            self.ffprobe_edit.textChanged.connect(self._mark_estimate_stale)
             form_layout.addRow("ffprobe", self.ffprobe_edit)
 
             self.metashape_output_edit = QLineEdit("metashape_images")
             form_layout.addRow("Metashape Output Folder", self.metashape_output_edit)
+
+            meta_row = QHBoxLayout()
+            self.load_info_button = QPushButton("Load Video Info")
+            self.load_info_button.clicked.connect(lambda: self._load_video_info(show_error_popup=True))
+            meta_row.addWidget(self.load_info_button)
+
+            self.estimate_button = QPushButton("Estimate Count")
+            self.estimate_button.clicked.connect(self._run_estimate)
+            meta_row.addWidget(self.estimate_button)
+            meta_row.addStretch(1)
+            form_layout.addRow("Analysis Tools", meta_row)
+
+            self.video_info_label = QLabel("Video: -")
+            self.video_info_label.setStyleSheet("color: #333;")
+            form_layout.addRow("Video Info", self.video_info_label)
+
+            self.estimate_label = QLabel("Estimate: -")
+            self.estimate_label.setStyleSheet("color: #333;")
+            form_layout.addRow("Estimated Output", self.estimate_label)
 
             layout.addLayout(form_layout)
 
@@ -179,14 +214,19 @@ if QMainWindow is not None:
                 self.run_button.setEnabled(False)
                 self.review_button.setEnabled(False)
                 self.export_button.setEnabled(False)
+                self.load_info_button.setEnabled(False)
+                self.estimate_button.setEnabled(False)
                 return
 
-            self.run_button.setEnabled(True)
+            has_video = Path(self.input_video_edit.text().strip()).exists()
+            self.run_button.setEnabled(has_video)
             scene_dir = Path(self.scene_dir_edit.text().strip() or ".")
             csv_path = scene_dir / "selected_frames.csv"
             has_csv = csv_path.exists()
             self.review_button.setEnabled(has_csv)
             self.export_button.setEnabled(has_csv)
+            self.load_info_button.setEnabled(has_video)
+            self.estimate_button.setEnabled(has_video)
 
         def _append_log(self, text: str) -> None:
             self.log_text.appendPlainText(text)
@@ -199,6 +239,8 @@ if QMainWindow is not None:
                 self.run_button.setEnabled(False)
                 self.review_button.setEnabled(False)
                 self.export_button.setEnabled(False)
+                self.load_info_button.setEnabled(False)
+                self.estimate_button.setEnabled(False)
             else:
                 self._refresh_action_buttons()
 
@@ -211,11 +253,125 @@ if QMainWindow is not None:
             )
             if path:
                 self.input_video_edit.setText(path)
+                self._load_video_info(show_error_popup=False)
+                self._mark_estimate_stale()
 
         def _browse_scene_dir(self) -> None:
             path = QFileDialog.getExistingDirectory(self, "Select scene directory")
             if path:
                 self.scene_dir_edit.setText(path)
+
+        def _mark_estimate_stale(self, *_args) -> None:
+            self.last_estimate_summary = None
+            self.estimate_label.setText("Estimate: - (stale)")
+
+        @staticmethod
+        def _parse_fraction(value: str) -> float:
+            if not value:
+                return 0.0
+            if "/" in value:
+                num, den = value.split("/", 1)
+                den_f = float(den)
+                if den_f == 0:
+                    return 0.0
+                return float(num) / den_f
+            return float(value)
+
+        @staticmethod
+        def _format_duration(sec: float) -> str:
+            if sec < 0:
+                sec = 0
+            whole = int(sec)
+            h = whole // 3600
+            m = (whole % 3600) // 60
+            s = whole % 60
+            return f"{h:02d}:{m:02d}:{s:02d}"
+
+        def _probe_video_info(self) -> dict:
+            input_video = self.input_video_edit.text().strip()
+            ffprobe_bin = self.ffprobe_edit.text().strip() or "ffprobe"
+
+            if not input_video:
+                raise ValueError("Input video is required")
+            if not Path(input_video).exists():
+                raise ValueError(f"Input video not found: {input_video}")
+
+            cmd = [
+                ffprobe_bin,
+                "-v",
+                "error",
+                "-select_streams",
+                "v:0",
+                "-show_entries",
+                "stream=width,height,avg_frame_rate,r_frame_rate,nb_frames,duration",
+                "-show_entries",
+                "format=duration",
+                "-of",
+                "json",
+                input_video,
+            ]
+            proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+            if proc.returncode != 0:
+                raise RuntimeError(proc.stderr.strip() or "ffprobe failed")
+
+            data = json.loads(proc.stdout)
+            streams = data.get("streams", [])
+            if not streams:
+                raise RuntimeError("No video stream found")
+
+            stream = streams[0]
+            width = int(stream.get("width", 0))
+            height = int(stream.get("height", 0))
+
+            fps = self._parse_fraction(stream.get("avg_frame_rate", "0"))
+            if fps <= 0:
+                fps = self._parse_fraction(stream.get("r_frame_rate", "0"))
+
+            duration = float(stream.get("duration") or data.get("format", {}).get("duration") or 0.0)
+            nb_frames_raw = stream.get("nb_frames")
+            total_frames = int(nb_frames_raw) if nb_frames_raw and str(nb_frames_raw).isdigit() else 0
+
+            if fps <= 0 and duration > 0 and total_frames > 0:
+                fps = total_frames / duration
+            if fps <= 0:
+                raise RuntimeError("Could not determine FPS from video")
+            if total_frames <= 0 and duration > 0:
+                total_frames = max(1, int(round(duration * fps)))
+
+            return {
+                "width": width,
+                "height": height,
+                "fps": fps,
+                "duration_sec": duration,
+                "total_frames": total_frames,
+            }
+
+        def _update_video_info_label(self) -> None:
+            if not self.video_info:
+                self.video_info_label.setText("Video: -")
+                return
+
+            info = self.video_info
+            duration_str = self._format_duration(float(info["duration_sec"]))
+            self.video_info_label.setText(
+                f"{info['width']}x{info['height']}, {info['fps']:.3f} fps, "
+                f"{duration_str} ({info['duration_sec']:.2f}s), {info['total_frames']} frames"
+            )
+
+        def _load_video_info(self, show_error_popup: bool = True) -> bool:
+            try:
+                self.video_info = self._probe_video_info()
+                self._update_video_info_label()
+                self._append_log("[probe] loaded video metadata")
+                return True
+            except Exception as e:
+                self.video_info = None
+                self._update_video_info_label()
+                if show_error_popup:
+                    QMessageBox.critical(self, "Video Info Error", str(e))
+                else:
+                    self._append_log(f"[probe] failed: {e}")
+                return False
 
         def _build_extract_cmd(self) -> list[str]:
             input_video = self.input_video_edit.text().strip()
@@ -271,12 +427,18 @@ if QMainWindow is not None:
 
             return cmd
 
+        def _build_estimate_cmd(self) -> list[str]:
+            cmd = self._build_extract_cmd()
+            cmd.extend(["--estimate-only", "--print-summary-json"])
+            return cmd
+
         def _start_process(self, cmd: list[str], phase: str) -> None:
             if self._is_running():
                 QMessageBox.warning(self, "Busy", "Another process is running.")
                 return
 
             self.current_phase = phase
+            self._process_buffer = ""
             self._append_log("$ " + " ".join(cmd))
 
             proc = QProcess(self)
@@ -295,8 +457,48 @@ if QMainWindow is not None:
             if self.proc is None:
                 return
             data = bytes(self.proc.readAllStandardOutput()).decode("utf-8", errors="replace")
-            for line in data.splitlines():
-                self._append_log(line)
+            self._process_buffer += data
+            while "\n" in self._process_buffer:
+                line, self._process_buffer = self._process_buffer.split("\n", 1)
+                self._handle_process_line(line.rstrip("\r"))
+
+        def _handle_process_line(self, line: str) -> None:
+            if not line:
+                return
+            self._append_log(line)
+
+            prefix = "SUMMARY_JSON:"
+            if line.startswith(prefix):
+                payload = line[len(prefix):]
+                try:
+                    summary = json.loads(payload)
+                except Exception as e:
+                    self._append_log(f"[summary] parse failed: {e}")
+                    return
+                self.last_estimate_summary = summary
+                self._apply_summary(summary)
+
+        def _apply_summary(self, summary: dict) -> None:
+            video = summary.get("video", {})
+            if video:
+                self.video_info = {
+                    "width": int(video.get("width", 0)),
+                    "height": int(video.get("height", 0)),
+                    "fps": float(video.get("fps", 0.0)),
+                    "duration_sec": float(video.get("duration_sec", 0.0)),
+                    "total_frames": int(video.get("total_frames", 0)),
+                }
+                self._update_video_info_label()
+
+            result = summary.get("result", {})
+            selected = int(result.get("selected_count", 0))
+            total = int(video.get("total_frames", 0))
+            ratio = (selected / total * 100.0) if total > 0 else 0.0
+            replaced = int(result.get("replaced_count", 0))
+            fallback = int(result.get("fallback_keep_count", 0))
+            self.estimate_label.setText(
+                f"{selected} frames ({ratio:.1f}% of total, replaced={replaced}, fallback={fallback})"
+            )
 
         def _on_process_error(self, _error) -> None:
             if self.proc is None:
@@ -304,6 +506,10 @@ if QMainWindow is not None:
             self._append_log(f"[{self.current_phase}] process error occurred")
 
         def _on_process_finished(self, exit_code: int, _status) -> None:
+            if self._process_buffer:
+                self._handle_process_line(self._process_buffer.rstrip("\r"))
+                self._process_buffer = ""
+
             phase = self.current_phase
             if exit_code == 0:
                 self._append_log(f"[{phase}] completed successfully")
@@ -313,6 +519,19 @@ if QMainWindow is not None:
                 self._set_running_state(False, f"Failed: {phase}")
 
             self.proc = None
+
+        def _run_estimate(self) -> None:
+            if not self.video_info:
+                if not self._load_video_info(show_error_popup=True):
+                    return
+
+            try:
+                cmd = self._build_estimate_cmd()
+            except Exception as e:
+                QMessageBox.critical(self, "Invalid Input", str(e))
+                return
+
+            self._start_process(cmd, "estimate")
 
         def _run_extraction(self) -> None:
             try:

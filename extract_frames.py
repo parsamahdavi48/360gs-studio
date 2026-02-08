@@ -480,6 +480,48 @@ def write_report(
         json.dump(report, f, indent=2)
 
 
+def build_summary(
+    args: argparse.Namespace,
+    video_info: VideoInfo,
+    analysis_w: int,
+    analysis_h: int,
+    selected_rows: List[dict],
+    min_gap_frames: int,
+    window_frames: int,
+) -> dict:
+    return {
+        "input_video": str(Path(args.input_video).resolve()),
+        "mode": args.mode,
+        "video": {
+            "width": video_info.width,
+            "height": video_info.height,
+            "fps": video_info.fps,
+            "duration_sec": video_info.duration,
+            "total_frames": video_info.total_frames,
+        },
+        "analysis": {
+            "width": analysis_w,
+            "height": analysis_h,
+            "min_gap_frames": min_gap_frames,
+            "blur_window_frames": window_frames,
+        },
+        "params": {
+            "interval_sec": args.interval_sec,
+            "change_threshold": args.change_threshold,
+            "min_gap_sec": args.min_gap_sec,
+            "max_gap_sec": args.max_gap_sec,
+            "analysis_width": args.analysis_width,
+            "blur_percentile": args.blur_percentile,
+            "blur_window_frames": args.blur_window_frames,
+        },
+        "result": {
+            "selected_count": len(selected_rows),
+            "replaced_count": sum(1 for r in selected_rows if r["status"] == "replaced"),
+            "fallback_keep_count": sum(1 for r in selected_rows if r["status"] == "fallback_keep"),
+        },
+    }
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Extract equirectangular frames via FFmpeg with change-based selection and blur replacement."
@@ -527,6 +569,16 @@ def parse_args() -> argparse.Namespace:
 
     parser.add_argument("--ffmpeg", default="ffmpeg", help="Path to ffmpeg executable")
     parser.add_argument("--ffprobe", default="ffprobe", help="Path to ffprobe executable")
+    parser.add_argument(
+        "--estimate-only",
+        action="store_true",
+        help="Run probe/analysis/selection and print estimated selected count without image extraction",
+    )
+    parser.add_argument(
+        "--print-summary-json",
+        action="store_true",
+        help="Print one-line JSON summary prefixed with SUMMARY_JSON:",
+    )
 
     return parser.parse_args()
 
@@ -625,6 +677,24 @@ def main() -> None:
 
     final_indices = [r["final_index"] for r in enriched_rows]
 
+    summary = build_summary(
+        args=args,
+        video_info=video_info,
+        analysis_w=analysis_w,
+        analysis_h=analysis_h,
+        selected_rows=enriched_rows,
+        min_gap_frames=min_gap_frames,
+        window_frames=window_frames,
+    )
+
+    if args.estimate_only:
+        print(f"Estimated selected frames: {summary['result']['selected_count']}")
+        print(f"Estimated replaced frames: {summary['result']['replaced_count']}")
+        print(f"Estimated fallback keep frames: {summary['result']['fallback_keep_count']}")
+        if args.print_summary_json:
+            print("SUMMARY_JSON:" + json.dumps(summary, ensure_ascii=False))
+        return
+
     try:
         extract_selected_frames(
             input_video,
@@ -660,6 +730,8 @@ def main() -> None:
     print(f"Images: {images_dir}")
     print(f"Selection CSV: {csv_path}")
     print(f"Report: {report_path}")
+    if args.print_summary_json:
+        print("SUMMARY_JSON:" + json.dumps(summary, ensure_ascii=False))
 
 
 if __name__ == "__main__":

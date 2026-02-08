@@ -10,6 +10,11 @@ It provides three actions:
 2. Open visual review (`review_frames.py`)
 3. Export keep frames for Metashape (`apply_frame_decisions.py`)
 
+It also provides analysis helpers:
+
+- `Load Video Info`: shows resolution, FPS, duration, and total frames (via `ffprobe`)
+- `Estimate Count`: runs `extract_frames.py --estimate-only` and shows estimated output frame count for current parameters
+
 Requirements:
 
 - `PySide6`
