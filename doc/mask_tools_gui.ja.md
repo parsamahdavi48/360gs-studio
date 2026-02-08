@@ -36,6 +36,12 @@ start_mask_tools_gui.bat
   - `yolo_mask.py --expand`
 - `YOLO Add Ext`:
   - `yolo_mask.py --add_ext`
+- `YOLO Classes`:
+  - 通常は折りたたみ表示。展開するとクラスをチェックで選択できます。
+  - 数値IDを覚えなくても `id: 名前` で選択可能です。
+  - 既定は `person`（`id=0`）のみ。
+  - プリセット: `Person only` / `People + Vehicles` / `All` / `Clear`
+  - `yolo_mask.py --classes` に渡されます。
 - `Stitch FOV (deg)`:
   - `stitch_mask.py --fov`
 - `Stitch Workers`:

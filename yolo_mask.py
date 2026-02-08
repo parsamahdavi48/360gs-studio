@@ -15,6 +15,12 @@ parser.add_argument("output_dir", nargs="?", help="Output directory for storing 
 parser.add_argument("--add_ext", action="store_true", help="Add a file extension forcely (ex: hoge.jpg.png)")
 parser.add_argument("--level", type=int, default=1, help="Detection level [0:3] (default=1)")
 parser.add_argument("--expand", type=int, default=2, help="Expand pixels of detected areas (default=2 pixels)")
+parser.add_argument(
+    "--classes",
+    type=str,
+    default="0",
+    help="YOLO class ids (comma-separated, ex: '0,2,3'; default='0' person)",
+)
 args = parser.parse_args()
 
 INPUT_DIR = args.images_dir if args.images_dir else "images"
@@ -31,6 +37,26 @@ if not os.path.isdir(INPUT_DIR):
 YOLO_MODEL = "yolo26l.pt" if LEVEL >= 2 else "yolo26m.pt"
 SAM_MODEL = "sam2.1_l.pt" #"sam2.1_b.pt"
 
+def parse_classes(text):
+    tokens = [t.strip() for t in str(text).split(",") if t.strip()]
+    if len(tokens) == 0:
+        raise ValueError("No class ids were provided")
+    ids = []
+    for tok in tokens:
+        cls_id = int(tok)
+        if cls_id < 0:
+            raise ValueError(f"Class id must be >= 0: {cls_id}")
+        ids.append(cls_id)
+    return sorted(set(ids))
+
+try:
+    CLASS_IDS = parse_classes(args.classes)
+except Exception as e:
+    print(f"Invalid --classes value: {e}")
+    sys.exit(1)
+
+print("YOLO classes:", ",".join(str(x) for x in CLASS_IDS))
+
 px, py = None, None
 ux, uy = None, None
 is_bottom = None
@@ -41,8 +67,8 @@ is_bottom = None
 def add_yolo_mask(img, mask, has_mask=0):
     global yolo, sam
 
-    # ---------- YOLO: 人物検出 ----------
-    results = yolo(img, conf=0.3, classes=[0], verbose=False)  # class=0 → person
+    # ---------- YOLO: 指定クラス検出 ----------
+    results = yolo(img, conf=0.3, classes=CLASS_IDS, verbose=False)
 
     bboxes = []
     for r in results:
@@ -255,5 +281,4 @@ else:
     fname = os.path.basename(INPUT_DIR)
     input_dir = os.path.dirname(INPUT_DIR)
     process_file(input_dir, OUTPUT_DIR, fname, ADD_EXT)
-
 

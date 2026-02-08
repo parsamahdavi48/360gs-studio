@@ -10,7 +10,7 @@
 ## Usage
 
 ```
-python yolo_mask.py [images_dir] [output_dir] [--add_ext] [--level N] [--expand M]
+python yolo_mask.py [images_dir] [output_dir] [--add_ext] [--level N] [--expand M] [--classes IDS]
 ```
 
 - `images_dir`: input image directory (default: `images`)
@@ -18,11 +18,12 @@ python yolo_mask.py [images_dir] [output_dir] [--add_ext] [--level N] [--expand 
 - `--add_ext`: keep the original extension and append `.png` (e.g. `hoge.jpg.png`)
 - `--level N`: detection level (0–3, default: 1). Increasing the value enables higher-precision local extraction.
 - `--expand M`: number of pixels to expand detected regions (default: 2)
+- `--classes IDS`: comma-separated YOLO class ids (default: `0`, person only)
 
 Example:
 
 ```bash
-python yolo_mask.py .\images .\masks --level 2 --expand 5
+python yolo_mask.py .\images .\masks --level 2 --expand 5 --classes 0,2,3
 ```
 
 ## Output

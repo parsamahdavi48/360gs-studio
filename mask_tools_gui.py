@@ -16,6 +16,7 @@ try:
         QCheckBox,
         QComboBox,
         QFormLayout,
+        QGridLayout,
         QHBoxLayout,
         QLabel,
         QLineEdit,
@@ -24,6 +25,8 @@ try:
         QPlainTextEdit,
         QProgressBar,
         QPushButton,
+        QScrollArea,
+        QToolButton,
         QVBoxLayout,
         QWidget,
     )
@@ -36,6 +39,7 @@ except Exception as e:  # pragma: no cover - environment-dependent import
     QCheckBox = None
     QComboBox = None
     QFormLayout = None
+    QGridLayout = None
     QHBoxLayout = None
     QLabel = None
     QLineEdit = None
@@ -44,11 +48,28 @@ except Exception as e:  # pragma: no cover - environment-dependent import
     QPlainTextEdit = None
     QProgressBar = None
     QPushButton = None
+    QScrollArea = None
+    QToolButton = None
     QVBoxLayout = None
     QWidget = None
     _PYSIDE_IMPORT_ERROR = e
 else:
     _PYSIDE_IMPORT_ERROR = None
+
+_COCO_CLASS_NAMES = [
+    "person", "bicycle", "car", "motorcycle", "airplane", "bus", "train", "truck",
+    "boat", "traffic light", "fire hydrant", "stop sign", "parking meter", "bench",
+    "bird", "cat", "dog", "horse", "sheep", "cow", "elephant", "bear", "zebra",
+    "giraffe", "backpack", "umbrella", "handbag", "tie", "suitcase", "frisbee",
+    "skis", "snowboard", "sports ball", "kite", "baseball bat", "baseball glove",
+    "skateboard", "surfboard", "tennis racket", "bottle", "wine glass", "cup",
+    "fork", "knife", "spoon", "bowl", "banana", "apple", "sandwich", "orange",
+    "broccoli", "carrot", "hot dog", "pizza", "donut", "cake", "chair", "couch",
+    "potted plant", "bed", "dining table", "toilet", "tv", "laptop", "mouse",
+    "remote", "keyboard", "cell phone", "microwave", "oven", "toaster", "sink",
+    "refrigerator", "book", "clock", "vase", "scissors", "teddy bear", "hair drier",
+    "toothbrush",
+]
 
 
 if QMainWindow is not None:
@@ -126,6 +147,20 @@ if QMainWindow is not None:
             self.yolo_add_ext_check.setChecked(False)
             form_layout.addRow("YOLO Add Ext", self.yolo_add_ext_check)
 
+            self.yolo_classes_summary_edit = QLineEdit()
+            self.yolo_classes_summary_edit.setReadOnly(True)
+            self.yolo_classes_summary_edit.setPlaceholderText("class ids")
+            self.yolo_classes_toggle = QToolButton()
+            self.yolo_classes_toggle.setText("Classes")
+            self.yolo_classes_toggle.setCheckable(True)
+            self.yolo_classes_toggle.setChecked(False)
+            self.yolo_classes_toggle.setArrowType(Qt.RightArrow)
+            self.yolo_classes_toggle.toggled.connect(self._toggle_yolo_classes_panel)
+            row = QHBoxLayout()
+            row.addWidget(self.yolo_classes_summary_edit)
+            row.addWidget(self.yolo_classes_toggle)
+            form_layout.addRow("YOLO Classes", row)
+
             self.stitch_fov_edit = QLineEdit("175.0")
             form_layout.addRow("Stitch FOV (deg)", self.stitch_fov_edit)
 
@@ -133,6 +168,49 @@ if QMainWindow is not None:
             form_layout.addRow("Stitch Workers", self.stitch_workers_edit)
 
             layout.addLayout(form_layout)
+
+            self.yolo_classes_panel = QWidget()
+            classes_panel_layout = QVBoxLayout(self.yolo_classes_panel)
+            classes_panel_layout.setContentsMargins(0, 0, 0, 0)
+
+            preset_row = QHBoxLayout()
+            person_only_btn = QPushButton("Person only")
+            person_only_btn.clicked.connect(self._set_yolo_person_only)
+            preset_row.addWidget(person_only_btn)
+            common_dynamic_btn = QPushButton("People + Vehicles")
+            common_dynamic_btn.clicked.connect(self._set_yolo_people_and_vehicles)
+            preset_row.addWidget(common_dynamic_btn)
+            all_btn = QPushButton("All")
+            all_btn.clicked.connect(self._set_yolo_all_classes)
+            preset_row.addWidget(all_btn)
+            clear_btn = QPushButton("Clear")
+            clear_btn.clicked.connect(self._clear_yolo_classes)
+            preset_row.addWidget(clear_btn)
+            preset_row.addStretch(1)
+            classes_panel_layout.addLayout(preset_row)
+
+            scroll = QScrollArea()
+            scroll.setWidgetResizable(True)
+            scroll.setMinimumHeight(170)
+            scroll_container = QWidget()
+            grid = QGridLayout(scroll_container)
+            grid.setContentsMargins(4, 4, 4, 4)
+            grid.setHorizontalSpacing(12)
+            grid.setVerticalSpacing(4)
+            self.yolo_class_checks: dict[int, QCheckBox] = {}
+            cols = 4
+            for cls_id, cls_name in enumerate(_COCO_CLASS_NAMES):
+                cb = QCheckBox(f"{cls_id}: {cls_name}")
+                cb.toggled.connect(self._on_yolo_classes_changed)
+                grid.addWidget(cb, cls_id // cols, cls_id % cols)
+                self.yolo_class_checks[cls_id] = cb
+            scroll.setWidget(scroll_container)
+            classes_panel_layout.addWidget(scroll)
+
+            self.yolo_classes_panel.setVisible(False)
+            layout.addWidget(self.yolo_classes_panel)
+
+            self._set_yolo_person_only()
 
             btn_row = QHBoxLayout()
             self.run_yolo_button = QPushButton("1) Run YOLO Mask")
@@ -188,6 +266,52 @@ if QMainWindow is not None:
                 self.run_stitch_button.setEnabled(False)
                 self.run_both_button.setEnabled(False)
             else:
+                self._refresh_action_buttons()
+
+        def _toggle_yolo_classes_panel(self, show: bool) -> None:
+            self.yolo_classes_panel.setVisible(show)
+            self.yolo_classes_toggle.setArrowType(Qt.DownArrow if show else Qt.RightArrow)
+            self.yolo_classes_toggle.setText("Hide" if show else "Classes")
+
+        def _selected_yolo_class_ids(self) -> list[int]:
+            return sorted(cls_id for cls_id, cb in self.yolo_class_checks.items() if cb.isChecked())
+
+        def _set_yolo_classes(self, class_ids: list[int]) -> None:
+            selected = set(class_ids)
+            for cls_id, cb in self.yolo_class_checks.items():
+                cb.blockSignals(True)
+                cb.setChecked(cls_id in selected)
+                cb.blockSignals(False)
+            self._on_yolo_classes_changed()
+
+        def _set_yolo_person_only(self) -> None:
+            self._set_yolo_classes([0])
+
+        def _set_yolo_people_and_vehicles(self) -> None:
+            # person + common moving vehicles (COCO ids)
+            self._set_yolo_classes([0, 1, 2, 3, 5, 7])
+
+        def _set_yolo_all_classes(self) -> None:
+            self._set_yolo_classes(list(range(len(_COCO_CLASS_NAMES))))
+
+        def _clear_yolo_classes(self) -> None:
+            self._set_yolo_classes([])
+
+        def _on_yolo_classes_changed(self, *_args) -> None:
+            selected = self._selected_yolo_class_ids()
+            can_refresh = hasattr(self, "run_yolo_button")
+            if not selected:
+                self.yolo_classes_summary_edit.setText("(none)")
+                if can_refresh:
+                    self._refresh_action_buttons()
+                return
+            if len(selected) <= 6:
+                txt = ", ".join(f"{cls_id}:{_COCO_CLASS_NAMES[cls_id]}" for cls_id in selected)
+            else:
+                head = ", ".join(f"{cls_id}:{_COCO_CLASS_NAMES[cls_id]}" for cls_id in selected[:4])
+                txt = f"{len(selected)} selected ({head}, ...)"
+            self.yolo_classes_summary_edit.setText(txt)
+            if can_refresh:
                 self._refresh_action_buttons()
 
         def _count_matching_files(self, root: Path, suffixes: tuple[str, ...]) -> int:
@@ -302,9 +426,10 @@ if QMainWindow is not None:
 
             has_images = Path(self.images_dir_edit.text().strip()).is_dir()
             has_masks = Path(self.masks_dir_edit.text().strip()).is_dir()
-            self.run_yolo_button.setEnabled(has_images)
+            has_class = len(self._selected_yolo_class_ids()) > 0
+            self.run_yolo_button.setEnabled(has_images and has_class)
             self.run_stitch_button.setEnabled(has_masks)
-            self.run_both_button.setEnabled(has_images)
+            self.run_both_button.setEnabled(has_images and has_class)
 
         def _browse_scene_dir(self) -> None:
             path = QFileDialog.getExistingDirectory(self, "Select scene directory")
@@ -350,6 +475,10 @@ if QMainWindow is not None:
             except Exception as e:
                 raise ValueError(f"Invalid YOLO Expand value: {e}") from e
 
+            classes = self._selected_yolo_class_ids()
+            if not classes:
+                raise ValueError("Select at least one YOLO class")
+
             level = self.yolo_level_combo.currentText()
             cmd = [
                 sys.executable,
@@ -360,6 +489,8 @@ if QMainWindow is not None:
                 level,
                 "--expand",
                 str(expand),
+                "--classes",
+                ",".join(str(x) for x in classes),
             ]
             if self.yolo_add_ext_check.isChecked():
                 cmd.append("--add_ext")

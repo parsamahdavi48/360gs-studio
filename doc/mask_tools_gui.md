@@ -29,6 +29,11 @@ start_mask_tools_gui.bat
 - `YOLO Level`: forwarded to `yolo_mask.py --level` (0-3).
 - `YOLO Expand (px)`: forwarded to `yolo_mask.py --expand`.
 - `YOLO Add Ext`: forwarded to `yolo_mask.py --add_ext`.
+- `YOLO Classes`: collapsed picker for class selection.
+  - Choose classes by checkbox labels (`id: name`) instead of memorizing numeric ids.
+  - Default preset is `person` only (`id=0`).
+  - Presets: `Person only`, `People + Vehicles`, `All`, `Clear`.
+  - Forwarded to `yolo_mask.py --classes`.
 - `Stitch FOV (deg)`: forwarded to `stitch_mask.py --fov`.
 - `Stitch Workers`: forwarded to `stitch_mask.py --workers`.
 
