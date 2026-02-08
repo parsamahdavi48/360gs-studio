@@ -8,7 +8,10 @@ A collection of scripts I use and develop as part of a 3D Gaussian Splatting (3D
 
 - [CUDA Toolkit 12.8](https://developer.nvidia.com/cuda-12-8-0-download-archive) (for GPU-enabled PyTorch workflows)
 - [Python 3.x](https://www.python.org/) (confirmed with 3.11.8)
+- [FFmpeg / FFprobe](https://ffmpeg.org/) (for video frame extraction workflow)
 - [metashape_360_lfs.py (fork)](https://github.com/tetraface/metashape_360_lfs)
+  - Bundled in this repository: `vendor/metashape_360_lfs/metashape_360_lfs.py`
+  - Source record: `vendor/metashape_360_lfs/VENDOR_SOURCE.md`
 
 ### Depended python modules
 
@@ -47,3 +50,22 @@ Detect people in 360° images and generate mask PNGs.<br>
 See details: [doc/yolo_mask.md](doc/yolo_mask.md)<br>
 ![mask example](images/yolo_mask.png)
 
+### `extract_frames.py`
+
+Extract still frames from equirectangular video using FFmpeg with fixed/change-based selection and blur-aware replacement.<br>
+See details: [doc/extract_frames.md](doc/extract_frames.md)
+
+### `review_frames.py`
+
+Review extracted frames in a lightweight GUI and edit keep/drop decisions in `selected_frames.csv`.<br>
+See details: [doc/review_frames.md](doc/review_frames.md)
+
+### `apply_frame_decisions.py`
+
+Apply keep/drop decisions in `selected_frames.csv` and export only keep images for Metashape import.<br>
+See details: [doc/apply_frame_decisions.md](doc/apply_frame_decisions.md)
+
+### `extract_frames_gui.py`
+
+Wrapper GUI for extraction workflow: run extraction, open review GUI, and export keep images.<br>
+See details: [doc/extract_frames_gui.md](doc/extract_frames_gui.md)

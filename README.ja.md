@@ -8,7 +8,10 @@
 
 - [CUDA Toolkit 12.8](https://developer.nvidia.com/cuda-12-8-0-download-archive) (他のバージョンは不可)
 - [Python 3.x](https://www.python.org/) (3.11.8で確認)
+- [FFmpeg / FFprobe](https://ffmpeg.org/) (動画から静止画切り出しで使用)
 - [metashape_360_lfs.py (フォーク版)](https://github.com/tetraface/metashape_360_lfs) 
+  - このリポジトリ内に同梱: `vendor/metashape_360_lfs/metashape_360_lfs.py`
+  - 配布元の記録: `vendor/metashape_360_lfs/VENDOR_SOURCE.md`
 
 ### 依存pythonモジュール
 
@@ -46,3 +49,23 @@ Metashapeが出力する**360度画像用**xmlファイルからtransforms.json�
 360度画像内の人物を検知してマスクを生成します。<br>
 [→詳細を見る](doc/yolo_mask.ja.md)<br>
 ![マスク例](images/yolo_mask.png)
+
+### extract_frames.py
+
+FFmpegでエクイレクタングラー動画から静止画を切り出し、固定間隔または変化量ベース選択＋ブラー差し替えを行います。<br>
+[→詳細を見る](doc/extract_frames.md)<br>
+
+### review_frames.py
+
+抽出した静止画を軽量GUIで確認し、`selected_frames.csv` の keep/drop 判定を編集します。<br>
+[→詳細を見る](doc/review_frames.md)<br>
+
+### apply_frame_decisions.py
+
+`selected_frames.csv` の keep/drop 判定を反映し、keep のみを Metashape 読み込み用に出力します。<br>
+[→詳細を見る](doc/apply_frame_decisions.md)<br>
+
+### extract_frames_gui.py
+
+抽出ワークフロー用ラッパーGUIです。抽出実行、レビューGUI起動、keep画像の確定出力まで行えます。<br>
+[→詳細を見る](doc/extract_frames_gui.md)<br>
