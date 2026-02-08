@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import re
 import sys
 from pathlib import Path
@@ -111,9 +112,11 @@ if QMainWindow is not None:
             self.preview_images: list[Path] = []
             self._preview_slider_sync = False
             self.cancel_requested = False
+            self.pending_steps: list[tuple[str, list[str]]] = []
 
             self.pitch_rows: list[dict] = []
             self.yaw_slot_labels: list[QLabel] = []
+            self._preprocess_widgets: list[QWidget] = []
 
             self.setWindowTitle("Cubemap Tools")
             self.resize(1380, 940)
@@ -155,6 +158,50 @@ if QMainWindow is not None:
 
             self.json_name_edit = QLineEdit("transforms.json")
             form.addRow("Transforms JSON", self.json_name_edit)
+
+            self.preprocess_enable_check = QCheckBox("Run metashape_360_lfs preprocess")
+            self.preprocess_enable_check.setChecked(True)
+            self.preprocess_enable_check.toggled.connect(self._on_preprocess_toggle)
+            form.addRow("Preprocess", self.preprocess_enable_check)
+
+            self.ms_images_edit = QLineEdit()
+            browse_ms_images_btn = QPushButton("Browse")
+            browse_ms_images_btn.clicked.connect(self._browse_ms_images_dir)
+            row = QHBoxLayout()
+            row.addWidget(self.ms_images_edit)
+            row.addWidget(browse_ms_images_btn)
+            form.addRow("MS Images Dir", row)
+            self._preprocess_widgets.extend([self.ms_images_edit, browse_ms_images_btn])
+
+            self.ms_xml_edit = QLineEdit()
+            browse_ms_xml_btn = QPushButton("Browse")
+            browse_ms_xml_btn.clicked.connect(self._browse_ms_xml_file)
+            row = QHBoxLayout()
+            row.addWidget(self.ms_xml_edit)
+            row.addWidget(browse_ms_xml_btn)
+            form.addRow("MS XML", row)
+            self._preprocess_widgets.extend([self.ms_xml_edit, browse_ms_xml_btn])
+
+            self.ms_ply_edit = QLineEdit()
+            browse_ms_ply_btn = QPushButton("Browse")
+            browse_ms_ply_btn.clicked.connect(self._browse_ms_ply_file)
+            clear_ms_ply_btn = QPushButton("Clear")
+            clear_ms_ply_btn.clicked.connect(lambda: self.ms_ply_edit.setText(""))
+            row = QHBoxLayout()
+            row.addWidget(self.ms_ply_edit)
+            row.addWidget(browse_ms_ply_btn)
+            row.addWidget(clear_ms_ply_btn)
+            form.addRow("MS PLY (optional)", row)
+            self._preprocess_widgets.extend([self.ms_ply_edit, browse_ms_ply_btn, clear_ms_ply_btn])
+
+            self.ms_scale_edit = QLineEdit("1.0")
+            form.addRow("MS Scale", self.ms_scale_edit)
+            self._preprocess_widgets.append(self.ms_scale_edit)
+
+            self.ms_no_fix_rotation_check = QCheckBox("Disable rotation fix (--no-fix-rotation)")
+            self.ms_no_fix_rotation_check.setChecked(False)
+            form.addRow("MS Options", self.ms_no_fix_rotation_check)
+            self._preprocess_widgets.append(self.ms_no_fix_rotation_check)
 
             self.mask_dir_edit = QLineEdit()
             self.mask_dir_edit.textChanged.connect(lambda _: self._render_preview())
@@ -303,6 +350,8 @@ if QMainWindow is not None:
             self.log_text.setReadOnly(True)
             layout.addWidget(self.log_text, stretch=1)
 
+            self._on_preprocess_toggle(self.preprocess_enable_check.isChecked())
+
         def _is_running(self) -> bool:
             return self.proc is not None and self.proc.state() != QProcess.NotRunning
 
@@ -324,6 +373,10 @@ if QMainWindow is not None:
             self.run_button.setEnabled(Path(self.scene_dir_edit.text().strip()).is_dir())
             self.cancel_button.setEnabled(False)
 
+        def _on_preprocess_toggle(self, enabled: bool) -> None:
+            for w in self._preprocess_widgets:
+                w.setEnabled(enabled)
+
         def _browse_scene_dir(self) -> None:
             path = QFileDialog.getExistingDirectory(self, "Select scene directory")
             if path:
@@ -339,6 +392,53 @@ if QMainWindow is not None:
             path = QFileDialog.getExistingDirectory(self, "Select mask directory")
             if path:
                 self.mask_dir_edit.setText(path)
+
+        def _browse_ms_images_dir(self) -> None:
+            path = QFileDialog.getExistingDirectory(self, "Select Metashape images directory")
+            if path:
+                self.ms_images_edit.setText(path)
+
+        def _browse_ms_xml_file(self) -> None:
+            path, _ = QFileDialog.getOpenFileName(
+                self,
+                "Select Metashape XML",
+                "",
+                "XML files (*.xml);;All files (*.*)",
+            )
+            if path:
+                self.ms_xml_edit.setText(path)
+
+        def _browse_ms_ply_file(self) -> None:
+            path, _ = QFileDialog.getOpenFileName(
+                self,
+                "Select Metashape PLY (optional)",
+                "",
+                "PLY files (*.ply);;All files (*.*)",
+            )
+            if path:
+                self.ms_ply_edit.setText(path)
+
+        @staticmethod
+        def _guess_metashape_xml(scene_dir: Path) -> Path:
+            candidates = [scene_dir / "metashape.xml", scene_dir / "cameras.xml"]
+            for c in candidates:
+                if c.is_file():
+                    return c
+            xmls = sorted([p for p in scene_dir.glob("*.xml") if p.is_file()], key=lambda x: x.name.lower())
+            if xmls:
+                return xmls[0]
+            return scene_dir / "metashape.xml"
+
+        @staticmethod
+        def _guess_metashape_ply(scene_dir: Path) -> str:
+            candidates = [scene_dir / "pointcloud.ply", scene_dir / "sparse.ply"]
+            for c in candidates:
+                if c.is_file():
+                    return str(c)
+            plys = sorted([p for p in scene_dir.glob("*.ply") if p.is_file()], key=lambda x: x.name.lower())
+            if plys:
+                return str(plys[0])
+            return ""
 
         def _browse_sample_image(self) -> None:
             path, _ = QFileDialog.getOpenFileName(
@@ -367,6 +467,9 @@ if QMainWindow is not None:
             scene_dir = Path(self.scene_dir_edit.text().strip() or ".")
             self.output_dir_edit.setText(str(scene_dir / "cubic"))
             self.mask_dir_edit.setText(str(scene_dir / "masks"))
+            self.ms_images_edit.setText(str(scene_dir / "images"))
+            self.ms_xml_edit.setText(str(self._guess_metashape_xml(scene_dir)))
+            self.ms_ply_edit.setText(self._guess_metashape_ply(scene_dir))
             self._refresh_preview_image_list(prefer_current=False)
             self._refresh_action_buttons()
             self._update_output_estimate()
@@ -920,6 +1023,52 @@ if QMainWindow is not None:
             path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
             return path
 
+        def _build_preprocess_cmd(self) -> list[str]:
+            script = self.base_dir / "vendor" / "metashape_360_lfs" / "metashape_360_lfs.py"
+            if not script.exists():
+                raise FileNotFoundError(f"metashape_360_lfs.py not found: {script}")
+
+            scene_dir = Path(self.scene_dir_edit.text().strip() or ".")
+            if not scene_dir.is_dir():
+                raise ValueError(f"Scene directory not found: {scene_dir}")
+
+            images_dir = Path(self.ms_images_edit.text().strip())
+            if not images_dir.is_dir():
+                raise ValueError(f"MS Images Dir not found: {images_dir}")
+
+            xml_path = Path(self.ms_xml_edit.text().strip())
+            if not xml_path.is_file():
+                raise ValueError(f"MS XML not found: {xml_path}")
+
+            scale = self._parse_float(self.ms_scale_edit.text(), "MS Scale")
+            if not math.isfinite(scale) or scale <= 0.0:
+                raise ValueError("MS Scale must be a positive finite number")
+
+            cmd = [
+                sys.executable,
+                str(script),
+                "--images",
+                str(images_dir),
+                "--xml",
+                str(xml_path),
+                "--output",
+                str(scene_dir),
+                "--scale",
+                f"{scale:g}",
+            ]
+
+            ply_text = self.ms_ply_edit.text().strip()
+            if ply_text:
+                ply_path = Path(ply_text)
+                if not ply_path.is_file():
+                    raise ValueError(f"MS PLY not found: {ply_path}")
+                cmd.extend(["--ply", str(ply_path)])
+
+            if self.ms_no_fix_rotation_check.isChecked():
+                cmd.append("--no-fix-rotation")
+
+            return cmd
+
         def _build_cmd(self) -> list[str]:
             script = self.base_dir / "cubemap_transforms_json.py"
             if not script.exists():
@@ -972,6 +1121,23 @@ if QMainWindow is not None:
 
             return cmd
 
+        def _start_step_queue(self, steps: list[tuple[str, list[str]]]) -> None:
+            if self._is_running():
+                QMessageBox.warning(self, "Busy", "Another process is running.")
+                return
+            if not steps:
+                return
+            self.cancel_requested = False
+            self.pending_steps = list(steps)
+            self._run_next_step()
+
+        def _run_next_step(self) -> None:
+            if not self.pending_steps:
+                self._set_running_state(False, "Idle")
+                return
+            phase, cmd = self.pending_steps.pop(0)
+            self._start_process(cmd, phase)
+
         def _start_process(self, cmd: list[str], phase: str) -> None:
             if self._is_running():
                 QMessageBox.warning(self, "Busy", "Another process is running.")
@@ -1013,6 +1179,7 @@ if QMainWindow is not None:
             if not self._is_running() or self.proc is None:
                 return
             self.cancel_requested = True
+            self.pending_steps = []
             self.cancel_button.setEnabled(False)
             self.status_label.setText("Canceling...")
             self._terminate_process_gracefully(self.proc, self.current_phase)
@@ -1067,16 +1234,23 @@ if QMainWindow is not None:
             if exit_code == 0:
                 if was_canceled:
                     self._append_log(f"[{phase}] canceled by user")
+                    self.pending_steps = []
                     self._set_running_state(False, f"Canceled: {phase}")
                 else:
                     self._append_log(f"[{phase}] completed successfully")
+                    self.proc = None
+                    if self.pending_steps:
+                        self._run_next_step()
+                        return
                     self._set_running_state(False, f"Done: {phase}")
             else:
                 if was_canceled:
                     self._append_log(f"[{phase}] canceled by user")
+                    self.pending_steps = []
                     self._set_running_state(False, f"Canceled: {phase}")
                 else:
                     self._append_log(f"[{phase}] failed (exit={exit_code})")
+                    self.pending_steps = []
                     self._set_running_state(False, f"Failed: {phase}")
             self.proc = None
 
@@ -1104,11 +1278,22 @@ if QMainWindow is not None:
                     return
 
             try:
-                cmd = self._build_cmd()
+                cubemap_cmd = self._build_cmd()
             except Exception as e:
                 QMessageBox.critical(self, "Invalid Input", str(e))
                 return
-            self._start_process(cmd, "cubemap")
+
+            steps: list[tuple[str, list[str]]] = []
+            if self.preprocess_enable_check.isChecked():
+                try:
+                    preprocess_cmd = self._build_preprocess_cmd()
+                except Exception as e:
+                    QMessageBox.critical(self, "Invalid Preprocess Input", str(e))
+                    return
+                steps.append(("metashape", preprocess_cmd))
+            steps.append(("cubemap", cubemap_cmd))
+
+            self._start_step_queue(steps)
 
         def closeEvent(self, event: QCloseEvent) -> None:  # pragma: no cover - UI event
             if self._is_running() and self.proc is not None:

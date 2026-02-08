@@ -31,6 +31,19 @@ start_cubemap_tools_gui.bat
   - 出力先。既定は `<scene>/cubic`。
 - `Transforms JSON`:
   - 入力JSONファイル名。既定は `transforms.json`。
+- `Preprocess`:
+  - 有効時、キューブマップ変換の前に同梱の
+    `vendor/metashape_360_lfs/metashape_360_lfs.py` を実行します。
+- `MS Images Dir`:
+  - `metashape_360_lfs.py --images` に渡す画像フォルダ。
+- `MS XML`:
+  - `metashape_360_lfs.py --xml` に渡すMetashape XML。
+- `MS PLY (optional)`:
+  - `metashape_360_lfs.py --ply` に渡す任意のPLY。
+- `MS Scale`:
+  - `metashape_360_lfs.py --scale` の値（正の値が必要）。
+- `MS Options`:
+  - `Disable rotation fix (--no-fix-rotation)` を前処理に渡します。
 - `Mask Directory`:
   - 変換時のマスク入力先。プレビュー合成にも使用。
 - `Yaw Offset (deg)`:
@@ -73,7 +86,11 @@ start_cubemap_tools_gui.bat
 
 ## 実行時の挙動
 
-- 実行時に `<output_dir>/views_config.json` を生成し、
+- 実行時に `<output_dir>/views_config.json` を生成します。
+- `Preprocess` が有効な場合は先に
+  `vendor/metashape_360_lfs/metashape_360_lfs.py --images ... --xml ... --output <scene_dir> [...]`
+  を実行します。
+- その後
   `cubemap_transforms_json.py --fov 90 --views-json <そのファイル>` を呼び出します。
 - OFFのスロットは `enabled=false` として保存され、変換時に無視されます。
 

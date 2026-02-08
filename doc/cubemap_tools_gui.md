@@ -31,6 +31,18 @@ start_cubemap_tools_gui.bat
   - Cubemap output directory. Default: `<scene>/cubic`.
 - `Transforms JSON`:
   - JSON filename in scene dir. Default: `transforms.json`.
+- `Preprocess`:
+  - If enabled, run bundled `vendor/metashape_360_lfs/metashape_360_lfs.py` before cubemap conversion.
+- `MS Images Dir`:
+  - Image directory passed to `metashape_360_lfs.py --images`.
+- `MS XML`:
+  - Metashape XML path passed to `metashape_360_lfs.py --xml`.
+- `MS PLY (optional)`:
+  - Optional PLY path passed to `metashape_360_lfs.py --ply`.
+- `MS Scale`:
+  - Scale value passed to `metashape_360_lfs.py --scale` (must be positive).
+- `MS Options`:
+  - `Disable rotation fix (--no-fix-rotation)` for metashape preprocess.
 - `Mask Directory`:
   - Optional mask input folder used by conversion and preview overlay.
 - `Yaw Offset (deg)`:
@@ -73,7 +85,10 @@ start_cubemap_tools_gui.bat
 
 ## Execution behavior
 
-- On run, GUI writes `<output_dir>/views_config.json` and calls:
+- On run, GUI writes `<output_dir>/views_config.json`.
+- If `Preprocess` is enabled, GUI runs:
+  - `vendor/metashape_360_lfs/metashape_360_lfs.py --images ... --xml ... --output <scene_dir> [...]`
+- Then GUI runs:
   - `cubemap_transforms_json.py --fov 90 --views-json <that file>`
 - Disabled slots are written with `enabled=false` and ignored by converter.
 
