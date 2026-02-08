@@ -13,6 +13,7 @@ try:
     from PySide6.QtWidgets import (
         QApplication,
         QHBoxLayout,
+        QLineEdit,
         QLabel,
         QMainWindow,
         QMessageBox,
@@ -31,6 +32,7 @@ except Exception as e:  # pragma: no cover - environment-dependent import
     QMainWindow = None
     QMessageBox = None
     QPushButton = None
+    QLineEdit = None
     QVBoxLayout = None
     QWidget = None
     _PYSIDE_IMPORT_ERROR = e
@@ -47,6 +49,7 @@ if QMainWindow is not None:
             self.rows = self._load_rows(csv_path)
             if not self.rows:
                 raise RuntimeError(f"No rows found in {csv_path}")
+            self.problem_indices = self._collect_problem_indices()
 
             self.index = 0
             self.current_pixmap: QPixmap | None = None
@@ -67,6 +70,13 @@ if QMainWindow is not None:
                 decision = row.get("decision", "keep").strip().lower()
                 row["decision"] = "drop" if decision == "drop" else "keep"
             return rows
+
+        def _is_problem_row(self, row: Dict[str, str]) -> bool:
+            status = row.get("status", "").strip().lower()
+            return status not in {"", "ok"}
+
+        def _collect_problem_indices(self) -> List[int]:
+            return [i for i, row in enumerate(self.rows) if self._is_problem_row(row)]
 
         def _build_ui(self) -> None:
             root = QWidget()
@@ -95,6 +105,10 @@ if QMainWindow is not None:
             self.info_label.setWordWrap(True)
             layout.addWidget(self.info_label)
 
+            self.problem_summary_label = QLabel()
+            self.problem_summary_label.setStyleSheet("color: #666;")
+            layout.addWidget(self.problem_summary_label)
+
             btn_row = QHBoxLayout()
             self.prev_button = QPushButton("Prev (Left)")
             self.prev_button.clicked.connect(self.prev_row)
@@ -104,9 +118,26 @@ if QMainWindow is not None:
             self.next_button.clicked.connect(self.next_row)
             btn_row.addWidget(self.next_button)
 
+            self.prev_problem_button = QPushButton("Prev Problem (Shift+F)")
+            self.prev_problem_button.clicked.connect(self.prev_problem)
+            btn_row.addWidget(self.prev_problem_button)
+
+            self.next_problem_button = QPushButton("Next Problem (F)")
+            self.next_problem_button.clicked.connect(self.next_problem)
+            btn_row.addWidget(self.next_problem_button)
+
             self.toggle_button = QPushButton("Toggle Keep/Drop (Space)")
             self.toggle_button.clicked.connect(self.toggle_decision)
             btn_row.addWidget(self.toggle_button)
+
+            self.jump_edit = QLineEdit()
+            self.jump_edit.setPlaceholderText("seq")
+            self.jump_edit.setFixedWidth(90)
+            btn_row.addWidget(self.jump_edit)
+
+            self.jump_button = QPushButton("Jump Seq")
+            self.jump_button.clicked.connect(self.jump_to_seq)
+            btn_row.addWidget(self.jump_button)
 
             btn_row.addStretch(1)
 
@@ -115,13 +146,18 @@ if QMainWindow is not None:
             btn_row.addWidget(self.save_button)
             layout.addLayout(btn_row)
 
-            hint = QLabel("Keys: Left/Right=move, Space=toggle keep/drop, S=save, Q=quit")
+            hint = QLabel(
+                "Keys: Left/Right=move, F/Shift+F=next/prev problem, "
+                "Space=toggle keep/drop, S=save, Q=quit"
+            )
             hint.setStyleSheet("color: #666;")
             layout.addWidget(hint)
 
         def _bind_shortcuts(self) -> None:
             QShortcut(QKeySequence(Qt.Key_Left), self, activated=self.prev_row)
             QShortcut(QKeySequence(Qt.Key_Right), self, activated=self.next_row)
+            QShortcut(QKeySequence("F"), self, activated=self.next_problem)
+            QShortcut(QKeySequence("Shift+F"), self, activated=self.prev_problem)
             QShortcut(QKeySequence(Qt.Key_Space), self, activated=self.toggle_decision)
             QShortcut(QKeySequence("S"), self, activated=self.save)
             QShortcut(QKeySequence("Q"), self, activated=self.close)
@@ -145,6 +181,15 @@ if QMainWindow is not None:
             decision = row.get("decision", "keep")
             self.decision_label.setText(f"Decision: {decision.upper()}")
             self.decision_label.setStyleSheet(f"font-weight: 700; color: {self._decision_color(decision)};")
+
+            replaced_count = sum(1 for r in self.rows if r.get("status", "").strip().lower() == "replaced")
+            fallback_count = sum(1 for r in self.rows if r.get("status", "").strip().lower() == "fallback_keep")
+            problem_count = len(self.problem_indices)
+            current_problem = "YES" if self._is_problem_row(row) else "NO"
+            self.problem_summary_label.setText(
+                f"Problems: {problem_count} (replaced={replaced_count}, fallback_keep={fallback_count})"
+                f" | Current problem: {current_problem}"
+            )
 
             info_text = (
                 f"orig={row.get('original_index', '-')}, final={row.get('final_index', '-')}, "
@@ -199,6 +244,52 @@ if QMainWindow is not None:
             if self.index < len(self.rows) - 1:
                 self.index += 1
                 self._render_current()
+
+        def next_problem(self) -> None:
+            if not self.problem_indices:
+                QMessageBox.information(self, "Info", "No problem frames found.")
+                return
+
+            for idx in self.problem_indices:
+                if idx > self.index:
+                    self.index = idx
+                    self._render_current()
+                    return
+
+            self.index = self.problem_indices[0]
+            self._render_current()
+
+        def prev_problem(self) -> None:
+            if not self.problem_indices:
+                QMessageBox.information(self, "Info", "No problem frames found.")
+                return
+
+            for idx in reversed(self.problem_indices):
+                if idx < self.index:
+                    self.index = idx
+                    self._render_current()
+                    return
+
+            self.index = self.problem_indices[-1]
+            self._render_current()
+
+        def jump_to_seq(self) -> None:
+            text = self.jump_edit.text().strip()
+            if not text:
+                return
+
+            try:
+                seq = int(text)
+            except ValueError:
+                QMessageBox.warning(self, "Invalid Input", "Seq must be an integer.")
+                return
+
+            if seq < 1 or seq > len(self.rows):
+                QMessageBox.warning(self, "Out of Range", f"Seq must be between 1 and {len(self.rows)}.")
+                return
+
+            self.index = seq - 1
+            self._render_current()
 
         def toggle_decision(self) -> None:
             row = self._current_row()

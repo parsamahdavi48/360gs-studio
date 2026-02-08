@@ -23,6 +23,7 @@ python review_frames.py ./scene01 --csv selected_frames.csv
 ## Keyboard shortcuts
 
 - `Left` / `Right`: previous / next frame
+- `F` / `Shift+F`: next / previous problem frame (`status != ok`)
 - `Space`: toggle `keep` / `drop`
 - `S`: save CSV
 - `Q`: quit
@@ -30,5 +31,6 @@ python review_frames.py ./scene01 --csv selected_frames.csv
 ## Behavior
 
 - Reads `output_file` from each CSV row and displays the image.
+- Supports direct jump by sequence number (`Jump Seq`) and problem-frame navigation.
 - Saves the updated `decision` column back to the same CSV.
 - Other columns (scores, status, indices) are preserved.
