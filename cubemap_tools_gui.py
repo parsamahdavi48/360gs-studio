@@ -130,6 +130,8 @@ if QMainWindow is not None:
             self._preprocess_ply_path_widgets: list[QWidget] = []
             self._custom_view_widgets: list[QWidget] = []
             self._cube6_widgets: list[QWidget] = []
+            self._colmap_sequential_widgets: list[QWidget] = []
+            self._colmap_preset_sync = False
 
             self.setWindowTitle("Cubemap Tools")
             self.resize(1380, 940)
@@ -397,7 +399,48 @@ if QMainWindow is not None:
             self.colmap_matcher_combo = QComboBox()
             self.colmap_matcher_combo.addItem("Exhaustive Matcher", "exhaustive")
             self.colmap_matcher_combo.addItem("Sequential Matcher", "sequential")
+            self.colmap_matcher_combo.currentIndexChanged.connect(self._on_colmap_matcher_changed)
             colmap_form.addRow("Matcher", self.colmap_matcher_combo)
+
+            self.colmap_preset_combo = QComboBox()
+            self.colmap_preset_combo.addItem("Fast (Recommended)", "fast")
+            self.colmap_preset_combo.addItem("Balanced", "balanced")
+            self.colmap_preset_combo.addItem("Loop-Heavy", "loop_heavy")
+            self.colmap_preset_combo.addItem("Custom", "custom")
+            self.colmap_preset_combo.currentIndexChanged.connect(self._on_colmap_preset_changed)
+            colmap_form.addRow("Pipeline Preset", self.colmap_preset_combo)
+
+            self.colmap_seq_overlap_edit = QLineEdit("6")
+            self.colmap_seq_overlap_edit.textChanged.connect(self._on_colmap_advanced_changed)
+            colmap_form.addRow("Sequential Overlap", self.colmap_seq_overlap_edit)
+            self._colmap_sequential_widgets.append(self.colmap_seq_overlap_edit)
+
+            self.colmap_sift_max_features_edit = QLineEdit("4096")
+            self.colmap_sift_max_features_edit.textChanged.connect(self._on_colmap_advanced_changed)
+            colmap_form.addRow("SIFT Max Features", self.colmap_sift_max_features_edit)
+
+            self.colmap_mapper_ba_global_iter_edit = QLineEdit("20")
+            self.colmap_mapper_ba_global_iter_edit.textChanged.connect(self._on_colmap_advanced_changed)
+            colmap_form.addRow("Mapper BA Global Iter", self.colmap_mapper_ba_global_iter_edit)
+
+            self.colmap_loop_detection_check = QCheckBox("Sequential loop detection (optional)")
+            self.colmap_loop_detection_check.setChecked(False)
+            self.colmap_loop_detection_check.toggled.connect(self._on_colmap_advanced_changed)
+            colmap_form.addRow("Loop Detection", self.colmap_loop_detection_check)
+            self._colmap_sequential_widgets.append(self.colmap_loop_detection_check)
+
+            self.colmap_vocab_tree_edit = QLineEdit()
+            self.colmap_vocab_tree_edit.textChanged.connect(self._on_colmap_advanced_changed)
+            browse_vocab_btn = QPushButton("Browse")
+            browse_vocab_btn.clicked.connect(self._browse_colmap_vocab_tree)
+            clear_vocab_btn = QPushButton("Clear")
+            clear_vocab_btn.clicked.connect(lambda: self.colmap_vocab_tree_edit.setText(""))
+            row = QHBoxLayout()
+            row.addWidget(self.colmap_vocab_tree_edit)
+            row.addWidget(browse_vocab_btn)
+            row.addWidget(clear_vocab_btn)
+            colmap_form.addRow("Vocab Tree (optional)", row)
+            self._colmap_sequential_widgets.extend([self.colmap_vocab_tree_edit, browse_vocab_btn, clear_vocab_btn])
 
             self.colmap_run_until_combo = QComboBox()
             self.colmap_run_until_combo.addItem("Export Only", "export")
@@ -411,6 +454,7 @@ if QMainWindow is not None:
 
             self.colmap_use_masks_check = QCheckBox("Use masks in feature extraction")
             self.colmap_use_masks_check.setChecked(True)
+            self.colmap_use_masks_check.toggled.connect(self._on_colmap_advanced_changed)
             colmap_form.addRow("Mask Usage", self.colmap_use_masks_check)
 
             self.colmap_invert_masks_check = QCheckBox("Invert exported masks")
@@ -419,6 +463,7 @@ if QMainWindow is not None:
 
             self.colmap_refine_sensor_check = QCheckBox("Mapper: refine sensor from rig")
             self.colmap_refine_sensor_check.setChecked(False)
+            self.colmap_refine_sensor_check.toggled.connect(self._on_colmap_advanced_changed)
             colmap_form.addRow("Mapper Option", self.colmap_refine_sensor_check)
 
             self.colmap_workspace_hint = QLabel("")
@@ -495,6 +540,8 @@ if QMainWindow is not None:
             self._on_preprocess_toggle(self.preprocess_enable_check.isChecked())
             self._on_target_profile_changed(self.target_profile_combo.currentIndex())
             self._on_view_mode_changed(self.view_mode_combo.currentIndex())
+            self._on_colmap_preset_changed(self.colmap_preset_combo.currentIndex())
+            self._on_colmap_matcher_changed(self.colmap_matcher_combo.currentIndex())
             self._on_workflow_tab_changed(self.workflow_tabs.currentIndex())
 
         def _is_running(self) -> bool:
@@ -569,6 +616,93 @@ if QMainWindow is not None:
             if isinstance(data, str) and data:
                 return data
             return "mapper"
+
+        def _colmap_preset_id(self) -> str:
+            if not hasattr(self, "colmap_preset_combo"):
+                return "fast"
+            data = self.colmap_preset_combo.currentData()
+            if isinstance(data, str) and data:
+                return data
+            return "fast"
+
+        def _set_colmap_preset_custom(self) -> None:
+            if not hasattr(self, "colmap_preset_combo"):
+                return
+            if self._colmap_preset_id() == "custom":
+                return
+            self._colmap_preset_sync = True
+            self.colmap_preset_combo.setCurrentIndex(self.colmap_preset_combo.count() - 1)
+            self._colmap_preset_sync = False
+
+        def _on_colmap_advanced_changed(self, *_args) -> None:
+            if self._colmap_preset_sync:
+                return
+            self._set_colmap_preset_custom()
+            self._refresh_action_buttons()
+
+        def _on_colmap_preset_changed(self, _index: int) -> None:
+            if self._colmap_preset_sync:
+                return
+            preset = self._colmap_preset_id()
+            if preset == "custom":
+                self._refresh_action_buttons()
+                return
+
+            values = {
+                "fast": {
+                    "matcher": "sequential",
+                    "overlap": "6",
+                    "sift": "4096",
+                    "ba": "20",
+                    "loop": False,
+                    "use_masks": True,
+                    "refine_sensor": False,
+                },
+                "balanced": {
+                    "matcher": "sequential",
+                    "overlap": "10",
+                    "sift": "8192",
+                    "ba": "35",
+                    "loop": False,
+                    "use_masks": True,
+                    "refine_sensor": False,
+                },
+                "loop_heavy": {
+                    "matcher": "sequential",
+                    "overlap": "18",
+                    "sift": "12000",
+                    "ba": "55",
+                    "loop": False,
+                    "use_masks": True,
+                    "refine_sensor": False,
+                },
+            }.get(preset)
+            if values is None:
+                self._refresh_action_buttons()
+                return
+
+            self._colmap_preset_sync = True
+            idx = self.colmap_matcher_combo.findData(values["matcher"])
+            if idx >= 0:
+                self.colmap_matcher_combo.setCurrentIndex(idx)
+            self.colmap_seq_overlap_edit.setText(values["overlap"])
+            self.colmap_sift_max_features_edit.setText(values["sift"])
+            self.colmap_mapper_ba_global_iter_edit.setText(values["ba"])
+            self.colmap_loop_detection_check.setChecked(bool(values["loop"]))
+            self.colmap_use_masks_check.setChecked(bool(values["use_masks"]))
+            self.colmap_refine_sensor_check.setChecked(bool(values["refine_sensor"]))
+            self._on_colmap_matcher_changed(self.colmap_matcher_combo.currentIndex())
+            self._colmap_preset_sync = False
+            self._refresh_action_buttons()
+
+        def _on_colmap_matcher_changed(self, _index: int) -> None:
+            matcher = self.colmap_matcher_combo.currentData()
+            is_sequential = matcher == "sequential"
+            for w in self._colmap_sequential_widgets:
+                w.setEnabled(is_sequential)
+            if not self._colmap_preset_sync:
+                self._set_colmap_preset_custom()
+            self._refresh_action_buttons()
 
         def _effective_bundle_profile(self) -> str:
             profile = self._target_profile_id()
@@ -723,6 +857,16 @@ if QMainWindow is not None:
                 )
                 return
             self.colmap_binary_edit.setText(str(hit))
+
+        def _browse_colmap_vocab_tree(self) -> None:
+            path, _ = QFileDialog.getOpenFileName(
+                self,
+                "Select vocabulary tree file",
+                "",
+                "Vocab files (*.bin *.txt);;All files (*.*)",
+            )
+            if path:
+                self.colmap_vocab_tree_edit.setText(path)
 
         def _browse_mask_dir(self) -> None:
             path = QFileDialog.getExistingDirectory(self, "Select mask directory")
@@ -1034,6 +1178,13 @@ if QMainWindow is not None:
         def _parse_float(text: str, label: str) -> float:
             try:
                 return float(text.strip())
+            except Exception as e:
+                raise ValueError(f"{label} is invalid: {e}") from e
+
+        @staticmethod
+        def _parse_int(text: str, label: str) -> int:
+            try:
+                return int(text.strip())
             except Exception as e:
                 raise ValueError(f"{label} is invalid: {e}") from e
 
@@ -1676,11 +1827,22 @@ if QMainWindow is not None:
 
             matcher = self.colmap_matcher_combo.currentData()
             if not isinstance(matcher, str) or not matcher:
-                matcher = "exhaustive"
+                matcher = "sequential"
 
             run_until = self._colmap_run_until_id()
             if run_until not in {"feature", "rig", "match", "mapper"}:
                 raise ValueError(f"Unsupported COLMAP run stage: {run_until}")
+
+            sift_max_features = self._parse_int(self.colmap_sift_max_features_edit.text(), "SIFT Max Features")
+            if sift_max_features <= 0:
+                raise ValueError("SIFT Max Features must be > 0")
+
+            mapper_ba_global_iter = self._parse_int(
+                self.colmap_mapper_ba_global_iter_edit.text(),
+                "Mapper BA Global Iter",
+            )
+            if mapper_ba_global_iter <= 0:
+                raise ValueError("Mapper BA Global Iter must be > 0")
 
             cmd = [
                 sys.executable,
@@ -1692,7 +1854,25 @@ if QMainWindow is not None:
                 matcher,
                 "--run_until",
                 run_until,
+                "--sift_max_features",
+                str(sift_max_features),
+                "--mapper_ba_global_max_iter",
+                str(mapper_ba_global_iter),
             ]
+            if matcher == "sequential":
+                seq_overlap = self._parse_int(self.colmap_seq_overlap_edit.text(), "Sequential Overlap")
+                if seq_overlap <= 0:
+                    raise ValueError("Sequential Overlap must be > 0")
+                cmd.extend(["--seq_overlap", str(seq_overlap)])
+
+                if self.colmap_loop_detection_check.isChecked():
+                    cmd.append("--seq_loop_detection")
+                vocab_tree = self.colmap_vocab_tree_edit.text().strip()
+                if vocab_tree:
+                    vocab_path = Path(vocab_tree)
+                    if not vocab_path.is_file():
+                        raise ValueError(f"Vocab Tree not found: {vocab_path}")
+                    cmd.extend(["--vocab_tree_path", str(vocab_path)])
             if self.colmap_use_masks_check.isChecked():
                 cmd.append("--use_masks")
             if self.colmap_refine_sensor_check.isChecked():
@@ -1872,6 +2052,23 @@ if QMainWindow is not None:
 
                 steps: list[tuple[str, list[str]]] = [("colmap_export", export_cmd)]
                 if self._colmap_run_until_id() != "export":
+                    matcher = self.colmap_matcher_combo.currentData()
+                    if matcher == "exhaustive":
+                        estimated_pairs = enabled_count * self._count_input_images()
+                        reply = QMessageBox.question(
+                            self,
+                            "Exhaustive Matcher Warning",
+                            (
+                                "Exhaustive matcher is usually impractical for large rig datasets.\n"
+                                f"Estimated exported images: {estimated_pairs}\n\n"
+                                "Switch to Sequential matcher for normal use.\n"
+                                "Continue with Exhaustive anyway?"
+                            ),
+                            QMessageBox.Yes | QMessageBox.No,
+                            QMessageBox.No,
+                        )
+                        if reply != QMessageBox.Yes:
+                            return
                     try:
                         pipeline_cmd = self._build_colmap_pipeline_cmd()
                     except Exception as e:

@@ -27,6 +27,20 @@ def parse_args() -> argparse.Namespace:
         help="Last pipeline stage to execute",
     )
     parser.add_argument("--use_masks", action="store_true", help="Use dataset masks for feature extraction when supported")
+    parser.add_argument("--sift_max_features", type=int, default=4096, help="SIFT max features for feature extractor")
+    parser.add_argument("--seq_overlap", type=int, default=6, help="Sequential matcher overlap")
+    parser.add_argument(
+        "--seq_loop_detection",
+        action="store_true",
+        help="Enable loop detection in sequential matcher when supported",
+    )
+    parser.add_argument("--vocab_tree_path", help="Vocabulary tree path for sequential loop detection (optional)")
+    parser.add_argument(
+        "--mapper_ba_global_max_iter",
+        type=int,
+        default=20,
+        help="Mapper BA global max iterations when supported",
+    )
     parser.add_argument(
         "--refine_sensor_from_rig",
         action="store_true",
@@ -217,6 +231,9 @@ def run_pipeline(args: argparse.Namespace) -> None:
         "SIMPLE_PINHOLE",
     ]
 
+    if args.sift_max_features > 0 and _supports_option(colmap_bin, "feature_extractor", "--SiftExtraction.max_num_features"):
+        feature_cmd.extend(["--SiftExtraction.max_num_features", str(args.sift_max_features)])
+
     if args.use_masks and masks_dir.is_dir() and _supports_option(colmap_bin, "feature_extractor", "--ImageReader.mask_path"):
         feature_cmd.extend(["--ImageReader.mask_path", str(masks_dir)])
 
@@ -244,6 +261,19 @@ def run_pipeline(args: argparse.Namespace) -> None:
         "--database_path",
         str(db_path),
     ]
+
+    if matcher_name == "sequential_matcher":
+        if args.seq_overlap > 0 and _supports_option(colmap_bin, matcher_name, "--SequentialMatching.overlap"):
+            match_cmd.extend(["--SequentialMatching.overlap", str(args.seq_overlap)])
+        if args.seq_loop_detection and _supports_option(colmap_bin, matcher_name, "--SequentialMatching.loop_detection"):
+            match_cmd.extend(["--SequentialMatching.loop_detection", "1"])
+            if args.vocab_tree_path:
+                vocab = Path(args.vocab_tree_path)
+                if not vocab.is_file():
+                    raise FileNotFoundError(f"Vocabulary tree not found: {vocab}")
+                if _supports_option(colmap_bin, matcher_name, "--SequentialMatching.vocab_tree_path"):
+                    match_cmd.extend(["--SequentialMatching.vocab_tree_path", str(vocab)])
+
     _run_command(match_cmd, matcher_name)
     if args.run_until == "match":
         return
@@ -262,6 +292,12 @@ def run_pipeline(args: argparse.Namespace) -> None:
     opt_name = "--Mapper.ba_refine_sensor_from_rig"
     if _supports_option(colmap_bin, "mapper", opt_name):
         mapper_cmd.extend([opt_name, "1" if args.refine_sensor_from_rig else "0"])
+
+    if (
+        args.mapper_ba_global_max_iter > 0
+        and _supports_option(colmap_bin, "mapper", "--Mapper.ba_global_max_num_iterations")
+    ):
+        mapper_cmd.extend(["--Mapper.ba_global_max_num_iterations", str(args.mapper_ba_global_max_iter)])
 
     _run_command(mapper_cmd, "mapper")
 
