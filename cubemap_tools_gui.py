@@ -85,6 +85,7 @@ _VIEW_MODE_CUSTOM = "custom_views"
 _VIEW_MODE_CUBE6 = "cube6"
 _TASK_MODE_CUBEMAP = "cubemap"
 _TASK_MODE_COLMAP = "colmap"
+_TASK_MODE_REALITYSCAN = "realityscan"
 
 
 def _normalize_angle(angle_deg: float) -> float:
@@ -441,7 +442,8 @@ if QMainWindow is not None:
             cubemap_tab_layout = QVBoxLayout(cubemap_tab)
             cubemap_hint = QLabel(
                 "Cubemap tab: Run existing preprocess + cubemap conversion pipeline.\n"
-                "COLMAP Rig tab: Export COLMAP rig dataset and optionally run SfM."
+                "COLMAP Rig tab: Export COLMAP rig dataset and optionally run SfM.\n"
+                "RealityScan Rig tab: Export RS-ready crops + XMP + masks in one package."
             )
             cubemap_hint.setWordWrap(True)
             cubemap_tab_layout.addWidget(cubemap_hint)
@@ -580,6 +582,74 @@ if QMainWindow is not None:
             colmap_tab_layout.addStretch(1)
 
             self.workflow_tabs.addTab(colmap_tab, "COLMAP Rig SfM")
+
+            rs_tab = QWidget()
+            rs_tab_layout = QVBoxLayout(rs_tab)
+            rs_tab_layout.setContentsMargins(0, 0, 0, 0)
+            rs_tab_layout.setSpacing(8)
+            rs_hint = QLabel(
+                "Export a self-contained RealityScan rig package.\n"
+                "Output includes perspective images, per-image XMP, and masks."
+            )
+            rs_hint.setWordWrap(True)
+            rs_tab_layout.addWidget(rs_hint)
+
+            rs_section = CollapsibleSection("RealityScan Rig Export Settings", expanded=False)
+            rs_tab_layout.addWidget(rs_section)
+
+            rs_form = QFormLayout()
+            rs_form.setFieldGrowthPolicy(QFormLayout.AllNonFixedFieldsGrow)
+
+            self.rs_output_dir_edit = QLineEdit()
+            self.rs_output_dir_edit.textChanged.connect(lambda _: self._refresh_action_buttons())
+            self.rs_output_dir_edit.textChanged.connect(lambda _: self._update_rs_workspace_hint())
+            browse_rs_output_btn = QPushButton("Browse")
+            browse_rs_output_btn.clicked.connect(self._browse_rs_output_dir)
+            row = QHBoxLayout()
+            row.addWidget(self.rs_output_dir_edit)
+            row.addWidget(browse_rs_output_btn)
+            rs_form.addRow("RS Output Root", row)
+
+            self.rs_pose_prior_combo = QComboBox()
+            self.rs_pose_prior_combo.addItem("Draft (initial)", "initial")
+            self.rs_pose_prior_combo.addItem("Exact (Recommended)", "exact")
+            self.rs_pose_prior_combo.addItem("Locked", "locked")
+            self.rs_pose_prior_combo.setCurrentIndex(1)
+            rs_form.addRow("Pose Prior", self.rs_pose_prior_combo)
+
+            self.rs_calibration_prior_combo = QComboBox()
+            self.rs_calibration_prior_combo.addItem("Fixed (Recommended)", "fixed")
+            self.rs_calibration_prior_combo.addItem("Approximate (initial)", "initial")
+            self.rs_calibration_prior_combo.addItem("Exact (legacy)", "exact")
+            self.rs_calibration_prior_combo.addItem("Locked (legacy)", "locked")
+            self.rs_calibration_prior_combo.setCurrentIndex(0)
+            rs_form.addRow("Calibration Prior", self.rs_calibration_prior_combo)
+
+            self.rs_focal35mm_edit = QLineEdit()
+            self.rs_focal35mm_edit.setPlaceholderText("auto from FOV (90deg -> 18mm)")
+            self.rs_focal35mm_edit.textChanged.connect(lambda _: self._update_rs_focal_hint())
+            rs_form.addRow("Focal35mm Override", self.rs_focal35mm_edit)
+
+            self.rs_focal_hint = QLabel("")
+            self.rs_focal_hint.setWordWrap(True)
+            rs_form.addRow("Focal35mm", self.rs_focal_hint)
+
+            self.rs_no_transform_check = QCheckBox("Disable axis transform (--no_transform)")
+            self.rs_no_transform_check.setChecked(False)
+            rs_form.addRow("Pose Transform", self.rs_no_transform_check)
+
+            self.rs_invert_masks_check = QCheckBox("Invert exported masks")
+            self.rs_invert_masks_check.setChecked(False)
+            rs_form.addRow("Mask Export", self.rs_invert_masks_check)
+
+            self.rs_workspace_hint = QLabel("")
+            self.rs_workspace_hint.setWordWrap(True)
+            rs_form.addRow("Output Layout", self.rs_workspace_hint)
+
+            rs_section.content_layout.addLayout(rs_form)
+            rs_tab_layout.addStretch(1)
+            self.workflow_tabs.addTab(rs_tab, "RealityScan Rig XMP")
+
             self.workflow_tabs.currentChanged.connect(self._on_workflow_tab_changed)
             settings_layout.addWidget(self.workflow_tabs)
 
@@ -693,7 +763,8 @@ if QMainWindow is not None:
                 self.cancel_button.setEnabled(True)
                 return
             scene_ok = Path(self.scene_dir_edit.text().strip()).is_dir()
-            if self._task_mode_id() == _TASK_MODE_COLMAP:
+            mode = self._task_mode_id()
+            if mode == _TASK_MODE_COLMAP:
                 if not hasattr(self, "colmap_output_dir_edit") or not hasattr(self, "colmap_binary_edit"):
                     self.run_button.setEnabled(scene_ok)
                     self.cancel_button.setEnabled(False)
@@ -709,6 +780,13 @@ if QMainWindow is not None:
                     else:
                         colmap_ok = self._guess_colmap_binary() is not None
                 self.run_button.setEnabled(scene_ok and output_ok and colmap_ok)
+            elif mode == _TASK_MODE_REALITYSCAN:
+                if not hasattr(self, "rs_output_dir_edit"):
+                    self.run_button.setEnabled(scene_ok)
+                    self.cancel_button.setEnabled(False)
+                    return
+                output_ok = bool(self.rs_output_dir_edit.text().strip())
+                self.run_button.setEnabled(scene_ok and output_ok)
             else:
                 self.run_button.setEnabled(scene_ok)
             self.cancel_button.setEnabled(False)
@@ -731,6 +809,8 @@ if QMainWindow is not None:
             idx = self.workflow_tabs.currentIndex()
             if idx == 1:
                 return _TASK_MODE_COLMAP
+            if idx == 2:
+                return _TASK_MODE_REALITYSCAN
             return _TASK_MODE_CUBEMAP
 
         def _colmap_run_until_id(self) -> str:
@@ -836,12 +916,57 @@ if QMainWindow is not None:
                 return _PROFILE_LICHTFELD
             return _PROFILE_POSTSHOT
 
+        def _rs_pose_prior_id(self) -> str:
+            if not hasattr(self, "rs_pose_prior_combo"):
+                return "exact"
+            data = self.rs_pose_prior_combo.currentData()
+            if isinstance(data, str) and data:
+                return data
+            return "exact"
+
+        def _rs_calibration_prior_id(self) -> str:
+            if not hasattr(self, "rs_calibration_prior_combo"):
+                return "fixed"
+            data = self.rs_calibration_prior_combo.currentData()
+            if isinstance(data, str) and data:
+                return data
+            return "fixed"
+
+        def _effective_rs_focal35mm(self) -> float:
+            text = self.rs_focal35mm_edit.text().strip() if hasattr(self, "rs_focal35mm_edit") else ""
+            if text:
+                focal = self._parse_float(text, "Focal35mm Override")
+                if not math.isfinite(focal) or focal <= 0.0:
+                    raise ValueError("Focal35mm Override must be a positive finite number")
+                return focal
+            fov_deg = 90.0
+            return 18.0 / math.tan(math.radians(fov_deg) / 2.0)
+
+        def _update_rs_focal_hint(self) -> None:
+            if not hasattr(self, "rs_focal_hint"):
+                return
+            try:
+                focal = self._effective_rs_focal35mm()
+                if self.rs_focal35mm_edit.text().strip():
+                    self.rs_focal_hint.setText(f"Using override: {focal:.6g} mm")
+                else:
+                    self.rs_focal_hint.setText("Auto from FOV=90deg: 18.0 mm")
+            except Exception as e:
+                self.rs_focal_hint.setText(f"Invalid focal override: {e}")
+
         def _on_workflow_tab_changed(self, _index: int) -> None:
             if not hasattr(self, "run_button"):
                 return
-            is_colmap = self._task_mode_id() == _TASK_MODE_COLMAP
-            self.run_button.setText("Run COLMAP Rig Pipeline" if is_colmap else "Run Cubemap Convert")
+            mode = self._task_mode_id()
+            if mode == _TASK_MODE_COLMAP:
+                self.run_button.setText("Run COLMAP Rig Pipeline")
+            elif mode == _TASK_MODE_REALITYSCAN:
+                self.run_button.setText("Export RealityScan Rig Package")
+            else:
+                self.run_button.setText("Run Cubemap Convert")
             self._update_colmap_workspace_hint()
+            self._update_rs_workspace_hint()
+            self._update_rs_focal_hint()
             self._refresh_action_buttons()
 
         @staticmethod
@@ -879,6 +1004,18 @@ if QMainWindow is not None:
                 f"- {dataset}\n"
                 f"- {workspace / 'database.db'}\n"
                 f"- {workspace / 'sparse'}"
+            )
+
+        def _update_rs_workspace_hint(self) -> None:
+            if not hasattr(self, "rs_workspace_hint"):
+                return
+            root = Path(self.rs_output_dir_edit.text().strip() or ".")
+            inputs = root / "inputs"
+            self.rs_workspace_hint.setText(
+                "Self-contained RealityScan package:\n"
+                f"- {inputs} (images + .xmp + .mask.png)\n"
+                f"- {root / 'manifest.csv'}\n"
+                f"- {root / 'realityscan_project.json'}"
             )
 
         def _on_view_mode_changed(self, _index: int) -> None:
@@ -953,6 +1090,12 @@ if QMainWindow is not None:
             if path:
                 self.colmap_output_dir_edit.setText(path)
                 self._update_colmap_workspace_hint()
+
+        def _browse_rs_output_dir(self) -> None:
+            path = QFileDialog.getExistingDirectory(self, "Select RealityScan output root")
+            if path:
+                self.rs_output_dir_edit.setText(path)
+                self._update_rs_workspace_hint()
 
         def _browse_colmap_repo_dir(self) -> None:
             path = QFileDialog.getExistingDirectory(self, "Select COLMAP repository directory")
@@ -1168,11 +1311,14 @@ if QMainWindow is not None:
             self.ms_xml_edit.setText(str(self._guess_metashape_xml(scene_dir)))
             self.ms_ply_edit.setText(self._guess_metashape_ply(scene_dir))
             self.colmap_output_dir_edit.setText(str(scene_dir / "colmap_rig"))
+            self.rs_output_dir_edit.setText(str(scene_dir / "realityscan_rig"))
             if not self.colmap_binary_edit.text().strip():
                 hit = self._guess_colmap_binary()
                 if hit is not None:
                     self.colmap_binary_edit.setText(str(hit))
             self._update_colmap_workspace_hint()
+            self._update_rs_workspace_hint()
+            self._update_rs_focal_hint()
             self._refresh_preview_image_list(prefer_current=False)
             self._refresh_action_buttons()
             self._update_output_estimate()
@@ -1930,6 +2076,70 @@ if QMainWindow is not None:
                 cmd.append("--invert_masks")
             return cmd
 
+        def _build_rs_export_cmd(self) -> list[str]:
+            script = self.base_dir / "realityscan_rig_export.py"
+            if not script.exists():
+                raise FileNotFoundError(f"realityscan_rig_export.py not found: {script}")
+
+            input_dir = Path(self.scene_dir_edit.text().strip() or ".")
+            if not input_dir.is_dir():
+                raise ValueError(f"Scene directory not found: {input_dir}")
+
+            output_dir_text = self.rs_output_dir_edit.text().strip()
+            if not output_dir_text:
+                raise ValueError("RS Output Root is empty")
+            output_dir = Path(output_dir_text)
+
+            all_views = self._collect_views(include_disabled=True)
+            enabled_count = sum(1 for v in all_views if v["enabled"])
+            if enabled_count <= 0:
+                raise ValueError("At least one view must be enabled")
+            if enabled_count > _BLOCK_ENABLED_VIEWS:
+                raise ValueError(
+                    f"Too many enabled views ({enabled_count}). "
+                    f"Reduce to <= {_BLOCK_ENABLED_VIEWS}."
+                )
+
+            views_json = self._write_views_config(output_dir, all_views)
+            json_name = self.json_name_edit.text().strip() or "transforms.json"
+            pose_prior = self._rs_pose_prior_id()
+            calibration_prior = self._rs_calibration_prior_id()
+            focal35mm = self._effective_rs_focal35mm()
+
+            cmd = [
+                sys.executable,
+                str(script),
+                str(input_dir),
+                str(output_dir),
+                "--json",
+                json_name,
+                "--fov",
+                "90",
+                "--views-json",
+                str(views_json),
+                "--pose_prior",
+                pose_prior,
+                "--calibration_prior",
+                calibration_prior,
+            ]
+
+            if self.rs_focal35mm_edit.text().strip():
+                cmd.extend(["--focal35mm", f"{focal35mm:.12g}"])
+
+            mask_dir = Path(self.mask_dir_edit.text().strip())
+            if mask_dir.is_dir():
+                cmd.extend(["--mask_dir", str(mask_dir)])
+
+            if self.mask_from_alpha_check.isChecked():
+                cmd.append("--mask_from_alpha")
+            if self.duplicate_check.isChecked():
+                cmd.append("--duplicate")
+            if self.rs_no_transform_check.isChecked():
+                cmd.append("--no_transform")
+            if self.rs_invert_masks_check.isChecked():
+                cmd.append("--invert_masks")
+            return cmd
+
         def _build_colmap_pipeline_cmd(self) -> list[str]:
             script = self.base_dir / "colmap_rig_pipeline.py"
             if not script.exists():
@@ -2167,7 +2377,8 @@ if QMainWindow is not None:
                 if reply != QMessageBox.Yes:
                     return
 
-            if self._task_mode_id() == _TASK_MODE_COLMAP:
+            mode = self._task_mode_id()
+            if mode == _TASK_MODE_COLMAP:
                 try:
                     export_cmd = self._build_colmap_export_cmd()
                 except Exception as e:
@@ -2200,6 +2411,25 @@ if QMainWindow is not None:
                         return
                     steps.append(("colmap_sfm", pipeline_cmd))
 
+                self._start_step_queue(steps)
+                return
+
+            if mode == _TASK_MODE_REALITYSCAN:
+                try:
+                    rs_cmd = self._build_rs_export_cmd()
+                except Exception as e:
+                    QMessageBox.critical(self, "Invalid RealityScan Export Input", str(e))
+                    return
+
+                steps = []
+                if self.preprocess_enable_check.isChecked():
+                    try:
+                        preprocess_cmd = self._build_preprocess_cmd()
+                    except Exception as e:
+                        QMessageBox.critical(self, "Invalid Preprocess Input", str(e))
+                        return
+                    steps.append(("metashape", preprocess_cmd))
+                steps.append(("realityscan_export", rs_cmd))
                 self._start_step_queue(steps)
                 return
 

@@ -55,6 +55,11 @@ Metashapeが出力する**360度画像用**xmlファイルからtransforms.json�
 キューブマップ変換用のラッパーGUIです。複数ピッチ行 x 可変YAWスロット（4〜8）の視点ON/OFF、マスク半透明合成付きプレビュー、FOV=90固定での実行に対応します。<br>
 [→詳細を見る](doc/cubemap_tools_gui.ja.md)<br>
 
+### realityscan_rig_export.py
+
+エクイレクタングラー入力から RealityScan 用の自己完結リグパッケージ（透視投影画像 + 対応XMP + 任意マスク）を出力します。<br>
+[→詳細を見る](doc/realityscan_rig_export.ja.md)<br>
+
 ### stitch_mask.py
 
 360度画像内の２つの魚眼画像の指定角度外にマスクを生成します。レンズ間のつなぎ目付近で被写体との距離が近くて、スチッティング領域が目立つ場合に有効です。<br>

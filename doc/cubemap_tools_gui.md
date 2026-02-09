@@ -98,6 +98,21 @@ start_cubemap_tools_gui.bat
 - `Allow duplicate (--duplicate)`
 - `Invert masks (--invert_masks)`
 
+## Workflow tabs
+
+- `Cubemap`:
+  - Existing conversion workflow (`metashape_360_lfs.py` optional + `cubemap_transforms_json.py`).
+- `COLMAP Rig SfM`:
+  - Exports COLMAP rig dataset and optionally runs COLMAP SfM stages.
+- `RealityScan Rig XMP`:
+  - Exports a self-contained RealityScan import package.
+  - `RS Output Root`: package root directory.
+  - `Pose Prior`: XMP pose prior (`Draft/Exact/Locked`).
+  - `Calibration Prior`: XMP calibration prior (`Fixed` is recommended default).
+  - `Focal35mm Override`: optional override (empty = auto from `FOV=90` -> `18mm`).
+  - `Pose Transform`: pass `--no_transform` to RS export script.
+  - `Mask Export`: optional mask inversion for RS package.
+
 ## Execution behavior
 
 - On run, GUI writes `<output_dir>/views_config.json`.
@@ -112,6 +127,14 @@ start_cubemap_tools_gui.bat
   - `Postshot / Brush`: copies Metashape PLY (for example `metashape.ply` / `sparse.ply`).
   - `LichtFeld Studio`: copies `pointcloud.ply`.
 - If required PLY is missing for selected profile, run is blocked.
+- In `RealityScan Rig XMP` tab:
+  - GUI writes `<rs_output_root>/views_config.json`.
+  - If `Preprocess` is enabled, preprocess is executed before RS export.
+  - GUI runs `realityscan_rig_export.py`.
+  - Exported import files are bundled under `<rs_output_root>/inputs`:
+    - `<image_name>`
+    - `<image_name>.xmp`
+    - `<image_name>.mask.png` (when mask exists)
 
 ## Notes
 

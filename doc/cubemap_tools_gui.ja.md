@@ -99,6 +99,21 @@ start_cubemap_tools_gui.bat
 - `Allow duplicate (--duplicate)`
 - `Invert masks (--invert_masks)`
 
+## ワークフロータブ
+
+- `Cubemap`:
+  - 既存の変換ワークフロー（必要に応じて `metashape_360_lfs.py` 前処理 + `cubemap_transforms_json.py`）。
+- `COLMAP Rig SfM`:
+  - COLMAP リグデータセットの出力と、必要なら COLMAP SfM ステージ実行。
+- `RealityScan Rig XMP`:
+  - RealityScan 読み込み用の自己完結パッケージを出力します。
+  - `RS Output Root`: パッケージ出力先ルート。
+  - `Pose Prior`: XMP姿勢Prior（`Draft/Exact/Locked`）。
+  - `Calibration Prior`: XMP内部パラメータPrior（既定推奨は `Fixed`）。
+  - `Focal35mm Override`: 焦点距離の上書き（空欄時は `FOV=90` から自動換算で `18mm`）。
+  - `Pose Transform`: RS出力スクリプトに `--no_transform` を渡します。
+  - `Mask Export`: RSパッケージ用マスク反転の有無。
+
 ## 実行時の挙動
 
 - 実行時に `<output_dir>/views_config.json` を生成します。
@@ -114,6 +129,14 @@ start_cubemap_tools_gui.bat
   - `Postshot / Brush`: MetashapeのPLY（例: `metashape.ply` / `sparse.ply`）をコピー
   - `LichtFeld Studio`: `pointcloud.ply` をコピー
 - 選択プロファイルで必要なPLYが見つからない場合は、実行前にエラーで停止します。
+- `RealityScan Rig XMP` タブでは:
+  - `<rs_output_root>/views_config.json` を生成します。
+  - `Preprocess` 有効時は、RS出力の前に前処理を実行します。
+  - `realityscan_rig_export.py` を実行します。
+  - RealityScan 読み込み用ファイルは `<rs_output_root>/inputs` にまとめて出力されます。
+    - `<image_name>`
+    - `<image_name>.xmp`
+    - `<image_name>.mask.png`（マスクがある場合）
 
 ## 注意
 

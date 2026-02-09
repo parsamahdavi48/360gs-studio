@@ -56,6 +56,11 @@ See detailed documentation: [doc/cubemap_transforms_json.md](doc/cubemap_transfo
 GUI wrapper for cubemap conversion with preview-based view selection (multiple pitch rows x configurable yaw slots [4-8], per-slot on/off, mask overlay preview, FOV fixed at 90).<br>
 See details: [doc/cubemap_tools_gui.md](doc/cubemap_tools_gui.md)
 
+### `realityscan_rig_export.py`
+
+Export a self-contained RealityScan rig package from equirectangular inputs (perspective crops + per-image XMP + optional masks in one import folder).<br>
+See details: [doc/realityscan_rig_export.md](doc/realityscan_rig_export.md)
+
 ### `stitch_mask.py`
 
 Generate masks that exclude angular regions outside the two fisheye lenses in a 360° image. Useful when stitch seams become visible (for example in tight indoor scenes).<br>
