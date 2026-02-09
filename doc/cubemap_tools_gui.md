@@ -133,7 +133,7 @@ start_cubemap_tools_gui.bat
   - GUI runs `realityscan_rig_export.py`.
   - Exported import files are bundled under `<rs_output_root>/inputs`:
     - `<image_name>`
-    - `<image_name>.xmp`
+    - `<image_stem>.xmp`
     - `<image_name>.mask.png` (when mask exists)
 
 ## Notes

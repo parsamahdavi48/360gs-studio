@@ -35,7 +35,7 @@ All outputs are written under `<rs_output_root>`:
 
 - `inputs/`
   - exported perspective images
-  - matching XMP files (`<image_name>.xmp`)
+  - matching XMP files (`<image_stem>.xmp`)
   - optional mask layers (`<image_name>.mask.png`)
 - `views_config.json`
 - `manifest.csv`

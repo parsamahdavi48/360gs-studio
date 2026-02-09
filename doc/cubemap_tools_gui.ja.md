@@ -135,7 +135,7 @@ start_cubemap_tools_gui.bat
   - `realityscan_rig_export.py` を実行します。
   - RealityScan 読み込み用ファイルは `<rs_output_root>/inputs` にまとめて出力されます。
     - `<image_name>`
-    - `<image_name>.xmp`
+    - `<image_stem>.xmp`
     - `<image_name>.mask.png`（マスクがある場合）
 
 ## 注意

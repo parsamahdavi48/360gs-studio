@@ -317,15 +317,20 @@ def _write_xmp(
     position_text = _fmt_values(t)
 
     lines = [
-        '<?xpacket begin="?" id="W5M0MpCehiHzreSzNTczkc9d"?>',
         '<x:xmpmeta xmlns:x="adobe:ns:meta/">',
         '  <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">',
         '    <rdf:Description xmlns:xcr="http://www.capturingreality.com/ns/xcr/1.1#"',
         '      xcr:Version="3"',
         f'      xcr:PosePrior="{pose_prior}"',
+        f'      xcr:Rotation="{rotation_text}"',
         f'      xcr:Coordinates="{coordinates}"',
         '      xcr:DistortionModel="division"',
+        '      xcr:DistortionCoeficients="0 0 0 0 0 0"',
         f'      xcr:FocalLength35mm="{focal35mm:.12g}"',
+        '      xcr:Skew="0"',
+        '      xcr:AspectRatio="1"',
+        '      xcr:PrincipalPointU="0"',
+        '      xcr:PrincipalPointV="0"',
         f'      xcr:CalibrationPrior="{calibration_prior}"',
         '      xcr:CalibrationGroup="-1"',
         '      xcr:DistortionGroup="-1"',
@@ -333,17 +338,11 @@ def _write_xmp(
         f'      xcr:RigInstance="{rig_instance_id}"',
         f'      xcr:RigPoseIndex="{rig_pose_index}"',
         '      xcr:InTexturing="1"',
-        '      xcr:InMeshing="1"',
-        '      xcr:PrincipalPointU="0"',
-        '      xcr:PrincipalPointV="0"',
-        '      xcr:Skew="0">',
+        '      xcr:InMeshing="1">',
         f'      <xcr:Position>{position_text}</xcr:Position>',
-        f'      <xcr:Rotation>{rotation_text}</xcr:Rotation>',
-        '      <xcr:DistortionCoeficients>0 0 0 0 0 0</xcr:DistortionCoeficients>',
         '    </rdf:Description>',
         '  </rdf:RDF>',
         '</x:xmpmeta>',
-        '<?xpacket end="w"?>',
     ]
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
@@ -496,7 +495,7 @@ def export_realityscan_rig(args: argparse.Namespace) -> None:
                 _save_image(dirs["inputs"] / mask_name, merged_mask, "L")
 
             pose = _camera_transform_for_view(world_transform, float(view["yaw"]), float(view["pitch"]))
-            xmp_name = f"{image_name}.xmp"
+            xmp_name = f"{Path(image_name).stem}.xmp"
             _write_xmp(
                 dirs["inputs"] / xmp_name,
                 pose=pose,

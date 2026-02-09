@@ -35,7 +35,7 @@ python realityscan_rig_export.py ./scene01 ./scene01/realityscan_rig --views-jso
 
 - `inputs/`
   - 透視投影画像
-  - 対応 XMP (`<image_name>.xmp`)
+  - 対応 XMP (`<image_stem>.xmp`)
   - 任意マスク (`<image_name>.mask.png`)
 - `views_config.json`
 - `manifest.csv`
