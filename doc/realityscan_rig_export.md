@@ -47,6 +47,7 @@ Use `inputs/` as the import folder in RealityScan.
 
 - `--views-json`: custom enabled view list (`name`, `yaw`, `pitch`)
 - `--fov`: crop FOV (default `90`)
+- `--output_scale`: output face size ratio to input height (default `0.5`, full size is `1.0`)
 - `--pose_prior`: XMP pose prior (`initial|exact|locked`, default `exact`)
 - `--calibration_prior`: XMP calibration prior (`initial|fixed|exact|locked`, default `fixed`)
 - `--focal35mm`: override focal length in XMP (default is derived from FOV; `90deg -> 18mm`)

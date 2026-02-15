@@ -134,6 +134,7 @@ python cubemap_transforms_json.py . ./cubic --no_tranform
 |--yaw|degrees|Shift the horizontal angle (default=45.0 degrees)|
 |--stitch|degrees|Angle to avoid stitching areas (default=0.0 degrees)|
 |--fov|degrees|Field of view for cubemap faces (default=90.0 degrees)|
+|--output_scale|ratio|Output face size ratio to input height (default=0.5, `1.0` for full size)|
 |--views-json|path|Use custom views list JSON (`[{name,yaw,pitch,enabled}]` or `{\"views\":[...]}`)|
 |--no_bottom|(no)|Output without a bottom face of cube-map.|
 |--no_top|(no)|Output without a top face of cube-map.|

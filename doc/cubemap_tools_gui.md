@@ -69,6 +69,9 @@ start_cubemap_tools_gui.bat
   - `Drop Bottom (-90deg)`: disable bottom face.
 - `FOV`:
   - Fixed to `90.0` in this GUI.
+- `Output Size`:
+  - `Half`: output face size = input height x `0.5` (legacy/default behavior).
+  - `Full`: output face size = input height x `1.0`.
 - `Preview Image`:
   - Equirectangular image used for overlay preview.
   - `Auto` picks the first image from scene images.
@@ -119,7 +122,7 @@ start_cubemap_tools_gui.bat
 - If `Preprocess` is enabled, GUI runs:
   - `vendor/metashape_360_lfs/metashape_360_lfs.py --images ... --xml ... --output <scene_dir> [...]`
 - Then GUI runs:
-  - `cubemap_transforms_json.py --fov 90 --views-json <that file>`
+  - `cubemap_transforms_json.py --fov 90 --output_scale <0.5|1.0> --views-json <that file>`
 - Disabled slots are written with `enabled=false` and ignored by converter.
 - With `Postshot / Brush` profile, preprocess `--ply` is disabled by default to avoid point-cloud/camera mismatch.
 - Mask inversion is not automatic. Enable `Invert masks (--invert_masks)` only when needed.

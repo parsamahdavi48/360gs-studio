@@ -40,6 +40,14 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--no_top", action="store_true", help="Exclude top face in default mode")
     parser.add_argument("--no_bottom", action="store_true", help="Exclude bottom face in default mode")
     parser.add_argument("--fov", type=float, default=90.0, help="Field of view for output views")
+    parser.add_argument(
+        "--output_scale",
+        "--output-scale",
+        dest="output_scale",
+        type=float,
+        default=0.5,
+        help="Output face size ratio to input image height (0.5=half, 1.0=full)",
+    )
     parser.add_argument("--mask_dir", help="Input mask directory (default=<input_dir>/masks)")
     parser.add_argument("--mask_from_alpha", action="store_true", help="Extract masks from alpha channel")
     parser.add_argument("--invert_masks", action="store_true", help="Invert exported masks")
@@ -154,13 +162,17 @@ def _load_frame_files(input_dir: Path, json_name: str, allow_duplicate: bool) ->
     return image_files
 
 
-def _determine_io_shape(input_dir: Path, image_files: list[str]) -> tuple[tuple[int, int], int]:
+def _determine_io_shape(
+    input_dir: Path,
+    image_files: list[str],
+    output_scale: float,
+) -> tuple[tuple[int, int], int]:
     for rel in image_files:
         src = input_dir / rel
         if src.is_file():
             with Image.open(src) as img:
                 w, h = img.size
-            out_size = max(1, h // 2)
+            out_size = max(1, int(round(h * output_scale)))
             return (w, h), out_size
     raise ValueError("Failed to read input image size")
 
@@ -364,6 +376,8 @@ def export_colmap_rig(args: argparse.Namespace) -> None:
         raise ValueError(f"Input directory not found: {input_dir}")
     if not (0.0 < args.fov < 180.0):
         raise ValueError("fov must be in (0, 180)")
+    if not (0.0 < args.output_scale <= 1.0):
+        raise ValueError("output_scale must be in (0, 1.0]")
 
     views = _load_views(args)
     if not views:
@@ -372,7 +386,7 @@ def export_colmap_rig(args: argparse.Namespace) -> None:
     mask_dir = Path(args.mask_dir).resolve() if args.mask_dir else (input_dir / "masks")
 
     image_files = _load_frame_files(input_dir, args.json, args.duplicate)
-    input_size, output_size = _determine_io_shape(input_dir, image_files)
+    input_size, output_size = _determine_io_shape(input_dir, image_files, float(args.output_scale))
     remap_tables = _build_remap_tables(input_size, output_size, args.fov, views)
     output_name_map = _unique_output_names(image_files)
 

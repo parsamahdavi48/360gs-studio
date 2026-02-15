@@ -47,6 +47,7 @@ RealityScan には `inputs/` フォルダを読み込ませてください。
 
 - `--views-json`: 有効視点リスト（`name`, `yaw`, `pitch`）
 - `--fov`: 切り出しFOV（既定 `90`）
+- `--output_scale`: 出力面サイズの入力画像高さに対する倍率（既定 `0.5`、等倍は `1.0`）
 - `--pose_prior`: XMP姿勢Prior（`initial|exact|locked`, 既定 `exact`）
 - `--calibration_prior`: XMP内部パラメータPrior（`initial|fixed|exact|locked`, 既定 `fixed`）
 - `--focal35mm`: XMPの焦点距離上書き（未指定時はFOVから自動換算。`90deg -> 18mm`）

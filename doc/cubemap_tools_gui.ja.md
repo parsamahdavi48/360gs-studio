@@ -70,6 +70,9 @@ start_cubemap_tools_gui.bat
   - `Drop Bottom (-90deg)`: 下面を無効化。
 - `FOV`:
   - このGUIでは `90.0` 固定。
+- `Output Size`:
+  - `Half`: 出力面サイズ = 入力画像高さ x `0.5`（従来/既定の挙動）。
+  - `Full`: 出力面サイズ = 入力画像高さ x `1.0`。
 - `Preview Image`:
   - プレビュー対象のエクイレクタングラー画像。
   - `Auto` でシーン画像の先頭を自動選択します。
@@ -121,7 +124,7 @@ start_cubemap_tools_gui.bat
   `vendor/metashape_360_lfs/metashape_360_lfs.py --images ... --xml ... --output <scene_dir> [...]`
   を実行します。
 - その後
-  `cubemap_transforms_json.py --fov 90 --views-json <そのファイル>` を呼び出します。
+  `cubemap_transforms_json.py --fov 90 --output_scale <0.5|1.0> --views-json <そのファイル>` を呼び出します。
 - OFFのスロットは `enabled=false` として保存され、変換時に無視されます。
 - `Postshot / Brush` プロファイルでは、点群とカメラの不一致を避けるため、前処理`--ply`が既定でOFFになります。
 - マスク反転は自動では行われません。必要な場合のみ `Invert masks (--invert_masks)` を有効にしてください。

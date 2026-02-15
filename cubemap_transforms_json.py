@@ -50,6 +50,14 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--yaw", type=float, default=45.0, help="Yaw offset for default 6 views")
     parser.add_argument("--stitch", type=float, default=0.0, help="Stitch avoid angle for default 6 views")
     parser.add_argument("--fov", type=float, default=90.0, help="Field of view for each output view")
+    parser.add_argument(
+        "--output_scale",
+        "--output-scale",
+        dest="output_scale",
+        type=float,
+        default=0.5,
+        help="Output face size ratio to input image height (0.5=half, 1.0=full)",
+    )
     parser.add_argument("--views-json", dest="views_json", help="Custom views JSON path")
     parser.add_argument("--no_bottom", action="store_true", help="Exclude bottom face in default mode")
     parser.add_argument("--no_top", action="store_true", help="Exclude top face in default mode")
@@ -270,6 +278,7 @@ def transform_json(
     output_dir: str,
     views: list[dict],
     fov: float,
+    output_scale: float,
     no_transform: bool,
     allow_duplicate: bool,
 ) -> tuple[list[str], tuple[int, int], int]:
@@ -291,7 +300,7 @@ def transform_json(
         return [], (0, 0), 0
 
     input_size = (7840, 3920)
-    output_size = 1920
+    output_size = max(1, int(round(input_size[1] * output_scale)))
 
     for frame in frames:
         file_path = frame.get("file_path")
@@ -301,7 +310,7 @@ def transform_json(
         if os.path.exists(probe):
             with Image.open(probe) as first_img:
                 input_size = first_img.size
-            output_size = max(1, input_size[1] // 2)
+            output_size = max(1, int(round(input_size[1] * output_scale)))
             break
 
     if no_transform:
@@ -539,6 +548,9 @@ def main() -> None:
     if args.fov <= 0 or args.fov >= 180:
         print("Error: fov must be in (0, 180)")
         sys.exit(1)
+    if args.output_scale <= 0 or args.output_scale > 1.0:
+        print("Error: output_scale must be in (0, 1.0]")
+        sys.exit(1)
 
     if args.views_json:
         try:
@@ -563,6 +575,7 @@ def main() -> None:
         output_dir=output_dir,
         views=views,
         fov=args.fov,
+        output_scale=args.output_scale,
         no_transform=args.no_transform,
         allow_duplicate=args.duplicate,
     )

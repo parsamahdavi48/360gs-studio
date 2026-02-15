@@ -121,6 +121,7 @@ python cubemap_transforms_json.py . ./cubic --no_tranform
 |--yaw|角度°|水平方向の角度をシフトします (default=45.0 degrees)|
 |--stitch|角度°|スティッチング領域を除外するための角度 (default=0.0 degrees)|
 |--fov|角度°|各キューブマップ面の画像のFOV (default=90.0 degrees)|
+|--output_scale|倍率|出力面サイズの入力画像高さに対する倍率 (default=0.5、等倍は `1.0`)|
 |--views-json|パス|カスタム視点リストJSON（`[{name,yaw,pitch,enabled}]` または `{\"views\":[...]}`）を使用|
 |--no_bottom|(no)|キューブマップの底面を除外して出力|
 |--no_top|(no)|キューブマップの上面を除外して出力|

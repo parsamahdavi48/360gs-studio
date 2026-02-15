@@ -306,6 +306,11 @@ if QMainWindow is not None:
             self.fov_label = QLabel("90.0 (fixed)")
             form.addRow("FOV", self.fov_label)
 
+            self.output_scale_combo = QComboBox()
+            self.output_scale_combo.addItem("Half (0.5x height, default)", 0.5)
+            self.output_scale_combo.addItem("Full (1.0x height)", 1.0)
+            form.addRow("Output Size", self.output_scale_combo)
+
             self.sample_image_edit = QLineEdit()
             self.sample_image_edit.textChanged.connect(self._on_sample_image_changed)
             browse_sample_btn = QPushButton("Browse")
@@ -1458,6 +1463,16 @@ if QMainWindow is not None:
             except Exception as e:
                 raise ValueError(f"{label} is invalid: {e}") from e
 
+        def _output_scale(self) -> float:
+            value = self.output_scale_combo.currentData()
+            try:
+                scale = float(value)
+            except Exception as e:
+                raise ValueError(f"Output Size is invalid: {e}") from e
+            if not math.isfinite(scale) or scale <= 0.0 or scale > 1.0:
+                raise ValueError("Output Size must be in (0, 1.0]")
+            return scale
+
         def _yaw_slot_count(self) -> int:
             text = self.yaw_slots_combo.currentText().strip()
             try:
@@ -2003,6 +2018,8 @@ if QMainWindow is not None:
                 json_name,
                 "--fov",
                 "90",
+                "--output_scale",
+                f"{self._output_scale():g}",
                 "--views-json",
                 str(views_json),
             ]
@@ -2060,6 +2077,8 @@ if QMainWindow is not None:
                 json_name,
                 "--fov",
                 "90",
+                "--output_scale",
+                f"{self._output_scale():g}",
                 "--views-json",
                 str(views_json),
             ]
@@ -2115,6 +2134,8 @@ if QMainWindow is not None:
                 json_name,
                 "--fov",
                 "90",
+                "--output_scale",
+                f"{self._output_scale():g}",
                 "--views-json",
                 str(views_json),
                 "--pose_prior",
