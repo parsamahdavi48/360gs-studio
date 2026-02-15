@@ -34,7 +34,6 @@ class MyParser(argparse.ArgumentParser):
         sys.stderr.write(f"\n{message}\n")
         sys.exit(1)
 
-
 def parse_args() -> argparse.Namespace:
     parser = MyParser(
         description="Convert transforms.json from equirectangular to cubemap views.",

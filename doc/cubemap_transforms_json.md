@@ -8,19 +8,6 @@ Metashape (Standard/Professional) > xml/pointcloud > transforms.json > cubemap >
 
 [JP 日本語の説明](cubemap_transforms_json.ja.md)
 
-## Requirements
-
-- Python 3.x (3.11.8 confirmed)
-- NumPy
-- OpenCV
-- Pillow
-- Open3D (used in metashape_360_lfs)
-- [metashape_360_lfs.py (forked version)](https://github.com/tetraface/metashape_360_lfs) 
-
-```
-pip install numpy opencv-python Pillow open3d
-```
-
 ## Directory structure
 
 ### Input directory example
