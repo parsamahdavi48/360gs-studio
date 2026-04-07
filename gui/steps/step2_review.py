@@ -5,7 +5,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from PySide6.QtCore import Signal
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QFormLayout,
     QHBoxLayout,
@@ -21,6 +21,24 @@ from gui import i18n
 from gui.steps.base_step import BaseStepWidget
 
 
+_CARD_STYLE = """
+    background-color: #2a2a44;
+    border: 1px solid #3a3a5c;
+    border-radius: 8px;
+    padding: 16px;
+"""
+
+_WORKFLOW_STYLE = """
+    background-color: #1e1e34;
+    border: 1px solid #7c3aed;
+    border-radius: 8px;
+    padding: 20px;
+    color: #c4b5fd;
+    font-size: 11pt;
+    line-height: 1.6;
+"""
+
+
 class ReviewStep(BaseStepWidget):
     run_requested = Signal()
 
@@ -31,7 +49,24 @@ class ReviewStep(BaseStepWidget):
 
     def _build_ui(self) -> None:
         layout = QVBoxLayout(self)
+        layout.setSpacing(12)
+
+        # ワークフロー案内カード
+        workflow = QLabel(
+            "Step 1 で抽出  ──  レビュー+選別  ──  Metashape SfM (手動)  ──  Step 3 へ"
+        )
+        workflow.setAlignment(Qt.AlignCenter)
+        workflow.setStyleSheet(_WORKFLOW_STYLE)
+        workflow.setWordWrap(True)
+        layout.addWidget(workflow)
+
+        # 設定カード
+        card = QWidget()
+        card.setStyleSheet(_CARD_STYLE)
+        card_layout = QVBoxLayout(card)
+
         form = QFormLayout()
+        form.setSpacing(6)
 
         self.csv_edit = QLineEdit("selected_frames.csv")
         form.addRow(i18n.CSV_FILE, self.csv_edit)
@@ -43,28 +78,40 @@ class ReviewStep(BaseStepWidget):
         self.prefix_edit.setPlaceholderText("自動 (動画ファイル名)")
         form.addRow(i18n.FILENAME_PREFIX, self.prefix_edit)
 
-        layout.addLayout(form)
+        card_layout.addLayout(form)
+        layout.addWidget(card)
 
         # アクションボタン
         btn_row = QHBoxLayout()
-        self.review_btn = QPushButton(i18n.OPEN_REVIEW)
+        btn_row.setSpacing(8)
+
+        self.review_btn = QPushButton(f"  {i18n.OPEN_REVIEW}")
+        self.review_btn.setObjectName("primary")
+        self.review_btn.setFixedHeight(34)
         self.review_btn.clicked.connect(self._open_review)
         btn_row.addWidget(self.review_btn)
 
         self.export_btn = QPushButton(i18n.EXPORT_KEEP)
+        self.export_btn.setFixedHeight(34)
         self.export_btn.clicked.connect(self._export_keep)
         btn_row.addWidget(self.export_btn)
 
         self.finalize_btn = QPushButton(i18n.FINALIZE_INPLACE)
+        self.finalize_btn.setFixedHeight(34)
         self.finalize_btn.clicked.connect(self._finalize_inplace)
         btn_row.addWidget(self.finalize_btn)
+
         btn_row.addStretch()
         layout.addLayout(btn_row)
 
         # Metashape案内
         notice = QLabel(i18n.METASHAPE_NOTICE)
         notice.setWordWrap(True)
-        notice.setStyleSheet("padding: 12px; background: #2a2a3a; border-radius: 6px; color: #ccccff;")
+        notice.setAlignment(Qt.AlignCenter)
+        notice.setStyleSheet(
+            "padding: 16px; background: #1a1a2e; border: 1px solid #f59e0b; "
+            "border-radius: 8px; color: #fbbf24; font-size: 10pt;"
+        )
         layout.addWidget(notice)
 
         layout.addStretch()
@@ -90,7 +137,6 @@ class ReviewStep(BaseStepWidget):
             QMessageBox.critical(self, i18n.INVALID_INPUT, str(e))
 
     def _export_keep(self) -> None:
-        """選択フレームを別フォルダにコピー"""
         output_name = self.export_dir_edit.text().strip() or "images"
         if output_name.lower() == "images":
             self._finalize_inplace()
@@ -111,7 +157,6 @@ class ReviewStep(BaseStepWidget):
         self.run_requested.emit()
 
     def _finalize_inplace(self) -> None:
-        """images/ 内でインプレース確定"""
         if not self._has_csv():
             QMessageBox.critical(self, i18n.INVALID_INPUT, f"CSVが見つかりません: {self._csv_path()}")
             return

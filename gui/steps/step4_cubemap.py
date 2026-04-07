@@ -12,9 +12,11 @@ from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
     QFormLayout,
+    QGroupBox,
     QHBoxLayout,
     QLabel,
     QLineEdit,
+    QScrollArea,
     QSplitter,
     QVBoxLayout,
     QWidget,
@@ -49,10 +51,14 @@ class CubemapStep(BaseStepWidget):
         splitter = QSplitter(Qt.Horizontal)
         splitter.setChildrenCollapsible(False)
 
-        # 左パネル: 設定
+        # 左パネル: 設定 (スクロール可能)
+        left_scroll = QScrollArea()
+        left_scroll.setWidgetResizable(True)
+        left_scroll.setFrameShape(QScrollArea.NoFrame)
         left = QWidget()
         left_layout = QVBoxLayout(left)
-        left_layout.setContentsMargins(0, 0, 0, 0)
+        left_layout.setContentsMargins(0, 0, 4, 0)
+        left_layout.setSpacing(8)
 
         form = QFormLayout()
 
@@ -82,22 +88,31 @@ class CubemapStep(BaseStepWidget):
         self.mask_browse = BrowseWidget(mode="dir")
         form.addRow(i18n.MASK_DIR, self.mask_browse)
 
-        # オプション
-        opt_row = QHBoxLayout()
+        # オプション (GroupBox)
+        opt_group = CollapsibleSection("変換オプション", expanded=False)
+        opt_inner = QVBoxLayout()
+        opt_row1 = QHBoxLayout()
         self.mask_from_alpha_cb = QCheckBox(i18n.MASK_FROM_ALPHA)
-        opt_row.addWidget(self.mask_from_alpha_cb)
+        opt_row1.addWidget(self.mask_from_alpha_cb)
         self.no_image_cb = QCheckBox(i18n.NO_IMAGE)
-        opt_row.addWidget(self.no_image_cb)
+        opt_row1.addWidget(self.no_image_cb)
         self.no_transform_cb = QCheckBox(i18n.NO_TRANSFORM)
-        opt_row.addWidget(self.no_transform_cb)
+        opt_row1.addWidget(self.no_transform_cb)
+        opt_row1.addStretch()
+        opt_inner.addLayout(opt_row1)
+        opt_row2 = QHBoxLayout()
         self.duplicate_cb = QCheckBox(i18n.DUPLICATE)
-        opt_row.addWidget(self.duplicate_cb)
+        opt_row2.addWidget(self.duplicate_cb)
         self.invert_masks_cb = QCheckBox(i18n.INVERT_MASKS)
-        opt_row.addWidget(self.invert_masks_cb)
-        opt_row.addStretch()
-        form.addRow("オプション", opt_row)
+        opt_row2.addWidget(self.invert_masks_cb)
+        opt_row2.addStretch()
+        opt_inner.addLayout(opt_row2)
+        opt_w = QWidget()
+        opt_w.setLayout(opt_inner)
+        opt_group.content_layout.addWidget(opt_w)
 
         left_layout.addLayout(form)
+        left_layout.addWidget(opt_group)
 
         # Metashape前処理（折りたたみ）
         preprocess = CollapsibleSection(i18n.METASHAPE_PREPROCESS, expanded=False)
@@ -151,7 +166,8 @@ class CubemapStep(BaseStepWidget):
         self.preview.mask_edit.textChanged.connect(lambda _: self._render_preview())
         self.preview.sample_edit.textChanged.connect(lambda _: self._render_preview())
 
-        splitter.addWidget(left)
+        left_scroll.setWidget(left)
+        splitter.addWidget(left_scroll)
         splitter.addWidget(self.preview)
         splitter.setStretchFactor(0, 0)
         splitter.setStretchFactor(1, 1)

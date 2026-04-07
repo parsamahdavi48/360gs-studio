@@ -1,4 +1,4 @@
-"""Step 3: マスク生成 (YOLO + スティッチ)"""
+"""Step 3: マスク生成 (YOLO + スティッチ + 白飛び)"""
 from __future__ import annotations
 
 import os
@@ -12,6 +12,7 @@ from PySide6.QtWidgets import (
     QComboBox,
     QFormLayout,
     QGridLayout,
+    QGroupBox,
     QHBoxLayout,
     QLabel,
     QLineEdit,
@@ -51,7 +52,7 @@ class MaskStep(BaseStepWidget):
 
     def __init__(self, base_dir: Path, parent: QWidget | None = None) -> None:
         super().__init__(base_dir, parent)
-        self._run_mode = "both"  # "yolo", "stitch", "both"
+        self._run_mode = "all"
         self._phase_total = 0
         self._phase_done = 0
         self._stitch_chunk_total = 0
@@ -61,49 +62,72 @@ class MaskStep(BaseStepWidget):
 
     def _build_ui(self) -> None:
         layout = QVBoxLayout(self)
-        form = QFormLayout()
+        layout.setSpacing(8)
 
-        self.images_browse = BrowseWidget(mode="dir")
-        form.addRow(i18n.IMAGES_DIR, self.images_browse)
+        # --- パス設定 ---
+        path_form = QFormLayout()
+        path_form.setSpacing(6)
+        self.images_browse = BrowseWidget(mode="dir", placeholder="元画像のフォルダ")
+        path_form.addRow(i18n.IMAGES_DIR, self.images_browse)
+        self.masks_browse = BrowseWidget(mode="dir", placeholder="マスク出力先")
+        path_form.addRow(i18n.MASKS_DIR, self.masks_browse)
+        layout.addLayout(path_form)
 
-        self.masks_browse = BrowseWidget(mode="dir")
-        form.addRow(i18n.MASKS_DIR, self.masks_browse)
+        # --- メイン実行ボタン (目立つ) ---
+        main_btn_row = QHBoxLayout()
+        main_btn_row.setSpacing(8)
 
-        # YOLO パラメータ
+        self.all_btn = QPushButton(f"  {i18n.RUN_ALL}")
+        self.all_btn.setObjectName("primary")
+        self.all_btn.setFixedHeight(34)
+        self.all_btn.clicked.connect(lambda: self._set_run_mode("all"))
+        main_btn_row.addWidget(self.all_btn, stretch=1)
+
+        self.both_btn = QPushButton(i18n.RUN_YOLO_STITCH)
+        self.both_btn.setFixedHeight(34)
+        self.both_btn.clicked.connect(lambda: self._set_run_mode("both"))
+        main_btn_row.addWidget(self.both_btn)
+
+        layout.addLayout(main_btn_row)
+
+        # --- 個別実行 (小さめ) ---
+        sub_btn_row = QHBoxLayout()
+        sub_btn_row.setSpacing(6)
+        for label, mode in [
+            (i18n.RUN_YOLO, "yolo"),
+            (i18n.RUN_STITCH, "stitch"),
+            (i18n.RUN_OVEREXPOSURE, "overexposure"),
+        ]:
+            btn = QPushButton(label)
+            btn.clicked.connect(lambda checked=False, m=mode: self._set_run_mode(m))
+            sub_btn_row.addWidget(btn)
+        sub_btn_row.addStretch()
+        layout.addLayout(sub_btn_row)
+
+        # --- YOLO設定 (折りたたみ) ---
+        yolo_section = CollapsibleSection("YOLO 人物検出", expanded=True)
+        yolo_form = QFormLayout()
+        yolo_form.setSpacing(6)
+
         self.yolo_level_combo = QComboBox()
-        self.yolo_level_combo.addItems(["0", "1", "2", "3"])
+        self.yolo_level_combo.addItems(["0 (高速)", "1 (標準)", "2 (高品質)", "3 (最高品質)"])
         self.yolo_level_combo.setCurrentIndex(1)
-        form.addRow(i18n.YOLO_LEVEL, self.yolo_level_combo)
+        yolo_form.addRow(i18n.YOLO_LEVEL, self.yolo_level_combo)
 
         self.yolo_expand_edit = QLineEdit("12")
-        form.addRow(i18n.YOLO_EXPAND, self.yolo_expand_edit)
+        self.yolo_expand_edit.setFixedWidth(80)
+        yolo_form.addRow(i18n.YOLO_EXPAND, self.yolo_expand_edit)
 
-        self.yolo_add_ext_cb = QCheckBox()
-        form.addRow(i18n.YOLO_ADD_EXT, self.yolo_add_ext_cb)
+        self.yolo_add_ext_cb = QCheckBox("マスクに拡張子を付加")
+        yolo_form.addRow("", self.yolo_add_ext_cb)
 
-        # スティッチ パラメータ
-        self.stitch_fov_edit = QLineEdit("190")
-        form.addRow(i18n.STITCH_FOV, self.stitch_fov_edit)
-
-        self.stitch_workers_edit = QLineEdit(str(os.cpu_count() or 4))
-        form.addRow(i18n.STITCH_WORKERS, self.stitch_workers_edit)
-
-        # 白飛びマスク パラメータ
-        self.overexp_threshold_edit = QLineEdit("250")
-        form.addRow(i18n.OVEREXPOSURE_THRESHOLD, self.overexp_threshold_edit)
-
-        self.overexp_dilate_edit = QLineEdit("8")
-        form.addRow(i18n.OVEREXPOSURE_DILATE, self.overexp_dilate_edit)
-
-        layout.addLayout(form)
-
-        # YOLO クラス選択（折りたたみ）
-        class_section = CollapsibleSection(i18n.YOLO_CLASSES, expanded=False)
+        # クラス選択
         class_inner = QWidget()
         class_layout = QVBoxLayout(class_inner)
-        class_layout.setContentsMargins(0, 0, 0, 0)
+        class_layout.setContentsMargins(0, 4, 0, 0)
 
         preset_row = QHBoxLayout()
+        preset_row.setSpacing(4)
         for label, fn in [
             (i18n.CLASS_PRESET_PERSON, lambda: self._set_classes([0])),
             (i18n.CLASS_PRESET_VEHICLES, lambda: self._set_classes([0, 1, 2, 3, 5, 7])),
@@ -111,6 +135,7 @@ class MaskStep(BaseStepWidget):
             (i18n.CLASS_PRESET_CLEAR, lambda: self._set_classes([])),
         ]:
             btn = QPushButton(label)
+            btn.setFixedHeight(26)
             btn.clicked.connect(fn)
             preset_row.addWidget(btn)
         preset_row.addStretch()
@@ -118,7 +143,7 @@ class MaskStep(BaseStepWidget):
 
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
-        scroll.setMaximumHeight(200)
+        scroll.setMaximumHeight(160)
         grid_widget = QWidget()
         grid = QGridLayout(grid_widget)
         grid.setSpacing(2)
@@ -133,33 +158,37 @@ class MaskStep(BaseStepWidget):
         scroll.setWidget(grid_widget)
         class_layout.addWidget(scroll)
 
-        class_section.content_layout.addWidget(class_inner)
-        layout.addWidget(class_section)
+        yolo_form.addRow(i18n.YOLO_CLASSES, class_inner)
+        yolo_section.content_layout.addLayout(yolo_form)
+        layout.addWidget(yolo_section)
 
-        # 実行モード選択ボタン
-        mode_row = QHBoxLayout()
-        self.yolo_btn = QPushButton(i18n.RUN_YOLO)
-        self.yolo_btn.clicked.connect(lambda: self._set_run_mode("yolo"))
-        mode_row.addWidget(self.yolo_btn)
+        # --- スティッチ+白飛び設定 (折りたたみ) ---
+        other_section = CollapsibleSection("スティッチ / 白飛び設定", expanded=False)
+        other_form = QFormLayout()
+        other_form.setSpacing(6)
 
-        self.stitch_btn = QPushButton(i18n.RUN_STITCH)
-        self.stitch_btn.clicked.connect(lambda: self._set_run_mode("stitch"))
-        mode_row.addWidget(self.stitch_btn)
+        self.stitch_fov_edit = QLineEdit("190")
+        self.stitch_fov_edit.setFixedWidth(80)
+        other_form.addRow(i18n.STITCH_FOV, self.stitch_fov_edit)
 
-        self.both_btn = QPushButton(i18n.RUN_YOLO_STITCH)
-        self.both_btn.clicked.connect(lambda: self._set_run_mode("both"))
-        mode_row.addWidget(self.both_btn)
+        self.stitch_workers_edit = QLineEdit(str(os.cpu_count() or 4))
+        self.stitch_workers_edit.setFixedWidth(80)
+        other_form.addRow(i18n.STITCH_WORKERS, self.stitch_workers_edit)
 
-        self.overexp_btn = QPushButton(i18n.RUN_OVEREXPOSURE)
-        self.overexp_btn.clicked.connect(lambda: self._set_run_mode("overexposure"))
-        mode_row.addWidget(self.overexp_btn)
+        sep = QLabel("")
+        sep.setFixedHeight(8)
+        other_form.addRow(sep)
 
-        self.all_btn = QPushButton(i18n.RUN_ALL)
-        self.all_btn.clicked.connect(lambda: self._set_run_mode("all"))
-        mode_row.addWidget(self.all_btn)
+        self.overexp_threshold_edit = QLineEdit("250")
+        self.overexp_threshold_edit.setFixedWidth(80)
+        other_form.addRow(i18n.OVEREXPOSURE_THRESHOLD, self.overexp_threshold_edit)
 
-        mode_row.addStretch()
-        layout.addLayout(mode_row)
+        self.overexp_dilate_edit = QLineEdit("8")
+        self.overexp_dilate_edit.setFixedWidth(80)
+        other_form.addRow(i18n.OVEREXPOSURE_DILATE, self.overexp_dilate_edit)
+
+        other_section.content_layout.addLayout(other_form)
+        layout.addWidget(other_section)
 
         layout.addStretch()
 
@@ -207,11 +236,13 @@ class MaskStep(BaseStepWidget):
         if not script.exists():
             raise FileNotFoundError(f"yolo_mask.py が見つかりません: {script}")
 
+        # レベルはコンボのインデックスで取得 (テキストに説明が入っているため)
+        level = str(self.yolo_level_combo.currentIndex())
         classes = self._selected_classes()
         cmd = [
             sys.executable, "-u", str(script),
             images, masks,
-            "--level", self.yolo_level_combo.currentText(),
+            "--level", level,
             "--expand", self.yolo_expand_edit.text().strip(),
         ]
         if classes:

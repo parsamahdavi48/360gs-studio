@@ -24,6 +24,7 @@ from PySide6.QtWidgets import (
 
 from gui import i18n
 from gui.common.browse_widget import BrowseWidget
+from gui.common.collapsible_section import CollapsibleSection
 from gui.steps.base_step import BaseStepWidget
 
 
@@ -39,7 +40,6 @@ class ExtractStep(BaseStepWidget):
         self.sample_segment_sec = 12.0
         self.sample_fps = 8.0
 
-        # サンプル推定用の専用プロセス
         self.sample_proc: QProcess | None = None
         self._sample_buffer = ""
         self.sample_timer = QTimer(self)
@@ -50,97 +50,128 @@ class ExtractStep(BaseStepWidget):
 
     def _build_ui(self) -> None:
         layout = QVBoxLayout(self)
-        form = QFormLayout()
+        layout.setSpacing(8)
+
+        # ===== 基本設定 =====
+        basic = QFormLayout()
+        basic.setSpacing(6)
 
         self.video_browse = BrowseWidget(
             mode="file",
             filter_str="動画ファイル (*.mp4 *.mov *.mkv *.avi *.m4v);;すべて (*.*)",
+            placeholder="360度動画を選択...",
         )
         self.video_browse.path_changed.connect(self._on_video_changed)
-        form.addRow(i18n.INPUT_VIDEO, self.video_browse)
+        basic.addRow(i18n.INPUT_VIDEO, self.video_browse)
 
         # モード選択
         self.change_radio = QRadioButton(i18n.MODE_CHANGE)
         self.fixed_radio = QRadioButton(i18n.MODE_FIXED)
-        self.change_radio.setChecked(True)
+        self.fixed_radio.setChecked(True)  # 固定間隔をデフォルトに
         self.change_radio.toggled.connect(self._update_mode_widgets)
         self.change_radio.toggled.connect(self._mark_estimate_stale)
         mode_row = QHBoxLayout()
-        mode_row.addWidget(self.change_radio)
         mode_row.addWidget(self.fixed_radio)
+        mode_row.addWidget(self.change_radio)
         mode_row.addStretch()
-        form.addRow(i18n.EXTRACTION_MODE, mode_row)
+        basic.addRow(i18n.EXTRACTION_MODE, mode_row)
 
-        # 固定間隔パラメータ
-        self.interval_edit = QLineEdit("0.5")
+        # 固定間隔
+        self.interval_edit = QLineEdit("0.8")
+        self.interval_edit.setFixedWidth(80)
         self.interval_edit.textChanged.connect(self._mark_estimate_stale)
-        form.addRow(i18n.INTERVAL, self.interval_edit)
+        basic.addRow(i18n.INTERVAL, self.interval_edit)
 
-        # 変化検出パラメータ
+        # 変化検出パラメータ (モードに連動して表示/非表示)
         self.threshold_edit = QLineEdit("0.04")
+        self.threshold_edit.setFixedWidth(80)
         self.threshold_edit.textChanged.connect(self._mark_estimate_stale)
-        form.addRow(i18n.CHANGE_THRESHOLD, self.threshold_edit)
+        basic.addRow(i18n.CHANGE_THRESHOLD, self.threshold_edit)
 
         self.min_gap_edit = QLineEdit("0.25")
+        self.min_gap_edit.setFixedWidth(80)
         self.min_gap_edit.textChanged.connect(self._mark_estimate_stale)
-        form.addRow(i18n.MIN_GAP, self.min_gap_edit)
+        basic.addRow(i18n.MIN_GAP, self.min_gap_edit)
 
         self.max_gap_edit = QLineEdit("2.0")
+        self.max_gap_edit.setFixedWidth(80)
         self.max_gap_edit.textChanged.connect(self._mark_estimate_stale)
-        form.addRow(i18n.MAX_GAP, self.max_gap_edit)
+        basic.addRow(i18n.MAX_GAP, self.max_gap_edit)
 
-        # 解析パラメータ
-        self.analysis_width_edit = QLineEdit("960")
-        self.analysis_width_edit.textChanged.connect(self._mark_estimate_stale)
-        form.addRow(i18n.ANALYSIS_WIDTH, self.analysis_width_edit)
-
-        self.blur_percentile_edit = QLineEdit("25.0")
-        self.blur_percentile_edit.textChanged.connect(self._mark_estimate_stale)
-        form.addRow(i18n.BLUR_PERCENTILE, self.blur_percentile_edit)
-
-        self.blur_window_edit = QLineEdit("0")
-        self.blur_window_edit.textChanged.connect(self._mark_estimate_stale)
-        form.addRow(i18n.BLUR_WINDOW, self.blur_window_edit)
-
-        # 出力設定
+        # 画像形式
+        fmt_row = QHBoxLayout()
         self.image_ext_combo = QComboBox()
         self.image_ext_combo.addItems(["jpg", "png"])
+        self.image_ext_combo.setFixedWidth(80)
         self.image_ext_combo.currentIndexChanged.connect(self._mark_estimate_stale)
-        form.addRow(i18n.IMAGE_FORMAT, self.image_ext_combo)
-
+        fmt_row.addWidget(self.image_ext_combo)
+        fmt_row.addWidget(QLabel(i18n.JPEG_QUALITY + ":"))
         self.jpg_quality_edit = QLineEdit("2")
-        form.addRow(i18n.JPEG_QUALITY, self.jpg_quality_edit)
+        self.jpg_quality_edit.setFixedWidth(50)
+        fmt_row.addWidget(self.jpg_quality_edit)
+        fmt_row.addStretch()
+        basic.addRow(i18n.IMAGE_FORMAT, fmt_row)
 
-        self.ffmpeg_edit = QLineEdit("ffmpeg")
-        form.addRow(i18n.FFMPEG_PATH, self.ffmpeg_edit)
+        layout.addLayout(basic)
 
-        self.ffprobe_edit = QLineEdit("ffprobe")
-        form.addRow(i18n.FFPROBE_PATH, self.ffprobe_edit)
+        # ===== 動画情報 (コンパクト) =====
+        info_box = QHBoxLayout()
+        info_box.setSpacing(12)
 
-        self.prefix_edit = QLineEdit("")
-        self.prefix_edit.setPlaceholderText("自動 (動画ファイル名)")
-        form.addRow(i18n.FILENAME_PREFIX, self.prefix_edit)
-
-        # 動画情報 / 推定
-        tool_row = QHBoxLayout()
-        self.load_info_btn = QPushButton(i18n.VIDEO_INFO + "読込")
+        self.load_info_btn = QPushButton("動画情報読込")
+        self.load_info_btn.setFixedWidth(120)
         self.load_info_btn.clicked.connect(lambda: self._load_video_info(show_error=True))
-        tool_row.addWidget(self.load_info_btn)
-        self.refresh_sample_btn = QPushButton(i18n.SAMPLED_ESTIMATE + "更新")
-        self.refresh_sample_btn.clicked.connect(self._run_sampled_estimate_now)
-        tool_row.addWidget(self.refresh_sample_btn)
-        tool_row.addStretch()
-        form.addRow("解析ツール", tool_row)
+        info_box.addWidget(self.load_info_btn)
 
         self.video_info_label = QLabel("動画: -")
-        form.addRow(i18n.VIDEO_INFO, self.video_info_label)
+        self.video_info_label.setStyleSheet("color: #8888aa;")
+        info_box.addWidget(self.video_info_label, stretch=1)
+        layout.addLayout(info_box)
 
         self.estimate_label = QLabel()
         self.estimate_label.setWordWrap(True)
+        self.estimate_label.setStyleSheet("color: #8888aa; font-size: 9pt;")
         self._refresh_estimate_label()
-        form.addRow(i18n.FRAME_ESTIMATE, self.estimate_label)
+        layout.addWidget(self.estimate_label)
 
-        layout.addLayout(form)
+        # ===== 詳細設定 (折りたたみ) =====
+        advanced = CollapsibleSection("詳細設定", expanded=False)
+        adv_form = QFormLayout()
+        adv_form.setSpacing(6)
+
+        self.analysis_width_edit = QLineEdit("960")
+        self.analysis_width_edit.setFixedWidth(80)
+        self.analysis_width_edit.textChanged.connect(self._mark_estimate_stale)
+        adv_form.addRow(i18n.ANALYSIS_WIDTH, self.analysis_width_edit)
+
+        self.blur_percentile_edit = QLineEdit("25.0")
+        self.blur_percentile_edit.setFixedWidth(80)
+        self.blur_percentile_edit.textChanged.connect(self._mark_estimate_stale)
+        adv_form.addRow(i18n.BLUR_PERCENTILE, self.blur_percentile_edit)
+
+        self.blur_window_edit = QLineEdit("0")
+        self.blur_window_edit.setFixedWidth(80)
+        self.blur_window_edit.textChanged.connect(self._mark_estimate_stale)
+        adv_form.addRow(i18n.BLUR_WINDOW, self.blur_window_edit)
+
+        self.ffmpeg_edit = QLineEdit("ffmpeg")
+        adv_form.addRow(i18n.FFMPEG_PATH, self.ffmpeg_edit)
+
+        self.ffprobe_edit = QLineEdit("ffprobe")
+        adv_form.addRow(i18n.FFPROBE_PATH, self.ffprobe_edit)
+
+        self.prefix_edit = QLineEdit("")
+        self.prefix_edit.setPlaceholderText("自動 (動画ファイル名)")
+        adv_form.addRow(i18n.FILENAME_PREFIX, self.prefix_edit)
+
+        self.refresh_sample_btn = QPushButton("サンプル推定を更新")
+        self.refresh_sample_btn.clicked.connect(self._run_sampled_estimate_now)
+        adv_form.addRow("", self.refresh_sample_btn)
+
+        advanced.content_layout.addLayout(adv_form)
+        layout.addWidget(advanced)
+
+        layout.addStretch()
         self._update_mode_widgets()
 
     # -- シーンディレクトリ --
@@ -311,14 +342,14 @@ class ExtractStep(BaseStepWidget):
         i = self.video_info
         d = self._format_duration(float(i["duration_sec"]))
         self.video_info_label.setText(
-            f"{i['width']}x{i['height']}, {i['fps']:.3f} fps, {d} ({i['duration_sec']:.2f}s), {i['total_frames']} フレーム"
+            f"{i['width']}x{i['height']}  |  {i['fps']:.2f} fps  |  {d}  |  {i['total_frames']} フレーム"
         )
 
     # -- フレーム数推定 --
 
     def _refresh_estimate_label(self) -> None:
         self.estimate_label.setText(
-            f"{i18n.INSTANT_ESTIMATE}: {self.instant_estimate_text}\n"
+            f"{i18n.INSTANT_ESTIMATE}: {self.instant_estimate_text}    "
             f"{i18n.SAMPLED_ESTIMATE}: {self.sampled_estimate_text}"
         )
 
@@ -326,12 +357,12 @@ class ExtractStep(BaseStepWidget):
         self.last_estimate_summary = None
         self._update_instant_estimate()
         if self._mode() == "fixed":
-            self.sampled_estimate_text = "- (固定モードでは不使用)"
+            self.sampled_estimate_text = "-"
             self._cancel_sample_estimate()
             self._refresh_estimate_label()
             return
         if not self.video_info:
-            self.sampled_estimate_text = "- (動画を読み込んでください)"
+            self.sampled_estimate_text = "-"
             self._cancel_sample_estimate()
             self._refresh_estimate_label()
             return
@@ -357,9 +388,9 @@ class ExtractStep(BaseStepWidget):
                 indices = list(range(0, max(total, 1), step))
                 if indices[-1] != max(total - 1, 0):
                     indices.append(max(total - 1, 0))
-                self.instant_estimate_text = f"{len(indices)} フレーム (固定)"
+                self.instant_estimate_text = f"{len(indices)} フレーム"
             except Exception:
-                self.instant_estimate_text = "- (パラメータ不正)"
+                self.instant_estimate_text = "-"
             self._refresh_estimate_label()
             return
 
@@ -378,7 +409,7 @@ class ExtractStep(BaseStepWidget):
             est = max(min_c, min(max_c, est))
             self.instant_estimate_text = f"{min_c}-{max_c} フレーム (推定: {est})"
         except Exception:
-            self.instant_estimate_text = "- (パラメータ不正)"
+            self.instant_estimate_text = "-"
         self._refresh_estimate_label()
 
     # -- サンプル推定 --
@@ -456,13 +487,13 @@ class ExtractStep(BaseStepWidget):
                     pass
             self._sample_buffer = ""
         if exit_code != 0 and self._mode() == "change":
-            self.sampled_estimate_text = "- (サンプル推定失敗)"
+            self.sampled_estimate_text = "- (失敗)"
             self._refresh_estimate_label()
         self.sample_proc = None
 
     def _run_sampled_estimate_now(self) -> None:
         if self._mode() != "change":
-            self.sampled_estimate_text = "- (固定モードでは不使用)"
+            self.sampled_estimate_text = "-"
             self._refresh_estimate_label()
             return
         if not self.video_info:
@@ -489,8 +520,8 @@ class ExtractStep(BaseStepWidget):
         est = summary.get("estimate", {})
         parts = [f"{selected} フレーム ({ratio:.1f}%)"]
         if est.get("sampled_segments_used") is not None:
-            parts.append(f"セグメント={est['sampled_segments_used']}/{est.get('sampled_segments_requested', '?')}")
+            parts.append(f"seg={est['sampled_segments_used']}/{est.get('sampled_segments_requested', '?')}")
         if est.get("range_min_count") is not None:
-            parts.append(f"範囲={est['range_min_count']}-{est.get('range_max_count', '?')}")
+            parts.append(f"range={est['range_min_count']}-{est.get('range_max_count', '?')}")
         self.sampled_estimate_text = ", ".join(parts)
         self._refresh_estimate_label()

@@ -10,7 +10,9 @@ from PySide6.QtGui import QCloseEvent
 from PySide6.QtWidgets import (
     QApplication,
     QFormLayout,
+    QFrame,
     QHBoxLayout,
+    QLabel,
     QMessageBox,
     QPushButton,
     QSplitter,
@@ -28,14 +30,15 @@ from gui.steps.step1_extract import ExtractStep
 from gui.steps.step2_review import ReviewStep
 from gui.steps.step3_mask import MaskStep
 from gui.steps.step4_cubemap import CubemapStep
+from gui.theme import apply_theme
 
 
 class MainWindow(QWidget):
     def __init__(self, initial_scene_dir: str = ".") -> None:
         super().__init__()
         self.base_dir = Path(__file__).resolve().parent.parent
-        self.setWindowTitle(i18n.APP_TITLE)
-        self.resize(1200, 900)
+        self.setWindowTitle(f"{i18n.APP_TITLE}  v0.1")
+        self.resize(1280, 920)
 
         self.runner = ProcessRunner(self)
         self._current_step: int = 0
@@ -45,17 +48,23 @@ class MainWindow(QWidget):
 
     def _build_ui(self, initial_scene_dir: str) -> None:
         root = QVBoxLayout(self)
+        root.setContentsMargins(12, 12, 12, 12)
+        root.setSpacing(8)
 
-        # シーンディレクトリ
-        self.scene_browse = BrowseWidget(mode="dir")
+        # --- ヘッダー: シーンディレクトリ ---
+        header = QHBoxLayout()
+        header.setSpacing(8)
+        scene_label = QLabel(f"  {i18n.SCENE_DIR}")
+        scene_label.setStyleSheet("font-weight: 600; font-size: 11pt;")
+        header.addWidget(scene_label)
+        self.scene_browse = BrowseWidget(mode="dir", placeholder="シーンフォルダを選択...")
         self.scene_browse.set_text(initial_scene_dir)
-        scene_form = QFormLayout()
-        scene_form.addRow(i18n.SCENE_DIR, self.scene_browse)
-        root.addLayout(scene_form)
+        header.addWidget(self.scene_browse, stretch=1)
+        root.addLayout(header)
 
-        # タブ
+        # --- タブ ---
         self.tabs = QTabWidget()
-        self.steps: list = []
+        self.tabs.setDocumentMode(True)
 
         self.step1 = ExtractStep(self.base_dir)
         self.step2 = ReviewStep(self.base_dir)
@@ -68,31 +77,43 @@ class MainWindow(QWidget):
         self.tabs.addTab(self.step4, i18n.STEP4_TITLE)
         self.steps = [self.step1, self.step2, self.step3, self.step4]
 
-        # メイン分割: タブ (上) / ログ (下)
+        # --- メイン分割: タブ (上) / コントロール+ログ (下) ---
         splitter = QSplitter(Qt.Vertical)
         splitter.addWidget(self.tabs)
 
         bottom = QWidget()
         bottom_layout = QVBoxLayout(bottom)
-        bottom_layout.setContentsMargins(0, 0, 0, 0)
+        bottom_layout.setContentsMargins(0, 8, 0, 0)
+        bottom_layout.setSpacing(6)
 
+        # プログレス
         self.progress = ProgressWidget()
         bottom_layout.addWidget(self.progress)
 
+        # ログ
         self.log_panel = LogPanel()
-        self.log_panel.setMinimumHeight(120)
+        self.log_panel.setMinimumHeight(100)
         bottom_layout.addWidget(self.log_panel)
 
-        # 実行 / キャンセル
+        # 実行 / キャンセル (中央揃え)
         btn_row = QHBoxLayout()
+        btn_row.setSpacing(12)
         btn_row.addStretch()
-        self.run_btn = QPushButton(i18n.RUN)
-        self.run_btn.setFixedWidth(140)
-        self.cancel_btn = QPushButton(i18n.CANCEL)
-        self.cancel_btn.setFixedWidth(140)
-        self.cancel_btn.setEnabled(False)
+
+        self.run_btn = QPushButton(f"  {i18n.RUN}")
+        self.run_btn.setObjectName("primary")
+        self.run_btn.setFixedWidth(160)
+        self.run_btn.setFixedHeight(36)
         btn_row.addWidget(self.run_btn)
+
+        self.cancel_btn = QPushButton(f"  {i18n.CANCEL}")
+        self.cancel_btn.setObjectName("danger")
+        self.cancel_btn.setFixedWidth(160)
+        self.cancel_btn.setFixedHeight(36)
+        self.cancel_btn.setEnabled(False)
         btn_row.addWidget(self.cancel_btn)
+
+        btn_row.addStretch()
         bottom_layout.addLayout(btn_row)
 
         splitter.addWidget(bottom)
@@ -111,11 +132,9 @@ class MainWindow(QWidget):
         self.runner.phase_finished.connect(self._on_phase_finished)
         self.runner.queue_finished.connect(self._on_queue_finished)
 
-        # Step2/Step3 の独自ボタンからの実行要求
         self.step2.run_requested.connect(self._on_run)
         self.step3.run_requested.connect(self._on_run)
 
-        # 初期シーンディレクトリを反映
         self._on_scene_changed(self.scene_browse.text())
 
     def _current_step_widget(self):
@@ -202,6 +221,8 @@ def main() -> None:
     args = parser.parse_args()
 
     app = QApplication(sys.argv)
+    apply_theme(app)
+
     window = MainWindow(initial_scene_dir=args.scene)
     window.show()
     sys.exit(app.exec())
