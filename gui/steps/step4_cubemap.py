@@ -45,48 +45,63 @@ class CubemapStep(BaseStepWidget):
         self._build_ui()
 
     def _build_ui(self) -> None:
-        layout = QHBoxLayout(self)
+        layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
 
-        splitter = QSplitter(Qt.Horizontal)
+        splitter = QSplitter(Qt.Vertical)
         splitter.setChildrenCollapsible(False)
 
-        # 左パネル: 設定 (スクロール可能)
-        left_scroll = QScrollArea()
-        left_scroll.setWidgetResizable(True)
-        left_scroll.setFrameShape(QScrollArea.NoFrame)
-        left = QWidget()
-        left_layout = QVBoxLayout(left)
-        left_layout.setContentsMargins(0, 0, 4, 0)
-        left_layout.setSpacing(8)
+        # 上パネル: 設定 (スクロール可能)
+        top_scroll = QScrollArea()
+        top_scroll.setWidgetResizable(True)
+        top_scroll.setFrameShape(QScrollArea.NoFrame)
+        top = QWidget()
+        top_layout = QVBoxLayout(top)
+        top_layout.setContentsMargins(0, 0, 0, 4)
+        top_layout.setSpacing(8)
+        left_layout = top_layout  # 既存コードとの互換用エイリアス
 
         form = QFormLayout()
+        form.setSpacing(6)
 
         self.output_browse = BrowseWidget(mode="dir")
         form.addRow(i18n.OUTPUT_DIR, self.output_browse)
 
-        self.json_name_edit = QLineEdit("transforms.json")
-        form.addRow(i18n.JSON_NAME, self.json_name_edit)
-
+        # プロファイル + スケールを1行に
+        profile_row = QHBoxLayout()
+        profile_row.setSpacing(8)
         self.profile_combo = QComboBox()
         self.profile_combo.addItem(i18n.PROFILE_POSTSHOT, _PROFILE_POSTSHOT)
         self.profile_combo.addItem(i18n.PROFILE_BRUSH, _PROFILE_BRUSH)
         self.profile_combo.addItem(i18n.PROFILE_LICHTFELD, _PROFILE_LICHTFELD)
         self.profile_combo.addItem(i18n.PROFILE_CUSTOM, _PROFILE_CUSTOM)
         self.profile_combo.currentIndexChanged.connect(self._on_profile_changed)
-        form.addRow(i18n.TARGET_PROFILE, self.profile_combo)
-
-        self.profile_hint = QLabel("")
-        self.profile_hint.setWordWrap(True)
-        form.addRow("", self.profile_hint)
-
+        profile_row.addWidget(self.profile_combo)
+        profile_row.addWidget(QLabel(i18n.OUTPUT_SCALE + ":"))
         self.scale_combo = QComboBox()
         self.scale_combo.addItem("Half (0.5x)", 0.5)
         self.scale_combo.addItem("Full (1.0x)", 1.0)
-        form.addRow(i18n.OUTPUT_SCALE, self.scale_combo)
+        self.scale_combo.setFixedWidth(120)
+        profile_row.addWidget(self.scale_combo)
+        profile_row.addStretch()
+        form.addRow(i18n.TARGET_PROFILE, profile_row)
 
+        self.profile_hint = QLabel("")
+        self.profile_hint.setStyleSheet("color: #8888aa; font-size: 9pt;")
+        form.addRow("", self.profile_hint)
+
+        # JSON名 + マスクフォルダを1行に
+        json_mask_row = QHBoxLayout()
+        json_mask_row.setSpacing(8)
+        self.json_name_edit = QLineEdit("transforms.json")
+        self.json_name_edit.setFixedWidth(160)
+        json_mask_row.addWidget(QLabel("JSON:"))
+        json_mask_row.addWidget(self.json_name_edit)
+        json_mask_row.addWidget(QLabel(i18n.MASK_DIR + ":"))
         self.mask_browse = BrowseWidget(mode="dir")
-        form.addRow(i18n.MASK_DIR, self.mask_browse)
+        json_mask_row.addWidget(self.mask_browse, stretch=1)
+        form.addRow("出力詳細", json_mask_row)
 
         # オプション (GroupBox)
         opt_group = CollapsibleSection("変換オプション", expanded=False)
@@ -166,12 +181,12 @@ class CubemapStep(BaseStepWidget):
         self.preview.mask_edit.textChanged.connect(lambda _: self._render_preview())
         self.preview.sample_edit.textChanged.connect(lambda _: self._render_preview())
 
-        left_scroll.setWidget(left)
-        splitter.addWidget(left_scroll)
+        top_scroll.setWidget(top)
+        splitter.addWidget(top_scroll)
         splitter.addWidget(self.preview)
-        splitter.setStretchFactor(0, 0)
+        splitter.setStretchFactor(0, 1)
         splitter.setStretchFactor(1, 1)
-        splitter.setSizes([560, 800])
+        splitter.setSizes([400, 350])
         layout.addWidget(splitter)
 
         self._on_profile_changed(0)
