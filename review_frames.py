@@ -50,6 +50,8 @@ if QMainWindow is not None:
             if not self.rows:
                 raise RuntimeError(f"No rows found in {csv_path}")
             self.problem_indices = self._collect_problem_indices()
+            self.blur_worst_indices = self._build_blur_worst_indices()
+            self._blur_worst_cursor = 0
 
             self.index = 0
             self.current_pixmap: QPixmap | None = None
@@ -77,6 +79,19 @@ if QMainWindow is not None:
 
         def _collect_problem_indices(self) -> List[int]:
             return [i for i, row in enumerate(self.rows) if self._is_problem_row(row)]
+
+        def _blur_score(self, row: Dict[str, str]) -> float:
+            """blur_score_final を float で返す。取得できなければ inf。"""
+            try:
+                return float(row.get("blur_score_final", "inf"))
+            except (ValueError, TypeError):
+                return float("inf")
+
+        def _build_blur_worst_indices(self) -> List[int]:
+            """ブラースコア昇順 (ワースト=最小が先) のインデックスリスト。"""
+            scored = [(i, self._blur_score(row)) for i, row in enumerate(self.rows)]
+            scored.sort(key=lambda x: x[1])
+            return [i for i, _ in scored]
 
         def _build_ui(self) -> None:
             root = QWidget()
@@ -146,9 +161,36 @@ if QMainWindow is not None:
             btn_row.addWidget(self.save_button)
             layout.addLayout(btn_row)
 
+            # ブラー操作行
+            blur_row = QHBoxLayout()
+            self.blur_worst_button = QPushButton("Blur Worst (B)")
+            self.blur_worst_button.clicked.connect(self.next_blur_worst)
+            blur_row.addWidget(self.blur_worst_button)
+
+            self.blur_prev_button = QPushButton("Blur Prev (Shift+B)")
+            self.blur_prev_button.clicked.connect(self.prev_blur_worst)
+            blur_row.addWidget(self.blur_prev_button)
+
+            blur_row.addWidget(QLabel("  閾値:"))
+            self.blur_threshold_edit = QLineEdit()
+            self.blur_threshold_edit.setPlaceholderText("blur score")
+            self.blur_threshold_edit.setFixedWidth(100)
+            blur_row.addWidget(self.blur_threshold_edit)
+
+            self.blur_drop_button = QPushButton("閾値以下を全Drop")
+            self.blur_drop_button.clicked.connect(self.drop_below_blur_threshold)
+            blur_row.addWidget(self.blur_drop_button)
+
+            blur_row.addStretch(1)
+
+            self.blur_rank_label = QLabel()
+            self.blur_rank_label.setStyleSheet("color: #888;")
+            blur_row.addWidget(self.blur_rank_label)
+            layout.addLayout(blur_row)
+
             hint = QLabel(
                 "Keys: Left/Right=move, F/Shift+F=next/prev problem, "
-                "Space=toggle keep/drop, S=save, Q=quit"
+                "B/Shift+B=blur worst/prev, Space=toggle, S=save, Q=quit"
             )
             hint.setStyleSheet("color: #666;")
             layout.addWidget(hint)
@@ -159,6 +201,8 @@ if QMainWindow is not None:
             QShortcut(QKeySequence("F"), self, activated=self.next_problem)
             QShortcut(QKeySequence("Shift+F"), self, activated=self.prev_problem)
             QShortcut(QKeySequence(Qt.Key_Space), self, activated=self.toggle_decision)
+            QShortcut(QKeySequence("B"), self, activated=self.next_blur_worst)
+            QShortcut(QKeySequence("Shift+B"), self, activated=self.prev_blur_worst)
             QShortcut(QKeySequence("S"), self, activated=self.save)
             QShortcut(QKeySequence("Q"), self, activated=self.close)
 
@@ -191,6 +235,8 @@ if QMainWindow is not None:
                 f" | Current problem: {current_problem}"
             )
 
+            blur_final = self._blur_score(row)
+            blur_str = f"{blur_final:.1f}" if blur_final != float("inf") else "-"
             info_text = (
                 f"orig={row.get('original_index', '-')}, final={row.get('final_index', '-')}, "
                 f"ts={row.get('timestamp_sec', '-')}, status={row.get('status', '-')}, "
@@ -198,6 +244,14 @@ if QMainWindow is not None:
                 f"change(orig/final)={row.get('change_score_original', '-')}/{row.get('change_score_final', '-')}"
             )
             self.info_label.setText(info_text)
+
+            # ブラーランク表示
+            try:
+                rank = self.blur_worst_indices.index(self.index) + 1
+            except ValueError:
+                rank = -1
+            total = len(self.rows)
+            self.blur_rank_label.setText(f"Blur rank: {rank}/{total} (score={blur_str})")
 
             if not image_path.exists():
                 self.current_pixmap = None
@@ -290,6 +344,72 @@ if QMainWindow is not None:
 
             self.index = seq - 1
             self._render_current()
+
+        def next_blur_worst(self) -> None:
+            """ブラースコアが悪い順に次のフレームに飛ぶ。"""
+            if not self.blur_worst_indices:
+                return
+            # 現在位置のランクを探して次へ
+            try:
+                cur_rank = self.blur_worst_indices.index(self.index)
+                next_rank = cur_rank + 1
+            except ValueError:
+                next_rank = 0
+            if next_rank >= len(self.blur_worst_indices):
+                next_rank = 0
+            self._blur_worst_cursor = next_rank
+            self.index = self.blur_worst_indices[next_rank]
+            self._render_current()
+
+        def prev_blur_worst(self) -> None:
+            """ブラースコアが悪い順に前のフレームに飛ぶ。"""
+            if not self.blur_worst_indices:
+                return
+            try:
+                cur_rank = self.blur_worst_indices.index(self.index)
+                prev_rank = cur_rank - 1
+            except ValueError:
+                prev_rank = 0
+            if prev_rank < 0:
+                prev_rank = len(self.blur_worst_indices) - 1
+            self._blur_worst_cursor = prev_rank
+            self.index = self.blur_worst_indices[prev_rank]
+            self._render_current()
+
+        def drop_below_blur_threshold(self) -> None:
+            """閾値以下のblur_score_finalを持つフレームを一括drop。"""
+            text = self.blur_threshold_edit.text().strip()
+            if not text:
+                # 未入力なら、現在のフレームのスコアを閾値として提案
+                score = self._blur_score(self._current_row())
+                if score != float("inf"):
+                    self.blur_threshold_edit.setText(f"{score:.1f}")
+                QMessageBox.information(
+                    self, "閾値",
+                    "閾値を入力してから再度押してください。\n"
+                    "現在のフレームのスコアをセットしました。"
+                )
+                return
+
+            try:
+                threshold = float(text)
+            except ValueError:
+                QMessageBox.warning(self, "入力エラー", "数値を入力してください。")
+                return
+
+            count = 0
+            for row in self.rows:
+                score = self._blur_score(row)
+                if score <= threshold and row.get("decision") != "drop":
+                    row["decision"] = "drop"
+                    count += 1
+
+            self._render_current()
+            QMessageBox.information(
+                self, "一括Drop",
+                f"blur_score ≤ {threshold:.1f} のフレームを {count} 件 drop にしました。\n"
+                f"Save (S) で確定してください。"
+            )
 
         def toggle_decision(self) -> None:
             row = self._current_row()
