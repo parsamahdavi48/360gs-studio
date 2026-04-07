@@ -68,10 +68,10 @@ class MaskStep(BaseStepWidget):
         path_form = QFormLayout()
         path_form.setSpacing(6)
         self.images_browse = BrowseWidget(mode="dir", placeholder="元画像のフォルダ")
-        self.images_browse.setToolTip("エクイレクタングラー画像が入ったフォルダ (通常 images/)")
+        self.images_browse.setToolTip(i18n.tip("IMAGES_DIR"))
         path_form.addRow(i18n.IMAGES_DIR, self.images_browse)
         self.masks_browse = BrowseWidget(mode="dir", placeholder="マスク出力先")
-        self.masks_browse.setToolTip("マスク画像の出力先フォルダ (通常 masks/)。既存マスクがあれば合成")
+        self.masks_browse.setToolTip(i18n.tip("MASKS_DIR"))
         path_form.addRow(i18n.MASKS_DIR, self.masks_browse)
         layout.addLayout(path_form)
 
@@ -80,14 +80,14 @@ class MaskStep(BaseStepWidget):
         main_btn_row.setSpacing(8)
 
         self.all_btn = QPushButton(f"  {i18n.RUN_ALL}")
-        self.all_btn.setToolTip("YOLO人物検出 → スティッチマスク → 白飛びマスクの全工程を順番に実行")
+        self.all_btn.setToolTip(i18n.tip("RUN_ALL"))
         self.all_btn.setObjectName("primary")
         self.all_btn.setFixedHeight(34)
         self.all_btn.clicked.connect(lambda: self._set_run_mode("all"))
         main_btn_row.addWidget(self.all_btn, stretch=1)
 
         self.both_btn = QPushButton(i18n.RUN_YOLO_STITCH)
-        self.both_btn.setToolTip("YOLO人物検出 → スティッチマスクの2工程を実行 (白飛びは含まない)")
+        self.both_btn.setToolTip(i18n.tip("RUN_YOLO_STITCH"))
         self.both_btn.setFixedHeight(34)
         self.both_btn.clicked.connect(lambda: self._set_run_mode("both"))
         main_btn_row.addWidget(self.both_btn)
@@ -109,23 +109,23 @@ class MaskStep(BaseStepWidget):
         layout.addLayout(sub_btn_row)
 
         # --- YOLO設定 (折りたたみ) ---
-        yolo_section = CollapsibleSection("YOLO 人物検出", expanded=True)
+        yolo_section = CollapsibleSection(i18n.t("YOLO_SECTION"), expanded=True)
         yolo_form = QFormLayout()
         yolo_form.setSpacing(6)
 
         self.yolo_level_combo = QComboBox()
-        self.yolo_level_combo.setToolTip("0: YOLO直接 (高速)\n1: YOLO+SAM2 (標準、推奨)\n2: 水平帯高品質+SAM2\n3: 全方向高品質+SAM2")
+        self.yolo_level_combo.setToolTip(i18n.tip("YOLO_LEVEL"))
         self.yolo_level_combo.addItems(["0 (高速)", "1 (標準)", "2 (高品質)", "3 (最高品質)"])
         self.yolo_level_combo.setCurrentIndex(1)
         yolo_form.addRow(i18n.YOLO_LEVEL, self.yolo_level_combo)
 
         self.yolo_expand_edit = QLineEdit("12")
-        self.yolo_expand_edit.setToolTip("検出マスクを指定ピクセル分膨張させて、人物の輪郭に余裕を持たせる")
+        self.yolo_expand_edit.setToolTip(i18n.tip("YOLO_EXPAND"))
         self.yolo_expand_edit.setFixedWidth(80)
         yolo_form.addRow(i18n.YOLO_EXPAND, self.yolo_expand_edit)
 
-        self.yolo_add_ext_cb = QCheckBox("マスクに拡張子を付加")
-        self.yolo_add_ext_cb.setToolTip("マスクファイル名を image.jpg.png のように元の拡張子を残す形式にする")
+        self.yolo_add_ext_cb = QCheckBox(i18n.t("ADD_EXT_LABEL"))
+        self.yolo_add_ext_cb.setToolTip(i18n.tip("YOLO_ADD_EXT"))
         yolo_form.addRow("", self.yolo_add_ext_cb)
 
         # クラス選択
@@ -170,17 +170,17 @@ class MaskStep(BaseStepWidget):
         layout.addWidget(yolo_section)
 
         # --- スティッチ+白飛び設定 (折りたたみ) ---
-        other_section = CollapsibleSection("スティッチ / 白飛び設定", expanded=False)
+        other_section = CollapsibleSection(i18n.t("STITCH_OVEREXP_SECTION"), expanded=False)
         other_form = QFormLayout()
         other_form.setSpacing(6)
 
         self.stitch_fov_edit = QLineEdit("190")
-        self.stitch_fov_edit.setToolTip("360カメラの魚眼レンズFOV (度)。スティッチ境界の外側をマスク。一般的な360カメラは190前後")
+        self.stitch_fov_edit.setToolTip(i18n.tip("STITCH_FOV"))
         self.stitch_fov_edit.setFixedWidth(80)
         other_form.addRow(i18n.STITCH_FOV, self.stitch_fov_edit)
 
         self.stitch_workers_edit = QLineEdit(str(os.cpu_count() or 4))
-        self.stitch_workers_edit.setToolTip("並列処理のワーカー数。CPUコア数が目安")
+        self.stitch_workers_edit.setToolTip(i18n.tip("STITCH_WORKERS"))
         self.stitch_workers_edit.setFixedWidth(80)
         other_form.addRow(i18n.STITCH_WORKERS, self.stitch_workers_edit)
 
@@ -189,12 +189,12 @@ class MaskStep(BaseStepWidget):
         other_form.addRow(sep)
 
         self.overexp_threshold_edit = QLineEdit("250")
-        self.overexp_threshold_edit.setToolTip("RGB全チャンネルがこの値を超えるピクセルを白飛びと判定 (200-254)")
+        self.overexp_threshold_edit.setToolTip(i18n.tip("OVEREXPOSURE_THRESHOLD"))
         self.overexp_threshold_edit.setFixedWidth(80)
         other_form.addRow(i18n.OVEREXPOSURE_THRESHOLD, self.overexp_threshold_edit)
 
         self.overexp_dilate_edit = QLineEdit("8")
-        self.overexp_dilate_edit.setToolTip("白飛び領域を膨張させるピクセル数。ハロー/フリンジ対策。0で無効")
+        self.overexp_dilate_edit.setToolTip(i18n.tip("OVEREXPOSURE_DILATE"))
         self.overexp_dilate_edit.setFixedWidth(80)
         other_form.addRow(i18n.OVEREXPOSURE_DILATE, self.overexp_dilate_edit)
 

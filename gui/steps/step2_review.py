@@ -69,16 +69,16 @@ class ReviewStep(BaseStepWidget):
         form.setSpacing(6)
 
         self.csv_edit = QLineEdit("selected_frames.csv")
-        self.csv_edit.setToolTip("Step1で生成されたフレーム選択CSVファイル名")
+        self.csv_edit.setToolTip(i18n.tip("CSV_FILE"))
         form.addRow(i18n.CSV_FILE, self.csv_edit)
 
         self.export_dir_edit = QLineEdit("images")
-        self.export_dir_edit.setToolTip("keepフレームのコピー先フォルダ名。'images'ならインプレース処理")
+        self.export_dir_edit.setToolTip(i18n.tip("EXPORT_DIR"))
         form.addRow(i18n.EXPORT_DIR, self.export_dir_edit)
 
         self.prefix_edit = QLineEdit("")
-        self.prefix_edit.setToolTip("出力ファイル名の接頭辞。空欄なら元のプレフィックスを維持")
-        self.prefix_edit.setPlaceholderText("自動 (動画ファイル名)")
+        self.prefix_edit.setToolTip(i18n.tip("FILENAME_PREFIX"))
+        self.prefix_edit.setPlaceholderText(i18n.t("AUTO_PREFIX_HINT"))
         form.addRow(i18n.FILENAME_PREFIX, self.prefix_edit)
 
         card_layout.addLayout(form)
@@ -89,20 +89,20 @@ class ReviewStep(BaseStepWidget):
         btn_row.setSpacing(8)
 
         self.review_btn = QPushButton(f"  {i18n.OPEN_REVIEW}")
-        self.review_btn.setToolTip("フレーム画像を1枚ずつ確認し、keep/dropを編集するGUIを開く\nB/Shift+Bでブラーワースト順ナビ、閾値一括dropも可能")
+        self.review_btn.setToolTip(i18n.tip("OPEN_REVIEW"))
         self.review_btn.setObjectName("primary")
         self.review_btn.setFixedHeight(34)
         self.review_btn.clicked.connect(self._open_review)
         btn_row.addWidget(self.review_btn)
 
         self.export_btn = QPushButton(i18n.EXPORT_KEEP)
-        self.export_btn.setToolTip("CSVでkeepとマークされたフレームだけを指定フォルダにコピー")
+        self.export_btn.setToolTip(i18n.tip("EXPORT_KEEP"))
         self.export_btn.setFixedHeight(34)
         self.export_btn.clicked.connect(self._export_keep)
         btn_row.addWidget(self.export_btn)
 
         self.finalize_btn = QPushButton(i18n.FINALIZE_INPLACE)
-        self.finalize_btn.setToolTip("images/内のdropフレームを削除し、keepフレームを連番リネーム。元に戻せないので注意")
+        self.finalize_btn.setToolTip(i18n.tip("FINALIZE_INPLACE"))
         self.finalize_btn.setFixedHeight(34)
         self.finalize_btn.clicked.connect(self._finalize_inplace)
         btn_row.addWidget(self.finalize_btn)

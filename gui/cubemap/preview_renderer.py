@@ -19,6 +19,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from gui import i18n
 from gui.common.collapsible_section import CollapsibleSection
 
 
@@ -93,7 +94,7 @@ class PreviewWidget(QWidget):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
 
-        self.image_label = QLabel("プレビュー画像が選択されていません")
+        self.image_label = QLabel(i18n.t("NO_PREVIEW"))
         self.image_label.setAlignment(Qt.AlignCenter)
         self.image_label.setMinimumSize(640, 320)
         self.image_label.setStyleSheet("border: 1px solid palette(mid);")
@@ -101,21 +102,21 @@ class PreviewWidget(QWidget):
 
         # サンプル画像
         img_row = QHBoxLayout()
-        img_row.addWidget(QLabel("プレビュー画像:"))
+        img_row.addWidget(QLabel(i18n.t("PREVIEW_IMAGE_LABEL")))
         self.sample_edit = QLineEdit()
-        self.sample_edit.setToolTip("プレビューに表示するエクイレクタングラー画像のパス")
+        self.sample_edit.setToolTip(i18n.tip("PREVIEW_SAMPLE"))
         self.sample_edit.textChanged.connect(self._on_sample_changed)
         img_row.addWidget(self.sample_edit, stretch=1)
-        browse_btn = QPushButton("参照...")
-        browse_btn.setToolTip("プレビュー画像を手動で選択")
+        browse_btn = QPushButton(i18n.BROWSE)
+        browse_btn.setToolTip(i18n.tip("PREVIEW_BROWSE"))
         browse_btn.clicked.connect(self._browse_sample)
         img_row.addWidget(browse_btn)
-        auto_btn = QPushButton("自動")
-        auto_btn.setToolTip("シーンフォルダ内の最初の画像を自動選択")
+        auto_btn = QPushButton(i18n.t("AUTO"))
+        auto_btn.setToolTip(i18n.tip("PREVIEW_AUTO"))
         auto_btn.clicked.connect(self._auto_select)
         img_row.addWidget(auto_btn)
-        reload_btn = QPushButton("更新")
-        reload_btn.setToolTip("シーンフォルダの画像リストを再スキャン")
+        reload_btn = QPushButton(i18n.t("RELOAD"))
+        reload_btn.setToolTip(i18n.tip("PREVIEW_RELOAD"))
         reload_btn.clicked.connect(lambda: self.refresh_image_list(prefer_current=False))
         img_row.addWidget(reload_btn)
         layout.addLayout(img_row)
@@ -123,7 +124,7 @@ class PreviewWidget(QWidget):
         # タイムライン
         tl_row = QHBoxLayout()
         self.slider = QSlider(Qt.Horizontal)
-        self.slider.setToolTip("シーン内の画像を順番にスライドして切り替え")
+        self.slider.setToolTip(i18n.tip("PREVIEW_SLIDER"))
         self.slider.setRange(0, 0)
         self.slider.setEnabled(False)
         self.slider.valueChanged.connect(self._on_slider_changed)
@@ -133,26 +134,26 @@ class PreviewWidget(QWidget):
         layout.addLayout(tl_row)
 
         # マスクオーバーレイ設定（折りたたみ）
-        mask_section = CollapsibleSection("プレビューオーバーレイ設定", expanded=False)
+        mask_section = CollapsibleSection(i18n.t("PREVIEW_OVERLAY_SECTION"), expanded=False)
         mask_inner = QHBoxLayout()
 
-        mask_inner.addWidget(QLabel("マスク透過率:"))
+        mask_inner.addWidget(QLabel(i18n.t("MASK_OPACITY_LABEL")))
         self.mask_slider = QSlider(Qt.Horizontal)
-        self.mask_slider.setToolTip("プレビュー上のマスク領域の赤オーバーレイ透過率 (0=非表示、100=不透明)")
+        self.mask_slider.setToolTip(i18n.tip("MASK_OPACITY"))
         self.mask_slider.setRange(0, 100)
         self.mask_slider.setValue(35)
         mask_inner.addWidget(self.mask_slider)
 
-        mask_inner.addWidget(QLabel("マスク画像:"))
+        mask_inner.addWidget(QLabel(i18n.t("MASK_IMAGE_LABEL")))
         self.mask_edit = QLineEdit()
-        self.mask_edit.setToolTip("特定のマスク画像を手動指定。空欄ならマスクフォルダから自動検索")
+        self.mask_edit.setToolTip(i18n.tip("MASK_IMAGE"))
         mask_inner.addWidget(self.mask_edit)
-        mask_browse = QPushButton("参照...")
-        mask_browse.setToolTip("マスク画像ファイルを選択")
+        mask_browse = QPushButton(i18n.BROWSE)
+        mask_browse.setToolTip(i18n.tip("MASK_IMAGE_BROWSE"))
         mask_browse.clicked.connect(self._browse_mask)
         mask_inner.addWidget(mask_browse)
-        mask_clear = QPushButton("クリア")
-        mask_clear.setToolTip("手動指定をクリアして自動検索に戻す")
+        mask_clear = QPushButton(i18n.t("CLEAR"))
+        mask_clear.setToolTip(i18n.tip("MASK_IMAGE_CLEAR"))
         mask_clear.clicked.connect(lambda: self.mask_edit.setText(""))
         mask_inner.addWidget(mask_clear)
 
@@ -170,19 +171,19 @@ class PreviewWidget(QWidget):
     def render(self, views: list[dict], mask_dir: str = "") -> None:
         sample = self.sample_edit.text().strip()
         if not sample:
-            self.image_label.setText("プレビュー画像が選択されていません")
+            self.image_label.setText(i18n.t("NO_PREVIEW"))
             self._pixmap = None
             return
 
         p = Path(sample)
         if not p.exists() or not p.is_file():
-            self.image_label.setText("プレビュー画像が見つかりません")
+            self.image_label.setText(i18n.t("NO_PREVIEW_FOUND"))
             self._pixmap = None
             return
 
         img = cv2.imread(str(p), cv2.IMREAD_COLOR)
         if img is None:
-            self.image_label.setText("画像の読み込みに失敗しました")
+            self.image_label.setText(i18n.t("PREVIEW_LOAD_FAIL"))
             self._pixmap = None
             return
 

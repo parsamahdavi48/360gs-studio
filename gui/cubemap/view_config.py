@@ -17,6 +17,8 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from gui import i18n
+
 _MIN_YAW_SLOTS = 4
 _MAX_YAW_SLOTS = 8
 _DEFAULT_YAW_SLOTS = 6
@@ -59,36 +61,36 @@ class ViewConfigWidget(QWidget):
         ctrl = QHBoxLayout()
 
         self.view_mode_combo = QComboBox()
-        self.view_mode_combo.setToolTip("カスタムグリッド: ピッチ/ヨーを自由に設定\nCube6: 標準キューブマップ6面 (前後左右+上下)")
-        self.view_mode_combo.addItem("カスタムグリッド", VIEW_MODE_CUSTOM)
-        self.view_mode_combo.addItem("Cube6 (4面+上下)", VIEW_MODE_CUBE6)
+        self.view_mode_combo.setToolTip(i18n.tip("VIEW_MODE"))
+        self.view_mode_combo.addItem(i18n.t("CUSTOM_GRID"), VIEW_MODE_CUSTOM)
+        self.view_mode_combo.addItem(i18n.t("CUBE6_LABEL"), VIEW_MODE_CUBE6)
         self.view_mode_combo.currentIndexChanged.connect(self._on_view_mode_changed)
-        ctrl.addWidget(QLabel("ビューモード:"))
+        ctrl.addWidget(QLabel(i18n.t("VIEW_MODE_LABEL")))
         ctrl.addWidget(self.view_mode_combo)
 
         self.yaw_offset_edit = QLineEdit("45.0")
-        self.yaw_offset_edit.setToolTip("全ビューのヨー角にオフセットを加算 (度)。スティッチ線を避けるために45度推奨")
+        self.yaw_offset_edit.setToolTip(i18n.tip("YAW_OFFSET"))
         self.yaw_offset_edit.setFixedWidth(60)
         self.yaw_offset_edit.textChanged.connect(self._on_params_changed)
-        ctrl.addWidget(QLabel("ヨーオフセット:"))
+        ctrl.addWidget(QLabel(i18n.t("YAW_OFFSET_LABEL")))
         ctrl.addWidget(self.yaw_offset_edit)
 
         self.yaw_slots_combo = QComboBox()
-        self.yaw_slots_combo.setToolTip("水平方向の分割数 (4-8)。360度をN等分した角度でビューを配置")
+        self.yaw_slots_combo.setToolTip(i18n.tip("YAW_SLOTS"))
         self.yaw_slots_combo.addItems([str(v) for v in range(_MIN_YAW_SLOTS, _MAX_YAW_SLOTS + 1)])
         self.yaw_slots_combo.setCurrentText(str(_DEFAULT_YAW_SLOTS))
         self.yaw_slots_combo.currentTextChanged.connect(lambda _: self._apply_pitch_rows())
-        ctrl.addWidget(QLabel("ヨースロット:"))
+        ctrl.addWidget(QLabel(i18n.t("YAW_SLOTS_LABEL")))
         ctrl.addWidget(self.yaw_slots_combo)
 
         self.pitch_edit = QLineEdit("-30,0,30")
-        self.pitch_edit.setToolTip("垂直方向のピッチ角をカンマ区切りで指定 (度)。-90〜90。例: -30,0,30")
+        self.pitch_edit.setToolTip(i18n.tip("PITCH_ROWS"))
         self.pitch_edit.setFixedWidth(120)
-        ctrl.addWidget(QLabel("ピッチ行:"))
+        ctrl.addWidget(QLabel(i18n.t("PITCH_ROWS_LABEL")))
         ctrl.addWidget(self.pitch_edit)
 
-        apply_btn = QPushButton("適用")
-        apply_btn.setToolTip("ピッチ行とヨースロットの変更をグリッドに反映")
+        apply_btn = QPushButton(i18n.t("APPLY"))
+        apply_btn.setToolTip(i18n.tip("APPLY_BTN"))
         apply_btn.clicked.connect(self._apply_pitch_rows)
         ctrl.addWidget(apply_btn)
         ctrl.addStretch()
@@ -96,12 +98,12 @@ class ViewConfigWidget(QWidget):
 
         # Cube6 オプション
         self._cube6_row = QHBoxLayout()
-        self.cube6_drop_top = QCheckBox("上面(+90)を除外")
-        self.cube6_drop_top.setToolTip("天頂面 (真上) をキューブマップから除外。空しか映らない場合に")
+        self.cube6_drop_top = QCheckBox(i18n.t("DROP_TOP"))
+        self.cube6_drop_top.setToolTip(i18n.tip("CUBE6_DROP_TOP"))
         self.cube6_drop_top.toggled.connect(self._on_selection_changed)
         self._cube6_row.addWidget(self.cube6_drop_top)
-        self.cube6_drop_bottom = QCheckBox("底面(-90)を除外")
-        self.cube6_drop_bottom.setToolTip("底面 (真下) をキューブマップから除外。三脚/撮影者が映る場合に")
+        self.cube6_drop_bottom = QCheckBox(i18n.t("DROP_BOTTOM"))
+        self.cube6_drop_bottom.setToolTip(i18n.tip("CUBE6_DROP_BOTTOM"))
         self.cube6_drop_bottom.toggled.connect(self._on_selection_changed)
         self._cube6_row.addWidget(self.cube6_drop_bottom)
         self._cube6_row.addStretch()
@@ -111,14 +113,14 @@ class ViewConfigWidget(QWidget):
 
         # ビュー選択ボタン
         btn_row = QHBoxLayout()
-        all_on = QPushButton("全選択")
+        all_on = QPushButton(i18n.t("SELECT_ALL"))
         all_on.clicked.connect(self._all_on)
         btn_row.addWidget(all_on)
-        all_off = QPushButton("全解除")
+        all_off = QPushButton(i18n.t("DESELECT_ALL"))
         all_off.clicked.connect(self._all_off)
         btn_row.addWidget(all_off)
         btn_row.addStretch()
-        self.selected_label = QLabel("選択ビュー: 0")
+        self.selected_label = QLabel(f"{i18n.t('SELECTED_VIEWS')}: 0")
         self.selected_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
         btn_row.addWidget(self.selected_label)
         layout.addLayout(btn_row)
@@ -234,7 +236,7 @@ class ViewConfigWidget(QWidget):
         self.yaw_slot_labels = []
         self._clear_grid()
 
-        self.grid_layout.addWidget(QLabel("ピッチ / スロット"), 0, 0)
+        self.grid_layout.addWidget(QLabel(i18n.t("PITCH_SLOT_HEADER")), 0, 0)
         for s in range(slots):
             lab = QLabel(f"S{s}")
             lab.setAlignment(Qt.AlignCenter)
@@ -273,15 +275,15 @@ class ViewConfigWidget(QWidget):
         try:
             views = self.collect_views(include_disabled=True)
         except Exception:
-            self.selected_label.setText("選択ビュー: -")
+            self.selected_label.setText(f"{i18n.t('SELECTED_VIEWS')}: -")
             return
         sel = sum(1 for v in views if v["enabled"])
         warn = ""
         if sel > _BLOCK_ENABLED_VIEWS:
-            warn = " [超過]"
+            warn = f" [{i18n.t('EXCEED')}]"
         elif sel > _WARN_ENABLED_VIEWS:
-            warn = " [多い]"
-        self.selected_label.setText(f"選択ビュー: {sel} / {len(views)}{warn}")
+            warn = f" [{i18n.t('HIGH')}]"
+        self.selected_label.setText(f"{i18n.t('SELECTED_VIEWS')}: {sel} / {len(views)}{warn}")
 
     def _all_on(self) -> None:
         for row in self.pitch_rows:
