@@ -61,13 +61,16 @@ class ExtractStep(BaseStepWidget):
             filter_str="動画ファイル (*.mp4 *.mov *.mkv *.avi *.m4v);;すべて (*.*)",
             placeholder="360度動画を選択...",
         )
+        self.video_browse.setToolTip("エクイレクタングラー形式の360度動画ファイルを選択")
         self.video_browse.path_changed.connect(self._on_video_changed)
         basic.addRow(i18n.INPUT_VIDEO, self.video_browse)
 
         # モード選択
         self.change_radio = QRadioButton(i18n.MODE_CHANGE)
+        self.change_radio.setToolTip("フレーム間の画像変化量に基づいて自動選択。歩行撮影では固定間隔の方が安定")
         self.fixed_radio = QRadioButton(i18n.MODE_FIXED)
-        self.fixed_radio.setChecked(True)  # 固定間隔をデフォルトに
+        self.fixed_radio.setToolTip("一定の秒数間隔でフレームを抽出。SfMの精度が安定しやすい (推奨: 0.8〜1.0秒)")
+        self.fixed_radio.setChecked(True)
         self.change_radio.toggled.connect(self._update_mode_widgets)
         self.change_radio.toggled.connect(self._mark_estimate_stale)
         mode_row = QHBoxLayout()
@@ -76,24 +79,26 @@ class ExtractStep(BaseStepWidget):
         mode_row.addStretch()
         basic.addRow(i18n.EXTRACTION_MODE, mode_row)
 
-        # 固定間隔
         self.interval_edit = QLineEdit("0.8")
+        self.interval_edit.setToolTip("フレーム間の秒数。0.8〜1.0秒がSfMに最適。短すぎると枚数が膨大に")
         self.interval_edit.setFixedWidth(80)
         self.interval_edit.textChanged.connect(self._mark_estimate_stale)
         basic.addRow(i18n.INTERVAL, self.interval_edit)
 
-        # 変化検出パラメータ (モードに連動して表示/非表示)
         self.threshold_edit = QLineEdit("0.04")
+        self.threshold_edit.setToolTip("変化検出の感度。小さいほど敏感 (多くのフレームを選択)。0.01〜0.12が目安")
         self.threshold_edit.setFixedWidth(80)
         self.threshold_edit.textChanged.connect(self._mark_estimate_stale)
         basic.addRow(i18n.CHANGE_THRESHOLD, self.threshold_edit)
 
         self.min_gap_edit = QLineEdit("0.25")
+        self.min_gap_edit.setToolTip("選択フレーム間の最小間隔 (秒)。連続した似たフレームの選択を防ぐ")
         self.min_gap_edit.setFixedWidth(80)
         self.min_gap_edit.textChanged.connect(self._mark_estimate_stale)
         basic.addRow(i18n.MIN_GAP, self.min_gap_edit)
 
         self.max_gap_edit = QLineEdit("2.0")
+        self.max_gap_edit.setToolTip("選択フレーム間の最大間隔 (秒)。変化が少ない区間でも最低限のフレームを確保")
         self.max_gap_edit.setFixedWidth(80)
         self.max_gap_edit.textChanged.connect(self._mark_estimate_stale)
         basic.addRow(i18n.MAX_GAP, self.max_gap_edit)
@@ -101,12 +106,14 @@ class ExtractStep(BaseStepWidget):
         # 画像形式
         fmt_row = QHBoxLayout()
         self.image_ext_combo = QComboBox()
+        self.image_ext_combo.setToolTip("出力画像の形式。jpgはファイルサイズ小、pngは無劣化")
         self.image_ext_combo.addItems(["jpg", "png"])
         self.image_ext_combo.setFixedWidth(80)
         self.image_ext_combo.currentIndexChanged.connect(self._mark_estimate_stale)
         fmt_row.addWidget(self.image_ext_combo)
         fmt_row.addWidget(QLabel(i18n.JPEG_QUALITY + ":"))
         self.jpg_quality_edit = QLineEdit("2")
+        self.jpg_quality_edit.setToolTip("ffmpegの-q:v値。1=最高品質、31=最低品質。2-5推奨")
         self.jpg_quality_edit.setFixedWidth(50)
         fmt_row.addWidget(self.jpg_quality_edit)
         fmt_row.addStretch()
@@ -119,6 +126,7 @@ class ExtractStep(BaseStepWidget):
         info_box.setSpacing(12)
 
         self.load_info_btn = QPushButton("動画情報読込")
+        self.load_info_btn.setToolTip("ffprobeで動画の解像度・FPS・長さを取得し、フレーム数を推定")
         self.load_info_btn.setFixedWidth(120)
         self.load_info_btn.clicked.connect(lambda: self._load_video_info(show_error=True))
         info_box.addWidget(self.load_info_btn)
@@ -140,31 +148,38 @@ class ExtractStep(BaseStepWidget):
         adv_form.setSpacing(6)
 
         self.analysis_width_edit = QLineEdit("960")
+        self.analysis_width_edit.setToolTip("変化検出・ブラー計算に使うデコード幅。大きいほど精度上がるが遅い")
         self.analysis_width_edit.setFixedWidth(80)
         self.analysis_width_edit.textChanged.connect(self._mark_estimate_stale)
         adv_form.addRow(i18n.ANALYSIS_WIDTH, self.analysis_width_edit)
 
         self.blur_percentile_edit = QLineEdit("25.0")
+        self.blur_percentile_edit.setToolTip("下位N%のブラースコアを閾値とする。25=下位25%がブレ判定の候補に")
         self.blur_percentile_edit.setFixedWidth(80)
         self.blur_percentile_edit.textChanged.connect(self._mark_estimate_stale)
         adv_form.addRow(i18n.BLUR_PERCENTILE, self.blur_percentile_edit)
 
         self.blur_window_edit = QLineEdit("0")
+        self.blur_window_edit.setToolTip("ブレ置換の探索範囲 (前後フレーム数)。0=ブレ置換無効")
         self.blur_window_edit.setFixedWidth(80)
         self.blur_window_edit.textChanged.connect(self._mark_estimate_stale)
         adv_form.addRow(i18n.BLUR_WINDOW, self.blur_window_edit)
 
         self.ffmpeg_edit = QLineEdit("ffmpeg")
+        self.ffmpeg_edit.setToolTip("ffmpegの実行パス。PATHに通っていれば 'ffmpeg' でOK")
         adv_form.addRow(i18n.FFMPEG_PATH, self.ffmpeg_edit)
 
         self.ffprobe_edit = QLineEdit("ffprobe")
+        self.ffprobe_edit.setToolTip("ffprobeの実行パス。動画情報の取得に使用")
         adv_form.addRow(i18n.FFPROBE_PATH, self.ffprobe_edit)
 
         self.prefix_edit = QLineEdit("")
+        self.prefix_edit.setToolTip("出力ファイル名の接頭辞。空欄なら動画ファイル名を自動使用")
         self.prefix_edit.setPlaceholderText("自動 (動画ファイル名)")
         adv_form.addRow(i18n.FILENAME_PREFIX, self.prefix_edit)
 
         self.refresh_sample_btn = QPushButton("サンプル推定を更新")
+        self.refresh_sample_btn.setToolTip("動画の一部をサンプリングしてフレーム数を再推定 (変化検出モードのみ)")
         self.refresh_sample_btn.clicked.connect(self._run_sampled_estimate_now)
         adv_form.addRow("", self.refresh_sample_btn)
 

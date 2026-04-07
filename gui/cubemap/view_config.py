@@ -59,6 +59,7 @@ class ViewConfigWidget(QWidget):
         ctrl = QHBoxLayout()
 
         self.view_mode_combo = QComboBox()
+        self.view_mode_combo.setToolTip("カスタムグリッド: ピッチ/ヨーを自由に設定\nCube6: 標準キューブマップ6面 (前後左右+上下)")
         self.view_mode_combo.addItem("カスタムグリッド", VIEW_MODE_CUSTOM)
         self.view_mode_combo.addItem("Cube6 (4面+上下)", VIEW_MODE_CUBE6)
         self.view_mode_combo.currentIndexChanged.connect(self._on_view_mode_changed)
@@ -66,12 +67,14 @@ class ViewConfigWidget(QWidget):
         ctrl.addWidget(self.view_mode_combo)
 
         self.yaw_offset_edit = QLineEdit("45.0")
+        self.yaw_offset_edit.setToolTip("全ビューのヨー角にオフセットを加算 (度)。スティッチ線を避けるために45度推奨")
         self.yaw_offset_edit.setFixedWidth(60)
         self.yaw_offset_edit.textChanged.connect(self._on_params_changed)
         ctrl.addWidget(QLabel("ヨーオフセット:"))
         ctrl.addWidget(self.yaw_offset_edit)
 
         self.yaw_slots_combo = QComboBox()
+        self.yaw_slots_combo.setToolTip("水平方向の分割数 (4-8)。360度をN等分した角度でビューを配置")
         self.yaw_slots_combo.addItems([str(v) for v in range(_MIN_YAW_SLOTS, _MAX_YAW_SLOTS + 1)])
         self.yaw_slots_combo.setCurrentText(str(_DEFAULT_YAW_SLOTS))
         self.yaw_slots_combo.currentTextChanged.connect(lambda _: self._apply_pitch_rows())
@@ -79,11 +82,13 @@ class ViewConfigWidget(QWidget):
         ctrl.addWidget(self.yaw_slots_combo)
 
         self.pitch_edit = QLineEdit("-30,0,30")
+        self.pitch_edit.setToolTip("垂直方向のピッチ角をカンマ区切りで指定 (度)。-90〜90。例: -30,0,30")
         self.pitch_edit.setFixedWidth(120)
         ctrl.addWidget(QLabel("ピッチ行:"))
         ctrl.addWidget(self.pitch_edit)
 
         apply_btn = QPushButton("適用")
+        apply_btn.setToolTip("ピッチ行とヨースロットの変更をグリッドに反映")
         apply_btn.clicked.connect(self._apply_pitch_rows)
         ctrl.addWidget(apply_btn)
         ctrl.addStretch()
@@ -92,9 +97,11 @@ class ViewConfigWidget(QWidget):
         # Cube6 オプション
         self._cube6_row = QHBoxLayout()
         self.cube6_drop_top = QCheckBox("上面(+90)を除外")
+        self.cube6_drop_top.setToolTip("天頂面 (真上) をキューブマップから除外。空しか映らない場合に")
         self.cube6_drop_top.toggled.connect(self._on_selection_changed)
         self._cube6_row.addWidget(self.cube6_drop_top)
         self.cube6_drop_bottom = QCheckBox("底面(-90)を除外")
+        self.cube6_drop_bottom.setToolTip("底面 (真下) をキューブマップから除外。三脚/撮影者が映る場合に")
         self.cube6_drop_bottom.toggled.connect(self._on_selection_changed)
         self._cube6_row.addWidget(self.cube6_drop_bottom)
         self._cube6_row.addStretch()
