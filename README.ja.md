@@ -1,101 +1,93 @@
-# tetraface-3dgs-utils
+# stechdrive-3dgs-utils
 
-3Dガウシアンスプラッティング(3DGS)用のワークフローとして自作しながら使っているスクリプト集です。
+360度動画から3Dガウシアンスプラッティング (3DGS) 学習用アセットを作成するためのスタジオツールキット。日本語GUIで統合ワークフローを提供します。
 
-## 必要項目
+[tetraface/tetraface-3dgs-utils](https://github.com/tetraface/tetraface-3dgs-utils) からフォークし、統合ワークフローGUI、追加マスク機能、マルチフレームワーク出力対応を拡張しています。
 
-以下のソフト・モジュールをインストールしてください。すべてのスクリプトで共通です。
+[EN English](README.md)
 
-- [CUDA Toolkit 12.8](https://developer.nvidia.com/cuda-12-8-0-download-archive) (他のバージョンは不可)
-- [Python 3.x](https://www.python.org/) (3.11.8で確認、3.11推奨)
-- [FFmpeg / FFprobe](https://ffmpeg.org/) (動画から静止画切り出しで使用)
-- [metashape_360_lfs.py (フォーク版)](https://github.com/tetraface/metashape_360_lfs) 
-  - このリポジトリ内に同梱: `vendor/metashape_360_lfs/metashape_360_lfs.py`
-  - 配布元の記録: `vendor/metashape_360_lfs/VENDOR_SOURCE.md`
+## ワークフロー概要
 
-### 依存pythonモジュール
-
-- NumPy
-- OpenCV
-- Pillow
-- PySide6 (GUIラッパーで使用)
-- Open3D (metashape_360_lfs内で使用)
-- PyTorch 2.8.0 (with CUDA 12.8)
-- ultralytics
-- tqdm
-
-インストール例:
 ```
-pip install torch==2.8.0 torchvision==0.23.0 torchaudio==2.8.0 --index-url https://download.pytorch.org/whl/cu128
-pip install numpy opencv-python Pillow open3d ultralytics tqdm PySide6
+360度動画  ──  フレーム抽出  ──  レビュー+選別
+                                     │
+                              Metashape SfM (手動)
+                                     │
+             マスク生成  ──  キューブマップ変換  ──  3DGSトレーニング
+           (YOLO+SAM2/スティッチ/   (Postshot / Brush /
+            白飛び検出)              LichtFeld Studio)
 ```
 
-## Windows クイックスタート
+| ステップ | 内容 |
+|----------|------|
+| **1. フレーム抽出** | 360度動画からエクイレクタングラー静止画を切り出し。固定間隔 (推奨: 0.8-1秒) または変化量ベース |
+| **2. フレーム確認** | ブラーワースト順ナビでブレ画像を確認、閾値一括dropで効率的に選別。その後Metashapeで手動SfM |
+| **3. マスク生成** | YOLO+SAM2.1 人物検出、スティッチ継ぎ目マスク、白飛び (過露出) マスク |
+| **4. キューブマップ変換** | エクイレクタングラーをキューブマップビューに変換し、Postshot / Brush / LichtFeld Studio 用のtransforms.jsonを出力 |
 
-このリポでは Python 3.11 の venv 運用を推奨します。`open3d` は Python 3.12 必須ではありません。
-Python 3.11 が無い場合、`setup_windows.bat` は `winget` で Python 3.11.8 の導入を試みます。
+## クイックスタート (Windows)
 
 ```bat
 setup_windows.bat
-start_extract_frames_gui.bat
-start_mask_tools_gui.bat
-start_cubemap_tools_gui.bat
+start_gui.bat
 ```
 
-## 各スクリプトの概要
+`setup_windows.bat` は Python 3.11 (未インストールなら winget で自動導入)、venv作成、PyTorch (CUDA 12.8) + 全依存パッケージをインストールします。
 
-### cubemap_transforms_json.py
+`start_gui.bat` で統合GUIアプリ (ダークモダンテーマ、日本語UI) が起動します。
 
-Metashapeが出力する**360度画像用**xmlファイルからtransforms.jsonに変換したものを元に、さらにキューブマップ用に変換し、一般的な3DGSソフトで入力できるようにします。<br>
-[→詳細を見る](doc/cubemap_transforms_json.ja.md)<br>
-![mask example](images/yaw45.jpg)
+## 動作環境
 
-### cubemap_tools_gui.py
+- Windows 10/11
+- [CUDA Toolkit 12.8](https://developer.nvidia.com/cuda-12-8-0-download-archive)
+- [Python 3.11](https://www.python.org/) (3.11.8で確認済み)
+- [FFmpeg / FFprobe](https://ffmpeg.org/)
+- CUDA対応GPU (YOLO/SAM2, PyTorch用)
 
-キューブマップ変換用のラッパーGUIです。複数ピッチ行 x 可変YAWスロット（4〜8）の視点ON/OFF、マスク半透明合成付きプレビュー、FOV=90固定での実行に対応します。<br>
-[→詳細を見る](doc/cubemap_tools_gui.ja.md)<br>
+### Python依存パッケージ
 
-### realityscan_rig_export.py
+`setup_windows.bat` で自動インストール:
 
-エクイレクタングラー入力から RealityScan 用の自己完結リグパッケージ（透視投影画像 + 対応XMP + 任意マスク）を出力します。<br>
-[→詳細を見る](doc/realityscan_rig_export.ja.md)<br>
+```
+torch==2.8.0 (CUDA 12.8), torchvision, torchaudio
+numpy, opencv-python, Pillow, open3d, ultralytics, tqdm, PySide6
+```
 
-### stitch_mask.py
+### MLモデルファイル
 
-360度画像内の２つの魚眼画像の指定角度外にマスクを生成します。レンズ間のつなぎ目付近で被写体との距離が近くて、スチッティング領域が目立つ場合に有効です。<br>
-[→詳細を見る](doc/stitch_mask.ja.md)<br>
-![マスク例](images/stitch_mask.png)
+YOLO/SAM2のモデルは初回実行時に ultralytics が自動ダウンロードします:
+- `yolo26m.pt` / `yolo26l.pt` (YOLO v26)
+- `sam2.1_l.pt` (SAM 2.1 Large)
 
+## CLIツール
 
-### yolo_mask.py
+全CLIエンジンはGUIなしで単体利用可能です:
 
-360度画像内の人物を検知してマスクを生成します。<br>
-[→詳細を見る](doc/yolo_mask.ja.md)<br>
-![マスク例](images/yolo_mask.png)
+| スクリプト | 内容 | ドキュメント |
+|-----------|------|-------------|
+| `extract_frames.py` | 360動画からフレーム抽出 (変化/固定選択 + ブラー置換) | [JP](doc/extract_frames.md) |
+| `apply_frame_decisions.py` | CSVのkeep/drop判定を適用 | [JP](doc/apply_frame_decisions.md) |
+| `review_frames.py` | フレームレビューGUI (ブラーワースト順ナビ付き) | [JP](doc/review_frames.md) |
+| `yolo_mask.py` | YOLO+SAM2.1 人物検出マスク (360度画像対応) | [JP](doc/yolo_mask.ja.md) |
+| `stitch_mask.py` | デュアル魚眼カメラのスティッチ境界マスク | [JP](doc/stitch_mask.ja.md) |
+| `overexposure_mask.py` | 白飛びピクセル検出とマスク合成 | - |
+| `cubemap_transforms_json.py` | エクイレクタングラー → キューブマップ変換 | [JP](doc/cubemap_transforms_json.ja.md) |
 
-### mask_tools_gui.py
+## Fork元からの変更点
 
-マスク生成ワークフロー（`yolo_mask.py` + `stitch_mask.py`）をまとめて実行するGUIです。<br>
-[→詳細を見る](doc/mask_tools_gui.ja.md)<br>
+このフォークで追加・変更した機能:
+- **統合GUI** (`gui/`) ダークモダンテーマ + 日本語UI (PySide6)
+- **4ステップワークフロー** を1つのタブウィンドウに統合
+- **白飛びマスク** 検出 (`overexposure_mask.py`)
+- **ブラーワースト順ナビ** + 閾値一括dropをレビューGUIに追加
+- **Brushプロファイル** 対応 (`--brush` 座標変換)
+- **削除**: COLMAP rig export, RealityScan rig export (MetashapeベースのSfMワークフローに特化)
 
-### extract_frames.py
+upstreamの変更は [tetraface/tetraface-3dgs-utils](https://github.com/tetraface/tetraface-3dgs-utils) から定期的に取り込みます。
 
-FFmpegでエクイレクタングラー動画から静止画を切り出し、固定間隔または変化量ベース選択＋ブラー差し替えを行います。<br>
-[→詳細を見る](doc/extract_frames.md)<br>
+## ライセンス
 
-### review_frames.py
+MIT License。[LICENSE](LICENSE) を参照。
 
-抽出した静止画を軽量GUIで確認し、`selected_frames.csv` の keep/drop 判定を編集します。<br>
-[→詳細を見る](doc/review_frames.md)<br>
-
-### apply_frame_decisions.py
-
-`selected_frames.csv` の keep/drop 判定を反映します。<br>
-既定は `images/` をその場で確定（drop削除・keep連番化・CSV更新）し、必要なら別フォルダへのコピー出力もできます。<br>
-[→詳細を見る](doc/apply_frame_decisions.md)<br>
-
-### extract_frames_gui.py
-
-抽出ワークフロー用ラッパーGUIです。抽出実行、レビューGUI起動、keep画像の確定出力まで行えます。<br>
-動画メタ情報（fps/再生時間/総フレーム数）表示と、現在パラメータでの推定出力枚数表示に対応しています。<br>
-[→詳細を見る](doc/extract_frames_gui.ja.md)<br>
+オリジナルコード: [tetraface Inc.](https://github.com/tetraface)
+フォーク拡張: [stechdrive](https://github.com/stechdrive)

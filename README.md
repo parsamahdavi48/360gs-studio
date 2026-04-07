@@ -1,101 +1,93 @@
-# tetraface-3dgs-utils
+# stechdrive-3dgs-utils
 
-A collection of scripts I use and develop as part of a 3D Gaussian Splatting (3DGS) workflow.
+A studio-grade toolkit for building 3D Gaussian Splatting (3DGS) training assets from 360-degree video, with an integrated Japanese GUI.
+
+Forked from [tetraface/tetraface-3dgs-utils](https://github.com/tetraface/tetraface-3dgs-utils) and extended with a unified workflow GUI, additional masking features, and multi-framework export support.
 
 [JP 日本語の説明](README.ja.md)
 
-## Requirements
+## Workflow Overview
 
-- [CUDA Toolkit 12.8](https://developer.nvidia.com/cuda-12-8-0-download-archive) (for GPU-enabled PyTorch workflows)
-- [Python 3.x](https://www.python.org/) (confirmed with 3.11.8, 3.11 recommended)
-- [FFmpeg / FFprobe](https://ffmpeg.org/) (for video frame extraction workflow)
-- [metashape_360_lfs.py (fork)](https://github.com/tetraface/metashape_360_lfs)
-  - Bundled in this repository: `vendor/metashape_360_lfs/metashape_360_lfs.py`
-  - Source record: `vendor/metashape_360_lfs/VENDOR_SOURCE.md`
-
-### Depended python modules
-
-- NumPy
-- OpenCV
-- Pillow
-- PySide6 (used by GUI wrappers)
-- Open3D (used by `metashape_360_lfs`)
-- PyTorch 2.8.0 (with CUDA 12.8)
-- ultralytics
-- tqdm
-
-Install example (CUDA 12.8 PyTorch wheel + other deps):
-
-```bash
-pip install torch==2.8.0 torchvision==0.23.0 torchaudio==2.8.0 --index-url https://download.pytorch.org/whl/cu128
-pip install numpy opencv-python Pillow open3d ultralytics tqdm PySide6
+```
+360 Video  ──  Frame Extraction  ──  Review & Selection
+                                          │
+                                    Metashape SfM (manual)
+                                          │
+               Mask Generation  ──  Cubemap Conversion  ──  3DGS Training
+              (YOLO+SAM2/Stitch/     (Postshot / Brush /
+               Overexposure)          LichtFeld Studio)
 ```
 
-## Windows quick start
+| Step | Description |
+|------|-------------|
+| **1. Frame Extraction** | Extract equirectangular stills from 360 video at fixed intervals (recommended) or change-based selection |
+| **2. Frame Review** | Review frames with blur worst-order navigation, bulk drop by threshold, then run Metashape SfM externally |
+| **3. Mask Generation** | YOLO+SAM2.1 person detection, stitch seam masking, overexposure (blown-out pixel) masking |
+| **4. Cubemap Conversion** | Convert equirectangular to cubemap views with transforms.json for Postshot, Brush, or LichtFeld Studio |
 
-For this repository, use Python 3.11 in a virtual environment. `open3d` is not Python 3.12-only.
-If Python 3.11 is missing, `setup_windows.bat` tries to install Python 3.11.8 via `winget`.
+## Quick Start (Windows)
 
 ```bat
 setup_windows.bat
-start_extract_frames_gui.bat
-start_mask_tools_gui.bat
-start_cubemap_tools_gui.bat
+start_gui.bat
 ```
 
-## Summary of scripts
+`setup_windows.bat` installs Python 3.11 (via winget if needed), creates a venv, and installs all dependencies including PyTorch with CUDA 12.8.
 
-### `cubemap_transforms_json.py`
+`start_gui.bat` launches the unified GUI application (dark modern theme, Japanese UI).
 
-Convert transforms.json produced for 360° equirectangular data (by `metashape_360_lfs`) into a cubemap-friendly format usable by common 3DGS tools.<br>
-See detailed documentation: [doc/cubemap_transforms_json.md](doc/cubemap_transforms_json.md).<br>
-![mask example](images/yaw45.jpg)
+## Requirements
 
-### `cubemap_tools_gui.py`
+- Windows 10/11
+- [CUDA Toolkit 12.8](https://developer.nvidia.com/cuda-12-8-0-download-archive)
+- [Python 3.11](https://www.python.org/) (3.11.8 confirmed)
+- [FFmpeg / FFprobe](https://ffmpeg.org/)
+- GPU with CUDA support (for YOLO/SAM2 and PyTorch)
 
-GUI wrapper for cubemap conversion with preview-based view selection (multiple pitch rows x configurable yaw slots [4-8], per-slot on/off, mask overlay preview, FOV fixed at 90).<br>
-See details: [doc/cubemap_tools_gui.md](doc/cubemap_tools_gui.md)
+### Python Dependencies
 
-### `realityscan_rig_export.py`
+Installed automatically by `setup_windows.bat`:
 
-Export a self-contained RealityScan rig package from equirectangular inputs (perspective crops + per-image XMP + optional masks in one import folder).<br>
-See details: [doc/realityscan_rig_export.md](doc/realityscan_rig_export.md)
+```
+torch==2.8.0 (CUDA 12.8), torchvision, torchaudio
+numpy, opencv-python, Pillow, open3d, ultralytics, tqdm, PySide6
+```
 
-### `stitch_mask.py`
+### ML Model Files
 
-Generate masks that exclude angular regions outside the two fisheye lenses in a 360° image. Useful when stitch seams become visible (for example in tight indoor scenes).<br>
-See details: [doc/stitch_mask.md](doc/stitch_mask.md)<br>
-![mask example](images/stitch_mask.png)
+YOLO and SAM2 model weights are downloaded automatically by ultralytics on first use:
+- `yolo26m.pt` / `yolo26l.pt` (YOLO v26)
+- `sam2.1_l.pt` (SAM 2.1 Large)
 
-### `yolo_mask.py`
+## CLI Tools
 
-Detect people in 360° images and generate mask PNGs.<br>
-See details: [doc/yolo_mask.md](doc/yolo_mask.md)<br>
-![mask example](images/yolo_mask.png)
+All CLI engines can be used independently without the GUI:
 
-### `mask_tools_gui.py`
+| Script | Description | Docs |
+|--------|-------------|------|
+| `extract_frames.py` | Extract frames from 360 video with change/fixed selection + blur replacement | [EN](doc/extract_frames.md) |
+| `apply_frame_decisions.py` | Apply keep/drop decisions from CSV | [EN](doc/apply_frame_decisions.md) |
+| `review_frames.py` | Frame review GUI with blur worst-order navigation | [EN](doc/review_frames.md) |
+| `yolo_mask.py` | YOLO+SAM2.1 person detection masks for 360 images | [EN](doc/yolo_mask.md) |
+| `stitch_mask.py` | Angular stitch seam masks for dual-fisheye cameras | [EN](doc/stitch_mask.md) |
+| `overexposure_mask.py` | Blown-out pixel detection and mask merging | - |
+| `cubemap_transforms_json.py` | Equirectangular to cubemap transforms.json conversion | [EN](doc/cubemap_transforms_json.md) |
 
-GUI wrapper for mask generation workflow (`yolo_mask.py` + `stitch_mask.py`).<br>
-See details: [doc/mask_tools_gui.md](doc/mask_tools_gui.md)
+## Changes from Upstream
 
-### `extract_frames.py`
+This fork adds:
+- **Unified GUI** (`gui/`) with dark modern theme and Japanese UI (PySide6)
+- **4-step workflow** in a single tabbed window
+- **Overexposure mask** detection (`overexposure_mask.py`)
+- **Blur worst-order navigation** and bulk threshold drop in review GUI
+- **Brush profile** support (`--brush` coordinate transform)
+- **Removed**: COLMAP rig export, RealityScan rig export (Metashape-based SfM workflow only)
 
-Extract still frames from equirectangular video using FFmpeg with fixed/change-based selection and blur-aware replacement.<br>
-See details: [doc/extract_frames.md](doc/extract_frames.md)
+Upstream changes are periodically synced from [tetraface/tetraface-3dgs-utils](https://github.com/tetraface/tetraface-3dgs-utils).
 
-### `review_frames.py`
+## License
 
-Review extracted frames in a lightweight GUI and edit keep/drop decisions in `selected_frames.csv`.<br>
-See details: [doc/review_frames.md](doc/review_frames.md)
+MIT License. See [LICENSE](LICENSE).
 
-### `apply_frame_decisions.py`
-
-Apply keep/drop decisions in `selected_frames.csv`.<br>
-Default workflow is in-place finalize in `images/` (drop remove + keep renumber + CSV update), with optional copy mode to another folder.<br>
-See details: [doc/apply_frame_decisions.md](doc/apply_frame_decisions.md)
-
-### `extract_frames_gui.py`
-
-Wrapper GUI for extraction workflow: run extraction, open review GUI, and export keep images.<br>
-Includes video metadata display (fps/duration/frame count) and estimated output count for current parameters.<br>
-See details: [doc/extract_frames_gui.md](doc/extract_frames_gui.md)
+Original code by [tetraface Inc.](https://github.com/tetraface)
+Fork extensions by [stechdrive](https://github.com/stechdrive)
