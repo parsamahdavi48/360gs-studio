@@ -75,6 +75,13 @@ CLASS_PRESET_VEHICLES = "人物+車両"
 CLASS_PRESET_ALL = "全選択"
 CLASS_PRESET_CLEAR = "クリア"
 
+# 白飛びマスク
+OVEREXPOSURE = "白飛びマスク"
+OVEREXPOSURE_THRESHOLD = "白飛び閾値 (RGB)"
+OVEREXPOSURE_DILATE = "膨張半径 (px)"
+RUN_OVEREXPOSURE = "白飛びマスク実行"
+RUN_ALL = "全マスク実行"
+
 # Step 4 - キューブマップ変換
 JSON_NAME = "transforms.json 名"
 TARGET_PROFILE = "出力プロファイル"

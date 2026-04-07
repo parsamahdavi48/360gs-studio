@@ -88,6 +88,13 @@ class MaskStep(BaseStepWidget):
         self.stitch_workers_edit = QLineEdit(str(os.cpu_count() or 4))
         form.addRow(i18n.STITCH_WORKERS, self.stitch_workers_edit)
 
+        # 白飛びマスク パラメータ
+        self.overexp_threshold_edit = QLineEdit("250")
+        form.addRow(i18n.OVEREXPOSURE_THRESHOLD, self.overexp_threshold_edit)
+
+        self.overexp_dilate_edit = QLineEdit("8")
+        form.addRow(i18n.OVEREXPOSURE_DILATE, self.overexp_dilate_edit)
+
         layout.addLayout(form)
 
         # YOLO クラス選択（折りたたみ）
@@ -142,6 +149,15 @@ class MaskStep(BaseStepWidget):
         self.both_btn = QPushButton(i18n.RUN_YOLO_STITCH)
         self.both_btn.clicked.connect(lambda: self._set_run_mode("both"))
         mode_row.addWidget(self.both_btn)
+
+        self.overexp_btn = QPushButton(i18n.RUN_OVEREXPOSURE)
+        self.overexp_btn.clicked.connect(lambda: self._set_run_mode("overexposure"))
+        mode_row.addWidget(self.overexp_btn)
+
+        self.all_btn = QPushButton(i18n.RUN_ALL)
+        self.all_btn.clicked.connect(lambda: self._set_run_mode("all"))
+        mode_row.addWidget(self.all_btn)
+
         mode_row.addStretch()
         layout.addLayout(mode_row)
 
@@ -169,10 +185,12 @@ class MaskStep(BaseStepWidget):
 
     def build_commands(self) -> list[tuple[str, list[str]]]:
         steps = []
-        if self._run_mode in ("yolo", "both"):
+        if self._run_mode in ("yolo", "both", "all"):
             steps.append(("yolo", self._build_yolo_cmd()))
-        if self._run_mode in ("stitch", "both"):
+        if self._run_mode in ("stitch", "both", "all"):
             steps.append(("stitch", self._build_stitch_cmd()))
+        if self._run_mode in ("overexposure", "all"):
+            steps.append(("overexposure", self._build_overexposure_cmd()))
         if not steps:
             raise ValueError("実行モードを選択してください")
         return steps
@@ -215,6 +233,26 @@ class MaskStep(BaseStepWidget):
             sys.executable, "-u", str(script),
             masks, masks,
             "--fov", self.stitch_fov_edit.text().strip(),
+            "--workers", self.stitch_workers_edit.text().strip(),
+        ]
+
+    def _build_overexposure_cmd(self) -> list[str]:
+        images = self.images_browse.text()
+        masks = self.masks_browse.text()
+        if not images:
+            raise ValueError("画像フォルダが指定されていません")
+        if not masks:
+            raise ValueError("マスクフォルダが指定されていません")
+
+        script = self.base_dir / "overexposure_mask.py"
+        if not script.exists():
+            raise FileNotFoundError(f"overexposure_mask.py が見つかりません: {script}")
+
+        return [
+            sys.executable, "-u", str(script),
+            images, masks,
+            "--threshold", self.overexp_threshold_edit.text().strip(),
+            "--dilate", self.overexp_dilate_edit.text().strip(),
             "--workers", self.stitch_workers_edit.text().strip(),
         ]
 
