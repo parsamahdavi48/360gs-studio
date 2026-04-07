@@ -63,6 +63,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--no_image", action="store_true", help="Convert transforms.json only")
     parser.add_argument("--no_transform", action="store_true", help="Disable axis transform (for LichtFeld Studio)")
     parser.add_argument("--duplicate", action="store_true", help="Allow duplicated image files")
+    parser.add_argument("--brush", action="store_true", help="Transform axes for Brush")
     return parser.parse_args()
 
 
@@ -280,6 +281,7 @@ def transform_json(
     output_scale: float,
     no_transform: bool,
     allow_duplicate: bool,
+    brush_mode: bool = False,
 ) -> tuple[list[str], tuple[int, int], int]:
     json_path = os.path.join(input_dir, input_json)
     if not os.path.exists(json_path):
@@ -315,7 +317,10 @@ def transform_json(
     if no_transform:
         axis_transform = np.eye(4)
     else:
-        axis_transform = rot4(np.array([[0, 0, -1], [1, 0, 0], [0, -1, 0]]))
+        axis_transform = rot4(np.array([[0, 0, -1], [1, 0, 0], [0, -1, 0]]))  # for Postshot/Brush
+        if brush_mode:
+            brush_rot = rot4(np.array([[1, 0, 0], [0, 0, 1], [0, -1, 0]]))  # for Brush
+            axis_transform = brush_rot @ axis_transform
 
     new_frames: list[dict] = []
     image_files: list[str] = []
@@ -577,6 +582,7 @@ def main() -> None:
         output_scale=args.output_scale,
         no_transform=args.no_transform,
         allow_duplicate=args.duplicate,
+        brush_mode=args.brush,
     )
     if not image_files:
         sys.exit(1)

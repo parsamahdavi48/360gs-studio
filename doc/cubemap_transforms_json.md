@@ -100,9 +100,18 @@ The following images illustrate how each face of the cubemap and the boundary be
 ![Example: --yaw 45 --stitch 2.5 --fov 91.5](../images/yaw45_s2_5_f91_5.jpg)<br>
 *--yaw 45 --stitch 2.5 --fov 91.5*
 
+### For Brush
+
+By default, coordinate axis transformation suitable for Postshot is performed. For Brush, specify `--brush`.
+
+```
+python metashape_360_lfs.py --images images --xml metashape.xml --output .
+python cubemap_transforms_json.py . ./cubic --brush
+```
+
 ### For LichtFeld Studio
 
-By default, coordinate axis transformation suitable for Postshot/Brush is performed. For LichtFeld Studio, specify `--no_transform`.
+For LichtFeld Studio, specify `--no_transform`.
 
 ```
 python metashape_360_lfs.py --images images --xml metashape.xml \
@@ -127,6 +136,7 @@ python cubemap_transforms_json.py . ./cubic --no_tranform
 |--no_top|(no)|Output without a top face of cube-map.|
 |--no_image|(no)|Disable image conversion. Only transforms.json will be converted.|
 |--no_transform|(no)|Disable coordinate axis conversion.|
+|--brush|(no)|Convert coordinates for Brush.|
 |--duplicate|(no)|Allow duplicated image files by merging chunks.|
 
 ## How to import into 3DGS software

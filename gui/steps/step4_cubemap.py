@@ -30,6 +30,7 @@ from gui.steps.base_step import BaseStepWidget
 
 _CONVERT_RE = re.compile(r"^Converting\s+(\d+)\s+images\.\.\.$")
 _PROFILE_POSTSHOT = "postshot"
+_PROFILE_BRUSH = "brush"
 _PROFILE_LICHTFELD = "lichtfeld"
 _PROFILE_CUSTOM = "custom"
 
@@ -63,6 +64,7 @@ class CubemapStep(BaseStepWidget):
 
         self.profile_combo = QComboBox()
         self.profile_combo.addItem(i18n.PROFILE_POSTSHOT, _PROFILE_POSTSHOT)
+        self.profile_combo.addItem(i18n.PROFILE_BRUSH, _PROFILE_BRUSH)
         self.profile_combo.addItem(i18n.PROFILE_LICHTFELD, _PROFILE_LICHTFELD)
         self.profile_combo.addItem(i18n.PROFILE_CUSTOM, _PROFILE_CUSTOM)
         self.profile_combo.currentIndexChanged.connect(self._on_profile_changed)
@@ -195,6 +197,12 @@ class CubemapStep(BaseStepWidget):
             self.no_transform_cb.setEnabled(False)
             self.ms_use_ply_cb.setEnabled(False)
             self.profile_hint.setText("LichtFeld: --no_transform ON, PLY ON")
+        elif p == _PROFILE_BRUSH:
+            self.no_transform_cb.setChecked(False)
+            self.ms_use_ply_cb.setChecked(False)
+            self.no_transform_cb.setEnabled(False)
+            self.ms_use_ply_cb.setEnabled(False)
+            self.profile_hint.setText("Brush: --brush ON, PLY OFF")
         elif p == _PROFILE_POSTSHOT:
             self.no_transform_cb.setChecked(False)
             self.ms_use_ply_cb.setChecked(False)
@@ -212,7 +220,7 @@ class CubemapStep(BaseStepWidget):
             w.setEnabled(enabled)
         if not enabled:
             self.ms_use_ply_cb.setEnabled(False)
-        elif self._profile_id() in (_PROFILE_POSTSHOT, _PROFILE_LICHTFELD):
+        elif self._profile_id() in (_PROFILE_POSTSHOT, _PROFILE_BRUSH, _PROFILE_LICHTFELD):
             self.ms_use_ply_cb.setEnabled(False)
         self._on_ms_ply_toggle()
 
@@ -353,6 +361,8 @@ class CubemapStep(BaseStepWidget):
             cmd.append("--no_image")
         if self.no_transform_cb.isChecked():
             cmd.append("--no_transform")
+        if self._profile_id() == _PROFILE_BRUSH:
+            cmd.append("--brush")
         if self.duplicate_cb.isChecked():
             cmd.append("--duplicate")
         if self.invert_masks_cb.isChecked():
