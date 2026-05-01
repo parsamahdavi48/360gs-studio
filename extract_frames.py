@@ -1204,6 +1204,17 @@ def parse_args() -> argparse.Namespace:
         default=True,
         help="When thinning, allow the last frame to be dropped too (default keeps endpoints to preserve time coverage).",
     )
+    parser.add_argument(
+        "--no-extract-thinned",
+        dest="extract_thinned",
+        action="store_false",
+        default=True,
+        help=(
+            "Skip image extraction for thinned frames (saves disk; default is to extract them so they "
+            "can be previewed and unthinned in the review GUI). Thinned rows always remain in CSV "
+            "marked decision=drop regardless of this flag."
+        ),
+    )
 
     return parser.parse_args()
 
@@ -1437,10 +1448,16 @@ def main() -> None:
             f"(threshold={args.thin_motion_threshold:g})"
         )
 
-    # decision=drop の行は抽出対象から除外（CSV メタとしては保持）
-    final_indices = [
-        r["final_index"] for r in enriched_rows if r.get("decision", "keep") != "drop"
-    ]
+    # 抽出対象の決定
+    # - 既定: 間引き含めて全部抽出（review GUI で確認・unthin できるように）
+    # - --no-extract-thinned: 間引きフレームを抽出しない（容量節約）
+    # CSV 上は decision=drop のまま残るので、finalize_in_place が後で削除する
+    if args.extract_thinned:
+        final_indices = [r["final_index"] for r in enriched_rows]
+    else:
+        final_indices = [
+            r["final_index"] for r in enriched_rows if r.get("decision", "keep") != "drop"
+        ]
 
     summary = build_summary(
         args=args,

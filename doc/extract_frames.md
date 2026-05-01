@@ -93,6 +93,7 @@ python extract_frames.py input.mp4 ./scene01 \
 | `--blur-window-frames` | `0` (auto) | Neighbor search radius for blur replacement |
 | `--thin-motion-threshold` | `0.6` | Stationary thinning. `0` disables. `0.3-1.0` is a typical range. Drops frames where cumulative change since last kept frame is below this value |
 | `--no-thin-keep-endpoints` | (off) | Allow the last frame to be dropped during thinning. By default first/last frames are always preserved |
+| `--no-extract-thinned` | (off) | Skip image extraction for thinned frames. Default is to extract them so the review GUI can preview each thinned frame and flip back to keep if desired. Thinned rows always remain in CSV with `decision=drop` regardless |
 | `--no-cache` | (off) | Force full re-analysis (ignore `extract_cache.npz`) |
 
 ## Outputs
