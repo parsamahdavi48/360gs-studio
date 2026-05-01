@@ -1,12 +1,14 @@
 """パス入力 + 参照ボタン"""
 from __future__ import annotations
 
-from PySide6.QtCore import Signal
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QFileDialog,
     QHBoxLayout,
     QLineEdit,
     QPushButton,
+    QSizePolicy,
+    QVBoxLayout,
     QWidget,
 )
 
@@ -24,24 +26,37 @@ class BrowseWidget(QWidget):
         mode: str = "dir",
         filter_str: str = "",
         placeholder: str = "",
+        button_position: str = "side",
     ) -> None:
         super().__init__(parent)
         self._mode = mode
         self._filter = filter_str
+        self.setMinimumWidth(0)
+        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        self._button_position = button_position
 
-        layout = QHBoxLayout(self)
+        layout = QVBoxLayout(self) if button_position == "below" else QHBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(6)
 
         self.line_edit = QLineEdit()
+        self.line_edit.setMinimumWidth(0)
+        self.line_edit.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Fixed)
         if placeholder:
             self.line_edit.setPlaceholderText(placeholder)
         self.line_edit.textChanged.connect(self.path_changed.emit)
-        layout.addWidget(self.line_edit)
+        if button_position == "below":
+            layout.addWidget(self.line_edit)
+        else:
+            layout.addWidget(self.line_edit, stretch=1)
 
         btn = QPushButton(BROWSE)
         btn.setFixedWidth(104)
         btn.clicked.connect(self._browse)
-        layout.addWidget(btn)
+        if button_position == "below":
+            layout.addWidget(btn, alignment=Qt.AlignLeft)
+        else:
+            layout.addWidget(btn)
 
     def text(self) -> str:
         return self.line_edit.text().strip()

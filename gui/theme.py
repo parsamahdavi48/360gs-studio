@@ -100,6 +100,32 @@ QWidget#jobPanel {{
     background-color: {BG_MID};
     border-top: 1px solid {BORDER};
 }}
+QWidget#settingsPane {{
+    background-color: transparent;
+}}
+QWidget#workPane {{
+    background-color: {BG_INPUT};
+    border: 1px solid {BORDER};
+    border-radius: 6px;
+}}
+QLabel#paneTitle {{
+    color: {TEXT_BRIGHT};
+    font-size: 10pt;
+    font-weight: 700;
+    padding-bottom: 4px;
+}}
+QLabel#workflowNote {{
+    background-color: {BG_INPUT};
+    border: 1px solid {BORDER_FOCUS};
+    border-radius: 6px;
+    color: {ACCENT_HOVER};
+    padding: 12px;
+    font-size: 9pt;
+}}
+QLabel#emptyPaneMessage {{
+    color: {TEXT_DIM};
+    font-size: 10pt;
+}}
 
 /* ========== QLineEdit / QComboBox / QSpinBox ========== */
 QLineEdit, QComboBox, QSpinBox, QDoubleSpinBox {{

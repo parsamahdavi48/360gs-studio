@@ -5,6 +5,8 @@ from pathlib import Path
 
 from PySide6.QtWidgets import QWidget
 
+from gui import i18n
+
 
 class BaseStepWidget(QWidget):
     """各ワークフローステップの基底クラス。
@@ -26,6 +28,12 @@ class BaseStepWidget(QWidget):
 
     def build_commands(self) -> list[tuple[str, list[str]]]:
         raise NotImplementedError
+
+    def primary_action_text(self) -> str:
+        return i18n.RUN
+
+    def primary_action_tooltip(self) -> str:
+        return i18n.tip("RUN")
 
     def on_line(self, line: str) -> tuple[int, int] | None:
         """出力行を解析し、(done, total) を返す。該当なしなら None。"""

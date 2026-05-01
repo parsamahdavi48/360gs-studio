@@ -137,7 +137,7 @@ else:
 
 
 if QMainWindow is not None:
-    class ReviewWindow(QMainWindow):
+    class ReviewWidget(QWidget):
         def __init__(self, scene_dir: Path, csv_path: Path) -> None:
             super().__init__()
             self.scene_dir = scene_dir
@@ -150,9 +150,6 @@ if QMainWindow is not None:
 
             self.index = 0
             self.current_pixmap: QPixmap | None = None
-
-            self.setWindowTitle(i18n.t("REVIEW_TITLE"))
-            self.resize(1280, 860)
 
             self._build_ui()
             self._bind_shortcuts()
@@ -194,9 +191,7 @@ if QMainWindow is not None:
             return valid[n // 2]
 
         def _build_ui(self) -> None:
-            root = QWidget()
-            self.setCentralWidget(root)
-            layout = QVBoxLayout(root)
+            layout = QVBoxLayout(self)
 
             top_row = QHBoxLayout()
             self.title_label = QLabel()
@@ -211,6 +206,7 @@ if QMainWindow is not None:
             layout.addLayout(top_row)
 
             self.image_view = ZoomableImageView()
+            self.image_view.setMinimumHeight(260)
             layout.addWidget(self.image_view, stretch=1)
 
             # アドバイザリー（このフレームが要注意な理由を自動表示）
@@ -249,25 +245,29 @@ if QMainWindow is not None:
             self.next_problem_button.clicked.connect(self.next_problem)
             btn_row.addWidget(self.next_problem_button)
 
+            btn_row.addStretch(1)
+            layout.addLayout(btn_row)
+
+            action_row = QHBoxLayout()
             self.toggle_button = QPushButton(i18n.t("REVIEW_BTN_TOGGLE"))
             self.toggle_button.clicked.connect(self.toggle_decision)
-            btn_row.addWidget(self.toggle_button)
+            action_row.addWidget(self.toggle_button)
 
             self.jump_edit = QLineEdit()
             self.jump_edit.setPlaceholderText(i18n.t("REVIEW_JUMP_PLACEHOLDER"))
             self.jump_edit.setFixedWidth(90)
-            btn_row.addWidget(self.jump_edit)
+            action_row.addWidget(self.jump_edit)
 
             self.jump_button = QPushButton(i18n.t("REVIEW_BTN_JUMP"))
             self.jump_button.clicked.connect(self.jump_to_seq)
-            btn_row.addWidget(self.jump_button)
+            action_row.addWidget(self.jump_button)
 
-            btn_row.addStretch(1)
+            action_row.addStretch(1)
 
             self.save_button = QPushButton(i18n.t("REVIEW_BTN_SAVE"))
             self.save_button.clicked.connect(self.save)
-            btn_row.addWidget(self.save_button)
-            layout.addLayout(btn_row)
+            action_row.addWidget(self.save_button)
+            layout.addLayout(action_row)
 
             # ブレスコアによる一括除外行（手動絶対閾値ツール）
             blur_row = QHBoxLayout()
@@ -315,8 +315,13 @@ if QMainWindow is not None:
             QShortcut(QKeySequence("Shift+F"), self, activated=self.prev_problem)
             QShortcut(QKeySequence(Qt.Key_Space), self, activated=self.toggle_decision)
             QShortcut(QKeySequence("S"), self, activated=self.save)
-            QShortcut(QKeySequence("Q"), self, activated=self.close)
+            QShortcut(QKeySequence("Q"), self, activated=self._close_review_window)
             QShortcut(QKeySequence("0"), self, activated=self.reset_zoom)
+
+        def _close_review_window(self) -> None:
+            window = self.window()
+            if isinstance(window, ReviewWindow):
+                window.close()
 
         def _current_row(self) -> Dict[str, str]:
             return self.rows[self.index]
@@ -571,7 +576,20 @@ if QMainWindow is not None:
                 ),
             )
 
+
+    class ReviewWindow(QMainWindow):
+        def __init__(self, scene_dir: Path, csv_path: Path) -> None:
+            super().__init__()
+            self.setWindowTitle(i18n.t("REVIEW_TITLE"))
+            self.resize(1280, 860)
+            self.review_widget = ReviewWidget(scene_dir, csv_path)
+            self.setCentralWidget(self.review_widget)
+
 else:
+    class ReviewWidget:  # pragma: no cover - placeholder when PySide6 missing
+        pass
+
+
     class ReviewWindow:  # pragma: no cover - placeholder when PySide6 missing
         pass
 

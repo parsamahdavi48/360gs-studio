@@ -49,14 +49,16 @@ class CubemapStep(BaseStepWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
 
-        splitter = QSplitter(Qt.Vertical)
+        splitter = QSplitter(Qt.Horizontal)
         splitter.setChildrenCollapsible(False)
 
-        # 上パネル: 設定 (スクロール可能)
+        # 左パネル: 設定 (スクロール可能)
         top_scroll = QScrollArea()
         top_scroll.setWidgetResizable(True)
         top_scroll.setFrameShape(QScrollArea.NoFrame)
         top = QWidget()
+        top.setObjectName("settingsPane")
+        top.setMinimumWidth(0)
         top_layout = QVBoxLayout(top)
         top_layout.setContentsMargins(0, 0, 0, 4)
         top_layout.setSpacing(8)
@@ -65,9 +67,10 @@ class CubemapStep(BaseStepWidget):
         form = QFormLayout()
         form.setSpacing(6)
 
-        self.output_browse = BrowseWidget(mode="dir")
+        self.output_browse = BrowseWidget(mode="dir", button_position="below")
         self.output_browse.setToolTip(i18n.tip("OUTPUT_DIR_CUBEMAP"))
-        form.addRow(i18n.OUTPUT_DIR, self.output_browse)
+        left_layout.addWidget(QLabel(i18n.OUTPUT_DIR))
+        left_layout.addWidget(self.output_browse)
 
         profile_row = QHBoxLayout()
         profile_row.setSpacing(8)
@@ -93,19 +96,12 @@ class CubemapStep(BaseStepWidget):
         self.profile_hint.setStyleSheet("color: #8888aa; font-size: 9pt;")
         form.addRow("", self.profile_hint)
 
-        # JSON名 + マスクフォルダを1行に
-        json_mask_row = QHBoxLayout()
-        json_mask_row.setSpacing(8)
         self.json_name_edit = QLineEdit("transforms.json")
         self.json_name_edit.setToolTip(i18n.tip("JSON_NAME"))
         self.json_name_edit.setFixedWidth(160)
-        json_mask_row.addWidget(QLabel("JSON:"))
-        json_mask_row.addWidget(self.json_name_edit)
-        json_mask_row.addWidget(QLabel(i18n.MASK_DIR + ":"))
-        self.mask_browse = BrowseWidget(mode="dir")
+        form.addRow(i18n.JSON_NAME, self.json_name_edit)
+        self.mask_browse = BrowseWidget(mode="dir", button_position="below")
         self.mask_browse.setToolTip(i18n.tip("MASK_DIR_CUBEMAP"))
-        json_mask_row.addWidget(self.mask_browse, stretch=1)
-        form.addRow(i18n.t("OUTPUT_DETAIL"), json_mask_row)
 
         # オプション (GroupBox)
         opt_group = CollapsibleSection(i18n.t("CONVERSION_OPTIONS"), expanded=False)
@@ -136,6 +132,8 @@ class CubemapStep(BaseStepWidget):
         opt_group.content_layout.addWidget(opt_w)
 
         left_layout.addLayout(form)
+        left_layout.addWidget(QLabel(i18n.MASK_DIR))
+        left_layout.addWidget(self.mask_browse)
         left_layout.addWidget(opt_group)
 
         # Metashape前処理（折りたたみ）
@@ -220,18 +218,27 @@ class CubemapStep(BaseStepWidget):
         left_layout.addStretch()
 
         # 右パネル: プレビュー
+        preview_pane = QWidget()
+        preview_pane.setObjectName("workPane")
+        preview_layout = QVBoxLayout(preview_pane)
+        preview_layout.setContentsMargins(12, 12, 12, 12)
+        preview_layout.setSpacing(8)
+        preview_title = QLabel(i18n.t("CUBEMAP_PREVIEW_SECTION"))
+        preview_title.setObjectName("paneTitle")
+        preview_layout.addWidget(preview_title)
         self.preview = PreviewWidget()
         self.preview.mask_slider.valueChanged.connect(lambda _: self._render_preview())
         self.preview.mask_spin.valueChanged.connect(lambda _: self._render_preview())
         self.preview.mask_edit.textChanged.connect(lambda _: self._render_preview())
         self.preview.sample_edit.textChanged.connect(lambda _: self._render_preview())
+        preview_layout.addWidget(self.preview, stretch=1)
 
         top_scroll.setWidget(top)
         splitter.addWidget(top_scroll)
-        splitter.addWidget(self.preview)
-        splitter.setStretchFactor(0, 1)
+        splitter.addWidget(preview_pane)
+        splitter.setStretchFactor(0, 0)
         splitter.setStretchFactor(1, 1)
-        splitter.setSizes([400, 350])
+        splitter.setSizes([610, 620])
         layout.addWidget(splitter)
 
         self._on_profile_changed(0)
@@ -251,6 +258,12 @@ class CubemapStep(BaseStepWidget):
         self.preview.set_scene_dir(path)
         self._update_estimate()
         self._render_preview()
+
+    def primary_action_text(self) -> str:
+        return i18n.t("RUN_CUBEMAP")
+
+    def primary_action_tooltip(self) -> str:
+        return i18n.tip("RUN_CUBEMAP")
 
     # -- プロファイル --
 

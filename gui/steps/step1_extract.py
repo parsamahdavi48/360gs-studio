@@ -15,7 +15,7 @@ def _detect_binary(name: str) -> str:
     found = shutil.which(name)
     return found if found else name
 
-from PySide6.QtCore import QProcess, QTimer
+from PySide6.QtCore import QProcess, QTimer, Qt
 from PySide6.QtWidgets import (
     QComboBox,
     QFormLayout,
@@ -25,6 +25,8 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QPushButton,
     QRadioButton,
+    QScrollArea,
+    QSplitter,
     QVBoxLayout,
     QWidget,
 )
@@ -56,8 +58,28 @@ class ExtractStep(BaseStepWidget):
         self._build_ui()
 
     def _build_ui(self) -> None:
-        layout = QVBoxLayout(self)
+        root_layout = QVBoxLayout(self)
+        root_layout.setContentsMargins(0, 0, 0, 0)
+        root_layout.setSpacing(0)
+
+        splitter = QSplitter(Qt.Horizontal)
+        splitter.setChildrenCollapsible(False)
+
+        settings_scroll = QScrollArea()
+        settings_scroll.setWidgetResizable(True)
+        settings_scroll.setFrameShape(QScrollArea.NoFrame)
+
+        settings = QWidget()
+        settings.setObjectName("settingsPane")
+        layout = QVBoxLayout(settings)
+        layout.setContentsMargins(0, 0, 8, 4)
         layout.setSpacing(8)
+
+        work_pane = QWidget()
+        work_pane.setObjectName("workPane")
+        work_layout = QVBoxLayout(work_pane)
+        work_layout.setContentsMargins(12, 12, 12, 12)
+        work_layout.setSpacing(10)
 
         # ===== 基本設定 =====
         basic = QFormLayout()
@@ -137,17 +159,22 @@ class ExtractStep(BaseStepWidget):
         self.load_info_btn.setMinimumWidth(150)
         self.load_info_btn.clicked.connect(lambda: self._load_video_info(show_error=True))
         info_box.addWidget(self.load_info_btn)
-
-        self.video_info_label = QLabel(i18n.t("VIDEO_LABEL_DEFAULT"))
-        self.video_info_label.setStyleSheet("color: #8888aa;")
-        info_box.addWidget(self.video_info_label, stretch=1)
+        info_box.addStretch()
         layout.addLayout(info_box)
 
+        work_layout.addWidget(QLabel(i18n.VIDEO_INFO))
+        self.video_info_label = QLabel(i18n.t("VIDEO_LABEL_DEFAULT"))
+        self.video_info_label.setStyleSheet("color: #8888aa;")
+        self.video_info_label.setWordWrap(True)
+        work_layout.addWidget(self.video_info_label)
+
+        work_layout.addWidget(QLabel(i18n.FRAME_ESTIMATE))
         self.estimate_label = QLabel()
         self.estimate_label.setWordWrap(True)
         self.estimate_label.setStyleSheet("color: #8888aa; font-size: 9pt;")
         self._refresh_estimate_label()
-        layout.addWidget(self.estimate_label)
+        work_layout.addWidget(self.estimate_label)
+        work_layout.addStretch()
 
         # ===== 詳細設定 (折りたたみ) =====
         advanced = CollapsibleSection(i18n.t("ADVANCED_SETTINGS"), expanded=False)
@@ -213,12 +240,22 @@ class ExtractStep(BaseStepWidget):
         layout.addWidget(advanced)
 
         layout.addStretch()
+        settings_scroll.setWidget(settings)
+        splitter.addWidget(settings_scroll)
+        splitter.addWidget(work_pane)
+        splitter.setStretchFactor(0, 0)
+        splitter.setStretchFactor(1, 1)
+        splitter.setSizes([470, 760])
+        root_layout.addWidget(splitter)
         self._update_mode_widgets()
 
     # -- シーンディレクトリ --
 
     def set_scene_dir(self, path: str) -> None:
         super().set_scene_dir(path)
+
+    def primary_action_text(self) -> str:
+        return i18n.EXTRACT_FRAMES
 
     # -- モード --
 

@@ -158,7 +158,7 @@ class MainWindow(QWidget):
         self.run_btn = QPushButton(f"  {i18n.RUN}")
         self.run_btn.setObjectName("primary")
         self.run_btn.setToolTip(i18n.tip("RUN"))
-        self.run_btn.setFixedWidth(160)
+        self.run_btn.setMinimumWidth(220)
         self.run_btn.setFixedHeight(36)
         btn_row.addWidget(self.run_btn)
 
@@ -190,9 +190,6 @@ class MainWindow(QWidget):
         self.runner.phase_finished.connect(self._on_phase_finished)
         self.runner.queue_finished.connect(self._on_queue_finished)
 
-        self.step2.run_requested.connect(self._on_run)
-        self.step3.run_requested.connect(self._on_run)
-
         self._on_scene_changed(self.scene_browse.text())
 
     def _current_step_widget(self):
@@ -217,16 +214,15 @@ class MainWindow(QWidget):
 
     def _update_run_button(self) -> None:
         running = self.runner.is_running()
-        idx = self.stack.currentIndex()
-        # Step 2 (Review) と Step 3 (Mask) は画面内の専用ボタンが実行を担うので、
-        # 共通の Run ボタンは Step 1 / Step 4 でのみ表示する。
-        # Cancel は実行中なら常に表示（タブ切替後でも中断できるように）。
-        needs_global_run = idx in (0, 3)
+        step = self._current_step_widget()
+        if step is not None:
+            self.run_btn.setText(f"  {step.primary_action_text()}")
+            self.run_btn.setToolTip(step.primary_action_tooltip())
 
-        self.run_btn.setVisible(needs_global_run)
-        self.run_btn.setEnabled(needs_global_run and not running)
+        self.run_btn.setVisible(True)
+        self.run_btn.setEnabled(not running)
 
-        self.cancel_btn.setVisible(running or needs_global_run)
+        self.cancel_btn.setVisible(True)
         self.cancel_btn.setEnabled(running)
 
     def _on_run(self) -> None:

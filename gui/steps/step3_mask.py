@@ -7,7 +7,7 @@ import re
 import sys
 from pathlib import Path
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -63,8 +63,6 @@ _OVEREXP_DILATE_DEFAULT = 8
 
 
 class MaskStep(BaseStepWidget):
-    run_requested = Signal()
-
     def __init__(self, base_dir: Path, parent: QWidget | None = None) -> None:
         super().__init__(base_dir, parent)
         self._phase_total = 0
@@ -79,14 +77,15 @@ class MaskStep(BaseStepWidget):
         root_layout.setContentsMargins(0, 0, 0, 0)
         root_layout.setSpacing(0)
 
-        splitter = QSplitter(Qt.Vertical)
+        splitter = QSplitter(Qt.Horizontal)
         splitter.setChildrenCollapsible(False)
 
-        top_scroll = QScrollArea()
-        top_scroll.setWidgetResizable(True)
-        top_scroll.setFrameShape(QScrollArea.NoFrame)
-        top = QWidget()
-        layout = QVBoxLayout(top)
+        settings_scroll = QScrollArea()
+        settings_scroll.setWidgetResizable(True)
+        settings_scroll.setFrameShape(QScrollArea.NoFrame)
+        settings = QWidget()
+        settings.setObjectName("settingsPane")
+        layout = QVBoxLayout(settings)
         layout.setContentsMargins(0, 0, 0, 4)
         layout.setSpacing(8)
 
@@ -122,14 +121,6 @@ class MaskStep(BaseStepWidget):
         task_row.addWidget(self.run_overexp_cb)
 
         task_row.addStretch()
-
-        self.run_masks_btn = QPushButton(f"  {i18n.t('RUN_MASKS')}")
-        self.run_masks_btn.setToolTip(i18n.tip("RUN_MASKS"))
-        self.run_masks_btn.setObjectName("primary")
-        self.run_masks_btn.setFixedHeight(34)
-        self.run_masks_btn.setMinimumWidth(180)
-        self.run_masks_btn.clicked.connect(self.run_requested.emit)
-        task_row.addWidget(self.run_masks_btn)
 
         layout.addLayout(task_row)
 
@@ -268,16 +259,23 @@ class MaskStep(BaseStepWidget):
 
         layout.addStretch()
 
-        self.stitch_preview_section = CollapsibleSection(i18n.t("STITCH_PREVIEW_SECTION"), expanded=True)
+        preview_pane = QWidget()
+        preview_pane.setObjectName("workPane")
+        preview_layout = QVBoxLayout(preview_pane)
+        preview_layout.setContentsMargins(12, 12, 12, 12)
+        preview_layout.setSpacing(8)
+        preview_title = QLabel(i18n.t("STITCH_PREVIEW_SECTION"))
+        preview_title.setObjectName("paneTitle")
+        preview_layout.addWidget(preview_title)
         self.stitch_preview = StitchPreviewWidget()
-        self.stitch_preview_section.content_layout.addWidget(self.stitch_preview)
+        preview_layout.addWidget(self.stitch_preview, stretch=1)
 
-        top_scroll.setWidget(top)
-        splitter.addWidget(top_scroll)
-        splitter.addWidget(self.stitch_preview_section)
-        splitter.setStretchFactor(0, 1)
+        settings_scroll.setWidget(settings)
+        splitter.addWidget(settings_scroll)
+        splitter.addWidget(preview_pane)
+        splitter.setStretchFactor(0, 0)
         splitter.setStretchFactor(1, 1)
-        splitter.setSizes([430, 360])
+        splitter.setSizes([610, 620])
         root_layout.addWidget(splitter)
 
         for cb in (self.run_yolo_cb, self.run_stitch_cb, self.run_overexp_cb):
@@ -297,6 +295,12 @@ class MaskStep(BaseStepWidget):
             self.images_browse.set_text(str(p / "images"))
             self.masks_browse.set_text(str(p / "masks"))
             self._on_images_dir_changed(str(p / "images"))
+
+    def primary_action_text(self) -> str:
+        return i18n.t("RUN_MASKS")
+
+    def primary_action_tooltip(self) -> str:
+        return i18n.tip("RUN_MASKS")
 
     def _set_classes(self, indices: list[int]) -> None:
         for i, cb in enumerate(self.class_cbs):
