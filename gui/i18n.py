@@ -78,8 +78,14 @@ _JA: dict[str, str] = {
     "REVIEW_BLUR_RANK_FORMAT": "ブレ順位: {rank}/{total} (score={score})",
     "REVIEW_BTN_PREV": "前 (←)",
     "REVIEW_BTN_NEXT": "次 (→)",
-    "REVIEW_BTN_PREV_PROBLEM": "前の要注意 (Shift+F)",
-    "REVIEW_BTN_NEXT_PROBLEM": "次の要注意 (F)",
+    "REVIEW_BTN_PREV_PROBLEM": "extract 要注意 ← (Shift+F)",
+    "REVIEW_BTN_NEXT_PROBLEM": "extract 要注意 → (F)",
+    "REVIEW_BTN_PROBLEM_TIP": (
+        "extract_frames が自動判定で flag したフレーム (置換・維持・間引き) を\n"
+        "CSV 順 (撮影時間順) に巡回します。\n"
+        "ブレ視点での巡回は B / Shift+B (ワースト順) を使用してください。\n"
+        "両者は別の観点 (extract 自動判定 vs ブレ順位) のナビなので併用すると効率的です。"
+    ),
     "REVIEW_BTN_TOGGLE": "Keep/Drop 切替 (Space)",
     "REVIEW_BTN_JUMP": "番号へ移動",
     "REVIEW_BTN_SAVE": "保存 (S)",
@@ -127,9 +133,11 @@ _JA: dict[str, str] = {
         "【キー操作】\n"
         "  ← / →    前後のフレーム\n"
         "  Space    現フレームの keep/drop を切替\n"
-        "  F / Shift+F  次/前の要注意フレーム (extract が置換または維持したもの)\n"
-        "  B            ブレが悪い順 → 次へ進む (初回押下で最悪フレームへジャンプ)\n"
-        "  Shift+B      ブレが悪い順 ← 1 つ戻る\n"
+        "  F / Shift+F  extract 自動判定の要注意フレーム (置換・維持・間引き) を撮影順に巡回\n"
+        "  B            ブレ悪い順 → 次へ (初回押下で最悪フレームへジャンプ)\n"
+        "  Shift+B      ブレ悪い順 ← 1 つ戻る\n"
+        "               ※ F は「extract が flag したもの (時間順)」、B は「ブレ最悪順」と\n"
+        "                  異なる観点なので、両方使うのが効率的\n"
         "  S        CSV へ保存\n"
         "  Q        終了 (未保存の変更は破棄)"
     ),
@@ -324,8 +332,14 @@ _EN: dict[str, str] = {
     "REVIEW_BLUR_RANK_FORMAT": "Blur rank: {rank}/{total} (score={score})",
     "REVIEW_BTN_PREV": "Prev (←)",
     "REVIEW_BTN_NEXT": "Next (→)",
-    "REVIEW_BTN_PREV_PROBLEM": "Prev Problem (Shift+F)",
-    "REVIEW_BTN_NEXT_PROBLEM": "Next Problem (F)",
+    "REVIEW_BTN_PREV_PROBLEM": "extract problem ← (Shift+F)",
+    "REVIEW_BTN_NEXT_PROBLEM": "extract problem → (F)",
+    "REVIEW_BTN_PROBLEM_TIP": (
+        "Cycle through frames extract_frames flagged automatically\n"
+        "(replaced / fallback_keep / thinned), in CSV (capture time) order.\n"
+        "For blur-priority navigation use B / Shift+B (worst-first).\n"
+        "These two are complementary axes (extract decision vs blur rank); use both."
+    ),
     "REVIEW_BTN_TOGGLE": "Toggle Keep/Drop (Space)",
     "REVIEW_BTN_JUMP": "Jump to Seq",
     "REVIEW_BTN_SAVE": "Save (S)",
@@ -373,9 +387,11 @@ _EN: dict[str, str] = {
         "[Keyboard]\n"
         "  ← / →     previous / next frame\n"
         "  Space     toggle keep/drop on the current frame\n"
-        "  F / Shift+F  next/previous problem frame (replaced or fallback_keep)\n"
+        "  F / Shift+F  extract-flagged frames (replaced / fallback_keep / thinned) in capture order\n"
         "  B            advance through worst-first blur order (first press jumps to worst)\n"
         "  Shift+B      step back one in the worst-first blur order\n"
+        "               Note: F covers extract auto-decisions in time order; B is blur-rank order.\n"
+        "               They are complementary — use both for thorough review.\n"
         "  S         save changes to CSV\n"
         "  Q         quit (unsaved changes are discarded)"
     ),

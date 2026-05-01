@@ -228,10 +228,12 @@ if QMainWindow is not None:
             btn_row.addWidget(self.next_button)
 
             self.prev_problem_button = QPushButton(i18n.t("REVIEW_BTN_PREV_PROBLEM"))
+            self.prev_problem_button.setToolTip(i18n.t("REVIEW_BTN_PROBLEM_TIP"))
             self.prev_problem_button.clicked.connect(self.prev_problem)
             btn_row.addWidget(self.prev_problem_button)
 
             self.next_problem_button = QPushButton(i18n.t("REVIEW_BTN_NEXT_PROBLEM"))
+            self.next_problem_button.setToolTip(i18n.t("REVIEW_BTN_PROBLEM_TIP"))
             self.next_problem_button.clicked.connect(self.next_problem)
             btn_row.addWidget(self.next_problem_button)
 
