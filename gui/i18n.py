@@ -168,6 +168,12 @@ _JA: dict[str, str] = {
     "YOLO_CLASSES": "検出クラス",
     "STITCH_FOV": "スティッチFOV (度)",
     "STITCH_WORKERS": "ワーカー数",
+    "RUN_MASKS": "マスク作成実行",
+    "MASK_TASKS_LABEL": "作成するマスク:",
+    "MASK_TASK_YOLO": "YOLO検出",
+    "MASK_TASK_STITCH": "スティッチ境界",
+    "MASK_TASK_OVEREXPOSURE": "白飛び",
+    "MASK_TASK_REQUIRED": "作成するマスクを1つ以上選択してください。",
     "RUN_YOLO": "YOLO実行",
     "RUN_STITCH": "スティッチ実行",
     "RUN_YOLO_STITCH": "YOLO + スティッチ実行",
@@ -254,7 +260,7 @@ _JA: dict[str, str] = {
     "ADD_EXT_LABEL": "マスクに拡張子を付加",
 
     # Step3 section headers
-    "YOLO_SECTION": "YOLO 人物検出",
+    "YOLO_SECTION": "YOLO 検出設定",
     "STITCH_OVEREXP_SECTION": "スティッチ / 白飛び設定",
 
     # Step4 extra
@@ -430,6 +436,12 @@ _EN: dict[str, str] = {
     "YOLO_CLASSES": "Detection Classes",
     "STITCH_FOV": "Stitch FOV (deg)",
     "STITCH_WORKERS": "Workers",
+    "RUN_MASKS": "Run Mask Creation",
+    "MASK_TASKS_LABEL": "Masks to create:",
+    "MASK_TASK_YOLO": "YOLO Detection",
+    "MASK_TASK_STITCH": "Stitch Seam",
+    "MASK_TASK_OVEREXPOSURE": "Overexposure",
+    "MASK_TASK_REQUIRED": "Select at least one mask to create.",
     "RUN_YOLO": "Run YOLO",
     "RUN_STITCH": "Run Stitch",
     "RUN_YOLO_STITCH": "Run YOLO + Stitch",
@@ -516,7 +528,7 @@ _EN: dict[str, str] = {
     "ADD_EXT_LABEL": "Add extension to mask",
 
     # Step3 section headers
-    "YOLO_SECTION": "YOLO Person Detection",
+    "YOLO_SECTION": "YOLO Detection Settings",
     "STITCH_OVEREXP_SECTION": "Stitch / Overexposure Settings",
 
     # Step4 extra
@@ -567,6 +579,10 @@ _TIPS_JA: dict[str, str] = {
     "FINALIZE_INPLACE": "images/内の除外フレームを削除し、採用フレームを連番リネーム。元に戻せないので注意",
     "IMAGES_DIR": "エクイレクタングラー画像が入ったフォルダ (通常 images/)",
     "MASKS_DIR": "マスク画像の出力先フォルダ (通常 masks/)。既存マスクがあれば合成",
+    "RUN_MASKS": "選択したマスク処理を YOLO検出 → スティッチ境界 → 白飛び の順に実行",
+    "MASK_TASK_YOLO": "YOLO/SAMで人物などを検出してマスクに追加。初期状態は人物のみ",
+    "MASK_TASK_STITCH": "360度デュアル魚眼画像のスティッチ境界をマスクに追加",
+    "MASK_TASK_OVEREXPOSURE": "白飛びした画素を検出してマスクに追加",
     "RUN_ALL": "YOLO人物検出 → スティッチマスク → 白飛びマスクの全工程を順番に実行",
     "RUN_YOLO_STITCH": "YOLO人物検出 → スティッチマスクの2工程を実行 (白飛びは含まない)",
     "YOLO_LEVEL": "0: YOLO直接 (高速)\n1: YOLO+SAM2 (標準、推奨)\n2: 水平帯高品質+SAM2\n3: 全方向高品質+SAM2",
@@ -639,6 +655,10 @@ _TIPS_EN: dict[str, str] = {
     "FINALIZE_INPLACE": "Delete dropped frames in images/ and renumber kept frames. Cannot be undone",
     "IMAGES_DIR": "Folder containing equirectangular images (typically images/)",
     "MASKS_DIR": "Mask output folder (typically masks/). Existing masks are AND-merged",
+    "RUN_MASKS": "Run the selected mask steps in this order: YOLO detection, stitch seam, overexposure",
+    "MASK_TASK_YOLO": "Detect people or selected classes with YOLO/SAM and add them to masks. Default class is person only",
+    "MASK_TASK_STITCH": "Add stitch seam masks for dual-fisheye 360-degree images",
+    "MASK_TASK_OVEREXPOSURE": "Detect blown-out pixels and add them to masks",
     "RUN_ALL": "Run YOLO person detection, stitch mask, and overexposure mask in sequence",
     "RUN_YOLO_STITCH": "Run YOLO person detection then stitch mask (no overexposure)",
     "YOLO_LEVEL": "0: YOLO direct (fast)\n1: YOLO+SAM2 (standard, recommended)\n2: High-quality horizontal band+SAM2\n3: Full high-quality+SAM2",

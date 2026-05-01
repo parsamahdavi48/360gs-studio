@@ -12,7 +12,6 @@ from PySide6.QtWidgets import (
     QComboBox,
     QFormLayout,
     QGridLayout,
-    QGroupBox,
     QHBoxLayout,
     QLabel,
     QLineEdit,
@@ -52,7 +51,6 @@ class MaskStep(BaseStepWidget):
 
     def __init__(self, base_dir: Path, parent: QWidget | None = None) -> None:
         super().__init__(base_dir, parent)
-        self._run_mode = "all"
         self._phase_total = 0
         self._phase_done = 0
         self._stitch_chunk_total = 0
@@ -75,41 +73,40 @@ class MaskStep(BaseStepWidget):
         path_form.addRow(i18n.MASKS_DIR, self.masks_browse)
         layout.addLayout(path_form)
 
-        # --- メイン実行ボタン (目立つ) ---
-        main_btn_row = QHBoxLayout()
-        main_btn_row.setSpacing(8)
+        # --- 実行対象 + 実行ボタン ---
+        task_row = QHBoxLayout()
+        task_row.setSpacing(10)
+        task_row.addWidget(QLabel(i18n.t("MASK_TASKS_LABEL")))
 
-        self.all_btn = QPushButton(f"  {i18n.RUN_ALL}")
-        self.all_btn.setToolTip(i18n.tip("RUN_ALL"))
-        self.all_btn.setObjectName("primary")
-        self.all_btn.setFixedHeight(34)
-        self.all_btn.clicked.connect(lambda: self._set_run_mode("all"))
-        main_btn_row.addWidget(self.all_btn, stretch=1)
+        self.run_yolo_cb = QCheckBox(i18n.t("MASK_TASK_YOLO"))
+        self.run_yolo_cb.setToolTip(i18n.tip("MASK_TASK_YOLO"))
+        self.run_yolo_cb.setChecked(True)
+        task_row.addWidget(self.run_yolo_cb)
 
-        self.both_btn = QPushButton(i18n.RUN_YOLO_STITCH)
-        self.both_btn.setToolTip(i18n.tip("RUN_YOLO_STITCH"))
-        self.both_btn.setFixedHeight(34)
-        self.both_btn.clicked.connect(lambda: self._set_run_mode("both"))
-        main_btn_row.addWidget(self.both_btn)
+        self.run_stitch_cb = QCheckBox(i18n.t("MASK_TASK_STITCH"))
+        self.run_stitch_cb.setToolTip(i18n.tip("MASK_TASK_STITCH"))
+        self.run_stitch_cb.setChecked(False)
+        task_row.addWidget(self.run_stitch_cb)
 
-        layout.addLayout(main_btn_row)
+        self.run_overexp_cb = QCheckBox(i18n.t("MASK_TASK_OVEREXPOSURE"))
+        self.run_overexp_cb.setToolTip(i18n.tip("MASK_TASK_OVEREXPOSURE"))
+        self.run_overexp_cb.setChecked(False)
+        task_row.addWidget(self.run_overexp_cb)
 
-        # --- 個別実行 (小さめ) ---
-        sub_btn_row = QHBoxLayout()
-        sub_btn_row.setSpacing(6)
-        for label, mode in [
-            (i18n.RUN_YOLO, "yolo"),
-            (i18n.RUN_STITCH, "stitch"),
-            (i18n.RUN_OVEREXPOSURE, "overexposure"),
-        ]:
-            btn = QPushButton(label)
-            btn.clicked.connect(lambda checked=False, m=mode: self._set_run_mode(m))
-            sub_btn_row.addWidget(btn)
-        sub_btn_row.addStretch()
-        layout.addLayout(sub_btn_row)
+        task_row.addStretch()
+
+        self.run_masks_btn = QPushButton(f"  {i18n.t('RUN_MASKS')}")
+        self.run_masks_btn.setToolTip(i18n.tip("RUN_MASKS"))
+        self.run_masks_btn.setObjectName("primary")
+        self.run_masks_btn.setFixedHeight(34)
+        self.run_masks_btn.setMinimumWidth(180)
+        self.run_masks_btn.clicked.connect(self.run_requested.emit)
+        task_row.addWidget(self.run_masks_btn)
+
+        layout.addLayout(task_row)
 
         # --- YOLO設定 (折りたたみ) ---
-        yolo_section = CollapsibleSection(i18n.t("YOLO_SECTION"), expanded=True)
+        self.yolo_section = CollapsibleSection(i18n.t("YOLO_SECTION"), expanded=True)
         yolo_form = QFormLayout()
         yolo_form.setSpacing(6)
 
@@ -166,11 +163,11 @@ class MaskStep(BaseStepWidget):
         class_layout.addWidget(scroll)
 
         yolo_form.addRow(i18n.YOLO_CLASSES, class_inner)
-        yolo_section.content_layout.addLayout(yolo_form)
-        layout.addWidget(yolo_section)
+        self.yolo_section.content_layout.addLayout(yolo_form)
+        layout.addWidget(self.yolo_section)
 
         # --- スティッチ+白飛び設定 (折りたたみ) ---
-        other_section = CollapsibleSection(i18n.t("STITCH_OVEREXP_SECTION"), expanded=False)
+        self.other_section = CollapsibleSection(i18n.t("STITCH_OVEREXP_SECTION"), expanded=False)
         other_form = QFormLayout()
         other_form.setSpacing(6)
 
@@ -198,8 +195,8 @@ class MaskStep(BaseStepWidget):
         self.overexp_dilate_edit.setFixedWidth(80)
         other_form.addRow(i18n.OVEREXPOSURE_DILATE, self.overexp_dilate_edit)
 
-        other_section.content_layout.addLayout(other_form)
-        layout.addWidget(other_section)
+        self.other_section.content_layout.addLayout(other_form)
+        layout.addWidget(self.other_section)
 
         # Metashape SfM 案内（マスクと一緒に SfM すると精度向上）
         notice = QLabel(i18n.METASHAPE_NOTICE)
@@ -213,16 +210,16 @@ class MaskStep(BaseStepWidget):
 
         layout.addStretch()
 
+        for cb in (self.run_yolo_cb, self.run_stitch_cb, self.run_overexp_cb):
+            cb.toggled.connect(self._update_task_controls)
+        self._update_task_controls()
+
     def set_scene_dir(self, path: str) -> None:
         super().set_scene_dir(path)
         if path:
             p = Path(path)
             self.images_browse.set_text(str(p / "images"))
             self.masks_browse.set_text(str(p / "masks"))
-
-    def _set_run_mode(self, mode: str) -> None:
-        self._run_mode = mode
-        self.run_requested.emit()
 
     def _set_classes(self, indices: list[int]) -> None:
         for i, cb in enumerate(self.class_cbs):
@@ -231,18 +228,29 @@ class MaskStep(BaseStepWidget):
     def _selected_classes(self) -> list[int]:
         return [i for i, cb in enumerate(self.class_cbs) if cb.isChecked()]
 
+    def _update_task_controls(self) -> None:
+        yolo_enabled = self.run_yolo_cb.isChecked()
+        stitch_enabled = self.run_stitch_cb.isChecked()
+        overexp_enabled = self.run_overexp_cb.isChecked()
+
+        self.yolo_section.content_widget.setEnabled(yolo_enabled)
+        self.stitch_fov_edit.setEnabled(stitch_enabled)
+        self.stitch_workers_edit.setEnabled(stitch_enabled or overexp_enabled)
+        self.overexp_threshold_edit.setEnabled(overexp_enabled)
+        self.overexp_dilate_edit.setEnabled(overexp_enabled)
+
     # -- コマンド構築 --
 
     def build_commands(self) -> list[tuple[str, list[str]]]:
         steps = []
-        if self._run_mode in ("yolo", "both", "all"):
+        if self.run_yolo_cb.isChecked():
             steps.append(("yolo", self._build_yolo_cmd()))
-        if self._run_mode in ("stitch", "both", "all"):
+        if self.run_stitch_cb.isChecked():
             steps.append(("stitch", self._build_stitch_cmd()))
-        if self._run_mode in ("overexposure", "all"):
+        if self.run_overexp_cb.isChecked():
             steps.append(("overexposure", self._build_overexposure_cmd()))
         if not steps:
-            raise ValueError("実行モードを選択してください")
+            raise ValueError(i18n.t("MASK_TASK_REQUIRED"))
         return steps
 
     def _build_yolo_cmd(self) -> list[str]:
