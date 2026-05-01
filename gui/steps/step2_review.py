@@ -143,14 +143,14 @@ class ReviewStep(BaseStepWidget):
         backup_on = self.backup_cb.isChecked()
         if backup_on:
             confirm_text = (
-                "drop フレームを images/ から削除し、keep フレームを連番で再採番します。\n\n"
-                "実行前に images/ を images_backup/ にコピーします（既存 backup は上書き）。\n"
+                "除外にしたフレームを images/ から削除し、採用フレームを連番で再採番します。\n\n"
+                "実行前に images/ を images_backup/ にコピーします（既存バックアップは上書き）。\n"
                 "selected_frames.csv のバックアップも自動作成されます。\n\n"
                 "実行してよいですか？"
             )
         else:
             confirm_text = (
-                "drop フレームを images/ から削除し、keep フレームを連番で再採番します。\n\n"
+                "除外にしたフレームを images/ から削除し、採用フレームを連番で再採番します。\n\n"
                 "⚠ 画像のバックアップは作成されません。削除された画像は復元できません。\n"
                 "selected_frames.csv のみ自動バックアップされます。\n\n"
                 "実行してよいですか？"

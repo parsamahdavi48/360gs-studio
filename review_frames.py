@@ -20,6 +20,8 @@ try:
         QMainWindow,
         QMessageBox,
         QPushButton,
+        QScrollArea,
+        QSizePolicy,
         QVBoxLayout,
         QWidget,
     )
@@ -38,6 +40,8 @@ except Exception as e:  # pragma: no cover - environment-dependent import
     QMessageBox = None
     QPushButton = None
     QLineEdit = None
+    QScrollArea = None
+    QSizePolicy = None
     QVBoxLayout = None
     QWidget = None
     _PYSIDE_IMPORT_ERROR = e
@@ -46,6 +50,10 @@ else:
 
 # i18n は PySide6 に依存しないので無条件 import
 from gui import i18n
+if _PYSIDE_IMPORT_ERROR is None:
+    from gui.common.collapsible_section import CollapsibleSection
+else:  # pragma: no cover - PySide6 missing
+    CollapsibleSection = None
 
 
 if QGraphicsView is not None:
@@ -68,7 +76,7 @@ if QGraphicsView is not None:
             self.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
             self.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
             self.setStyleSheet("background-color: #101010; border: 1px solid #333;")
-            self.setMinimumHeight(560)
+            self.setMinimumHeight(340)
             self.setFocusPolicy(Qt.NoFocus)  # キー入力は親ウィンドウへ
 
         def show_pixmap(self, pixmap: QPixmap) -> None:
@@ -261,7 +269,7 @@ if QMainWindow is not None:
             btn_row.addWidget(self.save_button)
             layout.addLayout(btn_row)
 
-            # ブラー一括 drop 行（手動絶対閾値ツール）
+            # ブレスコアによる一括除外行（手動絶対閾値ツール）
             blur_row = QHBoxLayout()
             blur_row.addWidget(QLabel(i18n.t("REVIEW_BLUR_THRESHOLD_LABEL")))
             self.blur_threshold_edit = QLineEdit()
@@ -276,19 +284,29 @@ if QMainWindow is not None:
             blur_row.addStretch(1)
             layout.addLayout(blur_row)
 
-            # 使い方ヘルプ（折りたたみ風: header + body）
-            help_header = QLabel(i18n.t("REVIEW_HELP_HEADER"))
-            help_header.setStyleSheet(
-                "color: #c4b5fd; font-weight: 700; padding-top: 6px;"
-            )
-            layout.addWidget(help_header)
+            # 使い方ヘルプ（必要な時だけ展開）
+            self.help_section = CollapsibleSection(i18n.t("REVIEW_HELP_HEADER"), expanded=False)
+            self.help_section.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Maximum)
+
             help_body = QLabel(i18n.t("REVIEW_HELP_BODY"))
             help_body.setStyleSheet(
                 "color: #888; font-size: 9pt; padding: 4px 8px; "
                 "background-color: #1a1a2e; border-radius: 6px;"
             )
             help_body.setWordWrap(True)
-            layout.addWidget(help_body)
+
+            help_scroll = QScrollArea()
+            help_scroll.setWidgetResizable(True)
+            help_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+            help_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+            help_scroll.setMinimumHeight(120)
+            help_scroll.setMaximumHeight(180)
+            help_scroll.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+            help_scroll.setStyleSheet("QScrollArea { border: 0; background: transparent; }")
+            help_scroll.setWidget(help_body)
+
+            self.help_section.content_layout.addWidget(help_scroll)
+            layout.addWidget(self.help_section)
 
         def _bind_shortcuts(self) -> None:
             QShortcut(QKeySequence(Qt.Key_Left), self, activated=self.prev_row)
@@ -306,6 +324,11 @@ if QMainWindow is not None:
         def _decision_color(self, decision: str) -> str:
             return "#b00020" if decision == "drop" else "#1b7f3b"
 
+        def _decision_text(self, decision: str) -> str:
+            if decision == "drop":
+                return i18n.t("REVIEW_DECISION_DROP")
+            return i18n.t("REVIEW_DECISION_KEEP")
+
         def _format_process(self, row: Dict[str, str]) -> str:
             status = row.get("status", "ok").strip().lower()
             orig = row.get("original_index", "?")
@@ -321,15 +344,15 @@ if QMainWindow is not None:
         def _advisory_for_row(self, row: Dict[str, str], idx: int) -> tuple[str, str, str]:
             """status のみに基づく advisory。
 
-            extract_frames が既にブレ判定 + 置換を済ませているので、
-            最終 frame で「真にブレている」のは fallback_keep のみ。
+            フレーム抽出時にブレ判定 + 置換は済んでいるので、
+            置換不可のフレームだけを強く確認対象として扱う。
             「ブレ top X%」のような相対順位 advisory は出さない（誤判定の元）。
 
             Returns (text, fg, bg).
             """
             status = row.get("status", "ok").strip().lower()
 
-            # 橙: extract が置換できなかったブレ frame
+            # 橙: ブレを検出したが置換先がなかったフレーム
             if "fallback_keep" in status:
                 return i18n.t("REVIEW_ADVISORY_FALLBACK"), "#fef3c7", "#7c2d12"
 
@@ -355,7 +378,7 @@ if QMainWindow is not None:
             self.title_label.setText(f"{seq}/{total}  {image_rel}")
 
             decision = row.get("decision", "keep")
-            self.decision_label.setText(f"{i18n.t('REVIEW_DECISION_PREFIX')}{decision.upper()}")
+            self.decision_label.setText(f"{i18n.t('REVIEW_DECISION_PREFIX')}{self._decision_text(decision)}")
             self.decision_label.setStyleSheet(f"font-weight: 700; color: {self._decision_color(decision)};")
 
             # アドバイザリー (このフレームが要注意な理由)
@@ -366,13 +389,14 @@ if QMainWindow is not None:
                 f"color: {adv_fg}; background-color: {adv_bg};"
             )
 
-            replaced_count = sum(1 for r in self.rows if r.get("status", "").strip().lower() == "replaced")
-            fallback_count = sum(1 for r in self.rows if r.get("status", "").strip().lower() == "fallback_keep")
+            replaced_count = sum(1 for r in self.rows if "replaced" in r.get("status", "").strip().lower())
+            fallback_count = sum(1 for r in self.rows if "fallback_keep" in r.get("status", "").strip().lower())
+            thinned_count = sum(1 for r in self.rows if "thinned" in r.get("status", "").strip().lower())
             problem_count = len(self.problem_indices)
             current_problem = i18n.t("REVIEW_INFO_YES") if self._is_problem_row(row) else i18n.t("REVIEW_INFO_NO")
             self.problem_summary_label.setText(
                 i18n.t("REVIEW_PROBLEMS_FORMAT").format(
-                    n=problem_count, r=replaced_count, f=fallback_count, cur=current_problem
+                    n=problem_count, r=replaced_count, f=fallback_count, t=thinned_count, cur=current_problem
                 )
             )
 
@@ -411,13 +435,13 @@ if QMainWindow is not None:
 
             if not image_path.exists():
                 self.current_pixmap = None
-                self.image_view.show_message(f"Image not found:\n{image_path}")
+                self.image_view.show_message(i18n.t("REVIEW_IMAGE_NOT_FOUND").format(path=image_path))
                 return
 
             pixmap = QPixmap(str(image_path))
             if pixmap.isNull():
                 self.current_pixmap = None
-                self.image_view.show_message(f"Failed to load image:\n{image_path}")
+                self.image_view.show_message(i18n.t("REVIEW_IMAGE_LOAD_FAILED").format(path=image_path))
                 return
 
             self.current_pixmap = pixmap
@@ -488,7 +512,7 @@ if QMainWindow is not None:
             self._render_current()
 
         def drop_below_blur_threshold(self) -> None:
-            """閾値以下のblur_score_finalを持つフレームを一括drop。"""
+            """閾値以下のblur_score_finalを持つフレームを一括で除外扱いにする。"""
             text = self.blur_threshold_edit.text().strip()
             if not text:
                 # 未入力なら、現在のフレームのスコアを閾値として提案

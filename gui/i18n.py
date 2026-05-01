@@ -60,96 +60,100 @@ _JA: dict[str, str] = {
     "NO_VIDEO": "動画が選択されていません",
 
     # Step 2
-    "OPEN_REVIEW": "レビューGUIを開く",
-    "EXPORT_KEEP": "選択フレームをエクスポート",
-    "FINALIZE_INPLACE": "インプレースで確定",
-    "FINALIZE_BUTTON": "確定 (drop 削除 + 連番リネーム)",
-    "FINALIZE_BUTTON_HINT": "drop フレームを images/ から削除し、keep を連番で再採番します。不可逆。バックアップが必要なら左のチェックボックスを ON に。",
+    "OPEN_REVIEW": "フレーム確認を開く",
+    "EXPORT_KEEP": "採用フレームをエクスポート",
+    "FINALIZE_INPLACE": "画像フォルダ内で確定",
+    "FINALIZE_BUTTON": "選別を確定 (除外分を削除)",
+    "FINALIZE_BUTTON_HINT": "除外にしたフレームを images/ から削除し、採用フレームを連番で再採番します。不可逆。バックアップが必要なら左のチェックボックスを ON に。",
     "BACKUP_BEFORE_FINALIZE": "実行前に images_backup/ にバックアップ",
-    "BACKUP_BEFORE_FINALIZE_HINT": "ON: 確定前に images/ を images_backup/ にフルコピー（既存 backup は上書き）。OFF: バックアップなし（容量節約・復元不可）。",
-    "STEP2_WORKFLOW": "Step 1 で抽出  ──  レビュー+選別  ──  Step 3 (マスク生成) へ",
+    "BACKUP_BEFORE_FINALIZE_HINT": "ON: 確定前に images/ を images_backup/ にフルコピー（既存バックアップは上書き）。OFF: バックアップなし（容量節約・復元不可）。",
+    "STEP2_WORKFLOW": "Step 1 で抽出  ──  確認+選別  ──  Step 3 (マスク生成) へ",
 
     # --- review_frames.py (Step 2 レビュー GUI) ---
-    "REVIEW_TITLE": "フレームレビュー",
-    "REVIEW_DECISION_PREFIX": "判定: ",
-    "REVIEW_INFO_YES": "対象",
+    "REVIEW_TITLE": "フレーム確認",
+    "REVIEW_DECISION_PREFIX": "選別: ",
+    "REVIEW_DECISION_KEEP": "採用",
+    "REVIEW_DECISION_DROP": "除外",
+    "REVIEW_INFO_YES": "確認対象",
     "REVIEW_INFO_NO": "通常",
-    "REVIEW_PROBLEMS_FORMAT": "要注意: {n} 件 (置換={r}, 維持={f}) | 現フレーム: {cur}",
+    "REVIEW_PROBLEMS_FORMAT": "確認対象: {n} 件 (置換済み={r}, 置換不可={f}, 自動間引き={t}) | 現在: {cur}",
     "REVIEW_INFO_FORMAT": (
         "時刻: {ts}   |   ブレ: {blur}   |   変化: {change}\n"
-        "extract 処理: {process}"
+        "フレーム抽出時の処理: {process}"
     ),
     "REVIEW_BLUR_VALUE_FORMAT": "{score:.1f} (中央値 {median:.0f} の {pct}%)",
     "REVIEW_BLUR_VALUE_NO_MEDIAN": "{score:.1f}",
-    "REVIEW_PROCESS_OK": "通常採用 (extract の quality bar を通過)",
-    "REVIEW_PROCESS_REPLACED": "自動置換済み (元 idx={orig} のブレを近傍 idx={final} へ swap)",
-    "REVIEW_PROCESS_FALLBACK": "ブレあり・置換候補なし (extract が swap できなかった)",
-    "REVIEW_PROCESS_THINNED": "立ち止まり区間で自動間引き",
+    "REVIEW_PROCESS_OK": "通常フレーム (品質基準を満たしています)",
+    "REVIEW_PROCESS_REPLACED": "置換済み (元フレーム {orig} から、近くのフレーム {final} に置換)",
+    "REVIEW_PROCESS_FALLBACK": "置換不可 (ブレを検出しましたが、代わりのフレームが見つかりませんでした)",
+    "REVIEW_PROCESS_THINNED": "自動間引き (動きが少ない区間として除外扱い)",
     "REVIEW_BTN_PREV": "前 (←)",
     "REVIEW_BTN_NEXT": "次 (→)",
-    "REVIEW_BTN_PREV_PROBLEM": "extract 要注意 ← (Shift+F)",
-    "REVIEW_BTN_NEXT_PROBLEM": "extract 要注意 → (F)",
+    "REVIEW_BTN_PREV_PROBLEM": "前の確認対象 (Shift+F)",
+    "REVIEW_BTN_NEXT_PROBLEM": "次の確認対象 (F)",
     "REVIEW_BTN_PROBLEM_TIP": (
-        "extract_frames が自動判定で flag したフレーム (置換・維持・間引き) を\n"
-        "CSV 順 (撮影時間順) に巡回します。"
+        "フレーム抽出時に確認対象として記録されたフレーム\n"
+        "（置換済み・置換不可・自動間引き）を撮影順に巡回します。"
     ),
-    "REVIEW_BTN_TOGGLE": "Keep/Drop 切替 (Space)",
+    "REVIEW_BTN_TOGGLE": "採用/除外 切替 (Space)",
     "REVIEW_BTN_JUMP": "番号へ移動",
     "REVIEW_BTN_SAVE": "保存 (S)",
     "REVIEW_JUMP_PLACEHOLDER": "番号",
-    "REVIEW_BLUR_THRESHOLD_LABEL": "  ブレ閾値:",
-    "REVIEW_BLUR_DROP_BTN": "閾値以下を全 Drop",
-    "REVIEW_BLUR_THRESHOLD_PLACEHOLDER": "blur score",
-    "REVIEW_NO_PROBLEMS": "要注意フレームはありません",
+    "REVIEW_BLUR_THRESHOLD_LABEL": "  ブレ評価値の閾値:",
+    "REVIEW_BLUR_DROP_BTN": "閾値以下をまとめて除外",
+    "REVIEW_BLUR_THRESHOLD_PLACEHOLDER": "ブレ評価値",
+    "REVIEW_NO_PROBLEMS": "確認対象フレームはありません",
+    "REVIEW_IMAGE_NOT_FOUND": "画像が見つかりません:\n{path}",
+    "REVIEW_IMAGE_LOAD_FAILED": "画像の読み込みに失敗しました:\n{path}",
     "REVIEW_SEQ_INTEGER_ERR": "番号は整数で指定してください。",
     "REVIEW_OUT_OF_RANGE_ERR": "番号は 1 〜 {max} の範囲で指定してください。",
     "REVIEW_INVALID_INPUT": "入力エラー",
     "REVIEW_INFO_HEADER": "情報",
     "REVIEW_THRESHOLD_HEADER": "閾値",
-    "REVIEW_THRESHOLD_NEED_INPUT": "閾値を入力してから再度押してください。\n現在のフレームのスコアをセットしました。",
+    "REVIEW_THRESHOLD_NEED_INPUT": "閾値を入力してから再度押してください。\n現在のフレームのブレ評価値を入力欄に入れました。",
     "REVIEW_THRESHOLD_NUMERIC_ERR": "数値を入力してください。",
-    "REVIEW_BULK_DROP_HEADER": "一括 Drop",
-    "REVIEW_BULK_DROP_RESULT": "blur_score ≦ {thr} のフレームを {n} 件 drop にしました。\n保存 (S) で CSV に確定してください。",
+    "REVIEW_BULK_DROP_HEADER": "一括除外",
+    "REVIEW_BULK_DROP_RESULT": "ブレ評価値が {thr} 以下のフレーム {n} 件を除外にしました。\n保存 (S) で CSV に反映してください。",
     "REVIEW_SAVED_HEADER": "保存しました",
-    "REVIEW_SAVED_BODY": "更新先: {path}\nkeep={k}, drop={d}",
+    "REVIEW_SAVED_BODY": "更新先: {path}\n採用={k}, 除外={d}",
     "REVIEW_HELP_HEADER": "── 使い方 ──",
     "REVIEW_HELP_BODY": (
-        "1 枚ずつフレームを確認して、不要なものに drop マークを付けます。\n"
-        "変更はメモリ上のコピーのみ。「保存 (S)」で selected_frames.csv に書き戻されます。\n"
-        "保存後、メイン GUI の Step 2 で「確定」ボタンを押すと images/ に反映されます。\n\n"
-        "【推奨レビュー手順】SfM 品質を最大化する最短ルート\n"
-        "  1. F キーで extract が flag したフレームを巡回\n"
-        "     (extract が「置換できなかったブレ」「自動置換」「間引き」と判定したもの)\n"
-        "  2. アドバイザリー (画像下の色帯) を見る:\n"
-        "     橙 = fallback_keep (drop 検討) / 青 = 情報 (通常 keep) / 緑 = 通常\n"
-        "  3. 橙の frame は画像を確認して、本当にブレてたら Space で drop\n"
-        "  4. S で保存 → メイン GUI で「確定」ボタン\n"
-        "  ※ extract がブレ判定 + 自動置換を済ませているので、ok/replaced は通常そのまま keep。\n"
-        "    本当に問題な frame は fallback_keep だけです。\n\n"
-        "【drop の目安】SfM (Metashape) と 3DGS 学習で問題になる frame を除外します。\n"
-        "  ・動く被写体: 人物・車両・揺れる枝など (3DGS は静的シーン前提)\n"
-        "  ・fallback_keep のうち画像確認でブレが目立つもの\n"
-        "  ・レンズフレア・強い太陽光: 大部分の画素が飽和\n"
-        "  ・ステッチ継ぎ目の大きな破綻 (360 デュアル魚眼)\n"
-        "  ・過露出 / 露出不足: 真っ白・真っ黒な領域が大半\n"
-        "判断に迷ったら keep のまま。後で再レビューも可能です。\n\n"
+        "1 枚ずつフレームを確認し、3DGS 学習や Metashape の SfM に使うフレームを選別します。\n"
+        "残すフレームは「採用」、使わないフレームは「除外」です。変更は「保存 (S)」を押すまで CSV には書き戻されません。\n"
+        "保存後、メイン画面の Step 2 で「選別を確定」を押すと、除外フレームが images/ から削除され、採用フレームだけが連番になります。\n\n"
+        "【推奨レビュー手順】\n"
+        "  1. F キーで確認対象のフレームを順番に確認します。\n"
+        "     確認対象には、置換済み・置換不可・自動間引きのフレームが含まれます。\n"
+        "  2. 画像下の色帯で状態を確認します。\n"
+        "     オレンジ = ブレを検出したが置換不可 / 青 = 処理内容の確認 / 緑 = 通常フレーム\n"
+        "  3. オレンジのフレームは画像を見て、ブレが目立つ場合だけ Space で除外にします。\n"
+        "  4. 確認が終わったら S で保存し、メイン画面で「選別を確定」を実行します。\n\n"
+        "フレーム抽出時点で、ブレが強いフレームは近くのブレが少ないフレームへ自動置換されています。\n"
+        "そのため、実際に除外判断が必要になりやすいのは「置換不可」のフレームです。置換済みや通常フレームは、見た目に問題がなければ採用のままで構いません。\n\n"
+        "【除外の目安】\n"
+        "  ・人物、車両、揺れる枝など、静止シーンとして扱えない動く被写体\n"
+        "  ・置換不可フレームのうち、画像確認でブレが目立つもの\n"
+        "  ・レンズフレアや強い太陽光で、大部分の画素が飽和しているもの\n"
+        "  ・360度画像のステッチ継ぎ目が大きく破綻しているもの\n"
+        "  ・露出過多または露出不足で、真っ白・真っ黒な領域が大半を占めるもの\n"
+        "判断に迷ったら採用のままにしてください。後から再レビューできます。\n\n"
         "【画像操作】\n"
         "  マウスホイール    カーソル位置を中心に拡大 / 縮小\n"
         "  ドラッグ          拡大時にパン (画像をつかんで移動)\n"
         "  0 キー            ズームをリセット (フィット表示)\n\n"
         "【キー操作】\n"
         "  ← / →    前後のフレーム\n"
-        "  Space    現フレームの keep/drop を切替\n"
-        "  F / Shift+F  extract が flag したフレームを撮影順に巡回\n"
+        "  Space    現在のフレームを採用/除外に切替\n"
+        "  F / Shift+F  確認対象のフレームを撮影順に巡回\n"
         "  S        CSV へ保存\n"
         "  Q        終了 (未保存の変更は破棄)\n\n"
-        "「閾値以下を全 Drop」は手動の絶対閾値ツールです。blur スコアを見て、\n"
-        "明らかに低い値（例: 50 以下）を一括で drop したい場合に使えます。"
+        "「閾値以下をまとめて除外」は手動の一括処理です。ブレ評価値を見て、\n"
+        "明らかに低い値（例: 50 以下）をまとめて除外したい場合だけ使ってください。"
     ),
-    "REVIEW_ADVISORY_FALLBACK": "⚠ extract が置換できなかったブレ frame — 画像確認の上 drop 検討",
-    "REVIEW_ADVISORY_REPLACED": "ⓘ extract 時に近傍のより鋭いフレームへ自動置換済み (通常 keep)",
-    "REVIEW_ADVISORY_THINNED": "ⓘ 立ち止まり区間で自動間引き (drop マーク中)。Space で keep に戻せます",
-    "REVIEW_ADVISORY_NORMAL": "通常品質 (extract の quality bar を通過)",
+    "REVIEW_ADVISORY_FALLBACK": "要確認: フレーム抽出時にブレを検出しましたが、置換先が見つかりませんでした。画像を確認し、ブレが目立つ場合は除外してください。",
+    "REVIEW_ADVISORY_REPLACED": "情報: フレーム抽出時に、ブレが少ない近くのフレームへ置換済みです。通常は採用のままで問題ありません。",
+    "REVIEW_ADVISORY_THINNED": "情報: 動きが少ない区間として自動間引きされ、現在は除外扱いです。必要なら Space で採用に戻せます。",
+    "REVIEW_ADVISORY_NORMAL": "通常フレームです。フレーム抽出時の品質基準を満たしています。",
     "NEXT_STEP_MASK_NOTICE": "選別が完了したら Step 3 (マスク生成) へ進みます。\n人物・スティッチ・白飛びマスクを Metashape SfM の前に生成することで SfM 精度が向上します。",
     "METASHAPE_NOTICE": "マスク生成完了後、Metashape で SfM を実行してください。\n生成された masks/ フォルダを Metashape の per-image マスクとしてインポートすると、人物・スティッチ・白飛び領域が特徴点マッチングから除外され、SfM 精度が大きく向上します。\n完了後、Step 4 でキューブマップ変換に進みます。",
     "CSV_FILE": "CSVファイル名",
@@ -241,7 +245,7 @@ _JA: dict[str, str] = {
     "AUTO_PREFIX_HINT": "自動 (動画ファイル名)",
     "FRAMES_UNIT": "フレーム",
     "THIN_MOTION_THRESHOLD": "立ち止まり間引き閾値",
-    "THIN_MOTION_HINT": "推奨 0.6。0 で無効化。直前 keep フレームからの累積モーションがこれ未満なら drop されます。0.3-1.0 が典型範囲。",
+    "THIN_MOTION_HINT": "推奨 0.6。0 で無効化。直前の採用フレームからの累積モーションがこれ未満なら除外扱いになります。0.3-1.0 が典型範囲。",
     "NO_CACHE": "解析キャッシュを使わない",
     "NO_CACHE_HINT": "既定（チェックなし）= キャッシュを使う。同じ動画の再実行が高速化されます。チェックすると毎回フル解析（遅い、デバッグ用途）。",
 
@@ -329,9 +333,11 @@ _EN: dict[str, str] = {
     # --- review_frames.py (Step 2 review GUI) ---
     "REVIEW_TITLE": "Frame Review",
     "REVIEW_DECISION_PREFIX": "Decision: ",
+    "REVIEW_DECISION_KEEP": "Keep",
+    "REVIEW_DECISION_DROP": "Drop",
     "REVIEW_INFO_YES": "yes",
     "REVIEW_INFO_NO": "no",
-    "REVIEW_PROBLEMS_FORMAT": "Problems: {n} (replaced={r}, fallback={f}) | Current: {cur}",
+    "REVIEW_PROBLEMS_FORMAT": "Review targets: {n} (replaced={r}, fallback={f}, thinned={t}) | Current: {cur}",
     "REVIEW_INFO_FORMAT": (
         "Time: {ts}   |   Blur: {blur}   |   Change: {change}\n"
         "extract action: {process}"
@@ -358,6 +364,8 @@ _EN: dict[str, str] = {
     "REVIEW_BLUR_DROP_BTN": "Drop below threshold",
     "REVIEW_BLUR_THRESHOLD_PLACEHOLDER": "blur score",
     "REVIEW_NO_PROBLEMS": "No problem frames found.",
+    "REVIEW_IMAGE_NOT_FOUND": "Image not found:\n{path}",
+    "REVIEW_IMAGE_LOAD_FAILED": "Failed to load image:\n{path}",
     "REVIEW_SEQ_INTEGER_ERR": "Seq must be an integer.",
     "REVIEW_OUT_OF_RANGE_ERR": "Seq must be between 1 and {max}.",
     "REVIEW_INVALID_INPUT": "Invalid input",
@@ -553,10 +561,10 @@ _TIPS_JA: dict[str, str] = {
     "FILENAME_PREFIX": "出力ファイル名の接頭辞。空欄なら動画ファイル名を自動使用",
     "SAMPLE_BTN": "動画の一部をサンプリングしてフレーム数を再推定 (変化検出モードのみ)",
     "CSV_FILE": "Step1で生成されたフレーム選択CSVファイル名",
-    "EXPORT_DIR": "keepフレームのコピー先フォルダ名。'images'ならインプレース処理",
-    "OPEN_REVIEW": "フレーム画像を1枚ずつ確認し、keep/dropを編集するGUIを開く\nB/Shift+Bでブラーワースト順ナビ、閾値一括dropも可能",
-    "EXPORT_KEEP": "CSVでkeepとマークされたフレームだけを指定フォルダにコピー",
-    "FINALIZE_INPLACE": "images/内のdropフレームを削除し、keepフレームを連番リネーム。元に戻せないので注意",
+    "EXPORT_DIR": "採用フレームのコピー先フォルダ名。'images'ならインプレース処理",
+    "OPEN_REVIEW": "フレーム画像を1枚ずつ確認し、採用/除外を編集するGUIを開く\n確認対象の巡回と、ブレ評価値の閾値による一括除外ができます",
+    "EXPORT_KEEP": "CSVで採用にしたフレームだけを指定フォルダにコピー",
+    "FINALIZE_INPLACE": "images/内の除外フレームを削除し、採用フレームを連番リネーム。元に戻せないので注意",
     "IMAGES_DIR": "エクイレクタングラー画像が入ったフォルダ (通常 images/)",
     "MASKS_DIR": "マスク画像の出力先フォルダ (通常 masks/)。既存マスクがあれば合成",
     "RUN_ALL": "YOLO人物検出 → スティッチマスク → 白飛びマスクの全工程を順番に実行",
