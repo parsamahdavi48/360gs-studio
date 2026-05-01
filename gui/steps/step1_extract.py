@@ -4,9 +4,16 @@ from __future__ import annotations
 import json
 import math
 import re
+import shutil
 import subprocess
 import sys
 from pathlib import Path
+
+
+def _detect_binary(name: str) -> str:
+    """PATH から実行ファイルを検出。見つからなければ素の名前を返す（PATH 解決に委ねる）。"""
+    found = shutil.which(name)
+    return found if found else name
 
 from PySide6.QtCore import QProcess, QTimer
 from PySide6.QtWidgets import (
@@ -178,13 +185,19 @@ class ExtractStep(BaseStepWidget):
         self.no_cache_cb.setToolTip(i18n.t("NO_CACHE_HINT"))
         adv_form.addRow("", self.no_cache_cb)
 
-        self.ffmpeg_edit = QLineEdit("ffmpeg")
-        self.ffmpeg_edit.setToolTip(i18n.tip("FFMPEG_PATH"))
-        adv_form.addRow(i18n.FFMPEG_PATH, self.ffmpeg_edit)
+        # ffmpeg / ffprobe: PATH から自動検出して初期値にセット。参照ボタンで上書き可能
+        ffmpeg_filter = "Executable (*.exe);;すべて (*.*)" if sys.platform == "win32" else "すべて (*.*)"
+        self.ffmpeg_browse = BrowseWidget(mode="file", filter_str=ffmpeg_filter,
+                                          placeholder="ffmpeg (PATH から自動検出)")
+        self.ffmpeg_browse.set_text(_detect_binary("ffmpeg"))
+        self.ffmpeg_browse.setToolTip(i18n.tip("FFMPEG_PATH"))
+        adv_form.addRow(i18n.FFMPEG_PATH, self.ffmpeg_browse)
 
-        self.ffprobe_edit = QLineEdit("ffprobe")
-        self.ffprobe_edit.setToolTip(i18n.tip("FFPROBE_PATH"))
-        adv_form.addRow(i18n.FFPROBE_PATH, self.ffprobe_edit)
+        self.ffprobe_browse = BrowseWidget(mode="file", filter_str=ffmpeg_filter,
+                                           placeholder="ffprobe (PATH から自動検出)")
+        self.ffprobe_browse.set_text(_detect_binary("ffprobe"))
+        self.ffprobe_browse.setToolTip(i18n.tip("FFPROBE_PATH"))
+        adv_form.addRow(i18n.FFPROBE_PATH, self.ffprobe_browse)
 
         self.prefix_edit = QLineEdit("")
         self.prefix_edit.setToolTip(i18n.tip("FILENAME_PREFIX"))
@@ -246,8 +259,8 @@ class ExtractStep(BaseStepWidget):
             "--blur-window-frames", self.blur_window_edit.text().strip(),
             "--image-ext", self.image_ext_combo.currentText(),
             "--jpg-quality", self.jpg_quality_edit.text().strip(),
-            "--ffmpeg", self.ffmpeg_edit.text().strip(),
-            "--ffprobe", self.ffprobe_edit.text().strip(),
+            "--ffmpeg", self.ffmpeg_browse.text() or "ffmpeg",
+            "--ffprobe", self.ffprobe_browse.text() or "ffprobe",
         ]
         prefix = self.prefix_edit.text().strip()
         if prefix:
@@ -338,7 +351,7 @@ class ExtractStep(BaseStepWidget):
 
     def _probe_video_info(self) -> dict:
         video = self.video_browse.text()
-        ffprobe = self.ffprobe_edit.text().strip() or "ffprobe"
+        ffprobe = self.ffprobe_browse.text() or "ffprobe"
         if not video:
             raise ValueError("入力動画が指定されていません")
         if not Path(video).exists():
