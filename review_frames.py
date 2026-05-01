@@ -320,6 +320,31 @@ if QMainWindow is not None:
         def _decision_color(self, decision: str) -> str:
             return "#b00020" if decision == "drop" else "#1b7f3b"
 
+        def _blur_level_key(self, rank: int, total: int) -> str:
+            """rank (1=最悪) と total から日本語/英語の品質レベルキーを返す。"""
+            if rank <= 0 or total <= 0:
+                return "REVIEW_BLUR_LEVEL_MID"
+            ratio = rank / total
+            if ratio <= 0.05:
+                return "REVIEW_BLUR_LEVEL_BAD"
+            if ratio <= 0.15:
+                return "REVIEW_BLUR_LEVEL_LOW"
+            if ratio >= 0.85:
+                return "REVIEW_BLUR_LEVEL_SHARP"
+            return "REVIEW_BLUR_LEVEL_MID"
+
+        def _format_process(self, row: Dict[str, str]) -> str:
+            status = row.get("status", "ok").strip().lower()
+            orig = row.get("original_index", "?")
+            final = row.get("final_index", "?")
+            if "fallback_keep" in status:
+                return i18n.t("REVIEW_PROCESS_FALLBACK")
+            if "thinned" in status:
+                return i18n.t("REVIEW_PROCESS_THINNED")
+            if "replaced" in status:
+                return i18n.t("REVIEW_PROCESS_REPLACED").format(orig=orig, final=final)
+            return i18n.t("REVIEW_PROCESS_OK")
+
         def _advisory_for_row(self, row: Dict[str, str], idx: int) -> tuple[str, str, str]:
             """この行の要注意度を判定。 (text, fg, bg) を返す。
 
@@ -394,23 +419,51 @@ if QMainWindow is not None:
             )
 
             blur_final = self._blur_score(row)
-            blur_str = f"{blur_final:.1f}" if blur_final != float("inf") else "-"
-            info_text = (
-                f"orig={row.get('original_index', '-')}, final={row.get('final_index', '-')}, "
-                f"ts={row.get('timestamp_sec', '-')}, status={row.get('status', '-')}, "
-                f"blur(orig/final)={row.get('blur_score_original', '-')}/{row.get('blur_score_final', '-')}, "
-                f"change(orig/final)={row.get('change_score_original', '-')}/{row.get('change_score_final', '-')}"
-            )
-            self.info_label.setText(info_text)
 
-            # ブラーランク表示
+            # ブレ順位とレベル
             try:
                 rank = self.blur_worst_indices.index(self.index) + 1
             except ValueError:
                 rank = -1
             total = len(self.rows)
+            level = i18n.t(self._blur_level_key(rank, total))
+
+            # ブレ表示文字列 (info_label / blur_rank_label 両方で使う)
+            if blur_final != float("inf") and rank > 0:
+                blur_str = i18n.t("REVIEW_BLUR_VALUE_FORMAT").format(
+                    score=blur_final, rank=rank, total=total, level=level
+                )
+                blur_short = f"{blur_final:.1f}"
+            else:
+                blur_str = "-"
+                blur_short = "-"
+
+            # 撮影時刻
+            ts_raw = row.get("timestamp_sec", "-")
+            try:
+                ts_str = f"{float(ts_raw):.2f}s"
+            except (ValueError, TypeError):
+                ts_str = ts_raw
+
+            # 変化スコア
+            change_raw = row.get("change_score_final", "-")
+            try:
+                change_str = f"{float(change_raw):.3f}"
+            except (ValueError, TypeError):
+                change_str = change_raw
+
+            # 構造化 info テキスト
+            info_text = i18n.t("REVIEW_INFO_FORMAT").format(
+                ts=ts_str, blur=blur_str, change=change_str,
+                process=self._format_process(row),
+            )
+            self.info_label.setText(info_text)
+
+            # 右端の簡易ランク表示
             self.blur_rank_label.setText(
-                i18n.t("REVIEW_BLUR_RANK_FORMAT").format(rank=rank, total=total, score=blur_str)
+                i18n.t("REVIEW_BLUR_RANK_FORMAT").format(
+                    rank=rank, total=total, score=blur_short, level=level
+                )
             )
 
             if not image_path.exists():

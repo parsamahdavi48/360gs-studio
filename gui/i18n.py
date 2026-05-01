@@ -75,7 +75,20 @@ _JA: dict[str, str] = {
     "REVIEW_INFO_YES": "対象",
     "REVIEW_INFO_NO": "通常",
     "REVIEW_PROBLEMS_FORMAT": "要注意: {n} 件 (置換={r}, 維持={f}) | 現フレーム: {cur}",
-    "REVIEW_BLUR_RANK_FORMAT": "ブレ順位: {rank}/{total} (score={score})",
+    "REVIEW_BLUR_RANK_FORMAT": "ブレ順位: {rank}/{total} ({level}, score={score})",
+    "REVIEW_BLUR_LEVEL_BAD": "ブレ大",
+    "REVIEW_BLUR_LEVEL_LOW": "やや大",
+    "REVIEW_BLUR_LEVEL_MID": "通常",
+    "REVIEW_BLUR_LEVEL_SHARP": "鋭い",
+    "REVIEW_INFO_FORMAT": (
+        "時刻: {ts}   |   ブレ: {blur}   |   変化: {change}\n"
+        "extract 処理: {process}"
+    ),
+    "REVIEW_BLUR_VALUE_FORMAT": "{score:.1f} (順位 {rank}/{total}, {level})",
+    "REVIEW_PROCESS_OK": "通常採用",
+    "REVIEW_PROCESS_REPLACED": "自動置換済み (元 idx={orig} のブレを近傍 idx={final} へ swap)",
+    "REVIEW_PROCESS_FALLBACK": "ブレあり・置換候補なし (extract が swap できなかった)",
+    "REVIEW_PROCESS_THINNED": "立ち止まり区間で自動間引き",
     "REVIEW_BTN_PREV": "前 (←)",
     "REVIEW_BTN_NEXT": "次 (→)",
     "REVIEW_BTN_PREV_PROBLEM": "extract 要注意 ← (Shift+F)",
@@ -118,6 +131,15 @@ _JA: dict[str, str] = {
         "1 枚ずつフレームを確認して、不要なものに drop マークを付けます。\n"
         "変更はメモリ上のコピーのみ。「保存 (S)」で selected_frames.csv に書き戻されます。\n"
         "保存後、メイン GUI の Step 2 で「確定」ボタンを押すと images/ に反映されます。\n\n"
+        "【推奨レビュー手順】SfM 品質を最大化する流れ\n"
+        "  1. F キーで extract が自動判定したフレームを順に確認\n"
+        "     (大半のシーンではこれだけで判断完結)\n"
+        "  2. 各フレームでアドバイザリー (画像下の色帯) を見る:\n"
+        "     赤 = drop 強く推奨 / 橙 = drop 検討 / 青 = 情報 / 緑 = 通常\n"
+        "  3. drop 妥当と思ったら Space で切替\n"
+        "  4. S で保存 → メイン GUI で「確定」ボタン\n"
+        "  5. (任意) より厳密に: B キーでブレ最悪から順に追加チェック\n"
+        "     ※ 多くの場合 F + 色帯だけで充分\n\n"
         "【drop の目安】SfM (Metashape) と 3DGS 学習で問題になるフレームを除外します。\n"
         "  ・動く被写体: 人物・車両・揺れる枝など (3DGS は静的シーン前提)\n"
         "  ・著しいブレ: 建物の輪郭・テクスチャがにじんで見える\n"
@@ -329,7 +351,20 @@ _EN: dict[str, str] = {
     "REVIEW_INFO_YES": "yes",
     "REVIEW_INFO_NO": "no",
     "REVIEW_PROBLEMS_FORMAT": "Problems: {n} (replaced={r}, fallback={f}) | Current: {cur}",
-    "REVIEW_BLUR_RANK_FORMAT": "Blur rank: {rank}/{total} (score={score})",
+    "REVIEW_BLUR_RANK_FORMAT": "Blur rank: {rank}/{total} ({level}, score={score})",
+    "REVIEW_BLUR_LEVEL_BAD": "blurry",
+    "REVIEW_BLUR_LEVEL_LOW": "soft",
+    "REVIEW_BLUR_LEVEL_MID": "normal",
+    "REVIEW_BLUR_LEVEL_SHARP": "sharp",
+    "REVIEW_INFO_FORMAT": (
+        "Time: {ts}   |   Blur: {blur}   |   Change: {change}\n"
+        "extract action: {process}"
+    ),
+    "REVIEW_BLUR_VALUE_FORMAT": "{score:.1f} (rank {rank}/{total}, {level})",
+    "REVIEW_PROCESS_OK": "kept as-is",
+    "REVIEW_PROCESS_REPLACED": "auto-swapped (original idx={orig} was blurry; replaced with idx={final})",
+    "REVIEW_PROCESS_FALLBACK": "kept blurry (extract found no sharper neighbor)",
+    "REVIEW_PROCESS_THINNED": "auto-thinned in stationary cluster",
     "REVIEW_BTN_PREV": "Prev (←)",
     "REVIEW_BTN_NEXT": "Next (→)",
     "REVIEW_BTN_PREV_PROBLEM": "extract problem ← (Shift+F)",
@@ -372,6 +407,15 @@ _EN: dict[str, str] = {
         "Walk through the frames one by one and mark unwanted ones as drop.\n"
         "Edits stay in memory until you press Save (S), which writes them back to selected_frames.csv.\n"
         "Then return to the main GUI Step 2 and press \"Finalize\" to apply the changes to images/.\n\n"
+        "[Recommended review flow] To maximize SfM quality:\n"
+        "  1. Press F repeatedly to walk through extract-flagged frames\n"
+        "     (covers most SfM-critical decisions on its own)\n"
+        "  2. Read the advisory color band under the image:\n"
+        "     red = strongly drop / orange = consider drop / blue = info / green = normal\n"
+        "  3. Hit Space to mark drop when appropriate\n"
+        "  4. Press S to save, then go back to the main GUI and click Finalize\n"
+        "  5. (Optional) For a thorough sweep, press B to also visit blur worst-first\n"
+        "     Most scenes don't need this; F + color band is enough\n\n"
         "[When to drop] Frames that hurt SfM (Metashape) or 3DGS training:\n"
         "  - Moving subjects: people, vehicles, swaying branches (3DGS assumes static scenes)\n"
         "  - Heavy motion blur: buildings / textures look smeared\n"
