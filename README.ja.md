@@ -1,95 +1,113 @@
 # stechdrive-3dgs-utils
 
-360度動画から3Dガウシアンスプラッティング (3DGS) 学習用アセットを作成するためのスタジオツールキット。日本語GUIで統合ワークフローを提供します。
+**v0.2.0**
 
-[tetraface/tetraface-3dgs-utils](https://github.com/tetraface/tetraface-3dgs-utils) からフォークし、統合ワークフローGUI、追加マスク機能、マルチフレームワーク出力対応を拡張しています。
+360度動画から、Metashape SfM と 3D Gaussian Splatting (3DGS) 学習へ渡すための画像・マスク・カメラ情報を作るデスクトップツールです。Windows上で `setup_windows.bat` と `start_gui.bat` だけで使える、日本語GUI中心のワークフローとして整備しています。
 
 [EN English](README.md)
 
-## ワークフロー概要
+Fork元: [tetraface/tetraface-3dgs-utils](https://github.com/tetraface/tetraface-3dgs-utils)
 
+## 何をするツールか
+
+```text
+360度動画
+  -> フレーム抽出
+  -> フレーム確認・採用/除外
+  -> マスク生成
+  -> Metashape SfM
+  -> キューブマップ変換
+  -> 3DGSトレーニング
 ```
-360度動画  ──  フレーム抽出  ──  レビュー+選別  ──  マスク生成
-                                                          │
-                                                Metashape SfM (手動、マスクと一緒に)
-                                                          │
-                                                キューブマップ変換  ──  3DGSトレーニング
-                                                (Postshot / Brush /
-                                                 LichtFeld Studio)
-```
 
-マスクは Metashape SfM の**前**に生成し、Metashape にインポートして人物・車両等の動体、スティッチ継ぎ目、白飛び領域を特徴点マッチングから除外することで SfM 精度が大きく向上し、結果として 3DGS の品質も上がります。
+このリポの主目的は、エクイレクタングラー動画をそのままMetashapeでSfMし、SfM結果を3DGS用のパース画像・マスク・`transforms.json` へ変換することです。マスクはMetashape SfMの前に生成し、人物、車両、スティッチ境界、白飛び領域を特徴点マッチングから除外するために使います。
 
-| ステップ | 内容 |
-|----------|------|
-| **1. フレーム抽出** | 360度動画からエクイレクタングラー静止画を切り出し。固定間隔 (推奨: 0.8-1秒) または変化量ベース |
-| **2. フレーム確認** | ブラーワースト順ナビでブレ画像を確認、閾値一括dropで効率的に選別 |
-| **3. マスク生成** | YOLO+SAM2.1 人物検出、スティッチ継ぎ目マスク、白飛び (過露出) マスク。**生成された `masks/` フォルダを Metashape の per-image マスクとしてインポートしてから SfM を実行** |
-| **4. キューブマップ変換** | Metashape SfM 完了後、エクイレクタングラーの結果 (XML + PLY) をキューブマップビューに変換し、Postshot / Brush / LichtFeld Studio 用の transforms.json を出力。マスクもキューブマップ面に伝搬 |
-
-## クイックスタート (Windows)
+## クイックスタート
 
 ```bat
 setup_windows.bat
 start_gui.bat
 ```
 
-`setup_windows.bat` は Python 3.11 (未インストールなら winget で自動導入)、venv作成、PyTorch (CUDA 12.8) + 全依存パッケージをインストールします。
+`setup_windows.bat` は Python 3.11 の検出、必要に応じた winget インストール、venv作成、PyTorch CUDA 12.8 と依存パッケージの導入を行います。
 
-`start_gui.bat` で統合GUIアプリ (ダークモダンテーマ、日本語UI) が起動します。
+`start_gui.bat` はvenvを有効化して統合GUIを起動します。
+
+## GUIワークフロー
+
+| Step | 内容 | 主な現在のデフォルト |
+| --- | --- | --- |
+| 1. フレーム抽出 | 360度動画からエクイレクタングラー静止画を抽出 | 固定間隔または変化量ベース |
+| 2. フレーム確認 | 抽出フレームを確認し、採用/除外をCSVに反映 | ブラーワースト順の確認に対応 |
+| 3. マスク生成 | YOLO検出、スティッチ境界、白飛びマスクを生成 | YOLO検出ON、人物検出が標準 |
+| 4. キューブマップ変換 | Metashape結果を3DGS用パース画像とJSONに変換 | LichtFeld / Full / Cube6 |
+
+### 現在のGUI方針
+
+- 左の縦タブでStep 1からStep 4を切り替えます。
+- 各Stepの実行/キャンセルはウィンドウ下部に統一しています。
+- 中央左の設定ペインは固定幅で、横スクロールせず、必要な時だけ縦スクロールします。
+- 長い設定は折りたたみ式です。YOLOの80クラス一覧、スティッチ/白飛び設定、キューブマップの詳細ビュー設定は普段閉じた状態で使えます。
+- Step 4の標準出力は `LichtFeld`、`Full (1.0x)`、`Cube6 (4面+上下)` です。
+- Step 4では `選択ビュー` と `出力画像` を表示します。`出力画像` は入力画像数と有効ビュー数から決まる書き出し枚数です。
+
+## 推奨ワークフロー
+
+1. Insta360等の360度動画を用意します。
+2. Step 1でフレームを抽出します。
+3. Step 2でブレや不要フレームを除外します。
+4. Step 3で人物マスクを生成します。必要に応じてスティッチ境界、白飛びマスクも有効にします。
+5. 生成された `masks/` フォルダをMetashapeにper-imageマスクとして読み込み、SfMを実行します。
+6. Step 4でMetashapeのXML/PLYを使い、3DGSトレーニング用の画像、マスク、`transforms.json` を出力します。
+
+スティッチ境界マスクは、エクイレクタングラー画像上でスティッチ位置が固定されている素材向けです。FlowState手ブレ補正、方向ロック、AIスティッチ等で境界位置が動く場合は、無理に有効化しない方が安全です。
 
 ## 動作環境
 
 - Windows 10/11
-- [CUDA Toolkit 12.8](https://developer.nvidia.com/cuda-12-8-0-download-archive)
-- [Python 3.11](https://www.python.org/) (3.11.8で確認済み)
-- [FFmpeg / FFprobe](https://ffmpeg.org/)
-- CUDA対応GPU (YOLO/SAM2, PyTorch用)
+- Python 3.11 (3.11.8で確認)
+- CUDA対応GPU
+- CUDA Toolkit 12.8
+- FFmpeg / FFprobe
 
-### Python依存パッケージ
+`setup_windows.bat` で導入される主なPythonパッケージ:
 
-`setup_windows.bat` で自動インストール:
-
-```
+```text
 torch==2.8.0 (CUDA 12.8), torchvision, torchaudio
 numpy, opencv-python, Pillow, open3d, ultralytics, tqdm, PySide6
 ```
 
-### MLモデルファイル
-
-YOLO/SAM2のモデルは初回実行時に ultralytics が自動ダウンロードします:
-- `yolo26m.pt` / `yolo26l.pt` (YOLO v26)
-- `sam2.1_l.pt` (SAM 2.1 Large)
+YOLO/SAM2のモデルファイルは初回利用時にultralyticsが自動ダウンロードします。
 
 ## CLIツール
 
-全CLIエンジンはGUIなしで単体利用可能です:
+GUIは以下のCLIエンジンを呼び出しています。必要なら単体でも実行できます。
 
 | スクリプト | 内容 | ドキュメント |
-|-----------|------|-------------|
-| `extract_frames.py` | 360動画からフレーム抽出 (変化/固定選択 + ブラー置換) | [JP](doc/extract_frames.md) |
-| `apply_frame_decisions.py` | CSVのkeep/drop判定を適用 | [JP](doc/apply_frame_decisions.md) |
-| `review_frames.py` | フレームレビューGUI (ブラーワースト順ナビ付き) | [JP](doc/review_frames.md) |
-| `yolo_mask.py` | YOLO+SAM2.1 人物検出マスク (360度画像対応) | [JP](doc/yolo_mask.ja.md) |
-| `stitch_mask.py` | デュアル魚眼カメラのスティッチ境界マスク | [JP](doc/stitch_mask.ja.md) |
-| `overexposure_mask.py` | 白飛びピクセル検出とマスク合成 | - |
-| `cubemap_transforms_json.py` | エクイレクタングラー → キューブマップ変換 | [JP](doc/cubemap_transforms_json.ja.md) |
+| --- | --- | --- |
+| `extract_frames.py` | 360度動画からフレーム抽出 | [JP](doc/extract_frames.md) |
+| `apply_frame_decisions.py` | CSVの採用/除外判定を反映 | [JP](doc/apply_frame_decisions.md) |
+| `review_frames.py` | フレーム確認GUI | [JP](doc/review_frames.md) |
+| `yolo_mask.py` | YOLO+SAM2.1 マスク生成 | [JP](doc/yolo_mask.ja.md) |
+| `stitch_mask.py` | スティッチ境界マスク生成 | [JP](doc/stitch_mask.ja.md) |
+| `overexposure_mask.py` | 白飛びマスク生成 | - |
+| `cubemap_transforms_json.py` | エクイレクタングラーからキューブマップへ変換 | [JP](doc/cubemap_transforms_json.ja.md) |
+| `transforms_to_colmap.py` | `transforms.json` からCOLMAP形式を書き出し | [JP](doc/transforms_to_colmap.ja.md) |
 
-## Fork元からの変更点
+## バージョン管理
 
-このフォークで追加・変更した機能:
-- **統合GUI** (`gui/`) ダークモダンテーマ + 日本語UI (PySide6)
-- **4ステップワークフロー** を1つのタブウィンドウに統合
-- **白飛びマスク** 検出 (`overexposure_mask.py`)
-- **ブラーワースト順ナビ** + 閾値一括dropをレビューGUIに追加
-- **Brushプロファイル** 対応 (`--brush` 座標変換)
-- **削除**: COLMAP rig export, RealityScan rig export (MetashapeベースのSfMワークフローに特化)
+アプリのバージョンは [pyproject.toml](pyproject.toml) の `project.version` を単一ソースにしています。
 
-upstreamの変更は [tetraface/tetraface-3dgs-utils](https://github.com/tetraface/tetraface-3dgs-utils) から定期的に取り込みます。
+```toml
+[project]
+version = "0.2.0"
+```
+
+GUIタイトルと `python -m gui.app --version` はこの値から生成されます。アプリ表示は常に `v0.0.0` 形式です。
 
 ## ライセンス
 
-MIT License。[LICENSE](LICENSE) を参照。
+MIT License。詳細は [LICENSE](LICENSE) を参照してください。
 
-オリジナルコード: [tetraface Inc.](https://github.com/tetraface)
-フォーク拡張: [stechdrive](https://github.com/stechdrive)
+Original code by [tetraface Inc.](https://github.com/tetraface)
+Fork extensions by [stechdrive](https://github.com/stechdrive)

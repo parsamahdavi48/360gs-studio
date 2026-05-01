@@ -1,91 +1,109 @@
 # stechdrive-3dgs-utils
 
-A studio-grade toolkit for building 3D Gaussian Splatting (3DGS) training assets from 360-degree video, with an integrated Japanese GUI.
+**v0.2.0**
 
-Forked from [tetraface/tetraface-3dgs-utils](https://github.com/tetraface/tetraface-3dgs-utils) and extended with a unified workflow GUI, additional masking features, and multi-framework export support.
+A Windows desktop toolkit for preparing equirectangular 360 video for Metashape SfM and 3D Gaussian Splatting (3DGS) training. The current workflow is centered on the integrated Japanese PySide6 GUI and is designed to run from `setup_windows.bat` and `start_gui.bat` without requiring users to manually assemble a Python environment.
 
 [JP 日本語の説明](README.ja.md)
 
-## Workflow Overview
+Forked from [tetraface/tetraface-3dgs-utils](https://github.com/tetraface/tetraface-3dgs-utils).
 
+## What This Tool Does
+
+```text
+360 video
+  -> frame extraction
+  -> frame review and keep/drop decisions
+  -> mask generation
+  -> Metashape SfM
+  -> cubemap conversion
+  -> 3DGS training
 ```
-360 Video  ──  Frame Extraction  ──  Review & Selection  ──  Mask Generation
-                                                                    │
-                                                          Metashape SfM (manual, with masks)
-                                                                    │
-                                                          Cubemap Conversion  ──  3DGS Training
-                                                          (Postshot / Brush /
-                                                           LichtFeld Studio)
-```
 
-Masks are generated **before** Metashape SfM and imported into Metashape so that moving subjects (people, vehicles), stitching seams, and blown-out highlights are excluded from feature matching. This significantly improves SfM accuracy and downstream 3DGS quality.
+The intended pipeline keeps the source frames as equirectangular images for Metashape SfM, then converts the SfM result to perspective training images, masks, and `transforms.json` for downstream 3DGS tools. Masks are generated before Metashape SfM so that people, vehicles, stitching seams, and blown-out highlights can be excluded from feature matching.
 
-| Step | Description |
-|------|-------------|
-| **1. Frame Extraction** | Extract equirectangular stills from 360 video at fixed intervals (recommended) or change-based selection |
-| **2. Frame Review** | Review frames with blur worst-order navigation, bulk drop by threshold |
-| **3. Mask Generation** | YOLO+SAM2.1 person detection, stitch seam masking, overexposure (blown-out pixel) masking. **Import the resulting `masks/` folder into Metashape as per-image masks before running SfM.** |
-| **4. Cubemap Conversion** | After Metashape SfM, convert the equirectangular result (XML + PLY) to cubemap views with transforms.json for Postshot, Brush, or LichtFeld Studio. Masks are propagated to cubemap faces |
-
-## Quick Start (Windows)
+## Quick Start
 
 ```bat
 setup_windows.bat
 start_gui.bat
 ```
 
-`setup_windows.bat` installs Python 3.11 (via winget if needed), creates a venv, and installs all dependencies including PyTorch with CUDA 12.8.
+`setup_windows.bat` detects Python 3.11, installs Python 3.11 through winget when needed, creates `.venv`, and installs PyTorch CUDA 12.8 plus the project dependencies.
 
-`start_gui.bat` launches the unified GUI application (dark modern theme, Japanese UI).
+`start_gui.bat` activates the venv and launches the integrated GUI.
+
+## GUI Workflow
+
+| Step | Purpose | Current Default |
+| --- | --- | --- |
+| 1. Frame Extraction | Extract equirectangular still images from 360 video | Fixed interval or change-based selection |
+| 2. Frame Review | Review extracted frames and apply keep/drop decisions | Blur worst-order review support |
+| 3. Mask Generation | Generate YOLO, stitch seam, and overexposure masks | YOLO enabled, person detection as the baseline |
+| 4. Cubemap Conversion | Convert Metashape output to 3DGS perspective images and JSON | LichtFeld / Full / Cube6 |
+
+### Current GUI Direction
+
+- Workflow navigation uses a compact vertical step tab on the left.
+- Run and Cancel actions are unified at the bottom of the main window.
+- The left settings pane in each step has a fixed width, vertical-only scrolling, and consistent padding near the preview splitter.
+- Long or rarely used settings are collapsible. The YOLO 80-class list, stitch/overexposure settings, and advanced cubemap view grid stay folded until needed.
+- Step 4 defaults to `LichtFeld`, `Full (1.0x)`, and `Cube6 (4 sides + top/bottom)`.
+- Step 4 displays `Selected Views` and `Output Images`. `Output Images` is the deterministic output image count from input image count multiplied by enabled view count.
+
+## Recommended Workflow
+
+1. Prepare a 360 video from an Insta360 or similar camera.
+2. Extract frames in Step 1.
+3. Review and drop unusable frames in Step 2.
+4. Generate person masks in Step 3. Enable stitch seam and overexposure masks only when they match the source material.
+5. Import the generated `masks/` folder into Metashape as per-image masks, then run SfM.
+6. Use Step 4 with the Metashape XML/PLY result to export training images, masks, and `transforms.json`.
+
+Stitch seam masks are useful when the seam position is stable in the equirectangular image. If FlowState stabilization, direction lock, AI stitching, or similar processing moves the seam, leave seam masking disabled unless you have verified the preview.
 
 ## Requirements
 
 - Windows 10/11
-- [CUDA Toolkit 12.8](https://developer.nvidia.com/cuda-12-8-0-download-archive)
-- [Python 3.11](https://www.python.org/) (3.11.8 confirmed)
-- [FFmpeg / FFprobe](https://ffmpeg.org/)
-- GPU with CUDA support (for YOLO/SAM2 and PyTorch)
+- Python 3.11 (3.11.8 confirmed)
+- CUDA-capable GPU
+- CUDA Toolkit 12.8
+- FFmpeg / FFprobe
 
-### Python Dependencies
+Main Python packages installed by `setup_windows.bat`:
 
-Installed automatically by `setup_windows.bat`:
-
-```
+```text
 torch==2.8.0 (CUDA 12.8), torchvision, torchaudio
 numpy, opencv-python, Pillow, open3d, ultralytics, tqdm, PySide6
 ```
 
-### ML Model Files
-
-YOLO and SAM2 model weights are downloaded automatically by ultralytics on first use:
-- `yolo26m.pt` / `yolo26l.pt` (YOLO v26)
-- `sam2.1_l.pt` (SAM 2.1 Large)
+YOLO/SAM2 model weights are downloaded automatically by ultralytics on first use.
 
 ## CLI Tools
 
-All CLI engines can be used independently without the GUI:
+The GUI wraps these CLI engines, which can also be used directly.
 
-| Script | Description | Docs |
-|--------|-------------|------|
-| `extract_frames.py` | Extract frames from 360 video with change/fixed selection + blur replacement | [EN](doc/extract_frames.md) |
+| Script | Purpose | Docs |
+| --- | --- | --- |
+| `extract_frames.py` | Extract frames from 360 video | [EN](doc/extract_frames.md) |
 | `apply_frame_decisions.py` | Apply keep/drop decisions from CSV | [EN](doc/apply_frame_decisions.md) |
-| `review_frames.py` | Frame review GUI with blur worst-order navigation | [EN](doc/review_frames.md) |
-| `yolo_mask.py` | YOLO+SAM2.1 person detection masks for 360 images | [EN](doc/yolo_mask.md) |
-| `stitch_mask.py` | Angular stitch seam masks for dual-fisheye cameras | [EN](doc/stitch_mask.md) |
-| `overexposure_mask.py` | Blown-out pixel detection and mask merging | - |
-| `cubemap_transforms_json.py` | Equirectangular to cubemap transforms.json conversion | [EN](doc/cubemap_transforms_json.md) |
+| `review_frames.py` | Frame review GUI | [EN](doc/review_frames.md) |
+| `yolo_mask.py` | YOLO+SAM2.1 mask generation | [EN](doc/yolo_mask.md) |
+| `stitch_mask.py` | Stitch seam mask generation | [EN](doc/stitch_mask.md) |
+| `overexposure_mask.py` | Overexposure mask generation | - |
+| `cubemap_transforms_json.py` | Convert equirectangular images to cubemap views | [EN](doc/cubemap_transforms_json.md) |
+| `transforms_to_colmap.py` | Export COLMAP files from `transforms.json` | [EN](doc/transforms_to_colmap.md) |
 
-## Changes from Upstream
+## Versioning
 
-This fork adds:
-- **Unified GUI** (`gui/`) with dark modern theme and Japanese UI (PySide6)
-- **4-step workflow** in a single tabbed window
-- **Overexposure mask** detection (`overexposure_mask.py`)
-- **Blur worst-order navigation** and bulk threshold drop in review GUI
-- **Brush profile** support (`--brush` coordinate transform)
-- **Removed**: COLMAP rig export, RealityScan rig export (Metashape-based SfM workflow only)
+The app version is centralized in [pyproject.toml](pyproject.toml):
 
-Upstream changes are periodically synced from [tetraface/tetraface-3dgs-utils](https://github.com/tetraface/tetraface-3dgs-utils).
+```toml
+[project]
+version = "0.2.0"
+```
+
+The GUI title and `python -m gui.app --version` are generated from this value. The app-facing label always uses the `v0.0.0` format.
 
 ## License
 
