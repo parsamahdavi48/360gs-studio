@@ -20,7 +20,13 @@ Finalize in place (recommended):
 python apply_frame_decisions.py ./scene01 --finalize-in-place
 ```
 
-Legacy copy mode:
+Finalize with safety backup (snapshot images/ first):
+
+```bash
+python apply_frame_decisions.py ./scene01 --finalize-in-place --backup-dir images_backup
+```
+
+Legacy copy mode (separate output folder, originals untouched):
 
 ```bash
 python apply_frame_decisions.py ./scene01 --output metashape_images --clean-output
@@ -32,6 +38,7 @@ Options:
 - `--csv`: CSV filename (default: `selected_frames.csv`)
 - `--finalize-in-place`: apply decisions directly in `images/` and rewrite CSV
 - `--filename-prefix`: rename prefix for finalize mode (default: from extract report/video name)
+- `--backup-dir`: with `--finalize-in-place`, snapshot `images/` to this directory before modification (relative path resolved under scene_dir, or absolute path). Existing target is replaced. Default empty = no backup
 - `--output`: copy-mode destination folder under scene directory (default: `metashape_images`)
 - `--clean-output`: copy-mode only; remove existing image files in output folder before export
 
@@ -40,8 +47,9 @@ Options:
 Finalize mode:
 
 - `scene_dir/images/<prefix>_000001.*` ... (keep-only, renumbered)
+- `scene_dir/images_backup/*` (full snapshot of pre-finalize images/, only when `--backup-dir` is set)
 - `scene_dir/selected_frames.csv` (rewritten)
-- `scene_dir/selected_frames.before_finalize.csv` (backup)
+- `scene_dir/selected_frames.before_finalize.csv` (CSV backup, always created)
 - `scene_dir/selected_frames_keep.csv`
 
 Copy mode:

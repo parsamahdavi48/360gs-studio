@@ -8,7 +8,7 @@ import re
 import shutil
 import sys
 from pathlib import Path
-from typing import List, Sequence, Tuple
+from typing import List, Optional, Sequence, Tuple
 
 
 def is_image_file(path: Path) -> bool:
@@ -201,7 +201,26 @@ def rollback_staged(
             tmp_path.rename(src)
 
 
-def finalize_in_place(scene_dir: Path, csv_name: str, filename_prefix: str) -> None:
+def backup_images_dir(images_dir: Path, backup_dir: Path) -> int:
+    """images/ の現状を backup_dir にフルコピー（既存 backup は事前に削除）。
+
+    Returns:
+        コピーしたファイル数。
+    """
+    if not images_dir.is_dir():
+        return 0
+    if backup_dir.exists():
+        shutil.rmtree(backup_dir)
+    shutil.copytree(images_dir, backup_dir)
+    return sum(1 for p in backup_dir.rglob("*") if p.is_file())
+
+
+def finalize_in_place(
+    scene_dir: Path,
+    csv_name: str,
+    filename_prefix: str,
+    backup_dir: Optional[Path] = None,
+) -> None:
     csv_path = scene_dir / csv_name
     if not csv_path.exists():
         raise FileNotFoundError(f"CSV not found: {csv_path}")
@@ -210,6 +229,10 @@ def finalize_in_place(scene_dir: Path, csv_name: str, filename_prefix: str) -> N
     fieldnames = list(rows[0].keys())
     images_dir = scene_dir / "images"
     images_dir.mkdir(parents=True, exist_ok=True)
+
+    if backup_dir is not None:
+        backup_count = backup_images_dir(images_dir, backup_dir)
+        print(f"Backed up {backup_count} files to {backup_dir}")
 
     keep_entries: List[Tuple[dict, Path]] = []
     dropped_paths: List[Path] = []
@@ -308,13 +331,14 @@ def apply_decisions(
     clean_output: bool,
     finalize_inplace: bool,
     filename_prefix: str,
+    backup_dir: Optional[Path] = None,
 ) -> None:
     csv_path = scene_dir / csv_name
     if not csv_path.exists():
         raise FileNotFoundError(f"CSV not found: {csv_path}")
 
     if finalize_inplace:
-        finalize_in_place(scene_dir, csv_name, filename_prefix)
+        finalize_in_place(scene_dir, csv_name, filename_prefix, backup_dir=backup_dir)
         return
 
     rows = load_rows(csv_path)
@@ -363,12 +387,26 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Drop=remove and Keep=renumber inside scene_dir/images, then update selected_frames.csv",
     )
+    parser.add_argument(
+        "--backup-dir",
+        default="",
+        help=(
+            "If set together with --finalize-in-place, snapshot images/ to this directory before "
+            "modification (full copy; existing target is replaced). Provide a path relative to scene_dir "
+            "or an absolute path. Default empty = no backup."
+        ),
+    )
     return parser.parse_args()
 
 
 def main() -> None:
     args = parse_args()
     scene_dir = Path(args.scene_dir).resolve()
+
+    backup_dir: Optional[Path] = None
+    if args.backup_dir:
+        bp = Path(args.backup_dir)
+        backup_dir = bp if bp.is_absolute() else (scene_dir / bp)
 
     try:
         apply_decisions(
@@ -378,6 +416,7 @@ def main() -> None:
             clean_output=args.clean_output,
             finalize_inplace=args.finalize_in_place,
             filename_prefix=args.filename_prefix,
+            backup_dir=backup_dir,
         )
     except Exception as e:
         print(f"Error: {e}")

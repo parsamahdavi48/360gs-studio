@@ -1,4 +1,4 @@
-"""Step 2: フレーム確認 + 選別エクスポート"""
+"""Step 2: フレーム確認 + 選別確定"""
 from __future__ import annotations
 
 import subprocess
@@ -7,6 +7,7 @@ from pathlib import Path
 
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
+    QCheckBox,
     QFormLayout,
     QHBoxLayout,
     QLabel,
@@ -70,14 +71,15 @@ class ReviewStep(BaseStepWidget):
         self.csv_edit.setToolTip(i18n.tip("CSV_FILE"))
         form.addRow(i18n.CSV_FILE, self.csv_edit)
 
-        self.export_dir_edit = QLineEdit("images")
-        self.export_dir_edit.setToolTip(i18n.tip("EXPORT_DIR"))
-        form.addRow(i18n.EXPORT_DIR, self.export_dir_edit)
-
         self.prefix_edit = QLineEdit("")
         self.prefix_edit.setToolTip(i18n.tip("FILENAME_PREFIX"))
         self.prefix_edit.setPlaceholderText(i18n.t("AUTO_PREFIX_HINT"))
         form.addRow(i18n.FILENAME_PREFIX, self.prefix_edit)
+
+        self.backup_cb = QCheckBox(i18n.t("BACKUP_BEFORE_FINALIZE"))
+        self.backup_cb.setToolTip(i18n.t("BACKUP_BEFORE_FINALIZE_HINT"))
+        self.backup_cb.setChecked(False)
+        form.addRow("", self.backup_cb)
 
         card_layout.addLayout(form)
         layout.addWidget(card)
@@ -93,14 +95,8 @@ class ReviewStep(BaseStepWidget):
         self.review_btn.clicked.connect(self._open_review)
         btn_row.addWidget(self.review_btn)
 
-        self.export_btn = QPushButton(i18n.EXPORT_KEEP)
-        self.export_btn.setToolTip(i18n.tip("EXPORT_KEEP"))
-        self.export_btn.setFixedHeight(34)
-        self.export_btn.clicked.connect(self._export_keep)
-        btn_row.addWidget(self.export_btn)
-
-        self.finalize_btn = QPushButton(i18n.FINALIZE_INPLACE)
-        self.finalize_btn.setToolTip(i18n.tip("FINALIZE_INPLACE"))
+        self.finalize_btn = QPushButton(i18n.t("FINALIZE_BUTTON"))
+        self.finalize_btn.setToolTip(i18n.t("FINALIZE_BUTTON_HINT"))
         self.finalize_btn.setFixedHeight(34)
         self.finalize_btn.clicked.connect(self._finalize_inplace)
         btn_row.addWidget(self.finalize_btn)
@@ -140,40 +136,36 @@ class ReviewStep(BaseStepWidget):
         except Exception as e:
             QMessageBox.critical(self, i18n.INVALID_INPUT, str(e))
 
-    def _export_keep(self) -> None:
-        output_name = self.export_dir_edit.text().strip() or "images"
-        if output_name.lower() == "images":
-            self._finalize_inplace()
-            return
-        if not self._has_csv():
-            QMessageBox.critical(self, i18n.INVALID_INPUT, f"CSVが見つかりません: {self._csv_path()}")
-            return
-
-        result = QMessageBox.question(
-            self, "出力クリーン",
-            f"'{output_name}' 内の既存画像を削除してからエクスポートしますか？",
-            QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes,
-        )
-        cmd = self._build_apply_cmd(["--output", output_name])
-        if result == QMessageBox.Yes:
-            cmd.append("--clean-output")
-        self._last_commands = [("export", cmd)]
-        self.run_requested.emit()
-
     def _finalize_inplace(self) -> None:
         if not self._has_csv():
             QMessageBox.critical(self, i18n.INVALID_INPUT, f"CSVが見つかりません: {self._csv_path()}")
             return
+        backup_on = self.backup_cb.isChecked()
+        if backup_on:
+            confirm_text = (
+                "drop フレームを images/ から削除し、keep フレームを連番で再採番します。\n\n"
+                "実行前に images/ を images_backup/ にコピーします（既存 backup は上書き）。\n"
+                "selected_frames.csv のバックアップも自動作成されます。\n\n"
+                "実行してよいですか？"
+            )
+        else:
+            confirm_text = (
+                "drop フレームを images/ から削除し、keep フレームを連番で再採番します。\n\n"
+                "⚠ 画像のバックアップは作成されません。削除された画像は復元できません。\n"
+                "selected_frames.csv のみ自動バックアップされます。\n\n"
+                "実行してよいですか？"
+            )
         result = QMessageBox.question(
-            self, "インプレース確定",
-            "keep/drop をインプレースで適用しますか？\n\n"
-            "images/ 内の drop ファイルが削除され、keep ファイルがリナンバーされます。\n"
-            "バックアップCSVが作成されます。",
-            QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes,
+            self, "確定",
+            confirm_text,
+            QMessageBox.Yes | QMessageBox.No, QMessageBox.No,
         )
         if result != QMessageBox.Yes:
             return
-        self._last_commands = [("finalize", self._build_apply_cmd(["--finalize-in-place"]))]
+        extra = ["--finalize-in-place"]
+        if backup_on:
+            extra.extend(["--backup-dir", "images_backup"])
+        self._last_commands = [("finalize", self._build_apply_cmd(extra))]
         self.run_requested.emit()
 
     def _build_apply_cmd(self, extra_args: list[str] | None = None) -> list[str]:
@@ -193,4 +185,4 @@ class ReviewStep(BaseStepWidget):
             cmds = self._last_commands
             self._last_commands = []
             return cmds
-        raise ValueError("エクスポートまたは確定ボタンを押してください")
+        raise ValueError("確定ボタンを押してください")
