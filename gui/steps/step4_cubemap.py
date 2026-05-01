@@ -180,6 +180,34 @@ class CubemapStep(BaseStepWidget):
             self.ms_use_ply_cb, self.ms_scale_edit, self.ms_no_fix_rot_cb,
         ]
 
+        # 高度な出力設定（折りたたみ）
+        adv_output = CollapsibleSection(i18n.t("ADVANCED_OUTPUT_SECTION"), expanded=False)
+        adv_form = QFormLayout()
+        adv_form.setSpacing(6)
+
+        self.yaw_per_frame_edit = QLineEdit("30.0")
+        self.yaw_per_frame_edit.setFixedWidth(80)
+        self.yaw_per_frame_edit.setToolTip(i18n.t("YAW_OFFSET_PER_FRAME_HINT"))
+        adv_form.addRow(i18n.t("YAW_OFFSET_PER_FRAME"), self.yaw_per_frame_edit)
+
+        self.output_format_combo = QComboBox()
+        self.output_format_combo.addItem(i18n.t("OUTPUT_FORMAT_AUTO"), "auto")
+        for fmt in ("jpg", "png", "tiff", "webp"):
+            self.output_format_combo.addItem(fmt, fmt)
+        self.output_format_combo.setFixedWidth(180)
+        adv_form.addRow(i18n.t("OUTPUT_FORMAT"), self.output_format_combo)
+
+        self.jpg_quality_edit = QLineEdit("95")
+        self.jpg_quality_edit.setFixedWidth(80)
+        adv_form.addRow(i18n.t("JPG_QUALITY"), self.jpg_quality_edit)
+
+        self.export_colmap_cb = QCheckBox(i18n.t("EXPORT_COLMAP"))
+        self.export_colmap_cb.setToolTip(i18n.t("EXPORT_COLMAP_HINT"))
+        adv_form.addRow("", self.export_colmap_cb)
+
+        adv_output.content_layout.addLayout(adv_form)
+        left_layout.addWidget(adv_output)
+
         # ビュー設定
         self.view_config = ViewConfigWidget()
         self.view_config.views_changed.connect(self._on_views_changed)
@@ -331,6 +359,8 @@ class CubemapStep(BaseStepWidget):
         if self.preprocess_cb.isChecked():
             steps.append(("metashape", self._build_preprocess_cmd()))
         steps.append(("cubemap", self._build_cubemap_cmd()))
+        if self.export_colmap_cb.isChecked():
+            steps.append(("colmap", self._build_colmap_cmd()))
         return steps
 
     def _build_preprocess_cmd(self) -> list[str]:
@@ -414,6 +444,49 @@ class CubemapStep(BaseStepWidget):
             cmd.append("--duplicate")
         if self.invert_masks_cb.isChecked():
             cmd.append("--invert_masks")
+
+        # 高度な出力設定
+        try:
+            yaw_step = float(self.yaw_per_frame_edit.text().strip())
+        except ValueError:
+            raise ValueError("フレーム別ヨー回転は数値で指定してください")
+        cmd.extend(["--yaw-offset-per-frame", f"{yaw_step:g}"])
+
+        out_fmt = self.output_format_combo.currentData() or "auto"
+        cmd.extend(["--output-format", out_fmt])
+
+        try:
+            jpgq = int(self.jpg_quality_edit.text().strip())
+        except ValueError:
+            raise ValueError("JPG/WebP 品質は整数で指定してください")
+        if not 1 <= jpgq <= 100:
+            raise ValueError("JPG/WebP 品質は 1-100 の範囲で指定してください")
+        cmd.extend(["--jpg-quality", str(jpgq)])
+        return cmd
+
+    def _build_colmap_cmd(self) -> list[str]:
+        script = self.base_dir / "transforms_to_colmap.py"
+        if not script.exists():
+            raise FileNotFoundError(f"transforms_to_colmap.py が見つかりません: {script}")
+
+        scene = Path(self.scene_dir)
+        cubic = Path(self.output_browse.text() or str(scene / "cubic"))
+        json_name = self.json_name_edit.text().strip() or "transforms.json"
+        colmap_dir = cubic / "colmap"
+
+        cmd = [
+            sys.executable, "-u", str(script),
+            str(cubic), str(colmap_dir),
+            "--json", json_name,
+        ]
+        ply = cubic / "pointcloud.ply"
+        if ply.is_file():
+            cmd.extend(["--ply", str(ply)])
+        else:
+            # cubemap 出力ディレクトリ内の任意 .ply をフォールバック
+            plys = sorted([p for p in cubic.glob("*.ply") if p.is_file()])
+            if plys:
+                cmd.extend(["--ply", str(plys[0])])
         return cmd
 
     def _write_views_config(self, output_dir: Path, views: list[dict]) -> Path:

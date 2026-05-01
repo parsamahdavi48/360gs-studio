@@ -4,3 +4,5 @@ __pycache__/
 masks/
 extract_report.json
 .claude/
+.pytest_cache/
+_compare/

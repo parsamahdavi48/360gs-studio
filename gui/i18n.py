@@ -165,6 +165,16 @@ _JA: dict[str, str] = {
     "OUTPUT_DETAIL": "出力詳細",
     "CONVERSION_OPTIONS": "変換オプション",
     "MS_IMAGES_LABEL": "画像フォルダ",
+
+    # Step4 advanced output (added 2026-05)
+    "ADVANCED_OUTPUT_SECTION": "高度な出力設定",
+    "YAW_OFFSET_PER_FRAME": "フレーム別ヨー回転 (度)",
+    "YAW_OFFSET_PER_FRAME_HINT": "0=無効, 30推奨。フレームごとに cubemap を回転して 3DGS 学習の安定性を向上",
+    "OUTPUT_FORMAT": "出力フォーマット",
+    "OUTPUT_FORMAT_AUTO": "自動 (入力に合わせる)",
+    "JPG_QUALITY": "JPG/WebP 品質 (1-100)",
+    "EXPORT_COLMAP": "COLMAP テキスト形式も出力",
+    "EXPORT_COLMAP_HINT": "PostShot/Brush/公式 gaussian-splatting 等向け cameras.txt + images.txt + points3D.txt",
 }
 
 _EN: dict[str, str] = {
@@ -320,6 +330,16 @@ _EN: dict[str, str] = {
     "OUTPUT_DETAIL": "Output Detail",
     "CONVERSION_OPTIONS": "Conversion Options",
     "MS_IMAGES_LABEL": "Images Folder",
+
+    # Step4 advanced output (added 2026-05)
+    "ADVANCED_OUTPUT_SECTION": "Advanced Output Settings",
+    "YAW_OFFSET_PER_FRAME": "Per-Frame Yaw Step (deg)",
+    "YAW_OFFSET_PER_FRAME_HINT": "0=disabled, 30=recommended. Rotates cubemap per frame to improve 3DGS training stability",
+    "OUTPUT_FORMAT": "Output Format",
+    "OUTPUT_FORMAT_AUTO": "auto (match input)",
+    "JPG_QUALITY": "JPG/WebP Quality (1-100)",
+    "EXPORT_COLMAP": "Also export COLMAP text",
+    "EXPORT_COLMAP_HINT": "Generate cameras.txt + images.txt + points3D.txt for PostShot/Brush/official gaussian-splatting",
 }
 
 # ---------------------------------------------------------------------------
