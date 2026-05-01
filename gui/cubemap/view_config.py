@@ -51,7 +51,7 @@ class ViewConfigWidget(QWidget):
         super().__init__(parent)
         self.pitch_rows: list[dict] = []
         self.yaw_slot_labels: list[QLabel] = []
-        self._estimate_text = ""
+        self._output_count_text = ""
 
         self._build_ui()
         self._apply_pitch_rows()
@@ -151,7 +151,10 @@ class ViewConfigWidget(QWidget):
         self.grid_section.content_layout.addWidget(self.grid_widget)
         layout.addWidget(self.grid_section)
 
-        self._on_view_mode_changed(0)
+        cube6_index = self.view_mode_combo.findData(VIEW_MODE_CUBE6)
+        if cube6_index >= 0:
+            self.view_mode_combo.setCurrentIndex(cube6_index)
+        self._on_view_mode_changed(self.view_mode_combo.currentIndex())
 
     # -- public API --
 
@@ -194,8 +197,8 @@ class ViewConfigWidget(QWidget):
                 })
         return views
 
-    def set_estimate_text(self, text: str) -> None:
-        self._estimate_text = text
+    def set_output_count_text(self, text: str) -> None:
+        self._output_count_text = text
         self._update_selected_label()
 
     # -- internal --
@@ -208,6 +211,7 @@ class ViewConfigWidget(QWidget):
         self.pitch_edit.setVisible(is_custom)
         self.apply_btn.setVisible(is_custom)
         self.grid_widget.setVisible(is_custom)
+        self.grid_section.setVisible(is_custom)
         self._cube6_container.setVisible(not is_custom)
         self._on_selection_changed()
 
@@ -312,8 +316,8 @@ class ViewConfigWidget(QWidget):
         elif sel > _WARN_ENABLED_VIEWS:
             warn = f" [{i18n.t('HIGH')}]"
         text = f"{i18n.t('SELECTED_VIEWS')}: {sel} / {len(views)}{warn}"
-        if self._estimate_text:
-            text = f"{text}   {self._estimate_text}"
+        if self._output_count_text:
+            text = f"{text}   {self._output_count_text}"
         self.selected_label.setText(text)
 
     def _all_on(self) -> None:

@@ -21,7 +21,12 @@ from PySide6.QtWidgets import (
 )
 
 from gui import i18n
-from gui.steps.base_step import SETTINGS_PANE_WIDTH, BaseStepWidget, configure_settings_scroll
+from gui.steps.base_step import (
+    SETTINGS_PANE_MARGINS,
+    SETTINGS_PANE_WIDTH,
+    BaseStepWidget,
+    configure_settings_scroll,
+)
 
 
 class ReviewStep(BaseStepWidget):
@@ -44,7 +49,7 @@ class ReviewStep(BaseStepWidget):
         settings = QWidget()
         settings.setObjectName("settingsPane")
         settings_layout = QVBoxLayout(settings)
-        settings_layout.setContentsMargins(0, 0, 8, 4)
+        settings_layout.setContentsMargins(*SETTINGS_PANE_MARGINS)
         settings_layout.setSpacing(10)
 
         workflow = QLabel(i18n.t("STEP2_WORKFLOW"))

@@ -29,13 +29,14 @@ from gui.steps.step2_review import ReviewStep
 from gui.steps.step3_mask import MaskStep
 from gui.steps.step4_cubemap import CubemapStep
 from gui.theme import apply_theme
+from gui.version import app_version_label
 
 
 class MainWindow(QWidget):
     def __init__(self, initial_scene_dir: str = ".") -> None:
         super().__init__()
         self.base_dir = Path(__file__).resolve().parent.parent
-        self.setWindowTitle(f"{i18n.APP_TITLE}  v0.1")
+        self.setWindowTitle(f"{i18n.APP_TITLE}  {app_version_label()}")
         self.resize(1280, 920)
 
         self.runner = ProcessRunner(self)
@@ -292,6 +293,11 @@ class MainWindow(QWidget):
 def main() -> None:
     parser = argparse.ArgumentParser(description=i18n.APP_TITLE)
     parser.add_argument("--scene", default=".", help="Initial scene directory")
+    parser.add_argument(
+        "--version",
+        action="version",
+        version=f"{i18n.APP_TITLE} {app_version_label()}",
+    )
     args = parser.parse_args()
 
     app = QApplication(sys.argv)

@@ -28,7 +28,12 @@ from gui.common.browse_widget import BrowseWidget
 from gui.common.collapsible_section import CollapsibleSection
 from gui.cubemap.view_config import ViewConfigWidget, _BLOCK_ENABLED_VIEWS, _WARN_ENABLED_VIEWS
 from gui.cubemap.preview_renderer import PreviewWidget
-from gui.steps.base_step import SETTINGS_PANE_WIDTH, BaseStepWidget, configure_settings_scroll
+from gui.steps.base_step import (
+    SETTINGS_PANE_MARGINS,
+    SETTINGS_PANE_WIDTH,
+    BaseStepWidget,
+    configure_settings_scroll,
+)
 
 _CONVERT_RE = re.compile(r"^Converting\s+(\d+)\s+images\.\.\.$")
 _PROFILE_POSTSHOT = "postshot"
@@ -59,7 +64,7 @@ class CubemapStep(BaseStepWidget):
         top.setObjectName("settingsPane")
         top.setMinimumWidth(0)
         top_layout = QVBoxLayout(top)
-        top_layout.setContentsMargins(0, 0, 0, 4)
+        top_layout.setContentsMargins(*SETTINGS_PANE_MARGINS)
         top_layout.setSpacing(8)
         left_layout = top_layout  # 既存コードとの互換用エイリアス
 
@@ -258,7 +263,7 @@ class CubemapStep(BaseStepWidget):
         self.ms_xml_browse.set_text(str(self._guess_xml(p)))
         self.ms_ply_browse.set_text(self._guess_ply(p))
         self.preview.set_scene_dir(path)
-        self._update_estimate()
+        self._update_output_count()
         self._render_preview()
 
     def primary_action_text(self) -> str:
@@ -326,7 +331,7 @@ class CubemapStep(BaseStepWidget):
     # -- ビュー --
 
     def _on_views_changed(self) -> None:
-        self._update_estimate()
+        self._update_output_count()
         self._render_preview()
 
     def _render_preview(self) -> None:
@@ -354,11 +359,12 @@ class CubemapStep(BaseStepWidget):
                         count += 1
         return count
 
-    def _update_estimate(self) -> None:
+    def _update_output_count(self) -> None:
+        label = i18n.t("OUTPUT_IMAGE_COUNT_LABEL")
         try:
             views = self.view_config.collect_views(include_disabled=True)
         except Exception:
-            self.view_config.set_estimate_text(f"{i18n.t('OUTPUT_ESTIMATE_SHORT')}: -")
+            self.view_config.set_output_count_text(f"{label}: -")
             return
         enabled = sum(1 for v in views if v["enabled"])
         sources = self._count_input_images()
@@ -368,7 +374,8 @@ class CubemapStep(BaseStepWidget):
             warn = " [超過]"
         elif enabled > _WARN_ENABLED_VIEWS:
             warn = " [多い]"
-        self.view_config.set_estimate_text(f"{i18n.t('OUTPUT_ESTIMATE_SHORT')}: {total}{warn}")
+        count_text = i18n.t("OUTPUT_IMAGE_COUNT_FORMAT").format(count=total)
+        self.view_config.set_output_count_text(f"{label}: {count_text}{warn}")
 
     # -- コマンド構築 --
 

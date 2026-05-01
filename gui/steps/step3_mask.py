@@ -28,7 +28,12 @@ from gui.common.browse_widget import BrowseWidget
 from gui.common.collapsible_section import CollapsibleSection
 from gui.common.drag_spinbox import DragDoubleSpinBox, DragSpinBox
 from gui.mask.stitch_preview import StitchPreviewWidget
-from gui.steps.base_step import SETTINGS_PANE_WIDTH, BaseStepWidget, configure_settings_scroll
+from gui.steps.base_step import (
+    SETTINGS_PANE_MARGINS,
+    SETTINGS_PANE_WIDTH,
+    BaseStepWidget,
+    configure_settings_scroll,
+)
 
 _COCO_CLASS_NAMES = [
     "person", "bicycle", "car", "motorcycle", "airplane", "bus", "train", "truck",
@@ -85,7 +90,7 @@ class MaskStep(BaseStepWidget):
         settings = QWidget()
         settings.setObjectName("settingsPane")
         layout = QVBoxLayout(settings)
-        layout.setContentsMargins(0, 0, 0, 4)
+        layout.setContentsMargins(*SETTINGS_PANE_MARGINS)
         layout.setSpacing(8)
 
         # --- パス設定 ---

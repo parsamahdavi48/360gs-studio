@@ -34,7 +34,12 @@ from PySide6.QtWidgets import (
 from gui import i18n
 from gui.common.browse_widget import BrowseWidget
 from gui.common.collapsible_section import CollapsibleSection
-from gui.steps.base_step import SETTINGS_PANE_WIDTH, BaseStepWidget, configure_settings_scroll
+from gui.steps.base_step import (
+    SETTINGS_PANE_MARGINS,
+    SETTINGS_PANE_WIDTH,
+    BaseStepWidget,
+    configure_settings_scroll,
+)
 
 
 class ExtractStep(BaseStepWidget):
@@ -71,7 +76,7 @@ class ExtractStep(BaseStepWidget):
         settings = QWidget()
         settings.setObjectName("settingsPane")
         layout = QVBoxLayout(settings)
-        layout.setContentsMargins(0, 0, 8, 4)
+        layout.setContentsMargins(*SETTINGS_PANE_MARGINS)
         layout.setSpacing(8)
 
         work_pane = QWidget()

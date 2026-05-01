@@ -9,6 +9,7 @@ from PySide6.QtWidgets import QScrollArea, QWidget
 from gui import i18n
 
 SETTINGS_PANE_WIDTH = 480
+SETTINGS_PANE_MARGINS = (0, 0, 14, 4)
 
 
 def configure_settings_scroll(scroll: QScrollArea, width: int = SETTINGS_PANE_WIDTH) -> None:
