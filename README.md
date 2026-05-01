@@ -9,21 +9,23 @@ Forked from [tetraface/tetraface-3dgs-utils](https://github.com/tetraface/tetraf
 ## Workflow Overview
 
 ```
-360 Video  ──  Frame Extraction  ──  Review & Selection
-                                          │
-                                    Metashape SfM (manual)
-                                          │
-               Mask Generation  ──  Cubemap Conversion  ──  3DGS Training
-              (YOLO+SAM2/Stitch/     (Postshot / Brush /
-               Overexposure)          LichtFeld Studio)
+360 Video  ──  Frame Extraction  ──  Review & Selection  ──  Mask Generation
+                                                                    │
+                                                          Metashape SfM (manual, with masks)
+                                                                    │
+                                                          Cubemap Conversion  ──  3DGS Training
+                                                          (Postshot / Brush /
+                                                           LichtFeld Studio)
 ```
+
+Masks are generated **before** Metashape SfM and imported into Metashape so that moving subjects (people, vehicles), stitching seams, and blown-out highlights are excluded from feature matching. This significantly improves SfM accuracy and downstream 3DGS quality.
 
 | Step | Description |
 |------|-------------|
 | **1. Frame Extraction** | Extract equirectangular stills from 360 video at fixed intervals (recommended) or change-based selection |
-| **2. Frame Review** | Review frames with blur worst-order navigation, bulk drop by threshold, then run Metashape SfM externally |
-| **3. Mask Generation** | YOLO+SAM2.1 person detection, stitch seam masking, overexposure (blown-out pixel) masking |
-| **4. Cubemap Conversion** | Convert equirectangular to cubemap views with transforms.json for Postshot, Brush, or LichtFeld Studio |
+| **2. Frame Review** | Review frames with blur worst-order navigation, bulk drop by threshold |
+| **3. Mask Generation** | YOLO+SAM2.1 person detection, stitch seam masking, overexposure (blown-out pixel) masking. **Import the resulting `masks/` folder into Metashape as per-image masks before running SfM.** |
+| **4. Cubemap Conversion** | After Metashape SfM, convert the equirectangular result (XML + PLY) to cubemap views with transforms.json for Postshot, Brush, or LichtFeld Studio. Masks are propagated to cubemap faces |
 
 ## Quick Start (Windows)
 

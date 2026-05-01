@@ -201,6 +201,16 @@ class MaskStep(BaseStepWidget):
         other_section.content_layout.addLayout(other_form)
         layout.addWidget(other_section)
 
+        # Metashape SfM 案内（マスクと一緒に SfM すると精度向上）
+        notice = QLabel(i18n.METASHAPE_NOTICE)
+        notice.setWordWrap(True)
+        notice.setAlignment(Qt.AlignCenter)
+        notice.setStyleSheet(
+            "padding: 16px; background: #1a1a2e; border: 1px solid #f59e0b; "
+            "border-radius: 8px; color: #fbbf24; font-size: 10pt;"
+        )
+        layout.addWidget(notice)
+
         layout.addStretch()
 
     def set_scene_dir(self, path: str) -> None:

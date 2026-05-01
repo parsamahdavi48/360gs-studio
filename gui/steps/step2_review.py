@@ -52,9 +52,7 @@ class ReviewStep(BaseStepWidget):
         layout.setSpacing(12)
 
         # ワークフロー案内カード
-        workflow = QLabel(
-            "Step 1 で抽出  ──  レビュー+選別  ──  Metashape SfM (手動)  ──  Step 3 へ"
-        )
+        workflow = QLabel(i18n.t("STEP2_WORKFLOW"))
         workflow.setAlignment(Qt.AlignCenter)
         workflow.setStyleSheet(_WORKFLOW_STYLE)
         workflow.setWordWrap(True)
@@ -110,13 +108,13 @@ class ReviewStep(BaseStepWidget):
         btn_row.addStretch()
         layout.addLayout(btn_row)
 
-        # Metashape案内
-        notice = QLabel(i18n.METASHAPE_NOTICE)
+        # 次ステップ案内
+        notice = QLabel(i18n.NEXT_STEP_MASK_NOTICE)
         notice.setWordWrap(True)
         notice.setAlignment(Qt.AlignCenter)
         notice.setStyleSheet(
-            "padding: 16px; background: #1a1a2e; border: 1px solid #f59e0b; "
-            "border-radius: 8px; color: #fbbf24; font-size: 10pt;"
+            "padding: 16px; background: #1a1a2e; border: 1px solid #7c3aed; "
+            "border-radius: 8px; color: #c4b5fd; font-size: 10pt;"
         )
         layout.addWidget(notice)
 

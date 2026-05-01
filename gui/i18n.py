@@ -63,7 +63,9 @@ _JA: dict[str, str] = {
     "OPEN_REVIEW": "レビューGUIを開く",
     "EXPORT_KEEP": "選択フレームをエクスポート",
     "FINALIZE_INPLACE": "インプレースで確定",
-    "METASHAPE_NOTICE": "ここでMetashapeを使ってSfMを実行してください。\n完了後、Step 3 でマスク生成に進みます。",
+    "STEP2_WORKFLOW": "Step 1 で抽出  ──  レビュー+選別  ──  Step 3 (マスク生成) へ",
+    "NEXT_STEP_MASK_NOTICE": "選別が完了したら Step 3 (マスク生成) へ進みます。\n人物・スティッチ・白飛びマスクを Metashape SfM の前に生成することで SfM 精度が向上します。",
+    "METASHAPE_NOTICE": "マスク生成完了後、Metashape で SfM を実行してください。\n生成された masks/ フォルダを Metashape の per-image マスクとしてインポートすると、人物・スティッチ・白飛び領域が特徴点マッチングから除外され、SfM 精度が大きく向上します。\n完了後、Step 4 でキューブマップ変換に進みます。",
     "CSV_FILE": "CSVファイル名",
     "EXPORT_DIR": "エクスポート先",
 
@@ -228,7 +230,9 @@ _EN: dict[str, str] = {
     "OPEN_REVIEW": "Open Review GUI",
     "EXPORT_KEEP": "Export Keep Frames",
     "FINALIZE_INPLACE": "Finalize In-Place",
-    "METASHAPE_NOTICE": "Run Metashape SfM now.\nAfter completion, proceed to Step 3 for mask generation.",
+    "STEP2_WORKFLOW": "Step 1 Extract  ──  Review + Select  ──  Proceed to Step 3 (Mask Generation)",
+    "NEXT_STEP_MASK_NOTICE": "After selection, proceed to Step 3 (Mask Generation).\nGenerating person / stitch / overexposure masks before Metashape SfM significantly improves SfM accuracy.",
+    "METASHAPE_NOTICE": "After mask generation, run Metashape SfM.\nImport the generated masks/ folder as per-image masks in Metashape so that people, stitching seams, and blown-out highlights are excluded from feature matching. This significantly improves SfM accuracy.\nAfter SfM, proceed to Step 4 for cubemap conversion.",
     "CSV_FILE": "CSV Filename",
     "EXPORT_DIR": "Export Folder",
 
