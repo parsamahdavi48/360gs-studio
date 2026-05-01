@@ -100,6 +100,7 @@ start_cubemap_tools_gui.bat
 - `No axis transform (--no_transform)`
 - `Allow duplicate (--duplicate)`
 - `Invert masks (--invert_masks)`
+  - Usually off. Enable only when the target app expects the opposite polarity.
 
 ## Workflow tabs
 
@@ -125,7 +126,7 @@ start_cubemap_tools_gui.bat
   - `cubemap_transforms_json.py --fov 90 --output_scale <0.5|1.0> --views-json <that file>`
 - Disabled slots are written with `enabled=false` and ignored by converter.
 - With `Postshot / Brush` profile, preprocess `--ply` is disabled by default to avoid point-cloud/camera mismatch.
-- Mask inversion is not automatic. Enable `Invert masks (--invert_masks)` only when needed.
+- Masks normally convert with black as the ignored region. Postshot can handle interpretation through its own Mask Mode, so the GUI does not auto-invert masks for Postshot.
 - After conversion, GUI packages PLY into `<output_dir>` and rewrites `<output_dir>/transforms.json` `ply_file_path`.
   - `Postshot / Brush`: copies Metashape PLY (for example `metashape.ply` / `sparse.ply`).
   - `LichtFeld Studio`: copies `pointcloud.ply`.

@@ -1,6 +1,6 @@
 # stechdrive-3dgs-utils
 
-**v0.2.0**
+**v0.3.0**
 
 A Windows desktop toolkit for preparing equirectangular 360 video for Metashape SfM and 3D Gaussian Splatting (3DGS) training. The current workflow is centered on the integrated Japanese PySide6 GUI and is designed to run from `setup_windows.bat` and `start_gui.bat` without requiring users to manually assemble a Python environment.
 
@@ -100,7 +100,7 @@ The app version is centralized in [pyproject.toml](pyproject.toml):
 
 ```toml
 [project]
-version = "0.2.0"
+version = "0.3.0"
 ```
 
 The GUI title and `python -m gui.app --version` are generated from this value. The app-facing label always uses the `v0.0.0` format.

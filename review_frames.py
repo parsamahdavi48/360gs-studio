@@ -8,40 +8,35 @@ from pathlib import Path
 from typing import Dict, List
 
 try:
-    from PySide6.QtCore import Qt
-    from PySide6.QtGui import QKeySequence, QPainter, QPixmap, QShortcut
+    from PySide6.QtCore import QSize, Qt
+    from PySide6.QtGui import QIcon, QKeySequence, QPixmap, QShortcut
     from PySide6.QtWidgets import (
         QApplication,
-        QGraphicsScene,
-        QGraphicsView,
         QHBoxLayout,
-        QLineEdit,
         QLabel,
         QMainWindow,
         QMessageBox,
         QPushButton,
-        QScrollArea,
-        QSizePolicy,
+        QSlider,
+        QToolButton,
         QVBoxLayout,
         QWidget,
     )
 except Exception as e:  # pragma: no cover - environment-dependent import
+    QSize = None
     Qt = None
+    QIcon = None
     QKeySequence = None
-    QPainter = None
     QPixmap = None
     QShortcut = None
     QApplication = None
-    QGraphicsScene = None
-    QGraphicsView = None
     QHBoxLayout = None
     QLabel = None
     QMainWindow = None
     QMessageBox = None
     QPushButton = None
-    QLineEdit = None
-    QScrollArea = None
-    QSizePolicy = None
+    QSlider = None
+    QToolButton = None
     QVBoxLayout = None
     QWidget = None
     _PYSIDE_IMPORT_ERROR = e
@@ -51,89 +46,16 @@ else:
 # i18n は PySide6 に依存しないので無条件 import
 from gui import i18n
 if _PYSIDE_IMPORT_ERROR is None:
-    from gui.common.collapsible_section import CollapsibleSection
+    from gui.common.zoomable_image_label import ZoomableImageLabel
 else:  # pragma: no cover - PySide6 missing
-    CollapsibleSection = None
+    ZoomableImageLabel = None
 
 
-if QGraphicsView is not None:
-    class ZoomableImageView(QGraphicsView):
-        """ホイールで拡大縮小、ドラッグでパンできる画像ビュー。"""
+_ICON_DIR = Path(__file__).resolve().parent / "gui" / "assets" / "icons"
 
-        ZOOM_STEP = 1.20
 
-        def __init__(self, parent: QWidget | None = None) -> None:
-            super().__init__(parent)
-            self._scene = QGraphicsScene(self)
-            self.setScene(self._scene)
-            self._pixmap_item = None
-            self._fit_pending = True
-
-            self.setRenderHints(QPainter.SmoothPixmapTransform | QPainter.Antialiasing)
-            self.setDragMode(QGraphicsView.ScrollHandDrag)
-            self.setTransformationAnchor(QGraphicsView.AnchorUnderMouse)
-            self.setResizeAnchor(QGraphicsView.AnchorUnderMouse)
-            self.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
-            self.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
-            self.setStyleSheet("background-color: #101010; border: 1px solid #333;")
-            self.setMinimumHeight(340)
-            self.setFocusPolicy(Qt.NoFocus)  # キー入力は親ウィンドウへ
-
-        def show_pixmap(self, pixmap: QPixmap) -> None:
-            self._scene.clear()
-            self._pixmap_item = self._scene.addPixmap(pixmap)
-            self._scene.setSceneRect(self._pixmap_item.boundingRect())
-            # 新しい画像が来たら fit-to-window にリセット
-            self.resetTransform()
-            self._fit_pending = True
-            self._fit_to_view()
-
-        def show_message(self, text: str) -> None:
-            self._scene.clear()
-            self._pixmap_item = None
-            item = self._scene.addText(text)
-            item.setDefaultTextColor(Qt.gray)
-            self._scene.setSceneRect(item.boundingRect())
-            self.resetTransform()
-            self._fit_pending = False
-            self.centerOn(item)
-
-        def _fit_to_view(self) -> None:
-            if self._pixmap_item is None:
-                return
-            self.fitInView(self._pixmap_item, Qt.KeepAspectRatio)
-
-        def reset_zoom(self) -> None:
-            """フィットウィンドウに戻す。"""
-            self.resetTransform()
-            self._fit_to_view()
-
-        def wheelEvent(self, event) -> None:
-            if self._pixmap_item is None:
-                return
-            delta = event.angleDelta().y()
-            if delta == 0:
-                return
-            factor = self.ZOOM_STEP if delta > 0 else 1.0 / self.ZOOM_STEP
-            self.scale(factor, factor)
-            event.accept()
-
-        def resizeEvent(self, event) -> None:
-            super().resizeEvent(event)
-            # 初回だけ自動フィット。以降のリサイズはユーザーのズームを尊重。
-            if self._fit_pending and self._pixmap_item is not None:
-                self._fit_to_view()
-                self._fit_pending = False
-
-        def keyPressEvent(self, event) -> None:
-            # 矢印キーは親のフレーム送りで使うので、ビュー側では拾わない
-            if event.key() in (Qt.Key_Left, Qt.Key_Right, Qt.Key_Up, Qt.Key_Down):
-                event.ignore()
-                return
-            super().keyPressEvent(event)
-else:
-    class ZoomableImageView:  # pragma: no cover - placeholder when PySide6 missing
-        pass
+def _review_icon(name: str) -> QIcon:
+    return QIcon(str(_ICON_DIR / f"{name}.svg"))
 
 
 if QMainWindow is not None:
@@ -145,10 +67,11 @@ if QMainWindow is not None:
             self.rows = self._load_rows(csv_path)
             if not self.rows:
                 raise RuntimeError(f"No rows found in {csv_path}")
+            self._initial_decisions = [row["decision"] for row in self.rows]
             self.problem_indices = self._collect_problem_indices()
-            self.blur_median = self._compute_blur_median()
 
             self.index = 0
+            self._slider_sync = False
             self.current_pixmap: QPixmap | None = None
 
             self._build_ui()
@@ -172,24 +95,6 @@ if QMainWindow is not None:
         def _collect_problem_indices(self) -> List[int]:
             return [i for i, row in enumerate(self.rows) if self._is_problem_row(row)]
 
-        def _blur_score(self, row: Dict[str, str]) -> float:
-            """blur_score_final を float で返す。取得できなければ inf。"""
-            try:
-                return float(row.get("blur_score_final", "inf"))
-            except (ValueError, TypeError):
-                return float("inf")
-
-        def _compute_blur_median(self) -> float:
-            """blur_score_final の中央値。情報表示用 (advisory 判定には使わない)。"""
-            scores = [self._blur_score(row) for row in self.rows]
-            valid = sorted(s for s in scores if s != float("inf"))
-            if not valid:
-                return 0.0
-            n = len(valid)
-            if n % 2 == 0:
-                return (valid[n // 2 - 1] + valid[n // 2]) / 2.0
-            return valid[n // 2]
-
         def _build_ui(self) -> None:
             layout = QVBoxLayout(self)
 
@@ -203,19 +108,50 @@ if QMainWindow is not None:
             self.decision_label = QLabel()
             self.decision_label.setStyleSheet("font-weight: 700;")
             top_row.addWidget(self.decision_label)
+
+            self.flag_button = QToolButton()
+            self.flag_button.setCheckable(True)
+            self.flag_button.setText("")
+            self.flag_button.setToolTip(i18n.t("REVIEW_FLAG_TIP"))
+            self.flag_button.setIconSize(QSize(20, 20))
+            self.flag_button.setFixedSize(36, 32)
+            self.flag_button.clicked.connect(lambda _checked=False: self.toggle_decision())
+            top_row.addWidget(self.flag_button)
+
+            self.reset_decision_button = QToolButton()
+            self.reset_decision_button.setText("")
+            self.reset_decision_button.setIcon(_review_icon("rotate-ccw"))
+            self.reset_decision_button.setToolTip(i18n.t("REVIEW_RESET_DECISION_TIP"))
+            self.reset_decision_button.setIconSize(QSize(20, 20))
+            self.reset_decision_button.setFixedSize(36, 32)
+            self.reset_decision_button.clicked.connect(lambda _checked=False: self.reset_decision())
+            top_row.addWidget(self.reset_decision_button)
             layout.addLayout(top_row)
 
-            self.image_view = ZoomableImageView()
+            self.image_view = ZoomableImageLabel()
             self.image_view.setMinimumHeight(260)
+            self.image_view.setStyleSheet("border: 1px solid palette(mid);")
             layout.addWidget(self.image_view, stretch=1)
+
+            timeline_row = QHBoxLayout()
+            self.frame_slider = QSlider(Qt.Horizontal)
+            self.frame_slider.setToolTip(i18n.t("REVIEW_FRAME_SLIDER_TIP"))
+            self.frame_slider.setRange(0, max(0, len(self.rows) - 1))
+            self.frame_slider.setEnabled(len(self.rows) > 1)
+            self.frame_slider.valueChanged.connect(self._on_slider_changed)
+            timeline_row.addWidget(self.frame_slider, stretch=1)
+
+            self.frame_position_label = QLabel()
+            timeline_row.addWidget(self.frame_position_label)
+            layout.addLayout(timeline_row)
 
             # アドバイザリー（このフレームが要注意な理由を自動表示）
             self.advisory_label = QLabel()
-            self.advisory_label.setWordWrap(True)
+            self.advisory_label.setWordWrap(False)
             self.advisory_label.setStyleSheet(
                 "padding: 6px 10px; border-radius: 4px; font-weight: 600; font-size: 10pt;"
             )
-            self.advisory_label.setMinimumHeight(32)
+            self.advisory_label.setFixedHeight(32)
             layout.addWidget(self.advisory_label)
 
             self.info_label = QLabel()
@@ -227,14 +163,6 @@ if QMainWindow is not None:
             layout.addWidget(self.problem_summary_label)
 
             btn_row = QHBoxLayout()
-            self.prev_button = QPushButton(i18n.t("REVIEW_BTN_PREV"))
-            self.prev_button.clicked.connect(self.prev_row)
-            btn_row.addWidget(self.prev_button)
-
-            self.next_button = QPushButton(i18n.t("REVIEW_BTN_NEXT"))
-            self.next_button.clicked.connect(self.next_row)
-            btn_row.addWidget(self.next_button)
-
             self.prev_problem_button = QPushButton(i18n.t("REVIEW_BTN_PREV_PROBLEM"))
             self.prev_problem_button.setToolTip(i18n.t("REVIEW_BTN_PROBLEM_TIP"))
             self.prev_problem_button.clicked.connect(self.prev_problem)
@@ -248,73 +176,12 @@ if QMainWindow is not None:
             btn_row.addStretch(1)
             layout.addLayout(btn_row)
 
-            action_row = QHBoxLayout()
-            self.toggle_button = QPushButton(i18n.t("REVIEW_BTN_TOGGLE"))
-            self.toggle_button.clicked.connect(self.toggle_decision)
-            action_row.addWidget(self.toggle_button)
-
-            self.jump_edit = QLineEdit()
-            self.jump_edit.setPlaceholderText(i18n.t("REVIEW_JUMP_PLACEHOLDER"))
-            self.jump_edit.setFixedWidth(90)
-            action_row.addWidget(self.jump_edit)
-
-            self.jump_button = QPushButton(i18n.t("REVIEW_BTN_JUMP"))
-            self.jump_button.clicked.connect(self.jump_to_seq)
-            action_row.addWidget(self.jump_button)
-
-            action_row.addStretch(1)
-
-            self.save_button = QPushButton(i18n.t("REVIEW_BTN_SAVE"))
-            self.save_button.clicked.connect(self.save)
-            action_row.addWidget(self.save_button)
-            layout.addLayout(action_row)
-
-            # ブレスコアによる一括除外行（手動絶対閾値ツール）
-            blur_row = QHBoxLayout()
-            blur_row.addWidget(QLabel(i18n.t("REVIEW_BLUR_THRESHOLD_LABEL")))
-            self.blur_threshold_edit = QLineEdit()
-            self.blur_threshold_edit.setPlaceholderText(i18n.t("REVIEW_BLUR_THRESHOLD_PLACEHOLDER"))
-            self.blur_threshold_edit.setFixedWidth(100)
-            blur_row.addWidget(self.blur_threshold_edit)
-
-            self.blur_drop_button = QPushButton(i18n.t("REVIEW_BLUR_DROP_BTN"))
-            self.blur_drop_button.clicked.connect(self.drop_below_blur_threshold)
-            blur_row.addWidget(self.blur_drop_button)
-
-            blur_row.addStretch(1)
-            layout.addLayout(blur_row)
-
-            # 使い方ヘルプ（必要な時だけ展開）
-            self.help_section = CollapsibleSection(i18n.t("REVIEW_HELP_HEADER"), expanded=False)
-            self.help_section.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Maximum)
-
-            help_body = QLabel(i18n.t("REVIEW_HELP_BODY"))
-            help_body.setStyleSheet(
-                "color: #888; font-size: 9pt; padding: 4px 8px; "
-                "background-color: #1a1a2e; border-radius: 6px;"
-            )
-            help_body.setWordWrap(True)
-
-            help_scroll = QScrollArea()
-            help_scroll.setWidgetResizable(True)
-            help_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-            help_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
-            help_scroll.setMinimumHeight(120)
-            help_scroll.setMaximumHeight(180)
-            help_scroll.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
-            help_scroll.setStyleSheet("QScrollArea { border: 0; background: transparent; }")
-            help_scroll.setWidget(help_body)
-
-            self.help_section.content_layout.addWidget(help_scroll)
-            layout.addWidget(self.help_section)
-
         def _bind_shortcuts(self) -> None:
             QShortcut(QKeySequence(Qt.Key_Left), self, activated=self.prev_row)
             QShortcut(QKeySequence(Qt.Key_Right), self, activated=self.next_row)
             QShortcut(QKeySequence("F"), self, activated=self.next_problem)
             QShortcut(QKeySequence("Shift+F"), self, activated=self.prev_problem)
             QShortcut(QKeySequence(Qt.Key_Space), self, activated=self.toggle_decision)
-            QShortcut(QKeySequence("S"), self, activated=self.save)
             QShortcut(QKeySequence("Q"), self, activated=self._close_review_window)
             QShortcut(QKeySequence("0"), self, activated=self.reset_zoom)
 
@@ -334,30 +201,18 @@ if QMainWindow is not None:
                 return i18n.t("REVIEW_DECISION_DROP")
             return i18n.t("REVIEW_DECISION_KEEP")
 
-        def _format_process(self, row: Dict[str, str]) -> str:
-            status = row.get("status", "ok").strip().lower()
-            orig = row.get("original_index", "?")
-            final = row.get("final_index", "?")
-            if "fallback_keep" in status:
-                return i18n.t("REVIEW_PROCESS_FALLBACK")
-            if "thinned" in status:
-                return i18n.t("REVIEW_PROCESS_THINNED")
-            if "replaced" in status:
-                return i18n.t("REVIEW_PROCESS_REPLACED").format(orig=orig, final=final)
-            return i18n.t("REVIEW_PROCESS_OK")
-
         def _advisory_for_row(self, row: Dict[str, str], idx: int) -> tuple[str, str, str]:
             """status のみに基づく advisory。
 
             フレーム抽出時にブレ判定 + 置換は済んでいるので、
-            置換不可のフレームだけを強く確認対象として扱う。
+            ブレ置換なしのフレームだけを強く確認対象として扱う。
             「ブレ top X%」のような相対順位 advisory は出さない（誤判定の元）。
 
             Returns (text, fg, bg).
             """
             status = row.get("status", "ok").strip().lower()
 
-            # 橙: ブレを検出したが置換先がなかったフレーム
+            # 橙: 品質条件を満たすブレ置換候補が探索範囲内になかったフレーム
             if "fallback_keep" in status:
                 return i18n.t("REVIEW_ADVISORY_FALLBACK"), "#fef3c7", "#7c2d12"
 
@@ -381,10 +236,21 @@ if QMainWindow is not None:
             image_path = self.scene_dir / image_rel
 
             self.title_label.setText(f"{seq}/{total}  {image_rel}")
+            self._slider_sync = True
+            self.frame_slider.setValue(self.index)
+            self._slider_sync = False
+            self.frame_position_label.setText(
+                i18n.t("REVIEW_FRAME_POSITION_FORMAT").format(
+                    seq=seq,
+                    total=total,
+                    name=Path(image_rel).name,
+                )
+            )
 
             decision = row.get("decision", "keep")
             self.decision_label.setText(f"{i18n.t('REVIEW_DECISION_PREFIX')}{self._decision_text(decision)}")
             self.decision_label.setStyleSheet(f"font-weight: 700; color: {self._decision_color(decision)};")
+            self._update_decision_buttons(decision)
 
             # アドバイザリー (このフレームが要注意な理由)
             adv_text, adv_fg, adv_bg = self._advisory_for_row(row, self.index)
@@ -405,55 +271,85 @@ if QMainWindow is not None:
                 )
             )
 
-            # ブレ表示: 中央値比で文脈を与える（情報のみ。判定には使わない）
-            blur_final = self._blur_score(row)
-            if blur_final != float("inf"):
-                if self.blur_median > 0:
-                    pct = round(blur_final / self.blur_median * 100)
-                    blur_str = i18n.t("REVIEW_BLUR_VALUE_FORMAT").format(
-                        score=blur_final, median=self.blur_median, pct=pct
-                    )
-                else:
-                    blur_str = i18n.t("REVIEW_BLUR_VALUE_NO_MEDIAN").format(score=blur_final)
-            else:
-                blur_str = "-"
-
-            # 撮影時刻
+            # 動画内位置
             ts_raw = row.get("timestamp_sec", "-")
             try:
                 ts_str = f"{float(ts_raw):.2f}s"
             except (ValueError, TypeError):
                 ts_str = ts_raw
 
-            # 変化スコア
-            change_raw = row.get("change_score_final", "-")
-            try:
-                change_str = f"{float(change_raw):.3f}"
-            except (ValueError, TypeError):
-                change_str = change_raw
-
             info_text = i18n.t("REVIEW_INFO_FORMAT").format(
-                ts=ts_str, blur=blur_str, change=change_str,
-                process=self._format_process(row),
+                ts=ts_str,
             )
             self.info_label.setText(info_text)
 
             if not image_path.exists():
                 self.current_pixmap = None
-                self.image_view.show_message(i18n.t("REVIEW_IMAGE_NOT_FOUND").format(path=image_path))
+                self.image_view.setText(i18n.t("REVIEW_IMAGE_NOT_FOUND").format(path=image_path))
                 return
 
             pixmap = QPixmap(str(image_path))
             if pixmap.isNull():
                 self.current_pixmap = None
-                self.image_view.show_message(i18n.t("REVIEW_IMAGE_LOAD_FAILED").format(path=image_path))
+                self.image_view.setText(i18n.t("REVIEW_IMAGE_LOAD_FAILED").format(path=image_path))
                 return
 
             self.current_pixmap = pixmap
-            self.image_view.show_pixmap(pixmap)
+            self.image_view.set_source_pixmap(pixmap)
 
         def reset_zoom(self) -> None:
-            self.image_view.reset_zoom()
+            self.image_view.reset_view()
+
+        def _on_slider_changed(self, value: int) -> None:
+            if self._slider_sync:
+                return
+            if 0 <= value < len(self.rows):
+                self.index = value
+                self._render_current()
+
+        def _update_decision_buttons(self, decision: str) -> None:
+            keep = decision != "drop"
+            self.flag_button.setChecked(keep)
+            self.flag_button.setIcon(_review_icon("flag-keep" if keep else "flag-drop"))
+            self.flag_button.setStyleSheet(
+                "QToolButton {"
+                f"background: {'#14532d' if keep else '#3b1717'};"
+                f"border: 1px solid {'#22c55e' if keep else '#991b1b'};"
+                "border-radius: 4px;"
+                "}"
+            )
+            reset_enabled = decision != self._initial_decisions[self.index]
+            self.reset_decision_button.setEnabled(reset_enabled)
+            self.reset_decision_button.setStyleSheet(
+                "QToolButton { border-radius: 4px; }"
+                "QToolButton:disabled { opacity: 0.45; }"
+            )
+
+        def _write_rows(self) -> None:
+            fieldnames = list(self.rows[0].keys())
+            with self.csv_path.open("w", encoding="utf-8", newline="") as f:
+                writer = csv.DictWriter(f, fieldnames=fieldnames)
+                writer.writeheader()
+                writer.writerows(self.rows)
+
+        def _set_current_decision(self, decision: str) -> None:
+            row = self._current_row()
+            old_decision = row.get("decision", "keep")
+            if old_decision == decision:
+                self._render_current()
+                return
+
+            row["decision"] = decision
+            try:
+                self._write_rows()
+            except Exception as e:
+                row["decision"] = old_decision
+                QMessageBox.critical(
+                    self,
+                    i18n.t("REVIEW_SAVE_FAILED_HEADER"),
+                    i18n.t("REVIEW_SAVE_FAILED_BODY").format(error=e),
+                )
+            self._render_current()
 
         def prev_row(self) -> None:
             if self.index > 0:
@@ -493,88 +389,13 @@ if QMainWindow is not None:
             self.index = self.problem_indices[-1]
             self._render_current()
 
-        def jump_to_seq(self) -> None:
-            text = self.jump_edit.text().strip()
-            if not text:
-                return
-
-            try:
-                seq = int(text)
-            except ValueError:
-                QMessageBox.warning(
-                    self, i18n.t("REVIEW_INVALID_INPUT"), i18n.t("REVIEW_SEQ_INTEGER_ERR")
-                )
-                return
-
-            if seq < 1 or seq > len(self.rows):
-                QMessageBox.warning(
-                    self, i18n.t("REVIEW_INVALID_INPUT"),
-                    i18n.t("REVIEW_OUT_OF_RANGE_ERR").format(max=len(self.rows)),
-                )
-                return
-
-            self.index = seq - 1
-            self._render_current()
-
-        def drop_below_blur_threshold(self) -> None:
-            """閾値以下のblur_score_finalを持つフレームを一括で除外扱いにする。"""
-            text = self.blur_threshold_edit.text().strip()
-            if not text:
-                # 未入力なら、現在のフレームのスコアを閾値として提案
-                score = self._blur_score(self._current_row())
-                if score != float("inf"):
-                    self.blur_threshold_edit.setText(f"{score:.1f}")
-                QMessageBox.information(
-                    self, i18n.t("REVIEW_THRESHOLD_HEADER"),
-                    i18n.t("REVIEW_THRESHOLD_NEED_INPUT"),
-                )
-                return
-
-            try:
-                threshold = float(text)
-            except ValueError:
-                QMessageBox.warning(
-                    self, i18n.t("REVIEW_INVALID_INPUT"), i18n.t("REVIEW_THRESHOLD_NUMERIC_ERR")
-                )
-                return
-
-            count = 0
-            for row in self.rows:
-                score = self._blur_score(row)
-                if score <= threshold and row.get("decision") != "drop":
-                    row["decision"] = "drop"
-                    count += 1
-
-            self._render_current()
-            QMessageBox.information(
-                self, i18n.t("REVIEW_BULK_DROP_HEADER"),
-                i18n.t("REVIEW_BULK_DROP_RESULT").format(thr=f"{threshold:.1f}", n=count),
-            )
-
         def toggle_decision(self) -> None:
             row = self._current_row()
-            row["decision"] = "drop" if row.get("decision", "keep") == "keep" else "keep"
-            self._render_current()
+            next_decision = "drop" if row.get("decision", "keep") == "keep" else "keep"
+            self._set_current_decision(next_decision)
 
-        def save(self) -> None:
-            if not self.rows:
-                return
-
-            fieldnames = list(self.rows[0].keys())
-            with self.csv_path.open("w", encoding="utf-8", newline="") as f:
-                writer = csv.DictWriter(f, fieldnames=fieldnames)
-                writer.writeheader()
-                writer.writerows(self.rows)
-
-            keep_count = sum(1 for r in self.rows if r.get("decision") != "drop")
-            drop_count = len(self.rows) - keep_count
-            QMessageBox.information(
-                self,
-                i18n.t("REVIEW_SAVED_HEADER"),
-                i18n.t("REVIEW_SAVED_BODY").format(
-                    path=str(self.csv_path), k=keep_count, d=drop_count
-                ),
-            )
+        def reset_decision(self) -> None:
+            self._set_current_decision(self._initial_decisions[self.index])
 
 
     class ReviewWindow(QMainWindow):

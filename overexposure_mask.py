@@ -1,6 +1,6 @@
 """白飛び（過露出）領域をマスクに合成するツール。
 
-元画像のRGB全チャンネルが閾値を超えるピクセルを検出し、
+元画像のRGB全チャンネルが8bit相当の閾値を超えるピクセルを検出し、
 膨張処理でフリンジを含めた領域を既存マスクに黒として合成する。
 マスクが存在しない場合は白地に黒で新規作成。
 """
@@ -24,19 +24,24 @@ except ImportError:
 
 def detect_overexposure(
     image: np.ndarray,
-    threshold: int = 250,
-    dilate_px: int = 8,
+    threshold: int = 254,
+    dilate_px: int = 1,
 ) -> np.ndarray:
-    """BGR画像から白飛び領域のバイナリマスクを返す。
+    """BGR/BGRA/グレースケール画像から白飛び領域のバイナリマスクを返す。
+
+    threshold は8bit相当値として扱う。uint16画像では同じ比率の16bit値へ
+    スケールしてから比較する。
 
     Returns:
         白飛び領域=0 (黒), それ以外=255 (白) の uint8 マスク。
         既存マスクとのAND合成ですぐ使える形式。
     """
+    threshold_value = _scale_threshold_for_dtype(threshold, image.dtype)
     if image.ndim == 2:
-        blown = image > threshold
+        blown = image > threshold_value
     else:
-        blown = np.all(image > threshold, axis=-1)
+        color = image[..., :3]
+        blown = np.all(color > threshold_value, axis=-1)
 
     mask_blown = blown.astype(np.uint8) * 255
 
@@ -50,9 +55,23 @@ def detect_overexposure(
     return cv2.bitwise_not(mask_blown)
 
 
+def _scale_threshold_for_dtype(threshold: int, dtype: np.dtype) -> float:
+    if np.issubdtype(dtype, np.integer):
+        max_value = np.iinfo(dtype).max
+        if max_value == 255:
+            return float(threshold)
+        return float(threshold) / 255.0 * float(max_value)
+    return float(threshold)
+
+
+def read_image_preserve_depth(path: str) -> np.ndarray | None:
+    """ビット深度とαを保持して画像を読む。"""
+    return cv2.imread(path, cv2.IMREAD_UNCHANGED)
+
+
 # -- ワーカー用グローバル --
-_worker_threshold: int = 250
-_worker_dilate: int = 8
+_worker_threshold: int = 254
+_worker_dilate: int = 1
 
 
 def _init_worker(threshold: int, dilate_px: int) -> None:
@@ -65,7 +84,7 @@ def _process_one(args: tuple[str, str, str | None]) -> str | None:
     """1枚処理。(image_path, mask_output_path, existing_mask_path or None)"""
     image_path, mask_out, existing_mask = args
 
-    img = cv2.imread(image_path, cv2.IMREAD_COLOR)
+    img = read_image_preserve_depth(image_path)
     if img is None:
         return f"Skipped (read error): {os.path.basename(image_path)}"
 
@@ -89,7 +108,7 @@ def find_image_for_mask(mask_name: str, images_dir: Path) -> Path | None:
     if stem.lower().endswith((".jpg", ".jpeg", ".png")):
         stem = Path(stem).stem
 
-    for ext in [".jpg", ".jpeg", ".png"]:
+    for ext in [".jpg", ".jpeg", ".png", ".tif", ".tiff"]:
         candidate = images_dir / f"{stem}{ext}"
         if candidate.is_file():
             return candidate
@@ -99,8 +118,8 @@ def find_image_for_mask(mask_name: str, images_dir: Path) -> Path | None:
 def run(
     images_dir: str,
     masks_dir: str,
-    threshold: int = 250,
-    dilate_px: int = 8,
+    threshold: int = 254,
+    dilate_px: int = 1,
     workers: int | None = None,
 ) -> None:
     images_path = Path(images_dir)
@@ -111,7 +130,7 @@ def run(
         workers = os.cpu_count() or 4
 
     # 画像一覧を収集
-    exts = {".jpg", ".jpeg", ".png"}
+    exts = {".jpg", ".jpeg", ".png", ".tif", ".tiff"}
     image_files = sorted(
         [p for p in images_path.iterdir() if p.is_file() and p.suffix.lower() in exts],
         key=lambda p: p.name.lower(),
@@ -155,12 +174,12 @@ def main() -> None:
     parser.add_argument("images_dir", help="Source images directory")
     parser.add_argument("masks_dir", help="Mask output directory (existing masks are AND-merged)")
     parser.add_argument(
-        "--threshold", type=int, default=250,
-        help="RGB threshold for overexposure detection (default=250, range 200-254)",
+        "--threshold", type=int, default=254,
+        help="8-bit-equivalent RGB threshold for overexposure detection (default=254, range 1-254)",
     )
     parser.add_argument(
-        "--dilate", type=int, default=8,
-        help="Dilation radius in pixels to cover fringe artifacts (default=8, 0=disable)",
+        "--dilate", type=int, default=1,
+        help="Dilation radius in pixels to cover fringe artifacts (default=1, 0=disable)",
     )
     parser.add_argument(
         "--workers", type=int, default=os.cpu_count(),

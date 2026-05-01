@@ -5,9 +5,10 @@ import os
 import math
 import re
 import sys
+import tempfile
 from pathlib import Path
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QProcess, Qt
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -27,7 +28,7 @@ from gui import i18n
 from gui.common.browse_widget import BrowseWidget
 from gui.common.collapsible_section import CollapsibleSection
 from gui.common.drag_spinbox import DragDoubleSpinBox, DragSpinBox
-from gui.mask.stitch_preview import StitchPreviewWidget
+from gui.mask.mask_preview import MaskPreviewConfig, MaskPreviewWidget
 from gui.steps.base_step import (
     SETTINGS_PANE_MARGINS,
     SETTINGS_PANE_WIDTH,
@@ -56,15 +57,15 @@ _STITCH_TQDM_RE = re.compile(r"\|\s*(\d+)/(\d+)\s*\[")
 _STITCH_BOUNDARY_MIN = 0.0
 _STITCH_BOUNDARY_MAX = 30.0
 _STITCH_BOUNDARY_DEFAULT = 5.0
-_YOLO_EXPAND_MIN = -64
-_YOLO_EXPAND_MAX = 256
-_YOLO_EXPAND_DEFAULT = 12
-_OVEREXP_THRESHOLD_MIN = 0
-_OVEREXP_THRESHOLD_MAX = 255
-_OVEREXP_THRESHOLD_DEFAULT = 250
+_YOLO_EXPAND_MIN = -16
+_YOLO_EXPAND_MAX = 32
+_YOLO_EXPAND_DEFAULT = 2
+_OVEREXP_THRESHOLD_MIN = 1
+_OVEREXP_THRESHOLD_MAX = 254
+_OVEREXP_THRESHOLD_DEFAULT = 254
 _OVEREXP_DILATE_MIN = 0
 _OVEREXP_DILATE_MAX = 128
-_OVEREXP_DILATE_DEFAULT = 8
+_OVEREXP_DILATE_DEFAULT = 1
 
 
 class MaskStep(BaseStepWidget):
@@ -75,6 +76,10 @@ class MaskStep(BaseStepWidget):
         self._stitch_chunk_total = 0
         self._stitch_chunk_done = 0
         self._stitch_done_before = 0
+        self._yolo_preview_proc: QProcess | None = None
+        self._yolo_preview_temp: tempfile.TemporaryDirectory[str] | None = None
+        self._yolo_preview_image: Path | None = None
+        self._yolo_preview_output: Path | None = None
         self._build_ui()
 
     def _build_ui(self) -> None:
@@ -144,10 +149,11 @@ class MaskStep(BaseStepWidget):
             maximum=_YOLO_EXPAND_MAX,
             step=1,
             value=_YOLO_EXPAND_DEFAULT,
+            suffix=" px",
             drag_pixels_per_step=6.0,
         )
         self.yolo_expand_edit.setToolTip(i18n.tip("YOLO_EXPAND"))
-        self.yolo_expand_edit.setFixedWidth(80)
+        self.yolo_expand_edit.setFixedWidth(88)
         yolo_form.addRow(i18n.YOLO_EXPAND, self.yolo_expand_edit)
 
         self.yolo_add_ext_cb = QCheckBox(i18n.t("ADD_EXT_LABEL"))
@@ -261,11 +267,11 @@ class MaskStep(BaseStepWidget):
         preview_layout = QVBoxLayout(preview_pane)
         preview_layout.setContentsMargins(12, 12, 12, 12)
         preview_layout.setSpacing(8)
-        preview_title = QLabel(i18n.t("STITCH_PREVIEW_SECTION"))
+        preview_title = QLabel(i18n.t("MASK_PREVIEW_SECTION"))
         preview_title.setObjectName("paneTitle")
         preview_layout.addWidget(preview_title)
-        self.stitch_preview = StitchPreviewWidget()
-        preview_layout.addWidget(self.stitch_preview, stretch=1)
+        self.mask_preview = MaskPreviewWidget()
+        preview_layout.addWidget(self.mask_preview, stretch=1)
         notice = QLabel(i18n.METASHAPE_NOTICE)
         notice.setObjectName("workflowNote")
         notice.setWordWrap(True)
@@ -282,10 +288,15 @@ class MaskStep(BaseStepWidget):
         for cb in (self.run_yolo_cb, self.run_stitch_cb, self.run_overexp_cb):
             cb.toggled.connect(self._update_task_controls)
         self.images_browse.path_changed.connect(self._on_images_dir_changed)
-        self.stitch_boundary_width_edit.valueChanged.connect(lambda _: self._render_stitch_preview())
-        self.stitch_preview.sample_edit.textChanged.connect(lambda _: self._render_stitch_preview())
-        self.stitch_preview.opacity_slider.valueChanged.connect(lambda _: self._render_stitch_preview())
-        self.stitch_preview.opacity_spin.valueChanged.connect(lambda _: self._render_stitch_preview())
+        self.masks_browse.path_changed.connect(lambda _: self._render_mask_preview())
+        self.yolo_add_ext_cb.toggled.connect(lambda _: self._render_mask_preview())
+        self.stitch_boundary_width_edit.valueChanged.connect(lambda _: self._render_mask_preview())
+        self.overexp_threshold_edit.valueChanged.connect(lambda _: self._render_mask_preview())
+        self.overexp_dilate_edit.valueChanged.connect(lambda _: self._render_mask_preview())
+        self.mask_preview.sample_edit.textChanged.connect(lambda _: self._render_mask_preview())
+        self.mask_preview.opacity_slider.valueChanged.connect(lambda _: self._render_mask_preview())
+        self.mask_preview.opacity_spin.valueChanged.connect(lambda _: self._render_mask_preview())
+        self.mask_preview.yolo_preview_requested.connect(self._run_yolo_preview)
         self._update_task_controls()
         self._on_images_dir_changed(self.images_browse.text())
 
@@ -298,7 +309,7 @@ class MaskStep(BaseStepWidget):
             self._on_images_dir_changed(str(p / "images"))
 
     def primary_action_text(self) -> str:
-        return i18n.t("RUN_MASKS")
+        return i18n.t("GENERATE")
 
     def primary_action_tooltip(self) -> str:
         return i18n.tip("RUN_MASKS")
@@ -310,23 +321,24 @@ class MaskStep(BaseStepWidget):
     def _selected_classes(self) -> list[int]:
         return [i for i, cb in enumerate(self.class_cbs) if cb.isChecked()]
 
+    def _yolo_expand_arg(self) -> str:
+        return str(self.yolo_expand_edit.value())
+
     def _update_task_controls(self) -> None:
         yolo_enabled = self.run_yolo_cb.isChecked()
         stitch_enabled = self.run_stitch_cb.isChecked()
         overexp_enabled = self.run_overexp_cb.isChecked()
 
         self.yolo_section.content_widget.setEnabled(yolo_enabled)
-        if stitch_enabled or overexp_enabled:
-            self.other_section.toggle_button.setChecked(True)
-        self.stitch_boundary_width_edit.setEnabled(True)
+        self.stitch_boundary_width_edit.setEnabled(stitch_enabled)
         self.stitch_workers_edit.setEnabled(stitch_enabled or overexp_enabled)
         self.overexp_threshold_edit.setEnabled(overexp_enabled)
         self.overexp_dilate_edit.setEnabled(overexp_enabled)
-        self._render_stitch_preview()
+        self._render_mask_preview()
 
     def _on_images_dir_changed(self, path: str) -> None:
-        self.stitch_preview.set_images_dir(path)
-        self._render_stitch_preview()
+        self.mask_preview.set_images_dir(path)
+        self._render_mask_preview()
 
     def _stitch_boundary_width(self) -> float:
         value = self._clamp_stitch_boundary_width(float(self.stitch_boundary_width_edit.value()))
@@ -340,12 +352,22 @@ class MaskStep(BaseStepWidget):
             return _STITCH_BOUNDARY_DEFAULT
         return max(_STITCH_BOUNDARY_MIN, min(_STITCH_BOUNDARY_MAX, value))
 
-    def _render_stitch_preview(self) -> None:
+    def _render_mask_preview(self) -> None:
         try:
             width = self._stitch_boundary_width()
         except ValueError:
             width = None
-        self.stitch_preview.render(width)
+        config = MaskPreviewConfig(
+            use_yolo=self.run_yolo_cb.isChecked(),
+            use_stitch=self.run_stitch_cb.isChecked(),
+            use_overexposure=self.run_overexp_cb.isChecked(),
+            stitch_boundary_width_deg=width,
+            overexposure_threshold=int(self.overexp_threshold_edit.value()),
+            overexposure_dilate=int(self.overexp_dilate_edit.value()),
+            masks_dir=self.masks_browse.text(),
+            yolo_add_ext=self.yolo_add_ext_cb.isChecked(),
+        )
+        self.mask_preview.render(config)
 
     # -- コマンド構築 --
 
@@ -380,13 +402,106 @@ class MaskStep(BaseStepWidget):
             sys.executable, "-u", str(script),
             images, masks,
             "--level", level,
-            "--expand", str(self.yolo_expand_edit.value()),
+            "--expand", self._yolo_expand_arg(),
         ]
         if classes:
             cmd.extend(["--classes", ",".join(str(c) for c in classes)])
         if self.yolo_add_ext_cb.isChecked():
             cmd.append("--add-ext")
         return cmd
+
+    def _build_yolo_preview_cmd(self, image_path: Path, output_dir: Path) -> list[str]:
+        script = self.base_dir / "yolo_mask.py"
+        if not script.exists():
+            raise FileNotFoundError(f"yolo_mask.py が見つかりません: {script}")
+
+        level = str(self.yolo_level_combo.currentIndex())
+        classes = self._selected_classes()
+        cmd = [
+            sys.executable, "-u", str(script),
+            str(image_path), str(output_dir),
+            "--level", level,
+            "--expand", self._yolo_expand_arg(),
+        ]
+        if classes:
+            cmd.extend(["--classes", ",".join(str(c) for c in classes)])
+        if self.yolo_add_ext_cb.isChecked():
+            cmd.append("--add-ext")
+        return cmd
+
+    def _run_yolo_preview(self) -> None:
+        if self._yolo_preview_proc is not None and self._yolo_preview_proc.state() != QProcess.NotRunning:
+            return
+
+        image_path = self.mask_preview.current_image_path()
+        if image_path is None:
+            self.mask_preview.set_status_text(i18n.t("MASK_PREVIEW_YOLO_NO_IMAGE"))
+            return
+
+        self._cleanup_yolo_preview_temp()
+        self._yolo_preview_temp = tempfile.TemporaryDirectory(prefix="stechdrive_yolo_preview_")
+        output_dir = Path(self._yolo_preview_temp.name)
+        output_path = output_dir / _yolo_preview_output_name(image_path, self.yolo_add_ext_cb.isChecked())
+
+        try:
+            cmd = self._build_yolo_preview_cmd(image_path, output_dir)
+        except (ValueError, FileNotFoundError) as e:
+            self.mask_preview.set_status_text(str(e))
+            self._cleanup_yolo_preview_temp()
+            return
+
+        self._yolo_preview_image = image_path
+        self._yolo_preview_output = output_path
+        self.mask_preview.clear_yolo_preview_mask(image_path)
+        self.mask_preview.set_yolo_preview_running(True)
+        self.mask_preview.set_status_text(i18n.t("MASK_PREVIEW_YOLO_RUNNING"))
+
+        proc = QProcess(self)
+        proc.setProgram(cmd[0])
+        proc.setArguments(cmd[1:])
+        proc.setProcessChannelMode(QProcess.MergedChannels)
+        proc.readyReadStandardOutput.connect(self._drain_yolo_preview_output)
+        proc.errorOccurred.connect(self._on_yolo_preview_error)
+        proc.finished.connect(self._on_yolo_preview_finished)
+        self._yolo_preview_proc = proc
+        proc.start()
+
+    def _drain_yolo_preview_output(self) -> None:
+        if self._yolo_preview_proc is not None:
+            self._yolo_preview_proc.readAllStandardOutput()
+
+    def _on_yolo_preview_error(self, _error: QProcess.ProcessError) -> None:
+        self.mask_preview.set_status_text(i18n.t("MASK_PREVIEW_YOLO_FAILED"))
+
+    def _on_yolo_preview_finished(self, exit_code: int, _status: QProcess.ExitStatus) -> None:
+        image_path = self._yolo_preview_image
+        output_path = self._yolo_preview_output
+        ok = (
+            exit_code == 0
+            and image_path is not None
+            and output_path is not None
+            and output_path.is_file()
+            and self.mask_preview.set_yolo_preview_mask(image_path, output_path)
+        )
+        self.mask_preview.set_yolo_preview_running(False)
+        if ok:
+            self.mask_preview.set_status_text(i18n.t("MASK_PREVIEW_YOLO_TEMP"))
+        else:
+            self.mask_preview.set_status_text(i18n.t("MASK_PREVIEW_YOLO_FAILED"))
+        self._cleanup_yolo_preview_temp()
+        self._yolo_preview_proc = None
+        self._yolo_preview_image = None
+        self._yolo_preview_output = None
+        self._render_mask_preview()
+
+    def _cleanup_yolo_preview_temp(self) -> None:
+        if self._yolo_preview_temp is None:
+            return
+        try:
+            self._yolo_preview_temp.cleanup()
+        except Exception:
+            pass
+        self._yolo_preview_temp = None
 
     def _build_stitch_cmd(self) -> list[str]:
         masks = self.masks_browse.text()
@@ -455,3 +570,7 @@ class MaskStep(BaseStepWidget):
         if phase == "yolo" and exit_code == 0:
             self._phase_total = 0
             self._phase_done = 0
+
+
+def _yolo_preview_output_name(image_path: Path, add_ext: bool) -> str:
+    return f"{image_path.name}.png" if add_ext else f"{image_path.stem}.png"

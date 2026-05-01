@@ -5,6 +5,7 @@ import argparse
 import cv2
 import numpy as np
 from ultralytics import YOLO, SAM
+from yolo_mask_utils import EXPAND_DEFAULT, EXPAND_MAX, EXPAND_MIN, clamp_expand_px
 
 # =========================
 # 設定
@@ -14,7 +15,12 @@ parser.add_argument("images_dir", nargs="?", help="Input directory containing im
 parser.add_argument("output_dir", nargs="?", help="Output directory for storing PNG mask images (default='./masks')")
 parser.add_argument("--add-ext", "--add_ext", action="store_true", dest="add_ext", help="Add a file extension forcibly (ex: hoge.jpg.png)")
 parser.add_argument("--level", type=int, default=1, help="Detection level [0:3] (default=1)")
-parser.add_argument("--expand", type=int, default=2, help="Expand pixels of detected areas (default=2 pixels)")
+parser.add_argument(
+    "--expand",
+    type=int,
+    default=EXPAND_DEFAULT,
+    help=f"Expand detected regions by N pixels (default={EXPAND_DEFAULT}, clamped {EXPAND_MIN}..{EXPAND_MAX})",
+)
 parser.add_argument(
     "--classes",
     type=str,
@@ -27,9 +33,11 @@ INPUT_DIR = args.images_dir if args.images_dir else "images"
 OUTPUT_DIR = args.output_dir if args.output_dir else "masks"
 ADD_EXT = args.add_ext
 LEVEL = args.level
-EXPAND = args.expand
+EXPAND = clamp_expand_px(args.expand)
+if EXPAND != args.expand:
+    print(f"Clamped --expand from {args.expand} to {EXPAND}", flush=True)
 
-if not os.path.isdir(INPUT_DIR):
+if not os.path.isdir(INPUT_DIR) and not os.path.isfile(INPUT_DIR):
     print("python yolo_mask.py {images_dir} {masks_dir}", flush=True)
     print(os.getcwd(), flush=True)
     sys.exit()
@@ -239,11 +247,11 @@ def process_file(input_dir, output_dir, fname, add_ext=True):
             has_mask += has_bottom
     
     if has_mask > 0 and EXPAND > 0:
-        # 白領域を 2px 膨張
+        # 検出領域を指定pxぶん膨張
         kernel = np.ones((3, 3), np.uint8)
         mask = cv2.dilate(mask, kernel, iterations=EXPAND)
     elif has_mask > 0 and EXPAND < 0:
-        # 黒領域を 2px 膨張
+        # 負値は検出領域を収縮
         kernel = np.ones((3, 3), np.uint8)
         mask = cv2.erode(mask, kernel, iterations=-EXPAND)
 
@@ -280,4 +288,5 @@ else:
     # 単一ファイルの処理
     fname = os.path.basename(INPUT_DIR)
     input_dir = os.path.dirname(INPUT_DIR)
+    os.makedirs(OUTPUT_DIR, exist_ok=True)
     process_file(input_dir, OUTPUT_DIR, fname, ADD_EXT)

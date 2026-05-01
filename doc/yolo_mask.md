@@ -17,7 +17,9 @@ python yolo_mask.py [images_dir] [output_dir] [--add_ext] [--level N] [--expand 
 - `output_dir`: output mask directory (default: `masks`)
 - `--add_ext`: keep the original extension and append `.png` (e.g. `hoge.jpg.png`)
 - `--level N`: detection level (0–3, default: 1). Increasing the value enables higher-precision local extraction.
-- `--expand M`: number of pixels to expand detected regions (default: 2)
+- `--expand M`: fixed-pixel expansion after SAM refinement (default: 2)
+  - Clamped to `-16..32` for safety.
+  - Negative values shrink the mask region.
 - `--classes IDS`: comma-separated YOLO class ids (default: `0`, person only)
 
 Example:

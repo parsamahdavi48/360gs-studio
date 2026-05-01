@@ -203,6 +203,12 @@ class CubemapStep(BaseStepWidget):
         self.output_format_combo.setFixedWidth(180)
         adv_form.addRow(i18n.t("OUTPUT_FORMAT"), self.output_format_combo)
 
+        self.output_bit_depth_combo = QComboBox()
+        self.output_bit_depth_combo.addItem(i18n.t("OUTPUT_BIT_DEPTH_8"), "8")
+        self.output_bit_depth_combo.addItem(i18n.t("OUTPUT_BIT_DEPTH_SOURCE"), "source")
+        self.output_bit_depth_combo.setFixedWidth(180)
+        adv_form.addRow(i18n.t("OUTPUT_BIT_DEPTH"), self.output_bit_depth_combo)
+
         self.jpg_quality_edit = QLineEdit("95")
         self.jpg_quality_edit.setFixedWidth(80)
         adv_form.addRow(i18n.t("JPG_QUALITY"), self.jpg_quality_edit)
@@ -267,7 +273,7 @@ class CubemapStep(BaseStepWidget):
         self._render_preview()
 
     def primary_action_text(self) -> str:
-        return i18n.t("RUN_CUBEMAP")
+        return i18n.t("EXPORT")
 
     def primary_action_tooltip(self) -> str:
         return i18n.tip("RUN_CUBEMAP")
@@ -481,6 +487,9 @@ class CubemapStep(BaseStepWidget):
 
         out_fmt = self.output_format_combo.currentData() or "auto"
         cmd.extend(["--output-format", out_fmt])
+
+        out_depth = self.output_bit_depth_combo.currentData() or "8"
+        cmd.extend(["--output-bit-depth", out_depth])
 
         try:
             jpgq = int(self.jpg_quality_edit.text().strip())

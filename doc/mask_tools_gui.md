@@ -22,8 +22,9 @@ start_gui.bat --scene ./scene01
 - `Images Folder`: input images for YOLO/SAM masking.
 - `Masks Folder`: output masks; also stitch input/output.
 - `YOLO Level`: forwarded to `yolo_mask.py --level` (0-3).
-- `YOLO Expand (px)`: forwarded to `yolo_mask.py --expand`.
-  - Drag horizontally on the number field to adjust.
+- `YOLO Expand`: forwarded to `yolo_mask.py --expand`.
+  - Default is `2px`; drag horizontally on the number field to adjust.
+  - Clamped to `-16..32px` for safety.
 - `YOLO Add Ext`: forwarded to `yolo_mask.py --add-ext`.
 - `YOLO Classes`: collapsed picker for class selection.
   - Choose classes by checkbox labels (`id: name`) instead of memorizing numeric ids.
@@ -35,10 +36,14 @@ start_gui.bat --scene ./scene01
   - The GUI clamps the value to `0.0-30.0` degrees for safety.
 - `Stitch Workers`: forwarded to `stitch_mask.py --workers`.
   - Drag horizontally on the number field to adjust.
+- `YOLO/SAM Preview`: runs `yolo_mask.py` only for the currently displayed preview image.
+  - The result is shown as a red overlay and is not saved to `masks/`.
+  - It uses the current `YOLO Level`, `YOLO Expand`, `YOLO Add Ext`, and `YOLO Classes` settings.
+  - Use the main `Generate` action when you want to write masks for all frames.
 
 ## Actions
 
-Select `YOLO Detection`, `Stitch Seam`, and/or `Overexposure`, then press `Run Mask Creation`.
+Select `YOLO Detection`, `Stitch Seam`, and/or `Overexposure`, then press `Generate`.
 When multiple tasks are selected, they run in this order: YOLO detection, stitch seam, overexposure.
 
 ## Notes

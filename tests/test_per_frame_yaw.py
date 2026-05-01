@@ -105,6 +105,7 @@ def _setup_worker(tmp_path: Path):
         mask_from_alpha=False,
         invert_masks=False,
         output_format=None,
+        output_bit_depth="8",
         jpg_quality=95,
     )
 

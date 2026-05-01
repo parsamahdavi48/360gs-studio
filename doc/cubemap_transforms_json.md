@@ -139,7 +139,8 @@ python cubemap_transforms_json.py . ./cubic --no_transform
 |--brush|(no)|Convert coordinates for Brush.|
 |--duplicate|(no)|Allow duplicated image files by merging chunks.|
 |--yaw-offset-per-frame|degrees|Per-frame cubemap yaw rotation step (default=30.0). Each unique input image gets `yaw = frame_index * step (mod 360)`. Diversifies sampling angles to reduce 3DGS face-boundary artifacts. Set to `0` to disable.|
-|--output-format|auto/jpg/png/tiff/webp|Output image format (default=auto, preserves input format). 16-bit input is preserved on png/tiff; downconverted to 8-bit on jpg/webp.|
+|--output-format|auto/jpg/png/tiff/webp|Output image format (default=auto, preserves input format).|
+|--output-bit-depth|8/source|Output image bit depth (default=8). `8` down-converts images for compatibility; `source` preserves PNG/TIFF source bit depth. Mask outputs are always 8-bit PNG.|
 |--jpg-quality|1-100|JPEG / WebP quality (default=95).|
 
 ### Per-frame yaw rotation
@@ -150,11 +151,13 @@ The unique offsets cycle through `{0°, 30°, 60°, ..., 330°}` (12 values) at 
 
 ### Bit depth and alpha channel
 
-The cubemap converter now uses OpenCV throughout for I/O, preserving:
+The cubemap converter now uses OpenCV throughout for I/O and supports:
 
-- 8/16-bit per channel for PNG and TIFF outputs
+- 8-bit image output by default for broad 3DGS tool compatibility
+- source 8/16-bit preservation for PNG/TIFF only when `--output-bit-depth source` is specified
 - RGBA alpha channel through the remap (split-and-recombine to avoid color/alpha bleeding)
 - Output format conversion (png ↔ tiff ↔ webp ↔ jpg) via `--output-format`
+- converted masks are always 8-bit single-channel PNG
 
 JPEG and WebP are 8-bit only and have no alpha; the writer will downconvert and drop alpha automatically when targeting them.
 

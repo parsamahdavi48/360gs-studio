@@ -259,7 +259,7 @@ class ExtractStep(BaseStepWidget):
         super().set_scene_dir(path)
 
     def primary_action_text(self) -> str:
-        return i18n.EXTRACT_FRAMES
+        return i18n.RUN
 
     # -- モード --
 

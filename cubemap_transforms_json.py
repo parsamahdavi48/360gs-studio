@@ -27,6 +27,7 @@ _WORKER_OUTPUT_MASK_DIR = ""
 _WORKER_MASK_FROM_ALPHA = False
 _WORKER_INVERT_MASKS = False
 _WORKER_OUTPUT_FORMAT: str | None = None
+_WORKER_OUTPUT_BIT_DEPTH = "8"
 _WORKER_JPG_QUALITY = 95
 # yaw オフセット別キャッシュ: key = round(yaw_offset, 3), value = view_name -> (map_x, map_y)
 _WORKER_REMAP_CACHE: dict[float, dict[str, tuple[np.ndarray, np.ndarray]]] = {}
@@ -117,6 +118,17 @@ def parse_args() -> argparse.Namespace:
         default="auto",
         choices=["auto", "jpg", "png", "tiff", "tif", "webp"],
         help="Output image format. 'auto' (default) preserves the input format.",
+    )
+    parser.add_argument(
+        "--output-bit-depth",
+        "--output_bit_depth",
+        dest="output_bit_depth",
+        default="8",
+        choices=["8", "source"],
+        help=(
+            "Output image bit depth. '8' (default) down-converts images for broad "
+            "3DGS tool compatibility; 'source' preserves PNG/TIFF source bit depth."
+        ),
     )
     parser.add_argument(
         "--jpg-quality",
@@ -320,6 +332,23 @@ def _max_value_for_dtype(dtype: np.dtype) -> int:
     return 255
 
 
+def to_uint8_image(arr: np.ndarray) -> np.ndarray:
+    """画像・マスク配列を8bitへ変換する。uint8はそのまま返す。"""
+    if arr.dtype == np.uint8:
+        return arr
+    if np.issubdtype(arr.dtype, np.integer):
+        max_value = np.iinfo(arr.dtype).max
+        if max_value <= 0:
+            return arr.astype(np.uint8)
+        return np.clip(np.rint(arr.astype(np.float64) * 255.0 / max_value), 0, 255).astype(np.uint8)
+    if np.issubdtype(arr.dtype, np.floating):
+        finite = np.nan_to_num(arr, nan=0.0, posinf=255.0, neginf=0.0)
+        if finite.size and float(np.nanmax(finite)) <= 1.0:
+            finite = finite * 255.0
+        return np.clip(np.rint(finite), 0, 255).astype(np.uint8)
+    return arr.astype(np.uint8)
+
+
 def remap_with_channels(arr: np.ndarray, map_x: np.ndarray, map_y: np.ndarray) -> np.ndarray:
     """α チャネル含む任意チャネル数の equirect 配列をリマップ。
 
@@ -341,18 +370,21 @@ def remap_with_channels(arr: np.ndarray, map_x: np.ndarray, map_y: np.ndarray) -
     )
 
 
-def save_image(arr: np.ndarray, path: str, jpg_quality: int = 95) -> None:
+def save_image(arr: np.ndarray, path: str, jpg_quality: int = 95, force_8bit: bool = False) -> None:
     """cv2.imwrite で出力。出力フォーマットがビット深度・α 非対応なら自動 down-convert。"""
     ext = os.path.splitext(path)[1].lower()
     out = arr
+
+    if force_8bit:
+        out = to_uint8_image(out)
 
     # JPG / WebP / BMP は α 非対応 → 落とす
     if ext not in _ALPHA_CAPABLE_EXTS and out.ndim == 3 and out.shape[2] == 4:
         out = out[..., :3]
 
-    # JPG / WebP は 8-bit のみ → 16-bit を down-convert
-    if ext not in _HIGH_BIT_EXTS and out.dtype == np.uint16:
-        out = (out / 256).astype(np.uint8)
+    # JPG / WebP / BMP は 8-bit のみ → high-bit を down-convert
+    if ext not in _HIGH_BIT_EXTS and out.dtype != np.uint8:
+        out = to_uint8_image(out)
 
     if ext in (".jpg", ".jpeg"):
         params = [int(cv2.IMWRITE_JPEG_QUALITY), int(jpg_quality)]
@@ -377,6 +409,7 @@ def remap_image(
     output_mask_dir: str,
     invert_masks: bool,
     output_format: str | None = None,
+    output_bit_depth: str = "8",
     jpg_quality: int = 95,
 ) -> None:
     basename, ext2, in_ext = split_filename_for_output(input_file)
@@ -406,16 +439,21 @@ def remap_image(
         if mask_from_alpha and has_alpha:
             color = converted[..., :3]
             alpha = converted[..., 3]
-            save_image(color, out_path, jpg_quality)
+            save_image(color, out_path, jpg_quality, force_8bit=output_bit_depth == "8")
 
             mask_thresh = max_val // 2
             _, mask = cv2.threshold(alpha, mask_thresh, max_val, cv2.THRESH_BINARY)
             if invert_masks:
                 mask = max_val - mask
             mask_out_path = os.path.join(output_mask_dir, f"{basename}_{view_name}{ext2}.png")
-            save_image(mask, mask_out_path, jpg_quality)
+            save_image(mask, mask_out_path, jpg_quality, force_8bit=True)
         else:
-            save_image(converted, out_path, jpg_quality)
+            save_image(
+                converted,
+                out_path,
+                jpg_quality,
+                force_8bit=is_grayscale or output_bit_depth == "8",
+            )
 
 
 def rotation_angle_diff(r1: np.ndarray, r2: np.ndarray) -> float:
@@ -596,6 +634,7 @@ def worker_init(
     mask_from_alpha: bool,
     invert_masks: bool,
     output_format: str | None,
+    output_bit_depth: str,
     jpg_quality: int,
 ) -> None:
     global _WORKER_REMAP_TABLES
@@ -607,6 +646,7 @@ def worker_init(
     global _WORKER_MASK_FROM_ALPHA
     global _WORKER_INVERT_MASKS
     global _WORKER_OUTPUT_FORMAT
+    global _WORKER_OUTPUT_BIT_DEPTH
     global _WORKER_JPG_QUALITY
     global _WORKER_REMAP_CACHE
     global _WORKER_INPUT_SIZE
@@ -624,6 +664,7 @@ def worker_init(
     _WORKER_MASK_FROM_ALPHA = mask_from_alpha
     _WORKER_INVERT_MASKS = invert_masks
     _WORKER_OUTPUT_FORMAT = output_format
+    _WORKER_OUTPUT_BIT_DEPTH = output_bit_depth
     _WORKER_JPG_QUALITY = jpg_quality
 
     # offset=0 のテーブルを事前構築（per-frame yaw を使わない場合の通常パス）
@@ -648,6 +689,7 @@ def proc_convert_images(frame_file: str, yaw_offset: float = 0.0) -> None:
             _WORKER_OUTPUT_MASK_DIR,
             _WORKER_INVERT_MASKS,
             output_format=_WORKER_OUTPUT_FORMAT,
+            output_bit_depth=_WORKER_OUTPUT_BIT_DEPTH,
             jpg_quality=_WORKER_JPG_QUALITY,
         )
 
@@ -666,6 +708,7 @@ def proc_convert_images(frame_file: str, yaw_offset: float = 0.0) -> None:
                 _WORKER_OUTPUT_MASK_DIR,
                 _WORKER_INVERT_MASKS,
                 output_format="png",
+                output_bit_depth="8",
                 jpg_quality=_WORKER_JPG_QUALITY,
             )
             break
@@ -684,6 +727,7 @@ def convert_images(
     mask_from_alpha: bool,
     invert_masks: bool,
     output_format: str | None = None,
+    output_bit_depth: str = "8",
     jpg_quality: int = 95,
     frame_yaw_offsets: list[float] | None = None,
 ) -> None:
@@ -718,6 +762,7 @@ def convert_images(
             mask_from_alpha,
             invert_masks,
             output_format,
+            output_bit_depth,
             jpg_quality,
         ),
     ) as executor:
@@ -809,6 +854,7 @@ def main() -> None:
             mask_from_alpha=args.mask_from_alpha,
             invert_masks=args.invert_masks,
             output_format=args.output_format,
+            output_bit_depth=args.output_bit_depth,
             jpg_quality=args.jpg_quality,
             frame_yaw_offsets=frame_yaw_offsets,
         )

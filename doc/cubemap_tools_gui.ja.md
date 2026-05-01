@@ -101,6 +101,7 @@ start_cubemap_tools_gui.bat
 - `No axis transform (--no_transform)`
 - `Allow duplicate (--duplicate)`
 - `Invert masks (--invert_masks)`
+  - 通常はOFF。出力先アプリで逆極性が必要な場合だけON。
 
 ## ワークフロータブ
 
@@ -127,7 +128,7 @@ start_cubemap_tools_gui.bat
   `cubemap_transforms_json.py --fov 90 --output_scale <0.5|1.0> --views-json <そのファイル>` を呼び出します。
 - OFFのスロットは `enabled=false` として保存され、変換時に無視されます。
 - `Postshot / Brush` プロファイルでは、点群とカメラの不一致を避けるため、前処理`--ply`が既定でOFFになります。
-- マスク反転は自動では行われません。必要な場合のみ `Invert masks (--invert_masks)` を有効にしてください。
+- マスクは通常「黒=除外領域」で変換されます。Postshot はアプリ側の Mask Mode で扱いを選べるため、GUI側では自動反転しません。
 - 変換後、GUIはPLYを `<output_dir>` に同梱し、`<output_dir>/transforms.json` の `ply_file_path` を更新します。
   - `Postshot / Brush`: MetashapeのPLY（例: `metashape.ply` / `sparse.ply`）をコピー
   - `LichtFeld Studio`: `pointcloud.ply` をコピー

@@ -139,7 +139,8 @@ python cubemap_transforms_json.py . ./cubic --no_transform
 |--brush|(no)|Brush向けの座標変換を行います|
 |--duplicate|(no)|マージされたチャンク間で同名の画像を許可|
 |--yaw-offset-per-frame|角度°|フレームごとのキューブマップヨー回転ステップ (default=30.0)。各ユニーク入力画像に `yaw = frame_index * step (mod 360)` を適用し、cubemap 面境界アーティファクトの蓄積を防いで 3DGS 学習の安定性を向上させる。`0` 指定で旧動作に戻す。|
-|--output-format|auto/jpg/png/tiff/webp|出力画像フォーマット (default=auto、入力に合わせる)。16-bit 入力は png/tiff で保持、jpg/webp では 8-bit にダウンコンバート。|
+|--output-format|auto/jpg/png/tiff/webp|出力画像フォーマット (default=auto、入力に合わせる)。|
+|--output-bit-depth|8/source|出力画像のビット深度 (default=8)。`8` は互換性重視で8bitへ変換、`source` はPNG/TIFFで元ビット深度を保持。マスク出力は常に8bit PNG。|
 |--jpg-quality|1-100|JPEG / WebP 品質 (default=95)|
 
 ### フレームごとヨー回転 (per-frame yaw)
@@ -150,11 +151,13 @@ python cubemap_transforms_json.py . ./cubic --no_transform
 
 ### ビット深度と α チャンネル
 
-OpenCV ベースの I/O により以下を保持できます：
+OpenCV ベースの I/O により以下を扱えます：
 
-- PNG / TIFF 出力では 8/16-bit のビット深度
+- 既定では 3DGS ツール互換性を優先して画像を8bit出力
+- `--output-bit-depth source` 指定時のみ PNG / TIFF で元の 8/16-bit ビット深度を保持
 - RGBA の α チャンネル（カラーと α を分離して remap → 再結合し、境界での色滲みを抑える）
 - `--output-format` でフォーマット変換 (png ↔ tiff ↔ webp ↔ jpg)
+- 変換後のマスクは常に8bit単一チャンネルPNG
 
 JPEG と WebP は 8-bit のみで α 非対応のため、これらを指定した場合は自動的にダウンコンバートし α を落とします。
 

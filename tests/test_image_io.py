@@ -197,7 +197,7 @@ def test_end_to_end_8bit_rgb_png(tmp_path: Path):
     assert loaded.shape == (64, 64, 3)
 
 
-def test_end_to_end_16bit_preserved(tmp_path: Path):
+def test_end_to_end_16bit_defaults_to_8bit_output(tmp_path: Path):
     src = tmp_path / "input.png"
     out_dir = tmp_path / "out"
     out_dir.mkdir()
@@ -209,6 +209,34 @@ def test_end_to_end_16bit_preserved(tmp_path: Path):
 
     remap_image(
         str(src), str(out_dir), tables, views, False, str(out_dir), False, output_format="auto"
+    )
+
+    out_files = list(out_dir.glob("*.png"))
+    assert len(out_files) == 1
+    loaded = cv2.imread(str(out_files[0]), cv2.IMREAD_UNCHANGED)
+    assert loaded.dtype == np.uint8, f"Expected uint8, got {loaded.dtype}"
+
+
+def test_end_to_end_16bit_can_preserve_source_depth(tmp_path: Path):
+    src = tmp_path / "input.png"
+    out_dir = tmp_path / "out"
+    out_dir.mkdir()
+    _make_test_equirect(src, dtype=np.uint16, channels=3)
+
+    views = [{"name": "front", "yaw": 0.0, "pitch": 0.0}]
+    map_x, map_y = build_remap((256, 128), 90.0, 0.0, 0.0, 64)
+    tables = {"front": (map_x, map_y)}
+
+    remap_image(
+        str(src),
+        str(out_dir),
+        tables,
+        views,
+        False,
+        str(out_dir),
+        False,
+        output_format="auto",
+        output_bit_depth="source",
     )
 
     out_files = list(out_dir.glob("*.png"))
@@ -288,3 +316,71 @@ def test_end_to_end_mask_from_alpha(tmp_path: Path):
     assert mask.ndim == 2
     unique_vals = np.unique(mask)
     assert set(unique_vals.tolist()).issubset({0, 255})
+
+
+def test_mask_from_16bit_alpha_writes_8bit_png(tmp_path: Path):
+    src = tmp_path / "input.png"
+    img_dir = tmp_path / "img"
+    mask_dir = tmp_path / "mask"
+    img_dir.mkdir()
+    mask_dir.mkdir()
+    _make_test_equirect(src, dtype=np.uint16, channels=4)
+
+    views = [{"name": "front", "yaw": 0.0, "pitch": 0.0}]
+    map_x, map_y = build_remap((256, 128), 90.0, 0.0, 0.0, 64)
+    tables = {"front": (map_x, map_y)}
+
+    remap_image(
+        str(src),
+        str(img_dir),
+        tables,
+        views,
+        mask_from_alpha=True,
+        output_mask_dir=str(mask_dir),
+        invert_masks=False,
+        output_bit_depth="source",
+    )
+
+    mask_files = list(mask_dir.glob("*.png"))
+    assert len(mask_files) == 1
+    mask = cv2.imread(str(mask_files[0]), cv2.IMREAD_UNCHANGED)
+    assert mask.dtype == np.uint8
+    assert mask.ndim == 2
+
+
+def test_grayscale_mask_output_keeps_black_as_excluded_by_default(tmp_path: Path):
+    src = tmp_path / "mask.png"
+    out_dir = tmp_path / "out"
+    out_dir.mkdir()
+    cv2.imwrite(str(src), np.zeros((128, 256), dtype=np.uint8))
+
+    views = [{"name": "front", "yaw": 0.0, "pitch": 0.0}]
+    map_x, map_y = build_remap((256, 128), 90.0, 0.0, 0.0, 64)
+    tables = {"front": (map_x, map_y)}
+
+    remap_image(str(src), str(out_dir), tables, views, False, str(out_dir), False)
+
+    out_files = list(out_dir.glob("*.png"))
+    assert len(out_files) == 1
+    mask = cv2.imread(str(out_files[0]), cv2.IMREAD_UNCHANGED)
+    assert mask.dtype == np.uint8
+    assert set(np.unique(mask).tolist()) == {0}
+
+
+def test_grayscale_mask_output_can_invert_for_postshot_occluders(tmp_path: Path):
+    src = tmp_path / "mask.png"
+    out_dir = tmp_path / "out"
+    out_dir.mkdir()
+    cv2.imwrite(str(src), np.zeros((128, 256), dtype=np.uint8))
+
+    views = [{"name": "front", "yaw": 0.0, "pitch": 0.0}]
+    map_x, map_y = build_remap((256, 128), 90.0, 0.0, 0.0, 64)
+    tables = {"front": (map_x, map_y)}
+
+    remap_image(str(src), str(out_dir), tables, views, False, str(out_dir), True)
+
+    out_files = list(out_dir.glob("*.png"))
+    assert len(out_files) == 1
+    mask = cv2.imread(str(out_files[0]), cv2.IMREAD_UNCHANGED)
+    assert mask.dtype == np.uint8
+    assert set(np.unique(mask).tolist()) == {255}

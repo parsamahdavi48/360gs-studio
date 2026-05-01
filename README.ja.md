@@ -1,6 +1,6 @@
 # stechdrive-3dgs-utils
 
-**v0.2.0**
+**v0.3.0**
 
 360度動画から、Metashape SfM と 3D Gaussian Splatting (3DGS) 学習へ渡すための画像・マスク・カメラ情報を作るデスクトップツールです。Windows上で `setup_windows.bat` と `start_gui.bat` だけで使える、日本語GUI中心のワークフローとして整備しています。
 
@@ -100,7 +100,7 @@ GUIは以下のCLIエンジンを呼び出しています。必要なら単体�
 
 ```toml
 [project]
-version = "0.2.0"
+version = "0.3.0"
 ```
 
 GUIタイトルと `python -m gui.app --version` はこの値から生成されます。アプリ表示は常に `v0.0.0` 形式です。

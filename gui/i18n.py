@@ -36,6 +36,8 @@ _JA: dict[str, str] = {
     "SCENE_DIR_PLACEHOLDER": "シーンフォルダを選択...",
     "OUTPUT_DIR": "出力フォルダ",
     "RUN": "実行",
+    "GENERATE": "生成",
+    "EXPORT": "書き出し",
     "CANCEL": "キャンセル",
     "CLOSE": "閉じる",
     "STATUS_IDLE": "待機中",
@@ -81,7 +83,7 @@ _JA: dict[str, str] = {
     "BACKUP_BEFORE_FINALIZE": "実行前に images_backup/ にバックアップ",
     "BACKUP_BEFORE_FINALIZE_HINT": "ON: 確定前に images/ を images_backup/ にフルコピー（既存バックアップは上書き）。OFF: バックアップなし（容量節約・復元不可）。",
     "STEP2_WORKFLOW": "Step 1 で抽出  ──  確認+選別  ──  Step 3 (マスク生成) へ",
-    "ACTION_FINALIZE_REVIEW": "採用結果を反映",
+    "ACTION_FINALIZE_REVIEW": "適用",
     "REVIEW_LOAD_EMBEDDED": "フレーム確認を読み込み",
     "REVIEW_LOAD_EMBEDDED_HINT": "selected_frames.csv を読み直し、右側の確認ビューを更新します。",
     "OPEN_REVIEW_EXTERNAL": "別ウィンドウで開く",
@@ -95,84 +97,31 @@ _JA: dict[str, str] = {
     "REVIEW_DECISION_DROP": "除外",
     "REVIEW_INFO_YES": "確認対象",
     "REVIEW_INFO_NO": "通常",
-    "REVIEW_PROBLEMS_FORMAT": "確認対象: {n} 件 (置換済み={r}, 置換不可={f}, 自動間引き={t}) | 現在: {cur}",
-    "REVIEW_INFO_FORMAT": (
-        "時刻: {ts}   |   ブレ: {blur}   |   変化: {change}\n"
-        "フレーム抽出時の処理: {process}"
-    ),
-    "REVIEW_BLUR_VALUE_FORMAT": "{score:.1f} (中央値 {median:.0f} の {pct}%)",
-    "REVIEW_BLUR_VALUE_NO_MEDIAN": "{score:.1f}",
-    "REVIEW_PROCESS_OK": "通常フレーム (品質基準を満たしています)",
-    "REVIEW_PROCESS_REPLACED": "置換済み (元フレーム {orig} から、近くのフレーム {final} に置換)",
-    "REVIEW_PROCESS_FALLBACK": "置換不可 (ブレを検出しましたが、代わりのフレームが見つかりませんでした)",
-    "REVIEW_PROCESS_THINNED": "自動間引き (動きが少ない区間として除外扱い)",
+    "REVIEW_PROBLEMS_FORMAT": "確認対象: {n} 件 (置換済み={r}, 置換なし={f}, 自動間引き={t}) | 現在: {cur}",
+    "REVIEW_FRAME_SLIDER_TIP": "CSV内のフレームを順番に切り替えます。",
+    "REVIEW_FRAME_POSITION_FORMAT": "{seq} / {total} : {name}",
+    "REVIEW_INFO_FORMAT": "動画位置: {ts}",
+    "REVIEW_FLAG_TIP": "採用フラグを切り替えます。変更はすぐCSVに反映されます。",
+    "REVIEW_RESET_DECISION_TIP": "このフレームの採用フラグを読み込み時の状態へ戻します。",
     "REVIEW_BTN_PREV": "前 (←)",
     "REVIEW_BTN_NEXT": "次 (→)",
     "REVIEW_BTN_PREV_PROBLEM": "前の確認対象 (Shift+F)",
     "REVIEW_BTN_NEXT_PROBLEM": "次の確認対象 (F)",
     "REVIEW_BTN_PROBLEM_TIP": (
         "フレーム抽出時に確認対象として記録されたフレーム\n"
-        "（置換済み・置換不可・自動間引き）を撮影順に巡回します。"
+        "（置換済み・ブレ置換なし・自動間引き）を撮影順に巡回します。"
     ),
-    "REVIEW_BTN_TOGGLE": "採用/除外 切替 (Space)",
-    "REVIEW_BTN_JUMP": "番号へ移動",
-    "REVIEW_BTN_SAVE": "保存 (S)",
-    "REVIEW_JUMP_PLACEHOLDER": "番号",
-    "REVIEW_BLUR_THRESHOLD_LABEL": "  ブレ評価値の閾値:",
-    "REVIEW_BLUR_DROP_BTN": "閾値以下をまとめて除外",
-    "REVIEW_BLUR_THRESHOLD_PLACEHOLDER": "ブレ評価値",
     "REVIEW_NO_PROBLEMS": "確認対象フレームはありません",
     "REVIEW_IMAGE_NOT_FOUND": "画像が見つかりません:\n{path}",
     "REVIEW_IMAGE_LOAD_FAILED": "画像の読み込みに失敗しました:\n{path}",
-    "REVIEW_SEQ_INTEGER_ERR": "番号は整数で指定してください。",
-    "REVIEW_OUT_OF_RANGE_ERR": "番号は 1 〜 {max} の範囲で指定してください。",
     "REVIEW_INVALID_INPUT": "入力エラー",
     "REVIEW_INFO_HEADER": "情報",
-    "REVIEW_THRESHOLD_HEADER": "閾値",
-    "REVIEW_THRESHOLD_NEED_INPUT": "閾値を入力してから再度押してください。\n現在のフレームのブレ評価値を入力欄に入れました。",
-    "REVIEW_THRESHOLD_NUMERIC_ERR": "数値を入力してください。",
-    "REVIEW_BULK_DROP_HEADER": "一括除外",
-    "REVIEW_BULK_DROP_RESULT": "ブレ評価値が {thr} 以下のフレーム {n} 件を除外にしました。\n保存 (S) で CSV に反映してください。",
-    "REVIEW_SAVED_HEADER": "保存しました",
-    "REVIEW_SAVED_BODY": "更新先: {path}\n採用={k}, 除外={d}",
-    "REVIEW_HELP_HEADER": "── 使い方 ──",
-    "REVIEW_HELP_BODY": (
-        "1 枚ずつフレームを確認し、3DGS 学習や Metashape の SfM に使うフレームを選別します。\n"
-        "残すフレームは「採用」、使わないフレームは「除外」です。変更は「保存 (S)」を押すまで CSV には書き戻されません。\n"
-        "保存後、メイン画面の Step 2 で「選別を確定」を押すと、除外フレームが images/ から削除され、採用フレームだけが連番になります。\n\n"
-        "【推奨レビュー手順】\n"
-        "  1. F キーで確認対象のフレームを順番に確認します。\n"
-        "     確認対象には、置換済み・置換不可・自動間引きのフレームが含まれます。\n"
-        "  2. 画像下の色帯で状態を確認します。\n"
-        "     オレンジ = ブレを検出したが置換不可 / 青 = 処理内容の確認 / 緑 = 通常フレーム\n"
-        "  3. オレンジのフレームは画像を見て、ブレが目立つ場合だけ Space で除外にします。\n"
-        "  4. 確認が終わったら S で保存し、メイン画面で「選別を確定」を実行します。\n\n"
-        "フレーム抽出時点で、ブレが強いフレームは近くのブレが少ないフレームへ自動置換されています。\n"
-        "そのため、実際に除外判断が必要になりやすいのは「置換不可」のフレームです。置換済みや通常フレームは、見た目に問題がなければ採用のままで構いません。\n\n"
-        "【除外の目安】\n"
-        "  ・人物、車両、揺れる枝など、静止シーンとして扱えない動く被写体\n"
-        "  ・置換不可フレームのうち、画像確認でブレが目立つもの\n"
-        "  ・レンズフレアや強い太陽光で、大部分の画素が飽和しているもの\n"
-        "  ・360度画像のステッチ継ぎ目が大きく破綻しているもの\n"
-        "  ・露出過多または露出不足で、真っ白・真っ黒な領域が大半を占めるもの\n"
-        "判断に迷ったら採用のままにしてください。後から再レビューできます。\n\n"
-        "【画像操作】\n"
-        "  マウスホイール    カーソル位置を中心に拡大 / 縮小\n"
-        "  ドラッグ          拡大時にパン (画像をつかんで移動)\n"
-        "  0 キー            ズームをリセット (フィット表示)\n\n"
-        "【キー操作】\n"
-        "  ← / →    前後のフレーム\n"
-        "  Space    現在のフレームを採用/除外に切替\n"
-        "  F / Shift+F  確認対象のフレームを撮影順に巡回\n"
-        "  S        CSV へ保存\n"
-        "  Q        終了 (未保存の変更は破棄)\n\n"
-        "「閾値以下をまとめて除外」は手動の一括処理です。ブレ評価値を見て、\n"
-        "明らかに低い値（例: 50 以下）をまとめて除外したい場合だけ使ってください。"
-    ),
-    "REVIEW_ADVISORY_FALLBACK": "要確認: フレーム抽出時にブレを検出しましたが、置換先が見つかりませんでした。画像を確認し、ブレが目立つ場合は除外してください。",
-    "REVIEW_ADVISORY_REPLACED": "情報: フレーム抽出時に、ブレが少ない近くのフレームへ置換済みです。通常は採用のままで問題ありません。",
-    "REVIEW_ADVISORY_THINNED": "情報: 動きが少ない区間として自動間引きされ、現在は除外扱いです。必要なら Space で採用に戻せます。",
-    "REVIEW_ADVISORY_NORMAL": "通常フレームです。フレーム抽出時の品質基準を満たしています。",
+    "REVIEW_SAVE_FAILED_HEADER": "保存に失敗しました",
+    "REVIEW_SAVE_FAILED_BODY": "採用フラグをCSVに反映できませんでした:\n{error}",
+    "REVIEW_ADVISORY_FALLBACK": "要確認: ブレ置換なし (探索範囲内に十分シャープな候補なし)",
+    "REVIEW_ADVISORY_REPLACED": "置換済み: 近傍のシャープなフレームを使用",
+    "REVIEW_ADVISORY_THINNED": "自動間引き: 動きが少ないため除外中",
+    "REVIEW_ADVISORY_NORMAL": "通常: 品質基準OK",
     "NEXT_STEP_MASK_NOTICE": "選別が完了したら Step 3 (マスク生成) へ進みます。\n人物・スティッチ・白飛びマスクを Metashape SfM の前に生成することで SfM 精度が向上します。",
     "METASHAPE_NOTICE": "マスク生成完了後、Metashape で SfM を実行してください。\n生成された masks/ フォルダを Metashape の per-image マスクとしてインポートすると、人物・スティッチ・白飛び領域が特徴点マッチングから除外され、SfM 精度が大きく向上します。\n完了後、Step 4 でキューブマップ変換に進みます。",
     "CSV_FILE": "CSVファイル名",
@@ -256,14 +205,23 @@ _JA: dict[str, str] = {
     "PREVIEW_IMAGE_LABEL": "プレビュー画像:",
     "AUTO": "自動",
     "RELOAD": "更新",
+    "YOLO_PREVIEW_BUTTON": "YOLO/SAMプレビュー",
     "MASK_OPACITY_LABEL": "マスク透過率:",
     "MASK_IMAGE_LABEL": "マスク画像:",
     "CLEAR": "クリア",
     "PREVIEW_OVERLAY_SECTION": "プレビューオーバーレイ設定",
-    "STITCH_PREVIEW_SECTION": "スティッチ境界プレビュー",
+    "MASK_PREVIEW_SECTION": "マスクプレビュー",
+    "MASK_PREVIEW_YOLO_EXISTING": "YOLO: 既存マスク",
+    "MASK_PREVIEW_YOLO_TEMP": "YOLO: プレビュー結果",
+    "MASK_PREVIEW_YOLO_PENDING": "YOLO: 実行後に反映",
+    "MASK_PREVIEW_YOLO_RUNNING": "YOLO/SAMプレビュー実行中...",
+    "MASK_PREVIEW_YOLO_FAILED": "YOLO/SAMプレビューに失敗しました",
+    "MASK_PREVIEW_YOLO_NO_IMAGE": "プレビュー画像を選択してください",
+    "MASK_PREVIEW_STITCH_STATUS": "スティッチ {width:g}°",
+    "MASK_PREVIEW_OVEREXP_STATUS": "白飛び RGB>{threshold} +{dilate}px",
+    "MASK_PREVIEW_INVALID_STITCH_WIDTH": "境界マスク幅は 0 以上 180 未満で指定",
+    "MASK_PREVIEW_NO_ACTIVE_MASK": "プレビュー対象のマスクなし",
     "CUBEMAP_PREVIEW_SECTION": "キューブマッププレビュー",
-    "STITCH_PREVIEW_STATUS_FORMAT": "境界 {width:g}° / 内部FOV {fov:g}°",
-    "STITCH_PREVIEW_INVALID_WIDTH": "境界マスク幅は 0 以上 180 未満で指定",
     "EXCEED": "超過",
     "HIGH": "多い",
     "NO_PREVIEW": "プレビュー画像が選択されていません",
@@ -301,6 +259,9 @@ _JA: dict[str, str] = {
     "YAW_OFFSET_PER_FRAME_HINT": "0=無効, 30推奨。フレームごとに cubemap を回転して 3DGS 学習の安定性を向上",
     "OUTPUT_FORMAT": "出力フォーマット",
     "OUTPUT_FORMAT_AUTO": "自動 (入力に合わせる)",
+    "OUTPUT_BIT_DEPTH": "出力ビット深度",
+    "OUTPUT_BIT_DEPTH_8": "8bit (推奨)",
+    "OUTPUT_BIT_DEPTH_SOURCE": "元画像に合わせる",
     "JPG_QUALITY": "JPG/WebP 品質 (1-100)",
     "EXPORT_COLMAP": "COLMAP テキスト形式も出力",
     "EXPORT_COLMAP_HINT": "PostShot/Brush/公式 gaussian-splatting 等向け cameras.txt + images.txt + points3D.txt",
@@ -330,6 +291,8 @@ _EN: dict[str, str] = {
     "SCENE_DIR_PLACEHOLDER": "Select a scene folder...",
     "OUTPUT_DIR": "Output Folder",
     "RUN": "Run",
+    "GENERATE": "Generate",
+    "EXPORT": "Export",
     "CANCEL": "Cancel",
     "CLOSE": "Close",
     "STATUS_IDLE": "Idle",
@@ -375,7 +338,7 @@ _EN: dict[str, str] = {
     "BACKUP_BEFORE_FINALIZE": "Back up to images_backup/ before finalize",
     "BACKUP_BEFORE_FINALIZE_HINT": "ON: snapshot images/ to images_backup/ before finalizing (existing backup is replaced). OFF: no backup (saves disk; cannot be undone).",
     "STEP2_WORKFLOW": "Step 1 Extract  ──  Review + Select  ──  Proceed to Step 3 (Mask Generation)",
-    "ACTION_FINALIZE_REVIEW": "Apply Frame Decisions",
+    "ACTION_FINALIZE_REVIEW": "Apply",
     "REVIEW_LOAD_EMBEDDED": "Load Frame Review",
     "REVIEW_LOAD_EMBEDDED_HINT": "Reload selected_frames.csv and refresh the review view on the right.",
     "OPEN_REVIEW_EXTERNAL": "Open Separate Window",
@@ -389,17 +352,12 @@ _EN: dict[str, str] = {
     "REVIEW_DECISION_DROP": "Drop",
     "REVIEW_INFO_YES": "yes",
     "REVIEW_INFO_NO": "no",
-    "REVIEW_PROBLEMS_FORMAT": "Review targets: {n} (replaced={r}, fallback={f}, thinned={t}) | Current: {cur}",
-    "REVIEW_INFO_FORMAT": (
-        "Time: {ts}   |   Blur: {blur}   |   Change: {change}\n"
-        "extract action: {process}"
-    ),
-    "REVIEW_BLUR_VALUE_FORMAT": "{score:.1f} ({pct}% of median {median:.0f})",
-    "REVIEW_BLUR_VALUE_NO_MEDIAN": "{score:.1f}",
-    "REVIEW_PROCESS_OK": "kept as-is (passed extract's quality bar)",
-    "REVIEW_PROCESS_REPLACED": "auto-swapped (original idx={orig} was blurry; replaced with idx={final})",
-    "REVIEW_PROCESS_FALLBACK": "kept blurry (extract found no sharper neighbor)",
-    "REVIEW_PROCESS_THINNED": "auto-thinned in stationary cluster",
+    "REVIEW_PROBLEMS_FORMAT": "Review targets: {n} (replaced={r}, not replaced={f}, thinned={t}) | Current: {cur}",
+    "REVIEW_FRAME_SLIDER_TIP": "Slide through frames in the CSV.",
+    "REVIEW_FRAME_POSITION_FORMAT": "{seq} / {total} : {name}",
+    "REVIEW_INFO_FORMAT": "Video position: {ts}",
+    "REVIEW_FLAG_TIP": "Toggle the keep flag. Changes are written to the CSV immediately.",
+    "REVIEW_RESET_DECISION_TIP": "Reset this frame's keep flag to the state loaded from the CSV.",
     "REVIEW_BTN_PREV": "Prev (←)",
     "REVIEW_BTN_NEXT": "Next (→)",
     "REVIEW_BTN_PREV_PROBLEM": "extract problem ← (Shift+F)",
@@ -408,66 +366,17 @@ _EN: dict[str, str] = {
         "Cycle through frames extract_frames flagged automatically\n"
         "(replaced / fallback_keep / thinned), in CSV (capture time) order."
     ),
-    "REVIEW_BTN_TOGGLE": "Toggle Keep/Drop (Space)",
-    "REVIEW_BTN_JUMP": "Jump to Seq",
-    "REVIEW_BTN_SAVE": "Save (S)",
-    "REVIEW_JUMP_PLACEHOLDER": "seq",
-    "REVIEW_BLUR_THRESHOLD_LABEL": "  Blur threshold:",
-    "REVIEW_BLUR_DROP_BTN": "Drop below threshold",
-    "REVIEW_BLUR_THRESHOLD_PLACEHOLDER": "blur score",
     "REVIEW_NO_PROBLEMS": "No problem frames found.",
     "REVIEW_IMAGE_NOT_FOUND": "Image not found:\n{path}",
     "REVIEW_IMAGE_LOAD_FAILED": "Failed to load image:\n{path}",
-    "REVIEW_SEQ_INTEGER_ERR": "Seq must be an integer.",
-    "REVIEW_OUT_OF_RANGE_ERR": "Seq must be between 1 and {max}.",
     "REVIEW_INVALID_INPUT": "Invalid input",
     "REVIEW_INFO_HEADER": "Info",
-    "REVIEW_THRESHOLD_HEADER": "Threshold",
-    "REVIEW_THRESHOLD_NEED_INPUT": "Enter a threshold and press the button again.\nThe current frame's score has been pre-filled.",
-    "REVIEW_THRESHOLD_NUMERIC_ERR": "Enter a numeric value.",
-    "REVIEW_BULK_DROP_HEADER": "Bulk Drop",
-    "REVIEW_BULK_DROP_RESULT": "Marked {n} frames with blur_score ≦ {thr} as drop.\nPress Save (S) to commit to CSV.",
-    "REVIEW_SAVED_HEADER": "Saved",
-    "REVIEW_SAVED_BODY": "Updated {path}\nkeep={k}, drop={d}",
-    "REVIEW_HELP_HEADER": "── How to use ──",
-    "REVIEW_HELP_BODY": (
-        "Walk through the frames one by one and mark unwanted ones as drop.\n"
-        "Edits stay in memory until you press Save (S), which writes them back to selected_frames.csv.\n"
-        "Then return to the main GUI Step 2 and press \"Finalize\" to apply the changes to images/.\n\n"
-        "[Recommended review flow] Shortest path to good SfM:\n"
-        "  1. Press F to walk through extract-flagged frames\n"
-        "     (frames extract marked as 'replaced' / 'fallback_keep' / 'thinned')\n"
-        "  2. Read the advisory color band under the image:\n"
-        "     orange = fallback_keep (consider drop) / blue = info (usually keep) / green = normal\n"
-        "  3. For orange frames, look at the image. If actually blurry, press Space to drop.\n"
-        "  4. Press S to save, then go back to the main GUI and click Finalize.\n"
-        "  Note: extract has already detected and replaced blurry frames. The truly\n"
-        "  problematic ones are 'fallback_keep' (couldn't be replaced). 'ok' / 'replaced'\n"
-        "  passed extract's quality bar; usually keep them.\n\n"
-        "[When to drop] Frames that hurt SfM (Metashape) or 3DGS training:\n"
-        "  - Moving subjects: people, vehicles, swaying branches (3DGS assumes static scenes)\n"
-        "  - fallback_keep frames that look visibly blurry\n"
-        "  - Lens flare / strong sun: most pixels saturated\n"
-        "  - Major stitching seam errors (360 dual-fisheye)\n"
-        "  - Over- / under-exposure: most of the image is white or black\n"
-        "When in doubt, keep it. You can always re-review later.\n\n"
-        "[Image]\n"
-        "  Mouse wheel      zoom in / out at the cursor position\n"
-        "  Click and drag   pan the image when zoomed in\n"
-        "  0 key            reset zoom to fit window\n\n"
-        "[Keyboard]\n"
-        "  ← / →     previous / next frame\n"
-        "  Space     toggle keep/drop on the current frame\n"
-        "  F / Shift+F  extract-flagged frames (replaced / fallback_keep / thinned) in capture order\n"
-        "  S         save changes to CSV\n"
-        "  Q         quit (unsaved changes are discarded)\n\n"
-        "The 'Drop below threshold' button is a manual absolute-threshold tool. Use it if you\n"
-        "want to bulk-drop frames whose blur score is clearly low (e.g., below 50)."
-    ),
-    "REVIEW_ADVISORY_FALLBACK": "⚠ extract could not replace this blurry frame — review and consider drop",
-    "REVIEW_ADVISORY_REPLACED": "ⓘ Auto-swapped to a sharper neighbor at extract time (usually keep)",
-    "REVIEW_ADVISORY_THINNED": "ⓘ Auto-thinned in a stationary cluster (marked drop). Press Space to flip back to keep",
-    "REVIEW_ADVISORY_NORMAL": "Normal quality (passed extract's quality bar)",
+    "REVIEW_SAVE_FAILED_HEADER": "Save failed",
+    "REVIEW_SAVE_FAILED_BODY": "Could not write the keep flag to the CSV:\n{error}",
+    "REVIEW_ADVISORY_FALLBACK": "Review: no sharp enough candidate in search window",
+    "REVIEW_ADVISORY_REPLACED": "Replaced: using a sharper nearby frame",
+    "REVIEW_ADVISORY_THINNED": "Auto-thinned: low motion, currently dropped",
+    "REVIEW_ADVISORY_NORMAL": "Normal: quality OK",
     "NEXT_STEP_MASK_NOTICE": "After selection, proceed to Step 3 (Mask Generation).\nGenerating person / stitch / overexposure masks before Metashape SfM significantly improves SfM accuracy.",
     "METASHAPE_NOTICE": "After mask generation, run Metashape SfM.\nImport the generated masks/ folder as per-image masks in Metashape so that people, stitching seams, and blown-out highlights are excluded from feature matching. This significantly improves SfM accuracy.\nAfter SfM, proceed to Step 4 for cubemap conversion.",
     "CSV_FILE": "CSV Filename",
@@ -551,14 +460,23 @@ _EN: dict[str, str] = {
     "PREVIEW_IMAGE_LABEL": "Preview Image:",
     "AUTO": "Auto",
     "RELOAD": "Reload",
+    "YOLO_PREVIEW_BUTTON": "YOLO/SAM Preview",
     "MASK_OPACITY_LABEL": "Mask Opacity:",
     "MASK_IMAGE_LABEL": "Mask Image:",
     "CLEAR": "Clear",
     "PREVIEW_OVERLAY_SECTION": "Preview Overlay Settings",
-    "STITCH_PREVIEW_SECTION": "Stitch Seam Preview",
+    "MASK_PREVIEW_SECTION": "Mask Preview",
+    "MASK_PREVIEW_YOLO_EXISTING": "YOLO: existing mask",
+    "MASK_PREVIEW_YOLO_TEMP": "YOLO: preview result",
+    "MASK_PREVIEW_YOLO_PENDING": "YOLO: after generation",
+    "MASK_PREVIEW_YOLO_RUNNING": "Running YOLO/SAM preview...",
+    "MASK_PREVIEW_YOLO_FAILED": "YOLO/SAM preview failed",
+    "MASK_PREVIEW_YOLO_NO_IMAGE": "Select a preview image",
+    "MASK_PREVIEW_STITCH_STATUS": "Stitch {width:g} deg",
+    "MASK_PREVIEW_OVEREXP_STATUS": "Overexposure RGB>{threshold} +{dilate}px",
+    "MASK_PREVIEW_INVALID_STITCH_WIDTH": "Boundary width must be >= 0 and < 180",
+    "MASK_PREVIEW_NO_ACTIVE_MASK": "No active mask preview",
     "CUBEMAP_PREVIEW_SECTION": "Cubemap Preview",
-    "STITCH_PREVIEW_STATUS_FORMAT": "Seam {width:g} deg / internal FOV {fov:g} deg",
-    "STITCH_PREVIEW_INVALID_WIDTH": "Boundary width must be >= 0 and < 180",
     "EXCEED": "exceeded",
     "HIGH": "high",
     "NO_PREVIEW": "No preview image selected",
@@ -596,6 +514,9 @@ _EN: dict[str, str] = {
     "YAW_OFFSET_PER_FRAME_HINT": "0=disabled, 30=recommended. Rotates cubemap per frame to improve 3DGS training stability",
     "OUTPUT_FORMAT": "Output Format",
     "OUTPUT_FORMAT_AUTO": "auto (match input)",
+    "OUTPUT_BIT_DEPTH": "Output Bit Depth",
+    "OUTPUT_BIT_DEPTH_8": "8-bit (recommended)",
+    "OUTPUT_BIT_DEPTH_SOURCE": "Match Source",
     "JPG_QUALITY": "JPG/WebP Quality (1-100)",
     "EXPORT_COLMAP": "Also export COLMAP text",
     "EXPORT_COLMAP_HINT": "Generate cameras.txt + images.txt + points3D.txt for PostShot/Brush/official gaussian-splatting",
@@ -628,7 +549,7 @@ _TIPS_JA: dict[str, str] = {
     "SAMPLE_BTN": "動画の一部をサンプリングしてフレーム数を再推定 (変化検出モードのみ)",
     "CSV_FILE": "Step1で生成されたフレーム選択CSVファイル名",
     "EXPORT_DIR": "採用フレームのコピー先フォルダ名。'images'ならインプレース処理",
-    "OPEN_REVIEW": "フレーム画像を1枚ずつ確認し、採用/除外を編集するGUIを開く\n確認対象の巡回と、ブレ評価値の閾値による一括除外ができます",
+    "OPEN_REVIEW": "フレーム画像を1枚ずつ確認し、採用/除外を編集するGUIを開きます。変更はすぐCSVに反映されます",
     "EXPORT_KEEP": "CSVで採用にしたフレームだけを指定フォルダにコピー",
     "FINALIZE_INPLACE": "images/内の除外フレームを削除し、採用フレームを連番リネーム。元に戻せないので注意",
     "IMAGES_DIR": "エクイレクタングラー画像が入ったフォルダ (通常 images/)",
@@ -636,16 +557,16 @@ _TIPS_JA: dict[str, str] = {
     "RUN_MASKS": "選択したマスク処理を YOLO検出 → スティッチ境界 → 白飛び の順に実行",
     "MASK_TASK_YOLO": "YOLO/SAMで人物などを検出してマスクに追加。初期状態は人物のみ",
     "MASK_TASK_STITCH": "スティッチ境界をマスクに追加。手ブレ補正、方向ロック、AIスティッチなどで境界位置が動く素材では通常OFF",
-    "MASK_TASK_OVEREXPOSURE": "白飛びした画素を検出してマスクに追加",
+    "MASK_TASK_OVEREXPOSURE": "白飛びした画素を検出してマスクに追加。室内照明では消しすぎる場合があるため必要な時だけON",
     "RUN_ALL": "YOLO人物検出 → スティッチマスク → 白飛びマスクの全工程を順番に実行",
     "RUN_YOLO_STITCH": "YOLO人物検出 → スティッチマスクの2工程を実行 (白飛びは含まない)",
     "YOLO_LEVEL": "0: YOLO直接 (高速)\n1: YOLO+SAM2 (標準、推奨)\n2: 水平帯高品質+SAM2\n3: 全方向高品質+SAM2",
-    "YOLO_EXPAND": "検出マスクを指定ピクセル分膨張させます。横ドラッグで調整可能。GUI範囲は -64〜256 px",
+    "YOLO_EXPAND": "SAM後の検出マスク境界を固定ピクセルで補正します。既定は2px。横ドラッグで調整可能。安全範囲は -16〜32px",
     "YOLO_ADD_EXT": "マスクファイル名を image.jpg.png のように元の拡張子を残す形式にする",
     "STITCH_BOUNDARY_WIDTH": "除外するスティッチ境界帯の合計幅。横ドラッグで調整できます。GUIでは安全のため0〜30度に制限。5度は従来のFOV 175相当",
     "STITCH_WORKERS": "並列処理のワーカー数。横ドラッグで調整可能。CPUコア数が目安",
-    "OVEREXPOSURE_THRESHOLD": "RGB全チャンネルがこの値を超えるピクセルを白飛びと判定。横ドラッグで調整可能。GUI範囲は 0〜255",
-    "OVEREXPOSURE_DILATE": "白飛び領域を膨張させるピクセル数。横ドラッグで調整可能。0で無効、GUI範囲は 0〜128",
+    "OVEREXPOSURE_THRESHOLD": "RGB全チャンネルがこの8bit相当値を超えるピクセルを白飛びと判定。16bit画像では同じ比率に換算。GUI範囲は 1〜254",
+    "OVEREXPOSURE_DILATE": "白飛び領域を膨張させるピクセル数。既定は1px。0で無効、GUI範囲は 0〜128",
     "OUTPUT_DIR_CUBEMAP": "キューブマップ変換後の画像とtransforms.jsonの出力先フォルダ",
     "RUN_CUBEMAP": "現在の設定でMetashape結果をキューブマップ画像とtransforms.jsonへ書き出します",
     "TARGET_PROFILE": "出力先の3DGSソフトウェアに合わせた座標変換とPLY設定のプリセット",
@@ -656,7 +577,7 @@ _TIPS_JA: dict[str, str] = {
     "NO_IMAGE": "transforms.jsonのみ生成し、画像変換をスキップ (テスト用)",
     "NO_TRANSFORM": "座標軸変換を無効化。LichtFeld Studioで必要",
     "DUPLICATE": "マージされたチャンク間で同名画像を許可",
-    "INVERT_MASKS": "出力マスクの白黒を反転 (ソフトウェアの要求に合わせて)",
+    "INVERT_MASKS": "出力マスクの白黒を反転。通常はOFF。出力先で逆極性が必要な場合のみON",
     "PREPROCESS_CB": "Metashape XMLからtransforms.jsonを生成してからキューブマップ変換を行う",
     "MS_IMAGES": "MetashapeでSfMに使用した画像のフォルダ",
     "MS_XML": "Metashapeからエクスポートしたカメラパラメータ XML ファイル",
@@ -676,6 +597,7 @@ _TIPS_JA: dict[str, str] = {
     "PREVIEW_AUTO": "シーンフォルダ内の最初の画像を自動選択",
     "PREVIEW_RELOAD": "シーンフォルダの画像リストを再スキャン",
     "PREVIEW_SLIDER": "シーン内の画像を順番にスライドして切り替え",
+    "YOLO_PREVIEW_BUTTON": "現在表示中の1枚だけYOLO/SAMを実行し、結果をプレビューに重ねます。マスクフォルダには保存しません",
     "MASK_OPACITY": "プレビュー上のマスク領域の赤オーバーレイ透過率 (0=非表示、100=不透明)",
     "MASK_IMAGE": "特定のマスク画像を手動指定。空欄ならマスクフォルダから自動検索",
     "MASK_IMAGE_BROWSE": "マスク画像ファイルを選択",
@@ -705,7 +627,7 @@ _TIPS_EN: dict[str, str] = {
     "SAMPLE_BTN": "Re-estimate frame count by sampling the video (change-based mode only)",
     "CSV_FILE": "Frame selection CSV filename generated by Step 1",
     "EXPORT_DIR": "Destination folder for keep frames. 'images' triggers in-place processing",
-    "OPEN_REVIEW": "Open a GUI to review frames one by one and edit keep/drop decisions\nB/Shift+B for blur worst-order nav, threshold bulk drop available",
+    "OPEN_REVIEW": "Open a GUI to review frames one by one and edit keep/drop decisions. Changes are written to the CSV immediately",
     "EXPORT_KEEP": "Copy only frames marked as keep in the CSV to the specified folder",
     "FINALIZE_INPLACE": "Delete dropped frames in images/ and renumber kept frames. Cannot be undone",
     "IMAGES_DIR": "Folder containing equirectangular images (typically images/)",
@@ -717,12 +639,12 @@ _TIPS_EN: dict[str, str] = {
     "RUN_ALL": "Run YOLO person detection, stitch mask, and overexposure mask in sequence",
     "RUN_YOLO_STITCH": "Run YOLO person detection then stitch mask (no overexposure)",
     "YOLO_LEVEL": "0: YOLO direct (fast)\n1: YOLO+SAM2 (standard, recommended)\n2: High-quality horizontal band+SAM2\n3: Full high-quality+SAM2",
-    "YOLO_EXPAND": "Dilate detection masks by N pixels. Drag horizontally to adjust. GUI range: -64 to 256 px",
+    "YOLO_EXPAND": "Adjust the SAM-refined mask boundary by fixed pixels. Default is 2px. Drag horizontally to adjust. Safe range: -16 to 32px",
     "YOLO_ADD_EXT": "Name mask files as image.jpg.png (keeping the original extension)",
     "STITCH_BOUNDARY_WIDTH": "Total stitch seam band to exclude. Drag horizontally to adjust. The GUI clamps this to 0-30 degrees for safety. 5 degrees equals legacy FOV 175",
     "STITCH_WORKERS": "Number of parallel workers. Drag horizontally to adjust. Use CPU core count as a guide",
-    "OVEREXPOSURE_THRESHOLD": "Pixels with all RGB channels above this value are flagged as blown-out. Drag horizontally to adjust. GUI range: 0-255",
-    "OVEREXPOSURE_DILATE": "Dilate blown-out regions by N pixels. Drag horizontally to adjust. 0 = disabled; GUI range: 0-128",
+    "OVEREXPOSURE_THRESHOLD": "Pixels with all RGB channels above this 8-bit-equivalent value are flagged as blown-out. 16-bit images are scaled to the same ratio. GUI range: 1-254",
+    "OVEREXPOSURE_DILATE": "Dilate blown-out regions by N pixels. Default is 1px. 0 = disabled; GUI range: 0-128",
     "OUTPUT_DIR_CUBEMAP": "Output folder for cubemap images and transforms.json",
     "RUN_CUBEMAP": "Export cubemap images and transforms.json from the current Metashape-derived settings",
     "TARGET_PROFILE": "Coordinate transform and PLY preset for the target 3DGS software",
@@ -733,7 +655,7 @@ _TIPS_EN: dict[str, str] = {
     "NO_IMAGE": "Generate transforms.json only, skip image conversion (for testing)",
     "NO_TRANSFORM": "Disable axis transform. Required for LichtFeld Studio",
     "DUPLICATE": "Allow duplicate image filenames across merged chunks",
-    "INVERT_MASKS": "Invert output mask polarity (match your software's convention)",
+    "INVERT_MASKS": "Invert output mask polarity. Usually keep OFF; enable only when the target app expects the opposite polarity",
     "PREPROCESS_CB": "Generate transforms.json from Metashape XML before cubemap conversion",
     "MS_IMAGES": "Folder of images used for SfM in Metashape",
     "MS_XML": "Metashape-exported camera parameter XML file",
@@ -753,6 +675,7 @@ _TIPS_EN: dict[str, str] = {
     "PREVIEW_AUTO": "Auto-select the first image in the scene folder",
     "PREVIEW_RELOAD": "Rescan the scene folder for images",
     "PREVIEW_SLIDER": "Slide through images in the scene sequentially",
+    "YOLO_PREVIEW_BUTTON": "Run YOLO/SAM for the currently displayed image only and overlay the result. It is not saved to the mask folder",
     "MASK_OPACITY": "Red overlay opacity for masked regions in preview (0=hidden, 100=opaque)",
     "MASK_IMAGE": "Manually specify a mask image. Leave empty for auto-detection from mask folder",
     "MASK_IMAGE_BROWSE": "Select a mask image file",

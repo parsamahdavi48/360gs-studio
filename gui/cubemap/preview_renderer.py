@@ -22,6 +22,7 @@ from PySide6.QtWidgets import (
 from gui import i18n
 from gui.common.collapsible_section import CollapsibleSection
 from gui.common.drag_spinbox import DragSpinBox
+from gui.common.zoomable_image_label import ZoomableImageLabel
 
 
 def _rotation_matrix(yaw_deg: float, pitch_deg: float) -> np.ndarray:
@@ -95,8 +96,7 @@ class PreviewWidget(QWidget):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
 
-        self.image_label = QLabel(i18n.t("NO_PREVIEW"))
-        self.image_label.setAlignment(Qt.AlignCenter)
+        self.image_label = ZoomableImageLabel(i18n.t("NO_PREVIEW"))
         self.image_label.setMinimumSize(640, 320)
         self.image_label.setStyleSheet("border: 1px solid palette(mid);")
         layout.addWidget(self.image_label, stretch=1)
@@ -255,14 +255,7 @@ class PreviewWidget(QWidget):
     # -- internal --
 
     def _update_pixmap(self) -> None:
-        if self._pixmap is None:
-            return
-        scaled = self._pixmap.scaled(self.image_label.size(), Qt.KeepAspectRatio, Qt.SmoothTransformation)
-        self.image_label.setPixmap(scaled)
-
-    def resizeEvent(self, event) -> None:
-        super().resizeEvent(event)
-        self._update_pixmap()
+        self.image_label.set_source_pixmap(self._pixmap)
 
     def _resolve_mask(self, sample_path: Path, mask_dir: str) -> Path | None:
         manual = self.mask_edit.text().strip()

@@ -14,7 +14,9 @@ python yolo_mask.py [images_dir] [output_dir] [--add_ext] [--level N] [--expand 
 - `output_dir`: 出力マスク保存先（省略時: `masks`）
 - `--add_ext`: 元の拡張子を残してさらに `.png` を追加（出力例: `hoge.jpg.png`）
 - `--level N`: 検出レベル（0〜3、デフォルト=1）。値を上げると局所領域での高精度抽出が有効になります。
-- `--expand M`: 検出領域を広げるピクセル数（デフォルト=2）
+- `--expand M`: SAM後の検出領域を広げる固定ピクセル数（デフォルト=2）
+  - 安全のため `-16〜32` にクランプされます。
+  - 負値を指定するとマスク領域を収縮します。
 - `--classes IDS`: YOLOクラスIDのカンマ区切り指定（デフォルト: `0` = personのみ）
 
 例:
