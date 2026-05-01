@@ -18,6 +18,7 @@ from PySide6.QtWidgets import (
 )
 
 from gui import i18n
+from gui.common.collapsible_section import CollapsibleSection
 
 _MIN_YAW_SLOTS = 4
 _MAX_YAW_SLOTS = 8
@@ -50,6 +51,7 @@ class ViewConfigWidget(QWidget):
         super().__init__(parent)
         self.pitch_rows: list[dict] = []
         self.yaw_slot_labels: list[QLabel] = []
+        self._estimate_text = ""
 
         self._build_ui()
         self._apply_pitch_rows()
@@ -57,43 +59,55 @@ class ViewConfigWidget(QWidget):
     def _build_ui(self) -> None:
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(6)
 
-        ctrl = QHBoxLayout()
+        ctrl = QVBoxLayout()
+        ctrl.setSpacing(6)
 
+        mode_row = QHBoxLayout()
+        mode_row.setSpacing(8)
         self.view_mode_combo = QComboBox()
         self.view_mode_combo.setToolTip(i18n.tip("VIEW_MODE"))
         self.view_mode_combo.addItem(i18n.t("CUSTOM_GRID"), VIEW_MODE_CUSTOM)
         self.view_mode_combo.addItem(i18n.t("CUBE6_LABEL"), VIEW_MODE_CUBE6)
         self.view_mode_combo.currentIndexChanged.connect(self._on_view_mode_changed)
-        ctrl.addWidget(QLabel(i18n.t("VIEW_MODE_LABEL")))
-        ctrl.addWidget(self.view_mode_combo)
+        mode_row.addWidget(QLabel(i18n.t("VIEW_MODE_LABEL")))
+        mode_row.addWidget(self.view_mode_combo, stretch=1)
+        ctrl.addLayout(mode_row)
 
+        angle_row = QHBoxLayout()
+        angle_row.setSpacing(8)
         self.yaw_offset_edit = QLineEdit("45.0")
         self.yaw_offset_edit.setToolTip(i18n.tip("YAW_OFFSET"))
         self.yaw_offset_edit.setFixedWidth(60)
         self.yaw_offset_edit.textChanged.connect(self._on_params_changed)
-        ctrl.addWidget(QLabel(i18n.t("YAW_OFFSET_LABEL")))
-        ctrl.addWidget(self.yaw_offset_edit)
+        angle_row.addWidget(QLabel(i18n.t("YAW_OFFSET_LABEL")))
+        angle_row.addWidget(self.yaw_offset_edit)
 
         self.yaw_slots_combo = QComboBox()
         self.yaw_slots_combo.setToolTip(i18n.tip("YAW_SLOTS"))
         self.yaw_slots_combo.addItems([str(v) for v in range(_MIN_YAW_SLOTS, _MAX_YAW_SLOTS + 1)])
         self.yaw_slots_combo.setCurrentText(str(_DEFAULT_YAW_SLOTS))
         self.yaw_slots_combo.currentTextChanged.connect(lambda _: self._apply_pitch_rows())
-        ctrl.addWidget(QLabel(i18n.t("YAW_SLOTS_LABEL")))
-        ctrl.addWidget(self.yaw_slots_combo)
+        self.yaw_slots_label = QLabel(i18n.t("YAW_SLOTS_LABEL"))
+        angle_row.addWidget(self.yaw_slots_label)
+        angle_row.addWidget(self.yaw_slots_combo)
+        angle_row.addStretch()
+        ctrl.addLayout(angle_row)
 
+        pitch_row = QHBoxLayout()
+        pitch_row.setSpacing(8)
         self.pitch_edit = QLineEdit("-30,0,30")
         self.pitch_edit.setToolTip(i18n.tip("PITCH_ROWS"))
-        self.pitch_edit.setFixedWidth(120)
-        ctrl.addWidget(QLabel(i18n.t("PITCH_ROWS_LABEL")))
-        ctrl.addWidget(self.pitch_edit)
+        self.pitch_label = QLabel(i18n.t("PITCH_ROWS_LABEL"))
+        pitch_row.addWidget(self.pitch_label)
+        pitch_row.addWidget(self.pitch_edit, stretch=1)
 
-        apply_btn = QPushButton(i18n.t("APPLY"))
-        apply_btn.setToolTip(i18n.tip("APPLY_BTN"))
-        apply_btn.clicked.connect(self._apply_pitch_rows)
-        ctrl.addWidget(apply_btn)
-        ctrl.addStretch()
+        self.apply_btn = QPushButton(i18n.t("APPLY"))
+        self.apply_btn.setToolTip(i18n.tip("APPLY_BTN"))
+        self.apply_btn.clicked.connect(self._apply_pitch_rows)
+        pitch_row.addWidget(self.apply_btn)
+        ctrl.addLayout(pitch_row)
         layout.addLayout(ctrl)
 
         # Cube6 オプション
@@ -111,7 +125,15 @@ class ViewConfigWidget(QWidget):
         QHBoxLayout(self._cube6_container).addLayout(self._cube6_row)
         layout.addWidget(self._cube6_container)
 
-        # ビュー選択ボタン
+        summary_row = QHBoxLayout()
+        self.selected_label = QLabel(f"{i18n.t('SELECTED_VIEWS')}: 0")
+        self.selected_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+        summary_row.addStretch()
+        summary_row.addWidget(self.selected_label)
+        layout.addLayout(summary_row)
+
+        # ビュー選択グリッド
+        self.grid_section = CollapsibleSection(i18n.t("VIEW_SELECTION_SECTION"), expanded=False)
         btn_row = QHBoxLayout()
         all_on = QPushButton(i18n.t("SELECT_ALL"))
         all_on.clicked.connect(self._all_on)
@@ -120,15 +142,14 @@ class ViewConfigWidget(QWidget):
         all_off.clicked.connect(self._all_off)
         btn_row.addWidget(all_off)
         btn_row.addStretch()
-        self.selected_label = QLabel(f"{i18n.t('SELECTED_VIEWS')}: 0")
-        self.selected_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
-        btn_row.addWidget(self.selected_label)
-        layout.addLayout(btn_row)
+        self.grid_section.content_layout.addLayout(btn_row)
 
-        # グリッド
         self.grid_widget = QWidget()
         self.grid_layout = QGridLayout(self.grid_widget)
-        layout.addWidget(self.grid_widget)
+        self.grid_layout.setHorizontalSpacing(8)
+        self.grid_layout.setVerticalSpacing(4)
+        self.grid_section.content_layout.addWidget(self.grid_widget)
+        layout.addWidget(self.grid_section)
 
         self._on_view_mode_changed(0)
 
@@ -173,12 +194,19 @@ class ViewConfigWidget(QWidget):
                 })
         return views
 
+    def set_estimate_text(self, text: str) -> None:
+        self._estimate_text = text
+        self._update_selected_label()
+
     # -- internal --
 
     def _on_view_mode_changed(self, _index: int) -> None:
         is_custom = self.view_mode() == VIEW_MODE_CUSTOM
+        self.yaw_slots_label.setVisible(is_custom)
         self.yaw_slots_combo.setVisible(is_custom)
+        self.pitch_label.setVisible(is_custom)
         self.pitch_edit.setVisible(is_custom)
+        self.apply_btn.setVisible(is_custom)
         self.grid_widget.setVisible(is_custom)
         self._cube6_container.setVisible(not is_custom)
         self._on_selection_changed()
@@ -283,7 +311,10 @@ class ViewConfigWidget(QWidget):
             warn = f" [{i18n.t('EXCEED')}]"
         elif sel > _WARN_ENABLED_VIEWS:
             warn = f" [{i18n.t('HIGH')}]"
-        self.selected_label.setText(f"{i18n.t('SELECTED_VIEWS')}: {sel} / {len(views)}{warn}")
+        text = f"{i18n.t('SELECTED_VIEWS')}: {sel} / {len(views)}{warn}"
+        if self._estimate_text:
+            text = f"{text}   {self._estimate_text}"
+        self.selected_label.setText(text)
 
     def _all_on(self) -> None:
         for row in self.pitch_rows:

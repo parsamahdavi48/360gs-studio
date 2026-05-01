@@ -80,6 +80,12 @@ class MainWindow(QWidget):
         self.step4 = CubemapStep(self.base_dir)
         self.steps = [self.step1, self.step2, self.step3, self.step4]
         self.step_titles = [i18n.STEP1_TITLE, i18n.STEP2_TITLE, i18n.STEP3_TITLE, i18n.STEP4_TITLE]
+        self.step_nav_titles = [
+            i18n.t("STEP1_NAV"),
+            i18n.t("STEP2_NAV"),
+            i18n.t("STEP3_NAV"),
+            i18n.t("STEP4_NAV"),
+        ]
         self.step_descriptions = [
             i18n.t("STEP1_DESC"),
             i18n.t("STEP2_DESC"),
@@ -94,31 +100,25 @@ class MainWindow(QWidget):
         workspace = QWidget()
         workspace_layout = QHBoxLayout(workspace)
         workspace_layout.setContentsMargins(12, 12, 12, 8)
-        workspace_layout.setSpacing(12)
+        workspace_layout.setSpacing(8)
 
         sidebar = QWidget()
         sidebar.setObjectName("sidebar")
-        sidebar.setFixedWidth(236)
+        sidebar.setFixedWidth(84)
         sidebar_layout = QVBoxLayout(sidebar)
-        sidebar_layout.setContentsMargins(10, 10, 10, 10)
-        sidebar_layout.setSpacing(8)
-        side_title = QLabel(i18n.t("WORKFLOW_LABEL"))
-        side_title.setObjectName("sidebarTitle")
-        sidebar_layout.addWidget(side_title)
+        sidebar_layout.setContentsMargins(6, 8, 6, 8)
+        sidebar_layout.setSpacing(6)
         self.step_buttons: list[QPushButton] = []
-        for index, title_text in enumerate(self.step_titles):
+        for index, title_text in enumerate(self.step_nav_titles):
             btn = QPushButton(title_text)
             btn.setObjectName("navStep")
             btn.setCheckable(True)
-            btn.setMinimumHeight(46)
+            btn.setFixedSize(70, 64)
+            btn.setToolTip(self.step_titles[index])
             btn.clicked.connect(lambda _checked=False, i=index: self._set_current_step(i))
             sidebar_layout.addWidget(btn)
             self.step_buttons.append(btn)
         sidebar_layout.addStretch()
-        self.active_step_hint = QLabel("")
-        self.active_step_hint.setObjectName("sidebarHint")
-        self.active_step_hint.setWordWrap(True)
-        sidebar_layout.addWidget(self.active_step_hint)
         workspace_layout.addWidget(sidebar)
 
         content_panel = QWidget()
@@ -130,6 +130,10 @@ class MainWindow(QWidget):
         self.step_header = QLabel("")
         self.step_header.setObjectName("stepHeader")
         content_layout.addWidget(self.step_header)
+        self.step_subheader = QLabel("")
+        self.step_subheader.setObjectName("stepSubheader")
+        self.step_subheader.setWordWrap(True)
+        content_layout.addWidget(self.step_subheader)
 
         self.stack = QStackedWidget()
         for step in self.steps:
@@ -209,7 +213,7 @@ class MainWindow(QWidget):
         for i, btn in enumerate(self.step_buttons):
             btn.setChecked(i == index)
         self.step_header.setText(self.step_titles[index])
-        self.active_step_hint.setText(self.step_descriptions[index])
+        self.step_subheader.setText(self.step_descriptions[index])
         self._update_run_button()
 
     def _update_run_button(self) -> None:

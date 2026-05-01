@@ -55,26 +55,14 @@ QWidget#sidebar {{
     border: 1px solid {BORDER};
     border-radius: 6px;
 }}
-QLabel#sidebarTitle {{
-    color: {TEXT_DIM};
-    font-size: 9pt;
-    font-weight: 700;
-    padding: 2px 4px 6px 4px;
-}}
-QLabel#sidebarHint {{
-    color: {TEXT_DIM};
-    border-top: 1px solid {BORDER};
-    padding: 10px 4px 2px 4px;
-    font-size: 9pt;
-}}
 QPushButton#navStep {{
     background-color: transparent;
     border: 1px solid transparent;
-    border-radius: 5px;
+    border-radius: 6px;
     color: {TEXT};
-    padding: 8px 10px;
-    text-align: left;
+    padding: 6px 4px;
     font-weight: 600;
+    font-size: 9pt;
 }}
 QPushButton#navStep:hover {{
     background-color: {BG_PANEL};
@@ -94,7 +82,12 @@ QLabel#stepHeader {{
     color: {TEXT_BRIGHT};
     font-size: 13pt;
     font-weight: 700;
-    padding: 2px 4px 8px 4px;
+    padding: 2px 4px 0 4px;
+}}
+QLabel#stepSubheader {{
+    color: {TEXT_DIM};
+    font-size: 9pt;
+    padding: 0 4px 8px 4px;
 }}
 QWidget#jobPanel {{
     background-color: {BG_MID};

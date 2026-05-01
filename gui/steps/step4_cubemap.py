@@ -28,7 +28,7 @@ from gui.common.browse_widget import BrowseWidget
 from gui.common.collapsible_section import CollapsibleSection
 from gui.cubemap.view_config import ViewConfigWidget, _BLOCK_ENABLED_VIEWS, _WARN_ENABLED_VIEWS
 from gui.cubemap.preview_renderer import PreviewWidget
-from gui.steps.base_step import BaseStepWidget
+from gui.steps.base_step import SETTINGS_PANE_WIDTH, BaseStepWidget, configure_settings_scroll
 
 _CONVERT_RE = re.compile(r"^Converting\s+(\d+)\s+images\.\.\.$")
 _PROFILE_POSTSHOT = "postshot"
@@ -54,8 +54,7 @@ class CubemapStep(BaseStepWidget):
 
         # 左パネル: 設定 (スクロール可能)
         top_scroll = QScrollArea()
-        top_scroll.setWidgetResizable(True)
-        top_scroll.setFrameShape(QScrollArea.NoFrame)
+        configure_settings_scroll(top_scroll)
         top = QWidget()
         top.setObjectName("settingsPane")
         top.setMinimumWidth(0)
@@ -67,7 +66,7 @@ class CubemapStep(BaseStepWidget):
         form = QFormLayout()
         form.setSpacing(6)
 
-        self.output_browse = BrowseWidget(mode="dir", button_position="below")
+        self.output_browse = BrowseWidget(mode="dir")
         self.output_browse.setToolTip(i18n.tip("OUTPUT_DIR_CUBEMAP"))
         left_layout.addWidget(QLabel(i18n.OUTPUT_DIR))
         left_layout.addWidget(self.output_browse)
@@ -87,6 +86,9 @@ class CubemapStep(BaseStepWidget):
         self.scale_combo.setToolTip(i18n.tip("OUTPUT_SCALE"))
         self.scale_combo.addItem("Half (0.5x)", 0.5)
         self.scale_combo.addItem("Full (1.0x)", 1.0)
+        full_scale_index = self.scale_combo.findData(1.0)
+        if full_scale_index >= 0:
+            self.scale_combo.setCurrentIndex(full_scale_index)
         self.scale_combo.setFixedWidth(120)
         profile_row.addWidget(self.scale_combo)
         profile_row.addStretch()
@@ -94,13 +96,14 @@ class CubemapStep(BaseStepWidget):
 
         self.profile_hint = QLabel("")
         self.profile_hint.setStyleSheet("color: #8888aa; font-size: 9pt;")
+        self.profile_hint.setVisible(False)
         form.addRow("", self.profile_hint)
 
         self.json_name_edit = QLineEdit("transforms.json")
         self.json_name_edit.setToolTip(i18n.tip("JSON_NAME"))
         self.json_name_edit.setFixedWidth(160)
         form.addRow(i18n.JSON_NAME, self.json_name_edit)
-        self.mask_browse = BrowseWidget(mode="dir", button_position="below")
+        self.mask_browse = BrowseWidget(mode="dir")
         self.mask_browse.setToolTip(i18n.tip("MASK_DIR_CUBEMAP"))
 
         # オプション (GroupBox)
@@ -211,10 +214,6 @@ class CubemapStep(BaseStepWidget):
         self.view_config.views_changed.connect(self._on_views_changed)
         left_layout.addWidget(self.view_config)
 
-        # 出力見積もり
-        self.estimate_label = QLabel("出力画像数推定: -")
-        self.estimate_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
-        left_layout.addWidget(self.estimate_label)
         left_layout.addStretch()
 
         # 右パネル: プレビュー
@@ -238,10 +237,13 @@ class CubemapStep(BaseStepWidget):
         splitter.addWidget(preview_pane)
         splitter.setStretchFactor(0, 0)
         splitter.setStretchFactor(1, 1)
-        splitter.setSizes([610, 620])
+        splitter.setSizes([SETTINGS_PANE_WIDTH, 760])
         layout.addWidget(splitter)
 
-        self._on_profile_changed(0)
+        lichtfeld_index = self.profile_combo.findData(_PROFILE_LICHTFELD)
+        if lichtfeld_index >= 0:
+            self.profile_combo.setCurrentIndex(lichtfeld_index)
+        self._on_profile_changed(self.profile_combo.currentIndex())
 
     # -- シーンディレクトリ --
 
@@ -285,23 +287,27 @@ class CubemapStep(BaseStepWidget):
             self.ms_use_ply_cb.setChecked(True)
             self.no_transform_cb.setEnabled(False)
             self.ms_use_ply_cb.setEnabled(False)
-            self.profile_hint.setText("LichtFeld: --no_transform ON, PLY ON")
+            self.profile_hint.setText("")
+            self.profile_hint.setVisible(False)
         elif p == _PROFILE_BRUSH:
             self.no_transform_cb.setChecked(False)
             self.ms_use_ply_cb.setChecked(False)
             self.no_transform_cb.setEnabled(False)
             self.ms_use_ply_cb.setEnabled(False)
-            self.profile_hint.setText("Brush: --brush ON, PLY OFF")
+            self.profile_hint.setText("")
+            self.profile_hint.setVisible(False)
         elif p == _PROFILE_POSTSHOT:
             self.no_transform_cb.setChecked(False)
             self.ms_use_ply_cb.setChecked(False)
             self.no_transform_cb.setEnabled(False)
             self.ms_use_ply_cb.setEnabled(False)
-            self.profile_hint.setText("Postshot: --no_transform OFF, PLY OFF")
+            self.profile_hint.setText("")
+            self.profile_hint.setVisible(False)
         else:
             self.no_transform_cb.setEnabled(True)
             self.ms_use_ply_cb.setEnabled(True)
             self.profile_hint.setText("カスタム: 手動設定")
+            self.profile_hint.setVisible(True)
         self._on_ms_ply_toggle()
 
     def _on_preprocess_toggle(self, enabled: bool) -> None:
@@ -352,7 +358,7 @@ class CubemapStep(BaseStepWidget):
         try:
             views = self.view_config.collect_views(include_disabled=True)
         except Exception:
-            self.estimate_label.setText("出力画像数推定: -")
+            self.view_config.set_estimate_text(f"{i18n.t('OUTPUT_ESTIMATE_SHORT')}: -")
             return
         enabled = sum(1 for v in views if v["enabled"])
         sources = self._count_input_images()
@@ -362,7 +368,7 @@ class CubemapStep(BaseStepWidget):
             warn = " [超過]"
         elif enabled > _WARN_ENABLED_VIEWS:
             warn = " [多い]"
-        self.estimate_label.setText(f"出力画像数推定: {total} ({sources} x {enabled}){warn}")
+        self.view_config.set_estimate_text(f"{i18n.t('OUTPUT_ESTIMATE_SHORT')}: {total}{warn}")
 
     # -- コマンド構築 --
 

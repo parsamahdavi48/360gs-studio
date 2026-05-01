@@ -21,7 +21,7 @@ from PySide6.QtWidgets import (
 )
 
 from gui import i18n
-from gui.steps.base_step import BaseStepWidget
+from gui.steps.base_step import SETTINGS_PANE_WIDTH, BaseStepWidget, configure_settings_scroll
 
 
 class ReviewStep(BaseStepWidget):
@@ -39,9 +39,7 @@ class ReviewStep(BaseStepWidget):
         splitter.setChildrenCollapsible(False)
 
         settings_scroll = QScrollArea()
-        settings_scroll.setWidgetResizable(True)
-        settings_scroll.setFrameShape(QScrollArea.NoFrame)
-        settings_scroll.setFixedWidth(380)
+        configure_settings_scroll(settings_scroll)
 
         settings = QWidget()
         settings.setObjectName("settingsPane")
@@ -104,7 +102,7 @@ class ReviewStep(BaseStepWidget):
         splitter.addWidget(self.review_pane)
         splitter.setStretchFactor(0, 0)
         splitter.setStretchFactor(1, 1)
-        splitter.setSizes([380, 860])
+        splitter.setSizes([SETTINGS_PANE_WIDTH, 860])
         root_layout.addWidget(splitter)
 
     def _csv_path(self) -> Path:

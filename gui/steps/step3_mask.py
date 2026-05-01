@@ -28,7 +28,7 @@ from gui.common.browse_widget import BrowseWidget
 from gui.common.collapsible_section import CollapsibleSection
 from gui.common.drag_spinbox import DragDoubleSpinBox, DragSpinBox
 from gui.mask.stitch_preview import StitchPreviewWidget
-from gui.steps.base_step import BaseStepWidget
+from gui.steps.base_step import SETTINGS_PANE_WIDTH, BaseStepWidget, configure_settings_scroll
 
 _COCO_CLASS_NAMES = [
     "person", "bicycle", "car", "motorcycle", "airplane", "bus", "train", "truck",
@@ -81,8 +81,7 @@ class MaskStep(BaseStepWidget):
         splitter.setChildrenCollapsible(False)
 
         settings_scroll = QScrollArea()
-        settings_scroll.setWidgetResizable(True)
-        settings_scroll.setFrameShape(QScrollArea.NoFrame)
+        configure_settings_scroll(settings_scroll)
         settings = QWidget()
         settings.setObjectName("settingsPane")
         layout = QVBoxLayout(settings)
@@ -170,14 +169,16 @@ class MaskStep(BaseStepWidget):
         preset_row.addStretch()
         class_layout.addLayout(preset_row)
 
+        class_list_section = CollapsibleSection(i18n.t("YOLO_CLASS_LIST_SECTION"), expanded=False)
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         scroll.setMaximumHeight(160)
         grid_widget = QWidget()
         grid = QGridLayout(grid_widget)
         grid.setSpacing(2)
         self.class_cbs: list[QCheckBox] = []
-        cols = 4
+        cols = 2
         for idx, name in enumerate(_COCO_CLASS_NAMES):
             cb = QCheckBox(f"{idx}: {name}")
             if idx == 0:
@@ -185,7 +186,8 @@ class MaskStep(BaseStepWidget):
             self.class_cbs.append(cb)
             grid.addWidget(cb, idx // cols, idx % cols)
         scroll.setWidget(grid_widget)
-        class_layout.addWidget(scroll)
+        class_list_section.content_layout.addWidget(scroll)
+        class_layout.addWidget(class_list_section)
 
         yolo_form.addRow(i18n.YOLO_CLASSES, class_inner)
         self.yolo_section.content_layout.addLayout(yolo_form)
@@ -247,16 +249,6 @@ class MaskStep(BaseStepWidget):
         self.other_section.content_layout.addLayout(other_form)
         layout.addWidget(self.other_section)
 
-        # Metashape SfM 案内（マスクと一緒に SfM すると精度向上）
-        notice = QLabel(i18n.METASHAPE_NOTICE)
-        notice.setWordWrap(True)
-        notice.setAlignment(Qt.AlignCenter)
-        notice.setStyleSheet(
-            "padding: 16px; background: #1a1a2e; border: 1px solid #f59e0b; "
-            "border-radius: 8px; color: #fbbf24; font-size: 10pt;"
-        )
-        layout.addWidget(notice)
-
         layout.addStretch()
 
         preview_pane = QWidget()
@@ -269,13 +261,17 @@ class MaskStep(BaseStepWidget):
         preview_layout.addWidget(preview_title)
         self.stitch_preview = StitchPreviewWidget()
         preview_layout.addWidget(self.stitch_preview, stretch=1)
+        notice = QLabel(i18n.METASHAPE_NOTICE)
+        notice.setObjectName("workflowNote")
+        notice.setWordWrap(True)
+        preview_layout.addWidget(notice)
 
         settings_scroll.setWidget(settings)
         splitter.addWidget(settings_scroll)
         splitter.addWidget(preview_pane)
         splitter.setStretchFactor(0, 0)
         splitter.setStretchFactor(1, 1)
-        splitter.setSizes([610, 620])
+        splitter.setSizes([SETTINGS_PANE_WIDTH, 760])
         root_layout.addWidget(splitter)
 
         for cb in (self.run_yolo_cb, self.run_stitch_cb, self.run_overexp_cb):

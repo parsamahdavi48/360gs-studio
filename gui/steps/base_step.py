@@ -3,9 +3,22 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PySide6.QtWidgets import QWidget
+from PySide6.QtCore import Qt
+from PySide6.QtWidgets import QScrollArea, QWidget
 
 from gui import i18n
+
+SETTINGS_PANE_WIDTH = 480
+
+
+def configure_settings_scroll(scroll: QScrollArea, width: int = SETTINGS_PANE_WIDTH) -> None:
+    """ステップ左側の設定ペインを固定幅・縦スクロール専用に揃える。"""
+    scroll.setObjectName("settingsScroll")
+    scroll.setWidgetResizable(True)
+    scroll.setFrameShape(QScrollArea.NoFrame)
+    scroll.setFixedWidth(width)
+    scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+    scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
 
 
 class BaseStepWidget(QWidget):

@@ -34,7 +34,7 @@ from PySide6.QtWidgets import (
 from gui import i18n
 from gui.common.browse_widget import BrowseWidget
 from gui.common.collapsible_section import CollapsibleSection
-from gui.steps.base_step import BaseStepWidget
+from gui.steps.base_step import SETTINGS_PANE_WIDTH, BaseStepWidget, configure_settings_scroll
 
 
 class ExtractStep(BaseStepWidget):
@@ -66,8 +66,7 @@ class ExtractStep(BaseStepWidget):
         splitter.setChildrenCollapsible(False)
 
         settings_scroll = QScrollArea()
-        settings_scroll.setWidgetResizable(True)
-        settings_scroll.setFrameShape(QScrollArea.NoFrame)
+        configure_settings_scroll(settings_scroll)
 
         settings = QWidget()
         settings.setObjectName("settingsPane")
@@ -245,7 +244,7 @@ class ExtractStep(BaseStepWidget):
         splitter.addWidget(work_pane)
         splitter.setStretchFactor(0, 0)
         splitter.setStretchFactor(1, 1)
-        splitter.setSizes([470, 760])
+        splitter.setSizes([SETTINGS_PANE_WIDTH, 760])
         root_layout.addWidget(splitter)
         self._update_mode_widgets()
 
