@@ -257,11 +257,15 @@ if QMainWindow is not None:
 
             # ブラー操作行
             blur_row = QHBoxLayout()
+            blur_row.addWidget(QLabel(i18n.t("REVIEW_BLUR_CYCLE_LABEL")))
+
             self.blur_worst_button = QPushButton(i18n.t("REVIEW_BTN_BLUR_WORST"))
+            self.blur_worst_button.setToolTip(i18n.t("REVIEW_BTN_BLUR_WORST_TIP"))
             self.blur_worst_button.clicked.connect(self.next_blur_worst)
             blur_row.addWidget(self.blur_worst_button)
 
             self.blur_prev_button = QPushButton(i18n.t("REVIEW_BTN_BLUR_PREV"))
+            self.blur_prev_button.setToolTip(i18n.t("REVIEW_BTN_BLUR_PREV_TIP"))
             self.blur_prev_button.clicked.connect(self.prev_blur_worst)
             blur_row.addWidget(self.blur_prev_button)
 

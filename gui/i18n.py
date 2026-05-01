@@ -84,8 +84,14 @@ _JA: dict[str, str] = {
     "REVIEW_BTN_JUMP": "番号へ移動",
     "REVIEW_BTN_SAVE": "保存 (S)",
     "REVIEW_JUMP_PLACEHOLDER": "番号",
-    "REVIEW_BTN_BLUR_WORST": "ブレ最悪へ (B)",
-    "REVIEW_BTN_BLUR_PREV": "ブレ次点へ (Shift+B)",
+    "REVIEW_BTN_BLUR_WORST": "ワースト順 → (B)",
+    "REVIEW_BTN_BLUR_PREV": "ワースト順 ← (Shift+B)",
+    "REVIEW_BTN_BLUR_WORST_TIP": (
+        "ブレが悪い順にフレームを 1 つ進めます。\n"
+        "初回押下では最悪フレームへジャンプ。続けて押すと次に悪いフレームへ。"
+    ),
+    "REVIEW_BTN_BLUR_PREV_TIP": "ブレが悪い順を 1 つ戻します（より悪いフレーム方向へ）。",
+    "REVIEW_BLUR_CYCLE_LABEL": "ブレ巡回:",
     "REVIEW_BLUR_THRESHOLD_LABEL": "  ブレ閾値:",
     "REVIEW_BLUR_DROP_BTN": "閾値以下を全 Drop",
     "REVIEW_BLUR_THRESHOLD_PLACEHOLDER": "blur score",
@@ -122,7 +128,8 @@ _JA: dict[str, str] = {
         "  ← / →    前後のフレーム\n"
         "  Space    現フレームの keep/drop を切替\n"
         "  F / Shift+F  次/前の要注意フレーム (extract が置換または維持したもの)\n"
-        "  B / Shift+B  ブレが最悪のフレームから順に巡回\n"
+        "  B            ブレが悪い順 → 次へ進む (初回押下で最悪フレームへジャンプ)\n"
+        "  Shift+B      ブレが悪い順 ← 1 つ戻る\n"
         "  S        CSV へ保存\n"
         "  Q        終了 (未保存の変更は破棄)"
     ),
@@ -323,8 +330,14 @@ _EN: dict[str, str] = {
     "REVIEW_BTN_JUMP": "Jump to Seq",
     "REVIEW_BTN_SAVE": "Save (S)",
     "REVIEW_JUMP_PLACEHOLDER": "seq",
-    "REVIEW_BTN_BLUR_WORST": "Worst Blur (B)",
-    "REVIEW_BTN_BLUR_PREV": "Prev Blur (Shift+B)",
+    "REVIEW_BTN_BLUR_WORST": "Worst-first → (B)",
+    "REVIEW_BTN_BLUR_PREV": "Worst-first ← (Shift+B)",
+    "REVIEW_BTN_BLUR_WORST_TIP": (
+        "Step forward through frames sorted worst-first by blur.\n"
+        "First press jumps to the worst frame; subsequent presses advance to the next-worst."
+    ),
+    "REVIEW_BTN_BLUR_PREV_TIP": "Step backward through the worst-first cycle (toward worse frames).",
+    "REVIEW_BLUR_CYCLE_LABEL": "Blur cycle:",
     "REVIEW_BLUR_THRESHOLD_LABEL": "  Blur threshold:",
     "REVIEW_BLUR_DROP_BTN": "Drop below threshold",
     "REVIEW_BLUR_THRESHOLD_PLACEHOLDER": "blur score",
@@ -361,7 +374,8 @@ _EN: dict[str, str] = {
         "  ← / →     previous / next frame\n"
         "  Space     toggle keep/drop on the current frame\n"
         "  F / Shift+F  next/previous problem frame (replaced or fallback_keep)\n"
-        "  B / Shift+B  cycle through frames in worst-blur order\n"
+        "  B            advance through worst-first blur order (first press jumps to worst)\n"
+        "  Shift+B      step back one in the worst-first blur order\n"
         "  S         save changes to CSV\n"
         "  Q         quit (unsaved changes are discarded)"
     ),
