@@ -155,7 +155,16 @@ class MainWindow(QWidget):
 
     def _update_run_button(self) -> None:
         running = self.runner.is_running()
-        self.run_btn.setEnabled(not running)
+        idx = self.tabs.currentIndex()
+        # Step 2 (Review) と Step 3 (Mask) はタブ内の専用ボタンが実行を担うので、
+        # 共通の Run ボタンは Step 1 / Step 4 でのみ表示する。
+        # Cancel は実行中なら常に表示（タブ切替後でも中断できるように）。
+        needs_global_run = idx in (0, 3)
+
+        self.run_btn.setVisible(needs_global_run)
+        self.run_btn.setEnabled(needs_global_run and not running)
+
+        self.cancel_btn.setVisible(running or needs_global_run)
         self.cancel_btn.setEnabled(running)
 
     def _on_run(self) -> None:
