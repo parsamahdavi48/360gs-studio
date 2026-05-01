@@ -166,7 +166,7 @@ class ExtractStep(BaseStepWidget):
         adv_form.addRow(i18n.BLUR_WINDOW, self.blur_window_edit)
 
         # 立ち止まり間引き
-        self.thin_motion_edit = QLineEdit("0.0")
+        self.thin_motion_edit = QLineEdit("0.6")
         self.thin_motion_edit.setToolTip(i18n.t("THIN_MOTION_HINT"))
         self.thin_motion_edit.setFixedWidth(80)
         self.thin_motion_edit.textChanged.connect(self._mark_estimate_stale)
@@ -270,8 +270,8 @@ class ExtractStep(BaseStepWidget):
                 raise ValueError("立ち止まり間引き閾値は数値で指定してください")
             if thin_val < 0:
                 raise ValueError("立ち止まり間引き閾値は 0 以上で指定してください")
-            if thin_val > 0.0:
-                cmd.extend(["--thin-motion-threshold", f"{thin_val:g}"])
+            # 0.0 でも明示的に渡す（GUI 値が CLI デフォルトに上書きされないように）
+            cmd.extend(["--thin-motion-threshold", f"{thin_val:g}"])
 
         if self.no_cache_cb.isChecked():
             cmd.append("--no-cache")

@@ -1190,11 +1190,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--thin-motion-threshold",
         type=float,
-        default=0.0,
+        default=0.6,
         help=(
             "Stationary thinning: drop selected frames whose cumulative change_score since the "
             "last kept frame is below this threshold. Adapts to recording style: stops are thinned, "
-            "walking is preserved. Default=0.0 (disabled). 0.5-1.0 is a reasonable starting range."
+            "walking is preserved. Default=0.6. Set to 0 to disable. 0.3-1.0 is a typical range."
         ),
     )
     parser.add_argument(

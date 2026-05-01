@@ -91,7 +91,7 @@ python extract_frames.py input.mp4 ./scene01 \
 | `--analysis-width` | `1920` | Decode width for blur/change analysis. Higher = more accurate, slower. `0` or larger than source = full resolution |
 | `--blur-percentile` | `25.0` | Selected frames below this percentile are candidates for blur replacement |
 | `--blur-window-frames` | `0` (auto) | Neighbor search radius for blur replacement |
-| `--thin-motion-threshold` | `0.0` | Stationary thinning. `0` disables. `0.5-1.0` is a typical starting range. Drops frames where cumulative change since last kept frame is below this value |
+| `--thin-motion-threshold` | `0.6` | Stationary thinning. `0` disables. `0.3-1.0` is a typical range. Drops frames where cumulative change since last kept frame is below this value |
 | `--no-thin-keep-endpoints` | (off) | Allow the last frame to be dropped during thinning. By default first/last frames are always preserved |
 | `--no-cache` | (off) | Force full re-analysis (ignore `extract_cache.npz`) |
 
