@@ -201,6 +201,15 @@ if QMainWindow is not None:
             self.image_view = ZoomableImageView()
             layout.addWidget(self.image_view, stretch=1)
 
+            # アドバイザリー（このフレームが要注意な理由を自動表示）
+            self.advisory_label = QLabel()
+            self.advisory_label.setWordWrap(True)
+            self.advisory_label.setStyleSheet(
+                "padding: 6px 10px; border-radius: 4px; font-weight: 600; font-size: 10pt;"
+            )
+            self.advisory_label.setMinimumHeight(32)
+            layout.addWidget(self.advisory_label)
+
             self.info_label = QLabel()
             self.info_label.setWordWrap(True)
             layout.addWidget(self.info_label)
@@ -305,6 +314,47 @@ if QMainWindow is not None:
         def _decision_color(self, decision: str) -> str:
             return "#b00020" if decision == "drop" else "#1b7f3b"
 
+        def _advisory_for_row(self, row: Dict[str, str], idx: int) -> tuple[str, str, str]:
+            """この行の要注意度を判定。 (text, fg, bg) を返す。
+
+            最も重大な問題を 1 つ表示する（複数並べると見にくいため）。
+            """
+            status = row.get("status", "ok").strip().lower()
+
+            # ブレ順位を計算
+            rank: int = -1
+            total = len(self.blur_worst_indices)
+            try:
+                rank = self.blur_worst_indices.index(idx) + 1
+            except ValueError:
+                pass
+
+            # 優先度順に判定
+            # 1. ブレ最悪 top 5% は最強警告（赤）
+            if rank > 0 and total > 0 and rank <= max(1, int(total * 0.05)):
+                text = i18n.t("REVIEW_ADVISORY_BLUR_TOP5").format(rank=rank, total=total)
+                return text, "#fee2e2", "#7f1d1d"  # 明るい赤文字 / 濃い赤背景
+
+            # 2. fallback_keep = 置換できない blurry フレーム（橙）
+            if "fallback_keep" in status:
+                return i18n.t("REVIEW_ADVISORY_FALLBACK"), "#fef3c7", "#7c2d12"
+
+            # 3. ブレ top 15% （橙）
+            if rank > 0 and total > 0 and rank <= max(1, int(total * 0.15)):
+                text = i18n.t("REVIEW_ADVISORY_BLUR_TOP15").format(rank=rank, total=total)
+                return text, "#fef3c7", "#7c2d12"
+
+            # 4. thinned = 既に間引き済み（青／情報）
+            if "thinned" in status:
+                return i18n.t("REVIEW_ADVISORY_THINNED"), "#dbeafe", "#1e3a8a"
+
+            # 5. replaced = 自動置換済み（青／情報）
+            if "replaced" in status:
+                return i18n.t("REVIEW_ADVISORY_REPLACED"), "#dbeafe", "#1e3a8a"
+
+            # 6. 問題なし
+            return i18n.t("REVIEW_ADVISORY_NORMAL"), "#a7f3d0", "#064e3b"
+
         def _render_current(self) -> None:
             row = self._current_row()
             seq = int(row.get("seq", self.index + 1))
@@ -318,6 +368,14 @@ if QMainWindow is not None:
             decision = row.get("decision", "keep")
             self.decision_label.setText(f"{i18n.t('REVIEW_DECISION_PREFIX')}{decision.upper()}")
             self.decision_label.setStyleSheet(f"font-weight: 700; color: {self._decision_color(decision)};")
+
+            # アドバイザリー (このフレームが要注意な理由)
+            adv_text, adv_fg, adv_bg = self._advisory_for_row(row, self.index)
+            self.advisory_label.setText(adv_text)
+            self.advisory_label.setStyleSheet(
+                f"padding: 6px 10px; border-radius: 4px; font-weight: 600; font-size: 10pt; "
+                f"color: {adv_fg}; background-color: {adv_bg};"
+            )
 
             replaced_count = sum(1 for r in self.rows if r.get("status", "").strip().lower() == "replaced")
             fallback_count = sum(1 for r in self.rows if r.get("status", "").strip().lower() == "fallback_keep")

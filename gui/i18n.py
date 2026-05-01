@@ -106,6 +106,14 @@ _JA: dict[str, str] = {
         "1 枚ずつフレームを確認して、不要なものに drop マークを付けます。\n"
         "変更はメモリ上のコピーのみ。「保存 (S)」で selected_frames.csv に書き戻されます。\n"
         "保存後、メイン GUI の Step 2 で「確定」ボタンを押すと images/ に反映されます。\n\n"
+        "【drop の目安】SfM (Metashape) と 3DGS 学習で問題になるフレームを除外します。\n"
+        "  ・動く被写体: 人物・車両・揺れる枝など (3DGS は静的シーン前提)\n"
+        "  ・著しいブレ: 建物の輪郭・テクスチャがにじんで見える\n"
+        "  ・レンズフレア・強い太陽光: 大部分の画素が飽和\n"
+        "  ・ステッチ継ぎ目の大きな破綻 (360 デュアル魚眼)\n"
+        "  ・過露出 / 露出不足: 真っ白・真っ黒な領域が大半\n"
+        "判断に迷ったら keep のまま。後で再レビューも可能です。\n"
+        "アドバイザリー欄 (画像の下) に各フレームの自動判定が表示されます。\n\n"
         "【画像操作】\n"
         "  マウスホイール    カーソル位置を中心に拡大 / 縮小\n"
         "  ドラッグ          拡大時にパン (画像をつかんで移動)\n"
@@ -118,6 +126,12 @@ _JA: dict[str, str] = {
         "  S        CSV へ保存\n"
         "  Q        終了 (未保存の変更は破棄)"
     ),
+    "REVIEW_ADVISORY_FALLBACK": "⚠ 近傍にこれより鋭いフレームがなかった (置換できず元のまま)",
+    "REVIEW_ADVISORY_REPLACED": "ⓘ extract 時に近傍のより鋭いフレームへ自動置換済み",
+    "REVIEW_ADVISORY_BLUR_TOP5": "⚠ ブレ最悪 top 5% (順位 {rank}/{total}) — drop 強く推奨",
+    "REVIEW_ADVISORY_BLUR_TOP15": "⚠ ブレが大きい (順位 {rank}/{total}) — drop を検討",
+    "REVIEW_ADVISORY_THINNED": "ⓘ 立ち止まり区間で自動間引き済み",
+    "REVIEW_ADVISORY_NORMAL": "問題なし",
     "NEXT_STEP_MASK_NOTICE": "選別が完了したら Step 3 (マスク生成) へ進みます。\n人物・スティッチ・白飛びマスクを Metashape SfM の前に生成することで SfM 精度が向上します。",
     "METASHAPE_NOTICE": "マスク生成完了後、Metashape で SfM を実行してください。\n生成された masks/ フォルダを Metashape の per-image マスクとしてインポートすると、人物・スティッチ・白飛び領域が特徴点マッチングから除外され、SfM 精度が大きく向上します。\n完了後、Step 4 でキューブマップ変換に進みます。",
     "CSV_FILE": "CSVファイル名",
@@ -331,6 +345,14 @@ _EN: dict[str, str] = {
         "Walk through the frames one by one and mark unwanted ones as drop.\n"
         "Edits stay in memory until you press Save (S), which writes them back to selected_frames.csv.\n"
         "Then return to the main GUI Step 2 and press \"Finalize\" to apply the changes to images/.\n\n"
+        "[When to drop] Frames that hurt SfM (Metashape) or 3DGS training:\n"
+        "  - Moving subjects: people, vehicles, swaying branches (3DGS assumes static scenes)\n"
+        "  - Heavy motion blur: buildings / textures look smeared\n"
+        "  - Lens flare / strong sun: most pixels saturated\n"
+        "  - Major stitching seam errors (360 dual-fisheye)\n"
+        "  - Over- / under-exposure: most of the image is white or black\n"
+        "When in doubt, keep it. You can always re-review later.\n"
+        "An advisory line below the image flags each frame automatically.\n\n"
         "[Image]\n"
         "  Mouse wheel      zoom in / out at the cursor position\n"
         "  Click and drag   pan the image when zoomed in\n"
@@ -343,6 +365,12 @@ _EN: dict[str, str] = {
         "  S         save changes to CSV\n"
         "  Q         quit (unsaved changes are discarded)"
     ),
+    "REVIEW_ADVISORY_FALLBACK": "⚠ No sharper neighbor was available (kept as-is)",
+    "REVIEW_ADVISORY_REPLACED": "ⓘ Auto-swapped to a sharper neighbor at extract time",
+    "REVIEW_ADVISORY_BLUR_TOP5": "⚠ Worst-blur top 5% (rank {rank}/{total}) — strongly suggest drop",
+    "REVIEW_ADVISORY_BLUR_TOP15": "⚠ High blur (rank {rank}/{total}) — consider drop",
+    "REVIEW_ADVISORY_THINNED": "ⓘ Auto-thinned (stationary cluster)",
+    "REVIEW_ADVISORY_NORMAL": "No issues detected",
     "NEXT_STEP_MASK_NOTICE": "After selection, proceed to Step 3 (Mask Generation).\nGenerating person / stitch / overexposure masks before Metashape SfM significantly improves SfM accuracy.",
     "METASHAPE_NOTICE": "After mask generation, run Metashape SfM.\nImport the generated masks/ folder as per-image masks in Metashape so that people, stitching seams, and blown-out highlights are excluded from feature matching. This significantly improves SfM accuracy.\nAfter SfM, proceed to Step 4 for cubemap conversion.",
     "CSV_FILE": "CSV Filename",
