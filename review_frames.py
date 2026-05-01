@@ -9,9 +9,11 @@ from typing import Dict, List
 
 try:
     from PySide6.QtCore import Qt
-    from PySide6.QtGui import QKeySequence, QPixmap, QShortcut
+    from PySide6.QtGui import QKeySequence, QPainter, QPixmap, QShortcut
     from PySide6.QtWidgets import (
         QApplication,
+        QGraphicsScene,
+        QGraphicsView,
         QHBoxLayout,
         QLineEdit,
         QLabel,
@@ -24,9 +26,12 @@ try:
 except Exception as e:  # pragma: no cover - environment-dependent import
     Qt = None
     QKeySequence = None
+    QPainter = None
     QPixmap = None
     QShortcut = None
     QApplication = None
+    QGraphicsScene = None
+    QGraphicsView = None
     QHBoxLayout = None
     QLabel = None
     QMainWindow = None
@@ -41,6 +46,86 @@ else:
 
 # i18n は PySide6 に依存しないので無条件 import
 from gui import i18n
+
+
+if QGraphicsView is not None:
+    class ZoomableImageView(QGraphicsView):
+        """ホイールで拡大縮小、ドラッグでパンできる画像ビュー。"""
+
+        ZOOM_STEP = 1.20
+
+        def __init__(self, parent: QWidget | None = None) -> None:
+            super().__init__(parent)
+            self._scene = QGraphicsScene(self)
+            self.setScene(self._scene)
+            self._pixmap_item = None
+            self._fit_pending = True
+
+            self.setRenderHints(QPainter.SmoothPixmapTransform | QPainter.Antialiasing)
+            self.setDragMode(QGraphicsView.ScrollHandDrag)
+            self.setTransformationAnchor(QGraphicsView.AnchorUnderMouse)
+            self.setResizeAnchor(QGraphicsView.AnchorUnderMouse)
+            self.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+            self.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+            self.setStyleSheet("background-color: #101010; border: 1px solid #333;")
+            self.setMinimumHeight(560)
+            self.setFocusPolicy(Qt.NoFocus)  # キー入力は親ウィンドウへ
+
+        def show_pixmap(self, pixmap: QPixmap) -> None:
+            self._scene.clear()
+            self._pixmap_item = self._scene.addPixmap(pixmap)
+            self._scene.setSceneRect(self._pixmap_item.boundingRect())
+            # 新しい画像が来たら fit-to-window にリセット
+            self.resetTransform()
+            self._fit_pending = True
+            self._fit_to_view()
+
+        def show_message(self, text: str) -> None:
+            self._scene.clear()
+            self._pixmap_item = None
+            item = self._scene.addText(text)
+            item.setDefaultTextColor(Qt.gray)
+            self._scene.setSceneRect(item.boundingRect())
+            self.resetTransform()
+            self._fit_pending = False
+            self.centerOn(item)
+
+        def _fit_to_view(self) -> None:
+            if self._pixmap_item is None:
+                return
+            self.fitInView(self._pixmap_item, Qt.KeepAspectRatio)
+
+        def reset_zoom(self) -> None:
+            """フィットウィンドウに戻す。"""
+            self.resetTransform()
+            self._fit_to_view()
+
+        def wheelEvent(self, event) -> None:
+            if self._pixmap_item is None:
+                return
+            delta = event.angleDelta().y()
+            if delta == 0:
+                return
+            factor = self.ZOOM_STEP if delta > 0 else 1.0 / self.ZOOM_STEP
+            self.scale(factor, factor)
+            event.accept()
+
+        def resizeEvent(self, event) -> None:
+            super().resizeEvent(event)
+            # 初回だけ自動フィット。以降のリサイズはユーザーのズームを尊重。
+            if self._fit_pending and self._pixmap_item is not None:
+                self._fit_to_view()
+                self._fit_pending = False
+
+        def keyPressEvent(self, event) -> None:
+            # 矢印キーは親のフレーム送りで使うので、ビュー側では拾わない
+            if event.key() in (Qt.Key_Left, Qt.Key_Right, Qt.Key_Up, Qt.Key_Down):
+                event.ignore()
+                return
+            super().keyPressEvent(event)
+else:
+    class ZoomableImageView:  # pragma: no cover - placeholder when PySide6 missing
+        pass
 
 
 if QMainWindow is not None:
@@ -113,11 +198,8 @@ if QMainWindow is not None:
             top_row.addWidget(self.decision_label)
             layout.addLayout(top_row)
 
-            self.image_label = QLabel()
-            self.image_label.setAlignment(Qt.AlignCenter)
-            self.image_label.setStyleSheet("background-color: #101010; border: 1px solid #333;")
-            self.image_label.setMinimumHeight(560)
-            layout.addWidget(self.image_label, stretch=1)
+            self.image_view = ZoomableImageView()
+            layout.addWidget(self.image_view, stretch=1)
 
             self.info_label = QLabel()
             self.info_label.setWordWrap(True)
@@ -215,6 +297,7 @@ if QMainWindow is not None:
             QShortcut(QKeySequence("Shift+B"), self, activated=self.prev_blur_worst)
             QShortcut(QKeySequence("S"), self, activated=self.save)
             QShortcut(QKeySequence("Q"), self, activated=self.close)
+            QShortcut(QKeySequence("0"), self, activated=self.reset_zoom)
 
         def _current_row(self) -> Dict[str, str]:
             return self.rows[self.index]
@@ -268,39 +351,20 @@ if QMainWindow is not None:
 
             if not image_path.exists():
                 self.current_pixmap = None
-                self.image_label.setText(f"Image not found:\n{image_path}")
-                self.image_label.setPixmap(QPixmap())
+                self.image_view.show_message(f"Image not found:\n{image_path}")
                 return
 
             pixmap = QPixmap(str(image_path))
             if pixmap.isNull():
                 self.current_pixmap = None
-                self.image_label.setText(f"Failed to load image:\n{image_path}")
-                self.image_label.setPixmap(QPixmap())
+                self.image_view.show_message(f"Failed to load image:\n{image_path}")
                 return
 
             self.current_pixmap = pixmap
-            self._update_pixmap_view()
+            self.image_view.show_pixmap(pixmap)
 
-        def _update_pixmap_view(self) -> None:
-            if self.current_pixmap is None:
-                return
-
-            target_size = self.image_label.size()
-            if target_size.width() <= 1 or target_size.height() <= 1:
-                return
-
-            scaled = self.current_pixmap.scaled(
-                target_size,
-                Qt.KeepAspectRatio,
-                Qt.SmoothTransformation,
-            )
-            self.image_label.setText("")
-            self.image_label.setPixmap(scaled)
-
-        def resizeEvent(self, event) -> None:  # pragma: no cover - UI event
-            super().resizeEvent(event)
-            self._update_pixmap_view()
+        def reset_zoom(self) -> None:
+            self.image_view.reset_zoom()
 
         def prev_row(self) -> None:
             if self.index > 0:
