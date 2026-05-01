@@ -139,7 +139,7 @@ if QMainWindow is not None:
                 raise RuntimeError(f"No rows found in {csv_path}")
             self.problem_indices = self._collect_problem_indices()
             self.blur_worst_indices = self._build_blur_worst_indices()
-            self._blur_worst_cursor = 0
+            self._in_blur_cycle = False  # B / Shift+B で巡回中か。他のナビで False に戻る
 
             self.index = 0
             self.current_pixmap: QPixmap | None = None
@@ -431,11 +431,13 @@ if QMainWindow is not None:
         def prev_row(self) -> None:
             if self.index > 0:
                 self.index -= 1
+                self._in_blur_cycle = False
                 self._render_current()
 
         def next_row(self) -> None:
             if self.index < len(self.rows) - 1:
                 self.index += 1
+                self._in_blur_cycle = False
                 self._render_current()
 
         def next_problem(self) -> None:
@@ -443,6 +445,7 @@ if QMainWindow is not None:
                 QMessageBox.information(self, i18n.t("REVIEW_INFO_HEADER"), i18n.t("REVIEW_NO_PROBLEMS"))
                 return
 
+            self._in_blur_cycle = False
             for idx in self.problem_indices:
                 if idx > self.index:
                     self.index = idx
@@ -457,6 +460,7 @@ if QMainWindow is not None:
                 QMessageBox.information(self, i18n.t("REVIEW_INFO_HEADER"), i18n.t("REVIEW_NO_PROBLEMS"))
                 return
 
+            self._in_blur_cycle = False
             for idx in reversed(self.problem_indices):
                 if idx < self.index:
                     self.index = idx
@@ -487,37 +491,47 @@ if QMainWindow is not None:
                 return
 
             self.index = seq - 1
+            self._in_blur_cycle = False
             self._render_current()
 
         def next_blur_worst(self) -> None:
-            """ブラースコアが悪い順に次のフレームに飛ぶ。"""
+            """ブレ巡回モード: 初回は最悪フレームへ、続行押下で次に悪いフレームへ。"""
             if not self.blur_worst_indices:
                 return
-            # 現在位置のランクを探して次へ
-            try:
-                cur_rank = self.blur_worst_indices.index(self.index)
-                next_rank = cur_rank + 1
-            except ValueError:
-                next_rank = 0
-            if next_rank >= len(self.blur_worst_indices):
-                next_rank = 0
-            self._blur_worst_cursor = next_rank
-            self.index = self.blur_worst_indices[next_rank]
+            if not self._in_blur_cycle:
+                # 巡回開始: 最悪フレームへジャンプ
+                new_rank = 0
+            else:
+                # 巡回中: 現ランク + 1（末尾は最良 → ループして最悪へ）
+                try:
+                    cur_rank = self.blur_worst_indices.index(self.index)
+                    new_rank = cur_rank + 1
+                    if new_rank >= len(self.blur_worst_indices):
+                        new_rank = 0
+                except ValueError:
+                    new_rank = 0
+            self._in_blur_cycle = True
+            self.index = self.blur_worst_indices[new_rank]
             self._render_current()
 
         def prev_blur_worst(self) -> None:
-            """ブラースコアが悪い順に前のフレームに飛ぶ。"""
+            """ブレ巡回モード逆方向。初回は最悪フレームへ、続行押下で 1 つ戻る。"""
             if not self.blur_worst_indices:
                 return
-            try:
-                cur_rank = self.blur_worst_indices.index(self.index)
-                prev_rank = cur_rank - 1
-            except ValueError:
-                prev_rank = 0
-            if prev_rank < 0:
-                prev_rank = len(self.blur_worst_indices) - 1
-            self._blur_worst_cursor = prev_rank
-            self.index = self.blur_worst_indices[prev_rank]
+            if not self._in_blur_cycle:
+                # 巡回開始: 最悪フレームへジャンプ（B と同じ起点）
+                new_rank = 0
+            else:
+                # 巡回中: 現ランク - 1（先頭は最悪 → ループして最良へ）
+                try:
+                    cur_rank = self.blur_worst_indices.index(self.index)
+                    new_rank = cur_rank - 1
+                    if new_rank < 0:
+                        new_rank = len(self.blur_worst_indices) - 1
+                except ValueError:
+                    new_rank = 0
+            self._in_blur_cycle = True
+            self.index = self.blur_worst_indices[new_rank]
             self._render_current()
 
         def drop_below_blur_threshold(self) -> None:
