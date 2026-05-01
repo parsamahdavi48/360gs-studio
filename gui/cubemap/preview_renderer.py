@@ -6,7 +6,7 @@ from pathlib import Path
 import cv2
 import numpy as np
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import QSignalBlocker, Qt, Signal
 from PySide6.QtGui import QImage, QPixmap
 from PySide6.QtWidgets import (
     QFileDialog,
@@ -21,6 +21,7 @@ from PySide6.QtWidgets import (
 
 from gui import i18n
 from gui.common.collapsible_section import CollapsibleSection
+from gui.common.drag_spinbox import DragSpinBox
 
 
 def _rotation_matrix(yaw_deg: float, pitch_deg: float) -> np.ndarray:
@@ -142,7 +143,22 @@ class PreviewWidget(QWidget):
         self.mask_slider.setToolTip(i18n.tip("MASK_OPACITY"))
         self.mask_slider.setRange(0, 100)
         self.mask_slider.setValue(35)
+        self.mask_slider.setMaximumWidth(160)
+        self.mask_slider.valueChanged.connect(self._on_mask_slider_changed)
         mask_inner.addWidget(self.mask_slider)
+
+        self.mask_spin = DragSpinBox(
+            minimum=0,
+            maximum=100,
+            step=5,
+            value=35,
+            suffix=" %",
+            drag_pixels_per_step=6.0,
+        )
+        self.mask_spin.setToolTip(i18n.tip("MASK_OPACITY"))
+        self.mask_spin.setFixedWidth(76)
+        self.mask_spin.valueChanged.connect(self._on_mask_spin_changed)
+        mask_inner.addWidget(self.mask_spin)
 
         mask_inner.addWidget(QLabel(i18n.t("MASK_IMAGE_LABEL")))
         self.mask_edit = QLineEdit()
@@ -332,6 +348,14 @@ class PreviewWidget(QWidget):
 
     def _on_sample_changed(self, _text: str) -> None:
         pass  # 外部からrender()呼び出しで更新
+
+    def _on_mask_slider_changed(self, value: int) -> None:
+        with QSignalBlocker(self.mask_spin):
+            self.mask_spin.setValue(value)
+
+    def _on_mask_spin_changed(self, value: int) -> None:
+        with QSignalBlocker(self.mask_slider):
+            self.mask_slider.setValue(value)
 
     def _browse_sample(self) -> None:
         path, _ = QFileDialog.getOpenFileName(self, "", "", "画像 (*.jpg *.jpeg *.png);;すべて (*.*)")

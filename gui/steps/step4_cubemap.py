@@ -222,6 +222,7 @@ class CubemapStep(BaseStepWidget):
         # 右パネル: プレビュー
         self.preview = PreviewWidget()
         self.preview.mask_slider.valueChanged.connect(lambda _: self._render_preview())
+        self.preview.mask_spin.valueChanged.connect(lambda _: self._render_preview())
         self.preview.mask_edit.textChanged.connect(lambda _: self._render_preview())
         self.preview.sample_edit.textChanged.connect(lambda _: self._render_preview())
 

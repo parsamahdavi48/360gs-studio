@@ -37,7 +37,7 @@ QWidget {{
 }}
 
 /* ========== QLineEdit / QComboBox / QSpinBox ========== */
-QLineEdit, QComboBox, QSpinBox {{
+QLineEdit, QComboBox, QSpinBox, QDoubleSpinBox {{
     background-color: {BG_INPUT};
     border: 1px solid {BORDER};
     border-radius: 4px;
@@ -45,10 +45,10 @@ QLineEdit, QComboBox, QSpinBox {{
     color: {TEXT};
     min-height: 20px;
 }}
-QLineEdit:focus, QComboBox:focus {{
+QLineEdit:focus, QComboBox:focus, QSpinBox:focus, QDoubleSpinBox:focus {{
     border-color: {BORDER_FOCUS};
 }}
-QLineEdit:disabled, QComboBox:disabled {{
+QLineEdit:disabled, QComboBox:disabled, QSpinBox:disabled, QDoubleSpinBox:disabled {{
     color: {TEXT_DIM};
     background-color: {BG_MID};
 }}

@@ -1,47 +1,45 @@
-# mask_tools_gui.py — GUI wrapper for mask generation
+# 3DGS Studio Step 3 — Mask Generation GUI
 
 ## Overview
 
-`mask_tools_gui.py` is a PySide6 wrapper around:
+3DGS Studio Step 3 is a PySide6 wrapper around:
 
 - `yolo_mask.py` (person mask generation)
 - `stitch_mask.py` (stitch-region masking)
+- `overexposure_mask.py` (overexposure masking)
 
 It is intended for the frame-extraction workflow (`images/` -> `masks/`).
 
 ## Usage
 
-```bash
-python mask_tools_gui.py --scene-dir ./scene01
-```
-
-Windows launcher:
-
 ```bat
-start_mask_tools_gui.bat
+start_gui.bat --scene ./scene01
 ```
 
 ## Main Fields
 
-- `Scene Directory`: base folder for quick path fill.
-- `Images Directory`: input images for YOLO/SAM masking.
-- `Masks Directory`: output masks; also stitch input/output.
+- `Scene Folder`: base folder. Step 3 fills `images` and `masks` from it.
+- `Images Folder`: input images for YOLO/SAM masking.
+- `Masks Folder`: output masks; also stitch input/output.
 - `YOLO Level`: forwarded to `yolo_mask.py --level` (0-3).
 - `YOLO Expand (px)`: forwarded to `yolo_mask.py --expand`.
-- `YOLO Add Ext`: forwarded to `yolo_mask.py --add_ext`.
+  - Drag horizontally on the number field to adjust.
+- `YOLO Add Ext`: forwarded to `yolo_mask.py --add-ext`.
 - `YOLO Classes`: collapsed picker for class selection.
   - Choose classes by checkbox labels (`id: name`) instead of memorizing numeric ids.
   - Default preset is `person` only (`id=0`).
   - Presets: `Person only`, `People + Vehicles`, `All`, `Clear`.
   - Forwarded to `yolo_mask.py --classes`.
-- `Stitch FOV (deg)`: forwarded to `stitch_mask.py --fov`.
+- `Boundary Mask Width (deg)`: forwarded to `stitch_mask.py --boundary-width`.
+  - Drag horizontally on the number field to adjust.
+  - The GUI clamps the value to `0.0-30.0` degrees for safety.
 - `Stitch Workers`: forwarded to `stitch_mask.py --workers`.
+  - Drag horizontally on the number field to adjust.
 
 ## Actions
 
-1. `Run YOLO Mask`: runs `yolo_mask.py`.
-2. `Run Stitch Mask`: runs `stitch_mask.py` on `Masks Directory`.
-3. `Run YOLO + Stitch`: runs both in sequence.
+Select `YOLO Detection`, `Stitch Seam`, and/or `Overexposure`, then press `Run Mask Creation`.
+When multiple tasks are selected, they run in this order: YOLO detection, stitch seam, overexposure.
 
 ## Notes
 

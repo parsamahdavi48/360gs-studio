@@ -12,7 +12,7 @@ from ultralytics import YOLO, SAM
 parser = argparse.ArgumentParser(description="Make mask images for removing humans in the scene")
 parser.add_argument("images_dir", nargs="?", help="Input directory containing image files (default='./images')")
 parser.add_argument("output_dir", nargs="?", help="Output directory for storing PNG mask images (default='./masks')")
-parser.add_argument("--add_ext", action="store_true", help="Add a file extension forcely (ex: hoge.jpg.png)")
+parser.add_argument("--add-ext", "--add_ext", action="store_true", dest="add_ext", help="Add a file extension forcibly (ex: hoge.jpg.png)")
 parser.add_argument("--level", type=int, default=1, help="Detection level [0:3] (default=1)")
 parser.add_argument("--expand", type=int, default=2, help="Expand pixels of detected areas (default=2 pixels)")
 parser.add_argument(

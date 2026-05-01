@@ -1,51 +1,48 @@
-# mask_tools_gui.py — マスク生成ラッパーGUI
+# 3DGS Studio Step 3 — マスク生成GUI
 
 ## 概要
 
-`mask_tools_gui.py` は、以下2つのスクリプトをまとめて実行する PySide6 GUI です。
+3DGS Studio の Step 3 は、以下のマスク処理をまとめて実行する PySide6 GUI です。
 
 - `yolo_mask.py`（人物マスク生成）
 - `stitch_mask.py`（スティッチ領域マスク付与）
+- `overexposure_mask.py`（白飛びマスク付与）
 
 抽出済みフレーム（`images/`）からマスク（`masks/`）を作る用途を想定しています。
 
 ## 起動
 
-```bash
-python mask_tools_gui.py --scene-dir ./scene01
-```
-
-Windows では以下も使えます。
-
 ```bat
-start_mask_tools_gui.bat
+start_gui.bat --scene ./scene01
 ```
 
 ## 主な入力項目
 
-- `Scene Directory`:
-  - ベースフォルダ。`Apply Scene Paths` で `images` / `masks` を自動入力します。
-- `Images Directory`:
+- `シーンフォルダ`:
+  - ベースフォルダ。Step 3 では `images` / `masks` が自動入力されます。
+- `画像フォルダ`:
   - `yolo_mask.py` の入力画像フォルダ。
-- `Masks Directory`:
+- `マスクフォルダ`:
   - `yolo_mask.py` の出力先。
   - `stitch_mask.py` 実行時は入力/出力の両方として使います。
 - `YOLO Level`:
   - `yolo_mask.py --level`（0〜3）
 - `YOLO Expand (px)`:
   - `yolo_mask.py --expand`
+  - 数値欄は横ドラッグで調整できます。
 - `YOLO Add Ext`:
-  - `yolo_mask.py --add_ext`
+  - `yolo_mask.py --add-ext`
 - `YOLO Classes`:
   - 通常は折りたたみ表示。展開するとクラスをチェックで選択できます。
   - 数値IDを覚えなくても `id: 名前` で選択可能です。
   - 既定は `person`（`id=0`）のみ。
   - プリセット: `Person only` / `People + Vehicles` / `All` / `Clear`
   - `yolo_mask.py --classes` に渡されます。
-- `Stitch FOV (deg)`:
-  - `stitch_mask.py --fov`
+- `境界マスク幅 (度)`:
+  - `stitch_mask.py --boundary-width`
 - `Stitch Workers`:
   - `stitch_mask.py --workers`
+  - 数値欄は横ドラッグで調整できます。
 
 ## 各値の意味と調整指針
 
@@ -61,7 +58,7 @@ start_mask_tools_gui.bat
   - `1`: 速度と精度のバランス
   - `2~3`: 高精度重視（重い）
 
-### `YOLO Expand (px)`（デフォルト: `2`）
+### `YOLO Expand (px)`（GUIデフォルト: `12`）
 
 - 何を制御するか:
   - 検出された人物領域を何ピクセル膨張/収縮させるか
@@ -82,16 +79,20 @@ start_mask_tools_gui.bat
   - `frame_000001.jpg` -> `frame_000001.jpg.png`
 - 通常は OFF 推奨（名前が自然で扱いやすい）
 
-### `Stitch FOV (deg)`（デフォルト: `175.0`）
+### `境界マスク幅 (度)`（デフォルト: `5.0`）
 
 - 何を制御するか:
-  - 魚眼の有効視野角（度）。`stitch_mask.py` では内部的に `fov/2` を境界角として使用します。
-- 値を下げると:
-  - マスクされるスティッチ境界領域が広がる（保守的）
+  - 除外するスティッチ境界帯の合計幅（度）。`5.0` は従来の `FOV=175` と同等です。
 - 値を上げると:
-  - マスク領域が狭まる（攻める）
+  - マスクされるスティッチ境界領域が広がる（保守的）
+- 値を下げると:
+  - マスク領域が狭まる。`0` はほぼ無効です。
+- GUI操作:
+  - 数値欄は横ドラッグで調整できます。
+  - 安全のため、GUIでは `0.0〜30.0` 度に制限されます。
 - 注意:
   - 撮影時に手ブレ補正や水平補正を強くかけた素材では、幾何がずれて想定どおりに効かない場合があります。
+  - GUIのスティッチ境界プレビューで、抽出フレーム上の赤い範囲を確認しながら調整してください。
 
 ### `Stitch Workers`（デフォルト: `CPUコア数`）
 
@@ -109,10 +110,10 @@ start_mask_tools_gui.bat
 
 - `YOLO Level=1`:
   - 速度と精度のバランスがよく、初期値として適切
-- `YOLO Expand=2`:
-  - 人物境界の取り残しを減らしつつ、過剰マスクになりにくい
-- `Stitch FOV=175`:
-  - 360カメラの一般的設定に沿った無難な値
+- `YOLO Expand=12`:
+  - 高解像度フレームで人物境界の取り残しを減らす寄りの値
+- `境界マスク幅=5`:
+  - 従来の `FOV=175` 相当の無難な値
 - `Workers=CPUコア数`:
   - 最速寄り。重い場合は手動で下げればよい
 
@@ -121,26 +122,22 @@ start_mask_tools_gui.bat
 まずは次の値から開始するのを推奨します。
 
 - `YOLO Level=1`
-- `YOLO Expand=2`
+- `YOLO Expand=12`
 - `YOLO Add Ext=OFF`
-- `Stitch FOV=175`
+- `境界マスク幅=5`
 - `Stitch Workers=コア数-2`（操作しながら実行する場合）
 
 仕上がりを見て調整:
 
-- 人物マスク漏れが目立つ: `Level 1 -> 2`、`Expand 2 -> 3~4`
-- 背景を削りすぎる: `Expand 2 -> 1 or 0`
-- スティッチ境界の破綻が残る: `FOV 175 -> 170`
-- マスクしすぎる: `FOV 175 -> 178~180`
+- 人物マスク漏れが目立つ: `Level 1 -> 2`、`Expand 12 -> 16~24`
+- 背景を削りすぎる: `Expand 12 -> 4~8`
+- スティッチ境界の破綻が残る: `境界マスク幅 5 -> 8~10`
+- マスクしすぎる: `境界マスク幅 5 -> 2~3`
 
-## 実行ボタン
+## 実行
 
-1. `Run YOLO Mask`:
-  - `yolo_mask.py` のみ実行
-2. `Run Stitch Mask`:
-  - `stitch_mask.py` のみ実行
-3. `Run YOLO + Stitch`:
-  - YOLO完了後にStitchを連続実行
+`作成するマスク` で `YOLO検出` / `スティッチ境界` / `白飛び` を選び、`マスク作成実行` を押します。
+複数選択時は `YOLO検出 -> スティッチ境界 -> 白飛び` の順に実行されます。
 
 ## 補足
 

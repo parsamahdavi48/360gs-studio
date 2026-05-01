@@ -19,11 +19,33 @@ parser = argparse.ArgumentParser(description="Add stitching remover to mask imag
 parser.add_argument("input_dir", nargs="?", help="Input directory of mask images")
 parser.add_argument("output_dir", nargs="?", help="Output directory for cubified data (default=[input_dir])")
 parser.add_argument("--single", nargs=2, type=int, metavar=("w", "h"), help="Output single mask file with the specified width & height (Ex:--single 7680 3840)")
-parser.add_argument("--fov", type=float, default=175.0, help="Field of View of fisheye lens (default=175.0 degrees)")
+parser.add_argument("--fov", type=float, default=None, help="Field of View of fisheye lens (legacy, default=175.0 degrees)")
+parser.add_argument("--boundary-width", type=float, default=5.0, help="Total stitch boundary mask width in degrees (default=5.0, equivalent to --fov 175)")
 parser.add_argument("--workers", type=int, default=os.cpu_count(), help="Number of parallel workers")
 
 # --- グローバル変数（ワーカープロセス内でのマスク共有用） ---
 shared_base_mask = None
+
+
+def boundary_width_to_fov(boundary_width_deg):
+    """Convert total stitch boundary mask width to the legacy fisheye FOV value."""
+    return 180.0 - boundary_width_deg
+
+
+def boundary_width_to_limit_angle(boundary_width_deg):
+    """Return the per-lens angular keep limit used by create_angular_stitched_mask()."""
+    return boundary_width_to_fov(boundary_width_deg) / 2.0
+
+
+def fov_to_boundary_width(fov_deg):
+    """Convert a legacy fisheye FOV value to total stitch boundary mask width."""
+    return max(0.0, 180.0 - fov_deg)
+
+
+def resolve_limit_angle(fov_deg, boundary_width_deg):
+    if fov_deg is not None:
+        return fov_deg / 2.0
+    return boundary_width_to_limit_angle(boundary_width_deg)
 
 def init_worker(mask):
     """
@@ -140,7 +162,11 @@ def main():
 
     SINGLE_SIZE = args.single if args.single else None
     OUTPUT_DIR = args.output_dir if args.output_dir else INPUT_DIR
-    limit_angle_deg = args.fov / 2
+    if args.fov is None and not (0.0 <= args.boundary_width < 180.0):
+        parser.error("--boundary-width must be greater than or equal to 0 and less than 180 degrees")
+    if args.fov is not None and args.fov <= 0:
+        parser.error("--fov must be greater than 0 degrees")
+    limit_angle_deg = resolve_limit_angle(args.fov, args.boundary_width)
     
     # 並列数（CPUコア数または指定値）
     workers = args.workers

@@ -1,4 +1,4 @@
-# stich_mask.py — スティッチング除外マスク生成
+# stitch_mask.py — スティッチング除外マスク生成
 
 ## 概要
 
@@ -13,13 +13,14 @@
 
 ## 使い方
 ```
-python stitch_mask.py [-h] [--single w h] [--fov FOV] [--workers WORKERS] [input_dir] [output_dir]
+python stitch_mask.py [-h] [--single w h] [--boundary-width DEG] [--fov FOV] [--workers WORKERS] [input_dir] [output_dir]
 ```
 
 - **`input_dir`**: 入力マスクが入ったディレクトリ（省略時は `masks` を探す）
 - **`output_dir`**: 出力先ディレクトリ（省略時は入力ディレクトリと同じ）
 - **`--single w h`**: 指定解像度でベースマスクを1枚生成して入力ディレクトリへ保存します（ファイル名:`single_mask.png`）
-- **`--fov`**: フィッシュアイのFOV（デフォルト175.0）。内部的に `fov/2` を閾値角度として使用します。
+- **`--boundary-width`**: 除外するスティッチ境界帯の合計幅（度）。デフォルトは `5.0` で、従来の `--fov 175` と同等です。
+- **`--fov`**: 後方互換用。フィッシュアイの有効FOV（度）。指定した場合は `--boundary-width` より優先されます。
 - **`--workers`**: 並列ワーカー数（デフォルトはCPUコア数）
 
 ## 使用例
@@ -48,10 +49,10 @@ python stitch_mask.py input_masks output_masks
 python stitch_mask.py . --single 7680 3840
 ```
 
-FOVを変更して処理（例: FOV=170度）かつワーカー数指定:
+境界マスク幅を10度に広げて処理し、ワーカー数も指定:
 
 ```
-python stitch_mask.py minput_maskss output_masks --fov 170 --workers 8
+python stitch_mask.py input_masks output_masks --boundary-width 10 --workers 8
 ```
 
 
@@ -59,4 +60,4 @@ python stitch_mask.py minput_maskss output_masks --fov 170 --workers 8
 ## 注意点
 
 - Insta360 StudioやDJI Studioでmp4動画を出力する際に、手ブレや傾き、スティッチングなど幾何的な補正をすべてオフにしていることが前提となります。補正を行うと、元のレンズの向きが失われるため、マスクが適切に適用されなくなります。
-- 広い空間で周囲との距離が十分にある場合は継ぎ目がほぼ目立たないため、マスクを適用するとかえって画質が落ちることも考えられます。シーンに応じてFOVを180度に近づけたり、またはマスクを使用しないなど、適切にご利用ください。
+- 広い空間で周囲との距離が十分にある場合は継ぎ目がほぼ目立たないため、マスクを適用するとかえって画質が落ちることも考えられます。シーンに応じて境界マスク幅を小さくしたり、またはマスクを使用しないなど、適切にご利用ください。

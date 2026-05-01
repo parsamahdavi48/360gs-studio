@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+import math
 import re
 import sys
 from pathlib import Path
@@ -17,6 +18,7 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QPushButton,
     QScrollArea,
+    QSplitter,
     QVBoxLayout,
     QWidget,
 )
@@ -24,6 +26,8 @@ from PySide6.QtWidgets import (
 from gui import i18n
 from gui.common.browse_widget import BrowseWidget
 from gui.common.collapsible_section import CollapsibleSection
+from gui.common.drag_spinbox import DragDoubleSpinBox, DragSpinBox
+from gui.mask.stitch_preview import StitchPreviewWidget
 from gui.steps.base_step import BaseStepWidget
 
 _COCO_CLASS_NAMES = [
@@ -44,6 +48,18 @@ _COCO_CLASS_NAMES = [
 _YOLO_LINE_RE = re.compile(r"^Processing:\s+")
 _STITCH_TASK_RE = re.compile(r"^Processing\s+(\d+)\s+images\s+with\s+\d+\s+workers\.\.\.$")
 _STITCH_TQDM_RE = re.compile(r"\|\s*(\d+)/(\d+)\s*\[")
+_STITCH_BOUNDARY_MIN = 0.0
+_STITCH_BOUNDARY_MAX = 30.0
+_STITCH_BOUNDARY_DEFAULT = 5.0
+_YOLO_EXPAND_MIN = -64
+_YOLO_EXPAND_MAX = 256
+_YOLO_EXPAND_DEFAULT = 12
+_OVEREXP_THRESHOLD_MIN = 0
+_OVEREXP_THRESHOLD_MAX = 255
+_OVEREXP_THRESHOLD_DEFAULT = 250
+_OVEREXP_DILATE_MIN = 0
+_OVEREXP_DILATE_MAX = 128
+_OVEREXP_DILATE_DEFAULT = 8
 
 
 class MaskStep(BaseStepWidget):
@@ -59,7 +75,19 @@ class MaskStep(BaseStepWidget):
         self._build_ui()
 
     def _build_ui(self) -> None:
-        layout = QVBoxLayout(self)
+        root_layout = QVBoxLayout(self)
+        root_layout.setContentsMargins(0, 0, 0, 0)
+        root_layout.setSpacing(0)
+
+        splitter = QSplitter(Qt.Vertical)
+        splitter.setChildrenCollapsible(False)
+
+        top_scroll = QScrollArea()
+        top_scroll.setWidgetResizable(True)
+        top_scroll.setFrameShape(QScrollArea.NoFrame)
+        top = QWidget()
+        layout = QVBoxLayout(top)
+        layout.setContentsMargins(0, 0, 0, 4)
         layout.setSpacing(8)
 
         # --- パス設定 ---
@@ -116,7 +144,13 @@ class MaskStep(BaseStepWidget):
         self.yolo_level_combo.setCurrentIndex(1)
         yolo_form.addRow(i18n.YOLO_LEVEL, self.yolo_level_combo)
 
-        self.yolo_expand_edit = QLineEdit("12")
+        self.yolo_expand_edit = DragSpinBox(
+            minimum=_YOLO_EXPAND_MIN,
+            maximum=_YOLO_EXPAND_MAX,
+            step=1,
+            value=_YOLO_EXPAND_DEFAULT,
+            drag_pixels_per_step=6.0,
+        )
         self.yolo_expand_edit.setToolTip(i18n.tip("YOLO_EXPAND"))
         self.yolo_expand_edit.setFixedWidth(80)
         yolo_form.addRow(i18n.YOLO_EXPAND, self.yolo_expand_edit)
@@ -171,12 +205,24 @@ class MaskStep(BaseStepWidget):
         other_form = QFormLayout()
         other_form.setSpacing(6)
 
-        self.stitch_fov_edit = QLineEdit("190")
-        self.stitch_fov_edit.setToolTip(i18n.tip("STITCH_FOV"))
-        self.stitch_fov_edit.setFixedWidth(80)
-        other_form.addRow(i18n.STITCH_FOV, self.stitch_fov_edit)
+        self.stitch_boundary_width_edit = DragDoubleSpinBox(
+            minimum=_STITCH_BOUNDARY_MIN,
+            maximum=_STITCH_BOUNDARY_MAX,
+            step=0.5,
+            decimals=1,
+            value=_STITCH_BOUNDARY_DEFAULT,
+        )
+        self.stitch_boundary_width_edit.setToolTip(i18n.tip("STITCH_BOUNDARY_WIDTH"))
+        self.stitch_boundary_width_edit.setFixedWidth(80)
+        other_form.addRow(i18n.STITCH_BOUNDARY_WIDTH, self.stitch_boundary_width_edit)
 
-        self.stitch_workers_edit = QLineEdit(str(os.cpu_count() or 4))
+        worker_default = os.cpu_count() or 4
+        self.stitch_workers_edit = DragSpinBox(
+            minimum=1,
+            maximum=max(1, worker_default * 2),
+            step=1,
+            value=worker_default,
+        )
         self.stitch_workers_edit.setToolTip(i18n.tip("STITCH_WORKERS"))
         self.stitch_workers_edit.setFixedWidth(80)
         other_form.addRow(i18n.STITCH_WORKERS, self.stitch_workers_edit)
@@ -185,12 +231,24 @@ class MaskStep(BaseStepWidget):
         sep.setFixedHeight(8)
         other_form.addRow(sep)
 
-        self.overexp_threshold_edit = QLineEdit("250")
+        self.overexp_threshold_edit = DragSpinBox(
+            minimum=_OVEREXP_THRESHOLD_MIN,
+            maximum=_OVEREXP_THRESHOLD_MAX,
+            step=1,
+            value=_OVEREXP_THRESHOLD_DEFAULT,
+            drag_pixels_per_step=4.0,
+        )
         self.overexp_threshold_edit.setToolTip(i18n.tip("OVEREXPOSURE_THRESHOLD"))
         self.overexp_threshold_edit.setFixedWidth(80)
         other_form.addRow(i18n.OVEREXPOSURE_THRESHOLD, self.overexp_threshold_edit)
 
-        self.overexp_dilate_edit = QLineEdit("8")
+        self.overexp_dilate_edit = DragSpinBox(
+            minimum=_OVEREXP_DILATE_MIN,
+            maximum=_OVEREXP_DILATE_MAX,
+            step=1,
+            value=_OVEREXP_DILATE_DEFAULT,
+            drag_pixels_per_step=6.0,
+        )
         self.overexp_dilate_edit.setToolTip(i18n.tip("OVEREXPOSURE_DILATE"))
         self.overexp_dilate_edit.setFixedWidth(80)
         other_form.addRow(i18n.OVEREXPOSURE_DILATE, self.overexp_dilate_edit)
@@ -210,9 +268,27 @@ class MaskStep(BaseStepWidget):
 
         layout.addStretch()
 
+        self.stitch_preview_section = CollapsibleSection(i18n.t("STITCH_PREVIEW_SECTION"), expanded=True)
+        self.stitch_preview = StitchPreviewWidget()
+        self.stitch_preview_section.content_layout.addWidget(self.stitch_preview)
+
+        top_scroll.setWidget(top)
+        splitter.addWidget(top_scroll)
+        splitter.addWidget(self.stitch_preview_section)
+        splitter.setStretchFactor(0, 1)
+        splitter.setStretchFactor(1, 1)
+        splitter.setSizes([430, 360])
+        root_layout.addWidget(splitter)
+
         for cb in (self.run_yolo_cb, self.run_stitch_cb, self.run_overexp_cb):
             cb.toggled.connect(self._update_task_controls)
+        self.images_browse.path_changed.connect(self._on_images_dir_changed)
+        self.stitch_boundary_width_edit.valueChanged.connect(lambda _: self._render_stitch_preview())
+        self.stitch_preview.sample_edit.textChanged.connect(lambda _: self._render_stitch_preview())
+        self.stitch_preview.opacity_slider.valueChanged.connect(lambda _: self._render_stitch_preview())
+        self.stitch_preview.opacity_spin.valueChanged.connect(lambda _: self._render_stitch_preview())
         self._update_task_controls()
+        self._on_images_dir_changed(self.images_browse.text())
 
     def set_scene_dir(self, path: str) -> None:
         super().set_scene_dir(path)
@@ -220,6 +296,7 @@ class MaskStep(BaseStepWidget):
             p = Path(path)
             self.images_browse.set_text(str(p / "images"))
             self.masks_browse.set_text(str(p / "masks"))
+            self._on_images_dir_changed(str(p / "images"))
 
     def _set_classes(self, indices: list[int]) -> None:
         for i, cb in enumerate(self.class_cbs):
@@ -234,10 +311,36 @@ class MaskStep(BaseStepWidget):
         overexp_enabled = self.run_overexp_cb.isChecked()
 
         self.yolo_section.content_widget.setEnabled(yolo_enabled)
-        self.stitch_fov_edit.setEnabled(stitch_enabled)
+        if stitch_enabled or overexp_enabled:
+            self.other_section.toggle_button.setChecked(True)
+        self.stitch_boundary_width_edit.setEnabled(True)
         self.stitch_workers_edit.setEnabled(stitch_enabled or overexp_enabled)
         self.overexp_threshold_edit.setEnabled(overexp_enabled)
         self.overexp_dilate_edit.setEnabled(overexp_enabled)
+        self._render_stitch_preview()
+
+    def _on_images_dir_changed(self, path: str) -> None:
+        self.stitch_preview.set_images_dir(path)
+        self._render_stitch_preview()
+
+    def _stitch_boundary_width(self) -> float:
+        value = self._clamp_stitch_boundary_width(float(self.stitch_boundary_width_edit.value()))
+        if value != self.stitch_boundary_width_edit.value():
+            self.stitch_boundary_width_edit.setValue(value)
+        return value
+
+    @staticmethod
+    def _clamp_stitch_boundary_width(value: float) -> float:
+        if not math.isfinite(value):
+            return _STITCH_BOUNDARY_DEFAULT
+        return max(_STITCH_BOUNDARY_MIN, min(_STITCH_BOUNDARY_MAX, value))
+
+    def _render_stitch_preview(self) -> None:
+        try:
+            width = self._stitch_boundary_width()
+        except ValueError:
+            width = None
+        self.stitch_preview.render(width)
 
     # -- コマンド構築 --
 
@@ -272,7 +375,7 @@ class MaskStep(BaseStepWidget):
             sys.executable, "-u", str(script),
             images, masks,
             "--level", level,
-            "--expand", self.yolo_expand_edit.text().strip(),
+            "--expand", str(self.yolo_expand_edit.value()),
         ]
         if classes:
             cmd.extend(["--classes", ",".join(str(c) for c in classes)])
@@ -292,8 +395,8 @@ class MaskStep(BaseStepWidget):
         return [
             sys.executable, "-u", str(script),
             masks, masks,
-            "--fov", self.stitch_fov_edit.text().strip(),
-            "--workers", self.stitch_workers_edit.text().strip(),
+            "--boundary-width", f"{self._stitch_boundary_width():g}",
+            "--workers", str(self.stitch_workers_edit.value()),
         ]
 
     def _build_overexposure_cmd(self) -> list[str]:
@@ -311,9 +414,9 @@ class MaskStep(BaseStepWidget):
         return [
             sys.executable, "-u", str(script),
             images, masks,
-            "--threshold", self.overexp_threshold_edit.text().strip(),
-            "--dilate", self.overexp_dilate_edit.text().strip(),
-            "--workers", self.stitch_workers_edit.text().strip(),
+            "--threshold", str(self.overexp_threshold_edit.value()),
+            "--dilate", str(self.overexp_dilate_edit.value()),
+            "--workers", str(self.stitch_workers_edit.value()),
         ]
 
     # -- プログレス解析 --
