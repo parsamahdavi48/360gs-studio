@@ -8,6 +8,11 @@ echo [INFO] setup_windows.bat
 set "PYTHON_CMD="
 set "PY_VER="
 set "PY_VER_FULL="
+set "PYTHONUTF8=1"
+set "PIP_DISABLE_PIP_VERSION_CHECK=1"
+set "PY311_LOCAL=%LocalAppData%\Programs\Python\Python311\python.exe"
+set "PY311_PROGRAMFILES=%ProgramFiles%\Python311\python.exe"
+set "PY311_PROGRAMFILES_X86=%ProgramFiles(x86)%\Python311\python.exe"
 
 call :detect_py311
 
@@ -104,6 +109,39 @@ if not errorlevel 1 (
     py -3.11 -c "import sys" >nul 2>&1
     if !errorlevel! equ 0 (
         set "PYTHON_CMD=py -3.11"
+        exit /b 0
+    )
+)
+
+if not defined PYTHON_CMD if exist "!PY311_LOCAL!" (
+    "!PY311_LOCAL!" -c "import sys; raise SystemExit(0 if sys.version_info[:2] == (3, 11) else 1)" >nul 2>&1
+    if !errorlevel! equ 0 (
+        set "PYTHON_CMD="!PY311_LOCAL!""
+    )
+)
+if defined PYTHON_CMD exit /b 0
+
+if not defined PYTHON_CMD if exist "!PY311_PROGRAMFILES!" (
+    "!PY311_PROGRAMFILES!" -c "import sys; raise SystemExit(0 if sys.version_info[:2] == (3, 11) else 1)" >nul 2>&1
+    if !errorlevel! equ 0 (
+        set "PYTHON_CMD="!PY311_PROGRAMFILES!""
+    )
+)
+if defined PYTHON_CMD exit /b 0
+
+if not defined PYTHON_CMD if not "!PY311_PROGRAMFILES_X86!"=="\Python311\python.exe" if exist "!PY311_PROGRAMFILES_X86!" (
+    "!PY311_PROGRAMFILES_X86!" -c "import sys; raise SystemExit(0 if sys.version_info[:2] == (3, 11) else 1)" >nul 2>&1
+    if !errorlevel! equ 0 (
+        set "PYTHON_CMD="!PY311_PROGRAMFILES_X86!""
+    )
+)
+if defined PYTHON_CMD exit /b 0
+
+where python >nul 2>&1
+if not errorlevel 1 (
+    python -c "import sys; raise SystemExit(0 if sys.version_info[:2] == (3, 11) else 1)" >nul 2>&1
+    if !errorlevel! equ 0 (
+        set "PYTHON_CMD=python"
         exit /b 0
     )
 )

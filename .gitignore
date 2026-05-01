@@ -5,5 +5,21 @@ masks/
 extract_report.json
 extract_cache.npz
 .claude/
+.codex/
+AGENTS.md
 .pytest_cache/
 _compare/
+
+# Generated workflow state inside scene directories.
+*/images/
+*/cubic/
+*/colmap/
+*/metashape_images/
+*/images_backup/
+*/selected_frames*.csv
+*/transforms.json
+*/metashape.xml
+*/cameras.xml
+*/metashape.ply
+*/sparse.ply
+*/pointcloud.ply

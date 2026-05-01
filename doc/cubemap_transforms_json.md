@@ -116,7 +116,7 @@ For LichtFeld Studio, specify `--no_transform`.
 ```
 python metashape_360_lfs.py --images images --xml metashape.xml \
   --ply metashape.ply --output .
-python cubemap_transforms_json.py . ./cubic --no_tranform
+python cubemap_transforms_json.py . ./cubic --no_transform
 ```
 
 ### Options
