@@ -2,7 +2,7 @@
 
 **v0.3.0**
 
-360度動画から、Metashape SfM と 3D Gaussian Splatting (3DGS) 学習へ渡すための画像・マスク・カメラ情報を作るデスクトップツールです。Windows上で `setup_windows.bat` と `start_gui.bat` だけで使える、日本語GUI中心のワークフローとして整備しています。
+360度動画から、Metashape SfM と 3D Gaussian Splatting (3DGS) 学習へ渡すための画像・マスク・カメラ情報を作るデスクトップツールです。Windows上で `setup_windows.bat` と `start_gui.bat` だけで使える、日英対応の統合GUI中心のワークフローとして整備しています。
 
 [EN English](README.md)
 

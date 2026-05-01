@@ -2,7 +2,7 @@
 
 **v0.3.0**
 
-A Windows desktop toolkit for preparing equirectangular 360 video for Metashape SfM and 3D Gaussian Splatting (3DGS) training. The current workflow is centered on the integrated Japanese PySide6 GUI and is designed to run from `setup_windows.bat` and `start_gui.bat` without requiring users to manually assemble a Python environment.
+A Windows desktop toolkit for preparing equirectangular 360 video for Metashape SfM and 3D Gaussian Splatting (3DGS) training. The current workflow is centered on the integrated PySide6 GUI with Japanese and English UI support, and is designed to run from `setup_windows.bat` and `start_gui.bat` without requiring users to manually assemble a Python environment.
 
 [JP 日本語の説明](README.ja.md)
 
