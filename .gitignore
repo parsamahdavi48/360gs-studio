@@ -3,3 +3,4 @@ __pycache__/
 *.pt
 masks/
 extract_report.json
+.claude/
