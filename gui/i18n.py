@@ -75,17 +75,13 @@ _JA: dict[str, str] = {
     "REVIEW_INFO_YES": "対象",
     "REVIEW_INFO_NO": "通常",
     "REVIEW_PROBLEMS_FORMAT": "要注意: {n} 件 (置換={r}, 維持={f}) | 現フレーム: {cur}",
-    "REVIEW_BLUR_RANK_FORMAT": "ブレ順位: {rank}/{total} ({level}, score={score})",
-    "REVIEW_BLUR_LEVEL_BAD": "ブレ大",
-    "REVIEW_BLUR_LEVEL_LOW": "やや大",
-    "REVIEW_BLUR_LEVEL_MID": "通常",
-    "REVIEW_BLUR_LEVEL_SHARP": "鋭い",
     "REVIEW_INFO_FORMAT": (
         "時刻: {ts}   |   ブレ: {blur}   |   変化: {change}\n"
         "extract 処理: {process}"
     ),
-    "REVIEW_BLUR_VALUE_FORMAT": "{score:.1f} (順位 {rank}/{total}, {level})",
-    "REVIEW_PROCESS_OK": "通常採用",
+    "REVIEW_BLUR_VALUE_FORMAT": "{score:.1f} (中央値 {median:.0f} の {pct}%)",
+    "REVIEW_BLUR_VALUE_NO_MEDIAN": "{score:.1f}",
+    "REVIEW_PROCESS_OK": "通常採用 (extract の quality bar を通過)",
     "REVIEW_PROCESS_REPLACED": "自動置換済み (元 idx={orig} のブレを近傍 idx={final} へ swap)",
     "REVIEW_PROCESS_FALLBACK": "ブレあり・置換候補なし (extract が swap できなかった)",
     "REVIEW_PROCESS_THINNED": "立ち止まり区間で自動間引き",
@@ -95,22 +91,12 @@ _JA: dict[str, str] = {
     "REVIEW_BTN_NEXT_PROBLEM": "extract 要注意 → (F)",
     "REVIEW_BTN_PROBLEM_TIP": (
         "extract_frames が自動判定で flag したフレーム (置換・維持・間引き) を\n"
-        "CSV 順 (撮影時間順) に巡回します。\n"
-        "ブレ視点での巡回は B / Shift+B (ワースト順) を使用してください。\n"
-        "両者は別の観点 (extract 自動判定 vs ブレ順位) のナビなので併用すると効率的です。"
+        "CSV 順 (撮影時間順) に巡回します。"
     ),
     "REVIEW_BTN_TOGGLE": "Keep/Drop 切替 (Space)",
     "REVIEW_BTN_JUMP": "番号へ移動",
     "REVIEW_BTN_SAVE": "保存 (S)",
     "REVIEW_JUMP_PLACEHOLDER": "番号",
-    "REVIEW_BTN_BLUR_WORST": "ワースト順 → (B)",
-    "REVIEW_BTN_BLUR_PREV": "ワースト順 ← (Shift+B)",
-    "REVIEW_BTN_BLUR_WORST_TIP": (
-        "ブレが悪い順にフレームを 1 つ進めます。\n"
-        "初回押下では最悪フレームへジャンプ。続けて押すと次に悪いフレームへ。"
-    ),
-    "REVIEW_BTN_BLUR_PREV_TIP": "ブレが悪い順を 1 つ戻します（より悪いフレーム方向へ）。",
-    "REVIEW_BLUR_CYCLE_LABEL": "ブレ巡回:",
     "REVIEW_BLUR_THRESHOLD_LABEL": "  ブレ閾値:",
     "REVIEW_BLUR_DROP_BTN": "閾値以下を全 Drop",
     "REVIEW_BLUR_THRESHOLD_PLACEHOLDER": "blur score",
@@ -131,23 +117,22 @@ _JA: dict[str, str] = {
         "1 枚ずつフレームを確認して、不要なものに drop マークを付けます。\n"
         "変更はメモリ上のコピーのみ。「保存 (S)」で selected_frames.csv に書き戻されます。\n"
         "保存後、メイン GUI の Step 2 で「確定」ボタンを押すと images/ に反映されます。\n\n"
-        "【推奨レビュー手順】SfM 品質を最大化する流れ\n"
-        "  1. F キーで extract が自動判定したフレームを順に確認\n"
-        "     (大半のシーンではこれだけで判断完結)\n"
-        "  2. 各フレームでアドバイザリー (画像下の色帯) を見る:\n"
-        "     赤 = drop 強く推奨 / 橙 = drop 検討 / 青 = 情報 / 緑 = 通常\n"
-        "  3. drop 妥当と思ったら Space で切替\n"
+        "【推奨レビュー手順】SfM 品質を最大化する最短ルート\n"
+        "  1. F キーで extract が flag したフレームを巡回\n"
+        "     (extract が「置換できなかったブレ」「自動置換」「間引き」と判定したもの)\n"
+        "  2. アドバイザリー (画像下の色帯) を見る:\n"
+        "     橙 = fallback_keep (drop 検討) / 青 = 情報 (通常 keep) / 緑 = 通常\n"
+        "  3. 橙の frame は画像を確認して、本当にブレてたら Space で drop\n"
         "  4. S で保存 → メイン GUI で「確定」ボタン\n"
-        "  5. (任意) より厳密に: B キーでブレ最悪から順に追加チェック\n"
-        "     ※ 多くの場合 F + 色帯だけで充分\n\n"
-        "【drop の目安】SfM (Metashape) と 3DGS 学習で問題になるフレームを除外します。\n"
+        "  ※ extract がブレ判定 + 自動置換を済ませているので、ok/replaced は通常そのまま keep。\n"
+        "    本当に問題な frame は fallback_keep だけです。\n\n"
+        "【drop の目安】SfM (Metashape) と 3DGS 学習で問題になる frame を除外します。\n"
         "  ・動く被写体: 人物・車両・揺れる枝など (3DGS は静的シーン前提)\n"
-        "  ・著しいブレ: 建物の輪郭・テクスチャがにじんで見える\n"
+        "  ・fallback_keep のうち画像確認でブレが目立つもの\n"
         "  ・レンズフレア・強い太陽光: 大部分の画素が飽和\n"
         "  ・ステッチ継ぎ目の大きな破綻 (360 デュアル魚眼)\n"
         "  ・過露出 / 露出不足: 真っ白・真っ黒な領域が大半\n"
-        "判断に迷ったら keep のまま。後で再レビューも可能です。\n"
-        "アドバイザリー欄 (画像の下) に各フレームの自動判定が表示されます。\n\n"
+        "判断に迷ったら keep のまま。後で再レビューも可能です。\n\n"
         "【画像操作】\n"
         "  マウスホイール    カーソル位置を中心に拡大 / 縮小\n"
         "  ドラッグ          拡大時にパン (画像をつかんで移動)\n"
@@ -155,20 +140,16 @@ _JA: dict[str, str] = {
         "【キー操作】\n"
         "  ← / →    前後のフレーム\n"
         "  Space    現フレームの keep/drop を切替\n"
-        "  F / Shift+F  extract 自動判定の要注意フレーム (置換・維持・間引き) を撮影順に巡回\n"
-        "  B            ブレ悪い順 → 次へ (初回押下で最悪フレームへジャンプ)\n"
-        "  Shift+B      ブレ悪い順 ← 1 つ戻る\n"
-        "               ※ F は「extract が flag したもの (時間順)」、B は「ブレ最悪順」と\n"
-        "                  異なる観点なので、両方使うのが効率的\n"
+        "  F / Shift+F  extract が flag したフレームを撮影順に巡回\n"
         "  S        CSV へ保存\n"
-        "  Q        終了 (未保存の変更は破棄)"
+        "  Q        終了 (未保存の変更は破棄)\n\n"
+        "「閾値以下を全 Drop」は手動の絶対閾値ツールです。blur スコアを見て、\n"
+        "明らかに低い値（例: 50 以下）を一括で drop したい場合に使えます。"
     ),
-    "REVIEW_ADVISORY_FALLBACK": "⚠ 近傍にこれより鋭いフレームがなかった (置換できず元のまま)",
-    "REVIEW_ADVISORY_REPLACED": "ⓘ extract 時に近傍のより鋭いフレームへ自動置換済み",
-    "REVIEW_ADVISORY_BLUR_TOP5": "⚠ ブレ最悪 top 5% (順位 {rank}/{total}) — drop 強く推奨",
-    "REVIEW_ADVISORY_BLUR_TOP15": "⚠ ブレが大きい (順位 {rank}/{total}) — drop を検討",
+    "REVIEW_ADVISORY_FALLBACK": "⚠ extract が置換できなかったブレ frame — 画像確認の上 drop 検討",
+    "REVIEW_ADVISORY_REPLACED": "ⓘ extract 時に近傍のより鋭いフレームへ自動置換済み (通常 keep)",
     "REVIEW_ADVISORY_THINNED": "ⓘ 立ち止まり区間で自動間引き (drop マーク中)。Space で keep に戻せます",
-    "REVIEW_ADVISORY_NORMAL": "問題なし",
+    "REVIEW_ADVISORY_NORMAL": "通常品質 (extract の quality bar を通過)",
     "NEXT_STEP_MASK_NOTICE": "選別が完了したら Step 3 (マスク生成) へ進みます。\n人物・スティッチ・白飛びマスクを Metashape SfM の前に生成することで SfM 精度が向上します。",
     "METASHAPE_NOTICE": "マスク生成完了後、Metashape で SfM を実行してください。\n生成された masks/ フォルダを Metashape の per-image マスクとしてインポートすると、人物・スティッチ・白飛び領域が特徴点マッチングから除外され、SfM 精度が大きく向上します。\n完了後、Step 4 でキューブマップ変換に進みます。",
     "CSV_FILE": "CSVファイル名",
@@ -351,17 +332,13 @@ _EN: dict[str, str] = {
     "REVIEW_INFO_YES": "yes",
     "REVIEW_INFO_NO": "no",
     "REVIEW_PROBLEMS_FORMAT": "Problems: {n} (replaced={r}, fallback={f}) | Current: {cur}",
-    "REVIEW_BLUR_RANK_FORMAT": "Blur rank: {rank}/{total} ({level}, score={score})",
-    "REVIEW_BLUR_LEVEL_BAD": "blurry",
-    "REVIEW_BLUR_LEVEL_LOW": "soft",
-    "REVIEW_BLUR_LEVEL_MID": "normal",
-    "REVIEW_BLUR_LEVEL_SHARP": "sharp",
     "REVIEW_INFO_FORMAT": (
         "Time: {ts}   |   Blur: {blur}   |   Change: {change}\n"
         "extract action: {process}"
     ),
-    "REVIEW_BLUR_VALUE_FORMAT": "{score:.1f} (rank {rank}/{total}, {level})",
-    "REVIEW_PROCESS_OK": "kept as-is",
+    "REVIEW_BLUR_VALUE_FORMAT": "{score:.1f} ({pct}% of median {median:.0f})",
+    "REVIEW_BLUR_VALUE_NO_MEDIAN": "{score:.1f}",
+    "REVIEW_PROCESS_OK": "kept as-is (passed extract's quality bar)",
     "REVIEW_PROCESS_REPLACED": "auto-swapped (original idx={orig} was blurry; replaced with idx={final})",
     "REVIEW_PROCESS_FALLBACK": "kept blurry (extract found no sharper neighbor)",
     "REVIEW_PROCESS_THINNED": "auto-thinned in stationary cluster",
@@ -371,22 +348,12 @@ _EN: dict[str, str] = {
     "REVIEW_BTN_NEXT_PROBLEM": "extract problem → (F)",
     "REVIEW_BTN_PROBLEM_TIP": (
         "Cycle through frames extract_frames flagged automatically\n"
-        "(replaced / fallback_keep / thinned), in CSV (capture time) order.\n"
-        "For blur-priority navigation use B / Shift+B (worst-first).\n"
-        "These two are complementary axes (extract decision vs blur rank); use both."
+        "(replaced / fallback_keep / thinned), in CSV (capture time) order."
     ),
     "REVIEW_BTN_TOGGLE": "Toggle Keep/Drop (Space)",
     "REVIEW_BTN_JUMP": "Jump to Seq",
     "REVIEW_BTN_SAVE": "Save (S)",
     "REVIEW_JUMP_PLACEHOLDER": "seq",
-    "REVIEW_BTN_BLUR_WORST": "Worst-first → (B)",
-    "REVIEW_BTN_BLUR_PREV": "Worst-first ← (Shift+B)",
-    "REVIEW_BTN_BLUR_WORST_TIP": (
-        "Step forward through frames sorted worst-first by blur.\n"
-        "First press jumps to the worst frame; subsequent presses advance to the next-worst."
-    ),
-    "REVIEW_BTN_BLUR_PREV_TIP": "Step backward through the worst-first cycle (toward worse frames).",
-    "REVIEW_BLUR_CYCLE_LABEL": "Blur cycle:",
     "REVIEW_BLUR_THRESHOLD_LABEL": "  Blur threshold:",
     "REVIEW_BLUR_DROP_BTN": "Drop below threshold",
     "REVIEW_BLUR_THRESHOLD_PLACEHOLDER": "blur score",
@@ -407,23 +374,23 @@ _EN: dict[str, str] = {
         "Walk through the frames one by one and mark unwanted ones as drop.\n"
         "Edits stay in memory until you press Save (S), which writes them back to selected_frames.csv.\n"
         "Then return to the main GUI Step 2 and press \"Finalize\" to apply the changes to images/.\n\n"
-        "[Recommended review flow] To maximize SfM quality:\n"
-        "  1. Press F repeatedly to walk through extract-flagged frames\n"
-        "     (covers most SfM-critical decisions on its own)\n"
+        "[Recommended review flow] Shortest path to good SfM:\n"
+        "  1. Press F to walk through extract-flagged frames\n"
+        "     (frames extract marked as 'replaced' / 'fallback_keep' / 'thinned')\n"
         "  2. Read the advisory color band under the image:\n"
-        "     red = strongly drop / orange = consider drop / blue = info / green = normal\n"
-        "  3. Hit Space to mark drop when appropriate\n"
-        "  4. Press S to save, then go back to the main GUI and click Finalize\n"
-        "  5. (Optional) For a thorough sweep, press B to also visit blur worst-first\n"
-        "     Most scenes don't need this; F + color band is enough\n\n"
+        "     orange = fallback_keep (consider drop) / blue = info (usually keep) / green = normal\n"
+        "  3. For orange frames, look at the image. If actually blurry, press Space to drop.\n"
+        "  4. Press S to save, then go back to the main GUI and click Finalize.\n"
+        "  Note: extract has already detected and replaced blurry frames. The truly\n"
+        "  problematic ones are 'fallback_keep' (couldn't be replaced). 'ok' / 'replaced'\n"
+        "  passed extract's quality bar; usually keep them.\n\n"
         "[When to drop] Frames that hurt SfM (Metashape) or 3DGS training:\n"
         "  - Moving subjects: people, vehicles, swaying branches (3DGS assumes static scenes)\n"
-        "  - Heavy motion blur: buildings / textures look smeared\n"
+        "  - fallback_keep frames that look visibly blurry\n"
         "  - Lens flare / strong sun: most pixels saturated\n"
         "  - Major stitching seam errors (360 dual-fisheye)\n"
         "  - Over- / under-exposure: most of the image is white or black\n"
-        "When in doubt, keep it. You can always re-review later.\n"
-        "An advisory line below the image flags each frame automatically.\n\n"
+        "When in doubt, keep it. You can always re-review later.\n\n"
         "[Image]\n"
         "  Mouse wheel      zoom in / out at the cursor position\n"
         "  Click and drag   pan the image when zoomed in\n"
@@ -432,19 +399,15 @@ _EN: dict[str, str] = {
         "  ← / →     previous / next frame\n"
         "  Space     toggle keep/drop on the current frame\n"
         "  F / Shift+F  extract-flagged frames (replaced / fallback_keep / thinned) in capture order\n"
-        "  B            advance through worst-first blur order (first press jumps to worst)\n"
-        "  Shift+B      step back one in the worst-first blur order\n"
-        "               Note: F covers extract auto-decisions in time order; B is blur-rank order.\n"
-        "               They are complementary — use both for thorough review.\n"
         "  S         save changes to CSV\n"
-        "  Q         quit (unsaved changes are discarded)"
+        "  Q         quit (unsaved changes are discarded)\n\n"
+        "The 'Drop below threshold' button is a manual absolute-threshold tool. Use it if you\n"
+        "want to bulk-drop frames whose blur score is clearly low (e.g., below 50)."
     ),
-    "REVIEW_ADVISORY_FALLBACK": "⚠ No sharper neighbor was available (kept as-is)",
-    "REVIEW_ADVISORY_REPLACED": "ⓘ Auto-swapped to a sharper neighbor at extract time",
-    "REVIEW_ADVISORY_BLUR_TOP5": "⚠ Worst-blur top 5% (rank {rank}/{total}) — strongly suggest drop",
-    "REVIEW_ADVISORY_BLUR_TOP15": "⚠ High blur (rank {rank}/{total}) — consider drop",
+    "REVIEW_ADVISORY_FALLBACK": "⚠ extract could not replace this blurry frame — review and consider drop",
+    "REVIEW_ADVISORY_REPLACED": "ⓘ Auto-swapped to a sharper neighbor at extract time (usually keep)",
     "REVIEW_ADVISORY_THINNED": "ⓘ Auto-thinned in a stationary cluster (marked drop). Press Space to flip back to keep",
-    "REVIEW_ADVISORY_NORMAL": "No issues detected",
+    "REVIEW_ADVISORY_NORMAL": "Normal quality (passed extract's quality bar)",
     "NEXT_STEP_MASK_NOTICE": "After selection, proceed to Step 3 (Mask Generation).\nGenerating person / stitch / overexposure masks before Metashape SfM significantly improves SfM accuracy.",
     "METASHAPE_NOTICE": "After mask generation, run Metashape SfM.\nImport the generated masks/ folder as per-image masks in Metashape so that people, stitching seams, and blown-out highlights are excluded from feature matching. This significantly improves SfM accuracy.\nAfter SfM, proceed to Step 4 for cubemap conversion.",
     "CSV_FILE": "CSV Filename",

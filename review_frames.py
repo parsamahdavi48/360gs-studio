@@ -138,8 +138,7 @@ if QMainWindow is not None:
             if not self.rows:
                 raise RuntimeError(f"No rows found in {csv_path}")
             self.problem_indices = self._collect_problem_indices()
-            self.blur_worst_indices = self._build_blur_worst_indices()
-            self._in_blur_cycle = False  # B / Shift+B で巡回中か。他のナビで False に戻る
+            self.blur_median = self._compute_blur_median()
 
             self.index = 0
             self.current_pixmap: QPixmap | None = None
@@ -175,11 +174,16 @@ if QMainWindow is not None:
             except (ValueError, TypeError):
                 return float("inf")
 
-        def _build_blur_worst_indices(self) -> List[int]:
-            """ブラースコア昇順 (ワースト=最小が先) のインデックスリスト。"""
-            scored = [(i, self._blur_score(row)) for i, row in enumerate(self.rows)]
-            scored.sort(key=lambda x: x[1])
-            return [i for i, _ in scored]
+        def _compute_blur_median(self) -> float:
+            """blur_score_final の中央値。情報表示用 (advisory 判定には使わない)。"""
+            scores = [self._blur_score(row) for row in self.rows]
+            valid = sorted(s for s in scores if s != float("inf"))
+            if not valid:
+                return 0.0
+            n = len(valid)
+            if n % 2 == 0:
+                return (valid[n // 2 - 1] + valid[n // 2]) / 2.0
+            return valid[n // 2]
 
         def _build_ui(self) -> None:
             root = QWidget()
@@ -257,20 +261,8 @@ if QMainWindow is not None:
             btn_row.addWidget(self.save_button)
             layout.addLayout(btn_row)
 
-            # ブラー操作行
+            # ブラー一括 drop 行（手動絶対閾値ツール）
             blur_row = QHBoxLayout()
-            blur_row.addWidget(QLabel(i18n.t("REVIEW_BLUR_CYCLE_LABEL")))
-
-            self.blur_worst_button = QPushButton(i18n.t("REVIEW_BTN_BLUR_WORST"))
-            self.blur_worst_button.setToolTip(i18n.t("REVIEW_BTN_BLUR_WORST_TIP"))
-            self.blur_worst_button.clicked.connect(self.next_blur_worst)
-            blur_row.addWidget(self.blur_worst_button)
-
-            self.blur_prev_button = QPushButton(i18n.t("REVIEW_BTN_BLUR_PREV"))
-            self.blur_prev_button.setToolTip(i18n.t("REVIEW_BTN_BLUR_PREV_TIP"))
-            self.blur_prev_button.clicked.connect(self.prev_blur_worst)
-            blur_row.addWidget(self.blur_prev_button)
-
             blur_row.addWidget(QLabel(i18n.t("REVIEW_BLUR_THRESHOLD_LABEL")))
             self.blur_threshold_edit = QLineEdit()
             self.blur_threshold_edit.setPlaceholderText(i18n.t("REVIEW_BLUR_THRESHOLD_PLACEHOLDER"))
@@ -282,10 +274,6 @@ if QMainWindow is not None:
             blur_row.addWidget(self.blur_drop_button)
 
             blur_row.addStretch(1)
-
-            self.blur_rank_label = QLabel()
-            self.blur_rank_label.setStyleSheet("color: #888;")
-            blur_row.addWidget(self.blur_rank_label)
             layout.addLayout(blur_row)
 
             # 使い方ヘルプ（折りたたみ風: header + body）
@@ -308,8 +296,6 @@ if QMainWindow is not None:
             QShortcut(QKeySequence("F"), self, activated=self.next_problem)
             QShortcut(QKeySequence("Shift+F"), self, activated=self.prev_problem)
             QShortcut(QKeySequence(Qt.Key_Space), self, activated=self.toggle_decision)
-            QShortcut(QKeySequence("B"), self, activated=self.next_blur_worst)
-            QShortcut(QKeySequence("Shift+B"), self, activated=self.prev_blur_worst)
             QShortcut(QKeySequence("S"), self, activated=self.save)
             QShortcut(QKeySequence("Q"), self, activated=self.close)
             QShortcut(QKeySequence("0"), self, activated=self.reset_zoom)
@@ -319,19 +305,6 @@ if QMainWindow is not None:
 
         def _decision_color(self, decision: str) -> str:
             return "#b00020" if decision == "drop" else "#1b7f3b"
-
-        def _blur_level_key(self, rank: int, total: int) -> str:
-            """rank (1=最悪) と total から日本語/英語の品質レベルキーを返す。"""
-            if rank <= 0 or total <= 0:
-                return "REVIEW_BLUR_LEVEL_MID"
-            ratio = rank / total
-            if ratio <= 0.05:
-                return "REVIEW_BLUR_LEVEL_BAD"
-            if ratio <= 0.15:
-                return "REVIEW_BLUR_LEVEL_LOW"
-            if ratio >= 0.85:
-                return "REVIEW_BLUR_LEVEL_SHARP"
-            return "REVIEW_BLUR_LEVEL_MID"
 
         def _format_process(self, row: Dict[str, str]) -> str:
             status = row.get("status", "ok").strip().lower()
@@ -346,44 +319,29 @@ if QMainWindow is not None:
             return i18n.t("REVIEW_PROCESS_OK")
 
         def _advisory_for_row(self, row: Dict[str, str], idx: int) -> tuple[str, str, str]:
-            """この行の要注意度を判定。 (text, fg, bg) を返す。
+            """status のみに基づく advisory。
 
-            最も重大な問題を 1 つ表示する（複数並べると見にくいため）。
+            extract_frames が既にブレ判定 + 置換を済ませているので、
+            最終 frame で「真にブレている」のは fallback_keep のみ。
+            「ブレ top X%」のような相対順位 advisory は出さない（誤判定の元）。
+
+            Returns (text, fg, bg).
             """
             status = row.get("status", "ok").strip().lower()
 
-            # ブレ順位を計算
-            rank: int = -1
-            total = len(self.blur_worst_indices)
-            try:
-                rank = self.blur_worst_indices.index(idx) + 1
-            except ValueError:
-                pass
-
-            # 優先度順に判定
-            # 1. ブレ最悪 top 5% は最強警告（赤）
-            if rank > 0 and total > 0 and rank <= max(1, int(total * 0.05)):
-                text = i18n.t("REVIEW_ADVISORY_BLUR_TOP5").format(rank=rank, total=total)
-                return text, "#fee2e2", "#7f1d1d"  # 明るい赤文字 / 濃い赤背景
-
-            # 2. fallback_keep = 置換できない blurry フレーム（橙）
+            # 橙: extract が置換できなかったブレ frame
             if "fallback_keep" in status:
                 return i18n.t("REVIEW_ADVISORY_FALLBACK"), "#fef3c7", "#7c2d12"
 
-            # 3. ブレ top 15% （橙）
-            if rank > 0 and total > 0 and rank <= max(1, int(total * 0.15)):
-                text = i18n.t("REVIEW_ADVISORY_BLUR_TOP15").format(rank=rank, total=total)
-                return text, "#fef3c7", "#7c2d12"
-
-            # 4. thinned = 既に間引き済み（青／情報）
+            # 青: 自動間引き
             if "thinned" in status:
                 return i18n.t("REVIEW_ADVISORY_THINNED"), "#dbeafe", "#1e3a8a"
 
-            # 5. replaced = 自動置換済み（青／情報）
+            # 青: 自動置換済み
             if "replaced" in status:
                 return i18n.t("REVIEW_ADVISORY_REPLACED"), "#dbeafe", "#1e3a8a"
 
-            # 6. 問題なし
+            # 緑: 通常品質
             return i18n.t("REVIEW_ADVISORY_NORMAL"), "#a7f3d0", "#064e3b"
 
         def _render_current(self) -> None:
@@ -418,25 +376,18 @@ if QMainWindow is not None:
                 )
             )
 
+            # ブレ表示: 中央値比で文脈を与える（情報のみ。判定には使わない）
             blur_final = self._blur_score(row)
-
-            # ブレ順位とレベル
-            try:
-                rank = self.blur_worst_indices.index(self.index) + 1
-            except ValueError:
-                rank = -1
-            total = len(self.rows)
-            level = i18n.t(self._blur_level_key(rank, total))
-
-            # ブレ表示文字列 (info_label / blur_rank_label 両方で使う)
-            if blur_final != float("inf") and rank > 0:
-                blur_str = i18n.t("REVIEW_BLUR_VALUE_FORMAT").format(
-                    score=blur_final, rank=rank, total=total, level=level
-                )
-                blur_short = f"{blur_final:.1f}"
+            if blur_final != float("inf"):
+                if self.blur_median > 0:
+                    pct = round(blur_final / self.blur_median * 100)
+                    blur_str = i18n.t("REVIEW_BLUR_VALUE_FORMAT").format(
+                        score=blur_final, median=self.blur_median, pct=pct
+                    )
+                else:
+                    blur_str = i18n.t("REVIEW_BLUR_VALUE_NO_MEDIAN").format(score=blur_final)
             else:
                 blur_str = "-"
-                blur_short = "-"
 
             # 撮影時刻
             ts_raw = row.get("timestamp_sec", "-")
@@ -452,19 +403,11 @@ if QMainWindow is not None:
             except (ValueError, TypeError):
                 change_str = change_raw
 
-            # 構造化 info テキスト
             info_text = i18n.t("REVIEW_INFO_FORMAT").format(
                 ts=ts_str, blur=blur_str, change=change_str,
                 process=self._format_process(row),
             )
             self.info_label.setText(info_text)
-
-            # 右端の簡易ランク表示
-            self.blur_rank_label.setText(
-                i18n.t("REVIEW_BLUR_RANK_FORMAT").format(
-                    rank=rank, total=total, score=blur_short, level=level
-                )
-            )
 
             if not image_path.exists():
                 self.current_pixmap = None
@@ -486,13 +429,11 @@ if QMainWindow is not None:
         def prev_row(self) -> None:
             if self.index > 0:
                 self.index -= 1
-                self._in_blur_cycle = False
                 self._render_current()
 
         def next_row(self) -> None:
             if self.index < len(self.rows) - 1:
                 self.index += 1
-                self._in_blur_cycle = False
                 self._render_current()
 
         def next_problem(self) -> None:
@@ -500,7 +441,6 @@ if QMainWindow is not None:
                 QMessageBox.information(self, i18n.t("REVIEW_INFO_HEADER"), i18n.t("REVIEW_NO_PROBLEMS"))
                 return
 
-            self._in_blur_cycle = False
             for idx in self.problem_indices:
                 if idx > self.index:
                     self.index = idx
@@ -515,7 +455,6 @@ if QMainWindow is not None:
                 QMessageBox.information(self, i18n.t("REVIEW_INFO_HEADER"), i18n.t("REVIEW_NO_PROBLEMS"))
                 return
 
-            self._in_blur_cycle = False
             for idx in reversed(self.problem_indices):
                 if idx < self.index:
                     self.index = idx
@@ -546,47 +485,6 @@ if QMainWindow is not None:
                 return
 
             self.index = seq - 1
-            self._in_blur_cycle = False
-            self._render_current()
-
-        def next_blur_worst(self) -> None:
-            """ブレ巡回モード: 初回は最悪フレームへ、続行押下で次に悪いフレームへ。"""
-            if not self.blur_worst_indices:
-                return
-            if not self._in_blur_cycle:
-                # 巡回開始: 最悪フレームへジャンプ
-                new_rank = 0
-            else:
-                # 巡回中: 現ランク + 1（末尾は最良 → ループして最悪へ）
-                try:
-                    cur_rank = self.blur_worst_indices.index(self.index)
-                    new_rank = cur_rank + 1
-                    if new_rank >= len(self.blur_worst_indices):
-                        new_rank = 0
-                except ValueError:
-                    new_rank = 0
-            self._in_blur_cycle = True
-            self.index = self.blur_worst_indices[new_rank]
-            self._render_current()
-
-        def prev_blur_worst(self) -> None:
-            """ブレ巡回モード逆方向。初回は最悪フレームへ、続行押下で 1 つ戻る。"""
-            if not self.blur_worst_indices:
-                return
-            if not self._in_blur_cycle:
-                # 巡回開始: 最悪フレームへジャンプ（B と同じ起点）
-                new_rank = 0
-            else:
-                # 巡回中: 現ランク - 1（先頭は最悪 → ループして最良へ）
-                try:
-                    cur_rank = self.blur_worst_indices.index(self.index)
-                    new_rank = cur_rank - 1
-                    if new_rank < 0:
-                        new_rank = len(self.blur_worst_indices) - 1
-                except ValueError:
-                    new_rank = 0
-            self._in_blur_cycle = True
-            self.index = self.blur_worst_indices[new_rank]
             self._render_current()
 
         def drop_below_blur_threshold(self) -> None:
