@@ -94,17 +94,6 @@ GUIは以下のCLIエンジンを呼び出しています。必要なら単体�
 | `cubemap_transforms_json.py` | エクイレクタングラーからキューブマップへ変換 | [JP](doc/cubemap_transforms_json.ja.md) |
 | `transforms_to_colmap.py` | `transforms.json` からCOLMAP形式を書き出し | [JP](doc/transforms_to_colmap.ja.md) |
 
-## バージョン管理
-
-アプリのバージョンは [pyproject.toml](pyproject.toml) の `project.version` を単一ソースにしています。
-
-```toml
-[project]
-version = "0.3.0"
-```
-
-GUIタイトルと `python -m gui.app --version` はこの値から生成されます。アプリ表示は常に `v0.0.0` 形式です。
-
 ## ライセンス
 
 MIT License。詳細は [LICENSE](LICENSE) を参照してください。

@@ -94,17 +94,6 @@ The GUI wraps these CLI engines, which can also be used directly.
 | `cubemap_transforms_json.py` | Convert equirectangular images to cubemap views | [EN](doc/cubemap_transforms_json.md) |
 | `transforms_to_colmap.py` | Export COLMAP files from `transforms.json` | [EN](doc/transforms_to_colmap.md) |
 
-## Versioning
-
-The app version is centralized in [pyproject.toml](pyproject.toml):
-
-```toml
-[project]
-version = "0.3.0"
-```
-
-The GUI title and `python -m gui.app --version` are generated from this value. The app-facing label always uses the `v0.0.0` format.
-
 ## License
 
 MIT License. See [LICENSE](LICENSE).
