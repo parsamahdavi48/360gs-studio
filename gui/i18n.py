@@ -14,7 +14,13 @@ import os
 
 _JA: dict[str, str] = {
     # App
-    "APP_TITLE": "3DGS Studio",
+    "APP_TITLE": "STechDrive 3DGS Utils",
+    "APP_SUBTITLE": "Prepare 360 video frames and masks for Metashape SfM and 3DGS training",
+    "WORKFLOW_LABEL": "ワークフロー",
+    "STEP1_DESC": "動画からSfM向けのフレームを抽出",
+    "STEP2_DESC": "抽出フレームを確認して採用/除外を確定",
+    "STEP3_DESC": "人物・スティッチ境界・白飛びをマスク",
+    "STEP4_DESC": "Metashape結果をキューブマップ出力へ変換",
     "STEP1_TITLE": "1. フレーム抽出",
     "STEP2_TITLE": "2. フレーム確認",
     "STEP3_TITLE": "3. マスク生成",
@@ -23,6 +29,7 @@ _JA: dict[str, str] = {
     # Common
     "BROWSE": "参照...",
     "SCENE_DIR": "シーンフォルダ",
+    "SCENE_DIR_PLACEHOLDER": "シーンフォルダを選択...",
     "OUTPUT_DIR": "出力フォルダ",
     "RUN": "実行",
     "CANCEL": "キャンセル",
@@ -37,6 +44,8 @@ _JA: dict[str, str] = {
 
     # Step 1
     "INPUT_VIDEO": "入力動画",
+    "INPUT_VIDEO_PLACEHOLDER": "360度動画を選択...",
+    "VIDEO_FILE_FILTER": "動画ファイル (*.mp4 *.mov *.mkv *.avi *.m4v);;すべて (*.*)",
     "EXTRACTION_MODE": "抽出モード",
     "MODE_CHANGE": "変化検出",
     "MODE_FIXED": "固定間隔",
@@ -284,7 +293,13 @@ _JA: dict[str, str] = {
 
 _EN: dict[str, str] = {
     # App
-    "APP_TITLE": "3DGS Studio",
+    "APP_TITLE": "STechDrive 3DGS Utils",
+    "APP_SUBTITLE": "Prepare 360 video frames and masks for Metashape SfM and 3DGS training",
+    "WORKFLOW_LABEL": "Workflow",
+    "STEP1_DESC": "Extract SfM-ready frames from a 360 video",
+    "STEP2_DESC": "Review extracted frames and finalize keep/drop choices",
+    "STEP3_DESC": "Mask people, stitch seams, and overexposed regions",
+    "STEP4_DESC": "Convert Metashape results into cubemap outputs",
     "STEP1_TITLE": "1. Frame Extraction",
     "STEP2_TITLE": "2. Frame Review",
     "STEP3_TITLE": "3. Mask Generation",
@@ -293,6 +308,7 @@ _EN: dict[str, str] = {
     # Common
     "BROWSE": "Browse...",
     "SCENE_DIR": "Scene Folder",
+    "SCENE_DIR_PLACEHOLDER": "Select a scene folder...",
     "OUTPUT_DIR": "Output Folder",
     "RUN": "Run",
     "CANCEL": "Cancel",
@@ -307,6 +323,8 @@ _EN: dict[str, str] = {
 
     # Step 1
     "INPUT_VIDEO": "Input Video",
+    "INPUT_VIDEO_PLACEHOLDER": "Select a 360 video...",
+    "VIDEO_FILE_FILTER": "Video Files (*.mp4 *.mov *.mkv *.avi *.m4v);;All Files (*.*)",
     "EXTRACTION_MODE": "Extraction Mode",
     "MODE_CHANGE": "Change-Based",
     "MODE_FIXED": "Fixed Interval",

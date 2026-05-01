@@ -1,8 +1,8 @@
-# 3DGS Studio Step 3 — Mask Generation GUI
+# STechDrive 3DGS Utils Step 3 — Mask Generation GUI
 
 ## Overview
 
-3DGS Studio Step 3 is a PySide6 wrapper around:
+Step 3 in STechDrive 3DGS Utils is a PySide6 wrapper around:
 
 - `yolo_mask.py` (person mask generation)
 - `stitch_mask.py` (stitch-region masking)

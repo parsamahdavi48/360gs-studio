@@ -4,6 +4,8 @@ from __future__ import annotations
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QHBoxLayout, QLabel, QProgressBar, QWidget
 
+from gui import i18n
+
 
 class ProgressWidget(QWidget):
     """プログレスバーとステータスラベルのセット"""
@@ -18,7 +20,7 @@ class ProgressWidget(QWidget):
         self.bar.setValue(0)
         layout.addWidget(self.bar, stretch=1)
 
-        self.status_label = QLabel("待機中")
+        self.status_label = QLabel(i18n.STATUS_IDLE)
         self.status_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
         self.status_label.setMinimumWidth(200)
         layout.addWidget(self.status_label)
@@ -36,4 +38,4 @@ class ProgressWidget(QWidget):
     def reset(self) -> None:
         self.bar.setRange(0, 100)
         self.bar.setValue(0)
-        self.status_label.setText("待機中")
+        self.status_label.setText(i18n.STATUS_IDLE)

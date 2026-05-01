@@ -1,4 +1,4 @@
-"""3DGS Studio メインウィンドウ"""
+"""STechDrive 3DGS Utils メインウィンドウ"""
 from __future__ import annotations
 
 import argparse
@@ -9,14 +9,12 @@ from PySide6.QtCore import Qt
 from PySide6.QtGui import QCloseEvent
 from PySide6.QtWidgets import (
     QApplication,
-    QFormLayout,
-    QFrame,
     QHBoxLayout,
     QLabel,
     QMessageBox,
     QPushButton,
     QSplitter,
-    QTabWidget,
+    QStackedWidget,
     QVBoxLayout,
     QWidget,
 )
@@ -48,55 +46,111 @@ class MainWindow(QWidget):
 
     def _build_ui(self, initial_scene_dir: str) -> None:
         root = QVBoxLayout(self)
-        root.setContentsMargins(12, 12, 12, 12)
-        root.setSpacing(8)
+        root.setContentsMargins(0, 0, 0, 0)
+        root.setSpacing(0)
 
-        # --- ヘッダー: シーンディレクトリ ---
+        # --- ヘッダー ---
         header = QHBoxLayout()
-        header.setSpacing(8)
-        scene_label = QLabel(f"  {i18n.SCENE_DIR}")
-        scene_label.setStyleSheet("font-weight: 600; font-size: 11pt;")
-        header.addWidget(scene_label)
-        self.scene_browse = BrowseWidget(mode="dir", placeholder="シーンフォルダを選択...")
+        header.setContentsMargins(14, 10, 14, 10)
+        header.setSpacing(12)
+
+        title_box = QVBoxLayout()
+        title_box.setSpacing(0)
+        title = QLabel(i18n.APP_TITLE)
+        title.setObjectName("appTitle")
+        subtitle = QLabel(i18n.t("APP_SUBTITLE"))
+        subtitle.setObjectName("appSubtitle")
+        title_box.addWidget(title)
+        title_box.addWidget(subtitle)
+        header.addLayout(title_box)
+
+        header.addWidget(QLabel(i18n.SCENE_DIR))
+        self.scene_browse = BrowseWidget(mode="dir", placeholder=i18n.t("SCENE_DIR_PLACEHOLDER"))
         self.scene_browse.setToolTip(i18n.tip("SCENE_DIR"))
         self.scene_browse.set_text(initial_scene_dir)
         header.addWidget(self.scene_browse, stretch=1)
-        root.addLayout(header)
-
-        # --- タブ ---
-        self.tabs = QTabWidget()
-        self.tabs.setDocumentMode(True)
+        header_widget = QWidget()
+        header_widget.setObjectName("appHeader")
+        header_widget.setLayout(header)
+        root.addWidget(header_widget)
 
         self.step1 = ExtractStep(self.base_dir)
         self.step2 = ReviewStep(self.base_dir)
         self.step3 = MaskStep(self.base_dir)
         self.step4 = CubemapStep(self.base_dir)
-
-        self.tabs.addTab(self.step1, i18n.STEP1_TITLE)
-        self.tabs.addTab(self.step2, i18n.STEP2_TITLE)
-        self.tabs.addTab(self.step3, i18n.STEP3_TITLE)
-        self.tabs.addTab(self.step4, i18n.STEP4_TITLE)
         self.steps = [self.step1, self.step2, self.step3, self.step4]
+        self.step_titles = [i18n.STEP1_TITLE, i18n.STEP2_TITLE, i18n.STEP3_TITLE, i18n.STEP4_TITLE]
+        self.step_descriptions = [
+            i18n.t("STEP1_DESC"),
+            i18n.t("STEP2_DESC"),
+            i18n.t("STEP3_DESC"),
+            i18n.t("STEP4_DESC"),
+        ]
 
-        # --- メイン分割: タブ (上) / コントロール+ログ (下) ---
+        # --- メイン分割: 作業領域 / 実行状態 ---
         splitter = QSplitter(Qt.Vertical)
-        splitter.addWidget(self.tabs)
+        splitter.setChildrenCollapsible(False)
 
-        bottom = QWidget()
-        bottom_layout = QVBoxLayout(bottom)
-        bottom_layout.setContentsMargins(0, 8, 0, 0)
+        workspace = QWidget()
+        workspace_layout = QHBoxLayout(workspace)
+        workspace_layout.setContentsMargins(12, 12, 12, 8)
+        workspace_layout.setSpacing(12)
+
+        sidebar = QWidget()
+        sidebar.setObjectName("sidebar")
+        sidebar.setFixedWidth(236)
+        sidebar_layout = QVBoxLayout(sidebar)
+        sidebar_layout.setContentsMargins(10, 10, 10, 10)
+        sidebar_layout.setSpacing(8)
+        side_title = QLabel(i18n.t("WORKFLOW_LABEL"))
+        side_title.setObjectName("sidebarTitle")
+        sidebar_layout.addWidget(side_title)
+        self.step_buttons: list[QPushButton] = []
+        for index, title_text in enumerate(self.step_titles):
+            btn = QPushButton(title_text)
+            btn.setObjectName("navStep")
+            btn.setCheckable(True)
+            btn.setMinimumHeight(46)
+            btn.clicked.connect(lambda _checked=False, i=index: self._set_current_step(i))
+            sidebar_layout.addWidget(btn)
+            self.step_buttons.append(btn)
+        sidebar_layout.addStretch()
+        self.active_step_hint = QLabel("")
+        self.active_step_hint.setObjectName("sidebarHint")
+        self.active_step_hint.setWordWrap(True)
+        sidebar_layout.addWidget(self.active_step_hint)
+        workspace_layout.addWidget(sidebar)
+
+        content_panel = QWidget()
+        content_panel.setObjectName("contentPanel")
+        content_layout = QVBoxLayout(content_panel)
+        content_layout.setContentsMargins(10, 10, 10, 10)
+        content_layout.setSpacing(8)
+
+        self.step_header = QLabel("")
+        self.step_header.setObjectName("stepHeader")
+        content_layout.addWidget(self.step_header)
+
+        self.stack = QStackedWidget()
+        for step in self.steps:
+            self.stack.addWidget(step)
+        content_layout.addWidget(self.stack, stretch=1)
+        workspace_layout.addWidget(content_panel, stretch=1)
+        splitter.addWidget(workspace)
+
+        job_panel = QWidget()
+        job_panel.setObjectName("jobPanel")
+        bottom_layout = QVBoxLayout(job_panel)
+        bottom_layout.setContentsMargins(12, 8, 12, 12)
         bottom_layout.setSpacing(6)
 
-        # プログレス
         self.progress = ProgressWidget()
         bottom_layout.addWidget(self.progress)
 
-        # ログ
         self.log_panel = LogPanel()
         self.log_panel.setMinimumHeight(100)
         bottom_layout.addWidget(self.log_panel)
 
-        # 実行 / キャンセル (中央揃え)
         btn_row = QHBoxLayout()
         btn_row.setSpacing(12)
         btn_row.addStretch()
@@ -119,16 +173,17 @@ class MainWindow(QWidget):
         btn_row.addStretch()
         bottom_layout.addLayout(btn_row)
 
-        splitter.addWidget(bottom)
-        splitter.setStretchFactor(0, 3)
-        splitter.setStretchFactor(1, 1)
+        splitter.addWidget(job_panel)
+        splitter.setStretchFactor(0, 5)
+        splitter.setStretchFactor(1, 2)
+        splitter.setSizes([660, 220])
         root.addWidget(splitter)
+        self._set_current_step(0)
 
     def _connect_signals(self) -> None:
         self.scene_browse.path_changed.connect(self._on_scene_changed)
         self.run_btn.clicked.connect(self._on_run)
         self.cancel_btn.clicked.connect(self._on_cancel)
-        self.tabs.currentChanged.connect(self._on_tab_changed)
 
         self.runner.line_received.connect(self._on_line)
         self.runner.phase_started.connect(self._on_phase_started)
@@ -141,7 +196,7 @@ class MainWindow(QWidget):
         self._on_scene_changed(self.scene_browse.text())
 
     def _current_step_widget(self):
-        idx = self.tabs.currentIndex()
+        idx = self.stack.currentIndex()
         if 0 <= idx < len(self.steps):
             return self.steps[idx]
         return None
@@ -150,13 +205,20 @@ class MainWindow(QWidget):
         for step in self.steps:
             step.set_scene_dir(path)
 
-    def _on_tab_changed(self, index: int) -> None:
+    def _set_current_step(self, index: int) -> None:
+        if not 0 <= index < len(self.steps):
+            return
+        self.stack.setCurrentIndex(index)
+        for i, btn in enumerate(self.step_buttons):
+            btn.setChecked(i == index)
+        self.step_header.setText(self.step_titles[index])
+        self.active_step_hint.setText(self.step_descriptions[index])
         self._update_run_button()
 
     def _update_run_button(self) -> None:
         running = self.runner.is_running()
-        idx = self.tabs.currentIndex()
-        # Step 2 (Review) と Step 3 (Mask) はタブ内の専用ボタンが実行を担うので、
+        idx = self.stack.currentIndex()
+        # Step 2 (Review) と Step 3 (Mask) は画面内の専用ボタンが実行を担うので、
         # 共通の Run ボタンは Step 1 / Step 4 でのみ表示する。
         # Cancel は実行中なら常に表示（タブ切替後でも中断できるように）。
         needs_global_run = idx in (0, 3)
@@ -181,7 +243,7 @@ class MainWindow(QWidget):
             return
         if not commands:
             return
-        self._current_step = self.tabs.currentIndex()
+        self._current_step = self.stack.currentIndex()
         self.progress.reset()
         self.runner.start_queue(commands)
         self._update_run_button()
@@ -228,7 +290,7 @@ class MainWindow(QWidget):
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="3DGS Studio")
+    parser = argparse.ArgumentParser(description=i18n.APP_TITLE)
     parser.add_argument("--scene", default=".", help="Initial scene directory")
     args = parser.parse_args()
 

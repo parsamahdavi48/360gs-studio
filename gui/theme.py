@@ -5,26 +5,26 @@ from PySide6.QtGui import QColor, QFont, QPalette
 from PySide6.QtWidgets import QApplication
 
 # カラーパレット
-BG_DARK = "#1a1a2e"
-BG_MID = "#22223a"
-BG_PANEL = "#2a2a44"
-BG_INPUT = "#1e1e34"
-BORDER = "#3a3a5c"
-BORDER_FOCUS = "#7c3aed"
-TEXT = "#e0e0f0"
-TEXT_DIM = "#8888aa"
+BG_DARK = "#15171a"
+BG_MID = "#1e2227"
+BG_PANEL = "#252a31"
+BG_INPUT = "#101316"
+BORDER = "#3a424d"
+BORDER_FOCUS = "#2dd4bf"
+TEXT = "#e5e7eb"
+TEXT_DIM = "#9ca3af"
 TEXT_BRIGHT = "#ffffff"
-ACCENT = "#7c3aed"
-ACCENT_HOVER = "#9b5de5"
-ACCENT_PRESSED = "#6025c0"
+ACCENT = "#2dd4bf"
+ACCENT_HOVER = "#5eead4"
+ACCENT_PRESSED = "#14b8a6"
 SUCCESS = "#22c55e"
 WARNING = "#f59e0b"
 DANGER = "#ef4444"
-TAB_ACTIVE = "#7c3aed"
-TAB_INACTIVE = "#2a2a44"
-SCROLL_HANDLE = "#4a4a6a"
+TAB_ACTIVE = "#2dd4bf"
+TAB_INACTIVE = "#252a31"
+SCROLL_HANDLE = "#4b5563"
 
-FONT_FAMILY = "Segoe UI, Meiryo UI, Yu Gothic UI, sans-serif"
+FONT_FAMILY = "Meiryo UI"
 FONT_SIZE = 10
 
 QSS = f"""
@@ -32,8 +32,73 @@ QSS = f"""
 QWidget {{
     background-color: {BG_DARK};
     color: {TEXT};
-    font-family: {FONT_FAMILY};
+    font-family: "{FONT_FAMILY}";
     font-size: {FONT_SIZE}pt;
+}}
+
+/* ========== App Shell ========== */
+QWidget#appHeader {{
+    background-color: {BG_MID};
+    border-bottom: 1px solid {BORDER};
+}}
+QLabel#appTitle {{
+    color: {TEXT_BRIGHT};
+    font-size: 15pt;
+    font-weight: 700;
+}}
+QLabel#appSubtitle {{
+    color: {TEXT_DIM};
+    font-size: 9pt;
+}}
+QWidget#sidebar {{
+    background-color: {BG_MID};
+    border: 1px solid {BORDER};
+    border-radius: 6px;
+}}
+QLabel#sidebarTitle {{
+    color: {TEXT_DIM};
+    font-size: 9pt;
+    font-weight: 700;
+    padding: 2px 4px 6px 4px;
+}}
+QLabel#sidebarHint {{
+    color: {TEXT_DIM};
+    border-top: 1px solid {BORDER};
+    padding: 10px 4px 2px 4px;
+    font-size: 9pt;
+}}
+QPushButton#navStep {{
+    background-color: transparent;
+    border: 1px solid transparent;
+    border-radius: 5px;
+    color: {TEXT};
+    padding: 8px 10px;
+    text-align: left;
+    font-weight: 600;
+}}
+QPushButton#navStep:hover {{
+    background-color: {BG_PANEL};
+    border-color: {BORDER};
+}}
+QPushButton#navStep:checked {{
+    background-color: {BG_PANEL};
+    border-color: {ACCENT};
+    color: {TEXT_BRIGHT};
+}}
+QWidget#contentPanel {{
+    background-color: {BG_MID};
+    border: 1px solid {BORDER};
+    border-radius: 6px;
+}}
+QLabel#stepHeader {{
+    color: {TEXT_BRIGHT};
+    font-size: 13pt;
+    font-weight: 700;
+    padding: 2px 4px 8px 4px;
+}}
+QWidget#jobPanel {{
+    background-color: {BG_MID};
+    border-top: 1px solid {BORDER};
 }}
 
 /* ========== QLineEdit / QComboBox / QSpinBox ========== */
@@ -178,7 +243,7 @@ QPlainTextEdit {{
     border: 1px solid {BORDER};
     border-radius: 4px;
     color: {TEXT};
-    font-family: "Cascadia Code", "Consolas", monospace;
+    font-family: "Cascadia Code";
     font-size: 9pt;
     padding: 4px;
 }}
@@ -336,6 +401,6 @@ def apply_theme(app: QApplication) -> None:
     """QApplicationにダークテーマを適用する。"""
     app.setStyleSheet(QSS)
     font = QFont()
-    font.setFamilies(["Segoe UI", "Meiryo UI", "Yu Gothic UI"])
+    font.setFamily(FONT_FAMILY)
     font.setPointSize(FONT_SIZE)
     app.setFont(font)

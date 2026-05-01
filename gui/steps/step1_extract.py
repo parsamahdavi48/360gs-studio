@@ -65,8 +65,8 @@ class ExtractStep(BaseStepWidget):
 
         self.video_browse = BrowseWidget(
             mode="file",
-            filter_str="動画ファイル (*.mp4 *.mov *.mkv *.avi *.m4v);;すべて (*.*)",
-            placeholder="360度動画を選択...",
+            filter_str=i18n.t("VIDEO_FILE_FILTER"),
+            placeholder=i18n.t("INPUT_VIDEO_PLACEHOLDER"),
         )
         self.video_browse.setToolTip(i18n.tip("INPUT_VIDEO"))
         self.video_browse.path_changed.connect(self._on_video_changed)
@@ -134,7 +134,7 @@ class ExtractStep(BaseStepWidget):
 
         self.load_info_btn = QPushButton(i18n.t("VIDEO_INFO_LOAD"))
         self.load_info_btn.setToolTip(i18n.tip("VIDEO_INFO_BTN"))
-        self.load_info_btn.setFixedWidth(120)
+        self.load_info_btn.setMinimumWidth(150)
         self.load_info_btn.clicked.connect(lambda: self._load_video_info(show_error=True))
         info_box.addWidget(self.load_info_btn)
 

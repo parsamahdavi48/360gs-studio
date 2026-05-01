@@ -39,7 +39,7 @@ class BrowseWidget(QWidget):
         layout.addWidget(self.line_edit)
 
         btn = QPushButton(BROWSE)
-        btn.setFixedWidth(80)
+        btn.setFixedWidth(104)
         btn.clicked.connect(self._browse)
         layout.addWidget(btn)
 

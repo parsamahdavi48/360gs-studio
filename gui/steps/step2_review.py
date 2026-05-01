@@ -23,18 +23,18 @@ from gui.steps.base_step import BaseStepWidget
 
 
 _CARD_STYLE = """
-    background-color: #2a2a44;
-    border: 1px solid #3a3a5c;
-    border-radius: 8px;
+    background-color: #252a31;
+    border: 1px solid #3a424d;
+    border-radius: 6px;
     padding: 16px;
 """
 
 _WORKFLOW_STYLE = """
-    background-color: #1e1e34;
-    border: 1px solid #7c3aed;
-    border-radius: 8px;
+    background-color: #101316;
+    border: 1px solid #2dd4bf;
+    border-radius: 6px;
     padding: 20px;
-    color: #c4b5fd;
+    color: #ccfbf1;
     font-size: 11pt;
     line-height: 1.6;
 """
@@ -109,8 +109,8 @@ class ReviewStep(BaseStepWidget):
         notice.setWordWrap(True)
         notice.setAlignment(Qt.AlignCenter)
         notice.setStyleSheet(
-            "padding: 16px; background: #1a1a2e; border: 1px solid #7c3aed; "
-            "border-radius: 8px; color: #c4b5fd; font-size: 10pt;"
+            "padding: 16px; background: #101316; border: 1px solid #2dd4bf; "
+            "border-radius: 6px; color: #ccfbf1; font-size: 10pt;"
         )
         layout.addWidget(notice)
 

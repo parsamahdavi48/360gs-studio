@@ -1,8 +1,8 @@
-# 3DGS Studio Step 3 — マスク生成GUI
+# STechDrive 3DGS Utils Step 3 — マスク生成GUI
 
 ## 概要
 
-3DGS Studio の Step 3 は、以下のマスク処理をまとめて実行する PySide6 GUI です。
+STechDrive 3DGS Utils の Step 3 は、以下のマスク処理をまとめて実行する PySide6 GUI です。
 
 - `yolo_mask.py`（人物マスク生成）
 - `stitch_mask.py`（スティッチ領域マスク付与）
