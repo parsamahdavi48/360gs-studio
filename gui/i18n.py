@@ -68,6 +68,52 @@ _JA: dict[str, str] = {
     "BACKUP_BEFORE_FINALIZE": "実行前に images_backup/ にバックアップ",
     "BACKUP_BEFORE_FINALIZE_HINT": "ON: 確定前に images/ を images_backup/ にフルコピー（既存 backup は上書き）。OFF: バックアップなし（容量節約・復元不可）。",
     "STEP2_WORKFLOW": "Step 1 で抽出  ──  レビュー+選別  ──  Step 3 (マスク生成) へ",
+
+    # --- review_frames.py (Step 2 レビュー GUI) ---
+    "REVIEW_TITLE": "フレームレビュー",
+    "REVIEW_DECISION_PREFIX": "判定: ",
+    "REVIEW_INFO_YES": "対象",
+    "REVIEW_INFO_NO": "通常",
+    "REVIEW_PROBLEMS_FORMAT": "要注意: {n} 件 (置換={r}, 維持={f}) | 現フレーム: {cur}",
+    "REVIEW_BLUR_RANK_FORMAT": "ブレ順位: {rank}/{total} (score={score})",
+    "REVIEW_BTN_PREV": "前 (←)",
+    "REVIEW_BTN_NEXT": "次 (→)",
+    "REVIEW_BTN_PREV_PROBLEM": "前の要注意 (Shift+F)",
+    "REVIEW_BTN_NEXT_PROBLEM": "次の要注意 (F)",
+    "REVIEW_BTN_TOGGLE": "Keep/Drop 切替 (Space)",
+    "REVIEW_BTN_JUMP": "番号へ移動",
+    "REVIEW_BTN_SAVE": "保存 (S)",
+    "REVIEW_JUMP_PLACEHOLDER": "番号",
+    "REVIEW_BTN_BLUR_WORST": "ブレ最悪へ (B)",
+    "REVIEW_BTN_BLUR_PREV": "ブレ次点へ (Shift+B)",
+    "REVIEW_BLUR_THRESHOLD_LABEL": "  ブレ閾値:",
+    "REVIEW_BLUR_DROP_BTN": "閾値以下を全 Drop",
+    "REVIEW_BLUR_THRESHOLD_PLACEHOLDER": "blur score",
+    "REVIEW_NO_PROBLEMS": "要注意フレームはありません",
+    "REVIEW_SEQ_INTEGER_ERR": "番号は整数で指定してください。",
+    "REVIEW_OUT_OF_RANGE_ERR": "番号は 1 〜 {max} の範囲で指定してください。",
+    "REVIEW_INVALID_INPUT": "入力エラー",
+    "REVIEW_INFO_HEADER": "情報",
+    "REVIEW_THRESHOLD_HEADER": "閾値",
+    "REVIEW_THRESHOLD_NEED_INPUT": "閾値を入力してから再度押してください。\n現在のフレームのスコアをセットしました。",
+    "REVIEW_THRESHOLD_NUMERIC_ERR": "数値を入力してください。",
+    "REVIEW_BULK_DROP_HEADER": "一括 Drop",
+    "REVIEW_BULK_DROP_RESULT": "blur_score ≦ {thr} のフレームを {n} 件 drop にしました。\n保存 (S) で CSV に確定してください。",
+    "REVIEW_SAVED_HEADER": "保存しました",
+    "REVIEW_SAVED_BODY": "更新先: {path}\nkeep={k}, drop={d}",
+    "REVIEW_HELP_HEADER": "── 使い方 ──",
+    "REVIEW_HELP_BODY": (
+        "1 枚ずつフレームを確認して、不要なものに drop マークを付けます。\n"
+        "変更はメモリ上のコピーのみ。「保存 (S)」で selected_frames.csv に書き戻されます。\n"
+        "保存後、メイン GUI の Step 2 で「確定」ボタンを押すと images/ に反映されます。\n\n"
+        "【キー操作】\n"
+        "  ← / →    前後のフレーム\n"
+        "  Space    現フレームの keep/drop を切替\n"
+        "  F / Shift+F  次/前の要注意フレーム (extract が置換または維持したもの)\n"
+        "  B / Shift+B  ブレが最悪のフレームから順に巡回\n"
+        "  S        CSV へ保存\n"
+        "  Q        終了 (未保存の変更は破棄)"
+    ),
     "NEXT_STEP_MASK_NOTICE": "選別が完了したら Step 3 (マスク生成) へ進みます。\n人物・スティッチ・白飛びマスクを Metashape SfM の前に生成することで SfM 精度が向上します。",
     "METASHAPE_NOTICE": "マスク生成完了後、Metashape で SfM を実行してください。\n生成された masks/ フォルダを Metashape の per-image マスクとしてインポートすると、人物・スティッチ・白飛び領域が特徴点マッチングから除外され、SfM 精度が大きく向上します。\n完了後、Step 4 でキューブマップ変換に進みます。",
     "CSV_FILE": "CSVファイル名",
@@ -243,6 +289,52 @@ _EN: dict[str, str] = {
     "BACKUP_BEFORE_FINALIZE": "Back up to images_backup/ before finalize",
     "BACKUP_BEFORE_FINALIZE_HINT": "ON: snapshot images/ to images_backup/ before finalizing (existing backup is replaced). OFF: no backup (saves disk; cannot be undone).",
     "STEP2_WORKFLOW": "Step 1 Extract  ──  Review + Select  ──  Proceed to Step 3 (Mask Generation)",
+
+    # --- review_frames.py (Step 2 review GUI) ---
+    "REVIEW_TITLE": "Frame Review",
+    "REVIEW_DECISION_PREFIX": "Decision: ",
+    "REVIEW_INFO_YES": "yes",
+    "REVIEW_INFO_NO": "no",
+    "REVIEW_PROBLEMS_FORMAT": "Problems: {n} (replaced={r}, fallback={f}) | Current: {cur}",
+    "REVIEW_BLUR_RANK_FORMAT": "Blur rank: {rank}/{total} (score={score})",
+    "REVIEW_BTN_PREV": "Prev (←)",
+    "REVIEW_BTN_NEXT": "Next (→)",
+    "REVIEW_BTN_PREV_PROBLEM": "Prev Problem (Shift+F)",
+    "REVIEW_BTN_NEXT_PROBLEM": "Next Problem (F)",
+    "REVIEW_BTN_TOGGLE": "Toggle Keep/Drop (Space)",
+    "REVIEW_BTN_JUMP": "Jump to Seq",
+    "REVIEW_BTN_SAVE": "Save (S)",
+    "REVIEW_JUMP_PLACEHOLDER": "seq",
+    "REVIEW_BTN_BLUR_WORST": "Worst Blur (B)",
+    "REVIEW_BTN_BLUR_PREV": "Prev Blur (Shift+B)",
+    "REVIEW_BLUR_THRESHOLD_LABEL": "  Blur threshold:",
+    "REVIEW_BLUR_DROP_BTN": "Drop below threshold",
+    "REVIEW_BLUR_THRESHOLD_PLACEHOLDER": "blur score",
+    "REVIEW_NO_PROBLEMS": "No problem frames found.",
+    "REVIEW_SEQ_INTEGER_ERR": "Seq must be an integer.",
+    "REVIEW_OUT_OF_RANGE_ERR": "Seq must be between 1 and {max}.",
+    "REVIEW_INVALID_INPUT": "Invalid input",
+    "REVIEW_INFO_HEADER": "Info",
+    "REVIEW_THRESHOLD_HEADER": "Threshold",
+    "REVIEW_THRESHOLD_NEED_INPUT": "Enter a threshold and press the button again.\nThe current frame's score has been pre-filled.",
+    "REVIEW_THRESHOLD_NUMERIC_ERR": "Enter a numeric value.",
+    "REVIEW_BULK_DROP_HEADER": "Bulk Drop",
+    "REVIEW_BULK_DROP_RESULT": "Marked {n} frames with blur_score ≦ {thr} as drop.\nPress Save (S) to commit to CSV.",
+    "REVIEW_SAVED_HEADER": "Saved",
+    "REVIEW_SAVED_BODY": "Updated {path}\nkeep={k}, drop={d}",
+    "REVIEW_HELP_HEADER": "── How to use ──",
+    "REVIEW_HELP_BODY": (
+        "Walk through the frames one by one and mark unwanted ones as drop.\n"
+        "Edits stay in memory until you press Save (S), which writes them back to selected_frames.csv.\n"
+        "Then return to the main GUI Step 2 and press \"Finalize\" to apply the changes to images/.\n\n"
+        "[Keyboard]\n"
+        "  ← / →     previous / next frame\n"
+        "  Space     toggle keep/drop on the current frame\n"
+        "  F / Shift+F  next/previous problem frame (replaced or fallback_keep)\n"
+        "  B / Shift+B  cycle through frames in worst-blur order\n"
+        "  S         save changes to CSV\n"
+        "  Q         quit (unsaved changes are discarded)"
+    ),
     "NEXT_STEP_MASK_NOTICE": "After selection, proceed to Step 3 (Mask Generation).\nGenerating person / stitch / overexposure masks before Metashape SfM significantly improves SfM accuracy.",
     "METASHAPE_NOTICE": "After mask generation, run Metashape SfM.\nImport the generated masks/ folder as per-image masks in Metashape so that people, stitching seams, and blown-out highlights are excluded from feature matching. This significantly improves SfM accuracy.\nAfter SfM, proceed to Step 4 for cubemap conversion.",
     "CSV_FILE": "CSV Filename",

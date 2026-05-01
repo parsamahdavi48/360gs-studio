@@ -39,6 +39,9 @@ except Exception as e:  # pragma: no cover - environment-dependent import
 else:
     _PYSIDE_IMPORT_ERROR = None
 
+# i18n は PySide6 に依存しないので無条件 import
+from gui import i18n
+
 
 if QMainWindow is not None:
     class ReviewWindow(QMainWindow):
@@ -56,7 +59,7 @@ if QMainWindow is not None:
             self.index = 0
             self.current_pixmap: QPixmap | None = None
 
-            self.setWindowTitle("Frame Review")
+            self.setWindowTitle(i18n.t("REVIEW_TITLE"))
             self.resize(1280, 860)
 
             self._build_ui()
@@ -125,59 +128,59 @@ if QMainWindow is not None:
             layout.addWidget(self.problem_summary_label)
 
             btn_row = QHBoxLayout()
-            self.prev_button = QPushButton("Prev (Left)")
+            self.prev_button = QPushButton(i18n.t("REVIEW_BTN_PREV"))
             self.prev_button.clicked.connect(self.prev_row)
             btn_row.addWidget(self.prev_button)
 
-            self.next_button = QPushButton("Next (Right)")
+            self.next_button = QPushButton(i18n.t("REVIEW_BTN_NEXT"))
             self.next_button.clicked.connect(self.next_row)
             btn_row.addWidget(self.next_button)
 
-            self.prev_problem_button = QPushButton("Prev Problem (Shift+F)")
+            self.prev_problem_button = QPushButton(i18n.t("REVIEW_BTN_PREV_PROBLEM"))
             self.prev_problem_button.clicked.connect(self.prev_problem)
             btn_row.addWidget(self.prev_problem_button)
 
-            self.next_problem_button = QPushButton("Next Problem (F)")
+            self.next_problem_button = QPushButton(i18n.t("REVIEW_BTN_NEXT_PROBLEM"))
             self.next_problem_button.clicked.connect(self.next_problem)
             btn_row.addWidget(self.next_problem_button)
 
-            self.toggle_button = QPushButton("Toggle Keep/Drop (Space)")
+            self.toggle_button = QPushButton(i18n.t("REVIEW_BTN_TOGGLE"))
             self.toggle_button.clicked.connect(self.toggle_decision)
             btn_row.addWidget(self.toggle_button)
 
             self.jump_edit = QLineEdit()
-            self.jump_edit.setPlaceholderText("seq")
+            self.jump_edit.setPlaceholderText(i18n.t("REVIEW_JUMP_PLACEHOLDER"))
             self.jump_edit.setFixedWidth(90)
             btn_row.addWidget(self.jump_edit)
 
-            self.jump_button = QPushButton("Jump Seq")
+            self.jump_button = QPushButton(i18n.t("REVIEW_BTN_JUMP"))
             self.jump_button.clicked.connect(self.jump_to_seq)
             btn_row.addWidget(self.jump_button)
 
             btn_row.addStretch(1)
 
-            self.save_button = QPushButton("Save (S)")
+            self.save_button = QPushButton(i18n.t("REVIEW_BTN_SAVE"))
             self.save_button.clicked.connect(self.save)
             btn_row.addWidget(self.save_button)
             layout.addLayout(btn_row)
 
             # ブラー操作行
             blur_row = QHBoxLayout()
-            self.blur_worst_button = QPushButton("Blur Worst (B)")
+            self.blur_worst_button = QPushButton(i18n.t("REVIEW_BTN_BLUR_WORST"))
             self.blur_worst_button.clicked.connect(self.next_blur_worst)
             blur_row.addWidget(self.blur_worst_button)
 
-            self.blur_prev_button = QPushButton("Blur Prev (Shift+B)")
+            self.blur_prev_button = QPushButton(i18n.t("REVIEW_BTN_BLUR_PREV"))
             self.blur_prev_button.clicked.connect(self.prev_blur_worst)
             blur_row.addWidget(self.blur_prev_button)
 
-            blur_row.addWidget(QLabel("  閾値:"))
+            blur_row.addWidget(QLabel(i18n.t("REVIEW_BLUR_THRESHOLD_LABEL")))
             self.blur_threshold_edit = QLineEdit()
-            self.blur_threshold_edit.setPlaceholderText("blur score")
+            self.blur_threshold_edit.setPlaceholderText(i18n.t("REVIEW_BLUR_THRESHOLD_PLACEHOLDER"))
             self.blur_threshold_edit.setFixedWidth(100)
             blur_row.addWidget(self.blur_threshold_edit)
 
-            self.blur_drop_button = QPushButton("閾値以下を全Drop")
+            self.blur_drop_button = QPushButton(i18n.t("REVIEW_BLUR_DROP_BTN"))
             self.blur_drop_button.clicked.connect(self.drop_below_blur_threshold)
             blur_row.addWidget(self.blur_drop_button)
 
@@ -188,12 +191,19 @@ if QMainWindow is not None:
             blur_row.addWidget(self.blur_rank_label)
             layout.addLayout(blur_row)
 
-            hint = QLabel(
-                "Keys: Left/Right=move, F/Shift+F=next/prev problem, "
-                "B/Shift+B=blur worst/prev, Space=toggle, S=save, Q=quit"
+            # 使い方ヘルプ（折りたたみ風: header + body）
+            help_header = QLabel(i18n.t("REVIEW_HELP_HEADER"))
+            help_header.setStyleSheet(
+                "color: #c4b5fd; font-weight: 700; padding-top: 6px;"
             )
-            hint.setStyleSheet("color: #666;")
-            layout.addWidget(hint)
+            layout.addWidget(help_header)
+            help_body = QLabel(i18n.t("REVIEW_HELP_BODY"))
+            help_body.setStyleSheet(
+                "color: #888; font-size: 9pt; padding: 4px 8px; "
+                "background-color: #1a1a2e; border-radius: 6px;"
+            )
+            help_body.setWordWrap(True)
+            layout.addWidget(help_body)
 
         def _bind_shortcuts(self) -> None:
             QShortcut(QKeySequence(Qt.Key_Left), self, activated=self.prev_row)
@@ -223,16 +233,17 @@ if QMainWindow is not None:
             self.title_label.setText(f"{seq}/{total}  {image_rel}")
 
             decision = row.get("decision", "keep")
-            self.decision_label.setText(f"Decision: {decision.upper()}")
+            self.decision_label.setText(f"{i18n.t('REVIEW_DECISION_PREFIX')}{decision.upper()}")
             self.decision_label.setStyleSheet(f"font-weight: 700; color: {self._decision_color(decision)};")
 
             replaced_count = sum(1 for r in self.rows if r.get("status", "").strip().lower() == "replaced")
             fallback_count = sum(1 for r in self.rows if r.get("status", "").strip().lower() == "fallback_keep")
             problem_count = len(self.problem_indices)
-            current_problem = "YES" if self._is_problem_row(row) else "NO"
+            current_problem = i18n.t("REVIEW_INFO_YES") if self._is_problem_row(row) else i18n.t("REVIEW_INFO_NO")
             self.problem_summary_label.setText(
-                f"Problems: {problem_count} (replaced={replaced_count}, fallback_keep={fallback_count})"
-                f" | Current problem: {current_problem}"
+                i18n.t("REVIEW_PROBLEMS_FORMAT").format(
+                    n=problem_count, r=replaced_count, f=fallback_count, cur=current_problem
+                )
             )
 
             blur_final = self._blur_score(row)
@@ -251,7 +262,9 @@ if QMainWindow is not None:
             except ValueError:
                 rank = -1
             total = len(self.rows)
-            self.blur_rank_label.setText(f"Blur rank: {rank}/{total} (score={blur_str})")
+            self.blur_rank_label.setText(
+                i18n.t("REVIEW_BLUR_RANK_FORMAT").format(rank=rank, total=total, score=blur_str)
+            )
 
             if not image_path.exists():
                 self.current_pixmap = None
@@ -301,7 +314,7 @@ if QMainWindow is not None:
 
         def next_problem(self) -> None:
             if not self.problem_indices:
-                QMessageBox.information(self, "Info", "No problem frames found.")
+                QMessageBox.information(self, i18n.t("REVIEW_INFO_HEADER"), i18n.t("REVIEW_NO_PROBLEMS"))
                 return
 
             for idx in self.problem_indices:
@@ -315,7 +328,7 @@ if QMainWindow is not None:
 
         def prev_problem(self) -> None:
             if not self.problem_indices:
-                QMessageBox.information(self, "Info", "No problem frames found.")
+                QMessageBox.information(self, i18n.t("REVIEW_INFO_HEADER"), i18n.t("REVIEW_NO_PROBLEMS"))
                 return
 
             for idx in reversed(self.problem_indices):
@@ -335,11 +348,16 @@ if QMainWindow is not None:
             try:
                 seq = int(text)
             except ValueError:
-                QMessageBox.warning(self, "Invalid Input", "Seq must be an integer.")
+                QMessageBox.warning(
+                    self, i18n.t("REVIEW_INVALID_INPUT"), i18n.t("REVIEW_SEQ_INTEGER_ERR")
+                )
                 return
 
             if seq < 1 or seq > len(self.rows):
-                QMessageBox.warning(self, "Out of Range", f"Seq must be between 1 and {len(self.rows)}.")
+                QMessageBox.warning(
+                    self, i18n.t("REVIEW_INVALID_INPUT"),
+                    i18n.t("REVIEW_OUT_OF_RANGE_ERR").format(max=len(self.rows)),
+                )
                 return
 
             self.index = seq - 1
@@ -385,16 +403,17 @@ if QMainWindow is not None:
                 if score != float("inf"):
                     self.blur_threshold_edit.setText(f"{score:.1f}")
                 QMessageBox.information(
-                    self, "閾値",
-                    "閾値を入力してから再度押してください。\n"
-                    "現在のフレームのスコアをセットしました。"
+                    self, i18n.t("REVIEW_THRESHOLD_HEADER"),
+                    i18n.t("REVIEW_THRESHOLD_NEED_INPUT"),
                 )
                 return
 
             try:
                 threshold = float(text)
             except ValueError:
-                QMessageBox.warning(self, "入力エラー", "数値を入力してください。")
+                QMessageBox.warning(
+                    self, i18n.t("REVIEW_INVALID_INPUT"), i18n.t("REVIEW_THRESHOLD_NUMERIC_ERR")
+                )
                 return
 
             count = 0
@@ -406,9 +425,8 @@ if QMainWindow is not None:
 
             self._render_current()
             QMessageBox.information(
-                self, "一括Drop",
-                f"blur_score ≤ {threshold:.1f} のフレームを {count} 件 drop にしました。\n"
-                f"Save (S) で確定してください。"
+                self, i18n.t("REVIEW_BULK_DROP_HEADER"),
+                i18n.t("REVIEW_BULK_DROP_RESULT").format(thr=f"{threshold:.1f}", n=count),
             )
 
         def toggle_decision(self) -> None:
@@ -430,8 +448,10 @@ if QMainWindow is not None:
             drop_count = len(self.rows) - keep_count
             QMessageBox.information(
                 self,
-                "Saved",
-                f"Updated {self.csv_path}\nkeep={keep_count}, drop={drop_count}",
+                i18n.t("REVIEW_SAVED_HEADER"),
+                i18n.t("REVIEW_SAVED_BODY").format(
+                    path=str(self.csv_path), k=keep_count, d=drop_count
+                ),
             )
 
 else:
