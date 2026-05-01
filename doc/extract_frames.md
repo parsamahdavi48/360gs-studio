@@ -11,6 +11,10 @@ It supports two selection modes:
 
 After initial selection, frames below a blur percentile threshold are replaced with sharper nearby frames when possible.
 
+Optional **stationary thinning** (`--thin-motion-threshold`) drops selected frames whose cumulative motion since the last kept frame is too low. This adapts to the recording style: standing still gets thinned automatically, walking is preserved.
+
+The Laplacian / change scores are cached to `extract_cache.npz` so re-running with different selection or thinning parameters skips the analysis pass entirely (full re-analysis only when the video file or `--analysis-width` changes).
+
 ## Requirements
 
 - FFmpeg (`ffmpeg`) and FFprobe (`ffprobe`) available in PATH
@@ -64,6 +68,33 @@ python extract_frames.py input.mp4 ./scene01 \
   --print-summary-json
 ```
 
+Thinning + cache example (typical recommended fixed-interval workflow):
+
+```bash
+# 1st run: full analyze, write cache, extract
+python extract_frames.py input.mp4 ./scene01 \
+  --mode fixed --interval-sec 0.8 \
+  --thin-motion-threshold 0.6
+
+# 2nd run with different thinning threshold: cache hits, skips analysis
+python extract_frames.py input.mp4 ./scene01 \
+  --mode fixed --interval-sec 0.8 \
+  --thin-motion-threshold 1.0
+```
+
+## Key options
+
+| Option | Default | Description |
+|---|---|---|
+| `--mode` | `change` | `fixed` or `change`. Fixed interval is recommended for SfM stability |
+| `--interval-sec` | `0.5` | Fixed mode interval in seconds |
+| `--analysis-width` | `1920` | Decode width for blur/change analysis. Higher = more accurate, slower. `0` or larger than source = full resolution |
+| `--blur-percentile` | `25.0` | Selected frames below this percentile are candidates for blur replacement |
+| `--blur-window-frames` | `0` (auto) | Neighbor search radius for blur replacement |
+| `--thin-motion-threshold` | `0.0` | Stationary thinning. `0` disables. `0.5-1.0` is a typical starting range. Drops frames where cumulative change since last kept frame is below this value |
+| `--no-thin-keep-endpoints` | (off) | Allow the last frame to be dropped during thinning. By default first/last frames are always preserved |
+| `--no-cache` | (off) | Force full re-analysis (ignore `extract_cache.npz`) |
+
 ## Outputs
 
 Under `output_dir`:
@@ -76,9 +107,11 @@ Under `output_dir`:
 
 - `original_index`: index from initial mode selection
 - `final_index`: index after blur replacement
-- `status`: `ok` / `replaced` / `fallback_keep`
-- `decision`: default `keep` (editable in review tool)
-- `output_file`: image path for review and later processing
+- `status`: `ok` / `replaced` / `fallback_keep` / `thinned` / combinations like `replaced+thinned`
+- `decision`: `keep` for extracted frames, `drop` for thinned frames (editable in review tool)
+- `output_file`: image path for review and later processing (no file on disk for thinned rows)
+
+`extract_cache.npz`: cached Laplacian and change scores per analyzed frame, keyed by video file size+mtime and `--analysis-width`. Auto-invalidated when any of these change. Add to `.gitignore` (already configured).
 
 ## Notes
 

@@ -147,7 +147,7 @@ class ExtractStep(BaseStepWidget):
         adv_form = QFormLayout()
         adv_form.setSpacing(6)
 
-        self.analysis_width_edit = QLineEdit("960")
+        self.analysis_width_edit = QLineEdit("1920")
         self.analysis_width_edit.setToolTip(i18n.tip("ANALYSIS_WIDTH"))
         self.analysis_width_edit.setFixedWidth(80)
         self.analysis_width_edit.textChanged.connect(self._mark_estimate_stale)
@@ -164,6 +164,19 @@ class ExtractStep(BaseStepWidget):
         self.blur_window_edit.setFixedWidth(80)
         self.blur_window_edit.textChanged.connect(self._mark_estimate_stale)
         adv_form.addRow(i18n.BLUR_WINDOW, self.blur_window_edit)
+
+        # 立ち止まり間引き
+        self.thin_motion_edit = QLineEdit("0.0")
+        self.thin_motion_edit.setToolTip(i18n.t("THIN_MOTION_HINT"))
+        self.thin_motion_edit.setFixedWidth(80)
+        self.thin_motion_edit.textChanged.connect(self._mark_estimate_stale)
+        adv_form.addRow(i18n.t("THIN_MOTION_THRESHOLD"), self.thin_motion_edit)
+
+        # キャッシュ無効化チェックボックス
+        from PySide6.QtWidgets import QCheckBox  # 局所 import: 既存 import 行への影響回避
+        self.no_cache_cb = QCheckBox(i18n.t("NO_CACHE"))
+        self.no_cache_cb.setToolTip(i18n.t("NO_CACHE_HINT"))
+        adv_form.addRow("", self.no_cache_cb)
 
         self.ffmpeg_edit = QLineEdit("ffmpeg")
         self.ffmpeg_edit.setToolTip(i18n.tip("FFMPEG_PATH"))
@@ -248,6 +261,20 @@ class ExtractStep(BaseStepWidget):
                 "--min-gap-sec", self.min_gap_edit.text().strip(),
                 "--max-gap-sec", self.max_gap_edit.text().strip(),
             ])
+
+        thin_text = self.thin_motion_edit.text().strip()
+        if thin_text:
+            try:
+                thin_val = float(thin_text)
+            except ValueError:
+                raise ValueError("立ち止まり間引き閾値は数値で指定してください")
+            if thin_val < 0:
+                raise ValueError("立ち止まり間引き閾値は 0 以上で指定してください")
+            if thin_val > 0.0:
+                cmd.extend(["--thin-motion-threshold", f"{thin_val:g}"])
+
+        if self.no_cache_cb.isChecked():
+            cmd.append("--no-cache")
         return cmd
 
     # -- プログレス解析 --

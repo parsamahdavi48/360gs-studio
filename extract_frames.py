@@ -364,6 +364,169 @@ def analyze_video(
     return blur_scores, change_scores, out_w, out_h
 
 
+# ===========================================================================
+# 解析キャッシュ: 動画メタ情報 + analysis_width が一致すれば再計算をスキップ
+# ===========================================================================
+
+CACHE_VERSION = 1
+
+
+def cache_path_for(scene_dir: Path) -> Path:
+    return scene_dir / "extract_cache.npz"
+
+
+def video_signature(video_path: Path) -> Tuple[int, int]:
+    """動画ファイルの (size, mtime_ns) を返す。キャッシュ無効化判定用。"""
+    st = video_path.stat()
+    return int(st.st_size), int(st.st_mtime_ns)
+
+
+def save_analysis_cache(
+    cache_path: Path,
+    video_path: Path,
+    video_info: VideoInfo,
+    analysis_w: int,
+    analysis_h: int,
+    blur_scores: List[float],
+    change_scores: List[float],
+) -> None:
+    if np is None:
+        return
+    size, mtime_ns = video_signature(video_path)
+    cache_path.parent.mkdir(parents=True, exist_ok=True)
+    np.savez_compressed(
+        cache_path,
+        version=np.int64(CACHE_VERSION),
+        video_size=np.int64(size),
+        video_mtime_ns=np.int64(mtime_ns),
+        video_width=np.int32(video_info.width),
+        video_height=np.int32(video_info.height),
+        video_fps=np.float64(video_info.fps),
+        video_duration=np.float64(video_info.duration),
+        video_total_frames=np.int64(video_info.total_frames),
+        analysis_width=np.int32(analysis_w),
+        analysis_height=np.int32(analysis_h),
+        blur_scores=np.asarray(blur_scores, dtype=np.float64),
+        change_scores=np.asarray(change_scores, dtype=np.float64),
+    )
+    print(f"[cache] saved analysis cache: {cache_path}")
+
+
+def thin_stationary(
+    rows: List[dict],
+    change_scores: List[float],
+    motion_threshold: float,
+    keep_endpoints: bool = True,
+) -> List[dict]:
+    """累積モーションが閾値未満の連続採用フレームを間引く。
+
+    立ち止まり区間（変化が小さい）でフレーム間隔が密集しすぎているのを削減する。
+    歩行など変化が大きい区間では何も削らない。
+
+    Args:
+        rows: apply_blur_replacement の出力行（各 dict に "final_index" がある）。
+        change_scores: 解析時の change_scores (per analyzed frame)。
+        motion_threshold: 直前 kept フレームから次採用候補までの累積 change がこれ未満なら drop。
+            0 以下なら間引きなし（全フレーム keep）。
+        keep_endpoints: True なら各 stationary cluster の先頭・末尾は強制保持。
+
+    Returns:
+        各 row に "decision" と必要なら "status" を追加した同長のリスト。
+        間引かれた row は decision="drop", status="thinned"。
+        keep される row は decision="keep" を維持/設定。
+    """
+    if motion_threshold <= 0.0 or len(rows) < 2:
+        for row in rows:
+            row.setdefault("decision", "keep")
+        return rows
+
+    n = len(change_scores)
+    out_rows = [dict(row) for row in rows]
+
+    # 累積モーション計算: rows は final_index 順を仮定（apply_blur_replacement は順番を保つ）
+    last_kept_pos = 0
+    out_rows[0]["decision"] = "keep"
+
+    for pos in range(1, len(out_rows) - (1 if keep_endpoints else 0)):
+        last_idx = int(out_rows[last_kept_pos]["final_index"])
+        cur_idx = int(out_rows[pos]["final_index"])
+        if cur_idx <= last_idx or last_idx < 0 or cur_idx >= n:
+            # インデックス異常時は安全側で keep
+            out_rows[pos]["decision"] = "keep"
+            last_kept_pos = pos
+            continue
+
+        # last_idx (排他) から cur_idx (含む) までの change_scores を累積
+        cumulative = float(np.sum(change_scores[last_idx + 1 : cur_idx + 1]))
+
+        if cumulative >= motion_threshold:
+            out_rows[pos]["decision"] = "keep"
+            last_kept_pos = pos
+        else:
+            out_rows[pos]["decision"] = "drop"
+            existing_status = out_rows[pos].get("status", "ok")
+            if existing_status == "ok":
+                out_rows[pos]["status"] = "thinned"
+            else:
+                out_rows[pos]["status"] = f"{existing_status}+thinned"
+
+    # 末尾は強制保持（時間カバレッジ）
+    if keep_endpoints and len(out_rows) >= 2:
+        out_rows[-1]["decision"] = "keep"
+    elif not keep_endpoints and len(out_rows) >= 2:
+        # keep_endpoints=False なら末尾も判定対象
+        last_idx = int(out_rows[last_kept_pos]["final_index"])
+        cur_idx = int(out_rows[-1]["final_index"])
+        if cur_idx > last_idx and last_idx >= 0 and cur_idx < n:
+            cumulative = float(np.sum(change_scores[last_idx + 1 : cur_idx + 1]))
+            if cumulative < motion_threshold:
+                out_rows[-1]["decision"] = "drop"
+                existing_status = out_rows[-1].get("status", "ok")
+                if existing_status == "ok":
+                    out_rows[-1]["status"] = "thinned"
+                else:
+                    out_rows[-1]["status"] = f"{existing_status}+thinned"
+            else:
+                out_rows[-1]["decision"] = "keep"
+        else:
+            out_rows[-1]["decision"] = "keep"
+
+    return out_rows
+
+
+def load_analysis_cache(
+    cache_path: Path,
+    video_path: Path,
+    video_info: VideoInfo,
+    analysis_width: int,
+) -> Optional[Tuple[List[float], List[float], int, int]]:
+    """キャッシュが有効なら (blur_scores, change_scores, analysis_w, analysis_h) を返す。
+    無効/不在/エラーなら None。"""
+    if np is None or not cache_path.exists():
+        return None
+    try:
+        with np.load(cache_path) as data:
+            if int(data["version"]) != CACHE_VERSION:
+                return None
+            cur_size, cur_mtime_ns = video_signature(video_path)
+            if int(data["video_size"]) != cur_size:
+                return None
+            if int(data["video_mtime_ns"]) != cur_mtime_ns:
+                return None
+            cached_aw = int(data["analysis_width"])
+            # 解析幅が現在の指定と一致していること（同等の縮小寸法を生成するため厳密比較）
+            cached_target_w, _ = scaled_dimensions(video_info.width, video_info.height, analysis_width)
+            if cached_aw != cached_target_w:
+                return None
+            blur = data["blur_scores"].tolist()
+            change = data["change_scores"].tolist()
+            ah = int(data["analysis_height"])
+            return blur, change, cached_aw, ah
+    except Exception as e:
+        print(f"[cache] failed to load cache (will recompute): {e}")
+        return None
+
+
 def select_fixed(total_frames: int, fps: float, interval_sec: float) -> Tuple[List[int], int]:
     if interval_sec <= 0:
         raise ValueError("--interval-sec must be > 0")
@@ -902,21 +1065,30 @@ def build_summary(
     window_frames: int,
     filename_prefix: str,
 ) -> dict:
-    replaced_count = sum(1 for r in selected_rows if r["status"] == "replaced")
-    fallback_keep_count = sum(1 for r in selected_rows if r["status"] == "fallback_keep")
-    return build_summary_from_counts(
+    replaced_count = sum(1 for r in selected_rows if "replaced" in r.get("status", ""))
+    fallback_keep_count = sum(1 for r in selected_rows if "fallback_keep" in r.get("status", ""))
+    thinned_count = sum(
+        1 for r in selected_rows
+        if r.get("decision") == "drop" and "thinned" in r.get("status", "")
+    )
+    kept_count = sum(1 for r in selected_rows if r.get("decision", "keep") != "drop")
+
+    summary = build_summary_from_counts(
         args=args,
         video_info=video_info,
         analysis_w=analysis_w,
         analysis_h=analysis_h,
         min_gap_frames=min_gap_frames,
         window_frames=window_frames,
-        selected_count=len(selected_rows),
+        selected_count=kept_count,
         replaced_count=replaced_count,
         fallback_keep_count=fallback_keep_count,
         estimate_mode="full",
         filename_prefix=filename_prefix,
     )
+    summary["result"]["thinned_count"] = thinned_count
+    summary["result"]["selected_before_thin"] = len(selected_rows)
+    return summary
 
 
 def parse_args() -> argparse.Namespace:
@@ -945,8 +1117,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--analysis-width",
         type=int,
-        default=960,
-        help="Analysis decode width for change/blur scoring (default=960)",
+        default=1920,
+        help=(
+            "Analysis decode width for change/blur scoring (default=1920). "
+            "Higher values give more accurate Laplacian variance / change detection at the cost of "
+            "analysis time. Set to 0 or a value >= source width to use full resolution."
+        ),
     )
     parser.add_argument(
         "--blur-percentile",
@@ -1004,6 +1180,29 @@ def parse_args() -> argparse.Namespace:
         "--print-summary-json",
         action="store_true",
         help="Print one-line JSON summary prefixed with SUMMARY_JSON:",
+    )
+
+    parser.add_argument(
+        "--no-cache",
+        action="store_true",
+        help="Do not read or write the analysis cache (extract_cache.npz). Forces full re-analysis.",
+    )
+    parser.add_argument(
+        "--thin-motion-threshold",
+        type=float,
+        default=0.0,
+        help=(
+            "Stationary thinning: drop selected frames whose cumulative change_score since the "
+            "last kept frame is below this threshold. Adapts to recording style: stops are thinned, "
+            "walking is preserved. Default=0.0 (disabled). 0.5-1.0 is a reasonable starting range."
+        ),
+    )
+    parser.add_argument(
+        "--no-thin-keep-endpoints",
+        dest="thin_keep_endpoints",
+        action="store_false",
+        default=True,
+        help="When thinning, allow the last frame to be dropped too (default keeps endpoints to preserve time coverage).",
     )
 
     return parser.parse_args()
@@ -1130,20 +1329,39 @@ def main() -> None:
 
     try:
         ensure_python_deps()
-        progress_step = max(10, video_info.total_frames // 100) if video_info.total_frames > 0 else max(
-            10, int(round(video_info.fps * 2.0))
-        )
-        blur_scores, change_scores, analysis_w, analysis_h = analyze_video(
-            input_video,
-            args.ffmpeg,
-            video_info.fps,
-            video_info.width,
-            video_info.height,
-            args.analysis_width,
-            progress_phase="analyze",
-            progress_total_frames=video_info.total_frames,
-            progress_step_frames=progress_step,
-        )
+
+        cache_path = cache_path_for(scene_dir)
+        cached: Optional[Tuple[List[float], List[float], int, int]] = None
+        if not args.no_cache:
+            cached = load_analysis_cache(cache_path, input_video, video_info, args.analysis_width)
+            if cached is not None:
+                print(f"[cache] reusing analysis cache: {cache_path}")
+
+        if cached is not None:
+            blur_scores, change_scores, analysis_w, analysis_h = cached
+        else:
+            progress_step = max(10, video_info.total_frames // 100) if video_info.total_frames > 0 else max(
+                10, int(round(video_info.fps * 2.0))
+            )
+            blur_scores, change_scores, analysis_w, analysis_h = analyze_video(
+                input_video,
+                args.ffmpeg,
+                video_info.fps,
+                video_info.width,
+                video_info.height,
+                args.analysis_width,
+                progress_phase="analyze",
+                progress_total_frames=video_info.total_frames,
+                progress_step_frames=progress_step,
+            )
+            if not args.no_cache:
+                try:
+                    save_analysis_cache(
+                        cache_path, input_video, video_info,
+                        analysis_w, analysis_h, blur_scores, change_scores,
+                    )
+                except Exception as e:
+                    print(f"[cache] failed to save cache (non-fatal): {e}")
     except Exception as e:
         print(f"Error during analysis: {e}")
         sys.exit(1)
@@ -1201,7 +1419,28 @@ def main() -> None:
             }
         )
 
-    final_indices = [r["final_index"] for r in enriched_rows]
+    # 立ち止まり間引き: 累積モーションが閾値未満の連続区間を drop でマーク
+    if args.thin_motion_threshold > 0.0:
+        enriched_rows = thin_stationary(
+            enriched_rows,
+            change_scores,
+            motion_threshold=args.thin_motion_threshold,
+            keep_endpoints=args.thin_keep_endpoints,
+        )
+        thinned_count = sum(
+            1 for r in enriched_rows
+            if r.get("decision") == "drop" and "thinned" in r.get("status", "")
+        )
+        kept_count = sum(1 for r in enriched_rows if r.get("decision") != "drop")
+        print(
+            f"Stationary thinning: dropped {thinned_count}, kept {kept_count} "
+            f"(threshold={args.thin_motion_threshold:g})"
+        )
+
+    # decision=drop の行は抽出対象から除外（CSV メタとしては保持）
+    final_indices = [
+        r["final_index"] for r in enriched_rows if r.get("decision", "keep") != "drop"
+    ]
 
     summary = build_summary(
         args=args,
@@ -1221,6 +1460,10 @@ def main() -> None:
         if args.print_summary_json:
             print("SUMMARY_JSON:" + json.dumps(summary, ensure_ascii=False))
         return
+
+    if not final_indices:
+        print("Error: no frames remain after thinning; skipping extraction")
+        sys.exit(1)
 
     try:
         extract_selected_frames(
@@ -1250,10 +1493,17 @@ def main() -> None:
         resolved_prefix,
     )
 
-    replaced_count = sum(1 for r in enriched_rows if r["status"] == "replaced")
-    fallback_count = sum(1 for r in enriched_rows if r["status"] == "fallback_keep")
+    replaced_count = sum(1 for r in enriched_rows if "replaced" in r.get("status", ""))
+    fallback_count = sum(1 for r in enriched_rows if "fallback_keep" in r.get("status", ""))
+    thinned_count = sum(
+        1 for r in enriched_rows
+        if r.get("decision") == "drop" and "thinned" in r.get("status", "")
+    )
+    kept_count = len(final_indices)
 
-    print(f"Selected frames: {len(enriched_rows)}")
+    print(f"Selected frames: {kept_count} (extracted)")
+    if thinned_count > 0:
+        print(f"Thinned (stationary, recorded as drop in CSV): {thinned_count}")
     print(f"Replaced blurred frames: {replaced_count}")
     print(f"Fallback keep frames: {fallback_count}")
     print(f"Images: {images_dir}")

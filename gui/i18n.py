@@ -154,6 +154,10 @@ _JA: dict[str, str] = {
     "ADVANCED_SETTINGS": "詳細設定",
     "AUTO_PREFIX_HINT": "自動 (動画ファイル名)",
     "FRAMES_UNIT": "フレーム",
+    "THIN_MOTION_THRESHOLD": "立ち止まり間引き閾値",
+    "THIN_MOTION_HINT": "0=無効。直前 keep フレームからの累積モーションがこれ未満なら drop。0.5-1.0 が目安。",
+    "NO_CACHE": "解析キャッシュを使わない",
+    "NO_CACHE_HINT": "通常は ON 推奨（同じ動画の再実行が高速化）。チェックすると毎回フル解析。",
 
     # Step2 extra labels
     "PREPROCESS_RUN_LABEL": "Metashape前処理を実行",
@@ -321,6 +325,10 @@ _EN: dict[str, str] = {
     "ADVANCED_SETTINGS": "Advanced Settings",
     "AUTO_PREFIX_HINT": "auto (video filename)",
     "FRAMES_UNIT": "frames",
+    "THIN_MOTION_THRESHOLD": "Stationary thinning threshold",
+    "THIN_MOTION_HINT": "0=disabled. Drop frames whose cumulative motion since last kept frame is below this. 0.5-1.0 is a good starting range.",
+    "NO_CACHE": "Skip analysis cache",
+    "NO_CACHE_HINT": "Normally leave OFF (re-runs of the same video are much faster). When ON, always perform full re-analysis.",
 
     # Step2 extra labels
     "PREPROCESS_RUN_LABEL": "Run Metashape Preprocess",

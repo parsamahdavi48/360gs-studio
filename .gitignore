@@ -3,6 +3,7 @@ __pycache__/
 *.pt
 masks/
 extract_report.json
+extract_cache.npz
 .claude/
 .pytest_cache/
 _compare/
