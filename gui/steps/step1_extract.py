@@ -242,6 +242,11 @@ class ExtractStep(BaseStepWidget):
         self.extract_action_row = info_row_widget
         layout.addWidget(info_row_widget)
 
+        work_layout.addWidget(QLabel(i18n.t("EXTRACT_READY_SECTION")))
+        self.ready_status_label = QLabel()
+        self.ready_status_label.setWordWrap(True)
+        work_layout.addWidget(self.ready_status_label)
+
         work_layout.addWidget(QLabel(i18n.VIDEO_INFO))
         self.video_info_label = QLabel(i18n.t("VIDEO_LABEL_DEFAULT"))
         self.video_info_label.setStyleSheet("color: #8888aa;")
@@ -344,14 +349,24 @@ class ExtractStep(BaseStepWidget):
         splitter.setSizes([SETTINGS_PANE_WIDTH, 760])
         root_layout.addWidget(splitter)
         self._update_mode_widgets()
+        self._update_ready_status()
 
     # -- シーンディレクトリ --
 
     def set_scene_dir(self, path: str) -> None:
         super().set_scene_dir(path)
+        self._update_ready_status()
 
     def primary_action_text(self) -> str:
         return i18n.RUN
+
+    def primary_action_tooltip(self) -> str:
+        ready, reason = self._readiness()
+        return i18n.tip("RUN") if ready else reason
+
+    def primary_action_enabled(self) -> bool:
+        ready, _reason = self._readiness()
+        return ready
 
     # -- モード --
 
@@ -385,6 +400,40 @@ class ExtractStep(BaseStepWidget):
                 self.min_gap_edit.setValue(max_gap)
         finally:
             self._syncing_gap_fields = False
+
+    def _analysis_width_valid(self) -> bool:
+        text = self.analysis_width_edit.text().strip()
+        try:
+            return int(text) >= 0
+        except ValueError:
+            return False
+
+    def _readiness(self) -> tuple[bool, str]:
+        video = self.video_browse.text()
+        if not video:
+            return False, i18n.t("EXTRACT_READY_NO_VIDEO")
+        if not Path(video).is_file():
+            return False, i18n.t("EXTRACT_READY_VIDEO_NOT_FOUND")
+        if not self.scene_dir:
+            return False, i18n.t("EXTRACT_READY_NO_SCENE")
+        if not self._analysis_width_valid():
+            return False, i18n.t("EXTRACT_READY_BAD_ANALYSIS_WIDTH")
+        if not self.video_info:
+            return False, i18n.t("EXTRACT_READY_NO_VIDEO_INFO")
+        return True, i18n.t("EXTRACT_READY_OK")
+
+    def _update_ready_status(self) -> None:
+        ready, reason = self._readiness()
+        self.ready_status_label.setText(reason)
+        if ready:
+            self.ready_status_label.setStyleSheet(
+                "padding: 8px 10px; border-radius: 4px; color: #dcfce7; background-color: #14532d;"
+            )
+        else:
+            self.ready_status_label.setStyleSheet(
+                "padding: 8px 10px; border-radius: 4px; color: #fef3c7; background-color: #713f12;"
+            )
+        self.primary_action_state_changed.emit()
 
     # -- コマンド構築 --
 
@@ -457,8 +506,14 @@ class ExtractStep(BaseStepWidget):
     # -- 動画情報 --
 
     def _on_video_changed(self, path: str) -> None:
-        if path and Path(path).exists():
+        if path and Path(path).is_file():
             self._load_video_info(show_error=False)
+        else:
+            self.video_info = None
+            self._update_video_info_label()
+            self.instant_estimate_text = "-"
+            self._refresh_estimate_label()
+            self._update_ready_status()
 
     @staticmethod
     def _parse_fraction(value: str) -> float:
@@ -481,12 +536,14 @@ class ExtractStep(BaseStepWidget):
             self.video_info = self._probe_video_info()
             self._update_video_info_label()
             self._mark_estimate_stale()
+            self._update_ready_status()
             return True
         except Exception as e:
             self.video_info = None
             self._update_video_info_label()
             self.instant_estimate_text = "-"
             self._refresh_estimate_label()
+            self._update_ready_status()
             if show_error:
                 QMessageBox.critical(self, i18n.INVALID_INPUT, str(e))
             return False
@@ -550,6 +607,7 @@ class ExtractStep(BaseStepWidget):
     def _mark_estimate_stale(self, *_args) -> None:
         self.last_estimate_summary = None
         self._update_instant_estimate()
+        self._update_ready_status()
 
     def _update_instant_estimate(self) -> None:
         if not self.video_info:

@@ -46,6 +46,7 @@ else:
 
 # i18n は PySide6 に依存しないので無条件 import
 from gui import i18n
+from apply_frame_decisions import pending_drop_image_paths as find_pending_drop_image_paths
 if _PYSIDE_IMPORT_ERROR is None:
     from gui.common.zoomable_image_label import ZoomableImageLabel
 else:  # pragma: no cover - PySide6 missing
@@ -368,6 +369,12 @@ if QMainWindow is not None:
                 row.get("decision", "keep") != initial
                 for row, initial in zip(self.rows, self._initial_decisions)
             )
+
+        def pending_drop_image_paths(self) -> list[Path]:
+            return find_pending_drop_image_paths(self.scene_dir, self.csv_path.name)
+
+        def has_pending_finalize(self) -> bool:
+            return self.has_decision_changes() or bool(self.pending_drop_image_paths())
 
         def _write_rows(self) -> None:
             fieldnames = list(self.rows[0].keys())

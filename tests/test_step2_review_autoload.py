@@ -17,7 +17,8 @@ def _app():
     return QApplication.instance() or QApplication([])
 
 
-def _write_scene(scene: Path, count: int = 2) -> Path:
+def _write_scene(scene: Path, count: int = 2, drop_indices: set[int] | None = None) -> Path:
+    drop_indices = drop_indices or set()
     images = scene / "images"
     images.mkdir(exist_ok=True)
     rows = []
@@ -30,7 +31,7 @@ def _write_scene(scene: Path, count: int = 2) -> Path:
             {
                 "seq": str(seq),
                 "output_file": image_rel,
-                "decision": "keep",
+                "decision": "drop" if seq in drop_indices else "keep",
                 "status": "ok",
                 "timestamp_sec": str(seq),
                 "blur_score_final": "100",
@@ -104,6 +105,17 @@ def test_review_step_apply_enabled_only_after_decision_change(tmp_path: Path) ->
     assert not step.primary_action_enabled()
 
 
+def test_review_step_apply_enabled_when_initial_drop_image_exists(tmp_path: Path) -> None:
+    _app()
+    _write_scene(tmp_path, drop_indices={1})
+    step = ReviewStep(Path.cwd())
+    step.set_scene_dir(str(tmp_path))
+    step.on_activated()
+
+    assert step._review_widget is not None
+    assert step.primary_action_enabled()
+
+
 def test_main_window_disables_apply_until_review_changes(tmp_path: Path) -> None:
     _app()
     _write_scene(tmp_path)
@@ -115,6 +127,17 @@ def test_main_window_disables_apply_until_review_changes(tmp_path: Path) -> None
 
     window.step2._review_widget.toggle_decision()
 
+    assert window.run_btn.isEnabled()
+    window.close()
+
+
+def test_main_window_enables_apply_when_initial_drop_image_exists(tmp_path: Path) -> None:
+    _app()
+    _write_scene(tmp_path, drop_indices={1})
+    window = MainWindow(str(tmp_path))
+    window._set_current_step(1)
+
+    assert window.step2._review_widget is not None
     assert window.run_btn.isEnabled()
     window.close()
 

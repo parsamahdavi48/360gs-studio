@@ -138,10 +138,10 @@ class ReviewStep(BaseStepWidget):
         widget = self._review_widget
         if widget is None:
             return False
-        has_changes = getattr(widget, "has_decision_changes", None)
-        if not callable(has_changes):
+        has_pending = getattr(widget, "has_pending_finalize", None)
+        if not callable(has_pending):
             return False
-        return bool(has_changes())
+        return bool(has_pending())
 
     def _clear_review_pane(self) -> None:
         while self.review_layout.count():

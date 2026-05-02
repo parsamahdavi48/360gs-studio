@@ -8,6 +8,7 @@ import sys
 import tempfile
 from pathlib import Path
 
+from apply_frame_decisions import pending_drop_image_paths
 from PySide6.QtCore import QProcess, Qt
 from PySide6.QtWidgets import (
     QCheckBox,
@@ -388,16 +389,46 @@ class MaskStep(BaseStepWidget):
     # -- コマンド構築 --
 
     def build_commands(self) -> list[tuple[str, list[str]]]:
-        steps = []
+        requested_steps = []
         if self.run_yolo_cb.isChecked():
-            steps.append(("yolo", self._build_yolo_cmd()))
+            requested_steps.append("yolo")
         if self.run_stitch_cb.isChecked():
-            steps.append(("stitch", self._build_stitch_cmd()))
+            requested_steps.append("stitch")
         if self.run_overexp_cb.isChecked():
-            steps.append(("overexposure", self._build_overexposure_cmd()))
-        if not steps:
+            requested_steps.append("overexposure")
+        if not requested_steps:
             raise ValueError(i18n.t("MASK_TASK_REQUIRED"))
+
+        self._ensure_no_pending_drop_images()
+
+        steps = []
+        if "yolo" in requested_steps:
+            steps.append(("yolo", self._build_yolo_cmd()))
+        if "stitch" in requested_steps:
+            steps.append(("stitch", self._build_stitch_cmd()))
+        if "overexposure" in requested_steps:
+            steps.append(("overexposure", self._build_overexposure_cmd()))
         return steps
+
+    def _ensure_no_pending_drop_images(self) -> None:
+        if not self.scene_dir:
+            return
+        images = self.images_browse.text()
+        if not images:
+            return
+        scene_dir = Path(self.scene_dir)
+        csv_path = scene_dir / "selected_frames.csv"
+        if not csv_path.exists():
+            return
+
+        pending = pending_drop_image_paths(scene_dir, images_dir=Path(images))
+        if not pending:
+            return
+
+        preview = "\n".join(f"- {p.name}" for p in pending[:5])
+        if len(pending) > 5:
+            preview += f"\n- ... +{len(pending) - 5}"
+        raise ValueError(i18n.t("MASK_PENDING_DROPS_ERROR").format(n=len(pending), files=preview))
 
     def _build_yolo_cmd(self) -> list[str]:
         images = self.images_browse.text()

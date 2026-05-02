@@ -68,6 +68,34 @@ def normalize_decision(row: dict) -> str:
     return row.get("decision", "keep").strip().lower()
 
 
+def pending_drop_image_paths(
+    scene_dir: Path,
+    csv_name: str = "selected_frames.csv",
+    images_dir: Optional[Path] = None,
+) -> List[Path]:
+    """Return drop-marked image files that still exist under images_dir."""
+    csv_path = scene_dir / csv_name
+    if not csv_path.exists():
+        return []
+
+    rows = load_rows(csv_path)
+    root = images_dir if images_dir is not None else scene_dir / "images"
+    if not root.exists():
+        return []
+
+    pending: List[Path] = []
+    for row in rows:
+        if normalize_decision(row) != "drop":
+            continue
+        rel_path = row.get("output_file", "").strip()
+        if not rel_path:
+            continue
+        src = scene_dir / rel_path
+        if src.exists() and src.is_file() and is_under(src, root):
+            pending.append(src)
+    return pending
+
+
 def copy_keep_rows(
     scene_dir: Path,
     rows: Sequence[dict],

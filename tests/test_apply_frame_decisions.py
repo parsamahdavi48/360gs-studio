@@ -10,6 +10,7 @@ import pytest
 from apply_frame_decisions import (
     backup_images_dir,
     finalize_in_place,
+    pending_drop_image_paths,
 )
 
 
@@ -199,3 +200,18 @@ def test_finalize_in_place_raises_on_no_keep(tmp_path: Path):
 
     with pytest.raises(RuntimeError, match="No keep frames"):
         finalize_in_place(scene, "selected_frames.csv")
+
+
+def test_pending_drop_image_paths_reports_existing_drop_files(tmp_path: Path):
+    scene = _make_scene(tmp_path, num_frames=4, drop_indices=[2, 4])
+
+    pending = pending_drop_image_paths(scene)
+
+    assert [p.name for p in pending] == ["frame_000002.jpg", "frame_000004.jpg"]
+
+
+def test_pending_drop_image_paths_ignores_missing_drop_files(tmp_path: Path):
+    scene = _make_scene(tmp_path, num_frames=3, drop_indices=[2])
+    (scene / "images" / "frame_000002.jpg").unlink()
+
+    assert pending_drop_image_paths(scene) == []

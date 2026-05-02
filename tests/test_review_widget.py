@@ -52,6 +52,20 @@ def _write_scene(tmp_path: Path) -> tuple[Path, Path]:
     return scene, csv_path
 
 
+def _write_scene_with_drop(tmp_path: Path, drop_file_exists: bool = True) -> tuple[Path, Path]:
+    scene, csv_path = _write_scene(tmp_path)
+    with csv_path.open("r", encoding="utf-8", newline="") as f:
+        rows = list(csv.DictReader(f))
+    rows[0]["decision"] = "drop"
+    if not drop_file_exists:
+        (scene / rows[0]["output_file"]).unlink()
+    with csv_path.open("w", encoding="utf-8", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=list(rows[0].keys()))
+        writer.writeheader()
+        writer.writerows(rows)
+    return scene, csv_path
+
+
 def _read_decisions(csv_path: Path) -> list[str]:
     with csv_path.open("r", encoding="utf-8", newline="") as f:
         return [row["decision"] for row in csv.DictReader(f)]
@@ -189,3 +203,22 @@ def test_review_widget_tracks_decision_changes(tmp_path: Path) -> None:
     widget.reset_decision()
 
     assert not widget.has_decision_changes()
+
+
+def test_review_widget_pending_finalize_includes_existing_drop_images(tmp_path: Path) -> None:
+    _app()
+    scene, csv_path = _write_scene_with_drop(tmp_path, drop_file_exists=True)
+    widget = ReviewWidget(scene, csv_path)
+
+    assert not widget.has_decision_changes()
+    assert widget.has_pending_finalize()
+    assert [p.name for p in widget.pending_drop_image_paths()] == ["frame_000001.png"]
+
+
+def test_review_widget_pending_finalize_ignores_missing_drop_images(tmp_path: Path) -> None:
+    _app()
+    scene, csv_path = _write_scene_with_drop(tmp_path, drop_file_exists=False)
+    widget = ReviewWidget(scene, csv_path)
+
+    assert not widget.has_decision_changes()
+    assert not widget.has_pending_finalize()
