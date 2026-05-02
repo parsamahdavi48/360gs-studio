@@ -41,6 +41,8 @@ class MainWindow(QWidget):
 
         self.runner = ProcessRunner(self)
         self._current_step: int = 0
+        self._auto_scene_from_input: str | None = None
+        self._applying_scene_suggestion = False
 
         self._build_ui(initial_scene_dir)
         self._connect_signals()
@@ -71,6 +73,11 @@ class MainWindow(QWidget):
         if initial_scene_dir:
             self.scene_browse.set_text(initial_scene_dir)
         header.addWidget(self.scene_browse, stretch=1)
+        self.clear_scene_btn = QPushButton(i18n.t("CLEAR_SCENE_DIR"))
+        self.clear_scene_btn.setToolTip(i18n.t("CLEAR_SCENE_DIR_HINT"))
+        self.clear_scene_btn.setFixedWidth(150)
+        self.clear_scene_btn.setEnabled(bool(initial_scene_dir))
+        header.addWidget(self.clear_scene_btn)
         header_widget = QWidget()
         header_widget.setObjectName("appHeader")
         header_widget.setLayout(header)
@@ -189,6 +196,8 @@ class MainWindow(QWidget):
     def _connect_signals(self) -> None:
         self.scene_browse.path_changed.connect(self._on_scene_changed)
         self.step1.scene_dir_suggested.connect(self._on_scene_suggested)
+        self.step1.input_videos_cleared.connect(self._on_input_videos_cleared)
+        self.clear_scene_btn.clicked.connect(self._clear_scene_dir)
         self.run_btn.clicked.connect(self._on_run)
         self.cancel_btn.clicked.connect(self._on_cancel)
 
@@ -208,8 +217,11 @@ class MainWindow(QWidget):
         return None
 
     def _on_scene_changed(self, path: str) -> None:
+        if not self._applying_scene_suggestion and path != self._auto_scene_from_input:
+            self._auto_scene_from_input = None
         for step in self.steps:
             step.set_scene_dir(path)
+        self.clear_scene_btn.setEnabled(bool(path))
         step = self._current_step_widget()
         if step is not None:
             step.on_activated()
@@ -220,7 +232,22 @@ class MainWindow(QWidget):
         candidate = Path(path)
         if not candidate.is_dir():
             return
-        self.scene_browse.set_text(str(candidate))
+        scene = str(candidate)
+        self._auto_scene_from_input = scene
+        self._applying_scene_suggestion = True
+        try:
+            self.scene_browse.set_text(scene)
+        finally:
+            self._applying_scene_suggestion = False
+
+    def _on_input_videos_cleared(self) -> None:
+        if self._auto_scene_from_input and self.scene_browse.text() == self._auto_scene_from_input:
+            self._clear_scene_dir()
+
+    def _clear_scene_dir(self) -> None:
+        self._auto_scene_from_input = None
+        if self.scene_browse.text():
+            self.scene_browse.set_text("")
 
     def _set_current_step(self, index: int) -> None:
         if not 0 <= index < len(self.steps):

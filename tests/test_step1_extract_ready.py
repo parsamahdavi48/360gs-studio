@@ -183,6 +183,61 @@ def test_main_window_does_not_overwrite_existing_scene_from_video_selection(tmp_
     window.close()
 
 
+def test_main_window_clear_scene_button_clears_header_scene(tmp_path: Path) -> None:
+    _app()
+    window = MainWindow(str(tmp_path))
+
+    assert window.scene_browse.text() == str(tmp_path)
+    assert window.clear_scene_btn.isEnabled()
+
+    window.clear_scene_btn.click()
+
+    assert window.scene_browse.text() == ""
+    assert window.step1.scene_dir == ""
+    assert not window.clear_scene_btn.isEnabled()
+    window.close()
+
+
+def test_extract_clear_input_videos_clears_auto_scene(tmp_path: Path, monkeypatch) -> None:
+    _app()
+    video = tmp_path / "input.mp4"
+    video.write_bytes(b"dummy")
+    window = MainWindow()
+    monkeypatch.setattr(window.step1, "_probe_video_info_for_path", lambda _path: _video_info())
+
+    window.step1.video_browse.set_text(str(video))
+    assert window.scene_browse.text() == str(tmp_path)
+    assert window.step1.video_info is not None
+
+    window.step1.clear_video_btn.click()
+
+    assert window.step1.video_browse.text() == ""
+    assert window.step1.video_info is None
+    assert window.scene_browse.text() == ""
+    assert window.step1.scene_dir == ""
+    window.close()
+
+
+def test_extract_clear_input_videos_keeps_manual_scene(tmp_path: Path, monkeypatch) -> None:
+    _app()
+    scene = tmp_path / "scene"
+    source = tmp_path / "source"
+    scene.mkdir()
+    source.mkdir()
+    video = source / "input.mp4"
+    video.write_bytes(b"dummy")
+    window = MainWindow(str(scene))
+    monkeypatch.setattr(window.step1, "_probe_video_info_for_path", lambda _path: _video_info())
+
+    window.step1.video_browse.set_text(str(video))
+    window.step1.clear_video_btn.click()
+
+    assert window.step1.video_browse.text() == ""
+    assert window.scene_browse.text() == str(scene)
+    assert window.step1.scene_dir == str(scene)
+    window.close()
+
+
 def test_extract_run_disabled_when_same_video_would_be_appended(tmp_path: Path) -> None:
     _app()
     video = tmp_path / "input.mp4"

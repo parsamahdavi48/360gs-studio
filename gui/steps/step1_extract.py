@@ -25,6 +25,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QLineEdit,
     QMessageBox,
+    QPushButton,
     QScrollArea,
     QSplitter,
     QVBoxLayout,
@@ -62,6 +63,7 @@ def _row_label(text: str, tooltip: str | None = None) -> QLabel:
 
 class ExtractStep(BaseStepWidget):
     scene_dir_suggested = Signal(str)
+    input_videos_cleared = Signal()
 
     def __init__(self, base_dir: Path, parent: QWidget | None = None) -> None:
         super().__init__(base_dir, parent)
@@ -110,6 +112,17 @@ class ExtractStep(BaseStepWidget):
         self.video_browse.setToolTip(i18n.tip("INPUT_VIDEO"))
         self.video_browse.path_changed.connect(self._on_video_changed)
         add_tooltip_row(basic, i18n.INPUT_VIDEO, self.video_browse, i18n.tip("INPUT_VIDEO"))
+
+        self.clear_video_btn = QPushButton(i18n.t("CLEAR_INPUT_VIDEO"))
+        self.clear_video_btn.setToolTip(i18n.t("CLEAR_INPUT_VIDEO_HINT"))
+        self.clear_video_btn.setFixedWidth(150)
+        self.clear_video_btn.clicked.connect(self._clear_input_videos)
+        clear_video_row = QWidget()
+        clear_video_layout = QHBoxLayout(clear_video_row)
+        clear_video_layout.setContentsMargins(0, 0, 0, 0)
+        clear_video_layout.addStretch()
+        clear_video_layout.addWidget(self.clear_video_btn)
+        basic.addRow("", clear_video_row)
 
         self.output_mode_combo = QComboBox()
         self.output_mode_combo.setToolTip(i18n.tip("EXTRACT_OUTPUT_MODE"))
@@ -657,6 +670,19 @@ class ExtractStep(BaseStepWidget):
         return None
 
     # -- 動画情報 --
+
+    def _clear_input_videos(self) -> None:
+        self.last_estimate_summary = None
+        if self.video_browse.text():
+            self.video_browse.set_text("")
+        else:
+            self.video_info = None
+            self.video_infos.clear()
+            self.video_info_failures.clear()
+            self._update_video_info_label()
+            self._update_instant_estimate()
+            self._update_ready_status()
+        self.input_videos_cleared.emit()
 
     def _on_video_changed(self, path: str) -> None:
         videos = self._selected_video_paths()
