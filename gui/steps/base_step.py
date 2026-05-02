@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import QScrollArea, QWidget
 
 from gui import i18n
@@ -32,6 +32,8 @@ class BaseStepWidget(QWidget):
         on_line(line)  -- 出力行のパース（プログレス更新など）
     """
 
+    primary_action_state_changed = Signal()
+
     def __init__(self, base_dir: Path, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.base_dir = base_dir
@@ -48,6 +50,9 @@ class BaseStepWidget(QWidget):
 
     def primary_action_tooltip(self) -> str:
         return i18n.tip("RUN")
+
+    def primary_action_enabled(self) -> bool:
+        return True
 
     def on_line(self, line: str) -> tuple[int, int] | None:
         """出力行を解析し、(done, total) を返す。該当なしなら None。"""

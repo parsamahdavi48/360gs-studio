@@ -134,6 +134,15 @@ class ReviewStep(BaseStepWidget):
     def primary_action_tooltip(self) -> str:
         return i18n.t("FINALIZE_BUTTON_HINT")
 
+    def primary_action_enabled(self) -> bool:
+        widget = self._review_widget
+        if widget is None:
+            return False
+        has_changes = getattr(widget, "has_decision_changes", None)
+        if not callable(has_changes):
+            return False
+        return bool(has_changes())
+
     def _clear_review_pane(self) -> None:
         while self.review_layout.count():
             item = self.review_layout.takeAt(0)
@@ -150,6 +159,10 @@ class ReviewStep(BaseStepWidget):
         label.setAlignment(Qt.AlignCenter)
         label.setWordWrap(True)
         self.review_layout.addWidget(label, stretch=1)
+        self.primary_action_state_changed.emit()
+
+    def _on_review_decisions_changed(self) -> None:
+        self.primary_action_state_changed.emit()
 
     def _on_csv_changed(self) -> None:
         self._loaded_csv_signature = None
@@ -184,7 +197,11 @@ class ReviewStep(BaseStepWidget):
         self._clear_review_pane()
         self._review_widget = widget
         self._loaded_csv_signature = signature
+        decisions_changed = getattr(widget, "decisions_changed", None)
+        if decisions_changed is not None:
+            decisions_changed.connect(self._on_review_decisions_changed)
         self.review_layout.addWidget(widget, stretch=1)
+        self.primary_action_state_changed.emit()
 
     def _open_review_window(self) -> None:
         script = self.base_dir / "review_frames.py"

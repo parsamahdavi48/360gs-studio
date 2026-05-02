@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Dict, List
 
 try:
-    from PySide6.QtCore import QSize, Qt
+    from PySide6.QtCore import QSize, Qt, Signal
     from PySide6.QtGui import QIcon, QKeySequence, QPixmap, QShortcut
     from PySide6.QtWidgets import (
         QApplication,
@@ -25,6 +25,7 @@ try:
 except Exception as e:  # pragma: no cover - environment-dependent import
     QSize = None
     Qt = None
+    Signal = None
     QIcon = None
     QKeySequence = None
     QPixmap = None
@@ -60,6 +61,8 @@ def _review_icon(name: str) -> QIcon:
 
 if QMainWindow is not None:
     class ReviewWidget(QWidget):
+        decisions_changed = Signal()
+
         def __init__(self, scene_dir: Path, csv_path: Path) -> None:
             super().__init__()
             self.scene_dir = scene_dir
@@ -360,6 +363,12 @@ if QMainWindow is not None:
                 "QToolButton:disabled { opacity: 0.45; }"
             )
 
+        def has_decision_changes(self) -> bool:
+            return any(
+                row.get("decision", "keep") != initial
+                for row, initial in zip(self.rows, self._initial_decisions)
+            )
+
         def _write_rows(self) -> None:
             fieldnames = list(self.rows[0].keys())
             with self.csv_path.open("w", encoding="utf-8", newline="") as f:
@@ -385,6 +394,7 @@ if QMainWindow is not None:
                     i18n.t("REVIEW_SAVE_FAILED_BODY").format(error=e),
                 )
             self._render_current()
+            self.decisions_changed.emit()
 
         def prev_row(self) -> None:
             if self.index > 0:

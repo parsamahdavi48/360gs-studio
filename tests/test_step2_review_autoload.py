@@ -9,6 +9,7 @@ from PySide6.QtGui import QPixmap
 from PySide6.QtWidgets import QApplication, QLabel
 
 from gui import i18n
+from gui.app import MainWindow
 from gui.steps.step2_review import ReviewStep
 
 
@@ -81,6 +82,41 @@ def test_review_step_autoloads_csv_when_activated(tmp_path: Path) -> None:
 
     assert step._review_widget is not None
     assert step._loaded_csv_signature is not None
+    assert not step.primary_action_enabled()
+
+
+def test_review_step_apply_enabled_only_after_decision_change(tmp_path: Path) -> None:
+    _app()
+    _write_scene(tmp_path)
+    step = ReviewStep(Path.cwd())
+    step.set_scene_dir(str(tmp_path))
+    step.on_activated()
+
+    assert step._review_widget is not None
+    assert not step.primary_action_enabled()
+
+    step._review_widget.toggle_decision()
+
+    assert step.primary_action_enabled()
+
+    step._review_widget.reset_decision()
+
+    assert not step.primary_action_enabled()
+
+
+def test_main_window_disables_apply_until_review_changes(tmp_path: Path) -> None:
+    _app()
+    _write_scene(tmp_path)
+    window = MainWindow(str(tmp_path))
+    window._set_current_step(1)
+
+    assert window.step2._review_widget is not None
+    assert not window.run_btn.isEnabled()
+
+    window.step2._review_widget.toggle_decision()
+
+    assert window.run_btn.isEnabled()
+    window.close()
 
 
 def test_review_step_skips_reload_when_csv_unchanged(tmp_path: Path) -> None:

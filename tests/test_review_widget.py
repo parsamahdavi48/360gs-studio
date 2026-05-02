@@ -173,3 +173,19 @@ def test_review_widget_flag_toggle_saves_immediately_and_resets(tmp_path: Path) 
     assert _read_decisions(csv_path)[0] == "keep"
     assert widget.flag_button.isChecked()
     assert not widget.reset_decision_button.isEnabled()
+
+
+def test_review_widget_tracks_decision_changes(tmp_path: Path) -> None:
+    _app()
+    scene, csv_path = _write_scene(tmp_path)
+    widget = ReviewWidget(scene, csv_path)
+
+    assert not widget.has_decision_changes()
+
+    widget.toggle_decision()
+
+    assert widget.has_decision_changes()
+
+    widget.reset_decision()
+
+    assert not widget.has_decision_changes()

@@ -194,6 +194,8 @@ class MainWindow(QWidget):
         self.runner.phase_started.connect(self._on_phase_started)
         self.runner.phase_finished.connect(self._on_phase_finished)
         self.runner.queue_finished.connect(self._on_queue_finished)
+        for step in self.steps:
+            step.primary_action_state_changed.connect(self._update_run_button)
 
         self._on_scene_changed(self.scene_browse.text())
 
@@ -231,7 +233,8 @@ class MainWindow(QWidget):
             self.run_btn.setToolTip(step.primary_action_tooltip())
 
         self.run_btn.setVisible(True)
-        self.run_btn.setEnabled(not running)
+        action_enabled = step.primary_action_enabled() if step is not None else True
+        self.run_btn.setEnabled(not running and action_enabled)
 
         self.cancel_btn.setVisible(True)
         self.cancel_btn.setEnabled(running)
