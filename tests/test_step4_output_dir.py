@@ -233,6 +233,8 @@ def test_cubemap_build_validates_before_resetting_output(tmp_path: Path, monkeyp
 
 def test_cubemap_finalize_writes_export_settings(tmp_path: Path) -> None:
     step = _ready_step(tmp_path)
+    commands = step.build_commands()
+    assert [phase for phase, _cmd in commands] == ["cubemap"]
     step._finalize_bundle()
 
     settings_path = tmp_path / "output" / "stechdrive_export_settings.json"
@@ -250,3 +252,7 @@ def test_cubemap_finalize_writes_export_settings(tmp_path: Path) -> None:
     assert settings["conversion"]["no_image"] is False
     assert settings["output_files"]["settings"] == "stechdrive_export_settings.json"
     assert settings["view_config"]["views"]
+    assert settings["views_config_path"] == "views_config.json"
+    assert settings["views_config_snapshot"] == json.loads(
+        (tmp_path / "output" / "views_config.json").read_text(encoding="utf-8")
+    )

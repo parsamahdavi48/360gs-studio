@@ -533,15 +533,19 @@ class CubemapStep(BaseStepWidget):
     def _write_views_config(self, output_dir: Path, views: list[dict]) -> Path:
         output_dir.mkdir(parents=True, exist_ok=True)
         path = output_dir / "views_config.json"
-        payload = {
+        payload = self._views_config_payload(views)
+        path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+        return path
+
+    @staticmethod
+    def _views_config_payload(views: list[dict]) -> dict:
+        return {
             "fov": 90.0,
             "views": [
                 {"name": v["name"], "yaw": float(v["yaw"]), "pitch": float(v["pitch"]), "enabled": bool(v["enabled"])}
                 for v in views
             ],
         }
-        path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
-        return path
 
     def _export_settings_path(self) -> Path:
         return self._output_dir() / _EXPORT_SETTINGS_NAME
@@ -590,6 +594,8 @@ class CubemapStep(BaseStepWidget):
                     for v in views
                 ],
             },
+            "views_config_path": "views_config.json",
+            "views_config_snapshot": self._views_config_payload(views),
             "conversion": {
                 "yaw_offset_per_frame": yaw_step,
                 "output_format": self.output_format_combo.currentData() or "auto",
