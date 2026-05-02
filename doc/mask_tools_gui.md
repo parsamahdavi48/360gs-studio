@@ -13,7 +13,7 @@ It is intended for the frame-extraction workflow (`images/` -> `masks/`).
 ## Usage
 
 ```bat
-start_gui.bat --scene ./scene01
+run_gui.bat --scene ./scene01
 ```
 
 ## Main Fields

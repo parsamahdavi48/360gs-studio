@@ -71,7 +71,9 @@ class ViewConfigWidget(QWidget):
         self.view_mode_combo.addItem(i18n.t("CUSTOM_GRID"), VIEW_MODE_CUSTOM)
         self.view_mode_combo.addItem(i18n.t("CUBE6_LABEL"), VIEW_MODE_CUBE6)
         self.view_mode_combo.currentIndexChanged.connect(self._on_view_mode_changed)
-        mode_row.addWidget(QLabel(i18n.t("VIEW_MODE_LABEL")))
+        mode_label = QLabel(i18n.t("VIEW_MODE_LABEL"))
+        mode_label.setToolTip(i18n.tip("VIEW_MODE"))
+        mode_row.addWidget(mode_label)
         mode_row.addWidget(self.view_mode_combo, stretch=1)
         ctrl.addLayout(mode_row)
 
@@ -81,7 +83,9 @@ class ViewConfigWidget(QWidget):
         self.yaw_offset_edit.setToolTip(i18n.tip("YAW_OFFSET"))
         self.yaw_offset_edit.setFixedWidth(60)
         self.yaw_offset_edit.textChanged.connect(self._on_params_changed)
-        angle_row.addWidget(QLabel(i18n.t("YAW_OFFSET_LABEL")))
+        yaw_offset_label = QLabel(i18n.t("YAW_OFFSET_LABEL"))
+        yaw_offset_label.setToolTip(i18n.tip("YAW_OFFSET"))
+        angle_row.addWidget(yaw_offset_label)
         angle_row.addWidget(self.yaw_offset_edit)
 
         self.yaw_slots_combo = QComboBox()
@@ -90,6 +94,7 @@ class ViewConfigWidget(QWidget):
         self.yaw_slots_combo.setCurrentText(str(_DEFAULT_YAW_SLOTS))
         self.yaw_slots_combo.currentTextChanged.connect(lambda _: self._apply_pitch_rows())
         self.yaw_slots_label = QLabel(i18n.t("YAW_SLOTS_LABEL"))
+        self.yaw_slots_label.setToolTip(i18n.tip("YAW_SLOTS"))
         angle_row.addWidget(self.yaw_slots_label)
         angle_row.addWidget(self.yaw_slots_combo)
         angle_row.addStretch()
@@ -100,6 +105,7 @@ class ViewConfigWidget(QWidget):
         self.pitch_edit = QLineEdit("-30,0,30")
         self.pitch_edit.setToolTip(i18n.tip("PITCH_ROWS"))
         self.pitch_label = QLabel(i18n.t("PITCH_ROWS_LABEL"))
+        self.pitch_label.setToolTip(i18n.tip("PITCH_ROWS"))
         pitch_row.addWidget(self.pitch_label)
         pitch_row.addWidget(self.pitch_edit, stretch=1)
 

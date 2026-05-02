@@ -67,3 +67,42 @@ def test_dry_run_does_not_install_missing_python(monkeypatch: pytest.MonkeyPatch
     )
 
     assert update_venv.main() == 0
+
+
+def test_repair_activation_scripts_after_venv_promotion(tmp_path: Path) -> None:
+    venv = tmp_path / ".venv"
+    scripts = venv / "Scripts"
+    scripts.mkdir(parents=True)
+    old = tmp_path / ".venv-candidate-py312"
+
+    (scripts / "activate.bat").write_text(
+        "\n".join(
+            [
+                f'set "VIRTUAL_ENV={old}"',
+                "set PROMPT=(.venv-candidate-py312) %PROMPT%",
+                'set "VIRTUAL_ENV_PROMPT=(.venv-candidate-py312) "',
+            ]
+        ),
+        encoding="utf-8",
+    )
+    (scripts / "activate").write_text(
+        "\n".join(
+            [
+                f"VIRTUAL_ENV=$(cygpath '{old}')",
+                f"export VIRTUAL_ENV='{old}'",
+                "VIRTUAL_ENV_PROMPT='(.venv-candidate-py312) '",
+                'PS1="("\'(.venv-candidate-py312) \'") ${PS1:-}"',
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    update_venv.repair_activation_scripts(venv)
+
+    activate_bat = (scripts / "activate.bat").read_text(encoding="utf-8")
+    activate_posix = (scripts / "activate").read_text(encoding="utf-8")
+    assert f'set "VIRTUAL_ENV={venv}"' in activate_bat
+    assert "set PROMPT=(.venv) %PROMPT%" in activate_bat
+    assert f"export VIRTUAL_ENV='{venv}'" in activate_posix
+    assert ".venv-candidate-py312" not in activate_bat
+    assert ".venv-candidate-py312" not in activate_posix

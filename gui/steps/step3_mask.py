@@ -28,6 +28,7 @@ from gui import i18n
 from gui.common.browse_widget import BrowseWidget
 from gui.common.collapsible_section import CollapsibleSection
 from gui.common.drag_spinbox import DragDoubleSpinBox, DragSpinBox
+from gui.common.form_rows import add_tooltip_row
 from gui.mask.mask_preview import MaskPreviewConfig, MaskPreviewWidget
 from gui.steps.base_step import (
     SETTINGS_PANE_MARGINS,
@@ -103,10 +104,10 @@ class MaskStep(BaseStepWidget):
         path_form.setSpacing(6)
         self.images_browse = BrowseWidget(mode="dir", placeholder="元画像のフォルダ")
         self.images_browse.setToolTip(i18n.tip("IMAGES_DIR"))
-        path_form.addRow(i18n.IMAGES_DIR, self.images_browse)
+        add_tooltip_row(path_form, i18n.IMAGES_DIR, self.images_browse, i18n.tip("IMAGES_DIR"))
         self.masks_browse = BrowseWidget(mode="dir", placeholder="マスク出力先")
         self.masks_browse.setToolTip(i18n.tip("MASKS_DIR"))
-        path_form.addRow(i18n.MASKS_DIR, self.masks_browse)
+        add_tooltip_row(path_form, i18n.MASKS_DIR, self.masks_browse, i18n.tip("MASKS_DIR"))
         layout.addLayout(path_form)
 
         # --- 実行対象 + 実行ボタン ---
@@ -142,7 +143,7 @@ class MaskStep(BaseStepWidget):
         self.yolo_level_combo.setToolTip(i18n.tip("YOLO_LEVEL"))
         self.yolo_level_combo.addItems(["0 (高速)", "1 (標準)", "2 (高品質)", "3 (最高品質)"])
         self.yolo_level_combo.setCurrentIndex(1)
-        yolo_form.addRow(i18n.YOLO_LEVEL, self.yolo_level_combo)
+        add_tooltip_row(yolo_form, i18n.YOLO_LEVEL, self.yolo_level_combo, i18n.tip("YOLO_LEVEL"))
 
         self.yolo_expand_edit = DragSpinBox(
             minimum=_YOLO_EXPAND_MIN,
@@ -154,7 +155,7 @@ class MaskStep(BaseStepWidget):
         )
         self.yolo_expand_edit.setToolTip(i18n.tip("YOLO_EXPAND"))
         self.yolo_expand_edit.setFixedWidth(88)
-        yolo_form.addRow(i18n.YOLO_EXPAND, self.yolo_expand_edit)
+        add_tooltip_row(yolo_form, i18n.YOLO_EXPAND, self.yolo_expand_edit, i18n.tip("YOLO_EXPAND"))
 
         self.yolo_add_ext_cb = QCheckBox(i18n.t("ADD_EXT_LABEL"))
         self.yolo_add_ext_cb.setToolTip(i18n.tip("YOLO_ADD_EXT"))
@@ -218,7 +219,12 @@ class MaskStep(BaseStepWidget):
         )
         self.stitch_boundary_width_edit.setToolTip(i18n.tip("STITCH_BOUNDARY_WIDTH"))
         self.stitch_boundary_width_edit.setFixedWidth(80)
-        other_form.addRow(i18n.STITCH_BOUNDARY_WIDTH, self.stitch_boundary_width_edit)
+        add_tooltip_row(
+            other_form,
+            i18n.STITCH_BOUNDARY_WIDTH,
+            self.stitch_boundary_width_edit,
+            i18n.tip("STITCH_BOUNDARY_WIDTH"),
+        )
 
         worker_default = os.cpu_count() or 4
         self.stitch_workers_edit = DragSpinBox(
@@ -229,7 +235,7 @@ class MaskStep(BaseStepWidget):
         )
         self.stitch_workers_edit.setToolTip(i18n.tip("STITCH_WORKERS"))
         self.stitch_workers_edit.setFixedWidth(80)
-        other_form.addRow(i18n.STITCH_WORKERS, self.stitch_workers_edit)
+        add_tooltip_row(other_form, i18n.STITCH_WORKERS, self.stitch_workers_edit, i18n.tip("STITCH_WORKERS"))
 
         sep = QLabel("")
         sep.setFixedHeight(8)
@@ -244,7 +250,12 @@ class MaskStep(BaseStepWidget):
         )
         self.overexp_threshold_edit.setToolTip(i18n.tip("OVEREXPOSURE_THRESHOLD"))
         self.overexp_threshold_edit.setFixedWidth(80)
-        other_form.addRow(i18n.OVEREXPOSURE_THRESHOLD, self.overexp_threshold_edit)
+        add_tooltip_row(
+            other_form,
+            i18n.OVEREXPOSURE_THRESHOLD,
+            self.overexp_threshold_edit,
+            i18n.tip("OVEREXPOSURE_THRESHOLD"),
+        )
 
         self.overexp_dilate_edit = DragSpinBox(
             minimum=_OVEREXP_DILATE_MIN,
@@ -255,7 +266,12 @@ class MaskStep(BaseStepWidget):
         )
         self.overexp_dilate_edit.setToolTip(i18n.tip("OVEREXPOSURE_DILATE"))
         self.overexp_dilate_edit.setFixedWidth(80)
-        other_form.addRow(i18n.OVEREXPOSURE_DILATE, self.overexp_dilate_edit)
+        add_tooltip_row(
+            other_form,
+            i18n.OVEREXPOSURE_DILATE,
+            self.overexp_dilate_edit,
+            i18n.tip("OVEREXPOSURE_DILATE"),
+        )
 
         self.other_section.content_layout.addLayout(other_form)
         layout.addWidget(self.other_section)

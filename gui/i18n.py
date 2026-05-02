@@ -60,8 +60,8 @@ _JA: dict[str, str] = {
     "MAX_GAP": "最大間隔 (秒)",
     "INTERVAL": "間隔 (秒)",
     "ANALYSIS_WIDTH": "解析幅 (px)",
-    "QUALITY_MIN_SCORE": "低品質しきい値",
-    "QUALITY_MIN_IMPROVEMENT": "置換最小改善",
+    "QUALITY_MIN_SCORE": "品質確認スコア",
+    "QUALITY_MIN_IMPROVEMENT": "代替フレーム選択基準",
     "IMAGE_FORMAT": "画像形式",
     "JPEG_QUALITY": "JPEG品質",
     "FFMPEG_PATH": "ffmpeg パス",
@@ -100,7 +100,9 @@ _JA: dict[str, str] = {
     "REVIEW_PROBLEMS_FORMAT": "確認対象: {n} 件 (代表置換={r}, 低品質={f}, 自動間引き={t}) | 現在: {cur}",
     "REVIEW_FRAME_SLIDER_TIP": "CSV内のフレームを順番に切り替えます。",
     "REVIEW_FRAME_POSITION_FORMAT": "{seq} / {total} : {name}",
-    "REVIEW_INFO_FORMAT": "動画位置: {ts}",
+    "REVIEW_INFO_FORMAT": "動画位置: {ts}  |  品質スコア: {quality}",
+    "REVIEW_QUALITY_ORIGINAL_FORMAT": "元:{score}",
+    "REVIEW_QUALITY_THRESHOLD_FORMAT": "基準:{score}",
     "REVIEW_FLAG_TIP": "採用フラグを切り替えます。変更はすぐCSVに反映されます。",
     "REVIEW_RESET_DECISION_TIP": "このフレームの採用フラグを読み込み時の状態へ戻します。",
     "REVIEW_BTN_PREV": "前 (←)",
@@ -233,10 +235,11 @@ _JA: dict[str, str] = {
     "SAMPLE_REFRESH": "サンプル推定を更新",
     "VIDEO_LABEL_DEFAULT": "動画: -",
     "ADVANCED_SETTINGS": "詳細設定",
+    "AUTO_SELECTION_SECTION": "抽出フレームの自動選別",
+    "AUTO_SELECTION_HINT": "抽出候補をSfM向けにスコアリングし、必要に応じて代替フレーム選択、品質確認、低変化フレームのスキップを行います。",
     "AUTO_PREFIX_HINT": "自動 (動画ファイル名)",
     "FRAMES_UNIT": "フレーム",
-    "THIN_MOTION_THRESHOLD": "立ち止まり間引き閾値",
-    "THIN_MOTION_HINT": "推奨 0.6。0 で無効化。直前の採用フレームからの累積モーションがこれ未満なら除外扱いになります。0.3-1.0 が典型範囲。",
+    "THIN_MOTION_THRESHOLD": "低変化フレームのスキップ",
     "NO_CACHE": "解析キャッシュを使わない",
     "NO_CACHE_HINT": "既定（チェックなし）= キャッシュを使う。同じ動画の再実行が高速化されます。チェックすると毎回フル解析（遅い、デバッグ用途）。",
 
@@ -315,8 +318,8 @@ _EN: dict[str, str] = {
     "MAX_GAP": "Max Gap (sec)",
     "INTERVAL": "Interval (sec)",
     "ANALYSIS_WIDTH": "Analysis Width (px)",
-    "QUALITY_MIN_SCORE": "Low Quality Threshold",
-    "QUALITY_MIN_IMPROVEMENT": "Min Replacement Gain",
+    "QUALITY_MIN_SCORE": "Quality Review Score",
+    "QUALITY_MIN_IMPROVEMENT": "Alternate Frame Criterion",
     "IMAGE_FORMAT": "Image Format",
     "JPEG_QUALITY": "JPEG Quality",
     "FFMPEG_PATH": "ffmpeg Path",
@@ -355,7 +358,9 @@ _EN: dict[str, str] = {
     "REVIEW_PROBLEMS_FORMAT": "Review targets: {n} (representative={r}, low quality={f}, thinned={t}) | Current: {cur}",
     "REVIEW_FRAME_SLIDER_TIP": "Slide through frames in the CSV.",
     "REVIEW_FRAME_POSITION_FORMAT": "{seq} / {total} : {name}",
-    "REVIEW_INFO_FORMAT": "Video position: {ts}",
+    "REVIEW_INFO_FORMAT": "Video position: {ts}  |  Quality score: {quality}",
+    "REVIEW_QUALITY_ORIGINAL_FORMAT": "orig:{score}",
+    "REVIEW_QUALITY_THRESHOLD_FORMAT": "threshold:{score}",
     "REVIEW_FLAG_TIP": "Toggle the keep flag. Changes are written to the CSV immediately.",
     "REVIEW_RESET_DECISION_TIP": "Reset this frame's keep flag to the state loaded from the CSV.",
     "REVIEW_BTN_PREV": "Prev (←)",
@@ -488,10 +493,11 @@ _EN: dict[str, str] = {
     "SAMPLE_REFRESH": "Refresh Sampled Estimate",
     "VIDEO_LABEL_DEFAULT": "Video: -",
     "ADVANCED_SETTINGS": "Advanced Settings",
+    "AUTO_SELECTION_SECTION": "Automatic Frame Selection",
+    "AUTO_SELECTION_HINT": "Scores extracted candidates for SfM and, when needed, selects alternate frames, flags low-quality frames for review, and skips low-change frames.",
     "AUTO_PREFIX_HINT": "auto (video filename)",
     "FRAMES_UNIT": "frames",
-    "THIN_MOTION_THRESHOLD": "Stationary thinning threshold",
-    "THIN_MOTION_HINT": "Recommended 0.6. Set to 0 to disable. Drops frames whose cumulative motion since last kept frame is below this. 0.3-1.0 is a typical range.",
+    "THIN_MOTION_THRESHOLD": "Skip Low-Change Frames",
     "NO_CACHE": "Skip analysis cache",
     "NO_CACHE_HINT": "Default (unchecked) = cache is used. Re-runs of the same video are much faster. Check to force full re-analysis every time (slow, mainly for debugging).",
 
@@ -541,8 +547,21 @@ _TIPS_JA: dict[str, str] = {
     "JPEG_QUALITY": "ffmpegの-q:v値。1=最高品質、31=最低品質。2-5推奨",
     "VIDEO_INFO_BTN": "ffprobeで動画の解像度・FPS・長さを取得し、フレーム数を推定",
     "ANALYSIS_WIDTH": "変化検出・品質評価に使うデコード幅。大きいほど精度は上がるが遅くなります",
-    "QUALITY_MIN_SCORE": "探索範囲内の最良候補がこの品質値を下回ると確認対象として記録します。0.35 が標準",
-    "QUALITY_MIN_IMPROVEMENT": "近傍フレームへ置換するために必要な品質スコア差。大きいほど置換が控えめになります",
+    "QUALITY_MIN_SCORE": (
+        "Step 2で品質確認として表示する基準スコア。範囲は0.00〜1.00、単位は正規化スコアです。\n"
+        "品質スコア = 特徴点数、特徴点の画面内分布、シャープネス、コントラスト、白飛び/黒つぶれペナルティの合成値。\n"
+        "代替フレーム選択後の品質スコアがこの値未満なら、Step 2で確認対象になります。既定値: 0.35"
+    ),
+    "QUALITY_MIN_IMPROVEMENT": (
+        "元フレームではなく近傍の代替フレームを選ぶために必要な品質スコア差。範囲は0.00〜1.00です。\n"
+        "候補品質スコア - 元品質スコア がこの値以上のときだけ、代替フレームを採用します。\n"
+        "大きいほど代替選択は控えめ、小さいほど積極的になります。既定値: 0.08"
+    ),
+    "THIN_MOTION_THRESHOLD": (
+        "直前に採用したフレームから次の候補までの累積変化量が、この値未満なら低変化区間として除外します。\n"
+        "変化量 = 隣接解析フレームの平均輝度差 / 255、累積変化量 = その合計。単位は正規化スコアです。\n"
+        "0で無効。目安は0.3〜1.0、UI範囲は0.0〜5.0です。既定値: 0.6"
+    ),
     "FFMPEG_PATH": "ffmpegの実行パス。PATHに通っていれば 'ffmpeg' でOK",
     "FFPROBE_PATH": "ffprobeの実行パス。動画情報の取得に使用",
     "FILENAME_PREFIX": "出力ファイル名の接頭辞。空欄なら動画ファイル名を自動使用",
@@ -619,8 +638,21 @@ _TIPS_EN: dict[str, str] = {
     "JPEG_QUALITY": "ffmpeg -q:v value. 1 = best quality, 31 = worst. Recommended: 2-5",
     "VIDEO_INFO_BTN": "Probe video resolution, FPS, and duration with ffprobe",
     "ANALYSIS_WIDTH": "Decode width for change and quality scoring. Higher = more accurate but slower",
-    "QUALITY_MIN_SCORE": "Frames below this bounded quality score are marked for review. 0.35 is the standard value",
-    "QUALITY_MIN_IMPROVEMENT": "Required quality-score gain before replacing an anchor with a nearby frame. Higher means more conservative replacement",
+    "QUALITY_MIN_SCORE": (
+        "Quality-score threshold used to flag frames for review in Step 2. Range: 0.00-1.00; unit: normalized score.\n"
+        "Quality combines feature count, feature spread, sharpness, contrast, and blown/black exposure penalty.\n"
+        "If the final representative is below this value after alternate-frame selection, Step 2 marks it for review. Default: 0.35"
+    ),
+    "QUALITY_MIN_IMPROVEMENT": (
+        "Quality-score gain required before choosing a nearby alternate frame. Range: 0.00-1.00.\n"
+        "An alternate frame is used only when candidate score - original score is at least this value.\n"
+        "Higher is more conservative; lower is more aggressive. Default: 0.08"
+    ),
+    "THIN_MOTION_THRESHOLD": (
+        "Drops low-change candidates when cumulative change since the last kept frame is below this value.\n"
+        "Per-frame change = mean absolute luma difference / 255; cumulative change is the sum. Unit: normalized score.\n"
+        "0 disables thinning. Typical range: 0.3-1.0; UI range: 0.0-5.0. Default: 0.6"
+    ),
     "FFMPEG_PATH": "ffmpeg executable path. 'ffmpeg' works if it's on PATH",
     "FFPROBE_PATH": "ffprobe executable path. Used for video metadata probing",
     "FILENAME_PREFIX": "Output filename prefix. Leave empty to use the video filename",

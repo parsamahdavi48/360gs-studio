@@ -26,6 +26,7 @@ from PySide6.QtCore import Qt
 from gui import i18n
 from gui.common.browse_widget import BrowseWidget
 from gui.common.collapsible_section import CollapsibleSection
+from gui.common.form_rows import add_tooltip_row
 from gui.cubemap.view_config import ViewConfigWidget, _BLOCK_ENABLED_VIEWS, _WARN_ENABLED_VIEWS
 from gui.cubemap.preview_renderer import PreviewWidget
 from gui.steps.base_step import (
@@ -73,7 +74,9 @@ class CubemapStep(BaseStepWidget):
 
         self.output_browse = BrowseWidget(mode="dir")
         self.output_browse.setToolTip(i18n.tip("OUTPUT_DIR_CUBEMAP"))
-        left_layout.addWidget(QLabel(i18n.OUTPUT_DIR))
+        output_dir_label = QLabel(i18n.OUTPUT_DIR)
+        output_dir_label.setToolTip(i18n.tip("OUTPUT_DIR_CUBEMAP"))
+        left_layout.addWidget(output_dir_label)
         left_layout.addWidget(self.output_browse)
 
         profile_row = QHBoxLayout()
@@ -86,7 +89,9 @@ class CubemapStep(BaseStepWidget):
         self.profile_combo.addItem(i18n.PROFILE_CUSTOM, _PROFILE_CUSTOM)
         self.profile_combo.currentIndexChanged.connect(self._on_profile_changed)
         profile_row.addWidget(self.profile_combo)
-        profile_row.addWidget(QLabel(i18n.OUTPUT_SCALE + ":"))
+        output_scale_label = QLabel(i18n.OUTPUT_SCALE + ":")
+        output_scale_label.setToolTip(i18n.tip("OUTPUT_SCALE"))
+        profile_row.addWidget(output_scale_label)
         self.scale_combo = QComboBox()
         self.scale_combo.setToolTip(i18n.tip("OUTPUT_SCALE"))
         self.scale_combo.addItem("Half (0.5x)", 0.5)
@@ -97,7 +102,7 @@ class CubemapStep(BaseStepWidget):
         self.scale_combo.setFixedWidth(120)
         profile_row.addWidget(self.scale_combo)
         profile_row.addStretch()
-        form.addRow(i18n.TARGET_PROFILE, profile_row)
+        add_tooltip_row(form, i18n.TARGET_PROFILE, profile_row, i18n.tip("TARGET_PROFILE"))
 
         self.profile_hint = QLabel("")
         self.profile_hint.setStyleSheet("color: #8888aa; font-size: 9pt;")
@@ -107,7 +112,7 @@ class CubemapStep(BaseStepWidget):
         self.json_name_edit = QLineEdit("transforms.json")
         self.json_name_edit.setToolTip(i18n.tip("JSON_NAME"))
         self.json_name_edit.setFixedWidth(160)
-        form.addRow(i18n.JSON_NAME, self.json_name_edit)
+        add_tooltip_row(form, i18n.JSON_NAME, self.json_name_edit, i18n.tip("JSON_NAME"))
         self.mask_browse = BrowseWidget(mode="dir")
         self.mask_browse.setToolTip(i18n.tip("MASK_DIR_CUBEMAP"))
 
@@ -140,7 +145,9 @@ class CubemapStep(BaseStepWidget):
         opt_group.content_layout.addWidget(opt_w)
 
         left_layout.addLayout(form)
-        left_layout.addWidget(QLabel(i18n.MASK_DIR))
+        mask_dir_label = QLabel(i18n.MASK_DIR)
+        mask_dir_label.setToolTip(i18n.tip("MASK_DIR_CUBEMAP"))
+        left_layout.addWidget(mask_dir_label)
         left_layout.addWidget(self.mask_browse)
         left_layout.addWidget(opt_group)
 
@@ -156,15 +163,15 @@ class CubemapStep(BaseStepWidget):
 
         self.ms_images_browse = BrowseWidget(mode="dir")
         self.ms_images_browse.setToolTip(i18n.tip("MS_IMAGES"))
-        pp_form.addRow(i18n.t("MS_IMAGES_LABEL"), self.ms_images_browse)
+        add_tooltip_row(pp_form, i18n.t("MS_IMAGES_LABEL"), self.ms_images_browse, i18n.tip("MS_IMAGES"))
 
         self.ms_xml_browse = BrowseWidget(mode="file", filter_str="XML (*.xml);;すべて (*.*)")
         self.ms_xml_browse.setToolTip(i18n.tip("MS_XML"))
-        pp_form.addRow(i18n.METASHAPE_XML, self.ms_xml_browse)
+        add_tooltip_row(pp_form, i18n.METASHAPE_XML, self.ms_xml_browse, i18n.tip("MS_XML"))
 
         self.ms_ply_browse = BrowseWidget(mode="file", filter_str="PLY (*.ply);;すべて (*.*)")
         self.ms_ply_browse.setToolTip(i18n.tip("MS_PLY"))
-        pp_form.addRow(i18n.METASHAPE_PLY, self.ms_ply_browse)
+        add_tooltip_row(pp_form, i18n.METASHAPE_PLY, self.ms_ply_browse, i18n.tip("MS_PLY"))
 
         self.ms_use_ply_cb = QCheckBox(i18n.USE_PLY)
         self.ms_use_ply_cb.setToolTip(i18n.tip("USE_PLY"))
@@ -173,7 +180,7 @@ class CubemapStep(BaseStepWidget):
 
         self.ms_scale_edit = QLineEdit("1.0")
         self.ms_scale_edit.setToolTip(i18n.tip("SCALE_FACTOR"))
-        pp_form.addRow(i18n.SCALE_FACTOR, self.ms_scale_edit)
+        add_tooltip_row(pp_form, i18n.SCALE_FACTOR, self.ms_scale_edit, i18n.tip("SCALE_FACTOR"))
 
         self.ms_no_fix_rot_cb = QCheckBox(i18n.NO_FIX_ROTATION)
         self.ms_no_fix_rot_cb.setToolTip(i18n.tip("NO_FIX_ROTATION"))
@@ -194,7 +201,12 @@ class CubemapStep(BaseStepWidget):
         self.yaw_per_frame_edit = QLineEdit("30.0")
         self.yaw_per_frame_edit.setFixedWidth(80)
         self.yaw_per_frame_edit.setToolTip(i18n.t("YAW_OFFSET_PER_FRAME_HINT"))
-        adv_form.addRow(i18n.t("YAW_OFFSET_PER_FRAME"), self.yaw_per_frame_edit)
+        add_tooltip_row(
+            adv_form,
+            i18n.t("YAW_OFFSET_PER_FRAME"),
+            self.yaw_per_frame_edit,
+            i18n.t("YAW_OFFSET_PER_FRAME_HINT"),
+        )
 
         self.output_format_combo = QComboBox()
         self.output_format_combo.addItem(i18n.t("OUTPUT_FORMAT_AUTO"), "auto")

@@ -21,6 +21,7 @@ from PySide6.QtWidgets import (
 )
 
 from gui import i18n
+from gui.common.form_rows import add_tooltip_row
 from gui.steps.base_step import (
     SETTINGS_PANE_MARGINS,
     SETTINGS_PANE_WIDTH,
@@ -65,12 +66,12 @@ class ReviewStep(BaseStepWidget):
         self.csv_edit = QLineEdit("selected_frames.csv")
         self.csv_edit.setToolTip(i18n.tip("CSV_FILE"))
         self.csv_edit.editingFinished.connect(self._on_csv_changed)
-        form.addRow(i18n.CSV_FILE, self.csv_edit)
+        add_tooltip_row(form, i18n.CSV_FILE, self.csv_edit, i18n.tip("CSV_FILE"))
 
         self.prefix_edit = QLineEdit("")
         self.prefix_edit.setToolTip(i18n.tip("FILENAME_PREFIX"))
         self.prefix_edit.setPlaceholderText(i18n.t("AUTO_PREFIX_HINT"))
-        form.addRow(i18n.FILENAME_PREFIX, self.prefix_edit)
+        add_tooltip_row(form, i18n.FILENAME_PREFIX, self.prefix_edit, i18n.tip("FILENAME_PREFIX"))
 
         self.backup_cb = QCheckBox(i18n.t("BACKUP_BEFORE_FINALIZE"))
         self.backup_cb.setToolTip(i18n.t("BACKUP_BEFORE_FINALIZE_HINT"))

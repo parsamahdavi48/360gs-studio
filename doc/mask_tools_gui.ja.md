@@ -13,7 +13,7 @@ STechDrive 3DGS Utils の Step 3 は、以下のマスク処理をまとめて�
 ## 起動
 
 ```bat
-start_gui.bat --scene ./scene01
+run_gui.bat --scene ./scene01
 ```
 
 ## 主な入力項目

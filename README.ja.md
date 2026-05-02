@@ -2,7 +2,7 @@
 
 **v0.3.0**
 
-360度動画から、Metashape SfM と 3D Gaussian Splatting (3DGS) 学習へ渡すための画像・マスク・カメラ情報を作るデスクトップツールです。Windows上で `setup_windows.bat` と `start_gui.bat` だけで使える、日英対応の統合GUI中心のワークフローとして整備しています。
+360度動画から、Metashape SfM と 3D Gaussian Splatting (3DGS) 学習へ渡すための画像・マスク・カメラ情報を作るデスクトップツールです。Windows上で `setup_windows.bat` と `run_gui.bat` だけで使える、日英対応の統合GUI中心のワークフローとして整備しています。
 
 [EN English](README.md)
 
@@ -26,14 +26,14 @@ Fork元: [tetraface/tetraface-3dgs-utils](https://github.com/tetraface/tetraface
 
 ```bat
 setup_windows.bat
-start_gui.bat
+run_gui.bat
 ```
 
 `setup_windows.bat` は Python 3.12 の検出、必要に応じた winget インストール、検証済み `.venv` の作成を行います。既存の `.venv` が正常なら、その状態を表示して再構築せず終了します。意図的に作り直す場合は `setup_windows.bat --force` を使います。パッケージのバージョンはセットアップ時点で解決し、PyTorch は CUDA 12.8 wheel index から導入します。
 
 セットアップウィンドウは最後にキー入力待ちになり、サマリーを読んでから閉じられます。既存のターミナルから実行する場合は `setup_windows.bat --no-pause` を使えます。
 
-`start_gui.bat` はvenvを有効化して統合GUIを起動します。
+`run_gui.bat` はvenvを有効化して統合GUIを起動します。
 
 既存の `.venv` を互換する最新パッケージへ更新する場合:
 

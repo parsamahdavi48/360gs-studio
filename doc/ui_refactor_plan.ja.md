@@ -3,7 +3,7 @@
 ## 前提
 
 - Python / PySide6 / Windows venv セットアップを維持する。
-- ユーザーは `start_gui.bat` から起動し、追加の開発環境を用意しない。
+- ユーザーは `run_gui.bat` から起動し、追加の開発環境を用意しない。
 - アプリ本体の MIT License を維持する。
 - 既存のCLI処理 (`extract_frames.py`, `yolo_mask.py`, `stitch_mask.py` など) はGUIから呼び出す構成を維持する。
 

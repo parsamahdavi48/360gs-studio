@@ -1293,13 +1293,19 @@ def parse_args() -> argparse.Namespace:
         "--quality-min-score",
         type=float,
         default=0.35,
-        help="Frames below this bounded quality score are marked for review if no better representative is found.",
+        help=(
+            "0.0-1.0 SfM-oriented quality score floor. Frames below this score are marked "
+            "for review if no better representative is found."
+        ),
     )
     parser.add_argument(
         "--quality-min-improvement",
         type=float,
         default=0.08,
-        help="Minimum quality-score improvement required to replace an anchor with a nearby representative.",
+        help=(
+            "0.0-1.0 quality-score gain required to replace an anchor with a nearby "
+            "representative. Computed as candidate quality minus original quality."
+        ),
     )
     parser.add_argument(
         "--center-bias",
@@ -1363,9 +1369,10 @@ def parse_args() -> argparse.Namespace:
         type=float,
         default=0.6,
         help=(
-            "Stationary thinning: drop selected frames whose cumulative change_score since the "
-            "last kept frame is below this threshold. Adapts to recording style: stops are thinned, "
-            "walking is preserved. Default=0.6. Set to 0 to disable. 0.3-1.0 is a typical range."
+            "Low-change thinning: drop selected frames whose cumulative change_score since the "
+            "last kept frame is below this threshold. change_score is mean absolute luma "
+            "difference / 255 per analyzed frame, summed between kept frames. Default=0.6. "
+            "Set to 0 to disable. 0.3-1.0 is a typical range."
         ),
     )
     parser.add_argument(
@@ -1395,8 +1402,8 @@ def main() -> None:
     if args.quality_min_score < 0.0 or args.quality_min_score > 1.0:
         print("Error: --quality-min-score must be between 0 and 1")
         sys.exit(1)
-    if args.quality_min_improvement < 0.0:
-        print("Error: --quality-min-improvement must be >= 0")
+    if args.quality_min_improvement < 0.0 or args.quality_min_improvement > 1.0:
+        print("Error: --quality-min-improvement must be between 0 and 1")
         sys.exit(1)
     if args.center_bias < 0.0:
         print("Error: --center-bias must be >= 0")

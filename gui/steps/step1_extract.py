@@ -34,6 +34,8 @@ from PySide6.QtWidgets import (
 from gui import i18n
 from gui.common.browse_widget import BrowseWidget
 from gui.common.collapsible_section import CollapsibleSection
+from gui.common.drag_spinbox import DragDoubleSpinBox
+from gui.common.form_rows import add_tooltip_row
 from gui.steps.base_step import (
     SETTINGS_PANE_MARGINS,
     SETTINGS_PANE_WIDTH,
@@ -96,7 +98,7 @@ class ExtractStep(BaseStepWidget):
         )
         self.video_browse.setToolTip(i18n.tip("INPUT_VIDEO"))
         self.video_browse.path_changed.connect(self._on_video_changed)
-        basic.addRow(i18n.INPUT_VIDEO, self.video_browse)
+        add_tooltip_row(basic, i18n.INPUT_VIDEO, self.video_browse, i18n.tip("INPUT_VIDEO"))
 
         # モード選択
         self.change_radio = QRadioButton(i18n.MODE_CHANGE)
@@ -116,25 +118,25 @@ class ExtractStep(BaseStepWidget):
         self.interval_edit.setToolTip(i18n.tip("INTERVAL"))
         self.interval_edit.setFixedWidth(80)
         self.interval_edit.textChanged.connect(self._mark_estimate_stale)
-        basic.addRow(i18n.INTERVAL, self.interval_edit)
+        add_tooltip_row(basic, i18n.INTERVAL, self.interval_edit, i18n.tip("INTERVAL"))
 
         self.threshold_edit = QLineEdit("0.04")
         self.threshold_edit.setToolTip(i18n.tip("CHANGE_THRESHOLD"))
         self.threshold_edit.setFixedWidth(80)
         self.threshold_edit.textChanged.connect(self._mark_estimate_stale)
-        basic.addRow(i18n.CHANGE_THRESHOLD, self.threshold_edit)
+        add_tooltip_row(basic, i18n.CHANGE_THRESHOLD, self.threshold_edit, i18n.tip("CHANGE_THRESHOLD"))
 
         self.min_gap_edit = QLineEdit("0.25")
         self.min_gap_edit.setToolTip(i18n.tip("MIN_GAP"))
         self.min_gap_edit.setFixedWidth(80)
         self.min_gap_edit.textChanged.connect(self._mark_estimate_stale)
-        basic.addRow(i18n.MIN_GAP, self.min_gap_edit)
+        add_tooltip_row(basic, i18n.MIN_GAP, self.min_gap_edit, i18n.tip("MIN_GAP"))
 
         self.max_gap_edit = QLineEdit("2.0")
         self.max_gap_edit.setToolTip(i18n.tip("MAX_GAP"))
         self.max_gap_edit.setFixedWidth(80)
         self.max_gap_edit.textChanged.connect(self._mark_estimate_stale)
-        basic.addRow(i18n.MAX_GAP, self.max_gap_edit)
+        add_tooltip_row(basic, i18n.MAX_GAP, self.max_gap_edit, i18n.tip("MAX_GAP"))
 
         # 画像形式
         fmt_row = QHBoxLayout()
@@ -144,13 +146,15 @@ class ExtractStep(BaseStepWidget):
         self.image_ext_combo.setFixedWidth(80)
         self.image_ext_combo.currentIndexChanged.connect(self._mark_estimate_stale)
         fmt_row.addWidget(self.image_ext_combo)
-        fmt_row.addWidget(QLabel(i18n.JPEG_QUALITY + ":"))
+        jpg_quality_label = QLabel(i18n.JPEG_QUALITY + ":")
+        jpg_quality_label.setToolTip(i18n.tip("JPEG_QUALITY"))
+        fmt_row.addWidget(jpg_quality_label)
         self.jpg_quality_edit = QLineEdit("2")
         self.jpg_quality_edit.setToolTip(i18n.tip("JPEG_QUALITY"))
         self.jpg_quality_edit.setFixedWidth(50)
         fmt_row.addWidget(self.jpg_quality_edit)
         fmt_row.addStretch()
-        basic.addRow(i18n.IMAGE_FORMAT, fmt_row)
+        add_tooltip_row(basic, i18n.IMAGE_FORMAT, fmt_row, i18n.tip("IMAGE_FORMAT"))
 
         layout.addLayout(basic)
 
@@ -189,32 +193,82 @@ class ExtractStep(BaseStepWidget):
         self.analysis_width_edit.setToolTip(i18n.tip("ANALYSIS_WIDTH"))
         self.analysis_width_edit.setFixedWidth(80)
         self.analysis_width_edit.textChanged.connect(self._mark_estimate_stale)
-        adv_form.addRow(i18n.ANALYSIS_WIDTH, self.analysis_width_edit)
+        add_tooltip_row(adv_form, i18n.ANALYSIS_WIDTH, self.analysis_width_edit, i18n.tip("ANALYSIS_WIDTH"))
+        advanced.content_layout.addLayout(adv_form)
 
-        self.quality_min_score_edit = QLineEdit("0.35")
+        selection_title = QLabel(i18n.t("AUTO_SELECTION_SECTION"))
+        selection_title.setObjectName("paneTitle")
+        selection_title.setToolTip(i18n.t("AUTO_SELECTION_HINT"))
+        advanced.content_layout.addWidget(selection_title)
+
+        selection_hint = QLabel(i18n.t("AUTO_SELECTION_HINT"))
+        selection_hint.setStyleSheet("color: #8888aa; font-size: 9pt;")
+        selection_hint.setWordWrap(True)
+        advanced.content_layout.addWidget(selection_hint)
+
+        selection_form = QFormLayout()
+        selection_form.setSpacing(6)
+
+        self.quality_min_score_edit = DragDoubleSpinBox(
+            minimum=0.0,
+            maximum=1.0,
+            step=0.01,
+            decimals=2,
+            value=0.35,
+        )
         self.quality_min_score_edit.setToolTip(i18n.tip("QUALITY_MIN_SCORE"))
-        self.quality_min_score_edit.setFixedWidth(80)
-        self.quality_min_score_edit.textChanged.connect(self._mark_estimate_stale)
-        adv_form.addRow(i18n.t("QUALITY_MIN_SCORE"), self.quality_min_score_edit)
+        self.quality_min_score_edit.setFixedWidth(96)
+        self.quality_min_score_edit.valueChanged.connect(self._mark_estimate_stale)
+        add_tooltip_row(
+            selection_form,
+            i18n.t("QUALITY_MIN_SCORE"),
+            self.quality_min_score_edit,
+            i18n.tip("QUALITY_MIN_SCORE"),
+        )
 
-        self.quality_min_improvement_edit = QLineEdit("0.08")
+        self.quality_min_improvement_edit = DragDoubleSpinBox(
+            minimum=0.0,
+            maximum=1.0,
+            step=0.01,
+            decimals=2,
+            value=0.08,
+        )
         self.quality_min_improvement_edit.setToolTip(i18n.tip("QUALITY_MIN_IMPROVEMENT"))
-        self.quality_min_improvement_edit.setFixedWidth(80)
-        self.quality_min_improvement_edit.textChanged.connect(self._mark_estimate_stale)
-        adv_form.addRow(i18n.t("QUALITY_MIN_IMPROVEMENT"), self.quality_min_improvement_edit)
+        self.quality_min_improvement_edit.setFixedWidth(96)
+        self.quality_min_improvement_edit.valueChanged.connect(self._mark_estimate_stale)
+        add_tooltip_row(
+            selection_form,
+            i18n.t("QUALITY_MIN_IMPROVEMENT"),
+            self.quality_min_improvement_edit,
+            i18n.tip("QUALITY_MIN_IMPROVEMENT"),
+        )
 
-        # 立ち止まり間引き
-        self.thin_motion_edit = QLineEdit("0.6")
-        self.thin_motion_edit.setToolTip(i18n.t("THIN_MOTION_HINT"))
-        self.thin_motion_edit.setFixedWidth(80)
-        self.thin_motion_edit.textChanged.connect(self._mark_estimate_stale)
-        adv_form.addRow(i18n.t("THIN_MOTION_THRESHOLD"), self.thin_motion_edit)
+        self.thin_motion_edit = DragDoubleSpinBox(
+            minimum=0.0,
+            maximum=5.0,
+            step=0.1,
+            decimals=2,
+            value=0.6,
+        )
+        self.thin_motion_edit.setToolTip(i18n.tip("THIN_MOTION_THRESHOLD"))
+        self.thin_motion_edit.setFixedWidth(96)
+        self.thin_motion_edit.valueChanged.connect(self._mark_estimate_stale)
+        add_tooltip_row(
+            selection_form,
+            i18n.t("THIN_MOTION_THRESHOLD"),
+            self.thin_motion_edit,
+            i18n.tip("THIN_MOTION_THRESHOLD"),
+        )
+        advanced.content_layout.addLayout(selection_form)
+
+        path_form = QFormLayout()
+        path_form.setSpacing(6)
 
         # キャッシュ無効化チェックボックス
         from PySide6.QtWidgets import QCheckBox  # 局所 import: 既存 import 行への影響回避
         self.no_cache_cb = QCheckBox(i18n.t("NO_CACHE"))
         self.no_cache_cb.setToolTip(i18n.t("NO_CACHE_HINT"))
-        adv_form.addRow("", self.no_cache_cb)
+        path_form.addRow("", self.no_cache_cb)
 
         # ffmpeg / ffprobe: PATH から自動検出して初期値にセット。参照ボタンで上書き可能
         ffmpeg_filter = "Executable (*.exe);;すべて (*.*)" if sys.platform == "win32" else "すべて (*.*)"
@@ -222,25 +276,25 @@ class ExtractStep(BaseStepWidget):
                                           placeholder="ffmpeg (PATH から自動検出)")
         self.ffmpeg_browse.set_text(_detect_binary("ffmpeg"))
         self.ffmpeg_browse.setToolTip(i18n.tip("FFMPEG_PATH"))
-        adv_form.addRow(i18n.FFMPEG_PATH, self.ffmpeg_browse)
+        add_tooltip_row(path_form, i18n.FFMPEG_PATH, self.ffmpeg_browse, i18n.tip("FFMPEG_PATH"))
 
         self.ffprobe_browse = BrowseWidget(mode="file", filter_str=ffmpeg_filter,
                                            placeholder="ffprobe (PATH から自動検出)")
         self.ffprobe_browse.set_text(_detect_binary("ffprobe"))
         self.ffprobe_browse.setToolTip(i18n.tip("FFPROBE_PATH"))
-        adv_form.addRow(i18n.FFPROBE_PATH, self.ffprobe_browse)
+        add_tooltip_row(path_form, i18n.FFPROBE_PATH, self.ffprobe_browse, i18n.tip("FFPROBE_PATH"))
 
         self.prefix_edit = QLineEdit("")
         self.prefix_edit.setToolTip(i18n.tip("FILENAME_PREFIX"))
         self.prefix_edit.setPlaceholderText(i18n.t("AUTO_PREFIX_HINT"))
-        adv_form.addRow(i18n.FILENAME_PREFIX, self.prefix_edit)
+        add_tooltip_row(path_form, i18n.FILENAME_PREFIX, self.prefix_edit, i18n.tip("FILENAME_PREFIX"))
 
         self.refresh_sample_btn = QPushButton(i18n.t("SAMPLE_REFRESH"))
         self.refresh_sample_btn.setToolTip(i18n.tip("SAMPLE_BTN"))
         self.refresh_sample_btn.clicked.connect(self._run_sampled_estimate_now)
-        adv_form.addRow("", self.refresh_sample_btn)
+        path_form.addRow("", self.refresh_sample_btn)
 
-        advanced.content_layout.addLayout(adv_form)
+        advanced.content_layout.addLayout(path_form)
         layout.addWidget(advanced)
 
         layout.addStretch()
@@ -296,8 +350,8 @@ class ExtractStep(BaseStepWidget):
             video, self.scene_dir,
             "--mode", self._mode(),
             "--analysis-width", self.analysis_width_edit.text().strip(),
-            "--quality-min-score", self.quality_min_score_edit.text().strip(),
-            "--quality-min-improvement", self.quality_min_improvement_edit.text().strip(),
+            "--quality-min-score", f"{self.quality_min_score_edit.value():g}",
+            "--quality-min-improvement", f"{self.quality_min_improvement_edit.value():g}",
             "--image-ext", self.image_ext_combo.currentText(),
             "--jpg-quality", self.jpg_quality_edit.text().strip(),
             "--ffmpeg", self.ffmpeg_browse.text() or "ffmpeg",
@@ -316,16 +370,8 @@ class ExtractStep(BaseStepWidget):
                 "--max-gap-sec", self.max_gap_edit.text().strip(),
             ])
 
-        thin_text = self.thin_motion_edit.text().strip()
-        if thin_text:
-            try:
-                thin_val = float(thin_text)
-            except ValueError:
-                raise ValueError("立ち止まり間引き閾値は数値で指定してください")
-            if thin_val < 0:
-                raise ValueError("立ち止まり間引き閾値は 0 以上で指定してください")
-            # 0.0 でも明示的に渡す（GUI 値が CLI デフォルトに上書きされないように）
-            cmd.extend(["--thin-motion-threshold", f"{thin_val:g}"])
+        # 0.0 でも明示的に渡す（GUI 値が CLI デフォルトに上書きされないように）
+        cmd.extend(["--thin-motion-threshold", f"{self.thin_motion_edit.value():g}"])
 
         if self.no_cache_cb.isChecked():
             cmd.append("--no-cache")

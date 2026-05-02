@@ -227,6 +227,29 @@ if QMainWindow is not None:
             # 緑: 通常品質
             return i18n.t("REVIEW_ADVISORY_NORMAL"), "#a7f3d0", "#064e3b"
 
+        def _format_quality_value(self, value: str | None) -> str:
+            if value in (None, ""):
+                return "-"
+            try:
+                return f"{float(value):.2f}"
+            except (TypeError, ValueError):
+                return "-"
+
+        def _quality_summary(self, row: Dict[str, str]) -> str:
+            final_score = self._format_quality_value(row.get("quality_score_final"))
+            original_score = self._format_quality_value(row.get("quality_score_original"))
+            threshold = self._format_quality_value(row.get("quality_min_score"))
+
+            parts = [final_score]
+            detail_parts: list[str] = []
+            if original_score != "-" and original_score != final_score:
+                detail_parts.append(i18n.t("REVIEW_QUALITY_ORIGINAL_FORMAT").format(score=original_score))
+            if threshold != "-":
+                detail_parts.append(i18n.t("REVIEW_QUALITY_THRESHOLD_FORMAT").format(score=threshold))
+            if detail_parts:
+                parts.append(f"({' / '.join(detail_parts)})")
+            return " ".join(parts)
+
         def _render_current(self) -> None:
             row = self._current_row()
             seq = int(row.get("seq", self.index + 1))
@@ -280,6 +303,7 @@ if QMainWindow is not None:
 
             info_text = i18n.t("REVIEW_INFO_FORMAT").format(
                 ts=ts_str,
+                quality=self._quality_summary(row),
             )
             self.info_label.setText(info_text)
 

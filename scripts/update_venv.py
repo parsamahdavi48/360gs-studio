@@ -514,7 +514,7 @@ def path_is_inside(child: Path, parent: Path) -> bool:
         return False
 
 
-def adopt_venv(repo_root: Path, candidate_venv: Path, *, keep_backup: bool) -> None:
+def adopt_venv(repo_root: Path, candidate_venv: Path, *, repair_python: Path, keep_backup: bool) -> None:
     final_venv = repo_root / ".venv"
     running_python = Path(sys.executable)
     if final_venv.exists() and path_is_inside(running_python, final_venv):
@@ -530,6 +530,7 @@ def adopt_venv(repo_root: Path, candidate_venv: Path, *, keep_backup: bool) -> N
     try:
         emit("[INFO] Promoting tested environment to .venv")
         candidate_venv.rename(final_venv)
+        repair_venv(final_venv, repair_python=repair_python)
     except Exception:
         if backup is not None and backup.exists() and not final_venv.exists():
             backup.rename(final_venv)
@@ -538,6 +539,35 @@ def adopt_venv(repo_root: Path, candidate_venv: Path, *, keep_backup: bool) -> N
     if backup is not None and backup.exists() and not keep_backup:
         emit("[INFO] Removing old .venv backup")
         remove_dir(backup)
+
+
+def repair_venv(venv_dir: Path, *, repair_python: Path) -> None:
+    emit("[INFO] Repairing venv launch scripts after promotion")
+    run([repair_python, "-m", "venv", "--upgrade", venv_dir])
+    repair_activation_scripts(venv_dir)
+
+
+def repair_activation_scripts(venv_dir: Path) -> None:
+    scripts_dir = venv_dir / "Scripts"
+    prompt = f"({venv_dir.name}) "
+    windows_path = str(venv_dir)
+
+    activate_bat = scripts_dir / "activate.bat"
+    if activate_bat.exists():
+        text = activate_bat.read_text(encoding="utf-8")
+        text = re.sub(r'set "VIRTUAL_ENV=.*"', lambda _: f'set "VIRTUAL_ENV={windows_path}"', text)
+        text = re.sub(r"set PROMPT=\([^)]+\) %PROMPT%", lambda _: f"set PROMPT={prompt}%PROMPT%", text)
+        text = re.sub(r'set "VIRTUAL_ENV_PROMPT=.*"', lambda _: f'set "VIRTUAL_ENV_PROMPT={prompt}"', text)
+        activate_bat.write_text(text, encoding="utf-8")
+
+    activate_posix = scripts_dir / "activate"
+    if activate_posix.exists():
+        text = activate_posix.read_text(encoding="utf-8")
+        text = re.sub(r"cygpath '.*?\.venv-candidate-py\d+'", lambda _: f"cygpath '{windows_path}'", text)
+        text = re.sub(r"export VIRTUAL_ENV='.*?\.venv-candidate-py\d+'", lambda _: f"export VIRTUAL_ENV='{windows_path}'", text)
+        text = re.sub(r"VIRTUAL_ENV_PROMPT='\([^)]+\) '", lambda _: f"VIRTUAL_ENV_PROMPT='{prompt}'", text)
+        text = re.sub(r"\.venv-candidate-py\d+", lambda _: venv_dir.name, text)
+        activate_posix.write_text(text, encoding="utf-8")
 
 
 def emit_summary(
@@ -690,7 +720,7 @@ def main() -> int:
             reports.append(CandidateReport(version, "not used", "candidate venv failed verification"))
             continue
 
-        adopt_venv(repo_root, candidate_venv, keep_backup=args.keep_backup)
+        adopt_venv(repo_root, candidate_venv, repair_python=candidate.executable, keep_backup=args.keep_backup)
         emit(f"[DONE] .venv now uses Python {candidate.label}.")
         final_venv = read_venv_full_version(repo_root)
         before_minor = full_version_major_minor(existing_venv)

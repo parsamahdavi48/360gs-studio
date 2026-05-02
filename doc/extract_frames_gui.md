@@ -37,3 +37,11 @@ python extract_frames_gui.py --scene-dir ./scene01
 - The same `Filename Prefix` is used for extraction output names and in-place finalize names.
 - `selected_frames.csv` is the shared state between extraction, review, and finalize.
 - Recommended output extension during iteration is JPG for speed.
+
+## Automatic Frame Selection
+
+The advanced settings include an automatic selection section. It scores extracted candidates for SfM and, when needed, chooses alternate nearby frames, flags low-quality frames for Step 2 review, and skips low-change frames.
+
+- `Quality Review Score`: 0.0-1.0 normalized SfM quality score. Frames below this after alternate-frame selection are flagged for review.
+- `Alternate Frame Criterion`: 0.0-1.0 score delta. A nearby alternate is used only when its quality score exceeds the original by at least this value.
+- `Skip Low-Change Frames`: cumulative normalized frame-change score. `0` disables; `0.3-1.0` is a typical range.
