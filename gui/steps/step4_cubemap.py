@@ -39,7 +39,8 @@ from gui.steps.base_step import (
     configure_settings_scroll,
 )
 
-_CONVERT_RE = re.compile(r"^Converting\s+(\d+)\s+images\.\.\.$")
+_CONVERT_RE = re.compile(r"^Converting\s+(\d+)\s+(?:images|files)\.\.\.$")
+_PROGRESS_RE = re.compile(r"^\[progress\]\s+(\d+)\s*/\s*(\d+)")
 _PROFILE_POSTSHOT = "postshot"
 _PROFILE_BRUSH = "brush"
 _PROFILE_LICHTFELD = "lichtfeld"
@@ -90,6 +91,7 @@ class CubemapStep(BaseStepWidget):
         super().__init__(base_dir, parent)
         self._converted_total = 0
         self._processed = 0
+        self._explicit_progress = False
         self._build_ui()
 
     def _build_ui(self) -> None:
@@ -760,13 +762,21 @@ class CubemapStep(BaseStepWidget):
     # -- プログレス --
 
     def on_line(self, line: str) -> tuple[int, int] | None:
+        progress = _PROGRESS_RE.match(line)
+        if progress:
+            self._processed = int(progress.group(1))
+            self._converted_total = int(progress.group(2))
+            self._explicit_progress = True
+            return self._processed, self._converted_total
+
         m = _CONVERT_RE.match(line)
         if m:
             self._converted_total = int(m.group(1))
             self._processed = 0
+            self._explicit_progress = False
             return 0, self._converted_total
 
-        if line.startswith("Processing:") and self._converted_total > 0:
+        if line.startswith("Processing:") and self._converted_total > 0 and not self._explicit_progress:
             self._processed += 1
             return self._processed, self._converted_total
 

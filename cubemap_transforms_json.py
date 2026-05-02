@@ -411,16 +411,17 @@ def remap_image(
     output_format: str | None = None,
     output_bit_depth: str = "8",
     jpg_quality: int = 95,
-) -> None:
+) -> int:
     basename, ext2, in_ext = split_filename_for_output(input_file)
     out_ext = resolve_output_ext(in_ext, output_format)
 
-    print(f"Processing: {input_file}")
+    print(f"Processing: {input_file}", flush=True)
     equi = load_equirect(input_file)
 
     is_grayscale = equi.ndim == 2
     has_alpha = equi.ndim == 3 and equi.shape[2] == 4
     max_val = _max_value_for_dtype(equi.dtype)
+    written = 0
 
     for view in views:
         view_name = view["name"]
@@ -447,6 +448,7 @@ def remap_image(
                 mask = max_val - mask
             mask_out_path = os.path.join(output_mask_dir, f"{basename}_{view_name}{ext2}.png")
             save_image(mask, mask_out_path, jpg_quality, force_8bit=True)
+            written += 2
         else:
             save_image(
                 converted,
@@ -454,6 +456,9 @@ def remap_image(
                 jpg_quality,
                 force_8bit=is_grayscale or output_bit_depth == "8",
             )
+            written += 1
+
+    return written
 
 
 def rotation_angle_diff(r1: np.ndarray, r2: np.ndarray) -> float:
@@ -672,15 +677,51 @@ def worker_init(
     _WORKER_REMAP_TABLES = get_remap_tables_for_offset(0.0)
 
 
-def proc_convert_images(frame_file: str, yaw_offset: float = 0.0) -> None:
+def _image_has_alpha(path: str) -> bool:
+    img = cv2.imread(path, cv2.IMREAD_UNCHANGED)
+    return img is not None and img.ndim == 3 and img.shape[2] == 4
+
+
+def count_planned_outputs(
+    image_files: list[str],
+    views: list[dict],
+    image_dir: str,
+    mask_dir: str,
+    mask_from_alpha: bool,
+) -> int:
+    view_count = len(views)
+    total = 0
+    mask_dir_exists = bool(mask_dir) and os.path.isdir(mask_dir)
+
+    for frame_file in image_files:
+        image = os.path.join(image_dir, frame_file)
+        image_exists = os.path.exists(image)
+        if image_exists:
+            total += view_count
+            if mask_from_alpha and _image_has_alpha(image):
+                total += view_count
+
+        if mask_from_alpha or not mask_dir_exists:
+            continue
+
+        for mask in mask_candidates(mask_dir, frame_file):
+            if os.path.exists(mask):
+                total += view_count
+                break
+
+    return total
+
+
+def proc_convert_images(frame_file: str, yaw_offset: float = 0.0) -> int:
     if _WORKER_VIEWS is None:
         raise RuntimeError("worker views are not initialized")
 
     tables = get_remap_tables_for_offset(yaw_offset)
+    written = 0
 
     image = os.path.join(_WORKER_IMAGE_DIR, frame_file)
     if os.path.exists(image):
-        remap_image(
+        written += remap_image(
             image,
             _WORKER_OUTPUT_IMAGE_DIR,
             tables,
@@ -694,12 +735,12 @@ def proc_convert_images(frame_file: str, yaw_offset: float = 0.0) -> None:
         )
 
     if _WORKER_MASK_FROM_ALPHA or not _WORKER_MASK_DIR or not os.path.isdir(_WORKER_MASK_DIR):
-        return
+        return written
 
     for mask in mask_candidates(_WORKER_MASK_DIR, frame_file):
         if os.path.exists(mask):
             # マスクは PNG 出力固定（α 不要、ロスレス必須）
-            remap_image(
+            written += remap_image(
                 mask,
                 _WORKER_OUTPUT_MASK_DIR,
                 tables,
@@ -712,6 +753,8 @@ def proc_convert_images(frame_file: str, yaw_offset: float = 0.0) -> None:
                 jpg_quality=_WORKER_JPG_QUALITY,
             )
             break
+
+    return written
 
 
 def convert_images(
@@ -731,8 +774,6 @@ def convert_images(
     jpg_quality: int = 95,
     frame_yaw_offsets: list[float] | None = None,
 ) -> None:
-    print(f"Converting {len(image_files)} images...")
-
     if frame_yaw_offsets is None:
         frame_yaw_offsets = [0.0] * len(image_files)
     if len(frame_yaw_offsets) != len(image_files):
@@ -742,6 +783,15 @@ def convert_images(
         )
 
     max_workers = min(16, os.cpu_count() or 1)
+    total_outputs = count_planned_outputs(
+        image_files=image_files,
+        views=views,
+        image_dir=image_dir,
+        mask_dir=mask_dir,
+        mask_from_alpha=mask_from_alpha,
+    )
+    print(f"Converting {total_outputs} files...")
+    print(f"[progress] 0/{total_outputs}", flush=True)
 
     os.makedirs(output_image_dir, exist_ok=True)
     if mask_from_alpha or os.path.isdir(mask_dir):
@@ -771,9 +821,11 @@ def convert_images(
             for frame_file, yaw_off in zip(image_files, frame_yaw_offsets)
         ]
 
+        done = 0
         for future in as_completed(futures):
             try:
-                future.result()
+                done += future.result()
+                print(f"[progress] {done}/{total_outputs}", flush=True)
             except Exception as e:
                 print("Worker failed:", e)
 
