@@ -121,6 +121,7 @@ start_cubemap_tools_gui.bat
 - 変換後、GUIはPLYを `<output_dir>` に同梱し、`<output_dir>/transforms.json` の `ply_file_path` を更新します。
   - `Postshot / Brush`: MetashapeのPLY（例: `metashape.ply` / `sparse.ply`）をコピー
   - `LichtFeld Studio`: `pointcloud.ply` をコピー
+- `LichtFeld Studio` プロファイルでは、最終出力の `transforms.json` と `pointcloud.ply` に同じ向き補正を適用し、LichtFeld上でMetashapeと同じ +X / +Z / 上下方向になるようにします。
 - 選択プロファイルで必要なPLYが見つからない場合は、実行前にエラーで停止します。
 - `RealityScan Rig XMP` タブでは:
   - `<rs_output_root>/views_config.json` を生成します。

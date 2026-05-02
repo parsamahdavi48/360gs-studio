@@ -5,10 +5,12 @@ from pathlib import Path
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
+import numpy as np
 import pytest
 from PySide6.QtWidgets import QApplication, QMessageBox
 
 from gui.steps.step4_cubemap import CubemapStep
+from transforms_to_colmap import read_ply_points
 
 
 def _app():
@@ -18,11 +20,26 @@ def _app():
 def _ready_step(scene: Path) -> CubemapStep:
     _app()
     scene.mkdir(exist_ok=True)
-    (scene / "pointcloud.ply").write_text("ply\n", encoding="utf-8")
+    _write_ascii_ply(scene / "pointcloud.ply", [(0.0, 0.0, 0.0)])
     step = CubemapStep(Path.cwd())
     step.set_scene_dir(str(scene))
     step.preprocess_cb.setChecked(False)
     return step
+
+
+def _write_ascii_ply(path: Path, points: list[tuple[float, float, float]]) -> None:
+    rows = "\n".join(f"{x:g} {y:g} {z:g}" for x, y, z in points)
+    path.write_text(
+        "ply\n"
+        "format ascii 1.0\n"
+        f"element vertex {len(points)}\n"
+        "property float x\n"
+        "property float y\n"
+        "property float z\n"
+        "end_header\n"
+        f"{rows}\n",
+        encoding="ascii",
+    )
 
 
 def test_cubemap_step_uses_fixed_output_folder_label(tmp_path: Path) -> None:
@@ -39,8 +56,11 @@ def test_cubemap_step_uses_fixed_output_folder_label(tmp_path: Path) -> None:
     assert hasattr(step, "axis_transform_combo")
     assert hasattr(step, "invert_masks_cb")
     assert hasattr(step, "no_image_cb")
+    assert not hasattr(step, "export_method_combo")
+    assert set(step.export_method_buttons) == {"metashape", "colmap"}
     assert not step.no_image_cb.isChecked()
-    assert step.export_method_combo.currentData() == "metashape"
+    assert step._export_method() == "metashape"
+    assert step.export_method_buttons["metashape"].isChecked()
     assert not step.output_path_label.wordWrap()
     assert step.output_path_label.full_text() == str(tmp_path / "output")
     assert step.ms_images_path_label.full_text() == str(tmp_path / "images")
@@ -76,12 +96,11 @@ def test_colmap_export_method_uses_image_only_conversion(tmp_path: Path) -> None
     (images / "frame_0001.jpg").write_bytes(b"dummy")
     step = CubemapStep(Path.cwd())
     step.set_scene_dir(str(tmp_path))
-    colmap_idx = step.export_method_combo.findData("colmap")
-    assert colmap_idx >= 0
 
-    step.export_method_combo.setCurrentIndex(colmap_idx)
+    step._set_export_method("colmap")
 
     assert not step.metashape_section.isVisible()
+    assert step.export_method_buttons["colmap"].isChecked()
     commands = step.build_commands()
     assert [phase for phase, _cmd in commands] == ["colmap_export"]
     cmd = commands[0][1]
@@ -98,9 +117,7 @@ def test_colmap_export_method_validates_images_before_resetting_output(tmp_path:
     old_file.write_text("old", encoding="utf-8")
     step = CubemapStep(Path.cwd())
     step.set_scene_dir(str(tmp_path))
-    colmap_idx = step.export_method_combo.findData("colmap")
-    assert colmap_idx >= 0
-    step.export_method_combo.setCurrentIndex(colmap_idx)
+    step._set_export_method("colmap")
     monkeypatch.setattr(
         QMessageBox,
         "question",
@@ -120,9 +137,7 @@ def test_colmap_export_finalize_writes_export_method_settings(tmp_path: Path) ->
     (images / "frame_0001.jpg").write_bytes(b"dummy")
     step = CubemapStep(Path.cwd())
     step.set_scene_dir(str(tmp_path))
-    colmap_idx = step.export_method_combo.findData("colmap")
-    assert colmap_idx >= 0
-    step.export_method_combo.setCurrentIndex(colmap_idx)
+    step._set_export_method("colmap")
 
     commands = step.build_commands()
     assert [phase for phase, _cmd in commands] == ["colmap_export"]
@@ -410,3 +425,43 @@ def test_cubemap_finalize_writes_export_settings(tmp_path: Path) -> None:
     assert settings["views_config_snapshot"] == json.loads(
         (tmp_path / "output" / "views_config.json").read_text(encoding="utf-8")
     )
+
+
+def test_lichtfeld_finalize_applies_final_orientation_correction(tmp_path: Path, monkeypatch) -> None:
+    _write_ascii_ply(tmp_path / "pointcloud.ply", [(1.0, 2.0, 3.0)])
+    step = CubemapStep(Path.cwd())
+    step.set_scene_dir(str(tmp_path))
+    step.preprocess_cb.setChecked(False)
+    monkeypatch.setattr(CubemapStep, "_transform_ply_with_open3d", staticmethod(lambda _path, _matrix: False))
+
+    output = tmp_path / "output"
+    output.mkdir()
+    (output / "transforms.json").write_text(
+        json.dumps(
+            {
+                "camera_model": "SIMPLE_PINHOLE",
+                "frames": [{"file_path": "images/frame_front.jpg", "transform_matrix": np.eye(4).tolist()}],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    step._finalize_bundle()
+
+    data = json.loads((output / "transforms.json").read_text(encoding="utf-8"))
+    corrected = np.array(data["frames"][0]["transform_matrix"])
+    expected = np.array(
+        [
+            [0.0, 0.0, 1.0, 0.0],
+            [0.0, -1.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0, 0.0],
+            [0.0, 0.0, 0.0, 1.0],
+        ]
+    )
+    assert np.allclose(corrected, expected)
+
+    points, _colors = read_ply_points(output / "pointcloud.ply")
+    assert np.allclose(points[0], [3.0, -2.0, 1.0])
+
+    settings = json.loads((output / "stechdrive_export_settings.json").read_text(encoding="utf-8"))
+    assert settings["postprocess"]["lichtfeld_final_orientation_correction"] is True

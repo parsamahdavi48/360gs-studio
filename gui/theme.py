@@ -176,6 +176,18 @@ QPushButton:disabled {{
     background-color: {BG_MID};
     border-color: {BG_MID};
 }}
+QPushButton#segmentedOption {{
+    padding: 6px 8px;
+    font-weight: 600;
+}}
+QPushButton#segmentedOption:checked {{
+    background-color: {ACCENT};
+    border-color: {ACCENT};
+    color: {TEXT_BRIGHT};
+}}
+QPushButton#segmentedOption:hover:!checked {{
+    border-color: {BORDER_FOCUS};
+}}
 
 /* Primary buttons (objectName = "primary") */
 QPushButton#primary {{

@@ -119,6 +119,7 @@ start_cubemap_tools_gui.bat
 - After conversion, GUI packages PLY into `<output_dir>` and rewrites `<output_dir>/transforms.json` `ply_file_path`.
   - `Postshot / Brush`: copies Metashape PLY (for example `metashape.ply` / `sparse.ply`).
   - `LichtFeld Studio`: copies `pointcloud.ply`.
+- With the `LichtFeld Studio` profile, the GUI applies the same final orientation correction to `transforms.json` and `pointcloud.ply` so the +X / +Z / up directions match the Metashape scene in LichtFeld.
 - If required PLY is missing for selected profile, run is blocked.
 - In `RealityScan Rig XMP` tab:
   - GUI writes `<rs_output_root>/views_config.json`.

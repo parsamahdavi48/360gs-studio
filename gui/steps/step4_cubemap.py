@@ -9,8 +9,10 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
+import numpy as np
 from PySide6.QtGui import QFontMetrics
 from PySide6.QtWidgets import (
+    QButtonGroup,
     QCheckBox,
     QComboBox,
     QFormLayout,
@@ -18,6 +20,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QLineEdit,
     QMessageBox,
+    QPushButton,
     QScrollArea,
     QSplitter,
     QVBoxLayout,
@@ -52,6 +55,15 @@ _AXIS_BRUSH = "brush"
 _AXIS_NONE = "none"
 _NORMAL_OUTPUT_SCALE = 2.0 / math.pi
 _EXPORT_SETTINGS_NAME = "stechdrive_export_settings.json"
+_LICHTFELD_FINAL_CORRECTION = np.array(
+    [
+        [0.0, 0.0, 1.0, 0.0],
+        [0.0, -1.0, 0.0, 0.0],
+        [1.0, 0.0, 0.0, 0.0],
+        [0.0, 0.0, 0.0, 1.0],
+    ],
+    dtype=np.float64,
+)
 
 
 class ElidedPathLabel(QLabel):
@@ -98,6 +110,7 @@ class CubemapStep(BaseStepWidget):
         self._processed = 0
         self._explicit_progress = False
         self._syncing_profile_controls = False
+        self._export_method_value = _METHOD_METASHAPE
         self._build_ui()
 
     def _build_ui(self) -> None:
@@ -126,15 +139,29 @@ class CubemapStep(BaseStepWidget):
         left_layout.addWidget(output_dir_label)
         left_layout.addWidget(self.output_path_label)
 
-        method_form = QFormLayout()
-        method_form.setSpacing(6)
-        self.export_method_combo = QComboBox()
-        self.export_method_combo.setToolTip(i18n.tip("EXPORT_METHOD"))
-        self.export_method_combo.addItem(i18n.t("METHOD_METASHAPE_IMPORT"), _METHOD_METASHAPE)
-        self.export_method_combo.addItem(i18n.t("METHOD_COLMAP_EXPORT"), _METHOD_COLMAP)
-        self.export_method_combo.currentIndexChanged.connect(self._on_export_method_changed)
-        add_tooltip_row(method_form, i18n.t("EXPORT_METHOD"), self.export_method_combo, i18n.tip("EXPORT_METHOD"))
-        left_layout.addLayout(method_form)
+        self.export_method_label = QLabel(i18n.t("EXPORT_METHOD"))
+        self.export_method_label.setToolTip(i18n.tip("EXPORT_METHOD"))
+        left_layout.addWidget(self.export_method_label)
+        self.export_method_row = QWidget()
+        method_row = QHBoxLayout(self.export_method_row)
+        method_row.setContentsMargins(0, 0, 0, 0)
+        method_row.setSpacing(6)
+        self.export_method_group = QButtonGroup(self)
+        self.export_method_group.setExclusive(True)
+        self.export_method_buttons: dict[str, QPushButton] = {}
+        for method, label in [
+            (_METHOD_METASHAPE, i18n.t("METHOD_METASHAPE_IMPORT")),
+            (_METHOD_COLMAP, i18n.t("METHOD_COLMAP_EXPORT")),
+        ]:
+            btn = QPushButton(label)
+            btn.setObjectName("segmentedOption")
+            btn.setCheckable(True)
+            btn.setToolTip(i18n.tip("EXPORT_METHOD"))
+            btn.clicked.connect(lambda _checked=False, m=method: self._set_export_method(m))
+            method_row.addWidget(btn, stretch=1)
+            self.export_method_group.addButton(btn)
+            self.export_method_buttons[method] = btn
+        left_layout.addWidget(self.export_method_row)
 
         # Metashapeインポート設定（折りたたみ）
         preprocess = CollapsibleSection(i18n.METASHAPE_PREPROCESS, expanded=False)
@@ -316,7 +343,7 @@ class CubemapStep(BaseStepWidget):
         if lichtfeld_index >= 0:
             self.profile_combo.setCurrentIndex(lichtfeld_index)
         self._on_profile_changed(self.profile_combo.currentIndex())
-        self._on_export_method_changed(self.export_method_combo.currentIndex())
+        self._set_export_method(_METHOD_METASHAPE)
 
     # -- シーンディレクトリ --
 
@@ -350,13 +377,21 @@ class CubemapStep(BaseStepWidget):
     # -- 書き出し方式 --
 
     def _export_method(self) -> str:
-        data = self.export_method_combo.currentData()
-        return data if data in {_METHOD_METASHAPE, _METHOD_COLMAP} else _METHOD_METASHAPE
+        return self._export_method_value
 
     def _is_metashape_method(self) -> bool:
         return self._export_method() == _METHOD_METASHAPE
 
-    def _on_export_method_changed(self, _index: int) -> None:
+    def _set_export_method(self, method: str) -> None:
+        if method not in {_METHOD_METASHAPE, _METHOD_COLMAP}:
+            method = _METHOD_METASHAPE
+        self._export_method_value = method
+        btn = self.export_method_buttons.get(method)
+        if btn is not None and not btn.isChecked():
+            btn.setChecked(True)
+        self._on_export_method_changed()
+
+    def _on_export_method_changed(self) -> None:
         metashape = self._is_metashape_method()
         self.metashape_section.setVisible(metashape)
         if not metashape:
@@ -418,6 +453,9 @@ class CubemapStep(BaseStepWidget):
     def _axis_transform_mode(self) -> str:
         data = self.axis_transform_combo.currentData()
         return data if data in {_AXIS_POSTSHOT, _AXIS_BRUSH, _AXIS_NONE} else _AXIS_POSTSHOT
+
+    def _uses_lichtfeld_final_correction(self) -> bool:
+        return self._is_metashape_method() and self._effective_profile() == _PROFILE_LICHTFELD
 
     def _on_profile_changed(self, _index: int) -> None:
         p = self._profile_id()
@@ -737,6 +775,12 @@ class CubemapStep(BaseStepWidget):
                 "no_image": self._is_metashape_method() and self.no_image_cb.isChecked(),
                 "export_colmap": self._is_metashape_method() and self.export_colmap_cb.isChecked(),
             },
+            "postprocess": {
+                "lichtfeld_final_orientation_correction": self._uses_lichtfeld_final_correction(),
+                "lichtfeld_final_orientation_matrix": _LICHTFELD_FINAL_CORRECTION.tolist()
+                if self._uses_lichtfeld_final_correction()
+                else None,
+            },
             "metashape_import": {
                 "enabled": self.preprocess_cb.isChecked(),
                 "use_ply": self._preprocess_uses_ply(),
@@ -900,8 +944,118 @@ class CubemapStep(BaseStepWidget):
                 data["ply_file_path"] = dest.name
                 transforms.write_text(json.dumps(data, indent=2), encoding="utf-8")
 
+        if self._uses_lichtfeld_final_correction():
+            self._apply_lichtfeld_final_correction(output)
+
         if not self.no_image_cb.isChecked():
             self._write_export_settings()
+
+    def _apply_lichtfeld_final_correction(self, output: Path) -> None:
+        transforms = output / "transforms.json"
+        if transforms.is_file():
+            self._transform_transforms_json(transforms, _LICHTFELD_FINAL_CORRECTION)
+
+        pointcloud = output / "pointcloud.ply"
+        if pointcloud.is_file():
+            self._transform_ply_points(pointcloud, _LICHTFELD_FINAL_CORRECTION)
+
+    @staticmethod
+    def _transform_transforms_json(path: Path, matrix: np.ndarray) -> None:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        frames = data.get("frames", [])
+        if not isinstance(frames, list):
+            return
+        for frame in frames:
+            if not isinstance(frame, dict) or "transform_matrix" not in frame:
+                continue
+            transform = np.array(frame["transform_matrix"], dtype=np.float64)
+            if transform.shape != (4, 4):
+                continue
+            frame["transform_matrix"] = (matrix @ transform).tolist()
+        path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+
+    @classmethod
+    def _transform_ply_points(cls, path: Path, matrix: np.ndarray) -> None:
+        if cls._transform_ply_with_open3d(path, matrix):
+            return
+        cls._transform_ascii_ply(path, matrix)
+
+    @staticmethod
+    def _transform_ply_with_open3d(path: Path, matrix: np.ndarray) -> bool:
+        try:
+            import open3d as o3d  # type: ignore
+        except Exception:
+            return False
+        try:
+            pc = o3d.io.read_point_cloud(str(path))
+            if pc.is_empty():
+                return False
+            pc.transform(matrix)
+            return bool(o3d.io.write_point_cloud(str(path), pc))
+        except Exception:
+            return False
+
+    @staticmethod
+    def _transform_ascii_ply(path: Path, matrix: np.ndarray) -> None:
+        text = path.read_text(encoding="ascii", errors="strict")
+        lines = text.splitlines(keepends=True)
+        try:
+            end_idx = next(i for i, line in enumerate(lines) if line.strip() == "end_header")
+        except StopIteration as e:
+            raise ValueError(f"PLY header is missing end_header: {path}") from e
+
+        header = lines[: end_idx + 1]
+        if not any(line.strip().startswith("format ascii") for line in header):
+            raise ValueError(
+                f"Binary PLY correction requires open3d, but open3d could not transform: {path}"
+            )
+
+        vertex_count = 0
+        vertex_props: list[str] = []
+        in_vertex = False
+        for line in header:
+            parts = line.strip().split()
+            if not parts:
+                continue
+            if parts[0] == "element":
+                in_vertex = len(parts) >= 3 and parts[1] == "vertex"
+                if in_vertex:
+                    vertex_count = int(parts[2])
+                continue
+            if in_vertex and parts[0] == "property" and len(parts) >= 3:
+                vertex_props.append(parts[-1])
+
+        try:
+            x_idx = vertex_props.index("x")
+            y_idx = vertex_props.index("y")
+            z_idx = vertex_props.index("z")
+        except ValueError as e:
+            raise ValueError(f"PLY vertex element must contain x/y/z properties: {path}") from e
+
+        data_start = end_idx + 1
+        if len(lines) < data_start + vertex_count:
+            raise ValueError(f"PLY vertex data is truncated: {path}")
+
+        rot = matrix[:3, :3]
+        trans = matrix[:3, 3]
+        for i in range(vertex_count):
+            line_idx = data_start + i
+            line = lines[line_idx]
+            newline = "\n" if line.endswith("\n") else ""
+            tokens = line.split()
+            if len(tokens) < len(vertex_props):
+                raise ValueError(f"PLY vertex row is truncated at row {i}: {path}")
+            point = np.array(
+                [float(tokens[x_idx]), float(tokens[y_idx]), float(tokens[z_idx])],
+                dtype=np.float64,
+            )
+            corrected = rot @ point + trans
+            tokens[x_idx] = f"{corrected[0]:.9g}"
+            tokens[y_idx] = f"{corrected[1]:.9g}"
+            tokens[z_idx] = f"{corrected[2]:.9g}"
+            lines[line_idx] = " ".join(tokens) + newline
+
+        path.write_text("".join(lines), encoding="ascii")
 
     # -- プログレス --
 
