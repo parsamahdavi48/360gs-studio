@@ -76,14 +76,17 @@ def test_save_load_roundtrip(tmp_path: Path):
     change = [0.0, 0.1, 0.2, 0.3]
     info = _make_video_info()
 
+    quality = [0.1, 0.2, 0.3, 0.4]
     save_analysis_cache(cache, video, info, analysis_w=960, analysis_h=480,
-                       blur_scores=blur, change_scores=change)
+                       blur_scores=blur, change_scores=change, quality_scores=quality,
+                       quality_mode="sfm")
 
     loaded = load_analysis_cache(cache, video, info, analysis_width=960)
     assert loaded is not None
-    blur_l, change_l, aw_l, ah_l = loaded
+    blur_l, change_l, quality_l, aw_l, ah_l = loaded
     assert blur_l == blur
     assert change_l == change
+    assert quality_l == quality
     assert aw_l == 960
     assert ah_l == 480
 
@@ -103,7 +106,7 @@ def test_load_returns_none_when_video_size_changed(tmp_path: Path):
     cache = cache_path_for(tmp_path)
     info = _make_video_info()
 
-    save_analysis_cache(cache, video, info, 960, 480, [1.0], [0.0])
+    save_analysis_cache(cache, video, info, 960, 480, [1.0], [0.0], [0.5], "sfm")
 
     # 動画ファイル変更
     _make_dummy_video(video, b"abcdefghij")
@@ -119,7 +122,7 @@ def test_load_returns_none_when_video_mtime_changed(tmp_path: Path):
     cache = cache_path_for(tmp_path)
     info = _make_video_info()
 
-    save_analysis_cache(cache, video, info, 960, 480, [1.0], [0.0])
+    save_analysis_cache(cache, video, info, 960, 480, [1.0], [0.0], [0.5], "sfm")
 
     # mtime を未来にずらす（同サイズ）
     future_ns = int((video.stat().st_mtime + 100.0) * 1e9)
@@ -136,10 +139,22 @@ def test_load_returns_none_when_analysis_width_changed(tmp_path: Path):
     info = _make_video_info(w=3840, h=1920)
 
     # analysis_width=960 でキャッシュ
-    save_analysis_cache(cache, video, info, 960, 480, [1.0], [0.0])
+    save_analysis_cache(cache, video, info, 960, 480, [1.0], [0.0], [0.5], "sfm")
 
     # 異なる analysis_width で読み込み → None
     loaded = load_analysis_cache(cache, video, info, 1920)
+    assert loaded is None
+
+
+def test_load_returns_none_when_quality_mode_changed(tmp_path: Path):
+    video = tmp_path / "fake.mp4"
+    _make_dummy_video(video)
+    cache = cache_path_for(tmp_path)
+    info = _make_video_info(w=3840, h=1920)
+
+    save_analysis_cache(cache, video, info, 960, 480, [1.0], [0.0], [0.5], "sfm")
+
+    loaded = load_analysis_cache(cache, video, info, 960, quality_mode="sharpness")
     assert loaded is None
 
 
@@ -153,11 +168,12 @@ def test_load_handles_zero_analysis_width(tmp_path: Path):
 
     # 0 指定 → 内部で video.width にスケール → 3840 でキャッシュ
     save_analysis_cache(cache, video, info, analysis_w=3840, analysis_h=1920,
-                       blur_scores=[1.0], change_scores=[0.0])
+                       blur_scores=[1.0], change_scores=[0.0], quality_scores=[0.5],
+                       quality_mode="sfm")
     # 同じ video で 0 を指定 → 内部で 3840 と判定 → hit
     loaded = load_analysis_cache(cache, video, info, analysis_width=0)
     assert loaded is not None
-    _, _, aw, _ = loaded
+    _, _, _, aw, _ = loaded
     assert aw == 3840
 
 
@@ -192,8 +208,10 @@ def test_load_returns_none_when_version_mismatch(tmp_path: Path):
         video_total_frames=np.int64(300),
         analysis_width=np.int32(960),
         analysis_height=np.int32(480),
+        quality_mode=np.asarray("sfm"),
         blur_scores=np.asarray([1.0]),
         change_scores=np.asarray([0.0]),
+        quality_scores=np.asarray([0.5]),
     )
     info = _make_video_info()
     loaded = load_analysis_cache(cache, video, info, 960)

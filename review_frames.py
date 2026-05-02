@@ -204,15 +204,15 @@ if QMainWindow is not None:
         def _advisory_for_row(self, row: Dict[str, str], idx: int) -> tuple[str, str, str]:
             """status のみに基づく advisory。
 
-            フレーム抽出時にブレ判定 + 置換は済んでいるので、
-            ブレ置換なしのフレームだけを強く確認対象として扱う。
+            フレーム抽出時に代表フレーム選択は済んでいるので、
+            低品質のまま残ったフレームだけを強く確認対象として扱う。
             「ブレ top X%」のような相対順位 advisory は出さない（誤判定の元）。
 
             Returns (text, fg, bg).
             """
             status = row.get("status", "ok").strip().lower()
 
-            # 橙: 品質条件を満たすブレ置換候補が探索範囲内になかったフレーム
+            # 橙: 品質条件を満たす代表候補が探索範囲内になかったフレーム
             if "fallback_keep" in status:
                 return i18n.t("REVIEW_ADVISORY_FALLBACK"), "#fef3c7", "#7c2d12"
 

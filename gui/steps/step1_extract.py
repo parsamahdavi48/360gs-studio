@@ -191,17 +191,17 @@ class ExtractStep(BaseStepWidget):
         self.analysis_width_edit.textChanged.connect(self._mark_estimate_stale)
         adv_form.addRow(i18n.ANALYSIS_WIDTH, self.analysis_width_edit)
 
-        self.blur_percentile_edit = QLineEdit("25.0")
-        self.blur_percentile_edit.setToolTip(i18n.tip("BLUR_PERCENTILE"))
-        self.blur_percentile_edit.setFixedWidth(80)
-        self.blur_percentile_edit.textChanged.connect(self._mark_estimate_stale)
-        adv_form.addRow(i18n.BLUR_PERCENTILE, self.blur_percentile_edit)
+        self.quality_min_score_edit = QLineEdit("0.35")
+        self.quality_min_score_edit.setToolTip(i18n.tip("QUALITY_MIN_SCORE"))
+        self.quality_min_score_edit.setFixedWidth(80)
+        self.quality_min_score_edit.textChanged.connect(self._mark_estimate_stale)
+        adv_form.addRow(i18n.t("QUALITY_MIN_SCORE"), self.quality_min_score_edit)
 
-        self.blur_window_edit = QLineEdit("0")
-        self.blur_window_edit.setToolTip(i18n.tip("BLUR_WINDOW"))
-        self.blur_window_edit.setFixedWidth(80)
-        self.blur_window_edit.textChanged.connect(self._mark_estimate_stale)
-        adv_form.addRow(i18n.BLUR_WINDOW, self.blur_window_edit)
+        self.quality_min_improvement_edit = QLineEdit("0.08")
+        self.quality_min_improvement_edit.setToolTip(i18n.tip("QUALITY_MIN_IMPROVEMENT"))
+        self.quality_min_improvement_edit.setFixedWidth(80)
+        self.quality_min_improvement_edit.textChanged.connect(self._mark_estimate_stale)
+        adv_form.addRow(i18n.t("QUALITY_MIN_IMPROVEMENT"), self.quality_min_improvement_edit)
 
         # 立ち止まり間引き
         self.thin_motion_edit = QLineEdit("0.6")
@@ -296,8 +296,8 @@ class ExtractStep(BaseStepWidget):
             video, self.scene_dir,
             "--mode", self._mode(),
             "--analysis-width", self.analysis_width_edit.text().strip(),
-            "--blur-percentile", self.blur_percentile_edit.text().strip(),
-            "--blur-window-frames", self.blur_window_edit.text().strip(),
+            "--quality-min-score", self.quality_min_score_edit.text().strip(),
+            "--quality-min-improvement", self.quality_min_improvement_edit.text().strip(),
             "--image-ext", self.image_ext_combo.currentText(),
             "--jpg-quality", self.jpg_quality_edit.text().strip(),
             "--ffmpeg", self.ffmpeg_browse.text() or "ffmpeg",

@@ -11,7 +11,7 @@ import sys
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
-from typing import List, Optional, Tuple
+from typing import List, Optional, Sequence, Tuple
 
 try:
     import cv2
@@ -37,6 +37,23 @@ class VideoInfo:
     fps: float
     duration: float
     total_frames: int
+
+
+@dataclass
+class QualityMetrics:
+    """Per-frame proxy metrics for SfM suitability.
+
+    The final score is deliberately absolute-ish and bounded instead of a
+    percentile rank. It is used only to choose a better representative inside
+    an anchor window, not to drop frames automatically.
+    """
+
+    quality: float
+    feature_count: int
+    feature_spread: float
+    sharpness: float
+    contrast: float
+    exposure_penalty: float
 
 
 def parse_fraction(value: str) -> float:
@@ -225,6 +242,96 @@ def scaled_dimensions(width: int, height: int, analysis_width: int) -> Tuple[int
     return analysis_width, scaled_h
 
 
+def _bounded01(value: float) -> float:
+    return max(0.0, min(1.0, float(value)))
+
+
+def _feature_spread_score(corners: Optional[np.ndarray], width: int, height: int) -> float:
+    if corners is None or len(corners) == 0 or width <= 0 or height <= 0:
+        return 0.0
+
+    pts = corners.reshape(-1, 2)
+    grid_cols = 6
+    grid_rows = 3
+    xs = np.clip((pts[:, 0] / max(1.0, float(width))) * grid_cols, 0, grid_cols - 1).astype(np.int32)
+    ys = np.clip((pts[:, 1] / max(1.0, float(height))) * grid_rows, 0, grid_rows - 1).astype(np.int32)
+    cells = ys * grid_cols + xs
+    counts = np.bincount(cells, minlength=grid_cols * grid_rows).astype(np.float64)
+    occupied = float(np.count_nonzero(counts)) / float(grid_cols * grid_rows)
+
+    total = float(np.sum(counts))
+    if total <= 0.0:
+        entropy = 0.0
+    else:
+        probs = counts[counts > 0] / total
+        entropy = float(-np.sum(probs * np.log(probs)) / math.log(grid_cols * grid_rows))
+
+    return _bounded01(0.65 * occupied + 0.35 * entropy)
+
+
+def _sharpness_score_from_lap_var(lap_var: float) -> float:
+    if lap_var <= 0.0:
+        return 0.0
+    # Log compression keeps the score stable across ordinary analysis sizes.
+    return _bounded01(math.log1p(lap_var) / math.log1p(1200.0))
+
+
+def compute_quality_metrics(frame: np.ndarray, lap_var: float, quality_mode: str) -> QualityMetrics:
+    sharpness = _sharpness_score_from_lap_var(lap_var)
+    if quality_mode == "sharpness":
+        return QualityMetrics(
+            quality=sharpness,
+            feature_count=0,
+            feature_spread=0.0,
+            sharpness=sharpness,
+            contrast=0.0,
+            exposure_penalty=0.0,
+        )
+
+    height, width = frame.shape[:2]
+    _, stddev = cv2.meanStdDev(frame)
+    contrast = _bounded01(float(stddev[0][0]) / 56.0)
+    bright = float(np.mean(frame >= 250))
+    dark = float(np.mean(frame <= 5))
+    exposure_penalty = _bounded01((bright + dark) * 2.0)
+
+    min_dim = max(1, min(width, height))
+    max_corners = max(200, min(1600, int(round((width * height) / 2500.0))))
+    min_distance = max(4, int(round(min_dim / 160.0)))
+    try:
+        corners = cv2.goodFeaturesToTrack(
+            frame,
+            maxCorners=max_corners,
+            qualityLevel=0.01,
+            minDistance=min_distance,
+            blockSize=5,
+            useHarrisDetector=False,
+        )
+    except cv2.error:
+        corners = None
+
+    feature_count = int(0 if corners is None else len(corners))
+    expected_features = max(80.0, float(max_corners) * 0.35)
+    feature_score = _bounded01(feature_count / expected_features)
+    spread = _feature_spread_score(corners, width, height)
+
+    quality = (
+        0.35 * feature_score
+        + 0.30 * spread
+        + 0.20 * sharpness
+        + 0.15 * contrast
+        - 0.25 * exposure_penalty
+    )
+    return QualityMetrics(
+        quality=_bounded01(quality),
+        feature_count=feature_count,
+        feature_spread=spread,
+        sharpness=sharpness,
+        contrast=contrast,
+        exposure_penalty=exposure_penalty,
+    )
+
+
 def analyze_video_window(
     video_path: Path,
     ffmpeg_bin: str,
@@ -238,7 +345,8 @@ def analyze_video_window(
     progress_phase: str = "",
     progress_total_frames: int = 0,
     progress_step_frames: int = 0,
-) -> Tuple[List[float], List[float], int, int, float]:
+    quality_mode: str = "sfm",
+) -> Tuple[List[float], List[float], List[float], int, int, float]:
     out_w, out_h = scaled_dimensions(src_w, src_h, analysis_width)
     vf_parts = [f"scale={out_w}:{out_h}:flags=bilinear", "format=gray"]
     effective_fps = video_fps
@@ -277,6 +385,7 @@ def analyze_video_window(
     frame_size = out_w * out_h
     prev_frame: Optional[np.ndarray] = None
     blur_scores: List[float] = []
+    quality_scores: List[float] = []
     change_scores: List[float] = []
     last_progress_report = 0
 
@@ -310,6 +419,8 @@ def analyze_video_window(
             frame = np.frombuffer(raw, dtype=np.uint8).reshape((out_h, out_w))
             lap_var = float(cv2.Laplacian(frame, cv2.CV_64F).var())
             blur_scores.append(lap_var)
+            metrics = compute_quality_metrics(frame, lap_var, quality_mode)
+            quality_scores.append(metrics.quality)
 
             if prev_frame is None:
                 change_scores.append(1.0)
@@ -333,7 +444,7 @@ def analyze_video_window(
         raise RuntimeError("No frames decoded during analysis")
     emit_progress(len(blur_scores), force=True)
 
-    return blur_scores, change_scores, out_w, out_h, effective_fps
+    return blur_scores, change_scores, quality_scores, out_w, out_h, effective_fps
 
 
 def analyze_video(
@@ -346,8 +457,9 @@ def analyze_video(
     progress_phase: str = "",
     progress_total_frames: int = 0,
     progress_step_frames: int = 0,
-) -> Tuple[List[float], List[float], int, int]:
-    blur_scores, change_scores, out_w, out_h, _ = analyze_video_window(
+    quality_mode: str = "sfm",
+) -> Tuple[List[float], List[float], List[float], int, int]:
+    blur_scores, change_scores, quality_scores, out_w, out_h, _ = analyze_video_window(
         video_path=video_path,
         ffmpeg_bin=ffmpeg_bin,
         video_fps=video_fps,
@@ -360,15 +472,17 @@ def analyze_video(
         progress_phase=progress_phase,
         progress_total_frames=progress_total_frames,
         progress_step_frames=progress_step_frames,
+        quality_mode=quality_mode,
     )
-    return blur_scores, change_scores, out_w, out_h
+    return blur_scores, change_scores, quality_scores, out_w, out_h
 
 
 # ===========================================================================
 # 解析キャッシュ: 動画メタ情報 + analysis_width が一致すれば再計算をスキップ
 # ===========================================================================
 
-CACHE_VERSION = 1
+CACHE_VERSION = 2
+QUALITY_MODE = "sfm"
 
 
 def cache_path_for(scene_dir: Path) -> Path:
@@ -389,6 +503,8 @@ def save_analysis_cache(
     analysis_h: int,
     blur_scores: List[float],
     change_scores: List[float],
+    quality_scores: List[float],
+    quality_mode: str,
 ) -> None:
     if np is None:
         return
@@ -406,8 +522,10 @@ def save_analysis_cache(
         video_total_frames=np.int64(video_info.total_frames),
         analysis_width=np.int32(analysis_w),
         analysis_height=np.int32(analysis_h),
+        quality_mode=np.asarray(quality_mode),
         blur_scores=np.asarray(blur_scores, dtype=np.float64),
         change_scores=np.asarray(change_scores, dtype=np.float64),
+        quality_scores=np.asarray(quality_scores, dtype=np.float64),
     )
     print(f"[cache] saved analysis cache: {cache_path}")
 
@@ -424,7 +542,7 @@ def thin_stationary(
     歩行など変化が大きい区間では何も削らない。
 
     Args:
-        rows: apply_blur_replacement の出力行（各 dict に "final_index" がある）。
+        rows: select_representative_frames の出力行（各 dict に "final_index" がある）。
         change_scores: 解析時の change_scores (per analyzed frame)。
         motion_threshold: 直前 kept フレームから次採用候補までの累積 change がこれ未満なら drop。
             0 以下なら間引きなし（全フレーム keep）。
@@ -443,7 +561,7 @@ def thin_stationary(
     n = len(change_scores)
     out_rows = [dict(row) for row in rows]
 
-    # 累積モーション計算: rows は final_index 順を仮定（apply_blur_replacement は順番を保つ）
+    # 累積モーション計算: rows は final_index 順を仮定（代表選択は順番を保つ）
     last_kept_pos = 0
     out_rows[0]["decision"] = "keep"
 
@@ -499,8 +617,9 @@ def load_analysis_cache(
     video_path: Path,
     video_info: VideoInfo,
     analysis_width: int,
-) -> Optional[Tuple[List[float], List[float], int, int]]:
-    """キャッシュが有効なら (blur_scores, change_scores, analysis_w, analysis_h) を返す。
+    quality_mode: str = "sfm",
+) -> Optional[Tuple[List[float], List[float], List[float], int, int]]:
+    """キャッシュが有効なら (blur_scores, change_scores, quality_scores, analysis_w, analysis_h) を返す。
     無効/不在/エラーなら None。"""
     if np is None or not cache_path.exists():
         return None
@@ -518,10 +637,14 @@ def load_analysis_cache(
             cached_target_w, _ = scaled_dimensions(video_info.width, video_info.height, analysis_width)
             if cached_aw != cached_target_w:
                 return None
+            cached_quality_mode = str(data["quality_mode"].tolist())
+            if cached_quality_mode != quality_mode:
+                return None
             blur = data["blur_scores"].tolist()
             change = data["change_scores"].tolist()
+            quality = data["quality_scores"].tolist()
             ah = int(data["analysis_height"])
-            return blur, change, cached_aw, ah
+            return blur, change, quality, cached_aw, ah
     except Exception as e:
         print(f"[cache] failed to load cache (will recompute): {e}")
         return None
@@ -568,10 +691,6 @@ def select_change(
             indices.append(len(change_scores) - 1)
 
     return indices, min_gap_frames, max_gap_frames
-
-
-def compute_auto_window(fps: float, min_gap_frames: int) -> int:
-    return max(1, min(int(round(0.35 * fps)), 12, max(1, int(round(0.6 * min_gap_frames)))))
 
 
 def estimate_count_range(duration_sec: float, min_gap_sec: float, max_gap_sec: float) -> Tuple[int, int]:
@@ -654,7 +773,7 @@ def estimate_change_sampled(
     min_gap_frames = max(1, int(round(min_gap_sec * analysis_fps)))
 
     for idx, (start_sec, seg_sec) in enumerate(windows, start=1):
-        _, change_scores, out_w, out_h, seg_fps = analyze_video_window(
+        _, change_scores, _, out_w, out_h, seg_fps = analyze_video_window(
             video_path=video_path,
             ffmpeg_bin=ffmpeg_bin,
             video_fps=video_info.fps,
@@ -664,6 +783,7 @@ def estimate_change_sampled(
             start_sec=start_sec,
             duration_sec=seg_sec,
             sample_fps=sample_fps,
+            quality_mode="sharpness",
         )
 
         if len(change_scores) < 2:
@@ -709,7 +829,6 @@ def estimate_change_sampled(
     range_min, range_max = estimate_count_range(video_info.duration, min_gap_sec, max_gap_sec)
     estimated = max(range_min, min(range_max, estimated))
 
-    window_frames = compute_auto_window(analysis_fps, min_gap_frames)
     return {
         "selected_count": estimated,
         "replaced_count": 0,
@@ -718,7 +837,6 @@ def estimate_change_sampled(
         "analysis_h": analysis_h,
         "analysis_fps": analysis_fps,
         "min_gap_frames": min_gap_frames,
-        "window_frames": window_frames,
         "sampled_segments_requested": len(windows),
         "sampled_segments_used": used_segments,
         "sampled_duration_sec": sampled_duration,
@@ -728,68 +846,107 @@ def estimate_change_sampled(
     }
 
 
-def apply_blur_replacement(
+def _candidate_window(
     selected_indices: List[int],
-    blur_scores: List[float],
-    change_scores: List[float],
-    blur_percentile: float,
-    window_frames: int,
-    min_gap_frames: int,
-    change_threshold: Optional[float],
+    pos: int,
+    total_frames: int,
+) -> Tuple[int, int]:
+    original_idx = selected_indices[pos]
+    if pos == 0:
+        low = 0
+    else:
+        prev_idx = selected_indices[pos - 1]
+        low = ((prev_idx + original_idx) // 2) + 1
+
+    if pos + 1 >= len(selected_indices):
+        high = total_frames - 1
+    else:
+        next_idx = selected_indices[pos + 1]
+        high = (original_idx + next_idx) // 2
+
+    low = max(0, min(low, original_idx))
+    high = min(total_frames - 1, max(high, original_idx))
+    return low, high
+
+
+def representative_window_for_report(
+    selected_indices: Sequence[int],
+    total_frames: int,
+) -> int:
+    if not selected_indices or total_frames <= 0:
+        return 0
+    max_radius = 0
+    selected = list(selected_indices)
+    for pos, original_idx in enumerate(selected):
+        low, high = _candidate_window(selected, pos, total_frames)
+        max_radius = max(max_radius, original_idx - low, high - original_idx)
+    return max_radius
+
+
+def select_representative_frames(
+    selected_indices: List[int],
+    quality_scores: List[float],
+    quality_min_score: float,
+    quality_min_improvement: float,
+    center_bias: float,
 ) -> List[dict]:
+    """Choose one SfM-oriented representative frame for each extraction anchor.
+
+    The initial fixed/change selection defines anchors. Each anchor owns a
+    non-overlapping candidate window (midpoint to neighboring anchors). We
+    select a better nearby frame only when the absolute quality improvement is
+    clear; no global percentile is used.
+    """
     if not selected_indices:
         return []
 
-    blur_values = [blur_scores[idx] for idx in selected_indices]
-    blur_threshold = float(np.percentile(blur_values, blur_percentile))
-    soft_gap = max(1, min_gap_frames // 2)
+    n = len(quality_scores)
+    if n <= 0:
+        return []
 
     rows: List[dict] = []
-    prev_final = -10**9
-    n = len(blur_scores)
-
     for pos, original_idx in enumerate(selected_indices):
-        original_blur = blur_scores[original_idx]
-        next_original = selected_indices[pos + 1] if pos + 1 < len(selected_indices) else n - 1
+        if original_idx < 0 or original_idx >= n:
+            continue
 
-        low = max(0, original_idx - window_frames, prev_final + soft_gap)
-        high = min(n - 1, original_idx + window_frames, next_original - soft_gap)
+        low, high = _candidate_window(selected_indices, pos, n)
+        radius = max(abs(original_idx - low), abs(high - original_idx), 1)
+
+        def objective(idx: int) -> float:
+            center_score = 1.0 - (abs(idx - original_idx) / float(radius))
+            return float(quality_scores[idx]) + center_bias * _bounded01(center_score)
+
+        candidates = list(range(low, high + 1))
+        best_idx = max(candidates, key=objective) if candidates else original_idx
+        original_quality = float(quality_scores[original_idx])
+        best_quality = float(quality_scores[best_idx])
 
         final_idx = original_idx
         status = "ok"
+        if (
+            best_idx != original_idx
+            and best_quality - original_quality >= quality_min_improvement
+            and objective(best_idx) > objective(original_idx)
+        ):
+            final_idx = best_idx
+            status = "replaced"
+        elif original_quality < quality_min_score:
+            status = "fallback_keep"
 
-        if original_blur < blur_threshold:
-            candidates: List[int] = []
-            if low <= high:
-                for cand in range(low, high + 1):
-                    if cand != original_idx and change_threshold is not None:
-                        if change_scores[cand] < change_threshold * 0.8:
-                            continue
-                    candidates.append(cand)
-
-            if candidates:
-                best_idx = max(candidates, key=lambda x: blur_scores[x])
-                if blur_scores[best_idx] > original_blur:
-                    final_idx = best_idx
-                    status = "replaced"
-                else:
-                    status = "fallback_keep"
-            else:
-                status = "fallback_keep"
-
-        prev_final = final_idx
         rows.append(
             {
                 "original_index": original_idx,
                 "final_index": final_idx,
                 "status": status,
-                "blur_threshold": blur_threshold,
+                "quality_min_score": quality_min_score,
+                "quality_score_original": original_quality,
+                "quality_score_final": float(quality_scores[final_idx]),
+                "candidate_low": low,
+                "candidate_high": high,
             }
         )
 
     return rows
-
-
 def build_select_expr(frame_indices: List[int]) -> str:
     return "+".join(f"eq(n\\,{idx})" for idx in frame_indices)
 
@@ -928,6 +1085,8 @@ def write_selected_csv(
         "change_score_final",
         "blur_score_original",
         "blur_score_final",
+        "quality_score_original",
+        "quality_score_final",
         "status",
         "decision",
         "output_file",
@@ -949,6 +1108,8 @@ def write_selected_csv(
                     "change_score_final": f"{row['change_score_final']:.6f}",
                     "blur_score_original": f"{row['blur_score_original']:.6f}",
                     "blur_score_final": f"{row['blur_score_final']:.6f}",
+                    "quality_score_original": f"{row.get('quality_score_original', 0.0):.6f}",
+                    "quality_score_final": f"{row.get('quality_score_final', 0.0):.6f}",
                     "status": row["status"],
                     "decision": row.get("decision", "keep"),
                     "output_file": f"images/{filename_prefix}_{final_idx:06d}.{image_ext}",
@@ -963,7 +1124,6 @@ def write_report(
     analysis_w: int,
     analysis_h: int,
     selected_rows: List[dict],
-    blur_percentile: float,
     window_frames: int,
     min_gap_frames: int,
     filename_prefix: str,
@@ -981,8 +1141,8 @@ def write_report(
         "analysis": {
             "width": analysis_w,
             "height": analysis_h,
-            "blur_percentile": blur_percentile,
-            "blur_window_frames": window_frames,
+            "quality_mode": QUALITY_MODE,
+            "representative_window_frames": window_frames,
             "min_gap_frames": min_gap_frames,
         },
         "params": {
@@ -990,12 +1150,15 @@ def write_report(
             "change_threshold": args.change_threshold,
             "min_gap_sec": args.min_gap_sec,
             "max_gap_sec": args.max_gap_sec,
+            "quality_min_score": args.quality_min_score,
+            "quality_min_improvement": args.quality_min_improvement,
+            "center_bias": args.center_bias,
             "filename_prefix": filename_prefix,
         },
         "result": {
             "selected_count": len(selected_rows),
-            "replaced_count": sum(1 for r in selected_rows if r["status"] == "replaced"),
-            "fallback_keep_count": sum(1 for r in selected_rows if r["status"] == "fallback_keep"),
+            "replaced_count": sum(1 for r in selected_rows if "replaced" in r.get("status", "")),
+            "fallback_keep_count": sum(1 for r in selected_rows if "fallback_keep" in r.get("status", "")),
         },
     }
 
@@ -1032,7 +1195,8 @@ def build_summary_from_counts(
             "width": analysis_w,
             "height": analysis_h,
             "min_gap_frames": min_gap_frames,
-            "blur_window_frames": window_frames,
+            "representative_window_frames": window_frames,
+            "quality_mode": QUALITY_MODE,
         },
         "params": {
             "interval_sec": args.interval_sec,
@@ -1040,8 +1204,9 @@ def build_summary_from_counts(
             "min_gap_sec": args.min_gap_sec,
             "max_gap_sec": args.max_gap_sec,
             "analysis_width": args.analysis_width,
-            "blur_percentile": args.blur_percentile,
-            "blur_window_frames": args.blur_window_frames,
+            "quality_min_score": args.quality_min_score,
+            "quality_min_improvement": args.quality_min_improvement,
+            "center_bias": args.center_bias,
             "filename_prefix": filename_prefix,
         },
         "result": {
@@ -1093,7 +1258,7 @@ def build_summary(
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Extract equirectangular frames via FFmpeg with change-based selection and blur replacement."
+        description="Extract equirectangular frames via FFmpeg with SfM-oriented representative frame selection."
     )
     parser.add_argument("input_video", help="Input video file path")
     parser.add_argument(
@@ -1119,22 +1284,28 @@ def parse_args() -> argparse.Namespace:
         type=int,
         default=1920,
         help=(
-            "Analysis decode width for change/blur scoring (default=1920). "
-            "Higher values give more accurate Laplacian variance / change detection at the cost of "
+            "Analysis decode width for change/quality scoring (default=1920). "
+            "Higher values give more accurate feature/quality scoring at the cost of "
             "analysis time. Set to 0 or a value >= source width to use full resolution."
         ),
     )
     parser.add_argument(
-        "--blur-percentile",
+        "--quality-min-score",
         type=float,
-        default=25.0,
-        help="Selected frames below this blur percentile are replacement candidates",
+        default=0.35,
+        help="Frames below this bounded quality score are marked for review if no better representative is found.",
     )
     parser.add_argument(
-        "--blur-window-frames",
-        type=int,
-        default=0,
-        help="Neighbor search window for blur replacement; 0 means auto",
+        "--quality-min-improvement",
+        type=float,
+        default=0.08,
+        help="Minimum quality-score improvement required to replace an anchor with a nearby representative.",
+    )
+    parser.add_argument(
+        "--center-bias",
+        type=float,
+        default=0.05,
+        help="Small preference for frames close to the original extraction anchor.",
     )
 
     parser.add_argument("--image-ext", choices=["jpg", "png"], default="jpg")
@@ -1221,6 +1392,15 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> None:
     args = parse_args()
+    if args.quality_min_score < 0.0 or args.quality_min_score > 1.0:
+        print("Error: --quality-min-score must be between 0 and 1")
+        sys.exit(1)
+    if args.quality_min_improvement < 0.0:
+        print("Error: --quality-min-improvement must be >= 0")
+        sys.exit(1)
+    if args.center_bias < 0.0:
+        print("Error: --center-bias must be >= 0")
+        sys.exit(1)
 
     input_video = Path(args.input_video)
     if not input_video.exists():
@@ -1263,7 +1443,7 @@ def main() -> None:
             sys.exit(1)
 
         analysis_w, analysis_h = scaled_dimensions(video_info.width, video_info.height, args.analysis_width)
-        window_frames = compute_auto_window(video_info.fps, min_gap_frames)
+        window_frames = representative_window_for_report(selected, total_frames)
         summary = build_summary_from_counts(
             args=args,
             video_info=video_info,
@@ -1278,8 +1458,8 @@ def main() -> None:
             filename_prefix=resolved_prefix,
         )
         print(f"Estimated selected frames: {summary['result']['selected_count']}")
-        print("Estimated replaced frames: 0")
-        print("Estimated fallback keep frames: 0")
+        print("Estimated representative replacements: 0")
+        print("Estimated low-quality review frames: 0")
         if args.print_summary_json:
             print("SUMMARY_JSON:" + json.dumps(summary, ensure_ascii=False))
         return
@@ -1309,7 +1489,7 @@ def main() -> None:
             analysis_w=sampled["analysis_w"],
             analysis_h=sampled["analysis_h"],
             min_gap_frames=sampled["min_gap_frames"],
-            window_frames=sampled["window_frames"],
+            window_frames=0,
             selected_count=sampled["selected_count"],
             replaced_count=sampled["replaced_count"],
             fallback_keep_count=sampled["fallback_keep_count"],
@@ -1327,8 +1507,8 @@ def main() -> None:
         )
 
         print(f"Estimated selected frames: {summary['result']['selected_count']}")
-        print(f"Estimated replaced frames: {summary['result']['replaced_count']}")
-        print(f"Estimated fallback keep frames: {summary['result']['fallback_keep_count']}")
+        print(f"Estimated representative replacements: {summary['result']['replaced_count']}")
+        print(f"Estimated low-quality review frames: {summary['result']['fallback_keep_count']}")
         print(
             "[sample] used segments: "
             f"{sampled['sampled_segments_used']}/{sampled['sampled_segments_requested']} "
@@ -1342,19 +1522,19 @@ def main() -> None:
         ensure_python_deps()
 
         cache_path = cache_path_for(scene_dir)
-        cached: Optional[Tuple[List[float], List[float], int, int]] = None
+        cached: Optional[Tuple[List[float], List[float], List[float], int, int]] = None
         if not args.no_cache:
-            cached = load_analysis_cache(cache_path, input_video, video_info, args.analysis_width)
+            cached = load_analysis_cache(cache_path, input_video, video_info, args.analysis_width, QUALITY_MODE)
             if cached is not None:
                 print(f"[cache] reusing analysis cache: {cache_path}")
 
         if cached is not None:
-            blur_scores, change_scores, analysis_w, analysis_h = cached
+            blur_scores, change_scores, quality_scores, analysis_w, analysis_h = cached
         else:
             progress_step = max(10, video_info.total_frames // 100) if video_info.total_frames > 0 else max(
                 10, int(round(video_info.fps * 2.0))
             )
-            blur_scores, change_scores, analysis_w, analysis_h = analyze_video(
+            blur_scores, change_scores, quality_scores, analysis_w, analysis_h = analyze_video(
                 input_video,
                 args.ffmpeg,
                 video_info.fps,
@@ -1364,12 +1544,13 @@ def main() -> None:
                 progress_phase="analyze",
                 progress_total_frames=video_info.total_frames,
                 progress_step_frames=progress_step,
+                quality_mode=QUALITY_MODE,
             )
             if not args.no_cache:
                 try:
                     save_analysis_cache(
                         cache_path, input_video, video_info,
-                        analysis_w, analysis_h, blur_scores, change_scores,
+                        analysis_w, analysis_h, blur_scores, change_scores, quality_scores, QUALITY_MODE,
                     )
                 except Exception as e:
                     print(f"[cache] failed to save cache (non-fatal): {e}")
@@ -1383,7 +1564,6 @@ def main() -> None:
     try:
         if args.mode == "fixed":
             selected, min_gap_frames = select_fixed(total_frames, video_info.fps, args.interval_sec)
-            change_threshold = None
         else:
             selected, min_gap_frames, _ = select_change(
                 change_scores,
@@ -1392,7 +1572,6 @@ def main() -> None:
                 args.min_gap_sec,
                 args.max_gap_sec,
             )
-            change_threshold = args.change_threshold
     except Exception as e:
         print(f"Error while selecting frames: {e}")
         sys.exit(1)
@@ -1401,18 +1580,14 @@ def main() -> None:
         print("Error: no frames selected")
         sys.exit(1)
 
-    window_frames = args.blur_window_frames
-    if window_frames <= 0:
-        window_frames = compute_auto_window(video_info.fps, min_gap_frames)
+    window_frames_for_report = representative_window_for_report(selected, total_frames)
 
-    rows = apply_blur_replacement(
-        selected,
-        blur_scores,
-        change_scores,
-        args.blur_percentile,
-        window_frames,
-        min_gap_frames,
-        change_threshold,
+    rows = select_representative_frames(
+        selected_indices=selected,
+        quality_scores=quality_scores,
+        quality_min_score=args.quality_min_score,
+        quality_min_improvement=args.quality_min_improvement,
+        center_bias=args.center_bias,
     )
 
     enriched_rows: List[dict] = []
@@ -1426,6 +1601,8 @@ def main() -> None:
                 "change_score_final": change_scores[final],
                 "blur_score_original": blur_scores[orig],
                 "blur_score_final": blur_scores[final],
+                "quality_score_original": row.get("quality_score_original", quality_scores[orig]),
+                "quality_score_final": row.get("quality_score_final", quality_scores[final]),
                 "decision": "keep",
             }
         )
@@ -1466,14 +1643,14 @@ def main() -> None:
         analysis_h=analysis_h,
         selected_rows=enriched_rows,
         min_gap_frames=min_gap_frames,
-        window_frames=window_frames,
+        window_frames=window_frames_for_report,
         filename_prefix=resolved_prefix,
     )
 
     if args.estimate_only:
         print(f"Estimated selected frames: {summary['result']['selected_count']}")
-        print(f"Estimated replaced frames: {summary['result']['replaced_count']}")
-        print(f"Estimated fallback keep frames: {summary['result']['fallback_keep_count']}")
+        print(f"Estimated representative replacements: {summary['result']['replaced_count']}")
+        print(f"Estimated low-quality review frames: {summary['result']['fallback_keep_count']}")
         if args.print_summary_json:
             print("SUMMARY_JSON:" + json.dumps(summary, ensure_ascii=False))
         return
@@ -1504,8 +1681,7 @@ def main() -> None:
         analysis_w,
         analysis_h,
         enriched_rows,
-        args.blur_percentile,
-        window_frames,
+        window_frames_for_report,
         min_gap_frames,
         resolved_prefix,
     )
@@ -1521,8 +1697,8 @@ def main() -> None:
     print(f"Selected frames: {kept_count} (extracted)")
     if thinned_count > 0:
         print(f"Thinned (stationary, recorded as drop in CSV): {thinned_count}")
-    print(f"Replaced blurred frames: {replaced_count}")
-    print(f"Fallback keep frames: {fallback_count}")
+    print(f"Representative replacements: {replaced_count}")
+    print(f"Low-quality review frames: {fallback_count}")
     print(f"Images: {images_dir}")
     print(f"Selection CSV: {csv_path}")
     print(f"Report: {report_path}")

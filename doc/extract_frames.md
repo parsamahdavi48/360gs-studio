@@ -1,4 +1,4 @@
-# extract_frames.py — FFmpeg frame extraction with blur-aware selection
+# extract_frames.py — FFmpeg frame extraction with SfM-oriented representative selection
 
 ## Overview
 
@@ -9,11 +9,11 @@ It supports two selection modes:
 - `fixed`: fixed interval (`--interval-sec`)
 - `change`: adaptive extraction based on inter-frame change (`--change-threshold` + min/max gap)
 
-After initial selection, frames below a blur percentile threshold are replaced with sharper nearby frames when possible.
+After initial selection, each selected frame is treated as an extraction anchor. The script searches a local candidate window and uses a bounded SfM-oriented quality score to replace the anchor only when a nearby frame is clearly better. No global percentile threshold is used.
 
 Optional **stationary thinning** (`--thin-motion-threshold`) drops selected frames whose cumulative motion since the last kept frame is too low. This adapts to the recording style: standing still gets thinned automatically, walking is preserved.
 
-The Laplacian / change scores are cached to `extract_cache.npz` so re-running with different selection or thinning parameters skips the analysis pass entirely (full re-analysis only when the video file or `--analysis-width` changes).
+The quality / Laplacian / change scores are cached to `extract_cache.npz` so re-running with different selection or thinning parameters skips the analysis pass entirely (full re-analysis only when the video file or `--analysis-width` changes).
 
 ## Requirements
 
@@ -88,9 +88,9 @@ python extract_frames.py input.mp4 ./scene01 \
 |---|---|---|
 | `--mode` | `change` | `fixed` or `change`. Fixed interval is recommended for SfM stability |
 | `--interval-sec` | `0.5` | Fixed mode interval in seconds |
-| `--analysis-width` | `1920` | Decode width for blur/change analysis. Higher = more accurate, slower. `0` or larger than source = full resolution |
-| `--blur-percentile` | `25.0` | Selected frames below this percentile are candidates for blur replacement |
-| `--blur-window-frames` | `0` (auto) | Neighbor search radius for blur replacement |
+| `--analysis-width` | `1920` | Decode width for change/quality analysis. Higher = more accurate, slower. `0` or larger than source = full resolution |
+| `--quality-min-score` | `0.35` | Mark a frame for review if no representative reaches this bounded quality score |
+| `--quality-min-improvement` | `0.08` | Minimum quality-score gain required before replacing an anchor |
 | `--thin-motion-threshold` | `0.6` | Stationary thinning. `0` disables. `0.3-1.0` is a typical range. Drops frames where cumulative change since last kept frame is below this value |
 | `--no-thin-keep-endpoints` | (off) | Allow the last frame to be dropped during thinning. By default first/last frames are always preserved |
 | `--no-extract-thinned` | (off) | Skip image extraction for thinned frames. Default is to extract them so the review GUI can preview each thinned frame and flip back to keep if desired. Thinned rows always remain in CSV with `decision=drop` regardless |
@@ -107,16 +107,17 @@ Under `output_dir`:
 `selected_frames.csv` fields:
 
 - `original_index`: index from initial mode selection
-- `final_index`: index after blur replacement
+- `final_index`: index after representative frame selection
 - `status`: `ok` / `replaced` / `fallback_keep` / `thinned` / combinations like `replaced+thinned`
+- `quality_score_original`, `quality_score_final`: bounded SfM-oriented quality scores used for representative selection
 - `decision`: `keep` for extracted frames, `drop` for thinned frames (editable in review tool)
 - `output_file`: image path for review and later processing (no file on disk for thinned rows)
 
-`extract_cache.npz`: cached Laplacian and change scores per analyzed frame, keyed by video file size+mtime and `--analysis-width`. Auto-invalidated when any of these change. Add to `.gitignore` (already configured).
+`extract_cache.npz`: cached SfM quality, Laplacian, and change scores per analyzed frame, keyed by video file size+mtime and `--analysis-width`. Auto-invalidated when any of these change. Add to `.gitignore` (already configured).
 
 ## Notes
 
-- Auto blur replacement window uses a conservative default based on FPS and selected minimum gap.
+- Representative frame candidates are chosen automatically from the midpoint between neighboring extraction anchors, so candidates do not cross into another anchor's region.
 - Default filename prefix is input video filename stem; override with `--filename-prefix`.
 - `--image-ext jpg` is recommended for speed during iteration.
 - This script does not modify existing mask files.

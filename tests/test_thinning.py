@@ -13,7 +13,7 @@ def _make_row(final_index: int, status: str = "ok") -> dict:
         "original_index": final_index,
         "final_index": final_index,
         "status": status,
-        "blur_threshold": 100.0,
+        "quality_min_score": 0.35,
     }
 
 
