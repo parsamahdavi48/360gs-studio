@@ -26,11 +26,14 @@ start_cubemap_tools_gui.bat
 ## Main fields
 
 - `Scene Directory`:
-  - Directory containing `transforms.json` and `images/`.
+  - Directory containing `images/` and, when needed, `transforms.json`.
 - `Output Directory`:
   - Cubemap output directory. Default: `<scene>/output`.
-- `Target Profile`:
-  - Preset for downstream tool.
+- `Export Method`:
+  - `Metashape Import`: export 3DGS-oriented viewpoint images, masks, and `transforms.json` from Metashape SfM results.
+  - `COLMAP Export`: export viewpoint images and masks for COLMAP SfM from extracted `images/` and `masks/`, without Metashape results.
+- `Output Profile`:
+  - Preset for the downstream 3DGS tool when `Metashape Import` is selected.
   - `Postshot / Brush`: applies the target coordinate preset and uses the scene PLY directly.
   - `LichtFeld Studio`: imports the Metashape point cloud as `pointcloud.ply` and writes LichtFeld-oriented camera data.
   - If advanced settings change the coordinate transform, PLY usage, or Metashape import details away from the preset value, the profile display switches to `Custom`.
@@ -40,8 +43,8 @@ start_cubemap_tools_gui.bat
   - `Camera XML`: Metashape-exported camera pose XML passed to `--xml`.
   - `Point Cloud PLY`: Metashape-exported point cloud PLY. Used automatically for LichtFeld.
   - `Advanced`: controls `--scale`, whether to pass `--ply`, and `--no-fix-rotation`.
-- `Advanced Output Settings`:
-  - `Axis Transform`: explicitly select `Postshot`, `Brush`, or `None`. Changing it from the preset value switches the profile to `Custom`.
+- `View Export Settings`:
+  - Shared viewpoint image export settings such as image size, per-frame yaw step, output format, bit depth, and mask inversion.
 - Masks:
   - Conversion and preview automatically use matching files from scene `masks/`.
 - `View Mode`:

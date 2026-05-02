@@ -40,6 +40,7 @@ def test_cubemap_step_uses_fixed_output_folder_label(tmp_path: Path) -> None:
     assert hasattr(step, "invert_masks_cb")
     assert hasattr(step, "no_image_cb")
     assert not step.no_image_cb.isChecked()
+    assert step.export_method_combo.currentData() == "metashape"
     assert not step.output_path_label.wordWrap()
     assert step.output_path_label.full_text() == str(tmp_path / "output")
     assert step.ms_images_path_label.full_text() == str(tmp_path / "images")
@@ -66,6 +67,72 @@ def test_cubemap_step_uses_fixed_output_folder_label(tmp_path: Path) -> None:
     normal_cmd = step._build_cubemap_cmd()
     normal_scale = float(normal_cmd[normal_cmd.index("--output_scale") + 1])
     assert normal_scale == pytest.approx(2.0 / math.pi, rel=1e-5)
+
+
+def test_colmap_export_method_uses_image_only_conversion(tmp_path: Path) -> None:
+    _app()
+    images = tmp_path / "images"
+    images.mkdir()
+    (images / "frame_0001.jpg").write_bytes(b"dummy")
+    step = CubemapStep(Path.cwd())
+    step.set_scene_dir(str(tmp_path))
+    colmap_idx = step.export_method_combo.findData("colmap")
+    assert colmap_idx >= 0
+
+    step.export_method_combo.setCurrentIndex(colmap_idx)
+
+    assert not step.metashape_section.isVisible()
+    commands = step.build_commands()
+    assert [phase for phase, _cmd in commands] == ["colmap_export"]
+    cmd = commands[0][1]
+    assert "--image-only" in cmd
+    assert "--no_transform" not in cmd
+    assert "--brush" not in cmd
+    assert "--no_image" not in cmd
+
+
+def test_colmap_export_method_validates_images_before_resetting_output(tmp_path: Path, monkeypatch) -> None:
+    output = tmp_path / "output"
+    output.mkdir()
+    old_file = output / "old.txt"
+    old_file.write_text("old", encoding="utf-8")
+    step = CubemapStep(Path.cwd())
+    step.set_scene_dir(str(tmp_path))
+    colmap_idx = step.export_method_combo.findData("colmap")
+    assert colmap_idx >= 0
+    step.export_method_combo.setCurrentIndex(colmap_idx)
+    monkeypatch.setattr(
+        QMessageBox,
+        "question",
+        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("confirmation should not open")),
+    )
+
+    with pytest.raises(ValueError, match="画像フォルダ"):
+        step.build_commands()
+
+    assert old_file.is_file()
+
+
+def test_colmap_export_finalize_writes_export_method_settings(tmp_path: Path) -> None:
+    _app()
+    images = tmp_path / "images"
+    images.mkdir()
+    (images / "frame_0001.jpg").write_bytes(b"dummy")
+    step = CubemapStep(Path.cwd())
+    step.set_scene_dir(str(tmp_path))
+    colmap_idx = step.export_method_combo.findData("colmap")
+    assert colmap_idx >= 0
+    step.export_method_combo.setCurrentIndex(colmap_idx)
+
+    commands = step.build_commands()
+    assert [phase for phase, _cmd in commands] == ["colmap_export"]
+    step._finalize_bundle()
+
+    settings_path = tmp_path / "output" / "stechdrive_export_settings.json"
+    settings = json.loads(settings_path.read_text(encoding="utf-8"))
+    assert settings["export_method"] == "colmap"
+    assert settings["conversion"]["no_image"] is False
+    assert settings["conversion"]["export_colmap"] is False
 
 
 def test_metashape_import_uses_scene_images_and_lf_ply(tmp_path: Path) -> None:
@@ -326,6 +393,7 @@ def test_cubemap_finalize_writes_export_settings(tmp_path: Path) -> None:
     settings = json.loads(settings_path.read_text(encoding="utf-8"))
     assert settings["app"] == "stechdrive-3dgs-utils"
     assert settings["settings_version"] == 1
+    assert settings["export_method"] == "metashape"
     assert settings["target_profile"] == "lichtfeld"
     assert settings["effective_profile"] == "lichtfeld"
     assert settings["axis_transform"] == "none"

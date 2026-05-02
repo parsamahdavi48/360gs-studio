@@ -52,7 +52,7 @@ The update window stays open at the end so the summary can be read. Use `update_
 | 1. Frame Extraction | Extract equirectangular still images from 360 video | Fixed interval + motion adjustment |
 | 2. Frame Review | Review extracted frames and apply keep/drop decisions | Representative replacements and low-quality review flags |
 | 3. Mask Generation | Generate YOLO, stitch seam, and overexposure masks | YOLO enabled, person detection as the baseline |
-| 4. Cubemap Conversion | Convert Metashape output to 3DGS perspective images and JSON | LichtFeld / Full (Quality) / Cube6 |
+| 4. Export | Export Metashape-based 3DGS outputs or COLMAP-oriented viewpoint images | Metashape Import / LichtFeld / Full (Quality) / Cube6 |
 
 ### Current GUI Direction
 

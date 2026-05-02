@@ -26,11 +26,14 @@ start_cubemap_tools_gui.bat
 ## 主な入力項目
 
 - `Scene Directory`:
-  - `transforms.json` と `images/` を含む作業フォルダ。
+  - `images/` と必要に応じて `transforms.json` を含む作業フォルダ。
 - `Output Directory`:
   - 出力先。既定は `<scene>/output`。
-- `Target Profile`:
-  - 連携先ツール向けのプリセットです。
+- `書き出し方式`:
+  - `Metashapeインポート`: Metashape SfM結果から、3DGS向けの視点画像、マスク、`transforms.json` を書き出します。
+  - `COLMAP書き出し`: Metashape結果を使わず、抽出済みの `images/` と `masks/` からCOLMAP SfM向けの視点画像とマスクを書き出します。
+- `出力プロファイル`:
+  - `Metashapeインポート` 選択時に使う、連携先3DGSツール向けのプリセットです。
   - `Postshot / Brush`: 対象アプリ向けの座標プリセットを適用し、シーン内のPLYを直接同梱します。
   - `LichtFeld Studio`: Metashapeの点群PLYを `pointcloud.ply` として取り込み、LichtFeld向けのカメラ情報を作成します。
   - 詳細設定で座標変換、PLY使用、Metashapeインポート詳細をプリセット値から変更すると、プロファイル表示は `カスタム` に切り替わります。
@@ -41,8 +44,8 @@ start_cubemap_tools_gui.bat
   - `カメラXML`: MetashapeからエクスポートしたカメラポーズXML。`--xml` に渡されます。
   - `点群PLY`: Metashapeからエクスポートした点群PLY。LichtFeldでは自動的に使用します。
   - `詳細設定`: `--scale`、`--ply` の使用有無、`--no-fix-rotation` を指定できます。
-- `高度な出力設定`:
-  - `座標変換`: `Postshot`、`Brush`、`変換なし` を明示できます。プリセット値から変更すると `カスタム` になります。
+- `視点書き出し設定`:
+  - 画像サイズ、フレーム別ヨー回転、出力フォーマット、ビット深度、マスク反転など、各方式で共通する視点画像の書き出し設定です。
 - マスク:
   - 変換とプレビューは、シーンフォルダ内の `masks/` から対応ファイルを自動的に使用します。
 - `View Mode`:

@@ -1,4 +1,4 @@
-"""Step 4: キューブマップ変換 (Postshot / LichtFeld 出力)"""
+"""Step 4: 視点画像書き出し (Metashape / COLMAP modes)."""
 from __future__ import annotations
 
 import json
@@ -45,6 +45,8 @@ _PROFILE_POSTSHOT = "postshot"
 _PROFILE_BRUSH = "brush"
 _PROFILE_LICHTFELD = "lichtfeld"
 _PROFILE_CUSTOM = "custom"
+_METHOD_METASHAPE = "metashape"
+_METHOD_COLMAP = "colmap"
 _AXIS_POSTSHOT = "postshot"
 _AXIS_BRUSH = "brush"
 _AXIS_NONE = "none"
@@ -117,9 +119,6 @@ class CubemapStep(BaseStepWidget):
         top_layout.setSpacing(8)
         left_layout = top_layout  # 既存コードとの互換用エイリアス
 
-        form = QFormLayout()
-        form.setSpacing(6)
-
         output_dir_label = QLabel(i18n.OUTPUT_DIR)
         output_dir_label.setToolTip(i18n.tip("OUTPUT_DIR_CUBEMAP"))
         self.output_path_label = ElidedPathLabel("-")
@@ -127,8 +126,22 @@ class CubemapStep(BaseStepWidget):
         left_layout.addWidget(output_dir_label)
         left_layout.addWidget(self.output_path_label)
 
-        profile_row = QHBoxLayout()
-        profile_row.setSpacing(8)
+        method_form = QFormLayout()
+        method_form.setSpacing(6)
+        self.export_method_combo = QComboBox()
+        self.export_method_combo.setToolTip(i18n.tip("EXPORT_METHOD"))
+        self.export_method_combo.addItem(i18n.t("METHOD_METASHAPE_IMPORT"), _METHOD_METASHAPE)
+        self.export_method_combo.addItem(i18n.t("METHOD_COLMAP_EXPORT"), _METHOD_COLMAP)
+        self.export_method_combo.currentIndexChanged.connect(self._on_export_method_changed)
+        add_tooltip_row(method_form, i18n.t("EXPORT_METHOD"), self.export_method_combo, i18n.tip("EXPORT_METHOD"))
+        left_layout.addLayout(method_form)
+
+        # Metashapeインポート設定（折りたたみ）
+        preprocess = CollapsibleSection(i18n.METASHAPE_PREPROCESS, expanded=False)
+        self.metashape_section = preprocess
+        profile_form = QFormLayout()
+        profile_form.setSpacing(6)
+
         self.profile_combo = QComboBox()
         self.profile_combo.setToolTip(i18n.tip("TARGET_PROFILE"))
         self.profile_combo.addItem(i18n.PROFILE_POSTSHOT, _PROFILE_POSTSHOT)
@@ -136,32 +149,31 @@ class CubemapStep(BaseStepWidget):
         self.profile_combo.addItem(i18n.PROFILE_LICHTFELD, _PROFILE_LICHTFELD)
         self.profile_combo.addItem(i18n.PROFILE_CUSTOM, _PROFILE_CUSTOM)
         self.profile_combo.currentIndexChanged.connect(self._on_profile_changed)
-        profile_row.addWidget(self.profile_combo)
-        output_scale_label = QLabel(i18n.OUTPUT_SCALE + ":")
-        output_scale_label.setToolTip(i18n.tip("OUTPUT_SCALE"))
-        profile_row.addWidget(output_scale_label)
-        self.scale_combo = QComboBox()
-        self.scale_combo.setToolTip(i18n.tip("OUTPUT_SCALE"))
-        self.scale_combo.addItem("Full (Quality)", 1.0)
-        self.scale_combo.addItem("Normal", _NORMAL_OUTPUT_SCALE)
-        self.scale_combo.addItem("Half (Light)", 0.5)
-        full_scale_index = self.scale_combo.findData(1.0)
-        if full_scale_index >= 0:
-            self.scale_combo.setCurrentIndex(full_scale_index)
-        self.scale_combo.setFixedWidth(136)
-        profile_row.addWidget(self.scale_combo)
-        profile_row.addStretch()
-        add_tooltip_row(form, i18n.TARGET_PROFILE, profile_row, i18n.tip("TARGET_PROFILE"))
+        add_tooltip_row(profile_form, i18n.TARGET_PROFILE, self.profile_combo, i18n.tip("TARGET_PROFILE"))
 
         self.profile_hint = QLabel("")
         self.profile_hint.setStyleSheet("color: #8888aa; font-size: 9pt;")
         self.profile_hint.setVisible(False)
-        form.addRow("", self.profile_hint)
+        profile_form.addRow("", self.profile_hint)
 
-        left_layout.addLayout(form)
+        self.axis_transform_combo = QComboBox()
+        self.axis_transform_combo.setToolTip(i18n.tip("AXIS_TRANSFORM"))
+        self.axis_transform_combo.addItem(i18n.t("AXIS_TRANSFORM_POSTSHOT"), _AXIS_POSTSHOT)
+        self.axis_transform_combo.addItem(i18n.t("AXIS_TRANSFORM_BRUSH"), _AXIS_BRUSH)
+        self.axis_transform_combo.addItem(i18n.t("AXIS_TRANSFORM_NONE"), _AXIS_NONE)
+        self.axis_transform_combo.setFixedWidth(180)
+        self.axis_transform_combo.currentIndexChanged.connect(self._on_profile_option_changed)
+        add_tooltip_row(profile_form, i18n.t("AXIS_TRANSFORM"), self.axis_transform_combo, i18n.tip("AXIS_TRANSFORM"))
 
-        # Metashapeインポート設定（折りたたみ）
-        preprocess = CollapsibleSection(i18n.METASHAPE_PREPROCESS, expanded=False)
+        self.no_image_cb = QCheckBox(i18n.NO_IMAGE)
+        self.no_image_cb.setToolTip(i18n.tip("NO_IMAGE"))
+        profile_form.addRow("", self.no_image_cb)
+
+        self.export_colmap_cb = QCheckBox(i18n.t("EXPORT_COLMAP"))
+        self.export_colmap_cb.setToolTip(i18n.t("EXPORT_COLMAP_HINT"))
+        profile_form.addRow("", self.export_colmap_cb)
+
+        preprocess.content_layout.addLayout(profile_form)
         pp_form = QFormLayout()
 
         self.preprocess_cb = QCheckBox(i18n.t("PREPROCESS_RUN_LABEL"))
@@ -221,19 +233,21 @@ class CubemapStep(BaseStepWidget):
             self.ms_scale_edit, self.ms_use_ply_cb, self.ms_no_fix_rot_cb,
         ]
 
-        # 高度な出力設定（折りたたみ）
+        # 視点書き出し設定（折りたたみ）
         adv_output = CollapsibleSection(i18n.t("ADVANCED_OUTPUT_SECTION"), expanded=False)
         adv_form = QFormLayout()
         adv_form.setSpacing(6)
 
-        self.axis_transform_combo = QComboBox()
-        self.axis_transform_combo.setToolTip(i18n.tip("AXIS_TRANSFORM"))
-        self.axis_transform_combo.addItem(i18n.t("AXIS_TRANSFORM_POSTSHOT"), _AXIS_POSTSHOT)
-        self.axis_transform_combo.addItem(i18n.t("AXIS_TRANSFORM_BRUSH"), _AXIS_BRUSH)
-        self.axis_transform_combo.addItem(i18n.t("AXIS_TRANSFORM_NONE"), _AXIS_NONE)
-        self.axis_transform_combo.setFixedWidth(180)
-        self.axis_transform_combo.currentIndexChanged.connect(self._on_profile_option_changed)
-        add_tooltip_row(adv_form, i18n.t("AXIS_TRANSFORM"), self.axis_transform_combo, i18n.tip("AXIS_TRANSFORM"))
+        self.scale_combo = QComboBox()
+        self.scale_combo.setToolTip(i18n.tip("OUTPUT_SCALE"))
+        self.scale_combo.addItem("Full (Quality)", 1.0)
+        self.scale_combo.addItem("Normal", _NORMAL_OUTPUT_SCALE)
+        self.scale_combo.addItem("Half (Light)", 0.5)
+        full_scale_index = self.scale_combo.findData(1.0)
+        if full_scale_index >= 0:
+            self.scale_combo.setCurrentIndex(full_scale_index)
+        self.scale_combo.setFixedWidth(136)
+        add_tooltip_row(adv_form, i18n.OUTPUT_SCALE + ":", self.scale_combo, i18n.tip("OUTPUT_SCALE"))
 
         self.yaw_per_frame_edit = QLineEdit("30.0")
         self.yaw_per_frame_edit.setFixedWidth(80)
@@ -262,17 +276,9 @@ class CubemapStep(BaseStepWidget):
         self.invert_masks_cb.setToolTip(i18n.tip("INVERT_MASKS"))
         adv_form.addRow("", self.invert_masks_cb)
 
-        self.no_image_cb = QCheckBox(i18n.NO_IMAGE)
-        self.no_image_cb.setToolTip(i18n.tip("NO_IMAGE"))
-        adv_form.addRow("", self.no_image_cb)
-
         self.jpg_quality_edit = QLineEdit("95")
         self.jpg_quality_edit.setFixedWidth(80)
         adv_form.addRow(i18n.t("JPG_QUALITY"), self.jpg_quality_edit)
-
-        self.export_colmap_cb = QCheckBox(i18n.t("EXPORT_COLMAP"))
-        self.export_colmap_cb.setToolTip(i18n.t("EXPORT_COLMAP_HINT"))
-        adv_form.addRow("", self.export_colmap_cb)
 
         adv_output.content_layout.addLayout(adv_form)
         left_layout.addWidget(adv_output)
@@ -310,6 +316,7 @@ class CubemapStep(BaseStepWidget):
         if lichtfeld_index >= 0:
             self.profile_combo.setCurrentIndex(lichtfeld_index)
         self._on_profile_changed(self.profile_combo.currentIndex())
+        self._on_export_method_changed(self.export_method_combo.currentIndex())
 
     # -- シーンディレクトリ --
 
@@ -339,6 +346,24 @@ class CubemapStep(BaseStepWidget):
 
     def primary_action_tooltip(self) -> str:
         return i18n.tip("RUN_CUBEMAP")
+
+    # -- 書き出し方式 --
+
+    def _export_method(self) -> str:
+        data = self.export_method_combo.currentData()
+        return data if data in {_METHOD_METASHAPE, _METHOD_COLMAP} else _METHOD_METASHAPE
+
+    def _is_metashape_method(self) -> bool:
+        return self._export_method() == _METHOD_METASHAPE
+
+    def _on_export_method_changed(self, _index: int) -> None:
+        metashape = self._is_metashape_method()
+        self.metashape_section.setVisible(metashape)
+        if not metashape:
+            self.no_image_cb.setChecked(False)
+            self.export_colmap_cb.setChecked(False)
+        self._update_output_count()
+        self.primary_action_state_changed.emit()
 
     # -- プロファイル --
 
@@ -490,6 +515,12 @@ class CubemapStep(BaseStepWidget):
     # -- コマンド構築 --
 
     def build_commands(self) -> list[tuple[str, list[str]]]:
+        if not self._is_metashape_method():
+            self._validate_image_only_export()
+            if not self._prepare_output_dir():
+                return []
+            return [("colmap_export", self._build_cubemap_cmd(image_only=True))]
+
         self._validate_bundle()
 
         preprocess_cmd: list[str] | None = None
@@ -542,7 +573,7 @@ class CubemapStep(BaseStepWidget):
             cmd.append("--no-fix-rotation")
         return cmd
 
-    def _build_cubemap_cmd(self) -> list[str]:
+    def _build_cubemap_cmd(self, image_only: bool = False) -> list[str]:
         script = self.base_dir / "cubemap_transforms_json.py"
         if not script.exists():
             raise FileNotFoundError(f"cubemap_transforms_json.py が見つかりません: {script}")
@@ -572,13 +603,16 @@ class CubemapStep(BaseStepWidget):
         ]
 
         axis_mode = self._axis_transform_mode()
-        if axis_mode == _AXIS_NONE:
-            cmd.append("--no_transform")
-        if axis_mode == _AXIS_BRUSH:
-            cmd.append("--brush")
+        if image_only:
+            cmd.append("--image-only")
+        else:
+            if axis_mode == _AXIS_NONE:
+                cmd.append("--no_transform")
+            if axis_mode == _AXIS_BRUSH:
+                cmd.append("--brush")
         if self.invert_masks_cb.isChecked():
             cmd.append("--invert_masks")
-        if self.no_image_cb.isChecked():
+        if not image_only and self.no_image_cb.isChecked():
             cmd.append("--no_image")
 
         # 高度な出力設定
@@ -666,6 +700,7 @@ class CubemapStep(BaseStepWidget):
             "created_at": self._utc_now_iso(),
             "scene_dir": str(scene),
             "output_dir": str(output),
+            "export_method": self._export_method(),
             "target_profile": profile,
             "effective_profile": self._effective_profile(),
             "axis_transform": self._axis_transform_mode(),
@@ -699,8 +734,8 @@ class CubemapStep(BaseStepWidget):
                 "output_bit_depth": self.output_bit_depth_combo.currentData() or "8",
                 "jpg_quality": jpg_quality,
                 "invert_masks": self.invert_masks_cb.isChecked(),
-                "no_image": self.no_image_cb.isChecked(),
-                "export_colmap": self.export_colmap_cb.isChecked(),
+                "no_image": self._is_metashape_method() and self.no_image_cb.isChecked(),
+                "export_colmap": self._is_metashape_method() and self.export_colmap_cb.isChecked(),
             },
             "metashape_import": {
                 "enabled": self.preprocess_cb.isChecked(),
@@ -761,7 +796,7 @@ class CubemapStep(BaseStepWidget):
         if resolved_output.parent != scene:
             raise ValueError(f"出力フォルダがシーンフォルダ外です: {output}")
 
-        if self.no_image_cb.isChecked():
+        if self._is_metashape_method() and self.no_image_cb.isChecked():
             output.mkdir(parents=True, exist_ok=True)
             return True
 
@@ -789,6 +824,16 @@ class CubemapStep(BaseStepWidget):
                 child.unlink()
 
     # -- バンドル検証 --
+
+    def _validate_image_only_export(self) -> None:
+        if not self.scene_dir:
+            raise ValueError(i18n.t("SCENE_REQUIRED_ACTION_HINT"))
+        images = self._metashape_images_dir()
+        if not images.is_dir():
+            raise ValueError(f"画像フォルダが見つかりません: {images}")
+        supported = {".jpg", ".jpeg", ".png", ".tif", ".tiff", ".webp", ".bmp"}
+        if not any(p.is_file() and p.suffix.lower() in supported for p in images.rglob("*")):
+            raise ValueError(f"画像フォルダに対象画像がありません: {images}")
 
     def _validate_bundle(self) -> None:
         profile = self._effective_profile()
@@ -838,6 +883,10 @@ class CubemapStep(BaseStepWidget):
     def _finalize_bundle(self) -> None:
         output = self._output_dir()
         output.mkdir(parents=True, exist_ok=True)
+
+        if not self._is_metashape_method():
+            self._write_export_settings()
+            return
 
         source = self._resolve_ply_source()
         if source is not None:

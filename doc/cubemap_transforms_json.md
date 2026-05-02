@@ -135,6 +135,7 @@ python cubemap_transforms_json.py . ./cubic --no_transform
 |--no_bottom|(no)|Output without a bottom face of cube-map.|
 |--no_top|(no)|Output without a top face of cube-map.|
 |--no_image|(no)|Disable image conversion. Only transforms.json will be converted.|
+|--image-only|(no)|Export viewpoint images and masks from `<input_dir>/images` and `<input_dir>/masks` without reading `transforms.json`.|
 |--no_transform|(no)|Disable coordinate axis conversion.|
 |--brush|(no)|Convert coordinates for Brush.|
 |--duplicate|(no)|Allow duplicated image files by merging chunks.|

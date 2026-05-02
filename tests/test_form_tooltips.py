@@ -202,6 +202,7 @@ def test_cubemap_labels_share_field_tooltips() -> None:
     _app()
     step = CubemapStep(Path.cwd())
 
+    assert _label(step, i18n.t("EXPORT_METHOD")).toolTip() == i18n.tip("EXPORT_METHOD")
     assert _label(step, i18n.t("AXIS_TRANSFORM")).toolTip() == i18n.tip("AXIS_TRANSFORM")
     assert _label(step, i18n.t("YAW_OFFSET_PER_FRAME")).toolTip() == i18n.t("YAW_OFFSET_PER_FRAME_HINT")
     assert _label(step, i18n.OUTPUT_SCALE + ":").toolTip() == i18n.tip("OUTPUT_SCALE")

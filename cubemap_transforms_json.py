@@ -14,6 +14,7 @@ EXAMPLE_TEXT = """Example:
   python cubemap_transforms_json.py .
   python cubemap_transforms_json.py . ./output --yaw 45 --stitch 2.5
   python cubemap_transforms_json.py . ./output --views-json views_config.json
+  python cubemap_transforms_json.py . ./output --image-only --views-json views_config.json
 """
 
 SAFE_VIEW_NAME_RE = re.compile(r"^[A-Za-z0-9_-]+$")
@@ -108,6 +109,13 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--no_bottom", action="store_true", help="Exclude bottom face in default mode")
     parser.add_argument("--no_top", action="store_true", help="Exclude top face in default mode")
     parser.add_argument("--no_image", action="store_true", help="Convert transforms.json only")
+    parser.add_argument(
+        "--image-only",
+        "--image_only",
+        dest="image_only",
+        action="store_true",
+        help="Convert equirectangular images/masks without reading or writing transforms.json",
+    )
     parser.add_argument("--no_transform", action="store_true", help="Disable axis transform (for LichtFeld Studio)")
     parser.add_argument("--duplicate", action="store_true", help="Allow duplicated image files")
     parser.add_argument("--brush", action="store_true", help="Transform axes for Brush")
@@ -603,6 +611,69 @@ def transform_json(
     return image_files, frame_yaw_offsets, input_size, output_size
 
 
+def collect_image_files(image_dir: str) -> list[str]:
+    """Collect input equirectangular images relative to ``image_dir`` for image-only export."""
+    root = Path(image_dir)
+    if not root.is_dir():
+        return []
+    files = [
+        p.relative_to(root).as_posix()
+        for p in root.rglob("*")
+        if p.is_file() and p.suffix.lower() in _RAW_IMAGE_EXTS
+    ]
+    return sorted(files, key=lambda x: x.lower())
+
+
+def infer_image_only_sizes(
+    image_dir: str,
+    image_files: list[str],
+    output_scale: float,
+) -> tuple[tuple[int, int], int]:
+    """Infer source equirectangular size and output face size from the first readable image."""
+    for rel in image_files:
+        path = Path(image_dir) / rel
+        if not path.is_file():
+            continue
+        with Image.open(path) as img:
+            input_size = img.size
+        return input_size, max(1, int(round(input_size[1] * output_scale)))
+    return (7840, 3920), max(1, int(round(3920 * output_scale)))
+
+
+def write_image_only_metadata(
+    output_dir: str,
+    image_dir: str,
+    mask_dir: str,
+    image_files: list[str],
+    views: list[dict],
+    fov: float,
+    output_scale: float,
+    input_size: tuple[int, int],
+    output_size: int,
+    yaw_offset_per_frame: float,
+) -> None:
+    """Write a small manifest for SfM-oriented image-only exports."""
+    payload = {
+        "export_type": "image_only",
+        "camera_model": "SIMPLE_PINHOLE",
+        "fov": float(fov),
+        "input_size": {"w": int(input_size[0]), "h": int(input_size[1])},
+        "output_size": {"w": int(output_size), "h": int(output_size)},
+        "output_scale": float(output_scale),
+        "image_dir": image_dir,
+        "mask_dir": mask_dir,
+        "yaw_offset_per_frame": float(yaw_offset_per_frame),
+        "views": [
+            {"name": v["name"], "yaw": float(v["yaw"]), "pitch": float(v["pitch"])}
+            for v in views
+        ],
+        "source_images": image_files,
+    }
+    os.makedirs(output_dir, exist_ok=True)
+    with open(os.path.join(output_dir, "view_export_settings.json"), "w", encoding="utf-8") as f:
+        json.dump(payload, f, indent=2, ensure_ascii=False)
+
+
 def mask_candidates(mask_dir: str, frame_file: str) -> list[str]:
     frame_path = Path(frame_file)
     candidates: list[Path] = []
@@ -869,19 +940,47 @@ def main() -> None:
     for view in views:
         print(f"{view['name']}: yaw={view['yaw']},pitch={view['pitch']}")
 
-    image_files, frame_yaw_offsets, input_size, output_size = transform_json(
-        input_dir=input_dir,
-        input_json=input_json,
-        image_dir=image_dir,
-        output_dir=output_dir,
-        views=views,
-        fov=args.fov,
-        output_scale=args.output_scale,
-        no_transform=args.no_transform,
-        allow_duplicate=args.duplicate,
-        brush_mode=args.brush,
-        yaw_offset_per_frame=args.yaw_offset_per_frame,
-    )
+    if args.image_only:
+        image_dir = os.path.join(input_dir, "images")
+        if not os.path.isdir(image_dir):
+            print(f"Error: images directory not found: {image_dir}")
+            sys.exit(1)
+        image_files = collect_image_files(image_dir)
+        if not image_files:
+            print(f"Error: no images found in {image_dir}")
+            sys.exit(1)
+        input_size, output_size = infer_image_only_sizes(image_dir, image_files, args.output_scale)
+        frame_yaw_offsets = [
+            frame_yaw_offset(i, args.yaw_offset_per_frame)
+            for i in range(len(image_files))
+        ]
+        write_image_only_metadata(
+            output_dir=output_dir,
+            image_dir=image_dir,
+            mask_dir=mask_dir,
+            image_files=image_files,
+            views=views,
+            fov=args.fov,
+            output_scale=args.output_scale,
+            input_size=input_size,
+            output_size=output_size,
+            yaw_offset_per_frame=args.yaw_offset_per_frame,
+        )
+        print(f"Image-only export: {len(image_files)} source images")
+    else:
+        image_files, frame_yaw_offsets, input_size, output_size = transform_json(
+            input_dir=input_dir,
+            input_json=input_json,
+            image_dir=image_dir,
+            output_dir=output_dir,
+            views=views,
+            fov=args.fov,
+            output_scale=args.output_scale,
+            no_transform=args.no_transform,
+            allow_duplicate=args.duplicate,
+            brush_mode=args.brush,
+            yaw_offset_per_frame=args.yaw_offset_per_frame,
+        )
     if not image_files:
         sys.exit(1)
 
