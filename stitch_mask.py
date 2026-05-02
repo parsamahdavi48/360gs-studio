@@ -137,12 +137,16 @@ def process_existing_masks_parallel(input_dir, output_dir, limit_angle_deg, max_
         tasks.append((in_path, out_path))
 
     print(f"Processing {len(tasks)} images with {max_workers} workers...")
+    print(f"[progress] 0/{len(tasks)}", flush=True)
 
     # 並列処理の実行
     # initializerを使うことで、base_maskを各プロセスに一度だけ渡す
     with ProcessPoolExecutor(max_workers=max_workers, initializer=init_worker, initargs=(base_mask,)) as executor:
         # tqdmでプログレスバーを表示
-        results = list(tqdm(executor.map(process_single_image, tasks), total=len(tasks), unit="img"))
+        results = []
+        for done, res in enumerate(tqdm(executor.map(process_single_image, tasks), total=len(tasks), unit="img"), start=1):
+            results.append(res)
+            print(f"[progress] {done}/{len(tasks)}", flush=True)
 
     # エラーがあった場合のみ表示
     for res in results:

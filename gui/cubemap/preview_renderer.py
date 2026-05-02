@@ -6,22 +6,17 @@ from pathlib import Path
 import cv2
 import numpy as np
 
-from PySide6.QtCore import QSignalBlocker, Qt, Signal
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QImage, QPixmap
 from PySide6.QtWidgets import (
-    QFileDialog,
     QHBoxLayout,
     QLabel,
-    QLineEdit,
-    QPushButton,
     QSlider,
     QVBoxLayout,
     QWidget,
 )
 
 from gui import i18n
-from gui.common.collapsible_section import CollapsibleSection
-from gui.common.drag_spinbox import DragSpinBox
 from gui.common.zoomable_image_label import ZoomableImageLabel
 
 
@@ -84,11 +79,14 @@ def _view_boundary_segments(
 class PreviewWidget(QWidget):
     """プレビュー画像 + マスクオーバーレイ + タイムラインスライダー"""
 
+    current_image_changed = Signal()
+
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._pixmap: QPixmap | None = None
         self.preview_images: list[Path] = []
         self._slider_sync = False
+        self._current_image_path = ""
 
         self._build_ui()
 
@@ -100,27 +98,6 @@ class PreviewWidget(QWidget):
         self.image_label.setMinimumSize(640, 320)
         self.image_label.setStyleSheet("border: 1px solid palette(mid);")
         layout.addWidget(self.image_label, stretch=1)
-
-        # サンプル画像
-        img_row = QHBoxLayout()
-        img_row.addWidget(QLabel(i18n.t("PREVIEW_IMAGE_LABEL")))
-        self.sample_edit = QLineEdit()
-        self.sample_edit.setToolTip(i18n.tip("PREVIEW_SAMPLE"))
-        self.sample_edit.textChanged.connect(self._on_sample_changed)
-        img_row.addWidget(self.sample_edit, stretch=1)
-        browse_btn = QPushButton(i18n.BROWSE)
-        browse_btn.setToolTip(i18n.tip("PREVIEW_BROWSE"))
-        browse_btn.clicked.connect(self._browse_sample)
-        img_row.addWidget(browse_btn)
-        auto_btn = QPushButton(i18n.t("AUTO"))
-        auto_btn.setToolTip(i18n.tip("PREVIEW_AUTO"))
-        auto_btn.clicked.connect(self._auto_select)
-        img_row.addWidget(auto_btn)
-        reload_btn = QPushButton(i18n.t("RELOAD"))
-        reload_btn.setToolTip(i18n.tip("PREVIEW_RELOAD"))
-        reload_btn.clicked.connect(lambda: self.refresh_image_list(prefer_current=False))
-        img_row.addWidget(reload_btn)
-        layout.addLayout(img_row)
 
         # タイムライン
         tl_row = QHBoxLayout()
@@ -134,49 +111,16 @@ class PreviewWidget(QWidget):
         tl_row.addWidget(self.tl_label)
         layout.addLayout(tl_row)
 
-        # マスクオーバーレイ設定（折りたたみ）
-        mask_section = CollapsibleSection(i18n.t("PREVIEW_OVERLAY_SECTION"), expanded=False)
-        mask_inner = QHBoxLayout()
-
-        mask_inner.addWidget(QLabel(i18n.t("MASK_OPACITY_LABEL")))
+        mask_row = QHBoxLayout()
+        mask_row.addWidget(QLabel(i18n.t("MASK_OPACITY_LABEL")))
         self.mask_slider = QSlider(Qt.Horizontal)
         self.mask_slider.setToolTip(i18n.tip("MASK_OPACITY"))
         self.mask_slider.setRange(0, 100)
         self.mask_slider.setValue(35)
         self.mask_slider.setMaximumWidth(160)
-        self.mask_slider.valueChanged.connect(self._on_mask_slider_changed)
-        mask_inner.addWidget(self.mask_slider)
-
-        self.mask_spin = DragSpinBox(
-            minimum=0,
-            maximum=100,
-            step=5,
-            value=35,
-            suffix=" %",
-            drag_pixels_per_step=6.0,
-        )
-        self.mask_spin.setToolTip(i18n.tip("MASK_OPACITY"))
-        self.mask_spin.setFixedWidth(76)
-        self.mask_spin.valueChanged.connect(self._on_mask_spin_changed)
-        mask_inner.addWidget(self.mask_spin)
-
-        mask_inner.addWidget(QLabel(i18n.t("MASK_IMAGE_LABEL")))
-        self.mask_edit = QLineEdit()
-        self.mask_edit.setToolTip(i18n.tip("MASK_IMAGE"))
-        mask_inner.addWidget(self.mask_edit)
-        mask_browse = QPushButton(i18n.BROWSE)
-        mask_browse.setToolTip(i18n.tip("MASK_IMAGE_BROWSE"))
-        mask_browse.clicked.connect(self._browse_mask)
-        mask_inner.addWidget(mask_browse)
-        mask_clear = QPushButton(i18n.t("CLEAR"))
-        mask_clear.setToolTip(i18n.tip("MASK_IMAGE_CLEAR"))
-        mask_clear.clicked.connect(lambda: self.mask_edit.setText(""))
-        mask_inner.addWidget(mask_clear)
-
-        w = QWidget()
-        w.setLayout(mask_inner)
-        mask_section.content_layout.addWidget(w)
-        layout.addWidget(mask_section)
+        mask_row.addWidget(self.mask_slider)
+        mask_row.addStretch()
+        layout.addLayout(mask_row)
 
     # -- public --
 
@@ -185,7 +129,7 @@ class PreviewWidget(QWidget):
         self.refresh_image_list(prefer_current=False)
 
     def render(self, views: list[dict], mask_dir: str = "") -> None:
-        sample = self.sample_edit.text().strip()
+        sample = self._current_image_path.strip()
         if not sample:
             self.image_label.setText(i18n.t("NO_PREVIEW"))
             self._pixmap = None
@@ -258,12 +202,6 @@ class PreviewWidget(QWidget):
         self.image_label.set_source_pixmap(self._pixmap)
 
     def _resolve_mask(self, sample_path: Path, mask_dir: str) -> Path | None:
-        manual = self.mask_edit.text().strip()
-        if manual:
-            mp = Path(manual)
-            if mp.exists():
-                return mp
-
         md = Path(mask_dir) if mask_dir else None
         if md is None or not md.is_dir():
             return None
@@ -298,7 +236,7 @@ class PreviewWidget(QWidget):
         return result
 
     def refresh_image_list(self, prefer_current: bool = True) -> None:
-        current = self.sample_edit.text().strip()
+        current = self._current_image_path.strip()
         self.preview_images = self._iter_images()
         total = len(self.preview_images)
         self.slider.setEnabled(total > 0)
@@ -307,6 +245,7 @@ class PreviewWidget(QWidget):
         if total <= 0:
             self.slider.setValue(0)
             self.tl_label.setText("0 / 0")
+            self._set_current_image_path("", emit=True)
             return
 
         target = 0
@@ -323,45 +262,40 @@ class PreviewWidget(QWidget):
 
     def _set_index(self, idx: int) -> None:
         if not self.preview_images:
-            self.sample_edit.setText("")
             self.tl_label.setText("0 / 0")
+            self._set_current_image_path("", emit=True)
             return
         idx = max(0, min(idx, len(self.preview_images) - 1))
         self._slider_sync = True
         self.slider.setValue(idx)
         self._slider_sync = False
-        self.sample_edit.setText(str(self.preview_images[idx]))
-        self.tl_label.setText(f"{idx + 1} / {len(self.preview_images)} : {self.preview_images[idx].name}")
+        self._set_current_image_path(str(self.preview_images[idx]), emit=True)
+        self.tl_label.setText(
+            i18n.t("PREVIEW_IMAGE_POSITION_FORMAT").format(
+                seq=idx + 1,
+                total=len(self.preview_images),
+                name=self.preview_images[idx].name,
+            )
+        )
+
+    def current_image_path(self) -> Path | None:
+        sample = self._current_image_path.strip()
+        if not sample:
+            return None
+        p = Path(sample)
+        if not p.exists() or not p.is_file():
+            return None
+        return p
+
+    def _set_current_image_path(self, image_path: str, emit: bool) -> None:
+        if image_path == self._current_image_path:
+            return
+        self._current_image_path = image_path
+        if emit:
+            self.current_image_changed.emit()
 
     def _on_slider_changed(self, idx: int) -> None:
         if self._slider_sync:
             return
         if 0 <= idx < len(self.preview_images):
             self._set_index(idx)
-
-    def _on_sample_changed(self, _text: str) -> None:
-        pass  # 外部からrender()呼び出しで更新
-
-    def _on_mask_slider_changed(self, value: int) -> None:
-        with QSignalBlocker(self.mask_spin):
-            self.mask_spin.setValue(value)
-
-    def _on_mask_spin_changed(self, value: int) -> None:
-        with QSignalBlocker(self.mask_slider):
-            self.mask_slider.setValue(value)
-
-    def _browse_sample(self) -> None:
-        path, _ = QFileDialog.getOpenFileName(self, "", "", "画像 (*.jpg *.jpeg *.png);;すべて (*.*)")
-        if path:
-            self.sample_edit.setText(path)
-
-    def _auto_select(self) -> None:
-        if not self.preview_images:
-            self.refresh_image_list(prefer_current=False)
-            return
-        self._set_index(0)
-
-    def _browse_mask(self) -> None:
-        path, _ = QFileDialog.getOpenFileName(self, "", "", "画像 (*.png *.jpg);;すべて (*.*)")
-        if path:
-            self.mask_edit.setText(path)

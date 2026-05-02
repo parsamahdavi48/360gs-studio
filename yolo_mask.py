@@ -273,6 +273,7 @@ if os.path.isdir(INPUT_DIR):
     # サブディレクトリを含めて処理
     base = Path(INPUT_DIR)
     dirs = [p.relative_to(base) for p in [base, *base.rglob("*")] if p.is_dir()]
+    tasks = []
     for subdir in dirs:
         dir = INPUT_DIR if subdir == "." else os.path.join(INPUT_DIR, subdir)
         output_dir = OUTPUT_DIR if subdir == "." else os.path.join(OUTPUT_DIR, subdir)
@@ -282,11 +283,20 @@ if os.path.isdir(INPUT_DIR):
             f for f in os.listdir(dir)
             if f.lower().endswith((".jpg", ".png"))
         ])
-        for fname in image_files:
-            process_file(dir, output_dir, fname, ADD_EXT)
+        tasks.extend((dir, output_dir, fname) for fname in image_files)
+
+    total = len(tasks)
+    print(f"[progress] 0/{total}", flush=True)
+    for done, (dir, output_dir, fname) in enumerate(tasks, start=1):
+        process_file(dir, output_dir, fname, ADD_EXT)
+        print(f"Processed: {fname}", flush=True)
+        print(f"[progress] {done}/{total}", flush=True)
 else:
     # 単一ファイルの処理
     fname = os.path.basename(INPUT_DIR)
     input_dir = os.path.dirname(INPUT_DIR)
     os.makedirs(OUTPUT_DIR, exist_ok=True)
+    print("[progress] 0/1", flush=True)
     process_file(input_dir, OUTPUT_DIR, fname, ADD_EXT)
+    print(f"Processed: {fname}", flush=True)
+    print("[progress] 1/1", flush=True)

@@ -179,6 +179,17 @@ def test_mask_step_allows_generation_when_drop_images_are_removed(tmp_path: Path
     assert "--add-ext" not in commands[0][1]
 
 
+def test_mask_step_progress_uses_completed_file_counts() -> None:
+    _app()
+    step = MaskStep(Path.cwd())
+
+    assert step.on_line("[progress] 0/3") == (0, 3)
+    assert step.on_line("Processing: frame_0001.jpg") is None
+    assert step.on_line("Processed: frame_0001.jpg") == (1, 3)
+    assert step.on_line("[progress] 2/3") == (2, 3)
+    assert step.on_line("[progress] 3/3") == (3, 3)
+
+
 def test_mask_step_rejects_generation_when_untracked_images_remain(tmp_path: Path) -> None:
     _app()
     scene = _write_scene(tmp_path, drop_exists=False)

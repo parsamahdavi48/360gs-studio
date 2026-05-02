@@ -153,13 +153,17 @@ def run(
         tasks.append((str(img_path), mask_out, existing_str))
 
     print(f"Processing {len(tasks)} images (threshold={threshold}, dilate={dilate_px}px)")
+    print(f"[progress] 0/{len(tasks)}", flush=True)
 
     with ProcessPoolExecutor(
         max_workers=workers,
         initializer=_init_worker,
         initargs=(threshold, dilate_px),
     ) as executor:
-        results = list(tqdm(executor.map(_process_one, tasks), total=len(tasks), unit="img"))
+        results = []
+        for done, result in enumerate(tqdm(executor.map(_process_one, tasks), total=len(tasks), unit="img"), start=1):
+            results.append(result)
+            print(f"[progress] {done}/{len(tasks)}", flush=True)
 
     errors = [r for r in results if r is not None]
     for e in errors:

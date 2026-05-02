@@ -250,9 +250,7 @@ class CubemapStep(BaseStepWidget):
         preview_layout.addWidget(preview_title)
         self.preview = PreviewWidget()
         self.preview.mask_slider.valueChanged.connect(lambda _: self._render_preview())
-        self.preview.mask_spin.valueChanged.connect(lambda _: self._render_preview())
-        self.preview.mask_edit.textChanged.connect(lambda _: self._render_preview())
-        self.preview.sample_edit.textChanged.connect(lambda _: self._render_preview())
+        self.preview.current_image_changed.connect(lambda: self._render_preview())
         preview_layout.addWidget(self.preview, stretch=1)
 
         top_scroll.setWidget(top)

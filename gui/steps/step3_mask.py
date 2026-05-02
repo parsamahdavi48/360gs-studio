@@ -50,7 +50,8 @@ _COCO_CLASS_NAMES = [
     "toothbrush",
 ]
 
-_YOLO_LINE_RE = re.compile(r"^Processing:\s+")
+_MASK_PROGRESS_RE = re.compile(r"\[progress\]\s+(\d+)\s*/\s*(\d+)")
+_YOLO_PROCESSED_RE = re.compile(r"^Processed:\s+")
 _STITCH_TASK_RE = re.compile(r"^Processing\s+(\d+)\s+images\s+with\s+\d+\s+workers\.\.\.$")
 _STITCH_TQDM_RE = re.compile(r"\|\s*(\d+)/(\d+)\s*\[")
 _STITCH_BOUNDARY_MIN = 0.0
@@ -673,7 +674,13 @@ class MaskStep(BaseStepWidget):
     # -- プログレス解析 --
 
     def on_line(self, line: str) -> tuple[int, int] | None:
-        if _YOLO_LINE_RE.match(line):
+        m = _MASK_PROGRESS_RE.search(line)
+        if m:
+            self._phase_done = int(m.group(1))
+            self._phase_total = int(m.group(2))
+            return self._phase_done, self._phase_total
+
+        if _YOLO_PROCESSED_RE.match(line):
             self._phase_done += 1
             return self._phase_done, self._phase_total
 
