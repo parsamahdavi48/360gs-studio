@@ -87,6 +87,9 @@ def test_review_step_left_pane_guides_apply_before_mask_step() -> None:
     assert not step.findChildren(QLineEdit)
     assert i18n.t("BACKUP_BEFORE_FINALIZE") in checkboxes
     assert i18n.NEXT_STEP_MASK_NOTICE in labels
+    notice = next(label for label in step.findChildren(QLabel) if label.text() == i18n.NEXT_STEP_MASK_NOTICE)
+    assert notice.alignment() & Qt.AlignLeft
+    assert "変更した場合は、\n下部の" in i18n.NEXT_STEP_MASK_NOTICE
     assert i18n.t("ACTION_FINALIZE_REVIEW") in i18n.NEXT_STEP_MASK_NOTICE
     assert "Step 3" in i18n.NEXT_STEP_MASK_NOTICE
 

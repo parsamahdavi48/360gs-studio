@@ -161,8 +161,8 @@ _JA: dict[str, str] = {
     "REVIEW_ADVISORY_SMART_ADDED": "変化補正: 動きが大きいため追加",
     "REVIEW_ADVISORY_THINNED": "自動間引き: 動きが少ないため除外中",
     "REVIEW_ADVISORY_NORMAL": "通常: 品質基準OK",
-    "NEXT_STEP_MASK_NOTICE": "除外予定の画像が残っている場合、または採用/除外を変更した場合は、下部の「適用」で画像フォルダへ反映します。\n「適用」が無効なら、そのまま Step 3 (マスク生成) へ進めます。",
-    "METASHAPE_NOTICE": "マスク生成完了後、Metashape で SfM を実行してください。\n生成された masks/ フォルダを Metashape の per-image マスクとしてインポートすると、人物・スティッチ・白飛び領域が特徴点マッチングから除外され、SfM 精度が大きく向上します。\n完了後、Step 4 でキューブマップ変換に進みます。",
+    "NEXT_STEP_MASK_NOTICE": "除外予定の画像が残っている場合、または採用/除外を変更した場合は、\n下部の「適用」で画像フォルダへ反映します。\n「適用」が無効なら、そのまま Step 3 (マスク生成) へ進めます。",
+    "METASHAPE_NOTICE": "マスク生成完了後、Metashape で SfM を実行してください。\n生成された masks/ フォルダを Metashape のマスクとしてインポートすると、人物・スティッチ・白飛び領域が特徴点マッチングから除外され、SfM 精度が大きく向上します。\n完了後、Step 4 でキューブマップ変換に進みます。",
     "EXPORT_DIR": "エクスポート先",
 
     # Step 3

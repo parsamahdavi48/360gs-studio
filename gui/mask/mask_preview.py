@@ -10,7 +10,6 @@ import numpy as np
 from PySide6.QtCore import QSignalBlocker, Qt, Signal
 from PySide6.QtGui import QImage, QPixmap
 from PySide6.QtWidgets import (
-    QFileDialog,
     QHBoxLayout,
     QLabel,
     QLineEdit,
@@ -69,22 +68,8 @@ class MaskPreviewWidget(QWidget):
         img_row.addWidget(QLabel(i18n.t("PREVIEW_IMAGE_LABEL")))
         self.sample_edit = QLineEdit()
         self.sample_edit.setToolTip(i18n.tip("PREVIEW_SAMPLE"))
+        self.sample_edit.setReadOnly(True)
         img_row.addWidget(self.sample_edit, stretch=1)
-
-        browse_btn = QPushButton(i18n.BROWSE)
-        browse_btn.setToolTip(i18n.tip("PREVIEW_BROWSE"))
-        browse_btn.clicked.connect(self._browse_sample)
-        img_row.addWidget(browse_btn)
-
-        auto_btn = QPushButton(i18n.t("AUTO"))
-        auto_btn.setToolTip(i18n.tip("PREVIEW_AUTO"))
-        auto_btn.clicked.connect(self._auto_select)
-        img_row.addWidget(auto_btn)
-
-        reload_btn = QPushButton(i18n.t("RELOAD"))
-        reload_btn.setToolTip(i18n.tip("PREVIEW_RELOAD"))
-        reload_btn.clicked.connect(lambda: self.refresh_image_list(prefer_current=False))
-        img_row.addWidget(reload_btn)
 
         self.yolo_preview_btn = QPushButton(i18n.t("YOLO_PREVIEW_BUTTON"))
         self.yolo_preview_btn.setToolTip(i18n.tip("YOLO_PREVIEW_BUTTON"))
@@ -368,22 +353,6 @@ class MaskPreviewWidget(QWidget):
             return
         if 0 <= idx < len(self.preview_images):
             self._set_index(idx)
-
-    def _browse_sample(self) -> None:
-        path, _ = QFileDialog.getOpenFileName(
-            self,
-            "",
-            self.sample_edit.text(),
-            "画像 (*.jpg *.jpeg *.png);;すべて (*.*)",
-        )
-        if path:
-            self.sample_edit.setText(path)
-
-    def _auto_select(self) -> None:
-        if not self.preview_images:
-            self.refresh_image_list(prefer_current=False)
-            return
-        self._set_index(0)
 
     def _on_opacity_slider_changed(self, value: int) -> None:
         with QSignalBlocker(self.opacity_spin):

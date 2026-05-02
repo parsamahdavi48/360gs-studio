@@ -91,6 +91,14 @@ def test_mask_step_yolo_level_and_expand_share_compact_row() -> None:
     assert step.yolo_expand_label.toolTip() == i18n.tip("YOLO_EXPAND")
 
 
+def test_mask_step_metashape_notice_is_in_left_pane() -> None:
+    _app()
+    step = MaskStep(Path.cwd())
+
+    assert step.metashape_notice.text() == i18n.METASHAPE_NOTICE
+    assert not step.preview_pane.isAncestorOf(step.metashape_notice)
+
+
 def test_mask_step_refreshes_preview_when_activated_after_extraction(tmp_path: Path) -> None:
     _app()
     step = MaskStep(Path.cwd())

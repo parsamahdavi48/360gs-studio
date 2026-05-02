@@ -56,7 +56,7 @@ class ReviewStep(BaseStepWidget):
         notice = QLabel(i18n.NEXT_STEP_MASK_NOTICE)
         notice.setObjectName("workflowNote")
         notice.setWordWrap(True)
-        notice.setAlignment(Qt.AlignCenter)
+        notice.setAlignment(Qt.AlignLeft | Qt.AlignTop)
         settings_layout.addWidget(notice)
         settings_layout.addStretch()
 

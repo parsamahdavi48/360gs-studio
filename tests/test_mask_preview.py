@@ -6,7 +6,7 @@ import numpy as np
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PySide6.QtWidgets import QApplication
+from PySide6.QtWidgets import QApplication, QPushButton
 
 from gui import i18n
 from gui.mask.mask_preview import MaskPreviewConfig, MaskPreviewWidget
@@ -21,6 +21,19 @@ def test_yolo_preview_output_name_matches_yolo_mask_script() -> None:
     image = Path("frame_000001.jpg")
 
     assert _yolo_preview_output_name(image) == "frame_000001.png"
+
+
+def test_mask_preview_removes_manual_image_picker_buttons() -> None:
+    _app()
+    widget = MaskPreviewWidget()
+
+    button_texts = {button.text() for button in widget.findChildren(QPushButton)}
+
+    assert i18n.BROWSE not in button_texts
+    assert i18n.t("AUTO") not in button_texts
+    assert i18n.t("RELOAD") not in button_texts
+    assert i18n.t("YOLO_PREVIEW_BUTTON") in button_texts
+    assert widget.sample_edit.isReadOnly()
 
 
 def test_mask_preview_uses_temporary_yolo_preview_mask(tmp_path: Path) -> None:

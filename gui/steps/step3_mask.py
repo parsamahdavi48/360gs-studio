@@ -279,9 +279,14 @@ class MaskStep(BaseStepWidget):
         layout.addWidget(self.other_section)
 
         layout.addStretch()
+        self.metashape_notice = QLabel(i18n.METASHAPE_NOTICE)
+        self.metashape_notice.setObjectName("workflowNote")
+        self.metashape_notice.setWordWrap(True)
+        layout.addWidget(self.metashape_notice)
 
         preview_pane = QWidget()
         preview_pane.setObjectName("workPane")
+        self.preview_pane = preview_pane
         preview_layout = QVBoxLayout(preview_pane)
         preview_layout.setContentsMargins(12, 12, 12, 12)
         preview_layout.setSpacing(8)
@@ -290,10 +295,6 @@ class MaskStep(BaseStepWidget):
         preview_layout.addWidget(preview_title)
         self.mask_preview = MaskPreviewWidget()
         preview_layout.addWidget(self.mask_preview, stretch=1)
-        notice = QLabel(i18n.METASHAPE_NOTICE)
-        notice.setObjectName("workflowNote")
-        notice.setWordWrap(True)
-        preview_layout.addWidget(notice)
 
         settings_scroll.setWidget(settings)
         splitter.addWidget(settings_scroll)
