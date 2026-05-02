@@ -29,9 +29,19 @@ setup_windows.bat
 start_gui.bat
 ```
 
-`setup_windows.bat` detects Python 3.11, installs Python 3.11 through winget when needed, creates `.venv`, and installs PyTorch CUDA 12.8 plus the project dependencies.
+`setup_windows.bat` detects Python 3.12, installs Python 3.12 through winget when needed, and creates a verified `.venv`. Package versions are resolved at setup time, with PyTorch installed from the CUDA 12.8 wheel index.
 
 `start_gui.bat` activates the venv and launches the integrated GUI.
+
+To update an existing `.venv` to the latest compatible package set, run:
+
+```bat
+update_venv.bat
+```
+
+`update_venv.bat` discovers installed and winget-available Python candidates from newest to oldest. It first runs pip dry-run compatibility checks for the target Python ABI, then installs a missing Python through winget only when that candidate is likely to work. The first candidate that builds a temporary venv and passes `pip check`, import/CUDA smoke tests, and pytest is promoted to `.venv`.
+
+The update window stays open at the end so the summary can be read. Use `update_venv.bat --no-pause` when running from an existing terminal.
 
 ## GUI Workflow
 
@@ -65,17 +75,19 @@ Stitch seam masks are useful when the seam position is stable in the equirectang
 ## Requirements
 
 - Windows 10/11
-- Python 3.11 (3.11.8 confirmed)
+- Python 3.12 (3.12.10 confirmed)
 - CUDA-capable GPU
 - CUDA Toolkit 12.8
 - FFmpeg / FFprobe
 
-Main Python packages installed by `setup_windows.bat`:
+Main Python packages resolved by `setup_windows.bat`:
 
 ```text
-torch==2.8.0 (CUDA 12.8), torchvision, torchaudio
-numpy, opencv-python, Pillow, open3d, ultralytics, tqdm, PySide6
+torch / torchvision / torchaudio from the CUDA 12.8 wheel index
+numpy, opencv-python, Pillow, open3d, ultralytics, tqdm, PySide6, pytest
 ```
+
+Both setup and update intentionally avoid fixed package pins. They resolve and verify the latest compatible versions for the selected Python environment.
 
 YOLO/SAM2 model weights are downloaded automatically by ultralytics on first use.
 

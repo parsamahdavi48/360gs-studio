@@ -84,10 +84,10 @@ _JA: dict[str, str] = {
     "BACKUP_BEFORE_FINALIZE_HINT": "ON: 確定前に images/ を images_backup/ にフルコピー（既存バックアップは上書き）。OFF: バックアップなし（容量節約・復元不可）。",
     "STEP2_WORKFLOW": "Step 1 で抽出  ──  確認+選別  ──  Step 3 (マスク生成) へ",
     "ACTION_FINALIZE_REVIEW": "適用",
-    "REVIEW_LOAD_EMBEDDED": "フレーム確認を読み込み",
-    "REVIEW_LOAD_EMBEDDED_HINT": "selected_frames.csv を読み直し、右側の確認ビューを更新します。",
+    "REVIEW_LOAD_EMBEDDED": "再読み込み",
+    "REVIEW_LOAD_EMBEDDED_HINT": "selected_frames.csv を強制的に読み直し、右側の確認ビューを更新します。",
     "OPEN_REVIEW_EXTERNAL": "別ウィンドウで開く",
-    "REVIEW_EMBED_EMPTY": "selected_frames.csv を読み込むと、ここにフレーム確認ビューが表示されます。",
+    "REVIEW_EMBED_EMPTY": "Step 1 の抽出完了後、ここにフレーム確認ビューが自動表示されます。",
     "REVIEW_EMBED_MISSING": "CSVが見つかりません:\n{path}",
 
     # --- review_frames.py (Step 2 レビュー GUI) ---
@@ -339,10 +339,10 @@ _EN: dict[str, str] = {
     "BACKUP_BEFORE_FINALIZE_HINT": "ON: snapshot images/ to images_backup/ before finalizing (existing backup is replaced). OFF: no backup (saves disk; cannot be undone).",
     "STEP2_WORKFLOW": "Step 1 Extract  ──  Review + Select  ──  Proceed to Step 3 (Mask Generation)",
     "ACTION_FINALIZE_REVIEW": "Apply",
-    "REVIEW_LOAD_EMBEDDED": "Load Frame Review",
-    "REVIEW_LOAD_EMBEDDED_HINT": "Reload selected_frames.csv and refresh the review view on the right.",
+    "REVIEW_LOAD_EMBEDDED": "Reload",
+    "REVIEW_LOAD_EMBEDDED_HINT": "Force-reload selected_frames.csv and refresh the review view on the right.",
     "OPEN_REVIEW_EXTERNAL": "Open Separate Window",
-    "REVIEW_EMBED_EMPTY": "Load selected_frames.csv to show the frame review view here.",
+    "REVIEW_EMBED_EMPTY": "After Step 1 extraction completes, the frame review view appears here automatically.",
     "REVIEW_EMBED_MISSING": "CSV not found:\n{path}",
 
     # --- review_frames.py (Step 2 review GUI) ---
@@ -693,11 +693,18 @@ def _detect_lang() -> str:
         return "ja"
     if override in ("en", "en_us", "en_gb"):
         return "en"
+    for env_name in ("LC_ALL", "LC_MESSAGES", "LANG"):
+        env_locale = os.environ.get(env_name, "").strip().lower()
+        if env_locale.startswith(("ja", "japanese")):
+            return "ja"
+        if env_locale.startswith(("en", "english")):
+            return "en"
     try:
-        loc = locale.getdefaultlocale()[0] or ""
+        loc = locale.getlocale()[0] or ""
     except Exception:
         loc = ""
-    return "ja" if loc.lower().startswith("ja") else "en"
+    loc = loc.lower()
+    return "ja" if loc.startswith(("ja", "japanese")) else "en"
 
 
 LANG = _detect_lang()

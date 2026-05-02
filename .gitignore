@@ -1,5 +1,8 @@
 __pycache__/
 .venv/
+.venv-candidate-*/
+.venv-backup-*/
+.cache/
 *.pt
 masks/
 extract_report.json

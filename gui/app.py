@@ -206,6 +206,9 @@ class MainWindow(QWidget):
     def _on_scene_changed(self, path: str) -> None:
         for step in self.steps:
             step.set_scene_dir(path)
+        step = self._current_step_widget()
+        if step is not None:
+            step.on_activated()
 
     def _set_current_step(self, index: int) -> None:
         if not 0 <= index < len(self.steps):
@@ -215,6 +218,9 @@ class MainWindow(QWidget):
             btn.setChecked(i == index)
         self.step_header.setText(self.step_titles[index])
         self.step_subheader.setText(self.step_descriptions[index])
+        step = self._current_step_widget()
+        if step is not None:
+            step.on_activated()
         self._update_run_button()
 
     def _update_run_button(self) -> None:

@@ -29,9 +29,19 @@ setup_windows.bat
 start_gui.bat
 ```
 
-`setup_windows.bat` は Python 3.11 の検出、必要に応じた winget インストール、venv作成、PyTorch CUDA 12.8 と依存パッケージの導入を行います。
+`setup_windows.bat` は Python 3.12 の検出、必要に応じた winget インストール、検証済み `.venv` の作成を行います。パッケージのバージョンはセットアップ時点で解決し、PyTorch は CUDA 12.8 wheel index から導入します。
 
 `start_gui.bat` はvenvを有効化して統合GUIを起動します。
+
+既存の `.venv` を互換する最新パッケージへ更新する場合:
+
+```bat
+update_venv.bat
+```
+
+`update_venv.bat` はインストール済み、または winget で入手可能な Python 候補を新しい順に調べます。まず対象 Python ABI に対する pip dry-run 互換チェックを行い、成立しそうな候補だけ必要に応じて winget で Python を入れます。その後、一時venvで `pip check`、import/CUDAスモークテスト、pytest が通った最初の候補を `.venv` として採用します。
+
+更新ウィンドウは最後にキー入力待ちになり、サマリーを読んでから閉じられます。既存のターミナルから実行する場合は `update_venv.bat --no-pause` を使えます。
 
 ## GUIワークフロー
 
@@ -65,17 +75,19 @@ start_gui.bat
 ## 動作環境
 
 - Windows 10/11
-- Python 3.11 (3.11.8で確認)
+- Python 3.12 (3.12.10で確認)
 - CUDA対応GPU
 - CUDA Toolkit 12.8
 - FFmpeg / FFprobe
 
-`setup_windows.bat` で導入される主なPythonパッケージ:
+`setup_windows.bat` で解決される主なPythonパッケージ:
 
 ```text
-torch==2.8.0 (CUDA 12.8), torchvision, torchaudio
-numpy, opencv-python, Pillow, open3d, ultralytics, tqdm, PySide6
+torch / torchvision / torchaudio from the CUDA 12.8 wheel index
+numpy, opencv-python, Pillow, open3d, ultralytics, tqdm, PySide6, pytest
 ```
+
+setup/update とも、これらのパッケージバージョンは固定せず、選択した Python 環境で最新互換バージョンを解決し、検証に通った環境だけを採用します。
 
 YOLO/SAM2のモデルファイルは初回利用時にultralyticsが自動ダウンロードします。
 

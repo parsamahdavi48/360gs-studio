@@ -60,3 +60,7 @@ class BaseStepWidget(QWidget):
     def on_queue_finished(self, success: bool) -> None:
         """全フェーズ完了時のフック（オプション）"""
         pass
+
+    def on_activated(self) -> None:
+        """ステップが表示された時のフック（オプション）"""
+        pass

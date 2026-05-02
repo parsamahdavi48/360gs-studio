@@ -33,6 +33,7 @@ class ReviewStep(BaseStepWidget):
     def __init__(self, base_dir: Path, parent: QWidget | None = None) -> None:
         super().__init__(base_dir, parent)
         self._review_widget: QWidget | None = None
+        self._loaded_csv_signature: tuple[Path, int, int] | None = None
         self._build_ui()
 
     def _build_ui(self) -> None:
@@ -63,7 +64,7 @@ class ReviewStep(BaseStepWidget):
 
         self.csv_edit = QLineEdit("selected_frames.csv")
         self.csv_edit.setToolTip(i18n.tip("CSV_FILE"))
-        self.csv_edit.editingFinished.connect(lambda: self._load_embedded_review(show_error=False))
+        self.csv_edit.editingFinished.connect(self._on_csv_changed)
         form.addRow(i18n.CSV_FILE, self.csv_edit)
 
         self.prefix_edit = QLineEdit("")
@@ -80,7 +81,7 @@ class ReviewStep(BaseStepWidget):
 
         self.reload_review_btn = QPushButton(i18n.t("REVIEW_LOAD_EMBEDDED"))
         self.reload_review_btn.setToolTip(i18n.t("REVIEW_LOAD_EMBEDDED_HINT"))
-        self.reload_review_btn.clicked.connect(lambda: self._load_embedded_review(show_error=True))
+        self.reload_review_btn.clicked.connect(lambda: self._refresh_embedded_review(force=True, show_error=True))
         settings_layout.addWidget(self.reload_review_btn)
 
         self.review_window_btn = QPushButton(i18n.t("OPEN_REVIEW_EXTERNAL"))
@@ -111,14 +112,31 @@ class ReviewStep(BaseStepWidget):
         root_layout.addWidget(splitter)
 
     def _csv_path(self) -> Path:
-        return Path(self.scene_dir) / self.csv_edit.text().strip()
+        csv_name = self.csv_edit.text().strip() or "selected_frames.csv"
+        return Path(self.scene_dir) / csv_name
 
     def _has_csv(self) -> bool:
         return self._csv_path().exists()
 
+    def _csv_signature(self) -> tuple[Path, int, int] | None:
+        if not self.scene_dir:
+            return None
+        csv_path = self._csv_path()
+        try:
+            st = csv_path.stat()
+        except OSError:
+            return None
+        return csv_path.resolve(), int(st.st_mtime_ns), int(st.st_size)
+
     def set_scene_dir(self, path: str) -> None:
+        changed = path != self.scene_dir
         super().set_scene_dir(path)
-        self._load_embedded_review(show_error=False)
+        if changed:
+            self._loaded_csv_signature = None
+            self._set_review_placeholder(i18n.t("REVIEW_EMBED_EMPTY"))
+
+    def on_activated(self) -> None:
+        self._refresh_embedded_review(force=False, show_error=False)
 
     def primary_action_text(self) -> str:
         return i18n.t("ACTION_FINALIZE_REVIEW")
@@ -143,12 +161,25 @@ class ReviewStep(BaseStepWidget):
         label.setWordWrap(True)
         self.review_layout.addWidget(label, stretch=1)
 
-    def _load_embedded_review(self, show_error: bool = True) -> None:
+    def _on_csv_changed(self) -> None:
+        self._loaded_csv_signature = None
+        self._refresh_embedded_review(force=True, show_error=False)
+
+    def _refresh_embedded_review(self, force: bool = False, show_error: bool = True) -> None:
+        signature = self._csv_signature()
+        if signature is None:
+            self._loaded_csv_signature = None
+            if force or self._review_widget is not None:
+                self._set_review_placeholder(i18n.t("REVIEW_EMBED_MISSING").format(path=str(self._csv_path())))
+            else:
+                self._set_review_placeholder(i18n.t("REVIEW_EMBED_EMPTY"))
+            return
+
+        if not force and self._review_widget is not None and signature == self._loaded_csv_signature:
+            return
+
         if not self.scene_dir:
             self._set_review_placeholder(i18n.t("REVIEW_EMBED_EMPTY"))
-            return
-        if not self._has_csv():
-            self._set_review_placeholder(i18n.t("REVIEW_EMBED_MISSING").format(path=str(self._csv_path())))
             return
         try:
             from review_frames import ReviewWidget
@@ -162,6 +193,7 @@ class ReviewStep(BaseStepWidget):
 
         self._clear_review_pane()
         self._review_widget = widget
+        self._loaded_csv_signature = signature
         self.review_layout.addWidget(widget, stretch=1)
 
     def _open_review_window(self) -> None:
@@ -226,4 +258,4 @@ class ReviewStep(BaseStepWidget):
 
     def on_queue_finished(self, success: bool) -> None:
         if success:
-            self._load_embedded_review(show_error=False)
+            self._refresh_embedded_review(force=True, show_error=False)
