@@ -3,7 +3,7 @@ from pathlib import Path
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PySide6.QtWidgets import QApplication, QPushButton, QToolButton
+from PySide6.QtWidgets import QApplication, QLabel, QPushButton, QToolButton
 
 from extract_sessions import build_session_record, load_manifest, save_manifest
 from gui import i18n
@@ -85,6 +85,20 @@ def test_extract_run_enabled_when_required_inputs_are_ready(tmp_path: Path) -> N
     assert step.primary_action_enabled()
     assert step.ready_status_label.text() == i18n.t("EXTRACT_READY_OK")
     assert step.primary_action_tooltip() == i18n.tip("RUN")
+
+
+def test_extract_step_shows_standard_images_folder_when_scene_is_set(tmp_path: Path) -> None:
+    _app()
+    step = ExtractStep(Path.cwd())
+
+    step.set_scene_dir(str(tmp_path))
+
+    labels = [label.text() for label in step.findChildren(QLabel)]
+    assert str(tmp_path / "images") in labels
+
+    step.set_scene_dir("")
+
+    assert step.images_path_label.text() == "-"
 
 
 def test_extract_run_disabled_for_invalid_analysis_width(tmp_path: Path) -> None:

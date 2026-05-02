@@ -7,6 +7,8 @@ from pathlib import Path
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 import pytest
+import cv2
+import numpy as np
 from PySide6.QtWidgets import QApplication, QLabel
 
 from gui import i18n
@@ -60,6 +62,30 @@ def test_mask_step_uses_standard_scene_folders_without_browse_inputs(tmp_path: P
     assert str(scene / "masks") in labels
     assert step.primary_action_enabled()
     assert step.primary_action_tooltip() == i18n.tip("RUN_MASKS")
+
+
+def test_mask_step_refreshes_preview_when_activated_after_extraction(tmp_path: Path) -> None:
+    _app()
+    step = MaskStep(Path.cwd())
+    step.set_scene_dir(str(tmp_path))
+
+    assert step.mask_preview.current_image_path() is None
+
+    images = tmp_path / "images"
+    images.mkdir()
+    image_path = images / "frame_0001.jpg"
+    cv2.imwrite(str(image_path), np.full((32, 64, 3), 180, dtype=np.uint8))
+    rows = [{"seq": "1", "output_file": "images/frame_0001.jpg", "decision": "keep", "status": "ok"}]
+    with (tmp_path / "selected_frames.csv").open("w", encoding="utf-8", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=list(rows[0].keys()))
+        writer.writeheader()
+        writer.writerows(rows)
+
+    step.on_activated()
+
+    assert step.mask_preview.current_image_path() == image_path
+    assert step.mask_preview.image_label._source_pixmap is not None
+    assert step.primary_action_enabled()
 
 
 def test_mask_step_disables_generation_without_images_dir(tmp_path: Path) -> None:

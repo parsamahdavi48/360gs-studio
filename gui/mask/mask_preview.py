@@ -272,7 +272,9 @@ class MaskPreviewWidget(QWidget):
         self._set_index(target)
 
     def _iter_images(self) -> list[Path]:
-        root = Path(self._images_dir) if self._images_dir else Path(".")
+        if not self._images_dir:
+            return []
+        root = Path(self._images_dir)
         roots = [root] if root.is_dir() else []
         result, seen = [], set()
         for r in roots:

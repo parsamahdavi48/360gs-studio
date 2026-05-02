@@ -126,6 +126,12 @@ class ExtractStep(BaseStepWidget):
         self.output_mode_combo.setFixedWidth(180)
         self.output_mode_combo.currentIndexChanged.connect(lambda _: self._update_ready_status())
         add_tooltip_row(basic, i18n.t("EXTRACT_OUTPUT_MODE"), self.output_mode_combo, i18n.tip("EXTRACT_OUTPUT_MODE"))
+
+        self.images_path_label = QLabel("-")
+        self.images_path_label.setToolTip(i18n.tip("IMAGES_DIR"))
+        self.images_path_label.setWordWrap(True)
+        self.images_path_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        add_tooltip_row(basic, i18n.IMAGES_DIR, self.images_path_label, i18n.tip("IMAGES_DIR"))
         layout.addLayout(basic)
 
         self.interval_edit = DragDoubleSpinBox(
@@ -373,9 +379,16 @@ class ExtractStep(BaseStepWidget):
 
     def set_scene_dir(self, path: str) -> None:
         super().set_scene_dir(path)
+        self._update_images_path_label()
         self._update_video_info_label()
         self._update_instant_estimate()
         self._update_ready_status()
+
+    def _update_images_path_label(self) -> None:
+        if self.scene_dir:
+            self.images_path_label.setText(str(Path(self.scene_dir) / "images"))
+        else:
+            self.images_path_label.setText("-")
 
     def primary_action_text(self) -> str:
         return i18n.RUN

@@ -59,6 +59,18 @@ def test_mask_preview_resizes_overexposure_mask_for_large_preview(tmp_path: Path
     assert widget.image_label._source_pixmap is not None
 
 
+def test_mask_preview_does_not_scan_cwd_without_images_dir(tmp_path: Path, monkeypatch) -> None:
+    _app()
+    monkeypatch.chdir(tmp_path)
+    cv2.imwrite(str(tmp_path / "frame_000001.png"), np.full((16, 32, 3), 180, dtype=np.uint8))
+    widget = MaskPreviewWidget()
+
+    widget.refresh_image_list(prefer_current=False)
+
+    assert widget.preview_images == []
+    assert widget.current_image_path() is None
+
+
 def test_mask_step_uses_conservative_manual_yolo_expand_by_default() -> None:
     _app()
     step = MaskStep(Path.cwd())

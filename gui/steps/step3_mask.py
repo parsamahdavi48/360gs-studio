@@ -348,6 +348,11 @@ class MaskStep(BaseStepWidget):
         ready, _reason = self._readiness()
         return ready
 
+    def on_activated(self) -> None:
+        self.mask_preview.refresh_image_list(prefer_current=True)
+        self._render_mask_preview()
+        self._update_ready_status()
+
     def _images_dir_text(self) -> str:
         if not self.scene_dir:
             return ""
