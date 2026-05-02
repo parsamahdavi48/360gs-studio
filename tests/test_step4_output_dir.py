@@ -1,3 +1,4 @@
+import json
 import os
 import math
 from pathlib import Path
@@ -68,13 +69,50 @@ def test_metashape_import_uses_scene_images_and_lf_ply(tmp_path: Path) -> None:
     step = _ready_step(tmp_path)
     (tmp_path / "images").mkdir()
     (tmp_path / "metashape.xml").write_text("<root />", encoding="utf-8")
+    (tmp_path / "metashape.ply").write_text("ply\n", encoding="utf-8")
+    step.ms_ply_browse.set_text(str(tmp_path / "metashape.ply"))
     step.preprocess_cb.setChecked(True)
 
     cmd = step._build_preprocess_cmd()
 
     assert cmd[cmd.index("--images") + 1] == str(tmp_path / "images")
     assert cmd[cmd.index("--xml") + 1] == str(tmp_path / "metashape.xml")
-    assert cmd[cmd.index("--ply") + 1] == str(tmp_path / "pointcloud.ply")
+    assert cmd[cmd.index("--ply") + 1] == str(tmp_path / "metashape.ply")
+
+
+def test_postshot_does_not_use_lichtfeld_pointcloud(tmp_path: Path) -> None:
+    step = _ready_step(tmp_path)
+    idx = step.profile_combo.findData("postshot")
+    assert idx >= 0
+    step.profile_combo.setCurrentIndex(idx)
+
+    assert step._resolve_ply_source() is None
+    with pytest.raises(ValueError, match="pointcloud"):
+        step.build_commands()
+
+
+def test_postshot_accepts_raw_ply_with_custom_name(tmp_path: Path) -> None:
+    step = _ready_step(tmp_path)
+    raw_ply = tmp_path / "raw_scan.ply"
+    raw_ply.write_text("ply\n", encoding="utf-8")
+    idx = step.profile_combo.findData("postshot")
+    assert idx >= 0
+    step.profile_combo.setCurrentIndex(idx)
+
+    assert step._resolve_ply_source() == raw_ply
+
+
+def test_lichtfeld_requires_converted_pointcloud_without_preprocess(tmp_path: Path) -> None:
+    _app()
+    tmp_path.mkdir(exist_ok=True)
+    (tmp_path / "metashape.ply").write_text("ply\n", encoding="utf-8")
+    step = CubemapStep(Path.cwd())
+    step.set_scene_dir(str(tmp_path))
+    step.preprocess_cb.setChecked(False)
+
+    assert step._resolve_ply_source() is None
+    with pytest.raises(ValueError, match="pointcloud"):
+        step.build_commands()
 
 
 def test_cubemap_step_keeps_mask_inversion_as_advanced_option(tmp_path: Path) -> None:
@@ -153,6 +191,8 @@ def test_cubemap_no_image_preserves_existing_output(tmp_path: Path, monkeypatch)
     old_mask_dir.mkdir()
     old_mask = old_mask_dir / "old_mask.png"
     old_mask.write_text("mask", encoding="utf-8")
+    old_settings = output / "stechdrive_export_settings.json"
+    old_settings.write_text('{"old": true}\n', encoding="utf-8")
     step = _ready_step(tmp_path)
     step.no_image_cb.setChecked(True)
     monkeypatch.setattr(
@@ -167,6 +207,7 @@ def test_cubemap_no_image_preserves_existing_output(tmp_path: Path, monkeypatch)
     assert "--no_image" in commands[0][1]
     assert old_file.is_file()
     assert old_mask.is_file()
+    assert old_settings.read_text(encoding="utf-8") == '{"old": true}\n'
     assert (output / "views_config.json").is_file()
 
 
@@ -188,3 +229,24 @@ def test_cubemap_build_validates_before_resetting_output(tmp_path: Path, monkeyp
         step.build_commands()
 
     assert old_file.is_file()
+
+
+def test_cubemap_finalize_writes_export_settings(tmp_path: Path) -> None:
+    step = _ready_step(tmp_path)
+    step._finalize_bundle()
+
+    settings_path = tmp_path / "output" / "stechdrive_export_settings.json"
+    assert settings_path.is_file()
+    settings = json.loads(settings_path.read_text(encoding="utf-8"))
+    assert settings["app"] == "stechdrive-3dgs-utils"
+    assert settings["settings_version"] == 1
+    assert settings["target_profile"] == "lichtfeld"
+    assert settings["effective_profile"] == "lichtfeld"
+    assert settings["fov"] == 90.0
+    assert settings["image_size"]["scale"] == 1.0
+    assert settings["conversion"]["yaw_offset_per_frame"] == 30.0
+    assert settings["conversion"]["output_format"] == "auto"
+    assert settings["conversion"]["output_bit_depth"] == "8"
+    assert settings["conversion"]["no_image"] is False
+    assert settings["output_files"]["settings"] == "stechdrive_export_settings.json"
+    assert settings["view_config"]["views"]

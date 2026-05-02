@@ -6,6 +6,7 @@ import math
 import re
 import shutil
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
 from PySide6.QtGui import QFontMetrics
@@ -30,6 +31,7 @@ from gui.common.collapsible_section import CollapsibleSection
 from gui.common.form_rows import add_tooltip_row
 from gui.cubemap.view_config import ViewConfigWidget, _BLOCK_ENABLED_VIEWS, _WARN_ENABLED_VIEWS
 from gui.cubemap.preview_renderer import PreviewWidget
+from gui.version import APP_VERSION
 from gui.steps.base_step import (
     SETTINGS_PANE_MARGINS,
     SETTINGS_PANE_WIDTH,
@@ -43,6 +45,7 @@ _PROFILE_BRUSH = "brush"
 _PROFILE_LICHTFELD = "lichtfeld"
 _PROFILE_CUSTOM = "custom"
 _NORMAL_OUTPUT_SCALE = 2.0 / math.pi
+_EXPORT_SETTINGS_NAME = "stechdrive_export_settings.json"
 
 
 class ElidedPathLabel(QLabel):
@@ -540,6 +543,92 @@ class CubemapStep(BaseStepWidget):
         path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
         return path
 
+    def _export_settings_path(self) -> Path:
+        return self._output_dir() / _EXPORT_SETTINGS_NAME
+
+    @staticmethod
+    def _utc_now_iso() -> str:
+        return datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
+
+    def _collect_export_settings(self) -> dict:
+        views = self.view_config.collect_views(include_disabled=True)
+        scale = float(self.scale_combo.currentData())
+        yaw_step = float(self.yaw_per_frame_edit.text().strip())
+        jpg_quality = int(self.jpg_quality_edit.text().strip())
+        scene = Path(self.scene_dir) if self.scene_dir else Path(".")
+        output = self._output_dir()
+        profile = self._profile_id()
+
+        return {
+            "app": "stechdrive-3dgs-utils",
+            "app_version": APP_VERSION,
+            "settings_version": 1,
+            "created_at": self._utc_now_iso(),
+            "scene_dir": str(scene),
+            "output_dir": str(output),
+            "target_profile": profile,
+            "effective_profile": self._effective_profile(),
+            "fov": 90.0,
+            "image_size": {
+                "label": self.scale_combo.currentText(),
+                "scale": scale,
+            },
+            "view_config": {
+                "mode": self.view_config.view_mode(),
+                "yaw_offset": self.view_config.yaw_offset(),
+                "yaw_slots": self.view_config.yaw_slot_count(),
+                "pitch_rows_text": self.view_config.pitch_edit.text().strip(),
+                "cube6_drop_top": self.view_config.cube6_drop_top.isChecked(),
+                "cube6_drop_bottom": self.view_config.cube6_drop_bottom.isChecked(),
+                "views": [
+                    {
+                        "name": v["name"],
+                        "yaw": float(v["yaw"]),
+                        "pitch": float(v["pitch"]),
+                        "enabled": bool(v["enabled"]),
+                    }
+                    for v in views
+                ],
+            },
+            "conversion": {
+                "yaw_offset_per_frame": yaw_step,
+                "output_format": self.output_format_combo.currentData() or "auto",
+                "output_bit_depth": self.output_bit_depth_combo.currentData() or "8",
+                "jpg_quality": jpg_quality,
+                "invert_masks": self.invert_masks_cb.isChecked(),
+                "no_image": self.no_image_cb.isChecked(),
+                "export_colmap": self.export_colmap_cb.isChecked(),
+            },
+            "metashape_import": {
+                "enabled": self.preprocess_cb.isChecked(),
+                "images_dir": str(self._metashape_images_dir()),
+                "xml": self.ms_xml_browse.text(),
+                "ply": self.ms_ply_browse.text()
+                if self.preprocess_cb.isChecked() and self._preprocess_uses_ply()
+                else "",
+                "scale": float(self.ms_scale_edit.text().strip()),
+                "no_fix_rotation": self.ms_no_fix_rot_cb.isChecked(),
+            },
+            "inputs": {
+                "transforms_json": str(scene / "transforms.json"),
+                "masks_dir": str(self._mask_dir()),
+                "ply_source": str(self._resolve_ply_source() or ""),
+            },
+            "output_files": {
+                "settings": _EXPORT_SETTINGS_NAME,
+                "views_config": "views_config.json",
+                "transforms_json": "transforms.json",
+                "images_dir": "images",
+                "masks_dir": "masks",
+            },
+        }
+
+    def _write_export_settings(self) -> None:
+        path = self._export_settings_path()
+        path.parent.mkdir(parents=True, exist_ok=True)
+        payload = self._collect_export_settings()
+        path.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
+
     def _output_dir(self) -> Path:
         if not self.scene_dir:
             return Path("output")
@@ -606,20 +695,30 @@ class CubemapStep(BaseStepWidget):
             return
         if profile == _PROFILE_LICHTFELD:
             raise ValueError("LichtFeldプロファイルにはpointcloud.plyが必要です。前処理でPLYを有効にしてください。")
-        raise ValueError("PostshotプロファイルにはMetashape PLY（metashape.plyまたはsparse.ply）が必要です。")
+        raise ValueError(
+            "Postshot/BrushプロファイルにはMetashapeからエクスポートしたRAW PLYが必要です。"
+            "LichtFeld用のpointcloud.plyは使用できません。"
+        )
 
     def _resolve_ply_source(self) -> Path | None:
         scene = Path(self.scene_dir) if self.scene_dir else Path(".")
         profile = self._effective_profile()
         if profile == _PROFILE_LICHTFELD:
             candidates = [scene / "pointcloud.ply"]
+            for c in candidates:
+                if c.is_file():
+                    return c
+            return None
         else:
             candidates = [scene / "metashape.ply", scene / "sparse.ply"]
 
         for c in candidates:
             if c.is_file():
                 return c
-        plys = sorted([p for p in scene.glob("*.ply") if p.is_file()], key=lambda x: x.name.lower())
+        plys = sorted(
+            [p for p in scene.glob("*.ply") if p.is_file() and p.name.lower() != "pointcloud.ply"],
+            key=lambda x: x.name.lower(),
+        )
         if plys:
             return plys[0]
         return None
@@ -634,22 +733,23 @@ class CubemapStep(BaseStepWidget):
                 pass
 
     def _finalize_bundle(self) -> None:
-        scene = Path(self.scene_dir)
         output = self._output_dir()
         output.mkdir(parents=True, exist_ok=True)
 
         source = self._resolve_ply_source()
-        if source is None:
-            return
-        dest = output / source.name
-        if source.resolve() != dest.resolve():
-            shutil.copy2(source, dest)
+        if source is not None:
+            dest = output / source.name
+            if source.resolve() != dest.resolve():
+                shutil.copy2(source, dest)
 
-        transforms = output / "transforms.json"
-        if transforms.is_file():
-            data = json.loads(transforms.read_text(encoding="utf-8"))
-            data["ply_file_path"] = dest.name
-            transforms.write_text(json.dumps(data, indent=2), encoding="utf-8")
+            transforms = output / "transforms.json"
+            if transforms.is_file():
+                data = json.loads(transforms.read_text(encoding="utf-8"))
+                data["ply_file_path"] = dest.name
+                transforms.write_text(json.dumps(data, indent=2), encoding="utf-8")
+
+        if not self.no_image_cb.isChecked():
+            self._write_export_settings()
 
     # -- プログレス --
 
@@ -679,9 +779,12 @@ class CubemapStep(BaseStepWidget):
 
     @staticmethod
     def _guess_ply(scene_dir: Path) -> str:
-        for name in ["metashape.ply", "sparse.ply", "pointcloud.ply"]:
+        for name in ["metashape.ply", "sparse.ply"]:
             c = scene_dir / name
             if c.is_file():
                 return str(c)
-        plys = sorted([p for p in scene_dir.glob("*.ply") if p.is_file()], key=lambda x: x.name.lower())
+        plys = sorted(
+            [p for p in scene_dir.glob("*.ply") if p.is_file() and p.name.lower() != "pointcloud.ply"],
+            key=lambda x: x.name.lower(),
+        )
         return str(plys[0]) if plys else ""

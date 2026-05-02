@@ -81,6 +81,7 @@ start_cubemap_tools_gui.bat
   - Usually off. Enable only when the target app expects the opposite polarity.
 - `Skip Image/Mask Conversion (--no_image)`
   - Updates `transforms.json` without reconverting cubemap images or masks. Existing files in `output/` are preserved.
+  - Does not overwrite `output/stechdrive_export_settings.json` saved by a normal conversion.
 
 ## Workflow tabs
 
@@ -105,6 +106,7 @@ start_cubemap_tools_gui.bat
 - Then GUI runs:
   - `cubemap_transforms_json.py --fov 90 --output_scale <1.0|0.6366|0.5> --views-json <that file>`
 - If `Skip Image/Mask Conversion` is enabled, the GUI adds `--no_image` and does not reset existing files in `<output_dir>`.
+- After a successful normal conversion, GUI saves the target profile, image size, view settings, per-frame yaw rotation, output format, and related settings to `<output_dir>/stechdrive_export_settings.json`.
 - Disabled slots are written with `enabled=false` and ignored by converter.
 - With `LichtFeld Studio` profile, point cloud PLY import is enabled automatically.
 - Masks normally convert with black as the ignored region. Postshot can handle interpretation through its own Mask Mode, so the GUI does not auto-invert masks for Postshot.

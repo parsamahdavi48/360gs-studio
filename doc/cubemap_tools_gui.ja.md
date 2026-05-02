@@ -82,6 +82,7 @@ start_cubemap_tools_gui.bat
   - 通常はOFF。出力先アプリで逆極性が必要な場合だけON。
 - `画像とマスク変換なし (--no_image)`
   - キューブマップ画像とマスクを再変換せず、`transforms.json` だけ更新します。`output/` 内の既存ファイルは保持されます。
+  - 通常変換時に保存された `output/stechdrive_export_settings.json` は上書きしません。
 
 ## ワークフロータブ
 
@@ -107,6 +108,7 @@ start_cubemap_tools_gui.bat
 - その後
   `cubemap_transforms_json.py --fov 90 --output_scale <1.0|0.6366|0.5> --views-json <そのファイル>` を呼び出します。
 - `画像とマスク変換なし` が有効な場合は `--no_image` を追加し、`<output_dir>` 内の既存ファイルをリセットしません。
+- 通常変換が成功すると、`<output_dir>/stechdrive_export_settings.json` にターゲットプロファイル、画像サイズ、ビュー設定、フレーム別ヨー回転、出力形式などを保存します。
 - OFFのスロットは `enabled=false` として保存され、変換時に無視されます。
 - `LichtFeld Studio` プロファイルでは、点群PLYのインポートが自動的に有効になります。
 - マスクは通常「黒=除外領域」で変換されます。Postshot はアプリ側の Mask Mode で扱いを選べるため、GUI側では自動反転しません。
