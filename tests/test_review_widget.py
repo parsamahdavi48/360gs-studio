@@ -1,5 +1,8 @@
 import csv
 import os
+import subprocess
+import sys
+import textwrap
 from pathlib import Path
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
@@ -54,6 +57,13 @@ def _read_decisions(csv_path: Path) -> list[str]:
         return [row["decision"] for row in csv.DictReader(f)]
 
 
+def _set_summary_statuses(widget: ReviewWidget) -> None:
+    widget.rows[0]["status"] = "smart_added+replaced"
+    widget.rows[1]["status"] = "fallback_keep+thinned"
+    widget.problem_indices = widget._collect_problem_indices()
+    widget._render_current()
+
+
 def test_review_widget_slider_changes_current_frame(tmp_path: Path) -> None:
     _app()
     scene, csv_path = _write_scene(tmp_path)
@@ -85,6 +95,62 @@ def test_review_widget_shows_quality_score_and_original_when_replaced(tmp_path: 
             ")"
         ),
     )
+
+
+def test_review_summary_label_is_readable_single_line(tmp_path: Path) -> None:
+    _app()
+    scene, csv_path = _write_scene(tmp_path)
+    widget = ReviewWidget(scene, csv_path)
+    _set_summary_statuses(widget)
+
+    text = widget.problem_summary_label.text()
+    assert "\n" not in text
+    assert not widget.problem_summary_label.wordWrap()
+    assert "代表置換" not in text
+    assert "representative" not in text.lower()
+    assert "#666" not in widget.problem_summary_label.styleSheet()
+    assert "palette(text)" in widget.problem_summary_label.styleSheet()
+    assert widget.problem_summary_label.sizeHint().width() <= 760
+
+
+def test_review_summary_label_is_single_line_in_english(tmp_path: Path) -> None:
+    script = textwrap.dedent(
+        """
+        import os
+        import tempfile
+        os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+        os.environ["STUDIO_LANG"] = "en"
+        from pathlib import Path
+        from PySide6.QtWidgets import QApplication
+        from review_frames import ReviewWidget
+        from tests.test_review_widget import _write_scene, _set_summary_statuses
+
+        app = QApplication.instance() or QApplication([])
+        with tempfile.TemporaryDirectory() as d:
+            scene, csv_path = _write_scene(Path(d))
+            widget = ReviewWidget(scene, csv_path)
+            _set_summary_statuses(widget)
+            text = widget.problem_summary_label.text()
+            assert "\\n" not in text
+            assert not widget.problem_summary_label.wordWrap()
+            assert "representative" not in text.lower()
+            assert "replace" in text
+            assert widget.problem_summary_label.sizeHint().width() <= 760
+        """
+    )
+    env = os.environ.copy()
+    env["QT_QPA_PLATFORM"] = "offscreen"
+    env["STUDIO_LANG"] = "en"
+
+    result = subprocess.run(
+        [sys.executable, "-c", script],
+        cwd=Path.cwd(),
+        env=env,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
 
 
 def test_review_widget_flag_toggle_saves_immediately_and_resets(tmp_path: Path) -> None:

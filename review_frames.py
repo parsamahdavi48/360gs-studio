@@ -159,7 +159,8 @@ if QMainWindow is not None:
             layout.addWidget(self.info_label)
 
             self.problem_summary_label = QLabel()
-            self.problem_summary_label.setStyleSheet("color: #666;")
+            self.problem_summary_label.setWordWrap(False)
+            self.problem_summary_label.setStyleSheet("color: palette(text); font-weight: 500;")
             layout.addWidget(self.problem_summary_label)
 
             btn_row = QHBoxLayout()
