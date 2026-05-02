@@ -1,19 +1,14 @@
 """Step 2: フレーム確認 + 選別確定"""
 from __future__ import annotations
 
-import subprocess
 import sys
 from pathlib import Path
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QCheckBox,
-    QFormLayout,
-    QHBoxLayout,
     QLabel,
-    QLineEdit,
     QMessageBox,
-    QPushButton,
     QScrollArea,
     QSplitter,
     QVBoxLayout,
@@ -21,7 +16,6 @@ from PySide6.QtWidgets import (
 )
 
 from gui import i18n
-from gui.common.form_rows import add_tooltip_row
 from gui.steps.base_step import (
     SETTINGS_PANE_MARGINS,
     SETTINGS_PANE_WIDTH,
@@ -54,25 +48,10 @@ class ReviewStep(BaseStepWidget):
         settings_layout.setContentsMargins(*SETTINGS_PANE_MARGINS)
         settings_layout.setSpacing(10)
 
-        form = QFormLayout()
-        form.setSpacing(6)
-
-        self.csv_edit = QLineEdit("selected_frames.csv")
-        self.csv_edit.setToolTip(i18n.tip("CSV_FILE"))
-        self.csv_edit.editingFinished.connect(self._on_csv_changed)
-        add_tooltip_row(form, i18n.CSV_FILE, self.csv_edit, i18n.tip("CSV_FILE"))
-
         self.backup_cb = QCheckBox(i18n.t("BACKUP_BEFORE_FINALIZE"))
         self.backup_cb.setToolTip(i18n.t("BACKUP_BEFORE_FINALIZE_HINT"))
         self.backup_cb.setChecked(False)
-        form.addRow("", self.backup_cb)
-
-        settings_layout.addLayout(form)
-
-        self.review_window_btn = QPushButton(i18n.t("OPEN_REVIEW_EXTERNAL"))
-        self.review_window_btn.setToolTip(i18n.tip("OPEN_REVIEW"))
-        self.review_window_btn.clicked.connect(self._open_review_window)
-        settings_layout.addWidget(self.review_window_btn)
+        settings_layout.addWidget(self.backup_cb)
 
         notice = QLabel(i18n.NEXT_STEP_MASK_NOTICE)
         notice.setObjectName("workflowNote")
@@ -97,8 +76,7 @@ class ReviewStep(BaseStepWidget):
         root_layout.addWidget(splitter)
 
     def _csv_path(self) -> Path:
-        csv_name = self.csv_edit.text().strip() or "selected_frames.csv"
-        return Path(self.scene_dir) / csv_name
+        return Path(self.scene_dir) / "selected_frames.csv"
 
     def _has_csv(self) -> bool:
         if not self.scene_dir:
@@ -164,10 +142,6 @@ class ReviewStep(BaseStepWidget):
     def _on_review_decisions_changed(self) -> None:
         self.primary_action_state_changed.emit()
 
-    def _on_csv_changed(self) -> None:
-        self._loaded_csv_signature = None
-        self._refresh_embedded_review(force=True, show_error=False)
-
     def _refresh_embedded_review(self, force: bool = False, show_error: bool = True) -> None:
         if not self.scene_dir:
             self._loaded_csv_signature = None
@@ -205,37 +179,20 @@ class ReviewStep(BaseStepWidget):
         self.review_layout.addWidget(widget, stretch=1)
         self.primary_action_state_changed.emit()
 
-    def _open_review_window(self) -> None:
-        script = self.base_dir / "review_frames.py"
-        if not script.exists():
-            QMessageBox.critical(self, i18n.INVALID_INPUT, f"review_frames.py が見つかりません: {script}")
-            return
-        if not self.scene_dir:
-            QMessageBox.critical(self, i18n.INVALID_INPUT, i18n.t("SCENE_REQUIRED_ACTION_HINT"))
-            return
-        if not self._has_csv():
-            QMessageBox.critical(self, i18n.INVALID_INPUT, f"CSVが見つかりません: {self._csv_path()}")
-            return
-        cmd = [sys.executable, str(script), self.scene_dir, "--csv", self.csv_edit.text().strip()]
-        try:
-            subprocess.Popen(cmd)
-        except Exception as e:
-            QMessageBox.critical(self, i18n.INVALID_INPUT, str(e))
-
     def _confirm_finalize(self) -> bool:
         if self.backup_cb.isChecked():
             confirm_text = (
                 "除外にしたフレームを images/ から削除し、採用フレームのファイル名は維持します。\n\n"
-                "実行前に images/ を images_backup/ にコピーします（既存バックアップは上書き）。\n"
+                "適用前に images/ を images_backup/ にコピーします（既存バックアップは上書き）。\n"
                 "selected_frames.csv のバックアップも自動作成されます。\n\n"
-                "実行してよいですか？"
+                "適用してよいですか？"
             )
         else:
             confirm_text = (
                 "除外にしたフレームを images/ から削除し、採用フレームのファイル名は維持します。\n\n"
                 "画像のバックアップは作成されません。削除された画像は復元できません。\n"
                 "selected_frames.csv のみ自動バックアップされます。\n\n"
-                "実行してよいですか？"
+                "適用してよいですか？"
             )
         result = QMessageBox.question(
             self,

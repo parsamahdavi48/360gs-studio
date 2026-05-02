@@ -6,7 +6,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QPixmap
-from PySide6.QtWidgets import QApplication, QLabel, QPushButton
+from PySide6.QtWidgets import QApplication, QCheckBox, QLabel, QLineEdit, QPushButton
 
 from gui import i18n
 from gui.app import MainWindow
@@ -74,14 +74,30 @@ def test_review_step_left_pane_guides_apply_before_mask_step() -> None:
 
     labels = [label.text() for label in step.findChildren(QLabel)]
     buttons = [button.text() for button in step.findChildren(QPushButton)]
+    checkboxes = [checkbox.text() for checkbox in step.findChildren(QCheckBox)]
 
     assert all("確認+選別" not in text for text in labels)
     assert all("Review + Select" not in text for text in labels)
+    assert all("CSVファイル名" not in text for text in labels)
+    assert all("CSV Filename" not in text for text in labels)
     assert "再読み込み" not in buttons
     assert "Reload" not in buttons
+    assert "別ウィンドウで開く" not in buttons
+    assert "Open Separate Window" not in buttons
+    assert not step.findChildren(QLineEdit)
+    assert i18n.t("BACKUP_BEFORE_FINALIZE") in checkboxes
     assert i18n.NEXT_STEP_MASK_NOTICE in labels
     assert i18n.t("ACTION_FINALIZE_REVIEW") in i18n.NEXT_STEP_MASK_NOTICE
     assert "Step 3" in i18n.NEXT_STEP_MASK_NOTICE
+
+
+def test_review_step_uses_fixed_selected_frames_csv(tmp_path: Path) -> None:
+    _app()
+    step = ReviewStep(Path.cwd())
+
+    step.set_scene_dir(str(tmp_path))
+
+    assert step._csv_path() == tmp_path / "selected_frames.csv"
 
 
 def test_review_step_autoloads_csv_when_activated(tmp_path: Path) -> None:
