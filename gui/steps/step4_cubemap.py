@@ -12,10 +12,10 @@ from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
     QFormLayout,
-    QGroupBox,
     QHBoxLayout,
     QLabel,
     QLineEdit,
+    QMessageBox,
     QScrollArea,
     QSplitter,
     QVBoxLayout,
@@ -72,12 +72,14 @@ class CubemapStep(BaseStepWidget):
         form = QFormLayout()
         form.setSpacing(6)
 
-        self.output_browse = BrowseWidget(mode="dir")
-        self.output_browse.setToolTip(i18n.tip("OUTPUT_DIR_CUBEMAP"))
         output_dir_label = QLabel(i18n.OUTPUT_DIR)
         output_dir_label.setToolTip(i18n.tip("OUTPUT_DIR_CUBEMAP"))
+        self.output_path_label = QLabel("-")
+        self.output_path_label.setToolTip(i18n.tip("OUTPUT_DIR_CUBEMAP"))
+        self.output_path_label.setWordWrap(True)
+        self.output_path_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
         left_layout.addWidget(output_dir_label)
-        left_layout.addWidget(self.output_browse)
+        left_layout.addWidget(self.output_path_label)
 
         profile_row = QHBoxLayout()
         profile_row.setSpacing(8)
@@ -271,9 +273,10 @@ class CubemapStep(BaseStepWidget):
     def set_scene_dir(self, path: str) -> None:
         super().set_scene_dir(path)
         if not path:
+            self.output_path_label.setText("-")
             return
         p = Path(path)
-        self.output_browse.set_text(str(p / "cubic"))
+        self.output_path_label.setText(str(self._output_dir()))
         self.mask_browse.set_text(str(p / "masks"))
         self.ms_images_browse.set_text(str(p / "images"))
         self.ms_xml_browse.set_text(str(self._guess_xml(p)))
@@ -398,9 +401,16 @@ class CubemapStep(BaseStepWidget):
     def build_commands(self) -> list[tuple[str, list[str]]]:
         self._validate_bundle()
 
-        steps = []
+        preprocess_cmd: list[str] | None = None
         if self.preprocess_cb.isChecked():
-            steps.append(("metashape", self._build_preprocess_cmd()))
+            preprocess_cmd = self._build_preprocess_cmd()
+
+        if not self._prepare_output_dir():
+            return []
+
+        steps = []
+        if preprocess_cmd is not None:
+            steps.append(("metashape", preprocess_cmd))
         steps.append(("cubemap", self._build_cubemap_cmd()))
         if self.export_colmap_cb.isChecked():
             steps.append(("colmap", self._build_colmap_cmd()))
@@ -450,7 +460,7 @@ class CubemapStep(BaseStepWidget):
         if not scene.is_dir():
             raise ValueError(f"シーンフォルダが見つかりません: {scene}")
 
-        output = Path(self.output_browse.text() or str(scene / "cubic"))
+        output = self._output_dir()
         json_name = self.json_name_edit.text().strip() or "transforms.json"
 
         views = self.view_config.collect_views(include_disabled=True)
@@ -516,21 +526,21 @@ class CubemapStep(BaseStepWidget):
             raise FileNotFoundError(f"transforms_to_colmap.py が見つかりません: {script}")
 
         scene = Path(self.scene_dir)
-        cubic = Path(self.output_browse.text() or str(scene / "cubic"))
+        output = self._output_dir()
         json_name = self.json_name_edit.text().strip() or "transforms.json"
-        colmap_dir = cubic / "colmap"
+        colmap_dir = output / "colmap"
 
         cmd = [
             sys.executable, "-u", str(script),
-            str(cubic), str(colmap_dir),
+            str(output), str(colmap_dir),
             "--json", json_name,
         ]
-        ply = cubic / "pointcloud.ply"
+        ply = output / "pointcloud.ply"
         if ply.is_file():
             cmd.extend(["--ply", str(ply)])
         else:
             # cubemap 出力ディレクトリ内の任意 .ply をフォールバック
-            plys = sorted([p for p in cubic.glob("*.ply") if p.is_file()])
+            plys = sorted([p for p in output.glob("*.ply") if p.is_file()])
             if plys:
                 cmd.extend(["--ply", str(plys[0])])
         return cmd
@@ -547,6 +557,47 @@ class CubemapStep(BaseStepWidget):
         }
         path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
         return path
+
+    def _output_dir(self) -> Path:
+        if not self.scene_dir:
+            return Path("output")
+        return Path(self.scene_dir) / "output"
+
+    def _prepare_output_dir(self) -> bool:
+        output = self._output_dir()
+        if not self.scene_dir:
+            raise ValueError(i18n.t("SCENE_REQUIRED_ACTION_HINT"))
+
+        scene = Path(self.scene_dir).resolve()
+        try:
+            resolved_output = output.resolve()
+        except OSError:
+            resolved_output = output.absolute()
+        if resolved_output.parent != scene:
+            raise ValueError(f"出力フォルダがシーンフォルダ外です: {output}")
+
+        if output.exists() and any(output.iterdir()):
+            result = QMessageBox.question(
+                self,
+                i18n.t("OUTPUT_RESET_TITLE"),
+                i18n.t("OUTPUT_RESET_MESSAGE").format(path=str(output)),
+                QMessageBox.Yes | QMessageBox.No,
+                QMessageBox.No,
+            )
+            if result != QMessageBox.Yes:
+                return False
+            self._clear_output_dir(output)
+
+        output.mkdir(parents=True, exist_ok=True)
+        return True
+
+    @staticmethod
+    def _clear_output_dir(output: Path) -> None:
+        for child in output.iterdir():
+            if child.is_dir():
+                shutil.rmtree(child)
+            else:
+                child.unlink()
 
     # -- バンドル検証 --
 
@@ -588,7 +639,7 @@ class CubemapStep(BaseStepWidget):
 
     def _finalize_bundle(self) -> None:
         scene = Path(self.scene_dir)
-        output = Path(self.output_browse.text() or str(scene / "cubic"))
+        output = self._output_dir()
         output.mkdir(parents=True, exist_ok=True)
 
         source = self._resolve_ply_source()

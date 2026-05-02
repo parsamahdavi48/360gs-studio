@@ -12,8 +12,8 @@ from PIL import Image
 
 EXAMPLE_TEXT = """Example:
   python cubemap_transforms_json.py .
-  python cubemap_transforms_json.py . ./cubic --yaw 45 --stitch 2.5
-  python cubemap_transforms_json.py . ./cubic --views-json views_config.json
+  python cubemap_transforms_json.py . ./output --yaw 45 --stitch 2.5
+  python cubemap_transforms_json.py . ./output --views-json views_config.json
 """
 
 SAFE_VIEW_NAME_RE = re.compile(r"^[A-Za-z0-9_-]+$")
@@ -88,7 +88,7 @@ def parse_args() -> argparse.Namespace:
         epilog=EXAMPLE_TEXT,
     )
     parser.add_argument("input_dir", help="Input directory containing transforms.json and images")
-    parser.add_argument("output_dir", nargs="?", help="Output directory (default=<input_dir>/cubic)")
+    parser.add_argument("output_dir", nargs="?", help="Output directory (default=<input_dir>/output)")
     parser.add_argument("--json", help="transforms.json filename override (default='transforms.json')")
     parser.add_argument("--mask_dir", help="Input mask images directory (default=<input_dir>/masks)")
     parser.add_argument("--mask_from_alpha", action="store_true", help="Extract masks from alpha channel")
@@ -782,7 +782,7 @@ def main() -> None:
     args = parse_args()
 
     input_dir = args.input_dir
-    output_dir = args.output_dir if args.output_dir else f"{input_dir}/cubic"
+    output_dir = args.output_dir if args.output_dir else f"{input_dir}/output"
     input_json = args.json if args.json else "transforms.json"
 
     image_dir = input_dir

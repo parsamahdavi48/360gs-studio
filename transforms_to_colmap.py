@@ -25,8 +25,8 @@ def parse_args() -> argparse.Namespace:
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=(
             "Example:\n"
-            "  python transforms_to_colmap.py ./cubic\n"
-            "  python transforms_to_colmap.py ./cubic ./cubic/colmap --ply ./cubic/pointcloud.ply\n"
+            "  python transforms_to_colmap.py ./output\n"
+            "  python transforms_to_colmap.py ./output ./output/colmap --ply ./output/pointcloud.ply\n"
         ),
     )
     parser.add_argument(
