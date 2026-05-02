@@ -52,7 +52,6 @@ _JA: dict[str, str] = {
     "INPUT_VIDEO": "入力動画",
     "INPUT_VIDEO_PLACEHOLDER": "360度動画を選択...",
     "VIDEO_FILE_FILTER": "動画ファイル (*.mp4 *.mov *.mkv *.avi *.m4v);;すべて (*.*)",
-    "EXTRACTION_MODE": "抽出モード",
     "MODE_CHANGE": "自動間隔",
     "MODE_CHANGE_SHORT": "自動間隔",
     "MODE_FIXED": "固定間隔",
@@ -245,11 +244,10 @@ _JA: dict[str, str] = {
     "SAMPLE_REFRESH": "サンプル推定を更新",
     "VIDEO_LABEL_DEFAULT": "動画: -",
     "ADVANCED_SETTINGS": "詳細設定",
-    "AUTO_SELECTION_SECTION": "抽出フレームの自動選別",
-    "AUTO_SELECTION_HINT": "抽出候補をSfM向けにスコアリングし、必要に応じて代替フレーム選択、品質確認、低変化フレームのスキップを行います。",
+    "AUTO_SELECTION_SECTION": "SfM品質確認",
+    "AUTO_SELECTION_HINT": "抽出候補をSfM向けにスコアリングし、必要に応じて代替フレーム選択と品質確認を行います。",
     "AUTO_PREFIX_HINT": "自動 (動画ファイル名)",
     "FRAMES_UNIT": "フレーム",
-    "THIN_MOTION_THRESHOLD": "低変化フレームのスキップ",
 
     # Step2 extra labels
     "PREPROCESS_RUN_LABEL": "Metashape前処理を実行",
@@ -318,7 +316,6 @@ _EN: dict[str, str] = {
     "INPUT_VIDEO": "Input Video",
     "INPUT_VIDEO_PLACEHOLDER": "Select a 360 video...",
     "VIDEO_FILE_FILTER": "Video Files (*.mp4 *.mov *.mkv *.avi *.m4v);;All Files (*.*)",
-    "EXTRACTION_MODE": "Extraction Mode",
     "MODE_CHANGE": "Auto Interval",
     "MODE_CHANGE_SHORT": "Auto",
     "MODE_FIXED": "Fixed Interval",
@@ -511,11 +508,10 @@ _EN: dict[str, str] = {
     "SAMPLE_REFRESH": "Refresh Sampled Estimate",
     "VIDEO_LABEL_DEFAULT": "Video: -",
     "ADVANCED_SETTINGS": "Advanced",
-    "AUTO_SELECTION_SECTION": "Automatic Frame Selection",
-    "AUTO_SELECTION_HINT": "Scores extracted candidates for SfM and, when needed, selects alternate frames, flags low-quality frames for review, and skips low-change frames.",
+    "AUTO_SELECTION_SECTION": "SfM Quality Check",
+    "AUTO_SELECTION_HINT": "Scores extracted candidates for SfM and, when needed, selects alternate frames and flags low-quality frames for review.",
     "AUTO_PREFIX_HINT": "auto (video filename)",
     "FRAMES_UNIT": "frames",
-    "THIN_MOTION_THRESHOLD": "Skip Low-Change Frames",
 
     # Step2 extra labels
     "PREPROCESS_RUN_LABEL": "Run Metashape Preprocess",
@@ -553,7 +549,6 @@ _TIPS_JA: dict[str, str] = {
     "RUN": "現在のタブの処理を開始します",
     "CANCEL": "実行中の処理を中断します",
     "INPUT_VIDEO": "エクイレクタングラー形式の360度動画ファイルを選択",
-    "EXTRACTION_MODE": "固定間隔を基準に抽出フレームを選びます。必要に応じて変化量で補正できます",
     "MODE_FIXED": "指定した秒数ごとにフレームを抽出します。横ドラッグで調整可能。推奨は0.8〜1.0秒、UI範囲は0.05〜60秒",
     "FIXED_SMART": (
         "固定間隔を基準に、変化が少ない候補をスキップし、変化が大きい区間には追加候補を入れます。\n"
@@ -581,11 +576,6 @@ _TIPS_JA: dict[str, str] = {
         "元フレームではなく近傍の代替フレームを選ぶために必要な品質スコア差。範囲は0.00〜1.00です。\n"
         "候補品質スコア - 元品質スコア がこの値以上のときだけ、代替フレームを採用します。\n"
         "大きいほど代替選択は控えめ、小さいほど積極的になります。既定値: 0.08"
-    ),
-    "THIN_MOTION_THRESHOLD": (
-        "変化量で補正するとき、直前に採用したフレームから次の候補までの累積変化量がこの値未満なら除外します。\n"
-        "変化量 = 隣接解析フレームの平均輝度差 / 255 と特徴点モーションの合成値。単位は正規化スコアです。\n"
-        "0で無効。目安は0.3〜1.0、UI範囲は0.0〜5.0です。既定値: 0.6"
     ),
     "FFMPEG_PATH": "ffmpegの実行パス。PATHに通っていれば 'ffmpeg' でOK",
     "FFPROBE_PATH": "ffprobeの実行パス。動画情報の取得に使用",
@@ -653,7 +643,6 @@ _TIPS_EN: dict[str, str] = {
     "RUN": "Start processing for the current tab",
     "CANCEL": "Abort the running process",
     "INPUT_VIDEO": "Select an equirectangular 360-degree video file",
-    "EXTRACTION_MODE": "Choose frames from a fixed interval baseline, with optional motion-based adjustment",
     "MODE_FIXED": "Extract frames every N seconds. Drag horizontally to adjust. Recommended: 0.8-1.0 sec; UI range: 0.05-60 sec",
     "FIXED_SMART": (
         "Keeps the fixed interval baseline, skips low-change candidates, and inserts extra candidates in high-motion ranges.\n"
@@ -681,11 +670,6 @@ _TIPS_EN: dict[str, str] = {
         "Quality-score gain required before choosing a nearby alternate frame. Range: 0.00-1.00.\n"
         "An alternate frame is used only when candidate score - original score is at least this value.\n"
         "Higher is more conservative; lower is more aggressive. Default: 0.08"
-    ),
-    "THIN_MOTION_THRESHOLD": (
-        "When motion adjustment is enabled, drops low-change candidates when cumulative motion since the last kept frame is below this value.\n"
-        "Motion combines mean absolute luma difference / 255 with sparse feature displacement. Unit: normalized score.\n"
-        "0 disables thinning. Typical range: 0.3-1.0; UI range: 0.0-5.0. Default: 0.6"
     ),
     "FFMPEG_PATH": "ffmpeg executable path. 'ffmpeg' works if it's on PATH",
     "FFPROBE_PATH": "ffprobe executable path. Used for video metadata probing",

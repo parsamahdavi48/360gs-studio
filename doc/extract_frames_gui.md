@@ -58,9 +58,9 @@ Low-change skipping will keep a candidate when dropping it would make the kept-f
 
 Higher values can improve fine-feature detection but increase analysis time. Lower values are faster but can miss subtle motion and feature detail.
 
-## Automatic Frame Selection
+## SfM Quality Check
 
-Advanced `Automatic Frame Selection` scores selected candidates for SfM and, when useful, chooses a nearby alternate representative frame.
+Advanced `SfM Quality Check` scores selected candidates for SfM and, when useful, chooses a nearby alternate representative frame. Low-change skipping belongs to `Motion` adjustment, not to this quality check.
 
 ### `Quality Review Score`
 
@@ -77,16 +77,6 @@ Advanced `Automatic Frame Selection` scores selected candidates for SfM and, whe
 - Default: `0.08`
 
 Lower values make alternate-frame selection more aggressive. Higher values only replace when the improvement is clearer.
-
-### `Skip Low-Change Frames`
-
-- Unit: normalized accumulated motion score
-- Calculation: combines mean absolute luma difference / 255 with sparse feature motion, accumulated from the last kept candidate
-- Meaning: candidates below this accumulated score are marked as low-change drops
-- Default: `0.6`
-- `0`: disabled
-
-This field is used when `Motion` is enabled. Raising it skips more low-change candidates; lowering it keeps more candidates.
 
 ## Image Format
 

@@ -603,6 +603,23 @@ def _combined_motion_scores(
     return np.maximum(scores, feature * 4.0)
 
 
+def _fixed_smart_motion_scores(
+    change_scores: List[float],
+    feature_motion_scores: List[float],
+    change_threshold: float,
+    feature_motion_threshold: float,
+) -> np.ndarray:
+    """Normalize motion by the same thresholds used for fixed-smart insertion."""
+    change = np.asarray(change_scores, dtype=np.float64)
+    scores = np.zeros_like(change)
+    if change_threshold > 0.0:
+        scores = np.maximum(scores, change / change_threshold)
+    feature = np.asarray(feature_motion_scores, dtype=np.float64)
+    if feature.shape == change.shape and feature_motion_threshold > 0.0:
+        scores = np.maximum(scores, feature / feature_motion_threshold)
+    return scores
+
+
 def thin_stationary(
     rows: List[dict],
     change_scores: List[float],
@@ -762,12 +779,13 @@ def select_fixed_smart(
     change_threshold: float = 0.04,
     feature_motion_threshold: float = 0.012,
     max_inserts_per_interval: int = 2,
-) -> Tuple[List[int], set[int], int, int]:
+) -> Tuple[List[int], set[int], set[int], int, int]:
     """Add high-motion anchors to fixed interval selection.
 
-    The base cadence remains fixed. This only adds extra anchors inside a fixed
+    The base cadence remains fixed. This adds extra anchors inside a fixed
     interval when either broad image difference or sparse feature displacement
-    clearly indicates motion that may be useful for SfM.
+    clearly indicates motion that may be useful for SfM, and marks low-motion
+    base candidates for review/drop using the same normalized motion score.
     """
     if min_gap_sec <= 0 or max_gap_sec <= 0:
         raise ValueError("--min-gap-sec and --max-gap-sec must be > 0")
@@ -776,7 +794,7 @@ def select_fixed_smart(
 
     total = len(change_scores)
     if total <= 0:
-        return [], set(), 1, 1
+        return [], set(), set(), 1, 1
 
     min_gap_frames = max(1, int(round(min_gap_sec * fps)))
     max_gap_frames = max(min_gap_frames, int(round(max_gap_sec * fps)))
@@ -790,8 +808,8 @@ def select_fixed_smart(
     if base[-1] != total - 1:
         base.append(total - 1)
 
-    if max_inserts <= 0 or (change_threshold <= 0.0 and feature_motion_threshold <= 0.0):
-        return base, set(), min_gap_frames, max_gap_frames
+    if change_threshold <= 0.0 and feature_motion_threshold <= 0.0:
+        return base, set(), set(), min_gap_frames, max_gap_frames
 
     has_feature_motion = len(feature_motion_scores) == total
 
@@ -806,29 +824,83 @@ def select_fixed_smart(
     selected = set(base)
     added: set[int] = set()
 
-    for left, right in zip(base, base[1:]):
-        if right - left < min_gap_frames * 2:
-            continue
-        interval_selected = {left, right}
-        for _ in range(max_inserts):
-            best_idx: Optional[int] = None
-            best_score = 0.0
-            for idx in range(left + min_gap_frames, right - min_gap_frames + 1):
-                if idx in interval_selected:
-                    continue
-                if any(abs(idx - existing) < min_gap_frames for existing in interval_selected):
-                    continue
-                score = event_score(idx)
-                if score > best_score:
-                    best_idx = idx
-                    best_score = score
-            if best_idx is None or best_score < 1.0:
-                break
-            selected.add(best_idx)
-            added.add(best_idx)
-            interval_selected.add(best_idx)
+    if max_inserts > 0:
+        for left, right in zip(base, base[1:]):
+            if right - left < min_gap_frames * 2:
+                continue
+            interval_selected = {left, right}
+            for _ in range(max_inserts):
+                best_idx: Optional[int] = None
+                best_score = 0.0
+                for idx in range(left + min_gap_frames, right - min_gap_frames + 1):
+                    if idx in interval_selected:
+                        continue
+                    if any(abs(idx - existing) < min_gap_frames for existing in interval_selected):
+                        continue
+                    score = event_score(idx)
+                    if score > best_score:
+                        best_idx = idx
+                        best_score = score
+                if best_idx is None or best_score < 1.0:
+                    break
+                selected.add(best_idx)
+                added.add(best_idx)
+                interval_selected.add(best_idx)
 
-    return sorted(selected), added, min_gap_frames, max_gap_frames
+    selected_list = sorted(selected)
+    thinned = _select_fixed_smart_thinned(
+        selected_list,
+        added,
+        change_scores,
+        feature_motion_scores,
+        change_threshold,
+        feature_motion_threshold,
+        max_gap_frames,
+    )
+    return selected_list, added, thinned, min_gap_frames, max_gap_frames
+
+
+def _select_fixed_smart_thinned(
+    selected_indices: List[int],
+    protected_indices: set[int],
+    change_scores: List[float],
+    feature_motion_scores: List[float],
+    change_threshold: float,
+    feature_motion_threshold: float,
+    max_gap_frames: int,
+) -> set[int]:
+    """Mark low-motion fixed candidates while preserving smart-added anchors."""
+    if len(selected_indices) < 3:
+        return set()
+
+    total = len(change_scores)
+    motion_scores = _fixed_smart_motion_scores(
+        change_scores,
+        feature_motion_scores,
+        change_threshold,
+        feature_motion_threshold,
+    )
+    thinned: set[int] = set()
+    last_kept = selected_indices[0]
+
+    for idx in selected_indices[1:-1]:
+        if idx < 0 or idx >= total or idx <= last_kept:
+            last_kept = idx
+            continue
+        if idx in protected_indices:
+            last_kept = idx
+            continue
+        if max_gap_frames > 0 and idx - last_kept >= max_gap_frames:
+            last_kept = idx
+            continue
+
+        cumulative = float(np.sum(motion_scores[last_kept + 1 : idx + 1]))
+        if cumulative >= 1.0:
+            last_kept = idx
+        else:
+            thinned.add(idx)
+
+    return thinned
 
 
 def select_change(
@@ -1789,11 +1861,17 @@ def main() -> None:
 
     try:
         smart_added_indices: set[int] = set()
-        smart_max_gap_frames: Optional[int] = None
+        smart_thinned_indices: set[int] = set()
         if args.mode == "fixed":
             selected, min_gap_frames = select_fixed(total_frames, video_info.fps, args.interval_sec)
             if args.fixed_smart:
-                selected, smart_added_indices, min_gap_frames, smart_max_gap_frames = select_fixed_smart(
+                (
+                    selected,
+                    smart_added_indices,
+                    smart_thinned_indices,
+                    min_gap_frames,
+                    _smart_max_gap_frames,
+                ) = select_fixed_smart(
                     selected,
                     change_scores,
                     feature_motion_scores,
@@ -1837,6 +1915,8 @@ def main() -> None:
         status = row["status"]
         if orig in smart_added_indices:
             status = "smart_added" if status == "ok" else f"smart_added+{status}"
+        if orig in smart_thinned_indices:
+            status = "thinned" if status == "ok" else f"{status}+thinned"
         enriched_rows.append(
             {
                 **row,
@@ -1847,19 +1927,17 @@ def main() -> None:
                 "blur_score_final": blur_scores[final],
                 "quality_score_original": row.get("quality_score_original", quality_scores[orig]),
                 "quality_score_final": row.get("quality_score_final", quality_scores[final]),
-                "decision": "keep",
+                "decision": "drop" if orig in smart_thinned_indices else "keep",
             }
         )
 
     # 立ち止まり間引き: 累積モーションが閾値未満の連続区間を drop でマーク
-    if args.thin_motion_threshold > 0.0:
+    if args.thin_motion_threshold > 0.0 and not args.fixed_smart:
         enriched_rows = thin_stationary(
             enriched_rows,
             change_scores,
             motion_threshold=args.thin_motion_threshold,
             keep_endpoints=args.thin_keep_endpoints,
-            feature_motion_scores=feature_motion_scores if args.fixed_smart else None,
-            max_gap_frames=smart_max_gap_frames if args.fixed_smart else None,
         )
         thinned_count = sum(
             1 for r in enriched_rows

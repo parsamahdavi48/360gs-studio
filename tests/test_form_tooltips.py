@@ -31,7 +31,6 @@ def test_extract_numeric_labels_share_field_tooltips() -> None:
     _app()
     step = ExtractStep(Path.cwd())
 
-    assert _label(step, i18n.EXTRACTION_MODE).toolTip() == i18n.tip("EXTRACTION_MODE")
     assert _label(step, f"{i18n.t('MODE_FIXED_SHORT')}:").toolTip() == i18n.tip("MODE_FIXED")
     assert _label(step, f"{i18n.t('INTERVAL_SHORT')}:").toolTip() == i18n.tip("INTERVAL")
     assert _label(step, f"{i18n.t('MIN_GAP_SHORT')}:").toolTip() == i18n.tip("MIN_GAP")
@@ -39,7 +38,6 @@ def test_extract_numeric_labels_share_field_tooltips() -> None:
     assert step.smart_fixed_cb.toolTip() == i18n.tip("FIXED_SMART")
     assert _label(step, i18n.t("QUALITY_MIN_SCORE")).toolTip() == i18n.tip("QUALITY_MIN_SCORE")
     assert _label(step, i18n.t("QUALITY_MIN_IMPROVEMENT")).toolTip() == i18n.tip("QUALITY_MIN_IMPROVEMENT")
-    assert _label(step, i18n.t("THIN_MOTION_THRESHOLD")).toolTip() == i18n.tip("THIN_MOTION_THRESHOLD")
 
 
 def test_extract_compact_mode_rows_enable_matching_fields() -> None:
@@ -50,14 +48,12 @@ def test_extract_compact_mode_rows_enable_matching_fields() -> None:
     assert step.smart_fixed_cb.isChecked()
     assert step.min_gap_edit.isEnabled()
     assert step.max_gap_edit.isEnabled()
-    assert step.thin_motion_edit.isEnabled()
 
     step.smart_fixed_cb.setChecked(False)
 
     assert step.interval_edit.isEnabled()
     assert not step.min_gap_edit.isEnabled()
     assert not step.max_gap_edit.isEnabled()
-    assert not step.thin_motion_edit.isEnabled()
 
 
 def test_extract_mode_block_preserves_right_padding() -> None:
@@ -116,6 +112,8 @@ def test_extract_mode_numbers_are_draggable_and_clamped() -> None:
     assert step.interval_edit.suffix() == f" {i18n.t('SECONDS_SUFFIX')}"
     assert step.min_gap_edit.suffix() == f" {i18n.t('SECONDS_SUFFIX')}"
     assert step.max_gap_edit.suffix() == f" {i18n.t('SECONDS_SUFFIX')}"
+    assert step.min_gap_edit.minimumWidth() >= step.min_gap_edit.sizeHint().width()
+    assert step.max_gap_edit.minimumWidth() >= step.max_gap_edit.sizeHint().width()
     assert step.jpg_quality_edit.minimum() == 1
     assert step.jpg_quality_edit.maximum() == 31
     assert step.jpg_quality_edit.value() == 2
@@ -144,7 +142,7 @@ def test_extract_command_uses_drag_spinbox_values(tmp_path: Path) -> None:
     assert fixed_cmd[fixed_cmd.index("--interval-sec") + 1] == "1.25"
     assert fixed_cmd[fixed_cmd.index("--jpg-quality") + 1] == "4"
     assert "--fixed-smart" in fixed_cmd
-    assert fixed_cmd[fixed_cmd.index("--thin-motion-threshold") + 1] == "0.6"
+    assert fixed_cmd[fixed_cmd.index("--thin-motion-threshold") + 1] == "0"
 
     step.min_gap_edit.setValue(0.5)
     step.max_gap_edit.setValue(3.0)

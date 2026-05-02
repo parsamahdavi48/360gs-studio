@@ -46,6 +46,7 @@ _FIXED_INTERVAL_MIN = 0.05
 _FIXED_INTERVAL_MAX = 60.0
 _CHANGE_GAP_MIN = 0.05
 _CHANGE_GAP_MAX = 60.0
+_GAP_SPINBOX_WIDTH = 112
 _JPEG_QUALITY_MIN = 1
 _JPEG_QUALITY_MAX = 31
 _JPEG_QUALITY_DEFAULT = 2
@@ -129,7 +130,7 @@ class ExtractStep(BaseStepWidget):
             drag_pixels_per_step=6.0,
         )
         self.min_gap_edit.setToolTip(i18n.tip("MIN_GAP"))
-        self.min_gap_edit.setFixedWidth(72)
+        self.min_gap_edit.setFixedWidth(_GAP_SPINBOX_WIDTH)
         self.min_gap_edit.valueChanged.connect(lambda _: self._clamp_gap_order("min"))
         self.min_gap_edit.valueChanged.connect(self._mark_estimate_stale)
 
@@ -143,7 +144,7 @@ class ExtractStep(BaseStepWidget):
             drag_pixels_per_step=6.0,
         )
         self.max_gap_edit.setToolTip(i18n.tip("MAX_GAP"))
-        self.max_gap_edit.setFixedWidth(72)
+        self.max_gap_edit.setFixedWidth(_GAP_SPINBOX_WIDTH)
         self.max_gap_edit.valueChanged.connect(lambda _: self._clamp_gap_order("max"))
         self.max_gap_edit.valueChanged.connect(self._mark_estimate_stale)
 
@@ -163,10 +164,7 @@ class ExtractStep(BaseStepWidget):
         self.min_gap_label = _row_label(f"{i18n.t('MIN_GAP_SHORT')}:", i18n.tip("MIN_GAP"))
         self.max_gap_label = _row_label(f"{i18n.t('MAX_GAP_SHORT')}:", i18n.tip("MAX_GAP"))
 
-        self.mode_title_label = _row_label(i18n.EXTRACTION_MODE, i18n.tip("EXTRACTION_MODE"))
-        self.mode_title_label.setObjectName("paneTitle")
         self.mode_panel = mode_panel
-        mode_layout.addWidget(self.mode_title_label)
 
         fixed_row_widget = QWidget()
         fixed_row = QHBoxLayout(fixed_row_widget)
@@ -310,22 +308,6 @@ class ExtractStep(BaseStepWidget):
             i18n.tip("QUALITY_MIN_IMPROVEMENT"),
         )
 
-        self.thin_motion_edit = DragDoubleSpinBox(
-            minimum=0.0,
-            maximum=5.0,
-            step=0.1,
-            decimals=2,
-            value=0.6,
-        )
-        self.thin_motion_edit.setToolTip(i18n.tip("THIN_MOTION_THRESHOLD"))
-        self.thin_motion_edit.setFixedWidth(96)
-        self.thin_motion_edit.valueChanged.connect(self._mark_estimate_stale)
-        add_tooltip_row(
-            selection_form,
-            i18n.t("THIN_MOTION_THRESHOLD"),
-            self.thin_motion_edit,
-            i18n.tip("THIN_MOTION_THRESHOLD"),
-        )
         advanced.content_layout.addLayout(selection_form)
 
         path_form = QFormLayout()
@@ -388,8 +370,6 @@ class ExtractStep(BaseStepWidget):
             self.max_gap_edit,
         ):
             widget.setEnabled(smart_enabled or widget is self.smart_fixed_cb)
-        if hasattr(self, "thin_motion_edit"):
-            self.thin_motion_edit.setEnabled(smart_enabled)
     def _clamp_gap_order(self, changed: str) -> None:
         if self._syncing_gap_fields:
             return
@@ -448,9 +428,9 @@ class ExtractStep(BaseStepWidget):
                 "--max-gap-sec", f"{self.max_gap_edit.value():g}",
             ])
 
-        # 0.0 でも明示的に渡す（GUI 値が CLI デフォルトに上書きされないように）
-        thin_threshold = self.thin_motion_edit.value() if self.smart_fixed_cb.isChecked() else 0.0
-        cmd.extend(["--thin-motion-threshold", f"{thin_threshold:g}"])
+        # GUIでは低変化スキップを変化補正側に集約する。
+        # CLI既定の legacy thinning が隠れて動かないよう 0 を明示する。
+        cmd.extend(["--thin-motion-threshold", "0"])
 
         return cmd
 
