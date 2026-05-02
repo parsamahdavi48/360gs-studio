@@ -151,7 +151,7 @@ class CubemapStep(BaseStepWidget):
 
         left_layout.addLayout(form)
 
-        # Metashape前処理（折りたたみ）
+        # Metashapeインポート設定（折りたたみ）
         preprocess = CollapsibleSection(i18n.METASHAPE_PREPROCESS, expanded=False)
         pp_form = QFormLayout()
 
@@ -161,9 +161,9 @@ class CubemapStep(BaseStepWidget):
         self.preprocess_cb.toggled.connect(self._on_preprocess_toggle)
         pp_form.addRow("", self.preprocess_cb)
 
-        self.ms_images_browse = BrowseWidget(mode="dir")
-        self.ms_images_browse.setToolTip(i18n.tip("MS_IMAGES"))
-        add_tooltip_row(pp_form, i18n.t("MS_IMAGES_LABEL"), self.ms_images_browse, i18n.tip("MS_IMAGES"))
+        self.ms_images_path_label = ElidedPathLabel("-")
+        self.ms_images_path_label.setToolTip(i18n.tip("MS_IMAGES"))
+        add_tooltip_row(pp_form, i18n.t("MS_IMAGES_LABEL"), self.ms_images_path_label, i18n.tip("MS_IMAGES"))
 
         self.ms_xml_browse = BrowseWidget(mode="file", filter_str="XML (*.xml);;すべて (*.*)")
         self.ms_xml_browse.setToolTip(i18n.tip("MS_XML"))
@@ -173,24 +173,23 @@ class CubemapStep(BaseStepWidget):
         self.ms_ply_browse.setToolTip(i18n.tip("MS_PLY"))
         add_tooltip_row(pp_form, i18n.METASHAPE_PLY, self.ms_ply_browse, i18n.tip("MS_PLY"))
 
-        self.ms_use_ply_cb = QCheckBox(i18n.USE_PLY)
-        self.ms_use_ply_cb.setToolTip(i18n.tip("USE_PLY"))
-        self.ms_use_ply_cb.toggled.connect(self._on_ms_ply_toggle)
-        pp_form.addRow("", self.ms_use_ply_cb)
-
+        import_advanced = CollapsibleSection(i18n.t("ADVANCED_SETTINGS"), expanded=False)
+        import_adv_form = QFormLayout()
         self.ms_scale_edit = QLineEdit("1.0")
         self.ms_scale_edit.setToolTip(i18n.tip("SCALE_FACTOR"))
-        add_tooltip_row(pp_form, i18n.SCALE_FACTOR, self.ms_scale_edit, i18n.tip("SCALE_FACTOR"))
+        add_tooltip_row(import_adv_form, i18n.SCALE_FACTOR, self.ms_scale_edit, i18n.tip("SCALE_FACTOR"))
 
         self.ms_no_fix_rot_cb = QCheckBox(i18n.NO_FIX_ROTATION)
         self.ms_no_fix_rot_cb.setToolTip(i18n.tip("NO_FIX_ROTATION"))
-        pp_form.addRow("", self.ms_no_fix_rot_cb)
+        import_adv_form.addRow("", self.ms_no_fix_rot_cb)
+        import_advanced.content_layout.addLayout(import_adv_form)
 
         preprocess.content_layout.addLayout(pp_form)
+        preprocess.content_layout.addWidget(import_advanced)
         left_layout.addWidget(preprocess)
         self._pp_widgets = [
-            self.ms_images_browse, self.ms_xml_browse, self.ms_ply_browse,
-            self.ms_use_ply_cb, self.ms_scale_edit, self.ms_no_fix_rot_cb,
+            self.ms_images_path_label, self.ms_xml_browse, self.ms_ply_browse,
+            self.ms_scale_edit, self.ms_no_fix_rot_cb,
         ]
 
         # 高度な出力設定（折りたたみ）
@@ -277,12 +276,16 @@ class CubemapStep(BaseStepWidget):
         if not path:
             self.output_path_label.setToolTip(i18n.tip("OUTPUT_DIR_CUBEMAP"))
             self.output_path_label.set_full_text("-")
+            self.ms_images_path_label.setToolTip(i18n.tip("MS_IMAGES"))
+            self.ms_images_path_label.set_full_text("-")
             return
         p = Path(path)
         output = str(self._output_dir())
         self.output_path_label.setToolTip(f"{i18n.tip('OUTPUT_DIR_CUBEMAP')}\n{output}")
         self.output_path_label.set_full_text(output)
-        self.ms_images_browse.set_text(str(p / "images"))
+        images_dir = str(self._metashape_images_dir())
+        self.ms_images_path_label.setToolTip(f"{i18n.tip('MS_IMAGES')}\n{images_dir}")
+        self.ms_images_path_label.set_full_text(images_dir)
         self.ms_xml_browse.set_text(str(self._guess_xml(p)))
         self.ms_ply_browse.set_text(self._guess_ply(p))
         self.preview.set_scene_dir(path)
@@ -309,38 +312,29 @@ class CubemapStep(BaseStepWidget):
     def _on_profile_changed(self, _index: int) -> None:
         p = self._profile_id()
         if p == _PROFILE_LICHTFELD:
-            self.ms_use_ply_cb.setChecked(True)
-            self.ms_use_ply_cb.setEnabled(False)
             self.profile_hint.setText("")
             self.profile_hint.setVisible(False)
         elif p == _PROFILE_BRUSH:
-            self.ms_use_ply_cb.setChecked(False)
-            self.ms_use_ply_cb.setEnabled(False)
             self.profile_hint.setText("")
             self.profile_hint.setVisible(False)
         elif p == _PROFILE_POSTSHOT:
-            self.ms_use_ply_cb.setChecked(False)
-            self.ms_use_ply_cb.setEnabled(False)
             self.profile_hint.setText("")
             self.profile_hint.setVisible(False)
         else:
-            self.ms_use_ply_cb.setEnabled(True)
             self.profile_hint.setText("カスタム: 手動設定")
             self.profile_hint.setVisible(True)
-        self._on_ms_ply_toggle()
+        self._sync_ply_browse_enabled()
 
     def _on_preprocess_toggle(self, enabled: bool) -> None:
         for w in self._pp_widgets:
             w.setEnabled(enabled)
-        if not enabled:
-            self.ms_use_ply_cb.setEnabled(False)
-        elif self._profile_id() in (_PROFILE_POSTSHOT, _PROFILE_BRUSH, _PROFILE_LICHTFELD):
-            self.ms_use_ply_cb.setEnabled(False)
-        self._on_ms_ply_toggle()
+        self._sync_ply_browse_enabled()
 
-    def _on_ms_ply_toggle(self, *_args) -> None:
-        enabled = self.preprocess_cb.isChecked() and self.ms_use_ply_cb.isChecked()
-        self.ms_ply_browse.setEnabled(enabled)
+    def _preprocess_uses_ply(self) -> bool:
+        return self._profile_id() == _PROFILE_LICHTFELD
+
+    def _sync_ply_browse_enabled(self) -> None:
+        self.ms_ply_browse.setEnabled(self.preprocess_cb.isChecked() and self._preprocess_uses_ply())
 
     # -- ビュー --
 
@@ -419,7 +413,7 @@ class CubemapStep(BaseStepWidget):
         if not scene.is_dir():
             raise ValueError(f"シーンフォルダが見つかりません: {scene}")
 
-        images = self.ms_images_browse.text()
+        images = str(self._metashape_images_dir())
         xml = self.ms_xml_browse.text()
         if not images or not Path(images).is_dir():
             raise ValueError(f"Metashape画像フォルダが見つかりません: {images}")
@@ -437,7 +431,7 @@ class CubemapStep(BaseStepWidget):
             "--output", str(scene),
             "--scale", f"{scale:g}",
         ]
-        if self.ms_use_ply_cb.isChecked():
+        if self._preprocess_uses_ply():
             ply = self.ms_ply_browse.text()
             if not ply or not Path(ply).is_file():
                 raise ValueError(f"PLYファイルが見つかりません: {ply}")
@@ -550,6 +544,11 @@ class CubemapStep(BaseStepWidget):
             return Path("masks")
         return Path(self.scene_dir) / "masks"
 
+    def _metashape_images_dir(self) -> Path:
+        if not self.scene_dir:
+            return Path("images")
+        return Path(self.scene_dir) / "images"
+
     def _prepare_output_dir(self) -> bool:
         output = self._output_dir()
         if not self.scene_dir:
@@ -593,7 +592,7 @@ class CubemapStep(BaseStepWidget):
         source = self._resolve_ply_source()
         if source is not None:
             return
-        if profile == _PROFILE_LICHTFELD and self.preprocess_cb.isChecked() and self.ms_use_ply_cb.isChecked():
+        if profile == _PROFILE_LICHTFELD and self.preprocess_cb.isChecked() and self._preprocess_uses_ply():
             return
         if profile == _PROFILE_LICHTFELD:
             raise ValueError("LichtFeldプロファイルにはpointcloud.plyが必要です。前処理でPLYを有効にしてください。")

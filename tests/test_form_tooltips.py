@@ -204,3 +204,6 @@ def test_cubemap_labels_share_field_tooltips() -> None:
 
     assert _label(step, i18n.t("YAW_OFFSET_PER_FRAME")).toolTip() == i18n.t("YAW_OFFSET_PER_FRAME_HINT")
     assert _label(step, i18n.OUTPUT_SCALE + ":").toolTip() == i18n.tip("OUTPUT_SCALE")
+    assert _label(step, i18n.METASHAPE_XML).toolTip() == i18n.tip("MS_XML")
+    assert _label(step, i18n.METASHAPE_PLY).toolTip() == i18n.tip("MS_PLY")
+    assert _label(step, i18n.SCALE_FACTOR).toolTip() == i18n.tip("SCALE_FACTOR")

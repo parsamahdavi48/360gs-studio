@@ -34,9 +34,12 @@ def test_cubemap_step_uses_fixed_output_folder_label(tmp_path: Path) -> None:
     assert not hasattr(step, "no_image_cb")
     assert not hasattr(step, "no_transform_cb")
     assert not hasattr(step, "duplicate_cb")
+    assert not hasattr(step, "ms_images_browse")
+    assert not hasattr(step, "ms_use_ply_cb")
     assert hasattr(step, "invert_masks_cb")
     assert not step.output_path_label.wordWrap()
     assert step.output_path_label.full_text() == str(tmp_path / "output")
+    assert step.ms_images_path_label.full_text() == str(tmp_path / "images")
     assert step.scale_combo.itemText(0) == "Full (Quality)"
     assert step.scale_combo.itemText(1) == "Normal"
     assert step.scale_combo.itemText(2) == "Half (Light)"
@@ -58,6 +61,19 @@ def test_cubemap_step_uses_fixed_output_folder_label(tmp_path: Path) -> None:
     normal_cmd = step._build_cubemap_cmd()
     normal_scale = float(normal_cmd[normal_cmd.index("--output_scale") + 1])
     assert normal_scale == pytest.approx(2.0 / math.pi, rel=1e-5)
+
+
+def test_metashape_import_uses_scene_images_and_lf_ply(tmp_path: Path) -> None:
+    step = _ready_step(tmp_path)
+    (tmp_path / "images").mkdir()
+    (tmp_path / "metashape.xml").write_text("<root />", encoding="utf-8")
+    step.preprocess_cb.setChecked(True)
+
+    cmd = step._build_preprocess_cmd()
+
+    assert cmd[cmd.index("--images") + 1] == str(tmp_path / "images")
+    assert cmd[cmd.index("--xml") + 1] == str(tmp_path / "metashape.xml")
+    assert cmd[cmd.index("--ply") + 1] == str(tmp_path / "pointcloud.ply")
 
 
 def test_cubemap_step_keeps_mask_inversion_as_advanced_option(tmp_path: Path) -> None:

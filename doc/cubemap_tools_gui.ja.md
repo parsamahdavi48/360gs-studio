@@ -33,25 +33,15 @@ start_cubemap_tools_gui.bat
   - 入力JSONファイル名。既定は `transforms.json`。
 - `Target Profile`:
   - 連携先ツール向けのプリセットです。
-  - `Postshot / Brush`: `--no_transform` をOFF、前処理`--ply`をOFFにします。
-  - `LichtFeld Studio`: `--no_transform` をON、前処理`--ply`をONにします。
-  - `Custom (manual)`: 上記2項目を手動で編集できます。
-  - プリセット時は不一致防止のため、該当チェックボックスはロックされます。
-- `Preprocess`:
+  - `Postshot / Brush`: 対象アプリ向けの座標プリセットを適用し、シーン内のPLYを直接同梱します。
+  - `LichtFeld Studio`: Metashapeの点群PLYを `pointcloud.ply` として取り込み、LichtFeld向けのカメラ情報を作成します。
+- `Metashapeインポート設定`:
   - 有効時、キューブマップ変換の前に同梱の
     `vendor/metashape_360_lfs/metashape_360_lfs.py` を実行します。
-- `MS Images Dir`:
-  - `metashape_360_lfs.py --images` に渡す画像フォルダ。
-- `MS XML`:
-  - `metashape_360_lfs.py --xml` に渡すMetashape XML。
-- `MS PLY (optional)`:
-  - `MS PLY Usage` が有効なときに使うPLYパス。
-- `MS PLY Usage`:
-  - 前処理で `--ply` を渡すかどうかを制御します。
-- `MS Scale`:
-  - `metashape_360_lfs.py --scale` の値（正の値が必要）。
-- `MS Options`:
-  - `Disable rotation fix (--no-fix-rotation)` を前処理に渡します。
+  - `画像フォルダ`: シーンフォルダ内の `images/` 固定。
+  - `カメラXML`: MetashapeからエクスポートしたカメラポーズXML。`--xml` に渡されます。
+  - `点群PLY`: Metashapeからエクスポートした点群PLY。LichtFeldでは自動的に使用します。
+  - `詳細設定`: 特殊な座標補正用のスケール係数と `--no-fix-rotation`。
 - マスク:
   - 変換とプレビューは、シーンフォルダ内の `masks/` から対応ファイルを自動的に使用します。
 - `View Mode`:
@@ -111,13 +101,13 @@ start_cubemap_tools_gui.bat
 ## 実行時の挙動
 
 - 実行時に `<output_dir>/views_config.json` を生成します。
-- `Preprocess` が有効な場合は先に
+- `Metashapeインポート設定` が有効な場合は先に
   `vendor/metashape_360_lfs/metashape_360_lfs.py --images ... --xml ... --output <scene_dir> [...]`
   を実行します。
 - その後
   `cubemap_transforms_json.py --fov 90 --output_scale <1.0|0.6366|0.5> --views-json <そのファイル>` を呼び出します。
 - OFFのスロットは `enabled=false` として保存され、変換時に無視されます。
-- `Postshot / Brush` プロファイルでは、点群とカメラの不一致を避けるため、前処理`--ply`が既定でOFFになります。
+- `LichtFeld Studio` プロファイルでは、点群PLYのインポートが自動的に有効になります。
 - マスクは通常「黒=除外領域」で変換されます。Postshot はアプリ側の Mask Mode で扱いを選べるため、GUI側では自動反転しません。
 - 変換後、GUIはPLYを `<output_dir>` に同梱し、`<output_dir>/transforms.json` の `ply_file_path` を更新します。
   - `Postshot / Brush`: MetashapeのPLY（例: `metashape.ply` / `sparse.ply`）をコピー
@@ -125,7 +115,7 @@ start_cubemap_tools_gui.bat
 - 選択プロファイルで必要なPLYが見つからない場合は、実行前にエラーで停止します。
 - `RealityScan Rig XMP` タブでは:
   - `<rs_output_root>/views_config.json` を生成します。
-  - `Preprocess` 有効時は、RS出力の前に前処理を実行します。
+  - `Metashapeインポート設定` 有効時は、RS出力の前にMetashape取り込み処理を実行します。
   - `realityscan_rig_export.py` を実行します。
   - RealityScan 読み込み用ファイルは `<rs_output_root>/inputs` にまとめて出力されます。
     - `<image_name>`

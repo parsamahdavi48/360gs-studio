@@ -33,24 +33,14 @@ start_cubemap_tools_gui.bat
   - JSON filename in scene dir. Default: `transforms.json`.
 - `Target Profile`:
   - Preset for downstream tool.
-  - `Postshot / Brush`: sets `--no_transform` OFF and preprocess `--ply` OFF.
-  - `LichtFeld Studio`: sets `--no_transform` ON and preprocess `--ply` ON.
-  - `Custom (manual)`: leaves both options editable.
-  - In preset modes, those related checkboxes are locked to prevent accidental mismatch.
-- `Preprocess`:
+  - `Postshot / Brush`: applies the target coordinate preset and uses the scene PLY directly.
+  - `LichtFeld Studio`: imports the Metashape point cloud as `pointcloud.ply` and writes LichtFeld-oriented camera data.
+- `Metashape Import Settings`:
   - If enabled, run bundled `vendor/metashape_360_lfs/metashape_360_lfs.py` before cubemap conversion.
-- `MS Images Dir`:
-  - Image directory passed to `metashape_360_lfs.py --images`.
-- `MS XML`:
-  - Metashape XML path passed to `metashape_360_lfs.py --xml`.
-- `MS PLY (optional)`:
-  - PLY path used when `MS PLY Usage` is enabled.
-- `MS PLY Usage`:
-  - Controls whether preprocess passes `--ply`.
-- `MS Scale`:
-  - Scale value passed to `metashape_360_lfs.py --scale` (must be positive).
-- `MS Options`:
-  - `Disable rotation fix (--no-fix-rotation)` for metashape preprocess.
+  - `Images Folder`: fixed to scene `images/`.
+  - `Camera XML`: Metashape-exported camera pose XML passed to `--xml`.
+  - `Point Cloud PLY`: Metashape-exported point cloud PLY. Used automatically for LichtFeld.
+  - `Advanced`: scale factor and `--no-fix-rotation` for special coordinate fixes.
 - Masks:
   - Conversion and preview automatically use matching files from scene `masks/`.
 - `View Mode`:
@@ -110,12 +100,12 @@ start_cubemap_tools_gui.bat
 ## Execution behavior
 
 - On run, GUI writes `<output_dir>/views_config.json`.
-- If `Preprocess` is enabled, GUI runs:
+- If `Metashape Import Settings` is enabled, GUI runs:
   - `vendor/metashape_360_lfs/metashape_360_lfs.py --images ... --xml ... --output <scene_dir> [...]`
 - Then GUI runs:
   - `cubemap_transforms_json.py --fov 90 --output_scale <1.0|0.6366|0.5> --views-json <that file>`
 - Disabled slots are written with `enabled=false` and ignored by converter.
-- With `Postshot / Brush` profile, preprocess `--ply` is disabled by default to avoid point-cloud/camera mismatch.
+- With `LichtFeld Studio` profile, point cloud PLY import is enabled automatically.
 - Masks normally convert with black as the ignored region. Postshot can handle interpretation through its own Mask Mode, so the GUI does not auto-invert masks for Postshot.
 - After conversion, GUI packages PLY into `<output_dir>` and rewrites `<output_dir>/transforms.json` `ply_file_path`.
   - `Postshot / Brush`: copies Metashape PLY (for example `metashape.ply` / `sparse.ply`).
@@ -123,7 +113,7 @@ start_cubemap_tools_gui.bat
 - If required PLY is missing for selected profile, run is blocked.
 - In `RealityScan Rig XMP` tab:
   - GUI writes `<rs_output_root>/views_config.json`.
-  - If `Preprocess` is enabled, preprocess is executed before RS export.
+  - If `Metashape Import Settings` is enabled, the Metashape import step is executed before RS export.
   - GUI runs `realityscan_rig_export.py`.
   - Exported import files are bundled under `<rs_output_root>/inputs`:
     - `<image_name>`
