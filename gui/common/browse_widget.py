@@ -67,7 +67,16 @@ class BrowseWidget(QWidget):
     def _browse(self) -> None:
         if self._mode == "dir":
             path = QFileDialog.getExistingDirectory(self, "", self.text())
+        elif self._mode == "files":
+            paths, _ = QFileDialog.getOpenFileNames(self, "", self._dialog_start_path(), self._filter)
+            path = "; ".join(paths)
         else:
-            path, _ = QFileDialog.getOpenFileName(self, "", self.text(), self._filter)
+            path, _ = QFileDialog.getOpenFileName(self, "", self._dialog_start_path(), self._filter)
         if path:
             self.set_text(path)
+
+    def _dialog_start_path(self) -> str:
+        text = self.text()
+        if ";" in text:
+            return text.split(";", 1)[0].strip()
+        return text

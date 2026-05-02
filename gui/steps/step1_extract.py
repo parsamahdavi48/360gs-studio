@@ -100,7 +100,7 @@ class ExtractStep(BaseStepWidget):
         basic.setSpacing(6)
 
         self.video_browse = BrowseWidget(
-            mode="file",
+            mode="files",
             filter_str=i18n.t("VIDEO_FILE_FILTER"),
             placeholder=i18n.t("INPUT_VIDEO_PLACEHOLDER"),
         )
@@ -112,7 +112,7 @@ class ExtractStep(BaseStepWidget):
         self.output_mode_combo.setToolTip(i18n.tip("EXTRACT_OUTPUT_MODE"))
         self.output_mode_combo.addItem(i18n.t("EXTRACT_OUTPUT_APPEND"), "append")
         self.output_mode_combo.addItem(i18n.t("EXTRACT_OUTPUT_REPLACE_VIDEO"), "replace-video")
-        self.output_mode_combo.addItem(i18n.t("EXTRACT_OUTPUT_DUPLICATE_SESSION"), "duplicate")
+        self.output_mode_combo.setFixedWidth(180)
         self.output_mode_combo.currentIndexChanged.connect(lambda _: self._update_ready_status())
         add_tooltip_row(basic, i18n.t("EXTRACT_OUTPUT_MODE"), self.output_mode_combo, i18n.tip("EXTRACT_OUTPUT_MODE"))
         layout.addLayout(basic)
@@ -366,6 +366,8 @@ class ExtractStep(BaseStepWidget):
 
     def set_scene_dir(self, path: str) -> None:
         super().set_scene_dir(path)
+        self._update_video_info_label()
+        self._update_instant_estimate()
         self._update_ready_status()
 
     def primary_action_text(self) -> str:
@@ -396,6 +398,7 @@ class ExtractStep(BaseStepWidget):
             self.max_gap_edit,
         ):
             widget.setEnabled(smart_enabled or widget is self.smart_fixed_cb)
+
     def _clamp_gap_order(self, changed: str) -> None:
         if self._syncing_gap_fields:
             return
@@ -419,26 +422,57 @@ class ExtractStep(BaseStepWidget):
         except ValueError:
             return False
 
+    def _selected_video_paths(self) -> list[Path]:
+        text = self.video_browse.text()
+        if not text:
+            return []
+        raw_paths = [part.strip().strip('"') for part in text.split(";")]
+        return [Path(part) for part in raw_paths if part]
+
+    def _is_multi_video_input(self) -> bool:
+        return len(self._selected_video_paths()) > 1
+
     def _extract_output_mode(self) -> str:
         data = self.output_mode_combo.currentData()
         return str(data or "append")
 
-    def _matching_video_sessions(self) -> list[dict]:
-        video = self.video_browse.text()
-        if not video or not self.scene_dir:
+    def _matching_video_sessions_for_path(self, video: Path) -> list[dict]:
+        if not self.scene_dir:
             return []
-        path = Path(video)
-        if not path.is_file():
+        if not video.is_file():
             return []
-        return matching_video_sessions(Path(self.scene_dir), path)
+        return matching_video_sessions(Path(self.scene_dir), video)
 
-    def _effective_filename_prefix(self) -> str:
+    def _matching_video_sessions(self) -> list[dict]:
+        videos = self._selected_video_paths()
+        if not videos:
+            return []
+        return self._matching_video_sessions_for_path(videos[0])
+
+    def _queued_selected_videos(self) -> tuple[list[Path], int]:
+        videos = self._selected_video_paths()
+        mode = self._extract_output_mode()
+        if mode == "replace-video":
+            return videos, 0
+        queued: list[Path] = []
+        skipped = 0
+        for video in videos:
+            if self._matching_video_sessions_for_path(video):
+                skipped += 1
+            else:
+                queued.append(video)
+        return queued, skipped
+
+    def _effective_filename_prefix(self, video_path: Path | None = None) -> str:
         prefix = sanitize_filename_prefix(self.prefix_edit.text())
-        if prefix:
+        if prefix and not self._is_multi_video_input():
             return prefix
-        video = self.video_browse.text()
-        if video:
-            prefix = sanitize_filename_prefix(Path(video).stem)
+        if video_path is not None:
+            prefix = sanitize_filename_prefix(video_path.stem)
+        else:
+            video = self.video_browse.text()
+            if video:
+                prefix = sanitize_filename_prefix(Path(video).stem)
         return prefix or "frame"
 
     def _prefix_in_use(self, prefix: str) -> bool:
@@ -454,21 +488,58 @@ class ExtractStep(BaseStepWidget):
             return any(images.glob(f"{prefix}_*"))
         return False
 
-    def _duplicate_session_prefix(self) -> str:
-        base = self._effective_filename_prefix()
-        if not self._prefix_in_use(base):
+    def _unique_prefix(self, base: str, used_prefixes: set[str]) -> str:
+        if base not in used_prefixes and not self._prefix_in_use(base):
+            used_prefixes.add(base)
             return base
         for index in range(2, 1000):
             candidate = f"{base}_session{index}"
-            if not self._prefix_in_use(candidate):
+            if candidate not in used_prefixes and not self._prefix_in_use(candidate):
+                used_prefixes.add(candidate)
                 return candidate
+        used_prefixes.add(f"{base}_session")
         return f"{base}_session"
 
+    def _prefix_for_video(self, video_path: Path, used_prefixes: set[str]) -> str:
+        mode = self._extract_output_mode()
+        matching = self._matching_video_sessions_for_path(video_path)
+        if not self._is_multi_video_input():
+            prefix = sanitize_filename_prefix(self.prefix_edit.text())
+            if prefix:
+                return prefix
+        base = self._effective_filename_prefix(video_path)
+        if mode == "replace-video" and matching:
+            prefix = str(matching[0].get("filename_prefix") or base)
+            if prefix not in used_prefixes:
+                used_prefixes.add(prefix)
+                return prefix
+            return self._unique_prefix(prefix, used_prefixes)
+        return self._unique_prefix(base, used_prefixes)
+
     def _readiness(self) -> tuple[bool, str]:
-        video = self.video_browse.text()
-        if not video:
+        videos = self._selected_video_paths()
+        if len(videos) > 1:
+            missing = [video for video in videos if not video.is_file()]
+            if missing:
+                return False, i18n.t("EXTRACT_READY_VIDEO_NOT_FOUND")
+            if not self.scene_dir:
+                return False, i18n.t("EXTRACT_READY_NO_SCENE")
+            if not self._analysis_width_valid():
+                return False, i18n.t("EXTRACT_READY_BAD_ANALYSIS_WIDTH")
+            queued, skipped = self._queued_selected_videos()
+            mode = self._extract_output_mode()
+            if mode == "append" and not queued:
+                return False, i18n.t("EXTRACT_READY_QUEUE_ALL_DUPLICATE").format(n=len(videos))
+            if mode == "append" and skipped:
+                return True, i18n.t("EXTRACT_READY_QUEUE_PARTIAL").format(n=len(queued), skipped=skipped)
+            if mode == "replace-video":
+                replace_count = sum(1 for video in videos if self._matching_video_sessions_for_path(video))
+                return True, i18n.t("EXTRACT_READY_QUEUE_REPLACE").format(n=len(videos), replace=replace_count)
+            return True, i18n.t("EXTRACT_READY_QUEUE_OK").format(n=len(videos))
+
+        if not videos:
             return False, i18n.t("EXTRACT_READY_NO_VIDEO")
-        if not Path(video).is_file():
+        if not videos[0].is_file():
             return False, i18n.t("EXTRACT_READY_VIDEO_NOT_FOUND")
         if not self.scene_dir:
             return False, i18n.t("EXTRACT_READY_NO_SCENE")
@@ -482,8 +553,6 @@ class ExtractStep(BaseStepWidget):
             return False, i18n.t("EXTRACT_READY_DUPLICATE_VIDEO").format(n=len(matching_sessions))
         if matching_sessions and output_mode == "replace-video":
             return True, i18n.t("EXTRACT_READY_DUPLICATE_REPLACE").format(n=len(matching_sessions))
-        if matching_sessions and output_mode == "duplicate":
-            return True, i18n.t("EXTRACT_READY_DUPLICATE_ADD").format(prefix=self._duplicate_session_prefix())
         return True, i18n.t("EXTRACT_READY_OK")
 
     def _update_ready_status(self) -> None:
@@ -502,14 +571,32 @@ class ExtractStep(BaseStepWidget):
     # -- コマンド構築 --
 
     def build_commands(self) -> list[tuple[str, list[str]]]:
-        return [("extract", self._build_extract_cmd())]
+        if not self._is_multi_video_input():
+            return [("extract", self._build_extract_cmd())]
+
+        videos, _skipped = self._queued_selected_videos()
+        if not videos:
+            raise ValueError(i18n.t("EXTRACT_READY_QUEUE_ALL_DUPLICATE").format(n=len(self._selected_video_paths())))
+
+        used_prefixes: set[str] = set()
+        return [
+            (f"extract: {video.name}", self._build_extract_cmd_for_video(video, used_prefixes))
+            for video in videos
+        ]
 
     def _build_extract_cmd(self) -> list[str]:
-        video = self.video_browse.text()
-        if not video:
+        videos = self._selected_video_paths()
+        if not videos:
             raise ValueError("入力動画が指定されていません")
-        if not Path(video).exists():
+        video = videos[0]
+        if not video.exists():
             raise ValueError(f"入力動画が見つかりません: {video}")
+        if not self.scene_dir:
+            raise ValueError("シーンフォルダが指定されていません")
+
+        return self._build_extract_cmd_for_video(video, set())
+
+    def _build_extract_cmd_for_video(self, video_path: Path, used_prefixes: set[str]) -> list[str]:
         if not self.scene_dir:
             raise ValueError("シーンフォルダが指定されていません")
 
@@ -517,9 +604,12 @@ class ExtractStep(BaseStepWidget):
         if not script.exists():
             raise FileNotFoundError(f"extract_frames.py が見つかりません: {script}")
 
+        output_mode = self._extract_output_mode()
+        prefix = self._prefix_for_video(video_path, used_prefixes)
+
         cmd = [
             sys.executable, "-u", str(script),
-            video, self.scene_dir,
+            str(video_path), self.scene_dir,
             "--mode", self._mode(),
             "--analysis-width", self.analysis_width_edit.text().strip(),
             "--quality-min-score", f"{self.quality_min_score_edit.value():g}",
@@ -528,15 +618,10 @@ class ExtractStep(BaseStepWidget):
             "--jpg-quality", str(self.jpg_quality_edit.value()),
             "--ffmpeg", self.ffmpeg_browse.text() or "ffmpeg",
             "--ffprobe", self.ffprobe_browse.text() or "ffprobe",
-            "--output-mode", "append" if self._extract_output_mode() == "duplicate" else self._extract_output_mode(),
+            "--output-mode", output_mode,
         ]
-        prefix = self.prefix_edit.text().strip()
-        if self._extract_output_mode() == "duplicate":
-            prefix = self._duplicate_session_prefix()
         if prefix:
             cmd.extend(["--filename-prefix", prefix])
-        if self._extract_output_mode() == "duplicate":
-            cmd.append("--allow-duplicate-video")
 
         cmd.extend(["--interval-sec", f"{self.interval_edit.value():g}"])
         if self.smart_fixed_cb.isChecked():
@@ -575,13 +660,13 @@ class ExtractStep(BaseStepWidget):
     # -- 動画情報 --
 
     def _on_video_changed(self, path: str) -> None:
-        if path and Path(path).is_file():
+        videos = self._selected_video_paths()
+        if len(videos) == 1 and videos[0].is_file():
             self._load_video_info(show_error=False)
         else:
             self.video_info = None
             self._update_video_info_label()
-            self.instant_estimate_text = "-"
-            self._refresh_estimate_label()
+            self._update_instant_estimate()
             self._update_ready_status()
 
     @staticmethod
@@ -618,7 +703,8 @@ class ExtractStep(BaseStepWidget):
             return False
 
     def _probe_video_info(self) -> dict:
-        video = self.video_browse.text()
+        videos = self._selected_video_paths()
+        video = str(videos[0]) if videos else ""
         ffprobe = self.ffprobe_browse.text() or "ffprobe"
         if not video:
             raise ValueError("入力動画が指定されていません")
@@ -659,6 +745,17 @@ class ExtractStep(BaseStepWidget):
         return {"width": w, "height": h, "fps": fps, "duration_sec": dur, "total_frames": nb}
 
     def _update_video_info_label(self) -> None:
+        if self._is_multi_video_input():
+            videos = self._selected_video_paths()
+            queued, skipped = self._queued_selected_videos()
+            self.video_info_label.setText(
+                i18n.t("VIDEO_QUEUE_LABEL_FORMAT").format(
+                    total=len(videos),
+                    queued=len(queued),
+                    skipped=skipped,
+                )
+            )
+            return
         if not self.video_info:
             self.video_info_label.setText("動画: -")
             return
@@ -679,6 +776,14 @@ class ExtractStep(BaseStepWidget):
         self._update_ready_status()
 
     def _update_instant_estimate(self) -> None:
+        if self._is_multi_video_input():
+            queued, skipped = self._queued_selected_videos()
+            self.instant_estimate_text = i18n.t("QUEUE_ESTIMATE_FORMAT").format(
+                queued=len(queued),
+                skipped=skipped,
+            )
+            self._refresh_estimate_label()
+            return
         if not self.video_info:
             self.instant_estimate_text = "-"
             self._refresh_estimate_label()
