@@ -20,8 +20,7 @@ def _app():
 def test_yolo_preview_output_name_matches_yolo_mask_script() -> None:
     image = Path("frame_000001.jpg")
 
-    assert _yolo_preview_output_name(image, add_ext=False) == "frame_000001.png"
-    assert _yolo_preview_output_name(image, add_ext=True) == "frame_000001.jpg.png"
+    assert _yolo_preview_output_name(image) == "frame_000001.png"
 
 
 def test_mask_preview_uses_temporary_yolo_preview_mask(tmp_path: Path) -> None:

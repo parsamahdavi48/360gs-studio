@@ -38,7 +38,6 @@ class MaskPreviewConfig:
     overexposure_threshold: int = 254
     overexposure_dilate: int = 1
     masks_dir: str = ""
-    yolo_add_ext: bool = False
 
 
 class MaskPreviewWidget(QWidget):
@@ -313,9 +312,8 @@ class MaskPreviewWidget(QWidget):
             pass
 
         candidates: list[Path] = []
-        if config.yolo_add_ext:
-            candidates.append(masks_root / rel_parent / f"{image_path.name}.png")
         candidates.append(masks_root / rel_parent / f"{image_path.stem}.png")
+        candidates.append(masks_root / rel_parent / f"{image_path.name}.png")
         candidates.append(masks_root / f"{image_path.name}.png")
         candidates.append(masks_root / f"{image_path.stem}.png")
 

@@ -9,10 +9,11 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 import pytest
 import cv2
 import numpy as np
-from PySide6.QtWidgets import QApplication, QLabel
+from PySide6.QtWidgets import QApplication, QLabel, QPushButton, QToolButton
 
 from gui import i18n
 from gui.common.browse_widget import BrowseWidget
+from gui.steps.base_step import SETTINGS_PANE_MARGINS, SETTINGS_PANE_WIDTH
 from gui.steps.step3_mask import MaskStep
 
 
@@ -62,6 +63,32 @@ def test_mask_step_uses_standard_scene_folders_without_browse_inputs(tmp_path: P
     assert str(scene / "masks") in labels
     assert step.primary_action_enabled()
     assert step.primary_action_tooltip() == i18n.tip("RUN_MASKS")
+
+
+def test_mask_step_yolo_class_presets_and_class_label_are_removed() -> None:
+    _app()
+    step = MaskStep(Path.cwd())
+
+    labels = {label.text() for label in step.findChildren(QLabel)}
+    buttons = {button.text().strip() for button in step.findChildren(QPushButton)}
+    tool_buttons = {button.text().strip() for button in step.findChildren(QToolButton)}
+
+    assert i18n.YOLO_CLASSES not in labels
+    assert i18n.CLASS_PRESET_PERSON not in buttons
+    assert i18n.CLASS_PRESET_VEHICLES not in buttons
+    assert i18n.CLASS_PRESET_ALL not in buttons
+    assert i18n.CLASS_PRESET_CLEAR not in buttons
+    assert i18n.t("YOLO_CLASS_LIST_SECTION") in tool_buttons
+
+
+def test_mask_step_yolo_level_and_expand_share_compact_row() -> None:
+    _app()
+    step = MaskStep(Path.cwd())
+
+    content_width = SETTINGS_PANE_WIDTH - SETTINGS_PANE_MARGINS[2]
+    assert step.yolo_settings_row.sizeHint().width() <= content_width
+    assert step.yolo_level_label.toolTip() == i18n.tip("YOLO_LEVEL")
+    assert step.yolo_expand_label.toolTip() == i18n.tip("YOLO_EXPAND")
 
 
 def test_mask_step_refreshes_preview_when_activated_after_extraction(tmp_path: Path) -> None:
@@ -141,6 +168,7 @@ def test_mask_step_allows_generation_when_drop_images_are_removed(tmp_path: Path
     assert commands[0][0] == "yolo"
     assert commands[0][1][3] == str(scene / "images")
     assert commands[0][1][4] == str(scene / "masks")
+    assert "--add-ext" not in commands[0][1]
 
 
 def test_mask_step_rejects_generation_when_untracked_images_remain(tmp_path: Path) -> None:

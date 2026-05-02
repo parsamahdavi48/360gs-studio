@@ -18,7 +18,6 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QLineEdit,
-    QPushButton,
     QScrollArea,
     QSplitter,
     QVBoxLayout,
@@ -145,14 +144,32 @@ class MaskStep(BaseStepWidget):
 
         # --- YOLO設定 (折りたたみ) ---
         self.yolo_section = CollapsibleSection(i18n.t("YOLO_SECTION"), expanded=True)
-        yolo_form = QFormLayout()
-        yolo_form.setSpacing(6)
+        yolo_settings_row_widget = QWidget()
+        yolo_settings_row = QHBoxLayout(yolo_settings_row_widget)
+        yolo_settings_row.setContentsMargins(0, 0, 0, 0)
+        yolo_settings_row.setSpacing(6)
+
+        self.yolo_level_label = QLabel(i18n.t("YOLO_LEVEL_COMPACT"))
+        self.yolo_level_label.setToolTip(i18n.tip("YOLO_LEVEL"))
+        yolo_settings_row.addWidget(self.yolo_level_label)
 
         self.yolo_level_combo = QComboBox()
         self.yolo_level_combo.setToolTip(i18n.tip("YOLO_LEVEL"))
-        self.yolo_level_combo.addItems(["0 (高速)", "1 (標準)", "2 (高品質)", "3 (最高品質)"])
+        self.yolo_level_combo.addItems(
+            [
+                i18n.t("YOLO_LEVEL_FAST"),
+                i18n.t("YOLO_LEVEL_STANDARD"),
+                i18n.t("YOLO_LEVEL_QUALITY"),
+                i18n.t("YOLO_LEVEL_BEST"),
+            ]
+        )
         self.yolo_level_combo.setCurrentIndex(1)
-        add_tooltip_row(yolo_form, i18n.YOLO_LEVEL, self.yolo_level_combo, i18n.tip("YOLO_LEVEL"))
+        self.yolo_level_combo.setFixedWidth(104)
+        yolo_settings_row.addWidget(self.yolo_level_combo)
+
+        self.yolo_expand_label = QLabel(i18n.t("YOLO_EXPAND_COMPACT"))
+        self.yolo_expand_label.setToolTip(i18n.tip("YOLO_EXPAND"))
+        yolo_settings_row.addWidget(self.yolo_expand_label)
 
         self.yolo_expand_edit = DragSpinBox(
             minimum=_YOLO_EXPAND_MIN,
@@ -163,32 +180,11 @@ class MaskStep(BaseStepWidget):
             drag_pixels_per_step=6.0,
         )
         self.yolo_expand_edit.setToolTip(i18n.tip("YOLO_EXPAND"))
-        self.yolo_expand_edit.setFixedWidth(88)
-        add_tooltip_row(yolo_form, i18n.YOLO_EXPAND, self.yolo_expand_edit, i18n.tip("YOLO_EXPAND"))
-
-        self.yolo_add_ext_cb = QCheckBox(i18n.t("ADD_EXT_LABEL"))
-        self.yolo_add_ext_cb.setToolTip(i18n.tip("YOLO_ADD_EXT"))
-        yolo_form.addRow("", self.yolo_add_ext_cb)
-
-        # クラス選択
-        class_inner = QWidget()
-        class_layout = QVBoxLayout(class_inner)
-        class_layout.setContentsMargins(0, 4, 0, 0)
-
-        preset_row = QHBoxLayout()
-        preset_row.setSpacing(4)
-        for label, fn in [
-            (i18n.CLASS_PRESET_PERSON, lambda: self._set_classes([0])),
-            (i18n.CLASS_PRESET_VEHICLES, lambda: self._set_classes([0, 1, 2, 3, 5, 7])),
-            (i18n.CLASS_PRESET_ALL, lambda: self._set_classes(list(range(80)))),
-            (i18n.CLASS_PRESET_CLEAR, lambda: self._set_classes([])),
-        ]:
-            btn = QPushButton(label)
-            btn.setFixedHeight(26)
-            btn.clicked.connect(fn)
-            preset_row.addWidget(btn)
-        preset_row.addStretch()
-        class_layout.addLayout(preset_row)
+        self.yolo_expand_edit.setFixedWidth(74)
+        yolo_settings_row.addWidget(self.yolo_expand_edit)
+        yolo_settings_row.addStretch()
+        self.yolo_settings_row = yolo_settings_row_widget
+        self.yolo_section.content_layout.addWidget(yolo_settings_row_widget)
 
         class_list_section = CollapsibleSection(i18n.t("YOLO_CLASS_LIST_SECTION"), expanded=False)
         scroll = QScrollArea()
@@ -208,10 +204,7 @@ class MaskStep(BaseStepWidget):
             grid.addWidget(cb, idx // cols, idx % cols)
         scroll.setWidget(grid_widget)
         class_list_section.content_layout.addWidget(scroll)
-        class_layout.addWidget(class_list_section)
-
-        yolo_form.addRow(i18n.YOLO_CLASSES, class_inner)
-        self.yolo_section.content_layout.addLayout(yolo_form)
+        self.yolo_section.content_layout.addWidget(class_list_section)
         layout.addWidget(self.yolo_section)
 
         # --- スティッチ+白飛び設定 (折りたたみ) ---
@@ -312,7 +305,6 @@ class MaskStep(BaseStepWidget):
 
         for cb in (self.run_yolo_cb, self.run_stitch_cb, self.run_overexp_cb):
             cb.toggled.connect(self._update_task_controls)
-        self.yolo_add_ext_cb.toggled.connect(lambda _: self._render_mask_preview())
         self.stitch_boundary_width_edit.valueChanged.connect(lambda _: self._render_mask_preview())
         self.overexp_threshold_edit.valueChanged.connect(lambda _: self._render_mask_preview())
         self.overexp_dilate_edit.valueChanged.connect(lambda _: self._render_mask_preview())
@@ -414,10 +406,6 @@ class MaskStep(BaseStepWidget):
             )
         self.primary_action_state_changed.emit()
 
-    def _set_classes(self, indices: list[int]) -> None:
-        for i, cb in enumerate(self.class_cbs):
-            cb.setChecked(i in indices)
-
     def _selected_classes(self) -> list[int]:
         return [i for i, cb in enumerate(self.class_cbs) if cb.isChecked()]
 
@@ -466,7 +454,6 @@ class MaskStep(BaseStepWidget):
             overexposure_threshold=int(self.overexp_threshold_edit.value()),
             overexposure_dilate=int(self.overexp_dilate_edit.value()),
             masks_dir=self._masks_dir_text(),
-            yolo_add_ext=self.yolo_add_ext_cb.isChecked(),
         )
         self.mask_preview.render(config)
 
@@ -555,8 +542,6 @@ class MaskStep(BaseStepWidget):
         ]
         if classes:
             cmd.extend(["--classes", ",".join(str(c) for c in classes)])
-        if self.yolo_add_ext_cb.isChecked():
-            cmd.append("--add-ext")
         return cmd
 
     def _build_yolo_preview_cmd(self, image_path: Path, output_dir: Path) -> list[str]:
@@ -574,8 +559,6 @@ class MaskStep(BaseStepWidget):
         ]
         if classes:
             cmd.extend(["--classes", ",".join(str(c) for c in classes)])
-        if self.yolo_add_ext_cb.isChecked():
-            cmd.append("--add-ext")
         return cmd
 
     def _run_yolo_preview(self) -> None:
@@ -590,7 +573,7 @@ class MaskStep(BaseStepWidget):
         self._cleanup_yolo_preview_temp()
         self._yolo_preview_temp = tempfile.TemporaryDirectory(prefix="stechdrive_yolo_preview_")
         output_dir = Path(self._yolo_preview_temp.name)
-        output_path = output_dir / _yolo_preview_output_name(image_path, self.yolo_add_ext_cb.isChecked())
+        output_path = output_dir / _yolo_preview_output_name(image_path)
 
         try:
             cmd = self._build_yolo_preview_cmd(image_path, output_dir)
@@ -721,5 +704,5 @@ class MaskStep(BaseStepWidget):
             self._phase_done = 0
 
 
-def _yolo_preview_output_name(image_path: Path, add_ext: bool) -> str:
-    return f"{image_path.name}.png" if add_ext else f"{image_path.stem}.png"
+def _yolo_preview_output_name(image_path: Path) -> str:
+    return f"{image_path.stem}.png"

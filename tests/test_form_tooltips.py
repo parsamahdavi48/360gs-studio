@@ -162,9 +162,40 @@ def test_mask_numeric_labels_share_field_tooltips() -> None:
     _app()
     step = MaskStep(Path.cwd())
 
-    assert _label(step, i18n.YOLO_EXPAND).toolTip() == i18n.tip("YOLO_EXPAND")
+    assert _label(step, i18n.t("YOLO_EXPAND_COMPACT")).toolTip() == i18n.tip("YOLO_EXPAND")
     assert _label(step, i18n.STITCH_BOUNDARY_WIDTH).toolTip() == i18n.tip("STITCH_BOUNDARY_WIDTH")
     assert _label(step, i18n.OVEREXPOSURE_THRESHOLD).toolTip() == i18n.tip("OVEREXPOSURE_THRESHOLD")
+
+
+def test_mask_yolo_compact_row_preserves_width_in_english() -> None:
+    script = textwrap.dedent(
+        """
+        import os
+        os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+        from pathlib import Path
+        from PySide6.QtWidgets import QApplication
+        from gui.steps.base_step import SETTINGS_PANE_MARGINS, SETTINGS_PANE_WIDTH
+        from gui.steps.step3_mask import MaskStep
+
+        app = QApplication.instance() or QApplication([])
+        step = MaskStep(Path.cwd())
+        content_width = SETTINGS_PANE_WIDTH - SETTINGS_PANE_MARGINS[2]
+        assert step.yolo_settings_row.sizeHint().width() <= content_width
+        """
+    )
+    env = os.environ.copy()
+    env["QT_QPA_PLATFORM"] = "offscreen"
+    env["STUDIO_LANG"] = "en"
+
+    result = subprocess.run(
+        [sys.executable, "-c", script],
+        cwd=Path.cwd(),
+        env=env,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
 
 
 def test_cubemap_labels_share_field_tooltips() -> None:
