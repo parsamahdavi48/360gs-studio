@@ -224,6 +224,10 @@ class CubemapStep(BaseStepWidget):
         self.invert_masks_cb.setToolTip(i18n.tip("INVERT_MASKS"))
         adv_form.addRow("", self.invert_masks_cb)
 
+        self.no_image_cb = QCheckBox(i18n.NO_IMAGE)
+        self.no_image_cb.setToolTip(i18n.tip("NO_IMAGE"))
+        adv_form.addRow("", self.no_image_cb)
+
         self.jpg_quality_edit = QLineEdit("95")
         self.jpg_quality_edit.setFixedWidth(80)
         adv_form.addRow(i18n.t("JPG_QUALITY"), self.jpg_quality_edit)
@@ -475,6 +479,8 @@ class CubemapStep(BaseStepWidget):
             cmd.append("--brush")
         if self.invert_masks_cb.isChecked():
             cmd.append("--invert_masks")
+        if self.no_image_cb.isChecked():
+            cmd.append("--no_image")
 
         # 高度な出力設定
         try:
@@ -561,6 +567,10 @@ class CubemapStep(BaseStepWidget):
             resolved_output = output.absolute()
         if resolved_output.parent != scene:
             raise ValueError(f"出力フォルダがシーンフォルダ外です: {output}")
+
+        if self.no_image_cb.isChecked():
+            output.mkdir(parents=True, exist_ok=True)
+            return True
 
         if output.exists() and any(output.iterdir()):
             result = QMessageBox.question(

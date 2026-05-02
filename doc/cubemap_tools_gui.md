@@ -28,9 +28,7 @@ start_cubemap_tools_gui.bat
 - `Scene Directory`:
   - Directory containing `transforms.json` and `images/`.
 - `Output Directory`:
-  - Cubemap output directory. Default: `<scene>/cubic`.
-- `Transforms JSON`:
-  - JSON filename in scene dir. Default: `transforms.json`.
+  - Cubemap output directory. Default: `<scene>/output`.
 - `Target Profile`:
   - Preset for downstream tool.
   - `Postshot / Brush`: applies the target coordinate preset and uses the scene PLY directly.
@@ -81,6 +79,8 @@ start_cubemap_tools_gui.bat
 
 - `Invert masks (--invert_masks)`
   - Usually off. Enable only when the target app expects the opposite polarity.
+- `Skip Image/Mask Conversion (--no_image)`
+  - Updates `transforms.json` without reconverting cubemap images or masks. Existing files in `output/` are preserved.
 
 ## Workflow tabs
 
@@ -104,6 +104,7 @@ start_cubemap_tools_gui.bat
   - `vendor/metashape_360_lfs/metashape_360_lfs.py --images ... --xml ... --output <scene_dir> [...]`
 - Then GUI runs:
   - `cubemap_transforms_json.py --fov 90 --output_scale <1.0|0.6366|0.5> --views-json <that file>`
+- If `Skip Image/Mask Conversion` is enabled, the GUI adds `--no_image` and does not reset existing files in `<output_dir>`.
 - Disabled slots are written with `enabled=false` and ignored by converter.
 - With `LichtFeld Studio` profile, point cloud PLY import is enabled automatically.
 - Masks normally convert with black as the ignored region. Postshot can handle interpretation through its own Mask Mode, so the GUI does not auto-invert masks for Postshot.

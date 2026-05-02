@@ -28,9 +28,7 @@ start_cubemap_tools_gui.bat
 - `Scene Directory`:
   - `transforms.json` と `images/` を含む作業フォルダ。
 - `Output Directory`:
-  - 出力先。既定は `<scene>/cubic`。
-- `Transforms JSON`:
-  - 入力JSONファイル名。既定は `transforms.json`。
+  - 出力先。既定は `<scene>/output`。
 - `Target Profile`:
   - 連携先ツール向けのプリセットです。
   - `Postshot / Brush`: 対象アプリ向けの座標プリセットを適用し、シーン内のPLYを直接同梱します。
@@ -82,6 +80,8 @@ start_cubemap_tools_gui.bat
 
 - `Invert masks (--invert_masks)`
   - 通常はOFF。出力先アプリで逆極性が必要な場合だけON。
+- `画像とマスク変換なし (--no_image)`
+  - キューブマップ画像とマスクを再変換せず、`transforms.json` だけ更新します。`output/` 内の既存ファイルは保持されます。
 
 ## ワークフロータブ
 
@@ -106,6 +106,7 @@ start_cubemap_tools_gui.bat
   を実行します。
 - その後
   `cubemap_transforms_json.py --fov 90 --output_scale <1.0|0.6366|0.5> --views-json <そのファイル>` を呼び出します。
+- `画像とマスク変換なし` が有効な場合は `--no_image` を追加し、`<output_dir>` 内の既存ファイルをリセットしません。
 - OFFのスロットは `enabled=false` として保存され、変換時に無視されます。
 - `LichtFeld Studio` プロファイルでは、点群PLYのインポートが自動的に有効になります。
 - マスクは通常「黒=除外領域」で変換されます。Postshot はアプリ側の Mask Mode で扱いを選べるため、GUI側では自動反転しません。

@@ -31,12 +31,13 @@ def test_cubemap_step_uses_fixed_output_folder_label(tmp_path: Path) -> None:
     assert not hasattr(step, "json_name_edit")
     assert not hasattr(step, "mask_browse")
     assert not hasattr(step, "mask_from_alpha_cb")
-    assert not hasattr(step, "no_image_cb")
     assert not hasattr(step, "no_transform_cb")
     assert not hasattr(step, "duplicate_cb")
     assert not hasattr(step, "ms_images_browse")
     assert not hasattr(step, "ms_use_ply_cb")
     assert hasattr(step, "invert_masks_cb")
+    assert hasattr(step, "no_image_cb")
+    assert not step.no_image_cb.isChecked()
     assert not step.output_path_label.wordWrap()
     assert step.output_path_label.full_text() == str(tmp_path / "output")
     assert step.ms_images_path_label.full_text() == str(tmp_path / "images")
@@ -85,6 +86,15 @@ def test_cubemap_step_keeps_mask_inversion_as_advanced_option(tmp_path: Path) ->
     assert "--invert_masks" in cmd
 
 
+def test_cubemap_step_can_skip_image_and_mask_conversion(tmp_path: Path) -> None:
+    step = _ready_step(tmp_path)
+    step.no_image_cb.setChecked(True)
+
+    cmd = step._build_cubemap_cmd()
+
+    assert "--no_image" in cmd
+
+
 def test_cubemap_preview_uses_scene_mask_folder(tmp_path: Path, monkeypatch) -> None:
     step = _ready_step(tmp_path)
     captured: dict[str, str] = {}
@@ -131,6 +141,32 @@ def test_cubemap_build_resets_existing_output_when_confirmed(tmp_path: Path, mon
     assert [phase for phase, _cmd in commands] == ["cubemap"]
     assert not old_file.exists()
     assert not nested.exists()
+    assert (output / "views_config.json").is_file()
+
+
+def test_cubemap_no_image_preserves_existing_output(tmp_path: Path, monkeypatch) -> None:
+    output = tmp_path / "output"
+    output.mkdir()
+    old_file = output / "old_render.png"
+    old_file.write_text("old", encoding="utf-8")
+    old_mask_dir = output / "masks"
+    old_mask_dir.mkdir()
+    old_mask = old_mask_dir / "old_mask.png"
+    old_mask.write_text("mask", encoding="utf-8")
+    step = _ready_step(tmp_path)
+    step.no_image_cb.setChecked(True)
+    monkeypatch.setattr(
+        QMessageBox,
+        "question",
+        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("confirmation should not open")),
+    )
+
+    commands = step.build_commands()
+
+    assert [phase for phase, _cmd in commands] == ["cubemap"]
+    assert "--no_image" in commands[0][1]
+    assert old_file.is_file()
+    assert old_mask.is_file()
     assert (output / "views_config.json").is_file()
 
 
