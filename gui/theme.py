@@ -210,6 +210,23 @@ QPushButton#danger:disabled {{
     background-color: {BG_PANEL};
     color: {TEXT_DIM};
 }}
+QToolButton#iconToolButton {{
+    background-color: {BG_PANEL};
+    border: 1px solid {BORDER};
+    border-radius: 5px;
+    padding: 4px;
+}}
+QToolButton#iconToolButton:hover {{
+    background-color: {BORDER};
+    border-color: {TEXT_DIM};
+}}
+QToolButton#iconToolButton:pressed {{
+    background-color: {BG_MID};
+}}
+QToolButton#iconToolButton:disabled {{
+    background-color: {BG_MID};
+    border-color: {BG_MID};
+}}
 
 /* ========== QTabWidget ========== */
 QTabWidget::pane {{

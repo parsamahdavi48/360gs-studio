@@ -25,7 +25,6 @@ from PySide6.QtWidgets import (
     QLabel,
     QLineEdit,
     QMessageBox,
-    QPushButton,
     QScrollArea,
     QSplitter,
     QVBoxLayout,
@@ -37,6 +36,7 @@ from gui.common.browse_widget import BrowseWidget
 from gui.common.collapsible_section import CollapsibleSection
 from gui.common.drag_spinbox import DragDoubleSpinBox, DragSpinBox
 from gui.common.form_rows import add_tooltip_row
+from gui.common.icons import reset_icon
 from gui.steps.base_step import (
     SETTINGS_PANE_MARGINS,
     SETTINGS_PANE_WIDTH,
@@ -111,18 +111,13 @@ class ExtractStep(BaseStepWidget):
         )
         self.video_browse.setToolTip(i18n.tip("INPUT_VIDEO"))
         self.video_browse.path_changed.connect(self._on_video_changed)
+        self.clear_video_btn = self.video_browse.add_icon_button(
+            reset_icon(),
+            i18n.t("CLEAR_INPUT_VIDEO_HINT"),
+            self._clear_input_videos,
+            accessible_name=i18n.t("CLEAR_INPUT_VIDEO"),
+        )
         add_tooltip_row(basic, i18n.INPUT_VIDEO, self.video_browse, i18n.tip("INPUT_VIDEO"))
-
-        self.clear_video_btn = QPushButton(i18n.t("CLEAR_INPUT_VIDEO"))
-        self.clear_video_btn.setToolTip(i18n.t("CLEAR_INPUT_VIDEO_HINT"))
-        self.clear_video_btn.setFixedWidth(150)
-        self.clear_video_btn.clicked.connect(self._clear_input_videos)
-        clear_video_row = QWidget()
-        clear_video_layout = QHBoxLayout(clear_video_row)
-        clear_video_layout.setContentsMargins(0, 0, 0, 0)
-        clear_video_layout.addStretch()
-        clear_video_layout.addWidget(self.clear_video_btn)
-        basic.addRow("", clear_video_row)
 
         self.output_mode_combo = QComboBox()
         self.output_mode_combo.setToolTip(i18n.tip("EXTRACT_OUTPUT_MODE"))

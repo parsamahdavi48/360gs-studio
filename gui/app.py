@@ -21,6 +21,7 @@ from PySide6.QtWidgets import (
 
 from gui import i18n
 from gui.common.browse_widget import BrowseWidget
+from gui.common.icons import reset_icon
 from gui.common.log_panel import LogPanel
 from gui.common.process_runner import ProcessRunner
 from gui.common.progress_widget import ProgressWidget
@@ -72,12 +73,14 @@ class MainWindow(QWidget):
         self.scene_browse.setToolTip(i18n.tip("SCENE_DIR"))
         if initial_scene_dir:
             self.scene_browse.set_text(initial_scene_dir)
-        header.addWidget(self.scene_browse, stretch=1)
-        self.clear_scene_btn = QPushButton(i18n.t("CLEAR_SCENE_DIR"))
-        self.clear_scene_btn.setToolTip(i18n.t("CLEAR_SCENE_DIR_HINT"))
-        self.clear_scene_btn.setFixedWidth(150)
+        self.clear_scene_btn = self.scene_browse.add_icon_button(
+            reset_icon(),
+            i18n.t("CLEAR_SCENE_DIR_HINT"),
+            self._clear_scene_dir,
+            accessible_name=i18n.t("CLEAR_SCENE_DIR"),
+        )
         self.clear_scene_btn.setEnabled(bool(initial_scene_dir))
-        header.addWidget(self.clear_scene_btn)
+        header.addWidget(self.scene_browse, stretch=1)
         header_widget = QWidget()
         header_widget.setObjectName("appHeader")
         header_widget.setLayout(header)
@@ -197,7 +200,6 @@ class MainWindow(QWidget):
         self.scene_browse.path_changed.connect(self._on_scene_changed)
         self.step1.scene_dir_suggested.connect(self._on_scene_suggested)
         self.step1.input_videos_cleared.connect(self._on_input_videos_cleared)
-        self.clear_scene_btn.clicked.connect(self._clear_scene_dir)
         self.run_btn.clicked.connect(self._on_run)
         self.cancel_btn.clicked.connect(self._on_cancel)
 

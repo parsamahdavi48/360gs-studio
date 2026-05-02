@@ -3,7 +3,7 @@ from pathlib import Path
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PySide6.QtWidgets import QApplication, QPushButton
+from PySide6.QtWidgets import QApplication, QPushButton, QToolButton
 
 from extract_sessions import build_session_record, load_manifest, save_manifest
 from gui import i18n
@@ -189,6 +189,10 @@ def test_main_window_clear_scene_button_clears_header_scene(tmp_path: Path) -> N
 
     assert window.scene_browse.text() == str(tmp_path)
     assert window.clear_scene_btn.isEnabled()
+    assert isinstance(window.clear_scene_btn, QToolButton)
+    assert window.clear_scene_btn.text() == ""
+    assert window.clear_scene_btn.accessibleName() == i18n.t("CLEAR_SCENE_DIR")
+    assert window.clear_scene_btn.toolTip() == i18n.t("CLEAR_SCENE_DIR_HINT")
 
     window.clear_scene_btn.click()
 
@@ -215,6 +219,10 @@ def test_extract_clear_input_videos_clears_auto_scene(tmp_path: Path, monkeypatc
     assert window.step1.video_info is None
     assert window.scene_browse.text() == ""
     assert window.step1.scene_dir == ""
+    assert isinstance(window.step1.clear_video_btn, QToolButton)
+    assert window.step1.clear_video_btn.text() == ""
+    assert window.step1.clear_video_btn.accessibleName() == i18n.t("CLEAR_INPUT_VIDEO")
+    assert window.step1.clear_video_btn.toolTip() == i18n.t("CLEAR_INPUT_VIDEO_HINT")
     window.close()
 
 

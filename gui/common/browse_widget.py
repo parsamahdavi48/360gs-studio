@@ -2,12 +2,15 @@
 from __future__ import annotations
 
 from PySide6.QtCore import Qt, Signal
+from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import (
+    QAbstractButton,
     QFileDialog,
     QHBoxLayout,
     QLineEdit,
     QPushButton,
     QSizePolicy,
+    QToolButton,
     QVBoxLayout,
     QWidget,
 )
@@ -36,8 +39,9 @@ class BrowseWidget(QWidget):
         self._button_position = button_position
 
         layout = QVBoxLayout(self) if button_position == "below" else QHBoxLayout(self)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(6)
+        self._layout = layout
+        self._layout.setContentsMargins(0, 0, 0, 0)
+        self._layout.setSpacing(6)
 
         self.line_edit = QLineEdit()
         self.line_edit.setMinimumWidth(0)
@@ -46,23 +50,45 @@ class BrowseWidget(QWidget):
             self.line_edit.setPlaceholderText(placeholder)
         self.line_edit.textChanged.connect(self.path_changed.emit)
         if button_position == "below":
-            layout.addWidget(self.line_edit)
+            self._layout.addWidget(self.line_edit)
         else:
-            layout.addWidget(self.line_edit, stretch=1)
+            self._layout.addWidget(self.line_edit, stretch=1)
 
-        btn = QPushButton(BROWSE)
-        btn.setFixedWidth(104)
-        btn.clicked.connect(self._browse)
+        self.browse_button = QPushButton(BROWSE)
+        self.browse_button.setFixedWidth(104)
+        self.browse_button.clicked.connect(self._browse)
         if button_position == "below":
-            layout.addWidget(btn, alignment=Qt.AlignLeft)
+            self._layout.addWidget(self.browse_button, alignment=Qt.AlignLeft)
         else:
-            layout.addWidget(btn)
+            self._layout.addWidget(self.browse_button)
 
     def text(self) -> str:
         return self.line_edit.text().strip()
 
     def set_text(self, path: str) -> None:
         self.line_edit.setText(path)
+
+    def add_icon_button(
+        self,
+        icon: QIcon,
+        tooltip: str,
+        callback,
+        *,
+        accessible_name: str = "",
+    ) -> QAbstractButton:
+        button = QToolButton(self)
+        button.setObjectName("iconToolButton")
+        button.setIcon(icon)
+        button.setToolTip(tooltip)
+        button.setFixedSize(32, 32)
+        if accessible_name:
+            button.setAccessibleName(accessible_name)
+        button.clicked.connect(callback)
+        if self._button_position == "below":
+            self._layout.addWidget(button, alignment=Qt.AlignLeft)
+        else:
+            self._layout.addWidget(button)
+        return button
 
     def _browse(self) -> None:
         if self._mode == "dir":
