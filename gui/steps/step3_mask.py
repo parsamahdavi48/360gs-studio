@@ -26,7 +26,6 @@ from PySide6.QtWidgets import (
 )
 
 from gui import i18n
-from gui.common.browse_widget import BrowseWidget
 from gui.common.collapsible_section import CollapsibleSection
 from gui.common.drag_spinbox import DragDoubleSpinBox, DragSpinBox
 from gui.common.form_rows import add_tooltip_row
@@ -68,6 +67,7 @@ _OVEREXP_THRESHOLD_DEFAULT = 254
 _OVEREXP_DILATE_MIN = 0
 _OVEREXP_DILATE_MAX = 128
 _OVEREXP_DILATE_DEFAULT = 1
+_IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".tif", ".tiff"}
 
 
 class MaskStep(BaseStepWidget):
@@ -100,16 +100,24 @@ class MaskStep(BaseStepWidget):
         layout.setContentsMargins(*SETTINGS_PANE_MARGINS)
         layout.setSpacing(8)
 
-        # --- パス設定 ---
+        # --- 標準フォルダ ---
         path_form = QFormLayout()
         path_form.setSpacing(6)
-        self.images_browse = BrowseWidget(mode="dir", placeholder="元画像のフォルダ")
-        self.images_browse.setToolTip(i18n.tip("IMAGES_DIR"))
-        add_tooltip_row(path_form, i18n.IMAGES_DIR, self.images_browse, i18n.tip("IMAGES_DIR"))
-        self.masks_browse = BrowseWidget(mode="dir", placeholder="マスク出力先")
-        self.masks_browse.setToolTip(i18n.tip("MASKS_DIR"))
-        add_tooltip_row(path_form, i18n.MASKS_DIR, self.masks_browse, i18n.tip("MASKS_DIR"))
+        self.images_path_label = QLabel("-")
+        self.images_path_label.setToolTip(i18n.tip("IMAGES_DIR"))
+        self.images_path_label.setWordWrap(True)
+        self.images_path_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        add_tooltip_row(path_form, i18n.IMAGES_DIR, self.images_path_label, i18n.tip("IMAGES_DIR"))
+        self.masks_path_label = QLabel("-")
+        self.masks_path_label.setToolTip(i18n.tip("MASKS_DIR"))
+        self.masks_path_label.setWordWrap(True)
+        self.masks_path_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        add_tooltip_row(path_form, i18n.MASKS_DIR, self.masks_path_label, i18n.tip("MASKS_DIR"))
         layout.addLayout(path_form)
+
+        self.ready_status_label = QLabel()
+        self.ready_status_label.setWordWrap(True)
+        layout.addWidget(self.ready_status_label)
 
         # --- 実行対象 + 実行ボタン ---
         task_row = QHBoxLayout()
@@ -304,8 +312,6 @@ class MaskStep(BaseStepWidget):
 
         for cb in (self.run_yolo_cb, self.run_stitch_cb, self.run_overexp_cb):
             cb.toggled.connect(self._update_task_controls)
-        self.images_browse.path_changed.connect(self._on_images_dir_changed)
-        self.masks_browse.path_changed.connect(lambda _: self._render_mask_preview())
         self.yolo_add_ext_cb.toggled.connect(lambda _: self._render_mask_preview())
         self.stitch_boundary_width_edit.valueChanged.connect(lambda _: self._render_mask_preview())
         self.overexp_threshold_edit.valueChanged.connect(lambda _: self._render_mask_preview())
@@ -315,21 +321,93 @@ class MaskStep(BaseStepWidget):
         self.mask_preview.opacity_spin.valueChanged.connect(lambda _: self._render_mask_preview())
         self.mask_preview.yolo_preview_requested.connect(self._run_yolo_preview)
         self._update_task_controls()
-        self._on_images_dir_changed(self.images_browse.text())
+        self._on_images_dir_changed(self._images_dir_text())
+        self._update_ready_status()
 
     def set_scene_dir(self, path: str) -> None:
         super().set_scene_dir(path)
         if path:
             p = Path(path)
-            self.images_browse.set_text(str(p / "images"))
-            self.masks_browse.set_text(str(p / "masks"))
-            self._on_images_dir_changed(str(p / "images"))
+            self.images_path_label.setText(str(p / "images"))
+            self.masks_path_label.setText(str(p / "masks"))
+        else:
+            self.images_path_label.setText("-")
+            self.masks_path_label.setText("-")
+        self._on_images_dir_changed(self._images_dir_text())
+        self._render_mask_preview()
+        self._update_ready_status()
 
     def primary_action_text(self) -> str:
         return i18n.t("GENERATE")
 
     def primary_action_tooltip(self) -> str:
-        return i18n.tip("RUN_MASKS")
+        ready, reason = self._readiness()
+        return i18n.tip("RUN_MASKS") if ready else reason
+
+    def primary_action_enabled(self) -> bool:
+        ready, _reason = self._readiness()
+        return ready
+
+    def _images_dir_text(self) -> str:
+        if not self.scene_dir:
+            return ""
+        return str(Path(self.scene_dir) / "images")
+
+    def _masks_dir_text(self) -> str:
+        if not self.scene_dir:
+            return ""
+        return str(Path(self.scene_dir) / "masks")
+
+    def _selected_mask_tasks(self) -> list[str]:
+        requested_steps = []
+        if self.run_yolo_cb.isChecked():
+            requested_steps.append("yolo")
+        if self.run_stitch_cb.isChecked():
+            requested_steps.append("stitch")
+        if self.run_overexp_cb.isChecked():
+            requested_steps.append("overexposure")
+        return requested_steps
+
+    def _scene_csv_path(self) -> Path:
+        return Path(self.scene_dir) / "selected_frames.csv"
+
+    def _has_image_files(self) -> bool:
+        images = Path(self._images_dir_text())
+        if not images.is_dir():
+            return False
+        return any(
+            path.is_file() and path.suffix.lower() in _IMAGE_EXTS
+            for path in images.rglob("*")
+        )
+
+    def _readiness(self) -> tuple[bool, str]:
+        if not self.scene_dir:
+            return False, i18n.t("SCENE_REQUIRED_ACTION_HINT")
+        if not Path(self.scene_dir).is_dir():
+            return False, i18n.t("MASK_READY_SCENE_NOT_FOUND")
+        images = Path(self._images_dir_text())
+        if not images.is_dir():
+            return False, i18n.t("MASK_READY_NO_IMAGES_DIR")
+        if not self._has_image_files():
+            return False, i18n.t("MASK_READY_NO_IMAGES")
+        if not self._scene_csv_path().is_file():
+            return False, i18n.t("MASK_READY_NO_CSV")
+        if not self._selected_mask_tasks():
+            return False, i18n.t("MASK_TASK_REQUIRED")
+        return True, i18n.t("MASK_READY_OK")
+
+    def _update_ready_status(self) -> None:
+        ready, reason = self._readiness()
+        self.ready_status_label.setText(reason)
+        if ready:
+            self.ready_status_label.setStyleSheet(
+                "color: #7ecf7e; border: 1px solid #2f6f2f; border-radius: 6px; padding: 8px;"
+            )
+        else:
+            self.ready_status_label.setStyleSheet(
+                "color: #d8a24a; border: 1px solid #7a5b25; border-radius: 6px; padding: 8px;"
+            )
+        self.primary_action_state_changed.emit()
 
     def _set_classes(self, indices: list[int]) -> None:
         for i, cb in enumerate(self.class_cbs):
@@ -352,6 +430,7 @@ class MaskStep(BaseStepWidget):
         self.overexp_threshold_edit.setEnabled(overexp_enabled)
         self.overexp_dilate_edit.setEnabled(overexp_enabled)
         self._render_mask_preview()
+        self._update_ready_status()
 
     def _on_images_dir_changed(self, path: str) -> None:
         self.mask_preview.set_images_dir(path)
@@ -381,7 +460,7 @@ class MaskStep(BaseStepWidget):
             stitch_boundary_width_deg=width,
             overexposure_threshold=int(self.overexp_threshold_edit.value()),
             overexposure_dilate=int(self.overexp_dilate_edit.value()),
-            masks_dir=self.masks_browse.text(),
+            masks_dir=self._masks_dir_text(),
             yolo_add_ext=self.yolo_add_ext_cb.isChecked(),
         )
         self.mask_preview.render(config)
@@ -389,13 +468,10 @@ class MaskStep(BaseStepWidget):
     # -- コマンド構築 --
 
     def build_commands(self) -> list[tuple[str, list[str]]]:
-        requested_steps = []
-        if self.run_yolo_cb.isChecked():
-            requested_steps.append("yolo")
-        if self.run_stitch_cb.isChecked():
-            requested_steps.append("stitch")
-        if self.run_overexp_cb.isChecked():
-            requested_steps.append("overexposure")
+        ready, reason = self._readiness()
+        if not ready:
+            raise ValueError(reason)
+        requested_steps = self._selected_mask_tasks()
         if not requested_steps:
             raise ValueError(i18n.t("MASK_TASK_REQUIRED"))
 
@@ -414,7 +490,7 @@ class MaskStep(BaseStepWidget):
     def _ensure_no_pending_drop_images(self) -> None:
         if not self.scene_dir:
             return
-        images = self.images_browse.text()
+        images = self._images_dir_text()
         if not images:
             return
         scene_dir = Path(self.scene_dir)
@@ -434,7 +510,7 @@ class MaskStep(BaseStepWidget):
     def _ensure_no_untracked_images(self) -> None:
         if not self.scene_dir:
             return
-        images = self.images_browse.text()
+        images = self._images_dir_text()
         if not images:
             return
         scene_dir = Path(self.scene_dir)
@@ -452,8 +528,8 @@ class MaskStep(BaseStepWidget):
         raise ValueError(i18n.t("MASK_UNTRACKED_IMAGES_ERROR").format(n=len(untracked), files=preview))
 
     def _build_yolo_cmd(self) -> list[str]:
-        images = self.images_browse.text()
-        masks = self.masks_browse.text()
+        images = self._images_dir_text()
+        masks = self._masks_dir_text()
         if not images:
             raise ValueError("画像フォルダが指定されていません")
         if not masks:
@@ -572,7 +648,7 @@ class MaskStep(BaseStepWidget):
         self._yolo_preview_temp = None
 
     def _build_stitch_cmd(self) -> list[str]:
-        masks = self.masks_browse.text()
+        masks = self._masks_dir_text()
         if not masks:
             raise ValueError("マスクフォルダが指定されていません")
 
@@ -588,8 +664,8 @@ class MaskStep(BaseStepWidget):
         ]
 
     def _build_overexposure_cmd(self) -> list[str]:
-        images = self.images_browse.text()
-        masks = self.masks_browse.text()
+        images = self._images_dir_text()
+        masks = self._masks_dir_text()
         if not images:
             raise ValueError("画像フォルダが指定されていません")
         if not masks:
