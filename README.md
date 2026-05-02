@@ -29,7 +29,9 @@ setup_windows.bat
 start_gui.bat
 ```
 
-`setup_windows.bat` detects Python 3.12, installs Python 3.12 through winget when needed, and creates a verified `.venv`. Package versions are resolved at setup time, with PyTorch installed from the CUDA 12.8 wheel index.
+`setup_windows.bat` detects Python 3.12, installs Python 3.12 through winget when needed, and creates a verified `.venv`. If an existing `.venv` is already healthy, setup reports that state and does not rebuild it. Use `setup_windows.bat --force` to rebuild intentionally. Package versions are resolved at setup time, with PyTorch installed from the CUDA 12.8 wheel index.
+
+The setup window stays open at the end so the summary can be read. Use `setup_windows.bat --no-pause` when running from an existing terminal.
 
 `start_gui.bat` activates the venv and launches the integrated GUI.
 
