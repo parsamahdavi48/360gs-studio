@@ -96,6 +96,32 @@ def pending_drop_image_paths(
     return pending
 
 
+def untracked_image_paths(
+    scene_dir: Path,
+    csv_name: str = "selected_frames.csv",
+    images_dir: Optional[Path] = None,
+) -> List[Path]:
+    """Return image files in images_dir that are not referenced by the selected CSV."""
+    csv_path = scene_dir / csv_name
+    root = images_dir if images_dir is not None else scene_dir / "images"
+    if not csv_path.exists() or not root.exists():
+        return []
+
+    rows = load_rows(csv_path)
+    tracked = {
+        str((scene_dir / row.get("output_file", "").strip()).resolve())
+        for row in rows
+        if row.get("output_file", "").strip()
+    }
+    pending: List[Path] = []
+    for path in sorted(root.iterdir(), key=lambda p: p.name.lower()):
+        if not path.is_file() or not is_image_file(path):
+            continue
+        if str(path.resolve()) not in tracked:
+            pending.append(path)
+    return pending
+
+
 def copy_keep_rows(
     scene_dir: Path,
     rows: Sequence[dict],

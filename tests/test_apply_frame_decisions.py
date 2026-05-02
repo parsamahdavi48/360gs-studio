@@ -11,6 +11,7 @@ from apply_frame_decisions import (
     backup_images_dir,
     finalize_in_place,
     pending_drop_image_paths,
+    untracked_image_paths,
 )
 
 
@@ -215,3 +216,11 @@ def test_pending_drop_image_paths_ignores_missing_drop_files(tmp_path: Path):
     (scene / "images" / "frame_000002.jpg").unlink()
 
     assert pending_drop_image_paths(scene) == []
+
+
+def test_untracked_image_paths_reports_images_not_in_selected_csv(tmp_path: Path):
+    scene = _make_scene(tmp_path, num_frames=2)
+    stale = scene / "images" / "stale.jpg"
+    stale.write_bytes(b"old")
+
+    assert untracked_image_paths(scene) == [stale]

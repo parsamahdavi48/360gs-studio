@@ -8,6 +8,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+from extract_sessions import load_manifest, matching_video_sessions, sanitize_filename_prefix
+
 
 def _detect_binary(name: str) -> str:
     """PATH から実行ファイルを検出。見つからなければ素の名前を返す（PATH 解決に委ねる）。"""
@@ -105,6 +107,14 @@ class ExtractStep(BaseStepWidget):
         self.video_browse.setToolTip(i18n.tip("INPUT_VIDEO"))
         self.video_browse.path_changed.connect(self._on_video_changed)
         add_tooltip_row(basic, i18n.INPUT_VIDEO, self.video_browse, i18n.tip("INPUT_VIDEO"))
+
+        self.output_mode_combo = QComboBox()
+        self.output_mode_combo.setToolTip(i18n.tip("EXTRACT_OUTPUT_MODE"))
+        self.output_mode_combo.addItem(i18n.t("EXTRACT_OUTPUT_APPEND"), "append")
+        self.output_mode_combo.addItem(i18n.t("EXTRACT_OUTPUT_REPLACE_VIDEO"), "replace-video")
+        self.output_mode_combo.addItem(i18n.t("EXTRACT_OUTPUT_DUPLICATE_SESSION"), "duplicate")
+        self.output_mode_combo.currentIndexChanged.connect(lambda _: self._update_ready_status())
+        add_tooltip_row(basic, i18n.t("EXTRACT_OUTPUT_MODE"), self.output_mode_combo, i18n.tip("EXTRACT_OUTPUT_MODE"))
         layout.addLayout(basic)
 
         self.interval_edit = DragDoubleSpinBox(
@@ -335,6 +345,7 @@ class ExtractStep(BaseStepWidget):
         self.prefix_edit = QLineEdit("")
         self.prefix_edit.setToolTip(i18n.tip("FILENAME_PREFIX"))
         self.prefix_edit.setPlaceholderText(i18n.t("AUTO_PREFIX_HINT"))
+        self.prefix_edit.textChanged.connect(lambda _: self._update_ready_status())
         add_tooltip_row(path_form, i18n.FILENAME_PREFIX, self.prefix_edit, i18n.tip("FILENAME_PREFIX"))
 
         advanced.content_layout.addLayout(path_form)
@@ -408,6 +419,51 @@ class ExtractStep(BaseStepWidget):
         except ValueError:
             return False
 
+    def _extract_output_mode(self) -> str:
+        data = self.output_mode_combo.currentData()
+        return str(data or "append")
+
+    def _matching_video_sessions(self) -> list[dict]:
+        video = self.video_browse.text()
+        if not video or not self.scene_dir:
+            return []
+        path = Path(video)
+        if not path.is_file():
+            return []
+        return matching_video_sessions(Path(self.scene_dir), path)
+
+    def _effective_filename_prefix(self) -> str:
+        prefix = sanitize_filename_prefix(self.prefix_edit.text())
+        if prefix:
+            return prefix
+        video = self.video_browse.text()
+        if video:
+            prefix = sanitize_filename_prefix(Path(video).stem)
+        return prefix or "frame"
+
+    def _prefix_in_use(self, prefix: str) -> bool:
+        if not self.scene_dir:
+            return False
+        scene = Path(self.scene_dir)
+        manifest = load_manifest(scene)
+        for session in manifest.get("sessions", []):
+            if isinstance(session, dict) and session.get("filename_prefix") == prefix:
+                return True
+        images = scene / "images"
+        if images.exists():
+            return any(images.glob(f"{prefix}_*"))
+        return False
+
+    def _duplicate_session_prefix(self) -> str:
+        base = self._effective_filename_prefix()
+        if not self._prefix_in_use(base):
+            return base
+        for index in range(2, 1000):
+            candidate = f"{base}_session{index}"
+            if not self._prefix_in_use(candidate):
+                return candidate
+        return f"{base}_session"
+
     def _readiness(self) -> tuple[bool, str]:
         video = self.video_browse.text()
         if not video:
@@ -420,6 +476,14 @@ class ExtractStep(BaseStepWidget):
             return False, i18n.t("EXTRACT_READY_BAD_ANALYSIS_WIDTH")
         if not self.video_info:
             return False, i18n.t("EXTRACT_READY_NO_VIDEO_INFO")
+        matching_sessions = self._matching_video_sessions()
+        output_mode = self._extract_output_mode()
+        if matching_sessions and output_mode == "append":
+            return False, i18n.t("EXTRACT_READY_DUPLICATE_VIDEO").format(n=len(matching_sessions))
+        if matching_sessions and output_mode == "replace-video":
+            return True, i18n.t("EXTRACT_READY_DUPLICATE_REPLACE").format(n=len(matching_sessions))
+        if matching_sessions and output_mode == "duplicate":
+            return True, i18n.t("EXTRACT_READY_DUPLICATE_ADD").format(prefix=self._duplicate_session_prefix())
         return True, i18n.t("EXTRACT_READY_OK")
 
     def _update_ready_status(self) -> None:
@@ -464,10 +528,15 @@ class ExtractStep(BaseStepWidget):
             "--jpg-quality", str(self.jpg_quality_edit.value()),
             "--ffmpeg", self.ffmpeg_browse.text() or "ffmpeg",
             "--ffprobe", self.ffprobe_browse.text() or "ffprobe",
+            "--output-mode", "append" if self._extract_output_mode() == "duplicate" else self._extract_output_mode(),
         ]
         prefix = self.prefix_edit.text().strip()
+        if self._extract_output_mode() == "duplicate":
+            prefix = self._duplicate_session_prefix()
         if prefix:
             cmd.extend(["--filename-prefix", prefix])
+        if self._extract_output_mode() == "duplicate":
+            cmd.append("--allow-duplicate-video")
 
         cmd.extend(["--interval-sec", f"{self.interval_edit.value():g}"])
         if self.smart_fixed_cb.isChecked():

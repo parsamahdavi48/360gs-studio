@@ -8,7 +8,7 @@ import sys
 import tempfile
 from pathlib import Path
 
-from apply_frame_decisions import pending_drop_image_paths
+from apply_frame_decisions import pending_drop_image_paths, untracked_image_paths
 from PySide6.QtCore import QProcess, Qt
 from PySide6.QtWidgets import (
     QCheckBox,
@@ -400,6 +400,7 @@ class MaskStep(BaseStepWidget):
             raise ValueError(i18n.t("MASK_TASK_REQUIRED"))
 
         self._ensure_no_pending_drop_images()
+        self._ensure_no_untracked_images()
 
         steps = []
         if "yolo" in requested_steps:
@@ -429,6 +430,26 @@ class MaskStep(BaseStepWidget):
         if len(pending) > 5:
             preview += f"\n- ... +{len(pending) - 5}"
         raise ValueError(i18n.t("MASK_PENDING_DROPS_ERROR").format(n=len(pending), files=preview))
+
+    def _ensure_no_untracked_images(self) -> None:
+        if not self.scene_dir:
+            return
+        images = self.images_browse.text()
+        if not images:
+            return
+        scene_dir = Path(self.scene_dir)
+        csv_path = scene_dir / "selected_frames.csv"
+        if not csv_path.exists():
+            return
+
+        untracked = untracked_image_paths(scene_dir, images_dir=Path(images))
+        if not untracked:
+            return
+
+        preview = "\n".join(f"- {p.name}" for p in untracked[:5])
+        if len(untracked) > 5:
+            preview += f"\n- ... +{len(untracked) - 5}"
+        raise ValueError(i18n.t("MASK_UNTRACKED_IMAGES_ERROR").format(n=len(untracked), files=preview))
 
     def _build_yolo_cmd(self) -> list[str]:
         images = self.images_browse.text()

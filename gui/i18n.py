@@ -81,12 +81,19 @@ _JA: dict[str, str] = {
     "INSTANT_ESTIMATE": "即時推定",
     "SAMPLED_ESTIMATE": "サンプル推定",
     "NO_VIDEO": "動画が選択されていません",
+    "EXTRACT_OUTPUT_MODE": "抽出結果の扱い",
+    "EXTRACT_OUTPUT_APPEND": "追加",
+    "EXTRACT_OUTPUT_REPLACE_VIDEO": "同じ動画を置き換え",
+    "EXTRACT_OUTPUT_DUPLICATE_SESSION": "別セッションとして追加",
     "EXTRACT_READY_SECTION": "実行前チェック",
     "EXTRACT_READY_NO_VIDEO": "入力動画を選択してください。",
     "EXTRACT_READY_VIDEO_NOT_FOUND": "入力動画が見つかりません。",
     "EXTRACT_READY_NO_SCENE": "上部のシーンフォルダを指定してください。",
     "EXTRACT_READY_BAD_ANALYSIS_WIDTH": "解析幅は0以上の整数で入力してください。",
     "EXTRACT_READY_NO_VIDEO_INFO": "動画情報を読み込んでください。",
+    "EXTRACT_READY_DUPLICATE_VIDEO": "この動画はすでに抽出済みです ({n} セッション)。既存結果を使う場合は Step 2 へ進むか、再抽出する場合は「同じ動画を置き換え」を選んでください。",
+    "EXTRACT_READY_DUPLICATE_REPLACE": "同じ動画の既存セッション {n} 件を置き換えて再抽出します。",
+    "EXTRACT_READY_DUPLICATE_ADD": "同じ動画を別セッションとして追加します。出力接頭辞: {prefix}",
     "EXTRACT_READY_OK": "準備完了: フレーム抽出を実行できます。",
 
     # Step 2
@@ -160,6 +167,7 @@ _JA: dict[str, str] = {
     "MASK_TASK_OVEREXPOSURE": "白飛び",
     "MASK_TASK_REQUIRED": "作成するマスクを1つ以上選択してください。",
     "MASK_PENDING_DROPS_ERROR": "除外予定の画像が画像フォルダに {n} 件残っています。Step 2 で「適用」してからマスクを生成してください。\n{files}",
+    "MASK_UNTRACKED_IMAGES_ERROR": "selected_frames.csv に載っていない画像が画像フォルダに {n} 件あります。古い抽出結果が混在している可能性があります。\n{files}",
     "RUN_YOLO": "YOLO実行",
     "RUN_STITCH": "スティッチ実行",
     "RUN_YOLO_STITCH": "YOLO + スティッチ実行",
@@ -352,12 +360,19 @@ _EN: dict[str, str] = {
     "INSTANT_ESTIMATE": "Instant Estimate",
     "SAMPLED_ESTIMATE": "Sampled Estimate",
     "NO_VIDEO": "No video selected",
+    "EXTRACT_OUTPUT_MODE": "Extraction Result",
+    "EXTRACT_OUTPUT_APPEND": "Append",
+    "EXTRACT_OUTPUT_REPLACE_VIDEO": "Replace Same Video",
+    "EXTRACT_OUTPUT_DUPLICATE_SESSION": "Add as Separate Session",
     "EXTRACT_READY_SECTION": "Pre-run Check",
     "EXTRACT_READY_NO_VIDEO": "Select an input video.",
     "EXTRACT_READY_VIDEO_NOT_FOUND": "Input video was not found.",
     "EXTRACT_READY_NO_SCENE": "Set the scene folder at the top.",
     "EXTRACT_READY_BAD_ANALYSIS_WIDTH": "Analysis width must be an integer greater than or equal to 0.",
     "EXTRACT_READY_NO_VIDEO_INFO": "Load video information.",
+    "EXTRACT_READY_DUPLICATE_VIDEO": "This video has already been extracted ({n} session(s)). Go to Step 2 to use the existing result, or choose Replace Same Video to re-extract it.",
+    "EXTRACT_READY_DUPLICATE_REPLACE": "Ready to replace {n} existing session(s) for this video.",
+    "EXTRACT_READY_DUPLICATE_ADD": "Ready to add the same video as a separate session. Output prefix: {prefix}",
     "EXTRACT_READY_OK": "Ready: frame extraction can run.",
 
     # Step 2
@@ -431,6 +446,7 @@ _EN: dict[str, str] = {
     "MASK_TASK_OVEREXPOSURE": "Overexposure",
     "MASK_TASK_REQUIRED": "Select at least one mask to create.",
     "MASK_PENDING_DROPS_ERROR": "{n} drop-marked images still exist in the image folder. Apply Step 2 before generating masks.\n{files}",
+    "MASK_UNTRACKED_IMAGES_ERROR": "{n} images in the image folder are not listed in selected_frames.csv. Old extraction results may be mixed in.\n{files}",
     "RUN_YOLO": "Run YOLO",
     "RUN_STITCH": "Run Stitch",
     "RUN_YOLO_STITCH": "Run YOLO + Stitch",
@@ -563,6 +579,7 @@ _TIPS_JA: dict[str, str] = {
     "RUN": "現在のタブの処理を開始します",
     "CANCEL": "実行中の処理を中断します",
     "INPUT_VIDEO": "エクイレクタングラー形式の360度動画ファイルを選択",
+    "EXTRACT_OUTPUT_MODE": "追加: 既存の抽出結果にこの動画を足します。同じ動画を置き換え: 既存の同一動画セッションだけ削除して再抽出します。別セッションとして追加: 同じ動画を意図的に重複追加します",
     "MODE_FIXED": "指定した秒数ごとにフレームを抽出します。横ドラッグで調整可能。推奨は0.8〜1.0秒、UI範囲は0.05〜60秒",
     "FIXED_SMART": (
         "固定間隔を基準に、変化が少ない候補をスキップし、変化が大きい区間には追加候補を入れます。\n"
@@ -657,6 +674,7 @@ _TIPS_EN: dict[str, str] = {
     "RUN": "Start processing for the current tab",
     "CANCEL": "Abort the running process",
     "INPUT_VIDEO": "Select an equirectangular 360-degree video file",
+    "EXTRACT_OUTPUT_MODE": "Append: add this video to the existing scene. Replace Same Video: remove only existing sessions for this video and re-extract. Add as Separate Session: intentionally add the same video again.",
     "MODE_FIXED": "Extract frames every N seconds. Drag horizontally to adjust. Recommended: 0.8-1.0 sec; UI range: 0.05-60 sec",
     "FIXED_SMART": (
         "Keeps the fixed interval baseline, skips low-change candidates, and inserts extra candidates in high-motion ranges.\n"

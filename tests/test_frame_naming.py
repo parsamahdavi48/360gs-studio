@@ -45,3 +45,60 @@ def test_write_selected_csv_uses_frame_digit_width(tmp_path: Path) -> None:
     with csv_path.open("r", encoding="utf-8", newline="") as f:
         written = list(csv.DictReader(f))
     assert written[0]["output_file"] == "images/clip_0120.jpg"
+
+
+def test_write_selected_csv_appends_existing_rows_and_renumbers(tmp_path: Path) -> None:
+    csv_path = tmp_path / "selected_frames.csv"
+    existing_rows = [
+        {
+            "seq": "9",
+            "source_session": "old",
+            "source_video": "old.mp4",
+            "original_index": "1",
+            "final_index": "1",
+            "timestamp_sec": "0.033333",
+            "change_score_original": "0",
+            "change_score_final": "0",
+            "blur_score_original": "0",
+            "blur_score_final": "0",
+            "quality_score_original": "0.5",
+            "quality_score_final": "0.5",
+            "status": "ok",
+            "decision": "keep",
+            "output_file": "images/old_1.jpg",
+        }
+    ]
+    rows = [
+        {
+            "original_index": 30,
+            "final_index": 30,
+            "change_score_original": 0.0,
+            "change_score_final": 0.0,
+            "blur_score_original": 0.0,
+            "blur_score_final": 0.0,
+            "quality_score_original": 0.5,
+            "quality_score_final": 0.5,
+            "status": "ok",
+            "decision": "keep",
+        }
+    ]
+
+    write_selected_csv(
+        rows,
+        csv_path,
+        fps=30.0,
+        image_ext="jpg",
+        filename_prefix="new",
+        frame_digits=3,
+        existing_rows=existing_rows,
+        session_id="new-session",
+        source_video="new.mp4",
+    )
+
+    with csv_path.open("r", encoding="utf-8", newline="") as f:
+        written = list(csv.DictReader(f))
+    assert [row["seq"] for row in written] == ["1", "2"]
+    assert written[0]["source_session"] == "old"
+    assert written[1]["source_session"] == "new-session"
+    assert written[1]["source_video"] == "new.mp4"
+    assert written[1]["output_file"] == "images/new_030.jpg"

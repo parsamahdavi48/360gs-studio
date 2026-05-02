@@ -13,6 +13,16 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import List, Optional, Sequence, Tuple
 
+from extract_sessions import (
+    build_session_record,
+    load_manifest,
+    new_session_id,
+    sanitize_filename_prefix,
+    save_manifest,
+    session_matches_video,
+    video_identity,
+)
+
 try:
     import cv2
 except Exception as e:  # pragma: no cover - environment-dependent import
@@ -66,17 +76,6 @@ def parse_fraction(value: str) -> float:
             return 0.0
         return float(num) / den_f
     return float(value)
-
-
-def sanitize_filename_prefix(value: str) -> str:
-    text = value.strip()
-    if not text:
-        return ""
-    text = re.sub(r"[^A-Za-z0-9._-]+", "_", text)
-    text = text.strip("._-")
-    if not text:
-        return ""
-    return text
 
 
 def frame_index_digits(total_frames: int, frame_indices: Sequence[int] | None = None) -> int:
@@ -1326,6 +1325,87 @@ def extract_selected_frames(
     tmp_dir.rmdir()
 
 
+SELECTED_CSV_FIELDNAMES = [
+    "seq",
+    "source_session",
+    "source_video",
+    "original_index",
+    "final_index",
+    "timestamp_sec",
+    "change_score_original",
+    "change_score_final",
+    "blur_score_original",
+    "blur_score_final",
+    "quality_score_original",
+    "quality_score_final",
+    "status",
+    "decision",
+    "output_file",
+]
+
+
+def build_selected_csv_rows(
+    rows: List[dict],
+    fps: float,
+    image_ext: str,
+    filename_prefix: str,
+    frame_digits: int,
+    session_id: str = "",
+    source_video: str = "",
+) -> list[dict]:
+    out_rows: list[dict] = []
+    for i, row in enumerate(rows, start=1):
+        final_idx = row["final_index"]
+        out_rows.append(
+            {
+                "seq": i,
+                "source_session": session_id,
+                "source_video": source_video,
+                "original_index": row["original_index"],
+                "final_index": final_idx,
+                "timestamp_sec": f"{final_idx / fps:.6f}",
+                "change_score_original": f"{row['change_score_original']:.6f}",
+                "change_score_final": f"{row['change_score_final']:.6f}",
+                "blur_score_original": f"{row['blur_score_original']:.6f}",
+                "blur_score_final": f"{row['blur_score_final']:.6f}",
+                "quality_score_original": f"{row.get('quality_score_original', 0.0):.6f}",
+                "quality_score_final": f"{row.get('quality_score_final', 0.0):.6f}",
+                "status": row["status"],
+                "decision": row.get("decision", "keep"),
+                "output_file": f"images/{frame_filename(filename_prefix, final_idx, image_ext, frame_digits)}",
+            }
+        )
+    return out_rows
+
+
+def read_selected_csv(csv_path: Path) -> tuple[list[str], list[dict]]:
+    if not csv_path.exists():
+        return list(SELECTED_CSV_FIELDNAMES), []
+    with csv_path.open("r", newline="", encoding="utf-8") as f:
+        reader = csv.DictReader(f)
+        return list(reader.fieldnames or SELECTED_CSV_FIELDNAMES), list(reader)
+
+
+def write_selected_csv_rows(csv_path: Path, fieldnames: Sequence[str], rows: Sequence[dict]) -> None:
+    csv_path.parent.mkdir(parents=True, exist_ok=True)
+    ordered_fields = list(SELECTED_CSV_FIELDNAMES)
+    for name in fieldnames:
+        if name not in ordered_fields:
+            ordered_fields.append(name)
+    for row in rows:
+        for name in row.keys():
+            if name not in ordered_fields:
+                ordered_fields.append(name)
+
+    with csv_path.open("w", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(f, fieldnames=ordered_fields)
+        writer.writeheader()
+        for seq, row in enumerate(rows, start=1):
+            updated = dict(row)
+            updated["seq"] = seq
+            writer.writerow(updated)
+
+
 def write_selected_csv(
     rows: List[dict],
     csv_path: Path,
@@ -1333,46 +1413,26 @@ def write_selected_csv(
     image_ext: str,
     filename_prefix: str,
     frame_digits: int,
+    existing_rows: Sequence[dict] | None = None,
+    existing_fieldnames: Sequence[str] | None = None,
+    session_id: str = "",
+    source_video: str = "",
 ) -> None:
-    fieldnames = [
-        "seq",
-        "original_index",
-        "final_index",
-        "timestamp_sec",
-        "change_score_original",
-        "change_score_final",
-        "blur_score_original",
-        "blur_score_final",
-        "quality_score_original",
-        "quality_score_final",
-        "status",
-        "decision",
-        "output_file",
-    ]
+    if existing_rows is None:
+        existing_rows = []
+    if existing_fieldnames is None:
+        existing_fieldnames = SELECTED_CSV_FIELDNAMES
 
-    csv_path.parent.mkdir(parents=True, exist_ok=True)
-    with csv_path.open("w", newline="", encoding="utf-8") as f:
-        writer = csv.DictWriter(f, fieldnames=fieldnames)
-        writer.writeheader()
-        for i, row in enumerate(rows, start=1):
-            final_idx = row["final_index"]
-            writer.writerow(
-                {
-                    "seq": i,
-                    "original_index": row["original_index"],
-                    "final_index": final_idx,
-                    "timestamp_sec": f"{final_idx / fps:.6f}",
-                    "change_score_original": f"{row['change_score_original']:.6f}",
-                    "change_score_final": f"{row['change_score_final']:.6f}",
-                    "blur_score_original": f"{row['blur_score_original']:.6f}",
-                    "blur_score_final": f"{row['blur_score_final']:.6f}",
-                    "quality_score_original": f"{row.get('quality_score_original', 0.0):.6f}",
-                    "quality_score_final": f"{row.get('quality_score_final', 0.0):.6f}",
-                    "status": row["status"],
-                    "decision": row.get("decision", "keep"),
-                    "output_file": f"images/{frame_filename(filename_prefix, final_idx, image_ext, frame_digits)}",
-                }
-            )
+    new_rows = build_selected_csv_rows(
+        rows,
+        fps=fps,
+        image_ext=image_ext,
+        filename_prefix=filename_prefix,
+        frame_digits=frame_digits,
+        session_id=session_id,
+        source_video=source_video,
+    )
+    write_selected_csv_rows(csv_path, existing_fieldnames, [*existing_rows, *new_rows])
 
 
 def write_report(
@@ -1418,6 +1478,7 @@ def write_report(
             "center_bias": args.center_bias,
             "filename_prefix": filename_prefix,
             "frame_number_digits": frame_digits,
+            "output_mode": getattr(args, "output_mode", "overwrite"),
         },
         "result": {
             "selected_count": len(selected_rows),
@@ -1531,6 +1592,60 @@ def build_summary(
     return summary
 
 
+def video_info_to_dict(video_info: VideoInfo) -> dict:
+    return {
+        "width": video_info.width,
+        "height": video_info.height,
+        "fps": video_info.fps,
+        "duration_sec": video_info.duration,
+        "total_frames": video_info.total_frames,
+    }
+
+
+def output_files_for_indices(
+    final_indices: Sequence[int],
+    filename_prefix: str,
+    image_ext: str,
+    frame_digits: int,
+) -> list[str]:
+    return [
+        f"images/{frame_filename(filename_prefix, frame_idx, image_ext, frame_digits)}"
+        for frame_idx in final_indices
+    ]
+
+
+def remove_session_outputs(scene_dir: Path, output_files: Sequence[str]) -> int:
+    removed = 0
+    images_dir = (scene_dir / "images").resolve()
+    for rel in output_files:
+        path = (scene_dir / rel).resolve()
+        try:
+            path.relative_to(images_dir)
+        except ValueError:
+            continue
+        if path.is_file():
+            path.unlink()
+            removed += 1
+    return removed
+
+
+def filter_rows_for_replaced_sessions(
+    rows: Sequence[dict],
+    replaced_session_ids: set[str],
+    replaced_output_files: set[str],
+) -> list[dict]:
+    kept: list[dict] = []
+    for row in rows:
+        session_id = row.get("source_session", "")
+        output_file = row.get("output_file", "")
+        if session_id and session_id in replaced_session_ids:
+            continue
+        if output_file in replaced_output_files:
+            continue
+        kept.append(dict(row))
+    return kept
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Extract equirectangular frames via FFmpeg with SfM-oriented representative frame selection."
@@ -1621,6 +1736,21 @@ def parse_args() -> argparse.Namespace:
         "--filename-prefix",
         default="",
         help="Output filename prefix. Default is input video stem.",
+    )
+    parser.add_argument(
+        "--output-mode",
+        choices=["overwrite", "append", "replace-video"],
+        default="overwrite",
+        help=(
+            "How selected_frames.csv and extract_sessions.json are updated. "
+            "overwrite=current single-extraction behavior, append=add a new video session, "
+            "replace-video=remove prior sessions for the same video then append."
+        ),
+    )
+    parser.add_argument(
+        "--allow-duplicate-video",
+        action="store_true",
+        help="Allow appending a video that already exists in extract_sessions.json.",
     )
 
     parser.add_argument("--ffmpeg", default="ffmpeg", help="Path to ffmpeg executable")
@@ -1744,6 +1874,21 @@ def main() -> None:
         resolved_prefix = "frame"
     print(f"Filename prefix: {resolved_prefix}")
     video_frame_digits = frame_index_digits(video_info.total_frames)
+    current_video_identity = video_identity(input_video)
+    manifest = load_manifest(scene_dir)
+    manifest_sessions = [
+        session for session in manifest.get("sessions", []) if isinstance(session, dict)
+    ]
+    matching_sessions = [
+        session for session in manifest_sessions if session_matches_video(session, current_video_identity)
+    ]
+    if args.output_mode == "append" and matching_sessions and not args.allow_duplicate_video:
+        print(
+            "Error: this video already exists in extract_sessions.json. "
+            "Use --output-mode replace-video to re-extract it, or --allow-duplicate-video "
+            "with a unique --filename-prefix to add it as a separate session."
+        )
+        sys.exit(1)
 
     if args.estimate_only and args.mode == "fixed" and not args.fixed_smart:
         total_frames = video_info.total_frames
@@ -2009,6 +2154,57 @@ def main() -> None:
         print("Error: no frames remain after thinning; skipping extraction")
         sys.exit(1)
 
+    session_id = new_session_id()
+    output_files = output_files_for_indices(
+        final_indices,
+        resolved_prefix,
+        args.image_ext,
+        summary["params"]["frame_number_digits"],
+    )
+
+    existing_fieldnames: list[str] = list(SELECTED_CSV_FIELDNAMES)
+    existing_rows: list[dict] = []
+    active_manifest_sessions = manifest_sessions
+    if args.output_mode in {"append", "replace-video"}:
+        existing_fieldnames, existing_rows = read_selected_csv(csv_path)
+
+    replaced_session_ids: set[str] = set()
+    replaced_output_files: set[str] = set()
+    if args.output_mode == "replace-video" and matching_sessions:
+        for session in matching_sessions:
+            session_id_value = str(session.get("id") or "")
+            if session_id_value:
+                replaced_session_ids.add(session_id_value)
+            for rel in session.get("output_files", []) or []:
+                if isinstance(rel, str):
+                    replaced_output_files.add(rel)
+        removed = remove_session_outputs(scene_dir, sorted(replaced_output_files))
+        existing_rows = filter_rows_for_replaced_sessions(
+            existing_rows,
+            replaced_session_ids,
+            replaced_output_files,
+        )
+        active_manifest_sessions = [
+            session
+            for session in active_manifest_sessions
+            if str(session.get("id") or "") not in replaced_session_ids
+        ]
+        print(f"Replaced prior sessions for this video: {len(matching_sessions)} session(s), {removed} file(s) removed")
+
+    if args.output_mode in {"append", "replace-video"}:
+        collisions = [
+            rel
+            for rel in output_files
+            if (scene_dir / rel).exists() and rel not in replaced_output_files
+        ]
+        if collisions:
+            preview = ", ".join(collisions[:3])
+            print(
+                f"Error: output files already exist ({len(collisions)}). "
+                f"Use a unique --filename-prefix. Example: {preview}"
+            )
+            sys.exit(1)
+
     try:
         extract_selected_frames(
             input_video,
@@ -2031,7 +2227,27 @@ def main() -> None:
         args.image_ext,
         resolved_prefix,
         summary["params"]["frame_number_digits"],
+        existing_rows=existing_rows if args.output_mode in {"append", "replace-video"} else [],
+        existing_fieldnames=existing_fieldnames,
+        session_id=session_id,
+        source_video=str(input_video.resolve()),
     )
+    session_record = build_session_record(
+        session_id=session_id,
+        input_video=input_video,
+        video_info=video_info_to_dict(video_info),
+        mode=args.mode,
+        filename_prefix=resolved_prefix,
+        image_ext=args.image_ext,
+        output_files=output_files,
+        selected_count=sum(1 for r in enriched_rows if r.get("decision", "keep") != "drop"),
+        dropped_count=sum(1 for r in enriched_rows if r.get("decision", "keep") == "drop"),
+    )
+    if args.output_mode == "overwrite":
+        manifest["sessions"] = [session_record]
+    else:
+        manifest["sessions"] = [*active_manifest_sessions, session_record]
+    save_manifest(scene_dir, manifest)
     write_report(
         report_path,
         args,

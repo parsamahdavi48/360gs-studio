@@ -55,3 +55,14 @@ def test_mask_step_allows_generation_when_drop_images_are_removed(tmp_path: Path
 
     assert commands
     assert commands[0][0] == "yolo"
+
+
+def test_mask_step_rejects_generation_when_untracked_images_remain(tmp_path: Path) -> None:
+    _app()
+    scene = _write_scene(tmp_path, drop_exists=False)
+    (scene / "images" / "old_frame.jpg").write_bytes(b"stale")
+    step = MaskStep(Path.cwd())
+    step.set_scene_dir(str(scene))
+
+    with pytest.raises(ValueError, match="selected_frames.csv"):
+        step.build_commands()

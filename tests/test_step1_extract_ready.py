@@ -5,6 +5,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PySide6.QtWidgets import QApplication
 
+from extract_sessions import build_session_record, save_manifest
 from gui import i18n
 from gui.app import MainWindow
 from gui.steps.step1_extract import ExtractStep
@@ -31,6 +32,28 @@ def _make_ready(step: ExtractStep, video: Path, scene: Path) -> None:
     step.set_scene_dir(str(scene))
     step.video_info = _video_info()
     step._update_ready_status()
+
+
+def _write_session(scene: Path, video: Path, prefix: str = "input") -> None:
+    save_manifest(
+        scene,
+        {
+            "version": 1,
+            "sessions": [
+                build_session_record(
+                    session_id="existing-session",
+                    input_video=video,
+                    video_info=_video_info(),
+                    mode="fixed",
+                    filename_prefix=prefix,
+                    image_ext="jpg",
+                    output_files=[f"images/{prefix}_0001.jpg"],
+                    selected_count=1,
+                    dropped_count=0,
+                )
+            ],
+        },
+    )
 
 
 def test_extract_run_disabled_until_video_is_selected() -> None:
@@ -81,3 +104,50 @@ def test_main_window_run_button_follows_extract_readiness(tmp_path: Path) -> Non
 
     assert window.run_btn.isEnabled()
     window.close()
+
+
+def test_extract_run_disabled_when_same_video_would_be_appended(tmp_path: Path) -> None:
+    _app()
+    video = tmp_path / "input.mp4"
+    video.write_bytes(b"dummy")
+    _write_session(tmp_path, video)
+    step = ExtractStep(Path.cwd())
+
+    _make_ready(step, video, tmp_path)
+
+    assert step._extract_output_mode() == "append"
+    assert not step.primary_action_enabled()
+    assert i18n.t("EXTRACT_READY_DUPLICATE_VIDEO").split("{n}")[0] in step.ready_status_label.text()
+
+
+def test_extract_replace_same_video_enables_run_and_sets_cli_mode(tmp_path: Path) -> None:
+    _app()
+    video = tmp_path / "input.mp4"
+    video.write_bytes(b"dummy")
+    _write_session(tmp_path, video)
+    step = ExtractStep(Path.cwd())
+    _make_ready(step, video, tmp_path)
+
+    step.output_mode_combo.setCurrentIndex(1)
+    cmd = step._build_extract_cmd()
+
+    assert step.primary_action_enabled()
+    assert cmd[cmd.index("--output-mode") + 1] == "replace-video"
+    assert "--allow-duplicate-video" not in cmd
+
+
+def test_extract_duplicate_session_enables_run_with_unique_prefix(tmp_path: Path) -> None:
+    _app()
+    video = tmp_path / "input.mp4"
+    video.write_bytes(b"dummy")
+    _write_session(tmp_path, video, prefix="input")
+    step = ExtractStep(Path.cwd())
+    _make_ready(step, video, tmp_path)
+
+    step.output_mode_combo.setCurrentIndex(2)
+    cmd = step._build_extract_cmd()
+
+    assert step.primary_action_enabled()
+    assert cmd[cmd.index("--output-mode") + 1] == "append"
+    assert cmd[cmd.index("--filename-prefix") + 1] == "input_session2"
+    assert "--allow-duplicate-video" in cmd
