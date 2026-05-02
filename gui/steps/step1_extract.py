@@ -16,7 +16,7 @@ def _detect_binary(name: str) -> str:
     found = shutil.which(name)
     return found if found else name
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -25,7 +25,6 @@ from PySide6.QtWidgets import (
     QLabel,
     QLineEdit,
     QMessageBox,
-    QPushButton,
     QScrollArea,
     QSplitter,
     QVBoxLayout,
@@ -62,10 +61,14 @@ def _row_label(text: str, tooltip: str | None = None) -> QLabel:
 
 
 class ExtractStep(BaseStepWidget):
+    scene_dir_suggested = Signal(str)
+
     def __init__(self, base_dir: Path, parent: QWidget | None = None) -> None:
         super().__init__(base_dir, parent)
 
         self.video_info: dict | None = None
+        self.video_infos: dict[str, dict] = {}
+        self.video_info_failures: dict[str, str] = {}
         self.last_estimate_summary: dict | None = None
         self.instant_estimate_text = "-"
         self._syncing_gap_fields = False
@@ -236,17 +239,12 @@ class ExtractStep(BaseStepWidget):
         advanced.layout().setContentsMargins(0, 0, 0, 0)
         advanced.toggle_button.setParent(None)
 
-        # ===== 動画情報 (コンパクト) =====
+        # ===== 詳細設定ボタン =====
         info_row_widget = QWidget()
         info_box = QHBoxLayout(info_row_widget)
         info_box.setContentsMargins(0, 0, 0, 0)
         info_box.setSpacing(8)
 
-        self.load_info_btn = QPushButton(i18n.t("VIDEO_INFO_LOAD"))
-        self.load_info_btn.setToolTip(i18n.tip("VIDEO_INFO_BTN"))
-        self.load_info_btn.setMinimumWidth(132)
-        self.load_info_btn.clicked.connect(lambda: self._load_video_info(show_error=True))
-        info_box.addWidget(self.load_info_btn)
         info_box.addWidget(advanced.toggle_button)
         info_box.addStretch()
         self.extract_action_row = info_row_widget
@@ -340,6 +338,7 @@ class ExtractStep(BaseStepWidget):
                                            placeholder="ffprobe (PATH から自動検出)")
         self.ffprobe_browse.set_text(_detect_binary("ffprobe"))
         self.ffprobe_browse.setToolTip(i18n.tip("FFPROBE_PATH"))
+        self.ffprobe_browse.path_changed.connect(lambda _path: self._reload_video_info_if_selected())
         add_tooltip_row(path_form, i18n.FFPROBE_PATH, self.ffprobe_browse, i18n.tip("FFPROBE_PATH"))
 
         self.prefix_edit = QLineEdit("")
@@ -661,13 +660,30 @@ class ExtractStep(BaseStepWidget):
 
     def _on_video_changed(self, path: str) -> None:
         videos = self._selected_video_paths()
+        self._suggest_scene_dir_from_videos(videos)
         if len(videos) == 1 and videos[0].is_file():
+            self._load_video_info(show_error=False)
+        elif len(videos) > 1:
             self._load_video_info(show_error=False)
         else:
             self.video_info = None
+            self._prune_video_info_cache(videos)
             self._update_video_info_label()
             self._update_instant_estimate()
             self._update_ready_status()
+
+    def _suggest_scene_dir_from_videos(self, videos: list[Path]) -> None:
+        if self.scene_dir or not videos:
+            return
+        if any(not video.is_file() for video in videos):
+            return
+        try:
+            parents = {video.parent.resolve() for video in videos}
+        except OSError:
+            return
+        if len(parents) != 1:
+            return
+        self.scene_dir_suggested.emit(str(next(iter(parents))))
 
     @staticmethod
     def _parse_fraction(value: str) -> float:
@@ -685,15 +701,64 @@ class ExtractStep(BaseStepWidget):
         h, m, s = whole // 3600, (whole % 3600) // 60, whole % 60
         return f"{h:02d}:{m:02d}:{s:02d}"
 
+    @staticmethod
+    def _format_number(value: int) -> str:
+        return f"{int(value):,}"
+
+    @staticmethod
+    def _video_key(video: Path) -> str:
+        return str(video)
+
+    @staticmethod
+    def _estimated_total_frames(info: dict) -> int:
+        total = int(info.get("total_frames", 0))
+        if total > 0:
+            return total
+        dur = float(info.get("duration_sec", 0))
+        fps = float(info.get("fps", 0))
+        if dur > 0 and fps > 0:
+            return max(1, int(round(dur * fps)))
+        return 0
+
+    def _fixed_estimate_count(self, info: dict) -> int:
+        total = self._estimated_total_frames(info)
+        fps = float(info.get("fps", 0))
+        if total <= 0 or fps <= 0:
+            return 0
+        iv = self.interval_edit.value()
+        if iv <= 0:
+            return 0
+        step = max(1, int(round(iv * fps)))
+        indices = list(range(0, max(total, 1), step))
+        last_index = max(total - 1, 0)
+        if indices[-1] != last_index:
+            indices.append(last_index)
+        return len(indices)
+
+    def _prune_video_info_cache(self, videos: list[Path]) -> None:
+        keys = {self._video_key(video) for video in videos}
+        self.video_infos = {key: value for key, value in self.video_infos.items() if key in keys}
+        self.video_info_failures = {key: value for key, value in self.video_info_failures.items() if key in keys}
+
     def _load_video_info(self, show_error: bool = True) -> bool:
+        videos = self._selected_video_paths()
+        self._prune_video_info_cache(videos)
+        if len(videos) > 1:
+            return self._load_multi_video_info(videos, show_error=show_error)
         try:
             self.video_info = self._probe_video_info()
+            if videos:
+                key = self._video_key(videos[0])
+                self.video_infos[key] = self.video_info
+                self.video_info_failures.pop(key, None)
             self._update_video_info_label()
             self._mark_estimate_stale()
             self._update_ready_status()
             return True
         except Exception as e:
             self.video_info = None
+            for video in videos[:1]:
+                self.video_info_failures[self._video_key(video)] = str(e)
             self._update_video_info_label()
             self.instant_estimate_text = "-"
             self._refresh_estimate_label()
@@ -702,13 +767,44 @@ class ExtractStep(BaseStepWidget):
                 QMessageBox.critical(self, i18n.INVALID_INPUT, str(e))
             return False
 
+    def _load_multi_video_info(self, videos: list[Path], show_error: bool = True) -> bool:
+        self.video_info = None
+        self._prune_video_info_cache(videos)
+        failures: list[str] = []
+        for video in videos:
+            key = self._video_key(video)
+            try:
+                info = self._probe_video_info_for_path(video)
+            except Exception as e:
+                self.video_infos.pop(key, None)
+                self.video_info_failures[key] = str(e)
+                failures.append(f"{video.name}: {e}")
+                continue
+            self.video_infos[key] = info
+            self.video_info_failures.pop(key, None)
+
+        self._update_video_info_label()
+        self._mark_estimate_stale()
+        self._update_ready_status()
+        if failures and show_error:
+            QMessageBox.warning(self, i18n.INVALID_INPUT, "\n".join(failures))
+        return bool(self.video_infos)
+
+    def _reload_video_info_if_selected(self) -> None:
+        videos = self._selected_video_paths()
+        if videos:
+            self._load_video_info(show_error=False)
+
     def _probe_video_info(self) -> dict:
         videos = self._selected_video_paths()
-        video = str(videos[0]) if videos else ""
-        ffprobe = self.ffprobe_browse.text() or "ffprobe"
-        if not video:
+        if not videos:
             raise ValueError("入力動画が指定されていません")
-        if not Path(video).exists():
+        return self._probe_video_info_for_path(videos[0])
+
+    def _probe_video_info_for_path(self, video_path: Path) -> dict:
+        video = str(video_path)
+        ffprobe = self.ffprobe_browse.text() or "ffprobe"
+        if not video_path.exists():
             raise ValueError(f"入力動画が見つかりません: {video}")
 
         cmd = [
@@ -748,6 +844,32 @@ class ExtractStep(BaseStepWidget):
         if self._is_multi_video_input():
             videos = self._selected_video_paths()
             queued, skipped = self._queued_selected_videos()
+            info_rows = [(video, self.video_infos[self._video_key(video)]) for video in videos if self._video_key(video) in self.video_infos]
+            if info_rows:
+                failed = len([video for video in videos if self._video_key(video) in self.video_info_failures])
+                lines = [
+                    i18n.t("VIDEO_INFO_MULTI_HEADER_FORMAT").format(
+                        total=len(videos),
+                        queued=len(queued),
+                        skipped=skipped,
+                        probed=len(info_rows),
+                    )
+                ]
+                for video, info in info_rows:
+                    lines.append(
+                        i18n.t("VIDEO_INFO_MULTI_ITEM_FORMAT").format(
+                            name=video.name,
+                            width=info["width"],
+                            height=info["height"],
+                            fps=info["fps"],
+                            duration=self._format_duration(float(info.get("duration_sec", 0))),
+                            frames=self._format_number(self._estimated_total_frames(info)),
+                        )
+                    )
+                if failed:
+                    lines[0] += i18n.t("VIDEO_INFO_FAILED_SUFFIX").format(failed=failed)
+                self.video_info_label.setText("\n".join(lines))
+                return
             self.video_info_label.setText(
                 i18n.t("VIDEO_QUEUE_LABEL_FORMAT").format(
                     total=len(videos),
@@ -757,12 +879,18 @@ class ExtractStep(BaseStepWidget):
             )
             return
         if not self.video_info:
-            self.video_info_label.setText("動画: -")
+            self.video_info_label.setText(i18n.t("VIDEO_LABEL_DEFAULT"))
             return
         i = self.video_info
         d = self._format_duration(float(i["duration_sec"]))
         self.video_info_label.setText(
-            f"{i['width']}x{i['height']}  |  {i['fps']:.2f} fps  |  {d}  |  {i['total_frames']} フレーム"
+            i18n.t("VIDEO_INFO_SINGLE_FORMAT").format(
+                width=i["width"],
+                height=i["height"],
+                fps=i["fps"],
+                duration=d,
+                frames=self._format_number(self._estimated_total_frames(i)),
+            )
         )
 
     # -- フレーム数推定 --
@@ -778,6 +906,35 @@ class ExtractStep(BaseStepWidget):
     def _update_instant_estimate(self) -> None:
         if self._is_multi_video_input():
             queued, skipped = self._queued_selected_videos()
+            info_rows = [(video, self.video_infos[self._video_key(video)]) for video in queued if self._video_key(video) in self.video_infos]
+            if info_rows:
+                counts = [(video, self._fixed_estimate_count(info)) for video, info in info_rows]
+                total_estimated = sum(count for _video, count in counts)
+                missing = max(0, len(queued) - len(info_rows))
+                lines = [
+                    i18n.t("FIXED_INTERVAL_ESTIMATE_MULTI_HEADER_FORMAT").format(
+                        interval=f"{self.interval_edit.value():g}",
+                    )
+                ]
+                for video, count in counts:
+                    lines.append(
+                        i18n.t("FIXED_INTERVAL_ESTIMATE_MULTI_ITEM_FORMAT").format(
+                            name=video.name,
+                            count=self._format_number(count),
+                        )
+                    )
+                total_line = i18n.t("FIXED_INTERVAL_ESTIMATE_MULTI_TOTAL_FORMAT").format(
+                    count=self._format_number(total_estimated),
+                    videos=len(info_rows),
+                )
+                if self.smart_fixed_cb.isChecked():
+                    total_line += f" ({i18n.t('FIXED_SMART_ESTIMATE')})"
+                if missing:
+                    total_line += i18n.t("ESTIMATE_MISSING_INFO_SUFFIX").format(missing=missing)
+                lines.append(total_line)
+                self.instant_estimate_text = "\n".join(lines)
+                self._refresh_estimate_label()
+                return
             self.instant_estimate_text = i18n.t("QUEUE_ESTIMATE_FORMAT").format(
                 queued=len(queued),
                 skipped=skipped,
@@ -798,11 +955,13 @@ class ExtractStep(BaseStepWidget):
                 raise ValueError
             if total <= 0 and dur > 0 and fps > 0:
                 total = max(1, int(round(dur * fps)))
-            step = max(1, int(round(iv * fps)))
-            indices = list(range(0, max(total, 1), step))
-            if indices[-1] != max(total - 1, 0):
-                indices.append(max(total - 1, 0))
-            text = f"{len(indices)} {i18n.t('FRAMES_UNIT')}"
+            info = dict(self.video_info)
+            info["total_frames"] = total
+            estimated = self._fixed_estimate_count(info)
+            text = i18n.t("FIXED_INTERVAL_ESTIMATE_FORMAT").format(
+                interval=f"{iv:g}",
+                count=self._format_number(estimated),
+            )
             if self.smart_fixed_cb.isChecked():
                 text += f" ({i18n.t('FIXED_SMART_ESTIMATE')})"
             self.instant_estimate_text = text

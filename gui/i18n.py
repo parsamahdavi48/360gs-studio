@@ -100,6 +100,15 @@ _JA: dict[str, str] = {
     "EXTRACT_READY_OK": "準備完了: フレーム抽出を実行できます。",
     "VIDEO_QUEUE_LABEL_FORMAT": "動画キュー: {total} 件  |  実行 {queued} 件  |  スキップ {skipped} 件",
     "QUEUE_ESTIMATE_FORMAT": "キュー {queued} 件 (抽出済みスキップ {skipped} 件)",
+    "VIDEO_INFO_SINGLE_FORMAT": "{width}x{height}  |  {fps:.2f} fps  |  {duration}  |  約{frames}フレーム",
+    "VIDEO_INFO_MULTI_HEADER_FORMAT": "動画キュー: {total} 件  |  実行 {queued} 件  |  スキップ {skipped} 件  |  取得 {probed} 件",
+    "VIDEO_INFO_MULTI_ITEM_FORMAT": "{name}: {width}x{height}  |  {fps:.2f} fps  |  {duration}  |  約{frames}フレーム",
+    "VIDEO_INFO_FAILED_SUFFIX": "  |  取得失敗 {failed} 件",
+    "FIXED_INTERVAL_ESTIMATE_FORMAT": "固定間隔 {interval}秒: 約{count}枚",
+    "FIXED_INTERVAL_ESTIMATE_MULTI_HEADER_FORMAT": "固定間隔 {interval}秒",
+    "FIXED_INTERVAL_ESTIMATE_MULTI_ITEM_FORMAT": "{name}: 約{count}枚",
+    "FIXED_INTERVAL_ESTIMATE_MULTI_TOTAL_FORMAT": "合計: 約{count}枚 ({videos}件)",
+    "ESTIMATE_MISSING_INFO_SUFFIX": "  |  未取得 {missing} 件",
 
     # Step 2
     "EXPORT_KEEP": "採用フレームをエクスポート",
@@ -256,7 +265,6 @@ _JA: dict[str, str] = {
     "PREVIEW_LOAD_FAIL": "画像の読み込みに失敗しました",
 
     # Step1 extra labels
-    "VIDEO_INFO_LOAD": "動画情報",
     "SAMPLE_REFRESH": "サンプル推定を更新",
     "VIDEO_LABEL_DEFAULT": "動画: -",
     "ADVANCED_SETTINGS": "詳細設定",
@@ -380,6 +388,15 @@ _EN: dict[str, str] = {
     "EXTRACT_READY_OK": "Ready: frame extraction can run.",
     "VIDEO_QUEUE_LABEL_FORMAT": "Video queue: {total}  |  run {queued}  |  skip {skipped}",
     "QUEUE_ESTIMATE_FORMAT": "queue {queued} videos (skip {skipped} extracted)",
+    "VIDEO_INFO_SINGLE_FORMAT": "{width}x{height}  |  {fps:.2f} fps  |  {duration}  |  approx. {frames} frames",
+    "VIDEO_INFO_MULTI_HEADER_FORMAT": "Video queue: {total}  |  run {queued}  |  skip {skipped}  |  probed {probed}",
+    "VIDEO_INFO_MULTI_ITEM_FORMAT": "{name}: {width}x{height}  |  {fps:.2f} fps  |  {duration}  |  approx. {frames} frames",
+    "VIDEO_INFO_FAILED_SUFFIX": "  |  {failed} probe failed",
+    "FIXED_INTERVAL_ESTIMATE_FORMAT": "Fixed {interval}s: approx. {count} images",
+    "FIXED_INTERVAL_ESTIMATE_MULTI_HEADER_FORMAT": "Fixed {interval}s",
+    "FIXED_INTERVAL_ESTIMATE_MULTI_ITEM_FORMAT": "{name}: approx. {count} images",
+    "FIXED_INTERVAL_ESTIMATE_MULTI_TOTAL_FORMAT": "Total: approx. {count} images ({videos} videos)",
+    "ESTIMATE_MISSING_INFO_SUFFIX": "  |  {missing} not probed",
 
     # Step 2
     "EXPORT_KEEP": "Export Keep Frames",
@@ -536,7 +553,6 @@ _EN: dict[str, str] = {
     "PREVIEW_LOAD_FAIL": "Failed to load image",
 
     # Step1 extra labels
-    "VIDEO_INFO_LOAD": "Video Info",
     "SAMPLE_REFRESH": "Refresh Sampled Estimate",
     "VIDEO_LABEL_DEFAULT": "Video: -",
     "ADVANCED_SETTINGS": "Advanced",
@@ -598,7 +614,6 @@ _TIPS_JA: dict[str, str] = {
     "MAX_GAP": "変化量で補正するときの安全間隔。単位は秒。低変化スキップで採用フレームが空きすぎるのを防ぎます。UI範囲は0.05〜60秒",
     "IMAGE_FORMAT": "出力画像の形式。jpgはファイルサイズ小、pngは無劣化",
     "JPEG_QUALITY": "ffmpegの-q:v値。1=最高品質、31=最低品質。2-5推奨。横ドラッグで調整可能",
-    "VIDEO_INFO_BTN": "ffprobeで動画の解像度・FPS・長さを取得し、フレーム数を推定",
     "ANALYSIS_WIDTH": "変化検出・品質評価に使うデコード幅。大きいほど精度は上がるが遅くなります",
     "QUALITY_MIN_SCORE": (
         "Step 2で品質確認として表示する基準スコア。範囲は0.00〜1.00、単位は正規化スコアです。\n"
@@ -691,7 +706,6 @@ _TIPS_EN: dict[str, str] = {
     "MAX_GAP": "Safety spacing for motion adjustment in seconds. Low-change skipping will not leave kept frames farther apart than this. UI range: 0.05-60 sec",
     "IMAGE_FORMAT": "Output format. jpg = smaller files, png = lossless",
     "JPEG_QUALITY": "ffmpeg -q:v value. 1 = best quality, 31 = worst. Recommended: 2-5. Drag horizontally to adjust",
-    "VIDEO_INFO_BTN": "Probe video resolution, FPS, and duration with ffprobe",
     "ANALYSIS_WIDTH": "Decode width for change and quality scoring. Higher = more accurate but slower",
     "QUALITY_MIN_SCORE": (
         "Quality-score threshold used to flag frames for review in Step 2. Range: 0.00-1.00; unit: normalized score.\n"

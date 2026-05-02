@@ -188,6 +188,7 @@ class MainWindow(QWidget):
 
     def _connect_signals(self) -> None:
         self.scene_browse.path_changed.connect(self._on_scene_changed)
+        self.step1.scene_dir_suggested.connect(self._on_scene_suggested)
         self.run_btn.clicked.connect(self._on_run)
         self.cancel_btn.clicked.connect(self._on_cancel)
 
@@ -212,6 +213,14 @@ class MainWindow(QWidget):
         step = self._current_step_widget()
         if step is not None:
             step.on_activated()
+
+    def _on_scene_suggested(self, path: str) -> None:
+        if self.scene_browse.text():
+            return
+        candidate = Path(path)
+        if not candidate.is_dir():
+            return
+        self.scene_browse.set_text(str(candidate))
 
     def _set_current_step(self, index: int) -> None:
         if not 0 <= index < len(self.steps):
