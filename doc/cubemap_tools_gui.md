@@ -33,12 +33,15 @@ start_cubemap_tools_gui.bat
   - Preset for downstream tool.
   - `Postshot / Brush`: applies the target coordinate preset and uses the scene PLY directly.
   - `LichtFeld Studio`: imports the Metashape point cloud as `pointcloud.ply` and writes LichtFeld-oriented camera data.
+  - If advanced settings change the coordinate transform, PLY usage, or Metashape import details away from the preset value, the profile display switches to `Custom`.
 - `Metashape Import Settings`:
   - If enabled, run bundled `vendor/metashape_360_lfs/metashape_360_lfs.py` before cubemap conversion.
   - `Images Folder`: fixed to scene `images/`.
   - `Camera XML`: Metashape-exported camera pose XML passed to `--xml`.
   - `Point Cloud PLY`: Metashape-exported point cloud PLY. Used automatically for LichtFeld.
-  - `Advanced`: scale factor and `--no-fix-rotation` for special coordinate fixes.
+  - `Advanced`: controls `--scale`, whether to pass `--ply`, and `--no-fix-rotation`.
+- `Advanced Output Settings`:
+  - `Axis Transform`: explicitly select `Postshot`, `Brush`, or `None`. Changing it from the preset value switches the profile to `Custom`.
 - Masks:
   - Conversion and preview automatically use matching files from scene `masks/`.
 - `View Mode`:

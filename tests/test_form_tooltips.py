@@ -202,8 +202,42 @@ def test_cubemap_labels_share_field_tooltips() -> None:
     _app()
     step = CubemapStep(Path.cwd())
 
+    assert _label(step, i18n.t("AXIS_TRANSFORM")).toolTip() == i18n.tip("AXIS_TRANSFORM")
     assert _label(step, i18n.t("YAW_OFFSET_PER_FRAME")).toolTip() == i18n.t("YAW_OFFSET_PER_FRAME_HINT")
     assert _label(step, i18n.OUTPUT_SCALE + ":").toolTip() == i18n.tip("OUTPUT_SCALE")
     assert _label(step, i18n.METASHAPE_XML).toolTip() == i18n.tip("MS_XML")
     assert _label(step, i18n.METASHAPE_PLY).toolTip() == i18n.tip("MS_PLY")
-    assert _label(step, i18n.SCALE_FACTOR).toolTip() == i18n.tip("SCALE_FACTOR")
+    assert step.ms_scale_label.toolTip() == i18n.tip("SCALE_FACTOR")
+    assert step.ms_use_ply_cb.toolTip() == i18n.tip("MS_USE_PLY")
+
+
+def test_cubemap_profile_option_rows_preserve_width_in_english() -> None:
+    script = textwrap.dedent(
+        """
+        import os
+        os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+        os.environ["STUDIO_LANG"] = "en"
+        from pathlib import Path
+        from PySide6.QtWidgets import QApplication
+        from gui.steps.base_step import SETTINGS_PANE_MARGINS, SETTINGS_PANE_WIDTH
+        from gui.steps.step4_cubemap import CubemapStep
+
+        app = QApplication.instance() or QApplication([])
+        step = CubemapStep(Path.cwd())
+        content_width = SETTINGS_PANE_WIDTH - SETTINGS_PANE_MARGINS[2]
+        assert step.metashape_import_options_row.sizeHint().width() <= content_width
+        """
+    )
+    env = os.environ.copy()
+    env["QT_QPA_PLATFORM"] = "offscreen"
+    env["STUDIO_LANG"] = "en"
+
+    result = subprocess.run(
+        [sys.executable, "-c", script],
+        cwd=Path.cwd(),
+        env=env,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr

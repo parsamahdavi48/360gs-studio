@@ -35,7 +35,8 @@ def test_cubemap_step_uses_fixed_output_folder_label(tmp_path: Path) -> None:
     assert not hasattr(step, "no_transform_cb")
     assert not hasattr(step, "duplicate_cb")
     assert not hasattr(step, "ms_images_browse")
-    assert not hasattr(step, "ms_use_ply_cb")
+    assert hasattr(step, "ms_use_ply_cb")
+    assert hasattr(step, "axis_transform_combo")
     assert hasattr(step, "invert_masks_cb")
     assert hasattr(step, "no_image_cb")
     assert not step.no_image_cb.isChecked()
@@ -58,6 +59,8 @@ def test_cubemap_step_uses_fixed_output_folder_label(tmp_path: Path) -> None:
     assert "--no_image" not in cmd
     assert "--duplicate" not in cmd
     assert "--no_transform" in cmd
+    assert step.axis_transform_combo.currentData() == "none"
+    assert step.ms_use_ply_cb.isChecked()
 
     step.scale_combo.setCurrentIndex(1)
     normal_cmd = step._build_cubemap_cmd()
@@ -89,6 +92,87 @@ def test_postshot_does_not_use_lichtfeld_pointcloud(tmp_path: Path) -> None:
     assert step._resolve_ply_source() is None
     with pytest.raises(ValueError, match="pointcloud"):
         step.build_commands()
+
+
+def test_profile_presets_sync_manual_axis_controls(tmp_path: Path) -> None:
+    step = _ready_step(tmp_path)
+
+    postshot_idx = step.profile_combo.findData("postshot")
+    brush_idx = step.profile_combo.findData("brush")
+    lichtfeld_idx = step.profile_combo.findData("lichtfeld")
+    assert postshot_idx >= 0
+    assert brush_idx >= 0
+    assert lichtfeld_idx >= 0
+
+    step.profile_combo.setCurrentIndex(postshot_idx)
+    assert step.axis_transform_combo.currentData() == "postshot"
+    assert not step.ms_use_ply_cb.isChecked()
+    assert step.ms_scale_edit.text() == "1.0"
+    assert not step.ms_no_fix_rot_cb.isChecked()
+
+    step.profile_combo.setCurrentIndex(brush_idx)
+    assert step.axis_transform_combo.currentData() == "brush"
+    assert not step.ms_use_ply_cb.isChecked()
+    assert step.ms_scale_edit.text() == "1.0"
+    assert not step.ms_no_fix_rot_cb.isChecked()
+
+    step.profile_combo.setCurrentIndex(lichtfeld_idx)
+    assert step.axis_transform_combo.currentData() == "none"
+    assert step.ms_use_ply_cb.isChecked()
+    assert step.ms_scale_edit.text() == "1.0"
+    assert not step.ms_no_fix_rot_cb.isChecked()
+
+
+def test_manual_axis_change_switches_to_custom_profile(tmp_path: Path) -> None:
+    step = _ready_step(tmp_path)
+    (tmp_path / "metashape.ply").write_text("ply\n", encoding="utf-8")
+    postshot_idx = step.profile_combo.findData("postshot")
+    assert postshot_idx >= 0
+    step.profile_combo.setCurrentIndex(postshot_idx)
+
+    brush_axis = step.axis_transform_combo.findData("brush")
+    assert brush_axis >= 0
+    step.axis_transform_combo.setCurrentIndex(brush_axis)
+
+    assert step.profile_combo.currentData() == "custom"
+    cmd = step._build_cubemap_cmd()
+    assert "--brush" in cmd
+    assert "--no_transform" not in cmd
+
+
+def test_manual_metashape_ply_toggle_switches_to_custom_profile(tmp_path: Path) -> None:
+    step = _ready_step(tmp_path)
+    (tmp_path / "images").mkdir()
+    (tmp_path / "metashape.xml").write_text("<root />", encoding="utf-8")
+    (tmp_path / "metashape.ply").write_text("ply\n", encoding="utf-8")
+    step.ms_ply_browse.set_text(str(tmp_path / "metashape.ply"))
+    postshot_idx = step.profile_combo.findData("postshot")
+    assert postshot_idx >= 0
+    step.profile_combo.setCurrentIndex(postshot_idx)
+
+    step.ms_use_ply_cb.setChecked(True)
+    step.preprocess_cb.setChecked(True)
+
+    assert step.profile_combo.currentData() == "custom"
+    cmd = step._build_preprocess_cmd()
+    assert cmd[cmd.index("--ply") + 1] == str(tmp_path / "metashape.ply")
+
+
+def test_manual_metashape_import_detail_change_switches_to_custom_profile(tmp_path: Path) -> None:
+    step = _ready_step(tmp_path)
+    lichtfeld_idx = step.profile_combo.findData("lichtfeld")
+    postshot_idx = step.profile_combo.findData("postshot")
+    assert lichtfeld_idx >= 0
+    assert postshot_idx >= 0
+
+    step.profile_combo.setCurrentIndex(lichtfeld_idx)
+    step.ms_no_fix_rot_cb.setChecked(True)
+    assert step.profile_combo.currentData() == "custom"
+
+    step.profile_combo.setCurrentIndex(postshot_idx)
+    step.ms_scale_edit.setText("2.0")
+    step._on_profile_option_changed()
+    assert step.profile_combo.currentData() == "custom"
 
 
 def test_postshot_accepts_raw_ply_with_custom_name(tmp_path: Path) -> None:
@@ -244,12 +328,14 @@ def test_cubemap_finalize_writes_export_settings(tmp_path: Path) -> None:
     assert settings["settings_version"] == 1
     assert settings["target_profile"] == "lichtfeld"
     assert settings["effective_profile"] == "lichtfeld"
+    assert settings["axis_transform"] == "none"
     assert settings["fov"] == 90.0
     assert settings["image_size"]["scale"] == 1.0
     assert settings["conversion"]["yaw_offset_per_frame"] == 30.0
     assert settings["conversion"]["output_format"] == "auto"
     assert settings["conversion"]["output_bit_depth"] == "8"
     assert settings["conversion"]["no_image"] is False
+    assert settings["metashape_import"]["use_ply"] is True
     assert settings["output_files"]["settings"] == "stechdrive_export_settings.json"
     assert settings["view_config"]["views"]
     assert settings["views_config_path"] == "views_config.json"

@@ -33,13 +33,16 @@ start_cubemap_tools_gui.bat
   - 連携先ツール向けのプリセットです。
   - `Postshot / Brush`: 対象アプリ向けの座標プリセットを適用し、シーン内のPLYを直接同梱します。
   - `LichtFeld Studio`: Metashapeの点群PLYを `pointcloud.ply` として取り込み、LichtFeld向けのカメラ情報を作成します。
+  - 詳細設定で座標変換、PLY使用、Metashapeインポート詳細をプリセット値から変更すると、プロファイル表示は `カスタム` に切り替わります。
 - `Metashapeインポート設定`:
   - 有効時、キューブマップ変換の前に同梱の
     `vendor/metashape_360_lfs/metashape_360_lfs.py` を実行します。
   - `画像フォルダ`: シーンフォルダ内の `images/` 固定。
   - `カメラXML`: MetashapeからエクスポートしたカメラポーズXML。`--xml` に渡されます。
   - `点群PLY`: Metashapeからエクスポートした点群PLY。LichtFeldでは自動的に使用します。
-  - `詳細設定`: 特殊な座標補正用のスケール係数と `--no-fix-rotation`。
+  - `詳細設定`: `--scale`、`--ply` の使用有無、`--no-fix-rotation` を指定できます。
+- `高度な出力設定`:
+  - `座標変換`: `Postshot`、`Brush`、`変換なし` を明示できます。プリセット値から変更すると `カスタム` になります。
 - マスク:
   - 変換とプレビューは、シーンフォルダ内の `masks/` から対応ファイルを自動的に使用します。
 - `View Mode`:

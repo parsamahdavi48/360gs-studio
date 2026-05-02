@@ -45,6 +45,9 @@ _PROFILE_POSTSHOT = "postshot"
 _PROFILE_BRUSH = "brush"
 _PROFILE_LICHTFELD = "lichtfeld"
 _PROFILE_CUSTOM = "custom"
+_AXIS_POSTSHOT = "postshot"
+_AXIS_BRUSH = "brush"
+_AXIS_NONE = "none"
 _NORMAL_OUTPUT_SCALE = 2.0 / math.pi
 _EXPORT_SETTINGS_NAME = "stechdrive_export_settings.json"
 
@@ -92,6 +95,7 @@ class CubemapStep(BaseStepWidget):
         self._converted_total = 0
         self._processed = 0
         self._explicit_progress = False
+        self._syncing_profile_controls = False
         self._build_ui()
 
     def _build_ui(self) -> None:
@@ -180,13 +184,33 @@ class CubemapStep(BaseStepWidget):
 
         import_advanced = CollapsibleSection(i18n.t("ADVANCED_SETTINGS"), expanded=False)
         import_adv_form = QFormLayout()
+        import_adv_form.setSpacing(6)
+
+        self.metashape_import_options_row = QWidget()
+        import_option_row = QHBoxLayout(self.metashape_import_options_row)
+        import_option_row.setContentsMargins(0, 0, 0, 0)
+        import_option_row.setSpacing(8)
+        self.ms_scale_label = QLabel(i18n.t("SCALE_FACTOR_COMPACT"))
+        self.ms_scale_label.setToolTip(i18n.tip("SCALE_FACTOR"))
+        import_option_row.addWidget(self.ms_scale_label)
+
         self.ms_scale_edit = QLineEdit("1.0")
+        self.ms_scale_edit.setFixedWidth(72)
         self.ms_scale_edit.setToolTip(i18n.tip("SCALE_FACTOR"))
-        add_tooltip_row(import_adv_form, i18n.SCALE_FACTOR, self.ms_scale_edit, i18n.tip("SCALE_FACTOR"))
+        self.ms_scale_edit.textEdited.connect(self._on_profile_option_changed)
+        import_option_row.addWidget(self.ms_scale_edit)
+
+        self.ms_use_ply_cb = QCheckBox(i18n.t("MS_USE_PLY"))
+        self.ms_use_ply_cb.setToolTip(i18n.tip("MS_USE_PLY"))
+        self.ms_use_ply_cb.toggled.connect(self._on_profile_option_changed)
+        import_option_row.addWidget(self.ms_use_ply_cb)
 
         self.ms_no_fix_rot_cb = QCheckBox(i18n.NO_FIX_ROTATION)
         self.ms_no_fix_rot_cb.setToolTip(i18n.tip("NO_FIX_ROTATION"))
-        import_adv_form.addRow("", self.ms_no_fix_rot_cb)
+        self.ms_no_fix_rot_cb.toggled.connect(self._on_profile_option_changed)
+        import_option_row.addWidget(self.ms_no_fix_rot_cb)
+        import_option_row.addStretch()
+        import_adv_form.addRow(self.metashape_import_options_row)
         import_advanced.content_layout.addLayout(import_adv_form)
 
         preprocess.content_layout.addLayout(pp_form)
@@ -194,13 +218,22 @@ class CubemapStep(BaseStepWidget):
         left_layout.addWidget(preprocess)
         self._pp_widgets = [
             self.ms_images_path_label, self.ms_xml_browse, self.ms_ply_browse,
-            self.ms_scale_edit, self.ms_no_fix_rot_cb,
+            self.ms_scale_edit, self.ms_use_ply_cb, self.ms_no_fix_rot_cb,
         ]
 
         # 高度な出力設定（折りたたみ）
         adv_output = CollapsibleSection(i18n.t("ADVANCED_OUTPUT_SECTION"), expanded=False)
         adv_form = QFormLayout()
         adv_form.setSpacing(6)
+
+        self.axis_transform_combo = QComboBox()
+        self.axis_transform_combo.setToolTip(i18n.tip("AXIS_TRANSFORM"))
+        self.axis_transform_combo.addItem(i18n.t("AXIS_TRANSFORM_POSTSHOT"), _AXIS_POSTSHOT)
+        self.axis_transform_combo.addItem(i18n.t("AXIS_TRANSFORM_BRUSH"), _AXIS_BRUSH)
+        self.axis_transform_combo.addItem(i18n.t("AXIS_TRANSFORM_NONE"), _AXIS_NONE)
+        self.axis_transform_combo.setFixedWidth(180)
+        self.axis_transform_combo.currentIndexChanged.connect(self._on_profile_option_changed)
+        add_tooltip_row(adv_form, i18n.t("AXIS_TRANSFORM"), self.axis_transform_combo, i18n.tip("AXIS_TRANSFORM"))
 
         self.yaw_per_frame_edit = QLineEdit("30.0")
         self.yaw_per_frame_edit.setFixedWidth(80)
@@ -313,25 +346,85 @@ class CubemapStep(BaseStepWidget):
         return self.profile_combo.currentData() or _PROFILE_CUSTOM
 
     def _effective_profile(self) -> str:
-        pid = self._profile_id()
-        if pid == _PROFILE_CUSTOM:
-            return _PROFILE_POSTSHOT
-        return pid
+        mode = self._axis_transform_mode()
+        if mode == _AXIS_NONE:
+            return _PROFILE_LICHTFELD
+        if mode == _AXIS_BRUSH:
+            return _PROFILE_BRUSH
+        return _PROFILE_POSTSHOT
+
+    @staticmethod
+    def _profile_axis_default(profile: str) -> str:
+        if profile == _PROFILE_LICHTFELD:
+            return _AXIS_NONE
+        if profile == _PROFILE_BRUSH:
+            return _AXIS_BRUSH
+        return _AXIS_POSTSHOT
+
+    @staticmethod
+    def _profile_use_ply_default(profile: str) -> bool:
+        return profile == _PROFILE_LICHTFELD
+
+    @staticmethod
+    def _profile_scale_default(_profile: str) -> float:
+        return 1.0
+
+    @staticmethod
+    def _profile_no_fix_rotation_default(_profile: str) -> bool:
+        return False
+
+    def _set_combo_data(self, combo: QComboBox, value: str) -> None:
+        idx = combo.findData(value)
+        if idx >= 0:
+            combo.setCurrentIndex(idx)
+
+    def _sync_profile_defaults(self, profile: str) -> None:
+        if profile == _PROFILE_CUSTOM:
+            return
+        self._syncing_profile_controls = True
+        try:
+            self._set_combo_data(self.axis_transform_combo, self._profile_axis_default(profile))
+            self.ms_use_ply_cb.setChecked(self._profile_use_ply_default(profile))
+            self.ms_scale_edit.setText("1.0")
+            self.ms_no_fix_rot_cb.setChecked(self._profile_no_fix_rotation_default(profile))
+        finally:
+            self._syncing_profile_controls = False
+
+    def _axis_transform_mode(self) -> str:
+        data = self.axis_transform_combo.currentData()
+        return data if data in {_AXIS_POSTSHOT, _AXIS_BRUSH, _AXIS_NONE} else _AXIS_POSTSHOT
 
     def _on_profile_changed(self, _index: int) -> None:
         p = self._profile_id()
-        if p == _PROFILE_LICHTFELD:
-            self.profile_hint.setText("")
-            self.profile_hint.setVisible(False)
-        elif p == _PROFILE_BRUSH:
-            self.profile_hint.setText("")
-            self.profile_hint.setVisible(False)
-        elif p == _PROFILE_POSTSHOT:
-            self.profile_hint.setText("")
-            self.profile_hint.setVisible(False)
-        else:
-            self.profile_hint.setText("カスタム: 手動設定")
-            self.profile_hint.setVisible(True)
+        self._sync_profile_defaults(p)
+        self.profile_hint.setText(i18n.t("PROFILE_CUSTOM_HINT") if p == _PROFILE_CUSTOM else "")
+        self.profile_hint.setVisible(p == _PROFILE_CUSTOM)
+        self._sync_ply_browse_enabled()
+
+    def _on_profile_option_changed(self, *_args) -> None:
+        if self._syncing_profile_controls:
+            return
+        current = self._profile_id()
+        if current != _PROFILE_CUSTOM:
+            axis_changed = self._axis_transform_mode() != self._profile_axis_default(current)
+            ply_changed = self.ms_use_ply_cb.isChecked() != self._profile_use_ply_default(current)
+            no_fix_changed = (
+                self.ms_no_fix_rot_cb.isChecked()
+                != self._profile_no_fix_rotation_default(current)
+            )
+            try:
+                scale_changed = not math.isclose(
+                    float(self.ms_scale_edit.text().strip()),
+                    self._profile_scale_default(current),
+                    rel_tol=1e-9,
+                    abs_tol=1e-9,
+                )
+            except ValueError:
+                scale_changed = self.ms_scale_edit.text().strip() != "1.0"
+            if axis_changed or ply_changed or no_fix_changed or scale_changed:
+                custom_idx = self.profile_combo.findData(_PROFILE_CUSTOM)
+                if custom_idx >= 0:
+                    self.profile_combo.setCurrentIndex(custom_idx)
         self._sync_ply_browse_enabled()
 
     def _on_preprocess_toggle(self, enabled: bool) -> None:
@@ -340,7 +433,7 @@ class CubemapStep(BaseStepWidget):
         self._sync_ply_browse_enabled()
 
     def _preprocess_uses_ply(self) -> bool:
-        return self._profile_id() == _PROFILE_LICHTFELD
+        return self.ms_use_ply_cb.isChecked()
 
     def _sync_ply_browse_enabled(self) -> None:
         self.ms_ply_browse.setEnabled(self.preprocess_cb.isChecked() and self._preprocess_uses_ply())
@@ -478,9 +571,10 @@ class CubemapStep(BaseStepWidget):
             "--views-json", str(views_json),
         ]
 
-        if self._profile_id() == _PROFILE_LICHTFELD:
+        axis_mode = self._axis_transform_mode()
+        if axis_mode == _AXIS_NONE:
             cmd.append("--no_transform")
-        if self._profile_id() == _PROFILE_BRUSH:
+        if axis_mode == _AXIS_BRUSH:
             cmd.append("--brush")
         if self.invert_masks_cb.isChecked():
             cmd.append("--invert_masks")
@@ -574,6 +668,7 @@ class CubemapStep(BaseStepWidget):
             "output_dir": str(output),
             "target_profile": profile,
             "effective_profile": self._effective_profile(),
+            "axis_transform": self._axis_transform_mode(),
             "fov": 90.0,
             "image_size": {
                 "label": self.scale_combo.currentText(),
@@ -609,6 +704,7 @@ class CubemapStep(BaseStepWidget):
             },
             "metashape_import": {
                 "enabled": self.preprocess_cb.isChecked(),
+                "use_ply": self._preprocess_uses_ply(),
                 "images_dir": str(self._metashape_images_dir()),
                 "xml": self.ms_xml_browse.text(),
                 "ply": self.ms_ply_browse.text()
@@ -710,8 +806,7 @@ class CubemapStep(BaseStepWidget):
 
     def _resolve_ply_source(self) -> Path | None:
         scene = Path(self.scene_dir) if self.scene_dir else Path(".")
-        profile = self._effective_profile()
-        if profile == _PROFILE_LICHTFELD:
+        if self._axis_transform_mode() == _AXIS_NONE:
             candidates = [scene / "pointcloud.ply"]
             for c in candidates:
                 if c.is_file():
