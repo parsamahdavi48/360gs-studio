@@ -52,8 +52,8 @@ start_cubemap_tools_gui.bat
   - `metashape_360_lfs.py --scale` の値（正の値が必要）。
 - `MS Options`:
   - `Disable rotation fix (--no-fix-rotation)` を前処理に渡します。
-- `Mask Directory`:
-  - 変換時のマスク入力先。プレビュー合成にも使用。
+- マスク:
+  - 変換とプレビューは、シーンフォルダ内の `masks/` から対応ファイルを自動的に使用します。
 - `View Mode`:
   - `Custom Pitch/Yaw`: 既存のピッチ行 + YAWスロット方式。
   - `Cube6 (4 sides + top/bottom)`: 6面キューブ固定方式（FOV 90）。
@@ -70,21 +70,15 @@ start_cubemap_tools_gui.bat
   - `Drop Bottom (-90deg)`: 下面を無効化。
 - `FOV`:
   - このGUIでは `90.0` 固定。
-- `Output Size`:
-  - `Half`: 出力面サイズ = 入力画像高さ x `0.5`（従来/既定の挙動）。
-  - `Full`: 出力面サイズ = 入力画像高さ x `1.0`。
-- `Preview Image`:
-  - プレビュー対象のエクイレクタングラー画像。
-  - `Auto` でシーン画像の先頭を自動選択します。
-  - `Reload` でシーン画像一覧を再スキャンします。
-- `Preview Timeline`:
+- `Image Size`:
+  - `Full (Quality)`: 出力面サイズ = 入力画像高さ x `1.0`。最終品質向け。
+  - `Normal`: 出力面サイズ = 入力画像高さ x `2 / pi`（約 `0.637`）。90度画像中央部の角度解像度を元画像に近づけます。
+  - `Half (Light)`: 出力面サイズ = 入力画像高さ x `0.5`。軽量ですが、学習後に柔らかく見えやすい設定です。
+- `Preview`:
+  - シーンフォルダ内のエクイレクタングラー画像を自動的に使います。
   - シーン画像（優先: `images/`、無ければシーン直下）をスライダーで切り替えます。
   - フレームごとの視点ON/OFF確認に便利です。
-- `Mask Overlay (%)`:
-  - マスク重ね表示の不透明度。
-- `Preview Mask Image`:
-  - プレビュー合成に使うマスク画像を手動指定できます。
-  - 空欄なら `Mask Directory` から対応ファイルを自動探索します。
+  - マスク重ね表示は `masks/` の対応ファイルを使い、不透明度スライダーで表示量を調整します。
 
 ## 視点選択
 
@@ -96,10 +90,6 @@ start_cubemap_tools_gui.bat
 
 ## 実行オプション
 
-- `Extract mask from alpha (--mask_from_alpha)`
-- `Transforms only (--no_image)`
-- `No axis transform (--no_transform)`
-- `Allow duplicate (--duplicate)`
 - `Invert masks (--invert_masks)`
   - 通常はOFF。出力先アプリで逆極性が必要な場合だけON。
 
@@ -125,7 +115,7 @@ start_cubemap_tools_gui.bat
   `vendor/metashape_360_lfs/metashape_360_lfs.py --images ... --xml ... --output <scene_dir> [...]`
   を実行します。
 - その後
-  `cubemap_transforms_json.py --fov 90 --output_scale <0.5|1.0> --views-json <そのファイル>` を呼び出します。
+  `cubemap_transforms_json.py --fov 90 --output_scale <1.0|0.6366|0.5> --views-json <そのファイル>` を呼び出します。
 - OFFのスロットは `enabled=false` として保存され、変換時に無視されます。
 - `Postshot / Brush` プロファイルでは、点群とカメラの不一致を避けるため、前処理`--ply`が既定でOFFになります。
 - マスクは通常「黒=除外領域」で変換されます。Postshot はアプリ側の Mask Mode で扱いを選べるため、GUI側では自動反転しません。

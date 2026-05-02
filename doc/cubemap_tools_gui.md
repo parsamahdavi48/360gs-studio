@@ -51,8 +51,8 @@ start_cubemap_tools_gui.bat
   - Scale value passed to `metashape_360_lfs.py --scale` (must be positive).
 - `MS Options`:
   - `Disable rotation fix (--no-fix-rotation)` for metashape preprocess.
-- `Mask Directory`:
-  - Optional mask input folder used by conversion and preview overlay.
+- Masks:
+  - Conversion and preview automatically use matching files from scene `masks/`.
 - `View Mode`:
   - `Custom Pitch/Yaw`: existing mode with pitch rows and yaw slots.
   - `Cube6 (4 sides + top/bottom)`: fixed six-face mode (FOV 90).
@@ -69,21 +69,15 @@ start_cubemap_tools_gui.bat
   - `Drop Bottom (-90deg)`: disable bottom face.
 - `FOV`:
   - Fixed to `90.0` in this GUI.
-- `Output Size`:
-  - `Half`: output face size = input height x `0.5` (legacy/default behavior).
-  - `Full`: output face size = input height x `1.0`.
-- `Preview Image`:
-  - Equirectangular image used for overlay preview.
-  - `Auto` picks the first image from scene images.
-  - `Reload` rescans scene images.
-- `Preview Timeline`:
+- `Image Size`:
+  - `Full (Quality)`: output face size = input height x `1.0`; recommended for final quality.
+  - `Normal`: output face size = input height x `2 / pi` (about `0.637`), matching the center angular resolution of a 90-degree view to the source image.
+  - `Half (Light)`: output face size = input height x `0.5`; lightweight output that can look softer after training.
+- `Preview`:
+  - Automatically uses equirectangular images from the scene folder.
   - Slider to switch preview image from scene images (`images/` preferred, otherwise scene root).
   - Useful for checking per-view on/off decisions across different frames.
-- `Mask Overlay (%)`:
-  - Opacity of mask overlay in preview.
-- `Preview Mask Image`:
-  - Optional manual mask file for preview overlay.
-  - If empty, GUI auto-searches a matching mask from `Mask Directory`.
+  - Mask overlay uses matching masks from `masks/`; the opacity slider controls its visibility.
 
 ## View selection
 
@@ -95,10 +89,6 @@ start_cubemap_tools_gui.bat
 
 ## Run options
 
-- `Extract mask from alpha (--mask_from_alpha)`
-- `Transforms only (--no_image)`
-- `No axis transform (--no_transform)`
-- `Allow duplicate (--duplicate)`
 - `Invert masks (--invert_masks)`
   - Usually off. Enable only when the target app expects the opposite polarity.
 
@@ -123,7 +113,7 @@ start_cubemap_tools_gui.bat
 - If `Preprocess` is enabled, GUI runs:
   - `vendor/metashape_360_lfs/metashape_360_lfs.py --images ... --xml ... --output <scene_dir> [...]`
 - Then GUI runs:
-  - `cubemap_transforms_json.py --fov 90 --output_scale <0.5|1.0> --views-json <that file>`
+  - `cubemap_transforms_json.py --fov 90 --output_scale <1.0|0.6366|0.5> --views-json <that file>`
 - Disabled slots are written with `enabled=false` and ignored by converter.
 - With `Postshot / Brush` profile, preprocess `--ply` is disabled by default to avoid point-cloud/camera mismatch.
 - Masks normally convert with black as the ignored region. Postshot can handle interpretation through its own Mask Mode, so the GUI does not auto-invert masks for Postshot.

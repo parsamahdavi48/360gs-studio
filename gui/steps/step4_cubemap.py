@@ -8,6 +8,7 @@ import shutil
 import sys
 from pathlib import Path
 
+from PySide6.QtGui import QFontMetrics
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -21,7 +22,7 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QSize, Qt
 
 from gui import i18n
 from gui.common.browse_widget import BrowseWidget
@@ -41,6 +42,44 @@ _PROFILE_POSTSHOT = "postshot"
 _PROFILE_BRUSH = "brush"
 _PROFILE_LICHTFELD = "lichtfeld"
 _PROFILE_CUSTOM = "custom"
+_NORMAL_OUTPUT_SCALE = 2.0 / math.pi
+
+
+class ElidedPathLabel(QLabel):
+    """Keep long paths on one line while preserving the full path internally."""
+
+    def __init__(self, text: str = "-", parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self._full_text = text
+        self.setWordWrap(False)
+        self.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        self.set_full_text(text)
+
+    def set_full_text(self, text: str) -> None:
+        self._full_text = text or "-"
+        self._apply_elide()
+
+    def full_text(self) -> str:
+        return self._full_text
+
+    def sizeHint(self) -> QSize:
+        base = super().sizeHint()
+        return QSize(0, base.height())
+
+    def minimumSizeHint(self) -> QSize:
+        base = super().minimumSizeHint()
+        return QSize(0, base.height())
+
+    def resizeEvent(self, event) -> None:  # type: ignore[override]
+        super().resizeEvent(event)
+        self._apply_elide()
+
+    def _apply_elide(self) -> None:
+        width = max(0, self.contentsRect().width())
+        text = self._full_text
+        if width > 0:
+            text = QFontMetrics(self.font()).elidedText(text, Qt.ElideMiddle, width)
+        QLabel.setText(self, text)
 
 
 class CubemapStep(BaseStepWidget):
@@ -74,10 +113,8 @@ class CubemapStep(BaseStepWidget):
 
         output_dir_label = QLabel(i18n.OUTPUT_DIR)
         output_dir_label.setToolTip(i18n.tip("OUTPUT_DIR_CUBEMAP"))
-        self.output_path_label = QLabel("-")
+        self.output_path_label = ElidedPathLabel("-")
         self.output_path_label.setToolTip(i18n.tip("OUTPUT_DIR_CUBEMAP"))
-        self.output_path_label.setWordWrap(True)
-        self.output_path_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
         left_layout.addWidget(output_dir_label)
         left_layout.addWidget(self.output_path_label)
 
@@ -96,12 +133,13 @@ class CubemapStep(BaseStepWidget):
         profile_row.addWidget(output_scale_label)
         self.scale_combo = QComboBox()
         self.scale_combo.setToolTip(i18n.tip("OUTPUT_SCALE"))
-        self.scale_combo.addItem("Half (0.5x)", 0.5)
-        self.scale_combo.addItem("Full (1.0x)", 1.0)
+        self.scale_combo.addItem("Full (Quality)", 1.0)
+        self.scale_combo.addItem("Normal", _NORMAL_OUTPUT_SCALE)
+        self.scale_combo.addItem("Half (Light)", 0.5)
         full_scale_index = self.scale_combo.findData(1.0)
         if full_scale_index >= 0:
             self.scale_combo.setCurrentIndex(full_scale_index)
-        self.scale_combo.setFixedWidth(120)
+        self.scale_combo.setFixedWidth(136)
         profile_row.addWidget(self.scale_combo)
         profile_row.addStretch()
         add_tooltip_row(form, i18n.TARGET_PROFILE, profile_row, i18n.tip("TARGET_PROFILE"))
@@ -111,47 +149,7 @@ class CubemapStep(BaseStepWidget):
         self.profile_hint.setVisible(False)
         form.addRow("", self.profile_hint)
 
-        self.json_name_edit = QLineEdit("transforms.json")
-        self.json_name_edit.setToolTip(i18n.tip("JSON_NAME"))
-        self.json_name_edit.setFixedWidth(160)
-        add_tooltip_row(form, i18n.JSON_NAME, self.json_name_edit, i18n.tip("JSON_NAME"))
-        self.mask_browse = BrowseWidget(mode="dir")
-        self.mask_browse.setToolTip(i18n.tip("MASK_DIR_CUBEMAP"))
-
-        # オプション (GroupBox)
-        opt_group = CollapsibleSection(i18n.t("CONVERSION_OPTIONS"), expanded=False)
-        opt_inner = QVBoxLayout()
-        opt_row1 = QHBoxLayout()
-        self.mask_from_alpha_cb = QCheckBox(i18n.MASK_FROM_ALPHA)
-        self.mask_from_alpha_cb.setToolTip(i18n.tip("MASK_FROM_ALPHA"))
-        opt_row1.addWidget(self.mask_from_alpha_cb)
-        self.no_image_cb = QCheckBox(i18n.NO_IMAGE)
-        self.no_image_cb.setToolTip(i18n.tip("NO_IMAGE"))
-        opt_row1.addWidget(self.no_image_cb)
-        self.no_transform_cb = QCheckBox(i18n.NO_TRANSFORM)
-        self.no_transform_cb.setToolTip(i18n.tip("NO_TRANSFORM"))
-        opt_row1.addWidget(self.no_transform_cb)
-        opt_row1.addStretch()
-        opt_inner.addLayout(opt_row1)
-        opt_row2 = QHBoxLayout()
-        self.duplicate_cb = QCheckBox(i18n.DUPLICATE)
-        self.duplicate_cb.setToolTip(i18n.tip("DUPLICATE"))
-        opt_row2.addWidget(self.duplicate_cb)
-        self.invert_masks_cb = QCheckBox(i18n.INVERT_MASKS)
-        self.invert_masks_cb.setToolTip(i18n.tip("INVERT_MASKS"))
-        opt_row2.addWidget(self.invert_masks_cb)
-        opt_row2.addStretch()
-        opt_inner.addLayout(opt_row2)
-        opt_w = QWidget()
-        opt_w.setLayout(opt_inner)
-        opt_group.content_layout.addWidget(opt_w)
-
         left_layout.addLayout(form)
-        mask_dir_label = QLabel(i18n.MASK_DIR)
-        mask_dir_label.setToolTip(i18n.tip("MASK_DIR_CUBEMAP"))
-        left_layout.addWidget(mask_dir_label)
-        left_layout.addWidget(self.mask_browse)
-        left_layout.addWidget(opt_group)
 
         # Metashape前処理（折りたたみ）
         preprocess = CollapsibleSection(i18n.METASHAPE_PREPROCESS, expanded=False)
@@ -223,6 +221,10 @@ class CubemapStep(BaseStepWidget):
         self.output_bit_depth_combo.setFixedWidth(180)
         adv_form.addRow(i18n.t("OUTPUT_BIT_DEPTH"), self.output_bit_depth_combo)
 
+        self.invert_masks_cb = QCheckBox(i18n.INVERT_MASKS)
+        self.invert_masks_cb.setToolTip(i18n.tip("INVERT_MASKS"))
+        adv_form.addRow("", self.invert_masks_cb)
+
         self.jpg_quality_edit = QLineEdit("95")
         self.jpg_quality_edit.setFixedWidth(80)
         adv_form.addRow(i18n.t("JPG_QUALITY"), self.jpg_quality_edit)
@@ -273,11 +275,13 @@ class CubemapStep(BaseStepWidget):
     def set_scene_dir(self, path: str) -> None:
         super().set_scene_dir(path)
         if not path:
-            self.output_path_label.setText("-")
+            self.output_path_label.setToolTip(i18n.tip("OUTPUT_DIR_CUBEMAP"))
+            self.output_path_label.set_full_text("-")
             return
         p = Path(path)
-        self.output_path_label.setText(str(self._output_dir()))
-        self.mask_browse.set_text(str(p / "masks"))
+        output = str(self._output_dir())
+        self.output_path_label.setToolTip(f"{i18n.tip('OUTPUT_DIR_CUBEMAP')}\n{output}")
+        self.output_path_label.set_full_text(output)
         self.ms_images_browse.set_text(str(p / "images"))
         self.ms_xml_browse.set_text(str(self._guess_xml(p)))
         self.ms_ply_browse.set_text(self._guess_ply(p))
@@ -299,36 +303,27 @@ class CubemapStep(BaseStepWidget):
     def _effective_profile(self) -> str:
         pid = self._profile_id()
         if pid == _PROFILE_CUSTOM:
-            if self.no_transform_cb.isChecked() and self.ms_use_ply_cb.isChecked():
-                return _PROFILE_LICHTFELD
             return _PROFILE_POSTSHOT
         return pid
 
     def _on_profile_changed(self, _index: int) -> None:
         p = self._profile_id()
         if p == _PROFILE_LICHTFELD:
-            self.no_transform_cb.setChecked(True)
             self.ms_use_ply_cb.setChecked(True)
-            self.no_transform_cb.setEnabled(False)
             self.ms_use_ply_cb.setEnabled(False)
             self.profile_hint.setText("")
             self.profile_hint.setVisible(False)
         elif p == _PROFILE_BRUSH:
-            self.no_transform_cb.setChecked(False)
             self.ms_use_ply_cb.setChecked(False)
-            self.no_transform_cb.setEnabled(False)
             self.ms_use_ply_cb.setEnabled(False)
             self.profile_hint.setText("")
             self.profile_hint.setVisible(False)
         elif p == _PROFILE_POSTSHOT:
-            self.no_transform_cb.setChecked(False)
             self.ms_use_ply_cb.setChecked(False)
-            self.no_transform_cb.setEnabled(False)
             self.ms_use_ply_cb.setEnabled(False)
             self.profile_hint.setText("")
             self.profile_hint.setVisible(False)
         else:
-            self.no_transform_cb.setEnabled(True)
             self.ms_use_ply_cb.setEnabled(True)
             self.profile_hint.setText("カスタム: 手動設定")
             self.profile_hint.setVisible(True)
@@ -358,7 +353,7 @@ class CubemapStep(BaseStepWidget):
             views = self.view_config.collect_views(include_disabled=True)
         except Exception:
             views = []
-        self.preview.render(views, self.mask_browse.text())
+        self.preview.render(views, str(self._mask_dir()))
 
     def _count_input_images(self) -> int:
         scene = Path(self.scene_dir) if self.scene_dir else Path(".")
@@ -461,7 +456,6 @@ class CubemapStep(BaseStepWidget):
             raise ValueError(f"シーンフォルダが見つかりません: {scene}")
 
         output = self._output_dir()
-        json_name = self.json_name_edit.text().strip() or "transforms.json"
 
         views = self.view_config.collect_views(include_disabled=True)
         enabled = sum(1 for v in views if v["enabled"])
@@ -476,25 +470,15 @@ class CubemapStep(BaseStepWidget):
         cmd = [
             sys.executable, "-u", str(script),
             str(scene), str(output),
-            "--json", json_name,
             "--fov", "90",
             "--output_scale", f"{scale:g}",
             "--views-json", str(views_json),
         ]
 
-        mask_dir = self.mask_browse.text()
-        if mask_dir and Path(mask_dir).is_dir():
-            cmd.extend(["--mask_dir", mask_dir])
-        if self.mask_from_alpha_cb.isChecked():
-            cmd.append("--mask_from_alpha")
-        if self.no_image_cb.isChecked():
-            cmd.append("--no_image")
-        if self.no_transform_cb.isChecked():
+        if self._profile_id() == _PROFILE_LICHTFELD:
             cmd.append("--no_transform")
         if self._profile_id() == _PROFILE_BRUSH:
             cmd.append("--brush")
-        if self.duplicate_cb.isChecked():
-            cmd.append("--duplicate")
         if self.invert_masks_cb.isChecked():
             cmd.append("--invert_masks")
 
@@ -527,13 +511,11 @@ class CubemapStep(BaseStepWidget):
 
         scene = Path(self.scene_dir)
         output = self._output_dir()
-        json_name = self.json_name_edit.text().strip() or "transforms.json"
         colmap_dir = output / "colmap"
 
         cmd = [
             sys.executable, "-u", str(script),
             str(output), str(colmap_dir),
-            "--json", json_name,
         ]
         ply = output / "pointcloud.ply"
         if ply.is_file():
@@ -562,6 +544,11 @@ class CubemapStep(BaseStepWidget):
         if not self.scene_dir:
             return Path("output")
         return Path(self.scene_dir) / "output"
+
+    def _mask_dir(self) -> Path:
+        if not self.scene_dir:
+            return Path("masks")
+        return Path(self.scene_dir) / "masks"
 
     def _prepare_output_dir(self) -> bool:
         output = self._output_dir()
