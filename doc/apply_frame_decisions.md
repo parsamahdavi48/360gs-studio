@@ -8,8 +8,8 @@ Primary mode:
 
 - `--finalize-in-place`: operates directly on `scene_dir/images`
   - remove `drop` images
-  - renumber `keep` images as `<prefix>_000001.*`, `<prefix>_000002.*`, ...
-  - rewrite `selected_frames.csv` to keep-only rows with updated `output_file`
+  - preserve `keep` image filenames, including the original source frame index
+  - rewrite `selected_frames.csv` to keep-only rows
   - create CSV backup before rewrite
 
 ## Usage
@@ -37,7 +37,6 @@ Options:
 - `scene_dir`: scene directory containing `selected_frames.csv` and extracted `images/`
 - `--csv`: CSV filename (default: `selected_frames.csv`)
 - `--finalize-in-place`: apply decisions directly in `images/` and rewrite CSV
-- `--filename-prefix`: rename prefix for finalize mode (default: from extract report/video name)
 - `--backup-dir`: with `--finalize-in-place`, snapshot `images/` to this directory before modification (relative path resolved under scene_dir, or absolute path). Existing target is replaced. Default empty = no backup
 - `--output`: copy-mode destination folder under scene directory (default: `metashape_images`)
 - `--clean-output`: copy-mode only; remove existing image files in output folder before export
@@ -46,7 +45,7 @@ Options:
 
 Finalize mode:
 
-- `scene_dir/images/<prefix>_000001.*` ... (keep-only, renumbered)
+- `scene_dir/images/<prefix>_<source_frame_index>.*` (keep-only; existing filenames preserved)
 - `scene_dir/images_backup/*` (full snapshot of pre-finalize images/, only when `--backup-dir` is set)
 - `scene_dir/selected_frames.csv` (rewritten)
 - `scene_dir/selected_frames.before_finalize.csv` (CSV backup, always created)

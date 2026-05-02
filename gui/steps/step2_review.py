@@ -54,12 +54,6 @@ class ReviewStep(BaseStepWidget):
         settings_layout.setContentsMargins(*SETTINGS_PANE_MARGINS)
         settings_layout.setSpacing(10)
 
-        workflow = QLabel(i18n.t("STEP2_WORKFLOW"))
-        workflow.setObjectName("workflowNote")
-        workflow.setAlignment(Qt.AlignCenter)
-        workflow.setWordWrap(True)
-        settings_layout.addWidget(workflow)
-
         form = QFormLayout()
         form.setSpacing(6)
 
@@ -67,11 +61,6 @@ class ReviewStep(BaseStepWidget):
         self.csv_edit.setToolTip(i18n.tip("CSV_FILE"))
         self.csv_edit.editingFinished.connect(self._on_csv_changed)
         add_tooltip_row(form, i18n.CSV_FILE, self.csv_edit, i18n.tip("CSV_FILE"))
-
-        self.prefix_edit = QLineEdit("")
-        self.prefix_edit.setToolTip(i18n.tip("FILENAME_PREFIX"))
-        self.prefix_edit.setPlaceholderText(i18n.t("AUTO_PREFIX_HINT"))
-        add_tooltip_row(form, i18n.FILENAME_PREFIX, self.prefix_edit, i18n.tip("FILENAME_PREFIX"))
 
         self.backup_cb = QCheckBox(i18n.t("BACKUP_BEFORE_FINALIZE"))
         self.backup_cb.setToolTip(i18n.t("BACKUP_BEFORE_FINALIZE_HINT"))
@@ -214,14 +203,14 @@ class ReviewStep(BaseStepWidget):
     def _confirm_finalize(self) -> bool:
         if self.backup_cb.isChecked():
             confirm_text = (
-                "除外にしたフレームを images/ から削除し、採用フレームを連番で再採番します。\n\n"
+                "除外にしたフレームを images/ から削除し、採用フレームのファイル名は維持します。\n\n"
                 "実行前に images/ を images_backup/ にコピーします（既存バックアップは上書き）。\n"
                 "selected_frames.csv のバックアップも自動作成されます。\n\n"
                 "実行してよいですか？"
             )
         else:
             confirm_text = (
-                "除外にしたフレームを images/ から削除し、採用フレームを連番で再採番します。\n\n"
+                "除外にしたフレームを images/ から削除し、採用フレームのファイル名は維持します。\n\n"
                 "画像のバックアップは作成されません。削除された画像は復元できません。\n"
                 "selected_frames.csv のみ自動バックアップされます。\n\n"
                 "実行してよいですか？"
@@ -240,9 +229,6 @@ class ReviewStep(BaseStepWidget):
         if not script.exists():
             raise FileNotFoundError(f"apply_frame_decisions.py が見つかりません: {script}")
         cmd = [sys.executable, "-u", str(script), self.scene_dir]
-        prefix = self.prefix_edit.text().strip()
-        if prefix:
-            cmd.extend(["--filename-prefix", prefix])
         if extra_args:
             cmd.extend(extra_args)
         return cmd

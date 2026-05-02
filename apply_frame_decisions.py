@@ -3,12 +3,10 @@ from __future__ import annotations
 
 import argparse
 import csv
-import json
-import re
 import shutil
 import sys
 from pathlib import Path
-from typing import List, Optional, Sequence, Tuple
+from typing import List, Optional, Sequence
 
 
 def is_image_file(path: Path) -> bool:
@@ -70,51 +68,6 @@ def normalize_decision(row: dict) -> str:
     return row.get("decision", "keep").strip().lower()
 
 
-def sanitize_filename_prefix(value: str) -> str:
-    text = value.strip()
-    if not text:
-        return ""
-    text = re.sub(r"[^A-Za-z0-9._-]+", "_", text)
-    text = text.strip("._-")
-    if not text:
-        return ""
-    return text
-
-
-def infer_prefix_from_output_file(rel_path: str) -> str:
-    name = Path(rel_path).stem
-    m = re.match(r"(.+)_\d+$", name)
-    if m:
-        return sanitize_filename_prefix(m.group(1))
-    return sanitize_filename_prefix(name)
-
-
-def detect_default_prefix(scene_dir: Path, keep_entries: Sequence[Tuple[dict, Path]]) -> str:
-    report_path = scene_dir / "extract_report.json"
-    if report_path.exists():
-        try:
-            data = json.loads(report_path.read_text(encoding="utf-8"))
-            params = data.get("params", {})
-            report_prefix = sanitize_filename_prefix(str(params.get("filename_prefix", "")))
-            if report_prefix:
-                return report_prefix
-            input_video = data.get("input_video", "")
-            if input_video:
-                stem_prefix = sanitize_filename_prefix(Path(str(input_video)).stem)
-                if stem_prefix:
-                    return stem_prefix
-        except Exception:
-            pass
-
-    for row, _src in keep_entries:
-        rel_path = row.get("output_file", "").strip()
-        if rel_path:
-            inferred = infer_prefix_from_output_file(rel_path)
-            if inferred:
-                return inferred
-    return "frame"
-
-
 def copy_keep_rows(
     scene_dir: Path,
     rows: Sequence[dict],
@@ -163,44 +116,6 @@ def copy_keep_rows(
             print(f"  ... and {len(missing) - 10} more")
 
 
-def stage_rename_keep_files(
-    keep_entries: Sequence[Tuple[dict, Path]],
-    images_dir: Path,
-) -> List[Tuple[dict, Path, Path, str]]:
-    staged: List[Tuple[dict, Path, Path, str]] = []
-    seen_sources = set()
-
-    for i, (row, src) in enumerate(keep_entries, start=1):
-        key = str(src.resolve())
-        if key in seen_sources:
-            raise RuntimeError(f"Duplicate keep source detected: {src}")
-        seen_sources.add(key)
-
-        ext = src.suffix.lower()
-        if not ext:
-            ext = ".jpg"
-        tmp_path = images_dir / f".tmp_finalize_{i:06d}{ext}"
-        if tmp_path.exists():
-            tmp_path.unlink()
-        src.rename(tmp_path)
-        staged.append((row, src, tmp_path, ext))
-
-    return staged
-
-
-def rollback_staged(
-    staged: Sequence[Tuple[dict, Path, Path, str]],
-    finalized: Sequence[Tuple[Path, Path]],
-) -> None:
-    for dst, src in reversed(list(finalized)):
-        if dst.exists() and not src.exists():
-            dst.rename(src)
-
-    for _row, src, tmp_path, _ext in staged:
-        if tmp_path.exists() and not src.exists():
-            tmp_path.rename(src)
-
-
 def backup_images_dir(images_dir: Path, backup_dir: Path) -> int:
     """images/ の現状を backup_dir にフルコピー（既存 backup は事前に削除）。
 
@@ -218,7 +133,6 @@ def backup_images_dir(images_dir: Path, backup_dir: Path) -> int:
 def finalize_in_place(
     scene_dir: Path,
     csv_name: str,
-    filename_prefix: str,
     backup_dir: Optional[Path] = None,
 ) -> None:
     csv_path = scene_dir / csv_name
@@ -234,7 +148,7 @@ def finalize_in_place(
         backup_count = backup_images_dir(images_dir, backup_dir)
         print(f"Backed up {backup_count} files to {backup_dir}")
 
-    keep_entries: List[Tuple[dict, Path]] = []
+    keep_entries: List[tuple[dict, Path]] = []
     dropped_paths: List[Path] = []
     missing: List[str] = []
     dropped_rows = 0
@@ -269,11 +183,10 @@ def finalize_in_place(
         preview = ", ".join(missing[:3])
         raise RuntimeError(f"Missing keep frame files ({len(missing)}). Example: {preview}")
 
-    resolved_prefix = sanitize_filename_prefix(filename_prefix)
-    if not resolved_prefix:
-        resolved_prefix = detect_default_prefix(scene_dir, keep_entries)
-
     keep_source_set = {str(src.resolve()) for _row, src in keep_entries}
+    if len(keep_source_set) != len(keep_entries):
+        raise RuntimeError("Duplicate keep source detected")
+
     removed_drop_files = 0
     for p in dropped_paths:
         if str(p.resolve()) in keep_source_set:
@@ -282,29 +195,13 @@ def finalize_in_place(
             p.unlink()
             removed_drop_files += 1
 
-    staged: List[Tuple[dict, Path, Path, str]] = []
-    finalized: List[Tuple[Path, Path]] = []
     updated_rows: List[dict] = []
-
-    try:
-        staged = stage_rename_keep_files(keep_entries, images_dir)
-        digits = max(6, len(str(len(staged))))
-        for seq, (row, src, tmp_path, ext) in enumerate(staged, start=1):
-            final_name = f"{resolved_prefix}_{seq:0{digits}d}{ext}"
-            dst = images_dir / final_name
-            if dst.exists():
-                dst.unlink()
-            tmp_path.rename(dst)
-            finalized.append((dst, src))
-
-            new_row = dict(row)
-            new_row["seq"] = str(seq)
-            new_row["decision"] = "keep"
-            new_row["output_file"] = f"images/{final_name}"
-            updated_rows.append(new_row)
-    except Exception:
-        rollback_staged(staged, finalized)
-        raise
+    for seq, (row, src) in enumerate(keep_entries, start=1):
+        new_row = dict(row)
+        new_row["seq"] = str(seq)
+        new_row["decision"] = "keep"
+        new_row["output_file"] = src.relative_to(scene_dir).as_posix()
+        updated_rows.append(new_row)
 
     backup_csv = ensure_unique_backup_path(csv_path)
     shutil.copy2(csv_path, backup_csv)
@@ -318,7 +215,7 @@ def finalize_in_place(
     print(f"Dropped rows: {dropped_rows}")
     print(f"Removed dropped image files: {removed_drop_files}")
     print(f"Images dir: {images_dir}")
-    print(f"Filename prefix: {resolved_prefix}")
+    print("Kept filenames: preserved")
     print(f"CSV backup: {backup_csv}")
     print(f"Updated CSV: {csv_path}")
     print(f"Keep CSV: {keep_csv}")
@@ -330,7 +227,6 @@ def apply_decisions(
     output_name: str,
     clean_output: bool,
     finalize_inplace: bool,
-    filename_prefix: str,
     backup_dir: Optional[Path] = None,
 ) -> None:
     csv_path = scene_dir / csv_name
@@ -338,7 +234,7 @@ def apply_decisions(
         raise FileNotFoundError(f"CSV not found: {csv_path}")
 
     if finalize_inplace:
-        finalize_in_place(scene_dir, csv_name, filename_prefix, backup_dir=backup_dir)
+        finalize_in_place(scene_dir, csv_name, backup_dir=backup_dir)
         return
 
     rows = load_rows(csv_path)
@@ -378,14 +274,9 @@ def parse_args() -> argparse.Namespace:
         help="Remove existing image files in output directory before exporting",
     )
     parser.add_argument(
-        "--filename-prefix",
-        default="",
-        help="Filename prefix used by --finalize-in-place. Default is extracted from report/video.",
-    )
-    parser.add_argument(
         "--finalize-in-place",
         action="store_true",
-        help="Drop=remove and Keep=renumber inside scene_dir/images, then update selected_frames.csv",
+        help="Drop=remove inside scene_dir/images, preserve kept filenames, then update selected_frames.csv",
     )
     parser.add_argument(
         "--backup-dir",
@@ -415,7 +306,6 @@ def main() -> None:
             output_name=args.output,
             clean_output=args.clean_output,
             finalize_inplace=args.finalize_in_place,
-            filename_prefix=args.filename_prefix,
             backup_dir=backup_dir,
         )
     except Exception as e:

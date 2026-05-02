@@ -99,19 +99,25 @@ def test_backup_images_dir_handles_missing_source(tmp_path: Path):
 # =============================================================================
 
 
-def test_finalize_in_place_drops_and_renumbers(tmp_path: Path):
-    """drop 指定された画像が削除され、keep が連番で再採番される。"""
+def test_finalize_in_place_drops_and_preserves_keep_filenames(tmp_path: Path):
+    """drop 指定された画像が削除され、keep のファイル名は維持される。"""
     scene = _make_scene(tmp_path, num_frames=4, drop_indices=[2, 4])
 
-    finalize_in_place(scene, "selected_frames.csv", filename_prefix="frame")
+    finalize_in_place(scene, "selected_frames.csv")
 
-    # images/ には 2 個（連番 1, 2）残っているはず
     images = scene / "images"
     files = sorted(p.name for p in images.glob("*.jpg"))
     assert len(files) == 2
-    # 連番リネーム後は frame_000001, frame_000002 形式
     assert "frame_000001.jpg" in files
-    assert "frame_000002.jpg" in files
+    assert "frame_000003.jpg" in files
+
+    with (scene / "selected_frames.csv").open("r", encoding="utf-8", newline="") as f:
+        rows = list(csv.DictReader(f))
+    assert [row["seq"] for row in rows] == ["1", "2"]
+    assert [row["output_file"] for row in rows] == [
+        "images/frame_000001.jpg",
+        "images/frame_000003.jpg",
+    ]
 
 
 def test_finalize_in_place_with_backup(tmp_path: Path):
@@ -119,7 +125,7 @@ def test_finalize_in_place_with_backup(tmp_path: Path):
     scene = _make_scene(tmp_path, num_frames=4, drop_indices=[2, 4])
     backup_dir = scene / "images_backup"
 
-    finalize_in_place(scene, "selected_frames.csv", filename_prefix="frame", backup_dir=backup_dir)
+    finalize_in_place(scene, "selected_frames.csv", backup_dir=backup_dir)
 
     # backup には削除前の 4 個全部が保持されている
     backup_files = sorted(p.name for p in backup_dir.glob("*.jpg"))
@@ -127,23 +133,22 @@ def test_finalize_in_place_with_backup(tmp_path: Path):
     assert "frame_000002.jpg" in backup_files  # drop 対象もバックアップに含まれる
     assert "frame_000004.jpg" in backup_files
 
-    # 一方 images/ 自体は drop 後の 2 個に減って連番リネーム済み
+    # 一方 images/ 自体は drop 後の 2 個に減り、keep のファイル名は維持される
     images = scene / "images"
     final_files = sorted(p.name for p in images.glob("*.jpg"))
-    assert len(final_files) == 2
+    assert final_files == ["frame_000001.jpg", "frame_000003.jpg"]
 
 
 def test_finalize_in_place_without_backup_no_backup_dir(tmp_path: Path):
     """backup_dir=None なら images_backup/ は作られない。"""
     scene = _make_scene(tmp_path, num_frames=3, drop_indices=[2])
 
-    finalize_in_place(scene, "selected_frames.csv", filename_prefix="frame", backup_dir=None)
+    finalize_in_place(scene, "selected_frames.csv", backup_dir=None)
 
     assert not (scene / "images_backup").exists()
-    # 通常の挙動は変わらず: keep が連番リネーム
     images = scene / "images"
     files = sorted(p.name for p in images.glob("*.jpg"))
-    assert len(files) == 2
+    assert files == ["frame_000001.jpg", "frame_000003.jpg"]
 
 
 def test_finalize_in_place_backup_idempotent(tmp_path: Path):
@@ -151,10 +156,9 @@ def test_finalize_in_place_backup_idempotent(tmp_path: Path):
     scene = _make_scene(tmp_path, num_frames=3, drop_indices=[3])
     backup_dir = scene / "images_backup"
 
-    finalize_in_place(scene, "selected_frames.csv", filename_prefix="frame", backup_dir=backup_dir)
+    finalize_in_place(scene, "selected_frames.csv", backup_dir=backup_dir)
     files_after_first = set(p.name for p in backup_dir.glob("*.jpg"))
 
-    # 2 回目のために再度シーンを準備（実行で images/ が変わったため CSV と画像が一致しなくなる）
     # 1 回目の結果状態から、再度 finalize できるよう CSV を再構築
     images = scene / "images"
     rows = []
@@ -169,7 +173,7 @@ def test_finalize_in_place_backup_idempotent(tmp_path: Path):
         })
     _write_csv(scene / "selected_frames.csv", rows)
 
-    finalize_in_place(scene, "selected_frames.csv", filename_prefix="frame", backup_dir=backup_dir)
+    finalize_in_place(scene, "selected_frames.csv", backup_dir=backup_dir)
 
     # 2 回目の backup は 1 回目の状態（drop 後の 2 個）のフルコピーになる
     files_after_second = set(p.name for p in backup_dir.glob("*.jpg"))
@@ -182,7 +186,7 @@ def test_finalize_in_place_creates_csv_backup(tmp_path: Path):
     """CSV のバックアップ (.before_finalize.csv) が作成される。"""
     scene = _make_scene(tmp_path, num_frames=3, drop_indices=[2])
 
-    finalize_in_place(scene, "selected_frames.csv", filename_prefix="frame")
+    finalize_in_place(scene, "selected_frames.csv")
 
     # selected_frames.before_finalize.csv が作られている
     csv_backup_files = list(scene.glob("selected_frames.before_finalize*.csv"))
@@ -194,4 +198,4 @@ def test_finalize_in_place_raises_on_no_keep(tmp_path: Path):
     scene = _make_scene(tmp_path, num_frames=3, drop_indices=[1, 2, 3])
 
     with pytest.raises(RuntimeError, match="No keep frames"):
-        finalize_in_place(scene, "selected_frames.csv", filename_prefix="frame")
+        finalize_in_place(scene, "selected_frames.csv")

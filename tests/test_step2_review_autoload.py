@@ -6,8 +6,9 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QPixmap
-from PySide6.QtWidgets import QApplication
+from PySide6.QtWidgets import QApplication, QLabel
 
+from gui import i18n
 from gui.steps.step2_review import ReviewStep
 
 
@@ -53,6 +54,19 @@ def test_review_step_waits_for_csv_until_activated(tmp_path: Path) -> None:
 
     assert step._review_widget is None
     assert step._loaded_csv_signature is None
+
+
+def test_review_step_left_pane_guides_apply_before_mask_step() -> None:
+    _app()
+    step = ReviewStep(Path.cwd())
+
+    labels = [label.text() for label in step.findChildren(QLabel)]
+
+    assert all("確認+選別" not in text for text in labels)
+    assert all("Review + Select" not in text for text in labels)
+    assert i18n.NEXT_STEP_MASK_NOTICE in labels
+    assert i18n.t("ACTION_FINALIZE_REVIEW") in i18n.NEXT_STEP_MASK_NOTICE
+    assert "Step 3" in i18n.NEXT_STEP_MASK_NOTICE
 
 
 def test_review_step_autoloads_csv_when_activated(tmp_path: Path) -> None:

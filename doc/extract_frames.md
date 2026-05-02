@@ -121,7 +121,7 @@ python extract_frames.py input.mp4 ./scene01 \
 
 Under `output_dir`:
 
-- `images/<video_stem>_XXXXXX.jpg` (or `.png`) by default
+- `images/<video_stem>_<source_frame_index>.jpg` (or `.png`) by default. The frame index is zero-padded to the shortest width that keeps the video's full frame range sortable.
 - `selected_frames.csv`
 - `extract_report.json`
 

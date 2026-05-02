@@ -79,6 +79,20 @@ def sanitize_filename_prefix(value: str) -> str:
     return text
 
 
+def frame_index_digits(total_frames: int, frame_indices: Sequence[int] | None = None) -> int:
+    """Return the zero-padding width needed for frame-index filenames."""
+    max_index = total_frames - 1 if total_frames > 0 else -1
+    if frame_indices:
+        max_index = max(max_index, max(frame_indices))
+    if max_index < 0:
+        return 6
+    return max(1, len(str(max_index)))
+
+
+def frame_filename(filename_prefix: str, frame_index: int, image_ext: str, digits: int) -> str:
+    return f"{filename_prefix}_{frame_index:0{max(1, digits)}d}.{image_ext}"
+
+
 def ensure_python_deps() -> None:
     missing = []
     if cv2 is None:
@@ -1201,6 +1215,7 @@ def extract_selected_frames(
     image_ext: str,
     jpg_quality: int,
     filename_prefix: str,
+    frame_digits: int,
 ) -> None:
     output_dir.mkdir(parents=True, exist_ok=True)
     tmp_dir = output_dir / "_tmp_extract"
@@ -1298,7 +1313,7 @@ def extract_selected_frames(
     last_rename_report = 0
     print(f"[progress] finalize 0/{rename_total} files (0.0%)", flush=True)
     for seq, (src, frame_idx) in enumerate(zip(extracted_files, frame_indices), start=1):
-        dst_name = f"{filename_prefix}_{frame_idx:06d}.{image_ext}"
+        dst_name = frame_filename(filename_prefix, frame_idx, image_ext, frame_digits)
         dst_path = output_dir / dst_name
         if dst_path.exists():
             dst_path.unlink()
@@ -1317,6 +1332,7 @@ def write_selected_csv(
     fps: float,
     image_ext: str,
     filename_prefix: str,
+    frame_digits: int,
 ) -> None:
     fieldnames = [
         "seq",
@@ -1354,7 +1370,7 @@ def write_selected_csv(
                     "quality_score_final": f"{row.get('quality_score_final', 0.0):.6f}",
                     "status": row["status"],
                     "decision": row.get("decision", "keep"),
-                    "output_file": f"images/{filename_prefix}_{final_idx:06d}.{image_ext}",
+                    "output_file": f"images/{frame_filename(filename_prefix, final_idx, image_ext, frame_digits)}",
                 }
             )
 
@@ -1369,6 +1385,7 @@ def write_report(
     window_frames: int,
     min_gap_frames: int,
     filename_prefix: str,
+    frame_digits: int,
 ) -> None:
     report = {
         "input_video": str(Path(args.input_video).resolve()),
@@ -1400,6 +1417,7 @@ def write_report(
             "quality_min_improvement": args.quality_min_improvement,
             "center_bias": args.center_bias,
             "filename_prefix": filename_prefix,
+            "frame_number_digits": frame_digits,
         },
         "result": {
             "selected_count": len(selected_rows),
@@ -1425,6 +1443,7 @@ def build_summary_from_counts(
     fallback_keep_count: int,
     estimate_mode: str,
     filename_prefix: str,
+    frame_digits: int,
     estimate_meta: Optional[dict] = None,
 ) -> dict:
     summary = {
@@ -1459,6 +1478,7 @@ def build_summary_from_counts(
             "quality_min_improvement": args.quality_min_improvement,
             "center_bias": args.center_bias,
             "filename_prefix": filename_prefix,
+            "frame_number_digits": frame_digits,
         },
         "result": {
             "selected_count": selected_count,
@@ -1480,6 +1500,7 @@ def build_summary(
     min_gap_frames: int,
     window_frames: int,
     filename_prefix: str,
+    frame_digits: int,
 ) -> dict:
     replaced_count = sum(1 for r in selected_rows if "replaced" in r.get("status", ""))
     smart_added_count = sum(1 for r in selected_rows if "smart_added" in r.get("status", ""))
@@ -1502,6 +1523,7 @@ def build_summary(
         fallback_keep_count=fallback_keep_count,
         estimate_mode="full",
         filename_prefix=filename_prefix,
+        frame_digits=frame_digits,
     )
     summary["result"]["smart_added_count"] = smart_added_count
     summary["result"]["thinned_count"] = thinned_count
@@ -1721,6 +1743,7 @@ def main() -> None:
     if not resolved_prefix:
         resolved_prefix = "frame"
     print(f"Filename prefix: {resolved_prefix}")
+    video_frame_digits = frame_index_digits(video_info.total_frames)
 
     if args.estimate_only and args.mode == "fixed" and not args.fixed_smart:
         total_frames = video_info.total_frames
@@ -1748,6 +1771,7 @@ def main() -> None:
             fallback_keep_count=0,
             estimate_mode="fixed_exact",
             filename_prefix=resolved_prefix,
+            frame_digits=frame_index_digits(video_info.total_frames, selected),
         )
         print(f"Estimated selected frames: {summary['result']['selected_count']}")
         print("Estimated representative replacements: 0")
@@ -1787,6 +1811,7 @@ def main() -> None:
             fallback_keep_count=sampled["fallback_keep_count"],
             estimate_mode="sampled",
             filename_prefix=resolved_prefix,
+            frame_digits=video_frame_digits,
             estimate_meta={
                 "sampled_segments_requested": sampled["sampled_segments_requested"],
                 "sampled_segments_used": sampled["sampled_segments_used"],
@@ -1969,6 +1994,7 @@ def main() -> None:
         min_gap_frames=min_gap_frames,
         window_frames=window_frames_for_report,
         filename_prefix=resolved_prefix,
+        frame_digits=frame_index_digits(video_info.total_frames, final_indices),
     )
 
     if args.estimate_only:
@@ -1992,12 +2018,20 @@ def main() -> None:
             args.image_ext,
             args.jpg_quality,
             resolved_prefix,
+            summary["params"]["frame_number_digits"],
         )
     except Exception as e:
         print(f"Error during extraction: {e}")
         sys.exit(1)
 
-    write_selected_csv(enriched_rows, csv_path, video_info.fps, args.image_ext, resolved_prefix)
+    write_selected_csv(
+        enriched_rows,
+        csv_path,
+        video_info.fps,
+        args.image_ext,
+        resolved_prefix,
+        summary["params"]["frame_number_digits"],
+    )
     write_report(
         report_path,
         args,
@@ -2008,6 +2042,7 @@ def main() -> None:
         window_frames_for_report,
         min_gap_frames,
         resolved_prefix,
+        summary["params"]["frame_number_digits"],
     )
 
     replaced_count = sum(1 for r in enriched_rows if "replaced" in r.get("status", ""))
