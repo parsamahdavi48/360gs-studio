@@ -76,6 +76,41 @@ def test_all_walking_keeps_all():
     assert all(r["decision"] == "keep" for r in out)
 
 
+def test_feature_motion_can_keep_low_luma_change_frame():
+    rows = [_make_row(i) for i in [0, 10, 20]]
+    change_scores = [0.005] * 21
+    feature_motion_scores = [0.0] * 21
+    for i in range(1, 11):
+        feature_motion_scores[i] = 0.08
+
+    out = thin_stationary(
+        rows,
+        change_scores,
+        motion_threshold=1.0,
+        keep_endpoints=True,
+        feature_motion_scores=feature_motion_scores,
+    )
+
+    assert out[1]["decision"] == "keep"
+
+
+def test_thinning_respects_max_gap_frames():
+    rows = [_make_row(i) for i in [0, 10, 20, 30]]
+    change_scores = [0.005] * 31
+
+    out = thin_stationary(
+        rows,
+        change_scores,
+        motion_threshold=1.0,
+        keep_endpoints=True,
+        max_gap_frames=15,
+    )
+
+    by_idx = {r["final_index"]: r for r in out}
+    assert by_idx[10]["decision"] == "drop"
+    assert by_idx[20]["decision"] == "keep"
+
+
 # =============================================================================
 # 混在: 立ち止まり → 歩行 → 立ち止まり
 # =============================================================================

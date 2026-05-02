@@ -224,6 +224,10 @@ if QMainWindow is not None:
             if "replaced" in status:
                 return i18n.t("REVIEW_ADVISORY_REPLACED"), "#dbeafe", "#1e3a8a"
 
+            # 青: 変化補正による追加候補
+            if "smart_added" in status:
+                return i18n.t("REVIEW_ADVISORY_SMART_ADDED"), "#dbeafe", "#1e3a8a"
+
             # 緑: 通常品質
             return i18n.t("REVIEW_ADVISORY_NORMAL"), "#a7f3d0", "#064e3b"
 
@@ -283,6 +287,7 @@ if QMainWindow is not None:
                 f"color: {adv_fg}; background-color: {adv_bg};"
             )
 
+            smart_added_count = sum(1 for r in self.rows if "smart_added" in r.get("status", "").strip().lower())
             replaced_count = sum(1 for r in self.rows if "replaced" in r.get("status", "").strip().lower())
             fallback_count = sum(1 for r in self.rows if "fallback_keep" in r.get("status", "").strip().lower())
             thinned_count = sum(1 for r in self.rows if "thinned" in r.get("status", "").strip().lower())
@@ -290,7 +295,12 @@ if QMainWindow is not None:
             current_problem = i18n.t("REVIEW_INFO_YES") if self._is_problem_row(row) else i18n.t("REVIEW_INFO_NO")
             self.problem_summary_label.setText(
                 i18n.t("REVIEW_PROBLEMS_FORMAT").format(
-                    n=problem_count, r=replaced_count, f=fallback_count, t=thinned_count, cur=current_problem
+                    n=problem_count,
+                    a=smart_added_count,
+                    r=replaced_count,
+                    f=fallback_count,
+                    t=thinned_count,
+                    cur=current_problem,
                 )
             )
 

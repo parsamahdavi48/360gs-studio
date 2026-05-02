@@ -1,47 +1,111 @@
-# extract_frames_gui.py — Wrapper GUI for extraction workflow
+# Frame Extraction GUI Parameters
 
-## Overview
+This GUI extracts equirectangular still images from 360-degree video for Metashape SfM. The current extraction baseline is `Fixed Interval`. When `Motion` is enabled, the extractor keeps the fixed cadence but skips low-change candidates and inserts extra candidates in high-motion ranges.
 
-`extract_frames_gui.py` is a wrapper GUI around the extraction pipeline.
+## Assumptions
 
-It provides three actions:
+- Analysis and image export are separate phases.
+- Analysis uses grayscale frames scaled to `Analysis Width`.
+- Images written to `images/` keep the source video resolution.
+- `Instant Estimate` is the fixed-interval baseline count. With `Motion` enabled, the final count can increase or decrease after analysis.
 
-1. Run extraction (`extract_frames.py`)
-2. Open visual review (`review_frames.py`)
-3. Finalize reviewed frames (`apply_frame_decisions.py`)
+## Fixed Interval
 
-It also provides analysis helpers:
+### `Interval`
 
-- `Load Video Info`: shows resolution, FPS, duration, and total frames (via `ffprobe`)
-- `Instant`: immediately shows a rough expected count from current parameters
-- `Sampled`: runs a background sampled estimate and updates while editing
-- `Refresh Sampled`: manually restart sampled estimate immediately
-- `Filename Prefix`: optional override for output filename prefix (default: video filename)
+- Unit: seconds
+- Meaning: baseline spacing between extracted frame candidates
+- Internal calculation: `step = round(interval_sec * fps)`
+- UI range: `0.05-60.0` seconds
+- Control: horizontal drag on the numeric field
+- Example: at 30fps, `0.8` seconds is about every 24 frames
 
-Requirements:
+Increasing the value reduces the baseline count. Decreasing it increases the count. For 3DGS-oriented SfM, a stable fixed cadence is easier to reason about than a fully variable interval.
 
-- `PySide6`
+## Motion Adjustment
 
-## Usage
+`Motion` is an additional option for fixed interval extraction. The fixed cadence remains the baseline, then analysis applies:
 
-```bash
-python extract_frames_gui.py --scene-dir ./scene01
-```
+- Low-change skipping: candidates with too little accumulated motion since the last kept frame are marked `thinned`
+- High-motion insertion: frames inside a fixed interval with strong motion are added as `smart_added`
+- Feature-motion scoring: sparse feature tracking is used alongside luma difference so the adjustment is closer to SfM-relevant parallax
 
-## Notes
+### `Min`
 
-- The GUI runs each step via Python subprocess, so CLI and GUI behavior stay aligned.
-- `Sampled` estimate uses `extract_frames.py --estimate-only --estimate-mode sampled`.
-- Running extraction/export cancels any in-progress sampled estimate.
-- Default export target is `images`; in this mode export performs in-place finalize (drop removal + keep renumber + CSV rewrite).
-- The same `Filename Prefix` is used for extraction output names and in-place finalize names.
-- `selected_frames.csv` is the shared state between extraction, review, and finalize.
-- Recommended output extension during iteration is JPG for speed.
+- Unit: seconds
+- Meaning: minimum spacing for inserted candidates
+- Internal calculation: `min_gap_frames = round(min_gap_sec * fps)`
+- Default: `0.25` seconds
+
+Extra candidates are never inserted closer than this, even when motion is high.
+
+### `Max`
+
+- Unit: seconds
+- Meaning: safety spacing for low-change skipping
+- Internal calculation: `max_gap_frames = round(max_gap_sec * fps)`
+- Default: `2.0` seconds
+
+Low-change skipping will keep a candidate when dropping it would make the kept-frame gap too large.
+
+## Analysis Width
+
+### `Analysis Width`
+
+- Unit: pixels
+- Meaning: horizontal decode width used for change scoring, feature-motion scoring, and SfM quality scoring
+- Default: `1920`
+
+Higher values can improve fine-feature detection but increase analysis time. Lower values are faster but can miss subtle motion and feature detail.
 
 ## Automatic Frame Selection
 
-The advanced settings include an automatic selection section. It scores extracted candidates for SfM and, when needed, chooses alternate nearby frames, flags low-quality frames for Step 2 review, and skips low-change frames.
+Advanced `Automatic Frame Selection` scores selected candidates for SfM and, when useful, chooses a nearby alternate representative frame.
 
-- `Quality Review Score`: 0.0-1.0 normalized SfM quality score. Frames below this after alternate-frame selection are flagged for review.
-- `Alternate Frame Criterion`: 0.0-1.0 score delta. A nearby alternate is used only when its quality score exceeds the original by at least this value.
-- `Skip Low-Change Frames`: cumulative normalized frame-change score. `0` disables; `0.3-1.0` is a typical range.
+### `Quality Review Score`
+
+- Unit: normalized `0.0-1.0` score
+- Calculation: combined feature count, feature spread, sharpness, contrast, and exposure penalty
+- Meaning: if the final representative stays below this score, Step 2 records it as `fallback_keep`
+- Default: `0.35`
+
+### `Alternate Frame Criterion`
+
+- Unit: normalized `0.0-1.0` score delta
+- Calculation: `candidate quality score - original quality score`
+- Meaning: minimum improvement required before using a nearby alternate frame
+- Default: `0.08`
+
+Lower values make alternate-frame selection more aggressive. Higher values only replace when the improvement is clearer.
+
+### `Skip Low-Change Frames`
+
+- Unit: normalized accumulated motion score
+- Calculation: combines mean absolute luma difference / 255 with sparse feature motion, accumulated from the last kept candidate
+- Meaning: candidates below this accumulated score are marked as low-change drops
+- Default: `0.6`
+- `0`: disabled
+
+This field is used when `Motion` is enabled. Raising it skips more low-change candidates; lowering it keeps more candidates.
+
+## Image Format
+
+### `JPEG Quality`
+
+- Unit: ffmpeg `-q:v`
+- UI range: `1-31`
+- Control: horizontal drag on the numeric field
+- Important: lower values mean higher quality and larger files
+- Default: `2`
+
+## Review Status
+
+Step 2 reads `selected_frames.csv` and surfaces frames based on `status`.
+
+- `ok`: normal kept candidate
+- `smart_added`: added by motion adjustment
+- `replaced`: replaced by a nearby SfM-ready representative
+- `fallback_keep`: still below the quality review score after representative selection
+- `thinned`: currently dropped because the interval had little motion
+
+A practical starting point is `0.8-1.0` seconds with `Motion` enabled, then review how `smart_added` and `thinned` frames look in Step 2.

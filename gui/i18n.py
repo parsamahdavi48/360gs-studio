@@ -53,12 +53,21 @@ _JA: dict[str, str] = {
     "INPUT_VIDEO_PLACEHOLDER": "360度動画を選択...",
     "VIDEO_FILE_FILTER": "動画ファイル (*.mp4 *.mov *.mkv *.avi *.m4v);;すべて (*.*)",
     "EXTRACTION_MODE": "抽出モード",
-    "MODE_CHANGE": "変化検出",
+    "MODE_CHANGE": "自動間隔",
+    "MODE_CHANGE_SHORT": "自動間隔",
     "MODE_FIXED": "固定間隔",
-    "CHANGE_THRESHOLD": "変化閾値",
+    "MODE_FIXED_SHORT": "固定間隔",
+    "FIXED_SMART": "変化補正",
+    "FIXED_SMART_ESTIMATE": "解析後に補正",
+    "CHANGE_THRESHOLD": "変化しきい値",
+    "CHANGE_THRESHOLD_SHORT": "変化",
     "MIN_GAP": "最小間隔 (秒)",
+    "MIN_GAP_SHORT": "最小",
     "MAX_GAP": "最大間隔 (秒)",
+    "MAX_GAP_SHORT": "最大",
     "INTERVAL": "間隔 (秒)",
+    "INTERVAL_SHORT": "間隔",
+    "SECONDS_SUFFIX": "秒",
     "ANALYSIS_WIDTH": "解析幅 (px)",
     "QUALITY_MIN_SCORE": "品質確認スコア",
     "QUALITY_MIN_IMPROVEMENT": "代替フレーム選択基準",
@@ -97,7 +106,7 @@ _JA: dict[str, str] = {
     "REVIEW_DECISION_DROP": "除外",
     "REVIEW_INFO_YES": "確認対象",
     "REVIEW_INFO_NO": "通常",
-    "REVIEW_PROBLEMS_FORMAT": "確認対象: {n} 件 (代表置換={r}, 低品質={f}, 自動間引き={t}) | 現在: {cur}",
+    "REVIEW_PROBLEMS_FORMAT": "確認対象: {n} 件 (追加={a}, 代表置換={r}, 低品質={f}, 間引き={t}) | 現在: {cur}",
     "REVIEW_FRAME_SLIDER_TIP": "CSV内のフレームを順番に切り替えます。",
     "REVIEW_FRAME_POSITION_FORMAT": "{seq} / {total} : {name}",
     "REVIEW_INFO_FORMAT": "動画位置: {ts}  |  品質スコア: {quality}",
@@ -122,6 +131,7 @@ _JA: dict[str, str] = {
     "REVIEW_SAVE_FAILED_BODY": "採用フラグをCSVに反映できませんでした:\n{error}",
     "REVIEW_ADVISORY_FALLBACK": "要確認: 探索範囲内の代表候補が低品質",
     "REVIEW_ADVISORY_REPLACED": "代表置換済み: 近傍のSfM向けフレームを使用",
+    "REVIEW_ADVISORY_SMART_ADDED": "変化補正: 動きが大きいため追加",
     "REVIEW_ADVISORY_THINNED": "自動間引き: 動きが少ないため除外中",
     "REVIEW_ADVISORY_NORMAL": "通常: 品質基準OK",
     "NEXT_STEP_MASK_NOTICE": "選別が完了したら Step 3 (マスク生成) へ進みます。\n人物・スティッチ・白飛びマスクを Metashape SfM の前に生成することで SfM 精度が向上します。",
@@ -231,7 +241,7 @@ _JA: dict[str, str] = {
     "PREVIEW_LOAD_FAIL": "画像の読み込みに失敗しました",
 
     # Step1 extra labels
-    "VIDEO_INFO_LOAD": "動画情報読込",
+    "VIDEO_INFO_LOAD": "動画情報",
     "SAMPLE_REFRESH": "サンプル推定を更新",
     "VIDEO_LABEL_DEFAULT": "動画: -",
     "ADVANCED_SETTINGS": "詳細設定",
@@ -240,8 +250,6 @@ _JA: dict[str, str] = {
     "AUTO_PREFIX_HINT": "自動 (動画ファイル名)",
     "FRAMES_UNIT": "フレーム",
     "THIN_MOTION_THRESHOLD": "低変化フレームのスキップ",
-    "NO_CACHE": "解析キャッシュを使わない",
-    "NO_CACHE_HINT": "既定（チェックなし）= キャッシュを使う。同じ動画の再実行が高速化されます。チェックすると毎回フル解析（遅い、デバッグ用途）。",
 
     # Step2 extra labels
     "PREPROCESS_RUN_LABEL": "Metashape前処理を実行",
@@ -311,12 +319,21 @@ _EN: dict[str, str] = {
     "INPUT_VIDEO_PLACEHOLDER": "Select a 360 video...",
     "VIDEO_FILE_FILTER": "Video Files (*.mp4 *.mov *.mkv *.avi *.m4v);;All Files (*.*)",
     "EXTRACTION_MODE": "Extraction Mode",
-    "MODE_CHANGE": "Change-Based",
+    "MODE_CHANGE": "Auto Interval",
+    "MODE_CHANGE_SHORT": "Auto",
     "MODE_FIXED": "Fixed Interval",
+    "MODE_FIXED_SHORT": "Fixed",
+    "FIXED_SMART": "Motion",
+    "FIXED_SMART_ESTIMATE": "adjusted after analysis",
     "CHANGE_THRESHOLD": "Change Threshold",
+    "CHANGE_THRESHOLD_SHORT": "Diff",
     "MIN_GAP": "Min Gap (sec)",
+    "MIN_GAP_SHORT": "Min",
     "MAX_GAP": "Max Gap (sec)",
+    "MAX_GAP_SHORT": "Max",
     "INTERVAL": "Interval (sec)",
+    "INTERVAL_SHORT": "Interval",
+    "SECONDS_SUFFIX": "s",
     "ANALYSIS_WIDTH": "Analysis Width (px)",
     "QUALITY_MIN_SCORE": "Quality Review Score",
     "QUALITY_MIN_IMPROVEMENT": "Alternate Frame Criterion",
@@ -355,7 +372,7 @@ _EN: dict[str, str] = {
     "REVIEW_DECISION_DROP": "Drop",
     "REVIEW_INFO_YES": "yes",
     "REVIEW_INFO_NO": "no",
-    "REVIEW_PROBLEMS_FORMAT": "Review targets: {n} (representative={r}, low quality={f}, thinned={t}) | Current: {cur}",
+    "REVIEW_PROBLEMS_FORMAT": "Review targets: {n} (added={a}, representative={r}, low quality={f}, thinned={t}) | Current: {cur}",
     "REVIEW_FRAME_SLIDER_TIP": "Slide through frames in the CSV.",
     "REVIEW_FRAME_POSITION_FORMAT": "{seq} / {total} : {name}",
     "REVIEW_INFO_FORMAT": "Video position: {ts}  |  Quality score: {quality}",
@@ -380,6 +397,7 @@ _EN: dict[str, str] = {
     "REVIEW_SAVE_FAILED_BODY": "Could not write the keep flag to the CSV:\n{error}",
     "REVIEW_ADVISORY_FALLBACK": "Review: no high-quality representative in search window",
     "REVIEW_ADVISORY_REPLACED": "Representative replaced: using a more SfM-ready nearby frame",
+    "REVIEW_ADVISORY_SMART_ADDED": "Motion-adjusted: added for high motion",
     "REVIEW_ADVISORY_THINNED": "Auto-thinned: low motion, currently dropped",
     "REVIEW_ADVISORY_NORMAL": "Normal: quality OK",
     "NEXT_STEP_MASK_NOTICE": "After selection, proceed to Step 3 (Mask Generation).\nGenerating person / stitch / overexposure masks before Metashape SfM significantly improves SfM accuracy.",
@@ -489,17 +507,15 @@ _EN: dict[str, str] = {
     "PREVIEW_LOAD_FAIL": "Failed to load image",
 
     # Step1 extra labels
-    "VIDEO_INFO_LOAD": "Load Video Info",
+    "VIDEO_INFO_LOAD": "Video Info",
     "SAMPLE_REFRESH": "Refresh Sampled Estimate",
     "VIDEO_LABEL_DEFAULT": "Video: -",
-    "ADVANCED_SETTINGS": "Advanced Settings",
+    "ADVANCED_SETTINGS": "Advanced",
     "AUTO_SELECTION_SECTION": "Automatic Frame Selection",
     "AUTO_SELECTION_HINT": "Scores extracted candidates for SfM and, when needed, selects alternate frames, flags low-quality frames for review, and skips low-change frames.",
     "AUTO_PREFIX_HINT": "auto (video filename)",
     "FRAMES_UNIT": "frames",
     "THIN_MOTION_THRESHOLD": "Skip Low-Change Frames",
-    "NO_CACHE": "Skip analysis cache",
-    "NO_CACHE_HINT": "Default (unchecked) = cache is used. Re-runs of the same video are much faster. Check to force full re-analysis every time (slow, mainly for debugging).",
 
     # Step2 extra labels
     "PREPROCESS_RUN_LABEL": "Run Metashape Preprocess",
@@ -537,14 +553,23 @@ _TIPS_JA: dict[str, str] = {
     "RUN": "現在のタブの処理を開始します",
     "CANCEL": "実行中の処理を中断します",
     "INPUT_VIDEO": "エクイレクタングラー形式の360度動画ファイルを選択",
-    "MODE_FIXED": "一定の秒数間隔でフレームを抽出。SfMの精度が安定しやすい (推奨: 0.8〜1.0秒)",
-    "MODE_CHANGE": "フレーム間の画像変化量に基づいて自動選択。歩行撮影では固定間隔の方が安定",
-    "INTERVAL": "フレーム間の秒数。0.8〜1.0秒がSfMに最適。短すぎると枚数が膨大に",
-    "CHANGE_THRESHOLD": "変化検出の感度。小さいほど敏感 (多くのフレームを選択)。0.01〜0.12が目安",
-    "MIN_GAP": "選択フレーム間の最小間隔 (秒)。連続した似たフレームの選択を防ぐ",
-    "MAX_GAP": "選択フレーム間の最大間隔 (秒)。変化が少ない区間でも最低限のフレームを確保",
+    "EXTRACTION_MODE": "固定間隔を基準に抽出フレームを選びます。必要に応じて変化量で補正できます",
+    "MODE_FIXED": "指定した秒数ごとにフレームを抽出します。横ドラッグで調整可能。推奨は0.8〜1.0秒、UI範囲は0.05〜60秒",
+    "FIXED_SMART": (
+        "固定間隔を基準に、変化が少ない候補をスキップし、変化が大きい区間には追加候補を入れます。\n"
+        "輝度差だけでなく、疎な特徴点追跡によるモーションも使うため、SfMで意味のある視差を拾いやすくなります"
+    ),
+    "MODE_CHANGE": "画像の変化量に応じて抽出間隔を自動調整します。最小/最大間隔で極端な枚数増減を防ぎます",
+    "INTERVAL": "固定間隔で使うフレーム間隔。単位は秒。横ドラッグで調整可能。推奨は0.8〜1.0秒、UI範囲は0.05〜60秒",
+    "CHANGE_THRESHOLD": (
+        "自動間隔で使う変化しきい値。単位は正規化スコアで、隣接解析フレームの平均輝度差 / 255 です。\n"
+        "範囲は0.000〜1.000。小さいほど敏感に反応して抽出枚数が増え、大きいほど大きな変化だけを採用します。\n"
+        "目安は0.010〜0.120、既定値は0.040です。横ドラッグで調整可能"
+    ),
+    "MIN_GAP": "変化量で補正するときの最小間隔。単位は秒。追加候補はこの秒数より近くには入りません。UI範囲は0.05〜60秒",
+    "MAX_GAP": "変化量で補正するときの安全間隔。単位は秒。低変化スキップで採用フレームが空きすぎるのを防ぎます。UI範囲は0.05〜60秒",
     "IMAGE_FORMAT": "出力画像の形式。jpgはファイルサイズ小、pngは無劣化",
-    "JPEG_QUALITY": "ffmpegの-q:v値。1=最高品質、31=最低品質。2-5推奨",
+    "JPEG_QUALITY": "ffmpegの-q:v値。1=最高品質、31=最低品質。2-5推奨。横ドラッグで調整可能",
     "VIDEO_INFO_BTN": "ffprobeで動画の解像度・FPS・長さを取得し、フレーム数を推定",
     "ANALYSIS_WIDTH": "変化検出・品質評価に使うデコード幅。大きいほど精度は上がるが遅くなります",
     "QUALITY_MIN_SCORE": (
@@ -558,14 +583,14 @@ _TIPS_JA: dict[str, str] = {
         "大きいほど代替選択は控えめ、小さいほど積極的になります。既定値: 0.08"
     ),
     "THIN_MOTION_THRESHOLD": (
-        "直前に採用したフレームから次の候補までの累積変化量が、この値未満なら低変化区間として除外します。\n"
-        "変化量 = 隣接解析フレームの平均輝度差 / 255、累積変化量 = その合計。単位は正規化スコアです。\n"
+        "変化量で補正するとき、直前に採用したフレームから次の候補までの累積変化量がこの値未満なら除外します。\n"
+        "変化量 = 隣接解析フレームの平均輝度差 / 255 と特徴点モーションの合成値。単位は正規化スコアです。\n"
         "0で無効。目安は0.3〜1.0、UI範囲は0.0〜5.0です。既定値: 0.6"
     ),
     "FFMPEG_PATH": "ffmpegの実行パス。PATHに通っていれば 'ffmpeg' でOK",
     "FFPROBE_PATH": "ffprobeの実行パス。動画情報の取得に使用",
     "FILENAME_PREFIX": "出力ファイル名の接頭辞。空欄なら動画ファイル名を自動使用",
-    "SAMPLE_BTN": "動画の一部をサンプリングしてフレーム数を再推定 (変化検出モードのみ)",
+    "SAMPLE_BTN": "動画の一部をサンプリングしてフレーム数を再推定 (自動間隔モードのみ)",
     "CSV_FILE": "Step1で生成されたフレーム選択CSVファイル名",
     "EXPORT_DIR": "採用フレームのコピー先フォルダ名。'images'ならインプレース処理",
     "OPEN_REVIEW": "フレーム画像を1枚ずつ確認し、採用/除外を編集するGUIを開きます。変更はすぐCSVに反映されます",
@@ -628,14 +653,23 @@ _TIPS_EN: dict[str, str] = {
     "RUN": "Start processing for the current tab",
     "CANCEL": "Abort the running process",
     "INPUT_VIDEO": "Select an equirectangular 360-degree video file",
-    "MODE_FIXED": "Extract frames at a fixed time interval. More stable for SfM (recommended: 0.8-1.0 sec)",
-    "MODE_CHANGE": "Auto-select frames based on visual change. Fixed interval is usually more reliable for walking shots",
-    "INTERVAL": "Seconds between frames. 0.8-1.0 sec optimal for SfM. Too short = too many frames",
-    "CHANGE_THRESHOLD": "Change detection sensitivity. Lower = more frames selected. 0.01-0.12 typical",
-    "MIN_GAP": "Minimum seconds between selected frames. Prevents picking redundant similar frames",
-    "MAX_GAP": "Maximum seconds between selected frames. Ensures minimum coverage in static areas",
+    "EXTRACTION_MODE": "Choose frames from a fixed interval baseline, with optional motion-based adjustment",
+    "MODE_FIXED": "Extract frames every N seconds. Drag horizontally to adjust. Recommended: 0.8-1.0 sec; UI range: 0.05-60 sec",
+    "FIXED_SMART": (
+        "Keeps the fixed interval baseline, skips low-change candidates, and inserts extra candidates in high-motion ranges.\n"
+        "Uses sparse feature tracking as well as luma difference, so motion that matters to SfM is easier to catch"
+    ),
+    "MODE_CHANGE": "Automatically adjusts extraction interval from image change, with min/max gaps as safety limits",
+    "INTERVAL": "Fixed extraction interval in seconds. Drag horizontally to adjust. Recommended: 0.8-1.0 sec; UI range: 0.05-60 sec",
+    "CHANGE_THRESHOLD": (
+        "Change threshold used by auto interval mode. Unit: normalized score = mean absolute luma difference between adjacent analysis frames / 255.\n"
+        "Range: 0.000-1.000. Lower values are more sensitive and produce more frames; higher values require larger changes.\n"
+        "Typical: 0.010-0.120; default: 0.040. Drag horizontally to adjust"
+    ),
+    "MIN_GAP": "Minimum spacing for motion adjustment in seconds. Extra candidates are not inserted closer than this. UI range: 0.05-60 sec",
+    "MAX_GAP": "Safety spacing for motion adjustment in seconds. Low-change skipping will not leave kept frames farther apart than this. UI range: 0.05-60 sec",
     "IMAGE_FORMAT": "Output format. jpg = smaller files, png = lossless",
-    "JPEG_QUALITY": "ffmpeg -q:v value. 1 = best quality, 31 = worst. Recommended: 2-5",
+    "JPEG_QUALITY": "ffmpeg -q:v value. 1 = best quality, 31 = worst. Recommended: 2-5. Drag horizontally to adjust",
     "VIDEO_INFO_BTN": "Probe video resolution, FPS, and duration with ffprobe",
     "ANALYSIS_WIDTH": "Decode width for change and quality scoring. Higher = more accurate but slower",
     "QUALITY_MIN_SCORE": (
@@ -649,14 +683,14 @@ _TIPS_EN: dict[str, str] = {
         "Higher is more conservative; lower is more aggressive. Default: 0.08"
     ),
     "THIN_MOTION_THRESHOLD": (
-        "Drops low-change candidates when cumulative change since the last kept frame is below this value.\n"
-        "Per-frame change = mean absolute luma difference / 255; cumulative change is the sum. Unit: normalized score.\n"
+        "When motion adjustment is enabled, drops low-change candidates when cumulative motion since the last kept frame is below this value.\n"
+        "Motion combines mean absolute luma difference / 255 with sparse feature displacement. Unit: normalized score.\n"
         "0 disables thinning. Typical range: 0.3-1.0; UI range: 0.0-5.0. Default: 0.6"
     ),
     "FFMPEG_PATH": "ffmpeg executable path. 'ffmpeg' works if it's on PATH",
     "FFPROBE_PATH": "ffprobe executable path. Used for video metadata probing",
     "FILENAME_PREFIX": "Output filename prefix. Leave empty to use the video filename",
-    "SAMPLE_BTN": "Re-estimate frame count by sampling the video (change-based mode only)",
+    "SAMPLE_BTN": "Re-estimate frame count by sampling the video (Auto Interval mode only)",
     "CSV_FILE": "Frame selection CSV filename generated by Step 1",
     "EXPORT_DIR": "Destination folder for keep frames. 'images' triggers in-place processing",
     "OPEN_REVIEW": "Open a GUI to review frames one by one and edit keep/drop decisions. Changes are written to the CSV immediately",

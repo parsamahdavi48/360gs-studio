@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import json
-import math
 import re
 import shutil
 import subprocess
@@ -15,8 +14,9 @@ def _detect_binary(name: str) -> str:
     found = shutil.which(name)
     return found if found else name
 
-from PySide6.QtCore import QProcess, QTimer, Qt
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
+    QCheckBox,
     QComboBox,
     QFormLayout,
     QHBoxLayout,
@@ -24,7 +24,6 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QMessageBox,
     QPushButton,
-    QRadioButton,
     QScrollArea,
     QSplitter,
     QVBoxLayout,
@@ -34,7 +33,7 @@ from PySide6.QtWidgets import (
 from gui import i18n
 from gui.common.browse_widget import BrowseWidget
 from gui.common.collapsible_section import CollapsibleSection
-from gui.common.drag_spinbox import DragDoubleSpinBox
+from gui.common.drag_spinbox import DragDoubleSpinBox, DragSpinBox
 from gui.common.form_rows import add_tooltip_row
 from gui.steps.base_step import (
     SETTINGS_PANE_MARGINS,
@@ -42,6 +41,21 @@ from gui.steps.base_step import (
     BaseStepWidget,
     configure_settings_scroll,
 )
+
+_FIXED_INTERVAL_MIN = 0.05
+_FIXED_INTERVAL_MAX = 60.0
+_CHANGE_GAP_MIN = 0.05
+_CHANGE_GAP_MAX = 60.0
+_JPEG_QUALITY_MIN = 1
+_JPEG_QUALITY_MAX = 31
+_JPEG_QUALITY_DEFAULT = 2
+
+
+def _row_label(text: str, tooltip: str | None = None) -> QLabel:
+    label = QLabel(text)
+    if tooltip:
+        label.setToolTip(tooltip)
+    return label
 
 
 class ExtractStep(BaseStepWidget):
@@ -51,16 +65,7 @@ class ExtractStep(BaseStepWidget):
         self.video_info: dict | None = None
         self.last_estimate_summary: dict | None = None
         self.instant_estimate_text = "-"
-        self.sampled_estimate_text = "-"
-        self.sample_segments = 5
-        self.sample_segment_sec = 12.0
-        self.sample_fps = 8.0
-
-        self.sample_proc: QProcess | None = None
-        self._sample_buffer = ""
-        self.sample_timer = QTimer(self)
-        self.sample_timer.setSingleShot(True)
-        self.sample_timer.timeout.connect(self._start_sample_estimate)
+        self._syncing_gap_fields = False
 
         self._build_ui()
 
@@ -99,46 +104,99 @@ class ExtractStep(BaseStepWidget):
         self.video_browse.setToolTip(i18n.tip("INPUT_VIDEO"))
         self.video_browse.path_changed.connect(self._on_video_changed)
         add_tooltip_row(basic, i18n.INPUT_VIDEO, self.video_browse, i18n.tip("INPUT_VIDEO"))
+        layout.addLayout(basic)
 
-        # モード選択
-        self.change_radio = QRadioButton(i18n.MODE_CHANGE)
-        self.change_radio.setToolTip(i18n.tip("MODE_CHANGE"))
-        self.fixed_radio = QRadioButton(i18n.MODE_FIXED)
-        self.fixed_radio.setToolTip(i18n.tip("MODE_FIXED"))
-        self.fixed_radio.setChecked(True)
-        self.change_radio.toggled.connect(self._update_mode_widgets)
-        self.change_radio.toggled.connect(self._mark_estimate_stale)
-        mode_row = QHBoxLayout()
-        mode_row.addWidget(self.fixed_radio)
-        mode_row.addWidget(self.change_radio)
-        mode_row.addStretch()
-        basic.addRow(i18n.EXTRACTION_MODE, mode_row)
-
-        self.interval_edit = QLineEdit("0.8")
+        self.interval_edit = DragDoubleSpinBox(
+            minimum=_FIXED_INTERVAL_MIN,
+            maximum=_FIXED_INTERVAL_MAX,
+            step=0.05,
+            decimals=2,
+            value=0.8,
+            suffix=f" {i18n.t('SECONDS_SUFFIX')}",
+            drag_pixels_per_step=6.0,
+        )
         self.interval_edit.setToolTip(i18n.tip("INTERVAL"))
-        self.interval_edit.setFixedWidth(80)
-        self.interval_edit.textChanged.connect(self._mark_estimate_stale)
-        add_tooltip_row(basic, i18n.INTERVAL, self.interval_edit, i18n.tip("INTERVAL"))
+        self.interval_edit.setFixedWidth(86)
+        self.interval_edit.valueChanged.connect(self._mark_estimate_stale)
 
-        self.threshold_edit = QLineEdit("0.04")
-        self.threshold_edit.setToolTip(i18n.tip("CHANGE_THRESHOLD"))
-        self.threshold_edit.setFixedWidth(80)
-        self.threshold_edit.textChanged.connect(self._mark_estimate_stale)
-        add_tooltip_row(basic, i18n.CHANGE_THRESHOLD, self.threshold_edit, i18n.tip("CHANGE_THRESHOLD"))
-
-        self.min_gap_edit = QLineEdit("0.25")
+        self.min_gap_edit = DragDoubleSpinBox(
+            minimum=_CHANGE_GAP_MIN,
+            maximum=_CHANGE_GAP_MAX,
+            step=0.05,
+            decimals=2,
+            value=0.25,
+            suffix=f" {i18n.t('SECONDS_SUFFIX')}",
+            drag_pixels_per_step=6.0,
+        )
         self.min_gap_edit.setToolTip(i18n.tip("MIN_GAP"))
-        self.min_gap_edit.setFixedWidth(80)
-        self.min_gap_edit.textChanged.connect(self._mark_estimate_stale)
-        add_tooltip_row(basic, i18n.MIN_GAP, self.min_gap_edit, i18n.tip("MIN_GAP"))
+        self.min_gap_edit.setFixedWidth(72)
+        self.min_gap_edit.valueChanged.connect(lambda _: self._clamp_gap_order("min"))
+        self.min_gap_edit.valueChanged.connect(self._mark_estimate_stale)
 
-        self.max_gap_edit = QLineEdit("2.0")
+        self.max_gap_edit = DragDoubleSpinBox(
+            minimum=_CHANGE_GAP_MIN,
+            maximum=_CHANGE_GAP_MAX,
+            step=0.05,
+            decimals=2,
+            value=2.0,
+            suffix=f" {i18n.t('SECONDS_SUFFIX')}",
+            drag_pixels_per_step=6.0,
+        )
         self.max_gap_edit.setToolTip(i18n.tip("MAX_GAP"))
-        self.max_gap_edit.setFixedWidth(80)
-        self.max_gap_edit.textChanged.connect(self._mark_estimate_stale)
-        add_tooltip_row(basic, i18n.MAX_GAP, self.max_gap_edit, i18n.tip("MAX_GAP"))
+        self.max_gap_edit.setFixedWidth(72)
+        self.max_gap_edit.valueChanged.connect(lambda _: self._clamp_gap_order("max"))
+        self.max_gap_edit.valueChanged.connect(self._mark_estimate_stale)
+
+        self.smart_fixed_cb = QCheckBox(i18n.t("FIXED_SMART"))
+        self.smart_fixed_cb.setToolTip(i18n.tip("FIXED_SMART"))
+        self.smart_fixed_cb.setChecked(True)
+        self.smart_fixed_cb.toggled.connect(self._update_mode_widgets)
+        self.smart_fixed_cb.toggled.connect(self._mark_estimate_stale)
+
+        mode_panel = QWidget()
+        mode_layout = QVBoxLayout(mode_panel)
+        mode_layout.setContentsMargins(0, 0, 0, 0)
+        mode_layout.setSpacing(4)
+
+        self.fixed_mode_label = _row_label(f"{i18n.t('MODE_FIXED_SHORT')}:", i18n.tip("MODE_FIXED"))
+        self.interval_label = _row_label(f"{i18n.t('INTERVAL_SHORT')}:", i18n.tip("INTERVAL"))
+        self.min_gap_label = _row_label(f"{i18n.t('MIN_GAP_SHORT')}:", i18n.tip("MIN_GAP"))
+        self.max_gap_label = _row_label(f"{i18n.t('MAX_GAP_SHORT')}:", i18n.tip("MAX_GAP"))
+
+        self.mode_title_label = _row_label(i18n.EXTRACTION_MODE, i18n.tip("EXTRACTION_MODE"))
+        self.mode_title_label.setObjectName("paneTitle")
+        self.mode_panel = mode_panel
+        mode_layout.addWidget(self.mode_title_label)
+
+        fixed_row_widget = QWidget()
+        fixed_row = QHBoxLayout(fixed_row_widget)
+        fixed_row.setContentsMargins(0, 0, 0, 0)
+        fixed_row.setSpacing(4)
+        fixed_row.addWidget(self.fixed_mode_label)
+        fixed_row.addWidget(self.interval_label)
+        fixed_row.addWidget(self.interval_edit)
+        fixed_row.addStretch()
+        mode_layout.addWidget(fixed_row_widget)
+
+        smart_row_widget = QWidget()
+        smart_row = QHBoxLayout(smart_row_widget)
+        smart_row.setContentsMargins(0, 0, 0, 0)
+        smart_row.setSpacing(4)
+        smart_row.addWidget(self.smart_fixed_cb)
+        smart_row.addWidget(self.min_gap_label)
+        smart_row.addWidget(self.min_gap_edit)
+        smart_row.addWidget(self.max_gap_label)
+        smart_row.addWidget(self.max_gap_edit)
+        smart_row.addStretch()
+        mode_layout.addWidget(smart_row_widget)
+
+        self.fixed_interval_row = fixed_row_widget
+        self.smart_interval_row = smart_row_widget
+        layout.addWidget(mode_panel)
 
         # 画像形式
+        format_form = QFormLayout()
+        format_form.setSpacing(6)
         fmt_row = QHBoxLayout()
         self.image_ext_combo = QComboBox()
         self.image_ext_combo.setToolTip(i18n.tip("IMAGE_FORMAT"))
@@ -149,26 +207,42 @@ class ExtractStep(BaseStepWidget):
         jpg_quality_label = QLabel(i18n.JPEG_QUALITY + ":")
         jpg_quality_label.setToolTip(i18n.tip("JPEG_QUALITY"))
         fmt_row.addWidget(jpg_quality_label)
-        self.jpg_quality_edit = QLineEdit("2")
+        self.jpg_quality_edit = DragSpinBox(
+            minimum=_JPEG_QUALITY_MIN,
+            maximum=_JPEG_QUALITY_MAX,
+            step=1,
+            value=_JPEG_QUALITY_DEFAULT,
+            drag_pixels_per_step=6.0,
+        )
         self.jpg_quality_edit.setToolTip(i18n.tip("JPEG_QUALITY"))
-        self.jpg_quality_edit.setFixedWidth(50)
+        self.jpg_quality_edit.setFixedWidth(54)
+        self.jpg_quality_edit.valueChanged.connect(self._mark_estimate_stale)
         fmt_row.addWidget(self.jpg_quality_edit)
         fmt_row.addStretch()
-        add_tooltip_row(basic, i18n.IMAGE_FORMAT, fmt_row, i18n.tip("IMAGE_FORMAT"))
+        add_tooltip_row(format_form, i18n.IMAGE_FORMAT, fmt_row, i18n.tip("IMAGE_FORMAT"))
+        layout.addLayout(format_form)
 
-        layout.addLayout(basic)
+        # ===== 詳細設定 (折りたたみ) =====
+        advanced = CollapsibleSection(i18n.t("ADVANCED_SETTINGS"), expanded=False)
+        advanced.layout().removeWidget(advanced.toggle_button)
+        advanced.layout().setContentsMargins(0, 0, 0, 0)
+        advanced.toggle_button.setParent(None)
 
         # ===== 動画情報 (コンパクト) =====
-        info_box = QHBoxLayout()
-        info_box.setSpacing(12)
+        info_row_widget = QWidget()
+        info_box = QHBoxLayout(info_row_widget)
+        info_box.setContentsMargins(0, 0, 0, 0)
+        info_box.setSpacing(8)
 
         self.load_info_btn = QPushButton(i18n.t("VIDEO_INFO_LOAD"))
         self.load_info_btn.setToolTip(i18n.tip("VIDEO_INFO_BTN"))
-        self.load_info_btn.setMinimumWidth(150)
+        self.load_info_btn.setMinimumWidth(132)
         self.load_info_btn.clicked.connect(lambda: self._load_video_info(show_error=True))
         info_box.addWidget(self.load_info_btn)
+        info_box.addWidget(advanced.toggle_button)
         info_box.addStretch()
-        layout.addLayout(info_box)
+        self.extract_action_row = info_row_widget
+        layout.addWidget(info_row_widget)
 
         work_layout.addWidget(QLabel(i18n.VIDEO_INFO))
         self.video_info_label = QLabel(i18n.t("VIDEO_LABEL_DEFAULT"))
@@ -184,8 +258,6 @@ class ExtractStep(BaseStepWidget):
         work_layout.addWidget(self.estimate_label)
         work_layout.addStretch()
 
-        # ===== 詳細設定 (折りたたみ) =====
-        advanced = CollapsibleSection(i18n.t("ADVANCED_SETTINGS"), expanded=False)
         adv_form = QFormLayout()
         adv_form.setSpacing(6)
 
@@ -200,11 +272,6 @@ class ExtractStep(BaseStepWidget):
         selection_title.setObjectName("paneTitle")
         selection_title.setToolTip(i18n.t("AUTO_SELECTION_HINT"))
         advanced.content_layout.addWidget(selection_title)
-
-        selection_hint = QLabel(i18n.t("AUTO_SELECTION_HINT"))
-        selection_hint.setStyleSheet("color: #8888aa; font-size: 9pt;")
-        selection_hint.setWordWrap(True)
-        advanced.content_layout.addWidget(selection_hint)
 
         selection_form = QFormLayout()
         selection_form.setSpacing(6)
@@ -264,12 +331,6 @@ class ExtractStep(BaseStepWidget):
         path_form = QFormLayout()
         path_form.setSpacing(6)
 
-        # キャッシュ無効化チェックボックス
-        from PySide6.QtWidgets import QCheckBox  # 局所 import: 既存 import 行への影響回避
-        self.no_cache_cb = QCheckBox(i18n.t("NO_CACHE"))
-        self.no_cache_cb.setToolTip(i18n.t("NO_CACHE_HINT"))
-        path_form.addRow("", self.no_cache_cb)
-
         # ffmpeg / ffprobe: PATH から自動検出して初期値にセット。参照ボタンで上書き可能
         ffmpeg_filter = "Executable (*.exe);;すべて (*.*)" if sys.platform == "win32" else "すべて (*.*)"
         self.ffmpeg_browse = BrowseWidget(mode="file", filter_str=ffmpeg_filter,
@@ -288,11 +349,6 @@ class ExtractStep(BaseStepWidget):
         self.prefix_edit.setToolTip(i18n.tip("FILENAME_PREFIX"))
         self.prefix_edit.setPlaceholderText(i18n.t("AUTO_PREFIX_HINT"))
         add_tooltip_row(path_form, i18n.FILENAME_PREFIX, self.prefix_edit, i18n.tip("FILENAME_PREFIX"))
-
-        self.refresh_sample_btn = QPushButton(i18n.t("SAMPLE_REFRESH"))
-        self.refresh_sample_btn.setToolTip(i18n.tip("SAMPLE_BTN"))
-        self.refresh_sample_btn.clicked.connect(self._run_sampled_estimate_now)
-        path_form.addRow("", self.refresh_sample_btn)
 
         advanced.content_layout.addLayout(path_form)
         layout.addWidget(advanced)
@@ -318,14 +374,37 @@ class ExtractStep(BaseStepWidget):
     # -- モード --
 
     def _mode(self) -> str:
-        return "fixed" if self.fixed_radio.isChecked() else "change"
+        return "fixed"
 
     def _update_mode_widgets(self) -> None:
-        is_fixed = self._mode() == "fixed"
-        self.interval_edit.setEnabled(is_fixed)
-        self.threshold_edit.setEnabled(not is_fixed)
-        self.min_gap_edit.setEnabled(not is_fixed)
-        self.max_gap_edit.setEnabled(not is_fixed)
+        smart_enabled = self.smart_fixed_cb.isChecked()
+        for widget in (self.fixed_mode_label, self.interval_label, self.interval_edit):
+            widget.setEnabled(True)
+        for widget in (
+            self.smart_fixed_cb,
+            self.min_gap_label,
+            self.min_gap_edit,
+            self.max_gap_label,
+            self.max_gap_edit,
+        ):
+            widget.setEnabled(smart_enabled or widget is self.smart_fixed_cb)
+        if hasattr(self, "thin_motion_edit"):
+            self.thin_motion_edit.setEnabled(smart_enabled)
+    def _clamp_gap_order(self, changed: str) -> None:
+        if self._syncing_gap_fields:
+            return
+        min_gap = self.min_gap_edit.value()
+        max_gap = self.max_gap_edit.value()
+        if min_gap <= max_gap:
+            return
+        self._syncing_gap_fields = True
+        try:
+            if changed == "min":
+                self.max_gap_edit.setValue(min_gap)
+            else:
+                self.min_gap_edit.setValue(max_gap)
+        finally:
+            self._syncing_gap_fields = False
 
     # -- コマンド構築 --
 
@@ -353,7 +432,7 @@ class ExtractStep(BaseStepWidget):
             "--quality-min-score", f"{self.quality_min_score_edit.value():g}",
             "--quality-min-improvement", f"{self.quality_min_improvement_edit.value():g}",
             "--image-ext", self.image_ext_combo.currentText(),
-            "--jpg-quality", self.jpg_quality_edit.text().strip(),
+            "--jpg-quality", str(self.jpg_quality_edit.value()),
             "--ffmpeg", self.ffmpeg_browse.text() or "ffmpeg",
             "--ffprobe", self.ffprobe_browse.text() or "ffprobe",
         ]
@@ -361,20 +440,18 @@ class ExtractStep(BaseStepWidget):
         if prefix:
             cmd.extend(["--filename-prefix", prefix])
 
-        if self._mode() == "fixed":
-            cmd.extend(["--interval-sec", self.interval_edit.text().strip()])
-        else:
+        cmd.extend(["--interval-sec", f"{self.interval_edit.value():g}"])
+        if self.smart_fixed_cb.isChecked():
             cmd.extend([
-                "--change-threshold", self.threshold_edit.text().strip(),
-                "--min-gap-sec", self.min_gap_edit.text().strip(),
-                "--max-gap-sec", self.max_gap_edit.text().strip(),
+                "--fixed-smart",
+                "--min-gap-sec", f"{self.min_gap_edit.value():g}",
+                "--max-gap-sec", f"{self.max_gap_edit.value():g}",
             ])
 
         # 0.0 でも明示的に渡す（GUI 値が CLI デフォルトに上書きされないように）
-        cmd.extend(["--thin-motion-threshold", f"{self.thin_motion_edit.value():g}"])
+        thin_threshold = self.thin_motion_edit.value() if self.smart_fixed_cb.isChecked() else 0.0
+        cmd.extend(["--thin-motion-threshold", f"{thin_threshold:g}"])
 
-        if self.no_cache_cb.isChecked():
-            cmd.append("--no-cache")
         return cmd
 
     # -- プログレス解析 --
@@ -428,9 +505,7 @@ class ExtractStep(BaseStepWidget):
         except Exception as e:
             self.video_info = None
             self._update_video_info_label()
-            self._cancel_sample_estimate()
             self.instant_estimate_text = "-"
-            self.sampled_estimate_text = "-"
             self._refresh_estimate_label()
             if show_error:
                 QMessageBox.critical(self, i18n.INVALID_INPUT, str(e))
@@ -490,25 +565,11 @@ class ExtractStep(BaseStepWidget):
     # -- フレーム数推定 --
 
     def _refresh_estimate_label(self) -> None:
-        self.estimate_label.setText(
-            f"{i18n.INSTANT_ESTIMATE}: {self.instant_estimate_text}    "
-            f"{i18n.SAMPLED_ESTIMATE}: {self.sampled_estimate_text}"
-        )
+        self.estimate_label.setText(f"{i18n.INSTANT_ESTIMATE}: {self.instant_estimate_text}")
 
     def _mark_estimate_stale(self, *_args) -> None:
         self.last_estimate_summary = None
         self._update_instant_estimate()
-        if self._mode() == "fixed":
-            self.sampled_estimate_text = "-"
-            self._cancel_sample_estimate()
-            self._refresh_estimate_label()
-            return
-        if not self.video_info:
-            self.sampled_estimate_text = "-"
-            self._cancel_sample_estimate()
-            self._refresh_estimate_label()
-            return
-        self._schedule_sample_estimate()
 
     def _update_instant_estimate(self) -> None:
         if not self.video_info:
@@ -519,129 +580,23 @@ class ExtractStep(BaseStepWidget):
         fps = float(self.video_info.get("fps", 0))
         total = int(self.video_info.get("total_frames", 0))
 
-        if self._mode() == "fixed":
-            try:
-                iv = float(self.interval_edit.text().strip())
-                if iv <= 0:
-                    raise ValueError
-                if total <= 0 and dur > 0 and fps > 0:
-                    total = max(1, int(round(dur * fps)))
-                step = max(1, int(round(iv * fps)))
-                indices = list(range(0, max(total, 1), step))
-                if indices[-1] != max(total - 1, 0):
-                    indices.append(max(total - 1, 0))
-                self.instant_estimate_text = f"{len(indices)} フレーム"
-            except Exception:
-                self.instant_estimate_text = "-"
-            self._refresh_estimate_label()
-            return
-
         try:
-            thr = float(self.threshold_edit.text().strip())
-            min_g = float(self.min_gap_edit.text().strip())
-            max_g = float(self.max_gap_edit.text().strip())
-            if min_g <= 0 or max_g <= 0 or max_g < min_g:
+            iv = self.interval_edit.value()
+            if iv <= 0:
                 raise ValueError
-            min_c = max(1, int(math.ceil(dur / max_g)))
-            max_c = max(min_c, int(math.ceil(dur / min_g)))
-            low, high = 0.01, 0.12
-            w = max(0.0, min(1.0, (thr - low) / (high - low)))
-            est_gap = min_g + w * (max_g - min_g)
-            est = max(1, int(math.ceil(dur / max(est_gap, 1e-6)))) if dur > 0 else 1
-            est = max(min_c, min(max_c, est))
-            self.instant_estimate_text = f"{min_c}-{max_c} フレーム (推定: {est})"
+            if total <= 0 and dur > 0 and fps > 0:
+                total = max(1, int(round(dur * fps)))
+            step = max(1, int(round(iv * fps)))
+            indices = list(range(0, max(total, 1), step))
+            if indices[-1] != max(total - 1, 0):
+                indices.append(max(total - 1, 0))
+            text = f"{len(indices)} {i18n.t('FRAMES_UNIT')}"
+            if self.smart_fixed_cb.isChecked():
+                text += f" ({i18n.t('FIXED_SMART_ESTIMATE')})"
+            self.instant_estimate_text = text
         except Exception:
             self.instant_estimate_text = "-"
         self._refresh_estimate_label()
-
-    # -- サンプル推定 --
-
-    def _cancel_sample_estimate(self) -> None:
-        self.sample_timer.stop()
-        proc = self.sample_proc
-        self.sample_proc = None
-        self._sample_buffer = ""
-        if proc is not None and proc.state() != QProcess.NotRunning:
-            proc.kill()
-            proc.waitForFinished(2000)
-
-    def _schedule_sample_estimate(self, delay_ms: int = 500) -> None:
-        if self._mode() != "change" or not self.video_info:
-            return
-        self._cancel_sample_estimate()
-        self.sampled_estimate_text = "計算中..."
-        self._refresh_estimate_label()
-        self.sample_timer.start(max(0, delay_ms))
-
-    def _start_sample_estimate(self) -> None:
-        if self._mode() != "change" or not self.video_info:
-            return
-        try:
-            cmd = self._build_extract_cmd()
-        except Exception as e:
-            self.sampled_estimate_text = f"- ({e})"
-            self._refresh_estimate_label()
-            return
-        cmd.extend([
-            "--estimate-only", "--estimate-mode", "sampled",
-            "--sample-segments", str(self.sample_segments),
-            "--sample-segment-sec", str(self.sample_segment_sec),
-            "--sample-fps", str(self.sample_fps),
-            "--print-summary-json",
-        ])
-        self._cancel_sample_estimate()
-
-        proc = QProcess(self)
-        proc.setProgram(cmd[0])
-        proc.setArguments(cmd[1:])
-        proc.setProcessChannelMode(QProcess.MergedChannels)
-        proc.readyReadStandardOutput.connect(lambda p=proc: self._on_sample_output(p))
-        proc.finished.connect(lambda code, status, p=proc: self._on_sample_finished(p, code))
-        self.sample_proc = proc
-        proc.start()
-
-    def _on_sample_output(self, proc: QProcess) -> None:
-        if proc is not self.sample_proc:
-            return
-        data = bytes(proc.readAllStandardOutput()).decode("utf-8", errors="replace")
-        self._sample_buffer += data
-        while "\n" in self._sample_buffer:
-            line, self._sample_buffer = self._sample_buffer.split("\n", 1)
-            line = line.rstrip("\r")
-            if line and line.startswith("SUMMARY_JSON:"):
-                try:
-                    summary = json.loads(line[len("SUMMARY_JSON:"):])
-                    self.last_estimate_summary = summary
-                    self._apply_summary(summary)
-                except Exception:
-                    pass
-
-    def _on_sample_finished(self, proc: QProcess, exit_code: int) -> None:
-        if proc is not self.sample_proc:
-            return
-        if self._sample_buffer:
-            line = self._sample_buffer.rstrip("\r")
-            if line.startswith("SUMMARY_JSON:"):
-                try:
-                    summary = json.loads(line[len("SUMMARY_JSON:"):])
-                    self._apply_summary(summary)
-                except Exception:
-                    pass
-            self._sample_buffer = ""
-        if exit_code != 0 and self._mode() == "change":
-            self.sampled_estimate_text = "- (失敗)"
-            self._refresh_estimate_label()
-        self.sample_proc = None
-
-    def _run_sampled_estimate_now(self) -> None:
-        if self._mode() != "change":
-            self.sampled_estimate_text = "-"
-            self._refresh_estimate_label()
-            return
-        if not self.video_info:
-            if not self._load_video_info(show_error=True):
-                return
-        self._schedule_sample_estimate(delay_ms=0)
 
     def _apply_summary(self, summary: dict) -> None:
         video = summary.get("video", {})
@@ -659,11 +614,10 @@ class ExtractStep(BaseStepWidget):
         selected = int(result.get("selected_count", 0))
         total_f = int(video.get("total_frames", 0))
         ratio = (selected / total_f * 100.0) if total_f > 0 else 0.0
-        est = summary.get("estimate", {})
-        parts = [f"{selected} フレーム ({ratio:.1f}%)"]
-        if est.get("sampled_segments_used") is not None:
-            parts.append(f"seg={est['sampled_segments_used']}/{est.get('sampled_segments_requested', '?')}")
-        if est.get("range_min_count") is not None:
-            parts.append(f"range={est['range_min_count']}-{est.get('range_max_count', '?')}")
-        self.sampled_estimate_text = ", ".join(parts)
+        parts = [f"{selected} {i18n.t('FRAMES_UNIT')} ({ratio:.1f}%)"]
+        if result.get("smart_added_count"):
+            parts.append(f"+{int(result['smart_added_count'])}")
+        if result.get("thinned_count"):
+            parts.append(f"-{int(result['thinned_count'])}")
+        self.instant_estimate_text = " ".join(parts)
         self._refresh_estimate_label()
