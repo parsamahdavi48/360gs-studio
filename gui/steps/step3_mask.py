@@ -17,7 +17,6 @@ from PySide6.QtWidgets import (
     QGridLayout,
     QHBoxLayout,
     QLabel,
-    QLineEdit,
     QScrollArea,
     QSplitter,
     QVBoxLayout,
@@ -309,9 +308,8 @@ class MaskStep(BaseStepWidget):
         self.stitch_boundary_width_edit.valueChanged.connect(lambda _: self._render_mask_preview())
         self.overexp_threshold_edit.valueChanged.connect(lambda _: self._render_mask_preview())
         self.overexp_dilate_edit.valueChanged.connect(lambda _: self._render_mask_preview())
-        self.mask_preview.sample_edit.textChanged.connect(lambda _: self._render_mask_preview())
+        self.mask_preview.current_image_changed.connect(lambda: self._render_mask_preview())
         self.mask_preview.opacity_slider.valueChanged.connect(lambda _: self._render_mask_preview())
-        self.mask_preview.opacity_spin.valueChanged.connect(lambda _: self._render_mask_preview())
         self.mask_preview.yolo_preview_requested.connect(self._run_yolo_preview)
         self._update_task_controls()
         self._on_images_dir_changed(self._images_dir_text())

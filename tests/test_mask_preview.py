@@ -6,7 +6,7 @@ import numpy as np
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PySide6.QtWidgets import QApplication, QPushButton
+from PySide6.QtWidgets import QApplication, QLineEdit, QPushButton, QSpinBox
 
 from gui import i18n
 from gui.mask.mask_preview import MaskPreviewConfig, MaskPreviewWidget
@@ -23,7 +23,7 @@ def test_yolo_preview_output_name_matches_yolo_mask_script() -> None:
     assert _yolo_preview_output_name(image) == "frame_000001.png"
 
 
-def test_mask_preview_removes_manual_image_picker_buttons() -> None:
+def test_mask_preview_removes_manual_image_picker_and_opacity_spinbox() -> None:
     _app()
     widget = MaskPreviewWidget()
 
@@ -33,7 +33,8 @@ def test_mask_preview_removes_manual_image_picker_buttons() -> None:
     assert i18n.t("AUTO") not in button_texts
     assert i18n.t("RELOAD") not in button_texts
     assert i18n.t("YOLO_PREVIEW_BUTTON") in button_texts
-    assert widget.sample_edit.isReadOnly()
+    assert not widget.findChildren(QLineEdit)
+    assert not widget.findChildren(QSpinBox)
 
 
 def test_mask_preview_uses_temporary_yolo_preview_mask(tmp_path: Path) -> None:
@@ -46,7 +47,7 @@ def test_mask_preview_uses_temporary_yolo_preview_mask(tmp_path: Path) -> None:
     cv2.imwrite(str(mask_path), mask)
 
     widget = MaskPreviewWidget()
-    widget.sample_edit.setText(str(image_path))
+    widget.set_current_image_path(image_path)
 
     assert widget.set_yolo_preview_mask(image_path, mask_path)
     widget.render(MaskPreviewConfig(use_yolo=True))
@@ -63,7 +64,7 @@ def test_mask_preview_resizes_overexposure_mask_for_large_preview(tmp_path: Path
     cv2.imwrite(str(image_path), image)
 
     widget = MaskPreviewWidget()
-    widget.sample_edit.setText(str(image_path))
+    widget.set_current_image_path(image_path)
 
     widget.render(MaskPreviewConfig(use_yolo=False, use_overexposure=True))
 
@@ -81,6 +82,21 @@ def test_mask_preview_does_not_scan_cwd_without_images_dir(tmp_path: Path, monke
 
     assert widget.preview_images == []
     assert widget.current_image_path() is None
+
+
+def test_mask_preview_timeline_label_shows_current_filename(tmp_path: Path) -> None:
+    _app()
+    image_path = tmp_path / "frame_000001.png"
+    cv2.imwrite(str(image_path), np.full((16, 32, 3), 180, dtype=np.uint8))
+    widget = MaskPreviewWidget()
+
+    widget.set_images_dir(str(tmp_path))
+
+    assert widget.timeline_label.text() == i18n.t("PREVIEW_IMAGE_POSITION_FORMAT").format(
+        seq=1,
+        total=1,
+        name=image_path.name,
+    )
 
 
 def test_mask_step_uses_conservative_manual_yolo_expand_by_default() -> None:

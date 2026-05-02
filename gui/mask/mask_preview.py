@@ -7,12 +7,11 @@ from pathlib import Path
 import cv2
 import numpy as np
 
-from PySide6.QtCore import QSignalBlocker, Qt, Signal
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QImage, QPixmap
 from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
-    QLineEdit,
     QPushButton,
     QSlider,
     QVBoxLayout,
@@ -20,7 +19,6 @@ from PySide6.QtWidgets import (
 )
 
 from gui import i18n
-from gui.common.drag_spinbox import DragSpinBox
 from gui.common.zoomable_image_label import ZoomableImageLabel
 from overexposure_mask import detect_overexposure, read_image_preserve_depth
 from stitch_mask import boundary_width_to_limit_angle, create_angular_stitched_mask
@@ -43,6 +41,7 @@ class MaskPreviewWidget(QWidget):
     """Preview the currently selected mask layers over an equirectangular frame."""
 
     yolo_preview_requested = Signal()
+    current_image_changed = Signal()
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -50,6 +49,7 @@ class MaskPreviewWidget(QWidget):
         self._pixmap: QPixmap | None = None
         self.preview_images: list[Path] = []
         self._slider_sync = False
+        self._current_image_path = ""
         self._yolo_preview_image_key = ""
         self._yolo_preview_mask: np.ndarray | None = None
         self._build_ui()
@@ -64,19 +64,6 @@ class MaskPreviewWidget(QWidget):
         self.image_label.setStyleSheet("border: 1px solid palette(mid);")
         layout.addWidget(self.image_label, stretch=1)
 
-        img_row = QHBoxLayout()
-        img_row.addWidget(QLabel(i18n.t("PREVIEW_IMAGE_LABEL")))
-        self.sample_edit = QLineEdit()
-        self.sample_edit.setToolTip(i18n.tip("PREVIEW_SAMPLE"))
-        self.sample_edit.setReadOnly(True)
-        img_row.addWidget(self.sample_edit, stretch=1)
-
-        self.yolo_preview_btn = QPushButton(i18n.t("YOLO_PREVIEW_BUTTON"))
-        self.yolo_preview_btn.setToolTip(i18n.tip("YOLO_PREVIEW_BUTTON"))
-        self.yolo_preview_btn.clicked.connect(self.yolo_preview_requested.emit)
-        img_row.addWidget(self.yolo_preview_btn)
-        layout.addLayout(img_row)
-
         timeline_row = QHBoxLayout()
         self.slider = QSlider(Qt.Horizontal)
         self.slider.setToolTip(i18n.tip("PREVIEW_SLIDER"))
@@ -89,27 +76,18 @@ class MaskPreviewWidget(QWidget):
         layout.addLayout(timeline_row)
 
         overlay_row = QHBoxLayout()
+        self.yolo_preview_btn = QPushButton(i18n.t("YOLO_PREVIEW_BUTTON"))
+        self.yolo_preview_btn.setToolTip(i18n.tip("YOLO_PREVIEW_BUTTON"))
+        self.yolo_preview_btn.clicked.connect(self.yolo_preview_requested.emit)
+        overlay_row.addWidget(self.yolo_preview_btn)
+
         overlay_row.addWidget(QLabel(i18n.t("MASK_OPACITY_LABEL")))
         self.opacity_slider = QSlider(Qt.Horizontal)
         self.opacity_slider.setToolTip(i18n.tip("MASK_OPACITY"))
         self.opacity_slider.setRange(0, 100)
         self.opacity_slider.setValue(45)
         self.opacity_slider.setMaximumWidth(160)
-        self.opacity_slider.valueChanged.connect(self._on_opacity_slider_changed)
         overlay_row.addWidget(self.opacity_slider)
-
-        self.opacity_spin = DragSpinBox(
-            minimum=0,
-            maximum=100,
-            step=5,
-            value=45,
-            suffix=" %",
-            drag_pixels_per_step=6.0,
-        )
-        self.opacity_spin.setToolTip(i18n.tip("MASK_OPACITY"))
-        self.opacity_spin.setFixedWidth(76)
-        self.opacity_spin.valueChanged.connect(self._on_opacity_spin_changed)
-        overlay_row.addWidget(self.opacity_spin)
 
         self.status_label = QLabel("")
         self.status_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
@@ -123,7 +101,7 @@ class MaskPreviewWidget(QWidget):
         self.refresh_image_list(prefer_current=False)
 
     def render(self, config: MaskPreviewConfig) -> None:
-        sample = self.sample_edit.text().strip()
+        sample = self._current_image_path.strip()
         if not sample:
             self.image_label.setText(i18n.t("NO_PREVIEW"))
             self.status_label.setText("")
@@ -232,7 +210,7 @@ class MaskPreviewWidget(QWidget):
         self._update_pixmap()
 
     def refresh_image_list(self, prefer_current: bool = True) -> None:
-        current = self.sample_edit.text().strip()
+        current = self._current_image_path.strip()
         self.preview_images = self._iter_images()
         total = len(self.preview_images)
         self.slider.setEnabled(total > 0)
@@ -241,6 +219,7 @@ class MaskPreviewWidget(QWidget):
         if total <= 0:
             self.slider.setValue(0)
             self.timeline_label.setText("0 / 0")
+            self._set_current_image_path("", emit=True)
             return
 
         target = 0
@@ -274,15 +253,31 @@ class MaskPreviewWidget(QWidget):
 
     def _set_index(self, idx: int) -> None:
         if not self.preview_images:
-            self.sample_edit.setText("")
             self.timeline_label.setText("0 / 0")
+            self._set_current_image_path("", emit=True)
             return
         idx = max(0, min(idx, len(self.preview_images) - 1))
         self._slider_sync = True
         self.slider.setValue(idx)
         self._slider_sync = False
-        self.sample_edit.setText(str(self.preview_images[idx]))
-        self.timeline_label.setText(f"{idx + 1} / {len(self.preview_images)} : {self.preview_images[idx].name}")
+        self._set_current_image_path(str(self.preview_images[idx]), emit=True)
+        self.timeline_label.setText(
+            i18n.t("PREVIEW_IMAGE_POSITION_FORMAT").format(
+                seq=idx + 1,
+                total=len(self.preview_images),
+                name=self.preview_images[idx].name,
+            )
+        )
+
+    def set_current_image_path(self, image_path: str | Path) -> None:
+        self._set_current_image_path(str(image_path), emit=False)
+
+    def _set_current_image_path(self, image_path: str, emit: bool) -> None:
+        if image_path == self._current_image_path:
+            return
+        self._current_image_path = image_path
+        if emit:
+            self.current_image_changed.emit()
 
     def _load_existing_mask(self, image_path: Path, config: MaskPreviewConfig) -> np.ndarray | None:
         masks_root = Path(config.masks_dir) if config.masks_dir else None
@@ -312,7 +307,7 @@ class MaskPreviewWidget(QWidget):
         return None
 
     def current_image_path(self) -> Path | None:
-        sample = self.sample_edit.text().strip()
+        sample = self._current_image_path.strip()
         if not sample:
             return None
         image_path = Path(sample)
@@ -353,14 +348,6 @@ class MaskPreviewWidget(QWidget):
             return
         if 0 <= idx < len(self.preview_images):
             self._set_index(idx)
-
-    def _on_opacity_slider_changed(self, value: int) -> None:
-        with QSignalBlocker(self.opacity_spin):
-            self.opacity_spin.setValue(value)
-
-    def _on_opacity_spin_changed(self, value: int) -> None:
-        with QSignalBlocker(self.opacity_slider):
-            self.opacity_slider.setValue(value)
 
     def _update_pixmap(self) -> None:
         self.image_label.set_source_pixmap(self._pixmap)
