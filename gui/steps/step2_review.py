@@ -69,11 +69,6 @@ class ReviewStep(BaseStepWidget):
 
         settings_layout.addLayout(form)
 
-        self.reload_review_btn = QPushButton(i18n.t("REVIEW_LOAD_EMBEDDED"))
-        self.reload_review_btn.setToolTip(i18n.t("REVIEW_LOAD_EMBEDDED_HINT"))
-        self.reload_review_btn.clicked.connect(lambda: self._refresh_embedded_review(force=True, show_error=True))
-        settings_layout.addWidget(self.reload_review_btn)
-
         self.review_window_btn = QPushButton(i18n.t("OPEN_REVIEW_EXTERNAL"))
         self.review_window_btn.setToolTip(i18n.tip("OPEN_REVIEW"))
         self.review_window_btn.clicked.connect(self._open_review_window)
@@ -91,7 +86,7 @@ class ReviewStep(BaseStepWidget):
         self.review_layout = QVBoxLayout(self.review_pane)
         self.review_layout.setContentsMargins(12, 12, 12, 12)
         self.review_layout.setSpacing(8)
-        self._set_review_placeholder(i18n.t("REVIEW_EMBED_EMPTY"))
+        self._set_review_placeholder(i18n.t("REVIEW_EMBED_NO_SCENE"))
 
         settings_scroll.setWidget(settings)
         splitter.addWidget(settings_scroll)
@@ -106,6 +101,8 @@ class ReviewStep(BaseStepWidget):
         return Path(self.scene_dir) / csv_name
 
     def _has_csv(self) -> bool:
+        if not self.scene_dir:
+            return False
         return self._csv_path().exists()
 
     def _csv_signature(self) -> tuple[Path, int, int] | None:
@@ -123,7 +120,10 @@ class ReviewStep(BaseStepWidget):
         super().set_scene_dir(path)
         if changed:
             self._loaded_csv_signature = None
-            self._set_review_placeholder(i18n.t("REVIEW_EMBED_EMPTY"))
+            if path:
+                self._set_review_placeholder(i18n.t("REVIEW_EMBED_EMPTY"))
+            else:
+                self._set_review_placeholder(i18n.t("REVIEW_EMBED_NO_SCENE"))
 
     def on_activated(self) -> None:
         self._refresh_embedded_review(force=False, show_error=False)
@@ -169,6 +169,11 @@ class ReviewStep(BaseStepWidget):
         self._refresh_embedded_review(force=True, show_error=False)
 
     def _refresh_embedded_review(self, force: bool = False, show_error: bool = True) -> None:
+        if not self.scene_dir:
+            self._loaded_csv_signature = None
+            self._set_review_placeholder(i18n.t("REVIEW_EMBED_NO_SCENE"))
+            return
+
         signature = self._csv_signature()
         if signature is None:
             self._loaded_csv_signature = None
@@ -181,9 +186,6 @@ class ReviewStep(BaseStepWidget):
         if not force and self._review_widget is not None and signature == self._loaded_csv_signature:
             return
 
-        if not self.scene_dir:
-            self._set_review_placeholder(i18n.t("REVIEW_EMBED_EMPTY"))
-            return
         try:
             from review_frames import ReviewWidget
 
@@ -207,6 +209,9 @@ class ReviewStep(BaseStepWidget):
         script = self.base_dir / "review_frames.py"
         if not script.exists():
             QMessageBox.critical(self, i18n.INVALID_INPUT, f"review_frames.py が見つかりません: {script}")
+            return
+        if not self.scene_dir:
+            QMessageBox.critical(self, i18n.INVALID_INPUT, i18n.t("SCENE_REQUIRED_ACTION_HINT"))
             return
         if not self._has_csv():
             QMessageBox.critical(self, i18n.INVALID_INPUT, f"CSVが見つかりません: {self._csv_path()}")
@@ -251,6 +256,8 @@ class ReviewStep(BaseStepWidget):
         return cmd
 
     def build_commands(self) -> list[tuple[str, list[str]]]:
+        if not self.scene_dir:
+            raise ValueError(i18n.t("SCENE_REQUIRED_ACTION_HINT"))
         if not self._has_csv():
             raise ValueError(f"CSVが見つかりません: {self._csv_path()}")
         if not self._confirm_finalize():

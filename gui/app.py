@@ -33,7 +33,7 @@ from gui.version import app_version_label
 
 
 class MainWindow(QWidget):
-    def __init__(self, initial_scene_dir: str = ".") -> None:
+    def __init__(self, initial_scene_dir: str = "") -> None:
         super().__init__()
         self.base_dir = Path(__file__).resolve().parent.parent
         self.setWindowTitle(f"{i18n.APP_TITLE}  {app_version_label()}")
@@ -68,7 +68,8 @@ class MainWindow(QWidget):
         header.addWidget(QLabel(i18n.SCENE_DIR))
         self.scene_browse = BrowseWidget(mode="dir", placeholder=i18n.t("SCENE_DIR_PLACEHOLDER"))
         self.scene_browse.setToolTip(i18n.tip("SCENE_DIR"))
-        self.scene_browse.set_text(initial_scene_dir)
+        if initial_scene_dir:
+            self.scene_browse.set_text(initial_scene_dir)
         header.addWidget(self.scene_browse, stretch=1)
         header_widget = QWidget()
         header_widget.setObjectName("appHeader")
@@ -228,13 +229,17 @@ class MainWindow(QWidget):
     def _update_run_button(self) -> None:
         running = self.runner.is_running()
         step = self._current_step_widget()
+        scene_selected = bool(self.scene_browse.text())
         if step is not None:
             self.run_btn.setText(f"  {step.primary_action_text()}")
-            self.run_btn.setToolTip(step.primary_action_tooltip())
+            if scene_selected:
+                self.run_btn.setToolTip(step.primary_action_tooltip())
+            else:
+                self.run_btn.setToolTip(i18n.t("SCENE_REQUIRED_ACTION_HINT"))
 
         self.run_btn.setVisible(True)
         action_enabled = step.primary_action_enabled() if step is not None else True
-        self.run_btn.setEnabled(not running and action_enabled)
+        self.run_btn.setEnabled(not running and scene_selected and action_enabled)
 
         self.cancel_btn.setVisible(True)
         self.cancel_btn.setEnabled(running)
@@ -301,7 +306,7 @@ class MainWindow(QWidget):
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=i18n.APP_TITLE)
-    parser.add_argument("--scene", default=".", help="Initial scene directory")
+    parser.add_argument("--scene", default="", help="Initial scene directory")
     parser.add_argument(
         "--version",
         action="version",

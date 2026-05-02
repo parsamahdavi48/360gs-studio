@@ -33,7 +33,8 @@ _JA: dict[str, str] = {
     # Common
     "BROWSE": "参照...",
     "SCENE_DIR": "シーンフォルダ",
-    "SCENE_DIR_PLACEHOLDER": "シーンフォルダを選択...",
+    "SCENE_DIR_PLACEHOLDER": "まず作業シーンフォルダを選択...",
+    "SCENE_REQUIRED_ACTION_HINT": "ヘッダーのシーンフォルダを指定してください。",
     "OUTPUT_DIR": "出力フォルダ",
     "RUN": "実行",
     "GENERATE": "生成",
@@ -109,10 +110,9 @@ _JA: dict[str, str] = {
     "BACKUP_BEFORE_FINALIZE": "実行前に images_backup/ にバックアップ",
     "BACKUP_BEFORE_FINALIZE_HINT": "ON: 確定前に images/ を images_backup/ にフルコピー（既存バックアップは上書き）。OFF: バックアップなし（容量節約・復元不可）。",
     "ACTION_FINALIZE_REVIEW": "適用",
-    "REVIEW_LOAD_EMBEDDED": "再読み込み",
-    "REVIEW_LOAD_EMBEDDED_HINT": "selected_frames.csv を強制的に読み直し、右側の確認ビューを更新します。",
     "OPEN_REVIEW_EXTERNAL": "別ウィンドウで開く",
-    "REVIEW_EMBED_EMPTY": "Step 1 の抽出完了後、ここにフレーム確認ビューが自動表示されます。",
+    "REVIEW_EMBED_NO_SCENE": "ヘッダーのシーンフォルダに抽出済みフォルダを指定すると、selected_frames.csv を自動で読み込みます。",
+    "REVIEW_EMBED_EMPTY": "Step 1 の抽出完了後、または抽出済みのシーンフォルダを指定すると、ここにフレーム確認ビューが自動表示されます。",
     "REVIEW_EMBED_MISSING": "CSVが見つかりません:\n{path}",
 
     # --- review_frames.py (Step 2 レビュー GUI) ---
@@ -316,7 +316,8 @@ _EN: dict[str, str] = {
     # Common
     "BROWSE": "Browse...",
     "SCENE_DIR": "Scene Folder",
-    "SCENE_DIR_PLACEHOLDER": "Select a scene folder...",
+    "SCENE_DIR_PLACEHOLDER": "Select the working scene folder first...",
+    "SCENE_REQUIRED_ACTION_HINT": "Set the scene folder in the header first.",
     "OUTPUT_DIR": "Output Folder",
     "RUN": "Run",
     "GENERATE": "Generate",
@@ -392,10 +393,9 @@ _EN: dict[str, str] = {
     "BACKUP_BEFORE_FINALIZE": "Back up to images_backup/ before finalize",
     "BACKUP_BEFORE_FINALIZE_HINT": "ON: snapshot images/ to images_backup/ before finalizing (existing backup is replaced). OFF: no backup (saves disk; cannot be undone).",
     "ACTION_FINALIZE_REVIEW": "Apply",
-    "REVIEW_LOAD_EMBEDDED": "Reload",
-    "REVIEW_LOAD_EMBEDDED_HINT": "Force-reload selected_frames.csv and refresh the review view on the right.",
     "OPEN_REVIEW_EXTERNAL": "Open Separate Window",
-    "REVIEW_EMBED_EMPTY": "After Step 1 extraction completes, the frame review view appears here automatically.",
+    "REVIEW_EMBED_NO_SCENE": "Set an extracted scene folder in the header to automatically load selected_frames.csv.",
+    "REVIEW_EMBED_EMPTY": "After Step 1 extraction completes, or after you select an extracted scene folder, the frame review view appears here automatically.",
     "REVIEW_EMBED_MISSING": "CSV not found:\n{path}",
 
     # --- review_frames.py (Step 2 review GUI) ---
@@ -583,7 +583,7 @@ _EN: dict[str, str] = {
 # ---------------------------------------------------------------------------
 
 _TIPS_JA: dict[str, str] = {
-    "SCENE_DIR": "作業対象のシーンフォルダ。images/, masks/ などのサブフォルダが自動認識されます",
+    "SCENE_DIR": "作業対象のシーンフォルダ。再開時は selected_frames.csv と images/ がある抽出済みフォルダを指定します。images/, masks/ などのサブフォルダが自動認識されます",
     "RUN": "現在のタブの処理を開始します",
     "CANCEL": "実行中の処理を中断します",
     "INPUT_VIDEO": "エクイレクタングラー形式の360度動画ファイルを選択。参照ダイアログでは複数ファイルを選択できます",
@@ -678,7 +678,7 @@ _TIPS_JA: dict[str, str] = {
 }
 
 _TIPS_EN: dict[str, str] = {
-    "SCENE_DIR": "Working scene folder. Subfolders like images/, masks/ are auto-detected",
+    "SCENE_DIR": "Working scene folder. When resuming, select the extracted folder that contains selected_frames.csv and images/. Subfolders like images/, masks/ are auto-detected",
     "RUN": "Start processing for the current tab",
     "CANCEL": "Abort the running process",
     "INPUT_VIDEO": "Select equirectangular 360-degree video files. The browse dialog supports multiple selection",
