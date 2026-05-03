@@ -234,6 +234,60 @@ def test_custom_grid_controls_apply_immediately_and_keep_pitch_unique() -> None:
     assert pitches[0] != 0.0
 
 
+def test_custom_grid_bulk_selection_emits_single_change() -> None:
+    _app()
+    step = CubemapStep(Path.cwd())
+    idx = step.view_config.view_mode_combo.findData("custom_views")
+    step.view_config.view_mode_combo.setCurrentIndex(idx)
+    step.view_config.yaw_slots_combo.setCurrentText("8")
+    step.view_config.pitch_rows_combo.setCurrentText("5")
+
+    emitted = 0
+
+    def on_changed() -> None:
+        nonlocal emitted
+        emitted += 1
+
+    step.view_config.views_changed.connect(on_changed)
+
+    step.view_config._all_off()
+
+    assert emitted == 1
+    assert sum(1 for view in step.view_config.collect_views(include_disabled=True) if view["enabled"]) == 0
+
+    step.view_config._all_off()
+    assert emitted == 1
+
+    step.view_config._all_on()
+    assert emitted == 2
+    assert sum(1 for view in step.view_config.collect_views(include_disabled=True) if view["enabled"]) == 40
+
+
+def test_view_selection_reuses_cached_input_image_count(tmp_path: Path, monkeypatch) -> None:
+    _app()
+    step = CubemapStep(Path.cwd())
+    step.set_scene_dir(str(tmp_path))
+    images = tmp_path / "images"
+    images.mkdir()
+    _write_test_image(images / "frame_0001.jpg")
+    _write_test_image(images / "frame_0002.jpg")
+    step.on_activated()
+
+    idx = step.view_config.view_mode_combo.findData("custom_views")
+    step.view_config.view_mode_combo.setCurrentIndex(idx)
+    monkeypatch.setattr(step.preview, "render", lambda _views, _mask_dir: None)
+
+    def fail_rescan() -> int:
+        raise AssertionError("unexpected image rescan")
+
+    monkeypatch.setattr(step, "_count_input_images", fail_rescan)
+
+    first_check = step.view_config.pitch_rows[0]["checks"][0]
+    first_check.setChecked(False)
+
+    assert i18n.t("OUTPUT_IMAGE_COUNT_FORMAT").format(count=34) in step.view_config.summary_text()
+
+
 def test_custom_grid_hover_marks_view_and_rerenders_preview(tmp_path: Path, monkeypatch) -> None:
     step = _ready_step(tmp_path)
     idx = step.view_config.view_mode_combo.findData("custom_views")

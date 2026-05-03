@@ -135,6 +135,7 @@ class CubemapStep(BaseStepWidget):
         self._syncing_user_preferences = False
         self._user_preferences_enabled = False
         self._export_method_value = _METHOD_METASHAPE
+        self._input_image_count = 0
         self._build_ui()
 
     def _build_ui(self) -> None:
@@ -522,6 +523,7 @@ class CubemapStep(BaseStepWidget):
             self.ms_xml_browse.set_text("")
             self.ms_ply_browse.set_text("")
             self.preview.set_scene_dir("")
+            self._refresh_input_image_count()
             self._update_output_count()
             self._render_preview()
             return
@@ -533,6 +535,7 @@ class CubemapStep(BaseStepWidget):
         self.ms_xml_browse.set_text(str(self._guess_xml(p)))
         self.ms_ply_browse.set_text(self._guess_ply(p))
         self.preview.set_scene_dir(path)
+        self._refresh_input_image_count()
         self._update_output_count()
         self._render_preview()
 
@@ -544,6 +547,7 @@ class CubemapStep(BaseStepWidget):
 
     def on_activated(self) -> None:
         self.preview.refresh_image_list(prefer_current=True)
+        self._refresh_input_image_count()
         self._update_path_labels()
         self._update_output_count()
         self._render_preview()
@@ -782,6 +786,9 @@ class CubemapStep(BaseStepWidget):
                         count += 1
         return count
 
+    def _refresh_input_image_count(self) -> None:
+        self._input_image_count = len(getattr(self.preview, "preview_images", []) or [])
+
     def _update_output_count(self) -> None:
         label = i18n.t("OUTPUT_IMAGE_COUNT_LABEL")
         try:
@@ -790,7 +797,7 @@ class CubemapStep(BaseStepWidget):
             self.view_config.set_output_count_text(f"{label}: -")
             return
         enabled = sum(1 for v in views if v["enabled"])
-        sources = self._count_input_images()
+        sources = self._input_image_count
         total = sources * enabled
         warn = ""
         if enabled > _BLOCK_ENABLED_VIEWS:

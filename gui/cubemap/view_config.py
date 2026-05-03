@@ -276,6 +276,8 @@ class ViewConfigWidget(QWidget):
         self.views_changed.emit()
 
     def _on_selection_changed(self, *_args) -> None:
+        if self._rebuilding_grid:
+            return
         self._update_selected_label()
         self.views_changed.emit()
 
@@ -471,16 +473,30 @@ class ViewConfigWidget(QWidget):
         self.summary_changed.emit(text)
 
     def _all_on(self) -> None:
-        for row in self.pitch_rows:
-            for cb in row["checks"]:
-                cb.setChecked(True)
-        self._on_selection_changed()
+        self._set_all_checked(True)
 
     def _all_off(self) -> None:
-        for row in self.pitch_rows:
-            for cb in row["checks"]:
-                cb.setChecked(False)
-        self._on_selection_changed()
+        self._set_all_checked(False)
+
+    def _set_all_checked(self, checked: bool) -> None:
+        changed = False
+        self.grid_widget.setUpdatesEnabled(False)
+        try:
+            for row in self.pitch_rows:
+                for cb in row["checks"]:
+                    if cb.isChecked() == checked:
+                        continue
+                    was_blocked = cb.blockSignals(True)
+                    try:
+                        cb.setChecked(checked)
+                    finally:
+                        cb.blockSignals(was_blocked)
+                    changed = True
+        finally:
+            self.grid_widget.setUpdatesEnabled(True)
+
+        if changed:
+            self._on_selection_changed()
 
     def _cube6_views(self, yaw_offset: float) -> list[dict]:
         return [
