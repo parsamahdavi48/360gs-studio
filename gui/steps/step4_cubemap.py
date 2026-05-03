@@ -279,55 +279,82 @@ class CubemapStep(BaseStepWidget):
         adv_form = QFormLayout()
         adv_form.setSpacing(6)
 
-        adv_form.addRow(self.view_config.settings_widget)
-
         self.scale_combo = QComboBox()
         self.scale_combo.setToolTip(i18n.tip("OUTPUT_SCALE"))
-        self.scale_combo.addItem("Full (Quality)", 1.0)
+        self.scale_combo.addItem("Full", 1.0)
         self.scale_combo.addItem("Normal", _NORMAL_OUTPUT_SCALE)
-        self.scale_combo.addItem("Half (Light)", 0.5)
+        self.scale_combo.addItem("Half", 0.5)
         full_scale_index = self.scale_combo.findData(1.0)
         if full_scale_index >= 0:
             self.scale_combo.setCurrentIndex(full_scale_index)
-        self.scale_combo.setFixedWidth(136)
-        add_tooltip_row(adv_form, i18n.OUTPUT_SCALE + ":", self.scale_combo, i18n.tip("OUTPUT_SCALE"))
+        self.scale_combo.setFixedWidth(90)
+        self.output_scale_label = QLabel(i18n.OUTPUT_SCALE + ":")
+        self.output_scale_label.setToolTip(i18n.tip("OUTPUT_SCALE"))
+        self.view_config.angle_row.addWidget(self.output_scale_label)
+        self.view_config.angle_row.addWidget(self.scale_combo)
+        self.view_config.angle_row.addStretch()
 
         self.yaw_per_frame_edit = QLineEdit("30.0")
         self.yaw_per_frame_edit.setFixedWidth(80)
         self.yaw_per_frame_edit.setToolTip(i18n.t("YAW_OFFSET_PER_FRAME_HINT"))
-        add_tooltip_row(
-            adv_form,
-            i18n.t("YAW_OFFSET_PER_FRAME"),
-            self.yaw_per_frame_edit,
-            i18n.t("YAW_OFFSET_PER_FRAME_HINT"),
-        )
+        self.yaw_per_frame_row = QWidget()
+        yaw_per_frame_layout = QHBoxLayout(self.yaw_per_frame_row)
+        yaw_per_frame_layout.setContentsMargins(0, 0, 0, 0)
+        yaw_per_frame_layout.setSpacing(8)
+        self.yaw_per_frame_label = QLabel(i18n.t("YAW_OFFSET_PER_FRAME"))
+        self.yaw_per_frame_label.setToolTip(i18n.t("YAW_OFFSET_PER_FRAME_HINT"))
+        yaw_per_frame_layout.addWidget(self.yaw_per_frame_label)
+        yaw_per_frame_layout.addWidget(self.yaw_per_frame_edit)
+        yaw_per_frame_layout.addStretch()
+        self.view_config.extra_controls_layout.addWidget(self.yaw_per_frame_row)
+
+        adv_form.addRow(self.view_config.settings_widget)
+
+        output_details = CollapsibleSection(i18n.t("OUTPUT_DETAIL"), expanded=False)
+        self.output_details_section = output_details
 
         self.output_format_combo = QComboBox()
         self.output_format_combo.addItem(i18n.t("OUTPUT_FORMAT_AUTO"), "auto")
         for fmt in ("jpg", "png", "tiff", "webp"):
             self.output_format_combo.addItem(fmt, fmt)
-        self.output_format_combo.setFixedWidth(180)
-        adv_form.addRow(i18n.t("OUTPUT_FORMAT"), self.output_format_combo)
+        self.output_format_combo.setFixedWidth(96)
 
         self.output_bit_depth_combo = QComboBox()
         self.output_bit_depth_combo.addItem(i18n.t("OUTPUT_BIT_DEPTH_8"), "8")
         self.output_bit_depth_combo.addItem(i18n.t("OUTPUT_BIT_DEPTH_SOURCE"), "source")
-        self.output_bit_depth_combo.setFixedWidth(180)
-        adv_form.addRow(i18n.t("OUTPUT_BIT_DEPTH"), self.output_bit_depth_combo)
+        self.output_bit_depth_combo.setFixedWidth(86)
+
+        format_row = QWidget()
+        format_layout = QHBoxLayout(format_row)
+        format_layout.setContentsMargins(0, 0, 0, 0)
+        format_layout.setSpacing(8)
+        format_layout.addWidget(QLabel(i18n.t("OUTPUT_FORMAT_COMPACT")))
+        format_layout.addWidget(self.output_format_combo)
+        format_layout.addWidget(QLabel(i18n.t("OUTPUT_BIT_DEPTH_COMPACT")))
+        format_layout.addWidget(self.output_bit_depth_combo)
+        format_layout.addStretch()
+        output_details.content_layout.addWidget(format_row)
 
         self.invert_masks_cb = QCheckBox(i18n.INVERT_MASKS)
         self.invert_masks_cb.setToolTip(i18n.tip("INVERT_MASKS"))
-        adv_form.addRow("", self.invert_masks_cb)
 
         self.jpg_quality_edit = QLineEdit("95")
-        self.jpg_quality_edit.setFixedWidth(80)
-        adv_form.addRow(i18n.t("JPG_QUALITY"), self.jpg_quality_edit)
+        self.jpg_quality_edit.setFixedWidth(64)
+
+        quality_row = QWidget()
+        quality_layout = QHBoxLayout(quality_row)
+        quality_layout.setContentsMargins(0, 0, 0, 0)
+        quality_layout.setSpacing(8)
+        quality_layout.addWidget(self.invert_masks_cb)
+        quality_layout.addSpacing(8)
+        quality_layout.addWidget(QLabel(i18n.t("JPG_QUALITY_COMPACT")))
+        quality_layout.addWidget(self.jpg_quality_edit)
+        quality_layout.addStretch()
+        output_details.content_layout.addWidget(quality_row)
 
         adv_output.content_layout.addLayout(adv_form)
+        adv_output.content_layout.addWidget(output_details)
         left_layout.addWidget(adv_output)
-
-        # ビュー設定
-        left_layout.addWidget(self.view_config)
 
         left_layout.addStretch()
 
@@ -674,7 +701,7 @@ class CubemapStep(BaseStepWidget):
         try:
             yaw_step = float(self.yaw_per_frame_edit.text().strip())
         except ValueError:
-            raise ValueError("フレーム別ヨー回転は数値で指定してください")
+            raise ValueError("フレーム別Yaw回転は数値で指定してください")
         cmd.extend(["--yaw-offset-per-frame", f"{yaw_step:g}"])
 
         out_fmt = self.output_format_combo.currentData() or "auto"

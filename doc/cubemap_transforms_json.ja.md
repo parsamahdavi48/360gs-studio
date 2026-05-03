@@ -141,14 +141,14 @@ python cubemap_transforms_json.py . ./cubic --no_transform
 |--no_transform|(no)|座標軸変換を行いません|
 |--brush|(no)|Brush向けの座標変換を行います|
 |--duplicate|(no)|マージされたチャンク間で同名の画像を許可|
-|--yaw-offset-per-frame|角度°|フレームごとのキューブマップヨー回転ステップ (default=30.0)。各ユニーク入力画像に `yaw = frame_index * step (mod 360)` を適用し、cubemap 面境界アーティファクトの蓄積を防いで 3DGS 学習の安定性を向上させる。`0` 指定で旧動作に戻す。|
+|--yaw-offset-per-frame|角度°|フレームごとのキューブマップYaw回転ステップ (default=30.0)。各ユニーク入力画像に `yaw = frame_index * step (mod 360)` を適用し、cubemap 面境界アーティファクトの蓄積を防いで 3DGS 学習の安定性を向上させる。`0` 指定で旧動作に戻す。|
 |--output-format|auto/jpg/png/tiff/webp|出力画像フォーマット (default=auto、入力に合わせる)。|
 |--output-bit-depth|8/source|出力画像のビット深度 (default=8)。`8` は互換性重視で8bitへ変換、`source` はPNG/TIFFで元ビット深度を保持。マスク出力は常に8bit PNG。|
 |--jpg-quality|1-100|JPEG / WebP 品質 (default=95)|
 
-### フレームごとヨー回転 (per-frame yaw)
+### フレームごとYaw回転 (per-frame yaw)
 
-デフォルトで、各ユニーク入力フレームに異なる cubemap ヨーオフセット (`frame_index * 30°` mod 360°) が適用されます。これにより cubemap 面境界がフレームごとに違うシーン方向に落ち、サンプリングが多様化されます。同じワールド位置に境界アーティファクトが繰り返し蓄積するのを防ぎ、3DGS 学習の安定性を向上させます。旧動作（フレーム共通ヨー）に戻すには `--yaw-offset-per-frame 0` を指定してください。
+デフォルトで、各ユニーク入力フレームに異なる cubemap Yawオフセット (`frame_index * 30°` mod 360°) が適用されます。これにより cubemap 面境界がフレームごとに違うシーン方向に落ち、サンプリングが多様化されます。同じワールド位置に境界アーティファクトが繰り返し蓄積するのを防ぎ、3DGS 学習の安定性を向上させます。旧動作（フレーム共通Yaw）に戻すには `--yaw-offset-per-frame 0` を指定してください。
 
 デフォルト 30° なら、ユニークオフセットは `{0°, 30°, 60°, ..., 330°}` の 12 種類で循環します。ワーカーは (yaw_offset, view) ごとに remap テーブルをキャッシュするため、メモリはユニークオフセット数に比例（フレーム数には依存しない）。
 

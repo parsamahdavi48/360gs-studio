@@ -1,4 +1,4 @@
-"""ピッチ/ヨーグリッド、ビュー設定"""
+"""Pitch/Yaw グリッド、ビュー設定"""
 from __future__ import annotations
 
 import re
@@ -73,6 +73,7 @@ class ViewConfigWidget(QWidget):
         self.view_mode_combo.setToolTip(i18n.tip("VIEW_MODE"))
         self.view_mode_combo.addItem(i18n.t("CUSTOM_GRID"), VIEW_MODE_CUSTOM)
         self.view_mode_combo.addItem(i18n.t("CUBE6_LABEL"), VIEW_MODE_CUBE6)
+        self.view_mode_combo.setMinimumWidth(180)
         self.view_mode_combo.currentIndexChanged.connect(self._on_view_mode_changed)
         mode_label = QLabel(i18n.t("VIEW_MODE_LABEL"))
         mode_label.setToolTip(i18n.tip("VIEW_MODE"))
@@ -82,50 +83,51 @@ class ViewConfigWidget(QWidget):
 
         angle_row = QHBoxLayout()
         angle_row.setSpacing(8)
+        self.angle_row = angle_row
         self.yaw_offset_edit = QLineEdit("45.0")
         self.yaw_offset_edit.setToolTip(i18n.tip("YAW_OFFSET"))
-        self.yaw_offset_edit.setFixedWidth(60)
+        self.yaw_offset_edit.setFixedWidth(72)
         self.yaw_offset_edit.textChanged.connect(self._on_params_changed)
         yaw_offset_label = QLabel(i18n.t("YAW_OFFSET_LABEL"))
         yaw_offset_label.setToolTip(i18n.tip("YAW_OFFSET"))
         angle_row.addWidget(yaw_offset_label)
         angle_row.addWidget(self.yaw_offset_edit)
+        ctrl.addLayout(angle_row)
 
+        self.extra_controls_layout = QVBoxLayout()
+        self.extra_controls_layout.setContentsMargins(0, 0, 0, 0)
+        self.extra_controls_layout.setSpacing(6)
+        ctrl.addLayout(self.extra_controls_layout)
+
+        self.custom_controls_widget = QWidget()
+        custom_row = QHBoxLayout(self.custom_controls_widget)
+        custom_row.setContentsMargins(0, 0, 0, 0)
+        custom_row.setSpacing(8)
         self.yaw_slots_combo = QComboBox()
         self.yaw_slots_combo.setToolTip(i18n.tip("YAW_SLOTS"))
         self.yaw_slots_combo.addItems([str(v) for v in range(_MIN_YAW_SLOTS, _MAX_YAW_SLOTS + 1)])
         self.yaw_slots_combo.setCurrentText(str(_DEFAULT_YAW_SLOTS))
+        self.yaw_slots_combo.setFixedWidth(56)
         self.yaw_slots_combo.currentTextChanged.connect(lambda _: self._apply_pitch_rows())
         self.yaw_slots_label = QLabel(i18n.t("YAW_SLOTS_LABEL"))
         self.yaw_slots_label.setToolTip(i18n.tip("YAW_SLOTS"))
-        angle_row.addWidget(self.yaw_slots_label)
-        angle_row.addWidget(self.yaw_slots_combo)
-        angle_row.addStretch()
-        ctrl.addLayout(angle_row)
+        custom_row.addWidget(self.yaw_slots_label)
+        custom_row.addWidget(self.yaw_slots_combo)
 
-        pitch_row = QHBoxLayout()
-        pitch_row.setSpacing(8)
         self.pitch_edit = QLineEdit("-30,0,30")
         self.pitch_edit.setToolTip(i18n.tip("PITCH_ROWS"))
+        self.pitch_edit.setFixedWidth(132)
         self.pitch_label = QLabel(i18n.t("PITCH_ROWS_LABEL"))
         self.pitch_label.setToolTip(i18n.tip("PITCH_ROWS"))
-        pitch_row.addWidget(self.pitch_label)
-        pitch_row.addWidget(self.pitch_edit, stretch=1)
+        custom_row.addWidget(self.pitch_label)
+        custom_row.addWidget(self.pitch_edit)
 
         self.apply_btn = QPushButton(i18n.t("APPLY"))
         self.apply_btn.setToolTip(i18n.tip("APPLY_BTN"))
         self.apply_btn.clicked.connect(self._apply_pitch_rows)
-        pitch_row.addWidget(self.apply_btn)
-        ctrl.addLayout(pitch_row)
-        if self._show_settings:
-            layout.addWidget(self.settings_widget)
-
-        summary_row = QHBoxLayout()
-        self.selected_label = QLabel(f"{i18n.t('SELECTED_VIEWS')}: 0")
-        self.selected_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
-        summary_row.addStretch()
-        summary_row.addWidget(self.selected_label)
-        layout.addLayout(summary_row)
+        self.apply_btn.setMinimumWidth(58)
+        custom_row.addWidget(self.apply_btn)
+        ctrl.addWidget(self.custom_controls_widget)
 
         # ビュー選択グリッド
         self.grid_section = CollapsibleSection(i18n.t("VIEW_SELECTION_SECTION"), expanded=False)
@@ -144,7 +146,17 @@ class ViewConfigWidget(QWidget):
         self.grid_layout.setHorizontalSpacing(8)
         self.grid_layout.setVerticalSpacing(4)
         self.grid_section.content_layout.addWidget(self.grid_widget)
-        layout.addWidget(self.grid_section)
+        ctrl.addWidget(self.grid_section)
+
+        summary_row = QHBoxLayout()
+        self.selected_label = QLabel(f"{i18n.t('SELECTED_VIEWS')}: 0")
+        self.selected_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+        summary_row.addStretch()
+        summary_row.addWidget(self.selected_label)
+        ctrl.addLayout(summary_row)
+
+        if self._show_settings:
+            layout.addWidget(self.settings_widget)
 
         cube6_index = self.view_mode_combo.findData(VIEW_MODE_CUBE6)
         if cube6_index >= 0:
@@ -200,11 +212,7 @@ class ViewConfigWidget(QWidget):
 
     def _on_view_mode_changed(self, _index: int) -> None:
         is_custom = self.view_mode() == VIEW_MODE_CUSTOM
-        self.yaw_slots_label.setVisible(is_custom)
-        self.yaw_slots_combo.setVisible(is_custom)
-        self.pitch_label.setVisible(is_custom)
-        self.pitch_edit.setVisible(is_custom)
-        self.apply_btn.setVisible(is_custom)
+        self.custom_controls_widget.setVisible(is_custom)
         self.grid_widget.setVisible(is_custom)
         self.grid_section.setVisible(is_custom)
         self._on_selection_changed()
@@ -221,21 +229,21 @@ class ViewConfigWidget(QWidget):
     def _parse_pitches(self) -> list[float]:
         raw = self.pitch_edit.text().strip()
         if not raw:
-            raise ValueError("ピッチ行が空です")
+            raise ValueError("Pitch行が空です")
         tokens = [t for t in re.split(r"[,\s]+", raw) if t]
         pitches, seen = [], set()
         for t in tokens:
             p = float(t)
             if p < -90.0 or p > 90.0:
-                raise ValueError(f"ピッチ範囲外 [-90, 90]: {p}")
+                raise ValueError(f"Pitch範囲外 [-90, 90]: {p}")
             key = f"{p:.6f}"
             if key not in seen:
                 seen.add(key)
                 pitches.append(p)
         if not pitches:
-            raise ValueError("有効なピッチがありません")
+            raise ValueError("有効なPitchがありません")
         if len(pitches) > _MAX_PITCH_ROWS:
-            raise ValueError(f"ピッチ行は最大 {_MAX_PITCH_ROWS} 行です")
+            raise ValueError(f"Pitch行は最大 {_MAX_PITCH_ROWS} 行です")
         return pitches
 
     def _clear_grid(self) -> None:
@@ -254,7 +262,7 @@ class ViewConfigWidget(QWidget):
         try:
             pitches = self._parse_pitches()
         except Exception as e:
-            QMessageBox.critical(self, "ピッチエラー", str(e))
+            QMessageBox.critical(self, "Pitchエラー", str(e))
             return
 
         slots = self.yaw_slot_count()

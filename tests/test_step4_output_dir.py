@@ -77,6 +77,12 @@ def test_cubemap_step_uses_fixed_output_folder_label(tmp_path: Path) -> None:
     assert step.export_masks_cb.isChecked()
     assert not _is_descendant(step.export_targets_row, step.advanced_output_section)
     assert _is_descendant(step.view_config.settings_widget, step.advanced_output_section)
+    assert _is_descendant(step.view_config.grid_section, step.advanced_output_section)
+    assert _is_descendant(step.output_details_section, step.advanced_output_section)
+    settings_layout = step.view_config.settings_widget.layout()
+    custom_index = settings_layout.indexOf(step.view_config.custom_controls_widget)
+    grid_index = settings_layout.indexOf(step.view_config.grid_section)
+    assert custom_index + 1 == grid_index
     cube6_views = step.view_config.collect_views(include_disabled=True)
     assert {v["name"] for v in cube6_views} == {"px", "nx", "pz", "nz", "top", "bottom"}
     assert all(v["enabled"] for v in cube6_views)
@@ -85,9 +91,9 @@ def test_cubemap_step_uses_fixed_output_folder_label(tmp_path: Path) -> None:
     assert not step.output_path_label.wordWrap()
     assert step.output_path_label.full_text() == str(tmp_path / "output")
     assert step.ms_images_path_label.full_text() == str(tmp_path / "images")
-    assert step.scale_combo.itemText(0) == "Full (Quality)"
+    assert step.scale_combo.itemText(0) == "Full"
     assert step.scale_combo.itemText(1) == "Normal"
-    assert step.scale_combo.itemText(2) == "Half (Light)"
+    assert step.scale_combo.itemText(2) == "Half"
     assert float(step.scale_combo.itemData(1)) == pytest.approx(2.0 / math.pi)
     assert float(step.scale_combo.currentData()) == 1.0
 

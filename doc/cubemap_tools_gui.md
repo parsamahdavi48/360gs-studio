@@ -52,7 +52,7 @@ start_cubemap_tools_gui.bat
   - Conversion and preview automatically use matching files from scene `masks/`.
 - `View Mode`:
   - `Custom Pitch/Yaw`: existing mode with pitch rows and yaw slots.
-  - `Cube6 (4 sides + top/bottom)`: fixed six-face mode (FOV 90).
+  - `Cube6`: fixed six-face mode (FOV 90).
 - `Yaw Offset (deg)`:
   - Base yaw for slot generation.
 - `Yaw Slots`:
@@ -66,9 +66,9 @@ start_cubemap_tools_gui.bat
 - `FOV`:
   - Fixed to `90.0` in this GUI.
 - `Image Size`:
-  - `Full (Quality)`: output face size = input height x `1.0`; recommended for final quality.
+  - `Full`: output face size = input height x `1.0`; recommended for final quality.
   - `Normal`: output face size = input height x `2 / pi` (about `0.637`), matching the center angular resolution of a 90-degree view to the source image.
-  - `Half (Light)`: output face size = input height x `0.5`; lightweight output that can look softer after training.
+  - `Half`: output face size = input height x `0.5`; lightweight output that can look softer after training.
 - `Preview`:
   - Automatically uses equirectangular images from the scene folder.
   - Slider to switch preview image from scene images (`images/` preferred, otherwise scene root).

@@ -233,6 +233,10 @@ def test_cubemap_profile_option_rows_preserve_width_in_english() -> None:
         content_width = SETTINGS_PANE_WIDTH - SETTINGS_PANE_MARGINS[2]
         assert step.export_method_row.sizeHint().width() <= content_width
         assert step.metashape_import_options_row.sizeHint().width() <= content_width
+        assert step.view_config.angle_row.sizeHint().width() <= content_width
+        assert step.view_config.custom_controls_widget.sizeHint().width() <= content_width
+        assert step.yaw_per_frame_row.sizeHint().width() <= content_width
+        assert step.output_details_section.sizeHint().width() <= content_width
         """
     )
     env = os.environ.copy()
