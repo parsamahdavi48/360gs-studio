@@ -11,11 +11,13 @@ from PySide6.QtWidgets import QApplication, QLineEdit, QPushButton, QSpinBox
 from gui import i18n
 from gui.cubemap.preview_renderer import (
     PreviewWidget,
+    _apply_view_fill,
     _box_overlap_area,
     _layout_view_labels,
     _overlay_draw_order,
     _pitch_color_map,
     _point_inside_view,
+    _view_fill_mask,
 )
 
 
@@ -102,6 +104,27 @@ def test_cubemap_preview_draws_highlighted_view_last() -> None:
         "highlighted_disabled",
         "highlighted_enabled",
     ]
+
+
+def test_cubemap_preview_highlight_fill_masks_view_area() -> None:
+    width, height = 360, 180
+
+    mask = _view_fill_mask(width, height, yaw_deg=0.0, pitch_deg=0.0)
+
+    assert mask[height // 2, width // 2]
+    assert not mask[height // 2, 0]
+    assert mask.sum() > 0
+
+
+def test_cubemap_preview_highlight_fill_tints_only_masked_area() -> None:
+    img = np.full((24, 48, 3), 100, dtype=np.uint8)
+    mask = np.zeros((24, 48), dtype=bool)
+    mask[:, 20:28] = True
+
+    _apply_view_fill(img, mask, (0, 200, 250), alpha=0.2)
+
+    assert tuple(img[12, 24]) == (80, 120, 130)
+    assert tuple(img[12, 8]) == (100, 100, 100)
 
 
 def test_cubemap_preview_pitch_palette_uses_five_distinct_colors() -> None:

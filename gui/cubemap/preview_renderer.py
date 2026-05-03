@@ -1,6 +1,7 @@
 """エクイレクタングラープレビュー描画（ビュー境界オーバーレイ付き）"""
 from __future__ import annotations
 
+from functools import lru_cache
 from pathlib import Path
 
 import cv2
@@ -35,6 +36,7 @@ _LABEL_SCALE = 0.45
 _LABEL_THICKNESS = 1
 _LABEL_PAD_X = 4
 _LABEL_PAD_Y = 3
+_HIGHLIGHT_FILL_ALPHA = 0.18
 
 
 def _rotation_matrix(yaw_deg: float, pitch_deg: float) -> np.ndarray:
@@ -91,6 +93,50 @@ def _view_boundary_segments(
     if len(current) >= 2:
         segments.append(np.array(current, dtype=np.float32))
     return segments
+
+
+@lru_cache(maxsize=4)
+def _equirect_unit_rays(width: int, height: int) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    xs = (np.arange(width, dtype=np.float32) + 0.5) / max(width, 1)
+    ys = (np.arange(height, dtype=np.float32) + 0.5) / max(height, 1)
+    lon = (xs * 2.0 - 1.0) * np.pi
+    lat = (0.5 - ys) * np.pi
+    cos_lat = np.cos(lat).astype(np.float32)
+    world_x = cos_lat[:, None] * np.sin(lon).astype(np.float32)[None, :]
+    world_y = np.sin(lat).astype(np.float32)[:, None] * np.ones((1, width), dtype=np.float32)
+    world_z = cos_lat[:, None] * np.cos(lon).astype(np.float32)[None, :]
+    return world_x, world_y, world_z
+
+
+def _view_fill_mask(width: int, height: int, yaw_deg: float, pitch_deg: float, fov_deg: float = 90.0) -> np.ndarray:
+    world_x, world_y, world_z = _equirect_unit_rays(width, height)
+    r = _rotation_matrix(yaw_deg, pitch_deg).astype(np.float32)
+    local_x = world_x * r[0, 0] + world_y * r[1, 0] + world_z * r[2, 0]
+    local_y = world_x * r[0, 1] + world_y * r[1, 1] + world_z * r[2, 1]
+    local_z = world_x * r[0, 2] + world_y * r[1, 2] + world_z * r[2, 2]
+    limit = np.tan(np.deg2rad(fov_deg) / 2.0) * 1.01
+    front = local_z > 1e-6
+    with np.errstate(divide="ignore", invalid="ignore"):
+        x_over_z = np.divide(local_x, local_z, out=np.full_like(local_x, np.inf), where=front)
+        y_over_z = np.divide(local_y, local_z, out=np.full_like(local_y, np.inf), where=front)
+    return front & (np.abs(x_over_z) <= limit) & (np.abs(y_over_z) <= limit)
+
+
+def _apply_view_fill(
+    img: np.ndarray,
+    mask: np.ndarray,
+    color: tuple[int, int, int],
+    *,
+    alpha: float = _HIGHLIGHT_FILL_ALPHA,
+) -> None:
+    if not np.any(mask):
+        return
+    alpha = max(0.0, min(1.0, float(alpha)))
+    color_arr = np.array(color, dtype=np.float32)
+    img[mask] = (
+        img[mask].astype(np.float32) * (1.0 - alpha)
+        + color_arr[None, :] * alpha
+    ).astype(np.uint8)
 
 
 def _pitch_color_map(views: list[dict]) -> dict[float, tuple[int, int, int]]:
@@ -399,6 +445,14 @@ class PreviewWidget(QWidget):
         h, w = img.shape[:2]
         pitch_colors = _pitch_color_map(views)
         draw_order = _overlay_draw_order(views)
+        for view in draw_order:
+            if not view.get("highlighted", False):
+                continue
+            pitch_key = round(float(view.get("pitch", 0.0)), 6)
+            color = pitch_colors.get(pitch_key, (90, 240, 120))
+            mask = _view_fill_mask(w, h, float(view["yaw"]), float(view["pitch"]), 90.0)
+            _apply_view_fill(img, mask, color)
+
         for view in draw_order:
             pitch_key = round(float(view.get("pitch", 0.0)), 6)
             color = pitch_colors.get(pitch_key, (90, 240, 120))
