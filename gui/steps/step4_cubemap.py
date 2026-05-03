@@ -532,7 +532,9 @@ class CubemapStep(BaseStepWidget):
         self.preview.render(views, str(self._mask_dir()))
 
     def _count_input_images(self) -> int:
-        scene = Path(self.scene_dir) if self.scene_dir else Path(".")
+        if not self.scene_dir:
+            return 0
+        scene = Path(self.scene_dir)
         images = scene / "images"
         roots = [images] if images.is_dir() else [scene]
         exts = {".jpg", ".jpeg", ".png"}

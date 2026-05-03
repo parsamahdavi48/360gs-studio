@@ -112,6 +112,14 @@ def test_cubemap_step_uses_fixed_output_folder_label(tmp_path: Path) -> None:
     assert normal_scale == pytest.approx(2.0 / math.pi, rel=1e-5)
 
 
+def test_cubemap_step_does_not_count_repo_images_without_scene_dir() -> None:
+    _app()
+    step = CubemapStep(Path.cwd())
+
+    assert step.scene_dir == ""
+    assert step._count_input_images() == 0
+
+
 def test_colmap_export_method_uses_image_only_conversion(tmp_path: Path) -> None:
     _app()
     images = tmp_path / "images"
