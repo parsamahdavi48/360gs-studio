@@ -6,7 +6,7 @@ import sys
 from pathlib import Path
 
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QCloseEvent
+from PySide6.QtGui import QCloseEvent, QIcon
 from PySide6.QtWidgets import (
     QApplication,
     QHBoxLayout,
@@ -33,11 +33,19 @@ from gui.theme import apply_theme
 from gui.version import app_version_label
 
 
+def app_icon() -> QIcon:
+    icon_path = Path(__file__).resolve().parent / "assets" / "app_icon.ico"
+    if not icon_path.exists():
+        icon_path = Path(__file__).resolve().parent / "assets" / "app_icon.svg"
+    return QIcon(str(icon_path))
+
+
 class MainWindow(QWidget):
     def __init__(self, initial_scene_dir: str = "") -> None:
         super().__init__()
         self.base_dir = Path(__file__).resolve().parent.parent
         self.setWindowTitle(f"{i18n.APP_TITLE}  {app_version_label()}")
+        self.setWindowIcon(app_icon())
         self.resize(1280, 920)
 
         self.runner = ProcessRunner(self)
@@ -359,6 +367,7 @@ def main() -> None:
     args = parser.parse_args()
 
     app = QApplication(sys.argv)
+    app.setWindowIcon(app_icon())
     apply_theme(app)
 
     window = MainWindow(initial_scene_dir=args.scene)

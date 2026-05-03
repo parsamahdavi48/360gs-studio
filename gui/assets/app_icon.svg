@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-label="STechDrive 3DGS Utils app icon">
+  <rect width="256" height="256" rx="48" fill="#15171a"/>
+  <path d="M128 42 55 84v88l73 42 73-42V84z" fill="#252a31" stroke="#e5e7eb" stroke-width="12" stroke-linejoin="round"/>
+  <path d="M128 42v84M55 84l73 42 73-42M128 126v88" fill="none" stroke="#e5e7eb" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M55 84v88l73 42v-88z" fill="#2dd4bf" opacity=".36"/>
+  <path d="M201 84v88l-73 42v-88z" fill="#f59e0b" opacity=".34"/>
+  <circle cx="128" cy="126" r="18" fill="#ffffff"/>
+</svg>
