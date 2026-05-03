@@ -74,6 +74,7 @@ class ExtractStep(BaseStepWidget):
         self.last_estimate_summary: dict | None = None
         self.instant_estimate_text = "-"
         self._syncing_gap_fields = False
+        self._smart_before_quick: bool | None = None
 
         self._build_ui()
 
@@ -181,6 +182,11 @@ class ExtractStep(BaseStepWidget):
         self.smart_fixed_cb.toggled.connect(self._update_mode_widgets)
         self.smart_fixed_cb.toggled.connect(self._mark_estimate_stale)
 
+        self.quick_extract_cb = QCheckBox(i18n.t("QUICK_EXTRACT"))
+        self.quick_extract_cb.setToolTip(i18n.tip("QUICK_EXTRACT"))
+        self.quick_extract_cb.toggled.connect(self._on_quick_extract_toggled)
+        self.quick_extract_cb.toggled.connect(self._mark_estimate_stale)
+
         mode_panel = QWidget()
         mode_layout = QVBoxLayout(mode_panel)
         mode_layout.setContentsMargins(0, 0, 0, 0)
@@ -200,6 +206,8 @@ class ExtractStep(BaseStepWidget):
         fixed_row.addWidget(self.fixed_mode_label)
         fixed_row.addWidget(self.interval_label)
         fixed_row.addWidget(self.interval_edit)
+        fixed_row.addSpacing(8)
+        fixed_row.addWidget(self.quick_extract_cb)
         fixed_row.addStretch()
         mode_layout.addWidget(fixed_row_widget)
 
@@ -291,6 +299,7 @@ class ExtractStep(BaseStepWidget):
         self.analysis_width_edit.setFixedWidth(80)
         self.analysis_width_edit.textChanged.connect(self._mark_estimate_stale)
         add_tooltip_row(adv_form, i18n.ANALYSIS_WIDTH, self.analysis_width_edit, i18n.tip("ANALYSIS_WIDTH"))
+        self.analysis_width_label = adv_form.labelForField(self.analysis_width_edit)
         advanced.content_layout.addLayout(adv_form)
 
         selection_title = QLabel(i18n.t("AUTO_SELECTION_SECTION"))
@@ -317,6 +326,7 @@ class ExtractStep(BaseStepWidget):
             self.quality_min_score_edit,
             i18n.tip("QUALITY_MIN_SCORE"),
         )
+        self.quality_min_score_label = selection_form.labelForField(self.quality_min_score_edit)
 
         self.quality_min_improvement_edit = DragDoubleSpinBox(
             minimum=0.0,
@@ -334,6 +344,7 @@ class ExtractStep(BaseStepWidget):
             self.quality_min_improvement_edit,
             i18n.tip("QUALITY_MIN_IMPROVEMENT"),
         )
+        self.quality_min_improvement_label = selection_form.labelForField(self.quality_min_improvement_edit)
 
         advanced.content_layout.addLayout(selection_form)
 
@@ -406,9 +417,22 @@ class ExtractStep(BaseStepWidget):
     def _mode(self) -> str:
         return "fixed"
 
+    def _on_quick_extract_toggled(self, checked: bool) -> None:
+        if checked:
+            self._smart_before_quick = self.smart_fixed_cb.isChecked()
+            if self.smart_fixed_cb.isChecked():
+                self.smart_fixed_cb.setChecked(False)
+        elif self._smart_before_quick is not None:
+            restore_smart = self._smart_before_quick
+            self._smart_before_quick = None
+            if self.smart_fixed_cb.isChecked() != restore_smart:
+                self.smart_fixed_cb.setChecked(restore_smart)
+        self._update_mode_widgets()
+
     def _update_mode_widgets(self) -> None:
-        smart_enabled = self.smart_fixed_cb.isChecked()
-        for widget in (self.fixed_mode_label, self.interval_label, self.interval_edit):
+        quick_enabled = self.quick_extract_cb.isChecked()
+        smart_enabled = self.smart_fixed_cb.isChecked() and not quick_enabled
+        for widget in (self.fixed_mode_label, self.interval_label, self.interval_edit, self.quick_extract_cb):
             widget.setEnabled(True)
         for widget in (
             self.smart_fixed_cb,
@@ -417,7 +441,17 @@ class ExtractStep(BaseStepWidget):
             self.max_gap_label,
             self.max_gap_edit,
         ):
-            widget.setEnabled(smart_enabled or widget is self.smart_fixed_cb)
+            widget.setEnabled((smart_enabled or widget is self.smart_fixed_cb) and not quick_enabled)
+        for widget in (
+            self.analysis_width_label,
+            self.analysis_width_edit,
+            self.quality_min_score_label,
+            self.quality_min_score_edit,
+            self.quality_min_improvement_label,
+            self.quality_min_improvement_edit,
+        ):
+            if widget is not None:
+                widget.setEnabled(not quick_enabled)
 
     def _clamp_gap_order(self, changed: str) -> None:
         if self._syncing_gap_fields:
@@ -544,7 +578,7 @@ class ExtractStep(BaseStepWidget):
                 return False, i18n.t("EXTRACT_READY_VIDEO_NOT_FOUND")
             if not self.scene_dir:
                 return False, i18n.t("EXTRACT_READY_NO_SCENE")
-            if not self._analysis_width_valid():
+            if not self.quick_extract_cb.isChecked() and not self._analysis_width_valid():
                 return False, i18n.t("EXTRACT_READY_BAD_ANALYSIS_WIDTH")
             queued, skipped = self._queued_selected_videos()
             mode = self._extract_output_mode()
@@ -563,7 +597,7 @@ class ExtractStep(BaseStepWidget):
             return False, i18n.t("EXTRACT_READY_VIDEO_NOT_FOUND")
         if not self.scene_dir:
             return False, i18n.t("EXTRACT_READY_NO_SCENE")
-        if not self._analysis_width_valid():
+        if not self.quick_extract_cb.isChecked() and not self._analysis_width_valid():
             return False, i18n.t("EXTRACT_READY_BAD_ANALYSIS_WIDTH")
         if not self.video_info:
             return False, i18n.t("EXTRACT_READY_NO_VIDEO_INFO")
@@ -626,25 +660,31 @@ class ExtractStep(BaseStepWidget):
 
         output_mode = self._extract_output_mode()
         prefix = self._prefix_for_video(video_path, used_prefixes)
+        quick_extract = self.quick_extract_cb.isChecked()
 
         cmd = [
             sys.executable, "-u", str(script),
             str(video_path), self.scene_dir,
             "--mode", self._mode(),
-            "--analysis-width", self.analysis_width_edit.text().strip(),
-            "--quality-min-score", f"{self.quality_min_score_edit.value():g}",
-            "--quality-min-improvement", f"{self.quality_min_improvement_edit.value():g}",
             "--image-ext", self.image_ext_combo.currentText(),
             "--jpg-quality", str(self.jpg_quality_edit.value()),
             "--ffmpeg", self.ffmpeg_browse.text() or "ffmpeg",
             "--ffprobe", self.ffprobe_browse.text() or "ffprobe",
             "--output-mode", output_mode,
         ]
+        if not quick_extract:
+            cmd.extend([
+                "--analysis-width", self.analysis_width_edit.text().strip(),
+                "--quality-min-score", f"{self.quality_min_score_edit.value():g}",
+                "--quality-min-improvement", f"{self.quality_min_improvement_edit.value():g}",
+            ])
         if prefix:
             cmd.extend(["--filename-prefix", prefix])
 
         cmd.extend(["--interval-sec", f"{self.interval_edit.value():g}"])
-        if self.smart_fixed_cb.isChecked():
+        if quick_extract:
+            cmd.append("--quick-extract")
+        elif self.smart_fixed_cb.isChecked():
             cmd.extend([
                 "--fixed-smart",
                 "--min-gap-sec", f"{self.min_gap_edit.value():g}",
@@ -961,7 +1001,9 @@ class ExtractStep(BaseStepWidget):
                     count=self._format_number(total_estimated),
                     videos=len(info_rows),
                 )
-                if self.smart_fixed_cb.isChecked():
+                if self.quick_extract_cb.isChecked():
+                    total_line += f" ({i18n.t('QUICK_EXTRACT_ESTIMATE')})"
+                elif self.smart_fixed_cb.isChecked():
                     total_line += f" ({i18n.t('FIXED_SMART_ESTIMATE')})"
                 if missing:
                     total_line += i18n.t("ESTIMATE_MISSING_INFO_SUFFIX").format(missing=missing)
@@ -996,7 +1038,9 @@ class ExtractStep(BaseStepWidget):
                 interval=f"{iv:g}",
                 count=self._format_number(estimated),
             )
-            if self.smart_fixed_cb.isChecked():
+            if self.quick_extract_cb.isChecked():
+                text += f" ({i18n.t('QUICK_EXTRACT_ESTIMATE')})"
+            elif self.smart_fixed_cb.isChecked():
                 text += f" ({i18n.t('FIXED_SMART_ESTIMATE')})"
             self.instant_estimate_text = text
         except Exception:

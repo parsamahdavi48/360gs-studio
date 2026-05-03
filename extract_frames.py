@@ -1230,7 +1230,8 @@ def extract_selected_frames(
     jpg_quality: int,
     filename_prefix: str,
     frame_digits: int,
-) -> None:
+    allow_partial_tail: bool = False,
+) -> list[int]:
     output_dir.mkdir(parents=True, exist_ok=True)
     tmp_dir = output_dir / "_tmp_extract"
     if tmp_dir.exists():
@@ -1318,10 +1319,21 @@ def extract_selected_frames(
 
     extracted_files = sorted(tmp_dir.glob(f"*.{image_ext}"))
     if len(extracted_files) != len(frame_indices):
-        raise RuntimeError(
-            f"Expected {len(frame_indices)} extracted files, got {len(extracted_files)}"
-        )
-
+        if allow_partial_tail and 0 < len(extracted_files) < len(frame_indices):
+            missing = len(frame_indices) - len(extracted_files)
+            print(
+                "[warn] ffmpeg produced fewer frames than requested; "
+                f"keeping {len(extracted_files)} extracted frame(s) and dropping {missing} trailing request(s)",
+                flush=True,
+            )
+            frame_indices = frame_indices[:len(extracted_files)]
+        else:
+            for p in extracted_files:
+                p.unlink(missing_ok=True)
+            tmp_dir.rmdir()
+            raise RuntimeError(
+                f"Expected {len(frame_indices)} extracted files, got {len(extracted_files)}"
+            )
     rename_total = len(frame_indices)
     rename_step = max(1, rename_total // 100)
     last_rename_report = 0
@@ -1338,6 +1350,7 @@ def extract_selected_frames(
             last_rename_report = seq
 
     tmp_dir.rmdir()
+    return list(frame_indices)
 
 
 SELECTED_CSV_FIELDNAMES = [
@@ -1359,6 +1372,33 @@ SELECTED_CSV_FIELDNAMES = [
 ]
 
 
+def _csv_score(value: object) -> str:
+    if value in (None, ""):
+        return ""
+    try:
+        return f"{float(value):.6f}"
+    except (TypeError, ValueError):
+        return ""
+
+
+def build_quick_extract_rows(frame_indices: Sequence[int]) -> list[dict]:
+    return [
+        {
+            "original_index": idx,
+            "final_index": idx,
+            "change_score_original": None,
+            "change_score_final": None,
+            "blur_score_original": None,
+            "blur_score_final": None,
+            "quality_score_original": None,
+            "quality_score_final": None,
+            "status": "ok",
+            "decision": "keep",
+        }
+        for idx in frame_indices
+    ]
+
+
 def build_selected_csv_rows(
     rows: List[dict],
     fps: float,
@@ -1371,6 +1411,7 @@ def build_selected_csv_rows(
     out_rows: list[dict] = []
     for i, row in enumerate(rows, start=1):
         final_idx = row["final_index"]
+        timestamp_sec = f"{final_idx / fps:.6f}" if fps > 0 else ""
         out_rows.append(
             {
                 "seq": i,
@@ -1378,13 +1419,13 @@ def build_selected_csv_rows(
                 "source_video": source_video,
                 "original_index": row["original_index"],
                 "final_index": final_idx,
-                "timestamp_sec": f"{final_idx / fps:.6f}",
-                "change_score_original": f"{row['change_score_original']:.6f}",
-                "change_score_final": f"{row['change_score_final']:.6f}",
-                "blur_score_original": f"{row['blur_score_original']:.6f}",
-                "blur_score_final": f"{row['blur_score_final']:.6f}",
-                "quality_score_original": f"{row.get('quality_score_original', 0.0):.6f}",
-                "quality_score_final": f"{row.get('quality_score_final', 0.0):.6f}",
+                "timestamp_sec": timestamp_sec,
+                "change_score_original": _csv_score(row.get("change_score_original")),
+                "change_score_final": _csv_score(row.get("change_score_final")),
+                "blur_score_original": _csv_score(row.get("blur_score_original")),
+                "blur_score_final": _csv_score(row.get("blur_score_final")),
+                "quality_score_original": _csv_score(row.get("quality_score_original", 0.0)),
+                "quality_score_final": _csv_score(row.get("quality_score_final", 0.0)),
                 "status": row["status"],
                 "decision": row.get("decision", "keep"),
                 "output_file": f"images/{frame_filename(filename_prefix, final_idx, image_ext, frame_digits)}",
@@ -1475,7 +1516,7 @@ def write_report(
         "analysis": {
             "width": analysis_w,
             "height": analysis_h,
-            "quality_mode": QUALITY_MODE,
+            "quality_mode": "skipped" if getattr(args, "quick_extract", False) else QUALITY_MODE,
             "representative_window_frames": window_frames,
             "min_gap_frames": min_gap_frames,
         },
@@ -1485,6 +1526,7 @@ def write_report(
             "min_gap_sec": args.min_gap_sec,
             "max_gap_sec": args.max_gap_sec,
             "fixed_smart": args.fixed_smart,
+            "quick_extract": getattr(args, "quick_extract", False),
             "fixed_smart_change_threshold": args.fixed_smart_change_threshold,
             "fixed_smart_feature_threshold": args.fixed_smart_feature_threshold,
             "fixed_smart_max_inserts_per_interval": args.fixed_smart_max_inserts_per_interval,
@@ -1538,7 +1580,7 @@ def build_summary_from_counts(
             "height": analysis_h,
             "min_gap_frames": min_gap_frames,
             "representative_window_frames": window_frames,
-            "quality_mode": QUALITY_MODE,
+            "quality_mode": "skipped" if getattr(args, "quick_extract", False) else QUALITY_MODE,
         },
         "params": {
             "interval_sec": args.interval_sec,
@@ -1546,6 +1588,7 @@ def build_summary_from_counts(
             "min_gap_sec": args.min_gap_sec,
             "max_gap_sec": args.max_gap_sec,
             "fixed_smart": args.fixed_smart,
+            "quick_extract": getattr(args, "quick_extract", False),
             "fixed_smart_change_threshold": args.fixed_smart_change_threshold,
             "fixed_smart_feature_threshold": args.fixed_smart_feature_threshold,
             "fixed_smart_max_inserts_per_interval": args.fixed_smart_max_inserts_per_interval,
@@ -1577,6 +1620,7 @@ def build_summary(
     window_frames: int,
     filename_prefix: str,
     frame_digits: int,
+    estimate_mode: str = "full",
 ) -> dict:
     replaced_count = sum(1 for r in selected_rows if "replaced" in r.get("status", ""))
     smart_added_count = sum(1 for r in selected_rows if "smart_added" in r.get("status", ""))
@@ -1597,7 +1641,7 @@ def build_summary(
         selected_count=kept_count,
         replaced_count=replaced_count,
         fallback_keep_count=fallback_keep_count,
-        estimate_mode="full",
+        estimate_mode=estimate_mode,
         filename_prefix=filename_prefix,
         frame_digits=frame_digits,
     )
@@ -1661,6 +1705,74 @@ def filter_rows_for_replaced_sessions(
     return kept
 
 
+def total_frames_for_fixed_selection(video_info: VideoInfo) -> int:
+    total_frames = video_info.total_frames
+    if total_frames <= 0 and video_info.duration > 0:
+        total_frames = max(1, int(round(video_info.duration * video_info.fps)))
+    return max(total_frames, 1)
+
+
+def analyze_with_cache(
+    args: argparse.Namespace,
+    input_video: Path,
+    video_info: VideoInfo,
+    scene_dir: Path,
+) -> tuple[list[float], list[float], list[float], list[float], int, int]:
+    ensure_python_deps()
+
+    cache_path = cache_path_for(scene_dir)
+    cached: Optional[Tuple[List[float], List[float], List[float], List[float], int, int]] = None
+    if not args.no_cache:
+        needs_feature_motion = args.mode == "fixed" and args.fixed_smart
+        cached = load_analysis_cache(
+            cache_path,
+            input_video,
+            video_info,
+            args.analysis_width,
+            QUALITY_MODE,
+            require_feature_motion=needs_feature_motion,
+        )
+        if cached is not None:
+            print(f"[cache] reusing analysis cache: {cache_path}")
+
+    if cached is not None:
+        return cached
+
+    needs_feature_motion = args.mode == "fixed" and args.fixed_smart
+    progress_step = max(10, video_info.total_frames // 100) if video_info.total_frames > 0 else max(
+        10, int(round(video_info.fps * 2.0))
+    )
+    blur_scores, change_scores, quality_scores, feature_motion_scores, analysis_w, analysis_h = analyze_video(
+        input_video,
+        args.ffmpeg,
+        video_info.fps,
+        video_info.width,
+        video_info.height,
+        args.analysis_width,
+        progress_phase="analyze",
+        progress_total_frames=video_info.total_frames,
+        progress_step_frames=progress_step,
+        quality_mode=QUALITY_MODE,
+        compute_feature_motion=needs_feature_motion,
+    )
+    if not args.no_cache:
+        try:
+            save_analysis_cache(
+                cache_path, input_video, video_info,
+                analysis_w,
+                analysis_h,
+                blur_scores,
+                change_scores,
+                quality_scores,
+                feature_motion_scores,
+                QUALITY_MODE,
+                feature_motion_computed=needs_feature_motion,
+            )
+        except Exception as e:
+            print(f"[cache] failed to save cache (non-fatal): {e}")
+    return blur_scores, change_scores, quality_scores, feature_motion_scores, analysis_w, analysis_h
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Extract equirectangular frames via FFmpeg with SfM-oriented representative frame selection."
@@ -1689,6 +1801,14 @@ def parse_args() -> argparse.Namespace:
         help=(
             "Fixed mode helper: keep the base fixed interval, skip low-change candidates, "
             "and add extra anchors where image/feature motion is high."
+        ),
+    )
+    parser.add_argument(
+        "--quick-extract",
+        action="store_true",
+        help=(
+            "Fixed mode shortcut for test runs: extract the requested cadence directly "
+            "without change adjustment or quality-based representative selection."
         ),
     )
     parser.add_argument(
@@ -1860,6 +1980,12 @@ def main() -> None:
     if args.fixed_smart_max_inserts_per_interval < 0:
         print("Error: --fixed-smart-max-inserts-per-interval must be >= 0")
         sys.exit(1)
+    if args.quick_extract and args.mode != "fixed":
+        print("Error: --quick-extract requires --mode fixed")
+        sys.exit(1)
+    if args.quick_extract and args.fixed_smart:
+        print("Error: --quick-extract cannot be combined with --fixed-smart")
+        sys.exit(1)
 
     input_video = Path(args.input_video)
     if not input_video.exists():
@@ -1906,10 +2032,7 @@ def main() -> None:
         sys.exit(1)
 
     if args.estimate_only and args.mode == "fixed" and not args.fixed_smart:
-        total_frames = video_info.total_frames
-        if total_frames <= 0 and video_info.duration > 0:
-            total_frames = max(1, int(round(video_info.duration * video_info.fps)))
-        total_frames = max(total_frames, 1)
+        total_frames = total_frames_for_fixed_selection(video_info)
 
         try:
             selected, min_gap_frames = select_fixed(total_frames, video_info.fps, args.interval_sec)
@@ -1917,8 +2040,14 @@ def main() -> None:
             print(f"Error while selecting frames: {e}")
             sys.exit(1)
 
-        analysis_w, analysis_h = scaled_dimensions(video_info.width, video_info.height, args.analysis_width)
-        window_frames = representative_window_for_report(selected, total_frames)
+        if args.quick_extract:
+            analysis_w, analysis_h = 0, 0
+            window_frames = 0
+            estimate_mode = "quick_extract"
+        else:
+            analysis_w, analysis_h = scaled_dimensions(video_info.width, video_info.height, args.analysis_width)
+            window_frames = representative_window_for_report(selected, total_frames)
+            estimate_mode = "fixed_exact"
         summary = build_summary_from_counts(
             args=args,
             video_info=video_info,
@@ -1929,7 +2058,7 @@ def main() -> None:
             selected_count=len(selected),
             replaced_count=0,
             fallback_keep_count=0,
-            estimate_mode="fixed_exact",
+            estimate_mode=estimate_mode,
             filename_prefix=resolved_prefix,
             frame_digits=frame_index_digits(video_info.total_frames, selected),
         )
@@ -1995,65 +2124,28 @@ def main() -> None:
             print("SUMMARY_JSON:" + json.dumps(summary, ensure_ascii=False))
         return
 
-    try:
-        ensure_python_deps()
-
-        cache_path = cache_path_for(scene_dir)
-        cached: Optional[Tuple[List[float], List[float], List[float], List[float], int, int]] = None
-        if not args.no_cache:
-            needs_feature_motion = args.mode == "fixed" and args.fixed_smart
-            cached = load_analysis_cache(
-                cache_path,
+    if args.quick_extract:
+        total_frames = total_frames_for_fixed_selection(video_info)
+        blur_scores: list[float] = []
+        change_scores: list[float] = []
+        quality_scores: list[float] = []
+        feature_motion_scores: list[float] = []
+        analysis_w, analysis_h = 0, 0
+        print("Quick extract: skipping analysis and quality scoring")
+    else:
+        try:
+            blur_scores, change_scores, quality_scores, feature_motion_scores, analysis_w, analysis_h = analyze_with_cache(
+                args,
                 input_video,
                 video_info,
-                args.analysis_width,
-                QUALITY_MODE,
-                require_feature_motion=needs_feature_motion,
+                scene_dir,
             )
-            if cached is not None:
-                print(f"[cache] reusing analysis cache: {cache_path}")
+        except Exception as e:
+            print(f"Error during analysis: {e}")
+            sys.exit(1)
 
-        if cached is not None:
-            blur_scores, change_scores, quality_scores, feature_motion_scores, analysis_w, analysis_h = cached
-        else:
-            needs_feature_motion = args.mode == "fixed" and args.fixed_smart
-            progress_step = max(10, video_info.total_frames // 100) if video_info.total_frames > 0 else max(
-                10, int(round(video_info.fps * 2.0))
-            )
-            blur_scores, change_scores, quality_scores, feature_motion_scores, analysis_w, analysis_h = analyze_video(
-                input_video,
-                args.ffmpeg,
-                video_info.fps,
-                video_info.width,
-                video_info.height,
-                args.analysis_width,
-                progress_phase="analyze",
-                progress_total_frames=video_info.total_frames,
-                progress_step_frames=progress_step,
-                quality_mode=QUALITY_MODE,
-                compute_feature_motion=needs_feature_motion,
-            )
-            if not args.no_cache:
-                try:
-                    save_analysis_cache(
-                        cache_path, input_video, video_info,
-                        analysis_w,
-                        analysis_h,
-                        blur_scores,
-                        change_scores,
-                        quality_scores,
-                        feature_motion_scores,
-                        QUALITY_MODE,
-                        feature_motion_computed=needs_feature_motion,
-                    )
-                except Exception as e:
-                    print(f"[cache] failed to save cache (non-fatal): {e}")
-    except Exception as e:
-        print(f"Error during analysis: {e}")
-        sys.exit(1)
-
-    total_frames = len(blur_scores)
-    print(f"Analyzed frames: {total_frames} ({analysis_w}x{analysis_h})")
+        total_frames = len(blur_scores)
+        print(f"Analyzed frames: {total_frames} ({analysis_w}x{analysis_h})")
 
     try:
         smart_added_indices: set[int] = set()
@@ -2094,56 +2186,60 @@ def main() -> None:
         print("Error: no frames selected")
         sys.exit(1)
 
-    window_frames_for_report = representative_window_for_report(selected, total_frames)
+    if args.quick_extract:
+        window_frames_for_report = 0
+        enriched_rows = build_quick_extract_rows(selected)
+    else:
+        window_frames_for_report = representative_window_for_report(selected, total_frames)
 
-    rows = select_representative_frames(
-        selected_indices=selected,
-        quality_scores=quality_scores,
-        quality_min_score=args.quality_min_score,
-        quality_min_improvement=args.quality_min_improvement,
-        center_bias=args.center_bias,
-    )
-
-    enriched_rows: List[dict] = []
-    for row in rows:
-        orig = row["original_index"]
-        final = row["final_index"]
-        status = row["status"]
-        if orig in smart_added_indices:
-            status = "smart_added" if status == "ok" else f"smart_added+{status}"
-        if orig in smart_thinned_indices:
-            status = "thinned" if status == "ok" else f"{status}+thinned"
-        enriched_rows.append(
-            {
-                **row,
-                "status": status,
-                "change_score_original": change_scores[orig],
-                "change_score_final": change_scores[final],
-                "blur_score_original": blur_scores[orig],
-                "blur_score_final": blur_scores[final],
-                "quality_score_original": row.get("quality_score_original", quality_scores[orig]),
-                "quality_score_final": row.get("quality_score_final", quality_scores[final]),
-                "decision": "drop" if orig in smart_thinned_indices else "keep",
-            }
+        rows = select_representative_frames(
+            selected_indices=selected,
+            quality_scores=quality_scores,
+            quality_min_score=args.quality_min_score,
+            quality_min_improvement=args.quality_min_improvement,
+            center_bias=args.center_bias,
         )
 
-    # 立ち止まり間引き: 累積モーションが閾値未満の連続区間を drop でマーク
-    if args.thin_motion_threshold > 0.0 and not args.fixed_smart:
-        enriched_rows = thin_stationary(
-            enriched_rows,
-            change_scores,
-            motion_threshold=args.thin_motion_threshold,
-            keep_endpoints=args.thin_keep_endpoints,
-        )
-        thinned_count = sum(
-            1 for r in enriched_rows
-            if r.get("decision") == "drop" and "thinned" in r.get("status", "")
-        )
-        kept_count = sum(1 for r in enriched_rows if r.get("decision") != "drop")
-        print(
-            f"Stationary thinning: dropped {thinned_count}, kept {kept_count} "
-            f"(threshold={args.thin_motion_threshold:g})"
-        )
+        enriched_rows: List[dict] = []
+        for row in rows:
+            orig = row["original_index"]
+            final = row["final_index"]
+            status = row["status"]
+            if orig in smart_added_indices:
+                status = "smart_added" if status == "ok" else f"smart_added+{status}"
+            if orig in smart_thinned_indices:
+                status = "thinned" if status == "ok" else f"{status}+thinned"
+            enriched_rows.append(
+                {
+                    **row,
+                    "status": status,
+                    "change_score_original": change_scores[orig],
+                    "change_score_final": change_scores[final],
+                    "blur_score_original": blur_scores[orig],
+                    "blur_score_final": blur_scores[final],
+                    "quality_score_original": row.get("quality_score_original", quality_scores[orig]),
+                    "quality_score_final": row.get("quality_score_final", quality_scores[final]),
+                    "decision": "drop" if orig in smart_thinned_indices else "keep",
+                }
+            )
+
+        # 立ち止まり間引き: 累積モーションが閾値未満の連続区間を drop でマーク
+        if args.thin_motion_threshold > 0.0 and not args.fixed_smart:
+            enriched_rows = thin_stationary(
+                enriched_rows,
+                change_scores,
+                motion_threshold=args.thin_motion_threshold,
+                keep_endpoints=args.thin_keep_endpoints,
+            )
+            thinned_count = sum(
+                1 for r in enriched_rows
+                if r.get("decision") == "drop" and "thinned" in r.get("status", "")
+            )
+            kept_count = sum(1 for r in enriched_rows if r.get("decision") != "drop")
+            print(
+                f"Stationary thinning: dropped {thinned_count}, kept {kept_count} "
+                f"(threshold={args.thin_motion_threshold:g})"
+            )
 
     # 抽出対象の決定
     # - 既定: 間引き含めて全部抽出（review GUI で確認・unthin できるように）
@@ -2166,6 +2262,7 @@ def main() -> None:
         window_frames=window_frames_for_report,
         filename_prefix=resolved_prefix,
         frame_digits=frame_index_digits(video_info.total_frames, final_indices),
+        estimate_mode="quick_extract" if args.quick_extract else "full",
     )
 
     if args.estimate_only:
@@ -2232,7 +2329,7 @@ def main() -> None:
             sys.exit(1)
 
     try:
-        extract_selected_frames(
+        extracted_indices = extract_selected_frames(
             input_video,
             args.ffmpeg,
             final_indices,
@@ -2241,10 +2338,34 @@ def main() -> None:
             args.jpg_quality,
             resolved_prefix,
             summary["params"]["frame_number_digits"],
+            allow_partial_tail=args.quick_extract,
         )
     except Exception as e:
         print(f"Error during extraction: {e}")
         sys.exit(1)
+
+    if extracted_indices != final_indices:
+        extracted_set = set(extracted_indices)
+        enriched_rows = [r for r in enriched_rows if r["final_index"] in extracted_set]
+        final_indices = extracted_indices
+        output_files = output_files_for_indices(
+            final_indices,
+            resolved_prefix,
+            args.image_ext,
+            summary["params"]["frame_number_digits"],
+        )
+        summary = build_summary(
+            args=args,
+            video_info=video_info,
+            analysis_w=analysis_w,
+            analysis_h=analysis_h,
+            selected_rows=enriched_rows,
+            min_gap_frames=min_gap_frames,
+            window_frames=window_frames_for_report,
+            filename_prefix=resolved_prefix,
+            frame_digits=summary["params"]["frame_number_digits"],
+            estimate_mode="quick_extract" if args.quick_extract else "full",
+        )
 
     write_selected_csv(
         enriched_rows,

@@ -114,6 +114,20 @@ def test_extract_run_disabled_for_invalid_analysis_width(tmp_path: Path) -> None
     assert step.ready_status_label.text() == i18n.t("EXTRACT_READY_BAD_ANALYSIS_WIDTH")
 
 
+def test_extract_quick_mode_ignores_invalid_analysis_width(tmp_path: Path) -> None:
+    _app()
+    video = tmp_path / "input.mp4"
+    video.write_bytes(b"dummy")
+    step = ExtractStep(Path.cwd())
+    _make_ready(step, video, tmp_path)
+
+    step.analysis_width_edit.setText("wide")
+    step.quick_extract_cb.setChecked(True)
+
+    assert step.primary_action_enabled()
+    assert step.ready_status_label.text() == i18n.t("EXTRACT_READY_OK")
+
+
 def test_main_window_run_button_follows_extract_readiness(tmp_path: Path) -> None:
     _app()
     video = tmp_path / "input.mp4"
@@ -383,6 +397,20 @@ def test_extract_single_video_shows_fast_fixed_interval_estimate() -> None:
     assert step.instant_estimate_text == (
         i18n.t("FIXED_INTERVAL_ESTIMATE_FORMAT").format(interval="0.8", count="14")
         + f" ({i18n.t('FIXED_SMART_ESTIMATE')})"
+    )
+
+
+def test_extract_quick_mode_estimate_uses_quick_suffix() -> None:
+    _app()
+    step = ExtractStep(Path.cwd())
+    step.video_info = _video_info()
+
+    step.quick_extract_cb.setChecked(True)
+    step._update_instant_estimate()
+
+    assert step.instant_estimate_text == (
+        i18n.t("FIXED_INTERVAL_ESTIMATE_FORMAT").format(interval="0.8", count="14")
+        + f" ({i18n.t('QUICK_EXTRACT_ESTIMATE')})"
     )
 
 

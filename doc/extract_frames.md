@@ -11,6 +11,8 @@ It supports two selection modes:
 
 In the GUI workflow, fixed interval is the baseline. `--fixed-smart` can be added to fixed mode to keep the fixed cadence, skip low-change candidates, and insert extra anchors in high-motion ranges.
 
+For quick test SfM runs, fixed mode also supports `--quick-extract`. This skips analysis, motion adjustment, and representative frame scoring, then extracts the requested fixed cadence directly.
+
 After initial selection, each selected frame is treated as an extraction anchor. The script searches a local candidate window and uses a bounded SfM-oriented quality score to replace the anchor only when a nearby frame is clearly better. No global percentile threshold is used.
 
 Optional legacy **stationary thinning** (`--thin-motion-threshold`) drops selected frames whose cumulative luma change since the last kept frame is too low. `--fixed-smart` performs its own low-change skip with the same motion score used for high-motion insertion, so the legacy thinning pass is not applied when `--fixed-smart` is enabled.
@@ -34,6 +36,15 @@ Fixed interval example:
 
 ```bash
 python extract_frames.py input.mp4 ./scene01 --mode fixed --interval-sec 0.5
+```
+
+Quick fixed-interval test extraction:
+
+```bash
+python extract_frames.py input.mp4 ./scene01 \
+  --mode fixed \
+  --interval-sec 0.8 \
+  --quick-extract
 ```
 
 Fixed interval with motion adjustment:
@@ -105,6 +116,7 @@ python extract_frames.py input.mp4 ./scene01 \
 |---|---|---|
 | `--mode` | `change` | `fixed` or `change`. Fixed interval is recommended for SfM stability |
 | `--interval-sec` | `0.5` | Fixed mode interval in seconds |
+| `--quick-extract` | (off) | Fixed-mode shortcut for test runs. Extracts the fixed cadence without analysis, motion adjustment, representative scoring, or legacy thinning |
 | `--fixed-smart` | (off) | Fixed-mode helper. Keeps the fixed interval baseline, adds high-motion candidates, and marks low-motion base candidates using the same luma/feature-motion thresholds plus `--max-gap-sec` |
 | `--fixed-smart-change-threshold` | `0.04` | Normalized luma-difference threshold for high-motion insertion in `--fixed-smart` |
 | `--fixed-smart-feature-threshold` | `0.012` | Sparse feature-motion threshold for high-motion insertion in `--fixed-smart` |
@@ -133,6 +145,8 @@ Under `output_dir`:
 - `quality_score_original`, `quality_score_final`: bounded SfM-oriented quality scores used for representative selection
 - `decision`: `keep` for extracted frames, `drop` for thinned frames (editable in review tool)
 - `output_file`: image path for review and later processing (no file on disk for thinned rows)
+
+With `--quick-extract`, `status` remains `ok` and the analysis score columns are left blank because no quality or change scoring is run.
 
 `extract_cache.npz`: cached SfM quality, Laplacian, change, and sparse feature-motion scores per analyzed frame, keyed by video file size+mtime, cache version, and `--analysis-width`. Auto-invalidated when any of these change. Add to `.gitignore` (already configured).
 

@@ -74,6 +74,8 @@ _JA: dict[str, str] = {
     "MODE_FIXED_SHORT": "固定間隔",
     "FIXED_SMART": "変化補正",
     "FIXED_SMART_ESTIMATE": "解析後に補正",
+    "QUICK_EXTRACT": "クイック抽出",
+    "QUICK_EXTRACT_ESTIMATE": "クイック抽出",
     "CHANGE_THRESHOLD": "変化しきい値",
     "CHANGE_THRESHOLD_SHORT": "変化",
     "MIN_GAP": "最小間隔 (秒)",
@@ -441,6 +443,8 @@ _EN: dict[str, str] = {
     "MODE_FIXED_SHORT": "Fixed",
     "FIXED_SMART": "Motion",
     "FIXED_SMART_ESTIMATE": "adjusted after analysis",
+    "QUICK_EXTRACT": "Quick extract",
+    "QUICK_EXTRACT_ESTIMATE": "quick extract",
     "CHANGE_THRESHOLD": "Change Threshold",
     "CHANGE_THRESHOLD_SHORT": "Diff",
     "MIN_GAP": "Min Gap (sec)",
@@ -761,6 +765,10 @@ _TIPS_JA: dict[str, str] = {
         "固定間隔を基準に、変化が少ない候補をスキップし、変化が大きい区間には追加候補を入れます。\n"
         "輝度差だけでなく、疎な特徴点追跡によるモーションも使うため、SfMで意味のある視差を拾いやすくなります"
     ),
+    "QUICK_EXTRACT": (
+        "短いテストSfMをすぐ試したいときに使います。\n"
+        "細かな自動選別より待ち時間を短くし、指定した間隔の結果を素早く確認できます"
+    ),
     "MODE_CHANGE": "画像の変化量に応じて抽出間隔を自動調整します。最小/最大間隔で極端な枚数増減を防ぎます",
     "INTERVAL": "固定間隔で使うフレーム間隔。単位は秒。横ドラッグで調整可能。推奨は0.8〜1.0秒、UI範囲は0.05〜60秒",
     "CHANGE_THRESHOLD": (
@@ -871,6 +879,10 @@ _TIPS_EN: dict[str, str] = {
     "FIXED_SMART": (
         "Keeps the fixed interval baseline, skips low-change candidates, and inserts extra candidates in high-motion ranges.\n"
         "Uses sparse feature tracking as well as luma difference, so motion that matters to SfM is easier to catch"
+    ),
+    "QUICK_EXTRACT": (
+        "Use this when you want a short test SfM run quickly.\n"
+        "It favors shorter wait time over fine automatic picking, so you can check the fixed-interval result sooner"
     ),
     "MODE_CHANGE": "Automatically adjusts extraction interval from image change, with min/max gaps as safety limits",
     "INTERVAL": "Fixed extraction interval in seconds. Drag horizontally to adjust. Recommended: 0.8-1.0 sec; UI range: 0.05-60 sec",
