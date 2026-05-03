@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 import csv
 import sys
+from collections import OrderedDict
 from pathlib import Path
 from typing import Dict, List
 
@@ -54,6 +55,7 @@ else:  # pragma: no cover - PySide6 missing
 
 
 _ICON_DIR = Path(__file__).resolve().parent / "gui" / "assets" / "icons"
+_PIXMAP_CACHE_LIMIT = 3
 
 
 def _review_icon(name: str) -> QIcon:
@@ -77,6 +79,7 @@ if QMainWindow is not None:
             self.index = 0
             self._slider_sync = False
             self.current_pixmap: QPixmap | None = None
+            self._pixmap_cache: OrderedDict[tuple, QPixmap] = OrderedDict()
 
             self._build_ui()
             self._bind_shortcuts()
@@ -327,7 +330,7 @@ if QMainWindow is not None:
                 self.image_view.setText(i18n.t("REVIEW_IMAGE_NOT_FOUND").format(path=image_path))
                 return
 
-            pixmap = QPixmap(str(image_path))
+            pixmap = self._pixmap_for(image_path)
             if pixmap.isNull():
                 self.current_pixmap = None
                 self.image_view.setText(i18n.t("REVIEW_IMAGE_LOAD_FAILED").format(path=image_path))
@@ -335,6 +338,39 @@ if QMainWindow is not None:
 
             self.current_pixmap = pixmap
             self.image_view.set_source_pixmap(pixmap)
+            self._prefetch_neighbor_pixmaps()
+
+        def _pixmap_cache_key(self, image_path: Path) -> tuple | None:
+            try:
+                st = image_path.stat()
+                return (str(image_path.resolve()).lower(), int(st.st_size), int(st.st_mtime_ns))
+            except OSError:
+                return None
+
+        def _pixmap_for(self, image_path: Path) -> QPixmap:
+            key = self._pixmap_cache_key(image_path)
+            if key is not None and key in self._pixmap_cache:
+                self._pixmap_cache.move_to_end(key)
+                return self._pixmap_cache[key]
+
+            pixmap = QPixmap(str(image_path))
+            if not pixmap.isNull() and key is not None:
+                self._pixmap_cache[key] = pixmap
+                self._pixmap_cache.move_to_end(key)
+                while len(self._pixmap_cache) > _PIXMAP_CACHE_LIMIT:
+                    self._pixmap_cache.popitem(last=False)
+            return pixmap
+
+        def _prefetch_neighbor_pixmaps(self) -> None:
+            for idx in (self.index - 1, self.index + 1):
+                if idx < 0 or idx >= len(self.rows):
+                    continue
+                rel = self.rows[idx].get("output_file", "")
+                if not rel:
+                    continue
+                path = self.scene_dir / rel
+                if path.exists() and path.is_file():
+                    self._pixmap_for(path)
 
         def reset_zoom(self) -> None:
             self.image_view.reset_view()

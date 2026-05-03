@@ -1,6 +1,7 @@
 """Mask preview for Step 3."""
 from __future__ import annotations
 
+from collections import OrderedDict
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -25,6 +26,8 @@ from overexposure_mask import detect_overexposure, read_image_preserve_depth
 from stitch_mask import boundary_width_to_limit_angle, create_angular_stitched_mask
 
 _IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".tif", ".tiff"}
+_IMAGE_CACHE_LIMIT = 2
+_LAYER_CACHE_LIMIT = 4
 
 
 @dataclass(frozen=True)
@@ -53,6 +56,10 @@ class MaskPreviewWidget(QWidget):
         self._current_image_path = ""
         self._yolo_preview_image_key = ""
         self._yolo_preview_mask: np.ndarray | None = None
+        self._image_cache: OrderedDict[tuple, tuple[np.ndarray, np.ndarray]] = OrderedDict()
+        self._mask_cache: OrderedDict[tuple, np.ndarray] = OrderedDict()
+        self._stitch_cache: OrderedDict[tuple, np.ndarray] = OrderedDict()
+        self._overexp_cache: OrderedDict[tuple, np.ndarray] = OrderedDict()
         self._build_ui()
 
     def _build_ui(self) -> None:
@@ -116,22 +123,13 @@ class MaskPreviewWidget(QWidget):
             self._pixmap = None
             return
 
-        source_img = read_image_preserve_depth(str(image_path))
-        img = _display_bgr8(source_img)
-        if img is None:
+        loaded = self._read_source_and_display(image_path)
+        if loaded is None:
             self.image_label.setText(i18n.t("PREVIEW_LOAD_FAIL"))
             self.status_label.setText("")
             self._pixmap = None
             return
-
-        max_w = 1900
-        if img.shape[1] > max_w:
-            scale = max_w / float(img.shape[1])
-            img = cv2.resize(
-                img,
-                (max(1, int(img.shape[1] * scale)), max(1, int(img.shape[0] * scale))),
-                interpolation=cv2.INTER_AREA,
-            )
+        source_img, img = loaded
 
         h, w = img.shape[:2]
         combined = np.full((h, w), 255, dtype=np.uint8)
@@ -141,7 +139,7 @@ class MaskPreviewWidget(QWidget):
             yolo_mask = self._load_yolo_preview_mask(image_path)
             yolo_status = i18n.t("MASK_PREVIEW_YOLO_TEMP") if yolo_mask is not None else ""
             if yolo_mask is None:
-                yolo_mask = self._load_existing_mask(image_path, config)
+                yolo_mask = self._load_existing_mask(image_path, config, combined.shape)
                 yolo_status = i18n.t("MASK_PREVIEW_YOLO_EXISTING") if yolo_mask is not None else ""
             if yolo_mask is None:
                 status_parts.append(i18n.t("MASK_PREVIEW_YOLO_PENDING"))
@@ -155,11 +153,7 @@ class MaskPreviewWidget(QWidget):
             if config.stitch_boundary_width_deg is None:
                 status_parts.append(i18n.t("MASK_PREVIEW_INVALID_STITCH_WIDTH"))
             else:
-                stitch = create_angular_stitched_mask(
-                    w,
-                    h,
-                    boundary_width_to_limit_angle(config.stitch_boundary_width_deg),
-                )
+                stitch = self._stitch_mask(w, h, config.stitch_boundary_width_deg)
                 combined = cv2.bitwise_and(combined, stitch)
                 status_parts.append(
                     i18n.t("MASK_PREVIEW_STITCH_STATUS").format(
@@ -168,13 +162,13 @@ class MaskPreviewWidget(QWidget):
                 )
 
         if config.use_overexposure:
-            overexp = detect_overexposure(
+            overexp = self._overexposure_mask(
+                image_path,
                 source_img,
-                threshold=int(config.overexposure_threshold),
-                dilate_px=int(config.overexposure_dilate),
+                combined.shape,
+                int(config.overexposure_threshold),
+                int(config.overexposure_dilate),
             )
-            if overexp.shape != combined.shape:
-                overexp = cv2.resize(overexp, (w, h), interpolation=cv2.INTER_NEAREST)
             combined = cv2.bitwise_and(combined, overexp)
             status_parts.append(
                 i18n.t("MASK_PREVIEW_OVEREXP_STATUS").format(
@@ -280,7 +274,12 @@ class MaskPreviewWidget(QWidget):
         if emit:
             self.current_image_changed.emit()
 
-    def _load_existing_mask(self, image_path: Path, config: MaskPreviewConfig) -> np.ndarray | None:
+    def _load_existing_mask(
+        self,
+        image_path: Path,
+        config: MaskPreviewConfig,
+        target_shape: tuple[int, int] | None = None,
+    ) -> np.ndarray | None:
         masks_root = Path(config.masks_dir) if config.masks_dir else None
         if masks_root is None or not masks_root.is_dir():
             return None
@@ -301,7 +300,7 @@ class MaskPreviewWidget(QWidget):
         for candidate in candidates:
             if not candidate.is_file():
                 continue
-            mask = imread_unicode(candidate, cv2.IMREAD_GRAYSCALE)
+            mask = self._read_mask(candidate, target_shape)
             if mask is None:
                 continue
             return mask
@@ -352,6 +351,91 @@ class MaskPreviewWidget(QWidget):
 
     def _update_pixmap(self) -> None:
         self.image_label.set_source_pixmap(self._pixmap)
+
+    def _cache_key(self, path: Path, *extra: object) -> tuple | None:
+        try:
+            st = path.stat()
+            return (str(path.resolve()).lower(), int(st.st_size), int(st.st_mtime_ns), *extra)
+        except OSError:
+            return None
+
+    @staticmethod
+    def _store_cache(cache: OrderedDict, key: tuple, value, limit: int = _LAYER_CACHE_LIMIT) -> None:
+        cache[key] = value
+        cache.move_to_end(key)
+        while len(cache) > limit:
+            cache.popitem(last=False)
+
+    def _read_source_and_display(self, path: Path) -> tuple[np.ndarray, np.ndarray] | None:
+        max_w = 1900
+        key = self._cache_key(path, "image", max_w)
+        if key is not None and key in self._image_cache:
+            self._image_cache.move_to_end(key)
+            source, display = self._image_cache[key]
+            return source.copy(), display.copy()
+
+        source = read_image_preserve_depth(str(path))
+        display = _display_bgr8(source)
+        if source is None or display is None:
+            return None
+        if display.shape[1] > max_w:
+            scale = max_w / float(display.shape[1])
+            display = cv2.resize(
+                display,
+                (max(1, int(display.shape[1] * scale)), max(1, int(display.shape[0] * scale))),
+                interpolation=cv2.INTER_AREA,
+            )
+        if key is not None:
+            self._store_cache(self._image_cache, key, (source, display), _IMAGE_CACHE_LIMIT)
+        return source.copy(), display.copy()
+
+    def _read_mask(self, path: Path, target_shape: tuple[int, int] | None) -> np.ndarray | None:
+        extra: tuple[object, ...] = ("mask",)
+        if target_shape is not None:
+            extra = ("mask", int(target_shape[1]), int(target_shape[0]))
+        key = self._cache_key(path, *extra)
+        if key is not None and key in self._mask_cache:
+            self._mask_cache.move_to_end(key)
+            return self._mask_cache[key].copy()
+
+        mask = imread_unicode(path, cv2.IMREAD_GRAYSCALE)
+        if mask is None:
+            return None
+        if target_shape is not None and mask.shape != target_shape:
+            mask = cv2.resize(mask, (target_shape[1], target_shape[0]), interpolation=cv2.INTER_NEAREST)
+        if key is not None:
+            self._store_cache(self._mask_cache, key, mask)
+        return mask.copy()
+
+    def _stitch_mask(self, width: int, height: int, boundary_width_deg: float) -> np.ndarray:
+        limit_angle = boundary_width_to_limit_angle(boundary_width_deg)
+        key = ("stitch", int(width), int(height), round(float(limit_angle), 6))
+        if key in self._stitch_cache:
+            self._stitch_cache.move_to_end(key)
+            return self._stitch_cache[key].copy()
+        mask = create_angular_stitched_mask(width, height, limit_angle)
+        self._store_cache(self._stitch_cache, key, mask)
+        return mask.copy()
+
+    def _overexposure_mask(
+        self,
+        path: Path,
+        source_img: np.ndarray,
+        target_shape: tuple[int, int],
+        threshold: int,
+        dilate_px: int,
+    ) -> np.ndarray:
+        key = self._cache_key(path, "overexp", int(threshold), int(dilate_px), target_shape[1], target_shape[0])
+        if key is not None and key in self._overexp_cache:
+            self._overexp_cache.move_to_end(key)
+            return self._overexp_cache[key].copy()
+
+        mask = detect_overexposure(source_img, threshold=threshold, dilate_px=dilate_px)
+        if mask.shape != target_shape:
+            mask = cv2.resize(mask, (target_shape[1], target_shape[0]), interpolation=cv2.INTER_NEAREST)
+        if key is not None:
+            self._store_cache(self._overexp_cache, key, mask)
+        return mask.copy()
 
 
 def _display_bgr8(image: np.ndarray | None) -> np.ndarray | None:

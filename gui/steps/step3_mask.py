@@ -10,7 +10,7 @@ import tempfile
 from pathlib import Path
 
 from apply_frame_decisions import pending_drop_image_paths, untracked_image_paths
-from PySide6.QtCore import QProcess, Qt, QUrl, Signal
+from PySide6.QtCore import QProcess, Qt, QTimer, QUrl, Signal
 from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import (
     QButtonGroup,
@@ -111,6 +111,11 @@ class MaskStep(BaseStepWidget):
         self._yolo_preview_temp: tempfile.TemporaryDirectory[str] | None = None
         self._yolo_preview_image: Path | None = None
         self._yolo_preview_output: Path | None = None
+        self._mask_preview_render_pending = False
+        self._mask_preview_render_timer = QTimer(self)
+        self._mask_preview_render_timer.setSingleShot(True)
+        self._mask_preview_render_timer.setInterval(50)
+        self._mask_preview_render_timer.timeout.connect(self._flush_scheduled_mask_preview)
         self._build_ui()
 
     def _build_ui(self) -> None:
@@ -408,11 +413,11 @@ class MaskStep(BaseStepWidget):
 
         for cb in (self.run_yolo_cb, self.run_stitch_cb, self.run_overexp_cb):
             cb.toggled.connect(self._update_task_controls)
-        self.stitch_boundary_width_edit.valueChanged.connect(lambda _: self._render_mask_preview())
-        self.overexp_threshold_edit.valueChanged.connect(lambda _: self._render_mask_preview())
-        self.overexp_dilate_edit.valueChanged.connect(lambda _: self._render_mask_preview())
-        self.mask_preview.current_image_changed.connect(lambda: self._render_mask_preview())
-        self.mask_preview.opacity_slider.valueChanged.connect(lambda _: self._render_mask_preview())
+        self.stitch_boundary_width_edit.valueChanged.connect(lambda _: self._schedule_render_mask_preview())
+        self.overexp_threshold_edit.valueChanged.connect(lambda _: self._schedule_render_mask_preview())
+        self.overexp_dilate_edit.valueChanged.connect(lambda _: self._schedule_render_mask_preview())
+        self.mask_preview.current_image_changed.connect(lambda: self._schedule_render_mask_preview())
+        self.mask_preview.opacity_slider.valueChanged.connect(lambda _: self._schedule_render_mask_preview())
         self.mask_preview.yolo_preview_requested.connect(self._run_yolo_preview)
         self.add_external_images_btn.clicked.connect(self._add_external_images_from_folder)
         self.open_images_dir_btn.clicked.connect(self._open_images_dir)
@@ -673,6 +678,21 @@ class MaskStep(BaseStepWidget):
         if not math.isfinite(value):
             return _STITCH_BOUNDARY_DEFAULT
         return max(_STITCH_BOUNDARY_MIN, min(_STITCH_BOUNDARY_MAX, value))
+
+    def _schedule_render_mask_preview(self) -> None:
+        if self._mask_preview_render_timer.isActive():
+            self._mask_preview_render_pending = True
+            self._mask_preview_render_timer.start()
+            return
+        self._mask_preview_render_pending = False
+        self._render_mask_preview()
+        self._mask_preview_render_timer.start()
+
+    def _flush_scheduled_mask_preview(self) -> None:
+        if not self._mask_preview_render_pending:
+            return
+        self._mask_preview_render_pending = False
+        self._render_mask_preview()
 
     def _render_mask_preview(self) -> None:
         try:

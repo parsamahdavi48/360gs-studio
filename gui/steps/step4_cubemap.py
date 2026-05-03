@@ -27,7 +27,7 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
-from PySide6.QtCore import QSize, Qt
+from PySide6.QtCore import QSize, Qt, QTimer
 
 from colmap_rig_export import pinhole_camera_params
 from gui import i18n
@@ -136,6 +136,11 @@ class CubemapStep(BaseStepWidget):
         self._user_preferences_enabled = False
         self._export_method_value = _METHOD_METASHAPE
         self._input_image_count = 0
+        self._preview_render_pending = False
+        self._preview_render_timer = QTimer(self)
+        self._preview_render_timer.setSingleShot(True)
+        self._preview_render_timer.setInterval(50)
+        self._preview_render_timer.timeout.connect(self._flush_scheduled_render_preview)
         self._build_ui()
 
     def _build_ui(self) -> None:
@@ -489,8 +494,8 @@ class CubemapStep(BaseStepWidget):
         preview_title.setObjectName("paneTitle")
         preview_layout.addWidget(preview_title)
         self.preview = PreviewWidget()
-        self.preview.mask_slider.valueChanged.connect(lambda _: self._render_preview())
-        self.preview.current_image_changed.connect(lambda: self._render_preview())
+        self.preview.mask_slider.valueChanged.connect(lambda _: self._schedule_render_preview())
+        self.preview.current_image_changed.connect(lambda: self._schedule_render_preview())
         preview_layout.addWidget(self.preview, stretch=1)
 
         top_scroll.setWidget(top)
@@ -756,6 +761,21 @@ class CubemapStep(BaseStepWidget):
 
     def _on_views_changed(self) -> None:
         self._update_output_count()
+        self._schedule_render_preview()
+
+    def _schedule_render_preview(self) -> None:
+        if self._preview_render_timer.isActive():
+            self._preview_render_pending = True
+            self._preview_render_timer.start()
+            return
+        self._preview_render_pending = False
+        self._render_preview()
+        self._preview_render_timer.start()
+
+    def _flush_scheduled_render_preview(self) -> None:
+        if not self._preview_render_pending:
+            return
+        self._preview_render_pending = False
         self._render_preview()
 
     def _render_preview(self) -> None:

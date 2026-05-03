@@ -408,6 +408,7 @@ def analyze_video_window(
     progress_total_frames: int = 0,
     progress_step_frames: int = 0,
     quality_mode: str = "sfm",
+    compute_feature_motion: bool = True,
 ) -> Tuple[List[float], List[float], List[float], List[float], int, int, float]:
     out_w, out_h = scaled_dimensions(src_w, src_h, analysis_width)
     vf_parts = [f"scale={out_w}:{out_h}:flags=bilinear", "format=gray"]
@@ -491,7 +492,10 @@ def analyze_video_window(
             else:
                 diff = cv2.absdiff(frame, prev_frame)
                 change_scores.append(float(np.mean(diff) / 255.0))
-                feature_motion_scores.append(compute_feature_motion_score(prev_frame, frame))
+                if compute_feature_motion:
+                    feature_motion_scores.append(compute_feature_motion_score(prev_frame, frame))
+                else:
+                    feature_motion_scores.append(0.0)
 
             prev_frame = frame
             processed = len(change_scores)
@@ -523,6 +527,7 @@ def analyze_video(
     progress_total_frames: int = 0,
     progress_step_frames: int = 0,
     quality_mode: str = "sfm",
+    compute_feature_motion: bool = True,
 ) -> Tuple[List[float], List[float], List[float], List[float], int, int]:
     blur_scores, change_scores, quality_scores, feature_motion_scores, out_w, out_h, _ = analyze_video_window(
         video_path=video_path,
@@ -538,6 +543,7 @@ def analyze_video(
         progress_total_frames=progress_total_frames,
         progress_step_frames=progress_step_frames,
         quality_mode=quality_mode,
+        compute_feature_motion=compute_feature_motion,
     )
     return blur_scores, change_scores, quality_scores, feature_motion_scores, out_w, out_h
 
@@ -571,6 +577,7 @@ def save_analysis_cache(
     quality_scores: List[float],
     feature_motion_scores: List[float],
     quality_mode: str,
+    feature_motion_computed: bool = True,
 ) -> None:
     if np is None:
         return
@@ -589,6 +596,7 @@ def save_analysis_cache(
         analysis_width=np.int32(analysis_w),
         analysis_height=np.int32(analysis_h),
         quality_mode=np.asarray(quality_mode),
+        feature_motion_computed=np.asarray(bool(feature_motion_computed)),
         blur_scores=np.asarray(blur_scores, dtype=np.float64),
         change_scores=np.asarray(change_scores, dtype=np.float64),
         quality_scores=np.asarray(quality_scores, dtype=np.float64),
@@ -736,6 +744,7 @@ def load_analysis_cache(
     video_info: VideoInfo,
     analysis_width: int,
     quality_mode: str = "sfm",
+    require_feature_motion: bool = False,
 ) -> Optional[Tuple[List[float], List[float], List[float], List[float], int, int]]:
     """キャッシュが有効なら解析スコア一式と (analysis_w, analysis_h) を返す。
     無効/不在/エラーなら None。"""
@@ -757,6 +766,11 @@ def load_analysis_cache(
                 return None
             cached_quality_mode = str(data["quality_mode"].tolist())
             if cached_quality_mode != quality_mode:
+                return None
+            feature_motion_computed = True
+            if "feature_motion_computed" in data.files:
+                feature_motion_computed = bool(data["feature_motion_computed"].tolist())
+            if require_feature_motion and not feature_motion_computed:
                 return None
             blur = data["blur_scores"].tolist()
             change = data["change_scores"].tolist()
@@ -1039,6 +1053,7 @@ def estimate_change_sampled(
             duration_sec=seg_sec,
             sample_fps=sample_fps,
             quality_mode="sharpness",
+            compute_feature_motion=False,
         )
 
         if len(change_scores) < 2:
@@ -1986,13 +2001,22 @@ def main() -> None:
         cache_path = cache_path_for(scene_dir)
         cached: Optional[Tuple[List[float], List[float], List[float], List[float], int, int]] = None
         if not args.no_cache:
-            cached = load_analysis_cache(cache_path, input_video, video_info, args.analysis_width, QUALITY_MODE)
+            needs_feature_motion = args.mode == "fixed" and args.fixed_smart
+            cached = load_analysis_cache(
+                cache_path,
+                input_video,
+                video_info,
+                args.analysis_width,
+                QUALITY_MODE,
+                require_feature_motion=needs_feature_motion,
+            )
             if cached is not None:
                 print(f"[cache] reusing analysis cache: {cache_path}")
 
         if cached is not None:
             blur_scores, change_scores, quality_scores, feature_motion_scores, analysis_w, analysis_h = cached
         else:
+            needs_feature_motion = args.mode == "fixed" and args.fixed_smart
             progress_step = max(10, video_info.total_frames // 100) if video_info.total_frames > 0 else max(
                 10, int(round(video_info.fps * 2.0))
             )
@@ -2007,6 +2031,7 @@ def main() -> None:
                 progress_total_frames=video_info.total_frames,
                 progress_step_frames=progress_step,
                 quality_mode=QUALITY_MODE,
+                compute_feature_motion=needs_feature_motion,
             )
             if not args.no_cache:
                 try:
@@ -2019,6 +2044,7 @@ def main() -> None:
                         quality_scores,
                         feature_motion_scores,
                         QUALITY_MODE,
+                        feature_motion_computed=needs_feature_motion,
                     )
                 except Exception as e:
                     print(f"[cache] failed to save cache (non-fatal): {e}")

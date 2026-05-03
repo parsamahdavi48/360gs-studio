@@ -3,6 +3,7 @@ import json
 import os
 import re
 import sys
+from collections import OrderedDict
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
 
@@ -48,7 +49,8 @@ _WORKER_EXPORT_MASKS = True
 _WORKER_COLMAP_RIG_IMAGE_DIRS: dict[str, str] = {}
 _WORKER_COLMAP_RIG_MASK_DIRS: dict[str, str] = {}
 # yaw オフセット別キャッシュ: key = round(yaw_offset, 3), value = view_name -> (map_x, map_y)
-_WORKER_REMAP_CACHE: dict[float, dict[str, tuple[np.ndarray, np.ndarray]]] = {}
+_WORKER_REMAP_CACHE: OrderedDict[float, dict[str, tuple[np.ndarray, np.ndarray]]] = OrderedDict()
+_WORKER_REMAP_CACHE_LIMIT = 12
 _WORKER_INPUT_SIZE: tuple[int, int] = (0, 0)
 _WORKER_FOV: float = 90.0
 _WORKER_OUTPUT_SIZE: int = 0
@@ -66,6 +68,7 @@ def get_remap_tables_for_offset(yaw_offset: float) -> dict[str, tuple[np.ndarray
 
     cached = _WORKER_REMAP_CACHE.get(key)
     if cached is not None:
+        _WORKER_REMAP_CACHE.move_to_end(key)
         return cached
 
     assert _WORKER_VIEWS is not None
@@ -80,6 +83,10 @@ def get_remap_tables_for_offset(yaw_offset: float) -> dict[str, tuple[np.ndarray
             _WORKER_OUTPUT_SIZE,
         )
     _WORKER_REMAP_CACHE[key] = tables
+    _WORKER_REMAP_CACHE.move_to_end(key)
+    limit = max(1, int(_WORKER_REMAP_CACHE_LIMIT))
+    while len(_WORKER_REMAP_CACHE) > limit:
+        _WORKER_REMAP_CACHE.popitem(last=False)
     return tables
 
 
@@ -91,6 +98,124 @@ def frame_yaw_offset(frame_index: int, step_deg: float) -> float:
     if step_deg == 0.0:
         return 0.0
     return (float(frame_index) * float(step_deg)) % 360.0
+
+
+def _parse_positive_int_or_auto(value: str | int | None, name: str) -> int | None:
+    if value is None:
+        return None
+    text = str(value).strip().lower()
+    if text in {"", "auto"}:
+        return None
+    try:
+        parsed = int(text)
+    except ValueError as e:
+        raise ValueError(f"{name} must be 'auto' or a positive integer") from e
+    if parsed <= 0:
+        raise ValueError(f"{name} must be 'auto' or a positive integer")
+    return parsed
+
+
+def _available_memory_bytes() -> int | None:
+    if os.name == "nt":
+        try:
+            import ctypes
+
+            class MEMORYSTATUSEX(ctypes.Structure):
+                _fields_ = [
+                    ("dwLength", ctypes.c_ulong),
+                    ("dwMemoryLoad", ctypes.c_ulong),
+                    ("ullTotalPhys", ctypes.c_ulonglong),
+                    ("ullAvailPhys", ctypes.c_ulonglong),
+                    ("ullTotalPageFile", ctypes.c_ulonglong),
+                    ("ullAvailPageFile", ctypes.c_ulonglong),
+                    ("ullTotalVirtual", ctypes.c_ulonglong),
+                    ("ullAvailVirtual", ctypes.c_ulonglong),
+                    ("ullAvailExtendedVirtual", ctypes.c_ulonglong),
+                ]
+
+            stat = MEMORYSTATUSEX()
+            stat.dwLength = ctypes.sizeof(MEMORYSTATUSEX)
+            if ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(stat)):
+                return int(stat.ullAvailPhys)
+        except Exception:
+            return None
+    try:
+        page_size = int(os.sysconf("SC_PAGE_SIZE"))
+        avail_pages = int(os.sysconf("SC_AVPHYS_PAGES"))
+        return page_size * avail_pages
+    except (AttributeError, ValueError, OSError):
+        return None
+
+
+def _estimate_remap_offset_bytes(output_size: int, view_count: int) -> int:
+    output_pixels = max(1, int(output_size)) ** 2
+    # map_x + map_y, both float32.
+    return output_pixels * max(1, int(view_count)) * 2 * 4
+
+
+def _estimate_worker_memory_bytes(
+    input_size: tuple[int, int],
+    output_size: int,
+    view_count: int,
+    remap_cache_limit: int,
+) -> int:
+    src_w, src_h = input_size
+    input_bytes = max(1, int(src_w)) * max(1, int(src_h)) * 8
+    remap_bytes = _estimate_remap_offset_bytes(output_size, view_count) * max(1, int(remap_cache_limit))
+    scratch_bytes = max(1, int(output_size)) ** 2 * 16
+    return (256 * 1024 * 1024) + input_bytes + remap_bytes + scratch_bytes
+
+
+def resolve_worker_count(
+    value: str | int | None,
+    input_size: tuple[int, int],
+    output_size: int,
+    view_count: int,
+    remap_cache_limit: int,
+) -> int:
+    requested = _parse_positive_int_or_auto(value, "--workers")
+    if requested is not None:
+        return requested
+
+    cpu_cap = min(16, os.cpu_count() or 1)
+    available = _available_memory_bytes()
+    if not available:
+        return cpu_cap
+
+    per_worker = _estimate_worker_memory_bytes(input_size, output_size, view_count, remap_cache_limit)
+    if per_worker <= 0:
+        return cpu_cap
+    memory_cap = int((available * 0.55) // per_worker)
+    return max(1, min(cpu_cap, memory_cap))
+
+
+def resolve_remap_cache_limit(
+    value: str | int | None,
+    frame_yaw_offsets: list[float] | None,
+    output_size: int,
+    view_count: int,
+    worker_count: int,
+) -> int:
+    requested = _parse_positive_int_or_auto(value, "--remap-cache-limit")
+    if requested is not None:
+        return requested
+
+    if frame_yaw_offsets:
+        desired = len({_quantize_yaw_offset(offset) for offset in frame_yaw_offsets})
+    else:
+        desired = 1
+    desired = max(1, min(desired, 12))
+
+    available = _available_memory_bytes()
+    if not available:
+        return desired
+
+    per_offset = _estimate_remap_offset_bytes(output_size, view_count)
+    if per_offset <= 0:
+        return desired
+    per_worker_budget = int((available * 0.35) // max(1, int(worker_count)))
+    memory_limit = max(1, per_worker_budget // per_offset)
+    return max(1, min(desired, memory_limit))
 
 
 class MyParser(argparse.ArgumentParser):
@@ -193,6 +318,21 @@ def parse_args() -> argparse.Namespace:
         type=int,
         default=95,
         help="JPEG/WebP quality (1-100, default 95).",
+    )
+    parser.add_argument(
+        "--workers",
+        default="auto",
+        help="Image conversion worker processes: 'auto' or a positive integer (default=auto).",
+    )
+    parser.add_argument(
+        "--remap-cache-limit",
+        "--remap_cache_limit",
+        dest="remap_cache_limit",
+        default="auto",
+        help=(
+            "Per-worker yaw remap table cache limit: 'auto' or a positive integer "
+            "(default=auto, memory-aware)."
+        ),
     )
     parser.add_argument(
         "--yaw-offset-per-frame",
@@ -820,6 +960,7 @@ def worker_init(
     jpg_quality: int,
     export_images: bool = True,
     export_masks: bool = True,
+    remap_cache_limit: int = 12,
 ) -> None:
     global _WORKER_REMAP_TABLES
     global _WORKER_VIEWS
@@ -835,6 +976,7 @@ def worker_init(
     global _WORKER_EXPORT_IMAGES
     global _WORKER_EXPORT_MASKS
     global _WORKER_REMAP_CACHE
+    global _WORKER_REMAP_CACHE_LIMIT
     global _WORKER_INPUT_SIZE
     global _WORKER_FOV
     global _WORKER_OUTPUT_SIZE
@@ -854,9 +996,10 @@ def worker_init(
     _WORKER_JPG_QUALITY = jpg_quality
     _WORKER_EXPORT_IMAGES = export_images
     _WORKER_EXPORT_MASKS = export_masks
+    _WORKER_REMAP_CACHE_LIMIT = max(1, int(remap_cache_limit))
 
     # offset=0 のテーブルを事前構築（per-frame yaw を使わない場合の通常パス）
-    _WORKER_REMAP_CACHE = {}
+    _WORKER_REMAP_CACHE = OrderedDict()
     _WORKER_REMAP_TABLES = get_remap_tables_for_offset(0.0)
 
 
@@ -876,6 +1019,7 @@ def worker_init_colmap_rig(
     jpg_quality: int,
     export_images: bool = True,
     export_masks: bool = True,
+    remap_cache_limit: int = 12,
 ) -> None:
     global _WORKER_COLMAP_RIG_IMAGE_DIRS
     global _WORKER_COLMAP_RIG_MASK_DIRS
@@ -896,12 +1040,19 @@ def worker_init_colmap_rig(
         jpg_quality,
         export_images,
         export_masks,
+        remap_cache_limit,
     )
     _WORKER_COLMAP_RIG_IMAGE_DIRS = image_dirs_by_view
     _WORKER_COLMAP_RIG_MASK_DIRS = mask_dirs_by_view
 
 
 def _image_has_alpha(path: str) -> bool:
+    try:
+        with Image.open(path) as img:
+            bands = img.getbands()
+            return "A" in bands or "transparency" in img.info
+    except Exception:
+        pass
     img = imread_unicode(path, cv2.IMREAD_UNCHANGED)
     return img is not None and img.ndim == 3 and img.shape[2] == 4
 
@@ -1105,6 +1256,8 @@ def convert_images(
     frame_yaw_offsets: list[float] | None = None,
     export_images: bool = True,
     export_masks: bool = True,
+    workers: str | int | None = "auto",
+    remap_cache_limit: str | int | None = "auto",
 ) -> None:
     if frame_yaw_offsets is None:
         frame_yaw_offsets = [0.0] * len(image_files)
@@ -1114,7 +1267,23 @@ def convert_images(
             f"must match image_files length ({len(image_files)})"
         )
 
-    max_workers = min(16, os.cpu_count() or 1)
+    tentative_workers = _parse_positive_int_or_auto(workers, "--workers")
+    if tentative_workers is None:
+        tentative_workers = min(16, os.cpu_count() or 1)
+    resolved_cache_limit = resolve_remap_cache_limit(
+        remap_cache_limit,
+        frame_yaw_offsets,
+        output_size,
+        len(views),
+        tentative_workers,
+    )
+    max_workers = resolve_worker_count(
+        workers,
+        input_size,
+        output_size,
+        len(views),
+        resolved_cache_limit,
+    )
     total_outputs = count_planned_outputs(
         image_files=image_files,
         views=views,
@@ -1125,6 +1294,7 @@ def convert_images(
         export_masks=export_masks,
     )
     print(f"Converting {total_outputs} files...")
+    print(f"Workers: {max_workers} (remap cache limit={resolved_cache_limit})")
     print(f"[progress] 0/{total_outputs}", flush=True)
 
     if total_outputs <= 0:
@@ -1154,6 +1324,7 @@ def convert_images(
             jpg_quality,
             export_images,
             export_masks,
+            resolved_cache_limit,
         ),
     ) as executor:
         futures = [
@@ -1200,6 +1371,8 @@ def convert_images_colmap_rig(
     jpg_quality: int = 95,
     export_images: bool = True,
     export_masks: bool = True,
+    workers: str | int | None = "auto",
+    remap_cache_limit: str | int | None = "auto",
 ) -> None:
     image_dirs_by_view = {
         view["name"]: str(colmap_camera_image_dir(output_dir, rig_name, view["camera_name"]))
@@ -1226,12 +1399,29 @@ def convert_images_colmap_rig(
         export_masks=export_masks,
     )
     print(f"Converting {total_outputs} files...")
+    tentative_workers = _parse_positive_int_or_auto(workers, "--workers")
+    if tentative_workers is None:
+        tentative_workers = min(16, os.cpu_count() or 1)
+    resolved_cache_limit = resolve_remap_cache_limit(
+        remap_cache_limit,
+        [0.0 for _ in image_files],
+        output_size,
+        len(views),
+        tentative_workers,
+    )
+    max_workers = resolve_worker_count(
+        workers,
+        input_size,
+        output_size,
+        len(views),
+        resolved_cache_limit,
+    )
+    print(f"Workers: {max_workers} (remap cache limit={resolved_cache_limit})")
     print(f"[progress] 0/{total_outputs}", flush=True)
     if total_outputs <= 0:
         return
 
     jobs = make_colmap_rig_jobs(image_files, output_format)
-    max_workers = min(16, os.cpu_count() or 1)
     with ProcessPoolExecutor(
         max_workers=max_workers,
         initializer=worker_init_colmap_rig,
@@ -1251,6 +1441,7 @@ def convert_images_colmap_rig(
             jpg_quality,
             export_images,
             export_masks,
+            resolved_cache_limit,
         ),
     ) as executor:
         futures = [executor.submit(proc_convert_images_colmap_rig, job) for job in jobs]
@@ -1287,6 +1478,12 @@ def main() -> None:
         sys.exit(1)
     if args.output_scale <= 0 or args.output_scale > 1.0:
         print("Error: output_scale must be in (0, 1.0]")
+        sys.exit(1)
+    try:
+        _parse_positive_int_or_auto(args.workers, "--workers")
+        _parse_positive_int_or_auto(args.remap_cache_limit, "--remap-cache-limit")
+    except ValueError as e:
+        print(f"Error: {e}")
         sys.exit(1)
 
     if args.views_json:
@@ -1411,6 +1608,8 @@ def main() -> None:
                 jpg_quality=args.jpg_quality,
                 export_images=export_images,
                 export_masks=export_masks,
+                workers=args.workers,
+                remap_cache_limit=args.remap_cache_limit,
             )
             return
         convert_images(
@@ -1431,6 +1630,8 @@ def main() -> None:
             frame_yaw_offsets=frame_yaw_offsets,
             export_images=export_images,
             export_masks=export_masks,
+            workers=args.workers,
+            remap_cache_limit=args.remap_cache_limit,
         )
 
 

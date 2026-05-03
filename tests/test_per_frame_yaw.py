@@ -17,6 +17,8 @@ from cubemap_transforms_json import (
     build_remap,
     frame_yaw_offset,
     get_remap_tables_for_offset,
+    resolve_remap_cache_limit,
+    resolve_worker_count,
     transform_json,
     worker_init,
 )
@@ -142,6 +144,19 @@ def test_table_cache_size_after_one_period(tmp_path):
     assert len(cube._WORKER_REMAP_CACHE) == 12
 
 
+def test_table_cache_respects_lru_limit(tmp_path):
+    _setup_worker(tmp_path)
+    cube._WORKER_REMAP_CACHE_LIMIT = 2
+
+    get_remap_tables_for_offset(30.0)
+    get_remap_tables_for_offset(60.0)
+
+    assert len(cube._WORKER_REMAP_CACHE) == 2
+    assert 0.0 not in cube._WORKER_REMAP_CACHE
+    assert 30.0 in cube._WORKER_REMAP_CACHE
+    assert 60.0 in cube._WORKER_REMAP_CACHE
+
+
 def test_table_cache_offset_yields_different_tables(tmp_path):
     """offset≠0 のテーブルは offset=0 と異なる内容（実際に yaw 回転が反映される）。"""
     _setup_worker(tmp_path)
@@ -158,6 +173,35 @@ def test_table_cache_offset_30_equals_view_at_30(tmp_path):
     direct_30 = build_remap((256, 128), 90.0, 30.0, 0.0, 64)
     assert np.allclose(cached_30[0], direct_30[0])
     assert np.allclose(cached_30[1], direct_30[1])
+
+
+def test_auto_remap_cache_limit_uses_memory_budget(monkeypatch):
+    monkeypatch.setattr(cube, "_available_memory_bytes", lambda: 1_000_000)
+    offsets = [float(i * 30) for i in range(12)]
+
+    limit = resolve_remap_cache_limit(
+        "auto",
+        offsets,
+        output_size=256,
+        view_count=6,
+        worker_count=4,
+    )
+
+    assert limit == 1
+
+
+def test_explicit_worker_count_is_respected(monkeypatch):
+    monkeypatch.setattr(cube, "_available_memory_bytes", lambda: 1)
+
+    workers = resolve_worker_count(
+        "3",
+        input_size=(7840, 3920),
+        output_size=1960,
+        view_count=6,
+        remap_cache_limit=12,
+    )
+
+    assert workers == 3
 
 
 # =============================================================================

@@ -1,6 +1,7 @@
 """エクイレクタングラープレビュー描画（ビュー境界オーバーレイ付き）"""
 from __future__ import annotations
 
+from collections import OrderedDict
 from functools import lru_cache
 from pathlib import Path
 
@@ -38,6 +39,7 @@ _LABEL_THICKNESS = 1
 _LABEL_PAD_X = 4
 _LABEL_PAD_Y = 3
 _HIGHLIGHT_FILL_ALPHA = 0.18
+_PREVIEW_CACHE_LIMIT = 4
 
 
 def _rotation_matrix(yaw_deg: float, pitch_deg: float) -> np.ndarray:
@@ -360,6 +362,8 @@ class PreviewWidget(QWidget):
         self._slider_sync = False
         self._current_image_path = ""
         self._scene_dir = ""
+        self._image_cache: OrderedDict[tuple, np.ndarray] = OrderedDict()
+        self._mask_cache: OrderedDict[tuple, np.ndarray] = OrderedDict()
 
         self._build_ui()
 
@@ -414,25 +418,17 @@ class PreviewWidget(QWidget):
             self._pixmap = None
             return
 
-        img = imread_unicode(p, cv2.IMREAD_COLOR)
+        img = self._read_display_image(p)
         if img is None:
             self.image_label.setText(i18n.t("PREVIEW_LOAD_FAIL"))
             self._pixmap = None
             return
 
-        max_w = 1900
-        if img.shape[1] > max_w:
-            scale = max_w / float(img.shape[1])
-            img = cv2.resize(img, (max(1, int(img.shape[1] * scale)), max(1, int(img.shape[0] * scale))),
-                             interpolation=cv2.INTER_AREA)
-
         # マスクオーバーレイ
         mask_path = self._resolve_mask(p, mask_dir)
         if mask_path is not None:
-            mask = imread_unicode(mask_path, cv2.IMREAD_GRAYSCALE)
+            mask = self._read_mask(mask_path, img.shape[:2])
             if mask is not None:
-                if mask.shape[:2] != img.shape[:2]:
-                    mask = cv2.resize(mask, (img.shape[1], img.shape[0]), interpolation=cv2.INTER_NEAREST)
                 alpha = float(self.mask_slider.value()) / 100.0
                 if alpha > 0:
                     masked = mask < 128
@@ -486,6 +482,57 @@ class PreviewWidget(QWidget):
 
     def _update_pixmap(self) -> None:
         self.image_label.set_source_pixmap(self._pixmap)
+
+    def _cache_key(self, path: Path, *extra: object) -> tuple | None:
+        try:
+            st = path.stat()
+            return (str(path.resolve()).lower(), int(st.st_size), int(st.st_mtime_ns), *extra)
+        except OSError:
+            return None
+
+    @staticmethod
+    def _store_cache(cache: OrderedDict[tuple, np.ndarray], key: tuple, value: np.ndarray) -> None:
+        cache[key] = value
+        cache.move_to_end(key)
+        while len(cache) > _PREVIEW_CACHE_LIMIT:
+            cache.popitem(last=False)
+
+    def _read_display_image(self, path: Path) -> np.ndarray | None:
+        max_w = 1900
+        key = self._cache_key(path, "display", max_w)
+        if key is not None and key in self._image_cache:
+            self._image_cache.move_to_end(key)
+            return self._image_cache[key].copy()
+
+        img = imread_unicode(path, cv2.IMREAD_COLOR)
+        if img is None:
+            return None
+        if img.shape[1] > max_w:
+            scale = max_w / float(img.shape[1])
+            img = cv2.resize(
+                img,
+                (max(1, int(img.shape[1] * scale)), max(1, int(img.shape[0] * scale))),
+                interpolation=cv2.INTER_AREA,
+            )
+        if key is not None:
+            self._store_cache(self._image_cache, key, img)
+        return img.copy()
+
+    def _read_mask(self, path: Path, target_shape: tuple[int, int]) -> np.ndarray | None:
+        h, w = target_shape
+        key = self._cache_key(path, "mask", w, h)
+        if key is not None and key in self._mask_cache:
+            self._mask_cache.move_to_end(key)
+            return self._mask_cache[key].copy()
+
+        mask = imread_unicode(path, cv2.IMREAD_GRAYSCALE)
+        if mask is None:
+            return None
+        if mask.shape[:2] != target_shape:
+            mask = cv2.resize(mask, (w, h), interpolation=cv2.INTER_NEAREST)
+        if key is not None:
+            self._store_cache(self._mask_cache, key, mask)
+        return mask.copy()
 
     def _resolve_mask(self, sample_path: Path, mask_dir: str) -> Path | None:
         md = Path(mask_dir) if mask_dir else None

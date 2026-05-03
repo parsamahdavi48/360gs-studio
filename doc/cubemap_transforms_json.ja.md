@@ -147,12 +147,14 @@ python cubemap_transforms_json.py . ./cubic --no_transform
 |--output-format|auto/jpg/png/tiff/webp|出力画像フォーマット (default=auto、入力に合わせる)。|
 |--output-bit-depth|8/source|出力画像のビット深度 (default=8)。`8` は互換性重視で8bitへ変換、`source` はPNG/TIFFで元ビット深度を保持。マスク出力は常に8bit PNG。|
 |--jpg-quality|1-100|JPEG / WebP 品質 (default=95)|
+|--workers|auto/N|画像変換のワーカープロセス数 (default=auto)。auto はCPU数と推定メモリ使用量から上限を決めます。|
+|--remap-cache-limit|auto/N|各ワーカー内のYaw remapテーブルキャッシュ上限 (default=auto)。auto は利用可能メモリに合わせて上限を抑えます。|
 
 ### フレームごとYaw回転 (per-frame yaw)
 
 デフォルトで、各ユニーク入力フレームに異なる cubemap Yawオフセット (`frame_index * 30°` mod 360°) が適用されます。これにより cubemap 面境界がフレームごとに違うシーン方向に落ち、サンプリングが多様化されます。同じワールド位置に境界アーティファクトが繰り返し蓄積するのを防ぎ、3DGS 学習の安定性を向上させます。旧動作（フレーム共通Yaw）に戻すには `--yaw-offset-per-frame 0` を指定してください。
 
-デフォルト 30° なら、ユニークオフセットは `{0°, 30°, 60°, ..., 330°}` の 12 種類で循環します。ワーカーは (yaw_offset, view) ごとに remap テーブルをキャッシュするため、メモリはユニークオフセット数に比例（フレーム数には依存しない）。
+デフォルト 30° なら、ユニークオフセットは `{0°, 30°, 60°, ..., 330°}` の 12 種類で循環します。ワーカーは `(yaw_offset, view)` ごとに remap テーブルをキャッシュしますが、`--remap-cache-limit` で上限を持つため、メモリはフレーム数に比例して増えません。
 
 ### ビット深度と α チャンネル
 

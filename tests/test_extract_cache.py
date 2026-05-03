@@ -161,6 +161,31 @@ def test_load_returns_none_when_quality_mode_changed(tmp_path: Path):
     assert loaded is None
 
 
+def test_load_returns_none_when_feature_motion_required_but_not_cached(tmp_path: Path):
+    video = tmp_path / "fake.mp4"
+    _make_dummy_video(video)
+    cache = cache_path_for(tmp_path)
+    info = _make_video_info(w=3840, h=1920)
+
+    save_analysis_cache(
+        cache,
+        video,
+        info,
+        960,
+        480,
+        [1.0, 2.0],
+        [0.0, 0.1],
+        [0.5, 0.6],
+        [0.0, 0.0],
+        "sfm",
+        feature_motion_computed=False,
+    )
+
+    assert load_analysis_cache(cache, video, info, 960) is not None
+    loaded = load_analysis_cache(cache, video, info, 960, require_feature_motion=True)
+    assert loaded is None
+
+
 def test_load_handles_zero_analysis_width(tmp_path: Path):
     """analysis_width=0 (= フルサイズ) でも一貫した動作: 動画幅でキャッシュされ、
     再度 0 を指定したら同じ値で hit する。"""

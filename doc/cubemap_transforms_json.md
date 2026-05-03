@@ -147,12 +147,14 @@ python cubemap_transforms_json.py . ./cubic --no_transform
 |--output-format|auto/jpg/png/tiff/webp|Output image format (default=auto, preserves input format).|
 |--output-bit-depth|8/source|Output image bit depth (default=8). `8` down-converts images for compatibility; `source` preserves PNG/TIFF source bit depth. Mask outputs are always 8-bit PNG.|
 |--jpg-quality|1-100|JPEG / WebP quality (default=95).|
+|--workers|auto/N|Image conversion worker processes (default=auto). Auto caps workers by CPU count and estimated memory use.|
+|--remap-cache-limit|auto/N|Per-worker yaw remap table cache limit (default=auto). Auto keeps the cache bounded by available memory.|
 
 ### Per-frame yaw rotation
 
 By default, each unique input frame gets a different cubemap yaw offset (`frame_index * 30°` mod 360°), so the cubemap face boundaries fall on different scene directions across frames. This diversifies the sampling and reduces 3DGS training instabilities caused by repeated boundary artifacts at the same world locations. Set `--yaw-offset-per-frame 0` to restore the legacy fixed-yaw behavior.
 
-The unique offsets cycle through `{0°, 30°, 60°, ..., 330°}` (12 values) at the default step. Internally, the worker remap tables are cached per (yaw_offset, view), so memory grows linearly with the number of unique offsets but never per frame.
+The unique offsets cycle through `{0°, 30°, 60°, ..., 330°}` (12 values) at the default step. Internally, worker remap tables are cached per `(yaw_offset, view)`, bounded by `--remap-cache-limit`, so memory does not grow with the number of frames.
 
 ### Bit depth and alpha channel
 

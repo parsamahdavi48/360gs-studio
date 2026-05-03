@@ -280,8 +280,8 @@ def get_bottom_from_pano(pano_img, size=1024):
     key = (w, h, size)
     if key not in _bottom_extract_cache:
         # 下方向の座標系 (u, v) を作成
-        u = np.linspace(-1, 1, size)
-        v = np.linspace(-1, 1, size)
+        u = np.linspace(-1, 1, size, dtype=np.float32)
+        v = np.linspace(-1, 1, size, dtype=np.float32)
         U, V = np.meshgrid(u, v)
 
         # キューブマップの底面から3Dベクトルへの変換
@@ -295,14 +295,14 @@ def get_bottom_from_pano(pano_img, size=1024):
         lat = np.arctan2(Z, np.sqrt(X**2 + Y**2))
 
         # ピクセル座標へ変換
-        px = ((lon + np.pi) / (2 * np.pi) * (w - 1))
-        py = ((np.pi/2 - lat) / np.pi * (h - 1))
+        px = ((lon + np.pi) / (2 * np.pi) * (w - 1)).astype(np.float32)
+        py = ((np.pi/2 - lat) / np.pi * (h - 1)).astype(np.float32)
         _bottom_extract_cache[key] = (px, py)
     else:
         px, py = _bottom_extract_cache[key]
 
     # 再サンプリング
-    bottom_img = cv2.remap(pano_img, px.astype(np.float32), py.astype(np.float32), cv2.INTER_LINEAR)
+    bottom_img = cv2.remap(pano_img, px, py, cv2.INTER_LINEAR)
     return bottom_img
 
 
@@ -318,8 +318,8 @@ def back_to_pano_from_bottom(bottom_img, pano_width, pano_height):
     key = (pano_width, pano_height, bsize)
     if key not in _bottom_back_cache:
         # パノラマの全ピクセルの3Dベクトルを計算
-        lon = np.linspace(-np.pi, np.pi, pano_width)
-        lat = np.linspace(np.pi / 2, -np.pi / 2, pano_height)
+        lon = np.linspace(-np.pi, np.pi, pano_width, dtype=np.float32)
+        lat = np.linspace(np.pi / 2, -np.pi / 2, pano_height, dtype=np.float32)
         Lon, Lat = np.meshgrid(lon, lat)
 
         X = np.cos(Lat) * np.cos(Lon)
@@ -338,8 +338,8 @@ def back_to_pano_from_bottom(bottom_img, pano_width, pano_height):
         V[is_bottom] = Y[is_bottom] / np.abs(Z[is_bottom])
 
         # キューブマップ座標 (-1~1) -> ピクセル座標
-        ux = (U + 1) / 2 * (bsize - 1)
-        uy = (V + 1) / 2 * (bsize - 1)
+        ux = ((U + 1) / 2 * (bsize - 1)).astype(np.float32)
+        uy = ((V + 1) / 2 * (bsize - 1)).astype(np.float32)
         _bottom_back_cache[key] = (ux, uy, is_bottom)
     else:
         ux, uy, is_bottom = _bottom_back_cache[key]
@@ -353,8 +353,8 @@ def back_to_pano_from_bottom(bottom_img, pano_width, pano_height):
     # マッピング実行
     mapped = cv2.remap(
         bottom_img,
-        ux.astype(np.float32),
-        uy.astype(np.float32),
+        ux,
+        uy,
         cv2.INTER_LINEAR,
         borderMode=cv2.BORDER_CONSTANT,
         borderValue=0,
