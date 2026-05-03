@@ -10,6 +10,7 @@ import pytest
 from PIL import Image
 from PySide6.QtWidgets import QApplication, QMessageBox
 
+from gui import i18n
 from gui.steps.step4_cubemap import CubemapStep
 from transforms_to_colmap import read_ply_points
 
@@ -134,6 +135,26 @@ def test_cubemap_step_does_not_count_repo_images_without_scene_dir() -> None:
 
     assert step.scene_dir == ""
     assert step._count_input_images() == 0
+
+
+def test_cubemap_step_refreshes_preview_when_activated_after_extraction(tmp_path: Path) -> None:
+    _app()
+    step = CubemapStep(Path.cwd())
+    step.set_scene_dir(str(tmp_path))
+
+    assert step.preview.current_image_path() is None
+
+    images = tmp_path / "images"
+    images.mkdir()
+    image_path = images / "frame_0001.jpg"
+    _write_test_image(image_path)
+
+    step.on_activated()
+
+    assert step.preview.current_image_path() == image_path
+    assert step.preview.image_label._source_pixmap is not None
+    assert step._count_input_images() == 1
+    assert i18n.t("OUTPUT_IMAGE_COUNT_FORMAT").format(count=6) in step.view_config.summary_text()
 
 
 def test_custom_grid_defaults_to_three_pitch_rows_all_enabled() -> None:

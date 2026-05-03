@@ -37,6 +37,23 @@ Python 3.12          Python.Python.3.12 3.12.10
     assert parse_winget_python_versions(text) == {(3, 12), (3, 13), (3, 14)}
 
 
+def test_has_pytest_suite_detects_optional_tests_dir(tmp_path: Path) -> None:
+    assert not update_venv.has_pytest_suite(tmp_path)
+
+    tests_dir = tmp_path / "tests"
+    tests_dir.mkdir()
+    assert not update_venv.has_pytest_suite(tmp_path)
+
+    (tests_dir / "test_smoke.py").write_text("def test_smoke(): pass\n", encoding="utf-8")
+
+    assert update_venv.has_pytest_suite(tmp_path)
+
+
+def test_pytest_is_not_a_runtime_requirement() -> None:
+    assert "pytest" not in update_venv.CORE_REQUIREMENTS
+    assert update_venv.TEST_REQUIREMENTS == ["pytest"]
+
+
 def test_dry_run_does_not_install_missing_python(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     args = argparse.Namespace(
         repo_root=tmp_path,

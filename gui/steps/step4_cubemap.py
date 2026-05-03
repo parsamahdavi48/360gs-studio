@@ -528,6 +528,12 @@ class CubemapStep(BaseStepWidget):
     def primary_action_tooltip(self) -> str:
         return i18n.tip("RUN_CUBEMAP")
 
+    def on_activated(self) -> None:
+        self.preview.refresh_image_list(prefer_current=True)
+        self._update_path_labels()
+        self._update_output_count()
+        self._render_preview()
+
     # -- ユーザー設定 --
 
     def enable_user_preferences(self) -> None:

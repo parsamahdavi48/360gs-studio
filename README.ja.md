@@ -8,6 +8,8 @@
 
 Fork元: [tetraface/tetraface-3dgs-utils](https://github.com/tetraface/tetraface-3dgs-utils)
 
+![STechDrive 3DGS Utils GUI](images/stechdrive-3dgs-utils-gui.jpg)
+
 ## 何をするツールか
 
 ```text
@@ -41,7 +43,7 @@ run_gui.bat
 update_venv.bat
 ```
 
-`update_venv.bat` はインストール済み、または winget で入手可能な Python 候補を新しい順に調べます。まず対象 Python ABI に対する pip dry-run 互換チェックを行い、成立しそうな候補だけ必要に応じて winget で Python を入れます。その後、一時venvで `pip check`、import/CUDAスモークテスト、pytest が通った最初の候補を `.venv` として採用します。
+`update_venv.bat` はインストール済み、または winget で入手可能な Python 候補を新しい順に調べます。まず対象 Python ABI に対する pip dry-run 互換チェックを行い、成立しそうな候補だけ必要に応じて winget で Python を入れます。その後、一時venvで `pip check` と import/CUDAスモークテストが通った最初の候補を `.venv` として採用します。
 
 更新ウィンドウは最後にキー入力待ちになり、サマリーを読んでから閉じられます。既存のターミナルから実行する場合は `update_venv.bat --no-pause` を使えます。
 
@@ -96,7 +98,7 @@ update_venv.bat
 
 ```text
 torch / torchvision / torchaudio from the CUDA 12.8 wheel index
-numpy, opencv-python, Pillow, open3d, ultralytics, tqdm, PySide6, pytest
+numpy, opencv-python, Pillow, open3d, ultralytics, tqdm, PySide6
 ```
 
 setup/update とも、これらのパッケージバージョンは固定せず、選択した Python 環境で最新互換バージョンを解決し、検証に通った環境だけを採用します。

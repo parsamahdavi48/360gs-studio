@@ -8,6 +8,8 @@ A Windows desktop toolkit for preparing frames, masks, and camera data from 360 
 
 Forked from [tetraface/tetraface-3dgs-utils](https://github.com/tetraface/tetraface-3dgs-utils).
 
+![STechDrive 3DGS Utils GUI](images/stechdrive-3dgs-utils-gui.jpg)
+
 ## What This Tool Does
 
 ```text
@@ -41,7 +43,7 @@ To update an existing `.venv` to the latest compatible package set, run:
 update_venv.bat
 ```
 
-`update_venv.bat` discovers installed and winget-available Python candidates from newest to oldest. It first runs pip dry-run compatibility checks for the target Python ABI, then installs a missing Python through winget only when that candidate is likely to work. The first candidate that builds a temporary venv and passes `pip check`, import/CUDA smoke tests, and pytest is promoted to `.venv`.
+`update_venv.bat` discovers installed and winget-available Python candidates from newest to oldest. It first runs pip dry-run compatibility checks for the target Python ABI, then installs a missing Python through winget only when that candidate is likely to work. The first candidate that builds a temporary venv and passes `pip check` and import/CUDA smoke tests is promoted to `.venv`.
 
 The update window stays open at the end so the summary can be read. Use `update_venv.bat --no-pause` when running from an existing terminal.
 
@@ -96,7 +98,7 @@ Main Python packages resolved by `setup_windows.bat`:
 
 ```text
 torch / torchvision / torchaudio from the CUDA 12.8 wheel index
-numpy, opencv-python, Pillow, open3d, ultralytics, tqdm, PySide6, pytest
+numpy, opencv-python, Pillow, open3d, ultralytics, tqdm, PySide6
 ```
 
 Both setup and update intentionally avoid fixed package pins. They resolve and verify the latest compatible versions for the selected Python environment.

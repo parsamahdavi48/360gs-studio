@@ -26,10 +26,10 @@ CORE_REQUIREMENTS = [
     "open3d",
     "tqdm",
     "PySide6",
-    "pytest",
 ]
 TORCH_REQUIREMENTS = ["torch", "torchvision", "torchaudio"]
 ML_REQUIREMENTS = ["ultralytics"]
+TEST_REQUIREMENTS = ["pytest"]
 
 SMOKE_TEST = r"""
 import sys
@@ -471,6 +471,11 @@ def remove_dir(path: Path) -> None:
         shutil.rmtree(path)
 
 
+def has_pytest_suite(repo_root: Path) -> bool:
+    tests_dir = repo_root / "tests"
+    return tests_dir.is_dir() and any(tests_dir.rglob("test_*.py"))
+
+
 def create_candidate_venv(
     repo_root: Path,
     candidate: PythonCandidate,
@@ -481,6 +486,7 @@ def create_candidate_venv(
 ) -> Path | None:
     temp_venv = repo_root / f".venv-candidate-py{candidate.version[0]}{candidate.version[1]}"
     remove_dir(temp_venv)
+    run_tests = run_pytest and has_pytest_suite(repo_root)
 
     try:
         emit(f"[INFO] Building Python {candidate.label}: {candidate.executable}")
@@ -491,12 +497,17 @@ def create_candidate_venv(
         run([py, "-m", "pip", "install", "--upgrade", *CORE_REQUIREMENTS])
         run([py, "-m", "pip", "install", "--upgrade", *TORCH_REQUIREMENTS, "--index-url", TORCH_INDEX_URL])
         run([py, "-m", "pip", "install", "--upgrade", *ML_REQUIREMENTS])
+        if run_tests:
+            run([py, "-m", "pip", "install", "--upgrade", *TEST_REQUIREMENTS])
         run([py, "-m", "pip", "check"])
 
         smoke_code = "REQUIRE_CUDA = " + repr(require_cuda) + "\n" + SMOKE_TEST
         run([py, "-c", smoke_code])
         if run_pytest:
-            run([py, "-m", "pytest", "-q"], cwd=repo_root)
+            if run_tests:
+                run([py, "-m", "pytest", "-q"], cwd=repo_root)
+            else:
+                emit("[INFO] tests/ was not found; skipping pytest verification.")
     except subprocess.CalledProcessError as exc:
         emit(f"[WARN] Python {candidate.label} rejected with exit code {exc.returncode}.")
         if not keep_temp:
