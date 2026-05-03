@@ -50,6 +50,9 @@ run_gui.bat --scene ./scene01
   - The result is shown as a red overlay and is not saved to `masks/`.
   - It uses the current `Image Type`, `YOLO Level`, `YOLO Expand`, `Bottom Enhance`, and `YOLO Classes` settings.
   - Use the main `Generate` action when you want to write masks for all frames.
+- `Reprocess Current`: rebuilds and saves the mask for only the currently displayed preview image.
+  - If `YOLO Detection` is enabled, it reruns YOLO/SAM for that single image. If `Stitch Seam` or `Overexposure` is enabled, those masks are merged into the same output.
+  - Use it to fix misses found in preview without regenerating the whole set.
 
 ## Actions
 

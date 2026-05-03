@@ -33,6 +33,7 @@ def test_mask_preview_removes_manual_image_picker_and_opacity_spinbox() -> None:
     assert i18n.t("AUTO") not in button_texts
     assert i18n.t("RELOAD") not in button_texts
     assert i18n.t("YOLO_PREVIEW_BUTTON") in button_texts
+    assert i18n.t("MASK_REPROCESS_CURRENT_BUTTON") in button_texts
     assert not widget.findChildren(QLineEdit)
     assert not widget.findChildren(QSpinBox)
 

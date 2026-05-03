@@ -45,6 +45,7 @@ class MaskPreviewWidget(QWidget):
     """Preview the currently selected mask layers over an equirectangular frame."""
 
     yolo_preview_requested = Signal()
+    current_reprocess_requested = Signal()
     current_image_changed = Signal()
 
     def __init__(self, parent: QWidget | None = None) -> None:
@@ -88,6 +89,11 @@ class MaskPreviewWidget(QWidget):
         self.yolo_preview_btn.setToolTip(i18n.tip("YOLO_PREVIEW_BUTTON"))
         self.yolo_preview_btn.clicked.connect(self.yolo_preview_requested.emit)
         overlay_row.addWidget(self.yolo_preview_btn)
+
+        self.reprocess_current_btn = QPushButton(i18n.t("MASK_REPROCESS_CURRENT_BUTTON"))
+        self.reprocess_current_btn.setToolTip(i18n.tip("MASK_REPROCESS_CURRENT_BUTTON"))
+        self.reprocess_current_btn.clicked.connect(self.current_reprocess_requested.emit)
+        overlay_row.addWidget(self.reprocess_current_btn)
 
         overlay_row.addWidget(QLabel(i18n.t("MASK_OPACITY_LABEL")))
         self.opacity_slider = QSlider(Qt.Horizontal)
@@ -333,6 +339,15 @@ class MaskPreviewWidget(QWidget):
         self.yolo_preview_btn.setEnabled(not running)
         self.yolo_preview_btn.setText(
             i18n.t("MASK_PREVIEW_YOLO_RUNNING") if running else i18n.t("YOLO_PREVIEW_BUTTON")
+        )
+
+    def set_current_reprocess_running(self, running: bool) -> None:
+        self.reprocess_current_btn.setEnabled(not running)
+        self.yolo_preview_btn.setEnabled(not running)
+        self.reprocess_current_btn.setText(
+            i18n.t("MASK_REPROCESS_CURRENT_RUNNING")
+            if running
+            else i18n.t("MASK_REPROCESS_CURRENT_BUTTON")
         )
 
     def set_status_text(self, text: str) -> None:

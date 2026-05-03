@@ -9,6 +9,7 @@ import sys
 import tempfile
 from pathlib import Path
 
+import cv2
 from apply_frame_decisions import pending_drop_image_paths, untracked_image_paths
 from PySide6.QtCore import QProcess, Qt, QTimer, QUrl, Signal
 from PySide6.QtGui import QDesktopServices
@@ -40,6 +41,9 @@ from gui.steps.base_step import (
     BaseStepWidget,
     configure_settings_scroll,
 )
+from image_io import imread_unicode, imwrite_unicode
+from overexposure_mask import detect_overexposure, read_image_preserve_depth
+from stitch_mask import boundary_width_to_limit_angle, create_angular_stitched_mask
 
 _COCO_CLASS_NAMES = [
     "person", "bicycle", "car", "motorcycle", "airplane", "bus", "train", "truck",
@@ -111,6 +115,9 @@ class MaskStep(BaseStepWidget):
         self._yolo_preview_temp: tempfile.TemporaryDirectory[str] | None = None
         self._yolo_preview_image: Path | None = None
         self._yolo_preview_output: Path | None = None
+        self._current_reprocess_proc: QProcess | None = None
+        self._current_reprocess_image: Path | None = None
+        self._current_reprocess_mask: Path | None = None
         self._mask_preview_render_pending = False
         self._mask_preview_render_timer = QTimer(self)
         self._mask_preview_render_timer.setSingleShot(True)
@@ -419,6 +426,7 @@ class MaskStep(BaseStepWidget):
         self.mask_preview.current_image_changed.connect(lambda: self._schedule_render_mask_preview())
         self.mask_preview.opacity_slider.valueChanged.connect(lambda _: self._schedule_render_mask_preview())
         self.mask_preview.yolo_preview_requested.connect(self._run_yolo_preview)
+        self.mask_preview.current_reprocess_requested.connect(self._run_current_image_reprocess)
         self.add_external_images_btn.clicked.connect(self._add_external_images_from_folder)
         self.open_images_dir_btn.clicked.connect(self._open_images_dir)
         self._set_projection(_PROJECTION_EQUIRECT)
@@ -818,8 +826,25 @@ class MaskStep(BaseStepWidget):
         cmd.extend(self._bottom_enhance_args())
         return cmd
 
+    def _mask_output_dir_for_image(self, image_path: Path) -> Path:
+        masks_root = Path(self._masks_dir_text())
+        try:
+            rel_parent = image_path.resolve().relative_to(Path(self._images_dir_text()).resolve()).parent
+        except Exception:
+            rel_parent = Path()
+        return masks_root / rel_parent
+
+    def _mask_output_path_for_image(self, image_path: Path) -> Path:
+        return self._mask_output_dir_for_image(image_path) / f"{image_path.stem}.png"
+
+    def _build_yolo_current_cmd(self, image_path: Path) -> list[str]:
+        output_dir = self._mask_output_dir_for_image(image_path)
+        return self._build_yolo_preview_cmd(image_path, output_dir)
+
     def _run_yolo_preview(self) -> None:
         if self._yolo_preview_proc is not None and self._yolo_preview_proc.state() != QProcess.NotRunning:
+            return
+        if self._current_reprocess_proc is not None and self._current_reprocess_proc.state() != QProcess.NotRunning:
             return
 
         image_path = self.mask_preview.current_image_path()
@@ -891,6 +916,123 @@ class MaskStep(BaseStepWidget):
         except Exception:
             pass
         self._yolo_preview_temp = None
+
+    def _run_current_image_reprocess(self) -> None:
+        if self._current_reprocess_proc is not None and self._current_reprocess_proc.state() != QProcess.NotRunning:
+            return
+        if self._yolo_preview_proc is not None and self._yolo_preview_proc.state() != QProcess.NotRunning:
+            return
+
+        image_path = self.mask_preview.current_image_path()
+        if image_path is None:
+            self.mask_preview.set_status_text(i18n.t("MASK_PREVIEW_YOLO_NO_IMAGE"))
+            return
+        if not self._selected_mask_tasks():
+            self.mask_preview.set_status_text(i18n.t("MASK_TASK_REQUIRED"))
+            return
+
+        mask_path = self._mask_output_path_for_image(image_path)
+        try:
+            mask_path.parent.mkdir(parents=True, exist_ok=True)
+            self.mask_preview.clear_yolo_preview_mask(image_path)
+            if not self.run_yolo_cb.isChecked():
+                self._apply_current_image_postprocess(image_path, mask_path)
+                self._finish_current_image_reprocess(success=True, image_path=image_path)
+                return
+
+            cmd = self._build_yolo_current_cmd(image_path)
+        except (ValueError, FileNotFoundError, RuntimeError) as e:
+            self.mask_preview.set_status_text(str(e))
+            return
+
+        self._current_reprocess_image = image_path
+        self._current_reprocess_mask = mask_path
+        self.mask_preview.set_current_reprocess_running(True)
+        self.mask_preview.set_status_text(i18n.t("MASK_REPROCESS_CURRENT_RUNNING"))
+
+        proc = QProcess(self)
+        proc.setProgram(cmd[0])
+        proc.setArguments(cmd[1:])
+        proc.setProcessChannelMode(QProcess.MergedChannels)
+        proc.readyReadStandardOutput.connect(self._drain_current_reprocess_output)
+        proc.errorOccurred.connect(self._on_current_reprocess_error)
+        proc.finished.connect(self._on_current_reprocess_finished)
+        self._current_reprocess_proc = proc
+        proc.start()
+
+    def _drain_current_reprocess_output(self) -> None:
+        if self._current_reprocess_proc is not None:
+            self._current_reprocess_proc.readAllStandardOutput()
+
+    def _on_current_reprocess_error(self, _error: QProcess.ProcessError) -> None:
+        self.mask_preview.set_status_text(i18n.t("MASK_REPROCESS_CURRENT_FAILED"))
+
+    def _on_current_reprocess_finished(self, exit_code: int, _status: QProcess.ExitStatus) -> None:
+        image_path = self._current_reprocess_image
+        mask_path = self._current_reprocess_mask
+        success = exit_code == 0 and image_path is not None and mask_path is not None and mask_path.is_file()
+        if success and image_path is not None and mask_path is not None:
+            try:
+                self._apply_current_image_postprocess(image_path, mask_path)
+            except Exception as e:
+                success = False
+                self.mask_preview.set_status_text(str(e))
+
+        if success and image_path is not None:
+            self._finish_current_image_reprocess(success=True, image_path=image_path)
+        else:
+            self._finish_current_image_reprocess(success=False, image_path=image_path)
+
+        self._current_reprocess_proc = None
+        self._current_reprocess_image = None
+        self._current_reprocess_mask = None
+
+    def _finish_current_image_reprocess(self, *, success: bool, image_path: Path | None) -> None:
+        prior_status = self.mask_preview.status_label.text()
+        self.mask_preview.set_current_reprocess_running(False)
+        self.mask_preview.refresh_image_list(prefer_current=True)
+        self._render_mask_preview()
+        self._update_ready_status()
+        if success and image_path is not None:
+            self.mask_preview.set_status_text(
+                i18n.t("MASK_REPROCESS_CURRENT_DONE").format(name=image_path.name)
+            )
+        elif prior_status:
+            self.mask_preview.set_status_text(prior_status)
+        else:
+            self.mask_preview.set_status_text(i18n.t("MASK_REPROCESS_CURRENT_FAILED"))
+
+    def _apply_current_image_postprocess(self, image_path: Path, mask_path: Path) -> None:
+        if self._projection() == _PROJECTION_EQUIRECT and self.run_stitch_cb.isChecked():
+            mask = imread_unicode(mask_path, cv2.IMREAD_GRAYSCALE)
+            if mask is None:
+                raise RuntimeError(i18n.t("MASK_REPROCESS_NO_BASE_MASK"))
+            h, w = mask.shape[:2]
+            stitch = create_angular_stitched_mask(
+                w,
+                h,
+                boundary_width_to_limit_angle(self._stitch_boundary_width()),
+            )
+            mask = cv2.bitwise_and(mask, stitch)
+            if not imwrite_unicode(mask_path, mask):
+                raise RuntimeError(i18n.t("MASK_REPROCESS_CURRENT_FAILED"))
+
+        if self.run_overexp_cb.isChecked():
+            source_img = read_image_preserve_depth(str(image_path))
+            if source_img is None:
+                raise RuntimeError(i18n.t("PREVIEW_LOAD_FAIL"))
+            overexp = detect_overexposure(
+                source_img,
+                threshold=int(self.overexp_threshold_edit.value()),
+                dilate_px=int(self.overexp_dilate_edit.value()),
+            )
+            mask = imread_unicode(mask_path, cv2.IMREAD_GRAYSCALE)
+            if mask is not None:
+                if mask.shape != overexp.shape:
+                    mask = cv2.resize(mask, (overexp.shape[1], overexp.shape[0]), interpolation=cv2.INTER_NEAREST)
+                overexp = cv2.bitwise_and(mask, overexp)
+            if not imwrite_unicode(mask_path, overexp):
+                raise RuntimeError(i18n.t("MASK_REPROCESS_CURRENT_FAILED"))
 
     def _build_stitch_cmd(self) -> list[str]:
         masks = self._masks_dir_text()
