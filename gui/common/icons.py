@@ -16,6 +16,40 @@ _RESET_SVG = """
 </svg>
 """.strip()
 
+_SELECT_ALL_SVG = """
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none">
+  <rect x="4" y="4" width="6" height="6" rx="1.2" fill="#2dd4bf"/>
+  <rect x="14" y="4" width="6" height="6" rx="1.2" fill="#2dd4bf"/>
+  <rect x="4" y="14" width="6" height="6" rx="1.2" fill="#2dd4bf"/>
+  <rect x="14" y="14" width="6" height="6" rx="1.2" fill="#2dd4bf"/>
+  <path d="m5.8 7 1.1 1.2L8.5 6" stroke="#101316" stroke-width="1.5"
+        stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="m15.8 7 1.1 1.2L18.5 6" stroke="#101316" stroke-width="1.5"
+        stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="m5.8 17 1.1 1.2 1.6-2.2" stroke="#101316" stroke-width="1.5"
+        stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="m15.8 17 1.1 1.2 1.6-2.2" stroke="#101316" stroke-width="1.5"
+        stroke-linecap="round" stroke-linejoin="round"/>
+</svg>
+""".strip()
+
+_DESELECT_ALL_SVG = """
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none">
+  <rect x="4" y="4" width="6" height="6" rx="1.2" stroke="#9ca3af" stroke-width="1.6"/>
+  <rect x="14" y="4" width="6" height="6" rx="1.2" stroke="#9ca3af" stroke-width="1.6"/>
+  <rect x="4" y="14" width="6" height="6" rx="1.2" stroke="#9ca3af" stroke-width="1.6"/>
+  <rect x="14" y="14" width="6" height="6" rx="1.2" stroke="#9ca3af" stroke-width="1.6"/>
+  <path d="m5.8 5.8 2.4 2.4m0-2.4L5.8 8.2" stroke="#e5e7eb" stroke-width="1.4"
+        stroke-linecap="round"/>
+  <path d="m15.8 5.8 2.4 2.4m0-2.4-2.4 2.4" stroke="#e5e7eb" stroke-width="1.4"
+        stroke-linecap="round"/>
+  <path d="m5.8 15.8 2.4 2.4m0-2.4-2.4 2.4" stroke="#e5e7eb" stroke-width="1.4"
+        stroke-linecap="round"/>
+  <path d="m15.8 15.8 2.4 2.4m0-2.4-2.4 2.4" stroke="#e5e7eb" stroke-width="1.4"
+        stroke-linecap="round"/>
+</svg>
+""".strip()
+
 
 @lru_cache(maxsize=16)
 def svg_icon(svg: str, size: int = 18) -> QIcon:
@@ -30,3 +64,11 @@ def svg_icon(svg: str, size: int = 18) -> QIcon:
 
 def reset_icon(size: int = 18) -> QIcon:
     return svg_icon(_RESET_SVG, size)
+
+
+def select_all_icon(size: int = 18) -> QIcon:
+    return svg_icon(_SELECT_ALL_SVG, size)
+
+
+def deselect_all_icon(size: int = 18) -> QIcon:
+    return svg_icon(_DESELECT_ALL_SVG, size)

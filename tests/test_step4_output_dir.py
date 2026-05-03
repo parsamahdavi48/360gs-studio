@@ -72,6 +72,8 @@ def test_cubemap_step_uses_fixed_output_folder_label(tmp_path: Path) -> None:
     assert hasattr(step, "axis_transform_combo")
     assert hasattr(step, "invert_masks_cb")
     assert not hasattr(step, "export_method_combo")
+    assert not hasattr(step.view_config, "pitch_edit")
+    assert not hasattr(step.view_config, "apply_btn")
     assert set(step.export_method_buttons) == {"metashape", "colmap"}
     assert step.export_images_cb.isChecked()
     assert step.export_masks_cb.isChecked()
@@ -136,7 +138,9 @@ def test_custom_grid_defaults_to_three_pitch_rows_all_enabled() -> None:
     assert idx >= 0
     step.view_config.view_mode_combo.setCurrentIndex(idx)
 
-    assert step.view_config.pitch_edit.text() == "-45,0,45"
+    assert step.view_config.pitch_rows_combo.currentText() == "3"
+    assert step.view_config.pitch_values() == [-45.0, 0.0, 45.0]
+    assert step.view_config.pitch_rows_text() == "-45,0,45"
     assert step.view_config.yaw_slots_combo.currentText() == "6"
     views = step.view_config.collect_views(include_disabled=True)
 
@@ -149,12 +153,50 @@ def test_custom_grid_pitch_rows_are_limited_to_five() -> None:
     _app()
     step = CubemapStep(Path.cwd())
 
-    step.view_config.pitch_edit.setText("-60,-30,0,30,60")
+    assert [step.view_config.pitch_rows_combo.itemText(i) for i in range(step.view_config.pitch_rows_combo.count())] == [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5",
+    ]
+    step.view_config.pitch_rows_combo.setCurrentText("5")
     assert step.view_config._parse_pitches() == [-60.0, -30.0, 0.0, 30.0, 60.0]
 
-    step.view_config.pitch_edit.setText("-75,-45,-15,15,45,75")
-    with pytest.raises(ValueError, match="最大 5"):
-        step.view_config._parse_pitches()
+
+def test_custom_grid_controls_apply_immediately_and_keep_pitch_unique() -> None:
+    _app()
+    step = CubemapStep(Path.cwd())
+    idx = step.view_config.view_mode_combo.findData("custom_views")
+    step.view_config.view_mode_combo.setCurrentIndex(idx)
+
+    step.view_config.yaw_slots_combo.setCurrentText("8")
+    assert len(step.view_config.collect_views(include_disabled=True)) == 24
+
+    step.view_config.pitch_rows_combo.setCurrentText("5")
+    assert len(step.view_config.collect_views(include_disabled=True)) == 40
+    assert sum(1 for view in step.view_config.collect_views(include_disabled=True) if view["enabled"]) == 40
+
+    step.view_config.pitch_rows[0]["pitch_edit"].setValue(0.0)
+    pitches = step.view_config.pitch_values()
+    assert len(pitches) == len({_pitch_key for _pitch_key in pitches})
+    assert pitches[0] != 0.0
+
+
+def test_cubemap_yaw_numeric_fields_are_clamped_and_used(tmp_path: Path) -> None:
+    step = _ready_step(tmp_path)
+
+    step.view_config.yaw_offset_edit.setValue(999.0)
+    step.yaw_per_frame_edit.setValue(-999.0)
+
+    assert step.view_config.yaw_offset() == 180.0
+    assert step.yaw_per_frame_edit.value() == -180.0
+
+    cmd = step._build_cubemap_cmd()
+
+    assert cmd[cmd.index("--yaw-offset-per-frame") + 1] == "-180"
+    views = json.loads((tmp_path / "output" / "views_config.json").read_text(encoding="utf-8"))["views"]
+    assert any(view["yaw"] == -90.0 for view in views)
 
 
 def test_colmap_export_method_uses_image_only_conversion(tmp_path: Path) -> None:

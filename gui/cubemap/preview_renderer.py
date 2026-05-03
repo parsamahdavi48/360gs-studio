@@ -19,6 +19,18 @@ from PySide6.QtWidgets import (
 from gui import i18n
 from gui.common.zoomable_image_label import ZoomableImageLabel
 
+_PITCH_PALETTE_BGR: tuple[tuple[int, int, int], ...] = (
+    (0, 159, 230),    # orange
+    (233, 180, 86),   # sky blue
+    (115, 158, 0),    # bluish green
+    (167, 121, 204),  # reddish purple
+    (66, 228, 240),   # yellow
+)
+_LINE_OUTER = (0, 0, 0)
+_LINE_MID = (245, 245, 245)
+_DISABLED_LINE = (150, 150, 150)
+_DISABLED_OUTER = (25, 25, 25)
+
 
 def _rotation_matrix(yaw_deg: float, pitch_deg: float) -> np.ndarray:
     yaw = np.deg2rad(yaw_deg)
@@ -78,24 +90,50 @@ def _view_boundary_segments(
 
 def _pitch_color_map(views: list[dict]) -> dict[float, tuple[int, int, int]]:
     pitches = sorted({round(float(view.get("pitch", 0.0)), 6) for view in views})
-    # OpenCV BGR. Chosen to stay visible over typical indoor/outdoor frames.
-    palette = [
-        (255, 130, 80),
-        (255, 220, 80),
-        (90, 240, 120),
-        (80, 210, 255),
-        (220, 100, 255),
-    ]
     if not pitches:
         return {}
     if len(pitches) == 1:
-        return {pitches[0]: palette[2]}
-    return {pitch: palette[idx % len(palette)] for idx, pitch in enumerate(pitches)}
+        return {pitches[0]: _PITCH_PALETTE_BGR[1]}
+    return {pitch: _PITCH_PALETTE_BGR[idx % len(_PITCH_PALETTE_BGR)] for idx, pitch in enumerate(pitches)}
 
 
 def _overlay_draw_order(views: list[dict]) -> list[dict]:
     """Draw disabled gray view boxes first so enabled colored boxes stay on top."""
     return sorted(views, key=lambda view: bool(view.get("enabled", False)))
+
+
+def _draw_view_polyline(img: np.ndarray, pts: np.ndarray, color: tuple[int, int, int], *, enabled: bool) -> None:
+    if enabled:
+        # Black/white/color halo keeps the line readable on both dark and bright footage.
+        cv2.polylines(img, [pts], False, _LINE_OUTER, 7, lineType=cv2.LINE_AA)
+        cv2.polylines(img, [pts], False, _LINE_MID, 5, lineType=cv2.LINE_AA)
+        cv2.polylines(img, [pts], False, color, 3, lineType=cv2.LINE_AA)
+        return
+    cv2.polylines(img, [pts], False, _DISABLED_OUTER, 4, lineType=cv2.LINE_AA)
+    cv2.polylines(img, [pts], False, _DISABLED_LINE, 2, lineType=cv2.LINE_AA)
+
+
+def _draw_view_label(img: np.ndarray, label: str, pos: tuple[int, int], color: tuple[int, int, int]) -> None:
+    if not label:
+        return
+    font = cv2.FONT_HERSHEY_SIMPLEX
+    scale = 0.45
+    thickness = 1
+    (tw, th), baseline = cv2.getTextSize(label, font, scale, thickness)
+    x, y = pos
+    x = int(np.clip(x, 4, max(4, img.shape[1] - tw - 8)))
+    y = int(np.clip(y, th + 8, max(th + 8, img.shape[0] - 6)))
+    pad_x, pad_y = 4, 3
+    x1, y1 = max(0, x - pad_x), max(0, y - th - pad_y)
+    x2, y2 = min(img.shape[1] - 1, x + tw + pad_x), min(img.shape[0] - 1, y + baseline + pad_y)
+
+    roi = img[y1:y2, x1:x2]
+    if roi.size:
+        bg = np.zeros_like(roi)
+        img[y1:y2, x1:x2] = cv2.addWeighted(bg, 0.68, roi, 0.32, 0)
+    cv2.rectangle(img, (x1, y1), (x2, y2), _LINE_MID, 1, lineType=cv2.LINE_AA)
+    cv2.putText(img, label, (x, y), font, scale, _LINE_OUTER, 3, lineType=cv2.LINE_AA)
+    cv2.putText(img, label, (x, y), font, scale, color, thickness, lineType=cv2.LINE_AA)
 
 
 class PreviewWidget(QWidget):
@@ -198,36 +236,22 @@ class PreviewWidget(QWidget):
         for view in _overlay_draw_order(views):
             pitch_key = round(float(view.get("pitch", 0.0)), 6)
             color = pitch_colors.get(pitch_key, (90, 240, 120))
-            if not view["enabled"]:
-                color = (190, 190, 190)
-            thickness = 2
-            outline_thickness = 4 if view["enabled"] else 3
+            enabled = bool(view["enabled"])
             segments = _view_boundary_segments(w, h, view["yaw"], view["pitch"], 90.0)
             all_pts: list[np.ndarray] = []
             for seg in segments:
                 if len(seg) < 2:
                     continue
                 pts = np.round(seg).astype(np.int32).reshape((-1, 1, 2))
-                cv2.polylines(img, [pts], False, (20, 20, 20), outline_thickness, lineType=cv2.LINE_AA)
-                cv2.polylines(img, [pts], False, color, thickness, lineType=cv2.LINE_AA)
+                _draw_view_polyline(img, pts, color, enabled=enabled)
                 all_pts.append(seg)
 
-            if view["enabled"] and all_pts:
+            if enabled and all_pts:
                 merged = np.concatenate(all_pts, axis=0)
                 cx = int(np.clip(np.mean(merged[:, 0]), 0, w - 1))
                 cy = int(np.clip(np.mean(merged[:, 1]), 0, h - 1))
                 label = str(view.get("label", ""))
-                cv2.putText(
-                    img,
-                    label,
-                    (cx, cy),
-                    cv2.FONT_HERSHEY_SIMPLEX,
-                    0.45,
-                    (20, 20, 20),
-                    3,
-                    lineType=cv2.LINE_AA,
-                )
-                cv2.putText(img, label, (cx, cy), cv2.FONT_HERSHEY_SIMPLEX, 0.45, color, 1, lineType=cv2.LINE_AA)
+                _draw_view_label(img, label, (cx, cy), color)
 
         rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
         qimg = QImage(rgb.data, rgb.shape[1], rgb.shape[0], rgb.shape[1] * 3, QImage.Format_RGB888).copy()

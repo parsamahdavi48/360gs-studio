@@ -9,7 +9,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from PySide6.QtWidgets import QApplication, QLineEdit, QPushButton, QSpinBox
 
 from gui import i18n
-from gui.cubemap.preview_renderer import PreviewWidget, _overlay_draw_order
+from gui.cubemap.preview_renderer import PreviewWidget, _overlay_draw_order, _pitch_color_map
 
 
 def _app():
@@ -77,3 +77,16 @@ def test_cubemap_preview_draws_disabled_view_boxes_first() -> None:
         "enabled_a",
         "enabled_b",
     ]
+
+
+def test_cubemap_preview_pitch_palette_uses_five_distinct_colors() -> None:
+    views = [{"pitch": pitch} for pitch in [-60.0, -30.0, 0.0, 30.0, 60.0]]
+
+    colors = _pitch_color_map(views)
+
+    assert list(colors) == [-60.0, -30.0, 0.0, 30.0, 60.0]
+    assert len(set(colors.values())) == 5
+    assert colors[-60.0] != colors[-30.0]
+    assert colors[-30.0] != colors[0.0]
+    assert colors[0.0] != colors[30.0]
+    assert colors[30.0] != colors[60.0]

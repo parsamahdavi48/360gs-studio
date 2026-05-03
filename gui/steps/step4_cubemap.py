@@ -32,6 +32,7 @@ from PySide6.QtCore import QSize, Qt
 from gui import i18n
 from gui.common.browse_widget import BrowseWidget
 from gui.common.collapsible_section import CollapsibleSection
+from gui.common.drag_spinbox import DragDoubleSpinBox
 from gui.common.form_rows import add_tooltip_row
 from gui.cubemap.view_config import ViewConfigWidget, _BLOCK_ENABLED_VIEWS, _WARN_ENABLED_VIEWS
 from gui.cubemap.preview_renderer import PreviewWidget
@@ -371,8 +372,15 @@ class CubemapStep(BaseStepWidget):
         self.view_config.angle_row.addWidget(self.scale_combo)
         self.view_config.angle_row.addStretch()
 
-        self.yaw_per_frame_edit = QLineEdit("30.0")
-        self.yaw_per_frame_edit.setFixedWidth(80)
+        self.yaw_per_frame_edit = DragDoubleSpinBox(
+            minimum=-180.0,
+            maximum=180.0,
+            step=1.0,
+            decimals=1,
+            value=30.0,
+            drag_pixels_per_step=6.0,
+        )
+        self.yaw_per_frame_edit.setFixedWidth(76)
         self.yaw_per_frame_edit.setToolTip(i18n.t("YAW_OFFSET_PER_FRAME_HINT"))
         self.yaw_per_frame_row = QWidget()
         yaw_per_frame_layout = QHBoxLayout(self.yaw_per_frame_row)
@@ -861,10 +869,7 @@ class CubemapStep(BaseStepWidget):
         if colmap_rig:
             yaw_step = 0.0
         else:
-            try:
-                yaw_step = float(self.yaw_per_frame_edit.text().strip())
-            except ValueError:
-                raise ValueError("フレーム別Yaw回転は数値で指定してください")
+            yaw_step = float(self.yaw_per_frame_edit.value())
         cmd.extend(["--yaw-offset-per-frame", f"{yaw_step:g}"])
 
         out_fmt = self.output_format_combo.currentData() or "auto"
@@ -1059,7 +1064,7 @@ class CubemapStep(BaseStepWidget):
     def _collect_export_settings(self) -> dict:
         views = self.view_config.collect_views(include_disabled=True)
         scale = float(self.scale_combo.currentData())
-        yaw_step = 0.0 if self._export_method() == _METHOD_COLMAP else float(self.yaw_per_frame_edit.text().strip())
+        yaw_step = 0.0 if self._export_method() == _METHOD_COLMAP else float(self.yaw_per_frame_edit.value())
         jpg_quality = int(self.jpg_quality_edit.text().strip())
         scene = Path(self.scene_dir) if self.scene_dir else Path(".")
         output = self._output_dir()
@@ -1085,7 +1090,8 @@ class CubemapStep(BaseStepWidget):
                 "mode": self.view_config.view_mode(),
                 "yaw_offset": self.view_config.yaw_offset(),
                 "yaw_slots": self.view_config.yaw_slot_count(),
-                "pitch_rows_text": self.view_config.pitch_edit.text().strip(),
+                "pitch_rows": self.view_config.pitch_values(),
+                "pitch_rows_text": self.view_config.pitch_rows_text(),
                 "cube6_drop_top": False,
                 "cube6_drop_bottom": False,
                 "views": [

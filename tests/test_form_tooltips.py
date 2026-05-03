@@ -215,14 +215,19 @@ def test_cubemap_labels_share_field_tooltips() -> None:
     assert step.ms_use_ply_cb.toolTip() == i18n.tip("MS_USE_PLY")
     assert step.export_images_cb.toolTip() == i18n.tip("EXPORT_IMAGES")
     assert step.export_masks_cb.toolTip() == i18n.tip("EXPORT_MASKS")
+    assert isinstance(step.view_config.yaw_offset_edit, DragDoubleSpinBox)
+    assert step.view_config.yaw_offset_edit.minimum() == -180.0
+    assert step.view_config.yaw_offset_edit.maximum() == 180.0
+    assert isinstance(step.yaw_per_frame_edit, DragDoubleSpinBox)
+    assert step.yaw_per_frame_edit.minimum() == -180.0
+    assert step.yaw_per_frame_edit.maximum() == 180.0
 
 
-def test_cubemap_profile_option_rows_preserve_width_in_english() -> None:
+def test_cubemap_profile_option_rows_preserve_width_in_english_and_japanese() -> None:
     script = textwrap.dedent(
         """
         import os
         os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
-        os.environ["STUDIO_LANG"] = "en"
         from pathlib import Path
         from PySide6.QtWidgets import QApplication
         from gui.steps.base_step import SETTINGS_PANE_MARGINS, SETTINGS_PANE_WIDTH
@@ -230,25 +235,33 @@ def test_cubemap_profile_option_rows_preserve_width_in_english() -> None:
 
         app = QApplication.instance() or QApplication([])
         step = CubemapStep(Path.cwd())
+        idx = step.view_config.view_mode_combo.findData("custom_views")
+        step.view_config.view_mode_combo.setCurrentIndex(idx)
+        step.view_config.yaw_slots_combo.setCurrentText("8")
+        step.view_config.pitch_rows_combo.setCurrentText("5")
+        step.view_config.grid_section.set_expanded(True)
         content_width = SETTINGS_PANE_WIDTH - SETTINGS_PANE_MARGINS[2]
+        grid_available_width = content_width - 12
         assert step.export_method_row.sizeHint().width() <= content_width
         assert step.metashape_import_options_row.sizeHint().width() <= content_width
         assert step.view_config.angle_row.sizeHint().width() <= content_width
         assert step.view_config.custom_controls_widget.sizeHint().width() <= content_width
+        assert step.view_config.grid_widget.sizeHint().width() <= grid_available_width
         assert step.yaw_per_frame_row.sizeHint().width() <= content_width
         assert step.output_details_section.sizeHint().width() <= content_width
         """
     )
-    env = os.environ.copy()
-    env["QT_QPA_PLATFORM"] = "offscreen"
-    env["STUDIO_LANG"] = "en"
+    for lang in ("en", "ja"):
+        env = os.environ.copy()
+        env["QT_QPA_PLATFORM"] = "offscreen"
+        env["STUDIO_LANG"] = lang
 
-    result = subprocess.run(
-        [sys.executable, "-c", script],
-        cwd=Path.cwd(),
-        env=env,
-        capture_output=True,
-        text=True,
-    )
+        result = subprocess.run(
+            [sys.executable, "-c", script],
+            cwd=Path.cwd(),
+            env=env,
+            capture_output=True,
+            text=True,
+        )
 
-    assert result.returncode == 0, result.stdout + result.stderr
+        assert result.returncode == 0, f"lang={lang}\n{result.stdout}{result.stderr}"
