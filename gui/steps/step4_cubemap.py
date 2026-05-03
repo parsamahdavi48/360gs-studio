@@ -121,7 +121,13 @@ class CubemapStep(BaseStepWidget):
         splitter = QSplitter(Qt.Horizontal)
         splitter.setChildrenCollapsible(False)
 
-        # 左パネル: 設定 (スクロール可能)
+        # 左パネル: 設定 (スクロール可能) + 固定サマリー
+        left_pane = QWidget()
+        left_pane.setFixedWidth(SETTINGS_PANE_WIDTH)
+        left_pane_layout = QVBoxLayout(left_pane)
+        left_pane_layout.setContentsMargins(0, 0, 0, 0)
+        left_pane_layout.setSpacing(0)
+
         top_scroll = QScrollArea()
         configure_settings_scroll(top_scroll)
         top = QWidget()
@@ -270,7 +276,7 @@ class CubemapStep(BaseStepWidget):
         preprocess.content_layout.addWidget(import_advanced)
         left_layout.addWidget(preprocess)
 
-        self.view_config = ViewConfigWidget(show_settings=False)
+        self.view_config = ViewConfigWidget(show_settings=False, show_summary=False)
         self.view_config.views_changed.connect(self._on_views_changed)
 
         # 視点書き出し設定（折りたたみ）
@@ -358,6 +364,19 @@ class CubemapStep(BaseStepWidget):
 
         left_layout.addStretch()
 
+        self.export_summary_bar = QWidget()
+        self.export_summary_bar.setObjectName("stickySummaryBar")
+        summary_layout = QHBoxLayout(self.export_summary_bar)
+        summary_layout.setContentsMargins(0, 6, SETTINGS_PANE_MARGINS[2], 2)
+        summary_layout.setSpacing(0)
+        self.export_summary_label = QLabel(self.view_config.summary_text())
+        self.export_summary_label.setObjectName("stickySummaryLabel")
+        self.export_summary_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+        self.export_summary_label.setWordWrap(False)
+        self.view_config.summary_changed.connect(self.export_summary_label.setText)
+        summary_layout.addStretch()
+        summary_layout.addWidget(self.export_summary_label)
+
         # 右パネル: プレビュー
         preview_pane = QWidget()
         preview_pane.setObjectName("workPane")
@@ -373,7 +392,9 @@ class CubemapStep(BaseStepWidget):
         preview_layout.addWidget(self.preview, stretch=1)
 
         top_scroll.setWidget(top)
-        splitter.addWidget(top_scroll)
+        left_pane_layout.addWidget(top_scroll, stretch=1)
+        left_pane_layout.addWidget(self.export_summary_bar)
+        splitter.addWidget(left_pane)
         splitter.addWidget(preview_pane)
         splitter.setStretchFactor(0, 0)
         splitter.setStretchFactor(1, 1)

@@ -96,6 +96,15 @@ QWidget#jobPanel {{
 QWidget#settingsPane {{
     background-color: transparent;
 }}
+QWidget#stickySummaryBar {{
+    border-top: 1px solid {BORDER};
+    background-color: transparent;
+}}
+QLabel#stickySummaryLabel {{
+    color: {TEXT_DIM};
+    font-size: 9pt;
+    padding-top: 2px;
+}}
 QWidget#workPane {{
     background-color: {BG_INPUT};
     border: 1px solid {BORDER};

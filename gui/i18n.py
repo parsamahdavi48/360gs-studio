@@ -316,7 +316,7 @@ _JA: dict[str, str] = {
     "YAW_OFFSET_PER_FRAME": "フレーム別Yaw回転 (度)",
     "YAW_OFFSET_PER_FRAME_HINT": "0=無効, 30推奨。フレームごとに cubemap のYawを回転して 3DGS 学習の安定性を向上",
     "OUTPUT_FORMAT": "出力フォーマット",
-    "OUTPUT_FORMAT_COMPACT": "形式:",
+    "OUTPUT_FORMAT_COMPACT": "フォーマット:",
     "OUTPUT_FORMAT_AUTO": "自動",
     "OUTPUT_BIT_DEPTH": "出力ビット深度",
     "OUTPUT_BIT_DEPTH_COMPACT": "ビット深度:",

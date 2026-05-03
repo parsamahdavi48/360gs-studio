@@ -79,10 +79,13 @@ def test_cubemap_step_uses_fixed_output_folder_label(tmp_path: Path) -> None:
     assert _is_descendant(step.view_config.settings_widget, step.advanced_output_section)
     assert _is_descendant(step.view_config.grid_section, step.advanced_output_section)
     assert _is_descendant(step.output_details_section, step.advanced_output_section)
+    assert not _is_descendant(step.export_summary_label, step.advanced_output_section)
+    assert not _is_descendant(step.export_summary_label, step.view_config.settings_widget)
     settings_layout = step.view_config.settings_widget.layout()
     custom_index = settings_layout.indexOf(step.view_config.custom_controls_widget)
     grid_index = settings_layout.indexOf(step.view_config.grid_section)
     assert custom_index + 1 == grid_index
+    assert step.export_summary_label.text() == step.view_config.summary_text()
     cube6_views = step.view_config.collect_views(include_disabled=True)
     assert {v["name"] for v in cube6_views} == {"px", "nx", "pz", "nz", "top", "bottom"}
     assert all(v["enabled"] for v in cube6_views)

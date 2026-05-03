@@ -46,13 +46,21 @@ class ViewConfigWidget(QWidget):
     """ビュー選択グリッドウィジェット。views_changed シグナルで変更を通知。"""
 
     views_changed = Signal()
+    summary_changed = Signal(str)
 
-    def __init__(self, parent: QWidget | None = None, *, show_settings: bool = True) -> None:
+    def __init__(
+        self,
+        parent: QWidget | None = None,
+        *,
+        show_settings: bool = True,
+        show_summary: bool = True,
+    ) -> None:
         super().__init__(parent)
         self.pitch_rows: list[dict] = []
         self.yaw_slot_labels: list[QLabel] = []
         self._output_count_text = ""
         self._show_settings = show_settings
+        self._show_summary = show_summary
 
         self._build_ui()
         self._apply_pitch_rows()
@@ -153,7 +161,8 @@ class ViewConfigWidget(QWidget):
         self.selected_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
         summary_row.addStretch()
         summary_row.addWidget(self.selected_label)
-        ctrl.addLayout(summary_row)
+        if self._show_summary:
+            ctrl.addLayout(summary_row)
 
         if self._show_settings:
             layout.addWidget(self.settings_widget)
@@ -207,6 +216,9 @@ class ViewConfigWidget(QWidget):
     def set_output_count_text(self, text: str) -> None:
         self._output_count_text = text
         self._update_selected_label()
+
+    def summary_text(self) -> str:
+        return self.selected_label.text()
 
     # -- internal --
 
@@ -309,7 +321,9 @@ class ViewConfigWidget(QWidget):
         try:
             views = self.collect_views(include_disabled=True)
         except Exception:
-            self.selected_label.setText(f"{i18n.t('SELECTED_VIEWS')}: -")
+            text = f"{i18n.t('SELECTED_VIEWS')}: -"
+            self.selected_label.setText(text)
+            self.summary_changed.emit(text)
             return
         sel = sum(1 for v in views if v["enabled"])
         warn = ""
@@ -321,6 +335,7 @@ class ViewConfigWidget(QWidget):
         if self._output_count_text:
             text = f"{text}   {self._output_count_text}"
         self.selected_label.setText(text)
+        self.summary_changed.emit(text)
 
     def _all_on(self) -> None:
         for row in self.pitch_rows:
