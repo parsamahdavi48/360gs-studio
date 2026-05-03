@@ -33,8 +33,8 @@ run_gui.bat --scene ./scene01
   - Clamped to `-16..32px` for safety.
 - `Bottom Enhance`: preset for missed masks near the bottom of equirectangular 360° images.
   - `Standard`: use when the bottom is already masked well and you want to avoid extra floor/ground masking.
-  - `Fix`: use when top-down photographers, tripods, or hands remain near the bottom.
-  - `Strong`: use only when bottom leaks remain after `Fix`; it is slower and more likely to mask extra floor or ground.
+  - `High`: use when top-down photographers, tripods, or hands remain near the bottom.
+  - `Max`: use only when bottom leaks remain after `High`; it is slower and more likely to mask extra floor or ground.
   - Not used when `Image Type` is `Normal`.
 - `YOLO Classes`: collapsed picker for class selection.
   - Choose classes by checkbox labels (`id: name`) instead of memorizing numeric ids.
