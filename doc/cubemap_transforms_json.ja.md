@@ -135,6 +135,8 @@ python cubemap_transforms_json.py . ./cubic --no_transform
 |--no_bottom|(no)|キューブマップの底面を除外して出力|
 |--no_top|(no)|キューブマップの上面を除外して出力|
 |--no_image|(no)|画像の変換を行わず、transforms.json の変換のみ行います|
+|--skip-images|(no)|視点画像を書き出さず、マスクや transforms.json だけを更新します|
+|--skip-masks|(no)|マスクを書き出さず、視点画像や transforms.json だけを更新します|
 |--image-only|(no)|`transforms.json` を読まず、`<input_dir>/images` と `<input_dir>/masks` から視点画像とマスクだけを書き出します|
 |--no_transform|(no)|座標軸変換を行いません|
 |--brush|(no)|Brush向けの座標変換を行います|

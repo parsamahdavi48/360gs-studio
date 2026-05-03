@@ -30,6 +30,8 @@ _WORKER_INVERT_MASKS = False
 _WORKER_OUTPUT_FORMAT: str | None = None
 _WORKER_OUTPUT_BIT_DEPTH = "8"
 _WORKER_JPG_QUALITY = 95
+_WORKER_EXPORT_IMAGES = True
+_WORKER_EXPORT_MASKS = True
 # yaw オフセット別キャッシュ: key = round(yaw_offset, 3), value = view_name -> (map_x, map_y)
 _WORKER_REMAP_CACHE: dict[float, dict[str, tuple[np.ndarray, np.ndarray]]] = {}
 _WORKER_INPUT_SIZE: tuple[int, int] = (0, 0)
@@ -109,6 +111,20 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--no_bottom", action="store_true", help="Exclude bottom face in default mode")
     parser.add_argument("--no_top", action="store_true", help="Exclude top face in default mode")
     parser.add_argument("--no_image", action="store_true", help="Convert transforms.json only")
+    parser.add_argument(
+        "--skip-images",
+        "--skip_images",
+        dest="skip_images",
+        action="store_true",
+        help="Do not write converted view images",
+    )
+    parser.add_argument(
+        "--skip-masks",
+        "--skip_masks",
+        dest="skip_masks",
+        action="store_true",
+        help="Do not write converted view masks",
+    )
     parser.add_argument(
         "--image-only",
         "--image_only",
@@ -419,6 +435,8 @@ def remap_image(
     output_format: str | None = None,
     output_bit_depth: str = "8",
     jpg_quality: int = 95,
+    write_output: bool = True,
+    write_alpha_mask: bool = True,
 ) -> int:
     basename, ext2, in_ext = split_filename_for_output(input_file)
     out_ext = resolve_output_ext(in_ext, output_format)
@@ -448,23 +466,27 @@ def remap_image(
         if mask_from_alpha and has_alpha:
             color = converted[..., :3]
             alpha = converted[..., 3]
-            save_image(color, out_path, jpg_quality, force_8bit=output_bit_depth == "8")
+            if write_output:
+                save_image(color, out_path, jpg_quality, force_8bit=output_bit_depth == "8")
+                written += 1
 
             mask_thresh = max_val // 2
             _, mask = cv2.threshold(alpha, mask_thresh, max_val, cv2.THRESH_BINARY)
             if invert_masks:
                 mask = max_val - mask
             mask_out_path = os.path.join(output_mask_dir, f"{basename}_{view_name}{ext2}.png")
-            save_image(mask, mask_out_path, jpg_quality, force_8bit=True)
-            written += 2
+            if write_alpha_mask:
+                save_image(mask, mask_out_path, jpg_quality, force_8bit=True)
+                written += 1
         else:
-            save_image(
-                converted,
-                out_path,
-                jpg_quality,
-                force_8bit=is_grayscale or output_bit_depth == "8",
-            )
-            written += 1
+            if write_output:
+                save_image(
+                    converted,
+                    out_path,
+                    jpg_quality,
+                    force_8bit=is_grayscale or output_bit_depth == "8",
+                )
+                written += 1
 
     return written
 
@@ -651,6 +673,8 @@ def write_image_only_metadata(
     input_size: tuple[int, int],
     output_size: int,
     yaw_offset_per_frame: float,
+    export_images: bool = True,
+    export_masks: bool = True,
 ) -> None:
     """Write a small manifest for SfM-oriented image-only exports."""
     payload = {
@@ -662,6 +686,8 @@ def write_image_only_metadata(
         "output_scale": float(output_scale),
         "image_dir": image_dir,
         "mask_dir": mask_dir,
+        "export_images": bool(export_images),
+        "export_masks": bool(export_masks),
         "yaw_offset_per_frame": float(yaw_offset_per_frame),
         "views": [
             {"name": v["name"], "yaw": float(v["yaw"]), "pitch": float(v["pitch"])}
@@ -712,6 +738,8 @@ def worker_init(
     output_format: str | None,
     output_bit_depth: str,
     jpg_quality: int,
+    export_images: bool = True,
+    export_masks: bool = True,
 ) -> None:
     global _WORKER_REMAP_TABLES
     global _WORKER_VIEWS
@@ -724,6 +752,8 @@ def worker_init(
     global _WORKER_OUTPUT_FORMAT
     global _WORKER_OUTPUT_BIT_DEPTH
     global _WORKER_JPG_QUALITY
+    global _WORKER_EXPORT_IMAGES
+    global _WORKER_EXPORT_MASKS
     global _WORKER_REMAP_CACHE
     global _WORKER_INPUT_SIZE
     global _WORKER_FOV
@@ -742,6 +772,8 @@ def worker_init(
     _WORKER_OUTPUT_FORMAT = output_format
     _WORKER_OUTPUT_BIT_DEPTH = output_bit_depth
     _WORKER_JPG_QUALITY = jpg_quality
+    _WORKER_EXPORT_IMAGES = export_images
+    _WORKER_EXPORT_MASKS = export_masks
 
     # offset=0 のテーブルを事前構築（per-frame yaw を使わない場合の通常パス）
     _WORKER_REMAP_CACHE = {}
@@ -759,6 +791,8 @@ def count_planned_outputs(
     image_dir: str,
     mask_dir: str,
     mask_from_alpha: bool,
+    export_images: bool = True,
+    export_masks: bool = True,
 ) -> int:
     view_count = len(views)
     total = 0
@@ -768,11 +802,12 @@ def count_planned_outputs(
         image = os.path.join(image_dir, frame_file)
         image_exists = os.path.exists(image)
         if image_exists:
-            total += view_count
-            if mask_from_alpha and _image_has_alpha(image):
+            if export_images:
+                total += view_count
+            if export_masks and mask_from_alpha and _image_has_alpha(image):
                 total += view_count
 
-        if mask_from_alpha or not mask_dir_exists:
+        if not export_masks or mask_from_alpha or not mask_dir_exists:
             continue
 
         for mask in mask_candidates(mask_dir, frame_file):
@@ -791,7 +826,7 @@ def proc_convert_images(frame_file: str, yaw_offset: float = 0.0) -> int:
     written = 0
 
     image = os.path.join(_WORKER_IMAGE_DIR, frame_file)
-    if os.path.exists(image):
+    if os.path.exists(image) and (_WORKER_EXPORT_IMAGES or (_WORKER_EXPORT_MASKS and _WORKER_MASK_FROM_ALPHA)):
         written += remap_image(
             image,
             _WORKER_OUTPUT_IMAGE_DIR,
@@ -803,9 +838,16 @@ def proc_convert_images(frame_file: str, yaw_offset: float = 0.0) -> int:
             output_format=_WORKER_OUTPUT_FORMAT,
             output_bit_depth=_WORKER_OUTPUT_BIT_DEPTH,
             jpg_quality=_WORKER_JPG_QUALITY,
+            write_output=_WORKER_EXPORT_IMAGES,
+            write_alpha_mask=_WORKER_EXPORT_MASKS,
         )
 
-    if _WORKER_MASK_FROM_ALPHA or not _WORKER_MASK_DIR or not os.path.isdir(_WORKER_MASK_DIR):
+    if (
+        not _WORKER_EXPORT_MASKS
+        or _WORKER_MASK_FROM_ALPHA
+        or not _WORKER_MASK_DIR
+        or not os.path.isdir(_WORKER_MASK_DIR)
+    ):
         return written
 
     for mask in mask_candidates(_WORKER_MASK_DIR, frame_file):
@@ -822,6 +864,8 @@ def proc_convert_images(frame_file: str, yaw_offset: float = 0.0) -> int:
                 output_format="png",
                 output_bit_depth="8",
                 jpg_quality=_WORKER_JPG_QUALITY,
+                write_output=True,
+                write_alpha_mask=False,
             )
             break
 
@@ -844,6 +888,8 @@ def convert_images(
     output_bit_depth: str = "8",
     jpg_quality: int = 95,
     frame_yaw_offsets: list[float] | None = None,
+    export_images: bool = True,
+    export_masks: bool = True,
 ) -> None:
     if frame_yaw_offsets is None:
         frame_yaw_offsets = [0.0] * len(image_files)
@@ -860,12 +906,18 @@ def convert_images(
         image_dir=image_dir,
         mask_dir=mask_dir,
         mask_from_alpha=mask_from_alpha,
+        export_images=export_images,
+        export_masks=export_masks,
     )
     print(f"Converting {total_outputs} files...")
     print(f"[progress] 0/{total_outputs}", flush=True)
 
-    os.makedirs(output_image_dir, exist_ok=True)
-    if mask_from_alpha or os.path.isdir(mask_dir):
+    if total_outputs <= 0:
+        return
+
+    if export_images:
+        os.makedirs(output_image_dir, exist_ok=True)
+    if export_masks and (mask_from_alpha or os.path.isdir(mask_dir)):
         os.makedirs(output_mask_dir, exist_ok=True)
 
     with ProcessPoolExecutor(
@@ -885,6 +937,8 @@ def convert_images(
             output_format,
             output_bit_depth,
             jpg_quality,
+            export_images,
+            export_masks,
         ),
     ) as executor:
         futures = [
@@ -965,6 +1019,8 @@ def main() -> None:
             input_size=input_size,
             output_size=output_size,
             yaw_offset_per_frame=args.yaw_offset_per_frame,
+            export_images=not args.no_image and not args.skip_images,
+            export_masks=not args.no_image and not args.skip_masks,
         )
         print(f"Image-only export: {len(image_files)} source images")
     else:
@@ -991,7 +1047,10 @@ def main() -> None:
             f"unique offsets={len(unique_offsets)}"
         )
 
-    if not args.no_image:
+    export_images = not args.no_image and not args.skip_images
+    export_masks = not args.no_image and not args.skip_masks
+
+    if export_images or export_masks:
         convert_images(
             image_files=image_files,
             input_size=input_size,
@@ -1008,6 +1067,8 @@ def main() -> None:
             output_bit_depth=args.output_bit_depth,
             jpg_quality=args.jpg_quality,
             frame_yaw_offsets=frame_yaw_offsets,
+            export_images=export_images,
+            export_masks=export_masks,
         )
 
 

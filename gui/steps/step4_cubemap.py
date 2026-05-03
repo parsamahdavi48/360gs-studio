@@ -192,10 +192,6 @@ class CubemapStep(BaseStepWidget):
         self.axis_transform_combo.currentIndexChanged.connect(self._on_profile_option_changed)
         add_tooltip_row(profile_form, i18n.t("AXIS_TRANSFORM"), self.axis_transform_combo, i18n.tip("AXIS_TRANSFORM"))
 
-        self.no_image_cb = QCheckBox(i18n.NO_IMAGE)
-        self.no_image_cb.setToolTip(i18n.tip("NO_IMAGE"))
-        profile_form.addRow("", self.no_image_cb)
-
         self.export_colmap_cb = QCheckBox(i18n.t("EXPORT_COLMAP"))
         self.export_colmap_cb.setToolTip(i18n.t("EXPORT_COLMAP_HINT"))
         profile_form.addRow("", self.export_colmap_cb)
@@ -249,10 +245,41 @@ class CubemapStep(BaseStepWidget):
         preprocess.content_layout.addLayout(pp_form)
         preprocess.content_layout.addWidget(import_advanced)
         left_layout.addWidget(preprocess)
+
+        export_targets_form = QFormLayout()
+        export_targets_form.setContentsMargins(0, 0, 0, 0)
+        export_targets_form.setSpacing(6)
+        self.export_targets_row = QWidget()
+        export_targets_layout = QHBoxLayout(self.export_targets_row)
+        export_targets_layout.setContentsMargins(0, 0, 0, 0)
+        export_targets_layout.setSpacing(12)
+        self.export_images_cb = QCheckBox(i18n.t("EXPORT_IMAGES"))
+        self.export_images_cb.setToolTip(i18n.tip("EXPORT_IMAGES"))
+        self.export_images_cb.setChecked(True)
+        export_targets_layout.addWidget(self.export_images_cb)
+        self.export_masks_cb = QCheckBox(i18n.t("EXPORT_MASKS"))
+        self.export_masks_cb.setToolTip(i18n.tip("EXPORT_MASKS"))
+        self.export_masks_cb.setChecked(True)
+        export_targets_layout.addWidget(self.export_masks_cb)
+        export_targets_layout.addStretch()
+        add_tooltip_row(
+            export_targets_form,
+            i18n.t("EXPORT_TARGETS"),
+            self.export_targets_row,
+            i18n.tip("EXPORT_TARGETS"),
+        )
+        left_layout.addLayout(export_targets_form)
+
+        self.view_config = ViewConfigWidget(show_settings=False)
+        self.view_config.views_changed.connect(self._on_views_changed)
+
         # 視点書き出し設定（折りたたみ）
         adv_output = CollapsibleSection(i18n.t("ADVANCED_OUTPUT_SECTION"), expanded=False)
+        self.advanced_output_section = adv_output
         adv_form = QFormLayout()
         adv_form.setSpacing(6)
+
+        adv_form.addRow(self.view_config.settings_widget)
 
         self.scale_combo = QComboBox()
         self.scale_combo.setToolTip(i18n.tip("OUTPUT_SCALE"))
@@ -300,8 +327,6 @@ class CubemapStep(BaseStepWidget):
         left_layout.addWidget(adv_output)
 
         # ビュー設定
-        self.view_config = ViewConfigWidget()
-        self.view_config.views_changed.connect(self._on_views_changed)
         left_layout.addWidget(self.view_config)
 
         left_layout.addStretch()
@@ -384,7 +409,6 @@ class CubemapStep(BaseStepWidget):
         metashape = self._is_metashape_method()
         self.metashape_section.setVisible(metashape)
         if not metashape:
-            self.no_image_cb.setChecked(False)
             self.export_colmap_cb.setChecked(False)
         self._update_output_count()
         self.primary_action_state_changed.emit()
@@ -484,6 +508,15 @@ class CubemapStep(BaseStepWidget):
 
     def _sync_ply_browse_enabled(self) -> None:
         self.ms_ply_browse.setEnabled(self._preprocess_uses_ply())
+
+    def _writes_images(self) -> bool:
+        return self.export_images_cb.isChecked()
+
+    def _writes_masks(self) -> bool:
+        return self.export_masks_cb.isChecked()
+
+    def _writes_any_view_assets(self) -> bool:
+        return self._writes_images() or self._writes_masks()
 
     # -- ビュー --
 
@@ -630,8 +663,10 @@ class CubemapStep(BaseStepWidget):
                 cmd.append("--brush")
         if self.invert_masks_cb.isChecked():
             cmd.append("--invert_masks")
-        if not image_only and self.no_image_cb.isChecked():
-            cmd.append("--no_image")
+        if not self._writes_images():
+            cmd.append("--skip-images")
+        if not self._writes_masks():
+            cmd.append("--skip-masks")
 
         # 高度な出力設定
         try:
@@ -732,8 +767,8 @@ class CubemapStep(BaseStepWidget):
                 "yaw_offset": self.view_config.yaw_offset(),
                 "yaw_slots": self.view_config.yaw_slot_count(),
                 "pitch_rows_text": self.view_config.pitch_edit.text().strip(),
-                "cube6_drop_top": self.view_config.cube6_drop_top.isChecked(),
-                "cube6_drop_bottom": self.view_config.cube6_drop_bottom.isChecked(),
+                "cube6_drop_top": False,
+                "cube6_drop_bottom": False,
                 "views": [
                     {
                         "name": v["name"],
@@ -752,7 +787,9 @@ class CubemapStep(BaseStepWidget):
                 "output_bit_depth": self.output_bit_depth_combo.currentData() or "8",
                 "jpg_quality": jpg_quality,
                 "invert_masks": self.invert_masks_cb.isChecked(),
-                "no_image": self._is_metashape_method() and self.no_image_cb.isChecked(),
+                "write_images": self._writes_images(),
+                "write_masks": self._writes_masks(),
+                "no_image": not self._writes_any_view_assets(),
                 "export_colmap": self._is_metashape_method() and self.export_colmap_cb.isChecked(),
             },
             "postprocess": {
@@ -820,32 +857,63 @@ class CubemapStep(BaseStepWidget):
         if resolved_output.parent != scene:
             raise ValueError(f"出力フォルダがシーンフォルダ外です: {output}")
 
-        if self._is_metashape_method() and self.no_image_cb.isChecked():
+        if not self._writes_any_view_assets():
             output.mkdir(parents=True, exist_ok=True)
             return True
 
-        if output.exists() and any(output.iterdir()):
-            result = QMessageBox.question(
-                self,
-                i18n.t("OUTPUT_RESET_TITLE"),
-                i18n.t("OUTPUT_RESET_MESSAGE").format(path=str(output)),
-                QMessageBox.Yes | QMessageBox.No,
-                QMessageBox.No,
-            )
-            if result != QMessageBox.Yes:
-                return False
-            self._clear_output_dir(output)
+        if self._writes_images() and self._writes_masks():
+            if output.exists() and any(output.iterdir()):
+                result = QMessageBox.question(
+                    self,
+                    i18n.t("OUTPUT_RESET_TITLE"),
+                    i18n.t("OUTPUT_RESET_MESSAGE").format(path=str(output)),
+                    QMessageBox.Yes | QMessageBox.No,
+                    QMessageBox.No,
+                )
+                if result != QMessageBox.Yes:
+                    return False
+                self._clear_output_dir(output)
+        else:
+            targets = []
+            if self._writes_images():
+                targets.append(output / "images")
+            if self._writes_masks():
+                targets.append(output / "masks")
+            existing_targets = [p for p in targets if self._path_has_contents(p)]
+            if existing_targets:
+                target_text = "\n".join(str(p) for p in existing_targets)
+                result = QMessageBox.question(
+                    self,
+                    i18n.t("OUTPUT_PARTIAL_RESET_TITLE"),
+                    i18n.t("OUTPUT_PARTIAL_RESET_MESSAGE").format(paths=target_text),
+                    QMessageBox.Yes | QMessageBox.No,
+                    QMessageBox.No,
+                )
+                if result != QMessageBox.Yes:
+                    return False
+                for target in existing_targets:
+                    self._clear_path(target)
 
         output.mkdir(parents=True, exist_ok=True)
         return True
 
     @staticmethod
+    def _path_has_contents(path: Path) -> bool:
+        if path.is_dir():
+            return any(path.iterdir())
+        return path.exists()
+
+    @staticmethod
+    def _clear_path(path: Path) -> None:
+        if path.is_dir():
+            shutil.rmtree(path)
+        elif path.exists():
+            path.unlink()
+
+    @staticmethod
     def _clear_output_dir(output: Path) -> None:
         for child in output.iterdir():
-            if child.is_dir():
-                shutil.rmtree(child)
-            else:
-                child.unlink()
+            CubemapStep._clear_path(child)
 
     # -- バンドル検証 --
 
@@ -927,7 +995,7 @@ class CubemapStep(BaseStepWidget):
         if self._uses_lichtfeld_final_correction():
             self._apply_lichtfeld_final_correction(output)
 
-        if not self.no_image_cb.isChecked():
+        if self._writes_any_view_assets():
             self._write_export_settings()
 
     def _apply_lichtfeld_final_correction(self, output: Path) -> None:

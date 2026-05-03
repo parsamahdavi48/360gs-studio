@@ -63,6 +63,33 @@ def test_cubemap_progress_total_includes_images_and_masks(tmp_path: Path) -> Non
     assert total == 6
 
 
+def test_cubemap_progress_total_can_count_masks_only(tmp_path: Path) -> None:
+    image_dir = tmp_path
+    images = image_dir / "images"
+    masks = image_dir / "masks"
+    images.mkdir()
+    masks.mkdir()
+
+    cv2.imwrite(str(images / "frame_0001.png"), np.zeros((4, 8, 3), dtype=np.uint8))
+    cv2.imwrite(str(masks / "frame_0001.png"), np.zeros((4, 8), dtype=np.uint8))
+    views = [
+        {"name": "front", "yaw": 0.0, "pitch": 0.0},
+        {"name": "right", "yaw": 90.0, "pitch": 0.0},
+    ]
+
+    total = count_planned_outputs(
+        image_files=["images/frame_0001.png"],
+        views=views,
+        image_dir=str(image_dir),
+        mask_dir=str(masks),
+        mask_from_alpha=False,
+        export_images=False,
+        export_masks=True,
+    )
+
+    assert total == 2
+
+
 def test_cubemap_progress_total_includes_alpha_masks(tmp_path: Path) -> None:
     image_dir = tmp_path
     images = image_dir / "images"

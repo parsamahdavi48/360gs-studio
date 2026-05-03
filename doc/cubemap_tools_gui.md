@@ -42,9 +42,12 @@ start_cubemap_tools_gui.bat
   - `Images Folder`: fixed to scene `images/`.
   - `Camera XML`: Metashape-exported camera pose XML passed to `--xml`.
   - `Point Cloud PLY`: Metashape-exported point cloud PLY. Used automatically for LichtFeld.
+  - `Add COLMAP Text Model`: creates `cameras.txt` / `images.txt` / `points3D.txt` under `output/colmap/` from `output/transforms.json` and PLY. This is not a COLMAP SfM image export.
   - `Advanced`: controls `--scale`, whether to pass `--ply`, and `--no-fix-rotation`.
+- `Export Targets`:
+  - Always visible. Independently toggles `Images` and `Masks`. Turn `Images` off and `Masks` on when you only rebuilt masks.
 - `View Export Settings`:
-  - Shared viewpoint image export settings such as image size, per-frame yaw step, output format, bit depth, and mask inversion.
+  - Shared viewpoint image export settings such as view mode, yaw offset, image size, per-frame yaw step, output format, bit depth, and mask inversion.
 - Masks:
   - Conversion and preview automatically use matching files from scene `masks/`.
 - `View Mode`:
@@ -58,9 +61,8 @@ start_cubemap_tools_gui.bat
 - `Pitch Rows (deg CSV)`:
   - Pitch list. Example: `-30,0,30`.
   - Max 9 rows.
-- `Cube6 Options`:
-  - `Drop Top (+90deg)`: disable top face.
-  - `Drop Bottom (-90deg)`: disable bottom face.
+- `Cube6`:
+  - Always exports all six faces. Top and bottom faces are treated as valid fixed-camera observations.
 - `FOV`:
   - Fixed to `90.0` in this GUI.
 - `Image Size`:
@@ -85,9 +87,9 @@ start_cubemap_tools_gui.bat
 
 - `Invert masks (--invert_masks)`
   - Usually off. Enable only when the target app expects the opposite polarity.
-- `Skip Image/Mask Conversion (--no_image)`
-  - Updates `transforms.json` without reconverting cubemap images or masks. Existing files in `output/` are preserved.
-  - Does not overwrite `output/stechdrive_export_settings.json` saved by a normal conversion.
+- `Export Targets`
+  - Turning `Images` off adds `--skip-images`; turning `Masks` off adds `--skip-masks`.
+  - If both are off, the GUI updates camera metadata only and preserves existing files under `output/`.
 
 ## Workflow tabs
 
@@ -111,7 +113,7 @@ start_cubemap_tools_gui.bat
   - `vendor/metashape_360_lfs/metashape_360_lfs.py --images ... --xml ... --output <scene_dir> [...]`
 - Then GUI runs:
   - `cubemap_transforms_json.py --fov 90 --output_scale <1.0|0.6366|0.5> --views-json <that file>`
-- If `Skip Image/Mask Conversion` is enabled, the GUI adds `--no_image` and does not reset existing files in `<output_dir>`.
+- If `Images` or `Masks` is disabled in Export Targets, the GUI adds `--skip-images` or `--skip-masks`.
 - After a successful normal conversion, GUI saves the target profile, image size, view settings, a `views_config.json` snapshot, per-frame yaw rotation, output format, and related settings to `<output_dir>/stechdrive_export_settings.json`.
 - Disabled slots are written with `enabled=false` and ignored by converter.
 - With `LichtFeld Studio` profile, point cloud PLY import is enabled automatically.

@@ -47,11 +47,12 @@ class ViewConfigWidget(QWidget):
 
     views_changed = Signal()
 
-    def __init__(self, parent: QWidget | None = None) -> None:
+    def __init__(self, parent: QWidget | None = None, *, show_settings: bool = True) -> None:
         super().__init__(parent)
         self.pitch_rows: list[dict] = []
         self.yaw_slot_labels: list[QLabel] = []
         self._output_count_text = ""
+        self._show_settings = show_settings
 
         self._build_ui()
         self._apply_pitch_rows()
@@ -61,7 +62,9 @@ class ViewConfigWidget(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(6)
 
-        ctrl = QVBoxLayout()
+        self.settings_widget = QWidget()
+        ctrl = QVBoxLayout(self.settings_widget)
+        ctrl.setContentsMargins(0, 0, 0, 0)
         ctrl.setSpacing(6)
 
         mode_row = QHBoxLayout()
@@ -114,22 +117,8 @@ class ViewConfigWidget(QWidget):
         self.apply_btn.clicked.connect(self._apply_pitch_rows)
         pitch_row.addWidget(self.apply_btn)
         ctrl.addLayout(pitch_row)
-        layout.addLayout(ctrl)
-
-        # Cube6 オプション
-        self._cube6_row = QHBoxLayout()
-        self.cube6_drop_top = QCheckBox(i18n.t("DROP_TOP"))
-        self.cube6_drop_top.setToolTip(i18n.tip("CUBE6_DROP_TOP"))
-        self.cube6_drop_top.toggled.connect(self._on_selection_changed)
-        self._cube6_row.addWidget(self.cube6_drop_top)
-        self.cube6_drop_bottom = QCheckBox(i18n.t("DROP_BOTTOM"))
-        self.cube6_drop_bottom.setToolTip(i18n.tip("CUBE6_DROP_BOTTOM"))
-        self.cube6_drop_bottom.toggled.connect(self._on_selection_changed)
-        self._cube6_row.addWidget(self.cube6_drop_bottom)
-        self._cube6_row.addStretch()
-        self._cube6_container = QWidget()
-        QHBoxLayout(self._cube6_container).addLayout(self._cube6_row)
-        layout.addWidget(self._cube6_container)
+        if self._show_settings:
+            layout.addWidget(self.settings_widget)
 
         summary_row = QHBoxLayout()
         self.selected_label = QLabel(f"{i18n.t('SELECTED_VIEWS')}: 0")
@@ -218,7 +207,6 @@ class ViewConfigWidget(QWidget):
         self.apply_btn.setVisible(is_custom)
         self.grid_widget.setVisible(is_custom)
         self.grid_section.setVisible(is_custom)
-        self._cube6_container.setVisible(not is_custom)
         self._on_selection_changed()
 
     def _on_params_changed(self, *_args) -> None:
@@ -339,13 +327,11 @@ class ViewConfigWidget(QWidget):
         self._on_selection_changed()
 
     def _cube6_views(self, yaw_offset: float) -> list[dict]:
-        dt = self.cube6_drop_top.isChecked()
-        db = self.cube6_drop_bottom.isChecked()
         return [
             {"name": "px", "yaw": 90.0 - yaw_offset, "pitch": 0.0, "enabled": True, "slot": 0, "label": "px"},
             {"name": "nx", "yaw": -90.0 - yaw_offset, "pitch": 0.0, "enabled": True, "slot": 1, "label": "nx"},
             {"name": "pz", "yaw": 0.0 - yaw_offset, "pitch": 0.0, "enabled": True, "slot": 2, "label": "pz"},
             {"name": "nz", "yaw": 180.0 - yaw_offset, "pitch": 0.0, "enabled": True, "slot": 3, "label": "nz"},
-            {"name": "top", "yaw": 0.0 - yaw_offset, "pitch": 90.0, "enabled": not dt, "slot": 4, "label": "top"},
-            {"name": "bottom", "yaw": 0.0 - yaw_offset, "pitch": -90.0, "enabled": not db, "slot": 5, "label": "bottom"},
+            {"name": "top", "yaw": 0.0 - yaw_offset, "pitch": 90.0, "enabled": True, "slot": 4, "label": "top"},
+            {"name": "bottom", "yaw": 0.0 - yaw_offset, "pitch": -90.0, "enabled": True, "slot": 5, "label": "bottom"},
         ]

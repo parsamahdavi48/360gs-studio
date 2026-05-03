@@ -43,9 +43,12 @@ start_cubemap_tools_gui.bat
   - `画像フォルダ`: シーンフォルダ内の `images/` 固定。
   - `カメラXML`: MetashapeからエクスポートしたカメラポーズXML。`--xml` に渡されます。
   - `点群PLY`: Metashapeからエクスポートした点群PLY。LichtFeldでは自動的に使用します。
+  - `COLMAP形式モデルを追加出力`: `output/transforms.json` とPLYから `output/colmap/` に `cameras.txt` / `images.txt` / `points3D.txt` を追加生成します。COLMAPで再SfMするための画像書き出しではありません。
   - `詳細設定`: `--scale`、`--ply` の使用有無、`--no-fix-rotation` を指定できます。
+- `書き出し対象`:
+  - 常時表示されます。`画像` / `マスク` を個別にON/OFFできます。マスクだけ作り直した場合は `画像` をOFF、`マスク` をONにします。
 - `視点書き出し設定`:
-  - 画像サイズ、フレーム別ヨー回転、出力フォーマット、ビット深度、マスク反転など、各方式で共通する視点画像の書き出し設定です。
+  - ビューモード、ヨーオフセット、画像サイズ、フレーム別ヨー回転、出力フォーマット、ビット深度、マスク反転など、各方式で共通する視点画像の書き出し設定です。
 - マスク:
   - 変換とプレビューは、シーンフォルダ内の `masks/` から対応ファイルを自動的に使用します。
 - `View Mode`:
@@ -59,9 +62,8 @@ start_cubemap_tools_gui.bat
 - `Pitch Rows (deg CSV)`:
   - ピッチ一覧。例: `-30,0,30`。
   - 最大9行まで。
-- `Cube6 Options`:
-  - `Drop Top (+90deg)`: 上面を無効化。
-  - `Drop Bottom (-90deg)`: 下面を無効化。
+- `Cube6`:
+  - 6面すべてを書き出します。上面・下面もカメラポーズ固定の有効な観測として扱います。
 - `FOV`:
   - このGUIでは `90.0` 固定。
 - `Image Size`:
@@ -86,9 +88,9 @@ start_cubemap_tools_gui.bat
 
 - `Invert masks (--invert_masks)`
   - 通常はOFF。出力先アプリで逆極性が必要な場合だけON。
-- `画像とマスク変換なし (--no_image)`
-  - キューブマップ画像とマスクを再変換せず、`transforms.json` だけ更新します。`output/` 内の既存ファイルは保持されます。
-  - 通常変換時に保存された `output/stechdrive_export_settings.json` は上書きしません。
+- `書き出し対象`
+  - `画像` OFFで `--skip-images`、`マスク` OFFで `--skip-masks` を追加します。
+  - 両方OFFの場合は画像とマスクを再変換せず、カメラ情報だけ更新します。既存の `output/` 内ファイルは保持されます。
 
 ## ワークフロータブ
 
@@ -113,7 +115,7 @@ start_cubemap_tools_gui.bat
   を実行します。
 - その後
   `cubemap_transforms_json.py --fov 90 --output_scale <1.0|0.6366|0.5> --views-json <そのファイル>` を呼び出します。
-- `画像とマスク変換なし` が有効な場合は `--no_image` を追加し、`<output_dir>` 内の既存ファイルをリセットしません。
+- `画像` / `マスク` の書き出し対象がOFFの場合は、それぞれ `--skip-images` / `--skip-masks` を追加します。
 - 通常変換が成功すると、`<output_dir>/stechdrive_export_settings.json` にターゲットプロファイル、画像サイズ、ビュー設定、`views_config.json` のスナップショット、フレーム別ヨー回転、出力形式などを保存します。
 - OFFのスロットは `enabled=false` として保存され、変換時に無視されます。
 - `LichtFeld Studio` プロファイルでは、点群PLYのインポートが自動的に有効になります。

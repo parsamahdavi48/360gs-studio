@@ -203,6 +203,7 @@ def test_cubemap_labels_share_field_tooltips() -> None:
     step = CubemapStep(Path.cwd())
 
     assert _label(step, i18n.t("EXPORT_METHOD")).toolTip() == i18n.tip("EXPORT_METHOD")
+    assert _label(step, i18n.t("EXPORT_TARGETS")).toolTip() == i18n.tip("EXPORT_TARGETS")
     assert _label(step, i18n.t("AXIS_TRANSFORM")).toolTip() == i18n.tip("AXIS_TRANSFORM")
     assert _label(step, i18n.t("YAW_OFFSET_PER_FRAME")).toolTip() == i18n.t("YAW_OFFSET_PER_FRAME_HINT")
     assert _label(step, i18n.OUTPUT_SCALE + ":").toolTip() == i18n.tip("OUTPUT_SCALE")
@@ -210,6 +211,8 @@ def test_cubemap_labels_share_field_tooltips() -> None:
     assert _label(step, i18n.METASHAPE_PLY).toolTip() == i18n.tip("MS_PLY")
     assert step.ms_scale_label.toolTip() == i18n.tip("SCALE_FACTOR")
     assert step.ms_use_ply_cb.toolTip() == i18n.tip("MS_USE_PLY")
+    assert step.export_images_cb.toolTip() == i18n.tip("EXPORT_IMAGES")
+    assert step.export_masks_cb.toolTip() == i18n.tip("EXPORT_MASKS")
 
 
 def test_cubemap_profile_option_rows_preserve_width_in_english() -> None:

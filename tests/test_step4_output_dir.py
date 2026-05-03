@@ -45,6 +45,15 @@ def _write_ascii_ply(path: Path, points: list[tuple[float, float, float]]) -> No
     )
 
 
+def _is_descendant(widget, ancestor) -> bool:
+    current = widget
+    while current is not None:
+        if current is ancestor:
+            return True
+        current = current.parentWidget()
+    return False
+
+
 def test_cubemap_step_uses_fixed_output_folder_label(tmp_path: Path) -> None:
     step = _ready_step(tmp_path)
 
@@ -56,13 +65,21 @@ def test_cubemap_step_uses_fixed_output_folder_label(tmp_path: Path) -> None:
     assert not hasattr(step, "duplicate_cb")
     assert not hasattr(step, "ms_images_browse")
     assert not hasattr(step, "preprocess_cb")
+    assert not hasattr(step, "no_image_cb")
+    assert not hasattr(step.view_config, "cube6_drop_top")
+    assert not hasattr(step.view_config, "cube6_drop_bottom")
     assert hasattr(step, "ms_use_ply_cb")
     assert hasattr(step, "axis_transform_combo")
     assert hasattr(step, "invert_masks_cb")
-    assert hasattr(step, "no_image_cb")
     assert not hasattr(step, "export_method_combo")
     assert set(step.export_method_buttons) == {"metashape", "colmap"}
-    assert not step.no_image_cb.isChecked()
+    assert step.export_images_cb.isChecked()
+    assert step.export_masks_cb.isChecked()
+    assert not _is_descendant(step.export_targets_row, step.advanced_output_section)
+    assert _is_descendant(step.view_config.settings_widget, step.advanced_output_section)
+    cube6_views = step.view_config.collect_views(include_disabled=True)
+    assert {v["name"] for v in cube6_views} == {"px", "nx", "pz", "nz", "top", "bottom"}
+    assert all(v["enabled"] for v in cube6_views)
     assert step._export_method() == "metashape"
     assert step.export_method_buttons["metashape"].isChecked()
     assert not step.output_path_label.wordWrap()
@@ -82,6 +99,8 @@ def test_cubemap_step_uses_fixed_output_folder_label(tmp_path: Path) -> None:
     assert "--mask_dir" not in cmd
     assert "--mask_from_alpha" not in cmd
     assert "--no_image" not in cmd
+    assert "--skip-images" not in cmd
+    assert "--skip-masks" not in cmd
     assert "--duplicate" not in cmd
     assert "--no_transform" in cmd
     assert step.axis_transform_combo.currentData() == "none"
@@ -112,6 +131,8 @@ def test_colmap_export_method_uses_image_only_conversion(tmp_path: Path) -> None
     assert "--no_transform" not in cmd
     assert "--brush" not in cmd
     assert "--no_image" not in cmd
+    assert "--skip-images" not in cmd
+    assert "--skip-masks" not in cmd
 
 
 def test_colmap_export_method_validates_images_before_resetting_output(tmp_path: Path, monkeypatch) -> None:
@@ -294,11 +315,13 @@ def test_cubemap_step_keeps_mask_inversion_as_advanced_option(tmp_path: Path) ->
 
 def test_cubemap_step_can_skip_image_and_mask_conversion(tmp_path: Path) -> None:
     step = _ready_step(tmp_path, metashape_inputs=True)
-    step.no_image_cb.setChecked(True)
+    step.export_images_cb.setChecked(False)
+    step.export_masks_cb.setChecked(False)
 
     cmd = step._build_cubemap_cmd()
 
-    assert "--no_image" in cmd
+    assert "--skip-images" in cmd
+    assert "--skip-masks" in cmd
 
 
 def test_cubemap_preview_uses_scene_mask_folder(tmp_path: Path, monkeypatch) -> None:
@@ -349,10 +372,12 @@ def test_cubemap_build_resets_existing_output_when_confirmed(tmp_path: Path, mon
     assert (output / "views_config.json").is_file()
 
 
-def test_cubemap_no_image_preserves_existing_output(tmp_path: Path, monkeypatch) -> None:
+def test_cubemap_mask_only_preserves_existing_images(tmp_path: Path, monkeypatch) -> None:
     output = tmp_path / "output"
     output.mkdir()
-    old_file = output / "old_render.png"
+    old_image_dir = output / "images"
+    old_image_dir.mkdir()
+    old_file = old_image_dir / "old_render.png"
     old_file.write_text("old", encoding="utf-8")
     old_mask_dir = output / "masks"
     old_mask_dir.mkdir()
@@ -361,19 +386,16 @@ def test_cubemap_no_image_preserves_existing_output(tmp_path: Path, monkeypatch)
     old_settings = output / "stechdrive_export_settings.json"
     old_settings.write_text('{"old": true}\n', encoding="utf-8")
     step = _ready_step(tmp_path, metashape_inputs=True)
-    step.no_image_cb.setChecked(True)
-    monkeypatch.setattr(
-        QMessageBox,
-        "question",
-        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("confirmation should not open")),
-    )
+    step.export_images_cb.setChecked(False)
+    monkeypatch.setattr(QMessageBox, "question", lambda *args, **kwargs: QMessageBox.Yes)
 
     commands = step.build_commands()
 
     assert [phase for phase, _cmd in commands] == ["metashape", "cubemap"]
-    assert "--no_image" in commands[1][1]
+    assert "--skip-images" in commands[1][1]
+    assert "--skip-masks" not in commands[1][1]
     assert old_file.is_file()
-    assert old_mask.is_file()
+    assert not old_mask.exists()
     assert old_settings.read_text(encoding="utf-8") == '{"old": true}\n'
     assert (output / "views_config.json").is_file()
 
@@ -418,6 +440,10 @@ def test_cubemap_finalize_writes_export_settings(tmp_path: Path) -> None:
     assert settings["conversion"]["output_format"] == "auto"
     assert settings["conversion"]["output_bit_depth"] == "8"
     assert settings["conversion"]["no_image"] is False
+    assert settings["conversion"]["write_images"] is True
+    assert settings["conversion"]["write_masks"] is True
+    assert settings["view_config"]["cube6_drop_top"] is False
+    assert settings["view_config"]["cube6_drop_bottom"] is False
     assert settings["metashape_import"]["use_ply"] is True
     assert settings["output_files"]["settings"] == "stechdrive_export_settings.json"
     assert settings["view_config"]["views"]
