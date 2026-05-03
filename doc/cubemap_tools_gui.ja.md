@@ -31,7 +31,13 @@ start_cubemap_tools_gui.bat
   - 出力先。既定は `<scene>/output`。
 - `書き出し方式`:
   - `Metashapeインポート`: Metashape SfM結果から、3DGS向けの視点画像、マスク、`transforms.json` を書き出します。
-  - `COLMAP書き出し`: 抽出済みの `images/` と `masks/` からCOLMAP SfM向けの視点画像とマスクを書き出します。カメラポーズは作成しません。
+  - `COLMAP書き出し`: 抽出済みの `images/` と `masks/` から、COLMAP Rig形式の視点画像、マスク、`rig_config.json` を `output/colmap_rig/` に書き出します。
+- `COLMAP実行設定`:
+  - `COLMAP書き出し` 選択時に表示されます。
+  - `書き出し後にCOLMAPを実行`: 視点画像の書き出し後に `feature_extractor` → `rig_configurator` → matcher → mapper を実行します。重い処理なので必要な時だけONにします。
+  - `COLMAP実行ファイル`: 使用する `colmap.exe` を指定します。空欄ならPATH上の `colmap.exe` を使います。
+  - `Matcher`: `Sequential` は高速で動画の連番フレーム向けです。`Exhaustive` は全ペアを照合するため精度が出る場合がありますが、枚数が増えると数十時間規模になることがあります。
+  - `Mapper`: `Global` はCOLMAP 4.0以降に統合されたGLOMAP系のグローバルSfMで、既定推奨です。`Incremental` は従来の `colmap mapper`、`GLOMAP` は外部 `glomap.exe` 用です。
 - `出力プロファイル`:
   - `Metashapeインポート` 選択時に使う、連携先3DGSツール向けのプリセットです。
   - `Postshot / Brush`: 対象アプリ向けの座標プリセットを適用し、シーン内のPLYを直接同梱します。
@@ -115,6 +121,12 @@ start_cubemap_tools_gui.bat
   を実行します。
 - その後
   `cubemap_transforms_json.py --fov 90 --output_scale <1.0|0.6366|0.5> --views-json <そのファイル>` を呼び出します。
+- `COLMAP書き出し` 方式では、`cubemap_transforms_json.py --image-only --colmap-rig --yaw-offset-per-frame 0 ...` を呼び出します。
+  - 画像: `<output_dir>/colmap_rig/images/rig1/camXX/frame_00001.<ext>`
+  - マスク: `<output_dir>/colmap_rig/masks/rig1/camXX/frame_00001.<ext>.png`
+  - リグ設定: `<output_dir>/colmap_rig/rig_config.json`
+  - フレーム別Yaw回転は固定リグ前提を崩すため、COLMAP Rig書き出しでは常に0度です。
+- `書き出し後にCOLMAPを実行` がONの場合は、続けて `feature_extractor`、`rig_configurator`、matcher、mapperを実行します。
 - `画像` / `マスク` の書き出し対象がOFFの場合は、それぞれ `--skip-images` / `--skip-masks` を追加します。
 - 通常変換が成功すると、`<output_dir>/stechdrive_export_settings.json` にターゲットプロファイル、画像サイズ、ビュー設定、`views_config.json` のスナップショット、フレーム別Yaw回転、出力形式などを保存します。
 - OFFのスロットは `enabled=false` として保存され、変換時に無視されます。

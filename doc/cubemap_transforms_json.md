@@ -138,6 +138,8 @@ python cubemap_transforms_json.py . ./cubic --no_transform
 |--skip-images|(no)|Do not write viewpoint images; update masks and/or transforms.json only.|
 |--skip-masks|(no)|Do not write masks; update viewpoint images and/or transforms.json only.|
 |--image-only|(no)|Export viewpoint images and masks from `<input_dir>/images` and `<input_dir>/masks` without reading `transforms.json`.|
+|--colmap-rig|(no)|Write `--image-only` output as a COLMAP Rig dataset under `<output_dir>/colmap_rig/` and create `rig_config.json`. Per-frame yaw rotation is forced to 0 degrees.|
+|--colmap-rig-name|name|COLMAP rig name (default=`rig1`).|
 |--no_transform|(no)|Disable coordinate axis conversion.|
 |--brush|(no)|Convert coordinates for Brush.|
 |--duplicate|(no)|Allow duplicated image files by merging chunks.|

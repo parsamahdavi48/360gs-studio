@@ -10,11 +10,22 @@ import cv2
 import numpy as np
 from PIL import Image
 
+from colmap_rig_export import (
+    DEFAULT_RIG_NAME,
+    colmap_camera_image_dir,
+    colmap_camera_mask_dir,
+    colmap_rig_root,
+    frame_filename,
+    prepare_views_for_colmap,
+    write_rig_config_json,
+)
+
 EXAMPLE_TEXT = """Example:
   python cubemap_transforms_json.py .
   python cubemap_transforms_json.py . ./output --yaw 45 --stitch 2.5
   python cubemap_transforms_json.py . ./output --views-json views_config.json
   python cubemap_transforms_json.py . ./output --image-only --views-json views_config.json
+  python cubemap_transforms_json.py . ./output --image-only --colmap-rig --views-json views_config.json
 """
 
 SAFE_VIEW_NAME_RE = re.compile(r"^[A-Za-z0-9_-]+$")
@@ -32,6 +43,8 @@ _WORKER_OUTPUT_BIT_DEPTH = "8"
 _WORKER_JPG_QUALITY = 95
 _WORKER_EXPORT_IMAGES = True
 _WORKER_EXPORT_MASKS = True
+_WORKER_COLMAP_RIG_IMAGE_DIRS: dict[str, str] = {}
+_WORKER_COLMAP_RIG_MASK_DIRS: dict[str, str] = {}
 # yaw オフセット別キャッシュ: key = round(yaw_offset, 3), value = view_name -> (map_x, map_y)
 _WORKER_REMAP_CACHE: dict[float, dict[str, tuple[np.ndarray, np.ndarray]]] = {}
 _WORKER_INPUT_SIZE: tuple[int, int] = (0, 0)
@@ -131,6 +144,23 @@ def parse_args() -> argparse.Namespace:
         dest="image_only",
         action="store_true",
         help="Convert equirectangular images/masks without reading or writing transforms.json",
+    )
+    parser.add_argument(
+        "--colmap-rig",
+        "--colmap_rig",
+        dest="colmap_rig",
+        action="store_true",
+        help=(
+            "Export image-only outputs as a COLMAP rig dataset under output/colmap_rig. "
+            "This implies image-only mode and writes rig_config.json."
+        ),
+    )
+    parser.add_argument(
+        "--colmap-rig-name",
+        "--colmap_rig_name",
+        dest="colmap_rig_name",
+        default=DEFAULT_RIG_NAME,
+        help=f"COLMAP rig name for --colmap-rig (default: {DEFAULT_RIG_NAME})",
     )
     parser.add_argument("--no_transform", action="store_true", help="Disable axis transform (for LichtFeld Studio)")
     parser.add_argument("--duplicate", action="store_true", help="Allow duplicated image files")
@@ -700,6 +730,53 @@ def write_image_only_metadata(
         json.dump(payload, f, indent=2, ensure_ascii=False)
 
 
+def write_colmap_rig_metadata(
+    output_dir: str,
+    image_dir: str,
+    mask_dir: str,
+    image_files: list[str],
+    prepared_views: list[dict],
+    fov: float,
+    output_scale: float,
+    input_size: tuple[int, int],
+    output_size: int,
+    rig_name: str,
+    export_images: bool = True,
+    export_masks: bool = True,
+) -> None:
+    root = colmap_rig_root(output_dir)
+    payload = {
+        "export_type": "colmap_rig",
+        "camera_model": "PINHOLE",
+        "fov": float(fov),
+        "rig_name": rig_name,
+        "input_size": {"w": int(input_size[0]), "h": int(input_size[1])},
+        "output_size": {"w": int(output_size), "h": int(output_size)},
+        "output_scale": float(output_scale),
+        "image_dir": image_dir,
+        "mask_dir": mask_dir,
+        "export_images": bool(export_images),
+        "export_masks": bool(export_masks),
+        "yaw_offset_per_frame": 0.0,
+        "rig_config": "rig_config.json",
+        "images_dir": "images",
+        "masks_dir": "masks",
+        "views": [
+            {
+                "name": v["name"],
+                "camera_name": v["camera_name"],
+                "yaw": float(v["yaw"]),
+                "pitch": float(v["pitch"]),
+            }
+            for v in prepared_views
+        ],
+        "source_images": image_files,
+    }
+    root.mkdir(parents=True, exist_ok=True)
+    with open(root / "view_export_settings.json", "w", encoding="utf-8") as f:
+        json.dump(payload, f, indent=2, ensure_ascii=False)
+
+
 def mask_candidates(mask_dir: str, frame_file: str) -> list[str]:
     frame_path = Path(frame_file)
     candidates: list[Path] = []
@@ -778,6 +855,47 @@ def worker_init(
     # offset=0 のテーブルを事前構築（per-frame yaw を使わない場合の通常パス）
     _WORKER_REMAP_CACHE = {}
     _WORKER_REMAP_TABLES = get_remap_tables_for_offset(0.0)
+
+
+def worker_init_colmap_rig(
+    input_size: tuple[int, int],
+    fov: float,
+    output_size: int,
+    views: list[dict],
+    image_dir: str,
+    mask_dir: str,
+    image_dirs_by_view: dict[str, str],
+    mask_dirs_by_view: dict[str, str],
+    mask_from_alpha: bool,
+    invert_masks: bool,
+    output_format: str | None,
+    output_bit_depth: str,
+    jpg_quality: int,
+    export_images: bool = True,
+    export_masks: bool = True,
+) -> None:
+    global _WORKER_COLMAP_RIG_IMAGE_DIRS
+    global _WORKER_COLMAP_RIG_MASK_DIRS
+
+    worker_init(
+        input_size,
+        fov,
+        output_size,
+        views,
+        image_dir,
+        mask_dir,
+        "",
+        "",
+        mask_from_alpha,
+        invert_masks,
+        output_format,
+        output_bit_depth,
+        jpg_quality,
+        export_images,
+        export_masks,
+    )
+    _WORKER_COLMAP_RIG_IMAGE_DIRS = image_dirs_by_view
+    _WORKER_COLMAP_RIG_MASK_DIRS = mask_dirs_by_view
 
 
 def _image_has_alpha(path: str) -> bool:
@@ -872,6 +990,100 @@ def proc_convert_images(frame_file: str, yaw_offset: float = 0.0) -> int:
     return written
 
 
+def _binary_mask_from_remapped(arr: np.ndarray, invert_masks: bool) -> np.ndarray:
+    if arr.ndim == 3:
+        if arr.shape[2] == 4:
+            arr = arr[..., 3]
+        else:
+            arr = cv2.cvtColor(arr, cv2.COLOR_BGR2GRAY)
+    max_val = _max_value_for_dtype(arr.dtype)
+    _, out = cv2.threshold(arr, max_val // 2, max_val, cv2.THRESH_BINARY)
+    if invert_masks:
+        out = max_val - out
+    return out
+
+
+def proc_convert_images_colmap_rig(job: tuple[str, str]) -> int:
+    if _WORKER_VIEWS is None:
+        raise RuntimeError("worker views are not initialized")
+
+    frame_file, output_filename = job
+    tables = get_remap_tables_for_offset(0.0)
+    written = 0
+
+    image = os.path.join(_WORKER_IMAGE_DIR, frame_file)
+    if os.path.exists(image) and (_WORKER_EXPORT_IMAGES or (_WORKER_EXPORT_MASKS and _WORKER_MASK_FROM_ALPHA)):
+        print(f"Processing: {image}", flush=True)
+        equi = load_equirect(image)
+        has_alpha = equi.ndim == 3 and equi.shape[2] == 4
+        max_val = _max_value_for_dtype(equi.dtype)
+
+        for view in _WORKER_VIEWS:
+            view_name = view["name"]
+            map_x, map_y = tables[view_name]
+            converted = remap_with_channels(equi, map_x, map_y)
+
+            if _WORKER_EXPORT_IMAGES:
+                image_dir = _WORKER_COLMAP_RIG_IMAGE_DIRS[view_name]
+                out_path = os.path.join(image_dir, output_filename)
+                if has_alpha:
+                    converted_image = converted[..., :3]
+                else:
+                    converted_image = converted
+                save_image(
+                    converted_image,
+                    out_path,
+                    _WORKER_JPG_QUALITY,
+                    force_8bit=_WORKER_OUTPUT_BIT_DEPTH == "8",
+                )
+                written += 1
+
+            if _WORKER_EXPORT_MASKS and _WORKER_MASK_FROM_ALPHA and has_alpha:
+                alpha = converted[..., 3]
+                _, mask = cv2.threshold(alpha, max_val // 2, max_val, cv2.THRESH_BINARY)
+                if _WORKER_INVERT_MASKS:
+                    mask = max_val - mask
+                mask_dir = _WORKER_COLMAP_RIG_MASK_DIRS[view_name]
+                save_image(
+                    mask,
+                    os.path.join(mask_dir, f"{output_filename}.png"),
+                    _WORKER_JPG_QUALITY,
+                    force_8bit=True,
+                )
+                written += 1
+
+    if (
+        not _WORKER_EXPORT_MASKS
+        or _WORKER_MASK_FROM_ALPHA
+        or not _WORKER_MASK_DIR
+        or not os.path.isdir(_WORKER_MASK_DIR)
+    ):
+        return written
+
+    for mask_path in mask_candidates(_WORKER_MASK_DIR, frame_file):
+        if not os.path.exists(mask_path):
+            continue
+
+        print(f"Processing: {mask_path}", flush=True)
+        equi_mask = load_equirect(mask_path)
+        for view in _WORKER_VIEWS:
+            view_name = view["name"]
+            map_x, map_y = tables[view_name]
+            converted = remap_with_channels(equi_mask, map_x, map_y)
+            mask = _binary_mask_from_remapped(converted, _WORKER_INVERT_MASKS)
+            mask_dir = _WORKER_COLMAP_RIG_MASK_DIRS[view_name]
+            save_image(
+                mask,
+                os.path.join(mask_dir, f"{output_filename}.png"),
+                _WORKER_JPG_QUALITY,
+                force_8bit=True,
+            )
+            written += 1
+        break
+
+    return written
+
+
 def convert_images(
     image_files: list[str],
     input_size: tuple[int, int],
@@ -955,8 +1167,104 @@ def convert_images(
                 print("Worker failed:", e)
 
 
+def make_colmap_rig_jobs(
+    image_files: list[str],
+    output_format: str | None,
+) -> list[tuple[str, str]]:
+    jobs: list[tuple[str, str]] = []
+    total = len(image_files)
+    for idx, frame_file in enumerate(image_files, start=1):
+        _basename, _ext2, in_ext = split_filename_for_output(frame_file)
+        out_ext = resolve_output_ext(in_ext, output_format)
+        jobs.append((frame_file, frame_filename(idx, total, out_ext)))
+    return jobs
+
+
+def convert_images_colmap_rig(
+    image_files: list[str],
+    input_size: tuple[int, int],
+    output_size: int,
+    views: list[dict],
+    fov: float,
+    image_dir: str,
+    mask_dir: str,
+    output_dir: str,
+    rig_name: str,
+    mask_from_alpha: bool,
+    invert_masks: bool,
+    output_format: str | None = None,
+    output_bit_depth: str = "8",
+    jpg_quality: int = 95,
+    export_images: bool = True,
+    export_masks: bool = True,
+) -> None:
+    image_dirs_by_view = {
+        view["name"]: str(colmap_camera_image_dir(output_dir, rig_name, view["camera_name"]))
+        for view in views
+    }
+    mask_dirs_by_view = {
+        view["name"]: str(colmap_camera_mask_dir(output_dir, rig_name, view["camera_name"]))
+        for view in views
+    }
+    if export_images:
+        for path in image_dirs_by_view.values():
+            os.makedirs(path, exist_ok=True)
+    if export_masks and (mask_from_alpha or os.path.isdir(mask_dir)):
+        for path in mask_dirs_by_view.values():
+            os.makedirs(path, exist_ok=True)
+
+    total_outputs = count_planned_outputs(
+        image_files=image_files,
+        views=views,
+        image_dir=image_dir,
+        mask_dir=mask_dir,
+        mask_from_alpha=mask_from_alpha,
+        export_images=export_images,
+        export_masks=export_masks,
+    )
+    print(f"Converting {total_outputs} files...")
+    print(f"[progress] 0/{total_outputs}", flush=True)
+    if total_outputs <= 0:
+        return
+
+    jobs = make_colmap_rig_jobs(image_files, output_format)
+    max_workers = min(16, os.cpu_count() or 1)
+    with ProcessPoolExecutor(
+        max_workers=max_workers,
+        initializer=worker_init_colmap_rig,
+        initargs=(
+            input_size,
+            fov,
+            output_size,
+            views,
+            image_dir,
+            mask_dir,
+            image_dirs_by_view,
+            mask_dirs_by_view,
+            mask_from_alpha,
+            invert_masks,
+            output_format,
+            output_bit_depth,
+            jpg_quality,
+            export_images,
+            export_masks,
+        ),
+    ) as executor:
+        futures = [executor.submit(proc_convert_images_colmap_rig, job) for job in jobs]
+
+        done = 0
+        for future in as_completed(futures):
+            try:
+                done += future.result()
+                print(f"[progress] {done}/{total_outputs}", flush=True)
+            except Exception as e:
+                print("Worker failed:", e)
+
+
 def main() -> None:
     args = parse_args()
+    if args.colmap_rig:
+        args.image_only = True
 
     input_dir = args.input_dir
     output_dir = args.output_dir if args.output_dir else f"{input_dir}/output"
@@ -1004,25 +1312,56 @@ def main() -> None:
             print(f"Error: no images found in {image_dir}")
             sys.exit(1)
         input_size, output_size = infer_image_only_sizes(image_dir, image_files, args.output_scale)
-        frame_yaw_offsets = [
-            frame_yaw_offset(i, args.yaw_offset_per_frame)
-            for i in range(len(image_files))
-        ]
-        write_image_only_metadata(
-            output_dir=output_dir,
-            image_dir=image_dir,
-            mask_dir=mask_dir,
-            image_files=image_files,
-            views=views,
-            fov=args.fov,
-            output_scale=args.output_scale,
-            input_size=input_size,
-            output_size=output_size,
-            yaw_offset_per_frame=args.yaw_offset_per_frame,
-            export_images=not args.no_image and not args.skip_images,
-            export_masks=not args.no_image and not args.skip_masks,
-        )
-        print(f"Image-only export: {len(image_files)} source images")
+        if args.colmap_rig:
+            if args.yaw_offset_per_frame != 0.0:
+                print("COLMAP rig export fixes per-frame yaw rotation to 0 degrees.")
+            frame_yaw_offsets = [0.0 for _ in image_files]
+            prepared_views = prepare_views_for_colmap(
+                [{**view, "fov": float(args.fov)} for view in views]
+            )
+            rig_path = write_rig_config_json(
+                output_dir,
+                prepared_views,
+                (output_size, output_size),
+                rig_name=args.colmap_rig_name,
+            )
+            write_colmap_rig_metadata(
+                output_dir=output_dir,
+                image_dir=image_dir,
+                mask_dir=mask_dir,
+                image_files=image_files,
+                prepared_views=prepared_views,
+                fov=args.fov,
+                output_scale=args.output_scale,
+                input_size=input_size,
+                output_size=output_size,
+                rig_name=args.colmap_rig_name,
+                export_images=not args.no_image and not args.skip_images,
+                export_masks=not args.no_image and not args.skip_masks,
+            )
+            print(f"COLMAP rig export: {len(image_files)} source images")
+            print(f"Saved rig_config.json: {rig_path}")
+            views = prepared_views
+        else:
+            frame_yaw_offsets = [
+                frame_yaw_offset(i, args.yaw_offset_per_frame)
+                for i in range(len(image_files))
+            ]
+            write_image_only_metadata(
+                output_dir=output_dir,
+                image_dir=image_dir,
+                mask_dir=mask_dir,
+                image_files=image_files,
+                views=views,
+                fov=args.fov,
+                output_scale=args.output_scale,
+                input_size=input_size,
+                output_size=output_size,
+                yaw_offset_per_frame=args.yaw_offset_per_frame,
+                export_images=not args.no_image and not args.skip_images,
+                export_masks=not args.no_image and not args.skip_masks,
+            )
+            print(f"Image-only export: {len(image_files)} source images")
     else:
         image_files, frame_yaw_offsets, input_size, output_size = transform_json(
             input_dir=input_dir,
@@ -1040,7 +1379,7 @@ def main() -> None:
     if not image_files:
         sys.exit(1)
 
-    if args.yaw_offset_per_frame != 0.0:
+    if args.yaw_offset_per_frame != 0.0 and not args.colmap_rig:
         unique_offsets = sorted({round(y, 3) for y in frame_yaw_offsets})
         print(
             f"Per-frame yaw rotation: step={args.yaw_offset_per_frame:g}deg, "
@@ -1051,6 +1390,26 @@ def main() -> None:
     export_masks = not args.no_image and not args.skip_masks
 
     if export_images or export_masks:
+        if args.colmap_rig:
+            convert_images_colmap_rig(
+                image_files=image_files,
+                input_size=input_size,
+                output_size=output_size,
+                views=views,
+                fov=args.fov,
+                image_dir=image_dir,
+                mask_dir=mask_dir,
+                output_dir=output_dir,
+                rig_name=args.colmap_rig_name,
+                mask_from_alpha=args.mask_from_alpha,
+                invert_masks=args.invert_masks,
+                output_format=args.output_format,
+                output_bit_depth=args.output_bit_depth,
+                jpg_quality=args.jpg_quality,
+                export_images=export_images,
+                export_masks=export_masks,
+            )
+            return
         convert_images(
             image_files=image_files,
             input_size=input_size,

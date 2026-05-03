@@ -31,7 +31,13 @@ start_cubemap_tools_gui.bat
   - Cubemap output directory. Default: `<scene>/output`.
 - `Export Method`:
   - `Metashape Import`: export 3DGS-oriented viewpoint images, masks, and `transforms.json` from Metashape SfM results.
-  - `COLMAP Export`: export viewpoint images and masks for COLMAP SfM from extracted `images/` and `masks/`. Camera poses are not created.
+  - `COLMAP Export`: export COLMAP Rig viewpoint images, masks, and `rig_config.json` from extracted `images/` and `masks/` into `output/colmap_rig/`.
+- `COLMAP Run Settings`:
+  - Visible when `COLMAP Export` is selected.
+  - `Run COLMAP after export`: runs `feature_extractor` -> `rig_configurator` -> matcher -> mapper after viewpoint export. Keep this off unless you want to start the heavy SfM step.
+  - `COLMAP Executable`: select the `colmap` executable for this machine. Leave empty to resolve `colmap` from PATH.
+  - `Matcher`: `Sequential` is fast and suited to ordered video frames. `Exhaustive` can improve coverage but compares all pairs and can become tens-of-hours slow on large sets.
+  - `Mapper`: `Global` is the COLMAP 4.0+ integrated GLOMAP-style global SfM path and is the recommended default. `Incremental` is the classic `colmap mapper`; `GLOMAP` uses an external `glomap` executable.
 - `Output Profile`:
   - Preset for the downstream 3DGS tool when `Metashape Import` is selected.
   - `Postshot / Brush`: applies the target coordinate preset and uses the scene PLY directly.
@@ -113,6 +119,12 @@ start_cubemap_tools_gui.bat
   - `vendor/metashape_360_lfs/metashape_360_lfs.py --images ... --xml ... --output <scene_dir> [...]`
 - Then GUI runs:
   - `cubemap_transforms_json.py --fov 90 --output_scale <1.0|0.6366|0.5> --views-json <that file>`
+- In `COLMAP Export` mode, GUI runs `cubemap_transforms_json.py --image-only --colmap-rig --yaw-offset-per-frame 0 ...`.
+  - Images: `<output_dir>/colmap_rig/images/rig1/camXX/frame_00001.<ext>`
+  - Masks: `<output_dir>/colmap_rig/masks/rig1/camXX/frame_00001.<ext>.png`
+  - Rig config: `<output_dir>/colmap_rig/rig_config.json`
+  - Per-frame yaw rotation is forced to 0 degrees for COLMAP Rig because changing yaw per frame breaks the fixed rig sensor assumption.
+- When `Run COLMAP after export` is enabled, GUI then runs `feature_extractor`, `rig_configurator`, matcher, and mapper.
 - If `Images` or `Masks` is disabled in Export Targets, the GUI adds `--skip-images` or `--skip-masks`.
 - After a successful normal conversion, GUI saves the target profile, image size, view settings, a `views_config.json` snapshot, per-frame yaw rotation, output format, and related settings to `<output_dir>/stechdrive_export_settings.json`.
 - Disabled slots are written with `enabled=false` and ignored by converter.

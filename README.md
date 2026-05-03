@@ -52,7 +52,7 @@ The update window stays open at the end so the summary can be read. Use `update_
 | 1. Frame Extraction | Extract equirectangular still images from 360 video | Fixed interval + motion adjustment |
 | 2. Frame Review | Review extracted frames and apply keep/drop decisions | Representative replacements and low-quality review flags |
 | 3. Mask Generation | Generate YOLO, stitch seam, and overexposure masks | YOLO enabled, person detection as the baseline |
-| 4. Export | Export Metashape-based 3DGS outputs or COLMAP-oriented viewpoint images | Metashape Import / LichtFeld / Full (Quality) / Cube6 |
+| 4. Export | Export Metashape-based 3DGS outputs or COLMAP Rig viewpoint images | Metashape Import / LichtFeld / Full (Quality) / Cube6 |
 
 ### Current GUI Direction
 
@@ -62,6 +62,7 @@ The update window stays open at the end so the summary can be read. Use `update_
 - Long or rarely used settings are collapsible. The YOLO 80-class list, stitch/overexposure settings, and advanced cubemap view grid stay folded until needed.
 - Step 4 defaults to `LichtFeld`, `Full (Quality)`, and `Cube6 (4 sides + top/bottom)`.
 - Step 4 displays `Selected Views` and `Output Images`. `Output Images` is the deterministic output image count from input image count multiplied by enabled view count.
+- Step 4 can also write a COLMAP Rig dataset under `output/colmap_rig/` and optionally run COLMAP/GLOMAP from a user-selected executable.
 
 ## Recommended Workflow
 

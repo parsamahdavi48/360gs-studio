@@ -142,9 +142,11 @@ def test_colmap_export_method_uses_image_only_conversion(tmp_path: Path) -> None
     assert not step.metashape_section.isVisible()
     assert step.export_method_buttons["colmap"].isChecked()
     commands = step.build_commands()
-    assert [phase for phase, _cmd in commands] == ["colmap_export"]
+    assert [phase for phase, _cmd in commands] == ["colmap_rig_export"]
     cmd = commands[0][1]
     assert "--image-only" in cmd
+    assert "--colmap-rig" in cmd
+    assert cmd[cmd.index("--yaw-offset-per-frame") + 1] == "0"
     assert "--no_transform" not in cmd
     assert "--brush" not in cmd
     assert "--no_image" not in cmd
@@ -182,7 +184,7 @@ def test_colmap_export_finalize_writes_export_method_settings(tmp_path: Path) ->
     step._set_export_method("colmap")
 
     commands = step.build_commands()
-    assert [phase for phase, _cmd in commands] == ["colmap_export"]
+    assert [phase for phase, _cmd in commands] == ["colmap_rig_export"]
     step._finalize_bundle()
 
     settings_path = tmp_path / "output" / "stechdrive_export_settings.json"
@@ -190,6 +192,95 @@ def test_colmap_export_finalize_writes_export_method_settings(tmp_path: Path) ->
     assert settings["export_method"] == "colmap"
     assert settings["conversion"]["no_image"] is False
     assert settings["conversion"]["export_colmap"] is False
+    assert settings["conversion"]["yaw_offset_per_frame"] == 0.0
+    assert settings["colmap_rig"]["enabled"] is True
+    assert settings["colmap_rig"]["dir"] == str(tmp_path / "output" / "colmap_rig")
+
+
+def test_colmap_export_can_queue_colmap_sfm_with_custom_executable(tmp_path: Path) -> None:
+    _app()
+    images = tmp_path / "images"
+    images.mkdir()
+    (images / "frame_0001.jpg").write_bytes(b"dummy")
+    fake_colmap = tmp_path / "colmap.exe"
+    fake_colmap.write_text("", encoding="utf-8")
+    step = CubemapStep(Path.cwd())
+    step.set_scene_dir(str(tmp_path))
+    step._set_export_method("colmap")
+    step.run_colmap_cb.setChecked(True)
+    step.colmap_exec_browse.set_text(str(fake_colmap))
+
+    commands = step.build_commands()
+
+    assert [phase for phase, _cmd in commands] == [
+        "colmap_rig_export",
+        "colmap_feature",
+        "colmap_rig_config",
+        "colmap_match",
+        "colmap_mapper",
+    ]
+    assert commands[1][1][0] == str(fake_colmap)
+    assert commands[1][1][1] == "feature_extractor"
+    assert "--ImageReader.single_camera_per_folder" in commands[1][1]
+    assert commands[2][1][1] == "rig_configurator"
+    assert commands[3][1][1] == "sequential_matcher"
+    assert commands[4][1][1] == "global_mapper"
+
+
+def test_colmap_export_can_queue_colmap_global_mapper(tmp_path: Path) -> None:
+    _app()
+    images = tmp_path / "images"
+    images.mkdir()
+    (images / "frame_0001.jpg").write_bytes(b"dummy")
+    fake_colmap = tmp_path / "colmap.exe"
+    fake_colmap.write_text("", encoding="utf-8")
+    step = CubemapStep(Path.cwd())
+    step.set_scene_dir(str(tmp_path))
+    step._set_export_method("colmap")
+    step.run_colmap_cb.setChecked(True)
+    step.colmap_exec_browse.set_text(str(fake_colmap))
+    idx = step.colmap_mapper_combo.findData("global")
+    assert idx >= 0
+    step.colmap_mapper_combo.setCurrentIndex(idx)
+
+    commands = step.build_commands()
+
+    assert commands[-1][1][0] == str(fake_colmap)
+    assert commands[-1][1][1] == "global_mapper"
+
+
+def test_colmap_user_preferences_restore_executable_and_pipeline_choices(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    _app()
+    settings_path = tmp_path / "settings.json"
+    monkeypatch.setenv("STECHDRIVE_USER_SETTINGS_PATH", str(settings_path))
+
+    first = CubemapStep(Path.cwd())
+    first.enable_user_preferences()
+    first.colmap_exec_browse.set_text(str(tmp_path / "colmap.exe"))
+    first.glomap_exec_browse.set_text(str(tmp_path / "glomap.exe"))
+    matcher_idx = first.colmap_matcher_combo.findData("exhaustive")
+    mapper_idx = first.colmap_mapper_combo.findData("incremental")
+    assert matcher_idx >= 0
+    assert mapper_idx >= 0
+    first.colmap_matcher_combo.setCurrentIndex(matcher_idx)
+    first.colmap_mapper_combo.setCurrentIndex(mapper_idx)
+
+    stored = json.loads(settings_path.read_text(encoding="utf-8"))
+    assert stored["step4_colmap"]["colmap_executable"].endswith("colmap.exe")
+    assert stored["step4_colmap"]["glomap_executable"].endswith("glomap.exe")
+    assert stored["step4_colmap"]["matcher"] == "exhaustive"
+    assert stored["step4_colmap"]["mapper"] == "incremental"
+
+    second = CubemapStep(Path.cwd())
+    second.enable_user_preferences()
+
+    assert second.colmap_exec_browse.text().endswith("colmap.exe")
+    assert second.glomap_exec_browse.text().endswith("glomap.exe")
+    assert second.colmap_matcher_combo.currentData() == "exhaustive"
+    assert second.colmap_mapper_combo.currentData() == "incremental"
 
 
 def test_metashape_import_uses_scene_images_and_lf_ply(tmp_path: Path) -> None:

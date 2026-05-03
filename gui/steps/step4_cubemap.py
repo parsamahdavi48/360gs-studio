@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import math
+import os
 import re
 import shutil
 import sys
@@ -34,6 +35,7 @@ from gui.common.collapsible_section import CollapsibleSection
 from gui.common.form_rows import add_tooltip_row
 from gui.cubemap.view_config import ViewConfigWidget, _BLOCK_ENABLED_VIEWS, _WARN_ENABLED_VIEWS
 from gui.cubemap.preview_renderer import PreviewWidget
+from gui.user_settings import load_user_settings_section, update_user_settings_section
 from gui.version import APP_VERSION
 from gui.steps.base_step import (
     SETTINGS_PANE_MARGINS,
@@ -44,17 +46,24 @@ from gui.steps.base_step import (
 
 _CONVERT_RE = re.compile(r"^Converting\s+(\d+)\s+(?:images|files)\.\.\.$")
 _PROGRESS_RE = re.compile(r"^\[progress\]\s+(\d+)\s*/\s*(\d+)")
+_COLMAP_FEATURE_RE = re.compile(r"Processed file \[(\d+)/(\d+)\]")
 _PROFILE_POSTSHOT = "postshot"
 _PROFILE_BRUSH = "brush"
 _PROFILE_LICHTFELD = "lichtfeld"
 _PROFILE_CUSTOM = "custom"
 _METHOD_METASHAPE = "metashape"
 _METHOD_COLMAP = "colmap"
+_COLMAP_MAPPER_INCREMENTAL = "incremental"
+_COLMAP_MAPPER_GLOBAL = "global"
+_COLMAP_MAPPER_GLOMAP = "glomap"
+_COLMAP_MATCHER_SEQUENTIAL = "sequential"
+_COLMAP_MATCHER_EXHAUSTIVE = "exhaustive"
 _AXIS_POSTSHOT = "postshot"
 _AXIS_BRUSH = "brush"
 _AXIS_NONE = "none"
 _NORMAL_OUTPUT_SCALE = 2.0 / math.pi
 _EXPORT_SETTINGS_NAME = "stechdrive_export_settings.json"
+_USER_SETTINGS_SECTION = "step4_colmap"
 _LICHTFELD_FINAL_CORRECTION = np.array(
     [
         [0.0, 0.0, 1.0, 0.0],
@@ -110,6 +119,8 @@ class CubemapStep(BaseStepWidget):
         self._processed = 0
         self._explicit_progress = False
         self._syncing_profile_controls = False
+        self._syncing_user_preferences = False
+        self._user_preferences_enabled = False
         self._export_method_value = _METHOD_METASHAPE
         self._build_ui()
 
@@ -192,6 +203,66 @@ class CubemapStep(BaseStepWidget):
             i18n.tip("EXPORT_TARGETS"),
         )
         left_layout.addLayout(export_targets_form)
+
+        colmap_section = CollapsibleSection(i18n.t("COLMAP_PIPELINE_SECTION"), expanded=True)
+        self.colmap_section = colmap_section
+        colmap_form = QFormLayout()
+        colmap_form.setSpacing(6)
+
+        self.run_colmap_cb = QCheckBox(i18n.t("RUN_COLMAP_SFM"))
+        self.run_colmap_cb.setToolTip(i18n.tip("RUN_COLMAP_SFM"))
+        self.run_colmap_cb.toggled.connect(self._on_colmap_run_toggled)
+        colmap_form.addRow("", self.run_colmap_cb)
+
+        exe_filter = "Executable (*.exe);;All (*.*)" if os.name == "nt" else "All (*)"
+        self.colmap_exec_browse = BrowseWidget(
+            mode="file",
+            filter_str=exe_filter,
+            placeholder="colmap.exe" if os.name == "nt" else "colmap",
+        )
+        self.colmap_exec_browse.setToolTip(i18n.tip("COLMAP_EXECUTABLE"))
+        add_tooltip_row(
+            colmap_form,
+            i18n.t("COLMAP_EXECUTABLE"),
+            self.colmap_exec_browse,
+            i18n.tip("COLMAP_EXECUTABLE"),
+        )
+
+        self.colmap_pipeline_row = QWidget()
+        pipeline_layout = QHBoxLayout(self.colmap_pipeline_row)
+        pipeline_layout.setContentsMargins(0, 0, 0, 0)
+        pipeline_layout.setSpacing(8)
+        self.colmap_matcher_combo = QComboBox()
+        self.colmap_matcher_combo.setToolTip(i18n.tip("COLMAP_MATCHER"))
+        self.colmap_matcher_combo.addItem(i18n.t("COLMAP_MATCHER_SEQUENTIAL"), _COLMAP_MATCHER_SEQUENTIAL)
+        self.colmap_matcher_combo.addItem(i18n.t("COLMAP_MATCHER_EXHAUSTIVE"), _COLMAP_MATCHER_EXHAUSTIVE)
+        self.colmap_matcher_combo.setFixedWidth(120)
+        self.colmap_mapper_combo = QComboBox()
+        self.colmap_mapper_combo.setToolTip(i18n.tip("COLMAP_MAPPER"))
+        self.colmap_mapper_combo.addItem(i18n.t("COLMAP_MAPPER_GLOBAL"), _COLMAP_MAPPER_GLOBAL)
+        self.colmap_mapper_combo.addItem(i18n.t("COLMAP_MAPPER_INCREMENTAL"), _COLMAP_MAPPER_INCREMENTAL)
+        self.colmap_mapper_combo.addItem(i18n.t("COLMAP_MAPPER_GLOMAP"), _COLMAP_MAPPER_GLOMAP)
+        self.colmap_mapper_combo.setFixedWidth(150)
+        self.colmap_mapper_combo.currentIndexChanged.connect(self._on_colmap_mapper_changed)
+        pipeline_layout.addWidget(QLabel(i18n.t("COLMAP_MATCHER_COMPACT")))
+        pipeline_layout.addWidget(self.colmap_matcher_combo)
+        pipeline_layout.addWidget(QLabel(i18n.t("COLMAP_MAPPER_COMPACT")))
+        pipeline_layout.addWidget(self.colmap_mapper_combo)
+        pipeline_layout.addStretch()
+        colmap_form.addRow(self.colmap_pipeline_row)
+
+        self.glomap_exec_browse = BrowseWidget(
+            mode="file",
+            filter_str=exe_filter,
+            placeholder="glomap.exe" if os.name == "nt" else "glomap",
+        )
+        self.glomap_exec_browse.setToolTip(i18n.tip("GLOMAP_EXECUTABLE"))
+        self.glomap_exec_row_label = QLabel(i18n.t("GLOMAP_EXECUTABLE"))
+        self.glomap_exec_row_label.setToolTip(i18n.tip("GLOMAP_EXECUTABLE"))
+        colmap_form.addRow(self.glomap_exec_row_label, self.glomap_exec_browse)
+
+        colmap_section.content_layout.addLayout(colmap_form)
+        left_layout.addWidget(colmap_section)
 
         # Metashapeインポート設定（折りたたみ）
         preprocess = CollapsibleSection(i18n.METASHAPE_PREPROCESS, expanded=False)
@@ -405,6 +476,8 @@ class CubemapStep(BaseStepWidget):
         if lichtfeld_index >= 0:
             self.profile_combo.setCurrentIndex(lichtfeld_index)
         self._on_profile_changed(self.profile_combo.currentIndex())
+        self._on_colmap_mapper_changed()
+        self._on_colmap_run_toggled(self.run_colmap_cb.isChecked())
         self._set_export_method(_METHOD_METASHAPE)
 
     # -- シーンディレクトリ --
@@ -436,6 +509,52 @@ class CubemapStep(BaseStepWidget):
     def primary_action_tooltip(self) -> str:
         return i18n.tip("RUN_CUBEMAP")
 
+    # -- ユーザー設定 --
+
+    def enable_user_preferences(self) -> None:
+        if self._user_preferences_enabled:
+            return
+        self._user_preferences_enabled = True
+        self._load_user_preferences()
+        self.colmap_exec_browse.path_changed.connect(lambda _path: self._save_user_preferences())
+        self.glomap_exec_browse.path_changed.connect(lambda _path: self._save_user_preferences())
+        self.colmap_matcher_combo.currentIndexChanged.connect(lambda _idx: self._save_user_preferences())
+        self.colmap_mapper_combo.currentIndexChanged.connect(lambda _idx: self._save_user_preferences())
+
+    def _load_user_preferences(self) -> None:
+        settings = load_user_settings_section(_USER_SETTINGS_SECTION)
+        self._syncing_user_preferences = True
+        try:
+            colmap_exec = str(settings.get("colmap_executable", "")).strip()
+            glomap_exec = str(settings.get("glomap_executable", "")).strip()
+            if colmap_exec:
+                self.colmap_exec_browse.set_text(colmap_exec)
+            if glomap_exec:
+                self.glomap_exec_browse.set_text(glomap_exec)
+
+            matcher = str(settings.get("matcher", "")).strip()
+            mapper = str(settings.get("mapper", "")).strip()
+            if matcher:
+                self._set_combo_data(self.colmap_matcher_combo, matcher)
+            if mapper:
+                self._set_combo_data(self.colmap_mapper_combo, mapper)
+        finally:
+            self._syncing_user_preferences = False
+        self._on_colmap_mapper_changed()
+
+    def _save_user_preferences(self) -> None:
+        if self._syncing_user_preferences:
+            return
+        update_user_settings_section(
+            _USER_SETTINGS_SECTION,
+            {
+                "colmap_executable": self.colmap_exec_browse.text(),
+                "glomap_executable": self.glomap_exec_browse.text(),
+                "matcher": self.colmap_matcher_combo.currentData() or _COLMAP_MATCHER_SEQUENTIAL,
+                "mapper": self.colmap_mapper_combo.currentData() or _COLMAP_MAPPER_GLOBAL,
+            },
+        )
+
     # -- 書き出し方式 --
 
     def _export_method(self) -> str:
@@ -456,10 +575,25 @@ class CubemapStep(BaseStepWidget):
     def _on_export_method_changed(self) -> None:
         metashape = self._is_metashape_method()
         self.metashape_section.setVisible(metashape)
+        self.colmap_section.setVisible(not metashape)
         if not metashape:
             self.export_colmap_cb.setChecked(False)
         self._update_output_count()
         self.primary_action_state_changed.emit()
+
+    def _on_colmap_run_toggled(self, checked: bool) -> None:
+        self.colmap_exec_browse.setEnabled(checked)
+        self.colmap_pipeline_row.setEnabled(checked)
+        self._on_colmap_mapper_changed()
+
+    def _on_colmap_mapper_changed(self, *_args) -> None:
+        needs_glomap = (
+            self.run_colmap_cb.isChecked()
+            and self.colmap_mapper_combo.currentData() == _COLMAP_MAPPER_GLOMAP
+        )
+        self.glomap_exec_row_label.setVisible(needs_glomap)
+        self.glomap_exec_browse.setVisible(needs_glomap)
+        self.glomap_exec_browse.setEnabled(needs_glomap)
 
     # -- プロファイル --
 
@@ -622,9 +756,12 @@ class CubemapStep(BaseStepWidget):
     def build_commands(self) -> list[tuple[str, list[str]]]:
         if not self._is_metashape_method():
             self._validate_image_only_export()
-            if not self._prepare_output_dir():
+            if not self._prepare_colmap_rig_dir():
                 return []
-            return [("colmap_export", self._build_cubemap_cmd(image_only=True))]
+            steps = [("colmap_rig_export", self._build_cubemap_cmd(image_only=True, colmap_rig=True))]
+            if self.run_colmap_cb.isChecked():
+                steps.extend(self._build_colmap_sfm_commands())
+            return steps
 
         self._validate_bundle()
 
@@ -674,7 +811,7 @@ class CubemapStep(BaseStepWidget):
             cmd.append("--no-fix-rotation")
         return cmd
 
-    def _build_cubemap_cmd(self, image_only: bool = False) -> list[str]:
+    def _build_cubemap_cmd(self, image_only: bool = False, colmap_rig: bool = False) -> list[str]:
         script = self.base_dir / "cubemap_transforms_json.py"
         if not script.exists():
             raise FileNotFoundError(f"cubemap_transforms_json.py が見つかりません: {script}")
@@ -706,6 +843,8 @@ class CubemapStep(BaseStepWidget):
         axis_mode = self._axis_transform_mode()
         if image_only:
             cmd.append("--image-only")
+            if colmap_rig:
+                cmd.extend(["--colmap-rig", "--colmap-rig-name", "rig1"])
         else:
             if axis_mode == _AXIS_NONE:
                 cmd.append("--no_transform")
@@ -719,10 +858,13 @@ class CubemapStep(BaseStepWidget):
             cmd.append("--skip-masks")
 
         # 高度な出力設定
-        try:
-            yaw_step = float(self.yaw_per_frame_edit.text().strip())
-        except ValueError:
-            raise ValueError("フレーム別Yaw回転は数値で指定してください")
+        if colmap_rig:
+            yaw_step = 0.0
+        else:
+            try:
+                yaw_step = float(self.yaw_per_frame_edit.text().strip())
+            except ValueError:
+                raise ValueError("フレーム別Yaw回転は数値で指定してください")
         cmd.extend(["--yaw-offset-per-frame", f"{yaw_step:g}"])
 
         out_fmt = self.output_format_combo.currentData() or "auto"
@@ -763,6 +905,133 @@ class CubemapStep(BaseStepWidget):
                 cmd.extend(["--ply", str(plys[0])])
         return cmd
 
+    def _default_colmap_executable(self) -> str:
+        return "colmap.exe" if os.name == "nt" else "colmap"
+
+    def _default_glomap_executable(self) -> str:
+        return "glomap.exe" if os.name == "nt" else "glomap"
+
+    @staticmethod
+    def _looks_like_path(value: str) -> bool:
+        return any(sep in value for sep in ("/", "\\")) or Path(value).is_absolute()
+
+    def _resolve_executable(self, raw: str, default_name: str, message_key: str) -> str:
+        value = raw.strip() or default_name
+        if self._looks_like_path(value):
+            path = Path(value)
+            if not path.is_file():
+                raise ValueError(i18n.t(message_key).format(path=value))
+            return str(path)
+        found = shutil.which(value)
+        if not found:
+            raise ValueError(i18n.t(message_key).format(path=value))
+        return found
+
+    def _resolve_colmap_executable(self) -> str:
+        return self._resolve_executable(
+            self.colmap_exec_browse.text(),
+            self._default_colmap_executable(),
+            "COLMAP_EXEC_NOT_FOUND",
+        )
+
+    def _resolve_glomap_executable(self) -> str:
+        return self._resolve_executable(
+            self.glomap_exec_browse.text(),
+            self._default_glomap_executable(),
+            "GLOMAP_EXEC_NOT_FOUND",
+        )
+
+    def _build_colmap_sfm_commands(self) -> list[tuple[str, list[str]]]:
+        colmap = self._resolve_colmap_executable()
+        rig_dir = self._colmap_rig_dir()
+        images_dir = self._colmap_rig_images_dir()
+        masks_dir = self._colmap_rig_masks_dir()
+        database = self._colmap_database_path()
+        sparse = self._colmap_sparse_dir()
+        rig_config = rig_dir / "rig_config.json"
+
+        if not self._writes_images() and not images_dir.is_dir():
+            raise ValueError(f"COLMAP Rig画像フォルダが見つかりません: {images_dir}")
+        sparse.mkdir(parents=True, exist_ok=True)
+
+        feature_cmd = [
+            colmap,
+            "feature_extractor",
+            "--database_path",
+            str(database),
+            "--image_path",
+            str(images_dir),
+            "--ImageReader.single_camera_per_folder",
+            "1",
+            "--ImageReader.camera_model",
+            "PINHOLE",
+        ]
+        if self._writes_masks() or masks_dir.is_dir():
+            feature_cmd.extend(["--ImageReader.mask_path", str(masks_dir)])
+
+        rig_cmd = [
+            colmap,
+            "rig_configurator",
+            "--database_path",
+            str(database),
+            "--rig_config_path",
+            str(rig_config),
+        ]
+
+        matcher = self.colmap_matcher_combo.currentData() or _COLMAP_MATCHER_SEQUENTIAL
+        matcher_name = "exhaustive_matcher" if matcher == _COLMAP_MATCHER_EXHAUSTIVE else "sequential_matcher"
+        matcher_cmd = [
+            colmap,
+            matcher_name,
+            "--database_path",
+            str(database),
+        ]
+
+        mapper = self.colmap_mapper_combo.currentData() or _COLMAP_MAPPER_INCREMENTAL
+        if mapper == _COLMAP_MAPPER_GLOBAL:
+            mapper_cmd = [
+                colmap,
+                "global_mapper",
+                "--database_path",
+                str(database),
+                "--image_path",
+                str(images_dir),
+                "--output_path",
+                str(sparse),
+            ]
+        elif mapper == _COLMAP_MAPPER_GLOMAP:
+            glomap = self._resolve_glomap_executable()
+            mapper_cmd = [
+                glomap,
+                "mapper",
+                "--database_path",
+                str(database),
+                "--image_path",
+                str(images_dir),
+                "--output_path",
+                str(sparse),
+            ]
+        else:
+            mapper_cmd = [
+                colmap,
+                "mapper",
+                "--database_path",
+                str(database),
+                "--image_path",
+                str(images_dir),
+                "--output_path",
+                str(sparse),
+                "--Mapper.ba_refine_sensor_from_rig",
+                "1",
+            ]
+
+        return [
+            ("colmap_feature", feature_cmd),
+            ("colmap_rig_config", rig_cmd),
+            ("colmap_match", matcher_cmd),
+            ("colmap_mapper", mapper_cmd),
+        ]
+
     def _write_views_config(self, output_dir: Path, views: list[dict]) -> Path:
         output_dir.mkdir(parents=True, exist_ok=True)
         path = output_dir / "views_config.json"
@@ -790,7 +1059,7 @@ class CubemapStep(BaseStepWidget):
     def _collect_export_settings(self) -> dict:
         views = self.view_config.collect_views(include_disabled=True)
         scale = float(self.scale_combo.currentData())
-        yaw_step = float(self.yaw_per_frame_edit.text().strip())
+        yaw_step = 0.0 if self._export_method() == _METHOD_COLMAP else float(self.yaw_per_frame_edit.text().strip())
         jpg_quality = int(self.jpg_quality_edit.text().strip())
         scene = Path(self.scene_dir) if self.scene_dir else Path(".")
         output = self._output_dir()
@@ -859,6 +1128,21 @@ class CubemapStep(BaseStepWidget):
                 "scale": float(self.ms_scale_edit.text().strip()),
                 "no_fix_rotation": self.ms_no_fix_rot_cb.isChecked(),
             },
+            "colmap_rig": {
+                "enabled": self._export_method() == _METHOD_COLMAP,
+                "dir": str(self._colmap_rig_dir()),
+                "images_dir": str(self._colmap_rig_images_dir()),
+                "masks_dir": str(self._colmap_rig_masks_dir()),
+                "rig_config": str(self._colmap_rig_dir() / "rig_config.json"),
+                "database": str(self._colmap_database_path()),
+                "sparse_dir": str(self._colmap_sparse_dir()),
+                "run_sfm": self.run_colmap_cb.isChecked(),
+                "colmap_executable": self.colmap_exec_browse.text(),
+                "glomap_executable": self.glomap_exec_browse.text(),
+                "matcher": self.colmap_matcher_combo.currentData() or _COLMAP_MATCHER_SEQUENTIAL,
+                "mapper": self.colmap_mapper_combo.currentData() or _COLMAP_MAPPER_INCREMENTAL,
+                "per_frame_yaw_forced_zero": self._export_method() == _METHOD_COLMAP,
+            },
             "inputs": {
                 "transforms_json": str(scene / "transforms.json"),
                 "masks_dir": str(self._mask_dir()),
@@ -870,6 +1154,8 @@ class CubemapStep(BaseStepWidget):
                 "transforms_json": "transforms.json",
                 "images_dir": "images",
                 "masks_dir": "masks",
+                "colmap_rig_dir": "colmap_rig",
+                "colmap_rig_config": "colmap_rig/rig_config.json",
             },
         }
 
@@ -888,6 +1174,21 @@ class CubemapStep(BaseStepWidget):
         if not self.scene_dir:
             return Path("masks")
         return Path(self.scene_dir) / "masks"
+
+    def _colmap_rig_dir(self) -> Path:
+        return self._output_dir() / "colmap_rig"
+
+    def _colmap_rig_images_dir(self) -> Path:
+        return self._colmap_rig_dir() / "images"
+
+    def _colmap_rig_masks_dir(self) -> Path:
+        return self._colmap_rig_dir() / "masks"
+
+    def _colmap_database_path(self) -> Path:
+        return self._colmap_rig_dir() / "database.db"
+
+    def _colmap_sparse_dir(self) -> Path:
+        return self._colmap_rig_dir() / "sparse"
 
     def _metashape_images_dir(self) -> Path:
         if not self.scene_dir:
@@ -945,6 +1246,57 @@ class CubemapStep(BaseStepWidget):
                     self._clear_path(target)
 
         output.mkdir(parents=True, exist_ok=True)
+        return True
+
+    def _prepare_colmap_rig_dir(self) -> bool:
+        output = self._output_dir()
+        rig_dir = self._colmap_rig_dir()
+        if not self.scene_dir:
+            raise ValueError(i18n.t("SCENE_REQUIRED_ACTION_HINT"))
+
+        try:
+            resolved_rig = rig_dir.resolve()
+        except OSError:
+            resolved_rig = rig_dir.absolute()
+        if resolved_rig.parent != output.resolve():
+            raise ValueError(f"COLMAP Rig出力フォルダが不正です: {rig_dir}")
+
+        if self._writes_images() and self._writes_masks():
+            if rig_dir.exists() and any(rig_dir.iterdir()):
+                result = QMessageBox.question(
+                    self,
+                    i18n.t("OUTPUT_RESET_TITLE"),
+                    i18n.t("OUTPUT_RESET_MESSAGE").format(path=str(rig_dir)),
+                    QMessageBox.Yes | QMessageBox.No,
+                    QMessageBox.No,
+                )
+                if result != QMessageBox.Yes:
+                    return False
+                self._clear_path(rig_dir)
+        else:
+            targets: list[Path] = []
+            if self._writes_images():
+                targets.append(self._colmap_rig_images_dir())
+            if self._writes_masks():
+                targets.append(self._colmap_rig_masks_dir())
+            if self.run_colmap_cb.isChecked():
+                targets.extend([self._colmap_database_path(), self._colmap_sparse_dir()])
+            existing_targets = [p for p in targets if self._path_has_contents(p)]
+            if existing_targets:
+                target_text = "\n".join(str(p) for p in existing_targets)
+                result = QMessageBox.question(
+                    self,
+                    i18n.t("OUTPUT_PARTIAL_RESET_TITLE"),
+                    i18n.t("OUTPUT_PARTIAL_RESET_MESSAGE").format(paths=target_text),
+                    QMessageBox.Yes | QMessageBox.No,
+                    QMessageBox.No,
+                )
+                if result != QMessageBox.Yes:
+                    return False
+                for target in existing_targets:
+                    self._clear_path(target)
+
+        rig_dir.mkdir(parents=True, exist_ok=True)
         return True
 
     @staticmethod
@@ -1158,6 +1510,10 @@ class CubemapStep(BaseStepWidget):
     # -- プログレス --
 
     def on_line(self, line: str) -> tuple[int, int] | None:
+        colmap_feature = _COLMAP_FEATURE_RE.search(line)
+        if colmap_feature:
+            return int(colmap_feature.group(1)), int(colmap_feature.group(2))
+
         progress = _PROGRESS_RE.match(line)
         if progress:
             self._processed = int(progress.group(1))

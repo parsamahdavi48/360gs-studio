@@ -138,6 +138,8 @@ python cubemap_transforms_json.py . ./cubic --no_transform
 |--skip-images|(no)|視点画像を書き出さず、マスクや transforms.json だけを更新します|
 |--skip-masks|(no)|マスクを書き出さず、視点画像や transforms.json だけを更新します|
 |--image-only|(no)|`transforms.json` を読まず、`<input_dir>/images` と `<input_dir>/masks` から視点画像とマスクだけを書き出します|
+|--colmap-rig|(no)|`--image-only` 出力を COLMAP Rig データセットとして `<output_dir>/colmap_rig/` に書き出し、`rig_config.json` を作成します。フレーム別Yaw回転は0度固定です|
+|--colmap-rig-name|名前|COLMAP Rig名 (default=`rig1`)|
 |--no_transform|(no)|座標軸変換を行いません|
 |--brush|(no)|Brush向けの座標変換を行います|
 |--duplicate|(no)|マージされたチャンク間で同名の画像を許可|

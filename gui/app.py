@@ -62,10 +62,7 @@ class MainWindow(QWidget):
         title_box.setSpacing(0)
         title = QLabel(i18n.APP_TITLE)
         title.setObjectName("appTitle")
-        subtitle = QLabel(i18n.t("APP_SUBTITLE"))
-        subtitle.setObjectName("appSubtitle")
         title_box.addWidget(title)
-        title_box.addWidget(subtitle)
         header.addLayout(title_box)
 
         header.addWidget(QLabel(i18n.SCENE_DIR))
@@ -90,6 +87,7 @@ class MainWindow(QWidget):
         self.step2 = ReviewStep(self.base_dir)
         self.step3 = MaskStep(self.base_dir)
         self.step4 = CubemapStep(self.base_dir)
+        self.step4.enable_user_preferences()
         self.steps = [self.step1, self.step2, self.step3, self.step4]
         self.step_titles = [i18n.STEP1_TITLE, i18n.STEP2_TITLE, i18n.STEP3_TITLE, i18n.STEP4_TITLE]
         self.step_nav_titles = [
