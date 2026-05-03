@@ -44,13 +44,13 @@ python yolo_mask.py .\images .\masks --projection normal --level 1
 Harder bottom-view photographer masking:
 
 ```bash
-python yolo_mask.py .\images .\masks --level 3 --bottom-conf 0.15 --bottom-tta-rotations 4 --bottom-temporal-window 2
+python yolo_mask.py .\images .\masks --level 3 --bottom-conf 0.30 --bottom-tta-rotations 4 --bottom-temporal-window 2
 ```
 
 Maximum bottom-only YOLO strength:
 
 ```bash
-python yolo_mask.py .\images .\masks --level 3 --bottom-conf 0.10 --bottom-tta-rotations 4 --bottom-model x --bottom-temporal-window 4
+python yolo_mask.py .\images .\masks --level 3 --bottom-conf 0.20 --bottom-tta-rotations 4 --bottom-model x --bottom-temporal-window 2
 ```
 
 ## Output

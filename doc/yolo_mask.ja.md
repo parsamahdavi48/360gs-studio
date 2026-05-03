@@ -41,13 +41,13 @@ python yolo_mask.py .\images .\masks --projection normal --level 1
 真上から見た撮影者など、底面検出が難しい場合:
 
 ```
-python yolo_mask.py .\images .\masks --level 3 --bottom-conf 0.15 --bottom-tta-rotations 4 --bottom-temporal-window 2
+python yolo_mask.py .\images .\masks --level 3 --bottom-conf 0.30 --bottom-tta-rotations 4 --bottom-temporal-window 2
 ```
 
 底面だけYOLO Xまで使う最大設定:
 
 ```
-python yolo_mask.py .\images .\masks --level 3 --bottom-conf 0.10 --bottom-tta-rotations 4 --bottom-model x --bottom-temporal-window 4
+python yolo_mask.py .\images .\masks --level 3 --bottom-conf 0.20 --bottom-tta-rotations 4 --bottom-model x --bottom-temporal-window 2
 ```
 
 ## 出力について

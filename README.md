@@ -71,7 +71,7 @@ The update window stays open at the end so the summary can be read. Use `update_
 1. Prepare a 360 video from an Insta360 or similar camera.
 2. Extract frames in Step 1.
 3. Review and drop unusable frames in Step 2.
-4. Generate person masks in Step 3. For hard top-down photographer views, raise `Bottom Enhance`; enable stitch seam and overexposure masks only when they match the source material.
+4. Generate person masks in Step 3. For 360° images, `YOLO Level 2 Quality` is the recommended starting point. For hard top-down photographer views, raise `Bottom Enhance`; enable stitch seam and overexposure masks only when they match the source material.
 5. Import the generated `masks/` folder into Metashape as per-image masks, then run SfM.
 6. Use Step 4 with the Metashape XML/PLY result to export training images, masks, and `transforms.json`.
 
@@ -82,9 +82,9 @@ The update window stays open at the end so the summary can be read. Use `update_
 3. Enable `Run COLMAP after export` when you want the app to run Feature, Matcher, and Mapper stages.
 4. After completion, pass `output/colmap_rig/` as the COLMAP project folder to COLMAP-compatible 3DGS apps.
 
-For normal video frames or still-camera image sequences placed in `images/`, choose `Image Type: Normal` in Step 3. This keeps YOLO/SAM and overexposure masking available while disabling stitch seam masking and 360 bottom re-detection.
+For normal video frames or still-camera image sequences placed in `images/`, choose `Image Type: Normal` in Step 3. This keeps YOLO/SAM and overexposure masking available while disabling stitch seam masking and 360° bottom re-detection.
 
-For equirectangular 360 frames where the bottom-view photographer is missed, Step 3 provides `Bottom Enhance` presets. They only affect bottom re-detection, using lower YOLO confidence, rotated bottom-face test-time augmentation, temporal fill across neighboring frames, and optionally bottom-only YOLO X.
+For equirectangular 360° frames where the bottom-view photographer is missed, Step 3 provides `Bottom Enhance` presets. Use the standard setting when the bottom is already masked well, `Bottom Leak Fix` when top-down photographers remain, and `Bottom Leak Fix+` only when the stronger setting is worth the extra time and possible floor/ground false positives.
 
 Stitch seam masks are useful when the seam position is stable in the equirectangular image. If FlowState stabilization, direction lock, AI stitching, or similar processing moves the seam, leave seam masking disabled unless you have verified the preview.
 

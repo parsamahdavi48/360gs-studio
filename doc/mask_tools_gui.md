@@ -22,16 +22,19 @@ run_gui.bat --scene ./scene01
 - `Images Folder`: input images for YOLO/SAM masking.
 - `Masks Folder`: output masks; also stitch input/output.
 - `Image Type`:
-  - `360`: equirectangular 360 images. Enables stitch seam masking and 360 bottom-view re-detection.
-  - `Normal`: normal video frames or still-camera image sequences. Disables stitch seam masking and 360 bottom-view re-detection.
+  - `360°`: equirectangular 360° images. Enables stitch seam masking and 360° bottom-view re-detection.
+  - `Normal`: normal video frames or still-camera image sequences. Disables stitch seam masking and 360° bottom-view re-detection.
 - `YOLO Level`: forwarded to `yolo_mask.py --level` (0-3).
+  - For 360° images, start with `2 Quality (360°)`.
+  - Use `1 Standard` for faster checks, and `3 Best (Heavy)` only if people still leak through.
+  - For normal images, start with `1 Standard`.
 - `YOLO Expand`: forwarded to `yolo_mask.py --expand`.
   - Default is `2px`; drag horizontally on the number field to adjust.
   - Clamped to `-16..32px` for safety.
-- `Bottom Enhance`: bottom-view detection preset for equirectangular 360 images.
-  - `Standard`: current behavior; bottom re-detection uses the level-selected YOLO model with `conf=0.3`.
-  - `Strong`: uses bottom-only `conf=0.15`, 4-rotation TTA, and temporal fill from neighboring 2 frames.
-  - `Max`: uses bottom-only `conf=0.10`, 4-rotation TTA, bottom-only YOLO X, and temporal fill from neighboring 4 frames.
+- `Bottom Enhance`: preset for missed masks near the bottom of equirectangular 360° images.
+  - `Standard`: use when the bottom is already masked well and you want to avoid extra floor/ground masking.
+  - `Bottom Leak Fix`: use when top-down photographers, tripods, or hands remain near the bottom.
+  - `Bottom Leak Fix+`: use only when bottom leaks remain after `Bottom Leak Fix`; it is slower and more likely to mask extra floor or ground.
   - Not used when `Image Type` is `Normal`.
 - `YOLO Classes`: collapsed picker for class selection.
   - Choose classes by checkbox labels (`id: name`) instead of memorizing numeric ids.

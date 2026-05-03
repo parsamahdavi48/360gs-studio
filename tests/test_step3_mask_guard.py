@@ -87,9 +87,11 @@ def test_mask_step_yolo_level_and_expand_share_compact_row() -> None:
 
     content_width = SETTINGS_PANE_WIDTH - SETTINGS_PANE_MARGINS[2]
     assert step.yolo_settings_row.sizeHint().width() <= content_width
+    assert step.yolo_level_combo.currentIndex() == 2
     assert step.yolo_level_label.toolTip() == i18n.tip("YOLO_LEVEL")
     assert step.yolo_expand_label.toolTip() == i18n.tip("YOLO_EXPAND")
     assert step.yolo_bottom_enhance_label.toolTip() == i18n.tip("YOLO_BOTTOM_ENHANCE")
+    assert step.projection_buttons["equirect"].text() == "360°"
 
 
 def test_mask_step_metashape_notice_is_in_left_pane() -> None:
@@ -180,6 +182,7 @@ def test_mask_step_allows_generation_when_drop_images_are_removed(tmp_path: Path
     assert commands[0][0] == "yolo"
     assert commands[0][1][3] == str(scene / "images")
     assert commands[0][1][4] == str(scene / "masks")
+    assert commands[0][1][commands[0][1].index("--level") + 1] == "2"
     assert commands[0][1][commands[0][1].index("--projection") + 1] == "equirect"
     assert "--add-ext" not in commands[0][1]
 
@@ -203,6 +206,7 @@ def test_mask_step_normal_image_type_disables_stitch_and_uses_normal_yolo_projec
     assert [phase for phase, _cmd in commands] == ["yolo"]
     yolo_cmd = commands[0][1]
     assert yolo_cmd[yolo_cmd.index("--projection") + 1] == "normal"
+    assert yolo_cmd[yolo_cmd.index("--level") + 1] == "1"
     assert "--bottom-conf" not in yolo_cmd
     assert not step.yolo_bottom_enhance_combo.isEnabled()
 
@@ -217,7 +221,7 @@ def test_mask_step_bottom_enhance_strong_adds_bottom_only_yolo_args(tmp_path: Pa
 
     yolo_cmd = step.build_commands()[0][1]
 
-    assert yolo_cmd[yolo_cmd.index("--bottom-conf") + 1] == "0.15"
+    assert yolo_cmd[yolo_cmd.index("--bottom-conf") + 1] == "0.30"
     assert yolo_cmd[yolo_cmd.index("--bottom-tta-rotations") + 1] == "4"
     assert yolo_cmd[yolo_cmd.index("--bottom-temporal-window") + 1] == "2"
     assert "--bottom-model" not in yolo_cmd
@@ -233,10 +237,10 @@ def test_mask_step_bottom_enhance_max_uses_bottom_x_model(tmp_path: Path) -> Non
 
     yolo_cmd = step.build_commands()[0][1]
 
-    assert yolo_cmd[yolo_cmd.index("--bottom-conf") + 1] == "0.10"
+    assert yolo_cmd[yolo_cmd.index("--bottom-conf") + 1] == "0.20"
     assert yolo_cmd[yolo_cmd.index("--bottom-tta-rotations") + 1] == "4"
     assert yolo_cmd[yolo_cmd.index("--bottom-model") + 1] == "x"
-    assert yolo_cmd[yolo_cmd.index("--bottom-temporal-window") + 1] == "4"
+    assert yolo_cmd[yolo_cmd.index("--bottom-temporal-window") + 1] == "2"
 
 
 def test_mask_step_external_image_controls_only_show_for_normal_type() -> None:

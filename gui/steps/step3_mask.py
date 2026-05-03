@@ -68,14 +68,14 @@ _YOLO_EXPAND_MAX = 32
 _YOLO_EXPAND_DEFAULT = 2
 _YOLO_BOTTOM_PRESETS: tuple[tuple[str, list[str]], ...] = (
     ("standard", []),
-    ("strong", ["--bottom-conf", "0.15", "--bottom-tta-rotations", "4", "--bottom-temporal-window", "2"]),
+    ("strong", ["--bottom-conf", "0.30", "--bottom-tta-rotations", "4", "--bottom-temporal-window", "2"]),
     (
         "max",
         [
-            "--bottom-conf", "0.10",
+            "--bottom-conf", "0.20",
             "--bottom-tta-rotations", "4",
             "--bottom-model", "x",
-            "--bottom-temporal-window", "4",
+            "--bottom-temporal-window", "2",
         ],
     ),
 )
@@ -234,8 +234,8 @@ class MaskStep(BaseStepWidget):
                 i18n.t("YOLO_LEVEL_BEST"),
             ]
         )
-        self.yolo_level_combo.setCurrentIndex(1)
-        self.yolo_level_combo.setFixedWidth(104)
+        self.yolo_level_combo.setCurrentIndex(2)
+        self.yolo_level_combo.setFixedWidth(132)
         yolo_settings_row.addWidget(self.yolo_level_combo)
 
         self.yolo_expand_label = QLabel(i18n.t("YOLO_EXPAND_COMPACT"))
@@ -475,6 +475,7 @@ class MaskStep(BaseStepWidget):
         btn = self.projection_buttons.get(projection)
         if btn is not None and not btn.isChecked():
             btn.setChecked(True)
+        self.yolo_level_combo.setCurrentIndex(1 if projection == _PROJECTION_NORMAL else 2)
         self._update_task_controls()
 
     def _scene_csv_path(self) -> Path:
