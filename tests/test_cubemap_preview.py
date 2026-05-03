@@ -57,6 +57,25 @@ def test_cubemap_preview_timeline_label_keeps_current_filename(tmp_path: Path) -
     )
 
 
+def test_cubemap_preview_does_not_scan_current_directory_without_scene(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    _app()
+    images = tmp_path / "images"
+    images.mkdir()
+    image_path = images / "frame_000001.png"
+    cv2.imwrite(str(image_path), np.full((16, 32, 3), 180, dtype=np.uint8))
+    monkeypatch.chdir(tmp_path)
+    widget = PreviewWidget()
+
+    widget.refresh_image_list(prefer_current=False)
+
+    assert widget.preview_images == []
+    assert widget.current_image_path() is None
+    assert widget.tl_label.text() == "0 / 0"
+
+
 def test_cubemap_preview_resolves_mask_from_mask_folder(tmp_path: Path) -> None:
     _app()
     image_path = tmp_path / "frame_000001.jpg"

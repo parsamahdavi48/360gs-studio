@@ -412,12 +412,14 @@ class CubemapStep(BaseStepWidget):
         self.output_details_section = output_details
 
         self.output_format_combo = QComboBox()
+        self.output_format_combo.setToolTip(i18n.tip("OUTPUT_FORMAT"))
         self.output_format_combo.addItem(i18n.t("OUTPUT_FORMAT_AUTO"), "auto")
         for fmt in ("jpg", "png", "tiff", "webp"):
             self.output_format_combo.addItem(fmt, fmt)
         self.output_format_combo.setFixedWidth(96)
 
         self.output_bit_depth_combo = QComboBox()
+        self.output_bit_depth_combo.setToolTip(i18n.tip("OUTPUT_BIT_DEPTH"))
         self.output_bit_depth_combo.addItem(i18n.t("OUTPUT_BIT_DEPTH_8"), "8")
         self.output_bit_depth_combo.addItem(i18n.t("OUTPUT_BIT_DEPTH_SOURCE"), "source")
         self.output_bit_depth_combo.setFixedWidth(86)
@@ -426,9 +428,13 @@ class CubemapStep(BaseStepWidget):
         format_layout = QHBoxLayout(format_row)
         format_layout.setContentsMargins(0, 0, 0, 0)
         format_layout.setSpacing(8)
-        format_layout.addWidget(QLabel(i18n.t("OUTPUT_FORMAT_COMPACT")))
+        self.output_format_label = QLabel(i18n.t("OUTPUT_FORMAT_COMPACT"))
+        self.output_format_label.setToolTip(i18n.tip("OUTPUT_FORMAT"))
+        format_layout.addWidget(self.output_format_label)
         format_layout.addWidget(self.output_format_combo)
-        format_layout.addWidget(QLabel(i18n.t("OUTPUT_BIT_DEPTH_COMPACT")))
+        self.output_bit_depth_label = QLabel(i18n.t("OUTPUT_BIT_DEPTH_COMPACT"))
+        self.output_bit_depth_label.setToolTip(i18n.tip("OUTPUT_BIT_DEPTH"))
+        format_layout.addWidget(self.output_bit_depth_label)
         format_layout.addWidget(self.output_bit_depth_combo)
         format_layout.addStretch()
         output_details.content_layout.addWidget(format_row)
@@ -437,6 +443,7 @@ class CubemapStep(BaseStepWidget):
         self.invert_masks_cb.setToolTip(i18n.tip("INVERT_MASKS"))
 
         self.jpg_quality_edit = QLineEdit("95")
+        self.jpg_quality_edit.setToolTip(i18n.tip("JPG_QUALITY"))
         self.jpg_quality_edit.setFixedWidth(64)
 
         quality_row = QWidget()
@@ -445,7 +452,9 @@ class CubemapStep(BaseStepWidget):
         quality_layout.setSpacing(8)
         quality_layout.addWidget(self.invert_masks_cb)
         quality_layout.addSpacing(8)
-        quality_layout.addWidget(QLabel(i18n.t("JPG_QUALITY_COMPACT")))
+        self.jpg_quality_label = QLabel(i18n.t("JPG_QUALITY_COMPACT"))
+        self.jpg_quality_label.setToolTip(i18n.tip("JPG_QUALITY"))
+        quality_layout.addWidget(self.jpg_quality_label)
         quality_layout.addWidget(self.jpg_quality_edit)
         quality_layout.addStretch()
         output_details.content_layout.addWidget(quality_row)
@@ -510,6 +519,11 @@ class CubemapStep(BaseStepWidget):
             self.output_path_label.set_full_text("-")
             self.ms_images_path_label.setToolTip(i18n.tip("MS_IMAGES"))
             self.ms_images_path_label.set_full_text("-")
+            self.ms_xml_browse.set_text("")
+            self.ms_ply_browse.set_text("")
+            self.preview.set_scene_dir("")
+            self._update_output_count()
+            self._render_preview()
             return
         p = Path(path)
         images_dir = str(self._metashape_images_dir())
@@ -745,7 +759,8 @@ class CubemapStep(BaseStepWidget):
             views = self.view_config.collect_views(include_disabled=True)
         except Exception:
             views = []
-        self.preview.render(views, str(self._mask_dir()))
+        mask_dir = str(self._mask_dir()) if self.scene_dir else ""
+        self.preview.render(views, mask_dir)
 
     def _count_input_images(self) -> int:
         if not self.scene_dir:
@@ -1094,7 +1109,9 @@ class CubemapStep(BaseStepWidget):
         scale = float(self.scale_combo.currentData())
         yaw_step = 0.0 if self._export_method() == _METHOD_COLMAP else float(self.yaw_per_frame_edit.value())
         jpg_quality = int(self.jpg_quality_edit.text().strip())
-        scene = Path(self.scene_dir) if self.scene_dir else Path(".")
+        if not self.scene_dir:
+            raise ValueError(i18n.t("SCENE_REQUIRED_ACTION_HINT"))
+        scene = Path(self.scene_dir)
         output = self._output_dir()
         profile = self._profile_id()
 
@@ -1232,7 +1249,7 @@ class CubemapStep(BaseStepWidget):
 
     def _output_dir(self) -> Path:
         if not self.scene_dir:
-            return Path("output")
+            raise ValueError(i18n.t("SCENE_REQUIRED_ACTION_HINT"))
         return Path(self.scene_dir) / "output"
 
     def _display_output_dir(self) -> Path:
@@ -1240,7 +1257,7 @@ class CubemapStep(BaseStepWidget):
 
     def _mask_dir(self) -> Path:
         if not self.scene_dir:
-            return Path("masks")
+            raise ValueError(i18n.t("SCENE_REQUIRED_ACTION_HINT"))
         return Path(self.scene_dir) / "masks"
 
     def _colmap_rig_dir(self) -> Path:
@@ -1329,13 +1346,13 @@ class CubemapStep(BaseStepWidget):
 
     def _metashape_images_dir(self) -> Path:
         if not self.scene_dir:
-            return Path("images")
+            raise ValueError(i18n.t("SCENE_REQUIRED_ACTION_HINT"))
         return Path(self.scene_dir) / "images"
 
     def _prepare_output_dir(self) -> bool:
-        output = self._output_dir()
         if not self.scene_dir:
             raise ValueError(i18n.t("SCENE_REQUIRED_ACTION_HINT"))
+        output = self._output_dir()
 
         scene = Path(self.scene_dir).resolve()
         try:
@@ -1386,10 +1403,10 @@ class CubemapStep(BaseStepWidget):
         return True
 
     def _prepare_colmap_rig_dir(self) -> bool:
-        output = self._output_dir()
-        rig_dir = self._colmap_rig_dir()
         if not self.scene_dir:
             raise ValueError(i18n.t("SCENE_REQUIRED_ACTION_HINT"))
+        output = self._output_dir()
+        rig_dir = self._colmap_rig_dir()
 
         try:
             resolved_rig = rig_dir.resolve()
@@ -1481,7 +1498,9 @@ class CubemapStep(BaseStepWidget):
         )
 
     def _resolve_ply_source(self) -> Path | None:
-        scene = Path(self.scene_dir) if self.scene_dir else Path(".")
+        if not self.scene_dir:
+            return None
+        scene = Path(self.scene_dir)
         if self._axis_transform_mode() == _AXIS_NONE:
             candidates = [scene / "pointcloud.ply"]
             for c in candidates:

@@ -137,6 +137,31 @@ def test_cubemap_step_does_not_count_repo_images_without_scene_dir() -> None:
     assert step._count_input_images() == 0
 
 
+def test_cubemap_step_does_not_use_current_directory_without_scene_dir(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    _app()
+    images = tmp_path / "images"
+    images.mkdir()
+    _write_test_image(images / "frame_0001.jpg")
+    (tmp_path / "pointcloud.ply").write_text("ply\n", encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+    step = CubemapStep(Path.cwd())
+
+    step.on_activated()
+
+    assert step.preview.current_image_path() is None
+    assert step._count_input_images() == 0
+    assert step._resolve_ply_source() is None
+    with pytest.raises(ValueError, match=i18n.t("SCENE_REQUIRED_ACTION_HINT")):
+        step._output_dir()
+    with pytest.raises(ValueError, match=i18n.t("SCENE_REQUIRED_ACTION_HINT")):
+        step._mask_dir()
+    with pytest.raises(ValueError, match=i18n.t("SCENE_REQUIRED_ACTION_HINT")):
+        step._metashape_images_dir()
+
+
 def test_cubemap_step_refreshes_preview_when_activated_after_extraction(tmp_path: Path) -> None:
     _app()
     step = CubemapStep(Path.cwd())

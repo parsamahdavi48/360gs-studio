@@ -358,6 +358,7 @@ class PreviewWidget(QWidget):
         self.preview_images: list[Path] = []
         self._slider_sync = False
         self._current_image_path = ""
+        self._scene_dir = ""
 
         self._build_ui()
 
@@ -501,7 +502,9 @@ class PreviewWidget(QWidget):
         return None
 
     def _iter_images(self) -> list[Path]:
-        scene_dir = Path(getattr(self, "_scene_dir", "."))
+        if not self._scene_dir:
+            return []
+        scene_dir = Path(self._scene_dir)
         images_dir = scene_dir / "images"
         roots = [images_dir] if images_dir.is_dir() else [scene_dir]
         exts = {".jpg", ".jpeg", ".png"}

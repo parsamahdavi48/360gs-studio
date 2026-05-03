@@ -170,6 +170,8 @@ class ViewConfigWidget(QWidget):
 
         # ビュー選択グリッド
         self.grid_section = CollapsibleSection(i18n.t("VIEW_SELECTION_SECTION"), expanded=False)
+        self.grid_section.setToolTip(i18n.tip("VIEW_SELECTION_SECTION"))
+        self.grid_section.toggle_button.setToolTip(i18n.tip("VIEW_SELECTION_SECTION"))
 
         self.grid_widget = QWidget()
         self.grid_layout = QGridLayout(self.grid_widget)

@@ -218,6 +218,14 @@ def test_cubemap_labels_share_field_tooltips() -> None:
     assert step.ms_use_ply_cb.toolTip() == i18n.tip("MS_USE_PLY")
     assert step.export_images_cb.toolTip() == i18n.tip("EXPORT_IMAGES")
     assert step.export_masks_cb.toolTip() == i18n.tip("EXPORT_MASKS")
+    assert step.view_config.grid_section.toolTip() == i18n.tip("VIEW_SELECTION_SECTION")
+    assert step.view_config.grid_section.toggle_button.toolTip() == i18n.tip("VIEW_SELECTION_SECTION")
+    assert step.output_format_label.toolTip() == i18n.tip("OUTPUT_FORMAT")
+    assert step.output_format_combo.toolTip() == i18n.tip("OUTPUT_FORMAT")
+    assert step.output_bit_depth_label.toolTip() == i18n.tip("OUTPUT_BIT_DEPTH")
+    assert step.output_bit_depth_combo.toolTip() == i18n.tip("OUTPUT_BIT_DEPTH")
+    assert step.jpg_quality_label.toolTip() == i18n.tip("JPG_QUALITY")
+    assert step.jpg_quality_edit.toolTip() == i18n.tip("JPG_QUALITY")
     assert isinstance(step.view_config.yaw_offset_edit, DragDoubleSpinBox)
     assert step.view_config.yaw_offset_edit.minimum() == -180.0
     assert step.view_config.yaw_offset_edit.maximum() == 180.0
