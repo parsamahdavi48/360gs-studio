@@ -8,7 +8,7 @@ Step 3 in STechDrive 3DGS Utils is a PySide6 wrapper around:
 - `stitch_mask.py` (stitch-region masking)
 - `overexposure_mask.py` (overexposure masking)
 
-It is intended for the frame-extraction workflow (`images/` -> `masks/`).
+It is intended for extracted frames or externally prepared image sequences (`images/` -> `masks/`).
 
 ## Usage
 
@@ -21,30 +21,35 @@ run_gui.bat --scene ./scene01
 - `Scene Folder`: base folder. Step 3 fills `images` and `masks` from it.
 - `Images Folder`: input images for YOLO/SAM masking.
 - `Masks Folder`: output masks; also stitch input/output.
+- `Image Type`:
+  - `360`: equirectangular 360 images. Enables stitch seam masking and 360 bottom-view re-detection.
+  - `Normal`: normal video frames or still-camera image sequences. Disables stitch seam masking and 360 bottom-view re-detection.
 - `YOLO Level`: forwarded to `yolo_mask.py --level` (0-3).
 - `YOLO Expand`: forwarded to `yolo_mask.py --expand`.
   - Default is `2px`; drag horizontally on the number field to adjust.
   - Clamped to `-16..32px` for safety.
-- `YOLO Add Ext`: forwarded to `yolo_mask.py --add-ext`.
 - `YOLO Classes`: collapsed picker for class selection.
   - Choose classes by checkbox labels (`id: name`) instead of memorizing numeric ids.
   - Default preset is `person` only (`id=0`).
-  - Presets: `Person only`, `People + Vehicles`, `All`, `Clear`.
   - Forwarded to `yolo_mask.py --classes`.
 - `Boundary Mask Width (deg)`: forwarded to `stitch_mask.py --boundary-width`.
+  - Not used when `Image Type` is `Normal`.
   - Drag horizontally on the number field to adjust.
   - The GUI clamps the value to `0.0-30.0` degrees for safety.
 - `Stitch Workers`: forwarded to `stitch_mask.py --workers`.
   - Drag horizontally on the number field to adjust.
 - `YOLO/SAM Preview`: runs `yolo_mask.py` only for the currently displayed preview image.
   - The result is shown as a red overlay and is not saved to `masks/`.
-  - It uses the current `YOLO Level`, `YOLO Expand`, `YOLO Add Ext`, and `YOLO Classes` settings.
+  - It uses the current `Image Type`, `YOLO Level`, `YOLO Expand`, and `YOLO Classes` settings.
   - Use the main `Generate` action when you want to write masks for all frames.
 
 ## Actions
 
 Select `YOLO Detection`, `Stitch Seam`, and/or `Overexposure`, then press `Generate`.
 When multiple tasks are selected, they run in this order: YOLO detection, stitch seam, overexposure.
+
+If `selected_frames.csv` is not present, Step 3 can still generate masks as long as `images/` contains supported images.
+In that external-image mode, Step 2 keep/drop validation is skipped.
 
 ## Notes
 

@@ -137,7 +137,7 @@ def test_mask_step_disables_generation_without_images_dir(tmp_path: Path) -> Non
         step.build_commands()
 
 
-def test_mask_step_disables_generation_without_selected_frames_csv(tmp_path: Path) -> None:
+def test_mask_step_allows_external_images_without_selected_frames_csv(tmp_path: Path) -> None:
     _app()
     images = tmp_path / "images"
     images.mkdir()
@@ -146,8 +146,11 @@ def test_mask_step_disables_generation_without_selected_frames_csv(tmp_path: Pat
 
     step.set_scene_dir(str(tmp_path))
 
-    assert not step.primary_action_enabled()
-    assert step.primary_action_tooltip() == i18n.t("MASK_READY_NO_CSV")
+    assert step.primary_action_enabled()
+    assert step.ready_status_label.text() == i18n.t("MASK_READY_EXTERNAL_IMAGES")
+    commands = step.build_commands()
+    assert commands[0][0] == "yolo"
+    assert commands[0][1][3] == str(images)
 
 
 def test_mask_step_disables_generation_when_no_mask_task_selected(tmp_path: Path) -> None:
@@ -176,7 +179,41 @@ def test_mask_step_allows_generation_when_drop_images_are_removed(tmp_path: Path
     assert commands[0][0] == "yolo"
     assert commands[0][1][3] == str(scene / "images")
     assert commands[0][1][4] == str(scene / "masks")
+    assert commands[0][1][commands[0][1].index("--projection") + 1] == "equirect"
     assert "--add-ext" not in commands[0][1]
+
+
+def test_mask_step_normal_image_type_disables_stitch_and_uses_normal_yolo_projection(tmp_path: Path) -> None:
+    _app()
+    images = tmp_path / "images"
+    images.mkdir()
+    (images / "frame_0001.jpg").write_bytes(b"keep")
+    step = MaskStep(Path.cwd())
+    step.set_scene_dir(str(tmp_path))
+
+    step._set_projection("normal")
+    step.run_stitch_cb.setChecked(True)
+
+    assert step.projection_buttons["normal"].isChecked()
+    assert not step.run_stitch_cb.isChecked()
+    assert not step.run_stitch_cb.isEnabled()
+    commands = step.build_commands()
+
+    assert [phase for phase, _cmd in commands] == ["yolo"]
+    yolo_cmd = commands[0][1]
+    assert yolo_cmd[yolo_cmd.index("--projection") + 1] == "normal"
+
+
+def test_mask_step_equirect_image_type_can_use_stitch(tmp_path: Path) -> None:
+    _app()
+    scene = _write_scene(tmp_path, drop_exists=False)
+    step = MaskStep(Path.cwd())
+    step.set_scene_dir(str(scene))
+
+    step.run_stitch_cb.setChecked(True)
+    commands = step.build_commands()
+
+    assert [phase for phase, _cmd in commands] == ["yolo", "stitch"]
 
 
 def test_mask_step_progress_uses_completed_file_counts() -> None:

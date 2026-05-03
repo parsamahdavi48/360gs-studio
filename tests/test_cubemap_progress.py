@@ -37,6 +37,41 @@ def test_cubemap_progress_keeps_legacy_processing_fallback(tmp_path: Path) -> No
     assert step.on_line("Processing: frame_0002.png") == (2, 2)
 
 
+def test_colmap_progress_initializes_feature_phase_from_rig_images(tmp_path: Path) -> None:
+    _app()
+    images = tmp_path / "output" / "colmap_rig" / "images"
+    images.mkdir(parents=True)
+    (images / "frame_0001_front.jpg").write_bytes(b"dummy")
+    (images / "frame_0001_right.png").write_bytes(b"dummy")
+    step = CubemapStep(Path.cwd())
+    step.set_scene_dir(str(tmp_path))
+
+    assert step.on_phase_started("colmap_feature") == (0, 2)
+    assert step.on_phase_started("colmap_match") == (0, 0)
+
+
+def test_colmap_progress_parses_feature_matching_and_global_mapper_logs(tmp_path: Path) -> None:
+    _app()
+    step = CubemapStep(Path.cwd())
+    step.set_scene_dir(str(tmp_path))
+
+    assert step.on_line("I feature_extraction.cc:258] Processed file [2/11]") == (2, 11)
+    assert step.on_line("I feature_matching.cc:231] Matching image [3/16] in 0.1s") == (3, 16)
+    assert step.on_line("I pairing.cc:201] Matching block [1/2, 2/2]") == (2, 4)
+    assert step.on_line(
+        "I global_mapper.cc:325] Global bundle adjustment iteration 1 / 3, fixed-rotation stage finished"
+    ) == (1, 8)
+    assert step.on_line("I global_mapper.cc:335] Global bundle adjustment iteration 1 / 3 finished") == (2, 8)
+    assert step.on_line("I global_mapper.cc:335] Global bundle adjustment iteration 3 / 3 finished") == (6, 8)
+    assert step.on_line(
+        "I global_mapper.cc:519] === Running iterative retriangulation and refinement ==="
+    ) == (7, 8)
+    assert step.on_line(
+        "I global_mapper.cc:528] Iterative retriangulation and refinement done in 155.894 seconds"
+    ) == (8, 8)
+    assert step.on_line("I global_pipeline.cc:110] Reconstruction done in 502.287 seconds") == (8, 8)
+
+
 def test_cubemap_progress_total_includes_images_and_masks(tmp_path: Path) -> None:
     image_dir = tmp_path
     images = image_dir / "images"

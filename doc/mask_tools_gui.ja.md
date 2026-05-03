@@ -8,7 +8,7 @@ STechDrive 3DGS Utils の Step 3 は、以下のマスク処理をまとめて�
 - `stitch_mask.py`（スティッチ領域マスク付与）
 - `overexposure_mask.py`（白飛びマスク付与）
 
-抽出済みフレーム（`images/`）からマスク（`masks/`）を作る用途を想定しています。
+抽出済みフレーム、または外部から用意した連番画像（`images/`）からマスク（`masks/`）を作る用途を想定しています。
 
 ## 起動
 
@@ -25,29 +25,30 @@ run_gui.bat --scene ./scene01
 - `マスクフォルダ`:
   - `yolo_mask.py` の出力先。
   - `stitch_mask.py` 実行時は入力/出力の両方として使います。
+- `画像タイプ`:
+  - `360`: エクイレクタングラー360画像。スティッチ境界マスクと360底面再検出を使えます。
+  - `通常`: 普通の動画フレームやデジタル一眼の連番画像。スティッチ境界マスクと360底面再検出は無効になります。
 - `YOLO Level`:
   - `yolo_mask.py --level`（0〜3）
 - `YOLO Expand (px)`:
   - `yolo_mask.py --expand`
   - 既定は `2px`。固定ピクセル数を横ドラッグで調整できます。
   - 安全のため、GUIでは `-16〜32px` に制限されます。
-- `YOLO Add Ext`:
-  - `yolo_mask.py --add-ext`
 - `YOLO Classes`:
   - 通常は折りたたみ表示。展開するとクラスをチェックで選択できます。
   - 数値IDを覚えなくても `id: 名前` で選択可能です。
   - 既定は `person`（`id=0`）のみ。
-  - プリセット: `Person only` / `People + Vehicles` / `All` / `Clear`
   - `yolo_mask.py --classes` に渡されます。
 - `境界マスク幅 (度)`:
   - `stitch_mask.py --boundary-width`
+  - `画像タイプ=通常` では使いません。
 - `Stitch Workers`:
   - `stitch_mask.py --workers`
   - 数値欄は横ドラッグで調整できます。
 - `YOLO/SAMプレビュー`:
   - 現在プレビューに表示している1枚だけに `yolo_mask.py` を実行します。
   - 結果は赤いオーバーレイとして表示され、`masks/` には保存されません。
-  - `YOLO Level` / `YOLO Expand` / `YOLO Add Ext` / `YOLO Classes` の現在値を使います。
+  - `画像タイプ` / `YOLO Level` / `YOLO Expand` / `YOLO Classes` の現在値を使います。
   - 全フレームのマスクを書き出す場合は、下部の `生成` を実行します。
 
 ## 各値の意味と調整指針
@@ -77,16 +78,6 @@ run_gui.bat --scene ./scene01
 - GUI操作:
   - 数値欄は横ドラッグで調整できます。
   - 安全のため、GUIでは `-16〜32px` に制限されます。
-
-### `YOLO Add Ext`（デフォルト: OFF）
-
-- 何を制御するか:
-  - 出力名を `元ファイル名.png` にするか
-- OFF:
-  - `frame_000001.jpg` -> `frame_000001.png`
-- ON:
-  - `frame_000001.jpg` -> `frame_000001.jpg.png`
-- 通常は OFF 推奨（名前が自然で扱いやすい）
 
 ### `境界マスク幅 (度)`（デフォルト: `5.0`）
 
@@ -132,7 +123,6 @@ run_gui.bat --scene ./scene01
 
 - `YOLO Level=1`
 - `YOLO Expand=2`
-- `YOLO Add Ext=OFF`
 - `境界マスク幅=5`
 - `Stitch Workers=コア数-2`（操作しながら実行する場合）
 
@@ -147,6 +137,9 @@ run_gui.bat --scene ./scene01
 
 `作成するマスク` で `YOLO検出` / `スティッチ境界` / `白飛び` を選び、`生成` を押します。
 複数選択時は `YOLO検出 -> スティッチ境界 -> 白飛び` の順に実行されます。
+
+`selected_frames.csv` がない場合でも、シーンフォルダ内の `images/` に画像があれば外部画像として生成できます。
+この場合、Step 2 の採用/除外チェックは行われません。
 
 ## 補足
 

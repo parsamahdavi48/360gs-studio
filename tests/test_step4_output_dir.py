@@ -7,6 +7,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 import numpy as np
 import pytest
+from PIL import Image
 from PySide6.QtWidgets import QApplication, QMessageBox
 
 from gui.steps.step4_cubemap import CubemapStep
@@ -43,6 +44,10 @@ def _write_ascii_ply(path: Path, points: list[tuple[float, float, float]]) -> No
         f"{rows}\n",
         encoding="ascii",
     )
+
+
+def _write_test_image(path: Path, size: tuple[int, int] = (64, 32)) -> None:
+    Image.new("RGB", size, (0, 0, 0)).save(path)
 
 
 def _is_descendant(widget, ancestor) -> bool:
@@ -240,7 +245,7 @@ def test_colmap_export_method_uses_image_only_conversion(tmp_path: Path) -> None
     _app()
     images = tmp_path / "images"
     images.mkdir()
-    (images / "frame_0001.jpg").write_bytes(b"dummy")
+    _write_test_image(images / "frame_0001.jpg")
     step = CubemapStep(Path.cwd())
     step.set_scene_dir(str(tmp_path))
 
@@ -285,7 +290,7 @@ def test_colmap_export_finalize_writes_export_method_settings(tmp_path: Path) ->
     _app()
     images = tmp_path / "images"
     images.mkdir()
-    (images / "frame_0001.jpg").write_bytes(b"dummy")
+    _write_test_image(images / "frame_0001.jpg")
     step = CubemapStep(Path.cwd())
     step.set_scene_dir(str(tmp_path))
     step._set_export_method("colmap")
@@ -302,13 +307,54 @@ def test_colmap_export_finalize_writes_export_method_settings(tmp_path: Path) ->
     assert settings["conversion"]["yaw_offset_per_frame"] == 0.0
     assert settings["colmap_rig"]["enabled"] is True
     assert settings["colmap_rig"]["dir"] == str(tmp_path / "output" / "colmap_rig")
+    assert settings["colmap_rig"]["project_dir"] == str(tmp_path / "output" / "colmap_rig")
+
+    manifest_path = tmp_path / "output" / "colmap_rig" / "stechdrive_colmap_project.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    assert manifest["export_type"] == "colmap_project"
+    assert manifest["project_dir"] == str(tmp_path / "output" / "colmap_rig")
+    assert manifest["ready_for_import"] is False
+
+
+def test_colmap_export_manifest_marks_sparse_project_ready(tmp_path: Path) -> None:
+    _app()
+    images = tmp_path / "images"
+    images.mkdir()
+    _write_test_image(images / "frame_0001.jpg")
+    sparse_model = tmp_path / "output" / "colmap_rig" / "sparse" / "0"
+    sparse_model.mkdir(parents=True)
+    for name in ("cameras.bin", "images.bin", "points3D.bin"):
+        (sparse_model / name).write_bytes(b"model")
+    step = CubemapStep(Path.cwd())
+    step.set_scene_dir(str(tmp_path))
+    step._set_export_method("colmap")
+
+    step._finalize_bundle()
+
+    manifest = json.loads(
+        (tmp_path / "output" / "colmap_rig" / "stechdrive_colmap_project.json").read_text(encoding="utf-8")
+    )
+    assert manifest["ready_for_import"] is True
+    assert manifest["sparse_model_dir"] == "sparse/0"
+
+
+def test_colmap_export_method_displays_colmap_project_folder(tmp_path: Path) -> None:
+    _app()
+    step = CubemapStep(Path.cwd())
+    step.set_scene_dir(str(tmp_path))
+
+    assert step.output_path_label.full_text() == str(tmp_path / "output")
+
+    step._set_export_method("colmap")
+
+    assert step.output_path_label.full_text() == str(tmp_path / "output" / "colmap_rig")
 
 
 def test_colmap_export_can_queue_colmap_sfm_with_custom_executable(tmp_path: Path) -> None:
     _app()
     images = tmp_path / "images"
     images.mkdir()
-    (images / "frame_0001.jpg").write_bytes(b"dummy")
+    _write_test_image(images / "frame_0001.jpg")
     fake_colmap = tmp_path / "colmap.exe"
     fake_colmap.write_text("", encoding="utf-8")
     step = CubemapStep(Path.cwd())
@@ -329,6 +375,7 @@ def test_colmap_export_can_queue_colmap_sfm_with_custom_executable(tmp_path: Pat
     assert commands[1][1][0] == str(fake_colmap)
     assert commands[1][1][1] == "feature_extractor"
     assert "--ImageReader.single_camera_per_folder" in commands[1][1]
+    assert commands[1][1][commands[1][1].index("--ImageReader.camera_params") + 1] == "16,16,15.5,15.5"
     assert commands[2][1][1] == "rig_configurator"
     assert commands[3][1][1] == "sequential_matcher"
     assert commands[4][1][1] == "global_mapper"
@@ -338,7 +385,7 @@ def test_colmap_export_can_queue_colmap_global_mapper(tmp_path: Path) -> None:
     _app()
     images = tmp_path / "images"
     images.mkdir()
-    (images / "frame_0001.jpg").write_bytes(b"dummy")
+    _write_test_image(images / "frame_0001.jpg")
     fake_colmap = tmp_path / "colmap.exe"
     fake_colmap.write_text("", encoding="utf-8")
     step = CubemapStep(Path.cwd())

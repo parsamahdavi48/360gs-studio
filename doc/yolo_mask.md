@@ -3,14 +3,14 @@
 
 ## Overview
 
-`yolo_mask.py` detects people in images using YOLO and refines masks with SAM (Segment Anything Model), producing PNG mask images. The script is tailored for 360° panorama workflows and pays particular attention to photographer/bystander areas near the bottom of the image and pedestrians near the horizon.
+`yolo_mask.py` detects people in images using YOLO and refines masks with SAM (Segment Anything Model), producing PNG mask images. By default it is tailored for 360° panorama workflows and pays particular attention to photographer/bystander areas near the bottom of the image and pedestrians near the horizon. Use `--projection normal` for normal video frames or still-camera image sequences.
 
 ![mask example](../images/yolo_mask.png)
 
 ## Usage
 
 ```
-python yolo_mask.py [images_dir] [output_dir] [--add_ext] [--level N] [--expand M] [--classes IDS]
+python yolo_mask.py [images_dir] [output_dir] [--add_ext] [--level N] [--expand M] [--classes IDS] [--projection equirect|normal]
 ```
 
 - `images_dir`: input image directory (default: `images`)
@@ -21,11 +21,20 @@ python yolo_mask.py [images_dir] [output_dir] [--add_ext] [--level N] [--expand 
   - Clamped to `-16..32` for safety.
   - Negative values shrink the mask region.
 - `--classes IDS`: comma-separated YOLO class ids (default: `0`, person only)
+- `--projection equirect|normal`: source image projection (default: `equirect`)
+  - `equirect`: equirectangular 360 images. Enables bottom-view re-detection.
+  - `normal`: normal images. Disables 360-specific bottom-view re-detection.
 
 Example:
 
 ```bash
 python yolo_mask.py .\images .\masks --level 2 --expand 5 --classes 0,2,3
+```
+
+Normal images:
+
+```bash
+python yolo_mask.py .\images .\masks --projection normal --level 1
 ```
 
 ## Output

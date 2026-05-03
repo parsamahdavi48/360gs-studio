@@ -1,6 +1,9 @@
 """QProcess ライフサイクル管理 + ステップキュー"""
 from __future__ import annotations
 
+import os
+import subprocess
+
 from PySide6.QtCore import QObject, QProcess, QTimer, Signal
 
 
@@ -132,4 +135,24 @@ class ProcessRunner(QObject):
         if proc.state() == QProcess.NotRunning:
             return
         self.line_received.emit(f"[{phase}] タイムアウト; プロセスを強制終了")
+        self._kill_process_tree(proc)
         proc.kill()
+
+    def _kill_process_tree(self, proc: QProcess) -> None:
+        if os.name != "nt":
+            return
+        pid = int(proc.processId())
+        if pid <= 0:
+            return
+        kwargs: dict[str, object] = {
+            "stdout": subprocess.DEVNULL,
+            "stderr": subprocess.DEVNULL,
+            "timeout": 5,
+        }
+        creationflags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+        if creationflags:
+            kwargs["creationflags"] = creationflags
+        try:
+            subprocess.run(["taskkill", "/PID", str(pid), "/T", "/F"], **kwargs)
+        except (OSError, subprocess.TimeoutExpired):
+            pass

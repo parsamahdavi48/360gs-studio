@@ -314,7 +314,14 @@ class MainWindow(QWidget):
                 self.progress.set_progress(done, total)
 
     def _on_phase_started(self, phase: str) -> None:
-        self.progress.set_status(f"{i18n.STATUS_RUNNING}: {phase}")
+        step = self.steps[self._current_step] if 0 <= self._current_step < len(self.steps) else None
+        label = step.phase_display_name(phase) if step else phase
+        self.progress.set_status(f"{i18n.STATUS_RUNNING}: {label}")
+        if step:
+            result = step.on_phase_started(phase)
+            if result is not None:
+                done, total = result
+                self.progress.set_progress(done, total)
         self._update_run_button()
 
     def _on_phase_finished(self, phase: str, exit_code: int, canceled: bool) -> None:

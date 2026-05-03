@@ -16,6 +16,7 @@ from colmap_rig_export import (
     colmap_camera_mask_dir,
     colmap_rig_root,
     frame_filename,
+    pinhole_camera_params,
     prepare_views_for_colmap,
     write_rig_config_json,
 )
@@ -748,6 +749,7 @@ def write_colmap_rig_metadata(
     payload = {
         "export_type": "colmap_rig",
         "camera_model": "PINHOLE",
+        "camera_params": pinhole_camera_params(output_size, output_size, fov),
         "fov": float(fov),
         "rig_name": rig_name,
         "input_size": {"w": int(input_size[0]), "h": int(input_size[1])},

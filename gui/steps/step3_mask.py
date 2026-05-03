@@ -11,12 +11,14 @@ from pathlib import Path
 from apply_frame_decisions import pending_drop_image_paths, untracked_image_paths
 from PySide6.QtCore import QProcess, Qt
 from PySide6.QtWidgets import (
+    QButtonGroup,
     QCheckBox,
     QComboBox,
     QFormLayout,
     QGridLayout,
     QHBoxLayout,
     QLabel,
+    QPushButton,
     QScrollArea,
     QSplitter,
     QVBoxLayout,
@@ -67,6 +69,8 @@ _OVEREXP_DILATE_MIN = 0
 _OVEREXP_DILATE_MAX = 128
 _OVEREXP_DILATE_DEFAULT = 1
 _IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".tif", ".tiff"}
+_PROJECTION_EQUIRECT = "equirect"
+_PROJECTION_NORMAL = "normal"
 
 
 class MaskStep(BaseStepWidget):
@@ -117,6 +121,28 @@ class MaskStep(BaseStepWidget):
         self.ready_status_label = QLabel()
         self.ready_status_label.setWordWrap(True)
         layout.addWidget(self.ready_status_label)
+
+        projection_row = QHBoxLayout()
+        projection_row.setSpacing(6)
+        self.projection_label = QLabel(i18n.t("MASK_IMAGE_TYPE"))
+        self.projection_label.setToolTip(i18n.tip("MASK_IMAGE_TYPE"))
+        projection_row.addWidget(self.projection_label)
+        self.projection_group = QButtonGroup(self)
+        self.projection_group.setExclusive(True)
+        self.projection_buttons: dict[str, QPushButton] = {}
+        for projection, label, tip_key in [
+            (_PROJECTION_EQUIRECT, i18n.t("MASK_IMAGE_TYPE_EQUIRECT"), "MASK_IMAGE_TYPE_EQUIRECT"),
+            (_PROJECTION_NORMAL, i18n.t("MASK_IMAGE_TYPE_NORMAL"), "MASK_IMAGE_TYPE_NORMAL"),
+        ]:
+            btn = QPushButton(label)
+            btn.setObjectName("segmentedOption")
+            btn.setCheckable(True)
+            btn.setToolTip(i18n.tip(tip_key))
+            btn.clicked.connect(lambda _checked=False, p=projection: self._set_projection(p))
+            projection_row.addWidget(btn, stretch=1)
+            self.projection_group.addButton(btn)
+            self.projection_buttons[projection] = btn
+        layout.addLayout(projection_row)
 
         # --- 実行対象 + 実行ボタン ---
         task_row = QHBoxLayout()
@@ -312,6 +338,7 @@ class MaskStep(BaseStepWidget):
         self.mask_preview.current_image_changed.connect(lambda: self._render_mask_preview())
         self.mask_preview.opacity_slider.valueChanged.connect(lambda _: self._render_mask_preview())
         self.mask_preview.yolo_preview_requested.connect(self._run_yolo_preview)
+        self._set_projection(_PROJECTION_EQUIRECT)
         self._update_task_controls()
         self._on_images_dir_changed(self._images_dir_text())
         self._update_ready_status()
@@ -359,11 +386,25 @@ class MaskStep(BaseStepWidget):
         requested_steps = []
         if self.run_yolo_cb.isChecked():
             requested_steps.append("yolo")
-        if self.run_stitch_cb.isChecked():
+        if self._projection() == _PROJECTION_EQUIRECT and self.run_stitch_cb.isChecked():
             requested_steps.append("stitch")
         if self.run_overexp_cb.isChecked():
             requested_steps.append("overexposure")
         return requested_steps
+
+    def _projection(self) -> str:
+        for projection, btn in self.projection_buttons.items():
+            if btn.isChecked():
+                return projection
+        return _PROJECTION_EQUIRECT
+
+    def _set_projection(self, projection: str) -> None:
+        if projection not in {_PROJECTION_EQUIRECT, _PROJECTION_NORMAL}:
+            projection = _PROJECTION_EQUIRECT
+        btn = self.projection_buttons.get(projection)
+        if btn is not None and not btn.isChecked():
+            btn.setChecked(True)
+        self._update_task_controls()
 
     def _scene_csv_path(self) -> Path:
         return Path(self.scene_dir) / "selected_frames.csv"
@@ -387,10 +428,10 @@ class MaskStep(BaseStepWidget):
             return False, i18n.t("MASK_READY_NO_IMAGES_DIR")
         if not self._has_image_files():
             return False, i18n.t("MASK_READY_NO_IMAGES")
-        if not self._scene_csv_path().is_file():
-            return False, i18n.t("MASK_READY_NO_CSV")
         if not self._selected_mask_tasks():
             return False, i18n.t("MASK_TASK_REQUIRED")
+        if not self._scene_csv_path().is_file():
+            return True, i18n.t("MASK_READY_EXTERNAL_IMAGES")
         return True, i18n.t("MASK_READY_OK")
 
     def _update_ready_status(self) -> None:
@@ -414,10 +455,18 @@ class MaskStep(BaseStepWidget):
 
     def _update_task_controls(self) -> None:
         yolo_enabled = self.run_yolo_cb.isChecked()
-        stitch_enabled = self.run_stitch_cb.isChecked()
+        equirect = self._projection() == _PROJECTION_EQUIRECT
+        if not equirect and self.run_stitch_cb.isChecked():
+            self.run_stitch_cb.setChecked(False)
+            return
+        stitch_enabled = equirect and self.run_stitch_cb.isChecked()
         overexp_enabled = self.run_overexp_cb.isChecked()
 
         self.yolo_section.content_widget.setEnabled(yolo_enabled)
+        self.run_stitch_cb.setEnabled(equirect)
+        self.run_stitch_cb.setToolTip(
+            i18n.tip("MASK_TASK_STITCH") if equirect else i18n.tip("MASK_TASK_STITCH_DISABLED_NORMAL")
+        )
         self.stitch_boundary_width_edit.setEnabled(stitch_enabled)
         self.stitch_workers_edit.setEnabled(stitch_enabled or overexp_enabled)
         self.overexp_threshold_edit.setEnabled(overexp_enabled)
@@ -539,6 +588,7 @@ class MaskStep(BaseStepWidget):
             images, masks,
             "--level", level,
             "--expand", self._yolo_expand_arg(),
+            "--projection", self._projection(),
         ]
         if classes:
             cmd.extend(["--classes", ",".join(str(c) for c in classes)])
@@ -556,6 +606,7 @@ class MaskStep(BaseStepWidget):
             str(image_path), str(output_dir),
             "--level", level,
             "--expand", self._yolo_expand_arg(),
+            "--projection", self._projection(),
         ]
         if classes:
             cmd.extend(["--classes", ",".join(str(c) for c in classes)])

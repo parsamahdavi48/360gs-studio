@@ -1,13 +1,13 @@
 # yolo_mask.py — 人物マスク生成
 
 ## 概要
-`yolo_mask.py` は、YOLO（人物検出）と SAM（Segment Anything Model）を組み合わせ、画像中の人物領域を検出してマスク画像（PNG）を生成するスクリプトです。360°パノラマ画像への処理に特化しており、底面付近の撮影者や、水平線付近の通行人を重点的に検出することができます。
+`yolo_mask.py` は、YOLO（人物検出）と SAM（Segment Anything Model）を組み合わせ、画像中の人物領域を検出してマスク画像（PNG）を生成するスクリプトです。既定では360°パノラマ画像向けに、底面付近の撮影者や水平線付近の通行人を重点的に検出します。普通の動画フレームやデジタル一眼の連番画像では `--projection normal` を指定します。
 
 ![マスク例](../images/yolo_mask.png)
 
 ## 使い方
 ```
-python yolo_mask.py [images_dir] [output_dir] [--add_ext] [--level N] [--expand M] [--classes IDS]
+python yolo_mask.py [images_dir] [output_dir] [--add_ext] [--level N] [--expand M] [--classes IDS] [--projection equirect|normal]
 ```
 
 - `images_dir`: 入力画像ディレクトリ（省略時: `images`）
@@ -18,11 +18,20 @@ python yolo_mask.py [images_dir] [output_dir] [--add_ext] [--level N] [--expand 
   - 安全のため `-16〜32` にクランプされます。
   - 負値を指定するとマスク領域を収縮します。
 - `--classes IDS`: YOLOクラスIDのカンマ区切り指定（デフォルト: `0` = personのみ）
+- `--projection equirect|normal`: 入力画像の種類（デフォルト: `equirect`）
+  - `equirect`: 360°エクイレクタングラー画像。底面再検出を行います。
+  - `normal`: 通常画像。360°専用の底面再検出を行いません。
 
 例:
 
 ```
 python yolo_mask.py .\images .\masks --level 2 --expand 5 --classes 0,2,3
+```
+
+通常画像:
+
+```
+python yolo_mask.py .\images .\masks --projection normal --level 1
 ```
 
 ## 出力について

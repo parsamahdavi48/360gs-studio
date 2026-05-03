@@ -27,12 +27,19 @@ parser.add_argument(
     default="0",
     help="YOLO class ids (comma-separated, ex: '0,2,3'; default='0' person)",
 )
+parser.add_argument(
+    "--projection",
+    choices=("equirect", "normal"),
+    default="equirect",
+    help="Source image projection. equirect enables 360 panorama-specific bottom re-detection; normal disables it.",
+)
 args = parser.parse_args()
 
 INPUT_DIR = args.images_dir if args.images_dir else "images"
 OUTPUT_DIR = args.output_dir if args.output_dir else "masks"
 ADD_EXT = args.add_ext
 LEVEL = args.level
+PROJECTION = args.projection
 EXPAND = clamp_expand_px(args.expand)
 if EXPAND != args.expand:
     print(f"Clamped --expand from {args.expand} to {EXPAND}", flush=True)
@@ -64,6 +71,7 @@ except Exception as e:
     sys.exit(1)
 
 print("YOLO classes:", ",".join(str(x) for x in CLASS_IDS), flush=True)
+print(f"Projection: {PROJECTION}", flush=True)
 
 px, py = None, None
 ux, uy = None, None
@@ -235,8 +243,8 @@ def process_file(input_dir, output_dir, fname, add_ext=True):
                     has_mask += has_submask
         proc_count += 1
 
-    # 下方向のみ展開画像で再検出
-    if LEVEL >= 1:
+    # 下方向のみ展開画像で再検出（エクイレクタングラー360画像専用）
+    if LEVEL >= 1 and PROJECTION == "equirect":
         bsize = int(w/4)
         bottom = get_bottom_from_pano(img, size=bsize)
         bottom_mask = np.zeros((bsize, bsize), dtype=np.uint8)
@@ -281,7 +289,7 @@ if os.path.isdir(INPUT_DIR):
 
         image_files = sorted([
             f for f in os.listdir(dir)
-            if f.lower().endswith((".jpg", ".png"))
+            if f.lower().endswith((".jpg", ".jpeg", ".png", ".tif", ".tiff"))
         ])
         tasks.extend((dir, output_dir, fname) for fname in image_files)
 

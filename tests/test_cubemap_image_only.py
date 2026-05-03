@@ -5,6 +5,7 @@ from pathlib import Path
 
 import cv2
 import numpy as np
+import pytest
 
 
 def test_image_only_export_writes_view_images_without_transforms(tmp_path: Path) -> None:
@@ -156,4 +157,5 @@ def test_colmap_rig_export_writes_camera_folders_masks_and_rig_config(tmp_path: 
 
     settings = json.loads((rig_root / "view_export_settings.json").read_text(encoding="utf-8"))
     assert settings["export_type"] == "colmap_rig"
+    assert settings["camera_params"] == pytest.approx([8.0, 8.0, 7.5, 7.5])
     assert settings["yaw_offset_per_frame"] == 0.0

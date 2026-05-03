@@ -29,6 +29,7 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtCore import QSize, Qt
 
+from colmap_rig_export import pinhole_camera_params
 from gui import i18n
 from gui.common.browse_widget import BrowseWidget
 from gui.common.collapsible_section import CollapsibleSection
@@ -48,6 +49,15 @@ from gui.steps.base_step import (
 _CONVERT_RE = re.compile(r"^Converting\s+(\d+)\s+(?:images|files)\.\.\.$")
 _PROGRESS_RE = re.compile(r"^\[progress\]\s+(\d+)\s*/\s*(\d+)")
 _COLMAP_FEATURE_RE = re.compile(r"Processed file \[(\d+)/(\d+)\]")
+_COLMAP_MATCH_IMAGE_RE = re.compile(r"Matching image \[(\d+)/(\d+)\]")
+_COLMAP_MATCH_BLOCK_RE = re.compile(r"Matching block \[(\d+)/(\d+),\s*(\d+)/(\d+)\]")
+_COLMAP_GLOBAL_BA_FIXED_RE = re.compile(
+    r"Global bundle adjustment iteration\s+(\d+)\s*/\s*(\d+),\s*fixed-rotation stage finished"
+)
+_COLMAP_GLOBAL_BA_DONE_RE = re.compile(r"Global bundle adjustment iteration\s+(\d+)\s*/\s*(\d+)\s+finished")
+_COLMAP_RETRIANGULATION_START_RE = re.compile(r"=== Running iterative retriangulation and refinement ===")
+_COLMAP_RETRIANGULATION_DONE_RE = re.compile(r"Iterative retriangulation and refinement done")
+_COLMAP_RECONSTRUCTION_DONE_RE = re.compile(r"Reconstruction done")
 _PROFILE_POSTSHOT = "postshot"
 _PROFILE_BRUSH = "brush"
 _PROFILE_LICHTFELD = "lichtfeld"
@@ -64,6 +74,7 @@ _AXIS_BRUSH = "brush"
 _AXIS_NONE = "none"
 _NORMAL_OUTPUT_SCALE = 2.0 / math.pi
 _EXPORT_SETTINGS_NAME = "stechdrive_export_settings.json"
+_COLMAP_PROJECT_MANIFEST_NAME = "stechdrive_colmap_project.json"
 _USER_SETTINGS_SECTION = "step4_colmap"
 _LICHTFELD_FINAL_CORRECTION = np.array(
     [
@@ -119,6 +130,7 @@ class CubemapStep(BaseStepWidget):
         self._converted_total = 0
         self._processed = 0
         self._explicit_progress = False
+        self._colmap_ba_iterations = 0
         self._syncing_profile_controls = False
         self._syncing_user_preferences = False
         self._user_preferences_enabled = False
@@ -500,10 +512,8 @@ class CubemapStep(BaseStepWidget):
             self.ms_images_path_label.set_full_text("-")
             return
         p = Path(path)
-        output = str(self._output_dir())
-        self.output_path_label.setToolTip(f"{i18n.tip('OUTPUT_DIR_CUBEMAP')}\n{output}")
-        self.output_path_label.set_full_text(output)
         images_dir = str(self._metashape_images_dir())
+        self._update_path_labels()
         self.ms_images_path_label.setToolTip(f"{i18n.tip('MS_IMAGES')}\n{images_dir}")
         self.ms_images_path_label.set_full_text(images_dir)
         self.ms_xml_browse.set_text(str(self._guess_xml(p)))
@@ -587,8 +597,17 @@ class CubemapStep(BaseStepWidget):
         self.colmap_section.setVisible(not metashape)
         if not metashape:
             self.export_colmap_cb.setChecked(False)
+        self._update_path_labels()
         self._update_output_count()
         self.primary_action_state_changed.emit()
+
+    def _update_path_labels(self) -> None:
+        if not self.scene_dir:
+            return
+        output = str(self._display_output_dir())
+        tip_key = "OUTPUT_DIR_CUBEMAP" if self._is_metashape_method() else "OUTPUT_DIR_COLMAP_PROJECT"
+        self.output_path_label.setToolTip(f"{i18n.tip(tip_key)}\n{output}")
+        self.output_path_label.set_full_text(output)
 
     def _on_colmap_run_toggled(self, checked: bool) -> None:
         self.colmap_exec_browse.setEnabled(checked)
@@ -971,6 +990,8 @@ class CubemapStep(BaseStepWidget):
             "1",
             "--ImageReader.camera_model",
             "PINHOLE",
+            "--ImageReader.camera_params",
+            self._colmap_camera_params_arg(),
         ]
         if self._writes_masks() or masks_dir.is_dir():
             feature_cmd.extend(["--ImageReader.mask_path", str(masks_dir)])
@@ -1138,11 +1159,13 @@ class CubemapStep(BaseStepWidget):
             "colmap_rig": {
                 "enabled": self._export_method() == _METHOD_COLMAP,
                 "dir": str(self._colmap_rig_dir()),
+                "project_dir": str(self._colmap_project_dir()),
                 "images_dir": str(self._colmap_rig_images_dir()),
                 "masks_dir": str(self._colmap_rig_masks_dir()),
                 "rig_config": str(self._colmap_rig_dir() / "rig_config.json"),
                 "database": str(self._colmap_database_path()),
                 "sparse_dir": str(self._colmap_sparse_dir()),
+                "sparse_model_dir": str(self._find_colmap_sparse_model() or ""),
                 "run_sfm": self.run_colmap_cb.isChecked(),
                 "colmap_executable": self.colmap_exec_browse.text(),
                 "glomap_executable": self.glomap_exec_browse.text(),
@@ -1163,6 +1186,7 @@ class CubemapStep(BaseStepWidget):
                 "masks_dir": "masks",
                 "colmap_rig_dir": "colmap_rig",
                 "colmap_rig_config": "colmap_rig/rig_config.json",
+                "colmap_project_manifest": f"colmap_rig/{_COLMAP_PROJECT_MANIFEST_NAME}",
             },
         }
 
@@ -1172,10 +1196,41 @@ class CubemapStep(BaseStepWidget):
         payload = self._collect_export_settings()
         path.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
 
+    def _write_colmap_project_manifest(self) -> None:
+        project = self._colmap_project_dir()
+        sparse_model = self._find_colmap_sparse_model()
+        payload = {
+            "app": "stechdrive-3dgs-utils",
+            "app_version": APP_VERSION,
+            "export_type": "colmap_project",
+            "created_at": self._utc_now_iso(),
+            "project_dir": str(project),
+            "images_dir": "images",
+            "masks_dir": "masks",
+            "sparse_dir": "sparse",
+            "sparse_model_dir": str(sparse_model.relative_to(project).as_posix()) if sparse_model else "",
+            "ready_for_import": sparse_model is not None,
+            "database": "database.db",
+            "rig_config": "rig_config.json",
+            "run_sfm": self.run_colmap_cb.isChecked(),
+            "matcher": self.colmap_matcher_combo.currentData() or _COLMAP_MATCHER_SEQUENTIAL,
+            "mapper": self.colmap_mapper_combo.currentData() or _COLMAP_MAPPER_INCREMENTAL,
+            "camera_model": "PINHOLE",
+            "camera_params": self._colmap_camera_params_arg(),
+        }
+        project.mkdir(parents=True, exist_ok=True)
+        (project / _COLMAP_PROJECT_MANIFEST_NAME).write_text(
+            json.dumps(payload, indent=2, ensure_ascii=False),
+            encoding="utf-8",
+        )
+
     def _output_dir(self) -> Path:
         if not self.scene_dir:
             return Path("output")
         return Path(self.scene_dir) / "output"
+
+    def _display_output_dir(self) -> Path:
+        return self._output_dir() if self._is_metashape_method() else self._colmap_rig_dir()
 
     def _mask_dir(self) -> Path:
         if not self.scene_dir:
@@ -1184,6 +1239,9 @@ class CubemapStep(BaseStepWidget):
 
     def _colmap_rig_dir(self) -> Path:
         return self._output_dir() / "colmap_rig"
+
+    def _colmap_project_dir(self) -> Path:
+        return self._colmap_rig_dir()
 
     def _colmap_rig_images_dir(self) -> Path:
         return self._colmap_rig_dir() / "images"
@@ -1196,6 +1254,72 @@ class CubemapStep(BaseStepWidget):
 
     def _colmap_sparse_dir(self) -> Path:
         return self._colmap_rig_dir() / "sparse"
+
+    def _find_colmap_sparse_model(self) -> Path | None:
+        sparse = self._colmap_sparse_dir()
+        if self._has_colmap_sparse_model(sparse):
+            return sparse
+        if not sparse.is_dir():
+            return None
+
+        def sort_key(path: Path) -> tuple[int, int | str]:
+            if path.name.isdigit():
+                return (0, int(path.name))
+            return (1, path.name.lower())
+
+        for candidate in sorted((p for p in sparse.iterdir() if p.is_dir()), key=sort_key):
+            if self._has_colmap_sparse_model(candidate):
+                return candidate
+        return None
+
+    @staticmethod
+    def _has_colmap_sparse_model(path: Path) -> bool:
+        if not path.is_dir():
+            return False
+        return (
+            all((path / name).is_file() for name in ("cameras.bin", "images.bin", "points3D.bin"))
+            or all((path / name).is_file() for name in ("cameras.txt", "images.txt", "points3D.txt"))
+        )
+
+    def _colmap_camera_params_arg(self) -> str:
+        width, height = self._planned_colmap_image_size()
+        params = pinhole_camera_params(width, height, 90.0)
+        return ",".join(f"{value:.12g}" for value in params)
+
+    def _planned_colmap_image_size(self) -> tuple[int, int]:
+        if not self._writes_images():
+            existing = self._first_image_size(self._colmap_rig_images_dir())
+            if existing is not None:
+                return existing
+
+        source = self._first_image_size(Path(self.scene_dir) / "images") if self.scene_dir else None
+        if source is not None:
+            scale = float(self.scale_combo.currentData())
+            output_size = max(1, int(round(source[1] * scale)))
+            return output_size, output_size
+
+        existing = self._first_image_size(self._colmap_rig_images_dir())
+        if existing is not None:
+            return existing
+
+        raise ValueError("COLMAP用の画像サイズを判定できません。images/ に画像が必要です。")
+
+    @staticmethod
+    def _first_image_size(root: Path) -> tuple[int, int] | None:
+        if not root.is_dir():
+            return None
+        supported = {".jpg", ".jpeg", ".png", ".tif", ".tiff", ".webp", ".bmp"}
+        for path in sorted(root.rglob("*"), key=lambda p: str(p).lower()):
+            if not path.is_file() or path.suffix.lower() not in supported:
+                continue
+            try:
+                from PIL import Image
+
+                with Image.open(path) as img:
+                    return int(img.width), int(img.height)
+            except Exception:
+                continue
+        return None
 
     def _metashape_images_dir(self) -> Path:
         if not self.scene_dir:
@@ -1387,6 +1511,7 @@ class CubemapStep(BaseStepWidget):
 
         if not self._is_metashape_method():
             self._write_export_settings()
+            self._write_colmap_project_manifest()
             return
 
         source = self._resolve_ply_source()
@@ -1516,10 +1641,71 @@ class CubemapStep(BaseStepWidget):
 
     # -- プログレス --
 
+    def phase_display_name(self, phase: str) -> str:
+        labels = {
+            "colmap_rig_export": "PHASE_COLMAP_RIG_EXPORT",
+            "colmap_feature": "PHASE_COLMAP_FEATURE",
+            "colmap_rig_config": "PHASE_COLMAP_RIG_CONFIG",
+            "colmap_match": "PHASE_COLMAP_MATCH",
+            "colmap_mapper": "PHASE_COLMAP_MAPPER",
+        }
+        key = labels.get(phase)
+        return i18n.t(key) if key else phase
+
+    def on_phase_started(self, phase: str) -> tuple[int, int] | None:
+        if phase == "colmap_rig_export":
+            self._converted_total = 0
+            self._processed = 0
+            self._explicit_progress = False
+            return None
+        if phase == "colmap_feature":
+            total = self._count_colmap_rig_images()
+            return 0, total if total > 0 else 0
+        if phase in {"colmap_rig_config", "colmap_match", "colmap_mapper"}:
+            self._colmap_ba_iterations = 0
+            return 0, 0
+        return None
+
     def on_line(self, line: str) -> tuple[int, int] | None:
         colmap_feature = _COLMAP_FEATURE_RE.search(line)
         if colmap_feature:
             return int(colmap_feature.group(1)), int(colmap_feature.group(2))
+
+        colmap_match_image = _COLMAP_MATCH_IMAGE_RE.search(line)
+        if colmap_match_image:
+            return int(colmap_match_image.group(1)), int(colmap_match_image.group(2))
+
+        colmap_match_block = _COLMAP_MATCH_BLOCK_RE.search(line)
+        if colmap_match_block:
+            block_row = int(colmap_match_block.group(1))
+            block_rows = int(colmap_match_block.group(2))
+            block_col = int(colmap_match_block.group(3))
+            block_cols = int(colmap_match_block.group(4))
+            total = max(1, block_rows * block_cols)
+            done = min(total, max(1, (block_row - 1) * block_cols + block_col))
+            return done, total
+
+        colmap_ba_fixed = _COLMAP_GLOBAL_BA_FIXED_RE.search(line)
+        if colmap_ba_fixed:
+            return self._colmap_global_ba_progress(
+                int(colmap_ba_fixed.group(1)),
+                int(colmap_ba_fixed.group(2)),
+                fixed_rotation=True,
+            )
+
+        colmap_ba_done = _COLMAP_GLOBAL_BA_DONE_RE.search(line)
+        if colmap_ba_done:
+            return self._colmap_global_ba_progress(
+                int(colmap_ba_done.group(1)),
+                int(colmap_ba_done.group(2)),
+                fixed_rotation=False,
+            )
+
+        if _COLMAP_RETRIANGULATION_START_RE.search(line):
+            return self._colmap_retriangulation_progress(done=False)
+
+        if _COLMAP_RETRIANGULATION_DONE_RE.search(line) or _COLMAP_RECONSTRUCTION_DONE_RE.search(line):
+            return self._colmap_retriangulation_progress(done=True)
 
         progress = _PROGRESS_RE.match(line)
         if progress:
@@ -1540,6 +1726,32 @@ class CubemapStep(BaseStepWidget):
             return self._processed, self._converted_total
 
         return None
+
+    def _colmap_global_ba_progress(
+        self,
+        iteration: int,
+        total_iterations: int,
+        *,
+        fixed_rotation: bool,
+    ) -> tuple[int, int]:
+        total_iterations = max(1, total_iterations)
+        iteration = min(max(1, iteration), total_iterations)
+        self._colmap_ba_iterations = max(self._colmap_ba_iterations, total_iterations)
+        total_units = total_iterations * 2 + 2
+        done_units = (iteration - 1) * 2 + (1 if fixed_rotation else 2)
+        return done_units, total_units
+
+    def _colmap_retriangulation_progress(self, *, done: bool) -> tuple[int, int]:
+        iterations = max(1, self._colmap_ba_iterations)
+        total_units = iterations * 2 + 2
+        return (total_units if done else total_units - 1), total_units
+
+    def _count_colmap_rig_images(self) -> int:
+        images_dir = self._colmap_rig_images_dir()
+        if not images_dir.is_dir():
+            return 0
+        supported = {".jpg", ".jpeg", ".png", ".tif", ".tiff", ".webp", ".bmp"}
+        return sum(1 for p in images_dir.rglob("*") if p.is_file() and p.suffix.lower() in supported)
 
     # -- ヘルパー --
 

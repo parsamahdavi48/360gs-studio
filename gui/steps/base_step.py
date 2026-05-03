@@ -54,8 +54,15 @@ class BaseStepWidget(QWidget):
     def primary_action_enabled(self) -> bool:
         return True
 
+    def phase_display_name(self, phase: str) -> str:
+        return phase
+
     def on_line(self, line: str) -> tuple[int, int] | None:
         """出力行を解析し、(done, total) を返す。該当なしなら None。"""
+        return None
+
+    def on_phase_started(self, phase: str) -> tuple[int, int] | None:
+        """フェーズ開始時のプログレス初期化フック（オプション）"""
         return None
 
     def on_phase_finished(self, phase: str, exit_code: int, canceled: bool) -> None:
