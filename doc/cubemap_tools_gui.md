@@ -31,7 +31,7 @@ start_cubemap_tools_gui.bat
   - Cubemap output directory. Default: `<scene>/output`.
 - `Export Method`:
   - `Metashape Import`: export 3DGS-oriented viewpoint images, masks, and `transforms.json` from Metashape SfM results.
-  - `COLMAP Export`: export viewpoint images and masks for COLMAP SfM from extracted `images/` and `masks/`, without Metashape results.
+  - `COLMAP Export`: export viewpoint images and masks for COLMAP SfM from extracted `images/` and `masks/`. Camera poses are not created.
 - `Output Profile`:
   - Preset for the downstream 3DGS tool when `Metashape Import` is selected.
   - `Postshot / Brush`: applies the target coordinate preset and uses the scene PLY directly.
@@ -44,7 +44,7 @@ start_cubemap_tools_gui.bat
   - `Point Cloud PLY`: Metashape-exported point cloud PLY. Used automatically for LichtFeld.
   - `Add COLMAP Text Model`: creates `cameras.txt` / `images.txt` / `points3D.txt` under `output/colmap/` from `output/transforms.json` and PLY. This is not a COLMAP SfM image export.
   - `Advanced`: controls `--scale`, whether to pass `--ply`, and `--no-fix-rotation`.
-- `Export Targets`:
+- `Output`:
   - Always visible. Independently toggles `Images` and `Masks`. Turn `Images` off and `Masks` on when you only rebuilt masks.
 - `View Export Settings`:
   - Shared viewpoint image export settings such as view mode, yaw offset, image size, per-frame yaw step, output format, bit depth, and mask inversion.
@@ -87,7 +87,7 @@ start_cubemap_tools_gui.bat
 
 - `Invert masks (--invert_masks)`
   - Usually off. Enable only when the target app expects the opposite polarity.
-- `Export Targets`
+- `Output`
   - Turning `Images` off adds `--skip-images`; turning `Masks` off adds `--skip-masks`.
   - If both are off, the GUI updates camera metadata only and preserves existing files under `output/`.
 

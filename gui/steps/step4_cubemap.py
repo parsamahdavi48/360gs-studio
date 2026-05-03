@@ -149,19 +149,43 @@ class CubemapStep(BaseStepWidget):
         self.export_method_group = QButtonGroup(self)
         self.export_method_group.setExclusive(True)
         self.export_method_buttons: dict[str, QPushButton] = {}
-        for method, label in [
-            (_METHOD_METASHAPE, i18n.t("METHOD_METASHAPE_IMPORT")),
-            (_METHOD_COLMAP, i18n.t("METHOD_COLMAP_EXPORT")),
+        for method, label, tip_key in [
+            (_METHOD_METASHAPE, i18n.t("METHOD_METASHAPE_IMPORT"), "METHOD_METASHAPE_IMPORT"),
+            (_METHOD_COLMAP, i18n.t("METHOD_COLMAP_EXPORT"), "METHOD_COLMAP_EXPORT"),
         ]:
             btn = QPushButton(label)
             btn.setObjectName("segmentedOption")
             btn.setCheckable(True)
-            btn.setToolTip(i18n.tip("EXPORT_METHOD"))
+            btn.setToolTip(i18n.tip(tip_key))
             btn.clicked.connect(lambda _checked=False, m=method: self._set_export_method(m))
             method_row.addWidget(btn, stretch=1)
             self.export_method_group.addButton(btn)
             self.export_method_buttons[method] = btn
         left_layout.addWidget(self.export_method_row)
+
+        export_targets_form = QFormLayout()
+        export_targets_form.setContentsMargins(0, 0, 0, 0)
+        export_targets_form.setSpacing(6)
+        self.export_targets_row = QWidget()
+        export_targets_layout = QHBoxLayout(self.export_targets_row)
+        export_targets_layout.setContentsMargins(0, 0, 0, 0)
+        export_targets_layout.setSpacing(12)
+        self.export_images_cb = QCheckBox(i18n.t("EXPORT_IMAGES"))
+        self.export_images_cb.setToolTip(i18n.tip("EXPORT_IMAGES"))
+        self.export_images_cb.setChecked(True)
+        export_targets_layout.addWidget(self.export_images_cb)
+        self.export_masks_cb = QCheckBox(i18n.t("EXPORT_MASKS"))
+        self.export_masks_cb.setToolTip(i18n.tip("EXPORT_MASKS"))
+        self.export_masks_cb.setChecked(True)
+        export_targets_layout.addWidget(self.export_masks_cb)
+        export_targets_layout.addStretch()
+        add_tooltip_row(
+            export_targets_form,
+            i18n.t("EXPORT_TARGETS"),
+            self.export_targets_row,
+            i18n.tip("EXPORT_TARGETS"),
+        )
+        left_layout.addLayout(export_targets_form)
 
         # Metashapeインポート設定（折りたたみ）
         preprocess = CollapsibleSection(i18n.METASHAPE_PREPROCESS, expanded=False)
@@ -245,30 +269,6 @@ class CubemapStep(BaseStepWidget):
         preprocess.content_layout.addLayout(pp_form)
         preprocess.content_layout.addWidget(import_advanced)
         left_layout.addWidget(preprocess)
-
-        export_targets_form = QFormLayout()
-        export_targets_form.setContentsMargins(0, 0, 0, 0)
-        export_targets_form.setSpacing(6)
-        self.export_targets_row = QWidget()
-        export_targets_layout = QHBoxLayout(self.export_targets_row)
-        export_targets_layout.setContentsMargins(0, 0, 0, 0)
-        export_targets_layout.setSpacing(12)
-        self.export_images_cb = QCheckBox(i18n.t("EXPORT_IMAGES"))
-        self.export_images_cb.setToolTip(i18n.tip("EXPORT_IMAGES"))
-        self.export_images_cb.setChecked(True)
-        export_targets_layout.addWidget(self.export_images_cb)
-        self.export_masks_cb = QCheckBox(i18n.t("EXPORT_MASKS"))
-        self.export_masks_cb.setToolTip(i18n.tip("EXPORT_MASKS"))
-        self.export_masks_cb.setChecked(True)
-        export_targets_layout.addWidget(self.export_masks_cb)
-        export_targets_layout.addStretch()
-        add_tooltip_row(
-            export_targets_form,
-            i18n.t("EXPORT_TARGETS"),
-            self.export_targets_row,
-            i18n.tip("EXPORT_TARGETS"),
-        )
-        left_layout.addLayout(export_targets_form)
 
         self.view_config = ViewConfigWidget(show_settings=False)
         self.view_config.views_changed.connect(self._on_views_changed)
