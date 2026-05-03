@@ -65,8 +65,8 @@ start_cubemap_tools_gui.bat
   - Number of yaw slots per pitch row (`4..8`).
   - Slot yaw = `offset + slot*(360 / yaw_slots)`.
 - `Pitch Rows (deg CSV)`:
-  - Pitch list. Example: `-30,0,30`.
-  - Max 9 rows.
+  - Pitch list. Standard: `-45,0,45`.
+  - Range is `-90..90`, max 5 rows.
 - `Cube6`:
   - Always exports all six faces. Top and bottom faces are treated as valid fixed-camera observations.
 - `FOV`:

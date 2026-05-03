@@ -129,6 +129,34 @@ def test_cubemap_step_does_not_count_repo_images_without_scene_dir() -> None:
     assert step._count_input_images() == 0
 
 
+def test_custom_grid_defaults_to_three_pitch_rows_all_enabled() -> None:
+    _app()
+    step = CubemapStep(Path.cwd())
+    idx = step.view_config.view_mode_combo.findData("custom_views")
+    assert idx >= 0
+    step.view_config.view_mode_combo.setCurrentIndex(idx)
+
+    assert step.view_config.pitch_edit.text() == "-45,0,45"
+    assert step.view_config.yaw_slots_combo.currentText() == "6"
+    views = step.view_config.collect_views(include_disabled=True)
+
+    assert len(views) == 18
+    assert sum(1 for view in views if view["enabled"]) == 18
+    assert {view["pitch"] for view in views} == {-45.0, 0.0, 45.0}
+
+
+def test_custom_grid_pitch_rows_are_limited_to_five() -> None:
+    _app()
+    step = CubemapStep(Path.cwd())
+
+    step.view_config.pitch_edit.setText("-60,-30,0,30,60")
+    assert step.view_config._parse_pitches() == [-60.0, -30.0, 0.0, 30.0, 60.0]
+
+    step.view_config.pitch_edit.setText("-75,-45,-15,15,45,75")
+    with pytest.raises(ValueError, match="最大 5"):
+        step.view_config._parse_pitches()
+
+
 def test_colmap_export_method_uses_image_only_conversion(tmp_path: Path) -> None:
     _app()
     images = tmp_path / "images"

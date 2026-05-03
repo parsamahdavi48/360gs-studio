@@ -9,7 +9,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from PySide6.QtWidgets import QApplication, QLineEdit, QPushButton, QSpinBox
 
 from gui import i18n
-from gui.cubemap.preview_renderer import PreviewWidget
+from gui.cubemap.preview_renderer import PreviewWidget, _overlay_draw_order
 
 
 def _app():
@@ -59,3 +59,21 @@ def test_cubemap_preview_resolves_mask_from_mask_folder(tmp_path: Path) -> None:
     widget = PreviewWidget()
 
     assert widget._resolve_mask(image_path, str(mask_dir)) == mask_path
+
+
+def test_cubemap_preview_draws_disabled_view_boxes_first() -> None:
+    views = [
+        {"name": "enabled_a", "enabled": True},
+        {"name": "disabled_a", "enabled": False},
+        {"name": "enabled_b", "enabled": True},
+        {"name": "disabled_b", "enabled": False},
+    ]
+
+    ordered = _overlay_draw_order(views)
+
+    assert [view["name"] for view in ordered] == [
+        "disabled_a",
+        "disabled_b",
+        "enabled_a",
+        "enabled_b",
+    ]

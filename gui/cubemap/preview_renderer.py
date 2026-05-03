@@ -76,6 +76,28 @@ def _view_boundary_segments(
     return segments
 
 
+def _pitch_color_map(views: list[dict]) -> dict[float, tuple[int, int, int]]:
+    pitches = sorted({round(float(view.get("pitch", 0.0)), 6) for view in views})
+    # OpenCV BGR. Chosen to stay visible over typical indoor/outdoor frames.
+    palette = [
+        (255, 130, 80),
+        (255, 220, 80),
+        (90, 240, 120),
+        (80, 210, 255),
+        (220, 100, 255),
+    ]
+    if not pitches:
+        return {}
+    if len(pitches) == 1:
+        return {pitches[0]: palette[2]}
+    return {pitch: palette[idx % len(palette)] for idx, pitch in enumerate(pitches)}
+
+
+def _overlay_draw_order(views: list[dict]) -> list[dict]:
+    """Draw disabled gray view boxes first so enabled colored boxes stay on top."""
+    return sorted(views, key=lambda view: bool(view.get("enabled", False)))
+
+
 class PreviewWidget(QWidget):
     """プレビュー画像 + マスクオーバーレイ + タイムラインスライダー"""
 
@@ -172,15 +194,21 @@ class PreviewWidget(QWidget):
 
         # ビュー境界描画
         h, w = img.shape[:2]
-        for view in views:
-            color = (0, 220, 255) if view["enabled"] else (128, 128, 128)
-            thickness = 2 if view["enabled"] else 1
+        pitch_colors = _pitch_color_map(views)
+        for view in _overlay_draw_order(views):
+            pitch_key = round(float(view.get("pitch", 0.0)), 6)
+            color = pitch_colors.get(pitch_key, (90, 240, 120))
+            if not view["enabled"]:
+                color = (190, 190, 190)
+            thickness = 2
+            outline_thickness = 4 if view["enabled"] else 3
             segments = _view_boundary_segments(w, h, view["yaw"], view["pitch"], 90.0)
             all_pts: list[np.ndarray] = []
             for seg in segments:
                 if len(seg) < 2:
                     continue
                 pts = np.round(seg).astype(np.int32).reshape((-1, 1, 2))
+                cv2.polylines(img, [pts], False, (20, 20, 20), outline_thickness, lineType=cv2.LINE_AA)
                 cv2.polylines(img, [pts], False, color, thickness, lineType=cv2.LINE_AA)
                 all_pts.append(seg)
 
@@ -189,6 +217,16 @@ class PreviewWidget(QWidget):
                 cx = int(np.clip(np.mean(merged[:, 0]), 0, w - 1))
                 cy = int(np.clip(np.mean(merged[:, 1]), 0, h - 1))
                 label = str(view.get("label", ""))
+                cv2.putText(
+                    img,
+                    label,
+                    (cx, cy),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    0.45,
+                    (20, 20, 20),
+                    3,
+                    lineType=cv2.LINE_AA,
+                )
                 cv2.putText(img, label, (cx, cy), cv2.FONT_HERSHEY_SIMPLEX, 0.45, color, 1, lineType=cv2.LINE_AA)
 
         rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)

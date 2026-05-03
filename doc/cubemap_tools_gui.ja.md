@@ -66,8 +66,8 @@ start_cubemap_tools_gui.bat
   - 各Pitch行のYawスロット数（`4..8`）。
   - 各スロット角度は `offset + slot*(360 / yaw_slots)`。
 - `Pitch Rows (deg CSV)`:
-  - Pitch一覧。例: `-30,0,30`。
-  - 最大9行まで。
+  - Pitch一覧。標準は `-45,0,45`。
+  - 範囲は `-90..90`、最大5行まで。
 - `Cube6`:
   - 6面すべてを書き出します。上面・下面もカメラポーズ固定の有効な観測として扱います。
 - `FOV`:

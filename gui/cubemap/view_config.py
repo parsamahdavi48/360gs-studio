@@ -23,7 +23,7 @@ from gui.common.collapsible_section import CollapsibleSection
 _MIN_YAW_SLOTS = 4
 _MAX_YAW_SLOTS = 8
 _DEFAULT_YAW_SLOTS = 6
-_MAX_PITCH_ROWS = 9
+_MAX_PITCH_ROWS = 5
 _WARN_ENABLED_VIEWS = 24
 _BLOCK_ENABLED_VIEWS = 40
 
@@ -122,7 +122,7 @@ class ViewConfigWidget(QWidget):
         custom_row.addWidget(self.yaw_slots_label)
         custom_row.addWidget(self.yaw_slots_combo)
 
-        self.pitch_edit = QLineEdit("-30,0,30")
+        self.pitch_edit = QLineEdit("-45,0,45")
         self.pitch_edit.setToolTip(i18n.tip("PITCH_ROWS"))
         self.pitch_edit.setFixedWidth(132)
         self.pitch_label = QLabel(i18n.t("PITCH_ROWS_LABEL"))
@@ -299,7 +299,7 @@ class ViewConfigWidget(QWidget):
                 if restored and s < len(restored):
                     cb.setChecked(restored[s])
                 else:
-                    cb.setChecked(abs(pitch) < 1e-6)
+                    cb.setChecked(True)
                 cb.toggled.connect(self._on_selection_changed)
                 self.grid_layout.addWidget(cb, ri, s + 1, alignment=Qt.AlignCenter)
                 checks.append(cb)
