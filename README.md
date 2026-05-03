@@ -2,7 +2,7 @@
 
 **v0.3.0**
 
-A Windows desktop toolkit for preparing equirectangular 360 video for Metashape SfM and 3D Gaussian Splatting (3DGS) training. The current workflow is centered on the integrated PySide6 GUI with Japanese and English UI support, and is designed to run from `setup_windows.bat` and `run_gui.bat` without requiring users to manually assemble a Python environment.
+A Windows desktop toolkit for preparing frames, masks, and camera data from 360 video or image sequences for SfM and 3D Gaussian Splatting (3DGS) workflows. The current workflow is centered on the integrated PySide6 GUI with Japanese and English UI support, and is designed to run from `setup_windows.bat` and `run_gui.bat` without requiring users to manually assemble a Python environment.
 
 [JP 日本語の説明](README.ja.md)
 
@@ -15,12 +15,12 @@ Forked from [tetraface/tetraface-3dgs-utils](https://github.com/tetraface/tetraf
   -> frame extraction
   -> frame review and keep/drop decisions
   -> mask generation
-  -> Metashape SfM
-  -> cubemap conversion
-  -> 3DGS training
+  -> export
+      -> build 3DGS-ready outputs from Metashape SfM results
+      -> export COLMAP Rig viewpoint images and optionally run COLMAP/GLOMAP
 ```
 
-The intended pipeline keeps the source frames as equirectangular images for Metashape SfM, then converts the SfM result to perspective training images, masks, and `transforms.json` for downstream 3DGS tools. Masks are generated before Metashape SfM so that people, vehicles, stitching seams, and blown-out highlights can be excluded from feature matching.
+The main goal is to turn equirectangular 360 video into practical SfM/3DGS datasets. The high-accuracy route keeps source frames as equirectangular images for Metashape SfM, then converts the SfM result to viewpoint images, masks, and `transforms.json` for downstream 3DGS tools. A COLMAP route can also export COLMAP Rig viewpoint images from extracted equirectangular frames and optionally run COLMAP/GLOMAP. Masks are generated before SfM so that people, vehicles, stitching seams, and blown-out highlights can be excluded from feature matching.
 
 ## Quick Start
 
@@ -52,7 +52,7 @@ The update window stays open at the end so the summary can be read. Use `update_
 | 1. Frame Extraction | Extract equirectangular still images from 360 video | Fixed interval + motion adjustment |
 | 2. Frame Review | Review extracted frames and apply keep/drop decisions | Representative replacements and low-quality review flags |
 | 3. Mask Generation | Generate YOLO, stitch seam, and overexposure masks | YOLO enabled, person detection as the baseline |
-| 4. Export | Export Metashape-based 3DGS outputs or COLMAP Rig viewpoint images | Metashape Import / LichtFeld / Full (Quality) / Cube6 |
+| 4. Export | Export 3DGS outputs from SfM results, or export COLMAP Rig viewpoint images | Metashape Import / LichtFeld / Full (Quality) / Cube6 |
 
 ### Current GUI Direction
 
@@ -60,11 +60,11 @@ The update window stays open at the end so the summary can be read. Use `update_
 - Run and Cancel actions are unified at the bottom of the main window.
 - The left settings pane in each step has a fixed width, vertical-only scrolling, and consistent padding near the preview splitter.
 - Long or rarely used settings are collapsible. The YOLO 80-class list, stitch/overexposure settings, and advanced cubemap view grid stay folded until needed.
-- Step 4 defaults to `LichtFeld`, `Full (Quality)`, and `Cube6 (4 sides + top/bottom)`.
+- The Step 4 Metashape route defaults to `LichtFeld`, `Full (Quality)`, and `Cube6 (4 sides + top/bottom)`.
 - Step 4 displays `Selected Views` and `Output Images`. `Output Images` is the deterministic output image count from input image count multiplied by enabled view count.
-- Step 4 can also write a COLMAP Rig dataset under `output/colmap_rig/` and optionally run COLMAP/GLOMAP from a user-selected executable.
+- The Step 4 COLMAP route writes a COLMAP Rig dataset under `output/colmap_rig/` and can optionally run COLMAP/GLOMAP from a user-selected executable.
 
-## Recommended Workflow
+## Recommended Workflow: Metashape Route
 
 1. Prepare a 360 video from an Insta360 or similar camera.
 2. Extract frames in Step 1.
@@ -72,6 +72,15 @@ The update window stays open at the end so the summary can be read. Use `update_
 4. Generate person masks in Step 3. Enable stitch seam and overexposure masks only when they match the source material.
 5. Import the generated `masks/` folder into Metashape as per-image masks, then run SfM.
 6. Use Step 4 with the Metashape XML/PLY result to export training images, masks, and `transforms.json`.
+
+## COLMAP Route
+
+1. Use Steps 1-3 as usual.
+2. In Step 4, choose `COLMAP Export` to write viewpoint images and masks to `output/colmap_rig/`.
+3. Enable `Run COLMAP after export` when you want the app to run Feature, Matcher, and Mapper stages.
+4. After completion, pass `output/colmap_rig/` as the COLMAP project folder to COLMAP-compatible 3DGS apps.
+
+For normal video frames or still-camera image sequences placed in `images/`, choose `Image Type: Normal` in Step 3. This keeps YOLO/SAM and overexposure masking available while disabling stitch seam masking and 360 bottom re-detection.
 
 Stitch seam masks are useful when the seam position is stable in the equirectangular image. If FlowState stabilization, direction lock, AI stitching, or similar processing moves the seam, leave seam masking disabled unless you have verified the preview.
 

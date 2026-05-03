@@ -15,12 +15,12 @@ import os
 _JA: dict[str, str] = {
     # App
     "APP_TITLE": "STechDrive 3DGS Utils",
-    "APP_SUBTITLE": "Prepare 360 video frames and masks for Metashape SfM and 3DGS training",
+    "APP_SUBTITLE": "Prepare frames, masks, and SfM datasets for 3DGS workflows",
     "WORKFLOW_LABEL": "ワークフロー",
     "STEP1_DESC": "動画からSfM向けのフレームを抽出",
     "STEP2_DESC": "抽出フレームを確認して採用/除外を確定",
     "STEP3_DESC": "人物・スティッチ境界・白飛びをマスク",
-    "STEP4_DESC": "Metashape結果または抽出画像を視点画像として書き出し",
+    "STEP4_DESC": "SfM結果または抽出画像を視点画像として書き出し",
     "STEP1_TITLE": "1. フレーム抽出",
     "STEP2_TITLE": "2. フレーム確認",
     "STEP3_TITLE": "3. マスク生成",
@@ -162,7 +162,7 @@ _JA: dict[str, str] = {
     "REVIEW_ADVISORY_THINNED": "自動間引き: 動きが少ないため除外中",
     "REVIEW_ADVISORY_NORMAL": "通常: 品質基準OK",
     "NEXT_STEP_MASK_NOTICE": "除外予定の画像が残っている場合、または採用/除外を変更した場合は、\n下部の「適用」で画像フォルダへ反映します。\n「適用」が無効なら、そのまま Step 3 (マスク生成) へ進めます。",
-    "METASHAPE_NOTICE": "マスク生成完了後、Metashape で SfM を実行してください。\n生成された masks/ フォルダを Metashape のマスクとしてインポートすると、人物・スティッチ・白飛び領域が特徴点マッチングから除外され、SfM 精度が大きく向上します。\n完了後、Step 4 でキューブマップ変換に進みます。",
+    "METASHAPE_NOTICE": "マスク生成後は、用途に合わせて次へ進みます。\nMetashapeルートでは masks/ をマスクとして読み込み、SfM後にStep 4で3DGS向けに書き出します。\nCOLMAPルートではStep 4で視点画像を書き出し、必要に応じてCOLMAP/GLOMAPを実行します。",
     "EXPORT_DIR": "エクスポート先",
 
     # Step 3
@@ -264,7 +264,7 @@ _JA: dict[str, str] = {
     "SCALE_FACTOR_COMPACT": "スケール",
     "MS_USE_PLY": "PLY使用",
     "NO_FIX_ROTATION": "回転補正なし",
-    "RUN_CUBEMAP": "キューブマップを書き出し",
+    "RUN_CUBEMAP": "視点画像を書き出し",
     "PREVIEW": "プレビュー",
 
     # ViewConfig / Preview labels
@@ -353,12 +353,12 @@ _JA: dict[str, str] = {
 _EN: dict[str, str] = {
     # App
     "APP_TITLE": "STechDrive 3DGS Utils",
-    "APP_SUBTITLE": "Prepare 360 video frames and masks for Metashape SfM and 3DGS training",
+    "APP_SUBTITLE": "Prepare frames, masks, and SfM datasets for 3DGS workflows",
     "WORKFLOW_LABEL": "Workflow",
     "STEP1_DESC": "Extract SfM-ready frames from a 360 video",
     "STEP2_DESC": "Review extracted frames and finalize keep/drop choices",
     "STEP3_DESC": "Mask people, stitch seams, and overexposed regions",
-    "STEP4_DESC": "Export viewpoint images from Metashape results or extracted frames",
+    "STEP4_DESC": "Export viewpoint images from SfM results or extracted frames",
     "STEP1_TITLE": "1. Frame Extraction",
     "STEP2_TITLE": "2. Frame Review",
     "STEP3_TITLE": "3. Mask Generation",
@@ -500,7 +500,7 @@ _EN: dict[str, str] = {
     "REVIEW_ADVISORY_THINNED": "Auto-thinned: low motion, currently dropped",
     "REVIEW_ADVISORY_NORMAL": "Normal: quality OK",
     "NEXT_STEP_MASK_NOTICE": "If drop-marked images remain, or if you changed keep/drop choices, press Apply at the bottom to write them into the image folder.\nIf Apply is disabled, proceed directly to Step 3 (Mask Generation).",
-    "METASHAPE_NOTICE": "After mask generation, run Metashape SfM.\nImport the generated masks/ folder as per-image masks in Metashape so that people, stitching seams, and blown-out highlights are excluded from feature matching. This significantly improves SfM accuracy.\nAfter SfM, proceed to Step 4 for cubemap conversion.",
+    "METASHAPE_NOTICE": "After mask generation, continue with the route that matches your dataset.\nFor the Metashape route, import masks/ as masks, run SfM, then use Step 4 for 3DGS export.\nFor the COLMAP route, use Step 4 to export viewpoint images and optionally run COLMAP/GLOMAP.",
     "EXPORT_DIR": "Export Folder",
 
     # Step 3
@@ -602,7 +602,7 @@ _EN: dict[str, str] = {
     "SCALE_FACTOR_COMPACT": "Scale",
     "MS_USE_PLY": "PLY",
     "NO_FIX_ROTATION": "No rot. fix",
-    "RUN_CUBEMAP": "Export Cubemap Outputs",
+    "RUN_CUBEMAP": "Export View Images",
     "PREVIEW": "Preview",
 
     # ViewConfig / Preview labels

@@ -2,7 +2,7 @@
 
 **v0.3.0**
 
-360度動画から、Metashape SfM と 3D Gaussian Splatting (3DGS) 学習へ渡すための画像・マスク・カメラ情報を作るデスクトップツールです。Windows上で `setup_windows.bat` と `run_gui.bat` だけで使える、日英対応の統合GUI中心のワークフローとして整備しています。
+360度動画や連番画像から、SfM と 3D Gaussian Splatting (3DGS) 学習へ渡すための画像・マスク・カメラ情報を作るデスクトップツールです。Windows上で `setup_windows.bat` と `run_gui.bat` だけで使える、日英対応の統合GUI中心のワークフローとして整備しています。
 
 [EN English](README.md)
 
@@ -15,12 +15,12 @@ Fork元: [tetraface/tetraface-3dgs-utils](https://github.com/tetraface/tetraface
   -> フレーム抽出
   -> フレーム確認・採用/除外
   -> マスク生成
-  -> Metashape SfM
-  -> キューブマップ変換
-  -> 3DGSトレーニング
+  -> 書き出し
+      -> Metashape SfM結果から3DGS向けデータを作成
+      -> COLMAP Rig視点画像を書き出し、必要に応じてCOLMAP/GLOMAPを実行
 ```
 
-このリポの主目的は、エクイレクタングラー動画をそのままMetashapeでSfMし、SfM結果を3DGS用のパース画像・マスク・`transforms.json` へ変換することです。マスクはMetashape SfMの前に生成し、人物、車両、スティッチ境界、白飛び領域を特徴点マッチングから除外するために使います。
+このリポの主目的は、エクイレクタングラー動画をSfM/3DGS向けに扱いやすいデータセットへ整えることです。高精度ルートでは、エクイレクタングラー画像をMetashapeでSfMし、その結果を3DGS用の視点画像・マスク・`transforms.json` へ変換します。もう一つのルートとして、抽出済みエクイレクタングラー画像からCOLMAP Rig形式の視点画像を書き出し、必要に応じてCOLMAP/GLOMAPを実行できます。マスクはSfM前に生成し、人物、車両、スティッチ境界、白飛び領域を特徴点マッチングから除外するために使います。
 
 ## クイックスタート
 
@@ -52,7 +52,7 @@ update_venv.bat
 | 1. フレーム抽出 | 360度動画からエクイレクタングラー静止画を抽出 | 固定間隔 + 変化補正 |
 | 2. フレーム確認 | 抽出フレームを確認し、採用/除外をCSVに反映 | 代表置換・低品質フレームの確認に対応 |
 | 3. マスク生成 | YOLO検出、スティッチ境界、白飛びマスクを生成 | YOLO検出ON、人物検出が標準 |
-| 4. 書き出し | Metashape結果の3DGS用出力、またはCOLMAP Rig視点画像を書き出し | LichtFeld / Full / Cube6 |
+| 4. 書き出し | SfM結果からの3DGS出力、またはCOLMAP Rig視点画像を書き出し | Metashapeインポート / LichtFeld / Full / Cube6 |
 
 ### 現在のGUI方針
 
@@ -60,18 +60,27 @@ update_venv.bat
 - 各Stepの実行/キャンセルはウィンドウ下部に統一しています。
 - 中央左の設定ペインは固定幅で、横スクロールせず、必要な時だけ縦スクロールします。
 - 長い設定は折りたたみ式です。YOLOの80クラス一覧、スティッチ/白飛び設定、キューブマップの詳細ビュー設定は普段閉じた状態で使えます。
-- Step 4の標準出力は `LichtFeld`、`Full (1.0x)`、`Cube6 (4面+上下)` です。
+- Step 4のMetashapeルートは `LichtFeld`、`Full (1.0x)`、`Cube6 (4面+上下)` が標準です。
 - Step 4では `選択ビュー` と `出力画像` を表示します。`出力画像` は入力画像数と有効ビュー数から決まる書き出し枚数です。
-- Step 4では `output/colmap_rig/` へのCOLMAP Rigデータセット書き出しと、ユーザー指定のCOLMAP/GLOMAP実行ファイルによるSfM実行もできます。
+- Step 4のCOLMAPルートでは `output/colmap_rig/` へCOLMAP Rigデータセットを書き出し、ユーザー指定のCOLMAP/GLOMAP実行ファイルでSfMまで実行できます。
 
-## 推奨ワークフロー
+## 推奨ワークフロー: Metashapeルート
 
 1. Insta360等の360度動画を用意します。
 2. Step 1でフレームを抽出します。
 3. Step 2で低品質候補や不要フレームを確認して除外します。
 4. Step 3で人物マスクを生成します。必要に応じてスティッチ境界、白飛びマスクも有効にします。
-5. 生成された `masks/` フォルダをMetashapeにper-imageマスクとして読み込み、SfMを実行します。
+5. 生成された `masks/` フォルダをMetashapeにマスクとして読み込み、SfMを実行します。
 6. Step 4でMetashapeのXML/PLYを使い、3DGSトレーニング用の画像、マスク、`transforms.json` を出力します。
+
+## COLMAPルート
+
+1. Step 1からStep 3までは同じです。
+2. Step 4で `COLMAP書き出し` を選び、視点画像とマスクを `output/colmap_rig/` に書き出します。
+3. 必要に応じて `書き出し後にCOLMAPを実行` をONにし、Feature、Matcher、Mapperまで実行します。
+4. 完了後は `output/colmap_rig/` をCOLMAPプロジェクトとして、COLMAP対応の3DGSアプリに渡します。
+
+通常動画やデジタル一眼の連番画像を `images/` に置いた場合は、Step 3で `画像タイプ: 通常` を選ぶことで、スティッチ境界と360底面再検出を使わずにYOLO/SAMや白飛びマスクだけを生成できます。
 
 スティッチ境界マスクは、エクイレクタングラー画像上でスティッチ位置が固定されている素材向けです。FlowState手ブレ補正、方向ロック、AIスティッチ等で境界位置が動く場合は、無理に有効化しない方が安全です。
 
