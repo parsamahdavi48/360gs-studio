@@ -946,6 +946,14 @@ class MaskStep(BaseStepWidget):
             self._phase_total = 0
             self._phase_done = 0
 
+    def on_queue_finished(self, success: bool) -> None:
+        if not success:
+            return
+        self.mask_preview.clear_yolo_preview_mask()
+        self.mask_preview.refresh_image_list(prefer_current=True)
+        self._render_mask_preview()
+        self._update_ready_status()
+
 
 def _yolo_preview_output_name(image_path: Path) -> str:
     return f"{image_path.stem}.png"

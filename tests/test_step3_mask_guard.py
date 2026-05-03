@@ -128,6 +128,38 @@ def test_mask_step_refreshes_preview_when_activated_after_extraction(tmp_path: P
     assert step.primary_action_enabled()
 
 
+def test_mask_step_refreshes_preview_after_successful_mask_generation(tmp_path: Path) -> None:
+    _app()
+    scene = tmp_path
+    images = scene / "images"
+    masks = scene / "masks"
+    images.mkdir()
+    masks.mkdir()
+    image_path = images / "frame_0001.jpg"
+    temp_mask_path = scene / "temp_preview.png"
+    existing_mask_path = masks / "frame_0001.png"
+    cv2.imwrite(str(image_path), np.full((32, 64, 3), 180, dtype=np.uint8))
+    cv2.imwrite(str(temp_mask_path), np.zeros((32, 64), dtype=np.uint8))
+
+    step = MaskStep(Path.cwd())
+    step.set_scene_dir(str(scene))
+
+    assert step.mask_preview.current_image_path() == image_path
+    assert step.mask_preview.set_yolo_preview_mask(image_path, temp_mask_path)
+    step._render_mask_preview()
+    assert i18n.t("MASK_PREVIEW_YOLO_TEMP") in step.mask_preview.status_label.text()
+
+    existing_mask = np.full((32, 64), 255, dtype=np.uint8)
+    existing_mask[:, :32] = 0
+    cv2.imwrite(str(existing_mask_path), existing_mask)
+
+    step.on_queue_finished(True)
+
+    assert i18n.t("MASK_PREVIEW_YOLO_EXISTING") in step.mask_preview.status_label.text()
+    assert i18n.t("MASK_PREVIEW_YOLO_TEMP") not in step.mask_preview.status_label.text()
+    assert step.mask_preview.image_label._source_pixmap is not None
+
+
 def test_mask_step_disables_generation_without_images_dir(tmp_path: Path) -> None:
     _app()
     (tmp_path / "selected_frames.csv").write_text("seq,output_file,decision,status\n", encoding="utf-8")
