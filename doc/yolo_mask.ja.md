@@ -7,7 +7,7 @@
 
 ## 使い方
 ```
-python yolo_mask.py [images_dir] [output_dir] [--add_ext] [--level N] [--expand M] [--classes IDS] [--projection equirect|normal]
+python yolo_mask.py [images_dir] [output_dir] [--add_ext] [--level N] [--expand M] [--classes IDS] [--projection equirect|normal] [--bottom-conf C] [--bottom-tta-rotations 1|2|4] [--bottom-model same|m|l|x] [--bottom-temporal-window N]
 ```
 
 - `images_dir`: 入力画像ディレクトリ（省略時: `images`）
@@ -21,6 +21,10 @@ python yolo_mask.py [images_dir] [output_dir] [--add_ext] [--level N] [--expand 
 - `--projection equirect|normal`: 入力画像の種類（デフォルト: `equirect`）
   - `equirect`: 360°エクイレクタングラー画像。底面再検出を行います。
   - `normal`: 通常画像。360°専用の底面再検出を行いません。
+- `--bottom-conf C`: 360底面再検出だけに使うYOLO信頼度しきい値（デフォルト: `0.3`）。
+- `--bottom-tta-rotations 1|2|4`: 底面画像を回転して複数回検出し、結果を合成します（デフォルト: `1`）。
+- `--bottom-model same|m|l|x`: 底面再検出だけに使うYOLOモデル。`same` は `--level` で選ばれたモデルを再利用します。`x` は重く、初回に `yolo26x.pt` のダウンロードが発生する場合があります。
+- `--bottom-temporal-window N`: 各フレームの検出後、前後 `N` フレーム以内の底面検出結果を合成して補完します。ディレクトリ入力かつ `equirect` のときだけ有効です。
 
 例:
 
@@ -34,11 +38,24 @@ python yolo_mask.py .\images .\masks --level 2 --expand 5 --classes 0,2,3
 python yolo_mask.py .\images .\masks --projection normal --level 1
 ```
 
+真上から見た撮影者など、底面検出が難しい場合:
+
+```
+python yolo_mask.py .\images .\masks --level 3 --bottom-conf 0.15 --bottom-tta-rotations 4 --bottom-temporal-window 2
+```
+
+底面だけYOLO Xまで使う最大設定:
+
+```
+python yolo_mask.py .\images .\masks --level 3 --bottom-conf 0.10 --bottom-tta-rotations 4 --bottom-model x --bottom-temporal-window 4
+```
+
 ## 出力について
 - 出力は PNG 形式。デフォルトでは入力ファイルの拡張子を `.png` に置換して保存（`--add_ext` を使うと元名に `.png` を追加）。
 - マスクは「背景=白 (255)、人物=黒 (0)」になるよう出力されます。
 
 ## 注意点
-- 初回実行時に学習モデルファイルが自動でダウンロードされるため、時間がかかります。ダウンロードされたファイル(.pt)はスクリプトと同じディレクトリに配置されます。
+- 初回実行時に学習モデルファイルが自動でダウンロードされるため、時間がかかります。スクリプトと同じディレクトリにある `.pt` は優先して使い、未配置の名前付きモデルはUltralytics側の解決に任せます。
 - `--level` を上げると処理時間とメモリ使用量が増加します。
+- 底面TTA、時系列補完、`--bottom-model x` は、360底面再検出部分だけの処理時間を増やします。
 - 大きなパノラマや高解像度画像では GPU（CUDA）対応の環境が推奨されます。CUDA対応PyTorchをインストールしてください。

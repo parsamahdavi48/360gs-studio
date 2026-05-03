@@ -66,6 +66,19 @@ _STITCH_BOUNDARY_DEFAULT = 5.0
 _YOLO_EXPAND_MIN = -16
 _YOLO_EXPAND_MAX = 32
 _YOLO_EXPAND_DEFAULT = 2
+_YOLO_BOTTOM_PRESETS: tuple[tuple[str, list[str]], ...] = (
+    ("standard", []),
+    ("strong", ["--bottom-conf", "0.15", "--bottom-tta-rotations", "4", "--bottom-temporal-window", "2"]),
+    (
+        "max",
+        [
+            "--bottom-conf", "0.10",
+            "--bottom-tta-rotations", "4",
+            "--bottom-model", "x",
+            "--bottom-temporal-window", "4",
+        ],
+    ),
+)
 _OVEREXP_THRESHOLD_MIN = 1
 _OVEREXP_THRESHOLD_MAX = 254
 _OVEREXP_THRESHOLD_DEFAULT = 254
@@ -243,6 +256,30 @@ class MaskStep(BaseStepWidget):
         yolo_settings_row.addStretch()
         self.yolo_settings_row = yolo_settings_row_widget
         self.yolo_section.content_layout.addWidget(yolo_settings_row_widget)
+
+        bottom_settings_row_widget = QWidget()
+        bottom_settings_row = QHBoxLayout(bottom_settings_row_widget)
+        bottom_settings_row.setContentsMargins(0, 0, 0, 0)
+        bottom_settings_row.setSpacing(6)
+        self.yolo_bottom_enhance_label = QLabel(i18n.t("YOLO_BOTTOM_ENHANCE"))
+        self.yolo_bottom_enhance_label.setToolTip(i18n.tip("YOLO_BOTTOM_ENHANCE"))
+        bottom_settings_row.addWidget(self.yolo_bottom_enhance_label)
+
+        self.yolo_bottom_enhance_combo = QComboBox()
+        self.yolo_bottom_enhance_combo.setToolTip(i18n.tip("YOLO_BOTTOM_ENHANCE"))
+        self.yolo_bottom_enhance_combo.addItems(
+            [
+                i18n.t("YOLO_BOTTOM_STANDARD"),
+                i18n.t("YOLO_BOTTOM_STRONG"),
+                i18n.t("YOLO_BOTTOM_MAX"),
+            ]
+        )
+        self.yolo_bottom_enhance_combo.setCurrentIndex(0)
+        self.yolo_bottom_enhance_combo.setFixedWidth(128)
+        bottom_settings_row.addWidget(self.yolo_bottom_enhance_combo)
+        bottom_settings_row.addStretch()
+        self.yolo_bottom_settings_row = bottom_settings_row_widget
+        self.yolo_section.content_layout.addWidget(bottom_settings_row_widget)
 
         class_list_section = CollapsibleSection(i18n.t("YOLO_CLASS_LIST_SECTION"), expanded=False)
         scroll = QScrollArea()
@@ -487,6 +524,12 @@ class MaskStep(BaseStepWidget):
     def _yolo_expand_arg(self) -> str:
         return str(self.yolo_expand_edit.value())
 
+    def _bottom_enhance_args(self) -> list[str]:
+        if self._projection() != _PROJECTION_EQUIRECT:
+            return []
+        idx = max(0, min(self.yolo_bottom_enhance_combo.currentIndex(), len(_YOLO_BOTTOM_PRESETS) - 1))
+        return list(_YOLO_BOTTOM_PRESETS[idx][1])
+
     def _update_task_controls(self) -> None:
         yolo_enabled = self.run_yolo_cb.isChecked()
         equirect = self._projection() == _PROJECTION_EQUIRECT
@@ -498,6 +541,8 @@ class MaskStep(BaseStepWidget):
 
         self.external_images_panel.setVisible(not equirect)
         self.yolo_section.content_widget.setEnabled(yolo_enabled)
+        self.yolo_bottom_enhance_label.setEnabled(yolo_enabled and equirect)
+        self.yolo_bottom_enhance_combo.setEnabled(yolo_enabled and equirect)
         self.run_stitch_cb.setEnabled(equirect)
         self.run_stitch_cb.setToolTip(
             i18n.tip("MASK_TASK_STITCH") if equirect else i18n.tip("MASK_TASK_STITCH_DISABLED_NORMAL")
@@ -723,6 +768,7 @@ class MaskStep(BaseStepWidget):
         ]
         if classes:
             cmd.extend(["--classes", ",".join(str(c) for c in classes)])
+        cmd.extend(self._bottom_enhance_args())
         return cmd
 
     def _build_yolo_preview_cmd(self, image_path: Path, output_dir: Path) -> list[str]:
@@ -741,6 +787,7 @@ class MaskStep(BaseStepWidget):
         ]
         if classes:
             cmd.extend(["--classes", ",".join(str(c) for c in classes)])
+        cmd.extend(self._bottom_enhance_args())
         return cmd
 
     def _run_yolo_preview(self) -> None:

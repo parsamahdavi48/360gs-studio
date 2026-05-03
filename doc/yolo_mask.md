@@ -10,7 +10,7 @@
 ## Usage
 
 ```
-python yolo_mask.py [images_dir] [output_dir] [--add_ext] [--level N] [--expand M] [--classes IDS] [--projection equirect|normal]
+python yolo_mask.py [images_dir] [output_dir] [--add_ext] [--level N] [--expand M] [--classes IDS] [--projection equirect|normal] [--bottom-conf C] [--bottom-tta-rotations 1|2|4] [--bottom-model same|m|l|x] [--bottom-temporal-window N]
 ```
 
 - `images_dir`: input image directory (default: `images`)
@@ -24,6 +24,10 @@ python yolo_mask.py [images_dir] [output_dir] [--add_ext] [--level N] [--expand 
 - `--projection equirect|normal`: source image projection (default: `equirect`)
   - `equirect`: equirectangular 360 images. Enables bottom-view re-detection.
   - `normal`: normal images. Disables 360-specific bottom-view re-detection.
+- `--bottom-conf C`: YOLO confidence threshold used only for equirectangular bottom re-detection (default: `0.3`).
+- `--bottom-tta-rotations 1|2|4`: run bottom re-detection on rotated bottom-face views and merge the results (default: `1`).
+- `--bottom-model same|m|l|x`: YOLO model used only for bottom re-detection. `same` reuses the model selected by `--level`; `x` is slower and may download `yolo26x.pt` on first use.
+- `--bottom-temporal-window N`: after per-frame detection, merge bottom detections from neighboring frames within `N` frames. This is only applied to directory inputs and equirectangular mode.
 
 Example:
 
@@ -37,6 +41,18 @@ Normal images:
 python yolo_mask.py .\images .\masks --projection normal --level 1
 ```
 
+Harder bottom-view photographer masking:
+
+```bash
+python yolo_mask.py .\images .\masks --level 3 --bottom-conf 0.15 --bottom-tta-rotations 4 --bottom-temporal-window 2
+```
+
+Maximum bottom-only YOLO strength:
+
+```bash
+python yolo_mask.py .\images .\masks --level 3 --bottom-conf 0.10 --bottom-tta-rotations 4 --bottom-model x --bottom-temporal-window 4
+```
+
 ## Output
 
 - PNG files. By default the input file extension is replaced with `.png`; use `--add_ext` to append `.png` instead.
@@ -44,8 +60,9 @@ python yolo_mask.py .\images .\masks --projection normal --level 1
 
 ## Notes
 
-- On first run the script may download model files (.pt); this can take time. Downloaded files are stored next to the script.
+- On first run the script may download model files (.pt); this can take time. Local `.pt` files next to the script are used when present, otherwise Ultralytics resolves the named model.
 - Raising `--level` increases processing time and memory usage.
+- Bottom TTA, temporal fill, and `--bottom-model x` increase processing time only for the equirectangular bottom re-detection path.
 - For very large panoramas or high-resolution images a CUDA-capable GPU and CUDA-enabled PyTorch are recommended.
 
 ## Reference

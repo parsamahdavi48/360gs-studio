@@ -28,6 +28,11 @@ run_gui.bat --scene ./scene01
 - `YOLO Expand`: forwarded to `yolo_mask.py --expand`.
   - Default is `2px`; drag horizontally on the number field to adjust.
   - Clamped to `-16..32px` for safety.
+- `Bottom Enhance`: bottom-view detection preset for equirectangular 360 images.
+  - `Standard`: current behavior; bottom re-detection uses the level-selected YOLO model with `conf=0.3`.
+  - `Strong`: uses bottom-only `conf=0.15`, 4-rotation TTA, and temporal fill from neighboring 2 frames.
+  - `Max`: uses bottom-only `conf=0.10`, 4-rotation TTA, bottom-only YOLO X, and temporal fill from neighboring 4 frames.
+  - Not used when `Image Type` is `Normal`.
 - `YOLO Classes`: collapsed picker for class selection.
   - Choose classes by checkbox labels (`id: name`) instead of memorizing numeric ids.
   - Default preset is `person` only (`id=0`).
@@ -40,7 +45,7 @@ run_gui.bat --scene ./scene01
   - Drag horizontally on the number field to adjust.
 - `YOLO/SAM Preview`: runs `yolo_mask.py` only for the currently displayed preview image.
   - The result is shown as a red overlay and is not saved to `masks/`.
-  - It uses the current `Image Type`, `YOLO Level`, `YOLO Expand`, and `YOLO Classes` settings.
+  - It uses the current `Image Type`, `YOLO Level`, `YOLO Expand`, `Bottom Enhance`, and `YOLO Classes` settings. Temporal fill has no effect for a single preview image.
   - Use the main `Generate` action when you want to write masks for all frames.
 
 ## Actions
