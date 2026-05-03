@@ -76,7 +76,7 @@ YOLO/SAM2 model weights are downloaded automatically by ultralytics on first use
 | Step | Purpose | Current Default |
 | --- | --- | --- |
 | 1. Frame Extraction | Extract equirectangular still frames from 360° video | Fixed interval + motion adjustment |
-| 2. Frame Review | Review extracted frames and apply keep/drop decisions to CSV | Representative replacement and low-quality review flags |
+| 2. Frame Review | Review extracted frames and apply keep/drop decisions to CSV | Review low-quality candidates and unwanted frames |
 | 3. Mask Generation | Generate YOLO, stitch seam, and overexposure masks | YOLO enabled, quality setting for 360° images |
 | 4. Export | Export 3DGS outputs from SfM results, or export COLMAP Rig viewpoint images | Metashape Import / LichtFeld / Full / Cube6 |
 
