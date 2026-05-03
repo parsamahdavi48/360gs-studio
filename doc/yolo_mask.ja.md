@@ -27,6 +27,7 @@ python yolo_mask.py [images_dir] [output_dir] [--add_ext] [--level N] [--expand 
 - `--bottom-filter`: 信頼しにくい底面マスク成分を除外してから最終マスクに合成します。
 - `--bottom-temporal-window N`: 各フレームの検出後、前後 `N` フレーム以内の底面検出結果を合成して補完します。ディレクトリ入力かつ `equirect` のときだけ有効です。
 - `--bottom-temporal-min-votes N`: 時系列補完で画素を書き込む前に、近傍フレーム内で最低 `N` 回の底面検出を要求します（デフォルト: `1`）。
+  - CLI専用の詳細オプションです。間隔を空けて抽出したフレームではフレーム間の動きを位置合わせしないため、前フレームのシルエットが残ることがあります。GUIプリセットでは使いません。
 
 例:
 
@@ -43,13 +44,13 @@ python yolo_mask.py .\images .\masks --projection normal --level 1
 真上から見た撮影者など、底面検出が難しい場合:
 
 ```
-python yolo_mask.py .\images .\masks --level 3 --bottom-conf 0.15 --bottom-tta-rotations 4 --bottom-filter --bottom-temporal-window 2 --bottom-temporal-min-votes 2
+python yolo_mask.py .\images .\masks --level 3 --bottom-conf 0.15 --bottom-tta-rotations 4 --bottom-filter
 ```
 
 底面だけYOLO Xまで使う最大設定:
 
 ```
-python yolo_mask.py .\images .\masks --level 3 --bottom-conf 0.10 --bottom-tta-rotations 4 --bottom-model x --bottom-filter --bottom-temporal-window 2 --bottom-temporal-min-votes 2
+python yolo_mask.py .\images .\masks --level 3 --bottom-conf 0.10 --bottom-tta-rotations 4 --bottom-model x --bottom-filter
 ```
 
 ## 出力について
@@ -60,4 +61,5 @@ python yolo_mask.py .\images .\masks --level 3 --bottom-conf 0.10 --bottom-tta-r
 - 初回実行時に学習モデルファイルが自動でダウンロードされるため、時間がかかります。スクリプトと同じディレクトリにある `.pt` は優先して使い、未配置の名前付きモデルはUltralytics側の解決に任せます。
 - `--level` を上げると処理時間とメモリ使用量が増加します。
 - 底面TTA、候補フィルタ、時系列補完、`--bottom-model x` は、360底面再検出部分だけの処理時間を増やします。
+- GUIの下部検出強化プリセットは底面TTAと候補フィルタを使い、時系列補完は使いません。
 - 大きなパノラマや高解像度画像では GPU（CUDA）対応の環境が推奨されます。CUDA対応PyTorchをインストールしてください。

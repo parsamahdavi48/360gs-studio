@@ -48,7 +48,7 @@ run_gui.bat --scene ./scene01
   - Drag horizontally on the number field to adjust.
 - `YOLO/SAM Preview`: runs `yolo_mask.py` only for the currently displayed preview image.
   - The result is shown as a red overlay and is not saved to `masks/`.
-  - It uses the current `Image Type`, `YOLO Level`, `YOLO Expand`, `Bottom Enhance`, and `YOLO Classes` settings. Temporal fill has no effect for a single preview image.
+  - It uses the current `Image Type`, `YOLO Level`, `YOLO Expand`, `Bottom Enhance`, and `YOLO Classes` settings.
   - Use the main `Generate` action when you want to write masks for all frames.
 
 ## Actions

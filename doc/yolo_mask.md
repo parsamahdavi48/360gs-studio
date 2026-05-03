@@ -30,6 +30,7 @@ python yolo_mask.py [images_dir] [output_dir] [--add_ext] [--level N] [--expand 
 - `--bottom-filter`: remove unreliable bottom-view mask components before merging into the final panorama mask.
 - `--bottom-temporal-window N`: after per-frame detection, merge bottom detections from neighboring frames within `N` frames. This is only applied to directory inputs and equirectangular mode.
 - `--bottom-temporal-min-votes N`: require at least `N` neighboring bottom detections per pixel before temporal fill writes that pixel (default: `1`).
+  - This is an advanced CLI-only option. For sparsely extracted frames, it can leave previous-frame silhouettes because it does not align motion between frames; GUI presets do not use it.
 
 Example:
 
@@ -46,13 +47,13 @@ python yolo_mask.py .\images .\masks --projection normal --level 1
 Harder bottom-view photographer masking:
 
 ```bash
-python yolo_mask.py .\images .\masks --level 3 --bottom-conf 0.15 --bottom-tta-rotations 4 --bottom-filter --bottom-temporal-window 2 --bottom-temporal-min-votes 2
+python yolo_mask.py .\images .\masks --level 3 --bottom-conf 0.15 --bottom-tta-rotations 4 --bottom-filter
 ```
 
 Maximum bottom-only YOLO strength:
 
 ```bash
-python yolo_mask.py .\images .\masks --level 3 --bottom-conf 0.10 --bottom-tta-rotations 4 --bottom-model x --bottom-filter --bottom-temporal-window 2 --bottom-temporal-min-votes 2
+python yolo_mask.py .\images .\masks --level 3 --bottom-conf 0.10 --bottom-tta-rotations 4 --bottom-model x --bottom-filter
 ```
 
 ## Output
@@ -65,6 +66,7 @@ python yolo_mask.py .\images .\masks --level 3 --bottom-conf 0.10 --bottom-tta-r
 - On first run the script may download model files (.pt); this can take time. Local `.pt` files next to the script are used when present, otherwise Ultralytics resolves the named model.
 - Raising `--level` increases processing time and memory usage.
 - Bottom TTA, filtering, temporal fill, and `--bottom-model x` increase processing time only for the equirectangular bottom re-detection path.
+- GUI bottom enhancement presets use bottom TTA and filtering, but not temporal fill.
 - For very large panoramas or high-resolution images a CUDA-capable GPU and CUDA-enabled PyTorch are recommended.
 
 ## Reference

@@ -74,8 +74,6 @@ _YOLO_BOTTOM_PRESETS: tuple[tuple[str, list[str]], ...] = (
             "--bottom-conf", "0.15",
             "--bottom-tta-rotations", "4",
             "--bottom-filter",
-            "--bottom-temporal-window", "2",
-            "--bottom-temporal-min-votes", "2",
         ],
     ),
     (
@@ -85,8 +83,6 @@ _YOLO_BOTTOM_PRESETS: tuple[tuple[str, list[str]], ...] = (
             "--bottom-tta-rotations", "4",
             "--bottom-model", "x",
             "--bottom-filter",
-            "--bottom-temporal-window", "2",
-            "--bottom-temporal-min-votes", "2",
         ],
     ),
 )
