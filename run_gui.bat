@@ -3,6 +3,9 @@ setlocal EnableExtensions
 
 cd /d "%~dp0"
 
+set "PYTHONUTF8=1"
+set "PYTHONIOENCODING=utf-8"
+
 if not exist ".venv\Scripts\python.exe" (
     echo [INFO] .venv was not found. Running setup_windows.bat first...
     call setup_windows.bat

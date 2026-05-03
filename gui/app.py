@@ -31,6 +31,7 @@ from gui.steps.step3_mask import MaskStep
 from gui.steps.step4_cubemap import CubemapStep
 from gui.theme import apply_theme
 from gui.version import app_version_label
+from path_safety import PathSafetyIssue, check_path_safety, normalized_path_text
 
 
 def app_icon() -> QIcon:
@@ -296,6 +297,8 @@ class MainWindow(QWidget):
         if self.runner.is_running():
             QMessageBox.warning(self, i18n.APP_TITLE, i18n.BUSY_MSG)
             return
+        if not self._confirm_scene_path_is_safe():
+            return
         try:
             commands = step.build_commands()
         except (ValueError, FileNotFoundError) as e:
@@ -307,6 +310,39 @@ class MainWindow(QWidget):
         self.progress.reset()
         self.runner.start_queue(commands)
         self._update_run_button()
+
+    def _confirm_scene_path_is_safe(self) -> bool:
+        path = self.scene_browse.text().strip()
+        if not path:
+            return True
+        issues = check_path_safety(path)
+        if not issues:
+            return True
+
+        reasons = "\n".join(f"- {self._path_safety_reason(issue)}" for issue in issues)
+        QMessageBox.critical(
+            self,
+            i18n.t("UNSAFE_SCENE_PATH_TITLE"),
+            i18n.t("UNSAFE_SCENE_PATH_BODY").format(
+                reasons=reasons,
+                path=normalized_path_text(path),
+            ),
+        )
+        return False
+
+    def _path_safety_reason(self, issue: PathSafetyIssue) -> str:
+        if issue.code == "non_ascii":
+            return i18n.t("UNSAFE_PATH_REASON_NON_ASCII")
+        if issue.code == "too_long":
+            return i18n.t("UNSAFE_PATH_REASON_TOO_LONG").format(
+                length=issue.length,
+                limit=issue.limit,
+            )
+        if issue.code == "control_chars":
+            return i18n.t("UNSAFE_PATH_REASON_CONTROL_CHARS").format(value=issue.value)
+        if issue.code == "quote":
+            return i18n.t("UNSAFE_PATH_REASON_QUOTE")
+        return i18n.t("UNSAFE_PATH_REASON_UNKNOWN")
 
     def _on_cancel(self) -> None:
         self.runner.cancel()

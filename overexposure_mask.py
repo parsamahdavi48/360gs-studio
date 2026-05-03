@@ -15,6 +15,8 @@ from pathlib import Path
 import cv2
 import numpy as np
 
+from image_io import imread_unicode, imwrite_unicode
+
 try:
     from tqdm import tqdm
 except ImportError:
@@ -66,7 +68,7 @@ def _scale_threshold_for_dtype(threshold: int, dtype: np.dtype) -> float:
 
 def read_image_preserve_depth(path: str) -> np.ndarray | None:
     """ビット深度とαを保持して画像を読む。"""
-    return cv2.imread(path, cv2.IMREAD_UNCHANGED)
+    return imread_unicode(path, cv2.IMREAD_UNCHANGED)
 
 
 # -- ワーカー用グローバル --
@@ -91,13 +93,14 @@ def _process_one(args: tuple[str, str, str | None]) -> str | None:
     overexp = detect_overexposure(img, _worker_threshold, _worker_dilate)
 
     if existing_mask is not None:
-        mask = cv2.imread(existing_mask, cv2.IMREAD_GRAYSCALE)
+        mask = imread_unicode(existing_mask, cv2.IMREAD_GRAYSCALE)
         if mask is not None:
             if mask.shape != overexp.shape:
                 mask = cv2.resize(mask, (overexp.shape[1], overexp.shape[0]))
             overexp = cv2.bitwise_and(mask, overexp)
 
-    cv2.imwrite(mask_out, overexp)
+    if not imwrite_unicode(mask_out, overexp):
+        return f"Skipped (write error): {os.path.basename(mask_out)}"
     return None
 
 

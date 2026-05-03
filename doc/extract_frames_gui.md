@@ -8,6 +8,7 @@ This GUI extracts equirectangular still images from 360-degree video for Metasha
 - Analysis uses grayscale frames scaled to `Analysis Width`.
 - Images written to `images/` keep the source video resolution.
 - `Instant Estimate` is the fixed-interval baseline count. With `Motion` enabled, the final count can increase or decrease after analysis.
+- The integrated GUI stops before running when the scene folder path contains non-ASCII characters, an extremely long path, control characters, or `"`. Use a short ASCII working path.
 
 ## Fixed Interval
 

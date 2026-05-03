@@ -20,6 +20,7 @@ from colmap_rig_export import (
     prepare_views_for_colmap,
     write_rig_config_json,
 )
+from image_io import imread_unicode, imwrite_unicode
 
 EXAMPLE_TEXT = """Example:
   python cubemap_transforms_json.py .
@@ -375,7 +376,7 @@ def resolve_output_ext(input_ext: str, output_format: str | None) -> str:
 
 def load_equirect(path: str) -> np.ndarray:
     """ビット深度・チャネル数・α を保持したまま equirect 画像を読み込む（cv2、BGR/BGRA）。"""
-    img = cv2.imread(path, cv2.IMREAD_UNCHANGED)
+    img = imread_unicode(path, cv2.IMREAD_UNCHANGED)
     if img is None:
         raise IOError(f"Cannot read image: {path}")
     return img
@@ -426,7 +427,7 @@ def remap_with_channels(arr: np.ndarray, map_x: np.ndarray, map_y: np.ndarray) -
 
 
 def save_image(arr: np.ndarray, path: str, jpg_quality: int = 95, force_8bit: bool = False) -> None:
-    """cv2.imwrite で出力。出力フォーマットがビット深度・α 非対応なら自動 down-convert。"""
+    """画像を出力。出力フォーマットがビット深度・α 非対応なら自動 down-convert。"""
     ext = os.path.splitext(path)[1].lower()
     out = arr
 
@@ -450,7 +451,7 @@ def save_image(arr: np.ndarray, path: str, jpg_quality: int = 95, force_8bit: bo
     else:
         params = []
 
-    ok = cv2.imwrite(path, out, params)
+    ok = imwrite_unicode(path, out, params)
     if not ok:
         raise IOError(f"Failed to write image: {path}")
 
@@ -901,7 +902,7 @@ def worker_init_colmap_rig(
 
 
 def _image_has_alpha(path: str) -> bool:
-    img = cv2.imread(path, cv2.IMREAD_UNCHANGED)
+    img = imread_unicode(path, cv2.IMREAD_UNCHANGED)
     return img is not None and img.ndim == 3 and img.shape[2] == 4
 
 

@@ -7,6 +7,7 @@ from pathlib import Path
 import cv2
 import numpy as np
 
+from image_io import imread_unicode
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QImage, QPixmap
 from PySide6.QtWidgets import (
@@ -300,7 +301,7 @@ class MaskPreviewWidget(QWidget):
         for candidate in candidates:
             if not candidate.is_file():
                 continue
-            mask = cv2.imread(str(candidate), cv2.IMREAD_GRAYSCALE)
+            mask = imread_unicode(candidate, cv2.IMREAD_GRAYSCALE)
             if mask is None:
                 continue
             return mask
@@ -322,7 +323,7 @@ class MaskPreviewWidget(QWidget):
         self._yolo_preview_mask = None
 
     def set_yolo_preview_mask(self, image_path: Path, mask_path: Path) -> bool:
-        mask = cv2.imread(str(mask_path), cv2.IMREAD_GRAYSCALE)
+        mask = imread_unicode(mask_path, cv2.IMREAD_GRAYSCALE)
         if mask is None:
             return False
         self._yolo_preview_image_key = _path_key(image_path)

@@ -50,6 +50,19 @@ _JA: dict[str, str] = {
     "STATUS_CANCELED": "キャンセル済み",
     "BUSY_MSG": "別のプロセスが実行中です。",
     "INVALID_INPUT": "入力エラー",
+    "UNSAFE_SCENE_PATH_TITLE": "シーンフォルダのパスを変更してください",
+    "UNSAFE_SCENE_PATH_BODY": (
+        "シーンフォルダのパスに、画像処理ライブラリや外部ツールで失敗しやすい要素があります。\n\n"
+        "{reasons}\n\n"
+        "現在のパス:\n{path}\n\n"
+        "英数字だけの短いフォルダ名に変更してください。\n\n"
+        "例:\nD:\\work\\scene01\nD:\\projects\\site_001"
+    ),
+    "UNSAFE_PATH_REASON_NON_ASCII": "日本語などの非 ASCII 文字が含まれています。",
+    "UNSAFE_PATH_REASON_TOO_LONG": "パスが長すぎます ({length} 文字、目安 {limit} 文字未満)。",
+    "UNSAFE_PATH_REASON_CONTROL_CHARS": "制御文字が含まれています ({value})。",
+    "UNSAFE_PATH_REASON_QUOTE": "ダブルクォートが含まれています。",
+    "UNSAFE_PATH_REASON_UNKNOWN": "安全性を確認できない文字が含まれています。",
 
     # Step 1
     "INPUT_VIDEO": "入力動画",
@@ -404,6 +417,19 @@ _EN: dict[str, str] = {
     "STATUS_CANCELED": "Canceled",
     "BUSY_MSG": "Another process is running.",
     "INVALID_INPUT": "Invalid Input",
+    "UNSAFE_SCENE_PATH_TITLE": "Change the scene folder path",
+    "UNSAFE_SCENE_PATH_BODY": (
+        "The scene folder path contains characters or length that can fail in image libraries or external tools.\n\n"
+        "{reasons}\n\n"
+        "Current path:\n{path}\n\n"
+        "Use a short folder path with ASCII letters and numbers only.\n\n"
+        "Examples:\nD:\\work\\scene01\nD:\\projects\\site_001"
+    ),
+    "UNSAFE_PATH_REASON_NON_ASCII": "The path contains non-ASCII characters.",
+    "UNSAFE_PATH_REASON_TOO_LONG": "The path is too long ({length} characters; target is under {limit}).",
+    "UNSAFE_PATH_REASON_CONTROL_CHARS": "The path contains control characters ({value}).",
+    "UNSAFE_PATH_REASON_QUOTE": "The path contains a double quote.",
+    "UNSAFE_PATH_REASON_UNKNOWN": "The path contains characters that cannot be verified as safe.",
 
     # Step 1
     "INPUT_VIDEO": "Input Video",

@@ -7,6 +7,7 @@ from pathlib import Path
 import cv2
 import numpy as np
 
+from image_io import imread_unicode
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QImage, QPixmap
 from PySide6.QtWidgets import (
@@ -413,7 +414,7 @@ class PreviewWidget(QWidget):
             self._pixmap = None
             return
 
-        img = cv2.imread(str(p), cv2.IMREAD_COLOR)
+        img = imread_unicode(p, cv2.IMREAD_COLOR)
         if img is None:
             self.image_label.setText(i18n.t("PREVIEW_LOAD_FAIL"))
             self._pixmap = None
@@ -428,7 +429,7 @@ class PreviewWidget(QWidget):
         # マスクオーバーレイ
         mask_path = self._resolve_mask(p, mask_dir)
         if mask_path is not None:
-            mask = cv2.imread(str(mask_path), cv2.IMREAD_GRAYSCALE)
+            mask = imread_unicode(mask_path, cv2.IMREAD_GRAYSCALE)
             if mask is not None:
                 if mask.shape[:2] != img.shape[:2]:
                     mask = cv2.resize(mask, (img.shape[1], img.shape[0]), interpolation=cv2.INTER_NEAREST)

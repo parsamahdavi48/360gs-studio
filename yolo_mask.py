@@ -9,6 +9,7 @@ from pathlib import Path
 import cv2
 import numpy as np
 
+from image_io import imread_unicode, imwrite_unicode
 from yolo_mask_utils import EXPAND_DEFAULT, EXPAND_MAX, EXPAND_MIN, clamp_expand_px
 
 CLASS_IDS: list[int] = [0]
@@ -419,7 +420,7 @@ def apply_temporal_bottom_propagation(results: list[ProcessResult], window: int,
 
         source_cache: dict[int, np.ndarray] = {}
         for idx, result in enumerate(group_results):
-            frame_mask = cv2.imread(str(result.output_path), cv2.IMREAD_GRAYSCALE)
+            frame_mask = imread_unicode(result.output_path, cv2.IMREAD_GRAYSCALE)
             if frame_mask is None:
                 continue
 
@@ -434,7 +435,7 @@ def apply_temporal_bottom_propagation(results: list[ProcessResult], window: int,
                     source_path = group_results[src_idx].bottom_mask_path
                     if source_path is None:
                         continue
-                    source_mask = cv2.imread(str(source_path), cv2.IMREAD_GRAYSCALE)
+                    source_mask = imread_unicode(source_path, cv2.IMREAD_GRAYSCALE)
                     if source_mask is None:
                         continue
                     source_cache[src_idx] = source_mask
@@ -448,8 +449,8 @@ def apply_temporal_bottom_propagation(results: list[ProcessResult], window: int,
 
             merged = cv2.bitwise_and(frame_mask, 255 - temporal_mask)
             if not np.array_equal(merged, frame_mask):
-                cv2.imwrite(str(result.output_path), merged)
-                updated += 1
+                if imwrite_unicode(result.output_path, merged):
+                    updated += 1
 
     return updated
 
@@ -462,7 +463,9 @@ def process_file(input_dir, output_dir, fname, add_ext=True, bottom_mask_path: s
 
     # 画像読み込み
     img_path = os.path.join(input_dir, fname)
-    img = cv2.imread(img_path)
+    img = imread_unicode(img_path)
+    if img is None:
+        raise IOError(f"Cannot read image: {img_path}")
     h, w = img.shape[:2]
 
     # マスク初期化
@@ -534,12 +537,14 @@ def process_file(input_dir, output_dir, fname, add_ext=True, bottom_mask_path: s
     else:
         outname = os.path.splitext(fname)[0] + ".png"
     out_path = os.path.join(output_dir, outname)
-    cv2.imwrite(out_path, mask)
+    if not imwrite_unicode(out_path, mask):
+        raise IOError(f"Failed to write mask: {out_path}")
     written_bottom_mask_path = None
     if raw_bottom_mask is not None and bottom_mask_path is not None:
         written_bottom_mask_path = Path(bottom_mask_path)
         written_bottom_mask_path.parent.mkdir(parents=True, exist_ok=True)
-        cv2.imwrite(str(written_bottom_mask_path), raw_bottom_mask)
+        if not imwrite_unicode(written_bottom_mask_path, raw_bottom_mask):
+            raise IOError(f"Failed to write bottom mask: {written_bottom_mask_path}")
 
     return ProcessResult(
         output_path=Path(out_path),

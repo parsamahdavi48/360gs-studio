@@ -6,6 +6,8 @@ import argparse
 from pathlib import Path
 from concurrent.futures import ProcessPoolExecutor
 
+from image_io import imread_unicode, imwrite_unicode
+
 # 進捗バー表示用 (インストールされていない場合はエラー回避)
 try:
     from tqdm import tqdm
@@ -88,7 +90,7 @@ def process_single_image(file_info):
     input_path, output_path = file_info
     
     # 画像読み込み
-    img = cv2.imread(input_path, cv2.IMREAD_GRAYSCALE)
+    img = imread_unicode(input_path, cv2.IMREAD_GRAYSCALE)
     if img is None:
         return f"Skipped (Read Error): {os.path.basename(input_path)}"
     
@@ -107,7 +109,8 @@ def process_single_image(file_info):
     final_mask = cv2.bitwise_and(img, shared_base_mask)
     
     # 書き出し
-    cv2.imwrite(output_path, final_mask)
+    if not imwrite_unicode(output_path, final_mask):
+        return f"Skipped (Write Error): {os.path.basename(output_path)}"
     return None # 成功時はNoneを返す
 
 def process_existing_masks_parallel(input_dir, output_dir, limit_angle_deg, max_workers):
@@ -120,7 +123,7 @@ def process_existing_masks_parallel(input_dir, output_dir, limit_angle_deg, max_
 
     # 最初の1枚からサイズを取得してベースマスクを作成
     first_img_path = os.path.join(input_dir, files[0])
-    sample = cv2.imread(first_img_path, cv2.IMREAD_GRAYSCALE)
+    sample = imread_unicode(first_img_path, cv2.IMREAD_GRAYSCALE)
     if sample is None:
         print(f"Error reading sample image: {first_img_path}")
         return
@@ -181,7 +184,9 @@ def main():
         w, h = SINGLE_SIZE
         print(f"Generating single mask {w}x{h}...")
         mask = create_angular_stitched_mask(w, h, limit_angle_deg)
-        cv2.imwrite(os.path.join(INPUT_DIR, "single_mask.png"), mask)
+        if not imwrite_unicode(os.path.join(INPUT_DIR, "single_mask.png"), mask):
+            print(f"Error writing single mask: {os.path.join(INPUT_DIR, 'single_mask.png')}")
+            sys.exit(1)
         print(f"Processed: single_mask.png")
     else:
         base = Path(INPUT_DIR)

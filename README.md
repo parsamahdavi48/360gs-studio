@@ -1,6 +1,6 @@
 # stechdrive-3dgs-utils
 
-**v1.1.0**
+**v1.1.1**
 
 A Windows-first integrated GUI tool for turning 360° camera video into images, masks, and camera data that are practical for 3D Gaussian Splatting (3DGS) training.
 
@@ -62,6 +62,8 @@ update_venv.bat
 YOLO/SAM2 model weights are downloaded automatically by ultralytics on first use. Release ZIP assets do not include model weights or generated scene data.
 
 ## GUI Workflow
+
+If the scene folder path contains non-ASCII characters, an extremely long path, control characters, or `"`, the GUI stops before running. These paths are likely to fail in OpenCV or external 3DGS/SfM tools. Spaces and OneDrive paths are not blocked by themselves. Use a short ASCII working path, for example `D:\work\scene01`.
 
 ```text
 360° video or images
