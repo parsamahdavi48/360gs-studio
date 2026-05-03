@@ -246,7 +246,7 @@ class MaskStep(BaseStepWidget):
             ]
         )
         self.yolo_level_combo.setCurrentIndex(2)
-        self.yolo_level_combo.setFixedWidth(132)
+        self.yolo_level_combo.setFixedWidth(104)
         yolo_settings_row.addWidget(self.yolo_level_combo)
 
         self.yolo_expand_label = QLabel(i18n.t("YOLO_EXPAND_COMPACT"))
