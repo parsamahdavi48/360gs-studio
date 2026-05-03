@@ -139,6 +139,19 @@ def test_bottom_tta_runs_all_rotations_and_merges(monkeypatch: pytest.MonkeyPatc
     assert np.any(bottom_mask == 255)
 
 
+def test_bottom_component_filter_removes_unreliable_components() -> None:
+    mask = np.zeros((100, 100), dtype=np.uint8)
+    mask[45:62, 45:60] = 255
+    mask[2:4, 2:4] = 255
+    mask[80:82, 10:95] = 255
+
+    filtered = yolo_mask.filter_bottom_mask_components(mask)
+
+    assert np.any(filtered[45:62, 45:60] == 255)
+    assert np.all(filtered[2:4, 2:4] == 0)
+    assert np.all(filtered[80:82, 10:95] == 0)
+
+
 def test_temporal_bottom_propagation_merges_neighbor_masks(tmp_path: Path) -> None:
     final_paths = [tmp_path / f"frame_{idx:04d}.png" for idx in range(3)]
     for path in final_paths:
@@ -164,3 +177,41 @@ def test_temporal_bottom_propagation_merges_neighbor_masks(tmp_path: Path) -> No
     assert untouched is not None
     assert np.all(propagated[1:3, 1:3] == 0)
     assert np.all(untouched == 255)
+
+
+def test_temporal_bottom_propagation_can_require_multiple_votes(tmp_path: Path) -> None:
+    final_paths = [tmp_path / f"frame_{idx:04d}.png" for idx in range(5)]
+    for path in final_paths:
+        cv2.imwrite(str(path), np.full((6, 6), 255, dtype=np.uint8))
+
+    bottom_a = tmp_path / "bottom_a.png"
+    bottom_b = tmp_path / "bottom_b.png"
+    bottom_c = tmp_path / "bottom_c.png"
+    mask_a = np.zeros((6, 6), dtype=np.uint8)
+    mask_a[2:4, 2:4] = 255
+    mask_b = np.zeros((6, 6), dtype=np.uint8)
+    mask_b[2:4, 2:4] = 255
+    mask_c = np.zeros((6, 6), dtype=np.uint8)
+    mask_c[0:2, 0:2] = 255
+    cv2.imwrite(str(bottom_a), mask_a)
+    cv2.imwrite(str(bottom_b), mask_b)
+    cv2.imwrite(str(bottom_c), mask_c)
+
+    results = [
+        yolo_mask.ProcessResult(final_paths[0], "group", bottom_a),
+        yolo_mask.ProcessResult(final_paths[1], "group", None),
+        yolo_mask.ProcessResult(final_paths[2], "group", bottom_b),
+        yolo_mask.ProcessResult(final_paths[3], "group", bottom_c),
+        yolo_mask.ProcessResult(final_paths[4], "group", None),
+    ]
+
+    updated = yolo_mask.apply_temporal_bottom_propagation(results, window=2, min_votes=2)
+
+    assert updated == 3
+    middle = cv2.imread(str(final_paths[1]), cv2.IMREAD_GRAYSCALE)
+    isolated = cv2.imread(str(final_paths[4]), cv2.IMREAD_GRAYSCALE)
+    assert middle is not None
+    assert isolated is not None
+    assert np.all(middle[2:4, 2:4] == 0)
+    assert np.all(middle[0:2, 0:2] == 255)
+    assert np.all(isolated == 255)

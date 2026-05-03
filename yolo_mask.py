@@ -19,7 +19,9 @@ YOLO_CONF_DEFAULT = 0.3
 BOTTOM_CONF = YOLO_CONF_DEFAULT
 BOTTOM_TTA_ROTATIONS = 1
 BOTTOM_MODEL = "same"
+BOTTOM_FILTER = False
 BOTTOM_TEMPORAL_WINDOW = 0
+BOTTOM_TEMPORAL_MIN_VOTES = 1
 
 yolo = None
 yolo_models = {}
@@ -92,10 +94,21 @@ def build_arg_parser() -> argparse.ArgumentParser:
         help="YOLO model for equirect bottom re-detection. 'same' reuses the level-selected model (default=same)",
     )
     parser.add_argument(
+        "--bottom-filter",
+        action="store_true",
+        help="Filter unreliable bottom-view mask components before merging into the final panorama mask",
+    )
+    parser.add_argument(
         "--bottom-temporal-window",
         type=int,
         default=0,
         help="Merge bottom detections from neighboring frames within N frames after per-frame YOLO/SAM (default=0/off)",
+    )
+    parser.add_argument(
+        "--bottom-temporal-min-votes",
+        type=int,
+        default=1,
+        help="Minimum neighboring bottom detections required per pixel for temporal fill (default=1)",
     )
     return parser
 
@@ -208,6 +221,54 @@ def rotate_quarter_turn(img, angle: int):
     if angle == 270:
         return cv2.rotate(img, cv2.ROTATE_90_COUNTERCLOCKWISE)
     raise ValueError("angle must be a multiple of 90")
+
+
+def filter_bottom_mask_components(mask: np.ndarray) -> np.ndarray:
+    if mask.size == 0 or not np.any(mask):
+        return mask
+
+    binary = (mask > 0).astype(np.uint8)
+    num_labels, labels, stats, centroids = cv2.connectedComponentsWithStats(binary, connectivity=8)
+    h, w = mask.shape[:2]
+    image_area = h * w
+    min_area = max(16, int(image_area * 0.00005))
+    max_area = int(image_area * 0.35)
+    small_area = int(image_area * 0.004)
+    edge_margin = max(2, int(min(h, w) * 0.02))
+    cx0 = (w - 1) / 2.0
+    cy0 = (h - 1) / 2.0
+    half_diag = max(1.0, float(np.hypot(cx0, cy0)))
+
+    filtered = np.zeros_like(mask)
+    for label in range(1, num_labels):
+        x = stats[label, cv2.CC_STAT_LEFT]
+        y = stats[label, cv2.CC_STAT_TOP]
+        bw = stats[label, cv2.CC_STAT_WIDTH]
+        bh = stats[label, cv2.CC_STAT_HEIGHT]
+        area = stats[label, cv2.CC_STAT_AREA]
+        if area < min_area or area > max_area:
+            continue
+
+        bbox_area = max(1, bw * bh)
+        fill_ratio = area / bbox_area
+        aspect_ratio = max(bw / max(1, bh), bh / max(1, bw))
+        if aspect_ratio >= 12.0 and min(bw, bh) <= max(3, int(min(h, w) * 0.03)):
+            continue
+        if aspect_ratio >= 6.0 and fill_ratio < 0.25:
+            continue
+
+        touches_edge = x <= edge_margin or y <= edge_margin or x + bw >= w - edge_margin or y + bh >= h - edge_margin
+        if touches_edge and area < small_area:
+            continue
+
+        cx, cy = centroids[label]
+        center_distance = float(np.hypot(cx - cx0, cy - cy0)) / half_diag
+        if area < small_area and center_distance > 0.85:
+            continue
+
+        filtered[labels == label] = 255
+
+    return filtered
 
 
 # パノラマから下方向を抽出
@@ -329,12 +390,18 @@ def detect_bottom_mask(img, pano_width: int, pano_height: int) -> tuple[np.ndarr
     if total_has_bottom == 0:
         return None, 0
 
+    if BOTTOM_FILTER:
+        merged_bottom_mask = filter_bottom_mask_components(merged_bottom_mask)
+        if not np.any(merged_bottom_mask):
+            return None, 0
+
     return back_to_pano_from_bottom(merged_bottom_mask, pano_width, pano_height), total_has_bottom
 
 
-def apply_temporal_bottom_propagation(results: list[ProcessResult], window: int) -> int:
+def apply_temporal_bottom_propagation(results: list[ProcessResult], window: int, min_votes: int = 1) -> int:
     if window <= 0:
         return 0
+    min_votes = max(1, int(min_votes))
 
     by_group: dict[str, list[ProcessResult]] = defaultdict(list)
     for result in results:
@@ -357,10 +424,10 @@ def apply_temporal_bottom_propagation(results: list[ProcessResult], window: int)
                 continue
 
             nearby = [src_idx for src_idx in source_indices if abs(src_idx - idx) <= window]
-            if not nearby:
+            if len(nearby) < min_votes:
                 continue
 
-            temporal_mask = np.zeros_like(frame_mask)
+            temporal_votes = np.zeros(frame_mask.shape, dtype=np.uint16)
             for src_idx in nearby:
                 source_mask = source_cache.get(src_idx)
                 if source_mask is None:
@@ -373,8 +440,9 @@ def apply_temporal_bottom_propagation(results: list[ProcessResult], window: int)
                     source_cache[src_idx] = source_mask
                 if source_mask.shape != frame_mask.shape:
                     continue
-                temporal_mask = np.maximum(temporal_mask, source_mask)
+                temporal_votes += (source_mask > 0).astype(np.uint16)
 
+            temporal_mask = np.where(temporal_votes >= min_votes, 255, 0).astype(np.uint8)
             if not np.any(temporal_mask):
                 continue
 
@@ -481,8 +549,8 @@ def process_file(input_dir, output_dir, fname, add_ext=True, bottom_mask_path: s
 
 
 def main(argv: list[str] | None = None) -> int:
-    global CLASS_IDS, LEVEL, PROJECTION, EXPAND, BOTTOM_CONF, BOTTOM_TTA_ROTATIONS, BOTTOM_MODEL
-    global BOTTOM_TEMPORAL_WINDOW, proc_count
+    global CLASS_IDS, LEVEL, PROJECTION, EXPAND, BOTTOM_CONF, BOTTOM_TTA_ROTATIONS, BOTTOM_MODEL, BOTTOM_FILTER
+    global BOTTOM_TEMPORAL_WINDOW, BOTTOM_TEMPORAL_MIN_VOTES, proc_count
     parser = build_arg_parser()
     args = parser.parse_args(argv)
 
@@ -495,7 +563,9 @@ def main(argv: list[str] | None = None) -> int:
     BOTTOM_CONF = max(0.001, min(1.0, float(args.bottom_conf)))
     BOTTOM_TTA_ROTATIONS = args.bottom_tta_rotations
     BOTTOM_MODEL = args.bottom_model
+    BOTTOM_FILTER = bool(args.bottom_filter)
     BOTTOM_TEMPORAL_WINDOW = max(0, int(args.bottom_temporal_window))
+    BOTTOM_TEMPORAL_MIN_VOTES = max(1, int(args.bottom_temporal_min_votes))
     proc_count = 0
     if EXPAND != args.expand:
         print(f"Clamped --expand from {args.expand} to {EXPAND}", flush=True)
@@ -518,7 +588,9 @@ def main(argv: list[str] | None = None) -> int:
         f"conf={BOTTOM_CONF:g}",
         f"rotations={BOTTOM_TTA_ROTATIONS}",
         f"model={BOTTOM_MODEL}",
+        f"filter={BOTTOM_FILTER}",
         f"temporal_window={BOTTOM_TEMPORAL_WINDOW}",
+        f"temporal_min_votes={BOTTOM_TEMPORAL_MIN_VOTES}",
         flush=True,
     )
 
@@ -557,7 +629,11 @@ def main(argv: list[str] | None = None) -> int:
                 print(f"[progress] {done}/{total}", flush=True)
 
             if BOTTOM_TEMPORAL_WINDOW > 0 and should_run_bottom_redetection(LEVEL, PROJECTION):
-                updated = apply_temporal_bottom_propagation(process_results, BOTTOM_TEMPORAL_WINDOW)
+                updated = apply_temporal_bottom_propagation(
+                    process_results,
+                    BOTTOM_TEMPORAL_WINDOW,
+                    min_votes=BOTTOM_TEMPORAL_MIN_VOTES,
+                )
                 print(f"[temporal] bottom masks updated: {updated}", flush=True)
     else:
         # 単一ファイルの処理

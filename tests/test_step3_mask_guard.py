@@ -221,9 +221,11 @@ def test_mask_step_bottom_enhance_strong_adds_bottom_only_yolo_args(tmp_path: Pa
 
     yolo_cmd = step.build_commands()[0][1]
 
-    assert yolo_cmd[yolo_cmd.index("--bottom-conf") + 1] == "0.30"
+    assert yolo_cmd[yolo_cmd.index("--bottom-conf") + 1] == "0.15"
     assert yolo_cmd[yolo_cmd.index("--bottom-tta-rotations") + 1] == "4"
+    assert "--bottom-filter" in yolo_cmd
     assert yolo_cmd[yolo_cmd.index("--bottom-temporal-window") + 1] == "2"
+    assert yolo_cmd[yolo_cmd.index("--bottom-temporal-min-votes") + 1] == "2"
     assert "--bottom-model" not in yolo_cmd
 
 
@@ -237,10 +239,12 @@ def test_mask_step_bottom_enhance_max_uses_bottom_x_model(tmp_path: Path) -> Non
 
     yolo_cmd = step.build_commands()[0][1]
 
-    assert yolo_cmd[yolo_cmd.index("--bottom-conf") + 1] == "0.20"
+    assert yolo_cmd[yolo_cmd.index("--bottom-conf") + 1] == "0.10"
     assert yolo_cmd[yolo_cmd.index("--bottom-tta-rotations") + 1] == "4"
     assert yolo_cmd[yolo_cmd.index("--bottom-model") + 1] == "x"
+    assert "--bottom-filter" in yolo_cmd
     assert yolo_cmd[yolo_cmd.index("--bottom-temporal-window") + 1] == "2"
+    assert yolo_cmd[yolo_cmd.index("--bottom-temporal-min-votes") + 1] == "2"
 
 
 def test_mask_step_external_image_controls_only_show_for_normal_type() -> None:

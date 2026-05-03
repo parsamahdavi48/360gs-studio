@@ -68,14 +68,25 @@ _YOLO_EXPAND_MAX = 32
 _YOLO_EXPAND_DEFAULT = 2
 _YOLO_BOTTOM_PRESETS: tuple[tuple[str, list[str]], ...] = (
     ("standard", []),
-    ("strong", ["--bottom-conf", "0.30", "--bottom-tta-rotations", "4", "--bottom-temporal-window", "2"]),
+    (
+        "strong",
+        [
+            "--bottom-conf", "0.15",
+            "--bottom-tta-rotations", "4",
+            "--bottom-filter",
+            "--bottom-temporal-window", "2",
+            "--bottom-temporal-min-votes", "2",
+        ],
+    ),
     (
         "max",
         [
-            "--bottom-conf", "0.20",
+            "--bottom-conf", "0.10",
             "--bottom-tta-rotations", "4",
             "--bottom-model", "x",
+            "--bottom-filter",
             "--bottom-temporal-window", "2",
+            "--bottom-temporal-min-votes", "2",
         ],
     ),
 )
