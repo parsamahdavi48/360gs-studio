@@ -30,6 +30,11 @@ _LINE_OUTER = (0, 0, 0)
 _LINE_MID = (245, 245, 245)
 _DISABLED_LINE = (150, 150, 150)
 _DISABLED_OUTER = (25, 25, 25)
+_LABEL_FONT = cv2.FONT_HERSHEY_SIMPLEX
+_LABEL_SCALE = 0.45
+_LABEL_THICKNESS = 1
+_LABEL_PAD_X = 4
+_LABEL_PAD_Y = 3
 
 
 def _rotation_matrix(yaw_deg: float, pitch_deg: float) -> np.ndarray:
@@ -99,10 +104,31 @@ def _pitch_color_map(views: list[dict]) -> dict[float, tuple[int, int, int]]:
 
 def _overlay_draw_order(views: list[dict]) -> list[dict]:
     """Draw disabled gray view boxes first so enabled colored boxes stay on top."""
-    return sorted(views, key=lambda view: bool(view.get("enabled", False)))
+    return sorted(
+        views,
+        key=lambda view: (
+            bool(view.get("highlighted", False)),
+            bool(view.get("enabled", False)),
+        ),
+    )
 
 
-def _draw_view_polyline(img: np.ndarray, pts: np.ndarray, color: tuple[int, int, int], *, enabled: bool) -> None:
+def _draw_view_polyline(
+    img: np.ndarray,
+    pts: np.ndarray,
+    color: tuple[int, int, int],
+    *,
+    enabled: bool,
+    highlighted: bool,
+) -> None:
+    if highlighted:
+        overlay = img.copy()
+        cv2.polylines(overlay, [pts], False, color, 16, lineType=cv2.LINE_AA)
+        img[:] = cv2.addWeighted(overlay, 0.22, img, 0.78, 0)
+        cv2.polylines(img, [pts], False, _LINE_OUTER, 10, lineType=cv2.LINE_AA)
+        cv2.polylines(img, [pts], False, _LINE_MID, 7, lineType=cv2.LINE_AA)
+        cv2.polylines(img, [pts], False, color, 5, lineType=cv2.LINE_AA)
+        return
     if enabled:
         # Black/white/color halo keeps the line readable on both dark and bright footage.
         cv2.polylines(img, [pts], False, _LINE_OUTER, 7, lineType=cv2.LINE_AA)
@@ -113,27 +139,166 @@ def _draw_view_polyline(img: np.ndarray, pts: np.ndarray, color: tuple[int, int,
     cv2.polylines(img, [pts], False, _DISABLED_LINE, 2, lineType=cv2.LINE_AA)
 
 
-def _draw_view_label(img: np.ndarray, label: str, pos: tuple[int, int], color: tuple[int, int, int]) -> None:
+def _view_center_point(width: int, height: int, yaw_deg: float, pitch_deg: float) -> tuple[float, float]:
+    center_ray = np.array([[0.0, 0.0, 1.0]], dtype=np.float64) @ _rotation_matrix(yaw_deg, pitch_deg).T
+    x, y = _ray_to_equirect(center_ray[0], width, height)
+    return x, y
+
+
+def _ray_to_equirect(ray: np.ndarray, width: int, height: int) -> tuple[float, float]:
+    ray = ray / max(float(np.linalg.norm(ray)), 1e-12)
+    lon = np.arctan2(ray[0], ray[2])
+    lat = np.arcsin(np.clip(ray[1], -1.0, 1.0))
+    x = ((lon / np.pi + 1.0) * 0.5 * width) % width
+    y = np.clip((0.5 - lat / np.pi) * height, 0.0, max(0.0, height - 1.0))
+    return float(x), float(y)
+
+
+def _point_inside_view(
+    x: float,
+    y: float,
+    width: int,
+    height: int,
+    yaw_deg: float,
+    pitch_deg: float,
+    fov_deg: float = 90.0,
+) -> bool:
+    lon = ((float(x) / max(width, 1)) * 2.0 - 1.0) * np.pi
+    lat = (0.5 - float(y) / max(height, 1)) * np.pi
+    world = np.array([
+        np.cos(lat) * np.sin(lon),
+        np.sin(lat),
+        np.cos(lat) * np.cos(lon),
+    ], dtype=np.float64)
+    local = world @ _rotation_matrix(yaw_deg, pitch_deg)
+    if local[2] <= 1e-6:
+        return False
+    limit = np.tan(np.deg2rad(fov_deg) / 2.0) * 1.04
+    return abs(local[0] / local[2]) <= limit and abs(local[1] / local[2]) <= limit
+
+
+def _label_metrics(label: str) -> tuple[int, int, int]:
+    (tw, th), baseline = cv2.getTextSize(label, _LABEL_FONT, _LABEL_SCALE, _LABEL_THICKNESS)
+    return tw, th, baseline
+
+
+def _label_box_for_center(
+    center: tuple[float, float],
+    metrics: tuple[int, int, int],
+    width: int,
+    height: int,
+) -> tuple[tuple[int, int, int, int], tuple[int, int]]:
+    tw, th, baseline = metrics
+    box_w = tw + _LABEL_PAD_X * 2
+    box_h = th + baseline + _LABEL_PAD_Y * 2
+    cx, cy = center
+    x1 = int(round(cx - box_w / 2.0))
+    y1 = int(round(cy - box_h / 2.0))
+    x1 = max(0, min(max(0, width - box_w - 1), x1))
+    y1 = max(0, min(max(0, height - box_h - 1), y1))
+    x2 = min(width - 1, x1 + box_w)
+    y2 = min(height - 1, y1 + box_h)
+    origin = (x1 + _LABEL_PAD_X, y1 + _LABEL_PAD_Y + th)
+    return (x1, y1, x2, y2), origin
+
+
+def _box_overlap_area(a: tuple[int, int, int, int], b: tuple[int, int, int, int]) -> int:
+    x1 = max(a[0], b[0])
+    y1 = max(a[1], b[1])
+    x2 = min(a[2], b[2])
+    y2 = min(a[3], b[3])
+    if x2 <= x1 or y2 <= y1:
+        return 0
+    return (x2 - x1) * (y2 - y1)
+
+
+def _label_candidate_centers(anchor: tuple[float, float], width: int, height: int) -> list[tuple[float, float]]:
+    centers = [anchor]
+    min_dim = max(1.0, float(min(width, height)))
+    for radius in [min_dim * v for v in (0.035, 0.06, 0.09, 0.13, 0.18, 0.24, 0.31, 0.39)]:
+        for angle in np.linspace(0.0, 2.0 * np.pi, 24, endpoint=False):
+            centers.append((anchor[0] + np.cos(angle) * radius, anchor[1] + np.sin(angle) * radius))
+    return centers
+
+
+def _layout_view_labels(
+    views: list[dict],
+    width: int,
+    height: int,
+    pitch_colors: dict[float, tuple[int, int, int]],
+) -> list[dict]:
+    labels: list[dict] = []
+    occupied: list[tuple[int, int, int, int]] = []
+    enabled_views = [view for view in views if view.get("enabled", False) and str(view.get("label", ""))]
+    enabled_views.sort(key=lambda view: bool(view.get("highlighted", False)))
+
+    for view in enabled_views:
+        label = str(view.get("label", ""))
+        yaw = float(view.get("yaw", 0.0))
+        pitch = float(view.get("pitch", 0.0))
+        anchor = _view_center_point(width, height, yaw, pitch)
+        metrics = _label_metrics(label)
+        best: tuple[float, tuple[int, int, int, int], tuple[int, int], tuple[float, float]] | None = None
+        for center in _label_candidate_centers(anchor, width, height):
+            cx = float(np.clip(center[0], 0.0, max(0.0, width - 1.0)))
+            cy = float(np.clip(center[1], 0.0, max(0.0, height - 1.0)))
+            box, origin = _label_box_for_center((cx, cy), metrics, width, height)
+            overlap = sum(_box_overlap_area(box, existing) for existing in occupied)
+            in_view = _point_inside_view(
+                (box[0] + box[2]) / 2.0,
+                (box[1] + box[3]) / 2.0,
+                width,
+                height,
+                yaw,
+                pitch,
+            )
+            distance = float(np.hypot(cx - anchor[0], cy - anchor[1]))
+            edge_penalty = 20.0 if box[0] == 0 or box[1] == 0 or box[2] >= width - 1 or box[3] >= height - 1 else 0.0
+            score = overlap * 10000.0 + distance + edge_penalty
+            if not in_view:
+                score += 500000.0
+            if best is None or score < best[0]:
+                best = (score, box, origin, (cx, cy))
+                if overlap == 0 and in_view and distance < 1.0:
+                    break
+        if best is None:
+            continue
+        _, box, origin, center = best
+        occupied.append(box)
+        pitch_key = round(pitch, 6)
+        labels.append({
+            "label": label,
+            "box": box,
+            "origin": origin,
+            "center": center,
+            "color": pitch_colors.get(pitch_key, (90, 240, 120)),
+            "highlighted": bool(view.get("highlighted", False)),
+            "view": view,
+        })
+    return labels
+
+
+def _draw_view_label_box(
+    img: np.ndarray,
+    label: str,
+    box: tuple[int, int, int, int],
+    origin: tuple[int, int],
+    color: tuple[int, int, int],
+    *,
+    highlighted: bool = False,
+) -> None:
     if not label:
         return
-    font = cv2.FONT_HERSHEY_SIMPLEX
-    scale = 0.45
-    thickness = 1
-    (tw, th), baseline = cv2.getTextSize(label, font, scale, thickness)
-    x, y = pos
-    x = int(np.clip(x, 4, max(4, img.shape[1] - tw - 8)))
-    y = int(np.clip(y, th + 8, max(th + 8, img.shape[0] - 6)))
-    pad_x, pad_y = 4, 3
-    x1, y1 = max(0, x - pad_x), max(0, y - th - pad_y)
-    x2, y2 = min(img.shape[1] - 1, x + tw + pad_x), min(img.shape[0] - 1, y + baseline + pad_y)
+    x1, y1, x2, y2 = box
 
     roi = img[y1:y2, x1:x2]
     if roi.size:
         bg = np.zeros_like(roi)
-        img[y1:y2, x1:x2] = cv2.addWeighted(bg, 0.68, roi, 0.32, 0)
-    cv2.rectangle(img, (x1, y1), (x2, y2), _LINE_MID, 1, lineType=cv2.LINE_AA)
-    cv2.putText(img, label, (x, y), font, scale, _LINE_OUTER, 3, lineType=cv2.LINE_AA)
-    cv2.putText(img, label, (x, y), font, scale, color, thickness, lineType=cv2.LINE_AA)
+        img[y1:y2, x1:x2] = cv2.addWeighted(bg, 0.70, roi, 0.30, 0)
+    border = color if highlighted else _LINE_MID
+    cv2.rectangle(img, (x1, y1), (x2, y2), border, 1, lineType=cv2.LINE_AA)
+    cv2.putText(img, label, origin, _LABEL_FONT, _LABEL_SCALE, _LINE_OUTER, 3, lineType=cv2.LINE_AA)
+    cv2.putText(img, label, origin, _LABEL_FONT, _LABEL_SCALE, color, _LABEL_THICKNESS, lineType=cv2.LINE_AA)
 
 
 class PreviewWidget(QWidget):
@@ -233,25 +398,28 @@ class PreviewWidget(QWidget):
         # ビュー境界描画
         h, w = img.shape[:2]
         pitch_colors = _pitch_color_map(views)
-        for view in _overlay_draw_order(views):
+        draw_order = _overlay_draw_order(views)
+        for view in draw_order:
             pitch_key = round(float(view.get("pitch", 0.0)), 6)
             color = pitch_colors.get(pitch_key, (90, 240, 120))
             enabled = bool(view["enabled"])
+            highlighted = bool(view.get("highlighted", False))
             segments = _view_boundary_segments(w, h, view["yaw"], view["pitch"], 90.0)
-            all_pts: list[np.ndarray] = []
             for seg in segments:
                 if len(seg) < 2:
                     continue
                 pts = np.round(seg).astype(np.int32).reshape((-1, 1, 2))
-                _draw_view_polyline(img, pts, color, enabled=enabled)
-                all_pts.append(seg)
+                _draw_view_polyline(img, pts, color, enabled=enabled, highlighted=highlighted)
 
-            if enabled and all_pts:
-                merged = np.concatenate(all_pts, axis=0)
-                cx = int(np.clip(np.mean(merged[:, 0]), 0, w - 1))
-                cy = int(np.clip(np.mean(merged[:, 1]), 0, h - 1))
-                label = str(view.get("label", ""))
-                _draw_view_label(img, label, (cx, cy), color)
+        for item in _layout_view_labels(draw_order, w, h, pitch_colors):
+            _draw_view_label_box(
+                img,
+                item["label"],
+                item["box"],
+                item["origin"],
+                item["color"],
+                highlighted=bool(item.get("highlighted", False)),
+            )
 
         rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
         qimg = QImage(rgb.data, rgb.shape[1], rgb.shape[0], rgb.shape[1] * 3, QImage.Format_RGB888).copy()

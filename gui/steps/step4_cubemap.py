@@ -350,6 +350,7 @@ class CubemapStep(BaseStepWidget):
 
         self.view_config = ViewConfigWidget(show_settings=False, show_summary=False)
         self.view_config.views_changed.connect(self._on_views_changed)
+        self.view_config.hovered_view_changed.connect(lambda _name: self._render_preview())
 
         # 視点書き出し設定（折りたたみ）
         adv_output = CollapsibleSection(i18n.t("ADVANCED_OUTPUT_SECTION"), expanded=False)

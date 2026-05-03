@@ -68,6 +68,7 @@ class ViewConfigWidget(QWidget):
     """ビュー選択グリッドウィジェット。views_changed シグナルで変更を通知。"""
 
     views_changed = Signal()
+    hovered_view_changed = Signal(object)
     summary_changed = Signal(str)
 
     def __init__(
@@ -85,6 +86,7 @@ class ViewConfigWidget(QWidget):
         self._show_summary = show_summary
         self._rebuilding_grid = False
         self._normalizing_pitch = False
+        self._hovered_view_name: str | None = None
 
         self._build_ui()
         self._apply_pitch_rows()
@@ -221,6 +223,9 @@ class ViewConfigWidget(QWidget):
     def pitch_rows_text(self) -> str:
         return ",".join(f"{pitch:g}" for pitch in self.pitch_values())
 
+    def hovered_view_name(self) -> str | None:
+        return self._hovered_view_name
+
     def collect_views(self, include_disabled: bool = False) -> list[dict]:
         offset = self.yaw_offset()
         if self.view_mode() == VIEW_MODE_CUBE6:
@@ -235,13 +240,15 @@ class ViewConfigWidget(QWidget):
                 enabled = cb.isChecked()
                 if not include_disabled and not enabled:
                     continue
+                name = f"pit{_angle_token(pitch)}_s{slot}"
                 views.append({
-                    "name": f"pit{_angle_token(pitch)}_s{slot}",
+                    "name": name,
                     "yaw": float(offset + slot * step),
                     "pitch": pitch,
                     "enabled": enabled,
                     "slot": slot,
                     "label": f"p{pitch:g}/s{slot}",
+                    "highlighted": name == self._hovered_view_name,
                 })
         return views
 
@@ -305,6 +312,7 @@ class ViewConfigWidget(QWidget):
             lab.setAlignment(Qt.AlignCenter)
             lab.setFixedWidth(42)
             lab.setWordWrap(False)
+            lab.setStyleSheet("font-size: 8pt;")
             self.yaw_slot_labels.append(lab)
             self.grid_layout.addWidget(lab, 0, s + 1)
 
@@ -327,13 +335,14 @@ class ViewConfigWidget(QWidget):
             key = _pitch_key(pitch)
             restored = old.get(key)
             for s in range(slots):
-                cb = QCheckBox()
+                cb = _HoverCheckBox()
                 cb.setFixedSize(QSize(22, 22))
                 if restored and s < len(restored):
                     cb.setChecked(restored[s])
                 else:
                     cb.setChecked(True)
                 cb.toggled.connect(self._on_selection_changed)
+                cb.hover_changed.connect(lambda hovering, idx=row_index, slot=s: self._on_view_hover(idx, slot, hovering))
                 self.grid_layout.addWidget(cb, grid_row, s + 1, alignment=Qt.AlignCenter)
                 checks.append(cb)
             self.pitch_rows.append({"pitch": pitch, "pitch_edit": pitch_edit, "checks": checks})
@@ -389,6 +398,23 @@ class ViewConfigWidget(QWidget):
         self._update_selected_label()
         self.views_changed.emit()
 
+    def _view_name_for(self, row_index: int, slot: int) -> str | None:
+        if row_index < 0 or row_index >= len(self.pitch_rows):
+            return None
+        pitch = float(self.pitch_rows[row_index]["pitch"])
+        return f"pit{_angle_token(pitch)}_s{slot}"
+
+    def _on_view_hover(self, row_index: int, slot: int, hovering: bool) -> None:
+        name = self._view_name_for(row_index, slot)
+        if hovering:
+            if name != self._hovered_view_name:
+                self._hovered_view_name = name
+                self.hovered_view_changed.emit(name)
+            return
+        if name is None or self._hovered_view_name == name:
+            self._hovered_view_name = None
+            self.hovered_view_changed.emit(None)
+
     def _build_grid_tools(self) -> QWidget:
         tools = QWidget()
         layout = QHBoxLayout(tools)
@@ -419,7 +445,8 @@ class ViewConfigWidget(QWidget):
         step = 360.0 / float(slots)
         for i, lab in enumerate(self.yaw_slot_labels):
             yaw = _normalize_angle(offset + i * step)
-            lab.setText(f"S{i}\n{yaw:.1f}°")
+            lab.setText(f"S{i}\n{yaw:g}")
+            lab.setToolTip(f"{yaw:g}°")
 
     def _update_selected_label(self) -> None:
         try:
@@ -462,3 +489,15 @@ class ViewConfigWidget(QWidget):
             {"name": "top", "yaw": 0.0 - yaw_offset, "pitch": 90.0, "enabled": True, "slot": 4, "label": "top"},
             {"name": "bottom", "yaw": 0.0 - yaw_offset, "pitch": -90.0, "enabled": True, "slot": 5, "label": "bottom"},
         ]
+
+
+class _HoverCheckBox(QCheckBox):
+    hover_changed = Signal(bool)
+
+    def enterEvent(self, event) -> None:  # type: ignore[override]
+        self.hover_changed.emit(True)
+        super().enterEvent(event)
+
+    def leaveEvent(self, event) -> None:  # type: ignore[override]
+        self.hover_changed.emit(False)
+        super().leaveEvent(event)

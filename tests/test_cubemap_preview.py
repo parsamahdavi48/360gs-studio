@@ -9,7 +9,14 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from PySide6.QtWidgets import QApplication, QLineEdit, QPushButton, QSpinBox
 
 from gui import i18n
-from gui.cubemap.preview_renderer import PreviewWidget, _overlay_draw_order, _pitch_color_map
+from gui.cubemap.preview_renderer import (
+    PreviewWidget,
+    _box_overlap_area,
+    _layout_view_labels,
+    _overlay_draw_order,
+    _pitch_color_map,
+    _point_inside_view,
+)
 
 
 def _app():
@@ -79,6 +86,24 @@ def test_cubemap_preview_draws_disabled_view_boxes_first() -> None:
     ]
 
 
+def test_cubemap_preview_draws_highlighted_view_last() -> None:
+    views = [
+        {"name": "enabled", "enabled": True},
+        {"name": "highlighted_disabled", "enabled": False, "highlighted": True},
+        {"name": "disabled", "enabled": False},
+        {"name": "highlighted_enabled", "enabled": True, "highlighted": True},
+    ]
+
+    ordered = _overlay_draw_order(views)
+
+    assert [view["name"] for view in ordered] == [
+        "disabled",
+        "enabled",
+        "highlighted_disabled",
+        "highlighted_enabled",
+    ]
+
+
 def test_cubemap_preview_pitch_palette_uses_five_distinct_colors() -> None:
     views = [{"pitch": pitch} for pitch in [-60.0, -30.0, 0.0, 30.0, 60.0]]
 
@@ -90,3 +115,46 @@ def test_cubemap_preview_pitch_palette_uses_five_distinct_colors() -> None:
     assert colors[-30.0] != colors[0.0]
     assert colors[0.0] != colors[30.0]
     assert colors[30.0] != colors[60.0]
+
+
+def test_cubemap_preview_label_layout_avoids_overlap_for_full_custom_grid() -> None:
+    views = []
+    for pitch in [-60.0, -30.0, 0.0, 30.0, 60.0]:
+        for slot in range(8):
+            views.append({
+                "label": f"p{pitch:g}/s{slot}",
+                "yaw": slot * 45.0,
+                "pitch": pitch,
+                "enabled": True,
+            })
+    colors = _pitch_color_map(views)
+
+    labels = _layout_view_labels(views, 1800, 900, colors)
+
+    assert len(labels) == 40
+    for idx, label in enumerate(labels):
+        box = label["box"]
+        center_x = (box[0] + box[2]) / 2.0
+        center_y = (box[1] + box[3]) / 2.0
+        view = label["view"]
+        assert _point_inside_view(center_x, center_y, 1800, 900, view["yaw"], view["pitch"])
+        for other in labels[idx + 1:]:
+            assert _box_overlap_area(box, other["box"]) == 0
+
+
+def test_cubemap_preview_label_layout_handles_pole_views_without_overlap() -> None:
+    views = [
+        {"label": f"top{s}", "yaw": s * 45.0, "pitch": 90.0, "enabled": True}
+        for s in range(8)
+    ]
+    colors = _pitch_color_map(views)
+
+    labels = _layout_view_labels(views, 1800, 900, colors)
+
+    assert len(labels) == 8
+    for idx, label in enumerate(labels):
+        box = label["box"]
+        assert 0 <= box[0] < box[2] < 1800
+        assert 0 <= box[1] < box[3] < 900
+        for other in labels[idx + 1:]:
+            assert _box_overlap_area(box, other["box"]) == 0

@@ -183,6 +183,43 @@ def test_custom_grid_controls_apply_immediately_and_keep_pitch_unique() -> None:
     assert pitches[0] != 0.0
 
 
+def test_custom_grid_hover_marks_view_and_rerenders_preview(tmp_path: Path, monkeypatch) -> None:
+    step = _ready_step(tmp_path)
+    idx = step.view_config.view_mode_combo.findData("custom_views")
+    step.view_config.view_mode_combo.setCurrentIndex(idx)
+    captured: list[list[dict]] = []
+
+    def fake_render(views: list[dict], _mask_dir: str) -> None:
+        captured.append(views)
+
+    monkeypatch.setattr(step.preview, "render", fake_render)
+
+    step.view_config._on_view_hover(0, 2, True)
+
+    assert captured
+    highlighted = [view for view in captured[-1] if view.get("highlighted")]
+    assert len(highlighted) == 1
+    assert highlighted[0]["name"] == "pitm45_s2"
+
+    step.view_config._on_view_hover(0, 2, False)
+    assert not any(view.get("highlighted") for view in captured[-1])
+
+
+def test_custom_grid_yaw_labels_are_compact_without_degree_mark() -> None:
+    _app()
+    step = CubemapStep(Path.cwd())
+    idx = step.view_config.view_mode_combo.findData("custom_views")
+    step.view_config.view_mode_combo.setCurrentIndex(idx)
+    step.view_config.yaw_slots_combo.setCurrentText("8")
+
+    texts = [label.text() for label in step.view_config.yaw_slot_labels]
+
+    assert "S3\n-180" in texts
+    assert all("°" not in text for text in texts)
+    assert all(label.toolTip().endswith("°") for label in step.view_config.yaw_slot_labels)
+    assert all("8pt" in label.styleSheet() for label in step.view_config.yaw_slot_labels)
+
+
 def test_cubemap_yaw_numeric_fields_are_clamped_and_used(tmp_path: Path) -> None:
     step = _ready_step(tmp_path)
 
