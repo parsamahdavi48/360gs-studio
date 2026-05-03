@@ -1,6 +1,6 @@
 # stechdrive-3dgs-utils
 
-**v1.0.0**
+**v1.1.0**
 
 A Windows desktop toolkit for preparing frames, masks, and camera data from 360 video or image sequences for SfM and 3D Gaussian Splatting (3DGS) workflows. The current workflow is centered on the integrated PySide6 GUI with Japanese and English UI support, and is designed to run from `setup_windows.bat` and `run_gui.bat` without requiring users to manually assemble a Python environment.
 
