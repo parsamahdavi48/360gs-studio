@@ -92,6 +92,8 @@ def test_mask_step_yolo_level_and_expand_share_compact_row() -> None:
     assert step.yolo_expand_label.toolTip() == i18n.tip("YOLO_EXPAND")
     assert step.yolo_bottom_enhance_label.toolTip() == i18n.tip("YOLO_BOTTOM_ENHANCE")
     assert step.projection_buttons["equirect"].text() == "360°"
+    assert step.yolo_bottom_enhance_combo.itemText(1) == i18n.t("YOLO_BOTTOM_STRONG")
+    assert step.yolo_bottom_enhance_combo.itemText(2) == i18n.t("YOLO_BOTTOM_MAX")
 
 
 def test_mask_step_metashape_notice_is_in_left_pane() -> None:

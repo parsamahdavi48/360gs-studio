@@ -84,7 +84,7 @@ The update window stays open at the end so the summary can be read. Use `update_
 
 For normal video frames or still-camera image sequences placed in `images/`, choose `Image Type: Normal` in Step 3. This keeps YOLO/SAM and overexposure masking available while disabling stitch seam masking and 360° bottom re-detection.
 
-For equirectangular 360° frames where the bottom-view photographer is missed, Step 3 provides `Bottom Enhance` presets. Use the standard setting when the bottom is already masked well, `Bottom Leak Fix` when top-down photographers remain, and `Bottom Leak Fix+` only when the stronger setting is worth the extra time and possible floor/ground false positives.
+For equirectangular 360° frames where the bottom-view photographer is missed, Step 3 provides `Bottom Enhance` presets. Use `Standard` when the bottom is already masked well, `Fix` when top-down photographers remain, and `Strong` only when the stronger setting is worth the extra time and possible floor/ground false positives.
 
 Stitch seam masks are useful when the seam position is stable in the equirectangular image. If FlowState stabilization, direction lock, AI stitching, or similar processing moves the seam, leave seam masking disabled unless you have verified the preview.
 

@@ -185,6 +185,9 @@ def test_mask_yolo_compact_row_preserves_width_in_english() -> None:
         step = MaskStep(Path.cwd())
         content_width = SETTINGS_PANE_WIDTH - SETTINGS_PANE_MARGINS[2]
         assert step.yolo_settings_row.sizeHint().width() <= content_width
+        assert step.yolo_bottom_settings_row.sizeHint().width() <= content_width
+        assert step.yolo_bottom_enhance_combo.itemText(1) == "Fix"
+        assert step.yolo_bottom_enhance_combo.itemText(2) == "Strong"
         """
     )
     env = os.environ.copy()
