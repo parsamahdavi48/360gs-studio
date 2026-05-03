@@ -9,9 +9,10 @@ import re
 import subprocess
 import sys
 import tempfile
+import threading
 from dataclasses import dataclass
 from pathlib import Path
-from typing import List, Optional, Sequence, Tuple
+from typing import BinaryIO, List, Optional, Sequence, Tuple
 
 from extract_sessions import (
     build_session_record,
@@ -187,6 +188,17 @@ def run_cmd_with_ffmpeg_progress(cmd: List[str], phase: str, total_items: int) -
         stdout="",
         stderr="\n".join(stderr_lines),
     )
+
+
+def _drain_binary_pipe(pipe: BinaryIO, chunks: list[bytes]) -> None:
+    try:
+        while True:
+            data = pipe.read(8192)
+            if not data:
+                break
+            chunks.append(data)
+    except OSError as e:
+        chunks.append(f"\n[stderr read error: {e}]".encode("utf-8", errors="replace"))
 
 
 def ensure_binary(path: str, name: str) -> None:
@@ -444,6 +456,13 @@ def analyze_video_window(
     proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     assert proc.stdout is not None
     assert proc.stderr is not None
+    stderr_chunks: list[bytes] = []
+    stderr_thread = threading.Thread(
+        target=_drain_binary_pipe,
+        args=(proc.stderr, stderr_chunks),
+        daemon=True,
+    )
+    stderr_thread.start()
 
     frame_size = out_w * out_h
     prev_frame: Optional[np.ndarray] = None
@@ -504,8 +523,9 @@ def analyze_video_window(
             else:
                 emit_progress(processed)
     finally:
-        stderr_text = proc.stderr.read().decode("utf-8", errors="replace")
         ret = proc.wait()
+        stderr_thread.join()
+        stderr_text = b"".join(stderr_chunks).decode("utf-8", errors="replace")
 
     if ret != 0:
         raise RuntimeError(f"ffmpeg analysis failed: {stderr_text.strip()}")

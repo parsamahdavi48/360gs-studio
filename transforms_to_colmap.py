@@ -90,8 +90,8 @@ def quaternion_from_matrix(r: np.ndarray) -> np.ndarray:
 
     q = np.array([qw, qx, qy, qz], dtype=np.float64)
     n = float(np.linalg.norm(q))
-    if n == 0.0:
-        raise ValueError("Zero-norm quaternion")
+    if not np.isfinite(n) or n < 1e-12:
+        raise ValueError("Invalid near-zero quaternion")
     q /= n
     if q[0] < 0.0:
         q = -q

@@ -18,18 +18,64 @@ RELEASE_PYTHON = (3, 12)
 TORCH_INDEX_URL = "https://download.pytorch.org/whl/cu128"
 PYTHON_CACHE_MAX_AGE_SEC = 7 * 24 * 60 * 60
 LOG_FILE: Path | None = None
+REQUIREMENTS_DIR = Path(__file__).resolve().parents[1] / "requirements"
 
-CORE_REQUIREMENTS = [
-    "numpy",
-    "opencv-python",
-    "Pillow",
-    "open3d",
-    "tqdm",
-    "PySide6",
-]
-TORCH_REQUIREMENTS = ["torch", "torchvision", "torchaudio"]
-ML_REQUIREMENTS = ["ultralytics"]
-TEST_REQUIREMENTS = ["pytest"]
+
+def read_requirements_file(name: str) -> list[str]:
+    path = REQUIREMENTS_DIR / name
+    requirements: list[str] = []
+    for raw in path.read_text(encoding="utf-8").splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#"):
+            continue
+        requirements.append(line)
+    return requirements
+
+
+def unpin_requirement(requirement: str) -> str:
+    return re.split(r"\s*(?:==|~=|!=|<=|>=|<|>)", requirement, maxsplit=1)[0].strip()
+
+
+@dataclass(frozen=True)
+class RequirementSet:
+    core: list[str]
+    torch: list[str]
+    ml: list[str]
+    test: list[str]
+    locked: bool = False
+
+    @property
+    def label(self) -> str:
+        return "locked pinned requirements" if self.locked else "latest compatible requirements"
+
+
+LOCKED_CORE_REQUIREMENTS = read_requirements_file("core.txt")
+LOCKED_TORCH_REQUIREMENTS = read_requirements_file("torch-cu128.txt")
+LOCKED_ML_REQUIREMENTS = read_requirements_file("ml.txt")
+LOCKED_TEST_REQUIREMENTS = read_requirements_file("test.txt")
+
+CORE_REQUIREMENTS = [unpin_requirement(req) for req in LOCKED_CORE_REQUIREMENTS]
+TORCH_REQUIREMENTS = [unpin_requirement(req) for req in LOCKED_TORCH_REQUIREMENTS]
+ML_REQUIREMENTS = [unpin_requirement(req) for req in LOCKED_ML_REQUIREMENTS]
+TEST_REQUIREMENTS = [unpin_requirement(req) for req in LOCKED_TEST_REQUIREMENTS]
+
+
+def requirements_for_mode(locked: bool) -> RequirementSet:
+    if locked:
+        return RequirementSet(
+            core=LOCKED_CORE_REQUIREMENTS,
+            torch=LOCKED_TORCH_REQUIREMENTS,
+            ml=LOCKED_ML_REQUIREMENTS,
+            test=LOCKED_TEST_REQUIREMENTS,
+            locked=True,
+        )
+    return RequirementSet(
+        core=CORE_REQUIREMENTS,
+        torch=TORCH_REQUIREMENTS,
+        ml=ML_REQUIREMENTS,
+        test=TEST_REQUIREMENTS,
+        locked=False,
+    )
 
 SMOKE_TEST = r"""
 import sys
@@ -417,15 +463,19 @@ def pip_preflight(
     return False
 
 
-def preflight_version(runner_python: Path, version: tuple[int, int]) -> tuple[bool, str]:
+def preflight_version(
+    runner_python: Path,
+    version: tuple[int, int],
+    requirements: RequirementSet,
+) -> tuple[bool, str]:
     emit(f"[INFO] Preflight for Python {version_label(version)}")
-    if not pip_preflight(runner_python, version, CORE_REQUIREMENTS):
+    if not pip_preflight(runner_python, version, requirements.core):
         emit(f"[WARN] Python {version_label(version)} rejected by core dependency preflight.")
         return False, "core dependency wheels are not available"
-    if not pip_preflight(runner_python, version, TORCH_REQUIREMENTS, index_url=TORCH_INDEX_URL):
+    if not pip_preflight(runner_python, version, requirements.torch, index_url=TORCH_INDEX_URL):
         emit(f"[WARN] Python {version_label(version)} rejected by PyTorch CUDA wheel preflight.")
         return False, "PyTorch CUDA wheels are not available"
-    if not pip_preflight(runner_python, version, ML_REQUIREMENTS, no_deps=True):
+    if not pip_preflight(runner_python, version, requirements.ml, no_deps=True):
         emit(f"[WARN] Python {version_label(version)} rejected by ML dependency preflight.")
         return False, "ML dependency wheels are not available"
     return True, "preflight passed"
@@ -480,6 +530,7 @@ def create_candidate_venv(
     repo_root: Path,
     candidate: PythonCandidate,
     *,
+    requirements: RequirementSet,
     require_cuda: bool,
     run_pytest: bool,
     keep_temp: bool,
@@ -494,11 +545,11 @@ def create_candidate_venv(
         py = venv_python(temp_venv)
 
         run([py, "-m", "pip", "install", "--upgrade", "pip"])
-        run([py, "-m", "pip", "install", "--upgrade", *CORE_REQUIREMENTS])
-        run([py, "-m", "pip", "install", "--upgrade", *TORCH_REQUIREMENTS, "--index-url", TORCH_INDEX_URL])
-        run([py, "-m", "pip", "install", "--upgrade", *ML_REQUIREMENTS])
+        run([py, "-m", "pip", "install", "--upgrade", *requirements.core])
+        run([py, "-m", "pip", "install", "--upgrade", *requirements.torch, "--index-url", TORCH_INDEX_URL])
+        run([py, "-m", "pip", "install", "--upgrade", *requirements.ml])
         if run_tests:
-            run([py, "-m", "pip", "install", "--upgrade", *TEST_REQUIREMENTS])
+            run([py, "-m", "pip", "install", "--upgrade", *requirements.test])
         run([py, "-m", "pip", "check"])
 
         smoke_code = "REQUIRE_CUDA = " + repr(require_cuda) + "\n" + SMOKE_TEST
@@ -642,6 +693,13 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--skip-pytest", action="store_true", help="Skip pytest during candidate verification.")
     parser.add_argument("--keep-temp", action="store_true", help="Keep failed candidate venvs for debugging.")
     parser.add_argument("--keep-backup", action="store_true", help="Keep the previous .venv backup after promotion.")
+    parser.add_argument(
+        "--locked",
+        "--use-lock",
+        action="store_true",
+        dest="locked",
+        help="Use pinned requirement files from requirements/ instead of resolving the latest compatible packages.",
+    )
     parser.add_argument("--dry-run", action="store_true", help="Run discovery and preflight only; do not install.")
     return parser.parse_args()
 
@@ -653,6 +711,8 @@ def main() -> int:
     runner_python = Path(sys.executable)
     existing_venv = read_venv_full_version(repo_root)
     reports: list[CandidateReport] = []
+    requirements = requirements_for_mode(args.locked)
+    emit(f"[INFO] Dependency mode: {requirements.label}")
 
     target_versions, winget_versions = build_target_versions(
         repo_root=repo_root,
@@ -673,7 +733,7 @@ def main() -> int:
     emit("[INFO] Python candidates: " + ", ".join(version_label(v) for v in target_versions))
 
     for version in target_versions:
-        preflight_ok, preflight_detail = preflight_version(runner_python, version)
+        preflight_ok, preflight_detail = preflight_version(runner_python, version, requirements)
         if not preflight_ok:
             reports.append(CandidateReport(version, "not used", preflight_detail))
             continue
@@ -723,6 +783,7 @@ def main() -> int:
         candidate_venv = create_candidate_venv(
             repo_root,
             candidate,
+            requirements=requirements,
             require_cuda=not args.allow_cpu_torch,
             run_pytest=not args.skip_pytest,
             keep_temp=args.keep_temp,

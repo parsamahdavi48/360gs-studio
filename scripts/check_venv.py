@@ -1,8 +1,14 @@
 from __future__ import annotations
 
 import argparse
+import json
 import subprocess
 from pathlib import Path
+
+try:
+    from update_venv import LOCKED_CORE_REQUIREMENTS, LOCKED_ML_REQUIREMENTS, LOCKED_TORCH_REQUIREMENTS
+except ImportError:  # pragma: no cover - used when imported as scripts.check_venv
+    from scripts.update_venv import LOCKED_CORE_REQUIREMENTS, LOCKED_ML_REQUIREMENTS, LOCKED_TORCH_REQUIREMENTS
 
 
 SMOKE_TEST = r"""
@@ -46,6 +52,36 @@ def emit_block(title: str, text: str) -> None:
         print(stripped)
 
 
+def pinned_versions(requirements: list[str]) -> dict[str, str]:
+    pins: dict[str, str] = {}
+    for requirement in requirements:
+        if "==" not in requirement:
+            continue
+        name, version = requirement.split("==", 1)
+        pins[name.strip()] = version.strip()
+    return pins
+
+
+def pinned_version_check_code(requirements: list[str]) -> str:
+    expected = pinned_versions(requirements)
+    return (
+        "import importlib.metadata as md\n"
+        f"expected = {json.dumps(expected, sort_keys=True)}\n"
+        "errors = []\n"
+        "for package, expected_version in expected.items():\n"
+        "    try:\n"
+        "        actual = md.version(package)\n"
+        "    except md.PackageNotFoundError:\n"
+        "        errors.append(f'{package}: not installed')\n"
+        "        continue\n"
+        "    if actual != expected_version:\n"
+        "        errors.append(f'{package}: expected {expected_version}, found {actual}')\n"
+        "if errors:\n"
+        "    raise SystemExit('\\n'.join(errors))\n"
+        "print('Pinned requirements: passed')\n"
+    )
+
+
 def venv_python(repo_root: Path) -> Path:
     return repo_root / ".venv" / "Scripts" / "python.exe"
 
@@ -60,6 +96,13 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--require-python", default="3.12", help="Required Python major.minor version.")
     parser.add_argument("--allow-cpu-torch", action="store_true", help="Do not fail when PyTorch CUDA is unavailable.")
+    parser.add_argument(
+        "--locked",
+        "--use-lock",
+        action="store_true",
+        dest="locked",
+        help="Also require runtime package versions to match requirements/ pins.",
+    )
     return parser.parse_args()
 
 
@@ -100,6 +143,16 @@ def main() -> int:
         print("=================================")
         return 1
     print("pip check: passed")
+
+    if args.locked:
+        pinned_requirements = LOCKED_CORE_REQUIREMENTS + LOCKED_TORCH_REQUIREMENTS + LOCKED_ML_REQUIREMENTS
+        pins = run_capture([py, "-c", pinned_version_check_code(pinned_requirements)])
+        if pins.returncode != 0:
+            print("Result: pinned dependency check failed")
+            emit_block("Pinned dependency output:", (pins.stdout or "") + (pins.stderr or ""))
+            print("=================================")
+            return 1
+        emit_block("Pinned dependency output:", pins.stdout)
 
     smoke_code = "REQUIRE_CUDA = " + repr(not args.allow_cpu_torch) + "\n" + SMOKE_TEST
     smoke = run_capture([py, "-c", smoke_code])

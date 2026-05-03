@@ -74,6 +74,11 @@ def test_quaternion_normalized():
         assert quat[0] >= 0  # qw >= 0 半球
 
 
+def test_quaternion_rejects_non_finite_matrix():
+    with pytest.raises(ValueError, match="quaternion"):
+        quaternion_from_matrix(np.full((3, 3), np.nan))
+
+
 def test_quaternion_round_trip():
     """quaternion → matrix → quaternion で元に戻る。"""
     rng = np.random.default_rng(123)

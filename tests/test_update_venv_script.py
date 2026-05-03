@@ -50,8 +50,30 @@ def test_has_pytest_suite_detects_optional_tests_dir(tmp_path: Path) -> None:
 
 
 def test_pytest_is_not_a_runtime_requirement() -> None:
-    assert "pytest" not in update_venv.CORE_REQUIREMENTS
+    assert all(not req.startswith("pytest") for req in update_venv.CORE_REQUIREMENTS)
     assert update_venv.TEST_REQUIREMENTS == ["pytest"]
+    assert update_venv.LOCKED_TEST_REQUIREMENTS == ["pytest==9.0.3"]
+
+
+def test_default_requirements_are_unpinned_for_latest_updates() -> None:
+    requirements = (
+        update_venv.CORE_REQUIREMENTS
+        + update_venv.TORCH_REQUIREMENTS
+        + update_venv.ML_REQUIREMENTS
+        + update_venv.TEST_REQUIREMENTS
+    )
+
+    assert requirements
+    assert all("==" not in req for req in requirements)
+    assert update_venv.TORCH_REQUIREMENTS == ["torch", "torchvision", "torchaudio"]
+
+
+def test_locked_requirements_are_pinned() -> None:
+    requirements = update_venv.requirements_for_mode(locked=True)
+
+    assert all("==" in req for req in requirements.core + requirements.torch + requirements.ml + requirements.test)
+    assert "torch==2.11.0+cu128" in requirements.torch
+    assert requirements.label == "locked pinned requirements"
 
 
 def test_dry_run_does_not_install_missing_python(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -66,6 +88,7 @@ def test_dry_run_does_not_install_missing_python(monkeypatch: pytest.MonkeyPatch
         skip_pytest=False,
         keep_temp=False,
         keep_backup=False,
+        locked=False,
         dry_run=True,
     )
     monkeypatch.setattr(update_venv, "parse_args", lambda: args)

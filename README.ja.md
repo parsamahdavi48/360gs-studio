@@ -1,6 +1,6 @@
 # stechdrive-3dgs-utils
 
-**v1.2.0**
+**v1.2.1**
 
 360°カメラの動画から、3D Gaussian Splatting (3DGS) のトレーニングに使いやすい画像・マスク・カメラデータを作るためのWindows向け統合GUIツールです。
 
@@ -59,6 +59,8 @@ run_gui.bat
 ```bat
 update_venv.bat
 ```
+
+`requirements/` の固定済み既知良好セットで作り直す場合は `update_venv.bat --locked` を使います。
 
 YOLO/SAM2のモデルファイルは初回利用時にultralyticsが自動ダウンロードします。リリースZIPにはモデル重みや生成データは含めていません。
 
@@ -132,7 +134,7 @@ torch / torchvision / torchaudio from the CUDA 12.8 wheel index
 numpy, opencv-python, Pillow, open3d, ultralytics, tqdm, PySide6
 ```
 
-setup/update とも、パッケージバージョンは固定せず、選択したPython環境で最新互換バージョンを解決し、検証に通った環境だけを採用します。
+`setup_windows.bat` は `requirements/` 以下の固定済み既知良好セットを使い、初回セットアップの再現性を優先します。`update_venv.bat` はデフォルトで互換する最新パッケージを解決し、固定セットで作り直したい場合だけ `--locked` を渡します。
 
 ## CLIツール
 

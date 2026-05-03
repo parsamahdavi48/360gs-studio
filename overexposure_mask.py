@@ -96,7 +96,11 @@ def _process_one(args: tuple[str, str, str | None]) -> str | None:
         mask = imread_unicode(existing_mask, cv2.IMREAD_GRAYSCALE)
         if mask is not None:
             if mask.shape != overexp.shape:
-                mask = cv2.resize(mask, (overexp.shape[1], overexp.shape[0]))
+                mask = cv2.resize(
+                    mask,
+                    (overexp.shape[1], overexp.shape[0]),
+                    interpolation=cv2.INTER_NEAREST,
+                )
             overexp = cv2.bitwise_and(mask, overexp)
 
     if not imwrite_unicode(mask_out, overexp):

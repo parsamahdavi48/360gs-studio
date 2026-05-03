@@ -103,7 +103,11 @@ def process_single_image(file_info):
     if img.shape != shared_base_mask.shape:
         # リサイズするかスキップするかですが、ここではAND処理のため安全にスキップまたはリサイズ
         # 今回はベースマスクに合わせてリサイズして処理する例
-        img = cv2.resize(img, (shared_base_mask.shape[1], shared_base_mask.shape[0]))
+        img = cv2.resize(
+            img,
+            (shared_base_mask.shape[1], shared_base_mask.shape[0]),
+            interpolation=cv2.INTER_NEAREST,
+        )
 
     # 合成
     final_mask = cv2.bitwise_and(img, shared_base_mask)

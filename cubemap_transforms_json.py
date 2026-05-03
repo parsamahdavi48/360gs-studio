@@ -1238,6 +1238,15 @@ def proc_convert_images_colmap_rig(job: tuple[str, str]) -> int:
     return written
 
 
+def _raise_worker_failures(failures: list[tuple[str, BaseException]], context: str) -> None:
+    if not failures:
+        return
+    shown = "; ".join(f"{label}: {error}" for label, error in failures[:3])
+    if len(failures) > 3:
+        shown += f"; ... {len(failures) - 3} more"
+    raise RuntimeError(f"{context}: {len(failures)} worker(s) failed; {shown}")
+
+
 def convert_images(
     image_files: list[str],
     input_size: tuple[int, int],
@@ -1327,18 +1336,22 @@ def convert_images(
             resolved_cache_limit,
         ),
     ) as executor:
-        futures = [
-            executor.submit(proc_convert_images, frame_file, yaw_off)
+        futures = {
+            executor.submit(proc_convert_images, frame_file, yaw_off): frame_file
             for frame_file, yaw_off in zip(image_files, frame_yaw_offsets)
-        ]
+        }
 
         done = 0
+        failures: list[tuple[str, BaseException]] = []
         for future in as_completed(futures):
+            frame_file = futures[future]
             try:
                 done += future.result()
                 print(f"[progress] {done}/{total_outputs}", flush=True)
             except Exception as e:
-                print("Worker failed:", e)
+                failures.append((frame_file, e))
+                print(f"Worker failed: {frame_file}: {e}", flush=True)
+        _raise_worker_failures(failures, "Cubemap conversion failed")
 
 
 def make_colmap_rig_jobs(
@@ -1444,15 +1457,22 @@ def convert_images_colmap_rig(
             resolved_cache_limit,
         ),
     ) as executor:
-        futures = [executor.submit(proc_convert_images_colmap_rig, job) for job in jobs]
+        futures = {
+            executor.submit(proc_convert_images_colmap_rig, job): job[0]
+            for job in jobs
+        }
 
         done = 0
+        failures: list[tuple[str, BaseException]] = []
         for future in as_completed(futures):
+            frame_file = futures[future]
             try:
                 done += future.result()
                 print(f"[progress] {done}/{total_outputs}", flush=True)
             except Exception as e:
-                print("Worker failed:", e)
+                failures.append((frame_file, e))
+                print(f"Worker failed: {frame_file}: {e}", flush=True)
+        _raise_worker_failures(failures, "COLMAP rig image conversion failed")
 
 
 def main() -> None:

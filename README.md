@@ -1,6 +1,6 @@
 # stechdrive-3dgs-utils
 
-**v1.2.0**
+**v1.2.1**
 
 A Windows-first integrated GUI tool for turning 360° camera video into images, masks, and camera data that are practical for 3D Gaussian Splatting (3DGS) training.
 
@@ -59,6 +59,8 @@ To update an existing `.venv` to the latest compatible package set, run:
 ```bat
 update_venv.bat
 ```
+
+To rebuild with the pinned known-good package set from `requirements/`, run `update_venv.bat --locked`.
 
 YOLO/SAM2 model weights are downloaded automatically by ultralytics on first use. Release ZIP assets do not include model weights or generated scene data.
 
@@ -132,7 +134,7 @@ torch / torchvision / torchaudio from the CUDA 12.8 wheel index
 numpy, opencv-python, Pillow, open3d, ultralytics, tqdm, PySide6
 ```
 
-Both setup and update intentionally avoid fixed package pins. They resolve and verify the latest compatible versions for the selected Python environment.
+`setup_windows.bat` uses the pinned known-good package set under `requirements/` for reproducible first-time setup. `update_venv.bat` resolves the latest compatible packages by default; pass `--locked` when you want to rebuild from the pinned set instead.
 
 ## CLI Tools
 

@@ -97,6 +97,45 @@ def test_image_only_export_can_write_masks_without_images(tmp_path: Path) -> Non
     assert settings["export_masks"] is True
 
 
+def test_image_only_export_fails_when_mask_worker_fails(tmp_path: Path) -> None:
+    scene = tmp_path / "scene"
+    images = scene / "images"
+    masks = scene / "masks"
+    images.mkdir(parents=True)
+    masks.mkdir()
+    cv2.imwrite(str(images / "frame_0001.png"), np.zeros((32, 64, 3), dtype=np.uint8))
+    (masks / "frame_0001.png").write_bytes(b"not an image")
+
+    views_path = tmp_path / "views.json"
+    views_path.write_text(
+        json.dumps({"views": [{"name": "front", "yaw": 0.0, "pitch": 0.0}]}),
+        encoding="utf-8",
+    )
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            "cubemap_transforms_json.py",
+            str(scene),
+            str(tmp_path / "out"),
+            "--image-only",
+            "--views-json",
+            str(views_path),
+            "--output_scale",
+            "0.5",
+            "--workers",
+            "1",
+        ],
+        cwd=Path.cwd(),
+        capture_output=True,
+        text=True,
+    )
+
+    output = result.stdout + result.stderr
+    assert result.returncode != 0
+    assert "Cubemap conversion failed: 1 worker(s) failed" in output
+
+
 def test_colmap_rig_export_writes_camera_folders_masks_and_rig_config(tmp_path: Path) -> None:
     scene = tmp_path / "scene"
     images = scene / "images"
@@ -159,3 +198,43 @@ def test_colmap_rig_export_writes_camera_folders_masks_and_rig_config(tmp_path: 
     assert settings["export_type"] == "colmap_rig"
     assert settings["camera_params"] == pytest.approx([8.0, 8.0, 7.5, 7.5])
     assert settings["yaw_offset_per_frame"] == 0.0
+
+
+def test_colmap_rig_export_fails_when_mask_worker_fails(tmp_path: Path) -> None:
+    scene = tmp_path / "scene"
+    images = scene / "images"
+    masks = scene / "masks"
+    images.mkdir(parents=True)
+    masks.mkdir()
+    cv2.imwrite(str(images / "frame_0001.png"), np.zeros((32, 64, 3), dtype=np.uint8))
+    (masks / "frame_0001.png").write_bytes(b"not an image")
+
+    views_path = tmp_path / "views.json"
+    views_path.write_text(
+        json.dumps({"views": [{"name": "front", "yaw": 0.0, "pitch": 0.0}]}),
+        encoding="utf-8",
+    )
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            "cubemap_transforms_json.py",
+            str(scene),
+            str(tmp_path / "out"),
+            "--image-only",
+            "--colmap-rig",
+            "--views-json",
+            str(views_path),
+            "--output_scale",
+            "0.5",
+            "--workers",
+            "1",
+        ],
+        cwd=Path.cwd(),
+        capture_output=True,
+        text=True,
+    )
+
+    output = result.stdout + result.stderr
+    assert result.returncode != 0
+    assert "COLMAP rig image conversion failed: 1 worker(s) failed" in output

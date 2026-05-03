@@ -1,5 +1,11 @@
 [project]
 name = "stechdrive-3dgs-utils"
-version = "1.2.0"
+version = "1.2.1"
 description = "Studio toolkit for preparing 360 video assets for SfM and 3DGS training."
 requires-python = ">=3.12"
+
+[tool.stechdrive-3dgs-utils]
+core-requirements = "requirements/core.txt"
+torch-requirements = "requirements/torch-cu128.txt"
+ml-requirements = "requirements/ml.txt"
+test-requirements = "requirements/test.txt"

@@ -5,6 +5,7 @@ video metadata と analysis_width によるキャッシュ有効性判定を検�
 from __future__ import annotations
 
 import os
+import sys
 from pathlib import Path
 
 import numpy as np
@@ -13,6 +14,7 @@ import pytest
 from extract_frames import (
     CACHE_VERSION,
     VideoInfo,
+    analyze_video_window,
     cache_path_for,
     load_analysis_cache,
     save_analysis_cache,
@@ -216,6 +218,47 @@ def test_load_handles_corrupt_cache(tmp_path: Path):
 
     loaded = load_analysis_cache(cache, video, info, 960)
     assert loaded is None
+
+
+def test_analyze_video_window_drains_large_stderr(tmp_path: Path) -> None:
+    fake_script = tmp_path / "fake_ffmpeg.py"
+    fake_script.write_text(
+        "\n".join(
+            [
+                "import sys",
+                "sys.stderr.buffer.write(b'E' * 262144)",
+                "sys.stderr.flush()",
+                "for idx in range(3):",
+                "    sys.stdout.buffer.write(bytes([idx + 1]) * 8)",
+                "    sys.stdout.flush()",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    if os.name == "nt":
+        wrapper = tmp_path / "fake_ffmpeg.cmd"
+        wrapper.write_text(f'@echo off\n"{sys.executable}" "{fake_script}" %*\n', encoding="utf-8")
+    else:
+        wrapper = tmp_path / "fake_ffmpeg.sh"
+        wrapper.write_text(f'#!/bin/sh\nexec "{sys.executable}" "{fake_script}" "$@"\n', encoding="utf-8")
+        wrapper.chmod(0o755)
+
+    blur, change, quality, motion, out_w, out_h, fps = analyze_video_window(
+        tmp_path / "dummy.mp4",
+        str(wrapper),
+        video_fps=30.0,
+        src_w=4,
+        src_h=2,
+        analysis_width=4,
+        quality_mode="sharpness",
+        compute_feature_motion=False,
+    )
+
+    assert len(blur) == 3
+    assert len(change) == 3
+    assert len(quality) == 3
+    assert motion == [0.0, 0.0, 0.0]
+    assert (out_w, out_h, fps) == (4, 2, 30.0)
 
 
 def test_load_returns_none_when_version_mismatch(tmp_path: Path):
