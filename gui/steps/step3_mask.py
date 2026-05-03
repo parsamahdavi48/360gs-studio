@@ -4,20 +4,24 @@ from __future__ import annotations
 import os
 import math
 import re
+import shutil
 import sys
 import tempfile
 from pathlib import Path
 
 from apply_frame_decisions import pending_drop_image_paths, untracked_image_paths
-from PySide6.QtCore import QProcess, Qt
+from PySide6.QtCore import QProcess, Qt, QUrl, Signal
+from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import (
     QButtonGroup,
     QCheckBox,
     QComboBox,
+    QFileDialog,
     QFormLayout,
     QGridLayout,
     QHBoxLayout,
     QLabel,
+    QMessageBox,
     QPushButton,
     QScrollArea,
     QSplitter,
@@ -74,6 +78,8 @@ _PROJECTION_NORMAL = "normal"
 
 
 class MaskStep(BaseStepWidget):
+    scene_dir_suggested = Signal(str)
+
     def __init__(self, base_dir: Path, parent: QWidget | None = None) -> None:
         super().__init__(base_dir, parent)
         self._phase_total = 0
@@ -143,6 +149,32 @@ class MaskStep(BaseStepWidget):
             self.projection_group.addButton(btn)
             self.projection_buttons[projection] = btn
         layout.addLayout(projection_row)
+
+        self.external_images_panel = QWidget()
+        external_layout = QVBoxLayout(self.external_images_panel)
+        external_layout.setContentsMargins(0, 0, 0, 0)
+        external_layout.setSpacing(6)
+
+        self.external_images_title = QLabel(i18n.t("EXTERNAL_IMAGES_SECTION"))
+        self.external_images_title.setToolTip(i18n.tip("EXTERNAL_IMAGES_SECTION"))
+        external_layout.addWidget(self.external_images_title)
+
+        self.external_images_hint = QLabel(i18n.t("EXTERNAL_IMAGES_HINT"))
+        self.external_images_hint.setObjectName("stickySummaryLabel")
+        self.external_images_hint.setWordWrap(True)
+        self.external_images_hint.setToolTip(i18n.tip("EXTERNAL_IMAGES_SECTION"))
+        external_layout.addWidget(self.external_images_hint)
+
+        external_button_row = QHBoxLayout()
+        external_button_row.setSpacing(6)
+        self.add_external_images_btn = QPushButton(i18n.t("EXTERNAL_IMAGES_ADD"))
+        self.add_external_images_btn.setToolTip(i18n.tip("EXTERNAL_IMAGES_ADD"))
+        external_button_row.addWidget(self.add_external_images_btn, stretch=1)
+        self.open_images_dir_btn = QPushButton(i18n.t("EXTERNAL_IMAGES_OPEN"))
+        self.open_images_dir_btn.setToolTip(i18n.tip("EXTERNAL_IMAGES_OPEN"))
+        external_button_row.addWidget(self.open_images_dir_btn, stretch=1)
+        external_layout.addLayout(external_button_row)
+        layout.addWidget(self.external_images_panel)
 
         # --- 実行対象 + 実行ボタン ---
         task_row = QHBoxLayout()
@@ -338,6 +370,8 @@ class MaskStep(BaseStepWidget):
         self.mask_preview.current_image_changed.connect(lambda: self._render_mask_preview())
         self.mask_preview.opacity_slider.valueChanged.connect(lambda _: self._render_mask_preview())
         self.mask_preview.yolo_preview_requested.connect(self._run_yolo_preview)
+        self.add_external_images_btn.clicked.connect(self._add_external_images_from_folder)
+        self.open_images_dir_btn.clicked.connect(self._open_images_dir)
         self._set_projection(_PROJECTION_EQUIRECT)
         self._update_task_controls()
         self._on_images_dir_changed(self._images_dir_text())
@@ -462,6 +496,7 @@ class MaskStep(BaseStepWidget):
         stitch_enabled = equirect and self.run_stitch_cb.isChecked()
         overexp_enabled = self.run_overexp_cb.isChecked()
 
+        self.external_images_panel.setVisible(not equirect)
         self.yolo_section.content_widget.setEnabled(yolo_enabled)
         self.run_stitch_cb.setEnabled(equirect)
         self.run_stitch_cb.setToolTip(
@@ -477,6 +512,102 @@ class MaskStep(BaseStepWidget):
     def _on_images_dir_changed(self, path: str) -> None:
         self.mask_preview.set_images_dir(path)
         self._render_mask_preview()
+
+    def _ensure_scene_for_external_images(self) -> bool:
+        if self.scene_dir:
+            return True
+
+        result = QMessageBox.question(
+            self,
+            i18n.t("EXTERNAL_IMAGES_SCENE_REQUIRED_TITLE"),
+            i18n.t("EXTERNAL_IMAGES_SCENE_REQUIRED_MESSAGE"),
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.Yes,
+        )
+        if result != QMessageBox.Yes:
+            return False
+
+        scene = QFileDialog.getExistingDirectory(self, i18n.t("EXTERNAL_IMAGES_SELECT_SCENE"))
+        if not scene:
+            return False
+        self.scene_dir_suggested.emit(scene)
+        if not self.scene_dir:
+            self.set_scene_dir(scene)
+        return bool(self.scene_dir)
+
+    def _open_images_dir(self) -> None:
+        if not self._ensure_scene_for_external_images():
+            return
+        images_dir = Path(self._images_dir_text())
+        images_dir.mkdir(parents=True, exist_ok=True)
+        self._on_images_dir_changed(str(images_dir))
+        self._update_ready_status()
+        QDesktopServices.openUrl(QUrl.fromLocalFile(str(images_dir)))
+
+    def _add_external_images_from_folder(self) -> None:
+        if not self._ensure_scene_for_external_images():
+            return
+        source = QFileDialog.getExistingDirectory(
+            self,
+            i18n.t("EXTERNAL_IMAGES_SELECT_FOLDER"),
+            self.scene_dir,
+        )
+        if not source:
+            return
+
+        source_dir = Path(source)
+        images_dir = Path(self._images_dir_text())
+        try:
+            if source_dir.resolve() == images_dir.resolve():
+                QMessageBox.information(
+                    self,
+                    i18n.t("EXTERNAL_IMAGES_RESULT_TITLE"),
+                    i18n.t("EXTERNAL_IMAGES_SOURCE_IS_TARGET"),
+                )
+                return
+        except OSError:
+            pass
+
+        added, skipped = self._import_external_images_from_dir(source_dir)
+        QMessageBox.information(
+            self,
+            i18n.t("EXTERNAL_IMAGES_RESULT_TITLE"),
+            i18n.t("EXTERNAL_IMAGES_RESULT").format(added=added, skipped=skipped),
+        )
+
+    def _import_external_images_from_dir(self, source_dir: Path) -> tuple[int, int]:
+        if not self.scene_dir:
+            raise ValueError(i18n.t("SCENE_REQUIRED_ACTION_HINT"))
+        if not source_dir.is_dir():
+            raise ValueError(i18n.t("EXTERNAL_IMAGES_SOURCE_NOT_FOUND").format(path=source_dir))
+
+        images_dir = Path(self._images_dir_text())
+        images_dir.mkdir(parents=True, exist_ok=True)
+
+        added = 0
+        skipped = 0
+        for src in sorted(source_dir.iterdir(), key=lambda p: p.name.lower()):
+            if not src.is_file() or src.suffix.lower() not in _IMAGE_EXTS:
+                continue
+            dst = images_dir / src.name
+            try:
+                if src.resolve() == dst.resolve():
+                    skipped += 1
+                    continue
+            except OSError:
+                pass
+            if dst.exists():
+                skipped += 1
+                continue
+            shutil.copy2(src, dst)
+            added += 1
+
+        self.images_path_label.setText(str(images_dir))
+        self._on_images_dir_changed(str(images_dir))
+        self.mask_preview.refresh_image_list(prefer_current=True)
+        self._render_mask_preview()
+        self._update_ready_status()
+        return added, skipped
 
     def _stitch_boundary_width(self) -> float:
         value = self._clamp_stitch_boundary_width(float(self.stitch_boundary_width_edit.value()))

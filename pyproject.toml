@@ -1,5 +1,5 @@
 [project]
 name = "stechdrive-3dgs-utils"
-version = "0.3.0"
+version = "1.0.0"
 description = "Studio toolkit for preparing 360 video assets for SfM and 3DGS training."
 requires-python = ">=3.12"

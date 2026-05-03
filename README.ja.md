@@ -1,6 +1,6 @@
 # stechdrive-3dgs-utils
 
-**v0.3.0**
+**v1.0.0**
 
 360度動画や連番画像から、SfM と 3D Gaussian Splatting (3DGS) 学習へ渡すための画像・マスク・カメラ情報を作るデスクトップツールです。Windows上で `setup_windows.bat` と `run_gui.bat` だけで使える、日英対応の統合GUI中心のワークフローとして整備しています。
 

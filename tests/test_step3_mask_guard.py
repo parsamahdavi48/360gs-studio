@@ -204,6 +204,47 @@ def test_mask_step_normal_image_type_disables_stitch_and_uses_normal_yolo_projec
     assert yolo_cmd[yolo_cmd.index("--projection") + 1] == "normal"
 
 
+def test_mask_step_external_image_controls_only_show_for_normal_type() -> None:
+    _app()
+    step = MaskStep(Path.cwd())
+
+    assert step.external_images_panel.isHidden()
+
+    step._set_projection("normal")
+    assert not step.external_images_panel.isHidden()
+
+    step._set_projection("equirect")
+    assert step.external_images_panel.isHidden()
+
+
+def test_mask_step_imports_external_images_into_scene_images(tmp_path: Path) -> None:
+    _app()
+    source = tmp_path / "source"
+    source.mkdir()
+    cv2.imwrite(str(source / "a.JPG"), np.full((8, 8, 3), 64, dtype=np.uint8))
+    cv2.imwrite(str(source / "b.png"), np.full((8, 8, 3), 128, dtype=np.uint8))
+    (source / "ignore.txt").write_text("not an image", encoding="utf-8")
+    scene = tmp_path / "scene"
+    scene.mkdir()
+    step = MaskStep(Path.cwd())
+    step.set_scene_dir(str(scene))
+
+    added, skipped = step._import_external_images_from_dir(source)
+
+    assert added == 2
+    assert skipped == 0
+    assert (scene / "images" / "a.JPG").is_file()
+    assert (scene / "images" / "b.png").is_file()
+    assert not (scene / "images" / "ignore.txt").exists()
+    assert step.primary_action_enabled()
+    assert step.ready_status_label.text() == i18n.t("MASK_READY_EXTERNAL_IMAGES")
+
+    added_again, skipped_again = step._import_external_images_from_dir(source)
+
+    assert added_again == 0
+    assert skipped_again == 2
+
+
 def test_mask_step_equirect_image_type_can_use_stitch(tmp_path: Path) -> None:
     _app()
     scene = _write_scene(tmp_path, drop_exists=False)
