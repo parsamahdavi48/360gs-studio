@@ -298,7 +298,6 @@ _JA: dict[str, str] = {
     "FRAMES_UNIT": "フレーム",
 
     # Step2 extra labels
-    "PREPROCESS_RUN_LABEL": "XMLからカメラポーズを作成",
     "ADD_EXT_LABEL": "マスクに拡張子を付加",
 
     # Step3 section headers
@@ -609,7 +608,6 @@ _EN: dict[str, str] = {
     "FRAMES_UNIT": "frames",
 
     # Step2 extra labels
-    "PREPROCESS_RUN_LABEL": "Create Camera Poses from XML",
     "ADD_EXT_LABEL": "Add extension to mask",
 
     # Step3 section headers
@@ -703,7 +701,6 @@ _TIPS_JA: dict[str, str] = {
     "MASK_DIR_CUBEMAP": "入力マスク画像のフォルダ。キューブマップ変換時にマスクも一緒に変換",
     "INVERT_MASKS": "出力マスクの白黒を反転。通常はOFF。出力先で逆極性が必要な場合のみON",
     "NO_IMAGE": "画像とマスクを再変換せず、transforms.jsonだけを更新します。既存の output/ 内の画像と masks/ は削除しません",
-    "PREPROCESS_CB": "MetashapeからエクスポートしたカメラXMLを読み込み、scene/transforms.json を作成してからキューブマップ変換します",
     "MS_IMAGES": "カメラXML内の画像名に対応する画像フォルダ。シーンフォルダ内の images/ を自動使用します",
     "MS_XML": "MetashapeからエクスポートしたカメラポーズXML。シーンフォルダ内の metashape.xml / cameras.xml / 最初のXMLを自動候補にします",
     "MS_PLY": "Metashapeからエクスポートした点群PLY。LichtFeldではカメラと同じ座標系に変換した pointcloud.ply を作るために使用します",
@@ -794,7 +791,6 @@ _TIPS_EN: dict[str, str] = {
     "MASK_DIR_CUBEMAP": "Input mask folder. Masks are converted alongside cubemap images",
     "INVERT_MASKS": "Invert output mask polarity. Usually keep OFF; enable only when the target app expects the opposite polarity",
     "NO_IMAGE": "Update transforms.json without reconverting images or masks. Existing images and masks inside output/ are preserved",
-    "PREPROCESS_CB": "Read the Metashape-exported camera XML and create scene/transforms.json before cubemap conversion",
     "MS_IMAGES": "Image folder matching the filenames in the camera XML. The GUI automatically uses images/ inside the scene folder",
     "MS_XML": "Metashape-exported camera pose XML. The GUI auto-suggests metashape.xml, cameras.xml, or the first XML in the scene folder",
     "MS_PLY": "Metashape-exported point cloud PLY. LichtFeld uses this to create pointcloud.ply in the same coordinate system as the cameras",

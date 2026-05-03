@@ -38,7 +38,7 @@ start_cubemap_tools_gui.bat
   - `LichtFeld Studio`: Metashapeの点群PLYを `pointcloud.ply` として取り込み、LichtFeld向けのカメラ情報を作成します。
   - 詳細設定で座標変換、PLY使用、Metashapeインポート詳細をプリセット値から変更すると、プロファイル表示は `カスタム` に切り替わります。
 - `Metashapeインポート設定`:
-  - 有効時、キューブマップ変換の前に同梱の
+  - `Metashapeインポート` 方式では、キューブマップ変換の前に同梱の
     `vendor/metashape_360_lfs/metashape_360_lfs.py` を実行します。
   - `画像フォルダ`: シーンフォルダ内の `images/` 固定。
   - `カメラXML`: MetashapeからエクスポートしたカメラポーズXML。`--xml` に渡されます。
@@ -93,7 +93,7 @@ start_cubemap_tools_gui.bat
 ## ワークフロータブ
 
 - `Cubemap`:
-  - 既存の変換ワークフロー（必要に応じて `metashape_360_lfs.py` 前処理 + `cubemap_transforms_json.py`）。
+  - 既存の変換ワークフロー（`Metashapeインポート` 方式では `metashape_360_lfs.py` + `cubemap_transforms_json.py`）。
 - `COLMAP Rig SfM`:
   - COLMAP リグデータセットの出力と、必要なら COLMAP SfM ステージ実行。
 - `RealityScan Rig XMP`:
@@ -108,7 +108,7 @@ start_cubemap_tools_gui.bat
 ## 実行時の挙動
 
 - 実行時に `<output_dir>/views_config.json` を生成します。
-- `Metashapeインポート設定` が有効な場合は先に
+- `Metashapeインポート` 方式では先に
   `vendor/metashape_360_lfs/metashape_360_lfs.py --images ... --xml ... --output <scene_dir> [...]`
   を実行します。
 - その後
@@ -125,7 +125,6 @@ start_cubemap_tools_gui.bat
 - 選択プロファイルで必要なPLYが見つからない場合は、実行前にエラーで停止します。
 - `RealityScan Rig XMP` タブでは:
   - `<rs_output_root>/views_config.json` を生成します。
-  - `Metashapeインポート設定` 有効時は、RS出力の前にMetashape取り込み処理を実行します。
   - `realityscan_rig_export.py` を実行します。
   - RealityScan 読み込み用ファイルは `<rs_output_root>/inputs` にまとめて出力されます。
     - `<image_name>`

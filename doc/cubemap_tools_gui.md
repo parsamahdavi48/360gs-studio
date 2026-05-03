@@ -38,7 +38,7 @@ start_cubemap_tools_gui.bat
   - `LichtFeld Studio`: imports the Metashape point cloud as `pointcloud.ply` and writes LichtFeld-oriented camera data.
   - If advanced settings change the coordinate transform, PLY usage, or Metashape import details away from the preset value, the profile display switches to `Custom`.
 - `Metashape Import Settings`:
-  - If enabled, run bundled `vendor/metashape_360_lfs/metashape_360_lfs.py` before cubemap conversion.
+  - In `Metashape Import` mode, the GUI runs bundled `vendor/metashape_360_lfs/metashape_360_lfs.py` before cubemap conversion.
   - `Images Folder`: fixed to scene `images/`.
   - `Camera XML`: Metashape-exported camera pose XML passed to `--xml`.
   - `Point Cloud PLY`: Metashape-exported point cloud PLY. Used automatically for LichtFeld.
@@ -92,7 +92,7 @@ start_cubemap_tools_gui.bat
 ## Workflow tabs
 
 - `Cubemap`:
-  - Existing conversion workflow (`metashape_360_lfs.py` optional + `cubemap_transforms_json.py`).
+  - Existing conversion workflow (`Metashape Import` mode runs `metashape_360_lfs.py` + `cubemap_transforms_json.py`).
 - `COLMAP Rig SfM`:
   - Exports COLMAP rig dataset and optionally runs COLMAP SfM stages.
 - `RealityScan Rig XMP`:
@@ -107,7 +107,7 @@ start_cubemap_tools_gui.bat
 ## Execution behavior
 
 - On run, GUI writes `<output_dir>/views_config.json`.
-- If `Metashape Import Settings` is enabled, GUI runs:
+- In `Metashape Import` mode, GUI first runs:
   - `vendor/metashape_360_lfs/metashape_360_lfs.py --images ... --xml ... --output <scene_dir> [...]`
 - Then GUI runs:
   - `cubemap_transforms_json.py --fov 90 --output_scale <1.0|0.6366|0.5> --views-json <that file>`
@@ -123,7 +123,6 @@ start_cubemap_tools_gui.bat
 - If required PLY is missing for selected profile, run is blocked.
 - In `RealityScan Rig XMP` tab:
   - GUI writes `<rs_output_root>/views_config.json`.
-  - If `Metashape Import Settings` is enabled, the Metashape import step is executed before RS export.
   - GUI runs `realityscan_rig_export.py`.
   - Exported import files are bundled under `<rs_output_root>/inputs`:
     - `<image_name>`

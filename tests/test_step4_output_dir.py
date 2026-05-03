@@ -17,13 +17,16 @@ def _app():
     return QApplication.instance() or QApplication([])
 
 
-def _ready_step(scene: Path) -> CubemapStep:
+def _ready_step(scene: Path, *, metashape_inputs: bool = False) -> CubemapStep:
     _app()
     scene.mkdir(exist_ok=True)
     _write_ascii_ply(scene / "pointcloud.ply", [(0.0, 0.0, 0.0)])
+    if metashape_inputs:
+        (scene / "images").mkdir(exist_ok=True)
+        (scene / "metashape.xml").write_text("<root />", encoding="utf-8")
+        _write_ascii_ply(scene / "metashape.ply", [(1.0, 2.0, 3.0)])
     step = CubemapStep(Path.cwd())
     step.set_scene_dir(str(scene))
-    step.preprocess_cb.setChecked(False)
     return step
 
 
@@ -52,6 +55,7 @@ def test_cubemap_step_uses_fixed_output_folder_label(tmp_path: Path) -> None:
     assert not hasattr(step, "no_transform_cb")
     assert not hasattr(step, "duplicate_cb")
     assert not hasattr(step, "ms_images_browse")
+    assert not hasattr(step, "preprocess_cb")
     assert hasattr(step, "ms_use_ply_cb")
     assert hasattr(step, "axis_transform_combo")
     assert hasattr(step, "invert_masks_cb")
@@ -156,7 +160,6 @@ def test_metashape_import_uses_scene_images_and_lf_ply(tmp_path: Path) -> None:
     (tmp_path / "metashape.xml").write_text("<root />", encoding="utf-8")
     (tmp_path / "metashape.ply").write_text("ply\n", encoding="utf-8")
     step.ms_ply_browse.set_text(str(tmp_path / "metashape.ply"))
-    step.preprocess_cb.setChecked(True)
 
     cmd = step._build_preprocess_cmd()
 
@@ -233,7 +236,6 @@ def test_manual_metashape_ply_toggle_switches_to_custom_profile(tmp_path: Path) 
     step.profile_combo.setCurrentIndex(postshot_idx)
 
     step.ms_use_ply_cb.setChecked(True)
-    step.preprocess_cb.setChecked(True)
 
     assert step.profile_combo.currentData() == "custom"
     cmd = step._build_preprocess_cmd()
@@ -268,21 +270,21 @@ def test_postshot_accepts_raw_ply_with_custom_name(tmp_path: Path) -> None:
     assert step._resolve_ply_source() == raw_ply
 
 
-def test_lichtfeld_requires_converted_pointcloud_without_preprocess(tmp_path: Path) -> None:
+def test_lichtfeld_import_requires_raw_ply_when_ply_enabled(tmp_path: Path) -> None:
     _app()
     tmp_path.mkdir(exist_ok=True)
-    (tmp_path / "metashape.ply").write_text("ply\n", encoding="utf-8")
+    (tmp_path / "images").mkdir()
+    (tmp_path / "metashape.xml").write_text("<root />", encoding="utf-8")
     step = CubemapStep(Path.cwd())
     step.set_scene_dir(str(tmp_path))
-    step.preprocess_cb.setChecked(False)
 
     assert step._resolve_ply_source() is None
-    with pytest.raises(ValueError, match="pointcloud"):
+    with pytest.raises(ValueError, match="PLY"):
         step.build_commands()
 
 
 def test_cubemap_step_keeps_mask_inversion_as_advanced_option(tmp_path: Path) -> None:
-    step = _ready_step(tmp_path)
+    step = _ready_step(tmp_path, metashape_inputs=True)
     step.invert_masks_cb.setChecked(True)
 
     cmd = step._build_cubemap_cmd()
@@ -291,7 +293,7 @@ def test_cubemap_step_keeps_mask_inversion_as_advanced_option(tmp_path: Path) ->
 
 
 def test_cubemap_step_can_skip_image_and_mask_conversion(tmp_path: Path) -> None:
-    step = _ready_step(tmp_path)
+    step = _ready_step(tmp_path, metashape_inputs=True)
     step.no_image_cb.setChecked(True)
 
     cmd = step._build_cubemap_cmd()
@@ -318,8 +320,7 @@ def test_cubemap_build_cancel_keeps_existing_output(tmp_path: Path, monkeypatch)
     output.mkdir()
     old_file = output / "old.txt"
     old_file.write_text("old", encoding="utf-8")
-    (tmp_path / "images").mkdir()
-    step = _ready_step(tmp_path)
+    step = _ready_step(tmp_path, metashape_inputs=True)
     monkeypatch.setattr(QMessageBox, "question", lambda *args, **kwargs: QMessageBox.No)
 
     commands = step.build_commands()
@@ -337,12 +338,12 @@ def test_cubemap_build_resets_existing_output_when_confirmed(tmp_path: Path, mon
     nested_file = nested / "old_nested.txt"
     old_file.write_text("old", encoding="utf-8")
     nested_file.write_text("old", encoding="utf-8")
-    step = _ready_step(tmp_path)
+    step = _ready_step(tmp_path, metashape_inputs=True)
     monkeypatch.setattr(QMessageBox, "question", lambda *args, **kwargs: QMessageBox.Yes)
 
     commands = step.build_commands()
 
-    assert [phase for phase, _cmd in commands] == ["cubemap"]
+    assert [phase for phase, _cmd in commands] == ["metashape", "cubemap"]
     assert not old_file.exists()
     assert not nested.exists()
     assert (output / "views_config.json").is_file()
@@ -359,7 +360,7 @@ def test_cubemap_no_image_preserves_existing_output(tmp_path: Path, monkeypatch)
     old_mask.write_text("mask", encoding="utf-8")
     old_settings = output / "stechdrive_export_settings.json"
     old_settings.write_text('{"old": true}\n', encoding="utf-8")
-    step = _ready_step(tmp_path)
+    step = _ready_step(tmp_path, metashape_inputs=True)
     step.no_image_cb.setChecked(True)
     monkeypatch.setattr(
         QMessageBox,
@@ -369,8 +370,8 @@ def test_cubemap_no_image_preserves_existing_output(tmp_path: Path, monkeypatch)
 
     commands = step.build_commands()
 
-    assert [phase for phase, _cmd in commands] == ["cubemap"]
-    assert "--no_image" in commands[0][1]
+    assert [phase for phase, _cmd in commands] == ["metashape", "cubemap"]
+    assert "--no_image" in commands[1][1]
     assert old_file.is_file()
     assert old_mask.is_file()
     assert old_settings.read_text(encoding="utf-8") == '{"old": true}\n'
@@ -384,7 +385,6 @@ def test_cubemap_build_validates_before_resetting_output(tmp_path: Path, monkeyp
     old_file.write_text("old", encoding="utf-8")
     (tmp_path / "images").mkdir()
     step = _ready_step(tmp_path)
-    step.preprocess_cb.setChecked(True)
     monkeypatch.setattr(
         QMessageBox,
         "question",
@@ -398,9 +398,9 @@ def test_cubemap_build_validates_before_resetting_output(tmp_path: Path, monkeyp
 
 
 def test_cubemap_finalize_writes_export_settings(tmp_path: Path) -> None:
-    step = _ready_step(tmp_path)
+    step = _ready_step(tmp_path, metashape_inputs=True)
     commands = step.build_commands()
-    assert [phase for phase, _cmd in commands] == ["cubemap"]
+    assert [phase for phase, _cmd in commands] == ["metashape", "cubemap"]
     step._finalize_bundle()
 
     settings_path = tmp_path / "output" / "stechdrive_export_settings.json"
@@ -431,7 +431,6 @@ def test_lichtfeld_finalize_applies_final_orientation_correction(tmp_path: Path,
     _write_ascii_ply(tmp_path / "pointcloud.ply", [(1.0, 2.0, 3.0)])
     step = CubemapStep(Path.cwd())
     step.set_scene_dir(str(tmp_path))
-    step.preprocess_cb.setChecked(False)
     monkeypatch.setattr(CubemapStep, "_transform_ply_with_open3d", staticmethod(lambda _path, _matrix: False))
 
     output = tmp_path / "output"

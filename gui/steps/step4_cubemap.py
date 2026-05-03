@@ -203,12 +203,6 @@ class CubemapStep(BaseStepWidget):
         preprocess.content_layout.addLayout(profile_form)
         pp_form = QFormLayout()
 
-        self.preprocess_cb = QCheckBox(i18n.t("PREPROCESS_RUN_LABEL"))
-        self.preprocess_cb.setToolTip(i18n.tip("PREPROCESS_CB"))
-        self.preprocess_cb.setChecked(True)
-        self.preprocess_cb.toggled.connect(self._on_preprocess_toggle)
-        pp_form.addRow("", self.preprocess_cb)
-
         self.ms_images_path_label = ElidedPathLabel("-")
         self.ms_images_path_label.setToolTip(i18n.tip("MS_IMAGES"))
         add_tooltip_row(pp_form, i18n.t("MS_IMAGES_LABEL"), self.ms_images_path_label, i18n.tip("MS_IMAGES"))
@@ -255,11 +249,6 @@ class CubemapStep(BaseStepWidget):
         preprocess.content_layout.addLayout(pp_form)
         preprocess.content_layout.addWidget(import_advanced)
         left_layout.addWidget(preprocess)
-        self._pp_widgets = [
-            self.ms_images_path_label, self.ms_xml_browse, self.ms_ply_browse,
-            self.ms_scale_edit, self.ms_use_ply_cb, self.ms_no_fix_rot_cb,
-        ]
-
         # 視点書き出し設定（折りたたみ）
         adv_output = CollapsibleSection(i18n.t("ADVANCED_OUTPUT_SECTION"), expanded=False)
         adv_form = QFormLayout()
@@ -490,16 +479,11 @@ class CubemapStep(BaseStepWidget):
                     self.profile_combo.setCurrentIndex(custom_idx)
         self._sync_ply_browse_enabled()
 
-    def _on_preprocess_toggle(self, enabled: bool) -> None:
-        for w in self._pp_widgets:
-            w.setEnabled(enabled)
-        self._sync_ply_browse_enabled()
-
     def _preprocess_uses_ply(self) -> bool:
         return self.ms_use_ply_cb.isChecked()
 
     def _sync_ply_browse_enabled(self) -> None:
-        self.ms_ply_browse.setEnabled(self.preprocess_cb.isChecked() and self._preprocess_uses_ply())
+        self.ms_ply_browse.setEnabled(self._preprocess_uses_ply())
 
     # -- ビュー --
 
@@ -561,16 +545,12 @@ class CubemapStep(BaseStepWidget):
 
         self._validate_bundle()
 
-        preprocess_cmd: list[str] | None = None
-        if self.preprocess_cb.isChecked():
-            preprocess_cmd = self._build_preprocess_cmd()
+        preprocess_cmd = self._build_preprocess_cmd()
 
         if not self._prepare_output_dir():
             return []
 
-        steps = []
-        if preprocess_cmd is not None:
-            steps.append(("metashape", preprocess_cmd))
+        steps = [("metashape", preprocess_cmd)]
         steps.append(("cubemap", self._build_cubemap_cmd()))
         if self.export_colmap_cb.isChecked():
             steps.append(("colmap", self._build_colmap_cmd()))
@@ -782,12 +762,12 @@ class CubemapStep(BaseStepWidget):
                 else None,
             },
             "metashape_import": {
-                "enabled": self.preprocess_cb.isChecked(),
+                "enabled": self._is_metashape_method(),
                 "use_ply": self._preprocess_uses_ply(),
                 "images_dir": str(self._metashape_images_dir()),
                 "xml": self.ms_xml_browse.text(),
                 "ply": self.ms_ply_browse.text()
-                if self.preprocess_cb.isChecked() and self._preprocess_uses_ply()
+                if self._is_metashape_method() and self._preprocess_uses_ply()
                 else "",
                 "scale": float(self.ms_scale_edit.text().strip()),
                 "no_fix_rotation": self.ms_no_fix_rot_cb.isChecked(),
@@ -884,10 +864,10 @@ class CubemapStep(BaseStepWidget):
         source = self._resolve_ply_source()
         if source is not None:
             return
-        if profile == _PROFILE_LICHTFELD and self.preprocess_cb.isChecked() and self._preprocess_uses_ply():
+        if profile == _PROFILE_LICHTFELD and self._preprocess_uses_ply():
             return
         if profile == _PROFILE_LICHTFELD:
-            raise ValueError("LichtFeldプロファイルにはpointcloud.plyが必要です。前処理でPLYを有効にしてください。")
+            raise ValueError("LichtFeldプロファイルにはpointcloud.plyが必要です。Metashapeインポート設定でPLY使用を有効にしてください。")
         raise ValueError(
             "Postshot/BrushプロファイルにはMetashapeからエクスポートしたRAW PLYが必要です。"
             "LichtFeld用のpointcloud.plyは使用できません。"
