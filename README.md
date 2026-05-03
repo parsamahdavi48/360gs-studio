@@ -2,7 +2,9 @@
 
 **v1.1.0**
 
-A Windows desktop toolkit for preparing frames, masks, and camera data from 360 video or image sequences for SfM and 3D Gaussian Splatting (3DGS) workflows. The current workflow is centered on the integrated PySide6 GUI with Japanese and English UI support, and is designed to run from `setup_windows.bat` and `run_gui.bat` without requiring users to manually assemble a Python environment.
+A Windows-first integrated GUI tool for turning 360° camera video into images, masks, and camera data that are practical for 3D Gaussian Splatting (3DGS) training.
+
+`setup_windows.bat` detects Python 3.12, installs it when needed, creates a virtual environment, and installs the required runtime packages. Day-to-day launch is handled by `run_gui.bat`, so users do not need to run Python commands manually for the normal GUI workflow.
 
 [JP 日本語の説明](README.ja.md)
 
@@ -10,32 +12,46 @@ Forked from [tetraface/tetraface-3dgs-utils](https://github.com/tetraface/tetraf
 
 ![STechDrive 3DGS Utils GUI](images/stechdrive-3dgs-utils-gui.jpg)
 
-## What This Tool Does
+## What You Can Do
 
-```text
-360 video
-  -> frame extraction
-  -> frame review and keep/drop decisions
-  -> mask generation
-  -> export
-      -> build 3DGS-ready outputs from Metashape SfM results
-      -> export COLMAP Rig viewpoint images and optionally run COLMAP/GLOMAP
-```
+### 1. 360° Video to Metashape SfM and 3DGS Training
 
-The main goal is to turn equirectangular 360 video into practical SfM/3DGS datasets. The high-accuracy route keeps source frames as equirectangular images for Metashape SfM, then converts the SfM result to viewpoint images, masks, and `transforms.json` for downstream 3DGS tools. A COLMAP route can also export COLMAP Rig viewpoint images from extracted equirectangular frames and optionally run COLMAP/GLOMAP. Masks are generated before SfM so that people, vehicles, stitching seams, and blown-out highlights can be excluded from feature matching.
+Extract equirectangular still frames from Insta360 or similar 360° camera video, review which frames to keep, and generate masks for people, the camera operator, tripods, stitch seams, and blown-out highlights before running SfM in Metashape.
 
-## Quick Start
+After Metashape SfM, export viewpoint images, masks, and `transforms.json` for LichtFeld Studio, Postshot, and Brush. This is the main workflow for preparing 360° video as a 3DGS training dataset.
+
+### 2. 360° Video to COLMAP Rig Dataset
+
+You can also skip Metashape and export a COLMAP Rig viewpoint dataset from extracted 360° frames. The GUI can optionally run COLMAP/GLOMAP so the result is ready to pass to COLMAP-compatible 3DGS tools.
+
+### 3. Mask Preprocessing for Normal Photos or Video Frames
+
+For DSLR, mirrorless, smartphone, or normal video image sequences, Step 3 can generate YOLO/SAM masks for people, vehicles, and other classes, plus overexposure masks. This is useful as a mask-preparation stage before sending images to SfM software.
+
+## Highlights
+
+- Extract SfM-friendly frames from 360° video
+- Review extracted frames and apply keep/drop decisions in the GUI
+- Generate masks with YOLO + SAM2.1
+- Improve detection near the bottom of 360° images for camera operators, tripods, and hands
+- Mask stitch seams and overexposed regions
+- Preview mask results while tuning settings
+- Convert Metashape SfM results for LichtFeld Studio, Postshot, and Brush
+- Export COLMAP Rig viewpoint datasets and optionally run COLMAP/GLOMAP
+- Windows setup scripts and a Japanese/English GUI
+
+## Easy Setup
+
+For a normal release ZIP, extract it and run:
 
 ```bat
 setup_windows.bat
 run_gui.bat
 ```
 
-`setup_windows.bat` detects Python 3.12, installs Python 3.12 through winget when needed, and creates a verified `.venv`. If an existing `.venv` is already healthy, setup reports that state and does not rebuild it. Use `setup_windows.bat --force` to rebuild intentionally. Package versions are resolved at setup time, with PyTorch installed from the CUDA 12.8 wheel index.
+`setup_windows.bat` looks for Python 3.12 and can install it through winget when needed. It then creates `.venv`, installs packages such as PyTorch CUDA wheels, OpenCV, Pillow, Open3D, ultralytics, and PySide6, and verifies the environment.
 
-The setup window stays open at the end so the summary can be read. Use `setup_windows.bat --no-pause` when running from an existing terminal.
-
-`run_gui.bat` activates the venv and launches the integrated GUI.
+`run_gui.bat` activates `.venv` and launches the integrated GUI. If an existing `.venv` is already healthy, setup reports that state and does not rebuild it. Use `setup_windows.bat --force` when you intentionally want to recreate the environment.
 
 To update an existing `.venv` to the latest compatible package set, run:
 
@@ -43,50 +59,59 @@ To update an existing `.venv` to the latest compatible package set, run:
 update_venv.bat
 ```
 
-`update_venv.bat` discovers installed and winget-available Python candidates from newest to oldest. It first runs pip dry-run compatibility checks for the target Python ABI, then installs a missing Python through winget only when that candidate is likely to work. The first candidate that builds a temporary venv and passes `pip check` and import/CUDA smoke tests is promoted to `.venv`.
-
-The update window stays open at the end so the summary can be read. Use `update_venv.bat --no-pause` when running from an existing terminal.
+YOLO/SAM2 model weights are downloaded automatically by ultralytics on first use. Release ZIP assets do not include model weights or generated scene data.
 
 ## GUI Workflow
 
+```text
+360° video or images
+  -> Step 1: frame extraction
+  -> Step 2: frame review and keep/drop decisions
+  -> Step 3: mask generation
+  -> Step 4: export
+      -> build 3DGS-ready outputs from Metashape SfM results
+      -> export COLMAP Rig viewpoint images and optionally run COLMAP/GLOMAP
+```
+
 | Step | Purpose | Current Default |
 | --- | --- | --- |
-| 1. Frame Extraction | Extract equirectangular still images from 360 video | Fixed interval + motion adjustment |
-| 2. Frame Review | Review extracted frames and apply keep/drop decisions | Representative replacements and low-quality review flags |
-| 3. Mask Generation | Generate YOLO, stitch seam, and overexposure masks | YOLO enabled, person detection as the baseline |
-| 4. Export | Export 3DGS outputs from SfM results, or export COLMAP Rig viewpoint images | Metashape Import / LichtFeld / Full (Quality) / Cube6 |
-
-### Current GUI Direction
-
-- Workflow navigation uses a compact vertical step tab on the left.
-- Run and Cancel actions are unified at the bottom of the main window.
-- The left settings pane in each step has a fixed width, vertical-only scrolling, and consistent padding near the preview splitter.
-- Long or rarely used settings are collapsible. The YOLO 80-class list, stitch/overexposure settings, and advanced cubemap view grid stay folded until needed.
-- The Step 4 Metashape route defaults to `LichtFeld`, `Full (Quality)`, and `Cube6 (4 sides + top/bottom)`.
-- Step 4 displays `Selected Views` and `Output Images`. `Output Images` is the deterministic output image count from input image count multiplied by enabled view count.
-- The Step 4 COLMAP route writes a COLMAP Rig dataset under `output/colmap_rig/` and can optionally run COLMAP/GLOMAP from a user-selected executable.
+| 1. Frame Extraction | Extract equirectangular still frames from 360° video | Fixed interval + motion adjustment |
+| 2. Frame Review | Review extracted frames and apply keep/drop decisions to CSV | Representative replacement and low-quality review flags |
+| 3. Mask Generation | Generate YOLO, stitch seam, and overexposure masks | YOLO enabled, quality setting for 360° images |
+| 4. Export | Export 3DGS outputs from SfM results, or export COLMAP Rig viewpoint images | Metashape Import / LichtFeld / Full / Cube6 |
 
 ## Recommended Workflow: Metashape Route
 
-1. Prepare a 360 video from an Insta360 or similar camera.
-2. Extract frames in Step 1.
-3. Review and drop unusable frames in Step 2.
-4. Generate person masks in Step 3. For 360° images, `YOLO Level 2 Quality` is the recommended starting point. For hard top-down photographer views, raise `Bottom Enhance`; enable stitch seam and overexposure masks only when they match the source material.
-5. Import the generated `masks/` folder into Metashape as per-image masks, then run SfM.
-6. Use Step 4 with the Metashape XML/PLY result to export training images, masks, and `transforms.json`.
+1. Prepare 360° video from an Insta360 or similar camera.
+2. Extract SfM-friendly frames in Step 1.
+3. Review low-quality or unnecessary frames in Step 2.
+4. Generate masks for people, camera operators, tripods, and similar objects in Step 3. For 360° images, `YOLO Level 2 Quality` is the recommended starting point.
+5. If the bottom-view camera operator is missed, raise `Bottom Enhance` to `High` or `Max`.
+6. Enable stitch seam and overexposure masks when they match the source material.
+7. Import the generated `masks/` folder into Metashape as per-image masks, then run SfM.
+8. Use Step 4 with the Metashape XML/PLY result to export training images, masks, and `transforms.json`.
 
 ## COLMAP Route
 
-1. Use Steps 1-3 as usual.
+1. Use Steps 1-3 in the same way as the Metashape route.
 2. In Step 4, choose `COLMAP Export` to write viewpoint images and masks to `output/colmap_rig/`.
 3. Enable `Run COLMAP after export` when you want the app to run Feature, Matcher, and Mapper stages.
-4. After completion, pass `output/colmap_rig/` as the COLMAP project folder to COLMAP-compatible 3DGS apps.
+4. After completion, pass `output/colmap_rig/` as the COLMAP project folder to COLMAP-compatible 3DGS tools.
+
+## Mask Preprocessing for Normal Images
 
 For normal video frames or still-camera image sequences placed in `images/`, choose `Image Type: Normal` in Step 3. This keeps YOLO/SAM and overexposure masking available while disabling stitch seam masking and 360° bottom re-detection.
 
-For equirectangular 360° frames where the bottom-view photographer is missed, Step 3 provides `Bottom Enhance` presets. Use `Standard` when the bottom is already masked well, `High` when top-down photographers remain, and `Max` only when the strongest setting is worth the extra time and possible floor/ground false positives.
+Use this when you want to exclude people, vehicles, blown-out regions, or similar areas before importing images into SfM software.
 
-Stitch seam masks are useful when the seam position is stable in the equirectangular image. If FlowState stabilization, direction lock, AI stitching, or similar processing moves the seam, leave seam masking disabled unless you have verified the preview.
+## Mask Tuning Notes
+
+- For 360° images, start with `YOLO Level 2 Quality`.
+- Use `1 Standard` for faster test runs.
+- If people leak through, try `3 Best` or raise `Expand` slightly.
+- If only the bottom-view camera operator leaks through, try `Bottom Enhance` in this order: `Standard -> High -> Max`.
+- `Max` is slower and can mask extra floor or ground.
+- Stitch seam masks are useful when the seam position is stable in the equirectangular image. If FlowState stabilization, direction lock, AI stitching, or similar processing moves the seam, verify it in the preview before using it.
 
 ## Requirements
 
@@ -105,15 +130,13 @@ numpy, opencv-python, Pillow, open3d, ultralytics, tqdm, PySide6
 
 Both setup and update intentionally avoid fixed package pins. They resolve and verify the latest compatible versions for the selected Python environment.
 
-YOLO/SAM2 model weights are downloaded automatically by ultralytics on first use.
-
 ## CLI Tools
 
 The GUI wraps these CLI engines, which can also be used directly.
 
 | Script | Purpose | Docs |
 | --- | --- | --- |
-| `extract_frames.py` | Extract frames from 360 video | [EN](doc/extract_frames.md) |
+| `extract_frames.py` | Extract frames from 360° video | [EN](doc/extract_frames.md) |
 | `apply_frame_decisions.py` | Apply keep/drop decisions from CSV | [EN](doc/apply_frame_decisions.md) |
 | `review_frames.py` | Frame review GUI | [EN](doc/review_frames.md) |
 | `yolo_mask.py` | YOLO+SAM2.1 mask generation | [EN](doc/yolo_mask.md) |
