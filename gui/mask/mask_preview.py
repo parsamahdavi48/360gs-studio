@@ -10,14 +10,15 @@ import numpy as np
 
 from custom_mask import load_custom_mask
 from image_io import imread_unicode
-from PySide6.QtCore import QItemSelectionModel, Qt, Signal
-from PySide6.QtGui import QImage, QPixmap
+from PySide6.QtCore import QItemSelectionModel, QSize, Qt, Signal
+from PySide6.QtGui import QFontMetrics, QImage, QPixmap
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QHBoxLayout,
     QLabel,
     QListView,
     QPushButton,
+    QSizePolicy,
     QSlider,
     QStackedWidget,
     QVBoxLayout,
@@ -38,6 +39,9 @@ from stitch_mask import boundary_width_to_limit_angle, create_angular_stitched_m
 
 _IMAGE_CACHE_LIMIT = 2
 _LAYER_CACHE_LIMIT = 4
+_OPACITY_SLIDER_MIN_WIDTH = 140
+_OPACITY_SLIDER_MAX_WIDTH = 160
+_STATUS_LABEL_MIN_WIDTH = 72
 
 
 @dataclass(frozen=True)
@@ -51,6 +55,44 @@ class MaskPreviewConfig:
     overexposure_dilate: int = 1
     masks_dir: str = ""
     custom_mask_path: str = ""
+
+
+class ElidedStatusLabel(QLabel):
+    """One-line status label that preserves full text for code and tooltips."""
+
+    def __init__(self, text: str = "", parent: QWidget | None = None) -> None:
+        super().__init__("", parent)
+        self._full_text = ""
+        self.setWordWrap(False)
+        self.setMinimumWidth(_STATUS_LABEL_MIN_WIDTH)
+        self.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Fixed)
+        self.setText(text)
+
+    def setText(self, text: str) -> None:  # noqa: N802 - Qt API
+        self._full_text = text
+        self.setToolTip(text)
+        self._apply_elide()
+
+    def text(self) -> str:  # noqa: N802 - Qt API
+        return self._full_text
+
+    def resizeEvent(self, event) -> None:  # noqa: ANN001, N802 - Qt API
+        super().resizeEvent(event)
+        self._apply_elide()
+
+    def sizeHint(self) -> QSize:  # noqa: N802 - Qt API
+        return QSize(_STATUS_LABEL_MIN_WIDTH, QLabel.sizeHint(self).height())
+
+    def minimumSizeHint(self) -> QSize:  # noqa: N802 - Qt API
+        return QSize(_STATUS_LABEL_MIN_WIDTH, QLabel.minimumSizeHint(self).height())
+
+    def _apply_elide(self) -> None:
+        width = max(0, self.contentsRect().width())
+        display_text = self._full_text
+        if width > 0 and self._full_text:
+            display_text = QFontMetrics(self.font()).elidedText(self._full_text, Qt.ElideRight, width)
+        if QLabel.text(self) != display_text:
+            QLabel.setText(self, display_text)
 
 
 class MaskPreviewWidget(QWidget):
@@ -148,10 +190,11 @@ class MaskPreviewWidget(QWidget):
         self.opacity_slider.setToolTip(i18n.tip("MASK_OPACITY"))
         self.opacity_slider.setRange(0, 100)
         self.opacity_slider.setValue(45)
-        self.opacity_slider.setMaximumWidth(160)
+        self.opacity_slider.setMinimumWidth(_OPACITY_SLIDER_MIN_WIDTH)
+        self.opacity_slider.setMaximumWidth(_OPACITY_SLIDER_MAX_WIDTH)
         overlay_row.addWidget(self.opacity_slider)
 
-        self.status_label = QLabel("")
+        self.status_label = ElidedStatusLabel("")
         self.status_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
         overlay_row.addWidget(self.status_label, stretch=1)
         layout.addLayout(overlay_row)

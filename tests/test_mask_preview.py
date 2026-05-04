@@ -6,7 +6,16 @@ import numpy as np
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PySide6.QtWidgets import QApplication, QAbstractItemView, QLineEdit, QPushButton, QSpinBox, QToolButton
+from PySide6.QtWidgets import (
+    QApplication,
+    QAbstractItemView,
+    QLabel,
+    QLineEdit,
+    QPushButton,
+    QSizePolicy,
+    QSpinBox,
+    QToolButton,
+)
 from PySide6.QtCore import QItemSelectionModel
 
 from gui import i18n, theme
@@ -59,6 +68,22 @@ def test_mask_preview_mode_switches_are_icon_tool_buttons() -> None:
 
     assert not widget.single_preview_btn.isChecked()
     assert widget.thumbnail_preview_btn.isChecked()
+
+
+def test_mask_preview_status_elides_without_shrinking_opacity_slider() -> None:
+    _app()
+    widget = MaskPreviewWidget()
+    status = "YOLO existing / Stitch seam 5.0deg / Overexposure threshold=254 dilate=1 / Custom"
+
+    widget.status_label.resize(90, widget.status_label.sizeHint().height())
+    widget.status_label.setText(status)
+
+    assert widget.opacity_slider.minimumWidth() >= 140
+    assert widget.status_label.wordWrap() is False
+    assert widget.status_label.sizePolicy().horizontalPolicy() == QSizePolicy.Ignored
+    assert widget.status_label.text() == status
+    assert widget.status_label.toolTip() == status
+    assert QLabel.text(widget.status_label) != status
 
 
 def test_mask_preview_uses_temporary_yolo_preview_mask(tmp_path: Path) -> None:
