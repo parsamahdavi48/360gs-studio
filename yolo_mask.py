@@ -429,9 +429,15 @@ def add_sam_mask(
         box_count=len(bboxes),
         sam_mask_count=sam_mask_count,
     )
-    for m in sam_results[0].masks.data:
-        m = m.cpu().numpy().astype(np.uint8) * 255
-        mask = np.maximum(mask, m)
+    with profile_timer(f"{profile_stage}.mask_merge"):
+        mask_data = sam_results[0].masks.data
+        if sam_mask_count == 1:
+            first_mask = next(iter(mask_data))
+            combined_mask = first_mask.cpu().numpy().astype(np.uint8) * 255
+        else:
+            masks_np = mask_data.cpu().numpy().astype(np.uint8)
+            combined_mask = np.max(masks_np, axis=0) * 255
+        mask = np.maximum(mask, combined_mask)
     return mask, has_mask + 1
 
 
