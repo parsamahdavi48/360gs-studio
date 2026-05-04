@@ -30,6 +30,14 @@ class ThumbnailRenderConfig:
     icon_size: QSize = DEFAULT_THUMB_SIZE
 
 
+@dataclass(frozen=True)
+class MaskThumbnailRenderResult:
+    image: QImage
+    # 8-bit alpha mask for the red overlay. Keeping only alpha avoids caching a
+    # second full RGBA thumbnail for every frame.
+    overlay: QImage | None = None
+
+
 class MaskThumbnailModel(AsyncThumbnailModel):
     """Mask-specific adapter for the shared thumbnail model."""
 
@@ -43,7 +51,7 @@ class MaskThumbnailModel(AsyncThumbnailModel):
         *,
         images_dir: str,
         masks_dir: str,
-        opacity: int,
+        opacity: int = 45,
         force: bool = False,
     ) -> None:
         config = ThumbnailRenderConfig(
@@ -52,25 +60,39 @@ class MaskThumbnailModel(AsyncThumbnailModel):
             opacity=max(0, min(100, int(opacity))),
             icon_size=DEFAULT_THUMB_SIZE,
         )
+        old_config = self._config
+        old_items = list(self._items)
+        same_sources = (
+            not force
+            and old_config.images_dir == config.images_dir
+            and old_config.masks_dir == config.masks_dir
+            and len(old_items) == len(images)
+            and all(item.path == path for item, path in zip(old_items, images))
+        )
         self._config = config
-        items = [
-            ThumbnailItem(
-                path=path,
-                label=path.name,
-                tooltip=str(path),
-                cache_key=(_first_mask_signature(path, config), int(config.opacity)),
+        items: list[ThumbnailItem] = []
+        for idx, path in enumerate(images):
+            if same_sources and old_items[idx].cache_key:
+                mask_signature = old_items[idx].cache_key[0]
+            else:
+                mask_signature = _first_mask_signature(path, config)
+            items.append(
+                ThumbnailItem(
+                    path=path,
+                    label=path.name,
+                    tooltip=str(path),
+                    cache_key=(mask_signature, int(config.opacity)),
+                )
             )
-            for path in images
-        ]
 
-        def renderer(item: ThumbnailItem, size: QSize) -> QImage:
+        def renderer(item: ThumbnailItem, size: QSize) -> MaskThumbnailRenderResult:
             sized_config = ThumbnailRenderConfig(
                 images_dir=config.images_dir,
                 masks_dir=config.masks_dir,
                 opacity=config.opacity,
                 icon_size=size,
             )
-            return render_mask_thumbnail(item.path, sized_config)
+            return render_mask_thumbnail_payload(item.path, sized_config)
 
         self.set_items(
             items,
@@ -85,27 +107,59 @@ class MaskThumbnailModel(AsyncThumbnailModel):
         item = self.item_at(row)
         return item.path if item is not None else None
 
+    def invalidate_images(self, images: list[Path] | set[Path]) -> None:
+        image_keys = {_path_key(path) for path in images}
+        if not image_keys:
+            return
+        for row, item in enumerate(list(self._items)):
+            if _path_key(item.path) not in image_keys:
+                continue
+            self.set_item(
+                row,
+                ThumbnailItem(
+                    path=item.path,
+                    label=item.label,
+                    tooltip=item.tooltip,
+                    cache_key=(_first_mask_signature(item.path, self._config), int(self._config.opacity)),
+                ),
+            )
 
-def render_mask_thumbnail(image_path: Path, config: ThumbnailRenderConfig) -> QImage:
-    """Build a small image+mask overlay thumbnail without touching GUI widgets."""
+
+def render_mask_thumbnail_payload(image_path: Path, config: ThumbnailRenderConfig) -> MaskThumbnailRenderResult:
+    """Build a base thumbnail plus optional transparent mask overlay."""
 
     source = read_image_preserve_depth(str(image_path))
     display = _display_bgr8(source)
     if display is None:
-        return _error_image(config.icon_size)
+        return MaskThumbnailRenderResult(image=_error_image(config.icon_size))
     display = _fit_for_thumbnail(display, config.icon_size)
 
+    overlay: QImage | None = None
     mask = _load_existing_mask(image_path, config, display.shape[:2])
     if mask is not None:
-        display = _overlay_excluded_mask(display, mask, config.opacity)
+        overlay = _mask_overlay_image(mask, display.shape[:2], config.opacity, config.icon_size)
 
     rgb = cv2.cvtColor(display, cv2.COLOR_BGR2RGB)
-    qimg = QImage(rgb.data, rgb.shape[1], rgb.shape[0], rgb.shape[1] * 3, QImage.Format_RGB888).copy()
-    return qimg.scaled(
+    image = QImage(rgb.data, rgb.shape[1], rgb.shape[0], rgb.shape[1] * 3, QImage.Format_RGB888).copy()
+    image = image.scaled(
         config.icon_size,
         Qt.KeepAspectRatio,
         Qt.SmoothTransformation,
     )
+    return MaskThumbnailRenderResult(image=image, overlay=overlay)
+
+
+def render_mask_thumbnail(image_path: Path, config: ThumbnailRenderConfig) -> QImage:
+    """Build a composite image+mask overlay thumbnail without touching GUI widgets."""
+
+    payload = render_mask_thumbnail_payload(image_path, config)
+    if payload.overlay is None:
+        return payload.image
+    image = payload.image.copy()
+    painter = QPainter(image)
+    painter.drawImage(image.rect(), _red_overlay_from_alpha(payload.overlay))
+    painter.end()
+    return image
 
 
 def _load_existing_mask(
@@ -144,22 +198,46 @@ def _display_bgr8(image: np.ndarray | None) -> np.ndarray | None:
     return display
 
 
-def _overlay_excluded_mask(image: np.ndarray, mask: np.ndarray, opacity: int) -> np.ndarray:
+def _mask_overlay_image(
+    mask: np.ndarray,
+    source_shape: tuple[int, int],
+    opacity: int,
+    icon_size: QSize,
+) -> QImage | None:
     alpha = max(0.0, min(1.0, float(opacity) / 100.0))
     if alpha <= 0:
-        return image
+        return None
+    if mask.shape != source_shape:
+        mask = cv2.resize(mask, (source_shape[1], source_shape[0]), interpolation=cv2.INTER_NEAREST)
     excluded = mask < 128
     if not np.any(excluded):
-        return image
+        return None
 
-    out = image.copy()
-    overlay = np.zeros_like(out)
-    overlay[:, :, 2] = 255
-    out[excluded] = (
-        out[excluded].astype(np.float32) * (1.0 - alpha)
-        + overlay[excluded].astype(np.float32) * alpha
-    ).astype(np.uint8)
-    return out
+    alpha_mask = np.zeros(source_shape, dtype=np.uint8)
+    alpha_mask[excluded] = int(round(alpha * 255.0))
+    image = QImage(
+        alpha_mask.data,
+        alpha_mask.shape[1],
+        alpha_mask.shape[0],
+        alpha_mask.shape[1],
+        QImage.Format_Alpha8,
+    ).copy()
+    return image.scaled(
+        icon_size,
+        Qt.KeepAspectRatio,
+        Qt.SmoothTransformation,
+    )
+
+
+def _red_overlay_from_alpha(alpha_mask: QImage) -> QImage:
+    overlay = QImage(alpha_mask.size(), QImage.Format_ARGB32_Premultiplied)
+    overlay.fill(Qt.transparent)
+    painter = QPainter(overlay)
+    painter.fillRect(overlay.rect(), QColor(255, 0, 0))
+    painter.setCompositionMode(QPainter.CompositionMode_DestinationIn)
+    painter.drawImage(overlay.rect(), alpha_mask)
+    painter.end()
+    return overlay
 
 
 def _fit_for_thumbnail(image: np.ndarray, size: QSize) -> np.ndarray:
@@ -193,6 +271,13 @@ def _file_signature(path: Path) -> tuple:
         return (str(path.resolve()).lower(), int(st.st_size), int(st.st_mtime_ns))
     except OSError:
         return (str(path).lower(), -1, -1)
+
+
+def _path_key(path: Path) -> str:
+    try:
+        return str(path.resolve()).lower()
+    except OSError:
+        return str(path).lower()
 
 
 def _first_mask_signature(image_path: Path, config: ThumbnailRenderConfig) -> tuple:

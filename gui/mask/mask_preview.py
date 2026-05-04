@@ -10,7 +10,7 @@ import numpy as np
 
 from custom_mask import load_custom_mask
 from image_io import imread_unicode
-from PySide6.QtCore import QItemSelectionModel, QSize, Qt, Signal
+from PySide6.QtCore import QItemSelectionModel, QSize, Qt, QTimer, Signal
 from PySide6.QtGui import QFontMetrics, QImage, QPixmap
 from PySide6.QtWidgets import (
     QAbstractItemView,
@@ -21,26 +21,29 @@ from PySide6.QtWidgets import (
     QSizePolicy,
     QSlider,
     QStackedWidget,
+    QToolButton,
     QVBoxLayout,
     QWidget,
 )
 
 from gui import i18n
+from gui.common.icons import mask_overlay_off_icon, mask_overlay_on_icon
 from gui.common.preview_mode_toolbar import (
     PREVIEW_MODE_SINGLE,
     PREVIEW_MODE_THUMBNAILS,
     PreviewModeToolbar,
 )
+from gui.common.thumbnail_list_model import visible_rows_for_view
 from gui.common.zoomable_image_label import ZoomableImageLabel
 from gui.mask.mask_files import iter_image_files, mask_candidates_for_image, path_key
+from gui.mask.thumbnail_delegate import MaskThumbnailDelegate
 from gui.mask.thumbnail_model import MaskThumbnailModel
 from overexposure_mask import detect_overexposure, read_image_preserve_depth
 from stitch_mask import boundary_width_to_limit_angle, create_angular_stitched_mask
 
 _IMAGE_CACHE_LIMIT = 2
 _LAYER_CACHE_LIMIT = 4
-_OPACITY_SLIDER_MIN_WIDTH = 140
-_OPACITY_SLIDER_MAX_WIDTH = 160
+_MASK_OVERLAY_OPACITY = 45
 _STATUS_LABEL_MIN_WIDTH = 72
 
 
@@ -113,12 +116,17 @@ class MaskPreviewWidget(QWidget):
         self._preview_mode = PREVIEW_MODE_SINGLE
         self._last_config = MaskPreviewConfig()
         self._current_image_path = ""
+        self._mask_overlay_visible = True
         self._yolo_preview_image_key = ""
         self._yolo_preview_mask: np.ndarray | None = None
         self._image_cache: OrderedDict[tuple, tuple[np.ndarray, np.ndarray]] = OrderedDict()
         self._mask_cache: OrderedDict[tuple, np.ndarray] = OrderedDict()
         self._stitch_cache: OrderedDict[tuple, np.ndarray] = OrderedDict()
         self._overexp_cache: OrderedDict[tuple, np.ndarray] = OrderedDict()
+        self._thumbnail_priority_timer = QTimer(self)
+        self._thumbnail_priority_timer.setSingleShot(True)
+        self._thumbnail_priority_timer.setInterval(0)
+        self._thumbnail_priority_timer.timeout.connect(self._prioritize_visible_thumbnails)
         self._build_ui()
 
     def _build_ui(self) -> None:
@@ -141,6 +149,8 @@ class MaskPreviewWidget(QWidget):
         self.thumbnail_model = MaskThumbnailModel(self)
         self.thumbnail_view = QListView()
         self.thumbnail_view.setModel(self.thumbnail_model)
+        self.thumbnail_delegate = MaskThumbnailDelegate(self.thumbnail_view)
+        self.thumbnail_view.setItemDelegate(self.thumbnail_delegate)
         self.thumbnail_view.setViewMode(QListView.IconMode)
         self.thumbnail_view.setResizeMode(QListView.Adjust)
         self.thumbnail_view.setMovement(QListView.Static)
@@ -159,6 +169,8 @@ class MaskPreviewWidget(QWidget):
         self.thumbnail_view.selectionModel().selectionChanged.connect(
             lambda _selected, _deselected: self._update_reprocess_button_text()
         )
+        self.thumbnail_view.verticalScrollBar().valueChanged.connect(lambda _value: self._queue_thumbnail_priority())
+        self.thumbnail_view.horizontalScrollBar().valueChanged.connect(lambda _value: self._queue_thumbnail_priority())
         self.preview_stack.addWidget(self.thumbnail_view)
 
         layout.addWidget(self.preview_stack, stretch=1)
@@ -185,14 +197,16 @@ class MaskPreviewWidget(QWidget):
         self.reprocess_current_btn.clicked.connect(self.current_reprocess_requested.emit)
         overlay_row.addWidget(self.reprocess_current_btn)
 
-        overlay_row.addWidget(QLabel(i18n.t("MASK_OPACITY_LABEL")))
-        self.opacity_slider = QSlider(Qt.Horizontal)
-        self.opacity_slider.setToolTip(i18n.tip("MASK_OPACITY"))
-        self.opacity_slider.setRange(0, 100)
-        self.opacity_slider.setValue(45)
-        self.opacity_slider.setMinimumWidth(_OPACITY_SLIDER_MIN_WIDTH)
-        self.opacity_slider.setMaximumWidth(_OPACITY_SLIDER_MAX_WIDTH)
-        overlay_row.addWidget(self.opacity_slider)
+        self.mask_overlay_btn = QToolButton()
+        self.mask_overlay_btn.setObjectName("iconToolButton")
+        self.mask_overlay_btn.setCheckable(True)
+        self.mask_overlay_btn.setChecked(True)
+        self.mask_overlay_btn.setIcon(mask_overlay_on_icon())
+        self.mask_overlay_btn.setAccessibleName(i18n.t("MASK_OVERLAY_TOGGLE"))
+        self.mask_overlay_btn.setToolTip(i18n.tip("MASK_OVERLAY_TOGGLE"))
+        self.mask_overlay_btn.setFixedSize(28, 28)
+        self.mask_overlay_btn.toggled.connect(self._on_mask_overlay_toggled)
+        overlay_row.addWidget(self.mask_overlay_btn)
 
         self.status_label = ElidedStatusLabel("")
         self.status_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
@@ -213,6 +227,7 @@ class MaskPreviewWidget(QWidget):
             self.status_label.setText(
                 i18n.t("MASK_PREVIEW_THUMBNAIL_STATUS").format(count=len(self.preview_images))
             )
+            self._queue_thumbnail_priority()
             return
 
         sample = self._current_image_path.strip()
@@ -292,7 +307,7 @@ class MaskPreviewWidget(QWidget):
                 status_parts.append(i18n.t("MASK_PREVIEW_CUSTOM_STATUS"))
 
         excluded = combined < 128
-        alpha = float(self.opacity_slider.value()) / 100.0
+        alpha = self._mask_overlay_alpha()
         if alpha > 0 and np.any(excluded):
             overlay = np.zeros_like(img)
             overlay[:, :, 2] = 255
@@ -301,7 +316,7 @@ class MaskPreviewWidget(QWidget):
                 + alpha * overlay[excluded].astype(np.float32)
             ).astype(np.uint8)
 
-        if np.any(excluded):
+        if alpha > 0 and np.any(excluded):
             contours, _ = cv2.findContours(
                 excluded.astype(np.uint8),
                 cv2.RETR_EXTERNAL,
@@ -318,10 +333,12 @@ class MaskPreviewWidget(QWidget):
         self._pixmap = QPixmap.fromImage(qimg)
         self._update_pixmap()
 
-    def refresh_image_list(self, prefer_current: bool = True) -> None:
+    def refresh_image_list(self, prefer_current: bool = True, *, force_thumbnails: bool = False) -> None:
         current = self._current_image_path.strip()
+        old_images = self.preview_images
         self.preview_images = self._iter_images()
-        self._sync_thumbnail_model(self._last_config, force=True, scroll=False)
+        force = force_thumbnails or tuple(old_images) != tuple(self.preview_images)
+        self._sync_thumbnail_model(self._last_config, force=force, scroll=False)
         total = len(self.preview_images)
         self.slider.setEnabled(total > 0)
         self.slider.setRange(0, max(0, total - 1))
@@ -343,6 +360,7 @@ class MaskPreviewWidget(QWidget):
             except Exception:
                 pass
         self._set_index(target, scroll_thumbnail=False)
+        self._queue_thumbnail_priority()
 
     def _iter_images(self) -> list[Path]:
         return iter_image_files(self._images_dir)
@@ -454,9 +472,21 @@ class MaskPreviewWidget(QWidget):
         self.mode_toolbar.set_mode(mode)
         self._update_reprocess_button_text()
         self.render(self._last_config)
+        if mode == PREVIEW_MODE_THUMBNAILS:
+            self.thumbnail_view.setFocus(Qt.OtherFocusReason)
 
     def preview_mode(self) -> str:
         return self._preview_mode
+
+    def _on_mask_overlay_toggled(self, checked: bool) -> None:
+        self._mask_overlay_visible = checked
+        self.mask_overlay_btn.setIcon(mask_overlay_on_icon() if checked else mask_overlay_off_icon())
+        self.thumbnail_delegate.set_overlay_visible(checked)
+        if self._preview_mode == PREVIEW_MODE_THUMBNAILS:
+            self.thumbnail_view.viewport().update()
+            self.thumbnail_view.setFocus(Qt.OtherFocusReason)
+            return
+        self.render(self._last_config)
 
     def selected_reprocess_image_paths(self) -> list[Path]:
         if self._preview_mode != PREVIEW_MODE_THUMBNAILS:
@@ -494,18 +524,17 @@ class MaskPreviewWidget(QWidget):
             tuple(str(path) for path in self.preview_images),
             self._images_dir,
             config.masks_dir,
-            int(self.opacity_slider.value()),
         )
         if force or signature != self._thumbnail_model_signature:
             self.thumbnail_model.set_sources(
                 self.preview_images,
                 images_dir=self._images_dir,
                 masks_dir=config.masks_dir,
-                opacity=int(self.opacity_slider.value()),
                 force=force,
             )
             self._thumbnail_model_signature = signature
         self._sync_thumbnail_selection(self.slider.value(), scroll=scroll)
+        self._queue_thumbnail_priority()
 
     def _sync_thumbnail_selection(self, idx: int, *, scroll: bool = False) -> None:
         if not (0 <= idx < len(self.preview_images)):
@@ -515,7 +544,17 @@ class MaskPreviewWidget(QWidget):
             return
         self._thumbnail_sync = True
         try:
-            self.thumbnail_view.selectionModel().setCurrentIndex(model_index, QItemSelectionModel.NoUpdate)
+            selected_rows = {
+                index.row()
+                for index in self.thumbnail_view.selectionModel().selectedIndexes()
+                if index.isValid()
+            }
+            flags = (
+                QItemSelectionModel.NoUpdate
+                if selected_rows
+                else QItemSelectionModel.ClearAndSelect | QItemSelectionModel.Current
+            )
+            self.thumbnail_view.selectionModel().setCurrentIndex(model_index, flags)
             if scroll and self._preview_mode == PREVIEW_MODE_THUMBNAILS:
                 self.thumbnail_view.scrollTo(model_index, QAbstractItemView.EnsureVisible)
         finally:
@@ -536,7 +575,32 @@ class MaskPreviewWidget(QWidget):
     def _update_pixmap(self) -> None:
         self.image_label.set_source_pixmap(self._pixmap)
 
+    def _mask_overlay_opacity(self) -> int:
+        return _MASK_OVERLAY_OPACITY if self._mask_overlay_visible else 0
+
+    def _mask_overlay_alpha(self) -> float:
+        return float(self._mask_overlay_opacity()) / 100.0
+
+    def invalidate_thumbnail_images(self, images: list[Path] | set[Path]) -> None:
+        self.thumbnail_model.invalidate_images(images)
+        self._queue_thumbnail_priority()
+
+    def _queue_thumbnail_priority(self) -> None:
+        if self._preview_mode != PREVIEW_MODE_THUMBNAILS:
+            return
+        self._thumbnail_priority_timer.start()
+
+    def _prioritize_visible_thumbnails(self) -> None:
+        if self._preview_mode != PREVIEW_MODE_THUMBNAILS:
+            return
+        try:
+            rows = visible_rows_for_view(self.thumbnail_view)
+        except RuntimeError:
+            return
+        self.thumbnail_model.prioritize_rows(rows, prefetch=192)
+
     def shutdown(self) -> None:
+        self._thumbnail_priority_timer.stop()
         self.thumbnail_model.shutdown()
 
     def closeEvent(self, event) -> None:  # noqa: ANN001, N802 - Qt API

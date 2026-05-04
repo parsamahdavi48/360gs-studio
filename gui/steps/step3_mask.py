@@ -125,6 +125,7 @@ class MaskStep(BaseStepWidget):
         self._current_reprocess_total = 0
         self._current_reprocess_completed = 0
         self._current_reprocess_failed: list[Path] = []
+        self._current_reprocess_succeeded: list[Path] = []
         self._current_reprocess_last_success: Path | None = None
         self._mask_preview_render_pending = False
         self._mask_preview_render_timer = QTimer(self)
@@ -472,7 +473,6 @@ class MaskStep(BaseStepWidget):
         self.overexp_threshold_edit.valueChanged.connect(lambda _: self._schedule_render_mask_preview())
         self.overexp_dilate_edit.valueChanged.connect(lambda _: self._schedule_render_mask_preview())
         self.mask_preview.current_image_changed.connect(lambda: self._schedule_render_mask_preview())
-        self.mask_preview.opacity_slider.valueChanged.connect(lambda _: self._schedule_render_mask_preview())
         self.mask_preview.yolo_preview_requested.connect(self._run_yolo_preview)
         self.mask_preview.current_reprocess_requested.connect(self._run_current_image_reprocess)
         self.add_external_images_btn.clicked.connect(self._add_external_images_from_folder)
@@ -1044,6 +1044,7 @@ class MaskStep(BaseStepWidget):
         self._current_reprocess_total = len(image_paths)
         self._current_reprocess_completed = 0
         self._current_reprocess_failed = []
+        self._current_reprocess_succeeded = []
         self._current_reprocess_last_success = None
         self.mask_preview.set_current_reprocess_running(True)
         self._start_next_current_reprocess()
@@ -1133,6 +1134,7 @@ class MaskStep(BaseStepWidget):
         self._current_reprocess_completed += 1
         if success and image_path is not None:
             self._current_reprocess_last_success = image_path
+            self._current_reprocess_succeeded.append(image_path)
         if not success and image_path is not None:
             self._current_reprocess_failed.append(image_path)
 
@@ -1152,6 +1154,7 @@ class MaskStep(BaseStepWidget):
         total = self._current_reprocess_total
         completed = self._current_reprocess_completed
         failed = len(self._current_reprocess_failed)
+        succeeded_images = list(self._current_reprocess_succeeded)
         last_success = total == 1 and completed == 1 and failed == 0
         last_image = self._current_reprocess_last_success
 
@@ -1162,6 +1165,7 @@ class MaskStep(BaseStepWidget):
         self._current_reprocess_last_success = None
         self.mask_preview.set_current_reprocess_running(False)
         self.mask_preview.refresh_image_list(prefer_current=True)
+        self.mask_preview.invalidate_thumbnail_images(succeeded_images)
         self._render_mask_preview()
         self._mask_preview_render_timer.stop()
         self._mask_preview_render_pending = False
@@ -1180,6 +1184,7 @@ class MaskStep(BaseStepWidget):
                 i18n.t("MASK_REPROCESS_SELECTED_FAILED").format(failed=failed, total=total)
             )
         self._current_reprocess_failed = []
+        self._current_reprocess_succeeded = []
 
     def _apply_current_image_postprocess(self, image_path: Path, mask_path: Path) -> None:
         if self._projection() == _PROJECTION_EQUIRECT and self.run_stitch_cb.isChecked():
@@ -1327,7 +1332,7 @@ class MaskStep(BaseStepWidget):
         if not success:
             return
         self.mask_preview.clear_yolo_preview_mask()
-        self.mask_preview.refresh_image_list(prefer_current=True)
+        self.mask_preview.refresh_image_list(prefer_current=True, force_thumbnails=True)
         self._render_mask_preview()
         self._update_ready_status()
 

@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Dict, List
 
 try:
-    from PySide6.QtCore import QItemSelectionModel, QSize, Qt, Signal
+    from PySide6.QtCore import QItemSelectionModel, QSize, Qt, QTimer, Signal
     from PySide6.QtGui import QColor, QIcon, QImage, QKeySequence, QPainter, QPen, QPixmap, QShortcut
     from PySide6.QtWidgets import (
         QAbstractItemView,
@@ -30,6 +30,7 @@ except Exception as e:  # pragma: no cover - environment-dependent import
     QItemSelectionModel = None
     QSize = None
     Qt = None
+    QTimer = None
     Signal = None
     QColor = None
     QIcon = None
@@ -65,7 +66,7 @@ if _PYSIDE_IMPORT_ERROR is None:
         PREVIEW_MODE_THUMBNAILS,
         PreviewModeToolbar,
     )
-    from gui.common.thumbnail_list_model import AsyncThumbnailModel, ThumbnailItem
+    from gui.common.thumbnail_list_model import AsyncThumbnailModel, ThumbnailItem, visible_rows_for_view
     from gui.common.zoomable_image_label import ZoomableImageLabel
 else:  # pragma: no cover - PySide6 missing
     PREVIEW_MODE_SINGLE = "single"
@@ -73,6 +74,7 @@ else:  # pragma: no cover - PySide6 missing
     PreviewModeToolbar = None
     AsyncThumbnailModel = None
     ThumbnailItem = None
+    visible_rows_for_view = None
     ZoomableImageLabel = None
 
 
@@ -135,6 +137,10 @@ if QMainWindow is not None:
             self._preview_mode = PREVIEW_MODE_SINGLE
             self.current_pixmap: QPixmap | None = None
             self._pixmap_cache: OrderedDict[tuple, QPixmap] = OrderedDict()
+            self._thumbnail_priority_timer = QTimer(self)
+            self._thumbnail_priority_timer.setSingleShot(True)
+            self._thumbnail_priority_timer.setInterval(0)
+            self._thumbnail_priority_timer.timeout.connect(self._prioritize_visible_thumbnails)
 
             self._build_ui()
             self._bind_shortcuts()
@@ -226,6 +232,12 @@ if QMainWindow is not None:
                 lambda _selected, _deselected: self._on_thumbnail_selection_changed()
             )
             self.thumbnail_view.doubleClicked.connect(self._on_thumbnail_double_clicked)
+            self.thumbnail_view.verticalScrollBar().valueChanged.connect(
+                lambda _value: self._queue_thumbnail_priority()
+            )
+            self.thumbnail_view.horizontalScrollBar().valueChanged.connect(
+                lambda _value: self._queue_thumbnail_priority()
+            )
             self.preview_stack.addWidget(self.thumbnail_view)
 
             layout.addWidget(self.preview_stack, stretch=1)
@@ -275,8 +287,8 @@ if QMainWindow is not None:
             layout.addLayout(btn_row)
 
         def _bind_shortcuts(self) -> None:
-            QShortcut(QKeySequence(Qt.Key_Left), self, activated=self.prev_row)
-            QShortcut(QKeySequence(Qt.Key_Right), self, activated=self.next_row)
+            self.prev_row_shortcut = QShortcut(QKeySequence(Qt.Key_Left), self, activated=self.prev_row)
+            self.next_row_shortcut = QShortcut(QKeySequence(Qt.Key_Right), self, activated=self.next_row)
             QShortcut(QKeySequence("F"), self, activated=self.next_problem)
             QShortcut(QKeySequence("Shift+F"), self, activated=self.prev_problem)
             QShortcut(QKeySequence(Qt.Key_Space), self, activated=self.toggle_decision)
@@ -296,10 +308,19 @@ if QMainWindow is not None:
             self._preview_mode = mode
             self.preview_stack.setCurrentIndex(1 if mode == PREVIEW_MODE_THUMBNAILS else 0)
             self.mode_toolbar.set_mode(mode)
+            thumbnail_mode = mode == PREVIEW_MODE_THUMBNAILS
+            self.prev_row_shortcut.setEnabled(not thumbnail_mode)
+            self.next_row_shortcut.setEnabled(not thumbnail_mode)
             self._render_current()
+            if thumbnail_mode:
+                self._focus_thumbnail_view_if_active()
 
         def preview_mode(self) -> str:
             return self._preview_mode
+
+        def _focus_thumbnail_view_if_active(self) -> None:
+            if self._preview_mode == PREVIEW_MODE_THUMBNAILS:
+                self.thumbnail_view.setFocus(Qt.OtherFocusReason)
 
         def _set_index(
             self,
@@ -353,6 +374,7 @@ if QMainWindow is not None:
                 renderer_key=("review",),
                 force=force,
             )
+            self._queue_thumbnail_priority()
 
         def _refresh_thumbnail_row(self, idx: int) -> None:
             if self.thumbnail_model.rowCount() != len(self.rows):
@@ -526,6 +548,7 @@ if QMainWindow is not None:
                 self._sync_thumbnail_selection(self.index, scroll=scroll_thumbnail)
 
             if self._preview_mode == PREVIEW_MODE_THUMBNAILS:
+                self._queue_thumbnail_priority()
                 return
 
             if not image_path.exists():
@@ -577,6 +600,20 @@ if QMainWindow is not None:
 
         def reset_zoom(self) -> None:
             self.image_view.reset_view()
+
+        def _queue_thumbnail_priority(self) -> None:
+            if self._preview_mode != PREVIEW_MODE_THUMBNAILS:
+                return
+            self._thumbnail_priority_timer.start()
+
+        def _prioritize_visible_thumbnails(self) -> None:
+            if self._preview_mode != PREVIEW_MODE_THUMBNAILS:
+                return
+            try:
+                rows = visible_rows_for_view(self.thumbnail_view)
+            except RuntimeError:
+                return
+            self.thumbnail_model.prioritize_rows(rows, prefetch=192)
 
         def _on_slider_changed(self, value: int) -> None:
             if self._slider_sync:
@@ -700,11 +737,14 @@ if QMainWindow is not None:
                 else "keep"
             )
             self._set_decisions({idx: next_decision for idx in indices})
+            self._focus_thumbnail_view_if_active()
 
         def reset_decision(self) -> None:
             self._set_decisions({idx: self._initial_decisions[idx] for idx in self._decision_action_indices()})
+            self._focus_thumbnail_view_if_active()
 
         def shutdown(self) -> None:
+            self._thumbnail_priority_timer.stop()
             self.thumbnail_model.shutdown()
 
         def closeEvent(self, event) -> None:  # noqa: ANN001, N802 - Qt API
