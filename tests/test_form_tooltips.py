@@ -27,6 +27,40 @@ def _label(widget: QWidget, text: str) -> QLabel:
     raise AssertionError(f"label not found: {text}")
 
 
+def test_i18n_tips_are_wrapped() -> None:
+    for key in i18n._tips:
+        lines = i18n.tip(key).splitlines()
+        assert lines, key
+        assert all(len(line) <= i18n._TOOLTIP_WRAP_WIDTH for line in lines), key
+
+
+def test_i18n_tips_are_wrapped_in_english() -> None:
+    script = textwrap.dedent(
+        """
+        import os
+        os.environ["STUDIO_LANG"] = "en"
+        from gui import i18n
+
+        for key in i18n._tips:
+            lines = i18n.tip(key).splitlines()
+            assert lines, key
+            assert all(len(line) <= i18n._TOOLTIP_WRAP_WIDTH for line in lines), key
+        """
+    )
+    env = os.environ.copy()
+    env["STUDIO_LANG"] = "en"
+
+    result = subprocess.run(
+        [sys.executable, "-c", script],
+        cwd=Path.cwd(),
+        env=env,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
 def test_extract_numeric_labels_share_field_tooltips() -> None:
     _app()
     step = ExtractStep(Path.cwd())

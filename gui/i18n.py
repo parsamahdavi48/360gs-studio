@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import locale
 import os
+import textwrap
 
 # ---------------------------------------------------------------------------
 # 文字列テーブル
@@ -133,9 +134,15 @@ _JA: dict[str, str] = {
     "EXPORT_KEEP": "採用フレームをエクスポート",
     "FINALIZE_INPLACE": "画像フォルダ内で確定",
     "FINALIZE_BUTTON": "選別を確定 (除外分を削除)",
-    "FINALIZE_BUTTON_HINT": "除外にしたフレームを images/ から削除します。採用フレームのファイル名は維持します。不可逆。バックアップが必要なら左のチェックボックスを ON に。",
+    "FINALIZE_BUTTON_HINT": (
+        "除外にしたフレームを images/ から削除します。採用フレームのファイル名は維持します。\n"
+        "不可逆。バックアップが必要なら左のチェックボックスを ON に。"
+    ),
     "BACKUP_BEFORE_FINALIZE": "適用前に images_backup/ にバックアップ",
-    "BACKUP_BEFORE_FINALIZE_HINT": "ON: 適用前に images/ を images_backup/ にフルコピー（既存バックアップは上書き）。OFF: バックアップなし（容量節約・復元不可）。",
+    "BACKUP_BEFORE_FINALIZE_HINT": (
+        "ON: 適用前に images/ を images_backup/ にフルコピー（既存バックアップは上書き）。\n"
+        "OFF: バックアップなし（容量節約・復元不可）。"
+    ),
     "ACTION_FINALIZE_REVIEW": "適用",
     "REVIEW_EMBED_NO_SCENE": "ヘッダーのシーンフォルダに抽出済みフォルダを指定すると、selected_frames.csv を自動で読み込みます。",
     "REVIEW_EMBED_EMPTY": "Step 1 の抽出完了後、または抽出済みのシーンフォルダを指定すると、ここにフレーム確認ビューが自動表示されます。",
@@ -481,7 +488,10 @@ _JA: dict[str, str] = {
     # Step4 advanced output (added 2026-05)
     "ADVANCED_OUTPUT_SECTION": "視点書き出し設定",
     "YAW_OFFSET_PER_FRAME": "Yaw回転",
-    "YAW_OFFSET_PER_FRAME_HINT": "0=無効, 30推奨。-180〜180度でクランプ。ドラッグで調整できます。フレームごとに cubemap のYawを回転して 3DGS 学習の安定性を向上",
+    "YAW_OFFSET_PER_FRAME_HINT": (
+        "0=無効, 30推奨。-180〜180度でクランプ。ドラッグで調整できます。\n"
+        "フレームごとに cubemap のYawを回転して 3DGS 学習の安定性を向上"
+    ),
     "OUTPUT_FORMAT": "出力フォーマット",
     "OUTPUT_FORMAT_COMPACT": "フォーマット:",
     "OUTPUT_FORMAT_AUTO": "自動",
@@ -492,7 +502,11 @@ _JA: dict[str, str] = {
     "JPG_QUALITY": "JPG/WebP 品質 (1-100)",
     "JPG_QUALITY_COMPACT": "JPG/WebP:",
     "EXPORT_COLMAP": "COLMAP形式モデルを追加出力",
-    "EXPORT_COLMAP_HINT": "output/transforms.json とPLYから cameras.txt / images.txt / points3D.txt を output/colmap/ に作成します。COLMAPで再SfMするための画像書き出しではありません。",
+    "EXPORT_COLMAP_HINT": (
+        "output/transforms.json とPLYから\n"
+        "cameras.txt / images.txt / points3D.txt を output/colmap/ に作成します。\n"
+        "COLMAPで再SfMするための画像書き出しではありません。"
+    ),
 }
 
 _EN: dict[str, str] = {
@@ -616,9 +630,15 @@ _EN: dict[str, str] = {
     "EXPORT_KEEP": "Export Keep Frames",
     "FINALIZE_INPLACE": "Finalize In-Place",
     "FINALIZE_BUTTON": "Finalize (Delete Drops)",
-    "FINALIZE_BUTTON_HINT": "Delete dropped frames from images/ and preserve kept filenames. Irreversible. Enable the backup checkbox if you want a safety copy.",
+    "FINALIZE_BUTTON_HINT": (
+        "Delete dropped frames from images/ and preserve kept filenames.\n"
+        "Irreversible. Enable the backup checkbox if you want a safety copy."
+    ),
     "BACKUP_BEFORE_FINALIZE": "Back up to images_backup/ before Apply",
-    "BACKUP_BEFORE_FINALIZE_HINT": "ON: snapshot images/ to images_backup/ before Apply (existing backup is replaced). OFF: no backup (saves disk; cannot be undone).",
+    "BACKUP_BEFORE_FINALIZE_HINT": (
+        "ON: snapshot images/ to images_backup/ before Apply (existing backup is replaced).\n"
+        "OFF: no backup (saves disk; cannot be undone)."
+    ),
     "ACTION_FINALIZE_REVIEW": "Apply",
     "REVIEW_EMBED_NO_SCENE": "Set an extracted scene folder in the header to automatically load selected_frames.csv.",
     "REVIEW_EMBED_EMPTY": "After Step 1 extraction completes, or after you select an extracted scene folder, the frame review view appears here automatically.",
@@ -964,7 +984,10 @@ _EN: dict[str, str] = {
     # Step4 advanced output (added 2026-05)
     "ADVANCED_OUTPUT_SECTION": "View Export Settings",
     "YAW_OFFSET_PER_FRAME": "Yaw Step",
-    "YAW_OFFSET_PER_FRAME_HINT": "0=disabled, 30=recommended. Clamped to -180 to 180 degrees. Drag horizontally to adjust. Rotates cubemap per frame to improve 3DGS training stability",
+    "YAW_OFFSET_PER_FRAME_HINT": (
+        "0=disabled, 30=recommended. Clamped to -180 to 180 degrees. Drag horizontally to adjust.\n"
+        "Rotates cubemap per frame to improve 3DGS training stability"
+    ),
     "OUTPUT_FORMAT": "Output Format",
     "OUTPUT_FORMAT_COMPACT": "Format:",
     "OUTPUT_FORMAT_AUTO": "Auto",
@@ -975,7 +998,11 @@ _EN: dict[str, str] = {
     "JPG_QUALITY": "JPG/WebP Quality (1-100)",
     "JPG_QUALITY_COMPACT": "JPG/WebP:",
     "EXPORT_COLMAP": "Add COLMAP Text Model",
-    "EXPORT_COLMAP_HINT": "Create cameras.txt / images.txt / points3D.txt in output/colmap/ from output/transforms.json and PLY. This is not a COLMAP SfM image export.",
+    "EXPORT_COLMAP_HINT": (
+        "Create cameras.txt / images.txt / points3D.txt in output/colmap/\n"
+        "from output/transforms.json and PLY.\n"
+        "This is not a COLMAP SfM image export."
+    ),
 }
 
 # ---------------------------------------------------------------------------
@@ -1290,6 +1317,24 @@ def _detect_lang() -> str:
 LANG = _detect_lang()
 _table = _JA if LANG == "ja" else _EN
 _tips = _TIPS_JA if LANG == "ja" else _TIPS_EN
+_TOOLTIP_WRAP_WIDTH = 46 if LANG == "ja" else 78
+
+
+def _wrap_tooltip(text: str) -> str:
+    lines: list[str] = []
+    for line in text.split("\n"):
+        if not line or len(line) <= _TOOLTIP_WRAP_WIDTH:
+            lines.append(line)
+            continue
+        lines.extend(
+            textwrap.wrap(
+                line,
+                width=_TOOLTIP_WRAP_WIDTH,
+                break_long_words=(LANG == "ja"),
+                break_on_hyphens=False,
+            )
+        )
+    return "\n".join(lines)
 
 
 def t(key: str) -> str:
@@ -1299,7 +1344,7 @@ def t(key: str) -> str:
 
 def tip(key: str) -> str:
     """ツールチップキーからローカライズ済みテキストを取得。"""
-    return _tips.get(key, "")
+    return _wrap_tooltip(_tips.get(key, ""))
 
 
 # モジュール変数として全キーを公開 (既存コードとの互換性)
