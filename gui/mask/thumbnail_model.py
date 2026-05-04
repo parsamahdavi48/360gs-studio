@@ -52,16 +52,30 @@ class MaskThumbnailModel(AsyncThumbnailModel):
             opacity=max(0, min(100, int(opacity))),
             icon_size=DEFAULT_THUMB_SIZE,
         )
+        old_config = self._config
+        old_items = list(self._items)
+        same_sources = (
+            not force
+            and old_config.images_dir == config.images_dir
+            and old_config.masks_dir == config.masks_dir
+            and len(old_items) == len(images)
+            and all(item.path == path for item, path in zip(old_items, images))
+        )
         self._config = config
-        items = [
-            ThumbnailItem(
-                path=path,
-                label=path.name,
-                tooltip=str(path),
-                cache_key=(_first_mask_signature(path, config), int(config.opacity)),
+        items: list[ThumbnailItem] = []
+        for idx, path in enumerate(images):
+            if same_sources and old_items[idx].cache_key:
+                mask_signature = old_items[idx].cache_key[0]
+            else:
+                mask_signature = _first_mask_signature(path, config)
+            items.append(
+                ThumbnailItem(
+                    path=path,
+                    label=path.name,
+                    tooltip=str(path),
+                    cache_key=(mask_signature, int(config.opacity)),
+                )
             )
-            for path in images
-        ]
 
         def renderer(item: ThumbnailItem, size: QSize) -> QImage:
             sized_config = ThumbnailRenderConfig(
@@ -84,6 +98,23 @@ class MaskThumbnailModel(AsyncThumbnailModel):
     def image_at(self, row: int) -> Path | None:
         item = self.item_at(row)
         return item.path if item is not None else None
+
+    def invalidate_images(self, images: list[Path] | set[Path]) -> None:
+        image_keys = {_path_key(path) for path in images}
+        if not image_keys:
+            return
+        for row, item in enumerate(list(self._items)):
+            if _path_key(item.path) not in image_keys:
+                continue
+            self.set_item(
+                row,
+                ThumbnailItem(
+                    path=item.path,
+                    label=item.label,
+                    tooltip=item.tooltip,
+                    cache_key=(_first_mask_signature(item.path, self._config), int(self._config.opacity)),
+                ),
+            )
 
 
 def render_mask_thumbnail(image_path: Path, config: ThumbnailRenderConfig) -> QImage:
@@ -193,6 +224,13 @@ def _file_signature(path: Path) -> tuple:
         return (str(path.resolve()).lower(), int(st.st_size), int(st.st_mtime_ns))
     except OSError:
         return (str(path).lower(), -1, -1)
+
+
+def _path_key(path: Path) -> str:
+    try:
+        return str(path.resolve()).lower()
+    except OSError:
+        return str(path).lower()
 
 
 def _first_mask_signature(image_path: Path, config: ThumbnailRenderConfig) -> tuple:

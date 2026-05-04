@@ -10,7 +10,7 @@ import numpy as np
 
 from custom_mask import load_custom_mask
 from image_io import imread_unicode
-from PySide6.QtCore import QItemSelectionModel, QSize, Qt, Signal
+from PySide6.QtCore import QItemSelectionModel, QSize, Qt, QTimer, Signal
 from PySide6.QtGui import QFontMetrics, QImage, QPixmap
 from PySide6.QtWidgets import (
     QAbstractItemView,
@@ -31,6 +31,7 @@ from gui.common.preview_mode_toolbar import (
     PREVIEW_MODE_THUMBNAILS,
     PreviewModeToolbar,
 )
+from gui.common.thumbnail_list_model import visible_rows_for_view
 from gui.common.zoomable_image_label import ZoomableImageLabel
 from gui.mask.mask_files import iter_image_files, mask_candidates_for_image, path_key
 from gui.mask.thumbnail_model import MaskThumbnailModel
@@ -119,6 +120,10 @@ class MaskPreviewWidget(QWidget):
         self._mask_cache: OrderedDict[tuple, np.ndarray] = OrderedDict()
         self._stitch_cache: OrderedDict[tuple, np.ndarray] = OrderedDict()
         self._overexp_cache: OrderedDict[tuple, np.ndarray] = OrderedDict()
+        self._thumbnail_priority_timer = QTimer(self)
+        self._thumbnail_priority_timer.setSingleShot(True)
+        self._thumbnail_priority_timer.setInterval(0)
+        self._thumbnail_priority_timer.timeout.connect(self._prioritize_visible_thumbnails)
         self._build_ui()
 
     def _build_ui(self) -> None:
@@ -159,6 +164,8 @@ class MaskPreviewWidget(QWidget):
         self.thumbnail_view.selectionModel().selectionChanged.connect(
             lambda _selected, _deselected: self._update_reprocess_button_text()
         )
+        self.thumbnail_view.verticalScrollBar().valueChanged.connect(lambda _value: self._queue_thumbnail_priority())
+        self.thumbnail_view.horizontalScrollBar().valueChanged.connect(lambda _value: self._queue_thumbnail_priority())
         self.preview_stack.addWidget(self.thumbnail_view)
 
         layout.addWidget(self.preview_stack, stretch=1)
@@ -213,6 +220,7 @@ class MaskPreviewWidget(QWidget):
             self.status_label.setText(
                 i18n.t("MASK_PREVIEW_THUMBNAIL_STATUS").format(count=len(self.preview_images))
             )
+            self._queue_thumbnail_priority()
             return
 
         sample = self._current_image_path.strip()
@@ -318,10 +326,12 @@ class MaskPreviewWidget(QWidget):
         self._pixmap = QPixmap.fromImage(qimg)
         self._update_pixmap()
 
-    def refresh_image_list(self, prefer_current: bool = True) -> None:
+    def refresh_image_list(self, prefer_current: bool = True, *, force_thumbnails: bool = False) -> None:
         current = self._current_image_path.strip()
+        old_images = self.preview_images
         self.preview_images = self._iter_images()
-        self._sync_thumbnail_model(self._last_config, force=True, scroll=False)
+        force = force_thumbnails or tuple(old_images) != tuple(self.preview_images)
+        self._sync_thumbnail_model(self._last_config, force=force, scroll=False)
         total = len(self.preview_images)
         self.slider.setEnabled(total > 0)
         self.slider.setRange(0, max(0, total - 1))
@@ -343,6 +353,7 @@ class MaskPreviewWidget(QWidget):
             except Exception:
                 pass
         self._set_index(target, scroll_thumbnail=False)
+        self._queue_thumbnail_priority()
 
     def _iter_images(self) -> list[Path]:
         return iter_image_files(self._images_dir)
@@ -506,6 +517,7 @@ class MaskPreviewWidget(QWidget):
             )
             self._thumbnail_model_signature = signature
         self._sync_thumbnail_selection(self.slider.value(), scroll=scroll)
+        self._queue_thumbnail_priority()
 
     def _sync_thumbnail_selection(self, idx: int, *, scroll: bool = False) -> None:
         if not (0 <= idx < len(self.preview_images)):
@@ -536,7 +548,26 @@ class MaskPreviewWidget(QWidget):
     def _update_pixmap(self) -> None:
         self.image_label.set_source_pixmap(self._pixmap)
 
+    def invalidate_thumbnail_images(self, images: list[Path] | set[Path]) -> None:
+        self.thumbnail_model.invalidate_images(images)
+        self._queue_thumbnail_priority()
+
+    def _queue_thumbnail_priority(self) -> None:
+        if self._preview_mode != PREVIEW_MODE_THUMBNAILS:
+            return
+        self._thumbnail_priority_timer.start()
+
+    def _prioritize_visible_thumbnails(self) -> None:
+        if self._preview_mode != PREVIEW_MODE_THUMBNAILS:
+            return
+        try:
+            rows = visible_rows_for_view(self.thumbnail_view)
+        except RuntimeError:
+            return
+        self.thumbnail_model.prioritize_rows(rows, prefetch=192)
+
     def shutdown(self) -> None:
+        self._thumbnail_priority_timer.stop()
         self.thumbnail_model.shutdown()
 
     def closeEvent(self, event) -> None:  # noqa: ANN001, N802 - Qt API

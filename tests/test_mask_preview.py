@@ -20,7 +20,7 @@ from PySide6.QtCore import QItemSelectionModel
 
 from gui import i18n, theme
 from gui.mask.mask_preview import MaskPreviewConfig, MaskPreviewWidget
-from gui.mask.thumbnail_model import ThumbnailRenderConfig, render_mask_thumbnail
+from gui.mask.thumbnail_model import MaskThumbnailModel, ThumbnailRenderConfig, render_mask_thumbnail
 from gui.steps.step3_mask import MaskStep, _yolo_preview_output_name
 
 
@@ -298,6 +298,54 @@ def test_mask_preview_thumbnail_render_preserves_multi_selection(tmp_path: Path)
     widget.render(MaskPreviewConfig())
 
     assert widget.selected_reprocess_image_paths() == [image_paths[1], image_paths[3]]
+
+
+def test_mask_preview_refresh_reuses_thumbnail_model_when_images_are_unchanged(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    _app()
+    for idx in range(3):
+        image_path = tmp_path / f"frame_{idx:06d}.png"
+        cv2.imwrite(str(image_path), np.full((16, 32, 3), 120, dtype=np.uint8))
+    widget = MaskPreviewWidget()
+    widget.set_images_dir(str(tmp_path))
+    calls: list[bool] = []
+
+    def remember_set_sources(*_args, **kwargs) -> None:
+        calls.append(bool(kwargs.get("force", False)))
+
+    monkeypatch.setattr(widget.thumbnail_model, "set_sources", remember_set_sources)
+
+    widget.refresh_image_list(prefer_current=True)
+
+    assert calls == []
+
+
+def test_mask_thumbnail_model_reuses_mask_signatures_when_only_opacity_changes(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    _app()
+    image_paths: list[Path] = []
+    for idx in range(3):
+        image_path = tmp_path / f"frame_{idx:06d}.png"
+        cv2.imwrite(str(image_path), np.full((16, 32, 3), 120, dtype=np.uint8))
+        image_paths.append(image_path)
+    calls: list[Path] = []
+
+    def fake_signature(path: Path, _config) -> tuple:  # noqa: ANN001
+        calls.append(path)
+        return (path.name, 1, 1)
+
+    monkeypatch.setattr("gui.mask.thumbnail_model._first_mask_signature", fake_signature)
+    model = MaskThumbnailModel()
+
+    model.set_sources(images=image_paths, images_dir=str(tmp_path), masks_dir=str(tmp_path / "masks"), opacity=45)
+    model.set_sources(images=image_paths, images_dir=str(tmp_path), masks_dir=str(tmp_path / "masks"), opacity=60)
+
+    assert calls == image_paths
+    assert [model.item_at(i).cache_key[1] for i in range(3)] == [60, 60, 60]
 
 
 def test_mask_preview_thumbnail_mode_skips_large_detail_render(tmp_path: Path) -> None:
