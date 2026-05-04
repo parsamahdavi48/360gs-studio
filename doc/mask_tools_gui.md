@@ -7,6 +7,7 @@ Step 3 in STechDrive 3DGS Utils is a PySide6 wrapper around:
 - `yolo_mask.py` (person mask generation)
 - `stitch_mask.py` (stitch-region masking)
 - `overexposure_mask.py` (overexposure masking)
+- `custom_mask.py` (user-provided static mask merging)
 
 It is intended for extracted frames or externally prepared image sequences (`images/` -> `masks/`).
 
@@ -46,18 +47,23 @@ run_gui.bat --scene ./scene01
   - The GUI clamps the value to `0.0-30.0` degrees for safety.
 - `Stitch Workers`: forwarded to `stitch_mask.py --workers`.
   - Drag horizontally on the number field to adjust.
+- `Custom Mask`:
+  - AND-merges a user-provided static mask into every mask in `masks/` as the final step.
+  - White means keep and black means exclude. Color images are read as grayscale.
+  - The custom mask dimensions must match the source images. Mismatches are not resized automatically and fail the step.
+  - If `Custom` is turned on before a file is selected, the file picker opens automatically. You can also select the file first with `Load`.
 - `YOLO/SAM Preview`: runs `yolo_mask.py` only for the currently displayed preview image.
   - The result is shown as a red overlay and is not saved to `masks/`.
   - It uses the current `Image Type`, `YOLO Level`, `YOLO Expand`, `Bottom Enhance`, and `YOLO Classes` settings.
   - Use the main `Generate` action when you want to write masks for all frames.
 - `Reprocess Current`: rebuilds and saves the mask for only the currently displayed preview image.
-  - If `YOLO Detection` is enabled, it reruns YOLO/SAM for that single image. If `Stitch Seam` or `Overexposure` is enabled, those masks are merged into the same output.
+  - If `YOLO Detection` is enabled, it reruns YOLO/SAM for that single image. If `Stitch Seam`, `Overexposure`, or `Custom` is enabled, those masks are merged into the same output.
   - Use it to fix misses found in preview without regenerating the whole set.
 
 ## Actions
 
-Select `YOLO Detection`, `Stitch Seam`, and/or `Overexposure`, then press `Generate`.
-When multiple tasks are selected, they run in this order: YOLO detection, stitch seam, overexposure.
+Select `YOLO Detection`, `Stitch Seam`, `Overexposure`, and/or `Custom`, then press `Generate`.
+When multiple tasks are selected, they run in this order: YOLO detection, stitch seam, overexposure, custom.
 
 If `selected_frames.csv` is not present, Step 3 can still generate masks as long as `images/` contains supported images.
 In that external-image mode, Step 2 keep/drop validation is skipped.

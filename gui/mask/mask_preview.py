@@ -44,10 +44,12 @@ class MaskPreviewConfig:
     use_yolo: bool = True
     use_stitch: bool = False
     use_overexposure: bool = False
+    use_custom: bool = False
     stitch_boundary_width_deg: float | None = 5.0
     overexposure_threshold: int = 254
     overexposure_dilate: int = 1
     masks_dir: str = ""
+    custom_mask_path: str = ""
 
 
 class MaskPreviewWidget(QWidget):
@@ -236,6 +238,14 @@ class MaskPreviewWidget(QWidget):
                     dilate=config.overexposure_dilate,
                 )
             )
+
+        if config.use_custom:
+            custom = self._custom_mask_for_preview(config, source_img.shape[:2], combined.shape)
+            if custom is None:
+                status_parts.append(i18n.t("MASK_PREVIEW_CUSTOM_INVALID"))
+            else:
+                combined = cv2.bitwise_and(combined, custom)
+                status_parts.append(i18n.t("MASK_PREVIEW_CUSTOM_STATUS"))
 
         excluded = combined < 128
         alpha = float(self.opacity_slider.value()) / 100.0
@@ -566,6 +576,28 @@ class MaskPreviewWidget(QWidget):
         if key is not None:
             self._store_cache(self._overexp_cache, key, mask)
         return mask.copy()
+
+    def _custom_mask_for_preview(
+        self,
+        config: MaskPreviewConfig,
+        source_shape: tuple[int, int],
+        display_shape: tuple[int, int],
+    ) -> np.ndarray | None:
+        custom_path_text = config.custom_mask_path.strip()
+        if not custom_path_text:
+            return None
+        custom = imread_unicode(custom_path_text, cv2.IMREAD_GRAYSCALE)
+        if custom is None:
+            return None
+        if custom.shape == display_shape:
+            return custom
+        if custom.shape == source_shape:
+            return cv2.resize(
+                custom,
+                (display_shape[1], display_shape[0]),
+                interpolation=cv2.INTER_NEAREST,
+            )
+        return None
 
 
 def _display_bgr8(image: np.ndarray | None) -> np.ndarray | None:
