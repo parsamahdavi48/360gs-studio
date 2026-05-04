@@ -62,7 +62,7 @@ update_venv.bat
 
 `requirements/` の固定済み既知良好セットで作り直す場合は `update_venv.bat --locked` を使います。
 
-YOLO/SAM2のモデルファイルは初回利用時にultralyticsが自動ダウンロードします。リリースZIPにはモデル重みや生成データは含めていません。
+YOLO/SAM2のモデルファイルは初回利用時にultralyticsが自動ダウンロードする場合があります。リリースZIPにはモデル重みや生成データは含めていません。これらの第三者ライブラリおよびモデル重みには別ライセンスが適用されます。詳細は [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md) を参照してください。
 
 ## GUIワークフロー
 
@@ -154,6 +154,8 @@ GUIは以下のCLIエンジンを呼び出しています。必要なら単体�
 ## ライセンス
 
 MIT License。詳細は [LICENSE](LICENSE) を参照してください。
+
+YOLO/SAMマスク機能では、別ライセンスの第三者ライブラリおよびモデル重みを使用します。詳細は [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md) を参照してください。
 
 Original code by [tetraface Inc.](https://github.com/tetraface)
 Fork extensions by [stechdrive](https://github.com/stechdrive)

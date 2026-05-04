@@ -45,6 +45,9 @@ class BaseStepWidget(QWidget):
     def build_commands(self) -> list[tuple[str, list[str]]]:
         raise NotImplementedError
 
+    def confirm_commands(self, commands: list[tuple[str, list[str]]]) -> bool:
+        return True
+
     def primary_action_text(self) -> str:
         return i18n.RUN
 

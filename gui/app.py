@@ -307,6 +307,8 @@ class MainWindow(QWidget):
             return
         if not commands:
             return
+        if not step.confirm_commands(commands):
+            return
         self._current_step = self.stack.currentIndex()
         self.progress.reset()
         self.runner.start_queue(commands)

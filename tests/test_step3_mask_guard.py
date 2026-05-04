@@ -230,6 +230,24 @@ def test_mask_step_allows_external_images_without_selected_frames_csv(tmp_path: 
     assert commands[0][1][3] == str(images)
 
 
+def test_mask_step_confirms_yolo_commands(monkeypatch) -> None:
+    _app()
+    step = MaskStep(Path.cwd())
+    calls = 0
+
+    def fake_confirm() -> bool:
+        nonlocal calls
+        calls += 1
+        return False
+
+    monkeypatch.setattr(step, "_confirm_yolo_sam_license_notice", fake_confirm)
+
+    assert not step.confirm_commands([("yolo", ["cmd"])])
+    assert calls == 1
+    assert step.confirm_commands([("stitch", ["cmd"])])
+    assert calls == 1
+
+
 def test_mask_step_disables_generation_when_no_mask_task_selected(tmp_path: Path) -> None:
     _app()
     scene = _write_scene(tmp_path, drop_exists=False)
