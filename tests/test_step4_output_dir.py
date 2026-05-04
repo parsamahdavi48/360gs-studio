@@ -337,6 +337,29 @@ def test_custom_grid_resize_preserves_existing_rows_and_checks() -> None:
     assert step.view_config.pitch_row_count() == 3
 
 
+def test_pitch_row_controls_are_packed_left_without_clipping() -> None:
+    app = _app()
+    step = CubemapStep(Path.cwd())
+    idx = step.view_config.view_mode_combo.findData("custom_views")
+    step.view_config.view_mode_combo.setCurrentIndex(idx)
+    step.view_config.pitch_rows[0]["pitch_edit"].setValue(-90.0)
+
+    step.resize(720, 720)
+    step.show()
+    app.processEvents()
+
+    first_row = step.view_config.pitch_rows[0]
+    delete_btn = first_row["delete_btn"]
+    pitch_edit = first_row["pitch_edit"]
+    gap = pitch_edit.geometry().left() - delete_btn.geometry().right() - 1
+    required_width = pitch_edit.fontMetrics().horizontalAdvance("-999.9") + 22
+
+    assert gap <= 4
+    assert pitch_edit.width() >= required_width
+
+    step.close()
+
+
 def test_custom_grid_bulk_selection_emits_single_change() -> None:
     _app()
     step = CubemapStep(Path.cwd())

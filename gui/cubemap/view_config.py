@@ -39,6 +39,10 @@ _CUBE6_VIEW_CELLS = (
     ("bottom", 0, 3),
 )
 _CUBE6_CELL_TO_NAME = {(row, slot): name for name, row, slot in _CUBE6_VIEW_CELLS}
+_PITCH_DELETE_BUTTON_SIZE = 24
+_PITCH_CELL_SPACING = 2
+_PITCH_EDIT_MIN_WIDTH = 78
+_PITCH_EDIT_WIDTH_SAMPLE = "-999.9"
 
 VIEW_MODE_CUSTOM = "custom_views"
 VIEW_MODE_CUBE6 = "cube6"
@@ -404,7 +408,10 @@ class ViewConfigWidget(QWidget):
             self.pitch_delete_buttons = []
             self._clear_grid()
 
-            self.grid_layout.setColumnMinimumWidth(0, 88)
+            self.grid_layout.setColumnMinimumWidth(
+                0,
+                _PITCH_DELETE_BUTTON_SIZE + _PITCH_CELL_SPACING + _PITCH_EDIT_MIN_WIDTH,
+            )
             for s in range(slots):
                 lab = QLabel(f"S{s}")
                 lab.setAlignment(Qt.AlignCenter)
@@ -422,14 +429,14 @@ class ViewConfigWidget(QWidget):
                 pitch_cell = QWidget()
                 pitch_layout = QHBoxLayout(pitch_cell)
                 pitch_layout.setContentsMargins(0, 0, 0, 0)
-                pitch_layout.setSpacing(2)
+                pitch_layout.setSpacing(_PITCH_CELL_SPACING)
 
                 delete_btn = QToolButton()
                 delete_btn.setObjectName("iconToolButton")
                 delete_btn.setIcon(delete_icon())
                 delete_btn.setToolTip(i18n.t("PITCH_ROW_REMOVE"))
                 delete_btn.setAccessibleName(i18n.t("PITCH_ROW_REMOVE"))
-                delete_btn.setFixedSize(24, 24)
+                delete_btn.setFixedSize(_PITCH_DELETE_BUTTON_SIZE, _PITCH_DELETE_BUTTON_SIZE)
                 delete_btn.clicked.connect(lambda _checked=False, idx=row_index: self.remove_pitch_row(idx))
                 self.pitch_delete_buttons.append(delete_btn)
                 pitch_layout.addWidget(delete_btn)
@@ -443,10 +450,16 @@ class ViewConfigWidget(QWidget):
                     drag_pixels_per_step=6.0,
                 )
                 pitch_edit.setToolTip(i18n.tip("PITCH_ROWS"))
-                pitch_edit.setFixedWidth(60)
+                pitch_edit_width = max(
+                    _PITCH_EDIT_MIN_WIDTH,
+                    pitch_edit.fontMetrics().horizontalAdvance(_PITCH_EDIT_WIDTH_SAMPLE) + 22,
+                )
+                pitch_edit.setFixedWidth(pitch_edit_width)
                 pitch_edit.valueChanged.connect(lambda value, idx=row_index: self._on_pitch_value_changed(idx, value))
                 pitch_layout.addWidget(pitch_edit)
-                self.grid_layout.addWidget(pitch_cell, grid_row, 0)
+                pitch_layout.addStretch(1)
+                pitch_cell.setFixedWidth(_PITCH_DELETE_BUTTON_SIZE + _PITCH_CELL_SPACING + pitch_edit_width)
+                self.grid_layout.addWidget(pitch_cell, grid_row, 0, alignment=Qt.AlignLeft | Qt.AlignVCenter)
 
                 checks = []
                 for s in range(slots):
