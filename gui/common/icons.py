@@ -50,6 +50,26 @@ _DESELECT_ALL_SVG = """
 </svg>
 """.strip()
 
+_PLUS_SVG = """
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none">
+  <path d="M12 5v14M5 12h14" stroke="#e5e7eb" stroke-width="2.2"
+        stroke-linecap="round"/>
+</svg>
+""".strip()
+
+_MINUS_SVG = """
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none">
+  <path d="M5 12h14" stroke="#e5e7eb" stroke-width="2.2" stroke-linecap="round"/>
+</svg>
+""".strip()
+
+_DELETE_SVG = """
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none">
+  <path d="M6 7h12M10 7V5h4v2M8 7l.6 12h6.8L16 7" stroke="#e5e7eb"
+        stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>
+""".strip()
+
 _SINGLE_PREVIEW_SVG = """
 <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none">
   <rect x="4" y="5" width="16" height="14" rx="1.8" stroke="#e5e7eb" stroke-width="1.8"/>
@@ -114,6 +134,18 @@ def select_all_icon(size: int = 18) -> QIcon:
 
 def deselect_all_icon(size: int = 18) -> QIcon:
     return svg_icon(_DESELECT_ALL_SVG, size)
+
+
+def plus_icon(size: int = 18) -> QIcon:
+    return svg_icon(_PLUS_SVG, size)
+
+
+def minus_icon(size: int = 18) -> QIcon:
+    return svg_icon(_MINUS_SVG, size)
+
+
+def delete_icon(size: int = 18) -> QIcon:
+    return svg_icon(_DELETE_SVG, size)
 
 
 def single_preview_icon(size: int = 18) -> QIcon:

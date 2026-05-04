@@ -8,15 +8,15 @@ from PySide6.QtWidgets import (
     QGridLayout,
     QHBoxLayout,
     QLabel,
+    QSizePolicy,
     QToolButton,
     QVBoxLayout,
     QWidget,
 )
 
 from gui import i18n
-from gui.common.collapsible_section import CollapsibleSection
 from gui.common.drag_spinbox import DragDoubleSpinBox
-from gui.common.icons import deselect_all_icon, select_all_icon
+from gui.common.icons import delete_icon, deselect_all_icon, minus_icon, plus_icon, select_all_icon
 
 _MIN_YAW_SLOTS = 4
 _MAX_YAW_SLOTS = 8
@@ -28,6 +28,23 @@ _MIN_PITCH_DEG = -90.0
 _MAX_PITCH_DEG = 90.0
 _WARN_ENABLED_VIEWS = 24
 _BLOCK_ENABLED_VIEWS = 40
+_CUBE6_YAW_SLOTS = 4
+_CUBE6_PITCHES = (-90.0, 0.0, 90.0)
+_CUBE6_ENABLED_CELLS = frozenset({(0, 3), (1, 0), (1, 1), (1, 2), (1, 3), (2, 3)})
+_CUBE6_VIEW_CELLS = (
+    ("px", 1, 0),
+    ("nx", 1, 2),
+    ("pz", 1, 3),
+    ("nz", 1, 1),
+    ("top", 2, 3),
+    ("bottom", 0, 3),
+)
+_CUBE6_CELL_TO_NAME = {(row, slot): name for name, row, slot in _CUBE6_VIEW_CELLS}
+_PITCH_DELETE_BUTTON_SIZE = 24
+_PITCH_CELL_SPACING = 2
+_PITCH_EDIT_MIN_WIDTH = 78
+_PITCH_EDIT_WIDTH_SAMPLE = "-999.9"
+_YAW_SLOT_COLUMN_MIN_WIDTH = 39
 
 VIEW_MODE_CUSTOM = "custom_views"
 VIEW_MODE_CUBE6 = "cube6"
@@ -81,15 +98,18 @@ class ViewConfigWidget(QWidget):
         super().__init__(parent)
         self.pitch_rows: list[dict] = []
         self.yaw_slot_labels: list[QLabel] = []
+        self.pitch_delete_buttons: list[QToolButton] = []
+        self._yaw_slot_count = _DEFAULT_YAW_SLOTS
         self._output_count_text = ""
         self._show_settings = show_settings
         self._show_summary = show_summary
         self._rebuilding_grid = False
         self._normalizing_pitch = False
+        self._applying_preset = False
         self._hovered_view_name: str | None = None
 
         self._build_ui()
-        self._apply_pitch_rows()
+        self._apply_cube6_preset()
 
     def _build_ui(self) -> None:
         layout = QVBoxLayout(self)
@@ -105,8 +125,8 @@ class ViewConfigWidget(QWidget):
         mode_row.setSpacing(8)
         self.view_mode_combo = QComboBox()
         self.view_mode_combo.setToolTip(i18n.tip("VIEW_MODE"))
-        self.view_mode_combo.addItem(i18n.t("CUSTOM_GRID"), VIEW_MODE_CUSTOM)
         self.view_mode_combo.addItem(i18n.t("CUBE6_LABEL"), VIEW_MODE_CUBE6)
+        self.view_mode_combo.addItem(i18n.t("CUSTOM_GRID"), VIEW_MODE_CUSTOM)
         self.view_mode_combo.setMinimumWidth(180)
         self.view_mode_combo.currentIndexChanged.connect(self._on_view_mode_changed)
         mode_label = QLabel(i18n.t("VIEW_MODE_LABEL"))
@@ -140,45 +160,76 @@ class ViewConfigWidget(QWidget):
         self.extra_controls_layout.setSpacing(6)
         ctrl.addLayout(self.extra_controls_layout)
 
-        self.custom_controls_widget = QWidget()
-        custom_row = QHBoxLayout(self.custom_controls_widget)
-        custom_row.setContentsMargins(0, 0, 0, 0)
-        custom_row.setSpacing(8)
-        self.yaw_slots_combo = QComboBox()
-        self.yaw_slots_combo.setToolTip(i18n.tip("YAW_SLOTS"))
-        self.yaw_slots_combo.addItems([str(v) for v in range(_MIN_YAW_SLOTS, _MAX_YAW_SLOTS + 1)])
-        self.yaw_slots_combo.setCurrentText(str(_DEFAULT_YAW_SLOTS))
-        self.yaw_slots_combo.setFixedWidth(56)
-        self.yaw_slots_combo.currentTextChanged.connect(lambda _: self._apply_pitch_rows(reset_to_defaults=False))
-        self.yaw_slots_label = QLabel(i18n.t("YAW_SLOTS_LABEL"))
-        self.yaw_slots_label.setToolTip(i18n.tip("YAW_SLOTS"))
-        custom_row.addWidget(self.yaw_slots_label)
-        custom_row.addWidget(self.yaw_slots_combo)
-
-        self.pitch_rows_combo = QComboBox()
-        self.pitch_rows_combo.setToolTip(i18n.tip("PITCH_ROWS"))
-        self.pitch_rows_combo.addItems([str(v) for v in range(_MIN_PITCH_ROWS, _MAX_PITCH_ROWS + 1)])
-        self.pitch_rows_combo.setCurrentText(str(_DEFAULT_PITCH_ROWS))
-        self.pitch_rows_combo.setFixedWidth(56)
-        self.pitch_rows_combo.currentTextChanged.connect(lambda _: self._apply_pitch_rows(reset_to_defaults=True))
-        self.pitch_label = QLabel(i18n.t("PITCH_ROWS_LABEL"))
-        self.pitch_label.setToolTip(i18n.tip("PITCH_ROWS"))
-        custom_row.addWidget(self.pitch_label)
-        custom_row.addWidget(self.pitch_rows_combo)
-        custom_row.addStretch()
-        ctrl.addWidget(self.custom_controls_widget)
-
         # ビュー選択グリッド
-        self.grid_section = CollapsibleSection(i18n.t("VIEW_SELECTION_SECTION"), expanded=False)
+        self.grid_section = QWidget()
         self.grid_section.setToolTip(i18n.tip("VIEW_SELECTION_SECTION"))
-        self.grid_section.toggle_button.setToolTip(i18n.tip("VIEW_SELECTION_SECTION"))
+        grid_section_layout = QVBoxLayout(self.grid_section)
+        grid_section_layout.setContentsMargins(0, 0, 0, 0)
+        grid_section_layout.setSpacing(4)
+
+        self.grid_controls_widget = QWidget()
+        grid_controls = QHBoxLayout(self.grid_controls_widget)
+        grid_controls.setContentsMargins(0, 0, 0, 0)
+        grid_controls.setSpacing(2)
+        self.grid_title_label = QLabel(i18n.t("VIEW_SELECTION_COMPACT_SECTION"))
+        self.grid_title_label.setToolTip(i18n.tip("VIEW_SELECTION_SECTION"))
+        grid_controls.addWidget(self.grid_title_label)
+        self.all_on_btn = self._make_grid_control_button(
+            select_all_icon(),
+            i18n.t("SELECT_ALL"),
+            self._all_on,
+        )
+        self.all_off_btn = self._make_grid_control_button(
+            deselect_all_icon(),
+            i18n.t("DESELECT_ALL"),
+            self._all_off,
+        )
+        grid_controls.addWidget(self.all_on_btn)
+        grid_controls.addWidget(self.all_off_btn)
+        grid_controls.addStretch()
+
+        self.yaw_remove_btn = self._make_grid_control_button(
+            minus_icon(),
+            i18n.t("YAW_SLOT_REMOVE"),
+            lambda: self.set_yaw_slot_count(self.yaw_slot_count() - 1),
+        )
+        self.yaw_count_label = QLabel()
+        self.yaw_count_label.setToolTip(i18n.tip("YAW_SLOTS"))
+        self.yaw_add_btn = self._make_grid_control_button(
+            plus_icon(),
+            i18n.t("YAW_SLOT_ADD"),
+            lambda: self.set_yaw_slot_count(self.yaw_slot_count() + 1),
+        )
+        self.pitch_count_label = QLabel()
+        self.pitch_count_label.setToolTip(i18n.tip("PITCH_ROWS"))
+        self.pitch_add_btn = self._make_grid_control_button(
+            plus_icon(),
+            i18n.t("PITCH_ROW_ADD"),
+            self.add_pitch_row,
+        )
+        for widget in (
+            self.yaw_remove_btn,
+            self.yaw_count_label,
+            self.yaw_add_btn,
+        ):
+            grid_controls.addWidget(widget)
+        grid_section_layout.addWidget(self.grid_controls_widget)
 
         self.grid_widget = QWidget()
         self.grid_layout = QGridLayout(self.grid_widget)
         self.grid_layout.setContentsMargins(0, 0, 0, 0)
-        self.grid_layout.setHorizontalSpacing(3)
+        self.grid_layout.setHorizontalSpacing(2)
         self.grid_layout.setVerticalSpacing(4)
-        self.grid_section.content_layout.addWidget(self.grid_widget)
+        grid_section_layout.addWidget(self.grid_widget)
+
+        self.pitch_controls_widget = QWidget()
+        pitch_controls = QHBoxLayout(self.pitch_controls_widget)
+        pitch_controls.setContentsMargins(0, 0, 0, 0)
+        pitch_controls.setSpacing(4)
+        pitch_controls.addWidget(self.pitch_add_btn)
+        pitch_controls.addWidget(self.pitch_count_label)
+        pitch_controls.addStretch()
+        grid_section_layout.addWidget(self.pitch_controls_widget)
         ctrl.addWidget(self.grid_section)
 
         summary_row = QHBoxLayout()
@@ -192,11 +243,6 @@ class ViewConfigWidget(QWidget):
         if self._show_settings:
             layout.addWidget(self.settings_widget)
 
-        cube6_index = self.view_mode_combo.findData(VIEW_MODE_CUBE6)
-        if cube6_index >= 0:
-            self.view_mode_combo.setCurrentIndex(cube6_index)
-        self._on_view_mode_changed(self.view_mode_combo.currentIndex())
-
     # -- public API --
 
     def view_mode(self) -> str:
@@ -206,16 +252,54 @@ class ViewConfigWidget(QWidget):
         return float(self.yaw_offset_edit.value())
 
     def yaw_slot_count(self) -> int:
-        try:
-            return int(self.yaw_slots_combo.currentText())
-        except Exception:
-            return _DEFAULT_YAW_SLOTS
+        return int(self._yaw_slot_count)
 
     def pitch_row_count(self) -> int:
-        try:
-            return int(self.pitch_rows_combo.currentText())
-        except Exception:
-            return _DEFAULT_PITCH_ROWS
+        if self.pitch_rows:
+            return len(self.pitch_rows)
+        return _DEFAULT_PITCH_ROWS
+
+    def set_yaw_slot_count(self, count: int) -> None:
+        count = max(_MIN_YAW_SLOTS, min(_MAX_YAW_SLOTS, int(count)))
+        if count == self._yaw_slot_count:
+            self._update_grid_control_state()
+            return
+        self._mark_custom_if_user_changed()
+        rows = self._row_snapshots()
+        self._yaw_slot_count = count
+        self._rebuild_grid(rows)
+
+    def set_pitch_row_count(self, count: int) -> None:
+        count = max(_MIN_PITCH_ROWS, min(_MAX_PITCH_ROWS, int(count)))
+        current = len(self.pitch_rows)
+        if count == current:
+            self._update_grid_control_state()
+            return
+        self._mark_custom_if_user_changed()
+        rows = self._row_snapshots()
+        if count < len(rows):
+            rows = rows[:count]
+        else:
+            while len(rows) < count:
+                rows.append({
+                    "pitch": self._next_pitch_for_rows(rows),
+                    "checks": [True] * self.yaw_slot_count(),
+                })
+        self._rebuild_grid(rows)
+
+    def add_pitch_row(self) -> None:
+        self.set_pitch_row_count(self.pitch_row_count() + 1)
+
+    def remove_pitch_row(self, row_index: int) -> None:
+        if self.pitch_row_count() <= _MIN_PITCH_ROWS:
+            self._update_grid_control_state()
+            return
+        if row_index < 0 or row_index >= len(self.pitch_rows):
+            return
+        self._mark_custom_if_user_changed()
+        rows = self._row_snapshots()
+        rows.pop(row_index)
+        self._rebuild_grid(rows)
 
     def pitch_values(self) -> list[float]:
         if self.pitch_rows:
@@ -229,23 +313,23 @@ class ViewConfigWidget(QWidget):
         return self._hovered_view_name
 
     def collect_views(self, include_disabled: bool = False) -> list[dict]:
-        offset = self.yaw_offset()
-        if self.view_mode() == VIEW_MODE_CUBE6:
-            views = self._cube6_views(offset)
-            return views if include_disabled else [v for v in views if v["enabled"]]
+        return self._grid_views(include_disabled=include_disabled)
 
+    def _grid_views(self, include_disabled: bool = False) -> list[dict]:
         step = 360.0 / float(self.yaw_slot_count())
         views = []
-        for row in self.pitch_rows:
+        for row_index, row in enumerate(self.pitch_rows):
             pitch = float(row["pitch"])
             for slot, cb in enumerate(row["checks"]):
                 enabled = cb.isChecked()
                 if not include_disabled and not enabled:
                     continue
-                name = f"pit{_angle_token(pitch)}_s{slot}"
+                name = self._view_name_for(row_index, slot)
+                if name is None:
+                    name = self._generated_view_name(pitch, slot)
                 views.append({
                     "name": name,
-                    "yaw": float(offset + slot * step),
+                    "yaw": float(_normalize_angle(self.yaw_offset() + slot * step)),
                     "pitch": pitch,
                     "enabled": enabled,
                     "slot": slot,
@@ -264,11 +348,10 @@ class ViewConfigWidget(QWidget):
     # -- internal --
 
     def _on_view_mode_changed(self, _index: int) -> None:
-        is_custom = self.view_mode() == VIEW_MODE_CUSTOM
-        self.custom_controls_widget.setVisible(is_custom)
-        self.grid_widget.setVisible(is_custom)
-        self.grid_section.setVisible(is_custom)
-        self._on_selection_changed()
+        if self.view_mode() == VIEW_MODE_CUBE6:
+            self._apply_cube6_preset()
+        else:
+            self._apply_custom_defaults()
 
     def _on_params_changed(self, *_args) -> None:
         self._update_yaw_labels()
@@ -278,6 +361,7 @@ class ViewConfigWidget(QWidget):
     def _on_selection_changed(self, *_args) -> None:
         if self._rebuilding_grid:
             return
+        self._mark_custom_if_user_changed()
         self._update_selected_label()
         self.views_changed.emit()
 
@@ -291,86 +375,131 @@ class ViewConfigWidget(QWidget):
             if w:
                 w.deleteLater()
 
-    def _apply_pitch_rows(self, *, reset_to_defaults: bool = False) -> None:
-        old = {}
-        for row in self.pitch_rows:
-            key = _pitch_key(float(row["pitch"]))
-            old[key] = [cb.isChecked() for cb in row["checks"]]
+    def _row_snapshots(self) -> list[dict]:
+        return [
+            {
+                "pitch": float(row["pitch"]),
+                "checks": [cb.isChecked() for cb in row["checks"]],
+            }
+            for row in self.pitch_rows
+        ]
 
-        count = self.pitch_row_count()
-        if reset_to_defaults or not self.pitch_rows:
-            pitches = _default_pitches_for_count(count)
-        else:
-            pitches = self._resize_pitch_values(self.pitch_values(), count)
+    def _next_pitch_for_rows(self, rows: list[dict]) -> float:
+        existing = [_clamp_pitch(row["pitch"]) for row in rows]
+        used = {_pitch_key(p) for p in existing}
+        for candidate in _default_pitches_for_count(min(len(rows) + 1, _MAX_PITCH_ROWS)):
+            if _pitch_key(candidate) not in used:
+                return candidate
+        return self._nearest_unique_pitch(0.0, existing)
 
+    def _rebuild_grid(self, rows: list[dict]) -> None:
+        if not rows:
+            rows = [{"pitch": 0.0, "checks": [True] * self.yaw_slot_count()}]
+        rows = [
+            {
+                "pitch": _clamp_pitch(row["pitch"]),
+                "checks": list(row.get("checks", [])),
+            }
+            for row in rows[:_MAX_PITCH_ROWS]
+        ]
         slots = self.yaw_slot_count()
         self._rebuilding_grid = True
-        self.pitch_rows = []
-        self.yaw_slot_labels = []
-        self._clear_grid()
+        try:
+            self.pitch_rows = []
+            self.yaw_slot_labels = []
+            self.pitch_delete_buttons = []
+            self._clear_grid()
 
-        self.grid_layout.setColumnMinimumWidth(0, 66)
-        self.grid_layout.addWidget(self._build_grid_tools(), 0, 0)
-        for s in range(slots):
-            lab = QLabel(f"S{s}")
-            lab.setAlignment(Qt.AlignCenter)
-            lab.setFixedWidth(42)
-            lab.setWordWrap(False)
-            lab.setStyleSheet("font-size: 8pt;")
-            self.yaw_slot_labels.append(lab)
-            self.grid_layout.addWidget(lab, 0, s + 1)
-
-        for ri, pitch in enumerate(pitches):
-            row_index = ri
-            grid_row = ri + 1
-            pitch_edit = DragDoubleSpinBox(
-                minimum=_MIN_PITCH_DEG,
-                maximum=_MAX_PITCH_DEG,
-                step=1.0,
-                decimals=1,
-                value=pitch,
-                drag_pixels_per_step=6.0,
-            )
-            pitch_edit.setToolTip(i18n.tip("PITCH_ROWS"))
-            pitch_edit.setFixedWidth(66)
-            pitch_edit.valueChanged.connect(lambda value, idx=row_index: self._on_pitch_value_changed(idx, value))
-            self.grid_layout.addWidget(pitch_edit, grid_row, 0)
-            checks = []
-            key = _pitch_key(pitch)
-            restored = old.get(key)
+            pitch_edit_width = self._pitch_edit_width()
+            pitch_column_width = _PITCH_DELETE_BUTTON_SIZE + _PITCH_CELL_SPACING + pitch_edit_width
+            for col in range(_MAX_YAW_SLOTS + 1):
+                self.grid_layout.setColumnMinimumWidth(col, 0)
+                self.grid_layout.setColumnStretch(col, 0)
+            self.grid_layout.setColumnMinimumWidth(0, pitch_column_width)
             for s in range(slots):
-                cb = _HoverCheckBox()
-                cb.setFixedSize(QSize(22, 22))
-                if restored and s < len(restored):
-                    cb.setChecked(restored[s])
-                else:
-                    cb.setChecked(True)
-                cb.toggled.connect(self._on_selection_changed)
-                cb.hover_changed.connect(lambda hovering, idx=row_index, slot=s: self._on_view_hover(idx, slot, hovering))
-                self.grid_layout.addWidget(cb, grid_row, s + 1, alignment=Qt.AlignCenter)
-                checks.append(cb)
-            self.pitch_rows.append({"pitch": pitch, "pitch_edit": pitch_edit, "checks": checks})
+                self.grid_layout.setColumnMinimumWidth(s + 1, _YAW_SLOT_COLUMN_MIN_WIDTH)
+                self.grid_layout.setColumnStretch(s + 1, 1)
+                yaw_cell = QWidget()
+                yaw_cell.setMinimumWidth(_YAW_SLOT_COLUMN_MIN_WIDTH)
+                yaw_cell.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+                yaw_layout = QHBoxLayout(yaw_cell)
+                yaw_layout.setContentsMargins(0, 0, 0, 0)
+                yaw_layout.setSpacing(0)
+                lab = QLabel(f"S{s}")
+                lab.setAlignment(Qt.AlignCenter)
+                lab.setFixedWidth(_YAW_SLOT_COLUMN_MIN_WIDTH)
+                lab.setWordWrap(False)
+                lab.setStyleSheet("font-size: 8pt;")
+                yaw_layout.addStretch(1)
+                yaw_layout.addWidget(lab)
+                yaw_layout.addStretch(1)
+                self.yaw_slot_labels.append(lab)
+                self.grid_layout.addWidget(yaw_cell, 0, s + 1)
 
-        self._rebuilding_grid = False
+            for ri, row in enumerate(rows):
+                pitch = _clamp_pitch(row["pitch"])
+                restored = row["checks"]
+                row_index = ri
+                grid_row = ri + 1
+                pitch_cell = QWidget()
+                pitch_layout = QHBoxLayout(pitch_cell)
+                pitch_layout.setContentsMargins(0, 0, 0, 0)
+                pitch_layout.setSpacing(_PITCH_CELL_SPACING)
+
+                delete_btn = QToolButton()
+                delete_btn.setObjectName("iconToolButton")
+                delete_btn.setIcon(delete_icon())
+                delete_btn.setToolTip(i18n.t("PITCH_ROW_REMOVE"))
+                delete_btn.setAccessibleName(i18n.t("PITCH_ROW_REMOVE"))
+                delete_btn.setFixedSize(_PITCH_DELETE_BUTTON_SIZE, _PITCH_DELETE_BUTTON_SIZE)
+                delete_btn.clicked.connect(lambda _checked=False, idx=row_index: self.remove_pitch_row(idx))
+                self.pitch_delete_buttons.append(delete_btn)
+                pitch_layout.addWidget(delete_btn)
+
+                pitch_edit = DragDoubleSpinBox(
+                    minimum=_MIN_PITCH_DEG,
+                    maximum=_MAX_PITCH_DEG,
+                    step=1.0,
+                    decimals=1,
+                    value=pitch,
+                    drag_pixels_per_step=6.0,
+                )
+                pitch_edit.setToolTip(i18n.tip("PITCH_ROWS"))
+                pitch_edit.setFixedWidth(pitch_edit_width)
+                pitch_edit.valueChanged.connect(lambda value, idx=row_index: self._on_pitch_value_changed(idx, value))
+                pitch_layout.addWidget(pitch_edit)
+                pitch_layout.addStretch(1)
+                pitch_cell.setFixedWidth(pitch_column_width)
+                self.grid_layout.addWidget(pitch_cell, grid_row, 0, alignment=Qt.AlignLeft | Qt.AlignVCenter)
+
+                checks = []
+                for s in range(slots):
+                    cb = _HoverCheckBox()
+                    cb.setFixedSize(QSize(22, 22))
+                    if s < len(restored):
+                        cb.setChecked(bool(restored[s]))
+                    else:
+                        cb.setChecked(True)
+                    cb.toggled.connect(self._on_selection_changed)
+                    cb.hover_changed.connect(lambda hovering, idx=row_index, slot=s: self._on_view_hover(idx, slot, hovering))
+                    self.grid_layout.addWidget(cb, grid_row, s + 1, alignment=Qt.AlignCenter)
+                    checks.append(cb)
+                self.pitch_rows.append({
+                    "pitch": pitch,
+                    "pitch_edit": pitch_edit,
+                    "checks": checks,
+                    "delete_btn": delete_btn,
+                })
+        finally:
+            self._rebuilding_grid = False
         self._update_yaw_labels()
         self._update_selected_label()
+        self._update_grid_control_state()
         self.views_changed.emit()
 
-    def _resize_pitch_values(self, current: list[float], count: int) -> list[float]:
-        values = [_clamp_pitch(p) for p in current[:count]]
-        if len(values) < count:
-            used = {_pitch_key(p) for p in values}
-            for candidate in _default_pitches_for_count(count):
-                key = _pitch_key(candidate)
-                if key in used:
-                    continue
-                values.append(candidate)
-                used.add(key)
-                if len(values) >= count:
-                    break
-        while len(values) < count:
-            values.append(self._nearest_unique_pitch(0.0, values))
-        return values
+    def _pitch_edit_width(self) -> int:
+        metrics = self.fontMetrics()
+        return max(_PITCH_EDIT_MIN_WIDTH, metrics.horizontalAdvance(_PITCH_EDIT_WIDTH_SAMPLE) + 22)
 
     def _nearest_unique_pitch(self, value: float, existing: list[float]) -> float:
         base = _clamp_pitch(value)
@@ -399,14 +528,22 @@ class ViewConfigWidget(QWidget):
             row["pitch_edit"].setValue(adjusted)
             self._normalizing_pitch = False
         row["pitch"] = adjusted
+        self._mark_custom_if_user_changed()
         self._update_selected_label()
         self.views_changed.emit()
+
+    def _generated_view_name(self, pitch: float, slot: int) -> str:
+        return f"pit{_angle_token(pitch)}_s{slot}"
 
     def _view_name_for(self, row_index: int, slot: int) -> str | None:
         if row_index < 0 or row_index >= len(self.pitch_rows):
             return None
+        if self.view_mode() == VIEW_MODE_CUBE6 and self._has_cube6_geometry():
+            semantic_name = _CUBE6_CELL_TO_NAME.get((row_index, slot))
+            if semantic_name:
+                return semantic_name
         pitch = float(self.pitch_rows[row_index]["pitch"])
-        return f"pit{_angle_token(pitch)}_s{slot}"
+        return self._generated_view_name(pitch, slot)
 
     def _on_view_hover(self, row_index: int, slot: int, hovering: bool) -> None:
         name = self._view_name_for(row_index, slot)
@@ -419,29 +556,15 @@ class ViewConfigWidget(QWidget):
             self._hovered_view_name = None
             self.hovered_view_changed.emit(None)
 
-    def _build_grid_tools(self) -> QWidget:
-        tools = QWidget()
-        layout = QHBoxLayout(tools)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(4)
-        self.all_on_btn = QToolButton()
-        self.all_on_btn.setObjectName("iconToolButton")
-        self.all_on_btn.setIcon(select_all_icon())
-        self.all_on_btn.setToolTip(i18n.t("SELECT_ALL"))
-        self.all_on_btn.setAccessibleName(i18n.t("SELECT_ALL"))
-        self.all_on_btn.setFixedSize(28, 28)
-        self.all_on_btn.clicked.connect(self._all_on)
-        layout.addWidget(self.all_on_btn)
-
-        self.all_off_btn = QToolButton()
-        self.all_off_btn.setObjectName("iconToolButton")
-        self.all_off_btn.setIcon(deselect_all_icon())
-        self.all_off_btn.setToolTip(i18n.t("DESELECT_ALL"))
-        self.all_off_btn.setAccessibleName(i18n.t("DESELECT_ALL"))
-        self.all_off_btn.setFixedSize(28, 28)
-        self.all_off_btn.clicked.connect(self._all_off)
-        layout.addWidget(self.all_off_btn)
-        return tools
+    def _make_grid_control_button(self, icon, label: str, callback) -> QToolButton:
+        button = QToolButton()
+        button.setObjectName("iconToolButton")
+        button.setIcon(icon)
+        button.setToolTip(label)
+        button.setAccessibleName(label)
+        button.setFixedSize(24, 24)
+        button.clicked.connect(callback)
+        return button
 
     def _update_yaw_labels(self) -> None:
         offset = self.yaw_offset()
@@ -449,8 +572,20 @@ class ViewConfigWidget(QWidget):
         step = 360.0 / float(slots)
         for i, lab in enumerate(self.yaw_slot_labels):
             yaw = _normalize_angle(offset + i * step)
-            lab.setText(f"S{i}\n{yaw:g}")
-            lab.setToolTip(f"{yaw:g}°")
+            display_yaw = f"{yaw:.1f}"
+            lab.setText(f"S{i}\n{display_yaw}")
+            lab.setToolTip(f"{display_yaw}°")
+
+    def _update_grid_control_state(self) -> None:
+        yaw_count = self.yaw_slot_count()
+        pitch_count = self.pitch_row_count()
+        self.yaw_count_label.setText(i18n.t("YAW_SLOT_COUNT_FORMAT").format(count=yaw_count))
+        self.pitch_count_label.setText(i18n.t("PITCH_ROW_COUNT_FORMAT").format(count=pitch_count))
+        self.yaw_remove_btn.setEnabled(yaw_count > _MIN_YAW_SLOTS)
+        self.yaw_add_btn.setEnabled(yaw_count < _MAX_YAW_SLOTS)
+        self.pitch_add_btn.setEnabled(pitch_count < _MAX_PITCH_ROWS)
+        for button in self.pitch_delete_buttons:
+            button.setEnabled(pitch_count > _MIN_PITCH_ROWS)
 
     def _update_selected_label(self) -> None:
         try:
@@ -498,14 +633,75 @@ class ViewConfigWidget(QWidget):
         if changed:
             self._on_selection_changed()
 
+    def _apply_grid_preset(
+        self,
+        *,
+        yaw_slots: int,
+        pitches: tuple[float, ...] | list[float],
+        enabled_cells: frozenset[tuple[int, int]] | None,
+    ) -> None:
+        self._applying_preset = True
+        try:
+            self._yaw_slot_count = max(_MIN_YAW_SLOTS, min(_MAX_YAW_SLOTS, int(yaw_slots)))
+            rows = []
+            for ri, pitch in enumerate(pitches[:_MAX_PITCH_ROWS]):
+                checks = [
+                    ((ri, slot) in enabled_cells) if enabled_cells is not None else True
+                    for slot in range(self.yaw_slot_count())
+                ]
+                rows.append({"pitch": pitch, "checks": checks})
+            self._rebuild_grid(rows)
+        finally:
+            self._applying_preset = False
+
+    def _apply_cube6_preset(self) -> None:
+        self._apply_grid_preset(
+            yaw_slots=_CUBE6_YAW_SLOTS,
+            pitches=list(_CUBE6_PITCHES),
+            enabled_cells=_CUBE6_ENABLED_CELLS,
+        )
+
+    def _apply_custom_defaults(self) -> None:
+        self._apply_grid_preset(
+            yaw_slots=_DEFAULT_YAW_SLOTS,
+            pitches=_default_pitches_for_count(_DEFAULT_PITCH_ROWS),
+            enabled_cells=None,
+        )
+
+    def _mark_custom_if_user_changed(self) -> None:
+        if self._applying_preset or self.view_mode() != VIEW_MODE_CUBE6:
+            return
+        custom_idx = self.view_mode_combo.findData(VIEW_MODE_CUSTOM)
+        if custom_idx < 0:
+            return
+        was_blocked = self.view_mode_combo.blockSignals(True)
+        try:
+            self.view_mode_combo.setCurrentIndex(custom_idx)
+        finally:
+            self.view_mode_combo.blockSignals(was_blocked)
+
+    def _has_cube6_geometry(self) -> bool:
+        return (
+            self.yaw_slot_count() == _CUBE6_YAW_SLOTS
+            and len(self.pitch_rows) == len(_CUBE6_PITCHES)
+            and all(
+                _pitch_key(float(row["pitch"])) == _pitch_key(expected)
+                for row, expected in zip(self.pitch_rows, _CUBE6_PITCHES)
+            )
+        )
+
     def _cube6_views(self, yaw_offset: float) -> list[dict]:
+        step = 360.0 / float(_CUBE6_YAW_SLOTS)
         return [
-            {"name": "px", "yaw": 90.0 - yaw_offset, "pitch": 0.0, "enabled": True, "slot": 0, "label": "px"},
-            {"name": "nx", "yaw": -90.0 - yaw_offset, "pitch": 0.0, "enabled": True, "slot": 1, "label": "nx"},
-            {"name": "pz", "yaw": 0.0 - yaw_offset, "pitch": 0.0, "enabled": True, "slot": 2, "label": "pz"},
-            {"name": "nz", "yaw": 180.0 - yaw_offset, "pitch": 0.0, "enabled": True, "slot": 3, "label": "nz"},
-            {"name": "top", "yaw": 0.0 - yaw_offset, "pitch": 90.0, "enabled": True, "slot": 4, "label": "top"},
-            {"name": "bottom", "yaw": 0.0 - yaw_offset, "pitch": -90.0, "enabled": True, "slot": 5, "label": "bottom"},
+            {
+                "name": name,
+                "yaw": _normalize_angle(float(yaw_offset) + slot * step),
+                "pitch": _CUBE6_PITCHES[row],
+                "enabled": True,
+                "slot": slot,
+                "label": name,
+            }
+            for name, row, slot in _CUBE6_VIEW_CELLS
         ]
 
 

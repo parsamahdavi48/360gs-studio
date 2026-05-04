@@ -286,6 +286,11 @@ QTabBar::tab:hover:!selected {{
     background-color: {BG_PANEL};
     color: {TEXT};
 }}
+QTabWidget#maskSettingsTabs QTabBar::tab,
+QTabWidget#step4SettingsTabs QTabBar::tab {{
+    min-width: 86px;
+    padding: 7px 10px;
+}}
 
 /* ========== QProgressBar ========== */
 QProgressBar {{

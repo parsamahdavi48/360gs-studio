@@ -24,6 +24,7 @@ from PySide6.QtWidgets import (
     QPushButton,
     QScrollArea,
     QSplitter,
+    QTabWidget,
     QVBoxLayout,
     QWidget,
 )
@@ -223,8 +224,14 @@ class CubemapStep(BaseStepWidget):
         )
         left_layout.addLayout(export_targets_form)
 
-        colmap_section = CollapsibleSection(i18n.t("COLMAP_PIPELINE_SECTION"), expanded=True)
+        self.settings_tabs = QTabWidget()
+        self.settings_tabs.setObjectName("step4SettingsTabs")
+
+        colmap_section = QWidget()
         self.colmap_section = colmap_section
+        colmap_section_layout = QVBoxLayout(colmap_section)
+        colmap_section_layout.setContentsMargins(8, 8, 8, 8)
+        colmap_section_layout.setSpacing(6)
         colmap_form = QFormLayout()
         colmap_form.setSpacing(6)
 
@@ -280,12 +287,15 @@ class CubemapStep(BaseStepWidget):
         self.glomap_exec_row_label.setToolTip(i18n.tip("GLOMAP_EXECUTABLE"))
         colmap_form.addRow(self.glomap_exec_row_label, self.glomap_exec_browse)
 
-        colmap_section.content_layout.addLayout(colmap_form)
-        left_layout.addWidget(colmap_section)
+        colmap_section_layout.addLayout(colmap_form)
+        colmap_section_layout.addStretch()
 
-        # Metashapeインポート設定（折りたたみ）
-        preprocess = CollapsibleSection(i18n.METASHAPE_PREPROCESS, expanded=False)
+        # Metashapeインポート設定
+        preprocess = QWidget()
         self.metashape_section = preprocess
+        preprocess_layout = QVBoxLayout(preprocess)
+        preprocess_layout.setContentsMargins(8, 8, 8, 8)
+        preprocess_layout.setSpacing(6)
         profile_form = QFormLayout()
         profile_form.setSpacing(6)
 
@@ -316,7 +326,7 @@ class CubemapStep(BaseStepWidget):
         self.export_colmap_cb.setToolTip(i18n.t("EXPORT_COLMAP_HINT"))
         profile_form.addRow("", self.export_colmap_cb)
 
-        preprocess.content_layout.addLayout(profile_form)
+        preprocess_layout.addLayout(profile_form)
         pp_form = QFormLayout()
 
         self.ms_images_path_label = ElidedPathLabel("-")
@@ -362,17 +372,20 @@ class CubemapStep(BaseStepWidget):
         import_adv_form.addRow(self.metashape_import_options_row)
         import_advanced.content_layout.addLayout(import_adv_form)
 
-        preprocess.content_layout.addLayout(pp_form)
-        preprocess.content_layout.addWidget(import_advanced)
-        left_layout.addWidget(preprocess)
+        preprocess_layout.addLayout(pp_form)
+        preprocess_layout.addWidget(import_advanced)
+        preprocess_layout.addStretch()
 
         self.view_config = ViewConfigWidget(show_settings=False, show_summary=False)
         self.view_config.views_changed.connect(self._on_views_changed)
         self.view_config.hovered_view_changed.connect(lambda _name: self._render_preview())
 
-        # 視点書き出し設定（折りたたみ）
-        adv_output = CollapsibleSection(i18n.t("ADVANCED_OUTPUT_SECTION"), expanded=False)
+        # 視点書き出し設定
+        adv_output = QWidget()
         self.advanced_output_section = adv_output
+        adv_output_layout = QVBoxLayout(adv_output)
+        adv_output_layout.setContentsMargins(8, 8, 8, 8)
+        adv_output_layout.setSpacing(6)
         adv_form = QFormLayout()
         adv_form.setSpacing(6)
 
@@ -465,9 +478,23 @@ class CubemapStep(BaseStepWidget):
         quality_layout.addStretch()
         output_details.content_layout.addWidget(quality_row)
 
-        adv_output.content_layout.addLayout(adv_form)
-        adv_output.content_layout.addWidget(output_details)
-        left_layout.addWidget(adv_output)
+        adv_output_layout.addLayout(adv_form)
+        adv_output_layout.addWidget(output_details)
+        adv_output_layout.addStretch()
+
+        self.view_export_tab_index = self.settings_tabs.addTab(
+            self.advanced_output_section,
+            i18n.t("STEP4_TAB_VIEW_EXPORT"),
+        )
+        self.metashape_tab_index = self.settings_tabs.addTab(
+            self.metashape_section,
+            i18n.t("STEP4_TAB_METASHAPE"),
+        )
+        self.colmap_tab_index = self.settings_tabs.addTab(
+            self.colmap_section,
+            i18n.t("STEP4_TAB_COLMAP"),
+        )
+        left_layout.addWidget(self.settings_tabs, stretch=1)
 
         left_layout.addStretch()
 
@@ -622,13 +649,21 @@ class CubemapStep(BaseStepWidget):
 
     def _on_export_method_changed(self) -> None:
         metashape = self._is_metashape_method()
-        self.metashape_section.setVisible(metashape)
-        self.colmap_section.setVisible(not metashape)
+        self._sync_settings_tabs(metashape)
         if not metashape:
             self.export_colmap_cb.setChecked(False)
         self._update_path_labels()
         self._update_output_count()
         self.primary_action_state_changed.emit()
+
+    def _sync_settings_tabs(self, metashape: bool) -> None:
+        current = self.settings_tabs.currentIndex()
+        was_route_specific = current in {self.metashape_tab_index, self.colmap_tab_index}
+        self.settings_tabs.setTabVisible(self.metashape_tab_index, metashape)
+        self.settings_tabs.setTabVisible(self.colmap_tab_index, not metashape)
+        route_index = self.metashape_tab_index if metashape else self.colmap_tab_index
+        if was_route_specific or not self.settings_tabs.isTabVisible(self.settings_tabs.currentIndex()):
+            self.settings_tabs.setCurrentIndex(route_index)
 
     def _update_path_labels(self) -> None:
         if not self.scene_dir:
