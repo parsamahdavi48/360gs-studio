@@ -20,11 +20,13 @@ from PySide6.QtWidgets import (
     QPushButton,
     QSlider,
     QStackedWidget,
+    QToolButton,
     QVBoxLayout,
     QWidget,
 )
 
 from gui import i18n
+from gui.common.icons import single_preview_icon, thumbnail_preview_icon
 from gui.common.zoomable_image_label import ZoomableImageLabel
 from gui.mask.mask_files import iter_image_files, mask_candidates_for_image, path_key
 from gui.mask.thumbnail_model import MaskThumbnailModel
@@ -78,31 +80,9 @@ class MaskPreviewWidget(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(6)
 
-        mode_row = QHBoxLayout()
-        mode_row.setSpacing(6)
         self.preview_mode_group = QButtonGroup(self)
         self.preview_mode_group.setExclusive(True)
-
-        self.single_preview_btn = QPushButton(i18n.t("MASK_PREVIEW_MODE_SINGLE"))
-        self.single_preview_btn.setObjectName("segmentedOption")
-        self.single_preview_btn.setCheckable(True)
-        self.single_preview_btn.setChecked(True)
-        self.single_preview_btn.setToolTip(i18n.tip("MASK_PREVIEW_MODE_SINGLE"))
-        self.single_preview_btn.clicked.connect(lambda _checked=False: self.set_preview_mode(_PREVIEW_MODE_SINGLE))
-        self.preview_mode_group.addButton(self.single_preview_btn)
-        mode_row.addWidget(self.single_preview_btn)
-
-        self.thumbnail_preview_btn = QPushButton(i18n.t("MASK_PREVIEW_MODE_THUMBNAILS"))
-        self.thumbnail_preview_btn.setObjectName("segmentedOption")
-        self.thumbnail_preview_btn.setCheckable(True)
-        self.thumbnail_preview_btn.setToolTip(i18n.tip("MASK_PREVIEW_MODE_THUMBNAILS"))
-        self.thumbnail_preview_btn.clicked.connect(
-            lambda _checked=False: self.set_preview_mode(_PREVIEW_MODE_THUMBNAILS)
-        )
-        self.preview_mode_group.addButton(self.thumbnail_preview_btn)
-        mode_row.addWidget(self.thumbnail_preview_btn)
-        mode_row.addStretch()
-        layout.addLayout(mode_row)
+        self.mode_toolbar = self._build_mode_toolbar()
 
         self.preview_stack = QStackedWidget()
 
@@ -127,6 +107,7 @@ class MaskPreviewWidget(QWidget):
         self.thumbnail_view.setGridSize(self.thumbnail_model.grid_size())
         self.thumbnail_view.setVerticalScrollMode(QAbstractItemView.ScrollPerPixel)
         self.thumbnail_view.setToolTip(i18n.tip("MASK_PREVIEW_MODE_THUMBNAILS"))
+        self.thumbnail_view.doubleClicked.connect(self._on_thumbnail_double_clicked)
         self.thumbnail_view.selectionModel().currentChanged.connect(self._on_thumbnail_current_changed)
         self.thumbnail_view.selectionModel().selectionChanged.connect(
             lambda _selected, _deselected: self._update_reprocess_button_text()
@@ -170,6 +151,38 @@ class MaskPreviewWidget(QWidget):
         overlay_row.addWidget(self.status_label, stretch=1)
         layout.addLayout(overlay_row)
         self._update_reprocess_button_text()
+
+    def _build_mode_toolbar(self) -> QWidget:
+        toolbar = QWidget()
+        layout = QHBoxLayout(toolbar)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(4)
+
+        self.single_preview_btn = QToolButton()
+        self.single_preview_btn.setObjectName("iconToolButton")
+        self.single_preview_btn.setCheckable(True)
+        self.single_preview_btn.setChecked(True)
+        self.single_preview_btn.setIcon(single_preview_icon())
+        self.single_preview_btn.setToolTip(i18n.tip("MASK_PREVIEW_MODE_SINGLE"))
+        self.single_preview_btn.setAccessibleName(i18n.t("MASK_PREVIEW_MODE_SINGLE"))
+        self.single_preview_btn.setFixedSize(28, 28)
+        self.single_preview_btn.clicked.connect(lambda _checked=False: self.set_preview_mode(_PREVIEW_MODE_SINGLE))
+        self.preview_mode_group.addButton(self.single_preview_btn)
+        layout.addWidget(self.single_preview_btn)
+
+        self.thumbnail_preview_btn = QToolButton()
+        self.thumbnail_preview_btn.setObjectName("iconToolButton")
+        self.thumbnail_preview_btn.setCheckable(True)
+        self.thumbnail_preview_btn.setIcon(thumbnail_preview_icon())
+        self.thumbnail_preview_btn.setToolTip(i18n.tip("MASK_PREVIEW_MODE_THUMBNAILS"))
+        self.thumbnail_preview_btn.setAccessibleName(i18n.t("MASK_PREVIEW_MODE_THUMBNAILS"))
+        self.thumbnail_preview_btn.setFixedSize(28, 28)
+        self.thumbnail_preview_btn.clicked.connect(
+            lambda _checked=False: self.set_preview_mode(_PREVIEW_MODE_THUMBNAILS)
+        )
+        self.preview_mode_group.addButton(self.thumbnail_preview_btn)
+        layout.addWidget(self.thumbnail_preview_btn)
+        return toolbar
 
     def set_images_dir(self, images_dir: str) -> None:
         if images_dir == self._images_dir:
@@ -440,6 +453,12 @@ class MaskPreviewWidget(QWidget):
         if self._thumbnail_sync or not current.isValid():
             return
         self._set_index(current.row(), sync_thumbnail=False)
+
+    def _on_thumbnail_double_clicked(self, index) -> None:  # noqa: ANN001
+        if not index.isValid():
+            return
+        self._set_index(index.row(), sync_thumbnail=False)
+        self.set_preview_mode(_PREVIEW_MODE_SINGLE)
 
     def _sync_thumbnail_model(
         self,

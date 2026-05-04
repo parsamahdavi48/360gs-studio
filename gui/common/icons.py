@@ -50,6 +50,26 @@ _DESELECT_ALL_SVG = """
 </svg>
 """.strip()
 
+_SINGLE_PREVIEW_SVG = """
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none">
+  <rect x="4" y="5" width="16" height="14" rx="1.8" stroke="#e5e7eb" stroke-width="1.8"/>
+  <path d="M7 16.2 10.2 12.8 12.5 15.1 14.2 13.2 17 16.2" stroke="#2dd4bf"
+        stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="9" cy="9" r="1.3" fill="#2dd4bf"/>
+</svg>
+""".strip()
+
+_THUMBNAIL_PREVIEW_SVG = """
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none">
+  <rect x="4" y="5" width="6" height="5" rx="1.1" stroke="#e5e7eb" stroke-width="1.6"/>
+  <rect x="14" y="5" width="6" height="5" rx="1.1" stroke="#e5e7eb" stroke-width="1.6"/>
+  <rect x="4" y="14" width="6" height="5" rx="1.1" stroke="#e5e7eb" stroke-width="1.6"/>
+  <rect x="14" y="14" width="6" height="5" rx="1.1" stroke="#e5e7eb" stroke-width="1.6"/>
+  <path d="M6.2 8.1 7.3 7 8.6 8.1M16.2 17.1 17.3 16 18.6 17.1" stroke="#2dd4bf"
+        stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>
+""".strip()
+
 
 @lru_cache(maxsize=16)
 def svg_icon(svg: str, size: int = 18) -> QIcon:
@@ -72,3 +92,11 @@ def select_all_icon(size: int = 18) -> QIcon:
 
 def deselect_all_icon(size: int = 18) -> QIcon:
     return svg_icon(_DESELECT_ALL_SVG, size)
+
+
+def single_preview_icon(size: int = 18) -> QIcon:
+    return svg_icon(_SINGLE_PREVIEW_SVG, size)
+
+
+def thumbnail_preview_icon(size: int = 18) -> QIcon:
+    return svg_icon(_THUMBNAIL_PREVIEW_SVG, size)

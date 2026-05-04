@@ -6,10 +6,10 @@ import numpy as np
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PySide6.QtWidgets import QApplication, QAbstractItemView, QLineEdit, QPushButton, QSpinBox
+from PySide6.QtWidgets import QApplication, QAbstractItemView, QLineEdit, QPushButton, QSpinBox, QToolButton
 from PySide6.QtCore import QItemSelectionModel
 
-from gui import i18n
+from gui import i18n, theme
 from gui.mask.mask_preview import MaskPreviewConfig, MaskPreviewWidget
 from gui.mask.thumbnail_model import ThumbnailRenderConfig, render_mask_thumbnail
 from gui.steps.step3_mask import MaskStep, _yolo_preview_output_name
@@ -38,6 +38,27 @@ def test_mask_preview_removes_manual_image_picker_and_opacity_spinbox() -> None:
     assert i18n.t("MASK_REPROCESS_CURRENT_BUTTON") in button_texts
     assert not widget.findChildren(QLineEdit)
     assert not widget.findChildren(QSpinBox)
+
+
+def test_mask_preview_mode_switches_are_icon_tool_buttons() -> None:
+    _app()
+    widget = MaskPreviewWidget()
+
+    tool_buttons = widget.mode_toolbar.findChildren(QToolButton)
+
+    assert len(tool_buttons) == 2
+    assert all(button.objectName() == "iconToolButton" for button in tool_buttons)
+    assert all(button.text() == "" for button in tool_buttons)
+    assert widget.single_preview_btn.accessibleName() == i18n.t("MASK_PREVIEW_MODE_SINGLE")
+    assert widget.thumbnail_preview_btn.accessibleName() == i18n.t("MASK_PREVIEW_MODE_THUMBNAILS")
+    assert widget.single_preview_btn.isChecked()
+    assert not widget.thumbnail_preview_btn.isChecked()
+    assert "QToolButton#iconToolButton:checked" in theme.QSS
+
+    widget.set_preview_mode("thumbnails")
+
+    assert not widget.single_preview_btn.isChecked()
+    assert widget.thumbnail_preview_btn.isChecked()
 
 
 def test_mask_preview_uses_temporary_yolo_preview_mask(tmp_path: Path) -> None:
@@ -149,6 +170,26 @@ def test_mask_preview_thumbnail_click_does_not_scroll_resync(tmp_path: Path) -> 
     assert sync_calls == []
     assert widget.current_image_path() == image_paths[2]
     assert widget.slider.value() == 2
+
+
+def test_mask_preview_thumbnail_double_click_opens_single_preview(tmp_path: Path) -> None:
+    _app()
+    image_paths: list[Path] = []
+    for idx in range(3):
+        image_path = tmp_path / f"frame_{idx:06d}.png"
+        cv2.imwrite(str(image_path), np.full((16, 32, 3), 120 + idx, dtype=np.uint8))
+        image_paths.append(image_path)
+    widget = MaskPreviewWidget()
+
+    widget.set_images_dir(str(tmp_path))
+    widget.set_preview_mode("thumbnails")
+
+    widget.thumbnail_view.doubleClicked.emit(widget.thumbnail_model.index(2, 0))
+
+    assert widget.preview_mode() == "single"
+    assert widget.current_image_path() == image_paths[2]
+    assert widget.slider.value() == 2
+    assert widget.image_label._source_pixmap is not None
 
 
 def test_mask_preview_thumbnail_mode_uses_extended_selection(tmp_path: Path) -> None:

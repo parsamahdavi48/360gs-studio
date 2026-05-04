@@ -244,6 +244,14 @@ QToolButton#iconToolButton:hover {{
 QToolButton#iconToolButton:pressed {{
     background-color: {BG_MID};
 }}
+QToolButton#iconToolButton:checked {{
+    background-color: {BG_MID};
+    border-color: {ACCENT};
+}}
+QToolButton#iconToolButton:checked:hover {{
+    background-color: {BG_PANEL};
+    border-color: {ACCENT_HOVER};
+}}
 QToolButton#iconToolButton:disabled {{
     background-color: {BG_MID};
     border-color: {BG_MID};

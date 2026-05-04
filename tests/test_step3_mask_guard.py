@@ -115,6 +115,14 @@ def test_mask_step_metashape_notice_is_in_left_pane() -> None:
     assert not step.preview_pane.isAncestorOf(step.metashape_notice)
 
 
+def test_mask_step_preview_mode_toolbar_is_in_preview_header() -> None:
+    _app()
+    step = MaskStep(Path.cwd())
+
+    assert step.preview_pane.isAncestorOf(step.mask_preview.mode_toolbar)
+    assert not step.mask_preview.isAncestorOf(step.mask_preview.mode_toolbar)
+
+
 def test_mask_step_refreshes_preview_when_activated_after_extraction(tmp_path: Path) -> None:
     _app()
     step = MaskStep(Path.cwd())
