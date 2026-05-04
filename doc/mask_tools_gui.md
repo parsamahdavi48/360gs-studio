@@ -5,7 +5,7 @@
 Step 3 in STechDrive 3DGS Utils is a PySide6 wrapper around:
 
 - `yolo_mask.py` (person mask generation)
-- `sky_mask.py` (Mask2Former ADE20K sky masking)
+- `sky_mask.py` (Mask2Former ADE20K sky masking, with optional local SAM3.1 backend)
 - `stitch_mask.py` (stitch-region masking)
 - `overexposure_mask.py` (overexposure masking)
 - `custom_mask.py` (user-provided static mask merging)
@@ -29,7 +29,7 @@ run_gui.bat --scene ./scene01
 - Settings tabs:
   - `YOLO`: YOLO/SAM strength, expansion, bottom enhancement, and detection classes.
   - `Stitch/Overexp.`: stitch seam and overexposure mask settings.
-  - `Sky`: Mask2Former sky detection settings.
+  - `Sky`: sky detection model and mask settings.
   - `Custom Mask`: load or clear the user-provided PNG mask.
 - `YOLO Level`: forwarded to `yolo_mask.py --level` (0-3).
   - For 360° images, start with `2 Quality`.
@@ -55,6 +55,7 @@ run_gui.bat --scene ./scene01
   - Drag horizontally on the number field to adjust.
 - `Sky`:
   - Runs `sky_mask.py` and AND-merges detected sky into `masks/`.
+  - `Model` selects `Mask2Former` or `SAM3.1`. SAM3.1 is shown for local testing when `models/sam3.1/sam3.1_multiplex.pt` exists.
   - `Hybrid` is the default for 360° images. It combines direct detection and a top projection view.
   - Increase `Size` for more detailed inference; use `Min Score`, `Min Area`, `Expand`, and `Top-connected only` when tuning false positives or missed sky.
 - `Custom Mask`:

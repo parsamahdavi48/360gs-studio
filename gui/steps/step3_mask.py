@@ -109,16 +109,19 @@ _SKY_MIN_SCORE_DEFAULT = 0.0
 _SKY_MIN_AREA_PERCENT_MIN = 0.0
 _SKY_MIN_AREA_PERCENT_MAX = 5.0
 _SKY_MIN_AREA_PERCENT_DEFAULT = 0.05
-_SKY_INFERENCE_SIZES = ("512", "768", "1024")
+_SKY_INFERENCE_SIZES = ("512", "768", "1008", "1024")
 _SKY_INFERENCE_SIZE_DEFAULT_INDEX = 1
+_SKY_SAM31_INFERENCE_SIZE = "1008"
+_SKY_BACKENDS = ("mask2former", "sam31")
+_SKY_SAM31_CHECKPOINT = Path("models") / "sam3.1" / "sam3.1_multiplex.pt"
 _IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".tif", ".tiff"}
 _PROJECTION_EQUIRECT = "equirect"
 _PROJECTION_NORMAL = "normal"
 _LICENSE_NOTICE_SECTION = "license_notices"
 _YOLO_SAM_NOTICE_VERSION = 1
 _YOLO_SAM_NOTICE_KEY = "yolo_sam_models_ack_version"
-_SKY_NOTICE_VERSION = 1
-_SKY_NOTICE_KEY = "mask2former_sky_models_ack_version"
+_SKY_NOTICE_VERSION = 2
+_SKY_NOTICE_KEY = "sky_models_ack_version"
 
 
 class MaskStep(BaseStepWidget):
@@ -454,6 +457,17 @@ class MaskStep(BaseStepWidget):
         sky_form = QFormLayout()
         sky_form.setSpacing(6)
 
+        self.sky_backend_combo = QComboBox()
+        self.sky_backend_combo.addItems(
+            [
+                i18n.t("SKY_MODEL_MASK2FORMER"),
+                i18n.t("SKY_MODEL_SAM31"),
+            ]
+        )
+        self.sky_backend_combo.setToolTip(i18n.tip("SKY_MODEL"))
+        self.sky_backend_combo.setFixedWidth(132)
+        add_tooltip_row(sky_form, i18n.t("SKY_MODEL"), self.sky_backend_combo, i18n.tip("SKY_MODEL"))
+
         self.sky_mode_combo = QComboBox()
         self.sky_mode_combo.addItems(
             [
@@ -611,8 +625,9 @@ class MaskStep(BaseStepWidget):
             cb.toggled.connect(lambda _checked=False: self._schedule_render_mask_preview())
         self.overexp_threshold_edit.valueChanged.connect(lambda _: self._schedule_render_mask_preview())
         self.overexp_dilate_edit.valueChanged.connect(lambda _: self._schedule_render_mask_preview())
+        self.sky_backend_combo.currentIndexChanged.connect(lambda _: self._on_sky_backend_changed())
         self.sky_mode_combo.currentIndexChanged.connect(lambda _: self._schedule_render_mask_preview())
-        self.sky_inference_size_combo.currentIndexChanged.connect(lambda _: self._schedule_render_mask_preview())
+        self.sky_inference_size_combo.currentIndexChanged.connect(lambda _: self._on_sky_inference_size_changed())
         self.sky_expand_edit.valueChanged.connect(lambda _: self._schedule_render_mask_preview())
         self.sky_min_score_edit.valueChanged.connect(lambda _: self._schedule_render_mask_preview())
         self.sky_min_area_edit.valueChanged.connect(lambda _: self._schedule_render_mask_preview())
@@ -754,6 +769,31 @@ class MaskStep(BaseStepWidget):
         idx = max(0, min(self.yolo_bottom_enhance_combo.currentIndex(), len(_YOLO_BOTTOM_PRESETS) - 1))
         return list(_YOLO_BOTTOM_PRESETS[idx][1])
 
+    def _sky_backend_arg(self) -> str:
+        idx = self.sky_backend_combo.currentIndex()
+        return _SKY_BACKENDS[max(0, min(idx, len(_SKY_BACKENDS) - 1))]
+
+    def _sam31_checkpoint_path(self) -> Path:
+        return self.base_dir / _SKY_SAM31_CHECKPOINT
+
+    def _on_sky_backend_changed(self) -> None:
+        if self._sky_backend_arg() == "sam31" and self.sky_inference_size_combo.currentText() != _SKY_SAM31_INFERENCE_SIZE:
+            idx = self.sky_inference_size_combo.findText(_SKY_SAM31_INFERENCE_SIZE)
+            if idx >= 0:
+                self.sky_inference_size_combo.setCurrentIndex(idx)
+        self._schedule_render_mask_preview()
+
+    def _on_sky_inference_size_changed(self) -> None:
+        if self._sky_backend_arg() == "sam31" and self.sky_inference_size_combo.currentText() != _SKY_SAM31_INFERENCE_SIZE:
+            idx = self.sky_inference_size_combo.findText(_SKY_SAM31_INFERENCE_SIZE)
+            if idx >= 0:
+                self.sky_inference_size_combo.blockSignals(True)
+                try:
+                    self.sky_inference_size_combo.setCurrentIndex(idx)
+                finally:
+                    self.sky_inference_size_combo.blockSignals(False)
+        self._schedule_render_mask_preview()
+
     def _sky_mode_arg(self) -> str:
         idx = self.sky_mode_combo.currentIndex()
         return ("hybrid", "direct", "top")[max(0, min(idx, 2))]
@@ -767,6 +807,7 @@ class MaskStep(BaseStepWidget):
 
     def _sky_common_args(self) -> list[str]:
         args = [
+            "--backend", self._sky_backend_arg(),
             "--projection", self._projection(),
             "--mode", self._sky_mode_arg(),
             "--inference-size", self._sky_inference_size_arg(),
@@ -804,8 +845,25 @@ class MaskStep(BaseStepWidget):
         self.overexp_dilate_edit.setEnabled(overexp_enabled)
         self.custom_mask_clear_btn.setEnabled(bool(self._custom_mask_path_text()))
         self.custom_mask_path_label.setEnabled(custom_enabled or bool(self._custom_mask_path_text()))
+        self._update_sky_backend_availability()
         self._render_mask_preview()
         self._update_ready_status()
+
+    def _update_sky_backend_availability(self) -> None:
+        sam_available = self._sam31_checkpoint_path().is_file()
+        model = self.sky_backend_combo.model()
+        item = model.item(1) if hasattr(model, "item") else None
+        if item is not None:
+            item.setEnabled(sam_available)
+            item.setToolTip(
+                i18n.tip("SKY_MODEL_SAM31") if sam_available else i18n.t("SKY_MODEL_SAM31_MISSING")
+            )
+        if not sam_available and self._sky_backend_arg() == "sam31":
+            self.sky_backend_combo.blockSignals(True)
+            try:
+                self.sky_backend_combo.setCurrentIndex(0)
+            finally:
+                self.sky_backend_combo.blockSignals(False)
 
     def _custom_mask_path_text(self) -> str:
         return self._custom_mask_path.strip()
@@ -1008,6 +1066,7 @@ class MaskStep(BaseStepWidget):
             int(self.yolo_expand_edit.value()),
             tuple(self._selected_classes()),
             self.yolo_bottom_enhance_combo.currentIndex(),
+            self._sky_backend_arg(),
             self._sky_mode_arg(),
             self._sky_inference_size_arg(),
             int(self.sky_expand_edit.value()),

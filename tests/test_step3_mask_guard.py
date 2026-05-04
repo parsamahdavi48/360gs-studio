@@ -394,10 +394,33 @@ def test_mask_step_sky_mask_builds_final_command(tmp_path: Path) -> None:
         str(scene / "images"),
         str(scene / "masks"),
     ]
+    assert cmd[cmd.index("--backend") + 1] == "mask2former"
     assert cmd[cmd.index("--projection") + 1] == "equirect"
     assert cmd[cmd.index("--mode") + 1] == "hybrid"
     assert cmd[cmd.index("--inference-size") + 1] == "768"
     assert "--replace" in cmd
+
+
+def test_mask_step_sky_mask_can_select_sam31_backend(tmp_path: Path, monkeypatch) -> None:
+    _app()
+    scene = _write_scene(tmp_path, drop_exists=False)
+    step = MaskStep(Path.cwd())
+    step.set_scene_dir(str(scene))
+    checkpoint = scene / "sam3.1_multiplex.pt"
+    checkpoint.write_bytes(b"checkpoint")
+    monkeypatch.setattr(step, "_sam31_checkpoint_path", lambda: checkpoint)
+    step._update_sky_backend_availability()
+    step.run_yolo_cb.setChecked(False)
+    step.run_stitch_cb.setChecked(False)
+    step.run_overexp_cb.setChecked(False)
+    step.run_sky_cb.setChecked(True)
+    step.sky_backend_combo.setCurrentIndex(1)
+
+    commands = step.build_commands()
+
+    cmd = commands[0][1]
+    assert cmd[cmd.index("--backend") + 1] == "sam31"
+    assert cmd[cmd.index("--inference-size") + 1] == "1008"
 
 
 def test_mask_step_stitch_only_initializes_masks_before_merging(tmp_path: Path) -> None:

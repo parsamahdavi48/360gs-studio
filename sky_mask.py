@@ -1,4 +1,4 @@
-"""Detect sky regions with Mask2Former ADE20K and merge them into masks.
+"""Detect sky regions and merge them into masks.
 
 Mask convention: white means keep, black means exclude. Sky pixels are written
 as black and, unless --replace is used, AND-merged with any existing mask for
@@ -10,6 +10,7 @@ import argparse
 import os
 import sys
 import warnings
+from contextlib import nullcontext
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -21,8 +22,19 @@ from PIL import Image
 from image_io import imread_unicode, imwrite_unicode
 
 IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".tif", ".tiff"}
+BACKEND_MASK2FORMER = "mask2former"
+BACKEND_SAM31 = "sam31"
+SUPPORTED_BACKENDS = (BACKEND_MASK2FORMER, BACKEND_SAM31)
+DEFAULT_BACKEND = BACKEND_MASK2FORMER
 DEFAULT_MODEL_ID = "facebook/mask2former-swin-large-ade-semantic"
+DEFAULT_MASK2FORMER_MODEL_ID = DEFAULT_MODEL_ID
 DEFAULT_LOCAL_MODEL_DIR = Path(__file__).resolve().parent / "models" / "mask2former-swin-large-ade-semantic"
+DEFAULT_MASK2FORMER_LOCAL_MODEL_DIR = DEFAULT_LOCAL_MODEL_DIR
+DEFAULT_SAM31_LOCAL_MODEL_DIR = Path(__file__).resolve().parent / "models" / "sam3.1"
+DEFAULT_SAM31_CHECKPOINT_NAME = "sam3.1_multiplex.pt"
+DEFAULT_SAM31_PROMPT = "sky"
+DEFAULT_SAM31_SCORE = 0.5
+DEFAULT_SAM31_INFERENCE_SIZE = 1008
 DEFAULT_INFERENCE_SIZE = 768
 DEFAULT_MODE = "hybrid"
 DEFAULT_EXPAND = 0
@@ -45,6 +57,7 @@ class SkyMaskOptions:
     top_connected: bool = True
     add_ext: bool = False
     replace: bool = False
+    sam_prompt: str = DEFAULT_SAM31_PROMPT
 
 
 @dataclass
@@ -65,7 +78,7 @@ class SkyMaskRunResult:
         self.messages.append(message)
 
 
-class SkySegmenter:
+class Mask2FormerSkySegmenter:
     """Thin wrapper around a Mask2Former semantic segmentation model."""
 
     def __init__(self, model_source: str | Path, *, device: str = "auto") -> None:
@@ -74,7 +87,8 @@ class SkySegmenter:
             from transformers import AutoImageProcessor, Mask2FormerForUniversalSegmentation
         except ImportError as e:
             raise RuntimeError(
-                "Sky masking requires transformers and safetensors. Run setup_windows.bat or update_venv.bat."
+                "Mask2Former sky masking requires transformers and safetensors. "
+                "Run setup_windows.bat or update_venv.bat."
             ) from e
 
         self.torch = torch
@@ -148,15 +162,143 @@ class SkySegmenter:
         return sky_small.astype(bool)
 
 
-def resolve_model_source(repo_root: Path | None = None, model_dir: str | Path | None = None) -> str:
+class Sam31SkySegmenter:
+    """Thin wrapper around Meta SAM3.1 text-prompted image segmentation."""
+
+    def __init__(self, checkpoint_path: str | Path, *, device: str = "auto") -> None:
+        try:
+            import torch
+            from sam3.model.sam3_image_processor import Sam3Processor
+            from sam3.model_builder import build_sam3_image_model
+        except ImportError as e:
+            raise RuntimeError(
+                "SAM3.1 sky masking requires Meta's sam3 Python package. "
+                "Install it in the current venv, then place sam3.1_multiplex.pt under models/sam3.1/."
+            ) from e
+
+        checkpoint = Path(checkpoint_path)
+        if checkpoint.is_dir():
+            checkpoint = checkpoint / DEFAULT_SAM31_CHECKPOINT_NAME
+        if not checkpoint.is_file():
+            raise RuntimeError(f"SAM3.1 checkpoint not found: {checkpoint}")
+
+        self.torch = torch
+        self.processor_class = Sam3Processor
+        self.device = self._resolve_device(device)
+        self.model = build_sam3_image_model(
+            checkpoint_path=str(checkpoint),
+            load_from_HF=False,
+            device=self.device,
+        )
+        self.model.eval()
+        self._processor_key: tuple[int, float] | None = None
+        self._processor: Any | None = None
+
+    def _resolve_device(self, device: str) -> str:
+        value = str(device).strip().lower()
+        if value == "auto":
+            return "cuda" if self.torch.cuda.is_available() else "cpu"
+        if value == "cuda" and not self.torch.cuda.is_available():
+            raise RuntimeError("CUDA was requested for SAM3.1 sky masking, but CUDA is not available.")
+        if value not in {"cpu", "cuda"}:
+            raise ValueError("--device must be auto, cpu, or cuda")
+        return value
+
+    def _processor_for_options(self, options: SkyMaskOptions) -> Any:
+        resolution = int(options.inference_size)
+        if resolution != DEFAULT_SAM31_INFERENCE_SIZE:
+            raise RuntimeError(
+                f"SAM3.1 backend requires --inference-size {DEFAULT_SAM31_INFERENCE_SIZE} "
+                "with the current Meta image processor."
+            )
+        threshold = float(options.min_score) if float(options.min_score) > 0.0 else DEFAULT_SAM31_SCORE
+        threshold = max(0.0, min(1.0, threshold))
+        key = (resolution, threshold)
+        if self._processor is None or self._processor_key != key:
+            self._processor = self.processor_class(
+                self.model,
+                resolution=resolution,
+                device=self.device,
+                confidence_threshold=threshold,
+            )
+            self._processor_key = key
+        return self._processor
+
+    def detect_sky(self, bgr: np.ndarray, options: SkyMaskOptions) -> np.ndarray:
+        rgb = bgr_to_rgb8(bgr)
+        pil = Image.fromarray(rgb)
+        processor = self._processor_for_options(options)
+        prompt = options.sam_prompt.strip() or DEFAULT_SAM31_PROMPT
+        autocast = (
+            self.torch.autocast(device_type="cuda", dtype=self.torch.bfloat16)
+            if self.device == "cuda"
+            else nullcontext()
+        )
+        with self.torch.inference_mode(), autocast:
+            state = processor.set_image(pil)
+            output = processor.set_text_prompt(state=state, prompt=prompt)
+            masks = output.get("masks")
+            if masks is None or masks.numel() == 0:
+                return np.zeros(bgr.shape[:2], dtype=bool)
+            masks = masks.detach().to("cpu")
+            if masks.ndim == 4:
+                masks = masks[:, 0]
+            sky = masks.bool().any(dim=0).numpy()
+        return sky.astype(bool)
+
+
+SkySegmenter = Mask2FormerSkySegmenter
+
+
+def resolve_model_source(
+    repo_root: Path | None = None,
+    model_dir: str | Path | None = None,
+    *,
+    backend: str = DEFAULT_BACKEND,
+) -> str:
+    backend = normalize_backend(backend)
     if model_dir:
-        return str(Path(model_dir))
-    local = (repo_root or Path(__file__).resolve().parent) / "models" / "mask2former-swin-large-ade-semantic"
+        path = Path(model_dir)
+        if backend == BACKEND_SAM31 and path.is_dir():
+            checkpoint = path / DEFAULT_SAM31_CHECKPOINT_NAME
+            return str(checkpoint if checkpoint.exists() else path)
+        return str(path)
+
+    root = repo_root or Path(__file__).resolve().parent
+    if backend == BACKEND_SAM31:
+        local = root / "models" / "sam3.1"
+        checkpoint = local / DEFAULT_SAM31_CHECKPOINT_NAME
+        if checkpoint.exists():
+            return str(checkpoint)
+        default_checkpoint = DEFAULT_SAM31_LOCAL_MODEL_DIR / DEFAULT_SAM31_CHECKPOINT_NAME
+        if default_checkpoint.exists():
+            return str(default_checkpoint)
+        return str(checkpoint)
+
+    local = root / "models" / "mask2former-swin-large-ade-semantic"
     if local.exists():
         return str(local)
-    if DEFAULT_LOCAL_MODEL_DIR.exists():
-        return str(DEFAULT_LOCAL_MODEL_DIR)
-    return DEFAULT_MODEL_ID
+    if DEFAULT_MASK2FORMER_LOCAL_MODEL_DIR.exists():
+        return str(DEFAULT_MASK2FORMER_LOCAL_MODEL_DIR)
+    return DEFAULT_MASK2FORMER_MODEL_ID
+
+
+def normalize_backend(backend: str) -> str:
+    value = str(backend).strip().lower().replace("-", "").replace(".", "")
+    if value in {"mask2former", "m2f"}:
+        return BACKEND_MASK2FORMER
+    if value in {"sam31", "sam3", "sam"}:
+        return BACKEND_SAM31
+    raise ValueError(f"--backend must be one of: {', '.join(SUPPORTED_BACKENDS)}")
+
+
+def create_sky_segmenter(backend: str, model_source: str | Path, *, device: str = "auto") -> Any:
+    backend = normalize_backend(backend)
+    if backend == BACKEND_MASK2FORMER:
+        return Mask2FormerSkySegmenter(model_source, device=device)
+    if backend == BACKEND_SAM31:
+        return Sam31SkySegmenter(model_source, device=device)
+    raise ValueError(f"Unsupported sky backend: {backend}")
 
 
 def bgr_to_rgb8(image: np.ndarray) -> np.ndarray:
@@ -340,6 +482,7 @@ def run(
     images: str | Path,
     masks_dir: str | Path,
     *,
+    backend: str = DEFAULT_BACKEND,
     model_dir: str | Path | None = None,
     device: str = "auto",
     options: SkyMaskOptions | None = None,
@@ -353,7 +496,9 @@ def run(
         print(f"No images found in {images_path}", flush=True)
         return result
 
-    model_source = resolve_model_source(model_dir=model_dir)
+    backend = normalize_backend(backend)
+    model_source = resolve_model_source(model_dir=model_dir, backend=backend)
+    print(f"Sky backend: {backend}", flush=True)
     print(f"Sky model: {model_source}", flush=True)
     print(
         "Sky settings:",
@@ -366,9 +511,10 @@ def run(
         f"expand={options.expand_px}",
         f"top_connected={options.top_connected}",
         f"replace={options.replace}",
+        f"sam_prompt={options.sam_prompt}",
         flush=True,
     )
-    segmenter = SkySegmenter(model_source, device=device)
+    segmenter = create_sky_segmenter(backend, model_source, device=device)
 
     print(f"[progress] 0/{len(image_files)}", flush=True)
     for done, image_path in enumerate(image_files, start=1):
@@ -391,10 +537,11 @@ def run(
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Detect sky regions with Mask2Former ADE20K and merge masks.")
+    parser = argparse.ArgumentParser(description="Detect sky regions and merge masks.")
     parser.add_argument("images", help="Source image file or directory")
     parser.add_argument("masks_dir", help="Mask output directory")
-    parser.add_argument("--model-dir", default=None, help="Local Mask2Former model directory override")
+    parser.add_argument("--backend", choices=SUPPORTED_BACKENDS, default=DEFAULT_BACKEND, help="Sky segmentation backend")
+    parser.add_argument("--model-dir", default=None, help="Local model directory or checkpoint override")
     parser.add_argument("--device", choices=("auto", "cpu", "cuda"), default="auto", help="Inference device")
     parser.add_argument("--projection", choices=("equirect", "normal"), default="equirect")
     parser.add_argument("--mode", choices=("direct", "top", "hybrid"), default=DEFAULT_MODE)
@@ -406,6 +553,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--no-top-connected", action="store_true", help="Keep all sky components, not only top-connected")
     parser.add_argument("--add-ext", action="store_true", help="Append .png to the original filename")
     parser.add_argument("--replace", action="store_true", help="Ignore existing masks and write sky-only masks")
+    parser.add_argument("--sam-prompt", default=DEFAULT_SAM31_PROMPT, help="Text prompt for the SAM3.1 backend")
     return parser.parse_args()
 
 
@@ -435,9 +583,17 @@ def main() -> int:
         top_connected=not bool(args.no_top_connected),
         add_ext=bool(args.add_ext),
         replace=bool(args.replace),
+        sam_prompt=str(args.sam_prompt),
     )
     try:
-        result = run(args.images, args.masks_dir, model_dir=args.model_dir, device=args.device, options=options)
+        result = run(
+            args.images,
+            args.masks_dir,
+            backend=args.backend,
+            model_dir=args.model_dir,
+            device=args.device,
+            options=options,
+        )
     except Exception as e:  # noqa: BLE001 - CLI should report concise errors to the GUI log.
         print(f"Error: {e}", flush=True)
         return 1

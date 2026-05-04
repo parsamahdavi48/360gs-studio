@@ -25,6 +25,17 @@ models/
     model.safetensors
 ```
 
+Experimental SAM3.1 sky-mask placement:
+
+```text
+models/
+  sam3.1/
+    sam3.1_multiplex.pt
+    config.json
+    LICENSE
+    README.md
+```
+
 Legacy YOLO/SAM `.pt` files in the repository root are still detected for
 compatibility, but new local files should be placed under `models/ultralytics/`.
 
@@ -36,3 +47,6 @@ compatibility, but new local files should be placed under `models/ultralytics/`.
 YOLO/SAMの新しい標準配置は `models/ultralytics/` です。既存互換のため、
 リポジトリ直下の `.pt` も引き続き読み込みますが、新しく配置する場合は
 `models/ultralytics/` を使ってください。
+
+Mask2Former空検出は `models/mask2former-swin-large-ade-semantic/`、実験的な
+SAM3.1空検出は `models/sam3.1/sam3.1_multiplex.pt` を使います。

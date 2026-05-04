@@ -5,7 +5,7 @@
 STechDrive 3DGS Utils の Step 3 は、以下のマスク処理をまとめて実行する PySide6 GUI です。
 
 - `yolo_mask.py`（人物マスク生成）
-- `sky_mask.py`（Mask2Former ADE20K 空マスク生成）
+- `sky_mask.py`（Mask2Former ADE20K 空マスク生成、任意のローカルSAM3.1 backend）
 - `stitch_mask.py`（スティッチ領域マスク付与）
 - `overexposure_mask.py`（白飛びマスク付与）
 - `custom_mask.py`（ユーザー指定マスクの合成）
@@ -33,7 +33,7 @@ run_gui.bat --scene ./scene01
 - 設定タブ:
   - `YOLO`: YOLO/SAMの検出強度、拡張量、下部検出強化、検出クラスを設定します。
   - `スティッチ/白飛び`: スティッチ境界マスクと白飛びマスクの設定をまとめています。
-  - `空`: Mask2Formerによる空検出設定をまとめています。
+  - `空`: 空検出モデルとマスク設定をまとめています。
   - `カスタムマスク`: ユーザー指定PNGマスクの読み込みと解除を行います。
 - `YOLO Level`:
   - `yolo_mask.py --level`（0〜3）
@@ -160,9 +160,12 @@ run_gui.bat --scene ./scene01
 ### `空` タブ
 
 - 何を制御するか:
-  - `sky_mask.py` に渡すMask2Former ADE20K空検出設定。
+  - `sky_mask.py` に渡す空検出モデルとマスク設定。
 - 既定:
-  - `方式=高品質`。360°画像では直処理と上部投影ビューを合成します。
+  - `モデル=Mask2Former`、`方式=高品質`。360°画像では直処理と上部投影ビューを合成します。
+- `モデル`:
+  - `Mask2Former`: 既定のADE20K semantic segmentation。
+  - `SAM3.1`: `models/sam3.1/sam3.1_multiplex.pt` がある場合だけ使うローカル比較用backend。
 - 調整の目安:
   - 境界をもう少し安定させたい場合は `推論サイズ` を上げます。
   - 誤検出が多い場合は `最小スコア` を上げるか、`空拡張` を負値にします。

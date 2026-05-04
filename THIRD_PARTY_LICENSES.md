@@ -36,15 +36,21 @@ References:
 
 The sky mask feature may use Mask2Former ADE20K semantic-segmentation model
 weights, such as `facebook/mask2former-swin-large-ade-semantic`, together with
-the Hugging Face `transformers` and `safetensors` libraries.
+the Hugging Face `transformers` and `safetensors` libraries. It may also use a
+user-provided Meta SAM3.1 checkpoint such as `sam3.1_multiplex.pt` for local
+comparison.
 
 Mask2Former source code is licensed under the MIT License. The `transformers`
 and `safetensors` libraries are licensed under the Apache License 2.0. ADE20K
-dataset materials are governed by the dataset provider's terms.
+dataset materials are governed by the dataset provider's terms. Meta SAM3.1
+materials are governed by the SAM License provided by Meta with the checkpoint.
 
 Model weights are not included in this repository or release archives. They may
-be downloaded by the user's environment on first use, or provided by the user as
-local files under `models/mask2former-swin-large-ade-semantic/`.
+be downloaded by the user's environment on first use for Mask2Former, or
+provided by the user as local files under
+`models/mask2former-swin-large-ade-semantic/`. SAM3.1 checkpoints are not
+auto-downloaded by this application and should be provided by the user under
+`models/sam3.1/`.
 
 Users are responsible for ensuring that their use, redistribution, deployment,
 or commercial integration complies with the applicable third-party license and
@@ -54,6 +60,8 @@ References:
 
 - Mask2Former repository: https://github.com/facebookresearch/Mask2Former
 - Mask2Former ADE20K model: https://huggingface.co/facebook/mask2former-swin-large-ade-semantic
+- Meta SAM3.1 model: https://huggingface.co/facebook/sam3.1
+- Meta SAM3 repository: https://github.com/facebookresearch/sam3
 - Transformers: https://github.com/huggingface/transformers
 - safetensors: https://github.com/huggingface/safetensors
 - ADE20K terms: https://ade20k.csail.mit.edu/terms/

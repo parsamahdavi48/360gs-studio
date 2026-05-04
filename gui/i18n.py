@@ -253,6 +253,10 @@ _JA: dict[str, str] = {
     "OVEREXPOSURE_THRESHOLD": "白飛び閾値 (RGB)",
     "OVEREXPOSURE_DILATE": "膨張半径 (px)",
     "RUN_OVEREXPOSURE": "白飛びマスク実行",
+    "SKY_MODEL": "モデル",
+    "SKY_MODEL_MASK2FORMER": "Mask2Former",
+    "SKY_MODEL_SAM31": "SAM3.1",
+    "SKY_MODEL_SAM31_MISSING": "SAM3.1 checkpointが見つかりません: models/sam3.1/sam3.1_multiplex.pt",
     "SKY_MODE": "方式",
     "SKY_MODE_HYBRID": "高品質",
     "SKY_MODE_DIRECT": "直処理",
@@ -399,10 +403,13 @@ _JA: dict[str, str] = {
     "YOLO_SAM_LICENSE_NOTICE_CANCELED": "YOLO/SAMの実行をキャンセルしました",
     "SKY_LICENSE_NOTICE_TITLE": "空検出モデルの利用条件",
     "SKY_LICENSE_NOTICE_BODY": (
-        "空マスク機能では、第三者が提供するMask2Former ADE20KモデルファイルおよびTransformers関連ライブラリを使用します。\n\n"
-        "このアプリ本体のソースコードはMIT Licenseですが、空検出で使用されるモデル、関連ライブラリ、学習元データセットには別のライセンス条件や利用条件が適用されます。\n\n"
+        "空マスク機能では、第三者が提供するMask2Former ADE20Kモデルファイル、"
+        "Transformers関連ライブラリ、またはユーザーが配置したMeta SAM3.1チェックポイントを使用します。\n\n"
+        "このアプリ本体のソースコードはMIT Licenseですが、空検出で使用されるモデル、"
+        "SAM Materials、関連ライブラリ、学習元データセットには別のライセンス条件や利用条件が適用されます。\n\n"
         "- Mask2Former: MIT License\n"
         "- Transformers / safetensors: Apache License 2.0\n"
+        "- Meta SAM3.1: SAM License\n"
         "- ADE20K dataset: データセット側の利用条件が適用されます\n\n"
         "モデル重みはこのアプリには同梱されていません。初回使用時にユーザー環境へダウンロードされる場合があります。\n\n"
         "商用利用、再配布、社内展開、製品組み込み等における各ライセンス条件への適合は、利用者の責任で確認してください。"
@@ -706,6 +713,10 @@ _EN: dict[str, str] = {
     "OVEREXPOSURE_THRESHOLD": "Overexposure Threshold (RGB)",
     "OVEREXPOSURE_DILATE": "Dilate Radius (px)",
     "RUN_OVEREXPOSURE": "Run Overexposure Mask",
+    "SKY_MODEL": "Model",
+    "SKY_MODEL_MASK2FORMER": "Mask2Former",
+    "SKY_MODEL_SAM31": "SAM3.1",
+    "SKY_MODEL_SAM31_MISSING": "SAM3.1 checkpoint not found: models/sam3.1/sam3.1_multiplex.pt",
     "SKY_MODE": "Mode",
     "SKY_MODE_HYBRID": "Hybrid",
     "SKY_MODE_DIRECT": "Direct",
@@ -852,10 +863,13 @@ _EN: dict[str, str] = {
     "YOLO_SAM_LICENSE_NOTICE_CANCELED": "YOLO/SAM run canceled",
     "SKY_LICENSE_NOTICE_TITLE": "Sky Model Terms",
     "SKY_LICENSE_NOTICE_BODY": (
-        "The sky mask feature uses third-party Mask2Former ADE20K model files and Transformers-related libraries.\n\n"
-        "This application's own source code is licensed under the MIT License, but the models, related libraries, and training dataset used by sky detection are governed by separate license terms.\n\n"
+        "The sky mask feature uses third-party Mask2Former ADE20K model files, "
+        "Transformers-related libraries, or a user-provided Meta SAM3.1 checkpoint.\n\n"
+        "This application's own source code is licensed under the MIT License, but the models, SAM Materials, "
+        "related libraries, and training dataset used by sky detection are governed by separate license terms.\n\n"
         "- Mask2Former: MIT License\n"
         "- Transformers / safetensors: Apache License 2.0\n"
+        "- Meta SAM3.1: SAM License\n"
         "- ADE20K dataset: governed by the dataset provider's terms\n\n"
         "Model weights are not included with this application. They may be downloaded to the user's environment on first use.\n\n"
         "Users are responsible for confirming compliance for commercial use, redistribution, internal deployment, or product integration."
@@ -973,7 +987,7 @@ _TIPS_JA: dict[str, str] = {
     "MASK_TASK_STITCH": "スティッチ境界をマスクに追加。手ブレ補正、方向ロック、AIスティッチなどで境界位置が動く素材では通常OFF",
     "MASK_TASK_STITCH_DISABLED_NORMAL": "スティッチ境界は360°エクイレクタングラー画像専用です。通常画像では使いません",
     "MASK_TASK_OVEREXPOSURE": "白飛びした画素を検出してマスクに追加。室内照明では消しすぎる場合があるため必要な時だけON",
-    "MASK_TASK_SKY": "Mask2Former ADE20Kで空領域を検出してマスクに追加。SfMで空の特徴点を避けたい場合に使います",
+    "MASK_TASK_SKY": "選択した空検出モデルで空領域を検出してマスクに追加。SfMで空の特徴点を避けたい場合に使います",
     "MASK_TASK_CUSTOM": "ユーザーが用意したPNG静的マスクを最後にAND合成します。8bit/16bitのグレー/RGB/RGBAを0/255に二値化し、白=採用、黒=除外として扱います。サイズが一致する画像だけに適用し、不一致はスキップします",
     "CUSTOM_MASK_FILE": "全フレームに適用するPNGカスタムマスク。8bitは128以上、16bitは32768以上を白として二値化します。RGB/RGBAはグレースケール化し、アルファは無視します。サイズ不一致は自動リサイズせずスキップします",
     "CUSTOM_MASK_BROWSE": "カスタムマスク画像を選択します。選択するとカスタムマスク処理もONになります",
@@ -994,8 +1008,10 @@ _TIPS_JA: dict[str, str] = {
     "STITCH_WORKERS": "並列処理のワーカー数。横ドラッグで調整可能。CPUコア数が目安",
     "OVEREXPOSURE_THRESHOLD": "RGB全チャンネルがこの8bit相当値を超えるピクセルを白飛びと判定。16bit画像では同じ比率に換算。GUI範囲は 1〜254",
     "OVEREXPOSURE_DILATE": "白飛び領域を膨張させるピクセル数。既定は1px。0で無効、GUI範囲は 0〜128",
+    "SKY_MODEL": "空検出に使うモデル。Mask2Formerは既定のADE20Kセマンティック検出、SAM3.1はローカル配置したMeta公式チェックポイントをテキストプロンプトで使います",
+    "SKY_MODEL_SAM31": "models/sam3.1/sam3.1_multiplex.pt がある場合に使える実験バックエンドです",
     "SKY_MODE": "空検出の方式。高品質はエクイレクタングラー直処理と上部投影を合成します。通常は高品質のまま使います",
-    "SKY_INFERENCE_SIZE": "Mask2Formerに入力する推論サイズ。大きいほど境界が安定しやすくなりますが、GPUメモリと処理時間が増えます",
+    "SKY_INFERENCE_SIZE": "空検出モデルに入力する推論サイズ。大きいほど境界が安定しやすくなりますが、GPUメモリと処理時間が増えます。SAM3.1では現在1008を使います",
     "SKY_EXPAND": "検出した空マスクをピクセル単位で拡張/収縮します。正の値で空の除外範囲を広げ、負の値で狭めます",
     "SKY_MIN_SCORE": "空クラスのスコアがこの値以上の画素だけ採用します。0で無効。誤検出が多い場合だけ上げます",
     "SKY_MIN_AREA": "小さな空候補を面積比で除去します。既定は0.05%。細かい誤検出を抑えるための設定です",
@@ -1107,7 +1123,7 @@ _TIPS_EN: dict[str, str] = {
     "MASK_TASK_STITCH": "Add stitch seam masks. Usually keep OFF for stabilized, direction-locked, or AI-stitched footage where seam positions move",
     "MASK_TASK_STITCH_DISABLED_NORMAL": "Stitch seam masks are only for equirectangular 360° images and are not used for normal images",
     "MASK_TASK_OVEREXPOSURE": "Detect blown-out pixels and add them to masks",
-    "MASK_TASK_SKY": "Detect ADE20K sky regions with Mask2Former and add them to masks. Use this to avoid sky features before SfM",
+    "MASK_TASK_SKY": "Detect sky regions with the selected sky model and add them to masks. Use this to avoid sky features before SfM",
     "MASK_TASK_CUSTOM": "AND-merge a user-provided static PNG mask as the final step. 8-bit/16-bit grayscale, RGB, or RGBA inputs are binarized to 0/255. White means keep and black means exclude. It applies only to images with matching dimensions; mismatches are skipped",
     "CUSTOM_MASK_FILE": "PNG custom mask applied to every frame with matching dimensions. 8-bit values >=128 and 16-bit values >=32768 become white. RGB/RGBA inputs are converted to grayscale and alpha is ignored. Mismatches are skipped without auto-resizing",
     "CUSTOM_MASK_BROWSE": "Select a custom mask image. Selecting a file also enables custom mask processing",
@@ -1128,8 +1144,10 @@ _TIPS_EN: dict[str, str] = {
     "STITCH_WORKERS": "Number of parallel workers. Drag horizontally to adjust. Use CPU core count as a guide",
     "OVEREXPOSURE_THRESHOLD": "Pixels with all RGB channels above this 8-bit-equivalent value are flagged as blown-out. 16-bit images are scaled to the same ratio. GUI range: 1-254",
     "OVEREXPOSURE_DILATE": "Dilate blown-out regions by N pixels. Default is 1px. 0 = disabled; GUI range: 0-128",
+    "SKY_MODEL": "Sky detection model. Mask2Former is the default ADE20K semantic detector. SAM3.1 uses a local Meta checkpoint with a text prompt",
+    "SKY_MODEL_SAM31": "Experimental backend available when models/sam3.1/sam3.1_multiplex.pt exists",
     "SKY_MODE": "Sky detection mode. Hybrid combines direct equirectangular inference with a top projection view. Keep Hybrid for normal use",
-    "SKY_INFERENCE_SIZE": "Mask2Former inference input size. Larger values can improve boundaries but use more GPU memory and time",
+    "SKY_INFERENCE_SIZE": "Sky model inference input size. Larger values can improve boundaries but use more GPU memory and time. SAM3.1 currently uses 1008",
     "SKY_EXPAND": "Expand or shrink the detected sky mask in pixels. Positive values exclude more sky; negative values keep a tighter boundary",
     "SKY_MIN_SCORE": "Only accept sky pixels whose sky-class score is at least this value. 0 disables this filter. Raise it only when false positives appear",
     "SKY_MIN_AREA": "Remove small sky candidates by image-area ratio. Default is 0.05%. This suppresses tiny false positives",

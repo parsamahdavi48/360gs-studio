@@ -6,6 +6,8 @@ import cv2
 import numpy as np
 
 from sky_mask import (
+    BACKEND_SAM31,
+    DEFAULT_SAM31_CHECKPOINT_NAME,
     SkyMaskOptions,
     auto_view_size,
     detect_sky_mask,
@@ -115,6 +117,21 @@ def test_sky_mask_resolve_model_source_prefers_local_models_dir(tmp_path: Path) 
     model_dir.mkdir(parents=True)
 
     assert resolve_model_source(repo_root=tmp_path) == str(model_dir)
+
+
+def test_sky_mask_resolve_model_source_prefers_local_sam31_checkpoint(tmp_path: Path) -> None:
+    checkpoint = tmp_path / "models" / "sam3.1" / DEFAULT_SAM31_CHECKPOINT_NAME
+    checkpoint.parent.mkdir(parents=True)
+    checkpoint.write_bytes(b"checkpoint")
+
+    assert resolve_model_source(repo_root=tmp_path, backend=BACKEND_SAM31) == str(checkpoint)
+
+
+def test_sky_mask_resolve_model_source_accepts_sam31_model_dir_override(tmp_path: Path) -> None:
+    model_dir = tmp_path / "sam3.1"
+    model_dir.mkdir()
+
+    assert resolve_model_source(model_dir=model_dir, backend=BACKEND_SAM31) == str(model_dir)
 
 
 def test_sky_mask_auto_view_size_is_bounded() -> None:
