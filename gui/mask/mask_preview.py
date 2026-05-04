@@ -144,7 +144,7 @@ class MaskPreviewWidget(QWidget):
 
         self.preview_stack = QStackedWidget()
 
-        self.image_label = ZoomableImageLabel(i18n.t("NO_PREVIEW"))
+        self.image_label = ZoomableImageLabel(i18n.t("MASK_PREVIEW_NO_SCENE_HELP"))
         self.image_label.setMinimumSize(640, 280)
         self.image_label.setStyleSheet("border: 1px solid palette(mid);")
         self.preview_stack.addWidget(self.image_label)
@@ -236,7 +236,7 @@ class MaskPreviewWidget(QWidget):
 
         sample = self._current_image_path.strip()
         if not sample:
-            self.image_label.setText(i18n.t("NO_PREVIEW"))
+            self.image_label.setText(self._empty_preview_message())
             self.status_label.setText("")
             self._pixmap = None
             return
@@ -386,6 +386,11 @@ class MaskPreviewWidget(QWidget):
 
     def _iter_images(self) -> list[Path]:
         return iter_image_files(self._images_dir)
+
+    def _empty_preview_message(self) -> str:
+        if not self._images_dir:
+            return i18n.t("MASK_PREVIEW_NO_SCENE_HELP")
+        return i18n.t("MASK_PREVIEW_EMPTY_HELP")
 
     def _set_index(self, idx: int, *, sync_thumbnail: bool = True, scroll_thumbnail: bool = False) -> None:
         if not self.preview_images:

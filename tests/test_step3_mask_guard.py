@@ -264,7 +264,6 @@ def test_mask_step_disables_generation_without_images_dir(tmp_path: Path) -> Non
 
     assert not step.primary_action_enabled()
     assert step.primary_action_tooltip() == i18n.t("MASK_READY_NO_IMAGES_DIR")
-    assert step.ready_status_label.text() == i18n.t("MASK_READY_NO_IMAGES_DIR")
     with pytest.raises(ValueError, match="images/"):
         step.build_commands()
 
@@ -279,7 +278,6 @@ def test_mask_step_allows_external_images_without_selected_frames_csv(tmp_path: 
     step.set_scene_dir(str(tmp_path))
 
     assert step.primary_action_enabled()
-    assert step.ready_status_label.text() == i18n.t("MASK_READY_EXTERNAL_IMAGES")
     commands = step.build_commands()
     assert commands[0][0] == "yolo"
     assert commands[0][1][3] == str(images)
@@ -755,7 +753,6 @@ def test_mask_step_imports_external_images_into_scene_images(tmp_path: Path) -> 
     assert (scene / "images" / "b.png").is_file()
     assert not (scene / "images" / "ignore.txt").exists()
     assert step.primary_action_enabled()
-    assert step.ready_status_label.text() == i18n.t("MASK_READY_EXTERNAL_IMAGES")
 
     added_again, skipped_again = step._import_external_images_from_dir(source)
 

@@ -243,10 +243,6 @@ class MaskStep(BaseStepWidget):
         add_tooltip_row(path_form, i18n.MASKS_DIR, self.masks_path_label, i18n.tip("MASKS_DIR"))
         layout.addLayout(path_form)
 
-        self.ready_status_label = QLabel()
-        self.ready_status_label.setWordWrap(True)
-        layout.addWidget(self.ready_status_label)
-
         projection_row = QHBoxLayout()
         projection_row.setSpacing(6)
         self.projection_label = QLabel(i18n.t("MASK_IMAGE_TYPE"))
@@ -861,16 +857,7 @@ class MaskStep(BaseStepWidget):
         return True, i18n.t("MASK_READY_OK")
 
     def _update_ready_status(self) -> None:
-        ready, reason = self._readiness()
-        self.ready_status_label.setText(reason)
-        if ready:
-            self.ready_status_label.setStyleSheet(
-                "color: #7ecf7e; border: 1px solid #2f6f2f; border-radius: 6px; padding: 8px;"
-            )
-        else:
-            self.ready_status_label.setStyleSheet(
-                "color: #d8a24a; border: 1px solid #7a5b25; border-radius: 6px; padding: 8px;"
-            )
+        self._readiness()
         self.primary_action_state_changed.emit()
 
     def _selected_classes(self) -> list[int]:

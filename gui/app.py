@@ -147,13 +147,17 @@ class MainWindow(QWidget):
         content_layout.setContentsMargins(10, 10, 10, 10)
         content_layout.setSpacing(8)
 
+        step_header_row = QHBoxLayout()
+        step_header_row.setContentsMargins(0, 0, 0, 0)
+        step_header_row.setSpacing(8)
         self.step_header = QLabel("")
         self.step_header.setObjectName("stepHeader")
-        content_layout.addWidget(self.step_header)
+        step_header_row.addWidget(self.step_header)
         self.step_subheader = QLabel("")
         self.step_subheader.setObjectName("stepSubheader")
-        self.step_subheader.setWordWrap(True)
-        content_layout.addWidget(self.step_subheader)
+        self.step_subheader.setWordWrap(False)
+        step_header_row.addWidget(self.step_subheader, stretch=1)
+        content_layout.addLayout(step_header_row)
 
         self.stack = QStackedWidget()
         for step in self.steps:

@@ -87,7 +87,7 @@ QLabel#stepHeader {{
 QLabel#stepSubheader {{
     color: {TEXT_DIM};
     font-size: 9pt;
-    padding: 0 4px 8px 4px;
+    padding: 4px 4px 0 0;
 }}
 QWidget#jobPanel {{
     background-color: {BG_MID};
