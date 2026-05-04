@@ -14,7 +14,7 @@ import cv2
 import numpy as np
 from apply_frame_decisions import pending_drop_image_paths, untracked_image_paths
 from custom_mask import load_custom_mask
-from PySide6.QtCore import QProcess, Qt, QTimer, QUrl, Signal
+from PySide6.QtCore import QProcess, QSize, Qt, QTimer, QUrl, Signal
 from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import (
     QButtonGroup,
@@ -39,6 +39,7 @@ from gui import i18n
 from gui.common.collapsible_section import CollapsibleSection
 from gui.common.drag_spinbox import DragDoubleSpinBox, DragSpinBox
 from gui.common.form_rows import add_tooltip_row
+from gui.common.icons import minus_icon, plus_icon
 from gui.mask.mask_preview import MaskPreviewConfig, MaskPreviewWidget
 from gui.steps.base_step import (
     SETTINGS_PANE_MARGINS,
@@ -476,14 +477,34 @@ class MaskStep(BaseStepWidget):
             self.sam_prompt_cbs.append((prompt, cb))
             sam_grid.addWidget(cb, idx // cols, idx % cols)
         self.sam_prompt_section.content_layout.addWidget(sam_grid_widget)
+
+        self.sam_custom_prompt_row = QHBoxLayout()
+        self.sam_custom_prompt_row.setContentsMargins(0, 0, 0, 0)
+        self.sam_custom_prompt_row.setSpacing(6)
+        self.sam_custom_prompt_icon = QLabel()
+        self.sam_custom_prompt_icon.setPixmap(plus_icon(16).pixmap(QSize(16, 16)))
+        self.sam_custom_prompt_icon.setToolTip(i18n.tip("SAM31_CUSTOM_PROMPT"))
+        self.sam_custom_prompt_icon.setFixedSize(20, 20)
         self.sam_custom_prompt_edit = QLineEdit()
         self.sam_custom_prompt_edit.setPlaceholderText(i18n.t("SAM31_CUSTOM_PROMPT_PLACEHOLDER"))
         self.sam_custom_prompt_edit.setToolTip(i18n.tip("SAM31_CUSTOM_PROMPT"))
-        self.sam_prompt_section.content_layout.addWidget(self.sam_custom_prompt_edit)
+        self.sam_custom_prompt_row.addWidget(self.sam_custom_prompt_icon)
+        self.sam_custom_prompt_row.addWidget(self.sam_custom_prompt_edit)
+        self.sam_prompt_section.content_layout.addLayout(self.sam_custom_prompt_row)
+
+        self.sam_subtract_prompt_row = QHBoxLayout()
+        self.sam_subtract_prompt_row.setContentsMargins(0, 0, 0, 0)
+        self.sam_subtract_prompt_row.setSpacing(6)
+        self.sam_subtract_prompt_icon = QLabel()
+        self.sam_subtract_prompt_icon.setPixmap(minus_icon(16).pixmap(QSize(16, 16)))
+        self.sam_subtract_prompt_icon.setToolTip(i18n.tip("SAM31_SUBTRACT_PROMPT"))
+        self.sam_subtract_prompt_icon.setFixedSize(20, 20)
         self.sam_subtract_prompt_edit = QLineEdit()
         self.sam_subtract_prompt_edit.setPlaceholderText(i18n.t("SAM31_SUBTRACT_PROMPT_PLACEHOLDER"))
         self.sam_subtract_prompt_edit.setToolTip(i18n.tip("SAM31_SUBTRACT_PROMPT"))
-        self.sam_prompt_section.content_layout.addWidget(self.sam_subtract_prompt_edit)
+        self.sam_subtract_prompt_row.addWidget(self.sam_subtract_prompt_icon)
+        self.sam_subtract_prompt_row.addWidget(self.sam_subtract_prompt_edit)
+        self.sam_prompt_section.content_layout.addLayout(self.sam_subtract_prompt_row)
         yolo_layout.addWidget(self.sam_prompt_section)
 
         # --- スティッチ+白飛び設定 ---

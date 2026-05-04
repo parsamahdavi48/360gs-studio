@@ -138,6 +138,10 @@ def test_mask_step_sam31_apply_mode_shares_compact_settings_row(tmp_path: Path, 
     assert step.sam_apply_mode_combo.itemData(0) == "replace"
     assert step.sam_apply_mode_combo.itemData(1) == "add"
     assert step.sam_apply_mode_combo.itemData(2) == "subtract"
+    assert step.sam_custom_prompt_icon.pixmap() is not None
+    assert step.sam_custom_prompt_icon.toolTip() == i18n.tip("SAM31_CUSTOM_PROMPT")
+    assert step.sam_subtract_prompt_icon.pixmap() is not None
+    assert step.sam_subtract_prompt_icon.toolTip() == i18n.tip("SAM31_SUBTRACT_PROMPT")
 
 
 def test_mask_step_metashape_notice_is_in_left_pane() -> None:
