@@ -182,6 +182,15 @@ def profile_record_inference(
         )
 
 
+def extract_yolo_bboxes(result) -> list[list[float]]:
+    bboxes = []
+    if result.boxes is None:
+        return bboxes
+    for box in result.boxes.xyxy:
+        bboxes.append(box.tolist())
+    return bboxes
+
+
 def build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Make mask images for removing humans in the scene")
     parser.add_argument("images_dir", nargs="?", help="Input directory containing image files (default='./images')")
@@ -325,15 +334,62 @@ def add_yolo_mask(
         raise RuntimeError("YOLO/SAM models are not loaded")
 
     # ---------- YOLO: 指定クラス検出 ----------
-    with profile_timer(f"{profile_stage}.yolo"):
-        results = detector(img, conf=conf, classes=CLASS_IDS, verbose=False)
+    bboxes = detect_yolo_bboxes(img, model_key=model_key, conf=conf, profile_stage=profile_stage)
+    return add_sam_mask(
+        img,
+        mask,
+        bboxes,
+        has_mask,
+        model_key=model_key,
+        conf=conf,
+        profile_stage=profile_stage,
+    )
 
-    bboxes = []
-    for r in results:
-        if r.boxes is None:
-            continue
-        for box in r.boxes.xyxy:
-            bboxes.append(box.tolist())
+
+def detect_yolo_bboxes(
+    img,
+    *,
+    model_key: str = YOLO_MODEL_PRIMARY,
+    conf: float = YOLO_CONF_DEFAULT,
+    profile_stage: str = "full",
+) -> list[list[float]]:
+    return detect_yolo_bboxes_batch([img], model_key=model_key, conf=conf, profile_stage=profile_stage)[0]
+
+
+def detect_yolo_bboxes_batch(
+    images: list[np.ndarray],
+    *,
+    model_key: str = YOLO_MODEL_PRIMARY,
+    conf: float = YOLO_CONF_DEFAULT,
+    profile_stage: str = "full",
+) -> list[list[list[float]]]:
+    global yolo
+    if len(images) == 0:
+        return []
+    detector = yolo_models.get(model_key) or yolo
+    if detector is None:
+        raise RuntimeError("YOLO model is not loaded")
+
+    source = images[0] if len(images) == 1 else images
+    with profile_timer(f"{profile_stage}.yolo"):
+        results = detector(source, conf=conf, classes=CLASS_IDS, verbose=False)
+    return [extract_yolo_bboxes(result) for result in results]
+
+
+def add_sam_mask(
+    img,
+    mask,
+    bboxes: list[list[float]],
+    has_mask=0,
+    *,
+    model_key: str = YOLO_MODEL_PRIMARY,
+    conf: float = YOLO_CONF_DEFAULT,
+    profile_stage: str = "full",
+):
+    global sam
+    if sam is None:
+        raise RuntimeError("SAM model is not loaded")
+
     if len(bboxes) == 0:
         profile_record_inference(
             stage=profile_stage,
@@ -400,6 +456,40 @@ def rotate_quarter_turn(img, angle: int):
     if angle == 270:
         return cv2.rotate(img, cv2.ROTATE_90_COUNTERCLOCKWISE)
     raise ValueError("angle must be a multiple of 90")
+
+
+def transform_bbox_from_rotated_bottom(
+    bbox: list[float],
+    angle: int,
+    *,
+    width: int,
+    height: int,
+) -> list[float] | None:
+    angle = angle % 360
+    x1, y1, x2, y2 = [float(v) for v in bbox]
+    corners = [(x1, y1), (x2, y1), (x2, y2), (x1, y2)]
+
+    def to_original(x: float, y: float) -> tuple[float, float]:
+        if angle == 0:
+            return x, y
+        if angle == 90:
+            return y, height - x
+        if angle == 180:
+            return width - x, height - y
+        if angle == 270:
+            return width - y, x
+        raise ValueError("angle must be a multiple of 90")
+
+    transformed = [to_original(x, y) for x, y in corners]
+    xs = [x for x, _y in transformed]
+    ys = [y for _x, y in transformed]
+    out_x1 = max(0.0, min(float(width), min(xs)))
+    out_y1 = max(0.0, min(float(height), min(ys)))
+    out_x2 = max(0.0, min(float(width), max(xs)))
+    out_y2 = max(0.0, min(float(height), max(ys)))
+    if out_x2 <= out_x1 or out_y2 <= out_y1:
+        return None
+    return [out_x1, out_y1, out_x2, out_y2]
 
 
 def filter_bottom_mask_components(mask: np.ndarray) -> np.ndarray:
@@ -554,22 +644,32 @@ def detect_bottom_mask(img, pano_width: int, pano_height: int) -> tuple[np.ndarr
     merged_bottom_mask = np.zeros((bsize, bsize), dtype=np.uint8)
     total_has_bottom = 0
 
+    bottom_bboxes = []
     for angle in bottom_rotation_angles(BOTTOM_TTA_ROTATIONS):
         with profile_timer("bottom.rotate"):
             rotated_bottom = rotate_quarter_turn(bottom, angle)
-        rotated_mask = np.zeros(rotated_bottom.shape[:2], dtype=np.uint8)
-        rotated_mask, has_bottom = add_yolo_mask(
+        rotated_bboxes = detect_yolo_bboxes(
             rotated_bottom,
-            rotated_mask,
             model_key=YOLO_MODEL_BOTTOM,
             conf=BOTTOM_CONF,
             profile_stage="bottom",
         )
-        if has_bottom > 0:
-            with profile_timer("bottom.merge"):
-                merged_bottom_mask = np.maximum(merged_bottom_mask, rotate_quarter_turn(rotated_mask, -angle))
-            total_has_bottom += has_bottom
+        for bbox in rotated_bboxes:
+            original_bbox = transform_bbox_from_rotated_bottom(bbox, angle, width=bsize, height=bsize)
+            if original_bbox is not None:
+                bottom_bboxes.append(original_bbox)
 
+    if len(bottom_bboxes) == 0:
+        return None, 0
+
+    merged_bottom_mask, total_has_bottom = add_sam_mask(
+        bottom,
+        merged_bottom_mask,
+        bottom_bboxes,
+        model_key=YOLO_MODEL_BOTTOM,
+        conf=BOTTOM_CONF,
+        profile_stage="bottom",
+    )
     if total_has_bottom == 0:
         return None, 0
 
