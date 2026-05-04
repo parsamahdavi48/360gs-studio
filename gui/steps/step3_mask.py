@@ -81,6 +81,10 @@ _PERSON_BACKENDS = ("yolo_sam", "mask2former", "sam31")
 _PERSON_SAM31_PROMPT = "person"
 _PERSON_SAM31_INFERENCE_SIZE = "1008"
 _PERSON_SAM31_MIN_SCORE = "0.5"
+_SAM31_MERGE_REPLACE = "replace"
+_SAM31_MERGE_ADD = "add"
+_SAM31_MERGE_SUBTRACT = "subtract"
+_SAM31_MERGE_MODES = (_SAM31_MERGE_REPLACE, _SAM31_MERGE_ADD, _SAM31_MERGE_SUBTRACT)
 _SAM31_PROMPT_PRESETS: tuple[tuple[str, str], ...] = (
     ("person", "人物"),
     ("sky", "空"),
@@ -459,11 +463,30 @@ class MaskStep(BaseStepWidget):
                 cb.setChecked(True)
             self.sam_prompt_cbs.append((prompt, cb))
             sam_grid.addWidget(cb, idx // cols, idx % cols)
+        sam_apply_row = QHBoxLayout()
+        sam_apply_row.setContentsMargins(0, 0, 0, 0)
+        sam_apply_row.setSpacing(6)
+        self.sam_apply_mode_label = QLabel(i18n.t("SAM31_APPLY_MODE"))
+        self.sam_apply_mode_label.setToolTip(i18n.tip("SAM31_APPLY_MODE"))
+        self.sam_apply_mode_combo = QComboBox()
+        self.sam_apply_mode_combo.setToolTip(i18n.tip("SAM31_APPLY_MODE"))
+        self.sam_apply_mode_combo.addItem(i18n.t("SAM31_APPLY_REPLACE"), _SAM31_MERGE_REPLACE)
+        self.sam_apply_mode_combo.addItem(i18n.t("SAM31_APPLY_ADD"), _SAM31_MERGE_ADD)
+        self.sam_apply_mode_combo.addItem(i18n.t("SAM31_APPLY_SUBTRACT"), _SAM31_MERGE_SUBTRACT)
+        self.sam_apply_mode_combo.setFixedWidth(124)
+        sam_apply_row.addWidget(self.sam_apply_mode_label)
+        sam_apply_row.addWidget(self.sam_apply_mode_combo)
+        sam_apply_row.addStretch()
+        self.sam_prompt_section.content_layout.addLayout(sam_apply_row)
         self.sam_prompt_section.content_layout.addWidget(sam_grid_widget)
         self.sam_custom_prompt_edit = QLineEdit()
         self.sam_custom_prompt_edit.setPlaceholderText(i18n.t("SAM31_CUSTOM_PROMPT_PLACEHOLDER"))
         self.sam_custom_prompt_edit.setToolTip(i18n.tip("SAM31_CUSTOM_PROMPT"))
         self.sam_prompt_section.content_layout.addWidget(self.sam_custom_prompt_edit)
+        self.sam_subtract_prompt_edit = QLineEdit()
+        self.sam_subtract_prompt_edit.setPlaceholderText(i18n.t("SAM31_SUBTRACT_PROMPT_PLACEHOLDER"))
+        self.sam_subtract_prompt_edit.setToolTip(i18n.tip("SAM31_SUBTRACT_PROMPT"))
+        self.sam_prompt_section.content_layout.addWidget(self.sam_subtract_prompt_edit)
         yolo_layout.addWidget(self.sam_prompt_section)
 
         # --- スティッチ+白飛び設定 ---
@@ -730,6 +753,8 @@ class MaskStep(BaseStepWidget):
         for _prompt, cb in self.sam_prompt_cbs:
             cb.toggled.connect(lambda _checked=False: self._schedule_render_mask_preview())
         self.sam_custom_prompt_edit.textChanged.connect(lambda _text: self._schedule_render_mask_preview())
+        self.sam_subtract_prompt_edit.textChanged.connect(lambda _text: self._schedule_render_mask_preview())
+        self.sam_apply_mode_combo.currentIndexChanged.connect(lambda _: self._schedule_render_mask_preview())
         self.overexp_threshold_edit.valueChanged.connect(lambda _: self._schedule_render_mask_preview())
         self.overexp_dilate_edit.valueChanged.connect(lambda _: self._schedule_render_mask_preview())
         self.sky_backend_combo.currentIndexChanged.connect(lambda _: self._on_sky_backend_changed())
@@ -858,15 +883,22 @@ class MaskStep(BaseStepWidget):
         labels = [name.strip() for name, cb in zip(self.ade_class_names, self.ade_class_cbs) if cb.isChecked()]
         return [label for label in labels if label] or ["person", "sky"]
 
+    @staticmethod
+    def _split_sam_prompt_text(text: str) -> list[str]:
+        return [part.strip() for part in re.split(r"[,;\n]", text) if part.strip()]
+
     def _selected_sam_prompts(self) -> list[str]:
         prompts = [prompt for prompt, cb in self.sam_prompt_cbs if cb.isChecked()]
-        custom_text = self.sam_custom_prompt_edit.text().strip()
-        if custom_text:
-            for part in re.split(r"[,;\n]", custom_text):
-                prompt = part.strip()
-                if prompt:
-                    prompts.append(prompt)
+        prompts.extend(self._split_sam_prompt_text(self.sam_custom_prompt_edit.text()))
         return list(dict.fromkeys(prompts)) or [_PERSON_SAM31_PROMPT]
+
+    def _selected_sam_subtract_prompts(self) -> list[str]:
+        return list(dict.fromkeys(self._split_sam_prompt_text(self.sam_subtract_prompt_edit.text())))
+
+    def _sam31_merge_mode_arg(self) -> str:
+        data = self.sam_apply_mode_combo.currentData()
+        mode = str(data or _SAM31_MERGE_REPLACE)
+        return mode if mode in _SAM31_MERGE_MODES else _SAM31_MERGE_REPLACE
 
     def _person_backend_arg(self) -> str:
         idx = self.person_backend_combo.currentIndex()
@@ -1235,6 +1267,8 @@ class MaskStep(BaseStepWidget):
             tuple(self._selected_classes()),
             tuple(self._selected_ade_labels()),
             tuple(self._selected_sam_prompts()),
+            tuple(self._selected_sam_subtract_prompts()),
+            self._sam31_merge_mode_arg(),
             self._sky_backend_arg(),
             self._sky_inference_size_arg(),
             int(self.sky_expand_edit.value()),
@@ -1431,7 +1465,13 @@ class MaskStep(BaseStepWidget):
         if self._person_uses_mask2former():
             return self._build_mask2former_cmd(images, masks, replace=True)
         if self._person_uses_sam31():
-            return self._build_sam31_prompt_cmd(images, masks, prompts=self._selected_sam_prompts(), replace=True)
+            return self._build_sam31_prompt_cmd(
+                images,
+                masks,
+                prompts=self._selected_sam_prompts(),
+                subtract_prompts=self._selected_sam_subtract_prompts(),
+                merge_mode=self._sam31_merge_mode_arg(),
+            )
 
         script = self.base_dir / "yolo_mask.py"
         if not script.exists():
@@ -1458,7 +1498,8 @@ class MaskStep(BaseStepWidget):
                 str(image_path),
                 str(output_dir),
                 prompts=self._selected_sam_prompts(),
-                replace=True,
+                subtract_prompts=self._selected_sam_subtract_prompts(),
+                merge_mode=self._sam31_merge_mode_arg(),
             )
 
         script = self.base_dir / "yolo_mask.py"
@@ -1499,11 +1540,17 @@ class MaskStep(BaseStepWidget):
         masks: str | Path,
         *,
         prompts: list[str],
+        subtract_prompts: list[str] | None = None,
+        merge_mode: str | None = None,
         replace: bool = False,
     ) -> list[str]:
         script = self.base_dir / "sky_mask.py"
         if not script.exists():
             raise FileNotFoundError(f"sky_mask.py が見つかりません: {script}")
+
+        effective_merge_mode = _SAM31_MERGE_REPLACE if replace else (merge_mode or self._sam31_merge_mode_arg())
+        if effective_merge_mode not in _SAM31_MERGE_MODES:
+            effective_merge_mode = _SAM31_MERGE_REPLACE
 
         cmd = [
             sys.executable, "-u", str(script),
@@ -1514,11 +1561,14 @@ class MaskStep(BaseStepWidget):
             "--inference-size", _PERSON_SAM31_INFERENCE_SIZE,
             "--expand", self._yolo_expand_arg(),
             "--min-score", _PERSON_SAM31_MIN_SCORE,
+            "--merge-mode", effective_merge_mode,
         ]
         cmd.extend(self._sky_postprocess_args())
         for prompt in prompts:
             cmd.extend(["--sam-prompt", prompt])
-        if replace:
+        for prompt in subtract_prompts or []:
+            cmd.extend(["--subtract-sam-prompt", prompt])
+        if effective_merge_mode == _SAM31_MERGE_REPLACE:
             cmd.append("--replace")
         return cmd
 
@@ -1563,6 +1613,15 @@ class MaskStep(BaseStepWidget):
 
         return [sys.executable, "-u", str(script), images, masks]
 
+    def _seed_sam31_preview_base_mask(self, image_path: Path, output_path: Path) -> None:
+        if not self._person_uses_sam31() or self._sam31_merge_mode_arg() == _SAM31_MERGE_REPLACE:
+            return
+        existing_path = self._mask_output_path_for_image(image_path)
+        if not existing_path.is_file():
+            return
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(existing_path, output_path)
+
     def _run_mask_preview(self) -> None:
         if self._mask_preview_proc is not None and self._mask_preview_proc.state() != QProcess.NotRunning:
             return
@@ -1593,6 +1652,7 @@ class MaskStep(BaseStepWidget):
         self._mask_preview_temp = tempfile.TemporaryDirectory(prefix="stechdrive_mask_preview_")
         masks_root = Path(self._mask_preview_temp.name)
         output_path = self._mask_output_path_for_image(image_path, masks_root=masks_root)
+        self._seed_sam31_preview_base_mask(image_path, output_path)
 
         try:
             commands = self._build_image_external_commands(image_path, masks_root=masks_root)

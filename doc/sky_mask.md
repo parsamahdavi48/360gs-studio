@@ -18,11 +18,11 @@ bottom pole.
 ## Usage
 
 ```bash
-python sky_mask.py [images_dir_or_file] [masks_dir] [--backend mask2former|sam31] [--projection equirect|normal] [--quality standard|high|best] [--labels LABELS] [--sam-prompt TEXT] [--inference-size N] [--expand PX] [--min-score S] [--min-area-ratio R] [--top-connected] [--replace]
+python sky_mask.py [images_dir_or_file] [masks_dir] [--backend mask2former|sam31] [--projection equirect|normal] [--quality standard|high|best] [--labels LABELS] [--sam-prompt TEXT] [--subtract-sam-prompt TEXT] [--merge-mode replace|add|subtract] [--inference-size N] [--expand PX] [--min-score S] [--min-area-ratio R] [--top-connected] [--replace]
 ```
 
 - `images_dir_or_file`: source image directory or one source image.
-- `masks_dir`: output mask directory. Existing masks are AND-merged.
+- `masks_dir`: output mask directory. Existing masks are AND-merged by default.
 - `--backend mask2former|sam31`: segmentation backend (default: `mask2former`).
 - `--projection equirect|normal`: source image projection (default: `equirect`).
 - `--quality standard|high|best`: shared input-view recipe (default: `high`).
@@ -31,6 +31,8 @@ python sky_mask.py [images_dir_or_file] [masks_dir] [--backend mask2former|sam31
   - `--mode direct|top|bottom|hybrid|full` remains available as a low-level override.
 - `--labels LABELS`: comma-separated Mask2Former ADE20K label names or ids (default: `sky`).
 - `--sam-prompt TEXT`: text prompt for SAM3.1. Can be passed multiple times; masks are OR-merged.
+- `--subtract-sam-prompt TEXT`: SAM3.1 prompt to subtract from detected prompt masks. Can be passed multiple times.
+- `--merge-mode replace|add|subtract`: how to apply detected regions to existing masks. `add` blackens detected regions in existing masks, `subtract` turns detected regions white, and `replace` writes only the current detection result.
 - `--inference-size N`: backend input size, 384-2048 (default: `768`; SAM3.1 currently uses `1008` in the GUI).
 - `--view-size N`: cube-pole projection face size for equirect mode; `0` means auto.
 - `--expand PX`: expand detected exclusion regions by pixels. Negative values shrink them.
@@ -39,7 +41,7 @@ python sky_mask.py [images_dir_or_file] [masks_dir] [--backend mask2former|sam31
 - `--top-connected`: keep only sky components touching the top edge. This applies only to sky masks and is off by default.
 - `--model-dir PATH`: local model directory or SAM3.1 checkpoint override.
 - `--device auto|cpu|cuda`: inference device (default: `auto`).
-- `--replace`: ignore existing masks and write this script's mask only.
+- `--replace`: compatibility shortcut for `--merge-mode replace`.
 
 Examples:
 
@@ -51,6 +53,18 @@ SAM3.1 sky/person prompt test:
 
 ```bash
 python sky_mask.py .\images .\masks --backend sam31 --quality high --inference-size 1008 --sam-prompt sky --sam-prompt person --replace
+```
+
+SAM3.1 add-only correction on existing masks:
+
+```bash
+python sky_mask.py .\images .\masks --backend sam31 --quality best --inference-size 1008 --sam-prompt tripod --merge-mode add
+```
+
+SAM3.1 subtract correction on existing masks:
+
+```bash
+python sky_mask.py .\images .\masks --backend sam31 --quality best --inference-size 1008 --sam-prompt pictogram --merge-mode subtract
 ```
 
 ## Model Files
@@ -98,5 +112,6 @@ This intentionally leaves `sam3`'s declared `numpy<2` requirement unresolved;
 - Detected target regions become black (0); all other pixels remain white (255).
 - Mask2Former resolves multiple ADE20K labels in one inference and merges them.
 - SAM3.1 runs one prompt at a time and OR-merges the prompt masks.
+- SAM3.1 subtract prompts are detected with the same input-view recipe, then removed from the positive prompt mask before merge-mode is applied.
 - Small-area and top-connected filtering are applied only to sky labels/prompts. Person, tripod, and custom prompt masks are not removed by these sky post-filters.
 - This feature uses third-party model weights and dataset-derived checkpoints with separate terms. See [../THIRD_PARTY_LICENSES.md](../THIRD_PARTY_LICENSES.md).

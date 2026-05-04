@@ -114,7 +114,7 @@ Use this when you want to exclude people, vehicles, blown-out regions, or simila
 - Start with `Quality: High`.
 - Use `Quality: Standard` for faster test runs.
 - If people leak through, try `Quality: Best` or raise `Expand` slightly.
-- When you find a miss in preview, adjust settings and use `Regenerate Current` to save only that image back to `masks/` using the current primary model and enabled extra masks. In thumbnail mode, use `Ctrl` / `Shift` selection to regenerate multiple selected images together. Arrow keys move the visible thumbnail selection while in thumbnail mode.
+- When you find a miss in preview, adjust settings and use `Regenerate Mask` to save only that image back to `masks/` using the current primary model and enabled extra masks. In thumbnail mode, use `Ctrl` / `Shift` selection to regenerate multiple selected images together. SAM3.1 can also add or subtract prompt detections against existing saved masks.
 - Stitch seam masks are useful when the seam position is stable in the equirectangular image. If FlowState stabilization, direction lock, AI stitching, or similar processing moves the seam, verify it in the preview before using it.
 
 ## Requirements

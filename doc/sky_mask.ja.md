@@ -14,11 +14,11 @@
 ## 使い方
 
 ```bash
-python sky_mask.py [images_dir_or_file] [masks_dir] [--backend mask2former|sam31] [--projection equirect|normal] [--quality standard|high|best] [--labels LABELS] [--sam-prompt TEXT] [--inference-size N] [--expand PX] [--min-score S] [--min-area-ratio R] [--top-connected] [--replace]
+python sky_mask.py [images_dir_or_file] [masks_dir] [--backend mask2former|sam31] [--projection equirect|normal] [--quality standard|high|best] [--labels LABELS] [--sam-prompt TEXT] [--subtract-sam-prompt TEXT] [--merge-mode replace|add|subtract] [--inference-size N] [--expand PX] [--min-score S] [--min-area-ratio R] [--top-connected] [--replace]
 ```
 
 - `images_dir_or_file`: 入力画像フォルダ、または1枚の入力画像。
-- `masks_dir`: 出力マスクフォルダ。既存マスクがあればAND合成します。
+- `masks_dir`: 出力マスクフォルダ。既定では既存マスクへAND合成します。
 - `--backend mask2former|sam31`: セグメンテーションbackend（既定: `mask2former`）。
 - `--projection equirect|normal`: 入力画像の種類（既定: `equirect`）。
 - `--quality standard|high|best`: モデルへ渡す入力素材レシピ（既定: `high`）。
@@ -27,6 +27,8 @@ python sky_mask.py [images_dir_or_file] [masks_dir] [--backend mask2former|sam31
   - `--mode direct|top|bottom|hybrid|full` は低レベルの比較用overrideとして残っています。
 - `--labels LABELS`: Mask2FormerのADE20Kラベル名またはIDのカンマ区切り（既定: `sky`）。
 - `--sam-prompt TEXT`: SAM3.1に渡す英語プロンプト。複数回指定でき、結果はOR合成されます。
+- `--subtract-sam-prompt TEXT`: SAM3.1の検出結果から差し引く英語プロンプト。複数回指定できます。
+- `--merge-mode replace|add|subtract`: 検出領域を既存マスクへどう適用するか。`add` は検出領域を黒で追加し、`subtract` は検出領域を白に戻し、`replace` は今回の検出結果だけを書き込みます。
 - `--inference-size N`: backend入力サイズ。384〜2048（既定: `768`、GUIのSAM3.1は現在 `1008`）。
 - `--view-size N`: 360°投影ビューのサイズ。`0` は自動。
 - `--expand PX`: 検出領域をピクセル単位で拡張。負値で収縮。
@@ -35,7 +37,7 @@ python sky_mask.py [images_dir_or_file] [masks_dir] [--backend mask2former|sam31
 - `--top-connected`: 画像上端に接している空だけ残します。空マスクだけに適用し、既定はOFFです。
 - `--model-dir PATH`: ローカルモデルディレクトリ、またはSAM3.1 checkpointを明示。
 - `--device auto|cpu|cuda`: 推論デバイス（既定: `auto`）。
-- `--replace`: 既存マスクを無視して、このスクリプトの結果だけを書き込みます。
+- `--replace`: 互換用の `--merge-mode replace` ショートカットです。
 
 例:
 
@@ -47,6 +49,18 @@ SAM3.1で空と人物をテストする場合:
 
 ```bash
 python sky_mask.py .\images .\masks --backend sam31 --quality high --inference-size 1008 --sam-prompt sky --sam-prompt person --replace
+```
+
+SAM3.1で既存マスクへ足す補正:
+
+```bash
+python sky_mask.py .\images .\masks --backend sam31 --quality best --inference-size 1008 --sam-prompt tripod --merge-mode add
+```
+
+SAM3.1で既存マスクから引く補正:
+
+```bash
+python sky_mask.py .\images .\masks --backend sam31 --quality best --inference-size 1008 --sam-prompt pictogram --merge-mode subtract
 ```
 
 ## モデルファイル
@@ -88,5 +102,6 @@ SAM3.1を動かすには、アクティブなvenvにMetaの `sam3` Python packag
 - 検出対象は黒 (0)、それ以外は白 (255) です。
 - Mask2Formerは複数ADE20Kラベルを1回の推論で解決し、最終マスクへ統合します。
 - SAM3.1は1プロンプトずつ実行し、結果をOR合成します。
+- SAM3.1の減算プロンプトは同じ入力素材レシピで検出し、肯定側のプロンプトマスクから差し引いてから合成モードを適用します。
 - 小領域除去と上端接続フィルタは空ラベル/空プロンプトだけに適用します。人物、三脚、カスタムプロンプトのマスクは空用後処理では削除されません。
 - この機能は第三者モデル重みおよびデータセット由来checkpointを使います。別ライセンス/利用条件については [../THIRD_PARTY_LICENSES.md](../THIRD_PARTY_LICENSES.md) を参照してください。

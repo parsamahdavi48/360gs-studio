@@ -429,8 +429,67 @@ def test_mask_step_sam31_primary_builds_prompt_command(tmp_path: Path, monkeypat
     assert cmd[cmd.index("--backend") + 1] == "sam31"
     assert cmd[cmd.index("--quality") + 1] == "high"
     assert cmd[cmd.index("--inference-size") + 1] == "1008"
+    assert cmd[cmd.index("--merge-mode") + 1] == "replace"
     prompt_args = [cmd[idx + 1] for idx, value in enumerate(cmd) if value == "--sam-prompt"]
     assert prompt_args == ["person", "sky"]
+
+
+def test_mask_step_sam31_prompts_trim_separator_spaces() -> None:
+    assert MaskStep._split_sam_prompt_text(" tripod, hand; selfie stick ") == [
+        "tripod",
+        "hand",
+        "selfie stick",
+    ]
+
+
+def test_mask_step_sam31_add_mode_builds_subtract_prompt_command(tmp_path: Path, monkeypatch) -> None:
+    _app()
+    scene = _write_scene(tmp_path, drop_exists=False)
+    step = MaskStep(Path.cwd())
+    step.set_scene_dir(str(scene))
+    checkpoint = scene / "sam3.1_multiplex.pt"
+    checkpoint.write_bytes(b"checkpoint")
+    monkeypatch.setattr(step, "_sam31_checkpoint_path", lambda: checkpoint)
+    step._update_person_backend_availability()
+    step.run_stitch_cb.setChecked(False)
+    step.run_overexp_cb.setChecked(False)
+    step.person_backend_combo.setCurrentIndex(2)
+    step.sam_apply_mode_combo.setCurrentIndex(1)
+    step.sam_subtract_prompt_edit.setText("pictogram, logo")
+
+    commands = step.build_commands()
+
+    cmd = commands[0][1]
+    assert cmd[cmd.index("--merge-mode") + 1] == "add"
+    assert "--replace" not in cmd
+    subtract_args = [cmd[idx + 1] for idx, value in enumerate(cmd) if value == "--subtract-sam-prompt"]
+    assert subtract_args == ["pictogram", "logo"]
+
+
+def test_mask_step_sam31_preview_add_mode_seeds_existing_mask(tmp_path: Path, monkeypatch) -> None:
+    _app()
+    scene = tmp_path
+    images = scene / "images"
+    masks = scene / "masks"
+    images.mkdir()
+    masks.mkdir()
+    image_path = images / "frame_0001.jpg"
+    cv2.imwrite(str(image_path), np.full((16, 32, 3), 180, dtype=np.uint8))
+    existing = np.zeros((16, 32), dtype=np.uint8)
+    cv2.imwrite(str(masks / "frame_0001.png"), existing)
+    step = MaskStep(Path.cwd())
+    step.set_scene_dir(str(scene))
+    checkpoint = scene / "sam3.1_multiplex.pt"
+    checkpoint.write_bytes(b"checkpoint")
+    monkeypatch.setattr(step, "_sam31_checkpoint_path", lambda: checkpoint)
+    step._update_person_backend_availability()
+    step.person_backend_combo.setCurrentIndex(2)
+    step.sam_apply_mode_combo.setCurrentIndex(1)
+    preview_mask = tmp_path / "preview" / "frame_0001.png"
+
+    step._seed_sam31_preview_base_mask(image_path, preview_mask)
+
+    assert preview_mask.is_file()
 
 
 def test_mask_step_sky_top_connected_is_opt_in(tmp_path: Path) -> None:

@@ -13,6 +13,7 @@ from sky_mask import (
     auto_view_size,
     detect_sky_mask,
     mask_output_path_for_image,
+    merge_with_existing,
     postprocess_sky_components,
     process_image,
     resolve_model_source,
@@ -82,6 +83,58 @@ def test_sky_postprocess_does_not_remove_non_sky_targets() -> None:
 
     assert mask[8, 5] == 255
     assert mask[9, 11] == 0
+
+
+def test_sam31_subtract_prompt_removes_prompt_from_detection() -> None:
+    class PromptSegmenter:
+        def detect_prompt_masks(
+            self,
+            bgr: np.ndarray,
+            options: SkyMaskOptions,
+            *,
+            sky_prompts: tuple[str, ...],
+            other_prompts: tuple[str, ...],
+        ) -> DetectedRegionMasks:
+            del bgr, options, sky_prompts
+            other = np.zeros((12, 16), dtype=bool)
+            for prompt in other_prompts:
+                if prompt == "person":
+                    other[2:8, 2:10] = True
+                if prompt == "pictogram":
+                    other[4:8, 6:10] = True
+            return DetectedRegionMasks(sky=np.zeros_like(other), other=other)
+
+    image = np.zeros((12, 16, 3), dtype=np.uint8)
+
+    mask = detect_sky_mask(
+        image,
+        PromptSegmenter(),
+        SkyMaskOptions(
+            projection="normal",
+            mode="direct",
+            min_area_ratio=0.0,
+            top_connected=False,
+            sam_prompts=("person",),
+            sam_subtract_prompts=("pictogram",),
+        ),
+    )
+
+    assert mask[3, 3] == 0
+    assert mask[5, 8] == 255
+
+
+def test_sky_mask_subtract_merge_restores_detected_existing_pixels(tmp_path: Path) -> None:
+    mask_out = tmp_path / "frame.png"
+    existing = np.full((8, 10), 255, dtype=np.uint8)
+    existing[2:7, 2:8] = 0
+    cv2.imwrite(str(mask_out), existing)
+    detected = np.full((8, 10), 255, dtype=np.uint8)
+    detected[3:5, 4:6] = 0
+
+    merged = merge_with_existing(mask_out, detected, merge_mode="subtract")
+
+    assert merged[3, 4] == 255
+    assert merged[2, 2] == 0
 
 
 def test_sky_mask_process_image_merges_with_existing_mask(tmp_path: Path) -> None:

@@ -56,6 +56,9 @@ run_gui.bat --scene ./scene01
 - `Detection Targets`: SAM3.1 prompt presets and a custom English prompt field.
   - Defaults to `person` and `sky`.
   - Multiple prompts are run one at a time and OR-merged into the output mask.
+  - Custom prompt fields accept comma or semicolon separators. Spaces around separators are ignored; spaces inside prompts are kept.
+  - The subtract prompt field removes matching SAM3.1 detections from the positive prompt result.
+  - `Apply` is SAM3.1-only: `Replace` rewrites the mask, `Add` blackens detected regions in the existing mask, and `Subtract` turns detected regions white in the existing mask.
 - `Inference Size`: controls Mask2Former inference size. SAM3.1 currently uses fixed `1008`.
 - `Model Details`: contains Mask2Former-specific `Min Score` (`0.00-1.00`, `0` disables it).
 - `Sky Mask`: contains sky-only filters.
@@ -76,13 +79,14 @@ run_gui.bat --scene ./scene01
   - If every image is skipped because none match the custom mask size, the custom step fails.
   - If `Custom` is turned on before a file is selected, the file picker opens automatically. You can also select the file first with `Load`.
 - `Mask Preview` button: builds a temporary mask for the displayed image using the current primary model and enabled extra masks.
-  - Existing files in `masks/` are not used as the base, so results from steps that are now off are not mixed into the preview.
+  - Existing files in `masks/` are not used as the base, except in SAM3.1 `Add`/`Subtract` mode where the saved mask is copied into the temporary preview so the correction can be inspected.
   - The result is shown as a red overlay and is not saved to `masks/`.
   - In thumbnail mode, it switches the currently selected image to single-preview mode and shows the temporary result there.
   - `Show Preview` toggles between the generated temporary preview and the saved mask in `masks/` without deleting the temporary preview.
   - The first run with a third-party model shows the relevant model/license notice.
-- `Regenerate Current`: rebuilds and saves the mask for only the currently displayed preview image.
+- `Regenerate Mask`: rebuilds and saves the mask for only the currently displayed preview image.
   - It reruns the selected primary model for that single image. If `Stitch`, `Overexp`, or `Custom` is enabled, those masks are merged into the same output.
+  - In SAM3.1 `Add`/`Subtract` mode, it applies the current prompt result to the existing saved mask instead of replacing the whole mask.
   - Results from steps that are now off are not kept, so use it to fix misses found in preview without regenerating the whole set.
 - `Mask Preview`:
   - Use the icons at the right side of the preview header to switch between single preview and thumbnail list.
@@ -90,7 +94,7 @@ run_gui.bat --scene ./scene01
   - Double-clicking a thumbnail returns to single preview on that image.
   - `Ctrl` click, `Ctrl+Shift` click, and `Shift` click follow Windows Explorer-style multi-selection.
   - Switching to thumbnail mode focuses the thumbnail list, so arrow keys move the visible thumbnail selection.
-  - In thumbnail mode, `Regenerate N Selected` rebuilds only the selected images with the current mask-generation settings and saves them to `masks/`.
+  - In thumbnail mode, `Regenerate N Masks` rebuilds only the selected images with the current mask-generation settings and saves them to `masks/`.
   - The status text stays on one line and elides when space is tight; the full text is available as a tooltip.
   - Thumbnail rendering is lazy, prioritizes the visible rows, and reuses cached thumbnails across step switches so large image sets do not rebuild in full on every view change.
 

@@ -49,6 +49,10 @@ DEFAULT_SAM31_CHECKPOINT_NAME = "sam3.1_multiplex.pt"
 DEFAULT_SAM31_PROMPT = "sky"
 DEFAULT_SAM31_SCORE = 0.5
 DEFAULT_SAM31_INFERENCE_SIZE = 1008
+MASK_MERGE_REPLACE = "replace"
+MASK_MERGE_ADD = "add"
+MASK_MERGE_SUBTRACT = "subtract"
+SUPPORTED_MERGE_MODES = (MASK_MERGE_REPLACE, MASK_MERGE_ADD, MASK_MERGE_SUBTRACT)
 DEFAULT_INFERENCE_SIZE = 768
 DEFAULT_MODE = ""
 SUPPORTED_MODES = ("direct", "top", "bottom", "hybrid", "full")
@@ -76,9 +80,11 @@ class SkyMaskOptions:
     top_connected: bool = False
     add_ext: bool = False
     replace: bool = False
+    merge_mode: str = MASK_MERGE_ADD
     sam_prompt: str = DEFAULT_SAM31_PROMPT
     labels: tuple[str, ...] = DEFAULT_MASK2FORMER_LABELS
     sam_prompts: tuple[str, ...] = ()
+    sam_subtract_prompts: tuple[str, ...] = ()
 
 
 @dataclass
@@ -506,11 +512,15 @@ def _is_sky_prompt(prompt: str) -> bool:
     return value in {"sky", "the sky"} or value.endswith(" sky")
 
 
-def _split_sam_prompts(options: SkyMaskOptions) -> tuple[tuple[str, ...], tuple[str, ...]]:
-    prompts = options.sam_prompts or (options.sam_prompt.strip() or DEFAULT_SAM31_PROMPT,)
+def _split_sam_prompts(
+    options: SkyMaskOptions,
+    prompts: tuple[str, ...] | None = None,
+) -> tuple[tuple[str, ...], tuple[str, ...]]:
+    prompt_values = prompts if prompts is not None else options.sam_prompts
+    prompt_values = prompt_values or (options.sam_prompt.strip() or DEFAULT_SAM31_PROMPT,)
     sky_prompts: list[str] = []
     other_prompts: list[str] = []
-    for prompt in prompts:
+    for prompt in prompt_values:
         if _is_sky_prompt(prompt):
             sky_prompts.append(prompt)
         else:
@@ -518,7 +528,13 @@ def _split_sam_prompts(options: SkyMaskOptions) -> tuple[tuple[str, ...], tuple[
     return tuple(sky_prompts), tuple(other_prompts)
 
 
-def detect_region_masks(image: np.ndarray, segmenter: Any, options: SkyMaskOptions) -> DetectedRegionMasks:
+def detect_region_masks(
+    image: np.ndarray,
+    segmenter: Any,
+    options: SkyMaskOptions,
+    *,
+    sam_prompts: tuple[str, ...] | None = None,
+) -> DetectedRegionMasks:
     if hasattr(segmenter, "split_labels") and hasattr(segmenter, "detect_label_masks"):
         sky_labels, other_labels = segmenter.split_labels(options.labels)
         return segmenter.detect_label_masks(
@@ -528,7 +544,7 @@ def detect_region_masks(image: np.ndarray, segmenter: Any, options: SkyMaskOptio
             other_labels=other_labels,
         )
     if hasattr(segmenter, "detect_prompt_masks"):
-        sky_prompts, other_prompts = _split_sam_prompts(options)
+        sky_prompts, other_prompts = _split_sam_prompts(options, prompts=sam_prompts)
         return segmenter.detect_prompt_masks(
             image,
             options,
@@ -553,7 +569,13 @@ def expand_mask(mask: np.ndarray, expand_px: int) -> np.ndarray:
     return expanded.astype(bool)
 
 
-def detect_sky_mask(image: np.ndarray, segmenter: Any, options: SkyMaskOptions) -> np.ndarray:
+def detect_exclusion_regions(
+    image: np.ndarray,
+    segmenter: Any,
+    options: SkyMaskOptions,
+    *,
+    sam_prompts: tuple[str, ...] | None = None,
+) -> np.ndarray:
     regions = DetectedRegionMasks.empty(image.shape[:2])
     h, w = image.shape[:2]
     mode = str(options.mode or "").strip().lower()
@@ -562,43 +584,43 @@ def detect_sky_mask(image: np.ndarray, segmenter: Any, options: SkyMaskOptions) 
             mode = "direct"
 
         if mode in {"direct", "hybrid", "full"}:
-            regions.merge(detect_region_masks(image, segmenter, options))
+            regions.merge(detect_region_masks(image, segmenter, options, sam_prompts=sam_prompts))
 
         if mode in {"top", "hybrid", "full"}:
             view_size = options.view_size or shared_auto_view_size(w, h)
             top_view = shared_extract_top_view(image, view_size)
-            top_regions = detect_region_masks(top_view, segmenter, options)
+            top_regions = detect_region_masks(top_view, segmenter, options, sam_prompts=sam_prompts)
             regions.sky |= shared_back_project_top_mask(top_regions.sky.astype(np.uint8) * 255, w, h) > 0
             regions.other |= shared_back_project_top_mask(top_regions.other.astype(np.uint8) * 255, w, h) > 0
 
         if mode in {"bottom", "full"}:
             view_size = options.view_size or shared_auto_view_size(w, h)
             bottom_view = shared_extract_bottom_view(image, view_size)
-            bottom_regions = detect_region_masks(bottom_view, segmenter, options)
+            bottom_regions = detect_region_masks(bottom_view, segmenter, options, sam_prompts=sam_prompts)
             regions.sky |= shared_back_project_bottom_mask(bottom_regions.sky.astype(np.uint8) * 255, w, h) > 0
             regions.other |= shared_back_project_bottom_mask(bottom_regions.other.astype(np.uint8) * 255, w, h) > 0
     else:
         recipe = recipe_for(options.quality, options.projection)
         if recipe.direct:
-            regions.merge(detect_region_masks(image, segmenter, options))
+            regions.merge(detect_region_masks(image, segmenter, options, sam_prompts=sam_prompts))
 
         for region in iter_tile_regions(w, h, recipe.tile_spec):
             tile = image[region.y1:region.y2, region.x1:region.x2]
-            tile_regions = detect_region_masks(tile, segmenter, options)
+            tile_regions = detect_region_masks(tile, segmenter, options, sam_prompts=sam_prompts)
             regions.sky[region.y1:region.y2, region.x1:region.x2] |= tile_regions.sky
             regions.other[region.y1:region.y2, region.x1:region.x2] |= tile_regions.other
 
         if recipe.top_view:
             view_size = options.view_size or shared_auto_view_size(w, h)
             top_view = shared_extract_top_view(image, view_size)
-            top_regions = detect_region_masks(top_view, segmenter, options)
+            top_regions = detect_region_masks(top_view, segmenter, options, sam_prompts=sam_prompts)
             regions.sky |= shared_back_project_top_mask(top_regions.sky.astype(np.uint8) * 255, w, h) > 0
             regions.other |= shared_back_project_top_mask(top_regions.other.astype(np.uint8) * 255, w, h) > 0
 
         if recipe.bottom_view:
             view_size = options.view_size or shared_auto_view_size(w, h)
             bottom_view = shared_extract_bottom_view(image, view_size)
-            bottom_regions = detect_region_masks(bottom_view, segmenter, options)
+            bottom_regions = detect_region_masks(bottom_view, segmenter, options, sam_prompts=sam_prompts)
             regions.sky |= shared_back_project_bottom_mask(bottom_regions.sky.astype(np.uint8) * 255, w, h) > 0
             regions.other |= shared_back_project_bottom_mask(bottom_regions.other.astype(np.uint8) * 255, w, h) > 0
 
@@ -608,7 +630,15 @@ def detect_sky_mask(image: np.ndarray, segmenter: Any, options: SkyMaskOptions) 
         expand_px=0,
         top_connected=options.top_connected,
     )
-    detected = expand_mask(sky | regions.other, options.expand_px)
+    return expand_mask(sky | regions.other, options.expand_px)
+
+
+def detect_sky_mask(image: np.ndarray, segmenter: Any, options: SkyMaskOptions) -> np.ndarray:
+    detected = detect_exclusion_regions(image, segmenter, options)
+    subtract_prompts = tuple(prompt.strip() for prompt in options.sam_subtract_prompts if prompt.strip())
+    if subtract_prompts and hasattr(segmenter, "detect_prompt_masks"):
+        subtract = detect_exclusion_regions(image, segmenter, options, sam_prompts=subtract_prompts)
+        detected &= ~subtract
     return np.where(detected, 0, 255).astype(np.uint8)
 
 
@@ -709,14 +739,36 @@ def postprocess_sky_components(
     return expand_mask(filtered, expand_px)
 
 
-def merge_with_existing(mask_out: Path, new_mask: np.ndarray, *, replace: bool = False) -> np.ndarray:
-    if replace:
+def normalize_merge_mode(value: str) -> str:
+    mode = str(value or MASK_MERGE_ADD).strip().lower().replace("_", "-")
+    if mode in {"and", "merge"}:
+        return MASK_MERGE_ADD
+    if mode not in SUPPORTED_MERGE_MODES:
+        raise ValueError(f"--merge-mode must be one of: {', '.join(SUPPORTED_MERGE_MODES)}")
+    return mode
+
+
+def merge_with_existing(
+    mask_out: Path,
+    new_mask: np.ndarray,
+    *,
+    replace: bool = False,
+    merge_mode: str = MASK_MERGE_ADD,
+) -> np.ndarray:
+    mode = MASK_MERGE_REPLACE if replace else normalize_merge_mode(merge_mode)
+    if mode == MASK_MERGE_REPLACE:
         return new_mask
     existing = imread_unicode(mask_out, cv2.IMREAD_GRAYSCALE) if mask_out.is_file() else None
     if existing is None:
+        if mode == MASK_MERGE_SUBTRACT:
+            return np.full_like(new_mask, 255, dtype=np.uint8)
         return new_mask
     if existing.shape != new_mask.shape:
         existing = cv2.resize(existing, (new_mask.shape[1], new_mask.shape[0]), interpolation=cv2.INTER_NEAREST)
+    if mode == MASK_MERGE_SUBTRACT:
+        merged = existing.copy()
+        merged[new_mask == 0] = 255
+        return merged
     return cv2.bitwise_and(existing, new_mask)
 
 
@@ -732,7 +784,7 @@ def process_image(
         return f"Skipped (read error): {image_path.name}"
     sky_mask = detect_sky_mask(image, segmenter, options)
     mask_out = mask_output_path_for_image(image_path, images_root, masks_dir, add_ext=options.add_ext)
-    merged = merge_with_existing(mask_out, sky_mask, replace=options.replace)
+    merged = merge_with_existing(mask_out, sky_mask, replace=options.replace, merge_mode=options.merge_mode)
     mask_out.parent.mkdir(parents=True, exist_ok=True)
     if not imwrite_unicode(mask_out, merged):
         return f"Skipped (write error): {mask_out.name}"
@@ -773,8 +825,10 @@ def run(
         f"expand={options.expand_px}",
         f"top_connected={options.top_connected}",
         f"replace={options.replace}",
+        f"merge_mode={normalize_merge_mode(options.merge_mode)}",
         f"labels={','.join(options.labels)}",
         f"sam_prompts={','.join(options.sam_prompts or (options.sam_prompt,))}",
+        f"sam_subtract_prompts={','.join(options.sam_subtract_prompts)}",
         flush=True,
     )
     segmenter = create_sky_segmenter(backend, model_source, device=device)
@@ -819,6 +873,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--add-ext", action="store_true", help="Append .png to the original filename")
     parser.add_argument("--replace", action="store_true", help="Ignore existing masks and write sky-only masks")
     parser.add_argument(
+        "--merge-mode",
+        choices=SUPPORTED_MERGE_MODES,
+        default=MASK_MERGE_ADD,
+        help="How to apply detected regions to existing masks when --replace is not used",
+    )
+    parser.add_argument(
         "--labels",
         default=",".join(DEFAULT_MASK2FORMER_LABELS),
         help="Comma-separated Mask2Former label names or ids",
@@ -828,6 +888,12 @@ def parse_args() -> argparse.Namespace:
         action="append",
         default=None,
         help="Text prompt for the SAM3.1 backend; can be passed multiple times",
+    )
+    parser.add_argument(
+        "--subtract-sam-prompt",
+        action="append",
+        default=None,
+        help="SAM3.1 prompt to subtract from detected prompt masks; can be passed multiple times",
     )
     return parser.parse_args()
 
@@ -865,8 +931,10 @@ def main() -> int:
         top_connected=bool(args.top_connected) and not bool(args.no_top_connected),
         add_ext=bool(args.add_ext),
         replace=bool(args.replace),
+        merge_mode=MASK_MERGE_REPLACE if bool(args.replace) else normalize_merge_mode(args.merge_mode),
         sam_prompt=(args.sam_prompt[0] if args.sam_prompt else DEFAULT_SAM31_PROMPT),
         sam_prompts=tuple(args.sam_prompt or ()),
+        sam_subtract_prompts=tuple(args.subtract_sam_prompt or ()),
         labels=split_csv_values(str(args.labels)),
     )
     try:
