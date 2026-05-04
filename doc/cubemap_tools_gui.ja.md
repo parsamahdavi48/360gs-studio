@@ -30,22 +30,22 @@ start_cubemap_tools_gui.bat
 - `Output Directory`:
   - 出力先。既定は `<scene>/output`。
 - `書き出し方式`:
-  - `Metashapeインポート`: Metashape SfM結果から、3DGS向けの視点画像、マスク、`transforms.json` を書き出します。
-  - `COLMAP書き出し`: 抽出済みの `images/` と `masks/` から、COLMAP Rig形式の視点画像、マスク、`rig_config.json` を `output/colmap_rig/` に書き出します。
+  - `Metashape`: Metashape SfM結果から、3DGS向けの視点画像、マスク、`transforms.json` を書き出します。
+  - `COLMAP`: 抽出済みの `images/` と `masks/` から、COLMAP Rig形式の視点画像、マスク、`rig_config.json` を `output/colmap_rig/` に書き出します。
 - `COLMAP実行設定`:
-  - `COLMAP書き出し` 選択時に、設定タブの `COLMAP実行` として表示されます。
+  - `COLMAP` 選択時に、設定タブの `変換設定` として表示されます。
   - `書き出し後にCOLMAPを実行`: 視点画像の書き出し後に `feature_extractor` → `rig_configurator` → matcher → mapper を実行します。重い処理なので必要な時だけONにします。
   - `COLMAP実行ファイル`: 使用する `colmap.exe` を指定します。空欄ならPATH上の `colmap.exe` を使います。
   - `Matcher`: `Sequential` は高速で動画の連番フレーム向けです。`Exhaustive` は全ペアを照合するため精度が出る場合がありますが、枚数が増えると数十時間規模になることがあります。
   - `Mapper`: `Global` はCOLMAP 4.0以降に統合されたGLOMAP系のグローバルSfMで、既定推奨です。`Incremental` は従来の `colmap mapper`、`GLOMAP` は外部 `glomap.exe` 用です。
 - `出力プリセット`:
-  - `Metashapeインポート` 選択時に使う、連携先3DGSツール向けのプリセットです。
+  - `Metashape` 選択時に使う、連携先3DGSツール向けのプリセットです。
   - `Postshot / Brush`: 対象アプリ向けの座標プリセットを適用し、シーン内のPLYを直接同梱します。
   - `LichtFeld Studio`: Metashapeの点群PLYを `pointcloud.ply` として取り込み、LichtFeld向けのカメラ情報を作成します。
   - 詳細設定で座標変換、PLY使用、Metashapeインポート詳細をプリセット値から変更すると、プリセット表示は `カスタム` に切り替わります。
 - `Metashapeインポート設定`:
-  - `Metashapeインポート` 選択時に、設定タブの `Metashapeインポート` として表示されます。
-  - `Metashapeインポート` 方式では、キューブマップ変換の前に同梱の
+  - `Metashape` 選択時に、設定タブの `変換設定` として表示されます。
+  - `Metashape` 方式では、キューブマップ変換の前に同梱の
     `vendor/metashape_360_lfs/metashape_360_lfs.py` を実行します。
   - `画像フォルダ`: シーンフォルダ内の `images/` 固定。
   - `カメラXML`: MetashapeからエクスポートしたカメラポーズXML。`--xml` に渡されます。
@@ -54,23 +54,23 @@ start_cubemap_tools_gui.bat
   - `詳細設定`: `--scale`、`--ply` の使用有無、`--no-fix-rotation` を指定できます。
 - `出力`:
   - 常時表示されます。`画像` / `マスク` を個別にON/OFFできます。マスクだけ作り直した場合は `画像` をOFF、`マスク` をONにします。
-- `視点書き出し設定`:
-  - 設定タブの `視点書き出し` に常時表示されます。
+- `投影視点`:
+  - 設定タブの `投影視点` に常時表示されます。
   - ビュープリセット、Yawオフセット、画像サイズ、フレーム別Yaw回転、出力フォーマット、ビット深度、マスク反転など、各方式で共通する視点画像の書き出し設定です。
 - マスク:
   - 変換とプレビューは、シーンフォルダ内の `masks/` から対応ファイルを自動的に使用します。
-- `View Mode`:
+- `プリセット`:
   - `Cube6`: 4列 x 3行グリッド上の6面プリセットです。既定ではYawスロット数 `4`、Pitch行 `-90,0,90`、pitch `0` の4スロットと上下の `S3` をONにします。
   - `Custom Grid`: Pitch行 + Yawスロットを自由に編集する方式です。Cube6グリッドを編集すると自動的にカスタム扱いになります。
 - `Yaw Offset (deg)`:
   - Yawスロット角度の基準値。
 - `Yaw Slots`:
-  - 各Pitch行のYawスロット数（`4..8`）。ビュー選択グリッド上部の `-` / `+` で列数を増減します。
+  - 各Pitch行のYawスロット数（`4..8`）。出力視点の上部にある `-` / `+` で列数を増減します。
   - 増減しても既存列のON/OFFとPitch値は維持され、追加列はONで作られます。
   - 各スロット角度は `offset + slot*(360 / yaw_slots)`。
 - `Pitch Rows`:
   - Pitch一覧。`Cube6` の標準は `-90,0,90`、`Custom Grid` の標準は `-45,0,45`。
-  - 範囲は `-90..90`、最大5行まで。グリッド上部の `+` で行を追加し、各Pitch行左端の削除ボタンで行を削除します。
+  - 範囲は `-90..90`、最大5行まで。Pitch行左側の `+` で行を追加し、各Pitch行左端の削除ボタンで行を削除します。
   - 行の増減時は残る行のPitch値とON/OFFを行順で維持します。
 - `Cube6`:
   - 6面すべてを書き出します。上面・下面もカメラポーズ固定の有効な観測として扱います。
@@ -89,7 +89,7 @@ start_cubemap_tools_gui.bat
 ## 視点選択
 
 - 各チェックボックスで出力対象をON/OFFできます。
-- グリッドは常時表示され、上部のボタンで全選択/全解除、Yaw列追加/削除、Pitch行追加ができます。
+- 出力視点は常時表示され、上部のボタンで全選択/全解除とYaw列追加/削除、Pitch行左側のボタンでPitch行追加ができます。
 - Cube6の既定状態では、上面・下面は `S3` に対応します。既定Yawオフセット45度では `S3=-45°` です。
 - 典型例:
   - pitch `0`: その行の全スロットON
@@ -106,7 +106,7 @@ start_cubemap_tools_gui.bat
 ## ワークフロータブ
 
 - `Cubemap`:
-  - 既存の変換ワークフロー（`Metashapeインポート` 方式では `metashape_360_lfs.py` + `cubemap_transforms_json.py`）。
+  - 既存の変換ワークフロー（`Metashape` 方式では `metashape_360_lfs.py` + `cubemap_transforms_json.py`）。
 - `COLMAP Rig SfM`:
   - COLMAP リグデータセットの出力と、必要なら COLMAP SfM ステージ実行。
 - `RealityScan Rig XMP`:
@@ -121,12 +121,12 @@ start_cubemap_tools_gui.bat
 ## 実行時の挙動
 
 - 実行時に `<output_dir>/views_config.json` を生成します。
-- `Metashapeインポート` 方式では先に
+- `Metashape` 方式では先に
   `vendor/metashape_360_lfs/metashape_360_lfs.py --images ... --xml ... --output <scene_dir> [...]`
   を実行します。
 - その後
   `cubemap_transforms_json.py --fov 90 --output_scale <1.0|0.6366|0.5> --views-json <そのファイル>` を呼び出します。
-- `COLMAP書き出し` 方式では、`cubemap_transforms_json.py --image-only --colmap-rig --yaw-offset-per-frame 0 ...` を呼び出します。
+- `COLMAP` 方式では、`cubemap_transforms_json.py --image-only --colmap-rig --yaw-offset-per-frame 0 ...` を呼び出します。
   - 画像: `<output_dir>/colmap_rig/images/rig1/camXX/frame_00001.<ext>`
   - マスク: `<output_dir>/colmap_rig/masks/rig1/camXX/frame_00001.<ext>.png`
   - リグ設定: `<output_dir>/colmap_rig/rig_config.json`

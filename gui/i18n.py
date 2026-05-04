@@ -257,8 +257,8 @@ _JA: dict[str, str] = {
     # Step 4
     "JSON_NAME": "transforms.json 名",
     "EXPORT_METHOD": "書き出し方式",
-    "METHOD_METASHAPE_IMPORT": "Metashapeインポート",
-    "METHOD_COLMAP_EXPORT": "COLMAP書き出し",
+    "METHOD_METASHAPE_IMPORT": "Metashape",
+    "METHOD_COLMAP_EXPORT": "COLMAP",
     "COLMAP_PIPELINE_SECTION": "COLMAP実行設定",
     "RUN_COLMAP_SFM": "書き出し後にCOLMAPを実行",
     "COLMAP_EXECUTABLE": "COLMAP実行ファイル",
@@ -311,7 +311,7 @@ _JA: dict[str, str] = {
     "PREVIEW": "プレビュー",
 
     # ViewConfig / Preview labels
-    "VIEW_MODE_LABEL": "ビューモード:",
+    "VIEW_MODE_LABEL": "プリセット:",
     "CUSTOM_GRID": "カスタムグリッド",
     "CUBE6_LABEL": "Cube6",
     "YAW_OFFSET_LABEL": "Yawオフセット:",
@@ -328,7 +328,7 @@ _JA: dict[str, str] = {
     "DESELECT_ALL": "全解除",
     "SELECTED_VIEWS": "選択ビュー",
     "VIEW_SELECTION_SECTION": "ビュー選択グリッド",
-    "VIEW_SELECTION_COMPACT_SECTION": "視点グリッド",
+    "VIEW_SELECTION_COMPACT_SECTION": "出力視点",
     "OUTPUT_IMAGE_COUNT_LABEL": "出力画像",
     "OUTPUT_IMAGE_COUNT_FORMAT": "{count}枚",
     "OUTPUT_RESET_TITLE": "出力フォルダをリセット",
@@ -401,13 +401,13 @@ _JA: dict[str, str] = {
     # Step4 extra
     "OUTPUT_DETAIL": "出力詳細",
     "MS_IMAGES_LABEL": "画像フォルダ",
-    "STEP4_TAB_METASHAPE": "Metashapeインポート",
-    "STEP4_TAB_VIEW_EXPORT": "視点書き出し",
-    "STEP4_TAB_COLMAP": "COLMAP実行",
+    "STEP4_TAB_METASHAPE": "変換設定",
+    "STEP4_TAB_VIEW_EXPORT": "投影視点",
+    "STEP4_TAB_COLMAP": "変換設定",
 
     # Step4 advanced output (added 2026-05)
     "ADVANCED_OUTPUT_SECTION": "視点書き出し設定",
-    "YAW_OFFSET_PER_FRAME": "フレーム別Yaw回転 (度)",
+    "YAW_OFFSET_PER_FRAME": "Yaw回転",
     "YAW_OFFSET_PER_FRAME_HINT": "0=無効, 30推奨。-180〜180度でクランプ。ドラッグで調整できます。フレームごとに cubemap のYawを回転して 3DGS 学習の安定性を向上",
     "OUTPUT_FORMAT": "出力フォーマット",
     "OUTPUT_FORMAT_COMPACT": "フォーマット:",
@@ -667,8 +667,8 @@ _EN: dict[str, str] = {
     # Step 4
     "JSON_NAME": "transforms.json Name",
     "EXPORT_METHOD": "Export Method",
-    "METHOD_METASHAPE_IMPORT": "Metashape Import",
-    "METHOD_COLMAP_EXPORT": "COLMAP Export",
+    "METHOD_METASHAPE_IMPORT": "Metashape",
+    "METHOD_COLMAP_EXPORT": "COLMAP",
     "COLMAP_PIPELINE_SECTION": "COLMAP Run Settings",
     "RUN_COLMAP_SFM": "Run COLMAP after export",
     "COLMAP_EXECUTABLE": "COLMAP Executable",
@@ -721,7 +721,7 @@ _EN: dict[str, str] = {
     "PREVIEW": "Preview",
 
     # ViewConfig / Preview labels
-    "VIEW_MODE_LABEL": "View Mode:",
+    "VIEW_MODE_LABEL": "Preset:",
     "CUSTOM_GRID": "Custom Grid",
     "CUBE6_LABEL": "Cube6",
     "YAW_OFFSET_LABEL": "Yaw Offset:",
@@ -738,7 +738,7 @@ _EN: dict[str, str] = {
     "DESELECT_ALL": "Deselect All",
     "SELECTED_VIEWS": "Selected Views",
     "VIEW_SELECTION_SECTION": "View Selection Grid",
-    "VIEW_SELECTION_COMPACT_SECTION": "View Grid",
+    "VIEW_SELECTION_COMPACT_SECTION": "Output Views",
     "OUTPUT_IMAGE_COUNT_LABEL": "Output Images",
     "OUTPUT_IMAGE_COUNT_FORMAT": "{count}",
     "OUTPUT_RESET_TITLE": "Reset Output Folder",
@@ -811,13 +811,13 @@ _EN: dict[str, str] = {
     # Step4 extra
     "OUTPUT_DETAIL": "Output Detail",
     "MS_IMAGES_LABEL": "Images Folder",
-    "STEP4_TAB_METASHAPE": "Metashape Import",
-    "STEP4_TAB_VIEW_EXPORT": "View Export",
-    "STEP4_TAB_COLMAP": "COLMAP Run",
+    "STEP4_TAB_METASHAPE": "Conversion",
+    "STEP4_TAB_VIEW_EXPORT": "Projection Views",
+    "STEP4_TAB_COLMAP": "Conversion",
 
     # Step4 advanced output (added 2026-05)
     "ADVANCED_OUTPUT_SECTION": "View Export Settings",
-    "YAW_OFFSET_PER_FRAME": "Per-Frame Yaw Step (deg)",
+    "YAW_OFFSET_PER_FRAME": "Yaw Step",
     "YAW_OFFSET_PER_FRAME_HINT": "0=disabled, 30=recommended. Clamped to -180 to 180 degrees. Drag horizontally to adjust. Rotates cubemap per frame to improve 3DGS training stability",
     "OUTPUT_FORMAT": "Output Format",
     "OUTPUT_FORMAT_COMPACT": "Format:",
