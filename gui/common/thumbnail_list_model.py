@@ -1,0 +1,214 @@
+"""Reusable async thumbnail list model for preview grids."""
+from __future__ import annotations
+
+from collections import OrderedDict
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Callable
+
+from PySide6.QtCore import QAbstractListModel, QModelIndex, QObject, QRunnable, QSize, Qt, QThreadPool, Signal
+from PySide6.QtGui import QColor, QIcon, QImage, QPainter, QPen, QPixmap
+
+from gui import theme
+
+DEFAULT_THUMB_SIZE = QSize(176, 88)
+DEFAULT_GRID_SIZE = QSize(196, 124)
+THUMB_CACHE_LIMIT = 256
+
+
+@dataclass(frozen=True)
+class ThumbnailItem:
+    path: Path
+    label: str
+    tooltip: str = ""
+    cache_key: tuple = ()
+
+
+ThumbnailRenderer = Callable[[ThumbnailItem, QSize], QImage]
+
+
+class _ThumbnailSignals(QObject):
+    ready = Signal(int, int, tuple, object)
+
+
+class _ThumbnailJob(QRunnable):
+    def __init__(
+        self,
+        row: int,
+        generation: int,
+        key: tuple,
+        item: ThumbnailItem,
+        renderer: ThumbnailRenderer,
+        icon_size: QSize,
+    ) -> None:
+        super().__init__()
+        self.row = row
+        self.generation = generation
+        self.key = key
+        self.item = item
+        self.renderer = renderer
+        self.icon_size = QSize(icon_size)
+        self.signals = _ThumbnailSignals()
+
+    def run(self) -> None:
+        image = self.renderer(self.item, self.icon_size)
+        self.signals.ready.emit(self.row, self.generation, self.key, image)
+
+
+class AsyncThumbnailModel(QAbstractListModel):
+    """QListView IconMode model that lazily renders thumbnails off the UI thread."""
+
+    def __init__(self, parent: QObject | None = None) -> None:
+        super().__init__(parent)
+        self._items: list[ThumbnailItem] = []
+        self._renderer: ThumbnailRenderer = _default_renderer
+        self._renderer_key: tuple = ()
+        self._icon_size = QSize(DEFAULT_THUMB_SIZE)
+        self._grid_size = QSize(DEFAULT_GRID_SIZE)
+        self._cache: OrderedDict[tuple, QIcon] = OrderedDict()
+        self._pending: set[tuple[int, tuple]] = set()
+        self._jobs: dict[tuple[int, tuple], _ThumbnailJob] = {}
+        self._generation = 0
+        self._pool = QThreadPool(self)
+        self._pool.setMaxThreadCount(max(1, min(2, QThreadPool.globalInstance().maxThreadCount())))
+        self._placeholder = _placeholder_icon(self._icon_size)
+
+    def rowCount(self, parent: QModelIndex = QModelIndex()) -> int:  # noqa: N802 - Qt API
+        if parent.isValid():
+            return 0
+        return len(self._items)
+
+    def data(self, index: QModelIndex, role: int = Qt.DisplayRole):  # noqa: ANN001, N802
+        if not index.isValid() or not (0 <= index.row() < len(self._items)):
+            return None
+
+        item = self._items[index.row()]
+        if role == Qt.DisplayRole:
+            return item.label
+        if role == Qt.ToolTipRole:
+            return item.tooltip or str(item.path)
+        if role == Qt.DecorationRole:
+            key = self._thumbnail_key(item)
+            icon = self._cache.get(key)
+            if icon is not None:
+                self._cache.move_to_end(key)
+                return icon
+            self._schedule_thumbnail(index.row(), item, key)
+            return self._placeholder
+        return None
+
+    def set_items(
+        self,
+        items: list[ThumbnailItem],
+        renderer: ThumbnailRenderer,
+        *,
+        renderer_key: tuple = (),
+        force: bool = False,
+        icon_size: QSize = DEFAULT_THUMB_SIZE,
+        grid_size: QSize = DEFAULT_GRID_SIZE,
+    ) -> None:
+        icon_size = QSize(icon_size)
+        grid_size = QSize(grid_size)
+        if (
+            not force
+            and items == self._items
+            and renderer_key == self._renderer_key
+            and icon_size == self._icon_size
+            and grid_size == self._grid_size
+        ):
+            return
+        self.beginResetModel()
+        self._items = list(items)
+        self._renderer = renderer
+        self._renderer_key = tuple(renderer_key)
+        self._icon_size = icon_size
+        self._grid_size = grid_size
+        self._cache.clear()
+        self._pending.clear()
+        self._generation += 1
+        self._placeholder = _placeholder_icon(self._icon_size)
+        self.endResetModel()
+
+    def item_at(self, row: int) -> ThumbnailItem | None:
+        if not (0 <= row < len(self._items)):
+            return None
+        return self._items[row]
+
+    def icon_size(self) -> QSize:
+        return QSize(self._icon_size)
+
+    def grid_size(self) -> QSize:
+        return QSize(self._grid_size)
+
+    def wait_for_done(self, timeout_ms: int = 5000) -> bool:
+        return self._pool.waitForDone(timeout_ms)
+
+    def _thumbnail_key(self, item: ThumbnailItem) -> tuple:
+        return (
+            _file_signature(item.path),
+            tuple(item.cache_key),
+            self._renderer_key,
+            int(self._icon_size.width()),
+            int(self._icon_size.height()),
+        )
+
+    def _schedule_thumbnail(self, row: int, item: ThumbnailItem, key: tuple) -> None:
+        pending_key = (self._generation, key)
+        if pending_key in self._pending:
+            return
+        self._pending.add(pending_key)
+        job = _ThumbnailJob(row, self._generation, key, item, self._renderer, self._icon_size)
+        job.signals.ready.connect(self._on_thumbnail_ready)
+        self._jobs[pending_key] = job
+        self._pool.start(job)
+
+    def _on_thumbnail_ready(self, row: int, generation: int, key: tuple, image: object) -> None:
+        pending_key = (generation, key)
+        self._pending.discard(pending_key)
+        self._jobs.pop(pending_key, None)
+        if generation != self._generation:
+            return
+        if not isinstance(image, QImage) or image.isNull():
+            icon = self._placeholder
+        else:
+            icon = QIcon(QPixmap.fromImage(image))
+        self._cache[key] = icon
+        self._cache.move_to_end(key)
+        while len(self._cache) > THUMB_CACHE_LIMIT:
+            self._cache.popitem(last=False)
+        if 0 <= row < len(self._items):
+            model_index = self.index(row, 0)
+            self.dataChanged.emit(model_index, model_index, [Qt.DecorationRole])
+
+
+def _default_renderer(_item: ThumbnailItem, size: QSize) -> QImage:
+    return _error_image(size)
+
+
+def _placeholder_icon(size: QSize) -> QIcon:
+    image = QImage(size, QImage.Format_ARGB32)
+    image.fill(QColor(theme.BG_INPUT))
+    painter = QPainter(image)
+    painter.setPen(QPen(QColor(theme.BORDER), 1))
+    painter.drawRect(image.rect().adjusted(0, 0, -1, -1))
+    painter.end()
+    return QIcon(QPixmap.fromImage(image))
+
+
+def _error_image(size: QSize) -> QImage:
+    image = QImage(size, QImage.Format_ARGB32)
+    image.fill(QColor(theme.BG_INPUT))
+    painter = QPainter(image)
+    painter.setPen(QPen(QColor(theme.DANGER), 2))
+    painter.drawLine(8, 8, size.width() - 8, size.height() - 8)
+    painter.drawLine(size.width() - 8, 8, 8, size.height() - 8)
+    painter.end()
+    return image
+
+
+def _file_signature(path: Path) -> tuple:
+    try:
+        st = path.stat()
+        return (str(path.resolve()).lower(), int(st.st_size), int(st.st_mtime_ns))
+    except OSError:
+        return (str(path).lower(), -1, -1)

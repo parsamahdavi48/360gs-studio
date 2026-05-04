@@ -1,7 +1,6 @@
-"""Virtual thumbnail model for mask review."""
+"""Mask thumbnail rendering plugged into the shared async thumbnail model."""
 from __future__ import annotations
 
-from collections import OrderedDict
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -10,15 +9,17 @@ import numpy as np
 
 from image_io import imread_unicode
 from overexposure_mask import read_image_preserve_depth
-from PySide6.QtCore import QAbstractListModel, QModelIndex, QObject, QRunnable, QSize, Qt, QThreadPool, Signal
-from PySide6.QtGui import QColor, QIcon, QImage, QPainter, QPen, QPixmap
+from PySide6.QtCore import QObject, QSize, Qt
+from PySide6.QtGui import QColor, QImage, QPainter, QPen
 
 from gui import theme
+from gui.common.thumbnail_list_model import (
+    AsyncThumbnailModel,
+    DEFAULT_GRID_SIZE,
+    DEFAULT_THUMB_SIZE,
+    ThumbnailItem,
+)
 from gui.mask.mask_files import mask_candidates_for_image
-
-_THUMB_CACHE_LIMIT = 256
-_DEFAULT_THUMB_SIZE = QSize(176, 88)
-_DEFAULT_GRID_SIZE = QSize(196, 124)
 
 
 @dataclass(frozen=True)
@@ -26,73 +27,15 @@ class ThumbnailRenderConfig:
     images_dir: str = ""
     masks_dir: str = ""
     opacity: int = 45
-    icon_size: QSize = _DEFAULT_THUMB_SIZE
+    icon_size: QSize = DEFAULT_THUMB_SIZE
 
 
-class _ThumbnailSignals(QObject):
-    ready = Signal(int, int, tuple, object)
-
-
-class _ThumbnailJob(QRunnable):
-    def __init__(
-        self,
-        row: int,
-        generation: int,
-        key: tuple,
-        image_path: Path,
-        config: ThumbnailRenderConfig,
-    ) -> None:
-        super().__init__()
-        self.row = row
-        self.generation = generation
-        self.key = key
-        self.image_path = image_path
-        self.config = config
-        self.signals = _ThumbnailSignals()
-
-    def run(self) -> None:
-        image = render_mask_thumbnail(self.image_path, self.config)
-        self.signals.ready.emit(self.row, self.generation, self.key, image)
-
-
-class MaskThumbnailModel(QAbstractListModel):
-    """Lazy QAbstractListModel backing a QListView IconMode thumbnail grid."""
+class MaskThumbnailModel(AsyncThumbnailModel):
+    """Mask-specific adapter for the shared thumbnail model."""
 
     def __init__(self, parent: QObject | None = None) -> None:
         super().__init__(parent)
-        self._images: list[Path] = []
         self._config = ThumbnailRenderConfig()
-        self._cache: OrderedDict[tuple, QIcon] = OrderedDict()
-        self._pending: set[tuple[int, tuple]] = set()
-        self._jobs: dict[tuple[int, tuple], _ThumbnailJob] = {}
-        self._generation = 0
-        self._pool = QThreadPool(self)
-        self._pool.setMaxThreadCount(max(1, min(2, QThreadPool.globalInstance().maxThreadCount())))
-        self._placeholder = _placeholder_icon(_DEFAULT_THUMB_SIZE)
-
-    def rowCount(self, parent: QModelIndex = QModelIndex()) -> int:  # noqa: N802 - Qt API
-        if parent.isValid():
-            return 0
-        return len(self._images)
-
-    def data(self, index: QModelIndex, role: int = Qt.DisplayRole):  # noqa: ANN001, N802
-        if not index.isValid() or not (0 <= index.row() < len(self._images)):
-            return None
-
-        path = self._images[index.row()]
-        if role == Qt.DisplayRole:
-            return path.name
-        if role == Qt.ToolTipRole:
-            return str(path)
-        if role == Qt.DecorationRole:
-            key = self._thumbnail_key(path)
-            icon = self._cache.get(key)
-            if icon is not None:
-                self._cache.move_to_end(key)
-                return icon
-            self._schedule_thumbnail(index.row(), path, key)
-            return self._placeholder
-        return None
 
     def set_sources(
         self,
@@ -107,70 +50,40 @@ class MaskThumbnailModel(QAbstractListModel):
             images_dir=images_dir,
             masks_dir=masks_dir,
             opacity=max(0, min(100, int(opacity))),
-            icon_size=_DEFAULT_THUMB_SIZE,
+            icon_size=DEFAULT_THUMB_SIZE,
         )
-        if not force and images == self._images and config == self._config:
-            return
-        self.beginResetModel()
-        self._images = list(images)
         self._config = config
-        self._cache.clear()
-        self._pending.clear()
-        self._generation += 1
-        self._placeholder = _placeholder_icon(config.icon_size)
-        self.endResetModel()
+        items = [
+            ThumbnailItem(
+                path=path,
+                label=path.name,
+                tooltip=str(path),
+                cache_key=(_first_mask_signature(path, config), int(config.opacity)),
+            )
+            for path in images
+        ]
+
+        def renderer(item: ThumbnailItem, size: QSize) -> QImage:
+            sized_config = ThumbnailRenderConfig(
+                images_dir=config.images_dir,
+                masks_dir=config.masks_dir,
+                opacity=config.opacity,
+                icon_size=size,
+            )
+            return render_mask_thumbnail(item.path, sized_config)
+
+        self.set_items(
+            items,
+            renderer,
+            renderer_key=(config.images_dir, config.masks_dir, int(config.opacity)),
+            force=force,
+            icon_size=DEFAULT_THUMB_SIZE,
+            grid_size=DEFAULT_GRID_SIZE,
+        )
 
     def image_at(self, row: int) -> Path | None:
-        if not (0 <= row < len(self._images)):
-            return None
-        return self._images[row]
-
-    @staticmethod
-    def icon_size() -> QSize:
-        return QSize(_DEFAULT_THUMB_SIZE)
-
-    @staticmethod
-    def grid_size() -> QSize:
-        return QSize(_DEFAULT_GRID_SIZE)
-
-    def _thumbnail_key(self, image_path: Path) -> tuple:
-        image_sig = _file_signature(image_path)
-        mask_sig = _first_mask_signature(image_path, self._config)
-        return (
-            image_sig,
-            mask_sig,
-            int(self._config.opacity),
-            int(self._config.icon_size.width()),
-            int(self._config.icon_size.height()),
-        )
-
-    def _schedule_thumbnail(self, row: int, path: Path, key: tuple) -> None:
-        pending_key = (self._generation, key)
-        if pending_key in self._pending:
-            return
-        self._pending.add(pending_key)
-        job = _ThumbnailJob(row, self._generation, key, path, self._config)
-        job.signals.ready.connect(self._on_thumbnail_ready)
-        self._jobs[pending_key] = job
-        self._pool.start(job)
-
-    def _on_thumbnail_ready(self, row: int, generation: int, key: tuple, image: object) -> None:
-        pending_key = (generation, key)
-        self._pending.discard(pending_key)
-        self._jobs.pop(pending_key, None)
-        if generation != self._generation:
-            return
-        if not isinstance(image, QImage) or image.isNull():
-            icon = self._placeholder
-        else:
-            icon = QIcon(QPixmap.fromImage(image))
-        self._cache[key] = icon
-        self._cache.move_to_end(key)
-        while len(self._cache) > _THUMB_CACHE_LIMIT:
-            self._cache.popitem(last=False)
-        if 0 <= row < len(self._images):
-            model_index = self.index(row, 0)
-            self.dataChanged.emit(model_index, model_index, [Qt.DecorationRole])
+        item = self.item_at(row)
+        return item.path if item is not None else None
 
 
 def render_mask_thumbnail(image_path: Path, config: ThumbnailRenderConfig) -> QImage:
@@ -261,16 +174,6 @@ def _fit_for_thumbnail(image: np.ndarray, size: QSize) -> np.ndarray:
         (max(1, int(round(w * scale))), max(1, int(round(h * scale)))),
         interpolation=cv2.INTER_AREA,
     )
-
-
-def _placeholder_icon(size: QSize) -> QIcon:
-    image = QImage(size, QImage.Format_ARGB32)
-    image.fill(QColor(theme.BG_INPUT))
-    painter = QPainter(image)
-    painter.setPen(QPen(QColor(theme.BORDER), 1))
-    painter.drawRect(image.rect().adjusted(0, 0, -1, -1))
-    painter.end()
-    return QIcon(QPixmap.fromImage(image))
 
 
 def _error_image(size: QSize) -> QImage:

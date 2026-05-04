@@ -143,6 +143,8 @@ _JA: dict[str, str] = {
 
     # --- review_frames.py (Step 2 レビュー GUI) ---
     "REVIEW_TITLE": "フレーム確認",
+    "REVIEW_PREVIEW_MODE_SINGLE": "1枚プレビュー",
+    "REVIEW_PREVIEW_MODE_THUMBNAILS": "サムネイル一覧",
     "REVIEW_DECISION_PREFIX": "選別: ",
     "REVIEW_DECISION_KEEP": "採用",
     "REVIEW_DECISION_DROP": "除外",
@@ -525,6 +527,8 @@ _EN: dict[str, str] = {
 
     # --- review_frames.py (Step 2 review GUI) ---
     "REVIEW_TITLE": "Frame Review",
+    "REVIEW_PREVIEW_MODE_SINGLE": "Single Preview",
+    "REVIEW_PREVIEW_MODE_THUMBNAILS": "Thumbnails",
     "REVIEW_DECISION_PREFIX": "Decision: ",
     "REVIEW_DECISION_KEEP": "Keep",
     "REVIEW_DECISION_DROP": "Drop",
@@ -871,6 +875,8 @@ _TIPS_JA: dict[str, str] = {
     "OUTPUT_BIT_DEPTH": "出力画像のビット深度。8bitは対応アプリが多く安定、元画像はPNG/TIFFのビット深度を維持します",
     "JPG_QUALITY": "JPG/WebPの圧縮品質。1が低品質、100が高品質です。PNG/TIFFには影響しません",
     "NO_IMAGE": "画像とマスクを再変換せず、transforms.jsonだけを更新します。既存の output/ 内の画像と masks/ は削除しません",
+    "REVIEW_PREVIEW_MODE_SINGLE": "選択中の1枚を大きく表示し、採用/除外フラグを細部確認しながら切り替えます",
+    "REVIEW_PREVIEW_MODE_THUMBNAILS": "抽出済みフレームを一覧で表示します。クリックまたは矢印キーで表示中の画像を選択できます",
     "MS_IMAGES": "カメラXML内の画像名に対応する画像フォルダ。シーンフォルダ内の images/ を自動使用します",
     "MS_XML": "MetashapeからエクスポートしたカメラポーズXML。シーンフォルダ内の metashape.xml / cameras.xml / 最初のXMLを自動候補にします",
     "MS_PLY": "Metashapeからエクスポートした点群PLY。LichtFeldではカメラと同じ座標系に変換した pointcloud.ply を作るために使用します",
@@ -989,6 +995,8 @@ _TIPS_EN: dict[str, str] = {
     "OUTPUT_BIT_DEPTH": "Output image bit depth. 8-bit is broadly compatible; Source preserves PNG/TIFF source bit depth.",
     "JPG_QUALITY": "JPG/WebP compression quality. 1 is lowest, 100 is highest. PNG/TIFF are not affected.",
     "NO_IMAGE": "Update transforms.json without reconverting images or masks. Existing images and masks inside output/ are preserved",
+    "REVIEW_PREVIEW_MODE_SINGLE": "Show the selected frame large while checking or toggling its keep/drop flag",
+    "REVIEW_PREVIEW_MODE_THUMBNAILS": "Show extracted frames as a thumbnail list. Click or use arrow keys to choose the current image",
     "MS_IMAGES": "Image folder matching the filenames in the camera XML. The GUI automatically uses images/ inside the scene folder",
     "MS_XML": "Metashape-exported camera pose XML. The GUI auto-suggests metashape.xml, cameras.xml, or the first XML in the scene folder",
     "MS_PLY": "Metashape-exported point cloud PLY. LichtFeld uses this to create pointcloud.ply in the same coordinate system as the cameras",

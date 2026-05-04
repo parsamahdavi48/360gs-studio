@@ -9,10 +9,11 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QPixmap
-from PySide6.QtWidgets import QApplication
+from PySide6.QtWidgets import QAbstractItemView, QApplication, QToolButton
 
 from gui import i18n
-from review_frames import ReviewWidget
+from gui.common.preview_mode_toolbar import PREVIEW_MODE_SINGLE, PREVIEW_MODE_THUMBNAILS
+from review_frames import ReviewWidget, _review_thumbnail_image
 
 
 def _app():
@@ -222,3 +223,78 @@ def test_review_widget_pending_finalize_ignores_missing_drop_images(tmp_path: Pa
 
     assert not widget.has_decision_changes()
     assert not widget.has_pending_finalize()
+
+
+def test_review_widget_thumbnail_mode_shows_keep_drop_flags(tmp_path: Path) -> None:
+    _app()
+    scene, csv_path = _write_scene_with_drop(tmp_path)
+    widget = ReviewWidget(scene, csv_path)
+
+    widget.set_preview_mode(PREVIEW_MODE_THUMBNAILS)
+
+    buttons = widget.mode_toolbar.findChildren(QToolButton)
+    assert len(buttons) == 2
+    assert widget.preview_mode() == PREVIEW_MODE_THUMBNAILS
+    assert widget.preview_stack.currentWidget() == widget.thumbnail_view
+    assert widget.mode_toolbar.thumbnail_preview_btn.isChecked()
+    assert widget.mode_toolbar.single_preview_btn.accessibleName() == i18n.t("REVIEW_PREVIEW_MODE_SINGLE")
+    assert widget.thumbnail_view.selectionMode() == QAbstractItemView.SingleSelection
+    assert widget.thumbnail_model.rowCount() == 2
+
+    drop_item = widget.thumbnail_model.item_at(0)
+    keep_item = widget.thumbnail_model.item_at(1)
+    assert drop_item is not None
+    assert keep_item is not None
+    assert drop_item.cache_key[0] == "drop"
+    assert keep_item.cache_key[0] == "keep"
+
+    drop_thumb = _review_thumbnail_image(drop_item, widget.thumbnail_model.icon_size())
+    keep_thumb = _review_thumbnail_image(keep_item, widget.thumbnail_model.icon_size())
+    assert drop_thumb.pixelColor(1, 1).name().lower() == "#991b1b"
+    assert keep_thumb.pixelColor(1, 1).name().lower() == "#22c55e"
+
+
+def test_review_widget_thumbnail_selection_changes_current_frame(tmp_path: Path) -> None:
+    _app()
+    scene, csv_path = _write_scene(tmp_path)
+    widget = ReviewWidget(scene, csv_path)
+    widget.set_preview_mode(PREVIEW_MODE_THUMBNAILS)
+
+    widget.thumbnail_view.setCurrentIndex(widget.thumbnail_model.index(1, 0))
+
+    assert widget.index == 1
+    assert widget.frame_slider.value() == 1
+    assert "2 / 2" in widget.frame_position_label.text()
+
+
+def test_review_widget_thumbnail_decision_update_refreshes_flag_item(tmp_path: Path) -> None:
+    _app()
+    scene, csv_path = _write_scene(tmp_path)
+    widget = ReviewWidget(scene, csv_path)
+    widget.set_preview_mode(PREVIEW_MODE_THUMBNAILS)
+    widget.thumbnail_view.setCurrentIndex(widget.thumbnail_model.index(1, 0))
+
+    widget.toggle_decision()
+
+    item = widget.thumbnail_model.item_at(1)
+    assert item is not None
+    assert widget.index == 1
+    assert widget.rows[1]["decision"] == "drop"
+    assert _read_decisions(csv_path)[1] == "drop"
+    assert item.cache_key[0] == "drop"
+    assert widget.thumbnail_view.selectionModel().currentIndex().row() == 1
+
+
+def test_review_widget_thumbnail_double_click_opens_single_preview(tmp_path: Path) -> None:
+    _app()
+    scene, csv_path = _write_scene(tmp_path)
+    widget = ReviewWidget(scene, csv_path)
+    widget.set_preview_mode(PREVIEW_MODE_THUMBNAILS)
+
+    widget.thumbnail_view.doubleClicked.emit(widget.thumbnail_model.index(1, 0))
+
+    assert widget.preview_mode() == PREVIEW_MODE_SINGLE
+    assert widget.preview_stack.currentWidget() == widget.image_view
+    assert widget.mode_toolbar.single_preview_btn.isChecked()
+    assert widget.index == 1
+    assert widget.image_view._source_pixmap is not None
