@@ -8,15 +8,17 @@ from pathlib import Path
 import cv2
 import numpy as np
 
+from custom_mask import load_custom_mask
 from image_io import imread_unicode
-from PySide6.QtCore import QItemSelectionModel, Qt, Signal
-from PySide6.QtGui import QImage, QPixmap
+from PySide6.QtCore import QItemSelectionModel, QSize, Qt, Signal
+from PySide6.QtGui import QFontMetrics, QImage, QPixmap
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QHBoxLayout,
     QLabel,
     QListView,
     QPushButton,
+    QSizePolicy,
     QSlider,
     QStackedWidget,
     QVBoxLayout,
@@ -37,6 +39,9 @@ from stitch_mask import boundary_width_to_limit_angle, create_angular_stitched_m
 
 _IMAGE_CACHE_LIMIT = 2
 _LAYER_CACHE_LIMIT = 4
+_OPACITY_SLIDER_MIN_WIDTH = 140
+_OPACITY_SLIDER_MAX_WIDTH = 160
+_STATUS_LABEL_MIN_WIDTH = 72
 
 
 @dataclass(frozen=True)
@@ -44,10 +49,50 @@ class MaskPreviewConfig:
     use_yolo: bool = True
     use_stitch: bool = False
     use_overexposure: bool = False
+    use_custom: bool = False
     stitch_boundary_width_deg: float | None = 5.0
     overexposure_threshold: int = 254
     overexposure_dilate: int = 1
     masks_dir: str = ""
+    custom_mask_path: str = ""
+
+
+class ElidedStatusLabel(QLabel):
+    """One-line status label that preserves full text for code and tooltips."""
+
+    def __init__(self, text: str = "", parent: QWidget | None = None) -> None:
+        super().__init__("", parent)
+        self._full_text = ""
+        self.setWordWrap(False)
+        self.setMinimumWidth(_STATUS_LABEL_MIN_WIDTH)
+        self.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Fixed)
+        self.setText(text)
+
+    def setText(self, text: str) -> None:  # noqa: N802 - Qt API
+        self._full_text = text
+        self.setToolTip(text)
+        self._apply_elide()
+
+    def text(self) -> str:  # noqa: N802 - Qt API
+        return self._full_text
+
+    def resizeEvent(self, event) -> None:  # noqa: ANN001, N802 - Qt API
+        super().resizeEvent(event)
+        self._apply_elide()
+
+    def sizeHint(self) -> QSize:  # noqa: N802 - Qt API
+        return QSize(_STATUS_LABEL_MIN_WIDTH, QLabel.sizeHint(self).height())
+
+    def minimumSizeHint(self) -> QSize:  # noqa: N802 - Qt API
+        return QSize(_STATUS_LABEL_MIN_WIDTH, QLabel.minimumSizeHint(self).height())
+
+    def _apply_elide(self) -> None:
+        width = max(0, self.contentsRect().width())
+        display_text = self._full_text
+        if width > 0 and self._full_text:
+            display_text = QFontMetrics(self.font()).elidedText(self._full_text, Qt.ElideRight, width)
+        if QLabel.text(self) != display_text:
+            QLabel.setText(self, display_text)
 
 
 class MaskPreviewWidget(QWidget):
@@ -145,10 +190,11 @@ class MaskPreviewWidget(QWidget):
         self.opacity_slider.setToolTip(i18n.tip("MASK_OPACITY"))
         self.opacity_slider.setRange(0, 100)
         self.opacity_slider.setValue(45)
-        self.opacity_slider.setMaximumWidth(160)
+        self.opacity_slider.setMinimumWidth(_OPACITY_SLIDER_MIN_WIDTH)
+        self.opacity_slider.setMaximumWidth(_OPACITY_SLIDER_MAX_WIDTH)
         overlay_row.addWidget(self.opacity_slider)
 
-        self.status_label = QLabel("")
+        self.status_label = ElidedStatusLabel("")
         self.status_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
         overlay_row.addWidget(self.status_label, stretch=1)
         layout.addLayout(overlay_row)
@@ -236,6 +282,14 @@ class MaskPreviewWidget(QWidget):
                     dilate=config.overexposure_dilate,
                 )
             )
+
+        if config.use_custom:
+            custom = self._custom_mask_for_preview(config, source_img.shape[:2], combined.shape)
+            if custom is None:
+                status_parts.append(i18n.t("MASK_PREVIEW_CUSTOM_INVALID"))
+            else:
+                combined = cv2.bitwise_and(combined, custom)
+                status_parts.append(i18n.t("MASK_PREVIEW_CUSTOM_STATUS"))
 
         excluded = combined < 128
         alpha = float(self.opacity_slider.value()) / 100.0
@@ -566,6 +620,29 @@ class MaskPreviewWidget(QWidget):
         if key is not None:
             self._store_cache(self._overexp_cache, key, mask)
         return mask.copy()
+
+    def _custom_mask_for_preview(
+        self,
+        config: MaskPreviewConfig,
+        source_shape: tuple[int, int],
+        display_shape: tuple[int, int],
+    ) -> np.ndarray | None:
+        custom_path_text = config.custom_mask_path.strip()
+        if not custom_path_text:
+            return None
+        loaded_custom, _load_error = load_custom_mask(custom_path_text)
+        if loaded_custom is None:
+            return None
+        custom = loaded_custom.mask
+        if custom.shape == display_shape:
+            return custom
+        if custom.shape == source_shape:
+            return cv2.resize(
+                custom,
+                (display_shape[1], display_shape[0]),
+                interpolation=cv2.INTER_NEAREST,
+            )
+        return None
 
 
 def _display_bgr8(image: np.ndarray | None) -> np.ndarray | None:

@@ -11,6 +11,7 @@ from pathlib import Path
 
 import cv2
 from apply_frame_decisions import pending_drop_image_paths, untracked_image_paths
+from custom_mask import load_custom_mask, merge_custom_mask_for_image
 from PySide6.QtCore import QProcess, Qt, QTimer, QUrl, Signal
 from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import (
@@ -115,6 +116,7 @@ class MaskStep(BaseStepWidget):
         self._yolo_preview_temp: tempfile.TemporaryDirectory[str] | None = None
         self._yolo_preview_image: Path | None = None
         self._yolo_preview_output: Path | None = None
+        self._custom_mask_path = ""
         self._current_reprocess_proc: QProcess | None = None
         self._current_reprocess_image: Path | None = None
         self._current_reprocess_mask: Path | None = None
@@ -233,6 +235,11 @@ class MaskStep(BaseStepWidget):
         self.run_overexp_cb.setToolTip(i18n.tip("MASK_TASK_OVEREXPOSURE"))
         self.run_overexp_cb.setChecked(False)
         task_row.addWidget(self.run_overexp_cb)
+
+        self.run_custom_cb = QCheckBox(i18n.t("MASK_TASK_CUSTOM"))
+        self.run_custom_cb.setToolTip(i18n.tip("MASK_TASK_CUSTOM"))
+        self.run_custom_cb.setChecked(False)
+        task_row.addWidget(self.run_custom_cb)
 
         task_row.addStretch()
 
@@ -398,6 +405,32 @@ class MaskStep(BaseStepWidget):
         self.other_section.content_layout.addLayout(other_form)
         layout.addWidget(self.other_section)
 
+        self.custom_section = CollapsibleSection(i18n.t("CUSTOM_MASK_SECTION"), expanded=False)
+        custom_form = QFormLayout()
+        custom_form.setSpacing(6)
+        self.custom_mask_path_label = QLabel(i18n.t("CUSTOM_MASK_NOT_SELECTED"))
+        self.custom_mask_path_label.setToolTip(i18n.tip("CUSTOM_MASK_FILE"))
+        self.custom_mask_path_label.setWordWrap(True)
+        self.custom_mask_path_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        add_tooltip_row(
+            custom_form,
+            i18n.t("CUSTOM_MASK_FILE"),
+            self.custom_mask_path_label,
+            i18n.tip("CUSTOM_MASK_FILE"),
+        )
+        self.custom_section.content_layout.addLayout(custom_form)
+
+        custom_button_row = QHBoxLayout()
+        custom_button_row.setSpacing(6)
+        self.custom_mask_browse_btn = QPushButton(i18n.t("CUSTOM_MASK_BROWSE"))
+        self.custom_mask_browse_btn.setToolTip(i18n.tip("CUSTOM_MASK_BROWSE"))
+        custom_button_row.addWidget(self.custom_mask_browse_btn, stretch=1)
+        self.custom_mask_clear_btn = QPushButton(i18n.t("CUSTOM_MASK_CLEAR"))
+        self.custom_mask_clear_btn.setToolTip(i18n.tip("CUSTOM_MASK_CLEAR"))
+        custom_button_row.addWidget(self.custom_mask_clear_btn, stretch=1)
+        self.custom_section.content_layout.addLayout(custom_button_row)
+        layout.addWidget(self.custom_section)
+
         layout.addStretch()
         self.metashape_notice = QLabel(i18n.METASHAPE_NOTICE)
         self.metashape_notice.setObjectName("workflowNote")
@@ -432,6 +465,9 @@ class MaskStep(BaseStepWidget):
 
         for cb in (self.run_yolo_cb, self.run_stitch_cb, self.run_overexp_cb):
             cb.toggled.connect(self._update_task_controls)
+        self.run_custom_cb.toggled.connect(self._on_custom_mask_toggled)
+        self.custom_mask_browse_btn.clicked.connect(lambda _checked=False: self._browse_custom_mask(activate=True))
+        self.custom_mask_clear_btn.clicked.connect(lambda _checked=False: self._clear_custom_mask_path())
         self.stitch_boundary_width_edit.valueChanged.connect(lambda _: self._schedule_render_mask_preview())
         self.overexp_threshold_edit.valueChanged.connect(lambda _: self._schedule_render_mask_preview())
         self.overexp_dilate_edit.valueChanged.connect(lambda _: self._schedule_render_mask_preview())
@@ -493,6 +529,8 @@ class MaskStep(BaseStepWidget):
             requested_steps.append("stitch")
         if self.run_overexp_cb.isChecked():
             requested_steps.append("overexposure")
+        if self.run_custom_cb.isChecked():
+            requested_steps.append("custom")
         return requested_steps
 
     def _projection(self) -> str:
@@ -532,6 +570,12 @@ class MaskStep(BaseStepWidget):
             return False, i18n.t("MASK_READY_NO_IMAGES_DIR")
         if not self._has_image_files():
             return False, i18n.t("MASK_READY_NO_IMAGES")
+        if self.run_custom_cb.isChecked():
+            custom_mask = self._custom_mask_path_text()
+            if not custom_mask:
+                return False, i18n.t("CUSTOM_MASK_REQUIRED")
+            if not Path(custom_mask).is_file():
+                return False, i18n.t("CUSTOM_MASK_NOT_FOUND").format(path=custom_mask)
         if not self._selected_mask_tasks():
             return False, i18n.t("MASK_TASK_REQUIRED")
         if not self._scene_csv_path().is_file():
@@ -571,6 +615,7 @@ class MaskStep(BaseStepWidget):
             return
         stitch_enabled = equirect and self.run_stitch_cb.isChecked()
         overexp_enabled = self.run_overexp_cb.isChecked()
+        custom_enabled = self.run_custom_cb.isChecked()
 
         self.external_images_panel.setVisible(not equirect)
         self.yolo_section.content_widget.setEnabled(yolo_enabled)
@@ -584,8 +629,60 @@ class MaskStep(BaseStepWidget):
         self.stitch_workers_edit.setEnabled(stitch_enabled or overexp_enabled)
         self.overexp_threshold_edit.setEnabled(overexp_enabled)
         self.overexp_dilate_edit.setEnabled(overexp_enabled)
+        self.custom_mask_clear_btn.setEnabled(bool(self._custom_mask_path_text()))
+        self.custom_mask_path_label.setEnabled(custom_enabled or bool(self._custom_mask_path_text()))
         self._render_mask_preview()
         self._update_ready_status()
+
+    def _custom_mask_path_text(self) -> str:
+        return self._custom_mask_path.strip()
+
+    def _set_custom_mask_path(self, path: str | Path, *, activate: bool = True) -> None:
+        self._custom_mask_path = str(path).strip()
+        self.custom_mask_path_label.setText(self._custom_mask_path or i18n.t("CUSTOM_MASK_NOT_SELECTED"))
+        self.custom_mask_path_label.setToolTip(self._custom_mask_path or i18n.tip("CUSTOM_MASK_FILE"))
+        if activate and self._custom_mask_path and not self.run_custom_cb.isChecked():
+            self.run_custom_cb.blockSignals(True)
+            try:
+                self.run_custom_cb.setChecked(True)
+            finally:
+                self.run_custom_cb.blockSignals(False)
+        self._update_task_controls()
+
+    def _clear_custom_mask_path(self) -> None:
+        self._custom_mask_path = ""
+        self.custom_mask_path_label.setText(i18n.t("CUSTOM_MASK_NOT_SELECTED"))
+        self.custom_mask_path_label.setToolTip(i18n.tip("CUSTOM_MASK_FILE"))
+        if self.run_custom_cb.isChecked():
+            self.run_custom_cb.blockSignals(True)
+            try:
+                self.run_custom_cb.setChecked(False)
+            finally:
+                self.run_custom_cb.blockSignals(False)
+        self._update_task_controls()
+
+    def _browse_custom_mask(self, *, activate: bool = True) -> bool:
+        start_dir = self.scene_dir or str(Path.home())
+        selected, _filter = QFileDialog.getOpenFileName(
+            self,
+            i18n.t("CUSTOM_MASK_SELECT_FILE"),
+            start_dir,
+            i18n.t("CUSTOM_MASK_FILE_FILTER"),
+        )
+        if not selected:
+            return False
+        self._set_custom_mask_path(selected, activate=activate)
+        return True
+
+    def _on_custom_mask_toggled(self, checked: bool) -> None:
+        if checked and not self._custom_mask_path_text():
+            if not self._browse_custom_mask(activate=True):
+                self.run_custom_cb.blockSignals(True)
+                try:
+                    self.run_custom_cb.setChecked(False)
+                finally:
+                    self.run_custom_cb.blockSignals(False)
+        self._update_task_controls()
 
     def _on_images_dir_changed(self, path: str) -> None:
         self.mask_preview.set_images_dir(path)
@@ -722,6 +819,8 @@ class MaskStep(BaseStepWidget):
             overexposure_threshold=int(self.overexp_threshold_edit.value()),
             overexposure_dilate=int(self.overexp_dilate_edit.value()),
             masks_dir=self._masks_dir_text(),
+            use_custom=self.run_custom_cb.isChecked(),
+            custom_mask_path=self._custom_mask_path_text(),
         )
         self.mask_preview.render(config)
 
@@ -745,6 +844,8 @@ class MaskStep(BaseStepWidget):
             steps.append(("stitch", self._build_stitch_cmd()))
         if "overexposure" in requested_steps:
             steps.append(("overexposure", self._build_overexposure_cmd()))
+        if "custom" in requested_steps:
+            steps.append(("custom", self._build_custom_cmd()))
         return steps
 
     def _ensure_no_pending_drop_images(self) -> None:
@@ -1110,6 +1211,22 @@ class MaskStep(BaseStepWidget):
             if not imwrite_unicode(mask_path, overexp):
                 raise RuntimeError(i18n.t("MASK_REPROCESS_CURRENT_FAILED"))
 
+        if self.run_custom_cb.isChecked():
+            custom_mask = self._custom_mask_path_text()
+            if not custom_mask:
+                raise RuntimeError(i18n.t("CUSTOM_MASK_REQUIRED"))
+            loaded_custom, load_error = load_custom_mask(custom_mask)
+            if loaded_custom is None:
+                raise RuntimeError(load_error or i18n.t("CUSTOM_MASK_NOT_FOUND").format(path=custom_mask))
+            error = merge_custom_mask_for_image(
+                image_path,
+                Path(self._images_dir_text()),
+                Path(self._masks_dir_text()),
+                loaded_custom.mask,
+            )
+            if not error.applied:
+                raise RuntimeError(error.message or i18n.t("MASK_REPROCESS_CURRENT_FAILED"))
+
     def _build_stitch_cmd(self) -> list[str]:
         masks = self._masks_dir_text()
         if not masks:
@@ -1144,6 +1261,26 @@ class MaskStep(BaseStepWidget):
             "--threshold", str(self.overexp_threshold_edit.value()),
             "--dilate", str(self.overexp_dilate_edit.value()),
             "--workers", str(self.stitch_workers_edit.value()),
+        ]
+
+    def _build_custom_cmd(self) -> list[str]:
+        images = self._images_dir_text()
+        masks = self._masks_dir_text()
+        custom_mask = self._custom_mask_path_text()
+        if not images:
+            raise ValueError("画像フォルダが指定されていません")
+        if not masks:
+            raise ValueError("マスクフォルダが指定されていません")
+        if not custom_mask:
+            raise ValueError(i18n.t("CUSTOM_MASK_REQUIRED"))
+
+        script = self.base_dir / "custom_mask.py"
+        if not script.exists():
+            raise FileNotFoundError(f"custom_mask.py が見つかりません: {script}")
+
+        return [
+            sys.executable, "-u", str(script),
+            images, masks, custom_mask,
         ]
 
     # -- プログレス解析 --

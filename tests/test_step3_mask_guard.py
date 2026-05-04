@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import csv
 import os
+import sys
 import time
 from pathlib import Path
 
@@ -16,6 +17,7 @@ from PySide6.QtWidgets import QApplication, QLabel, QPushButton, QToolButton
 from gui import i18n
 from gui.common.browse_widget import BrowseWidget
 from gui.steps.base_step import SETTINGS_PANE_MARGINS, SETTINGS_PANE_WIDTH
+import gui.steps.step3_mask as step3_mask_module
 from gui.steps.step3_mask import MaskStep
 
 
@@ -242,6 +244,49 @@ def test_mask_step_disables_generation_when_no_mask_task_selected(tmp_path: Path
     assert step.primary_action_tooltip() == i18n.t("MASK_TASK_REQUIRED")
 
 
+def test_mask_step_custom_checkbox_opens_picker_and_cancels_cleanly(tmp_path: Path, monkeypatch) -> None:
+    _app()
+    scene = _write_scene(tmp_path, drop_exists=False)
+    step = MaskStep(Path.cwd())
+    step.set_scene_dir(str(scene))
+    monkeypatch.setattr(step3_mask_module.QFileDialog, "getOpenFileName", lambda *_args, **_kwargs: ("", ""))
+
+    step.run_custom_cb.setChecked(True)
+
+    assert not step.run_custom_cb.isChecked()
+    assert step.custom_mask_path_label.text() == i18n.t("CUSTOM_MASK_NOT_SELECTED")
+
+
+def test_mask_step_custom_mask_builds_final_command(tmp_path: Path) -> None:
+    _app()
+    scene = _write_scene(tmp_path, drop_exists=False)
+    custom_path = scene / "custom.png"
+    cv2.imwrite(str(custom_path), np.full((8, 8), 255, dtype=np.uint8))
+    step = MaskStep(Path.cwd())
+    step.set_scene_dir(str(scene))
+    step.run_yolo_cb.setChecked(False)
+    step.run_stitch_cb.setChecked(False)
+    step.run_overexp_cb.setChecked(False)
+
+    step._set_custom_mask_path(custom_path)
+    commands = step.build_commands()
+
+    assert step.run_custom_cb.isChecked()
+    assert commands == [
+        (
+            "custom",
+            [
+                sys.executable,
+                "-u",
+                str(Path.cwd() / "custom_mask.py"),
+                str(scene / "images"),
+                str(scene / "masks"),
+                str(custom_path),
+            ],
+        )
+    ]
+
+
 def test_mask_step_allows_generation_when_drop_images_are_removed(tmp_path: Path) -> None:
     _app()
     scene = _write_scene(tmp_path, drop_exists=False)
@@ -299,6 +344,34 @@ def test_mask_step_current_reprocess_can_apply_overexposure_only(tmp_path: Path)
     mask = cv2.imread(str(mask_path), cv2.IMREAD_GRAYSCALE)
     assert mask is not None
     assert mask[5, 7] == 0
+    assert mask[12, 16] == 255
+
+
+def test_mask_step_current_reprocess_can_apply_custom_only(tmp_path: Path) -> None:
+    _app()
+    scene = tmp_path
+    images = scene / "images"
+    images.mkdir()
+    image_path = images / "frame_0001.png"
+    cv2.imwrite(str(image_path), np.full((24, 32, 3), 120, dtype=np.uint8))
+    custom_path = scene / "custom.png"
+    custom = np.full((24, 32), 255, dtype=np.uint8)
+    custom[5:10, 6:12] = 0
+    cv2.imwrite(str(custom_path), custom)
+    step = MaskStep(Path.cwd())
+    step.set_scene_dir(str(scene))
+    step.run_yolo_cb.setChecked(False)
+    step.run_stitch_cb.setChecked(False)
+    step.run_overexp_cb.setChecked(False)
+    step._set_custom_mask_path(custom_path)
+
+    mask_path = step._mask_output_path_for_image(image_path)
+    mask_path.parent.mkdir(parents=True, exist_ok=True)
+    step._apply_current_image_postprocess(image_path, mask_path)
+
+    mask = cv2.imread(str(mask_path), cv2.IMREAD_GRAYSCALE)
+    assert mask is not None
+    assert mask[7, 8] == 0
     assert mask[12, 16] == 255
 
 
