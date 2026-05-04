@@ -10,7 +10,7 @@ Use Step 4 when you want to:
 - define multiple pitch rows (for example `-30,0,30`)
 - choose enabled/disabled view slots per pitch row
 - preview extraction regions on an equirectangular image
-- overlay an existing mask with adjustable opacity
+- toggle an existing mask overlay on the preview
 
 ## Launch
 
@@ -26,7 +26,7 @@ Then open `Step 4: Export` in the workflow sidebar.
   - Directory containing `images/` and, when needed, `transforms.json`.
 - `Output Directory`:
   - Cubemap output directory. Default: `<scene>/output`.
-- `Export Method`:
+- `Select:`:
   - `Metashape`: export 3DGS-oriented viewpoint images, masks, and `transforms.json` from Metashape SfM results.
   - `COLMAP`: export COLMAP Rig viewpoint images, masks, and `rig_config.json` from extracted `images/` and `masks/` into `output/colmap_rig/`.
 - `COLMAP Run Settings`:
@@ -80,7 +80,7 @@ Then open `Step 4: Export` in the workflow sidebar.
   - Automatically uses equirectangular images from the scene folder.
   - Slider to switch preview image from scene images (`images/` preferred, otherwise scene root).
   - Useful for checking per-view on/off decisions across different frames.
-  - Mask overlay uses matching masks from `masks/`; the opacity slider controls its visibility.
+  - Mask overlay uses matching masks from `masks/`; the mask display button toggles it on/off.
 
 ## View selection
 

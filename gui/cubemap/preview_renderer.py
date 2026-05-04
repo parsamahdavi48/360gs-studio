@@ -15,11 +15,13 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QSlider,
+    QToolButton,
     QVBoxLayout,
     QWidget,
 )
 
 from gui import i18n
+from gui.common.icons import mask_overlay_off_icon, mask_overlay_on_icon
 from gui.common.zoomable_image_label import ZoomableImageLabel
 
 _PITCH_PALETTE_BGR: tuple[tuple[int, int, int], ...] = (
@@ -39,6 +41,7 @@ _LABEL_THICKNESS = 1
 _LABEL_PAD_X = 4
 _LABEL_PAD_Y = 3
 _HIGHLIGHT_FILL_ALPHA = 0.34
+_MASK_OVERLAY_ALPHA = 0.45
 _PREVIEW_CACHE_LIMIT = 4
 
 
@@ -360,6 +363,7 @@ class PreviewWidget(QWidget):
     """プレビュー画像 + マスクオーバーレイ + タイムラインスライダー"""
 
     current_image_changed = Signal()
+    mask_overlay_changed = Signal()
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -368,6 +372,7 @@ class PreviewWidget(QWidget):
         self._slider_sync = False
         self._current_image_path = ""
         self._scene_dir = ""
+        self._mask_overlay_visible = True
         self._image_cache: OrderedDict[tuple, np.ndarray] = OrderedDict()
         self._mask_cache: OrderedDict[tuple, np.ndarray] = OrderedDict()
 
@@ -395,13 +400,16 @@ class PreviewWidget(QWidget):
         layout.addLayout(tl_row)
 
         mask_row = QHBoxLayout()
-        mask_row.addWidget(QLabel(i18n.t("MASK_OPACITY_LABEL")))
-        self.mask_slider = QSlider(Qt.Horizontal)
-        self.mask_slider.setToolTip(i18n.tip("MASK_OPACITY"))
-        self.mask_slider.setRange(0, 100)
-        self.mask_slider.setValue(35)
-        self.mask_slider.setMaximumWidth(160)
-        mask_row.addWidget(self.mask_slider)
+        self.mask_overlay_btn = QToolButton()
+        self.mask_overlay_btn.setObjectName("iconToolButton")
+        self.mask_overlay_btn.setCheckable(True)
+        self.mask_overlay_btn.setChecked(True)
+        self.mask_overlay_btn.setIcon(mask_overlay_on_icon())
+        self.mask_overlay_btn.setAccessibleName(i18n.t("MASK_OVERLAY_TOGGLE"))
+        self.mask_overlay_btn.setToolTip(i18n.tip("MASK_OVERLAY_TOGGLE"))
+        self.mask_overlay_btn.setFixedSize(28, 28)
+        self.mask_overlay_btn.toggled.connect(self._on_mask_overlay_toggled)
+        mask_row.addWidget(self.mask_overlay_btn)
         mask_row.addStretch()
         layout.addLayout(mask_row)
 
@@ -432,18 +440,16 @@ class PreviewWidget(QWidget):
 
         # マスクオーバーレイ
         mask_path = self._resolve_mask(p, mask_dir)
-        if mask_path is not None:
+        if mask_path is not None and self._mask_overlay_visible:
             mask = self._read_mask(mask_path, img.shape[:2])
             if mask is not None:
-                alpha = float(self.mask_slider.value()) / 100.0
-                if alpha > 0:
-                    masked = mask < 128
-                    overlay = np.zeros_like(img)
-                    overlay[:, :, 2] = 255
-                    img[masked] = (
-                        (1.0 - alpha) * img[masked].astype(np.float32)
-                        + alpha * overlay[masked].astype(np.float32)
-                    ).astype(np.uint8)
+                masked = mask < 128
+                overlay = np.zeros_like(img)
+                overlay[:, :, 2] = 255
+                img[masked] = (
+                    (1.0 - _MASK_OVERLAY_ALPHA) * img[masked].astype(np.float32)
+                    + _MASK_OVERLAY_ALPHA * overlay[masked].astype(np.float32)
+                ).astype(np.uint8)
 
         # ビュー境界描画
         h, w = img.shape[:2]
@@ -485,6 +491,11 @@ class PreviewWidget(QWidget):
         self._update_pixmap()
 
     # -- internal --
+
+    def _on_mask_overlay_toggled(self, checked: bool) -> None:
+        self._mask_overlay_visible = checked
+        self.mask_overlay_btn.setIcon(mask_overlay_on_icon() if checked else mask_overlay_off_icon())
+        self.mask_overlay_changed.emit()
 
     def _update_pixmap(self) -> None:
         self.image_label.set_source_pixmap(self._pixmap)

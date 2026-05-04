@@ -286,6 +286,7 @@ _JA: dict[str, str] = {
     # Step 4
     "JSON_NAME": "transforms.json 名",
     "EXPORT_METHOD": "書き出し方式",
+    "EXPORT_METHOD_COMPACT": "選択:",
     "METHOD_METASHAPE_IMPORT": "Metashape",
     "METHOD_COLMAP_EXPORT": "COLMAP",
     "COLMAP_PIPELINE_SECTION": "COLMAP実行設定",
@@ -764,6 +765,7 @@ _EN: dict[str, str] = {
     # Step 4
     "JSON_NAME": "transforms.json Name",
     "EXPORT_METHOD": "Export Method",
+    "EXPORT_METHOD_COMPACT": "Select:",
     "METHOD_METASHAPE_IMPORT": "Metashape",
     "METHOD_COLMAP_EXPORT": "COLMAP",
     "COLMAP_PIPELINE_SECTION": "COLMAP Run Settings",

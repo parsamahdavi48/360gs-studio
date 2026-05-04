@@ -259,7 +259,7 @@ def test_cubemap_labels_share_field_tooltips() -> None:
     _app()
     step = CubemapStep(Path.cwd())
 
-    assert _label(step, i18n.t("EXPORT_METHOD")).toolTip() == i18n.tip("EXPORT_METHOD")
+    assert _label(step, i18n.t("EXPORT_METHOD_COMPACT")).toolTip() == i18n.tip("EXPORT_METHOD")
     assert _label(step, i18n.t("EXPORT_TARGETS")).toolTip() == i18n.tip("EXPORT_TARGETS")
     assert step.export_method_buttons["metashape"].toolTip() == i18n.tip("METHOD_METASHAPE_IMPORT")
     assert step.export_method_buttons["colmap"].toolTip() == i18n.tip("METHOD_COLMAP_EXPORT")
