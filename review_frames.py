@@ -211,7 +211,7 @@ if QMainWindow is not None:
             self.thumbnail_view.setViewMode(QListView.IconMode)
             self.thumbnail_view.setResizeMode(QListView.Adjust)
             self.thumbnail_view.setMovement(QListView.Static)
-            self.thumbnail_view.setSelectionMode(QAbstractItemView.SingleSelection)
+            self.thumbnail_view.setSelectionMode(QAbstractItemView.ExtendedSelection)
             self.thumbnail_view.setEditTriggers(QAbstractItemView.NoEditTriggers)
             self.thumbnail_view.setUniformItemSizes(True)
             self.thumbnail_view.setWrapping(True)
@@ -222,6 +222,9 @@ if QMainWindow is not None:
             self.thumbnail_view.setVerticalScrollMode(QAbstractItemView.ScrollPerPixel)
             self.thumbnail_view.setToolTip(i18n.tip("REVIEW_PREVIEW_MODE_THUMBNAILS"))
             self.thumbnail_view.selectionModel().currentChanged.connect(self._on_thumbnail_current_changed)
+            self.thumbnail_view.selectionModel().selectionChanged.connect(
+                lambda _selected, _deselected: self._on_thumbnail_selection_changed()
+            )
             self.thumbnail_view.doubleClicked.connect(self._on_thumbnail_double_clicked)
             self.preview_stack.addWidget(self.thumbnail_view)
 
@@ -313,6 +316,11 @@ if QMainWindow is not None:
                 return
             self._set_index(current.row(), sync_thumbnail=False)
 
+        def _on_thumbnail_selection_changed(self) -> None:
+            if self._thumbnail_sync:
+                return
+            self._update_decision_buttons(self._current_row().get("decision", "keep"))
+
         def _on_thumbnail_double_clicked(self, index) -> None:  # noqa: ANN001
             if not index.isValid():
                 return
@@ -360,12 +368,32 @@ if QMainWindow is not None:
                 return
             self._thumbnail_sync = True
             try:
-                flags = QItemSelectionModel.ClearAndSelect | QItemSelectionModel.Current
+                selected_rows = self._selected_thumbnail_rows()
+                flags = (
+                    QItemSelectionModel.NoUpdate
+                    if selected_rows
+                    else QItemSelectionModel.ClearAndSelect | QItemSelectionModel.Current
+                )
                 self.thumbnail_view.selectionModel().setCurrentIndex(model_index, flags)
                 if scroll and self._preview_mode == PREVIEW_MODE_THUMBNAILS:
                     self.thumbnail_view.scrollTo(model_index, QAbstractItemView.EnsureVisible)
             finally:
                 self._thumbnail_sync = False
+
+        def _selected_thumbnail_rows(self) -> list[int]:
+            rows = {
+                index.row()
+                for index in self.thumbnail_view.selectionModel().selectedIndexes()
+                if index.isValid() and 0 <= index.row() < len(self.rows)
+            }
+            return sorted(rows)
+
+        def _decision_action_indices(self) -> list[int]:
+            if self._preview_mode == PREVIEW_MODE_THUMBNAILS:
+                selected_rows = self._selected_thumbnail_rows()
+                if selected_rows:
+                    return selected_rows
+            return [self.index]
 
         def _current_row(self) -> Dict[str, str]:
             return self.rows[self.index]
@@ -567,7 +595,10 @@ if QMainWindow is not None:
                 "border-radius: 4px;"
                 "}"
             )
-            reset_enabled = decision != self._initial_decisions[self.index]
+            reset_enabled = any(
+                self.rows[idx].get("decision", "keep") != self._initial_decisions[idx]
+                for idx in self._decision_action_indices()
+            )
             self.reset_decision_button.setEnabled(reset_enabled)
             self.reset_decision_button.setStyleSheet(
                 "QToolButton { border-radius: 4px; }"
@@ -593,18 +624,27 @@ if QMainWindow is not None:
                 writer.writeheader()
                 writer.writerows(self.rows)
 
-        def _set_current_decision(self, decision: str) -> None:
-            row = self._current_row()
-            old_decision = row.get("decision", "keep")
-            if old_decision == decision:
+        def _set_decisions(self, decisions_by_index: dict[int, str]) -> None:
+            changes: dict[int, str] = {}
+            for idx, decision in decisions_by_index.items():
+                if not (0 <= idx < len(self.rows)):
+                    continue
+                normalized = "drop" if decision == "drop" else "keep"
+                if self.rows[idx].get("decision", "keep") != normalized:
+                    changes[idx] = normalized
+
+            if not changes:
                 self._render_current()
                 return
 
-            row["decision"] = decision
+            old_decisions = {idx: self.rows[idx].get("decision", "keep") for idx in changes}
+            for idx, decision in changes.items():
+                self.rows[idx]["decision"] = decision
             try:
                 self._write_rows()
             except Exception as e:
-                row["decision"] = old_decision
+                for idx, old_decision in old_decisions.items():
+                    self.rows[idx]["decision"] = old_decision
                 QMessageBox.critical(
                     self,
                     i18n.t("REVIEW_SAVE_FAILED_HEADER"),
@@ -612,9 +652,13 @@ if QMainWindow is not None:
                 )
                 self._render_current()
                 return
-            self._refresh_thumbnail_row(self.index)
+            for idx in changes:
+                self._refresh_thumbnail_row(idx)
             self._render_current()
             self.decisions_changed.emit()
+
+        def _set_current_decision(self, decision: str) -> None:
+            self._set_decisions({self.index: decision})
 
         def prev_row(self) -> None:
             if self.index > 0:
@@ -649,12 +693,16 @@ if QMainWindow is not None:
             self._set_index(self.problem_indices[-1], scroll_thumbnail=True)
 
         def toggle_decision(self) -> None:
-            row = self._current_row()
-            next_decision = "drop" if row.get("decision", "keep") == "keep" else "keep"
-            self._set_current_decision(next_decision)
+            indices = self._decision_action_indices()
+            next_decision = (
+                "drop"
+                if all(self.rows[idx].get("decision", "keep") != "drop" for idx in indices)
+                else "keep"
+            )
+            self._set_decisions({idx: next_decision for idx in indices})
 
         def reset_decision(self) -> None:
-            self._set_current_decision(self._initial_decisions[self.index])
+            self._set_decisions({idx: self._initial_decisions[idx] for idx in self._decision_action_indices()})
 
 
     class ReviewWindow(QMainWindow):

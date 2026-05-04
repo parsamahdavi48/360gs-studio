@@ -7,7 +7,7 @@ from pathlib import Path
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QItemSelectionModel, Qt
 from PySide6.QtGui import QPixmap
 from PySide6.QtWidgets import QAbstractItemView, QApplication, QToolButton
 
@@ -238,7 +238,7 @@ def test_review_widget_thumbnail_mode_shows_keep_drop_flags(tmp_path: Path) -> N
     assert widget.preview_stack.currentWidget() == widget.thumbnail_view
     assert widget.mode_toolbar.thumbnail_preview_btn.isChecked()
     assert widget.mode_toolbar.single_preview_btn.accessibleName() == i18n.t("REVIEW_PREVIEW_MODE_SINGLE")
-    assert widget.thumbnail_view.selectionMode() == QAbstractItemView.SingleSelection
+    assert widget.thumbnail_view.selectionMode() == QAbstractItemView.ExtendedSelection
     assert widget.thumbnail_model.rowCount() == 2
 
     drop_item = widget.thumbnail_model.item_at(0)
@@ -276,6 +276,56 @@ def test_review_widget_thumbnail_selection_changes_current_frame(tmp_path: Path)
     assert widget.index == 1
     assert widget.frame_slider.value() == 1
     assert "2 / 2" in widget.frame_position_label.text()
+
+
+def test_review_widget_thumbnail_mode_uses_extended_selection(tmp_path: Path) -> None:
+    _app()
+    scene, csv_path = _write_scene(tmp_path)
+    widget = ReviewWidget(scene, csv_path)
+    widget.set_preview_mode(PREVIEW_MODE_THUMBNAILS)
+    selection = widget.thumbnail_view.selectionModel()
+
+    selection.select(widget.thumbnail_model.index(0, 0), QItemSelectionModel.ClearAndSelect)
+    selection.select(widget.thumbnail_model.index(1, 0), QItemSelectionModel.Select)
+
+    assert widget.thumbnail_view.selectionMode() == QAbstractItemView.ExtendedSelection
+    assert sorted(index.row() for index in selection.selectedIndexes()) == [0, 1]
+
+
+def test_review_widget_thumbnail_multi_selection_toggles_and_resets_flags(tmp_path: Path, monkeypatch) -> None:
+    _app()
+    scene, csv_path = _write_scene(tmp_path)
+    widget = ReviewWidget(scene, csv_path)
+    widget.set_preview_mode(PREVIEW_MODE_THUMBNAILS)
+    selection = widget.thumbnail_view.selectionModel()
+    selection.select(widget.thumbnail_model.index(0, 0), QItemSelectionModel.ClearAndSelect)
+    selection.select(widget.thumbnail_model.index(1, 0), QItemSelectionModel.Select)
+    changed_rows: list[int] = []
+
+    def fail_full_reset(*_args, **_kwargs) -> None:
+        raise AssertionError("batch flag changes must not rebuild the full thumbnail model")
+
+    def remember_changed(top_left, _bottom_right, _roles) -> None:
+        changed_rows.append(top_left.row())
+
+    monkeypatch.setattr(widget.thumbnail_model, "set_items", fail_full_reset)
+    widget.thumbnail_model.dataChanged.connect(remember_changed)
+
+    widget.toggle_decision()
+
+    assert [row["decision"] for row in widget.rows] == ["drop", "drop"]
+    assert _read_decisions(csv_path) == ["drop", "drop"]
+    assert [widget.thumbnail_model.item_at(i).cache_key[0] for i in range(2)] == ["drop", "drop"]
+    assert sorted(index.row() for index in selection.selectedIndexes()) == [0, 1]
+    assert changed_rows == [0, 1]
+
+    widget.reset_decision()
+
+    assert [row["decision"] for row in widget.rows] == ["keep", "keep"]
+    assert _read_decisions(csv_path) == ["keep", "keep"]
+    assert [widget.thumbnail_model.item_at(i).cache_key[0] for i in range(2)] == ["keep", "keep"]
+    assert sorted(index.row() for index in selection.selectedIndexes()) == [0, 1]
+    assert changed_rows == [0, 1, 0, 1]
 
 
 def test_review_widget_thumbnail_decision_update_refreshes_only_flag_item(tmp_path: Path, monkeypatch) -> None:
