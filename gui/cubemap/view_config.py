@@ -165,9 +165,21 @@ class ViewConfigWidget(QWidget):
         grid_controls = QHBoxLayout(self.grid_controls_widget)
         grid_controls.setContentsMargins(0, 0, 0, 0)
         grid_controls.setSpacing(2)
-        self.grid_title_label = QLabel(i18n.t("VIEW_SELECTION_SECTION"))
+        self.grid_title_label = QLabel(i18n.t("VIEW_SELECTION_COMPACT_SECTION"))
         self.grid_title_label.setToolTip(i18n.tip("VIEW_SELECTION_SECTION"))
         grid_controls.addWidget(self.grid_title_label)
+        self.all_on_btn = self._make_grid_control_button(
+            select_all_icon(),
+            i18n.t("SELECT_ALL"),
+            self._all_on,
+        )
+        self.all_off_btn = self._make_grid_control_button(
+            deselect_all_icon(),
+            i18n.t("DESELECT_ALL"),
+            self._all_off,
+        )
+        grid_controls.addWidget(self.all_on_btn)
+        grid_controls.addWidget(self.all_off_btn)
         grid_controls.addStretch()
 
         self.yaw_remove_btn = self._make_grid_control_button(
@@ -386,7 +398,6 @@ class ViewConfigWidget(QWidget):
             self._clear_grid()
 
             self.grid_layout.setColumnMinimumWidth(0, 88)
-            self.grid_layout.addWidget(self._build_grid_tools(), 0, 0)
             for s in range(slots):
                 lab = QLabel(f"S{s}")
                 lab.setAlignment(Qt.AlignCenter)
@@ -519,30 +530,6 @@ class ViewConfigWidget(QWidget):
         button.setFixedSize(24, 24)
         button.clicked.connect(callback)
         return button
-
-    def _build_grid_tools(self) -> QWidget:
-        tools = QWidget()
-        layout = QHBoxLayout(tools)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(4)
-        self.all_on_btn = QToolButton()
-        self.all_on_btn.setObjectName("iconToolButton")
-        self.all_on_btn.setIcon(select_all_icon())
-        self.all_on_btn.setToolTip(i18n.t("SELECT_ALL"))
-        self.all_on_btn.setAccessibleName(i18n.t("SELECT_ALL"))
-        self.all_on_btn.setFixedSize(28, 28)
-        self.all_on_btn.clicked.connect(self._all_on)
-        layout.addWidget(self.all_on_btn)
-
-        self.all_off_btn = QToolButton()
-        self.all_off_btn.setObjectName("iconToolButton")
-        self.all_off_btn.setIcon(deselect_all_icon())
-        self.all_off_btn.setToolTip(i18n.t("DESELECT_ALL"))
-        self.all_off_btn.setAccessibleName(i18n.t("DESELECT_ALL"))
-        self.all_off_btn.setFixedSize(28, 28)
-        self.all_off_btn.clicked.connect(self._all_off)
-        layout.addWidget(self.all_off_btn)
-        return tools
 
     def _update_yaw_labels(self) -> None:
         offset = self.yaw_offset()
