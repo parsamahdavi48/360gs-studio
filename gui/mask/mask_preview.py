@@ -122,6 +122,7 @@ class MaskPreviewWidget(QWidget):
         self._temporary_preview_image_key = ""
         self._temporary_preview_config_key: tuple | None = None
         self._temporary_preview_mask: np.ndarray | None = None
+        self._temporary_preview_visible = True
         self._image_cache: OrderedDict[tuple, tuple[np.ndarray, np.ndarray]] = OrderedDict()
         self._mask_cache: OrderedDict[tuple, np.ndarray] = OrderedDict()
         self._stitch_cache: OrderedDict[tuple, np.ndarray] = OrderedDict()
@@ -195,6 +196,14 @@ class MaskPreviewWidget(QWidget):
         self.yolo_preview_btn.clicked.connect(self.mask_preview_requested.emit)
         overlay_row.addWidget(self.yolo_preview_btn)
 
+        self.preview_visibility_btn = QPushButton(i18n.t("MASK_PREVIEW_VISIBILITY_BUTTON"))
+        self.preview_visibility_btn.setToolTip(i18n.tip("MASK_PREVIEW_VISIBILITY_BUTTON"))
+        self.preview_visibility_btn.setCheckable(True)
+        self.preview_visibility_btn.setChecked(True)
+        self.preview_visibility_btn.setEnabled(False)
+        self.preview_visibility_btn.toggled.connect(self._on_preview_visibility_toggled)
+        overlay_row.addWidget(self.preview_visibility_btn)
+
         self.reprocess_current_btn = QPushButton(i18n.t("MASK_REPROCESS_CURRENT_BUTTON"))
         self.reprocess_current_btn.setToolTip(i18n.tip("MASK_REPROCESS_CURRENT_BUTTON"))
         self.reprocess_current_btn.clicked.connect(self.current_reprocess_requested.emit)
@@ -239,6 +248,7 @@ class MaskPreviewWidget(QWidget):
             self.image_label.setText(self._empty_preview_message())
             self.status_label.setText("")
             self._pixmap = None
+            self._update_preview_visibility_button()
             return
 
         image_path = Path(sample)
@@ -246,6 +256,7 @@ class MaskPreviewWidget(QWidget):
             self.image_label.setText(i18n.t("NO_PREVIEW_FOUND"))
             self.status_label.setText("")
             self._pixmap = None
+            self._update_preview_visibility_button()
             return
 
         loaded = self._read_source_and_display(image_path)
@@ -253,6 +264,7 @@ class MaskPreviewWidget(QWidget):
             self.image_label.setText(i18n.t("PREVIEW_LOAD_FAIL"))
             self.status_label.setText("")
             self._pixmap = None
+            self._update_preview_visibility_button()
             return
         source_img, img = loaded
 
@@ -260,7 +272,11 @@ class MaskPreviewWidget(QWidget):
         combined = np.full((h, w), 255, dtype=np.uint8)
         status_parts: list[str] = []
 
-        temporary_mask = self._load_temporary_preview_mask(image_path, config)
+        temporary_mask = (
+            self._load_temporary_preview_mask(image_path, config)
+            if self._temporary_preview_visible
+            else None
+        )
         if temporary_mask is not None:
             if temporary_mask.shape != combined.shape:
                 temporary_mask = cv2.resize(temporary_mask, (w, h), interpolation=cv2.INTER_NEAREST)
@@ -349,6 +365,7 @@ class MaskPreviewWidget(QWidget):
             " / ".join(status_parts) if status_parts else i18n.t("MASK_PREVIEW_NO_ACTIVE_MASK")
         )
         self._update_mask_preview_button_text()
+        self._update_preview_visibility_button()
 
         rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
         qimg = QImage(rgb.data, rgb.shape[1], rgb.shape[0], rgb.shape[1] * 3, QImage.Format_RGB888).copy()
@@ -452,6 +469,9 @@ class MaskPreviewWidget(QWidget):
         self._temporary_preview_image_key = ""
         self._temporary_preview_config_key = None
         self._temporary_preview_mask = None
+        self._temporary_preview_visible = True
+        self._set_preview_visibility_checked(True)
+        self.preview_visibility_btn.setEnabled(False)
         self._update_mask_preview_button_text()
 
     def clear_yolo_preview_mask(self, image_path: Path | None = None) -> None:
@@ -464,6 +484,9 @@ class MaskPreviewWidget(QWidget):
         self._temporary_preview_image_key = _path_key(image_path)
         self._temporary_preview_config_key = _preview_config_key(config)
         self._temporary_preview_mask = mask
+        self._temporary_preview_visible = True
+        self._set_preview_visibility_checked(True)
+        self._update_preview_visibility_button()
         return True
 
     def set_yolo_preview_mask(self, image_path: Path, mask_path: Path) -> bool:
@@ -492,6 +515,11 @@ class MaskPreviewWidget(QWidget):
         self.status_label.setText(text)
 
     def has_active_temporary_preview(self, config: MaskPreviewConfig | None = None) -> bool:
+        if not self._temporary_preview_visible:
+            return False
+        return self.has_available_temporary_preview(config)
+
+    def has_available_temporary_preview(self, config: MaskPreviewConfig | None = None) -> bool:
         if self._preview_mode != PREVIEW_MODE_SINGLE:
             return False
         image_path = self.current_image_path()
@@ -539,6 +567,10 @@ class MaskPreviewWidget(QWidget):
             self.thumbnail_view.viewport().update()
             self.thumbnail_view.setFocus(Qt.OtherFocusReason)
             return
+        self.render(self._last_config)
+
+    def _on_preview_visibility_toggled(self, checked: bool) -> None:
+        self._temporary_preview_visible = checked
         self.render(self._last_config)
 
     def selected_reprocess_image_paths(self) -> list[Path]:
@@ -629,13 +661,23 @@ class MaskPreviewWidget(QWidget):
         if running:
             self.yolo_preview_btn.setText(i18n.t("MASK_PREVIEW_RUNNING"))
             self.yolo_preview_btn.setToolTip(i18n.tip("MASK_PREVIEW_BUTTON"))
-            return
-        if self.has_active_temporary_preview(self._last_config):
-            self.yolo_preview_btn.setText(i18n.t("MASK_PREVIEW_CLEAR_BUTTON"))
-            self.yolo_preview_btn.setToolTip(i18n.tip("MASK_PREVIEW_CLEAR_BUTTON"))
+            self.preview_visibility_btn.setEnabled(False)
             return
         self.yolo_preview_btn.setText(i18n.t("MASK_PREVIEW_BUTTON"))
         self.yolo_preview_btn.setToolTip(i18n.tip("MASK_PREVIEW_BUTTON"))
+        self._update_preview_visibility_button()
+
+    def _set_preview_visibility_checked(self, checked: bool) -> None:
+        self.preview_visibility_btn.blockSignals(True)
+        try:
+            self.preview_visibility_btn.setChecked(checked)
+        finally:
+            self.preview_visibility_btn.blockSignals(False)
+
+    def _update_preview_visibility_button(self) -> None:
+        available = self.has_available_temporary_preview(self._last_config)
+        self.preview_visibility_btn.setEnabled(available)
+        self._set_preview_visibility_checked(available and self._temporary_preview_visible)
 
     def _update_pixmap(self) -> None:
         self.image_label.set_source_pixmap(self._pixmap)

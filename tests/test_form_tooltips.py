@@ -31,7 +31,8 @@ def test_i18n_tips_are_wrapped() -> None:
     for key in i18n._tips:
         lines = i18n.tip(key).splitlines()
         assert lines, key
-        assert all(len(line) <= i18n._TOOLTIP_WRAP_WIDTH for line in lines), key
+        assert all(len(line) <= i18n._TOOLTIP_WRAP_WIDTH + 2 for line in lines), key
+        assert all(not line.startswith(tuple(i18n._JA_FORBIDDEN_LINE_START)) for line in lines), key
 
 
 def test_i18n_tips_are_wrapped_in_english() -> None:
@@ -240,15 +241,14 @@ def test_mask_numeric_labels_share_field_tooltips() -> None:
     assert step.yolo_level_label.toolTip() == i18n.tip("MASK_QUALITY")
     assert _label(step, i18n.t("YOLO_EXPAND_COMPACT")).toolTip() == i18n.tip("YOLO_EXPAND")
     assert step.yolo_bottom_settings_row.isHidden()
-    assert _label(step, i18n.STITCH_BOUNDARY_WIDTH).toolTip() == i18n.tip("STITCH_BOUNDARY_WIDTH")
-    assert _label(step, i18n.OVEREXPOSURE_THRESHOLD).toolTip() == i18n.tip("OVEREXPOSURE_THRESHOLD")
+    assert step.stitch_boundary_width_label.toolTip() == i18n.tip("STITCH_BOUNDARY_WIDTH")
+    assert step.overexp_threshold_label.toolTip() == i18n.tip("OVEREXPOSURE_THRESHOLD")
     assert step.sky_min_area_edit.toolTip() == i18n.tip("SKY_MIN_AREA")
     assert step.sky_top_connected_cb.toolTip() == i18n.tip("SKY_TOP_CONNECTED")
-    assert step.mask_settings_tabs.count() == 3
+    assert step.mask_settings_tabs.count() == 2
     assert [step.mask_settings_tabs.tabText(i) for i in range(step.mask_settings_tabs.count())] == [
         i18n.t("MASK_TAB_YOLO"),
-        i18n.t("MASK_TAB_STITCH_OVEREXP"),
-        i18n.t("MASK_TAB_CUSTOM"),
+        i18n.t("MASK_TAB_OPTIONS"),
     ]
 
 

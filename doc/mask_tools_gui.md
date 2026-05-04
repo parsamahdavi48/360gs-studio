@@ -26,14 +26,13 @@ run_gui.bat --scene ./scene01
 - `Image Type`:
   - `360°`: equirectangular 360° images. Enables stitch seam masking and 360° projection assist.
   - `Normal`: normal video frames or still-camera image sequences. Disables stitch seam masking and 360° pole projection assist.
-- `Extra Masks`: optional mask passes added after the primary mask.
+- `Options`: optional mask passes added after the primary mask.
   - `Stitch`: stitch seam masks for equirectangular 360° images.
   - `Overexp`: overexposure masks.
   - `Custom`: user-provided static PNG mask.
 - Settings tabs:
   - `Mask Settings`: primary model, target classes/prompts, expansion, and projection assist.
-  - `Stitch/Overexp.`: stitch seam and overexposure mask settings.
-  - `Custom Mask`: load or clear the user-provided PNG mask.
+  - `Options`: stitch seam, overexposure, and custom PNG mask settings.
 - `Model`: selects the primary mask backend.
   - `YOLO/SAM2.1`: default path. YOLO detects people or selected classes, then SAM2.1 refines the mask.
   - `Mask2Former`: ADE20K semantic segmentation. The GUI passes selected ADE20K class names to `sky_mask.py --backend mask2former --labels ...`.
@@ -59,9 +58,9 @@ run_gui.bat --scene ./scene01
   - Multiple prompts are run one at a time and OR-merged into the output mask.
 - `Inference Size`: controls Mask2Former inference size. SAM3.1 currently uses fixed `1008`.
 - `Model Details`: contains Mask2Former-specific `Min Score` (`0.00-1.00`, `0` disables it).
-- `Sky Postprocess`: contains sky-only filters.
+- `Sky Mask`: contains sky-only filters.
   - `Min Area` removes small sky components by image-area ratio.
-  - `Top-connected sky only` keeps only sky components touching the top image edge.
+  - `Top edge only` keeps only sky components touching the top image edge.
   - These filters apply only to sky labels/prompts, not to people or other selected targets.
 - `Boundary Mask Width (deg)`: forwarded to `stitch_mask.py --boundary-width`.
   - Not used when `Image Type` is `Normal`.
@@ -80,7 +79,7 @@ run_gui.bat --scene ./scene01
   - Existing files in `masks/` are not used as the base, so results from steps that are now off are not mixed into the preview.
   - The result is shown as a red overlay and is not saved to `masks/`.
   - In thumbnail mode, it switches the currently selected image to single-preview mode and shows the temporary result there.
-  - While a temporary preview is active, the button changes to `Clear Preview`. Press it to discard the temporary preview and return to the saved mask display.
+  - `Show Preview` toggles between the generated temporary preview and the saved mask in `masks/` without deleting the temporary preview.
   - The first run with a third-party model shows the relevant model/license notice.
 - `Regenerate Current`: rebuilds and saves the mask for only the currently displayed preview image.
   - It reruns the selected primary model for that single image. If `Stitch`, `Overexp`, or `Custom` is enabled, those masks are merged into the same output.
@@ -97,7 +96,7 @@ run_gui.bat --scene ./scene01
 
 ## Actions
 
-Choose the primary model in `Mask Settings`, enable any `Extra Masks`, then press `Generate`.
+Choose the primary model in `Mask Settings`, enable any `Options`, then press `Generate`.
 The primary mask always runs first. Extra masks run in this order: stitch seam, overexposure, custom.
 Existing masks are regenerated from the current primary model and enabled extra masks. Results from extra masks that are now off are not kept.
 

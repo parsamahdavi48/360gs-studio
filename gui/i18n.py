@@ -214,10 +214,12 @@ _JA: dict[str, str] = {
     "YOLO_ADD_EXT": "拡張子を付加",
     "YOLO_CLASSES": "検出クラス",
     "STITCH_BOUNDARY_WIDTH": "境界マスク幅 (度)",
+    "STITCH_BOUNDARY_WIDTH_COMPACT": "境界幅",
     "STITCH_WORKERS": "ワーカー数",
+    "STITCH_WORKERS_COMPACT": "ワーカー",
     "RUN_MASKS": "選択したマスクを再生成",
     "MASK_TASKS_LABEL": "マスク:",
-    "ADDITIONAL_MASKS_LABEL": "追加マスク:",
+    "ADDITIONAL_MASKS_LABEL": "オプション:",
     "MASK_IMAGE_TYPE": "画像タイプ:",
     "MASK_IMAGE_TYPE_EQUIRECT": "360°",
     "MASK_IMAGE_TYPE_NORMAL": "通常",
@@ -275,7 +277,9 @@ _JA: dict[str, str] = {
     "SAM31_CUSTOM_PROMPT_PLACEHOLDER": "custom prompt, English",
     "OVEREXPOSURE": "白飛びマスク",
     "OVEREXPOSURE_THRESHOLD": "白飛び閾値 (RGB)",
+    "OVEREXPOSURE_THRESHOLD_COMPACT": "閾値",
     "OVEREXPOSURE_DILATE": "膨張半径 (px)",
+    "OVEREXPOSURE_DILATE_COMPACT": "膨張",
     "RUN_OVEREXPOSURE": "白飛びマスク実行",
     "SKY_MODEL": "モデル",
     "SKY_MODEL_MASK2FORMER": "Mask2Former",
@@ -292,8 +296,8 @@ _JA: dict[str, str] = {
     "SKY_MIN_SCORE": "最小スコア",
     "SKY_MIN_AREA": "小領域除去",
     "SKY_MODEL_DETAILS_SECTION": "モデル詳細",
-    "SKY_POSTPROCESS_SECTION": "空の後処理",
-    "SKY_TOP_CONNECTED": "上端接続の空だけ",
+    "SKY_POSTPROCESS_SECTION": "空マスク設定",
+    "SKY_TOP_CONNECTED": "上端接続のみ",
     "RUN_ALL": "全マスク実行",
 
     # Step 4
@@ -385,6 +389,7 @@ _JA: dict[str, str] = {
     "RELOAD": "更新",
     "MASK_PREVIEW_BUTTON": "マスクプレビュー",
     "MASK_PREVIEW_CLEAR_BUTTON": "プレビュー解除",
+    "MASK_PREVIEW_VISIBILITY_BUTTON": "プレビュー表示",
     "YOLO_PREVIEW_BUTTON": "YOLOプレビュー",
     "MASK_REPROCESS_CURRENT_BUTTON": "表示中を再生成",
     "MASK_REPROCESS_SELECTED_BUTTON": "選択{count}枚を再生成",
@@ -476,6 +481,7 @@ _JA: dict[str, str] = {
     "YOLO_SECTION": "マスク設定",
     "STITCH_OVEREXP_SECTION": "スティッチ / 白飛び設定",
     "MASK_TAB_YOLO": "マスク設定",
+    "MASK_TAB_OPTIONS": "オプション",
     "MASK_TAB_STITCH_OVEREXP": "スティッチ/白飛び",
     "MASK_TAB_SKY": "空",
     "MASK_TAB_CUSTOM": "カスタムマスク",
@@ -712,10 +718,12 @@ _EN: dict[str, str] = {
     "YOLO_ADD_EXT": "Add Extension",
     "YOLO_CLASSES": "Detection Classes",
     "STITCH_BOUNDARY_WIDTH": "Boundary Mask Width (deg)",
+    "STITCH_BOUNDARY_WIDTH_COMPACT": "Seam",
     "STITCH_WORKERS": "Workers",
+    "STITCH_WORKERS_COMPACT": "Workers",
     "RUN_MASKS": "Regenerate Selected Masks",
     "MASK_TASKS_LABEL": "Masks:",
-    "ADDITIONAL_MASKS_LABEL": "Extra Masks:",
+    "ADDITIONAL_MASKS_LABEL": "Options:",
     "MASK_IMAGE_TYPE": "Image Type:",
     "MASK_IMAGE_TYPE_EQUIRECT": "360°",
     "MASK_IMAGE_TYPE_NORMAL": "Normal",
@@ -773,7 +781,9 @@ _EN: dict[str, str] = {
     "SAM31_CUSTOM_PROMPT_PLACEHOLDER": "custom prompt, English",
     "OVEREXPOSURE": "Overexposure Mask",
     "OVEREXPOSURE_THRESHOLD": "Overexposure Threshold (RGB)",
+    "OVEREXPOSURE_THRESHOLD_COMPACT": "Threshold",
     "OVEREXPOSURE_DILATE": "Dilate Radius (px)",
+    "OVEREXPOSURE_DILATE_COMPACT": "Dilate",
     "RUN_OVEREXPOSURE": "Run Overexposure Mask",
     "SKY_MODEL": "Model",
     "SKY_MODEL_MASK2FORMER": "Mask2Former",
@@ -790,8 +800,8 @@ _EN: dict[str, str] = {
     "SKY_MIN_SCORE": "Min Score",
     "SKY_MIN_AREA": "Min Area",
     "SKY_MODEL_DETAILS_SECTION": "Model Details",
-    "SKY_POSTPROCESS_SECTION": "Sky Postprocess",
-    "SKY_TOP_CONNECTED": "Top-connected sky only",
+    "SKY_POSTPROCESS_SECTION": "Sky Mask",
+    "SKY_TOP_CONNECTED": "Top edge only",
     "RUN_ALL": "Run All Masks",
 
     # Step 4
@@ -883,6 +893,7 @@ _EN: dict[str, str] = {
     "RELOAD": "Reload",
     "MASK_PREVIEW_BUTTON": "Mask Preview",
     "MASK_PREVIEW_CLEAR_BUTTON": "Clear Preview",
+    "MASK_PREVIEW_VISIBILITY_BUTTON": "Show Preview",
     "YOLO_PREVIEW_BUTTON": "YOLO Preview",
     "MASK_REPROCESS_CURRENT_BUTTON": "Regenerate Current",
     "MASK_REPROCESS_SELECTED_BUTTON": "Regenerate {count} Selected",
@@ -974,6 +985,7 @@ _EN: dict[str, str] = {
     "YOLO_SECTION": "Mask Settings",
     "STITCH_OVEREXP_SECTION": "Stitch / Overexposure Settings",
     "MASK_TAB_YOLO": "Mask Settings",
+    "MASK_TAB_OPTIONS": "Options",
     "MASK_TAB_STITCH_OVEREXP": "Stitch/Overexp.",
     "MASK_TAB_SKY": "Sky",
     "MASK_TAB_CUSTOM": "Custom Mask",
@@ -1144,6 +1156,7 @@ _TIPS_JA: dict[str, str] = {
     "MASK_PREVIEW_MODE_THUMBNAILS": "画像と既存マスクを一覧で表示します。クリックまたは矢印キーで表示中の画像を選択できます",
     "MASK_PREVIEW_BUTTON": "現在表示中の1枚だけ、現在ONのマスク処理で一時プレビューを作成します。masks/ には保存しません",
     "MASK_PREVIEW_CLEAR_BUTTON": "一時プレビューを破棄し、保存済みマスクの表示へ戻します",
+    "MASK_PREVIEW_VISIBILITY_BUTTON": "生成済みの一時プレビューと、masks/ に保存済みのマスク表示を切り替えます。プレビュー自体は削除しません",
     "YOLO_PREVIEW_BUTTON": "現在表示中の1枚だけYOLO/SAMを実行し、結果をプレビューに重ねます。マスクフォルダには保存しません",
     "MASK_REPROCESS_CURRENT_BUTTON": "1枚プレビューでは現在表示中の1枚、サムネイル一覧では選択中の画像を現在の設定で masks/ に再生成します。前回OFFだった処理結果は残りません",
     "MASK_OVERLAY_TOGGLE": "赤いマスクオーバーレイの表示/非表示を切り替えます。表示時の透過率は45%固定です",
@@ -1284,6 +1297,7 @@ _TIPS_EN: dict[str, str] = {
     "MASK_PREVIEW_MODE_THUMBNAILS": "Show images with existing masks as a thumbnail list. Click or use arrow keys to choose the current image",
     "MASK_PREVIEW_BUTTON": "Build a temporary preview for the displayed image using the currently enabled mask steps. It is not saved to masks/",
     "MASK_PREVIEW_CLEAR_BUTTON": "Discard the temporary preview and return to the saved mask display",
+    "MASK_PREVIEW_VISIBILITY_BUTTON": "Switch between the generated temporary preview and the saved mask in masks/. The preview is kept",
     "YOLO_PREVIEW_BUTTON": "Run YOLO/SAM for the currently displayed image only and overlay the result. It is not saved to the mask folder",
     "MASK_REPROCESS_CURRENT_BUTTON": "In single preview, regenerate the current image. In thumbnails, regenerate selected images with the current settings and save to masks/. Results from steps that are now off are not kept.",
     "MASK_OVERLAY_TOGGLE": "Toggle the red mask overlay. When visible, opacity is fixed at 45%.",
@@ -1322,6 +1336,21 @@ LANG = _detect_lang()
 _table = _JA if LANG == "ja" else _EN
 _tips = _TIPS_JA if LANG == "ja" else _TIPS_EN
 _TOOLTIP_WRAP_WIDTH = 46 if LANG == "ja" else 78
+_JA_FORBIDDEN_LINE_START = set("。、，．,.!?！？:：;；)]）】〕〉》」』”’")
+
+
+def _wrap_ja_tooltip_line(line: str) -> list[str]:
+    if len(line) <= _TOOLTIP_WRAP_WIDTH:
+        return [line]
+    wrapped: list[str] = []
+    start = 0
+    while start < len(line):
+        end = min(len(line), start + _TOOLTIP_WRAP_WIDTH)
+        while end < len(line) and line[end] in _JA_FORBIDDEN_LINE_START:
+            end += 1
+        wrapped.append(line[start:end])
+        start = end
+    return wrapped
 
 
 def _wrap_tooltip(text: str) -> str:
@@ -1330,11 +1359,14 @@ def _wrap_tooltip(text: str) -> str:
         if not line or len(line) <= _TOOLTIP_WRAP_WIDTH:
             lines.append(line)
             continue
+        if LANG == "ja":
+            lines.extend(_wrap_ja_tooltip_line(line))
+            continue
         lines.extend(
             textwrap.wrap(
                 line,
                 width=_TOOLTIP_WRAP_WIDTH,
-                break_long_words=(LANG == "ja"),
+                break_long_words=False,
                 break_on_hyphens=False,
             )
         )

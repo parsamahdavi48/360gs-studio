@@ -471,8 +471,10 @@ class MaskStep(BaseStepWidget):
         other_layout = QVBoxLayout(self.other_section)
         other_layout.setContentsMargins(8, 8, 8, 8)
         other_layout.setSpacing(6)
-        other_form = QFormLayout()
-        other_form.setSpacing(6)
+
+        stitch_row = QHBoxLayout()
+        stitch_row.setContentsMargins(0, 0, 0, 0)
+        stitch_row.setSpacing(6)
 
         self.stitch_boundary_width_edit = DragDoubleSpinBox(
             minimum=_STITCH_BOUNDARY_MIN,
@@ -483,12 +485,10 @@ class MaskStep(BaseStepWidget):
         )
         self.stitch_boundary_width_edit.setToolTip(i18n.tip("STITCH_BOUNDARY_WIDTH"))
         self.stitch_boundary_width_edit.setFixedWidth(80)
-        add_tooltip_row(
-            other_form,
-            i18n.STITCH_BOUNDARY_WIDTH,
-            self.stitch_boundary_width_edit,
-            i18n.tip("STITCH_BOUNDARY_WIDTH"),
-        )
+        self.stitch_boundary_width_label = QLabel(i18n.t("STITCH_BOUNDARY_WIDTH_COMPACT"))
+        self.stitch_boundary_width_label.setToolTip(i18n.tip("STITCH_BOUNDARY_WIDTH"))
+        stitch_row.addWidget(self.stitch_boundary_width_label)
+        stitch_row.addWidget(self.stitch_boundary_width_edit)
 
         worker_default = os.cpu_count() or 4
         self.stitch_workers_edit = DragSpinBox(
@@ -498,12 +498,17 @@ class MaskStep(BaseStepWidget):
             value=worker_default,
         )
         self.stitch_workers_edit.setToolTip(i18n.tip("STITCH_WORKERS"))
-        self.stitch_workers_edit.setFixedWidth(80)
-        add_tooltip_row(other_form, i18n.STITCH_WORKERS, self.stitch_workers_edit, i18n.tip("STITCH_WORKERS"))
+        self.stitch_workers_edit.setFixedWidth(70)
+        self.stitch_workers_label = QLabel(i18n.t("STITCH_WORKERS_COMPACT"))
+        self.stitch_workers_label.setToolTip(i18n.tip("STITCH_WORKERS"))
+        stitch_row.addWidget(self.stitch_workers_label)
+        stitch_row.addWidget(self.stitch_workers_edit)
+        stitch_row.addStretch()
+        other_layout.addLayout(stitch_row)
 
-        sep = QLabel("")
-        sep.setFixedHeight(8)
-        other_form.addRow(sep)
+        overexp_row = QHBoxLayout()
+        overexp_row.setContentsMargins(0, 0, 0, 0)
+        overexp_row.setSpacing(6)
 
         self.overexp_threshold_edit = DragSpinBox(
             minimum=_OVEREXP_THRESHOLD_MIN,
@@ -513,13 +518,11 @@ class MaskStep(BaseStepWidget):
             drag_pixels_per_step=4.0,
         )
         self.overexp_threshold_edit.setToolTip(i18n.tip("OVEREXPOSURE_THRESHOLD"))
-        self.overexp_threshold_edit.setFixedWidth(80)
-        add_tooltip_row(
-            other_form,
-            i18n.OVEREXPOSURE_THRESHOLD,
-            self.overexp_threshold_edit,
-            i18n.tip("OVEREXPOSURE_THRESHOLD"),
-        )
+        self.overexp_threshold_edit.setFixedWidth(74)
+        self.overexp_threshold_label = QLabel(i18n.t("OVEREXPOSURE_THRESHOLD_COMPACT"))
+        self.overexp_threshold_label.setToolTip(i18n.tip("OVEREXPOSURE_THRESHOLD"))
+        overexp_row.addWidget(self.overexp_threshold_label)
+        overexp_row.addWidget(self.overexp_threshold_edit)
 
         self.overexp_dilate_edit = DragSpinBox(
             minimum=_OVEREXP_DILATE_MIN,
@@ -529,17 +532,40 @@ class MaskStep(BaseStepWidget):
             drag_pixels_per_step=6.0,
         )
         self.overexp_dilate_edit.setToolTip(i18n.tip("OVEREXPOSURE_DILATE"))
-        self.overexp_dilate_edit.setFixedWidth(80)
-        add_tooltip_row(
-            other_form,
-            i18n.OVEREXPOSURE_DILATE,
-            self.overexp_dilate_edit,
-            i18n.tip("OVEREXPOSURE_DILATE"),
-        )
+        self.overexp_dilate_edit.setFixedWidth(74)
+        self.overexp_dilate_label = QLabel(i18n.t("OVEREXPOSURE_DILATE_COMPACT"))
+        self.overexp_dilate_label.setToolTip(i18n.tip("OVEREXPOSURE_DILATE"))
+        overexp_row.addWidget(self.overexp_dilate_label)
+        overexp_row.addWidget(self.overexp_dilate_edit)
+        overexp_row.addStretch()
+        other_layout.addLayout(overexp_row)
 
-        other_layout.addLayout(other_form)
+        custom_form = QFormLayout()
+        custom_form.setSpacing(6)
+        self.custom_mask_path_label = QLabel(i18n.t("CUSTOM_MASK_NOT_SELECTED"))
+        self.custom_mask_path_label.setToolTip(i18n.tip("CUSTOM_MASK_FILE"))
+        self.custom_mask_path_label.setWordWrap(True)
+        self.custom_mask_path_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        add_tooltip_row(
+            custom_form,
+            i18n.t("CUSTOM_MASK_FILE"),
+            self.custom_mask_path_label,
+            i18n.tip("CUSTOM_MASK_FILE"),
+        )
+        other_layout.addLayout(custom_form)
+
+        custom_button_row = QHBoxLayout()
+        custom_button_row.setSpacing(6)
+        self.custom_mask_browse_btn = QPushButton(i18n.t("CUSTOM_MASK_BROWSE"))
+        self.custom_mask_browse_btn.setToolTip(i18n.tip("CUSTOM_MASK_BROWSE"))
+        custom_button_row.addWidget(self.custom_mask_browse_btn, stretch=1)
+        self.custom_mask_clear_btn = QPushButton(i18n.t("CUSTOM_MASK_CLEAR"))
+        self.custom_mask_clear_btn.setToolTip(i18n.tip("CUSTOM_MASK_CLEAR"))
+        custom_button_row.addWidget(self.custom_mask_clear_btn, stretch=1)
+        other_layout.addLayout(custom_button_row)
         other_layout.addStretch()
-        self.mask_settings_tabs.addTab(self.other_section, i18n.t("MASK_TAB_STITCH_OVEREXP"))
+        self.custom_section = self.other_section
+        self.mask_settings_tabs.addTab(self.other_section, i18n.t("MASK_TAB_OPTIONS"))
 
         self.sky_section = QWidget()
         sky_layout = QVBoxLayout(self.sky_section)
@@ -624,8 +650,9 @@ class MaskStep(BaseStepWidget):
         sky_layout.addWidget(self.sky_model_details_section)
 
         self.sky_postprocess_section = CollapsibleSection(i18n.t("SKY_POSTPROCESS_SECTION"), expanded=False)
-        sky_postprocess_form = QFormLayout()
-        sky_postprocess_form.setSpacing(6)
+        sky_postprocess_row = QHBoxLayout()
+        sky_postprocess_row.setContentsMargins(0, 0, 0, 0)
+        sky_postprocess_row.setSpacing(6)
 
         self.sky_min_area_edit = DragDoubleSpinBox(
             minimum=_SKY_MIN_AREA_PERCENT_MIN,
@@ -637,54 +664,22 @@ class MaskStep(BaseStepWidget):
             drag_pixels_per_step=8.0,
         )
         self.sky_min_area_edit.setToolTip(i18n.tip("SKY_MIN_AREA"))
-        self.sky_min_area_edit.setFixedWidth(86)
-        add_tooltip_row(
-            sky_postprocess_form,
-            i18n.t("SKY_MIN_AREA"),
-            self.sky_min_area_edit,
-            i18n.tip("SKY_MIN_AREA"),
-        )
-        self.sky_min_area_label = sky_postprocess_form.labelForField(self.sky_min_area_edit)
+        self.sky_min_area_edit.setFixedWidth(74)
+        self.sky_min_area_label = QLabel(i18n.t("SKY_MIN_AREA"))
+        self.sky_min_area_label.setToolTip(i18n.tip("SKY_MIN_AREA"))
+        sky_postprocess_row.addWidget(self.sky_min_area_label)
+        sky_postprocess_row.addWidget(self.sky_min_area_edit)
 
         self.sky_top_connected_cb = QCheckBox(i18n.t("SKY_TOP_CONNECTED"))
         self.sky_top_connected_cb.setToolTip(i18n.tip("SKY_TOP_CONNECTED"))
         self.sky_top_connected_cb.setChecked(False)
-        sky_postprocess_form.addRow("", self.sky_top_connected_cb)
+        sky_postprocess_row.addWidget(self.sky_top_connected_cb)
+        sky_postprocess_row.addStretch()
 
-        self.sky_postprocess_section.content_layout.addLayout(sky_postprocess_form)
+        self.sky_postprocess_section.content_layout.addLayout(sky_postprocess_row)
         sky_layout.addWidget(self.sky_postprocess_section)
         yolo_layout.addWidget(self.sky_section)
         yolo_layout.addStretch()
-
-        self.custom_section = QWidget()
-        custom_layout = QVBoxLayout(self.custom_section)
-        custom_layout.setContentsMargins(8, 8, 8, 8)
-        custom_layout.setSpacing(6)
-        custom_form = QFormLayout()
-        custom_form.setSpacing(6)
-        self.custom_mask_path_label = QLabel(i18n.t("CUSTOM_MASK_NOT_SELECTED"))
-        self.custom_mask_path_label.setToolTip(i18n.tip("CUSTOM_MASK_FILE"))
-        self.custom_mask_path_label.setWordWrap(True)
-        self.custom_mask_path_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
-        add_tooltip_row(
-            custom_form,
-            i18n.t("CUSTOM_MASK_FILE"),
-            self.custom_mask_path_label,
-            i18n.tip("CUSTOM_MASK_FILE"),
-        )
-        custom_layout.addLayout(custom_form)
-
-        custom_button_row = QHBoxLayout()
-        custom_button_row.setSpacing(6)
-        self.custom_mask_browse_btn = QPushButton(i18n.t("CUSTOM_MASK_BROWSE"))
-        self.custom_mask_browse_btn.setToolTip(i18n.tip("CUSTOM_MASK_BROWSE"))
-        custom_button_row.addWidget(self.custom_mask_browse_btn, stretch=1)
-        self.custom_mask_clear_btn = QPushButton(i18n.t("CUSTOM_MASK_CLEAR"))
-        self.custom_mask_clear_btn.setToolTip(i18n.tip("CUSTOM_MASK_CLEAR"))
-        custom_button_row.addWidget(self.custom_mask_clear_btn, stretch=1)
-        custom_layout.addLayout(custom_button_row)
-        custom_layout.addStretch()
-        self.mask_settings_tabs.addTab(self.custom_section, i18n.t("MASK_TAB_CUSTOM"))
 
         layout.addStretch()
         self.metashape_notice = QLabel(i18n.METASHAPE_NOTICE)
@@ -1579,20 +1574,12 @@ class MaskStep(BaseStepWidget):
             self.mask_preview.set_status_text(i18n.t("MASK_PREVIEW_NO_IMAGE"))
             return
         config = self._mask_preview_config_from_controls()
-        if self.mask_preview.has_active_temporary_preview(config):
-            self.mask_preview.clear_temporary_preview_mask(image_path)
-            self._render_mask_preview()
-            self.mask_preview.set_status_text(i18n.t("MASK_PREVIEW_CLEARED"))
-            return
         if not self._selected_mask_tasks():
             self.mask_preview.set_status_text(i18n.t("MASK_TASK_REQUIRED"))
             return
 
         if self.mask_preview.preview_mode() == "thumbnails":
             self.mask_preview.set_preview_mode("single")
-            if self.mask_preview.has_active_temporary_preview(config):
-                self.mask_preview.set_status_text(i18n.t("MASK_PREVIEW_TEMP"))
-                return
 
         if self._person_backend_arg() == "yolo_sam":
             if not self._confirm_yolo_sam_license_notice():
@@ -1618,7 +1605,6 @@ class MaskStep(BaseStepWidget):
         self._mask_preview_output = output_path
         self._mask_preview_config = config
         self._mask_preview_commands = commands
-        self.mask_preview.clear_temporary_preview_mask(image_path)
         self.mask_preview.set_mask_preview_running(True)
         self.mask_preview.set_status_text(i18n.t("MASK_PREVIEW_RUNNING"))
         self._start_next_mask_preview_command()

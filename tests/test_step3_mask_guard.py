@@ -212,11 +212,12 @@ def test_mask_step_mask_preview_from_thumbnails_switches_to_single(tmp_path: Pat
 
     assert step.mask_preview.preview_mode() == "single"
     assert i18n.t("MASK_PREVIEW_TEMP") in step.mask_preview.status_label.text()
-    assert step.mask_preview.yolo_preview_btn.text() == i18n.t("MASK_PREVIEW_CLEAR_BUTTON")
+    assert step.mask_preview.yolo_preview_btn.text() == i18n.t("MASK_PREVIEW_BUTTON")
+    assert step.mask_preview.preview_visibility_btn.isEnabled()
     assert not (scene / "masks" / "frame_0001.png").exists()
 
 
-def test_mask_step_mask_preview_button_clears_active_temporary_preview(tmp_path: Path, monkeypatch) -> None:
+def test_mask_step_mask_preview_visibility_toggles_active_temporary_preview(tmp_path: Path, monkeypatch) -> None:
     _app()
     scene = tmp_path
     images = scene / "images"
@@ -232,11 +233,14 @@ def test_mask_step_mask_preview_button_clears_active_temporary_preview(tmp_path:
     monkeypatch.setattr(step, "_build_image_external_commands", lambda *_args, **_kwargs: [])
 
     step._run_mask_preview()
-    assert step.mask_preview.yolo_preview_btn.text() == i18n.t("MASK_PREVIEW_CLEAR_BUTTON")
-    step._run_mask_preview()
-
     assert step.mask_preview.yolo_preview_btn.text() == i18n.t("MASK_PREVIEW_BUTTON")
-    assert step.mask_preview.status_label.text() == i18n.t("MASK_PREVIEW_CLEARED")
+    assert step.mask_preview.preview_visibility_btn.isChecked()
+    step.mask_preview.preview_visibility_btn.click()
+    step.mask_preview.render(step._mask_preview_config_from_controls())
+
+    assert not step.mask_preview.preview_visibility_btn.isChecked()
+    assert i18n.t("MASK_PREVIEW_TEMP") not in step.mask_preview.status_label.text()
+    assert step.mask_preview.has_available_temporary_preview(step._mask_preview_config_from_controls())
 
 
 def test_mask_step_preview_render_scheduling_is_debounced() -> None:

@@ -52,6 +52,7 @@ def test_mask_preview_removes_manual_image_picker_and_opacity_spinbox() -> None:
     assert i18n.t("AUTO") not in button_texts
     assert i18n.t("RELOAD") not in button_texts
     assert i18n.t("MASK_PREVIEW_BUTTON") in button_texts
+    assert i18n.t("MASK_PREVIEW_VISIBILITY_BUTTON") in button_texts
     assert i18n.t("MASK_REPROCESS_CURRENT_BUTTON") in button_texts
     assert not widget.findChildren(QLineEdit)
     assert not widget.findChildren(QSpinBox)
@@ -125,27 +126,45 @@ def test_mask_preview_uses_temporary_preview_mask(tmp_path: Path) -> None:
     widget.render(MaskPreviewConfig(use_yolo=True))
 
     assert i18n.t("MASK_PREVIEW_TEMP") in widget.status_label.text()
-    assert widget.yolo_preview_btn.text() == i18n.t("MASK_PREVIEW_CLEAR_BUTTON")
+    assert widget.yolo_preview_btn.text() == i18n.t("MASK_PREVIEW_BUTTON")
+    assert widget.preview_visibility_btn.isEnabled()
+    assert widget.preview_visibility_btn.isChecked()
     assert widget.image_label._source_pixmap is not None
 
 
-def test_mask_preview_clear_button_returns_to_preview_button(tmp_path: Path) -> None:
+def test_mask_preview_visibility_toggle_keeps_generated_preview(tmp_path: Path) -> None:
     _app()
-    image_path = tmp_path / "frame_000001.png"
+    images_dir = tmp_path / "images"
+    masks_dir = tmp_path / "masks"
+    images_dir.mkdir()
+    masks_dir.mkdir()
+    image_path = images_dir / "frame_000001.png"
+    saved_mask_path = masks_dir / "frame_000001.png"
     mask_path = tmp_path / "preview_mask.png"
     cv2.imwrite(str(image_path), np.full((32, 64, 3), 180, dtype=np.uint8))
+    saved = np.full((32, 64), 255, dtype=np.uint8)
+    saved[:, 48:] = 0
+    cv2.imwrite(str(saved_mask_path), saved)
     cv2.imwrite(str(mask_path), np.zeros((32, 64), dtype=np.uint8))
     widget = MaskPreviewWidget()
+    widget.set_images_dir(str(images_dir))
     widget.set_current_image_path(image_path)
-    config = MaskPreviewConfig(use_yolo=True)
+    config = MaskPreviewConfig(use_yolo=True, masks_dir=str(masks_dir))
 
     assert widget.set_temporary_preview_mask(image_path, mask_path, config)
     widget.render(config)
-    widget.clear_temporary_preview_mask(image_path)
+    assert i18n.t("MASK_PREVIEW_TEMP") in widget.status_label.text()
+
+    widget.preview_visibility_btn.click()
     widget.render(config)
 
-    assert widget.yolo_preview_btn.text() == i18n.t("MASK_PREVIEW_BUTTON")
     assert i18n.t("MASK_PREVIEW_TEMP") not in widget.status_label.text()
+    assert widget.has_available_temporary_preview(config)
+
+    widget.preview_visibility_btn.click()
+    widget.render(config)
+
+    assert i18n.t("MASK_PREVIEW_TEMP") in widget.status_label.text()
 
 
 def test_mask_preview_ignores_temporary_preview_after_setting_change(tmp_path: Path) -> None:
