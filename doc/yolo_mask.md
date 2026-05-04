@@ -10,7 +10,7 @@
 ## Usage
 
 ```
-python yolo_mask.py [images_dir] [output_dir] [--add_ext] [--level N] [--expand M] [--classes IDS] [--projection equirect|normal] [--bottom-conf C] [--bottom-tta-rotations 1|2|4] [--bottom-model same|m|l|x] [--bottom-filter] [--bottom-temporal-window N] [--bottom-temporal-min-votes N]
+python yolo_mask.py [images_dir] [output_dir] [--add_ext] [--level N] [--expand M] [--classes IDS] [--projection equirect|normal] [--bottom-conf C] [--bottom-tta-rotations 1|2|4] [--bottom-model same|m|l|x] [--bottom-filter] [--bottom-temporal-window N] [--bottom-temporal-min-votes N] [--profile-json PATH]
 ```
 
 - `images_dir`: input image directory (default: `images`)
@@ -31,6 +31,7 @@ python yolo_mask.py [images_dir] [output_dir] [--add_ext] [--level N] [--expand 
 - `--bottom-temporal-window N`: after per-frame detection, merge bottom detections from neighboring frames within `N` frames. This is only applied to directory inputs and equirectangular mode.
 - `--bottom-temporal-min-votes N`: require at least `N` neighboring bottom detections per pixel before temporal fill writes that pixel (default: `1`).
   - This is an advanced CLI-only option. For sparsely extracted frames, it can leave previous-frame silhouettes because it does not align motion between frames; GUI presets do not use it.
+- `--profile-json PATH`: write timing and detection metrics as JSON. Normal runs are unchanged when this option is omitted.
 
 Example:
 
@@ -54,6 +55,18 @@ Maximum bottom-only YOLO strength:
 
 ```bash
 python yolo_mask.py .\images .\masks --level 3 --bottom-conf 0.10 --bottom-tta-rotations 4 --bottom-model x --bottom-filter
+```
+
+Benchmark a fixed dataset:
+
+```bash
+python scripts/benchmark_yolo_mask.py --dataset D:\3DGS\test --output-root D:\3DGS\test\benchmarks --label baseline --repeat 3
+```
+
+Compare a later candidate run against the baseline masks:
+
+```bash
+python scripts/benchmark_yolo_mask.py --dataset D:\3DGS\test --output-root D:\3DGS\test\benchmarks --label candidate --compare-label baseline --repeat 3 --overwrite
 ```
 
 ## Output

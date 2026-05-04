@@ -7,7 +7,7 @@
 
 ## 使い方
 ```
-python yolo_mask.py [images_dir] [output_dir] [--add_ext] [--level N] [--expand M] [--classes IDS] [--projection equirect|normal] [--bottom-conf C] [--bottom-tta-rotations 1|2|4] [--bottom-model same|m|l|x] [--bottom-filter] [--bottom-temporal-window N] [--bottom-temporal-min-votes N]
+python yolo_mask.py [images_dir] [output_dir] [--add_ext] [--level N] [--expand M] [--classes IDS] [--projection equirect|normal] [--bottom-conf C] [--bottom-tta-rotations 1|2|4] [--bottom-model same|m|l|x] [--bottom-filter] [--bottom-temporal-window N] [--bottom-temporal-min-votes N] [--profile-json PATH]
 ```
 
 - `images_dir`: 入力画像ディレクトリ（省略時: `images`）
@@ -28,6 +28,7 @@ python yolo_mask.py [images_dir] [output_dir] [--add_ext] [--level N] [--expand 
 - `--bottom-temporal-window N`: 各フレームの検出後、前後 `N` フレーム以内の底面検出結果を合成して補完します。ディレクトリ入力かつ `equirect` のときだけ有効です。
 - `--bottom-temporal-min-votes N`: 時系列補完で画素を書き込む前に、近傍フレーム内で最低 `N` 回の底面検出を要求します（デフォルト: `1`）。
   - CLI専用の詳細オプションです。間隔を空けて抽出したフレームではフレーム間の動きを位置合わせしないため、前フレームのシルエットが残ることがあります。GUIプリセットでは使いません。
+- `--profile-json PATH`: 処理時間と検出数の内訳をJSONに出力します。指定しない通常実行の動作は変わりません。
 
 例:
 
@@ -51,6 +52,18 @@ python yolo_mask.py .\images .\masks --level 3 --bottom-conf 0.15 --bottom-tta-r
 
 ```
 python yolo_mask.py .\images .\masks --level 3 --bottom-conf 0.10 --bottom-tta-rotations 4 --bottom-model x --bottom-filter
+```
+
+固定データセットでベンチマーク:
+
+```
+python scripts/benchmark_yolo_mask.py --dataset D:\3DGS\test --output-root D:\3DGS\test\benchmarks --label baseline --repeat 3
+```
+
+改善後の出力をbaselineと比較:
+
+```
+python scripts/benchmark_yolo_mask.py --dataset D:\3DGS\test --output-root D:\3DGS\test\benchmarks --label candidate --compare-label baseline --repeat 3 --overwrite
 ```
 
 ## 出力について

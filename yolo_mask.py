@@ -1,9 +1,13 @@
 import argparse
+from contextlib import contextmanager
 from collections import defaultdict
 from dataclasses import dataclass
+from datetime import datetime, timezone
+import json
 import os
 import sys
 import tempfile
+from time import perf_counter
 from pathlib import Path
 
 import cv2
@@ -23,6 +27,7 @@ BOTTOM_MODEL = "same"
 BOTTOM_FILTER = False
 BOTTOM_TEMPORAL_WINDOW = 0
 BOTTOM_TEMPORAL_MIN_VOTES = 1
+PROFILE = None
 
 yolo = None
 yolo_models = {}
@@ -43,6 +48,138 @@ class ProcessResult:
     output_path: Path
     group_key: str
     bottom_mask_path: Path | None = None
+
+
+class ProfileRecorder:
+    def __init__(self, output_path: str | Path):
+        self.output_path = Path(output_path)
+        self.started_at = datetime.now(timezone.utc).isoformat()
+        self.run_started = perf_counter()
+        self.settings = {}
+        self.images = []
+        self.totals = {
+            "timings_sec": {},
+            "inference_calls": 0,
+            "yolo_boxes": 0,
+            "sam_masks": 0,
+        }
+        self._current = None
+
+    def set_settings(self, settings: dict) -> None:
+        self.settings = settings
+
+    def begin_image(self, fname: str, input_path: str | Path) -> None:
+        self._current = {
+            "file": fname,
+            "input_path": str(input_path),
+            "output_path": None,
+            "shape": None,
+            "timings_sec": {},
+            "inference_calls": [],
+            "counts": {
+                "yolo_boxes": 0,
+                "sam_masks": 0,
+                "detections": 0,
+            },
+        }
+
+    def set_image_shape(self, shape: tuple[int, int]) -> None:
+        if self._current is not None:
+            self._current["shape"] = {"height": int(shape[0]), "width": int(shape[1])}
+
+    def add_timing(self, key: str, elapsed: float) -> None:
+        elapsed = float(elapsed)
+        self.totals["timings_sec"][key] = self.totals["timings_sec"].get(key, 0.0) + elapsed
+        if self._current is not None:
+            timings = self._current["timings_sec"]
+            timings[key] = timings.get(key, 0.0) + elapsed
+
+    def record_inference(
+        self,
+        *,
+        stage: str,
+        model_key: str,
+        conf: float,
+        shape: tuple[int, int],
+        box_count: int,
+        sam_mask_count: int,
+    ) -> None:
+        self.totals["inference_calls"] += 1
+        self.totals["yolo_boxes"] += int(box_count)
+        self.totals["sam_masks"] += int(sam_mask_count)
+        if self._current is None:
+            return
+        self._current["counts"]["yolo_boxes"] += int(box_count)
+        self._current["counts"]["sam_masks"] += int(sam_mask_count)
+        if sam_mask_count > 0:
+            self._current["counts"]["detections"] += 1
+        self._current["inference_calls"].append(
+            {
+                "stage": stage,
+                "model_key": model_key,
+                "conf": float(conf),
+                "height": int(shape[0]),
+                "width": int(shape[1]),
+                "yolo_boxes": int(box_count),
+                "sam_masks": int(sam_mask_count),
+            }
+        )
+
+    def finish_image(self, output_path: str | Path) -> None:
+        if self._current is None:
+            return
+        self._current["output_path"] = str(output_path)
+        self.images.append(self._current)
+        self._current = None
+
+    def write(self) -> None:
+        elapsed = perf_counter() - self.run_started
+        data = {
+            "schema_version": 1,
+            "started_at": self.started_at,
+            "finished_at": datetime.now(timezone.utc).isoformat(),
+            "settings": self.settings,
+            "totals": {
+                **self.totals,
+                "elapsed_sec": elapsed,
+                "images": len(self.images),
+            },
+            "images": self.images,
+        }
+        self.output_path.parent.mkdir(parents=True, exist_ok=True)
+        self.output_path.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
+
+
+@contextmanager
+def profile_timer(key: str):
+    if PROFILE is None:
+        yield
+        return
+    started = perf_counter()
+    try:
+        yield
+    finally:
+        PROFILE.add_timing(key, perf_counter() - started)
+
+
+def profile_record_inference(
+    *,
+    stage: str,
+    model_key: str,
+    conf: float,
+    shape: tuple[int, int],
+    box_count: int,
+    sam_mask_count: int,
+) -> None:
+    if PROFILE is not None:
+        PROFILE.record_inference(
+            stage=stage,
+            model_key=model_key,
+            conf=conf,
+            shape=shape,
+            box_count=box_count,
+            sam_mask_count=sam_mask_count,
+        )
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
@@ -111,6 +248,12 @@ def build_arg_parser() -> argparse.ArgumentParser:
         default=1,
         help="Minimum neighboring bottom detections required per pixel for temporal fill (default=1)",
     )
+    parser.add_argument(
+        "--profile-json",
+        type=str,
+        default=None,
+        help="Write detailed timing and detection metrics to this JSON file (default=off)",
+    )
     return parser
 
 
@@ -167,14 +310,23 @@ def load_models(level: int, bottom_model: str = "same") -> None:
 # =========================
 # YOLO/SAM2によるマスク抽出
 # =========================
-def add_yolo_mask(img, mask, has_mask=0, *, model_key: str = YOLO_MODEL_PRIMARY, conf: float = YOLO_CONF_DEFAULT):
+def add_yolo_mask(
+    img,
+    mask,
+    has_mask=0,
+    *,
+    model_key: str = YOLO_MODEL_PRIMARY,
+    conf: float = YOLO_CONF_DEFAULT,
+    profile_stage: str = "full",
+):
     global yolo, sam
     detector = yolo_models.get(model_key) or yolo
     if detector is None or sam is None:
         raise RuntimeError("YOLO/SAM models are not loaded")
 
     # ---------- YOLO: 指定クラス検出 ----------
-    results = detector(img, conf=conf, classes=CLASS_IDS, verbose=False)
+    with profile_timer(f"{profile_stage}.yolo"):
+        results = detector(img, conf=conf, classes=CLASS_IDS, verbose=False)
 
     bboxes = []
     for r in results:
@@ -183,18 +335,44 @@ def add_yolo_mask(img, mask, has_mask=0, *, model_key: str = YOLO_MODEL_PRIMARY,
         for box in r.boxes.xyxy:
             bboxes.append(box.tolist())
     if len(bboxes) == 0:
+        profile_record_inference(
+            stage=profile_stage,
+            model_key=model_key,
+            conf=conf,
+            shape=img.shape[:2],
+            box_count=0,
+            sam_mask_count=0,
+        )
         return mask, has_mask
 
     # ---------- SAM2: マスク生成 ----------
-    sam_results = sam(
-        img,
-        bboxes=bboxes,
-        verbose=False,
-    )
+    with profile_timer(f"{profile_stage}.sam"):
+        sam_results = sam(
+            img,
+            bboxes=bboxes,
+            verbose=False,
+        )
 
     if not sam_results or sam_results[0].masks is None:
+        profile_record_inference(
+            stage=profile_stage,
+            model_key=model_key,
+            conf=conf,
+            shape=img.shape[:2],
+            box_count=len(bboxes),
+            sam_mask_count=0,
+        )
         return mask, has_mask
 
+    sam_mask_count = len(sam_results[0].masks.data)
+    profile_record_inference(
+        stage=profile_stage,
+        model_key=model_key,
+        conf=conf,
+        shape=img.shape[:2],
+        box_count=len(bboxes),
+        sam_mask_count=sam_mask_count,
+    )
     for m in sam_results[0].masks.data:
         m = m.cpu().numpy().astype(np.uint8) * 255
         mask = np.maximum(mask, m)
@@ -371,32 +549,39 @@ def detect_bottom_mask(img, pano_width: int, pano_height: int) -> tuple[np.ndarr
     if bsize <= 0:
         return None, 0
 
-    bottom = get_bottom_from_pano(img, size=bsize)
+    with profile_timer("bottom.extract"):
+        bottom = get_bottom_from_pano(img, size=bsize)
     merged_bottom_mask = np.zeros((bsize, bsize), dtype=np.uint8)
     total_has_bottom = 0
 
     for angle in bottom_rotation_angles(BOTTOM_TTA_ROTATIONS):
-        rotated_bottom = rotate_quarter_turn(bottom, angle)
+        with profile_timer("bottom.rotate"):
+            rotated_bottom = rotate_quarter_turn(bottom, angle)
         rotated_mask = np.zeros(rotated_bottom.shape[:2], dtype=np.uint8)
         rotated_mask, has_bottom = add_yolo_mask(
             rotated_bottom,
             rotated_mask,
             model_key=YOLO_MODEL_BOTTOM,
             conf=BOTTOM_CONF,
+            profile_stage="bottom",
         )
         if has_bottom > 0:
-            merged_bottom_mask = np.maximum(merged_bottom_mask, rotate_quarter_turn(rotated_mask, -angle))
+            with profile_timer("bottom.merge"):
+                merged_bottom_mask = np.maximum(merged_bottom_mask, rotate_quarter_turn(rotated_mask, -angle))
             total_has_bottom += has_bottom
 
     if total_has_bottom == 0:
         return None, 0
 
     if BOTTOM_FILTER:
-        merged_bottom_mask = filter_bottom_mask_components(merged_bottom_mask)
+        with profile_timer("bottom.filter"):
+            merged_bottom_mask = filter_bottom_mask_components(merged_bottom_mask)
         if not np.any(merged_bottom_mask):
             return None, 0
 
-    return back_to_pano_from_bottom(merged_bottom_mask, pano_width, pano_height), total_has_bottom
+    with profile_timer("bottom.back_project"):
+        pano_mask = back_to_pano_from_bottom(merged_bottom_mask, pano_width, pano_height)
+    return pano_mask, total_has_bottom
 
 
 def apply_temporal_bottom_propagation(results: list[ProcessResult], window: int, min_votes: int = 1) -> int:
@@ -463,17 +648,24 @@ def process_file(input_dir, output_dir, fname, add_ext=True, bottom_mask_path: s
 
     # 画像読み込み
     img_path = os.path.join(input_dir, fname)
-    img = imread_unicode(img_path)
+    if PROFILE is not None:
+        PROFILE.begin_image(fname, img_path)
+    image_started = perf_counter() if PROFILE is not None else None
+    with profile_timer("image.read"):
+        img = imread_unicode(img_path)
     if img is None:
         raise IOError(f"Cannot read image: {img_path}")
     h, w = img.shape[:2]
+    if PROFILE is not None:
+        PROFILE.set_image_shape((h, w))
 
     # マスク初期化
     mask = np.zeros((h, w), dtype=np.uint8)
     raw_bottom_mask = None
 
     # 全体で人物検出
-    mask, has_mask = add_yolo_mask(img, mask)
+    with profile_timer("full.total"):
+        mask, has_mask = add_yolo_mask(img, mask, profile_stage="full")
 
     # 水平線付近の高品質抽出
     if LEVEL >= 2:
@@ -491,45 +683,50 @@ def process_file(input_dir, output_dir, fname, add_ext=True, bottom_mask_path: s
         subh = int((bottom_y - top_y) / nj)
         pad = 20  # 重なり部分
         global proc_count
-        for i in range(ni):
-            x1 = max(0, i * subw - pad)
-            x2 = min(w, x1 + subw + pad)
-            for j in range(nj):
-                y1 = max(0, top_y + j * subh - pad)
-                y2 = min(h, y1 + subh + pad)
-                # 一部を切り出して検出
-                print(f"  Processing region {i * nj + j}/{ni * nj} ...", flush=True)
-                if proc_count == 0:
-                    print(f"  HQ extraction: region [{y1}:{y2}, {x1}:{x2}]", flush=True)
-                subimg = img[y1:y2, x1:x2]
-                submask = np.zeros((y2 - y1, x2 - x1), dtype=np.uint8)
-                submask, has_submask = add_yolo_mask(subimg, submask)
+        with profile_timer("tile.total"):
+            for i in range(ni):
+                x1 = max(0, i * subw - pad)
+                x2 = min(w, x1 + subw + pad)
+                for j in range(nj):
+                    y1 = max(0, top_y + j * subh - pad)
+                    y2 = min(h, y1 + subh + pad)
+                    # 一部を切り出して検出
+                    print(f"  Processing region {i * nj + j}/{ni * nj} ...", flush=True)
+                    if proc_count == 0:
+                        print(f"  HQ extraction: region [{y1}:{y2}, {x1}:{x2}]", flush=True)
+                    subimg = img[y1:y2, x1:x2]
+                    submask = np.zeros((y2 - y1, x2 - x1), dtype=np.uint8)
+                    submask, has_submask = add_yolo_mask(subimg, submask, profile_stage="tile")
 
-                # 元の画像に反映
-                if has_submask > 0:
-                    mask[y1:y2, x1:x2] = np.maximum(mask[y1:y2, x1:x2], submask)
-                    has_mask += has_submask
+                    # 元の画像に反映
+                    if has_submask > 0:
+                        with profile_timer("tile.merge"):
+                            mask[y1:y2, x1:x2] = np.maximum(mask[y1:y2, x1:x2], submask)
+                        has_mask += has_submask
         proc_count += 1
 
     # 下方向のみ展開画像で再検出（エクイレクタングラー360画像専用）
     if should_run_bottom_redetection(LEVEL, PROJECTION):
-        bottom_mask, has_bottom = detect_bottom_mask(img, w, h)
+        with profile_timer("bottom.total"):
+            bottom_mask, has_bottom = detect_bottom_mask(img, w, h)
         if has_bottom > 0:
             mask = np.maximum(mask, bottom_mask)
             raw_bottom_mask = bottom_mask
             has_mask += has_bottom
 
-    if has_mask > 0 and EXPAND > 0:
-        # 検出領域を指定pxぶん膨張
-        kernel = np.ones((3, 3), np.uint8)
-        mask = cv2.dilate(mask, kernel, iterations=EXPAND)
-    elif has_mask > 0 and EXPAND < 0:
-        # 負値は検出領域を収縮
-        kernel = np.ones((3, 3), np.uint8)
-        mask = cv2.erode(mask, kernel, iterations=-EXPAND)
+    with profile_timer("mask.expand"):
+        if has_mask > 0 and EXPAND > 0:
+            # 検出領域を指定pxぶん膨張
+            kernel = np.ones((3, 3), np.uint8)
+            mask = cv2.dilate(mask, kernel, iterations=EXPAND)
+        elif has_mask > 0 and EXPAND < 0:
+            # 負値は検出領域を収縮
+            kernel = np.ones((3, 3), np.uint8)
+            mask = cv2.erode(mask, kernel, iterations=-EXPAND)
 
     # ここで反転（背景=白 / 人物=黒）
-    mask = 255 - mask
+    with profile_timer("mask.invert"):
+        mask = 255 - mask
 
     # ---------- 保存 ----------
     if add_ext:
@@ -537,24 +734,31 @@ def process_file(input_dir, output_dir, fname, add_ext=True, bottom_mask_path: s
     else:
         outname = os.path.splitext(fname)[0] + ".png"
     out_path = os.path.join(output_dir, outname)
-    if not imwrite_unicode(out_path, mask):
-        raise IOError(f"Failed to write mask: {out_path}")
+    with profile_timer("image.write"):
+        if not imwrite_unicode(out_path, mask):
+            raise IOError(f"Failed to write mask: {out_path}")
     written_bottom_mask_path = None
     if raw_bottom_mask is not None and bottom_mask_path is not None:
         written_bottom_mask_path = Path(bottom_mask_path)
         written_bottom_mask_path.parent.mkdir(parents=True, exist_ok=True)
-        if not imwrite_unicode(written_bottom_mask_path, raw_bottom_mask):
-            raise IOError(f"Failed to write bottom mask: {written_bottom_mask_path}")
+        with profile_timer("bottom.write"):
+            if not imwrite_unicode(written_bottom_mask_path, raw_bottom_mask):
+                raise IOError(f"Failed to write bottom mask: {written_bottom_mask_path}")
 
-    return ProcessResult(
+    result = ProcessResult(
         output_path=Path(out_path),
         group_key=str(Path(output_dir).resolve()),
         bottom_mask_path=written_bottom_mask_path,
     )
+    if PROFILE is not None:
+        if image_started is not None:
+            PROFILE.add_timing("image.total", perf_counter() - image_started)
+        PROFILE.finish_image(result.output_path)
+    return result
 
 
 def main(argv: list[str] | None = None) -> int:
-    global CLASS_IDS, LEVEL, PROJECTION, EXPAND, BOTTOM_CONF, BOTTOM_TTA_ROTATIONS, BOTTOM_MODEL, BOTTOM_FILTER
+    global CLASS_IDS, LEVEL, PROJECTION, EXPAND, BOTTOM_CONF, BOTTOM_TTA_ROTATIONS, BOTTOM_MODEL, BOTTOM_FILTER, PROFILE
     global BOTTOM_TEMPORAL_WINDOW, BOTTOM_TEMPORAL_MIN_VOTES, proc_count
     parser = build_arg_parser()
     args = parser.parse_args(argv)
@@ -572,18 +776,21 @@ def main(argv: list[str] | None = None) -> int:
     BOTTOM_TEMPORAL_WINDOW = max(0, int(args.bottom_temporal_window))
     BOTTOM_TEMPORAL_MIN_VOTES = max(1, int(args.bottom_temporal_min_votes))
     proc_count = 0
+    PROFILE = ProfileRecorder(args.profile_json) if args.profile_json else None
     if EXPAND != args.expand:
         print(f"Clamped --expand from {args.expand} to {EXPAND}", flush=True)
 
     if not os.path.isdir(input_dir) and not os.path.isfile(input_dir):
         print("python yolo_mask.py {images_dir} {masks_dir}", flush=True)
         print(os.getcwd(), flush=True)
+        PROFILE = None
         return 1
 
     try:
         CLASS_IDS = parse_classes(args.classes)
     except Exception as e:
         print(f"Invalid --classes value: {e}", flush=True)
+        PROFILE = None
         return 1
 
     print("YOLO classes:", ",".join(str(x) for x in CLASS_IDS), flush=True)
@@ -600,7 +807,27 @@ def main(argv: list[str] | None = None) -> int:
     )
 
     effective_bottom_model = BOTTOM_MODEL if should_run_bottom_redetection(LEVEL, PROJECTION) else "same"
-    load_models(LEVEL, bottom_model=effective_bottom_model)
+    if PROFILE is not None:
+        PROFILE.set_settings(
+            {
+                "input_dir": str(input_dir),
+                "output_dir": str(output_dir),
+                "add_ext": bool(add_ext),
+                "level": int(LEVEL),
+                "projection": PROJECTION,
+                "expand": int(EXPAND),
+                "classes": CLASS_IDS,
+                "bottom_conf": float(BOTTOM_CONF),
+                "bottom_tta_rotations": int(BOTTOM_TTA_ROTATIONS),
+                "bottom_model": BOTTOM_MODEL,
+                "effective_bottom_model": effective_bottom_model,
+                "bottom_filter": bool(BOTTOM_FILTER),
+                "bottom_temporal_window": int(BOTTOM_TEMPORAL_WINDOW),
+                "bottom_temporal_min_votes": int(BOTTOM_TEMPORAL_MIN_VOTES),
+            }
+        )
+    with profile_timer("model.load"):
+        load_models(LEVEL, bottom_model=effective_bottom_model)
 
     # =========================
     # 連番画像を処理
@@ -634,11 +861,12 @@ def main(argv: list[str] | None = None) -> int:
                 print(f"[progress] {done}/{total}", flush=True)
 
             if BOTTOM_TEMPORAL_WINDOW > 0 and should_run_bottom_redetection(LEVEL, PROJECTION):
-                updated = apply_temporal_bottom_propagation(
-                    process_results,
-                    BOTTOM_TEMPORAL_WINDOW,
-                    min_votes=BOTTOM_TEMPORAL_MIN_VOTES,
-                )
+                with profile_timer("temporal.total"):
+                    updated = apply_temporal_bottom_propagation(
+                        process_results,
+                        BOTTOM_TEMPORAL_WINDOW,
+                        min_votes=BOTTOM_TEMPORAL_MIN_VOTES,
+                    )
                 print(f"[temporal] bottom masks updated: {updated}", flush=True)
     else:
         # 単一ファイルの処理
@@ -649,6 +877,12 @@ def main(argv: list[str] | None = None) -> int:
         process_file(source_dir, output_dir, fname, add_ext)
         print(f"Processed: {fname}", flush=True)
         print("[progress] 1/1", flush=True)
+
+    if PROFILE is not None:
+        profile = PROFILE
+        profile.write()
+        print(f"[profile] wrote {profile.output_path}", flush=True)
+        PROFILE = None
 
     return 0
 
