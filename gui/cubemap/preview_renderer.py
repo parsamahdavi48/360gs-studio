@@ -38,7 +38,7 @@ _LABEL_SCALE = 0.45
 _LABEL_THICKNESS = 1
 _LABEL_PAD_X = 4
 _LABEL_PAD_Y = 3
-_HIGHLIGHT_FILL_ALPHA = 0.18
+_HIGHLIGHT_FILL_ALPHA = 0.34
 _PREVIEW_CACHE_LIMIT = 4
 
 
@@ -172,11 +172,11 @@ def _draw_view_polyline(
 ) -> None:
     if highlighted:
         overlay = img.copy()
-        cv2.polylines(overlay, [pts], False, color, 16, lineType=cv2.LINE_AA)
-        img[:] = cv2.addWeighted(overlay, 0.22, img, 0.78, 0)
-        cv2.polylines(img, [pts], False, _LINE_OUTER, 10, lineType=cv2.LINE_AA)
-        cv2.polylines(img, [pts], False, _LINE_MID, 7, lineType=cv2.LINE_AA)
-        cv2.polylines(img, [pts], False, color, 5, lineType=cv2.LINE_AA)
+        cv2.polylines(overlay, [pts], False, color, 22, lineType=cv2.LINE_AA)
+        img[:] = cv2.addWeighted(overlay, 0.42, img, 0.58, 0)
+        cv2.polylines(img, [pts], False, _LINE_OUTER, 14, lineType=cv2.LINE_AA)
+        cv2.polylines(img, [pts], False, _LINE_MID, 10, lineType=cv2.LINE_AA)
+        cv2.polylines(img, [pts], False, color, 7, lineType=cv2.LINE_AA)
         return
     if enabled:
         # Black/white/color halo keeps the line readable on both dark and bright footage.
@@ -342,12 +342,18 @@ def _draw_view_label_box(
 
     roi = img[y1:y2, x1:x2]
     if roi.size:
-        bg = np.zeros_like(roi)
-        img[y1:y2, x1:x2] = cv2.addWeighted(bg, 0.70, roi, 0.30, 0)
+        if highlighted:
+            bg = np.full_like(roi, color)
+            img[y1:y2, x1:x2] = cv2.addWeighted(bg, 0.42, roi, 0.58, 0)
+        else:
+            bg = np.zeros_like(roi)
+            img[y1:y2, x1:x2] = cv2.addWeighted(bg, 0.70, roi, 0.30, 0)
     border = color if highlighted else _LINE_MID
-    cv2.rectangle(img, (x1, y1), (x2, y2), border, 1, lineType=cv2.LINE_AA)
-    cv2.putText(img, label, origin, _LABEL_FONT, _LABEL_SCALE, _LINE_OUTER, 3, lineType=cv2.LINE_AA)
-    cv2.putText(img, label, origin, _LABEL_FONT, _LABEL_SCALE, color, _LABEL_THICKNESS, lineType=cv2.LINE_AA)
+    cv2.rectangle(img, (x1, y1), (x2, y2), _LINE_OUTER, 4 if highlighted else 2, lineType=cv2.LINE_AA)
+    cv2.rectangle(img, (x1, y1), (x2, y2), border, 2 if highlighted else 1, lineType=cv2.LINE_AA)
+    cv2.putText(img, label, origin, _LABEL_FONT, _LABEL_SCALE, _LINE_OUTER, 4 if highlighted else 3, lineType=cv2.LINE_AA)
+    text_color = _LINE_MID if highlighted else color
+    cv2.putText(img, label, origin, _LABEL_FONT, _LABEL_SCALE, text_color, 2 if highlighted else _LABEL_THICKNESS, lineType=cv2.LINE_AA)
 
 
 class PreviewWidget(QWidget):

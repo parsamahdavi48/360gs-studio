@@ -146,6 +146,17 @@ def test_cubemap_preview_highlight_fill_tints_only_masked_area() -> None:
     assert tuple(img[12, 8]) == (100, 100, 100)
 
 
+def test_cubemap_preview_default_highlight_fill_is_visible() -> None:
+    img = np.full((24, 48, 3), 100, dtype=np.uint8)
+    mask = np.zeros((24, 48), dtype=bool)
+    mask[:, 20:28] = True
+
+    _apply_view_fill(img, mask, (0, 200, 250))
+
+    assert tuple(img[12, 24]) == (66, 134, 151)
+    assert tuple(img[12, 8]) == (100, 100, 100)
+
+
 def test_cubemap_preview_pitch_palette_uses_five_distinct_colors() -> None:
     views = [{"pitch": pitch} for pitch in [-60.0, -30.0, 0.0, 30.0, 60.0]]
 
