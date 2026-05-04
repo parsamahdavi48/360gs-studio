@@ -32,7 +32,7 @@ Metashapeを使わず、抽出済みの360°画像からCOLMAP Rig形式の視�
 
 - 360°動画からSfM向けフレームを抽出
 - 抽出フレームを単一プレビュー/サムネイル一覧で確認し、Windows Explorer式のサムネイル選択で採用/除外を整理
-- YOLO + SAM2.1、任意のMask2Former空検出、ローカルSAM3.1空検出テストによるマスク生成
+- YOLO + SAM2.1、任意のMask2Former空検出、ローカルSAM3.1空/人物マスクテストによるマスク生成
 - 360°画像の下部に写りやすい撮影者、三脚、手元の検出強化
 - スティッチ境界、白飛び領域、ユーザー指定PNGカスタムマスクの合成
 - 大量画像でも使いやすいキャッシュ付きの単一プレビュー/サムネイル一覧で、マスク結果を確認しながら調整
@@ -62,7 +62,7 @@ update_venv.bat
 
 `requirements/` の固定済み既知良好セットで作り直す場合は `update_venv.bat --locked` を使います。
 
-YOLO/SAM2およびMask2Former空検出のモデルファイルは初回利用時に自動ダウンロードされる場合があります。ローカルのYOLO/SAM重みは `models/ultralytics/`、Mask2Former空検出重みは `models/mask2former-swin-large-ade-semantic/` に配置できます。ローカルSAM3.1空検出テストでは `models/sam3.1/sam3.1_multiplex.pt` を参照し、自動ダウンロードは行いません。互換性のため、リポジトリ直下の `.pt` も引き続き検出します。リリースZIPにはモデル重みや生成データは含めていません。これらの第三者ライブラリおよびモデル重みには別ライセンスが適用されます。詳細は [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md) を参照してください。
+YOLO/SAM2およびMask2Former空検出のモデルファイルは初回利用時に自動ダウンロードされる場合があります。ローカルのYOLO/SAM重みは `models/ultralytics/`、Mask2Former空検出重みは `models/mask2former-swin-large-ade-semantic/` に配置できます。ローカルSAM3.1空/人物マスクテストでは `models/sam3.1/sam3.1_multiplex.pt` を参照し、自動ダウンロードは行いません。互換性のため、リポジトリ直下の `.pt` も引き続き検出します。リリースZIPにはモデル重みや生成データは含めていません。これらの第三者ライブラリおよびモデル重みには別ライセンスが適用されます。詳細は [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md) を参照してください。
 
 ## GUIワークフロー
 
@@ -82,7 +82,7 @@ YOLO/SAM2およびMask2Former空検出のモデルファイルは初回利用時
 | --- | --- | --- |
 | 1. フレーム抽出 | 360°動画からエクイレクタングラー静止画を抽出 | 固定間隔 + 変化補正 |
 | 2. フレーム確認 | 抽出フレームを単一/サムネイル表示で確認し、採用/除外をCSVに反映 | 低品質候補や不要フレームの確認に対応 |
-| 3. マスク生成 | YOLO検出、スティッチ境界、白飛び、カスタムマスクを生成 | YOLO検出ON、360°画像は高品質設定 |
+| 3. マスク生成 | 人物、スティッチ境界、白飛び、空、カスタムマスクを生成 | 人物ON、360°画像は高品質設定 |
 | 4. 書き出し | SfM結果からの3DGS出力、またはCOLMAP Rig視点画像を書き出し | Metashapeインポート / LichtFeld / Full / Cube6 |
 
 ## 推奨ワークフロー: Metashapeルート
@@ -146,7 +146,7 @@ GUIは以下のCLIエンジンを呼び出しています。必要なら単体�
 | `apply_frame_decisions.py` | CSVの採用/除外判定を反映 | [JP](doc/apply_frame_decisions.md) |
 | `review_frames.py` | フレーム確認GUI | [JP](doc/review_frames.md) |
 | `yolo_mask.py` | YOLO+SAM2.1 マスク生成 | [JP](doc/yolo_mask.ja.md) |
-| `sky_mask.py` | Mask2Former ADE20KまたはローカルSAM3.1による空マスク生成 | [JP](doc/sky_mask.ja.md) |
+| `sky_mask.py` | Mask2Former ADE20K空検出とローカルSAM3.1 prompt検証 | [JP](doc/sky_mask.ja.md) |
 | `stitch_mask.py` | スティッチ境界マスク生成 | [JP](doc/stitch_mask.ja.md) |
 | `overexposure_mask.py` | 白飛びマスク生成 | - |
 | `custom_mask.py` | ユーザー指定PNGマスクをAND合成 | [JP](doc/custom_mask.ja.md) |
@@ -157,7 +157,7 @@ GUIは以下のCLIエンジンを呼び出しています。必要なら単体�
 
 MIT License。詳細は [LICENSE](LICENSE) を参照してください。
 
-YOLO/SAMおよび空マスク機能では、別ライセンスの第三者ライブラリおよびモデル重みを使用します。詳細は [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md) を参照してください。
+人物および空マスク機能では、別ライセンスの第三者ライブラリおよびモデル重みを使用します。詳細は [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md) を参照してください。
 
 Original code by [tetraface Inc.](https://github.com/tetraface)
 Fork extensions by [stechdrive](https://github.com/stechdrive)

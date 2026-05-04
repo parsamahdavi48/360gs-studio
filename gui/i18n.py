@@ -193,6 +193,9 @@ _JA: dict[str, str] = {
     "YOLO_LEVEL_BEST": "3 最高",
     "YOLO_EXPAND": "マスク拡張 (px)",
     "YOLO_EXPAND_COMPACT": "拡張",
+    "PERSON_MODEL": "人物モデル",
+    "PERSON_MODEL_YOLO_SAM": "YOLO/SAM2.1",
+    "PERSON_MODEL_SAM31": "SAM3.1",
     "YOLO_BOTTOM_ENHANCE": "下部検出強化",
     "YOLO_BOTTOM_STANDARD": "標準",
     "YOLO_BOTTOM_STRONG": "高",
@@ -206,7 +209,7 @@ _JA: dict[str, str] = {
     "MASK_IMAGE_TYPE": "画像タイプ:",
     "MASK_IMAGE_TYPE_EQUIRECT": "360°",
     "MASK_IMAGE_TYPE_NORMAL": "通常",
-    "MASK_TASK_YOLO": "YOLO",
+    "MASK_TASK_YOLO": "人物",
     "MASK_TASK_STITCH": "スティッチ",
     "MASK_TASK_OVEREXPOSURE": "白飛び",
     "MASK_TASK_SKY": "空",
@@ -381,11 +384,11 @@ _JA: dict[str, str] = {
     "MASK_PREVIEW_FAILED": "マスクプレビューに失敗しました",
     "MASK_PREVIEW_CLEARED": "プレビューを解除しました",
     "MASK_PREVIEW_NO_IMAGE": "プレビュー画像を選択してください",
-    "MASK_PREVIEW_YOLO_EXISTING": "YOLO: 既存マスク",
-    "MASK_PREVIEW_YOLO_TEMP": "YOLO: プレビュー結果",
-    "MASK_PREVIEW_YOLO_PENDING": "YOLO: 実行後に反映",
-    "MASK_PREVIEW_YOLO_RUNNING": "YOLO実行中...",
-    "MASK_PREVIEW_YOLO_FAILED": "YOLO/SAMプレビューに失敗しました",
+    "MASK_PREVIEW_YOLO_EXISTING": "人物: 既存マスク",
+    "MASK_PREVIEW_YOLO_TEMP": "人物: プレビュー結果",
+    "MASK_PREVIEW_YOLO_PENDING": "人物: 実行後に反映",
+    "MASK_PREVIEW_YOLO_RUNNING": "人物マスク実行中...",
+    "MASK_PREVIEW_YOLO_FAILED": "人物マスクプレビューに失敗しました",
     "MASK_PREVIEW_YOLO_NO_IMAGE": "プレビュー画像を選択してください",
     "MASK_PREVIEW_SKY_EXISTING": "空: 既存マスク",
     "MASK_PREVIEW_SKY_PENDING": "空: 実行後に反映",
@@ -394,7 +397,8 @@ _JA: dict[str, str] = {
         "YOLO/SAMマスク機能では、第三者が提供するモデルファイルおよびライブラリを使用します。\n\n"
         "このアプリ本体のソースコードはMIT Licenseですが、YOLO/SAM機能で使用されるモデルおよび関連ライブラリには別のライセンス条件が適用されます。\n\n"
         "- Ultralytics YOLO / ultralytics: AGPL-3.0 または Ultralytics Enterprise License\n"
-        "- Meta SAM2/SAM2.1: Apache License 2.0\n\n"
+        "- Meta SAM2/SAM2.1: Apache License 2.0\n"
+        "- Meta SAM3.1: SAM License（SAM3.1人物モデルを選ぶ場合）\n\n"
         "モデル重みはこのアプリには同梱されていません。初回使用時にユーザー環境へダウンロードされる場合があります。\n\n"
         "商用利用、再配布、社内展開、製品組み込み等における各ライセンス条件への適合は、利用者の責任で確認してください。"
     ),
@@ -441,9 +445,9 @@ _JA: dict[str, str] = {
     "ADD_EXT_LABEL": "マスクに拡張子を付加",
 
     # Step3 section headers
-    "YOLO_SECTION": "YOLO 検出設定",
+    "YOLO_SECTION": "人物マスク設定",
     "STITCH_OVEREXP_SECTION": "スティッチ / 白飛び設定",
-    "MASK_TAB_YOLO": "YOLO",
+    "MASK_TAB_YOLO": "人物",
     "MASK_TAB_STITCH_OVEREXP": "スティッチ/白飛び",
     "MASK_TAB_SKY": "空",
     "MASK_TAB_CUSTOM": "カスタムマスク",
@@ -653,6 +657,9 @@ _EN: dict[str, str] = {
     "YOLO_LEVEL_BEST": "3 Best",
     "YOLO_EXPAND": "Mask Expand (px)",
     "YOLO_EXPAND_COMPACT": "Expand",
+    "PERSON_MODEL": "Person Model",
+    "PERSON_MODEL_YOLO_SAM": "YOLO/SAM2.1",
+    "PERSON_MODEL_SAM31": "SAM3.1",
     "YOLO_BOTTOM_ENHANCE": "Bottom Enhance",
     "YOLO_BOTTOM_STANDARD": "Standard",
     "YOLO_BOTTOM_STRONG": "High",
@@ -666,7 +673,7 @@ _EN: dict[str, str] = {
     "MASK_IMAGE_TYPE": "Image Type:",
     "MASK_IMAGE_TYPE_EQUIRECT": "360°",
     "MASK_IMAGE_TYPE_NORMAL": "Normal",
-    "MASK_TASK_YOLO": "YOLO",
+    "MASK_TASK_YOLO": "Person",
     "MASK_TASK_STITCH": "Stitch",
     "MASK_TASK_OVEREXPOSURE": "Overexp",
     "MASK_TASK_SKY": "Sky",
@@ -841,11 +848,11 @@ _EN: dict[str, str] = {
     "MASK_PREVIEW_FAILED": "Mask preview failed",
     "MASK_PREVIEW_CLEARED": "Preview cleared",
     "MASK_PREVIEW_NO_IMAGE": "Select a preview image",
-    "MASK_PREVIEW_YOLO_EXISTING": "YOLO: existing mask",
-    "MASK_PREVIEW_YOLO_TEMP": "YOLO: preview result",
-    "MASK_PREVIEW_YOLO_PENDING": "YOLO: after generation",
-    "MASK_PREVIEW_YOLO_RUNNING": "Running YOLO...",
-    "MASK_PREVIEW_YOLO_FAILED": "YOLO/SAM preview failed",
+    "MASK_PREVIEW_YOLO_EXISTING": "Person: existing mask",
+    "MASK_PREVIEW_YOLO_TEMP": "Person: preview result",
+    "MASK_PREVIEW_YOLO_PENDING": "Person: after generation",
+    "MASK_PREVIEW_YOLO_RUNNING": "Running person mask...",
+    "MASK_PREVIEW_YOLO_FAILED": "Person mask preview failed",
     "MASK_PREVIEW_YOLO_NO_IMAGE": "Select a preview image",
     "MASK_PREVIEW_SKY_EXISTING": "Sky: existing mask",
     "MASK_PREVIEW_SKY_PENDING": "Sky: after generation",
@@ -854,7 +861,8 @@ _EN: dict[str, str] = {
         "The YOLO/SAM mask feature uses third-party model files and libraries.\n\n"
         "This application's own source code is licensed under the MIT License, but the models and related libraries used by the YOLO/SAM feature are governed by separate license terms.\n\n"
         "- Ultralytics YOLO / ultralytics: AGPL-3.0 or Ultralytics Enterprise License\n"
-        "- Meta SAM2/SAM2.1: Apache License 2.0\n\n"
+        "- Meta SAM2/SAM2.1: Apache License 2.0\n"
+        "- Meta SAM3.1: SAM License (when the SAM3.1 person backend is selected)\n\n"
         "Model weights are not included with this application. They may be downloaded to the user's environment on first use.\n\n"
         "Users are responsible for ensuring that commercial use, redistribution, internal deployment, or product integration complies with the applicable license terms."
     ),
@@ -901,9 +909,9 @@ _EN: dict[str, str] = {
     "ADD_EXT_LABEL": "Add extension to mask",
 
     # Step3 section headers
-    "YOLO_SECTION": "YOLO Detection Settings",
+    "YOLO_SECTION": "Person Mask Settings",
     "STITCH_OVEREXP_SECTION": "Stitch / Overexposure Settings",
-    "MASK_TAB_YOLO": "YOLO",
+    "MASK_TAB_YOLO": "Person",
     "MASK_TAB_STITCH_OVEREXP": "Stitch/Overexp.",
     "MASK_TAB_SKY": "Sky",
     "MASK_TAB_CUSTOM": "Custom Mask",
@@ -983,7 +991,7 @@ _TIPS_JA: dict[str, str] = {
     "IMAGES_DIR": "シーンフォルダ内の images/ を自動使用します。Step 1 のフレーム抽出結果が入る標準フォルダです",
     "MASKS_DIR": "シーンフォルダ内の masks/ を自動使用します。存在しない場合は生成時に作成されます",
     "RUN_MASKS": "現在ONのマスク処理だけで masks/ を再生成します。前回OFFだった処理結果は残りません",
-    "MASK_TASK_YOLO": "YOLO/SAMで人物などを検出してマスクに追加。初期状態は人物のみ",
+    "MASK_TASK_YOLO": "人物などを検出してマスクに追加。既定はYOLO/SAM2.1、ローカルSAM3.1 checkpointがある場合は人物プロンプトの検証にも使えます",
     "MASK_TASK_STITCH": "スティッチ境界をマスクに追加。手ブレ補正、方向ロック、AIスティッチなどで境界位置が動く素材では通常OFF",
     "MASK_TASK_STITCH_DISABLED_NORMAL": "スティッチ境界は360°エクイレクタングラー画像専用です。通常画像では使いません",
     "MASK_TASK_OVEREXPOSURE": "白飛びした画素を検出してマスクに追加。室内照明では消しすぎる場合があるため必要な時だけON",
@@ -1000,9 +1008,11 @@ _TIPS_JA: dict[str, str] = {
     "EXTERNAL_IMAGES_OPEN": "現在のシーンフォルダの images/ を開きます。なければ作成します",
     "RUN_ALL": "YOLO人物検出 → スティッチマスク → 白飛びマスクの全工程を順番に実行",
     "RUN_YOLO_STITCH": "YOLO人物検出 → スティッチマスクの2工程を実行 (白飛びは含まない)",
-    "YOLO_LEVEL": "人物検出の探索強度です。360°画像では「2 高品質」を推奨します。処理時間を優先する確認用は「1 標準」、それでも人物が漏れる場合は「3 最高」を使います。通常画像では「1 標準」から始めるのが目安です",
-    "YOLO_EXPAND": "SAM後の検出マスク境界を固定ピクセルで補正します。既定は2px。横ドラッグで調整可能。安全範囲は -16〜32px",
-    "YOLO_BOTTOM_ENHANCE": "360°画像の真下付近に写る撮影者・三脚・手元の検出漏れを減らします。下部が十分にマスクされているなら「標準」。真上から見た撮影者が漏れる場合は「高」。それでも漏れる場合だけ「最高」を使います。強くするほど処理時間が増え、床や地面を余分にマスクする場合があります",
+    "PERSON_MODEL": "人物マスクに使うモデル。既定はYOLO検出+SAM2.1、SAM3.1はローカルcheckpointへpersonプロンプトを投げる検証用です",
+    "PERSON_MODEL_SAM31": "models/sam3.1/sam3.1_multiplex.pt がある場合に使える人物マスク検証backendです",
+    "YOLO_LEVEL": "YOLO/SAM2.1人物検出の探索強度です。360°画像では「2 高品質」を推奨します。処理時間を優先する確認用は「1 標準」、それでも人物が漏れる場合は「3 最高」を使います。通常画像では「1 標準」から始めるのが目安です。人物モデルがSAM3.1のときは使いません",
+    "YOLO_EXPAND": "人物マスク境界を固定ピクセルで補正します。既定は2px。横ドラッグで調整可能。安全範囲は -16〜32px",
+    "YOLO_BOTTOM_ENHANCE": "YOLO/SAM2.1で360°画像の真下付近に写る撮影者・三脚・手元の検出漏れを減らします。下部が十分にマスクされているなら「標準」。真上から見た撮影者が漏れる場合は「高」。それでも漏れる場合だけ「最高」を使います。人物モデルがSAM3.1のときは使いません",
     "YOLO_ADD_EXT": "マスクファイル名を image.jpg.png のように元の拡張子を残す形式にする",
     "STITCH_BOUNDARY_WIDTH": "除外するスティッチ境界帯の合計幅。横ドラッグで調整できます。GUIでは安全のため0〜30度に制限。5度は従来のFOV 175相当",
     "STITCH_WORKERS": "並列処理のワーカー数。横ドラッグで調整可能。CPUコア数が目安",
@@ -1119,7 +1129,7 @@ _TIPS_EN: dict[str, str] = {
     "IMAGES_DIR": "Automatically uses images/ inside the scene folder. This is the standard output folder from Step 1.",
     "MASKS_DIR": "Automatically uses masks/ inside the scene folder. It is created during generation if missing.",
     "RUN_MASKS": "Regenerate masks/ using only the mask steps currently enabled. Results from steps that are now off are not kept.",
-    "MASK_TASK_YOLO": "Detect people or selected classes with YOLO/SAM and add them to masks. Default class is person only",
+    "MASK_TASK_YOLO": "Detect people or selected classes and add them to masks. The default backend is YOLO/SAM2.1; a local SAM3.1 checkpoint can also be tested with a person prompt",
     "MASK_TASK_STITCH": "Add stitch seam masks. Usually keep OFF for stabilized, direction-locked, or AI-stitched footage where seam positions move",
     "MASK_TASK_STITCH_DISABLED_NORMAL": "Stitch seam masks are only for equirectangular 360° images and are not used for normal images",
     "MASK_TASK_OVEREXPOSURE": "Detect blown-out pixels and add them to masks",
@@ -1136,9 +1146,11 @@ _TIPS_EN: dict[str, str] = {
     "EXTERNAL_IMAGES_OPEN": "Open the current scene's images/ folder. It is created if missing",
     "RUN_ALL": "Run YOLO person detection, stitch mask, and overexposure mask in sequence",
     "RUN_YOLO_STITCH": "Run YOLO person detection then stitch mask (no overexposure)",
-    "YOLO_LEVEL": "Detection strength for people and selected classes. For 360° images, start with 2 Quality. Use 1 Standard for faster checks, and 3 Best only if people still leak through. For normal images, start with 1 Standard",
-    "YOLO_EXPAND": "Adjust the SAM-refined mask boundary by fixed pixels. Default is 2px. Drag horizontally to adjust. Safe range: -16 to 32px",
-    "YOLO_BOTTOM_ENHANCE": "Reduces missed masks near the bottom of 360° images, such as top-down photographers, tripods, and hands. Use Standard when the bottom is already masked well. Use High when top-down photographers remain. Use Max only if they still remain. Higher settings take longer and can mask extra floor or ground",
+    "PERSON_MODEL": "Person mask backend. The default is YOLO detection plus SAM2.1; SAM3.1 is an experimental path that sends a person prompt to the local checkpoint",
+    "PERSON_MODEL_SAM31": "Experimental person-mask backend available when models/sam3.1/sam3.1_multiplex.pt exists",
+    "YOLO_LEVEL": "Detection strength for the YOLO/SAM2.1 person backend. For 360° images, start with 2 Quality. Use 1 Standard for faster checks, and 3 Best only if people still leak through. For normal images, start with 1 Standard. Not used by the SAM3.1 person backend",
+    "YOLO_EXPAND": "Adjust the person mask boundary by fixed pixels. Default is 2px. Drag horizontally to adjust. Safe range: -16 to 32px",
+    "YOLO_BOTTOM_ENHANCE": "With YOLO/SAM2.1, reduces missed masks near the bottom of 360° images, such as top-down photographers, tripods, and hands. Use Standard when the bottom is already masked well. Use High when top-down photographers remain. Use Max only if they still remain. Not used by the SAM3.1 person backend",
     "YOLO_ADD_EXT": "Name mask files as image.jpg.png (keeping the original extension)",
     "STITCH_BOUNDARY_WIDTH": "Total stitch seam band to exclude. Drag horizontally to adjust. The GUI clamps this to 0-30 degrees for safety. 5 degrees equals legacy FOV 175",
     "STITCH_WORKERS": "Number of parallel workers. Drag horizontally to adjust. Use CPU core count as a guide",

@@ -498,10 +498,10 @@ def run(
 
     backend = normalize_backend(backend)
     model_source = resolve_model_source(model_dir=model_dir, backend=backend)
-    print(f"Sky backend: {backend}", flush=True)
-    print(f"Sky model: {model_source}", flush=True)
+    print(f"Mask backend: {backend}", flush=True)
+    print(f"Mask model: {model_source}", flush=True)
     print(
-        "Sky settings:",
+        "Mask settings:",
         f"projection={options.projection}",
         f"mode={options.mode}",
         f"inference_size={options.inference_size}",
@@ -537,10 +537,10 @@ def run(
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Detect sky regions and merge masks.")
+    parser = argparse.ArgumentParser(description="Detect sky regions or SAM3.1 prompt regions and merge masks.")
     parser.add_argument("images", help="Source image file or directory")
     parser.add_argument("masks_dir", help="Mask output directory")
-    parser.add_argument("--backend", choices=SUPPORTED_BACKENDS, default=DEFAULT_BACKEND, help="Sky segmentation backend")
+    parser.add_argument("--backend", choices=SUPPORTED_BACKENDS, default=DEFAULT_BACKEND, help="Segmentation backend")
     parser.add_argument("--model-dir", default=None, help="Local model directory or checkpoint override")
     parser.add_argument("--device", choices=("auto", "cpu", "cuda"), default="auto", help="Inference device")
     parser.add_argument("--projection", choices=("equirect", "normal"), default="equirect")

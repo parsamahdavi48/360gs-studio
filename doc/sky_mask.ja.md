@@ -7,7 +7,9 @@
 AND合成するため、YOLO/SAM、スティッチ境界、白飛び、カスタムマスクと組み合わせて使えます。
 
 既定backendは Mask2Former ADE20K semantic segmentation です。ユーザーがMeta SAM3.1
-checkpointをローカルに配置した場合は、実験backendとしてSAM3.1も使えます。
+checkpointをローカルに配置した場合は、実験backendとしてSAM3.1も使えます。SAM3.1経路は
+テキストプロンプト方式で、既定は `sky` です。GUIでは同じローカルbackendに
+`--sam-prompt person` を渡して人物マスクの検証にも使います。
 
 360°エクイレクタングラー画像では、既定の `hybrid` モードで直処理と上部投影ビューを合成し、
 極付近の歪みによる検出漏れを減らします。
@@ -30,7 +32,7 @@ python sky_mask.py [images_dir_or_file] [masks_dir] [--backend mask2former|sam31
 - `--min-area-ratio R`: 小さな空候補を画像面積比で除去。
 - `--no-top-connected`: 上端につながらない空候補も残します。
 - `--model-dir PATH`: ローカルモデルディレクトリ、またはSAM3.1 checkpointを明示。
-- `--sam-prompt TEXT`: SAM3.1 backendに渡すテキストプロンプト（既定: `sky`）。
+- `--sam-prompt TEXT`: SAM3.1 backendに渡すテキストプロンプト（既定: `sky`。GUIのSAM3.1人物マスク検証では `person`）。
 - `--device auto|cpu|cuda`: 推論デバイス（既定: `auto`）。
 - `--replace`: 既存マスクを無視して空マスクだけを書き込みます。
 
@@ -44,6 +46,12 @@ python sky_mask.py .\images .\masks --projection equirect --mode hybrid --infere
 
 ```bash
 python sky_mask.py .\images .\masks --min-score 0.8 --expand -2
+```
+
+SAM3.1人物プロンプトの簡易テスト:
+
+```bash
+python sky_mask.py .\images .\masks --backend sam31 --mode direct --inference-size 1008 --sam-prompt person --min-score 0.5 --no-top-connected --replace
 ```
 
 ## モデルファイル

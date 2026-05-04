@@ -201,6 +201,8 @@ def test_mask_numeric_labels_share_field_tooltips() -> None:
     assert step.projection_label.toolTip() == i18n.tip("MASK_IMAGE_TYPE")
     assert step.projection_buttons["equirect"].toolTip() == i18n.tip("MASK_IMAGE_TYPE_EQUIRECT")
     assert step.projection_buttons["normal"].toolTip() == i18n.tip("MASK_IMAGE_TYPE_NORMAL")
+    assert step.person_backend_label.toolTip() == i18n.tip("PERSON_MODEL")
+    assert step.person_backend_combo.toolTip() == i18n.tip("PERSON_MODEL")
     assert _label(step, i18n.t("YOLO_EXPAND_COMPACT")).toolTip() == i18n.tip("YOLO_EXPAND")
     assert step.yolo_bottom_enhance_label.toolTip() == i18n.tip("YOLO_BOTTOM_ENHANCE")
     assert _label(step, i18n.STITCH_BOUNDARY_WIDTH).toolTip() == i18n.tip("STITCH_BOUNDARY_WIDTH")
@@ -230,6 +232,8 @@ def test_mask_yolo_compact_row_preserves_width_in_english() -> None:
         app = QApplication.instance() or QApplication([])
         step = MaskStep(Path.cwd())
         content_width = SETTINGS_PANE_WIDTH - SETTINGS_PANE_MARGINS[2]
+        assert step.person_backend_combo.itemText(0) == "YOLO/SAM2.1"
+        assert step.person_backend_combo.itemText(1) == "SAM3.1"
         assert step.yolo_settings_row.sizeHint().width() <= content_width
         assert step.yolo_bottom_settings_row.sizeHint().width() <= content_width
         assert step.yolo_bottom_enhance_combo.itemText(1) == "High"

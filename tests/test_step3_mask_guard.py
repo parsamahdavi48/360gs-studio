@@ -101,6 +101,9 @@ def test_mask_step_yolo_level_and_expand_share_compact_row() -> None:
     content_width = SETTINGS_PANE_WIDTH - SETTINGS_PANE_MARGINS[2]
     assert step.yolo_settings_row.sizeHint().width() <= content_width
     assert step.yolo_level_combo.currentIndex() == 2
+    assert step.person_backend_label.toolTip() == i18n.tip("PERSON_MODEL")
+    assert step.person_backend_combo.itemText(0) == i18n.t("PERSON_MODEL_YOLO_SAM")
+    assert step.person_backend_combo.itemText(1) == i18n.t("PERSON_MODEL_SAM31")
     assert step.yolo_level_label.toolTip() == i18n.tip("YOLO_LEVEL")
     assert step.yolo_expand_label.toolTip() == i18n.tip("YOLO_EXPAND")
     assert step.yolo_bottom_enhance_label.toolTip() == i18n.tip("YOLO_BOTTOM_ENHANCE")
@@ -421,6 +424,41 @@ def test_mask_step_sky_mask_can_select_sam31_backend(tmp_path: Path, monkeypatch
     cmd = commands[0][1]
     assert cmd[cmd.index("--backend") + 1] == "sam31"
     assert cmd[cmd.index("--inference-size") + 1] == "1008"
+
+
+def test_mask_step_person_mask_can_select_sam31_backend(tmp_path: Path, monkeypatch) -> None:
+    _app()
+    scene = _write_scene(tmp_path, drop_exists=False)
+    step = MaskStep(Path.cwd())
+    step.set_scene_dir(str(scene))
+    checkpoint = scene / "sam3.1_multiplex.pt"
+    checkpoint.write_bytes(b"checkpoint")
+    monkeypatch.setattr(step, "_sam31_checkpoint_path", lambda: checkpoint)
+    step._update_person_backend_availability()
+
+    step.person_backend_combo.setCurrentIndex(1)
+    commands = step.build_commands()
+
+    assert [phase for phase, _cmd in commands] == ["yolo"]
+    cmd = commands[0][1]
+    assert cmd[:5] == [
+        sys.executable,
+        "-u",
+        str(Path.cwd() / "sky_mask.py"),
+        str(scene / "images"),
+        str(scene / "masks"),
+    ]
+    assert cmd[cmd.index("--backend") + 1] == "sam31"
+    assert cmd[cmd.index("--mode") + 1] == "direct"
+    assert cmd[cmd.index("--inference-size") + 1] == "1008"
+    assert cmd[cmd.index("--sam-prompt") + 1] == "person"
+    assert cmd[cmd.index("--min-score") + 1] == "0.5"
+    assert "--no-top-connected" in cmd
+    assert "--replace" in cmd
+    assert not step.yolo_level_combo.isEnabled()
+    assert not step.yolo_bottom_enhance_combo.isEnabled()
+    assert not step.yolo_class_list_section.isEnabled()
+    assert step.yolo_expand_edit.isEnabled()
 
 
 def test_mask_step_stitch_only_initializes_masks_before_merging(tmp_path: Path) -> None:

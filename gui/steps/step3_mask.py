@@ -1,4 +1,4 @@
-"""Step 3: マスク生成 (YOLO + スティッチ + 白飛び + 空 + カスタム)"""
+"""Step 3: マスク生成 (人物 + スティッチ + 白飛び + 空 + カスタム)"""
 from __future__ import annotations
 
 import os
@@ -74,6 +74,10 @@ _STITCH_BOUNDARY_DEFAULT = 5.0
 _YOLO_EXPAND_MIN = -16
 _YOLO_EXPAND_MAX = 32
 _YOLO_EXPAND_DEFAULT = 2
+_PERSON_BACKENDS = ("yolo_sam", "sam31")
+_PERSON_SAM31_PROMPT = "person"
+_PERSON_SAM31_INFERENCE_SIZE = "1008"
+_PERSON_SAM31_MIN_SCORE = "0.5"
 _YOLO_BOTTOM_PRESETS: tuple[tuple[str, list[str]], ...] = (
     ("standard", []),
     (
@@ -118,7 +122,7 @@ _IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".tif", ".tiff"}
 _PROJECTION_EQUIRECT = "equirect"
 _PROJECTION_NORMAL = "normal"
 _LICENSE_NOTICE_SECTION = "license_notices"
-_YOLO_SAM_NOTICE_VERSION = 1
+_YOLO_SAM_NOTICE_VERSION = 3
 _YOLO_SAM_NOTICE_KEY = "yolo_sam_models_ack_version"
 _SKY_NOTICE_VERSION = 2
 _SKY_NOTICE_KEY = "sky_models_ack_version"
@@ -282,11 +286,32 @@ class MaskStep(BaseStepWidget):
         self.mask_settings_tabs.setObjectName("maskSettingsTabs")
         layout.addWidget(self.mask_settings_tabs)
 
-        # --- YOLO設定 ---
+        # --- 人物マスク設定 ---
         self.yolo_section = QWidget()
         yolo_layout = QVBoxLayout(self.yolo_section)
         yolo_layout.setContentsMargins(8, 8, 8, 8)
         yolo_layout.setSpacing(6)
+
+        person_backend_row_widget = QWidget()
+        person_backend_row = QHBoxLayout(person_backend_row_widget)
+        person_backend_row.setContentsMargins(0, 0, 0, 0)
+        person_backend_row.setSpacing(6)
+        self.person_backend_label = QLabel(i18n.t("PERSON_MODEL"))
+        self.person_backend_label.setToolTip(i18n.tip("PERSON_MODEL"))
+        person_backend_row.addWidget(self.person_backend_label)
+        self.person_backend_combo = QComboBox()
+        self.person_backend_combo.setToolTip(i18n.tip("PERSON_MODEL"))
+        self.person_backend_combo.addItems(
+            [
+                i18n.t("PERSON_MODEL_YOLO_SAM"),
+                i18n.t("PERSON_MODEL_SAM31"),
+            ]
+        )
+        self.person_backend_combo.setFixedWidth(132)
+        person_backend_row.addWidget(self.person_backend_combo)
+        person_backend_row.addStretch()
+        yolo_layout.addWidget(person_backend_row_widget)
+
         yolo_settings_row_widget = QWidget()
         yolo_settings_row = QHBoxLayout(yolo_settings_row_widget)
         yolo_settings_row.setContentsMargins(0, 0, 0, 0)
@@ -354,6 +379,7 @@ class MaskStep(BaseStepWidget):
         yolo_layout.addWidget(bottom_settings_row_widget)
 
         class_list_section = CollapsibleSection(i18n.t("YOLO_CLASS_LIST_SECTION"), expanded=False)
+        self.yolo_class_list_section = class_list_section
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
@@ -618,6 +644,7 @@ class MaskStep(BaseStepWidget):
         self.custom_mask_browse_btn.clicked.connect(lambda _checked=False: self._browse_custom_mask(activate=True))
         self.custom_mask_clear_btn.clicked.connect(lambda _checked=False: self._clear_custom_mask_path())
         self.stitch_boundary_width_edit.valueChanged.connect(lambda _: self._schedule_render_mask_preview())
+        self.person_backend_combo.currentIndexChanged.connect(lambda _: self._on_person_backend_changed())
         self.yolo_level_combo.currentIndexChanged.connect(lambda _: self._schedule_render_mask_preview())
         self.yolo_expand_edit.valueChanged.connect(lambda _: self._schedule_render_mask_preview())
         self.yolo_bottom_enhance_combo.currentIndexChanged.connect(lambda _: self._schedule_render_mask_preview())
@@ -760,6 +787,16 @@ class MaskStep(BaseStepWidget):
     def _selected_classes(self) -> list[int]:
         return [i for i, cb in enumerate(self.class_cbs) if cb.isChecked()]
 
+    def _person_backend_arg(self) -> str:
+        idx = self.person_backend_combo.currentIndex()
+        return _PERSON_BACKENDS[max(0, min(idx, len(_PERSON_BACKENDS) - 1))]
+
+    def _person_uses_sam31(self) -> bool:
+        return self._person_backend_arg() == "sam31"
+
+    def _on_person_backend_changed(self) -> None:
+        self._update_task_controls()
+
     def _yolo_expand_arg(self) -> str:
         return str(self.yolo_expand_edit.value())
 
@@ -775,6 +812,9 @@ class MaskStep(BaseStepWidget):
 
     def _sam31_checkpoint_path(self) -> Path:
         return self.base_dir / _SKY_SAM31_CHECKPOINT
+
+    def _sam31_available(self) -> bool:
+        return self._sam31_checkpoint_path().is_file()
 
     def _on_sky_backend_changed(self) -> None:
         if self._sky_backend_arg() == "sam31" and self.sky_inference_size_combo.currentText() != _SKY_SAM31_INFERENCE_SIZE:
@@ -833,8 +873,17 @@ class MaskStep(BaseStepWidget):
         self.external_images_panel.setVisible(not equirect)
         self.yolo_section.setEnabled(yolo_enabled)
         self.sky_section.setEnabled(sky_enabled)
-        self.yolo_bottom_enhance_label.setEnabled(yolo_enabled and equirect)
-        self.yolo_bottom_enhance_combo.setEnabled(yolo_enabled and equirect)
+        self._update_person_backend_availability()
+        person_sam31 = self._person_uses_sam31()
+        yolo_sam_enabled = yolo_enabled and not person_sam31
+        self.yolo_level_label.setEnabled(yolo_sam_enabled)
+        self.yolo_level_combo.setEnabled(yolo_sam_enabled)
+        self.yolo_expand_label.setEnabled(yolo_enabled)
+        self.yolo_expand_edit.setEnabled(yolo_enabled)
+        self.yolo_bottom_settings_row.setEnabled(yolo_sam_enabled and equirect)
+        self.yolo_bottom_enhance_label.setEnabled(yolo_sam_enabled and equirect)
+        self.yolo_bottom_enhance_combo.setEnabled(yolo_sam_enabled and equirect)
+        self.yolo_class_list_section.setEnabled(yolo_sam_enabled)
         self.run_stitch_cb.setEnabled(equirect)
         self.run_stitch_cb.setToolTip(
             i18n.tip("MASK_TASK_STITCH") if equirect else i18n.tip("MASK_TASK_STITCH_DISABLED_NORMAL")
@@ -849,8 +898,24 @@ class MaskStep(BaseStepWidget):
         self._render_mask_preview()
         self._update_ready_status()
 
+    def _update_person_backend_availability(self) -> None:
+        sam_available = self._sam31_available()
+        model = self.person_backend_combo.model()
+        item = model.item(1) if hasattr(model, "item") else None
+        if item is not None:
+            item.setEnabled(sam_available)
+            item.setToolTip(
+                i18n.tip("PERSON_MODEL_SAM31") if sam_available else i18n.t("SKY_MODEL_SAM31_MISSING")
+            )
+        if not sam_available and self._person_uses_sam31():
+            self.person_backend_combo.blockSignals(True)
+            try:
+                self.person_backend_combo.setCurrentIndex(0)
+            finally:
+                self.person_backend_combo.blockSignals(False)
+
     def _update_sky_backend_availability(self) -> None:
-        sam_available = self._sam31_checkpoint_path().is_file()
+        sam_available = self._sam31_available()
         model = self.sky_backend_combo.model()
         item = model.item(1) if hasattr(model, "item") else None
         if item is not None:
@@ -1062,6 +1127,7 @@ class MaskStep(BaseStepWidget):
     def _mask_generation_settings_key(self) -> tuple:
         return (
             self._projection(),
+            self._person_backend_arg(),
             self.yolo_level_combo.currentIndex(),
             int(self.yolo_expand_edit.value()),
             tuple(self._selected_classes()),
@@ -1251,6 +1317,8 @@ class MaskStep(BaseStepWidget):
             raise ValueError("画像フォルダが指定されていません")
         if not masks:
             raise ValueError("マスクフォルダが指定されていません")
+        if self._person_uses_sam31():
+            return self._build_sam31_prompt_cmd(images, masks, prompt=_PERSON_SAM31_PROMPT, replace=True)
 
         script = self.base_dir / "yolo_mask.py"
         if not script.exists():
@@ -1272,6 +1340,9 @@ class MaskStep(BaseStepWidget):
         return cmd
 
     def _build_yolo_preview_cmd(self, image_path: Path, output_dir: Path) -> list[str]:
+        if self._person_uses_sam31():
+            return self._build_sam31_prompt_cmd(str(image_path), str(output_dir), prompt=_PERSON_SAM31_PROMPT, replace=True)
+
         script = self.base_dir / "yolo_mask.py"
         if not script.exists():
             raise FileNotFoundError(f"yolo_mask.py が見つかりません: {script}")
@@ -1304,6 +1375,35 @@ class MaskStep(BaseStepWidget):
     def _build_yolo_current_cmd(self, image_path: Path, masks_root: Path | None = None) -> list[str]:
         output_dir = self._mask_output_dir_for_image(image_path, masks_root=masks_root)
         return self._build_yolo_preview_cmd(image_path, output_dir)
+
+    def _build_sam31_prompt_cmd(
+        self,
+        images: str | Path,
+        masks: str | Path,
+        *,
+        prompt: str,
+        replace: bool = False,
+    ) -> list[str]:
+        script = self.base_dir / "sky_mask.py"
+        if not script.exists():
+            raise FileNotFoundError(f"sky_mask.py が見つかりません: {script}")
+
+        cmd = [
+            sys.executable, "-u", str(script),
+            str(images), str(masks),
+            "--backend", "sam31",
+            "--projection", self._projection(),
+            "--mode", "direct",
+            "--inference-size", _PERSON_SAM31_INFERENCE_SIZE,
+            "--expand", self._yolo_expand_arg(),
+            "--min-score", _PERSON_SAM31_MIN_SCORE,
+            "--min-area-ratio", "0",
+            "--no-top-connected",
+            "--sam-prompt", prompt,
+        ]
+        if replace:
+            cmd.append("--replace")
+        return cmd
 
     def _build_init_masks_cmd(self) -> list[str]:
         images = self._images_dir_text()

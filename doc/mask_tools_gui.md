@@ -4,8 +4,8 @@
 
 Step 3 in STechDrive 3DGS Utils is a PySide6 wrapper around:
 
-- `yolo_mask.py` (person mask generation)
-- `sky_mask.py` (Mask2Former ADE20K sky masking, with optional local SAM3.1 backend)
+- `yolo_mask.py` (default YOLO/SAM2.1 person mask generation)
+- `sky_mask.py` (Mask2Former ADE20K sky masking, with optional local SAM3.1 prompt backend)
 - `stitch_mask.py` (stitch-region masking)
 - `overexposure_mask.py` (overexposure masking)
 - `custom_mask.py` (user-provided static mask merging)
@@ -21,21 +21,25 @@ run_gui.bat --scene ./scene01
 ## Main Fields
 
 - `Scene Folder`: base folder. Step 3 fills `images` and `masks` from it.
-- `Images Folder`: input images for YOLO/SAM masking.
+- `Images Folder`: input images for person, sky, and other mask generation.
 - `Masks Folder`: output masks; also stitch input/output.
 - `Image Type`:
   - `360°`: equirectangular 360° images. Enables stitch seam masking and 360° bottom-view re-detection.
   - `Normal`: normal video frames or still-camera image sequences. Disables stitch seam masking and 360° bottom-view re-detection.
 - Settings tabs:
-  - `YOLO`: YOLO/SAM strength, expansion, bottom enhancement, and detection classes.
+  - `Person`: person mask backend, YOLO/SAM strength, expansion, bottom enhancement, and detection classes.
   - `Stitch/Overexp.`: stitch seam and overexposure mask settings.
   - `Sky`: sky detection model and mask settings.
   - `Custom Mask`: load or clear the user-provided PNG mask.
-- `YOLO Level`: forwarded to `yolo_mask.py --level` (0-3).
+- `Person Model`: selects the person-mask backend.
+  - `YOLO/SAM2.1`: default path. YOLO detects people or selected classes, then SAM2.1 refines the mask.
+  - `SAM3.1`: local test path. It runs `sky_mask.py --backend sam31 --sam-prompt person` when `models/sam3.1/sam3.1_multiplex.pt` exists.
+  - When `SAM3.1` is selected, YOLO level, bottom enhancement, and class selection are disabled because the prompt backend does not use them.
+- `YOLO Level`: forwarded to `yolo_mask.py --level` (0-3) for `YOLO/SAM2.1`.
   - For 360° images, start with `2 Quality`.
   - Use `1 Standard` for faster checks, and `3 Best` only if people still leak through.
   - For normal images, start with `1 Standard`.
-- `YOLO Expand`: forwarded to `yolo_mask.py --expand`.
+- `Mask Expand`: forwarded to `yolo_mask.py --expand`, or to the SAM3.1 prompt path as `sky_mask.py --expand`.
   - Default is `2px`; drag horizontally on the number field to adjust.
   - Clamped to `-16..32px` for safety.
 - `Bottom Enhance`: preset for missed masks near the bottom of equirectangular 360° images.
@@ -43,7 +47,7 @@ run_gui.bat --scene ./scene01
   - `High`: use when top-down photographers, tripods, or hands remain near the bottom.
   - `Max`: use only when bottom leaks remain after `High`; it is slower and more likely to mask extra floor or ground.
   - Not used when `Image Type` is `Normal`.
-- `YOLO Classes`: collapsed picker for class selection.
+- `Detection Classes`: collapsed picker for class selection in `YOLO/SAM2.1`.
   - Choose classes by checkbox labels (`id: name`) instead of memorizing numeric ids.
   - Default preset is `person` only (`id=0`).
   - Forwarded to `yolo_mask.py --classes`.
@@ -55,7 +59,7 @@ run_gui.bat --scene ./scene01
   - Drag horizontally on the number field to adjust.
 - `Sky`:
   - Runs `sky_mask.py` and AND-merges detected sky into `masks/`.
-  - `Model` selects `Mask2Former` or `SAM3.1`. SAM3.1 is shown for local testing when `models/sam3.1/sam3.1_multiplex.pt` exists.
+  - `Model` selects `Mask2Former` or `SAM3.1`. SAM3.1 is shown for local testing when `models/sam3.1/sam3.1_multiplex.pt` exists and sends the `sky` prompt.
   - `Hybrid` is the default for 360° images. It combines direct detection and a top projection view.
   - Increase `Size` for more detailed inference; use `Min Score`, `Min Area`, `Expand`, and `Top-connected only` when tuning false positives or missed sky.
 - `Custom Mask`:
@@ -65,14 +69,14 @@ run_gui.bat --scene ./scene01
   - The custom mask applies only to source images with matching dimensions. Mismatches are skipped without automatic resizing.
   - If every image is skipped because none match the custom mask size, the custom step fails.
   - If `Custom` is turned on before a file is selected, the file picker opens automatically. You can also select the file first with `Load`.
-- `Mask Preview` button: builds a temporary mask for the displayed image using the currently enabled `YOLO`, `Stitch`, `Overexp`, `Sky`, and `Custom` steps.
+- `Mask Preview` button: builds a temporary mask for the displayed image using the currently enabled `Person`, `Stitch`, `Overexp`, `Sky`, and `Custom` steps.
   - Existing files in `masks/` are not used as the base, so results from steps that are now off are not mixed into the preview.
   - The result is shown as a red overlay and is not saved to `masks/`.
   - In thumbnail mode, it switches the currently selected image to single-preview mode and shows the temporary result there.
   - While a temporary preview is active, the button changes to `Clear Preview`. Press it to discard the temporary preview and return to the saved mask display.
-  - If `YOLO` or `Sky` is enabled, the first run shows the relevant third-party model/license notice.
+  - If `Person` or `Sky` is enabled, the first run shows the relevant third-party model/license notice.
 - `Regenerate Current`: rebuilds and saves the mask for only the currently displayed preview image.
-  - If `YOLO` or `Sky` is enabled, it reruns the matching model step for that single image. If `Stitch`, `Overexp`, or `Custom` is enabled, those masks are merged into the same output.
+  - If `Person` or `Sky` is enabled, it reruns the matching model step for that single image. If `Stitch`, `Overexp`, or `Custom` is enabled, those masks are merged into the same output.
   - Results from steps that are now off are not kept, so use it to fix misses found in preview without regenerating the whole set.
 - `Mask Preview`:
   - Use the icons at the right side of the preview header to switch between single preview and thumbnail list.
@@ -86,8 +90,8 @@ run_gui.bat --scene ./scene01
 
 ## Actions
 
-Select `YOLO`, `Stitch`, `Overexp`, `Sky`, and/or `Custom`, then press `Generate`.
-When multiple tasks are selected, they run in this order: YOLO, stitch seam, overexposure, sky, custom.
+Select `Person`, `Stitch`, `Overexp`, `Sky`, and/or `Custom`, then press `Generate`.
+When multiple tasks are selected, they run in this order: person, stitch seam, overexposure, sky, custom.
 Existing masks are regenerated from the currently enabled steps. Results from steps that are now off are not kept.
 
 If `selected_frames.csv` is not present, Step 3 can still generate masks as long as `images/` contains supported images.
@@ -96,5 +100,5 @@ In that external-image mode, Step 2 keep/drop validation is skipped.
 ## Notes
 
 - The GUI runs scripts as subprocesses, so behavior stays aligned with CLI.
-- YOLO/SAM and sky masking use third-party libraries and model weights with separate license terms. See [../THIRD_PARTY_LICENSES.md](../THIRD_PARTY_LICENSES.md).
+- Person and sky masking use third-party libraries and model weights with separate license terms. See [../THIRD_PARTY_LICENSES.md](../THIRD_PARTY_LICENSES.md).
 - Logs from each step are shown in the integrated log panel.

@@ -9,7 +9,9 @@ seam, overexposure, and custom masks.
 
 The default backend is Mask2Former ADE20K semantic segmentation. An
 experimental SAM3.1 backend is also available when the user provides the Meta
-SAM3.1 checkpoint locally.
+SAM3.1 checkpoint locally. The SAM3.1 path is prompt-based; the default prompt
+is `sky`, and the GUI can also use the same local backend with `--sam-prompt person`
+for person-mask testing.
 
 For equirectangular 360° images, the default `hybrid` mode combines direct
 equirectangular inference with a top projection view to reduce pole distortion.
@@ -32,7 +34,7 @@ python sky_mask.py [images_dir_or_file] [masks_dir] [--backend mask2former|sam31
 - `--min-area-ratio R`: remove small sky candidates by image-area ratio.
 - `--no-top-connected`: keep sky components that do not touch the top edge.
 - `--model-dir PATH`: local model directory or SAM3.1 checkpoint override.
-- `--sam-prompt TEXT`: text prompt for the SAM3.1 backend (default: `sky`).
+- `--sam-prompt TEXT`: text prompt for the SAM3.1 backend (default: `sky`; the GUI uses `person` for SAM3.1 person-mask testing).
 - `--device auto|cpu|cuda`: inference device (default: `auto`).
 - `--replace`: ignore existing masks and write sky-only masks.
 
@@ -46,6 +48,12 @@ Conservative re-run:
 
 ```bash
 python sky_mask.py .\images .\masks --min-score 0.8 --expand -2
+```
+
+SAM3.1 person-prompt smoke test:
+
+```bash
+python sky_mask.py .\images .\masks --backend sam31 --mode direct --inference-size 1008 --sam-prompt person --min-score 0.5 --no-top-connected --replace
 ```
 
 ## Model Files
