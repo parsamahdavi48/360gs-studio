@@ -126,6 +126,31 @@ def test_mask_preview_thumbnail_mode_tracks_images_and_selection(tmp_path: Path)
     )
 
 
+def test_mask_preview_thumbnail_click_does_not_scroll_resync(tmp_path: Path) -> None:
+    _app()
+    image_paths: list[Path] = []
+    for idx in range(4):
+        image_path = tmp_path / f"frame_{idx:06d}.png"
+        cv2.imwrite(str(image_path), np.full((16, 32, 3), 120 + idx, dtype=np.uint8))
+        image_paths.append(image_path)
+    widget = MaskPreviewWidget()
+
+    widget.set_images_dir(str(tmp_path))
+    widget.set_preview_mode("thumbnails")
+    sync_calls: list[int] = []
+
+    def fake_sync(idx: int, *, scroll: bool = False) -> None:
+        sync_calls.append(idx)
+
+    widget._sync_thumbnail_selection = fake_sync  # type: ignore[method-assign]
+
+    widget.thumbnail_view.setCurrentIndex(widget.thumbnail_model.index(2, 0))
+
+    assert sync_calls == []
+    assert widget.current_image_path() == image_paths[2]
+    assert widget.slider.value() == 2
+
+
 def test_mask_preview_thumbnail_mode_uses_extended_selection(tmp_path: Path) -> None:
     _app()
     image_paths: list[Path] = []

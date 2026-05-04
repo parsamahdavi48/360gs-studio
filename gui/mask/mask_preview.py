@@ -179,7 +179,7 @@ class MaskPreviewWidget(QWidget):
 
     def render(self, config: MaskPreviewConfig) -> None:
         self._last_config = config
-        self._sync_thumbnail_model(config)
+        self._sync_thumbnail_model(config, scroll=False)
         if self._preview_mode == _PREVIEW_MODE_THUMBNAILS:
             self.status_label.setText(
                 i18n.t("MASK_PREVIEW_THUMBNAIL_STATUS").format(count=len(self.preview_images))
@@ -284,7 +284,7 @@ class MaskPreviewWidget(QWidget):
     def refresh_image_list(self, prefer_current: bool = True) -> None:
         current = self._current_image_path.strip()
         self.preview_images = self._iter_images()
-        self._sync_thumbnail_model(self._last_config, force=True)
+        self._sync_thumbnail_model(self._last_config, force=True, scroll=False)
         total = len(self.preview_images)
         self.slider.setEnabled(total > 0)
         self.slider.setRange(0, max(0, total - 1))
@@ -305,12 +305,12 @@ class MaskPreviewWidget(QWidget):
                         break
             except Exception:
                 pass
-        self._set_index(target)
+        self._set_index(target, scroll_thumbnail=False)
 
     def _iter_images(self) -> list[Path]:
         return iter_image_files(self._images_dir)
 
-    def _set_index(self, idx: int) -> None:
+    def _set_index(self, idx: int, *, sync_thumbnail: bool = True, scroll_thumbnail: bool = False) -> None:
         if not self.preview_images:
             self.timeline_label.setText("0 / 0")
             self._set_current_image_path("", emit=True)
@@ -327,7 +327,8 @@ class MaskPreviewWidget(QWidget):
                 name=self.preview_images[idx].name,
             )
         )
-        self._sync_thumbnail_selection(idx)
+        if sync_thumbnail:
+            self._sync_thumbnail_selection(idx, scroll=scroll_thumbnail)
 
     def set_current_image_path(self, image_path: str | Path) -> None:
         self._set_current_image_path(str(image_path), emit=False)
@@ -404,7 +405,7 @@ class MaskPreviewWidget(QWidget):
         if self._slider_sync:
             return
         if 0 <= idx < len(self.preview_images):
-            self._set_index(idx)
+            self._set_index(idx, scroll_thumbnail=True)
 
     def set_preview_mode(self, mode: str) -> None:
         if mode not in {_PREVIEW_MODE_SINGLE, _PREVIEW_MODE_THUMBNAILS}:
@@ -438,9 +439,15 @@ class MaskPreviewWidget(QWidget):
     def _on_thumbnail_current_changed(self, current, _previous) -> None:  # noqa: ANN001
         if self._thumbnail_sync or not current.isValid():
             return
-        self._set_index(current.row())
+        self._set_index(current.row(), sync_thumbnail=False)
 
-    def _sync_thumbnail_model(self, config: MaskPreviewConfig, *, force: bool = False) -> None:
+    def _sync_thumbnail_model(
+        self,
+        config: MaskPreviewConfig,
+        *,
+        force: bool = False,
+        scroll: bool = False,
+    ) -> None:
         self.thumbnail_model.set_sources(
             self.preview_images,
             images_dir=self._images_dir,
@@ -448,9 +455,9 @@ class MaskPreviewWidget(QWidget):
             opacity=int(self.opacity_slider.value()),
             force=force,
         )
-        self._sync_thumbnail_selection(self.slider.value())
+        self._sync_thumbnail_selection(self.slider.value(), scroll=scroll)
 
-    def _sync_thumbnail_selection(self, idx: int) -> None:
+    def _sync_thumbnail_selection(self, idx: int, *, scroll: bool = False) -> None:
         if not (0 <= idx < len(self.preview_images)):
             return
         model_index = self.thumbnail_model.index(idx, 0)
@@ -459,7 +466,8 @@ class MaskPreviewWidget(QWidget):
         self._thumbnail_sync = True
         try:
             self.thumbnail_view.selectionModel().setCurrentIndex(model_index, QItemSelectionModel.NoUpdate)
-            self.thumbnail_view.scrollTo(model_index, QAbstractItemView.PositionAtCenter)
+            if scroll and self._preview_mode == _PREVIEW_MODE_THUMBNAILS:
+                self.thumbnail_view.scrollTo(model_index, QAbstractItemView.EnsureVisible)
         finally:
             self._thumbnail_sync = False
 
