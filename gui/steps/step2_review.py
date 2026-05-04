@@ -126,6 +126,9 @@ class ReviewStep(BaseStepWidget):
             item = self.review_layout.takeAt(0)
             widget = item.widget()
             if widget is not None:
+                shutdown = getattr(widget, "shutdown", None)
+                if callable(shutdown):
+                    shutdown()
                 widget.setParent(None)
                 widget.deleteLater()
         self._review_widget = None
@@ -227,3 +230,11 @@ class ReviewStep(BaseStepWidget):
     def on_queue_finished(self, success: bool) -> None:
         if success:
             self._refresh_embedded_review(force=True, show_error=False)
+
+    def shutdown(self) -> None:
+        widget = self._review_widget
+        if widget is None:
+            return
+        shutdown = getattr(widget, "shutdown", None)
+        if callable(shutdown):
+            shutdown()

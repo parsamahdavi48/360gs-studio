@@ -1331,6 +1331,9 @@ class MaskStep(BaseStepWidget):
         self._render_mask_preview()
         self._update_ready_status()
 
+    def shutdown(self) -> None:
+        self.mask_preview.shutdown()
+
 
 def _yolo_preview_output_name(image_path: Path) -> str:
     return f"{image_path.stem}.png"

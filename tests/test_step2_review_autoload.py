@@ -268,6 +268,21 @@ def test_review_step_skips_reload_when_csv_unchanged(tmp_path: Path) -> None:
     assert step._review_widget is first_widget
 
 
+def test_review_step_clear_pane_shuts_down_embedded_review() -> None:
+    _app()
+    step = ReviewStep(Path.cwd())
+    label = QLabel("review")
+    calls: list[bool] = []
+    label.shutdown = lambda: calls.append(True)  # type: ignore[attr-defined]
+    step.review_layout.addWidget(label)
+    step._review_widget = label
+
+    step._clear_review_pane()
+
+    assert calls == [True]
+    assert step._review_widget is None
+
+
 def test_review_step_reloads_when_csv_changes(tmp_path: Path) -> None:
     _app()
     _write_scene(tmp_path, count=2)

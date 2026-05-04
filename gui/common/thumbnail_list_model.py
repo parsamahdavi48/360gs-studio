@@ -4,6 +4,7 @@ from __future__ import annotations
 from collections import OrderedDict
 from dataclasses import dataclass
 from pathlib import Path
+from threading import Event
 from typing import Callable
 
 from PySide6.QtCore import QAbstractListModel, QModelIndex, QObject, QRunnable, QSize, Qt, QThreadPool, Signal
@@ -14,6 +15,7 @@ from gui import theme
 DEFAULT_THUMB_SIZE = QSize(176, 88)
 DEFAULT_GRID_SIZE = QSize(196, 124)
 THUMB_CACHE_LIMIT = 256
+SHUTDOWN_WAIT_MS = 3000
 
 
 @dataclass(frozen=True)
@@ -40,6 +42,7 @@ class _ThumbnailJob(QRunnable):
         item: ThumbnailItem,
         renderer: ThumbnailRenderer,
         icon_size: QSize,
+        cancel_event: Event,
     ) -> None:
         super().__init__()
         self.row = row
@@ -48,11 +51,21 @@ class _ThumbnailJob(QRunnable):
         self.item = item
         self.renderer = renderer
         self.icon_size = QSize(icon_size)
+        self.cancel_event = cancel_event
         self.signals = _ThumbnailSignals()
 
     def run(self) -> None:
+        if self.cancel_event.is_set():
+            return
         image = self.renderer(self.item, self.icon_size)
-        self.signals.ready.emit(self.row, self.generation, self.key, image)
+        if self.cancel_event.is_set():
+            return
+        try:
+            self.signals.ready.emit(self.row, self.generation, self.key, image)
+        except RuntimeError:
+            # The application may already be closing and the QObject signal source
+            # can be gone before a worker reaches its final emit.
+            return
 
 
 class AsyncThumbnailModel(QAbstractListModel):
@@ -69,6 +82,8 @@ class AsyncThumbnailModel(QAbstractListModel):
         self._pending: set[tuple[int, tuple]] = set()
         self._jobs: dict[tuple[int, tuple], _ThumbnailJob] = {}
         self._generation = 0
+        self._cancel_event = Event()
+        self._shutdown = False
         self._pool = QThreadPool(self)
         self._pool.setMaxThreadCount(max(1, min(2, QThreadPool.globalInstance().maxThreadCount())))
         self._placeholder = _placeholder_icon(self._icon_size)
@@ -93,6 +108,8 @@ class AsyncThumbnailModel(QAbstractListModel):
             if icon is not None:
                 self._cache.move_to_end(key)
                 return icon
+            if self._shutdown:
+                return self._placeholder
             self._schedule_thumbnail(index.row(), item, key)
             return self._placeholder
         return None
@@ -109,6 +126,8 @@ class AsyncThumbnailModel(QAbstractListModel):
     ) -> None:
         icon_size = QSize(icon_size)
         grid_size = QSize(grid_size)
+        if self._shutdown:
+            return
         if (
             not force
             and items == self._items
@@ -117,6 +136,8 @@ class AsyncThumbnailModel(QAbstractListModel):
             and grid_size == self._grid_size
         ):
             return
+        self._generation += 1
+        self._cancel_pending_jobs()
         self.beginResetModel()
         self._items = list(items)
         self._renderer = renderer
@@ -124,8 +145,6 @@ class AsyncThumbnailModel(QAbstractListModel):
         self._icon_size = icon_size
         self._grid_size = grid_size
         self._cache.clear()
-        self._pending.clear()
-        self._generation += 1
         self._placeholder = _placeholder_icon(self._icon_size)
         self.endResetModel()
 
@@ -161,6 +180,14 @@ class AsyncThumbnailModel(QAbstractListModel):
     def wait_for_done(self, timeout_ms: int = 5000) -> bool:
         return self._pool.waitForDone(timeout_ms)
 
+    def shutdown(self, wait_ms: int = SHUTDOWN_WAIT_MS) -> bool:
+        self._shutdown = True
+        self._cancel_event.set()
+        self._pool.clear()
+        self._pending.clear()
+        self._jobs.clear()
+        return self._pool.waitForDone(max(0, int(wait_ms)))
+
     def _thumbnail_key(self, item: ThumbnailItem) -> tuple:
         return (
             _file_signature(item.path),
@@ -171,16 +198,20 @@ class AsyncThumbnailModel(QAbstractListModel):
         )
 
     def _schedule_thumbnail(self, row: int, item: ThumbnailItem, key: tuple) -> None:
+        if self._shutdown:
+            return
         pending_key = (self._generation, key)
         if pending_key in self._pending:
             return
         self._pending.add(pending_key)
-        job = _ThumbnailJob(row, self._generation, key, item, self._renderer, self._icon_size)
+        job = _ThumbnailJob(row, self._generation, key, item, self._renderer, self._icon_size, self._cancel_event)
         job.signals.ready.connect(self._on_thumbnail_ready)
         self._jobs[pending_key] = job
         self._pool.start(job)
 
     def _on_thumbnail_ready(self, row: int, generation: int, key: tuple, image: object) -> None:
+        if self._shutdown:
+            return
         pending_key = (generation, key)
         self._pending.discard(pending_key)
         self._jobs.pop(pending_key, None)
@@ -197,6 +228,13 @@ class AsyncThumbnailModel(QAbstractListModel):
         if 0 <= row < len(self._items):
             model_index = self.index(row, 0)
             self.dataChanged.emit(model_index, model_index, [Qt.DecorationRole])
+
+    def _cancel_pending_jobs(self) -> None:
+        self._cancel_event.set()
+        self._pool.clear()
+        self._pending.clear()
+        self._jobs.clear()
+        self._cancel_event = Event()
 
 
 def _default_renderer(_item: ThumbnailItem, size: QSize) -> QImage:

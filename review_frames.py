@@ -704,6 +704,13 @@ if QMainWindow is not None:
         def reset_decision(self) -> None:
             self._set_decisions({idx: self._initial_decisions[idx] for idx in self._decision_action_indices()})
 
+        def shutdown(self) -> None:
+            self.thumbnail_model.shutdown()
+
+        def closeEvent(self, event) -> None:  # noqa: ANN001, N802 - Qt API
+            self.shutdown()
+            super().closeEvent(event)
+
 
     class ReviewWindow(QMainWindow):
         def __init__(self, scene_dir: Path, csv_path: Path) -> None:
@@ -712,6 +719,10 @@ if QMainWindow is not None:
             self.resize(1280, 860)
             self.review_widget = ReviewWidget(scene_dir, csv_path)
             self.setCentralWidget(self.review_widget)
+
+        def closeEvent(self, event) -> None:  # noqa: ANN001, N802 - Qt API
+            self.review_widget.shutdown()
+            super().closeEvent(event)
 
 else:
     class ReviewWidget:  # pragma: no cover - placeholder when PySide6 missing

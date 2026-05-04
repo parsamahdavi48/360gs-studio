@@ -536,6 +536,13 @@ class MaskPreviewWidget(QWidget):
     def _update_pixmap(self) -> None:
         self.image_label.set_source_pixmap(self._pixmap)
 
+    def shutdown(self) -> None:
+        self.thumbnail_model.shutdown()
+
+    def closeEvent(self, event) -> None:  # noqa: ANN001, N802 - Qt API
+        self.shutdown()
+        super().closeEvent(event)
+
     def _cache_key(self, path: Path, *extra: object) -> tuple | None:
         try:
             st = path.stat()

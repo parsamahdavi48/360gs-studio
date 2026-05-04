@@ -53,6 +53,7 @@ class MainWindow(QWidget):
         self._current_step: int = 0
         self._auto_scene_from_input: str | None = None
         self._applying_scene_suggestion = False
+        self._shutdown = False
 
         self._build_ui(initial_scene_dir)
         self._connect_signals()
@@ -386,9 +387,17 @@ class MainWindow(QWidget):
                 self.progress.set_status(i18n.STATUS_FAILED)
         self._update_run_button()
 
-    def closeEvent(self, event: QCloseEvent) -> None:
+    def shutdown(self) -> None:
+        if self._shutdown:
+            return
+        self._shutdown = True
         if self.runner.is_running():
             self.runner.cancel()
+        for step in self.steps:
+            step.shutdown()
+
+    def closeEvent(self, event: QCloseEvent) -> None:
+        self.shutdown()
         event.accept()
 
 
@@ -407,6 +416,7 @@ def main() -> None:
     apply_theme(app)
 
     window = MainWindow(initial_scene_dir=args.scene)
+    app.aboutToQuit.connect(window.shutdown)
     window.show()
     sys.exit(app.exec())
 

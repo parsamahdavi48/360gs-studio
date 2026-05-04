@@ -76,3 +76,7 @@ class BaseStepWidget(QWidget):
     def on_activated(self) -> None:
         """ステップが表示された時のフック（オプション）"""
         pass
+
+    def shutdown(self) -> None:
+        """Application shutdown hook for child widgets with background work."""
+        pass

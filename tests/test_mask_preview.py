@@ -86,6 +86,17 @@ def test_mask_preview_status_elides_without_shrinking_opacity_slider() -> None:
     assert QLabel.text(widget.status_label) != status
 
 
+def test_mask_preview_shutdown_stops_thumbnail_model(monkeypatch) -> None:
+    _app()
+    widget = MaskPreviewWidget()
+    calls: list[bool] = []
+    monkeypatch.setattr(widget.thumbnail_model, "shutdown", lambda: calls.append(True) or True)
+
+    widget.shutdown()
+
+    assert calls == [True]
+
+
 def test_mask_preview_uses_temporary_yolo_preview_mask(tmp_path: Path) -> None:
     _app()
     image_path = tmp_path / "frame_000001.png"
