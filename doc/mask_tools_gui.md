@@ -64,21 +64,20 @@ run_gui.bat --scene ./scene01
   - The custom mask applies only to source images with matching dimensions. Mismatches are skipped without automatic resizing.
   - If every image is skipped because none match the custom mask size, the custom step fails.
   - If `Custom` is turned on before a file is selected, the file picker opens automatically. You can also select the file first with `Load`.
-- `YOLO/SAM Preview`: runs `yolo_mask.py` only for the currently displayed preview image.
-  - The first YOLO/SAM run shows a third-party model/license notice. The model weights are not bundled with the app and may be downloaded by the user's environment.
+- `Mask Preview` button: builds a temporary mask for the displayed image using the currently enabled `YOLO`, `Stitch`, `Overexp`, `Sky`, and `Custom` steps.
+  - Existing files in `masks/` are not used as the base, so results from steps that are now off are not mixed into the preview.
   - The result is shown as a red overlay and is not saved to `masks/`.
-  - It uses the current `Image Type`, `YOLO Level`, `YOLO Expand`, `Bottom Enhance`, and `YOLO Classes` settings.
-  - Use the main `Generate` action when you want to write masks for all frames.
-- `Reprocess Current`: rebuilds and saves the mask for only the currently displayed preview image.
+  - If `YOLO` or `Sky` is enabled, the first run shows the relevant third-party model/license notice.
+- `Regenerate Current`: rebuilds and saves the mask for only the currently displayed preview image.
   - If `YOLO` or `Sky` is enabled, it reruns the matching model step for that single image. If `Stitch`, `Overexp`, or `Custom` is enabled, those masks are merged into the same output.
-  - Use it to fix misses found in preview without regenerating the whole set.
+  - Results from steps that are now off are not kept, so use it to fix misses found in preview without regenerating the whole set.
 - `Mask Preview`:
   - Use the icons at the right side of the preview header to switch between single preview and thumbnail list.
   - Thumbnail mode shows existing masks as red overlays. The mask display icon toggles the overlay on and off without rebuilding thumbnails.
   - Double-clicking a thumbnail returns to single preview on that image.
   - `Ctrl` click, `Ctrl+Shift` click, and `Shift` click follow Windows Explorer-style multi-selection.
   - Switching to thumbnail mode focuses the thumbnail list, so arrow keys move the visible thumbnail selection.
-  - In thumbnail mode, `Reprocess Selected` rebuilds only the selected images with the current mask-generation settings and saves them to `masks/`.
+  - In thumbnail mode, `Regenerate N Selected` rebuilds only the selected images with the current mask-generation settings and saves them to `masks/`.
   - The status text stays on one line and elides when space is tight; the full text is available as a tooltip.
   - Thumbnail rendering is lazy, prioritizes the visible rows, and reuses cached thumbnails across step switches so large image sets do not rebuild in full on every view change.
 
@@ -86,6 +85,7 @@ run_gui.bat --scene ./scene01
 
 Select `YOLO`, `Stitch`, `Overexp`, `Sky`, and/or `Custom`, then press `Generate`.
 When multiple tasks are selected, they run in this order: YOLO, stitch seam, overexposure, sky, custom.
+Existing masks are regenerated from the currently enabled steps. Results from steps that are now off are not kept.
 
 If `selected_frames.csv` is not present, Step 3 can still generate masks as long as `images/` contains supported images.
 In that external-image mode, Step 2 keep/drop validation is skipped.

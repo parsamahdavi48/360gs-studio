@@ -1,7 +1,8 @@
 """Detect sky regions with Mask2Former ADE20K and merge them into masks.
 
 Mask convention: white means keep, black means exclude. Sky pixels are written
-as black and AND-merged with any existing mask for the same source image.
+as black and, unless --replace is used, AND-merged with any existing mask for
+the same source image.
 """
 from __future__ import annotations
 
@@ -43,6 +44,7 @@ class SkyMaskOptions:
     expand_px: int = DEFAULT_EXPAND
     top_connected: bool = True
     add_ext: bool = False
+    replace: bool = False
 
 
 @dataclass
@@ -304,7 +306,9 @@ def postprocess_sky_components(
     return filtered.astype(bool)
 
 
-def merge_with_existing(mask_out: Path, new_mask: np.ndarray) -> np.ndarray:
+def merge_with_existing(mask_out: Path, new_mask: np.ndarray, *, replace: bool = False) -> np.ndarray:
+    if replace:
+        return new_mask
     existing = imread_unicode(mask_out, cv2.IMREAD_GRAYSCALE) if mask_out.is_file() else None
     if existing is None:
         return new_mask
@@ -325,7 +329,7 @@ def process_image(
         return f"Skipped (read error): {image_path.name}"
     sky_mask = detect_sky_mask(image, segmenter, options)
     mask_out = mask_output_path_for_image(image_path, images_root, masks_dir, add_ext=options.add_ext)
-    merged = merge_with_existing(mask_out, sky_mask)
+    merged = merge_with_existing(mask_out, sky_mask, replace=options.replace)
     mask_out.parent.mkdir(parents=True, exist_ok=True)
     if not imwrite_unicode(mask_out, merged):
         return f"Skipped (write error): {mask_out.name}"
@@ -361,6 +365,7 @@ def run(
         f"min_area_ratio={options.min_area_ratio:g}",
         f"expand={options.expand_px}",
         f"top_connected={options.top_connected}",
+        f"replace={options.replace}",
         flush=True,
     )
     segmenter = SkySegmenter(model_source, device=device)
@@ -400,6 +405,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--expand", type=int, default=DEFAULT_EXPAND, help="Expand sky exclusion mask in pixels")
     parser.add_argument("--no-top-connected", action="store_true", help="Keep all sky components, not only top-connected")
     parser.add_argument("--add-ext", action="store_true", help="Append .png to the original filename")
+    parser.add_argument("--replace", action="store_true", help="Ignore existing masks and write sky-only masks")
     return parser.parse_args()
 
 
@@ -428,6 +434,7 @@ def main() -> int:
         expand_px=int(args.expand),
         top_connected=not bool(args.no_top_connected),
         add_ext=bool(args.add_ext),
+        replace=bool(args.replace),
     )
     try:
         result = run(args.images, args.masks_dir, model_dir=args.model_dir, device=args.device, options=options)

@@ -51,7 +51,7 @@ def test_mask_preview_removes_manual_image_picker_and_opacity_spinbox() -> None:
     assert i18n.BROWSE not in button_texts
     assert i18n.t("AUTO") not in button_texts
     assert i18n.t("RELOAD") not in button_texts
-    assert i18n.t("YOLO_PREVIEW_BUTTON") in button_texts
+    assert i18n.t("MASK_PREVIEW_BUTTON") in button_texts
     assert i18n.t("MASK_REPROCESS_CURRENT_BUTTON") in button_texts
     assert not widget.findChildren(QLineEdit)
     assert not widget.findChildren(QSpinBox)
@@ -109,7 +109,7 @@ def test_mask_preview_shutdown_stops_thumbnail_model(monkeypatch) -> None:
     assert calls == [True]
 
 
-def test_mask_preview_uses_temporary_yolo_preview_mask(tmp_path: Path) -> None:
+def test_mask_preview_uses_temporary_preview_mask(tmp_path: Path) -> None:
     _app()
     image_path = tmp_path / "frame_000001.png"
     mask_path = tmp_path / "preview_mask.png"
@@ -124,8 +124,26 @@ def test_mask_preview_uses_temporary_yolo_preview_mask(tmp_path: Path) -> None:
     assert widget.set_yolo_preview_mask(image_path, mask_path)
     widget.render(MaskPreviewConfig(use_yolo=True))
 
-    assert i18n.t("MASK_PREVIEW_YOLO_TEMP") in widget.status_label.text()
+    assert i18n.t("MASK_PREVIEW_TEMP") in widget.status_label.text()
     assert widget.image_label._source_pixmap is not None
+
+
+def test_mask_preview_ignores_temporary_preview_after_setting_change(tmp_path: Path) -> None:
+    _app()
+    image_path = tmp_path / "frame_000001.png"
+    mask_path = tmp_path / "preview_mask.png"
+    cv2.imwrite(str(image_path), np.full((32, 64, 3), 180, dtype=np.uint8))
+    mask = np.full((32, 64), 255, dtype=np.uint8)
+    mask[:, :32] = 0
+    cv2.imwrite(str(mask_path), mask)
+    widget = MaskPreviewWidget()
+    widget.set_current_image_path(image_path)
+    config = MaskPreviewConfig(use_yolo=False, use_custom=False)
+
+    assert widget.set_temporary_preview_mask(image_path, mask_path, config)
+    widget.render(MaskPreviewConfig(use_yolo=False, use_custom=True, custom_mask_path="missing.png"))
+
+    assert i18n.t("MASK_PREVIEW_TEMP") not in widget.status_label.text()
 
 
 def test_mask_preview_resizes_overexposure_mask_for_large_preview(tmp_path: Path) -> None:

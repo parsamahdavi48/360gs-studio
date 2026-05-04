@@ -1,7 +1,7 @@
 import numpy as np
 import cv2
 
-from overexposure_mask import _init_worker, _process_one, detect_overexposure
+from overexposure_mask import _init_worker, _process_one, detect_overexposure, run
 
 
 def test_overexposure_default_only_masks_pure_white_without_dilate() -> None:
@@ -63,3 +63,21 @@ def test_resized_existing_mask_stays_binary(tmp_path) -> None:
     written = cv2.imread(str(output_mask), cv2.IMREAD_GRAYSCALE)
     assert written is not None
     assert set(np.unique(written).tolist()) <= {0, 255}
+
+
+def test_overexposure_replace_ignores_existing_mask(tmp_path) -> None:
+    images = tmp_path / "images"
+    masks = tmp_path / "masks"
+    images.mkdir()
+    masks.mkdir()
+    image = np.full((4, 6, 3), 120, dtype=np.uint8)
+    image[1, 2] = 255
+    cv2.imwrite(str(images / "frame.png"), image)
+    cv2.imwrite(str(masks / "frame.png"), np.zeros((4, 6), dtype=np.uint8))
+
+    run(str(images), str(masks), threshold=254, dilate_px=0, workers=1, replace=True)
+
+    written = cv2.imread(str(masks / "frame.png"), cv2.IMREAD_GRAYSCALE)
+    assert written is not None
+    assert written[1, 2] == 0
+    assert written[3, 5] == 255

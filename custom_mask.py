@@ -2,8 +2,8 @@
 
 Mask convention: white means keep, black means exclude. The custom mask is
 normalized to binary 0/255, then AND-merged with each existing mask. If no
-existing mask is present for an image, the custom mask itself becomes the output
-mask.
+existing mask is present, or --replace is used, the custom mask itself becomes
+the output mask.
 """
 from __future__ import annotations
 
@@ -105,6 +105,8 @@ def merge_custom_mask_for_image(
     images_dir: Path,
     masks_dir: Path,
     custom_mask: np.ndarray,
+    *,
+    replace: bool = False,
 ) -> CustomMaskMergeResult:
     source = imread_unicode(image_path, cv2.IMREAD_UNCHANGED)
     if source is None:
@@ -120,7 +122,7 @@ def merge_custom_mask_for_image(
         )
 
     mask_out = mask_output_path_for_image(image_path, images_dir, masks_dir)
-    existing = imread_unicode(mask_out, cv2.IMREAD_GRAYSCALE) if mask_out.is_file() else None
+    existing = None if replace else imread_unicode(mask_out, cv2.IMREAD_GRAYSCALE) if mask_out.is_file() else None
     if existing is not None:
         if existing.shape != custom_mask.shape:
             return CustomMaskMergeResult(
@@ -140,7 +142,13 @@ def merge_custom_mask_for_image(
     return CustomMaskMergeResult(applied=True)
 
 
-def run(images_dir: str | Path, masks_dir: str | Path, custom_mask_path: str | Path) -> CustomMaskRunResult:
+def run(
+    images_dir: str | Path,
+    masks_dir: str | Path,
+    custom_mask_path: str | Path,
+    *,
+    replace: bool = False,
+) -> CustomMaskRunResult:
     images_path = Path(images_dir)
     masks_path = Path(masks_dir)
     custom_path = Path(custom_mask_path)
@@ -154,12 +162,12 @@ def run(images_dir: str | Path, masks_dir: str | Path, custom_mask_path: str | P
         print(f"No images found in {images_path}")
         return CustomMaskRunResult()
 
-    print(f"Applying custom mask to {len(image_files)} images")
+    print(f"Applying custom mask to {len(image_files)} images (replace={replace})")
     print(loaded_custom.description)
     print(f"[progress] 0/{len(image_files)}", flush=True)
     result = CustomMaskRunResult(total=len(image_files))
     for done, image_path in enumerate(image_files, start=1):
-        merge_result = merge_custom_mask_for_image(image_path, images_path, masks_path, custom)
+        merge_result = merge_custom_mask_for_image(image_path, images_path, masks_path, custom, replace=replace)
         if merge_result.applied:
             result.applied += 1
         elif merge_result.skipped:
@@ -185,9 +193,10 @@ def main() -> None:
     parser.add_argument("images_dir", help="Source images directory")
     parser.add_argument("masks_dir", help="Mask output directory")
     parser.add_argument("custom_mask", help="PNG custom mask to apply to every source image")
+    parser.add_argument("--replace", action="store_true", help="Ignore existing masks and write custom-only masks")
     args = parser.parse_args()
 
-    result = run(args.images_dir, args.masks_dir, args.custom_mask)
+    result = run(args.images_dir, args.masks_dir, args.custom_mask, replace=bool(args.replace))
     if not result.ok:
         sys.exit(1)
 

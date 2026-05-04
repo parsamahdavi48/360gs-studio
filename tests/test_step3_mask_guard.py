@@ -166,9 +166,13 @@ def test_mask_step_refreshes_preview_after_successful_mask_generation(tmp_path: 
     step.set_scene_dir(str(scene))
 
     assert step.mask_preview.current_image_path() == image_path
-    assert step.mask_preview.set_yolo_preview_mask(image_path, temp_mask_path)
+    assert step.mask_preview.set_temporary_preview_mask(
+        image_path,
+        temp_mask_path,
+        step._mask_preview_config_from_controls(),
+    )
     step._render_mask_preview()
-    assert i18n.t("MASK_PREVIEW_YOLO_TEMP") in step.mask_preview.status_label.text()
+    assert i18n.t("MASK_PREVIEW_TEMP") in step.mask_preview.status_label.text()
 
     existing_mask = np.full((32, 64), 255, dtype=np.uint8)
     existing_mask[:, :32] = 0
@@ -177,7 +181,7 @@ def test_mask_step_refreshes_preview_after_successful_mask_generation(tmp_path: 
     step.on_queue_finished(True)
 
     assert i18n.t("MASK_PREVIEW_YOLO_EXISTING") in step.mask_preview.status_label.text()
-    assert i18n.t("MASK_PREVIEW_YOLO_TEMP") not in step.mask_preview.status_label.text()
+    assert i18n.t("MASK_PREVIEW_TEMP") not in step.mask_preview.status_label.text()
     assert step.mask_preview.image_label._source_pixmap is not None
 
 
@@ -318,6 +322,7 @@ def test_mask_step_custom_mask_builds_final_command(tmp_path: Path) -> None:
                 str(scene / "images"),
                 str(scene / "masks"),
                 str(custom_path),
+                "--replace",
             ],
         )
     ]
@@ -347,6 +352,43 @@ def test_mask_step_sky_mask_builds_final_command(tmp_path: Path) -> None:
     assert cmd[cmd.index("--projection") + 1] == "equirect"
     assert cmd[cmd.index("--mode") + 1] == "hybrid"
     assert cmd[cmd.index("--inference-size") + 1] == "768"
+    assert "--replace" in cmd
+
+
+def test_mask_step_stitch_only_initializes_masks_before_merging(tmp_path: Path) -> None:
+    _app()
+    scene = _write_scene(tmp_path, drop_exists=False)
+    step = MaskStep(Path.cwd())
+    step.set_scene_dir(str(scene))
+    step.run_yolo_cb.setChecked(False)
+    step.run_stitch_cb.setChecked(True)
+    step.run_overexp_cb.setChecked(False)
+
+    commands = step.build_commands()
+
+    assert [phase for phase, _cmd in commands] == ["init_masks", "stitch"]
+    assert commands[0][1][:5] == [
+        sys.executable,
+        "-u",
+        str(Path.cwd() / "init_masks.py"),
+        str(scene / "images"),
+        str(scene / "masks"),
+    ]
+
+
+def test_mask_step_overexposure_only_replaces_existing_masks(tmp_path: Path) -> None:
+    _app()
+    scene = _write_scene(tmp_path, drop_exists=False)
+    step = MaskStep(Path.cwd())
+    step.set_scene_dir(str(scene))
+    step.run_yolo_cb.setChecked(False)
+    step.run_stitch_cb.setChecked(False)
+    step.run_overexp_cb.setChecked(True)
+
+    commands = step.build_commands()
+
+    assert [phase for phase, _cmd in commands] == ["overexposure"]
+    assert "--replace" in commands[0][1]
 
 
 def test_mask_step_allows_generation_when_drop_images_are_removed(tmp_path: Path) -> None:
@@ -402,6 +444,24 @@ def test_mask_step_current_reprocess_external_commands_include_yolo_then_sky(tmp
     assert commands[1][1][4] == str(scene / "masks" / "extra")
 
 
+def test_mask_step_current_reprocess_sky_only_replaces_existing_mask(tmp_path: Path) -> None:
+    _app()
+    scene = tmp_path
+    images = scene / "images"
+    images.mkdir()
+    image_path = images / "frame_0001.jpg"
+    cv2.imwrite(str(image_path), np.full((16, 32, 3), 180, dtype=np.uint8))
+    step = MaskStep(Path.cwd())
+    step.set_scene_dir(str(scene))
+    step.run_yolo_cb.setChecked(False)
+    step.run_sky_cb.setChecked(True)
+
+    commands = step._build_current_reprocess_external_commands(image_path)
+
+    assert [phase for phase, _cmd in commands] == ["sky"]
+    assert "--replace" in commands[0][1]
+
+
 def test_mask_step_current_reprocess_can_apply_overexposure_only(tmp_path: Path) -> None:
     _app()
     scene = tmp_path
@@ -419,7 +479,8 @@ def test_mask_step_current_reprocess_can_apply_overexposure_only(tmp_path: Path)
 
     mask_path = step._mask_output_path_for_image(image_path)
     mask_path.parent.mkdir(parents=True, exist_ok=True)
-    step._apply_current_image_postprocess(image_path, mask_path)
+    cv2.imwrite(str(mask_path), np.zeros((24, 32), dtype=np.uint8))
+    step._apply_current_image_postprocess(image_path, mask_path, replace=True)
 
     mask = cv2.imread(str(mask_path), cv2.IMREAD_GRAYSCALE)
     assert mask is not None
@@ -447,7 +508,8 @@ def test_mask_step_current_reprocess_can_apply_custom_only(tmp_path: Path) -> No
 
     mask_path = step._mask_output_path_for_image(image_path)
     mask_path.parent.mkdir(parents=True, exist_ok=True)
-    step._apply_current_image_postprocess(image_path, mask_path)
+    cv2.imwrite(str(mask_path), np.zeros((24, 32), dtype=np.uint8))
+    step._apply_current_image_postprocess(image_path, mask_path, replace=True)
 
     mask = cv2.imread(str(mask_path), cv2.IMREAD_GRAYSCALE)
     assert mask is not None

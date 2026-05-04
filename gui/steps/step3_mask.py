@@ -10,8 +10,9 @@ import tempfile
 from pathlib import Path
 
 import cv2
+import numpy as np
 from apply_frame_decisions import pending_drop_image_paths, untracked_image_paths
-from custom_mask import load_custom_mask, merge_custom_mask_for_image
+from custom_mask import load_custom_mask
 from PySide6.QtCore import QProcess, Qt, QTimer, QUrl, Signal
 from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import (
@@ -130,10 +131,12 @@ class MaskStep(BaseStepWidget):
         self._stitch_chunk_total = 0
         self._stitch_chunk_done = 0
         self._stitch_done_before = 0
-        self._yolo_preview_proc: QProcess | None = None
-        self._yolo_preview_temp: tempfile.TemporaryDirectory[str] | None = None
-        self._yolo_preview_image: Path | None = None
-        self._yolo_preview_output: Path | None = None
+        self._mask_preview_proc: QProcess | None = None
+        self._mask_preview_temp: tempfile.TemporaryDirectory[str] | None = None
+        self._mask_preview_image: Path | None = None
+        self._mask_preview_output: Path | None = None
+        self._mask_preview_config: MaskPreviewConfig | None = None
+        self._mask_preview_commands: list[tuple[str, list[str]]] = []
         self._custom_mask_path = ""
         self._current_reprocess_proc: QProcess | None = None
         self._current_reprocess_image: Path | None = None
@@ -601,6 +604,11 @@ class MaskStep(BaseStepWidget):
         self.custom_mask_browse_btn.clicked.connect(lambda _checked=False: self._browse_custom_mask(activate=True))
         self.custom_mask_clear_btn.clicked.connect(lambda _checked=False: self._clear_custom_mask_path())
         self.stitch_boundary_width_edit.valueChanged.connect(lambda _: self._schedule_render_mask_preview())
+        self.yolo_level_combo.currentIndexChanged.connect(lambda _: self._schedule_render_mask_preview())
+        self.yolo_expand_edit.valueChanged.connect(lambda _: self._schedule_render_mask_preview())
+        self.yolo_bottom_enhance_combo.currentIndexChanged.connect(lambda _: self._schedule_render_mask_preview())
+        for cb in self.class_cbs:
+            cb.toggled.connect(lambda _checked=False: self._schedule_render_mask_preview())
         self.overexp_threshold_edit.valueChanged.connect(lambda _: self._schedule_render_mask_preview())
         self.overexp_dilate_edit.valueChanged.connect(lambda _: self._schedule_render_mask_preview())
         self.sky_mode_combo.currentIndexChanged.connect(lambda _: self._schedule_render_mask_preview())
@@ -610,7 +618,7 @@ class MaskStep(BaseStepWidget):
         self.sky_min_area_edit.valueChanged.connect(lambda _: self._schedule_render_mask_preview())
         self.sky_top_connected_cb.toggled.connect(lambda _: self._schedule_render_mask_preview())
         self.mask_preview.current_image_changed.connect(lambda: self._schedule_render_mask_preview())
-        self.mask_preview.yolo_preview_requested.connect(self._run_yolo_preview)
+        self.mask_preview.mask_preview_requested.connect(self._run_mask_preview)
         self.mask_preview.current_reprocess_requested.connect(self._run_current_image_reprocess)
         self.add_external_images_btn.clicked.connect(self._add_external_images_from_folder)
         self.open_images_dir_btn.clicked.connect(self._open_images_dir)
@@ -972,11 +980,14 @@ class MaskStep(BaseStepWidget):
         self._render_mask_preview()
 
     def _render_mask_preview(self) -> None:
+        self.mask_preview.render(self._mask_preview_config_from_controls())
+
+    def _mask_preview_config_from_controls(self) -> MaskPreviewConfig:
         try:
             width = self._stitch_boundary_width()
         except ValueError:
             width = None
-        config = MaskPreviewConfig(
+        return MaskPreviewConfig(
             use_yolo=self.run_yolo_cb.isChecked(),
             use_stitch=self.run_stitch_cb.isChecked(),
             use_overexposure=self.run_overexp_cb.isChecked(),
@@ -987,8 +998,23 @@ class MaskStep(BaseStepWidget):
             masks_dir=self._masks_dir_text(),
             use_custom=self.run_custom_cb.isChecked(),
             custom_mask_path=self._custom_mask_path_text(),
+            settings_key=self._mask_generation_settings_key(),
         )
-        self.mask_preview.render(config)
+
+    def _mask_generation_settings_key(self) -> tuple:
+        return (
+            self._projection(),
+            self.yolo_level_combo.currentIndex(),
+            int(self.yolo_expand_edit.value()),
+            tuple(self._selected_classes()),
+            self.yolo_bottom_enhance_combo.currentIndex(),
+            self._sky_mode_arg(),
+            self._sky_inference_size_arg(),
+            int(self.sky_expand_edit.value()),
+            float(self.sky_min_score_edit.value()),
+            float(self.sky_min_area_edit.value()),
+            bool(self.sky_top_connected_cb.isChecked()),
+        )
 
     # -- コマンド構築 --
 
@@ -1003,17 +1029,25 @@ class MaskStep(BaseStepWidget):
         self._ensure_no_pending_drop_images()
         self._ensure_no_untracked_images()
 
-        steps = []
+        steps: list[tuple[str, list[str]]] = []
+        fresh_base_needed = True
         if "yolo" in requested_steps:
             steps.append(("yolo", self._build_yolo_cmd()))
+            fresh_base_needed = False
         if "stitch" in requested_steps:
+            if fresh_base_needed:
+                steps.append(("init_masks", self._build_init_masks_cmd()))
+                fresh_base_needed = False
             steps.append(("stitch", self._build_stitch_cmd()))
         if "overexposure" in requested_steps:
-            steps.append(("overexposure", self._build_overexposure_cmd()))
+            steps.append(("overexposure", self._build_overexposure_cmd(replace=fresh_base_needed)))
+            fresh_base_needed = False
         if "sky" in requested_steps:
-            steps.append(("sky", self._build_sky_cmd()))
+            steps.append(("sky", self._build_sky_cmd(replace=fresh_base_needed)))
+            fresh_base_needed = False
         if "custom" in requested_steps:
-            steps.append(("custom", self._build_custom_cmd()))
+            steps.append(("custom", self._build_custom_cmd(replace=fresh_base_needed)))
+            fresh_base_needed = False
         return steps
 
     def confirm_commands(self, commands: list[tuple[str, list[str]]]) -> bool:
@@ -1197,22 +1231,36 @@ class MaskStep(BaseStepWidget):
         cmd.extend(self._bottom_enhance_args())
         return cmd
 
-    def _mask_output_dir_for_image(self, image_path: Path) -> Path:
-        masks_root = Path(self._masks_dir_text())
+    def _mask_output_dir_for_image(self, image_path: Path, masks_root: Path | None = None) -> Path:
+        masks_root = masks_root or Path(self._masks_dir_text())
         try:
             rel_parent = image_path.resolve().relative_to(Path(self._images_dir_text()).resolve()).parent
         except Exception:
             rel_parent = Path()
         return masks_root / rel_parent
 
-    def _mask_output_path_for_image(self, image_path: Path) -> Path:
-        return self._mask_output_dir_for_image(image_path) / f"{image_path.stem}.png"
+    def _mask_output_path_for_image(self, image_path: Path, masks_root: Path | None = None) -> Path:
+        return self._mask_output_dir_for_image(image_path, masks_root=masks_root) / f"{image_path.stem}.png"
 
-    def _build_yolo_current_cmd(self, image_path: Path) -> list[str]:
-        output_dir = self._mask_output_dir_for_image(image_path)
+    def _build_yolo_current_cmd(self, image_path: Path, masks_root: Path | None = None) -> list[str]:
+        output_dir = self._mask_output_dir_for_image(image_path, masks_root=masks_root)
         return self._build_yolo_preview_cmd(image_path, output_dir)
 
-    def _build_sky_cmd(self) -> list[str]:
+    def _build_init_masks_cmd(self) -> list[str]:
+        images = self._images_dir_text()
+        masks = self._masks_dir_text()
+        if not images:
+            raise ValueError("画像フォルダが指定されていません")
+        if not masks:
+            raise ValueError("マスクフォルダが指定されていません")
+
+        script = self.base_dir / "init_masks.py"
+        if not script.exists():
+            raise FileNotFoundError(f"init_masks.py が見つかりません: {script}")
+
+        return [sys.executable, "-u", str(script), images, masks]
+
+    def _build_sky_cmd(self, *, replace: bool = False) -> list[str]:
         images = self._images_dir_text()
         masks = self._masks_dir_text()
         if not images:
@@ -1224,111 +1272,158 @@ class MaskStep(BaseStepWidget):
         if not script.exists():
             raise FileNotFoundError(f"sky_mask.py が見つかりません: {script}")
 
-        return [
+        cmd = [
             sys.executable, "-u", str(script),
             images, masks,
             *self._sky_common_args(),
         ]
+        if replace:
+            cmd.append("--replace")
+        return cmd
 
-    def _build_sky_current_cmd(self, image_path: Path) -> list[str]:
-        output_dir = self._mask_output_dir_for_image(image_path)
+    def _build_sky_current_cmd(
+        self,
+        image_path: Path,
+        *,
+        replace: bool = False,
+        masks_root: Path | None = None,
+    ) -> list[str]:
+        output_dir = self._mask_output_dir_for_image(image_path, masks_root=masks_root)
         script = self.base_dir / "sky_mask.py"
         if not script.exists():
             raise FileNotFoundError(f"sky_mask.py が見つかりません: {script}")
-        return [
+        cmd = [
             sys.executable, "-u", str(script),
             str(image_path), str(output_dir),
             *self._sky_common_args(),
         ]
+        if replace:
+            cmd.append("--replace")
+        return cmd
 
-    def _run_yolo_preview(self) -> None:
-        if self._yolo_preview_proc is not None and self._yolo_preview_proc.state() != QProcess.NotRunning:
+    def _run_mask_preview(self) -> None:
+        if self._mask_preview_proc is not None and self._mask_preview_proc.state() != QProcess.NotRunning:
             return
         if self._current_reprocess_active:
             return
 
         image_path = self.mask_preview.current_image_path()
         if image_path is None:
-            self.mask_preview.set_status_text(i18n.t("MASK_PREVIEW_YOLO_NO_IMAGE"))
+            self.mask_preview.set_status_text(i18n.t("MASK_PREVIEW_NO_IMAGE"))
             return
-        if not self._confirm_yolo_sam_license_notice():
+        if not self._selected_mask_tasks():
+            self.mask_preview.set_status_text(i18n.t("MASK_TASK_REQUIRED"))
+            return
+        if self.run_yolo_cb.isChecked() and not self._confirm_yolo_sam_license_notice():
             self.mask_preview.set_status_text(i18n.t("YOLO_SAM_LICENSE_NOTICE_CANCELED"))
             return
-
-        self._cleanup_yolo_preview_temp()
-        self._yolo_preview_temp = tempfile.TemporaryDirectory(prefix="stechdrive_yolo_preview_")
-        output_dir = Path(self._yolo_preview_temp.name)
-        output_path = output_dir / _yolo_preview_output_name(image_path)
-
-        try:
-            cmd = self._build_yolo_preview_cmd(image_path, output_dir)
-        except (ValueError, FileNotFoundError) as e:
-            self.mask_preview.set_status_text(str(e))
-            self._cleanup_yolo_preview_temp()
+        if self.run_sky_cb.isChecked() and not self._confirm_sky_license_notice():
+            self.mask_preview.set_status_text(i18n.t("SKY_LICENSE_NOTICE_CANCELED"))
             return
 
-        self._yolo_preview_image = image_path
-        self._yolo_preview_output = output_path
-        self.mask_preview.clear_yolo_preview_mask(image_path)
-        self.mask_preview.set_yolo_preview_running(True)
-        self.mask_preview.set_status_text(i18n.t("MASK_PREVIEW_YOLO_RUNNING"))
+        self._cleanup_mask_preview_temp()
+        self._mask_preview_temp = tempfile.TemporaryDirectory(prefix="stechdrive_mask_preview_")
+        masks_root = Path(self._mask_preview_temp.name)
+        output_path = self._mask_output_path_for_image(image_path, masks_root=masks_root)
+        config = self._mask_preview_config_from_controls()
 
+        try:
+            commands = self._build_image_external_commands(image_path, masks_root=masks_root)
+        except (ValueError, FileNotFoundError) as e:
+            self.mask_preview.set_status_text(str(e))
+            self._cleanup_mask_preview_temp()
+            return
+
+        self._mask_preview_image = image_path
+        self._mask_preview_output = output_path
+        self._mask_preview_config = config
+        self._mask_preview_commands = commands
+        self.mask_preview.clear_temporary_preview_mask(image_path)
+        self.mask_preview.set_mask_preview_running(True)
+        self.mask_preview.set_status_text(i18n.t("MASK_PREVIEW_RUNNING"))
+        self._start_next_mask_preview_command()
+
+    def _start_next_mask_preview_command(self) -> None:
+        if not self._mask_preview_commands:
+            image_path = self._mask_preview_image
+            output_path = self._mask_preview_output
+            config = self._mask_preview_config
+            ok = image_path is not None and output_path is not None and config is not None
+            if ok and image_path is not None and output_path is not None:
+                try:
+                    self._apply_current_image_postprocess(
+                        image_path,
+                        output_path,
+                        replace=not output_path.is_file(),
+                    )
+                except Exception as e:
+                    ok = False
+                    self.mask_preview.set_status_text(str(e))
+            if ok and image_path is not None and output_path is not None and config is not None:
+                ok = output_path.is_file() and self.mask_preview.set_temporary_preview_mask(image_path, output_path, config)
+            self.mask_preview.set_mask_preview_running(False)
+            if ok:
+                self.mask_preview.set_status_text(i18n.t("MASK_PREVIEW_TEMP"))
+            else:
+                self.mask_preview.set_status_text(i18n.t("MASK_PREVIEW_FAILED"))
+            self._cleanup_mask_preview_temp()
+            self._mask_preview_proc = None
+            self._mask_preview_image = None
+            self._mask_preview_output = None
+            self._mask_preview_config = None
+            self._render_mask_preview()
+            return
+
+        _phase, cmd = self._mask_preview_commands.pop(0)
         proc = QProcess(self)
         proc.setProgram(cmd[0])
         proc.setArguments(cmd[1:])
         proc.setProcessChannelMode(QProcess.MergedChannels)
-        proc.readyReadStandardOutput.connect(self._drain_yolo_preview_output)
-        proc.errorOccurred.connect(self._on_yolo_preview_error)
-        proc.finished.connect(self._on_yolo_preview_finished)
-        self._yolo_preview_proc = proc
+        proc.readyReadStandardOutput.connect(self._drain_mask_preview_output)
+        proc.errorOccurred.connect(self._on_mask_preview_error)
+        proc.finished.connect(self._on_mask_preview_finished)
+        self._mask_preview_proc = proc
         proc.start()
 
-    def _drain_yolo_preview_output(self) -> None:
-        if self._yolo_preview_proc is not None:
-            self._yolo_preview_proc.readAllStandardOutput()
+    def _drain_mask_preview_output(self) -> None:
+        if self._mask_preview_proc is not None:
+            self._mask_preview_proc.readAllStandardOutput()
 
-    def _on_yolo_preview_error(self, _error: QProcess.ProcessError) -> None:
-        self.mask_preview.set_status_text(i18n.t("MASK_PREVIEW_YOLO_FAILED"))
+    def _on_mask_preview_error(self, _error: QProcess.ProcessError) -> None:
+        self.mask_preview.set_status_text(i18n.t("MASK_PREVIEW_FAILED"))
 
-    def _on_yolo_preview_finished(self, exit_code: int, _status: QProcess.ExitStatus) -> None:
-        image_path = self._yolo_preview_image
-        output_path = self._yolo_preview_output
-        ok = (
-            exit_code == 0
-            and image_path is not None
-            and output_path is not None
-            and output_path.is_file()
-            and self.mask_preview.set_yolo_preview_mask(image_path, output_path)
-        )
-        self.mask_preview.set_yolo_preview_running(False)
-        if ok:
-            self.mask_preview.set_status_text(i18n.t("MASK_PREVIEW_YOLO_TEMP"))
-        else:
-            self.mask_preview.set_status_text(i18n.t("MASK_PREVIEW_YOLO_FAILED"))
-        self._cleanup_yolo_preview_temp()
-        self._yolo_preview_proc = None
-        self._yolo_preview_image = None
-        self._yolo_preview_output = None
+    def _on_mask_preview_finished(self, exit_code: int, _status: QProcess.ExitStatus) -> None:
+        self._mask_preview_proc = None
+        if exit_code == 0:
+            self._start_next_mask_preview_command()
+            return
+        self.mask_preview.set_mask_preview_running(False)
+        self.mask_preview.set_status_text(i18n.t("MASK_PREVIEW_FAILED"))
+        self._cleanup_mask_preview_temp()
+        self._mask_preview_image = None
+        self._mask_preview_output = None
+        self._mask_preview_config = None
+        self._mask_preview_commands = []
         self._render_mask_preview()
 
-    def _cleanup_yolo_preview_temp(self) -> None:
-        if self._yolo_preview_temp is None:
+    def _cleanup_mask_preview_temp(self) -> None:
+        if self._mask_preview_temp is None:
             return
         try:
-            self._yolo_preview_temp.cleanup()
+            self._mask_preview_temp.cleanup()
         except Exception:
             pass
-        self._yolo_preview_temp = None
+        self._mask_preview_temp = None
 
     def _run_current_image_reprocess(self) -> None:
         if self._current_reprocess_active:
             return
-        if self._yolo_preview_proc is not None and self._yolo_preview_proc.state() != QProcess.NotRunning:
+        if self._mask_preview_proc is not None and self._mask_preview_proc.state() != QProcess.NotRunning:
             return
 
         image_paths = self._selected_reprocess_image_paths()
         if not image_paths:
-            self.mask_preview.set_status_text(i18n.t("MASK_PREVIEW_YOLO_NO_IMAGE"))
+            self.mask_preview.set_status_text(i18n.t("MASK_PREVIEW_NO_IMAGE"))
             return
         if not self._selected_mask_tasks():
             self.mask_preview.set_status_text(i18n.t("MASK_TASK_REQUIRED"))
@@ -1383,7 +1478,7 @@ class MaskStep(BaseStepWidget):
             self.mask_preview.clear_yolo_preview_mask(image_path)
             commands = self._build_current_reprocess_external_commands(image_path)
             if not commands:
-                self._apply_current_image_postprocess(image_path, mask_path)
+                self._apply_current_image_postprocess(image_path, mask_path, replace=True)
                 self._record_current_reprocess_result(success=True, image_path=image_path)
                 self._queue_next_current_reprocess()
                 return
@@ -1399,11 +1494,25 @@ class MaskStep(BaseStepWidget):
         self._start_next_current_reprocess_external_command()
 
     def _build_current_reprocess_external_commands(self, image_path: Path) -> list[tuple[str, list[str]]]:
+        return self._build_image_external_commands(image_path, masks_root=None)
+
+    def _build_image_external_commands(
+        self,
+        image_path: Path,
+        *,
+        masks_root: Path | None,
+    ) -> list[tuple[str, list[str]]]:
         commands: list[tuple[str, list[str]]] = []
+        fresh_base_needed = True
         if self.run_yolo_cb.isChecked():
-            commands.append(("yolo", self._build_yolo_current_cmd(image_path)))
+            commands.append(("yolo", self._build_yolo_current_cmd(image_path, masks_root=masks_root)))
+            fresh_base_needed = False
         if self.run_sky_cb.isChecked():
-            commands.append(("sky", self._build_sky_current_cmd(image_path)))
+            commands.append((
+                "sky",
+                self._build_sky_current_cmd(image_path, replace=fresh_base_needed, masks_root=masks_root),
+            ))
+            fresh_base_needed = False
         return commands
 
     def _start_next_current_reprocess_external_command(self) -> None:
@@ -1515,37 +1624,59 @@ class MaskStep(BaseStepWidget):
         self._current_reprocess_failed = []
         self._current_reprocess_succeeded = []
 
-    def _apply_current_image_postprocess(self, image_path: Path, mask_path: Path) -> None:
-        if self._projection() == _PROJECTION_EQUIRECT and self.run_stitch_cb.isChecked():
-            mask = imread_unicode(mask_path, cv2.IMREAD_GRAYSCALE)
+    def _apply_current_image_postprocess(
+        self,
+        image_path: Path,
+        mask_path: Path,
+        *,
+        replace: bool = False,
+    ) -> None:
+        source_img: np.ndarray | None = None
+        mask: np.ndarray | None = None
+
+        def load_source() -> np.ndarray:
+            nonlocal source_img
+            if source_img is None:
+                source_img = read_image_preserve_depth(str(image_path))
+                if source_img is None:
+                    raise RuntimeError(i18n.t("PREVIEW_LOAD_FAIL"))
+            return source_img
+
+        def current_mask(target_shape: tuple[int, int]) -> np.ndarray:
+            nonlocal mask
             if mask is None:
-                raise RuntimeError(i18n.t("MASK_REPROCESS_NO_BASE_MASK"))
-            h, w = mask.shape[:2]
+                existing = None if replace else imread_unicode(mask_path, cv2.IMREAD_GRAYSCALE)
+                if existing is None:
+                    mask = np.full(target_shape, 255, dtype=np.uint8)
+                else:
+                    mask = existing
+            if mask.shape != target_shape:
+                mask = cv2.resize(mask, (target_shape[1], target_shape[0]), interpolation=cv2.INTER_NEAREST)
+            return mask
+
+        if self._projection() == _PROJECTION_EQUIRECT and self.run_stitch_cb.isChecked():
+            if mask is None and not replace and mask_path.is_file():
+                existing = imread_unicode(mask_path, cv2.IMREAD_GRAYSCALE)
+                target_shape = existing.shape[:2] if existing is not None else load_source().shape[:2]
+            else:
+                target_shape = load_source().shape[:2]
+            base = current_mask(target_shape)
+            h, w = base.shape[:2]
             stitch = create_angular_stitched_mask(
                 w,
                 h,
                 boundary_width_to_limit_angle(self._stitch_boundary_width()),
             )
-            mask = cv2.bitwise_and(mask, stitch)
-            if not imwrite_unicode(mask_path, mask):
-                raise RuntimeError(i18n.t("MASK_REPROCESS_CURRENT_FAILED"))
+            mask = cv2.bitwise_and(base, stitch)
 
         if self.run_overexp_cb.isChecked():
-            source_img = read_image_preserve_depth(str(image_path))
-            if source_img is None:
-                raise RuntimeError(i18n.t("PREVIEW_LOAD_FAIL"))
+            source = load_source()
             overexp = detect_overexposure(
-                source_img,
+                source,
                 threshold=int(self.overexp_threshold_edit.value()),
                 dilate_px=int(self.overexp_dilate_edit.value()),
             )
-            mask = imread_unicode(mask_path, cv2.IMREAD_GRAYSCALE)
-            if mask is not None:
-                if mask.shape != overexp.shape:
-                    mask = cv2.resize(mask, (overexp.shape[1], overexp.shape[0]), interpolation=cv2.INTER_NEAREST)
-                overexp = cv2.bitwise_and(mask, overexp)
-            if not imwrite_unicode(mask_path, overexp):
-                raise RuntimeError(i18n.t("MASK_REPROCESS_CURRENT_FAILED"))
+            mask = cv2.bitwise_and(current_mask(overexp.shape), overexp)
 
         if self.run_custom_cb.isChecked():
             custom_mask = self._custom_mask_path_text()
@@ -1554,14 +1685,19 @@ class MaskStep(BaseStepWidget):
             loaded_custom, load_error = load_custom_mask(custom_mask)
             if loaded_custom is None:
                 raise RuntimeError(load_error or i18n.t("CUSTOM_MASK_NOT_FOUND").format(path=custom_mask))
-            error = merge_custom_mask_for_image(
-                image_path,
-                Path(self._images_dir_text()),
-                Path(self._masks_dir_text()),
-                loaded_custom.mask,
-            )
-            if not error.applied:
-                raise RuntimeError(error.message or i18n.t("MASK_REPROCESS_CURRENT_FAILED"))
+            source_shape = load_source().shape[:2]
+            if loaded_custom.mask.shape != source_shape:
+                raise RuntimeError(
+                    f"Skipped (size mismatch): {image_path.name} "
+                    f"image={source_shape[1]}x{source_shape[0]} "
+                    f"custom={loaded_custom.mask.shape[1]}x{loaded_custom.mask.shape[0]}"
+                )
+            mask = cv2.bitwise_and(current_mask(loaded_custom.mask.shape), loaded_custom.mask)
+
+        if mask is not None:
+            mask_path.parent.mkdir(parents=True, exist_ok=True)
+            if not imwrite_unicode(mask_path, mask):
+                raise RuntimeError(i18n.t("MASK_REPROCESS_CURRENT_FAILED"))
 
     def _build_stitch_cmd(self) -> list[str]:
         masks = self._masks_dir_text()
@@ -1579,7 +1715,7 @@ class MaskStep(BaseStepWidget):
             "--workers", str(self.stitch_workers_edit.value()),
         ]
 
-    def _build_overexposure_cmd(self) -> list[str]:
+    def _build_overexposure_cmd(self, *, replace: bool = False) -> list[str]:
         images = self._images_dir_text()
         masks = self._masks_dir_text()
         if not images:
@@ -1591,15 +1727,18 @@ class MaskStep(BaseStepWidget):
         if not script.exists():
             raise FileNotFoundError(f"overexposure_mask.py が見つかりません: {script}")
 
-        return [
+        cmd = [
             sys.executable, "-u", str(script),
             images, masks,
             "--threshold", str(self.overexp_threshold_edit.value()),
             "--dilate", str(self.overexp_dilate_edit.value()),
             "--workers", str(self.stitch_workers_edit.value()),
         ]
+        if replace:
+            cmd.append("--replace")
+        return cmd
 
-    def _build_custom_cmd(self) -> list[str]:
+    def _build_custom_cmd(self, *, replace: bool = False) -> list[str]:
         images = self._images_dir_text()
         masks = self._masks_dir_text()
         custom_mask = self._custom_mask_path_text()
@@ -1614,10 +1753,13 @@ class MaskStep(BaseStepWidget):
         if not script.exists():
             raise FileNotFoundError(f"custom_mask.py が見つかりません: {script}")
 
-        return [
+        cmd = [
             sys.executable, "-u", str(script),
             images, masks, custom_mask,
         ]
+        if replace:
+            cmd.append("--replace")
+        return cmd
 
     # -- プログレス解析 --
 

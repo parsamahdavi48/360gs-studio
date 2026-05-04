@@ -36,7 +36,7 @@ For DSLR, mirrorless, smartphone, or normal video image sequences, Step 3 can ge
 - Improve detection near the bottom of 360° images for camera operators, tripods, and hands
 - Mask stitch seams, overexposed regions, and user-provided PNG custom masks
 - Preview mask results in single-preview or thumbnail-list mode while tuning settings, with cached thumbnails for large image sets
-- Select only frames with mask misses and reprocess them with adjusted settings
+- Select only frames with mask misses and regenerate them with adjusted settings
 - Convert Metashape SfM results for LichtFeld Studio, Postshot, and Brush
 - Export COLMAP Rig viewpoint datasets and optionally run COLMAP/GLOMAP
 - Windows setup scripts and a Japanese/English GUI
@@ -114,7 +114,7 @@ Use this when you want to exclude people, vehicles, blown-out regions, or simila
 - For 360° images, start with `YOLO Level 2 Quality`.
 - Use `1 Standard` for faster test runs.
 - If people leak through, try `3 Best` or raise `Expand` slightly.
-- When you find a miss in preview, adjust settings and use `Reprocess Current` to save only that image back to `masks/`. In thumbnail mode, use `Ctrl` / `Shift` selection to reprocess multiple selected images together. Arrow keys move the visible thumbnail selection while in thumbnail mode.
+- When you find a miss in preview, adjust settings and use `Regenerate Current` to save only that image back to `masks/` using the currently enabled mask steps. In thumbnail mode, use `Ctrl` / `Shift` selection to regenerate multiple selected images together. Arrow keys move the visible thumbnail selection while in thumbnail mode.
 - If only the bottom-view camera operator leaks through, try `Bottom Enhance` in this order: `Standard -> High -> Max`.
 - `Max` is slower and can mask extra floor or ground.
 - Stitch seam masks are useful when the seam position is stable in the equirectangular image. If FlowState stabilization, direction lock, AI stitching, or similar processing moves the seam, verify it in the preview before using it.

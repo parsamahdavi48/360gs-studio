@@ -39,6 +39,26 @@ def test_custom_mask_merges_with_existing_masks_and_preserves_subfolders(tmp_pat
     assert output[3, 5] == 255
 
 
+def test_custom_mask_replace_ignores_existing_masks(tmp_path: Path) -> None:
+    images = tmp_path / "images"
+    masks = tmp_path / "masks"
+    images.mkdir()
+    masks.mkdir()
+    cv2.imwrite(str(images / "frame_0001.png"), np.full((4, 6, 3), 128, dtype=np.uint8))
+    cv2.imwrite(str(masks / "frame_0001.png"), np.zeros((4, 6), dtype=np.uint8))
+    custom = np.full((4, 6), 255, dtype=np.uint8)
+    custom[:, 0] = 0
+    custom_path = tmp_path / "custom.png"
+    cv2.imwrite(str(custom_path), custom)
+
+    result = run(images, masks, custom_path, replace=True)
+
+    assert result.ok
+    output = cv2.imread(str(masks / "frame_0001.png"), cv2.IMREAD_GRAYSCALE)
+    assert output is not None
+    assert np.array_equal(output, custom)
+
+
 def test_custom_mask_creates_mask_when_no_existing_mask(tmp_path: Path) -> None:
     images = tmp_path / "images"
     masks = tmp_path / "masks"

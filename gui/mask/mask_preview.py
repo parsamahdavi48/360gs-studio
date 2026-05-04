@@ -59,6 +59,7 @@ class MaskPreviewConfig:
     overexposure_dilate: int = 1
     masks_dir: str = ""
     custom_mask_path: str = ""
+    settings_key: tuple = ()
 
 
 class ElidedStatusLabel(QLabel):
@@ -102,7 +103,7 @@ class ElidedStatusLabel(QLabel):
 class MaskPreviewWidget(QWidget):
     """Preview the currently selected mask layers over an equirectangular frame."""
 
-    yolo_preview_requested = Signal()
+    mask_preview_requested = Signal()
     current_reprocess_requested = Signal()
     current_image_changed = Signal()
 
@@ -118,8 +119,9 @@ class MaskPreviewWidget(QWidget):
         self._last_config = MaskPreviewConfig()
         self._current_image_path = ""
         self._mask_overlay_visible = True
-        self._yolo_preview_image_key = ""
-        self._yolo_preview_mask: np.ndarray | None = None
+        self._temporary_preview_image_key = ""
+        self._temporary_preview_config_key: tuple | None = None
+        self._temporary_preview_mask: np.ndarray | None = None
         self._image_cache: OrderedDict[tuple, tuple[np.ndarray, np.ndarray]] = OrderedDict()
         self._mask_cache: OrderedDict[tuple, np.ndarray] = OrderedDict()
         self._stitch_cache: OrderedDict[tuple, np.ndarray] = OrderedDict()
@@ -188,9 +190,9 @@ class MaskPreviewWidget(QWidget):
         layout.addLayout(timeline_row)
 
         overlay_row = QHBoxLayout()
-        self.yolo_preview_btn = QPushButton(i18n.t("YOLO_PREVIEW_BUTTON"))
-        self.yolo_preview_btn.setToolTip(i18n.tip("YOLO_PREVIEW_BUTTON"))
-        self.yolo_preview_btn.clicked.connect(self.yolo_preview_requested.emit)
+        self.yolo_preview_btn = QPushButton(i18n.t("MASK_PREVIEW_BUTTON"))
+        self.yolo_preview_btn.setToolTip(i18n.tip("MASK_PREVIEW_BUTTON"))
+        self.yolo_preview_btn.clicked.connect(self.mask_preview_requested.emit)
         overlay_row.addWidget(self.yolo_preview_btn)
 
         self.reprocess_current_btn = QPushButton(i18n.t("MASK_REPROCESS_CURRENT_BUTTON"))
@@ -257,7 +259,14 @@ class MaskPreviewWidget(QWidget):
         combined = np.full((h, w), 255, dtype=np.uint8)
         status_parts: list[str] = []
 
-        if config.use_yolo:
+        temporary_mask = self._load_temporary_preview_mask(image_path, config)
+        if temporary_mask is not None:
+            if temporary_mask.shape != combined.shape:
+                temporary_mask = cv2.resize(temporary_mask, (w, h), interpolation=cv2.INTER_NEAREST)
+            combined = temporary_mask
+            status_parts.append(i18n.t("MASK_PREVIEW_TEMP"))
+
+        if temporary_mask is None and config.use_yolo:
             yolo_mask = self._load_yolo_preview_mask(image_path)
             yolo_status = i18n.t("MASK_PREVIEW_YOLO_TEMP") if yolo_mask is not None else ""
             if yolo_mask is None:
@@ -271,7 +280,7 @@ class MaskPreviewWidget(QWidget):
                 combined = cv2.bitwise_and(combined, yolo_mask)
                 status_parts.append(yolo_status)
 
-        if config.use_stitch:
+        if temporary_mask is None and config.use_stitch:
             if config.stitch_boundary_width_deg is None:
                 status_parts.append(i18n.t("MASK_PREVIEW_INVALID_STITCH_WIDTH"))
             else:
@@ -283,7 +292,7 @@ class MaskPreviewWidget(QWidget):
                     )
                 )
 
-        if config.use_overexposure:
+        if temporary_mask is None and config.use_overexposure:
             overexp = self._overexposure_mask(
                 image_path,
                 source_img,
@@ -296,10 +305,10 @@ class MaskPreviewWidget(QWidget):
                 i18n.t("MASK_PREVIEW_OVEREXP_STATUS").format(
                     threshold=config.overexposure_threshold,
                     dilate=config.overexposure_dilate,
+                    )
                 )
-            )
 
-        if config.use_sky:
+        if temporary_mask is None and config.use_sky:
             sky_mask = self._load_existing_mask(image_path, config, combined.shape)
             if sky_mask is None:
                 status_parts.append(i18n.t("MASK_PREVIEW_SKY_PENDING"))
@@ -309,7 +318,7 @@ class MaskPreviewWidget(QWidget):
                 combined = cv2.bitwise_and(combined, sky_mask)
                 status_parts.append(i18n.t("MASK_PREVIEW_SKY_EXISTING"))
 
-        if config.use_custom:
+        if temporary_mask is None and config.use_custom:
             custom = self._custom_mask_for_preview(config, source_img.shape[:2], combined.shape)
             if custom is None:
                 status_parts.append(i18n.t("MASK_PREVIEW_CUSTOM_INVALID"))
@@ -430,25 +439,36 @@ class MaskPreviewWidget(QWidget):
             return None
         return image_path
 
-    def clear_yolo_preview_mask(self, image_path: Path | None = None) -> None:
-        if image_path is not None and self._yolo_preview_image_key != _path_key(image_path):
+    def clear_temporary_preview_mask(self, image_path: Path | None = None) -> None:
+        if image_path is not None and self._temporary_preview_image_key != _path_key(image_path):
             return
-        self._yolo_preview_image_key = ""
-        self._yolo_preview_mask = None
+        self._temporary_preview_image_key = ""
+        self._temporary_preview_config_key = None
+        self._temporary_preview_mask = None
 
-    def set_yolo_preview_mask(self, image_path: Path, mask_path: Path) -> bool:
+    def clear_yolo_preview_mask(self, image_path: Path | None = None) -> None:
+        self.clear_temporary_preview_mask(image_path)
+
+    def set_temporary_preview_mask(self, image_path: Path, mask_path: Path, config: MaskPreviewConfig) -> bool:
         mask = imread_unicode(mask_path, cv2.IMREAD_GRAYSCALE)
         if mask is None:
             return False
-        self._yolo_preview_image_key = _path_key(image_path)
-        self._yolo_preview_mask = mask
+        self._temporary_preview_image_key = _path_key(image_path)
+        self._temporary_preview_config_key = _preview_config_key(config)
+        self._temporary_preview_mask = mask
         return True
 
-    def set_yolo_preview_running(self, running: bool) -> None:
+    def set_yolo_preview_mask(self, image_path: Path, mask_path: Path) -> bool:
+        return self.set_temporary_preview_mask(image_path, mask_path, MaskPreviewConfig(use_yolo=True))
+
+    def set_mask_preview_running(self, running: bool) -> None:
         self.yolo_preview_btn.setEnabled(not running)
         self.yolo_preview_btn.setText(
-            i18n.t("MASK_PREVIEW_YOLO_RUNNING") if running else i18n.t("YOLO_PREVIEW_BUTTON")
+            i18n.t("MASK_PREVIEW_RUNNING") if running else i18n.t("MASK_PREVIEW_BUTTON")
         )
+
+    def set_yolo_preview_running(self, running: bool) -> None:
+        self.set_mask_preview_running(running)
 
     def set_current_reprocess_running(self, running: bool) -> None:
         self.reprocess_current_btn.setEnabled(not running)
@@ -466,9 +486,14 @@ class MaskPreviewWidget(QWidget):
         self.status_label.setText(text)
 
     def _load_yolo_preview_mask(self, image_path: Path) -> np.ndarray | None:
-        if self._yolo_preview_image_key != _path_key(image_path):
+        return None
+
+    def _load_temporary_preview_mask(self, image_path: Path, config: MaskPreviewConfig) -> np.ndarray | None:
+        if self._temporary_preview_image_key != _path_key(image_path):
             return None
-        return self._yolo_preview_mask
+        if self._temporary_preview_config_key != _preview_config_key(config):
+            return None
+        return self._temporary_preview_mask
 
     def _on_slider_changed(self, idx: int) -> None:
         if self._slider_sync:
@@ -751,3 +776,18 @@ def _display_bgr8(image: np.ndarray | None) -> np.ndarray | None:
 
 def _path_key(path: Path) -> str:
     return path_key(path)
+
+
+def _preview_config_key(config: MaskPreviewConfig) -> tuple:
+    return (
+        bool(config.use_yolo),
+        bool(config.use_stitch),
+        bool(config.use_overexposure),
+        bool(config.use_sky),
+        bool(config.use_custom),
+        None if config.stitch_boundary_width_deg is None else round(float(config.stitch_boundary_width_deg), 6),
+        int(config.overexposure_threshold),
+        int(config.overexposure_dilate),
+        str(config.custom_mask_path),
+        tuple(config.settings_key),
+    )

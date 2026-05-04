@@ -4,8 +4,8 @@
 
 `sky_mask.py` detects sky regions with Mask2Former ADE20K semantic segmentation
 and writes PNG masks using the project convention: white = keep, black =
-exclude. Existing masks are AND-merged, so sky masking can be combined with
-YOLO/SAM, stitch seam, overexposure, and custom masks.
+exclude. Existing masks are AND-merged by default, so sky masking can be
+combined with YOLO/SAM, stitch seam, overexposure, and custom masks.
 
 For equirectangular 360° images, the default `hybrid` mode combines direct
 equirectangular inference with a top projection view to reduce pole distortion.
@@ -13,7 +13,7 @@ equirectangular inference with a top projection view to reduce pole distortion.
 ## Usage
 
 ```bash
-python sky_mask.py [images_dir_or_file] [masks_dir] [--projection equirect|normal] [--mode direct|top|hybrid] [--inference-size N] [--expand PX] [--min-score S] [--min-area-ratio R] [--no-top-connected]
+python sky_mask.py [images_dir_or_file] [masks_dir] [--projection equirect|normal] [--mode direct|top|hybrid] [--inference-size N] [--expand PX] [--min-score S] [--min-area-ratio R] [--no-top-connected] [--replace]
 ```
 
 - `images_dir_or_file`: source image directory or one source image.
@@ -28,6 +28,7 @@ python sky_mask.py [images_dir_or_file] [masks_dir] [--projection equirect|norma
 - `--no-top-connected`: keep sky components that do not touch the top edge.
 - `--model-dir PATH`: local Mask2Former model directory override.
 - `--device auto|cpu|cuda`: inference device (default: `auto`).
+- `--replace`: ignore existing masks and write sky-only masks.
 
 Example:
 

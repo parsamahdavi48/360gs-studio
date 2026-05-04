@@ -4,7 +4,7 @@
 
 `sky_mask.py` は、Mask2Former ADE20K のsemantic segmentationで空領域を検出し、
 このプロジェクトのマスク規約に合わせたPNGマスクを出力します。白=採用、黒=除外です。
-既存マスクがある場合はAND合成するため、YOLO/SAM、スティッチ境界、白飛び、
+既存マスクがある場合は既定でAND合成するため、YOLO/SAM、スティッチ境界、白飛び、
 カスタムマスクと組み合わせて使えます。
 
 360°エクイレクタングラー画像では、既定の `hybrid` モードで直処理と上部投影ビューを合成し、
@@ -13,7 +13,7 @@
 ## 使い方
 
 ```bash
-python sky_mask.py [images_dir_or_file] [masks_dir] [--projection equirect|normal] [--mode direct|top|hybrid] [--inference-size N] [--expand PX] [--min-score S] [--min-area-ratio R] [--no-top-connected]
+python sky_mask.py [images_dir_or_file] [masks_dir] [--projection equirect|normal] [--mode direct|top|hybrid] [--inference-size N] [--expand PX] [--min-score S] [--min-area-ratio R] [--no-top-connected] [--replace]
 ```
 
 - `images_dir_or_file`: 入力画像フォルダ、または1枚の入力画像。
@@ -28,6 +28,7 @@ python sky_mask.py [images_dir_or_file] [masks_dir] [--projection equirect|norma
 - `--no-top-connected`: 上端につながらない空候補も残します。
 - `--model-dir PATH`: ローカルMask2Formerモデルディレクトリを明示。
 - `--device auto|cpu|cuda`: 推論デバイス（既定: `auto`）。
+- `--replace`: 既存マスクを無視して空マスクだけを書き込みます。
 
 例:
 

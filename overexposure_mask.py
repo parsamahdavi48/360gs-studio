@@ -128,6 +128,7 @@ def run(
     threshold: int = 254,
     dilate_px: int = 1,
     workers: int | None = None,
+    replace: bool = False,
 ) -> None:
     images_path = Path(images_dir)
     masks_path = Path(masks_dir)
@@ -155,11 +156,11 @@ def run(
 
         # 既存マスクがあればAND合成
         existing = masks_path / mask_name
-        existing_str = str(existing) if existing.is_file() else None
+        existing_str = None if replace else str(existing) if existing.is_file() else None
 
         tasks.append((str(img_path), mask_out, existing_str))
 
-    print(f"Processing {len(tasks)} images (threshold={threshold}, dilate={dilate_px}px)")
+    print(f"Processing {len(tasks)} images (threshold={threshold}, dilate={dilate_px}px, replace={replace})")
     print(f"[progress] 0/{len(tasks)}", flush=True)
 
     with ProcessPoolExecutor(
@@ -196,6 +197,10 @@ def main() -> None:
         "--workers", type=int, default=os.cpu_count(),
         help="Number of parallel workers",
     )
+    parser.add_argument(
+        "--replace", action="store_true",
+        help="Ignore existing masks and write overexposure-only masks",
+    )
     args = parser.parse_args()
 
     if args.threshold < 1 or args.threshold > 254:
@@ -208,6 +213,7 @@ def main() -> None:
         threshold=args.threshold,
         dilate_px=args.dilate,
         workers=args.workers,
+        replace=bool(args.replace),
     )
 
 

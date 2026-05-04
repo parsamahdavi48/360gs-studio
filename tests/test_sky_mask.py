@@ -75,6 +75,33 @@ def test_sky_mask_process_image_merges_with_existing_mask(tmp_path: Path) -> Non
     assert merged[14, 12] == 255
 
 
+def test_sky_mask_replace_ignores_existing_mask(tmp_path: Path) -> None:
+    images = tmp_path / "images"
+    masks = tmp_path / "masks"
+    images.mkdir()
+    masks.mkdir()
+    image_path = images / "frame_0001.png"
+    image = np.zeros((16, 24, 3), dtype=np.uint8)
+    image[:8, :, 0] = 255
+    cv2.imwrite(str(image_path), image)
+    existing = np.zeros((16, 24), dtype=np.uint8)
+    cv2.imwrite(str(masks / "frame_0001.png"), existing)
+
+    error = process_image(
+        image_path,
+        images,
+        masks,
+        FakeSkySegmenter(),
+        SkyMaskOptions(projection="normal", mode="direct", min_area_ratio=0.0, top_connected=True, replace=True),
+    )
+
+    assert error is None
+    replaced = cv2.imread(str(masks / "frame_0001.png"), cv2.IMREAD_GRAYSCALE)
+    assert replaced is not None
+    assert replaced[2, 4] == 0
+    assert replaced[14, 12] == 255
+
+
 def test_sky_mask_output_path_preserves_subfolders(tmp_path: Path) -> None:
     images = tmp_path / "images"
     image = images / "nested" / "frame.jpg"

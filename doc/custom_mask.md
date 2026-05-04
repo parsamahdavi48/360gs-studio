@@ -22,6 +22,12 @@ Arguments:
 | `masks_dir` | Mask output folder. Existing masks are read from and written back to this folder. |
 | `custom_mask` | PNG mask applied to every source image with matching dimensions. |
 
+Option:
+
+| Option | Description |
+| --- | --- |
+| `--replace` | Ignore existing masks and write custom-mask-only outputs. |
+
 Supported source image extensions are `.jpg`, `.jpeg`, `.png`, `.tif`, and
 `.tiff`.
 
@@ -42,7 +48,7 @@ Supported source image extensions are `.jpg`, `.jpeg`, `.png`, `.tif`, and
   `images/a/frame_0001.jpg` -> `masks/a/frame_0001.png`.
 - If a matching mask already exists, the script writes
   `existing_mask AND custom_mask`.
-- If no matching mask exists, the custom mask itself becomes the output mask.
+- If no matching mask exists, or `--replace` is used, the custom mask itself becomes the output mask.
 - Images with size mismatches are skipped.
 - If source images exist but none match the custom mask size, the command exits
   with an error.
