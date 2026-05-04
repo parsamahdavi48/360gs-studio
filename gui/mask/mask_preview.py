@@ -13,20 +13,22 @@ from PySide6.QtCore import QItemSelectionModel, Qt, Signal
 from PySide6.QtGui import QImage, QPixmap
 from PySide6.QtWidgets import (
     QAbstractItemView,
-    QButtonGroup,
     QHBoxLayout,
     QLabel,
     QListView,
     QPushButton,
     QSlider,
     QStackedWidget,
-    QToolButton,
     QVBoxLayout,
     QWidget,
 )
 
 from gui import i18n
-from gui.common.icons import single_preview_icon, thumbnail_preview_icon
+from gui.common.preview_mode_toolbar import (
+    PREVIEW_MODE_SINGLE,
+    PREVIEW_MODE_THUMBNAILS,
+    PreviewModeToolbar,
+)
 from gui.common.zoomable_image_label import ZoomableImageLabel
 from gui.mask.mask_files import iter_image_files, mask_candidates_for_image, path_key
 from gui.mask.thumbnail_model import MaskThumbnailModel
@@ -35,8 +37,6 @@ from stitch_mask import boundary_width_to_limit_angle, create_angular_stitched_m
 
 _IMAGE_CACHE_LIMIT = 2
 _LAYER_CACHE_LIMIT = 4
-_PREVIEW_MODE_SINGLE = "single"
-_PREVIEW_MODE_THUMBNAILS = "thumbnails"
 
 
 @dataclass(frozen=True)
@@ -64,7 +64,8 @@ class MaskPreviewWidget(QWidget):
         self.preview_images: list[Path] = []
         self._slider_sync = False
         self._thumbnail_sync = False
-        self._preview_mode = _PREVIEW_MODE_SINGLE
+        self._thumbnail_model_signature: tuple | None = None
+        self._preview_mode = PREVIEW_MODE_SINGLE
         self._last_config = MaskPreviewConfig()
         self._current_image_path = ""
         self._yolo_preview_image_key = ""
@@ -80,9 +81,10 @@ class MaskPreviewWidget(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(6)
 
-        self.preview_mode_group = QButtonGroup(self)
-        self.preview_mode_group.setExclusive(True)
-        self.mode_toolbar = self._build_mode_toolbar()
+        self.mode_toolbar = PreviewModeToolbar()
+        self.mode_toolbar.mode_changed.connect(self.set_preview_mode)
+        self.single_preview_btn = self.mode_toolbar.single_preview_btn
+        self.thumbnail_preview_btn = self.mode_toolbar.thumbnail_preview_btn
 
         self.preview_stack = QStackedWidget()
 
@@ -152,38 +154,6 @@ class MaskPreviewWidget(QWidget):
         layout.addLayout(overlay_row)
         self._update_reprocess_button_text()
 
-    def _build_mode_toolbar(self) -> QWidget:
-        toolbar = QWidget()
-        layout = QHBoxLayout(toolbar)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(4)
-
-        self.single_preview_btn = QToolButton()
-        self.single_preview_btn.setObjectName("iconToolButton")
-        self.single_preview_btn.setCheckable(True)
-        self.single_preview_btn.setChecked(True)
-        self.single_preview_btn.setIcon(single_preview_icon())
-        self.single_preview_btn.setToolTip(i18n.tip("MASK_PREVIEW_MODE_SINGLE"))
-        self.single_preview_btn.setAccessibleName(i18n.t("MASK_PREVIEW_MODE_SINGLE"))
-        self.single_preview_btn.setFixedSize(28, 28)
-        self.single_preview_btn.clicked.connect(lambda _checked=False: self.set_preview_mode(_PREVIEW_MODE_SINGLE))
-        self.preview_mode_group.addButton(self.single_preview_btn)
-        layout.addWidget(self.single_preview_btn)
-
-        self.thumbnail_preview_btn = QToolButton()
-        self.thumbnail_preview_btn.setObjectName("iconToolButton")
-        self.thumbnail_preview_btn.setCheckable(True)
-        self.thumbnail_preview_btn.setIcon(thumbnail_preview_icon())
-        self.thumbnail_preview_btn.setToolTip(i18n.tip("MASK_PREVIEW_MODE_THUMBNAILS"))
-        self.thumbnail_preview_btn.setAccessibleName(i18n.t("MASK_PREVIEW_MODE_THUMBNAILS"))
-        self.thumbnail_preview_btn.setFixedSize(28, 28)
-        self.thumbnail_preview_btn.clicked.connect(
-            lambda _checked=False: self.set_preview_mode(_PREVIEW_MODE_THUMBNAILS)
-        )
-        self.preview_mode_group.addButton(self.thumbnail_preview_btn)
-        layout.addWidget(self.thumbnail_preview_btn)
-        return toolbar
-
     def set_images_dir(self, images_dir: str) -> None:
         if images_dir == self._images_dir:
             return
@@ -193,7 +163,7 @@ class MaskPreviewWidget(QWidget):
     def render(self, config: MaskPreviewConfig) -> None:
         self._last_config = config
         self._sync_thumbnail_model(config, scroll=False)
-        if self._preview_mode == _PREVIEW_MODE_THUMBNAILS:
+        if self._preview_mode == PREVIEW_MODE_THUMBNAILS:
             self.status_label.setText(
                 i18n.t("MASK_PREVIEW_THUMBNAIL_STATUS").format(count=len(self.preview_images))
             )
@@ -421,14 +391,13 @@ class MaskPreviewWidget(QWidget):
             self._set_index(idx, scroll_thumbnail=True)
 
     def set_preview_mode(self, mode: str) -> None:
-        if mode not in {_PREVIEW_MODE_SINGLE, _PREVIEW_MODE_THUMBNAILS}:
+        if mode not in {PREVIEW_MODE_SINGLE, PREVIEW_MODE_THUMBNAILS}:
             return
         if mode == self._preview_mode:
             return
         self._preview_mode = mode
-        self.preview_stack.setCurrentIndex(1 if mode == _PREVIEW_MODE_THUMBNAILS else 0)
-        self.single_preview_btn.setChecked(mode == _PREVIEW_MODE_SINGLE)
-        self.thumbnail_preview_btn.setChecked(mode == _PREVIEW_MODE_THUMBNAILS)
+        self.preview_stack.setCurrentIndex(1 if mode == PREVIEW_MODE_THUMBNAILS else 0)
+        self.mode_toolbar.set_mode(mode)
         self._update_reprocess_button_text()
         self.render(self._last_config)
 
@@ -436,7 +405,7 @@ class MaskPreviewWidget(QWidget):
         return self._preview_mode
 
     def selected_reprocess_image_paths(self) -> list[Path]:
-        if self._preview_mode != _PREVIEW_MODE_THUMBNAILS:
+        if self._preview_mode != PREVIEW_MODE_THUMBNAILS:
             current = self.current_image_path()
             return [current] if current is not None else []
 
@@ -458,7 +427,7 @@ class MaskPreviewWidget(QWidget):
         if not index.isValid():
             return
         self._set_index(index.row(), sync_thumbnail=False)
-        self.set_preview_mode(_PREVIEW_MODE_SINGLE)
+        self.set_preview_mode(PREVIEW_MODE_SINGLE)
 
     def _sync_thumbnail_model(
         self,
@@ -467,13 +436,21 @@ class MaskPreviewWidget(QWidget):
         force: bool = False,
         scroll: bool = False,
     ) -> None:
-        self.thumbnail_model.set_sources(
-            self.preview_images,
-            images_dir=self._images_dir,
-            masks_dir=config.masks_dir,
-            opacity=int(self.opacity_slider.value()),
-            force=force,
+        signature = (
+            tuple(str(path) for path in self.preview_images),
+            self._images_dir,
+            config.masks_dir,
+            int(self.opacity_slider.value()),
         )
+        if force or signature != self._thumbnail_model_signature:
+            self.thumbnail_model.set_sources(
+                self.preview_images,
+                images_dir=self._images_dir,
+                masks_dir=config.masks_dir,
+                opacity=int(self.opacity_slider.value()),
+                force=force,
+            )
+            self._thumbnail_model_signature = signature
         self._sync_thumbnail_selection(self.slider.value(), scroll=scroll)
 
     def _sync_thumbnail_selection(self, idx: int, *, scroll: bool = False) -> None:
@@ -485,13 +462,13 @@ class MaskPreviewWidget(QWidget):
         self._thumbnail_sync = True
         try:
             self.thumbnail_view.selectionModel().setCurrentIndex(model_index, QItemSelectionModel.NoUpdate)
-            if scroll and self._preview_mode == _PREVIEW_MODE_THUMBNAILS:
+            if scroll and self._preview_mode == PREVIEW_MODE_THUMBNAILS:
                 self.thumbnail_view.scrollTo(model_index, QAbstractItemView.EnsureVisible)
         finally:
             self._thumbnail_sync = False
 
     def _update_reprocess_button_text(self) -> None:
-        if self._preview_mode == _PREVIEW_MODE_THUMBNAILS:
+        if self._preview_mode == PREVIEW_MODE_THUMBNAILS:
             count = len(self.thumbnail_view.selectionModel().selectedIndexes())
             if count > 0:
                 self.reprocess_current_btn.setText(

@@ -9,35 +9,46 @@ from pathlib import Path
 from typing import Dict, List
 
 try:
-    from PySide6.QtCore import QSize, Qt, Signal
-    from PySide6.QtGui import QIcon, QKeySequence, QPixmap, QShortcut
+    from PySide6.QtCore import QItemSelectionModel, QSize, Qt, Signal
+    from PySide6.QtGui import QColor, QIcon, QImage, QKeySequence, QPainter, QPen, QPixmap, QShortcut
     from PySide6.QtWidgets import (
+        QAbstractItemView,
         QApplication,
         QHBoxLayout,
         QLabel,
+        QListView,
         QMainWindow,
         QMessageBox,
         QPushButton,
         QSlider,
+        QStackedWidget,
         QToolButton,
         QVBoxLayout,
         QWidget,
     )
 except Exception as e:  # pragma: no cover - environment-dependent import
+    QItemSelectionModel = None
     QSize = None
     Qt = None
     Signal = None
+    QColor = None
     QIcon = None
+    QImage = None
     QKeySequence = None
+    QPainter = None
+    QPen = None
     QPixmap = None
     QShortcut = None
+    QAbstractItemView = None
     QApplication = None
     QHBoxLayout = None
     QLabel = None
+    QListView = None
     QMainWindow = None
     QMessageBox = None
     QPushButton = None
     QSlider = None
+    QStackedWidget = None
     QToolButton = None
     QVBoxLayout = None
     QWidget = None
@@ -49,8 +60,19 @@ else:
 from gui import i18n
 from apply_frame_decisions import pending_drop_image_paths as find_pending_drop_image_paths
 if _PYSIDE_IMPORT_ERROR is None:
+    from gui.common.preview_mode_toolbar import (
+        PREVIEW_MODE_SINGLE,
+        PREVIEW_MODE_THUMBNAILS,
+        PreviewModeToolbar,
+    )
+    from gui.common.thumbnail_list_model import AsyncThumbnailModel, ThumbnailItem
     from gui.common.zoomable_image_label import ZoomableImageLabel
 else:  # pragma: no cover - PySide6 missing
+    PREVIEW_MODE_SINGLE = "single"
+    PREVIEW_MODE_THUMBNAILS = "thumbnails"
+    PreviewModeToolbar = None
+    AsyncThumbnailModel = None
+    ThumbnailItem = None
     ZoomableImageLabel = None
 
 
@@ -60,6 +82,37 @@ _PIXMAP_CACHE_LIMIT = 3
 
 def _review_icon(name: str) -> QIcon:
     return QIcon(str(_ICON_DIR / f"{name}.svg"))
+
+
+def _review_thumbnail_image(item: ThumbnailItem, size: QSize) -> QImage:
+    decision = str(item.cache_key[0]) if len(item.cache_key) >= 1 else "keep"
+    keep = decision != "drop"
+    border = QColor("#22c55e" if keep else "#991b1b")
+    ribbon = QColor("#14532d" if keep else "#3b1717")
+    text = i18n.t("REVIEW_DECISION_KEEP") if keep else i18n.t("REVIEW_DECISION_DROP")
+
+    canvas = QImage(size, QImage.Format_ARGB32)
+    canvas.fill(QColor("#101316"))
+    painter = QPainter(canvas)
+
+    image = QImage(str(item.path))
+    if image.isNull():
+        painter.setPen(QPen(QColor("#ef4444"), 2))
+        painter.drawLine(8, 8, size.width() - 8, size.height() - 8)
+        painter.drawLine(size.width() - 8, 8, 8, size.height() - 8)
+    else:
+        scaled = image.scaled(size, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+        x = max(0, (size.width() - scaled.width()) // 2)
+        y = max(0, (size.height() - scaled.height()) // 2)
+        painter.drawImage(x, y, scaled)
+
+    painter.fillRect(0, size.height() - 18, size.width(), 18, ribbon)
+    painter.setPen(QColor("#e5e7eb"))
+    painter.drawText(6, size.height() - 4, text)
+    painter.setPen(QPen(border, 3))
+    painter.drawRect(canvas.rect().adjusted(1, 1, -2, -2))
+    painter.end()
+    return canvas
 
 
 if QMainWindow is not None:
@@ -78,6 +131,8 @@ if QMainWindow is not None:
 
             self.index = 0
             self._slider_sync = False
+            self._thumbnail_sync = False
+            self._preview_mode = PREVIEW_MODE_SINGLE
             self.current_pixmap: QPixmap | None = None
             self._pixmap_cache: OrderedDict[tuple, QPixmap] = OrderedDict()
 
@@ -133,12 +188,47 @@ if QMainWindow is not None:
             self.reset_decision_button.setFixedSize(36, 32)
             self.reset_decision_button.clicked.connect(lambda _checked=False: self.reset_decision())
             top_row.addWidget(self.reset_decision_button)
+
+            self.mode_toolbar = PreviewModeToolbar(
+                single_text_key="REVIEW_PREVIEW_MODE_SINGLE",
+                thumbnail_text_key="REVIEW_PREVIEW_MODE_THUMBNAILS",
+                single_tip_key="REVIEW_PREVIEW_MODE_SINGLE",
+                thumbnail_tip_key="REVIEW_PREVIEW_MODE_THUMBNAILS",
+            )
+            self.mode_toolbar.mode_changed.connect(self.set_preview_mode)
+            top_row.addWidget(self.mode_toolbar)
             layout.addLayout(top_row)
 
+            self.preview_stack = QStackedWidget()
             self.image_view = ZoomableImageLabel()
             self.image_view.setMinimumHeight(260)
             self.image_view.setStyleSheet("border: 1px solid palette(mid);")
-            layout.addWidget(self.image_view, stretch=1)
+            self.preview_stack.addWidget(self.image_view)
+
+            self.thumbnail_model = AsyncThumbnailModel(self)
+            self.thumbnail_view = QListView()
+            self.thumbnail_view.setModel(self.thumbnail_model)
+            self.thumbnail_view.setViewMode(QListView.IconMode)
+            self.thumbnail_view.setResizeMode(QListView.Adjust)
+            self.thumbnail_view.setMovement(QListView.Static)
+            self.thumbnail_view.setSelectionMode(QAbstractItemView.ExtendedSelection)
+            self.thumbnail_view.setEditTriggers(QAbstractItemView.NoEditTriggers)
+            self.thumbnail_view.setUniformItemSizes(True)
+            self.thumbnail_view.setWrapping(True)
+            self.thumbnail_view.setWordWrap(True)
+            self.thumbnail_view.setSpacing(6)
+            self.thumbnail_view.setIconSize(self.thumbnail_model.icon_size())
+            self.thumbnail_view.setGridSize(self.thumbnail_model.grid_size())
+            self.thumbnail_view.setVerticalScrollMode(QAbstractItemView.ScrollPerPixel)
+            self.thumbnail_view.setToolTip(i18n.tip("REVIEW_PREVIEW_MODE_THUMBNAILS"))
+            self.thumbnail_view.selectionModel().currentChanged.connect(self._on_thumbnail_current_changed)
+            self.thumbnail_view.selectionModel().selectionChanged.connect(
+                lambda _selected, _deselected: self._on_thumbnail_selection_changed()
+            )
+            self.thumbnail_view.doubleClicked.connect(self._on_thumbnail_double_clicked)
+            self.preview_stack.addWidget(self.thumbnail_view)
+
+            layout.addWidget(self.preview_stack, stretch=1)
 
             timeline_row = QHBoxLayout()
             self.frame_slider = QSlider(Qt.Horizontal)
@@ -197,6 +287,113 @@ if QMainWindow is not None:
             window = self.window()
             if isinstance(window, ReviewWindow):
                 window.close()
+
+        def set_preview_mode(self, mode: str) -> None:
+            if mode not in {PREVIEW_MODE_SINGLE, PREVIEW_MODE_THUMBNAILS}:
+                return
+            if mode == self._preview_mode:
+                return
+            self._preview_mode = mode
+            self.preview_stack.setCurrentIndex(1 if mode == PREVIEW_MODE_THUMBNAILS else 0)
+            self.mode_toolbar.set_mode(mode)
+            self._render_current()
+
+        def preview_mode(self) -> str:
+            return self._preview_mode
+
+        def _set_index(
+            self,
+            idx: int,
+            *,
+            sync_thumbnail: bool = True,
+            scroll_thumbnail: bool = False,
+        ) -> None:
+            self.index = max(0, min(idx, len(self.rows) - 1))
+            self._render_current(sync_thumbnail=sync_thumbnail, scroll_thumbnail=scroll_thumbnail)
+
+        def _on_thumbnail_current_changed(self, current, _previous) -> None:  # noqa: ANN001
+            if self._thumbnail_sync or not current.isValid():
+                return
+            self._set_index(current.row(), sync_thumbnail=False)
+
+        def _on_thumbnail_selection_changed(self) -> None:
+            if self._thumbnail_sync:
+                return
+            self._update_decision_buttons(self._current_row().get("decision", "keep"))
+
+        def _on_thumbnail_double_clicked(self, index) -> None:  # noqa: ANN001
+            if not index.isValid():
+                return
+            self._set_index(index.row(), sync_thumbnail=False)
+            self.set_preview_mode(PREVIEW_MODE_SINGLE)
+
+        def _thumbnail_item_for_row(self, idx: int) -> ThumbnailItem:
+            row = self.rows[idx]
+            rel = row.get("output_file", "")
+            path = self.scene_dir / rel
+            decision = row.get("decision", "keep")
+            status = row.get("status", "")
+            seq = row.get("seq", str(idx + 1))
+            name = Path(rel).name
+            return ThumbnailItem(
+                path=path,
+                label=name,
+                tooltip=f"{seq}: {name} / {self._decision_text(decision)}",
+                cache_key=(decision, status),
+            )
+
+        def _sync_thumbnail_model(self, *, force: bool = False) -> None:
+            if not force and self.thumbnail_model.rowCount() == len(self.rows):
+                return
+
+            items = [self._thumbnail_item_for_row(idx) for idx in range(len(self.rows))]
+            self.thumbnail_model.set_items(
+                items,
+                _review_thumbnail_image,
+                renderer_key=("review",),
+                force=force,
+            )
+
+        def _refresh_thumbnail_row(self, idx: int) -> None:
+            if self.thumbnail_model.rowCount() != len(self.rows):
+                self._sync_thumbnail_model(force=True)
+                return
+            self.thumbnail_model.set_item(idx, self._thumbnail_item_for_row(idx))
+
+        def _sync_thumbnail_selection(self, idx: int, *, scroll: bool = False) -> None:
+            if not (0 <= idx < len(self.rows)):
+                return
+            model_index = self.thumbnail_model.index(idx, 0)
+            if not model_index.isValid():
+                return
+            self._thumbnail_sync = True
+            try:
+                selected_rows = self._selected_thumbnail_rows()
+                flags = (
+                    QItemSelectionModel.NoUpdate
+                    if selected_rows
+                    else QItemSelectionModel.ClearAndSelect | QItemSelectionModel.Current
+                )
+                self.thumbnail_view.selectionModel().setCurrentIndex(model_index, flags)
+                if scroll and self._preview_mode == PREVIEW_MODE_THUMBNAILS:
+                    self.thumbnail_view.scrollTo(model_index, QAbstractItemView.EnsureVisible)
+            finally:
+                self._thumbnail_sync = False
+
+        def _selected_thumbnail_rows(self) -> list[int]:
+            rows = {
+                index.row()
+                for index in self.thumbnail_view.selectionModel().selectedIndexes()
+                if index.isValid() and 0 <= index.row() < len(self.rows)
+            }
+            return sorted(rows)
+
+        def _decision_action_indices(self) -> list[int]:
+            if self._preview_mode == PREVIEW_MODE_THUMBNAILS:
+                selected_rows = self._selected_thumbnail_rows()
+                if selected_rows:
+                    return selected_rows
+            return [self.index]
 
         def _current_row(self) -> Dict[str, str]:
             return self.rows[self.index]
@@ -262,7 +459,7 @@ if QMainWindow is not None:
                 parts.append(f"({' / '.join(detail_parts)})")
             return " ".join(parts)
 
-        def _render_current(self) -> None:
+        def _render_current(self, *, sync_thumbnail: bool = True, scroll_thumbnail: bool = False) -> None:
             row = self._current_row()
             seq = int(row.get("seq", self.index + 1))
             total = len(self.rows)
@@ -324,6 +521,12 @@ if QMainWindow is not None:
                 quality=self._quality_summary(row),
             )
             self.info_label.setText(info_text)
+            self._sync_thumbnail_model()
+            if sync_thumbnail:
+                self._sync_thumbnail_selection(self.index, scroll=scroll_thumbnail)
+
+            if self._preview_mode == PREVIEW_MODE_THUMBNAILS:
+                return
 
             if not image_path.exists():
                 self.current_pixmap = None
@@ -379,8 +582,7 @@ if QMainWindow is not None:
             if self._slider_sync:
                 return
             if 0 <= value < len(self.rows):
-                self.index = value
-                self._render_current()
+                self._set_index(value, scroll_thumbnail=True)
 
         def _update_decision_buttons(self, decision: str) -> None:
             keep = decision != "drop"
@@ -393,7 +595,10 @@ if QMainWindow is not None:
                 "border-radius: 4px;"
                 "}"
             )
-            reset_enabled = decision != self._initial_decisions[self.index]
+            reset_enabled = any(
+                self.rows[idx].get("decision", "keep") != self._initial_decisions[idx]
+                for idx in self._decision_action_indices()
+            )
             self.reset_decision_button.setEnabled(reset_enabled)
             self.reset_decision_button.setStyleSheet(
                 "QToolButton { border-radius: 4px; }"
@@ -419,35 +624,49 @@ if QMainWindow is not None:
                 writer.writeheader()
                 writer.writerows(self.rows)
 
-        def _set_current_decision(self, decision: str) -> None:
-            row = self._current_row()
-            old_decision = row.get("decision", "keep")
-            if old_decision == decision:
+        def _set_decisions(self, decisions_by_index: dict[int, str]) -> None:
+            changes: dict[int, str] = {}
+            for idx, decision in decisions_by_index.items():
+                if not (0 <= idx < len(self.rows)):
+                    continue
+                normalized = "drop" if decision == "drop" else "keep"
+                if self.rows[idx].get("decision", "keep") != normalized:
+                    changes[idx] = normalized
+
+            if not changes:
                 self._render_current()
                 return
 
-            row["decision"] = decision
+            old_decisions = {idx: self.rows[idx].get("decision", "keep") for idx in changes}
+            for idx, decision in changes.items():
+                self.rows[idx]["decision"] = decision
             try:
                 self._write_rows()
             except Exception as e:
-                row["decision"] = old_decision
+                for idx, old_decision in old_decisions.items():
+                    self.rows[idx]["decision"] = old_decision
                 QMessageBox.critical(
                     self,
                     i18n.t("REVIEW_SAVE_FAILED_HEADER"),
                     i18n.t("REVIEW_SAVE_FAILED_BODY").format(error=e),
                 )
+                self._render_current()
+                return
+            for idx in changes:
+                self._refresh_thumbnail_row(idx)
             self._render_current()
             self.decisions_changed.emit()
 
+        def _set_current_decision(self, decision: str) -> None:
+            self._set_decisions({self.index: decision})
+
         def prev_row(self) -> None:
             if self.index > 0:
-                self.index -= 1
-                self._render_current()
+                self._set_index(self.index - 1, scroll_thumbnail=True)
 
         def next_row(self) -> None:
             if self.index < len(self.rows) - 1:
-                self.index += 1
-                self._render_current()
+                self._set_index(self.index + 1, scroll_thumbnail=True)
 
         def next_problem(self) -> None:
             if not self.problem_indices:
@@ -456,12 +675,10 @@ if QMainWindow is not None:
 
             for idx in self.problem_indices:
                 if idx > self.index:
-                    self.index = idx
-                    self._render_current()
+                    self._set_index(idx, scroll_thumbnail=True)
                     return
 
-            self.index = self.problem_indices[0]
-            self._render_current()
+            self._set_index(self.problem_indices[0], scroll_thumbnail=True)
 
         def prev_problem(self) -> None:
             if not self.problem_indices:
@@ -470,20 +687,22 @@ if QMainWindow is not None:
 
             for idx in reversed(self.problem_indices):
                 if idx < self.index:
-                    self.index = idx
-                    self._render_current()
+                    self._set_index(idx, scroll_thumbnail=True)
                     return
 
-            self.index = self.problem_indices[-1]
-            self._render_current()
+            self._set_index(self.problem_indices[-1], scroll_thumbnail=True)
 
         def toggle_decision(self) -> None:
-            row = self._current_row()
-            next_decision = "drop" if row.get("decision", "keep") == "keep" else "keep"
-            self._set_current_decision(next_decision)
+            indices = self._decision_action_indices()
+            next_decision = (
+                "drop"
+                if all(self.rows[idx].get("decision", "keep") != "drop" for idx in indices)
+                else "keep"
+            )
+            self._set_decisions({idx: next_decision for idx in indices})
 
         def reset_decision(self) -> None:
-            self._set_current_decision(self._initial_decisions[self.index])
+            self._set_decisions({idx: self._initial_decisions[idx] for idx in self._decision_action_indices()})
 
 
     class ReviewWindow(QMainWindow):

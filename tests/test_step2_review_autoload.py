@@ -1,15 +1,19 @@
 import csv
 import os
+import subprocess
+import sys
 from pathlib import Path
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
+import pytest
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QPixmap
 from PySide6.QtWidgets import QApplication, QCheckBox, QLabel, QLineEdit, QPushButton
 
 from gui import i18n
 from gui.app import MainWindow
+from gui.common.preview_mode_toolbar import PREVIEW_MODE_SINGLE, PREVIEW_MODE_THUMBNAILS
 from gui.steps.step2_review import ReviewStep
 
 
@@ -45,6 +49,11 @@ def _write_scene(scene: Path, count: int = 2, drop_indices: set[int] | None = No
         writer.writeheader()
         writer.writerows(rows)
     return csv_path
+
+
+def _read_rows(csv_path: Path) -> list[dict[str, str]]:
+    with csv_path.open("r", encoding="utf-8", newline="") as f:
+        return list(csv.DictReader(f))
 
 
 def test_review_step_waits_for_csv_until_activated(tmp_path: Path) -> None:
@@ -135,6 +144,67 @@ def test_review_step_apply_enabled_only_after_decision_change(tmp_path: Path) ->
     step._review_widget.reset_decision()
 
     assert not step.primary_action_enabled()
+
+
+@pytest.mark.parametrize("flag_journey", ["thumbnail_to_single", "single_to_thumbnail"])
+def test_review_step_apply_uses_flag_changed_across_preview_modes(
+    tmp_path: Path,
+    monkeypatch,
+    flag_journey: str,
+) -> None:
+    _app()
+    csv_path = _write_scene(tmp_path, count=3)
+    step = ReviewStep(Path.cwd())
+    step.set_scene_dir(str(tmp_path))
+    step.on_activated()
+    widget = step._review_widget
+    assert widget is not None
+
+    if flag_journey == "thumbnail_to_single":
+        widget.set_preview_mode(PREVIEW_MODE_THUMBNAILS)
+        widget.thumbnail_view.setCurrentIndex(widget.thumbnail_model.index(1, 0))
+        widget.toggle_decision()
+        item = widget.thumbnail_model.item_at(1)
+        assert item is not None
+        assert item.cache_key[0] == "drop"
+        widget.set_preview_mode(PREVIEW_MODE_SINGLE)
+        assert widget.preview_mode() == PREVIEW_MODE_SINGLE
+        assert not widget.flag_button.isChecked()
+    else:
+        widget.frame_slider.setValue(1)
+        widget.toggle_decision()
+        assert not widget.flag_button.isChecked()
+        widget.set_preview_mode(PREVIEW_MODE_THUMBNAILS)
+        item = widget.thumbnail_model.item_at(1)
+        assert item is not None
+        assert item.cache_key[0] == "drop"
+        assert widget.preview_mode() == PREVIEW_MODE_THUMBNAILS
+
+    assert widget.rows[1]["decision"] == "drop"
+    assert _read_rows(csv_path)[1]["decision"] == "drop"
+    assert step.primary_action_enabled()
+
+    monkeypatch.setattr(step, "_confirm_finalize", lambda: True)
+    commands = step.build_commands()
+    assert len(commands) == 1
+    label, cmd = commands[0]
+    assert label == "finalize"
+    assert cmd[:3] == [sys.executable, "-u", str(Path.cwd() / "apply_frame_decisions.py")]
+    assert cmd[-2:] == [str(tmp_path), "--finalize-in-place"]
+
+    result = subprocess.run(cmd, cwd=Path.cwd(), capture_output=True, text=True)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert sorted(path.name for path in (tmp_path / "images").glob("*.png")) == [
+        "frame_000001.png",
+        "frame_000003.png",
+    ]
+    rows = _read_rows(csv_path)
+    assert [row["output_file"] for row in rows] == [
+        "images/frame_000001.png",
+        "images/frame_000003.png",
+    ]
+    assert [row["decision"] for row in rows] == ["keep", "keep"]
 
 
 def test_review_step_apply_enabled_when_initial_drop_image_exists(tmp_path: Path) -> None:
