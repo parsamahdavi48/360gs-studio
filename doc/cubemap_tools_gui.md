@@ -38,11 +38,11 @@ start_cubemap_tools_gui.bat
   - `COLMAP Executable`: select the `colmap` executable for this machine. Leave empty to resolve `colmap` from PATH.
   - `Matcher`: `Sequential` is fast and suited to ordered video frames. `Exhaustive` can improve coverage but compares all pairs and can become tens-of-hours slow on large sets.
   - `Mapper`: `Global` is the COLMAP 4.0+ integrated GLOMAP-style global SfM path and is the recommended default. `Incremental` is the classic `colmap mapper`; `GLOMAP` uses an external `glomap` executable.
-- `Output Profile`:
+- `Output Preset`:
   - Preset for the downstream 3DGS tool when `Metashape Import` is selected.
   - `Postshot / Brush`: applies the target coordinate preset and uses the scene PLY directly.
   - `LichtFeld Studio`: imports the Metashape point cloud as `pointcloud.ply` and writes LichtFeld-oriented camera data.
-  - If advanced settings change the coordinate transform, PLY usage, or Metashape import details away from the preset value, the profile display switches to `Custom`.
+  - If advanced settings change the coordinate transform, PLY usage, or Metashape import details away from the preset value, the preset display switches to `Custom`.
 - `Metashape Import Settings`:
   - Visible as the `Metashape Import` settings tab when `Metashape Import` is selected.
   - In `Metashape Import` mode, the GUI runs bundled `vendor/metashape_360_lfs/metashape_360_lfs.py` before cubemap conversion.

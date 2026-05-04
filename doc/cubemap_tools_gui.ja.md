@@ -38,11 +38,11 @@ start_cubemap_tools_gui.bat
   - `COLMAP実行ファイル`: 使用する `colmap.exe` を指定します。空欄ならPATH上の `colmap.exe` を使います。
   - `Matcher`: `Sequential` は高速で動画の連番フレーム向けです。`Exhaustive` は全ペアを照合するため精度が出る場合がありますが、枚数が増えると数十時間規模になることがあります。
   - `Mapper`: `Global` はCOLMAP 4.0以降に統合されたGLOMAP系のグローバルSfMで、既定推奨です。`Incremental` は従来の `colmap mapper`、`GLOMAP` は外部 `glomap.exe` 用です。
-- `出力プロファイル`:
+- `出力プリセット`:
   - `Metashapeインポート` 選択時に使う、連携先3DGSツール向けのプリセットです。
   - `Postshot / Brush`: 対象アプリ向けの座標プリセットを適用し、シーン内のPLYを直接同梱します。
   - `LichtFeld Studio`: Metashapeの点群PLYを `pointcloud.ply` として取り込み、LichtFeld向けのカメラ情報を作成します。
-  - 詳細設定で座標変換、PLY使用、Metashapeインポート詳細をプリセット値から変更すると、プロファイル表示は `カスタム` に切り替わります。
+  - 詳細設定で座標変換、PLY使用、Metashapeインポート詳細をプリセット値から変更すると、プリセット表示は `カスタム` に切り替わります。
 - `Metashapeインポート設定`:
   - `Metashapeインポート` 選択時に、設定タブの `Metashapeインポート` として表示されます。
   - `Metashapeインポート` 方式では、キューブマップ変換の前に同梱の
