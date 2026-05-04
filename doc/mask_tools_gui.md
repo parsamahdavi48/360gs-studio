@@ -61,6 +61,12 @@ run_gui.bat --scene ./scene01
 - `Reprocess Current`: rebuilds and saves the mask for only the currently displayed preview image.
   - If `YOLO Detection` is enabled, it reruns YOLO/SAM for that single image. If `Stitch Seam`, `Overexposure`, or `Custom` is enabled, those masks are merged into the same output.
   - Use it to fix misses found in preview without regenerating the whole set.
+- `Mask Preview`:
+  - Use the icons at the right side of the preview header to switch between single preview and thumbnail list.
+  - Thumbnail mode shows existing masks as red overlays. Double-clicking a thumbnail returns to single preview on that image.
+  - `Ctrl` click, `Ctrl+Shift` click, and `Shift` click follow Windows Explorer-style multi-selection.
+  - In thumbnail mode, `Reprocess Selected` rebuilds only the selected images with the current mask-generation settings and saves them to `masks/`.
+  - The status text beside the opacity slider stays on one line and elides when space is tight; the full text is available as a tooltip.
 
 ## Actions
 

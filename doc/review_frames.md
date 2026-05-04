@@ -31,6 +31,11 @@ python review_frames.py ./scene01 --csv selected_frames.csv
 ## Behavior
 
 - Reads `output_file` from each CSV row and displays the image.
+- Supports single-image preview and thumbnail-list preview using the header icons.
+- Thumbnail mode shows keep/drop state with green/red framing.
+- Thumbnail selection follows Windows Explorer-style multi-selection (`Ctrl` click, `Ctrl+Shift` click, and `Shift` click).
+- In thumbnail mode, the keep/drop flag button applies to the selected thumbnails; the reset button restores selected frames to the state loaded from the CSV.
+- Double-clicking a thumbnail switches back to single-image preview on that frame.
 - Supports direct jump by sequence number (`Jump Seq`) and problem-frame navigation.
 - Saves the updated `decision` column back to the same CSV.
 - Other columns (scores, status, indices) are preserved.

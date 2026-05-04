@@ -1163,6 +1163,8 @@ class MaskStep(BaseStepWidget):
         self.mask_preview.set_current_reprocess_running(False)
         self.mask_preview.refresh_image_list(prefer_current=True)
         self._render_mask_preview()
+        self._mask_preview_render_timer.stop()
+        self._mask_preview_render_pending = False
         self._update_ready_status()
 
         if last_success and last_image is not None:

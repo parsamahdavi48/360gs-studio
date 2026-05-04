@@ -1,6 +1,6 @@
 # stechdrive-3dgs-utils
 
-**v1.2.2**
+**v1.3.0**
 
 A Windows-first integrated GUI tool for turning 360° camera video into images, masks, and camera data that are practical for 3D Gaussian Splatting (3DGS) training.
 
@@ -31,12 +31,12 @@ For DSLR, mirrorless, smartphone, or normal video image sequences, Step 3 can ge
 ## Highlights
 
 - Extract SfM-friendly frames from 360° video
-- Review extracted frames and apply keep/drop decisions in the GUI
+- Review extracted frames in single-preview or thumbnail-list mode and apply keep/drop decisions
 - Generate masks with YOLO + SAM2.1
 - Improve detection near the bottom of 360° images for camera operators, tripods, and hands
-- Mask stitch seams and overexposed regions
-- Preview mask results while tuning settings
-- Reprocess only the current preview image to patch mask misses with updated settings
+- Mask stitch seams, overexposed regions, and user-provided PNG custom masks
+- Preview mask results in single-preview or thumbnail-list mode while tuning settings
+- Reprocess the current preview image or multiple selected thumbnails with updated settings
 - Convert Metashape SfM results for LichtFeld Studio, Postshot, and Brush
 - Export COLMAP Rig viewpoint datasets and optionally run COLMAP/GLOMAP
 - Windows setup scripts and a Japanese/English GUI
@@ -81,8 +81,8 @@ If the scene folder path contains non-ASCII characters, an extremely long path, 
 | Step | Purpose | Current Default |
 | --- | --- | --- |
 | 1. Frame Extraction | Extract equirectangular still frames from 360° video | Fixed interval + motion adjustment |
-| 2. Frame Review | Review extracted frames and apply keep/drop decisions to CSV | Review low-quality candidates and unwanted frames |
-| 3. Mask Generation | Generate YOLO, stitch seam, and overexposure masks | YOLO enabled, quality setting for 360° images |
+| 2. Frame Review | Review extracted frames in single/thumbnail views and apply keep/drop decisions to CSV | Review low-quality candidates and unwanted frames |
+| 3. Mask Generation | Generate YOLO, stitch seam, overexposure, and custom masks | YOLO enabled, quality setting for 360° images |
 | 4. Export | Export 3DGS outputs from SfM results, or export COLMAP Rig viewpoint images | Metashape Import / LichtFeld / Full / Cube6 |
 
 ## Recommended Workflow: Metashape Route
@@ -114,7 +114,7 @@ Use this when you want to exclude people, vehicles, blown-out regions, or simila
 - For 360° images, start with `YOLO Level 2 Quality`.
 - Use `1 Standard` for faster test runs.
 - If people leak through, try `3 Best` or raise `Expand` slightly.
-- When you find a miss in preview, adjust settings and use `Reprocess Current` to save only that image back to `masks/`.
+- When you find a miss in preview, adjust settings and use `Reprocess Current` to save only that image back to `masks/`. In thumbnail mode, use `Ctrl` / `Shift` selection to reprocess multiple selected images together.
 - If only the bottom-view camera operator leaks through, try `Bottom Enhance` in this order: `Standard -> High -> Max`.
 - `Max` is slower and can mask extra floor or ground.
 - Stitch seam masks are useful when the seam position is stable in the equirectangular image. If FlowState stabilization, direction lock, AI stitching, or similar processing moves the seam, verify it in the preview before using it.
