@@ -894,23 +894,14 @@ class MaskStep(BaseStepWidget):
             QMessageBox.AcceptRole,
         )
         box.addButton(i18n.CANCEL, QMessageBox.RejectRole)
-        licenses_btn = box.addButton(
-            i18n.t("YOLO_SAM_LICENSE_NOTICE_OPEN_LICENSES"),
-            QMessageBox.HelpRole,
-        )
         box.setDefaultButton(continue_btn)
 
-        while True:
-            box.exec()
-            clicked = box.clickedButton()
-            if clicked == licenses_btn:
-                self._open_third_party_licenses()
-                continue
-            if clicked == continue_btn:
-                if remember_cb.isChecked():
-                    self._set_yolo_sam_notice_acknowledged()
-                return True
+        box.exec()
+        if box.clickedButton() != continue_btn:
             return False
+        if remember_cb.isChecked():
+            self._set_yolo_sam_notice_acknowledged()
+        return True
 
     def _yolo_sam_notice_acknowledged(self) -> bool:
         settings = load_user_settings_section(_LICENSE_NOTICE_SECTION)
@@ -926,13 +917,6 @@ class MaskStep(BaseStepWidget):
             _LICENSE_NOTICE_SECTION,
             {_YOLO_SAM_NOTICE_KEY: _YOLO_SAM_NOTICE_VERSION},
         )
-
-    def _open_third_party_licenses(self) -> None:
-        path = self.base_dir / "THIRD_PARTY_LICENSES.md"
-        if path.is_file():
-            QDesktopServices.openUrl(QUrl.fromLocalFile(str(path)))
-        else:
-            QDesktopServices.openUrl(QUrl("https://www.ultralytics.com/license"))
 
     def _ensure_no_pending_drop_images(self) -> None:
         if not self.scene_dir:
