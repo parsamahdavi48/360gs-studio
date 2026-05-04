@@ -27,6 +27,7 @@ from PySide6.QtWidgets import (
     QPushButton,
     QScrollArea,
     QSplitter,
+    QTabWidget,
     QVBoxLayout,
     QWidget,
 )
@@ -246,8 +247,16 @@ class MaskStep(BaseStepWidget):
 
         layout.addLayout(task_row)
 
-        # --- YOLO設定 (折りたたみ) ---
-        self.yolo_section = CollapsibleSection(i18n.t("YOLO_SECTION"), expanded=True)
+        # --- マスク設定タブ ---
+        self.mask_settings_tabs = QTabWidget()
+        self.mask_settings_tabs.setObjectName("maskSettingsTabs")
+        layout.addWidget(self.mask_settings_tabs)
+
+        # --- YOLO設定 ---
+        self.yolo_section = QWidget()
+        yolo_layout = QVBoxLayout(self.yolo_section)
+        yolo_layout.setContentsMargins(8, 8, 8, 8)
+        yolo_layout.setSpacing(6)
         yolo_settings_row_widget = QWidget()
         yolo_settings_row = QHBoxLayout(yolo_settings_row_widget)
         yolo_settings_row.setContentsMargins(0, 0, 0, 0)
@@ -288,7 +297,7 @@ class MaskStep(BaseStepWidget):
         yolo_settings_row.addWidget(self.yolo_expand_edit)
         yolo_settings_row.addStretch()
         self.yolo_settings_row = yolo_settings_row_widget
-        self.yolo_section.content_layout.addWidget(yolo_settings_row_widget)
+        yolo_layout.addWidget(yolo_settings_row_widget)
 
         bottom_settings_row_widget = QWidget()
         bottom_settings_row = QHBoxLayout(bottom_settings_row_widget)
@@ -312,7 +321,7 @@ class MaskStep(BaseStepWidget):
         bottom_settings_row.addWidget(self.yolo_bottom_enhance_combo)
         bottom_settings_row.addStretch()
         self.yolo_bottom_settings_row = bottom_settings_row_widget
-        self.yolo_section.content_layout.addWidget(bottom_settings_row_widget)
+        yolo_layout.addWidget(bottom_settings_row_widget)
 
         class_list_section = CollapsibleSection(i18n.t("YOLO_CLASS_LIST_SECTION"), expanded=False)
         scroll = QScrollArea()
@@ -332,11 +341,15 @@ class MaskStep(BaseStepWidget):
             grid.addWidget(cb, idx // cols, idx % cols)
         scroll.setWidget(grid_widget)
         class_list_section.content_layout.addWidget(scroll)
-        self.yolo_section.content_layout.addWidget(class_list_section)
-        layout.addWidget(self.yolo_section)
+        yolo_layout.addWidget(class_list_section)
+        yolo_layout.addStretch()
+        self.mask_settings_tabs.addTab(self.yolo_section, i18n.t("MASK_TAB_YOLO"))
 
-        # --- スティッチ+白飛び設定 (折りたたみ) ---
-        self.other_section = CollapsibleSection(i18n.t("STITCH_OVEREXP_SECTION"), expanded=False)
+        # --- スティッチ+白飛び設定 ---
+        self.other_section = QWidget()
+        other_layout = QVBoxLayout(self.other_section)
+        other_layout.setContentsMargins(8, 8, 8, 8)
+        other_layout.setSpacing(6)
         other_form = QFormLayout()
         other_form.setSpacing(6)
 
@@ -403,10 +416,14 @@ class MaskStep(BaseStepWidget):
             i18n.tip("OVEREXPOSURE_DILATE"),
         )
 
-        self.other_section.content_layout.addLayout(other_form)
-        layout.addWidget(self.other_section)
+        other_layout.addLayout(other_form)
+        other_layout.addStretch()
+        self.mask_settings_tabs.addTab(self.other_section, i18n.t("MASK_TAB_STITCH_OVEREXP"))
 
-        self.custom_section = CollapsibleSection(i18n.t("CUSTOM_MASK_SECTION"), expanded=False)
+        self.custom_section = QWidget()
+        custom_layout = QVBoxLayout(self.custom_section)
+        custom_layout.setContentsMargins(8, 8, 8, 8)
+        custom_layout.setSpacing(6)
         custom_form = QFormLayout()
         custom_form.setSpacing(6)
         self.custom_mask_path_label = QLabel(i18n.t("CUSTOM_MASK_NOT_SELECTED"))
@@ -419,7 +436,7 @@ class MaskStep(BaseStepWidget):
             self.custom_mask_path_label,
             i18n.tip("CUSTOM_MASK_FILE"),
         )
-        self.custom_section.content_layout.addLayout(custom_form)
+        custom_layout.addLayout(custom_form)
 
         custom_button_row = QHBoxLayout()
         custom_button_row.setSpacing(6)
@@ -429,8 +446,9 @@ class MaskStep(BaseStepWidget):
         self.custom_mask_clear_btn = QPushButton(i18n.t("CUSTOM_MASK_CLEAR"))
         self.custom_mask_clear_btn.setToolTip(i18n.tip("CUSTOM_MASK_CLEAR"))
         custom_button_row.addWidget(self.custom_mask_clear_btn, stretch=1)
-        self.custom_section.content_layout.addLayout(custom_button_row)
-        layout.addWidget(self.custom_section)
+        custom_layout.addLayout(custom_button_row)
+        custom_layout.addStretch()
+        self.mask_settings_tabs.addTab(self.custom_section, i18n.t("MASK_TAB_CUSTOM"))
 
         layout.addStretch()
         self.metashape_notice = QLabel(i18n.METASHAPE_NOTICE)
@@ -618,7 +636,7 @@ class MaskStep(BaseStepWidget):
         custom_enabled = self.run_custom_cb.isChecked()
 
         self.external_images_panel.setVisible(not equirect)
-        self.yolo_section.content_widget.setEnabled(yolo_enabled)
+        self.yolo_section.setEnabled(yolo_enabled)
         self.yolo_bottom_enhance_label.setEnabled(yolo_enabled and equirect)
         self.yolo_bottom_enhance_combo.setEnabled(yolo_enabled and equirect)
         self.run_stitch_cb.setEnabled(equirect)

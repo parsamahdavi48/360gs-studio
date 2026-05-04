@@ -387,10 +387,16 @@ _JA: dict[str, str] = {
     # Step3 section headers
     "YOLO_SECTION": "YOLO 検出設定",
     "STITCH_OVEREXP_SECTION": "スティッチ / 白飛び設定",
+    "MASK_TAB_YOLO": "YOLO",
+    "MASK_TAB_STITCH_OVEREXP": "スティッチ/白飛び",
+    "MASK_TAB_CUSTOM": "カスタムマスク",
 
     # Step4 extra
     "OUTPUT_DETAIL": "出力詳細",
     "MS_IMAGES_LABEL": "画像フォルダ",
+    "STEP4_TAB_METASHAPE": "Metashapeインポート",
+    "STEP4_TAB_VIEW_EXPORT": "視点書き出し",
+    "STEP4_TAB_COLMAP": "COLMAP実行",
 
     # Step4 advanced output (added 2026-05)
     "ADVANCED_OUTPUT_SECTION": "視点書き出し設定",
@@ -784,10 +790,16 @@ _EN: dict[str, str] = {
     # Step3 section headers
     "YOLO_SECTION": "YOLO Detection Settings",
     "STITCH_OVEREXP_SECTION": "Stitch / Overexposure Settings",
+    "MASK_TAB_YOLO": "YOLO",
+    "MASK_TAB_STITCH_OVEREXP": "Stitch/Overexp.",
+    "MASK_TAB_CUSTOM": "Custom Mask",
 
     # Step4 extra
     "OUTPUT_DETAIL": "Output Detail",
     "MS_IMAGES_LABEL": "Images Folder",
+    "STEP4_TAB_METASHAPE": "Metashape Import",
+    "STEP4_TAB_VIEW_EXPORT": "View Export",
+    "STEP4_TAB_COLMAP": "COLMAP Run",
 
     # Step4 advanced output (added 2026-05)
     "ADVANCED_OUTPUT_SECTION": "View Export Settings",
@@ -913,7 +925,7 @@ _TIPS_JA: dict[str, str] = {
     "MS_USE_PLY": "Metashapeインポート時に --ply を渡します。LichtFeldではON、Postshot/Brushでは通常OFFです。変更するとカスタムになります",
     "SCALE_FACTOR": "カメラ位置と点群座標に掛けるスケール係数。通常は1.0のまま",
     "NO_FIX_ROTATION": "Metashapeデータ読み込み時の向き補正を無効化。通常はOFFのまま",
-    "VIEW_MODE": "カスタムグリッド: Pitch/Yawを自由に設定\nCube6: 標準キューブマップ6面 (前後左右+上下)",
+    "VIEW_MODE": "Cube6: 4列 x 3行グリッドの標準6面プリセット。上下は既定でS3を使います\nカスタムグリッド: Pitch/Yawを自由に設定",
     "VIEW_SELECTION_SECTION": "書き出す視点をオン/オフできます。項目にマウスを重ねると、プレビュー上で対応する視点をハイライトします",
     "YAW_OFFSET": "全ビューのYaw角にオフセットを加算 (度)。-180〜180度でクランプ。ドラッグで調整できます。スティッチ線を避けるために45度推奨",
     "YAW_SLOTS": "水平方向の分割数 (4-8)。360度をN等分した角度でビューを配置",
@@ -1038,7 +1050,7 @@ _TIPS_EN: dict[str, str] = {
     "MS_USE_PLY": "Pass --ply during Metashape import. ON for LichtFeld and usually OFF for Postshot/Brush. Changing this switches the output profile to Custom",
     "SCALE_FACTOR": "Scale factor applied to camera positions and point coordinates. Usually leave at 1.0",
     "NO_FIX_ROTATION": "Disable orientation correction when importing Metashape data. Usually leave OFF",
-    "VIEW_MODE": "Custom Grid: freely set pitch/yaw angles\nCube6: standard 6-face cubemap (front/back/left/right + top/bottom)",
+    "VIEW_MODE": "Cube6: standard six-face preset on a 4 x 3 grid. Top/bottom use S3 by default\nCustom Grid: freely set pitch/yaw angles",
     "VIEW_SELECTION_SECTION": "Turn export viewpoints on or off. Hover a viewpoint to highlight the matching area in the preview.",
     "YAW_OFFSET": "Add offset to all view yaw angles (degrees). Clamped to -180 to 180. Drag horizontally to adjust. 45 is recommended to avoid stitch seams",
     "YAW_SLOTS": "Horizontal divisions (4-8). Places views at 360/N degree intervals",

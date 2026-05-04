@@ -83,6 +83,15 @@ def test_cubemap_step_uses_fixed_output_folder_label(tmp_path: Path) -> None:
     assert set(step.export_method_buttons) == {"metashape", "colmap"}
     assert step.export_images_cb.isChecked()
     assert step.export_masks_cb.isChecked()
+    assert step.view_export_tab_index == 0
+    assert step.metashape_tab_index == 1
+    assert step.colmap_tab_index == 2
+    assert step.settings_tabs.tabText(0) == i18n.t("STEP4_TAB_VIEW_EXPORT")
+    assert step.settings_tabs.tabText(step.metashape_tab_index) == i18n.t("STEP4_TAB_METASHAPE")
+    assert step.settings_tabs.tabText(step.view_export_tab_index) == i18n.t("STEP4_TAB_VIEW_EXPORT")
+    assert step.settings_tabs.tabText(step.colmap_tab_index) == i18n.t("STEP4_TAB_COLMAP")
+    assert step.settings_tabs.isTabVisible(step.metashape_tab_index)
+    assert not step.settings_tabs.isTabVisible(step.colmap_tab_index)
     assert not _is_descendant(step.export_targets_row, step.advanced_output_section)
     assert _is_descendant(step.view_config.settings_widget, step.advanced_output_section)
     assert _is_descendant(step.view_config.grid_section, step.advanced_output_section)
@@ -95,8 +104,14 @@ def test_cubemap_step_uses_fixed_output_folder_label(tmp_path: Path) -> None:
     assert custom_index + 1 == grid_index
     assert step.export_summary_label.text() == step.view_config.summary_text()
     cube6_views = step.view_config.collect_views(include_disabled=True)
-    assert {v["name"] for v in cube6_views} == {"px", "nx", "pz", "nz", "top", "bottom"}
-    assert all(v["enabled"] for v in cube6_views)
+    cube6_enabled = [v for v in cube6_views if v["enabled"]]
+    assert step.view_config.view_mode() == "cube6"
+    assert step.view_config.yaw_slots_combo.currentText() == "4"
+    assert step.view_config.pitch_values() == [-90.0, 0.0, 90.0]
+    assert len(cube6_views) == 12
+    assert {v["name"] for v in cube6_enabled} == {"px", "nx", "pz", "nz", "top", "bottom"}
+    assert {v["slot"] for v in cube6_enabled if v["name"] in {"top", "bottom"}} == {3}
+    assert sum(1 for v in cube6_views if not v["enabled"]) == 6
     assert step._export_method() == "metashape"
     assert step.export_method_buttons["metashape"].isChecked()
     assert not step.output_path_label.wordWrap()
@@ -127,6 +142,31 @@ def test_cubemap_step_uses_fixed_output_folder_label(tmp_path: Path) -> None:
     normal_cmd = step._build_cubemap_cmd()
     normal_scale = float(normal_cmd[normal_cmd.index("--output_scale") + 1])
     assert normal_scale == pytest.approx(2.0 / math.pi, rel=1e-5)
+
+
+def test_export_method_switch_keeps_view_export_tab_leftmost() -> None:
+    _app()
+    step = CubemapStep(Path.cwd())
+
+    assert step.settings_tabs.tabText(0) == i18n.t("STEP4_TAB_VIEW_EXPORT")
+    assert step.settings_tabs.currentIndex() == step.view_export_tab_index
+
+    step.settings_tabs.setCurrentIndex(step.metashape_tab_index)
+    step._set_export_method("colmap")
+
+    assert step.settings_tabs.tabText(0) == i18n.t("STEP4_TAB_VIEW_EXPORT")
+    assert step.settings_tabs.isTabVisible(step.view_export_tab_index)
+    assert not step.settings_tabs.isTabVisible(step.metashape_tab_index)
+    assert step.settings_tabs.isTabVisible(step.colmap_tab_index)
+    assert step.settings_tabs.currentIndex() == step.colmap_tab_index
+
+    step.settings_tabs.setCurrentIndex(step.view_export_tab_index)
+    step._set_export_method("metashape")
+
+    assert step.settings_tabs.tabText(0) == i18n.t("STEP4_TAB_VIEW_EXPORT")
+    assert step.settings_tabs.currentIndex() == step.view_export_tab_index
+    assert step.settings_tabs.isTabVisible(step.metashape_tab_index)
+    assert not step.settings_tabs.isTabVisible(step.colmap_tab_index)
 
 
 def test_cubemap_step_does_not_count_repo_images_without_scene_dir() -> None:
@@ -198,6 +238,25 @@ def test_custom_grid_defaults_to_three_pitch_rows_all_enabled() -> None:
     assert len(views) == 18
     assert sum(1 for view in views if view["enabled"]) == 18
     assert {view["pitch"] for view in views} == {-45.0, 0.0, 45.0}
+
+
+def test_editing_cube6_grid_switches_to_custom_without_resetting_grid() -> None:
+    _app()
+    step = CubemapStep(Path.cwd())
+
+    assert step.view_config.view_mode() == "cube6"
+    first_enabled = next(
+        view
+        for view in step.view_config.collect_views(include_disabled=True)
+        if view["name"] == "px"
+    )
+    middle_row_index = step.view_config.pitch_values().index(0.0)
+    step.view_config.pitch_rows[middle_row_index]["checks"][first_enabled["slot"]].setChecked(False)
+
+    assert step.view_config.view_mode() == "custom_views"
+    assert step.view_config.yaw_slots_combo.currentText() == "4"
+    assert step.view_config.pitch_values() == [-90.0, 0.0, 90.0]
+    assert sum(1 for view in step.view_config.collect_views(include_disabled=True) if view["enabled"]) == 5
 
 
 def test_custom_grid_pitch_rows_are_limited_to_five() -> None:

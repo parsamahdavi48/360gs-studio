@@ -33,7 +33,7 @@ start_cubemap_tools_gui.bat
   - `Metashape Import`: export 3DGS-oriented viewpoint images, masks, and `transforms.json` from Metashape SfM results.
   - `COLMAP Export`: export COLMAP Rig viewpoint images, masks, and `rig_config.json` from extracted `images/` and `masks/` into `output/colmap_rig/`.
 - `COLMAP Run Settings`:
-  - Visible when `COLMAP Export` is selected.
+  - Visible as the `COLMAP Run` settings tab when `COLMAP Export` is selected.
   - `Run COLMAP after export`: runs `feature_extractor` -> `rig_configurator` -> matcher -> mapper after viewpoint export. Keep this off unless you want to start the heavy SfM step.
   - `COLMAP Executable`: select the `colmap` executable for this machine. Leave empty to resolve `colmap` from PATH.
   - `Matcher`: `Sequential` is fast and suited to ordered video frames. `Exhaustive` can improve coverage but compares all pairs and can become tens-of-hours slow on large sets.
@@ -44,6 +44,7 @@ start_cubemap_tools_gui.bat
   - `LichtFeld Studio`: imports the Metashape point cloud as `pointcloud.ply` and writes LichtFeld-oriented camera data.
   - If advanced settings change the coordinate transform, PLY usage, or Metashape import details away from the preset value, the profile display switches to `Custom`.
 - `Metashape Import Settings`:
+  - Visible as the `Metashape Import` settings tab when `Metashape Import` is selected.
   - In `Metashape Import` mode, the GUI runs bundled `vendor/metashape_360_lfs/metashape_360_lfs.py` before cubemap conversion.
   - `Images Folder`: fixed to scene `images/`.
   - `Camera XML`: Metashape-exported camera pose XML passed to `--xml`.
@@ -53,19 +54,20 @@ start_cubemap_tools_gui.bat
 - `Output`:
   - Always visible. Independently toggles `Images` and `Masks`. Turn `Images` off and `Masks` on when you only rebuilt masks.
 - `View Export Settings`:
-  - Shared viewpoint image export settings such as view mode, yaw offset, image size, per-frame yaw step, output format, bit depth, and mask inversion.
+  - Always visible as the `View Export` settings tab.
+  - Shared viewpoint image export settings such as view preset, yaw offset, image size, per-frame yaw step, output format, bit depth, and mask inversion.
 - Masks:
   - Conversion and preview automatically use matching files from scene `masks/`.
 - `View Mode`:
-  - `Custom Pitch/Yaw`: existing mode with pitch rows and yaw slots.
-  - `Cube6`: fixed six-face mode (FOV 90).
+  - `Cube6`: six-face preset on a 4 x 3 grid. By default it uses 4 yaw slots, pitch rows `-90,0,90`, all four pitch `0` slots, and `S3` for top/bottom.
+  - `Custom Grid`: freely edit pitch rows and yaw slots. Editing the Cube6 grid automatically switches it to custom.
 - `Yaw Offset (deg)`:
   - Base yaw for slot generation.
 - `Yaw Slots`:
   - Number of yaw slots per pitch row (`4..8`).
   - Slot yaw = `offset + slot*(360 / yaw_slots)`.
-- `Pitch Rows (deg CSV)`:
-  - Pitch list. Standard: `-45,0,45`.
+- `Pitch Rows`:
+  - Pitch list. `Cube6` uses `-90,0,90`; `Custom Grid` starts from `-45,0,45`.
   - Range is `-90..90`, max 5 rows.
 - `Cube6`:
   - Always exports all six faces. Top and bottom faces are treated as valid fixed-camera observations.
@@ -83,8 +85,8 @@ start_cubemap_tools_gui.bat
 
 ## View selection
 
-- After `Apply Pitch Rows`, each pitch row gets `Yaw Slots` slots.
 - Checkboxes control whether each slot is exported.
+- In the default Cube6 preset, top and bottom are assigned to `S3`; with the default 45-degree yaw offset, `S3=-45°`.
 - Typical setup:
   - pitch `0`: enable all slots
   - pitch `+/-30`: enable only needed slots

@@ -33,7 +33,7 @@ start_cubemap_tools_gui.bat
   - `Metashapeインポート`: Metashape SfM結果から、3DGS向けの視点画像、マスク、`transforms.json` を書き出します。
   - `COLMAP書き出し`: 抽出済みの `images/` と `masks/` から、COLMAP Rig形式の視点画像、マスク、`rig_config.json` を `output/colmap_rig/` に書き出します。
 - `COLMAP実行設定`:
-  - `COLMAP書き出し` 選択時に表示されます。
+  - `COLMAP書き出し` 選択時に、設定タブの `COLMAP実行` として表示されます。
   - `書き出し後にCOLMAPを実行`: 視点画像の書き出し後に `feature_extractor` → `rig_configurator` → matcher → mapper を実行します。重い処理なので必要な時だけONにします。
   - `COLMAP実行ファイル`: 使用する `colmap.exe` を指定します。空欄ならPATH上の `colmap.exe` を使います。
   - `Matcher`: `Sequential` は高速で動画の連番フレーム向けです。`Exhaustive` は全ペアを照合するため精度が出る場合がありますが、枚数が増えると数十時間規模になることがあります。
@@ -44,6 +44,7 @@ start_cubemap_tools_gui.bat
   - `LichtFeld Studio`: Metashapeの点群PLYを `pointcloud.ply` として取り込み、LichtFeld向けのカメラ情報を作成します。
   - 詳細設定で座標変換、PLY使用、Metashapeインポート詳細をプリセット値から変更すると、プロファイル表示は `カスタム` に切り替わります。
 - `Metashapeインポート設定`:
+  - `Metashapeインポート` 選択時に、設定タブの `Metashapeインポート` として表示されます。
   - `Metashapeインポート` 方式では、キューブマップ変換の前に同梱の
     `vendor/metashape_360_lfs/metashape_360_lfs.py` を実行します。
   - `画像フォルダ`: シーンフォルダ内の `images/` 固定。
@@ -54,19 +55,20 @@ start_cubemap_tools_gui.bat
 - `出力`:
   - 常時表示されます。`画像` / `マスク` を個別にON/OFFできます。マスクだけ作り直した場合は `画像` をOFF、`マスク` をONにします。
 - `視点書き出し設定`:
-  - ビューモード、Yawオフセット、画像サイズ、フレーム別Yaw回転、出力フォーマット、ビット深度、マスク反転など、各方式で共通する視点画像の書き出し設定です。
+  - 設定タブの `視点書き出し` に常時表示されます。
+  - ビュープリセット、Yawオフセット、画像サイズ、フレーム別Yaw回転、出力フォーマット、ビット深度、マスク反転など、各方式で共通する視点画像の書き出し設定です。
 - マスク:
   - 変換とプレビューは、シーンフォルダ内の `masks/` から対応ファイルを自動的に使用します。
 - `View Mode`:
-  - `Custom Pitch/Yaw`: 既存のPitch行 + Yawスロット方式。
-  - `Cube6`: 6面キューブ固定方式（FOV 90）。
+  - `Cube6`: 4列 x 3行グリッド上の6面プリセットです。既定ではYawスロット数 `4`、Pitch行 `-90,0,90`、pitch `0` の4スロットと上下の `S3` をONにします。
+  - `Custom Grid`: Pitch行 + Yawスロットを自由に編集する方式です。Cube6グリッドを編集すると自動的にカスタム扱いになります。
 - `Yaw Offset (deg)`:
   - Yawスロット角度の基準値。
 - `Yaw Slots`:
   - 各Pitch行のYawスロット数（`4..8`）。
   - 各スロット角度は `offset + slot*(360 / yaw_slots)`。
-- `Pitch Rows (deg CSV)`:
-  - Pitch一覧。標準は `-45,0,45`。
+- `Pitch Rows`:
+  - Pitch一覧。`Cube6` の標準は `-90,0,90`、`Custom Grid` の標準は `-45,0,45`。
   - 範囲は `-90..90`、最大5行まで。
 - `Cube6`:
   - 6面すべてを書き出します。上面・下面もカメラポーズ固定の有効な観測として扱います。
@@ -84,8 +86,8 @@ start_cubemap_tools_gui.bat
 
 ## 視点選択
 
-- `Apply Pitch Rows` で各Pitch行に `Yaw Slots` 分のスロットが生成されます。
 - 各チェックボックスで出力対象をON/OFFできます。
+- Cube6の既定状態では、上面・下面は `S3` に対応します。既定Yawオフセット45度では `S3=-45°` です。
 - 典型例:
   - pitch `0`: その行の全スロットON
   - pitch `+/-30`: 必要なスロットだけON

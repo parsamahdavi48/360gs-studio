@@ -25,6 +25,10 @@ run_gui.bat --scene ./scene01
 - `Image Type`:
   - `360°`: equirectangular 360° images. Enables stitch seam masking and 360° bottom-view re-detection.
   - `Normal`: normal video frames or still-camera image sequences. Disables stitch seam masking and 360° bottom-view re-detection.
+- Settings tabs:
+  - `YOLO`: YOLO/SAM strength, expansion, bottom enhancement, and detection classes.
+  - `Stitch/Overexp.`: stitch seam and overexposure mask settings.
+  - `Custom Mask`: load or clear the user-provided PNG mask.
 - `YOLO Level`: forwarded to `yolo_mask.py --level` (0-3).
   - For 360° images, start with `2 Quality`.
   - Use `1 Standard` for faster checks, and `3 Best` only if people still leak through.
