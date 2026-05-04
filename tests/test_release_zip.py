@@ -11,6 +11,7 @@ def test_release_zip_excludes_tests_but_keeps_runtime_scripts() -> None:
     assert include_in_release("scripts/update_venv.py")
     assert include_in_release("scripts/check_venv.py")
     assert include_in_release("sky_mask.py")
+    assert include_in_release("mask_view_recipes.py")
     assert include_in_release("models/README.md")
     assert include_in_release("run_gui.bat")
 

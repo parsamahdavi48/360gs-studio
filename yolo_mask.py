@@ -1,12 +1,10 @@
 import argparse
 from contextlib import contextmanager
-from collections import defaultdict
 from dataclasses import dataclass
 from datetime import datetime, timezone
 import json
 import os
 import sys
-import tempfile
 from time import perf_counter
 from pathlib import Path
 
@@ -14,10 +12,24 @@ import cv2
 import numpy as np
 
 from image_io import imread_unicode, imwrite_unicode
+from mask_view_recipes import (
+    QUALITY_CHOICES,
+    QUALITY_STANDARD,
+    MaskViewRecipe,
+    back_project_bottom_mask,
+    extract_bottom_view,
+    iter_tile_regions,
+    normalize_quality,
+    quarter_turn_angles,
+    recipe_for,
+    rotate_quarter_turn,
+    transform_bbox_from_rotated_view,
+)
 from yolo_mask_utils import EXPAND_DEFAULT, EXPAND_MAX, EXPAND_MIN, clamp_expand_px
 
 CLASS_IDS: list[int] = [0]
 LEVEL = 1
+QUALITY = QUALITY_STANDARD
 PROJECTION = "equirect"
 EXPAND = EXPAND_DEFAULT
 YOLO_CONF_DEFAULT = 0.3
@@ -25,18 +37,11 @@ BOTTOM_CONF = YOLO_CONF_DEFAULT
 BOTTOM_TTA_ROTATIONS = 1
 BOTTOM_MODEL = "same"
 BOTTOM_FILTER = False
-BOTTOM_TEMPORAL_WINDOW = 0
-BOTTOM_TEMPORAL_MIN_VOTES = 1
 PROFILE = None
 
 yolo = None
 yolo_models = {}
 sam = None
-px, py = None, None
-ux, uy = None, None
-is_bottom = None
-_bottom_extract_cache = {}
-_bottom_back_cache = {}
 proc_count = 0
 
 YOLO_MODEL_PRIMARY = "primary"
@@ -47,7 +52,6 @@ YOLO_MODEL_BOTTOM = "bottom"
 class ProcessResult:
     output_path: Path
     group_key: str
-    bottom_mask_path: Path | None = None
 
 
 class ProfileRecorder:
@@ -202,7 +206,13 @@ def build_arg_parser() -> argparse.ArgumentParser:
         dest="add_ext",
         help="Add a file extension forcibly (ex: hoge.jpg.png)",
     )
-    parser.add_argument("--level", type=int, default=1, help="Detection level [0:3] (default=1)")
+    parser.add_argument("--level", type=int, default=None, help=argparse.SUPPRESS)
+    parser.add_argument(
+        "--quality",
+        choices=QUALITY_CHOICES,
+        default=None,
+        help="Input view recipe quality: standard, high, or best (default=high)",
+    )
     parser.add_argument(
         "--expand",
         type=int,
@@ -221,41 +231,24 @@ def build_arg_parser() -> argparse.ArgumentParser:
         default="equirect",
         help="Source image projection. equirect enables 360 panorama-specific bottom re-detection; normal disables it.",
     )
-    parser.add_argument(
-        "--bottom-conf",
-        type=float,
-        default=YOLO_CONF_DEFAULT,
-        help=f"YOLO confidence threshold for equirect bottom re-detection (default={YOLO_CONF_DEFAULT})",
-    )
+    parser.add_argument("--bottom-conf", type=float, default=None, help="Override bottom-view YOLO confidence")
     parser.add_argument(
         "--bottom-tta-rotations",
         type=int,
         choices=(1, 2, 4),
-        default=1,
-        help="Run bottom re-detection with 1, 2, or 4 quarter-turn rotations and merge results (default=1)",
+        default=None,
+        help="Override bottom-view quarter-turn rotations and merge results",
     )
     parser.add_argument(
         "--bottom-model",
         choices=("same", "m", "l", "x"),
-        default="same",
-        help="YOLO model for equirect bottom re-detection. 'same' reuses the level-selected model (default=same)",
+        default=None,
+        help="Override bottom-view YOLO model. 'same' reuses the quality-selected model",
     )
     parser.add_argument(
         "--bottom-filter",
         action="store_true",
         help="Filter unreliable bottom-view mask components before merging into the final panorama mask",
-    )
-    parser.add_argument(
-        "--bottom-temporal-window",
-        type=int,
-        default=0,
-        help="Merge bottom detections from neighboring frames within N frames after per-frame YOLO/SAM (default=0/off)",
-    )
-    parser.add_argument(
-        "--bottom-temporal-min-votes",
-        type=int,
-        default=1,
-        help="Minimum neighboring bottom detections required per pixel for temporal fill (default=1)",
     )
     parser.add_argument(
         "--profile-json",
@@ -279,8 +272,23 @@ def parse_classes(text):
     return sorted(set(ids))
 
 
-def should_run_bottom_redetection(level: int, projection: str) -> bool:
-    return int(level) >= 1 and projection == "equirect"
+def current_recipe() -> MaskViewRecipe:
+    return recipe_for(QUALITY, PROJECTION)
+
+
+def should_run_bottom_redetection(level: int | str | None = None, projection: str | None = None) -> bool:
+    if level is not None:
+        try:
+            if int(level) <= 0:
+                return False
+        except (TypeError, ValueError):
+            pass
+    recipe = (
+        recipe_for(None, projection or PROJECTION, legacy_level=level)
+        if level is not None
+        else recipe_for(QUALITY, projection or PROJECTION)
+    )
+    return recipe.bottom_view
 
 
 def yolo_model_name(level: int) -> str:
@@ -449,26 +457,7 @@ def add_sam_mask(
 
 
 def bottom_rotation_angles(rotation_count: int) -> list[int]:
-    if rotation_count == 1:
-        return [0]
-    if rotation_count == 2:
-        return [0, 180]
-    if rotation_count == 4:
-        return [0, 90, 180, 270]
-    raise ValueError("bottom TTA rotations must be one of: 1, 2, 4")
-
-
-def rotate_quarter_turn(img, angle: int):
-    angle = angle % 360
-    if angle == 0:
-        return img
-    if angle == 90:
-        return cv2.rotate(img, cv2.ROTATE_90_CLOCKWISE)
-    if angle == 180:
-        return cv2.rotate(img, cv2.ROTATE_180)
-    if angle == 270:
-        return cv2.rotate(img, cv2.ROTATE_90_COUNTERCLOCKWISE)
-    raise ValueError("angle must be a multiple of 90")
+    return list(quarter_turn_angles(rotation_count))
 
 
 def transform_bbox_from_rotated_bottom(
@@ -478,31 +467,7 @@ def transform_bbox_from_rotated_bottom(
     width: int,
     height: int,
 ) -> list[float] | None:
-    angle = angle % 360
-    x1, y1, x2, y2 = [float(v) for v in bbox]
-    corners = [(x1, y1), (x2, y1), (x2, y2), (x1, y2)]
-
-    def to_original(x: float, y: float) -> tuple[float, float]:
-        if angle == 0:
-            return x, y
-        if angle == 90:
-            return y, height - x
-        if angle == 180:
-            return width - x, height - y
-        if angle == 270:
-            return width - y, x
-        raise ValueError("angle must be a multiple of 90")
-
-    transformed = [to_original(x, y) for x, y in corners]
-    xs = [x for x, _y in transformed]
-    ys = [y for _x, y in transformed]
-    out_x1 = max(0.0, min(float(width), min(xs)))
-    out_y1 = max(0.0, min(float(height), min(ys)))
-    out_x2 = max(0.0, min(float(width), max(xs)))
-    out_y2 = max(0.0, min(float(height), max(ys)))
-    if out_x2 <= out_x1 or out_y2 <= out_y1:
-        return None
-    return [out_x1, out_y1, out_x2, out_y2]
+    return transform_bbox_from_rotated_view(bbox, angle, width=width, height=height)
 
 
 def filter_bottom_mask_components(mask: np.ndarray) -> np.ndarray:
@@ -555,96 +520,12 @@ def filter_bottom_mask_components(mask: np.ndarray) -> np.ndarray:
 
 # パノラマから下方向を抽出
 def get_bottom_from_pano(pano_img, size=1024):
-    global px, py
-    h, w = pano_img.shape[:2]
-
-    key = (w, h, size)
-    if key not in _bottom_extract_cache:
-        # 下方向の座標系 (u, v) を作成
-        u = np.linspace(-1, 1, size, dtype=np.float32)
-        v = np.linspace(-1, 1, size, dtype=np.float32)
-        U, V = np.meshgrid(u, v)
-
-        # キューブマップの底面から3Dベクトルへの変換
-        # 底面なので X=U, Y=V, Z=-1
-        X = U
-        Y = V
-        Z = -np.ones_like(U)
-
-        # 3Dベクトルからパノラマ座標 (経度, 緯度) へ
-        lon = np.arctan2(Y, X)
-        lat = np.arctan2(Z, np.sqrt(X**2 + Y**2))
-
-        # ピクセル座標へ変換
-        px = ((lon + np.pi) / (2 * np.pi) * (w - 1)).astype(np.float32)
-        py = ((np.pi/2 - lat) / np.pi * (h - 1)).astype(np.float32)
-        _bottom_extract_cache[key] = (px, py)
-    else:
-        px, py = _bottom_extract_cache[key]
-
-    # 再サンプリング
-    bottom_img = cv2.remap(pano_img, px, py, cv2.INTER_LINEAR)
-    return bottom_img
+    return extract_bottom_view(pano_img, int(size))
 
 
 # 下方向画像をパノラマに戻す
 def back_to_pano_from_bottom(bottom_img, pano_width, pano_height):
-    global ux, uy, is_bottom
-    """
-    キューブマップの底面画像をパノラマ形状に引き延ばして戻す
-    (検出マスクなので底面以外の範囲は 0 で埋める)
-    """
-    bsize = bottom_img.shape[0]
-
-    key = (pano_width, pano_height, bsize)
-    if key not in _bottom_back_cache:
-        # パノラマの全ピクセルの3Dベクトルを計算
-        lon = np.linspace(-np.pi, np.pi, pano_width, dtype=np.float32)
-        lat = np.linspace(np.pi / 2, -np.pi / 2, pano_height, dtype=np.float32)
-        Lon, Lat = np.meshgrid(lon, lat)
-
-        X = np.cos(Lat) * np.cos(Lon)
-        Y = np.cos(Lat) * np.sin(Lon)
-        Z = np.sin(Lat)
-
-        # Zが負（下方向）かつ、底面(Z=-1)の面に投影したときに範囲内にあるピクセルを探す
-        # 投影点 (u, v) = (X/|Z|, Y/|Z|)  ※Zは常に負
-        is_bottom = (Z < 0) & (np.abs(Z) >= np.abs(X)) & (np.abs(Z) >= np.abs(Y))
-
-        # 投影点 (u, v) = (X/|Z|, Y/|Z|) を計算
-        # ※ Z=0 での除算を防ぐため、is_bottom の領域のみ計算
-        U = np.zeros_like(Z)
-        V = np.zeros_like(Z)
-        U[is_bottom] = X[is_bottom] / np.abs(Z[is_bottom])
-        V[is_bottom] = Y[is_bottom] / np.abs(Z[is_bottom])
-
-        # キューブマップ座標 (-1~1) -> ピクセル座標
-        ux = ((U + 1) / 2 * (bsize - 1)).astype(np.float32)
-        uy = ((V + 1) / 2 * (bsize - 1)).astype(np.float32)
-        _bottom_back_cache[key] = (ux, uy, is_bottom)
-    else:
-        ux, uy, is_bottom = _bottom_back_cache[key]
-
-    # 背景を0で作成
-    res_pano = np.zeros(
-        (pano_height, pano_width, 3) if len(bottom_img.shape) == 3 else (pano_height, pano_width),
-        dtype=np.uint8,
-    )
-
-    # マッピング実行
-    mapped = cv2.remap(
-        bottom_img,
-        ux,
-        uy,
-        cv2.INTER_LINEAR,
-        borderMode=cv2.BORDER_CONSTANT,
-        borderValue=0,
-    )
-
-    # 底面判定されたピクセルのみ、マッピング結果を上書き
-    res_pano[is_bottom] = mapped[is_bottom]
-
-    return res_pano
+    return back_project_bottom_mask(bottom_img, int(pano_width), int(pano_height))
 
 
 def detect_bottom_mask(img, pano_width: int, pano_height: int) -> tuple[np.ndarray | None, int]:
@@ -697,66 +578,10 @@ def detect_bottom_mask(img, pano_width: int, pano_height: int) -> tuple[np.ndarr
     return pano_mask, total_has_bottom
 
 
-def apply_temporal_bottom_propagation(results: list[ProcessResult], window: int, min_votes: int = 1) -> int:
-    if window <= 0:
-        return 0
-    min_votes = max(1, int(min_votes))
-
-    by_group: dict[str, list[ProcessResult]] = defaultdict(list)
-    for result in results:
-        by_group[result.group_key].append(result)
-
-    updated = 0
-    for group_results in by_group.values():
-        source_indices = [
-            idx
-            for idx, result in enumerate(group_results)
-            if result.bottom_mask_path is not None and result.bottom_mask_path.exists()
-        ]
-        if not source_indices:
-            continue
-
-        source_cache: dict[int, np.ndarray] = {}
-        for idx, result in enumerate(group_results):
-            frame_mask = imread_unicode(result.output_path, cv2.IMREAD_GRAYSCALE)
-            if frame_mask is None:
-                continue
-
-            nearby = [src_idx for src_idx in source_indices if abs(src_idx - idx) <= window]
-            if len(nearby) < min_votes:
-                continue
-
-            temporal_votes = np.zeros(frame_mask.shape, dtype=np.uint16)
-            for src_idx in nearby:
-                source_mask = source_cache.get(src_idx)
-                if source_mask is None:
-                    source_path = group_results[src_idx].bottom_mask_path
-                    if source_path is None:
-                        continue
-                    source_mask = imread_unicode(source_path, cv2.IMREAD_GRAYSCALE)
-                    if source_mask is None:
-                        continue
-                    source_cache[src_idx] = source_mask
-                if source_mask.shape != frame_mask.shape:
-                    continue
-                temporal_votes += (source_mask > 0).astype(np.uint16)
-
-            temporal_mask = np.where(temporal_votes >= min_votes, 255, 0).astype(np.uint8)
-            if not np.any(temporal_mask):
-                continue
-
-            merged = cv2.bitwise_and(frame_mask, 255 - temporal_mask)
-            if not np.array_equal(merged, frame_mask):
-                if imwrite_unicode(result.output_path, merged):
-                    updated += 1
-
-    return updated
-
-
 # =========================
 # メイン処理
 # =========================
-def process_file(input_dir, output_dir, fname, add_ext=True, bottom_mask_path: str | Path | None = None) -> ProcessResult:
+def process_file(input_dir, output_dir, fname, add_ext=True) -> ProcessResult:
     print(f"Processing: {fname}", flush=True)
 
     # 画像読み込み
@@ -774,48 +599,37 @@ def process_file(input_dir, output_dir, fname, add_ext=True, bottom_mask_path: s
 
     # マスク初期化
     mask = np.zeros((h, w), dtype=np.uint8)
-    raw_bottom_mask = None
+    recipe = current_recipe()
 
     # 全体で人物検出
-    with profile_timer("full.total"):
-        mask, has_mask = add_yolo_mask(img, mask, profile_stage="full")
+    has_mask = 0
+    if recipe.direct:
+        with profile_timer("full.total"):
+            mask, has_mask = add_yolo_mask(img, mask, profile_stage="full")
 
-    # 水平線付近の高品質抽出
-    if LEVEL >= 2:
-        # [ni, nj, top_y, bottom_h]
-        level_defs = [
-            [4, 1, 0.25, 0.75],
-            [8, 2, 0.25, 0.75],
-            [16, 6, 0.20, 0.80],
-        ]
-        level_idx = min(LEVEL - 2, len(level_defs) - 1)
-        ni, nj = level_defs[level_idx][0], level_defs[level_idx][1]
-        top_y = int(h * level_defs[level_idx][2])
-        bottom_y = int(h * level_defs[level_idx][3])
-        subw = int(w // ni)
-        subh = int((bottom_y - top_y) / nj)
-        pad = 20  # 重なり部分
+    # 品質レシピに応じたタイル抽出
+    tile_regions = iter_tile_regions(w, h, recipe.tile_spec)
+    if tile_regions:
         global proc_count
         with profile_timer("tile.total"):
-            for i in range(ni):
-                x1 = max(0, i * subw - pad)
-                x2 = min(w, x1 + subw + pad)
-                for j in range(nj):
-                    y1 = max(0, top_y + j * subh - pad)
-                    y2 = min(h, y1 + subh + pad)
-                    # 一部を切り出して検出
-                    print(f"  Processing region {i * nj + j}/{ni * nj} ...", flush=True)
-                    if proc_count == 0:
-                        print(f"  HQ extraction: region [{y1}:{y2}, {x1}:{x2}]", flush=True)
-                    subimg = img[y1:y2, x1:x2]
-                    submask = np.zeros((y2 - y1, x2 - x1), dtype=np.uint8)
-                    submask, has_submask = add_yolo_mask(subimg, submask, profile_stage="tile")
+            for region in tile_regions:
+                print(f"  Processing region {region.index}/{region.total} ...", flush=True)
+                if proc_count == 0:
+                    print(
+                        f"  HQ extraction: region [{region.y1}:{region.y2}, {region.x1}:{region.x2}]",
+                        flush=True,
+                    )
+                subimg = img[region.y1:region.y2, region.x1:region.x2]
+                submask = np.zeros((region.y2 - region.y1, region.x2 - region.x1), dtype=np.uint8)
+                submask, has_submask = add_yolo_mask(subimg, submask, profile_stage="tile")
 
-                    # 元の画像に反映
-                    if has_submask > 0:
-                        with profile_timer("tile.merge"):
-                            mask[y1:y2, x1:x2] = np.maximum(mask[y1:y2, x1:x2], submask)
-                        has_mask += has_submask
+                if has_submask > 0:
+                    with profile_timer("tile.merge"):
+                        mask[region.y1:region.y2, region.x1:region.x2] = np.maximum(
+                            mask[region.y1:region.y2, region.x1:region.x2],
+                            submask,
+                        )
+                    has_mask += has_submask
         proc_count += 1
 
     # 下方向のみ展開画像で再検出（エクイレクタングラー360画像専用）
@@ -824,7 +638,6 @@ def process_file(input_dir, output_dir, fname, add_ext=True, bottom_mask_path: s
             bottom_mask, has_bottom = detect_bottom_mask(img, w, h)
         if has_bottom > 0:
             mask = np.maximum(mask, bottom_mask)
-            raw_bottom_mask = bottom_mask
             has_mask += has_bottom
 
     with profile_timer("mask.expand"):
@@ -850,18 +663,9 @@ def process_file(input_dir, output_dir, fname, add_ext=True, bottom_mask_path: s
     with profile_timer("image.write"):
         if not imwrite_unicode(out_path, mask):
             raise IOError(f"Failed to write mask: {out_path}")
-    written_bottom_mask_path = None
-    if raw_bottom_mask is not None and bottom_mask_path is not None:
-        written_bottom_mask_path = Path(bottom_mask_path)
-        written_bottom_mask_path.parent.mkdir(parents=True, exist_ok=True)
-        with profile_timer("bottom.write"):
-            if not imwrite_unicode(written_bottom_mask_path, raw_bottom_mask):
-                raise IOError(f"Failed to write bottom mask: {written_bottom_mask_path}")
-
     result = ProcessResult(
         output_path=Path(out_path),
         group_key=str(Path(output_dir).resolve()),
-        bottom_mask_path=written_bottom_mask_path,
     )
     if PROFILE is not None:
         if image_started is not None:
@@ -871,23 +675,24 @@ def process_file(input_dir, output_dir, fname, add_ext=True, bottom_mask_path: s
 
 
 def main(argv: list[str] | None = None) -> int:
-    global CLASS_IDS, LEVEL, PROJECTION, EXPAND, BOTTOM_CONF, BOTTOM_TTA_ROTATIONS, BOTTOM_MODEL, BOTTOM_FILTER, PROFILE
-    global BOTTOM_TEMPORAL_WINDOW, BOTTOM_TEMPORAL_MIN_VOTES, proc_count
+    global CLASS_IDS, LEVEL, QUALITY, PROJECTION, EXPAND, BOTTOM_CONF, BOTTOM_TTA_ROTATIONS, BOTTOM_MODEL, BOTTOM_FILTER, PROFILE
+    global proc_count
     parser = build_arg_parser()
     args = parser.parse_args(argv)
 
     input_dir = args.images_dir if args.images_dir else "images"
     output_dir = args.output_dir if args.output_dir else "masks"
     add_ext = args.add_ext
-    LEVEL = args.level
+    LEVEL = int(args.level) if args.level is not None else 2
+    QUALITY = normalize_quality(args.quality, legacy_level=args.level)
     PROJECTION = args.projection
     EXPAND = clamp_expand_px(args.expand)
-    BOTTOM_CONF = max(0.001, min(1.0, float(args.bottom_conf)))
-    BOTTOM_TTA_ROTATIONS = args.bottom_tta_rotations
-    BOTTOM_MODEL = args.bottom_model
-    BOTTOM_FILTER = bool(args.bottom_filter)
-    BOTTOM_TEMPORAL_WINDOW = max(0, int(args.bottom_temporal_window))
-    BOTTOM_TEMPORAL_MIN_VOTES = max(1, int(args.bottom_temporal_min_votes))
+    recipe = current_recipe()
+    BOTTOM_CONF = recipe.bottom_conf if args.bottom_conf is None else max(0.001, min(1.0, float(args.bottom_conf)))
+    BOTTOM_TTA_ROTATIONS = len(recipe.bottom_rotations) if args.bottom_tta_rotations is None else args.bottom_tta_rotations
+    BOTTOM_MODEL = recipe.bottom_model if args.bottom_model is None else args.bottom_model
+    BOTTOM_FILTER = bool(recipe.bottom_filter or args.bottom_filter)
+    LEVEL = int(recipe.yolo_level)
     proc_count = 0
     PROFILE = ProfileRecorder(args.profile_json) if args.profile_json else None
     if EXPAND != args.expand:
@@ -908,18 +713,17 @@ def main(argv: list[str] | None = None) -> int:
 
     print("YOLO classes:", ",".join(str(x) for x in CLASS_IDS), flush=True)
     print(f"Projection: {PROJECTION}", flush=True)
+    print(f"Quality: {QUALITY}", flush=True)
     print(
         "Bottom detection:",
         f"conf={BOTTOM_CONF:g}",
         f"rotations={BOTTOM_TTA_ROTATIONS}",
         f"model={BOTTOM_MODEL}",
         f"filter={BOTTOM_FILTER}",
-        f"temporal_window={BOTTOM_TEMPORAL_WINDOW}",
-        f"temporal_min_votes={BOTTOM_TEMPORAL_MIN_VOTES}",
         flush=True,
     )
 
-    effective_bottom_model = BOTTOM_MODEL if should_run_bottom_redetection(LEVEL, PROJECTION) else "same"
+    effective_bottom_model = BOTTOM_MODEL if should_run_bottom_redetection() else "same"
     if PROFILE is not None:
         PROFILE.set_settings(
             {
@@ -927,6 +731,7 @@ def main(argv: list[str] | None = None) -> int:
                 "output_dir": str(output_dir),
                 "add_ext": bool(add_ext),
                 "level": int(LEVEL),
+                "quality": QUALITY,
                 "projection": PROJECTION,
                 "expand": int(EXPAND),
                 "classes": CLASS_IDS,
@@ -935,12 +740,17 @@ def main(argv: list[str] | None = None) -> int:
                 "bottom_model": BOTTOM_MODEL,
                 "effective_bottom_model": effective_bottom_model,
                 "bottom_filter": bool(BOTTOM_FILTER),
-                "bottom_temporal_window": int(BOTTOM_TEMPORAL_WINDOW),
-                "bottom_temporal_min_votes": int(BOTTOM_TEMPORAL_MIN_VOTES),
+                "view_recipe": {
+                    "direct": recipe.direct,
+                    "tile_spec": recipe.tile_spec.__dict__ if recipe.tile_spec is not None else None,
+                    "top_view": recipe.top_view,
+                    "bottom_view": recipe.bottom_view,
+                    "bottom_rotations": list(recipe.bottom_rotations),
+                },
             }
         )
     with profile_timer("model.load"):
-        load_models(LEVEL, bottom_model=effective_bottom_model)
+        load_models(recipe.yolo_level, bottom_model=effective_bottom_model)
 
     # =========================
     # 連番画像を処理
@@ -962,25 +772,11 @@ def main(argv: list[str] | None = None) -> int:
             tasks.extend((dir, task_output_dir, fname) for fname in image_files)
 
         total = len(tasks)
-        process_results: list[ProcessResult] = []
-        with tempfile.TemporaryDirectory(prefix="stechdrive_bottom_masks_") as bottom_tmp:
-            bottom_tmp_dir = Path(bottom_tmp)
-            print(f"[progress] 0/{total}", flush=True)
-            for done, (dir, task_output_dir, fname) in enumerate(tasks, start=1):
-                temp_bottom_path = bottom_tmp_dir / f"{done:06d}.png"
-                result = process_file(dir, task_output_dir, fname, add_ext, bottom_mask_path=temp_bottom_path)
-                process_results.append(result)
-                print(f"Processed: {fname}", flush=True)
-                print(f"[progress] {done}/{total}", flush=True)
-
-            if BOTTOM_TEMPORAL_WINDOW > 0 and should_run_bottom_redetection(LEVEL, PROJECTION):
-                with profile_timer("temporal.total"):
-                    updated = apply_temporal_bottom_propagation(
-                        process_results,
-                        BOTTOM_TEMPORAL_WINDOW,
-                        min_votes=BOTTOM_TEMPORAL_MIN_VOTES,
-                    )
-                print(f"[temporal] bottom masks updated: {updated}", flush=True)
+        print(f"[progress] 0/{total}", flush=True)
+        for done, (dir, task_output_dir, fname) in enumerate(tasks, start=1):
+            process_file(dir, task_output_dir, fname, add_ext)
+            print(f"Processed: {fname}", flush=True)
+            print(f"[progress] {done}/{total}", flush=True)
     else:
         # 単一ファイルの処理
         fname = os.path.basename(input_dir)

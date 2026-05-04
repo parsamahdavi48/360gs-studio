@@ -9,7 +9,7 @@ from scripts.benchmark_yolo_mask import compare_masks, select_configs
 
 
 def test_select_configs_defaults_to_fast_representative_set() -> None:
-    assert [config.name for config in select_configs(None)] == ["level1-standard", "level2-bottom-high"]
+    assert [config.name for config in select_configs(None)] == ["standard", "high"]
 
 
 def test_compare_masks_reports_exact_and_pixel_differences(tmp_path: Path) -> None:

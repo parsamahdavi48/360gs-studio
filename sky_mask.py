@@ -20,6 +20,20 @@ import numpy as np
 from PIL import Image
 
 from image_io import imread_unicode, imwrite_unicode
+from mask_view_recipes import (
+    DEFAULT_QUALITY,
+    QUALITY_CHOICES,
+    PROJECTION_EQUIRECT,
+    PROJECTION_NORMAL,
+    back_project_bottom_mask as shared_back_project_bottom_mask,
+    back_project_top_mask as shared_back_project_top_mask,
+    extract_bottom_view as shared_extract_bottom_view,
+    extract_top_view as shared_extract_top_view,
+    iter_tile_regions,
+    normalize_quality,
+    recipe_for,
+    auto_view_size as shared_auto_view_size,
+)
 
 IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".tif", ".tiff"}
 BACKEND_MASK2FORMER = "mask2former"
@@ -36,7 +50,7 @@ DEFAULT_SAM31_PROMPT = "sky"
 DEFAULT_SAM31_SCORE = 0.5
 DEFAULT_SAM31_INFERENCE_SIZE = 1008
 DEFAULT_INFERENCE_SIZE = 768
-DEFAULT_MODE = "hybrid"
+DEFAULT_MODE = ""
 SUPPORTED_MODES = ("direct", "top", "bottom", "hybrid", "full")
 DEFAULT_EXPAND = 0
 DEFAULT_MIN_SCORE = 0.0
@@ -51,7 +65,8 @@ _bottom_back_cache: dict[tuple[int, int, int], tuple[np.ndarray, np.ndarray, np.
 
 @dataclass(frozen=True)
 class SkyMaskOptions:
-    projection: str = "equirect"
+    projection: str = PROJECTION_EQUIRECT
+    quality: str = DEFAULT_QUALITY
     mode: str = DEFAULT_MODE
     inference_size: int = DEFAULT_INFERENCE_SIZE
     view_size: int | None = None
@@ -396,26 +411,47 @@ def mask_output_path_for_image(image_path: Path, images_root: Path, masks_dir: P
 
 def detect_sky_mask(image: np.ndarray, segmenter: Any, options: SkyMaskOptions) -> np.ndarray:
     sky = np.zeros(image.shape[:2], dtype=bool)
-    mode = options.mode
-    if options.projection != "equirect" and mode in {"top", "bottom", "hybrid", "full"}:
-        mode = "direct"
+    h, w = image.shape[:2]
+    mode = str(options.mode or "").strip().lower()
+    if mode:
+        if options.projection != PROJECTION_EQUIRECT and mode in {"top", "bottom", "hybrid", "full"}:
+            mode = "direct"
 
-    if mode in {"direct", "hybrid", "full"}:
-        sky |= segmenter.detect_sky(image, options)
+        if mode in {"direct", "hybrid", "full"}:
+            sky |= segmenter.detect_sky(image, options)
 
-    if mode in {"top", "hybrid", "full"}:
-        h, w = image.shape[:2]
-        view_size = options.view_size or auto_view_size(w, h)
-        top_view = get_top_from_pano(image, view_size)
-        top_sky = segmenter.detect_sky(top_view, options)
-        sky |= back_to_pano_from_top(top_sky.astype(np.uint8) * 255, w, h) > 0
+        if mode in {"top", "hybrid", "full"}:
+            view_size = options.view_size or shared_auto_view_size(w, h)
+            top_view = shared_extract_top_view(image, view_size)
+            top_sky = segmenter.detect_sky(top_view, options)
+            sky |= shared_back_project_top_mask(top_sky.astype(np.uint8) * 255, w, h) > 0
 
-    if mode in {"bottom", "full"}:
-        h, w = image.shape[:2]
-        view_size = options.view_size or auto_view_size(w, h)
-        bottom_view = get_bottom_from_pano(image, view_size)
-        bottom_sky = segmenter.detect_sky(bottom_view, options)
-        sky |= back_to_pano_from_bottom(bottom_sky.astype(np.uint8) * 255, w, h) > 0
+        if mode in {"bottom", "full"}:
+            view_size = options.view_size or shared_auto_view_size(w, h)
+            bottom_view = shared_extract_bottom_view(image, view_size)
+            bottom_sky = segmenter.detect_sky(bottom_view, options)
+            sky |= shared_back_project_bottom_mask(bottom_sky.astype(np.uint8) * 255, w, h) > 0
+    else:
+        recipe = recipe_for(options.quality, options.projection)
+        if recipe.direct:
+            sky |= segmenter.detect_sky(image, options)
+
+        for region in iter_tile_regions(w, h, recipe.tile_spec):
+            tile = image[region.y1:region.y2, region.x1:region.x2]
+            tile_sky = segmenter.detect_sky(tile, options)
+            sky[region.y1:region.y2, region.x1:region.x2] |= tile_sky
+
+        if recipe.top_view:
+            view_size = options.view_size or shared_auto_view_size(w, h)
+            top_view = shared_extract_top_view(image, view_size)
+            top_sky = segmenter.detect_sky(top_view, options)
+            sky |= shared_back_project_top_mask(top_sky.astype(np.uint8) * 255, w, h) > 0
+
+        if recipe.bottom_view:
+            view_size = options.view_size or shared_auto_view_size(w, h)
+            bottom_view = shared_extract_bottom_view(image, view_size)
+            bottom_sky = segmenter.detect_sky(bottom_view, options)
+            sky |= shared_back_project_bottom_mask(bottom_sky.astype(np.uint8) * 255, w, h) > 0
 
     sky = postprocess_sky_components(
         sky,
@@ -427,15 +463,15 @@ def detect_sky_mask(image: np.ndarray, segmenter: Any, options: SkyMaskOptions) 
 
 
 def auto_view_size(width: int, height: int) -> int:
-    return max(512, min(2048, int(width) // 4 if width > 0 else int(height)))
+    return shared_auto_view_size(width, height)
 
 
 def get_top_from_pano(pano_img: np.ndarray, size: int) -> np.ndarray:
-    return get_cube_pole_from_pano(pano_img, size, pole="top")
+    return shared_extract_top_view(pano_img, int(size))
 
 
 def get_bottom_from_pano(pano_img: np.ndarray, size: int) -> np.ndarray:
-    return get_cube_pole_from_pano(pano_img, size, pole="bottom")
+    return shared_extract_bottom_view(pano_img, int(size))
 
 
 def get_cube_pole_from_pano(pano_img: np.ndarray, size: int, *, pole: str) -> np.ndarray:
@@ -461,11 +497,11 @@ def get_cube_pole_from_pano(pano_img: np.ndarray, size: int, *, pole: str) -> np
 
 
 def back_to_pano_from_top(top_mask: np.ndarray, pano_width: int, pano_height: int) -> np.ndarray:
-    return back_to_pano_from_cube_pole(top_mask, pano_width, pano_height, pole="top")
+    return shared_back_project_top_mask(top_mask, pano_width, pano_height)
 
 
 def back_to_pano_from_bottom(bottom_mask: np.ndarray, pano_width: int, pano_height: int) -> np.ndarray:
-    return back_to_pano_from_cube_pole(bottom_mask, pano_width, pano_height, pole="bottom")
+    return shared_back_project_bottom_mask(bottom_mask, pano_width, pano_height)
 
 
 def back_to_pano_from_cube_pole(pole_mask: np.ndarray, pano_width: int, pano_height: int, *, pole: str) -> np.ndarray:
@@ -585,6 +621,7 @@ def run(
     print(
         "Mask settings:",
         f"projection={options.projection}",
+        f"quality={options.quality}",
         f"mode={options.mode}",
         f"inference_size={options.inference_size}",
         f"view_size={options.view_size or 'auto'}",
@@ -626,7 +663,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--backend", choices=SUPPORTED_BACKENDS, default=DEFAULT_BACKEND, help="Segmentation backend")
     parser.add_argument("--model-dir", default=None, help="Local model directory or checkpoint override")
     parser.add_argument("--device", choices=("auto", "cpu", "cuda"), default="auto", help="Inference device")
-    parser.add_argument("--projection", choices=("equirect", "normal"), default="equirect")
+    parser.add_argument("--projection", choices=(PROJECTION_EQUIRECT, PROJECTION_NORMAL), default=PROJECTION_EQUIRECT)
+    parser.add_argument("--quality", choices=QUALITY_CHOICES, default=DEFAULT_QUALITY)
     parser.add_argument("--mode", choices=SUPPORTED_MODES, default=DEFAULT_MODE)
     parser.add_argument("--inference-size", type=int, default=DEFAULT_INFERENCE_SIZE)
     parser.add_argument("--view-size", type=int, default=0, help="Top-view face size for equirect mode (0=auto)")
@@ -673,6 +711,7 @@ def main() -> int:
 
     options = SkyMaskOptions(
         projection=args.projection,
+        quality=normalize_quality(args.quality),
         mode=args.mode,
         inference_size=int(args.inference_size),
         view_size=int(args.view_size) if int(args.view_size) > 0 else None,

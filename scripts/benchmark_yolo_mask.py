@@ -25,40 +25,30 @@ class BenchmarkConfig:
 
 
 CONFIGS = {
-    "level1-standard": BenchmarkConfig(
-        "level1-standard",
-        ("--level", "1", "--projection", "equirect"),
+    "standard": BenchmarkConfig(
+        "standard",
+        ("--quality", "standard", "--projection", "equirect"),
     ),
-    "level2-bottom-high": BenchmarkConfig(
-        "level2-bottom-high",
+    "high": BenchmarkConfig(
+        "high",
         (
-            "--level",
-            "2",
+            "--quality",
+            "high",
             "--projection",
             "equirect",
-            "--bottom-conf",
-            "0.15",
-            "--bottom-tta-rotations",
-            "4",
-            "--bottom-filter",
         ),
     ),
-    "level3-heavy": BenchmarkConfig(
-        "level3-heavy",
+    "best": BenchmarkConfig(
+        "best",
         (
-            "--level",
-            "3",
+            "--quality",
+            "best",
             "--projection",
             "equirect",
-            "--bottom-conf",
-            "0.15",
-            "--bottom-tta-rotations",
-            "4",
-            "--bottom-filter",
         ),
     ),
 }
-DEFAULT_CONFIG_NAMES = ("level1-standard", "level2-bottom-high")
+DEFAULT_CONFIG_NAMES = ("standard", "high")
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -71,7 +61,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--config",
         action="append",
         choices=sorted([*CONFIGS.keys(), "all"]),
-        help="Config to run. Repeat this option, or use all. Default: level1-standard and level2-bottom-high.",
+        help="Config to run. Repeat this option, or use all. Default: standard and high.",
     )
     parser.add_argument("--limit", type=int, default=0, help="Copy only the first N images into each run input (default=all).")
     parser.add_argument("--compare-label", help="Compare generated masks against another label under --output-root.")

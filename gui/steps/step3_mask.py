@@ -48,6 +48,7 @@ from gui.steps.base_step import (
 )
 from gui.user_settings import load_user_settings_section, update_user_settings_section
 from image_io import imread_unicode, imwrite_unicode
+from mask_view_recipes import QUALITY_CHOICES
 from overexposure_mask import detect_overexposure, read_image_preserve_depth
 from stitch_mask import boundary_width_to_limit_angle, create_angular_stitched_mask
 
@@ -112,26 +113,6 @@ _ADE20K_FALLBACK_CLASSES = (
     "sculpture", "hood", "sconce", "vase", "traffic light", "tray", "ashcan", "fan",
     "pier", "crt screen", "plate", "monitor", "bulletin board", "shower", "radiator",
     "glass", "clock", "flag",
-)
-_YOLO_BOTTOM_PRESETS: tuple[tuple[str, list[str]], ...] = (
-    ("standard", []),
-    (
-        "strong",
-        [
-            "--bottom-conf", "0.15",
-            "--bottom-tta-rotations", "4",
-            "--bottom-filter",
-        ],
-    ),
-    (
-        "max",
-        [
-            "--bottom-conf", "0.10",
-            "--bottom-tta-rotations", "4",
-            "--bottom-model", "x",
-            "--bottom-filter",
-        ],
-    ),
 )
 _OVEREXP_THRESHOLD_MIN = 1
 _OVEREXP_THRESHOLD_MAX = 254
@@ -352,21 +333,20 @@ class MaskStep(BaseStepWidget):
         yolo_settings_row.setContentsMargins(0, 0, 0, 0)
         yolo_settings_row.setSpacing(6)
 
-        self.yolo_level_label = QLabel(i18n.t("YOLO_LEVEL_COMPACT"))
-        self.yolo_level_label.setToolTip(i18n.tip("YOLO_LEVEL"))
+        self.yolo_level_label = QLabel(i18n.t("MASK_QUALITY"))
+        self.yolo_level_label.setToolTip(i18n.tip("MASK_QUALITY"))
         yolo_settings_row.addWidget(self.yolo_level_label)
 
         self.yolo_level_combo = QComboBox()
-        self.yolo_level_combo.setToolTip(i18n.tip("YOLO_LEVEL"))
+        self.yolo_level_combo.setToolTip(i18n.tip("MASK_QUALITY"))
         self.yolo_level_combo.addItems(
             [
-                i18n.t("YOLO_LEVEL_FAST"),
-                i18n.t("YOLO_LEVEL_STANDARD"),
-                i18n.t("YOLO_LEVEL_QUALITY"),
-                i18n.t("YOLO_LEVEL_BEST"),
+                i18n.t("MASK_QUALITY_STANDARD"),
+                i18n.t("MASK_QUALITY_HIGH"),
+                i18n.t("MASK_QUALITY_BEST"),
             ]
         )
-        self.yolo_level_combo.setCurrentIndex(2)
+        self.yolo_level_combo.setCurrentIndex(1)
         self.yolo_level_combo.setFixedWidth(104)
         yolo_settings_row.addWidget(self.yolo_level_combo)
 
@@ -411,6 +391,7 @@ class MaskStep(BaseStepWidget):
         bottom_settings_row.addWidget(self.yolo_bottom_enhance_combo)
         bottom_settings_row.addStretch()
         self.yolo_bottom_settings_row = bottom_settings_row_widget
+        self.yolo_bottom_settings_row.setVisible(False)
         yolo_layout.addWidget(bottom_settings_row_widget)
 
         class_list_section = CollapsibleSection(i18n.t("YOLO_CLASS_LIST_SECTION"), expanded=False)
@@ -584,6 +565,9 @@ class MaskStep(BaseStepWidget):
         self.sky_mode_combo.setFixedWidth(132)
         add_tooltip_row(sky_form, i18n.t("SKY_MODE"), self.sky_mode_combo, i18n.tip("SKY_MODE"))
         self.sky_mode_field_label = sky_form.labelForField(self.sky_mode_combo)
+        self.sky_mode_combo.setVisible(False)
+        if self.sky_mode_field_label is not None:
+            self.sky_mode_field_label.setVisible(False)
 
         self.sky_inference_size_combo = QComboBox()
         self.sky_inference_size_combo.addItems(_SKY_INFERENCE_SIZES)
@@ -819,7 +803,7 @@ class MaskStep(BaseStepWidget):
         btn = self.projection_buttons.get(projection)
         if btn is not None and not btn.isChecked():
             btn.setChecked(True)
-        self.yolo_level_combo.setCurrentIndex(1 if projection == _PROJECTION_NORMAL else 2)
+        self.yolo_level_combo.setCurrentIndex(0 if projection == _PROJECTION_NORMAL else 1)
         self._update_task_controls()
 
     def _scene_csv_path(self) -> Path:
@@ -903,11 +887,12 @@ class MaskStep(BaseStepWidget):
     def _yolo_expand_arg(self) -> str:
         return str(self.yolo_expand_edit.value())
 
+    def _quality_arg(self) -> str:
+        idx = max(0, min(self.yolo_level_combo.currentIndex(), len(QUALITY_CHOICES) - 1))
+        return QUALITY_CHOICES[idx]
+
     def _bottom_enhance_args(self) -> list[str]:
-        if self._projection() != _PROJECTION_EQUIRECT:
-            return []
-        idx = max(0, min(self.yolo_bottom_enhance_combo.currentIndex(), len(_YOLO_BOTTOM_PRESETS) - 1))
-        return list(_YOLO_BOTTOM_PRESETS[idx][1])
+        return []
 
     def _sky_backend_arg(self) -> str:
         idx = self.sky_backend_combo.currentIndex()
@@ -970,16 +955,16 @@ class MaskStep(BaseStepWidget):
         self.ade_class_list_section.setVisible(person_mask2former)
         self.sam_prompt_section.setVisible(person_sam31)
         self.yolo_class_list_section.setVisible(yolo_sam_enabled)
-        self.yolo_level_label.setVisible(yolo_sam_enabled)
-        self.yolo_level_combo.setVisible(yolo_sam_enabled)
-        self.yolo_level_label.setEnabled(yolo_sam_enabled)
-        self.yolo_level_combo.setEnabled(yolo_sam_enabled)
+        self.yolo_level_label.setVisible(True)
+        self.yolo_level_combo.setVisible(True)
+        self.yolo_level_label.setEnabled(True)
+        self.yolo_level_combo.setEnabled(True)
         self.yolo_expand_label.setEnabled(True)
         self.yolo_expand_edit.setEnabled(True)
-        self.yolo_bottom_settings_row.setVisible(yolo_sam_enabled and equirect)
-        self.yolo_bottom_settings_row.setEnabled(yolo_sam_enabled and equirect)
-        self.yolo_bottom_enhance_label.setEnabled(yolo_sam_enabled and equirect)
-        self.yolo_bottom_enhance_combo.setEnabled(yolo_sam_enabled and equirect)
+        self.yolo_bottom_settings_row.setVisible(False)
+        self.yolo_bottom_settings_row.setEnabled(False)
+        self.yolo_bottom_enhance_label.setEnabled(False)
+        self.yolo_bottom_enhance_combo.setEnabled(False)
         self.yolo_class_list_section.setEnabled(yolo_sam_enabled)
         self.sky_inference_size_combo.setEnabled(person_mask2former)
         if self.sky_inference_size_label is not None:
@@ -1236,9 +1221,7 @@ class MaskStep(BaseStepWidget):
             tuple(self._selected_classes()),
             tuple(self._selected_ade_labels()),
             tuple(self._selected_sam_prompts()),
-            self.yolo_bottom_enhance_combo.currentIndex(),
             self._sky_backend_arg(),
-            self._sky_mode_arg(),
             self._sky_inference_size_arg(),
             int(self.sky_expand_edit.value()),
             float(self.sky_min_score_edit.value()),
@@ -1440,13 +1423,11 @@ class MaskStep(BaseStepWidget):
         if not script.exists():
             raise FileNotFoundError(f"yolo_mask.py が見つかりません: {script}")
 
-        # レベルはコンボのインデックスで取得 (テキストに説明が入っているため)
-        level = str(self.yolo_level_combo.currentIndex())
         classes = self._selected_classes()
         cmd = [
             sys.executable, "-u", str(script),
             images, masks,
-            "--level", level,
+            "--quality", self._quality_arg(),
             "--expand", self._yolo_expand_arg(),
             "--projection", self._projection(),
         ]
@@ -1470,12 +1451,11 @@ class MaskStep(BaseStepWidget):
         if not script.exists():
             raise FileNotFoundError(f"yolo_mask.py が見つかりません: {script}")
 
-        level = str(self.yolo_level_combo.currentIndex())
         classes = self._selected_classes()
         cmd = [
             sys.executable, "-u", str(script),
             str(image_path), str(output_dir),
-            "--level", level,
+            "--quality", self._quality_arg(),
             "--expand", self._yolo_expand_arg(),
             "--projection", self._projection(),
         ]
@@ -1516,7 +1496,7 @@ class MaskStep(BaseStepWidget):
             str(images), str(masks),
             "--backend", "sam31",
             "--projection", self._projection(),
-            "--mode", self._sky_mode_arg(),
+            "--quality", self._quality_arg(),
             "--inference-size", _PERSON_SAM31_INFERENCE_SIZE,
             "--expand", self._yolo_expand_arg(),
             "--min-score", _PERSON_SAM31_MIN_SCORE,
@@ -1545,7 +1525,7 @@ class MaskStep(BaseStepWidget):
             str(images), str(masks),
             "--backend", "mask2former",
             "--projection", self._projection(),
-            "--mode", self._sky_mode_arg(),
+            "--quality", self._quality_arg(),
             "--inference-size", self._sky_inference_size_arg(),
             "--expand", str(self.yolo_expand_edit.value()),
             "--min-score", f"{float(self.sky_min_score_edit.value()):g}",

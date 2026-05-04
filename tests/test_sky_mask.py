@@ -137,3 +137,26 @@ def test_sky_mask_resolve_model_source_accepts_sam31_model_dir_override(tmp_path
 def test_sky_mask_auto_view_size_is_bounded() -> None:
     assert auto_view_size(1024, 512) == 512
     assert auto_view_size(8192, 4096) == 2048
+
+
+def test_sky_mask_normal_quality_uses_tiles_without_pole_projection() -> None:
+    class CountingSegmenter:
+        def __init__(self) -> None:
+            self.shapes: list[tuple[int, int]] = []
+
+        def detect_sky(self, bgr: np.ndarray, options: SkyMaskOptions) -> np.ndarray:
+            del options
+            self.shapes.append(bgr.shape[:2])
+            return np.zeros(bgr.shape[:2], dtype=bool)
+
+    image = np.zeros((20, 40, 3), dtype=np.uint8)
+    segmenter = CountingSegmenter()
+
+    detect_sky_mask(
+        image,
+        segmenter,
+        SkyMaskOptions(projection="normal", quality="high", min_area_ratio=0.0, top_connected=False),
+    )
+
+    assert segmenter.shapes[0] == (20, 40)
+    assert len(segmenter.shapes) == 1 + 8

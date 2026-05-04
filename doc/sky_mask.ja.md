@@ -14,17 +14,17 @@
 ## 使い方
 
 ```bash
-python sky_mask.py [images_dir_or_file] [masks_dir] [--backend mask2former|sam31] [--projection equirect|normal] [--mode direct|top|bottom|hybrid|full] [--labels LABELS] [--sam-prompt TEXT] [--inference-size N] [--expand PX] [--min-score S] [--min-area-ratio R] [--no-top-connected] [--replace]
+python sky_mask.py [images_dir_or_file] [masks_dir] [--backend mask2former|sam31] [--projection equirect|normal] [--quality standard|high|best] [--labels LABELS] [--sam-prompt TEXT] [--inference-size N] [--expand PX] [--min-score S] [--min-area-ratio R] [--no-top-connected] [--replace]
 ```
 
 - `images_dir_or_file`: 入力画像フォルダ、または1枚の入力画像。
 - `masks_dir`: 出力マスクフォルダ。既存マスクがあればAND合成します。
 - `--backend mask2former|sam31`: セグメンテーションbackend（既定: `mask2former`）。
 - `--projection equirect|normal`: 入力画像の種類（既定: `equirect`）。
-- `--mode direct|top|bottom|hybrid|full`: 投影補助方式。
-  - `full`: 直処理 + 上部投影 + 下部投影。
-  - `hybrid`: 直処理 + 上部投影。
-  - 通常画像では直処理にfallbackします。
+- `--quality standard|high|best`: モデルへ渡す入力素材レシピ（既定: `high`）。
+  - 360°画像では `high` 以上で上部/下部投影補助と対象向けタイルを使います。
+  - 通常画像では全体直処理と全体タイルを使い、360°専用の極投影は使いません。
+  - `--mode direct|top|bottom|hybrid|full` は低レベルの比較用overrideとして残っています。
 - `--labels LABELS`: Mask2FormerのADE20Kラベル名またはIDのカンマ区切り（既定: `sky`）。
 - `--sam-prompt TEXT`: SAM3.1に渡す英語プロンプト。複数回指定でき、結果はOR合成されます。
 - `--inference-size N`: backend入力サイズ。384〜2048（既定: `768`、GUIのSAM3.1は現在 `1008`）。
@@ -40,13 +40,13 @@ python sky_mask.py [images_dir_or_file] [masks_dir] [--backend mask2former|sam31
 例:
 
 ```bash
-python sky_mask.py .\images .\masks --projection equirect --mode full --labels sky,person --inference-size 768
+python sky_mask.py .\images .\masks --projection equirect --quality high --labels sky,person --inference-size 768
 ```
 
 SAM3.1で空と人物をテストする場合:
 
 ```bash
-python sky_mask.py .\images .\masks --backend sam31 --mode full --inference-size 1008 --sam-prompt sky --sam-prompt person --no-top-connected --replace
+python sky_mask.py .\images .\masks --backend sam31 --quality high --inference-size 1008 --sam-prompt sky --sam-prompt person --no-top-connected --replace
 ```
 
 ## モデルファイル

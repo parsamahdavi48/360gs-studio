@@ -203,11 +203,11 @@ def test_mask_numeric_labels_share_field_tooltips() -> None:
     assert step.projection_buttons["normal"].toolTip() == i18n.tip("MASK_IMAGE_TYPE_NORMAL")
     assert step.person_backend_label.toolTip() == i18n.tip("PERSON_MODEL")
     assert step.person_backend_combo.toolTip() == i18n.tip("PERSON_MODEL")
+    assert step.yolo_level_label.toolTip() == i18n.tip("MASK_QUALITY")
     assert _label(step, i18n.t("YOLO_EXPAND_COMPACT")).toolTip() == i18n.tip("YOLO_EXPAND")
-    assert step.yolo_bottom_enhance_label.toolTip() == i18n.tip("YOLO_BOTTOM_ENHANCE")
+    assert step.yolo_bottom_settings_row.isHidden()
     assert _label(step, i18n.STITCH_BOUNDARY_WIDTH).toolTip() == i18n.tip("STITCH_BOUNDARY_WIDTH")
     assert _label(step, i18n.OVEREXPOSURE_THRESHOLD).toolTip() == i18n.tip("OVEREXPOSURE_THRESHOLD")
-    assert _label(step, i18n.t("SKY_MODE")).toolTip() == i18n.tip("SKY_MODE")
     assert step.sky_min_area_edit.toolTip() == i18n.tip("SKY_MIN_AREA")
     assert step.sky_top_connected_cb.toolTip() == i18n.tip("SKY_TOP_CONNECTED")
     assert step.mask_settings_tabs.count() == 3
@@ -235,9 +235,10 @@ def test_mask_yolo_compact_row_preserves_width_in_english() -> None:
         assert step.person_backend_combo.itemText(1) == "Mask2Former"
         assert step.person_backend_combo.itemText(2) == "SAM3.1"
         assert step.yolo_settings_row.sizeHint().width() <= content_width
-        assert step.yolo_bottom_settings_row.sizeHint().width() <= content_width
-        assert step.yolo_bottom_enhance_combo.itemText(1) == "High"
-        assert step.yolo_bottom_enhance_combo.itemText(2) == "Max"
+        assert step.yolo_level_combo.itemText(0) == "Standard"
+        assert step.yolo_level_combo.itemText(1) == "High"
+        assert step.yolo_level_combo.itemText(2) == "Best"
+        assert step.yolo_bottom_settings_row.isHidden()
         """
     )
     env = os.environ.copy()

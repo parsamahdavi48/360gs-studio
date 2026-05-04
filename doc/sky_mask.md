@@ -18,17 +18,17 @@ bottom pole.
 ## Usage
 
 ```bash
-python sky_mask.py [images_dir_or_file] [masks_dir] [--backend mask2former|sam31] [--projection equirect|normal] [--mode direct|top|bottom|hybrid|full] [--labels LABELS] [--sam-prompt TEXT] [--inference-size N] [--expand PX] [--min-score S] [--min-area-ratio R] [--no-top-connected] [--replace]
+python sky_mask.py [images_dir_or_file] [masks_dir] [--backend mask2former|sam31] [--projection equirect|normal] [--quality standard|high|best] [--labels LABELS] [--sam-prompt TEXT] [--inference-size N] [--expand PX] [--min-score S] [--min-area-ratio R] [--no-top-connected] [--replace]
 ```
 
 - `images_dir_or_file`: source image directory or one source image.
 - `masks_dir`: output mask directory. Existing masks are AND-merged.
 - `--backend mask2former|sam31`: segmentation backend (default: `mask2former`).
 - `--projection equirect|normal`: source image projection (default: `equirect`).
-- `--mode direct|top|bottom|hybrid|full`: projection-assist mode.
-  - `full` = direct + top projection + bottom projection.
-  - `hybrid` = direct + top projection.
-  - non-equirectangular input falls back to direct inference.
+- `--quality standard|high|best`: shared input-view recipe (default: `high`).
+  - For 360° images, `high` adds top/bottom projection assist and target-oriented tiles.
+  - For normal images, quality uses direct inference plus whole-image tiling; 360° pole projection is skipped.
+  - `--mode direct|top|bottom|hybrid|full` remains available as a low-level override.
 - `--labels LABELS`: comma-separated Mask2Former ADE20K label names or ids (default: `sky`).
 - `--sam-prompt TEXT`: text prompt for SAM3.1. Can be passed multiple times; masks are OR-merged.
 - `--inference-size N`: backend input size, 384-2048 (default: `768`; SAM3.1 currently uses `1008` in the GUI).
@@ -44,13 +44,13 @@ python sky_mask.py [images_dir_or_file] [masks_dir] [--backend mask2former|sam31
 Examples:
 
 ```bash
-python sky_mask.py .\images .\masks --projection equirect --mode full --labels sky,person --inference-size 768
+python sky_mask.py .\images .\masks --projection equirect --quality high --labels sky,person --inference-size 768
 ```
 
 SAM3.1 sky/person prompt test:
 
 ```bash
-python sky_mask.py .\images .\masks --backend sam31 --mode full --inference-size 1008 --sam-prompt sky --sam-prompt person --no-top-connected --replace
+python sky_mask.py .\images .\masks --backend sam31 --quality high --inference-size 1008 --sam-prompt sky --sam-prompt person --no-top-connected --replace
 ```
 
 ## Model Files

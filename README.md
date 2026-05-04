@@ -90,8 +90,8 @@ If the scene folder path contains non-ASCII characters, an extremely long path, 
 1. Prepare 360° video from an Insta360 or similar camera.
 2. Extract SfM-friendly frames in Step 1.
 3. Review low-quality or unnecessary frames in Step 2.
-4. Generate masks for people, camera operators, tripods, sky, or similar SfM-unfriendly regions in Step 3. For 360° images with YOLO/SAM2.1, `YOLO Level 2 Quality` is the recommended starting point.
-5. If the bottom-view camera operator is missed, raise `Bottom Enhance` to `High` or `Max`, or test a Mask2Former/SAM3.1 primary mask with projection assist.
+4. Generate masks for people, camera operators, tripods, sky, or similar SfM-unfriendly regions in Step 3. `Quality: High` is the recommended starting point.
+5. If masks still leak through, switch only the affected images to `Quality: Best` or test a Mask2Former/SAM3.1 primary mask.
 6. Enable stitch seam, overexposure, and custom masks when they match the source material.
 7. Import the generated `masks/` folder into Metashape as per-image masks, then run SfM.
 8. Use Step 4 with the Metashape XML/PLY result to export training images, masks, and `transforms.json`.
@@ -105,18 +105,16 @@ If the scene folder path contains non-ASCII characters, an extremely long path, 
 
 ## Mask Preprocessing for Normal Images
 
-For normal video frames or still-camera image sequences placed in `images/`, choose `Image Type: Normal` in Step 3. This keeps primary masking and overexposure masking available while disabling stitch seam masking and 360° bottom re-detection.
+For normal video frames or still-camera image sequences placed in `images/`, choose `Image Type: Normal` in Step 3. This keeps primary masking and overexposure masking available while disabling stitch seam masking and 360° pole projection assist.
 
 Use this when you want to exclude people, vehicles, blown-out regions, or similar areas before importing images into SfM software.
 
 ## Mask Tuning Notes
 
-- For 360° images, start with `YOLO Level 2 Quality`.
-- Use `1 Standard` for faster test runs.
-- If people leak through, try `3 Best` or raise `Expand` slightly.
+- Start with `Quality: High`.
+- Use `Quality: Standard` for faster test runs.
+- If people leak through, try `Quality: Best` or raise `Expand` slightly.
 - When you find a miss in preview, adjust settings and use `Regenerate Current` to save only that image back to `masks/` using the current primary model and enabled extra masks. In thumbnail mode, use `Ctrl` / `Shift` selection to regenerate multiple selected images together. Arrow keys move the visible thumbnail selection while in thumbnail mode.
-- If only the bottom-view camera operator leaks through, try `Bottom Enhance` in this order: `Standard -> High -> Max`.
-- `Max` is slower and can mask extra floor or ground.
 - Stitch seam masks are useful when the seam position is stable in the equirectangular image. If FlowState stabilization, direction lock, AI stitching, or similar processing moves the seam, verify it in the preview before using it.
 
 ## Requirements

@@ -7,13 +7,16 @@
 
 ## 使い方
 ```
-python yolo_mask.py [images_dir] [output_dir] [--add_ext] [--level N] [--expand M] [--classes IDS] [--projection equirect|normal] [--bottom-conf C] [--bottom-tta-rotations 1|2|4] [--bottom-model same|m|l|x] [--bottom-filter] [--bottom-temporal-window N] [--bottom-temporal-min-votes N] [--profile-json PATH]
+python yolo_mask.py [images_dir] [output_dir] [--add_ext] [--quality standard|high|best] [--expand M] [--classes IDS] [--projection equirect|normal] [--bottom-conf C] [--bottom-tta-rotations 1|2|4] [--bottom-model same|m|l|x] [--bottom-filter] [--profile-json PATH]
 ```
 
 - `images_dir`: 入力画像ディレクトリ（省略時: `images`）
 - `output_dir`: 出力マスク保存先（省略時: `masks`）
 - `--add_ext`: 元の拡張子を残してさらに `.png` を追加（出力例: `hoge.jpg.png`）
-- `--level N`: 検出レベル（0〜3、デフォルト=1）。値を上げると局所領域での高精度抽出が有効になります。
+- `--quality standard|high|best`: モデルへ渡す入力素材レシピ（デフォルト: `high`）。
+  - `standard`: 全体直処理中心。360°画像では軽い下部投影も実行します。
+  - `high`: 人物向けタイルと、360°画像向けの上部/下部投影補助を追加します。
+  - `best`: より細かいタイルと強い下部補助を使います。
 - `--expand M`: SAM後の検出領域を広げる固定ピクセル数（デフォルト=2）
   - 安全のため `-16〜32` にクランプされます。
   - 負値を指定するとマスク領域を収縮します。
@@ -21,37 +24,34 @@ python yolo_mask.py [images_dir] [output_dir] [--add_ext] [--level N] [--expand 
 - `--projection equirect|normal`: 入力画像の種類（デフォルト: `equirect`）
   - `equirect`: 360°エクイレクタングラー画像。底面再検出を行います。
   - `normal`: 通常画像。360°専用の底面再検出を行いません。
-- `--bottom-conf C`: 360底面再検出だけに使うYOLO信頼度しきい値（デフォルト: `0.3`）。
-- `--bottom-tta-rotations 1|2|4`: 底面画像を回転して複数回検出し、結果を合成します（デフォルト: `1`）。
-- `--bottom-model same|m|l|x`: 底面再検出だけに使うYOLOモデル。`same` は `--level` で選ばれたモデルを再利用します。`x` は重く、初回に `yolo26x.pt` のダウンロードが発生する場合があります。
+- `--bottom-conf C`: 360底面再検出だけに使うYOLO信頼度しきい値を、品質レシピの値から上書きします。
+- `--bottom-tta-rotations 1|2|4`: 品質レシピで選ばれる底面画像の回転回数を上書きします。
+- `--bottom-model same|m|l|x`: 底面再検出だけに使うYOLOモデル。`same` は `--quality` で選ばれたモデルを再利用します。`x` は重く、初回に `yolo26x.pt` のダウンロードが発生する場合があります。
 - `--bottom-filter`: 信頼しにくい底面マスク成分を除外してから最終マスクに合成します。
-- `--bottom-temporal-window N`: 各フレームの検出後、前後 `N` フレーム以内の底面検出結果を合成して補完します。ディレクトリ入力かつ `equirect` のときだけ有効です。
-- `--bottom-temporal-min-votes N`: 時系列補完で画素を書き込む前に、近傍フレーム内で最低 `N` 回の底面検出を要求します（デフォルト: `1`）。
-  - CLI専用の詳細オプションです。間隔を空けて抽出したフレームではフレーム間の動きを位置合わせしないため、前フレームのシルエットが残ることがあります。GUIプリセットでは使いません。
 - `--profile-json PATH`: 処理時間と検出数の内訳をJSONに出力します。指定しない通常実行の動作は変わりません。
 
 例:
 
 ```
-python yolo_mask.py .\images .\masks --level 2 --expand 5 --classes 0,2,3
+python yolo_mask.py .\images .\masks --quality high --expand 5 --classes 0,2,3
 ```
 
 通常画像:
 
 ```
-python yolo_mask.py .\images .\masks --projection normal --level 1
+python yolo_mask.py .\images .\masks --projection normal --quality standard
 ```
 
 真上から見た撮影者など、底面検出が難しい場合:
 
 ```
-python yolo_mask.py .\images .\masks --level 3 --bottom-conf 0.15 --bottom-tta-rotations 4 --bottom-filter
+python yolo_mask.py .\images .\masks --quality best
 ```
 
 底面だけYOLO Xまで使う最大設定:
 
 ```
-python yolo_mask.py .\images .\masks --level 3 --bottom-conf 0.10 --bottom-tta-rotations 4 --bottom-model x --bottom-filter
+python yolo_mask.py .\images .\masks --quality best --bottom-model x
 ```
 
 固定データセットでベンチマーク:
@@ -73,7 +73,6 @@ python scripts/benchmark_yolo_mask.py --dataset D:\3DGS\test --output-root D:\3D
 ## 注意点
 - 初回実行時に学習モデルファイルが自動でダウンロードされる場合があり、時間がかかります。`models/ultralytics/` の `.pt` を最優先で使います。互換性のためスクリプトと同じディレクトリにある `.pt` もfallbackとして使い、未配置の名前付きモデルはUltralytics側の解決に任せます。
 - YOLO/SAM機能では、別ライセンスの第三者ライブラリおよびモデル重みを使用します。詳細は [../THIRD_PARTY_LICENSES.md](../THIRD_PARTY_LICENSES.md) を参照してください。
-- `--level` を上げると処理時間とメモリ使用量が増加します。
-- 底面TTA、候補フィルタ、時系列補完、`--bottom-model x` は、360底面再検出部分だけの処理時間を増やします。
-- GUIの下部検出強化プリセットは底面TTAと候補フィルタを使い、時系列補完は使いません。
+- `--quality` を上げると処理時間とメモリ使用量が増加します。
+- 底面TTA、候補フィルタ、`--bottom-model x` は、360底面再検出部分だけの処理時間を増やします。
 - 大きなパノラマや高解像度画像では GPU（CUDA）対応の環境が推奨されます。CUDA対応PyTorchをインストールしてください。

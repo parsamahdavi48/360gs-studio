@@ -100,17 +100,18 @@ def test_mask_step_yolo_level_and_expand_share_compact_row() -> None:
 
     content_width = SETTINGS_PANE_WIDTH - SETTINGS_PANE_MARGINS[2]
     assert step.yolo_settings_row.sizeHint().width() <= content_width
-    assert step.yolo_level_combo.currentIndex() == 2
+    assert step.yolo_level_combo.currentIndex() == 1
     assert step.person_backend_label.toolTip() == i18n.tip("PERSON_MODEL")
     assert step.person_backend_combo.itemText(0) == i18n.t("PERSON_MODEL_YOLO_SAM")
     assert step.person_backend_combo.itemText(1) == i18n.t("SKY_MODEL_MASK2FORMER")
     assert step.person_backend_combo.itemText(2) == i18n.t("PERSON_MODEL_SAM31")
-    assert step.yolo_level_label.toolTip() == i18n.tip("YOLO_LEVEL")
+    assert step.yolo_level_label.toolTip() == i18n.tip("MASK_QUALITY")
+    assert step.yolo_level_combo.itemText(0) == i18n.t("MASK_QUALITY_STANDARD")
+    assert step.yolo_level_combo.itemText(1) == i18n.t("MASK_QUALITY_HIGH")
+    assert step.yolo_level_combo.itemText(2) == i18n.t("MASK_QUALITY_BEST")
     assert step.yolo_expand_label.toolTip() == i18n.tip("YOLO_EXPAND")
-    assert step.yolo_bottom_enhance_label.toolTip() == i18n.tip("YOLO_BOTTOM_ENHANCE")
+    assert step.yolo_bottom_settings_row.isHidden()
     assert step.projection_buttons["equirect"].text() == "360°"
-    assert step.yolo_bottom_enhance_combo.itemText(1) == i18n.t("YOLO_BOTTOM_STRONG")
-    assert step.yolo_bottom_enhance_combo.itemText(2) == i18n.t("YOLO_BOTTOM_MAX")
 
 
 def test_mask_step_metashape_notice_is_in_left_pane() -> None:
@@ -397,7 +398,7 @@ def test_mask_step_mask2former_primary_builds_final_command(tmp_path: Path) -> N
     ]
     assert cmd[cmd.index("--backend") + 1] == "mask2former"
     assert cmd[cmd.index("--projection") + 1] == "equirect"
-    assert cmd[cmd.index("--mode") + 1] == "full"
+    assert cmd[cmd.index("--quality") + 1] == "high"
     assert cmd[cmd.index("--inference-size") + 1] == "768"
     assert cmd[cmd.index("--labels") + 1] == "sky,person"
     assert "--replace" in cmd
@@ -420,6 +421,7 @@ def test_mask_step_sam31_primary_builds_prompt_command(tmp_path: Path, monkeypat
 
     cmd = commands[0][1]
     assert cmd[cmd.index("--backend") + 1] == "sam31"
+    assert cmd[cmd.index("--quality") + 1] == "high"
     assert cmd[cmd.index("--inference-size") + 1] == "1008"
     prompt_args = [cmd[idx + 1] for idx, value in enumerate(cmd) if value == "--sam-prompt"]
     assert prompt_args == ["person", "sky"]
@@ -448,14 +450,14 @@ def test_mask_step_person_mask_can_select_sam31_backend(tmp_path: Path, monkeypa
         str(scene / "masks"),
     ]
     assert cmd[cmd.index("--backend") + 1] == "sam31"
-    assert cmd[cmd.index("--mode") + 1] == "full"
+    assert cmd[cmd.index("--quality") + 1] == "high"
     assert cmd[cmd.index("--inference-size") + 1] == "1008"
     prompt_args = [cmd[idx + 1] for idx, value in enumerate(cmd) if value == "--sam-prompt"]
     assert prompt_args == ["person", "sky"]
     assert cmd[cmd.index("--min-score") + 1] == "0.5"
     assert "--no-top-connected" in cmd
     assert "--replace" in cmd
-    assert not step.yolo_level_combo.isEnabled()
+    assert step.yolo_level_combo.isEnabled()
     assert not step.yolo_bottom_enhance_combo.isEnabled()
     assert not step.yolo_class_list_section.isEnabled()
     assert step.yolo_expand_edit.isEnabled()
@@ -507,7 +509,7 @@ def test_mask_step_allows_generation_when_drop_images_are_removed(tmp_path: Path
     assert commands[0][0] == "yolo"
     assert commands[0][1][3] == str(scene / "images")
     assert commands[0][1][4] == str(scene / "masks")
-    assert commands[0][1][commands[0][1].index("--level") + 1] == "2"
+    assert commands[0][1][commands[0][1].index("--quality") + 1] == "high"
     assert commands[0][1][commands[0][1].index("--projection") + 1] == "equirect"
     assert "--add-ext" not in commands[0][1]
 
@@ -679,45 +681,39 @@ def test_mask_step_normal_image_type_disables_stitch_and_uses_normal_yolo_projec
     assert [phase for phase, _cmd in commands] == ["yolo"]
     yolo_cmd = commands[0][1]
     assert yolo_cmd[yolo_cmd.index("--projection") + 1] == "normal"
-    assert yolo_cmd[yolo_cmd.index("--level") + 1] == "1"
+    assert yolo_cmd[yolo_cmd.index("--quality") + 1] == "standard"
     assert "--bottom-conf" not in yolo_cmd
     assert not step.yolo_bottom_enhance_combo.isEnabled()
 
 
-def test_mask_step_bottom_enhance_strong_adds_bottom_only_yolo_args(tmp_path: Path) -> None:
+def test_mask_step_quality_best_is_forwarded_to_primary_command(tmp_path: Path) -> None:
     _app()
     scene = _write_scene(tmp_path, drop_exists=False)
     step = MaskStep(Path.cwd())
     step.set_scene_dir(str(scene))
 
-    step.yolo_bottom_enhance_combo.setCurrentIndex(1)
+    step.yolo_level_combo.setCurrentIndex(2)
 
     yolo_cmd = step.build_commands()[0][1]
 
-    assert yolo_cmd[yolo_cmd.index("--bottom-conf") + 1] == "0.15"
-    assert yolo_cmd[yolo_cmd.index("--bottom-tta-rotations") + 1] == "4"
-    assert "--bottom-filter" in yolo_cmd
-    assert "--bottom-temporal-window" not in yolo_cmd
-    assert "--bottom-temporal-min-votes" not in yolo_cmd
-    assert "--bottom-model" not in yolo_cmd
+    assert yolo_cmd[yolo_cmd.index("--quality") + 1] == "best"
+    assert "--bottom-conf" not in yolo_cmd
+    assert "--bottom-tta-rotations" not in yolo_cmd
+    assert "--bottom-filter" not in yolo_cmd
 
 
-def test_mask_step_bottom_enhance_max_uses_bottom_x_model(tmp_path: Path) -> None:
+def test_mask_step_quality_is_shared_by_mask2former(tmp_path: Path) -> None:
     _app()
     scene = _write_scene(tmp_path, drop_exists=False)
     step = MaskStep(Path.cwd())
     step.set_scene_dir(str(scene))
-
-    step.yolo_bottom_enhance_combo.setCurrentIndex(2)
+    step.person_backend_combo.setCurrentIndex(1)
+    step.yolo_level_combo.setCurrentIndex(0)
 
     yolo_cmd = step.build_commands()[0][1]
 
-    assert yolo_cmd[yolo_cmd.index("--bottom-conf") + 1] == "0.10"
-    assert yolo_cmd[yolo_cmd.index("--bottom-tta-rotations") + 1] == "4"
-    assert yolo_cmd[yolo_cmd.index("--bottom-model") + 1] == "x"
-    assert "--bottom-filter" in yolo_cmd
-    assert "--bottom-temporal-window" not in yolo_cmd
-    assert "--bottom-temporal-min-votes" not in yolo_cmd
+    assert yolo_cmd[yolo_cmd.index("--backend") + 1] == "mask2former"
+    assert yolo_cmd[yolo_cmd.index("--quality") + 1] == "standard"
 
 
 def test_mask_step_external_image_controls_only_show_for_normal_type() -> None:

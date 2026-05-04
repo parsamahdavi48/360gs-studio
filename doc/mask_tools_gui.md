@@ -24,8 +24,8 @@ run_gui.bat --scene ./scene01
 - `Images Folder`: input images for primary and extra mask generation.
 - `Masks Folder`: output masks; also stitch input/output.
 - `Image Type`:
-  - `360°`: equirectangular 360° images. Enables stitch seam masking and 360° bottom-view re-detection.
-  - `Normal`: normal video frames or still-camera image sequences. Disables stitch seam masking and 360° bottom-view re-detection.
+  - `360°`: equirectangular 360° images. Enables stitch seam masking and 360° projection assist.
+  - `Normal`: normal video frames or still-camera image sequences. Disables stitch seam masking and 360° pole projection assist.
 - `Extra Masks`: optional mask passes added after the primary mask.
   - `Stitch`: stitch seam masks for equirectangular 360° images.
   - `Overexp`: overexposure masks.
@@ -38,19 +38,15 @@ run_gui.bat --scene ./scene01
   - `YOLO/SAM2.1`: default path. YOLO detects people or selected classes, then SAM2.1 refines the mask.
   - `Mask2Former`: ADE20K semantic segmentation. The GUI passes selected ADE20K class names to `sky_mask.py --backend mask2former --labels ...`.
   - `SAM3.1`: local prompt path. It runs `sky_mask.py --backend sam31` when `models/sam3.1/sam3.1_multiplex.pt` exists.
-  - `Mask2Former` and `SAM3.1` share projection assist settings. YOLO level, bottom enhancement, and COCO class selection are used only by `YOLO/SAM2.1`.
-- `YOLO Level`: forwarded to `yolo_mask.py --level` (0-3) for `YOLO/SAM2.1`.
-  - For 360° images, start with `2 Quality`.
-  - Use `1 Standard` for faster checks, and `3 Best` only if people still leak through.
-  - For normal images, start with `1 Standard`.
+  - All primary models share the same `Quality` input-view recipe.
+- `Quality`: forwarded as `--quality standard|high|best`.
+  - `Standard`: direct full-image inference. For 360° images, also runs a light bottom-pole pass.
+  - `High`: recommended default. Adds person-oriented tiles and, for 360° images, top/bottom projection assist.
+  - `Best`: denser tiles and stronger bottom-pole settings for difficult source images.
+  - Normal images use direct inference and whole-image tiling; 360° pole projection is skipped.
 - `Mask Expand`: forwarded to the selected primary backend as `--expand`.
   - Default is `2px`; drag horizontally on the number field to adjust.
   - Clamped to `-16..32px` for safety.
-- `Bottom Enhance`: preset for missed masks near the bottom of equirectangular 360° images.
-  - `Standard`: use when the bottom is already masked well and you want to avoid extra floor/ground masking.
-  - `High`: use when top-down photographers, tripods, or hands remain near the bottom.
-  - `Max`: use only when bottom leaks remain after `High`; it is slower and more likely to mask extra floor or ground.
-  - Not used when `Image Type` is `Normal`.
 - `Detection Classes`: collapsed picker for class selection in `YOLO/SAM2.1`.
   - Choose classes by checkbox labels (`id: name`) instead of memorizing numeric ids.
   - Default preset is `person` only (`id=0`).
@@ -61,9 +57,7 @@ run_gui.bat --scene ./scene01
 - `Detection Targets`: SAM3.1 prompt presets and a custom English prompt field.
   - Defaults to `person` and `sky`.
   - Multiple prompts are run one at a time and OR-merged into the output mask.
-- `Projection Assist`: shown for `Mask2Former` and `SAM3.1`.
-  - `High Quality` combines direct equirectangular inference, top projection, and bottom projection.
-  - `Direct`, `Top View`, `Bottom View`, and `Direct+Top` are available for comparison.
+- `Projection Assist`: now controlled by `Quality`.
   - `Size` controls Mask2Former inference size. SAM3.1 currently uses `1008`.
   - `Min Score` is used by Mask2Former. `Min Area` and `Top-connected only` are post-filters.
 - `Boundary Mask Width (deg)`: forwarded to `stitch_mask.py --boundary-width`.
