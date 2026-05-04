@@ -118,6 +118,12 @@ class MaskStep(BaseStepWidget):
         self._current_reprocess_proc: QProcess | None = None
         self._current_reprocess_image: Path | None = None
         self._current_reprocess_mask: Path | None = None
+        self._current_reprocess_active = False
+        self._current_reprocess_queue: list[Path] = []
+        self._current_reprocess_total = 0
+        self._current_reprocess_completed = 0
+        self._current_reprocess_failed: list[Path] = []
+        self._current_reprocess_last_success: Path | None = None
         self._mask_preview_render_pending = False
         self._mask_preview_render_timer = QTimer(self)
         self._mask_preview_render_timer.setSingleShot(True)
@@ -688,12 +694,7 @@ class MaskStep(BaseStepWidget):
         return max(_STITCH_BOUNDARY_MIN, min(_STITCH_BOUNDARY_MAX, value))
 
     def _schedule_render_mask_preview(self) -> None:
-        if self._mask_preview_render_timer.isActive():
-            self._mask_preview_render_pending = True
-            self._mask_preview_render_timer.start()
-            return
-        self._mask_preview_render_pending = False
-        self._render_mask_preview()
+        self._mask_preview_render_pending = True
         self._mask_preview_render_timer.start()
 
     def _flush_scheduled_mask_preview(self) -> None:
@@ -844,7 +845,7 @@ class MaskStep(BaseStepWidget):
     def _run_yolo_preview(self) -> None:
         if self._yolo_preview_proc is not None and self._yolo_preview_proc.state() != QProcess.NotRunning:
             return
-        if self._current_reprocess_proc is not None and self._current_reprocess_proc.state() != QProcess.NotRunning:
+        if self._current_reprocess_active:
             return
 
         image_path = self.mask_preview.current_image_path()
@@ -918,37 +919,73 @@ class MaskStep(BaseStepWidget):
         self._yolo_preview_temp = None
 
     def _run_current_image_reprocess(self) -> None:
-        if self._current_reprocess_proc is not None and self._current_reprocess_proc.state() != QProcess.NotRunning:
+        if self._current_reprocess_active:
             return
         if self._yolo_preview_proc is not None and self._yolo_preview_proc.state() != QProcess.NotRunning:
             return
 
-        image_path = self.mask_preview.current_image_path()
-        if image_path is None:
+        image_paths = self._selected_reprocess_image_paths()
+        if not image_paths:
             self.mask_preview.set_status_text(i18n.t("MASK_PREVIEW_YOLO_NO_IMAGE"))
             return
         if not self._selected_mask_tasks():
             self.mask_preview.set_status_text(i18n.t("MASK_TASK_REQUIRED"))
             return
 
+        self._current_reprocess_active = True
+        self._current_reprocess_queue = image_paths
+        self._current_reprocess_total = len(image_paths)
+        self._current_reprocess_completed = 0
+        self._current_reprocess_failed = []
+        self._current_reprocess_last_success = None
+        self.mask_preview.set_current_reprocess_running(True)
+        self._start_next_current_reprocess()
+
+    def _selected_reprocess_image_paths(self) -> list[Path]:
+        paths = self.mask_preview.selected_reprocess_image_paths()
+        result: list[Path] = []
+        seen: set[str] = set()
+        for path in paths:
+            try:
+                key = str(path.resolve()).lower()
+            except Exception:
+                key = str(path).lower()
+            if key in seen:
+                continue
+            if not path.exists() or not path.is_file():
+                continue
+            seen.add(key)
+            result.append(path)
+        return result
+
+    def _start_next_current_reprocess(self) -> None:
+        if not self._current_reprocess_active:
+            return
+        if not self._current_reprocess_queue:
+            self._finish_reprocess_batch()
+            return
+
+        image_path = self._current_reprocess_queue.pop(0)
+        self._set_current_reprocess_progress(image_path)
         mask_path = self._mask_output_path_for_image(image_path)
         try:
             mask_path.parent.mkdir(parents=True, exist_ok=True)
             self.mask_preview.clear_yolo_preview_mask(image_path)
             if not self.run_yolo_cb.isChecked():
                 self._apply_current_image_postprocess(image_path, mask_path)
-                self._finish_current_image_reprocess(success=True, image_path=image_path)
+                self._record_current_reprocess_result(success=True, image_path=image_path)
+                self._queue_next_current_reprocess()
                 return
 
             cmd = self._build_yolo_current_cmd(image_path)
         except (ValueError, FileNotFoundError, RuntimeError) as e:
             self.mask_preview.set_status_text(str(e))
+            self._record_current_reprocess_result(success=False, image_path=image_path)
+            self._queue_next_current_reprocess()
             return
 
         self._current_reprocess_image = image_path
         self._current_reprocess_mask = mask_path
-        self.mask_preview.set_current_reprocess_running(True)
-        self.mask_preview.set_status_text(i18n.t("MASK_REPROCESS_CURRENT_RUNNING"))
 
         proc = QProcess(self)
         proc.setProgram(cmd[0])
@@ -978,29 +1015,62 @@ class MaskStep(BaseStepWidget):
                 success = False
                 self.mask_preview.set_status_text(str(e))
 
-        if success and image_path is not None:
-            self._finish_current_image_reprocess(success=True, image_path=image_path)
-        else:
-            self._finish_current_image_reprocess(success=False, image_path=image_path)
+        self._record_current_reprocess_result(success=success, image_path=image_path)
 
         self._current_reprocess_proc = None
         self._current_reprocess_image = None
         self._current_reprocess_mask = None
+        self._queue_next_current_reprocess()
 
-    def _finish_current_image_reprocess(self, *, success: bool, image_path: Path | None) -> None:
-        prior_status = self.mask_preview.status_label.text()
+    def _record_current_reprocess_result(self, *, success: bool, image_path: Path | None) -> None:
+        self._current_reprocess_completed += 1
+        if success and image_path is not None:
+            self._current_reprocess_last_success = image_path
+        if not success and image_path is not None:
+            self._current_reprocess_failed.append(image_path)
+
+    def _set_current_reprocess_progress(self, image_path: Path) -> None:
+        self.mask_preview.set_status_text(
+            i18n.t("MASK_REPROCESS_SELECTED_PROGRESS").format(
+                done=self._current_reprocess_completed + 1,
+                total=self._current_reprocess_total,
+                name=image_path.name,
+            )
+        )
+
+    def _queue_next_current_reprocess(self) -> None:
+        QTimer.singleShot(0, self._start_next_current_reprocess)
+
+    def _finish_reprocess_batch(self) -> None:
+        total = self._current_reprocess_total
+        completed = self._current_reprocess_completed
+        failed = len(self._current_reprocess_failed)
+        last_success = total == 1 and completed == 1 and failed == 0
+        last_image = self._current_reprocess_last_success
+
+        self._current_reprocess_active = False
+        self._current_reprocess_queue = []
+        self._current_reprocess_total = 0
+        self._current_reprocess_completed = 0
+        self._current_reprocess_last_success = None
         self.mask_preview.set_current_reprocess_running(False)
         self.mask_preview.refresh_image_list(prefer_current=True)
         self._render_mask_preview()
         self._update_ready_status()
-        if success and image_path is not None:
+
+        if last_success and last_image is not None:
             self.mask_preview.set_status_text(
-                i18n.t("MASK_REPROCESS_CURRENT_DONE").format(name=image_path.name)
+                i18n.t("MASK_REPROCESS_CURRENT_DONE").format(name=last_image.name)
             )
-        elif prior_status:
-            self.mask_preview.set_status_text(prior_status)
+        elif failed == 0:
+            self.mask_preview.set_status_text(
+                i18n.t("MASK_REPROCESS_SELECTED_DONE").format(done=completed, total=total)
+            )
         else:
-            self.mask_preview.set_status_text(i18n.t("MASK_REPROCESS_CURRENT_FAILED"))
+            self.mask_preview.set_status_text(
+                i18n.t("MASK_REPROCESS_SELECTED_FAILED").format(failed=failed, total=total)
+            )
+        self._current_reprocess_failed = []
 
     def _apply_current_image_postprocess(self, image_path: Path, mask_path: Path) -> None:
         if self._projection() == _PROJECTION_EQUIRECT and self.run_stitch_cb.isChecked():
