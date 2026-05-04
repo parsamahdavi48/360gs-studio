@@ -1,10 +1,11 @@
-# cubemap_tools_gui.py — キューブマップ変換ラッパーGUI
+# Step 4 書き出しGUI — キューブマップ / COLMAP Rig書き出し
 
-`cubemap_tools_gui.py` は `cubemap_transforms_json.py` をプレビュー付きで実行する PySide6 GUI です。
+統合GUIの Step 4 は、`cubemap_transforms_json.py` をプレビュー付きで実行する
+PySide6 GUIです。
 
 ## 目的
 
-このGUIは次の用途向けです。
+Step 4 は次の用途向けです。
 - `FOV=90°` 固定で運用したい
 - 複数Pitch行（例: `-30,0,30`）を使いたい
 - Pitchごとに6視点スロットのON/OFFを選びたい
@@ -13,15 +14,11 @@
 
 ## 起動
 
-```bash
-python cubemap_tools_gui.py --scene-dir ./scene01
-```
-
-Windows推奨:
-
 ```bat
-start_cubemap_tools_gui.bat
+run_gui.bat --scene .\scene01
 ```
+
+起動後、ワークフロー左側の `Step 4: 書き出し` を開きます。
 
 ## 主な入力項目
 
@@ -103,21 +100,6 @@ start_cubemap_tools_gui.bat
   - `画像` OFFで `--skip-images`、`マスク` OFFで `--skip-masks` を追加します。
   - 両方OFFの場合は画像とマスクを再変換せず、カメラ情報だけ更新します。既存の `output/` 内ファイルは保持されます。
 
-## ワークフロータブ
-
-- `Cubemap`:
-  - 既存の変換ワークフロー（`Metashape` 方式では `metashape_360_lfs.py` + `cubemap_transforms_json.py`）。
-- `COLMAP Rig SfM`:
-  - COLMAP リグデータセットの出力と、必要なら COLMAP SfM ステージ実行。
-- `RealityScan Rig XMP`:
-  - RealityScan 読み込み用の自己完結パッケージを出力します。
-  - `RS Output Root`: パッケージ出力先ルート。
-  - `Pose Prior`: XMP姿勢Prior（`Draft/Exact/Locked`）。
-  - `Calibration Prior`: XMP内部パラメータPrior（既定推奨は `Fixed`）。
-  - `Focal35mm Override`: 焦点距離の上書き（空欄時は `FOV=90` から自動換算で `18mm`）。
-  - `Pose Transform`: RS出力スクリプトに `--no_transform` を渡します。
-  - `Mask Export`: RSパッケージ用マスク反転の有無。
-
 ## 実行時の挙動
 
 - 実行時に `<output_dir>/views_config.json` を生成します。
@@ -142,13 +124,6 @@ start_cubemap_tools_gui.bat
   - `LichtFeld Studio`: `pointcloud.ply` をコピー
 - `LichtFeld Studio` プロファイルでは、最終出力の `transforms.json` と `pointcloud.ply` に同じ向き補正を適用し、LichtFeld上でMetashapeと同じ +X / +Z / 上下方向になるようにします。
 - 選択プロファイルで必要なPLYが見つからない場合は、実行前にエラーで停止します。
-- `RealityScan Rig XMP` タブでは:
-  - `<rs_output_root>/views_config.json` を生成します。
-  - `realityscan_rig_export.py` を実行します。
-  - RealityScan 読み込み用ファイルは `<rs_output_root>/inputs` にまとめて出力されます。
-    - `<image_name>`
-    - `<image_stem>.xmp`
-    - `<image_name>.mask.png`（マスクがある場合）
 
 ## 注意
 

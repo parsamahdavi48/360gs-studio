@@ -1,10 +1,11 @@
-# cubemap_tools_gui.py — GUI wrapper for cubemap conversion
+# Step 4 Export GUI — Cubemap and COLMAP Rig Export
 
-`cubemap_tools_gui.py` is a PySide6 wrapper around `cubemap_transforms_json.py` for preview-driven view selection.
+Step 4 in the integrated GUI is a PySide6 wrapper around
+`cubemap_transforms_json.py` for preview-driven view selection and export.
 
 ## Purpose
 
-Use this GUI when you want to:
+Use Step 4 when you want to:
 - keep FOV fixed at `90°`
 - define multiple pitch rows (for example `-30,0,30`)
 - choose enabled/disabled view slots per pitch row
@@ -13,15 +14,11 @@ Use this GUI when you want to:
 
 ## Launch
 
-```bash
-python cubemap_tools_gui.py --scene-dir ./scene01
-```
-
-On Windows (recommended):
-
 ```bat
-start_cubemap_tools_gui.bat
+run_gui.bat --scene .\scene01
 ```
+
+Then open `Step 4: Export` in the workflow sidebar.
 
 ## Main fields
 
@@ -102,21 +99,6 @@ start_cubemap_tools_gui.bat
   - Turning `Images` off adds `--skip-images`; turning `Masks` off adds `--skip-masks`.
   - If both are off, the GUI updates camera metadata only and preserves existing files under `output/`.
 
-## Workflow tabs
-
-- `Cubemap`:
-  - Existing conversion workflow (`Metashape` mode runs `metashape_360_lfs.py` + `cubemap_transforms_json.py`).
-- `COLMAP Rig SfM`:
-  - Exports COLMAP rig dataset and optionally runs COLMAP SfM stages.
-- `RealityScan Rig XMP`:
-  - Exports a self-contained RealityScan import package.
-  - `RS Output Root`: package root directory.
-  - `Pose Prior`: XMP pose prior (`Draft/Exact/Locked`).
-  - `Calibration Prior`: XMP calibration prior (`Fixed` is recommended default).
-  - `Focal35mm Override`: optional override (empty = auto from `FOV=90` -> `18mm`).
-  - `Pose Transform`: pass `--no_transform` to RS export script.
-  - `Mask Export`: optional mask inversion for RS package.
-
 ## Execution behavior
 
 - On run, GUI writes `<output_dir>/views_config.json`.
@@ -140,13 +122,6 @@ start_cubemap_tools_gui.bat
   - `LichtFeld Studio`: copies `pointcloud.ply`.
 - With the `LichtFeld Studio` profile, the GUI applies the same final orientation correction to `transforms.json` and `pointcloud.ply` so the +X / +Z / up directions match the Metashape scene in LichtFeld.
 - If required PLY is missing for selected profile, run is blocked.
-- In `RealityScan Rig XMP` tab:
-  - GUI writes `<rs_output_root>/views_config.json`.
-  - GUI runs `realityscan_rig_export.py`.
-  - Exported import files are bundled under `<rs_output_root>/inputs`:
-    - `<image_name>`
-    - `<image_stem>.xmp`
-    - `<image_name>.mask.png` (when mask exists)
 
 ## Notes
 

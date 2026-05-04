@@ -148,6 +148,7 @@ The GUI wraps these CLI engines, which can also be used directly.
 | `yolo_mask.py` | YOLO+SAM2.1 mask generation | [EN](doc/yolo_mask.md) |
 | `stitch_mask.py` | Stitch seam mask generation | [EN](doc/stitch_mask.md) |
 | `overexposure_mask.py` | Overexposure mask generation | - |
+| `custom_mask.py` | AND-merge a user-provided PNG mask | [EN](doc/custom_mask.md) |
 | `cubemap_transforms_json.py` | Convert equirectangular images to cubemap views | [EN](doc/cubemap_transforms_json.md) |
 | `transforms_to_colmap.py` | Export COLMAP files from `transforms.json` | [EN](doc/transforms_to_colmap.md) |
 
