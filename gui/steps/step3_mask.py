@@ -1224,8 +1224,8 @@ class MaskStep(BaseStepWidget):
                 Path(self._masks_dir_text()),
                 custom,
             )
-            if error is not None:
-                raise RuntimeError(error)
+            if not error.applied:
+                raise RuntimeError(error.message or i18n.t("MASK_REPROCESS_CURRENT_FAILED"))
 
     def _build_stitch_cmd(self) -> list[str]:
         masks = self._masks_dir_text()

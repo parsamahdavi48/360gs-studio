@@ -50,7 +50,8 @@ run_gui.bat --scene ./scene01
 - `Custom Mask`:
   - AND-merges a user-provided static mask into every mask in `masks/` as the final step.
   - White means keep and black means exclude. Color images are read as grayscale.
-  - The custom mask dimensions must match the source images. Mismatches are not resized automatically and fail the step.
+  - The custom mask applies only to source images with matching dimensions. Mismatches are skipped without automatic resizing.
+  - If every image is skipped because none match the custom mask size, the custom step fails.
   - If `Custom` is turned on before a file is selected, the file picker opens automatically. You can also select the file first with `Load`.
 - `YOLO/SAM Preview`: runs `yolo_mask.py` only for the currently displayed preview image.
   - The result is shown as a red overlay and is not saved to `masks/`.

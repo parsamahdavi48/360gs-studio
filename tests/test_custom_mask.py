@@ -1,4 +1,6 @@
 from pathlib import Path
+import subprocess
+import sys
 
 import cv2
 import numpy as np
@@ -25,9 +27,11 @@ def test_custom_mask_merges_with_existing_masks_and_preserves_subfolders(tmp_pat
     custom_path = tmp_path / "custom.png"
     cv2.imwrite(str(custom_path), custom)
 
-    errors = run(images, masks, custom_path)
+    result = run(images, masks, custom_path)
 
-    assert errors == []
+    assert result.ok
+    assert result.applied == 1
+    assert result.skipped == 0
     output = cv2.imread(str(nested_masks / "frame_0001.png"), cv2.IMREAD_GRAYSCALE)
     assert output is not None
     assert output[0, 0] == 0
@@ -46,15 +50,17 @@ def test_custom_mask_creates_mask_when_no_existing_mask(tmp_path: Path) -> None:
     custom_path = tmp_path / "custom.png"
     cv2.imwrite(str(custom_path), custom)
 
-    errors = run(images, masks, custom_path)
+    result = run(images, masks, custom_path)
 
-    assert errors == []
+    assert result.ok
+    assert result.applied == 1
+    assert result.skipped == 0
     output = cv2.imread(str(masks / "frame_0001.png"), cv2.IMREAD_GRAYSCALE)
     assert output is not None
     assert np.array_equal(output, custom)
 
 
-def test_custom_mask_reports_size_mismatch_without_writing(tmp_path: Path) -> None:
+def test_custom_mask_skips_size_mismatch_without_writing(tmp_path: Path) -> None:
     images = tmp_path / "images"
     masks = tmp_path / "masks"
     images.mkdir()
@@ -63,8 +69,72 @@ def test_custom_mask_reports_size_mismatch_without_writing(tmp_path: Path) -> No
     custom_path = tmp_path / "custom.png"
     cv2.imwrite(str(custom_path), np.full((5, 6), 255, dtype=np.uint8))
 
-    errors = run(images, masks, custom_path)
+    result = run(images, masks, custom_path)
 
-    assert len(errors) == 1
-    assert "size mismatch" in errors[0]
+    assert not result.ok
+    assert result.applied == 0
+    assert result.skipped == 1
+    assert result.failed == 0
+    assert "size mismatch" in result.messages[0]
     assert not (masks / "frame_0001.png").exists()
+
+
+def test_custom_mask_partial_size_mismatch_succeeds_and_skips_only_mismatches(tmp_path: Path) -> None:
+    images = tmp_path / "images"
+    masks = tmp_path / "masks"
+    images.mkdir()
+    cv2.imwrite(str(images / "small.png"), np.full((4, 6, 3), 128, dtype=np.uint8))
+    cv2.imwrite(str(images / "large.png"), np.full((8, 12, 3), 128, dtype=np.uint8))
+    custom = np.full((4, 6), 255, dtype=np.uint8)
+    custom[:, 0] = 0
+    custom_path = tmp_path / "custom.png"
+    cv2.imwrite(str(custom_path), custom)
+
+    result = run(images, masks, custom_path)
+
+    assert result.ok
+    assert result.applied == 1
+    assert result.skipped == 1
+    assert result.failed == 0
+    assert (masks / "small.png").is_file()
+    assert not (masks / "large.png").exists()
+
+
+def test_custom_mask_cli_succeeds_for_partial_size_mismatch(tmp_path: Path) -> None:
+    images = tmp_path / "images"
+    masks = tmp_path / "masks"
+    images.mkdir()
+    cv2.imwrite(str(images / "small.png"), np.full((4, 6, 3), 128, dtype=np.uint8))
+    cv2.imwrite(str(images / "large.png"), np.full((8, 12, 3), 128, dtype=np.uint8))
+    custom_path = tmp_path / "custom.png"
+    cv2.imwrite(str(custom_path), np.full((4, 6), 255, dtype=np.uint8))
+
+    result = subprocess.run(
+        [sys.executable, "-u", str(Path.cwd() / "custom_mask.py"), str(images), str(masks), str(custom_path)],
+        cwd=Path.cwd(),
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "1 applied, 1 skipped, 0 failed" in result.stdout
+
+
+def test_custom_mask_cli_fails_when_all_images_are_size_mismatched(tmp_path: Path) -> None:
+    images = tmp_path / "images"
+    masks = tmp_path / "masks"
+    images.mkdir()
+    cv2.imwrite(str(images / "large.png"), np.full((8, 12, 3), 128, dtype=np.uint8))
+    custom_path = tmp_path / "custom.png"
+    cv2.imwrite(str(custom_path), np.full((4, 6), 255, dtype=np.uint8))
+
+    result = subprocess.run(
+        [sys.executable, "-u", str(Path.cwd() / "custom_mask.py"), str(images), str(masks), str(custom_path)],
+        cwd=Path.cwd(),
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 1
+    assert "0 applied, 1 skipped, 0 failed" in result.stdout
+    assert "nothing was written" in result.stdout
