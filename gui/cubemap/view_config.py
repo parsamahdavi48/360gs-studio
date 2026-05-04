@@ -205,8 +205,6 @@ class ViewConfigWidget(QWidget):
             self.yaw_remove_btn,
             self.yaw_count_label,
             self.yaw_add_btn,
-            self.pitch_count_label,
-            self.pitch_add_btn,
         ):
             grid_controls.addWidget(widget)
         grid_section_layout.addWidget(self.grid_controls_widget)
@@ -217,6 +215,15 @@ class ViewConfigWidget(QWidget):
         self.grid_layout.setHorizontalSpacing(3)
         self.grid_layout.setVerticalSpacing(4)
         grid_section_layout.addWidget(self.grid_widget)
+
+        self.pitch_controls_widget = QWidget()
+        pitch_controls = QHBoxLayout(self.pitch_controls_widget)
+        pitch_controls.setContentsMargins(0, 0, 0, 0)
+        pitch_controls.setSpacing(4)
+        pitch_controls.addWidget(self.pitch_add_btn)
+        pitch_controls.addWidget(self.pitch_count_label)
+        pitch_controls.addStretch()
+        grid_section_layout.addWidget(self.pitch_controls_widget)
         ctrl.addWidget(self.grid_section)
 
         summary_row = QHBoxLayout()
