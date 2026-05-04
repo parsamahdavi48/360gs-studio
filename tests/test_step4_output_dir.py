@@ -8,6 +8,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 import numpy as np
 import pytest
 from PIL import Image
+from PySide6.QtCore import QPoint
 from PySide6.QtWidgets import QApplication, QMessageBox
 
 from gui import i18n
@@ -356,6 +357,36 @@ def test_pitch_row_controls_are_packed_left_without_clipping() -> None:
 
     assert gap <= 4
     assert pitch_edit.width() >= required_width
+
+    step.close()
+
+
+def test_yaw_slots_share_remaining_grid_width() -> None:
+    app = _app()
+    step = CubemapStep(Path.cwd())
+    idx = step.view_config.view_mode_combo.findData("custom_views")
+    step.view_config.view_mode_combo.setCurrentIndex(idx)
+    step.view_config.set_yaw_slot_count(4)
+
+    step.resize(720, 720)
+    step.show()
+    app.processEvents()
+
+    first_row = step.view_config.pitch_rows[0]
+    pitch_cell = first_row["pitch_edit"].parentWidget()
+    grid = step.view_config.grid_widget
+    checkboxes = first_row["checks"]
+    centers = [
+        cb.mapTo(grid, QPoint(0, 0)).x() + cb.width() / 2.0
+        for cb in checkboxes
+    ]
+    gaps = [b - a for a, b in zip(centers, centers[1:])]
+    pitch_width = pitch_cell.width()
+    available_width = grid.width() - pitch_width
+    expected_first_center = pitch_width + available_width / (2.0 * len(checkboxes))
+
+    assert max(gaps) - min(gaps) <= 2.0
+    assert abs(centers[0] - expected_first_center) <= 4.0
 
     step.close()
 

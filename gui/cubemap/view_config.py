@@ -43,6 +43,7 @@ _PITCH_DELETE_BUTTON_SIZE = 24
 _PITCH_CELL_SPACING = 2
 _PITCH_EDIT_MIN_WIDTH = 78
 _PITCH_EDIT_WIDTH_SAMPLE = "-999.9"
+_YAW_SLOT_COLUMN_MIN_WIDTH = 36
 
 VIEW_MODE_CUSTOM = "custom_views"
 VIEW_MODE_CUBE6 = "cube6"
@@ -408,14 +409,17 @@ class ViewConfigWidget(QWidget):
             self.pitch_delete_buttons = []
             self._clear_grid()
 
-            self.grid_layout.setColumnMinimumWidth(
-                0,
-                _PITCH_DELETE_BUTTON_SIZE + _PITCH_CELL_SPACING + _PITCH_EDIT_MIN_WIDTH,
-            )
+            pitch_edit_width = self._pitch_edit_width()
+            pitch_column_width = _PITCH_DELETE_BUTTON_SIZE + _PITCH_CELL_SPACING + pitch_edit_width
+            for col in range(_MAX_YAW_SLOTS + 1):
+                self.grid_layout.setColumnMinimumWidth(col, 0)
+                self.grid_layout.setColumnStretch(col, 0)
+            self.grid_layout.setColumnMinimumWidth(0, pitch_column_width)
             for s in range(slots):
+                self.grid_layout.setColumnMinimumWidth(s + 1, _YAW_SLOT_COLUMN_MIN_WIDTH)
+                self.grid_layout.setColumnStretch(s + 1, 1)
                 lab = QLabel(f"S{s}")
                 lab.setAlignment(Qt.AlignCenter)
-                lab.setFixedWidth(38)
                 lab.setWordWrap(False)
                 lab.setStyleSheet("font-size: 8pt;")
                 self.yaw_slot_labels.append(lab)
@@ -450,15 +454,11 @@ class ViewConfigWidget(QWidget):
                     drag_pixels_per_step=6.0,
                 )
                 pitch_edit.setToolTip(i18n.tip("PITCH_ROWS"))
-                pitch_edit_width = max(
-                    _PITCH_EDIT_MIN_WIDTH,
-                    pitch_edit.fontMetrics().horizontalAdvance(_PITCH_EDIT_WIDTH_SAMPLE) + 22,
-                )
                 pitch_edit.setFixedWidth(pitch_edit_width)
                 pitch_edit.valueChanged.connect(lambda value, idx=row_index: self._on_pitch_value_changed(idx, value))
                 pitch_layout.addWidget(pitch_edit)
                 pitch_layout.addStretch(1)
-                pitch_cell.setFixedWidth(_PITCH_DELETE_BUTTON_SIZE + _PITCH_CELL_SPACING + pitch_edit_width)
+                pitch_cell.setFixedWidth(pitch_column_width)
                 self.grid_layout.addWidget(pitch_cell, grid_row, 0, alignment=Qt.AlignLeft | Qt.AlignVCenter)
 
                 checks = []
@@ -485,6 +485,10 @@ class ViewConfigWidget(QWidget):
         self._update_selected_label()
         self._update_grid_control_state()
         self.views_changed.emit()
+
+    def _pitch_edit_width(self) -> int:
+        metrics = self.fontMetrics()
+        return max(_PITCH_EDIT_MIN_WIDTH, metrics.horizontalAdvance(_PITCH_EDIT_WIDTH_SAMPLE) + 22)
 
     def _nearest_unique_pitch(self, value: float, existing: list[float]) -> float:
         base = _clamp_pitch(value)
