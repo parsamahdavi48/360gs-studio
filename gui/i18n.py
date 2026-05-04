@@ -202,13 +202,14 @@ _JA: dict[str, str] = {
     "STITCH_BOUNDARY_WIDTH": "境界マスク幅 (度)",
     "STITCH_WORKERS": "ワーカー数",
     "RUN_MASKS": "選択したマスクを生成",
-    "MASK_TASKS_LABEL": "作成するマスク:",
+    "MASK_TASKS_LABEL": "マスク:",
     "MASK_IMAGE_TYPE": "画像タイプ:",
     "MASK_IMAGE_TYPE_EQUIRECT": "360°",
     "MASK_IMAGE_TYPE_NORMAL": "通常",
-    "MASK_TASK_YOLO": "YOLO検出",
-    "MASK_TASK_STITCH": "スティッチ境界",
+    "MASK_TASK_YOLO": "YOLO",
+    "MASK_TASK_STITCH": "スティッチ",
     "MASK_TASK_OVEREXPOSURE": "白飛び",
+    "MASK_TASK_SKY": "空",
     "MASK_TASK_CUSTOM": "カスタム",
     "MASK_TASK_REQUIRED": "作成するマスクを1つ以上選択してください。",
     "CUSTOM_MASK_SECTION": "カスタムマスク",
@@ -252,6 +253,15 @@ _JA: dict[str, str] = {
     "OVEREXPOSURE_THRESHOLD": "白飛び閾値 (RGB)",
     "OVEREXPOSURE_DILATE": "膨張半径 (px)",
     "RUN_OVEREXPOSURE": "白飛びマスク実行",
+    "SKY_MODE": "方式",
+    "SKY_MODE_HYBRID": "高品質",
+    "SKY_MODE_DIRECT": "直処理",
+    "SKY_MODE_TOP": "上部投影",
+    "SKY_INFERENCE_SIZE": "推論サイズ",
+    "SKY_EXPAND": "空拡張 (px)",
+    "SKY_MIN_SCORE": "最小スコア",
+    "SKY_MIN_AREA": "小領域除去",
+    "SKY_TOP_CONNECTED": "上端につながる空だけ",
     "RUN_ALL": "全マスク実行",
 
     # Step 4
@@ -350,7 +360,7 @@ _JA: dict[str, str] = {
     "MASK_REPROCESS_SELECTED_DONE": "再処理しました: {done}/{total}枚",
     "MASK_REPROCESS_SELECTED_FAILED": "再処理に失敗しました: {failed}/{total}枚",
     "MASK_REPROCESS_CURRENT_FAILED": "表示中の画像の再処理に失敗しました",
-    "MASK_REPROCESS_NO_BASE_MASK": "既存マスクがないため、この設定では再処理できません。YOLO検出をONにしてください。",
+    "MASK_REPROCESS_NO_BASE_MASK": "既存マスクがないため、この設定では再処理できません。YOLOまたは空など、先にマスクを作る処理をONにしてください。",
     "MASK_OVERLAY_TOGGLE": "マスク表示",
     "MASK_OPACITY_LABEL": "マスク透過率:",
     "MASK_IMAGE_LABEL": "マスク画像:",
@@ -366,6 +376,8 @@ _JA: dict[str, str] = {
     "MASK_PREVIEW_YOLO_RUNNING": "YOLO実行中...",
     "MASK_PREVIEW_YOLO_FAILED": "YOLO/SAMプレビューに失敗しました",
     "MASK_PREVIEW_YOLO_NO_IMAGE": "プレビュー画像を選択してください",
+    "MASK_PREVIEW_SKY_EXISTING": "空: 既存マスク",
+    "MASK_PREVIEW_SKY_PENDING": "空: 実行後に反映",
     "YOLO_SAM_LICENSE_NOTICE_TITLE": "YOLO/SAMモデルの利用条件",
     "YOLO_SAM_LICENSE_NOTICE_BODY": (
         "YOLO/SAMマスク機能では、第三者が提供するモデルファイルおよびライブラリを使用します。\n\n"
@@ -378,6 +390,17 @@ _JA: dict[str, str] = {
     "YOLO_SAM_LICENSE_NOTICE_DONT_SHOW_AGAIN": "次回からこの確認を表示しない",
     "YOLO_SAM_LICENSE_NOTICE_CONTINUE": "確認して続行",
     "YOLO_SAM_LICENSE_NOTICE_CANCELED": "YOLO/SAMの実行をキャンセルしました",
+    "SKY_LICENSE_NOTICE_TITLE": "空検出モデルの利用条件",
+    "SKY_LICENSE_NOTICE_BODY": (
+        "空マスク機能では、第三者が提供するMask2Former ADE20KモデルファイルおよびTransformers関連ライブラリを使用します。\n\n"
+        "このアプリ本体のソースコードはMIT Licenseですが、空検出で使用されるモデル、関連ライブラリ、学習元データセットには別のライセンス条件や利用条件が適用されます。\n\n"
+        "- Mask2Former: MIT License\n"
+        "- Transformers / safetensors: Apache License 2.0\n"
+        "- ADE20K dataset: データセット側の利用条件が適用されます\n\n"
+        "モデル重みはこのアプリには同梱されていません。初回使用時にユーザー環境へダウンロードされる場合があります。\n\n"
+        "商用利用、再配布、社内展開、製品組み込み等における各ライセンス条件への適合は、利用者の責任で確認してください。"
+    ),
+    "SKY_LICENSE_NOTICE_CANCELED": "空マスクの実行をキャンセルしました",
     "MASK_PREVIEW_STITCH_STATUS": "スティッチ {width:g}°",
     "MASK_PREVIEW_OVEREXP_STATUS": "白飛び RGB>{threshold} +{dilate}px",
     "MASK_PREVIEW_CUSTOM_STATUS": "カスタム",
@@ -408,6 +431,7 @@ _JA: dict[str, str] = {
     "STITCH_OVEREXP_SECTION": "スティッチ / 白飛び設定",
     "MASK_TAB_YOLO": "YOLO",
     "MASK_TAB_STITCH_OVEREXP": "スティッチ/白飛び",
+    "MASK_TAB_SKY": "空",
     "MASK_TAB_CUSTOM": "カスタムマスク",
 
     # Step4 extra
@@ -441,7 +465,7 @@ _EN: dict[str, str] = {
     "WORKFLOW_LABEL": "Workflow",
     "STEP1_DESC": "Extract SfM-ready frames from a 360 video",
     "STEP2_DESC": "Review extracted frames and finalize keep/drop choices",
-    "STEP3_DESC": "Mask people, stitch seams, and overexposed regions",
+    "STEP3_DESC": "Mask people, sky, stitch seams, and overexposed regions",
     "STEP4_DESC": "Export viewpoint images from SfM results or extracted frames",
     "STEP1_TITLE": "1. Frame Extraction",
     "STEP2_TITLE": "2. Frame Review",
@@ -624,13 +648,14 @@ _EN: dict[str, str] = {
     "STITCH_BOUNDARY_WIDTH": "Boundary Mask Width (deg)",
     "STITCH_WORKERS": "Workers",
     "RUN_MASKS": "Create Selected Masks",
-    "MASK_TASKS_LABEL": "Masks to create:",
+    "MASK_TASKS_LABEL": "Masks:",
     "MASK_IMAGE_TYPE": "Image Type:",
     "MASK_IMAGE_TYPE_EQUIRECT": "360°",
     "MASK_IMAGE_TYPE_NORMAL": "Normal",
-    "MASK_TASK_YOLO": "YOLO Detection",
-    "MASK_TASK_STITCH": "Stitch Seam",
-    "MASK_TASK_OVEREXPOSURE": "Overexposure",
+    "MASK_TASK_YOLO": "YOLO",
+    "MASK_TASK_STITCH": "Stitch",
+    "MASK_TASK_OVEREXPOSURE": "Overexp",
+    "MASK_TASK_SKY": "Sky",
     "MASK_TASK_CUSTOM": "Custom",
     "MASK_TASK_REQUIRED": "Select at least one mask to create.",
     "CUSTOM_MASK_SECTION": "Custom Mask",
@@ -674,6 +699,15 @@ _EN: dict[str, str] = {
     "OVEREXPOSURE_THRESHOLD": "Overexposure Threshold (RGB)",
     "OVEREXPOSURE_DILATE": "Dilate Radius (px)",
     "RUN_OVEREXPOSURE": "Run Overexposure Mask",
+    "SKY_MODE": "Mode",
+    "SKY_MODE_HYBRID": "Hybrid",
+    "SKY_MODE_DIRECT": "Direct",
+    "SKY_MODE_TOP": "Top View",
+    "SKY_INFERENCE_SIZE": "Size",
+    "SKY_EXPAND": "Sky Expand (px)",
+    "SKY_MIN_SCORE": "Min Score",
+    "SKY_MIN_AREA": "Min Area",
+    "SKY_TOP_CONNECTED": "Top-connected only",
     "RUN_ALL": "Run All Masks",
 
     # Step 4
@@ -772,7 +806,7 @@ _EN: dict[str, str] = {
     "MASK_REPROCESS_SELECTED_DONE": "Reprocessed: {done}/{total} images",
     "MASK_REPROCESS_SELECTED_FAILED": "Failed to reprocess: {failed}/{total} images",
     "MASK_REPROCESS_CURRENT_FAILED": "Failed to reprocess the current image",
-    "MASK_REPROCESS_NO_BASE_MASK": "No existing mask is available for this setting. Enable YOLO Detection first.",
+    "MASK_REPROCESS_NO_BASE_MASK": "No existing mask is available for this setting. Enable a mask-creating step such as YOLO or Sky first.",
     "MASK_OVERLAY_TOGGLE": "Mask Overlay",
     "MASK_OPACITY_LABEL": "Mask Opacity:",
     "MASK_IMAGE_LABEL": "Mask Image:",
@@ -788,6 +822,8 @@ _EN: dict[str, str] = {
     "MASK_PREVIEW_YOLO_RUNNING": "Running YOLO...",
     "MASK_PREVIEW_YOLO_FAILED": "YOLO/SAM preview failed",
     "MASK_PREVIEW_YOLO_NO_IMAGE": "Select a preview image",
+    "MASK_PREVIEW_SKY_EXISTING": "Sky: existing mask",
+    "MASK_PREVIEW_SKY_PENDING": "Sky: after generation",
     "YOLO_SAM_LICENSE_NOTICE_TITLE": "YOLO/SAM Model Terms",
     "YOLO_SAM_LICENSE_NOTICE_BODY": (
         "The YOLO/SAM mask feature uses third-party model files and libraries.\n\n"
@@ -800,6 +836,17 @@ _EN: dict[str, str] = {
     "YOLO_SAM_LICENSE_NOTICE_DONT_SHOW_AGAIN": "Do not show this notice again",
     "YOLO_SAM_LICENSE_NOTICE_CONTINUE": "Continue",
     "YOLO_SAM_LICENSE_NOTICE_CANCELED": "YOLO/SAM run canceled",
+    "SKY_LICENSE_NOTICE_TITLE": "Sky Model Terms",
+    "SKY_LICENSE_NOTICE_BODY": (
+        "The sky mask feature uses third-party Mask2Former ADE20K model files and Transformers-related libraries.\n\n"
+        "This application's own source code is licensed under the MIT License, but the models, related libraries, and training dataset used by sky detection are governed by separate license terms.\n\n"
+        "- Mask2Former: MIT License\n"
+        "- Transformers / safetensors: Apache License 2.0\n"
+        "- ADE20K dataset: governed by the dataset provider's terms\n\n"
+        "Model weights are not included with this application. They may be downloaded to the user's environment on first use.\n\n"
+        "Users are responsible for confirming compliance for commercial use, redistribution, internal deployment, or product integration."
+    ),
+    "SKY_LICENSE_NOTICE_CANCELED": "Sky mask run canceled",
     "MASK_PREVIEW_STITCH_STATUS": "Stitch {width:g} deg",
     "MASK_PREVIEW_OVEREXP_STATUS": "Overexposure RGB>{threshold} +{dilate}px",
     "MASK_PREVIEW_CUSTOM_STATUS": "Custom",
@@ -830,6 +877,7 @@ _EN: dict[str, str] = {
     "STITCH_OVEREXP_SECTION": "Stitch / Overexposure Settings",
     "MASK_TAB_YOLO": "YOLO",
     "MASK_TAB_STITCH_OVEREXP": "Stitch/Overexp.",
+    "MASK_TAB_SKY": "Sky",
     "MASK_TAB_CUSTOM": "Custom Mask",
 
     # Step4 extra
@@ -906,11 +954,12 @@ _TIPS_JA: dict[str, str] = {
     "FINALIZE_INPLACE": "images/内の除外フレームを削除し、採用フレームのファイル名は維持。元に戻せないので注意",
     "IMAGES_DIR": "シーンフォルダ内の images/ を自動使用します。Step 1 のフレーム抽出結果が入る標準フォルダです",
     "MASKS_DIR": "シーンフォルダ内の masks/ を自動使用します。存在しない場合は生成時に作成されます",
-    "RUN_MASKS": "選択したマスク処理を YOLO検出 → スティッチ境界 → 白飛び → カスタム の順に実行",
+    "RUN_MASKS": "選択したマスク処理を YOLO → スティッチ → 白飛び → 空 → カスタム の順に実行",
     "MASK_TASK_YOLO": "YOLO/SAMで人物などを検出してマスクに追加。初期状態は人物のみ",
     "MASK_TASK_STITCH": "スティッチ境界をマスクに追加。手ブレ補正、方向ロック、AIスティッチなどで境界位置が動く素材では通常OFF",
     "MASK_TASK_STITCH_DISABLED_NORMAL": "スティッチ境界は360°エクイレクタングラー画像専用です。通常画像では使いません",
     "MASK_TASK_OVEREXPOSURE": "白飛びした画素を検出してマスクに追加。室内照明では消しすぎる場合があるため必要な時だけON",
+    "MASK_TASK_SKY": "Mask2Former ADE20Kで空領域を検出してマスクに追加。SfMで空の特徴点を避けたい場合に使います",
     "MASK_TASK_CUSTOM": "ユーザーが用意したPNG静的マスクを最後にAND合成します。8bit/16bitのグレー/RGB/RGBAを0/255に二値化し、白=採用、黒=除外として扱います。サイズが一致する画像だけに適用し、不一致はスキップします",
     "CUSTOM_MASK_FILE": "全フレームに適用するPNGカスタムマスク。8bitは128以上、16bitは32768以上を白として二値化します。RGB/RGBAはグレースケール化し、アルファは無視します。サイズ不一致は自動リサイズせずスキップします",
     "CUSTOM_MASK_BROWSE": "カスタムマスク画像を選択します。選択するとカスタムマスク処理もONになります",
@@ -931,6 +980,12 @@ _TIPS_JA: dict[str, str] = {
     "STITCH_WORKERS": "並列処理のワーカー数。横ドラッグで調整可能。CPUコア数が目安",
     "OVEREXPOSURE_THRESHOLD": "RGB全チャンネルがこの8bit相当値を超えるピクセルを白飛びと判定。16bit画像では同じ比率に換算。GUI範囲は 1〜254",
     "OVEREXPOSURE_DILATE": "白飛び領域を膨張させるピクセル数。既定は1px。0で無効、GUI範囲は 0〜128",
+    "SKY_MODE": "空検出の方式。高品質はエクイレクタングラー直処理と上部投影を合成します。通常は高品質のまま使います",
+    "SKY_INFERENCE_SIZE": "Mask2Formerに入力する推論サイズ。大きいほど境界が安定しやすくなりますが、GPUメモリと処理時間が増えます",
+    "SKY_EXPAND": "検出した空マスクをピクセル単位で拡張/収縮します。正の値で空の除外範囲を広げ、負の値で狭めます",
+    "SKY_MIN_SCORE": "空クラスのスコアがこの値以上の画素だけ採用します。0で無効。誤検出が多い場合だけ上げます",
+    "SKY_MIN_AREA": "小さな空候補を面積比で除去します。既定は0.05%。細かい誤検出を抑えるための設定です",
+    "SKY_TOP_CONNECTED": "上端につながる空領域だけを採用し、建物や水面などの空っぽい誤検出を減らします",
     "OUTPUT_DIR_CUBEMAP": "シーンフォルダ内の output/ を自動使用します。出力 transforms.json もこのフォルダに固定されます",
     "OUTPUT_DIR_COLMAP_PROJECT": "シーンフォルダ内の output/colmap_rig/ が完成COLMAPプロジェクトです。COLMAP実行後はこのフォルダを3DGSアプリへ渡します",
     "RUN_CUBEMAP": "現在の書き出し方式と視点設定で画像、マスク、必要なメタデータを書き出します",
@@ -1031,11 +1086,12 @@ _TIPS_EN: dict[str, str] = {
     "FINALIZE_INPLACE": "Delete dropped frames in images/ and preserve kept filenames. Cannot be undone",
     "IMAGES_DIR": "Automatically uses images/ inside the scene folder. This is the standard output folder from Step 1.",
     "MASKS_DIR": "Automatically uses masks/ inside the scene folder. It is created during generation if missing.",
-    "RUN_MASKS": "Run the selected mask steps in this order: YOLO detection, stitch seam, overexposure, custom",
+    "RUN_MASKS": "Run the selected mask steps in this order: YOLO, stitch seam, overexposure, sky, custom",
     "MASK_TASK_YOLO": "Detect people or selected classes with YOLO/SAM and add them to masks. Default class is person only",
     "MASK_TASK_STITCH": "Add stitch seam masks. Usually keep OFF for stabilized, direction-locked, or AI-stitched footage where seam positions move",
     "MASK_TASK_STITCH_DISABLED_NORMAL": "Stitch seam masks are only for equirectangular 360° images and are not used for normal images",
     "MASK_TASK_OVEREXPOSURE": "Detect blown-out pixels and add them to masks",
+    "MASK_TASK_SKY": "Detect ADE20K sky regions with Mask2Former and add them to masks. Use this to avoid sky features before SfM",
     "MASK_TASK_CUSTOM": "AND-merge a user-provided static PNG mask as the final step. 8-bit/16-bit grayscale, RGB, or RGBA inputs are binarized to 0/255. White means keep and black means exclude. It applies only to images with matching dimensions; mismatches are skipped",
     "CUSTOM_MASK_FILE": "PNG custom mask applied to every frame with matching dimensions. 8-bit values >=128 and 16-bit values >=32768 become white. RGB/RGBA inputs are converted to grayscale and alpha is ignored. Mismatches are skipped without auto-resizing",
     "CUSTOM_MASK_BROWSE": "Select a custom mask image. Selecting a file also enables custom mask processing",
@@ -1056,6 +1112,12 @@ _TIPS_EN: dict[str, str] = {
     "STITCH_WORKERS": "Number of parallel workers. Drag horizontally to adjust. Use CPU core count as a guide",
     "OVEREXPOSURE_THRESHOLD": "Pixels with all RGB channels above this 8-bit-equivalent value are flagged as blown-out. 16-bit images are scaled to the same ratio. GUI range: 1-254",
     "OVEREXPOSURE_DILATE": "Dilate blown-out regions by N pixels. Default is 1px. 0 = disabled; GUI range: 0-128",
+    "SKY_MODE": "Sky detection mode. Hybrid combines direct equirectangular inference with a top projection view. Keep Hybrid for normal use",
+    "SKY_INFERENCE_SIZE": "Mask2Former inference input size. Larger values can improve boundaries but use more GPU memory and time",
+    "SKY_EXPAND": "Expand or shrink the detected sky mask in pixels. Positive values exclude more sky; negative values keep a tighter boundary",
+    "SKY_MIN_SCORE": "Only accept sky pixels whose sky-class score is at least this value. 0 disables this filter. Raise it only when false positives appear",
+    "SKY_MIN_AREA": "Remove small sky candidates by image-area ratio. Default is 0.05%. This suppresses tiny false positives",
+    "SKY_TOP_CONNECTED": "Keep only sky regions connected to the top edge to reduce sky-like false positives on buildings, water, or reflective surfaces",
     "OUTPUT_DIR_CUBEMAP": "Automatically uses output/ inside the scene folder. The output transforms.json is fixed to this folder.",
     "OUTPUT_DIR_COLMAP_PROJECT": "output/colmap_rig/ inside the scene folder is the finished COLMAP project. After COLMAP finishes, pass this folder to 3DGS apps.",
     "RUN_CUBEMAP": "Export images, masks, and required metadata with the current export method and view settings",

@@ -1,4 +1,4 @@
-"""Step 3: マスク生成 (YOLO + スティッチ + 白飛び)"""
+"""Step 3: マスク生成 (YOLO + スティッチ + 白飛び + 空 + カスタム)"""
 from __future__ import annotations
 
 import os
@@ -99,12 +99,25 @@ _OVEREXP_THRESHOLD_DEFAULT = 254
 _OVEREXP_DILATE_MIN = 0
 _OVEREXP_DILATE_MAX = 128
 _OVEREXP_DILATE_DEFAULT = 1
+_SKY_EXPAND_MIN = -16
+_SKY_EXPAND_MAX = 64
+_SKY_EXPAND_DEFAULT = 0
+_SKY_MIN_SCORE_MIN = 0.0
+_SKY_MIN_SCORE_MAX = 2.0
+_SKY_MIN_SCORE_DEFAULT = 0.0
+_SKY_MIN_AREA_PERCENT_MIN = 0.0
+_SKY_MIN_AREA_PERCENT_MAX = 5.0
+_SKY_MIN_AREA_PERCENT_DEFAULT = 0.05
+_SKY_INFERENCE_SIZES = ("512", "768", "1024")
+_SKY_INFERENCE_SIZE_DEFAULT_INDEX = 1
 _IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".tif", ".tiff"}
 _PROJECTION_EQUIRECT = "equirect"
 _PROJECTION_NORMAL = "normal"
 _LICENSE_NOTICE_SECTION = "license_notices"
 _YOLO_SAM_NOTICE_VERSION = 1
 _YOLO_SAM_NOTICE_KEY = "yolo_sam_models_ack_version"
+_SKY_NOTICE_VERSION = 1
+_SKY_NOTICE_KEY = "mask2former_sky_models_ack_version"
 
 
 class MaskStep(BaseStepWidget):
@@ -125,6 +138,8 @@ class MaskStep(BaseStepWidget):
         self._current_reprocess_proc: QProcess | None = None
         self._current_reprocess_image: Path | None = None
         self._current_reprocess_mask: Path | None = None
+        self._current_reprocess_commands: list[tuple[str, list[str]]] = []
+        self._current_reprocess_phase = ""
         self._current_reprocess_active = False
         self._current_reprocess_queue: list[Path] = []
         self._current_reprocess_total = 0
@@ -224,7 +239,7 @@ class MaskStep(BaseStepWidget):
 
         # --- 実行対象 + 実行ボタン ---
         task_row = QHBoxLayout()
-        task_row.setSpacing(10)
+        task_row.setSpacing(6)
         task_row.addWidget(QLabel(i18n.t("MASK_TASKS_LABEL")))
 
         self.run_yolo_cb = QCheckBox(i18n.t("MASK_TASK_YOLO"))
@@ -241,6 +256,11 @@ class MaskStep(BaseStepWidget):
         self.run_overexp_cb.setToolTip(i18n.tip("MASK_TASK_OVEREXPOSURE"))
         self.run_overexp_cb.setChecked(False)
         task_row.addWidget(self.run_overexp_cb)
+
+        self.run_sky_cb = QCheckBox(i18n.t("MASK_TASK_SKY"))
+        self.run_sky_cb.setToolTip(i18n.tip("MASK_TASK_SKY"))
+        self.run_sky_cb.setChecked(False)
+        task_row.addWidget(self.run_sky_cb)
 
         self.run_custom_cb = QCheckBox(i18n.t("MASK_TASK_CUSTOM"))
         self.run_custom_cb.setToolTip(i18n.tip("MASK_TASK_CUSTOM"))
@@ -424,6 +444,95 @@ class MaskStep(BaseStepWidget):
         other_layout.addStretch()
         self.mask_settings_tabs.addTab(self.other_section, i18n.t("MASK_TAB_STITCH_OVEREXP"))
 
+        self.sky_section = QWidget()
+        sky_layout = QVBoxLayout(self.sky_section)
+        sky_layout.setContentsMargins(8, 8, 8, 8)
+        sky_layout.setSpacing(6)
+        sky_form = QFormLayout()
+        sky_form.setSpacing(6)
+
+        self.sky_mode_combo = QComboBox()
+        self.sky_mode_combo.addItems(
+            [
+                i18n.t("SKY_MODE_HYBRID"),
+                i18n.t("SKY_MODE_DIRECT"),
+                i18n.t("SKY_MODE_TOP"),
+            ]
+        )
+        self.sky_mode_combo.setToolTip(i18n.tip("SKY_MODE"))
+        self.sky_mode_combo.setFixedWidth(132)
+        self.sky_mode_label = QLabel(i18n.t("SKY_MODE"))
+        self.sky_mode_label.setToolTip(i18n.tip("SKY_MODE"))
+        add_tooltip_row(sky_form, i18n.t("SKY_MODE"), self.sky_mode_combo, i18n.tip("SKY_MODE"))
+
+        self.sky_inference_size_combo = QComboBox()
+        self.sky_inference_size_combo.addItems(_SKY_INFERENCE_SIZES)
+        self.sky_inference_size_combo.setCurrentIndex(_SKY_INFERENCE_SIZE_DEFAULT_INDEX)
+        self.sky_inference_size_combo.setToolTip(i18n.tip("SKY_INFERENCE_SIZE"))
+        self.sky_inference_size_combo.setFixedWidth(86)
+        add_tooltip_row(
+            sky_form,
+            i18n.t("SKY_INFERENCE_SIZE"),
+            self.sky_inference_size_combo,
+            i18n.tip("SKY_INFERENCE_SIZE"),
+        )
+
+        self.sky_expand_edit = DragSpinBox(
+            minimum=_SKY_EXPAND_MIN,
+            maximum=_SKY_EXPAND_MAX,
+            step=1,
+            value=_SKY_EXPAND_DEFAULT,
+            suffix=" px",
+            drag_pixels_per_step=6.0,
+        )
+        self.sky_expand_edit.setToolTip(i18n.tip("SKY_EXPAND"))
+        self.sky_expand_edit.setFixedWidth(80)
+        add_tooltip_row(sky_form, i18n.t("SKY_EXPAND"), self.sky_expand_edit, i18n.tip("SKY_EXPAND"))
+
+        self.sky_min_score_edit = DragDoubleSpinBox(
+            minimum=_SKY_MIN_SCORE_MIN,
+            maximum=_SKY_MIN_SCORE_MAX,
+            step=0.05,
+            decimals=2,
+            value=_SKY_MIN_SCORE_DEFAULT,
+            drag_pixels_per_step=8.0,
+        )
+        self.sky_min_score_edit.setToolTip(i18n.tip("SKY_MIN_SCORE"))
+        self.sky_min_score_edit.setFixedWidth(80)
+        add_tooltip_row(
+            sky_form,
+            i18n.t("SKY_MIN_SCORE"),
+            self.sky_min_score_edit,
+            i18n.tip("SKY_MIN_SCORE"),
+        )
+
+        self.sky_min_area_edit = DragDoubleSpinBox(
+            minimum=_SKY_MIN_AREA_PERCENT_MIN,
+            maximum=_SKY_MIN_AREA_PERCENT_MAX,
+            step=0.05,
+            decimals=2,
+            value=_SKY_MIN_AREA_PERCENT_DEFAULT,
+            suffix=" %",
+            drag_pixels_per_step=8.0,
+        )
+        self.sky_min_area_edit.setToolTip(i18n.tip("SKY_MIN_AREA"))
+        self.sky_min_area_edit.setFixedWidth(86)
+        add_tooltip_row(
+            sky_form,
+            i18n.t("SKY_MIN_AREA"),
+            self.sky_min_area_edit,
+            i18n.tip("SKY_MIN_AREA"),
+        )
+
+        self.sky_top_connected_cb = QCheckBox(i18n.t("SKY_TOP_CONNECTED"))
+        self.sky_top_connected_cb.setToolTip(i18n.tip("SKY_TOP_CONNECTED"))
+        self.sky_top_connected_cb.setChecked(True)
+        sky_form.addRow("", self.sky_top_connected_cb)
+
+        sky_layout.addLayout(sky_form)
+        sky_layout.addStretch()
+        self.mask_settings_tabs.addTab(self.sky_section, i18n.t("MASK_TAB_SKY"))
+
         self.custom_section = QWidget()
         custom_layout = QVBoxLayout(self.custom_section)
         custom_layout.setContentsMargins(8, 8, 8, 8)
@@ -486,7 +595,7 @@ class MaskStep(BaseStepWidget):
         splitter.setSizes([SETTINGS_PANE_WIDTH, 760])
         root_layout.addWidget(splitter)
 
-        for cb in (self.run_yolo_cb, self.run_stitch_cb, self.run_overexp_cb):
+        for cb in (self.run_yolo_cb, self.run_stitch_cb, self.run_overexp_cb, self.run_sky_cb):
             cb.toggled.connect(self._update_task_controls)
         self.run_custom_cb.toggled.connect(self._on_custom_mask_toggled)
         self.custom_mask_browse_btn.clicked.connect(lambda _checked=False: self._browse_custom_mask(activate=True))
@@ -494,6 +603,12 @@ class MaskStep(BaseStepWidget):
         self.stitch_boundary_width_edit.valueChanged.connect(lambda _: self._schedule_render_mask_preview())
         self.overexp_threshold_edit.valueChanged.connect(lambda _: self._schedule_render_mask_preview())
         self.overexp_dilate_edit.valueChanged.connect(lambda _: self._schedule_render_mask_preview())
+        self.sky_mode_combo.currentIndexChanged.connect(lambda _: self._schedule_render_mask_preview())
+        self.sky_inference_size_combo.currentIndexChanged.connect(lambda _: self._schedule_render_mask_preview())
+        self.sky_expand_edit.valueChanged.connect(lambda _: self._schedule_render_mask_preview())
+        self.sky_min_score_edit.valueChanged.connect(lambda _: self._schedule_render_mask_preview())
+        self.sky_min_area_edit.valueChanged.connect(lambda _: self._schedule_render_mask_preview())
+        self.sky_top_connected_cb.toggled.connect(lambda _: self._schedule_render_mask_preview())
         self.mask_preview.current_image_changed.connect(lambda: self._schedule_render_mask_preview())
         self.mask_preview.yolo_preview_requested.connect(self._run_yolo_preview)
         self.mask_preview.current_reprocess_requested.connect(self._run_current_image_reprocess)
@@ -551,6 +666,8 @@ class MaskStep(BaseStepWidget):
             requested_steps.append("stitch")
         if self.run_overexp_cb.isChecked():
             requested_steps.append("overexposure")
+        if self.run_sky_cb.isChecked():
+            requested_steps.append("sky")
         if self.run_custom_cb.isChecked():
             requested_steps.append("custom")
         return requested_steps
@@ -629,6 +746,30 @@ class MaskStep(BaseStepWidget):
         idx = max(0, min(self.yolo_bottom_enhance_combo.currentIndex(), len(_YOLO_BOTTOM_PRESETS) - 1))
         return list(_YOLO_BOTTOM_PRESETS[idx][1])
 
+    def _sky_mode_arg(self) -> str:
+        idx = self.sky_mode_combo.currentIndex()
+        return ("hybrid", "direct", "top")[max(0, min(idx, 2))]
+
+    def _sky_inference_size_arg(self) -> str:
+        text = self.sky_inference_size_combo.currentText().strip()
+        return text if text else str(_SKY_INFERENCE_SIZES[_SKY_INFERENCE_SIZE_DEFAULT_INDEX])
+
+    def _sky_min_area_ratio_arg(self) -> str:
+        return f"{float(self.sky_min_area_edit.value()) / 100.0:g}"
+
+    def _sky_common_args(self) -> list[str]:
+        args = [
+            "--projection", self._projection(),
+            "--mode", self._sky_mode_arg(),
+            "--inference-size", self._sky_inference_size_arg(),
+            "--expand", str(self.sky_expand_edit.value()),
+            "--min-score", f"{float(self.sky_min_score_edit.value()):g}",
+            "--min-area-ratio", self._sky_min_area_ratio_arg(),
+        ]
+        if not self.sky_top_connected_cb.isChecked():
+            args.append("--no-top-connected")
+        return args
+
     def _update_task_controls(self) -> None:
         yolo_enabled = self.run_yolo_cb.isChecked()
         equirect = self._projection() == _PROJECTION_EQUIRECT
@@ -637,10 +778,12 @@ class MaskStep(BaseStepWidget):
             return
         stitch_enabled = equirect and self.run_stitch_cb.isChecked()
         overexp_enabled = self.run_overexp_cb.isChecked()
+        sky_enabled = self.run_sky_cb.isChecked()
         custom_enabled = self.run_custom_cb.isChecked()
 
         self.external_images_panel.setVisible(not equirect)
         self.yolo_section.setEnabled(yolo_enabled)
+        self.sky_section.setEnabled(sky_enabled)
         self.yolo_bottom_enhance_label.setEnabled(yolo_enabled and equirect)
         self.yolo_bottom_enhance_combo.setEnabled(yolo_enabled and equirect)
         self.run_stitch_cb.setEnabled(equirect)
@@ -837,6 +980,7 @@ class MaskStep(BaseStepWidget):
             use_yolo=self.run_yolo_cb.isChecked(),
             use_stitch=self.run_stitch_cb.isChecked(),
             use_overexposure=self.run_overexp_cb.isChecked(),
+            use_sky=self.run_sky_cb.isChecked(),
             stitch_boundary_width_deg=width,
             overexposure_threshold=int(self.overexp_threshold_edit.value()),
             overexposure_dilate=int(self.overexp_dilate_edit.value()),
@@ -866,13 +1010,19 @@ class MaskStep(BaseStepWidget):
             steps.append(("stitch", self._build_stitch_cmd()))
         if "overexposure" in requested_steps:
             steps.append(("overexposure", self._build_overexposure_cmd()))
+        if "sky" in requested_steps:
+            steps.append(("sky", self._build_sky_cmd()))
         if "custom" in requested_steps:
             steps.append(("custom", self._build_custom_cmd()))
         return steps
 
     def confirm_commands(self, commands: list[tuple[str, list[str]]]) -> bool:
         if any(phase == "yolo" for phase, _cmd in commands):
-            return self._confirm_yolo_sam_license_notice()
+            if not self._confirm_yolo_sam_license_notice():
+                return False
+        if any(phase == "sky" for phase, _cmd in commands):
+            if not self._confirm_sky_license_notice():
+                return False
         return True
 
     def _confirm_yolo_sam_license_notice(self) -> bool:
@@ -916,6 +1066,49 @@ class MaskStep(BaseStepWidget):
         update_user_settings_section(
             _LICENSE_NOTICE_SECTION,
             {_YOLO_SAM_NOTICE_KEY: _YOLO_SAM_NOTICE_VERSION},
+        )
+
+    def _confirm_sky_license_notice(self) -> bool:
+        if self._sky_notice_acknowledged():
+            return True
+
+        box = QMessageBox(self)
+        box.setIcon(QMessageBox.Warning)
+        box.setWindowTitle(i18n.t("SKY_LICENSE_NOTICE_TITLE"))
+        box.setText(i18n.t("SKY_LICENSE_NOTICE_BODY"))
+        box.setTextInteractionFlags(Qt.TextSelectableByMouse)
+
+        remember_cb = QCheckBox(i18n.t("YOLO_SAM_LICENSE_NOTICE_DONT_SHOW_AGAIN"))
+        remember_cb.setChecked(True)
+        box.setCheckBox(remember_cb)
+
+        continue_btn = box.addButton(
+            i18n.t("YOLO_SAM_LICENSE_NOTICE_CONTINUE"),
+            QMessageBox.AcceptRole,
+        )
+        box.addButton(i18n.CANCEL, QMessageBox.RejectRole)
+        box.setDefaultButton(continue_btn)
+
+        box.exec()
+        if box.clickedButton() != continue_btn:
+            return False
+        if remember_cb.isChecked():
+            self._set_sky_notice_acknowledged()
+        return True
+
+    def _sky_notice_acknowledged(self) -> bool:
+        settings = load_user_settings_section(_LICENSE_NOTICE_SECTION)
+        try:
+            version = int(settings.get(_SKY_NOTICE_KEY, 0))
+        except (TypeError, ValueError):
+            version = 0
+        return version >= _SKY_NOTICE_VERSION
+
+    @staticmethod
+    def _set_sky_notice_acknowledged() -> None:
+        update_user_settings_section(
+            _LICENSE_NOTICE_SECTION,
+            {_SKY_NOTICE_KEY: _SKY_NOTICE_VERSION},
         )
 
     def _ensure_no_pending_drop_images(self) -> None:
@@ -1019,6 +1212,35 @@ class MaskStep(BaseStepWidget):
         output_dir = self._mask_output_dir_for_image(image_path)
         return self._build_yolo_preview_cmd(image_path, output_dir)
 
+    def _build_sky_cmd(self) -> list[str]:
+        images = self._images_dir_text()
+        masks = self._masks_dir_text()
+        if not images:
+            raise ValueError("画像フォルダが指定されていません")
+        if not masks:
+            raise ValueError("マスクフォルダが指定されていません")
+
+        script = self.base_dir / "sky_mask.py"
+        if not script.exists():
+            raise FileNotFoundError(f"sky_mask.py が見つかりません: {script}")
+
+        return [
+            sys.executable, "-u", str(script),
+            images, masks,
+            *self._sky_common_args(),
+        ]
+
+    def _build_sky_current_cmd(self, image_path: Path) -> list[str]:
+        output_dir = self._mask_output_dir_for_image(image_path)
+        script = self.base_dir / "sky_mask.py"
+        if not script.exists():
+            raise FileNotFoundError(f"sky_mask.py が見つかりません: {script}")
+        return [
+            sys.executable, "-u", str(script),
+            str(image_path), str(output_dir),
+            *self._sky_common_args(),
+        ]
+
     def _run_yolo_preview(self) -> None:
         if self._yolo_preview_proc is not None and self._yolo_preview_proc.state() != QProcess.NotRunning:
             return
@@ -1114,6 +1336,9 @@ class MaskStep(BaseStepWidget):
         if self.run_yolo_cb.isChecked() and not self._confirm_yolo_sam_license_notice():
             self.mask_preview.set_status_text(i18n.t("YOLO_SAM_LICENSE_NOTICE_CANCELED"))
             return
+        if self.run_sky_cb.isChecked() and not self._confirm_sky_license_notice():
+            self.mask_preview.set_status_text(i18n.t("SKY_LICENSE_NOTICE_CANCELED"))
+            return
 
         self._current_reprocess_active = True
         self._current_reprocess_queue = image_paths
@@ -1123,6 +1348,7 @@ class MaskStep(BaseStepWidget):
         self._current_reprocess_succeeded = []
         self._current_reprocess_last_success = None
         self.mask_preview.set_current_reprocess_running(True)
+        self.mask_preview.wait_for_thumbnail_rendering()
         self._start_next_current_reprocess()
 
     def _selected_reprocess_image_paths(self) -> list[Path]:
@@ -1155,13 +1381,12 @@ class MaskStep(BaseStepWidget):
         try:
             mask_path.parent.mkdir(parents=True, exist_ok=True)
             self.mask_preview.clear_yolo_preview_mask(image_path)
-            if not self.run_yolo_cb.isChecked():
+            commands = self._build_current_reprocess_external_commands(image_path)
+            if not commands:
                 self._apply_current_image_postprocess(image_path, mask_path)
                 self._record_current_reprocess_result(success=True, image_path=image_path)
                 self._queue_next_current_reprocess()
                 return
-
-            cmd = self._build_yolo_current_cmd(image_path)
         except (ValueError, FileNotFoundError, RuntimeError) as e:
             self.mask_preview.set_status_text(str(e))
             self._record_current_reprocess_result(success=False, image_path=image_path)
@@ -1170,7 +1395,37 @@ class MaskStep(BaseStepWidget):
 
         self._current_reprocess_image = image_path
         self._current_reprocess_mask = mask_path
+        self._current_reprocess_commands = commands
+        self._start_next_current_reprocess_external_command()
 
+    def _build_current_reprocess_external_commands(self, image_path: Path) -> list[tuple[str, list[str]]]:
+        commands: list[tuple[str, list[str]]] = []
+        if self.run_yolo_cb.isChecked():
+            commands.append(("yolo", self._build_yolo_current_cmd(image_path)))
+        if self.run_sky_cb.isChecked():
+            commands.append(("sky", self._build_sky_current_cmd(image_path)))
+        return commands
+
+    def _start_next_current_reprocess_external_command(self) -> None:
+        if not self._current_reprocess_commands:
+            image_path = self._current_reprocess_image
+            mask_path = self._current_reprocess_mask
+            success = image_path is not None and mask_path is not None and mask_path.is_file()
+            if success and image_path is not None and mask_path is not None:
+                try:
+                    self._apply_current_image_postprocess(image_path, mask_path)
+                except Exception as e:
+                    success = False
+                    self.mask_preview.set_status_text(str(e))
+            self._record_current_reprocess_result(success=bool(success), image_path=image_path)
+            self._current_reprocess_image = None
+            self._current_reprocess_mask = None
+            self._current_reprocess_phase = ""
+            self._queue_next_current_reprocess()
+            return
+
+        phase, cmd = self._current_reprocess_commands.pop(0)
+        self._current_reprocess_phase = phase
         proc = QProcess(self)
         proc.setProgram(cmd[0])
         proc.setArguments(cmd[1:])
@@ -1192,18 +1447,16 @@ class MaskStep(BaseStepWidget):
         image_path = self._current_reprocess_image
         mask_path = self._current_reprocess_mask
         success = exit_code == 0 and image_path is not None and mask_path is not None and mask_path.is_file()
-        if success and image_path is not None and mask_path is not None:
-            try:
-                self._apply_current_image_postprocess(image_path, mask_path)
-            except Exception as e:
-                success = False
-                self.mask_preview.set_status_text(str(e))
-
-        self._record_current_reprocess_result(success=success, image_path=image_path)
-
         self._current_reprocess_proc = None
+        if success:
+            self._start_next_current_reprocess_external_command()
+            return
+
+        self._record_current_reprocess_result(success=False, image_path=image_path)
         self._current_reprocess_image = None
         self._current_reprocess_mask = None
+        self._current_reprocess_commands = []
+        self._current_reprocess_phase = ""
         self._queue_next_current_reprocess()
 
     def _record_current_reprocess_result(self, *, success: bool, image_path: Path | None) -> None:

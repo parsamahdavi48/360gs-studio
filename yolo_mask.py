@@ -295,8 +295,15 @@ def yolo_model_name_for_size(size: str) -> str:
 
 
 def model_source(script_dir: str | Path, model_name: str) -> str:
-    local_path = Path(script_dir) / model_name
-    return str(local_path) if local_path.exists() else model_name
+    base_dir = Path(script_dir)
+    for local_path in (
+        base_dir / "models" / "ultralytics" / model_name,
+        # Backward compatibility for <= v1.4.1 development checkouts.
+        base_dir / model_name,
+    ):
+        if local_path.exists():
+            return str(local_path)
+    return model_name
 
 
 def load_models(level: int, bottom_model: str = "same") -> None:

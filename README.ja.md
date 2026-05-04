@@ -32,7 +32,7 @@ Metashapeを使わず、抽出済みの360°画像からCOLMAP Rig形式の視�
 
 - 360°動画からSfM向けフレームを抽出
 - 抽出フレームを単一プレビュー/サムネイル一覧で確認し、Windows Explorer式のサムネイル選択で採用/除外を整理
-- YOLO + SAM2.1 による人物・車両などのマスク生成
+- YOLO + SAM2.1 と任意のMask2Former空検出によるマスク生成
 - 360°画像の下部に写りやすい撮影者、三脚、手元の検出強化
 - スティッチ境界、白飛び領域、ユーザー指定PNGカスタムマスクの合成
 - 大量画像でも使いやすいキャッシュ付きの単一プレビュー/サムネイル一覧で、マスク結果を確認しながら調整
@@ -62,7 +62,7 @@ update_venv.bat
 
 `requirements/` の固定済み既知良好セットで作り直す場合は `update_venv.bat --locked` を使います。
 
-YOLO/SAM2のモデルファイルは初回利用時にultralyticsが自動ダウンロードする場合があります。リリースZIPにはモデル重みや生成データは含めていません。これらの第三者ライブラリおよびモデル重みには別ライセンスが適用されます。詳細は [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md) を参照してください。
+YOLO/SAM2および空検出のモデルファイルは初回利用時に自動ダウンロードされる場合があります。ローカルのYOLO/SAM重みは `models/ultralytics/`、Mask2Former空検出重みは `models/mask2former-swin-large-ade-semantic/` に配置できます。互換性のため、リポジトリ直下の `.pt` も引き続き検出します。リリースZIPにはモデル重みや生成データは含めていません。これらの第三者ライブラリおよびモデル重みには別ライセンスが適用されます。詳細は [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md) を参照してください。
 
 ## GUIワークフロー
 
@@ -131,7 +131,7 @@ YOLO/SAM2のモデルファイルは初回利用時にultralyticsが自動ダウ
 
 ```text
 torch / torchvision / torchaudio from the CUDA 12.8 wheel index
-numpy, opencv-python, Pillow, open3d, ultralytics, tqdm, PySide6
+numpy, opencv-python, Pillow, open3d, ultralytics, transformers, safetensors, tqdm, PySide6
 ```
 
 `setup_windows.bat` は `requirements/` 以下の固定済み既知良好セットを使い、初回セットアップの再現性を優先します。`update_venv.bat` はデフォルトで互換する最新パッケージを解決し、固定セットで作り直したい場合だけ `--locked` を渡します。
@@ -146,6 +146,7 @@ GUIは以下のCLIエンジンを呼び出しています。必要なら単体�
 | `apply_frame_decisions.py` | CSVの採用/除外判定を反映 | [JP](doc/apply_frame_decisions.md) |
 | `review_frames.py` | フレーム確認GUI | [JP](doc/review_frames.md) |
 | `yolo_mask.py` | YOLO+SAM2.1 マスク生成 | [JP](doc/yolo_mask.ja.md) |
+| `sky_mask.py` | Mask2Former ADE20K 空マスク生成 | [JP](doc/sky_mask.ja.md) |
 | `stitch_mask.py` | スティッチ境界マスク生成 | [JP](doc/stitch_mask.ja.md) |
 | `overexposure_mask.py` | 白飛びマスク生成 | - |
 | `custom_mask.py` | ユーザー指定PNGマスクをAND合成 | [JP](doc/custom_mask.ja.md) |
@@ -156,7 +157,7 @@ GUIは以下のCLIエンジンを呼び出しています。必要なら単体�
 
 MIT License。詳細は [LICENSE](LICENSE) を参照してください。
 
-YOLO/SAMマスク機能では、別ライセンスの第三者ライブラリおよびモデル重みを使用します。詳細は [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md) を参照してください。
+YOLO/SAMおよび空マスク機能では、別ライセンスの第三者ライブラリおよびモデル重みを使用します。詳細は [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md) を参照してください。
 
 Original code by [tetraface Inc.](https://github.com/tetraface)
 Fork extensions by [stechdrive](https://github.com/stechdrive)

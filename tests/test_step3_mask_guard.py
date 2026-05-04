@@ -248,6 +248,24 @@ def test_mask_step_confirms_yolo_commands(monkeypatch) -> None:
     assert calls == 1
 
 
+def test_mask_step_confirms_sky_commands(monkeypatch) -> None:
+    _app()
+    step = MaskStep(Path.cwd())
+    calls = 0
+
+    def fake_confirm() -> bool:
+        nonlocal calls
+        calls += 1
+        return False
+
+    monkeypatch.setattr(step, "_confirm_sky_license_notice", fake_confirm)
+
+    assert not step.confirm_commands([("sky", ["cmd"])])
+    assert calls == 1
+    assert step.confirm_commands([("stitch", ["cmd"])])
+    assert calls == 1
+
+
 def test_mask_step_disables_generation_when_no_mask_task_selected(tmp_path: Path) -> None:
     _app()
     scene = _write_scene(tmp_path, drop_exists=False)
@@ -305,6 +323,32 @@ def test_mask_step_custom_mask_builds_final_command(tmp_path: Path) -> None:
     ]
 
 
+def test_mask_step_sky_mask_builds_final_command(tmp_path: Path) -> None:
+    _app()
+    scene = _write_scene(tmp_path, drop_exists=False)
+    step = MaskStep(Path.cwd())
+    step.set_scene_dir(str(scene))
+    step.run_yolo_cb.setChecked(False)
+    step.run_stitch_cb.setChecked(False)
+    step.run_overexp_cb.setChecked(False)
+    step.run_sky_cb.setChecked(True)
+
+    commands = step.build_commands()
+
+    assert commands[0][0] == "sky"
+    cmd = commands[0][1]
+    assert cmd[:5] == [
+        sys.executable,
+        "-u",
+        str(Path.cwd() / "sky_mask.py"),
+        str(scene / "images"),
+        str(scene / "masks"),
+    ]
+    assert cmd[cmd.index("--projection") + 1] == "equirect"
+    assert cmd[cmd.index("--mode") + 1] == "hybrid"
+    assert cmd[cmd.index("--inference-size") + 1] == "768"
+
+
 def test_mask_step_allows_generation_when_drop_images_are_removed(tmp_path: Path) -> None:
     _app()
     scene = _write_scene(tmp_path, drop_exists=False)
@@ -338,6 +382,24 @@ def test_mask_step_current_reprocess_command_targets_preview_image_subfolder(tmp
     assert cmd[4] == str(scene / "masks" / "extra")
     assert step._mask_output_path_for_image(image_path) == scene / "masks" / "extra" / "frame_0001.png"
     assert "--add-ext" not in cmd
+
+
+def test_mask_step_current_reprocess_external_commands_include_yolo_then_sky(tmp_path: Path) -> None:
+    _app()
+    scene = tmp_path
+    images = scene / "images" / "extra"
+    images.mkdir(parents=True)
+    image_path = images / "frame_0001.jpg"
+    cv2.imwrite(str(image_path), np.full((16, 32, 3), 180, dtype=np.uint8))
+    step = MaskStep(Path.cwd())
+    step.set_scene_dir(str(scene))
+    step.run_sky_cb.setChecked(True)
+
+    commands = step._build_current_reprocess_external_commands(image_path)
+
+    assert [phase for phase, _cmd in commands] == ["yolo", "sky"]
+    assert commands[1][1][3] == str(image_path)
+    assert commands[1][1][4] == str(scene / "masks" / "extra")
 
 
 def test_mask_step_current_reprocess_can_apply_overexposure_only(tmp_path: Path) -> None:

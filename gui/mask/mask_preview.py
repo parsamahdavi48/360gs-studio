@@ -52,6 +52,7 @@ class MaskPreviewConfig:
     use_yolo: bool = True
     use_stitch: bool = False
     use_overexposure: bool = False
+    use_sky: bool = False
     use_custom: bool = False
     stitch_boundary_width_deg: float | None = 5.0
     overexposure_threshold: int = 254
@@ -298,6 +299,16 @@ class MaskPreviewWidget(QWidget):
                 )
             )
 
+        if config.use_sky:
+            sky_mask = self._load_existing_mask(image_path, config, combined.shape)
+            if sky_mask is None:
+                status_parts.append(i18n.t("MASK_PREVIEW_SKY_PENDING"))
+            else:
+                if sky_mask.shape != combined.shape:
+                    sky_mask = cv2.resize(sky_mask, (w, h), interpolation=cv2.INTER_NEAREST)
+                combined = cv2.bitwise_and(combined, sky_mask)
+                status_parts.append(i18n.t("MASK_PREVIEW_SKY_EXISTING"))
+
         if config.use_custom:
             custom = self._custom_mask_for_preview(config, source_img.shape[:2], combined.shape)
             if custom is None:
@@ -447,6 +458,9 @@ class MaskPreviewWidget(QWidget):
             self.reprocess_current_btn.setText(i18n.t("MASK_REPROCESS_CURRENT_RUNNING"))
         else:
             self._update_reprocess_button_text()
+
+    def wait_for_thumbnail_rendering(self, timeout_ms: int = 3000) -> bool:
+        return self.thumbnail_model.wait_for_done(timeout_ms)
 
     def set_status_text(self, text: str) -> None:
         self.status_label.setText(text)

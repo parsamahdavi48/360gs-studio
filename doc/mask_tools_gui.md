@@ -5,6 +5,7 @@
 Step 3 in STechDrive 3DGS Utils is a PySide6 wrapper around:
 
 - `yolo_mask.py` (person mask generation)
+- `sky_mask.py` (Mask2Former ADE20K sky masking)
 - `stitch_mask.py` (stitch-region masking)
 - `overexposure_mask.py` (overexposure masking)
 - `custom_mask.py` (user-provided static mask merging)
@@ -28,6 +29,7 @@ run_gui.bat --scene ./scene01
 - Settings tabs:
   - `YOLO`: YOLO/SAM strength, expansion, bottom enhancement, and detection classes.
   - `Stitch/Overexp.`: stitch seam and overexposure mask settings.
+  - `Sky`: Mask2Former sky detection settings.
   - `Custom Mask`: load or clear the user-provided PNG mask.
 - `YOLO Level`: forwarded to `yolo_mask.py --level` (0-3).
   - For 360° images, start with `2 Quality`.
@@ -51,6 +53,10 @@ run_gui.bat --scene ./scene01
   - The GUI clamps the value to `0.0-30.0` degrees for safety.
 - `Stitch Workers`: forwarded to `stitch_mask.py --workers`.
   - Drag horizontally on the number field to adjust.
+- `Sky`:
+  - Runs `sky_mask.py` and AND-merges detected sky into `masks/`.
+  - `Hybrid` is the default for 360° images. It combines direct detection and a top projection view.
+  - Increase `Size` for more detailed inference; use `Min Score`, `Min Area`, `Expand`, and `Top-connected only` when tuning false positives or missed sky.
 - `Custom Mask`:
   - AND-merges a user-provided static mask into every mask in `masks/` as the final step.
   - Input must be PNG. 8-bit/16-bit grayscale, RGB, and RGBA inputs are accepted. RGB/RGBA inputs are converted to grayscale and alpha is ignored.
@@ -64,7 +70,7 @@ run_gui.bat --scene ./scene01
   - It uses the current `Image Type`, `YOLO Level`, `YOLO Expand`, `Bottom Enhance`, and `YOLO Classes` settings.
   - Use the main `Generate` action when you want to write masks for all frames.
 - `Reprocess Current`: rebuilds and saves the mask for only the currently displayed preview image.
-  - If `YOLO Detection` is enabled, it reruns YOLO/SAM for that single image. If `Stitch Seam`, `Overexposure`, or `Custom` is enabled, those masks are merged into the same output.
+  - If `YOLO` or `Sky` is enabled, it reruns the matching model step for that single image. If `Stitch`, `Overexp`, or `Custom` is enabled, those masks are merged into the same output.
   - Use it to fix misses found in preview without regenerating the whole set.
 - `Mask Preview`:
   - Use the icons at the right side of the preview header to switch between single preview and thumbnail list.
@@ -78,8 +84,8 @@ run_gui.bat --scene ./scene01
 
 ## Actions
 
-Select `YOLO Detection`, `Stitch Seam`, `Overexposure`, and/or `Custom`, then press `Generate`.
-When multiple tasks are selected, they run in this order: YOLO detection, stitch seam, overexposure, custom.
+Select `YOLO`, `Stitch`, `Overexp`, `Sky`, and/or `Custom`, then press `Generate`.
+When multiple tasks are selected, they run in this order: YOLO, stitch seam, overexposure, sky, custom.
 
 If `selected_frames.csv` is not present, Step 3 can still generate masks as long as `images/` contains supported images.
 In that external-image mode, Step 2 keep/drop validation is skipped.
@@ -87,5 +93,5 @@ In that external-image mode, Step 2 keep/drop validation is skipped.
 ## Notes
 
 - The GUI runs scripts as subprocesses, so behavior stays aligned with CLI.
-- YOLO/SAM masking uses third-party libraries and model weights with separate license terms. See [../THIRD_PARTY_LICENSES.md](../THIRD_PARTY_LICENSES.md).
+- YOLO/SAM and sky masking use third-party libraries and model weights with separate license terms. See [../THIRD_PARTY_LICENSES.md](../THIRD_PARTY_LICENSES.md).
 - Logs from each step are shown in the integrated log panel.

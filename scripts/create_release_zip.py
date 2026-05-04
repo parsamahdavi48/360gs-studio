@@ -27,6 +27,7 @@ UNWANTED_PARTS = (
 
 UNWANTED_SUFFIXES = (
     ".pt",
+    ".safetensors",
     ".pyc",
     ".pyo",
 )
@@ -35,6 +36,7 @@ UNWANTED_NAMES = {
     "AGENTS.md",
     "extract_cache.npz",
     "extract_report.json",
+    "pytorch_model.bin",
 }
 
 
@@ -68,6 +70,8 @@ def validate_release_member(path: str) -> None:
     normalized = path.replace("\\", "/")
     name = Path(normalized).name
     parts = set(normalized.split("/"))
+    if normalized.startswith("models/") and normalized != "models/README.md":
+        raise ValueError(f"unwanted local model file would be included: {path}")
     if normalized in UNWANTED_NAMES or name in UNWANTED_NAMES:
         raise ValueError(f"unwanted generated/local file would be included: {path}")
     if name.startswith("selected_frames") and name.endswith(".csv"):

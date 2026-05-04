@@ -32,7 +32,7 @@ For DSLR, mirrorless, smartphone, or normal video image sequences, Step 3 can ge
 
 - Extract SfM-friendly frames from 360° video
 - Review extracted frames in single-preview or thumbnail-list mode and apply keep/drop decisions, including Windows Explorer-style thumbnail selection
-- Generate masks with YOLO + SAM2.1
+- Generate masks with YOLO + SAM2.1 and optional Mask2Former sky detection
 - Improve detection near the bottom of 360° images for camera operators, tripods, and hands
 - Mask stitch seams, overexposed regions, and user-provided PNG custom masks
 - Preview mask results in single-preview or thumbnail-list mode while tuning settings, with cached thumbnails for large image sets
@@ -62,7 +62,7 @@ update_venv.bat
 
 To rebuild with the pinned known-good package set from `requirements/`, run `update_venv.bat --locked`.
 
-YOLO/SAM2 model weights may be downloaded automatically by ultralytics on first use. Release ZIP assets do not include model weights or generated scene data. These third-party libraries and model weights are governed by separate license terms; see [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md).
+YOLO/SAM2 and sky-detection model weights may be downloaded automatically on first use. Local YOLO/SAM weights can be placed under `models/ultralytics/`; local Mask2Former sky weights can be placed under `models/mask2former-swin-large-ade-semantic/`. Legacy `.pt` files in the repository root are still detected for compatibility. Release ZIP assets do not include model weights or generated scene data. These third-party libraries and model weights are governed by separate license terms; see [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md).
 
 ## GUI Workflow
 
@@ -131,7 +131,7 @@ Main Python packages resolved by `setup_windows.bat`:
 
 ```text
 torch / torchvision / torchaudio from the CUDA 12.8 wheel index
-numpy, opencv-python, Pillow, open3d, ultralytics, tqdm, PySide6
+numpy, opencv-python, Pillow, open3d, ultralytics, transformers, safetensors, tqdm, PySide6
 ```
 
 `setup_windows.bat` uses the pinned known-good package set under `requirements/` for reproducible first-time setup. `update_venv.bat` resolves the latest compatible packages by default; pass `--locked` when you want to rebuild from the pinned set instead.
@@ -146,6 +146,7 @@ The GUI wraps these CLI engines, which can also be used directly.
 | `apply_frame_decisions.py` | Apply keep/drop decisions from CSV | [EN](doc/apply_frame_decisions.md) |
 | `review_frames.py` | Frame review GUI | [EN](doc/review_frames.md) |
 | `yolo_mask.py` | YOLO+SAM2.1 mask generation | [EN](doc/yolo_mask.md) |
+| `sky_mask.py` | Mask2Former ADE20K sky mask generation | [EN](doc/sky_mask.md) |
 | `stitch_mask.py` | Stitch seam mask generation | [EN](doc/stitch_mask.md) |
 | `overexposure_mask.py` | Overexposure mask generation | - |
 | `custom_mask.py` | AND-merge a user-provided PNG mask | [EN](doc/custom_mask.md) |
@@ -156,7 +157,7 @@ The GUI wraps these CLI engines, which can also be used directly.
 
 MIT License. See [LICENSE](LICENSE).
 
-Optional YOLO/SAM mask features use third-party libraries and model weights with separate license terms. See [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md).
+Optional YOLO/SAM and sky mask features use third-party libraries and model weights with separate license terms. See [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md).
 
 Original code by [tetraface Inc.](https://github.com/tetraface)
 Fork extensions by [stechdrive](https://github.com/stechdrive)

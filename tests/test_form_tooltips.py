@@ -205,10 +205,13 @@ def test_mask_numeric_labels_share_field_tooltips() -> None:
     assert step.yolo_bottom_enhance_label.toolTip() == i18n.tip("YOLO_BOTTOM_ENHANCE")
     assert _label(step, i18n.STITCH_BOUNDARY_WIDTH).toolTip() == i18n.tip("STITCH_BOUNDARY_WIDTH")
     assert _label(step, i18n.OVEREXPOSURE_THRESHOLD).toolTip() == i18n.tip("OVEREXPOSURE_THRESHOLD")
-    assert step.mask_settings_tabs.count() == 3
+    assert _label(step, i18n.t("SKY_EXPAND")).toolTip() == i18n.tip("SKY_EXPAND")
+    assert step.sky_top_connected_cb.toolTip() == i18n.tip("SKY_TOP_CONNECTED")
+    assert step.mask_settings_tabs.count() == 4
     assert [step.mask_settings_tabs.tabText(i) for i in range(step.mask_settings_tabs.count())] == [
         i18n.t("MASK_TAB_YOLO"),
         i18n.t("MASK_TAB_STITCH_OVEREXP"),
+        i18n.t("MASK_TAB_SKY"),
         i18n.t("MASK_TAB_CUSTOM"),
     ]
 

@@ -19,7 +19,9 @@ License 2.0 by Meta.
 
 Model weights are not included in this repository or release archives. They may
 be downloaded by the user's environment on first use, or provided by the user as
-local files.
+local files. Local YOLO/SAM `.pt` files should be placed under
+`models/ultralytics/`; legacy `.pt` files in the repository root are still
+detected for compatibility.
 
 Users are responsible for ensuring that their use, redistribution, deployment,
 or commercial integration complies with the applicable third-party license
@@ -29,3 +31,29 @@ References:
 
 - Ultralytics License: https://www.ultralytics.com/license
 - Meta SAM2 repository: https://github.com/facebookresearch/sam2
+
+## Sky Mask Feature
+
+The sky mask feature may use Mask2Former ADE20K semantic-segmentation model
+weights, such as `facebook/mask2former-swin-large-ade-semantic`, together with
+the Hugging Face `transformers` and `safetensors` libraries.
+
+Mask2Former source code is licensed under the MIT License. The `transformers`
+and `safetensors` libraries are licensed under the Apache License 2.0. ADE20K
+dataset materials are governed by the dataset provider's terms.
+
+Model weights are not included in this repository or release archives. They may
+be downloaded by the user's environment on first use, or provided by the user as
+local files under `models/mask2former-swin-large-ade-semantic/`.
+
+Users are responsible for ensuring that their use, redistribution, deployment,
+or commercial integration complies with the applicable third-party license and
+dataset terms.
+
+References:
+
+- Mask2Former repository: https://github.com/facebookresearch/Mask2Former
+- Mask2Former ADE20K model: https://huggingface.co/facebook/mask2former-swin-large-ade-semantic
+- Transformers: https://github.com/huggingface/transformers
+- safetensors: https://github.com/huggingface/safetensors
+- ADE20K terms: https://ade20k.csail.mit.edu/terms/
