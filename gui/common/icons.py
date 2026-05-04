@@ -112,6 +112,26 @@ _MASK_OVERLAY_OFF_SVG = """
 </svg>
 """.strip()
 
+_PREVIEW_TEMP_SVG = """
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none">
+  <rect x="4" y="5" width="16" height="14" rx="1.8" stroke="#e5e7eb" stroke-width="1.7"/>
+  <path d="M7 16.3 10 13.2 12.4 15.2 14.3 12.8 17.2 16.3" stroke="#2dd4bf"
+        stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M15.8 6.7v3.8M13.9 8.6h3.8" stroke="#2dd4bf" stroke-width="1.7"
+        stroke-linecap="round"/>
+  <path d="M6.2 7.2h5.1" stroke="#ef4444" stroke-width="1.8" stroke-linecap="round"/>
+</svg>
+""".strip()
+
+_PREVIEW_SAVED_SVG = """
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none">
+  <rect x="4" y="5" width="16" height="14" rx="1.8" stroke="#9ca3af" stroke-width="1.7"/>
+  <path d="M7 16.3 10 13.2 12.4 15.2 14.3 12.8 17.2 16.3" stroke="#9ca3af"
+        stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M8 8h8M8 11h5.5" stroke="#ef4444" stroke-width="1.7" stroke-linecap="round"/>
+</svg>
+""".strip()
+
 
 @lru_cache(maxsize=16)
 def svg_icon(svg: str, size: int = 18) -> QIcon:
@@ -162,3 +182,11 @@ def mask_overlay_on_icon(size: int = 18) -> QIcon:
 
 def mask_overlay_off_icon(size: int = 18) -> QIcon:
     return svg_icon(_MASK_OVERLAY_OFF_SVG, size)
+
+
+def preview_temp_icon(size: int = 18) -> QIcon:
+    return svg_icon(_PREVIEW_TEMP_SVG, size)
+
+
+def preview_saved_icon(size: int = 18) -> QIcon:
+    return svg_icon(_PREVIEW_SAVED_SVG, size)

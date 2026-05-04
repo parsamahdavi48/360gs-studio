@@ -52,8 +52,10 @@ def test_mask_preview_removes_manual_image_picker_and_opacity_spinbox() -> None:
     assert i18n.t("AUTO") not in button_texts
     assert i18n.t("RELOAD") not in button_texts
     assert i18n.t("MASK_PREVIEW_BUTTON") in button_texts
-    assert i18n.t("MASK_PREVIEW_VISIBILITY_BUTTON") in button_texts
     assert i18n.t("MASK_REPROCESS_CURRENT_BUTTON") in button_texts
+    assert widget.preview_visibility_btn.objectName() == "iconToolButton"
+    assert widget.preview_visibility_btn.accessibleName() == i18n.t("MASK_PREVIEW_VISIBILITY_BUTTON")
+    assert not widget.preview_visibility_btn.icon().isNull()
     assert not widget.findChildren(QLineEdit)
     assert not widget.findChildren(QSpinBox)
 
@@ -154,17 +156,21 @@ def test_mask_preview_visibility_toggle_keeps_generated_preview(tmp_path: Path) 
     assert widget.set_temporary_preview_mask(image_path, mask_path, config)
     widget.render(config)
     assert i18n.t("MASK_PREVIEW_TEMP") in widget.status_label.text()
+    preview_icon_key = widget.preview_visibility_btn.icon().cacheKey()
 
     widget.preview_visibility_btn.click()
     widget.render(config)
 
     assert i18n.t("MASK_PREVIEW_TEMP") not in widget.status_label.text()
     assert widget.has_available_temporary_preview(config)
+    saved_icon_key = widget.preview_visibility_btn.icon().cacheKey()
+    assert saved_icon_key != preview_icon_key
 
     widget.preview_visibility_btn.click()
     widget.render(config)
 
     assert i18n.t("MASK_PREVIEW_TEMP") in widget.status_label.text()
+    assert widget.preview_visibility_btn.icon().cacheKey() == preview_icon_key
 
 
 def test_mask_preview_ignores_temporary_preview_after_setting_change(tmp_path: Path) -> None:

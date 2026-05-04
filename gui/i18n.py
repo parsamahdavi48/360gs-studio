@@ -1170,7 +1170,7 @@ _TIPS_JA: dict[str, str] = {
     "MASK_PREVIEW_MODE_THUMBNAILS": "画像と既存マスクを一覧で表示します。クリックまたは矢印キーで表示中の画像を選択できます",
     "MASK_PREVIEW_BUTTON": "現在表示中の1枚だけ、現在ONのマスク処理で一時プレビューを作成します。masks/ には保存しません",
     "MASK_PREVIEW_CLEAR_BUTTON": "一時プレビューを破棄し、保存済みマスクの表示へ戻します",
-    "MASK_PREVIEW_VISIBILITY_BUTTON": "生成済みの一時プレビューと、masks/ に保存済みのマスク表示を切り替えます。プレビュー自体は削除しません",
+    "MASK_PREVIEW_VISIBILITY_BUTTON": "生成済みの一時プレビューと、masks/ の保存済み表示を切り替えます。ONはプレビュー結果、OFFは保存済みマスクです。保存マスクがない場合は画像のみ表示します。プレビュー自体は削除しません",
     "YOLO_PREVIEW_BUTTON": "現在表示中の1枚だけYOLO/SAMを実行し、結果をプレビューに重ねます。マスクフォルダには保存しません",
     "MASK_REPROCESS_CURRENT_BUTTON": "1枚プレビューでは現在表示中の1枚、サムネイル一覧では選択中の画像を現在の設定で masks/ に再生成します。SAM3.1の加算/減算モードでは既存マスクに対して現在の検出結果を適用します",
     "MASK_OVERLAY_TOGGLE": "赤いマスクオーバーレイの表示/非表示を切り替えます。表示時の透過率は45%固定です",
@@ -1313,7 +1313,7 @@ _TIPS_EN: dict[str, str] = {
     "MASK_PREVIEW_MODE_THUMBNAILS": "Show images with existing masks as a thumbnail list. Click or use arrow keys to choose the current image",
     "MASK_PREVIEW_BUTTON": "Build a temporary preview for the displayed image using the currently enabled mask steps. It is not saved to masks/",
     "MASK_PREVIEW_CLEAR_BUTTON": "Discard the temporary preview and return to the saved mask display",
-    "MASK_PREVIEW_VISIBILITY_BUTTON": "Switch between the generated temporary preview and the saved mask in masks/. The preview is kept",
+    "MASK_PREVIEW_VISIBILITY_BUTTON": "Switch between the generated temporary preview and the saved display from masks/. ON shows the preview result; OFF shows the saved mask, or the image alone when no saved mask exists. The preview is kept",
     "YOLO_PREVIEW_BUTTON": "Run YOLO/SAM for the currently displayed image only and overlay the result. It is not saved to the mask folder",
     "MASK_REPROCESS_CURRENT_BUTTON": "In single preview, regenerate the current image. In thumbnails, regenerate selected images with the current settings and save to masks/. With SAM3.1 Add/Subtract mode, the current detections are applied to the existing mask.",
     "MASK_OVERLAY_TOGGLE": "Toggle the red mask overlay. When visible, opacity is fixed at 45%.",
@@ -1352,7 +1352,20 @@ LANG = _detect_lang()
 _table = _JA if LANG == "ja" else _EN
 _tips = _TIPS_JA if LANG == "ja" else _TIPS_EN
 _TOOLTIP_WRAP_WIDTH = 46 if LANG == "ja" else 78
-_JA_FORBIDDEN_LINE_START = set("。、，．,.!?！？:：;；)]）】〕〉》」』”’")
+_PATH_SEPARATORS = set("/\\")
+_JA_FORBIDDEN_LINE_START = set("。、，．,.!?！？:：;；)]）】〕〉》」』”’/\\")
+
+
+def _extend_path_separator_break(line: str, start: int, end: int) -> int:
+    while start < end < len(line):
+        if line[end] in _JA_FORBIDDEN_LINE_START:
+            end += 1
+            continue
+        if line[end - 1] in _PATH_SEPARATORS:
+            end += 1
+            continue
+        break
+    return end
 
 
 def _wrap_ja_tooltip_line(line: str) -> list[str]:
@@ -1362,8 +1375,7 @@ def _wrap_ja_tooltip_line(line: str) -> list[str]:
     start = 0
     while start < len(line):
         end = min(len(line), start + _TOOLTIP_WRAP_WIDTH)
-        while end < len(line) and line[end] in _JA_FORBIDDEN_LINE_START:
-            end += 1
+        end = _extend_path_separator_break(line, start, end)
         wrapped.append(line[start:end])
         start = end
     return wrapped

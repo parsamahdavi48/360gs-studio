@@ -33,6 +33,7 @@ def test_i18n_tips_are_wrapped() -> None:
         assert lines, key
         assert all(len(line) <= i18n._TOOLTIP_WRAP_WIDTH + 2 for line in lines), key
         assert all(not line.startswith(tuple(i18n._JA_FORBIDDEN_LINE_START)) for line in lines), key
+        assert all(line.strip() not in i18n._PATH_SEPARATORS for line in lines), key
 
 
 def test_i18n_tips_are_wrapped_in_english() -> None:
@@ -46,6 +47,8 @@ def test_i18n_tips_are_wrapped_in_english() -> None:
             lines = i18n.tip(key).splitlines()
             assert lines, key
             assert all(len(line) <= i18n._TOOLTIP_WRAP_WIDTH for line in lines), key
+            assert all(not line.startswith(tuple(i18n._PATH_SEPARATORS)) for line in lines), key
+            assert all(line.strip() not in i18n._PATH_SEPARATORS for line in lines), key
         """
     )
     env = os.environ.copy()

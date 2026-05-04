@@ -27,7 +27,7 @@ from PySide6.QtWidgets import (
 )
 
 from gui import i18n
-from gui.common.icons import mask_overlay_off_icon, mask_overlay_on_icon
+from gui.common.icons import mask_overlay_off_icon, mask_overlay_on_icon, preview_saved_icon, preview_temp_icon
 from gui.common.preview_mode_toolbar import (
     PREVIEW_MODE_SINGLE,
     PREVIEW_MODE_THUMBNAILS,
@@ -191,18 +191,22 @@ class MaskPreviewWidget(QWidget):
         layout.addLayout(timeline_row)
 
         overlay_row = QHBoxLayout()
+        self.preview_visibility_btn = QToolButton()
+        self.preview_visibility_btn.setObjectName("iconToolButton")
+        self.preview_visibility_btn.setToolTip(i18n.tip("MASK_PREVIEW_VISIBILITY_BUTTON"))
+        self.preview_visibility_btn.setAccessibleName(i18n.t("MASK_PREVIEW_VISIBILITY_BUTTON"))
+        self.preview_visibility_btn.setCheckable(True)
+        self.preview_visibility_btn.setChecked(True)
+        self.preview_visibility_btn.setIcon(preview_temp_icon())
+        self.preview_visibility_btn.setFixedSize(28, 28)
+        self.preview_visibility_btn.setEnabled(False)
+        self.preview_visibility_btn.toggled.connect(self._on_preview_visibility_toggled)
+        overlay_row.addWidget(self.preview_visibility_btn)
+
         self.yolo_preview_btn = QPushButton(i18n.t("MASK_PREVIEW_BUTTON"))
         self.yolo_preview_btn.setToolTip(i18n.tip("MASK_PREVIEW_BUTTON"))
         self.yolo_preview_btn.clicked.connect(self.mask_preview_requested.emit)
         overlay_row.addWidget(self.yolo_preview_btn)
-
-        self.preview_visibility_btn = QPushButton(i18n.t("MASK_PREVIEW_VISIBILITY_BUTTON"))
-        self.preview_visibility_btn.setToolTip(i18n.tip("MASK_PREVIEW_VISIBILITY_BUTTON"))
-        self.preview_visibility_btn.setCheckable(True)
-        self.preview_visibility_btn.setChecked(True)
-        self.preview_visibility_btn.setEnabled(False)
-        self.preview_visibility_btn.toggled.connect(self._on_preview_visibility_toggled)
-        overlay_row.addWidget(self.preview_visibility_btn)
 
         self.reprocess_current_btn = QPushButton(i18n.t("MASK_REPROCESS_CURRENT_BUTTON"))
         self.reprocess_current_btn.setToolTip(i18n.tip("MASK_REPROCESS_CURRENT_BUTTON"))
@@ -472,6 +476,7 @@ class MaskPreviewWidget(QWidget):
         self._temporary_preview_visible = True
         self._set_preview_visibility_checked(True)
         self.preview_visibility_btn.setEnabled(False)
+        self._update_preview_visibility_icon()
         self._update_mask_preview_button_text()
 
     def clear_yolo_preview_mask(self, image_path: Path | None = None) -> None:
@@ -662,6 +667,7 @@ class MaskPreviewWidget(QWidget):
             self.yolo_preview_btn.setText(i18n.t("MASK_PREVIEW_RUNNING"))
             self.yolo_preview_btn.setToolTip(i18n.tip("MASK_PREVIEW_BUTTON"))
             self.preview_visibility_btn.setEnabled(False)
+            self._update_preview_visibility_icon()
             return
         self.yolo_preview_btn.setText(i18n.t("MASK_PREVIEW_BUTTON"))
         self.yolo_preview_btn.setToolTip(i18n.tip("MASK_PREVIEW_BUTTON"))
@@ -673,11 +679,19 @@ class MaskPreviewWidget(QWidget):
             self.preview_visibility_btn.setChecked(checked)
         finally:
             self.preview_visibility_btn.blockSignals(False)
+        self._update_preview_visibility_icon()
 
     def _update_preview_visibility_button(self) -> None:
         available = self.has_available_temporary_preview(self._last_config)
         self.preview_visibility_btn.setEnabled(available)
         self._set_preview_visibility_checked(available and self._temporary_preview_visible)
+        self._update_preview_visibility_icon()
+
+    def _update_preview_visibility_icon(self) -> None:
+        if self.preview_visibility_btn.isChecked() and self.preview_visibility_btn.isEnabled():
+            self.preview_visibility_btn.setIcon(preview_temp_icon())
+        else:
+            self.preview_visibility_btn.setIcon(preview_saved_icon())
 
     def _update_pixmap(self) -> None:
         self.image_label.set_source_pixmap(self._pixmap)
