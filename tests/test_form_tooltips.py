@@ -265,7 +265,11 @@ def test_cubemap_labels_share_field_tooltips() -> None:
     assert step.export_images_cb.toolTip() == i18n.tip("EXPORT_IMAGES")
     assert step.export_masks_cb.toolTip() == i18n.tip("EXPORT_MASKS")
     assert step.view_config.grid_section.toolTip() == i18n.tip("VIEW_SELECTION_SECTION")
-    assert step.view_config.grid_section.toggle_button.toolTip() == i18n.tip("VIEW_SELECTION_SECTION")
+    assert step.view_config.grid_title_label.toolTip() == i18n.tip("VIEW_SELECTION_SECTION")
+    assert step.view_config.yaw_add_btn.toolTip() == i18n.t("YAW_SLOT_ADD")
+    assert step.view_config.yaw_remove_btn.toolTip() == i18n.t("YAW_SLOT_REMOVE")
+    assert step.view_config.pitch_add_btn.toolTip() == i18n.t("PITCH_ROW_ADD")
+    assert step.view_config.pitch_delete_buttons[0].toolTip() == i18n.t("PITCH_ROW_REMOVE")
     assert step.output_format_label.toolTip() == i18n.tip("OUTPUT_FORMAT")
     assert step.output_format_combo.toolTip() == i18n.tip("OUTPUT_FORMAT")
     assert step.output_bit_depth_label.toolTip() == i18n.tip("OUTPUT_BIT_DEPTH")
@@ -294,15 +298,14 @@ def test_cubemap_profile_option_rows_preserve_width_in_english_and_japanese() ->
         step = CubemapStep(Path.cwd())
         idx = step.view_config.view_mode_combo.findData("custom_views")
         step.view_config.view_mode_combo.setCurrentIndex(idx)
-        step.view_config.yaw_slots_combo.setCurrentText("8")
-        step.view_config.pitch_rows_combo.setCurrentText("5")
-        step.view_config.grid_section.set_expanded(True)
+        step.view_config.set_yaw_slot_count(8)
+        step.view_config.set_pitch_row_count(5)
         content_width = SETTINGS_PANE_WIDTH - SETTINGS_PANE_MARGINS[2]
         grid_available_width = content_width - 12
         assert step.export_method_row.sizeHint().width() <= content_width
         assert step.metashape_import_options_row.sizeHint().width() <= content_width
         assert step.view_config.angle_row.sizeHint().width() <= content_width
-        assert step.view_config.custom_controls_widget.sizeHint().width() <= content_width
+        assert step.view_config.grid_controls_widget.sizeHint().width() <= content_width
         assert step.view_config.grid_widget.sizeHint().width() <= grid_available_width
         assert step.yaw_per_frame_row.sizeHint().width() <= content_width
         assert step.output_details_section.sizeHint().width() <= content_width

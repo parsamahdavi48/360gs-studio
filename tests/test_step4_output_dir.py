@@ -74,6 +74,9 @@ def test_cubemap_step_uses_fixed_output_folder_label(tmp_path: Path) -> None:
     assert not hasattr(step, "no_image_cb")
     assert not hasattr(step.view_config, "cube6_drop_top")
     assert not hasattr(step.view_config, "cube6_drop_bottom")
+    assert not hasattr(step.view_config, "yaw_slots_combo")
+    assert not hasattr(step.view_config, "pitch_rows_combo")
+    assert not hasattr(step.view_config, "custom_controls_widget")
     assert hasattr(step, "ms_use_ply_cb")
     assert hasattr(step, "axis_transform_combo")
     assert hasattr(step, "invert_masks_cb")
@@ -98,15 +101,11 @@ def test_cubemap_step_uses_fixed_output_folder_label(tmp_path: Path) -> None:
     assert _is_descendant(step.output_details_section, step.advanced_output_section)
     assert not _is_descendant(step.export_summary_label, step.advanced_output_section)
     assert not _is_descendant(step.export_summary_label, step.view_config.settings_widget)
-    settings_layout = step.view_config.settings_widget.layout()
-    custom_index = settings_layout.indexOf(step.view_config.custom_controls_widget)
-    grid_index = settings_layout.indexOf(step.view_config.grid_section)
-    assert custom_index + 1 == grid_index
     assert step.export_summary_label.text() == step.view_config.summary_text()
     cube6_views = step.view_config.collect_views(include_disabled=True)
     cube6_enabled = [v for v in cube6_views if v["enabled"]]
     assert step.view_config.view_mode() == "cube6"
-    assert step.view_config.yaw_slots_combo.currentText() == "4"
+    assert step.view_config.yaw_slot_count() == 4
     assert step.view_config.pitch_values() == [-90.0, 0.0, 90.0]
     assert len(cube6_views) == 12
     assert {v["name"] for v in cube6_enabled} == {"px", "nx", "pz", "nz", "top", "bottom"}
@@ -229,10 +228,10 @@ def test_custom_grid_defaults_to_three_pitch_rows_all_enabled() -> None:
     assert idx >= 0
     step.view_config.view_mode_combo.setCurrentIndex(idx)
 
-    assert step.view_config.pitch_rows_combo.currentText() == "3"
+    assert step.view_config.pitch_row_count() == 3
     assert step.view_config.pitch_values() == [-45.0, 0.0, 45.0]
     assert step.view_config.pitch_rows_text() == "-45,0,45"
-    assert step.view_config.yaw_slots_combo.currentText() == "6"
+    assert step.view_config.yaw_slot_count() == 6
     views = step.view_config.collect_views(include_disabled=True)
 
     assert len(views) == 18
@@ -254,7 +253,7 @@ def test_editing_cube6_grid_switches_to_custom_without_resetting_grid() -> None:
     step.view_config.pitch_rows[middle_row_index]["checks"][first_enabled["slot"]].setChecked(False)
 
     assert step.view_config.view_mode() == "custom_views"
-    assert step.view_config.yaw_slots_combo.currentText() == "4"
+    assert step.view_config.yaw_slot_count() == 4
     assert step.view_config.pitch_values() == [-90.0, 0.0, 90.0]
     assert sum(1 for view in step.view_config.collect_views(include_disabled=True) if view["enabled"]) == 5
 
@@ -262,16 +261,16 @@ def test_editing_cube6_grid_switches_to_custom_without_resetting_grid() -> None:
 def test_custom_grid_pitch_rows_are_limited_to_five() -> None:
     _app()
     step = CubemapStep(Path.cwd())
+    idx = step.view_config.view_mode_combo.findData("custom_views")
+    step.view_config.view_mode_combo.setCurrentIndex(idx)
 
-    assert [step.view_config.pitch_rows_combo.itemText(i) for i in range(step.view_config.pitch_rows_combo.count())] == [
-        "1",
-        "2",
-        "3",
-        "4",
-        "5",
-    ]
-    step.view_config.pitch_rows_combo.setCurrentText("5")
-    assert step.view_config._parse_pitches() == [-60.0, -30.0, 0.0, 30.0, 60.0]
+    step.view_config.set_pitch_row_count(99)
+    assert step.view_config.pitch_row_count() == 5
+    assert step.view_config._parse_pitches()[:3] == [-45.0, 0.0, 45.0]
+    assert len(step.view_config._parse_pitches()) == len(set(step.view_config._parse_pitches()))
+
+    step.view_config.set_pitch_row_count(0)
+    assert step.view_config.pitch_row_count() == 1
 
 
 def test_custom_grid_controls_apply_immediately_and_keep_pitch_unique() -> None:
@@ -280,10 +279,10 @@ def test_custom_grid_controls_apply_immediately_and_keep_pitch_unique() -> None:
     idx = step.view_config.view_mode_combo.findData("custom_views")
     step.view_config.view_mode_combo.setCurrentIndex(idx)
 
-    step.view_config.yaw_slots_combo.setCurrentText("8")
+    step.view_config.set_yaw_slot_count(8)
     assert len(step.view_config.collect_views(include_disabled=True)) == 24
 
-    step.view_config.pitch_rows_combo.setCurrentText("5")
+    step.view_config.set_pitch_row_count(5)
     assert len(step.view_config.collect_views(include_disabled=True)) == 40
     assert sum(1 for view in step.view_config.collect_views(include_disabled=True) if view["enabled"]) == 40
 
@@ -293,13 +292,51 @@ def test_custom_grid_controls_apply_immediately_and_keep_pitch_unique() -> None:
     assert pitches[0] != 0.0
 
 
+def test_custom_grid_resize_preserves_existing_rows_and_checks() -> None:
+    _app()
+    step = CubemapStep(Path.cwd())
+    idx = step.view_config.view_mode_combo.findData("custom_views")
+    step.view_config.view_mode_combo.setCurrentIndex(idx)
+
+    step.view_config.pitch_rows[0]["pitch_edit"].setValue(-12.0)
+    step.view_config.pitch_rows[0]["checks"][0].setChecked(False)
+    step.view_config.pitch_rows[1]["checks"][4].setChecked(False)
+    pitches_before = step.view_config.pitch_values()
+
+    step.view_config.set_yaw_slot_count(8)
+
+    assert step.view_config.pitch_values() == pitches_before
+    assert not step.view_config.pitch_rows[0]["checks"][0].isChecked()
+    assert not step.view_config.pitch_rows[1]["checks"][4].isChecked()
+    assert all(row["checks"][6].isChecked() and row["checks"][7].isChecked() for row in step.view_config.pitch_rows)
+
+    step.view_config.set_yaw_slot_count(4)
+
+    assert step.view_config.pitch_values() == pitches_before
+    assert not step.view_config.pitch_rows[0]["checks"][0].isChecked()
+    assert len(step.view_config.pitch_rows[0]["checks"]) == 4
+
+    step.view_config.add_pitch_row()
+
+    assert step.view_config.pitch_values()[:3] == pitches_before
+    assert step.view_config.pitch_row_count() == 4
+    assert all(cb.isChecked() for cb in step.view_config.pitch_rows[-1]["checks"])
+
+    removed_pitch = step.view_config.pitch_values()[1]
+    step.view_config.remove_pitch_row(1)
+
+    assert removed_pitch not in step.view_config.pitch_values()
+    assert step.view_config.pitch_values()[0] == pitches_before[0]
+    assert step.view_config.pitch_row_count() == 3
+
+
 def test_custom_grid_bulk_selection_emits_single_change() -> None:
     _app()
     step = CubemapStep(Path.cwd())
     idx = step.view_config.view_mode_combo.findData("custom_views")
     step.view_config.view_mode_combo.setCurrentIndex(idx)
-    step.view_config.yaw_slots_combo.setCurrentText("8")
-    step.view_config.pitch_rows_combo.setCurrentText("5")
+    step.view_config.set_yaw_slot_count(8)
+    step.view_config.set_pitch_row_count(5)
 
     emitted = 0
 
@@ -374,7 +411,7 @@ def test_custom_grid_yaw_labels_are_compact_without_degree_mark() -> None:
     step = CubemapStep(Path.cwd())
     idx = step.view_config.view_mode_combo.findData("custom_views")
     step.view_config.view_mode_combo.setCurrentIndex(idx)
-    step.view_config.yaw_slots_combo.setCurrentText("8")
+    step.view_config.set_yaw_slot_count(8)
 
     texts = [label.text() for label in step.view_config.yaw_slot_labels]
 

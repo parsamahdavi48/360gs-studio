@@ -64,11 +64,13 @@ start_cubemap_tools_gui.bat
 - `Yaw Offset (deg)`:
   - Base yaw for slot generation.
 - `Yaw Slots`:
-  - Number of yaw slots per pitch row (`4..8`).
+  - Number of yaw slots per pitch row (`4..8`). Use the `-` / `+` controls above the view grid to remove or add columns.
+  - Existing column on/off states and pitch values are preserved when resizing; newly added columns start enabled.
   - Slot yaw = `offset + slot*(360 / yaw_slots)`.
 - `Pitch Rows`:
   - Pitch list. `Cube6` uses `-90,0,90`; `Custom Grid` starts from `-45,0,45`.
-  - Range is `-90..90`, max 5 rows.
+  - Range is `-90..90`, max 5 rows. Use the `+` control above the grid to add a row, and the delete button at the left of each pitch row to remove it.
+  - Remaining row pitch values and on/off states are preserved by row order when rows are added or removed.
 - `Cube6`:
   - Always exports all six faces. Top and bottom faces are treated as valid fixed-camera observations.
 - `FOV`:
@@ -86,6 +88,7 @@ start_cubemap_tools_gui.bat
 ## View selection
 
 - Checkboxes control whether each slot is exported.
+- The grid is always visible. Its toolbar provides select all/deselect all, yaw column add/remove, and pitch row add controls.
 - In the default Cube6 preset, top and bottom are assigned to `S3`; with the default 45-degree yaw offset, `S3=-45°`.
 - Typical setup:
   - pitch `0`: enable all slots
