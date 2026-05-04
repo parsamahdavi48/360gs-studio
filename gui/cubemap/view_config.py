@@ -8,6 +8,7 @@ from PySide6.QtWidgets import (
     QGridLayout,
     QHBoxLayout,
     QLabel,
+    QSizePolicy,
     QToolButton,
     QVBoxLayout,
     QWidget,
@@ -43,7 +44,7 @@ _PITCH_DELETE_BUTTON_SIZE = 24
 _PITCH_CELL_SPACING = 2
 _PITCH_EDIT_MIN_WIDTH = 78
 _PITCH_EDIT_WIDTH_SAMPLE = "-999.9"
-_YAW_SLOT_COLUMN_MIN_WIDTH = 36
+_YAW_SLOT_COLUMN_MIN_WIDTH = 39
 
 VIEW_MODE_CUSTOM = "custom_views"
 VIEW_MODE_CUBE6 = "cube6"
@@ -217,7 +218,7 @@ class ViewConfigWidget(QWidget):
         self.grid_widget = QWidget()
         self.grid_layout = QGridLayout(self.grid_widget)
         self.grid_layout.setContentsMargins(0, 0, 0, 0)
-        self.grid_layout.setHorizontalSpacing(3)
+        self.grid_layout.setHorizontalSpacing(2)
         self.grid_layout.setVerticalSpacing(4)
         grid_section_layout.addWidget(self.grid_widget)
 
@@ -418,12 +419,22 @@ class ViewConfigWidget(QWidget):
             for s in range(slots):
                 self.grid_layout.setColumnMinimumWidth(s + 1, _YAW_SLOT_COLUMN_MIN_WIDTH)
                 self.grid_layout.setColumnStretch(s + 1, 1)
+                yaw_cell = QWidget()
+                yaw_cell.setMinimumWidth(_YAW_SLOT_COLUMN_MIN_WIDTH)
+                yaw_cell.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+                yaw_layout = QHBoxLayout(yaw_cell)
+                yaw_layout.setContentsMargins(0, 0, 0, 0)
+                yaw_layout.setSpacing(0)
                 lab = QLabel(f"S{s}")
                 lab.setAlignment(Qt.AlignCenter)
+                lab.setFixedWidth(_YAW_SLOT_COLUMN_MIN_WIDTH)
                 lab.setWordWrap(False)
                 lab.setStyleSheet("font-size: 8pt;")
+                yaw_layout.addStretch(1)
+                yaw_layout.addWidget(lab)
+                yaw_layout.addStretch(1)
                 self.yaw_slot_labels.append(lab)
-                self.grid_layout.addWidget(lab, 0, s + 1)
+                self.grid_layout.addWidget(yaw_cell, 0, s + 1)
 
             for ri, row in enumerate(rows):
                 pitch = _clamp_pitch(row["pitch"])
@@ -561,8 +572,9 @@ class ViewConfigWidget(QWidget):
         step = 360.0 / float(slots)
         for i, lab in enumerate(self.yaw_slot_labels):
             yaw = _normalize_angle(offset + i * step)
-            lab.setText(f"S{i}\n{yaw:g}")
-            lab.setToolTip(f"{yaw:g}°")
+            display_yaw = f"{yaw:.1f}"
+            lab.setText(f"S{i}\n{display_yaw}")
+            lab.setToolTip(f"{display_yaw}°")
 
     def _update_grid_control_state(self) -> None:
         yaw_count = self.yaw_slot_count()

@@ -472,14 +472,18 @@ def test_custom_grid_yaw_labels_are_compact_without_degree_mark() -> None:
     step = CubemapStep(Path.cwd())
     idx = step.view_config.view_mode_combo.findData("custom_views")
     step.view_config.view_mode_combo.setCurrentIndex(idx)
-    step.view_config.set_yaw_slot_count(8)
+    step.view_config.set_yaw_slot_count(7)
 
     texts = [label.text() for label in step.view_config.yaw_slot_labels]
+    views = step.view_config.collect_views(include_disabled=True)
 
-    assert "S3\n-180" in texts
+    assert "S0\n45.0" in texts
+    assert "S1\n96.4" in texts
     assert all("°" not in text for text in texts)
     assert all(label.toolTip().endswith("°") for label in step.view_config.yaw_slot_labels)
+    assert step.view_config.yaw_slot_labels[1].toolTip() == "96.4°"
     assert all("8pt" in label.styleSheet() for label in step.view_config.yaw_slot_labels)
+    assert any(view["slot"] == 1 and view["yaw"] == pytest.approx(45.0 + 360.0 / 7.0) for view in views)
 
 
 def test_cubemap_yaw_numeric_fields_are_clamped_and_used(tmp_path: Path) -> None:
