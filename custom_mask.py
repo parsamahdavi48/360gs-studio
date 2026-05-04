@@ -1,8 +1,9 @@
-"""Merge a user-provided static mask into generated masks.
+"""Merge a user-provided static PNG mask into generated masks.
 
 Mask convention: white means keep, black means exclude. The custom mask is
-AND-merged with each existing mask. If no existing mask is present for an image,
-the custom mask itself becomes the output mask.
+normalized to binary 0/255, then AND-merged with each existing mask. If no
+existing mask is present for an image, the custom mask itself becomes the output
+mask.
 """
 from __future__ import annotations
 
@@ -25,6 +26,12 @@ class CustomMaskMergeResult:
     skipped: bool = False
     failed: bool = False
     message: str | None = None
+
+
+@dataclass(frozen=True)
+class LoadedCustomMask:
+    mask: np.ndarray
+    description: str
 
 
 @dataclass
@@ -52,6 +59,45 @@ def iter_image_files(images_dir: Path) -> list[Path]:
 def mask_output_path_for_image(image_path: Path, images_dir: Path, masks_dir: Path) -> Path:
     rel_parent = image_path.resolve().relative_to(images_dir.resolve()).parent
     return masks_dir / rel_parent / f"{image_path.stem}.png"
+
+
+def load_custom_mask(custom_mask_path: str | Path) -> tuple[LoadedCustomMask | None, str | None]:
+    """Load a PNG custom mask and normalize it to a binary uint8 mask."""
+    custom_path = Path(custom_mask_path)
+    if custom_path.suffix.lower() != ".png":
+        return None, f"Custom mask must be a PNG file: {custom_path}"
+
+    raw = imread_unicode(custom_path, cv2.IMREAD_UNCHANGED)
+    if raw is None:
+        return None, f"Custom mask read error: {custom_path}"
+
+    if raw.dtype == np.uint8:
+        threshold = 128
+        bit_depth = 8
+    elif raw.dtype == np.uint16:
+        threshold = 32768
+        bit_depth = 16
+    else:
+        return None, f"Custom mask must be 8-bit or 16-bit PNG: {custom_path} ({raw.dtype})"
+
+    conversion = "grayscale"
+    if raw.ndim == 2:
+        gray = raw
+    elif raw.ndim == 3 and raw.shape[2] == 3:
+        gray = cv2.cvtColor(raw, cv2.COLOR_BGR2GRAY)
+        conversion = "color converted to grayscale"
+    elif raw.ndim == 3 and raw.shape[2] == 4:
+        gray = cv2.cvtColor(raw, cv2.COLOR_BGRA2GRAY)
+        conversion = "color converted to grayscale; alpha ignored"
+    else:
+        shape_text = "x".join(str(v) for v in raw.shape)
+        return None, f"Custom mask must be grayscale, RGB, or RGBA PNG: {custom_path} (shape={shape_text})"
+
+    binary = np.where(gray >= threshold, 255, 0).astype(np.uint8)
+    return LoadedCustomMask(
+        mask=binary,
+        description=f"Custom mask loaded: {bit_depth}-bit PNG, {conversion}, threshold={threshold}",
+    ), None
 
 
 def merge_custom_mask_for_image(
@@ -98,9 +144,10 @@ def run(images_dir: str | Path, masks_dir: str | Path, custom_mask_path: str | P
     images_path = Path(images_dir)
     masks_path = Path(masks_dir)
     custom_path = Path(custom_mask_path)
-    custom = imread_unicode(custom_path, cv2.IMREAD_GRAYSCALE)
-    if custom is None:
-        return CustomMaskRunResult(failed=1, messages=[f"Custom mask read error: {custom_path}"])
+    loaded_custom, load_error = load_custom_mask(custom_path)
+    if loaded_custom is None:
+        return CustomMaskRunResult(failed=1, messages=[load_error or f"Custom mask read error: {custom_path}"])
+    custom = loaded_custom.mask
 
     image_files = iter_image_files(images_path)
     if not image_files:
@@ -108,6 +155,7 @@ def run(images_dir: str | Path, masks_dir: str | Path, custom_mask_path: str | P
         return CustomMaskRunResult()
 
     print(f"Applying custom mask to {len(image_files)} images")
+    print(loaded_custom.description)
     print(f"[progress] 0/{len(image_files)}", flush=True)
     result = CustomMaskRunResult(total=len(image_files))
     for done, image_path in enumerate(image_files, start=1):
@@ -136,7 +184,7 @@ def main() -> None:
     )
     parser.add_argument("images_dir", help="Source images directory")
     parser.add_argument("masks_dir", help="Mask output directory")
-    parser.add_argument("custom_mask", help="Custom mask image to apply to every source image")
+    parser.add_argument("custom_mask", help="PNG custom mask to apply to every source image")
     args = parser.parse_args()
 
     result = run(args.images_dir, args.masks_dir, args.custom_mask)

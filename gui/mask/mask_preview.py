@@ -8,6 +8,7 @@ from pathlib import Path
 import cv2
 import numpy as np
 
+from custom_mask import load_custom_mask
 from image_io import imread_unicode
 from PySide6.QtCore import QItemSelectionModel, Qt, Signal
 from PySide6.QtGui import QImage, QPixmap
@@ -586,9 +587,10 @@ class MaskPreviewWidget(QWidget):
         custom_path_text = config.custom_mask_path.strip()
         if not custom_path_text:
             return None
-        custom = imread_unicode(custom_path_text, cv2.IMREAD_GRAYSCALE)
-        if custom is None:
+        loaded_custom, _load_error = load_custom_mask(custom_path_text)
+        if loaded_custom is None:
             return None
+        custom = loaded_custom.mask
         if custom.shape == display_shape:
             return custom
         if custom.shape == source_shape:

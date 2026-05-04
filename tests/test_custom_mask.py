@@ -60,6 +60,79 @@ def test_custom_mask_creates_mask_when_no_existing_mask(tmp_path: Path) -> None:
     assert np.array_equal(output, custom)
 
 
+def test_custom_mask_binarizes_8bit_grayscale_png(tmp_path: Path) -> None:
+    images = tmp_path / "images"
+    masks = tmp_path / "masks"
+    images.mkdir()
+    cv2.imwrite(str(images / "frame_0001.png"), np.full((1, 4, 3), 128, dtype=np.uint8))
+    custom_path = tmp_path / "custom.png"
+    cv2.imwrite(str(custom_path), np.array([[0, 127, 128, 255]], dtype=np.uint8))
+
+    result = run(images, masks, custom_path)
+
+    assert result.ok
+    output = cv2.imread(str(masks / "frame_0001.png"), cv2.IMREAD_GRAYSCALE)
+    assert output is not None
+    assert output.dtype == np.uint8
+    assert np.array_equal(output, np.array([[0, 0, 255, 255]], dtype=np.uint8))
+
+
+def test_custom_mask_binarizes_16bit_grayscale_png(tmp_path: Path) -> None:
+    images = tmp_path / "images"
+    masks = tmp_path / "masks"
+    images.mkdir()
+    cv2.imwrite(str(images / "frame_0001.png"), np.full((1, 4, 3), 128, dtype=np.uint8))
+    custom_path = tmp_path / "custom.png"
+    cv2.imwrite(str(custom_path), np.array([[0, 32767, 32768, 65535]], dtype=np.uint16))
+
+    result = run(images, masks, custom_path)
+
+    assert result.ok
+    output = cv2.imread(str(masks / "frame_0001.png"), cv2.IMREAD_GRAYSCALE)
+    assert output is not None
+    assert output.dtype == np.uint8
+    assert np.array_equal(output, np.array([[0, 0, 255, 255]], dtype=np.uint8))
+
+
+def test_custom_mask_converts_rgba_png_and_ignores_alpha(tmp_path: Path) -> None:
+    images = tmp_path / "images"
+    masks = tmp_path / "masks"
+    images.mkdir()
+    cv2.imwrite(str(images / "frame_0001.png"), np.full((2, 2, 3), 128, dtype=np.uint8))
+    custom = np.array(
+        [
+            [[255, 255, 255, 0], [0, 0, 0, 255]],
+            [[255, 255, 255, 255], [0, 0, 0, 0]],
+        ],
+        dtype=np.uint8,
+    )
+    custom_path = tmp_path / "custom.png"
+    cv2.imwrite(str(custom_path), custom)
+
+    result = run(images, masks, custom_path)
+
+    assert result.ok
+    output = cv2.imread(str(masks / "frame_0001.png"), cv2.IMREAD_GRAYSCALE)
+    assert output is not None
+    assert np.array_equal(output, np.array([[255, 0], [255, 0]], dtype=np.uint8))
+
+
+def test_custom_mask_rejects_non_png_input(tmp_path: Path) -> None:
+    images = tmp_path / "images"
+    masks = tmp_path / "masks"
+    images.mkdir()
+    cv2.imwrite(str(images / "frame_0001.png"), np.full((4, 6, 3), 128, dtype=np.uint8))
+    custom_path = tmp_path / "custom.jpg"
+    cv2.imwrite(str(custom_path), np.full((4, 6), 255, dtype=np.uint8))
+
+    result = run(images, masks, custom_path)
+
+    assert not result.ok
+    assert result.failed == 1
+    assert any("PNG" in message for message in result.messages)
+    assert not (masks / "frame_0001.png").exists()
+
+
 def test_custom_mask_skips_size_mismatch_without_writing(tmp_path: Path) -> None:
     images = tmp_path / "images"
     masks = tmp_path / "masks"

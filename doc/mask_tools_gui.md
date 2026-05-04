@@ -49,7 +49,8 @@ run_gui.bat --scene ./scene01
   - Drag horizontally on the number field to adjust.
 - `Custom Mask`:
   - AND-merges a user-provided static mask into every mask in `masks/` as the final step.
-  - White means keep and black means exclude. Color images are read as grayscale.
+  - Input must be PNG. 8-bit/16-bit grayscale, RGB, and RGBA inputs are accepted. RGB/RGBA inputs are converted to grayscale and alpha is ignored.
+  - 8-bit values >=128 and 16-bit values >=32768 become white during 0/255 binarization. White means keep and black means exclude.
   - The custom mask applies only to source images with matching dimensions. Mismatches are skipped without automatic resizing.
   - If every image is skipped because none match the custom mask size, the custom step fails.
   - If `Custom` is turned on before a file is selected, the file picker opens automatically. You can also select the file first with `Load`.

@@ -11,7 +11,7 @@ from pathlib import Path
 
 import cv2
 from apply_frame_decisions import pending_drop_image_paths, untracked_image_paths
-from custom_mask import merge_custom_mask_for_image
+from custom_mask import load_custom_mask, merge_custom_mask_for_image
 from PySide6.QtCore import QProcess, Qt, QTimer, QUrl, Signal
 from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import (
@@ -1215,14 +1215,14 @@ class MaskStep(BaseStepWidget):
             custom_mask = self._custom_mask_path_text()
             if not custom_mask:
                 raise RuntimeError(i18n.t("CUSTOM_MASK_REQUIRED"))
-            custom = imread_unicode(custom_mask, cv2.IMREAD_GRAYSCALE)
-            if custom is None:
-                raise RuntimeError(i18n.t("CUSTOM_MASK_NOT_FOUND").format(path=custom_mask))
+            loaded_custom, load_error = load_custom_mask(custom_mask)
+            if loaded_custom is None:
+                raise RuntimeError(load_error or i18n.t("CUSTOM_MASK_NOT_FOUND").format(path=custom_mask))
             error = merge_custom_mask_for_image(
                 image_path,
                 Path(self._images_dir_text()),
                 Path(self._masks_dir_text()),
-                custom,
+                loaded_custom.mask,
             )
             if not error.applied:
                 raise RuntimeError(error.message or i18n.t("MASK_REPROCESS_CURRENT_FAILED"))

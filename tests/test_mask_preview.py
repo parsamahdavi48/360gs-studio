@@ -113,6 +113,21 @@ def test_mask_preview_applies_custom_mask_status(tmp_path: Path) -> None:
     assert widget.image_label._source_pixmap is not None
 
 
+def test_mask_preview_rejects_non_png_custom_mask(tmp_path: Path) -> None:
+    _app()
+    image_path = tmp_path / "frame_000001.png"
+    custom_path = tmp_path / "custom.jpg"
+    cv2.imwrite(str(image_path), np.full((32, 64, 3), 180, dtype=np.uint8))
+    cv2.imwrite(str(custom_path), np.full((32, 64), 255, dtype=np.uint8))
+    widget = MaskPreviewWidget()
+    widget.set_current_image_path(image_path)
+
+    widget.render(MaskPreviewConfig(use_yolo=False, use_custom=True, custom_mask_path=str(custom_path)))
+
+    assert i18n.t("MASK_PREVIEW_CUSTOM_INVALID") in widget.status_label.text()
+    assert widget.image_label._source_pixmap is not None
+
+
 def test_mask_preview_does_not_scan_cwd_without_images_dir(tmp_path: Path, monkeypatch) -> None:
     _app()
     monkeypatch.chdir(tmp_path)
