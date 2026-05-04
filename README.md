@@ -36,7 +36,7 @@ For DSLR, mirrorless, smartphone, or normal video image sequences, Step 3 can ge
 - Improve detection near the bottom of 360° images for camera operators, tripods, and hands
 - Mask stitch seams, overexposed regions, and user-provided PNG custom masks
 - Preview mask results in single-preview or thumbnail-list mode while tuning settings, with cached thumbnails for large image sets
-- Reprocess the current preview image or multiple selected thumbnails with updated settings
+- Select only frames with mask misses and reprocess them with adjusted settings
 - Convert Metashape SfM results for LichtFeld Studio, Postshot, and Brush
 - Export COLMAP Rig viewpoint datasets and optionally run COLMAP/GLOMAP
 - Windows setup scripts and a Japanese/English GUI
