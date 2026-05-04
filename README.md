@@ -32,7 +32,7 @@ For DSLR, mirrorless, smartphone, or normal video image sequences, Step 3 can ge
 
 - Extract SfM-friendly frames from 360° video
 - Review extracted frames in single-preview or thumbnail-list mode and apply keep/drop decisions, including Windows Explorer-style thumbnail selection
-- Generate masks with YOLO + SAM2.1, optional Mask2Former sky detection, and local SAM3.1 sky/person mask testing
+- Generate masks with YOLO + SAM2.1, Mask2Former ADE20K classes, or local SAM3.1 prompts
 - Improve detection near the bottom of 360° images for camera operators, tripods, and hands
 - Mask stitch seams, overexposed regions, and user-provided PNG custom masks
 - Preview mask results in single-preview or thumbnail-list mode while tuning settings, with cached thumbnails for large image sets
@@ -62,7 +62,7 @@ update_venv.bat
 
 To rebuild with the pinned known-good package set from `requirements/`, run `update_venv.bat --locked`.
 
-YOLO/SAM2 and Mask2Former sky-detection model weights may be downloaded automatically on first use. Local YOLO/SAM weights can be placed under `models/ultralytics/`; local Mask2Former sky weights can be placed under `models/mask2former-swin-large-ade-semantic/`. Local SAM3.1 sky/person testing expects `models/sam3.1/sam3.1_multiplex.pt` and is not auto-downloaded. Legacy `.pt` files in the repository root are still detected for compatibility. Release ZIP assets do not include model weights or generated scene data. These third-party libraries and model weights are governed by separate license terms; see [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md).
+YOLO/SAM2 and Mask2Former model weights may be downloaded automatically on first use. Local YOLO/SAM weights can be placed under `models/ultralytics/`; local Mask2Former weights can be placed under `models/mask2former-swin-large-ade-semantic/`. Local SAM3.1 prompt masking expects `models/sam3.1/sam3.1_multiplex.pt` and is not auto-downloaded. Legacy `.pt` files in the repository root are still detected for compatibility. Release ZIP assets do not include model weights or generated scene data. These third-party libraries and model weights are governed by separate license terms; see [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md).
 
 ## GUI Workflow
 
@@ -82,7 +82,7 @@ If the scene folder path contains non-ASCII characters, an extremely long path, 
 | --- | --- | --- |
 | 1. Frame Extraction | Extract equirectangular still frames from 360° video | Fixed interval + motion adjustment |
 | 2. Frame Review | Review extracted frames in single/thumbnail views and apply keep/drop decisions to CSV | Review low-quality candidates and unwanted frames |
-| 3. Mask Generation | Generate person, stitch seam, overexposure, sky, and custom masks | Person enabled, quality setting for 360° images |
+| 3. Mask Generation | Generate primary masks plus optional stitch seam, overexposure, and custom masks | YOLO/SAM2.1 primary mask, quality setting for 360° images |
 | 4. Export | Export 3DGS outputs from SfM results, or export COLMAP Rig viewpoint images | Metashape Import / LichtFeld / Full / Cube6 |
 
 ## Recommended Workflow: Metashape Route
@@ -90,9 +90,9 @@ If the scene folder path contains non-ASCII characters, an extremely long path, 
 1. Prepare 360° video from an Insta360 or similar camera.
 2. Extract SfM-friendly frames in Step 1.
 3. Review low-quality or unnecessary frames in Step 2.
-4. Generate masks for people, camera operators, tripods, and similar objects in Step 3. For 360° images, `YOLO Level 2 Quality` is the recommended starting point.
-5. If the bottom-view camera operator is missed, raise `Bottom Enhance` to `High` or `Max`.
-6. Enable stitch seam and overexposure masks when they match the source material.
+4. Generate masks for people, camera operators, tripods, sky, or similar SfM-unfriendly regions in Step 3. For 360° images with YOLO/SAM2.1, `YOLO Level 2 Quality` is the recommended starting point.
+5. If the bottom-view camera operator is missed, raise `Bottom Enhance` to `High` or `Max`, or test a Mask2Former/SAM3.1 primary mask with projection assist.
+6. Enable stitch seam, overexposure, and custom masks when they match the source material.
 7. Import the generated `masks/` folder into Metashape as per-image masks, then run SfM.
 8. Use Step 4 with the Metashape XML/PLY result to export training images, masks, and `transforms.json`.
 
@@ -105,7 +105,7 @@ If the scene folder path contains non-ASCII characters, an extremely long path, 
 
 ## Mask Preprocessing for Normal Images
 
-For normal video frames or still-camera image sequences placed in `images/`, choose `Image Type: Normal` in Step 3. This keeps YOLO/SAM and overexposure masking available while disabling stitch seam masking and 360° bottom re-detection.
+For normal video frames or still-camera image sequences placed in `images/`, choose `Image Type: Normal` in Step 3. This keeps primary masking and overexposure masking available while disabling stitch seam masking and 360° bottom re-detection.
 
 Use this when you want to exclude people, vehicles, blown-out regions, or similar areas before importing images into SfM software.
 
@@ -114,7 +114,7 @@ Use this when you want to exclude people, vehicles, blown-out regions, or simila
 - For 360° images, start with `YOLO Level 2 Quality`.
 - Use `1 Standard` for faster test runs.
 - If people leak through, try `3 Best` or raise `Expand` slightly.
-- When you find a miss in preview, adjust settings and use `Regenerate Current` to save only that image back to `masks/` using the currently enabled mask steps. In thumbnail mode, use `Ctrl` / `Shift` selection to regenerate multiple selected images together. Arrow keys move the visible thumbnail selection while in thumbnail mode.
+- When you find a miss in preview, adjust settings and use `Regenerate Current` to save only that image back to `masks/` using the current primary model and enabled extra masks. In thumbnail mode, use `Ctrl` / `Shift` selection to regenerate multiple selected images together. Arrow keys move the visible thumbnail selection while in thumbnail mode.
 - If only the bottom-view camera operator leaks through, try `Bottom Enhance` in this order: `Standard -> High -> Max`.
 - `Max` is slower and can mask extra floor or ground.
 - Stitch seam masks are useful when the seam position is stable in the equirectangular image. If FlowState stabilization, direction lock, AI stitching, or similar processing moves the seam, verify it in the preview before using it.
@@ -146,7 +146,7 @@ The GUI wraps these CLI engines, which can also be used directly.
 | `apply_frame_decisions.py` | Apply keep/drop decisions from CSV | [EN](doc/apply_frame_decisions.md) |
 | `review_frames.py` | Frame review GUI | [EN](doc/review_frames.md) |
 | `yolo_mask.py` | YOLO+SAM2.1 mask generation | [EN](doc/yolo_mask.md) |
-| `sky_mask.py` | Sky mask generation with Mask2Former ADE20K, plus local SAM3.1 prompt testing | [EN](doc/sky_mask.md) |
+| `sky_mask.py` | Semantic mask generation with Mask2Former ADE20K labels or local SAM3.1 prompts | [EN](doc/sky_mask.md) |
 | `stitch_mask.py` | Stitch seam mask generation | [EN](doc/stitch_mask.md) |
 | `overexposure_mask.py` | Overexposure mask generation | - |
 | `custom_mask.py` | AND-merge a user-provided PNG mask | [EN](doc/custom_mask.md) |
@@ -157,7 +157,7 @@ The GUI wraps these CLI engines, which can also be used directly.
 
 MIT License. See [LICENSE](LICENSE).
 
-Optional person and sky mask features use third-party libraries and model weights with separate license terms. See [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md).
+Optional primary mask features use third-party libraries and model weights with separate license terms. See [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md).
 
 Original code by [tetraface Inc.](https://github.com/tetraface)
 Fork extensions by [stechdrive](https://github.com/stechdrive)

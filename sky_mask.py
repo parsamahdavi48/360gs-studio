@@ -37,12 +37,16 @@ DEFAULT_SAM31_SCORE = 0.5
 DEFAULT_SAM31_INFERENCE_SIZE = 1008
 DEFAULT_INFERENCE_SIZE = 768
 DEFAULT_MODE = "hybrid"
+SUPPORTED_MODES = ("direct", "top", "bottom", "hybrid", "full")
 DEFAULT_EXPAND = 0
 DEFAULT_MIN_SCORE = 0.0
 DEFAULT_MIN_AREA_RATIO = 0.0005
+DEFAULT_MASK2FORMER_LABELS = ("sky",)
 
 _top_extract_cache: dict[tuple[int, int, int], tuple[np.ndarray, np.ndarray]] = {}
 _top_back_cache: dict[tuple[int, int, int], tuple[np.ndarray, np.ndarray, np.ndarray]] = {}
+_bottom_extract_cache: dict[tuple[int, int, int], tuple[np.ndarray, np.ndarray]] = {}
+_bottom_back_cache: dict[tuple[int, int, int], tuple[np.ndarray, np.ndarray, np.ndarray]] = {}
 
 
 @dataclass(frozen=True)
@@ -58,6 +62,8 @@ class SkyMaskOptions:
     add_ext: bool = False
     replace: bool = False
     sam_prompt: str = DEFAULT_SAM31_PROMPT
+    labels: tuple[str, ...] = DEFAULT_MASK2FORMER_LABELS
+    sam_prompts: tuple[str, ...] = ()
 
 
 @dataclass
@@ -109,6 +115,10 @@ class Mask2FormerSkySegmenter:
         self.model.to(self.device)
         self.model.eval()
         self.sky_label_id = self._find_label_id("sky")
+        self.label_name_to_id = {
+            str(label).strip().lower(): int(idx)
+            for idx, label in getattr(self.model.config, "id2label", {}).items()
+        }
 
     def _resolve_device(self, device: str) -> str:
         value = str(device).strip().lower()
@@ -128,8 +138,33 @@ class Mask2FormerSkySegmenter:
         raise RuntimeError(f"Mask2Former model does not expose a '{label_name}' label.")
 
     def detect_sky(self, bgr: np.ndarray, options: SkyMaskOptions) -> np.ndarray:
+        return self.detect_labels(bgr, options, labels=options.labels)
+
+    def _resolve_label_ids(self, labels: tuple[str, ...]) -> list[int]:
+        resolved: list[int] = []
+        available = getattr(self.model.config, "id2label", {})
+        for label in labels or DEFAULT_MASK2FORMER_LABELS:
+            text = str(label).strip()
+            if not text:
+                continue
+            if text.isdigit():
+                idx = int(text)
+                if idx not in {int(k) for k in available.keys()}:
+                    raise RuntimeError(f"Mask2Former model does not expose label id {idx}.")
+                resolved.append(idx)
+                continue
+            idx = self.label_name_to_id.get(text.lower())
+            if idx is None:
+                raise RuntimeError(f"Mask2Former model does not expose label '{text}'.")
+            resolved.append(idx)
+        if not resolved:
+            resolved.append(self.sky_label_id)
+        return sorted(set(resolved))
+
+    def detect_labels(self, bgr: np.ndarray, options: SkyMaskOptions, *, labels: tuple[str, ...]) -> np.ndarray:
         rgb = bgr_to_rgb8(bgr)
         pil = Image.fromarray(rgb)
+        label_ids = self._resolve_label_ids(labels)
         inputs = self.processor(
             images=pil,
             return_tensors="pt",
@@ -150,12 +185,13 @@ class Mask2FormerSkySegmenter:
             class_probs = class_queries.softmax(dim=-1)[..., :-1]
             mask_probs = mask_queries.sigmoid()
             scores = self.torch.einsum("bqc,bqhw->bchw", class_probs, mask_probs)[0]
-            labels = scores.argmax(dim=0)
-            sky_scores = scores[self.sky_label_id]
-            sky = labels == self.sky_label_id
+            predicted_labels = scores.argmax(dim=0)
+            selected_ids = self.torch.tensor(label_ids, device=predicted_labels.device)
+            selected = (predicted_labels[..., None] == selected_ids).any(dim=-1)
+            selected_scores = scores[label_ids].amax(dim=0)
             if options.min_score > 0.0:
-                sky = sky & (sky_scores >= float(options.min_score))
-            sky_small = sky.detach().to("cpu").numpy().astype(np.uint8)
+                selected = selected & (selected_scores >= float(options.min_score))
+            sky_small = selected.detach().to("cpu").numpy().astype(np.uint8)
         h, w = bgr.shape[:2]
         if sky_small.shape != (h, w):
             sky_small = cv2.resize(sky_small, (w, h), interpolation=cv2.INTER_NEAREST)
@@ -225,10 +261,16 @@ class Sam31SkySegmenter:
         return self._processor
 
     def detect_sky(self, bgr: np.ndarray, options: SkyMaskOptions) -> np.ndarray:
+        prompts = options.sam_prompts or (options.sam_prompt.strip() or DEFAULT_SAM31_PROMPT,)
+        return self.detect_prompts(bgr, options, prompts=tuple(prompts))
+
+    def detect_prompts(self, bgr: np.ndarray, options: SkyMaskOptions, *, prompts: tuple[str, ...]) -> np.ndarray:
         rgb = bgr_to_rgb8(bgr)
         pil = Image.fromarray(rgb)
         processor = self._processor_for_options(options)
-        prompt = options.sam_prompt.strip() or DEFAULT_SAM31_PROMPT
+        cleaned_prompts = tuple(dict.fromkeys(prompt.strip() for prompt in prompts if prompt.strip()))
+        if not cleaned_prompts:
+            cleaned_prompts = (DEFAULT_SAM31_PROMPT,)
         autocast = (
             self.torch.autocast(device_type="cuda", dtype=self.torch.bfloat16)
             if self.device == "cuda"
@@ -236,14 +278,28 @@ class Sam31SkySegmenter:
         )
         with self.torch.inference_mode(), autocast:
             state = processor.set_image(pil)
-            output = processor.set_text_prompt(state=state, prompt=prompt)
-            masks = output.get("masks")
-            if masks is None or masks.numel() == 0:
-                return np.zeros(bgr.shape[:2], dtype=bool)
-            masks = masks.detach().to("cpu")
-            if masks.ndim == 4:
-                masks = masks[:, 0]
-            sky = masks.bool().any(dim=0).numpy()
+            sky = np.zeros(bgr.shape[:2], dtype=bool)
+            for prompt in cleaned_prompts:
+                output = processor.set_text_prompt(state=state, prompt=prompt)
+                masks = output.get("masks")
+                if masks is None or masks.numel() == 0:
+                    continue
+                masks = masks.detach().to("cpu")
+                if masks.ndim == 4:
+                    masks = masks[:, 0]
+                if masks.ndim == 2:
+                    prompt_mask = masks.bool().numpy()
+                elif masks.ndim == 3:
+                    prompt_mask = masks.bool().any(dim=0).numpy()
+                else:
+                    continue
+                if prompt_mask.shape != bgr.shape[:2]:
+                    prompt_mask = cv2.resize(
+                        prompt_mask.astype(np.uint8),
+                        (bgr.shape[1], bgr.shape[0]),
+                        interpolation=cv2.INTER_NEAREST,
+                    ).astype(bool)
+                sky |= prompt_mask
         return sky.astype(bool)
 
 
@@ -341,18 +397,25 @@ def mask_output_path_for_image(image_path: Path, images_root: Path, masks_dir: P
 def detect_sky_mask(image: np.ndarray, segmenter: Any, options: SkyMaskOptions) -> np.ndarray:
     sky = np.zeros(image.shape[:2], dtype=bool)
     mode = options.mode
-    if options.projection != "equirect" and mode in {"top", "hybrid"}:
+    if options.projection != "equirect" and mode in {"top", "bottom", "hybrid", "full"}:
         mode = "direct"
 
-    if mode in {"direct", "hybrid"}:
+    if mode in {"direct", "hybrid", "full"}:
         sky |= segmenter.detect_sky(image, options)
 
-    if mode in {"top", "hybrid"}:
+    if mode in {"top", "hybrid", "full"}:
         h, w = image.shape[:2]
         view_size = options.view_size or auto_view_size(w, h)
         top_view = get_top_from_pano(image, view_size)
         top_sky = segmenter.detect_sky(top_view, options)
         sky |= back_to_pano_from_top(top_sky.astype(np.uint8) * 255, w, h) > 0
+
+    if mode in {"bottom", "full"}:
+        h, w = image.shape[:2]
+        view_size = options.view_size or auto_view_size(w, h)
+        bottom_view = get_bottom_from_pano(image, view_size)
+        bottom_sky = segmenter.detect_sky(bottom_view, options)
+        sky |= back_to_pano_from_bottom(bottom_sky.astype(np.uint8) * 255, w, h) > 0
 
     sky = postprocess_sky_components(
         sky,
@@ -368,30 +431,49 @@ def auto_view_size(width: int, height: int) -> int:
 
 
 def get_top_from_pano(pano_img: np.ndarray, size: int) -> np.ndarray:
+    return get_cube_pole_from_pano(pano_img, size, pole="top")
+
+
+def get_bottom_from_pano(pano_img: np.ndarray, size: int) -> np.ndarray:
+    return get_cube_pole_from_pano(pano_img, size, pole="bottom")
+
+
+def get_cube_pole_from_pano(pano_img: np.ndarray, size: int, *, pole: str) -> np.ndarray:
     h, w = pano_img.shape[:2]
     key = (w, h, int(size))
-    cached = _top_extract_cache.get(key)
+    cache = _top_extract_cache if pole == "top" else _bottom_extract_cache
+    cached = cache.get(key)
     if cached is None:
         u = np.linspace(-1, 1, int(size), dtype=np.float32)
         v = np.linspace(-1, 1, int(size), dtype=np.float32)
         u_grid, v_grid = np.meshgrid(u, v)
         x = u_grid
         y = v_grid
-        z = np.ones_like(u_grid)
+        z = np.ones_like(u_grid) if pole == "top" else -np.ones_like(u_grid)
         lon = np.arctan2(y, x)
         lat = np.arctan2(z, np.sqrt(x**2 + y**2))
         map_x = ((lon + np.pi) / (2 * np.pi) * (w - 1)).astype(np.float32)
         map_y = ((np.pi / 2 - lat) / np.pi * (h - 1)).astype(np.float32)
-        _top_extract_cache[key] = (map_x, map_y)
+        cache[key] = (map_x, map_y)
     else:
         map_x, map_y = cached
     return cv2.remap(pano_img, map_x, map_y, cv2.INTER_LINEAR, borderMode=cv2.BORDER_WRAP)
 
 
 def back_to_pano_from_top(top_mask: np.ndarray, pano_width: int, pano_height: int) -> np.ndarray:
-    size = top_mask.shape[0]
+    return back_to_pano_from_cube_pole(top_mask, pano_width, pano_height, pole="top")
+
+
+def back_to_pano_from_bottom(bottom_mask: np.ndarray, pano_width: int, pano_height: int) -> np.ndarray:
+    return back_to_pano_from_cube_pole(bottom_mask, pano_width, pano_height, pole="bottom")
+
+
+def back_to_pano_from_cube_pole(pole_mask: np.ndarray, pano_width: int, pano_height: int, *, pole: str) -> np.ndarray:
+    sign = 1.0 if pole == "top" else -1.0
+    size = pole_mask.shape[0]
     key = (int(pano_width), int(pano_height), int(size))
-    cached = _top_back_cache.get(key)
+    cache = _top_back_cache if pole == "top" else _bottom_back_cache
+    cached = cache.get(key)
     if cached is None:
         lon = np.linspace(-np.pi, np.pi, pano_width, dtype=np.float32)
         lat = np.linspace(np.pi / 2, -np.pi / 2, pano_height, dtype=np.float32)
@@ -400,20 +482,20 @@ def back_to_pano_from_top(top_mask: np.ndarray, pano_width: int, pano_height: in
         y = np.cos(lat_grid) * np.sin(lon_grid)
         z = np.sin(lat_grid)
         abs_z = np.abs(z)
-        is_top = (z > 0) & (abs_z >= np.abs(x)) & (abs_z >= np.abs(y))
+        is_pole = (sign * z > 0) & (abs_z >= np.abs(x)) & (abs_z >= np.abs(y))
         u = np.zeros_like(z)
         v = np.zeros_like(z)
-        u[is_top] = x[is_top] / z[is_top]
-        v[is_top] = y[is_top] / z[is_top]
+        u[is_pole] = x[is_pole] / abs_z[is_pole]
+        v[is_pole] = y[is_pole] / abs_z[is_pole]
         map_x = ((u + 1) / 2 * (size - 1)).astype(np.float32)
         map_y = ((v + 1) / 2 * (size - 1)).astype(np.float32)
-        _top_back_cache[key] = (map_x, map_y, is_top)
+        cache[key] = (map_x, map_y, is_pole)
     else:
-        map_x, map_y, is_top = cached
+        map_x, map_y, is_pole = cached
 
-    mapped = cv2.remap(top_mask, map_x, map_y, cv2.INTER_NEAREST, borderMode=cv2.BORDER_CONSTANT, borderValue=0)
+    mapped = cv2.remap(pole_mask, map_x, map_y, cv2.INTER_NEAREST, borderMode=cv2.BORDER_CONSTANT, borderValue=0)
     result = np.zeros((pano_height, pano_width), dtype=np.uint8)
-    result[is_top] = mapped[is_top]
+    result[is_pole] = mapped[is_pole]
     return result
 
 
@@ -511,7 +593,8 @@ def run(
         f"expand={options.expand_px}",
         f"top_connected={options.top_connected}",
         f"replace={options.replace}",
-        f"sam_prompt={options.sam_prompt}",
+        f"labels={','.join(options.labels)}",
+        f"sam_prompts={','.join(options.sam_prompts or (options.sam_prompt,))}",
         flush=True,
     )
     segmenter = create_sky_segmenter(backend, model_source, device=device)
@@ -544,7 +627,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--model-dir", default=None, help="Local model directory or checkpoint override")
     parser.add_argument("--device", choices=("auto", "cpu", "cuda"), default="auto", help="Inference device")
     parser.add_argument("--projection", choices=("equirect", "normal"), default="equirect")
-    parser.add_argument("--mode", choices=("direct", "top", "hybrid"), default=DEFAULT_MODE)
+    parser.add_argument("--mode", choices=SUPPORTED_MODES, default=DEFAULT_MODE)
     parser.add_argument("--inference-size", type=int, default=DEFAULT_INFERENCE_SIZE)
     parser.add_argument("--view-size", type=int, default=0, help="Top-view face size for equirect mode (0=auto)")
     parser.add_argument("--min-score", type=float, default=DEFAULT_MIN_SCORE)
@@ -553,8 +636,24 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--no-top-connected", action="store_true", help="Keep all sky components, not only top-connected")
     parser.add_argument("--add-ext", action="store_true", help="Append .png to the original filename")
     parser.add_argument("--replace", action="store_true", help="Ignore existing masks and write sky-only masks")
-    parser.add_argument("--sam-prompt", default=DEFAULT_SAM31_PROMPT, help="Text prompt for the SAM3.1 backend")
+    parser.add_argument(
+        "--labels",
+        default=",".join(DEFAULT_MASK2FORMER_LABELS),
+        help="Comma-separated Mask2Former label names or ids",
+    )
+    parser.add_argument(
+        "--sam-prompt",
+        action="append",
+        default=None,
+        help="Text prompt for the SAM3.1 backend; can be passed multiple times",
+    )
     return parser.parse_args()
+
+
+def split_csv_values(value: str | None) -> tuple[str, ...]:
+    if not value:
+        return ()
+    return tuple(part.strip() for part in str(value).split(",") if part.strip())
 
 
 def main() -> int:
@@ -583,7 +682,9 @@ def main() -> int:
         top_connected=not bool(args.no_top_connected),
         add_ext=bool(args.add_ext),
         replace=bool(args.replace),
-        sam_prompt=str(args.sam_prompt),
+        sam_prompt=(args.sam_prompt[0] if args.sam_prompt else DEFAULT_SAM31_PROMPT),
+        sam_prompts=tuple(args.sam_prompt or ()),
+        labels=split_csv_values(str(args.labels)),
     )
     try:
         result = run(

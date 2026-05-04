@@ -207,14 +207,13 @@ def test_mask_numeric_labels_share_field_tooltips() -> None:
     assert step.yolo_bottom_enhance_label.toolTip() == i18n.tip("YOLO_BOTTOM_ENHANCE")
     assert _label(step, i18n.STITCH_BOUNDARY_WIDTH).toolTip() == i18n.tip("STITCH_BOUNDARY_WIDTH")
     assert _label(step, i18n.OVEREXPOSURE_THRESHOLD).toolTip() == i18n.tip("OVEREXPOSURE_THRESHOLD")
-    assert _label(step, i18n.t("SKY_MODEL")).toolTip() == i18n.tip("SKY_MODEL")
-    assert _label(step, i18n.t("SKY_EXPAND")).toolTip() == i18n.tip("SKY_EXPAND")
+    assert _label(step, i18n.t("SKY_MODE")).toolTip() == i18n.tip("SKY_MODE")
+    assert step.sky_min_area_edit.toolTip() == i18n.tip("SKY_MIN_AREA")
     assert step.sky_top_connected_cb.toolTip() == i18n.tip("SKY_TOP_CONNECTED")
-    assert step.mask_settings_tabs.count() == 4
+    assert step.mask_settings_tabs.count() == 3
     assert [step.mask_settings_tabs.tabText(i) for i in range(step.mask_settings_tabs.count())] == [
         i18n.t("MASK_TAB_YOLO"),
         i18n.t("MASK_TAB_STITCH_OVEREXP"),
-        i18n.t("MASK_TAB_SKY"),
         i18n.t("MASK_TAB_CUSTOM"),
     ]
 
@@ -233,7 +232,8 @@ def test_mask_yolo_compact_row_preserves_width_in_english() -> None:
         step = MaskStep(Path.cwd())
         content_width = SETTINGS_PANE_WIDTH - SETTINGS_PANE_MARGINS[2]
         assert step.person_backend_combo.itemText(0) == "YOLO/SAM2.1"
-        assert step.person_backend_combo.itemText(1) == "SAM3.1"
+        assert step.person_backend_combo.itemText(1) == "Mask2Former"
+        assert step.person_backend_combo.itemText(2) == "SAM3.1"
         assert step.yolo_settings_row.sizeHint().width() <= content_width
         assert step.yolo_bottom_settings_row.sizeHint().width() <= content_width
         assert step.yolo_bottom_enhance_combo.itemText(1) == "High"

@@ -103,7 +103,8 @@ def test_mask_step_yolo_level_and_expand_share_compact_row() -> None:
     assert step.yolo_level_combo.currentIndex() == 2
     assert step.person_backend_label.toolTip() == i18n.tip("PERSON_MODEL")
     assert step.person_backend_combo.itemText(0) == i18n.t("PERSON_MODEL_YOLO_SAM")
-    assert step.person_backend_combo.itemText(1) == i18n.t("PERSON_MODEL_SAM31")
+    assert step.person_backend_combo.itemText(1) == i18n.t("SKY_MODEL_MASK2FORMER")
+    assert step.person_backend_combo.itemText(2) == i18n.t("PERSON_MODEL_SAM31")
     assert step.yolo_level_label.toolTip() == i18n.tip("YOLO_LEVEL")
     assert step.yolo_expand_label.toolTip() == i18n.tip("YOLO_EXPAND")
     assert step.yolo_bottom_enhance_label.toolTip() == i18n.tip("YOLO_BOTTOM_ENHANCE")
@@ -188,7 +189,7 @@ def test_mask_step_refreshes_preview_after_successful_mask_generation(tmp_path: 
     assert step.mask_preview.image_label._source_pixmap is not None
 
 
-def test_mask_step_mask_preview_from_thumbnails_switches_to_single(tmp_path: Path) -> None:
+def test_mask_step_mask_preview_from_thumbnails_switches_to_single(tmp_path: Path, monkeypatch) -> None:
     _app()
     scene = tmp_path
     images = scene / "images"
@@ -199,9 +200,10 @@ def test_mask_step_mask_preview_from_thumbnails_switches_to_single(tmp_path: Pat
     cv2.imwrite(str(image_path), image)
     step = MaskStep(Path.cwd())
     step.set_scene_dir(str(scene))
-    step.run_yolo_cb.setChecked(False)
     step.run_overexp_cb.setChecked(True)
     step.mask_preview.set_preview_mode("thumbnails")
+    monkeypatch.setattr(step, "_confirm_yolo_sam_license_notice", lambda: True)
+    monkeypatch.setattr(step, "_build_image_external_commands", lambda *_args, **_kwargs: [])
 
     step._run_mask_preview()
 
@@ -211,7 +213,7 @@ def test_mask_step_mask_preview_from_thumbnails_switches_to_single(tmp_path: Pat
     assert not (scene / "masks" / "frame_0001.png").exists()
 
 
-def test_mask_step_mask_preview_button_clears_active_temporary_preview(tmp_path: Path) -> None:
+def test_mask_step_mask_preview_button_clears_active_temporary_preview(tmp_path: Path, monkeypatch) -> None:
     _app()
     scene = tmp_path
     images = scene / "images"
@@ -222,8 +224,9 @@ def test_mask_step_mask_preview_button_clears_active_temporary_preview(tmp_path:
     cv2.imwrite(str(image_path), image)
     step = MaskStep(Path.cwd())
     step.set_scene_dir(str(scene))
-    step.run_yolo_cb.setChecked(False)
     step.run_overexp_cb.setChecked(True)
+    monkeypatch.setattr(step, "_confirm_yolo_sam_license_notice", lambda: True)
+    monkeypatch.setattr(step, "_build_image_external_commands", lambda *_args, **_kwargs: [])
 
     step._run_mask_preview()
     assert step.mask_preview.yolo_preview_btn.text() == i18n.t("MASK_PREVIEW_CLEAR_BUTTON")
@@ -300,7 +303,7 @@ def test_mask_step_confirms_yolo_commands(monkeypatch) -> None:
     assert calls == 1
 
 
-def test_mask_step_confirms_sky_commands(monkeypatch) -> None:
+def test_mask_step_confirms_semantic_primary_commands(monkeypatch) -> None:
     _app()
     step = MaskStep(Path.cwd())
     calls = 0
@@ -311,25 +314,26 @@ def test_mask_step_confirms_sky_commands(monkeypatch) -> None:
         return False
 
     monkeypatch.setattr(step, "_confirm_sky_license_notice", fake_confirm)
+    step.person_backend_combo.setCurrentIndex(1)
 
-    assert not step.confirm_commands([("sky", ["cmd"])])
+    assert not step.confirm_commands([("yolo", ["cmd"])])
     assert calls == 1
     assert step.confirm_commands([("stitch", ["cmd"])])
     assert calls == 1
 
 
-def test_mask_step_disables_generation_when_no_mask_task_selected(tmp_path: Path) -> None:
+def test_mask_step_primary_mask_generation_is_always_selected(tmp_path: Path) -> None:
     _app()
     scene = _write_scene(tmp_path, drop_exists=False)
     step = MaskStep(Path.cwd())
     step.set_scene_dir(str(scene))
 
-    step.run_yolo_cb.setChecked(False)
     step.run_stitch_cb.setChecked(False)
     step.run_overexp_cb.setChecked(False)
 
-    assert not step.primary_action_enabled()
-    assert step.primary_action_tooltip() == i18n.t("MASK_TASK_REQUIRED")
+    assert step.primary_action_enabled()
+    commands = step.build_commands()
+    assert [phase for phase, _cmd in commands] == ["yolo"]
 
 
 def test_mask_step_custom_checkbox_opens_picker_and_cancels_cleanly(tmp_path: Path, monkeypatch) -> None:
@@ -352,7 +356,6 @@ def test_mask_step_custom_mask_builds_final_command(tmp_path: Path) -> None:
     cv2.imwrite(str(custom_path), np.full((8, 8), 255, dtype=np.uint8))
     step = MaskStep(Path.cwd())
     step.set_scene_dir(str(scene))
-    step.run_yolo_cb.setChecked(False)
     step.run_stitch_cb.setChecked(False)
     step.run_overexp_cb.setChecked(False)
 
@@ -360,35 +363,32 @@ def test_mask_step_custom_mask_builds_final_command(tmp_path: Path) -> None:
     commands = step.build_commands()
 
     assert step.run_custom_cb.isChecked()
-    assert commands == [
-        (
-            "custom",
-            [
-                sys.executable,
-                "-u",
-                str(Path.cwd() / "custom_mask.py"),
-                str(scene / "images"),
-                str(scene / "masks"),
-                str(custom_path),
-                "--replace",
-            ],
-        )
-    ]
+    assert [phase for phase, _cmd in commands] == ["yolo", "custom"]
+    assert commands[1] == (
+        "custom",
+        [
+            sys.executable,
+            "-u",
+            str(Path.cwd() / "custom_mask.py"),
+            str(scene / "images"),
+            str(scene / "masks"),
+            str(custom_path),
+        ],
+    )
 
 
-def test_mask_step_sky_mask_builds_final_command(tmp_path: Path) -> None:
+def test_mask_step_mask2former_primary_builds_final_command(tmp_path: Path) -> None:
     _app()
     scene = _write_scene(tmp_path, drop_exists=False)
     step = MaskStep(Path.cwd())
     step.set_scene_dir(str(scene))
-    step.run_yolo_cb.setChecked(False)
     step.run_stitch_cb.setChecked(False)
     step.run_overexp_cb.setChecked(False)
-    step.run_sky_cb.setChecked(True)
+    step.person_backend_combo.setCurrentIndex(1)
 
     commands = step.build_commands()
 
-    assert commands[0][0] == "sky"
+    assert commands[0][0] == "yolo"
     cmd = commands[0][1]
     assert cmd[:5] == [
         sys.executable,
@@ -399,12 +399,13 @@ def test_mask_step_sky_mask_builds_final_command(tmp_path: Path) -> None:
     ]
     assert cmd[cmd.index("--backend") + 1] == "mask2former"
     assert cmd[cmd.index("--projection") + 1] == "equirect"
-    assert cmd[cmd.index("--mode") + 1] == "hybrid"
+    assert cmd[cmd.index("--mode") + 1] == "full"
     assert cmd[cmd.index("--inference-size") + 1] == "768"
+    assert cmd[cmd.index("--labels") + 1] == "sky,person"
     assert "--replace" in cmd
 
 
-def test_mask_step_sky_mask_can_select_sam31_backend(tmp_path: Path, monkeypatch) -> None:
+def test_mask_step_sam31_primary_builds_prompt_command(tmp_path: Path, monkeypatch) -> None:
     _app()
     scene = _write_scene(tmp_path, drop_exists=False)
     step = MaskStep(Path.cwd())
@@ -412,18 +413,18 @@ def test_mask_step_sky_mask_can_select_sam31_backend(tmp_path: Path, monkeypatch
     checkpoint = scene / "sam3.1_multiplex.pt"
     checkpoint.write_bytes(b"checkpoint")
     monkeypatch.setattr(step, "_sam31_checkpoint_path", lambda: checkpoint)
-    step._update_sky_backend_availability()
-    step.run_yolo_cb.setChecked(False)
+    step._update_person_backend_availability()
     step.run_stitch_cb.setChecked(False)
     step.run_overexp_cb.setChecked(False)
-    step.run_sky_cb.setChecked(True)
-    step.sky_backend_combo.setCurrentIndex(1)
+    step.person_backend_combo.setCurrentIndex(2)
 
     commands = step.build_commands()
 
     cmd = commands[0][1]
     assert cmd[cmd.index("--backend") + 1] == "sam31"
     assert cmd[cmd.index("--inference-size") + 1] == "1008"
+    prompt_args = [cmd[idx + 1] for idx, value in enumerate(cmd) if value == "--sam-prompt"]
+    assert prompt_args == ["person", "sky"]
 
 
 def test_mask_step_person_mask_can_select_sam31_backend(tmp_path: Path, monkeypatch) -> None:
@@ -436,7 +437,7 @@ def test_mask_step_person_mask_can_select_sam31_backend(tmp_path: Path, monkeypa
     monkeypatch.setattr(step, "_sam31_checkpoint_path", lambda: checkpoint)
     step._update_person_backend_availability()
 
-    step.person_backend_combo.setCurrentIndex(1)
+    step.person_backend_combo.setCurrentIndex(2)
     commands = step.build_commands()
 
     assert [phase for phase, _cmd in commands] == ["yolo"]
@@ -449,9 +450,10 @@ def test_mask_step_person_mask_can_select_sam31_backend(tmp_path: Path, monkeypa
         str(scene / "masks"),
     ]
     assert cmd[cmd.index("--backend") + 1] == "sam31"
-    assert cmd[cmd.index("--mode") + 1] == "direct"
+    assert cmd[cmd.index("--mode") + 1] == "full"
     assert cmd[cmd.index("--inference-size") + 1] == "1008"
-    assert cmd[cmd.index("--sam-prompt") + 1] == "person"
+    prompt_args = [cmd[idx + 1] for idx, value in enumerate(cmd) if value == "--sam-prompt"]
+    assert prompt_args == ["person", "sky"]
     assert cmd[cmd.index("--min-score") + 1] == "0.5"
     assert "--no-top-connected" in cmd
     assert "--replace" in cmd
@@ -459,42 +461,40 @@ def test_mask_step_person_mask_can_select_sam31_backend(tmp_path: Path, monkeypa
     assert not step.yolo_bottom_enhance_combo.isEnabled()
     assert not step.yolo_class_list_section.isEnabled()
     assert step.yolo_expand_edit.isEnabled()
+    assert not step.sam_prompt_section.isHidden()
 
 
-def test_mask_step_stitch_only_initializes_masks_before_merging(tmp_path: Path) -> None:
+def test_mask_step_stitch_runs_after_primary_mask(tmp_path: Path) -> None:
     _app()
     scene = _write_scene(tmp_path, drop_exists=False)
     step = MaskStep(Path.cwd())
     step.set_scene_dir(str(scene))
-    step.run_yolo_cb.setChecked(False)
     step.run_stitch_cb.setChecked(True)
     step.run_overexp_cb.setChecked(False)
 
     commands = step.build_commands()
 
-    assert [phase for phase, _cmd in commands] == ["init_masks", "stitch"]
-    assert commands[0][1][:5] == [
+    assert [phase for phase, _cmd in commands] == ["yolo", "stitch"]
+    assert commands[1][1][:4] == [
         sys.executable,
         "-u",
-        str(Path.cwd() / "init_masks.py"),
-        str(scene / "images"),
+        str(Path.cwd() / "stitch_mask.py"),
         str(scene / "masks"),
     ]
 
 
-def test_mask_step_overexposure_only_replaces_existing_masks(tmp_path: Path) -> None:
+def test_mask_step_overexposure_runs_after_primary_mask(tmp_path: Path) -> None:
     _app()
     scene = _write_scene(tmp_path, drop_exists=False)
     step = MaskStep(Path.cwd())
     step.set_scene_dir(str(scene))
-    step.run_yolo_cb.setChecked(False)
     step.run_stitch_cb.setChecked(False)
     step.run_overexp_cb.setChecked(True)
 
     commands = step.build_commands()
 
-    assert [phase for phase, _cmd in commands] == ["overexposure"]
-    assert "--replace" in commands[0][1]
+    assert [phase for phase, _cmd in commands] == ["yolo", "overexposure"]
+    assert "--replace" not in commands[1][1]
 
 
 def test_mask_step_allows_generation_when_drop_images_are_removed(tmp_path: Path) -> None:
@@ -532,7 +532,7 @@ def test_mask_step_current_reprocess_command_targets_preview_image_subfolder(tmp
     assert "--add-ext" not in cmd
 
 
-def test_mask_step_current_reprocess_external_commands_include_yolo_then_sky(tmp_path: Path) -> None:
+def test_mask_step_current_reprocess_external_commands_target_preview_image_subfolder(tmp_path: Path) -> None:
     _app()
     scene = tmp_path
     images = scene / "images" / "extra"
@@ -541,16 +541,15 @@ def test_mask_step_current_reprocess_external_commands_include_yolo_then_sky(tmp
     cv2.imwrite(str(image_path), np.full((16, 32, 3), 180, dtype=np.uint8))
     step = MaskStep(Path.cwd())
     step.set_scene_dir(str(scene))
-    step.run_sky_cb.setChecked(True)
 
     commands = step._build_current_reprocess_external_commands(image_path)
 
-    assert [phase for phase, _cmd in commands] == ["yolo", "sky"]
-    assert commands[1][1][3] == str(image_path)
-    assert commands[1][1][4] == str(scene / "masks" / "extra")
+    assert [phase for phase, _cmd in commands] == ["yolo"]
+    assert commands[0][1][3] == str(image_path)
+    assert commands[0][1][4] == str(scene / "masks" / "extra")
 
 
-def test_mask_step_current_reprocess_sky_only_replaces_existing_mask(tmp_path: Path) -> None:
+def test_mask_step_current_reprocess_mask2former_uses_primary_replace(tmp_path: Path) -> None:
     _app()
     scene = tmp_path
     images = scene / "images"
@@ -559,12 +558,12 @@ def test_mask_step_current_reprocess_sky_only_replaces_existing_mask(tmp_path: P
     cv2.imwrite(str(image_path), np.full((16, 32, 3), 180, dtype=np.uint8))
     step = MaskStep(Path.cwd())
     step.set_scene_dir(str(scene))
-    step.run_yolo_cb.setChecked(False)
-    step.run_sky_cb.setChecked(True)
+    step.person_backend_combo.setCurrentIndex(1)
 
     commands = step._build_current_reprocess_external_commands(image_path)
 
-    assert [phase for phase, _cmd in commands] == ["sky"]
+    assert [phase for phase, _cmd in commands] == ["yolo"]
+    assert commands[0][1][commands[0][1].index("--backend") + 1] == "mask2former"
     assert "--replace" in commands[0][1]
 
 
@@ -579,7 +578,6 @@ def test_mask_step_current_reprocess_can_apply_overexposure_only(tmp_path: Path)
     cv2.imwrite(str(image_path), image)
     step = MaskStep(Path.cwd())
     step.set_scene_dir(str(scene))
-    step.run_yolo_cb.setChecked(False)
     step.run_stitch_cb.setChecked(False)
     step.run_overexp_cb.setChecked(True)
 
@@ -607,7 +605,6 @@ def test_mask_step_current_reprocess_can_apply_custom_only(tmp_path: Path) -> No
     cv2.imwrite(str(custom_path), custom)
     step = MaskStep(Path.cwd())
     step.set_scene_dir(str(scene))
-    step.run_yolo_cb.setChecked(False)
     step.run_stitch_cb.setChecked(False)
     step.run_overexp_cb.setChecked(False)
     step._set_custom_mask_path(custom_path)
@@ -623,7 +620,7 @@ def test_mask_step_current_reprocess_can_apply_custom_only(tmp_path: Path) -> No
     assert mask[12, 16] == 255
 
 
-def test_mask_step_reprocesses_selected_thumbnail_images_only(tmp_path: Path) -> None:
+def test_mask_step_reprocesses_selected_thumbnail_images_only(tmp_path: Path, monkeypatch) -> None:
     _app()
     scene = tmp_path
     images = scene / "images"
@@ -638,10 +635,11 @@ def test_mask_step_reprocesses_selected_thumbnail_images_only(tmp_path: Path) ->
         image_paths.append(image_path)
     step = MaskStep(Path.cwd())
     step.set_scene_dir(str(scene))
-    step.run_yolo_cb.setChecked(False)
     step.run_stitch_cb.setChecked(False)
     step.run_overexp_cb.setChecked(True)
     step.mask_preview.set_preview_mode("thumbnails")
+    monkeypatch.setattr(step, "_confirm_yolo_sam_license_notice", lambda: True)
+    monkeypatch.setattr(step, "_build_current_reprocess_external_commands", lambda _image_path: [])
 
     selection = step.mask_preview.thumbnail_view.selectionModel()
     selection.select(step.mask_preview.thumbnail_model.index(0, 0), QItemSelectionModel.ClearAndSelect)

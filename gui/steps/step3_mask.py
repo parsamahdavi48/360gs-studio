@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+import json
 import math
 import re
 import shutil
@@ -24,6 +25,7 @@ from PySide6.QtWidgets import (
     QGridLayout,
     QHBoxLayout,
     QLabel,
+    QLineEdit,
     QMessageBox,
     QPushButton,
     QScrollArea,
@@ -74,10 +76,43 @@ _STITCH_BOUNDARY_DEFAULT = 5.0
 _YOLO_EXPAND_MIN = -16
 _YOLO_EXPAND_MAX = 32
 _YOLO_EXPAND_DEFAULT = 2
-_PERSON_BACKENDS = ("yolo_sam", "sam31")
+_PERSON_BACKENDS = ("yolo_sam", "mask2former", "sam31")
 _PERSON_SAM31_PROMPT = "person"
 _PERSON_SAM31_INFERENCE_SIZE = "1008"
 _PERSON_SAM31_MIN_SCORE = "0.5"
+_SAM31_PROMPT_PRESETS: tuple[tuple[str, str], ...] = (
+    ("person", "人物"),
+    ("sky", "空"),
+    ("tripod", "三脚"),
+    ("hand", "手"),
+    ("camera", "カメラ"),
+    ("selfie stick", "自撮り棒"),
+    ("car", "車"),
+    ("animal", "動物"),
+    ("reflection", "反射"),
+)
+_ADE20K_FALLBACK_CLASSES = (
+    "wall", "building", "sky", "floor", "tree", "ceiling", "road", "bed ", "windowpane",
+    "grass", "cabinet", "sidewalk", "person", "earth", "door", "table", "mountain",
+    "plant", "curtain", "chair", "car", "water", "painting", "sofa", "shelf", "house",
+    "sea", "mirror", "rug", "field", "armchair", "seat", "fence", "desk", "rock",
+    "wardrobe", "lamp", "bathtub", "railing", "cushion", "base", "box", "column",
+    "signboard", "chest of drawers", "counter", "sand", "sink", "skyscraper",
+    "fireplace", "refrigerator", "grandstand", "path", "stairs", "runway", "case",
+    "pool table", "pillow", "screen door", "stairway", "river", "bridge", "bookcase",
+    "blind", "coffee table", "toilet", "flower", "book", "hill", "bench", "countertop",
+    "stove", "palm", "kitchen island", "computer", "swivel chair", "boat", "bar",
+    "arcade machine", "hovel", "bus", "towel", "light", "truck", "tower", "chandelier",
+    "awning", "streetlight", "booth", "television receiver", "airplane", "dirt track",
+    "apparel", "pole", "land", "bannister", "escalator", "ottoman", "bottle", "buffet",
+    "poster", "stage", "van", "ship", "fountain", "conveyer belt", "canopy", "washer",
+    "plaything", "swimming pool", "stool", "barrel", "basket", "waterfall", "tent",
+    "bag", "minibike", "cradle", "oven", "ball", "food", "step", "tank", "trade name",
+    "microwave", "pot", "animal", "bicycle", "lake", "dishwasher", "screen", "blanket",
+    "sculpture", "hood", "sconce", "vase", "traffic light", "tray", "ashcan", "fan",
+    "pier", "crt screen", "plate", "monitor", "bulletin board", "shower", "radiator",
+    "glass", "clock", "flag",
+)
 _YOLO_BOTTOM_PRESETS: tuple[tuple[str, list[str]], ...] = (
     ("standard", []),
     (
@@ -126,6 +161,19 @@ _YOLO_SAM_NOTICE_VERSION = 3
 _YOLO_SAM_NOTICE_KEY = "yolo_sam_models_ack_version"
 _SKY_NOTICE_VERSION = 2
 _SKY_NOTICE_KEY = "sky_models_ack_version"
+
+
+def _ade20k_class_names(base_dir: Path) -> tuple[str, ...]:
+    config_path = base_dir / "models" / "mask2former-swin-large-ade-semantic" / "config.json"
+    if config_path.is_file():
+        try:
+            config = json.loads(config_path.read_text(encoding="utf-8"))
+            labels = config.get("id2label", {})
+            if labels:
+                return tuple(str(labels[str(idx)]) for idx in range(len(labels)))
+        except Exception:
+            pass
+    return _ADE20K_FALLBACK_CLASSES
 
 
 class MaskStep(BaseStepWidget):
@@ -247,15 +295,10 @@ class MaskStep(BaseStepWidget):
         external_layout.addLayout(external_button_row)
         layout.addWidget(self.external_images_panel)
 
-        # --- 実行対象 + 実行ボタン ---
+        # --- 追加マスク ---
         task_row = QHBoxLayout()
         task_row.setSpacing(6)
-        task_row.addWidget(QLabel(i18n.t("MASK_TASKS_LABEL")))
-
-        self.run_yolo_cb = QCheckBox(i18n.t("MASK_TASK_YOLO"))
-        self.run_yolo_cb.setToolTip(i18n.tip("MASK_TASK_YOLO"))
-        self.run_yolo_cb.setChecked(True)
-        task_row.addWidget(self.run_yolo_cb)
+        task_row.addWidget(QLabel(i18n.t("ADDITIONAL_MASKS_LABEL")))
 
         self.run_stitch_cb = QCheckBox(i18n.t("MASK_TASK_STITCH"))
         self.run_stitch_cb.setToolTip(i18n.tip("MASK_TASK_STITCH"))
@@ -266,11 +309,6 @@ class MaskStep(BaseStepWidget):
         self.run_overexp_cb.setToolTip(i18n.tip("MASK_TASK_OVEREXPOSURE"))
         self.run_overexp_cb.setChecked(False)
         task_row.addWidget(self.run_overexp_cb)
-
-        self.run_sky_cb = QCheckBox(i18n.t("MASK_TASK_SKY"))
-        self.run_sky_cb.setToolTip(i18n.tip("MASK_TASK_SKY"))
-        self.run_sky_cb.setChecked(False)
-        task_row.addWidget(self.run_sky_cb)
 
         self.run_custom_cb = QCheckBox(i18n.t("MASK_TASK_CUSTOM"))
         self.run_custom_cb.setToolTip(i18n.tip("MASK_TASK_CUSTOM"))
@@ -286,7 +324,7 @@ class MaskStep(BaseStepWidget):
         self.mask_settings_tabs.setObjectName("maskSettingsTabs")
         layout.addWidget(self.mask_settings_tabs)
 
-        # --- 人物マスク設定 ---
+        # --- マスク設定 ---
         self.yolo_section = QWidget()
         yolo_layout = QVBoxLayout(self.yolo_section)
         yolo_layout.setContentsMargins(8, 8, 8, 8)
@@ -296,7 +334,7 @@ class MaskStep(BaseStepWidget):
         person_backend_row = QHBoxLayout(person_backend_row_widget)
         person_backend_row.setContentsMargins(0, 0, 0, 0)
         person_backend_row.setSpacing(6)
-        self.person_backend_label = QLabel(i18n.t("PERSON_MODEL"))
+        self.person_backend_label = QLabel(i18n.t("MASK_MODEL"))
         self.person_backend_label.setToolTip(i18n.tip("PERSON_MODEL"))
         person_backend_row.addWidget(self.person_backend_label)
         self.person_backend_combo = QComboBox()
@@ -304,6 +342,7 @@ class MaskStep(BaseStepWidget):
         self.person_backend_combo.addItems(
             [
                 i18n.t("PERSON_MODEL_YOLO_SAM"),
+                i18n.t("SKY_MODEL_MASK2FORMER"),
                 i18n.t("PERSON_MODEL_SAM31"),
             ]
         )
@@ -398,8 +437,45 @@ class MaskStep(BaseStepWidget):
         scroll.setWidget(grid_widget)
         class_list_section.content_layout.addWidget(scroll)
         yolo_layout.addWidget(class_list_section)
-        yolo_layout.addStretch()
         self.mask_settings_tabs.addTab(self.yolo_section, i18n.t("MASK_TAB_YOLO"))
+
+        self.ade_class_list_section = CollapsibleSection(i18n.t("ADE20K_CLASS_LIST_SECTION"), expanded=False)
+        ade_scroll = QScrollArea()
+        ade_scroll.setWidgetResizable(True)
+        ade_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        ade_scroll.setMaximumHeight(180)
+        ade_grid_widget = QWidget()
+        ade_grid = QGridLayout(ade_grid_widget)
+        ade_grid.setSpacing(2)
+        self.ade_class_names = _ade20k_class_names(self.base_dir)
+        self.ade_class_cbs: list[QCheckBox] = []
+        for idx, name in enumerate(self.ade_class_names):
+            cb = QCheckBox(f"{idx}: {name.strip()}")
+            if name.strip().lower() in {"person", "sky"}:
+                cb.setChecked(True)
+            self.ade_class_cbs.append(cb)
+            ade_grid.addWidget(cb, idx // cols, idx % cols)
+        ade_scroll.setWidget(ade_grid_widget)
+        self.ade_class_list_section.content_layout.addWidget(ade_scroll)
+        yolo_layout.addWidget(self.ade_class_list_section)
+
+        self.sam_prompt_section = CollapsibleSection(i18n.t("SAM31_PROMPT_SECTION"), expanded=True)
+        sam_grid_widget = QWidget()
+        sam_grid = QGridLayout(sam_grid_widget)
+        sam_grid.setSpacing(2)
+        self.sam_prompt_cbs: list[tuple[str, QCheckBox]] = []
+        for idx, (prompt, label) in enumerate(_SAM31_PROMPT_PRESETS):
+            cb = QCheckBox(f"{label} ({prompt})")
+            if prompt in {"person", "sky"}:
+                cb.setChecked(True)
+            self.sam_prompt_cbs.append((prompt, cb))
+            sam_grid.addWidget(cb, idx // cols, idx % cols)
+        self.sam_prompt_section.content_layout.addWidget(sam_grid_widget)
+        self.sam_custom_prompt_edit = QLineEdit()
+        self.sam_custom_prompt_edit.setPlaceholderText(i18n.t("SAM31_CUSTOM_PROMPT_PLACEHOLDER"))
+        self.sam_custom_prompt_edit.setToolTip(i18n.tip("SAM31_CUSTOM_PROMPT"))
+        self.sam_prompt_section.content_layout.addWidget(self.sam_custom_prompt_edit)
+        yolo_layout.addWidget(self.sam_prompt_section)
 
         # --- スティッチ+白飛び設定 ---
         self.other_section = QWidget()
@@ -493,20 +569,25 @@ class MaskStep(BaseStepWidget):
         self.sky_backend_combo.setToolTip(i18n.tip("SKY_MODEL"))
         self.sky_backend_combo.setFixedWidth(132)
         add_tooltip_row(sky_form, i18n.t("SKY_MODEL"), self.sky_backend_combo, i18n.tip("SKY_MODEL"))
+        self.sky_backend_label = sky_form.labelForField(self.sky_backend_combo)
+        self.sky_backend_combo.setVisible(False)
+        if self.sky_backend_label is not None:
+            self.sky_backend_label.setVisible(False)
 
         self.sky_mode_combo = QComboBox()
         self.sky_mode_combo.addItems(
             [
-                i18n.t("SKY_MODE_HYBRID"),
+                i18n.t("SKY_MODE_FULL"),
                 i18n.t("SKY_MODE_DIRECT"),
                 i18n.t("SKY_MODE_TOP"),
+                i18n.t("SKY_MODE_BOTTOM"),
+                i18n.t("SKY_MODE_HYBRID"),
             ]
         )
         self.sky_mode_combo.setToolTip(i18n.tip("SKY_MODE"))
         self.sky_mode_combo.setFixedWidth(132)
-        self.sky_mode_label = QLabel(i18n.t("SKY_MODE"))
-        self.sky_mode_label.setToolTip(i18n.tip("SKY_MODE"))
         add_tooltip_row(sky_form, i18n.t("SKY_MODE"), self.sky_mode_combo, i18n.tip("SKY_MODE"))
+        self.sky_mode_field_label = sky_form.labelForField(self.sky_mode_combo)
 
         self.sky_inference_size_combo = QComboBox()
         self.sky_inference_size_combo.addItems(_SKY_INFERENCE_SIZES)
@@ -519,6 +600,7 @@ class MaskStep(BaseStepWidget):
             self.sky_inference_size_combo,
             i18n.tip("SKY_INFERENCE_SIZE"),
         )
+        self.sky_inference_size_label = sky_form.labelForField(self.sky_inference_size_combo)
 
         self.sky_expand_edit = DragSpinBox(
             minimum=_SKY_EXPAND_MIN,
@@ -531,6 +613,10 @@ class MaskStep(BaseStepWidget):
         self.sky_expand_edit.setToolTip(i18n.tip("SKY_EXPAND"))
         self.sky_expand_edit.setFixedWidth(80)
         add_tooltip_row(sky_form, i18n.t("SKY_EXPAND"), self.sky_expand_edit, i18n.tip("SKY_EXPAND"))
+        self.sky_expand_label = sky_form.labelForField(self.sky_expand_edit)
+        self.sky_expand_edit.setVisible(False)
+        if self.sky_expand_label is not None:
+            self.sky_expand_label.setVisible(False)
 
         self.sky_min_score_edit = DragDoubleSpinBox(
             minimum=_SKY_MIN_SCORE_MIN,
@@ -548,6 +634,7 @@ class MaskStep(BaseStepWidget):
             self.sky_min_score_edit,
             i18n.tip("SKY_MIN_SCORE"),
         )
+        self.sky_min_score_label = sky_form.labelForField(self.sky_min_score_edit)
 
         self.sky_min_area_edit = DragDoubleSpinBox(
             minimum=_SKY_MIN_AREA_PERCENT_MIN,
@@ -566,15 +653,16 @@ class MaskStep(BaseStepWidget):
             self.sky_min_area_edit,
             i18n.tip("SKY_MIN_AREA"),
         )
+        self.sky_min_area_label = sky_form.labelForField(self.sky_min_area_edit)
 
         self.sky_top_connected_cb = QCheckBox(i18n.t("SKY_TOP_CONNECTED"))
         self.sky_top_connected_cb.setToolTip(i18n.tip("SKY_TOP_CONNECTED"))
-        self.sky_top_connected_cb.setChecked(True)
+        self.sky_top_connected_cb.setChecked(False)
         sky_form.addRow("", self.sky_top_connected_cb)
 
         sky_layout.addLayout(sky_form)
-        sky_layout.addStretch()
-        self.mask_settings_tabs.addTab(self.sky_section, i18n.t("MASK_TAB_SKY"))
+        yolo_layout.addWidget(self.sky_section)
+        yolo_layout.addStretch()
 
         self.custom_section = QWidget()
         custom_layout = QVBoxLayout(self.custom_section)
@@ -638,7 +726,7 @@ class MaskStep(BaseStepWidget):
         splitter.setSizes([SETTINGS_PANE_WIDTH, 760])
         root_layout.addWidget(splitter)
 
-        for cb in (self.run_yolo_cb, self.run_stitch_cb, self.run_overexp_cb, self.run_sky_cb):
+        for cb in (self.run_stitch_cb, self.run_overexp_cb):
             cb.toggled.connect(self._update_task_controls)
         self.run_custom_cb.toggled.connect(self._on_custom_mask_toggled)
         self.custom_mask_browse_btn.clicked.connect(lambda _checked=False: self._browse_custom_mask(activate=True))
@@ -650,6 +738,11 @@ class MaskStep(BaseStepWidget):
         self.yolo_bottom_enhance_combo.currentIndexChanged.connect(lambda _: self._schedule_render_mask_preview())
         for cb in self.class_cbs:
             cb.toggled.connect(lambda _checked=False: self._schedule_render_mask_preview())
+        for cb in self.ade_class_cbs:
+            cb.toggled.connect(lambda _checked=False: self._schedule_render_mask_preview())
+        for _prompt, cb in self.sam_prompt_cbs:
+            cb.toggled.connect(lambda _checked=False: self._schedule_render_mask_preview())
+        self.sam_custom_prompt_edit.textChanged.connect(lambda _text: self._schedule_render_mask_preview())
         self.overexp_threshold_edit.valueChanged.connect(lambda _: self._schedule_render_mask_preview())
         self.overexp_dilate_edit.valueChanged.connect(lambda _: self._schedule_render_mask_preview())
         self.sky_backend_combo.currentIndexChanged.connect(lambda _: self._on_sky_backend_changed())
@@ -709,15 +802,11 @@ class MaskStep(BaseStepWidget):
         return str(Path(self.scene_dir) / "masks")
 
     def _selected_mask_tasks(self) -> list[str]:
-        requested_steps = []
-        if self.run_yolo_cb.isChecked():
-            requested_steps.append("yolo")
+        requested_steps = ["yolo"]
         if self._projection() == _PROJECTION_EQUIRECT and self.run_stitch_cb.isChecked():
             requested_steps.append("stitch")
         if self.run_overexp_cb.isChecked():
             requested_steps.append("overexposure")
-        if self.run_sky_cb.isChecked():
-            requested_steps.append("sky")
         if self.run_custom_cb.isChecked():
             requested_steps.append("custom")
         return requested_steps
@@ -787,6 +876,20 @@ class MaskStep(BaseStepWidget):
     def _selected_classes(self) -> list[int]:
         return [i for i, cb in enumerate(self.class_cbs) if cb.isChecked()]
 
+    def _selected_ade_labels(self) -> list[str]:
+        labels = [name.strip() for name, cb in zip(self.ade_class_names, self.ade_class_cbs) if cb.isChecked()]
+        return [label for label in labels if label] or ["person", "sky"]
+
+    def _selected_sam_prompts(self) -> list[str]:
+        prompts = [prompt for prompt, cb in self.sam_prompt_cbs if cb.isChecked()]
+        custom_text = self.sam_custom_prompt_edit.text().strip()
+        if custom_text:
+            for part in re.split(r"[,;\n]", custom_text):
+                prompt = part.strip()
+                if prompt:
+                    prompts.append(prompt)
+        return list(dict.fromkeys(prompts)) or [_PERSON_SAM31_PROMPT]
+
     def _person_backend_arg(self) -> str:
         idx = self.person_backend_combo.currentIndex()
         return _PERSON_BACKENDS[max(0, min(idx, len(_PERSON_BACKENDS) - 1))]
@@ -794,7 +897,20 @@ class MaskStep(BaseStepWidget):
     def _person_uses_sam31(self) -> bool:
         return self._person_backend_arg() == "sam31"
 
+    def _person_uses_mask2former(self) -> bool:
+        return self._person_backend_arg() == "mask2former"
+
     def _on_person_backend_changed(self) -> None:
+        if self._person_uses_mask2former():
+            self.sky_backend_combo.setCurrentIndex(0)
+        elif self._person_uses_sam31():
+            self.sky_backend_combo.setCurrentIndex(1)
+            if self.sky_inference_size_combo.currentText() != _SKY_SAM31_INFERENCE_SIZE:
+                idx = self.sky_inference_size_combo.findText(_SKY_SAM31_INFERENCE_SIZE)
+                if idx >= 0:
+                    self.sky_inference_size_combo.setCurrentIndex(idx)
+        else:
+            self.sky_backend_combo.setCurrentIndex(0)
         self._update_task_controls()
 
     def _yolo_expand_arg(self) -> str:
@@ -836,7 +952,8 @@ class MaskStep(BaseStepWidget):
 
     def _sky_mode_arg(self) -> str:
         idx = self.sky_mode_combo.currentIndex()
-        return ("hybrid", "direct", "top")[max(0, min(idx, 2))]
+        modes = ("full", "direct", "top", "bottom", "hybrid")
+        return modes[max(0, min(idx, len(modes) - 1))]
 
     def _sky_inference_size_arg(self) -> str:
         text = self.sky_inference_size_combo.currentText().strip()
@@ -845,45 +962,44 @@ class MaskStep(BaseStepWidget):
     def _sky_min_area_ratio_arg(self) -> str:
         return f"{float(self.sky_min_area_edit.value()) / 100.0:g}"
 
-    def _sky_common_args(self) -> list[str]:
-        args = [
-            "--backend", self._sky_backend_arg(),
-            "--projection", self._projection(),
-            "--mode", self._sky_mode_arg(),
-            "--inference-size", self._sky_inference_size_arg(),
-            "--expand", str(self.sky_expand_edit.value()),
-            "--min-score", f"{float(self.sky_min_score_edit.value()):g}",
-            "--min-area-ratio", self._sky_min_area_ratio_arg(),
-        ]
-        if not self.sky_top_connected_cb.isChecked():
-            args.append("--no-top-connected")
-        return args
-
     def _update_task_controls(self) -> None:
-        yolo_enabled = self.run_yolo_cb.isChecked()
         equirect = self._projection() == _PROJECTION_EQUIRECT
         if not equirect and self.run_stitch_cb.isChecked():
             self.run_stitch_cb.setChecked(False)
             return
         stitch_enabled = equirect and self.run_stitch_cb.isChecked()
         overexp_enabled = self.run_overexp_cb.isChecked()
-        sky_enabled = self.run_sky_cb.isChecked()
         custom_enabled = self.run_custom_cb.isChecked()
 
         self.external_images_panel.setVisible(not equirect)
-        self.yolo_section.setEnabled(yolo_enabled)
-        self.sky_section.setEnabled(sky_enabled)
         self._update_person_backend_availability()
+        model = self._person_backend_arg()
         person_sam31 = self._person_uses_sam31()
-        yolo_sam_enabled = yolo_enabled and not person_sam31
+        person_mask2former = self._person_uses_mask2former()
+        yolo_sam_enabled = model == "yolo_sam"
+        semantic_enabled = model in {"mask2former", "sam31"}
+        self.yolo_section.setEnabled(True)
+        self.sky_section.setVisible(semantic_enabled)
+        self.ade_class_list_section.setVisible(person_mask2former)
+        self.sam_prompt_section.setVisible(person_sam31)
+        self.yolo_class_list_section.setVisible(yolo_sam_enabled)
+        self.yolo_level_label.setVisible(yolo_sam_enabled)
+        self.yolo_level_combo.setVisible(yolo_sam_enabled)
         self.yolo_level_label.setEnabled(yolo_sam_enabled)
         self.yolo_level_combo.setEnabled(yolo_sam_enabled)
-        self.yolo_expand_label.setEnabled(yolo_enabled)
-        self.yolo_expand_edit.setEnabled(yolo_enabled)
+        self.yolo_expand_label.setEnabled(True)
+        self.yolo_expand_edit.setEnabled(True)
+        self.yolo_bottom_settings_row.setVisible(yolo_sam_enabled and equirect)
         self.yolo_bottom_settings_row.setEnabled(yolo_sam_enabled and equirect)
         self.yolo_bottom_enhance_label.setEnabled(yolo_sam_enabled and equirect)
         self.yolo_bottom_enhance_combo.setEnabled(yolo_sam_enabled and equirect)
         self.yolo_class_list_section.setEnabled(yolo_sam_enabled)
+        self.sky_inference_size_combo.setEnabled(person_mask2former)
+        if self.sky_inference_size_label is not None:
+            self.sky_inference_size_label.setEnabled(person_mask2former)
+        self.sky_min_score_edit.setVisible(person_mask2former)
+        if self.sky_min_score_label is not None:
+            self.sky_min_score_label.setVisible(person_mask2former)
         self.run_stitch_cb.setEnabled(equirect)
         self.run_stitch_cb.setToolTip(
             i18n.tip("MASK_TASK_STITCH") if equirect else i18n.tip("MASK_TASK_STITCH_DISABLED_NORMAL")
@@ -901,7 +1017,7 @@ class MaskStep(BaseStepWidget):
     def _update_person_backend_availability(self) -> None:
         sam_available = self._sam31_available()
         model = self.person_backend_combo.model()
-        item = model.item(1) if hasattr(model, "item") else None
+        item = model.item(2) if hasattr(model, "item") else None
         if item is not None:
             item.setEnabled(sam_available)
             item.setToolTip(
@@ -1111,10 +1227,10 @@ class MaskStep(BaseStepWidget):
         except ValueError:
             width = None
         return MaskPreviewConfig(
-            use_yolo=self.run_yolo_cb.isChecked(),
+            use_yolo=True,
             use_stitch=self.run_stitch_cb.isChecked(),
             use_overexposure=self.run_overexp_cb.isChecked(),
-            use_sky=self.run_sky_cb.isChecked(),
+            use_sky=False,
             stitch_boundary_width_deg=width,
             overexposure_threshold=int(self.overexp_threshold_edit.value()),
             overexposure_dilate=int(self.overexp_dilate_edit.value()),
@@ -1131,6 +1247,8 @@ class MaskStep(BaseStepWidget):
             self.yolo_level_combo.currentIndex(),
             int(self.yolo_expand_edit.value()),
             tuple(self._selected_classes()),
+            tuple(self._selected_ade_labels()),
+            tuple(self._selected_sam_prompts()),
             self.yolo_bottom_enhance_combo.currentIndex(),
             self._sky_backend_arg(),
             self._sky_mode_arg(),
@@ -1142,6 +1260,17 @@ class MaskStep(BaseStepWidget):
         )
 
     # -- コマンド構築 --
+
+    def phase_display_name(self, phase: str) -> str:
+        labels = {
+            "yolo": "MASK_PHASE_PRIMARY",
+            "stitch": "MASK_PHASE_STITCH",
+            "overexposure": "MASK_PHASE_OVEREXPOSURE",
+            "custom": "MASK_PHASE_CUSTOM",
+            "init_masks": "MASK_PHASE_INIT",
+        }
+        key = labels.get(phase)
+        return i18n.t(key) if key else phase
 
     def build_commands(self) -> list[tuple[str, list[str]]]:
         ready, reason = self._readiness()
@@ -1167,9 +1296,6 @@ class MaskStep(BaseStepWidget):
         if "overexposure" in requested_steps:
             steps.append(("overexposure", self._build_overexposure_cmd(replace=fresh_base_needed)))
             fresh_base_needed = False
-        if "sky" in requested_steps:
-            steps.append(("sky", self._build_sky_cmd(replace=fresh_base_needed)))
-            fresh_base_needed = False
         if "custom" in requested_steps:
             steps.append(("custom", self._build_custom_cmd(replace=fresh_base_needed)))
             fresh_base_needed = False
@@ -1177,11 +1303,12 @@ class MaskStep(BaseStepWidget):
 
     def confirm_commands(self, commands: list[tuple[str, list[str]]]) -> bool:
         if any(phase == "yolo" for phase, _cmd in commands):
-            if not self._confirm_yolo_sam_license_notice():
-                return False
-        if any(phase == "sky" for phase, _cmd in commands):
-            if not self._confirm_sky_license_notice():
-                return False
+            if self._person_backend_arg() == "yolo_sam":
+                if not self._confirm_yolo_sam_license_notice():
+                    return False
+            else:
+                if not self._confirm_sky_license_notice():
+                    return False
         return True
 
     def _confirm_yolo_sam_license_notice(self) -> bool:
@@ -1317,8 +1444,10 @@ class MaskStep(BaseStepWidget):
             raise ValueError("画像フォルダが指定されていません")
         if not masks:
             raise ValueError("マスクフォルダが指定されていません")
+        if self._person_uses_mask2former():
+            return self._build_mask2former_cmd(images, masks, replace=True)
         if self._person_uses_sam31():
-            return self._build_sam31_prompt_cmd(images, masks, prompt=_PERSON_SAM31_PROMPT, replace=True)
+            return self._build_sam31_prompt_cmd(images, masks, prompts=self._selected_sam_prompts(), replace=True)
 
         script = self.base_dir / "yolo_mask.py"
         if not script.exists():
@@ -1340,8 +1469,15 @@ class MaskStep(BaseStepWidget):
         return cmd
 
     def _build_yolo_preview_cmd(self, image_path: Path, output_dir: Path) -> list[str]:
+        if self._person_uses_mask2former():
+            return self._build_mask2former_cmd(str(image_path), str(output_dir), replace=True)
         if self._person_uses_sam31():
-            return self._build_sam31_prompt_cmd(str(image_path), str(output_dir), prompt=_PERSON_SAM31_PROMPT, replace=True)
+            return self._build_sam31_prompt_cmd(
+                str(image_path),
+                str(output_dir),
+                prompts=self._selected_sam_prompts(),
+                replace=True,
+            )
 
         script = self.base_dir / "yolo_mask.py"
         if not script.exists():
@@ -1381,7 +1517,7 @@ class MaskStep(BaseStepWidget):
         images: str | Path,
         masks: str | Path,
         *,
-        prompt: str,
+        prompts: list[str],
         replace: bool = False,
     ) -> list[str]:
         script = self.base_dir / "sky_mask.py"
@@ -1393,13 +1529,42 @@ class MaskStep(BaseStepWidget):
             str(images), str(masks),
             "--backend", "sam31",
             "--projection", self._projection(),
-            "--mode", "direct",
+            "--mode", self._sky_mode_arg(),
             "--inference-size", _PERSON_SAM31_INFERENCE_SIZE,
             "--expand", self._yolo_expand_arg(),
             "--min-score", _PERSON_SAM31_MIN_SCORE,
             "--min-area-ratio", "0",
             "--no-top-connected",
-            "--sam-prompt", prompt,
+        ]
+        for prompt in prompts:
+            cmd.extend(["--sam-prompt", prompt])
+        if replace:
+            cmd.append("--replace")
+        return cmd
+
+    def _build_mask2former_cmd(
+        self,
+        images: str | Path,
+        masks: str | Path,
+        *,
+        replace: bool = False,
+    ) -> list[str]:
+        script = self.base_dir / "sky_mask.py"
+        if not script.exists():
+            raise FileNotFoundError(f"sky_mask.py が見つかりません: {script}")
+
+        cmd = [
+            sys.executable, "-u", str(script),
+            str(images), str(masks),
+            "--backend", "mask2former",
+            "--projection", self._projection(),
+            "--mode", self._sky_mode_arg(),
+            "--inference-size", self._sky_inference_size_arg(),
+            "--expand", str(self.yolo_expand_edit.value()),
+            "--min-score", f"{float(self.sky_min_score_edit.value()):g}",
+            "--min-area-ratio", self._sky_min_area_ratio_arg(),
+            "--labels", ",".join(self._selected_ade_labels()),
+            "--no-top-connected",
         ]
         if replace:
             cmd.append("--replace")
@@ -1418,47 +1583,6 @@ class MaskStep(BaseStepWidget):
             raise FileNotFoundError(f"init_masks.py が見つかりません: {script}")
 
         return [sys.executable, "-u", str(script), images, masks]
-
-    def _build_sky_cmd(self, *, replace: bool = False) -> list[str]:
-        images = self._images_dir_text()
-        masks = self._masks_dir_text()
-        if not images:
-            raise ValueError("画像フォルダが指定されていません")
-        if not masks:
-            raise ValueError("マスクフォルダが指定されていません")
-
-        script = self.base_dir / "sky_mask.py"
-        if not script.exists():
-            raise FileNotFoundError(f"sky_mask.py が見つかりません: {script}")
-
-        cmd = [
-            sys.executable, "-u", str(script),
-            images, masks,
-            *self._sky_common_args(),
-        ]
-        if replace:
-            cmd.append("--replace")
-        return cmd
-
-    def _build_sky_current_cmd(
-        self,
-        image_path: Path,
-        *,
-        replace: bool = False,
-        masks_root: Path | None = None,
-    ) -> list[str]:
-        output_dir = self._mask_output_dir_for_image(image_path, masks_root=masks_root)
-        script = self.base_dir / "sky_mask.py"
-        if not script.exists():
-            raise FileNotFoundError(f"sky_mask.py が見つかりません: {script}")
-        cmd = [
-            sys.executable, "-u", str(script),
-            str(image_path), str(output_dir),
-            *self._sky_common_args(),
-        ]
-        if replace:
-            cmd.append("--replace")
-        return cmd
 
     def _run_mask_preview(self) -> None:
         if self._mask_preview_proc is not None and self._mask_preview_proc.state() != QProcess.NotRunning:
@@ -1486,10 +1610,11 @@ class MaskStep(BaseStepWidget):
                 self.mask_preview.set_status_text(i18n.t("MASK_PREVIEW_TEMP"))
                 return
 
-        if self.run_yolo_cb.isChecked() and not self._confirm_yolo_sam_license_notice():
-            self.mask_preview.set_status_text(i18n.t("YOLO_SAM_LICENSE_NOTICE_CANCELED"))
-            return
-        if self.run_sky_cb.isChecked() and not self._confirm_sky_license_notice():
+        if self._person_backend_arg() == "yolo_sam":
+            if not self._confirm_yolo_sam_license_notice():
+                self.mask_preview.set_status_text(i18n.t("YOLO_SAM_LICENSE_NOTICE_CANCELED"))
+                return
+        elif not self._confirm_sky_license_notice():
             self.mask_preview.set_status_text(i18n.t("SKY_LICENSE_NOTICE_CANCELED"))
             return
 
@@ -1599,10 +1724,11 @@ class MaskStep(BaseStepWidget):
         if not self._selected_mask_tasks():
             self.mask_preview.set_status_text(i18n.t("MASK_TASK_REQUIRED"))
             return
-        if self.run_yolo_cb.isChecked() and not self._confirm_yolo_sam_license_notice():
-            self.mask_preview.set_status_text(i18n.t("YOLO_SAM_LICENSE_NOTICE_CANCELED"))
-            return
-        if self.run_sky_cb.isChecked() and not self._confirm_sky_license_notice():
+        if self._person_backend_arg() == "yolo_sam":
+            if not self._confirm_yolo_sam_license_notice():
+                self.mask_preview.set_status_text(i18n.t("YOLO_SAM_LICENSE_NOTICE_CANCELED"))
+                return
+        elif not self._confirm_sky_license_notice():
             self.mask_preview.set_status_text(i18n.t("SKY_LICENSE_NOTICE_CANCELED"))
             return
 
@@ -1675,15 +1801,8 @@ class MaskStep(BaseStepWidget):
     ) -> list[tuple[str, list[str]]]:
         commands: list[tuple[str, list[str]]] = []
         fresh_base_needed = True
-        if self.run_yolo_cb.isChecked():
-            commands.append(("yolo", self._build_yolo_current_cmd(image_path, masks_root=masks_root)))
-            fresh_base_needed = False
-        if self.run_sky_cb.isChecked():
-            commands.append((
-                "sky",
-                self._build_sky_current_cmd(image_path, replace=fresh_base_needed, masks_root=masks_root),
-            ))
-            fresh_base_needed = False
+        commands.append(("yolo", self._build_yolo_current_cmd(image_path, masks_root=masks_root)))
+        fresh_base_needed = False
         return commands
 
     def _start_next_current_reprocess_external_command(self) -> None:

@@ -1,57 +1,52 @@
-# sky_mask.py — 空マスク生成
+# sky_mask.py — セマンティック/プロンプトマスク生成
 
 ## 概要
 
-`sky_mask.py` は、選択したbackendで空領域を検出し、このプロジェクトのマスク規約に
-合わせたPNGマスクを出力します。白=採用、黒=除外です。既存マスクがある場合は既定で
-AND合成するため、YOLO/SAM、スティッチ境界、白飛び、カスタムマスクと組み合わせて使えます。
+`sky_mask.py` は、このプロジェクトの規約に合わせたPNGマスクを出力します。白=採用、黒=除外です。既存マスクがある場合は既定でAND合成します。
 
-既定backendは Mask2Former ADE20K semantic segmentation です。ユーザーがMeta SAM3.1
-checkpointをローカルに配置した場合は、実験backendとしてSAM3.1も使えます。SAM3.1経路は
-テキストプロンプト方式で、既定は `sky` です。GUIでは同じローカルbackendに
-`--sam-prompt person` を渡して人物マスクの検証にも使います。
+ファイル名は歴史的に `sky_mask.py` のままですが、現在は空以外も扱えます。
 
-360°エクイレクタングラー画像では、既定の `hybrid` モードで直処理と上部投影ビューを合成し、
-極付近の歪みによる検出漏れを減らします。
+- `Mask2Former`: ADE20Kクラスを `--labels` で指定します。
+- `SAM3.1`: 1つ以上の `--sam-prompt` を指定します。
+
+360°エクイレクタングラー画像では、直処理に加えて上部/下部の投影ビューを合成できます。上部の空、下部の撮影者や三脚など、極付近で歪む対象の検出補助に使います。
 
 ## 使い方
 
 ```bash
-python sky_mask.py [images_dir_or_file] [masks_dir] [--backend mask2former|sam31] [--projection equirect|normal] [--mode direct|top|hybrid] [--inference-size N] [--expand PX] [--min-score S] [--min-area-ratio R] [--no-top-connected] [--replace]
+python sky_mask.py [images_dir_or_file] [masks_dir] [--backend mask2former|sam31] [--projection equirect|normal] [--mode direct|top|bottom|hybrid|full] [--labels LABELS] [--sam-prompt TEXT] [--inference-size N] [--expand PX] [--min-score S] [--min-area-ratio R] [--no-top-connected] [--replace]
 ```
 
 - `images_dir_or_file`: 入力画像フォルダ、または1枚の入力画像。
 - `masks_dir`: 出力マスクフォルダ。既存マスクがあればAND合成します。
-- `--backend mask2former|sam31`: 空検出backend（既定: `mask2former`）。
+- `--backend mask2former|sam31`: セグメンテーションbackend（既定: `mask2former`）。
 - `--projection equirect|normal`: 入力画像の種類（既定: `equirect`）。
-- `--mode direct|top|hybrid`: 空検出方式（既定: `hybrid`）。
-- `--inference-size N`: backend入力サイズ。384〜2048（既定: `768`、SAM3.1では現在`1008`が必須）。
-- `--view-size N`: 360°上部投影ビューのサイズ。`0` は自動。
-- `--expand PX`: 空の除外領域をピクセル単位で拡張。負値で収縮。
-- `--min-score S`: 最小スコア。SAM3.1では`0`なら既定のテキストプロンプト信頼度`0.5`を使います。
-- `--min-area-ratio R`: 小さな空候補を画像面積比で除去。
-- `--no-top-connected`: 上端につながらない空候補も残します。
+- `--mode direct|top|bottom|hybrid|full`: 投影補助方式。
+  - `full`: 直処理 + 上部投影 + 下部投影。
+  - `hybrid`: 直処理 + 上部投影。
+  - 通常画像では直処理にfallbackします。
+- `--labels LABELS`: Mask2FormerのADE20Kラベル名またはIDのカンマ区切り（既定: `sky`）。
+- `--sam-prompt TEXT`: SAM3.1に渡す英語プロンプト。複数回指定でき、結果はOR合成されます。
+- `--inference-size N`: backend入力サイズ。384〜2048（既定: `768`、GUIのSAM3.1は現在 `1008`）。
+- `--view-size N`: 360°投影ビューのサイズ。`0` は自動。
+- `--expand PX`: 検出領域をピクセル単位で拡張。負値で収縮。
+- `--min-score S`: Mask2Formerのスコアしきい値。
+- `--min-area-ratio R`: 小さな候補を画像面積比で除去。
+- `--no-top-connected`: 上端につながらない候補も残します。人物など空以外も対象にする場合は指定します。
 - `--model-dir PATH`: ローカルモデルディレクトリ、またはSAM3.1 checkpointを明示。
-- `--sam-prompt TEXT`: SAM3.1 backendに渡すテキストプロンプト（既定: `sky`。GUIのSAM3.1人物マスク検証では `person`）。
 - `--device auto|cpu|cuda`: 推論デバイス（既定: `auto`）。
-- `--replace`: 既存マスクを無視して空マスクだけを書き込みます。
+- `--replace`: 既存マスクを無視して、このスクリプトの結果だけを書き込みます。
 
 例:
 
 ```bash
-python sky_mask.py .\images .\masks --projection equirect --mode hybrid --inference-size 768
+python sky_mask.py .\images .\masks --projection equirect --mode full --labels sky,person --inference-size 768
 ```
 
-保守的に再処理する場合:
+SAM3.1で空と人物をテストする場合:
 
 ```bash
-python sky_mask.py .\images .\masks --min-score 0.8 --expand -2
-```
-
-SAM3.1人物プロンプトの簡易テスト:
-
-```bash
-python sky_mask.py .\images .\masks --backend sam31 --mode direct --inference-size 1008 --sam-prompt person --min-score 0.5 --no-top-connected --replace
+python sky_mask.py .\images .\masks --backend sam31 --mode full --inference-size 1008 --sam-prompt sky --sam-prompt person --no-top-connected --replace
 ```
 
 ## モデルファイル
@@ -65,10 +60,9 @@ models/mask2former-swin-large-ade-semantic/
   model.safetensors
 ```
 
-このローカルディレクトリがない場合、Transformersが
-`facebook/mask2former-swin-large-ade-semantic` をHugging Faceから解決する場合があります。
+このローカルディレクトリがない場合、Transformersが `facebook/mask2former-swin-large-ade-semantic` をHugging Faceから解決する場合があります。
 
-実験的なSAM3.1 backendは、ユーザーが用意したcheckpointを次の場所に置いた場合に使います。
+SAM3.1 backendは、ユーザーが用意したcheckpointを次の場所に置いた場合に使います。
 
 ```text
 models/sam3.1/
@@ -78,26 +72,21 @@ models/sam3.1/
   README.md
 ```
 
-SAM3.1を動かすには、アクティブなvenvにMetaの`sam3` Python packageが必要です。
-現在の実装は、このpackageの画像APIにローカルSAM3.1 checkpointを渡して比較する形なので、
-checkpoint keyの警告がログに出る場合があります。このpackageは現在の通常セットアップには
-含めていないため、依存、Windows実行環境、ライセンス経路が安定するまではローカル比較用backendとして扱います。
+SAM3.1を動かすには、アクティブなvenvにMetaの `sam3` Python packageが必要です。現在の実装は、このpackageの画像APIにローカルSAM3.1 checkpointを渡します。
 
-ローカルで検証する場合は、別途インストールします。`sam3` packageは現在`numpy<2`を
-宣言していますが、このプロジェクトはNumPy 2.xを使うため、必要な実行時依存を先に入れてから
-`sam3`本体を`--no-deps`で入れます。
+ローカルで検証する場合は、別途インストールします。`sam3` packageは現在 `numpy<2` を宣言していますが、このプロジェクトはNumPy 2.xを使うため、必要な実行時依存を先に入れてから `sam3` 本体を `--no-deps` で入れます。
 
 ```bat
 .\.venv\Scripts\python.exe -m pip install timm ftfy==6.1.1 iopath regex einops triton-windows pycocotools
 .\.venv\Scripts\python.exe -m pip install --no-deps git+https://github.com/facebookresearch/sam3.git@847e1a3b15115a04c87c0760297f044f0555d970
 ```
 
-この手順では、`sam3`が宣言している`numpy<2`要求はあえて未解決のままになります。
-SAM3.1検証用venvでは`pip check`がこのmetadata conflictを報告します。
+この手順では、`sam3` が宣言している `numpy<2` 要求はあえて未解決のままになります。SAM3.1検証用venvでは `pip check` がこのmetadata conflictを報告します。
 
 ## 注意点
 
-- 出力マスクは、空=黒 (0)、空以外=白 (255) です。
-- `hybrid` は360°パノラマ向けです。通常画像では直処理にfallbackします。
-- 誤検出を減らすため、上端につながる空だけを残すフィルタが既定で有効です。
-- 空マスク機能は第三者モデル重みおよびデータセット由来checkpointを使います。別ライセンス/利用条件については [../THIRD_PARTY_LICENSES.md](../THIRD_PARTY_LICENSES.md) を参照してください。
+- 検出対象は黒 (0)、それ以外は白 (255) です。
+- Mask2Formerは複数ADE20Kラベルを1回の推論で解決し、最終マスクへ統合します。
+- SAM3.1は1プロンプトずつ実行し、結果をOR合成します。
+- `上端接続` フィルタは空向けです。人物、三脚、カスタムプロンプトも対象にする場合はOFFにします。
+- この機能は第三者モデル重みおよびデータセット由来checkpointを使います。別ライセンス/利用条件については [../THIRD_PARTY_LICENSES.md](../THIRD_PARTY_LICENSES.md) を参照してください。
