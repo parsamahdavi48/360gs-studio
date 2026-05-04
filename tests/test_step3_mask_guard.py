@@ -160,6 +160,25 @@ def test_mask_step_refreshes_preview_after_successful_mask_generation(tmp_path: 
     assert step.mask_preview.image_label._source_pixmap is not None
 
 
+def test_mask_step_preview_render_scheduling_is_debounced() -> None:
+    _app()
+    step = MaskStep(Path.cwd())
+    calls = 0
+
+    def fake_render() -> None:
+        nonlocal calls
+        calls += 1
+
+    step._render_mask_preview = fake_render  # type: ignore[method-assign]
+
+    step._schedule_render_mask_preview()
+    step._schedule_render_mask_preview()
+    step._mask_preview_render_timer.stop()
+
+    assert calls == 0
+    assert step._mask_preview_render_pending
+
+
 def test_mask_step_disables_generation_without_images_dir(tmp_path: Path) -> None:
     _app()
     (tmp_path / "selected_frames.csv").write_text("seq,output_file,decision,status\n", encoding="utf-8")

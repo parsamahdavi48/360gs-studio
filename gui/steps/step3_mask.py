@@ -688,12 +688,7 @@ class MaskStep(BaseStepWidget):
         return max(_STITCH_BOUNDARY_MIN, min(_STITCH_BOUNDARY_MAX, value))
 
     def _schedule_render_mask_preview(self) -> None:
-        if self._mask_preview_render_timer.isActive():
-            self._mask_preview_render_pending = True
-            self._mask_preview_render_timer.start()
-            return
-        self._mask_preview_render_pending = False
-        self._render_mask_preview()
+        self._mask_preview_render_pending = True
         self._mask_preview_render_timer.start()
 
     def _flush_scheduled_mask_preview(self) -> None:

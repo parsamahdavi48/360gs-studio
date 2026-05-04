@@ -10,6 +10,7 @@ from PySide6.QtWidgets import QApplication, QLineEdit, QPushButton, QSpinBox
 
 from gui import i18n
 from gui.mask.mask_preview import MaskPreviewConfig, MaskPreviewWidget
+from gui.mask.thumbnail_model import ThumbnailRenderConfig, render_mask_thumbnail
 from gui.steps.step3_mask import MaskStep, _yolo_preview_output_name
 
 
@@ -98,6 +99,68 @@ def test_mask_preview_timeline_label_shows_current_filename(tmp_path: Path) -> N
         total=1,
         name=image_path.name,
     )
+
+
+def test_mask_preview_thumbnail_mode_tracks_images_and_selection(tmp_path: Path) -> None:
+    _app()
+    image_paths: list[Path] = []
+    for idx in range(3):
+        image_path = tmp_path / f"frame_{idx:06d}.png"
+        cv2.imwrite(str(image_path), np.full((16, 32, 3), 120 + idx, dtype=np.uint8))
+        image_paths.append(image_path)
+    widget = MaskPreviewWidget()
+
+    widget.set_images_dir(str(tmp_path))
+    widget.set_preview_mode("thumbnails")
+    widget.thumbnail_view.setCurrentIndex(widget.thumbnail_model.index(2, 0))
+
+    assert widget.preview_mode() == "thumbnails"
+    assert widget.thumbnail_model.rowCount() == 3
+    assert widget.current_image_path() == image_paths[2]
+    assert widget.slider.value() == 2
+    assert widget.timeline_label.text() == i18n.t("PREVIEW_IMAGE_POSITION_FORMAT").format(
+        seq=3,
+        total=3,
+        name=image_paths[2].name,
+    )
+
+
+def test_mask_preview_thumbnail_mode_skips_large_detail_render(tmp_path: Path) -> None:
+    _app()
+    image_path = tmp_path / "frame_000001.png"
+    cv2.imwrite(str(image_path), np.full((16, 32, 3), 180, dtype=np.uint8))
+    widget = MaskPreviewWidget()
+
+    widget.set_images_dir(str(tmp_path))
+    widget.set_preview_mode("thumbnails")
+    widget.render(MaskPreviewConfig(use_yolo=True))
+
+    assert widget.image_label._source_pixmap is None
+    assert widget.status_label.text() == i18n.t("MASK_PREVIEW_THUMBNAIL_STATUS").format(count=1)
+
+
+def test_render_mask_thumbnail_overlays_existing_mask(tmp_path: Path) -> None:
+    _app()
+    images = tmp_path / "images"
+    masks = tmp_path / "masks"
+    images.mkdir()
+    masks.mkdir()
+    image_path = images / "frame_000001.png"
+    mask_path = masks / "frame_000001.png"
+    cv2.imwrite(str(image_path), np.full((40, 80, 3), 180, dtype=np.uint8))
+    mask = np.full((40, 80), 255, dtype=np.uint8)
+    mask[:, :40] = 0
+    cv2.imwrite(str(mask_path), mask)
+
+    thumb = render_mask_thumbnail(
+        image_path,
+        ThumbnailRenderConfig(images_dir=str(images), masks_dir=str(masks), opacity=60),
+    )
+
+    excluded_pixel = thumb.pixelColor(20, thumb.height() // 2)
+    kept_pixel = thumb.pixelColor(thumb.width() - 20, thumb.height() // 2)
+    assert excluded_pixel.red() > kept_pixel.red()
+    assert excluded_pixel.green() < kept_pixel.green()
 
 
 def test_mask_step_uses_conservative_manual_yolo_expand_by_default() -> None:
