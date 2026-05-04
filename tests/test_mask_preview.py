@@ -6,7 +6,8 @@ import numpy as np
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PySide6.QtWidgets import QApplication, QLineEdit, QPushButton, QSpinBox
+from PySide6.QtWidgets import QApplication, QAbstractItemView, QLineEdit, QPushButton, QSpinBox
+from PySide6.QtCore import QItemSelectionModel
 
 from gui import i18n
 from gui.mask.mask_preview import MaskPreviewConfig, MaskPreviewWidget
@@ -123,6 +124,46 @@ def test_mask_preview_thumbnail_mode_tracks_images_and_selection(tmp_path: Path)
         total=3,
         name=image_paths[2].name,
     )
+
+
+def test_mask_preview_thumbnail_mode_uses_extended_selection(tmp_path: Path) -> None:
+    _app()
+    image_paths: list[Path] = []
+    for idx in range(4):
+        image_path = tmp_path / f"frame_{idx:06d}.png"
+        cv2.imwrite(str(image_path), np.full((16, 32, 3), 120, dtype=np.uint8))
+        image_paths.append(image_path)
+    widget = MaskPreviewWidget()
+
+    widget.set_images_dir(str(tmp_path))
+    widget.set_preview_mode("thumbnails")
+    selection = widget.thumbnail_view.selectionModel()
+    selection.select(widget.thumbnail_model.index(1, 0), QItemSelectionModel.ClearAndSelect)
+    selection.select(widget.thumbnail_model.index(3, 0), QItemSelectionModel.Select)
+
+    assert widget.thumbnail_view.selectionMode() == QAbstractItemView.ExtendedSelection
+    assert widget.selected_reprocess_image_paths() == [image_paths[1], image_paths[3]]
+    assert widget.reprocess_current_btn.text() == i18n.t("MASK_REPROCESS_SELECTED_BUTTON").format(count=2)
+
+
+def test_mask_preview_thumbnail_render_preserves_multi_selection(tmp_path: Path) -> None:
+    _app()
+    image_paths: list[Path] = []
+    for idx in range(4):
+        image_path = tmp_path / f"frame_{idx:06d}.png"
+        cv2.imwrite(str(image_path), np.full((16, 32, 3), 120, dtype=np.uint8))
+        image_paths.append(image_path)
+    widget = MaskPreviewWidget()
+
+    widget.set_images_dir(str(tmp_path))
+    widget.set_preview_mode("thumbnails")
+    selection = widget.thumbnail_view.selectionModel()
+    selection.select(widget.thumbnail_model.index(1, 0), QItemSelectionModel.ClearAndSelect)
+    selection.select(widget.thumbnail_model.index(3, 0), QItemSelectionModel.Select)
+
+    widget.render(MaskPreviewConfig())
+
+    assert widget.selected_reprocess_image_paths() == [image_paths[1], image_paths[3]]
 
 
 def test_mask_preview_thumbnail_mode_skips_large_detail_render(tmp_path: Path) -> None:

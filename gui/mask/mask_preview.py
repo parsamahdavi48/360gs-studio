@@ -9,7 +9,7 @@ import cv2
 import numpy as np
 
 from image_io import imread_unicode
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import QItemSelectionModel, Qt, Signal
 from PySide6.QtGui import QImage, QPixmap
 from PySide6.QtWidgets import (
     QAbstractItemView,
@@ -117,7 +117,7 @@ class MaskPreviewWidget(QWidget):
         self.thumbnail_view.setViewMode(QListView.IconMode)
         self.thumbnail_view.setResizeMode(QListView.Adjust)
         self.thumbnail_view.setMovement(QListView.Static)
-        self.thumbnail_view.setSelectionMode(QAbstractItemView.SingleSelection)
+        self.thumbnail_view.setSelectionMode(QAbstractItemView.ExtendedSelection)
         self.thumbnail_view.setEditTriggers(QAbstractItemView.NoEditTriggers)
         self.thumbnail_view.setUniformItemSizes(True)
         self.thumbnail_view.setWrapping(True)
@@ -128,6 +128,9 @@ class MaskPreviewWidget(QWidget):
         self.thumbnail_view.setVerticalScrollMode(QAbstractItemView.ScrollPerPixel)
         self.thumbnail_view.setToolTip(i18n.tip("MASK_PREVIEW_MODE_THUMBNAILS"))
         self.thumbnail_view.selectionModel().currentChanged.connect(self._on_thumbnail_current_changed)
+        self.thumbnail_view.selectionModel().selectionChanged.connect(
+            lambda _selected, _deselected: self._update_reprocess_button_text()
+        )
         self.preview_stack.addWidget(self.thumbnail_view)
 
         layout.addWidget(self.preview_stack, stretch=1)
@@ -166,6 +169,7 @@ class MaskPreviewWidget(QWidget):
         self.status_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
         overlay_row.addWidget(self.status_label, stretch=1)
         layout.addLayout(overlay_row)
+        self._update_reprocess_button_text()
 
     def set_images_dir(self, images_dir: str) -> None:
         if images_dir == self._images_dir:
@@ -382,11 +386,11 @@ class MaskPreviewWidget(QWidget):
     def set_current_reprocess_running(self, running: bool) -> None:
         self.reprocess_current_btn.setEnabled(not running)
         self.yolo_preview_btn.setEnabled(not running)
-        self.reprocess_current_btn.setText(
-            i18n.t("MASK_REPROCESS_CURRENT_RUNNING")
-            if running
-            else i18n.t("MASK_REPROCESS_CURRENT_BUTTON")
-        )
+        self.thumbnail_view.setEnabled(not running)
+        if running:
+            self.reprocess_current_btn.setText(i18n.t("MASK_REPROCESS_CURRENT_RUNNING"))
+        else:
+            self._update_reprocess_button_text()
 
     def set_status_text(self, text: str) -> None:
         self.status_label.setText(text)
@@ -411,10 +415,25 @@ class MaskPreviewWidget(QWidget):
         self.preview_stack.setCurrentIndex(1 if mode == _PREVIEW_MODE_THUMBNAILS else 0)
         self.single_preview_btn.setChecked(mode == _PREVIEW_MODE_SINGLE)
         self.thumbnail_preview_btn.setChecked(mode == _PREVIEW_MODE_THUMBNAILS)
+        self._update_reprocess_button_text()
         self.render(self._last_config)
 
     def preview_mode(self) -> str:
         return self._preview_mode
+
+    def selected_reprocess_image_paths(self) -> list[Path]:
+        if self._preview_mode != _PREVIEW_MODE_THUMBNAILS:
+            current = self.current_image_path()
+            return [current] if current is not None else []
+
+        rows = sorted({index.row() for index in self.thumbnail_view.selectionModel().selectedIndexes()})
+        selected = [self.thumbnail_model.image_at(row) for row in rows]
+        paths = [path for path in selected if path is not None and path.exists() and path.is_file()]
+        if paths:
+            return paths
+
+        current = self.current_image_path()
+        return [current] if current is not None else []
 
     def _on_thumbnail_current_changed(self, current, _previous) -> None:  # noqa: ANN001
         if self._thumbnail_sync or not current.isValid():
@@ -439,10 +458,22 @@ class MaskPreviewWidget(QWidget):
             return
         self._thumbnail_sync = True
         try:
-            self.thumbnail_view.setCurrentIndex(model_index)
+            self.thumbnail_view.selectionModel().setCurrentIndex(model_index, QItemSelectionModel.NoUpdate)
             self.thumbnail_view.scrollTo(model_index, QAbstractItemView.PositionAtCenter)
         finally:
             self._thumbnail_sync = False
+
+    def _update_reprocess_button_text(self) -> None:
+        if self._preview_mode == _PREVIEW_MODE_THUMBNAILS:
+            count = len(self.thumbnail_view.selectionModel().selectedIndexes())
+            if count > 0:
+                self.reprocess_current_btn.setText(
+                    i18n.t("MASK_REPROCESS_SELECTED_BUTTON").format(count=count)
+                )
+                return
+            self.reprocess_current_btn.setText(i18n.t("MASK_REPROCESS_SELECTED_FALLBACK_BUTTON"))
+            return
+        self.reprocess_current_btn.setText(i18n.t("MASK_REPROCESS_CURRENT_BUTTON"))
 
     def _update_pixmap(self) -> None:
         self.image_label.set_source_pixmap(self._pixmap)

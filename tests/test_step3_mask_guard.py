@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import csv
 import os
+import time
 from pathlib import Path
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
@@ -9,6 +10,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 import pytest
 import cv2
 import numpy as np
+from PySide6.QtCore import QItemSelectionModel
 from PySide6.QtWidgets import QApplication, QLabel, QPushButton, QToolButton
 
 from gui import i18n
@@ -19,6 +21,15 @@ from gui.steps.step3_mask import MaskStep
 
 def _app():
     return QApplication.instance() or QApplication([])
+
+
+def _process_events_until(predicate, timeout_s: float = 2.0) -> None:
+    app = _app()
+    deadline = time.monotonic() + timeout_s
+    while not predicate() and time.monotonic() < deadline:
+        app.processEvents()
+        time.sleep(0.001)
+    app.processEvents()
 
 
 def _write_scene(tmp_path: Path, drop_exists: bool = True) -> Path:
@@ -281,6 +292,47 @@ def test_mask_step_current_reprocess_can_apply_overexposure_only(tmp_path: Path)
     assert mask is not None
     assert mask[5, 7] == 0
     assert mask[12, 16] == 255
+
+
+def test_mask_step_reprocesses_selected_thumbnail_images_only(tmp_path: Path) -> None:
+    _app()
+    scene = tmp_path
+    images = scene / "images"
+    masks = scene / "masks"
+    images.mkdir()
+    image_paths: list[Path] = []
+    for idx in range(3):
+        image_path = images / f"frame_{idx:04d}.png"
+        image = np.full((24, 32, 3), 120, dtype=np.uint8)
+        image[4 + idx:8 + idx, 6:10] = 255
+        cv2.imwrite(str(image_path), image)
+        image_paths.append(image_path)
+    step = MaskStep(Path.cwd())
+    step.set_scene_dir(str(scene))
+    step.run_yolo_cb.setChecked(False)
+    step.run_stitch_cb.setChecked(False)
+    step.run_overexp_cb.setChecked(True)
+    step.mask_preview.set_preview_mode("thumbnails")
+
+    selection = step.mask_preview.thumbnail_view.selectionModel()
+    selection.select(step.mask_preview.thumbnail_model.index(0, 0), QItemSelectionModel.ClearAndSelect)
+    selection.select(step.mask_preview.thumbnail_model.index(2, 0), QItemSelectionModel.Select)
+
+    step._run_current_image_reprocess()
+    _process_events_until(lambda: not step._current_reprocess_active)
+    step.mask_preview.thumbnail_model._pool.waitForDone(5000)
+
+    first_mask = masks / "frame_0000.png"
+    middle_mask = masks / "frame_0001.png"
+    last_mask = masks / "frame_0002.png"
+    assert first_mask.is_file()
+    assert not middle_mask.exists()
+    assert last_mask.is_file()
+    assert cv2.imread(str(first_mask), cv2.IMREAD_GRAYSCALE) is not None
+    assert step.mask_preview.status_label.text() == i18n.t("MASK_REPROCESS_SELECTED_DONE").format(
+        done=2,
+        total=2,
+    )
 
 
 def test_mask_step_normal_image_type_disables_stitch_and_uses_normal_yolo_projection(tmp_path: Path) -> None:
