@@ -70,7 +70,7 @@ def test_mask_preview_mode_switches_are_icon_tool_buttons() -> None:
     assert widget.thumbnail_preview_btn.isChecked()
 
 
-def test_mask_preview_status_elides_without_shrinking_opacity_slider() -> None:
+def test_mask_preview_status_elides_with_compact_overlay_toggle() -> None:
     _app()
     widget = MaskPreviewWidget()
     status = "YOLO existing / Stitch seam 5.0deg / Overexposure threshold=254 dilate=1 / Custom"
@@ -78,7 +78,11 @@ def test_mask_preview_status_elides_without_shrinking_opacity_slider() -> None:
     widget.status_label.resize(90, widget.status_label.sizeHint().height())
     widget.status_label.setText(status)
 
-    assert widget.opacity_slider.minimumWidth() >= 140
+    assert not hasattr(widget, "opacity_slider")
+    assert widget.mask_overlay_btn.objectName() == "iconToolButton"
+    assert widget.mask_overlay_btn.isCheckable()
+    assert widget.mask_overlay_btn.isChecked()
+    assert widget.mask_overlay_btn.accessibleName() == i18n.t("MASK_OVERLAY_TOGGLE")
     assert widget.status_label.wordWrap() is False
     assert widget.status_label.sizePolicy().horizontalPolicy() == QSizePolicy.Ignored
     assert widget.status_label.text() == status
@@ -147,6 +151,33 @@ def test_mask_preview_applies_custom_mask_status(tmp_path: Path) -> None:
 
     assert i18n.t("MASK_PREVIEW_CUSTOM_STATUS") in widget.status_label.text()
     assert widget.image_label._source_pixmap is not None
+
+
+def test_mask_preview_overlay_toggle_hides_mask_overlay(tmp_path: Path) -> None:
+    _app()
+    image_path = tmp_path / "frame_000001.png"
+    custom_path = tmp_path / "custom.png"
+    cv2.imwrite(str(image_path), np.full((32, 64, 3), 180, dtype=np.uint8))
+    custom = np.full((32, 64), 255, dtype=np.uint8)
+    custom[:, :32] = 0
+    cv2.imwrite(str(custom_path), custom)
+    config = MaskPreviewConfig(use_yolo=False, use_custom=True, custom_mask_path=str(custom_path))
+    widget = MaskPreviewWidget()
+    widget.set_current_image_path(image_path)
+
+    widget.render(config)
+    assert widget.image_label._source_pixmap is not None
+    overlay_image = widget.image_label._source_pixmap.toImage()
+
+    widget.mask_overlay_btn.click()
+    assert not widget.mask_overlay_btn.isChecked()
+    assert widget.image_label._source_pixmap is not None
+    source_image = widget.image_label._source_pixmap.toImage()
+
+    overlay_pixel = overlay_image.pixelColor(10, 16)
+    source_pixel = source_image.pixelColor(10, 16)
+    assert overlay_pixel.red() > source_pixel.red()
+    assert source_pixel.red() == source_pixel.green() == source_pixel.blue() == 180
 
 
 def test_mask_preview_rejects_non_png_custom_mask(tmp_path: Path) -> None:
@@ -298,6 +329,30 @@ def test_mask_preview_thumbnail_render_preserves_multi_selection(tmp_path: Path)
     widget.render(MaskPreviewConfig())
 
     assert widget.selected_reprocess_image_paths() == [image_paths[1], image_paths[3]]
+
+
+def test_mask_preview_overlay_toggle_updates_thumbnail_opacity(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    _app()
+    for idx in range(2):
+        image_path = tmp_path / f"frame_{idx:06d}.png"
+        cv2.imwrite(str(image_path), np.full((16, 32, 3), 120, dtype=np.uint8))
+    widget = MaskPreviewWidget()
+    widget.set_images_dir(str(tmp_path))
+    widget.set_preview_mode("thumbnails")
+    calls: list[int] = []
+
+    def remember_set_sources(*_args, **kwargs) -> None:
+        calls.append(int(kwargs["opacity"]))
+
+    monkeypatch.setattr(widget.thumbnail_model, "set_sources", remember_set_sources)
+
+    widget.mask_overlay_btn.click()
+    widget.mask_overlay_btn.click()
+
+    assert calls == [0, 45]
 
 
 def test_mask_preview_refresh_reuses_thumbnail_model_when_images_are_unchanged(

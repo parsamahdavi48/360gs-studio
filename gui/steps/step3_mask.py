@@ -473,7 +473,6 @@ class MaskStep(BaseStepWidget):
         self.overexp_threshold_edit.valueChanged.connect(lambda _: self._schedule_render_mask_preview())
         self.overexp_dilate_edit.valueChanged.connect(lambda _: self._schedule_render_mask_preview())
         self.mask_preview.current_image_changed.connect(lambda: self._schedule_render_mask_preview())
-        self.mask_preview.opacity_slider.valueChanged.connect(lambda _: self._schedule_render_mask_preview())
         self.mask_preview.yolo_preview_requested.connect(self._run_yolo_preview)
         self.mask_preview.current_reprocess_requested.connect(self._run_current_image_reprocess)
         self.add_external_images_btn.clicked.connect(self._add_external_images_from_folder)

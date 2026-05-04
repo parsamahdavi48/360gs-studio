@@ -21,11 +21,13 @@ from PySide6.QtWidgets import (
     QSizePolicy,
     QSlider,
     QStackedWidget,
+    QToolButton,
     QVBoxLayout,
     QWidget,
 )
 
 from gui import i18n
+from gui.common.icons import mask_overlay_off_icon, mask_overlay_on_icon
 from gui.common.preview_mode_toolbar import (
     PREVIEW_MODE_SINGLE,
     PREVIEW_MODE_THUMBNAILS,
@@ -40,8 +42,7 @@ from stitch_mask import boundary_width_to_limit_angle, create_angular_stitched_m
 
 _IMAGE_CACHE_LIMIT = 2
 _LAYER_CACHE_LIMIT = 4
-_OPACITY_SLIDER_MIN_WIDTH = 140
-_OPACITY_SLIDER_MAX_WIDTH = 160
+_MASK_OVERLAY_OPACITY = 45
 _STATUS_LABEL_MIN_WIDTH = 72
 
 
@@ -114,6 +115,7 @@ class MaskPreviewWidget(QWidget):
         self._preview_mode = PREVIEW_MODE_SINGLE
         self._last_config = MaskPreviewConfig()
         self._current_image_path = ""
+        self._mask_overlay_visible = True
         self._yolo_preview_image_key = ""
         self._yolo_preview_mask: np.ndarray | None = None
         self._image_cache: OrderedDict[tuple, tuple[np.ndarray, np.ndarray]] = OrderedDict()
@@ -192,14 +194,16 @@ class MaskPreviewWidget(QWidget):
         self.reprocess_current_btn.clicked.connect(self.current_reprocess_requested.emit)
         overlay_row.addWidget(self.reprocess_current_btn)
 
-        overlay_row.addWidget(QLabel(i18n.t("MASK_OPACITY_LABEL")))
-        self.opacity_slider = QSlider(Qt.Horizontal)
-        self.opacity_slider.setToolTip(i18n.tip("MASK_OPACITY"))
-        self.opacity_slider.setRange(0, 100)
-        self.opacity_slider.setValue(45)
-        self.opacity_slider.setMinimumWidth(_OPACITY_SLIDER_MIN_WIDTH)
-        self.opacity_slider.setMaximumWidth(_OPACITY_SLIDER_MAX_WIDTH)
-        overlay_row.addWidget(self.opacity_slider)
+        self.mask_overlay_btn = QToolButton()
+        self.mask_overlay_btn.setObjectName("iconToolButton")
+        self.mask_overlay_btn.setCheckable(True)
+        self.mask_overlay_btn.setChecked(True)
+        self.mask_overlay_btn.setIcon(mask_overlay_on_icon())
+        self.mask_overlay_btn.setAccessibleName(i18n.t("MASK_OVERLAY_TOGGLE"))
+        self.mask_overlay_btn.setToolTip(i18n.tip("MASK_OVERLAY_TOGGLE"))
+        self.mask_overlay_btn.setFixedSize(28, 28)
+        self.mask_overlay_btn.toggled.connect(self._on_mask_overlay_toggled)
+        overlay_row.addWidget(self.mask_overlay_btn)
 
         self.status_label = ElidedStatusLabel("")
         self.status_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
@@ -300,7 +304,7 @@ class MaskPreviewWidget(QWidget):
                 status_parts.append(i18n.t("MASK_PREVIEW_CUSTOM_STATUS"))
 
         excluded = combined < 128
-        alpha = float(self.opacity_slider.value()) / 100.0
+        alpha = self._mask_overlay_alpha()
         if alpha > 0 and np.any(excluded):
             overlay = np.zeros_like(img)
             overlay[:, :, 2] = 255
@@ -309,7 +313,7 @@ class MaskPreviewWidget(QWidget):
                 + alpha * overlay[excluded].astype(np.float32)
             ).astype(np.uint8)
 
-        if np.any(excluded):
+        if alpha > 0 and np.any(excluded):
             contours, _ = cv2.findContours(
                 excluded.astype(np.uint8),
                 cv2.RETR_EXTERNAL,
@@ -469,6 +473,11 @@ class MaskPreviewWidget(QWidget):
     def preview_mode(self) -> str:
         return self._preview_mode
 
+    def _on_mask_overlay_toggled(self, checked: bool) -> None:
+        self._mask_overlay_visible = checked
+        self.mask_overlay_btn.setIcon(mask_overlay_on_icon() if checked else mask_overlay_off_icon())
+        self.render(self._last_config)
+
     def selected_reprocess_image_paths(self) -> list[Path]:
         if self._preview_mode != PREVIEW_MODE_THUMBNAILS:
             current = self.current_image_path()
@@ -505,14 +514,14 @@ class MaskPreviewWidget(QWidget):
             tuple(str(path) for path in self.preview_images),
             self._images_dir,
             config.masks_dir,
-            int(self.opacity_slider.value()),
+            self._mask_overlay_opacity(),
         )
         if force or signature != self._thumbnail_model_signature:
             self.thumbnail_model.set_sources(
                 self.preview_images,
                 images_dir=self._images_dir,
                 masks_dir=config.masks_dir,
-                opacity=int(self.opacity_slider.value()),
+                opacity=self._mask_overlay_opacity(),
                 force=force,
             )
             self._thumbnail_model_signature = signature
@@ -547,6 +556,12 @@ class MaskPreviewWidget(QWidget):
 
     def _update_pixmap(self) -> None:
         self.image_label.set_source_pixmap(self._pixmap)
+
+    def _mask_overlay_opacity(self) -> int:
+        return _MASK_OVERLAY_OPACITY if self._mask_overlay_visible else 0
+
+    def _mask_overlay_alpha(self) -> float:
+        return float(self._mask_overlay_opacity()) / 100.0
 
     def invalidate_thumbnail_images(self, images: list[Path] | set[Path]) -> None:
         self.thumbnail_model.invalidate_images(images)
