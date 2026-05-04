@@ -227,6 +227,7 @@ class MaskPreviewWidget(QWidget):
         self._last_config = config
         self._sync_thumbnail_model(config, scroll=False)
         if self._preview_mode == PREVIEW_MODE_THUMBNAILS:
+            self._update_mask_preview_button_text()
             self.status_label.setText(
                 i18n.t("MASK_PREVIEW_THUMBNAIL_STATUS").format(count=len(self.preview_images))
             )
@@ -347,6 +348,7 @@ class MaskPreviewWidget(QWidget):
         self.status_label.setText(
             " / ".join(status_parts) if status_parts else i18n.t("MASK_PREVIEW_NO_ACTIVE_MASK")
         )
+        self._update_mask_preview_button_text()
 
         rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
         qimg = QImage(rgb.data, rgb.shape[1], rgb.shape[0], rgb.shape[1] * 3, QImage.Format_RGB888).copy()
@@ -445,6 +447,7 @@ class MaskPreviewWidget(QWidget):
         self._temporary_preview_image_key = ""
         self._temporary_preview_config_key = None
         self._temporary_preview_mask = None
+        self._update_mask_preview_button_text()
 
     def clear_yolo_preview_mask(self, image_path: Path | None = None) -> None:
         self.clear_temporary_preview_mask(image_path)
@@ -463,9 +466,7 @@ class MaskPreviewWidget(QWidget):
 
     def set_mask_preview_running(self, running: bool) -> None:
         self.yolo_preview_btn.setEnabled(not running)
-        self.yolo_preview_btn.setText(
-            i18n.t("MASK_PREVIEW_RUNNING") if running else i18n.t("MASK_PREVIEW_BUTTON")
-        )
+        self._update_mask_preview_button_text(running=running)
 
     def set_yolo_preview_running(self, running: bool) -> None:
         self.set_mask_preview_running(running)
@@ -484,6 +485,14 @@ class MaskPreviewWidget(QWidget):
 
     def set_status_text(self, text: str) -> None:
         self.status_label.setText(text)
+
+    def has_active_temporary_preview(self, config: MaskPreviewConfig | None = None) -> bool:
+        if self._preview_mode != PREVIEW_MODE_SINGLE:
+            return False
+        image_path = self.current_image_path()
+        if image_path is None:
+            return False
+        return self._load_temporary_preview_mask(image_path, config or self._last_config) is not None
 
     def _load_yolo_preview_mask(self, image_path: Path) -> np.ndarray | None:
         return None
@@ -610,6 +619,18 @@ class MaskPreviewWidget(QWidget):
             self.reprocess_current_btn.setText(i18n.t("MASK_REPROCESS_SELECTED_FALLBACK_BUTTON"))
             return
         self.reprocess_current_btn.setText(i18n.t("MASK_REPROCESS_CURRENT_BUTTON"))
+
+    def _update_mask_preview_button_text(self, *, running: bool = False) -> None:
+        if running:
+            self.yolo_preview_btn.setText(i18n.t("MASK_PREVIEW_RUNNING"))
+            self.yolo_preview_btn.setToolTip(i18n.tip("MASK_PREVIEW_BUTTON"))
+            return
+        if self.has_active_temporary_preview(self._last_config):
+            self.yolo_preview_btn.setText(i18n.t("MASK_PREVIEW_CLEAR_BUTTON"))
+            self.yolo_preview_btn.setToolTip(i18n.tip("MASK_PREVIEW_CLEAR_BUTTON"))
+            return
+        self.yolo_preview_btn.setText(i18n.t("MASK_PREVIEW_BUTTON"))
+        self.yolo_preview_btn.setToolTip(i18n.tip("MASK_PREVIEW_BUTTON"))
 
     def _update_pixmap(self) -> None:
         self.image_label.set_source_pixmap(self._pixmap)

@@ -1311,9 +1311,22 @@ class MaskStep(BaseStepWidget):
         if image_path is None:
             self.mask_preview.set_status_text(i18n.t("MASK_PREVIEW_NO_IMAGE"))
             return
+        config = self._mask_preview_config_from_controls()
+        if self.mask_preview.has_active_temporary_preview(config):
+            self.mask_preview.clear_temporary_preview_mask(image_path)
+            self._render_mask_preview()
+            self.mask_preview.set_status_text(i18n.t("MASK_PREVIEW_CLEARED"))
+            return
         if not self._selected_mask_tasks():
             self.mask_preview.set_status_text(i18n.t("MASK_TASK_REQUIRED"))
             return
+
+        if self.mask_preview.preview_mode() == "thumbnails":
+            self.mask_preview.set_preview_mode("single")
+            if self.mask_preview.has_active_temporary_preview(config):
+                self.mask_preview.set_status_text(i18n.t("MASK_PREVIEW_TEMP"))
+                return
+
         if self.run_yolo_cb.isChecked() and not self._confirm_yolo_sam_license_notice():
             self.mask_preview.set_status_text(i18n.t("YOLO_SAM_LICENSE_NOTICE_CANCELED"))
             return
@@ -1325,7 +1338,6 @@ class MaskStep(BaseStepWidget):
         self._mask_preview_temp = tempfile.TemporaryDirectory(prefix="stechdrive_mask_preview_")
         masks_root = Path(self._mask_preview_temp.name)
         output_path = self._mask_output_path_for_image(image_path, masks_root=masks_root)
-        config = self._mask_preview_config_from_controls()
 
         try:
             commands = self._build_image_external_commands(image_path, masks_root=masks_root)

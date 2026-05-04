@@ -185,6 +185,51 @@ def test_mask_step_refreshes_preview_after_successful_mask_generation(tmp_path: 
     assert step.mask_preview.image_label._source_pixmap is not None
 
 
+def test_mask_step_mask_preview_from_thumbnails_switches_to_single(tmp_path: Path) -> None:
+    _app()
+    scene = tmp_path
+    images = scene / "images"
+    images.mkdir()
+    image_path = images / "frame_0001.png"
+    image = np.full((24, 32, 3), 120, dtype=np.uint8)
+    image[4:8, 6:10] = 255
+    cv2.imwrite(str(image_path), image)
+    step = MaskStep(Path.cwd())
+    step.set_scene_dir(str(scene))
+    step.run_yolo_cb.setChecked(False)
+    step.run_overexp_cb.setChecked(True)
+    step.mask_preview.set_preview_mode("thumbnails")
+
+    step._run_mask_preview()
+
+    assert step.mask_preview.preview_mode() == "single"
+    assert i18n.t("MASK_PREVIEW_TEMP") in step.mask_preview.status_label.text()
+    assert step.mask_preview.yolo_preview_btn.text() == i18n.t("MASK_PREVIEW_CLEAR_BUTTON")
+    assert not (scene / "masks" / "frame_0001.png").exists()
+
+
+def test_mask_step_mask_preview_button_clears_active_temporary_preview(tmp_path: Path) -> None:
+    _app()
+    scene = tmp_path
+    images = scene / "images"
+    images.mkdir()
+    image_path = images / "frame_0001.png"
+    image = np.full((24, 32, 3), 120, dtype=np.uint8)
+    image[4:8, 6:10] = 255
+    cv2.imwrite(str(image_path), image)
+    step = MaskStep(Path.cwd())
+    step.set_scene_dir(str(scene))
+    step.run_yolo_cb.setChecked(False)
+    step.run_overexp_cb.setChecked(True)
+
+    step._run_mask_preview()
+    assert step.mask_preview.yolo_preview_btn.text() == i18n.t("MASK_PREVIEW_CLEAR_BUTTON")
+    step._run_mask_preview()
+
+    assert step.mask_preview.yolo_preview_btn.text() == i18n.t("MASK_PREVIEW_BUTTON")
+    assert step.mask_preview.status_label.text() == i18n.t("MASK_PREVIEW_CLEARED")
+
+
 def test_mask_step_preview_render_scheduling_is_debounced() -> None:
     _app()
     step = MaskStep(Path.cwd())

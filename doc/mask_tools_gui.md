@@ -67,6 +67,8 @@ run_gui.bat --scene ./scene01
 - `Mask Preview` button: builds a temporary mask for the displayed image using the currently enabled `YOLO`, `Stitch`, `Overexp`, `Sky`, and `Custom` steps.
   - Existing files in `masks/` are not used as the base, so results from steps that are now off are not mixed into the preview.
   - The result is shown as a red overlay and is not saved to `masks/`.
+  - In thumbnail mode, it switches the currently selected image to single-preview mode and shows the temporary result there.
+  - While a temporary preview is active, the button changes to `Clear Preview`. Press it to discard the temporary preview and return to the saved mask display.
   - If `YOLO` or `Sky` is enabled, the first run shows the relevant third-party model/license notice.
 - `Regenerate Current`: rebuilds and saves the mask for only the currently displayed preview image.
   - If `YOLO` or `Sky` is enabled, it reruns the matching model step for that single image. If `Stitch`, `Overexp`, or `Custom` is enabled, those masks are merged into the same output.
