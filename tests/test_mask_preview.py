@@ -566,11 +566,11 @@ def test_render_mask_thumbnail_payload_keeps_base_image_unmodified(tmp_path: Pat
     assert overlay_kept.alpha() == 0
 
 
-def test_mask_step_uses_conservative_manual_yolo_expand_by_default() -> None:
+def test_mask_step_uses_neutral_manual_expand_by_default() -> None:
     _app()
     step = MaskStep(Path.cwd())
 
-    assert step._yolo_expand_arg() == "2"
+    assert step._yolo_expand_arg() == "0"
     assert step.yolo_expand_edit.isEnabled()
 
     step.yolo_expand_edit.setValue(7)

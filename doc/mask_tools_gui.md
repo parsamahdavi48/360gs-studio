@@ -45,7 +45,7 @@ run_gui.bat --scene ./scene01
   - `Best`: denser tiles and stronger bottom-pole settings for difficult source images.
   - Normal images use direct inference and whole-image tiling; 360° pole projection is skipped.
 - `Mask Expand`: forwarded to the selected primary backend as `--expand`.
-  - Default is `2px`; drag horizontally on the number field to adjust.
+  - Default is `0px`; drag horizontally on the number field to adjust.
   - Clamped to `-16..32px` for safety.
 - `Detection Classes`: collapsed picker for class selection in `YOLO/SAM2.1`.
   - Choose classes by checkbox labels (`id: name`) instead of memorizing numeric ids.
@@ -57,9 +57,12 @@ run_gui.bat --scene ./scene01
 - `Detection Targets`: SAM3.1 prompt presets and a custom English prompt field.
   - Defaults to `person` and `sky`.
   - Multiple prompts are run one at a time and OR-merged into the output mask.
-- `Projection Assist`: now controlled by `Quality`.
-  - `Size` controls Mask2Former inference size. SAM3.1 currently uses `1008`.
-  - `Min Score` is used by Mask2Former. `Min Area` and `Top-connected only` are post-filters.
+- `Inference Size`: controls Mask2Former inference size. SAM3.1 currently uses fixed `1008`.
+- `Model Details`: contains Mask2Former-specific `Min Score` (`0.00-1.00`, `0` disables it).
+- `Sky Postprocess`: contains sky-only filters.
+  - `Min Area` removes small sky components by image-area ratio.
+  - `Top-connected sky only` keeps only sky components touching the top image edge.
+  - These filters apply only to sky labels/prompts, not to people or other selected targets.
 - `Boundary Mask Width (deg)`: forwarded to `stitch_mask.py --boundary-width`.
   - Not used when `Image Type` is `Normal`.
   - Drag horizontally on the number field to adjust.

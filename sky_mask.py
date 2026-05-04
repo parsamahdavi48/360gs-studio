@@ -54,7 +54,7 @@ DEFAULT_MODE = ""
 SUPPORTED_MODES = ("direct", "top", "bottom", "hybrid", "full")
 DEFAULT_EXPAND = 0
 DEFAULT_MIN_SCORE = 0.0
-DEFAULT_MIN_AREA_RATIO = 0.0005
+DEFAULT_MIN_AREA_RATIO = 0.0
 DEFAULT_MASK2FORMER_LABELS = ("sky",)
 
 _top_extract_cache: dict[tuple[int, int, int], tuple[np.ndarray, np.ndarray]] = {}
@@ -73,12 +73,30 @@ class SkyMaskOptions:
     min_score: float = DEFAULT_MIN_SCORE
     min_area_ratio: float = DEFAULT_MIN_AREA_RATIO
     expand_px: int = DEFAULT_EXPAND
-    top_connected: bool = True
+    top_connected: bool = False
     add_ext: bool = False
     replace: bool = False
     sam_prompt: str = DEFAULT_SAM31_PROMPT
     labels: tuple[str, ...] = DEFAULT_MASK2FORMER_LABELS
     sam_prompts: tuple[str, ...] = ()
+
+
+@dataclass
+class DetectedRegionMasks:
+    sky: np.ndarray
+    other: np.ndarray
+
+    @classmethod
+    def empty(cls, shape: tuple[int, int]) -> "DetectedRegionMasks":
+        return cls(np.zeros(shape, dtype=bool), np.zeros(shape, dtype=bool))
+
+    @property
+    def combined(self) -> np.ndarray:
+        return self.sky | self.other
+
+    def merge(self, other: "DetectedRegionMasks") -> None:
+        self.sky |= other.sky
+        self.other |= other.other
 
 
 @dataclass
@@ -156,9 +174,13 @@ class Mask2FormerSkySegmenter:
         return self.detect_labels(bgr, options, labels=options.labels)
 
     def _resolve_label_ids(self, labels: tuple[str, ...]) -> list[int]:
+        return self._resolve_label_ids_impl(labels, default_to_sky=True)
+
+    def _resolve_label_ids_impl(self, labels: tuple[str, ...], *, default_to_sky: bool) -> list[int]:
         resolved: list[int] = []
         available = getattr(self.model.config, "id2label", {})
-        for label in labels or DEFAULT_MASK2FORMER_LABELS:
+        label_source = labels if labels else (DEFAULT_MASK2FORMER_LABELS if default_to_sky else ())
+        for label in label_source:
             text = str(label).strip()
             if not text:
                 continue
@@ -172,14 +194,52 @@ class Mask2FormerSkySegmenter:
             if idx is None:
                 raise RuntimeError(f"Mask2Former model does not expose label '{text}'.")
             resolved.append(idx)
-        if not resolved:
+        if not resolved and default_to_sky:
             resolved.append(self.sky_label_id)
         return sorted(set(resolved))
 
+    def _label_name_for_id(self, idx: int) -> str:
+        labels = getattr(self.model.config, "id2label", {})
+        return str(labels.get(int(idx), "")).strip().lower()
+
+    def is_sky_label(self, label: str) -> bool:
+        text = str(label).strip()
+        if not text:
+            return False
+        if text.isdigit():
+            return self._label_name_for_id(int(text)) == "sky"
+        return text.lower() == "sky"
+
+    def split_labels(self, labels: tuple[str, ...]) -> tuple[tuple[str, ...], tuple[str, ...]]:
+        sky_labels: list[str] = []
+        other_labels: list[str] = []
+        for label in labels or DEFAULT_MASK2FORMER_LABELS:
+            if self.is_sky_label(label):
+                sky_labels.append(label)
+            else:
+                other_labels.append(label)
+        return tuple(sky_labels), tuple(other_labels)
+
     def detect_labels(self, bgr: np.ndarray, options: SkyMaskOptions, *, labels: tuple[str, ...]) -> np.ndarray:
+        masks = self.detect_label_masks(bgr, options, sky_labels=labels, other_labels=())
+        return masks.sky
+
+    def detect_label_masks(
+        self,
+        bgr: np.ndarray,
+        options: SkyMaskOptions,
+        *,
+        sky_labels: tuple[str, ...],
+        other_labels: tuple[str, ...],
+    ) -> DetectedRegionMasks:
         rgb = bgr_to_rgb8(bgr)
         pil = Image.fromarray(rgb)
-        label_ids = self._resolve_label_ids(labels)
+        sky_label_ids = self._resolve_label_ids_impl(sky_labels, default_to_sky=False)
+        other_label_ids = self._resolve_label_ids_impl(other_labels, default_to_sky=False)
+        label_ids = sorted(set(sky_label_ids + other_label_ids))
+        if not label_ids:
+            label_ids = [self.sky_label_id]
+            sky_label_ids = [self.sky_label_id]
         inputs = self.processor(
             images=pil,
             return_tensors="pt",
@@ -201,16 +261,30 @@ class Mask2FormerSkySegmenter:
             mask_probs = mask_queries.sigmoid()
             scores = self.torch.einsum("bqc,bqhw->bchw", class_probs, mask_probs)[0]
             predicted_labels = scores.argmax(dim=0)
-            selected_ids = self.torch.tensor(label_ids, device=predicted_labels.device)
-            selected = (predicted_labels[..., None] == selected_ids).any(dim=-1)
-            selected_scores = scores[label_ids].amax(dim=0)
-            if options.min_score > 0.0:
-                selected = selected & (selected_scores >= float(options.min_score))
-            sky_small = selected.detach().to("cpu").numpy().astype(np.uint8)
+            sky_small = self._select_label_mask(scores, predicted_labels, sky_label_ids, options)
+            other_small = self._select_label_mask(scores, predicted_labels, other_label_ids, options)
         h, w = bgr.shape[:2]
         if sky_small.shape != (h, w):
             sky_small = cv2.resize(sky_small, (w, h), interpolation=cv2.INTER_NEAREST)
-        return sky_small.astype(bool)
+        if other_small.shape != (h, w):
+            other_small = cv2.resize(other_small, (w, h), interpolation=cv2.INTER_NEAREST)
+        return DetectedRegionMasks(sky_small.astype(bool), other_small.astype(bool))
+
+    def _select_label_mask(
+        self,
+        scores: Any,
+        predicted_labels: Any,
+        label_ids: list[int],
+        options: SkyMaskOptions,
+    ) -> np.ndarray:
+        if not label_ids:
+            return np.zeros(tuple(int(v) for v in predicted_labels.shape), dtype=np.uint8)
+        selected_ids = self.torch.tensor(label_ids, device=predicted_labels.device)
+        selected = (predicted_labels[..., None] == selected_ids).any(dim=-1)
+        selected_scores = scores[label_ids].amax(dim=0)
+        if options.min_score > 0.0:
+            selected = selected & (selected_scores >= float(options.min_score))
+        return selected.detach().to("cpu").numpy().astype(np.uint8)
 
 
 class Sam31SkySegmenter:
@@ -280,12 +354,24 @@ class Sam31SkySegmenter:
         return self.detect_prompts(bgr, options, prompts=tuple(prompts))
 
     def detect_prompts(self, bgr: np.ndarray, options: SkyMaskOptions, *, prompts: tuple[str, ...]) -> np.ndarray:
+        masks = self.detect_prompt_masks(bgr, options, sky_prompts=prompts, other_prompts=())
+        return masks.sky
+
+    def detect_prompt_masks(
+        self,
+        bgr: np.ndarray,
+        options: SkyMaskOptions,
+        *,
+        sky_prompts: tuple[str, ...],
+        other_prompts: tuple[str, ...],
+    ) -> DetectedRegionMasks:
         rgb = bgr_to_rgb8(bgr)
         pil = Image.fromarray(rgb)
         processor = self._processor_for_options(options)
-        cleaned_prompts = tuple(dict.fromkeys(prompt.strip() for prompt in prompts if prompt.strip()))
-        if not cleaned_prompts:
-            cleaned_prompts = (DEFAULT_SAM31_PROMPT,)
+        cleaned_sky_prompts = tuple(dict.fromkeys(prompt.strip() for prompt in sky_prompts if prompt.strip()))
+        cleaned_other_prompts = tuple(dict.fromkeys(prompt.strip() for prompt in other_prompts if prompt.strip()))
+        if not cleaned_sky_prompts and not cleaned_other_prompts:
+            cleaned_sky_prompts = (DEFAULT_SAM31_PROMPT,)
         autocast = (
             self.torch.autocast(device_type="cuda", dtype=self.torch.bfloat16)
             if self.device == "cuda"
@@ -294,28 +380,34 @@ class Sam31SkySegmenter:
         with self.torch.inference_mode(), autocast:
             state = processor.set_image(pil)
             sky = np.zeros(bgr.shape[:2], dtype=bool)
-            for prompt in cleaned_prompts:
-                output = processor.set_text_prompt(state=state, prompt=prompt)
-                masks = output.get("masks")
-                if masks is None or masks.numel() == 0:
-                    continue
-                masks = masks.detach().to("cpu")
-                if masks.ndim == 4:
-                    masks = masks[:, 0]
-                if masks.ndim == 2:
-                    prompt_mask = masks.bool().numpy()
-                elif masks.ndim == 3:
-                    prompt_mask = masks.bool().any(dim=0).numpy()
-                else:
-                    continue
-                if prompt_mask.shape != bgr.shape[:2]:
-                    prompt_mask = cv2.resize(
-                        prompt_mask.astype(np.uint8),
-                        (bgr.shape[1], bgr.shape[0]),
-                        interpolation=cv2.INTER_NEAREST,
-                    ).astype(bool)
-                sky |= prompt_mask
-        return sky.astype(bool)
+            other = np.zeros(bgr.shape[:2], dtype=bool)
+            for prompt in cleaned_sky_prompts:
+                sky |= self._detect_prompt_mask(state, processor, bgr.shape[:2], prompt)
+            for prompt in cleaned_other_prompts:
+                other |= self._detect_prompt_mask(state, processor, bgr.shape[:2], prompt)
+        return DetectedRegionMasks(sky.astype(bool), other.astype(bool))
+
+    def _detect_prompt_mask(self, state: Any, processor: Any, shape: tuple[int, int], prompt: str) -> np.ndarray:
+        output = processor.set_text_prompt(state=state, prompt=prompt)
+        masks = output.get("masks")
+        if masks is None or masks.numel() == 0:
+            return np.zeros(shape, dtype=bool)
+        masks = masks.detach().to("cpu")
+        if masks.ndim == 4:
+            masks = masks[:, 0]
+        if masks.ndim == 2:
+            prompt_mask = masks.bool().numpy()
+        elif masks.ndim == 3:
+            prompt_mask = masks.bool().any(dim=0).numpy()
+        else:
+            return np.zeros(shape, dtype=bool)
+        if prompt_mask.shape != shape:
+            prompt_mask = cv2.resize(
+                prompt_mask.astype(np.uint8),
+                (shape[1], shape[0]),
+                interpolation=cv2.INTER_NEAREST,
+            ).astype(bool)
+        return prompt_mask
 
 
 SkySegmenter = Mask2FormerSkySegmenter
@@ -409,8 +501,60 @@ def mask_output_path_for_image(image_path: Path, images_root: Path, masks_dir: P
     return masks_dir / rel_parent / name
 
 
+def _is_sky_prompt(prompt: str) -> bool:
+    value = str(prompt).strip().lower()
+    return value in {"sky", "the sky"} or value.endswith(" sky")
+
+
+def _split_sam_prompts(options: SkyMaskOptions) -> tuple[tuple[str, ...], tuple[str, ...]]:
+    prompts = options.sam_prompts or (options.sam_prompt.strip() or DEFAULT_SAM31_PROMPT,)
+    sky_prompts: list[str] = []
+    other_prompts: list[str] = []
+    for prompt in prompts:
+        if _is_sky_prompt(prompt):
+            sky_prompts.append(prompt)
+        else:
+            other_prompts.append(prompt)
+    return tuple(sky_prompts), tuple(other_prompts)
+
+
+def detect_region_masks(image: np.ndarray, segmenter: Any, options: SkyMaskOptions) -> DetectedRegionMasks:
+    if hasattr(segmenter, "split_labels") and hasattr(segmenter, "detect_label_masks"):
+        sky_labels, other_labels = segmenter.split_labels(options.labels)
+        return segmenter.detect_label_masks(
+            image,
+            options,
+            sky_labels=sky_labels,
+            other_labels=other_labels,
+        )
+    if hasattr(segmenter, "detect_prompt_masks"):
+        sky_prompts, other_prompts = _split_sam_prompts(options)
+        return segmenter.detect_prompt_masks(
+            image,
+            options,
+            sky_prompts=sky_prompts,
+            other_prompts=other_prompts,
+        )
+    return DetectedRegionMasks(
+        segmenter.detect_sky(image, options).astype(bool),
+        np.zeros(image.shape[:2], dtype=bool),
+    )
+
+
+def expand_mask(mask: np.ndarray, expand_px: int) -> np.ndarray:
+    expanded = mask.astype(np.uint8)
+    if expand_px != 0 and expanded.any():
+        radius = abs(int(expand_px))
+        kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (radius * 2 + 1, radius * 2 + 1))
+        if expand_px > 0:
+            expanded = cv2.dilate(expanded, kernel)
+        else:
+            expanded = cv2.erode(expanded, kernel)
+    return expanded.astype(bool)
+
+
 def detect_sky_mask(image: np.ndarray, segmenter: Any, options: SkyMaskOptions) -> np.ndarray:
-    sky = np.zeros(image.shape[:2], dtype=bool)
+    regions = DetectedRegionMasks.empty(image.shape[:2])
     h, w = image.shape[:2]
     mode = str(options.mode or "").strip().lower()
     if mode:
@@ -418,48 +562,54 @@ def detect_sky_mask(image: np.ndarray, segmenter: Any, options: SkyMaskOptions) 
             mode = "direct"
 
         if mode in {"direct", "hybrid", "full"}:
-            sky |= segmenter.detect_sky(image, options)
+            regions.merge(detect_region_masks(image, segmenter, options))
 
         if mode in {"top", "hybrid", "full"}:
             view_size = options.view_size or shared_auto_view_size(w, h)
             top_view = shared_extract_top_view(image, view_size)
-            top_sky = segmenter.detect_sky(top_view, options)
-            sky |= shared_back_project_top_mask(top_sky.astype(np.uint8) * 255, w, h) > 0
+            top_regions = detect_region_masks(top_view, segmenter, options)
+            regions.sky |= shared_back_project_top_mask(top_regions.sky.astype(np.uint8) * 255, w, h) > 0
+            regions.other |= shared_back_project_top_mask(top_regions.other.astype(np.uint8) * 255, w, h) > 0
 
         if mode in {"bottom", "full"}:
             view_size = options.view_size or shared_auto_view_size(w, h)
             bottom_view = shared_extract_bottom_view(image, view_size)
-            bottom_sky = segmenter.detect_sky(bottom_view, options)
-            sky |= shared_back_project_bottom_mask(bottom_sky.astype(np.uint8) * 255, w, h) > 0
+            bottom_regions = detect_region_masks(bottom_view, segmenter, options)
+            regions.sky |= shared_back_project_bottom_mask(bottom_regions.sky.astype(np.uint8) * 255, w, h) > 0
+            regions.other |= shared_back_project_bottom_mask(bottom_regions.other.astype(np.uint8) * 255, w, h) > 0
     else:
         recipe = recipe_for(options.quality, options.projection)
         if recipe.direct:
-            sky |= segmenter.detect_sky(image, options)
+            regions.merge(detect_region_masks(image, segmenter, options))
 
         for region in iter_tile_regions(w, h, recipe.tile_spec):
             tile = image[region.y1:region.y2, region.x1:region.x2]
-            tile_sky = segmenter.detect_sky(tile, options)
-            sky[region.y1:region.y2, region.x1:region.x2] |= tile_sky
+            tile_regions = detect_region_masks(tile, segmenter, options)
+            regions.sky[region.y1:region.y2, region.x1:region.x2] |= tile_regions.sky
+            regions.other[region.y1:region.y2, region.x1:region.x2] |= tile_regions.other
 
         if recipe.top_view:
             view_size = options.view_size or shared_auto_view_size(w, h)
             top_view = shared_extract_top_view(image, view_size)
-            top_sky = segmenter.detect_sky(top_view, options)
-            sky |= shared_back_project_top_mask(top_sky.astype(np.uint8) * 255, w, h) > 0
+            top_regions = detect_region_masks(top_view, segmenter, options)
+            regions.sky |= shared_back_project_top_mask(top_regions.sky.astype(np.uint8) * 255, w, h) > 0
+            regions.other |= shared_back_project_top_mask(top_regions.other.astype(np.uint8) * 255, w, h) > 0
 
         if recipe.bottom_view:
             view_size = options.view_size or shared_auto_view_size(w, h)
             bottom_view = shared_extract_bottom_view(image, view_size)
-            bottom_sky = segmenter.detect_sky(bottom_view, options)
-            sky |= shared_back_project_bottom_mask(bottom_sky.astype(np.uint8) * 255, w, h) > 0
+            bottom_regions = detect_region_masks(bottom_view, segmenter, options)
+            regions.sky |= shared_back_project_bottom_mask(bottom_regions.sky.astype(np.uint8) * 255, w, h) > 0
+            regions.other |= shared_back_project_bottom_mask(bottom_regions.other.astype(np.uint8) * 255, w, h) > 0
 
     sky = postprocess_sky_components(
-        sky,
+        regions.sky,
         min_area_ratio=options.min_area_ratio,
-        expand_px=options.expand_px,
+        expand_px=0,
         top_connected=options.top_connected,
     )
-    return np.where(sky, 0, 255).astype(np.uint8)
+    detected = expand_mask(sky | regions.other, options.expand_px)
+    return np.where(detected, 0, 255).astype(np.uint8)
 
 
 def auto_view_size(width: int, height: int) -> int:
@@ -556,14 +706,7 @@ def postprocess_sky_components(
             continue
         filtered[component] = 1
 
-    if expand_px != 0 and filtered.any():
-        radius = abs(int(expand_px))
-        kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (radius * 2 + 1, radius * 2 + 1))
-        if expand_px > 0:
-            filtered = cv2.dilate(filtered, kernel)
-        else:
-            filtered = cv2.erode(filtered, kernel)
-    return filtered.astype(bool)
+    return expand_mask(filtered, expand_px)
 
 
 def merge_with_existing(mask_out: Path, new_mask: np.ndarray, *, replace: bool = False) -> np.ndarray:
@@ -671,7 +814,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--min-score", type=float, default=DEFAULT_MIN_SCORE)
     parser.add_argument("--min-area-ratio", type=float, default=DEFAULT_MIN_AREA_RATIO)
     parser.add_argument("--expand", type=int, default=DEFAULT_EXPAND, help="Expand sky exclusion mask in pixels")
-    parser.add_argument("--no-top-connected", action="store_true", help="Keep all sky components, not only top-connected")
+    parser.add_argument("--top-connected", action="store_true", help="Keep only sky components connected to the top edge")
+    parser.add_argument("--no-top-connected", action="store_true", help=argparse.SUPPRESS)
     parser.add_argument("--add-ext", action="store_true", help="Append .png to the original filename")
     parser.add_argument("--replace", action="store_true", help="Ignore existing masks and write sky-only masks")
     parser.add_argument(
@@ -718,7 +862,7 @@ def main() -> int:
         min_score=float(args.min_score),
         min_area_ratio=float(args.min_area_ratio),
         expand_px=int(args.expand),
-        top_connected=not bool(args.no_top_connected),
+        top_connected=bool(args.top_connected) and not bool(args.no_top_connected),
         add_ext=bool(args.add_ext),
         replace=bool(args.replace),
         sam_prompt=(args.sam_prompt[0] if args.sam_prompt else DEFAULT_SAM31_PROMPT),

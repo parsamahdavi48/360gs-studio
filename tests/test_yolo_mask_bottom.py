@@ -60,6 +60,7 @@ def test_equirect_standard_level_runs_bottom_redetection(monkeypatch: pytest.Mon
     monkeypatch.setattr(yolo_mask, "get_bottom_from_pano", fake_get_bottom_from_pano)
     monkeypatch.setattr(yolo_mask, "back_to_pano_from_bottom", fake_back_to_pano_from_bottom)
     monkeypatch.setattr(yolo_mask, "LEVEL", 1)
+    monkeypatch.setattr(yolo_mask, "QUALITY", "standard")
     monkeypatch.setattr(yolo_mask, "PROJECTION", "equirect")
     monkeypatch.setattr(yolo_mask, "EXPAND", 0)
     monkeypatch.setattr(yolo_mask, "BOTTOM_TTA_ROTATIONS", 1)

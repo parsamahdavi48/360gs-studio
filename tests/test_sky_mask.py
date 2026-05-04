@@ -8,6 +8,7 @@ import numpy as np
 from sky_mask import (
     BACKEND_SAM31,
     DEFAULT_SAM31_CHECKPOINT_NAME,
+    DetectedRegionMasks,
     SkyMaskOptions,
     auto_view_size,
     detect_sky_mask,
@@ -46,6 +47,41 @@ def test_sky_mask_top_connected_removes_detached_components() -> None:
 
     assert filtered[1, 1]
     assert not filtered[8, 5]
+
+
+def test_sky_postprocess_does_not_remove_non_sky_targets() -> None:
+    class SplitSegmenter:
+        def detect_prompt_masks(
+            self,
+            bgr: np.ndarray,
+            options: SkyMaskOptions,
+            *,
+            sky_prompts: tuple[str, ...],
+            other_prompts: tuple[str, ...],
+        ) -> DetectedRegionMasks:
+            del bgr, options, sky_prompts, other_prompts
+            sky = np.zeros((12, 16), dtype=bool)
+            sky[8:10, 4:8] = True
+            other = np.zeros((12, 16), dtype=bool)
+            other[9:11, 10:14] = True
+            return DetectedRegionMasks(sky=sky, other=other)
+
+    image = np.zeros((12, 16, 3), dtype=np.uint8)
+
+    mask = detect_sky_mask(
+        image,
+        SplitSegmenter(),
+        SkyMaskOptions(
+            projection="normal",
+            mode="direct",
+            min_area_ratio=0.0,
+            top_connected=True,
+            sam_prompts=("sky", "person"),
+        ),
+    )
+
+    assert mask[8, 5] == 255
+    assert mask[9, 11] == 0
 
 
 def test_sky_mask_process_image_merges_with_existing_mask(tmp_path: Path) -> None:

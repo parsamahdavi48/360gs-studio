@@ -3,7 +3,7 @@ from __future__ import annotations
 
 EXPAND_MIN = -16
 EXPAND_MAX = 32
-EXPAND_DEFAULT = 2
+EXPAND_DEFAULT = 0
 
 
 def clamp_expand_px(value: int) -> int:

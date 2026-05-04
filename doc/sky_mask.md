@@ -18,7 +18,7 @@ bottom pole.
 ## Usage
 
 ```bash
-python sky_mask.py [images_dir_or_file] [masks_dir] [--backend mask2former|sam31] [--projection equirect|normal] [--quality standard|high|best] [--labels LABELS] [--sam-prompt TEXT] [--inference-size N] [--expand PX] [--min-score S] [--min-area-ratio R] [--no-top-connected] [--replace]
+python sky_mask.py [images_dir_or_file] [masks_dir] [--backend mask2former|sam31] [--projection equirect|normal] [--quality standard|high|best] [--labels LABELS] [--sam-prompt TEXT] [--inference-size N] [--expand PX] [--min-score S] [--min-area-ratio R] [--top-connected] [--replace]
 ```
 
 - `images_dir_or_file`: source image directory or one source image.
@@ -34,9 +34,9 @@ python sky_mask.py [images_dir_or_file] [masks_dir] [--backend mask2former|sam31
 - `--inference-size N`: backend input size, 384-2048 (default: `768`; SAM3.1 currently uses `1008` in the GUI).
 - `--view-size N`: cube-pole projection face size for equirect mode; `0` means auto.
 - `--expand PX`: expand detected exclusion regions by pixels. Negative values shrink them.
-- `--min-score S`: optional Mask2Former score floor.
-- `--min-area-ratio R`: remove small candidates by image-area ratio.
-- `--no-top-connected`: keep components that do not touch the top edge. Use this when targets include people or other non-sky objects.
+- `--min-score S`: optional Mask2Former score floor from `0.00` to `1.00`; `0` disables the filter.
+- `--min-area-ratio R`: remove small sky candidates by image-area ratio. This applies only to sky masks.
+- `--top-connected`: keep only sky components touching the top edge. This applies only to sky masks and is off by default.
 - `--model-dir PATH`: local model directory or SAM3.1 checkpoint override.
 - `--device auto|cpu|cuda`: inference device (default: `auto`).
 - `--replace`: ignore existing masks and write this script's mask only.
@@ -50,7 +50,7 @@ python sky_mask.py .\images .\masks --projection equirect --quality high --label
 SAM3.1 sky/person prompt test:
 
 ```bash
-python sky_mask.py .\images .\masks --backend sam31 --quality high --inference-size 1008 --sam-prompt sky --sam-prompt person --no-top-connected --replace
+python sky_mask.py .\images .\masks --backend sam31 --quality high --inference-size 1008 --sam-prompt sky --sam-prompt person --replace
 ```
 
 ## Model Files
@@ -98,5 +98,5 @@ This intentionally leaves `sam3`'s declared `numpy<2` requirement unresolved;
 - Detected target regions become black (0); all other pixels remain white (255).
 - Mask2Former resolves multiple ADE20K labels in one inference and merges them.
 - SAM3.1 runs one prompt at a time and OR-merges the prompt masks.
-- Top-connected filtering is sky-oriented. Leave it off when selected targets include people, tripods, or custom prompts.
+- Small-area and top-connected filtering are applied only to sky labels/prompts. Person, tripod, and custom prompt masks are not removed by these sky post-filters.
 - This feature uses third-party model weights and dataset-derived checkpoints with separate terms. See [../THIRD_PARTY_LICENSES.md](../THIRD_PARTY_LICENSES.md).

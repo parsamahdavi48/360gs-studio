@@ -1,8 +1,8 @@
 from yolo_mask_utils import EXPAND_DEFAULT, EXPAND_MAX, EXPAND_MIN, clamp_expand_px
 
 
-def test_yolo_expand_default_is_conservative() -> None:
-    assert EXPAND_DEFAULT == 2
+def test_yolo_expand_default_is_neutral() -> None:
+    assert EXPAND_DEFAULT == 0
 
 
 def test_yolo_expand_clamp_keeps_manual_values_in_safe_range() -> None:

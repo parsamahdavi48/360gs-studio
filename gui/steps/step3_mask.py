@@ -76,7 +76,7 @@ _STITCH_BOUNDARY_MAX = 30.0
 _STITCH_BOUNDARY_DEFAULT = 5.0
 _YOLO_EXPAND_MIN = -16
 _YOLO_EXPAND_MAX = 32
-_YOLO_EXPAND_DEFAULT = 2
+_YOLO_EXPAND_DEFAULT = 0
 _PERSON_BACKENDS = ("yolo_sam", "mask2former", "sam31")
 _PERSON_SAM31_PROMPT = "person"
 _PERSON_SAM31_INFERENCE_SIZE = "1008"
@@ -124,11 +124,11 @@ _SKY_EXPAND_MIN = -16
 _SKY_EXPAND_MAX = 64
 _SKY_EXPAND_DEFAULT = 0
 _SKY_MIN_SCORE_MIN = 0.0
-_SKY_MIN_SCORE_MAX = 2.0
+_SKY_MIN_SCORE_MAX = 1.0
 _SKY_MIN_SCORE_DEFAULT = 0.0
 _SKY_MIN_AREA_PERCENT_MIN = 0.0
 _SKY_MIN_AREA_PERCENT_MAX = 5.0
-_SKY_MIN_AREA_PERCENT_DEFAULT = 0.05
+_SKY_MIN_AREA_PERCENT_DEFAULT = 0.0
 _SKY_INFERENCE_SIZES = ("512", "768", "1008", "1024")
 _SKY_INFERENCE_SIZE_DEFAULT_INDEX = 1
 _SKY_SAM31_INFERENCE_SIZE = "1008"
@@ -325,7 +325,19 @@ class MaskStep(BaseStepWidget):
         )
         self.person_backend_combo.setFixedWidth(132)
         person_backend_row.addWidget(self.person_backend_combo)
+
+        self.sky_inference_size_label = QLabel(i18n.t("SKY_INFERENCE_SIZE"))
+        self.sky_inference_size_label.setToolTip(i18n.tip("SKY_INFERENCE_SIZE"))
+        person_backend_row.addWidget(self.sky_inference_size_label)
+
+        self.sky_inference_size_combo = QComboBox()
+        self.sky_inference_size_combo.addItems(_SKY_INFERENCE_SIZES)
+        self.sky_inference_size_combo.setCurrentIndex(_SKY_INFERENCE_SIZE_DEFAULT_INDEX)
+        self.sky_inference_size_combo.setToolTip(i18n.tip("SKY_INFERENCE_SIZE"))
+        self.sky_inference_size_combo.setFixedWidth(78)
+        person_backend_row.addWidget(self.sky_inference_size_combo)
         person_backend_row.addStretch()
+        self.person_backend_row = person_backend_row_widget
         yolo_layout.addWidget(person_backend_row_widget)
 
         yolo_settings_row_widget = QWidget()
@@ -569,19 +581,6 @@ class MaskStep(BaseStepWidget):
         if self.sky_mode_field_label is not None:
             self.sky_mode_field_label.setVisible(False)
 
-        self.sky_inference_size_combo = QComboBox()
-        self.sky_inference_size_combo.addItems(_SKY_INFERENCE_SIZES)
-        self.sky_inference_size_combo.setCurrentIndex(_SKY_INFERENCE_SIZE_DEFAULT_INDEX)
-        self.sky_inference_size_combo.setToolTip(i18n.tip("SKY_INFERENCE_SIZE"))
-        self.sky_inference_size_combo.setFixedWidth(86)
-        add_tooltip_row(
-            sky_form,
-            i18n.t("SKY_INFERENCE_SIZE"),
-            self.sky_inference_size_combo,
-            i18n.tip("SKY_INFERENCE_SIZE"),
-        )
-        self.sky_inference_size_label = sky_form.labelForField(self.sky_inference_size_combo)
-
         self.sky_expand_edit = DragSpinBox(
             minimum=_SKY_EXPAND_MIN,
             maximum=_SKY_EXPAND_MAX,
@@ -598,6 +597,12 @@ class MaskStep(BaseStepWidget):
         if self.sky_expand_label is not None:
             self.sky_expand_label.setVisible(False)
 
+        sky_layout.addLayout(sky_form)
+
+        self.sky_model_details_section = CollapsibleSection(i18n.t("SKY_MODEL_DETAILS_SECTION"), expanded=False)
+        sky_model_details_form = QFormLayout()
+        sky_model_details_form.setSpacing(6)
+
         self.sky_min_score_edit = DragDoubleSpinBox(
             minimum=_SKY_MIN_SCORE_MIN,
             maximum=_SKY_MIN_SCORE_MAX,
@@ -609,12 +614,18 @@ class MaskStep(BaseStepWidget):
         self.sky_min_score_edit.setToolTip(i18n.tip("SKY_MIN_SCORE"))
         self.sky_min_score_edit.setFixedWidth(80)
         add_tooltip_row(
-            sky_form,
+            sky_model_details_form,
             i18n.t("SKY_MIN_SCORE"),
             self.sky_min_score_edit,
             i18n.tip("SKY_MIN_SCORE"),
         )
-        self.sky_min_score_label = sky_form.labelForField(self.sky_min_score_edit)
+        self.sky_min_score_label = sky_model_details_form.labelForField(self.sky_min_score_edit)
+        self.sky_model_details_section.content_layout.addLayout(sky_model_details_form)
+        sky_layout.addWidget(self.sky_model_details_section)
+
+        self.sky_postprocess_section = CollapsibleSection(i18n.t("SKY_POSTPROCESS_SECTION"), expanded=False)
+        sky_postprocess_form = QFormLayout()
+        sky_postprocess_form.setSpacing(6)
 
         self.sky_min_area_edit = DragDoubleSpinBox(
             minimum=_SKY_MIN_AREA_PERCENT_MIN,
@@ -628,19 +639,20 @@ class MaskStep(BaseStepWidget):
         self.sky_min_area_edit.setToolTip(i18n.tip("SKY_MIN_AREA"))
         self.sky_min_area_edit.setFixedWidth(86)
         add_tooltip_row(
-            sky_form,
+            sky_postprocess_form,
             i18n.t("SKY_MIN_AREA"),
             self.sky_min_area_edit,
             i18n.tip("SKY_MIN_AREA"),
         )
-        self.sky_min_area_label = sky_form.labelForField(self.sky_min_area_edit)
+        self.sky_min_area_label = sky_postprocess_form.labelForField(self.sky_min_area_edit)
 
         self.sky_top_connected_cb = QCheckBox(i18n.t("SKY_TOP_CONNECTED"))
         self.sky_top_connected_cb.setToolTip(i18n.tip("SKY_TOP_CONNECTED"))
         self.sky_top_connected_cb.setChecked(False)
-        sky_form.addRow("", self.sky_top_connected_cb)
+        sky_postprocess_form.addRow("", self.sky_top_connected_cb)
 
-        sky_layout.addLayout(sky_form)
+        self.sky_postprocess_section.content_layout.addLayout(sky_postprocess_form)
+        sky_layout.addWidget(self.sky_postprocess_section)
         yolo_layout.addWidget(self.sky_section)
         yolo_layout.addStretch()
 
@@ -934,6 +946,12 @@ class MaskStep(BaseStepWidget):
     def _sky_min_area_ratio_arg(self) -> str:
         return f"{float(self.sky_min_area_edit.value()) / 100.0:g}"
 
+    def _sky_postprocess_args(self) -> list[str]:
+        args = ["--min-area-ratio", self._sky_min_area_ratio_arg()]
+        if self.sky_top_connected_cb.isChecked():
+            args.append("--top-connected")
+        return args
+
     def _update_task_controls(self) -> None:
         equirect = self._projection() == _PROJECTION_EQUIRECT
         if not equirect and self.run_stitch_cb.isChecked():
@@ -967,8 +985,9 @@ class MaskStep(BaseStepWidget):
         self.yolo_bottom_enhance_combo.setEnabled(False)
         self.yolo_class_list_section.setEnabled(yolo_sam_enabled)
         self.sky_inference_size_combo.setEnabled(person_mask2former)
-        if self.sky_inference_size_label is not None:
-            self.sky_inference_size_label.setEnabled(person_mask2former)
+        self.sky_inference_size_label.setEnabled(person_mask2former)
+        self.sky_model_details_section.setVisible(person_mask2former)
+        self.sky_postprocess_section.setVisible(semantic_enabled)
         self.sky_min_score_edit.setVisible(person_mask2former)
         if self.sky_min_score_label is not None:
             self.sky_min_score_label.setVisible(person_mask2former)
@@ -1500,9 +1519,8 @@ class MaskStep(BaseStepWidget):
             "--inference-size", _PERSON_SAM31_INFERENCE_SIZE,
             "--expand", self._yolo_expand_arg(),
             "--min-score", _PERSON_SAM31_MIN_SCORE,
-            "--min-area-ratio", "0",
-            "--no-top-connected",
         ]
+        cmd.extend(self._sky_postprocess_args())
         for prompt in prompts:
             cmd.extend(["--sam-prompt", prompt])
         if replace:
@@ -1529,10 +1547,9 @@ class MaskStep(BaseStepWidget):
             "--inference-size", self._sky_inference_size_arg(),
             "--expand", str(self.yolo_expand_edit.value()),
             "--min-score", f"{float(self.sky_min_score_edit.value()):g}",
-            "--min-area-ratio", self._sky_min_area_ratio_arg(),
             "--labels", ",".join(self._selected_ade_labels()),
-            "--no-top-connected",
         ]
+        cmd.extend(self._sky_postprocess_args())
         if replace:
             cmd.append("--replace")
         return cmd

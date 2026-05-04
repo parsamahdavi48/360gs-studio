@@ -99,6 +99,7 @@ def test_mask_step_yolo_level_and_expand_share_compact_row() -> None:
     step = MaskStep(Path.cwd())
 
     content_width = SETTINGS_PANE_WIDTH - SETTINGS_PANE_MARGINS[2]
+    assert step.person_backend_row.sizeHint().width() <= content_width
     assert step.yolo_settings_row.sizeHint().width() <= content_width
     assert step.yolo_level_combo.currentIndex() == 1
     assert step.person_backend_label.toolTip() == i18n.tip("PERSON_MODEL")
@@ -110,6 +111,7 @@ def test_mask_step_yolo_level_and_expand_share_compact_row() -> None:
     assert step.yolo_level_combo.itemText(1) == i18n.t("MASK_QUALITY_HIGH")
     assert step.yolo_level_combo.itemText(2) == i18n.t("MASK_QUALITY_BEST")
     assert step.yolo_expand_label.toolTip() == i18n.tip("YOLO_EXPAND")
+    assert step.yolo_expand_edit.value() == 0
     assert step.yolo_bottom_settings_row.isHidden()
     assert step.projection_buttons["equirect"].text() == "360°"
 
@@ -427,6 +429,23 @@ def test_mask_step_sam31_primary_builds_prompt_command(tmp_path: Path, monkeypat
     assert prompt_args == ["person", "sky"]
 
 
+def test_mask_step_sky_top_connected_is_opt_in(tmp_path: Path) -> None:
+    _app()
+    scene = _write_scene(tmp_path, drop_exists=False)
+    step = MaskStep(Path.cwd())
+    step.set_scene_dir(str(scene))
+    step.run_stitch_cb.setChecked(False)
+    step.run_overexp_cb.setChecked(False)
+    step.person_backend_combo.setCurrentIndex(1)
+    step.sky_top_connected_cb.setChecked(True)
+
+    commands = step.build_commands()
+
+    cmd = commands[0][1]
+    assert "--top-connected" in cmd
+    assert "--no-top-connected" not in cmd
+
+
 def test_mask_step_person_mask_can_select_sam31_backend(tmp_path: Path, monkeypatch) -> None:
     _app()
     scene = _write_scene(tmp_path, drop_exists=False)
@@ -455,7 +474,7 @@ def test_mask_step_person_mask_can_select_sam31_backend(tmp_path: Path, monkeypa
     prompt_args = [cmd[idx + 1] for idx, value in enumerate(cmd) if value == "--sam-prompt"]
     assert prompt_args == ["person", "sky"]
     assert cmd[cmd.index("--min-score") + 1] == "0.5"
-    assert "--no-top-connected" in cmd
+    assert "--top-connected" not in cmd
     assert "--replace" in cmd
     assert step.yolo_level_combo.isEnabled()
     assert not step.yolo_bottom_enhance_combo.isEnabled()

@@ -20,7 +20,7 @@ python yolo_mask.py [images_dir] [output_dir] [--add_ext] [--quality standard|hi
   - `standard`: direct full-image inference. For 360° images, also runs a light bottom-pole pass.
   - `high`: adds person-oriented tiles and, for 360° images, top/bottom projection assist.
   - `best`: uses denser tiles and stronger bottom-pole settings for difficult 360° masks.
-- `--expand M`: fixed-pixel expansion after SAM refinement (default: 2)
+- `--expand M`: fixed-pixel expansion after SAM refinement (default: 0)
   - Clamped to `-16..32` for safety.
   - Negative values shrink the mask region.
 - `--classes IDS`: comma-separated YOLO class ids (default: `0`, person only)

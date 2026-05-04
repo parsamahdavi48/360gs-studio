@@ -14,7 +14,7 @@
 ## 使い方
 
 ```bash
-python sky_mask.py [images_dir_or_file] [masks_dir] [--backend mask2former|sam31] [--projection equirect|normal] [--quality standard|high|best] [--labels LABELS] [--sam-prompt TEXT] [--inference-size N] [--expand PX] [--min-score S] [--min-area-ratio R] [--no-top-connected] [--replace]
+python sky_mask.py [images_dir_or_file] [masks_dir] [--backend mask2former|sam31] [--projection equirect|normal] [--quality standard|high|best] [--labels LABELS] [--sam-prompt TEXT] [--inference-size N] [--expand PX] [--min-score S] [--min-area-ratio R] [--top-connected] [--replace]
 ```
 
 - `images_dir_or_file`: 入力画像フォルダ、または1枚の入力画像。
@@ -30,9 +30,9 @@ python sky_mask.py [images_dir_or_file] [masks_dir] [--backend mask2former|sam31
 - `--inference-size N`: backend入力サイズ。384〜2048（既定: `768`、GUIのSAM3.1は現在 `1008`）。
 - `--view-size N`: 360°投影ビューのサイズ。`0` は自動。
 - `--expand PX`: 検出領域をピクセル単位で拡張。負値で収縮。
-- `--min-score S`: Mask2Formerのスコアしきい値。
-- `--min-area-ratio R`: 小さな候補を画像面積比で除去。
-- `--no-top-connected`: 上端につながらない候補も残します。人物など空以外も対象にする場合は指定します。
+- `--min-score S`: Mask2Formerのスコアしきい値。`0.00〜1.00`、`0`で無効です。
+- `--min-area-ratio R`: 小さな空候補を画像面積比で除去。空マスクだけに適用します。
+- `--top-connected`: 画像上端に接している空だけ残します。空マスクだけに適用し、既定はOFFです。
 - `--model-dir PATH`: ローカルモデルディレクトリ、またはSAM3.1 checkpointを明示。
 - `--device auto|cpu|cuda`: 推論デバイス（既定: `auto`）。
 - `--replace`: 既存マスクを無視して、このスクリプトの結果だけを書き込みます。
@@ -46,7 +46,7 @@ python sky_mask.py .\images .\masks --projection equirect --quality high --label
 SAM3.1で空と人物をテストする場合:
 
 ```bash
-python sky_mask.py .\images .\masks --backend sam31 --quality high --inference-size 1008 --sam-prompt sky --sam-prompt person --no-top-connected --replace
+python sky_mask.py .\images .\masks --backend sam31 --quality high --inference-size 1008 --sam-prompt sky --sam-prompt person --replace
 ```
 
 ## モデルファイル
@@ -88,5 +88,5 @@ SAM3.1を動かすには、アクティブなvenvにMetaの `sam3` Python packag
 - 検出対象は黒 (0)、それ以外は白 (255) です。
 - Mask2Formerは複数ADE20Kラベルを1回の推論で解決し、最終マスクへ統合します。
 - SAM3.1は1プロンプトずつ実行し、結果をOR合成します。
-- `上端接続` フィルタは空向けです。人物、三脚、カスタムプロンプトも対象にする場合はOFFにします。
+- 小領域除去と上端接続フィルタは空ラベル/空プロンプトだけに適用します。人物、三脚、カスタムプロンプトのマスクは空用後処理では削除されません。
 - この機能は第三者モデル重みおよびデータセット由来checkpointを使います。別ライセンス/利用条件については [../THIRD_PARTY_LICENSES.md](../THIRD_PARTY_LICENSES.md) を参照してください。
