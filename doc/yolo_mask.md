@@ -77,6 +77,7 @@ python scripts/benchmark_yolo_mask.py --dataset D:\3DGS\test --output-root D:\3D
 ## Notes
 
 - On first run the script may download model files (.pt); this can take time. Local `.pt` files next to the script are used when present, otherwise Ultralytics resolves the named model.
+- The YOLO/SAM feature uses third-party libraries and model weights with separate license terms. See [../THIRD_PARTY_LICENSES.md](../THIRD_PARTY_LICENSES.md).
 - Raising `--level` increases processing time and memory usage.
 - Bottom TTA, filtering, temporal fill, and `--bottom-model x` increase processing time only for the equirectangular bottom re-detection path.
 - GUI bottom enhancement presets use bottom TTA and filtering, but not temporal fill.

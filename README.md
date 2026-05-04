@@ -62,7 +62,7 @@ update_venv.bat
 
 To rebuild with the pinned known-good package set from `requirements/`, run `update_venv.bat --locked`.
 
-YOLO/SAM2 model weights are downloaded automatically by ultralytics on first use. Release ZIP assets do not include model weights or generated scene data.
+YOLO/SAM2 model weights may be downloaded automatically by ultralytics on first use. Release ZIP assets do not include model weights or generated scene data. These third-party libraries and model weights are governed by separate license terms; see [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md).
 
 ## GUI Workflow
 
@@ -154,6 +154,8 @@ The GUI wraps these CLI engines, which can also be used directly.
 ## License
 
 MIT License. See [LICENSE](LICENSE).
+
+Optional YOLO/SAM mask features use third-party libraries and model weights with separate license terms. See [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md).
 
 Original code by [tetraface Inc.](https://github.com/tetraface)
 Fork extensions by [stechdrive](https://github.com/stechdrive)

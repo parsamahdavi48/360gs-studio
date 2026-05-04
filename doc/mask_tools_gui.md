@@ -59,6 +59,7 @@ run_gui.bat --scene ./scene01
   - If every image is skipped because none match the custom mask size, the custom step fails.
   - If `Custom` is turned on before a file is selected, the file picker opens automatically. You can also select the file first with `Load`.
 - `YOLO/SAM Preview`: runs `yolo_mask.py` only for the currently displayed preview image.
+  - The first YOLO/SAM run shows a third-party model/license notice. The model weights are not bundled with the app and may be downloaded by the user's environment.
   - The result is shown as a red overlay and is not saved to `masks/`.
   - It uses the current `Image Type`, `YOLO Level`, `YOLO Expand`, `Bottom Enhance`, and `YOLO Classes` settings.
   - Use the main `Generate` action when you want to write masks for all frames.
@@ -86,4 +87,5 @@ In that external-image mode, Step 2 keep/drop validation is skipped.
 ## Notes
 
 - The GUI runs scripts as subprocesses, so behavior stays aligned with CLI.
+- YOLO/SAM masking uses third-party libraries and model weights with separate license terms. See [../THIRD_PARTY_LICENSES.md](../THIRD_PARTY_LICENSES.md).
 - Logs from each step are shown in the integrated log panel.

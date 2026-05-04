@@ -366,6 +366,19 @@ _JA: dict[str, str] = {
     "MASK_PREVIEW_YOLO_RUNNING": "YOLO実行中...",
     "MASK_PREVIEW_YOLO_FAILED": "YOLO/SAMプレビューに失敗しました",
     "MASK_PREVIEW_YOLO_NO_IMAGE": "プレビュー画像を選択してください",
+    "YOLO_SAM_LICENSE_NOTICE_TITLE": "YOLO/SAMモデルの利用条件",
+    "YOLO_SAM_LICENSE_NOTICE_BODY": (
+        "YOLO/SAMマスク機能では、第三者が提供するモデルファイルおよびライブラリを使用します。\n\n"
+        "このアプリ本体のソースコードはMIT Licenseですが、YOLO/SAM機能で使用されるモデルおよび関連ライブラリには別のライセンス条件が適用されます。\n\n"
+        "- Ultralytics YOLO / ultralytics: AGPL-3.0 または Ultralytics Enterprise License\n"
+        "- Meta SAM2/SAM2.1: Apache License 2.0\n\n"
+        "モデル重みはこのアプリには同梱されていません。初回使用時にユーザー環境へダウンロードされる場合があります。\n\n"
+        "商用利用、再配布、社内展開、製品組み込み等における各ライセンス条件への適合は、利用者の責任で確認してください。"
+    ),
+    "YOLO_SAM_LICENSE_NOTICE_DONT_SHOW_AGAIN": "次回からこの確認を表示しない",
+    "YOLO_SAM_LICENSE_NOTICE_CONTINUE": "確認して続行",
+    "YOLO_SAM_LICENSE_NOTICE_OPEN_LICENSES": "ライセンス情報を開く",
+    "YOLO_SAM_LICENSE_NOTICE_CANCELED": "YOLO/SAMの実行をキャンセルしました",
     "MASK_PREVIEW_STITCH_STATUS": "スティッチ {width:g}°",
     "MASK_PREVIEW_OVEREXP_STATUS": "白飛び RGB>{threshold} +{dilate}px",
     "MASK_PREVIEW_CUSTOM_STATUS": "カスタム",
@@ -776,6 +789,19 @@ _EN: dict[str, str] = {
     "MASK_PREVIEW_YOLO_RUNNING": "Running YOLO...",
     "MASK_PREVIEW_YOLO_FAILED": "YOLO/SAM preview failed",
     "MASK_PREVIEW_YOLO_NO_IMAGE": "Select a preview image",
+    "YOLO_SAM_LICENSE_NOTICE_TITLE": "YOLO/SAM Model Terms",
+    "YOLO_SAM_LICENSE_NOTICE_BODY": (
+        "The YOLO/SAM mask feature uses third-party model files and libraries.\n\n"
+        "This application's own source code is licensed under the MIT License, but the models and related libraries used by the YOLO/SAM feature are governed by separate license terms.\n\n"
+        "- Ultralytics YOLO / ultralytics: AGPL-3.0 or Ultralytics Enterprise License\n"
+        "- Meta SAM2/SAM2.1: Apache License 2.0\n\n"
+        "Model weights are not included with this application. They may be downloaded to the user's environment on first use.\n\n"
+        "Users are responsible for ensuring that commercial use, redistribution, internal deployment, or product integration complies with the applicable license terms."
+    ),
+    "YOLO_SAM_LICENSE_NOTICE_DONT_SHOW_AGAIN": "Do not show this notice again",
+    "YOLO_SAM_LICENSE_NOTICE_CONTINUE": "Continue",
+    "YOLO_SAM_LICENSE_NOTICE_OPEN_LICENSES": "Open License Information",
+    "YOLO_SAM_LICENSE_NOTICE_CANCELED": "YOLO/SAM run canceled",
     "MASK_PREVIEW_STITCH_STATUS": "Stitch {width:g} deg",
     "MASK_PREVIEW_OVEREXP_STATUS": "Overexposure RGB>{threshold} +{dilate}px",
     "MASK_PREVIEW_CUSTOM_STATUS": "Custom",

@@ -43,6 +43,7 @@ from gui.steps.base_step import (
     BaseStepWidget,
     configure_settings_scroll,
 )
+from gui.user_settings import load_user_settings_section, update_user_settings_section
 from image_io import imread_unicode, imwrite_unicode
 from overexposure_mask import detect_overexposure, read_image_preserve_depth
 from stitch_mask import boundary_width_to_limit_angle, create_angular_stitched_mask
@@ -101,6 +102,9 @@ _OVEREXP_DILATE_DEFAULT = 1
 _IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".tif", ".tiff"}
 _PROJECTION_EQUIRECT = "equirect"
 _PROJECTION_NORMAL = "normal"
+_LICENSE_NOTICE_SECTION = "license_notices"
+_YOLO_SAM_NOTICE_VERSION = 1
+_YOLO_SAM_NOTICE_KEY = "yolo_sam_models_ack_version"
 
 
 class MaskStep(BaseStepWidget):
@@ -866,6 +870,70 @@ class MaskStep(BaseStepWidget):
             steps.append(("custom", self._build_custom_cmd()))
         return steps
 
+    def confirm_commands(self, commands: list[tuple[str, list[str]]]) -> bool:
+        if any(phase == "yolo" for phase, _cmd in commands):
+            return self._confirm_yolo_sam_license_notice()
+        return True
+
+    def _confirm_yolo_sam_license_notice(self) -> bool:
+        if self._yolo_sam_notice_acknowledged():
+            return True
+
+        box = QMessageBox(self)
+        box.setIcon(QMessageBox.Warning)
+        box.setWindowTitle(i18n.t("YOLO_SAM_LICENSE_NOTICE_TITLE"))
+        box.setText(i18n.t("YOLO_SAM_LICENSE_NOTICE_BODY"))
+        box.setTextInteractionFlags(Qt.TextSelectableByMouse)
+
+        remember_cb = QCheckBox(i18n.t("YOLO_SAM_LICENSE_NOTICE_DONT_SHOW_AGAIN"))
+        remember_cb.setChecked(True)
+        box.setCheckBox(remember_cb)
+
+        continue_btn = box.addButton(
+            i18n.t("YOLO_SAM_LICENSE_NOTICE_CONTINUE"),
+            QMessageBox.AcceptRole,
+        )
+        box.addButton(i18n.CANCEL, QMessageBox.RejectRole)
+        licenses_btn = box.addButton(
+            i18n.t("YOLO_SAM_LICENSE_NOTICE_OPEN_LICENSES"),
+            QMessageBox.HelpRole,
+        )
+        box.setDefaultButton(continue_btn)
+
+        while True:
+            box.exec()
+            clicked = box.clickedButton()
+            if clicked == licenses_btn:
+                self._open_third_party_licenses()
+                continue
+            if clicked == continue_btn:
+                if remember_cb.isChecked():
+                    self._set_yolo_sam_notice_acknowledged()
+                return True
+            return False
+
+    def _yolo_sam_notice_acknowledged(self) -> bool:
+        settings = load_user_settings_section(_LICENSE_NOTICE_SECTION)
+        try:
+            version = int(settings.get(_YOLO_SAM_NOTICE_KEY, 0))
+        except (TypeError, ValueError):
+            version = 0
+        return version >= _YOLO_SAM_NOTICE_VERSION
+
+    @staticmethod
+    def _set_yolo_sam_notice_acknowledged() -> None:
+        update_user_settings_section(
+            _LICENSE_NOTICE_SECTION,
+            {_YOLO_SAM_NOTICE_KEY: _YOLO_SAM_NOTICE_VERSION},
+        )
+
+    def _open_third_party_licenses(self) -> None:
+        path = self.base_dir / "THIRD_PARTY_LICENSES.md"
+        if path.is_file():
+            QDesktopServices.openUrl(QUrl.fromLocalFile(str(path)))
+        else:
+            QDesktopServices.openUrl(QUrl("https://www.ultralytics.com/license"))
+
     def _ensure_no_pending_drop_images(self) -> None:
         if not self.scene_dir:
             return
@@ -977,6 +1045,9 @@ class MaskStep(BaseStepWidget):
         if image_path is None:
             self.mask_preview.set_status_text(i18n.t("MASK_PREVIEW_YOLO_NO_IMAGE"))
             return
+        if not self._confirm_yolo_sam_license_notice():
+            self.mask_preview.set_status_text(i18n.t("YOLO_SAM_LICENSE_NOTICE_CANCELED"))
+            return
 
         self._cleanup_yolo_preview_temp()
         self._yolo_preview_temp = tempfile.TemporaryDirectory(prefix="stechdrive_yolo_preview_")
@@ -1055,6 +1126,9 @@ class MaskStep(BaseStepWidget):
             return
         if not self._selected_mask_tasks():
             self.mask_preview.set_status_text(i18n.t("MASK_TASK_REQUIRED"))
+            return
+        if self.run_yolo_cb.isChecked() and not self._confirm_yolo_sam_license_notice():
+            self.mask_preview.set_status_text(i18n.t("YOLO_SAM_LICENSE_NOTICE_CANCELED"))
             return
 
         self._current_reprocess_active = True
