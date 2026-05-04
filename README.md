@@ -1,6 +1,6 @@
 # stechdrive-3dgs-utils
 
-**v1.3.0**
+**v1.4.0**
 
 A Windows-first integrated GUI tool for turning 360° camera video into images, masks, and camera data that are practical for 3D Gaussian Splatting (3DGS) training.
 
@@ -31,11 +31,11 @@ For DSLR, mirrorless, smartphone, or normal video image sequences, Step 3 can ge
 ## Highlights
 
 - Extract SfM-friendly frames from 360° video
-- Review extracted frames in single-preview or thumbnail-list mode and apply keep/drop decisions
+- Review extracted frames in single-preview or thumbnail-list mode and apply keep/drop decisions, including Windows Explorer-style thumbnail selection
 - Generate masks with YOLO + SAM2.1
 - Improve detection near the bottom of 360° images for camera operators, tripods, and hands
 - Mask stitch seams, overexposed regions, and user-provided PNG custom masks
-- Preview mask results in single-preview or thumbnail-list mode while tuning settings
+- Preview mask results in single-preview or thumbnail-list mode while tuning settings, with cached thumbnails for large image sets
 - Reprocess the current preview image or multiple selected thumbnails with updated settings
 - Convert Metashape SfM results for LichtFeld Studio, Postshot, and Brush
 - Export COLMAP Rig viewpoint datasets and optionally run COLMAP/GLOMAP
@@ -114,7 +114,7 @@ Use this when you want to exclude people, vehicles, blown-out regions, or simila
 - For 360° images, start with `YOLO Level 2 Quality`.
 - Use `1 Standard` for faster test runs.
 - If people leak through, try `3 Best` or raise `Expand` slightly.
-- When you find a miss in preview, adjust settings and use `Reprocess Current` to save only that image back to `masks/`. In thumbnail mode, use `Ctrl` / `Shift` selection to reprocess multiple selected images together.
+- When you find a miss in preview, adjust settings and use `Reprocess Current` to save only that image back to `masks/`. In thumbnail mode, use `Ctrl` / `Shift` selection to reprocess multiple selected images together. Arrow keys move the visible thumbnail selection while in thumbnail mode.
 - If only the bottom-view camera operator leaks through, try `Bottom Enhance` in this order: `Standard -> High -> Max`.
 - `Max` is slower and can mask extra floor or ground.
 - Stitch seam masks are useful when the seam position is stable in the equirectangular image. If FlowState stabilization, direction lock, AI stitching, or similar processing moves the seam, verify it in the preview before using it.

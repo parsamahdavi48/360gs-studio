@@ -22,10 +22,9 @@ python review_frames.py ./scene01 --csv selected_frames.csv
 
 ## Keyboard shortcuts
 
-- `Left` / `Right`: previous / next frame
+- `Left` / `Right`: previous / next frame in single-preview mode. In thumbnail-list mode, the thumbnail list keeps focus and arrow keys move the visible thumbnail selection.
 - `F` / `Shift+F`: next / previous problem frame (`status != ok`)
 - `Space`: toggle `keep` / `drop`
-- `S`: save CSV
 - `Q`: quit
 
 ## Behavior
@@ -34,8 +33,9 @@ python review_frames.py ./scene01 --csv selected_frames.csv
 - Supports single-image preview and thumbnail-list preview using the header icons.
 - Thumbnail mode shows keep/drop state with green/red framing.
 - Thumbnail selection follows Windows Explorer-style multi-selection (`Ctrl` click, `Ctrl+Shift` click, and `Shift` click).
+- Switching to thumbnail mode focuses the thumbnail list, so arrow-key navigation changes the selected thumbnail instead of silently changing the hidden single-preview frame.
 - In thumbnail mode, the keep/drop flag button applies to the selected thumbnails; the reset button restores selected frames to the state loaded from the CSV.
 - Double-clicking a thumbnail switches back to single-image preview on that frame.
-- Supports direct jump by sequence number (`Jump Seq`) and problem-frame navigation.
-- Saves the updated `decision` column back to the same CSV.
+- Supports problem-frame navigation.
+- Saves the updated `decision` column back to the same CSV immediately when decisions change.
 - Other columns (scores, status, indices) are preserved.

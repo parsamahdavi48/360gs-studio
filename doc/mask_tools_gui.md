@@ -63,10 +63,13 @@ run_gui.bat --scene ./scene01
   - Use it to fix misses found in preview without regenerating the whole set.
 - `Mask Preview`:
   - Use the icons at the right side of the preview header to switch between single preview and thumbnail list.
-  - Thumbnail mode shows existing masks as red overlays. Double-clicking a thumbnail returns to single preview on that image.
+  - Thumbnail mode shows existing masks as red overlays. The mask display icon toggles the overlay on and off without rebuilding thumbnails.
+  - Double-clicking a thumbnail returns to single preview on that image.
   - `Ctrl` click, `Ctrl+Shift` click, and `Shift` click follow Windows Explorer-style multi-selection.
+  - Switching to thumbnail mode focuses the thumbnail list, so arrow keys move the visible thumbnail selection.
   - In thumbnail mode, `Reprocess Selected` rebuilds only the selected images with the current mask-generation settings and saves them to `masks/`.
-  - The status text beside the opacity slider stays on one line and elides when space is tight; the full text is available as a tooltip.
+  - The status text stays on one line and elides when space is tight; the full text is available as a tooltip.
+  - Thumbnail rendering is lazy, prioritizes the visible rows, and reuses cached thumbnails across step switches so large image sets do not rebuild in full on every view change.
 
 ## Actions
 
