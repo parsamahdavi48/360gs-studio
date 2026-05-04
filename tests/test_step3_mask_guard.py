@@ -92,6 +92,9 @@ def test_mask_step_yolo_class_presets_and_class_label_are_removed() -> None:
     assert i18n.CLASS_PRESET_ALL not in buttons
     assert i18n.CLASS_PRESET_CLEAR not in buttons
     assert i18n.t("YOLO_CLASS_LIST_SECTION") in tool_buttons
+    assert step.yolo_class_list_section.toggle_button.text().strip() == i18n.t("DETECTION_TARGET_SECTION")
+    assert step.ade_class_list_section.toggle_button.text().strip() == i18n.t("DETECTION_TARGET_SECTION")
+    assert step.sam_prompt_section.toggle_button.text().strip() == i18n.t("DETECTION_TARGET_SECTION")
 
 
 def test_mask_step_yolo_level_and_expand_share_compact_row() -> None:
@@ -114,6 +117,27 @@ def test_mask_step_yolo_level_and_expand_share_compact_row() -> None:
     assert step.yolo_expand_edit.value() == 0
     assert step.yolo_bottom_settings_row.isHidden()
     assert step.projection_buttons["equirect"].text() == "360°"
+
+
+def test_mask_step_sam31_apply_mode_shares_compact_settings_row(tmp_path: Path, monkeypatch) -> None:
+    _app()
+    scene = _write_scene(tmp_path, drop_exists=False)
+    step = MaskStep(Path.cwd())
+    step.set_scene_dir(str(scene))
+    checkpoint = scene / "sam3.1_multiplex.pt"
+    checkpoint.write_bytes(b"checkpoint")
+    monkeypatch.setattr(step, "_sam31_checkpoint_path", lambda: checkpoint)
+    step._update_person_backend_availability()
+
+    step.person_backend_combo.setCurrentIndex(2)
+
+    content_width = SETTINGS_PANE_WIDTH - SETTINGS_PANE_MARGINS[2]
+    assert step.yolo_settings_row.sizeHint().width() <= content_width
+    assert not step.sam_apply_mode_label.isHidden()
+    assert step.sam_apply_mode_label.toolTip() == i18n.tip("SAM31_APPLY_MODE")
+    assert step.sam_apply_mode_combo.itemData(0) == "replace"
+    assert step.sam_apply_mode_combo.itemData(1) == "add"
+    assert step.sam_apply_mode_combo.itemData(2) == "subtract"
 
 
 def test_mask_step_metashape_notice_is_in_left_pane() -> None:

@@ -46,11 +46,11 @@ run_gui.bat --scene ./scene01
 - `Mask Expand`: forwarded to the selected primary backend as `--expand`.
   - Default is `0px`; drag horizontally on the number field to adjust.
   - Clamped to `-16..32px` for safety.
-- `Detection Classes`: collapsed picker for class selection in `YOLO/SAM2.1`.
+- `Detection Targets`: collapsed picker for class selection in `YOLO/SAM2.1`.
   - Choose classes by checkbox labels (`id: name`) instead of memorizing numeric ids.
   - Default preset is `person` only (`id=0`).
   - Forwarded to `yolo_mask.py --classes`.
-- `ADE20K Class List`: collapsed picker used by `Mask2Former`.
+- `Detection Targets`: collapsed picker used by `Mask2Former`.
   - Defaults to `sky` and `person`.
   - Multiple classes are resolved in one model inference and merged into the output mask.
 - `Detection Targets`: SAM3.1 prompt presets and a custom English prompt field.
@@ -58,7 +58,7 @@ run_gui.bat --scene ./scene01
   - Multiple prompts are run one at a time and OR-merged into the output mask.
   - Custom prompt fields accept comma or semicolon separators. Spaces around separators are ignored; spaces inside prompts are kept.
   - The subtract prompt field removes matching SAM3.1 detections from the positive prompt result.
-  - `Apply` is SAM3.1-only: `Replace` rewrites the mask, `Add` blackens detected regions in the existing mask, and `Subtract` turns detected regions white in the existing mask.
+- `Op.` is SAM3.1-only and appears in the same row as `Qual.` and `Exp.`. `Replace` rewrites the mask, `Add` blackens detected regions in the existing mask, and `Subtract` turns detected regions white in the existing mask.
 - `Inference Size`: controls Mask2Former inference size. SAM3.1 currently uses fixed `1008`.
 - `Model Details`: contains Mask2Former-specific `Min Score` (`0.00-1.00`, `0` disables it).
 - `Sky Mask`: contains sky-only filters.
