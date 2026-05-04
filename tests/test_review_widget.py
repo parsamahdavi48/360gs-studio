@@ -9,6 +9,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PySide6.QtCore import QItemSelectionModel, Qt
 from PySide6.QtGui import QPixmap
+from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QAbstractItemView, QApplication, QToolButton
 
 from gui import i18n
@@ -276,6 +277,26 @@ def test_review_widget_thumbnail_selection_changes_current_frame(tmp_path: Path)
     assert widget.index == 1
     assert widget.frame_slider.value() == 1
     assert "2 / 2" in widget.frame_position_label.text()
+
+
+def test_review_widget_thumbnail_arrow_key_moves_thumbnail_selection(tmp_path: Path) -> None:
+    app = _app()
+    scene, csv_path = _write_scene(tmp_path)
+    widget = ReviewWidget(scene, csv_path)
+    widget.show()
+
+    widget.set_preview_mode(PREVIEW_MODE_THUMBNAILS)
+    app.processEvents()
+    QTest.keyClick(widget.thumbnail_view, Qt.Key_Right)
+    app.processEvents()
+
+    assert not widget.prev_row_shortcut.isEnabled()
+    assert not widget.next_row_shortcut.isEnabled()
+    assert widget.thumbnail_view.hasFocus()
+    assert widget.index == 1
+    assert widget.frame_slider.value() == 1
+    assert widget.thumbnail_view.selectionModel().currentIndex().row() == 1
+    assert sorted(index.row() for index in widget.thumbnail_view.selectionModel().selectedIndexes()) == [1]
 
 
 def test_review_widget_thumbnail_mode_uses_extended_selection(tmp_path: Path) -> None:

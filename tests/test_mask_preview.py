@@ -16,11 +16,19 @@ from PySide6.QtWidgets import (
     QSpinBox,
     QToolButton,
 )
-from PySide6.QtCore import QItemSelectionModel
+from PySide6.QtCore import QItemSelectionModel, Qt
+from PySide6.QtTest import QTest
 
 from gui import i18n, theme
+from gui.common.thumbnail_list_model import THUMBNAIL_PAYLOAD_ROLE
 from gui.mask.mask_preview import MaskPreviewConfig, MaskPreviewWidget
-from gui.mask.thumbnail_model import MaskThumbnailModel, ThumbnailRenderConfig, render_mask_thumbnail
+from gui.mask.thumbnail_model import (
+    MaskThumbnailModel,
+    MaskThumbnailRenderResult,
+    ThumbnailRenderConfig,
+    render_mask_thumbnail,
+    render_mask_thumbnail_payload,
+)
 from gui.steps.step3_mask import MaskStep, _yolo_preview_output_name
 
 
@@ -271,6 +279,29 @@ def test_mask_preview_thumbnail_click_does_not_scroll_resync(tmp_path: Path) -> 
     assert widget.slider.value() == 2
 
 
+def test_mask_preview_thumbnail_arrow_key_moves_thumbnail_selection(tmp_path: Path) -> None:
+    app = _app()
+    image_paths: list[Path] = []
+    for idx in range(3):
+        image_path = tmp_path / f"frame_{idx:06d}.png"
+        cv2.imwrite(str(image_path), np.full((16, 32, 3), 120 + idx, dtype=np.uint8))
+        image_paths.append(image_path)
+    widget = MaskPreviewWidget()
+    widget.show()
+
+    widget.set_images_dir(str(tmp_path))
+    widget.set_preview_mode("thumbnails")
+    app.processEvents()
+    QTest.keyClick(widget.thumbnail_view, Qt.Key_Right)
+    app.processEvents()
+
+    assert widget.thumbnail_view.hasFocus()
+    assert widget.current_image_path() == image_paths[1]
+    assert widget.slider.value() == 1
+    assert widget.thumbnail_view.selectionModel().currentIndex().row() == 1
+    assert sorted(index.row() for index in widget.thumbnail_view.selectionModel().selectedIndexes()) == [1]
+
+
 def test_mask_preview_thumbnail_double_click_opens_single_preview(tmp_path: Path) -> None:
     _app()
     image_paths: list[Path] = []
@@ -331,7 +362,7 @@ def test_mask_preview_thumbnail_render_preserves_multi_selection(tmp_path: Path)
     assert widget.selected_reprocess_image_paths() == [image_paths[1], image_paths[3]]
 
 
-def test_mask_preview_overlay_toggle_updates_thumbnail_opacity(
+def test_mask_preview_overlay_toggle_only_updates_thumbnail_delegate(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
@@ -350,9 +381,11 @@ def test_mask_preview_overlay_toggle_updates_thumbnail_opacity(
     monkeypatch.setattr(widget.thumbnail_model, "set_sources", remember_set_sources)
 
     widget.mask_overlay_btn.click()
+    assert not widget.thumbnail_delegate.overlay_visible()
     widget.mask_overlay_btn.click()
+    assert widget.thumbnail_delegate.overlay_visible()
 
-    assert calls == [0, 45]
+    assert calls == []
 
 
 def test_mask_preview_refresh_reuses_thumbnail_model_when_images_are_unchanged(
@@ -403,6 +436,33 @@ def test_mask_thumbnail_model_reuses_mask_signatures_when_only_opacity_changes(
     assert [model.item_at(i).cache_key[1] for i in range(3)] == [60, 60, 60]
 
 
+def test_mask_thumbnail_model_exposes_base_image_and_overlay_payload(tmp_path: Path) -> None:
+    app = _app()
+    images = tmp_path / "images"
+    masks = tmp_path / "masks"
+    images.mkdir()
+    masks.mkdir()
+    image_path = images / "frame_000001.png"
+    mask_path = masks / "frame_000001.png"
+    cv2.imwrite(str(image_path), np.full((40, 80, 3), 180, dtype=np.uint8))
+    mask = np.full((40, 80), 255, dtype=np.uint8)
+    mask[:, :40] = 0
+    cv2.imwrite(str(mask_path), mask)
+    model = MaskThumbnailModel()
+
+    model.set_sources([image_path], images_dir=str(images), masks_dir=str(masks))
+    index = model.index(0, 0)
+    assert model.data(index, Qt.DecorationRole) is not None
+    assert model.wait_for_done(2000)
+    app.processEvents()
+
+    payload = model.data(index, THUMBNAIL_PAYLOAD_ROLE)
+    assert isinstance(payload, MaskThumbnailRenderResult)
+    assert not payload.image.isNull()
+    assert payload.overlay is not None
+    assert not payload.overlay.isNull()
+
+
 def test_mask_preview_thumbnail_mode_skips_large_detail_render(tmp_path: Path) -> None:
     _app()
     image_path = tmp_path / "frame_000001.png"
@@ -439,6 +499,33 @@ def test_render_mask_thumbnail_overlays_existing_mask(tmp_path: Path) -> None:
     kept_pixel = thumb.pixelColor(thumb.width() - 20, thumb.height() // 2)
     assert excluded_pixel.red() > kept_pixel.red()
     assert excluded_pixel.green() < kept_pixel.green()
+
+
+def test_render_mask_thumbnail_payload_keeps_base_image_unmodified(tmp_path: Path) -> None:
+    _app()
+    images = tmp_path / "images"
+    masks = tmp_path / "masks"
+    images.mkdir()
+    masks.mkdir()
+    image_path = images / "frame_000001.png"
+    mask_path = masks / "frame_000001.png"
+    cv2.imwrite(str(image_path), np.full((40, 80, 3), 180, dtype=np.uint8))
+    mask = np.full((40, 80), 255, dtype=np.uint8)
+    mask[:, :40] = 0
+    cv2.imwrite(str(mask_path), mask)
+
+    payload = render_mask_thumbnail_payload(
+        image_path,
+        ThumbnailRenderConfig(images_dir=str(images), masks_dir=str(masks), opacity=45),
+    )
+
+    base_excluded = payload.image.pixelColor(20, payload.image.height() // 2)
+    assert base_excluded.red() == base_excluded.green() == base_excluded.blue() == 180
+    assert payload.overlay is not None
+    overlay_excluded = payload.overlay.pixelColor(20, payload.overlay.height() // 2)
+    overlay_kept = payload.overlay.pixelColor(payload.overlay.width() - 20, payload.overlay.height() // 2)
+    assert overlay_excluded.alpha() > 0
+    assert overlay_kept.alpha() == 0
 
 
 def test_mask_step_uses_conservative_manual_yolo_expand_by_default() -> None:

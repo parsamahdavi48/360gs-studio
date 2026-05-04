@@ -36,6 +36,7 @@ from gui.common.preview_mode_toolbar import (
 from gui.common.thumbnail_list_model import visible_rows_for_view
 from gui.common.zoomable_image_label import ZoomableImageLabel
 from gui.mask.mask_files import iter_image_files, mask_candidates_for_image, path_key
+from gui.mask.thumbnail_delegate import MaskThumbnailDelegate
 from gui.mask.thumbnail_model import MaskThumbnailModel
 from overexposure_mask import detect_overexposure, read_image_preserve_depth
 from stitch_mask import boundary_width_to_limit_angle, create_angular_stitched_mask
@@ -148,6 +149,8 @@ class MaskPreviewWidget(QWidget):
         self.thumbnail_model = MaskThumbnailModel(self)
         self.thumbnail_view = QListView()
         self.thumbnail_view.setModel(self.thumbnail_model)
+        self.thumbnail_delegate = MaskThumbnailDelegate(self.thumbnail_view)
+        self.thumbnail_view.setItemDelegate(self.thumbnail_delegate)
         self.thumbnail_view.setViewMode(QListView.IconMode)
         self.thumbnail_view.setResizeMode(QListView.Adjust)
         self.thumbnail_view.setMovement(QListView.Static)
@@ -469,6 +472,8 @@ class MaskPreviewWidget(QWidget):
         self.mode_toolbar.set_mode(mode)
         self._update_reprocess_button_text()
         self.render(self._last_config)
+        if mode == PREVIEW_MODE_THUMBNAILS:
+            self.thumbnail_view.setFocus(Qt.OtherFocusReason)
 
     def preview_mode(self) -> str:
         return self._preview_mode
@@ -476,6 +481,11 @@ class MaskPreviewWidget(QWidget):
     def _on_mask_overlay_toggled(self, checked: bool) -> None:
         self._mask_overlay_visible = checked
         self.mask_overlay_btn.setIcon(mask_overlay_on_icon() if checked else mask_overlay_off_icon())
+        self.thumbnail_delegate.set_overlay_visible(checked)
+        if self._preview_mode == PREVIEW_MODE_THUMBNAILS:
+            self.thumbnail_view.viewport().update()
+            self.thumbnail_view.setFocus(Qt.OtherFocusReason)
+            return
         self.render(self._last_config)
 
     def selected_reprocess_image_paths(self) -> list[Path]:
@@ -514,14 +524,12 @@ class MaskPreviewWidget(QWidget):
             tuple(str(path) for path in self.preview_images),
             self._images_dir,
             config.masks_dir,
-            self._mask_overlay_opacity(),
         )
         if force or signature != self._thumbnail_model_signature:
             self.thumbnail_model.set_sources(
                 self.preview_images,
                 images_dir=self._images_dir,
                 masks_dir=config.masks_dir,
-                opacity=self._mask_overlay_opacity(),
                 force=force,
             )
             self._thumbnail_model_signature = signature
@@ -536,7 +544,17 @@ class MaskPreviewWidget(QWidget):
             return
         self._thumbnail_sync = True
         try:
-            self.thumbnail_view.selectionModel().setCurrentIndex(model_index, QItemSelectionModel.NoUpdate)
+            selected_rows = {
+                index.row()
+                for index in self.thumbnail_view.selectionModel().selectedIndexes()
+                if index.isValid()
+            }
+            flags = (
+                QItemSelectionModel.NoUpdate
+                if selected_rows
+                else QItemSelectionModel.ClearAndSelect | QItemSelectionModel.Current
+            )
+            self.thumbnail_view.selectionModel().setCurrentIndex(model_index, flags)
             if scroll and self._preview_mode == PREVIEW_MODE_THUMBNAILS:
                 self.thumbnail_view.scrollTo(model_index, QAbstractItemView.EnsureVisible)
         finally:

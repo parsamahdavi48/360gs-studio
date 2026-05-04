@@ -14,6 +14,7 @@ from gui import theme
 
 DEFAULT_THUMB_SIZE = QSize(176, 88)
 DEFAULT_GRID_SIZE = QSize(196, 124)
+THUMBNAIL_PAYLOAD_ROLE = Qt.UserRole + 101
 THUMB_CACHE_MIN_ENTRIES = 512
 THUMB_CACHE_MAX_ENTRIES = 10_000
 THUMB_CACHE_MEMORY_BUDGET_BYTES = 1024 * 1024 * 1024
@@ -28,7 +29,12 @@ class ThumbnailItem:
     cache_key: tuple = ()
 
 
-ThumbnailRenderer = Callable[[ThumbnailItem, QSize], QImage]
+ThumbnailRenderer = Callable[[ThumbnailItem, QSize], object]
+
+
+@dataclass(frozen=True)
+class _ThumbnailCacheEntry:
+    payload: object
 
 
 class _ThumbnailSignals(QObject):
@@ -82,7 +88,7 @@ class AsyncThumbnailModel(QAbstractListModel):
         self._renderer_key: tuple = ()
         self._icon_size = QSize(DEFAULT_THUMB_SIZE)
         self._grid_size = QSize(DEFAULT_GRID_SIZE)
-        self._cache: OrderedDict[tuple, QIcon] = OrderedDict()
+        self._cache: OrderedDict[tuple, _ThumbnailCacheEntry] = OrderedDict()
         self._pending: set[tuple[int, tuple]] = set()
         self._jobs: dict[tuple[int, tuple], _ThumbnailJob] = {}
         self._generation = 0
@@ -108,14 +114,24 @@ class AsyncThumbnailModel(QAbstractListModel):
             return item.tooltip or str(item.path)
         if role == Qt.DecorationRole:
             key = self._thumbnail_key(item)
-            icon = self._cache.get(key)
-            if icon is not None:
+            entry = self._cache.get(key)
+            if entry is not None:
                 self._cache.move_to_end(key)
-                return icon
+                icon = _payload_icon(entry.payload)
+                return icon if icon is not None else self._placeholder
             if self._shutdown:
                 return self._placeholder
             self._schedule_thumbnail(index.row(), item, key)
             return self._placeholder
+        if role == THUMBNAIL_PAYLOAD_ROLE:
+            key = self._thumbnail_key(item)
+            entry = self._cache.get(key)
+            if entry is not None:
+                self._cache.move_to_end(key)
+                return entry.payload
+            if not self._shutdown:
+                self._schedule_thumbnail(index.row(), item, key)
+            return None
         return None
 
     def set_items(
@@ -274,17 +290,16 @@ class AsyncThumbnailModel(QAbstractListModel):
         self._jobs.pop(pending_key, None)
         if generation != self._generation:
             return
-        if not isinstance(image, QImage) or image.isNull():
-            icon = self._placeholder
-        else:
-            icon = QIcon(QPixmap.fromImage(image))
-        self._store_cache_icon(key, icon)
+        thumbnail_image = _payload_image(image)
+        if thumbnail_image is None or thumbnail_image.isNull():
+            image = _error_image(self._icon_size)
+        self._store_cache_entry(key, _ThumbnailCacheEntry(payload=image))
         if 0 <= row < len(self._items):
             model_index = self.index(row, 0)
-            self.dataChanged.emit(model_index, model_index, [Qt.DecorationRole])
+            self.dataChanged.emit(model_index, model_index, [Qt.DecorationRole, THUMBNAIL_PAYLOAD_ROLE])
 
-    def _store_cache_icon(self, key: tuple, icon: QIcon) -> None:
-        self._cache[key] = icon
+    def _store_cache_entry(self, key: tuple, entry: _ThumbnailCacheEntry) -> None:
+        self._cache[key] = entry
         self._cache.move_to_end(key)
         self._prune_cache()
 
@@ -327,6 +342,22 @@ class AsyncThumbnailModel(QAbstractListModel):
 
 def _default_renderer(_item: ThumbnailItem, size: QSize) -> QImage:
     return _error_image(size)
+
+
+def _payload_image(payload: object) -> QImage | None:
+    if isinstance(payload, QImage):
+        return payload
+    image = getattr(payload, "image", None)
+    if isinstance(image, QImage):
+        return image
+    return None
+
+
+def _payload_icon(payload: object) -> QIcon | None:
+    image = _payload_image(payload)
+    if image is None or image.isNull():
+        return None
+    return QIcon(QPixmap.fromImage(image))
 
 
 def _placeholder_icon(size: QSize) -> QIcon:

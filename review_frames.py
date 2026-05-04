@@ -287,8 +287,8 @@ if QMainWindow is not None:
             layout.addLayout(btn_row)
 
         def _bind_shortcuts(self) -> None:
-            QShortcut(QKeySequence(Qt.Key_Left), self, activated=self.prev_row)
-            QShortcut(QKeySequence(Qt.Key_Right), self, activated=self.next_row)
+            self.prev_row_shortcut = QShortcut(QKeySequence(Qt.Key_Left), self, activated=self.prev_row)
+            self.next_row_shortcut = QShortcut(QKeySequence(Qt.Key_Right), self, activated=self.next_row)
             QShortcut(QKeySequence("F"), self, activated=self.next_problem)
             QShortcut(QKeySequence("Shift+F"), self, activated=self.prev_problem)
             QShortcut(QKeySequence(Qt.Key_Space), self, activated=self.toggle_decision)
@@ -308,10 +308,19 @@ if QMainWindow is not None:
             self._preview_mode = mode
             self.preview_stack.setCurrentIndex(1 if mode == PREVIEW_MODE_THUMBNAILS else 0)
             self.mode_toolbar.set_mode(mode)
+            thumbnail_mode = mode == PREVIEW_MODE_THUMBNAILS
+            self.prev_row_shortcut.setEnabled(not thumbnail_mode)
+            self.next_row_shortcut.setEnabled(not thumbnail_mode)
             self._render_current()
+            if thumbnail_mode:
+                self._focus_thumbnail_view_if_active()
 
         def preview_mode(self) -> str:
             return self._preview_mode
+
+        def _focus_thumbnail_view_if_active(self) -> None:
+            if self._preview_mode == PREVIEW_MODE_THUMBNAILS:
+                self.thumbnail_view.setFocus(Qt.OtherFocusReason)
 
         def _set_index(
             self,
@@ -728,9 +737,11 @@ if QMainWindow is not None:
                 else "keep"
             )
             self._set_decisions({idx: next_decision for idx in indices})
+            self._focus_thumbnail_view_if_active()
 
         def reset_decision(self) -> None:
             self._set_decisions({idx: self._initial_decisions[idx] for idx in self._decision_action_indices()})
+            self._focus_thumbnail_view_if_active()
 
         def shutdown(self) -> None:
             self._thumbnail_priority_timer.stop()
