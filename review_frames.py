@@ -66,12 +66,14 @@ if _PYSIDE_IMPORT_ERROR is None:
         PREVIEW_MODE_THUMBNAILS,
         PreviewModeToolbar,
     )
+    from gui.common.thumbnail_delegate import ThumbnailSelectionDelegate
     from gui.common.thumbnail_list_model import AsyncThumbnailModel, ThumbnailItem, visible_rows_for_view
     from gui.common.zoomable_image_label import ZoomableImageLabel
 else:  # pragma: no cover - PySide6 missing
     PREVIEW_MODE_SINGLE = "single"
     PREVIEW_MODE_THUMBNAILS = "thumbnails"
     PreviewModeToolbar = None
+    ThumbnailSelectionDelegate = None
     AsyncThumbnailModel = None
     ThumbnailItem = None
     visible_rows_for_view = None
@@ -214,6 +216,7 @@ if QMainWindow is not None:
             self.thumbnail_model = AsyncThumbnailModel(self)
             self.thumbnail_view = QListView()
             self.thumbnail_view.setModel(self.thumbnail_model)
+            self.thumbnail_view.setItemDelegate(ThumbnailSelectionDelegate(self.thumbnail_view))
             self.thumbnail_view.setViewMode(QListView.IconMode)
             self.thumbnail_view.setResizeMode(QListView.Adjust)
             self.thumbnail_view.setMovement(QListView.Static)

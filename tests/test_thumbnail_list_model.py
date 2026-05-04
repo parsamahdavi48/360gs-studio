@@ -4,10 +4,12 @@ from threading import Event
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PySide6.QtCore import Qt
-from PySide6.QtGui import QImage
-from PySide6.QtWidgets import QApplication
+from PySide6.QtCore import QItemSelectionModel, QRect, Qt
+from PySide6.QtGui import QColor, QImage, QPainter
+from PySide6.QtWidgets import QApplication, QListView, QStyle, QStyleOptionViewItem
 
+from gui import theme
+from gui.common.thumbnail_delegate import ThumbnailSelectionDelegate
 from gui.common.thumbnail_list_model import AsyncThumbnailModel, ThumbnailItem
 
 
@@ -134,3 +136,46 @@ def test_thumbnail_model_prioritizes_current_rows_over_stale_queue(tmp_path: Pat
     app.processEvents()
 
     assert calls == ["0", "4"]
+
+
+def test_thumbnail_selection_delegate_uses_frame_and_label_highlight(tmp_path: Path) -> None:
+    app = _app()
+    model = AsyncThumbnailModel()
+    item = ThumbnailItem(path=tmp_path / "frame.png", label="frame_000001.png")
+
+    def renderer(_item: ThumbnailItem, size) -> QImage:  # noqa: ANN001
+        image = QImage(size, QImage.Format_ARGB32)
+        image.fill(QColor("#336699"))
+        return image
+
+    model.set_items([item], renderer)
+    index = model.index(0, 0)
+    model.data(index, Qt.DecorationRole)
+    assert model.wait_for_done(2000)
+    app.processEvents()
+
+    view = QListView()
+    view.setModel(model)
+    view.setIconSize(model.icon_size())
+    view.setGridSize(model.grid_size())
+    delegate = ThumbnailSelectionDelegate(view)
+    view.setItemDelegate(delegate)
+    view.selectionModel().setCurrentIndex(index, QItemSelectionModel.ClearAndSelect)
+
+    canvas = QImage(model.grid_size(), QImage.Format_ARGB32)
+    canvas.fill(Qt.transparent)
+    option = QStyleOptionViewItem()
+    option.rect = QRect(0, 0, model.grid_size().width(), model.grid_size().height())
+    option.widget = view
+    option.state = QStyle.State_Enabled | QStyle.State_Active | QStyle.State_Selected
+    painter = QPainter(canvas)
+    delegate.paint(painter, option, index)
+    painter.end()
+
+    assert canvas.pixelColor(canvas.width() // 2, 52).name().lower() == "#336699"
+    assert canvas.pixelColor(canvas.width() // 2, 110).name().lower() == theme.ACCENT.lower()
+    assert any(
+        canvas.pixelColor(x, y).name().lower() == theme.ACCENT.lower()
+        for y in range(0, 16)
+        for x in range(canvas.width())
+    )

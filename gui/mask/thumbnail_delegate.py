@@ -1,14 +1,15 @@
 """Delegate for painting mask overlays over cached base thumbnails."""
 from __future__ import annotations
 
-from PySide6.QtCore import QRect, QSize, Qt
+from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor, QImage, QPainter
-from PySide6.QtWidgets import QApplication, QStyle, QStyledItemDelegate, QStyleOptionViewItem
+from PySide6.QtWidgets import QStyleOptionViewItem
 
+from gui.common.thumbnail_delegate import ThumbnailSelectionDelegate
 from gui.common.thumbnail_list_model import THUMBNAIL_PAYLOAD_ROLE
 
 
-class MaskThumbnailDelegate(QStyledItemDelegate):
+class MaskThumbnailDelegate(ThumbnailSelectionDelegate):
     """Paint cached mask overlays without changing thumbnail model cache keys."""
 
     def __init__(self, parent=None) -> None:  # noqa: ANN001
@@ -25,8 +26,13 @@ class MaskThumbnailDelegate(QStyledItemDelegate):
     def overlay_visible(self) -> bool:
         return self._overlay_visible
 
-    def paint(self, painter: QPainter, option: QStyleOptionViewItem, index) -> None:  # noqa: ANN001
-        super().paint(painter, option, index)
+    def paint_thumbnail_overlay(
+        self,
+        painter: QPainter,
+        _option: QStyleOptionViewItem,
+        index,  # noqa: ANN001
+        image_rect,
+    ) -> None:
         if not self._overlay_visible:
             return
 
@@ -38,45 +44,9 @@ class MaskThumbnailDelegate(QStyledItemDelegate):
         if not isinstance(base_image, QImage) or base_image.isNull():
             return
 
-        target = _decoration_image_rect(option, index, base_image.size())
-        if target.isEmpty():
+        if image_rect.isEmpty():
             return
-        painter.drawImage(target, _red_overlay_from_alpha(overlay))
-
-
-def _decoration_image_rect(
-    option: QStyleOptionViewItem,
-    index,  # noqa: ANN001
-    image_size: QSize,
-) -> QRect:
-    opt = QStyleOptionViewItem(option)
-    delegate = option.widget.itemDelegate(index) if option.widget is not None else None
-    if isinstance(delegate, QStyledItemDelegate):
-        delegate.initStyleOption(opt, index)
-
-    widget = opt.widget
-    style = widget.style() if widget is not None else QApplication.style()
-    decoration_rect = style.subElementRect(QStyle.SE_ItemViewItemDecoration, opt, widget)
-    if decoration_rect.isEmpty() or image_size.isEmpty():
-        return QRect()
-
-    scale = min(
-        decoration_rect.width() / max(1, image_size.width()),
-        decoration_rect.height() / max(1, image_size.height()),
-    )
-    width = max(1, int(round(image_size.width() * scale)))
-    height = max(1, int(round(image_size.height() * scale)))
-    x = decoration_rect.x()
-    if opt.decorationAlignment & Qt.AlignHCenter:
-        x += (decoration_rect.width() - width) // 2
-    elif opt.decorationAlignment & Qt.AlignRight:
-        x += decoration_rect.width() - width
-    y = decoration_rect.y()
-    if opt.decorationAlignment & Qt.AlignVCenter:
-        y += (decoration_rect.height() - height) // 2
-    elif opt.decorationAlignment & Qt.AlignBottom:
-        y += decoration_rect.height() - height
-    return QRect(x, y, width, height)
+        painter.drawImage(image_rect, _red_overlay_from_alpha(overlay))
 
 
 def _red_overlay_from_alpha(alpha_mask: QImage) -> QImage:
