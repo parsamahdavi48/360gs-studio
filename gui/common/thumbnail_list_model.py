@@ -134,6 +134,24 @@ class AsyncThumbnailModel(QAbstractListModel):
             return None
         return self._items[row]
 
+    def set_item(self, row: int, item: ThumbnailItem) -> bool:
+        if not (0 <= row < len(self._items)):
+            return False
+        old_item = self._items[row]
+        if item == old_item:
+            return False
+
+        old_key = self._thumbnail_key(old_item)
+        self._items[row] = item
+        self._cache.pop(old_key, None)
+        model_index = self.index(row, 0)
+        self.dataChanged.emit(
+            model_index,
+            model_index,
+            [Qt.DisplayRole, Qt.ToolTipRole, Qt.DecorationRole],
+        )
+        return True
+
     def icon_size(self) -> QSize:
         return QSize(self._icon_size)
 

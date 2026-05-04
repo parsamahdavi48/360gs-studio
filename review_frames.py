@@ -132,7 +132,6 @@ if QMainWindow is not None:
             self.index = 0
             self._slider_sync = False
             self._thumbnail_sync = False
-            self._thumbnail_model_signature: tuple | None = None
             self._preview_mode = PREVIEW_MODE_SINGLE
             self.current_pixmap: QPixmap | None = None
             self._pixmap_cache: OrderedDict[tuple, QPixmap] = OrderedDict()
@@ -168,15 +167,6 @@ if QMainWindow is not None:
 
             top_row.addStretch(1)
 
-            self.mode_toolbar = PreviewModeToolbar(
-                single_text_key="REVIEW_PREVIEW_MODE_SINGLE",
-                thumbnail_text_key="REVIEW_PREVIEW_MODE_THUMBNAILS",
-                single_tip_key="REVIEW_PREVIEW_MODE_SINGLE",
-                thumbnail_tip_key="REVIEW_PREVIEW_MODE_THUMBNAILS",
-            )
-            self.mode_toolbar.mode_changed.connect(self.set_preview_mode)
-            top_row.addWidget(self.mode_toolbar)
-
             self.decision_label = QLabel()
             self.decision_label.setStyleSheet("font-weight: 700;")
             top_row.addWidget(self.decision_label)
@@ -198,6 +188,15 @@ if QMainWindow is not None:
             self.reset_decision_button.setFixedSize(36, 32)
             self.reset_decision_button.clicked.connect(lambda _checked=False: self.reset_decision())
             top_row.addWidget(self.reset_decision_button)
+
+            self.mode_toolbar = PreviewModeToolbar(
+                single_text_key="REVIEW_PREVIEW_MODE_SINGLE",
+                thumbnail_text_key="REVIEW_PREVIEW_MODE_THUMBNAILS",
+                single_tip_key="REVIEW_PREVIEW_MODE_SINGLE",
+                thumbnail_tip_key="REVIEW_PREVIEW_MODE_THUMBNAILS",
+            )
+            self.mode_toolbar.mode_changed.connect(self.set_preview_mode)
+            top_row.addWidget(self.mode_toolbar)
             layout.addLayout(top_row)
 
             self.preview_stack = QStackedWidget()
@@ -320,41 +319,38 @@ if QMainWindow is not None:
             self._set_index(index.row(), sync_thumbnail=False)
             self.set_preview_mode(PREVIEW_MODE_SINGLE)
 
-        def _sync_thumbnail_model(self, *, force: bool = False) -> None:
-            signature = tuple(
-                (
-                    row.get("output_file", ""),
-                    row.get("decision", "keep"),
-                    row.get("status", ""),
-                )
-                for row in self.rows
+        def _thumbnail_item_for_row(self, idx: int) -> ThumbnailItem:
+            row = self.rows[idx]
+            rel = row.get("output_file", "")
+            path = self.scene_dir / rel
+            decision = row.get("decision", "keep")
+            status = row.get("status", "")
+            seq = row.get("seq", str(idx + 1))
+            name = Path(rel).name
+            return ThumbnailItem(
+                path=path,
+                label=name,
+                tooltip=f"{seq}: {name} / {self._decision_text(decision)}",
+                cache_key=(decision, status),
             )
-            if not force and signature == self._thumbnail_model_signature:
+
+        def _sync_thumbnail_model(self, *, force: bool = False) -> None:
+            if not force and self.thumbnail_model.rowCount() == len(self.rows):
                 return
 
-            items: list[ThumbnailItem] = []
-            for idx, row in enumerate(self.rows):
-                rel = row.get("output_file", "")
-                path = self.scene_dir / rel
-                decision = row.get("decision", "keep")
-                status = row.get("status", "")
-                seq = row.get("seq", str(idx + 1))
-                name = Path(rel).name
-                items.append(
-                    ThumbnailItem(
-                        path=path,
-                        label=name,
-                        tooltip=f"{seq}: {name} / {self._decision_text(decision)}",
-                        cache_key=(decision, status),
-                    )
-                )
+            items = [self._thumbnail_item_for_row(idx) for idx in range(len(self.rows))]
             self.thumbnail_model.set_items(
                 items,
                 _review_thumbnail_image,
                 renderer_key=("review",),
                 force=force,
             )
-            self._thumbnail_model_signature = signature
+
+        def _refresh_thumbnail_row(self, idx: int) -> None:
+            if self.thumbnail_model.rowCount() != len(self.rows):
+                self._sync_thumbnail_model(force=True)
+                return
+            self.thumbnail_model.set_item(idx, self._thumbnail_item_for_row(idx))
 
         def _sync_thumbnail_selection(self, idx: int, *, scroll: bool = False) -> None:
             if not (0 <= idx < len(self.rows)):
@@ -614,6 +610,9 @@ if QMainWindow is not None:
                     i18n.t("REVIEW_SAVE_FAILED_HEADER"),
                     i18n.t("REVIEW_SAVE_FAILED_BODY").format(error=e),
                 )
+                self._render_current()
+                return
+            self._refresh_thumbnail_row(self.index)
             self._render_current()
             self.decisions_changed.emit()
 

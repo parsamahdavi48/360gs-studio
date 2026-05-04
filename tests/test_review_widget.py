@@ -254,6 +254,17 @@ def test_review_widget_thumbnail_mode_shows_keep_drop_flags(tmp_path: Path) -> N
     assert keep_thumb.pixelColor(1, 1).name().lower() == "#22c55e"
 
 
+def test_review_widget_review_controls_are_left_of_mode_toolbar(tmp_path: Path) -> None:
+    _app()
+    scene, csv_path = _write_scene(tmp_path)
+    widget = ReviewWidget(scene, csv_path)
+    top_row = widget.layout().itemAt(0).layout()
+
+    assert top_row.itemAt(top_row.count() - 1).widget() == widget.mode_toolbar
+    assert top_row.itemAt(top_row.count() - 2).widget() == widget.reset_decision_button
+    assert top_row.itemAt(top_row.count() - 3).widget() == widget.flag_button
+
+
 def test_review_widget_thumbnail_selection_changes_current_frame(tmp_path: Path) -> None:
     _app()
     scene, csv_path = _write_scene(tmp_path)
@@ -267,12 +278,22 @@ def test_review_widget_thumbnail_selection_changes_current_frame(tmp_path: Path)
     assert "2 / 2" in widget.frame_position_label.text()
 
 
-def test_review_widget_thumbnail_decision_update_refreshes_flag_item(tmp_path: Path) -> None:
+def test_review_widget_thumbnail_decision_update_refreshes_only_flag_item(tmp_path: Path, monkeypatch) -> None:
     _app()
     scene, csv_path = _write_scene(tmp_path)
     widget = ReviewWidget(scene, csv_path)
     widget.set_preview_mode(PREVIEW_MODE_THUMBNAILS)
     widget.thumbnail_view.setCurrentIndex(widget.thumbnail_model.index(1, 0))
+    changed_rows: list[int] = []
+
+    def fail_full_reset(*_args, **_kwargs) -> None:
+        raise AssertionError("flag changes must not rebuild the full thumbnail model")
+
+    def remember_changed(top_left, _bottom_right, _roles) -> None:
+        changed_rows.append(top_left.row())
+
+    monkeypatch.setattr(widget.thumbnail_model, "set_items", fail_full_reset)
+    widget.thumbnail_model.dataChanged.connect(remember_changed)
 
     widget.toggle_decision()
 
@@ -283,6 +304,7 @@ def test_review_widget_thumbnail_decision_update_refreshes_flag_item(tmp_path: P
     assert _read_decisions(csv_path)[1] == "drop"
     assert item.cache_key[0] == "drop"
     assert widget.thumbnail_view.selectionModel().currentIndex().row() == 1
+    assert changed_rows == [1]
 
 
 def test_review_widget_thumbnail_double_click_opens_single_preview(tmp_path: Path) -> None:
