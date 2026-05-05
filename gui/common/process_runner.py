@@ -30,11 +30,12 @@ class ProcessRunner(QObject):
         self._pending: list[tuple[str, list[str]]] = []
         self._cancel_requested = False
         self._all_ok = True
+        self._running = False
 
     # -- public API --
 
     def is_running(self) -> bool:
-        return self._proc is not None and self._proc.state() != QProcess.NotRunning
+        return self._running
 
     @property
     def current_phase(self) -> str:
@@ -49,19 +50,22 @@ class ProcessRunner(QObject):
         self._cancel_requested = False
         self._all_ok = True
         self._pending = list(steps)
+        self._running = bool(self._pending)
         self._run_next()
 
     def cancel(self) -> None:
-        if not self.is_running() or self._proc is None:
+        if not self.is_running():
             return
         self._cancel_requested = True
         self._pending.clear()
-        self._terminate_gracefully(self._proc, self._current_phase)
+        if self._proc is not None:
+            self._terminate_gracefully(self._proc, self._current_phase)
 
     # -- internal --
 
     def _run_next(self) -> None:
         if not self._pending:
+            self._running = False
             self.queue_finished.emit(self._all_ok)
             return
 
@@ -115,6 +119,7 @@ class ProcessRunner(QObject):
         self._proc = None
 
         if was_canceled:
+            self._running = False
             self._all_ok = False
             self._pending.clear()
             self.phase_finished.emit(phase, exit_code, True)
@@ -123,6 +128,7 @@ class ProcessRunner(QObject):
             self.phase_finished.emit(phase, 0, False)
             self._run_next()
         else:
+            self._running = False
             self._all_ok = False
             self._pending.clear()
             self.phase_finished.emit(phase, exit_code, False)
