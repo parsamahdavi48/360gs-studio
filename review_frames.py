@@ -105,9 +105,11 @@ def _review_icon(name: str) -> QIcon:
 
 def _review_thumbnail_image(item: ThumbnailItem, size: QSize) -> QImage:
     decision = str(item.cache_key[0]) if len(item.cache_key) >= 1 else "keep"
+    advisory_fg = str(item.cache_key[3]) if len(item.cache_key) >= 4 and item.cache_key[3] else "#e5e7eb"
+    advisory_bg = str(item.cache_key[4]) if len(item.cache_key) >= 5 and item.cache_key[4] else "#14532d"
     keep = decision != "drop"
     border = QColor("#22c55e" if keep else "#991b1b")
-    ribbon = QColor("#14532d" if keep else "#3b1717")
+    ribbon = QColor(advisory_bg)
     text = i18n.t("REVIEW_DECISION_KEEP") if keep else i18n.t("REVIEW_DECISION_DROP")
 
     canvas = QImage(size, QImage.Format_ARGB32)
@@ -126,7 +128,7 @@ def _review_thumbnail_image(item: ThumbnailItem, size: QSize) -> QImage:
         painter.drawImage(x, y, scaled)
 
     painter.fillRect(0, size.height() - 18, size.width(), 18, ribbon)
-    painter.setPen(QColor("#e5e7eb"))
+    painter.setPen(QColor(advisory_fg))
     painter.drawText(6, size.height() - 4, text)
     painter.setPen(QPen(border, 3))
     painter.drawRect(canvas.rect().adjusted(1, 1, -2, -2))
@@ -442,13 +444,15 @@ if QMainWindow is not None:
             path = self.scene_dir / rel
             decision = row.get("decision", "keep")
             status = row.get("status", "")
+            pipeline = row.get("analysis_pipeline", "")
+            _adv_text, adv_fg, adv_bg = self._advisory_for_row(row, idx)
             seq = row.get("seq", str(idx + 1))
             name = Path(rel).name
             return ThumbnailItem(
                 path=path,
                 label=name,
                 tooltip=f"{seq}: {name} / {self._decision_text(decision)}",
-                cache_key=(decision, status),
+                cache_key=(decision, status, pipeline, adv_fg, adv_bg),
             )
 
         def _sync_thumbnail_model(self, *, force: bool = False) -> None:

@@ -292,6 +292,33 @@ def test_review_widget_thumbnail_mode_shows_keep_drop_flags(tmp_path: Path) -> N
     assert keep_thumb.pixelColor(1, 1).name().lower() == "#22c55e"
 
 
+def test_review_thumbnail_uses_single_preview_advisory_colors(tmp_path: Path) -> None:
+    _app()
+    scene, csv_path = _write_scene(tmp_path)
+    widget = ReviewWidget(scene, csv_path)
+    widget.rows[0]["analysis_pipeline"] = "pair"
+    widget.rows[0]["status"] = "novelty_added"
+    widget.rows[1]["analysis_pipeline"] = "pair"
+    widget.rows[1]["status"] = "motion_blur"
+    widget.rows[1]["decision"] = "drop"
+    widget._refresh_thumbnail_row(0)
+    widget._refresh_thumbnail_row(1)
+
+    size = widget.thumbnail_model.icon_size()
+    added_item = widget.thumbnail_model.item_at(0)
+    blur_item = widget.thumbnail_model.item_at(1)
+    assert added_item is not None
+    assert blur_item is not None
+
+    added_thumb = _review_thumbnail_image(added_item, size)
+    blur_thumb = _review_thumbnail_image(blur_item, size)
+    sample_x = size.width() - 8
+    sample_y = size.height() - 9
+
+    assert added_thumb.pixelColor(sample_x, sample_y).name().lower() == "#1e3a8a"
+    assert blur_thumb.pixelColor(sample_x, sample_y).name().lower() == "#7f1d1d"
+
+
 def test_review_widget_review_controls_are_left_of_mode_toolbar(tmp_path: Path) -> None:
     _app()
     scene, csv_path = _write_scene(tmp_path)
