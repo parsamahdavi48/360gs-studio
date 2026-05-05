@@ -281,6 +281,7 @@ class MainWindow(QWidget):
         running = self.runner.is_running()
         step = self._current_step_widget()
         scene_selected = bool(self.scene_browse.text())
+        self._set_workflow_locked(running)
         if step is not None:
             self.run_btn.setText(f"  {step.primary_action_text()}")
             if scene_selected:
@@ -294,6 +295,14 @@ class MainWindow(QWidget):
 
         self.cancel_btn.setVisible(True)
         self.cancel_btn.setEnabled(running)
+
+    def _set_workflow_locked(self, locked: bool) -> None:
+        unlocked = not locked
+        self.scene_browse.setEnabled(unlocked)
+        self.clear_scene_btn.setEnabled(unlocked and bool(self.scene_browse.text()))
+        self.stack.setEnabled(unlocked)
+        for btn in self.step_buttons:
+            btn.setEnabled(unlocked)
 
     def _on_run(self) -> None:
         step = self._current_step_widget()
