@@ -8,7 +8,7 @@ This GUI extracts equirectangular still images from 360-degree video for Metasha
 - Analysis uses grayscale frames scaled to `Analysis Width`.
 - Images written to `images/` keep the source video resolution.
 - `Instant Estimate` is the fixed-interval baseline count. With `Motion` enabled, the final count can increase or decrease after analysis.
-- With `Quick extract` enabled, the GUI prioritizes fixed-interval output for short test SfM runs. Motion adjustment, quality review scores, and alternate representative selection are not run.
+- With `Quick extract` enabled, the GUI prioritizes fixed-interval output for short test SfM runs. Motion adjustment and pair-analysis review metadata are not produced.
 - The integrated GUI stops before running when the scene folder path contains non-ASCII characters, an extremely long path, control characters, or `"`. Use a short ASCII working path.
 
 ## Fixed Interval
@@ -28,15 +28,17 @@ Increasing the value reduces the baseline count. Decreasing it increases the cou
 
 Use this fixed-interval option when you want to try a short test SfM run quickly. It prioritizes writing the requested `Interval` result sooner, so Step 2 does not receive extra quality-review flags from automatic scoring.
 
-Enabling it turns `Motion` off. For final extraction, turn it off again when you want motion adjustment and quality review.
+Enabling it turns `Motion` off. For final extraction, turn it off again when you want motion adjustment.
 
 ## Motion Adjustment
 
-`Motion` is an additional option for fixed interval extraction. The fixed cadence remains the baseline, then analysis applies:
+`Motion` is an additional option for fixed interval extraction. In the GUI, it uses pair analysis against the last kept frame. The fixed cadence remains the baseline, then analysis applies:
 
-- Low-change skipping: candidates with too little accumulated motion since the last kept frame are marked `thinned`
-- High-motion insertion: frames inside a fixed interval with strong motion are added as `smart_added`
-- Feature-motion scoring: sparse feature tracking is used alongside luma difference so the adjustment is closer to SfM-relevant parallax
+- Yaw-compensated residual: estimate the horizontal shift in the 360 equirectangular frame and measure the residual after removing changes explained by pure yaw.
+- Redundant drops: fixed-cadence candidates with too little residual change from the last kept frame are marked `redundant_drop`.
+- Novelty additions: frames before the next fixed-cadence point can be added as `novelty_added` when residual change is already sufficient.
+- Safety keeps: if the kept-frame gap reaches `Max`, the candidate is kept as `gap_forced`.
+- Candidate pair tracking: sparse feature tracking runs only at keep/drop decision points. Weak pairs are flagged as `weak_match` for Step 2.
 
 ### `Min`
 
@@ -61,30 +63,23 @@ Low-change skipping will keep a candidate when dropping it would make the kept-f
 ### `Analysis Width`
 
 - Unit: pixels
-- Meaning: horizontal decode width used for change scoring, feature-motion scoring, and SfM quality scoring
+- Meaning: horizontal decode width used for yaw-compensated residuals, candidate pair tracking, and lightweight blur checks
 - Default: `1920`
 
 Higher values can improve fine-feature detection but increase analysis time. Lower values are faster but can miss subtle motion and feature detail.
 
-## SfM Quality Check
+## Pair-Analysis Review Metadata
 
-Advanced `SfM Quality Check` scores selected candidates for SfM and, when useful, chooses a nearby alternate representative frame. Low-change skipping belongs to `Motion` adjustment, not to this quality check.
+The GUI's normal extraction path no longer uses the old single-frame `SfM quality score` or nearby alternate-frame replacement. For carefully captured video, the useful question is less "which individual frame is prettier?" and more "does this pair still overlap while adding non-redundant viewpoint change?"
 
-### `Quality Review Score`
+The CSV records these Step 2 review fields:
 
-- Unit: normalized `0.0-1.0` score
-- Calculation: combined feature count, feature spread, sharpness, contrast, and exposure penalty
-- Meaning: if the final representative stays below this score, Step 2 records it as `fallback_keep`
-- Default: `0.35`
-
-### `Alternate Frame Criterion`
-
-- Unit: normalized `0.0-1.0` score delta
-- Calculation: `candidate quality score - original quality score`
-- Meaning: minimum improvement required before using a nearby alternate frame
-- Default: `0.08`
-
-Lower values make alternate-frame selection more aggressive. Higher values only replace when the improvement is clearer.
+- `residual_score`: residual change after yaw compensation
+- `raw_change_score`: luma difference before yaw compensation
+- `yaw_shift_deg`: estimated horizontal yaw adjustment
+- `track_count`: tracked feature count for the candidate pair
+- `track_coverage`: screen coverage of tracked points
+- `match_confidence`: review confidence from tracked count and coverage
 
 ## Image Format
 
@@ -101,9 +96,10 @@ Lower values make alternate-frame selection more aggressive. Higher values only 
 Step 2 reads `selected_frames.csv` and surfaces frames based on `status`.
 
 - `ok`: normal kept candidate
-- `smart_added`: added by motion adjustment
-- `replaced`: replaced by a nearby SfM-ready representative
-- `fallback_keep`: still below the quality review score after representative selection
-- `thinned`: currently dropped because the interval had little motion
+- `novelty_added`: added before the next fixed cadence because residual change is sufficient
+- `redundant_drop`: fixed-cadence candidate currently dropped because residual change is small
+- `gap_forced`: kept by the `Max` gap guard
+- `weak_match`: kept but flagged because candidate pair tracking is weak
+- `smart_added` / `replaced` / `fallback_keep` / `thinned`: legacy statuses when `--analysis-pipeline legacy` is used
 
-A practical starting point is `0.8-1.0` seconds with `Motion` enabled, then review how `smart_added` and `thinned` frames look in Step 2.
+A practical starting point is `0.8-1.0` seconds with `Motion` enabled, then review how `novelty_added`, `redundant_drop`, `gap_forced`, and `weak_match` frames look in Step 2.

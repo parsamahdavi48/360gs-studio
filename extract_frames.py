@@ -67,6 +67,22 @@ class QualityMetrics:
     exposure_penalty: float
 
 
+@dataclass
+class PairMetrics:
+    raw_change: float
+    residual: float
+    yaw_shift_px: int
+    yaw_shift_deg: float
+
+
+@dataclass
+class PairTrackMetrics:
+    track_count: int
+    coverage: float
+    confidence: float
+    median_residual_motion: float
+
+
 def parse_fraction(value: str) -> float:
     if not value:
         return 0.0
@@ -406,6 +422,153 @@ def compute_feature_motion_score(prev_frame: np.ndarray, frame: np.ndarray) -> f
     return _bounded01(float(np.median(displacement)) / diagonal)
 
 
+def _latitude_weights(height: int) -> np.ndarray:
+    if height <= 0:
+        return np.ones((1, 1), dtype=np.float32)
+    y = (np.arange(height, dtype=np.float32) + 0.5) / float(height)
+    lat = (y - 0.5) * math.pi
+    weights = np.cos(lat).astype(np.float32)
+    weights = np.maximum(weights, 0.05)
+    return weights.reshape(height, 1)
+
+
+def _weighted_mean_absdiff(a: np.ndarray, b: np.ndarray, weights: np.ndarray) -> float:
+    if a.shape != b.shape:
+        return 0.0
+    diff = np.abs(a.astype(np.int16) - b.astype(np.int16)).astype(np.float32)
+    denom = float(np.sum(weights) * max(1, a.shape[1]) * 255.0)
+    if denom <= 0.0:
+        return 0.0
+    return float(np.sum(diff * weights) / denom)
+
+
+def _column_signal(frame: np.ndarray, weights: np.ndarray) -> np.ndarray:
+    weighted = frame.astype(np.float32) * weights
+    signal = np.mean(weighted, axis=0)
+    signal -= float(np.mean(signal))
+    std = float(np.std(signal))
+    if std > 1e-6:
+        signal /= std
+    return signal
+
+
+def _estimate_yaw_shift_px(prev_frame: np.ndarray, frame: np.ndarray, weights: np.ndarray) -> int:
+    if prev_frame.shape != frame.shape or frame.shape[1] <= 1:
+        return 0
+
+    prev_signal = _column_signal(prev_frame, weights)
+    cur_signal = _column_signal(frame, weights)
+    if float(np.std(prev_signal)) <= 1e-6 or float(np.std(cur_signal)) <= 1e-6:
+        return 0
+
+    corr = np.fft.irfft(
+        np.fft.rfft(cur_signal) * np.conj(np.fft.rfft(prev_signal)),
+        n=frame.shape[1],
+    )
+    peak = int(np.argmax(corr))
+    if peak > frame.shape[1] // 2:
+        peak -= frame.shape[1]
+    return peak
+
+
+def compute_pair_metrics(prev_frame: np.ndarray, frame: np.ndarray, weights: np.ndarray) -> PairMetrics:
+    if prev_frame.shape != frame.shape:
+        return PairMetrics(raw_change=0.0, residual=0.0, yaw_shift_px=0, yaw_shift_deg=0.0)
+
+    raw_change = _weighted_mean_absdiff(prev_frame, frame, weights)
+    estimated_shift = _estimate_yaw_shift_px(prev_frame, frame, weights)
+    candidates = {0, estimated_shift, -estimated_shift}
+
+    best_shift = 0
+    best_residual = raw_change
+    for shift in candidates:
+        aligned = np.roll(frame, int(shift), axis=1)
+        residual = _weighted_mean_absdiff(prev_frame, aligned, weights)
+        if residual < best_residual:
+            best_residual = residual
+            best_shift = int(shift)
+
+    yaw_deg = (float(best_shift) / float(max(1, frame.shape[1]))) * 360.0
+    return PairMetrics(
+        raw_change=raw_change,
+        residual=best_residual,
+        yaw_shift_px=best_shift,
+        yaw_shift_deg=yaw_deg,
+    )
+
+
+def _feature_coverage(points: np.ndarray, width: int, height: int) -> float:
+    if points.size == 0 or width <= 0 or height <= 0:
+        return 0.0
+    pts = points.reshape(-1, 2)
+    grid_cols = 6
+    grid_rows = 3
+    xs = np.clip((pts[:, 0] / max(1.0, float(width))) * grid_cols, 0, grid_cols - 1).astype(np.int32)
+    ys = np.clip((pts[:, 1] / max(1.0, float(height))) * grid_rows, 0, grid_rows - 1).astype(np.int32)
+    cells = ys * grid_cols + xs
+    return float(np.count_nonzero(np.bincount(cells, minlength=grid_cols * grid_rows))) / float(grid_cols * grid_rows)
+
+
+def compute_pair_track_metrics(
+    prev_frame: np.ndarray,
+    frame: np.ndarray,
+    yaw_shift_px: int,
+) -> PairTrackMetrics:
+    if prev_frame.shape != frame.shape:
+        return PairTrackMetrics(0, 0.0, 0.0, 0.0)
+
+    height, width = prev_frame.shape[:2]
+    min_distance = max(8, min(width, height) // 64)
+    try:
+        points = cv2.goodFeaturesToTrack(
+            prev_frame,
+            maxCorners=240,
+            qualityLevel=0.01,
+            minDistance=min_distance,
+            blockSize=7,
+            useHarrisDetector=False,
+        )
+    except cv2.error:
+        points = None
+    if points is None or len(points) < 8:
+        return PairTrackMetrics(0, 0.0, 0.0, 0.0)
+
+    aligned = np.roll(frame, int(yaw_shift_px), axis=1)
+    try:
+        next_points, status, _err = cv2.calcOpticalFlowPyrLK(
+            prev_frame,
+            aligned,
+            points,
+            None,
+            winSize=(19, 19),
+            maxLevel=2,
+            criteria=(cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT, 16, 0.03),
+        )
+    except cv2.error:
+        return PairTrackMetrics(0, 0.0, 0.0, 0.0)
+    if next_points is None or status is None:
+        return PairTrackMetrics(0, 0.0, 0.0, 0.0)
+
+    valid = status.reshape(-1) == 1
+    track_count = int(np.count_nonzero(valid))
+    if track_count <= 0:
+        return PairTrackMetrics(0, 0.0, 0.0, 0.0)
+
+    src = points.reshape(-1, 2)[valid]
+    dst = next_points.reshape(-1, 2)[valid]
+    displacement = np.linalg.norm(dst - src, axis=1)
+    diagonal = max(1.0, math.hypot(float(width), float(height)))
+    median_motion = float(np.median(displacement) / diagonal) if displacement.size else 0.0
+    coverage = _feature_coverage(src, width, height)
+    confidence = _bounded01(0.60 * min(track_count / 80.0, 1.0) + 0.40 * coverage)
+    return PairTrackMetrics(
+        track_count=track_count,
+        coverage=coverage,
+        confidence=confidence,
+        median_residual_motion=median_motion,
+    )
+
+
 def analyze_video_window(
     video_path: Path,
     ffmpeg_bin: str,
@@ -566,6 +729,308 @@ def analyze_video(
         compute_feature_motion=compute_feature_motion,
     )
     return blur_scores, change_scores, quality_scores, feature_motion_scores, out_w, out_h
+
+
+def _pair_status(tokens: Sequence[str]) -> str:
+    filtered = [token for token in tokens if token and token != "ok"]
+    return "+".join(filtered) if filtered else "ok"
+
+
+def _pair_row(
+    *,
+    idx: int,
+    prev_kept_idx: int | None,
+    fps: float,
+    status_tokens: Sequence[str],
+    decision: str,
+    reason: str,
+    metrics: PairMetrics | None,
+    track: PairTrackMetrics | None,
+    blur_score: float | None,
+    analysis_w: int,
+) -> dict:
+    gap_frames = 0 if prev_kept_idx is None else max(0, idx - prev_kept_idx)
+    yaw_deg = "" if metrics is None else metrics.yaw_shift_deg
+    risk_flags: list[str] = []
+    if track is not None and track.track_count > 0 and track.confidence < 0.28:
+        risk_flags.append("weak_match")
+    status = _pair_status(status_tokens)
+    return {
+        "original_index": idx,
+        "final_index": idx,
+        "change_score_original": None if metrics is None else metrics.residual,
+        "change_score_final": None if metrics is None else metrics.residual,
+        "blur_score_original": blur_score,
+        "blur_score_final": blur_score,
+        "quality_score_original": None,
+        "quality_score_final": None,
+        "status": status,
+        "decision": decision,
+        "analysis_pipeline": "pair",
+        "selection_reason": reason,
+        "review_required": "1" if status != "ok" else "0",
+        "prev_kept_index": "" if prev_kept_idx is None else prev_kept_idx,
+        "gap_sec": (gap_frames / fps) if fps > 0 else "",
+        "yaw_shift_px": "" if metrics is None else metrics.yaw_shift_px,
+        "yaw_shift_deg": yaw_deg,
+        "residual_score": "" if metrics is None else metrics.residual,
+        "raw_change_score": "" if metrics is None else metrics.raw_change,
+        "track_count": "" if track is None else track.track_count,
+        "track_coverage": "" if track is None else track.coverage,
+        "match_confidence": "" if track is None else track.confidence,
+        "risk_flags": ",".join(risk_flags),
+        "analysis_width": analysis_w,
+    }
+
+
+def analyze_pair_selection(
+    video_path: Path,
+    ffmpeg_bin: str,
+    video_info: VideoInfo,
+    analysis_width: int,
+    interval_sec: float,
+    fixed_smart: bool,
+    min_gap_sec: float,
+    max_gap_sec: float,
+    residual_threshold: float,
+    max_inserts_per_interval: int,
+    track_min_confidence: float,
+    track_min_count: int,
+    progress_phase: str = "analyze",
+) -> tuple[list[dict], int, int, int, int, int]:
+    """Streaming pair analysis for GUI extraction.
+
+    The metric is relative to the last kept frame: estimate equirectangular yaw
+    as a horizontal roll, measure residual change after that alignment, and run
+    sparse tracking only at actual keep/drop decision points.
+    """
+    if cv2 is None or np is None:
+        ensure_python_deps()
+    if interval_sec <= 0:
+        raise ValueError("--interval-sec must be > 0")
+    if min_gap_sec <= 0 or max_gap_sec <= 0:
+        raise ValueError("--min-gap-sec and --max-gap-sec must be > 0")
+    if max_gap_sec < min_gap_sec:
+        raise ValueError("--max-gap-sec must be >= --min-gap-sec")
+
+    out_w, out_h = scaled_dimensions(video_info.width, video_info.height, analysis_width)
+    vf = f"scale={out_w}:{out_h}:flags=bilinear,format=gray"
+    cmd = [
+        ffmpeg_bin,
+        "-hide_banner",
+        "-loglevel",
+        "error",
+        "-i",
+        str(video_path),
+        "-vf",
+        vf,
+        "-f",
+        "rawvideo",
+        "-pix_fmt",
+        "gray",
+        "-",
+    ]
+    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    assert proc.stdout is not None
+    assert proc.stderr is not None
+    stderr_chunks: list[bytes] = []
+    stderr_thread = threading.Thread(
+        target=_drain_binary_pipe,
+        args=(proc.stderr, stderr_chunks),
+        daemon=True,
+    )
+    stderr_thread.start()
+
+    frame_size = out_w * out_h
+    weights = _latitude_weights(out_h)
+    interval_frames = max(1, int(round(interval_sec * video_info.fps)))
+    min_gap_frames = max(1, int(round(min_gap_sec * video_info.fps)))
+    max_gap_frames = max(min_gap_frames, int(round(max_gap_sec * video_info.fps)))
+    max_inserts = max(0, int(max_inserts_per_interval))
+    threshold = max(0.0, float(residual_threshold))
+    total_hint = video_info.total_frames
+    progress_step = max(10, total_hint // 100) if total_hint > 0 else max(10, int(round(video_info.fps * 2.0)))
+
+    rows: list[dict] = []
+    seen_rows: set[int] = set()
+    inserted_by_slot: dict[int, int] = {}
+    last_keep_frame: np.ndarray | None = None
+    last_keep_idx: int | None = None
+    last_frame: np.ndarray | None = None
+    last_frame_idx = -1
+    last_frame_blur = 0.0
+    last_progress_report = 0
+
+    def emit_progress(processed_frames: int, force: bool = False) -> None:
+        nonlocal last_progress_report
+        if not progress_phase:
+            return
+        if not force and processed_frames - last_progress_report < progress_step:
+            return
+        if total_hint > 0:
+            pct = min(100.0, (processed_frames / float(total_hint)) * 100.0)
+            print(
+                f"[progress] {progress_phase} {processed_frames}/{total_hint} frames ({pct:.1f}%)",
+                flush=True,
+            )
+        else:
+            print(f"[progress] {progress_phase} {processed_frames} frames", flush=True)
+        last_progress_report = processed_frames
+
+    def append_row(row: dict) -> None:
+        idx = int(row["final_index"])
+        if idx in seen_rows:
+            return
+        rows.append(row)
+        seen_rows.add(idx)
+
+    def evaluate_row(
+        *,
+        idx: int,
+        frame: np.ndarray,
+        blur_score: float,
+        status_tokens: Sequence[str],
+        decision: str,
+        reason: str,
+        metrics: PairMetrics,
+    ) -> dict:
+        track = compute_pair_track_metrics(last_keep_frame, frame, metrics.yaw_shift_px) if last_keep_frame is not None else None
+        tokens = list(status_tokens)
+        if decision != "drop" and track is not None:
+            if track.track_count < track_min_count or track.confidence < track_min_confidence:
+                tokens.append("weak_match")
+        return _pair_row(
+            idx=idx,
+            prev_kept_idx=last_keep_idx,
+            fps=video_info.fps,
+            status_tokens=tokens,
+            decision=decision,
+            reason=reason,
+            metrics=metrics,
+            track=track,
+            blur_score=blur_score,
+            analysis_w=out_w,
+        )
+
+    try:
+        while True:
+            raw = proc.stdout.read(frame_size)
+            if not raw:
+                break
+            if len(raw) < frame_size:
+                break
+
+            frame = np.frombuffer(raw, dtype=np.uint8).reshape((out_h, out_w))
+            idx = last_frame_idx + 1
+            blur_score = float(cv2.Laplacian(frame, cv2.CV_64F).var())
+            last_frame = frame
+            last_frame_idx = idx
+            last_frame_blur = blur_score
+
+            if last_keep_frame is None:
+                append_row(
+                    _pair_row(
+                        idx=idx,
+                        prev_kept_idx=None,
+                        fps=video_info.fps,
+                        status_tokens=[],
+                        decision="keep",
+                        reason="initial",
+                        metrics=None,
+                        track=None,
+                        blur_score=blur_score,
+                        analysis_w=out_w,
+                    )
+                )
+                last_keep_frame = frame.copy()
+                last_keep_idx = idx
+                emit_progress(idx + 1, force=True)
+                continue
+
+            assert last_keep_idx is not None
+            gap = idx - last_keep_idx
+            if gap < min_gap_frames:
+                emit_progress(idx + 1)
+                continue
+
+            slot = idx // interval_frames
+            base_due = (idx % interval_frames) == 0
+            max_due = gap >= max_gap_frames
+            metrics = compute_pair_metrics(last_keep_frame, frame, weights)
+            high_novelty = threshold <= 0.0 or metrics.residual >= threshold
+            inserted = inserted_by_slot.get(slot, 0)
+
+            row: dict | None = None
+            keep_current = False
+            status_tokens: list[str] = []
+            reason = "ok"
+            decision = "keep"
+
+            if fixed_smart and not base_due and high_novelty and inserted < max_inserts:
+                keep_current = True
+                status_tokens.append("novelty_added")
+                reason = "novelty_added"
+                inserted_by_slot[slot] = inserted + 1
+            elif base_due:
+                if fixed_smart and not high_novelty and not max_due:
+                    decision = "drop"
+                    status_tokens.append("redundant_drop")
+                    reason = "redundant_drop"
+                else:
+                    keep_current = True
+                    reason = "fixed_interval"
+            elif max_due:
+                keep_current = True
+                status_tokens.append("gap_forced")
+                reason = "gap_forced"
+
+            if max_due and keep_current and "gap_forced" not in status_tokens:
+                status_tokens.append("gap_forced")
+                reason = "gap_forced"
+
+            if decision == "drop" or keep_current:
+                row = evaluate_row(
+                    idx=idx,
+                    frame=frame,
+                    blur_score=blur_score,
+                    status_tokens=status_tokens,
+                    decision=decision,
+                    reason=reason,
+                    metrics=metrics,
+                )
+                append_row(row)
+                if keep_current:
+                    last_keep_frame = frame.copy()
+                    last_keep_idx = idx
+
+            emit_progress(idx + 1)
+    finally:
+        ret = proc.wait()
+        stderr_thread.join()
+        stderr_text = b"".join(stderr_chunks).decode("utf-8", errors="replace")
+
+    if ret != 0:
+        raise RuntimeError(f"ffmpeg pair analysis failed: {stderr_text.strip()}")
+    if last_frame_idx < 0 or last_frame is None:
+        raise RuntimeError("No frames decoded during pair analysis")
+
+    if last_keep_idx is not None and last_frame_idx != last_keep_idx and last_frame_idx not in seen_rows:
+        metrics = compute_pair_metrics(last_keep_frame, last_frame, weights) if last_keep_frame is not None else None
+        if metrics is not None:
+            row = evaluate_row(
+                idx=last_frame_idx,
+                frame=last_frame,
+                blur_score=last_frame_blur,
+                status_tokens=["gap_forced"],
+                decision="keep",
+                reason="endpoint",
+                metrics=metrics,
+            )
+            append_row(row)
+    emit_progress(last_frame_idx + 1, force=True)
+
+    rows.sort(key=lambda row: int(row["final_index"]))
+    return rows, out_w, out_h, min_gap_frames, max_gap_frames, last_frame_idx + 1
 
 
 # ===========================================================================
@@ -1388,6 +1853,20 @@ SELECTED_CSV_FIELDNAMES = [
     "quality_score_final",
     "status",
     "decision",
+    "analysis_pipeline",
+    "selection_reason",
+    "review_required",
+    "prev_kept_index",
+    "gap_sec",
+    "yaw_shift_px",
+    "yaw_shift_deg",
+    "residual_score",
+    "raw_change_score",
+    "track_count",
+    "track_coverage",
+    "match_confidence",
+    "risk_flags",
+    "analysis_width",
     "output_file",
 ]
 
@@ -1414,6 +1893,9 @@ def build_quick_extract_rows(frame_indices: Sequence[int]) -> list[dict]:
             "quality_score_final": None,
             "status": "ok",
             "decision": "keep",
+            "analysis_pipeline": "quick",
+            "selection_reason": "quick_extract",
+            "review_required": "0",
         }
         for idx in frame_indices
     ]
@@ -1448,6 +1930,20 @@ def build_selected_csv_rows(
                 "quality_score_final": _csv_score(row.get("quality_score_final", 0.0)),
                 "status": row["status"],
                 "decision": row.get("decision", "keep"),
+                "analysis_pipeline": row.get("analysis_pipeline", "legacy"),
+                "selection_reason": row.get("selection_reason", ""),
+                "review_required": row.get("review_required", "1" if row.get("status", "ok") != "ok" else "0"),
+                "prev_kept_index": row.get("prev_kept_index", ""),
+                "gap_sec": _csv_score(row.get("gap_sec")),
+                "yaw_shift_px": row.get("yaw_shift_px", ""),
+                "yaw_shift_deg": _csv_score(row.get("yaw_shift_deg")),
+                "residual_score": _csv_score(row.get("residual_score")),
+                "raw_change_score": _csv_score(row.get("raw_change_score")),
+                "track_count": row.get("track_count", ""),
+                "track_coverage": _csv_score(row.get("track_coverage")),
+                "match_confidence": _csv_score(row.get("match_confidence")),
+                "risk_flags": row.get("risk_flags", ""),
+                "analysis_width": row.get("analysis_width", ""),
                 "output_file": f"images/{frame_filename(filename_prefix, final_idx, image_ext, frame_digits)}",
             }
         )
@@ -1536,6 +2032,7 @@ def write_report(
         "analysis": {
             "width": analysis_w,
             "height": analysis_h,
+            "pipeline": getattr(args, "analysis_pipeline", "legacy"),
             "quality_mode": "skipped" if getattr(args, "quick_extract", False) else QUALITY_MODE,
             "representative_window_frames": window_frames,
             "min_gap_frames": min_gap_frames,
@@ -1547,9 +2044,12 @@ def write_report(
             "max_gap_sec": args.max_gap_sec,
             "fixed_smart": args.fixed_smart,
             "quick_extract": getattr(args, "quick_extract", False),
+            "analysis_pipeline": getattr(args, "analysis_pipeline", "legacy"),
             "fixed_smart_change_threshold": args.fixed_smart_change_threshold,
             "fixed_smart_feature_threshold": args.fixed_smart_feature_threshold,
             "fixed_smart_max_inserts_per_interval": args.fixed_smart_max_inserts_per_interval,
+            "pair_track_min_count": getattr(args, "pair_track_min_count", 0),
+            "pair_track_min_confidence": getattr(args, "pair_track_min_confidence", 0.0),
             "quality_min_score": args.quality_min_score,
             "quality_min_improvement": args.quality_min_improvement,
             "center_bias": args.center_bias,
@@ -1560,6 +2060,10 @@ def write_report(
         "result": {
             "selected_count": len(selected_rows),
             "smart_added_count": sum(1 for r in selected_rows if "smart_added" in r.get("status", "")),
+            "novelty_added_count": sum(1 for r in selected_rows if "novelty_added" in r.get("status", "")),
+            "redundant_drop_count": sum(1 for r in selected_rows if "redundant_drop" in r.get("status", "")),
+            "gap_forced_count": sum(1 for r in selected_rows if "gap_forced" in r.get("status", "")),
+            "weak_match_count": sum(1 for r in selected_rows if "weak_match" in r.get("status", "")),
             "replaced_count": sum(1 for r in selected_rows if "replaced" in r.get("status", "")),
             "fallback_keep_count": sum(1 for r in selected_rows if "fallback_keep" in r.get("status", "")),
         },
@@ -1598,6 +2102,7 @@ def build_summary_from_counts(
         "analysis": {
             "width": analysis_w,
             "height": analysis_h,
+            "pipeline": getattr(args, "analysis_pipeline", "legacy"),
             "min_gap_frames": min_gap_frames,
             "representative_window_frames": window_frames,
             "quality_mode": "skipped" if getattr(args, "quick_extract", False) else QUALITY_MODE,
@@ -1609,9 +2114,12 @@ def build_summary_from_counts(
             "max_gap_sec": args.max_gap_sec,
             "fixed_smart": args.fixed_smart,
             "quick_extract": getattr(args, "quick_extract", False),
+            "analysis_pipeline": getattr(args, "analysis_pipeline", "legacy"),
             "fixed_smart_change_threshold": args.fixed_smart_change_threshold,
             "fixed_smart_feature_threshold": args.fixed_smart_feature_threshold,
             "fixed_smart_max_inserts_per_interval": args.fixed_smart_max_inserts_per_interval,
+            "pair_track_min_count": getattr(args, "pair_track_min_count", 0),
+            "pair_track_min_confidence": getattr(args, "pair_track_min_confidence", 0.0),
             "analysis_width": args.analysis_width,
             "quality_min_score": args.quality_min_score,
             "quality_min_improvement": args.quality_min_improvement,
@@ -1644,6 +2152,10 @@ def build_summary(
 ) -> dict:
     replaced_count = sum(1 for r in selected_rows if "replaced" in r.get("status", ""))
     smart_added_count = sum(1 for r in selected_rows if "smart_added" in r.get("status", ""))
+    novelty_added_count = sum(1 for r in selected_rows if "novelty_added" in r.get("status", ""))
+    redundant_drop_count = sum(1 for r in selected_rows if "redundant_drop" in r.get("status", ""))
+    gap_forced_count = sum(1 for r in selected_rows if "gap_forced" in r.get("status", ""))
+    weak_match_count = sum(1 for r in selected_rows if "weak_match" in r.get("status", ""))
     fallback_keep_count = sum(1 for r in selected_rows if "fallback_keep" in r.get("status", ""))
     thinned_count = sum(
         1 for r in selected_rows
@@ -1666,6 +2178,10 @@ def build_summary(
         frame_digits=frame_digits,
     )
     summary["result"]["smart_added_count"] = smart_added_count
+    summary["result"]["novelty_added_count"] = novelty_added_count
+    summary["result"]["redundant_drop_count"] = redundant_drop_count
+    summary["result"]["gap_forced_count"] = gap_forced_count
+    summary["result"]["weak_match_count"] = weak_match_count
     summary["result"]["thinned_count"] = thinned_count
     summary["result"]["selected_before_thin"] = len(selected_rows)
     return summary
@@ -1849,6 +2365,27 @@ def parse_args() -> argparse.Namespace:
         default=2,
         help="Maximum extra anchors inserted inside each fixed interval by --fixed-smart.",
     )
+    parser.add_argument(
+        "--analysis-pipeline",
+        choices=["pair", "legacy"],
+        default="pair",
+        help=(
+            "Frame analysis pipeline. pair uses last-kept-frame residual and candidate pair tracking; "
+            "legacy uses the previous whole-video quality score and fixed-smart logic."
+        ),
+    )
+    parser.add_argument(
+        "--pair-track-min-count",
+        type=int,
+        default=36,
+        help="Minimum tracked feature count before a kept pair is flagged as weak_match.",
+    )
+    parser.add_argument(
+        "--pair-track-min-confidence",
+        type=float,
+        default=0.25,
+        help="Minimum pair tracking confidence before a kept pair is flagged as weak_match.",
+    )
 
     parser.add_argument(
         "--analysis-width",
@@ -2000,6 +2537,12 @@ def main() -> None:
     if args.fixed_smart_max_inserts_per_interval < 0:
         print("Error: --fixed-smart-max-inserts-per-interval must be >= 0")
         sys.exit(1)
+    if args.pair_track_min_count < 0:
+        print("Error: --pair-track-min-count must be >= 0")
+        sys.exit(1)
+    if args.pair_track_min_confidence < 0.0 or args.pair_track_min_confidence > 1.0:
+        print("Error: --pair-track-min-confidence must be between 0 and 1")
+        sys.exit(1)
     if args.quick_extract and args.mode != "fixed":
         print("Error: --quick-extract requires --mode fixed")
         sys.exit(1)
@@ -2144,7 +2687,49 @@ def main() -> None:
             print("SUMMARY_JSON:" + json.dumps(summary, ensure_ascii=False))
         return
 
-    if args.quick_extract:
+    use_pair_pipeline = (
+        args.analysis_pipeline == "pair"
+        and not args.quick_extract
+        and args.mode == "fixed"
+    )
+    enriched_rows: list[dict] = []
+    window_frames_for_report = 0
+    min_gap_frames = 1
+
+    if use_pair_pipeline:
+        try:
+            ensure_python_deps()
+            (
+                enriched_rows,
+                analysis_w,
+                analysis_h,
+                min_gap_frames,
+                _pair_max_gap_frames,
+                total_frames,
+            ) = analyze_pair_selection(
+                video_path=input_video,
+                ffmpeg_bin=args.ffmpeg,
+                video_info=video_info,
+                analysis_width=args.analysis_width,
+                interval_sec=args.interval_sec,
+                fixed_smart=args.fixed_smart,
+                min_gap_sec=args.min_gap_sec,
+                max_gap_sec=args.max_gap_sec,
+                residual_threshold=args.fixed_smart_change_threshold,
+                max_inserts_per_interval=args.fixed_smart_max_inserts_per_interval,
+                track_min_confidence=args.pair_track_min_confidence,
+                track_min_count=args.pair_track_min_count,
+                progress_phase="analyze",
+            )
+        except Exception as e:
+            print(f"Error during pair analysis: {e}")
+            sys.exit(1)
+        print(f"Pair-analyzed frames: {total_frames} ({analysis_w}x{analysis_h})")
+        selected = [int(r["final_index"]) for r in enriched_rows if r.get("decision", "keep") != "drop"]
+        if not selected:
+            print("Error: no frames selected")
+            sys.exit(1)
+    elif args.quick_extract:
         total_frames = total_frames_for_fixed_selection(video_info)
         blur_scores: list[float] = []
         change_scores: list[float] = []
@@ -2167,49 +2752,50 @@ def main() -> None:
         total_frames = len(blur_scores)
         print(f"Analyzed frames: {total_frames} ({analysis_w}x{analysis_h})")
 
-    try:
-        smart_added_indices: set[int] = set()
-        smart_thinned_indices: set[int] = set()
-        if args.mode == "fixed":
-            selected, min_gap_frames = select_fixed(total_frames, video_info.fps, args.interval_sec)
-            if args.fixed_smart:
-                (
-                    selected,
-                    smart_added_indices,
-                    smart_thinned_indices,
-                    min_gap_frames,
-                    _smart_max_gap_frames,
-                ) = select_fixed_smart(
-                    selected,
+    if not use_pair_pipeline:
+        try:
+            smart_added_indices: set[int] = set()
+            smart_thinned_indices: set[int] = set()
+            if args.mode == "fixed":
+                selected, min_gap_frames = select_fixed(total_frames, video_info.fps, args.interval_sec)
+                if args.fixed_smart:
+                    (
+                        selected,
+                        smart_added_indices,
+                        smart_thinned_indices,
+                        min_gap_frames,
+                        _smart_max_gap_frames,
+                    ) = select_fixed_smart(
+                        selected,
+                        change_scores,
+                        feature_motion_scores,
+                        video_info.fps,
+                        args.min_gap_sec,
+                        args.max_gap_sec,
+                        change_threshold=args.fixed_smart_change_threshold,
+                        feature_motion_threshold=args.fixed_smart_feature_threshold,
+                        max_inserts_per_interval=args.fixed_smart_max_inserts_per_interval,
+                    )
+            else:
+                selected, min_gap_frames, _ = select_change(
                     change_scores,
-                    feature_motion_scores,
                     video_info.fps,
+                    args.change_threshold,
                     args.min_gap_sec,
                     args.max_gap_sec,
-                    change_threshold=args.fixed_smart_change_threshold,
-                    feature_motion_threshold=args.fixed_smart_feature_threshold,
-                    max_inserts_per_interval=args.fixed_smart_max_inserts_per_interval,
                 )
-        else:
-            selected, min_gap_frames, _ = select_change(
-                change_scores,
-                video_info.fps,
-                args.change_threshold,
-                args.min_gap_sec,
-                args.max_gap_sec,
-            )
-    except Exception as e:
-        print(f"Error while selecting frames: {e}")
-        sys.exit(1)
+        except Exception as e:
+            print(f"Error while selecting frames: {e}")
+            sys.exit(1)
 
-    if not selected:
-        print("Error: no frames selected")
-        sys.exit(1)
+        if not selected:
+            print("Error: no frames selected")
+            sys.exit(1)
 
     if args.quick_extract:
         window_frames_for_report = 0
         enriched_rows = build_quick_extract_rows(selected)
-    else:
+    elif not use_pair_pipeline:
         window_frames_for_report = representative_window_for_report(selected, total_frames)
 
         rows = select_representative_frames(
@@ -2287,8 +2873,13 @@ def main() -> None:
 
     if args.estimate_only:
         print(f"Estimated selected frames: {summary['result']['selected_count']}")
-        print(f"Estimated representative replacements: {summary['result']['replaced_count']}")
-        print(f"Estimated low-quality review frames: {summary['result']['fallback_keep_count']}")
+        if args.analysis_pipeline == "pair":
+            print(f"Estimated pair novelty additions: {summary['result'].get('novelty_added_count', 0)}")
+            print(f"Estimated pair redundant drops: {summary['result'].get('redundant_drop_count', 0)}")
+            print(f"Estimated pair weak-match review frames: {summary['result'].get('weak_match_count', 0)}")
+        else:
+            print(f"Estimated representative replacements: {summary['result']['replaced_count']}")
+            print(f"Estimated low-quality review frames: {summary['result']['fallback_keep_count']}")
         if args.print_summary_json:
             print("SUMMARY_JSON:" + json.dumps(summary, ensure_ascii=False))
         return
@@ -2430,6 +3021,10 @@ def main() -> None:
 
     replaced_count = sum(1 for r in enriched_rows if "replaced" in r.get("status", ""))
     smart_added_count = sum(1 for r in enriched_rows if "smart_added" in r.get("status", ""))
+    novelty_added_count = sum(1 for r in enriched_rows if "novelty_added" in r.get("status", ""))
+    redundant_drop_count = sum(1 for r in enriched_rows if "redundant_drop" in r.get("status", ""))
+    gap_forced_count = sum(1 for r in enriched_rows if "gap_forced" in r.get("status", ""))
+    weak_match_count = sum(1 for r in enriched_rows if "weak_match" in r.get("status", ""))
     fallback_count = sum(1 for r in enriched_rows if "fallback_keep" in r.get("status", ""))
     thinned_count = sum(
         1 for r in enriched_rows
@@ -2440,10 +3035,19 @@ def main() -> None:
     print(f"Selected frames: {kept_count} (extracted)")
     if smart_added_count > 0:
         print(f"Smart fixed interval additions: {smart_added_count}")
+    if novelty_added_count > 0:
+        print(f"Pair novelty additions: {novelty_added_count}")
+    if redundant_drop_count > 0:
+        print(f"Pair redundant drops: {redundant_drop_count}")
+    if gap_forced_count > 0:
+        print(f"Pair gap-forced keeps: {gap_forced_count}")
+    if weak_match_count > 0:
+        print(f"Pair weak-match review frames: {weak_match_count}")
     if thinned_count > 0:
         print(f"Thinned (stationary, recorded as drop in CSV): {thinned_count}")
-    print(f"Representative replacements: {replaced_count}")
-    print(f"Low-quality review frames: {fallback_count}")
+    if args.analysis_pipeline == "legacy":
+        print(f"Representative replacements: {replaced_count}")
+        print(f"Low-quality review frames: {fallback_count}")
     print(f"Images: {images_dir}")
     print(f"Selection CSV: {csv_path}")
     print(f"Report: {report_path}")

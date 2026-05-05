@@ -13,8 +13,10 @@ import numpy as np
 from extract_frames import (
     CACHE_VERSION,
     VideoInfo,
+    analyze_pair_selection,
     analyze_video_window,
     cache_path_for,
+    compute_pair_metrics,
     load_analysis_cache,
     save_analysis_cache,
     video_signature,
@@ -258,6 +260,64 @@ def test_analyze_video_window_drains_large_stderr(tmp_path: Path) -> None:
     assert len(quality) == 3
     assert motion == [0.0, 0.0, 0.0]
     assert (out_w, out_h, fps) == (4, 2, 30.0)
+
+
+def test_compute_pair_metrics_compensates_horizontal_yaw() -> None:
+    base = np.tile(np.arange(16, dtype=np.uint8), (8, 1)) * 8
+    shifted = np.roll(base, 3, axis=1)
+    weights = np.ones((8, 1), dtype=np.float32)
+
+    raw = np.mean(np.abs(base.astype(np.int16) - shifted.astype(np.int16))) / 255.0
+    metrics = compute_pair_metrics(base, shifted, weights)
+
+    assert metrics.raw_change > 0
+    assert metrics.residual < raw
+    assert abs(metrics.yaw_shift_px) == 3
+
+
+def test_analyze_pair_selection_marks_redundant_and_gap_forced(tmp_path: Path) -> None:
+    fake_script = tmp_path / "fake_ffmpeg_pair.py"
+    fake_script.write_text(
+        "\n".join(
+            [
+                "import sys",
+                "frames = [bytes([40]) * 8 for _ in range(5)]",
+                "for frame in frames:",
+                "    sys.stdout.buffer.write(frame)",
+                "    sys.stdout.flush()",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    if os.name == "nt":
+        wrapper = tmp_path / "fake_ffmpeg_pair.cmd"
+        wrapper.write_text(f'@echo off\n"{sys.executable}" "{fake_script}" %*\n', encoding="utf-8")
+    else:
+        wrapper = tmp_path / "fake_ffmpeg_pair.sh"
+        wrapper.write_text(f'#!/bin/sh\nexec "{sys.executable}" "{fake_script}" "$@"\n', encoding="utf-8")
+        wrapper.chmod(0o755)
+
+    rows, out_w, out_h, min_gap, max_gap, decoded = analyze_pair_selection(
+        video_path=tmp_path / "dummy.mp4",
+        ffmpeg_bin=str(wrapper),
+        video_info=VideoInfo(width=4, height=2, fps=1.0, duration=5.0, total_frames=5),
+        analysis_width=4,
+        interval_sec=2.0,
+        fixed_smart=True,
+        min_gap_sec=1.0,
+        max_gap_sec=3.0,
+        residual_threshold=0.04,
+        max_inserts_per_interval=2,
+        track_min_confidence=0.25,
+        track_min_count=36,
+        progress_phase="",
+    )
+
+    statuses = [row["status"] for row in rows]
+    assert (out_w, out_h, min_gap, max_gap, decoded) == (4, 2, 1, 3, 5)
+    assert "redundant_drop" in statuses
+    assert any("gap_forced" in status for status in statuses)
+    assert any(row["decision"] == "drop" for row in rows)
 
 
 def test_load_returns_none_when_version_mismatch(tmp_path: Path):

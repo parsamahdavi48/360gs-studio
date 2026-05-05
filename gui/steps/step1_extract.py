@@ -301,10 +301,10 @@ class ExtractStep(BaseStepWidget):
         self.analysis_width_label = adv_form.labelForField(self.analysis_width_edit)
         advanced.content_layout.addLayout(adv_form)
 
-        selection_title = QLabel(i18n.t("AUTO_SELECTION_SECTION"))
-        selection_title.setObjectName("paneTitle")
-        selection_title.setToolTip(i18n.t("AUTO_SELECTION_HINT"))
-        advanced.content_layout.addWidget(selection_title)
+        self.selection_title = QLabel(i18n.t("AUTO_SELECTION_SECTION"))
+        self.selection_title.setObjectName("paneTitle")
+        self.selection_title.setToolTip(i18n.t("AUTO_SELECTION_HINT"))
+        advanced.content_layout.addWidget(self.selection_title)
 
         selection_form = QFormLayout()
         selection_form.setSpacing(6)
@@ -346,6 +346,16 @@ class ExtractStep(BaseStepWidget):
         self.quality_min_improvement_label = selection_form.labelForField(self.quality_min_improvement_edit)
 
         advanced.content_layout.addLayout(selection_form)
+        for widget in (
+            self.selection_title,
+            self.quality_min_score_label,
+            self.quality_min_score_edit,
+            self.quality_min_improvement_label,
+            self.quality_min_improvement_edit,
+        ):
+            if widget is not None:
+                widget.setVisible(False)
+                widget.setEnabled(False)
 
         path_form = QFormLayout()
         path_form.setSpacing(6)
@@ -444,10 +454,6 @@ class ExtractStep(BaseStepWidget):
         for widget in (
             self.analysis_width_label,
             self.analysis_width_edit,
-            self.quality_min_score_label,
-            self.quality_min_score_edit,
-            self.quality_min_improvement_label,
-            self.quality_min_improvement_edit,
         ):
             if widget is not None:
                 widget.setEnabled(not quick_enabled)
@@ -673,9 +679,8 @@ class ExtractStep(BaseStepWidget):
         ]
         if not quick_extract:
             cmd.extend([
+                "--analysis-pipeline", "pair",
                 "--analysis-width", self.analysis_width_edit.text().strip(),
-                "--quality-min-score", f"{self.quality_min_score_edit.value():g}",
-                "--quality-min-improvement", f"{self.quality_min_improvement_edit.value():g}",
             ])
         if prefix:
             cmd.extend(["--filename-prefix", prefix])

@@ -531,6 +531,18 @@ if QMainWindow is not None:
             if "fallback_keep" in status:
                 return i18n.t("REVIEW_ADVISORY_FALLBACK"), "#fef3c7", "#7c2d12"
 
+            if "weak_match" in status:
+                return i18n.t("REVIEW_ADVISORY_WEAK_MATCH"), "#fef3c7", "#7c2d12"
+
+            if "redundant_drop" in status:
+                return i18n.t("REVIEW_ADVISORY_REDUNDANT_DROP"), "#dbeafe", "#1e3a8a"
+
+            if "gap_forced" in status:
+                return i18n.t("REVIEW_ADVISORY_GAP_FORCED"), "#dbeafe", "#1e3a8a"
+
+            if "novelty_added" in status:
+                return i18n.t("REVIEW_ADVISORY_NOVELTY_ADDED"), "#dbeafe", "#1e3a8a"
+
             # 青: 自動間引き
             if "thinned" in status:
                 return i18n.t("REVIEW_ADVISORY_THINNED"), "#dbeafe", "#1e3a8a"
@@ -553,6 +565,24 @@ if QMainWindow is not None:
                 return f"{float(value):.2f}"
             except (TypeError, ValueError):
                 return "-"
+
+        def _format_metric_value(self, value: str | None, decimals: int = 3) -> str:
+            if value in (None, ""):
+                return "-"
+            try:
+                return f"{float(value):.{decimals}f}"
+            except (TypeError, ValueError):
+                return "-"
+
+        def _pair_info_summary(self, row: dict[str, str], ts_str: str) -> str:
+            return i18n.t("REVIEW_PAIR_INFO_FORMAT").format(
+                ts=ts_str,
+                gap=self._format_metric_value(row.get("gap_sec"), 2),
+                residual=self._format_metric_value(row.get("residual_score"), 4),
+                yaw=self._format_metric_value(row.get("yaw_shift_deg"), 1),
+                tracks=row.get("track_count") or "-",
+                confidence=self._format_metric_value(row.get("match_confidence"), 2),
+            )
 
         def _quality_summary(self, row: dict[str, str]) -> str:
             final_score = self._format_quality_value(row.get("quality_score_final"))
@@ -602,22 +632,38 @@ if QMainWindow is not None:
                 f"color: {adv_fg}; background-color: {adv_bg};"
             )
 
-            smart_added_count = sum(1 for r in self.rows if "smart_added" in r.get("status", "").strip().lower())
-            replaced_count = sum(1 for r in self.rows if "replaced" in r.get("status", "").strip().lower())
-            fallback_count = sum(1 for r in self.rows if "fallback_keep" in r.get("status", "").strip().lower())
-            thinned_count = sum(1 for r in self.rows if "thinned" in r.get("status", "").strip().lower())
             problem_count = len(self.problem_indices)
             current_problem = i18n.t("REVIEW_INFO_YES") if self._is_problem_row(row) else i18n.t("REVIEW_INFO_NO")
-            self.problem_summary_label.setText(
-                i18n.t("REVIEW_PROBLEMS_FORMAT").format(
-                    n=problem_count,
-                    a=smart_added_count,
-                    r=replaced_count,
-                    f=fallback_count,
-                    t=thinned_count,
-                    cur=current_problem,
+            if row.get("analysis_pipeline") == "pair":
+                novelty_count = sum(1 for r in self.rows if "novelty_added" in r.get("status", "").strip().lower())
+                redundant_count = sum(1 for r in self.rows if "redundant_drop" in r.get("status", "").strip().lower())
+                gap_count = sum(1 for r in self.rows if "gap_forced" in r.get("status", "").strip().lower())
+                weak_count = sum(1 for r in self.rows if "weak_match" in r.get("status", "").strip().lower())
+                self.problem_summary_label.setText(
+                    i18n.t("REVIEW_PAIR_PROBLEMS_FORMAT").format(
+                        n=problem_count,
+                        a=novelty_count,
+                        d=redundant_count,
+                        g=gap_count,
+                        w=weak_count,
+                        cur=current_problem,
+                    )
                 )
-            )
+            else:
+                smart_added_count = sum(1 for r in self.rows if "smart_added" in r.get("status", "").strip().lower())
+                replaced_count = sum(1 for r in self.rows if "replaced" in r.get("status", "").strip().lower())
+                fallback_count = sum(1 for r in self.rows if "fallback_keep" in r.get("status", "").strip().lower())
+                thinned_count = sum(1 for r in self.rows if "thinned" in r.get("status", "").strip().lower())
+                self.problem_summary_label.setText(
+                    i18n.t("REVIEW_PROBLEMS_FORMAT").format(
+                        n=problem_count,
+                        a=smart_added_count,
+                        r=replaced_count,
+                        f=fallback_count,
+                        t=thinned_count,
+                        cur=current_problem,
+                    )
+                )
 
             # 動画内位置
             ts_raw = row.get("timestamp_sec", "-")
@@ -626,10 +672,13 @@ if QMainWindow is not None:
             except (ValueError, TypeError):
                 ts_str = ts_raw
 
-            info_text = i18n.t("REVIEW_INFO_FORMAT").format(
-                ts=ts_str,
-                quality=self._quality_summary(row),
-            )
+            if row.get("analysis_pipeline") == "pair":
+                info_text = self._pair_info_summary(row, ts_str)
+            else:
+                info_text = i18n.t("REVIEW_INFO_FORMAT").format(
+                    ts=ts_str,
+                    quality=self._quality_summary(row),
+                )
             self.info_label.setText(info_text)
             self._sync_thumbnail_model()
             if sync_thumbnail:

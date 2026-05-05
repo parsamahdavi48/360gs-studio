@@ -9,15 +9,15 @@ It supports two selection modes:
 - `fixed`: fixed interval (`--interval-sec`)
 - `change`: adaptive extraction based on inter-frame change (`--change-threshold` + min/max gap)
 
-In the GUI workflow, fixed interval is the baseline. `--fixed-smart` can be added to fixed mode to keep the fixed cadence, skip low-change candidates, and insert extra anchors in high-motion ranges.
+In the GUI workflow, fixed interval is the baseline. The default `--analysis-pipeline pair` uses last-kept-frame pair analysis: yaw-compensated residual change drives redundant drops and novelty additions, and sparse feature tracking is checked only at candidate decision points.
 
 For quick test SfM runs, fixed mode also supports `--quick-extract`. This skips analysis, motion adjustment, and representative frame scoring, then extracts the requested fixed cadence directly.
 
-After initial selection, each selected frame is treated as an extraction anchor. The script searches a local candidate window and uses a bounded SfM-oriented quality score to replace the anchor only when a nearby frame is clearly better. No global percentile threshold is used.
+The legacy `--analysis-pipeline legacy` path is still available for comparison. It uses whole-video luma/feature-motion scores plus the old bounded single-frame SfM quality score and nearby representative replacement.
 
 Optional legacy **stationary thinning** (`--thin-motion-threshold`) drops selected frames whose cumulative luma change since the last kept frame is too low. `--fixed-smart` performs its own low-change skip with the same motion score used for high-motion insertion, so the legacy thinning pass is not applied when `--fixed-smart` is enabled.
 
-The quality / Laplacian / change / feature-motion scores are cached to `extract_cache.npz` so re-running with different selection or thinning parameters skips the analysis pass entirely (full re-analysis only when the video file, cache version, or `--analysis-width` changes).
+The legacy quality / Laplacian / change / feature-motion scores are cached to `extract_cache.npz`. Pair analysis is streaming and parameter-dependent, so the comparison workflow should use `--no-cache` when measuring first-run speed.
 
 ## Requirements
 
@@ -54,6 +54,16 @@ python extract_frames.py input.mp4 ./scene01 \
   --mode fixed \
   --interval-sec 0.8 \
   --fixed-smart \
+  --analysis-pipeline pair \
+  --min-gap-sec 0.25 \
+  --max-gap-sec 2.0
+```
+
+Compare legacy and pair analysis on one video:
+
+```bash
+python scripts/compare_extract_analysis.py input.mp4 ./compare_scene \
+  --interval-sec 0.8 \
   --min-gap-sec 0.25 \
   --max-gap-sec 2.0
 ```
@@ -117,13 +127,16 @@ python extract_frames.py input.mp4 ./scene01 \
 | `--mode` | `change` | `fixed` or `change`. Fixed interval is recommended for SfM stability |
 | `--interval-sec` | `0.5` | Fixed mode interval in seconds |
 | `--quick-extract` | (off) | Fixed-mode shortcut for test runs. Extracts the fixed cadence without analysis, motion adjustment, representative scoring, or legacy thinning |
-| `--fixed-smart` | (off) | Fixed-mode helper. Keeps the fixed interval baseline, adds high-motion candidates, and marks low-motion base candidates using the same luma/feature-motion thresholds plus `--max-gap-sec` |
-| `--fixed-smart-change-threshold` | `0.04` | Normalized luma-difference threshold for high-motion insertion in `--fixed-smart` |
-| `--fixed-smart-feature-threshold` | `0.012` | Sparse feature-motion threshold for high-motion insertion in `--fixed-smart` |
+| `--analysis-pipeline` | `pair` | `pair` uses last-kept-frame yaw-compensated residuals and candidate pair tracking. `legacy` uses the older whole-video quality-score pipeline |
+| `--fixed-smart` | (off) | Fixed-mode helper. With `pair`, marks redundant base candidates, adds novelty candidates, and keeps max-gap safety frames |
+| `--fixed-smart-change-threshold` | `0.04` | In `pair`, yaw-compensated residual threshold for novelty. In `legacy`, normalized luma-difference threshold |
+| `--fixed-smart-feature-threshold` | `0.012` | Legacy sparse feature-motion threshold. Not used by `pair` |
 | `--fixed-smart-max-inserts-per-interval` | `2` | Maximum extra anchors inserted inside one fixed interval |
-| `--analysis-width` | `1920` | Decode width for change/quality analysis. Higher = more accurate, slower. `0` or larger than source = full resolution |
-| `--quality-min-score` | `0.35` | Mark a frame for review if the final representative is below this 0.0-1.0 SfM-oriented quality score. The score combines feature count, feature spread, sharpness, contrast, and exposure penalty |
-| `--quality-min-improvement` | `0.08` | Minimum 0.0-1.0 quality-score gain required before replacing an anchor. Computed as candidate quality minus original quality |
+| `--pair-track-min-count` | `36` | Pair pipeline review threshold. Kept pairs below this tracked feature count are flagged `weak_match` |
+| `--pair-track-min-confidence` | `0.25` | Pair pipeline review threshold from tracked count and coverage |
+| `--analysis-width` | `1920` | Decode width for residual and tracking analysis. Higher = more accurate, slower. `0` or larger than source = full resolution |
+| `--quality-min-score` | `0.35` | Legacy-only single-frame quality score threshold |
+| `--quality-min-improvement` | `0.08` | Legacy-only representative replacement threshold |
 | `--thin-motion-threshold` | `0.6` | Legacy low-change thinning for non-smart selection. `0` disables. Ignored when `--fixed-smart` is enabled |
 | `--no-thin-keep-endpoints` | (off) | Allow the last frame to be dropped during thinning. By default first/last frames are always preserved |
 | `--no-extract-thinned` | (off) | Skip image extraction for thinned frames. Default is to extract them so the review GUI can preview each thinned frame and flip back to keep if desired. Thinned rows always remain in CSV with `decision=drop` regardless |
@@ -141,14 +154,15 @@ Under `output_dir`:
 
 - `original_index`: index from initial mode selection
 - `final_index`: index after representative frame selection
-- `status`: `ok` / `smart_added` / `replaced` / `fallback_keep` / `thinned` / combinations like `smart_added+replaced`
-- `quality_score_original`, `quality_score_final`: bounded SfM-oriented quality scores used for representative selection
+- `status`: pair statuses such as `ok`, `novelty_added`, `redundant_drop`, `gap_forced`, `weak_match`, or legacy statuses such as `smart_added`, `replaced`, `fallback_keep`, `thinned`
+- `residual_score`, `raw_change_score`, `yaw_shift_deg`, `track_count`, `track_coverage`, `match_confidence`: pair-analysis review metadata
+- `quality_score_original`, `quality_score_final`: legacy-only bounded SfM-oriented quality scores used for representative selection
 - `decision`: `keep` for extracted frames, `drop` for thinned frames (editable in review tool)
 - `output_file`: image path for review and later processing (no file on disk for thinned rows)
 
 With `--quick-extract`, `status` remains `ok` and the analysis score columns are left blank because no quality or change scoring is run.
 
-`extract_cache.npz`: cached SfM quality, Laplacian, change, and sparse feature-motion scores per analyzed frame, keyed by video file size+mtime, cache version, and `--analysis-width`. Auto-invalidated when any of these change. Add to `.gitignore` (already configured).
+`extract_cache.npz`: legacy cached SfM quality, Laplacian, change, and sparse feature-motion scores per analyzed frame, keyed by video file size+mtime, cache version, and `--analysis-width`. Auto-invalidated when any of these change. Add to `.gitignore` (already configured).
 
 ## Notes
 

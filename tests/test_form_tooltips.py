@@ -115,8 +115,10 @@ def test_extract_compact_mode_rows_enable_matching_fields() -> None:
     assert step.min_gap_edit.isEnabled()
     assert step.max_gap_edit.isEnabled()
     assert step.analysis_width_edit.isEnabled()
-    assert step.quality_min_score_edit.isEnabled()
-    assert step.quality_min_improvement_edit.isEnabled()
+    assert not step.quality_min_score_edit.isVisible()
+    assert not step.quality_min_score_edit.isEnabled()
+    assert not step.quality_min_improvement_edit.isVisible()
+    assert not step.quality_min_improvement_edit.isEnabled()
 
 
 def test_extract_mode_block_preserves_right_padding() -> None:
@@ -210,6 +212,7 @@ def test_extract_command_uses_drag_spinbox_values(tmp_path: Path) -> None:
     step.min_gap_edit.setValue(0.5)
     step.max_gap_edit.setValue(3.0)
     smart_cmd = step._build_extract_cmd()
+    assert smart_cmd[smart_cmd.index("--analysis-pipeline") + 1] == "pair"
     assert smart_cmd[smart_cmd.index("--min-gap-sec") + 1] == "0.5"
     assert smart_cmd[smart_cmd.index("--max-gap-sec") + 1] == "3"
 

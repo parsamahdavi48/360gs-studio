@@ -187,7 +187,16 @@ _JA: dict[str, str] = {
     "REVIEW_ADVISORY_REPLACED": "差し替え済み: 近傍のSfM向けフレームを使用",
     "REVIEW_ADVISORY_SMART_ADDED": "変化補正: 動きが大きいため追加",
     "REVIEW_ADVISORY_THINNED": "自動間引き: 動きが少ないため除外中",
+    "REVIEW_ADVISORY_NOVELTY_ADDED": "ペア解析: 視点変化が十分なため追加",
+    "REVIEW_ADVISORY_REDUNDANT_DROP": "ペア解析: 冗長候補として除外中",
+    "REVIEW_ADVISORY_GAP_FORCED": "ペア解析: 上限間隔の安全採用",
+    "REVIEW_ADVISORY_WEAK_MATCH": "要確認: 追跡できる特徴点が弱い可能性",
     "REVIEW_ADVISORY_NORMAL": "通常: 品質基準OK",
+    "REVIEW_PAIR_INFO_FORMAT": (
+        "動画位置: {ts}  |  間隔: {gap}s  |  残差: {residual}  |  yaw補正: {yaw}°  |  "
+        "追跡: {tracks}  |  信頼度: {confidence}"
+    ),
+    "REVIEW_PAIR_PROBLEMS_FORMAT": "確認対象 {n}件 | 追加 {a} / 冗長除外 {d} / 上限採用 {g} / 弱追跡 {w} | 表示中 {cur}",
     "NEXT_STEP_MASK_NOTICE": "除外予定の画像が残っている場合、または採用/除外を変更した場合は、\n下部の「適用」で画像フォルダへ反映します。\n「適用」が無効なら、そのまま Step 3 (マスク生成) へ進めます。",
     "METASHAPE_NOTICE": "マスク生成後は、用途に合わせて次へ進みます。\nMetashapeルートでは masks/ をマスクとして読み込み、SfM後にStep 4で3DGS向けに書き出します。\nCOLMAPルートではStep 4で視点画像を書き出し、必要に応じてCOLMAP/GLOMAPを実行します。",
     "EXPORT_DIR": "エクスポート先",
@@ -714,7 +723,16 @@ _EN: dict[str, str] = {
     "REVIEW_ADVISORY_REPLACED": "Replaced: using a more SfM-ready nearby frame",
     "REVIEW_ADVISORY_SMART_ADDED": "Motion-adjusted: added for high motion",
     "REVIEW_ADVISORY_THINNED": "Auto-thinned: low motion, currently dropped",
+    "REVIEW_ADVISORY_NOVELTY_ADDED": "Pair analysis: added for useful viewpoint change",
+    "REVIEW_ADVISORY_REDUNDANT_DROP": "Pair analysis: dropped as redundant",
+    "REVIEW_ADVISORY_GAP_FORCED": "Pair analysis: kept by max-gap guard",
+    "REVIEW_ADVISORY_WEAK_MATCH": "Review: tracked features may be weak",
     "REVIEW_ADVISORY_NORMAL": "Normal: quality OK",
+    "REVIEW_PAIR_INFO_FORMAT": (
+        "Video position: {ts}  |  Gap: {gap}s  |  Residual: {residual}  |  Yaw adjust: {yaw}°  |  "
+        "Tracks: {tracks}  |  Confidence: {confidence}"
+    ),
+    "REVIEW_PAIR_PROBLEMS_FORMAT": "Review {n} | added {a} / redundant {d} / max-gap {g} / weak {w} | current {cur}",
     "NEXT_STEP_MASK_NOTICE": "If drop-marked images remain, or if you changed keep/drop choices, press Apply at the bottom to write them into the image folder.\nIf Apply is disabled, proceed directly to Step 3 (Mask Generation).",
     "METASHAPE_NOTICE": "After mask generation, continue with the route that matches your dataset.\nFor the Metashape route, import masks/ as masks, run SfM, then use Step 4 for 3DGS export.\nFor the COLMAP route, use Step 4 to export viewpoint images and optionally run COLMAP/GLOMAP.",
     "EXPORT_DIR": "Export Folder",
