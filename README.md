@@ -16,7 +16,7 @@ Forked from [tetraface/tetraface-3dgs-utils](https://github.com/tetraface/tetraf
 
 ### 1. 360° Video to Metashape SfM and 3DGS Training
 
-Extract equirectangular still frames from Insta360 or similar 360° camera video, review which frames to keep, and generate masks for people, the camera operator, tripods, stitch seams, and blown-out highlights before running SfM in Metashape.
+Extract equirectangular still frames from Insta360 or similar 360° camera video, review which frames to keep, and generate masks for people, the camera operator, tripods, sky, stitch seams, and blown-out highlights before running SfM in Metashape.
 
 After Metashape SfM, export viewpoint images, masks, and `transforms.json` for LichtFeld Studio, Postshot, and Brush. This is the main workflow for preparing 360° video as a 3DGS training dataset.
 
@@ -26,13 +26,13 @@ You can also skip Metashape and export a COLMAP Rig viewpoint dataset from extra
 
 ### 3. Mask Preprocessing for Normal Photos or Video Frames
 
-For DSLR, mirrorless, smartphone, or normal video image sequences, Step 3 can generate YOLO/SAM masks for people, vehicles, and other classes, plus overexposure masks. This is useful as a mask-preparation stage before sending images to SfM software.
+For DSLR, mirrorless, smartphone, or normal video image sequences, Step 3 can generate YOLO/SAM masks for people and vehicles, Mask2Former/SAM3.1 masks for sky or other targets, plus overexposure masks. This is useful as a mask-preparation stage before sending images to SfM software.
 
 ## Highlights
 
 - Extract SfM-friendly frames from 360° video
 - Review extracted frames in single-preview or thumbnail-list mode and apply keep/drop decisions, including Windows Explorer-style thumbnail selection
-- Generate masks with YOLO + SAM2.1, Mask2Former ADE20K classes, or SAM3.1 prompts
+- Generate masks for people, sky, and other targets with YOLO + SAM2.1, Mask2Former ADE20K classes, or SAM3.1 prompts
 - Improve detection near the bottom of 360° images for camera operators, tripods, and hands
 - Mask stitch seams, overexposed regions, and user-provided PNG custom masks
 - Preview mask results in single-preview or thumbnail-list mode while tuning settings, with cached thumbnails for large image sets
