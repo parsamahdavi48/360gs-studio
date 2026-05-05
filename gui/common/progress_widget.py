@@ -152,11 +152,16 @@ class ProgressWidget(QWidget):
         self._elapsed_tick.start()
         self._refresh_progress_text()
 
-    def finish_phase(self) -> None:
+    def finish_phase(self, *, complete: bool = True) -> None:
         if self._elapsed_active:
             self._last_elapsed_ms = self._elapsed_timer.elapsed()
         self._elapsed_active = False
         self._elapsed_tick.stop()
+        if self.bar.minimum() == 0 and self.bar.maximum() == 0:
+            self._total = 100
+            self._done = 100 if complete else 0
+            self.bar.setRange(0, self._total)
+            self.bar.setValue(self._done)
         self._refresh_progress_text()
 
     def set_progress(self, done: int, total: int) -> None:
