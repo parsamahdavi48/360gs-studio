@@ -62,7 +62,9 @@ from gui import i18n
 
 if _PYSIDE_IMPORT_ERROR is None:
     import cv2
+    import numpy as np
 
+    from gui.common.perspective_image_view import PerspectiveImageView
     from gui.common.perspective_preview import (
         PREVIEW_PROJECTION_EQUIRECT,
         PREVIEW_PROJECTION_PERSPECTIVE,
@@ -78,7 +80,6 @@ if _PYSIDE_IMPORT_ERROR is None:
     )
     from gui.common.thumbnail_delegate import ThumbnailSelectionDelegate
     from gui.common.thumbnail_list_model import AsyncThumbnailModel, ThumbnailItem, visible_rows_for_view
-    from gui.common.zoomable_image_label import ZoomableImageLabel
     from image_io import imread_unicode
 else:  # pragma: no cover - PySide6 missing
     PREVIEW_MODE_PERSPECTIVE = "perspective"
@@ -91,7 +92,7 @@ else:  # pragma: no cover - PySide6 missing
     AsyncThumbnailModel = None
     ThumbnailItem = None
     visible_rows_for_view = None
-    ZoomableImageLabel = None
+    PerspectiveImageView = None
 
 
 _ICON_DIR = Path(__file__).resolve().parent / "gui" / "assets" / "icons"
@@ -145,6 +146,21 @@ def _perspective_pixmap_for_review(image_path: Path, params: PerspectiveParams) 
         return QPixmap()
     output_size = max(1, min(950, img.shape[0], img.shape[1]))
     return _bgr_to_pixmap(equirect_to_perspective(img, params, output_size=output_size))
+
+
+def _perspective_bgr_for_review(image_path: Path) -> np.ndarray | None:
+    img = imread_unicode(image_path, cv2.IMREAD_COLOR)
+    if img is None:
+        return None
+    max_w = 1900
+    if img.shape[1] > max_w:
+        scale = max_w / float(img.shape[1])
+        img = cv2.resize(
+            img,
+            (max(1, int(img.shape[1] * scale)), max(1, int(img.shape[0] * scale))),
+            interpolation=cv2.INTER_AREA,
+        )
+    return img
 
 
 if QMainWindow is not None:
@@ -242,10 +258,11 @@ if QMainWindow is not None:
             layout.addLayout(top_row)
 
             self.preview_stack = QStackedWidget()
-            self.image_view = ZoomableImageLabel()
+            self.image_view = PerspectiveImageView()
             self.image_view.setMinimumHeight(260)
             self.image_view.setStyleSheet("border: 1px solid palette(mid);")
             self.image_view.look_dragged.connect(self._on_perspective_dragged)
+            self.image_view.gpu_failed.connect(self._render_current)
             self.preview_stack.addWidget(self.image_view)
 
             self.thumbnail_model = AsyncThumbnailModel(self)
@@ -385,6 +402,8 @@ if QMainWindow is not None:
             if self._preview_projection != PREVIEW_PROJECTION_PERSPECTIVE:
                 return
             self._perspective_params = params_from_drag(self._perspective_params, delta_x, delta_y)
+            if self.image_view.set_perspective_params(self._perspective_params):
+                return
             self._render_current()
 
         def _focus_thumbnail_view_if_active(self) -> None:
@@ -625,6 +644,12 @@ if QMainWindow is not None:
                 self.image_view.setText(i18n.t("REVIEW_IMAGE_NOT_FOUND").format(path=image_path))
                 return
 
+            if self._preview_projection == PREVIEW_PROJECTION_PERSPECTIVE:
+                img = _perspective_bgr_for_review(image_path)
+                if img is not None and self.image_view.set_perspective_image_bgr(img, self._perspective_params):
+                    self.current_pixmap = _perspective_pixmap_for_review(image_path, self._perspective_params)
+                    return
+
             pixmap = self._pixmap_for(image_path)
             if pixmap.isNull():
                 self.current_pixmap = None
@@ -668,6 +693,8 @@ if QMainWindow is not None:
             return pixmap
 
         def _prefetch_neighbor_pixmaps(self) -> None:
+            if self._preview_projection == PREVIEW_PROJECTION_PERSPECTIVE:
+                return
             for idx in (self.index - 1, self.index + 1):
                 if idx < 0 or idx >= len(self.rows):
                     continue

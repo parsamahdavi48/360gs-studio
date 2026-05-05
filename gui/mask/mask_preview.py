@@ -32,6 +32,7 @@ from gui.common.icons import (
     preview_saved_icon,
     preview_temp_icon,
 )
+from gui.common.perspective_image_view import PerspectiveImageView
 from gui.common.perspective_preview import (
     PREVIEW_PROJECTION_EQUIRECT,
     PREVIEW_PROJECTION_PERSPECTIVE,
@@ -46,7 +47,6 @@ from gui.common.preview_mode_toolbar import (
     PreviewModeToolbar,
 )
 from gui.common.thumbnail_list_model import visible_rows_for_view
-from gui.common.zoomable_image_label import ZoomableImageLabel
 from gui.mask.mask_files import iter_image_files, mask_candidates_for_image, path_key
 from gui.mask.thumbnail_delegate import MaskThumbnailDelegate
 from gui.mask.thumbnail_model import MaskThumbnailModel
@@ -163,10 +163,11 @@ class MaskPreviewWidget(QWidget):
 
         self.preview_stack = QStackedWidget()
 
-        self.image_label = ZoomableImageLabel(i18n.t("MASK_PREVIEW_NO_SCENE_HELP"))
+        self.image_label = PerspectiveImageView(i18n.t("MASK_PREVIEW_NO_SCENE_HELP"))
         self.image_label.setMinimumSize(640, 280)
         self.image_label.setStyleSheet("border: 1px solid palette(mid);")
         self.image_label.look_dragged.connect(self._on_perspective_dragged)
+        self.image_label.gpu_failed.connect(lambda: self.render(self._last_config))
         self.preview_stack.addWidget(self.image_label)
 
         self.thumbnail_model = MaskThumbnailModel(self)
@@ -385,13 +386,20 @@ class MaskPreviewWidget(QWidget):
             )
             cv2.drawContours(img, contours, -1, (0, 0, 255), 1, lineType=cv2.LINE_AA)
 
-        img = self._apply_preview_projection(img)
-
         self.status_label.setText(
             " / ".join(status_parts) if status_parts else i18n.t("MASK_PREVIEW_NO_ACTIVE_MASK")
         )
         self._update_mask_preview_button_text()
         self._update_preview_visibility_button()
+
+        if (
+            self._preview_projection == PREVIEW_PROJECTION_PERSPECTIVE
+            and self.image_label.set_perspective_image_bgr(img, self._perspective_params)
+        ):
+            self._pixmap = None
+            return
+
+        img = self._apply_preview_projection(img)
 
         rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
         qimg = QImage(rgb.data, rgb.shape[1], rgb.shape[0], rgb.shape[1] * 3, QImage.Format_RGB888).copy()
@@ -626,6 +634,8 @@ class MaskPreviewWidget(QWidget):
         if self._preview_projection != PREVIEW_PROJECTION_PERSPECTIVE:
             return
         self._perspective_params = params_from_drag(self._perspective_params, delta_x, delta_y)
+        if self.image_label.set_perspective_params(self._perspective_params):
+            return
         if self._preview_mode != PREVIEW_MODE_THUMBNAILS:
             self.render(self._last_config)
 

@@ -7,7 +7,7 @@ from pathlib import Path
 
 import cv2
 import numpy as np
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import QSize, Qt, Signal
 from PySide6.QtGui import QImage, QPixmap
 from PySide6.QtWidgets import (
     QHBoxLayout,
@@ -24,6 +24,7 @@ from gui.common.icons import (
     mask_overlay_on_icon,
     perspective_preview_icon,
 )
+from gui.common.perspective_image_view import PerspectiveImageView, PerspectiveLabelOverlay
 from gui.common.perspective_preview import (
     PREVIEW_PROJECTION_EQUIRECT,
     PREVIEW_PROJECTION_PERSPECTIVE,
@@ -31,7 +32,6 @@ from gui.common.perspective_preview import (
     equirect_to_perspective,
     params_from_drag,
 )
-from gui.common.zoomable_image_label import ZoomableImageLabel
 from image_io import imread_unicode
 
 _PITCH_PALETTE_BGR: tuple[tuple[int, int, int], ...] = (
@@ -477,10 +477,11 @@ class PreviewWidget(QWidget):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
 
-        self.image_label = ZoomableImageLabel(i18n.t("NO_PREVIEW"))
+        self.image_label = PerspectiveImageView(i18n.t("NO_PREVIEW"))
         self.image_label.setMinimumSize(640, 320)
         self.image_label.setStyleSheet("border: 1px solid palette(mid);")
         self.image_label.look_dragged.connect(self._on_perspective_dragged)
+        self.image_label.gpu_failed.connect(lambda: self.render(self._last_views, self._last_mask_dir))
         layout.addWidget(self.image_label, stretch=1)
 
         # タイムライン
@@ -594,8 +595,11 @@ class PreviewWidget(QWidget):
                     item["color"],
                     highlighted=bool(item.get("highlighted", False)),
                 )
-        img = self._apply_preview_projection(img)
         if self._preview_projection == PREVIEW_PROJECTION_PERSPECTIVE:
+            if self._show_gpu_perspective(img, draw_order, pitch_colors):
+                self._pixmap = None
+                return
+            img = self._apply_preview_projection(img)
             ph, pw = img.shape[:2]
             for item in _layout_perspective_view_labels(
                 draw_order,
@@ -657,6 +661,9 @@ class PreviewWidget(QWidget):
             return
         self._perspective_params = params_from_drag(self._perspective_params, delta_x, delta_y)
         self._perspective_user_adjusted = True
+        if self.image_label.set_perspective_params(self._perspective_params):
+            self._update_gpu_perspective_labels()
+            return
         self.render(self._last_views, self._last_mask_dir)
 
     def _sync_perspective_to_highlighted_view(self, views: list[dict]) -> None:
@@ -675,6 +682,56 @@ class PreviewWidget(QWidget):
         if self._preview_projection != PREVIEW_PROJECTION_PERSPECTIVE:
             return img
         return equirect_to_perspective(img, self._perspective_params)
+
+    def _show_gpu_perspective(
+        self,
+        img: np.ndarray,
+        draw_order: list[dict],
+        pitch_colors: dict[float, tuple[int, int, int]],
+    ) -> bool:
+        size = max(1, min(int(img.shape[0]), int(img.shape[1])))
+        overlays = self._perspective_label_overlays(draw_order, pitch_colors, size, size)
+        return self.image_label.set_perspective_image_bgr(
+            img,
+            self._perspective_params,
+            overlays=overlays,
+            logical_size=QSize(size, size),
+        )
+
+    def _update_gpu_perspective_labels(self) -> bool:
+        if not self.image_label.is_showing_gpu_perspective():
+            return False
+        size = self.image_label.perspective_logical_size()
+        if size.width() <= 0 or size.height() <= 0:
+            return False
+        draw_order = _overlay_draw_order(self._last_views)
+        pitch_colors = _pitch_color_map(self._last_views)
+        overlays = self._perspective_label_overlays(draw_order, pitch_colors, size.width(), size.height())
+        return self.image_label.set_perspective_label_overlays(overlays)
+
+    def _perspective_label_overlays(
+        self,
+        draw_order: list[dict],
+        pitch_colors: dict[float, tuple[int, int, int]],
+        width: int,
+        height: int,
+    ) -> list[PerspectiveLabelOverlay]:
+        return [
+            PerspectiveLabelOverlay(
+                label=str(item["label"]),
+                box=tuple(item["box"]),
+                origin=tuple(item["origin"]),
+                color_bgr=tuple(item["color"]),
+                highlighted=bool(item.get("highlighted", False)),
+            )
+            for item in _layout_perspective_view_labels(
+                draw_order,
+                width,
+                height,
+                pitch_colors,
+                self._perspective_params,
+            )
+        ]
 
     def _update_pixmap(self) -> None:
         self.image_label.set_source_pixmap(self._pixmap)
