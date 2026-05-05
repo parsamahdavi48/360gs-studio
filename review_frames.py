@@ -63,7 +63,7 @@ from gui import i18n
 if _PYSIDE_IMPORT_ERROR is None:
     import cv2
 
-    from gui.common.icons import equirect_preview_icon, perspective_preview_icon
+    from gui.common.icons import perspective_preview_icon
     from gui.common.perspective_preview import (
         PREVIEW_PROJECTION_EQUIRECT,
         PREVIEW_PROJECTION_PERSPECTIVE,
@@ -210,9 +210,6 @@ if QMainWindow is not None:
             self.projection_toggle_btn.setFixedSize(28, 28)
             self.projection_toggle_btn.setAccessibleName(i18n.t("PREVIEW_PROJECTION_TOGGLE"))
             self.projection_toggle_btn.toggled.connect(self._on_projection_toggled)
-            top_row.addWidget(self.projection_toggle_btn)
-            self._update_projection_button()
-
             self.decision_label = QLabel()
             self.decision_label.setStyleSheet("font-weight: 700;")
             top_row.addWidget(self.decision_label)
@@ -234,6 +231,9 @@ if QMainWindow is not None:
             self.reset_decision_button.setFixedSize(36, 32)
             self.reset_decision_button.clicked.connect(lambda _checked=False: self.reset_decision())
             top_row.addWidget(self.reset_decision_button)
+
+            top_row.addWidget(self.projection_toggle_btn)
+            self._update_projection_button()
 
             self.mode_toolbar = PreviewModeToolbar(
                 single_text_key="REVIEW_PREVIEW_MODE_SINGLE",
@@ -383,14 +383,8 @@ if QMainWindow is not None:
                 self.projection_toggle_btn.setChecked(perspective)
             finally:
                 self.projection_toggle_btn.blockSignals(False)
-            self.projection_toggle_btn.setIcon(
-                perspective_preview_icon() if perspective else equirect_preview_icon()
-            )
-            self.projection_toggle_btn.setToolTip(
-                i18n.tip("PREVIEW_PROJECTION_TOGGLE")
-                if perspective
-                else i18n.tip("PREVIEW_PROJECTION_EQUIRECT")
-            )
+            self.projection_toggle_btn.setIcon(perspective_preview_icon())
+            self.projection_toggle_btn.setToolTip(i18n.tip("PREVIEW_PROJECTION_TOGGLE"))
 
         def _on_perspective_dragged(self, delta_x: float, delta_y: float) -> None:
             if self._preview_projection != PREVIEW_PROJECTION_PERSPECTIVE:

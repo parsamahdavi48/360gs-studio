@@ -281,8 +281,9 @@ def test_review_widget_review_controls_are_left_of_mode_toolbar(tmp_path: Path) 
     top_row = widget.layout().itemAt(0).layout()
 
     assert top_row.itemAt(top_row.count() - 1).widget() == widget.mode_toolbar
-    assert top_row.itemAt(top_row.count() - 2).widget() == widget.reset_decision_button
-    assert top_row.itemAt(top_row.count() - 3).widget() == widget.flag_button
+    assert top_row.itemAt(top_row.count() - 2).widget() == widget.projection_toggle_btn
+    assert top_row.itemAt(top_row.count() - 3).widget() == widget.reset_decision_button
+    assert top_row.itemAt(top_row.count() - 4).widget() == widget.flag_button
 
 
 def test_review_widget_thumbnail_selection_changes_current_frame(tmp_path: Path) -> None:

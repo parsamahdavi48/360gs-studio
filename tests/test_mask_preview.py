@@ -89,6 +89,7 @@ def test_mask_preview_projection_toggle_uses_perspective_drag() -> None:
     assert widget.preview_projection() == PREVIEW_PROJECTION_EQUIRECT
     assert widget.projection_toggle_btn.objectName() == "iconToolButton"
     assert widget.projection_toggle_btn.accessibleName() == i18n.t("PREVIEW_PROJECTION_TOGGLE")
+    icon_key = widget.projection_toggle_btn.icon().cacheKey()
 
     widget.projection_toggle_btn.click()
     before = widget._perspective_params
@@ -97,11 +98,13 @@ def test_mask_preview_projection_toggle_uses_perspective_drag() -> None:
     assert widget.preview_projection() == PREVIEW_PROJECTION_PERSPECTIVE
     assert widget.image_label._drag_mode == "look"
     assert widget._perspective_params != before
+    assert widget.projection_toggle_btn.icon().cacheKey() == icon_key
 
     widget.projection_toggle_btn.click()
 
     assert widget.preview_projection() == PREVIEW_PROJECTION_EQUIRECT
     assert widget.image_label._drag_mode == "pan"
+    assert widget.projection_toggle_btn.icon().cacheKey() == icon_key
 
 
 def test_mask_preview_status_elides_with_compact_overlay_toggle() -> None:

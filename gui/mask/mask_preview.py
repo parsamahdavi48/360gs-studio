@@ -26,7 +26,6 @@ from PySide6.QtWidgets import (
 from custom_mask import load_custom_mask
 from gui import i18n
 from gui.common.icons import (
-    equirect_preview_icon,
     mask_overlay_off_icon,
     mask_overlay_on_icon,
     perspective_preview_icon,
@@ -240,19 +239,18 @@ class MaskPreviewWidget(QWidget):
         self.mask_overlay_btn.toggled.connect(self._on_mask_overlay_toggled)
         overlay_row.addWidget(self.mask_overlay_btn)
 
-        self.projection_toggle_btn = QToolButton()
+        self.status_label = ElidedStatusLabel("")
+        self.status_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+        overlay_row.addWidget(self.status_label, stretch=1)
+        layout.addLayout(overlay_row)
+
+        self.projection_toggle_btn = QToolButton(self)
         self.projection_toggle_btn.setObjectName("iconToolButton")
         self.projection_toggle_btn.setCheckable(True)
         self.projection_toggle_btn.setFixedSize(28, 28)
         self.projection_toggle_btn.setAccessibleName(i18n.t("PREVIEW_PROJECTION_TOGGLE"))
         self.projection_toggle_btn.toggled.connect(self._on_projection_toggled)
-        overlay_row.addWidget(self.projection_toggle_btn)
         self._update_projection_button()
-
-        self.status_label = ElidedStatusLabel("")
-        self.status_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
-        overlay_row.addWidget(self.status_label, stretch=1)
-        layout.addLayout(overlay_row)
         self._update_reprocess_button_text()
 
     def set_images_dir(self, images_dir: str) -> None:
@@ -624,14 +622,8 @@ class MaskPreviewWidget(QWidget):
             self.projection_toggle_btn.setChecked(perspective)
         finally:
             self.projection_toggle_btn.blockSignals(False)
-        self.projection_toggle_btn.setIcon(
-            perspective_preview_icon() if perspective else equirect_preview_icon()
-        )
-        self.projection_toggle_btn.setToolTip(
-            i18n.tip("PREVIEW_PROJECTION_TOGGLE")
-            if perspective
-            else i18n.tip("PREVIEW_PROJECTION_EQUIRECT")
-        )
+        self.projection_toggle_btn.setIcon(perspective_preview_icon())
+        self.projection_toggle_btn.setToolTip(i18n.tip("PREVIEW_PROJECTION_TOGGLE"))
 
     def _on_perspective_dragged(self, delta_x: float, delta_y: float) -> None:
         if self._preview_projection != PREVIEW_PROJECTION_PERSPECTIVE:

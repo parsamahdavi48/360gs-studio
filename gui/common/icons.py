@@ -107,15 +107,6 @@ _THUMBNAIL_PREVIEW_SVG = """
 </svg>
 """.strip()
 
-_EQUIRECT_PREVIEW_SVG = """
-<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none">
-  <rect x="3.5" y="6.2" width="17" height="11.6" rx="1.7" stroke="#e5e7eb" stroke-width="1.7"/>
-  <path d="M3.8 12h16.4M12 6.4v11.2" stroke="#9ca3af" stroke-width="1.1" stroke-linecap="round"/>
-  <path d="M8.2 6.5c-1 2.9-1 8.1 0 11M15.8 6.5c1 2.9 1 8.1 0 11"
-        stroke="#2dd4bf" stroke-width="1.4" stroke-linecap="round"/>
-</svg>
-""".strip()
-
 _PERSPECTIVE_PREVIEW_SVG = """
 <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none">
   <rect x="5" y="5" width="14" height="14" rx="1.8" stroke="#e5e7eb" stroke-width="1.7"/>
@@ -217,10 +208,6 @@ def single_preview_icon(size: int = 18) -> QIcon:
 
 def thumbnail_preview_icon(size: int = 18) -> QIcon:
     return svg_icon(_THUMBNAIL_PREVIEW_SVG, size)
-
-
-def equirect_preview_icon(size: int = 18) -> QIcon:
-    return svg_icon(_EQUIRECT_PREVIEW_SVG, size)
 
 
 def perspective_preview_icon(size: int = 18) -> QIcon:

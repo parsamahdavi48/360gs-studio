@@ -19,8 +19,15 @@ def test_equirect_to_perspective_samples_front_center() -> None:
     assert int(out[20, 20, 2]) == 255
 
 
+def test_perspective_params_from_drag_follows_grab_direction() -> None:
+    params = params_from_drag(PerspectiveParams(yaw_deg=0.0, pitch_deg=0.0), 20, 20)
+
+    assert params.yaw_deg < 0.0
+    assert params.pitch_deg < 0.0
+
+
 def test_perspective_params_from_drag_wraps_yaw_and_clamps_pitch() -> None:
-    params = params_from_drag(PerspectiveParams(yaw_deg=179.0, pitch_deg=88.0), 20, 20)
+    params = params_from_drag(PerspectiveParams(yaw_deg=-179.0, pitch_deg=88.0), -20, -20)
 
     assert -180.0 <= params.yaw_deg <= 180.0
     assert params.pitch_deg == 89.0

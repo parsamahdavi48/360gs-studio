@@ -229,6 +229,14 @@ def test_cubemap_step_refreshes_preview_when_activated_after_extraction(tmp_path
     assert i18n.t("OUTPUT_IMAGE_COUNT_FORMAT").format(count=6) in step.view_config.summary_text()
 
 
+def test_cubemap_step_projection_toggle_is_in_preview_header() -> None:
+    _app()
+    step = CubemapStep(Path.cwd())
+
+    assert not step.preview.isAncestorOf(step.preview.projection_toggle_btn)
+    assert step.preview.projection_toggle_btn.parentWidget().objectName() == "workPane"
+
+
 def test_custom_grid_defaults_to_three_pitch_rows_all_enabled() -> None:
     _app()
     step = CubemapStep(Path.cwd())

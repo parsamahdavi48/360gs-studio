@@ -37,8 +37,8 @@ def params_from_drag(
     degrees_per_pixel: float = PERSPECTIVE_LOOK_DEG_PER_PIXEL,
 ) -> PerspectiveParams:
     return PerspectiveParams(
-        yaw_deg=normalize_yaw_deg(params.yaw_deg + float(delta_x) * degrees_per_pixel),
-        pitch_deg=clamp_pitch_deg(params.pitch_deg + float(delta_y) * degrees_per_pixel),
+        yaw_deg=normalize_yaw_deg(params.yaw_deg - float(delta_x) * degrees_per_pixel),
+        pitch_deg=clamp_pitch_deg(params.pitch_deg - float(delta_y) * degrees_per_pixel),
         fov_deg=params.fov_deg,
     )
 
