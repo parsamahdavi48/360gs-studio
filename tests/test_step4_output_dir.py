@@ -87,6 +87,7 @@ def test_cubemap_step_uses_fixed_output_folder_label(tmp_path: Path) -> None:
     assert set(step.export_method_buttons) == {"metashape", "colmap"}
     assert step.export_images_cb.isChecked()
     assert step.export_masks_cb.isChecked()
+    assert step.output_shape_combo.currentData() == "projected"
     assert step.view_export_tab_index == 0
     assert step.metashape_tab_index == 1
     assert step.colmap_tab_index == 2
@@ -855,6 +856,82 @@ def test_cubemap_step_can_skip_image_and_mask_conversion(tmp_path: Path) -> None
     assert "--skip-masks" in cmd
 
 
+def test_lichtfeld_3dgut_direct_mode_runs_metashape_only_and_disables_view_export(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    output = tmp_path / "output"
+    output.mkdir()
+    old_file = output / "old.txt"
+    old_file.write_text("old", encoding="utf-8")
+    step = _ready_step(tmp_path, metashape_inputs=True)
+    _write_test_image(tmp_path / "images" / "frame_0001.jpg")
+    step.on_activated()
+    step.export_images_cb.setChecked(False)
+
+    direct_idx = step.output_shape_combo.findData("equirect_3dgut")
+    assert direct_idx >= 0
+    step.output_shape_combo.setCurrentIndex(direct_idx)
+    monkeypatch.setattr(
+        QMessageBox,
+        "question",
+        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("confirmation should not open")),
+    )
+
+    assert step._uses_direct_equirect_output()
+    assert step._effective_profile() == "lichtfeld"
+    assert step.axis_transform_combo.currentData() == "none"
+    assert step.ms_use_ply_cb.isChecked()
+    assert step.output_path_label.full_text() == str(tmp_path)
+    assert not step.settings_tabs.isTabEnabled(step.view_export_tab_index)
+    assert not step.export_targets_row.isEnabled()
+    assert step.export_images_cb.isChecked()
+    assert step.export_masks_cb.isChecked()
+    assert not step.output_details_section.isEnabled()
+    assert not step.export_colmap_cb.isEnabled()
+    assert "元画像" in step.view_config.summary_text()
+
+    commands = step.build_commands()
+
+    assert [phase for phase, _cmd in commands] == ["metashape"]
+    assert "--ply" in commands[0][1]
+    assert old_file.is_file()
+    assert not (output / "views_config.json").exists()
+
+
+def test_lichtfeld_3dgut_direct_mode_restores_projection_export_targets(tmp_path: Path) -> None:
+    step = _ready_step(tmp_path, metashape_inputs=True)
+    step.export_images_cb.setChecked(False)
+    step.export_masks_cb.setChecked(True)
+
+    direct_idx = step.output_shape_combo.findData("equirect_3dgut")
+    projected_idx = step.output_shape_combo.findData("projected")
+    assert direct_idx >= 0
+    assert projected_idx >= 0
+    step.output_shape_combo.setCurrentIndex(direct_idx)
+    step.output_shape_combo.setCurrentIndex(projected_idx)
+
+    assert step.export_images_cb.isChecked() is False
+    assert step.export_masks_cb.isChecked() is True
+    assert step.settings_tabs.isTabEnabled(step.view_export_tab_index)
+    assert step.output_path_label.full_text() == str(tmp_path / "output")
+
+
+def test_switching_profile_away_from_lichtfeld_exits_3dgut_direct_mode(tmp_path: Path) -> None:
+    step = _ready_step(tmp_path, metashape_inputs=True)
+    direct_idx = step.output_shape_combo.findData("equirect_3dgut")
+    postshot_idx = step.profile_combo.findData("postshot")
+    assert direct_idx >= 0
+    assert postshot_idx >= 0
+
+    step.output_shape_combo.setCurrentIndex(direct_idx)
+    step.profile_combo.setCurrentIndex(postshot_idx)
+
+    assert step.output_shape_combo.currentData() == "projected"
+    assert step._uses_direct_equirect_output() is False
+    assert step.settings_tabs.isTabEnabled(step.view_export_tab_index)
+
+
 def test_cubemap_preview_uses_scene_mask_folder(tmp_path: Path, monkeypatch) -> None:
     step = _ready_step(tmp_path)
     captured: dict[str, str] = {}
@@ -982,6 +1059,56 @@ def test_cubemap_finalize_writes_export_settings(tmp_path: Path) -> None:
     assert settings["views_config_snapshot"] == json.loads(
         (tmp_path / "output" / "views_config.json").read_text(encoding="utf-8")
     )
+
+
+def test_lichtfeld_3dgut_finalize_writes_scene_dataset_settings_and_correction(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    step = _ready_step(tmp_path, metashape_inputs=True)
+    direct_idx = step.output_shape_combo.findData("equirect_3dgut")
+    assert direct_idx >= 0
+    step.output_shape_combo.setCurrentIndex(direct_idx)
+    monkeypatch.setattr(CubemapStep, "_transform_ply_with_open3d", staticmethod(lambda _path, _matrix: False))
+    _write_ascii_ply(tmp_path / "pointcloud.ply", [(1.0, 2.0, 3.0)])
+    (tmp_path / "transforms.json").write_text(
+        json.dumps(
+            {
+                "camera_model": "EQUIRECTANGULAR",
+                "frames": [{"file_path": "images/frame_0001.jpg", "transform_matrix": np.eye(4).tolist()}],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    step._finalize_bundle()
+
+    assert not (tmp_path / "output" / "stechdrive_export_settings.json").exists()
+    settings = json.loads((tmp_path / "stechdrive_export_settings.json").read_text(encoding="utf-8"))
+    assert settings["export_method"] == "metashape"
+    assert settings["output_shape"] == "equirect_3dgut"
+    assert settings["output_dir"] == str(tmp_path)
+    assert settings["views_config_path"] == ""
+    assert settings["views_config_snapshot"] is None
+    assert settings["conversion"]["no_image"] is True
+    assert settings["conversion"]["write_images"] is False
+    assert settings["conversion"]["write_masks"] is False
+    assert settings["conversion"]["uses_source_images"] is True
+    assert settings["output_files"]["pointcloud"] == "pointcloud.ply"
+
+    data = json.loads((tmp_path / "transforms.json").read_text(encoding="utf-8"))
+    corrected = np.array(data["frames"][0]["transform_matrix"])
+    expected = np.array(
+        [
+            [0.0, 0.0, 1.0, 0.0],
+            [0.0, -1.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0, 0.0],
+            [0.0, 0.0, 0.0, 1.0],
+        ]
+    )
+    assert np.allclose(corrected, expected)
+    points, _colors = read_ply_points(tmp_path / "pointcloud.ply")
+    assert np.allclose(points[0], [3.0, -2.0, 1.0])
 
 
 def test_lichtfeld_finalize_applies_final_orientation_correction(tmp_path: Path, monkeypatch) -> None:

@@ -77,6 +77,8 @@ _PROFILE_LICHTFELD = "lichtfeld"
 _PROFILE_CUSTOM = "custom"
 _METHOD_METASHAPE = "metashape"
 _METHOD_COLMAP = "colmap"
+_OUTPUT_SHAPE_PROJECTED = "projected"
+_OUTPUT_SHAPE_EQUIRECT_3DGUT = "equirect_3dgut"
 _COLMAP_MAPPER_INCREMENTAL = "incremental"
 _COLMAP_MAPPER_GLOBAL = "global"
 _COLMAP_MAPPER_GLOMAP = "glomap"
@@ -145,9 +147,11 @@ class CubemapStep(BaseStepWidget):
         self._explicit_progress = False
         self._colmap_ba_iterations = 0
         self._syncing_profile_controls = False
+        self._syncing_output_shape_controls = False
         self._syncing_user_preferences = False
         self._user_preferences_enabled = False
         self._export_method_value = _METHOD_METASHAPE
+        self._saved_projected_export_targets: tuple[bool, bool] | None = None
         self._input_image_count = 0
         self._preview_render_pending = False
         self._preview_render_timer = QTimer(self)
@@ -324,6 +328,19 @@ class CubemapStep(BaseStepWidget):
         self.profile_combo.addItem(i18n.PROFILE_CUSTOM, _PROFILE_CUSTOM)
         self.profile_combo.currentIndexChanged.connect(self._on_profile_changed)
         add_tooltip_row(profile_form, i18n.TARGET_PROFILE, self.profile_combo, i18n.tip("TARGET_PROFILE"))
+
+        self.output_shape_combo = QComboBox()
+        self.output_shape_combo.setToolTip(i18n.tip("OUTPUT_SHAPE"))
+        self.output_shape_combo.addItem(i18n.t("OUTPUT_SHAPE_PROJECTED"), _OUTPUT_SHAPE_PROJECTED)
+        self.output_shape_combo.addItem(i18n.t("OUTPUT_SHAPE_EQUIRECT_3DGUT"), _OUTPUT_SHAPE_EQUIRECT_3DGUT)
+        self.output_shape_combo.currentIndexChanged.connect(self._on_output_shape_changed)
+        add_tooltip_row(profile_form, i18n.t("OUTPUT_SHAPE"), self.output_shape_combo, i18n.tip("OUTPUT_SHAPE"))
+
+        self.direct_equirect_hint = QLabel(i18n.t("OUTPUT_SHAPE_EQUIRECT_HINT"))
+        self.direct_equirect_hint.setStyleSheet("color: #8888aa; font-size: 9pt;")
+        self.direct_equirect_hint.setWordWrap(True)
+        self.direct_equirect_hint.setVisible(False)
+        profile_form.addRow("", self.direct_equirect_hint)
 
         self.profile_hint = QLabel("")
         self.profile_hint.setStyleSheet("color: #8888aa; font-size: 9pt;")
@@ -562,6 +579,7 @@ class CubemapStep(BaseStepWidget):
         if lichtfeld_index >= 0:
             self.profile_combo.setCurrentIndex(lichtfeld_index)
         self._on_profile_changed(self.profile_combo.currentIndex())
+        self._on_output_shape_changed(self.output_shape_combo.currentIndex())
         self._on_colmap_mapper_changed()
         self._on_colmap_run_toggled(self.run_colmap_cb.isChecked())
         self._set_export_method(_METHOD_METASHAPE)
@@ -675,6 +693,7 @@ class CubemapStep(BaseStepWidget):
         self._sync_settings_tabs(metashape)
         if not metashape:
             self.export_colmap_cb.setChecked(False)
+        self._sync_output_shape_controls()
         self._update_path_labels()
         self._update_output_count()
         self.primary_action_state_changed.emit()
@@ -684,15 +703,21 @@ class CubemapStep(BaseStepWidget):
         was_route_specific = current in {self.metashape_tab_index, self.colmap_tab_index}
         self.settings_tabs.setTabVisible(self.metashape_tab_index, metashape)
         self.settings_tabs.setTabVisible(self.colmap_tab_index, not metashape)
+        self.settings_tabs.setTabEnabled(self.view_export_tab_index, not self._uses_direct_equirect_output())
         route_index = self.metashape_tab_index if metashape else self.colmap_tab_index
-        if was_route_specific or not self.settings_tabs.isTabVisible(self.settings_tabs.currentIndex()):
+        if self._uses_direct_equirect_output() and current == self.view_export_tab_index:
+            self.settings_tabs.setCurrentIndex(route_index)
+        elif was_route_specific or not self.settings_tabs.isTabVisible(self.settings_tabs.currentIndex()):
             self.settings_tabs.setCurrentIndex(route_index)
 
     def _update_path_labels(self) -> None:
         if not self.scene_dir:
             return
         output = str(self._display_output_dir())
-        tip_key = "OUTPUT_DIR_CUBEMAP" if self._is_metashape_method() else "OUTPUT_DIR_COLMAP_PROJECT"
+        if self._uses_direct_equirect_output():
+            tip_key = "OUTPUT_DIR_LICHTFELD_DIRECT"
+        else:
+            tip_key = "OUTPUT_DIR_CUBEMAP" if self._is_metashape_method() else "OUTPUT_DIR_COLMAP_PROJECT"
         self.output_path_label.setToolTip(f"{i18n.tip(tip_key)}\n{output}")
         self.output_path_label.set_full_text(output)
 
@@ -772,7 +797,14 @@ class CubemapStep(BaseStepWidget):
         self._sync_profile_defaults(p)
         self.profile_hint.setText(i18n.t("PROFILE_CUSTOM_HINT") if p == _PROFILE_CUSTOM else "")
         self.profile_hint.setVisible(p == _PROFILE_CUSTOM)
+        if self._output_shape() == _OUTPUT_SHAPE_EQUIRECT_3DGUT and (
+            self._axis_transform_mode() != _AXIS_NONE or not self._preprocess_uses_ply()
+        ):
+            self._set_combo_data(self.output_shape_combo, _OUTPUT_SHAPE_PROJECTED)
         self._sync_ply_browse_enabled()
+        self._sync_output_shape_controls()
+        self._update_path_labels()
+        self._update_output_count()
 
     def _on_profile_option_changed(self, *_args) -> None:
         if self._syncing_profile_controls:
@@ -799,6 +831,66 @@ class CubemapStep(BaseStepWidget):
                 if custom_idx >= 0:
                     self.profile_combo.setCurrentIndex(custom_idx)
         self._sync_ply_browse_enabled()
+        self._sync_output_shape_controls()
+
+    # -- 出力形状 --
+
+    def _output_shape(self) -> str:
+        data = self.output_shape_combo.currentData()
+        return data if data in {_OUTPUT_SHAPE_PROJECTED, _OUTPUT_SHAPE_EQUIRECT_3DGUT} else _OUTPUT_SHAPE_PROJECTED
+
+    def _uses_direct_equirect_output(self) -> bool:
+        return self._is_metashape_method() and self._output_shape() == _OUTPUT_SHAPE_EQUIRECT_3DGUT
+
+    def _on_output_shape_changed(self, *_args) -> None:
+        if self._syncing_output_shape_controls:
+            return
+        if self._output_shape() == _OUTPUT_SHAPE_EQUIRECT_3DGUT:
+            self._ensure_direct_equirect_defaults()
+        self._sync_output_shape_controls()
+        self._sync_settings_tabs(self._is_metashape_method())
+        self._update_path_labels()
+        self._update_output_count()
+        self._schedule_render_preview()
+        self.primary_action_state_changed.emit()
+
+    def _ensure_direct_equirect_defaults(self) -> None:
+        self._syncing_profile_controls = True
+        try:
+            self._set_combo_data(self.axis_transform_combo, _AXIS_NONE)
+            self.ms_use_ply_cb.setChecked(True)
+        finally:
+            self._syncing_profile_controls = False
+
+        if self._profile_id() not in {_PROFILE_LICHTFELD, _PROFILE_CUSTOM}:
+            self._set_combo_data(self.profile_combo, _PROFILE_LICHTFELD)
+
+    def _sync_output_shape_controls(self) -> None:
+        direct = self._uses_direct_equirect_output()
+        if direct:
+            if self._saved_projected_export_targets is None:
+                self._saved_projected_export_targets = (
+                    self.export_images_cb.isChecked(),
+                    self.export_masks_cb.isChecked(),
+                )
+            self.export_images_cb.setChecked(True)
+            self.export_masks_cb.setChecked(True)
+            self.export_colmap_cb.setChecked(False)
+        elif self._saved_projected_export_targets is not None:
+            images, masks = self._saved_projected_export_targets
+            self.export_images_cb.setChecked(images)
+            self.export_masks_cb.setChecked(masks)
+            self._saved_projected_export_targets = None
+
+        self.direct_equirect_hint.setVisible(direct)
+        self.export_targets_row.setEnabled(not direct)
+        self.view_config.settings_widget.setEnabled(not direct)
+        self.output_details_section.setEnabled(not direct)
+        self.output_shape_combo.setEnabled(self._is_metashape_method())
+        self.axis_transform_combo.setEnabled(not direct)
+        self.ms_use_ply_cb.setEnabled(not direct)
+        self.export_colmap_cb.setEnabled(self._is_metashape_method() and not direct)
+        self.settings_tabs.setTabEnabled(self.view_export_tab_index, not direct)
 
     def _preprocess_uses_ply(self) -> bool:
         return self.ms_use_ply_cb.isChecked()
@@ -838,7 +930,7 @@ class CubemapStep(BaseStepWidget):
 
     def _render_preview(self) -> None:
         try:
-            views = self.view_config.collect_views(include_disabled=True)
+            views = [] if self._uses_direct_equirect_output() else self.view_config.collect_views(include_disabled=True)
         except Exception:
             views = []
         mask_dir = str(self._mask_dir()) if self.scene_dir else ""
@@ -869,6 +961,10 @@ class CubemapStep(BaseStepWidget):
 
     def _update_output_count(self) -> None:
         label = i18n.t("OUTPUT_IMAGE_COUNT_LABEL")
+        if self._uses_direct_equirect_output():
+            count_text = i18n.t("OUTPUT_IMAGE_COUNT_DIRECT_FORMAT").format(count=self._input_image_count)
+            self.view_config.set_output_count_text(f"{label}: {count_text}")
+            return
         try:
             views = self.view_config.collect_views(include_disabled=True)
         except Exception:
@@ -900,6 +996,9 @@ class CubemapStep(BaseStepWidget):
         self._validate_bundle()
 
         preprocess_cmd = self._build_preprocess_cmd()
+
+        if self._uses_direct_equirect_output():
+            return [("metashape", preprocess_cmd)]
 
         if not self._prepare_output_dir():
             return []
@@ -1102,7 +1201,8 @@ class CubemapStep(BaseStepWidget):
         return views_config_payload(views)
 
     def _export_settings_path(self) -> Path:
-        return self._output_dir() / _EXPORT_SETTINGS_NAME
+        root = self._direct_output_dir() if self._uses_direct_equirect_output() else self._output_dir()
+        return root / _EXPORT_SETTINGS_NAME
 
     @staticmethod
     def _utc_now_iso() -> str:
@@ -1111,13 +1211,15 @@ class CubemapStep(BaseStepWidget):
     def _collect_export_settings(self) -> dict:
         views = self.view_config.collect_views(include_disabled=True)
         scale = float(self.scale_combo.currentData())
-        yaw_step = 0.0 if self._export_method() == _METHOD_COLMAP else float(self.yaw_per_frame_edit.value())
+        direct = self._uses_direct_equirect_output()
+        yaw_step = 0.0 if self._export_method() == _METHOD_COLMAP or direct else float(self.yaw_per_frame_edit.value())
         jpg_quality = int(self.jpg_quality_edit.text().strip())
         if not self.scene_dir:
             raise ValueError(i18n.t("SCENE_REQUIRED_ACTION_HINT"))
         scene = Path(self.scene_dir)
-        output = self._output_dir()
+        output = self._display_output_dir()
         profile = self._profile_id()
+        views_config_snapshot = None if direct else self._views_config_payload(views)
 
         return {
             "app": "stechdrive-3dgs-utils",
@@ -1127,6 +1229,7 @@ class CubemapStep(BaseStepWidget):
             "scene_dir": str(scene),
             "output_dir": str(output),
             "export_method": self._export_method(),
+            "output_shape": self._output_shape(),
             "target_profile": profile,
             "effective_profile": self._effective_profile(),
             "axis_transform": self._axis_transform_mode(),
@@ -1153,17 +1256,19 @@ class CubemapStep(BaseStepWidget):
                     for v in views
                 ],
             },
-            "views_config_path": "views_config.json",
-            "views_config_snapshot": self._views_config_payload(views),
+            "views_config_path": "" if direct else "views_config.json",
+            "views_config_snapshot": views_config_snapshot,
             "conversion": {
                 "yaw_offset_per_frame": yaw_step,
                 "output_format": self.output_format_combo.currentData() or "auto",
                 "output_bit_depth": self.output_bit_depth_combo.currentData() or "8",
                 "jpg_quality": jpg_quality,
                 "invert_masks": self.invert_masks_cb.isChecked(),
-                "write_images": self._writes_images(),
-                "write_masks": self._writes_masks(),
-                "no_image": not self._writes_any_view_assets(),
+                "write_images": self._writes_images() and not direct,
+                "write_masks": self._writes_masks() and not direct,
+                "no_image": direct or not self._writes_any_view_assets(),
+                "uses_source_images": direct,
+                "uses_source_masks": direct and self._mask_dir().is_dir(),
                 "export_colmap": self._is_metashape_method() and self.export_colmap_cb.isChecked(),
             },
             "postprocess": {
@@ -1207,10 +1312,11 @@ class CubemapStep(BaseStepWidget):
             },
             "output_files": {
                 "settings": _EXPORT_SETTINGS_NAME,
-                "views_config": "views_config.json",
+                "views_config": "" if direct else "views_config.json",
                 "transforms_json": "transforms.json",
                 "images_dir": "images",
                 "masks_dir": "masks",
+                "pointcloud": "pointcloud.ply" if direct else "",
                 "colmap_rig_dir": "colmap_rig",
                 "colmap_rig_config": "colmap_rig/rig_config.json",
                 "colmap_project_manifest": f"colmap_rig/{_COLMAP_PROJECT_MANIFEST_NAME}",
@@ -1256,7 +1362,14 @@ class CubemapStep(BaseStepWidget):
             raise ValueError(i18n.t("SCENE_REQUIRED_ACTION_HINT"))
         return Path(self.scene_dir) / "output"
 
+    def _direct_output_dir(self) -> Path:
+        if not self.scene_dir:
+            raise ValueError(i18n.t("SCENE_REQUIRED_ACTION_HINT"))
+        return Path(self.scene_dir)
+
     def _display_output_dir(self) -> Path:
+        if self._uses_direct_equirect_output():
+            return self._direct_output_dir()
         return self._output_dir() if self._is_metashape_method() else self._colmap_rig_dir()
 
     def _mask_dir(self) -> Path:
@@ -1535,13 +1648,19 @@ class CubemapStep(BaseStepWidget):
                 pass
 
     def _finalize_bundle(self) -> None:
-        output = self._output_dir()
-        output.mkdir(parents=True, exist_ok=True)
-
         if not self._is_metashape_method():
             self._write_export_settings()
             self._write_colmap_project_manifest()
             return
+
+        if self._uses_direct_equirect_output():
+            if self._uses_lichtfeld_final_correction():
+                self._apply_lichtfeld_final_correction(self._direct_output_dir())
+            self._write_export_settings()
+            return
+
+        output = self._output_dir()
+        output.mkdir(parents=True, exist_ok=True)
 
         source = self._resolve_ply_source()
         if source is not None:
@@ -1672,6 +1791,7 @@ class CubemapStep(BaseStepWidget):
 
     def phase_display_name(self, phase: str) -> str:
         labels = {
+            "metashape": "PHASE_METASHAPE_IMPORT",
             "colmap_rig_export": "PHASE_COLMAP_RIG_EXPORT",
             "colmap_feature": "PHASE_COLMAP_FEATURE",
             "colmap_rig_config": "PHASE_COLMAP_RIG_CONFIG",
