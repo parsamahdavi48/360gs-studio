@@ -768,7 +768,6 @@ class MaskStep(BaseStepWidget):
         preview_title.setObjectName("paneTitle")
         preview_header.addWidget(preview_title)
         preview_header.addStretch()
-        preview_header.addWidget(self.mask_preview.projection_toggle_btn)
         preview_header.addWidget(self.mask_preview.mode_toolbar)
         preview_layout.addLayout(preview_header)
         preview_layout.addWidget(self.mask_preview, stretch=1)

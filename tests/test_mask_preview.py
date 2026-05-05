@@ -21,6 +21,7 @@ from PySide6.QtWidgets import (
 
 from gui import i18n, theme
 from gui.common.perspective_preview import PREVIEW_PROJECTION_EQUIRECT, PREVIEW_PROJECTION_PERSPECTIVE
+from gui.common.preview_mode_toolbar import PREVIEW_MODE_PERSPECTIVE
 from gui.common.thumbnail_list_model import THUMBNAIL_PAYLOAD_ROLE
 from gui.mask.mask_preview import MaskPreviewConfig, MaskPreviewWidget
 from gui.mask.thumbnail_model import (
@@ -67,17 +68,20 @@ def test_mask_preview_mode_switches_are_icon_tool_buttons() -> None:
 
     tool_buttons = widget.mode_toolbar.findChildren(QToolButton)
 
-    assert len(tool_buttons) == 2
+    assert len(tool_buttons) == 3
     assert all(button.objectName() == "iconToolButton" for button in tool_buttons)
     assert all(button.text() == "" for button in tool_buttons)
+    assert widget.projection_toggle_btn.accessibleName() == i18n.t("PREVIEW_PROJECTION_TOGGLE")
     assert widget.single_preview_btn.accessibleName() == i18n.t("MASK_PREVIEW_MODE_SINGLE")
     assert widget.thumbnail_preview_btn.accessibleName() == i18n.t("MASK_PREVIEW_MODE_THUMBNAILS")
+    assert not widget.projection_toggle_btn.isChecked()
     assert widget.single_preview_btn.isChecked()
     assert not widget.thumbnail_preview_btn.isChecked()
     assert "QToolButton#iconToolButton:checked" in theme.QSS
 
     widget.set_preview_mode("thumbnails")
 
+    assert not widget.projection_toggle_btn.isChecked()
     assert not widget.single_preview_btn.isChecked()
     assert widget.thumbnail_preview_btn.isChecked()
 
@@ -95,16 +99,36 @@ def test_mask_preview_projection_toggle_uses_perspective_drag() -> None:
     before = widget._perspective_params
     widget._on_perspective_dragged(12.0, -8.0)
 
+    assert widget.preview_mode() == PREVIEW_MODE_PERSPECTIVE
     assert widget.preview_projection() == PREVIEW_PROJECTION_PERSPECTIVE
+    assert widget.projection_toggle_btn.isChecked()
+    assert not widget.single_preview_btn.isChecked()
     assert widget.image_label._drag_mode == "look"
     assert widget._perspective_params != before
     assert widget.projection_toggle_btn.icon().cacheKey() == icon_key
 
-    widget.projection_toggle_btn.click()
+    widget.single_preview_btn.click()
 
     assert widget.preview_projection() == PREVIEW_PROJECTION_EQUIRECT
     assert widget.image_label._drag_mode == "pan"
     assert widget.projection_toggle_btn.icon().cacheKey() == icon_key
+
+
+def test_mask_preview_perspective_button_leaves_thumbnail_mode(tmp_path: Path) -> None:
+    _app()
+    image_path = tmp_path / "frame_000001.png"
+    cv2.imwrite(str(image_path), np.full((32, 64, 3), 180, dtype=np.uint8))
+    widget = MaskPreviewWidget()
+    widget.set_images_dir(str(tmp_path))
+    widget.set_preview_mode("thumbnails")
+
+    widget.projection_toggle_btn.click()
+
+    assert widget.preview_mode() == PREVIEW_MODE_PERSPECTIVE
+    assert widget.preview_projection() == PREVIEW_PROJECTION_PERSPECTIVE
+    assert widget.preview_stack.currentWidget() == widget.image_label
+    assert widget.projection_toggle_btn.isChecked()
+    assert not widget.thumbnail_preview_btn.isChecked()
 
 
 def test_mask_preview_status_elides_with_compact_overlay_toggle() -> None:

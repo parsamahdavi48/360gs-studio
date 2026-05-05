@@ -180,6 +180,7 @@ def test_mask_step_preview_mode_toolbar_is_in_preview_header() -> None:
 
     assert step.preview_pane.isAncestorOf(step.mask_preview.mode_toolbar)
     assert step.preview_pane.isAncestorOf(step.mask_preview.projection_toggle_btn)
+    assert step.mask_preview.mode_toolbar.isAncestorOf(step.mask_preview.projection_toggle_btn)
     assert not step.mask_preview.isAncestorOf(step.mask_preview.mode_toolbar)
     assert not step.mask_preview.isAncestorOf(step.mask_preview.projection_toggle_btn)
 

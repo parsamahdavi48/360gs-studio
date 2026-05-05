@@ -14,7 +14,7 @@ from PySide6.QtWidgets import QAbstractItemView, QApplication, QToolButton
 
 from gui import i18n
 from gui.common.perspective_preview import PREVIEW_PROJECTION_EQUIRECT, PREVIEW_PROJECTION_PERSPECTIVE
-from gui.common.preview_mode_toolbar import PREVIEW_MODE_SINGLE, PREVIEW_MODE_THUMBNAILS
+from gui.common.preview_mode_toolbar import PREVIEW_MODE_PERSPECTIVE, PREVIEW_MODE_SINGLE, PREVIEW_MODE_THUMBNAILS
 from review_frames import ReviewWidget, _review_thumbnail_image
 
 
@@ -109,11 +109,29 @@ def test_review_widget_projection_toggle_renders_square_perspective(tmp_path: Pa
     before = widget._perspective_params
     widget._on_perspective_dragged(10.0, 5.0)
 
+    assert widget.preview_mode() == PREVIEW_MODE_PERSPECTIVE
     assert widget.preview_projection() == PREVIEW_PROJECTION_PERSPECTIVE
+    assert widget.projection_toggle_btn.isChecked()
+    assert not widget.mode_toolbar.single_preview_btn.isChecked()
     assert widget.image_view._drag_mode == "look"
     assert widget._perspective_params != before
     assert widget.current_pixmap is not None
     assert widget.current_pixmap.width() == widget.current_pixmap.height()
+
+
+def test_review_widget_perspective_button_leaves_thumbnail_mode(tmp_path: Path) -> None:
+    _app()
+    scene, csv_path = _write_scene(tmp_path)
+    widget = ReviewWidget(scene, csv_path)
+    widget.set_preview_mode(PREVIEW_MODE_THUMBNAILS)
+
+    widget.projection_toggle_btn.click()
+
+    assert widget.preview_mode() == PREVIEW_MODE_PERSPECTIVE
+    assert widget.preview_projection() == PREVIEW_PROJECTION_PERSPECTIVE
+    assert widget.preview_stack.currentWidget() == widget.image_view
+    assert widget.projection_toggle_btn.isChecked()
+    assert not widget.mode_toolbar.thumbnail_preview_btn.isChecked()
 
 
 def test_review_widget_shows_quality_score_and_original_when_replaced(tmp_path: Path) -> None:
@@ -253,7 +271,7 @@ def test_review_widget_thumbnail_mode_shows_keep_drop_flags(tmp_path: Path) -> N
     widget.set_preview_mode(PREVIEW_MODE_THUMBNAILS)
 
     buttons = widget.mode_toolbar.findChildren(QToolButton)
-    assert len(buttons) == 2
+    assert len(buttons) == 3
     assert widget.preview_mode() == PREVIEW_MODE_THUMBNAILS
     assert widget.preview_stack.currentWidget() == widget.thumbnail_view
     assert widget.mode_toolbar.thumbnail_preview_btn.isChecked()
@@ -281,9 +299,9 @@ def test_review_widget_review_controls_are_left_of_mode_toolbar(tmp_path: Path) 
     top_row = widget.layout().itemAt(0).layout()
 
     assert top_row.itemAt(top_row.count() - 1).widget() == widget.mode_toolbar
-    assert top_row.itemAt(top_row.count() - 2).widget() == widget.projection_toggle_btn
-    assert top_row.itemAt(top_row.count() - 3).widget() == widget.reset_decision_button
-    assert top_row.itemAt(top_row.count() - 4).widget() == widget.flag_button
+    assert widget.mode_toolbar.isAncestorOf(widget.projection_toggle_btn)
+    assert top_row.itemAt(top_row.count() - 2).widget() == widget.reset_decision_button
+    assert top_row.itemAt(top_row.count() - 3).widget() == widget.flag_button
 
 
 def test_review_widget_thumbnail_selection_changes_current_frame(tmp_path: Path) -> None:

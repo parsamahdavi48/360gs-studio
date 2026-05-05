@@ -40,6 +40,7 @@ from gui.common.perspective_preview import (
     params_from_drag,
 )
 from gui.common.preview_mode_toolbar import (
+    PREVIEW_MODE_PERSPECTIVE,
     PREVIEW_MODE_SINGLE,
     PREVIEW_MODE_THUMBNAILS,
     PreviewModeToolbar,
@@ -152,8 +153,11 @@ class MaskPreviewWidget(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(6)
 
-        self.mode_toolbar = PreviewModeToolbar()
+        self.mode_toolbar = PreviewModeToolbar(include_perspective=True)
         self.mode_toolbar.mode_changed.connect(self.set_preview_mode)
+        self.projection_toggle_btn = self.mode_toolbar.perspective_preview_btn
+        if self.projection_toggle_btn is None:
+            raise RuntimeError("Perspective preview button was not created")
         self.single_preview_btn = self.mode_toolbar.single_preview_btn
         self.thumbnail_preview_btn = self.mode_toolbar.thumbnail_preview_btn
 
@@ -244,13 +248,6 @@ class MaskPreviewWidget(QWidget):
         overlay_row.addWidget(self.status_label, stretch=1)
         layout.addLayout(overlay_row)
 
-        self.projection_toggle_btn = QToolButton(self)
-        self.projection_toggle_btn.setObjectName("iconToolButton")
-        self.projection_toggle_btn.setCheckable(True)
-        self.projection_toggle_btn.setFixedSize(28, 28)
-        self.projection_toggle_btn.setAccessibleName(i18n.t("PREVIEW_PROJECTION_TOGGLE"))
-        self.projection_toggle_btn.toggled.connect(self._on_projection_toggled)
-        self._update_projection_button()
         self._update_reprocess_button_text()
 
     def set_images_dir(self, images_dir: str) -> None:
@@ -550,7 +547,7 @@ class MaskPreviewWidget(QWidget):
         return self.has_available_temporary_preview(config)
 
     def has_available_temporary_preview(self, config: MaskPreviewConfig | None = None) -> bool:
-        if self._preview_mode != PREVIEW_MODE_SINGLE:
+        if self._preview_mode == PREVIEW_MODE_THUMBNAILS:
             return False
         image_path = self.current_image_path()
         if image_path is None:
@@ -574,11 +571,13 @@ class MaskPreviewWidget(QWidget):
             self._set_index(idx, scroll_thumbnail=True)
 
     def set_preview_mode(self, mode: str) -> None:
-        if mode not in {PREVIEW_MODE_SINGLE, PREVIEW_MODE_THUMBNAILS}:
+        if mode not in {PREVIEW_MODE_PERSPECTIVE, PREVIEW_MODE_SINGLE, PREVIEW_MODE_THUMBNAILS}:
             return
         if mode == self._preview_mode:
             return
         self._preview_mode = mode
+        projection = PREVIEW_PROJECTION_PERSPECTIVE if mode == PREVIEW_MODE_PERSPECTIVE else PREVIEW_PROJECTION_EQUIRECT
+        self._set_preview_projection(projection)
         self.preview_stack.setCurrentIndex(1 if mode == PREVIEW_MODE_THUMBNAILS else 0)
         self.mode_toolbar.set_mode(mode)
         self._update_reprocess_button_text()
@@ -602,8 +601,7 @@ class MaskPreviewWidget(QWidget):
             return
         self.render(self._last_config)
 
-    def _on_projection_toggled(self, checked: bool) -> None:
-        projection = PREVIEW_PROJECTION_PERSPECTIVE if checked else PREVIEW_PROJECTION_EQUIRECT
+    def _set_preview_projection(self, projection: str) -> None:
         if projection == self._preview_projection:
             self._update_projection_button()
             return
@@ -613,7 +611,6 @@ class MaskPreviewWidget(QWidget):
         self.image_label.set_drag_mode("look" if projection == PREVIEW_PROJECTION_PERSPECTIVE else "pan")
         self.image_label.reset_view()
         self._update_projection_button()
-        self.render(self._last_config)
 
     def _update_projection_button(self) -> None:
         perspective = self._preview_projection == PREVIEW_PROJECTION_PERSPECTIVE

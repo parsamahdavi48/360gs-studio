@@ -63,7 +63,6 @@ from gui import i18n
 if _PYSIDE_IMPORT_ERROR is None:
     import cv2
 
-    from gui.common.icons import perspective_preview_icon
     from gui.common.perspective_preview import (
         PREVIEW_PROJECTION_EQUIRECT,
         PREVIEW_PROJECTION_PERSPECTIVE,
@@ -72,6 +71,7 @@ if _PYSIDE_IMPORT_ERROR is None:
         params_from_drag,
     )
     from gui.common.preview_mode_toolbar import (
+        PREVIEW_MODE_PERSPECTIVE,
         PREVIEW_MODE_SINGLE,
         PREVIEW_MODE_THUMBNAILS,
         PreviewModeToolbar,
@@ -81,6 +81,7 @@ if _PYSIDE_IMPORT_ERROR is None:
     from gui.common.zoomable_image_label import ZoomableImageLabel
     from image_io import imread_unicode
 else:  # pragma: no cover - PySide6 missing
+    PREVIEW_MODE_PERSPECTIVE = "perspective"
     PREVIEW_MODE_SINGLE = "single"
     PREVIEW_MODE_THUMBNAILS = "thumbnails"
     PREVIEW_PROJECTION_EQUIRECT = "equirect"
@@ -204,12 +205,6 @@ if QMainWindow is not None:
 
             top_row.addStretch(1)
 
-            self.projection_toggle_btn = QToolButton()
-            self.projection_toggle_btn.setObjectName("iconToolButton")
-            self.projection_toggle_btn.setCheckable(True)
-            self.projection_toggle_btn.setFixedSize(28, 28)
-            self.projection_toggle_btn.setAccessibleName(i18n.t("PREVIEW_PROJECTION_TOGGLE"))
-            self.projection_toggle_btn.toggled.connect(self._on_projection_toggled)
             self.decision_label = QLabel()
             self.decision_label.setStyleSheet("font-weight: 700;")
             top_row.addWidget(self.decision_label)
@@ -232,16 +227,17 @@ if QMainWindow is not None:
             self.reset_decision_button.clicked.connect(lambda _checked=False: self.reset_decision())
             top_row.addWidget(self.reset_decision_button)
 
-            top_row.addWidget(self.projection_toggle_btn)
-            self._update_projection_button()
-
             self.mode_toolbar = PreviewModeToolbar(
                 single_text_key="REVIEW_PREVIEW_MODE_SINGLE",
                 thumbnail_text_key="REVIEW_PREVIEW_MODE_THUMBNAILS",
                 single_tip_key="REVIEW_PREVIEW_MODE_SINGLE",
                 thumbnail_tip_key="REVIEW_PREVIEW_MODE_THUMBNAILS",
+                include_perspective=True,
             )
             self.mode_toolbar.mode_changed.connect(self.set_preview_mode)
+            self.projection_toggle_btn = self.mode_toolbar.perspective_preview_btn
+            if self.projection_toggle_btn is None:
+                raise RuntimeError("Perspective preview button was not created")
             top_row.addWidget(self.mode_toolbar)
             layout.addLayout(top_row)
 
@@ -343,11 +339,13 @@ if QMainWindow is not None:
                 window.close()
 
         def set_preview_mode(self, mode: str) -> None:
-            if mode not in {PREVIEW_MODE_SINGLE, PREVIEW_MODE_THUMBNAILS}:
+            if mode not in {PREVIEW_MODE_PERSPECTIVE, PREVIEW_MODE_SINGLE, PREVIEW_MODE_THUMBNAILS}:
                 return
             if mode == self._preview_mode:
                 return
             self._preview_mode = mode
+            projection = PREVIEW_PROJECTION_PERSPECTIVE if mode == PREVIEW_MODE_PERSPECTIVE else PREVIEW_PROJECTION_EQUIRECT
+            self._set_preview_projection(projection)
             self.preview_stack.setCurrentIndex(1 if mode == PREVIEW_MODE_THUMBNAILS else 0)
             self.mode_toolbar.set_mode(mode)
             thumbnail_mode = mode == PREVIEW_MODE_THUMBNAILS
@@ -363,8 +361,7 @@ if QMainWindow is not None:
         def preview_projection(self) -> str:
             return self._preview_projection
 
-        def _on_projection_toggled(self, checked: bool) -> None:
-            projection = PREVIEW_PROJECTION_PERSPECTIVE if checked else PREVIEW_PROJECTION_EQUIRECT
+        def _set_preview_projection(self, projection: str) -> None:
             if projection == self._preview_projection:
                 self._update_projection_button()
                 return
@@ -374,7 +371,6 @@ if QMainWindow is not None:
             self.image_view.set_drag_mode("look" if projection == PREVIEW_PROJECTION_PERSPECTIVE else "pan")
             self.image_view.reset_view()
             self._update_projection_button()
-            self._render_current()
 
         def _update_projection_button(self) -> None:
             perspective = self._preview_projection == PREVIEW_PROJECTION_PERSPECTIVE
@@ -383,7 +379,6 @@ if QMainWindow is not None:
                 self.projection_toggle_btn.setChecked(perspective)
             finally:
                 self.projection_toggle_btn.blockSignals(False)
-            self.projection_toggle_btn.setIcon(perspective_preview_icon())
             self.projection_toggle_btn.setToolTip(i18n.tip("PREVIEW_PROJECTION_TOGGLE"))
 
         def _on_perspective_dragged(self, delta_x: float, delta_y: float) -> None:
