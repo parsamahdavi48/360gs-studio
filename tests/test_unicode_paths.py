@@ -27,6 +27,16 @@ def test_image_io_roundtrips_unicode_path(tmp_path: Path) -> None:
     assert image_size_unicode(path) == (20, 12)
 
 
+def test_image_size_unicode_rejects_truncated_jpeg_with_valid_header(tmp_path: Path) -> None:
+    path = tmp_path / "truncated.jpg"
+    image = np.zeros((128, 256, 3), dtype=np.uint8)
+    assert cv2.imwrite(str(path), image)
+    data = path.read_bytes()
+    path.write_bytes(data[: int(len(data) * 0.75)])
+
+    assert image_size_unicode(path) is None
+
+
 def test_cubemap_remap_image_accepts_unicode_paths(tmp_path: Path) -> None:
     src = tmp_path / "日本語 シーン" / "images" / "入力_日本語.png"
     out_dir = tmp_path / "日本語 シーン" / "output" / "images"

@@ -23,20 +23,36 @@ def imread_unicode(path: Pathish, flags: int = cv2.IMREAD_COLOR) -> np.ndarray |
 
 def image_size_unicode(path: Pathish) -> tuple[int, int] | None:
     """Return ``(width, height)`` without forcing a full pixel decode when possible."""
+    image_path = Path(path)
     try:
         from PIL import Image
 
-        with Path(path).open("rb") as f:
+        with image_path.open("rb") as f:
             with Image.open(f) as img:
                 width, height = img.size
                 img.verify()
-                return int(width), int(height)
     except Exception:
-        image = imread_unicode(path, cv2.IMREAD_UNCHANGED)
+        image = imread_unicode(image_path, cv2.IMREAD_UNCHANGED)
         if image is None:
             return None
         height, width = image.shape[:2]
         return int(width), int(height)
+    if not _can_decode_reduced_unicode(image_path):
+        return None
+    return int(width), int(height)
+
+
+def _can_decode_reduced_unicode(path: Pathish) -> bool:
+    try:
+        data = np.frombuffer(Path(path).read_bytes(), dtype=np.uint8)
+    except OSError:
+        return False
+    if data.size == 0:
+        return False
+    try:
+        return cv2.imdecode(data, cv2.IMREAD_REDUCED_COLOR_8) is not None
+    except cv2.error:
+        return cv2.imdecode(data, cv2.IMREAD_UNCHANGED) is not None
 
 
 def imwrite_unicode(
