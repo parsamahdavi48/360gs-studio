@@ -25,7 +25,6 @@ def download_sam31_checkpoint(token: str, target_dir: str | Path) -> Path:
         repo_id=SAM31_REPO_ID,
         filename=SAM31_CHECKPOINT_NAME,
         local_dir=output_dir,
-        local_dir_use_symlinks=False,
         token=token,
     )
     checkpoint = Path(downloaded)

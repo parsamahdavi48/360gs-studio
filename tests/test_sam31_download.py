@@ -38,7 +38,6 @@ def test_download_sam31_checkpoint_uses_token_without_persisting(monkeypatch, tm
             "repo_id": SAM31_REPO_ID,
             "filename": SAM31_CHECKPOINT_NAME,
             "local_dir": tmp_path,
-            "local_dir_use_symlinks": False,
             "token": "hf_token",
         }
     ]
