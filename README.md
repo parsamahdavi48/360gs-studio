@@ -1,6 +1,6 @@
 # stechdrive-3dgs-utils
 
-**v1.6.0**
+**v1.7.0**
 
 A Windows-first integrated GUI tool for turning 360° camera video into images, masks, and camera data that are practical for 3D Gaussian Splatting (3DGS) training.
 
@@ -30,7 +30,7 @@ For DSLR, mirrorless, smartphone, or normal video image sequences, Step 3 can ge
 
 ## Highlights
 
-- Extract SfM-friendly frames from 360° video
+- Extract SfM-friendly frames from 360° video with pair-based interval analysis, automatic scene-distance thresholds, and Step 2 review flags for redundant, high-novelty, weak-match, motion-blur, and low-texture candidates
 - Review extracted frames in single-preview or thumbnail-list mode and apply keep/drop decisions, including Windows Explorer-style thumbnail selection. 360° images can also be inspected in an OpenGL-accelerated 90° FOV perspective view when available
 - Generate masks for people, sky, and other targets with YOLO + SAM2.1, Mask2Former ADE20K classes, or SAM3.1 prompts
 - Improve detection near the bottom of 360° images for camera operators, tripods, and hands
