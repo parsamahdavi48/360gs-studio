@@ -42,7 +42,7 @@ Then open `Step 4: Export` in the workflow sidebar.
   - If advanced settings change the coordinate transform, PLY usage, or Metashape import details away from the preset value, the preset display switches to `Custom`.
 - `Output Shape`:
   - `Convert to Projection Views`: standard path. Exports cubemap/view images and masks into `output/` using the `Projection Views` tab.
-  - `Use Source 360 Images (LichtFeld 3DGUT)`: comparison path for LichtFeld 3DGUT. Uses the Metashape source `images/` and `masks/` directly, skips view image and converted mask export, and updates scene-root `transforms.json` plus `pointcloud.ply`.
+  - `3DGUT (LichtFeld)`: comparison path for LichtFeld 3DGUT. Uses the Metashape source equirectangular `images/` and `masks/` directly, skips view image and converted mask export, and updates scene-root `transforms.json` plus `pointcloud.ply`.
   - Direct 3DGUT mode requires the LichtFeld-oriented coordinate settings and PLY import. The `Projection Views` tab and view image/mask output toggles are disabled while it is active.
 - `Metashape Import Settings`:
   - Visible as the `Conversion` settings tab when `Metashape` is selected.
@@ -57,7 +57,7 @@ Then open `Step 4: Export` in the workflow sidebar.
 - `Projection Views`:
   - Always visible as the `Projection Views` settings tab.
   - Shared viewpoint image export settings such as view preset, yaw offset, image size, per-frame yaw step, output format, bit depth, and mask inversion.
-  - Not used when `Output Shape` is `Use Source 360 Images (LichtFeld 3DGUT)`.
+  - Not used when `Output Shape` is `3DGUT (LichtFeld)`.
 - Masks:
   - Conversion and preview automatically use matching files from scene `masks/`.
 - `Preset`:
@@ -112,7 +112,7 @@ Then open `Step 4: Export` in the workflow sidebar.
   - `vendor/metashape_360_lfs/metashape_360_lfs.py --images ... --xml ... --output <scene_dir> [...]`
 - Then GUI runs:
   - `cubemap_transforms_json.py --fov 90 --output_scale <1.0|0.6366|0.5> --views-json <that file>`
-- When `Output Shape` is `Use Source 360 Images (LichtFeld 3DGUT)`, the GUI runs only the Metashape import step above and does not call `cubemap_transforms_json.py`.
+- When `Output Shape` is `3DGUT (LichtFeld)`, the GUI runs only the Metashape import step above and does not call `cubemap_transforms_json.py`.
   - Transforms: `<scene_dir>/transforms.json`
   - Point cloud: `<scene_dir>/pointcloud.ply`
   - Images: referenced in place from `<scene_dir>/images/`

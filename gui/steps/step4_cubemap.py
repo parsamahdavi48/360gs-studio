@@ -336,12 +336,6 @@ class CubemapStep(BaseStepWidget):
         self.output_shape_combo.currentIndexChanged.connect(self._on_output_shape_changed)
         add_tooltip_row(profile_form, i18n.t("OUTPUT_SHAPE"), self.output_shape_combo, i18n.tip("OUTPUT_SHAPE"))
 
-        self.direct_equirect_hint = QLabel(i18n.t("OUTPUT_SHAPE_EQUIRECT_HINT"))
-        self.direct_equirect_hint.setStyleSheet("color: #8888aa; font-size: 9pt;")
-        self.direct_equirect_hint.setWordWrap(True)
-        self.direct_equirect_hint.setVisible(False)
-        profile_form.addRow("", self.direct_equirect_hint)
-
         self.profile_hint = QLabel("")
         self.profile_hint.setStyleSheet("color: #8888aa; font-size: 9pt;")
         self.profile_hint.setVisible(False)
@@ -882,7 +876,6 @@ class CubemapStep(BaseStepWidget):
             self.export_masks_cb.setChecked(masks)
             self._saved_projected_export_targets = None
 
-        self.direct_equirect_hint.setVisible(direct)
         self.export_targets_row.setEnabled(not direct)
         self.view_config.settings_widget.setEnabled(not direct)
         self.output_details_section.setEnabled(not direct)

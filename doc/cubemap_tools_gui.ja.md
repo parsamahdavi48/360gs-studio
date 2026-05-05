@@ -42,7 +42,7 @@ run_gui.bat --scene .\scene01
   - 詳細設定で座標変換、PLY使用、Metashapeインポート詳細をプリセット値から変更すると、プリセット表示は `カスタム` に切り替わります。
 - `出力形状`:
   - `投影視点に変換`: 従来通り、下の `投影視点` タブの設定でキューブマップ/視点画像とマスクを `output/` に書き出します。
-  - `元の360画像 (LichtFeld 3DGUT)`: LichtFeldの3DGUT比較用に、Metashapeで使った `images/` と `masks/` をそのまま使います。視点画像と変換マスクは作らず、シーン直下の `transforms.json` と `pointcloud.ply` を更新します。
+  - `3DGUT (LichtFeld)`: LichtFeldの3DGUT比較用に、Metashapeで使ったエクイレクタングラーの `images/` と `masks/` をそのまま使います。視点画像と変換マスクは作らず、シーン直下の `transforms.json` と `pointcloud.ply` を更新します。
   - この直接モードでは `LichtFeld Studio` 向けの座標設定とPLY使用が必要になり、`投影視点` タブと視点画像/マスク出力のON/OFFは無効になります。
 - `Metashapeインポート設定`:
   - `Metashape` 選択時に、設定タブの `変換設定` として表示されます。
@@ -58,7 +58,7 @@ run_gui.bat --scene .\scene01
 - `投影視点`:
   - 設定タブの `投影視点` に常時表示されます。
   - ビュープリセット、Yawオフセット、画像サイズ、フレーム別Yaw回転、出力フォーマット、ビット深度、マスク反転など、各方式で共通する視点画像の書き出し設定です。
-  - `出力形状` が `元の360画像 (LichtFeld 3DGUT)` の場合は使用しません。
+  - `出力形状` が `3DGUT (LichtFeld)` の場合は使用しません。
 - マスク:
   - 変換とプレビューは、シーンフォルダ内の `masks/` から対応ファイルを自動的に使用します。
 - `プリセット`:
@@ -114,7 +114,7 @@ run_gui.bat --scene .\scene01
   を実行します。
 - その後
   `cubemap_transforms_json.py --fov 90 --output_scale <1.0|0.6366|0.5> --views-json <そのファイル>` を呼び出します。
-- `出力形状` が `元の360画像 (LichtFeld 3DGUT)` の場合は、上記のMetashapeインポートだけを実行し、`cubemap_transforms_json.py` は呼び出しません。
+- `出力形状` が `3DGUT (LichtFeld)` の場合は、上記のMetashapeインポートだけを実行し、`cubemap_transforms_json.py` は呼び出しません。
   - 出力: `<scene_dir>/transforms.json`
   - 点群: `<scene_dir>/pointcloud.ply`
   - 画像: `<scene_dir>/images/` をそのまま参照
