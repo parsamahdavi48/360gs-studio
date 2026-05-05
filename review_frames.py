@@ -107,10 +107,9 @@ def _review_thumbnail_image(item: ThumbnailItem, size: QSize) -> QImage:
     decision = str(item.cache_key[0]) if len(item.cache_key) >= 1 else "keep"
     advisory_fg = str(item.cache_key[3]) if len(item.cache_key) >= 4 and item.cache_key[3] else "#e5e7eb"
     advisory_bg = str(item.cache_key[4]) if len(item.cache_key) >= 5 and item.cache_key[4] else "#14532d"
-    keep = decision != "drop"
-    border = QColor("#22c55e" if keep else "#991b1b")
+    advisory_short = str(item.cache_key[5]) if len(item.cache_key) >= 6 and item.cache_key[5] else ""
     ribbon = QColor(advisory_bg)
-    text = i18n.t("REVIEW_DECISION_KEEP") if keep else i18n.t("REVIEW_DECISION_DROP")
+    text = advisory_short or (i18n.t("REVIEW_DECISION_DROP") if decision == "drop" else i18n.t("REVIEW_DECISION_KEEP"))
 
     canvas = QImage(size, QImage.Format_ARGB32)
     canvas.fill(QColor("#101316"))
@@ -129,9 +128,8 @@ def _review_thumbnail_image(item: ThumbnailItem, size: QSize) -> QImage:
 
     painter.fillRect(0, size.height() - 18, size.width(), 18, ribbon)
     painter.setPen(QColor(advisory_fg))
-    painter.drawText(6, size.height() - 4, text)
-    painter.setPen(QPen(border, 3))
-    painter.drawRect(canvas.rect().adjusted(1, 1, -2, -2))
+    elided_text = painter.fontMetrics().elidedText(text, Qt.ElideRight, max(1, size.width() - 12))
+    painter.drawText(6, size.height() - 4, elided_text)
     painter.end()
     return canvas
 
@@ -445,14 +443,14 @@ if QMainWindow is not None:
             decision = row.get("decision", "keep")
             status = row.get("status", "")
             pipeline = row.get("analysis_pipeline", "")
-            _adv_text, adv_fg, adv_bg = self._advisory_for_row(row, idx)
+            adv_text, adv_short, adv_fg, adv_bg = self._advisory_for_row(row, idx)
             seq = row.get("seq", str(idx + 1))
             name = Path(rel).name
             return ThumbnailItem(
                 path=path,
                 label=name,
-                tooltip=f"{seq}: {name} / {self._decision_text(decision)}",
-                cache_key=(decision, status, pipeline, adv_fg, adv_bg),
+                tooltip=f"{seq}: {name} / {adv_text} / {self._decision_text(decision)}",
+                cache_key=(decision, status, pipeline, adv_fg, adv_bg, adv_short),
             )
 
         def _sync_thumbnail_model(self, *, force: bool = False) -> None:
@@ -520,41 +518,100 @@ if QMainWindow is not None:
                 return i18n.t("REVIEW_DECISION_DROP")
             return i18n.t("REVIEW_DECISION_KEEP")
 
-        def _advisory_for_row(self, row: dict[str, str], idx: int) -> tuple[str, str, str]:
-            """status のみに基づく advisory。
+        def _advisory_for_row(self, row: dict[str, str], idx: int) -> tuple[str, str, str, str]:
+            """Return (detail label, thumbnail label, fg, bg) for the current user action.
 
             フレーム抽出時に代表フレーム選択は済んでいるので、
             低品質のまま残ったフレームだけを強く確認対象として扱う。
             「ブレ top X%」のような相対順位 advisory は出さない（誤判定の元）。
-
-            Returns (text, fg, bg).
             """
             status = row.get("status", "ok").strip().lower()
             pipeline = row.get("analysis_pipeline", "").strip().lower()
+            decision = row.get("decision", "keep").strip().lower()
+
+            drop_fg, drop_bg = "#991b1b", "#fee2e2"
+            warning_fg, warning_bg = "#92400e", "#fef3c7"
+            added_fg, added_bg = "#1e40af", "#dbeafe"
+            quick_fg, quick_bg = "#5b21b6", "#ede9fe"
+            ok_fg, ok_bg = "#166534", "#dcfce7"
+
+            if decision == "drop":
+                if "motion_blur" in status:
+                    return (
+                        i18n.t("REVIEW_ADVISORY_DROP_BLUR"),
+                        i18n.t("REVIEW_ADVISORY_SHORT_DROP_BLUR"),
+                        drop_fg,
+                        drop_bg,
+                    )
+                if "redundant_drop" in status:
+                    return (
+                        i18n.t("REVIEW_ADVISORY_DROP_REDUNDANT"),
+                        i18n.t("REVIEW_ADVISORY_SHORT_DROP_REDUNDANT"),
+                        drop_fg,
+                        drop_bg,
+                    )
+                return (
+                    i18n.t("REVIEW_ADVISORY_DROP_MANUAL"),
+                    i18n.t("REVIEW_ADVISORY_SHORT_DROP_MANUAL"),
+                    drop_fg,
+                    drop_bg,
+                )
 
             if "motion_blur" in status:
-                return i18n.t("REVIEW_ADVISORY_MOTION_BLUR"), "#fee2e2", "#7f1d1d"
+                return (
+                    i18n.t("REVIEW_ADVISORY_MOTION_BLUR"),
+                    i18n.t("REVIEW_ADVISORY_SHORT_MOTION_BLUR"),
+                    warning_fg,
+                    warning_bg,
+                )
 
             if "low_texture" in status:
-                return i18n.t("REVIEW_ADVISORY_LOW_TEXTURE"), "#fef3c7", "#7c2d12"
+                return (
+                    i18n.t("REVIEW_ADVISORY_LOW_TEXTURE"),
+                    i18n.t("REVIEW_ADVISORY_SHORT_LOW_TEXTURE"),
+                    warning_fg,
+                    warning_bg,
+                )
 
             if "weak_match" in status:
-                return i18n.t("REVIEW_ADVISORY_WEAK_MATCH"), "#fef3c7", "#7c2d12"
-
-            if "redundant_drop" in status:
-                return i18n.t("REVIEW_ADVISORY_REDUNDANT_DROP"), "#dbeafe", "#1e3a8a"
+                return (
+                    i18n.t("REVIEW_ADVISORY_WEAK_MATCH"),
+                    i18n.t("REVIEW_ADVISORY_SHORT_WEAK_MATCH"),
+                    warning_fg,
+                    warning_bg,
+                )
 
             if "gap_forced" in status:
-                return i18n.t("REVIEW_ADVISORY_GAP_FORCED"), "#dbeafe", "#1e3a8a"
+                return (
+                    i18n.t("REVIEW_ADVISORY_GAP_FORCED"),
+                    i18n.t("REVIEW_ADVISORY_SHORT_GAP_FORCED"),
+                    added_fg,
+                    added_bg,
+                )
 
             if "novelty_added" in status:
-                return i18n.t("REVIEW_ADVISORY_NOVELTY_ADDED"), "#dbeafe", "#1e3a8a"
+                return (
+                    i18n.t("REVIEW_ADVISORY_NOVELTY_ADDED"),
+                    i18n.t("REVIEW_ADVISORY_SHORT_NOVELTY_ADDED"),
+                    added_fg,
+                    added_bg,
+                )
 
             if pipeline == "quick":
-                return i18n.t("REVIEW_ADVISORY_QUICK"), "#1e3a8a", "#e0f2fe"
+                return (
+                    i18n.t("REVIEW_ADVISORY_QUICK"),
+                    i18n.t("REVIEW_ADVISORY_SHORT_QUICK"),
+                    quick_fg,
+                    quick_bg,
+                )
 
             # 緑: 通常品質
-            return i18n.t("REVIEW_ADVISORY_NORMAL"), "#a7f3d0", "#064e3b"
+            return (
+                i18n.t("REVIEW_ADVISORY_NORMAL"),
+                i18n.t("REVIEW_ADVISORY_SHORT_NORMAL"),
+                ok_fg,
+                ok_bg,
+            )
 
         def _format_metric_value(self, value: str | None, decimals: int = 3) -> str:
             if value in (None, ""):
@@ -602,7 +659,7 @@ if QMainWindow is not None:
             self._update_decision_buttons(decision)
 
             # アドバイザリー (このフレームが要注意な理由)
-            adv_text, adv_fg, adv_bg = self._advisory_for_row(row, self.index)
+            adv_text, _adv_short, adv_fg, adv_bg = self._advisory_for_row(row, self.index)
             self.advisory_label.setText(adv_text)
             self.advisory_label.setStyleSheet(
                 f"padding: 6px 10px; border-radius: 4px; font-weight: 600; font-size: 10pt; "

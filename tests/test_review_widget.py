@@ -146,8 +146,34 @@ def test_review_widget_labels_quick_extract_rows_separately(tmp_path: Path) -> N
     widget = ReviewWidget(scene, csv_path)
 
     assert widget.advisory_label.text() == i18n.t("REVIEW_ADVISORY_QUICK")
-    assert "#e0f2fe" in widget.advisory_label.styleSheet()
-    assert "#1e3a8a" in widget.advisory_label.styleSheet()
+    assert "#ede9fe" in widget.advisory_label.styleSheet()
+    assert "#5b21b6" in widget.advisory_label.styleSheet()
+
+
+def test_review_widget_advisory_labels_do_not_show_internal_pair_analysis(tmp_path: Path) -> None:
+    _app()
+    scene, csv_path = _write_scene(tmp_path)
+    with csv_path.open("r", encoding="utf-8", newline="") as f:
+        rows = list(csv.DictReader(f))
+    rows[0]["analysis_pipeline"] = "pair"
+    rows[0]["status"] = "redundant_drop"
+    rows[0]["decision"] = "drop"
+    rows[1]["analysis_pipeline"] = "pair"
+    rows[1]["status"] = "gap_forced"
+    with csv_path.open("w", encoding="utf-8", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=list(rows[0].keys()))
+        writer.writeheader()
+        writer.writerows(rows)
+
+    widget = ReviewWidget(scene, csv_path)
+
+    assert "ペア解析" not in widget.advisory_label.text()
+    assert "Pair analysis" not in widget.advisory_label.text()
+    assert widget.advisory_label.text() == i18n.t("REVIEW_ADVISORY_DROP_REDUNDANT")
+    widget._set_index(1)
+    assert "ペア解析" not in widget.advisory_label.text()
+    assert "Pair analysis" not in widget.advisory_label.text()
+    assert widget.advisory_label.text() == i18n.t("REVIEW_ADVISORY_GAP_FORCED")
 
 
 def test_review_summary_label_is_readable_single_line(tmp_path: Path) -> None:
@@ -263,7 +289,7 @@ def test_review_widget_pending_finalize_ignores_missing_drop_images(tmp_path: Pa
     assert not widget.has_pending_finalize()
 
 
-def test_review_widget_thumbnail_mode_shows_keep_drop_flags(tmp_path: Path) -> None:
+def test_review_widget_thumbnail_mode_shows_advisory_ribbons_without_decision_border(tmp_path: Path) -> None:
     _app()
     scene, csv_path = _write_scene_with_drop(tmp_path)
     widget = ReviewWidget(scene, csv_path)
@@ -285,11 +311,17 @@ def test_review_widget_thumbnail_mode_shows_keep_drop_flags(tmp_path: Path) -> N
     assert keep_item is not None
     assert drop_item.cache_key[0] == "drop"
     assert keep_item.cache_key[0] == "keep"
+    assert drop_item.cache_key[5] == i18n.t("REVIEW_ADVISORY_SHORT_DROP_MANUAL")
+    assert keep_item.cache_key[5] == i18n.t("REVIEW_ADVISORY_SHORT_NORMAL")
 
     drop_thumb = _review_thumbnail_image(drop_item, widget.thumbnail_model.icon_size())
     keep_thumb = _review_thumbnail_image(keep_item, widget.thumbnail_model.icon_size())
-    assert drop_thumb.pixelColor(1, 1).name().lower() == "#991b1b"
-    assert keep_thumb.pixelColor(1, 1).name().lower() == "#22c55e"
+    sample_x = widget.thumbnail_model.icon_size().width() - 8
+    sample_y = widget.thumbnail_model.icon_size().height() - 9
+    assert drop_thumb.pixelColor(sample_x, sample_y).name().lower() == "#fee2e2"
+    assert keep_thumb.pixelColor(sample_x, sample_y).name().lower() == "#dcfce7"
+    assert drop_thumb.pixelColor(1, 1).name().lower() not in {"#991b1b", "#22c55e"}
+    assert keep_thumb.pixelColor(1, 1).name().lower() not in {"#991b1b", "#22c55e"}
 
 
 def test_review_thumbnail_uses_single_preview_advisory_colors(tmp_path: Path) -> None:
@@ -309,14 +341,16 @@ def test_review_thumbnail_uses_single_preview_advisory_colors(tmp_path: Path) ->
     blur_item = widget.thumbnail_model.item_at(1)
     assert added_item is not None
     assert blur_item is not None
+    assert added_item.cache_key[5] == i18n.t("REVIEW_ADVISORY_SHORT_NOVELTY_ADDED")
+    assert blur_item.cache_key[5] == i18n.t("REVIEW_ADVISORY_SHORT_DROP_BLUR")
 
     added_thumb = _review_thumbnail_image(added_item, size)
     blur_thumb = _review_thumbnail_image(blur_item, size)
     sample_x = size.width() - 8
     sample_y = size.height() - 9
 
-    assert added_thumb.pixelColor(sample_x, sample_y).name().lower() == "#1e3a8a"
-    assert blur_thumb.pixelColor(sample_x, sample_y).name().lower() == "#7f1d1d"
+    assert added_thumb.pixelColor(sample_x, sample_y).name().lower() == "#dbeafe"
+    assert blur_thumb.pixelColor(sample_x, sample_y).name().lower() == "#fee2e2"
 
 
 def test_review_widget_review_controls_are_left_of_mode_toolbar(tmp_path: Path) -> None:
