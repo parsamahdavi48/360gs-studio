@@ -7,8 +7,6 @@ from pathlib import Path
 
 import cv2
 import numpy as np
-
-from image_io import imread_unicode
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QImage, QPixmap
 from PySide6.QtWidgets import (
@@ -23,6 +21,7 @@ from PySide6.QtWidgets import (
 from gui import i18n
 from gui.common.icons import mask_overlay_off_icon, mask_overlay_on_icon
 from gui.common.zoomable_image_label import ZoomableImageLabel
+from image_io import imread_unicode
 
 _PITCH_PALETTE_BGR: tuple[tuple[int, int, int], ...] = (
     (0, 159, 230),    # orange

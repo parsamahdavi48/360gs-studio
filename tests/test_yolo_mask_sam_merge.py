@@ -22,7 +22,7 @@ class FakeMaskData:
         for item in self._data:
             yield FakeMaskData(item)
 
-    def cpu(self) -> "FakeMaskData":
+    def cpu(self) -> FakeMaskData:
         return self
 
     def numpy(self) -> np.ndarray:

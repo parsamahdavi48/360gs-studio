@@ -2,12 +2,12 @@
 from __future__ import annotations
 
 from collections import OrderedDict
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from threading import Event
-from typing import Callable
 
-from PySide6.QtCore import QPoint, QAbstractListModel, QModelIndex, QObject, QRunnable, QSize, Qt, QThreadPool, Signal
+from PySide6.QtCore import QAbstractListModel, QModelIndex, QObject, QPoint, QRunnable, QSize, Qt, QThreadPool, Signal
 from PySide6.QtGui import QColor, QIcon, QImage, QPainter, QPen, QPixmap
 
 from gui import theme
@@ -19,6 +19,7 @@ THUMB_CACHE_MIN_ENTRIES = 512
 THUMB_CACHE_MAX_ENTRIES = 10_000
 THUMB_CACHE_MEMORY_BUDGET_BYTES = 1024 * 1024 * 1024
 SHUTDOWN_WAIT_MS = 3000
+_INVALID_MODEL_INDEX = QModelIndex()
 
 
 @dataclass(frozen=True)
@@ -98,7 +99,7 @@ class AsyncThumbnailModel(QAbstractListModel):
         self._pool.setMaxThreadCount(max(1, min(2, QThreadPool.globalInstance().maxThreadCount())))
         self._placeholder = _placeholder_icon(self._icon_size)
 
-    def rowCount(self, parent: QModelIndex = QModelIndex()) -> int:  # noqa: N802 - Qt API
+    def rowCount(self, parent: QModelIndex = _INVALID_MODEL_INDEX) -> int:  # noqa: N802 - Qt API
         if parent.isValid():
             return 0
         return len(self._items)
@@ -163,7 +164,7 @@ class AsyncThumbnailModel(QAbstractListModel):
         old_grid_size = self._grid_size
         same_paths = (
             len(items) == len(old_items)
-            and all(new.path == old.path for new, old in zip(items, old_items))
+            and all(new.path == old.path for new, old in zip(items, old_items, strict=True))
         )
         reset_model = not same_paths or grid_size != old_grid_size
         self._generation += 1
@@ -183,7 +184,7 @@ class AsyncThumbnailModel(QAbstractListModel):
         changed_rows = (
             list(range(len(items)))
             if force or renderer_key != old_renderer_key or icon_size != old_icon_size
-            else [idx for idx, (old, new) in enumerate(zip(old_items, items)) if old != new]
+            else [idx for idx, (old, new) in enumerate(zip(old_items, items, strict=True)) if old != new]
         )
         self._items = list(items)
         self._renderer = renderer

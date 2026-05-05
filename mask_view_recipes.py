@@ -6,8 +6,8 @@ backends so YOLO/SAM2.1, Mask2Former, and SAM3.1 can share the same inputs.
 """
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass
-from typing import Iterable
 
 import cv2
 import numpy as np

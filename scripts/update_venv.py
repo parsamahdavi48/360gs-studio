@@ -12,7 +12,6 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
-
 MIN_PYTHON = (3, 12)
 RELEASE_PYTHON = (3, 12)
 TORCH_INDEX_URL = "https://download.pytorch.org/whl/cu128"

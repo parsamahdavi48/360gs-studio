@@ -25,17 +25,27 @@ from PIL import Image
 from image_io import imread_unicode, imwrite_unicode
 from mask_view_recipes import (
     DEFAULT_QUALITY,
-    QUALITY_CHOICES,
     PROJECTION_EQUIRECT,
     PROJECTION_NORMAL,
-    back_project_bottom_mask as shared_back_project_bottom_mask,
-    back_project_top_mask as shared_back_project_top_mask,
-    extract_bottom_view as shared_extract_bottom_view,
-    extract_top_view as shared_extract_top_view,
+    QUALITY_CHOICES,
     iter_tile_regions,
     normalize_quality,
     recipe_for,
+)
+from mask_view_recipes import (
     auto_view_size as shared_auto_view_size,
+)
+from mask_view_recipes import (
+    back_project_bottom_mask as shared_back_project_bottom_mask,
+)
+from mask_view_recipes import (
+    back_project_top_mask as shared_back_project_top_mask,
+)
+from mask_view_recipes import (
+    extract_bottom_view as shared_extract_bottom_view,
+)
+from mask_view_recipes import (
+    extract_top_view as shared_extract_top_view,
 )
 
 IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".tif", ".tiff"}
@@ -100,14 +110,14 @@ class DetectedRegionMasks:
     other: np.ndarray
 
     @classmethod
-    def empty(cls, shape: tuple[int, int]) -> "DetectedRegionMasks":
+    def empty(cls, shape: tuple[int, int]) -> DetectedRegionMasks:
         return cls(np.zeros(shape, dtype=bool), np.zeros(shape, dtype=bool))
 
     @property
     def combined(self) -> np.ndarray:
         return self.sky | self.other
 
-    def merge(self, other: "DetectedRegionMasks") -> None:
+    def merge(self, other: DetectedRegionMasks) -> None:
         self.sky |= other.sky
         self.other |= other.other
 

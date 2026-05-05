@@ -6,7 +6,6 @@ import csv
 import sys
 from collections import OrderedDict
 from pathlib import Path
-from typing import Dict, List
 
 try:
     from PySide6.QtCore import QItemSelectionModel, QSize, Qt, QTimer, Signal
@@ -58,8 +57,9 @@ else:
     _PYSIDE_IMPORT_ERROR = None
 
 # i18n は PySide6 に依存しないので無条件 import
-from gui import i18n
 from apply_frame_decisions import pending_drop_image_paths as find_pending_drop_image_paths
+from gui import i18n
+
 if _PYSIDE_IMPORT_ERROR is None:
     from gui.common.preview_mode_toolbar import (
         PREVIEW_MODE_SINGLE,
@@ -148,7 +148,7 @@ if QMainWindow is not None:
             self._bind_shortcuts()
             self._render_current()
 
-        def _load_rows(self, path: Path) -> List[Dict[str, str]]:
+        def _load_rows(self, path: Path) -> list[dict[str, str]]:
             with path.open("r", encoding="utf-8", newline="") as f:
                 reader = csv.DictReader(f)
                 rows = list(reader)
@@ -158,11 +158,11 @@ if QMainWindow is not None:
                 row["decision"] = "drop" if decision == "drop" else "keep"
             return rows
 
-        def _is_problem_row(self, row: Dict[str, str]) -> bool:
+        def _is_problem_row(self, row: dict[str, str]) -> bool:
             status = row.get("status", "").strip().lower()
             return status not in {"", "ok"}
 
-        def _collect_problem_indices(self) -> List[int]:
+        def _collect_problem_indices(self) -> list[int]:
             return [i for i, row in enumerate(self.rows) if self._is_problem_row(row)]
 
         def _build_ui(self) -> None:
@@ -420,7 +420,7 @@ if QMainWindow is not None:
                     return selected_rows
             return [self.index]
 
-        def _current_row(self) -> Dict[str, str]:
+        def _current_row(self) -> dict[str, str]:
             return self.rows[self.index]
 
         def _decision_color(self, decision: str) -> str:
@@ -431,7 +431,7 @@ if QMainWindow is not None:
                 return i18n.t("REVIEW_DECISION_DROP")
             return i18n.t("REVIEW_DECISION_KEEP")
 
-        def _advisory_for_row(self, row: Dict[str, str], idx: int) -> tuple[str, str, str]:
+        def _advisory_for_row(self, row: dict[str, str], idx: int) -> tuple[str, str, str]:
             """status のみに基づく advisory。
 
             フレーム抽出時に代表フレーム選択は済んでいるので、
@@ -469,7 +469,7 @@ if QMainWindow is not None:
             except (TypeError, ValueError):
                 return "-"
 
-        def _quality_summary(self, row: Dict[str, str]) -> str:
+        def _quality_summary(self, row: dict[str, str]) -> str:
             final_score = self._format_quality_value(row.get("quality_score_final"))
             original_score = self._format_quality_value(row.get("quality_score_original"))
             threshold = self._format_quality_value(row.get("quality_min_score"))
@@ -648,7 +648,7 @@ if QMainWindow is not None:
         def has_decision_changes(self) -> bool:
             return any(
                 row.get("decision", "keep") != initial
-                for row, initial in zip(self.rows, self._initial_decisions)
+                for row, initial in zip(self.rows, self._initial_decisions, strict=False)
             )
 
         def pending_drop_image_paths(self) -> list[Path]:

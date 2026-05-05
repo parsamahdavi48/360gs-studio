@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import re
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -95,7 +95,7 @@ def matching_video_sessions(scene_dir: Path, video_path: Path) -> list[dict[str,
 
 
 def new_session_id() -> str:
-    return datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
+    return datetime.now(UTC).strftime("%Y%m%dT%H%M%S%fZ")
 
 
 def build_session_record(
@@ -112,7 +112,7 @@ def build_session_record(
 ) -> dict[str, Any]:
     return {
         "id": session_id,
-        "created_at": datetime.now(timezone.utc).isoformat(),
+        "created_at": datetime.now(UTC).isoformat(),
         "source_video": video_identity(input_video),
         "mode": mode,
         "video": video_info,

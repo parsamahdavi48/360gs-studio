@@ -1,9 +1,9 @@
 """Step 3: マスク生成 (人物 + スティッチ + 白飛び + 空 + カスタム)"""
 from __future__ import annotations
 
-import os
 import json
 import math
+import os
 import re
 import shutil
 import sys
@@ -12,9 +12,7 @@ from pathlib import Path
 
 import cv2
 import numpy as np
-from apply_frame_decisions import pending_drop_image_paths, untracked_image_paths
-from custom_mask import load_custom_mask
-from PySide6.QtCore import QEventLoop, QObject, QProcess, QThread, QSize, Qt, QTimer, Signal
+from PySide6.QtCore import QEventLoop, QObject, QProcess, QSize, Qt, QThread, QTimer, Signal
 from PySide6.QtWidgets import (
     QButtonGroup,
     QCheckBox,
@@ -23,9 +21,9 @@ from PySide6.QtWidgets import (
     QFormLayout,
     QGridLayout,
     QHBoxLayout,
+    QInputDialog,
     QLabel,
     QLineEdit,
-    QInputDialog,
     QMessageBox,
     QProgressDialog,
     QPushButton,
@@ -37,6 +35,8 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from apply_frame_decisions import pending_drop_image_paths, untracked_image_paths
+from custom_mask import load_custom_mask
 from gui import i18n
 from gui.common.collapsible_section import CollapsibleSection
 from gui.common.drag_spinbox import DragDoubleSpinBox, DragSpinBox
@@ -930,7 +930,7 @@ class MaskStep(BaseStepWidget):
         return [i for i, cb in enumerate(self.class_cbs) if cb.isChecked()]
 
     def _selected_ade_labels(self) -> list[str]:
-        labels = [name.strip() for name, cb in zip(self.ade_class_names, self.ade_class_cbs) if cb.isChecked()]
+        labels = [name.strip() for name, cb in zip(self.ade_class_names, self.ade_class_cbs, strict=True) if cb.isChecked()]
         return [label for label in labels if label] or ["person", "sky"]
 
     @staticmethod
@@ -1963,9 +1963,7 @@ class MaskStep(BaseStepWidget):
         masks_root: Path | None,
     ) -> list[tuple[str, list[str]]]:
         commands: list[tuple[str, list[str]]] = []
-        fresh_base_needed = True
         commands.append(("yolo", self._build_yolo_current_cmd(image_path, masks_root=masks_root)))
-        fresh_base_needed = False
         return commands
 
     def _start_next_current_reprocess_external_command(self) -> None:

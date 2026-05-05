@@ -9,7 +9,6 @@ from pathlib import Path
 
 import cv2
 import numpy as np
-import pytest
 
 import cubemap_transforms_json as cube
 from cubemap_transforms_json import (
@@ -22,7 +21,6 @@ from cubemap_transforms_json import (
     transform_json,
     worker_init,
 )
-
 
 # =============================================================================
 # frame_yaw_offset

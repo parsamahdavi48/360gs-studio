@@ -51,8 +51,8 @@ def test_has_pytest_suite_detects_optional_tests_dir(tmp_path: Path) -> None:
 
 def test_pytest_is_not_a_runtime_requirement() -> None:
     assert all(not req.startswith("pytest") for req in update_venv.CORE_REQUIREMENTS)
-    assert update_venv.TEST_REQUIREMENTS == ["pytest"]
-    assert update_venv.LOCKED_TEST_REQUIREMENTS == ["pytest==9.0.3"]
+    assert update_venv.TEST_REQUIREMENTS == ["pytest", "ruff"]
+    assert update_venv.LOCKED_TEST_REQUIREMENTS == ["pytest==9.0.3", "ruff==0.15.12"]
 
 
 def test_default_requirements_are_unpinned_for_latest_updates() -> None:

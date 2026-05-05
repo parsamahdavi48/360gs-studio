@@ -436,7 +436,7 @@ def make_default_views(yaw: float, stitch: float, no_top: bool, no_bottom: bool)
 
 
 def load_custom_views(path: str) -> list[dict]:
-    with open(path, "r", encoding="utf-8") as f:
+    with open(path, encoding="utf-8") as f:
         data = json.load(f)
 
     if isinstance(data, dict):
@@ -518,7 +518,7 @@ def load_equirect(path: str) -> np.ndarray:
     """ビット深度・チャネル数・α を保持したまま equirect 画像を読み込む（cv2、BGR/BGRA）。"""
     img = imread_unicode(path, cv2.IMREAD_UNCHANGED)
     if img is None:
-        raise IOError(f"Cannot read image: {path}")
+        raise OSError(f"Cannot read image: {path}")
     return img
 
 
@@ -593,7 +593,7 @@ def save_image(arr: np.ndarray, path: str, jpg_quality: int = 95, force_8bit: bo
 
     ok = imwrite_unicode(path, out, params)
     if not ok:
-        raise IOError(f"Failed to write image: {path}")
+        raise OSError(f"Failed to write image: {path}")
 
 
 def remap_image(
@@ -695,7 +695,7 @@ def transform_json(
         print(f"Error: {json_path} not found")
         return [], [], (0, 0), 0
 
-    with open(json_path, "r", encoding="utf-8") as f:
+    with open(json_path, encoding="utf-8") as f:
         data = json.load(f)
 
     if data.get("camera_model") != "EQUIRECTANGULAR":
@@ -1338,7 +1338,7 @@ def convert_images(
     ) as executor:
         futures = {
             executor.submit(proc_convert_images, frame_file, yaw_off): frame_file
-            for frame_file, yaw_off in zip(image_files, frame_yaw_offsets)
+            for frame_file, yaw_off in zip(image_files, frame_yaw_offsets, strict=True)
         }
 
         done = 0

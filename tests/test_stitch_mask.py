@@ -1,5 +1,5 @@
-import numpy as np
 import cv2
+import numpy as np
 
 from stitch_mask import (
     boundary_width_to_fov,

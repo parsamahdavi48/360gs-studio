@@ -7,9 +7,6 @@ from pathlib import Path
 
 import cv2
 import numpy as np
-
-from custom_mask import load_custom_mask
-from image_io import imread_unicode
 from PySide6.QtCore import QItemSelectionModel, QSize, Qt, QTimer, Signal
 from PySide6.QtGui import QFontMetrics, QImage, QPixmap
 from PySide6.QtWidgets import (
@@ -26,6 +23,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from custom_mask import load_custom_mask
 from gui import i18n
 from gui.common.icons import mask_overlay_off_icon, mask_overlay_on_icon, preview_saved_icon, preview_temp_icon
 from gui.common.preview_mode_toolbar import (
@@ -38,6 +36,7 @@ from gui.common.zoomable_image_label import ZoomableImageLabel
 from gui.mask.mask_files import iter_image_files, mask_candidates_for_image, path_key
 from gui.mask.thumbnail_delegate import MaskThumbnailDelegate
 from gui.mask.thumbnail_model import MaskThumbnailModel
+from image_io import imread_unicode
 from overexposure_mask import detect_overexposure, read_image_preserve_depth
 from stitch_mask import boundary_width_to_limit_angle, create_angular_stitched_mask
 

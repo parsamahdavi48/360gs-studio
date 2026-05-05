@@ -2,9 +2,6 @@
 """
 from __future__ import annotations
 
-import numpy as np
-import pytest
-
 from extract_frames import thin_stationary
 
 

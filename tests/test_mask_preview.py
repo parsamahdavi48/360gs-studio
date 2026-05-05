@@ -6,9 +6,11 @@ import numpy as np
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
+from PySide6.QtCore import QItemSelectionModel, Qt
+from PySide6.QtTest import QTest
 from PySide6.QtWidgets import (
-    QApplication,
     QAbstractItemView,
+    QApplication,
     QLabel,
     QLineEdit,
     QPushButton,
@@ -16,8 +18,6 @@ from PySide6.QtWidgets import (
     QSpinBox,
     QToolButton,
 )
-from PySide6.QtCore import QItemSelectionModel, Qt
-from PySide6.QtTest import QTest
 
 from gui import i18n, theme
 from gui.common.thumbnail_list_model import THUMBNAIL_PAYLOAD_ROLE

@@ -8,14 +8,6 @@ import subprocess
 import sys
 from pathlib import Path
 
-from extract_sessions import load_manifest, matching_video_sessions, sanitize_filename_prefix
-
-
-def _detect_binary(name: str) -> str:
-    """PATH から実行ファイルを検出。見つからなければ素の名前を返す（PATH 解決に委ねる）。"""
-    found = shutil.which(name)
-    return found if found else name
-
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QCheckBox,
@@ -31,6 +23,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from extract_sessions import load_manifest, matching_video_sessions, sanitize_filename_prefix
 from gui import i18n
 from gui.common.browse_widget import BrowseWidget
 from gui.common.collapsible_section import CollapsibleSection
@@ -52,6 +45,12 @@ _GAP_SPINBOX_WIDTH = 112
 _JPEG_QUALITY_MIN = 1
 _JPEG_QUALITY_MAX = 31
 _JPEG_QUALITY_DEFAULT = 2
+
+
+def _detect_binary(name: str) -> str:
+    """PATH から実行ファイルを検出。見つからなければ素の名前を返す（PATH 解決に委ねる）。"""
+    found = shutil.which(name)
+    return found if found else name
 
 
 def _row_label(text: str, tooltip: str | None = None) -> QLabel:
@@ -886,7 +885,7 @@ class ExtractStep(BaseStepWidget):
             "-show_entries", "stream=width,height,avg_frame_rate,r_frame_rate,nb_frames,duration",
             "-show_entries", "format=duration", "-of", "json", video,
         ]
-        proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        proc = subprocess.run(cmd, capture_output=True, text=True)
         if proc.returncode != 0:
             raise RuntimeError(proc.stderr.strip() or "ffprobe 失敗")
 

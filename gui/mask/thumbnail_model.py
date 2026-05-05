@@ -6,20 +6,19 @@ from pathlib import Path
 
 import cv2
 import numpy as np
-
-from image_io import imread_unicode
-from overexposure_mask import read_image_preserve_depth
 from PySide6.QtCore import QObject, QSize, Qt
 from PySide6.QtGui import QColor, QImage, QPainter, QPen
 
 from gui import theme
 from gui.common.thumbnail_list_model import (
-    AsyncThumbnailModel,
     DEFAULT_GRID_SIZE,
     DEFAULT_THUMB_SIZE,
+    AsyncThumbnailModel,
     ThumbnailItem,
 )
 from gui.mask.mask_files import mask_candidates_for_image
+from image_io import imread_unicode
+from overexposure_mask import read_image_preserve_depth
 
 
 @dataclass(frozen=True)
@@ -67,7 +66,7 @@ class MaskThumbnailModel(AsyncThumbnailModel):
             and old_config.images_dir == config.images_dir
             and old_config.masks_dir == config.masks_dir
             and len(old_items) == len(images)
-            and all(item.path == path for item, path in zip(old_items, images))
+            and all(item.path == path for item, path in zip(old_items, images, strict=True))
         )
         self._config = config
         items: list[ThumbnailItem] = []

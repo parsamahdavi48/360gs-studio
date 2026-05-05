@@ -6,14 +6,13 @@ import shutil
 import subprocess
 import sys
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from statistics import median
 from time import perf_counter
 
 import cv2
 import numpy as np
-
 
 IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".tif", ".tiff"}
 
@@ -305,7 +304,7 @@ def run_benchmark(args: argparse.Namespace) -> int:
 
     summary = {
         "schema_version": 1,
-        "created_at": datetime.now(timezone.utc).isoformat(),
+        "created_at": datetime.now(UTC).isoformat(),
         "dataset": str(dataset),
         "images_dir": str(images_dir),
         "output_root": str(output_root),

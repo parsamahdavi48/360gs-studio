@@ -1,8 +1,8 @@
 from __future__ import annotations
 
+from collections.abc import Sequence
 from os import PathLike
 from pathlib import Path
-from typing import Sequence
 
 import cv2
 import numpy as np

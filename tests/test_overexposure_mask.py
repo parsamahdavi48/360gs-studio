@@ -1,5 +1,5 @@
-import numpy as np
 import cv2
+import numpy as np
 
 from overexposure_mask import _init_worker, _process_one, detect_overexposure, run
 

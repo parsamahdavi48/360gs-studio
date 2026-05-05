@@ -1,12 +1,12 @@
 import argparse
-from contextlib import contextmanager
-from dataclasses import dataclass
-from datetime import datetime, timezone
 import json
 import os
 import sys
-from time import perf_counter
+from contextlib import contextmanager
+from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
+from time import perf_counter
 
 import cv2
 import numpy as np
@@ -57,7 +57,7 @@ class ProcessResult:
 class ProfileRecorder:
     def __init__(self, output_path: str | Path):
         self.output_path = Path(output_path)
-        self.started_at = datetime.now(timezone.utc).isoformat()
+        self.started_at = datetime.now(UTC).isoformat()
         self.run_started = perf_counter()
         self.settings = {}
         self.images = []
@@ -141,7 +141,7 @@ class ProfileRecorder:
         data = {
             "schema_version": 1,
             "started_at": self.started_at,
-            "finished_at": datetime.now(timezone.utc).isoformat(),
+            "finished_at": datetime.now(UTC).isoformat(),
             "settings": self.settings,
             "totals": {
                 **self.totals,
@@ -316,7 +316,7 @@ def model_source(script_dir: str | Path, model_name: str) -> str:
 
 def load_models(level: int, bottom_model: str = "same") -> None:
     global yolo, yolo_models, sam
-    from ultralytics import YOLO, SAM
+    from ultralytics import SAM, YOLO
 
     script_dir = Path(__file__).resolve().parent
     primary_name = yolo_model_name(level)
@@ -592,7 +592,7 @@ def process_file(input_dir, output_dir, fname, add_ext=True) -> ProcessResult:
     with profile_timer("image.read"):
         img = imread_unicode(img_path)
     if img is None:
-        raise IOError(f"Cannot read image: {img_path}")
+        raise OSError(f"Cannot read image: {img_path}")
     h, w = img.shape[:2]
     if PROFILE is not None:
         PROFILE.set_image_shape((h, w))
@@ -662,7 +662,7 @@ def process_file(input_dir, output_dir, fname, add_ext=True) -> ProcessResult:
     out_path = os.path.join(output_dir, outname)
     with profile_timer("image.write"):
         if not imwrite_unicode(out_path, mask):
-            raise IOError(f"Failed to write mask: {out_path}")
+            raise OSError(f"Failed to write mask: {out_path}")
     result = ProcessResult(
         output_path=Path(out_path),
         group_key=str(Path(output_dir).resolve()),

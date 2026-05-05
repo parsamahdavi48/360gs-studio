@@ -33,7 +33,6 @@ def test_principal_point_at_pixel_center():
 
     # 出力画像中心の座標は ((output_size-1)/2, (output_size-1)/2) = (959.5, 959.5)
     # その近傍 (959, 959) と (960, 960) は対称に center 周りに分布
-    center = (output_size - 1) / 2.0
     # 整数ピクセル (960, 960) の equirect サンプリング位置を確認
     # 主点 (W-1)/2 = 959.5 なので、ピクセル 960 は中心から +0.5 の位置
     sample_at_960 = (map_x[960, 960], map_y[960, 960])

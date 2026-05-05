@@ -5,8 +5,8 @@ from pathlib import Path
 from extract_sessions import (
     build_session_record,
     matching_video_sessions,
-    save_manifest,
     sanitize_filename_prefix,
+    save_manifest,
 )
 
 

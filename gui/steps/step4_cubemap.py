@@ -7,10 +7,11 @@ import os
 import re
 import shutil
 import sys
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 import numpy as np
+from PySide6.QtCore import QSize, Qt, QTimer
 from PySide6.QtGui import QFontMetrics
 from PySide6.QtWidgets import (
     QButtonGroup,
@@ -28,7 +29,6 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
-from PySide6.QtCore import QSize, Qt, QTimer
 
 from colmap_rig_export import pinhole_camera_params
 from gui import i18n
@@ -36,16 +36,16 @@ from gui.common.browse_widget import BrowseWidget
 from gui.common.collapsible_section import CollapsibleSection
 from gui.common.drag_spinbox import DragDoubleSpinBox
 from gui.common.form_rows import add_tooltip_row
-from gui.cubemap.view_config import ViewConfigWidget, _BLOCK_ENABLED_VIEWS, _WARN_ENABLED_VIEWS
 from gui.cubemap.preview_renderer import PreviewWidget
-from gui.user_settings import load_user_settings_section, update_user_settings_section
-from gui.version import APP_VERSION
+from gui.cubemap.view_config import _BLOCK_ENABLED_VIEWS, _WARN_ENABLED_VIEWS, ViewConfigWidget
 from gui.steps.base_step import (
     SETTINGS_PANE_MARGINS,
     SETTINGS_PANE_WIDTH,
     BaseStepWidget,
     configure_settings_scroll,
 )
+from gui.user_settings import load_user_settings_section, update_user_settings_section
+from gui.version import APP_VERSION
 
 _CONVERT_RE = re.compile(r"^Converting\s+(\d+)\s+(?:images|files)\.\.\.$")
 _PROGRESS_RE = re.compile(r"^\[progress\]\s+(\d+)\s*/\s*(\d+)")
@@ -988,8 +988,8 @@ class CubemapStep(BaseStepWidget):
 
         try:
             jpgq = int(self.jpg_quality_edit.text().strip())
-        except ValueError:
-            raise ValueError("JPG/WebP 品質は整数で指定してください")
+        except ValueError as exc:
+            raise ValueError("JPG/WebP 品質は整数で指定してください") from exc
         if not 1 <= jpgq <= 100:
             raise ValueError("JPG/WebP 品質は 1-100 の範囲で指定してください")
         cmd.extend(["--jpg-quality", str(jpgq)])
@@ -1000,7 +1000,6 @@ class CubemapStep(BaseStepWidget):
         if not script.exists():
             raise FileNotFoundError(f"transforms_to_colmap.py が見つかりません: {script}")
 
-        scene = Path(self.scene_dir)
         output = self._output_dir()
         colmap_dir = output / "colmap"
 
@@ -1169,7 +1168,7 @@ class CubemapStep(BaseStepWidget):
 
     @staticmethod
     def _utc_now_iso() -> str:
-        return datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
+        return datetime.now(UTC).isoformat(timespec="seconds").replace("+00:00", "Z")
 
     def _collect_export_settings(self) -> dict:
         views = self.view_config.collect_views(include_disabled=True)

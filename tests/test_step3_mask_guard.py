@@ -8,16 +8,16 @@ from pathlib import Path
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-import pytest
 import cv2
 import numpy as np
+import pytest
 from PySide6.QtCore import QItemSelectionModel
 from PySide6.QtWidgets import QApplication, QLabel, QPushButton, QToolButton
 
+import gui.steps.step3_mask as step3_mask_module
 from gui import i18n
 from gui.common.browse_widget import BrowseWidget
 from gui.steps.base_step import SETTINGS_PANE_MARGINS, SETTINGS_PANE_WIDTH
-import gui.steps.step3_mask as step3_mask_module
 from gui.steps.step3_mask import MaskStep
 
 

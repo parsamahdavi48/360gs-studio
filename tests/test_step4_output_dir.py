@@ -1,6 +1,6 @@
 import json
-import os
 import math
+import os
 from pathlib import Path
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
@@ -380,7 +380,7 @@ def test_yaw_slots_share_remaining_grid_width() -> None:
         cb.mapTo(grid, QPoint(0, 0)).x() + cb.width() / 2.0
         for cb in checkboxes
     ]
-    gaps = [b - a for a, b in zip(centers, centers[1:])]
+    gaps = [b - a for a, b in zip(centers, centers[1:], strict=False)]
     pitch_width = pitch_cell.width()
     available_width = grid.width() - pitch_width
     expected_first_center = pitch_width + available_width / (2.0 * len(checkboxes))

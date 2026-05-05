@@ -14,7 +14,6 @@ import argparse
 import json
 import sys
 from pathlib import Path
-from typing import Optional
 
 import numpy as np
 
@@ -173,7 +172,7 @@ def write_images_txt(out_path: Path, frames: list[dict], image_prefix: str) -> i
     return written
 
 
-def read_ply_points(ply_path: Path) -> tuple[np.ndarray, Optional[np.ndarray]]:
+def read_ply_points(ply_path: Path) -> tuple[np.ndarray, np.ndarray | None]:
     """PLY 読み込み: open3d → plyfile → 内蔵 ASCII パーサ の順でフォールバック。
 
     Returns:
@@ -208,7 +207,7 @@ def read_ply_points(ply_path: Path) -> tuple[np.ndarray, Optional[np.ndarray]]:
     return _read_ply_ascii_fallback(ply_path)
 
 
-def _read_ply_ascii_fallback(ply_path: Path) -> tuple[np.ndarray, Optional[np.ndarray]]:
+def _read_ply_ascii_fallback(ply_path: Path) -> tuple[np.ndarray, np.ndarray | None]:
     with ply_path.open("rb") as f:
         header_lines = []
         while True:
@@ -217,11 +216,11 @@ def _read_ply_ascii_fallback(ply_path: Path) -> tuple[np.ndarray, Optional[np.nd
             if line == "end_header":
                 break
             if not line:
-                raise IOError(f"Unexpected EOF reading PLY header: {ply_path}")
+                raise OSError(f"Unexpected EOF reading PLY header: {ply_path}")
 
         format_line = next((ln for ln in header_lines if ln.startswith("format")), "")
         if "ascii" not in format_line:
-            raise IOError(
+            raise OSError(
                 "Binary PLY without open3d/plyfile is not supported by the fallback reader. "
                 "Install open3d or plyfile: pip install open3d  (or: pip install plyfile)"
             )
@@ -242,7 +241,7 @@ def _read_ply_ascii_fallback(ply_path: Path) -> tuple[np.ndarray, Optional[np.nd
         y_idx = properties.index("y") if "y" in properties else None
         z_idx = properties.index("z") if "z" in properties else None
         if x_idx is None or y_idx is None or z_idx is None:
-            raise IOError(f"PLY missing x/y/z vertex properties: {ply_path}")
+            raise OSError(f"PLY missing x/y/z vertex properties: {ply_path}")
         r_idx = properties.index("red") if "red" in properties else None
         g_idx = properties.index("green") if "green" in properties else None
         b_idx = properties.index("blue") if "blue" in properties else None
@@ -254,7 +253,7 @@ def _read_ply_ascii_fallback(ply_path: Path) -> tuple[np.ndarray, Optional[np.nd
         for i in range(vertex_count):
             tokens = f.readline().decode("ascii", errors="replace").split()
             if len(tokens) < len(properties):
-                raise IOError(f"Truncated vertex row {i} in {ply_path}")
+                raise OSError(f"Truncated vertex row {i} in {ply_path}")
             points[i, 0] = float(tokens[x_idx])
             points[i, 1] = float(tokens[y_idx])
             points[i, 2] = float(tokens[z_idx])
@@ -266,7 +265,7 @@ def _read_ply_ascii_fallback(ply_path: Path) -> tuple[np.ndarray, Optional[np.nd
     return points, colors
 
 
-def write_points3d_txt(out_path: Path, points: np.ndarray, colors: Optional[np.ndarray]) -> int:
+def write_points3d_txt(out_path: Path, points: np.ndarray, colors: np.ndarray | None) -> int:
     """points3D.txt をストリーム書き出し。track 情報は空。"""
     n = len(points)
     with out_path.open("w", encoding="utf-8") as f:
@@ -301,7 +300,7 @@ def convert(
     input_dir: Path,
     json_name: str,
     output_dir: Path,
-    ply_path: Optional[Path],
+    ply_path: Path | None,
     image_prefix: str,
 ) -> dict:
     json_path = input_dir / json_name

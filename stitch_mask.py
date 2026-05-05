@@ -1,10 +1,11 @@
-import numpy as np
-import cv2
+import argparse
 import os
 import sys
-import argparse
-from pathlib import Path
 from concurrent.futures import ProcessPoolExecutor
+from pathlib import Path
+
+import cv2
+import numpy as np
 
 from image_io import imread_unicode, imwrite_unicode
 
@@ -67,8 +68,6 @@ def create_angular_stitched_mask(width, height, limit_angle_deg):
     Lon, Lat = np.meshgrid(lon, lat)
 
     X = np.cos(Lat) * np.cos(Lon)
-    Y = np.cos(Lat) * np.sin(Lon)
-    Z = np.sin(Lat)
 
     # 前方レンズ中心: (1, 0, 0), 後方レンズ中心: (-1, 0, 0)
     cos_theta_front = X
@@ -191,7 +190,7 @@ def main():
         if not imwrite_unicode(os.path.join(INPUT_DIR, "single_mask.png"), mask):
             print(f"Error writing single mask: {os.path.join(INPUT_DIR, 'single_mask.png')}")
             sys.exit(1)
-        print(f"Processed: single_mask.png")
+        print("Processed: single_mask.png")
     else:
         base = Path(INPUT_DIR)
         # サブディレクトリ構造を維持して探索

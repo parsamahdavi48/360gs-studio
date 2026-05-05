@@ -9,7 +9,6 @@ import sys
 from pathlib import Path
 
 import numpy as np
-import pytest
 
 from extract_frames import (
     CACHE_VERSION,

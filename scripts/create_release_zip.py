@@ -6,7 +6,6 @@ import tomllib
 import zipfile
 from pathlib import Path
 
-
 EXCLUDED_PREFIXES = (
     "tests/",
 )

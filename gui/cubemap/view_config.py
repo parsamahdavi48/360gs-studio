@@ -686,7 +686,7 @@ class ViewConfigWidget(QWidget):
             and len(self.pitch_rows) == len(_CUBE6_PITCHES)
             and all(
                 _pitch_key(float(row["pitch"])) == _pitch_key(expected)
-                for row, expected in zip(self.pitch_rows, _CUBE6_PITCHES)
+                for row, expected in zip(self.pitch_rows, _CUBE6_PITCHES, strict=True)
             )
         )
 

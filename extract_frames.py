@@ -5,14 +5,14 @@ import argparse
 import csv
 import json
 import math
-import re
 import subprocess
 import sys
 import tempfile
 import threading
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import BinaryIO, List, Optional, Sequence, Tuple
+from typing import BinaryIO
 
 from extract_sessions import (
     build_session_record,
@@ -103,7 +103,7 @@ def ensure_python_deps() -> None:
         raise RuntimeError("Missing required Python modules: " + "; ".join(missing))
 
 
-def run_cmd(cmd: List[str], capture: bool = False) -> subprocess.CompletedProcess:
+def run_cmd(cmd: list[str], capture: bool = False) -> subprocess.CompletedProcess:
     return subprocess.run(
         cmd,
         stdout=subprocess.PIPE if capture else None,
@@ -113,7 +113,7 @@ def run_cmd(cmd: List[str], capture: bool = False) -> subprocess.CompletedProces
     )
 
 
-def run_cmd_with_ffmpeg_progress(cmd: List[str], phase: str, total_items: int) -> subprocess.CompletedProcess:
+def run_cmd_with_ffmpeg_progress(cmd: list[str], phase: str, total_items: int) -> subprocess.CompletedProcess:
     if total_items <= 0:
         return run_cmd(cmd, capture=True)
 
@@ -131,7 +131,7 @@ def run_cmd_with_ffmpeg_progress(cmd: List[str], phase: str, total_items: int) -
     progress_step = max(1, total_items // 100)
     last_reported = -1
     observed_frame = 0
-    stderr_lines: List[str] = []
+    stderr_lines: list[str] = []
 
     print(f"[progress] {phase} 0/{total_items} frames (0.0%)", flush=True)
     for raw in proc.stderr:
@@ -255,7 +255,7 @@ def probe_video(video_path: Path, ffprobe_bin: str) -> VideoInfo:
     return VideoInfo(width=width, height=height, fps=fps, duration=duration, total_frames=total_frames)
 
 
-def scaled_dimensions(width: int, height: int, analysis_width: int) -> Tuple[int, int]:
+def scaled_dimensions(width: int, height: int, analysis_width: int) -> tuple[int, int]:
     if analysis_width <= 0 or analysis_width >= width:
         return width, height
 
@@ -271,7 +271,7 @@ def _bounded01(value: float) -> float:
     return max(0.0, min(1.0, float(value)))
 
 
-def _feature_spread_score(corners: Optional[np.ndarray], width: int, height: int) -> float:
+def _feature_spread_score(corners: np.ndarray | None, width: int, height: int) -> float:
     if corners is None or len(corners) == 0 or width <= 0 or height <= 0:
         return 0.0
 
@@ -413,15 +413,15 @@ def analyze_video_window(
     src_w: int,
     src_h: int,
     analysis_width: int,
-    start_sec: Optional[float] = None,
-    duration_sec: Optional[float] = None,
+    start_sec: float | None = None,
+    duration_sec: float | None = None,
     sample_fps: float = 0.0,
     progress_phase: str = "",
     progress_total_frames: int = 0,
     progress_step_frames: int = 0,
     quality_mode: str = "sfm",
     compute_feature_motion: bool = True,
-) -> Tuple[List[float], List[float], List[float], List[float], int, int, float]:
+) -> tuple[list[float], list[float], list[float], list[float], int, int, float]:
     out_w, out_h = scaled_dimensions(src_w, src_h, analysis_width)
     vf_parts = [f"scale={out_w}:{out_h}:flags=bilinear", "format=gray"]
     effective_fps = video_fps
@@ -465,11 +465,11 @@ def analyze_video_window(
     stderr_thread.start()
 
     frame_size = out_w * out_h
-    prev_frame: Optional[np.ndarray] = None
-    blur_scores: List[float] = []
-    quality_scores: List[float] = []
-    change_scores: List[float] = []
-    feature_motion_scores: List[float] = []
+    prev_frame: np.ndarray | None = None
+    blur_scores: list[float] = []
+    quality_scores: list[float] = []
+    change_scores: list[float] = []
+    feature_motion_scores: list[float] = []
     last_progress_report = 0
 
     def emit_progress(processed_frames: int, force: bool = False) -> None:
@@ -548,7 +548,7 @@ def analyze_video(
     progress_step_frames: int = 0,
     quality_mode: str = "sfm",
     compute_feature_motion: bool = True,
-) -> Tuple[List[float], List[float], List[float], List[float], int, int]:
+) -> tuple[list[float], list[float], list[float], list[float], int, int]:
     blur_scores, change_scores, quality_scores, feature_motion_scores, out_w, out_h, _ = analyze_video_window(
         video_path=video_path,
         ffmpeg_bin=ffmpeg_bin,
@@ -580,7 +580,7 @@ def cache_path_for(scene_dir: Path) -> Path:
     return scene_dir / "extract_cache.npz"
 
 
-def video_signature(video_path: Path) -> Tuple[int, int]:
+def video_signature(video_path: Path) -> tuple[int, int]:
     """動画ファイルの (size, mtime_ns) を返す。キャッシュ無効化判定用。"""
     st = video_path.stat()
     return int(st.st_size), int(st.st_mtime_ns)
@@ -592,10 +592,10 @@ def save_analysis_cache(
     video_info: VideoInfo,
     analysis_w: int,
     analysis_h: int,
-    blur_scores: List[float],
-    change_scores: List[float],
-    quality_scores: List[float],
-    feature_motion_scores: List[float],
+    blur_scores: list[float],
+    change_scores: list[float],
+    quality_scores: list[float],
+    feature_motion_scores: list[float],
     quality_mode: str,
     feature_motion_computed: bool = True,
 ) -> None:
@@ -626,8 +626,8 @@ def save_analysis_cache(
 
 
 def _combined_motion_scores(
-    change_scores: List[float],
-    feature_motion_scores: Optional[List[float]] = None,
+    change_scores: list[float],
+    feature_motion_scores: list[float] | None = None,
 ) -> np.ndarray:
     """Combine image-difference motion and sparse feature displacement.
 
@@ -645,8 +645,8 @@ def _combined_motion_scores(
 
 
 def _fixed_smart_motion_scores(
-    change_scores: List[float],
-    feature_motion_scores: List[float],
+    change_scores: list[float],
+    feature_motion_scores: list[float],
     change_threshold: float,
     feature_motion_threshold: float,
 ) -> np.ndarray:
@@ -662,13 +662,13 @@ def _fixed_smart_motion_scores(
 
 
 def thin_stationary(
-    rows: List[dict],
-    change_scores: List[float],
+    rows: list[dict],
+    change_scores: list[float],
     motion_threshold: float,
     keep_endpoints: bool = True,
-    feature_motion_scores: Optional[List[float]] = None,
-    max_gap_frames: Optional[int] = None,
-) -> List[dict]:
+    feature_motion_scores: list[float] | None = None,
+    max_gap_frames: int | None = None,
+) -> list[dict]:
     """累積モーションが閾値未満の連続採用フレームを間引く。
 
     立ち止まり区間（変化が小さい）でフレーム間隔が密集しすぎているのを削減する。
@@ -765,7 +765,7 @@ def load_analysis_cache(
     analysis_width: int,
     quality_mode: str = "sfm",
     require_feature_motion: bool = False,
-) -> Optional[Tuple[List[float], List[float], List[float], List[float], int, int]]:
+) -> tuple[list[float], list[float], list[float], list[float], int, int] | None:
     """キャッシュが有効なら解析スコア一式と (analysis_w, analysis_h) を返す。
     無効/不在/エラーなら None。"""
     if np is None or not cache_path.exists():
@@ -805,7 +805,7 @@ def load_analysis_cache(
         return None
 
 
-def select_fixed(total_frames: int, fps: float, interval_sec: float) -> Tuple[List[int], int]:
+def select_fixed(total_frames: int, fps: float, interval_sec: float) -> tuple[list[int], int]:
     if interval_sec <= 0:
         raise ValueError("--interval-sec must be > 0")
 
@@ -817,16 +817,16 @@ def select_fixed(total_frames: int, fps: float, interval_sec: float) -> Tuple[Li
 
 
 def select_fixed_smart(
-    base_indices: List[int],
-    change_scores: List[float],
-    feature_motion_scores: List[float],
+    base_indices: list[int],
+    change_scores: list[float],
+    feature_motion_scores: list[float],
     fps: float,
     min_gap_sec: float,
     max_gap_sec: float,
     change_threshold: float = 0.04,
     feature_motion_threshold: float = 0.012,
     max_inserts_per_interval: int = 2,
-) -> Tuple[List[int], set[int], set[int], int, int]:
+) -> tuple[list[int], set[int], set[int], int, int]:
     """Add high-motion anchors to fixed interval selection.
 
     The base cadence remains fixed. This adds extra anchors inside a fixed
@@ -872,12 +872,12 @@ def select_fixed_smart(
     added: set[int] = set()
 
     if max_inserts > 0:
-        for left, right in zip(base, base[1:]):
+        for left, right in zip(base, base[1:], strict=False):
             if right - left < min_gap_frames * 2:
                 continue
             interval_selected = {left, right}
             for _ in range(max_inserts):
-                best_idx: Optional[int] = None
+                best_idx: int | None = None
                 best_score = 0.0
                 for idx in range(left + min_gap_frames, right - min_gap_frames + 1):
                     if idx in interval_selected:
@@ -908,10 +908,10 @@ def select_fixed_smart(
 
 
 def _select_fixed_smart_thinned(
-    selected_indices: List[int],
+    selected_indices: list[int],
     protected_indices: set[int],
-    change_scores: List[float],
-    feature_motion_scores: List[float],
+    change_scores: list[float],
+    feature_motion_scores: list[float],
     change_threshold: float,
     feature_motion_threshold: float,
     max_gap_frames: int,
@@ -951,12 +951,12 @@ def _select_fixed_smart_thinned(
 
 
 def select_change(
-    change_scores: List[float],
+    change_scores: list[float],
     fps: float,
     threshold: float,
     min_gap_sec: float,
     max_gap_sec: float,
-) -> Tuple[List[int], int, int]:
+) -> tuple[list[int], int, int]:
     if min_gap_sec <= 0 or max_gap_sec <= 0:
         raise ValueError("--min-gap-sec and --max-gap-sec must be > 0")
     if max_gap_sec < min_gap_sec:
@@ -982,7 +982,7 @@ def select_change(
     return indices, min_gap_frames, max_gap_frames
 
 
-def estimate_count_range(duration_sec: float, min_gap_sec: float, max_gap_sec: float) -> Tuple[int, int]:
+def estimate_count_range(duration_sec: float, min_gap_sec: float, max_gap_sec: float) -> tuple[int, int]:
     if duration_sec <= 0:
         return 1, 1
     if min_gap_sec <= 0 or max_gap_sec <= 0:
@@ -999,7 +999,7 @@ def build_sample_windows(
     duration_sec: float,
     segment_sec: float,
     segment_count: int,
-) -> List[Tuple[float, float]]:
+) -> list[tuple[float, float]]:
     if segment_sec <= 0:
         raise ValueError("--sample-segment-sec must be > 0")
     if segment_count <= 0:
@@ -1016,7 +1016,7 @@ def build_sample_windows(
         step = max_start / float(segment_count - 1)
         starts = [i * step for i in range(segment_count)]
 
-    windows: List[Tuple[float, float]] = []
+    windows: list[tuple[float, float]] = []
     seen = set()
     for start in starts:
         clamped_start = max(0.0, min(start, max_start))
@@ -1137,10 +1137,10 @@ def estimate_change_sampled(
 
 
 def _candidate_window(
-    selected_indices: List[int],
+    selected_indices: list[int],
     pos: int,
     total_frames: int,
-) -> Tuple[int, int]:
+) -> tuple[int, int]:
     original_idx = selected_indices[pos]
     if pos == 0:
         low = 0
@@ -1174,12 +1174,12 @@ def representative_window_for_report(
 
 
 def select_representative_frames(
-    selected_indices: List[int],
-    quality_scores: List[float],
+    selected_indices: list[int],
+    quality_scores: list[float],
     quality_min_score: float,
     quality_min_improvement: float,
     center_bias: float,
-) -> List[dict]:
+) -> list[dict]:
     """Choose one SfM-oriented representative frame for each extraction anchor.
 
     The initial fixed/change selection defines anchors. Each anchor owns a
@@ -1194,7 +1194,7 @@ def select_representative_frames(
     if n <= 0:
         return []
 
-    rows: List[dict] = []
+    rows: list[dict] = []
     for pos, original_idx in enumerate(selected_indices):
         if original_idx < 0 or original_idx >= n:
             continue
@@ -1202,7 +1202,7 @@ def select_representative_frames(
         low, high = _candidate_window(selected_indices, pos, n)
         radius = max(abs(original_idx - low), abs(high - original_idx), 1)
 
-        def objective(idx: int) -> float:
+        def objective(idx: int, original_idx: int = original_idx, radius: int = radius) -> float:
             center_score = 1.0 - (abs(idx - original_idx) / float(radius))
             return float(quality_scores[idx]) + center_bias * _bounded01(center_score)
 
@@ -1237,14 +1237,14 @@ def select_representative_frames(
         )
 
     return rows
-def build_select_expr(frame_indices: List[int]) -> str:
+def build_select_expr(frame_indices: list[int]) -> str:
     return "+".join(f"eq(n\\,{idx})" for idx in frame_indices)
 
 
 def extract_selected_frames(
     video_path: Path,
     ffmpeg_bin: str,
-    frame_indices: List[int],
+    frame_indices: list[int],
     output_dir: Path,
     image_ext: str,
     jpg_quality: int,
@@ -1261,7 +1261,7 @@ def extract_selected_frames(
 
     select_expr = build_select_expr(frame_indices)
 
-    quality_args: List[str] = []
+    quality_args: list[str] = []
     if image_ext == "jpg":
         quality_args = ["-q:v", str(jpg_quality)]
 
@@ -1358,7 +1358,7 @@ def extract_selected_frames(
     rename_step = max(1, rename_total // 100)
     last_rename_report = 0
     print(f"[progress] finalize 0/{rename_total} files (0.0%)", flush=True)
-    for seq, (src, frame_idx) in enumerate(zip(extracted_files, frame_indices), start=1):
+    for seq, (src, frame_idx) in enumerate(zip(extracted_files, frame_indices, strict=True), start=1):
         dst_name = frame_filename(filename_prefix, frame_idx, image_ext, frame_digits)
         dst_path = output_dir / dst_name
         if dst_path.exists():
@@ -1420,7 +1420,7 @@ def build_quick_extract_rows(frame_indices: Sequence[int]) -> list[dict]:
 
 
 def build_selected_csv_rows(
-    rows: List[dict],
+    rows: list[dict],
     fps: float,
     image_ext: str,
     filename_prefix: str,
@@ -1483,7 +1483,7 @@ def write_selected_csv_rows(csv_path: Path, fieldnames: Sequence[str], rows: Seq
 
 
 def write_selected_csv(
-    rows: List[dict],
+    rows: list[dict],
     csv_path: Path,
     fps: float,
     image_ext: str,
@@ -1517,7 +1517,7 @@ def write_report(
     video_info: VideoInfo,
     analysis_w: int,
     analysis_h: int,
-    selected_rows: List[dict],
+    selected_rows: list[dict],
     window_frames: int,
     min_gap_frames: int,
     filename_prefix: str,
@@ -1582,7 +1582,7 @@ def build_summary_from_counts(
     estimate_mode: str,
     filename_prefix: str,
     frame_digits: int,
-    estimate_meta: Optional[dict] = None,
+    estimate_meta: dict | None = None,
 ) -> dict:
     summary = {
         "input_video": str(Path(args.input_video).resolve()),
@@ -1635,7 +1635,7 @@ def build_summary(
     video_info: VideoInfo,
     analysis_w: int,
     analysis_h: int,
-    selected_rows: List[dict],
+    selected_rows: list[dict],
     min_gap_frames: int,
     window_frames: int,
     filename_prefix: str,
@@ -1741,7 +1741,7 @@ def analyze_with_cache(
     ensure_python_deps()
 
     cache_path = cache_path_for(scene_dir)
-    cached: Optional[Tuple[List[float], List[float], List[float], List[float], int, int]] = None
+    cached: tuple[list[float], list[float], list[float], list[float], int, int] | None = None
     if not args.no_cache:
         needs_feature_motion = args.mode == "fixed" and args.fixed_smart
         cached = load_analysis_cache(
@@ -2220,7 +2220,7 @@ def main() -> None:
             center_bias=args.center_bias,
         )
 
-        enriched_rows: List[dict] = []
+        enriched_rows: list[dict] = []
         for row in rows:
             orig = row["original_index"]
             final = row["final_index"]

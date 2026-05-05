@@ -5,8 +5,8 @@ import argparse
 import csv
 import shutil
 import sys
+from collections.abc import Sequence
 from pathlib import Path
-from typing import List, Optional, Sequence
 
 
 def is_image_file(path: Path) -> bool:
@@ -25,7 +25,7 @@ def clean_output_dir(output_dir: Path) -> int:
     return removed
 
 
-def load_rows(csv_path: Path) -> List[dict]:
+def load_rows(csv_path: Path) -> list[dict]:
     with csv_path.open("r", encoding="utf-8", newline="") as f:
         reader = csv.DictReader(f)
         rows = list(reader)
@@ -71,8 +71,8 @@ def normalize_decision(row: dict) -> str:
 def pending_drop_image_paths(
     scene_dir: Path,
     csv_name: str = "selected_frames.csv",
-    images_dir: Optional[Path] = None,
-) -> List[Path]:
+    images_dir: Path | None = None,
+) -> list[Path]:
     """Return drop-marked image files that still exist under images_dir."""
     csv_path = scene_dir / csv_name
     if not csv_path.exists():
@@ -83,7 +83,7 @@ def pending_drop_image_paths(
     if not root.exists():
         return []
 
-    pending: List[Path] = []
+    pending: list[Path] = []
     for row in rows:
         if normalize_decision(row) != "drop":
             continue
@@ -99,8 +99,8 @@ def pending_drop_image_paths(
 def untracked_image_paths(
     scene_dir: Path,
     csv_name: str = "selected_frames.csv",
-    images_dir: Optional[Path] = None,
-) -> List[Path]:
+    images_dir: Path | None = None,
+) -> list[Path]:
     """Return image files in images_dir that are not referenced by the selected CSV."""
     csv_path = scene_dir / csv_name
     root = images_dir if images_dir is not None else scene_dir / "images"
@@ -113,7 +113,7 @@ def untracked_image_paths(
         for row in rows
         if row.get("output_file", "").strip()
     }
-    pending: List[Path] = []
+    pending: list[Path] = []
     for path in sorted(root.iterdir(), key=lambda p: p.name.lower()):
         if not path.is_file() or not is_image_file(path):
             continue
@@ -136,7 +136,7 @@ def copy_keep_rows(
 
     copied = 0
     skipped = 0
-    missing: List[str] = []
+    missing: list[str] = []
 
     for row in rows:
         decision = normalize_decision(row)
@@ -187,7 +187,7 @@ def backup_images_dir(images_dir: Path, backup_dir: Path) -> int:
 def finalize_in_place(
     scene_dir: Path,
     csv_name: str,
-    backup_dir: Optional[Path] = None,
+    backup_dir: Path | None = None,
 ) -> None:
     csv_path = scene_dir / csv_name
     if not csv_path.exists():
@@ -202,9 +202,9 @@ def finalize_in_place(
         backup_count = backup_images_dir(images_dir, backup_dir)
         print(f"Backed up {backup_count} files to {backup_dir}")
 
-    keep_entries: List[tuple[dict, Path]] = []
-    dropped_paths: List[Path] = []
-    missing: List[str] = []
+    keep_entries: list[tuple[dict, Path]] = []
+    dropped_paths: list[Path] = []
+    missing: list[str] = []
     dropped_rows = 0
 
     for row in rows:
@@ -249,7 +249,7 @@ def finalize_in_place(
             p.unlink()
             removed_drop_files += 1
 
-    updated_rows: List[dict] = []
+    updated_rows: list[dict] = []
     for seq, (row, src) in enumerate(keep_entries, start=1):
         new_row = dict(row)
         new_row["seq"] = str(seq)
@@ -281,7 +281,7 @@ def apply_decisions(
     output_name: str,
     clean_output: bool,
     finalize_inplace: bool,
-    backup_dir: Optional[Path] = None,
+    backup_dir: Path | None = None,
 ) -> None:
     csv_path = scene_dir / csv_name
     if not csv_path.exists():
@@ -348,7 +348,7 @@ def main() -> None:
     args = parse_args()
     scene_dir = Path(args.scene_dir).resolve()
 
-    backup_dir: Optional[Path] = None
+    backup_dir: Path | None = None
     if args.backup_dir:
         bp = Path(args.backup_dir)
         backup_dir = bp if bp.is_absolute() else (scene_dir / bp)

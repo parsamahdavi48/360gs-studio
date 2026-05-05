@@ -3,7 +3,6 @@ from __future__ import annotations
 
 from PySide6.QtWidgets import QFormLayout, QLayout, QWidget
 
-
 FormField = QWidget | QLayout
 
 
