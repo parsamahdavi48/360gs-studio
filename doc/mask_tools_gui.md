@@ -111,6 +111,8 @@ Choose the mask model in `Mask Settings`, enable any `Options`, then press `Gene
 The model-based mask always runs first. Extra masks run in this order: stitch seam, overexposure, custom.
 Existing masks are regenerated from the current model and enabled extra masks. Results from extra masks that are now off are not kept.
 
+SAM3.1 batch generation runs with saved progress and unfinished-image resume. If GPU memory runs out, completed masks remain saved; rerun with the same settings to continue from unfinished images.
+
 If `selected_frames.csv` is not present, Step 3 can still generate masks as long as `images/` contains supported images.
 In that external-image mode, Step 2 keep/drop validation is skipped.
 If `selected_frames.csv` is present, Step 3 validates `images/` against it and stops when pending drops or untracked files are found.

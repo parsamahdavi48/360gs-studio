@@ -1677,6 +1677,11 @@ class MaskStep(BaseStepWidget):
             cmd.extend(["--subtract-sam-prompt", prompt])
         if effective_merge_mode == _SAM31_MERGE_REPLACE:
             cmd.append("--replace")
+        try:
+            if Path(images).is_dir():
+                cmd.append("--safe-batch")
+        except OSError:
+            pass
         return cmd
 
     def _build_mask2former_cmd(

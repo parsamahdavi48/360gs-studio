@@ -7,7 +7,10 @@ the same source image.
 from __future__ import annotations
 
 import argparse
+import hashlib
+import json
 import os
+import subprocess
 import sys
 import warnings
 from contextlib import nullcontext
@@ -49,6 +52,10 @@ DEFAULT_SAM31_CHECKPOINT_NAME = "sam3.1_multiplex.pt"
 DEFAULT_SAM31_PROMPT = "sky"
 DEFAULT_SAM31_SCORE = 0.5
 DEFAULT_SAM31_INFERENCE_SIZE = 1008
+RESUME_STATE_FILENAME = ".sky_mask_run_state.json"
+RESUME_STATE_VERSION = 1
+OOM_MARKER = "[sam31-oom]"
+MEMORY_MARKER = "[sam31-memory]"
 MASK_MERGE_REPLACE = "replace"
 MASK_MERGE_ADD = "add"
 MASK_MERGE_SUBTRACT = "subtract"
@@ -109,18 +116,24 @@ class DetectedRegionMasks:
 class SkyMaskRunResult:
     total: int = 0
     applied: int = 0
+    resumed: int = 0
     skipped: int = 0
     failed: int = 0
+    fatal_error: str | None = None
     messages: list[str] | None = None
 
     @property
     def ok(self) -> bool:
-        return self.failed == 0 and (self.total == 0 or self.applied > 0)
+        return self.fatal_error is None and self.failed == 0 and (self.total == 0 or self.applied + self.resumed > 0)
 
     def add_message(self, message: str) -> None:
         if self.messages is None:
             self.messages = []
         self.messages.append(message)
+
+
+class MaskOutOfMemoryError(RuntimeError):
+    """Fatal CUDA memory pressure while running a mask backend."""
 
 
 class Mask2FormerSkySegmenter:
@@ -507,6 +520,172 @@ def mask_output_path_for_image(image_path: Path, images_root: Path, masks_dir: P
     return masks_dir / rel_parent / name
 
 
+def resume_state_path(masks_dir: str | Path) -> Path:
+    return Path(masks_dir) / RESUME_STATE_FILENAME
+
+
+def _relative_key(path: Path, root: Path) -> str:
+    if root.is_file():
+        return path.name
+    try:
+        return path.resolve().relative_to(root.resolve()).as_posix()
+    except ValueError:
+        return path.name
+
+
+def _source_identity(path: Path, root: Path) -> dict[str, int | str]:
+    stat = path.stat()
+    return {
+        "path": _relative_key(path, root),
+        "size": int(stat.st_size),
+        "mtime_ns": int(stat.st_mtime_ns),
+    }
+
+
+def _settings_fingerprint(
+    *,
+    backend: str,
+    model_source: str | Path,
+    device: str,
+    options: SkyMaskOptions,
+) -> str:
+    model_path = Path(model_source)
+    model_identity: dict[str, int | str] = {"path": str(model_source)}
+    if model_path.exists() and model_path.is_file():
+        stat = model_path.stat()
+        model_identity.update({"size": int(stat.st_size), "mtime_ns": int(stat.st_mtime_ns)})
+    payload = {
+        "backend": normalize_backend(backend),
+        "model": model_identity,
+        "device": str(device),
+        "projection": options.projection,
+        "quality": normalize_quality(options.quality),
+        "mode": options.mode,
+        "inference_size": int(options.inference_size),
+        "view_size": int(options.view_size) if options.view_size else None,
+        "min_score": float(options.min_score),
+        "min_area_ratio": float(options.min_area_ratio),
+        "expand_px": int(options.expand_px),
+        "top_connected": bool(options.top_connected),
+        "add_ext": bool(options.add_ext),
+        "replace": bool(options.replace),
+        "merge_mode": normalize_merge_mode(options.merge_mode),
+        "sam_prompt": options.sam_prompt,
+        "labels": tuple(options.labels),
+        "sam_prompts": tuple(options.sam_prompts),
+        "sam_subtract_prompts": tuple(options.sam_subtract_prompts),
+    }
+    encoded = json.dumps(payload, sort_keys=True, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def _new_resume_state(settings_hash: str) -> dict[str, object]:
+    return {
+        "version": RESUME_STATE_VERSION,
+        "settings_hash": settings_hash,
+        "completed": {},
+    }
+
+
+def _load_resume_state(path: Path, settings_hash: str) -> dict[str, object]:
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return _new_resume_state(settings_hash)
+    if not isinstance(data, dict):
+        return _new_resume_state(settings_hash)
+    if data.get("version") != RESUME_STATE_VERSION or data.get("settings_hash") != settings_hash:
+        return _new_resume_state(settings_hash)
+    completed = data.get("completed")
+    if not isinstance(completed, dict):
+        data["completed"] = {}
+    return data
+
+
+def _write_json_atomic(path: Path, data: dict[str, object]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temp = path.with_name(f".{path.stem}.{os.getpid()}.tmp{path.suffix}")
+    temp.write_text(json.dumps(data, ensure_ascii=False, indent=2, sort_keys=True), encoding="utf-8")
+    os.replace(temp, path)
+
+
+def _completed_record_matches(
+    state: dict[str, object],
+    image_path: Path,
+    images_root: Path,
+    masks_dir: Path,
+    options: SkyMaskOptions,
+) -> bool:
+    completed = state.get("completed")
+    if not isinstance(completed, dict):
+        return False
+    key = _relative_key(image_path, images_root)
+    record = completed.get(key)
+    if not isinstance(record, dict):
+        return False
+    try:
+        source = _source_identity(image_path, images_root)
+    except OSError:
+        return False
+    if record.get("source") != source:
+        return False
+    mask_out = mask_output_path_for_image(image_path, images_root, masks_dir, add_ext=options.add_ext)
+    return mask_out.is_file()
+
+
+def _mark_resume_completed(
+    state_path: Path,
+    state: dict[str, object],
+    image_path: Path,
+    images_root: Path,
+    masks_dir: Path,
+    options: SkyMaskOptions,
+) -> None:
+    completed = state.setdefault("completed", {})
+    if not isinstance(completed, dict):
+        completed = {}
+        state["completed"] = completed
+    key = _relative_key(image_path, images_root)
+    mask_out = mask_output_path_for_image(image_path, images_root, masks_dir, add_ext=options.add_ext)
+    completed[key] = {
+        "source": _source_identity(image_path, images_root),
+        "mask": _relative_key(mask_out, masks_dir),
+    }
+    _write_json_atomic(state_path, state)
+
+
+def _valid_completed_count(
+    image_files: list[Path],
+    images_root: Path,
+    masks_dir: Path,
+    state: dict[str, object],
+    options: SkyMaskOptions,
+) -> int:
+    return sum(
+        1
+        for image_path in image_files
+        if _completed_record_matches(state, image_path, images_root, masks_dir, options)
+    )
+
+
+def imwrite_unicode_atomic(path: Path, image: np.ndarray) -> bool:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temp = path.with_name(f".{path.stem}.{os.getpid()}.tmp{path.suffix}")
+    try:
+        if not imwrite_unicode(temp, image):
+            return False
+        os.replace(temp, path)
+    except OSError:
+        return False
+    finally:
+        try:
+            if temp.exists():
+                temp.unlink()
+        except OSError:
+            pass
+    return True
+
+
 def _is_sky_prompt(prompt: str) -> bool:
     value = str(prompt).strip().lower()
     return value in {"sky", "the sky"} or value.endswith(" sky")
@@ -772,6 +951,91 @@ def merge_with_existing(
     return cv2.bitwise_and(existing, new_mask)
 
 
+def is_out_of_memory_error(exc: BaseException) -> bool:
+    chain: list[BaseException] = []
+    current: BaseException | None = exc
+    while current is not None:
+        chain.append(current)
+        current = current.__cause__ or current.__context__
+    for item in chain:
+        class_name = item.__class__.__name__.lower()
+        text = str(item).lower()
+        if "outofmemory" in class_name:
+            return True
+        if "out of memory" in text and any(marker in text for marker in ("cuda", "gpu", "cudnn")):
+            return True
+    return False
+
+
+def _segmenter_torch(segmenter: Any) -> Any | None:
+    torch_module = getattr(segmenter, "torch", None)
+    if torch_module is not None:
+        return torch_module
+    model = getattr(segmenter, "model", None)
+    return getattr(model, "torch", None)
+
+
+def _cuda_memory_stats(segmenter: Any) -> dict[str, int] | None:
+    torch_module = _segmenter_torch(segmenter)
+    if torch_module is None:
+        return None
+    cuda = getattr(torch_module, "cuda", None)
+    if cuda is None or not cuda.is_available():
+        return None
+    try:
+        free, total = cuda.mem_get_info()
+        return {
+            "free": int(free),
+            "total": int(total),
+            "allocated": int(cuda.memory_allocated()),
+            "reserved": int(cuda.memory_reserved()),
+            "peak_reserved": int(cuda.max_memory_reserved()),
+        }
+    except Exception:
+        return None
+
+
+def _reset_cuda_peak(segmenter: Any) -> None:
+    torch_module = _segmenter_torch(segmenter)
+    cuda = getattr(torch_module, "cuda", None) if torch_module is not None else None
+    if cuda is None or not cuda.is_available():
+        return
+    try:
+        cuda.reset_peak_memory_stats()
+    except Exception:
+        pass
+
+
+def _empty_cuda_cache(segmenter: Any) -> None:
+    torch_module = _segmenter_torch(segmenter)
+    cuda = getattr(torch_module, "cuda", None) if torch_module is not None else None
+    if cuda is None or not cuda.is_available():
+        return
+    try:
+        cuda.empty_cache()
+    except Exception:
+        pass
+
+
+def _format_bytes(value: int) -> str:
+    gib = float(value) / (1024.0**3)
+    return f"{gib:.1f} GiB"
+
+
+def _print_memory_stats(prefix: str, stats: dict[str, int] | None) -> None:
+    if not stats:
+        return
+    print(
+        MEMORY_MARKER,
+        prefix,
+        f"free={_format_bytes(stats['free'])}",
+        f"total={_format_bytes(stats['total'])}",
+        f"reserved={_format_bytes(stats['reserved'])}",
+        f"peak_reserved={_format_bytes(stats['peak_reserved'])}",
+        flush=True,
+    )
+
+
 def process_image(
     image_path: Path,
     images_root: Path,
@@ -785,8 +1049,7 @@ def process_image(
     sky_mask = detect_sky_mask(image, segmenter, options)
     mask_out = mask_output_path_for_image(image_path, images_root, masks_dir, add_ext=options.add_ext)
     merged = merge_with_existing(mask_out, sky_mask, replace=options.replace, merge_mode=options.merge_mode)
-    mask_out.parent.mkdir(parents=True, exist_ok=True)
-    if not imwrite_unicode(mask_out, merged):
+    if not imwrite_unicode_atomic(mask_out, merged):
         return f"Skipped (write error): {mask_out.name}"
     return None
 
@@ -799,6 +1062,10 @@ def run(
     model_dir: str | Path | None = None,
     device: str = "auto",
     options: SkyMaskOptions | None = None,
+    resume_state: bool = False,
+    max_images: int | None = None,
+    progress_offset: int | None = None,
+    progress_total: int | None = None,
 ) -> SkyMaskRunResult:
     images_path = Path(images)
     masks_path = Path(masks_dir)
@@ -811,6 +1078,18 @@ def run(
 
     backend = normalize_backend(backend)
     model_source = resolve_model_source(model_dir=model_dir, backend=backend)
+    settings_hash = _settings_fingerprint(
+        backend=backend,
+        model_source=model_source,
+        device=device,
+        options=options,
+    )
+    state_path = resume_state_path(masks_path)
+    state: dict[str, object] | None = None
+    if resume_state:
+        state = _load_resume_state(state_path, settings_hash)
+        _write_json_atomic(state_path, state)
+
     print(f"Mask backend: {backend}", flush=True)
     print(f"Mask model: {model_source}", flush=True)
     print(
@@ -832,25 +1111,259 @@ def run(
         flush=True,
     )
     segmenter = create_sky_segmenter(backend, model_source, device=device)
+    if backend == BACKEND_SAM31:
+        _print_memory_stats("before", _cuda_memory_stats(segmenter))
+        _reset_cuda_peak(segmenter)
 
-    print(f"[progress] 0/{len(image_files)}", flush=True)
-    for done, image_path in enumerate(image_files, start=1):
+    pending_files: list[Path] = []
+    for image_path in image_files:
+        if state is not None and _completed_record_matches(state, image_path, images_path, masks_path, options):
+            result.resumed += 1
+            continue
+        pending_files.append(image_path)
+    if max_images is not None and max_images > 0:
+        pending_files = pending_files[: int(max_images)]
+
+    total_for_progress = int(progress_total) if progress_total and progress_total > 0 else len(image_files)
+    done_base = int(progress_offset) if progress_offset is not None and progress_offset >= 0 else result.resumed
+    print(f"[progress] {done_base}/{total_for_progress}", flush=True)
+    printed_first_memory = False
+    for local_done, image_path in enumerate(pending_files, start=1):
         try:
             error = process_image(image_path, images_path, masks_path, segmenter, options)
         except Exception as e:  # noqa: BLE001 - keep batch processing alive.
+            if is_out_of_memory_error(e):
+                _empty_cuda_cache(segmenter)
+                message = (
+                    f"{OOM_MARKER} CUDA/GPU memory ran out while processing {image_path.name}. "
+                    "Completed masks remain saved; rerun with the same settings to resume unfinished images."
+                )
+                print(message, flush=True)
+                result.failed += 1
+                result.fatal_error = message
+                result.add_message(message)
+                break
             error = f"Failed: {image_path.name}: {e}"
         if error is None:
             result.applied += 1
+            if state is not None:
+                _mark_resume_completed(state_path, state, image_path, images_path, masks_path, options)
+            if backend == BACKEND_SAM31 and not printed_first_memory:
+                _print_memory_stats("after_first_image", _cuda_memory_stats(segmenter))
+                printed_first_memory = True
         else:
             result.skipped += 1
             result.add_message(error)
         print(f"Processed: {image_path.name}", flush=True)
-        print(f"[progress] {done}/{len(image_files)}", flush=True)
+        print(f"[progress] {done_base + local_done}/{total_for_progress}", flush=True)
 
     for message in result.messages or []:
         print(message, flush=True)
-    print(f"Done: {result.applied} applied, {result.skipped} skipped, {result.failed} failed", flush=True)
+    if state is not None and result.fatal_error is None:
+        valid_completed = _valid_completed_count(image_files, images_path, masks_path, state, options)
+        if valid_completed >= len(image_files):
+            try:
+                state_path.unlink()
+            except OSError:
+                pass
+    print(
+        f"Done: {result.applied} applied, {result.resumed} resumed, {result.skipped} skipped, "
+        f"{result.failed} failed",
+        flush=True,
+    )
     return result
+
+
+def _build_child_args(
+    args: argparse.Namespace,
+    *,
+    max_images: int,
+    progress_offset: int,
+    progress_total: int,
+) -> list[str]:
+    cmd = [
+        sys.executable,
+        "-u",
+        str(Path(__file__).resolve()),
+        str(args.images),
+        str(args.masks_dir),
+        "--backend",
+        str(args.backend),
+        "--device",
+        str(args.device),
+        "--projection",
+        str(args.projection),
+        "--quality",
+        str(args.quality),
+        "--inference-size",
+        str(args.inference_size),
+        "--view-size",
+        str(args.view_size),
+        "--min-score",
+        str(args.min_score),
+        "--min-area-ratio",
+        str(args.min_area_ratio),
+        "--expand",
+        str(args.expand),
+        "--merge-mode",
+        str(args.merge_mode),
+        "--labels",
+        str(args.labels),
+        "--resume-state",
+        "--max-images",
+        str(max_images),
+        "--progress-offset",
+        str(progress_offset),
+        "--progress-total",
+        str(progress_total),
+    ]
+    if args.model_dir:
+        cmd.extend(["--model-dir", str(args.model_dir)])
+    if args.top_connected:
+        cmd.append("--top-connected")
+    if args.no_top_connected:
+        cmd.append("--no-top-connected")
+    if args.add_ext:
+        cmd.append("--add-ext")
+    if args.replace:
+        cmd.append("--replace")
+    for prompt in args.sam_prompt or []:
+        cmd.extend(["--sam-prompt", str(prompt)])
+    for prompt in args.subtract_sam_prompt or []:
+        cmd.extend(["--subtract-sam-prompt", str(prompt)])
+    return cmd
+
+
+def _run_child_and_stream(cmd: list[str]) -> tuple[int, bool]:
+    oom = False
+    env = os.environ.copy()
+    env["PYTHONUTF8"] = "1"
+    env["PYTHONIOENCODING"] = "utf-8"
+    proc = subprocess.Popen(  # noqa: S603 - command is built from current interpreter/script and parsed args.
+        cmd,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        env=env,
+    )
+    assert proc.stdout is not None
+    for line in proc.stdout:
+        if OOM_MARKER in line or "CUDA out of memory" in line or "cuda out of memory" in line.lower():
+            oom = True
+        print(line, end="", flush=True)
+    return proc.wait(), oom
+
+
+def _safe_batch_completed_count(
+    args: argparse.Namespace,
+    options: SkyMaskOptions,
+    *,
+    settings_hash: str,
+) -> tuple[int, int, dict[str, object], list[Path], Path, Path, Path]:
+    images_path = Path(args.images)
+    masks_path = Path(args.masks_dir)
+    image_files = iter_image_files(images_path)
+    state_path = resume_state_path(masks_path)
+    state = _load_resume_state(state_path, settings_hash)
+    _write_json_atomic(state_path, state)
+    completed = _valid_completed_count(image_files, images_path, masks_path, state, options)
+    return completed, len(image_files), state, image_files, images_path, masks_path, state_path
+
+
+def run_safe_batch(args: argparse.Namespace, options: SkyMaskOptions) -> int:
+    backend = normalize_backend(args.backend)
+    images_path = Path(args.images)
+    if backend != BACKEND_SAM31 or not images_path.is_dir():
+        result = run(
+            args.images,
+            args.masks_dir,
+            backend=args.backend,
+            model_dir=args.model_dir,
+            device=args.device,
+            options=options,
+            resume_state=bool(args.resume_state),
+            max_images=int(args.max_images) if int(args.max_images) > 0 else None,
+            progress_offset=int(args.progress_offset) if int(args.progress_offset) >= 0 else None,
+            progress_total=int(args.progress_total) if int(args.progress_total) > 0 else None,
+        )
+        return 0 if result.ok else 1
+
+    model_source = resolve_model_source(model_dir=args.model_dir, backend=backend)
+    settings_hash = _settings_fingerprint(
+        backend=backend,
+        model_source=model_source,
+        device=args.device,
+        options=options,
+    )
+    completed, total, _state, _image_files, _images_root, _masks_path, state_path = _safe_batch_completed_count(
+        args,
+        options,
+        settings_hash=settings_hash,
+    )
+    if total == 0:
+        print(f"No images found in {images_path}", flush=True)
+        return 1
+
+    print("SAM3.1 safe batch: enabled", flush=True)
+    print(f"[progress] {completed}/{total}", flush=True)
+    if completed > 0:
+        print(f"Resume: {completed}/{total} masks are already saved for the current settings.", flush=True)
+
+    chunk_size = max(1, total - completed)
+    while completed < total:
+        remaining = total - completed
+        current_chunk = max(1, min(chunk_size, remaining))
+        print(f"SAM3.1 safe batch: processing up to {current_chunk} remaining image(s)", flush=True)
+        cmd = _build_child_args(
+            args,
+            max_images=current_chunk,
+            progress_offset=completed,
+            progress_total=total,
+        )
+        exit_code, oom = _run_child_and_stream(cmd)
+        previous_completed = completed
+        completed, total, _state, _image_files, _images_root, _masks_path, state_path = _safe_batch_completed_count(
+            args,
+            options,
+            settings_hash=settings_hash,
+        )
+        if exit_code == 0:
+            if current_chunk >= remaining or completed >= total:
+                print(f"[progress] {total}/{total}", flush=True)
+                try:
+                    state_path.unlink()
+                except OSError:
+                    pass
+                return 0
+            if completed <= previous_completed:
+                print("Error: SAM3.1 safe batch made no progress.", flush=True)
+                return 1
+            chunk_size = min(total - completed, max(current_chunk, chunk_size))
+            continue
+
+        if not oom:
+            return exit_code or 1
+
+        if completed > previous_completed:
+            print(f"SAM3.1 safe batch: saved progress through {completed}/{total}; retrying unfinished images.", flush=True)
+        if current_chunk <= 1 and completed <= previous_completed:
+            print(
+                "Error: SAM3.1 could not process the next image with the current hardware/settings. "
+                "Completed masks remain saved; lower quality, close other GPU apps, or use another backend.",
+                flush=True,
+            )
+            return 1
+        chunk_size = 1 if current_chunk <= 2 else max(1, current_chunk // 2)
+        print(f"SAM3.1 safe batch: reducing retry chunk size to {chunk_size}.", flush=True)
+
+    try:
+        state_path.unlink()
+    except OSError:
+        pass
+    print(f"[progress] {total}/{total}", flush=True)
+    return 0
 
 
 def parse_args() -> argparse.Namespace:
@@ -895,6 +1408,15 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help="SAM3.1 prompt to subtract from detected prompt masks; can be passed multiple times",
     )
+    parser.add_argument(
+        "--safe-batch",
+        action="store_true",
+        help="Run SAM3.1 directory processing through a resumable parent process",
+    )
+    parser.add_argument("--resume-state", action="store_true", help=argparse.SUPPRESS)
+    parser.add_argument("--max-images", type=int, default=0, help=argparse.SUPPRESS)
+    parser.add_argument("--progress-offset", type=int, default=-1, help=argparse.SUPPRESS)
+    parser.add_argument("--progress-total", type=int, default=0, help=argparse.SUPPRESS)
     return parser.parse_args()
 
 
@@ -937,6 +1459,8 @@ def main() -> int:
         sam_subtract_prompts=tuple(args.subtract_sam_prompt or ()),
         labels=split_csv_values(str(args.labels)),
     )
+    if args.safe_batch:
+        return run_safe_batch(args, options)
     try:
         result = run(
             args.images,
@@ -945,6 +1469,10 @@ def main() -> int:
             model_dir=args.model_dir,
             device=args.device,
             options=options,
+            resume_state=bool(args.resume_state),
+            max_images=int(args.max_images) if int(args.max_images) > 0 else None,
+            progress_offset=int(args.progress_offset) if int(args.progress_offset) >= 0 else None,
+            progress_total=int(args.progress_total) if int(args.progress_total) > 0 else None,
         )
     except Exception as e:  # noqa: BLE001 - CLI should report concise errors to the GUI log.
         print(f"Error: {e}", flush=True)

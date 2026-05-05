@@ -38,6 +38,7 @@ python sky_mask.py [images_dir_or_file] [masks_dir] [--backend mask2former|sam31
 - `--model-dir PATH`: ローカルモデルディレクトリ、またはSAM3.1 checkpointを明示。
 - `--device auto|cpu|cuda`: 推論デバイス（既定: `auto`）。
 - `--replace`: 互換用の `--merge-mode replace` ショートカットです。
+- `--safe-batch`: SAM3.1のフォルダ一括処理を途中保存/未処理再開つきで実行します。GUIのSAM3.1一括生成では自動で使います。
 
 例:
 
@@ -94,5 +95,6 @@ SAM3.1を動かすには、アクティブなvenvにMetaの `sam3` Python packag
 - Mask2Formerは複数ADE20Kラベルを1回の推論で解決し、最終マスクへ統合します。
 - SAM3.1は1プロンプトずつ実行し、結果をOR合成します。
 - SAM3.1の減算プロンプトは同じ入力素材レシピで検出し、肯定側のプロンプトマスクから差し引いてから合成モードを適用します。
+- `--safe-batch` 使用時にGPUメモリ不足で停止した場合、完了済みマスクは保存されます。同じ設定で再実行すると未処理画像から再開します。
 - 小領域除去と上端接続フィルタは空ラベル/空プロンプトだけに適用します。人物、三脚、カスタムプロンプトのマスクは空用後処理では削除されません。
 - この機能は第三者モデル重みおよびデータセット由来checkpointを使います。別ライセンス/利用条件については [../THIRD_PARTY_LICENSES.md](../THIRD_PARTY_LICENSES.md) を参照してください。

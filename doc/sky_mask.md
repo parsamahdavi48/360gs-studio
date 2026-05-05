@@ -42,6 +42,7 @@ python sky_mask.py [images_dir_or_file] [masks_dir] [--backend mask2former|sam31
 - `--model-dir PATH`: local model directory or SAM3.1 checkpoint override.
 - `--device auto|cpu|cuda`: inference device (default: `auto`).
 - `--replace`: compatibility shortcut for `--merge-mode replace`.
+- `--safe-batch`: run SAM3.1 directory batches with saved progress and unfinished-image resume. The GUI uses this automatically for SAM3.1 batch generation.
 
 Examples:
 
@@ -103,5 +104,6 @@ checkpoint in the location above or pass it with `--model-dir`.
 - Mask2Former resolves multiple ADE20K labels in one inference and merges them.
 - SAM3.1 runs one prompt at a time and OR-merges the prompt masks.
 - SAM3.1 subtract prompts are detected with the same input-view recipe, then removed from the positive prompt mask before merge-mode is applied.
+- With `--safe-batch`, completed masks remain saved if GPU memory runs out. Rerun with the same settings to resume unfinished images.
 - Small-area and top-connected filtering are applied only to sky labels/prompts. Person, tripod, and custom prompt masks are not removed by these sky post-filters.
 - This feature uses third-party model weights and dataset-derived checkpoints with separate terms. See [../THIRD_PARTY_LICENSES.md](../THIRD_PARTY_LICENSES.md).

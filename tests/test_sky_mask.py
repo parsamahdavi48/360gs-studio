@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 from pathlib import Path
+from types import SimpleNamespace
 
 import cv2
 import numpy as np
 
+import sky_mask
 from sky_mask import (
     BACKEND_SAM31,
     DEFAULT_SAM31_CHECKPOINT_NAME,
@@ -17,6 +19,8 @@ from sky_mask import (
     postprocess_sky_components,
     process_image,
     resolve_model_source,
+    resume_state_path,
+    run,
 )
 
 
@@ -191,6 +195,148 @@ def test_sky_mask_replace_ignores_existing_mask(tmp_path: Path) -> None:
     assert replaced is not None
     assert replaced[2, 4] == 0
     assert replaced[14, 12] == 255
+
+
+def test_sky_mask_resume_state_keeps_completed_masks_after_oom_and_resumes(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    images = tmp_path / "images"
+    masks = tmp_path / "masks"
+    images.mkdir()
+    masks.mkdir()
+    for idx in range(2):
+        image = np.zeros((16, 24, 3), dtype=np.uint8)
+        image[:8, :, 0] = 255
+        cv2.imwrite(str(images / f"frame_{idx:04d}.png"), image)
+
+    class OomAfterFirstSegmenter:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def detect_sky(self, bgr: np.ndarray, options: SkyMaskOptions) -> np.ndarray:
+            del options
+            self.calls += 1
+            if self.calls > 1:
+                raise RuntimeError("CUDA out of memory while allocating test tensor")
+            return bgr[:, :, 0] > 200
+
+    first_segmenter = OomAfterFirstSegmenter()
+    monkeypatch.setattr(sky_mask, "create_sky_segmenter", lambda *args, **kwargs: first_segmenter)
+    monkeypatch.setattr(sky_mask, "resolve_model_source", lambda *args, **kwargs: "sam3.1_multiplex.pt")
+    options = SkyMaskOptions(projection="normal", mode="direct", replace=True)
+
+    first = run(images, masks, backend=BACKEND_SAM31, options=options, resume_state=True)
+
+    assert not first.ok
+    assert first.applied == 1
+    assert first.failed == 1
+    assert (masks / "frame_0000.png").is_file()
+    assert not (masks / "frame_0001.png").is_file()
+    assert resume_state_path(masks).is_file()
+
+    class CountingSegmenter:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def detect_sky(self, bgr: np.ndarray, options: SkyMaskOptions) -> np.ndarray:
+            del options
+            self.calls += 1
+            return bgr[:, :, 0] > 200
+
+    second_segmenter = CountingSegmenter()
+    monkeypatch.setattr(sky_mask, "create_sky_segmenter", lambda *args, **kwargs: second_segmenter)
+
+    second = run(images, masks, backend=BACKEND_SAM31, options=options, resume_state=True)
+
+    assert second.ok
+    assert second.resumed == 1
+    assert second.applied == 1
+    assert second_segmenter.calls == 1
+    assert (masks / "frame_0000.png").is_file()
+    assert (masks / "frame_0001.png").is_file()
+    assert not resume_state_path(masks).exists()
+
+
+def test_sky_mask_safe_batch_retries_smaller_chunks_after_oom(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    images = tmp_path / "images"
+    masks = tmp_path / "masks"
+    images.mkdir()
+    masks.mkdir()
+    for idx in range(3):
+        cv2.imwrite(str(images / f"frame_{idx:04d}.png"), np.zeros((8, 12, 3), dtype=np.uint8))
+    options = SkyMaskOptions(projection="normal", mode="direct", replace=True, sam_prompts=("sky",))
+    args = SimpleNamespace(
+        images=str(images),
+        masks_dir=str(masks),
+        backend=BACKEND_SAM31,
+        model_dir=None,
+        device="auto",
+        projection="normal",
+        quality="high",
+        mode="direct",
+        inference_size=1008,
+        view_size=0,
+        min_score=0.5,
+        min_area_ratio=0.0,
+        expand=0,
+        merge_mode="replace",
+        labels="sky",
+        top_connected=False,
+        no_top_connected=False,
+        add_ext=False,
+        replace=True,
+        sam_prompt=["sky"],
+        subtract_sam_prompt=[],
+        resume_state=False,
+        max_images=0,
+        progress_offset=-1,
+        progress_total=0,
+    )
+    monkeypatch.setattr(sky_mask, "resolve_model_source", lambda *args, **kwargs: "sam3.1_multiplex.pt")
+    settings_hash = sky_mask._settings_fingerprint(
+        backend=BACKEND_SAM31,
+        model_source="sam3.1_multiplex.pt",
+        device="auto",
+        options=options,
+    )
+    image_files = sky_mask.iter_image_files(images)
+    state_path = resume_state_path(masks)
+    chunks: list[int] = []
+
+    def mark_next(count: int) -> None:
+        state = sky_mask._load_resume_state(state_path, settings_hash)
+        pending = [
+            image_path
+            for image_path in image_files
+            if not sky_mask._completed_record_matches(state, image_path, images, masks, options)
+        ]
+        for image_path in pending[:count]:
+            mask_out = sky_mask.mask_output_path_for_image(image_path, images, masks)
+            mask_out.parent.mkdir(parents=True, exist_ok=True)
+            cv2.imwrite(str(mask_out), np.full((8, 12), 255, dtype=np.uint8))
+            sky_mask._mark_resume_completed(state_path, state, image_path, images, masks, options)
+
+    def fake_child(cmd: list[str]) -> tuple[int, bool]:
+        chunk = int(cmd[cmd.index("--max-images") + 1])
+        chunks.append(chunk)
+        if len(chunks) == 1:
+            mark_next(1)
+            return 1, True
+        mark_next(chunk)
+        return 0, False
+
+    monkeypatch.setattr(sky_mask, "_run_child_and_stream", fake_child)
+
+    exit_code = sky_mask.run_safe_batch(args, options)
+
+    assert exit_code == 0
+    assert chunks == [3, 1, 1]
+    assert all((masks / f"frame_{idx:04d}.png").is_file() for idx in range(3))
+    assert not state_path.exists()
 
 
 def test_sky_mask_output_path_preserves_subfolders(tmp_path: Path) -> None:

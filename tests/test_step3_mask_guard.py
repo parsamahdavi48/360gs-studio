@@ -499,6 +499,7 @@ def test_mask_step_sam31_primary_builds_prompt_command(tmp_path: Path, monkeypat
     assert cmd[cmd.index("--quality") + 1] == "high"
     assert cmd[cmd.index("--inference-size") + 1] == "1008"
     assert cmd[cmd.index("--merge-mode") + 1] == "replace"
+    assert "--safe-batch" in cmd
     prompt_args = [cmd[idx + 1] for idx, value in enumerate(cmd) if value == "--sam-prompt"]
     assert prompt_args == ["person", "sky"]
 
@@ -608,11 +609,35 @@ def test_mask_step_person_mask_can_select_sam31_backend(tmp_path: Path, monkeypa
     assert cmd[cmd.index("--min-score") + 1] == "0.5"
     assert "--top-connected" not in cmd
     assert "--replace" in cmd
+    assert "--safe-batch" in cmd
     assert step.yolo_level_combo.isEnabled()
     assert not step.yolo_bottom_enhance_combo.isEnabled()
     assert not step.yolo_class_list_section.isEnabled()
     assert step.yolo_expand_edit.isEnabled()
     assert not step.sam_prompt_section.isHidden()
+
+
+def test_mask_step_sam31_preview_does_not_use_safe_batch(tmp_path: Path, monkeypatch) -> None:
+    _app()
+    scene = tmp_path
+    images = scene / "images"
+    masks = scene / "masks"
+    images.mkdir()
+    masks.mkdir()
+    image_path = images / "frame_0001.jpg"
+    cv2.imwrite(str(image_path), np.full((16, 32, 3), 180, dtype=np.uint8))
+    step = MaskStep(Path.cwd())
+    step.set_scene_dir(str(scene))
+    checkpoint = scene / "sam3.1_multiplex.pt"
+    checkpoint.write_bytes(b"checkpoint")
+    monkeypatch.setattr(step, "_sam31_checkpoint_path", lambda: checkpoint)
+    step._update_person_backend_availability()
+    step.person_backend_combo.setCurrentIndex(2)
+
+    cmd = step._build_yolo_preview_cmd(image_path, masks)
+
+    assert cmd[cmd.index("--backend") + 1] == "sam31"
+    assert "--safe-batch" not in cmd
 
 
 def test_mask_step_stitch_runs_after_primary_mask(tmp_path: Path) -> None:

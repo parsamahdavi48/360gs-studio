@@ -64,11 +64,13 @@ To rebuild with the pinned known-good package set from `requirements/`, run `upd
 
 YOLO/SAM2, Mask2Former, and SAM3.1 model weights may be downloaded on first use. Local YOLO/SAM weights can be placed under `models/ultralytics/`; local Mask2Former weights can be placed under `models/mask2former-swin-large-ade-semantic/`; SAM3.1 prompt masking uses `models/sam3.1/sam3.1_multiplex.pt`. Legacy `.pt` files in the repository root are still detected for compatibility. Release ZIP assets do not include model weights, generated scene data, user settings, or local setup logs. These third-party libraries and model weights are governed by separate license terms; see [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md).
 
-### Optional SAM3.1 Prompt Masks
+### SAM3.1 Prompt Masks
 
-SAM3.1 is optional. `setup_windows.bat` installs the runtime package, but the checkpoint is not bundled because access requires your Hugging Face account and SAM License acceptance.
+`setup_windows.bat` installs the SAM3.1 runtime package, but the checkpoint is not bundled because access requires your Hugging Face account and SAM License acceptance.
 
-This app uses the official `facebook/sam3.1` `sam3.1_multiplex.pt` checkpoint. SAM3.1 is a heavy CUDA-GPU-oriented model, so use it on a system with comfortable VRAM headroom.
+This app uses the official `facebook/sam3.1` `sam3.1_multiplex.pt` checkpoint. SAM3.1 is a CUDA-GPU-oriented model. Running it on an NVIDIA GPU environment is recommended.
+
+If GPU memory runs out during SAM3.1 batch processing, completed masks remain saved. Rerun with the same settings to resume from unfinished images.
 
 Use SAM3.1 when you want more accurate prompt-controlled masks, especially for sky masks or targeted cleanup. After generating masks once, you can select only the images that need correction and use SAM3.1 prompts to add missed regions such as `tripod`, `hand`, or `selfie stick`, or subtract false detections such as `logo` or `sign`.
 
