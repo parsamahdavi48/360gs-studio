@@ -57,6 +57,8 @@ def test_quick_extract_csv_leaves_uncomputed_scores_blank() -> None:
         "change_score_final",
         "blur_score_original",
         "blur_score_final",
+        "sharpness_baseline",
+        "sharpness_ratio",
         "quality_score_original",
         "quality_score_final",
     ):

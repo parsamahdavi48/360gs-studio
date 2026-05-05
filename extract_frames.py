@@ -83,6 +83,63 @@ class PairTrackMetrics:
     median_residual_motion: float
 
 
+@dataclass(frozen=True)
+class PairFrameRisk:
+    blur_score: float
+    sharpness_baseline: float | None
+    sharpness_ratio: float | None
+    motion_blur: bool
+    low_texture: bool
+    weak_match: bool
+
+
+@dataclass(frozen=True)
+class PairThresholdProfile:
+    reference_interval_sec: float
+    min_interval_sec: float
+    max_interval_sec: float
+    base_drop_threshold: float
+    base_add_threshold: float
+    exponent: float = 0.5
+
+
+@dataclass(frozen=True)
+class PairThresholds:
+    drop: float
+    add: float
+    profile: str
+    mode: str
+
+
+PAIR_SHARPNESS_HISTORY = 7
+PAIR_LOW_TEXTURE_SHARPNESS = 8.0
+PAIR_MOTION_BLUR_BASELINE_MIN = 12.0
+PAIR_MOTION_BLUR_RATIO = 0.35
+PAIR_GATE_WIDTH_DEFAULT = 1280
+
+
+PAIR_THRESHOLD_PROFILES: dict[str, PairThresholdProfile] = {
+    # Slow handheld walking: 1 second is the reference cadence. The clamp range
+    # is derived from the practical walking interval domain, not fixed literals.
+    "walk": PairThresholdProfile(
+        reference_interval_sec=1.0,
+        min_interval_sec=0.35,
+        max_interval_sec=2.5,
+        base_drop_threshold=0.035,
+        base_add_threshold=0.090,
+    ),
+    # Aerial 360 capture tends to have weaker residual parallax because most
+    # features are farther away, so the reference residual thresholds are lower.
+    "drone": PairThresholdProfile(
+        reference_interval_sec=2.0,
+        min_interval_sec=0.8,
+        max_interval_sec=5.0,
+        base_drop_threshold=0.025,
+        base_add_threshold=0.065,
+    ),
+}
+
+
 def parse_fraction(value: str) -> float:
     if not value:
         return 0.0
@@ -569,6 +626,85 @@ def compute_pair_track_metrics(
     )
 
 
+def compute_pair_blur_score(frame: np.ndarray) -> float:
+    return float(cv2.Laplacian(frame, cv2.CV_64F).var())
+
+
+def pair_gate_dimensions(analysis_w: int, analysis_h: int) -> tuple[int, int]:
+    if analysis_w <= 0 or analysis_h <= 0:
+        return analysis_w, analysis_h
+    if analysis_w <= PAIR_GATE_WIDTH_DEFAULT:
+        return analysis_w, analysis_h
+    return scaled_dimensions(analysis_w, analysis_h, PAIR_GATE_WIDTH_DEFAULT)
+
+
+def pair_gate_frame(frame: np.ndarray, gate_w: int, gate_h: int) -> np.ndarray:
+    if frame.shape[1] == gate_w and frame.shape[0] == gate_h:
+        return frame
+    return cv2.resize(frame, (gate_w, gate_h), interpolation=cv2.INTER_AREA)
+
+
+def _median_or_none(values: Sequence[float]) -> float | None:
+    if not values:
+        return None
+    return float(np.median(np.asarray(values, dtype=np.float64)))
+
+
+def assess_pair_frame_risk(
+    *,
+    blur_score: float,
+    sharpness_baseline: float | None,
+    track: PairTrackMetrics | None,
+    track_min_confidence: float,
+    track_min_count: int,
+) -> PairFrameRisk:
+    """Classify candidate-only SfM risks without reviving the old quality score."""
+    sharpness_ratio = None
+    if sharpness_baseline is not None and sharpness_baseline > 1e-6:
+        sharpness_ratio = blur_score / sharpness_baseline
+
+    weak_match = False
+    weak_for_blur = False
+    low_texture_track = False
+    if track is not None:
+        min_count = max(0, int(track_min_count))
+        min_confidence = max(0.0, float(track_min_confidence))
+        weak_match = track.track_count < min_count or track.confidence < min_confidence
+        weak_for_blur = (
+            track.track_count < max(12, min_count // 2)
+            or track.confidence < max(0.15, min_confidence * 0.75)
+        )
+        low_texture_track = (
+            track.track_count < max(12, min_count)
+            or track.coverage < 0.12
+            or track.confidence < max(0.12, min_confidence * 0.5)
+        )
+
+    severe_sharpness_drop = sharpness_ratio is not None and sharpness_ratio <= min(0.12, PAIR_MOTION_BLUR_RATIO)
+    motion_blur = (
+        sharpness_baseline is not None
+        and sharpness_baseline >= PAIR_MOTION_BLUR_BASELINE_MIN
+        and sharpness_ratio is not None
+        and sharpness_ratio <= PAIR_MOTION_BLUR_RATIO
+        and (weak_for_blur or severe_sharpness_drop)
+    )
+    low_texture = (
+        not motion_blur
+        and blur_score <= PAIR_LOW_TEXTURE_SHARPNESS
+        and (sharpness_baseline is None or sharpness_baseline <= PAIR_MOTION_BLUR_BASELINE_MIN)
+        and (track is None or low_texture_track)
+    )
+
+    return PairFrameRisk(
+        blur_score=blur_score,
+        sharpness_baseline=sharpness_baseline,
+        sharpness_ratio=sharpness_ratio,
+        motion_blur=motion_blur,
+        low_texture=low_texture,
+        weak_match=weak_match,
+    )
+
+
 def analyze_video_window(
     video_path: Path,
     ffmpeg_bin: str,
@@ -731,6 +867,44 @@ def analyze_video(
     return blur_scores, change_scores, quality_scores, feature_motion_scores, out_w, out_h
 
 
+def _scaled_pair_threshold(
+    base_threshold: float,
+    interval_sec: float,
+    profile: PairThresholdProfile,
+) -> float:
+    reference = max(1e-6, profile.reference_interval_sec)
+    interval = max(1e-6, float(interval_sec))
+    raw = base_threshold * math.pow(interval / reference, profile.exponent)
+    low = base_threshold * math.pow(profile.min_interval_sec / reference, profile.exponent)
+    high = base_threshold * math.pow(profile.max_interval_sec / reference, profile.exponent)
+    return max(low, min(high, raw))
+
+
+def resolve_pair_thresholds(
+    interval_sec: float,
+    motion_profile: str = "walk",
+    drop_threshold: float = -1.0,
+    add_threshold: float = -1.0,
+) -> PairThresholds:
+    profile_name = motion_profile if motion_profile in PAIR_THRESHOLD_PROFILES else "walk"
+    profile = PAIR_THRESHOLD_PROFILES[profile_name]
+
+    auto_drop = _scaled_pair_threshold(profile.base_drop_threshold, interval_sec, profile)
+    auto_add = _scaled_pair_threshold(profile.base_add_threshold, interval_sec, profile)
+    drop = auto_drop if drop_threshold < 0.0 else float(drop_threshold)
+    add = auto_add if add_threshold < 0.0 else float(add_threshold)
+    if add <= drop:
+        raise ValueError("--pair-add-threshold must be greater than --pair-drop-threshold")
+
+    if drop_threshold < 0.0 and add_threshold < 0.0:
+        mode = "auto"
+    elif drop_threshold >= 0.0 and add_threshold >= 0.0:
+        mode = "manual"
+    else:
+        mode = "mixed"
+    return PairThresholds(drop=drop, add=add, profile=profile_name, mode=mode)
+
+
 def _pair_status(tokens: Sequence[str]) -> str:
     filtered = [token for token in tokens if token and token != "ok"]
     return "+".join(filtered) if filtered else "ok"
@@ -746,22 +920,26 @@ def _pair_row(
     reason: str,
     metrics: PairMetrics | None,
     track: PairTrackMetrics | None,
-    blur_score: float | None,
+    risk: PairFrameRisk | None,
     analysis_w: int,
+    gate_w: int,
+    thresholds: PairThresholds | None = None,
 ) -> dict:
     gap_frames = 0 if prev_kept_idx is None else max(0, idx - prev_kept_idx)
     yaw_deg = "" if metrics is None else metrics.yaw_shift_deg
-    risk_flags: list[str] = []
-    if track is not None and track.track_count > 0 and track.confidence < 0.28:
-        risk_flags.append("weak_match")
     status = _pair_status(status_tokens)
+    risk_flags = [token for token in ("motion_blur", "low_texture", "weak_match") if token in status]
+    if track is not None and track.track_count > 0 and track.confidence < 0.28 and "weak_match" not in risk_flags:
+        risk_flags.append("weak_match")
     return {
         "original_index": idx,
         "final_index": idx,
         "change_score_original": None if metrics is None else metrics.residual,
         "change_score_final": None if metrics is None else metrics.residual,
-        "blur_score_original": blur_score,
-        "blur_score_final": blur_score,
+        "blur_score_original": None if risk is None else risk.blur_score,
+        "blur_score_final": None if risk is None else risk.blur_score,
+        "sharpness_baseline": "" if risk is None or risk.sharpness_baseline is None else risk.sharpness_baseline,
+        "sharpness_ratio": "" if risk is None or risk.sharpness_ratio is None else risk.sharpness_ratio,
         "quality_score_original": None,
         "quality_score_final": None,
         "status": status,
@@ -780,6 +958,11 @@ def _pair_row(
         "match_confidence": "" if track is None else track.confidence,
         "risk_flags": ",".join(risk_flags),
         "analysis_width": analysis_w,
+        "pair_gate_width": gate_w,
+        "pair_motion_profile": "" if thresholds is None else thresholds.profile,
+        "pair_threshold_mode": "" if thresholds is None else thresholds.mode,
+        "pair_drop_threshold": "" if thresholds is None else thresholds.drop,
+        "pair_add_threshold": "" if thresholds is None else thresholds.add,
     }
 
 
@@ -792,7 +975,10 @@ def analyze_pair_selection(
     fixed_smart: bool,
     min_gap_sec: float,
     max_gap_sec: float,
-    residual_threshold: float,
+    drop_threshold: float,
+    add_threshold: float,
+    threshold_profile: str,
+    threshold_mode: str,
     max_inserts_per_interval: int,
     track_min_confidence: float,
     track_min_count: int,
@@ -842,23 +1028,30 @@ def analyze_pair_selection(
     stderr_thread.start()
 
     frame_size = out_w * out_h
-    weights = _latitude_weights(out_h)
+    gate_w, gate_h = pair_gate_dimensions(out_w, out_h)
+    weights = _latitude_weights(gate_h)
     interval_frames = max(1, int(round(interval_sec * video_info.fps)))
     min_gap_frames = max(1, int(round(min_gap_sec * video_info.fps)))
     max_gap_frames = max(min_gap_frames, int(round(max_gap_sec * video_info.fps)))
     max_inserts = max(0, int(max_inserts_per_interval))
-    threshold = max(0.0, float(residual_threshold))
+    thresholds = PairThresholds(
+        drop=max(0.0, float(drop_threshold)),
+        add=max(0.0, float(add_threshold)),
+        profile=threshold_profile,
+        mode=threshold_mode,
+    )
     total_hint = video_info.total_frames
     progress_step = max(10, total_hint // 100) if total_hint > 0 else max(10, int(round(video_info.fps * 2.0)))
 
     rows: list[dict] = []
     seen_rows: set[int] = set()
     inserted_by_slot: dict[int, int] = {}
+    kept_sharpness: list[float] = []
     last_keep_frame: np.ndarray | None = None
+    last_keep_gate_frame: np.ndarray | None = None
     last_keep_idx: int | None = None
     last_frame: np.ndarray | None = None
     last_frame_idx = -1
-    last_frame_blur = 0.0
     last_progress_report = 0
 
     def emit_progress(processed_frames: int, force: bool = False) -> None:
@@ -888,17 +1081,31 @@ def analyze_pair_selection(
         *,
         idx: int,
         frame: np.ndarray,
-        blur_score: float,
         status_tokens: Sequence[str],
         decision: str,
         reason: str,
         metrics: PairMetrics,
+        allow_motion_blur_drop: bool,
     ) -> dict:
-        track = compute_pair_track_metrics(last_keep_frame, frame, metrics.yaw_shift_px) if last_keep_frame is not None else None
+        track_shift_px = int(round(metrics.yaw_shift_px * (frame.shape[1] / float(max(1, gate_w)))))
+        track = compute_pair_track_metrics(last_keep_frame, frame, track_shift_px) if last_keep_frame is not None else None
         tokens = list(status_tokens)
-        if decision != "drop" and track is not None:
-            if track.track_count < track_min_count or track.confidence < track_min_confidence:
-                tokens.append("weak_match")
+        risk = assess_pair_frame_risk(
+            blur_score=compute_pair_blur_score(frame),
+            sharpness_baseline=_median_or_none(kept_sharpness),
+            track=track,
+            track_min_confidence=track_min_confidence,
+            track_min_count=track_min_count,
+        )
+        if risk.motion_blur:
+            tokens.append("motion_blur")
+            if allow_motion_blur_drop and decision != "drop":
+                decision = "drop"
+                reason = "motion_blur"
+        elif risk.low_texture:
+            tokens.append("low_texture")
+        if decision != "drop" and risk.weak_match:
+            tokens.append("weak_match")
         return _pair_row(
             idx=idx,
             prev_kept_idx=last_keep_idx,
@@ -908,8 +1115,10 @@ def analyze_pair_selection(
             reason=reason,
             metrics=metrics,
             track=track,
-            blur_score=blur_score,
+            risk=risk,
             analysis_w=out_w,
+            gate_w=gate_w,
+            thresholds=thresholds,
         )
 
     try:
@@ -922,27 +1131,38 @@ def analyze_pair_selection(
 
             frame = np.frombuffer(raw, dtype=np.uint8).reshape((out_h, out_w))
             idx = last_frame_idx + 1
-            blur_score = float(cv2.Laplacian(frame, cv2.CV_64F).var())
             last_frame = frame
             last_frame_idx = idx
-            last_frame_blur = blur_score
 
             if last_keep_frame is None:
+                gate_frame = pair_gate_frame(frame, gate_w, gate_h)
+                initial_risk = assess_pair_frame_risk(
+                    blur_score=compute_pair_blur_score(frame),
+                    sharpness_baseline=None,
+                    track=None,
+                    track_min_confidence=track_min_confidence,
+                    track_min_count=track_min_count,
+                )
+                initial_tokens = ["low_texture"] if initial_risk.low_texture else []
                 append_row(
                     _pair_row(
                         idx=idx,
                         prev_kept_idx=None,
                         fps=video_info.fps,
-                        status_tokens=[],
+                        status_tokens=initial_tokens,
                         decision="keep",
                         reason="initial",
                         metrics=None,
                         track=None,
-                        blur_score=blur_score,
+                        risk=initial_risk,
                         analysis_w=out_w,
+                        gate_w=gate_w,
+                        thresholds=thresholds,
                     )
                 )
+                kept_sharpness.append(initial_risk.blur_score)
                 last_keep_frame = frame.copy()
+                last_keep_gate_frame = gate_frame.copy()
                 last_keep_idx = idx
                 emit_progress(idx + 1, force=True)
                 continue
@@ -956,8 +1176,11 @@ def analyze_pair_selection(
             slot = idx // interval_frames
             base_due = (idx % interval_frames) == 0
             max_due = gap >= max_gap_frames
-            metrics = compute_pair_metrics(last_keep_frame, frame, weights)
-            high_novelty = threshold <= 0.0 or metrics.residual >= threshold
+            assert last_keep_gate_frame is not None
+            gate_frame = pair_gate_frame(frame, gate_w, gate_h)
+            metrics = compute_pair_metrics(last_keep_gate_frame, gate_frame, weights)
+            high_novelty = thresholds.add <= 0.0 or metrics.residual >= thresholds.add
+            low_redundancy = metrics.residual < thresholds.drop
             inserted = inserted_by_slot.get(slot, 0)
 
             row: dict | None = None
@@ -965,14 +1188,15 @@ def analyze_pair_selection(
             status_tokens: list[str] = []
             reason = "ok"
             decision = "keep"
+            insert_slot: int | None = None
 
             if fixed_smart and not base_due and high_novelty and inserted < max_inserts:
                 keep_current = True
                 status_tokens.append("novelty_added")
                 reason = "novelty_added"
-                inserted_by_slot[slot] = inserted + 1
+                insert_slot = slot
             elif base_due:
-                if fixed_smart and not high_novelty and not max_due:
+                if fixed_smart and low_redundancy and not max_due:
                     decision = "drop"
                     status_tokens.append("redundant_drop")
                     reason = "redundant_drop"
@@ -992,15 +1216,23 @@ def analyze_pair_selection(
                 row = evaluate_row(
                     idx=idx,
                     frame=frame,
-                    blur_score=blur_score,
                     status_tokens=status_tokens,
                     decision=decision,
                     reason=reason,
                     metrics=metrics,
+                    allow_motion_blur_drop=not max_due,
                 )
                 append_row(row)
-                if keep_current:
+                if keep_current and row.get("decision") != "drop":
+                    if insert_slot is not None:
+                        inserted_by_slot[insert_slot] = inserted + 1
+                    if "motion_blur" not in row.get("status", ""):
+                        row_blur = row.get("blur_score_final")
+                        if row_blur not in (None, ""):
+                            kept_sharpness.append(float(row_blur))
+                            del kept_sharpness[:-PAIR_SHARPNESS_HISTORY]
                     last_keep_frame = frame.copy()
+                    last_keep_gate_frame = gate_frame.copy()
                     last_keep_idx = idx
 
             emit_progress(idx + 1)
@@ -1015,16 +1247,21 @@ def analyze_pair_selection(
         raise RuntimeError("No frames decoded during pair analysis")
 
     if last_keep_idx is not None and last_frame_idx != last_keep_idx and last_frame_idx not in seen_rows:
-        metrics = compute_pair_metrics(last_keep_frame, last_frame, weights) if last_keep_frame is not None else None
+        endpoint_gate_frame = pair_gate_frame(last_frame, gate_w, gate_h)
+        metrics = (
+            compute_pair_metrics(last_keep_gate_frame, endpoint_gate_frame, weights)
+            if last_keep_gate_frame is not None
+            else None
+        )
         if metrics is not None:
             row = evaluate_row(
                 idx=last_frame_idx,
                 frame=last_frame,
-                blur_score=last_frame_blur,
                 status_tokens=["gap_forced"],
                 decision="keep",
                 reason="endpoint",
                 metrics=metrics,
+                allow_motion_blur_drop=False,
             )
             append_row(row)
     emit_progress(last_frame_idx + 1, force=True)
@@ -1849,6 +2086,8 @@ SELECTED_CSV_FIELDNAMES = [
     "change_score_final",
     "blur_score_original",
     "blur_score_final",
+    "sharpness_baseline",
+    "sharpness_ratio",
     "quality_score_original",
     "quality_score_final",
     "status",
@@ -1867,6 +2106,11 @@ SELECTED_CSV_FIELDNAMES = [
     "match_confidence",
     "risk_flags",
     "analysis_width",
+    "pair_gate_width",
+    "pair_motion_profile",
+    "pair_threshold_mode",
+    "pair_drop_threshold",
+    "pair_add_threshold",
     "output_file",
 ]
 
@@ -1926,6 +2170,8 @@ def build_selected_csv_rows(
                 "change_score_final": _csv_score(row.get("change_score_final")),
                 "blur_score_original": _csv_score(row.get("blur_score_original")),
                 "blur_score_final": _csv_score(row.get("blur_score_final")),
+                "sharpness_baseline": _csv_score(row.get("sharpness_baseline")),
+                "sharpness_ratio": _csv_score(row.get("sharpness_ratio")),
                 "quality_score_original": _csv_score(row.get("quality_score_original", 0.0)),
                 "quality_score_final": _csv_score(row.get("quality_score_final", 0.0)),
                 "status": row["status"],
@@ -1944,6 +2190,11 @@ def build_selected_csv_rows(
                 "match_confidence": _csv_score(row.get("match_confidence")),
                 "risk_flags": row.get("risk_flags", ""),
                 "analysis_width": row.get("analysis_width", ""),
+                "pair_gate_width": row.get("pair_gate_width", ""),
+                "pair_motion_profile": row.get("pair_motion_profile", ""),
+                "pair_threshold_mode": row.get("pair_threshold_mode", ""),
+                "pair_drop_threshold": _csv_score(row.get("pair_drop_threshold")),
+                "pair_add_threshold": _csv_score(row.get("pair_add_threshold")),
                 "output_file": f"images/{frame_filename(filename_prefix, final_idx, image_ext, frame_digits)}",
             }
         )
@@ -2019,6 +2270,12 @@ def write_report(
     filename_prefix: str,
     frame_digits: int,
 ) -> None:
+    pair_thresholds = resolve_pair_thresholds(
+        args.interval_sec,
+        getattr(args, "pair_motion_profile", "walk"),
+        getattr(args, "pair_drop_threshold", -1.0),
+        getattr(args, "pair_add_threshold", -1.0),
+    )
     report = {
         "input_video": str(Path(args.input_video).resolve()),
         "mode": args.mode,
@@ -2048,6 +2305,12 @@ def write_report(
             "fixed_smart_change_threshold": args.fixed_smart_change_threshold,
             "fixed_smart_feature_threshold": args.fixed_smart_feature_threshold,
             "fixed_smart_max_inserts_per_interval": args.fixed_smart_max_inserts_per_interval,
+            "pair_motion_profile": getattr(args, "pair_motion_profile", "walk"),
+            "pair_threshold_mode": pair_thresholds.mode,
+            "pair_drop_threshold": getattr(args, "pair_drop_threshold", -1.0),
+            "pair_add_threshold": getattr(args, "pair_add_threshold", -1.0),
+            "pair_drop_threshold_resolved": pair_thresholds.drop,
+            "pair_add_threshold_resolved": pair_thresholds.add,
             "pair_track_min_count": getattr(args, "pair_track_min_count", 0),
             "pair_track_min_confidence": getattr(args, "pair_track_min_confidence", 0.0),
             "quality_min_score": args.quality_min_score,
@@ -2088,6 +2351,12 @@ def build_summary_from_counts(
     frame_digits: int,
     estimate_meta: dict | None = None,
 ) -> dict:
+    pair_thresholds = resolve_pair_thresholds(
+        args.interval_sec,
+        getattr(args, "pair_motion_profile", "walk"),
+        getattr(args, "pair_drop_threshold", -1.0),
+        getattr(args, "pair_add_threshold", -1.0),
+    )
     summary = {
         "input_video": str(Path(args.input_video).resolve()),
         "mode": args.mode,
@@ -2118,9 +2387,16 @@ def build_summary_from_counts(
             "fixed_smart_change_threshold": args.fixed_smart_change_threshold,
             "fixed_smart_feature_threshold": args.fixed_smart_feature_threshold,
             "fixed_smart_max_inserts_per_interval": args.fixed_smart_max_inserts_per_interval,
+            "pair_motion_profile": getattr(args, "pair_motion_profile", "walk"),
+            "pair_threshold_mode": pair_thresholds.mode,
+            "pair_drop_threshold": getattr(args, "pair_drop_threshold", -1.0),
+            "pair_add_threshold": getattr(args, "pair_add_threshold", -1.0),
+            "pair_drop_threshold_resolved": pair_thresholds.drop,
+            "pair_add_threshold_resolved": pair_thresholds.add,
             "pair_track_min_count": getattr(args, "pair_track_min_count", 0),
             "pair_track_min_confidence": getattr(args, "pair_track_min_confidence", 0.0),
             "analysis_width": args.analysis_width,
+            "pair_gate_width": pair_gate_dimensions(analysis_w, analysis_h)[0] if analysis_w > 0 else 0,
             "quality_min_score": args.quality_min_score,
             "quality_min_improvement": args.quality_min_improvement,
             "center_bias": args.center_bias,
@@ -2155,6 +2431,8 @@ def build_summary(
     novelty_added_count = sum(1 for r in selected_rows if "novelty_added" in r.get("status", ""))
     redundant_drop_count = sum(1 for r in selected_rows if "redundant_drop" in r.get("status", ""))
     gap_forced_count = sum(1 for r in selected_rows if "gap_forced" in r.get("status", ""))
+    motion_blur_count = sum(1 for r in selected_rows if "motion_blur" in r.get("status", ""))
+    low_texture_count = sum(1 for r in selected_rows if "low_texture" in r.get("status", ""))
     weak_match_count = sum(1 for r in selected_rows if "weak_match" in r.get("status", ""))
     fallback_keep_count = sum(1 for r in selected_rows if "fallback_keep" in r.get("status", ""))
     thinned_count = sum(
@@ -2181,6 +2459,8 @@ def build_summary(
     summary["result"]["novelty_added_count"] = novelty_added_count
     summary["result"]["redundant_drop_count"] = redundant_drop_count
     summary["result"]["gap_forced_count"] = gap_forced_count
+    summary["result"]["motion_blur_count"] = motion_blur_count
+    summary["result"]["low_texture_count"] = low_texture_count
     summary["result"]["weak_match_count"] = weak_match_count
     summary["result"]["thinned_count"] = thinned_count
     summary["result"]["selected_before_thin"] = len(selected_rows)
@@ -2381,6 +2661,24 @@ def parse_args() -> argparse.Namespace:
         help="Minimum tracked feature count before a kept pair is flagged as weak_match.",
     )
     parser.add_argument(
+        "--pair-motion-profile",
+        choices=sorted(PAIR_THRESHOLD_PROFILES.keys()),
+        default="walk",
+        help="Auto threshold profile for pair analysis. walk is the GUI default; drone is for aerial 360 capture.",
+    )
+    parser.add_argument(
+        "--pair-drop-threshold",
+        type=float,
+        default=-1.0,
+        help="Pair residual below this value drops fixed candidates. Negative uses profile-based auto.",
+    )
+    parser.add_argument(
+        "--pair-add-threshold",
+        type=float,
+        default=-1.0,
+        help="Pair residual at or above this value adds novelty candidates. Negative uses profile-based auto.",
+    )
+    parser.add_argument(
         "--pair-track-min-confidence",
         type=float,
         default=0.25,
@@ -2539,6 +2837,16 @@ def main() -> None:
         sys.exit(1)
     if args.pair_track_min_count < 0:
         print("Error: --pair-track-min-count must be >= 0")
+        sys.exit(1)
+    try:
+        resolve_pair_thresholds(
+            args.interval_sec,
+            args.pair_motion_profile,
+            args.pair_drop_threshold,
+            args.pair_add_threshold,
+        )
+    except ValueError as e:
+        print(f"Error: {e}")
         sys.exit(1)
     if args.pair_track_min_confidence < 0.0 or args.pair_track_min_confidence > 1.0:
         print("Error: --pair-track-min-confidence must be between 0 and 1")
@@ -2699,6 +3007,17 @@ def main() -> None:
     if use_pair_pipeline:
         try:
             ensure_python_deps()
+            pair_thresholds = resolve_pair_thresholds(
+                args.interval_sec,
+                args.pair_motion_profile,
+                args.pair_drop_threshold,
+                args.pair_add_threshold,
+            )
+            print(
+                "Pair thresholds: "
+                f"profile={pair_thresholds.profile} mode={pair_thresholds.mode} "
+                f"drop={pair_thresholds.drop:.5f} add={pair_thresholds.add:.5f}"
+            )
             (
                 enriched_rows,
                 analysis_w,
@@ -2715,7 +3034,10 @@ def main() -> None:
                 fixed_smart=args.fixed_smart,
                 min_gap_sec=args.min_gap_sec,
                 max_gap_sec=args.max_gap_sec,
-                residual_threshold=args.fixed_smart_change_threshold,
+                drop_threshold=pair_thresholds.drop,
+                add_threshold=pair_thresholds.add,
+                threshold_profile=pair_thresholds.profile,
+                threshold_mode=pair_thresholds.mode,
                 max_inserts_per_interval=args.fixed_smart_max_inserts_per_interval,
                 track_min_confidence=args.pair_track_min_confidence,
                 track_min_count=args.pair_track_min_count,
@@ -2876,6 +3198,8 @@ def main() -> None:
         if args.analysis_pipeline == "pair":
             print(f"Estimated pair novelty additions: {summary['result'].get('novelty_added_count', 0)}")
             print(f"Estimated pair redundant drops: {summary['result'].get('redundant_drop_count', 0)}")
+            print(f"Estimated pair motion-blur review frames: {summary['result'].get('motion_blur_count', 0)}")
+            print(f"Estimated pair low-texture review frames: {summary['result'].get('low_texture_count', 0)}")
             print(f"Estimated pair weak-match review frames: {summary['result'].get('weak_match_count', 0)}")
         else:
             print(f"Estimated representative replacements: {summary['result']['replaced_count']}")
@@ -3024,6 +3348,8 @@ def main() -> None:
     novelty_added_count = sum(1 for r in enriched_rows if "novelty_added" in r.get("status", ""))
     redundant_drop_count = sum(1 for r in enriched_rows if "redundant_drop" in r.get("status", ""))
     gap_forced_count = sum(1 for r in enriched_rows if "gap_forced" in r.get("status", ""))
+    motion_blur_count = sum(1 for r in enriched_rows if "motion_blur" in r.get("status", ""))
+    low_texture_count = sum(1 for r in enriched_rows if "low_texture" in r.get("status", ""))
     weak_match_count = sum(1 for r in enriched_rows if "weak_match" in r.get("status", ""))
     fallback_count = sum(1 for r in enriched_rows if "fallback_keep" in r.get("status", ""))
     thinned_count = sum(
@@ -3041,6 +3367,10 @@ def main() -> None:
         print(f"Pair redundant drops: {redundant_drop_count}")
     if gap_forced_count > 0:
         print(f"Pair gap-forced keeps: {gap_forced_count}")
+    if motion_blur_count > 0:
+        print(f"Pair motion-blur review frames: {motion_blur_count}")
+    if low_texture_count > 0:
+        print(f"Pair low-texture review frames: {low_texture_count}")
     if weak_match_count > 0:
         print(f"Pair weak-match review frames: {weak_match_count}")
     if thinned_count > 0:

@@ -531,6 +531,12 @@ if QMainWindow is not None:
             if "fallback_keep" in status:
                 return i18n.t("REVIEW_ADVISORY_FALLBACK"), "#fef3c7", "#7c2d12"
 
+            if "motion_blur" in status:
+                return i18n.t("REVIEW_ADVISORY_MOTION_BLUR"), "#fee2e2", "#7f1d1d"
+
+            if "low_texture" in status:
+                return i18n.t("REVIEW_ADVISORY_LOW_TEXTURE"), "#fef3c7", "#7c2d12"
+
             if "weak_match" in status:
                 return i18n.t("REVIEW_ADVISORY_WEAK_MATCH"), "#fef3c7", "#7c2d12"
 
@@ -582,6 +588,8 @@ if QMainWindow is not None:
                 yaw=self._format_metric_value(row.get("yaw_shift_deg"), 1),
                 tracks=row.get("track_count") or "-",
                 confidence=self._format_metric_value(row.get("match_confidence"), 2),
+                blur=self._format_metric_value(row.get("blur_score_final"), 1),
+                sharpness_ratio=self._format_metric_value(row.get("sharpness_ratio"), 2),
             )
 
         def _quality_summary(self, row: dict[str, str]) -> str:
@@ -638,6 +646,8 @@ if QMainWindow is not None:
                 novelty_count = sum(1 for r in self.rows if "novelty_added" in r.get("status", "").strip().lower())
                 redundant_count = sum(1 for r in self.rows if "redundant_drop" in r.get("status", "").strip().lower())
                 gap_count = sum(1 for r in self.rows if "gap_forced" in r.get("status", "").strip().lower())
+                blur_count = sum(1 for r in self.rows if "motion_blur" in r.get("status", "").strip().lower())
+                texture_count = sum(1 for r in self.rows if "low_texture" in r.get("status", "").strip().lower())
                 weak_count = sum(1 for r in self.rows if "weak_match" in r.get("status", "").strip().lower())
                 self.problem_summary_label.setText(
                     i18n.t("REVIEW_PAIR_PROBLEMS_FORMAT").format(
@@ -645,6 +655,8 @@ if QMainWindow is not None:
                         a=novelty_count,
                         d=redundant_count,
                         g=gap_count,
+                        b=blur_count,
+                        l=texture_count,
                         w=weak_count,
                         cur=current_problem,
                     )

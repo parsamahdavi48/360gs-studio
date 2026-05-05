@@ -9,6 +9,7 @@ import sys
 from pathlib import Path
 
 import numpy as np
+import pytest
 
 from extract_frames import (
     CACHE_VERSION,
@@ -18,6 +19,7 @@ from extract_frames import (
     cache_path_for,
     compute_pair_metrics,
     load_analysis_cache,
+    resolve_pair_thresholds,
     save_analysis_cache,
     video_signature,
 )
@@ -275,6 +277,38 @@ def test_compute_pair_metrics_compensates_horizontal_yaw() -> None:
     assert abs(metrics.yaw_shift_px) == 3
 
 
+def test_resolve_pair_thresholds_scales_and_clamps_walking_profile() -> None:
+    base = resolve_pair_thresholds(1.0, "walk")
+    shorter = resolve_pair_thresholds(0.8, "walk")
+    tiny = resolve_pair_thresholds(0.05, "walk")
+    huge = resolve_pair_thresholds(10.0, "walk")
+
+    assert base.profile == "walk"
+    assert base.mode == "auto"
+    assert base.drop == pytest.approx(0.035)
+    assert base.add == pytest.approx(0.090)
+    assert shorter.drop == pytest.approx(0.035 * (0.8 ** 0.5))
+    assert shorter.add == pytest.approx(0.090 * (0.8 ** 0.5))
+    assert tiny.drop == pytest.approx(0.035 * (0.35 ** 0.5))
+    assert huge.add == pytest.approx(0.090 * (2.5 ** 0.5))
+
+
+def test_resolve_pair_thresholds_drone_profile_uses_lower_aerial_residuals() -> None:
+    walking = resolve_pair_thresholds(2.0, "walk")
+    drone = resolve_pair_thresholds(2.0, "drone")
+
+    assert drone.profile == "drone"
+    assert drone.drop == pytest.approx(0.025)
+    assert drone.add == pytest.approx(0.065)
+    assert drone.drop < walking.drop
+    assert drone.add < walking.add
+
+
+def test_resolve_pair_thresholds_rejects_add_not_greater_than_drop() -> None:
+    with pytest.raises(ValueError):
+        resolve_pair_thresholds(1.0, "walk", drop_threshold=0.08, add_threshold=0.08)
+
+
 def test_analyze_pair_selection_marks_redundant_and_gap_forced(tmp_path: Path) -> None:
     fake_script = tmp_path / "fake_ffmpeg_pair.py"
     fake_script.write_text(
@@ -306,7 +340,10 @@ def test_analyze_pair_selection_marks_redundant_and_gap_forced(tmp_path: Path) -
         fixed_smart=True,
         min_gap_sec=1.0,
         max_gap_sec=3.0,
-        residual_threshold=0.04,
+        drop_threshold=0.03,
+        add_threshold=0.08,
+        threshold_profile="walk",
+        threshold_mode="manual",
         max_inserts_per_interval=2,
         track_min_confidence=0.25,
         track_min_count=36,
@@ -315,9 +352,59 @@ def test_analyze_pair_selection_marks_redundant_and_gap_forced(tmp_path: Path) -
 
     statuses = [row["status"] for row in rows]
     assert (out_w, out_h, min_gap, max_gap, decoded) == (4, 2, 1, 3, 5)
-    assert "redundant_drop" in statuses
+    assert any("redundant_drop" in status for status in statuses)
     assert any("gap_forced" in status for status in statuses)
     assert any(row["decision"] == "drop" for row in rows)
+
+
+def test_analyze_pair_selection_marks_motion_blur_candidate_for_review(tmp_path: Path) -> None:
+    fake_script = tmp_path / "fake_ffmpeg_blur_pair.py"
+    fake_script.write_text(
+        "\n".join(
+            [
+                "import sys",
+                "w, h = 64, 32",
+                "sharp = bytes((255 if ((x // 2 + y // 2) % 2) else 0) for y in range(h) for x in range(w))",
+                "blur = bytes([128]) * (w * h)",
+                "for frame in [sharp, blur, sharp, sharp]:",
+                "    sys.stdout.buffer.write(frame)",
+                "    sys.stdout.flush()",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    if os.name == "nt":
+        wrapper = tmp_path / "fake_ffmpeg_blur_pair.cmd"
+        wrapper.write_text(f'@echo off\n"{sys.executable}" "{fake_script}" %*\n', encoding="utf-8")
+    else:
+        wrapper = tmp_path / "fake_ffmpeg_blur_pair.sh"
+        wrapper.write_text(f'#!/bin/sh\nexec "{sys.executable}" "{fake_script}" "$@"\n', encoding="utf-8")
+        wrapper.chmod(0o755)
+
+    rows, *_ = analyze_pair_selection(
+        video_path=tmp_path / "dummy.mp4",
+        ffmpeg_bin=str(wrapper),
+        video_info=VideoInfo(width=64, height=32, fps=1.0, duration=4.0, total_frames=4),
+        analysis_width=64,
+        interval_sec=1.0,
+        fixed_smart=True,
+        min_gap_sec=1.0,
+        max_gap_sec=3.0,
+        drop_threshold=0.03,
+        add_threshold=0.08,
+        threshold_profile="walk",
+        threshold_mode="manual",
+        max_inserts_per_interval=2,
+        track_min_confidence=0.25,
+        track_min_count=36,
+        progress_phase="",
+    )
+
+    blur_rows = [row for row in rows if "motion_blur" in row["status"]]
+    assert blur_rows
+    assert blur_rows[0]["decision"] == "drop"
+    assert blur_rows[0]["review_required"] == "1"
+    assert float(blur_rows[0]["sharpness_ratio"]) <= 0.35
 
 
 def test_load_returns_none_when_version_mismatch(tmp_path: Path):

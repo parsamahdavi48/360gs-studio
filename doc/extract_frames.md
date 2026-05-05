@@ -43,7 +43,7 @@ Quick fixed-interval test extraction:
 ```bash
 python extract_frames.py input.mp4 ./scene01 \
   --mode fixed \
-  --interval-sec 0.8 \
+  --interval-sec 1.0 \
   --quick-extract
 ```
 
@@ -52,10 +52,10 @@ Fixed interval with motion adjustment:
 ```bash
 python extract_frames.py input.mp4 ./scene01 \
   --mode fixed \
-  --interval-sec 0.8 \
+  --interval-sec 1.0 \
   --fixed-smart \
   --analysis-pipeline pair \
-  --min-gap-sec 0.25 \
+  --min-gap-sec 0.5 \
   --max-gap-sec 2.0
 ```
 
@@ -63,8 +63,8 @@ Compare legacy and pair analysis on one video:
 
 ```bash
 python scripts/compare_extract_analysis.py input.mp4 ./compare_scene \
-  --interval-sec 0.8 \
-  --min-gap-sec 0.25 \
+  --interval-sec 1.0 \
+  --min-gap-sec 0.5 \
   --max-gap-sec 2.0
 ```
 
@@ -107,14 +107,14 @@ Motion adjustment + cache example:
 ```bash
 # 1st run: full analyze, write cache, extract
 python extract_frames.py input.mp4 ./scene01 \
-  --mode fixed --interval-sec 0.8 \
+  --mode fixed --interval-sec 1.0 \
   --fixed-smart \
-  --min-gap-sec 0.25 \
+  --min-gap-sec 0.5 \
   --max-gap-sec 2.0
 
 # 2nd run with different fixed-smart gaps: cache hits, skips analysis
 python extract_frames.py input.mp4 ./scene01 \
-  --mode fixed --interval-sec 0.8 \
+  --mode fixed --interval-sec 1.0 \
   --fixed-smart \
   --min-gap-sec 0.35 \
   --max-gap-sec 2.5
@@ -125,16 +125,19 @@ python extract_frames.py input.mp4 ./scene01 \
 | Option | Default | Description |
 |---|---|---|
 | `--mode` | `change` | `fixed` or `change`. Fixed interval is recommended for SfM stability |
-| `--interval-sec` | `0.5` | Fixed mode interval in seconds |
+| `--interval-sec` | `0.5` | Fixed mode interval in seconds. GUI default is `1.0` |
 | `--quick-extract` | (off) | Fixed-mode shortcut for test runs. Extracts the fixed cadence without analysis, motion adjustment, representative scoring, or legacy thinning |
-| `--analysis-pipeline` | `pair` | `pair` uses last-kept-frame yaw-compensated residuals and candidate pair tracking. `legacy` uses the older whole-video quality-score pipeline |
+| `--analysis-pipeline` | `pair` | `pair` uses last-kept-frame yaw-compensated residuals plus candidate-only tracking and blur/texture risk flags. `legacy` uses the older whole-video quality-score pipeline |
 | `--fixed-smart` | (off) | Fixed-mode helper. With `pair`, marks redundant base candidates, adds novelty candidates, and keeps max-gap safety frames |
-| `--fixed-smart-change-threshold` | `0.04` | In `pair`, yaw-compensated residual threshold for novelty. In `legacy`, normalized luma-difference threshold |
+| `--fixed-smart-change-threshold` | `0.04` | Legacy normalized luma-difference threshold. Pair mode uses auto `--pair-drop-threshold` / `--pair-add-threshold` unless those are set manually |
 | `--fixed-smart-feature-threshold` | `0.012` | Legacy sparse feature-motion threshold. Not used by `pair` |
 | `--fixed-smart-max-inserts-per-interval` | `2` | Maximum extra anchors inserted inside one fixed interval |
+| `--pair-motion-profile` | `walk` | Auto threshold profile. `walk` uses 1.0s as the handheld walking reference. `drone` uses lower residual thresholds for aerial 360 capture |
+| `--pair-drop-threshold` | `-1` | Pair residual below this drops fixed candidates. Negative means auto from interval/profile |
+| `--pair-add-threshold` | `-1` | Pair residual at or above this adds novelty candidates. Negative means auto from interval/profile |
 | `--pair-track-min-count` | `36` | Pair pipeline review threshold. Kept pairs below this tracked feature count are flagged `weak_match` |
 | `--pair-track-min-confidence` | `0.25` | Pair pipeline review threshold from tracked count and coverage |
-| `--analysis-width` | `1920` | Decode width for residual and tracking analysis. Higher = more accurate, slower. `0` or larger than source = full resolution |
+| `--analysis-width` | `1920` | Decode width for candidate tracking and candidate-only sharpness checks. Yaw/residual monitoring is internally capped to a 1280px gate width. `0` or larger than source = full resolution |
 | `--quality-min-score` | `0.35` | Legacy-only single-frame quality score threshold |
 | `--quality-min-improvement` | `0.08` | Legacy-only representative replacement threshold |
 | `--thin-motion-threshold` | `0.6` | Legacy low-change thinning for non-smart selection. `0` disables. Ignored when `--fixed-smart` is enabled |
@@ -154,8 +157,9 @@ Under `output_dir`:
 
 - `original_index`: index from initial mode selection
 - `final_index`: index after representative frame selection
-- `status`: pair statuses such as `ok`, `novelty_added`, `redundant_drop`, `gap_forced`, `weak_match`, or legacy statuses such as `smart_added`, `replaced`, `fallback_keep`, `thinned`
-- `residual_score`, `raw_change_score`, `yaw_shift_deg`, `track_count`, `track_coverage`, `match_confidence`: pair-analysis review metadata
+- `status`: pair statuses such as `ok`, `novelty_added`, `redundant_drop`, `gap_forced`, `motion_blur`, `low_texture`, `weak_match`, or legacy statuses such as `smart_added`, `replaced`, `fallback_keep`, `thinned`
+- `residual_score`, `raw_change_score`, `yaw_shift_deg`, `track_count`, `track_coverage`, `match_confidence`, `blur_score_final`, `sharpness_ratio`, `pair_gate_width`: pair-analysis review metadata
+- `pair_motion_profile`, `pair_drop_threshold`, `pair_add_threshold`: resolved pair-analysis threshold metadata
 - `quality_score_original`, `quality_score_final`: legacy-only bounded SfM-oriented quality scores used for representative selection
 - `decision`: `keep` for extracted frames, `drop` for thinned frames (editable in review tool)
 - `output_file`: image path for review and later processing (no file on disk for thinned rows)

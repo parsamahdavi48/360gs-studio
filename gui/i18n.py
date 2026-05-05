@@ -88,6 +88,9 @@ _JA: dict[str, str] = {
     "INTERVAL_SHORT": "間隔",
     "SECONDS_SUFFIX": "秒",
     "ANALYSIS_WIDTH": "解析幅 (px)",
+    "PAIR_MOTION_PROFILE": "シーン距離",
+    "PAIR_PROFILE_WALK": "近距離・歩行",
+    "PAIR_PROFILE_DRONE": "遠景・空撮",
     "QUALITY_MIN_SCORE": "品質確認スコア",
     "QUALITY_MIN_IMPROVEMENT": "代替フレーム選択基準",
     "IMAGE_FORMAT": "画像形式",
@@ -191,13 +194,17 @@ _JA: dict[str, str] = {
     "REVIEW_ADVISORY_NOVELTY_ADDED": "ペア解析: 視点変化が十分なため追加",
     "REVIEW_ADVISORY_REDUNDANT_DROP": "ペア解析: 冗長候補として除外中",
     "REVIEW_ADVISORY_GAP_FORCED": "ペア解析: 上限間隔の安全採用",
+    "REVIEW_ADVISORY_MOTION_BLUR": "要確認: ブレにより自動除外中",
+    "REVIEW_ADVISORY_LOW_TEXTURE": "要確認: 低テクスチャで特徴点が弱い可能性",
     "REVIEW_ADVISORY_WEAK_MATCH": "要確認: 追跡できる特徴点が弱い可能性",
     "REVIEW_ADVISORY_NORMAL": "通常: 品質基準OK",
     "REVIEW_PAIR_INFO_FORMAT": (
         "動画位置: {ts}  |  間隔: {gap}s  |  残差: {residual}  |  yaw補正: {yaw}°  |  "
-        "追跡: {tracks}  |  信頼度: {confidence}"
+        "追跡: {tracks}  |  信頼度: {confidence}  |  鮮明度: {blur}  |  比率: {sharpness_ratio}"
     ),
-    "REVIEW_PAIR_PROBLEMS_FORMAT": "確認対象 {n}件 | 追加 {a} / 冗長除外 {d} / 上限採用 {g} / 弱追跡 {w} | 表示中 {cur}",
+    "REVIEW_PAIR_PROBLEMS_FORMAT": (
+        "確認対象 {n}件 | 追加 {a} / 冗長除外 {d} / 上限採用 {g} / ブレ {b} / 低特徴 {l} / 弱追跡 {w} | 表示中 {cur}"
+    ),
     "NEXT_STEP_MASK_NOTICE": "除外予定の画像が残っている場合、または採用/除外を変更した場合は、\n下部の「適用」で画像フォルダへ反映します。\n「適用」が無効なら、そのまま Step 3 (マスク生成) へ進めます。",
     "METASHAPE_NOTICE": "マスク生成後は、用途に合わせて次へ進みます。\nMetashapeルートでは masks/ をマスクとして読み込み、SfM後にStep 4で3DGS向けに書き出します。\nCOLMAPルートではStep 4で視点画像を書き出し、必要に応じてCOLMAP/GLOMAPを実行します。",
     "EXPORT_DIR": "エクスポート先",
@@ -625,6 +632,9 @@ _EN: dict[str, str] = {
     "INTERVAL_SHORT": "Interval",
     "SECONDS_SUFFIX": "s",
     "ANALYSIS_WIDTH": "Analysis Width (px)",
+    "PAIR_MOTION_PROFILE": "Scene Distance",
+    "PAIR_PROFILE_WALK": "Near / Walking",
+    "PAIR_PROFILE_DRONE": "Distant / Aerial",
     "QUALITY_MIN_SCORE": "Quality Review Score",
     "QUALITY_MIN_IMPROVEMENT": "Alternate Frame Criterion",
     "IMAGE_FORMAT": "Image Format",
@@ -728,13 +738,17 @@ _EN: dict[str, str] = {
     "REVIEW_ADVISORY_NOVELTY_ADDED": "Pair analysis: added for useful viewpoint change",
     "REVIEW_ADVISORY_REDUNDANT_DROP": "Pair analysis: dropped as redundant",
     "REVIEW_ADVISORY_GAP_FORCED": "Pair analysis: kept by max-gap guard",
+    "REVIEW_ADVISORY_MOTION_BLUR": "Review: auto-dropped for motion blur",
+    "REVIEW_ADVISORY_LOW_TEXTURE": "Review: low texture may weaken features",
     "REVIEW_ADVISORY_WEAK_MATCH": "Review: tracked features may be weak",
     "REVIEW_ADVISORY_NORMAL": "Normal: quality OK",
     "REVIEW_PAIR_INFO_FORMAT": (
         "Video position: {ts}  |  Gap: {gap}s  |  Residual: {residual}  |  Yaw adjust: {yaw}°  |  "
-        "Tracks: {tracks}  |  Confidence: {confidence}"
+        "Tracks: {tracks}  |  Confidence: {confidence}  |  Sharpness: {blur}  |  Ratio: {sharpness_ratio}"
     ),
-    "REVIEW_PAIR_PROBLEMS_FORMAT": "Review {n} | added {a} / redundant {d} / max-gap {g} / weak {w} | current {cur}",
+    "REVIEW_PAIR_PROBLEMS_FORMAT": (
+        "Review {n} | added {a} / redundant {d} / max-gap {g} / blur {b} / low-texture {l} / weak {w} | current {cur}"
+    ),
     "NEXT_STEP_MASK_NOTICE": "If drop-marked images remain, or if you changed keep/drop choices, press Apply at the bottom to write them into the image folder.\nIf Apply is disabled, proceed directly to Step 3 (Mask Generation).",
     "METASHAPE_NOTICE": "After mask generation, continue with the route that matches your dataset.\nFor the Metashape route, import masks/ as masks, run SfM, then use Step 4 for 3DGS export.\nFor the COLMAP route, use Step 4 to export viewpoint images and optionally run COLMAP/GLOMAP.",
     "EXPORT_DIR": "Export Folder",
@@ -1097,7 +1111,7 @@ _TIPS_JA: dict[str, str] = {
     "CANCEL": "実行中の処理を中断します",
     "INPUT_VIDEO": "エクイレクタングラー形式の360度動画ファイルを選択。参照ダイアログでは複数ファイルを選択できます",
     "EXTRACT_OUTPUT_MODE": "新規のみ追加: 未抽出の動画だけを画像フォルダへ追加します。リセットして上書き: 同じ動画の前回抽出結果を削除し、現在の設定で作り直します。他の動画は残します",
-    "MODE_FIXED": "指定した秒数ごとにフレームを抽出します。横ドラッグで調整可能。推奨は0.8〜1.0秒、UI範囲は0.05〜60秒",
+    "MODE_FIXED": "指定した秒数ごとにフレームを抽出します。横ドラッグで調整可能。推奨は1.0秒前後、UI範囲は0.05〜60秒",
     "FIXED_SMART": (
         "固定間隔を基準に、変化が少ない候補をスキップし、変化が大きい区間には追加候補を入れます。\n"
         "輝度差だけでなく、疎な特徴点追跡によるモーションも使うため、SfMで意味のある視差を拾いやすくなります"
@@ -1107,7 +1121,7 @@ _TIPS_JA: dict[str, str] = {
         "細かな自動選別より待ち時間を短くし、指定した間隔の結果を素早く確認できます"
     ),
     "MODE_CHANGE": "画像の変化量に応じて抽出間隔を自動調整します。最小/最大間隔で極端な枚数増減を防ぎます",
-    "INTERVAL": "固定間隔で使うフレーム間隔。単位は秒。横ドラッグで調整可能。推奨は0.8〜1.0秒、UI範囲は0.05〜60秒",
+    "INTERVAL": "固定間隔で使うフレーム間隔。単位は秒。横ドラッグで調整可能。推奨は1.0秒前後、UI範囲は0.05〜60秒。ペア解析の閾値はこの間隔に応じて自動調整されます",
     "CHANGE_THRESHOLD": (
         "自動間隔で使う変化しきい値。単位は正規化スコアで、隣接解析フレームの平均輝度差 / 255 です。\n"
         "範囲は0.000〜1.000。小さいほど敏感に反応して抽出枚数が増え、大きいほど大きな変化だけを採用します。\n"
@@ -1117,7 +1131,12 @@ _TIPS_JA: dict[str, str] = {
     "MAX_GAP": "変化量で補正するときの安全間隔。単位は秒。低変化スキップで採用フレームが空きすぎるのを防ぎます。UI範囲は0.05〜60秒",
     "IMAGE_FORMAT": "出力画像の形式。jpgはファイルサイズ小、pngは無劣化",
     "JPEG_QUALITY": "ffmpegの-q:v値。1=最高品質、31=最低品質。2-5推奨。横ドラッグで調整可能",
-    "ANALYSIS_WIDTH": "変化検出・品質評価に使うデコード幅。大きいほど精度は上がるが遅くなります",
+    "ANALYSIS_WIDTH": "ペア解析の追跡と候補限定ブレ確認に使うデコード幅。残差監視は内部で最大1280pxに抑えます",
+    "PAIR_MOTION_PROFILE": (
+        "ペア解析の自動閾値に使う距離プロファイルです。\n"
+        "近距離・歩行: 建物、室内、参道など近い構造物が多い撮影向け。1.0秒基準でdrop=0.035/add=0.090。\n"
+        "遠景・空撮: 空撮、広場、山、海岸など遠景主体の撮影向け。残差パララックスが弱く出やすいため低めの閾値を使います。"
+    ),
     "QUALITY_MIN_SCORE": (
         "Step 2で品質確認として表示する基準スコア。範囲は0.00〜1.00、単位は正規化スコアです。\n"
         "品質スコア = 特徴点数、特徴点の画面内分布、シャープネス、コントラスト、白飛び/黒つぶれペナルティの合成値。\n"
@@ -1247,7 +1266,7 @@ _TIPS_EN: dict[str, str] = {
     "CANCEL": "Abort the running process",
     "INPUT_VIDEO": "Select equirectangular 360-degree video files. The browse dialog supports multiple selection",
     "EXTRACT_OUTPUT_MODE": "Add New Only: add only videos that have not been extracted yet. Reset and Overwrite: remove prior results for the same video and rebuild them with the current settings. Other videos are kept.",
-    "MODE_FIXED": "Extract frames every N seconds. Drag horizontally to adjust. Recommended: 0.8-1.0 sec; UI range: 0.05-60 sec",
+    "MODE_FIXED": "Extract frames every N seconds. Drag horizontally to adjust. Recommended: around 1.0 sec; UI range: 0.05-60 sec",
     "FIXED_SMART": (
         "Keeps the fixed interval baseline, skips low-change candidates, and inserts extra candidates in high-motion ranges.\n"
         "Uses sparse feature tracking as well as luma difference, so motion that matters to SfM is easier to catch"
@@ -1257,7 +1276,7 @@ _TIPS_EN: dict[str, str] = {
         "It favors shorter wait time over fine automatic picking, so you can check the fixed-interval result sooner"
     ),
     "MODE_CHANGE": "Automatically adjusts extraction interval from image change, with min/max gaps as safety limits",
-    "INTERVAL": "Fixed extraction interval in seconds. Drag horizontally to adjust. Recommended: 0.8-1.0 sec; UI range: 0.05-60 sec",
+    "INTERVAL": "Fixed extraction interval in seconds. Drag horizontally to adjust. Recommended: around 1.0 sec; UI range: 0.05-60 sec. Pair-analysis thresholds are adjusted automatically from this interval",
     "CHANGE_THRESHOLD": (
         "Change threshold used by auto interval mode. Unit: normalized score = mean absolute luma difference between adjacent analysis frames / 255.\n"
         "Range: 0.000-1.000. Lower values are more sensitive and produce more frames; higher values require larger changes.\n"
@@ -1267,7 +1286,12 @@ _TIPS_EN: dict[str, str] = {
     "MAX_GAP": "Safety spacing for motion adjustment in seconds. Low-change skipping will not leave kept frames farther apart than this. UI range: 0.05-60 sec",
     "IMAGE_FORMAT": "Output format. jpg = smaller files, png = lossless",
     "JPEG_QUALITY": "ffmpeg -q:v value. 1 = best quality, 31 = worst. Recommended: 2-5. Drag horizontally to adjust",
-    "ANALYSIS_WIDTH": "Decode width for change and quality scoring. Higher = more accurate but slower",
+    "ANALYSIS_WIDTH": "Decode width for pair tracking and candidate-only blur checks. Residual monitoring is internally capped to 1280px",
+    "PAIR_MOTION_PROFILE": (
+        "Distance profile for pair-analysis auto thresholds.\n"
+        "Near / Walking: for scenes with nearby structures such as buildings, interiors, paths, or columns. Uses 1.0s reference drop=0.035/add=0.090.\n"
+        "Distant / Aerial: for aerial, plaza, mountain, coast, or distant-view scenes. Uses lower thresholds because distant scenes produce weaker residual parallax."
+    ),
     "QUALITY_MIN_SCORE": (
         "Quality-score threshold used to flag frames for review in Step 2. Range: 0.00-1.00; unit: normalized score.\n"
         "Quality combines feature count, feature spread, sharpness, contrast, and blown/black exposure penalty.\n"

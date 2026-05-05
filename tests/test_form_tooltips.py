@@ -105,6 +105,7 @@ def test_extract_compact_mode_rows_enable_matching_fields() -> None:
     assert not step.min_gap_edit.isEnabled()
     assert not step.max_gap_edit.isEnabled()
     assert not step.analysis_width_edit.isEnabled()
+    assert not step.pair_motion_profile_combo.isEnabled()
     assert not step.quality_min_score_edit.isEnabled()
     assert not step.quality_min_improvement_edit.isEnabled()
 
@@ -115,6 +116,7 @@ def test_extract_compact_mode_rows_enable_matching_fields() -> None:
     assert step.min_gap_edit.isEnabled()
     assert step.max_gap_edit.isEnabled()
     assert step.analysis_width_edit.isEnabled()
+    assert step.pair_motion_profile_combo.isEnabled()
     assert not step.quality_min_score_edit.isVisible()
     assert not step.quality_min_score_edit.isEnabled()
     assert not step.quality_min_improvement_edit.isVisible()
@@ -130,6 +132,14 @@ def test_extract_mode_block_preserves_right_padding() -> None:
     assert step.fixed_interval_row.sizeHint().width() <= content_width
     assert step.smart_interval_row.sizeHint().width() <= content_width
     assert step.extract_action_row.sizeHint().width() <= content_width
+
+
+def test_pair_motion_profile_combo_has_tooltip() -> None:
+    _app()
+    step = ExtractStep(Path.cwd())
+
+    assert _label(step, i18n.t("PAIR_MOTION_PROFILE")).toolTip() == i18n.tip("PAIR_MOTION_PROFILE")
+    assert step.pair_motion_profile_combo.toolTip() == i18n.tip("PAIR_MOTION_PROFILE")
 
 
 def test_extract_mode_block_preserves_right_padding_in_english() -> None:
@@ -213,8 +223,13 @@ def test_extract_command_uses_drag_spinbox_values(tmp_path: Path) -> None:
     step.max_gap_edit.setValue(3.0)
     smart_cmd = step._build_extract_cmd()
     assert smart_cmd[smart_cmd.index("--analysis-pipeline") + 1] == "pair"
+    assert smart_cmd[smart_cmd.index("--pair-motion-profile") + 1] == "walk"
     assert smart_cmd[smart_cmd.index("--min-gap-sec") + 1] == "0.5"
     assert smart_cmd[smart_cmd.index("--max-gap-sec") + 1] == "3"
+
+    step.pair_motion_profile_combo.setCurrentIndex(1)
+    drone_cmd = step._build_extract_cmd()
+    assert drone_cmd[drone_cmd.index("--pair-motion-profile") + 1] == "drone"
 
     step.smart_fixed_cb.setChecked(False)
     plain_cmd = step._build_extract_cmd()

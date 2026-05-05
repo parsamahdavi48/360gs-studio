@@ -18,9 +18,12 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--ffmpeg", default="ffmpeg", help="ffmpeg executable")
     parser.add_argument("--ffprobe", default="ffprobe", help="ffprobe executable")
     parser.add_argument("--analysis-width", type=int, default=1920)
-    parser.add_argument("--interval-sec", type=float, default=0.8)
-    parser.add_argument("--min-gap-sec", type=float, default=0.25)
+    parser.add_argument("--interval-sec", type=float, default=1.0)
+    parser.add_argument("--min-gap-sec", type=float, default=0.5)
     parser.add_argument("--max-gap-sec", type=float, default=2.0)
+    parser.add_argument("--pair-motion-profile", choices=["walk", "drone"], default="walk")
+    parser.add_argument("--pair-drop-threshold", type=float, default=-1.0)
+    parser.add_argument("--pair-add-threshold", type=float, default=-1.0)
     parser.add_argument("--image-ext", choices=["jpg", "png"], default="jpg")
     parser.add_argument("--jpg-quality", type=int, default=2)
     parser.add_argument("--extract", action="store_true", help="Write images instead of estimate-only analysis")
@@ -49,6 +52,12 @@ def _run_case(args: argparse.Namespace, repo_root: Path, pipeline: str) -> dict:
         "--fixed-smart",
         "--analysis-pipeline",
         pipeline,
+        "--pair-motion-profile",
+        args.pair_motion_profile,
+        "--pair-drop-threshold",
+        f"{args.pair_drop_threshold:g}",
+        "--pair-add-threshold",
+        f"{args.pair_add_threshold:g}",
         "--interval-sec",
         f"{args.interval_sec:g}",
         "--min-gap-sec",
@@ -111,7 +120,12 @@ def _result_row(result: dict) -> dict:
         "novelty_added": selected.get("novelty_added_count", selected.get("smart_added_count", 0)),
         "redundant_drop": selected.get("redundant_drop_count", selected.get("thinned_count", 0)),
         "gap_forced": selected.get("gap_forced_count", 0),
+        "motion_blur": selected.get("motion_blur_count", 0),
+        "low_texture": selected.get("low_texture_count", 0),
         "weak_match": selected.get("weak_match_count", 0),
+        "pair_drop_threshold": summary.get("params", {}).get("pair_drop_threshold_resolved", ""),
+        "pair_add_threshold": summary.get("params", {}).get("pair_add_threshold_resolved", ""),
+        "pair_gate_width": summary.get("params", {}).get("pair_gate_width", ""),
         "analysis_width": analysis.get("width", 0),
         "analysis_height": analysis.get("height", 0),
         "image_count": result["image_count"],
@@ -134,6 +148,9 @@ def main() -> None:
             "interval_sec": args.interval_sec,
             "min_gap_sec": args.min_gap_sec,
             "max_gap_sec": args.max_gap_sec,
+            "pair_motion_profile": args.pair_motion_profile,
+            "pair_drop_threshold": args.pair_drop_threshold,
+            "pair_add_threshold": args.pair_add_threshold,
             "use_cache": bool(args.use_cache),
         },
         "rows": rows,
@@ -142,13 +159,14 @@ def main() -> None:
     report_path = output_dir / "compare_extract_analysis.json"
     report_path.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
 
-    print("pipeline elapsed selected before_drop added dropped gap weak analysis image_count")
+    print("pipeline elapsed selected before_drop added dropped gap blur lowtex weak drop_thr add_thr analysis gate image_count")
     for row in rows:
         print(
             f"{row['pipeline']} {row['elapsed_sec']:.3f} {row['selected_count']} "
             f"{row['selected_before_drop']} {row['novelty_added']} {row['redundant_drop']} "
-            f"{row['gap_forced']} {row['weak_match']} "
-            f"{row['analysis_width']}x{row['analysis_height']} {row['image_count']}"
+            f"{row['gap_forced']} {row['motion_blur']} {row['low_texture']} {row['weak_match']} "
+            f"{row['pair_drop_threshold']} {row['pair_add_threshold']} "
+            f"{row['analysis_width']}x{row['analysis_height']} {row['pair_gate_width']} {row['image_count']}"
         )
     print(f"report: {report_path}")
 

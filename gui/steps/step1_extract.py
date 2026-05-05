@@ -139,7 +139,7 @@ class ExtractStep(BaseStepWidget):
             maximum=_FIXED_INTERVAL_MAX,
             step=0.05,
             decimals=2,
-            value=0.8,
+            value=1.0,
             suffix=f" {i18n.t('SECONDS_SUFFIX')}",
             drag_pixels_per_step=6.0,
         )
@@ -152,7 +152,7 @@ class ExtractStep(BaseStepWidget):
             maximum=_CHANGE_GAP_MAX,
             step=0.05,
             decimals=2,
-            value=0.25,
+            value=0.5,
             suffix=f" {i18n.t('SECONDS_SUFFIX')}",
             drag_pixels_per_step=6.0,
         )
@@ -299,6 +299,20 @@ class ExtractStep(BaseStepWidget):
         self.analysis_width_edit.textChanged.connect(self._mark_estimate_stale)
         add_tooltip_row(adv_form, i18n.ANALYSIS_WIDTH, self.analysis_width_edit, i18n.tip("ANALYSIS_WIDTH"))
         self.analysis_width_label = adv_form.labelForField(self.analysis_width_edit)
+
+        self.pair_motion_profile_combo = QComboBox()
+        self.pair_motion_profile_combo.setToolTip(i18n.tip("PAIR_MOTION_PROFILE"))
+        self.pair_motion_profile_combo.addItem(i18n.t("PAIR_PROFILE_WALK"), "walk")
+        self.pair_motion_profile_combo.addItem(i18n.t("PAIR_PROFILE_DRONE"), "drone")
+        self.pair_motion_profile_combo.setFixedWidth(120)
+        self.pair_motion_profile_combo.currentIndexChanged.connect(self._mark_estimate_stale)
+        add_tooltip_row(
+            adv_form,
+            i18n.t("PAIR_MOTION_PROFILE"),
+            self.pair_motion_profile_combo,
+            i18n.tip("PAIR_MOTION_PROFILE"),
+        )
+        self.pair_motion_profile_label = adv_form.labelForField(self.pair_motion_profile_combo)
         advanced.content_layout.addLayout(adv_form)
 
         self.selection_title = QLabel(i18n.t("AUTO_SELECTION_SECTION"))
@@ -454,6 +468,8 @@ class ExtractStep(BaseStepWidget):
         for widget in (
             self.analysis_width_label,
             self.analysis_width_edit,
+            self.pair_motion_profile_label,
+            self.pair_motion_profile_combo,
         ):
             if widget is not None:
                 widget.setEnabled(not quick_enabled)
@@ -680,6 +696,7 @@ class ExtractStep(BaseStepWidget):
         if not quick_extract:
             cmd.extend([
                 "--analysis-pipeline", "pair",
+                "--pair-motion-profile", str(self.pair_motion_profile_combo.currentData() or "walk"),
                 "--analysis-width", self.analysis_width_edit.text().strip(),
             ])
         if prefix:
