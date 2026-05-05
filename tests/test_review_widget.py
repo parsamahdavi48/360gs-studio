@@ -150,6 +150,25 @@ def test_review_widget_shows_quality_score_and_original_when_replaced(tmp_path: 
     )
 
 
+def test_review_widget_labels_quick_extract_rows_separately(tmp_path: Path) -> None:
+    _app()
+    scene, csv_path = _write_scene(tmp_path)
+    with csv_path.open("r", encoding="utf-8", newline="") as f:
+        rows = list(csv.DictReader(f))
+    rows[0]["analysis_pipeline"] = "quick"
+    rows[1]["analysis_pipeline"] = "quick"
+    with csv_path.open("w", encoding="utf-8", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=list(rows[0].keys()))
+        writer.writeheader()
+        writer.writerows(rows)
+
+    widget = ReviewWidget(scene, csv_path)
+
+    assert widget.advisory_label.text() == i18n.t("REVIEW_ADVISORY_QUICK")
+    assert "#e0f2fe" in widget.advisory_label.styleSheet()
+    assert "#1e3a8a" in widget.advisory_label.styleSheet()
+
+
 def test_review_summary_label_is_readable_single_line(tmp_path: Path) -> None:
     _app()
     scene, csv_path = _write_scene(tmp_path)

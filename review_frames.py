@@ -526,6 +526,7 @@ if QMainWindow is not None:
             Returns (text, fg, bg).
             """
             status = row.get("status", "ok").strip().lower()
+            pipeline = row.get("analysis_pipeline", "").strip().lower()
 
             # 橙: 品質条件を満たす代表候補が探索範囲内になかったフレーム
             if "fallback_keep" in status:
@@ -560,6 +561,9 @@ if QMainWindow is not None:
             # 青: 変化補正による追加候補
             if "smart_added" in status:
                 return i18n.t("REVIEW_ADVISORY_SMART_ADDED"), "#dbeafe", "#1e3a8a"
+
+            if pipeline == "quick":
+                return i18n.t("REVIEW_ADVISORY_QUICK"), "#1e3a8a", "#e0f2fe"
 
             # 緑: 通常品質
             return i18n.t("REVIEW_ADVISORY_NORMAL"), "#a7f3d0", "#064e3b"

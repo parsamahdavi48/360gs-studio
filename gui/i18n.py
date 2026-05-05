@@ -198,6 +198,7 @@ _JA: dict[str, str] = {
     "REVIEW_ADVISORY_MOTION_BLUR": "要確認: ブレにより自動除外中",
     "REVIEW_ADVISORY_LOW_TEXTURE": "要確認: 低テクスチャで特徴点が弱い可能性",
     "REVIEW_ADVISORY_WEAK_MATCH": "要確認: 追跡できる特徴点が弱い可能性",
+    "REVIEW_ADVISORY_QUICK": "クイック: 指定間隔で抽出",
     "REVIEW_ADVISORY_NORMAL": "通常: 品質基準OK",
     "REVIEW_PAIR_INFO_FORMAT": (
         "動画位置: {ts}  |  間隔: {gap}s  |  残差: {residual}  |  yaw補正: {yaw}°  |  "
@@ -743,6 +744,7 @@ _EN: dict[str, str] = {
     "REVIEW_ADVISORY_MOTION_BLUR": "Review: auto-dropped for motion blur",
     "REVIEW_ADVISORY_LOW_TEXTURE": "Review: low texture may weaken features",
     "REVIEW_ADVISORY_WEAK_MATCH": "Review: tracked features may be weak",
+    "REVIEW_ADVISORY_QUICK": "Quick: extracted at the specified interval",
     "REVIEW_ADVISORY_NORMAL": "Normal: quality OK",
     "REVIEW_PAIR_INFO_FORMAT": (
         "Video position: {ts}  |  Gap: {gap}s  |  Residual: {residual}  |  Yaw adjust: {yaw}°  |  "

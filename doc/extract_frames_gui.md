@@ -108,6 +108,7 @@ When the interval changes, thresholds scale gently by `sqrt(interval_sec / refer
 Step 2 reads `selected_frames.csv` and surfaces frames based on `status`.
 
 - `ok`: normal kept candidate
+- `analysis_pipeline=quick`: quick extraction rows are shown as `Quick: extracted at the specified interval`
 - `novelty_added`: added before the next fixed cadence because residual change is sufficient
 - `redundant_drop`: fixed-cadence candidate currently dropped because residual change is small
 - `gap_forced`: kept by the `Max` gap guard
