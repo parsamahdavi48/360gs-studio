@@ -1,6 +1,6 @@
 # stechdrive-3dgs-utils
 
-**v1.9.0**
+**v1.9.1**
 
 360°カメラの動画から、3D Gaussian Splatting (3DGS) のトレーニングに使いやすい画像・マスク・カメラデータを作るためのWindows向け統合GUIツールです。
 
