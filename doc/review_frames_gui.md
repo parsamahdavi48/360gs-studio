@@ -25,7 +25,7 @@ When the scene folder is selected, Step 2 automatically loads `selected_frames.c
 - `Thumbnail List`: scan many frames and select multiple frames using Windows Explorer-style selection.
 - `90° Perspective Preview`: for 360° equirectangular images, switch the single preview to a square 90° FOV perspective view. Drag to look around and use the wheel for 2D zoom.
 
-In thumbnail mode, the keep/drop button and reset button operate on the selected thumbnails. If no thumbnail selection exists, they operate on the current frame.
+In thumbnail mode, the keep/drop button and reset button operate on the selected thumbnails. If no thumbnail selection exists, they operate on the current frame. The bottom ribbon on each thumbnail shows a shortened version of the current advisory label.
 
 ## Keep/Drop Decisions
 
@@ -42,16 +42,20 @@ If `Apply` is disabled, there is nothing pending to write into the image folder 
 
 Step 2 labels are not a separate scoring system. They explain why a frame was selected, dropped, added, or marked for review.
 
+Display follows the current `decision` first. `drop` rows use red `Drop:` labels, kept quality concerns use yellow `Review:` labels, analysis-added frames use blue `Added:` labels, quick extraction uses a purple `Quick:` label, and normal kept frames use a green `OK:` label. Thumbnail view uses the same category color in the bottom ribbon with a shorter label; keep/drop border colors are not used.
+
 | Label | Meaning |
 | --- | --- |
-| `Pair analysis: added for useful viewpoint change` | A middle frame was added because the change between neighboring frames was large |
-| `Pair analysis: dropped as redundant` | The frame is currently `drop` because the pair change was small |
-| `Pair analysis: kept by max-gap guard` | The frame is kept so the gap between kept frames does not grow too large |
-| `Review: auto-dropped for motion blur` | The frame is currently `drop` because sharpness fell enough to suspect motion blur |
-| `Review: low texture may weaken features` | The frame is kept, but SfM features may be weak |
-| `Review: tracked features may be weak` | The frame is kept, but pair tracking confidence may be weak |
+| `Drop: possible blur` | `drop` row. Dropped because blur may weaken SfM |
+| `Drop: similar frame` | `drop` row. Dropped because it is too similar to the previous kept frame |
+| `Drop: manually excluded` | `drop` row. Manually switched to Drop in Step 2 |
+| `Review: possible blur` | Kept row, but blur may weaken SfM |
+| `Review: low texture` | Kept row, but SfM features may be weak |
+| `Review: weak feature tracking` | Kept row, but pair tracking confidence may be weak |
+| `Added: viewpoint change` | Added before the fixed cadence because viewpoint change was useful |
+| `Added: preserved spacing` | Added to keep the gap between kept frames from growing too large |
 | `Quick: extracted at the specified interval` | The frame came from quick fixed-interval extraction with no pair analysis |
-| `Normal: kept` | Normal kept frame |
+| `OK: kept` | Normal kept frame |
 
 Use `Next Review Target` / `Previous Review Target` to jump through rows whose `status` is not `ok`.
 
