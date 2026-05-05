@@ -191,8 +191,7 @@ class ExtractStep(BaseStepWidget):
         mode_layout.setContentsMargins(0, 0, 0, 0)
         mode_layout.setSpacing(4)
 
-        self.fixed_mode_label = _row_label(f"{i18n.t('MODE_FIXED_SHORT')}:", i18n.tip("MODE_FIXED"))
-        self.interval_label = _row_label(f"{i18n.t('INTERVAL_SHORT')}:", i18n.tip("INTERVAL"))
+        self.extract_interval_label = _row_label(f"{i18n.t('EXTRACT_INTERVAL')}:", i18n.tip("INTERVAL"))
         self.min_gap_label = _row_label(f"{i18n.t('MIN_GAP_SHORT')}:", i18n.tip("MIN_GAP"))
         self.max_gap_label = _row_label(f"{i18n.t('MAX_GAP_SHORT')}:", i18n.tip("MAX_GAP"))
 
@@ -202,8 +201,7 @@ class ExtractStep(BaseStepWidget):
         fixed_row = QHBoxLayout(fixed_row_widget)
         fixed_row.setContentsMargins(0, 0, 0, 0)
         fixed_row.setSpacing(4)
-        fixed_row.addWidget(self.fixed_mode_label)
-        fixed_row.addWidget(self.interval_label)
+        fixed_row.addWidget(self.extract_interval_label)
         fixed_row.addWidget(self.interval_edit)
         fixed_row.addSpacing(8)
         fixed_row.addWidget(self.quick_extract_cb)
@@ -455,7 +453,7 @@ class ExtractStep(BaseStepWidget):
     def _update_mode_widgets(self) -> None:
         quick_enabled = self.quick_extract_cb.isChecked()
         smart_enabled = self.smart_fixed_cb.isChecked() and not quick_enabled
-        for widget in (self.fixed_mode_label, self.interval_label, self.interval_edit, self.quick_extract_cb):
+        for widget in (self.extract_interval_label, self.interval_edit, self.quick_extract_cb):
             widget.setEnabled(True)
         for widget in (
             self.smart_fixed_cb,

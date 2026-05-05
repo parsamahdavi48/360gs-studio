@@ -69,8 +69,7 @@ def test_extract_numeric_labels_share_field_tooltips() -> None:
     _app()
     step = ExtractStep(Path.cwd())
 
-    assert _label(step, f"{i18n.t('MODE_FIXED_SHORT')}:").toolTip() == i18n.tip("MODE_FIXED")
-    assert _label(step, f"{i18n.t('INTERVAL_SHORT')}:").toolTip() == i18n.tip("INTERVAL")
+    assert _label(step, f"{i18n.t('EXTRACT_INTERVAL')}:").toolTip() == i18n.tip("INTERVAL")
     assert _label(step, f"{i18n.t('MIN_GAP_SHORT')}:").toolTip() == i18n.tip("MIN_GAP")
     assert _label(step, f"{i18n.t('MAX_GAP_SHORT')}:").toolTip() == i18n.tip("MAX_GAP")
     assert step.smart_fixed_cb.toolTip() == i18n.tip("FIXED_SMART")

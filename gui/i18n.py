@@ -86,6 +86,7 @@ _JA: dict[str, str] = {
     "MAX_GAP_SHORT": "最大",
     "INTERVAL": "間隔 (秒)",
     "INTERVAL_SHORT": "間隔",
+    "EXTRACT_INTERVAL": "抽出間隔",
     "SECONDS_SUFFIX": "秒",
     "ANALYSIS_WIDTH": "解析幅 (px)",
     "PAIR_MOTION_PROFILE": "シーン距離",
@@ -630,6 +631,7 @@ _EN: dict[str, str] = {
     "MAX_GAP_SHORT": "Max",
     "INTERVAL": "Interval (sec)",
     "INTERVAL_SHORT": "Interval",
+    "EXTRACT_INTERVAL": "Extract Every",
     "SECONDS_SUFFIX": "s",
     "ANALYSIS_WIDTH": "Analysis Width (px)",
     "PAIR_MOTION_PROFILE": "Scene Distance",
@@ -1116,10 +1118,7 @@ _TIPS_JA: dict[str, str] = {
         "固定間隔を基準に、変化が少ない候補をスキップし、変化が大きい区間には追加候補を入れます。\n"
         "輝度差だけでなく、疎な特徴点追跡によるモーションも使うため、SfMで意味のある視差を拾いやすくなります"
     ),
-    "QUICK_EXTRACT": (
-        "短いテストSfMをすぐ試したいときに使います。\n"
-        "細かな自動選別より待ち時間を短くし、指定した間隔の結果を素早く確認できます"
-    ),
+    "QUICK_EXTRACT": "解析・変化補正をスキップし、指定した抽出間隔でそのまま切り出します。",
     "MODE_CHANGE": "画像の変化量に応じて抽出間隔を自動調整します。最小/最大間隔で極端な枚数増減を防ぎます",
     "INTERVAL": "固定間隔で使うフレーム間隔。単位は秒。横ドラッグで調整可能。推奨は1.0秒前後、UI範囲は0.05〜60秒。ペア解析の閾値はこの間隔に応じて自動調整されます",
     "CHANGE_THRESHOLD": (
@@ -1271,10 +1270,7 @@ _TIPS_EN: dict[str, str] = {
         "Keeps the fixed interval baseline, skips low-change candidates, and inserts extra candidates in high-motion ranges.\n"
         "Uses sparse feature tracking as well as luma difference, so motion that matters to SfM is easier to catch"
     ),
-    "QUICK_EXTRACT": (
-        "Use this when you want a short test SfM run quickly.\n"
-        "It favors shorter wait time over fine automatic picking, so you can check the fixed-interval result sooner"
-    ),
+    "QUICK_EXTRACT": "Skip analysis and motion adjustment, and extract frames only at the specified interval.",
     "MODE_CHANGE": "Automatically adjusts extraction interval from image change, with min/max gaps as safety limits",
     "INTERVAL": "Fixed extraction interval in seconds. Drag horizontally to adjust. Recommended: around 1.0 sec; UI range: 0.05-60 sec. Pair-analysis thresholds are adjusted automatically from this interval",
     "CHANGE_THRESHOLD": (
