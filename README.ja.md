@@ -36,7 +36,7 @@ Metashapeを使わず、抽出済みの360°画像からCOLMAP Rig形式の視�
 - 360°画像の下部に写りやすい撮影者、三脚、手元の検出強化
 - スティッチ境界、白飛び領域、ユーザー指定PNGカスタムマスクの合成
 - 大量画像でも使いやすいキャッシュ付きの単一プレビュー/サムネイル一覧で、マスク結果を確認しながら調整
-- マスク漏れのあるフレームだけを選択し、設定を変えて再生成
+- マスク漏れのあるフレームだけを選択し、設定を変えて再生成。SAM3.1では既存マスクに対して、プロンプトで狙った対象を加算したり誤検出だけを減算できます
 - Metashape SfM結果をLichtFeld Studio / Postshot / Brush向けに変換
 - COLMAP Rig形式の視点画像セットを書き出し、COLMAP/GLOMAP実行まで対応
 - Windows向けセットアップスクリプトと日本語GUI
@@ -62,7 +62,26 @@ update_venv.bat
 
 `requirements/` の固定済み既知良好セットで作り直す場合は `update_venv.bat --locked` を使います。
 
-YOLO/SAM2およびMask2Formerのモデルファイルは初回利用時に自動ダウンロードされる場合があります。ローカルのYOLO/SAM重みは `models/ultralytics/`、Mask2Former重みは `models/mask2former-swin-large-ade-semantic/` に配置できます。ローカルSAM3.1プロンプトマスクでは `models/sam3.1/sam3.1_multiplex.pt` を参照し、自動ダウンロードは行いません。互換性のため、リポジトリ直下の `.pt` も引き続き検出します。リリースZIPにはモデル重みや生成データは含めていません。これらの第三者ライブラリおよびモデル重みには別ライセンスが適用されます。詳細は [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md) を参照してください。
+YOLO/SAM2およびMask2Formerのモデルファイルは初回利用時に自動ダウンロードされる場合があります。ローカルのYOLO/SAM重みは `models/ultralytics/`、Mask2Former重みは `models/mask2former-swin-large-ade-semantic/` に配置できます。ローカルSAM3.1プロンプトマスクでは `models/sam3.1/sam3.1_multiplex.pt` を参照し、自動ダウンロードは行いません。互換性のため、リポジトリ直下の `.pt` も引き続き検出します。リリースZIPにはモデル重み、生成データ、ユーザー設定、ローカルセットアップログは含めていません。これらの第三者ライブラリおよびモデル重みには別ライセンスが適用されます。詳細は [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md) を参照してください。
+
+### 任意: SAM3.1プロンプトマスク
+
+SAM3.1は任意機能です。`setup_windows.bat` はMetaの `sam3` packageを入れず、SAM3.1 checkpointもダウンロードしません。checkpointの取得にはユーザー自身のHugging FaceアカウントとSAM Licenseへの同意が必要なためです。
+
+SAM3.1は、空マスクや狙った対象だけの補正など、プロンプトで制御したいマスク生成に向いています。一度マスクを生成したあと、漏れがある画像だけを選択し、`tripod`、`hand`、`selfie stick` などを加算したり、`logo`、`sign` などの誤検出を減算したりできます。
+
+1. Hugging Faceアカウントを作成、またはログインします。
+2. Metaの [facebook/sam3.1](https://huggingface.co/facebook/sam3.1) Hugging Faceリポジトリを開き、アクセス申請とSAM Licenseへの同意を行います。Hugging Faceのgated model申請は個人アカウント単位で、ユーザー名やメールアドレスがモデル提供者へ共有される場合があります。
+3. Metaの [SAM 3 GitHubリポジトリ](https://github.com/facebookresearch/sam3) で、現在のライセンス、package、checkpointの説明を確認します。
+4. 承認後、SAM3.1 checkpointをダウンロードし、`models/sam3.1/sam3.1_multiplex.pt` に配置します。`LICENSE` や `README.md` が同梱されている場合は同じフォルダに残してください。
+5. SAM3.1を使う場合だけ、`sam3` packageを追加インストールします。
+
+```bat
+.\.venv\Scripts\python.exe -m pip install timm ftfy==6.1.1 iopath regex einops triton-windows pycocotools
+.\.venv\Scripts\python.exe -m pip install --no-deps git+https://github.com/facebookresearch/sam3.git
+```
+
+この統合時点では、`sam3` packageは `numpy<2` を宣言しています。一方、このアプリはNumPy 2.x系を使うため、SAM3.1は任意導入のままにしています。`--no-deps` で入れることで検証済みのNumPy 2.x環境を維持できます。`pip check` はこのmetadata conflictを報告する場合がありますが、`setup_windows.bat` はこのSAM3.1由来の既知警告だけを許容します。
 
 ## GUIワークフロー
 

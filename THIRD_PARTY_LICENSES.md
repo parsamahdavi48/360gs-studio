@@ -17,17 +17,11 @@ The same feature may use Meta Segment Anything Model 2 / 2.1 checkpoints such
 as `sam2.1_l.pt`. SAM2 model checkpoints and code are licensed under the Apache
 License 2.0 by Meta.
 
-When the optional local SAM3.1 person backend is selected, the person mask
-feature may also use a user-provided Meta SAM3.1 checkpoint such as
-`sam3.1_multiplex.pt`. Meta SAM3.1 materials are governed by the SAM License
-provided by Meta with the checkpoint.
-
-Model weights are not included in this repository or release archives. They may
-be downloaded by the user's environment on first use, or provided by the user as
-local files. Local YOLO/SAM `.pt` files should be placed under
+Model weights are not included in this repository or release archives. YOLO and
+SAM2/SAM2.1 weights may be downloaded by the user's environment on first use, or
+provided by the user as local files. Local YOLO/SAM `.pt` files should be placed under
 `models/ultralytics/`; legacy `.pt` files in the repository root are still
-detected for compatibility. SAM3.1 checkpoints are not auto-downloaded by this
-application and should be provided by the user under `models/sam3.1/`.
+detected for compatibility.
 
 Users are responsible for ensuring that their use, redistribution, deployment,
 or commercial integration complies with the applicable third-party license
@@ -42,23 +36,25 @@ References:
 
 ## Sky Mask Feature
 
-The sky mask feature may use Mask2Former ADE20K semantic-segmentation model
-weights, such as `facebook/mask2former-swin-large-ade-semantic`, together with
-the Hugging Face `transformers` and `safetensors` libraries. It may also use a
-user-provided Meta SAM3.1 checkpoint such as `sam3.1_multiplex.pt` for local
-sky-prompt comparison.
+The semantic/prompt mask feature may use Mask2Former ADE20K
+semantic-segmentation model weights, such as
+`facebook/mask2former-swin-large-ade-semantic`, together with the Hugging Face
+`transformers` and `safetensors` libraries. It may also use Meta's `sam3`
+Python package and a user-provided Meta SAM3.1 checkpoint such as
+`sam3.1_multiplex.pt`.
 
 Mask2Former source code is licensed under the MIT License. The `transformers`
 and `safetensors` libraries are licensed under the Apache License 2.0. ADE20K
 dataset materials are governed by the dataset provider's terms. Meta SAM3.1
-materials are governed by the SAM License provided by Meta with the checkpoint.
+materials, including model code and trained weights, are governed by the SAM
+License provided by Meta.
 
-Model weights are not included in this repository or release archives. They may
-be downloaded by the user's environment on first use for Mask2Former, or
+Model weights are not included in this repository or release archives.
+Mask2Former may be downloaded by the user's environment on first use, or
 provided by the user as local files under
-`models/mask2former-swin-large-ade-semantic/`. SAM3.1 checkpoints are not
-auto-downloaded by this application and should be provided by the user under
-`models/sam3.1/`.
+`models/mask2former-swin-large-ade-semantic/`. SAM3.1 checkpoints and the
+`sam3` package are not auto-downloaded by this application and should be
+provided by the user.
 
 Users are responsible for ensuring that their use, redistribution, deployment,
 or commercial integration complies with the applicable third-party license and

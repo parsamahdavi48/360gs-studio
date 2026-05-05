@@ -41,6 +41,31 @@ if REQUIRE_CUDA and not torch.cuda.is_available():
 """
 
 
+def is_optional_sam3_numpy_conflict(line: str) -> bool:
+    """Return true for the known optional sam3 NumPy metadata conflict."""
+    normalized = line.strip().lower()
+    return (
+        normalized.startswith("sam3 ")
+        and "numpy" in normalized
+        and "<2" in normalized
+        and ("has requirement" in normalized or "requires" in normalized)
+    )
+
+
+def split_pip_check_errors(text: str) -> tuple[list[str], list[str]]:
+    errors: list[str] = []
+    ignored: list[str] = []
+    for line in text.splitlines():
+        stripped = line.strip()
+        if not stripped:
+            continue
+        if is_optional_sam3_numpy_conflict(stripped):
+            ignored.append(stripped)
+        else:
+            errors.append(stripped)
+    return errors, ignored
+
+
 def run_capture(command: list[str | Path]) -> subprocess.CompletedProcess[str]:
     return subprocess.run([str(part) for part in command], text=True, capture_output=True)
 
@@ -138,11 +163,17 @@ def main() -> int:
 
     pip_check = run_capture([py, "-m", "pip", "check"])
     if pip_check.returncode != 0:
-        print("Result: pip dependency check failed")
-        emit_block("pip check output:", (pip_check.stdout or "") + (pip_check.stderr or ""))
-        print("=================================")
-        return 1
-    print("pip check: passed")
+        pip_text = (pip_check.stdout or "") + (pip_check.stderr or "")
+        pip_errors, ignored_warnings = split_pip_check_errors(pip_text)
+        if pip_errors:
+            print("Result: pip dependency check failed")
+            emit_block("pip check output:", "\n".join(pip_errors + ignored_warnings))
+            print("=================================")
+            return 1
+        print("pip check: passed with optional SAM3.1 NumPy metadata warning")
+        emit_block("Ignored optional pip check warning:", "\n".join(ignored_warnings))
+    else:
+        print("pip check: passed")
 
     if args.locked:
         pinned_requirements = LOCKED_CORE_REQUIREMENTS + LOCKED_TORCH_REQUIREMENTS + LOCKED_ML_REQUIREMENTS

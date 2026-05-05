@@ -36,7 +36,7 @@ For DSLR, mirrorless, smartphone, or normal video image sequences, Step 3 can ge
 - Improve detection near the bottom of 360° images for camera operators, tripods, and hands
 - Mask stitch seams, overexposed regions, and user-provided PNG custom masks
 - Preview mask results in single-preview or thumbnail-list mode while tuning settings, with cached thumbnails for large image sets
-- Select only frames with mask misses and regenerate them with adjusted settings
+- Select only frames with mask misses and regenerate them with adjusted settings; with SAM3.1, use prompts to add missed targets to an existing mask or subtract false detections
 - Convert Metashape SfM results for LichtFeld Studio, Postshot, and Brush
 - Export COLMAP Rig viewpoint datasets and optionally run COLMAP/GLOMAP
 - Windows setup scripts and a Japanese/English GUI
@@ -62,7 +62,26 @@ update_venv.bat
 
 To rebuild with the pinned known-good package set from `requirements/`, run `update_venv.bat --locked`.
 
-YOLO/SAM2 and Mask2Former model weights may be downloaded automatically on first use. Local YOLO/SAM weights can be placed under `models/ultralytics/`; local Mask2Former weights can be placed under `models/mask2former-swin-large-ade-semantic/`. Local SAM3.1 prompt masking expects `models/sam3.1/sam3.1_multiplex.pt` and is not auto-downloaded. Legacy `.pt` files in the repository root are still detected for compatibility. Release ZIP assets do not include model weights or generated scene data. These third-party libraries and model weights are governed by separate license terms; see [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md).
+YOLO/SAM2 and Mask2Former model weights may be downloaded automatically on first use. Local YOLO/SAM weights can be placed under `models/ultralytics/`; local Mask2Former weights can be placed under `models/mask2former-swin-large-ade-semantic/`. Local SAM3.1 prompt masking expects `models/sam3.1/sam3.1_multiplex.pt` and is not auto-downloaded. Legacy `.pt` files in the repository root are still detected for compatibility. Release ZIP assets do not include model weights, generated scene data, user settings, or local setup logs. These third-party libraries and model weights are governed by separate license terms; see [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md).
+
+### Optional SAM3.1 Prompt Masks
+
+SAM3.1 is optional. `setup_windows.bat` does not install Meta's `sam3` package and does not download SAM3.1 checkpoints because access requires the user's Hugging Face account and SAM License acceptance.
+
+Use SAM3.1 when you want more accurate prompt-controlled masks, especially for sky masks or targeted cleanup. After generating masks once, you can select only the images that need correction and use SAM3.1 prompts to add missed regions such as `tripod`, `hand`, or `selfie stick`, or subtract false detections such as `logo` or `sign`.
+
+1. Create or sign in to a Hugging Face account.
+2. Open Meta's [facebook/sam3.1](https://huggingface.co/facebook/sam3.1) Hugging Face repository and request access/accept the SAM License. Hugging Face gated model requests are tied to an individual user account and may require sharing your username/email with the model author.
+3. Check Meta's [SAM 3 GitHub repository](https://github.com/facebookresearch/sam3) for the current license, package, and checkpoint notes.
+4. After access is approved, download the SAM3.1 checkpoint and place it at `models/sam3.1/sam3.1_multiplex.pt`. Keep the downloaded `LICENSE` and `README.md` next to it when available.
+5. Install the `sam3` package only if you will use SAM3.1:
+
+```bat
+.\.venv\Scripts\python.exe -m pip install timm ftfy==6.1.1 iopath regex einops triton-windows pycocotools
+.\.venv\Scripts\python.exe -m pip install --no-deps git+https://github.com/facebookresearch/sam3.git
+```
+
+As of this integration, the `sam3` package declares `numpy<2`, while this app uses NumPy 2.x. The app keeps SAM3.1 opt-in for that reason. Installing `sam3` with `--no-deps` preserves the verified NumPy 2.x environment; `pip check` may still report that metadata conflict, and `setup_windows.bat` treats that specific optional SAM3.1 warning as acceptable.
 
 ## GUI Workflow
 

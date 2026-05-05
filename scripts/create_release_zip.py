@@ -37,6 +37,10 @@ UNWANTED_NAMES = {
     "extract_cache.npz",
     "extract_report.json",
     "pytorch_model.bin",
+    "stechdrive_export_settings.json",
+    "update_venv.log",
+    "user_settings.json",
+    "views_config.json",
 }
 
 

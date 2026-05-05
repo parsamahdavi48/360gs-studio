@@ -95,7 +95,7 @@ SAM3.1を動かすには、アクティブなvenvにMetaの `sam3` Python packag
 .\.venv\Scripts\python.exe -m pip install --no-deps git+https://github.com/facebookresearch/sam3.git@847e1a3b15115a04c87c0760297f044f0555d970
 ```
 
-この手順では、`sam3` が宣言している `numpy<2` 要求はあえて未解決のままになります。SAM3.1検証用venvでは `pip check` がこのmetadata conflictを報告します。
+この手順では、`sam3` が宣言している `numpy<2` 要求はあえて未解決のままになります。SAM3.1検証用venvでは手動の `pip check` がこのmetadata conflictを報告する場合があります。`setup_windows.bat` は既存 `.venv` の確認時、このSAM3.1由来の既知警告だけを許容します。
 
 ## 注意点
 

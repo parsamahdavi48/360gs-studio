@@ -104,8 +104,10 @@ runtime dependencies first and then install `sam3` itself with `--no-deps`:
 .\.venv\Scripts\python.exe -m pip install --no-deps git+https://github.com/facebookresearch/sam3.git@847e1a3b15115a04c87c0760297f044f0555d970
 ```
 
-This intentionally leaves `sam3`'s declared `numpy<2` requirement unresolved;
-`pip check` will report that metadata conflict in a SAM3.1 test venv.
+This intentionally leaves `sam3`'s declared `numpy<2` requirement unresolved.
+Manual `pip check` may report that metadata conflict in a SAM3.1 test venv;
+`setup_windows.bat` ignores only this known optional SAM3.1 warning when
+checking whether an existing `.venv` is ready.
 
 ## Notes
 

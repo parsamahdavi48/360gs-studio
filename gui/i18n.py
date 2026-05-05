@@ -435,9 +435,8 @@ _JA: dict[str, str] = {
         "YOLO/SAMマスク機能では、第三者が提供するモデルファイルおよびライブラリを使用します。\n\n"
         "このアプリ本体のソースコードはMIT Licenseですが、YOLO/SAM機能で使用されるモデルおよび関連ライブラリには別のライセンス条件が適用されます。\n\n"
         "- Ultralytics YOLO / ultralytics: AGPL-3.0 または Ultralytics Enterprise License\n"
-        "- Meta SAM2/SAM2.1: Apache License 2.0\n"
-        "- Meta SAM3.1: SAM License（SAM3.1人物モデルを選ぶ場合）\n\n"
-        "モデル重みはこのアプリには同梱されていません。初回使用時にユーザー環境へダウンロードされる場合があります。\n\n"
+        "- Meta SAM2/SAM2.1: Apache License 2.0\n\n"
+        "YOLO/SAM2.1のモデル重みはこのアプリには同梱されていません。初回使用時にユーザー環境へダウンロードされる場合があります。\n\n"
         "商用利用、再配布、社内展開、製品組み込み等における各ライセンス条件への適合は、利用者の責任で確認してください。"
     ),
     "YOLO_SAM_LICENSE_NOTICE_DONT_SHOW_AGAIN": "次回からこの確認を表示しない",
@@ -445,15 +444,16 @@ _JA: dict[str, str] = {
     "YOLO_SAM_LICENSE_NOTICE_CANCELED": "YOLO/SAMの実行をキャンセルしました",
     "SKY_LICENSE_NOTICE_TITLE": "セマンティックマスクモデルの利用条件",
     "SKY_LICENSE_NOTICE_BODY": (
-        "セマンティックマスク機能では、第三者が提供するMask2Former ADE20Kモデルファイル、"
-        "Transformers関連ライブラリ、またはユーザーが配置したMeta SAM3.1チェックポイントを使用します。\n\n"
+        "セマンティック/プロンプトマスク機能では、第三者が提供するMask2Former ADE20Kモデルファイル、"
+        "Transformers関連ライブラリ、またはユーザーが配置したMeta SAM3.1チェックポイントとsam3 packageを使用します。\n\n"
         "このアプリ本体のソースコードはMIT Licenseですが、マスク生成で使用されるモデル、"
         "SAM Materials、関連ライブラリ、学習元データセットには別のライセンス条件や利用条件が適用されます。\n\n"
         "- Mask2Former: MIT License\n"
         "- Transformers / safetensors: Apache License 2.0\n"
         "- Meta SAM3.1: SAM License\n"
         "- ADE20K dataset: データセット側の利用条件が適用されます\n\n"
-        "モデル重みはこのアプリには同梱されていません。初回使用時にユーザー環境へダウンロードされる場合があります。\n\n"
+        "モデル重みはこのアプリには同梱されていません。Mask2Formerは初回使用時にユーザー環境へダウンロードされる場合があります。"
+        "SAM3.1のチェックポイントとsam3 packageは自動ダウンロードせず、ユーザーが別途用意します。\n\n"
         "商用利用、再配布、社内展開、製品組み込み等における各ライセンス条件への適合は、利用者の責任で確認してください。"
     ),
     "SKY_LICENSE_NOTICE_CANCELED": "セマンティックマスクの実行をキャンセルしました",
@@ -944,9 +944,8 @@ _EN: dict[str, str] = {
         "The YOLO/SAM mask feature uses third-party model files and libraries.\n\n"
         "This application's own source code is licensed under the MIT License, but the models and related libraries used by the YOLO/SAM feature are governed by separate license terms.\n\n"
         "- Ultralytics YOLO / ultralytics: AGPL-3.0 or Ultralytics Enterprise License\n"
-        "- Meta SAM2/SAM2.1: Apache License 2.0\n"
-        "- Meta SAM3.1: SAM License (when the SAM3.1 person backend is selected)\n\n"
-        "Model weights are not included with this application. They may be downloaded to the user's environment on first use.\n\n"
+        "- Meta SAM2/SAM2.1: Apache License 2.0\n\n"
+        "YOLO/SAM2.1 model weights are not included with this application. They may be downloaded to the user's environment on first use.\n\n"
         "Users are responsible for ensuring that commercial use, redistribution, internal deployment, or product integration complies with the applicable license terms."
     ),
     "YOLO_SAM_LICENSE_NOTICE_DONT_SHOW_AGAIN": "Do not show this notice again",
@@ -954,15 +953,16 @@ _EN: dict[str, str] = {
     "YOLO_SAM_LICENSE_NOTICE_CANCELED": "YOLO/SAM run canceled",
     "SKY_LICENSE_NOTICE_TITLE": "Semantic Mask Model Terms",
     "SKY_LICENSE_NOTICE_BODY": (
-        "The semantic mask feature uses third-party Mask2Former ADE20K model files, "
-        "Transformers-related libraries, or a user-provided Meta SAM3.1 checkpoint.\n\n"
+        "The semantic/prompt mask feature uses third-party Mask2Former ADE20K model files, "
+        "Transformers-related libraries, or a user-provided Meta SAM3.1 checkpoint and sam3 package.\n\n"
         "This application's own source code is licensed under the MIT License, but the models, SAM Materials, "
         "related libraries, and training dataset used by mask generation are governed by separate license terms.\n\n"
         "- Mask2Former: MIT License\n"
         "- Transformers / safetensors: Apache License 2.0\n"
         "- Meta SAM3.1: SAM License\n"
         "- ADE20K dataset: governed by the dataset provider's terms\n\n"
-        "Model weights are not included with this application. They may be downloaded to the user's environment on first use.\n\n"
+        "Model weights are not included with this application. Mask2Former may be downloaded to the user's environment on first use. "
+        "SAM3.1 checkpoints and the sam3 package are not downloaded automatically and must be provided by the user.\n\n"
         "Users are responsible for confirming compliance for commercial use, redistribution, internal deployment, or product integration."
     ),
     "SKY_LICENSE_NOTICE_CANCELED": "Semantic mask run canceled",

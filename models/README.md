@@ -25,13 +25,12 @@ models/
     model.safetensors
 ```
 
-Experimental SAM3.1 sky/person prompt-mask placement:
+SAM3.1 prompt-mask placement:
 
 ```text
 models/
   sam3.1/
     sam3.1_multiplex.pt
-    config.json
     LICENSE
     README.md
 ```
@@ -48,5 +47,5 @@ YOLO/SAMの新しい標準配置は `models/ultralytics/` です。既存互換�
 リポジトリ直下の `.pt` も引き続き読み込みますが、新しく配置する場合は
 `models/ultralytics/` を使ってください。
 
-Mask2Former空検出は `models/mask2former-swin-large-ade-semantic/`、実験的な
-SAM3.1空/人物prompt検証は `models/sam3.1/sam3.1_multiplex.pt` を使います。
+Mask2Formerセマンティックマスクは `models/mask2former-swin-large-ade-semantic/`、
+SAM3.1プロンプトマスクは `models/sam3.1/sam3.1_multiplex.pt` を使います。
