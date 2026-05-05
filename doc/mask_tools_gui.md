@@ -42,6 +42,7 @@ run_gui.bat --scene ./scene01
   - `YOLO/SAM2.1`: default path. YOLO detects people or selected classes, then SAM2.1 refines the mask.
   - `Mask2Former`: ADE20K semantic segmentation. The GUI passes selected ADE20K class names to `sky_mask.py --backend mask2former --labels ...`.
   - `SAM3.1`: prompt-based masks. If `models/sam3.1/sam3.1_multiplex.pt` is missing, the GUI can download it after Hugging Face access approval.
+    If you can open the Files tab or download `sam3.1_multiplex.pt` from `facebook/sam3.1` in the browser, that Hugging Face account has access. GUI downloads require a `Read` token created by the same account. Copy the token immediately after creating it, and do not paste it into issues, chats, screenshots, or logs. This app does not save the token.
   - All models share the same `Quality` input-view recipe.
 - `Quality`: chooses the balance between accuracy and processing time, forwarded as `--quality standard|high|best`.
   - `Standard`: direct full-image inference. For 360° images, also runs a light bottom-pole pass.

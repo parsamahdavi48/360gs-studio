@@ -82,7 +82,11 @@ When mask accuracy is the priority, SAM3.1 is recommended over YOLO/SAM2.1. Use 
 
 1. Create or sign in to a Hugging Face account.
 2. Open Meta's [facebook/sam3.1](https://huggingface.co/facebook/sam3.1) Hugging Face repository and request access/accept the SAM License. Hugging Face gated model requests are tied to an individual user account and may require sharing your username/email with the model author.
+   - Hugging Face gated models can use automatic or manual approval. If you can open the Files tab or download `sam3.1_multiplex.pt` from `facebook/sam3.1` in the browser after accepting the terms, your account already has access and you do not need to wait for an email reply. If the page shows a pending/approval-waiting state, wait for the model author approval.
 3. Create a Hugging Face access token from your account settings.
+   - App downloads require a `Read` token created by the same Hugging Face account that has access. Browser login state is not used by this app.
+   - Copy the token value immediately after creating it. Hugging Face may not show existing token values again from the token list. If you missed the value, create a new `Read` token or use `Invalidate and refresh` to issue a new value. Refreshing invalidates the old token.
+   - Treat access tokens as secrets equivalent to passwords. Do not paste them into README files, issues, chats, screenshots, or logs. `Read` permission is enough for downloading the SAM3.1 checkpoint. Prefer creating a dedicated token for SAM3.1, and delete or refresh it from Hugging Face settings when you no longer need it. This app does not save the token.
 4. In Step 3, choose `SAM3.1`. If `models/sam3.1/sam3.1_multiplex.pt` is missing, the app asks for the token and downloads the checkpoint. The token is used only for that download and is not saved by this app.
 
 You can also place the checkpoint manually at `models/sam3.1/sam3.1_multiplex.pt`.

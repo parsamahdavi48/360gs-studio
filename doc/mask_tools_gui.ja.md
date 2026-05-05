@@ -45,6 +45,7 @@ run_gui.bat --scene ./scene01
   - `YOLO/SAM2.1`: 既定経路。COCOクラスをYOLOで検出し、SAM2.1で形状を整えます。
   - `Mask2Former`: ADE20K semantic segmentation。選択したADE20Kクラスを `sky_mask.py --backend mask2former --labels ...` に渡します。
   - `SAM3.1`: プロンプトでマスクを生成します。`models/sam3.1/sam3.1_multiplex.pt` が無い場合、Hugging Faceの利用承認後にGUIからダウンロードできます。
+    ブラウザで `facebook/sam3.1` のFilesタブや `sam3.1_multiplex.pt` を開ける/ダウンロードできる場合、そのHugging Faceアカウントでは承認済みです。GUIからのダウンロードには、同じアカウントで作成した `Read` トークンを使ってください。トークンは作成直後にコピーし、Issue、チャット、スクリーンショット、ログなどへ貼らないでください。このアプリはトークンを保存しません。
 - `品質`: 精度と処理時間のバランスを選びます。
   - `標準`: 全体直処理中心。360°画像では軽い下部投影も実行します。
   - `高品質`: 推奨既定。人物向けタイルと、360°画像向けの上部/下部投影補助を追加します。
