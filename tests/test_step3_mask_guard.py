@@ -95,6 +95,12 @@ def test_mask_step_yolo_class_presets_and_class_label_are_removed() -> None:
     assert step.yolo_class_list_section.toggle_button.text().strip() == i18n.t("DETECTION_TARGET_SECTION")
     assert step.ade_class_list_section.toggle_button.text().strip() == i18n.t("DETECTION_TARGET_SECTION")
     assert step.sam_prompt_section.toggle_button.text().strip() == i18n.t("DETECTION_TARGET_SECTION")
+    assert step.yolo_class_list_section.content_widget.isHidden()
+    assert step.ade_class_list_section.content_widget.isHidden()
+    assert step.sam_prompt_section.content_widget.isHidden()
+    assert step.yolo_class_list_section.toggle_button.toolTip() == i18n.tip("YOLO_CLASS_LIST_SECTION")
+    assert step.ade_class_list_section.toggle_button.toolTip() == i18n.tip("ADE20K_CLASS_LIST_SECTION")
+    assert step.sam_prompt_section.toggle_button.toolTip() == i18n.tip("SAM31_PROMPT_SECTION")
 
 
 def test_mask_step_yolo_level_and_expand_share_compact_row() -> None:
@@ -826,17 +832,24 @@ def test_mask_step_quality_is_shared_by_mask2former(tmp_path: Path) -> None:
     assert yolo_cmd[yolo_cmd.index("--quality") + 1] == "standard"
 
 
-def test_mask_step_external_image_controls_only_show_for_normal_type() -> None:
+def test_mask_step_image_folder_controls_stay_available_for_all_image_types() -> None:
     _app()
     step = MaskStep(Path.cwd())
 
-    assert step.external_images_panel.isHidden()
+    assert isinstance(step.add_external_images_btn, QToolButton)
+    assert isinstance(step.open_images_dir_btn, QToolButton)
+    assert not step.add_external_images_btn.isHidden()
+    assert not step.open_images_dir_btn.isHidden()
+    assert step.add_external_images_btn.toolTip() == i18n.tip("EXTERNAL_IMAGES_ADD")
+    assert step.open_images_dir_btn.toolTip() == i18n.tip("EXTERNAL_IMAGES_OPEN")
 
     step._set_projection("normal")
-    assert not step.external_images_panel.isHidden()
+    assert not step.add_external_images_btn.isHidden()
+    assert not step.open_images_dir_btn.isHidden()
 
     step._set_projection("equirect")
-    assert step.external_images_panel.isHidden()
+    assert not step.add_external_images_btn.isHidden()
+    assert not step.open_images_dir_btn.isHidden()
 
 
 def test_mask_step_imports_external_images_into_scene_images(tmp_path: Path) -> None:

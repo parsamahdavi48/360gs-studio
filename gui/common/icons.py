@@ -70,6 +70,24 @@ _DELETE_SVG = """
 </svg>
 """.strip()
 
+_FOLDER_SVG = """
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none">
+  <path d="M3.8 7.4h6l1.8 2.2h8.6v7.9a2.1 2.1 0 0 1-2.1 2.1H5.9a2.1 2.1 0 0 1-2.1-2.1V7.4Z"
+        stroke="#e5e7eb" stroke-width="1.8" stroke-linejoin="round"/>
+  <path d="M3.8 9.6h16.4" stroke="#2dd4bf" stroke-width="1.8" stroke-linecap="round"/>
+</svg>
+""".strip()
+
+_FILE_PICKER_SVG = """
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none">
+  <path d="M7 3.8h6.2L17 7.6v12.6H7V3.8Z" stroke="#e5e7eb" stroke-width="1.8"
+        stroke-linejoin="round"/>
+  <path d="M13.1 4.1v3.8h3.8" stroke="#e5e7eb" stroke-width="1.8" stroke-linejoin="round"/>
+  <path d="M9.4 15.6h5.2M12 13v5.2" stroke="#2dd4bf" stroke-width="1.8"
+        stroke-linecap="round"/>
+</svg>
+""".strip()
+
 _SINGLE_PREVIEW_SVG = """
 <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none">
   <rect x="4" y="5" width="16" height="14" rx="1.8" stroke="#e5e7eb" stroke-width="1.8"/>
@@ -166,6 +184,14 @@ def minus_icon(size: int = 18) -> QIcon:
 
 def delete_icon(size: int = 18) -> QIcon:
     return svg_icon(_DELETE_SVG, size)
+
+
+def folder_icon(size: int = 18) -> QIcon:
+    return svg_icon(_FOLDER_SVG, size)
+
+
+def file_picker_icon(size: int = 18) -> QIcon:
+    return svg_icon(_FILE_PICKER_SVG, size)
 
 
 def single_preview_icon(size: int = 18) -> QIcon:

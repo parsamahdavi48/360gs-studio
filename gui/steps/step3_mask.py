@@ -31,6 +31,7 @@ from PySide6.QtWidgets import (
     QScrollArea,
     QSplitter,
     QTabWidget,
+    QToolButton,
     QVBoxLayout,
     QWidget,
 )
@@ -39,7 +40,7 @@ from gui import i18n
 from gui.common.collapsible_section import CollapsibleSection
 from gui.common.drag_spinbox import DragDoubleSpinBox, DragSpinBox
 from gui.common.form_rows import add_tooltip_row
-from gui.common.icons import minus_icon, plus_icon
+from gui.common.icons import delete_icon, file_picker_icon, folder_icon, minus_icon, plus_icon
 from gui.mask.mask_preview import MaskPreviewConfig, MaskPreviewWidget
 from gui.steps.base_step import (
     SETTINGS_PANE_MARGINS,
@@ -217,11 +218,33 @@ class MaskStep(BaseStepWidget):
         # --- 標準フォルダ ---
         path_form = QFormLayout()
         path_form.setSpacing(6)
+        self.images_path_row = QWidget()
+        images_path_row = QHBoxLayout(self.images_path_row)
+        images_path_row.setContentsMargins(0, 0, 0, 0)
+        images_path_row.setSpacing(6)
         self.images_path_label = QLabel("-")
         self.images_path_label.setToolTip(i18n.tip("IMAGES_DIR"))
         self.images_path_label.setWordWrap(True)
         self.images_path_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
-        add_tooltip_row(path_form, i18n.IMAGES_DIR, self.images_path_label, i18n.tip("IMAGES_DIR"))
+        images_path_row.addWidget(self.images_path_label, stretch=1)
+
+        self.add_external_images_btn = QToolButton()
+        self.add_external_images_btn.setObjectName("iconToolButton")
+        self.add_external_images_btn.setIcon(plus_icon())
+        self.add_external_images_btn.setToolTip(i18n.tip("EXTERNAL_IMAGES_ADD"))
+        self.add_external_images_btn.setAccessibleName(i18n.t("EXTERNAL_IMAGES_ADD"))
+        self.add_external_images_btn.setFixedSize(32, 32)
+        images_path_row.addWidget(self.add_external_images_btn)
+
+        self.open_images_dir_btn = QToolButton()
+        self.open_images_dir_btn.setObjectName("iconToolButton")
+        self.open_images_dir_btn.setIcon(folder_icon())
+        self.open_images_dir_btn.setToolTip(i18n.tip("EXTERNAL_IMAGES_OPEN"))
+        self.open_images_dir_btn.setAccessibleName(i18n.t("EXTERNAL_IMAGES_OPEN"))
+        self.open_images_dir_btn.setFixedSize(32, 32)
+        images_path_row.addWidget(self.open_images_dir_btn)
+
+        add_tooltip_row(path_form, i18n.IMAGES_DIR, self.images_path_row, i18n.tip("IMAGES_DIR"))
         self.masks_path_label = QLabel("-")
         self.masks_path_label.setToolTip(i18n.tip("MASKS_DIR"))
         self.masks_path_label.setWordWrap(True)
@@ -250,32 +273,6 @@ class MaskStep(BaseStepWidget):
             self.projection_group.addButton(btn)
             self.projection_buttons[projection] = btn
         layout.addLayout(projection_row)
-
-        self.external_images_panel = QWidget()
-        external_layout = QVBoxLayout(self.external_images_panel)
-        external_layout.setContentsMargins(0, 0, 0, 0)
-        external_layout.setSpacing(6)
-
-        self.external_images_title = QLabel(i18n.t("EXTERNAL_IMAGES_SECTION"))
-        self.external_images_title.setToolTip(i18n.tip("EXTERNAL_IMAGES_SECTION"))
-        external_layout.addWidget(self.external_images_title)
-
-        self.external_images_hint = QLabel(i18n.t("EXTERNAL_IMAGES_HINT"))
-        self.external_images_hint.setObjectName("stickySummaryLabel")
-        self.external_images_hint.setWordWrap(True)
-        self.external_images_hint.setToolTip(i18n.tip("EXTERNAL_IMAGES_SECTION"))
-        external_layout.addWidget(self.external_images_hint)
-
-        external_button_row = QHBoxLayout()
-        external_button_row.setSpacing(6)
-        self.add_external_images_btn = QPushButton(i18n.t("EXTERNAL_IMAGES_ADD"))
-        self.add_external_images_btn.setToolTip(i18n.tip("EXTERNAL_IMAGES_ADD"))
-        external_button_row.addWidget(self.add_external_images_btn, stretch=1)
-        self.open_images_dir_btn = QPushButton(i18n.t("EXTERNAL_IMAGES_OPEN"))
-        self.open_images_dir_btn.setToolTip(i18n.tip("EXTERNAL_IMAGES_OPEN"))
-        external_button_row.addWidget(self.open_images_dir_btn, stretch=1)
-        external_layout.addLayout(external_button_row)
-        layout.addWidget(self.external_images_panel)
 
         # --- 追加マスク ---
         task_row = QHBoxLayout()
@@ -424,6 +421,8 @@ class MaskStep(BaseStepWidget):
         yolo_layout.addWidget(bottom_settings_row_widget)
 
         class_list_section = CollapsibleSection(i18n.t("DETECTION_TARGET_SECTION"), expanded=False)
+        class_list_section.setToolTip(i18n.tip("YOLO_CLASS_LIST_SECTION"))
+        class_list_section.toggle_button.setToolTip(i18n.tip("YOLO_CLASS_LIST_SECTION"))
         self.yolo_class_list_section = class_list_section
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
@@ -446,6 +445,8 @@ class MaskStep(BaseStepWidget):
         self.mask_settings_tabs.addTab(self.yolo_section, i18n.t("MASK_TAB_YOLO"))
 
         self.ade_class_list_section = CollapsibleSection(i18n.t("DETECTION_TARGET_SECTION"), expanded=False)
+        self.ade_class_list_section.setToolTip(i18n.tip("ADE20K_CLASS_LIST_SECTION"))
+        self.ade_class_list_section.toggle_button.setToolTip(i18n.tip("ADE20K_CLASS_LIST_SECTION"))
         ade_scroll = QScrollArea()
         ade_scroll.setWidgetResizable(True)
         ade_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
@@ -465,7 +466,9 @@ class MaskStep(BaseStepWidget):
         self.ade_class_list_section.content_layout.addWidget(ade_scroll)
         yolo_layout.addWidget(self.ade_class_list_section)
 
-        self.sam_prompt_section = CollapsibleSection(i18n.t("DETECTION_TARGET_SECTION"), expanded=True)
+        self.sam_prompt_section = CollapsibleSection(i18n.t("DETECTION_TARGET_SECTION"), expanded=False)
+        self.sam_prompt_section.setToolTip(i18n.tip("SAM31_PROMPT_SECTION"))
+        self.sam_prompt_section.toggle_button.setToolTip(i18n.tip("SAM31_PROMPT_SECTION"))
         sam_grid_widget = QWidget()
         sam_grid = QGridLayout(sam_grid_widget)
         sam_grid.setSpacing(2)
@@ -583,27 +586,39 @@ class MaskStep(BaseStepWidget):
 
         custom_form = QFormLayout()
         custom_form.setSpacing(6)
+        self.custom_mask_path_row = QWidget()
+        custom_mask_path_row = QHBoxLayout(self.custom_mask_path_row)
+        custom_mask_path_row.setContentsMargins(0, 0, 0, 0)
+        custom_mask_path_row.setSpacing(6)
         self.custom_mask_path_label = QLabel(i18n.t("CUSTOM_MASK_NOT_SELECTED"))
         self.custom_mask_path_label.setToolTip(i18n.tip("CUSTOM_MASK_FILE"))
         self.custom_mask_path_label.setWordWrap(True)
         self.custom_mask_path_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        custom_mask_path_row.addWidget(self.custom_mask_path_label, stretch=1)
+
+        self.custom_mask_browse_btn = QToolButton()
+        self.custom_mask_browse_btn.setObjectName("iconToolButton")
+        self.custom_mask_browse_btn.setIcon(file_picker_icon())
+        self.custom_mask_browse_btn.setToolTip(i18n.tip("CUSTOM_MASK_BROWSE"))
+        self.custom_mask_browse_btn.setAccessibleName(i18n.t("CUSTOM_MASK_BROWSE"))
+        self.custom_mask_browse_btn.setFixedSize(32, 32)
+        custom_mask_path_row.addWidget(self.custom_mask_browse_btn)
+
+        self.custom_mask_clear_btn = QToolButton()
+        self.custom_mask_clear_btn.setObjectName("iconToolButton")
+        self.custom_mask_clear_btn.setIcon(delete_icon())
+        self.custom_mask_clear_btn.setToolTip(i18n.tip("CUSTOM_MASK_CLEAR"))
+        self.custom_mask_clear_btn.setAccessibleName(i18n.t("CUSTOM_MASK_CLEAR"))
+        self.custom_mask_clear_btn.setFixedSize(32, 32)
+        custom_mask_path_row.addWidget(self.custom_mask_clear_btn)
+
         add_tooltip_row(
             custom_form,
             i18n.t("CUSTOM_MASK_FILE"),
-            self.custom_mask_path_label,
+            self.custom_mask_path_row,
             i18n.tip("CUSTOM_MASK_FILE"),
         )
         other_layout.addLayout(custom_form)
-
-        custom_button_row = QHBoxLayout()
-        custom_button_row.setSpacing(6)
-        self.custom_mask_browse_btn = QPushButton(i18n.t("CUSTOM_MASK_BROWSE"))
-        self.custom_mask_browse_btn.setToolTip(i18n.tip("CUSTOM_MASK_BROWSE"))
-        custom_button_row.addWidget(self.custom_mask_browse_btn, stretch=1)
-        self.custom_mask_clear_btn = QPushButton(i18n.t("CUSTOM_MASK_CLEAR"))
-        self.custom_mask_clear_btn.setToolTip(i18n.tip("CUSTOM_MASK_CLEAR"))
-        custom_button_row.addWidget(self.custom_mask_clear_btn, stretch=1)
-        other_layout.addLayout(custom_button_row)
         other_layout.addStretch()
         self.custom_section = self.other_section
         self.mask_settings_tabs.addTab(self.other_section, i18n.t("MASK_TAB_OPTIONS"))
@@ -1006,7 +1021,6 @@ class MaskStep(BaseStepWidget):
         overexp_enabled = self.run_overexp_cb.isChecked()
         custom_enabled = self.run_custom_cb.isChecked()
 
-        self.external_images_panel.setVisible(not equirect)
         self._update_person_backend_availability()
         model = self._person_backend_arg()
         person_sam31 = self._person_uses_sam31()

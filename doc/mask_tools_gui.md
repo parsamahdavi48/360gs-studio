@@ -21,11 +21,12 @@ run_gui.bat --scene ./scene01
 ## Main Fields
 
 - `Scene Folder`: base folder. Step 3 fills `images` and `masks` from it.
-- `Images Folder`: input images for primary and extra mask generation.
+- `Images Folder`: input images for mask generation. Use the `+` icon at the right side of the row to add images from another folder, and the folder icon to open `images/`.
 - `Masks Folder`: output masks; also stitch input/output.
 - `Image Type`:
-  - `360°`: equirectangular 360° images. Enables stitch seam masking and 360° projection assist.
-  - `Normal`: normal video frames or still-camera image sequences. Disables stitch seam masking and 360° pole projection assist.
+  - `360°`: choose this when processing equirectangular 360° images.
+  - `Normal`: choose this when processing normal video frames or still images.
+  - Split mixed image types into separate folders and process each type separately.
 - `Options`: optional mask passes added after the primary mask.
   - `Stitch`: stitch seam masks for equirectangular 360° images.
   - `Overexp`: overexposure masks.
@@ -38,12 +39,14 @@ run_gui.bat --scene ./scene01
   - `Mask2Former`: ADE20K semantic segmentation. The GUI passes selected ADE20K class names to `sky_mask.py --backend mask2former --labels ...`.
   - `SAM3.1`: local prompt path. It runs `sky_mask.py --backend sam31` when `models/sam3.1/sam3.1_multiplex.pt` exists.
   - All primary models share the same `Quality` input-view recipe.
-- `Quality`: forwarded as `--quality standard|high|best`.
+- `Quality`: chooses the balance between accuracy and processing time, forwarded as `--quality standard|high|best`.
   - `Standard`: direct full-image inference. For 360° images, also runs a light bottom-pole pass.
   - `High`: recommended default. Adds person-oriented tiles and, for 360° images, top/bottom projection assist.
   - `Best`: denser tiles and stronger bottom-pole settings for difficult source images.
   - Normal images use direct inference and whole-image tiling; 360° pole projection is skipped.
+  - Start with `Standard` or `High`, then select only images with missed areas and regenerate them at a higher quality.
 - `Mask Expand`: forwarded to the selected primary backend as `--expand`.
+  - Positive values mask a wider area; negative values make the boundary tighter.
   - Default is `0px`; drag horizontally on the number field to adjust.
   - Clamped to `-16..32px` for safety.
 - `Detection Targets`: collapsed picker for class selection in `YOLO/SAM2.1`.
@@ -59,7 +62,7 @@ run_gui.bat --scene ./scene01
   - Custom prompt fields accept comma or semicolon separators. Spaces around separators are ignored; spaces inside prompts are kept.
   - The subtract prompt field removes matching SAM3.1 detections from the positive prompt result.
 - `Op.` is SAM3.1-only and appears in the same row as `Qual.` and `Exp.`. `Replace` rewrites the mask, `Add` blackens detected regions in the existing mask, and `Subtract` turns detected regions white in the existing mask.
-- `Inference Size`: controls Mask2Former inference size. SAM3.1 currently uses fixed `1008`.
+- `Inference Size`: larger values can improve detail and boundaries but use more GPU memory and time. Only Mask2Former can be changed in the GUI; YOLO/SAM2.1 and SAM3.1 use fixed processing sizes.
 - `Model Details`: contains Mask2Former-specific `Min Score` (`0.00-1.00`, `0` disables it).
 - `Sky Mask`: contains sky-only filters.
   - `Min Area` removes small sky components by image-area ratio.
@@ -77,7 +80,7 @@ run_gui.bat --scene ./scene01
   - 8-bit values >=128 and 16-bit values >=32768 become white during 0/255 binarization. White means keep and black means exclude.
   - The custom mask applies only to source images with matching dimensions. Mismatches are skipped without automatic resizing.
   - If every image is skipped because none match the custom mask size, the custom step fails.
-  - If `Custom` is turned on before a file is selected, the file picker opens automatically. You can also select the file first with `Load`.
+  - If `Custom` is turned on before a file is selected, the file picker opens automatically. You can also select a file with the file icon at the right side of the row, or clear it with the delete icon.
 - `Mask Preview` button: builds a temporary mask for the displayed image using the current primary model and enabled extra masks.
   - Existing files in `masks/` are not used as the base, except in SAM3.1 `Add`/`Subtract` mode where the saved mask is copied into the temporary preview so the correction can be inspected.
   - The result is shown as a red overlay and is not saved to `masks/`.
