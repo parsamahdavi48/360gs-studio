@@ -29,11 +29,16 @@ def test_sam31_requirements_split_installs_sam3_without_deps() -> None:
     requirements = [
         "timm==1.0.26",
         "iopath==0.1.10",
+        "pycocotools==2.0.11",
         "sam3 @ https://github.com/facebookresearch/sam3/archive/example.zip",
     ]
 
     assert no_deps_requirements(requirements) == [
         "sam3 @ https://github.com/facebookresearch/sam3/archive/example.zip"
     ]
-    assert regular_requirements(requirements) == ["timm==1.0.26", "iopath==0.1.10"]
-    assert wheel_preflight_requirements(requirements) == ["timm==1.0.26"]
+    assert regular_requirements(requirements) == [
+        "timm==1.0.26",
+        "iopath==0.1.10",
+        "pycocotools==2.0.11",
+    ]
+    assert wheel_preflight_requirements(requirements) == ["timm==1.0.26", "pycocotools==2.0.11"]

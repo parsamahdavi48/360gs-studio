@@ -5,4 +5,5 @@ regex==2026.4.4
 huggingface-hub==0.36.2
 einops==0.8.2
 triton-windows==3.6.0.post26
+pycocotools==2.0.11
 sam3 @ https://github.com/facebookresearch/sam3/archive/847e1a3b15115a04c87c0760297f044f0555d970.zip
