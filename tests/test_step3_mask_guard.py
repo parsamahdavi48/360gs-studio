@@ -837,19 +837,15 @@ def test_mask_step_image_folder_controls_stay_available_for_all_image_types() ->
     step = MaskStep(Path.cwd())
 
     assert isinstance(step.add_external_images_btn, QToolButton)
-    assert isinstance(step.open_images_dir_btn, QToolButton)
     assert not step.add_external_images_btn.isHidden()
-    assert not step.open_images_dir_btn.isHidden()
     assert step.add_external_images_btn.toolTip() == i18n.tip("EXTERNAL_IMAGES_ADD")
-    assert step.open_images_dir_btn.toolTip() == i18n.tip("EXTERNAL_IMAGES_OPEN")
+    assert not hasattr(step, "open_images_dir_btn")
 
     step._set_projection("normal")
     assert not step.add_external_images_btn.isHidden()
-    assert not step.open_images_dir_btn.isHidden()
 
     step._set_projection("equirect")
     assert not step.add_external_images_btn.isHidden()
-    assert not step.open_images_dir_btn.isHidden()
 
 
 def test_mask_step_imports_external_images_into_scene_images(tmp_path: Path) -> None:

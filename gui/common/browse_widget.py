@@ -8,13 +8,13 @@ from PySide6.QtWidgets import (
     QFileDialog,
     QHBoxLayout,
     QLineEdit,
-    QPushButton,
     QSizePolicy,
     QToolButton,
     QVBoxLayout,
     QWidget,
 )
 
+from gui.common.icons import folder_icon
 from gui.i18n import BROWSE
 
 
@@ -54,8 +54,12 @@ class BrowseWidget(QWidget):
         else:
             self._layout.addWidget(self.line_edit, stretch=1)
 
-        self.browse_button = QPushButton(BROWSE)
-        self.browse_button.setFixedWidth(104)
+        self.browse_button = QToolButton()
+        self.browse_button.setObjectName("iconToolButton")
+        self.browse_button.setIcon(folder_icon())
+        self.browse_button.setToolTip(BROWSE)
+        self.browse_button.setAccessibleName(BROWSE)
+        self.browse_button.setFixedSize(32, 32)
         self.browse_button.clicked.connect(self._browse)
         if button_position == "below":
             self._layout.addWidget(self.browse_button, alignment=Qt.AlignLeft)

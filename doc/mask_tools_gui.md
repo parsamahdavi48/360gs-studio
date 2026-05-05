@@ -21,7 +21,7 @@ run_gui.bat --scene ./scene01
 ## Main Fields
 
 - `Scene Folder`: base folder. Step 3 fills `images` and `masks` from it.
-- `Images Folder`: input images for mask generation. Use the `+` icon at the right side of the row to add images from another folder, and the folder icon to open `images/`.
+- `Images Folder`: input images for mask generation. Use the `+` icon at the right side of the row to add images from another folder.
 - `Masks Folder`: output masks; also stitch input/output.
 - `Image Type`:
   - `360°`: choose this when processing equirectangular 360° images.

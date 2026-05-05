@@ -14,8 +14,7 @@ import cv2
 import numpy as np
 from apply_frame_decisions import pending_drop_image_paths, untracked_image_paths
 from custom_mask import load_custom_mask
-from PySide6.QtCore import QProcess, QSize, Qt, QTimer, QUrl, Signal
-from PySide6.QtGui import QDesktopServices
+from PySide6.QtCore import QProcess, QSize, Qt, QTimer, Signal
 from PySide6.QtWidgets import (
     QButtonGroup,
     QCheckBox,
@@ -40,7 +39,7 @@ from gui import i18n
 from gui.common.collapsible_section import CollapsibleSection
 from gui.common.drag_spinbox import DragDoubleSpinBox, DragSpinBox
 from gui.common.form_rows import add_tooltip_row
-from gui.common.icons import delete_icon, file_picker_icon, folder_icon, minus_icon, plus_icon
+from gui.common.icons import delete_icon, file_picker_icon, minus_icon, plus_icon
 from gui.mask.mask_preview import MaskPreviewConfig, MaskPreviewWidget
 from gui.steps.base_step import (
     SETTINGS_PANE_MARGINS,
@@ -235,14 +234,6 @@ class MaskStep(BaseStepWidget):
         self.add_external_images_btn.setAccessibleName(i18n.t("EXTERNAL_IMAGES_ADD"))
         self.add_external_images_btn.setFixedSize(32, 32)
         images_path_row.addWidget(self.add_external_images_btn)
-
-        self.open_images_dir_btn = QToolButton()
-        self.open_images_dir_btn.setObjectName("iconToolButton")
-        self.open_images_dir_btn.setIcon(folder_icon())
-        self.open_images_dir_btn.setToolTip(i18n.tip("EXTERNAL_IMAGES_OPEN"))
-        self.open_images_dir_btn.setAccessibleName(i18n.t("EXTERNAL_IMAGES_OPEN"))
-        self.open_images_dir_btn.setFixedSize(32, 32)
-        images_path_row.addWidget(self.open_images_dir_btn)
 
         add_tooltip_row(path_form, i18n.IMAGES_DIR, self.images_path_row, i18n.tip("IMAGES_DIR"))
         self.masks_path_label = QLabel("-")
@@ -801,7 +792,6 @@ class MaskStep(BaseStepWidget):
         self.mask_preview.mask_preview_requested.connect(self._run_mask_preview)
         self.mask_preview.current_reprocess_requested.connect(self._run_current_image_reprocess)
         self.add_external_images_btn.clicked.connect(self._add_external_images_from_folder)
-        self.open_images_dir_btn.clicked.connect(self._open_images_dir)
         self._set_projection(_PROJECTION_EQUIRECT)
         self._update_task_controls()
         self._on_images_dir_changed(self._images_dir_text())
@@ -1173,15 +1163,6 @@ class MaskStep(BaseStepWidget):
         if not self.scene_dir:
             self.set_scene_dir(scene)
         return bool(self.scene_dir)
-
-    def _open_images_dir(self) -> None:
-        if not self._ensure_scene_for_external_images():
-            return
-        images_dir = Path(self._images_dir_text())
-        images_dir.mkdir(parents=True, exist_ok=True)
-        self._on_images_dir_changed(str(images_dir))
-        self._update_ready_status()
-        QDesktopServices.openUrl(QUrl.fromLocalFile(str(images_dir)))
 
     def _add_external_images_from_folder(self) -> None:
         if not self._ensure_scene_for_external_images():

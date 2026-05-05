@@ -216,6 +216,11 @@ def test_main_window_clear_scene_button_clears_header_scene(tmp_path: Path) -> N
     window = MainWindow(str(tmp_path))
 
     assert window.scene_browse.text() == str(tmp_path)
+    assert isinstance(window.scene_browse.browse_button, QToolButton)
+    assert window.scene_browse.browse_button.objectName() == "iconToolButton"
+    assert window.scene_browse.browse_button.text() == ""
+    assert not window.scene_browse.browse_button.icon().isNull()
+    assert window.scene_browse.browse_button.accessibleName() == i18n.BROWSE
     assert window.clear_scene_btn.isEnabled()
     assert isinstance(window.clear_scene_btn, QToolButton)
     assert window.clear_scene_btn.text() == ""
