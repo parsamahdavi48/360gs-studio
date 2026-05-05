@@ -164,7 +164,7 @@ GUIは以下のCLIエンジンを呼び出しています。必要なら単体�
 
 | スクリプト | 内容 | ドキュメント |
 | --- | --- | --- |
-| `extract_frames.py` | 360°動画からフレーム抽出 | [JP](doc/extract_frames.md) |
+| `extract_frames.py` | 360°動画からフレーム抽出 | [EN](doc/extract_frames.md) |
 | `apply_frame_decisions.py` | CSVの採用/除外判定を反映 | [JP](doc/apply_frame_decisions.md) |
 | `review_frames.py` | フレーム確認GUI | [JP](doc/review_frames.md) |
 | `yolo_mask.py` | YOLO+SAM2.1 マスク生成 | [JP](doc/yolo_mask.ja.md) |

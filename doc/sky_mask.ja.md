@@ -14,14 +14,14 @@
 ## 使い方
 
 ```bash
-python sky_mask.py [images_dir_or_file] [masks_dir] [--backend mask2former|sam31] [--projection equirect|normal] [--quality standard|high|best] [--labels LABELS] [--sam-prompt TEXT] [--subtract-sam-prompt TEXT] [--merge-mode replace|add|subtract] [--inference-size N] [--expand PX] [--min-score S] [--min-area-ratio R] [--top-connected] [--replace]
+python sky_mask.py [images_dir_or_file] [masks_dir] [--backend mask2former|sam31] [--projection equirect|normal] [--quality standard|high|best] [--labels LABELS] [--sam-prompt TEXT] [--subtract-sam-prompt TEXT] [--merge-mode replace|add|subtract] [--inference-size N] [--expand PX] [--min-score S] [--min-area-ratio R] [--top-connected] [--replace] [--safe-batch]
 ```
 
 - `images_dir_or_file`: 入力画像フォルダ、または1枚の入力画像。
 - `masks_dir`: 出力マスクフォルダ。既定では既存マスクへAND合成します。
 - `--backend mask2former|sam31`: セグメンテーションbackend（既定: `mask2former`）。
 - `--projection equirect|normal`: 入力画像の種類（既定: `equirect`）。
-- `--quality standard|high|best`: モデルへ渡す入力素材レシピ（既定: `high`）。
+- `--quality standard|high|best`: 入力ビューと投影補助の品質レシピ（既定: `high`）。
   - 360°画像では `high` 以上で上部/下部投影補助と対象向けタイルを使います。
   - 通常画像では全体直処理と全体タイルを使い、360°専用の極投影は使いません。
   - `--mode direct|top|bottom|hybrid|full` は低レベルの比較用overrideとして残っています。
@@ -82,19 +82,16 @@ SAM3.1 backendは、次の場所のcheckpointを使います。
 ```text
 models/sam3.1/
   sam3.1_multiplex.pt
-  config.json
-  LICENSE
-  README.md
 ```
 
-SAM3.1を動かすには、アクティブなvenvにMetaの `sam3` Python packageが必要です。標準の `setup_windows.bat` 環境ではこの実行用パッケージを導入します。GUIでは、Hugging Faceで利用申請とSAM Licenseへの同意が完了していれば、SAM3.1選択時に `sam3.1_multiplex.pt` をダウンロードできます。CLIで使う場合は、上記の場所にcheckpointを置くか `--model-dir` で指定してください。
+SAM3.1を動かすには、アクティブなvenvにMetaの `sam3` Python packageが必要です。標準の `setup_windows.bat` 環境ではこの実行用パッケージを導入します。GUIでは、Hugging Faceで利用申請とSAM Licenseへの同意が完了していれば、SAM3.1選択時に `sam3.1_multiplex.pt` をダウンロードできます。CLIで使う場合は、上記の場所にcheckpointを置くか `--model-dir` で指定してください。READMEやLICENSEなどの補助ファイルを `models/sam3.1/` に置いても構いませんが、スクリプトが必須とするのはcheckpointファイルだけです。
 
 ## 注意点
 
 - 検出対象は黒 (0)、それ以外は白 (255) です。
 - Mask2Formerは複数ADE20Kラベルを1回の推論で解決し、最終マスクへ統合します。
 - SAM3.1は1プロンプトずつ実行し、結果をOR合成します。
-- SAM3.1の減算プロンプトは同じ入力素材レシピで検出し、肯定側のプロンプトマスクから差し引いてから合成モードを適用します。
+- SAM3.1の減算プロンプトは同じ品質レシピで検出し、肯定側のプロンプトマスクから差し引いてから合成モードを適用します。
 - `--safe-batch` 使用時にGPUメモリ不足で停止した場合、完了済みマスクは保存されます。同じ設定で再実行すると未処理画像から再開します。
 - 小領域除去と上端接続フィルタは空ラベル/空プロンプトだけに適用します。人物、三脚、カスタムプロンプトのマスクは空用後処理では削除されません。
 - この機能は第三者モデル重みおよびデータセット由来checkpointを使います。別ライセンス/利用条件については [../THIRD_PARTY_LICENSES.md](../THIRD_PARTY_LICENSES.md) を参照してください。

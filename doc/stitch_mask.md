@@ -61,4 +61,4 @@ python stitch_mask.py input_masks output_masks --boundary-width 10 --workers 8
 
 ## Reference
 
-See the implementation: [stitch_mask.py](stitch_mask.py#L1-L400)
+See the implementation: [stitch_mask.py](../stitch_mask.py)

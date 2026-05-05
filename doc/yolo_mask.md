@@ -84,4 +84,4 @@ python scripts/benchmark_yolo_mask.py --dataset D:\3DGS\test --output-root D:\3D
 
 ## Reference
 
-See the implementation: [yolo_mask.py](yolo_mask.py#L1-L400)
+See the implementation: [yolo_mask.py](../yolo_mask.py)

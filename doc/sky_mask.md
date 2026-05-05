@@ -18,7 +18,7 @@ bottom pole.
 ## Usage
 
 ```bash
-python sky_mask.py [images_dir_or_file] [masks_dir] [--backend mask2former|sam31] [--projection equirect|normal] [--quality standard|high|best] [--labels LABELS] [--sam-prompt TEXT] [--subtract-sam-prompt TEXT] [--merge-mode replace|add|subtract] [--inference-size N] [--expand PX] [--min-score S] [--min-area-ratio R] [--top-connected] [--replace]
+python sky_mask.py [images_dir_or_file] [masks_dir] [--backend mask2former|sam31] [--projection equirect|normal] [--quality standard|high|best] [--labels LABELS] [--sam-prompt TEXT] [--subtract-sam-prompt TEXT] [--merge-mode replace|add|subtract] [--inference-size N] [--expand PX] [--min-score S] [--min-area-ratio R] [--top-connected] [--replace] [--safe-batch]
 ```
 
 - `images_dir_or_file`: source image directory or one source image.
@@ -82,21 +82,20 @@ models/mask2former-swin-large-ade-semantic/
 If the local directory is missing, Transformers may resolve
 `facebook/mask2former-swin-large-ade-semantic` from Hugging Face.
 
-The SAM3.1 backend uses this checkpoint location:
+The SAM3.1 backend requires this checkpoint:
 
 ```text
 models/sam3.1/
   sam3.1_multiplex.pt
-  config.json
-  LICENSE
-  README.md
 ```
 
 SAM3.1 support requires Meta's `sam3` Python package in the active venv. The
 standard `setup_windows.bat` environment installs that runtime package. In the
 GUI, choosing SAM3.1 can download `sam3.1_multiplex.pt` after Hugging Face
 access approval and SAM License acceptance. CLI users should place the
-checkpoint in the location above or pass it with `--model-dir`.
+checkpoint in the location above or pass it with `--model-dir`. Optional
+README or LICENSE files may also be placed under `models/sam3.1/`, but the
+script only requires the checkpoint file.
 
 ## Notes
 

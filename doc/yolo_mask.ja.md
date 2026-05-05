@@ -13,7 +13,7 @@ python yolo_mask.py [images_dir] [output_dir] [--add_ext] [--quality standard|hi
 - `images_dir`: 入力画像ディレクトリ（省略時: `images`）
 - `output_dir`: 出力マスク保存先（省略時: `masks`）
 - `--add_ext`: 元の拡張子を残してさらに `.png` を追加（出力例: `hoge.jpg.png`）
-- `--quality standard|high|best`: モデルへ渡す入力素材レシピ（デフォルト: `high`）。
+- `--quality standard|high|best`: 入力ビューと投影補助の品質レシピ（デフォルト: `high`）。
   - `standard`: 全体直処理中心。360°画像では軽い下部投影も実行します。
   - `high`: 人物向けタイルと、360°画像向けの上部/下部投影補助を追加します。
   - `best`: より細かいタイルと強い下部補助を使います。
