@@ -45,7 +45,7 @@ python sky_mask.py [images_dir_or_file] [masks_dir] [--backend mask2former|sam31
 python sky_mask.py .\images .\masks --projection equirect --quality high --labels sky,person --inference-size 768
 ```
 
-SAM3.1で空と人物をテストする場合:
+SAM3.1で空と人物を指定する場合:
 
 ```bash
 python sky_mask.py .\images .\masks --backend sam31 --quality high --inference-size 1008 --sam-prompt sky --sam-prompt person --replace

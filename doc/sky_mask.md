@@ -49,7 +49,7 @@ Examples:
 python sky_mask.py .\images .\masks --projection equirect --quality high --labels sky,person --inference-size 768
 ```
 
-SAM3.1 sky/person prompt test:
+SAM3.1 sky/person prompts:
 
 ```bash
 python sky_mask.py .\images .\masks --backend sam31 --quality high --inference-size 1008 --sam-prompt sky --sam-prompt person --replace

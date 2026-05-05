@@ -53,6 +53,6 @@ Supported source image extensions are `.jpg`, `.jpeg`, `.png`, `.tif`, and
 - If source images exist but none match the custom mask size, the command exits
   with an error.
 
-In the integrated GUI, the custom mask step runs after the selected primary
+In the integrated GUI, the custom mask step runs after the selected model-based
 mask, stitch seam, and overexposure masks, so it acts as the final AND-merge
 pass.

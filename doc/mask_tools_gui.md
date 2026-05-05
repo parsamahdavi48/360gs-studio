@@ -4,8 +4,8 @@
 
 Step 3 in STechDrive 3DGS Utils is a PySide6 wrapper around:
 
-- `yolo_mask.py` (YOLO/SAM2.1 primary mask generation)
-- `sky_mask.py` (Mask2Former ADE20K or local SAM3.1 prompt-based primary masks)
+- `yolo_mask.py` (YOLO/SAM2.1 model-based mask generation)
+- `sky_mask.py` (Mask2Former ADE20K or local SAM3.1 prompt-based masks)
 - `stitch_mask.py` (stitch-region masking)
 - `overexposure_mask.py` (overexposure masking)
 - `custom_mask.py` (user-provided static mask merging)
@@ -21,31 +21,35 @@ run_gui.bat --scene ./scene01
 ## Main Fields
 
 - `Scene Folder`: base folder. Step 3 fills `images` and `masks` from it.
-- `Images Folder`: input images for mask generation. Use the `+` icon at the right side of the row to add images from another folder.
+- `Images Folder`: input images for mask generation. Use the `+` icon at the right side of the row to copy supported images from another folder into the current scene's `images/`.
+  - If `Scene Folder` is not set, the GUI asks you to choose one first.
+  - Only files directly inside the selected folder are copied; subfolders are not scanned.
+  - Existing filenames in `images/` are skipped and never overwritten.
+  - If `selected_frames.csv` already exists, newly copied files are not added to the CSV automatically. Step 3 will report them as untracked before generation, so resolve the CSV/image mismatch or use a separate scene for external sequences.
 - `Masks Folder`: output masks; also stitch input/output.
 - `Image Type`:
   - `360°`: choose this when processing equirectangular 360° images.
   - `Normal`: choose this when processing normal video frames or still images.
   - Split mixed image types into separate folders and process each type separately.
-- `Options`: optional mask passes added after the primary mask.
+- `Options`: optional mask passes added after the model-based mask.
   - `Stitch`: stitch seam masks for equirectangular 360° images.
   - `Overexp`: overexposure masks.
   - `Custom`: user-provided static PNG mask.
 - Settings tabs:
-  - `Mask Settings`: primary model, target classes/prompts, expansion, and projection assist.
+  - `Mask Settings`: mask model, target classes/prompts, expansion, and projection assist.
   - `Options`: stitch seam, overexposure, and custom PNG mask settings.
-- `Model`: selects the primary mask backend.
+- `Model`: selects the mask backend.
   - `YOLO/SAM2.1`: default path. YOLO detects people or selected classes, then SAM2.1 refines the mask.
   - `Mask2Former`: ADE20K semantic segmentation. The GUI passes selected ADE20K class names to `sky_mask.py --backend mask2former --labels ...`.
   - `SAM3.1`: local prompt path. It runs `sky_mask.py --backend sam31` when `models/sam3.1/sam3.1_multiplex.pt` exists.
-  - All primary models share the same `Quality` input-view recipe.
+  - All models share the same `Quality` input-view recipe.
 - `Quality`: chooses the balance between accuracy and processing time, forwarded as `--quality standard|high|best`.
   - `Standard`: direct full-image inference. For 360° images, also runs a light bottom-pole pass.
   - `High`: recommended default. Adds person-oriented tiles and, for 360° images, top/bottom projection assist.
   - `Best`: denser tiles and stronger bottom-pole settings for difficult source images.
   - Normal images use direct inference and whole-image tiling; 360° pole projection is skipped.
   - Start with `Standard` or `High`, then select only images with missed areas and regenerate them at a higher quality.
-- `Mask Expand`: forwarded to the selected primary backend as `--expand`.
+- `Mask Expand`: forwarded to the selected backend as `--expand`.
   - Positive values mask a wider area; negative values make the boundary tighter.
   - Default is `0px`; drag horizontally on the number field to adjust.
   - Clamped to `-16..32px` for safety.
@@ -81,14 +85,14 @@ run_gui.bat --scene ./scene01
   - The custom mask applies only to source images with matching dimensions. Mismatches are skipped without automatic resizing.
   - If every image is skipped because none match the custom mask size, the custom step fails.
   - If `Custom` is turned on before a file is selected, the file picker opens automatically. You can also select a file with the file icon at the right side of the row, or clear it with the delete icon.
-- `Mask Preview` button: builds a temporary mask for the displayed image using the current primary model and enabled extra masks.
+- `Mask Preview` button: builds a temporary mask for the displayed image using the current model and enabled extra masks.
   - Existing files in `masks/` are not used as the base, except in SAM3.1 `Add`/`Subtract` mode where the saved mask is copied into the temporary preview so the correction can be inspected.
   - The result is shown as a red overlay and is not saved to `masks/`.
   - In thumbnail mode, it switches the currently selected image to single-preview mode and shows the temporary result there.
   - `Show Preview` toggles between the generated temporary preview and the saved mask in `masks/` without deleting the temporary preview.
   - The first run with a third-party model shows the relevant model/license notice.
 - `Regenerate Mask`: rebuilds and saves the mask for only the currently displayed preview image.
-  - It reruns the selected primary model for that single image. If `Stitch`, `Overexp`, or `Custom` is enabled, those masks are merged into the same output.
+  - It reruns the selected model for that single image. If `Stitch`, `Overexp`, or `Custom` is enabled, those masks are merged into the same output.
   - In SAM3.1 `Add`/`Subtract` mode, it applies the current prompt result to the existing saved mask instead of replacing the whole mask.
   - Results from steps that are now off are not kept, so use it to fix misses found in preview without regenerating the whole set.
 - `Mask Preview`:
@@ -103,15 +107,16 @@ run_gui.bat --scene ./scene01
 
 ## Actions
 
-Choose the primary model in `Mask Settings`, enable any `Options`, then press `Generate`.
-The primary mask always runs first. Extra masks run in this order: stitch seam, overexposure, custom.
-Existing masks are regenerated from the current primary model and enabled extra masks. Results from extra masks that are now off are not kept.
+Choose the mask model in `Mask Settings`, enable any `Options`, then press `Generate`.
+The model-based mask always runs first. Extra masks run in this order: stitch seam, overexposure, custom.
+Existing masks are regenerated from the current model and enabled extra masks. Results from extra masks that are now off are not kept.
 
 If `selected_frames.csv` is not present, Step 3 can still generate masks as long as `images/` contains supported images.
 In that external-image mode, Step 2 keep/drop validation is skipped.
+If `selected_frames.csv` is present, Step 3 validates `images/` against it and stops when pending drops or untracked files are found.
 
 ## Notes
 
 - The GUI runs scripts as subprocesses, so behavior stays aligned with CLI.
-- Primary semantic/person masking uses third-party libraries and model weights with separate license terms. See [../THIRD_PARTY_LICENSES.md](../THIRD_PARTY_LICENSES.md).
+- Semantic/person masking uses third-party libraries and model weights with separate license terms. See [../THIRD_PARTY_LICENSES.md](../THIRD_PARTY_LICENSES.md).
 - Logs from each step are shown in the integrated log panel.
