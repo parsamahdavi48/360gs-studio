@@ -528,10 +528,6 @@ if QMainWindow is not None:
             status = row.get("status", "ok").strip().lower()
             pipeline = row.get("analysis_pipeline", "").strip().lower()
 
-            # 橙: 品質条件を満たす代表候補が探索範囲内になかったフレーム
-            if "fallback_keep" in status:
-                return i18n.t("REVIEW_ADVISORY_FALLBACK"), "#fef3c7", "#7c2d12"
-
             if "motion_blur" in status:
                 return i18n.t("REVIEW_ADVISORY_MOTION_BLUR"), "#fee2e2", "#7f1d1d"
 
@@ -550,31 +546,11 @@ if QMainWindow is not None:
             if "novelty_added" in status:
                 return i18n.t("REVIEW_ADVISORY_NOVELTY_ADDED"), "#dbeafe", "#1e3a8a"
 
-            # 青: 自動間引き
-            if "thinned" in status:
-                return i18n.t("REVIEW_ADVISORY_THINNED"), "#dbeafe", "#1e3a8a"
-
-            # 青: 自動置換済み
-            if "replaced" in status:
-                return i18n.t("REVIEW_ADVISORY_REPLACED"), "#dbeafe", "#1e3a8a"
-
-            # 青: 変化補正による追加候補
-            if "smart_added" in status:
-                return i18n.t("REVIEW_ADVISORY_SMART_ADDED"), "#dbeafe", "#1e3a8a"
-
             if pipeline == "quick":
                 return i18n.t("REVIEW_ADVISORY_QUICK"), "#1e3a8a", "#e0f2fe"
 
             # 緑: 通常品質
             return i18n.t("REVIEW_ADVISORY_NORMAL"), "#a7f3d0", "#064e3b"
-
-        def _format_quality_value(self, value: str | None) -> str:
-            if value in (None, ""):
-                return "-"
-            try:
-                return f"{float(value):.2f}"
-            except (TypeError, ValueError):
-                return "-"
 
         def _format_metric_value(self, value: str | None, decimals: int = 3) -> str:
             if value in (None, ""):
@@ -595,21 +571,6 @@ if QMainWindow is not None:
                 blur=self._format_metric_value(row.get("blur_score_final"), 1),
                 sharpness_ratio=self._format_metric_value(row.get("sharpness_ratio"), 2),
             )
-
-        def _quality_summary(self, row: dict[str, str]) -> str:
-            final_score = self._format_quality_value(row.get("quality_score_final"))
-            original_score = self._format_quality_value(row.get("quality_score_original"))
-            threshold = self._format_quality_value(row.get("quality_min_score"))
-
-            parts = [final_score]
-            detail_parts: list[str] = []
-            if original_score != "-" and original_score != final_score:
-                detail_parts.append(i18n.t("REVIEW_QUALITY_ORIGINAL_FORMAT").format(score=original_score))
-            if threshold != "-":
-                detail_parts.append(i18n.t("REVIEW_QUALITY_THRESHOLD_FORMAT").format(score=threshold))
-            if detail_parts:
-                parts.append(f"({' / '.join(detail_parts)})")
-            return " ".join(parts)
 
         def _render_current(self, *, sync_thumbnail: bool = True, scroll_thumbnail: bool = False) -> None:
             row = self._current_row()
@@ -646,40 +607,24 @@ if QMainWindow is not None:
 
             problem_count = len(self.problem_indices)
             current_problem = i18n.t("REVIEW_INFO_YES") if self._is_problem_row(row) else i18n.t("REVIEW_INFO_NO")
-            if row.get("analysis_pipeline") == "pair":
-                novelty_count = sum(1 for r in self.rows if "novelty_added" in r.get("status", "").strip().lower())
-                redundant_count = sum(1 for r in self.rows if "redundant_drop" in r.get("status", "").strip().lower())
-                gap_count = sum(1 for r in self.rows if "gap_forced" in r.get("status", "").strip().lower())
-                blur_count = sum(1 for r in self.rows if "motion_blur" in r.get("status", "").strip().lower())
-                texture_count = sum(1 for r in self.rows if "low_texture" in r.get("status", "").strip().lower())
-                weak_count = sum(1 for r in self.rows if "weak_match" in r.get("status", "").strip().lower())
-                self.problem_summary_label.setText(
-                    i18n.t("REVIEW_PAIR_PROBLEMS_FORMAT").format(
-                        n=problem_count,
-                        a=novelty_count,
-                        d=redundant_count,
-                        g=gap_count,
-                        b=blur_count,
-                        l=texture_count,
-                        w=weak_count,
-                        cur=current_problem,
-                    )
+            novelty_count = sum(1 for r in self.rows if "novelty_added" in r.get("status", "").strip().lower())
+            redundant_count = sum(1 for r in self.rows if "redundant_drop" in r.get("status", "").strip().lower())
+            gap_count = sum(1 for r in self.rows if "gap_forced" in r.get("status", "").strip().lower())
+            blur_count = sum(1 for r in self.rows if "motion_blur" in r.get("status", "").strip().lower())
+            texture_count = sum(1 for r in self.rows if "low_texture" in r.get("status", "").strip().lower())
+            weak_count = sum(1 for r in self.rows if "weak_match" in r.get("status", "").strip().lower())
+            self.problem_summary_label.setText(
+                i18n.t("REVIEW_PAIR_PROBLEMS_FORMAT").format(
+                    n=problem_count,
+                    a=novelty_count,
+                    d=redundant_count,
+                    g=gap_count,
+                    b=blur_count,
+                    l=texture_count,
+                    w=weak_count,
+                    cur=current_problem,
                 )
-            else:
-                smart_added_count = sum(1 for r in self.rows if "smart_added" in r.get("status", "").strip().lower())
-                replaced_count = sum(1 for r in self.rows if "replaced" in r.get("status", "").strip().lower())
-                fallback_count = sum(1 for r in self.rows if "fallback_keep" in r.get("status", "").strip().lower())
-                thinned_count = sum(1 for r in self.rows if "thinned" in r.get("status", "").strip().lower())
-                self.problem_summary_label.setText(
-                    i18n.t("REVIEW_PROBLEMS_FORMAT").format(
-                        n=problem_count,
-                        a=smart_added_count,
-                        r=replaced_count,
-                        f=fallback_count,
-                        t=thinned_count,
-                        cur=current_problem,
-                    )
-                )
+            )
 
             # 動画内位置
             ts_raw = row.get("timestamp_sec", "-")
@@ -691,10 +636,7 @@ if QMainWindow is not None:
             if row.get("analysis_pipeline") == "pair":
                 info_text = self._pair_info_summary(row, ts_str)
             else:
-                info_text = i18n.t("REVIEW_INFO_FORMAT").format(
-                    ts=ts_str,
-                    quality=self._quality_summary(row),
-                )
+                info_text = i18n.t("REVIEW_INFO_FORMAT").format(ts=ts_str)
             self.info_label.setText(info_text)
             self._sync_thumbnail_model()
             if sync_thumbnail:

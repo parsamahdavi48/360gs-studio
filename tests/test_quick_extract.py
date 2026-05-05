@@ -18,18 +18,17 @@ def _args(input_video: Path) -> argparse.Namespace:
         input_video=str(input_video),
         mode="fixed",
         interval_sec=0.8,
-        change_threshold=0.04,
         min_gap_sec=0.25,
         max_gap_sec=2.0,
         fixed_smart=False,
         quick_extract=True,
-        fixed_smart_change_threshold=0.04,
-        fixed_smart_feature_threshold=0.012,
         fixed_smart_max_inserts_per_interval=2,
         analysis_width=1920,
-        quality_min_score=0.35,
-        quality_min_improvement=0.08,
-        center_bias=0.05,
+        pair_motion_profile="walk",
+        pair_drop_threshold=-1.0,
+        pair_add_threshold=-1.0,
+        pair_track_min_count=36,
+        pair_track_min_confidence=0.25,
     )
 
 
@@ -59,8 +58,6 @@ def test_quick_extract_csv_leaves_uncomputed_scores_blank() -> None:
         "blur_score_final",
         "sharpness_baseline",
         "sharpness_ratio",
-        "quality_score_original",
-        "quality_score_final",
     ):
         assert rows[0][key] == ""
 
@@ -74,17 +71,14 @@ def test_quick_extract_summary_marks_quality_mode_skipped(tmp_path: Path) -> Non
         analysis_w=0,
         analysis_h=0,
         min_gap_frames=24,
-        window_frames=0,
         selected_count=14,
-        replaced_count=0,
-        fallback_keep_count=0,
         estimate_mode="quick_extract",
         filename_prefix="input",
         frame_digits=3,
     )
 
     assert summary["estimate_mode"] == "quick_extract"
-    assert summary["analysis"]["quality_mode"] == "skipped"
+    assert summary["analysis"]["pipeline"] == "quick"
     assert summary["params"]["quick_extract"] is True
 
 

@@ -33,8 +33,6 @@ def test_write_selected_csv_uses_frame_digit_width(tmp_path: Path) -> None:
             "change_score_final": 0.0,
             "blur_score_original": 0.0,
             "blur_score_final": 0.0,
-            "quality_score_original": 0.5,
-            "quality_score_final": 0.5,
             "status": "ok",
             "decision": "keep",
         }
@@ -61,8 +59,6 @@ def test_write_selected_csv_appends_existing_rows_and_renumbers(tmp_path: Path) 
             "change_score_final": "0",
             "blur_score_original": "0",
             "blur_score_final": "0",
-            "quality_score_original": "0.5",
-            "quality_score_final": "0.5",
             "status": "ok",
             "decision": "keep",
             "output_file": "images/old_1.jpg",
@@ -76,8 +72,6 @@ def test_write_selected_csv_appends_existing_rows_and_renumbers(tmp_path: Path) 
             "change_score_final": 0.0,
             "blur_score_original": 0.0,
             "blur_score_final": 0.0,
-            "quality_score_original": 0.5,
-            "quality_score_final": 0.5,
             "status": "ok",
             "decision": "keep",
         }

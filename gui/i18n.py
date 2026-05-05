@@ -92,8 +92,6 @@ _JA: dict[str, str] = {
     "PAIR_MOTION_PROFILE": "シーン距離",
     "PAIR_PROFILE_WALK": "近距離・歩行",
     "PAIR_PROFILE_DRONE": "遠景・空撮",
-    "QUALITY_MIN_SCORE": "品質確認スコア",
-    "QUALITY_MIN_IMPROVEMENT": "代替フレーム選択基準",
     "IMAGE_FORMAT": "画像形式",
     "JPEG_QUALITY": "JPEG品質",
     "FFMPEG_PATH": "ffmpeg パス",
@@ -165,12 +163,9 @@ _JA: dict[str, str] = {
     "REVIEW_DECISION_DROP": "除外",
     "REVIEW_INFO_YES": "対象",
     "REVIEW_INFO_NO": "通常",
-    "REVIEW_PROBLEMS_FORMAT": "確認対象 {n}件 | 追加 {a} / 差し替え {r} / 低品質 {f} / 間引き {t} | 表示中 {cur}",
     "REVIEW_FRAME_SLIDER_TIP": "CSV内のフレームを順番に切り替えます。",
     "REVIEW_FRAME_POSITION_FORMAT": "{seq} / {total} : {name}",
-    "REVIEW_INFO_FORMAT": "動画位置: {ts}  |  品質スコア: {quality}",
-    "REVIEW_QUALITY_ORIGINAL_FORMAT": "元:{score}",
-    "REVIEW_QUALITY_THRESHOLD_FORMAT": "基準:{score}",
+    "REVIEW_INFO_FORMAT": "動画位置: {ts}",
     "REVIEW_FLAG_TIP": "採用フラグを切り替えます。変更はすぐCSVに反映されます。",
     "REVIEW_RESET_DECISION_TIP": "このフレームの採用フラグを読み込み時の状態へ戻します。",
     "REVIEW_BTN_PREV": "前 (←)",
@@ -179,7 +174,7 @@ _JA: dict[str, str] = {
     "REVIEW_BTN_NEXT_PROBLEM": "次の確認対象 (F)",
     "REVIEW_BTN_PROBLEM_TIP": (
         "フレーム抽出時に確認対象として記録されたフレーム\n"
-        "（差し替え・低品質・間引き）を撮影順に巡回します。"
+        "（追加・除外・ブレ・低テクスチャ・弱い追跡）を撮影順に巡回します。"
     ),
     "REVIEW_NO_PROBLEMS": "確認対象フレームはありません",
     "REVIEW_IMAGE_NOT_FOUND": "画像が見つかりません:\n{path}",
@@ -188,10 +183,6 @@ _JA: dict[str, str] = {
     "REVIEW_INFO_HEADER": "情報",
     "REVIEW_SAVE_FAILED_HEADER": "保存に失敗しました",
     "REVIEW_SAVE_FAILED_BODY": "採用フラグをCSVに反映できませんでした:\n{error}",
-    "REVIEW_ADVISORY_FALLBACK": "要確認: 探索範囲内の代表候補が低品質",
-    "REVIEW_ADVISORY_REPLACED": "差し替え済み: 近傍のSfM向けフレームを使用",
-    "REVIEW_ADVISORY_SMART_ADDED": "追加: フレーム間の変化が大きいため、中間フレームを追加しました",
-    "REVIEW_ADVISORY_THINNED": "自動間引き: 動きが少ないため除外中",
     "REVIEW_ADVISORY_NOVELTY_ADDED": "追加: フレーム間の変化が大きいため、中間フレームを追加しました",
     "REVIEW_ADVISORY_REDUNDANT_DROP": "ペア解析: 冗長候補として除外中",
     "REVIEW_ADVISORY_GAP_FORCED": "ペア解析: 上限間隔の安全採用",
@@ -199,13 +190,13 @@ _JA: dict[str, str] = {
     "REVIEW_ADVISORY_LOW_TEXTURE": "要確認: 低テクスチャで特徴点が弱い可能性",
     "REVIEW_ADVISORY_WEAK_MATCH": "要確認: 追跡できる特徴点が弱い可能性",
     "REVIEW_ADVISORY_QUICK": "クイック: 指定間隔で抽出",
-    "REVIEW_ADVISORY_NORMAL": "通常: 品質基準OK",
+    "REVIEW_ADVISORY_NORMAL": "通常: 採用中",
     "REVIEW_PAIR_INFO_FORMAT": (
         "動画位置: {ts}  |  間隔: {gap}s  |  残差: {residual}  |  yaw補正: {yaw}°  |  "
         "追跡: {tracks}  |  信頼度: {confidence}  |  鮮明度: {blur}  |  比率: {sharpness_ratio}"
     ),
     "REVIEW_PAIR_PROBLEMS_FORMAT": (
-        "確認対象 {n}件 | 追加 {a} / 冗長除外 {d} / 上限採用 {g} / ブレ {b} / 低特徴 {l} / 弱追跡 {w} | 表示中 {cur}"
+        "確認 {n} | 追加 {a} / 冗長 {d} / 上限 {g} / ブレ {b} / 低特徴 {l} / 弱追跡 {w} | 表示 {cur}"
     ),
     "NEXT_STEP_MASK_NOTICE": "除外予定の画像が残っている場合、または採用/除外を変更した場合は、\n下部の「適用」で画像フォルダへ反映します。\n「適用」が無効なら、そのまま Step 3 (マスク生成) へ進めます。",
     "METASHAPE_NOTICE": "マスク生成後は、用途に合わせて次へ進みます。\nMetashapeルートでは masks/ をマスクとして読み込み、SfM後にStep 4で3DGS向けに書き出します。\nCOLMAPルートではStep 4で視点画像を書き出し、必要に応じてCOLMAP/GLOMAPを実行します。",
@@ -638,8 +629,6 @@ _EN: dict[str, str] = {
     "PAIR_MOTION_PROFILE": "Scene Distance",
     "PAIR_PROFILE_WALK": "Near / Walking",
     "PAIR_PROFILE_DRONE": "Distant / Aerial",
-    "QUALITY_MIN_SCORE": "Quality Review Score",
-    "QUALITY_MIN_IMPROVEMENT": "Alternate Frame Criterion",
     "IMAGE_FORMAT": "Image Format",
     "JPEG_QUALITY": "JPEG Quality",
     "FFMPEG_PATH": "ffmpeg Path",
@@ -711,12 +700,9 @@ _EN: dict[str, str] = {
     "REVIEW_DECISION_DROP": "Drop",
     "REVIEW_INFO_YES": "target",
     "REVIEW_INFO_NO": "normal",
-    "REVIEW_PROBLEMS_FORMAT": "Review {n} | add {a} / replace {r} / low {f} / skip {t} | now {cur}",
     "REVIEW_FRAME_SLIDER_TIP": "Slide through frames in the CSV.",
     "REVIEW_FRAME_POSITION_FORMAT": "{seq} / {total} : {name}",
-    "REVIEW_INFO_FORMAT": "Video position: {ts}  |  Quality score: {quality}",
-    "REVIEW_QUALITY_ORIGINAL_FORMAT": "orig:{score}",
-    "REVIEW_QUALITY_THRESHOLD_FORMAT": "threshold:{score}",
+    "REVIEW_INFO_FORMAT": "Video position: {ts}",
     "REVIEW_FLAG_TIP": "Toggle the keep flag. Changes are written to the CSV immediately.",
     "REVIEW_RESET_DECISION_TIP": "Reset this frame's keep flag to the state loaded from the CSV.",
     "REVIEW_BTN_PREV": "Prev (←)",
@@ -725,7 +711,7 @@ _EN: dict[str, str] = {
     "REVIEW_BTN_NEXT_PROBLEM": "extract problem → (F)",
     "REVIEW_BTN_PROBLEM_TIP": (
         "Cycle through frames extract_frames flagged automatically\n"
-        "(representative replacement / low quality / thinned), in CSV order."
+        "(added / dropped / blur / low texture / weak tracking), in CSV order."
     ),
     "REVIEW_NO_PROBLEMS": "No problem frames found.",
     "REVIEW_IMAGE_NOT_FOUND": "Image not found:\n{path}",
@@ -734,10 +720,6 @@ _EN: dict[str, str] = {
     "REVIEW_INFO_HEADER": "Info",
     "REVIEW_SAVE_FAILED_HEADER": "Save failed",
     "REVIEW_SAVE_FAILED_BODY": "Could not write the keep flag to the CSV:\n{error}",
-    "REVIEW_ADVISORY_FALLBACK": "Review: no high-quality representative in search window",
-    "REVIEW_ADVISORY_REPLACED": "Replaced: using a more SfM-ready nearby frame",
-    "REVIEW_ADVISORY_SMART_ADDED": "Motion-adjusted: added for high motion",
-    "REVIEW_ADVISORY_THINNED": "Auto-thinned: low motion, currently dropped",
     "REVIEW_ADVISORY_NOVELTY_ADDED": "Pair analysis: added for useful viewpoint change",
     "REVIEW_ADVISORY_REDUNDANT_DROP": "Pair analysis: dropped as redundant",
     "REVIEW_ADVISORY_GAP_FORCED": "Pair analysis: kept by max-gap guard",
@@ -745,13 +727,13 @@ _EN: dict[str, str] = {
     "REVIEW_ADVISORY_LOW_TEXTURE": "Review: low texture may weaken features",
     "REVIEW_ADVISORY_WEAK_MATCH": "Review: tracked features may be weak",
     "REVIEW_ADVISORY_QUICK": "Quick: extracted at the specified interval",
-    "REVIEW_ADVISORY_NORMAL": "Normal: quality OK",
+    "REVIEW_ADVISORY_NORMAL": "Normal: kept",
     "REVIEW_PAIR_INFO_FORMAT": (
         "Video position: {ts}  |  Gap: {gap}s  |  Residual: {residual}  |  Yaw adjust: {yaw}°  |  "
         "Tracks: {tracks}  |  Confidence: {confidence}  |  Sharpness: {blur}  |  Ratio: {sharpness_ratio}"
     ),
     "REVIEW_PAIR_PROBLEMS_FORMAT": (
-        "Review {n} | added {a} / redundant {d} / max-gap {g} / blur {b} / low-texture {l} / weak {w} | current {cur}"
+        "Review {n} | +{a} / -{d} / gap {g} / blur {b} / tex {l} / weak {w} | {cur}"
     ),
     "NEXT_STEP_MASK_NOTICE": "If drop-marked images remain, or if you changed keep/drop choices, press Apply at the bottom to write them into the image folder.\nIf Apply is disabled, proceed directly to Step 3 (Mask Generation).",
     "METASHAPE_NOTICE": "After mask generation, continue with the route that matches your dataset.\nFor the Metashape route, import masks/ as masks, run SfM, then use Step 4 for 3DGS export.\nFor the COLMAP route, use Step 4 to export viewpoint images and optionally run COLMAP/GLOMAP.",
@@ -1138,16 +1120,6 @@ _TIPS_JA: dict[str, str] = {
         "近距離・歩行: 建物、室内、参道など近い構造物が多い撮影向け。1.0秒基準でdrop=0.035/add=0.090。\n"
         "遠景・空撮: 空撮、広場、山、海岸など遠景主体の撮影向け。残差パララックスが弱く出やすいため低めの閾値を使います。"
     ),
-    "QUALITY_MIN_SCORE": (
-        "Step 2で品質確認として表示する基準スコア。範囲は0.00〜1.00、単位は正規化スコアです。\n"
-        "品質スコア = 特徴点数、特徴点の画面内分布、シャープネス、コントラスト、白飛び/黒つぶれペナルティの合成値。\n"
-        "代替フレーム選択後の品質スコアがこの値未満なら、Step 2で確認対象になります。既定値: 0.35"
-    ),
-    "QUALITY_MIN_IMPROVEMENT": (
-        "元フレームではなく近傍の代替フレームを選ぶために必要な品質スコア差。範囲は0.00〜1.00です。\n"
-        "候補品質スコア - 元品質スコア がこの値以上のときだけ、代替フレームを採用します。\n"
-        "大きいほど代替選択は控えめ、小さいほど積極的になります。既定値: 0.08"
-    ),
     "FFMPEG_PATH": "ffmpegの実行パス。PATHに通っていれば 'ffmpeg' でOK",
     "FFPROBE_PATH": "ffprobeの実行パス。動画情報の取得に使用",
     "FILENAME_PREFIX": "出力ファイル名の接頭辞。空欄なら動画ファイル名を自動使用",
@@ -1289,16 +1261,6 @@ _TIPS_EN: dict[str, str] = {
         "Distance profile for pair-analysis auto thresholds.\n"
         "Near / Walking: for scenes with nearby structures such as buildings, interiors, paths, or columns. Uses 1.0s reference drop=0.035/add=0.090.\n"
         "Distant / Aerial: for aerial, plaza, mountain, coast, or distant-view scenes. Uses lower thresholds because distant scenes produce weaker residual parallax."
-    ),
-    "QUALITY_MIN_SCORE": (
-        "Quality-score threshold used to flag frames for review in Step 2. Range: 0.00-1.00; unit: normalized score.\n"
-        "Quality combines feature count, feature spread, sharpness, contrast, and blown/black exposure penalty.\n"
-        "If the final representative is below this value after alternate-frame selection, Step 2 marks it for review. Default: 0.35"
-    ),
-    "QUALITY_MIN_IMPROVEMENT": (
-        "Quality-score gain required before choosing a nearby alternate frame. Range: 0.00-1.00.\n"
-        "An alternate frame is used only when candidate score - original score is at least this value.\n"
-        "Higher is more conservative; lower is more aggressive. Default: 0.08"
     ),
     "FFMPEG_PATH": "ffmpeg executable path. 'ffmpeg' works if it's on PATH",
     "FFPROBE_PATH": "ffprobe executable path. Used for video metadata probing",

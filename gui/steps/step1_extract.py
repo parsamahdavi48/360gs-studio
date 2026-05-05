@@ -313,62 +313,6 @@ class ExtractStep(BaseStepWidget):
         self.pair_motion_profile_label = adv_form.labelForField(self.pair_motion_profile_combo)
         advanced.content_layout.addLayout(adv_form)
 
-        self.selection_title = QLabel(i18n.t("AUTO_SELECTION_SECTION"))
-        self.selection_title.setObjectName("paneTitle")
-        self.selection_title.setToolTip(i18n.t("AUTO_SELECTION_HINT"))
-        advanced.content_layout.addWidget(self.selection_title)
-
-        selection_form = QFormLayout()
-        selection_form.setSpacing(6)
-
-        self.quality_min_score_edit = DragDoubleSpinBox(
-            minimum=0.0,
-            maximum=1.0,
-            step=0.01,
-            decimals=2,
-            value=0.35,
-        )
-        self.quality_min_score_edit.setToolTip(i18n.tip("QUALITY_MIN_SCORE"))
-        self.quality_min_score_edit.setFixedWidth(96)
-        self.quality_min_score_edit.valueChanged.connect(self._mark_estimate_stale)
-        add_tooltip_row(
-            selection_form,
-            i18n.t("QUALITY_MIN_SCORE"),
-            self.quality_min_score_edit,
-            i18n.tip("QUALITY_MIN_SCORE"),
-        )
-        self.quality_min_score_label = selection_form.labelForField(self.quality_min_score_edit)
-
-        self.quality_min_improvement_edit = DragDoubleSpinBox(
-            minimum=0.0,
-            maximum=1.0,
-            step=0.01,
-            decimals=2,
-            value=0.08,
-        )
-        self.quality_min_improvement_edit.setToolTip(i18n.tip("QUALITY_MIN_IMPROVEMENT"))
-        self.quality_min_improvement_edit.setFixedWidth(96)
-        self.quality_min_improvement_edit.valueChanged.connect(self._mark_estimate_stale)
-        add_tooltip_row(
-            selection_form,
-            i18n.t("QUALITY_MIN_IMPROVEMENT"),
-            self.quality_min_improvement_edit,
-            i18n.tip("QUALITY_MIN_IMPROVEMENT"),
-        )
-        self.quality_min_improvement_label = selection_form.labelForField(self.quality_min_improvement_edit)
-
-        advanced.content_layout.addLayout(selection_form)
-        for widget in (
-            self.selection_title,
-            self.quality_min_score_label,
-            self.quality_min_score_edit,
-            self.quality_min_improvement_label,
-            self.quality_min_improvement_edit,
-        ):
-            if widget is not None:
-                widget.setVisible(False)
-                widget.setEnabled(False)
-
         path_form = QFormLayout()
         path_form.setSpacing(6)
 
@@ -432,11 +376,6 @@ class ExtractStep(BaseStepWidget):
     def primary_action_enabled(self) -> bool:
         ready, _reason = self._readiness()
         return ready
-
-    # -- モード --
-
-    def _mode(self) -> str:
-        return "fixed"
 
     def _on_quick_extract_toggled(self, checked: bool) -> None:
         if checked:
@@ -684,7 +623,6 @@ class ExtractStep(BaseStepWidget):
         cmd = [
             sys.executable, "-u", str(script),
             str(video_path), self.scene_dir,
-            "--mode", self._mode(),
             "--image-ext", self.image_ext_combo.currentText(),
             "--jpg-quality", str(self.jpg_quality_edit.value()),
             "--ffmpeg", self.ffmpeg_browse.text() or "ffmpeg",
@@ -693,7 +631,6 @@ class ExtractStep(BaseStepWidget):
         ]
         if not quick_extract:
             cmd.extend([
-                "--analysis-pipeline", "pair",
                 "--pair-motion-profile", str(self.pair_motion_profile_combo.currentData() or "walk"),
                 "--analysis-width", self.analysis_width_edit.text().strip(),
             ])
@@ -709,10 +646,6 @@ class ExtractStep(BaseStepWidget):
                 "--min-gap-sec", f"{self.min_gap_edit.value():g}",
                 "--max-gap-sec", f"{self.max_gap_edit.value():g}",
             ])
-
-        # GUIでは低変化スキップを変化補正側に集約する。
-        # CLI既定の legacy thinning が隠れて動かないよう 0 を明示する。
-        cmd.extend(["--thin-motion-threshold", "0"])
 
         return cmd
 
@@ -1083,9 +1016,9 @@ class ExtractStep(BaseStepWidget):
         total_f = int(video.get("total_frames", 0))
         ratio = (selected / total_f * 100.0) if total_f > 0 else 0.0
         parts = [f"{selected} {i18n.t('FRAMES_UNIT')} ({ratio:.1f}%)"]
-        if result.get("smart_added_count"):
-            parts.append(f"+{int(result['smart_added_count'])}")
-        if result.get("thinned_count"):
-            parts.append(f"-{int(result['thinned_count'])}")
+        if result.get("novelty_added_count"):
+            parts.append(f"+{int(result['novelty_added_count'])}")
+        if result.get("dropped_count"):
+            parts.append(f"-{int(result['dropped_count'])}")
         self.instant_estimate_text = " ".join(parts)
         self._refresh_estimate_label()

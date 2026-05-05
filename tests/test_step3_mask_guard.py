@@ -44,7 +44,7 @@ def _write_scene(tmp_path: Path, drop_exists: bool = True) -> Path:
 
     rows = [
         {"seq": "1", "output_file": "images/frame_0001.jpg", "decision": "keep", "status": "ok"},
-        {"seq": "2", "output_file": "images/frame_0002.jpg", "decision": "drop", "status": "thinned"},
+        {"seq": "2", "output_file": "images/frame_0002.jpg", "decision": "drop", "status": "redundant_drop"},
     ]
     with (scene / "selected_frames.csv").open("w", encoding="utf-8", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=list(rows[0].keys()))

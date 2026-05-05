@@ -51,23 +51,6 @@ class VideoInfo:
 
 
 @dataclass
-class QualityMetrics:
-    """Per-frame proxy metrics for SfM suitability.
-
-    The final score is deliberately absolute-ish and bounded instead of a
-    percentile rank. It is used only to choose a better representative inside
-    an anchor window, not to drop frames automatically.
-    """
-
-    quality: float
-    feature_count: int
-    feature_spread: float
-    sharpness: float
-    contrast: float
-    exposure_penalty: float
-
-
-@dataclass
 class PairMetrics:
     raw_change: float
     residual: float
@@ -344,141 +327,6 @@ def _bounded01(value: float) -> float:
     return max(0.0, min(1.0, float(value)))
 
 
-def _feature_spread_score(corners: np.ndarray | None, width: int, height: int) -> float:
-    if corners is None or len(corners) == 0 or width <= 0 or height <= 0:
-        return 0.0
-
-    pts = corners.reshape(-1, 2)
-    grid_cols = 6
-    grid_rows = 3
-    xs = np.clip((pts[:, 0] / max(1.0, float(width))) * grid_cols, 0, grid_cols - 1).astype(np.int32)
-    ys = np.clip((pts[:, 1] / max(1.0, float(height))) * grid_rows, 0, grid_rows - 1).astype(np.int32)
-    cells = ys * grid_cols + xs
-    counts = np.bincount(cells, minlength=grid_cols * grid_rows).astype(np.float64)
-    occupied = float(np.count_nonzero(counts)) / float(grid_cols * grid_rows)
-
-    total = float(np.sum(counts))
-    if total <= 0.0:
-        entropy = 0.0
-    else:
-        probs = counts[counts > 0] / total
-        entropy = float(-np.sum(probs * np.log(probs)) / math.log(grid_cols * grid_rows))
-
-    return _bounded01(0.65 * occupied + 0.35 * entropy)
-
-
-def _sharpness_score_from_lap_var(lap_var: float) -> float:
-    if lap_var <= 0.0:
-        return 0.0
-    # Log compression keeps the score stable across ordinary analysis sizes.
-    return _bounded01(math.log1p(lap_var) / math.log1p(1200.0))
-
-
-def compute_quality_metrics(frame: np.ndarray, lap_var: float, quality_mode: str) -> QualityMetrics:
-    sharpness = _sharpness_score_from_lap_var(lap_var)
-    if quality_mode == "sharpness":
-        return QualityMetrics(
-            quality=sharpness,
-            feature_count=0,
-            feature_spread=0.0,
-            sharpness=sharpness,
-            contrast=0.0,
-            exposure_penalty=0.0,
-        )
-
-    height, width = frame.shape[:2]
-    _, stddev = cv2.meanStdDev(frame)
-    contrast = _bounded01(float(stddev[0][0]) / 56.0)
-    bright = float(np.mean(frame >= 250))
-    dark = float(np.mean(frame <= 5))
-    exposure_penalty = _bounded01((bright + dark) * 2.0)
-
-    min_dim = max(1, min(width, height))
-    max_corners = max(200, min(1600, int(round((width * height) / 2500.0))))
-    min_distance = max(4, int(round(min_dim / 160.0)))
-    try:
-        corners = cv2.goodFeaturesToTrack(
-            frame,
-            maxCorners=max_corners,
-            qualityLevel=0.01,
-            minDistance=min_distance,
-            blockSize=5,
-            useHarrisDetector=False,
-        )
-    except cv2.error:
-        corners = None
-
-    feature_count = int(0 if corners is None else len(corners))
-    expected_features = max(80.0, float(max_corners) * 0.35)
-    feature_score = _bounded01(feature_count / expected_features)
-    spread = _feature_spread_score(corners, width, height)
-
-    quality = (
-        0.35 * feature_score
-        + 0.30 * spread
-        + 0.20 * sharpness
-        + 0.15 * contrast
-        - 0.25 * exposure_penalty
-    )
-    return QualityMetrics(
-        quality=_bounded01(quality),
-        feature_count=feature_count,
-        feature_spread=spread,
-        sharpness=sharpness,
-        contrast=contrast,
-        exposure_penalty=exposure_penalty,
-    )
-
-
-def compute_feature_motion_score(prev_frame: np.ndarray, frame: np.ndarray) -> float:
-    """Sparse LK feature motion normalized by image diagonal."""
-    if prev_frame.shape != frame.shape:
-        return 0.0
-
-    height, width = prev_frame.shape[:2]
-    min_distance = max(6, min(width, height) // 80)
-    try:
-        points = cv2.goodFeaturesToTrack(
-            prev_frame,
-            maxCorners=320,
-            qualityLevel=0.01,
-            minDistance=min_distance,
-            blockSize=7,
-            useHarrisDetector=False,
-        )
-    except cv2.error:
-        points = None
-    if points is None or len(points) < 12:
-        return 0.0
-
-    try:
-        next_points, status, _err = cv2.calcOpticalFlowPyrLK(
-            prev_frame,
-            frame,
-            points,
-            None,
-            winSize=(21, 21),
-            maxLevel=3,
-            criteria=(cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT, 20, 0.03),
-        )
-    except cv2.error:
-        return 0.0
-    if next_points is None or status is None:
-        return 0.0
-
-    valid = status.reshape(-1) == 1
-    if int(np.count_nonzero(valid)) < 12:
-        return 0.0
-
-    src = points.reshape(-1, 2)[valid]
-    dst = next_points.reshape(-1, 2)[valid]
-    displacement = np.linalg.norm(dst - src, axis=1)
-    diagonal = math.hypot(float(width), float(height))
-    if displacement.size == 0 or diagonal <= 0.0:
-        return 0.0
-    return _bounded01(float(np.median(displacement)) / diagonal)
-
-
 def _latitude_weights(height: int) -> np.ndarray:
     if height <= 0:
         return np.ones((1, 1), dtype=np.float32)
@@ -658,7 +506,7 @@ def assess_pair_frame_risk(
     track_min_confidence: float,
     track_min_count: int,
 ) -> PairFrameRisk:
-    """Classify candidate-only SfM risks without reviving the old quality score."""
+    """Classify candidate-only SfM risks from pair metrics."""
     sharpness_ratio = None
     if sharpness_baseline is not None and sharpness_baseline > 1e-6:
         sharpness_ratio = blur_score / sharpness_baseline
@@ -703,168 +551,6 @@ def assess_pair_frame_risk(
         low_texture=low_texture,
         weak_match=weak_match,
     )
-
-
-def analyze_video_window(
-    video_path: Path,
-    ffmpeg_bin: str,
-    video_fps: float,
-    src_w: int,
-    src_h: int,
-    analysis_width: int,
-    start_sec: float | None = None,
-    duration_sec: float | None = None,
-    sample_fps: float = 0.0,
-    progress_phase: str = "",
-    progress_total_frames: int = 0,
-    progress_step_frames: int = 0,
-    quality_mode: str = "sfm",
-    compute_feature_motion: bool = True,
-) -> tuple[list[float], list[float], list[float], list[float], int, int, float]:
-    out_w, out_h = scaled_dimensions(src_w, src_h, analysis_width)
-    vf_parts = [f"scale={out_w}:{out_h}:flags=bilinear", "format=gray"]
-    effective_fps = video_fps
-    if sample_fps > 0:
-        effective_fps = min(sample_fps, video_fps) if video_fps > 0 else sample_fps
-        vf_parts.append(f"fps={effective_fps:.6f}")
-    vf = ",".join(vf_parts)
-
-    cmd = [
-        ffmpeg_bin,
-        "-hide_banner",
-        "-loglevel",
-        "error",
-    ]
-    if start_sec is not None and start_sec > 0:
-        cmd.extend(["-ss", f"{start_sec:.6f}"])
-    cmd.extend(["-i", str(video_path)])
-    if duration_sec is not None and duration_sec > 0:
-        cmd.extend(["-t", f"{duration_sec:.6f}"])
-    cmd.extend(
-        [
-            "-vf",
-            vf,
-            "-f",
-            "rawvideo",
-            "-pix_fmt",
-            "gray",
-            "-",
-        ]
-    )
-
-    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    assert proc.stdout is not None
-    assert proc.stderr is not None
-    stderr_chunks: list[bytes] = []
-    stderr_thread = threading.Thread(
-        target=_drain_binary_pipe,
-        args=(proc.stderr, stderr_chunks),
-        daemon=True,
-    )
-    stderr_thread.start()
-
-    frame_size = out_w * out_h
-    prev_frame: np.ndarray | None = None
-    blur_scores: list[float] = []
-    quality_scores: list[float] = []
-    change_scores: list[float] = []
-    feature_motion_scores: list[float] = []
-    last_progress_report = 0
-
-    def emit_progress(processed_frames: int, force: bool = False) -> None:
-        nonlocal last_progress_report
-        if not progress_phase:
-            return
-        if not force:
-            if progress_step_frames <= 0:
-                return
-            if processed_frames - last_progress_report < progress_step_frames:
-                return
-        if progress_total_frames > 0:
-            pct = min(100.0, (processed_frames / float(progress_total_frames)) * 100.0)
-            print(
-                f"[progress] {progress_phase} {processed_frames}/{progress_total_frames} frames ({pct:.1f}%)",
-                flush=True,
-            )
-        else:
-            print(f"[progress] {progress_phase} {processed_frames} frames", flush=True)
-        last_progress_report = processed_frames
-
-    try:
-        while True:
-            raw = proc.stdout.read(frame_size)
-            if not raw:
-                break
-            if len(raw) < frame_size:
-                break
-
-            frame = np.frombuffer(raw, dtype=np.uint8).reshape((out_h, out_w))
-            lap_var = float(cv2.Laplacian(frame, cv2.CV_64F).var())
-            blur_scores.append(lap_var)
-            metrics = compute_quality_metrics(frame, lap_var, quality_mode)
-            quality_scores.append(metrics.quality)
-
-            if prev_frame is None:
-                change_scores.append(1.0)
-                feature_motion_scores.append(0.0)
-            else:
-                diff = cv2.absdiff(frame, prev_frame)
-                change_scores.append(float(np.mean(diff) / 255.0))
-                if compute_feature_motion:
-                    feature_motion_scores.append(compute_feature_motion_score(prev_frame, frame))
-                else:
-                    feature_motion_scores.append(0.0)
-
-            prev_frame = frame
-            processed = len(change_scores)
-            if processed == 1:
-                emit_progress(processed, force=True)
-            else:
-                emit_progress(processed)
-    finally:
-        ret = proc.wait()
-        stderr_thread.join()
-        stderr_text = b"".join(stderr_chunks).decode("utf-8", errors="replace")
-
-    if ret != 0:
-        raise RuntimeError(f"ffmpeg analysis failed: {stderr_text.strip()}")
-    if not blur_scores:
-        raise RuntimeError("No frames decoded during analysis")
-    emit_progress(len(blur_scores), force=True)
-
-    return blur_scores, change_scores, quality_scores, feature_motion_scores, out_w, out_h, effective_fps
-
-
-def analyze_video(
-    video_path: Path,
-    ffmpeg_bin: str,
-    video_fps: float,
-    src_w: int,
-    src_h: int,
-    analysis_width: int,
-    progress_phase: str = "",
-    progress_total_frames: int = 0,
-    progress_step_frames: int = 0,
-    quality_mode: str = "sfm",
-    compute_feature_motion: bool = True,
-) -> tuple[list[float], list[float], list[float], list[float], int, int]:
-    blur_scores, change_scores, quality_scores, feature_motion_scores, out_w, out_h, _ = analyze_video_window(
-        video_path=video_path,
-        ffmpeg_bin=ffmpeg_bin,
-        video_fps=video_fps,
-        src_w=src_w,
-        src_h=src_h,
-        analysis_width=analysis_width,
-        start_sec=None,
-        duration_sec=None,
-        sample_fps=0.0,
-        progress_phase=progress_phase,
-        progress_total_frames=progress_total_frames,
-        progress_step_frames=progress_step_frames,
-        quality_mode=quality_mode,
-        compute_feature_motion=compute_feature_motion,
-    )
-    return blur_scores, change_scores, quality_scores, feature_motion_scores, out_w, out_h
 
 
 def _scaled_pair_threshold(
@@ -940,8 +626,6 @@ def _pair_row(
         "blur_score_final": None if risk is None else risk.blur_score,
         "sharpness_baseline": "" if risk is None or risk.sharpness_baseline is None else risk.sharpness_baseline,
         "sharpness_ratio": "" if risk is None or risk.sharpness_ratio is None else risk.sharpness_ratio,
-        "quality_score_original": None,
-        "quality_score_final": None,
         "status": status,
         "decision": decision,
         "analysis_pipeline": "pair",
@@ -1270,243 +954,6 @@ def analyze_pair_selection(
     return rows, out_w, out_h, min_gap_frames, max_gap_frames, last_frame_idx + 1
 
 
-# ===========================================================================
-# 解析キャッシュ: 動画メタ情報 + analysis_width が一致すれば再計算をスキップ
-# ===========================================================================
-
-CACHE_VERSION = 3
-QUALITY_MODE = "sfm"
-
-
-def cache_path_for(scene_dir: Path) -> Path:
-    return scene_dir / "extract_cache.npz"
-
-
-def video_signature(video_path: Path) -> tuple[int, int]:
-    """動画ファイルの (size, mtime_ns) を返す。キャッシュ無効化判定用。"""
-    st = video_path.stat()
-    return int(st.st_size), int(st.st_mtime_ns)
-
-
-def save_analysis_cache(
-    cache_path: Path,
-    video_path: Path,
-    video_info: VideoInfo,
-    analysis_w: int,
-    analysis_h: int,
-    blur_scores: list[float],
-    change_scores: list[float],
-    quality_scores: list[float],
-    feature_motion_scores: list[float],
-    quality_mode: str,
-    feature_motion_computed: bool = True,
-) -> None:
-    if np is None:
-        return
-    size, mtime_ns = video_signature(video_path)
-    cache_path.parent.mkdir(parents=True, exist_ok=True)
-    np.savez_compressed(
-        cache_path,
-        version=np.int64(CACHE_VERSION),
-        video_size=np.int64(size),
-        video_mtime_ns=np.int64(mtime_ns),
-        video_width=np.int32(video_info.width),
-        video_height=np.int32(video_info.height),
-        video_fps=np.float64(video_info.fps),
-        video_duration=np.float64(video_info.duration),
-        video_total_frames=np.int64(video_info.total_frames),
-        analysis_width=np.int32(analysis_w),
-        analysis_height=np.int32(analysis_h),
-        quality_mode=np.asarray(quality_mode),
-        feature_motion_computed=np.asarray(bool(feature_motion_computed)),
-        blur_scores=np.asarray(blur_scores, dtype=np.float64),
-        change_scores=np.asarray(change_scores, dtype=np.float64),
-        quality_scores=np.asarray(quality_scores, dtype=np.float64),
-        feature_motion_scores=np.asarray(feature_motion_scores, dtype=np.float64),
-    )
-    print(f"[cache] saved analysis cache: {cache_path}")
-
-
-def _combined_motion_scores(
-    change_scores: list[float],
-    feature_motion_scores: list[float] | None = None,
-) -> np.ndarray:
-    """Combine image-difference motion and sparse feature displacement.
-
-    ``change_scores`` catches broad brightness/texture changes. Sparse feature
-    motion is closer to what SfM can use, but its natural scale is smaller, so
-    it is weighted into the same rough range for cumulative thinning.
-    """
-    scores = np.asarray(change_scores, dtype=np.float64)
-    if feature_motion_scores is None:
-        return scores
-    feature = np.asarray(feature_motion_scores, dtype=np.float64)
-    if feature.shape != scores.shape:
-        return scores
-    return np.maximum(scores, feature * 4.0)
-
-
-def _fixed_smart_motion_scores(
-    change_scores: list[float],
-    feature_motion_scores: list[float],
-    change_threshold: float,
-    feature_motion_threshold: float,
-) -> np.ndarray:
-    """Normalize motion by the same thresholds used for fixed-smart insertion."""
-    change = np.asarray(change_scores, dtype=np.float64)
-    scores = np.zeros_like(change)
-    if change_threshold > 0.0:
-        scores = np.maximum(scores, change / change_threshold)
-    feature = np.asarray(feature_motion_scores, dtype=np.float64)
-    if feature.shape == change.shape and feature_motion_threshold > 0.0:
-        scores = np.maximum(scores, feature / feature_motion_threshold)
-    return scores
-
-
-def thin_stationary(
-    rows: list[dict],
-    change_scores: list[float],
-    motion_threshold: float,
-    keep_endpoints: bool = True,
-    feature_motion_scores: list[float] | None = None,
-    max_gap_frames: int | None = None,
-) -> list[dict]:
-    """累積モーションが閾値未満の連続採用フレームを間引く。
-
-    立ち止まり区間（変化が小さい）でフレーム間隔が密集しすぎているのを削減する。
-    歩行など変化が大きい区間では何も削らない。
-
-    Args:
-        rows: select_representative_frames の出力行（各 dict に "final_index" がある）。
-        change_scores: 解析時の change_scores (per analyzed frame)。
-        motion_threshold: 直前 kept フレームから次採用候補までの累積 change がこれ未満なら drop。
-            0 以下なら間引きなし（全フレーム keep）。
-        keep_endpoints: True なら各 stationary cluster の先頭・末尾は強制保持。
-        feature_motion_scores: 疎な特徴点追跡から求めた正規化モーションスコア。
-            指定された場合は change_scores と合成して、輝度変化だけでは拾いにくい
-            SfM向けの視差を間引き判定に反映する。
-        max_gap_frames: 直前 keep からこのフレーム数以上離れた候補は安全側で keep。
-
-    Returns:
-        各 row に "decision" と必要なら "status" を追加した同長のリスト。
-        間引かれた row は decision="drop", status="thinned"。
-        keep される row は decision="keep" を維持/設定。
-    """
-    if motion_threshold <= 0.0 or len(rows) < 2:
-        for row in rows:
-            row.setdefault("decision", "keep")
-        return rows
-
-    n = len(change_scores)
-    out_rows = [dict(row) for row in rows]
-    motion_scores = _combined_motion_scores(change_scores, feature_motion_scores)
-
-    # 累積モーション計算: rows は final_index 順を仮定（代表選択は順番を保つ）
-    last_kept_pos = 0
-    out_rows[0]["decision"] = "keep"
-
-    for pos in range(1, len(out_rows) - (1 if keep_endpoints else 0)):
-        last_idx = int(out_rows[last_kept_pos]["final_index"])
-        cur_idx = int(out_rows[pos]["final_index"])
-        if cur_idx <= last_idx or last_idx < 0 or cur_idx >= n:
-            # インデックス異常時は安全側で keep
-            out_rows[pos]["decision"] = "keep"
-            last_kept_pos = pos
-            continue
-
-        if max_gap_frames is not None and max_gap_frames > 0 and cur_idx - last_idx >= max_gap_frames:
-            out_rows[pos]["decision"] = "keep"
-            last_kept_pos = pos
-            continue
-
-        # last_idx (排他) から cur_idx (含む) までの motion_scores を累積
-        cumulative = float(np.sum(motion_scores[last_idx + 1 : cur_idx + 1]))
-
-        if cumulative >= motion_threshold:
-            out_rows[pos]["decision"] = "keep"
-            last_kept_pos = pos
-        else:
-            out_rows[pos]["decision"] = "drop"
-            existing_status = out_rows[pos].get("status", "ok")
-            if existing_status == "ok":
-                out_rows[pos]["status"] = "thinned"
-            else:
-                out_rows[pos]["status"] = f"{existing_status}+thinned"
-
-    # 末尾は強制保持（時間カバレッジ）
-    if keep_endpoints and len(out_rows) >= 2:
-        out_rows[-1]["decision"] = "keep"
-    elif not keep_endpoints and len(out_rows) >= 2:
-        # keep_endpoints=False なら末尾も判定対象
-        last_idx = int(out_rows[last_kept_pos]["final_index"])
-        cur_idx = int(out_rows[-1]["final_index"])
-        if cur_idx > last_idx and last_idx >= 0 and cur_idx < n:
-            if max_gap_frames is not None and max_gap_frames > 0 and cur_idx - last_idx >= max_gap_frames:
-                cumulative = motion_threshold
-            else:
-                cumulative = float(np.sum(motion_scores[last_idx + 1 : cur_idx + 1]))
-            if cumulative < motion_threshold:
-                out_rows[-1]["decision"] = "drop"
-                existing_status = out_rows[-1].get("status", "ok")
-                if existing_status == "ok":
-                    out_rows[-1]["status"] = "thinned"
-                else:
-                    out_rows[-1]["status"] = f"{existing_status}+thinned"
-            else:
-                out_rows[-1]["decision"] = "keep"
-        else:
-            out_rows[-1]["decision"] = "keep"
-
-    return out_rows
-
-
-def load_analysis_cache(
-    cache_path: Path,
-    video_path: Path,
-    video_info: VideoInfo,
-    analysis_width: int,
-    quality_mode: str = "sfm",
-    require_feature_motion: bool = False,
-) -> tuple[list[float], list[float], list[float], list[float], int, int] | None:
-    """キャッシュが有効なら解析スコア一式と (analysis_w, analysis_h) を返す。
-    無効/不在/エラーなら None。"""
-    if np is None or not cache_path.exists():
-        return None
-    try:
-        with np.load(cache_path) as data:
-            if int(data["version"]) != CACHE_VERSION:
-                return None
-            cur_size, cur_mtime_ns = video_signature(video_path)
-            if int(data["video_size"]) != cur_size:
-                return None
-            if int(data["video_mtime_ns"]) != cur_mtime_ns:
-                return None
-            cached_aw = int(data["analysis_width"])
-            # 解析幅が現在の指定と一致していること（同等の縮小寸法を生成するため厳密比較）
-            cached_target_w, _ = scaled_dimensions(video_info.width, video_info.height, analysis_width)
-            if cached_aw != cached_target_w:
-                return None
-            cached_quality_mode = str(data["quality_mode"].tolist())
-            if cached_quality_mode != quality_mode:
-                return None
-            feature_motion_computed = True
-            if "feature_motion_computed" in data.files:
-                feature_motion_computed = bool(data["feature_motion_computed"].tolist())
-            if require_feature_motion and not feature_motion_computed:
-                return None
-            blur = data["blur_scores"].tolist()
-            change = data["change_scores"].tolist()
-            quality = data["quality_scores"].tolist()
-            feature_motion = data["feature_motion_scores"].tolist()
-            ah = int(data["analysis_height"])
-            if not (len(blur) == len(change) == len(quality) == len(feature_motion)):
-                return None
-            return blur, change, quality, feature_motion, cached_aw, ah
-    except Exception as e:
-        print(f"[cache] failed to load cache (will recompute): {e}")
-        return None
-
-
 def select_fixed(total_frames: int, fps: float, interval_sec: float) -> tuple[list[int], int]:
     if interval_sec <= 0:
         raise ValueError("--interval-sec must be > 0")
@@ -1518,427 +965,6 @@ def select_fixed(total_frames: int, fps: float, interval_sec: float) -> tuple[li
     return indices, step
 
 
-def select_fixed_smart(
-    base_indices: list[int],
-    change_scores: list[float],
-    feature_motion_scores: list[float],
-    fps: float,
-    min_gap_sec: float,
-    max_gap_sec: float,
-    change_threshold: float = 0.04,
-    feature_motion_threshold: float = 0.012,
-    max_inserts_per_interval: int = 2,
-) -> tuple[list[int], set[int], set[int], int, int]:
-    """Add high-motion anchors to fixed interval selection.
-
-    The base cadence remains fixed. This adds extra anchors inside a fixed
-    interval when either broad image difference or sparse feature displacement
-    clearly indicates motion that may be useful for SfM, and marks low-motion
-    base candidates for review/drop using the same normalized motion score.
-    """
-    if min_gap_sec <= 0 or max_gap_sec <= 0:
-        raise ValueError("--min-gap-sec and --max-gap-sec must be > 0")
-    if max_gap_sec < min_gap_sec:
-        raise ValueError("--max-gap-sec must be >= --min-gap-sec")
-
-    total = len(change_scores)
-    if total <= 0:
-        return [], set(), set(), 1, 1
-
-    min_gap_frames = max(1, int(round(min_gap_sec * fps)))
-    max_gap_frames = max(min_gap_frames, int(round(max_gap_sec * fps)))
-    max_inserts = max(0, int(max_inserts_per_interval))
-
-    base = sorted({idx for idx in base_indices if 0 <= idx < total})
-    if not base:
-        base = [0]
-    if base[0] != 0:
-        base.insert(0, 0)
-    if base[-1] != total - 1:
-        base.append(total - 1)
-
-    if change_threshold <= 0.0 and feature_motion_threshold <= 0.0:
-        return base, set(), set(), min_gap_frames, max_gap_frames
-
-    has_feature_motion = len(feature_motion_scores) == total
-
-    def event_score(idx: int) -> float:
-        score = 0.0
-        if change_threshold > 0.0:
-            score = max(score, float(change_scores[idx]) / change_threshold)
-        if has_feature_motion and feature_motion_threshold > 0.0:
-            score = max(score, float(feature_motion_scores[idx]) / feature_motion_threshold)
-        return score
-
-    selected = set(base)
-    added: set[int] = set()
-
-    if max_inserts > 0:
-        for left, right in zip(base, base[1:], strict=False):
-            if right - left < min_gap_frames * 2:
-                continue
-            interval_selected = {left, right}
-            for _ in range(max_inserts):
-                best_idx: int | None = None
-                best_score = 0.0
-                for idx in range(left + min_gap_frames, right - min_gap_frames + 1):
-                    if idx in interval_selected:
-                        continue
-                    if any(abs(idx - existing) < min_gap_frames for existing in interval_selected):
-                        continue
-                    score = event_score(idx)
-                    if score > best_score:
-                        best_idx = idx
-                        best_score = score
-                if best_idx is None or best_score < 1.0:
-                    break
-                selected.add(best_idx)
-                added.add(best_idx)
-                interval_selected.add(best_idx)
-
-    selected_list = sorted(selected)
-    thinned = _select_fixed_smart_thinned(
-        selected_list,
-        added,
-        change_scores,
-        feature_motion_scores,
-        change_threshold,
-        feature_motion_threshold,
-        max_gap_frames,
-    )
-    return selected_list, added, thinned, min_gap_frames, max_gap_frames
-
-
-def _select_fixed_smart_thinned(
-    selected_indices: list[int],
-    protected_indices: set[int],
-    change_scores: list[float],
-    feature_motion_scores: list[float],
-    change_threshold: float,
-    feature_motion_threshold: float,
-    max_gap_frames: int,
-) -> set[int]:
-    """Mark low-motion fixed candidates while preserving smart-added anchors."""
-    if len(selected_indices) < 3:
-        return set()
-
-    total = len(change_scores)
-    motion_scores = _fixed_smart_motion_scores(
-        change_scores,
-        feature_motion_scores,
-        change_threshold,
-        feature_motion_threshold,
-    )
-    thinned: set[int] = set()
-    last_kept = selected_indices[0]
-
-    for idx in selected_indices[1:-1]:
-        if idx < 0 or idx >= total or idx <= last_kept:
-            last_kept = idx
-            continue
-        if idx in protected_indices:
-            last_kept = idx
-            continue
-        if max_gap_frames > 0 and idx - last_kept >= max_gap_frames:
-            last_kept = idx
-            continue
-
-        cumulative = float(np.sum(motion_scores[last_kept + 1 : idx + 1]))
-        if cumulative >= 1.0:
-            last_kept = idx
-        else:
-            thinned.add(idx)
-
-    return thinned
-
-
-def select_change(
-    change_scores: list[float],
-    fps: float,
-    threshold: float,
-    min_gap_sec: float,
-    max_gap_sec: float,
-) -> tuple[list[int], int, int]:
-    if min_gap_sec <= 0 or max_gap_sec <= 0:
-        raise ValueError("--min-gap-sec and --max-gap-sec must be > 0")
-    if max_gap_sec < min_gap_sec:
-        raise ValueError("--max-gap-sec must be >= --min-gap-sec")
-
-    min_gap_frames = max(1, int(round(min_gap_sec * fps)))
-    max_gap_frames = max(min_gap_frames, int(round(max_gap_sec * fps)))
-
-    indices = [0]
-    last = 0
-    for i in range(1, len(change_scores)):
-        gap = i - last
-        if gap < min_gap_frames:
-            continue
-        if change_scores[i] >= threshold or gap >= max_gap_frames:
-            indices.append(i)
-            last = i
-
-    if indices[-1] != len(change_scores) - 1:
-        if len(change_scores) - 1 - indices[-1] >= max(1, min_gap_frames // 2):
-            indices.append(len(change_scores) - 1)
-
-    return indices, min_gap_frames, max_gap_frames
-
-
-def estimate_count_range(duration_sec: float, min_gap_sec: float, max_gap_sec: float) -> tuple[int, int]:
-    if duration_sec <= 0:
-        return 1, 1
-    if min_gap_sec <= 0 or max_gap_sec <= 0:
-        raise ValueError("--min-gap-sec and --max-gap-sec must be > 0")
-    if max_gap_sec < min_gap_sec:
-        raise ValueError("--max-gap-sec must be >= --min-gap-sec")
-
-    min_count = max(1, int(math.ceil(duration_sec / max_gap_sec)))
-    max_count = max(min_count, int(math.ceil(duration_sec / min_gap_sec)))
-    return min_count, max_count
-
-
-def build_sample_windows(
-    duration_sec: float,
-    segment_sec: float,
-    segment_count: int,
-) -> list[tuple[float, float]]:
-    if segment_sec <= 0:
-        raise ValueError("--sample-segment-sec must be > 0")
-    if segment_count <= 0:
-        raise ValueError("--sample-segments must be > 0")
-    if duration_sec <= 0:
-        return []
-
-    actual_segment = min(segment_sec, duration_sec)
-    max_start = max(0.0, duration_sec - actual_segment)
-
-    if segment_count == 1 or max_start <= 0:
-        starts = [0.0]
-    else:
-        step = max_start / float(segment_count - 1)
-        starts = [i * step for i in range(segment_count)]
-
-    windows: list[tuple[float, float]] = []
-    seen = set()
-    for start in starts:
-        clamped_start = max(0.0, min(start, max_start))
-        key = int(round(clamped_start * 1000))
-        if key in seen:
-            continue
-        seen.add(key)
-        seg_dur = min(actual_segment, duration_sec - clamped_start)
-        if seg_dur <= 0:
-            continue
-        windows.append((clamped_start, seg_dur))
-
-    if not windows:
-        windows.append((0.0, actual_segment))
-    return windows
-
-
-def estimate_change_sampled(
-    video_path: Path,
-    ffmpeg_bin: str,
-    video_info: VideoInfo,
-    analysis_width: int,
-    threshold: float,
-    min_gap_sec: float,
-    max_gap_sec: float,
-    sample_segments: int,
-    sample_segment_sec: float,
-    sample_fps: float,
-) -> dict:
-    windows = build_sample_windows(video_info.duration, sample_segment_sec, sample_segments)
-    if not windows:
-        raise RuntimeError("Could not build sample windows from video duration")
-
-    weighted_rate_sum = 0.0
-    weight_sum = 0.0
-    used_segments = 0
-    sampled_frames = 0
-    sampled_duration = 0.0
-
-    analysis_w = 0
-    analysis_h = 0
-    analysis_fps = min(sample_fps, video_info.fps) if sample_fps > 0 else video_info.fps
-    min_gap_frames = max(1, int(round(min_gap_sec * analysis_fps)))
-
-    for idx, (start_sec, seg_sec) in enumerate(windows, start=1):
-        _, change_scores, _, _, out_w, out_h, seg_fps = analyze_video_window(
-            video_path=video_path,
-            ffmpeg_bin=ffmpeg_bin,
-            video_fps=video_info.fps,
-            src_w=video_info.width,
-            src_h=video_info.height,
-            analysis_width=analysis_width,
-            start_sec=start_sec,
-            duration_sec=seg_sec,
-            sample_fps=sample_fps,
-            quality_mode="sharpness",
-            compute_feature_motion=False,
-        )
-
-        if len(change_scores) < 2:
-            print(f"[sample] segment {idx}/{len(windows)} skipped: insufficient frames")
-            continue
-
-        selected, seg_min_gap_frames, _ = select_change(
-            change_scores,
-            seg_fps,
-            threshold,
-            min_gap_sec,
-            max_gap_sec,
-        )
-        decoded_sec = len(change_scores) / seg_fps if seg_fps > 0 else seg_sec
-        if decoded_sec <= 0:
-            continue
-
-        analysis_w = out_w
-        analysis_h = out_h
-        analysis_fps = seg_fps
-        min_gap_frames = seg_min_gap_frames
-
-        # Each sampled segment seeds one first frame; remove that bias before extrapolation.
-        segment_selected = max(0, len(selected) - 1)
-        selected_per_sec = segment_selected / decoded_sec
-
-        weighted_rate_sum += selected_per_sec * decoded_sec
-        weight_sum += decoded_sec
-        used_segments += 1
-        sampled_frames += len(change_scores)
-        sampled_duration += decoded_sec
-
-        print(
-            f"[sample] segment {idx}/{len(windows)} start={start_sec:.2f}s "
-            f"dur={decoded_sec:.2f}s selected={len(selected)}"
-        )
-
-    if used_segments == 0 or weight_sum <= 0:
-        raise RuntimeError("Sampled estimate failed: no valid segment data")
-
-    selected_rate = weighted_rate_sum / weight_sum
-    estimated = 1 + int(round(selected_rate * max(video_info.duration, 0.0)))
-    range_min, range_max = estimate_count_range(video_info.duration, min_gap_sec, max_gap_sec)
-    estimated = max(range_min, min(range_max, estimated))
-
-    return {
-        "selected_count": estimated,
-        "replaced_count": 0,
-        "fallback_keep_count": 0,
-        "analysis_w": analysis_w,
-        "analysis_h": analysis_h,
-        "analysis_fps": analysis_fps,
-        "min_gap_frames": min_gap_frames,
-        "sampled_segments_requested": len(windows),
-        "sampled_segments_used": used_segments,
-        "sampled_duration_sec": sampled_duration,
-        "sampled_frames": sampled_frames,
-        "range_min_count": range_min,
-        "range_max_count": range_max,
-    }
-
-
-def _candidate_window(
-    selected_indices: list[int],
-    pos: int,
-    total_frames: int,
-) -> tuple[int, int]:
-    original_idx = selected_indices[pos]
-    if pos == 0:
-        low = 0
-    else:
-        prev_idx = selected_indices[pos - 1]
-        low = ((prev_idx + original_idx) // 2) + 1
-
-    if pos + 1 >= len(selected_indices):
-        high = total_frames - 1
-    else:
-        next_idx = selected_indices[pos + 1]
-        high = (original_idx + next_idx) // 2
-
-    low = max(0, min(low, original_idx))
-    high = min(total_frames - 1, max(high, original_idx))
-    return low, high
-
-
-def representative_window_for_report(
-    selected_indices: Sequence[int],
-    total_frames: int,
-) -> int:
-    if not selected_indices or total_frames <= 0:
-        return 0
-    max_radius = 0
-    selected = list(selected_indices)
-    for pos, original_idx in enumerate(selected):
-        low, high = _candidate_window(selected, pos, total_frames)
-        max_radius = max(max_radius, original_idx - low, high - original_idx)
-    return max_radius
-
-
-def select_representative_frames(
-    selected_indices: list[int],
-    quality_scores: list[float],
-    quality_min_score: float,
-    quality_min_improvement: float,
-    center_bias: float,
-) -> list[dict]:
-    """Choose one SfM-oriented representative frame for each extraction anchor.
-
-    The initial fixed/change selection defines anchors. Each anchor owns a
-    non-overlapping candidate window (midpoint to neighboring anchors). We
-    select a better nearby frame only when the absolute quality improvement is
-    clear; no global percentile is used.
-    """
-    if not selected_indices:
-        return []
-
-    n = len(quality_scores)
-    if n <= 0:
-        return []
-
-    rows: list[dict] = []
-    for pos, original_idx in enumerate(selected_indices):
-        if original_idx < 0 or original_idx >= n:
-            continue
-
-        low, high = _candidate_window(selected_indices, pos, n)
-        radius = max(abs(original_idx - low), abs(high - original_idx), 1)
-
-        def objective(idx: int, original_idx: int = original_idx, radius: int = radius) -> float:
-            center_score = 1.0 - (abs(idx - original_idx) / float(radius))
-            return float(quality_scores[idx]) + center_bias * _bounded01(center_score)
-
-        candidates = list(range(low, high + 1))
-        best_idx = max(candidates, key=objective) if candidates else original_idx
-        original_quality = float(quality_scores[original_idx])
-        best_quality = float(quality_scores[best_idx])
-
-        final_idx = original_idx
-        status = "ok"
-        if (
-            best_idx != original_idx
-            and best_quality - original_quality >= quality_min_improvement
-            and objective(best_idx) > objective(original_idx)
-        ):
-            final_idx = best_idx
-            status = "replaced"
-        elif original_quality < quality_min_score:
-            status = "fallback_keep"
-
-        rows.append(
-            {
-                "original_index": original_idx,
-                "final_index": final_idx,
-                "status": status,
-                "quality_min_score": quality_min_score,
-                "quality_score_original": original_quality,
-                "quality_score_final": float(quality_scores[final_idx]),
-                "candidate_low": low,
-                "candidate_high": high,
-            }
-        )
-
-    return rows
 def build_select_expr(frame_indices: list[int]) -> str:
     return "+".join(f"eq(n\\,{idx})" for idx in frame_indices)
 
@@ -2088,8 +1114,6 @@ SELECTED_CSV_FIELDNAMES = [
     "blur_score_final",
     "sharpness_baseline",
     "sharpness_ratio",
-    "quality_score_original",
-    "quality_score_final",
     "status",
     "decision",
     "analysis_pipeline",
@@ -2133,8 +1157,6 @@ def build_quick_extract_rows(frame_indices: Sequence[int]) -> list[dict]:
             "change_score_final": None,
             "blur_score_original": None,
             "blur_score_final": None,
-            "quality_score_original": None,
-            "quality_score_final": None,
             "status": "ok",
             "decision": "keep",
             "analysis_pipeline": "quick",
@@ -2172,11 +1194,9 @@ def build_selected_csv_rows(
                 "blur_score_final": _csv_score(row.get("blur_score_final")),
                 "sharpness_baseline": _csv_score(row.get("sharpness_baseline")),
                 "sharpness_ratio": _csv_score(row.get("sharpness_ratio")),
-                "quality_score_original": _csv_score(row.get("quality_score_original", 0.0)),
-                "quality_score_final": _csv_score(row.get("quality_score_final", 0.0)),
                 "status": row["status"],
                 "decision": row.get("decision", "keep"),
-                "analysis_pipeline": row.get("analysis_pipeline", "legacy"),
+                "analysis_pipeline": row.get("analysis_pipeline", "pair"),
                 "selection_reason": row.get("selection_reason", ""),
                 "review_required": row.get("review_required", "1" if row.get("status", "ok") != "ok" else "0"),
                 "prev_kept_index": row.get("prev_kept_index", ""),
@@ -2265,7 +1285,6 @@ def write_report(
     analysis_w: int,
     analysis_h: int,
     selected_rows: list[dict],
-    window_frames: int,
     min_gap_frames: int,
     filename_prefix: str,
     frame_digits: int,
@@ -2276,6 +1295,9 @@ def write_report(
         getattr(args, "pair_drop_threshold", -1.0),
         getattr(args, "pair_add_threshold", -1.0),
     )
+    kept_count = sum(1 for r in selected_rows if r.get("decision", "keep") != "drop")
+    dropped_count = sum(1 for r in selected_rows if r.get("decision", "keep") == "drop")
+    pipeline = "quick" if getattr(args, "quick_extract", False) else "pair"
     report = {
         "input_video": str(Path(args.input_video).resolve()),
         "mode": args.mode,
@@ -2289,21 +1311,15 @@ def write_report(
         "analysis": {
             "width": analysis_w,
             "height": analysis_h,
-            "pipeline": getattr(args, "analysis_pipeline", "legacy"),
-            "quality_mode": "skipped" if getattr(args, "quick_extract", False) else QUALITY_MODE,
-            "representative_window_frames": window_frames,
+            "pipeline": pipeline,
             "min_gap_frames": min_gap_frames,
         },
         "params": {
             "interval_sec": args.interval_sec,
-            "change_threshold": args.change_threshold,
             "min_gap_sec": args.min_gap_sec,
             "max_gap_sec": args.max_gap_sec,
             "fixed_smart": args.fixed_smart,
             "quick_extract": getattr(args, "quick_extract", False),
-            "analysis_pipeline": getattr(args, "analysis_pipeline", "legacy"),
-            "fixed_smart_change_threshold": args.fixed_smart_change_threshold,
-            "fixed_smart_feature_threshold": args.fixed_smart_feature_threshold,
             "fixed_smart_max_inserts_per_interval": args.fixed_smart_max_inserts_per_interval,
             "pair_motion_profile": getattr(args, "pair_motion_profile", "walk"),
             "pair_threshold_mode": pair_thresholds.mode,
@@ -2313,22 +1329,20 @@ def write_report(
             "pair_add_threshold_resolved": pair_thresholds.add,
             "pair_track_min_count": getattr(args, "pair_track_min_count", 0),
             "pair_track_min_confidence": getattr(args, "pair_track_min_confidence", 0.0),
-            "quality_min_score": args.quality_min_score,
-            "quality_min_improvement": args.quality_min_improvement,
-            "center_bias": args.center_bias,
             "filename_prefix": filename_prefix,
             "frame_number_digits": frame_digits,
             "output_mode": getattr(args, "output_mode", "overwrite"),
         },
         "result": {
-            "selected_count": len(selected_rows),
-            "smart_added_count": sum(1 for r in selected_rows if "smart_added" in r.get("status", "")),
+            "selected_count": kept_count,
+            "dropped_count": dropped_count,
+            "review_row_count": len(selected_rows),
             "novelty_added_count": sum(1 for r in selected_rows if "novelty_added" in r.get("status", "")),
             "redundant_drop_count": sum(1 for r in selected_rows if "redundant_drop" in r.get("status", "")),
             "gap_forced_count": sum(1 for r in selected_rows if "gap_forced" in r.get("status", "")),
+            "motion_blur_count": sum(1 for r in selected_rows if "motion_blur" in r.get("status", "")),
+            "low_texture_count": sum(1 for r in selected_rows if "low_texture" in r.get("status", "")),
             "weak_match_count": sum(1 for r in selected_rows if "weak_match" in r.get("status", "")),
-            "replaced_count": sum(1 for r in selected_rows if "replaced" in r.get("status", "")),
-            "fallback_keep_count": sum(1 for r in selected_rows if "fallback_keep" in r.get("status", "")),
         },
     }
 
@@ -2342,10 +1356,7 @@ def build_summary_from_counts(
     analysis_w: int,
     analysis_h: int,
     min_gap_frames: int,
-    window_frames: int,
     selected_count: int,
-    replaced_count: int,
-    fallback_keep_count: int,
     estimate_mode: str,
     filename_prefix: str,
     frame_digits: int,
@@ -2357,6 +1368,7 @@ def build_summary_from_counts(
         getattr(args, "pair_drop_threshold", -1.0),
         getattr(args, "pair_add_threshold", -1.0),
     )
+    pipeline = "quick" if getattr(args, "quick_extract", False) else "pair"
     summary = {
         "input_video": str(Path(args.input_video).resolve()),
         "mode": args.mode,
@@ -2371,21 +1383,15 @@ def build_summary_from_counts(
         "analysis": {
             "width": analysis_w,
             "height": analysis_h,
-            "pipeline": getattr(args, "analysis_pipeline", "legacy"),
+            "pipeline": pipeline,
             "min_gap_frames": min_gap_frames,
-            "representative_window_frames": window_frames,
-            "quality_mode": "skipped" if getattr(args, "quick_extract", False) else QUALITY_MODE,
         },
         "params": {
             "interval_sec": args.interval_sec,
-            "change_threshold": args.change_threshold,
             "min_gap_sec": args.min_gap_sec,
             "max_gap_sec": args.max_gap_sec,
             "fixed_smart": args.fixed_smart,
             "quick_extract": getattr(args, "quick_extract", False),
-            "analysis_pipeline": getattr(args, "analysis_pipeline", "legacy"),
-            "fixed_smart_change_threshold": args.fixed_smart_change_threshold,
-            "fixed_smart_feature_threshold": args.fixed_smart_feature_threshold,
             "fixed_smart_max_inserts_per_interval": args.fixed_smart_max_inserts_per_interval,
             "pair_motion_profile": getattr(args, "pair_motion_profile", "walk"),
             "pair_threshold_mode": pair_thresholds.mode,
@@ -2397,16 +1403,11 @@ def build_summary_from_counts(
             "pair_track_min_confidence": getattr(args, "pair_track_min_confidence", 0.0),
             "analysis_width": args.analysis_width,
             "pair_gate_width": pair_gate_dimensions(analysis_w, analysis_h)[0] if analysis_w > 0 else 0,
-            "quality_min_score": args.quality_min_score,
-            "quality_min_improvement": args.quality_min_improvement,
-            "center_bias": args.center_bias,
             "filename_prefix": filename_prefix,
             "frame_number_digits": frame_digits,
         },
         "result": {
             "selected_count": selected_count,
-            "replaced_count": replaced_count,
-            "fallback_keep_count": fallback_keep_count,
         },
     }
     if estimate_meta:
@@ -2421,25 +1422,18 @@ def build_summary(
     analysis_h: int,
     selected_rows: list[dict],
     min_gap_frames: int,
-    window_frames: int,
     filename_prefix: str,
     frame_digits: int,
     estimate_mode: str = "full",
 ) -> dict:
-    replaced_count = sum(1 for r in selected_rows if "replaced" in r.get("status", ""))
-    smart_added_count = sum(1 for r in selected_rows if "smart_added" in r.get("status", ""))
     novelty_added_count = sum(1 for r in selected_rows if "novelty_added" in r.get("status", ""))
     redundant_drop_count = sum(1 for r in selected_rows if "redundant_drop" in r.get("status", ""))
     gap_forced_count = sum(1 for r in selected_rows if "gap_forced" in r.get("status", ""))
     motion_blur_count = sum(1 for r in selected_rows if "motion_blur" in r.get("status", ""))
     low_texture_count = sum(1 for r in selected_rows if "low_texture" in r.get("status", ""))
     weak_match_count = sum(1 for r in selected_rows if "weak_match" in r.get("status", ""))
-    fallback_keep_count = sum(1 for r in selected_rows if "fallback_keep" in r.get("status", ""))
-    thinned_count = sum(
-        1 for r in selected_rows
-        if r.get("decision") == "drop" and "thinned" in r.get("status", "")
-    )
     kept_count = sum(1 for r in selected_rows if r.get("decision", "keep") != "drop")
+    dropped_count = sum(1 for r in selected_rows if r.get("decision", "keep") == "drop")
 
     summary = build_summary_from_counts(
         args=args,
@@ -2447,23 +1441,19 @@ def build_summary(
         analysis_w=analysis_w,
         analysis_h=analysis_h,
         min_gap_frames=min_gap_frames,
-        window_frames=window_frames,
         selected_count=kept_count,
-        replaced_count=replaced_count,
-        fallback_keep_count=fallback_keep_count,
         estimate_mode=estimate_mode,
         filename_prefix=filename_prefix,
         frame_digits=frame_digits,
     )
-    summary["result"]["smart_added_count"] = smart_added_count
+    summary["result"]["dropped_count"] = dropped_count
+    summary["result"]["review_row_count"] = len(selected_rows)
     summary["result"]["novelty_added_count"] = novelty_added_count
     summary["result"]["redundant_drop_count"] = redundant_drop_count
     summary["result"]["gap_forced_count"] = gap_forced_count
     summary["result"]["motion_blur_count"] = motion_blur_count
     summary["result"]["low_texture_count"] = low_texture_count
     summary["result"]["weak_match_count"] = weak_match_count
-    summary["result"]["thinned_count"] = thinned_count
-    summary["result"]["selected_before_thin"] = len(selected_rows)
     return summary
 
 
@@ -2528,70 +1518,9 @@ def total_frames_for_fixed_selection(video_info: VideoInfo) -> int:
     return max(total_frames, 1)
 
 
-def analyze_with_cache(
-    args: argparse.Namespace,
-    input_video: Path,
-    video_info: VideoInfo,
-    scene_dir: Path,
-) -> tuple[list[float], list[float], list[float], list[float], int, int]:
-    ensure_python_deps()
-
-    cache_path = cache_path_for(scene_dir)
-    cached: tuple[list[float], list[float], list[float], list[float], int, int] | None = None
-    if not args.no_cache:
-        needs_feature_motion = args.mode == "fixed" and args.fixed_smart
-        cached = load_analysis_cache(
-            cache_path,
-            input_video,
-            video_info,
-            args.analysis_width,
-            QUALITY_MODE,
-            require_feature_motion=needs_feature_motion,
-        )
-        if cached is not None:
-            print(f"[cache] reusing analysis cache: {cache_path}")
-
-    if cached is not None:
-        return cached
-
-    needs_feature_motion = args.mode == "fixed" and args.fixed_smart
-    progress_step = max(10, video_info.total_frames // 100) if video_info.total_frames > 0 else max(
-        10, int(round(video_info.fps * 2.0))
-    )
-    blur_scores, change_scores, quality_scores, feature_motion_scores, analysis_w, analysis_h = analyze_video(
-        input_video,
-        args.ffmpeg,
-        video_info.fps,
-        video_info.width,
-        video_info.height,
-        args.analysis_width,
-        progress_phase="analyze",
-        progress_total_frames=video_info.total_frames,
-        progress_step_frames=progress_step,
-        quality_mode=QUALITY_MODE,
-        compute_feature_motion=needs_feature_motion,
-    )
-    if not args.no_cache:
-        try:
-            save_analysis_cache(
-                cache_path, input_video, video_info,
-                analysis_w,
-                analysis_h,
-                blur_scores,
-                change_scores,
-                quality_scores,
-                feature_motion_scores,
-                QUALITY_MODE,
-                feature_motion_computed=needs_feature_motion,
-            )
-        except Exception as e:
-            print(f"[cache] failed to save cache (non-fatal): {e}")
-    return blur_scores, change_scores, quality_scores, feature_motion_scores, analysis_w, analysis_h
-
-
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Extract equirectangular frames via FFmpeg with SfM-oriented representative frame selection."
+        description="Extract equirectangular frames via FFmpeg with SfM-oriented pair analysis."
     )
     parser.add_argument("input_video", help="Input video file path")
     parser.add_argument(
@@ -2601,58 +1530,30 @@ def parse_args() -> argparse.Namespace:
         help="Output root directory (default='.')",
     )
 
-    parser.add_argument("--mode", choices=["fixed", "change"], default="change")
-    parser.add_argument("--interval-sec", type=float, default=0.5, help="Fixed mode interval in seconds")
-    parser.add_argument(
-        "--change-threshold",
-        type=float,
-        default=0.04,
-        help="Change mode threshold (0.0-1.0) based on normalized frame difference",
-    )
+    parser.set_defaults(mode="fixed")
+    parser.add_argument("--interval-sec", type=float, default=0.5, help="Fixed interval in seconds")
     parser.add_argument("--min-gap-sec", type=float, default=0.25, help="Minimum gap in seconds")
     parser.add_argument("--max-gap-sec", type=float, default=2.0, help="Maximum safety gap in seconds")
     parser.add_argument(
         "--fixed-smart",
         action="store_true",
         help=(
-            "Fixed mode helper: keep the base fixed interval, skip low-change candidates, "
-            "and add extra anchors where image/feature motion is high."
+            "Enable pair-analysis motion adjustment: drop redundant fixed candidates, "
+            "add novelty candidates, and keep max-gap safety frames."
         ),
     )
     parser.add_argument(
         "--quick-extract",
         action="store_true",
         help=(
-            "Fixed mode shortcut for test runs: extract the requested cadence directly "
-            "without change adjustment or quality-based representative selection."
+            "Extract the requested fixed cadence directly without pair analysis or motion adjustment."
         ),
-    )
-    parser.add_argument(
-        "--fixed-smart-change-threshold",
-        type=float,
-        default=0.04,
-        help="Normalized frame-difference threshold used for fixed-smart high-motion insertion.",
-    )
-    parser.add_argument(
-        "--fixed-smart-feature-threshold",
-        type=float,
-        default=0.012,
-        help="Sparse feature-motion threshold used for fixed-smart high-motion insertion.",
     )
     parser.add_argument(
         "--fixed-smart-max-inserts-per-interval",
         type=int,
         default=2,
-        help="Maximum extra anchors inserted inside each fixed interval by --fixed-smart.",
-    )
-    parser.add_argument(
-        "--analysis-pipeline",
-        choices=["pair", "legacy"],
-        default="pair",
-        help=(
-            "Frame analysis pipeline. pair uses last-kept-frame residual and candidate pair tracking; "
-            "legacy uses the previous whole-video quality score and fixed-smart logic."
-        ),
+        help="Maximum novelty anchors inserted inside each fixed interval by --fixed-smart.",
     )
     parser.add_argument(
         "--pair-track-min-count",
@@ -2690,34 +1591,10 @@ def parse_args() -> argparse.Namespace:
         type=int,
         default=1920,
         help=(
-            "Analysis decode width for change/quality scoring (default=1920). "
-            "Higher values give more accurate feature/quality scoring at the cost of "
-            "analysis time. Set to 0 or a value >= source width to use full resolution."
+            "Pair-analysis decode width for candidate tracking and sharpness checks. "
+            "Yaw/residual monitoring is internally capped to a 1280px gate. "
+            "Set to 0 or a value >= source width to use full resolution."
         ),
-    )
-    parser.add_argument(
-        "--quality-min-score",
-        type=float,
-        default=0.35,
-        help=(
-            "0.0-1.0 SfM-oriented quality score floor. Frames below this score are marked "
-            "for review if no better representative is found."
-        ),
-    )
-    parser.add_argument(
-        "--quality-min-improvement",
-        type=float,
-        default=0.08,
-        help=(
-            "0.0-1.0 quality-score gain required to replace an anchor with a nearby "
-            "representative. Computed as candidate quality minus original quality."
-        ),
-    )
-    parser.add_argument(
-        "--center-bias",
-        type=float,
-        default=0.05,
-        help="Small preference for frames close to the original extraction anchor.",
     )
 
     parser.add_argument("--image-ext", choices=["jpg", "png"], default="jpg")
@@ -2748,31 +1625,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--estimate-only",
         action="store_true",
-        help="Run probe/analysis/selection and print estimated selected count without image extraction",
-    )
-    parser.add_argument(
-        "--estimate-mode",
-        choices=["full", "sampled"],
-        default="full",
-        help="Estimate mode when --estimate-only is set (full=all frames, sampled=window sampling)",
-    )
-    parser.add_argument(
-        "--sample-segments",
-        type=int,
-        default=5,
-        help="Number of temporal windows for sampled estimate mode",
-    )
-    parser.add_argument(
-        "--sample-segment-sec",
-        type=float,
-        default=12.0,
-        help="Duration (seconds) for each sampled estimate window",
-    )
-    parser.add_argument(
-        "--sample-fps",
-        type=float,
-        default=8.0,
-        help="Temporal fps used in sampled estimate windows",
+        help="Run probe/selection and print estimated selected count without image extraction",
     )
     parser.add_argument(
         "--print-summary-json",
@@ -2780,57 +1633,19 @@ def parse_args() -> argparse.Namespace:
         help="Print one-line JSON summary prefixed with SUMMARY_JSON:",
     )
 
-    parser.add_argument(
-        "--no-cache",
-        action="store_true",
-        help="Do not read or write the analysis cache (extract_cache.npz). Forces full re-analysis.",
-    )
-    parser.add_argument(
-        "--thin-motion-threshold",
-        type=float,
-        default=0.6,
-        help=(
-            "Low-change thinning: drop selected frames whose cumulative change_score since the "
-            "last kept frame is below this threshold. change_score is mean absolute luma "
-            "difference / 255 per analyzed frame, summed between kept frames. Default=0.6. "
-            "Set to 0 to disable. 0.3-1.0 is a typical range."
-        ),
-    )
-    parser.add_argument(
-        "--no-thin-keep-endpoints",
-        dest="thin_keep_endpoints",
-        action="store_false",
-        default=True,
-        help="When thinning, allow the last frame to be dropped too (default keeps endpoints to preserve time coverage).",
-    )
-    parser.add_argument(
-        "--no-extract-thinned",
-        dest="extract_thinned",
-        action="store_false",
-        default=True,
-        help=(
-            "Skip image extraction for thinned frames (saves disk; default is to extract them so they "
-            "can be previewed and unthinned in the review GUI). Thinned rows always remain in CSV "
-            "marked decision=drop regardless of this flag."
-        ),
-    )
-
     return parser.parse_args()
 
 
 def main() -> None:
     args = parse_args()
-    if args.quality_min_score < 0.0 or args.quality_min_score > 1.0:
-        print("Error: --quality-min-score must be between 0 and 1")
+    if args.interval_sec <= 0:
+        print("Error: --interval-sec must be > 0")
         sys.exit(1)
-    if args.quality_min_improvement < 0.0 or args.quality_min_improvement > 1.0:
-        print("Error: --quality-min-improvement must be between 0 and 1")
+    if args.min_gap_sec <= 0 or args.max_gap_sec <= 0:
+        print("Error: --min-gap-sec and --max-gap-sec must be > 0")
         sys.exit(1)
-    if args.center_bias < 0.0:
-        print("Error: --center-bias must be >= 0")
-        sys.exit(1)
-    if args.fixed_smart_change_threshold < 0.0 or args.fixed_smart_feature_threshold < 0.0:
-        print("Error: fixed-smart thresholds must be >= 0")
+    if args.max_gap_sec < args.min_gap_sec:
+        print("Error: --max-gap-sec must be >= --min-gap-sec")
         sys.exit(1)
     if args.fixed_smart_max_inserts_per_interval < 0:
         print("Error: --fixed-smart-max-inserts-per-interval must be >= 0")
@@ -2850,9 +1665,6 @@ def main() -> None:
         sys.exit(1)
     if args.pair_track_min_confidence < 0.0 or args.pair_track_min_confidence > 1.0:
         print("Error: --pair-track-min-confidence must be between 0 and 1")
-        sys.exit(1)
-    if args.quick_extract and args.mode != "fixed":
-        print("Error: --quick-extract requires --mode fixed")
         sys.exit(1)
     if args.quick_extract and args.fixed_smart:
         print("Error: --quick-extract cannot be combined with --fixed-smart")
@@ -2885,7 +1697,7 @@ def main() -> None:
     if not resolved_prefix:
         resolved_prefix = "frame"
     print(f"Filename prefix: {resolved_prefix}")
-    video_frame_digits = frame_index_digits(video_info.total_frames)
+
     current_video_identity = video_identity(input_video)
     manifest = load_manifest(scene_dir)
     manifest_sessions = [
@@ -2902,109 +1714,17 @@ def main() -> None:
         )
         sys.exit(1)
 
-    if args.estimate_only and args.mode == "fixed" and not args.fixed_smart:
+    if args.quick_extract:
         total_frames = total_frames_for_fixed_selection(video_info)
-
         try:
             selected, min_gap_frames = select_fixed(total_frames, video_info.fps, args.interval_sec)
         except Exception as e:
             print(f"Error while selecting frames: {e}")
             sys.exit(1)
-
-        if args.quick_extract:
-            analysis_w, analysis_h = 0, 0
-            window_frames = 0
-            estimate_mode = "quick_extract"
-        else:
-            analysis_w, analysis_h = scaled_dimensions(video_info.width, video_info.height, args.analysis_width)
-            window_frames = representative_window_for_report(selected, total_frames)
-            estimate_mode = "fixed_exact"
-        summary = build_summary_from_counts(
-            args=args,
-            video_info=video_info,
-            analysis_w=analysis_w,
-            analysis_h=analysis_h,
-            min_gap_frames=min_gap_frames,
-            window_frames=window_frames,
-            selected_count=len(selected),
-            replaced_count=0,
-            fallback_keep_count=0,
-            estimate_mode=estimate_mode,
-            filename_prefix=resolved_prefix,
-            frame_digits=frame_index_digits(video_info.total_frames, selected),
-        )
-        print(f"Estimated selected frames: {summary['result']['selected_count']}")
-        print("Estimated representative replacements: 0")
-        print("Estimated low-quality review frames: 0")
-        if args.print_summary_json:
-            print("SUMMARY_JSON:" + json.dumps(summary, ensure_ascii=False))
-        return
-
-    if args.estimate_only and args.mode == "change" and args.estimate_mode == "sampled":
-        try:
-            ensure_python_deps()
-            sampled = estimate_change_sampled(
-                video_path=input_video,
-                ffmpeg_bin=args.ffmpeg,
-                video_info=video_info,
-                analysis_width=args.analysis_width,
-                threshold=args.change_threshold,
-                min_gap_sec=args.min_gap_sec,
-                max_gap_sec=args.max_gap_sec,
-                sample_segments=args.sample_segments,
-                sample_segment_sec=args.sample_segment_sec,
-                sample_fps=args.sample_fps,
-            )
-        except Exception as e:
-            print(f"Error during sampled estimate: {e}")
-            sys.exit(1)
-
-        summary = build_summary_from_counts(
-            args=args,
-            video_info=video_info,
-            analysis_w=sampled["analysis_w"],
-            analysis_h=sampled["analysis_h"],
-            min_gap_frames=sampled["min_gap_frames"],
-            window_frames=0,
-            selected_count=sampled["selected_count"],
-            replaced_count=sampled["replaced_count"],
-            fallback_keep_count=sampled["fallback_keep_count"],
-            estimate_mode="sampled",
-            filename_prefix=resolved_prefix,
-            frame_digits=video_frame_digits,
-            estimate_meta={
-                "sampled_segments_requested": sampled["sampled_segments_requested"],
-                "sampled_segments_used": sampled["sampled_segments_used"],
-                "sampled_duration_sec": sampled["sampled_duration_sec"],
-                "sampled_frames": sampled["sampled_frames"],
-                "sampled_fps": sampled["analysis_fps"],
-                "range_min_count": sampled["range_min_count"],
-                "range_max_count": sampled["range_max_count"],
-            },
-        )
-
-        print(f"Estimated selected frames: {summary['result']['selected_count']}")
-        print(f"Estimated representative replacements: {summary['result']['replaced_count']}")
-        print(f"Estimated low-quality review frames: {summary['result']['fallback_keep_count']}")
-        print(
-            "[sample] used segments: "
-            f"{sampled['sampled_segments_used']}/{sampled['sampled_segments_requested']} "
-            f"(duration={sampled['sampled_duration_sec']:.2f}s, decoded={sampled['sampled_frames']} frames)"
-        )
-        if args.print_summary_json:
-            print("SUMMARY_JSON:" + json.dumps(summary, ensure_ascii=False))
-        return
-
-    use_pair_pipeline = (
-        args.analysis_pipeline == "pair"
-        and not args.quick_extract
-        and args.mode == "fixed"
-    )
-    enriched_rows: list[dict] = []
-    window_frames_for_report = 0
-    min_gap_frames = 1
-
-    if use_pair_pipeline:
+        enriched_rows = build_quick_extract_rows(selected)
+        analysis_w, analysis_h = 0, 0
+        print("Quick extract: skipping analysis and motion adjustment")
+    else:
         try:
             ensure_python_deps()
             pair_thresholds = resolve_pair_thresholds(
@@ -3047,139 +1767,14 @@ def main() -> None:
             print(f"Error during pair analysis: {e}")
             sys.exit(1)
         print(f"Pair-analyzed frames: {total_frames} ({analysis_w}x{analysis_h})")
-        selected = [int(r["final_index"]) for r in enriched_rows if r.get("decision", "keep") != "drop"]
-        if not selected:
-            print("Error: no frames selected")
-            sys.exit(1)
-    elif args.quick_extract:
-        total_frames = total_frames_for_fixed_selection(video_info)
-        blur_scores: list[float] = []
-        change_scores: list[float] = []
-        quality_scores: list[float] = []
-        feature_motion_scores: list[float] = []
-        analysis_w, analysis_h = 0, 0
-        print("Quick extract: skipping analysis and quality scoring")
-    else:
-        try:
-            blur_scores, change_scores, quality_scores, feature_motion_scores, analysis_w, analysis_h = analyze_with_cache(
-                args,
-                input_video,
-                video_info,
-                scene_dir,
-            )
-        except Exception as e:
-            print(f"Error during analysis: {e}")
-            sys.exit(1)
 
-        total_frames = len(blur_scores)
-        print(f"Analyzed frames: {total_frames} ({analysis_w}x{analysis_h})")
+    kept_rows = [r for r in enriched_rows if r.get("decision", "keep") != "drop"]
+    if not kept_rows:
+        print("Error: no frames selected")
+        sys.exit(1)
 
-    if not use_pair_pipeline:
-        try:
-            smart_added_indices: set[int] = set()
-            smart_thinned_indices: set[int] = set()
-            if args.mode == "fixed":
-                selected, min_gap_frames = select_fixed(total_frames, video_info.fps, args.interval_sec)
-                if args.fixed_smart:
-                    (
-                        selected,
-                        smart_added_indices,
-                        smart_thinned_indices,
-                        min_gap_frames,
-                        _smart_max_gap_frames,
-                    ) = select_fixed_smart(
-                        selected,
-                        change_scores,
-                        feature_motion_scores,
-                        video_info.fps,
-                        args.min_gap_sec,
-                        args.max_gap_sec,
-                        change_threshold=args.fixed_smart_change_threshold,
-                        feature_motion_threshold=args.fixed_smart_feature_threshold,
-                        max_inserts_per_interval=args.fixed_smart_max_inserts_per_interval,
-                    )
-            else:
-                selected, min_gap_frames, _ = select_change(
-                    change_scores,
-                    video_info.fps,
-                    args.change_threshold,
-                    args.min_gap_sec,
-                    args.max_gap_sec,
-                )
-        except Exception as e:
-            print(f"Error while selecting frames: {e}")
-            sys.exit(1)
-
-        if not selected:
-            print("Error: no frames selected")
-            sys.exit(1)
-
-    if args.quick_extract:
-        window_frames_for_report = 0
-        enriched_rows = build_quick_extract_rows(selected)
-    elif not use_pair_pipeline:
-        window_frames_for_report = representative_window_for_report(selected, total_frames)
-
-        rows = select_representative_frames(
-            selected_indices=selected,
-            quality_scores=quality_scores,
-            quality_min_score=args.quality_min_score,
-            quality_min_improvement=args.quality_min_improvement,
-            center_bias=args.center_bias,
-        )
-
-        enriched_rows: list[dict] = []
-        for row in rows:
-            orig = row["original_index"]
-            final = row["final_index"]
-            status = row["status"]
-            if orig in smart_added_indices:
-                status = "smart_added" if status == "ok" else f"smart_added+{status}"
-            if orig in smart_thinned_indices:
-                status = "thinned" if status == "ok" else f"{status}+thinned"
-            enriched_rows.append(
-                {
-                    **row,
-                    "status": status,
-                    "change_score_original": change_scores[orig],
-                    "change_score_final": change_scores[final],
-                    "blur_score_original": blur_scores[orig],
-                    "blur_score_final": blur_scores[final],
-                    "quality_score_original": row.get("quality_score_original", quality_scores[orig]),
-                    "quality_score_final": row.get("quality_score_final", quality_scores[final]),
-                    "decision": "drop" if orig in smart_thinned_indices else "keep",
-                }
-            )
-
-        # 立ち止まり間引き: 累積モーションが閾値未満の連続区間を drop でマーク
-        if args.thin_motion_threshold > 0.0 and not args.fixed_smart:
-            enriched_rows = thin_stationary(
-                enriched_rows,
-                change_scores,
-                motion_threshold=args.thin_motion_threshold,
-                keep_endpoints=args.thin_keep_endpoints,
-            )
-            thinned_count = sum(
-                1 for r in enriched_rows
-                if r.get("decision") == "drop" and "thinned" in r.get("status", "")
-            )
-            kept_count = sum(1 for r in enriched_rows if r.get("decision") != "drop")
-            print(
-                f"Stationary thinning: dropped {thinned_count}, kept {kept_count} "
-                f"(threshold={args.thin_motion_threshold:g})"
-            )
-
-    # 抽出対象の決定
-    # - 既定: 間引き含めて全部抽出（review GUI で確認・unthin できるように）
-    # - --no-extract-thinned: 間引きフレームを抽出しない（容量節約）
-    # CSV 上は decision=drop のまま残るので、finalize_in_place が後で削除する
-    if args.extract_thinned:
-        final_indices = [r["final_index"] for r in enriched_rows]
-    else:
-        final_indices = [
-            r["final_index"] for r in enriched_rows if r.get("decision", "keep") != "drop"
-        ]
-
+    final_indices = [int(r["final_index"]) for r in enriched_rows]
+    frame_digits = frame_index_digits(video_info.total_frames, final_indices)
     summary = build_summary(
         args=args,
         video_info=video_info,
@@ -3187,29 +1782,25 @@ def main() -> None:
         analysis_h=analysis_h,
         selected_rows=enriched_rows,
         min_gap_frames=min_gap_frames,
-        window_frames=window_frames_for_report,
         filename_prefix=resolved_prefix,
-        frame_digits=frame_index_digits(video_info.total_frames, final_indices),
+        frame_digits=frame_digits,
         estimate_mode="quick_extract" if args.quick_extract else "full",
     )
 
     if args.estimate_only:
         print(f"Estimated selected frames: {summary['result']['selected_count']}")
-        if args.analysis_pipeline == "pair":
+        if not args.quick_extract:
             print(f"Estimated pair novelty additions: {summary['result'].get('novelty_added_count', 0)}")
             print(f"Estimated pair redundant drops: {summary['result'].get('redundant_drop_count', 0)}")
             print(f"Estimated pair motion-blur review frames: {summary['result'].get('motion_blur_count', 0)}")
             print(f"Estimated pair low-texture review frames: {summary['result'].get('low_texture_count', 0)}")
             print(f"Estimated pair weak-match review frames: {summary['result'].get('weak_match_count', 0)}")
-        else:
-            print(f"Estimated representative replacements: {summary['result']['replaced_count']}")
-            print(f"Estimated low-quality review frames: {summary['result']['fallback_keep_count']}")
         if args.print_summary_json:
             print("SUMMARY_JSON:" + json.dumps(summary, ensure_ascii=False))
         return
 
     if not final_indices:
-        print("Error: no frames remain after thinning; skipping extraction")
+        print("Error: no frames selected; skipping extraction")
         sys.exit(1)
 
     session_id = new_session_id()
@@ -3281,7 +1872,7 @@ def main() -> None:
 
     if extracted_indices != final_indices:
         extracted_set = set(extracted_indices)
-        enriched_rows = [r for r in enriched_rows if r["final_index"] in extracted_set]
+        enriched_rows = [r for r in enriched_rows if int(r["final_index"]) in extracted_set]
         final_indices = extracted_indices
         output_files = output_files_for_indices(
             final_indices,
@@ -3296,7 +1887,6 @@ def main() -> None:
             analysis_h=analysis_h,
             selected_rows=enriched_rows,
             min_gap_frames=min_gap_frames,
-            window_frames=window_frames_for_report,
             filename_prefix=resolved_prefix,
             frame_digits=summary["params"]["frame_number_digits"],
             estimate_mode="quick_extract" if args.quick_extract else "full",
@@ -3337,30 +1927,22 @@ def main() -> None:
         analysis_w,
         analysis_h,
         enriched_rows,
-        window_frames_for_report,
         min_gap_frames,
         resolved_prefix,
         summary["params"]["frame_number_digits"],
     )
 
-    replaced_count = sum(1 for r in enriched_rows if "replaced" in r.get("status", ""))
-    smart_added_count = sum(1 for r in enriched_rows if "smart_added" in r.get("status", ""))
     novelty_added_count = sum(1 for r in enriched_rows if "novelty_added" in r.get("status", ""))
     redundant_drop_count = sum(1 for r in enriched_rows if "redundant_drop" in r.get("status", ""))
     gap_forced_count = sum(1 for r in enriched_rows if "gap_forced" in r.get("status", ""))
     motion_blur_count = sum(1 for r in enriched_rows if "motion_blur" in r.get("status", ""))
     low_texture_count = sum(1 for r in enriched_rows if "low_texture" in r.get("status", ""))
     weak_match_count = sum(1 for r in enriched_rows if "weak_match" in r.get("status", ""))
-    fallback_count = sum(1 for r in enriched_rows if "fallback_keep" in r.get("status", ""))
-    thinned_count = sum(
-        1 for r in enriched_rows
-        if r.get("decision") == "drop" and "thinned" in r.get("status", "")
-    )
-    kept_count = len(final_indices)
+    dropped_count = sum(1 for r in enriched_rows if r.get("decision", "keep") == "drop")
 
-    print(f"Selected frames: {kept_count} (extracted)")
-    if smart_added_count > 0:
-        print(f"Smart fixed interval additions: {smart_added_count}")
+    print(f"Selected frames: {len(final_indices)} (extracted)")
+    if dropped_count > 0:
+        print(f"Dropped review rows: {dropped_count}")
     if novelty_added_count > 0:
         print(f"Pair novelty additions: {novelty_added_count}")
     if redundant_drop_count > 0:
@@ -3373,11 +1955,6 @@ def main() -> None:
         print(f"Pair low-texture review frames: {low_texture_count}")
     if weak_match_count > 0:
         print(f"Pair weak-match review frames: {weak_match_count}")
-    if thinned_count > 0:
-        print(f"Thinned (stationary, recorded as drop in CSV): {thinned_count}")
-    if args.analysis_pipeline == "legacy":
-        print(f"Representative replacements: {replaced_count}")
-        print(f"Low-quality review frames: {fallback_count}")
     print(f"Images: {images_dir}")
     print(f"Selection CSV: {csv_path}")
     print(f"Report: {report_path}")

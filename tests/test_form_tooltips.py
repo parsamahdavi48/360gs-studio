@@ -74,8 +74,6 @@ def test_extract_numeric_labels_share_field_tooltips() -> None:
     assert _label(step, f"{i18n.t('MAX_GAP_SHORT')}:").toolTip() == i18n.tip("MAX_GAP")
     assert step.smart_fixed_cb.toolTip() == i18n.tip("FIXED_SMART")
     assert step.quick_extract_cb.toolTip() == i18n.tip("QUICK_EXTRACT")
-    assert _label(step, i18n.t("QUALITY_MIN_SCORE")).toolTip() == i18n.tip("QUALITY_MIN_SCORE")
-    assert _label(step, i18n.t("QUALITY_MIN_IMPROVEMENT")).toolTip() == i18n.tip("QUALITY_MIN_IMPROVEMENT")
 
 
 def test_extract_compact_mode_rows_enable_matching_fields() -> None:
@@ -105,8 +103,6 @@ def test_extract_compact_mode_rows_enable_matching_fields() -> None:
     assert not step.max_gap_edit.isEnabled()
     assert not step.analysis_width_edit.isEnabled()
     assert not step.pair_motion_profile_combo.isEnabled()
-    assert not step.quality_min_score_edit.isEnabled()
-    assert not step.quality_min_improvement_edit.isEnabled()
 
     step.quick_extract_cb.setChecked(False)
 
@@ -116,10 +112,6 @@ def test_extract_compact_mode_rows_enable_matching_fields() -> None:
     assert step.max_gap_edit.isEnabled()
     assert step.analysis_width_edit.isEnabled()
     assert step.pair_motion_profile_combo.isEnabled()
-    assert not step.quality_min_score_edit.isVisible()
-    assert not step.quality_min_score_edit.isEnabled()
-    assert not step.quality_min_improvement_edit.isVisible()
-    assert not step.quality_min_improvement_edit.isEnabled()
 
 
 def test_extract_mode_block_preserves_right_padding() -> None:
@@ -216,12 +208,10 @@ def test_extract_command_uses_drag_spinbox_values(tmp_path: Path) -> None:
     assert fixed_cmd[fixed_cmd.index("--interval-sec") + 1] == "1.25"
     assert fixed_cmd[fixed_cmd.index("--jpg-quality") + 1] == "4"
     assert "--fixed-smart" in fixed_cmd
-    assert fixed_cmd[fixed_cmd.index("--thin-motion-threshold") + 1] == "0"
 
     step.min_gap_edit.setValue(0.5)
     step.max_gap_edit.setValue(3.0)
     smart_cmd = step._build_extract_cmd()
-    assert smart_cmd[smart_cmd.index("--analysis-pipeline") + 1] == "pair"
     assert smart_cmd[smart_cmd.index("--pair-motion-profile") + 1] == "walk"
     assert smart_cmd[smart_cmd.index("--min-gap-sec") + 1] == "0.5"
     assert smart_cmd[smart_cmd.index("--max-gap-sec") + 1] == "3"
@@ -235,7 +225,6 @@ def test_extract_command_uses_drag_spinbox_values(tmp_path: Path) -> None:
     assert "--fixed-smart" not in plain_cmd
     assert "--min-gap-sec" not in plain_cmd
     assert "--max-gap-sec" not in plain_cmd
-    assert plain_cmd[plain_cmd.index("--thin-motion-threshold") + 1] == "0"
 
     step.quick_extract_cb.setChecked(True)
     quick_cmd = step._build_extract_cmd()
@@ -246,7 +235,7 @@ def test_extract_command_uses_drag_spinbox_values(tmp_path: Path) -> None:
     assert "--analysis-width" not in quick_cmd
     assert "--quality-min-score" not in quick_cmd
     assert "--quality-min-improvement" not in quick_cmd
-    assert quick_cmd[quick_cmd.index("--thin-motion-threshold") + 1] == "0"
+    assert "--pair-motion-profile" not in quick_cmd
 
 
 def test_mask_numeric_labels_share_field_tooltips() -> None:

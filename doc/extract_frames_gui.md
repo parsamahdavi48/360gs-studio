@@ -71,7 +71,7 @@ Higher values can improve fine-feature detection but increase analysis time. Low
 
 ## Pair-Analysis Review Metadata
 
-The GUI's normal extraction path no longer uses the old single-frame `SfM quality score` or nearby alternate-frame replacement. For carefully captured video, the useful question is less "which individual frame is prettier?" and more "does this pair still overlap while adding non-redundant viewpoint change?"
+The GUI's normal extraction path uses pair analysis instead of scoring individual frames in isolation. For carefully captured video, the useful question is less "which individual frame is prettier?" and more "does this pair still overlap while adding non-redundant viewpoint change?"
 
 The CSV records these Step 2 review fields:
 
@@ -115,6 +115,4 @@ Step 2 reads `selected_frames.csv` and surfaces frames based on `status`.
 - `motion_blur`: sharpness collapsed relative to recent kept frames and SfM matches may be weak
 - `low_texture`: not necessarily blurred, but low texture may weaken SfM matches
 - `weak_match`: kept but flagged because candidate pair tracking is weak
-- `smart_added` / `replaced` / `fallback_keep` / `thinned`: legacy statuses when `--analysis-pipeline legacy` is used
-
 A practical starting point is `1.0` second, `Min 0.5`, `Max 2.0`, with `Motion` enabled, then review how `novelty_added`, `redundant_drop`, `gap_forced`, `motion_blur`, `low_texture`, and `weak_match` frames look in Step 2.

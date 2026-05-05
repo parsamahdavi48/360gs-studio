@@ -41,9 +41,6 @@ def _write_scene(tmp_path: Path) -> tuple[Path, Path]:
                 "timestamp_sec": str(seq),
                 "blur_score_final": "100",
                 "change_score_final": "0.1",
-                "quality_min_score": "0.35",
-                "quality_score_original": "0.20" if seq == 1 else "0.50",
-                "quality_score_final": "0.62" if seq == 1 else "0.50",
             }
         )
 
@@ -75,8 +72,11 @@ def _read_decisions(csv_path: Path) -> list[str]:
 
 
 def _set_summary_statuses(widget: ReviewWidget) -> None:
-    widget.rows[0]["status"] = "smart_added+replaced"
-    widget.rows[1]["status"] = "fallback_keep+thinned"
+    widget.rows[0]["analysis_pipeline"] = "pair"
+    widget.rows[1]["analysis_pipeline"] = "pair"
+    widget.rows[0]["status"] = "novelty_added"
+    widget.rows[1]["status"] = "motion_blur+redundant_drop"
+    widget.rows[1]["decision"] = "drop"
     widget.problem_indices = widget._collect_problem_indices()
     widget._render_current()
 
@@ -91,10 +91,7 @@ def test_review_widget_slider_changes_current_frame(tmp_path: Path) -> None:
     assert widget.index == 1
     assert widget.frame_slider.value() == 1
     assert "2 / 2" in widget.frame_position_label.text()
-    assert i18n.t("REVIEW_INFO_FORMAT").format(
-        ts="2.00s",
-        quality=f"0.50 ({i18n.t('REVIEW_QUALITY_THRESHOLD_FORMAT').format(score='0.35')})",
-    ) == widget.info_label.text()
+    assert i18n.t("REVIEW_INFO_FORMAT").format(ts="2.00s") == widget.info_label.text()
     assert widget.image_view._source_pixmap is not None
 
 
@@ -132,22 +129,6 @@ def test_review_widget_perspective_button_leaves_thumbnail_mode(tmp_path: Path) 
     assert widget.preview_stack.currentWidget() == widget.image_view
     assert widget.projection_toggle_btn.isChecked()
     assert not widget.mode_toolbar.thumbnail_preview_btn.isChecked()
-
-
-def test_review_widget_shows_quality_score_and_original_when_replaced(tmp_path: Path) -> None:
-    _app()
-    scene, csv_path = _write_scene(tmp_path)
-    widget = ReviewWidget(scene, csv_path)
-
-    assert widget.info_label.text() == i18n.t("REVIEW_INFO_FORMAT").format(
-        ts="1.00s",
-        quality=(
-            "0.62 ("
-            f"{i18n.t('REVIEW_QUALITY_ORIGINAL_FORMAT').format(score='0.20')} / "
-            f"{i18n.t('REVIEW_QUALITY_THRESHOLD_FORMAT').format(score='0.35')}"
-            ")"
-        ),
-    )
 
 
 def test_review_widget_labels_quick_extract_rows_separately(tmp_path: Path) -> None:
@@ -206,7 +187,7 @@ def test_review_summary_label_is_single_line_in_english(tmp_path: Path) -> None:
             assert "\\n" not in text
             assert not widget.problem_summary_label.wordWrap()
             assert "representative" not in text.lower()
-            assert "replace" in text
+            assert "replace" not in text.lower()
             assert widget.problem_summary_label.sizeHint().width() <= 760
         """
     )
