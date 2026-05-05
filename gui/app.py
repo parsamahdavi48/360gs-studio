@@ -353,6 +353,7 @@ class MainWindow(QWidget):
 
     def _on_cancel(self) -> None:
         self.runner.cancel()
+        self.progress.finish_phase()
         self.progress.set_status(i18n.STATUS_CANCELED)
         self._update_run_button()
 
@@ -368,6 +369,7 @@ class MainWindow(QWidget):
     def _on_phase_started(self, phase: str) -> None:
         step = self.steps[self._current_step] if 0 <= self._current_step < len(self.steps) else None
         label = step.phase_display_name(phase) if step else phase
+        self.progress.start_phase()
         self.progress.set_status(f"{i18n.STATUS_RUNNING}: {label}")
         if step:
             result = step.on_phase_started(phase)
@@ -377,6 +379,7 @@ class MainWindow(QWidget):
         self._update_run_button()
 
     def _on_phase_finished(self, phase: str, exit_code: int, canceled: bool) -> None:
+        self.progress.finish_phase()
         step = self.steps[self._current_step] if 0 <= self._current_step < len(self.steps) else None
         if step:
             step.on_phase_finished(phase, exit_code, canceled)

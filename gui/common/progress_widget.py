@@ -1,7 +1,7 @@
 """プログレスバー + ステータスラベル"""
 from __future__ import annotations
 
-from PySide6.QtCore import QRect, QRectF, Qt
+from PySide6.QtCore import QElapsedTimer, QRect, QRectF, Qt, QTimer
 from PySide6.QtGui import QColor, QFont, QLinearGradient, QPainter, QPainterPath, QPen
 from PySide6.QtWidgets import QHBoxLayout, QLabel, QProgressBar, QWidget
 
@@ -16,14 +16,27 @@ class ReadableProgressBar(QProgressBar):
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
+        self._overlay_text = ""
         self.setTextVisible(False)
         font = self.font()
         font.setWeight(QFont.Weight.DemiBold)
         self.setFont(font)
 
+    def set_overlay_text(self, text: str) -> None:
+        if self._overlay_text == text:
+            return
+        self._overlay_text = text
+        self.update()
+
     def paintEvent(self, event) -> None:  # type: ignore[override]
         if self.minimum() == 0 and self.maximum() == 0:
             super().paintEvent(event)
+            text = self._overlay_text
+            if text:
+                painter = QPainter(self)
+                painter.setFont(self.font())
+                painter.setPen(QColor(theme.TEXT))
+                painter.drawText(self.rect().adjusted(0, 0, -1, -1), Qt.AlignCenter, text)
             return
 
         painter = QPainter(self)
@@ -53,7 +66,7 @@ class ReadableProgressBar(QProgressBar):
             painter.fillPath(chunk_path, gradient)
             painter.restore()
 
-        text = self.text()
+        text = self._overlay_text or self.text()
         if text:
             self._draw_progress_text(painter, outer_rect, chunk_rect, text)
 
@@ -117,17 +130,76 @@ class ProgressWidget(QWidget):
         self.status_label.setMinimumWidth(200)
         layout.addWidget(self.status_label)
 
+        self._elapsed_timer = QElapsedTimer()
+        self._elapsed_tick = QTimer(self)
+        self._elapsed_tick.setInterval(1000)
+        self._elapsed_tick.timeout.connect(self._refresh_progress_text)
+        self._elapsed_active = False
+        self._last_elapsed_ms = 0
+        self._done = 0
+        self._total = 100
+
     def set_status(self, text: str) -> None:
         self.status_label.setText(text)
 
+    def start_phase(self) -> None:
+        self._done = 0
+        self._total = 0
+        self.bar.setRange(0, 0)
+        self._last_elapsed_ms = 0
+        self._elapsed_timer.start()
+        self._elapsed_active = True
+        self._elapsed_tick.start()
+        self._refresh_progress_text()
+
+    def finish_phase(self) -> None:
+        if self._elapsed_active:
+            self._last_elapsed_ms = self._elapsed_timer.elapsed()
+        self._elapsed_active = False
+        self._elapsed_tick.stop()
+        self._refresh_progress_text()
+
     def set_progress(self, done: int, total: int) -> None:
+        self._done = max(0, int(done))
+        self._total = max(0, int(total))
         if total > 0:
             self.bar.setRange(0, total)
             self.bar.setValue(min(done, total))
         else:
             self.bar.setRange(0, 0)
+        self._refresh_progress_text()
+
+    def _elapsed_ms(self) -> int:
+        if self._elapsed_active:
+            self._last_elapsed_ms = self._elapsed_timer.elapsed()
+        return self._last_elapsed_ms
+
+    @staticmethod
+    def _format_elapsed(ms: int) -> str:
+        seconds = max(0, int(round(ms / 1000.0)))
+        hours, rem = divmod(seconds, 3600)
+        minutes, secs = divmod(rem, 60)
+        if hours > 0:
+            return f"{hours}:{minutes:02d}:{secs:02d}"
+        return f"{minutes:02d}:{secs:02d}"
+
+    def _refresh_progress_text(self) -> None:
+        elapsed = self._format_elapsed(self._elapsed_ms())
+        elapsed_text = f"{i18n.t('ELAPSED_TIME')} {elapsed}"
+        if self._total > 0:
+            done = min(self._done, self._total)
+            pct = int(round((done / float(self._total)) * 100.0))
+            self.bar.set_overlay_text(f"{done}/{self._total} ({pct}%)  {elapsed_text}")
+        elif self._elapsed_active:
+            self.bar.set_overlay_text(elapsed_text)
 
     def reset(self) -> None:
+        self._elapsed_active = False
+        self._elapsed_tick.stop()
+        self._last_elapsed_ms = 0
+        self._done = 0
+        self._total = 100
         self.bar.setRange(0, 100)
         self.bar.setValue(0)
+        self.bar.set_overlay_text("")
         self.status_label.setText(i18n.STATUS_IDLE)
