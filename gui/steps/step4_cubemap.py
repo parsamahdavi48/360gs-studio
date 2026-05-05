@@ -44,6 +44,18 @@ from gui.steps.base_step import (
     BaseStepWidget,
     configure_settings_scroll,
 )
+from gui.steps.cubemap_commands import (
+    ColmapExportCommand,
+    ColmapSfmCommand,
+    CubemapConversionCommand,
+    MetashapePreprocessCommand,
+    build_colmap_export_cmd,
+    build_colmap_sfm_commands,
+    build_cubemap_conversion_cmd,
+    build_metashape_preprocess_cmd,
+    views_config_payload,
+    write_views_config,
+)
 from gui.user_settings import load_user_settings_section, update_user_settings_section
 from gui.version import APP_VERSION
 
@@ -911,21 +923,24 @@ class CubemapStep(BaseStepWidget):
         if not math.isfinite(scale) or scale <= 0:
             raise ValueError("スケール係数は正の有限値である必要があります")
 
-        cmd = [
-            sys.executable, "-u", str(script),
-            "--images", images,
-            "--xml", xml,
-            "--output", str(scene),
-            "--scale", f"{scale:g}",
-        ]
+        ply = ""
         if self._preprocess_uses_ply():
             ply = self.ms_ply_browse.text()
             if not ply or not Path(ply).is_file():
                 raise ValueError(f"PLYファイルが見つかりません: {ply}")
-            cmd.extend(["--ply", ply])
-        if self.ms_no_fix_rot_cb.isChecked():
-            cmd.append("--no-fix-rotation")
-        return cmd
+        return build_metashape_preprocess_cmd(
+            MetashapePreprocessCommand(
+                python_executable=sys.executable,
+                script=script,
+                images=Path(images),
+                xml=xml,
+                output=scene,
+                scale=scale,
+                use_ply=self._preprocess_uses_ply(),
+                ply=ply,
+                no_fix_rotation=self.ms_no_fix_rot_cb.isChecked(),
+            )
+        )
 
     def _build_cubemap_cmd(self, image_only: bool = False, colmap_rig: bool = False) -> list[str]:
         script = self.base_dir / "cubemap_transforms_json.py"
@@ -947,44 +962,13 @@ class CubemapStep(BaseStepWidget):
 
         views_json = self._write_views_config(output, views)
 
-        scale = float(self.scale_combo.currentData())
-        cmd = [
-            sys.executable, "-u", str(script),
-            str(scene), str(output),
-            "--fov", "90",
-            "--output_scale", f"{scale:g}",
-            "--views-json", str(views_json),
-        ]
-
-        axis_mode = self._axis_transform_mode()
-        if image_only:
-            cmd.append("--image-only")
-            if colmap_rig:
-                cmd.extend(["--colmap-rig", "--colmap-rig-name", "rig1"])
-        else:
-            if axis_mode == _AXIS_NONE:
-                cmd.append("--no_transform")
-            if axis_mode == _AXIS_BRUSH:
-                cmd.append("--brush")
-        if self.invert_masks_cb.isChecked():
-            cmd.append("--invert_masks")
-        if not self._writes_images():
-            cmd.append("--skip-images")
-        if not self._writes_masks():
-            cmd.append("--skip-masks")
-
-        # 高度な出力設定
         if colmap_rig:
             yaw_step = 0.0
         else:
             yaw_step = float(self.yaw_per_frame_edit.value())
-        cmd.extend(["--yaw-offset-per-frame", f"{yaw_step:g}"])
 
         out_fmt = self.output_format_combo.currentData() or "auto"
-        cmd.extend(["--output-format", out_fmt])
-
         out_depth = self.output_bit_depth_combo.currentData() or "8"
-        cmd.extend(["--output-bit-depth", out_depth])
 
         try:
             jpgq = int(self.jpg_quality_edit.text().strip())
@@ -992,8 +976,26 @@ class CubemapStep(BaseStepWidget):
             raise ValueError("JPG/WebP 品質は整数で指定してください") from exc
         if not 1 <= jpgq <= 100:
             raise ValueError("JPG/WebP 品質は 1-100 の範囲で指定してください")
-        cmd.extend(["--jpg-quality", str(jpgq)])
-        return cmd
+        return build_cubemap_conversion_cmd(
+            CubemapConversionCommand(
+                python_executable=sys.executable,
+                script=script,
+                scene=scene,
+                output=output,
+                views_json=views_json,
+                scale=float(self.scale_combo.currentData()),
+                axis_mode=self._axis_transform_mode(),
+                image_only=image_only,
+                colmap_rig=colmap_rig,
+                invert_masks=self.invert_masks_cb.isChecked(),
+                writes_images=self._writes_images(),
+                writes_masks=self._writes_masks(),
+                yaw_offset_per_frame=yaw_step,
+                output_format=out_fmt,
+                output_bit_depth=out_depth,
+                jpg_quality=jpgq,
+            )
+        )
 
     def _build_colmap_cmd(self) -> list[str]:
         script = self.base_dir / "transforms_to_colmap.py"
@@ -1003,19 +1005,24 @@ class CubemapStep(BaseStepWidget):
         output = self._output_dir()
         colmap_dir = output / "colmap"
 
-        cmd = [
-            sys.executable, "-u", str(script),
-            str(output), str(colmap_dir),
-        ]
+        ply_path: Path | None = None
         ply = output / "pointcloud.ply"
         if ply.is_file():
-            cmd.extend(["--ply", str(ply)])
+            ply_path = ply
         else:
             # cubemap 出力ディレクトリ内の任意 .ply をフォールバック
             plys = sorted([p for p in output.glob("*.ply") if p.is_file()])
             if plys:
-                cmd.extend(["--ply", str(plys[0])])
-        return cmd
+                ply_path = plys[0]
+        return build_colmap_export_cmd(
+            ColmapExportCommand(
+                python_executable=sys.executable,
+                script=script,
+                output=output,
+                colmap_dir=colmap_dir,
+                ply=ply_path,
+            )
+        )
 
     def _default_colmap_executable(self) -> str:
         return "colmap.exe" if os.name == "nt" else "colmap"
@@ -1060,108 +1067,33 @@ class CubemapStep(BaseStepWidget):
         masks_dir = self._colmap_rig_masks_dir()
         database = self._colmap_database_path()
         sparse = self._colmap_sparse_dir()
-        rig_config = rig_dir / "rig_config.json"
-
-        if not self._writes_images() and not images_dir.is_dir():
-            raise ValueError(f"COLMAP Rig画像フォルダが見つかりません: {images_dir}")
-        sparse.mkdir(parents=True, exist_ok=True)
-
-        feature_cmd = [
-            colmap,
-            "feature_extractor",
-            "--database_path",
-            str(database),
-            "--image_path",
-            str(images_dir),
-            "--ImageReader.single_camera_per_folder",
-            "1",
-            "--ImageReader.camera_model",
-            "PINHOLE",
-            "--ImageReader.camera_params",
-            self._colmap_camera_params_arg(),
-        ]
-        if self._writes_masks() or masks_dir.is_dir():
-            feature_cmd.extend(["--ImageReader.mask_path", str(masks_dir)])
-
-        rig_cmd = [
-            colmap,
-            "rig_configurator",
-            "--database_path",
-            str(database),
-            "--rig_config_path",
-            str(rig_config),
-        ]
 
         matcher = self.colmap_matcher_combo.currentData() or _COLMAP_MATCHER_SEQUENTIAL
-        matcher_name = "exhaustive_matcher" if matcher == _COLMAP_MATCHER_EXHAUSTIVE else "sequential_matcher"
-        matcher_cmd = [
-            colmap,
-            matcher_name,
-            "--database_path",
-            str(database),
-        ]
-
         mapper = self.colmap_mapper_combo.currentData() or _COLMAP_MAPPER_INCREMENTAL
-        if mapper == _COLMAP_MAPPER_GLOBAL:
-            mapper_cmd = [
-                colmap,
-                "global_mapper",
-                "--database_path",
-                str(database),
-                "--image_path",
-                str(images_dir),
-                "--output_path",
-                str(sparse),
-            ]
-        elif mapper == _COLMAP_MAPPER_GLOMAP:
-            glomap = self._resolve_glomap_executable()
-            mapper_cmd = [
-                glomap,
-                "mapper",
-                "--database_path",
-                str(database),
-                "--image_path",
-                str(images_dir),
-                "--output_path",
-                str(sparse),
-            ]
-        else:
-            mapper_cmd = [
-                colmap,
-                "mapper",
-                "--database_path",
-                str(database),
-                "--image_path",
-                str(images_dir),
-                "--output_path",
-                str(sparse),
-                "--Mapper.ba_refine_sensor_from_rig",
-                "1",
-            ]
-
-        return [
-            ("colmap_feature", feature_cmd),
-            ("colmap_rig_config", rig_cmd),
-            ("colmap_match", matcher_cmd),
-            ("colmap_mapper", mapper_cmd),
-        ]
+        glomap = self._resolve_glomap_executable() if mapper == _COLMAP_MAPPER_GLOMAP else self._default_glomap_executable()
+        return build_colmap_sfm_commands(
+            ColmapSfmCommand(
+                colmap=colmap,
+                glomap=glomap,
+                rig_dir=rig_dir,
+                images_dir=images_dir,
+                masks_dir=masks_dir,
+                database=database,
+                sparse=sparse,
+                camera_params=self._colmap_camera_params_arg(),
+                writes_images=self._writes_images(),
+                writes_masks=self._writes_masks(),
+                matcher=matcher,
+                mapper=mapper,
+            )
+        )
 
     def _write_views_config(self, output_dir: Path, views: list[dict]) -> Path:
-        output_dir.mkdir(parents=True, exist_ok=True)
-        path = output_dir / "views_config.json"
-        payload = self._views_config_payload(views)
-        path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
-        return path
+        return write_views_config(output_dir, views)
 
     @staticmethod
     def _views_config_payload(views: list[dict]) -> dict:
-        return {
-            "fov": 90.0,
-            "views": [
-                {"name": v["name"], "yaw": float(v["yaw"]), "pitch": float(v["pitch"]), "enabled": bool(v["enabled"])}
-                for v in views
-            ],
-        }
+        return views_config_payload(views)
 
     def _export_settings_path(self) -> Path:
         return self._output_dir() / _EXPORT_SETTINGS_NAME

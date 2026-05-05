@@ -12,7 +12,7 @@ from pathlib import Path
 
 import cv2
 import numpy as np
-from PySide6.QtCore import QEventLoop, QObject, QProcess, QSize, Qt, QThread, QTimer, Signal
+from PySide6.QtCore import QProcess, QSize, Qt, QTimer, Signal
 from PySide6.QtWidgets import (
     QButtonGroup,
     QCheckBox,
@@ -21,11 +21,9 @@ from PySide6.QtWidgets import (
     QFormLayout,
     QGridLayout,
     QHBoxLayout,
-    QInputDialog,
     QLabel,
     QLineEdit,
     QMessageBox,
-    QProgressDialog,
     QPushButton,
     QScrollArea,
     QSplitter,
@@ -43,17 +41,30 @@ from gui.common.drag_spinbox import DragDoubleSpinBox, DragSpinBox
 from gui.common.form_rows import add_tooltip_row
 from gui.common.icons import delete_icon, file_picker_icon, minus_icon, plus_icon
 from gui.mask.mask_preview import MaskPreviewConfig, MaskPreviewWidget
+from gui.steps import mask_commands as mask_command_defs
 from gui.steps.base_step import (
     SETTINGS_PANE_MARGINS,
     SETTINGS_PANE_WIDTH,
     BaseStepWidget,
     configure_settings_scroll,
 )
+from gui.steps.mask_commands import (
+    MaskCommandContext,
+    build_custom_cmd,
+    build_init_masks_cmd,
+    build_mask2former_cmd,
+    build_overexposure_cmd,
+    build_primary_mask_cmd,
+    build_sam31_prompt_cmd,
+    build_stitch_cmd,
+)
+from gui.steps.mask_image_import import IMAGE_EXTENSIONS as _IMAGE_EXTS
+from gui.steps.mask_image_import import import_external_images
+from gui.steps.sam31_setup import ensure_sam31_checkpoint_available
 from gui.user_settings import load_user_settings_section, update_user_settings_section
 from image_io import imread_unicode, imwrite_unicode
 from mask_view_recipes import QUALITY_CHOICES
 from overexposure_mask import detect_overexposure, read_image_preserve_depth
-from sam31_download import download_sam31_checkpoint
 from stitch_mask import boundary_width_to_limit_angle, create_angular_stitched_mask
 
 _COCO_CLASS_NAMES = [
@@ -81,14 +92,16 @@ _STITCH_BOUNDARY_DEFAULT = 5.0
 _YOLO_EXPAND_MIN = -16
 _YOLO_EXPAND_MAX = 32
 _YOLO_EXPAND_DEFAULT = 0
-_PERSON_BACKENDS = ("yolo_sam", "mask2former", "sam31")
+_PERSON_BACKENDS = (
+    mask_command_defs.PERSON_BACKEND_YOLO_SAM,
+    mask_command_defs.PERSON_BACKEND_MASK2FORMER,
+    mask_command_defs.PERSON_BACKEND_SAM31,
+)
 _PERSON_SAM31_PROMPT = "person"
-_PERSON_SAM31_INFERENCE_SIZE = "1008"
-_PERSON_SAM31_MIN_SCORE = "0.5"
-_SAM31_MERGE_REPLACE = "replace"
-_SAM31_MERGE_ADD = "add"
-_SAM31_MERGE_SUBTRACT = "subtract"
-_SAM31_MERGE_MODES = (_SAM31_MERGE_REPLACE, _SAM31_MERGE_ADD, _SAM31_MERGE_SUBTRACT)
+_SAM31_MERGE_REPLACE = mask_command_defs.SAM31_MERGE_REPLACE
+_SAM31_MERGE_ADD = mask_command_defs.SAM31_MERGE_ADD
+_SAM31_MERGE_SUBTRACT = mask_command_defs.SAM31_MERGE_SUBTRACT
+_SAM31_MERGE_MODES = mask_command_defs.SAM31_MERGE_MODES
 _SAM31_PROMPT_PRESETS: tuple[tuple[str, str], ...] = (
     ("person", "人物"),
     ("sky", "空"),
@@ -142,7 +155,6 @@ _SKY_INFERENCE_SIZE_DEFAULT_INDEX = 1
 _SKY_SAM31_INFERENCE_SIZE = "1008"
 _SKY_BACKENDS = ("mask2former", "sam31")
 _SKY_SAM31_CHECKPOINT = Path("models") / "sam3.1" / "sam3.1_multiplex.pt"
-_IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".tif", ".tiff"}
 _PROJECTION_EQUIRECT = "equirect"
 _PROJECTION_NORMAL = "normal"
 _LICENSE_NOTICE_SECTION = "license_notices"
@@ -150,25 +162,6 @@ _YOLO_SAM_NOTICE_VERSION = 3
 _YOLO_SAM_NOTICE_KEY = "yolo_sam_models_ack_version"
 _SKY_NOTICE_VERSION = 2
 _SKY_NOTICE_KEY = "sky_models_ack_version"
-
-
-class _Sam31DownloadWorker(QObject):
-    finished = Signal(str, str)
-
-    def __init__(self, token: str, target_dir: Path) -> None:
-        super().__init__()
-        self._token = token
-        self._target_dir = target_dir
-
-    def run(self) -> None:
-        try:
-            checkpoint = download_sam31_checkpoint(self._token, self._target_dir)
-        except Exception as exc:  # noqa: BLE001 - surfaced in the GUI.
-            self.finished.emit("", str(exc))
-            return
-        finally:
-            self._token = ""
-        self.finished.emit(str(checkpoint), "")
 
 
 def _ade20k_class_names(base_dir: Path) -> tuple[str, ...]:
@@ -1227,25 +1220,7 @@ class MaskStep(BaseStepWidget):
             raise ValueError(i18n.t("EXTERNAL_IMAGES_SOURCE_NOT_FOUND").format(path=source_dir))
 
         images_dir = Path(self._images_dir_text())
-        images_dir.mkdir(parents=True, exist_ok=True)
-
-        added = 0
-        skipped = 0
-        for src in sorted(source_dir.iterdir(), key=lambda p: p.name.lower()):
-            if not src.is_file() or src.suffix.lower() not in _IMAGE_EXTS:
-                continue
-            dst = images_dir / src.name
-            try:
-                if src.resolve() == dst.resolve():
-                    skipped += 1
-                    continue
-            except OSError:
-                pass
-            if dst.exists():
-                skipped += 1
-                continue
-            shutil.copy2(src, dst)
-            added += 1
+        added, skipped = import_external_images(source_dir, images_dir)
 
         self.images_path_label.setText(str(images_dir))
         self._on_images_dir_changed(str(images_dir))
@@ -1375,81 +1350,15 @@ class MaskStep(BaseStepWidget):
         return self._person_uses_sam31() or self._sky_backend_arg() == "sam31"
 
     def _ensure_sam31_checkpoint_available(self) -> bool:
-        if self._sam31_available():
-            return True
-
-        result = QMessageBox.question(
+        return ensure_sam31_checkpoint_available(
             self,
-            i18n.t("SAM31_DOWNLOAD_TITLE"),
-            i18n.t("SAM31_DOWNLOAD_BODY").format(path=str(self._sam31_checkpoint_path())),
-            QMessageBox.Yes | QMessageBox.No,
-            QMessageBox.Yes,
+            self._sam31_checkpoint_path(),
+            on_available=self._refresh_sam31_backend_availability,
         )
-        if result != QMessageBox.Yes:
-            return False
 
-        token, accepted = QInputDialog.getText(
-            self,
-            i18n.t("SAM31_TOKEN_TITLE"),
-            i18n.t("SAM31_TOKEN_BODY"),
-            QLineEdit.Password,
-        )
-        if not accepted:
-            return False
-        token = token.strip()
-        if not token:
-            QMessageBox.warning(self, i18n.t("SAM31_DOWNLOAD_TITLE"), i18n.t("SAM31_TOKEN_EMPTY"))
-            return False
-
-        progress = QProgressDialog(i18n.t("SAM31_DOWNLOAD_PROGRESS"), "", 0, 0, self)
-        progress.setWindowTitle(i18n.t("SAM31_DOWNLOAD_TITLE"))
-        progress.setCancelButton(None)
-        progress.setWindowModality(Qt.ApplicationModal)
-        progress.show()
-
-        result_path = ""
-        error_text = ""
-        loop = QEventLoop(self)
-        thread = QThread(self)
-        worker = _Sam31DownloadWorker(token, self._sam31_checkpoint_path().parent)
-        token = ""
-        worker.moveToThread(thread)
-
-        def on_finished(path: str, error: str) -> None:
-            nonlocal result_path, error_text
-            result_path = path
-            error_text = error
-            thread.quit()
-            loop.quit()
-
-        thread.started.connect(worker.run)
-        worker.finished.connect(on_finished)
-        worker.finished.connect(worker.deleteLater)
-        thread.finished.connect(thread.deleteLater)
-        thread.start()
-        loop.exec()
-        if thread.isRunning():
-            thread.quit()
-            thread.wait(3000)
-
-        progress.close()
-        if error_text:
-            QMessageBox.critical(
-                self,
-                i18n.t("SAM31_DOWNLOAD_TITLE"),
-                i18n.t("SAM31_DOWNLOAD_FAILED").format(error=error_text),
-            )
-            return False
-
-        checkpoint = Path(result_path)
+    def _refresh_sam31_backend_availability(self) -> None:
         self._update_person_backend_availability()
         self._update_sky_backend_availability()
-        QMessageBox.information(
-            self,
-            i18n.t("SAM31_DOWNLOAD_TITLE"),
-            i18n.t("SAM31_DOWNLOAD_COMPLETE").format(path=str(checkpoint)),
-        )
-        return True
 
     def _confirm_yolo_sam_license_notice(self) -> bool:
         if self._yolo_sam_notice_acknowledged():
@@ -1577,69 +1486,47 @@ class MaskStep(BaseStepWidget):
             preview += f"\n- ... +{len(untracked) - 5}"
         raise ValueError(i18n.t("MASK_UNTRACKED_IMAGES_ERROR").format(n=len(untracked), files=preview))
 
+    def _mask_command_context(self) -> MaskCommandContext:
+        return MaskCommandContext(
+            python_executable=sys.executable,
+            base_dir=self.base_dir,
+            projection=self._projection(),
+            quality=self._quality_arg(),
+            yolo_expand=self._yolo_expand_arg(),
+            sky_inference_size=self._sky_inference_size_arg(),
+            sky_min_score=f"{float(self.sky_min_score_edit.value()):g}",
+            sky_min_area_ratio=self._sky_min_area_ratio_arg(),
+            sky_top_connected=self.sky_top_connected_cb.isChecked(),
+            stitch_boundary_width=self._stitch_boundary_width(),
+            stitch_workers=str(self.stitch_workers_edit.value()),
+            overexposure_threshold=str(self.overexp_threshold_edit.value()),
+            overexposure_dilate=str(self.overexp_dilate_edit.value()),
+            custom_mask=self._custom_mask_path_text(),
+            yolo_classes=tuple(self._selected_classes()),
+            yolo_extra_args=tuple(self._bottom_enhance_args()),
+            ade_labels=tuple(self._selected_ade_labels()),
+            sam_prompts=tuple(self._selected_sam_prompts()),
+            sam_subtract_prompts=tuple(self._selected_sam_subtract_prompts()),
+            sam31_merge_mode=self._sam31_merge_mode_arg(),
+        )
+
     def _build_yolo_cmd(self) -> list[str]:
         images = self._images_dir_text()
         masks = self._masks_dir_text()
-        if not images:
-            raise ValueError("画像フォルダが指定されていません")
-        if not masks:
-            raise ValueError("マスクフォルダが指定されていません")
-        if self._person_uses_mask2former():
-            return self._build_mask2former_cmd(images, masks, replace=True)
-        if self._person_uses_sam31():
-            return self._build_sam31_prompt_cmd(
-                images,
-                masks,
-                prompts=self._selected_sam_prompts(),
-                subtract_prompts=self._selected_sam_subtract_prompts(),
-                merge_mode=self._sam31_merge_mode_arg(),
-            )
-
-        script = self.base_dir / "yolo_mask.py"
-        if not script.exists():
-            raise FileNotFoundError(f"yolo_mask.py が見つかりません: {script}")
-
-        classes = self._selected_classes()
-        cmd = [
-            sys.executable, "-u", str(script),
-            images, masks,
-            "--quality", self._quality_arg(),
-            "--expand", self._yolo_expand_arg(),
-            "--projection", self._projection(),
-        ]
-        if classes:
-            cmd.extend(["--classes", ",".join(str(c) for c in classes)])
-        cmd.extend(self._bottom_enhance_args())
-        return cmd
+        return build_primary_mask_cmd(
+            self._mask_command_context(),
+            images,
+            masks,
+            backend=self._person_backend_arg(),
+        )
 
     def _build_yolo_preview_cmd(self, image_path: Path, output_dir: Path) -> list[str]:
-        if self._person_uses_mask2former():
-            return self._build_mask2former_cmd(str(image_path), str(output_dir), replace=True)
-        if self._person_uses_sam31():
-            return self._build_sam31_prompt_cmd(
-                str(image_path),
-                str(output_dir),
-                prompts=self._selected_sam_prompts(),
-                subtract_prompts=self._selected_sam_subtract_prompts(),
-                merge_mode=self._sam31_merge_mode_arg(),
-            )
-
-        script = self.base_dir / "yolo_mask.py"
-        if not script.exists():
-            raise FileNotFoundError(f"yolo_mask.py が見つかりません: {script}")
-
-        classes = self._selected_classes()
-        cmd = [
-            sys.executable, "-u", str(script),
-            str(image_path), str(output_dir),
-            "--quality", self._quality_arg(),
-            "--expand", self._yolo_expand_arg(),
-            "--projection", self._projection(),
-        ]
-        if classes:
-            cmd.extend(["--classes", ",".join(str(c) for c in classes)])
-        cmd.extend(self._bottom_enhance_args())
-        return cmd
+        return build_primary_mask_cmd(
+            self._mask_command_context(),
+            str(image_path),
+            str(output_dir),
+            backend=self._person_backend_arg(),
+        )
 
     def _mask_output_dir_for_image(self, image_path: Path, masks_root: Path | None = None) -> Path:
         masks_root = masks_root or Path(self._masks_dir_text())
@@ -1666,38 +1553,15 @@ class MaskStep(BaseStepWidget):
         merge_mode: str | None = None,
         replace: bool = False,
     ) -> list[str]:
-        script = self.base_dir / "sky_mask.py"
-        if not script.exists():
-            raise FileNotFoundError(f"sky_mask.py が見つかりません: {script}")
-
-        effective_merge_mode = _SAM31_MERGE_REPLACE if replace else (merge_mode or self._sam31_merge_mode_arg())
-        if effective_merge_mode not in _SAM31_MERGE_MODES:
-            effective_merge_mode = _SAM31_MERGE_REPLACE
-
-        cmd = [
-            sys.executable, "-u", str(script),
-            str(images), str(masks),
-            "--backend", "sam31",
-            "--projection", self._projection(),
-            "--quality", self._quality_arg(),
-            "--inference-size", _PERSON_SAM31_INFERENCE_SIZE,
-            "--expand", self._yolo_expand_arg(),
-            "--min-score", _PERSON_SAM31_MIN_SCORE,
-            "--merge-mode", effective_merge_mode,
-        ]
-        cmd.extend(self._sky_postprocess_args())
-        for prompt in prompts:
-            cmd.extend(["--sam-prompt", prompt])
-        for prompt in subtract_prompts or []:
-            cmd.extend(["--subtract-sam-prompt", prompt])
-        if effective_merge_mode == _SAM31_MERGE_REPLACE:
-            cmd.append("--replace")
-        try:
-            if Path(images).is_dir():
-                cmd.append("--safe-batch")
-        except OSError:
-            pass
-        return cmd
+        return build_sam31_prompt_cmd(
+            self._mask_command_context(),
+            images,
+            masks,
+            prompts=prompts,
+            subtract_prompts=subtract_prompts,
+            merge_mode=merge_mode,
+            replace=replace,
+        )
 
     def _build_mask2former_cmd(
         self,
@@ -1706,39 +1570,17 @@ class MaskStep(BaseStepWidget):
         *,
         replace: bool = False,
     ) -> list[str]:
-        script = self.base_dir / "sky_mask.py"
-        if not script.exists():
-            raise FileNotFoundError(f"sky_mask.py が見つかりません: {script}")
-
-        cmd = [
-            sys.executable, "-u", str(script),
-            str(images), str(masks),
-            "--backend", "mask2former",
-            "--projection", self._projection(),
-            "--quality", self._quality_arg(),
-            "--inference-size", self._sky_inference_size_arg(),
-            "--expand", str(self.yolo_expand_edit.value()),
-            "--min-score", f"{float(self.sky_min_score_edit.value()):g}",
-            "--labels", ",".join(self._selected_ade_labels()),
-        ]
-        cmd.extend(self._sky_postprocess_args())
-        if replace:
-            cmd.append("--replace")
-        return cmd
+        return build_mask2former_cmd(
+            self._mask_command_context(),
+            images,
+            masks,
+            replace=replace,
+        )
 
     def _build_init_masks_cmd(self) -> list[str]:
         images = self._images_dir_text()
         masks = self._masks_dir_text()
-        if not images:
-            raise ValueError("画像フォルダが指定されていません")
-        if not masks:
-            raise ValueError("マスクフォルダが指定されていません")
-
-        script = self.base_dir / "init_masks.py"
-        if not script.exists():
-            raise FileNotFoundError(f"init_masks.py が見つかりません: {script}")
-
-        return [sys.executable, "-u", str(script), images, masks]
+        return build_init_masks_cmd(self._mask_command_context(), images, masks)
 
     def _seed_sam31_preview_base_mask(self, image_path: Path, output_path: Path) -> None:
         if not self._person_uses_sam31() or self._sam31_merge_mode_arg() == _SAM31_MERGE_REPLACE:
@@ -2152,65 +1994,30 @@ class MaskStep(BaseStepWidget):
 
     def _build_stitch_cmd(self) -> list[str]:
         masks = self._masks_dir_text()
-        if not masks:
-            raise ValueError("マスクフォルダが指定されていません")
-
-        script = self.base_dir / "stitch_mask.py"
-        if not script.exists():
-            raise FileNotFoundError(f"stitch_mask.py が見つかりません: {script}")
-
-        return [
-            sys.executable, "-u", str(script),
-            masks, masks,
-            "--boundary-width", f"{self._stitch_boundary_width():g}",
-            "--workers", str(self.stitch_workers_edit.value()),
-        ]
+        return build_stitch_cmd(self._mask_command_context(), masks)
 
     def _build_overexposure_cmd(self, *, replace: bool = False) -> list[str]:
         images = self._images_dir_text()
         masks = self._masks_dir_text()
-        if not images:
-            raise ValueError("画像フォルダが指定されていません")
-        if not masks:
-            raise ValueError("マスクフォルダが指定されていません")
-
-        script = self.base_dir / "overexposure_mask.py"
-        if not script.exists():
-            raise FileNotFoundError(f"overexposure_mask.py が見つかりません: {script}")
-
-        cmd = [
-            sys.executable, "-u", str(script),
-            images, masks,
-            "--threshold", str(self.overexp_threshold_edit.value()),
-            "--dilate", str(self.overexp_dilate_edit.value()),
-            "--workers", str(self.stitch_workers_edit.value()),
-        ]
-        if replace:
-            cmd.append("--replace")
-        return cmd
+        return build_overexposure_cmd(
+            self._mask_command_context(),
+            images,
+            masks,
+            replace=replace,
+        )
 
     def _build_custom_cmd(self, *, replace: bool = False) -> list[str]:
         images = self._images_dir_text()
         masks = self._masks_dir_text()
         custom_mask = self._custom_mask_path_text()
-        if not images:
-            raise ValueError("画像フォルダが指定されていません")
-        if not masks:
-            raise ValueError("マスクフォルダが指定されていません")
         if not custom_mask:
             raise ValueError(i18n.t("CUSTOM_MASK_REQUIRED"))
-
-        script = self.base_dir / "custom_mask.py"
-        if not script.exists():
-            raise FileNotFoundError(f"custom_mask.py が見つかりません: {script}")
-
-        cmd = [
-            sys.executable, "-u", str(script),
-            images, masks, custom_mask,
-        ]
-        if replace:
-            cmd.append("--replace")
-        return cmd
+        return build_custom_cmd(
+            self._mask_command_context(),
+            images,
+            masks,
+            replace=replace,
+        )
 
     # -- プログレス解析 --
 
