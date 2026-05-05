@@ -105,14 +105,22 @@ When the interval changes, thresholds scale gently by `sqrt(interval_sec / refer
 
 ## Review Status
 
-Step 2 reads `selected_frames.csv` and surfaces frames based on `status`.
+Step 2 translates extraction decisions recorded in the CSV into visible review labels and summary counts. The main places to look are:
 
-- `ok`: normal kept candidate
-- `analysis_pipeline=quick`: quick extraction rows are shown as `Quick: extracted at the specified interval`
-- `novelty_added`: added before the next fixed cadence because residual change is sufficient
-- `redundant_drop`: fixed-cadence candidate currently dropped because residual change is small
-- `gap_forced`: kept by the `Max` gap guard
-- `motion_blur`: sharpness collapsed relative to recent kept frames and SfM matches may be weak
-- `low_texture`: not necessarily blurred, but low texture may weaken SfM matches
-- `weak_match`: kept but flagged because candidate pair tracking is weak
-A practical starting point is `1.0` second, `Min 0.5`, `Max 2.0`, with `Motion` enabled, then review how `novelty_added`, `redundant_drop`, `gap_forced`, `motion_blur`, `low_texture`, and `weak_match` frames look in Step 2.
+- Colored advisory label: why the currently displayed frame was marked that way
+- `Review n | +a / -d / gap g / blur b / tex l / weak w | target/normal`: total review counts and whether the current frame is a review target
+- `extract problem ← (Shift+F)` / `extract problem → (F)`: jump through review targets in capture order
+- `Decision: Keep/Drop`: whether Step 2 will leave the frame in the image folder
+
+The colored labels mean:
+
+- `Normal: kept`: a normal kept frame from fixed-interval or standard extraction (`ok`).
+- `Quick: extracted at the specified interval`: a quick-extract frame cut at the requested interval without analysis (`analysis_pipeline=quick`).
+- `Pair analysis: added for useful viewpoint change`: an extra frame inserted before the next fixed-cadence point because viewpoint change was useful (`novelty_added`).
+- `Pair analysis: dropped as redundant`: a fixed-cadence candidate currently dropped because it is too similar to the last kept frame (`redundant_drop`).
+- `Pair analysis: kept by max-gap guard`: a safety keep that prevents low-change skipping from exceeding the `Max` gap (`gap_forced`).
+- `Review: auto-dropped for motion blur`: a frame dropped because sharpness fell sharply and SfM matches may be weak (`motion_blur`).
+- `Review: low texture may weaken features`: not necessarily blurred, but low texture may weaken SfM matches (`low_texture`).
+- `Review: tracked features may be weak`: kept, but flagged because candidate-pair feature tracking is weak (`weak_match`).
+
+A practical starting point is `1.0` second, `Min 0.5`, `Max 2.0`, with `Motion` enabled, then review the `+`, `-`, `gap`, `blur`, `tex`, and `weak` counts and examples in Step 2.
