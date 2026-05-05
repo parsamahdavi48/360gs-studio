@@ -109,9 +109,8 @@ _SAM31_PROMPT_PRESETS: tuple[tuple[str, str], ...] = (
     ("hand", "手"),
     ("camera", "カメラ"),
     ("selfie stick", "自撮り棒"),
+    ("cell phone", "スマホ"),
     ("car", "車"),
-    ("animal", "動物"),
-    ("reflection", "反射"),
 )
 _ADE20K_FALLBACK_CLASSES = (
     "wall", "building", "sky", "floor", "tree", "ceiling", "road", "bed ", "windowpane",
@@ -478,17 +477,6 @@ class MaskStep(BaseStepWidget):
         self.sam_prompt_section = CollapsibleSection(i18n.t("DETECTION_TARGET_SECTION"), expanded=False)
         self.sam_prompt_section.setToolTip(i18n.tip("SAM31_PROMPT_SECTION"))
         self.sam_prompt_section.toggle_button.setToolTip(i18n.tip("SAM31_PROMPT_SECTION"))
-        sam_grid_widget = QWidget()
-        sam_grid = QGridLayout(sam_grid_widget)
-        sam_grid.setSpacing(2)
-        self.sam_prompt_cbs: list[tuple[str, QCheckBox]] = []
-        for idx, (prompt, label) in enumerate(_SAM31_PROMPT_PRESETS):
-            cb = QCheckBox(f"{label} ({prompt})")
-            if prompt in {"person", "sky"}:
-                cb.setChecked(True)
-            self.sam_prompt_cbs.append((prompt, cb))
-            sam_grid.addWidget(cb, idx // cols, idx % cols)
-        self.sam_prompt_section.content_layout.addWidget(sam_grid_widget)
 
         self.sam_custom_prompt_row = QHBoxLayout()
         self.sam_custom_prompt_row.setContentsMargins(0, 0, 0, 0)
@@ -517,6 +505,18 @@ class MaskStep(BaseStepWidget):
         self.sam_subtract_prompt_row.addWidget(self.sam_subtract_prompt_icon)
         self.sam_subtract_prompt_row.addWidget(self.sam_subtract_prompt_edit)
         self.sam_prompt_section.content_layout.addLayout(self.sam_subtract_prompt_row)
+
+        self.sam_prompt_grid_widget = QWidget()
+        sam_grid = QGridLayout(self.sam_prompt_grid_widget)
+        sam_grid.setSpacing(2)
+        self.sam_prompt_cbs: list[tuple[str, QCheckBox]] = []
+        for idx, (prompt, label) in enumerate(_SAM31_PROMPT_PRESETS):
+            cb = QCheckBox(f"{label} ({prompt})")
+            if prompt in {"person", "sky"}:
+                cb.setChecked(True)
+            self.sam_prompt_cbs.append((prompt, cb))
+            sam_grid.addWidget(cb, idx // cols, idx % cols)
+        self.sam_prompt_section.content_layout.addWidget(self.sam_prompt_grid_widget)
         yolo_layout.addWidget(self.sam_prompt_section)
 
         # --- スティッチ+白飛び設定 ---

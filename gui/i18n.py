@@ -278,8 +278,8 @@ _JA: dict[str, str] = {
     "SAM31_APPLY_REPLACE": "再生成",
     "SAM31_APPLY_ADD": "加算",
     "SAM31_APPLY_SUBTRACT": "減算",
-    "SAM31_CUSTOM_PROMPT_PLACEHOLDER": "追加プロンプト: tripod, hand; selfie stick",
-    "SAM31_SUBTRACT_PROMPT_PLACEHOLDER": "減算プロンプト: pictogram, logo",
+    "SAM31_CUSTOM_PROMPT_PLACEHOLDER": "追加プロンプト: tripod, hand; selfie stick; cell phone",
+    "SAM31_SUBTRACT_PROMPT_PLACEHOLDER": "減算プロンプト: male icon, female icon; logo; sign",
     "SAM31_DOWNLOAD_TITLE": "SAM3.1モデルの準備",
     "SAM31_DOWNLOAD_BODY": (
         "SAM3.1のチェックポイントがまだありません。\n\n"
@@ -802,8 +802,8 @@ _EN: dict[str, str] = {
     "SAM31_APPLY_REPLACE": "Replace",
     "SAM31_APPLY_ADD": "Add",
     "SAM31_APPLY_SUBTRACT": "Subtract",
-    "SAM31_CUSTOM_PROMPT_PLACEHOLDER": "Add prompts: tripod, hand; selfie stick",
-    "SAM31_SUBTRACT_PROMPT_PLACEHOLDER": "Subtract prompts: pictogram, logo",
+    "SAM31_CUSTOM_PROMPT_PLACEHOLDER": "Add prompts: tripod, hand; selfie stick; cell phone",
+    "SAM31_SUBTRACT_PROMPT_PLACEHOLDER": "Subtract prompts: male icon, female icon; logo; sign",
     "SAM31_DOWNLOAD_TITLE": "Prepare SAM3.1 Model",
     "SAM31_DOWNLOAD_BODY": (
         "The SAM3.1 checkpoint is not available yet.\n\n"

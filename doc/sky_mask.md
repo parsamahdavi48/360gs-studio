@@ -65,7 +65,7 @@ python sky_mask.py .\images .\masks --backend sam31 --quality best --inference-s
 SAM3.1 subtract correction on existing masks:
 
 ```bash
-python sky_mask.py .\images .\masks --backend sam31 --quality best --inference-size 1008 --sam-prompt pictogram --merge-mode subtract
+python sky_mask.py .\images .\masks --backend sam31 --quality best --inference-size 1008 --sam-prompt "male icon" --sam-prompt "female icon" --merge-mode subtract
 ```
 
 ## Model Files

@@ -148,6 +148,22 @@ def test_mask_step_sam31_apply_mode_shares_compact_settings_row(tmp_path: Path, 
     assert step.sam_custom_prompt_icon.toolTip() == i18n.tip("SAM31_CUSTOM_PROMPT")
     assert step.sam_subtract_prompt_icon.pixmap() is not None
     assert step.sam_subtract_prompt_icon.toolTip() == i18n.tip("SAM31_SUBTRACT_PROMPT")
+    assert step.sam_custom_prompt_edit.placeholderText() == i18n.t("SAM31_CUSTOM_PROMPT_PLACEHOLDER")
+    assert step.sam_subtract_prompt_edit.placeholderText() == i18n.t("SAM31_SUBTRACT_PROMPT_PLACEHOLDER")
+    assert [prompt for prompt, _cb in step.sam_prompt_cbs] == [
+        "person",
+        "sky",
+        "tripod",
+        "hand",
+        "camera",
+        "selfie stick",
+        "cell phone",
+        "car",
+    ]
+    prompt_layout = step.sam_prompt_section.content_layout
+    assert prompt_layout.itemAt(0).layout() == step.sam_custom_prompt_row
+    assert prompt_layout.itemAt(1).layout() == step.sam_subtract_prompt_row
+    assert prompt_layout.itemAt(2).widget() == step.sam_prompt_grid_widget
 
 
 def test_mask_step_metashape_notice_is_in_left_pane() -> None:
@@ -525,7 +541,7 @@ def test_mask_step_sam31_add_mode_builds_subtract_prompt_command(tmp_path: Path,
     step.run_overexp_cb.setChecked(False)
     step.person_backend_combo.setCurrentIndex(2)
     step.sam_apply_mode_combo.setCurrentIndex(1)
-    step.sam_subtract_prompt_edit.setText("pictogram, logo")
+    step.sam_subtract_prompt_edit.setText("male icon, female icon")
 
     commands = step.build_commands()
 
@@ -533,7 +549,7 @@ def test_mask_step_sam31_add_mode_builds_subtract_prompt_command(tmp_path: Path,
     assert cmd[cmd.index("--merge-mode") + 1] == "add"
     assert "--replace" not in cmd
     subtract_args = [cmd[idx + 1] for idx, value in enumerate(cmd) if value == "--subtract-sam-prompt"]
-    assert subtract_args == ["pictogram", "logo"]
+    assert subtract_args == ["male icon", "female icon"]
 
 
 def test_mask_step_sam31_preview_add_mode_seeds_existing_mask(tmp_path: Path, monkeypatch) -> None:

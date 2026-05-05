@@ -61,10 +61,10 @@ run_gui.bat --scene ./scene01
 - `Detection Targets`: collapsed picker used by `Mask2Former`.
   - Defaults to `sky` and `person`.
   - Multiple classes are resolved in one model inference and merged into the output mask.
-- `Detection Targets`: SAM3.1 prompt presets and a custom English prompt field.
+- `Detection Targets`: SAM3.1 add/subtract prompt fields and quick prompt presets.
   - Defaults to `person` and `sky`.
   - Multiple prompts are run one at a time and OR-merged into the output mask.
-  - Custom prompt fields accept comma, semicolon, or newline separators. Spaces around separators are ignored; spaces inside prompts are kept.
+  - Custom prompt fields accept comma, semicolon, or newline separators. Spaces around separators are ignored; spaces inside prompts such as `selfie stick` or `cell phone` are kept.
   - The subtract prompt field removes matching SAM3.1 detections from the positive prompt result.
 - `Op.` is SAM3.1-only and appears in the same row as `Qual.` and `Exp.`. `Replace` rewrites the mask, `Add` blackens detected regions in the existing mask, and `Subtract` turns detected regions white in the existing mask.
 - `Inference Size`: larger values can improve detail and boundaries but use more GPU memory and time. Only Mask2Former can be changed in the GUI; YOLO/SAM2.1 and SAM3.1 use fixed processing sizes.
