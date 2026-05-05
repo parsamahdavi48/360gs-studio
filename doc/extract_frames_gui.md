@@ -8,7 +8,7 @@ This GUI extracts equirectangular still images from 360-degree video for Metasha
 - Analysis uses grayscale frames scaled to `Analysis Width`.
 - Images written to `images/` keep the source video resolution.
 - `Instant Estimate` is the fixed-interval baseline count. With `Motion` enabled, the final count can increase or decrease after analysis.
-- With `Quick extract` enabled, the GUI prioritizes fixed-interval output for short test SfM runs. Motion adjustment and pair-analysis review metadata are not produced.
+- With `Quick extract` enabled, the GUI skips analysis and writes images at the specified interval quickly. Motion adjustment and pair-analysis review metadata are not produced.
 - The integrated GUI stops before running when the scene folder path contains non-ASCII characters, an extremely long path, control characters, or `"`. Use a short ASCII working path.
 
 ## Fixed Interval
@@ -26,9 +26,9 @@ Increasing the value reduces the baseline count. Decreasing it increases the cou
 
 ### `Quick extract`
 
-Use this fixed-interval option when you want to try a short test SfM run quickly. It prioritizes writing the requested `Interval` result sooner, so Step 2 does not receive extra quality-review flags from automatic scoring.
+Use this fixed-interval option when you want to skip analysis and cut the video quickly at the requested `Interval`. Step 2 does not receive extra quality-review flags from automatic scoring.
 
-Enabling it turns `Motion` off. For final extraction, turn it off again when you want motion adjustment.
+Enabling it turns `Motion` off. Turn it off again when you want motion adjustment.
 
 ## Motion Adjustment
 

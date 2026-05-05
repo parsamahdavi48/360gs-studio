@@ -22,7 +22,7 @@ Frames marked `drop` are still extracted as images. This is intentional: you can
 
 The analyzed extraction path is fixed interval plus pair analysis. Pair analysis compares each decision candidate with the last kept frame: yaw-compensated residual change drives redundant drops and novelty additions, and sparse feature tracking plus candidate-only sharpness checks produce Step 2 review flags.
 
-Quick extraction is the only non-analyzed path. It skips pair analysis and motion adjustment, then extracts the requested fixed cadence directly. Use it mainly for short tests or when you intentionally want a simple fixed-cadence cut.
+Quick extraction is the only non-analyzed path. It skips pair analysis and motion adjustment, then extracts the requested fixed cadence directly. Use it when you want to skip analysis and quickly cut the video at the specified interval.
 
 ## Requirements
 
@@ -47,7 +47,7 @@ python extract_frames.py input.mp4 ./scene01 \
   --max-gap-sec 2.0
 ```
 
-Quick fixed-interval test extraction:
+Quick fixed-cadence extraction:
 
 ```bash
 python extract_frames.py input.mp4 ./scene01 \
