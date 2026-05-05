@@ -1117,7 +1117,7 @@ _TIPS_JA: dict[str, str] = {
     "ANALYSIS_WIDTH": "ペア解析の追跡と候補限定ブレ確認に使うデコード幅。残差監視は内部で最大1280pxに抑えます",
     "PAIR_MOTION_PROFILE": (
         "ペア解析の自動閾値に使う距離プロファイルです。\n"
-        "近距離・歩行: 建物、室内、参道など近い構造物が多い撮影向け。1.0秒基準でdrop=0.035/add=0.090。\n"
+        "近距離・歩行: 建物、室内、柱、植栽など近い構造物が多い撮影向け。1.0秒基準でdrop=0.035/add=0.090。\n"
         "遠景・空撮: 空撮、広場、山、海岸など遠景主体の撮影向け。残差パララックスが弱く出やすいため低めの閾値を使います。"
     ),
     "FFMPEG_PATH": "ffmpegの実行パス。PATHに通っていれば 'ffmpeg' でOK",
@@ -1259,7 +1259,7 @@ _TIPS_EN: dict[str, str] = {
     "ANALYSIS_WIDTH": "Decode width for pair tracking and candidate-only blur checks. Residual monitoring is internally capped to 1280px",
     "PAIR_MOTION_PROFILE": (
         "Distance profile for pair-analysis auto thresholds.\n"
-        "Near / Walking: for scenes with nearby structures such as buildings, interiors, paths, or columns. Uses 1.0s reference drop=0.035/add=0.090.\n"
+        "Near / Walking: for scenes with nearby structures such as buildings, interiors, columns, or vegetation. Uses 1.0s reference drop=0.035/add=0.090.\n"
         "Distant / Aerial: for aerial, plaza, mountain, coast, or distant-view scenes. Uses lower thresholds because distant scenes produce weaker residual parallax."
     ),
     "FFMPEG_PATH": "ffmpeg executable path. 'ffmpeg' works if it's on PATH",

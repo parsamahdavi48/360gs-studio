@@ -88,7 +88,7 @@ The CSV records these Step 2 review fields:
 
 Use `Scene Distance` in Advanced Settings to choose the assumption behind the automatic thresholds.
 
-- `Near / Walking`: for scenes with nearby structures such as buildings, interiors, paths, columns, or vegetation. Its 1.0-second reference thresholds are `drop=0.035` and `add=0.090`.
+- `Near / Walking`: for scenes with nearby structures such as buildings, interiors, columns, or vegetation. Its 1.0-second reference thresholds are `drop=0.035` and `add=0.090`.
 - `Distant / Aerial`: for aerial, plaza, mountain, coast, or distant-view scenes. Distant scenes often have weaker residual parallax because features are farther away, so this profile uses lower reference thresholds.
 
 When the interval changes, thresholds scale gently by `sqrt(interval_sec / reference_interval)`. The clamp bounds are calculated by applying the same formula to each profile's practical fixed-interval range. This keeps short intervals from becoming too sensitive and long intervals from becoming too insensitive.

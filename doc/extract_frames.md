@@ -77,7 +77,7 @@ python extract_frames.py input.mp4 ./scene01 --estimate-only --print-summary-jso
 | `--min-gap-sec` | `0.25` | Minimum gap for pair-analysis additions |
 | `--max-gap-sec` | `2.0` | Maximum safety gap before a frame is kept |
 | `--fixed-smart-max-inserts-per-interval` | `2` | Maximum novelty anchors inserted inside one fixed interval |
-| `--pair-motion-profile` | `walk` | Auto threshold profile. `walk` uses a 1.0s nearby/walking reference. `drone` uses lower residual thresholds for distant/aerial 360 capture |
+| `--pair-motion-profile` | `walk` | Auto threshold profile. See "Profiles and Automatic Thresholds" below |
 | `--pair-drop-threshold` | `-1` | Pair residual below this drops fixed candidates. Negative means auto from interval/profile |
 | `--pair-add-threshold` | `-1` | Pair residual at or above this adds novelty candidates. Negative means auto from interval/profile |
 | `--pair-track-min-count` | `36` | Review threshold. Kept pairs below this tracked feature count are flagged `weak_match` |
@@ -87,6 +87,17 @@ python extract_frames.py input.mp4 ./scene01 --estimate-only --print-summary-jso
 | `--jpg-quality` | `2` | JPEG quality for ffmpeg `-q:v`; lower is higher quality |
 | `--output-mode` | `overwrite` | `overwrite`, `append`, or `replace-video` for `selected_frames.csv` and `extract_sessions.json` |
 | `--estimate-only` | off | Run selection and print counts without image extraction |
+
+## Profiles and Automatic Thresholds
+
+`--pair-motion-profile` chooses the assumption behind the pair-analysis `drop` / `add` automatic thresholds. It is not a hard workflow category; it is a coarse hint for subject distance and how much residual parallax appears in the image for the same camera movement.
+
+- `walk`: near / walking capture. Use it for scenes with nearby structures such as buildings, interiors, columns, or vegetation. The `1.0s` reference thresholds are `drop=0.035` and `add=0.090`.
+- `drone`: distant / aerial capture. Use it for aerial, plaza, mountain, coast, or other distant-view scenes where residual parallax tends to be weaker. The `2.0s` reference thresholds are `drop=0.025` and `add=0.065`.
+
+When the interval changes, thresholds scale gently by `sqrt(interval_sec / reference_interval)`. `walk` is clamped over a practical interval range of about `0.35-2.5s`; `drone` is clamped over about `0.8-5.0s`. This keeps short intervals from becoming too sensitive and long intervals from becoming too insensitive.
+
+If `--pair-drop-threshold` or `--pair-add-threshold` is set to a non-negative value, that threshold overrides the profile-derived automatic value. If only one is set, that side is manual and the other side still comes from the profile.
 
 ## Outputs
 

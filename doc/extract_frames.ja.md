@@ -77,7 +77,7 @@ python extract_frames.py input.mp4 ./scene01 --estimate-only --print-summary-jso
 | `--min-gap-sec` | `0.25` | ペア解析で中間追加するときの最小間隔 |
 | `--max-gap-sec` | `2.0` | 採用間隔が空きすぎないようにする安全上限 |
 | `--fixed-smart-max-inserts-per-interval` | `2` | 1つの固定間隔内に追加できる中間候補の最大数 |
-| `--pair-motion-profile` | `walk` | 自動しきい値のプロファイル。`walk` は近距離・歩行の1秒基準、`drone` は遠景・空撮向けに低めの残差しきい値を使う |
+| `--pair-motion-profile` | `walk` | 自動しきい値のプロファイル。詳しくは下の「プロファイルと自動閾値」を参照 |
 | `--pair-drop-threshold` | `-1` | この残差未満なら冗長候補として除外。負値は間隔とプロファイルから自動算出 |
 | `--pair-add-threshold` | `-1` | この残差以上なら中間候補を追加。負値は間隔とプロファイルから自動算出 |
 | `--pair-track-min-count` | `36` | 採用ペアの追跡点数がこれ未満なら `weak_match` としてStep 2確認対象にする |
@@ -87,6 +87,17 @@ python extract_frames.py input.mp4 ./scene01 --estimate-only --print-summary-jso
 | `--jpg-quality` | `2` | FFmpegのJPEG品質。小さいほど高品質 |
 | `--output-mode` | `overwrite` | `selected_frames.csv` と `extract_sessions.json` の扱い。`overwrite`、`append`、`replace-video` |
 | `--estimate-only` | off | 画像を書き出さず、選別と枚数表示だけを行う |
+
+## プロファイルと自動閾値
+
+`--pair-motion-profile` は、ペア解析で使う `drop` / `add` 自動閾値の前提を選ぶ設定です。用途名を固定するものではなく、撮影対象までの距離や、同じ移動量で画像上にどれくらい残差パララックスが出るかをざっくり指定するものです。
+
+- `walk`: 近距離・歩行向け。建物、室内、柱、植栽など、近い構造物が多い撮影を想定します。`1.0秒` 間隔を基準に `drop=0.035`、`add=0.090` を使います。
+- `drone`: 遠景・空撮向け。空撮、広場、山、海岸など、遠景主体で残差パララックスが弱く出やすい撮影を想定します。`2.0秒` 間隔を基準に `drop=0.025`、`add=0.065` を使います。
+
+間隔を変えると、閾値は `sqrt(interval_sec / reference_interval)` で緩やかにスケールします。`walk` はおおむね `0.35〜2.5秒`、`drone` は `0.8〜5.0秒` の実用範囲で上下限を持たせています。これにより、短い間隔で過敏になりすぎず、長い間隔で鈍くなりすぎないようにします。
+
+`--pair-drop-threshold` または `--pair-add-threshold` に0以上の値を指定した場合、その閾値はプロファイル由来の自動値より優先されます。片方だけ指定した場合は、指定した側だけ手動、もう片方はプロファイルから自動算出されます。
 
 ## 出力
 
