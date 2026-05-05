@@ -72,7 +72,7 @@ This app uses the official `facebook/sam3.1` `sam3.1_multiplex.pt` checkpoint. S
 
 If GPU memory runs out during SAM3.1 batch processing, completed masks remain saved. Rerun with the same settings to resume from unfinished images.
 
-Use SAM3.1 when you want more accurate prompt-controlled masks, especially for sky masks or targeted cleanup. After generating masks once, you can select only the images that need correction and use SAM3.1 prompts to add missed regions such as `tripod`, `hand`, or `selfie stick`, or subtract false detections such as `logo` or `sign`.
+When mask accuracy is the priority, SAM3.1 is recommended over YOLO/SAM2.1. Use SAM3.1 when you want more accurate prompt-controlled masks, especially for sky masks or targeted cleanup. After generating masks once, you can select only the images that need correction and use SAM3.1 prompts to add missed regions such as `tripod`, `hand`, or `selfie stick`, or subtract false detections such as `logo` or `sign`.
 
 1. Create or sign in to a Hugging Face account.
 2. Open Meta's [facebook/sam3.1](https://huggingface.co/facebook/sam3.1) Hugging Face repository and request access/accept the SAM License. Hugging Face gated model requests are tied to an individual user account and may require sharing your username/email with the model author.
