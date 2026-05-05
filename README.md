@@ -4,7 +4,7 @@
 
 A Windows-first integrated GUI tool for turning 360° camera video into images, masks, and camera data that are practical for 3D Gaussian Splatting (3DGS) training.
 
-`setup_windows.bat` detects Python 3.12, installs it when needed, creates a virtual environment, and installs the required runtime packages. Day-to-day launch is handled by `run_gui.bat`, so users do not need to run Python commands manually for the normal GUI workflow.
+`setup_windows.bat` detects Python 3.12 and FFmpeg/FFprobe, installs missing system dependencies through winget when needed, creates a virtual environment, and installs the required runtime packages. Day-to-day launch is handled by `run_gui.bat`, so users do not need to run Python commands manually for the normal GUI workflow.
 
 [JP 日本語の説明](README.ja.md)
 
@@ -50,7 +50,7 @@ setup_windows.bat
 run_gui.bat
 ```
 
-`setup_windows.bat` looks for Python 3.12 and can install it through winget when needed. It then creates `.venv`, installs packages such as PyTorch CUDA wheels, OpenCV, Pillow, Open3D, ultralytics, PySide6, and the SAM3.1 runtime, and verifies the environment.
+`setup_windows.bat` looks for Python 3.12 and FFmpeg/FFprobe and can install missing system dependencies through winget when needed. It then creates `.venv`, installs packages such as PyTorch CUDA wheels, OpenCV, Pillow, Open3D, ultralytics, PySide6, and the SAM3.1 runtime, and verifies the environment.
 
 `run_gui.bat` activates `.venv` and launches the integrated GUI. If an existing `.venv` is already healthy, setup reports that state and does not rebuild it. Use `setup_windows.bat --force` when you intentionally want to recreate the environment.
 
@@ -141,7 +141,7 @@ Use this when you want to exclude people, vehicles, blown-out regions, or simila
 - Python 3.12 (3.12.10 confirmed)
 - CUDA-capable GPU
 - CUDA Toolkit 12.8
-- FFmpeg / FFprobe
+- FFmpeg / FFprobe (`setup_windows.bat` installs Gyan.FFmpeg through winget when missing)
 
 Main Python packages resolved by `setup_windows.bat`:
 

@@ -4,7 +4,7 @@
 
 360°カメラの動画から、3D Gaussian Splatting (3DGS) のトレーニングに使いやすい画像・マスク・カメラデータを作るためのWindows向け統合GUIツールです。
 
-`setup_windows.bat` がPython 3.12の検出、必要に応じたインストール、仮想環境の作成、依存パッケージ導入まで行います。起動も `run_gui.bat` から行えるため、普段の作業ではPythonコマンドを直接打たずに使えます。
+`setup_windows.bat` がPython 3.12とFFmpeg/FFprobeの検出、必要に応じたwinget経由のインストール、仮想環境の作成、依存パッケージ導入まで行います。起動も `run_gui.bat` から行えるため、普段の作業ではPythonコマンドを直接打たずに使えます。
 
 [EN English](README.md)
 
@@ -50,7 +50,7 @@ setup_windows.bat
 run_gui.bat
 ```
 
-`setup_windows.bat` はPython 3.12を探し、必要な場合はwinget経由でPythonを導入します。その後、`.venv` を作成し、PyTorch CUDA wheel、OpenCV、Pillow、Open3D、ultralytics、PySide6、SAM3.1実行用パッケージなどをインストールして検証します。
+`setup_windows.bat` はPython 3.12とFFmpeg/FFprobeを探し、必要な場合はwinget経由で不足しているシステム依存を導入します。その後、`.venv` を作成し、PyTorch CUDA wheel、OpenCV、Pillow、Open3D、ultralytics、PySide6、SAM3.1実行用パッケージなどをインストールして検証します。
 
 `run_gui.bat` は `.venv` を有効化して統合GUIを起動します。既存の `.venv` が正常ならセットアップは再構築せず、その状態を表示して終了します。意図的に作り直す場合は `setup_windows.bat --force` を使います。
 
@@ -141,7 +141,7 @@ checkpointを手動で `models/sam3.1/sam3.1_multiplex.pt` に置くこともで
 - Python 3.12 (3.12.10で確認)
 - CUDA対応GPU
 - CUDA Toolkit 12.8
-- FFmpeg / FFprobe
+- FFmpeg / FFprobe (`setup_windows.bat` が未検出時にwinget経由で Gyan.FFmpeg を導入)
 
 `setup_windows.bat` で解決される主なPythonパッケージ:
 
