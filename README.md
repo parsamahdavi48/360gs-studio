@@ -68,6 +68,8 @@ YOLO/SAM2, Mask2Former, and SAM3.1 model weights may be downloaded on first use.
 
 SAM3.1 is optional. `setup_windows.bat` installs the runtime package, but the checkpoint is not bundled because access requires your Hugging Face account and SAM License acceptance.
 
+This app uses the official `facebook/sam3.1` `sam3.1_multiplex.pt` checkpoint. SAM3.1 is a heavy CUDA-GPU-oriented model, so use it on a system with comfortable VRAM headroom.
+
 Use SAM3.1 when you want more accurate prompt-controlled masks, especially for sky masks or targeted cleanup. After generating masks once, you can select only the images that need correction and use SAM3.1 prompts to add missed regions such as `tripod`, `hand`, or `selfie stick`, or subtract false detections such as `logo` or `sign`.
 
 1. Create or sign in to a Hugging Face account.
@@ -127,6 +129,7 @@ Use this when you want to exclude people, vehicles, blown-out regions, or simila
 - Start with `Quality: High`.
 - Use `Quality: Standard` for faster test runs.
 - If people leak through, try `Quality: Best` or raise `Expand` slightly.
+- `Quality: Best` prioritizes accuracy and takes longer, so it is best used to regenerate only images where misses remain.
 - When you find a miss in preview, adjust settings and use `Regenerate Mask` to save only that image back to `masks/` using the current model and enabled extra masks. In thumbnail mode, use `Ctrl` / `Shift` selection to regenerate multiple selected images together. SAM3.1 can also add or subtract prompt detections against existing saved masks.
 - Stitch seam masks are useful when the seam position is stable in the equirectangular image. If FlowState stabilization, direction lock, AI stitching, or similar processing moves the seam, verify it in the preview before using it.
 
