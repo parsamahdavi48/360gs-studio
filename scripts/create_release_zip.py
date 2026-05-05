@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 import argparse
+import os
 import subprocess
+import sys
+import tempfile
 import tomllib
 import zipfile
 from pathlib import Path
@@ -106,6 +109,56 @@ def create_release_zip(repo_root: Path, output: Path | None = None) -> Path:
     return output_path
 
 
+def release_setup_preflight_command(
+    extracted_root: Path,
+    *,
+    windows: bool | None = None,
+    python_executable: str | None = None,
+) -> list[str]:
+    use_windows = os.name == "nt" if windows is None else windows
+    if use_windows:
+        return [
+            "cmd",
+            "/c",
+            "update_venv.bat",
+            "--no-pause",
+            "--dry-run",
+            "--locked",
+            "--candidates",
+            "3.12",
+            "--no-install-python",
+        ]
+    return [
+        python_executable or sys.executable,
+        str(extracted_root / "scripts" / "update_venv.py"),
+        "--dry-run",
+        "--locked",
+        "--candidates",
+        "3.12",
+        "--no-install-python",
+        "--repo-root",
+        str(extracted_root),
+    ]
+
+
+def verify_release_zip_setup(
+    zip_path: Path,
+    *,
+    version: str,
+    python_executable: str | None = None,
+) -> None:
+    expected_root_name = f"stechdrive-3dgs-utils-v{version}"
+    with tempfile.TemporaryDirectory(prefix="stechdrive-release-verify-") as temp_dir:
+        temp_root = Path(temp_dir)
+        with zipfile.ZipFile(zip_path) as zf:
+            zf.extractall(temp_root)
+        extracted_root = temp_root / expected_root_name
+        if not extracted_root.is_dir():
+            raise RuntimeError(f"release ZIP did not contain expected root folder: {expected_root_name}")
+        cmd = release_setup_preflight_command(extracted_root, python_executable=python_executable)
+        subprocess.run(cmd, cwd=extracted_root, check=True)
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Create a distribution ZIP without local state, model weights, or tests.")
     parser.add_argument(
@@ -120,14 +173,27 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help="Output ZIP path. Defaults to .cache/release/stechdrive-3dgs-utils-vVERSION.zip.",
     )
+    parser.add_argument(
+        "--skip-setup-verify",
+        action="store_true",
+        help=(
+            "Only create the ZIP. By default the script extracts the ZIP and runs "
+            "the locked setup dry-run from inside the extracted package."
+        ),
+    )
     return parser.parse_args()
 
 
 def main() -> int:
     args = parse_args()
-    output = create_release_zip(args.repo_root.resolve(), args.output)
-    print(output)
-    print(f"Size: {output.stat().st_size} bytes")
+    repo_root = args.repo_root.resolve()
+    output = create_release_zip(repo_root, args.output)
+    print(output, flush=True)
+    print(f"Size: {output.stat().st_size} bytes", flush=True)
+    if not args.skip_setup_verify:
+        print("[INFO] Verifying extracted release ZIP setup preflight...", flush=True)
+        verify_release_zip_setup(output, version=read_version(repo_root))
+        print("[INFO] Release ZIP setup preflight passed.", flush=True)
     return 0
 
 
