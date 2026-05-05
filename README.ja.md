@@ -112,6 +112,15 @@ checkpointを手動で `models/sam3.1/sam3.1_multiplex.pt` に置くこともで
 | 3. マスク生成 | 人物、スティッチ境界、白飛び、空、カスタムマスクを生成 | YOLO/SAM2.1、高品質設定 |
 | 4. 書き出し | SfM結果からの3DGS出力、またはCOLMAP Rig視点画像を書き出し | Metashapeインポート / LichtFeld / Full / Cube6 |
 
+各ステップの詳しいGUI説明:
+
+| Step | ドキュメント |
+| --- | --- |
+| Step 1 フレーム抽出 | [JP](doc/extract_frames_gui.ja.md) / [EN](doc/extract_frames_gui.md) |
+| Step 2 フレーム確認 | [JP](doc/review_frames_gui.ja.md) / [EN](doc/review_frames_gui.md) |
+| Step 3 マスク生成 | [JP](doc/mask_tools_gui.ja.md) / [EN](doc/mask_tools_gui.md) |
+| Step 4 書き出し | [JP](doc/cubemap_tools_gui.ja.md) / [EN](doc/cubemap_tools_gui.md) |
+
 ## 推奨ワークフロー: Metashapeルート
 
 1. Insta360などの360°動画を用意します。
@@ -168,16 +177,16 @@ GUIは以下のCLIエンジンを呼び出しています。必要なら単体�
 
 | スクリプト | 内容 | ドキュメント |
 | --- | --- | --- |
-| `extract_frames.py` | 360°動画からフレーム抽出 | [EN](doc/extract_frames.md) |
-| `apply_frame_decisions.py` | CSVの採用/除外判定を反映 | [JP](doc/apply_frame_decisions.md) |
-| `review_frames.py` | フレーム確認GUI | [JP](doc/review_frames.md) |
-| `yolo_mask.py` | YOLO+SAM2.1 マスク生成 | [JP](doc/yolo_mask.ja.md) |
-| `sky_mask.py` | Mask2Former ADE20KラベルまたはSAM3.1プロンプトによるセマンティックマスク生成 | [JP](doc/sky_mask.ja.md) |
-| `stitch_mask.py` | スティッチ境界マスク生成 | [JP](doc/stitch_mask.ja.md) |
-| `overexposure_mask.py` | 白飛びマスク生成 | - |
-| `custom_mask.py` | ユーザー指定PNGマスクをAND合成 | [JP](doc/custom_mask.ja.md) |
-| `cubemap_transforms_json.py` | エクイレクタングラーからキューブマップへ変換 | [JP](doc/cubemap_transforms_json.ja.md) |
-| `transforms_to_colmap.py` | `transforms.json` からCOLMAP形式を書き出し | [JP](doc/transforms_to_colmap.ja.md) |
+| `extract_frames.py` | 360°動画からフレーム抽出 | [JP](doc/extract_frames.ja.md) / [EN](doc/extract_frames.md) |
+| `apply_frame_decisions.py` | CSVの採用/除外判定を反映 | [JP](doc/apply_frame_decisions.ja.md) / [EN](doc/apply_frame_decisions.md) |
+| `review_frames.py` | フレーム確認GUI | [JP](doc/review_frames.ja.md) / [EN](doc/review_frames.md) |
+| `yolo_mask.py` | YOLO+SAM2.1 マスク生成 | [JP](doc/yolo_mask.ja.md) / [EN](doc/yolo_mask.md) |
+| `sky_mask.py` | Mask2Former ADE20KラベルまたはSAM3.1プロンプトによるセマンティックマスク生成 | [JP](doc/sky_mask.ja.md) / [EN](doc/sky_mask.md) |
+| `stitch_mask.py` | スティッチ境界マスク生成 | [JP](doc/stitch_mask.ja.md) / [EN](doc/stitch_mask.md) |
+| `overexposure_mask.py` | 白飛びマスク生成 | [JP](doc/overexposure_mask.ja.md) / [EN](doc/overexposure_mask.md) |
+| `custom_mask.py` | ユーザー指定PNGマスクをAND合成 | [JP](doc/custom_mask.ja.md) / [EN](doc/custom_mask.md) |
+| `cubemap_transforms_json.py` | エクイレクタングラーからキューブマップへ変換 | [JP](doc/cubemap_transforms_json.ja.md) / [EN](doc/cubemap_transforms_json.md) |
+| `transforms_to_colmap.py` | `transforms.json` からCOLMAP形式を書き出し | [JP](doc/transforms_to_colmap.ja.md) / [EN](doc/transforms_to_colmap.md) |
 
 ## ライセンス
 
