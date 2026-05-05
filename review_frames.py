@@ -61,6 +61,16 @@ from apply_frame_decisions import pending_drop_image_paths as find_pending_drop_
 from gui import i18n
 
 if _PYSIDE_IMPORT_ERROR is None:
+    import cv2
+
+    from gui.common.icons import equirect_preview_icon, perspective_preview_icon
+    from gui.common.perspective_preview import (
+        PREVIEW_PROJECTION_EQUIRECT,
+        PREVIEW_PROJECTION_PERSPECTIVE,
+        PerspectiveParams,
+        equirect_to_perspective,
+        params_from_drag,
+    )
     from gui.common.preview_mode_toolbar import (
         PREVIEW_MODE_SINGLE,
         PREVIEW_MODE_THUMBNAILS,
@@ -69,9 +79,12 @@ if _PYSIDE_IMPORT_ERROR is None:
     from gui.common.thumbnail_delegate import ThumbnailSelectionDelegate
     from gui.common.thumbnail_list_model import AsyncThumbnailModel, ThumbnailItem, visible_rows_for_view
     from gui.common.zoomable_image_label import ZoomableImageLabel
+    from image_io import imread_unicode
 else:  # pragma: no cover - PySide6 missing
     PREVIEW_MODE_SINGLE = "single"
     PREVIEW_MODE_THUMBNAILS = "thumbnails"
+    PREVIEW_PROJECTION_EQUIRECT = "equirect"
+    PREVIEW_PROJECTION_PERSPECTIVE = "perspective"
     PreviewModeToolbar = None
     ThumbnailSelectionDelegate = None
     AsyncThumbnailModel = None
@@ -119,6 +132,20 @@ def _review_thumbnail_image(item: ThumbnailItem, size: QSize) -> QImage:
     return canvas
 
 
+def _bgr_to_pixmap(img) -> QPixmap:  # noqa: ANN001 - numpy type is optional at import time
+    rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+    qimg = QImage(rgb.data, rgb.shape[1], rgb.shape[0], rgb.shape[1] * 3, QImage.Format_RGB888).copy()
+    return QPixmap.fromImage(qimg)
+
+
+def _perspective_pixmap_for_review(image_path: Path, params: PerspectiveParams) -> QPixmap:
+    img = imread_unicode(image_path, cv2.IMREAD_COLOR)
+    if img is None:
+        return QPixmap()
+    output_size = max(1, min(950, img.shape[0], img.shape[1]))
+    return _bgr_to_pixmap(equirect_to_perspective(img, params, output_size=output_size))
+
+
 if QMainWindow is not None:
     class ReviewWidget(QWidget):
         decisions_changed = Signal()
@@ -137,6 +164,8 @@ if QMainWindow is not None:
             self._slider_sync = False
             self._thumbnail_sync = False
             self._preview_mode = PREVIEW_MODE_SINGLE
+            self._preview_projection = PREVIEW_PROJECTION_EQUIRECT
+            self._perspective_params = PerspectiveParams()
             self.current_pixmap: QPixmap | None = None
             self._pixmap_cache: OrderedDict[tuple, QPixmap] = OrderedDict()
             self._thumbnail_priority_timer = QTimer(self)
@@ -175,6 +204,15 @@ if QMainWindow is not None:
 
             top_row.addStretch(1)
 
+            self.projection_toggle_btn = QToolButton()
+            self.projection_toggle_btn.setObjectName("iconToolButton")
+            self.projection_toggle_btn.setCheckable(True)
+            self.projection_toggle_btn.setFixedSize(28, 28)
+            self.projection_toggle_btn.setAccessibleName(i18n.t("PREVIEW_PROJECTION_TOGGLE"))
+            self.projection_toggle_btn.toggled.connect(self._on_projection_toggled)
+            top_row.addWidget(self.projection_toggle_btn)
+            self._update_projection_button()
+
             self.decision_label = QLabel()
             self.decision_label.setStyleSheet("font-weight: 700;")
             top_row.addWidget(self.decision_label)
@@ -211,6 +249,7 @@ if QMainWindow is not None:
             self.image_view = ZoomableImageLabel()
             self.image_view.setMinimumHeight(260)
             self.image_view.setStyleSheet("border: 1px solid palette(mid);")
+            self.image_view.look_dragged.connect(self._on_perspective_dragged)
             self.preview_stack.addWidget(self.image_view)
 
             self.thumbnail_model = AsyncThumbnailModel(self)
@@ -320,6 +359,44 @@ if QMainWindow is not None:
 
         def preview_mode(self) -> str:
             return self._preview_mode
+
+        def preview_projection(self) -> str:
+            return self._preview_projection
+
+        def _on_projection_toggled(self, checked: bool) -> None:
+            projection = PREVIEW_PROJECTION_PERSPECTIVE if checked else PREVIEW_PROJECTION_EQUIRECT
+            if projection == self._preview_projection:
+                self._update_projection_button()
+                return
+            self._preview_projection = projection
+            if projection == PREVIEW_PROJECTION_PERSPECTIVE:
+                self._perspective_params = PerspectiveParams()
+            self.image_view.set_drag_mode("look" if projection == PREVIEW_PROJECTION_PERSPECTIVE else "pan")
+            self.image_view.reset_view()
+            self._update_projection_button()
+            self._render_current()
+
+        def _update_projection_button(self) -> None:
+            perspective = self._preview_projection == PREVIEW_PROJECTION_PERSPECTIVE
+            self.projection_toggle_btn.blockSignals(True)
+            try:
+                self.projection_toggle_btn.setChecked(perspective)
+            finally:
+                self.projection_toggle_btn.blockSignals(False)
+            self.projection_toggle_btn.setIcon(
+                perspective_preview_icon() if perspective else equirect_preview_icon()
+            )
+            self.projection_toggle_btn.setToolTip(
+                i18n.tip("PREVIEW_PROJECTION_TOGGLE")
+                if perspective
+                else i18n.tip("PREVIEW_PROJECTION_EQUIRECT")
+            )
+
+        def _on_perspective_dragged(self, delta_x: float, delta_y: float) -> None:
+            if self._preview_projection != PREVIEW_PROJECTION_PERSPECTIVE:
+                return
+            self._perspective_params = params_from_drag(self._perspective_params, delta_x, delta_y)
+            self._render_current()
 
         def _focus_thumbnail_view_if_active(self) -> None:
             if self._preview_mode == PREVIEW_MODE_THUMBNAILS:
@@ -569,20 +646,31 @@ if QMainWindow is not None:
             self.image_view.set_source_pixmap(pixmap)
             self._prefetch_neighbor_pixmaps()
 
-        def _pixmap_cache_key(self, image_path: Path) -> tuple | None:
+        def _pixmap_cache_key(self, image_path: Path, *extra: object) -> tuple | None:
             try:
                 st = image_path.stat()
-                return (str(image_path.resolve()).lower(), int(st.st_size), int(st.st_mtime_ns))
+                return (str(image_path.resolve()).lower(), int(st.st_size), int(st.st_mtime_ns), *extra)
             except OSError:
                 return None
 
         def _pixmap_for(self, image_path: Path) -> QPixmap:
-            key = self._pixmap_cache_key(image_path)
+            extra: tuple[object, ...] = (self._preview_projection,)
+            if self._preview_projection == PREVIEW_PROJECTION_PERSPECTIVE:
+                extra = (
+                    self._preview_projection,
+                    round(float(self._perspective_params.yaw_deg), 3),
+                    round(float(self._perspective_params.pitch_deg), 3),
+                    round(float(self._perspective_params.fov_deg), 3),
+                )
+            key = self._pixmap_cache_key(image_path, *extra)
             if key is not None and key in self._pixmap_cache:
                 self._pixmap_cache.move_to_end(key)
                 return self._pixmap_cache[key]
 
-            pixmap = QPixmap(str(image_path))
+            if self._preview_projection == PREVIEW_PROJECTION_PERSPECTIVE:
+                pixmap = _perspective_pixmap_for_review(image_path, self._perspective_params)
+            else:
+                pixmap = QPixmap(str(image_path))
             if not pixmap.isNull() and key is not None:
                 self._pixmap_cache[key] = pixmap
                 self._pixmap_cache.move_to_end(key)

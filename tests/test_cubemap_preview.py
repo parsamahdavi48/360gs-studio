@@ -9,6 +9,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from PySide6.QtWidgets import QApplication, QLineEdit, QPushButton, QSpinBox
 
 from gui import i18n
+from gui.common.perspective_preview import PREVIEW_PROJECTION_EQUIRECT, PREVIEW_PROJECTION_PERSPECTIVE
 from gui.cubemap.preview_renderer import (
     PreviewWidget,
     _apply_view_fill,
@@ -87,6 +88,29 @@ def test_cubemap_preview_resolves_mask_from_mask_folder(tmp_path: Path) -> None:
     widget = PreviewWidget()
 
     assert widget._resolve_mask(image_path, str(mask_dir)) == mask_path
+
+
+def test_cubemap_preview_projection_follows_highlight_until_drag() -> None:
+    _app()
+    widget = PreviewWidget()
+
+    assert widget._preview_projection == PREVIEW_PROJECTION_EQUIRECT
+
+    widget.projection_toggle_btn.click()
+    views = [{"yaw": 45.0, "pitch": 30.0, "enabled": True, "highlighted": True, "label": "front"}]
+    widget.render(views)
+
+    assert widget._preview_projection == PREVIEW_PROJECTION_PERSPECTIVE
+    assert widget.image_label._drag_mode == "look"
+    assert widget._perspective_params.yaw_deg == 45.0
+    assert widget._perspective_params.pitch_deg == 30.0
+
+    widget._on_perspective_dragged(10.0, 0.0)
+    adjusted_yaw = widget._perspective_params.yaw_deg
+    widget.render([{"yaw": 0.0, "pitch": 0.0, "enabled": True, "highlighted": True, "label": "other"}])
+
+    assert widget._perspective_user_adjusted
+    assert widget._perspective_params.yaw_deg == adjusted_yaw
 
 
 def test_cubemap_preview_draws_disabled_view_boxes_first() -> None:

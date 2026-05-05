@@ -20,6 +20,7 @@ from PySide6.QtWidgets import (
 )
 
 from gui import i18n, theme
+from gui.common.perspective_preview import PREVIEW_PROJECTION_EQUIRECT, PREVIEW_PROJECTION_PERSPECTIVE
 from gui.common.thumbnail_list_model import THUMBNAIL_PAYLOAD_ROLE
 from gui.mask.mask_preview import MaskPreviewConfig, MaskPreviewWidget
 from gui.mask.thumbnail_model import (
@@ -79,6 +80,28 @@ def test_mask_preview_mode_switches_are_icon_tool_buttons() -> None:
 
     assert not widget.single_preview_btn.isChecked()
     assert widget.thumbnail_preview_btn.isChecked()
+
+
+def test_mask_preview_projection_toggle_uses_perspective_drag() -> None:
+    _app()
+    widget = MaskPreviewWidget()
+
+    assert widget.preview_projection() == PREVIEW_PROJECTION_EQUIRECT
+    assert widget.projection_toggle_btn.objectName() == "iconToolButton"
+    assert widget.projection_toggle_btn.accessibleName() == i18n.t("PREVIEW_PROJECTION_TOGGLE")
+
+    widget.projection_toggle_btn.click()
+    before = widget._perspective_params
+    widget._on_perspective_dragged(12.0, -8.0)
+
+    assert widget.preview_projection() == PREVIEW_PROJECTION_PERSPECTIVE
+    assert widget.image_label._drag_mode == "look"
+    assert widget._perspective_params != before
+
+    widget.projection_toggle_btn.click()
+
+    assert widget.preview_projection() == PREVIEW_PROJECTION_EQUIRECT
+    assert widget.image_label._drag_mode == "pan"
 
 
 def test_mask_preview_status_elides_with_compact_overlay_toggle() -> None:

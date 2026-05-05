@@ -13,6 +13,7 @@ from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QAbstractItemView, QApplication, QToolButton
 
 from gui import i18n
+from gui.common.perspective_preview import PREVIEW_PROJECTION_EQUIRECT, PREVIEW_PROJECTION_PERSPECTIVE
 from gui.common.preview_mode_toolbar import PREVIEW_MODE_SINGLE, PREVIEW_MODE_THUMBNAILS
 from review_frames import ReviewWidget, _review_thumbnail_image
 
@@ -95,6 +96,24 @@ def test_review_widget_slider_changes_current_frame(tmp_path: Path) -> None:
         quality=f"0.50 ({i18n.t('REVIEW_QUALITY_THRESHOLD_FORMAT').format(score='0.35')})",
     ) == widget.info_label.text()
     assert widget.image_view._source_pixmap is not None
+
+
+def test_review_widget_projection_toggle_renders_square_perspective(tmp_path: Path) -> None:
+    _app()
+    scene, csv_path = _write_scene(tmp_path)
+    widget = ReviewWidget(scene, csv_path)
+
+    assert widget.preview_projection() == PREVIEW_PROJECTION_EQUIRECT
+
+    widget.projection_toggle_btn.click()
+    before = widget._perspective_params
+    widget._on_perspective_dragged(10.0, 5.0)
+
+    assert widget.preview_projection() == PREVIEW_PROJECTION_PERSPECTIVE
+    assert widget.image_view._drag_mode == "look"
+    assert widget._perspective_params != before
+    assert widget.current_pixmap is not None
+    assert widget.current_pixmap.width() == widget.current_pixmap.height()
 
 
 def test_review_widget_shows_quality_score_and_original_when_replaced(tmp_path: Path) -> None:

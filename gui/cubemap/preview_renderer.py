@@ -19,7 +19,19 @@ from PySide6.QtWidgets import (
 )
 
 from gui import i18n
-from gui.common.icons import mask_overlay_off_icon, mask_overlay_on_icon
+from gui.common.icons import (
+    equirect_preview_icon,
+    mask_overlay_off_icon,
+    mask_overlay_on_icon,
+    perspective_preview_icon,
+)
+from gui.common.perspective_preview import (
+    PREVIEW_PROJECTION_EQUIRECT,
+    PREVIEW_PROJECTION_PERSPECTIVE,
+    PerspectiveParams,
+    equirect_to_perspective,
+    params_from_drag,
+)
 from gui.common.zoomable_image_label import ZoomableImageLabel
 from image_io import imread_unicode
 
@@ -372,6 +384,11 @@ class PreviewWidget(QWidget):
         self._current_image_path = ""
         self._scene_dir = ""
         self._mask_overlay_visible = True
+        self._preview_projection = PREVIEW_PROJECTION_EQUIRECT
+        self._perspective_params = PerspectiveParams()
+        self._perspective_user_adjusted = False
+        self._last_views: list[dict] = []
+        self._last_mask_dir = ""
         self._image_cache: OrderedDict[tuple, np.ndarray] = OrderedDict()
         self._mask_cache: OrderedDict[tuple, np.ndarray] = OrderedDict()
 
@@ -384,6 +401,7 @@ class PreviewWidget(QWidget):
         self.image_label = ZoomableImageLabel(i18n.t("NO_PREVIEW"))
         self.image_label.setMinimumSize(640, 320)
         self.image_label.setStyleSheet("border: 1px solid palette(mid);")
+        self.image_label.look_dragged.connect(self._on_perspective_dragged)
         layout.addWidget(self.image_label, stretch=1)
 
         # タイムライン
@@ -409,6 +427,16 @@ class PreviewWidget(QWidget):
         self.mask_overlay_btn.setFixedSize(28, 28)
         self.mask_overlay_btn.toggled.connect(self._on_mask_overlay_toggled)
         mask_row.addWidget(self.mask_overlay_btn)
+
+        self.projection_toggle_btn = QToolButton()
+        self.projection_toggle_btn.setObjectName("iconToolButton")
+        self.projection_toggle_btn.setCheckable(True)
+        self.projection_toggle_btn.setFixedSize(28, 28)
+        self.projection_toggle_btn.setAccessibleName(i18n.t("PREVIEW_PROJECTION_TOGGLE"))
+        self.projection_toggle_btn.toggled.connect(self._on_projection_toggled)
+        mask_row.addWidget(self.projection_toggle_btn)
+        self._update_projection_button()
+
         mask_row.addStretch()
         layout.addLayout(mask_row)
 
@@ -419,6 +447,10 @@ class PreviewWidget(QWidget):
         self.refresh_image_list(prefer_current=False)
 
     def render(self, views: list[dict], mask_dir: str = "") -> None:
+        self._last_views = list(views)
+        self._last_mask_dir = mask_dir
+        self._sync_perspective_to_highlighted_view(views)
+
         sample = self._current_image_path.strip()
         if not sample:
             self.image_label.setText(i18n.t("NO_PREVIEW"))
@@ -484,6 +516,8 @@ class PreviewWidget(QWidget):
                 highlighted=bool(item.get("highlighted", False)),
             )
 
+        img = self._apply_preview_projection(img)
+
         rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
         qimg = QImage(rgb.data, rgb.shape[1], rgb.shape[0], rgb.shape[1] * 3, QImage.Format_RGB888).copy()
         self._pixmap = QPixmap.fromImage(qimg)
@@ -491,10 +525,67 @@ class PreviewWidget(QWidget):
 
     # -- internal --
 
+    def preview_projection(self) -> str:
+        return self._preview_projection
+
     def _on_mask_overlay_toggled(self, checked: bool) -> None:
         self._mask_overlay_visible = checked
         self.mask_overlay_btn.setIcon(mask_overlay_on_icon() if checked else mask_overlay_off_icon())
         self.mask_overlay_changed.emit()
+
+    def _on_projection_toggled(self, checked: bool) -> None:
+        projection = PREVIEW_PROJECTION_PERSPECTIVE if checked else PREVIEW_PROJECTION_EQUIRECT
+        if projection == self._preview_projection:
+            self._update_projection_button()
+            return
+        self._preview_projection = projection
+        self._perspective_user_adjusted = False
+        if projection == PREVIEW_PROJECTION_PERSPECTIVE:
+            self._perspective_params = PerspectiveParams()
+        self.image_label.set_drag_mode("look" if projection == PREVIEW_PROJECTION_PERSPECTIVE else "pan")
+        self.image_label.reset_view()
+        self._update_projection_button()
+        self.render(self._last_views, self._last_mask_dir)
+
+    def _update_projection_button(self) -> None:
+        perspective = self._preview_projection == PREVIEW_PROJECTION_PERSPECTIVE
+        self.projection_toggle_btn.blockSignals(True)
+        try:
+            self.projection_toggle_btn.setChecked(perspective)
+        finally:
+            self.projection_toggle_btn.blockSignals(False)
+        self.projection_toggle_btn.setIcon(
+            perspective_preview_icon() if perspective else equirect_preview_icon()
+        )
+        self.projection_toggle_btn.setToolTip(
+            i18n.tip("PREVIEW_PROJECTION_TOGGLE")
+            if perspective
+            else i18n.tip("PREVIEW_PROJECTION_EQUIRECT")
+        )
+
+    def _on_perspective_dragged(self, delta_x: float, delta_y: float) -> None:
+        if self._preview_projection != PREVIEW_PROJECTION_PERSPECTIVE:
+            return
+        self._perspective_params = params_from_drag(self._perspective_params, delta_x, delta_y)
+        self._perspective_user_adjusted = True
+        self.render(self._last_views, self._last_mask_dir)
+
+    def _sync_perspective_to_highlighted_view(self, views: list[dict]) -> None:
+        if self._preview_projection != PREVIEW_PROJECTION_PERSPECTIVE or self._perspective_user_adjusted:
+            return
+        highlighted = next((view for view in views if view.get("highlighted", False)), None)
+        if highlighted is None:
+            self._perspective_params = PerspectiveParams()
+            return
+        self._perspective_params = PerspectiveParams(
+            yaw_deg=float(highlighted.get("yaw", 0.0)),
+            pitch_deg=float(highlighted.get("pitch", 0.0)),
+        )
+
+    def _apply_preview_projection(self, img: np.ndarray) -> np.ndarray:
+        if self._preview_projection != PREVIEW_PROJECTION_PERSPECTIVE:
+            return img
+        return equirect_to_perspective(img, self._perspective_params)
 
     def _update_pixmap(self) -> None:
         self.image_label.set_source_pixmap(self._pixmap)

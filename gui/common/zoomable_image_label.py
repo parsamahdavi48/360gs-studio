@@ -1,7 +1,7 @@
 """Zoomable/pannable image label used by preview panes."""
 from __future__ import annotations
 
-from PySide6.QtCore import QPointF, QRectF, Qt
+from PySide6.QtCore import QPointF, QRectF, Qt, Signal
 from PySide6.QtGui import QMouseEvent, QPainter, QPixmap, QWheelEvent
 from PySide6.QtWidgets import QLabel
 
@@ -9,15 +9,25 @@ from PySide6.QtWidgets import QLabel
 class ZoomableImageLabel(QLabel):
     """QLabel-like image view with wheel zoom, drag pan, and double-click reset."""
 
+    look_dragged = Signal(float, float)
+
     def __init__(self, text: str = "", parent=None) -> None:
         super().__init__(text, parent)
         self._source_pixmap: QPixmap | None = None
         self._zoom = 1.0
         self._pan = QPointF(0.0, 0.0)
         self._drag_last: QPointF | None = None
+        self._drag_mode = "pan"
         self.setAlignment(Qt.AlignCenter)
         self.setMouseTracking(True)
         self.setCursor(Qt.OpenHandCursor)
+
+    def set_drag_mode(self, mode: str) -> None:
+        if mode not in {"pan", "look"}:
+            return
+        self._drag_mode = mode
+        if self._drag_last is None:
+            self.setCursor(Qt.OpenHandCursor)
 
     def setText(self, text: str) -> None:  # noqa: N802 - Qt API naming
         if hasattr(self, "_source_pixmap"):
@@ -87,6 +97,10 @@ class ZoomableImageLabel(QLabel):
         if self._drag_last is not None:
             delta = event.position() - self._drag_last
             self._drag_last = event.position()
+            if self._drag_mode == "look":
+                self.look_dragged.emit(float(delta.x()), float(delta.y()))
+                event.accept()
+                return
             self._pan += delta
             self._clamp_pan()
             self.update()

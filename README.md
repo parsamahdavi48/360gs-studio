@@ -31,11 +31,11 @@ For DSLR, mirrorless, smartphone, or normal video image sequences, Step 3 can ge
 ## Highlights
 
 - Extract SfM-friendly frames from 360° video
-- Review extracted frames in single-preview or thumbnail-list mode and apply keep/drop decisions, including Windows Explorer-style thumbnail selection
+- Review extracted frames in single-preview or thumbnail-list mode and apply keep/drop decisions, including Windows Explorer-style thumbnail selection. 360° images can also be inspected in a 90° FOV perspective view
 - Generate masks for people, sky, and other targets with YOLO + SAM2.1, Mask2Former ADE20K classes, or SAM3.1 prompts
 - Improve detection near the bottom of 360° images for camera operators, tripods, and hands
 - Mask stitch seams, overexposed regions, and user-provided PNG custom masks
-- Preview mask results in single-preview or thumbnail-list mode while tuning settings, with cached thumbnails for large image sets
+- Preview mask results in single-preview or thumbnail-list mode while tuning settings, with cached thumbnails for large image sets. Mask overlays are reflected in both 360° and perspective preview views
 - Select only frames with mask misses and regenerate them with adjusted settings; with SAM3.1, use prompts to add missed targets to an existing mask or subtract false detections
 - Convert Metashape SfM results for LichtFeld Studio, Postshot, and Brush
 - Export COLMAP Rig viewpoint datasets and optionally run COLMAP/GLOMAP

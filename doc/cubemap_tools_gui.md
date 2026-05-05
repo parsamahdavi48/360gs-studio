@@ -81,6 +81,7 @@ Then open `Step 4: Export` in the workflow sidebar.
   - Slider to switch preview image from scene images (`images/` preferred, otherwise scene root).
   - Useful for checking per-view on/off decisions across different frames.
   - Mask overlay uses matching masks from `masks/`; the mask display button toggles it on/off.
+  - The projection button switches to a square 90° FOV perspective view. Drag the preview to look around; the mouse wheel still performs 2D zoom on the displayed image. Mask overlays and view outlines are reflected in the perspective view. Hovering the view grid aligns the perspective view to that export direction.
 
 ## View selection
 
