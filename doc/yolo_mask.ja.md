@@ -71,7 +71,7 @@ python scripts/benchmark_yolo_mask.py --dataset D:\3DGS\test --output-root D:\3D
 - マスクは「背景=白 (255)、人物=黒 (0)」になるよう出力されます。
 
 ## 注意点
-- 初回実行時に学習モデルファイルが自動でダウンロードされる場合があり、時間がかかります。`models/ultralytics/` の `.pt` を最優先で使います。互換性のためスクリプトと同じディレクトリにある `.pt` もfallbackとして使い、未配置の名前付きモデルはUltralytics側の解決に任せます。
+- 初回実行時に学習モデルファイルが自動でダウンロードされる場合があり、時間がかかります。ローカルの `.pt` を使う場合は `models/ultralytics/` に置いてください。未配置の名前付きモデルはUltralytics側の解決に任せます。
 - YOLO/SAM機能では、別ライセンスの第三者ライブラリおよびモデル重みを使用します。詳細は [../THIRD_PARTY_LICENSES.md](../THIRD_PARTY_LICENSES.md) を参照してください。
 - `--quality` を上げると処理時間とメモリ使用量が増加します。
 - 底面TTA、候補フィルタ、`--bottom-model x` は、360底面再検出部分だけの処理時間を増やします。
