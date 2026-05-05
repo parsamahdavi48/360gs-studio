@@ -29,3 +29,14 @@ def test_init_masks_writes_white_masks_and_preserves_subfolders(tmp_path: Path) 
     assert second.shape == (10, 14)
     assert np.all(first == 255)
     assert np.all(second == 255)
+
+
+def test_init_masks_skips_unreadable_images_without_writing(tmp_path: Path) -> None:
+    images = tmp_path / "images"
+    masks = tmp_path / "masks"
+    images.mkdir()
+    (images / "broken.jpg").write_bytes(b"not an image")
+
+    assert run(images, masks) == 1
+
+    assert not (masks / "broken.png").exists()

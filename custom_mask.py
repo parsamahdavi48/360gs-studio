@@ -15,7 +15,7 @@ from pathlib import Path
 import cv2
 import numpy as np
 
-from image_io import imread_unicode, imwrite_unicode
+from image_io import image_size_unicode, imread_unicode, imwrite_unicode
 
 IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".tif", ".tiff"}
 
@@ -108,10 +108,10 @@ def merge_custom_mask_for_image(
     *,
     replace: bool = False,
 ) -> CustomMaskMergeResult:
-    source = imread_unicode(image_path, cv2.IMREAD_UNCHANGED)
-    if source is None:
+    source_size = image_size_unicode(image_path)
+    if source_size is None:
         return CustomMaskMergeResult(skipped=True, message=f"Skipped (image read error): {image_path.name}")
-    source_shape = source.shape[:2]
+    source_shape = (source_size[1], source_size[0])
     if custom_mask.shape != source_shape:
         return CustomMaskMergeResult(
             skipped=True,

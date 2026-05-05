@@ -1,4 +1,5 @@
 import os
+from concurrent.futures import Future
 from pathlib import Path
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
@@ -7,7 +8,7 @@ import cv2
 import numpy as np
 from PySide6.QtWidgets import QApplication
 
-from cubemap_transforms_json import count_planned_outputs
+from cubemap_transforms_json import _run_bounded_conversion_jobs, count_planned_outputs
 from gui.steps.step4_cubemap import CubemapStep
 
 
@@ -147,3 +148,32 @@ def test_cubemap_progress_total_includes_alpha_masks(tmp_path: Path) -> None:
     )
 
     assert total == 4
+
+
+def test_bounded_conversion_jobs_consumes_results_before_submitting_all(capsys) -> None:
+    submitted: list[int] = []
+    result_submit_counts: list[int] = []
+
+    class CountingFuture(Future):
+        def result(self, timeout=None):
+            result_submit_counts.append(len(submitted))
+            return super().result(timeout)
+
+    def submit_job(job: int):
+        submitted.append(job)
+        future = CountingFuture()
+        future.set_result(1)
+        return future
+
+    _run_bounded_conversion_jobs(
+        range(7),
+        submit_job,
+        lambda job: str(job),
+        total_outputs=7,
+        max_workers=1,
+        failure_context="test conversion failed",
+    )
+
+    assert submitted == list(range(7))
+    assert result_submit_counts[0] == 2
+    assert "7/7" in capsys.readouterr().out

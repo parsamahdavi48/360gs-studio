@@ -1247,6 +1247,50 @@ def _raise_worker_failures(failures: list[tuple[str, BaseException]], context: s
     raise RuntimeError(f"{context}: {len(failures)} worker(s) failed; {shown}")
 
 
+def _run_bounded_conversion_jobs(
+    jobs,
+    submit_job,
+    label_job,
+    *,
+    total_outputs: int,
+    max_workers: int,
+    failure_context: str,
+) -> None:
+    """Run conversion jobs without materializing a Future for every input frame."""
+    pending_limit = max(1, int(max_workers) * 2)
+    job_iter = iter(jobs)
+    pending = {}
+    failures: list[tuple[str, BaseException]] = []
+
+    def submit_until_limit() -> None:
+        while len(pending) < pending_limit:
+            try:
+                job = next(job_iter)
+            except StopIteration:
+                return
+            label = label_job(job)
+            try:
+                pending[submit_job(job)] = label
+            except Exception as e:
+                failures.append((label, e))
+
+    submit_until_limit()
+    done = 0
+    while pending:
+        for future in as_completed(tuple(pending)):
+            frame_file = pending.pop(future)
+            try:
+                done += future.result()
+                print(f"[progress] {done}/{total_outputs}", flush=True)
+            except Exception as e:
+                failures.append((frame_file, e))
+                print(f"Worker failed: {frame_file}: {e}", flush=True)
+            submit_until_limit()
+            break
+
+    _raise_worker_failures(failures, failure_context)
+
+
 def convert_images(
     image_files: list[str],
     input_size: tuple[int, int],
@@ -1336,22 +1380,14 @@ def convert_images(
             resolved_cache_limit,
         ),
     ) as executor:
-        futures = {
-            executor.submit(proc_convert_images, frame_file, yaw_off): frame_file
-            for frame_file, yaw_off in zip(image_files, frame_yaw_offsets, strict=True)
-        }
-
-        done = 0
-        failures: list[tuple[str, BaseException]] = []
-        for future in as_completed(futures):
-            frame_file = futures[future]
-            try:
-                done += future.result()
-                print(f"[progress] {done}/{total_outputs}", flush=True)
-            except Exception as e:
-                failures.append((frame_file, e))
-                print(f"Worker failed: {frame_file}: {e}", flush=True)
-        _raise_worker_failures(failures, "Cubemap conversion failed")
+        _run_bounded_conversion_jobs(
+            zip(image_files, frame_yaw_offsets, strict=True),
+            lambda job: executor.submit(proc_convert_images, job[0], job[1]),
+            lambda job: job[0],
+            total_outputs=total_outputs,
+            max_workers=max_workers,
+            failure_context="Cubemap conversion failed",
+        )
 
 
 def make_colmap_rig_jobs(
@@ -1457,22 +1493,14 @@ def convert_images_colmap_rig(
             resolved_cache_limit,
         ),
     ) as executor:
-        futures = {
-            executor.submit(proc_convert_images_colmap_rig, job): job[0]
-            for job in jobs
-        }
-
-        done = 0
-        failures: list[tuple[str, BaseException]] = []
-        for future in as_completed(futures):
-            frame_file = futures[future]
-            try:
-                done += future.result()
-                print(f"[progress] {done}/{total_outputs}", flush=True)
-            except Exception as e:
-                failures.append((frame_file, e))
-                print(f"Worker failed: {frame_file}: {e}", flush=True)
-        _raise_worker_failures(failures, "COLMAP rig image conversion failed")
+        _run_bounded_conversion_jobs(
+            jobs,
+            lambda job: executor.submit(proc_convert_images_colmap_rig, job),
+            lambda job: job[0],
+            total_outputs=total_outputs,
+            max_workers=max_workers,
+            failure_context="COLMAP rig image conversion failed",
+        )
 
 
 def main() -> None:

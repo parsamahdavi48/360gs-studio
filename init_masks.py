@@ -10,10 +10,9 @@ import argparse
 import sys
 from pathlib import Path
 
-import cv2
 import numpy as np
 
-from image_io import imread_unicode, imwrite_unicode
+from image_io import image_size_unicode, imwrite_unicode
 
 IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".tif", ".tiff"}
 
@@ -50,15 +49,19 @@ def run(images: str | Path, masks_dir: str | Path, *, add_ext: bool = False) -> 
     print(f"Initializing {len(image_files)} masks")
     print(f"[progress] 0/{len(image_files)}", flush=True)
     failed = 0
+    white_masks: dict[tuple[int, int], np.ndarray] = {}
     for done, image_path in enumerate(image_files, start=1):
-        image = imread_unicode(image_path, cv2.IMREAD_UNCHANGED)
-        if image is None:
+        size = image_size_unicode(image_path)
+        if size is None:
             failed += 1
             print(f"Skipped (read error): {image_path.name}")
             print(f"[progress] {done}/{len(image_files)}", flush=True)
             continue
-        h, w = image.shape[:2]
-        mask = np.full((h, w), 255, dtype=np.uint8)
+        w, h = size
+        mask = white_masks.get(size)
+        if mask is None:
+            mask = np.full((h, w), 255, dtype=np.uint8)
+            white_masks[size] = mask
         mask_out = mask_output_path_for_image(image_path, images_root, masks_path, add_ext=add_ext)
         mask_out.parent.mkdir(parents=True, exist_ok=True)
         if not imwrite_unicode(mask_out, mask):

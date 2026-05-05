@@ -172,6 +172,24 @@ def test_custom_mask_skips_size_mismatch_without_writing(tmp_path: Path) -> None
     assert not (masks / "frame_0001.png").exists()
 
 
+def test_custom_mask_skips_unreadable_source_image(tmp_path: Path) -> None:
+    images = tmp_path / "images"
+    masks = tmp_path / "masks"
+    images.mkdir()
+    (images / "broken.jpg").write_bytes(b"not an image")
+    custom_path = tmp_path / "custom.png"
+    cv2.imwrite(str(custom_path), np.full((4, 6), 255, dtype=np.uint8))
+
+    result = run(images, masks, custom_path)
+
+    assert not result.ok
+    assert result.applied == 0
+    assert result.skipped == 1
+    assert result.failed == 0
+    assert "image read error" in result.messages[0]
+    assert not (masks / "broken.png").exists()
+
+
 def test_custom_mask_partial_size_mismatch_succeeds_and_skips_only_mismatches(tmp_path: Path) -> None:
     images = tmp_path / "images"
     masks = tmp_path / "masks"

@@ -9,7 +9,7 @@ import cubemap_transforms_json as cubemap
 import overexposure_mask
 import stitch_mask
 import yolo_mask
-from image_io import imread_unicode, imwrite_unicode
+from image_io import image_size_unicode, imread_unicode, imwrite_unicode
 from path_safety import check_path_safety
 
 
@@ -24,6 +24,7 @@ def test_image_io_roundtrips_unicode_path(tmp_path: Path) -> None:
 
     assert loaded is not None
     assert np.array_equal(loaded, image)
+    assert image_size_unicode(path) == (20, 12)
 
 
 def test_cubemap_remap_image_accepts_unicode_paths(tmp_path: Path) -> None:
