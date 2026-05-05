@@ -1,6 +1,6 @@
 # stechdrive-3dgs-utils
 
-**v1.5.2**
+**v1.6.0**
 
 A Windows-first integrated GUI tool for turning 360° camera video into images, masks, and camera data that are practical for 3D Gaussian Splatting (3DGS) training.
 
