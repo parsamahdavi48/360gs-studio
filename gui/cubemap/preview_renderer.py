@@ -340,6 +340,86 @@ def _layout_view_labels(
     return labels
 
 
+def _perspective_view_anchor(
+    width: int,
+    height: int,
+    view_yaw_deg: float,
+    view_pitch_deg: float,
+    perspective: PerspectiveParams,
+) -> tuple[float, float] | None:
+    world = np.array([[0.0, 0.0, 1.0]], dtype=np.float64) @ _rotation_matrix(
+        view_yaw_deg,
+        view_pitch_deg,
+    ).T
+    local = world[0] @ _rotation_matrix(perspective.yaw_deg, perspective.pitch_deg)
+    if local[2] <= 1e-6:
+        return None
+    limit = np.tan(np.deg2rad(perspective.fov_deg) / 2.0)
+    x = float((local[0] / local[2]) / limit)
+    y = float((local[1] / local[2]) / limit)
+    if abs(x) > 1.08 or abs(y) > 1.08:
+        return None
+    return (
+        (x + 1.0) * 0.5 * width,
+        (1.0 - y) * 0.5 * height,
+    )
+
+
+def _layout_perspective_view_labels(
+    views: list[dict],
+    width: int,
+    height: int,
+    pitch_colors: dict[float, tuple[int, int, int]],
+    perspective: PerspectiveParams,
+) -> list[dict]:
+    labels: list[dict] = []
+    occupied: list[tuple[int, int, int, int]] = []
+    enabled_views = [view for view in views if view.get("enabled", False) and str(view.get("label", ""))]
+    enabled_views.sort(key=lambda view: bool(view.get("highlighted", False)))
+
+    for view in enabled_views:
+        anchor = _perspective_view_anchor(
+            width,
+            height,
+            float(view.get("yaw", 0.0)),
+            float(view.get("pitch", 0.0)),
+            perspective,
+        )
+        if anchor is None:
+            continue
+        label = str(view.get("label", ""))
+        metrics = _label_metrics(label)
+        best: tuple[float, tuple[int, int, int, int], tuple[int, int], tuple[float, float]] | None = None
+        for center in _label_candidate_centers(anchor, width, height):
+            cx = float(np.clip(center[0], 0.0, max(0.0, width - 1.0)))
+            cy = float(np.clip(center[1], 0.0, max(0.0, height - 1.0)))
+            box, origin = _label_box_for_center((cx, cy), metrics, width, height)
+            overlap = sum(_box_overlap_area(box, existing) for existing in occupied)
+            distance = float(np.hypot(cx - anchor[0], cy - anchor[1]))
+            edge_penalty = 20.0 if box[0] == 0 or box[1] == 0 or box[2] >= width - 1 or box[3] >= height - 1 else 0.0
+            score = overlap * 10000.0 + distance + edge_penalty
+            if best is None or score < best[0]:
+                best = (score, box, origin, (cx, cy))
+                if overlap == 0 and distance < 1.0:
+                    break
+        if best is None:
+            continue
+        _, box, origin, center = best
+        occupied.append(box)
+        pitch = float(view.get("pitch", 0.0))
+        pitch_key = round(pitch, 6)
+        labels.append({
+            "label": label,
+            "box": box,
+            "origin": origin,
+            "center": center,
+            "color": pitch_colors.get(pitch_key, (90, 240, 120)),
+            "highlighted": bool(view.get("highlighted", False)),
+            "view": view,
+        })
+    return labels
+
+
 def _draw_view_label_box(
     img: np.ndarray,
     label: str,
@@ -504,17 +584,34 @@ class PreviewWidget(QWidget):
                 pts = np.round(seg).astype(np.int32).reshape((-1, 1, 2))
                 _draw_view_polyline(img, pts, color, enabled=enabled, highlighted=highlighted)
 
-        for item in _layout_view_labels(draw_order, w, h, pitch_colors):
-            _draw_view_label_box(
-                img,
-                item["label"],
-                item["box"],
-                item["origin"],
-                item["color"],
-                highlighted=bool(item.get("highlighted", False)),
-            )
-
+        if self._preview_projection == PREVIEW_PROJECTION_EQUIRECT:
+            for item in _layout_view_labels(draw_order, w, h, pitch_colors):
+                _draw_view_label_box(
+                    img,
+                    item["label"],
+                    item["box"],
+                    item["origin"],
+                    item["color"],
+                    highlighted=bool(item.get("highlighted", False)),
+                )
         img = self._apply_preview_projection(img)
+        if self._preview_projection == PREVIEW_PROJECTION_PERSPECTIVE:
+            ph, pw = img.shape[:2]
+            for item in _layout_perspective_view_labels(
+                draw_order,
+                pw,
+                ph,
+                pitch_colors,
+                self._perspective_params,
+            ):
+                _draw_view_label_box(
+                    img,
+                    item["label"],
+                    item["box"],
+                    item["origin"],
+                    item["color"],
+                    highlighted=bool(item.get("highlighted", False)),
+                )
 
         rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
         qimg = QImage(rgb.data, rgb.shape[1], rgb.shape[0], rgb.shape[1] * 3, QImage.Format_RGB888).copy()

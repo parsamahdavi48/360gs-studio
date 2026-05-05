@@ -9,13 +9,19 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from PySide6.QtWidgets import QApplication, QLineEdit, QPushButton, QSpinBox
 
 from gui import i18n
-from gui.common.perspective_preview import PREVIEW_PROJECTION_EQUIRECT, PREVIEW_PROJECTION_PERSPECTIVE
+from gui.common.perspective_preview import (
+    PREVIEW_PROJECTION_EQUIRECT,
+    PREVIEW_PROJECTION_PERSPECTIVE,
+    PerspectiveParams,
+)
 from gui.cubemap.preview_renderer import (
     PreviewWidget,
     _apply_view_fill,
     _box_overlap_area,
+    _layout_perspective_view_labels,
     _layout_view_labels,
     _overlay_draw_order,
+    _perspective_view_anchor,
     _pitch_color_map,
     _point_inside_view,
     _view_fill_mask,
@@ -232,6 +238,48 @@ def test_cubemap_preview_label_layout_handles_pole_views_without_overlap() -> No
     for idx, label in enumerate(labels):
         box = label["box"]
         assert 0 <= box[0] < box[2] < 1800
+        assert 0 <= box[1] < box[3] < 900
+        for other in labels[idx + 1:]:
+            assert _box_overlap_area(box, other["box"]) == 0
+
+
+def test_cubemap_preview_perspective_label_anchor_uses_screen_space() -> None:
+    anchor = _perspective_view_anchor(
+        512,
+        512,
+        view_yaw_deg=0.0,
+        view_pitch_deg=0.0,
+        perspective=PerspectiveParams(yaw_deg=0.0, pitch_deg=0.0),
+    )
+
+    assert anchor is not None
+    assert anchor == (256.0, 256.0)
+
+
+def test_cubemap_preview_perspective_labels_avoid_pole_overlap() -> None:
+    views = [
+        {
+            "label": f"top{s}",
+            "yaw": s * 45.0,
+            "pitch": 90.0,
+            "enabled": True,
+        }
+        for s in range(8)
+    ]
+    colors = _pitch_color_map(views)
+
+    labels = _layout_perspective_view_labels(
+        views,
+        900,
+        900,
+        colors,
+        PerspectiveParams(yaw_deg=0.0, pitch_deg=90.0),
+    )
+
+    assert len(labels) == 8
+    for idx, label in enumerate(labels):
+        box = label["box"]
+        assert 0 <= box[0] < box[2] < 900
         assert 0 <= box[1] < box[3] < 900
         for other in labels[idx + 1:]:
             assert _box_overlap_area(box, other["box"]) == 0
