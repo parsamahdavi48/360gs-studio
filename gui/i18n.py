@@ -192,7 +192,7 @@ _JA: dict[str, str] = {
     "REVIEW_ADVISORY_REPLACED": "差し替え済み: 近傍のSfM向けフレームを使用",
     "REVIEW_ADVISORY_SMART_ADDED": "変化補正: 動きが大きいため追加",
     "REVIEW_ADVISORY_THINNED": "自動間引き: 動きが少ないため除外中",
-    "REVIEW_ADVISORY_NOVELTY_ADDED": "ペア解析: 視点変化が十分なため追加",
+    "REVIEW_ADVISORY_NOVELTY_ADDED": "ペア解析: 視点変化が大きいため中間候補を追加",
     "REVIEW_ADVISORY_REDUNDANT_DROP": "ペア解析: 冗長候補として除外中",
     "REVIEW_ADVISORY_GAP_FORCED": "ペア解析: 上限間隔の安全採用",
     "REVIEW_ADVISORY_MOTION_BLUR": "要確認: ブレにより自動除外中",
