@@ -64,6 +64,12 @@ To rebuild with the pinned known-good package set from `requirements/`, run `upd
 
 YOLO/SAM2, Mask2Former, and SAM3.1 model weights may be downloaded on first use. Local YOLO/SAM weights can be placed under `models/ultralytics/`; local Mask2Former weights can be placed under `models/mask2former-swin-large-ade-semantic/`; SAM3.1 prompt masking uses `models/sam3.1/sam3.1_multiplex.pt`. Legacy `.pt` files in the repository root are still detected for compatibility. Release ZIP assets do not include model weights, generated scene data, user settings, or local setup logs. These third-party libraries and model weights are governed by separate license terms; see [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md).
 
+### Mask Generation Model Guide
+
+- Use YOLO/SAM2.1 when you want fast person-only masks.
+- Use SAM3.1 when you want the highest practical accuracy for people or sky. Because it is prompt-controlled, you can add missed targets after generation or subtract false detections.
+- Use Mask2Former when you want to try sky masks without setting up SAM3.1.
+
 ### SAM3.1 Prompt Masks
 
 `setup_windows.bat` installs the SAM3.1 runtime package, but the checkpoint is not bundled because access requires your Hugging Face account and SAM License acceptance.

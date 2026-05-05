@@ -338,6 +338,9 @@ class MaskStep(BaseStepWidget):
                 i18n.t("PERSON_MODEL_SAM31"),
             ]
         )
+        self.person_backend_combo.setItemData(0, i18n.tip("PERSON_MODEL_YOLO_SAM"), Qt.ToolTipRole)
+        self.person_backend_combo.setItemData(1, i18n.tip("SKY_MODEL_MASK2FORMER"), Qt.ToolTipRole)
+        self.person_backend_combo.setItemData(2, i18n.tip("PERSON_MODEL_SAM31"), Qt.ToolTipRole)
         self.person_backend_combo.setFixedWidth(132)
         person_backend_row.addWidget(self.person_backend_combo)
 
@@ -650,6 +653,8 @@ class MaskStep(BaseStepWidget):
                 i18n.t("SKY_MODEL_SAM31"),
             ]
         )
+        self.sky_backend_combo.setItemData(0, i18n.tip("SKY_MODEL_MASK2FORMER"), Qt.ToolTipRole)
+        self.sky_backend_combo.setItemData(1, i18n.tip("SKY_MODEL_SAM31"), Qt.ToolTipRole)
         self.sky_backend_combo.setToolTip(i18n.tip("SKY_MODEL"))
         self.sky_backend_combo.setFixedWidth(132)
         add_tooltip_row(sky_form, i18n.t("SKY_MODEL"), self.sky_backend_combo, i18n.tip("SKY_MODEL"))
@@ -1087,6 +1092,11 @@ class MaskStep(BaseStepWidget):
             item.setToolTip(
                 i18n.tip("PERSON_MODEL_SAM31") if sam_available else i18n.tip("SAM31_CHECKPOINT_DOWNLOAD")
             )
+            self.person_backend_combo.setItemData(
+                2,
+                i18n.tip("PERSON_MODEL_SAM31") if sam_available else i18n.tip("SAM31_CHECKPOINT_DOWNLOAD"),
+                Qt.ToolTipRole,
+            )
 
     def _update_sky_backend_availability(self) -> None:
         sam_available = self._sam31_available()
@@ -1096,6 +1106,11 @@ class MaskStep(BaseStepWidget):
             item.setEnabled(True)
             item.setToolTip(
                 i18n.tip("SKY_MODEL_SAM31") if sam_available else i18n.tip("SAM31_CHECKPOINT_DOWNLOAD")
+            )
+            self.sky_backend_combo.setItemData(
+                1,
+                i18n.tip("SKY_MODEL_SAM31") if sam_available else i18n.tip("SAM31_CHECKPOINT_DOWNLOAD"),
+                Qt.ToolTipRole,
             )
 
     def _custom_mask_path_text(self) -> str:
