@@ -31,8 +31,6 @@ References:
 
 - Ultralytics License: https://www.ultralytics.com/license
 - Meta SAM2 repository: https://github.com/facebookresearch/sam2
-- Meta SAM3.1 model: https://huggingface.co/facebook/sam3.1
-- Meta SAM3 repository: https://github.com/facebookresearch/sam3
 
 ## Sky Mask Feature
 
@@ -40,8 +38,7 @@ The semantic/prompt mask feature may use Mask2Former ADE20K
 semantic-segmentation model weights, such as
 `facebook/mask2former-swin-large-ade-semantic`, together with the Hugging Face
 `transformers` and `safetensors` libraries. It may also use Meta's `sam3`
-Python package and a user-provided Meta SAM3.1 checkpoint such as
-`sam3.1_multiplex.pt`.
+Python package and a Meta SAM3.1 checkpoint such as `sam3.1_multiplex.pt`.
 
 Mask2Former source code is licensed under the MIT License. The `transformers`
 and `safetensors` libraries are licensed under the Apache License 2.0. ADE20K
@@ -52,9 +49,9 @@ License provided by Meta.
 Model weights are not included in this repository or release archives.
 Mask2Former may be downloaded by the user's environment on first use, or
 provided by the user as local files under
-`models/mask2former-swin-large-ade-semantic/`. SAM3.1 checkpoints and the
-`sam3` package are not auto-downloaded by this application and should be
-provided by the user.
+`models/mask2former-swin-large-ade-semantic/`. SAM3.1 checkpoints may be
+downloaded after the user has access to `facebook/sam3.1` and has accepted the
+SAM License, or provided as local files under `models/sam3.1/`.
 
 Users are responsible for ensuring that their use, redistribution, deployment,
 or commercial integration complies with the applicable third-party license and

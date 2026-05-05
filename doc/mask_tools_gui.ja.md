@@ -7,7 +7,7 @@ Step 3 は、抽出済みフレームまたは外部から用意した連番画�
 内部では次のCLIを呼び出します。
 
 - `yolo_mask.py`: YOLO/SAM2.1によるモデルベースのマスク生成
-- `sky_mask.py`: Mask2Former ADE20K またはローカルSAM3.1によるマスク生成
+- `sky_mask.py`: Mask2Former ADE20K またはSAM3.1によるマスク生成
 - `stitch_mask.py`: スティッチ境界マスク
 - `overexposure_mask.py`: 白飛びマスク
 - `custom_mask.py`: ユーザー指定PNGマスクのAND合成
@@ -44,7 +44,7 @@ run_gui.bat --scene ./scene01
 - `モデル`:
   - `YOLO/SAM2.1`: 既定経路。COCOクラスをYOLOで検出し、SAM2.1で形状を整えます。
   - `Mask2Former`: ADE20K semantic segmentation。選択したADE20Kクラスを `sky_mask.py --backend mask2former --labels ...` に渡します。
-  - `SAM3.1`: `models/sam3.1/sam3.1_multiplex.pt` がある場合に使えるローカルプロンプトbackendです。
+  - `SAM3.1`: プロンプトでマスクを生成します。`models/sam3.1/sam3.1_multiplex.pt` が無い場合、Hugging Faceの利用承認後にGUIからダウンロードできます。
 - `品質`: 精度と処理時間のバランスを選びます。
   - `標準`: 全体直処理中心。360°画像では軽い下部投影も実行します。
   - `高品質`: 推奨既定。人物向けタイルと、360°画像向けの上部/下部投影補助を追加します。

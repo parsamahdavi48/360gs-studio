@@ -81,7 +81,7 @@ models/mask2former-swin-large-ade-semantic/
 If the local directory is missing, Transformers may resolve
 `facebook/mask2former-swin-large-ade-semantic` from Hugging Face.
 
-The SAM3.1 backend expects the user-provided checkpoint here:
+The SAM3.1 backend uses this checkpoint location:
 
 ```text
 models/sam3.1/
@@ -92,22 +92,10 @@ models/sam3.1/
 ```
 
 SAM3.1 support requires Meta's `sam3` Python package in the active venv. The
-current implementation uses the package image API with the local SAM3.1
-checkpoint, so the loader may print checkpoint-key warnings.
-
-For local testing, install the package separately. The `sam3` package currently
-declares `numpy<2`, while this project uses NumPy 2.x, so install the required
-runtime dependencies first and then install `sam3` itself with `--no-deps`:
-
-```bat
-.\.venv\Scripts\python.exe -m pip install timm ftfy==6.1.1 iopath regex einops triton-windows pycocotools
-.\.venv\Scripts\python.exe -m pip install --no-deps git+https://github.com/facebookresearch/sam3.git@847e1a3b15115a04c87c0760297f044f0555d970
-```
-
-This intentionally leaves `sam3`'s declared `numpy<2` requirement unresolved.
-Manual `pip check` may report that metadata conflict in a SAM3.1 test venv;
-`setup_windows.bat` ignores only this known optional SAM3.1 warning when
-checking whether an existing `.venv` is ready.
+standard `setup_windows.bat` environment installs that runtime package. In the
+GUI, choosing SAM3.1 can download `sam3.1_multiplex.pt` after Hugging Face
+access approval and SAM License acceptance. CLI users should place the
+checkpoint in the location above or pass it with `--model-dir`.
 
 ## Notes
 

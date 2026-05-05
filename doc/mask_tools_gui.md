@@ -5,7 +5,7 @@
 Step 3 in STechDrive 3DGS Utils is a PySide6 wrapper around:
 
 - `yolo_mask.py` (YOLO/SAM2.1 model-based mask generation)
-- `sky_mask.py` (Mask2Former ADE20K or local SAM3.1 prompt-based masks)
+- `sky_mask.py` (Mask2Former ADE20K or SAM3.1 prompt-based masks)
 - `stitch_mask.py` (stitch-region masking)
 - `overexposure_mask.py` (overexposure masking)
 - `custom_mask.py` (user-provided static mask merging)
@@ -41,7 +41,7 @@ run_gui.bat --scene ./scene01
 - `Model`: selects the mask backend.
   - `YOLO/SAM2.1`: default path. YOLO detects people or selected classes, then SAM2.1 refines the mask.
   - `Mask2Former`: ADE20K semantic segmentation. The GUI passes selected ADE20K class names to `sky_mask.py --backend mask2former --labels ...`.
-  - `SAM3.1`: local prompt path. It runs `sky_mask.py --backend sam31` when `models/sam3.1/sam3.1_multiplex.pt` exists.
+  - `SAM3.1`: prompt-based masks. If `models/sam3.1/sam3.1_multiplex.pt` is missing, the GUI can download it after Hugging Face access approval.
   - All models share the same `Quality` input-view recipe.
 - `Quality`: chooses the balance between accuracy and processing time, forwarded as `--quality standard|high|best`.
   - `Standard`: direct full-image inference. For 360° images, also runs a light bottom-pole pass.

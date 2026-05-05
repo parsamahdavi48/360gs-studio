@@ -76,7 +76,7 @@ models/mask2former-swin-large-ade-semantic/
 
 このローカルディレクトリがない場合、Transformersが `facebook/mask2former-swin-large-ade-semantic` をHugging Faceから解決する場合があります。
 
-SAM3.1 backendは、ユーザーが用意したcheckpointを次の場所に置いた場合に使います。
+SAM3.1 backendは、次の場所のcheckpointを使います。
 
 ```text
 models/sam3.1/
@@ -86,16 +86,7 @@ models/sam3.1/
   README.md
 ```
 
-SAM3.1を動かすには、アクティブなvenvにMetaの `sam3` Python packageが必要です。現在の実装は、このpackageの画像APIにローカルSAM3.1 checkpointを渡します。
-
-ローカルで検証する場合は、別途インストールします。`sam3` packageは現在 `numpy<2` を宣言していますが、このプロジェクトはNumPy 2.xを使うため、必要な実行時依存を先に入れてから `sam3` 本体を `--no-deps` で入れます。
-
-```bat
-.\.venv\Scripts\python.exe -m pip install timm ftfy==6.1.1 iopath regex einops triton-windows pycocotools
-.\.venv\Scripts\python.exe -m pip install --no-deps git+https://github.com/facebookresearch/sam3.git@847e1a3b15115a04c87c0760297f044f0555d970
-```
-
-この手順では、`sam3` が宣言している `numpy<2` 要求はあえて未解決のままになります。SAM3.1検証用venvでは手動の `pip check` がこのmetadata conflictを報告する場合があります。`setup_windows.bat` は既存 `.venv` の確認時、このSAM3.1由来の既知警告だけを許容します。
+SAM3.1を動かすには、アクティブなvenvにMetaの `sam3` Python packageが必要です。標準の `setup_windows.bat` 環境ではこの実行用パッケージを導入します。GUIでは、Hugging Faceで利用申請とSAM Licenseへの同意が完了していれば、SAM3.1選択時に `sam3.1_multiplex.pt` をダウンロードできます。CLIで使う場合は、上記の場所にcheckpointを置くか `--model-dir` で指定してください。
 
 ## 注意点
 

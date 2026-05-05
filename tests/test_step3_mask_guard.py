@@ -361,6 +361,41 @@ def test_mask_step_confirms_semantic_primary_commands(monkeypatch) -> None:
     assert calls == 1
 
 
+def test_mask_step_sam31_options_stay_enabled_without_checkpoint(monkeypatch, tmp_path: Path) -> None:
+    _app()
+    step = MaskStep(Path.cwd())
+    missing = tmp_path / "models" / "sam3.1" / "sam3.1_multiplex.pt"
+    monkeypatch.setattr(step, "_sam31_checkpoint_path", lambda: missing)
+
+    step._update_person_backend_availability()
+    step._update_sky_backend_availability()
+
+    person_item = step.person_backend_combo.model().item(2)
+    sky_item = step.sky_backend_combo.model().item(1)
+    assert person_item.isEnabled()
+    assert sky_item.isEnabled()
+    assert person_item.toolTip() == i18n.tip("SAM31_CHECKPOINT_DOWNLOAD")
+    assert sky_item.toolTip() == i18n.tip("SAM31_CHECKPOINT_DOWNLOAD")
+
+
+def test_mask_step_confirms_sam31_download_when_checkpoint_missing(monkeypatch) -> None:
+    _app()
+    step = MaskStep(Path.cwd())
+    calls: list[str] = []
+    step.person_backend_combo.setCurrentIndex(2)
+
+    monkeypatch.setattr(step, "_confirm_sky_license_notice", lambda: True)
+
+    def fake_ensure() -> bool:
+        calls.append("download")
+        return True
+
+    monkeypatch.setattr(step, "_ensure_sam31_checkpoint_available", fake_ensure)
+
+    assert step.confirm_commands([("yolo", ["cmd"])])
+    assert calls == ["download"]
+
+
 def test_mask_step_primary_mask_generation_is_always_selected(tmp_path: Path) -> None:
     _app()
     scene = _write_scene(tmp_path, drop_exists=False)

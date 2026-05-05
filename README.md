@@ -32,7 +32,7 @@ For DSLR, mirrorless, smartphone, or normal video image sequences, Step 3 can ge
 
 - Extract SfM-friendly frames from 360° video
 - Review extracted frames in single-preview or thumbnail-list mode and apply keep/drop decisions, including Windows Explorer-style thumbnail selection
-- Generate masks with YOLO + SAM2.1, Mask2Former ADE20K classes, or local SAM3.1 prompts
+- Generate masks with YOLO + SAM2.1, Mask2Former ADE20K classes, or SAM3.1 prompts
 - Improve detection near the bottom of 360° images for camera operators, tripods, and hands
 - Mask stitch seams, overexposed regions, and user-provided PNG custom masks
 - Preview mask results in single-preview or thumbnail-list mode while tuning settings, with cached thumbnails for large image sets
@@ -50,7 +50,7 @@ setup_windows.bat
 run_gui.bat
 ```
 
-`setup_windows.bat` looks for Python 3.12 and can install it through winget when needed. It then creates `.venv`, installs packages such as PyTorch CUDA wheels, OpenCV, Pillow, Open3D, ultralytics, and PySide6, and verifies the environment.
+`setup_windows.bat` looks for Python 3.12 and can install it through winget when needed. It then creates `.venv`, installs packages such as PyTorch CUDA wheels, OpenCV, Pillow, Open3D, ultralytics, PySide6, and the SAM3.1 runtime, and verifies the environment.
 
 `run_gui.bat` activates `.venv` and launches the integrated GUI. If an existing `.venv` is already healthy, setup reports that state and does not rebuild it. Use `setup_windows.bat --force` when you intentionally want to recreate the environment.
 
@@ -62,26 +62,20 @@ update_venv.bat
 
 To rebuild with the pinned known-good package set from `requirements/`, run `update_venv.bat --locked`.
 
-YOLO/SAM2 and Mask2Former model weights may be downloaded automatically on first use. Local YOLO/SAM weights can be placed under `models/ultralytics/`; local Mask2Former weights can be placed under `models/mask2former-swin-large-ade-semantic/`. Local SAM3.1 prompt masking expects `models/sam3.1/sam3.1_multiplex.pt` and is not auto-downloaded. Legacy `.pt` files in the repository root are still detected for compatibility. Release ZIP assets do not include model weights, generated scene data, user settings, or local setup logs. These third-party libraries and model weights are governed by separate license terms; see [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md).
+YOLO/SAM2, Mask2Former, and SAM3.1 model weights may be downloaded on first use. Local YOLO/SAM weights can be placed under `models/ultralytics/`; local Mask2Former weights can be placed under `models/mask2former-swin-large-ade-semantic/`; SAM3.1 prompt masking uses `models/sam3.1/sam3.1_multiplex.pt`. Legacy `.pt` files in the repository root are still detected for compatibility. Release ZIP assets do not include model weights, generated scene data, user settings, or local setup logs. These third-party libraries and model weights are governed by separate license terms; see [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md).
 
 ### Optional SAM3.1 Prompt Masks
 
-SAM3.1 is optional. `setup_windows.bat` does not install Meta's `sam3` package and does not download SAM3.1 checkpoints because access requires the user's Hugging Face account and SAM License acceptance.
+SAM3.1 is optional. `setup_windows.bat` installs the runtime package, but the checkpoint is not bundled because access requires your Hugging Face account and SAM License acceptance.
 
 Use SAM3.1 when you want more accurate prompt-controlled masks, especially for sky masks or targeted cleanup. After generating masks once, you can select only the images that need correction and use SAM3.1 prompts to add missed regions such as `tripod`, `hand`, or `selfie stick`, or subtract false detections such as `logo` or `sign`.
 
 1. Create or sign in to a Hugging Face account.
 2. Open Meta's [facebook/sam3.1](https://huggingface.co/facebook/sam3.1) Hugging Face repository and request access/accept the SAM License. Hugging Face gated model requests are tied to an individual user account and may require sharing your username/email with the model author.
-3. Check Meta's [SAM 3 GitHub repository](https://github.com/facebookresearch/sam3) for the current license, package, and checkpoint notes.
-4. After access is approved, download the SAM3.1 checkpoint and place it at `models/sam3.1/sam3.1_multiplex.pt`. Keep the downloaded `LICENSE` and `README.md` next to it when available.
-5. Install the `sam3` package only if you will use SAM3.1:
+3. Create a Hugging Face access token from your account settings.
+4. In Step 3, choose `SAM3.1`. If `models/sam3.1/sam3.1_multiplex.pt` is missing, the app asks for the token and downloads the checkpoint. The token is used only for that download and is not saved by this app.
 
-```bat
-.\.venv\Scripts\python.exe -m pip install timm ftfy==6.1.1 iopath regex einops triton-windows pycocotools
-.\.venv\Scripts\python.exe -m pip install --no-deps git+https://github.com/facebookresearch/sam3.git
-```
-
-As of this integration, the `sam3` package declares `numpy<2`, while this app uses NumPy 2.x. The app keeps SAM3.1 opt-in for that reason. Installing `sam3` with `--no-deps` preserves the verified NumPy 2.x environment; `pip check` may still report that metadata conflict, and `setup_windows.bat` treats that specific optional SAM3.1 warning as acceptable.
+You can also place the checkpoint manually at `models/sam3.1/sam3.1_multiplex.pt`.
 
 ## GUI Workflow
 
@@ -148,7 +142,7 @@ Main Python packages resolved by `setup_windows.bat`:
 
 ```text
 torch / torchvision / torchaudio from the CUDA 12.8 wheel index
-numpy, opencv-python, Pillow, open3d, ultralytics, transformers, safetensors, tqdm, PySide6
+numpy, opencv-python, Pillow, open3d, ultralytics, transformers, safetensors, tqdm, PySide6, sam3
 ```
 
 `setup_windows.bat` uses the pinned known-good package set under `requirements/` for reproducible first-time setup. `update_venv.bat` resolves the latest compatible packages by default; pass `--locked` when you want to rebuild from the pinned set instead.
@@ -163,7 +157,7 @@ The GUI wraps these CLI engines, which can also be used directly.
 | `apply_frame_decisions.py` | Apply keep/drop decisions from CSV | [EN](doc/apply_frame_decisions.md) |
 | `review_frames.py` | Frame review GUI | [EN](doc/review_frames.md) |
 | `yolo_mask.py` | YOLO+SAM2.1 mask generation | [EN](doc/yolo_mask.md) |
-| `sky_mask.py` | Semantic mask generation with Mask2Former ADE20K labels or local SAM3.1 prompts | [EN](doc/sky_mask.md) |
+| `sky_mask.py` | Semantic mask generation with Mask2Former ADE20K labels or SAM3.1 prompts | [EN](doc/sky_mask.md) |
 | `stitch_mask.py` | Stitch seam mask generation | [EN](doc/stitch_mask.md) |
 | `overexposure_mask.py` | Overexposure mask generation | - |
 | `custom_mask.py` | AND-merge a user-provided PNG mask | [EN](doc/custom_mask.md) |

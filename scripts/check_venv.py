@@ -6,9 +6,19 @@ import subprocess
 from pathlib import Path
 
 try:
-    from update_venv import LOCKED_CORE_REQUIREMENTS, LOCKED_ML_REQUIREMENTS, LOCKED_TORCH_REQUIREMENTS
+    from update_venv import (
+        LOCKED_CORE_REQUIREMENTS,
+        LOCKED_ML_REQUIREMENTS,
+        LOCKED_SAM31_REQUIREMENTS,
+        LOCKED_TORCH_REQUIREMENTS,
+    )
 except ImportError:  # pragma: no cover - used when imported as scripts.check_venv
-    from scripts.update_venv import LOCKED_CORE_REQUIREMENTS, LOCKED_ML_REQUIREMENTS, LOCKED_TORCH_REQUIREMENTS
+    from scripts.update_venv import (
+        LOCKED_CORE_REQUIREMENTS,
+        LOCKED_ML_REQUIREMENTS,
+        LOCKED_SAM31_REQUIREMENTS,
+        LOCKED_TORCH_REQUIREMENTS,
+    )
 
 
 SMOKE_TEST = r"""
@@ -24,6 +34,10 @@ import open3d
 import ultralytics
 import tqdm
 import PySide6
+import sam3
+import timm
+import ftfy
+import iopath
 
 print("Python", sys.version.split()[0])
 print("torch", torch.__version__, "cuda", torch.version.cuda, "available", torch.cuda.is_available())
@@ -35,6 +49,8 @@ print("Pillow", PIL.__version__)
 print("open3d", open3d.__version__)
 print("ultralytics", ultralytics.__version__)
 print("PySide6", PySide6.__version__)
+print("sam3", getattr(sam3, "__version__", "unknown"))
+print("timm", timm.__version__)
 
 if REQUIRE_CUDA and not torch.cuda.is_available():
     raise SystemExit("CUDA is not available to PyTorch")
@@ -176,7 +192,12 @@ def main() -> int:
         print("pip check: passed")
 
     if args.locked:
-        pinned_requirements = LOCKED_CORE_REQUIREMENTS + LOCKED_TORCH_REQUIREMENTS + LOCKED_ML_REQUIREMENTS
+        pinned_requirements = (
+            LOCKED_CORE_REQUIREMENTS
+            + LOCKED_TORCH_REQUIREMENTS
+            + LOCKED_ML_REQUIREMENTS
+            + LOCKED_SAM31_REQUIREMENTS
+        )
         pins = run_capture([py, "-c", pinned_version_check_code(pinned_requirements)])
         if pins.returncode != 0:
             print("Result: pinned dependency check failed")

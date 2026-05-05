@@ -14,7 +14,7 @@ import cv2
 import numpy as np
 from apply_frame_decisions import pending_drop_image_paths, untracked_image_paths
 from custom_mask import load_custom_mask
-from PySide6.QtCore import QProcess, QSize, Qt, QTimer, Signal
+from PySide6.QtCore import QEventLoop, QObject, QProcess, QThread, QSize, Qt, QTimer, Signal
 from PySide6.QtWidgets import (
     QButtonGroup,
     QCheckBox,
@@ -25,7 +25,9 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QLineEdit,
+    QInputDialog,
     QMessageBox,
+    QProgressDialog,
     QPushButton,
     QScrollArea,
     QSplitter,
@@ -51,6 +53,7 @@ from gui.user_settings import load_user_settings_section, update_user_settings_s
 from image_io import imread_unicode, imwrite_unicode
 from mask_view_recipes import QUALITY_CHOICES
 from overexposure_mask import detect_overexposure, read_image_preserve_depth
+from sam31_download import download_sam31_checkpoint
 from stitch_mask import boundary_width_to_limit_angle, create_angular_stitched_mask
 
 _COCO_CLASS_NAMES = [
@@ -147,6 +150,25 @@ _YOLO_SAM_NOTICE_VERSION = 3
 _YOLO_SAM_NOTICE_KEY = "yolo_sam_models_ack_version"
 _SKY_NOTICE_VERSION = 2
 _SKY_NOTICE_KEY = "sky_models_ack_version"
+
+
+class _Sam31DownloadWorker(QObject):
+    finished = Signal(str, str)
+
+    def __init__(self, token: str, target_dir: Path) -> None:
+        super().__init__()
+        self._token = token
+        self._target_dir = target_dir
+
+    def run(self) -> None:
+        try:
+            checkpoint = download_sam31_checkpoint(self._token, self._target_dir)
+        except Exception as exc:  # noqa: BLE001 - surfaced in the GUI.
+            self.finished.emit("", str(exc))
+            return
+        finally:
+            self._token = ""
+        self.finished.emit(str(checkpoint), "")
 
 
 def _ade20k_class_names(base_dir: Path) -> tuple[str, ...]:
@@ -1061,32 +1083,20 @@ class MaskStep(BaseStepWidget):
         model = self.person_backend_combo.model()
         item = model.item(2) if hasattr(model, "item") else None
         if item is not None:
-            item.setEnabled(sam_available)
+            item.setEnabled(True)
             item.setToolTip(
-                i18n.tip("PERSON_MODEL_SAM31") if sam_available else i18n.t("SKY_MODEL_SAM31_MISSING")
+                i18n.tip("PERSON_MODEL_SAM31") if sam_available else i18n.tip("SAM31_CHECKPOINT_DOWNLOAD")
             )
-        if not sam_available and self._person_uses_sam31():
-            self.person_backend_combo.blockSignals(True)
-            try:
-                self.person_backend_combo.setCurrentIndex(0)
-            finally:
-                self.person_backend_combo.blockSignals(False)
 
     def _update_sky_backend_availability(self) -> None:
         sam_available = self._sam31_available()
         model = self.sky_backend_combo.model()
         item = model.item(1) if hasattr(model, "item") else None
         if item is not None:
-            item.setEnabled(sam_available)
+            item.setEnabled(True)
             item.setToolTip(
-                i18n.tip("SKY_MODEL_SAM31") if sam_available else i18n.t("SKY_MODEL_SAM31_MISSING")
+                i18n.tip("SKY_MODEL_SAM31") if sam_available else i18n.tip("SAM31_CHECKPOINT_DOWNLOAD")
             )
-        if not sam_available and self._sky_backend_arg() == "sam31":
-            self.sky_backend_combo.blockSignals(True)
-            try:
-                self.sky_backend_combo.setCurrentIndex(0)
-            finally:
-                self.sky_backend_combo.blockSignals(False)
 
     def _custom_mask_path_text(self) -> str:
         return self._custom_mask_path.strip()
@@ -1342,6 +1352,88 @@ class MaskStep(BaseStepWidget):
             else:
                 if not self._confirm_sky_license_notice():
                     return False
+                if self._uses_sam31_for_primary_mask() and not self._ensure_sam31_checkpoint_available():
+                    return False
+        return True
+
+    def _uses_sam31_for_primary_mask(self) -> bool:
+        return self._person_uses_sam31() or self._sky_backend_arg() == "sam31"
+
+    def _ensure_sam31_checkpoint_available(self) -> bool:
+        if self._sam31_available():
+            return True
+
+        result = QMessageBox.question(
+            self,
+            i18n.t("SAM31_DOWNLOAD_TITLE"),
+            i18n.t("SAM31_DOWNLOAD_BODY").format(path=str(self._sam31_checkpoint_path())),
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.Yes,
+        )
+        if result != QMessageBox.Yes:
+            return False
+
+        token, accepted = QInputDialog.getText(
+            self,
+            i18n.t("SAM31_TOKEN_TITLE"),
+            i18n.t("SAM31_TOKEN_BODY"),
+            QLineEdit.Password,
+        )
+        if not accepted:
+            return False
+        token = token.strip()
+        if not token:
+            QMessageBox.warning(self, i18n.t("SAM31_DOWNLOAD_TITLE"), i18n.t("SAM31_TOKEN_EMPTY"))
+            return False
+
+        progress = QProgressDialog(i18n.t("SAM31_DOWNLOAD_PROGRESS"), "", 0, 0, self)
+        progress.setWindowTitle(i18n.t("SAM31_DOWNLOAD_TITLE"))
+        progress.setCancelButton(None)
+        progress.setWindowModality(Qt.ApplicationModal)
+        progress.show()
+
+        result_path = ""
+        error_text = ""
+        loop = QEventLoop(self)
+        thread = QThread(self)
+        worker = _Sam31DownloadWorker(token, self._sam31_checkpoint_path().parent)
+        token = ""
+        worker.moveToThread(thread)
+
+        def on_finished(path: str, error: str) -> None:
+            nonlocal result_path, error_text
+            result_path = path
+            error_text = error
+            thread.quit()
+            loop.quit()
+
+        thread.started.connect(worker.run)
+        worker.finished.connect(on_finished)
+        worker.finished.connect(worker.deleteLater)
+        thread.finished.connect(thread.deleteLater)
+        thread.start()
+        loop.exec()
+        if thread.isRunning():
+            thread.quit()
+            thread.wait(3000)
+
+        progress.close()
+        if error_text:
+            QMessageBox.critical(
+                self,
+                i18n.t("SAM31_DOWNLOAD_TITLE"),
+                i18n.t("SAM31_DOWNLOAD_FAILED").format(error=error_text),
+            )
+            return False
+
+        checkpoint = Path(result_path)
+        self._update_person_backend_availability()
+        self._update_sky_backend_availability()
+        QMessageBox.information(
+            self,
+            i18n.t("SAM31_DOWNLOAD_TITLE"),
+            i18n.t("SAM31_DOWNLOAD_COMPLETE").format(path=str(checkpoint)),
+        )
         return True
 
     def _confirm_yolo_sam_license_notice(self) -> bool:
@@ -1662,6 +1754,9 @@ class MaskStep(BaseStepWidget):
         elif not self._confirm_sky_license_notice():
             self.mask_preview.set_status_text(i18n.t("SKY_LICENSE_NOTICE_CANCELED"))
             return
+        elif self._uses_sam31_for_primary_mask() and not self._ensure_sam31_checkpoint_available():
+            self.mask_preview.set_status_text(i18n.t("SAM31_DOWNLOAD_CANCELED"))
+            return
 
         self._cleanup_mask_preview_temp()
         self._mask_preview_temp = tempfile.TemporaryDirectory(prefix="stechdrive_mask_preview_")
@@ -1775,6 +1870,9 @@ class MaskStep(BaseStepWidget):
                 return
         elif not self._confirm_sky_license_notice():
             self.mask_preview.set_status_text(i18n.t("SKY_LICENSE_NOTICE_CANCELED"))
+            return
+        elif self._uses_sam31_for_primary_mask() and not self._ensure_sam31_checkpoint_available():
+            self.mask_preview.set_status_text(i18n.t("SAM31_DOWNLOAD_CANCELED"))
             return
 
         self._current_reprocess_active = True

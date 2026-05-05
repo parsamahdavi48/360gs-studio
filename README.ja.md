@@ -32,7 +32,7 @@ Metashapeを使わず、抽出済みの360°画像からCOLMAP Rig形式の視�
 
 - 360°動画からSfM向けフレームを抽出
 - 抽出フレームを単一プレビュー/サムネイル一覧で確認し、Windows Explorer式のサムネイル選択で採用/除外を整理
-- YOLO + SAM2.1、Mask2Former ADE20Kクラス、ローカルSAM3.1プロンプトによるマスク生成
+- YOLO + SAM2.1、Mask2Former ADE20Kクラス、SAM3.1プロンプトによるマスク生成
 - 360°画像の下部に写りやすい撮影者、三脚、手元の検出強化
 - スティッチ境界、白飛び領域、ユーザー指定PNGカスタムマスクの合成
 - 大量画像でも使いやすいキャッシュ付きの単一プレビュー/サムネイル一覧で、マスク結果を確認しながら調整
@@ -50,7 +50,7 @@ setup_windows.bat
 run_gui.bat
 ```
 
-`setup_windows.bat` はPython 3.12を探し、必要な場合はwinget経由でPythonを導入します。その後、`.venv` を作成し、PyTorch CUDA wheel、OpenCV、Pillow、Open3D、ultralytics、PySide6などをインストールして検証します。
+`setup_windows.bat` はPython 3.12を探し、必要な場合はwinget経由でPythonを導入します。その後、`.venv` を作成し、PyTorch CUDA wheel、OpenCV、Pillow、Open3D、ultralytics、PySide6、SAM3.1実行用パッケージなどをインストールして検証します。
 
 `run_gui.bat` は `.venv` を有効化して統合GUIを起動します。既存の `.venv` が正常ならセットアップは再構築せず、その状態を表示して終了します。意図的に作り直す場合は `setup_windows.bat --force` を使います。
 
@@ -62,26 +62,20 @@ update_venv.bat
 
 `requirements/` の固定済み既知良好セットで作り直す場合は `update_venv.bat --locked` を使います。
 
-YOLO/SAM2およびMask2Formerのモデルファイルは初回利用時に自動ダウンロードされる場合があります。ローカルのYOLO/SAM重みは `models/ultralytics/`、Mask2Former重みは `models/mask2former-swin-large-ade-semantic/` に配置できます。ローカルSAM3.1プロンプトマスクでは `models/sam3.1/sam3.1_multiplex.pt` を参照し、自動ダウンロードは行いません。互換性のため、リポジトリ直下の `.pt` も引き続き検出します。リリースZIPにはモデル重み、生成データ、ユーザー設定、ローカルセットアップログは含めていません。これらの第三者ライブラリおよびモデル重みには別ライセンスが適用されます。詳細は [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md) を参照してください。
+YOLO/SAM2、Mask2Former、SAM3.1のモデルファイルは初回利用時にダウンロードされる場合があります。ローカルのYOLO/SAM重みは `models/ultralytics/`、Mask2Former重みは `models/mask2former-swin-large-ade-semantic/`、SAM3.1プロンプトマスクは `models/sam3.1/sam3.1_multiplex.pt` を使います。互換性のため、リポジトリ直下の `.pt` も引き続き検出します。リリースZIPにはモデル重み、生成データ、ユーザー設定、ローカルセットアップログは含めていません。これらの第三者ライブラリおよびモデル重みには別ライセンスが適用されます。詳細は [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md) を参照してください。
 
 ### 任意: SAM3.1プロンプトマスク
 
-SAM3.1は任意機能です。`setup_windows.bat` はMetaの `sam3` packageを入れず、SAM3.1 checkpointもダウンロードしません。checkpointの取得にはユーザー自身のHugging FaceアカウントとSAM Licenseへの同意が必要なためです。
+SAM3.1は任意機能です。`setup_windows.bat` は実行用パッケージを入れますが、checkpointは同梱しません。checkpointの取得にはユーザー自身のHugging FaceアカウントとSAM Licenseへの同意が必要なためです。
 
 SAM3.1は、空マスクや狙った対象だけの補正など、プロンプトで制御したいマスク生成に向いています。一度マスクを生成したあと、漏れがある画像だけを選択し、`tripod`、`hand`、`selfie stick` などを加算したり、`logo`、`sign` などの誤検出を減算したりできます。
 
 1. Hugging Faceアカウントを作成、またはログインします。
 2. Metaの [facebook/sam3.1](https://huggingface.co/facebook/sam3.1) Hugging Faceリポジトリを開き、アクセス申請とSAM Licenseへの同意を行います。Hugging Faceのgated model申請は個人アカウント単位で、ユーザー名やメールアドレスがモデル提供者へ共有される場合があります。
-3. Metaの [SAM 3 GitHubリポジトリ](https://github.com/facebookresearch/sam3) で、現在のライセンス、package、checkpointの説明を確認します。
-4. 承認後、SAM3.1 checkpointをダウンロードし、`models/sam3.1/sam3.1_multiplex.pt` に配置します。`LICENSE` や `README.md` が同梱されている場合は同じフォルダに残してください。
-5. SAM3.1を使う場合だけ、`sam3` packageを追加インストールします。
+3. Hugging Faceのアカウント設定からアクセストークンを作成します。
+4. Step 3で `SAM3.1` を選びます。`models/sam3.1/sam3.1_multiplex.pt` が無い場合、アプリがトークン入力を求めてcheckpointをダウンロードします。このアプリはトークンを保存しません。
 
-```bat
-.\.venv\Scripts\python.exe -m pip install timm ftfy==6.1.1 iopath regex einops triton-windows pycocotools
-.\.venv\Scripts\python.exe -m pip install --no-deps git+https://github.com/facebookresearch/sam3.git
-```
-
-この統合時点では、`sam3` packageは `numpy<2` を宣言しています。一方、このアプリはNumPy 2.x系を使うため、SAM3.1は任意導入のままにしています。`--no-deps` で入れることで検証済みのNumPy 2.x環境を維持できます。`pip check` はこのmetadata conflictを報告する場合がありますが、`setup_windows.bat` はこのSAM3.1由来の既知警告だけを許容します。
+checkpointを手動で `models/sam3.1/sam3.1_multiplex.pt` に置くこともできます。
 
 ## GUIワークフロー
 
@@ -149,7 +143,7 @@ SAM3.1は、空マスクや狙った対象だけの補正など、プロンプ�
 
 ```text
 torch / torchvision / torchaudio from the CUDA 12.8 wheel index
-numpy, opencv-python, Pillow, open3d, ultralytics, transformers, safetensors, tqdm, PySide6
+numpy, opencv-python, Pillow, open3d, ultralytics, transformers, safetensors, tqdm, PySide6, sam3
 ```
 
 `setup_windows.bat` は `requirements/` 以下の固定済み既知良好セットを使い、初回セットアップの再現性を優先します。`update_venv.bat` はデフォルトで互換する最新パッケージを解決し、固定セットで作り直したい場合だけ `--locked` を渡します。
@@ -164,7 +158,7 @@ GUIは以下のCLIエンジンを呼び出しています。必要なら単体�
 | `apply_frame_decisions.py` | CSVの採用/除外判定を反映 | [JP](doc/apply_frame_decisions.md) |
 | `review_frames.py` | フレーム確認GUI | [JP](doc/review_frames.md) |
 | `yolo_mask.py` | YOLO+SAM2.1 マスク生成 | [JP](doc/yolo_mask.ja.md) |
-| `sky_mask.py` | Mask2Former ADE20KラベルまたはローカルSAM3.1プロンプトによるセマンティックマスク生成 | [JP](doc/sky_mask.ja.md) |
+| `sky_mask.py` | Mask2Former ADE20KラベルまたはSAM3.1プロンプトによるセマンティックマスク生成 | [JP](doc/sky_mask.ja.md) |
 | `stitch_mask.py` | スティッチ境界マスク生成 | [JP](doc/stitch_mask.ja.md) |
 | `overexposure_mask.py` | 白飛びマスク生成 | - |
 | `custom_mask.py` | ユーザー指定PNGマスクをAND合成 | [JP](doc/custom_mask.ja.md) |

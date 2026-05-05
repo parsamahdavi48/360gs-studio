@@ -19,6 +19,7 @@ TORCH_INDEX_URL = "https://download.pytorch.org/whl/cu128"
 PYTHON_CACHE_MAX_AGE_SEC = 7 * 24 * 60 * 60
 LOG_FILE: Path | None = None
 REQUIREMENTS_DIR = Path(__file__).resolve().parents[1] / "requirements"
+SAM31_SOURCE_OK_REQUIREMENTS = {"iopath"}
 
 
 def read_requirements_file(name: str) -> list[str]:
@@ -41,6 +42,7 @@ class RequirementSet:
     core: list[str]
     torch: list[str]
     ml: list[str]
+    sam31: list[str]
     test: list[str]
     locked: bool = False
 
@@ -52,11 +54,13 @@ class RequirementSet:
 LOCKED_CORE_REQUIREMENTS = read_requirements_file("core.txt")
 LOCKED_TORCH_REQUIREMENTS = read_requirements_file("torch-cu128.txt")
 LOCKED_ML_REQUIREMENTS = read_requirements_file("ml.txt")
+LOCKED_SAM31_REQUIREMENTS = read_requirements_file("sam31.txt")
 LOCKED_TEST_REQUIREMENTS = read_requirements_file("test.txt")
 
 CORE_REQUIREMENTS = [unpin_requirement(req) for req in LOCKED_CORE_REQUIREMENTS]
 TORCH_REQUIREMENTS = [unpin_requirement(req) for req in LOCKED_TORCH_REQUIREMENTS]
 ML_REQUIREMENTS = [unpin_requirement(req) for req in LOCKED_ML_REQUIREMENTS]
+SAM31_REQUIREMENTS = [unpin_requirement(req) for req in LOCKED_SAM31_REQUIREMENTS]
 TEST_REQUIREMENTS = [unpin_requirement(req) for req in LOCKED_TEST_REQUIREMENTS]
 
 
@@ -66,6 +70,7 @@ def requirements_for_mode(locked: bool) -> RequirementSet:
             core=LOCKED_CORE_REQUIREMENTS,
             torch=LOCKED_TORCH_REQUIREMENTS,
             ml=LOCKED_ML_REQUIREMENTS,
+            sam31=LOCKED_SAM31_REQUIREMENTS,
             test=LOCKED_TEST_REQUIREMENTS,
             locked=True,
         )
@@ -73,6 +78,7 @@ def requirements_for_mode(locked: bool) -> RequirementSet:
         core=CORE_REQUIREMENTS,
         torch=TORCH_REQUIREMENTS,
         ml=ML_REQUIREMENTS,
+        sam31=SAM31_REQUIREMENTS,
         test=TEST_REQUIREMENTS,
         locked=False,
     )
@@ -89,6 +95,10 @@ import open3d
 import ultralytics
 import tqdm
 import PySide6
+import sam3
+import timm
+import ftfy
+import iopath
 
 print("Python", sys.version.split()[0])
 print("torch", torch.__version__, "cuda", torch.version.cuda, "available", torch.cuda.is_available())
@@ -100,6 +110,8 @@ print("Pillow", PIL.__version__)
 print("open3d", open3d.__version__)
 print("ultralytics", ultralytics.__version__)
 print("PySide6", PySide6.__version__)
+print("sam3", getattr(sam3, "__version__", "unknown"))
+print("timm", timm.__version__)
 
 if REQUIRE_CUDA and not torch.cuda.is_available():
     raise SystemExit("CUDA is not available to PyTorch")
@@ -463,6 +475,70 @@ def pip_preflight(
     return False
 
 
+def no_deps_requirements(requirements: list[str]) -> list[str]:
+    return [
+        requirement
+        for requirement in requirements
+        if requirement.lower().startswith("sam3 @ ") or "github.com/facebookresearch/sam3" in requirement.lower()
+    ]
+
+
+def regular_requirements(requirements: list[str]) -> list[str]:
+    no_deps = set(no_deps_requirements(requirements))
+    return [requirement for requirement in requirements if requirement not in no_deps]
+
+
+def wheel_preflight_requirements(requirements: list[str]) -> list[str]:
+    return [
+        requirement
+        for requirement in regular_requirements(requirements)
+        if "://" not in requirement and "git+" not in requirement.lower()
+        and unpin_requirement(requirement).lower() not in SAM31_SOURCE_OK_REQUIREMENTS
+    ]
+
+
+def is_optional_sam3_numpy_conflict(line: str) -> bool:
+    normalized = line.strip().lower()
+    return (
+        normalized.startswith("sam3 ")
+        and "numpy" in normalized
+        and "<2" in normalized
+        and ("has requirement" in normalized or "requires" in normalized)
+    )
+
+
+def split_pip_check_errors(text: str) -> tuple[list[str], list[str]]:
+    errors: list[str] = []
+    ignored: list[str] = []
+    for line in text.splitlines():
+        stripped = line.strip()
+        if not stripped:
+            continue
+        if is_optional_sam3_numpy_conflict(stripped):
+            ignored.append(stripped)
+        else:
+            errors.append(stripped)
+    return errors, ignored
+
+
+def run_pip_check(py: Path) -> None:
+    result = run([py, "-m", "pip", "check"], check=False, capture=True)
+    output = ((result.stdout or "") + "\n" + (result.stderr or "")).strip()
+    if result.returncode == 0:
+        if output:
+            emit(output)
+        return
+
+    errors, ignored = split_pip_check_errors(output)
+    if errors:
+        if output:
+            emit(output)
+        raise subprocess.CalledProcessError(result.returncode, [str(py), "-m", "pip", "check"], output, "")
+    emit("[INFO] pip check passed with optional SAM3.1 NumPy metadata warning.")
+    for warning in ignored:
+        emit(f"[INFO] Ignored: {warning}")
+
+
 def preflight_version(
     runner_python: Path,
     version: tuple[int, int],
@@ -478,6 +554,10 @@ def preflight_version(
     if not pip_preflight(runner_python, version, requirements.ml, no_deps=True):
         emit(f"[WARN] Python {version_label(version)} rejected by ML dependency preflight.")
         return False, "ML dependency wheels are not available"
+    sam31_preflight = wheel_preflight_requirements(requirements.sam31)
+    if sam31_preflight and not pip_preflight(runner_python, version, sam31_preflight, no_deps=True):
+        emit(f"[WARN] Python {version_label(version)} rejected by SAM3.1 dependency preflight.")
+        return False, "SAM3.1 dependency wheels are not available"
     return True, "preflight passed"
 
 
@@ -548,9 +628,15 @@ def create_candidate_venv(
         run([py, "-m", "pip", "install", "--upgrade", *requirements.core])
         run([py, "-m", "pip", "install", "--upgrade", *requirements.torch, "--index-url", TORCH_INDEX_URL])
         run([py, "-m", "pip", "install", "--upgrade", *requirements.ml])
+        sam31_regular = regular_requirements(requirements.sam31)
+        sam31_no_deps = no_deps_requirements(requirements.sam31)
+        if sam31_regular:
+            run([py, "-m", "pip", "install", "--upgrade", *sam31_regular])
+        if sam31_no_deps:
+            run([py, "-m", "pip", "install", "--upgrade", "--no-deps", *sam31_no_deps])
         if run_tests:
             run([py, "-m", "pip", "install", "--upgrade", *requirements.test])
-        run([py, "-m", "pip", "check"])
+        run_pip_check(py)
 
         smoke_code = "REQUIRE_CUDA = " + repr(require_cuda) + "\n" + SMOKE_TEST
         run([py, "-c", smoke_code])

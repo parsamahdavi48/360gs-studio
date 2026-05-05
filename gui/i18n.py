@@ -280,6 +280,21 @@ _JA: dict[str, str] = {
     "SAM31_APPLY_SUBTRACT": "減算",
     "SAM31_CUSTOM_PROMPT_PLACEHOLDER": "追加プロンプト: tripod, hand; selfie stick",
     "SAM31_SUBTRACT_PROMPT_PLACEHOLDER": "減算プロンプト: pictogram, logo",
+    "SAM31_DOWNLOAD_TITLE": "SAM3.1モデルの準備",
+    "SAM31_DOWNLOAD_BODY": (
+        "SAM3.1のチェックポイントがまだありません。\n\n"
+        "Hugging Faceで facebook/sam3.1 の利用申請とSAM Licenseへの同意が完了していれば、"
+        "アクセストークンを使ってこのアプリのモデルフォルダへダウンロードできます。\n\n"
+        "保存先: {path}\n\n"
+        "ダウンロードしますか？"
+    ),
+    "SAM31_TOKEN_TITLE": "Hugging Faceトークン",
+    "SAM31_TOKEN_BODY": "Hugging Faceのアクセストークンを入力してください。このアプリはトークンを保存しません。",
+    "SAM31_TOKEN_EMPTY": "アクセストークンが入力されていません。",
+    "SAM31_DOWNLOAD_PROGRESS": "SAM3.1チェックポイントをダウンロードしています。完了まで時間がかかる場合があります。",
+    "SAM31_DOWNLOAD_COMPLETE": "SAM3.1チェックポイントを保存しました:\n{path}",
+    "SAM31_DOWNLOAD_FAILED": "SAM3.1チェックポイントをダウンロードできませんでした:\n{error}",
+    "SAM31_DOWNLOAD_CANCELED": "SAM3.1の準備をキャンセルしました",
     "OVEREXPOSURE": "白飛びマスク",
     "OVEREXPOSURE_THRESHOLD": "白飛び閾値 (RGB)",
     "OVEREXPOSURE_THRESHOLD_COMPACT": "閾値",
@@ -445,7 +460,7 @@ _JA: dict[str, str] = {
     "SKY_LICENSE_NOTICE_TITLE": "セマンティックマスクモデルの利用条件",
     "SKY_LICENSE_NOTICE_BODY": (
         "セマンティック/プロンプトマスク機能では、第三者が提供するMask2Former ADE20Kモデルファイル、"
-        "Transformers関連ライブラリ、またはユーザーが配置したMeta SAM3.1チェックポイントとsam3 packageを使用します。\n\n"
+        "Transformers関連ライブラリ、またはMeta SAM3.1チェックポイントとsam3 packageを使用します。\n\n"
         "このアプリ本体のソースコードはMIT Licenseですが、マスク生成で使用されるモデル、"
         "SAM Materials、関連ライブラリ、学習元データセットには別のライセンス条件や利用条件が適用されます。\n\n"
         "- Mask2Former: MIT License\n"
@@ -453,7 +468,7 @@ _JA: dict[str, str] = {
         "- Meta SAM3.1: SAM License\n"
         "- ADE20K dataset: データセット側の利用条件が適用されます\n\n"
         "モデル重みはこのアプリには同梱されていません。Mask2Formerは初回使用時にユーザー環境へダウンロードされる場合があります。"
-        "SAM3.1のチェックポイントとsam3 packageは自動ダウンロードせず、ユーザーが別途用意します。\n\n"
+        "SAM3.1チェックポイントは、Hugging Faceで利用申請とSAM Licenseへの同意が完了している場合にダウンロードできます。\n\n"
         "商用利用、再配布、社内展開、製品組み込み等における各ライセンス条件への適合は、利用者の責任で確認してください。"
     ),
     "SKY_LICENSE_NOTICE_CANCELED": "セマンティックマスクの実行をキャンセルしました",
@@ -789,6 +804,21 @@ _EN: dict[str, str] = {
     "SAM31_APPLY_SUBTRACT": "Subtract",
     "SAM31_CUSTOM_PROMPT_PLACEHOLDER": "Add prompts: tripod, hand; selfie stick",
     "SAM31_SUBTRACT_PROMPT_PLACEHOLDER": "Subtract prompts: pictogram, logo",
+    "SAM31_DOWNLOAD_TITLE": "Prepare SAM3.1 Model",
+    "SAM31_DOWNLOAD_BODY": (
+        "The SAM3.1 checkpoint is not available yet.\n\n"
+        "If your Hugging Face account has access to facebook/sam3.1 and you have accepted the SAM License, "
+        "this app can download the checkpoint into its models folder with an access token.\n\n"
+        "Destination: {path}\n\n"
+        "Download it now?"
+    ),
+    "SAM31_TOKEN_TITLE": "Hugging Face Token",
+    "SAM31_TOKEN_BODY": "Enter your Hugging Face access token. This app does not save the token.",
+    "SAM31_TOKEN_EMPTY": "No access token was entered.",
+    "SAM31_DOWNLOAD_PROGRESS": "Downloading the SAM3.1 checkpoint. This may take a while.",
+    "SAM31_DOWNLOAD_COMPLETE": "SAM3.1 checkpoint saved:\n{path}",
+    "SAM31_DOWNLOAD_FAILED": "Could not download the SAM3.1 checkpoint:\n{error}",
+    "SAM31_DOWNLOAD_CANCELED": "SAM3.1 setup canceled",
     "OVEREXPOSURE": "Overexposure Mask",
     "OVEREXPOSURE_THRESHOLD": "Overexposure Threshold (RGB)",
     "OVEREXPOSURE_THRESHOLD_COMPACT": "Threshold",
@@ -954,7 +984,7 @@ _EN: dict[str, str] = {
     "SKY_LICENSE_NOTICE_TITLE": "Semantic Mask Model Terms",
     "SKY_LICENSE_NOTICE_BODY": (
         "The semantic/prompt mask feature uses third-party Mask2Former ADE20K model files, "
-        "Transformers-related libraries, or a user-provided Meta SAM3.1 checkpoint and sam3 package.\n\n"
+        "Transformers-related libraries, or a Meta SAM3.1 checkpoint and sam3 package.\n\n"
         "This application's own source code is licensed under the MIT License, but the models, SAM Materials, "
         "related libraries, and training dataset used by mask generation are governed by separate license terms.\n\n"
         "- Mask2Former: MIT License\n"
@@ -962,7 +992,7 @@ _EN: dict[str, str] = {
         "- Meta SAM3.1: SAM License\n"
         "- ADE20K dataset: governed by the dataset provider's terms\n\n"
         "Model weights are not included with this application. Mask2Former may be downloaded to the user's environment on first use. "
-        "SAM3.1 checkpoints and the sam3 package are not downloaded automatically and must be provided by the user.\n\n"
+        "SAM3.1 checkpoints can be downloaded after Hugging Face access approval and SAM License acceptance.\n\n"
         "Users are responsible for confirming compliance for commercial use, redistribution, internal deployment, or product integration."
     ),
     "SKY_LICENSE_NOTICE_CANCELED": "Semantic mask run canceled",
@@ -1099,7 +1129,8 @@ _TIPS_JA: dict[str, str] = {
     "RUN_ALL": "YOLO人物検出 → スティッチマスク → 白飛びマスクの全工程を順番に実行",
     "RUN_YOLO_STITCH": "YOLO人物検出 → スティッチマスクの2工程を実行 (白飛びは含まない)",
     "PERSON_MODEL": "マスク生成に使うモデル。YOLO/SAM2.1はCOCOクラス、Mask2FormerはADE20Kクラス、SAM3.1は英語プロンプトを使います",
-    "PERSON_MODEL_SAM31": "models/sam3.1/sam3.1_multiplex.pt がある場合に使えるテキストプロンプト型のマスクbackendです",
+    "PERSON_MODEL_SAM31": "英語プロンプトで対象を指定してマスクを生成します。チェックポイントが無い場合は初回実行時にダウンロードできます",
+    "SAM31_CHECKPOINT_DOWNLOAD": "SAM3.1チェックポイントが無い場合は初回実行時にHugging Faceからダウンロードできます。利用申請とSAM Licenseへの同意が必要です",
     "SAM31_APPLY_MODE": "SAM3.1専用。生成結果の書き込み方を選びます。再生成は作り直し、加算は既存マスクへ検出範囲を追加、減算は検出範囲をマスクから外します。生成後の漏れや誤検出を直すときに使います",
     "SAM31_CUSTOM_PROMPT": "SAM3.1で追加検出したい対象を英語で指定します。生成後に漏れた物だけをプロンプトで拾わせてマスクへ加算できます。カンマ、セミコロン、改行で区切れます",
     "SAM31_SUBTRACT_PROMPT": "SAM3.1でマスクから外したい対象を英語で指定します。誤って拾ったロゴや標識などをプロンプトで検出し、既存マスクから減算できます。区切り方は追加プロンプトと同じです",
@@ -1116,7 +1147,7 @@ _TIPS_JA: dict[str, str] = {
     "OVEREXPOSURE_THRESHOLD": "RGB全チャンネルがこの8bit相当値を超えるピクセルを白飛びと判定。16bit画像では同じ比率に換算。GUI範囲は 1〜254",
     "OVEREXPOSURE_DILATE": "白飛び領域を膨張させるピクセル数。既定は1px。0で無効、GUI範囲は 0〜128",
     "SKY_MODEL": "主マスク生成に使うモデルは上のモデル欄で選びます",
-    "SKY_MODEL_SAM31": "models/sam3.1/sam3.1_multiplex.pt がある場合に使える実験バックエンドです",
+    "SKY_MODEL_SAM31": "英語プロンプトで対象を指定してマスクを生成します。チェックポイントが無い場合は初回実行時にダウンロードできます",
     "SKY_MODE": "投影補助の方式。高品質はエクイレクタングラー直処理、上部投影、下部投影を合成します",
     "SKY_INFERENCE_SIZE": "大きいほど細部や境界が安定しやすくなりますが、GPUメモリと処理時間が増えます。この画面で変更できるのはMask2Formerだけです。YOLO/SAM2.1とSAM3.1は固定サイズで処理します",
     "SKY_EXPAND": "検出した空マスクをピクセル単位で拡張/収縮します。正の値で空の除外範囲を広げ、負の値で狭めます",
@@ -1244,7 +1275,8 @@ _TIPS_EN: dict[str, str] = {
     "RUN_ALL": "Run YOLO person detection, stitch mask, and overexposure mask in sequence",
     "RUN_YOLO_STITCH": "Run YOLO person detection then stitch mask (no overexposure)",
     "PERSON_MODEL": "Mask generation model. YOLO/SAM2.1 uses COCO classes, Mask2Former uses ADE20K classes, and SAM3.1 uses English text prompts",
-    "PERSON_MODEL_SAM31": "Text-prompt mask backend available when models/sam3.1/sam3.1_multiplex.pt exists",
+    "PERSON_MODEL_SAM31": "Generate masks with English text prompts. If the checkpoint is missing, it can be downloaded on first use",
+    "SAM31_CHECKPOINT_DOWNLOAD": "If the SAM3.1 checkpoint is missing, it can be downloaded from Hugging Face on first use. Access approval and SAM License acceptance are required",
     "SAM31_APPLY_MODE": "SAM3.1 only. Choose how to write generated results. Replace rebuilds the mask, Add adds detected regions to an existing mask, and Subtract removes detected regions from it. Use this to fix misses or false detections after generation",
     "SAM31_CUSTOM_PROMPT": "English prompts for extra targets to detect with SAM3.1. Use this to pick up missed objects and add them to the mask after generation. Separate prompts with commas, semicolons, or new lines",
     "SAM31_SUBTRACT_PROMPT": "English prompts for targets to remove from the SAM3.1 result. Use this to detect false positives such as logos or signs and subtract them from an existing mask. Separators match the add prompt field",
@@ -1261,7 +1293,7 @@ _TIPS_EN: dict[str, str] = {
     "OVEREXPOSURE_THRESHOLD": "Pixels with all RGB channels above this 8-bit-equivalent value are flagged as blown-out. 16-bit images are scaled to the same ratio. GUI range: 1-254",
     "OVEREXPOSURE_DILATE": "Dilate blown-out regions by N pixels. Default is 1px. 0 = disabled; GUI range: 0-128",
     "SKY_MODEL": "Choose the primary mask model in the model field above",
-    "SKY_MODEL_SAM31": "Experimental backend available when models/sam3.1/sam3.1_multiplex.pt exists",
+    "SKY_MODEL_SAM31": "Generate masks with English text prompts. If the checkpoint is missing, it can be downloaded on first use",
     "SKY_MODE": "Projection-assist mode. High Quality combines direct equirectangular inference with top and bottom projection views",
     "SKY_INFERENCE_SIZE": "Larger values can improve detail and boundaries but use more GPU memory and time. Only Mask2Former can be changed here. YOLO/SAM2.1 and SAM3.1 use fixed processing sizes",
     "SKY_EXPAND": "Expand or shrink the detected sky mask in pixels. Positive values exclude more sky; negative values keep a tighter boundary",
