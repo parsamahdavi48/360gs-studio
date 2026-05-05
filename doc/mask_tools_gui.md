@@ -100,7 +100,7 @@ run_gui.bat --scene ./scene01
   - Use the icons at the right side of the preview header to switch between single preview and thumbnail list.
   - Thumbnail mode shows existing masks as red overlays. The mask display icon toggles the overlay on and off without rebuilding thumbnails.
   - Double-clicking a thumbnail returns to single preview on that image.
-  - The projection button switches 360° equirectangular preview to a square 90° FOV perspective view. Drag the preview to look around; the mouse wheel still performs 2D zoom on the displayed image. Mask overlays are reflected in the perspective view.
+  - The projection button switches 360° equirectangular preview to a square 90° FOV perspective view. Drag the preview to look around; the mouse wheel still performs 2D zoom on the displayed image. Mask overlays are reflected in the perspective view. The perspective view uses OpenGL/GPU acceleration when available and falls back to CPU rendering otherwise.
   - `Ctrl` click, `Ctrl+Shift` click, and `Shift` click follow Windows Explorer-style multi-selection.
   - Switching to thumbnail mode focuses the thumbnail list, so arrow keys move the visible thumbnail selection.
   - In thumbnail mode, `Regenerate N Masks` rebuilds only the selected images with the current mask-generation settings and saves them to `masks/`.
