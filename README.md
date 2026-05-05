@@ -26,20 +26,20 @@ You can also skip Metashape and export a COLMAP Rig viewpoint dataset from extra
 
 ### 3. Mask Preprocessing for Normal Photos or Video Frames
 
-For DSLR, mirrorless, smartphone, or normal video image sequences, Step 3 can generate YOLO/SAM masks for people and vehicles, Mask2Former/SAM3.1 masks for sky or other targets, plus overexposure masks. This is useful as a mask-preparation stage before sending images to SfM software.
+For DSLR, mirrorless, smartphone, or normal video image sequences, Step 3 can generate fast YOLO/SAM2.1 masks for people, vehicles, and other selectable object types, higher-accuracy SAM3.1 prompt masks for people and sky, optional Mask2Former sky masks, plus overexposure masks. This is useful as a mask-preparation stage before sending images to SfM software.
 
 ## Highlights
 
-- Extract SfM-friendly frames from 360° video with pair-based interval analysis, automatic scene-distance thresholds, and Step 2 review flags for redundant, high-novelty, weak-match, motion-blur, and low-texture candidates
-- Review extracted frames in single-preview or thumbnail-list mode and apply keep/drop decisions, including Windows Explorer-style thumbnail selection. 360° images can also be inspected in an OpenGL-accelerated 90° FOV perspective view when available
-- Generate masks for people, sky, and other targets with YOLO + SAM2.1, Mask2Former ADE20K classes, or SAM3.1 prompts
-- Improve detection near the bottom of 360° images for camera operators, tripods, and hands
-- Mask stitch seams, overexposed regions, and user-provided PNG custom masks
-- Preview mask results in single-preview or thumbnail-list mode while tuning settings, with cached thumbnails for large image sets. Mask overlays are reflected in both 360° and OpenGL-accelerated perspective preview views when available
-- Select only frames with mask misses and regenerate them with adjusted settings; with SAM3.1, use prompts to add missed targets to an existing mask or subtract false detections
-- Convert Metashape SfM results for LichtFeld Studio, Postshot, and Brush
-- Export COLMAP Rig viewpoint datasets and optionally run COLMAP/GLOMAP
-- Windows setup scripts and a Japanese/English GUI
+- Extract 360° video into still frames that are practical for SfM and 3DGS training. The GUI can thin footage for walking shots or aerial/distant scenes, and it marks frames that may need review because they are blurry, too similar, or contain a large viewpoint change.
+- Review extracted frames in a large single-image view or a thumbnail list, then mark unwanted frames as keep/drop decisions. For 360° images, the 90° FOV perspective view lets you inspect details in a normal-camera-like view.
+- Generate masks for people, the camera operator, tripods, hands, vehicles, sky, blown-out highlights, and stitch seams. Use YOLO/SAM2.1 when you want fast person-focused masks, or SAM3.1 when you want higher-accuracy people and sky masks plus prompt-based cleanup after generation.
+- Preview mask results before saving and inspect them in the thumbnail list. When only a few frames have misses or false detections, regenerate just those frames instead of rerunning the whole image set.
+- With SAM3.1, add missed targets such as tripods or subtract false detections such as signs and logos from existing masks. This reduces the amount of manual mask painting needed after the first pass.
+- Mask2Former remains available as a helper option when you want to try sky masks without setting up SAM3.1.
+- Use the same mask-preparation workflow for normal photo sets or normal video frame sequences, not only 360° images. This is useful before sending images to SfM software.
+- Import Metashape SfM results and export viewpoint images, masks, and `transforms.json` for Postshot, Brush, and LichtFeld Studio. Output profiles and viewpoints can be chosen in the GUI.
+- Skip Metashape when needed by exporting COLMAP Rig viewpoint images and masks from extracted 360° frames. The GUI can optionally continue into COLMAP/GLOMAP SfM processing.
+- Prepare the Windows environment with setup scripts that handle Python, FFmpeg/FFprobe, and the main Python packages. Normal use starts from `run_gui.bat`.
 
 ## Easy Setup
 
@@ -50,17 +50,25 @@ setup_windows.bat
 run_gui.bat
 ```
 
-`setup_windows.bat` looks for Python 3.12 and FFmpeg/FFprobe and can install missing system dependencies through winget when needed. It then creates `.venv`, installs packages such as PyTorch CUDA wheels, OpenCV, Pillow, Open3D, ultralytics, PySide6, and the SAM3.1 runtime, and verifies the environment.
+The first `setup_windows.bat` run can take a while. It checks Python 3.12, FFmpeg/FFprobe, GPU-oriented Python packages, and prepares missing pieces where it can.
 
-`run_gui.bat` activates `.venv` and launches the integrated GUI. If an existing `.venv` is already healthy, setup reports that state and does not rebuild it. Use `setup_windows.bat --force` when you intentionally want to recreate the environment.
+Python packages are installed into a virtual environment dedicated to this app, so your everyday Python environment is less likely to be affected. After setup completes, normal use is just running `run_gui.bat` to launch the GUI.
 
-To update an existing `.venv` to the latest compatible package set, run:
+### What Setup Does Internally
+
+`setup_windows.bat` looks for Python 3.12 and FFmpeg/FFprobe and can install missing system dependencies through winget when needed. It then creates this app's dedicated virtual environment under `.venv/`, installs packages such as PyTorch CUDA wheels, OpenCV, Pillow, Open3D, ultralytics, PySide6, and the SAM3.1 runtime, and verifies the environment.
+
+Python packages are kept inside `.venv/`, so they are not normally installed into the system-wide Python environment or other projects. `.venv/` is an internal working directory, and you usually do not need to edit it manually.
+
+### Updating or Rebuilding the Environment
+
+This is usually unnecessary. To update an existing environment to the latest compatible package set, run:
 
 ```bat
 update_venv.bat
 ```
 
-To rebuild with the pinned known-good package set from `requirements/`, run `update_venv.bat --locked`.
+To rebuild with the pinned known-good package set from `requirements/`, run `update_venv.bat --locked`. To recreate the environment from scratch, run `setup_windows.bat --force`.
 
 YOLO/SAM2, Mask2Former, and SAM3.1 model weights may be downloaded on first use. Local YOLO/SAM weights can be placed under `models/ultralytics/`; local Mask2Former weights can be placed under `models/mask2former-swin-large-ade-semantic/`; SAM3.1 prompt masking uses `models/sam3.1/sam3.1_multiplex.pt`. Legacy `.pt` files in the repository root are still detected for compatibility. Release ZIP assets do not include model weights, generated scene data, user settings, or local setup logs. These third-party libraries and model weights are governed by separate license terms; see [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md).
 
@@ -127,7 +135,7 @@ Detailed GUI docs:
 2. Extract SfM-friendly frames in Step 1.
 3. Review low-quality or unnecessary frames in Step 2.
 4. Generate masks for people, camera operators, tripods, sky, or similar SfM-unfriendly regions in Step 3. `Quality: High` is the recommended starting point.
-5. If masks still leak through, switch only the affected images to `Quality: Best` or regenerate them with Mask2Former/SAM3.1.
+5. If masks still leak through, switch only the affected images to `Quality: Best` or regenerate them with SAM3.1. Mask2Former is also available when you want to try sky masks without setting up SAM3.1.
 6. Enable stitch seam, overexposure, and custom masks when they match the source material.
 7. Import the generated `masks/` folder into Metashape as per-image masks, then run SfM.
 8. Use Step 4 with the Metashape XML/PLY result to export training images, masks, and `transforms.json`.
