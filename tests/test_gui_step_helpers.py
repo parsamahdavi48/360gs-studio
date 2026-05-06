@@ -161,42 +161,53 @@ def test_spheresfm_builder_uses_spherical_camera_and_mask_path(tmp_path: Path) -
     sparse = tmp_path / "project" / "sparse"
     images.mkdir()
     masks.mkdir()
+    preflight_script = tmp_path / "spheresfm_gpu_preflight.py"
+    preflight_script.write_text("", encoding="utf-8")
     script = tmp_path / "prepare_spheresfm_project.py"
     script.write_text("", encoding="utf-8")
 
     commands = build_spheresfm_commands(
         SphereSfmCommand(
             python_executable="python.exe",
+            preflight_script=preflight_script,
             prepare_script=script,
             colmap="spheresfm_colmap.exe",
             images_dir=images,
             source_masks_dir=masks,
             prepared_masks_dir=prepared_masks,
+            preflight_dir=tmp_path / "project" / "preflight",
             database=tmp_path / "project" / "database.db",
             sparse=sparse,
             camera_params="1,32,16",
             use_masks=True,
             matcher="spatial",
-            feature_preset="robust",
+            quality_preset="quality",
             pose_path=str(tmp_path / "POS.txt"),
         )
     )
 
     assert [phase for phase, _cmd in commands] == [
+        "spheresfm_preflight",
         "spheresfm_prepare",
         "spheresfm_database",
         "spheresfm_feature",
         "spheresfm_match",
         "spheresfm_mapper",
     ]
-    feature_cmd = commands[2][1]
+    preflight_cmd = commands[0][1]
+    assert preflight_cmd[0:3] == ["python.exe", "-u", str(preflight_script)]
+    assert preflight_cmd[preflight_cmd.index("--work-dir") + 1] == str(tmp_path / "project" / "preflight")
+    feature_cmd = commands[3][1]
     assert feature_cmd[0:2] == ["spheresfm_colmap.exe", "feature_extractor"]
     assert feature_cmd[feature_cmd.index("--ImageReader.camera_model") + 1] == "SPHERE"
     assert feature_cmd[feature_cmd.index("--ImageReader.camera_params") + 1] == "1,32,16"
     assert feature_cmd[feature_cmd.index("--ImageReader.mask_path") + 1] == str(prepared_masks)
     assert feature_cmd[feature_cmd.index("--SiftExtraction.max_num_features") + 1] == "32768"
-    assert commands[3][1][1] == "spatial_matcher"
-    assert commands[4][1][commands[4][1].index("--Mapper.sphere_camera") + 1] == "1"
+    assert commands[4][1][commands[4][1].index("--SiftMatching.guided_matching") + 1] == "1"
+    assert commands[4][1][1] == "spatial_matcher"
+    assert commands[5][1][commands[5][1].index("--Mapper.sphere_camera") + 1] == "1"
+    assert commands[5][1][commands[5][1].index("--Mapper.multiple_models") + 1] == "0"
+    assert commands[5][1][commands[5][1].index("--Mapper.ba_global_max_num_iterations") + 1] == "75"
     assert sparse.is_dir()
 
 

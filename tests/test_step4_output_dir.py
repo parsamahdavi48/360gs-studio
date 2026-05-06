@@ -697,6 +697,7 @@ def test_spheresfm_method_can_queue_3dgut_export_without_projection_views(tmp_pa
     commands = step.build_commands()
 
     assert [phase for phase, _cmd in commands] == [
+        "spheresfm_preflight",
         "spheresfm_prepare",
         "spheresfm_database",
         "spheresfm_feature",
@@ -705,15 +706,18 @@ def test_spheresfm_method_can_queue_3dgut_export_without_projection_views(tmp_pa
         "spheresfm_transforms",
     ]
     assert commands[0][1][commands[0][1].index("--colmap") + 1] == str(fake_colmap)
-    assert commands[2][1][commands[2][1].index("--ImageReader.camera_model") + 1] == "SPHERE"
-    assert commands[2][1][commands[2][1].index("--ImageReader.camera_params") + 1] == "1,32,16"
-    assert commands[2][1][commands[2][1].index("--ImageReader.mask_path") + 1] == str(
+    assert commands[3][1][commands[3][1].index("--ImageReader.camera_model") + 1] == "SPHERE"
+    assert commands[3][1][commands[3][1].index("--ImageReader.camera_params") + 1] == "1,32,16"
+    assert commands[3][1][commands[3][1].index("--ImageReader.mask_path") + 1] == str(
         tmp_path / "output" / "spheresfm" / "masks_colmap"
     )
-    assert commands[4][1][commands[4][1].index("--Mapper.sphere_camera") + 1] == "1"
-    assert commands[5][1][3] == str(tmp_path / "output" / "spheresfm" / "sparse")
-    assert commands[5][1][4] == str(tmp_path / "output" / "spheresfm" / "3dgut")
-    assert commands[5][1][commands[5][1].index("--image-path-mode") + 1] == "relative-to-output"
+    assert commands[4][1][commands[4][1].index("--SequentialMatching.overlap") + 1] == "10"
+    assert commands[5][1][commands[5][1].index("--Mapper.sphere_camera") + 1] == "1"
+    assert commands[5][1][commands[5][1].index("--Mapper.multiple_models") + 1] == "0"
+    assert commands[5][1][commands[5][1].index("--Mapper.ba_global_max_num_iterations") + 1] == "33"
+    assert commands[6][1][3] == str(tmp_path / "output" / "spheresfm" / "sparse")
+    assert commands[6][1][4] == str(tmp_path / "output" / "spheresfm" / "3dgut")
+    assert commands[6][1][commands[6][1].index("--image-path-mode") + 1] == "relative-to-output"
 
 
 def test_spheresfm_method_can_queue_projected_cubemap_export(tmp_path: Path) -> None:
@@ -738,6 +742,7 @@ def test_spheresfm_method_can_queue_projected_cubemap_export(tmp_path: Path) -> 
     commands = step.build_commands()
 
     assert [phase for phase, _cmd in commands] == [
+        "spheresfm_preflight",
         "spheresfm_prepare",
         "spheresfm_database",
         "spheresfm_feature",
@@ -746,8 +751,8 @@ def test_spheresfm_method_can_queue_projected_cubemap_export(tmp_path: Path) -> 
         "spheresfm_transforms",
         "spheresfm_cubemap",
     ]
-    transform_cmd = commands[5][1]
-    cubemap_cmd = commands[6][1]
+    transform_cmd = commands[6][1]
+    cubemap_cmd = commands[7][1]
     assert transform_cmd[4] == str(tmp_path / "output" / "spheresfm" / "equirect")
     assert transform_cmd[transform_cmd.index("--image-path-mode") + 1] == "relative"
     assert cubemap_cmd[3] == str(tmp_path / "output" / "spheresfm" / "equirect")
@@ -789,6 +794,24 @@ def test_colmap_user_preferences_restore_executable_and_pipeline_choices(
     assert second.glomap_exec_browse.text().endswith("glomap.exe")
     assert second.colmap_matcher_combo.currentData() == "exhaustive"
     assert second.colmap_mapper_combo.currentData() == "incremental"
+
+
+def test_spheresfm_user_preferences_migrate_feature_preset_to_quality(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    _app()
+    settings_path = tmp_path / "settings.json"
+    monkeypatch.setenv("STECHDRIVE_USER_SETTINGS_PATH", str(settings_path))
+    settings_path.write_text(
+        json.dumps({"step4_colmap": {"spheresfm_feature_preset": "robust"}}),
+        encoding="utf-8",
+    )
+
+    step = CubemapStep(Path.cwd())
+    step.enable_user_preferences()
+
+    assert step.spheresfm_quality_combo.currentData() == "quality"
 
 
 def test_metashape_import_uses_scene_images_and_lf_ply(tmp_path: Path) -> None:

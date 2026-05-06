@@ -69,17 +69,19 @@ class ColmapSfmCommand:
 @dataclass(frozen=True)
 class SphereSfmCommand:
     python_executable: str
+    preflight_script: Path
     prepare_script: Path
     colmap: str
     images_dir: Path
     source_masks_dir: Path
     prepared_masks_dir: Path
+    preflight_dir: Path
     database: Path
     sparse: Path
     camera_params: str
     use_masks: bool
     matcher: str
-    feature_preset: str
+    quality_preset: str
     pose_path: str = ""
 
 
@@ -271,7 +273,7 @@ def _spheresfm_feature_options(preset: str) -> list[str]:
     if preset == "fast":
         max_image_size = "3200"
         max_num_features = "8192"
-    elif preset == "robust":
+    elif preset in {"quality", "robust"}:
         max_image_size = "5000"
         max_num_features = "32768"
     else:
@@ -287,9 +289,109 @@ def _spheresfm_feature_options(preset: str) -> list[str]:
     ]
 
 
+def _spheresfm_matching_options(preset: str) -> list[str]:
+    max_num_matches = "16384" if preset == "fast" else "32768"
+    options = [
+        "--SiftMatching.max_error",
+        "4",
+        "--SiftMatching.min_num_inliers",
+        "50",
+        "--SiftMatching.max_num_matches",
+        max_num_matches,
+    ]
+    if preset in {"quality", "robust"}:
+        options.extend(["--SiftMatching.guided_matching", "1"])
+    return options
+
+
+def _spheresfm_sequential_overlap(preset: str) -> str:
+    if preset == "fast":
+        return "5"
+    if preset in {"quality", "robust"}:
+        return "15"
+    return "10"
+
+
+def _spheresfm_mapper_options(preset: str) -> list[str]:
+    options = [
+        "--Mapper.ba_refine_focal_length",
+        "0",
+        "--Mapper.ba_refine_principal_point",
+        "0",
+        "--Mapper.ba_refine_extra_params",
+        "0",
+        "--Mapper.sphere_camera",
+        "1",
+        "--Mapper.multiple_models",
+        "0",
+    ]
+    if preset == "fast":
+        options.extend(
+            [
+                "--Mapper.ba_local_max_num_iterations",
+                "12",
+                "--Mapper.ba_global_max_num_iterations",
+                "25",
+                "--Mapper.ba_local_max_refinements",
+                "1",
+                "--Mapper.ba_global_max_refinements",
+                "2",
+                "--Mapper.ba_global_images_ratio",
+                "1.3",
+                "--Mapper.ba_global_points_ratio",
+                "1.3",
+            ]
+        )
+    elif preset in {"quality", "robust"}:
+        options.extend(
+            [
+                "--Mapper.ba_local_max_num_iterations",
+                "30",
+                "--Mapper.ba_global_max_num_iterations",
+                "75",
+                "--Mapper.ba_local_max_refinements",
+                "3",
+                "--Mapper.ba_global_max_refinements",
+                "5",
+            ]
+        )
+    else:
+        options.extend(
+            [
+                "--Mapper.ba_local_max_num_iterations",
+                "16",
+                "--Mapper.ba_global_max_num_iterations",
+                "33",
+                "--Mapper.ba_local_max_refinements",
+                "2",
+                "--Mapper.ba_global_max_refinements",
+                "2",
+                "--Mapper.ba_global_images_ratio",
+                "1.2",
+                "--Mapper.ba_global_points_ratio",
+                "1.2",
+            ]
+        )
+    return options
+
+
 def build_spheresfm_commands(options: SphereSfmCommand) -> list[tuple[str, list[str]]]:
     options.sparse.mkdir(parents=True, exist_ok=True)
     options.database.parent.mkdir(parents=True, exist_ok=True)
+
+    preflight_cmd = [
+        options.python_executable,
+        "-u",
+        str(options.preflight_script),
+        "--colmap",
+        options.colmap,
+        "--images-dir",
+        str(options.images_dir),
+        "--work-dir",
+        str(options.preflight_dir),
+        "--camera-params",
+        options.camera_params,
+    ]
 
     prepare_cmd = [
         options.python_executable,
@@ -336,7 +438,7 @@ def build_spheresfm_commands(options: SphereSfmCommand) -> list[tuple[str, list[
         feature_cmd.extend(["--ImageReader.mask_path", str(options.prepared_masks_dir)])
     if options.pose_path:
         feature_cmd.extend(["--ImageReader.pose_path", options.pose_path])
-    feature_cmd.extend(_spheresfm_feature_options(options.feature_preset))
+    feature_cmd.extend(_spheresfm_feature_options(options.quality_preset))
 
     if options.matcher == "spatial":
         matcher_cmd = [
@@ -344,17 +446,12 @@ def build_spheresfm_commands(options: SphereSfmCommand) -> list[tuple[str, list[
             "spatial_matcher",
             "--database_path",
             str(options.database),
-            "--SiftMatching.max_error",
-            "4",
-            "--SiftMatching.min_num_inliers",
-            "50",
-            "--SiftMatching.max_num_matches",
-            "32768",
             "--SpatialMatching.is_gps",
             "0",
             "--SpatialMatching.max_distance",
             "50",
         ]
+        matcher_cmd.extend(_spheresfm_matching_options(options.quality_preset))
     else:
         matcher_name = "exhaustive_matcher" if options.matcher == "exhaustive" else "sequential_matcher"
         matcher_cmd = [
@@ -362,15 +459,10 @@ def build_spheresfm_commands(options: SphereSfmCommand) -> list[tuple[str, list[
             matcher_name,
             "--database_path",
             str(options.database),
-            "--SiftMatching.max_error",
-            "4",
-            "--SiftMatching.min_num_inliers",
-            "50",
-            "--SiftMatching.max_num_matches",
-            "32768",
         ]
+        matcher_cmd.extend(_spheresfm_matching_options(options.quality_preset))
         if options.matcher != "exhaustive":
-            matcher_cmd.extend(["--SequentialMatching.overlap", "10"])
+            matcher_cmd.extend(["--SequentialMatching.overlap", _spheresfm_sequential_overlap(options.quality_preset)])
 
     mapper_cmd = [
         options.colmap,
@@ -381,17 +473,11 @@ def build_spheresfm_commands(options: SphereSfmCommand) -> list[tuple[str, list[
         str(options.images_dir),
         "--output_path",
         str(options.sparse),
-        "--Mapper.ba_refine_focal_length",
-        "0",
-        "--Mapper.ba_refine_principal_point",
-        "0",
-        "--Mapper.ba_refine_extra_params",
-        "0",
-        "--Mapper.sphere_camera",
-        "1",
     ]
+    mapper_cmd.extend(_spheresfm_mapper_options(options.quality_preset))
 
     return [
+        ("spheresfm_preflight", preflight_cmd),
         ("spheresfm_prepare", prepare_cmd),
         ("spheresfm_database", database_cmd),
         ("spheresfm_feature", feature_cmd),

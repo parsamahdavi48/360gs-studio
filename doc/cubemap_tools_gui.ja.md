@@ -21,7 +21,7 @@ Step 4を開いたら、最初に「自分はどのルートか」を決めま�
 | MetashapeでSfM済みの結果をPostshot / Brush / LichtFeldへ渡したい | `Metashape` | `出力プリセット`, `出力形状`, `カメラXML`, `点群PLY` |
 | LichtFeldでキューブマップ版と3DGUT版を比較したい | `Metashape` | `出力プリセット: LichtFeld Studio`, `出力形状` |
 | Metashapeを使わず、抽出済み360°画像からCOLMAP/GLOMAPへ進みたい | `COLMAP` | `COLMAP実行設定`, `投影視点` |
-| Metashapeを使わず、抽出済みエクイレクタングラー画像を直接SfMしたい | `SphereSfM` | `SphereSfM COLMAP実行ファイル`, `Matcher`, `Feature`, `出力形状` |
+| Metashapeを使わず、抽出済みエクイレクタングラー画像を直接SfMしたい | `SphereSfM` | `SphereSfM COLMAP実行ファイル`, `Matcher`, `SfM品質`, `出力形状` |
 | すでに作った出力の画像やマスクだけ作り直したい | 元のルート | `出力`, `投影視点`, `画像サイズ` |
 
 `Scene Directory` は、Step 1-3で使っているシーンフォルダです。通常は `images/` と `masks/` が入っています。Metashapeルートでは、そこにMetashapeから書き出したXML/PLYを指定して、3DGS向けのデータを作ります。
@@ -171,15 +171,17 @@ SphereSfM版COLMAPを用意している場合は、抽出済みのエクイレ�
 3. `SphereSfM COLMAP実行ファイル` に、SphereSfM配布版またはビルド済みの `colmap.exe` を指定します。
 4. `masks/ を使用` は通常ONにします。Step 3の白=使用、黒=除外マスクをCOLMAPの `image.jpg.png` 命名へ変換して使います。
 5. `Matcher` は動画フレームなら `Sequential` から始めます。POSファイルがある場合だけ `Spatial` を使います。
-6. `Feature` はまず `Standard`、特徴点が足りない場合は `Robust` を試します。
+6. `SfM品質` はまず `標準`、試行や大量フレームでは `軽量`、登録が弱い場合は `クオリティ` を試します。
 7. `変換設定` で `出力形状` を選びます。
 8. 実行します。
+
+SphereSfM実行の開始時に、GUIは元画像を1枚だけ `<scene>/output/spheresfm/preflight/` へコピーし、フルのdatabaseを作る前に小さなGPU SIFT確認を自動実行します。選択したバイナリが現在のGPUでCUDA SIFTを実行できない場合はそこで停止し、フェーズログから原因を確認できます。
 
 `出力形状` が `3DGUT (LichtFeld)` の場合は、`<scene>/output/spheresfm/3dgut/` に `transforms.json` と `pointcloud.ply` を作ります。フレームパスは元の `images/` を参照するため、持ち出すときはシーンフォルダの構造ごと保ってください。
 
 `出力形状` が `投影視点に変換` の場合は、`投影視点` タブと画像/マスク出力のON/OFFを使います。まず `<scene>/output/spheresfm/equirect/` に中間のエクイレクタングラー transforms を作り、そのあと `<scene>/output/spheresfm/cubemap/` に投影視点データを作ります。
 
-SphereSfMプロジェクト直下には、上記に加えて `database.db`、`masks_colmap/`、`sparse/`、`stechdrive_spheresfm_project.json` を作ります。
+SphereSfMプロジェクト直下には、上記に加えて `preflight/`、`database.db`、`masks_colmap/`、`sparse/`、`stechdrive_spheresfm_project.json` を作ります。
 
 実行後は `結果をCOLMAP GUIで表示` で、登録されたカメラ位置と疎点群を確認できます。
 
