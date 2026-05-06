@@ -71,7 +71,7 @@ This mode writes these files at the scene root:
 
 - `transforms.json`
 - `pointcloud.ply`
-- `_stechdrive/export_settings_3dgut.json`
+- `_stechdrive/export_settings.json`
 
 `3DGUT (LichtFeld)` requires `Output Preset: LichtFeld Studio` and PLY usage. While it is active, the `Projection Views` tab, image/mask output toggles, and COLMAP text-model export are disabled.
 
@@ -190,8 +190,8 @@ After the run, use `View Result in COLMAP GUI` to inspect registered camera pose
 
 | Route | Main outputs |
 | --- | --- |
-| Metashape + Convert to Projection Views | `<scene>/output/images/`, `<scene>/output/masks/`, `<scene>/output/transforms.json`, `<scene>/output/_stechdrive/export_settings.json` |
-| Metashape + `3DGUT (LichtFeld)` | `<scene>/transforms.json`, `<scene>/pointcloud.ply`, `<scene>/_stechdrive/export_settings_3dgut.json` |
+| Metashape + Convert to Projection Views | `<scene>/output/images/`, `<scene>/output/masks/`, `<scene>/output/transforms.json`, `<scene>/_stechdrive/export_settings.json` |
+| Metashape + `3DGUT (LichtFeld)` | `<scene>/transforms.json`, `<scene>/pointcloud.ply`, `<scene>/_stechdrive/export_settings.json` |
 | COLMAP | `<scene>/output/colmap_rig/images/`, `<scene>/output/colmap_rig/masks/`, `<scene>/output/colmap_rig/rig_config.json` |
 | COLMAP with SfM enabled | The COLMAP/GLOMAP SfM result in addition to the files above |
 | SphereSfM + `3DGUT (LichtFeld)` | `<scene>/transforms.json`, `<scene>/pointcloud.ply`, plus the SphereSfM project files under `<scene>/output/spheresfm/` |

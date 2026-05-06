@@ -13,7 +13,7 @@ from PySide6.QtWidgets import QApplication, QMessageBox
 
 from gui import i18n
 from gui.steps.step4_cubemap import CubemapStep
-from scene_layout import step4_3dgut_export_settings_path, step4_export_settings_path, step4_views_config_path
+from scene_layout import step4_export_settings_path, step4_views_config_path
 from transforms_to_colmap import read_ply_points
 
 
@@ -517,7 +517,7 @@ def test_cubemap_yaw_numeric_fields_are_clamped_and_used(tmp_path: Path) -> None
     cmd = step._build_cubemap_cmd()
 
     assert cmd[cmd.index("--yaw-offset-per-frame") + 1] == "-180"
-    views = json.loads(step4_views_config_path(tmp_path / "output").read_text(encoding="utf-8"))["views"]
+    views = json.loads(step4_views_config_path(tmp_path).read_text(encoding="utf-8"))["views"]
     assert any(view["yaw"] == -90.0 for view in views)
 
 
@@ -579,7 +579,7 @@ def test_colmap_export_finalize_writes_export_method_settings(tmp_path: Path) ->
     assert [phase for phase, _cmd in commands] == ["colmap_rig_export"]
     step._finalize_bundle()
 
-    settings_path = step4_export_settings_path(tmp_path / "output" / "colmap_rig")
+    settings_path = step4_export_settings_path(tmp_path)
     settings = json.loads(settings_path.read_text(encoding="utf-8"))
     assert settings["export_method"] == "colmap"
     assert settings["conversion"]["no_image"] is False
@@ -768,7 +768,7 @@ def test_spheresfm_method_can_queue_projected_cubemap_export(tmp_path: Path) -> 
     assert transform_cmd[transform_cmd.index("--image-path-mode") + 1] == "relative"
     assert cubemap_cmd[3] == str(tmp_path / "output" / "spheresfm" / "equirect")
     assert cubemap_cmd[4] == str(tmp_path / "output")
-    assert cubemap_cmd[cubemap_cmd.index("--views-json") + 1] == str(step4_views_config_path(tmp_path / "output"))
+    assert cubemap_cmd[cubemap_cmd.index("--views-json") + 1] == str(step4_views_config_path(tmp_path))
     assert cubemap_cmd[cubemap_cmd.index("--image-dir") + 1] == str(images)
     assert cubemap_cmd[cubemap_cmd.index("--mask_dir") + 1] == str(masks)
     assert "--no_transform" in cubemap_cmd
@@ -880,7 +880,7 @@ def test_spheresfm_convert_only_resets_conversion_outputs_only(tmp_path: Path, m
     database = tmp_path / "output" / "spheresfm" / "database.db"
     database.write_text("db", encoding="utf-8")
     old_equirect = tmp_path / "output" / "spheresfm" / "equirect" / "old.txt"
-    old_views = step4_views_config_path(tmp_path / "output")
+    old_views = step4_views_config_path(tmp_path)
     old_images = tmp_path / "output" / "images" / "old.jpg"
     old_masks = tmp_path / "output" / "masks" / "old.png"
     old_equirect.parent.mkdir(parents=True)
@@ -1151,7 +1151,7 @@ def test_lichtfeld_3dgut_direct_mode_runs_metashape_only_and_disables_view_expor
     assert [phase for phase, _cmd in commands] == ["metashape"]
     assert "--ply" in commands[0][1]
     assert old_file.is_file()
-    assert not step4_views_config_path(output).exists()
+    assert not step4_views_config_path(tmp_path).exists()
 
 
 def test_lichtfeld_3dgut_direct_mode_restores_projection_export_targets(tmp_path: Path) -> None:
@@ -1213,7 +1213,7 @@ def test_cubemap_build_cancel_keeps_existing_output(tmp_path: Path, monkeypatch)
 
     assert commands == []
     assert old_file.is_file()
-    assert not step4_views_config_path(output).exists()
+    assert not step4_views_config_path(tmp_path).exists()
 
 
 def test_cubemap_build_resets_existing_output_when_confirmed(tmp_path: Path, monkeypatch) -> None:
@@ -1232,7 +1232,7 @@ def test_cubemap_build_resets_existing_output_when_confirmed(tmp_path: Path, mon
     assert [phase for phase, _cmd in commands] == ["metashape", "cubemap"]
     assert not old_file.exists()
     assert not nested.exists()
-    assert step4_views_config_path(output).is_file()
+    assert step4_views_config_path(tmp_path).is_file()
 
 
 def test_cubemap_mask_only_preserves_existing_images(tmp_path: Path, monkeypatch) -> None:
@@ -1246,7 +1246,7 @@ def test_cubemap_mask_only_preserves_existing_images(tmp_path: Path, monkeypatch
     old_mask_dir.mkdir()
     old_mask = old_mask_dir / "old_mask.png"
     old_mask.write_text("mask", encoding="utf-8")
-    old_settings = step4_export_settings_path(output)
+    old_settings = step4_export_settings_path(tmp_path)
     old_settings.parent.mkdir(parents=True, exist_ok=True)
     old_settings.write_text('{"old": true}\n', encoding="utf-8")
     step = _ready_step(tmp_path, metashape_inputs=True)
@@ -1261,7 +1261,7 @@ def test_cubemap_mask_only_preserves_existing_images(tmp_path: Path, monkeypatch
     assert old_file.is_file()
     assert not old_mask.exists()
     assert old_settings.read_text(encoding="utf-8") == '{"old": true}\n'
-    assert step4_views_config_path(output).is_file()
+    assert step4_views_config_path(tmp_path).is_file()
 
 
 def test_cubemap_build_validates_before_resetting_output(tmp_path: Path, monkeypatch) -> None:
@@ -1289,7 +1289,7 @@ def test_cubemap_finalize_writes_export_settings(tmp_path: Path) -> None:
     assert [phase for phase, _cmd in commands] == ["metashape", "cubemap"]
     step._finalize_bundle()
 
-    settings_path = step4_export_settings_path(tmp_path / "output")
+    settings_path = step4_export_settings_path(tmp_path)
     assert settings_path.is_file()
     settings = json.loads(settings_path.read_text(encoding="utf-8"))
     assert settings["app"] == "stechdrive-3dgs-utils"
@@ -1313,7 +1313,7 @@ def test_cubemap_finalize_writes_export_settings(tmp_path: Path) -> None:
     assert settings["view_config"]["views"]
     assert settings["views_config_path"] == "_stechdrive/views_config.json"
     assert settings["views_config_snapshot"] == json.loads(
-        step4_views_config_path(tmp_path / "output").read_text(encoding="utf-8")
+        step4_views_config_path(tmp_path).read_text(encoding="utf-8")
     )
 
 
@@ -1340,7 +1340,7 @@ def test_lichtfeld_3dgut_finalize_writes_scene_dataset_settings_and_correction(
     step._finalize_bundle()
 
     assert not step4_export_settings_path(tmp_path / "output").exists()
-    settings = json.loads(step4_3dgut_export_settings_path(tmp_path).read_text(encoding="utf-8"))
+    settings = json.loads(step4_export_settings_path(tmp_path).read_text(encoding="utf-8"))
     assert settings["export_method"] == "metashape"
     assert settings["output_shape"] == "equirect_3dgut"
     assert settings["output_dir"] == str(tmp_path)
@@ -1402,5 +1402,5 @@ def test_lichtfeld_finalize_applies_final_orientation_correction(tmp_path: Path,
     points, _colors = read_ply_points(output / "pointcloud.ply")
     assert np.allclose(points[0], [3.0, -2.0, 1.0])
 
-    settings = json.loads(step4_export_settings_path(output).read_text(encoding="utf-8"))
+    settings = json.loads(step4_export_settings_path(tmp_path).read_text(encoding="utf-8"))
     assert settings["postprocess"]["lichtfeld_final_orientation_correction"] is True

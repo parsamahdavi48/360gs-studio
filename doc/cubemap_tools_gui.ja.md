@@ -71,7 +71,7 @@ LichtFeld StudioでGUT学習を試すための比較用モードです。Metasha
 
 - `transforms.json`
 - `pointcloud.ply`
-- `_stechdrive/export_settings_3dgut.json`
+- `_stechdrive/export_settings.json`
 
 `3DGUT (LichtFeld)` では `出力プリセット: LichtFeld Studio` とPLY使用が必要です。選択中は `投影視点` タブ、画像/マスク出力のON/OFF、COLMAP形式モデル追加出力は無効になります。
 
@@ -190,8 +190,8 @@ SphereSfMプロジェクト `<scene>/output/spheresfm/` には、作業用の `p
 
 | ルート | 主な出力 |
 | --- | --- |
-| Metashape + 投影視点に変換 | `<scene>/output/images/`, `<scene>/output/masks/`, `<scene>/output/transforms.json`, `<scene>/output/_stechdrive/export_settings.json` |
-| Metashape + `3DGUT (LichtFeld)` | `<scene>/transforms.json`, `<scene>/pointcloud.ply`, `<scene>/_stechdrive/export_settings_3dgut.json` |
+| Metashape + 投影視点に変換 | `<scene>/output/images/`, `<scene>/output/masks/`, `<scene>/output/transforms.json`, `<scene>/_stechdrive/export_settings.json` |
+| Metashape + `3DGUT (LichtFeld)` | `<scene>/transforms.json`, `<scene>/pointcloud.ply`, `<scene>/_stechdrive/export_settings.json` |
 | COLMAP | `<scene>/output/colmap_rig/images/`, `<scene>/output/colmap_rig/masks/`, `<scene>/output/colmap_rig/rig_config.json` |
 | COLMAP実行あり | 上記に加えて、COLMAP/GLOMAPのSfM結果 |
 | SphereSfM + `3DGUT (LichtFeld)` | `<scene>/transforms.json`, `<scene>/pointcloud.ply`, および `<scene>/output/spheresfm/` のSphereSfMプロジェクト一式 |
