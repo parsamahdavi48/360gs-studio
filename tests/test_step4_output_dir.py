@@ -211,7 +211,7 @@ def test_export_method_switch_keeps_fixed_tabs_and_swaps_route_sections() -> Non
     assert step.colmap_section.isHidden()
 
 
-def test_export_targets_row_stays_aligned_across_routes() -> None:
+def test_export_targets_row_stays_at_output_tab_top_across_routes() -> None:
     app = _app()
     step = CubemapStep(Path.cwd())
     step.resize(900, 720)
@@ -224,10 +224,12 @@ def test_export_targets_row_stays_aligned_across_routes() -> None:
         step._set_export_method(method)
         step.settings_tabs.setCurrentIndex(step.output_tab_index)
         app.processEvents()
-        positions.append(step.export_targets_row.mapTo(step.output_tab, QPoint(0, 0)).x())
+        position = step.export_targets_row.mapTo(step.output_tab, QPoint(0, 0))
+        positions.append((position.x(), position.y()))
 
     assert len(set(positions)) == 1
-    assert positions[0] == step.output_tab.layout().contentsMargins().left()
+    margins = step.output_tab.layout().contentsMargins()
+    assert positions[0] == (margins.left(), margins.top())
 
     step.close()
 
@@ -1404,6 +1406,24 @@ def test_training_tab_appends_lichtfeld_command_and_writes_config(tmp_path: Path
     assert config["use_bilateral_grid"] is True
     assert config["mask_mode"] == "ignore"
     assert config["headless"] is True
+
+
+def test_training_executable_placeholders_are_file_names_only() -> None:
+    _app()
+    step = CubemapStep(Path.cwd())
+
+    expected_lichtfeld = "LichtFeld-Studio.exe" if os.name == "nt" else "LichtFeld-Studio"
+    expected_postshot = "postshot-cli.exe" if os.name == "nt" else "postshot-cli"
+
+    assert step.training_executable_browse.line_edit.placeholderText() == expected_lichtfeld
+    assert not Path(step._default_training_executable("lichtfeld")).is_absolute()
+
+    step._set_training_backend("postshot")
+    assert step.training_executable_browse.line_edit.placeholderText() == expected_postshot
+    assert not Path(step._default_training_executable("postshot")).is_absolute()
+
+    step._set_training_backend("custom")
+    assert step.training_executable_browse.line_edit.placeholderText() == ""
 
 
 def test_colmap_route_can_append_postshot_training_with_future_sparse_model(tmp_path: Path) -> None:

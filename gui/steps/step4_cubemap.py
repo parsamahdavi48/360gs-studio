@@ -267,7 +267,7 @@ class CubemapStep(BaseStepWidget):
         configure_settings_scroll(top_scroll)
         top = QWidget()
         top.setObjectName("settingsPane")
-        top.setMinimumWidth(0)
+        top.setFixedWidth(SETTINGS_PANE_WIDTH)
         top_layout = QVBoxLayout(top)
         top_layout.setContentsMargins(*SETTINGS_PANE_MARGINS)
         top_layout.setSpacing(8)
@@ -765,9 +765,9 @@ class CubemapStep(BaseStepWidget):
         output_layout = QVBoxLayout(output_tab)
         output_layout.setContentsMargins(8, 8, 8, 8)
         output_layout.setSpacing(6)
+        output_layout.addWidget(self.export_targets_row)
         output_layout.addWidget(self.metashape_output_section)
         output_layout.addWidget(self.spheresfm_convert_section)
-        output_layout.addWidget(self.export_targets_row)
         output_layout.addStretch()
 
         details_tab = QWidget()
@@ -1271,16 +1271,10 @@ class CubemapStep(BaseStepWidget):
     def _default_training_executable(self, backend: str | None = None) -> str:
         backend = backend or self._training_backend()
         if backend == _TRAINING_BACKEND_POSTSHOT:
-            if os.name == "nt":
-                candidate = Path(os.environ.get("PROGRAMFILES", r"C:\Program Files")) / "Jawset Postshot" / "bin" / "postshot-cli.exe"
-                return str(candidate) if candidate.is_file() else "postshot-cli.exe"
-            return "postshot-cli"
+            return "postshot-cli.exe" if os.name == "nt" else "postshot-cli"
         if backend == _TRAINING_BACKEND_CUSTOM:
             return ""
-        if os.name == "nt":
-            candidate = Path(r"D:\GitHub\LichtFeld-Studio\build\LichtFeld-Studio.exe")
-            return str(candidate) if candidate.is_file() else "LichtFeld-Studio.exe"
-        return "LichtFeld-Studio"
+        return "LichtFeld-Studio.exe" if os.name == "nt" else "LichtFeld-Studio"
 
     def _resolve_training_executable(self) -> str:
         return self._resolve_executable(
