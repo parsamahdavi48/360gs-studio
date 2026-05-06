@@ -75,6 +75,10 @@ _COLMAP_GLOBAL_BA_DONE_RE = re.compile(r"Global bundle adjustment iteration\s+(\
 _COLMAP_RETRIANGULATION_START_RE = re.compile(r"=== Running iterative retriangulation and refinement ===")
 _COLMAP_RETRIANGULATION_DONE_RE = re.compile(r"Iterative retriangulation and refinement done")
 _COLMAP_RECONSTRUCTION_DONE_RE = re.compile(r"Reconstruction done")
+_SPHERESFM_CUDA_ARCH_ERROR_MARKERS = (
+    "no kernel image is available for execution on the device",
+    "cudaerrornokernelimagefordevice",
+)
 _PROFILE_POSTSHOT = "postshot"
 _PROFILE_BRUSH = "brush"
 _PROFILE_LICHTFELD = "lichtfeld"
@@ -110,6 +114,16 @@ _LICHTFELD_FINAL_CORRECTION = np.array(
     ],
     dtype=np.float64,
 )
+
+
+def is_spheresfm_rtx50_cuda_error_line(line: str) -> bool:
+    """Detect CUDA binary/device-architecture failures seen with non-sm_120 SphereSfM builds."""
+    lowered = line.lower()
+    if any(marker in lowered for marker in _SPHERESFM_CUDA_ARCH_ERROR_MARKERS):
+        return True
+    if "invalid device function" not in lowered:
+        return False
+    return any(marker in lowered for marker in ("cuda", "sift", "pyramidcu", "cuteximage"))
 
 
 class ElidedPathLabel(QLabel):
@@ -163,6 +177,11 @@ class CubemapStep(BaseStepWidget):
         self._export_method_value = _METHOD_METASHAPE
         self._saved_projected_export_targets: tuple[bool, bool] | None = None
         self._input_image_count = 0
+        self._spheresfm_phase_logs: dict[str, Path] = {}
+        self._spheresfm_rtx50_cuda_error_seen = False
+        self._spheresfm_rtx50_cuda_error_phase: str | None = None
+        self._spheresfm_rtx50_cuda_error_shown = False
+        self._active_runner_phase = ""
         self._preview_render_pending = False
         self._preview_render_timer = QTimer(self)
         self._preview_render_timer.setSingleShot(True)
@@ -1257,8 +1276,23 @@ class CubemapStep(BaseStepWidget):
 
     # -- コマンド構築 --
 
+    def process_log_dir(self) -> Path | None:
+        if not self._is_spheresfm_method():
+            return None
+        try:
+            return self._spheresfm_project_dir() / "logs"
+        except ValueError:
+            return None
+
+    def _reset_spheresfm_rtx50_diagnostics(self) -> None:
+        self._spheresfm_phase_logs.clear()
+        self._spheresfm_rtx50_cuda_error_seen = False
+        self._spheresfm_rtx50_cuda_error_phase = None
+        self._spheresfm_rtx50_cuda_error_shown = False
+
     def build_commands(self) -> list[tuple[str, list[str]]]:
         if self._is_spheresfm_method():
+            self._reset_spheresfm_rtx50_diagnostics()
             self._validate_spheresfm_export()
             if not self._prepare_spheresfm_dir():
                 return []
@@ -2249,6 +2283,31 @@ class CubemapStep(BaseStepWidget):
 
     # -- バンドル後処理 --
 
+    def on_phase_log_started(self, phase: str, path: str) -> None:
+        if phase.startswith("spheresfm_"):
+            self._spheresfm_phase_logs[phase] = Path(path)
+
+    def on_phase_finished(self, phase: str, exit_code: int, canceled: bool) -> None:
+        if (
+            phase.startswith("spheresfm_")
+            and exit_code != 0
+            and not canceled
+            and self._spheresfm_rtx50_cuda_error_seen
+            and self._spheresfm_rtx50_cuda_error_phase == phase
+            and not self._spheresfm_rtx50_cuda_error_shown
+        ):
+            self._show_spheresfm_rtx50_cuda_error(phase)
+
+    def _show_spheresfm_rtx50_cuda_error(self, phase: str) -> None:
+        self._spheresfm_rtx50_cuda_error_shown = True
+        log_path = self._spheresfm_phase_logs.get(phase)
+        log_text = str(log_path) if log_path is not None else "-"
+        QMessageBox.warning(
+            self,
+            i18n.t("SPHERESFM_RTX50_CUDA_ERROR_TITLE"),
+            i18n.t("SPHERESFM_RTX50_CUDA_ERROR_BODY").format(log_path=log_text),
+        )
+
     def on_queue_finished(self, success: bool) -> None:
         if success:
             try:
@@ -2438,6 +2497,7 @@ class CubemapStep(BaseStepWidget):
         return i18n.t(key) if key else phase
 
     def on_phase_started(self, phase: str) -> tuple[int, int] | None:
+        self._active_runner_phase = phase
         if phase == "colmap_rig_export":
             self._converted_total = 0
             self._processed = 0
@@ -2466,6 +2526,11 @@ class CubemapStep(BaseStepWidget):
         return None
 
     def on_line(self, line: str) -> tuple[int, int] | None:
+        if self._is_spheresfm_method() and is_spheresfm_rtx50_cuda_error_line(line):
+            self._spheresfm_rtx50_cuda_error_seen = True
+            if self._active_runner_phase.startswith("spheresfm_"):
+                self._spheresfm_rtx50_cuda_error_phase = self._active_runner_phase
+
         colmap_feature = _COLMAP_FEATURE_RE.search(line)
         if colmap_feature:
             return int(colmap_feature.group(1)), int(colmap_feature.group(2))

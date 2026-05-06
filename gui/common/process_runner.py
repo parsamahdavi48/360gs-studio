@@ -2,7 +2,11 @@
 from __future__ import annotations
 
 import os
+import re
 import subprocess
+from datetime import datetime
+from pathlib import Path
+from typing import TextIO
 
 from PySide6.QtCore import QObject, QProcess, QProcessEnvironment, QTimer, Signal
 
@@ -13,12 +17,14 @@ class ProcessRunner(QObject):
     シグナル:
         line_received(str)  -- stdout の1行
         phase_started(str)  -- フェーズ名
+        phase_log_started(str, str)  -- フェーズ名, ログファイルパス
         phase_finished(str, int, bool)  -- フェーズ名, exit_code, was_canceled
         queue_finished(bool)  -- 全フェーズが成功したか
     """
 
     line_received = Signal(str)
     phase_started = Signal(str)
+    phase_log_started = Signal(str, str)
     phase_finished = Signal(str, int, bool)
     queue_finished = Signal(bool)
 
@@ -31,6 +37,11 @@ class ProcessRunner(QObject):
         self._cancel_requested = False
         self._all_ok = True
         self._running = False
+        self._log_dir: Path | None = None
+        self._log_file: TextIO | None = None
+        self._current_log_path: Path | None = None
+        self._run_log_stamp = ""
+        self._phase_index = 0
 
     # -- public API --
 
@@ -41,16 +52,25 @@ class ProcessRunner(QObject):
     def current_phase(self) -> str:
         return self._current_phase
 
-    def start_single(self, cmd: list[str], phase: str = "run") -> None:
-        self.start_queue([(phase, cmd)])
+    def start_single(self, cmd: list[str], phase: str = "run", log_dir: str | Path | None = None) -> None:
+        self.start_queue([(phase, cmd)], log_dir=log_dir)
 
-    def start_queue(self, steps: list[tuple[str, list[str]]]) -> None:
+    def start_queue(self, steps: list[tuple[str, list[str]]], log_dir: str | Path | None = None) -> None:
         if self.is_running():
             return
         self._cancel_requested = False
         self._all_ok = True
         self._pending = list(steps)
         self._running = bool(self._pending)
+        self._phase_index = 0
+        self._run_log_stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+        self._log_dir = Path(log_dir) if log_dir is not None else None
+        if self._log_dir is not None:
+            try:
+                self._log_dir.mkdir(parents=True, exist_ok=True)
+            except OSError as exc:
+                self.line_received.emit(f"[log] Could not create process log directory: {exc}")
+                self._log_dir = None
         self._run_next()
 
     def cancel(self) -> None:
@@ -72,7 +92,11 @@ class ProcessRunner(QObject):
         phase, cmd = self._pending.pop(0)
         self._current_phase = phase
         self._buffer = ""
-        self.line_received.emit("$ " + " ".join(cmd))
+        self._phase_index += 1
+        self._open_phase_log(phase)
+        self._emit_line("$ " + " ".join(cmd))
+        if self._current_log_path is not None:
+            self._emit_line(f"[{phase}] log: {self._current_log_path}")
         self.phase_started.emit(phase)
 
         proc = QProcess(self)
@@ -99,24 +123,26 @@ class ProcessRunner(QObject):
             line, self._buffer = self._buffer.split("\n", 1)
             line = line.rstrip("\r")
             if line:
-                self.line_received.emit(line)
+                self._emit_line(line)
 
     def _on_error(self, _error: QProcess.ProcessError) -> None:
         if self._proc is None:
             return
-        self.line_received.emit(f"[{self._current_phase}] プロセスエラーが発生しました")
+        self._emit_line(f"[{self._current_phase}] プロセスエラーが発生しました")
 
     def _on_finished(self, exit_code: int, _status: QProcess.ExitStatus) -> None:
         if self._buffer:
             tail = self._buffer.replace("\r", "\n").strip()
             for line in tail.splitlines():
-                self.line_received.emit(line)
+                self._emit_line(line)
             self._buffer = ""
 
         phase = self._current_phase
         was_canceled = self._cancel_requested
         self._cancel_requested = False
         self._proc = None
+        self._emit_line(f"[{phase}] exit_code={exit_code} canceled={int(was_canceled)}")
+        self._close_phase_log()
 
         if was_canceled:
             self._running = False
@@ -137,14 +163,14 @@ class ProcessRunner(QObject):
     def _terminate_gracefully(self, proc: QProcess, phase: str, timeout_ms: int = 3000) -> None:
         if proc.state() == QProcess.NotRunning:
             return
-        self.line_received.emit(f"[{phase}] キャンセル中...")
+        self._emit_line(f"[{phase}] キャンセル中...")
         proc.terminate()
         QTimer.singleShot(timeout_ms, lambda p=proc, ph=phase: self._force_kill(p, ph))
 
     def _force_kill(self, proc: QProcess, phase: str) -> None:
         if proc.state() == QProcess.NotRunning:
             return
-        self.line_received.emit(f"[{phase}] タイムアウト; プロセスを強制終了")
+        self._emit_line(f"[{phase}] タイムアウト; プロセスを強制終了")
         self._kill_process_tree(proc)
         proc.kill()
 
@@ -166,3 +192,31 @@ class ProcessRunner(QObject):
             subprocess.run(["taskkill", "/PID", str(pid), "/T", "/F"], **kwargs)
         except (OSError, subprocess.TimeoutExpired):
             pass
+
+    def _open_phase_log(self, phase: str) -> None:
+        self._close_phase_log()
+        self._current_log_path = None
+        if self._log_dir is None:
+            return
+        safe_phase = re.sub(r"[^A-Za-z0-9_.-]+", "_", phase).strip("._") or "phase"
+        path = self._log_dir / f"{self._run_log_stamp}_{self._phase_index:02d}_{safe_phase}.log"
+        try:
+            self._log_file = path.open("w", encoding="utf-8", newline="\n")
+        except OSError as exc:
+            self.line_received.emit(f"[log] Could not open process log file: {exc}")
+            self._log_file = None
+            return
+        self._current_log_path = path
+        self.phase_log_started.emit(phase, str(path))
+
+    def _close_phase_log(self) -> None:
+        if self._log_file is None:
+            return
+        self._log_file.close()
+        self._log_file = None
+
+    def _emit_line(self, line: str) -> None:
+        if self._log_file is not None:
+            self._log_file.write(line + "\n")
+            self._log_file.flush()
+        self.line_received.emit(line)

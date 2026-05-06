@@ -48,6 +48,10 @@ class BaseStepWidget(QWidget):
     def confirm_commands(self, commands: list[tuple[str, list[str]]]) -> bool:
         return True
 
+    def process_log_dir(self) -> Path | None:
+        """Return a directory for per-phase process logs, or None to disable file logs."""
+        return None
+
     def primary_action_text(self) -> str:
         return i18n.RUN
 
@@ -67,6 +71,10 @@ class BaseStepWidget(QWidget):
     def on_phase_started(self, phase: str) -> tuple[int, int] | None:
         """フェーズ開始時のプログレス初期化フック（オプション）"""
         return None
+
+    def on_phase_log_started(self, phase: str, path: str) -> None:
+        """フェーズログファイル作成時のフック（オプション）"""
+        pass
 
     def on_phase_finished(self, phase: str, exit_code: int, canceled: bool) -> None:
         """フェーズ完了時のフック（オプション）"""

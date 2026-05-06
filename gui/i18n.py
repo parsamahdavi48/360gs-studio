@@ -371,6 +371,14 @@ _JA: dict[str, str] = {
     "SPHERESFM_MASKS_NOT_FOUND": "masks/ を使用する設定ですが、マスクフォルダが見つかりません: {path}",
     "SPHERESFM_POSE_REQUIRED": "Spatial matcherにはPOSファイルが必要です。",
     "SPHERESFM_POSE_NOT_FOUND": "POSファイルが見つかりません: {path}",
+    "SPHERESFM_RTX50_CUDA_ERROR_TITLE": "SphereSfM CUDA互換性エラー",
+    "SPHERESFM_RTX50_CUDA_ERROR_BODY": (
+        "SphereSfMのGPU処理が、RTX 50系でよく出るCUDAアーキテクチャ不一致エラーで停止しました。\n\n"
+        "選択したSphereSfMの colmap.exe がRTX 50系 (sm_120) 向けにビルドされていない可能性があります。"
+        "CUDA 13.xなどで CMAKE_CUDA_ARCHITECTURES=120 を指定してSphereSfMをビルドし直し、"
+        "その colmap.exe を指定してください。\n\n"
+        "ログ: {log_path}"
+    ),
     "COLMAP_MATCHER_COMPACT": "Matcher:",
     "COLMAP_MAPPER_COMPACT": "Mapper:",
     "COLMAP_MATCHER_SEQUENTIAL": "Sequential",
@@ -951,6 +959,13 @@ _EN: dict[str, str] = {
     "SPHERESFM_MASKS_NOT_FOUND": "Use masks/ is enabled, but the mask folder was not found: {path}",
     "SPHERESFM_POSE_REQUIRED": "Spatial matcher requires a POS file.",
     "SPHERESFM_POSE_NOT_FOUND": "POS file was not found: {path}",
+    "SPHERESFM_RTX50_CUDA_ERROR_TITLE": "SphereSfM CUDA compatibility error",
+    "SPHERESFM_RTX50_CUDA_ERROR_BODY": (
+        "SphereSfM GPU processing stopped with a CUDA architecture mismatch error commonly seen on RTX 50-series GPUs.\n\n"
+        "The selected SphereSfM colmap.exe was probably not built for RTX 50-series GPUs (sm_120). "
+        "Rebuild SphereSfM with CUDA 13.x or newer and CMAKE_CUDA_ARCHITECTURES=120, then select that colmap.exe.\n\n"
+        "Log: {log_path}"
+    ),
     "COLMAP_MATCHER_COMPACT": "Matcher:",
     "COLMAP_MAPPER_COMPACT": "Mapper:",
     "COLMAP_MATCHER_SEQUENTIAL": "Sequential",

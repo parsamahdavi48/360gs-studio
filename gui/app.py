@@ -218,6 +218,7 @@ class MainWindow(QWidget):
 
         self.runner.line_received.connect(self._on_line)
         self.runner.phase_started.connect(self._on_phase_started)
+        self.runner.phase_log_started.connect(self._on_phase_log_started)
         self.runner.phase_finished.connect(self._on_phase_finished)
         self.runner.queue_finished.connect(self._on_queue_finished)
         for step in self.steps:
@@ -324,7 +325,7 @@ class MainWindow(QWidget):
             return
         self._current_step = self.stack.currentIndex()
         self.progress.reset()
-        self.runner.start_queue(commands)
+        self.runner.start_queue(commands, log_dir=step.process_log_dir())
         self._update_run_button()
 
     def _confirm_scene_path_is_safe(self) -> bool:
@@ -386,6 +387,11 @@ class MainWindow(QWidget):
                 done, total = result
                 self.progress.set_progress(done, total)
         self._update_run_button()
+
+    def _on_phase_log_started(self, phase: str, path: str) -> None:
+        step = self.steps[self._current_step] if 0 <= self._current_step < len(self.steps) else None
+        if step:
+            step.on_phase_log_started(phase, path)
 
     def _on_phase_finished(self, phase: str, exit_code: int, canceled: bool) -> None:
         self.progress.finish_phase(complete=exit_code == 0 and not canceled)
