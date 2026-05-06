@@ -159,6 +159,21 @@ def test_step4_route_buttons_stay_inside_fixed_settings_pane() -> None:
         assert result.returncode == 0, f"lang={lang}\n{result.stdout}{result.stderr}"
 
 
+def test_step4_route_and_training_selectors_use_segmented_track() -> None:
+    _app()
+    step = CubemapStep(Path.cwd())
+
+    for row in (step.export_method_row, step.training_backend_row):
+        layout = row.layout()
+        margins = layout.contentsMargins()
+        assert row.objectName() == "segmentedControl"
+        assert layout.spacing() == 0
+        assert (margins.left(), margins.top(), margins.right(), margins.bottom()) == (2, 2, 2, 2)
+
+    assert all(button.objectName() == "segmentedOption" for button in step.export_method_buttons.values())
+    assert all(button.objectName() == "segmentedOption" for button in step.training_backend_buttons.values())
+
+
 def test_extract_numeric_labels_share_field_tooltips() -> None:
     _app()
     step = ExtractStep(Path.cwd())

@@ -289,9 +289,10 @@ class CubemapStep(BaseStepWidget):
         self.export_method_label.setToolTip(i18n.tip("EXPORT_METHOD"))
         self.export_method_label.setVisible(False)
         self.export_method_row = QWidget()
+        self.export_method_row.setObjectName("segmentedControl")
         method_row = QHBoxLayout(self.export_method_row)
-        method_row.setContentsMargins(0, 0, 0, 0)
-        method_row.setSpacing(6)
+        method_row.setContentsMargins(2, 2, 2, 2)
+        method_row.setSpacing(0)
         self.export_method_group = QButtonGroup(self)
         self.export_method_group.setExclusive(True)
         self.export_method_buttons: dict[str, QPushButton] = {}
@@ -865,10 +866,11 @@ class CubemapStep(BaseStepWidget):
         layout.setContentsMargins(8, 8, 8, 8)
         layout.setSpacing(6)
 
-        backend_row = QWidget()
-        backend_layout = QHBoxLayout(backend_row)
-        backend_layout.setContentsMargins(0, 0, 0, 0)
-        backend_layout.setSpacing(6)
+        self.training_backend_row = QWidget()
+        self.training_backend_row.setObjectName("segmentedControl")
+        backend_layout = QHBoxLayout(self.training_backend_row)
+        backend_layout.setContentsMargins(2, 2, 2, 2)
+        backend_layout.setSpacing(0)
         self.training_backend_group = QButtonGroup(self)
         self.training_backend_group.setExclusive(True)
         self.training_backend_buttons: dict[str, QPushButton] = {}
@@ -885,7 +887,7 @@ class CubemapStep(BaseStepWidget):
             backend_layout.addWidget(btn, stretch=1)
             self.training_backend_group.addButton(btn)
             self.training_backend_buttons[backend] = btn
-        layout.addWidget(backend_row)
+        layout.addWidget(self.training_backend_row)
 
         form = QFormLayout()
         form.setSpacing(6)

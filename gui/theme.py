@@ -185,17 +185,32 @@ QPushButton:disabled {{
     background-color: {BG_MID};
     border-color: {BG_MID};
 }}
+QWidget#segmentedControl {{
+    background-color: {BG_INPUT};
+    border: 1px solid {BORDER};
+    border-radius: 6px;
+}}
 QPushButton#segmentedOption {{
-    padding: 6px 8px;
+    background-color: transparent;
+    border: 1px solid transparent;
+    border-radius: 4px;
+    color: {TEXT_DIM};
     font-weight: 600;
+    min-height: 22px;
+    padding: 5px 6px;
 }}
 QPushButton#segmentedOption:checked {{
-    background-color: {ACCENT};
+    background-color: {BG_PANEL};
     border-color: {ACCENT};
     color: {TEXT_BRIGHT};
 }}
 QPushButton#segmentedOption:hover:!checked {{
+    background-color: {BG_PANEL};
     border-color: {BORDER_FOCUS};
+    color: {TEXT};
+}}
+QPushButton#segmentedOption:pressed {{
+    background-color: {BG_MID};
 }}
 
 /* Primary buttons (objectName = "primary") */
