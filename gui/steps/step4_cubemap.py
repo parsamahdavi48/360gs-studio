@@ -503,7 +503,7 @@ class CubemapStep(BaseStepWidget):
             spheresfm_convert_form,
             i18n.t("AXIS_TRANSFORM"),
             self.spheresfm_axis_transform_combo,
-            i18n.tip("AXIS_TRANSFORM"),
+            i18n.tip("SPHERESFM_AXIS_TRANSFORM"),
         )
 
         self.spheresfm_profile_hint = QLabel("")

@@ -316,7 +316,9 @@ def test_cubemap_labels_share_field_tooltips() -> None:
     assert step.export_method_buttons["spheresfm"].toolTip() == i18n.tip("METHOD_SPHERESFM")
     assert _label(step, i18n.t("SPHERESFM_RUN_SCOPE")).toolTip() == i18n.tip("SPHERESFM_RUN_SCOPE")
     assert step.spheresfm_run_scope_combo.toolTip() == i18n.tip("SPHERESFM_RUN_SCOPE")
-    assert _label(step, i18n.t("AXIS_TRANSFORM")).toolTip() == i18n.tip("AXIS_TRANSFORM")
+    axis_label_tips = [child.toolTip() for child in step.findChildren(QLabel) if child.text() == i18n.t("AXIS_TRANSFORM")]
+    assert i18n.tip("AXIS_TRANSFORM") in axis_label_tips
+    assert i18n.tip("SPHERESFM_AXIS_TRANSFORM") in axis_label_tips
     assert _label(step, i18n.t("YAW_OFFSET_PER_FRAME")).toolTip() == i18n.t("YAW_OFFSET_PER_FRAME_HINT")
     assert _label(step, i18n.OUTPUT_SCALE + ":").toolTip() == i18n.tip("OUTPUT_SCALE")
     assert _label(step, i18n.METASHAPE_XML).toolTip() == i18n.tip("MS_XML")

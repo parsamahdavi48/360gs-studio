@@ -234,8 +234,12 @@ def test_spheresfm_conversion_rows_follow_preset_shape_axis_order() -> None:
     profile_row, _profile_role = form.getWidgetPosition(step.spheresfm_profile_combo)
     shape_row, _shape_role = form.getWidgetPosition(step.spheresfm_output_shape_combo)
     axis_row, _axis_role = form.getWidgetPosition(step.spheresfm_axis_transform_combo)
+    axis_label = form.labelForField(step.spheresfm_axis_transform_combo)
 
     assert profile_row < shape_row < axis_row
+    assert step.spheresfm_axis_transform_combo.toolTip() == i18n.tip("SPHERESFM_AXIS_TRANSFORM")
+    assert axis_label is not None
+    assert axis_label.toolTip() == i18n.tip("SPHERESFM_AXIS_TRANSFORM")
 
 
 def test_cubemap_step_does_not_count_repo_images_without_scene_dir() -> None:
