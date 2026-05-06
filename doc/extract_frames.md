@@ -2,7 +2,7 @@
 
 ## Overview
 
-`extract_frames.py` extracts SfM/3DGS-oriented still images from an equirectangular 360° video and writes a reviewable `selected_frames.csv`.
+`extract_frames.py` extracts SfM/3DGS-oriented still images from an equirectangular 360° video and writes a reviewable `_stechdrive/frames/selected_frames.csv`.
 
 The goal is not to cut every video frame mechanically. The goal is to keep enough viewpoint change for SfM, reduce frames that are too similar, and surface blurry, low-texture, or weak-feature frames so the final image set is easier to review before training or reconstruction.
 
@@ -14,7 +14,7 @@ This app starts from a fixed interval so the frame count and whole-video coverag
 
 In equirectangular 360° images, a change in camera heading can create a large image difference by itself. That does not necessarily mean the frame adds useful SfM parallax. Pair analysis therefore estimates the horizontal roll, or yaw shift, between the frames and measures the remaining residual change after alignment. This makes it easier to focus on real viewpoint or scene-appearance changes instead of pure heading changes.
 
-Automatic selection is not treated as the final decision. Frames that may cause SfM trouble, such as motion blur, low texture, or weak tracked features, are written to `selected_frames.csv` with review flags. Step 2 lets you inspect those frames visually and adjust keep/drop decisions.
+Automatic selection is not treated as the final decision. Frames that may cause SfM trouble, such as motion blur, low texture, or weak tracked features, are written to `_stechdrive/frames/selected_frames.csv` with review flags. Step 2 lets you inspect those frames visually and adjust keep/drop decisions.
 
 Frames marked `drop` are still extracted as images. This is intentional: you can inspect them later and restore them if needed. The design favors a reviewable workflow over irreversible automatic deletion.
 
@@ -85,7 +85,7 @@ python extract_frames.py input.mp4 ./scene01 --estimate-only --print-summary-jso
 | `--analysis-width` | `1920` | Decode width for candidate tracking and candidate-only sharpness checks. Yaw/residual monitoring is internally capped to a 1280px gate width |
 | `--image-ext` | `jpg` | Output image format |
 | `--jpg-quality` | `2` | JPEG quality for ffmpeg `-q:v`; lower is higher quality |
-| `--output-mode` | `overwrite` | `overwrite`, `append`, or `replace-video` for `selected_frames.csv` and `extract_sessions.json` |
+| `--output-mode` | `overwrite` | `overwrite`, `append`, or `replace-video` for `_stechdrive/frames/selected_frames.csv` and `_stechdrive/frames/extract_sessions.json` |
 | `--estimate-only` | off | Run selection and print counts without image extraction |
 
 ## Profiles and Automatic Thresholds
@@ -104,11 +104,11 @@ If `--pair-drop-threshold` or `--pair-add-threshold` is set to a non-negative va
 Under `output_dir`:
 
 - `images/<prefix>_<source_frame_index>.jpg` or `.png`
-- `selected_frames.csv`
-- `extract_report.json`
-- `extract_sessions.json`
+- `_stechdrive/frames/selected_frames.csv`
+- `_stechdrive/frames/extract_report.json`
+- `_stechdrive/frames/extract_sessions.json`
 
-`selected_frames.csv` fields include:
+`_stechdrive/frames/selected_frames.csv` fields include:
 
 - `original_index`, `final_index`, `timestamp_sec`
 - `status`: `ok`, `novelty_added`, `redundant_drop`, `gap_forced`, `motion_blur`, `low_texture`, `weak_match`

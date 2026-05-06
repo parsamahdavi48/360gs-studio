@@ -2,7 +2,7 @@
 
 Step 2 は、Step 1で抽出したフレームを見て、Metashapeやマスク生成へ進める画像だけを残す画面です。Step 1の解析で付いた `追加`、`除外`、`要確認` ラベルを確認し、必要なら採用/除外を手動で切り替えます。
 
-最後に `適用` を押すと、除外フレームを `images/` から外し、`selected_frames.csv` を採用フレームだけに確定します。ここで確定した `images/` がStep 3のマスク生成とMetashape SfMの入力になります。
+最後に `適用` を押すと、除外フレームを `images/` から外し、`_stechdrive/frames/selected_frames.csv` を採用フレームだけに確定します。ここで確定した `images/` がStep 3のマスク生成とMetashape SfMの入力になります。
 
 ## 起動
 
@@ -10,7 +10,7 @@ Step 2 は、Step 1で抽出したフレームを見て、Metashapeやマスク�
 run_gui.bat --scene .\scene01
 ```
 
-起動後、ワークフロー左側の `Step 2: フレーム確認` を開きます。シーンフォルダに `selected_frames.csv` があれば自動で読み込みます。
+起動後、ワークフロー左側の `Step 2: フレーム確認` を開きます。シーンフォルダに `_stechdrive/frames/selected_frames.csv` があれば自動で読み込みます。
 
 ## まず見ること
 
@@ -35,7 +35,7 @@ run_gui.bat --scene .\scene01
 6. 判断が終わったら `適用` を押します。
 7. Step 3へ進みます。
 
-採用/除外の変更は `selected_frames.csv` に即時保存されます。ただし、`images/` から除外画像を実際に消すのは `適用` を押したときです。
+採用/除外の変更は `_stechdrive/frames/selected_frames.csv` に即時保存されます。ただし、`images/` から除外画像を実際に消すのは `適用` を押したときです。
 
 ## 表示の使い分け
 
@@ -92,14 +92,14 @@ Step 2のラベルは、別の品質スコアではありません。そのフ�
 python apply_frame_decisions.py <scene_dir> --finalize-in-place
 ```
 
-`適用前に images_backup/ にバックアップ` がONの場合は、除外前の画像を `images_backup/` に保存します。
+`適用前に _stechdrive/frames/backups/images/ にバックアップ` がONの場合は、除外前の画像を `_stechdrive/frames/backups/images/` に保存します。
 
 適用すると次を行います。
 
 - `drop` の画像を `images/` から削除する
 - `keep` の画像ファイル名は維持する
-- `selected_frames.csv` を採用行だけに書き換える
-- `selected_frames.before_finalize.csv` と `selected_frames_keep.csv` を作る
+- `_stechdrive/frames/selected_frames.csv` を採用行だけに書き換える
+- `_stechdrive/frames/backups/selected_frames.before_finalize.csv` と `_stechdrive/frames/selected_frames_keep.csv` を作る
 - 成功後、Step 2の表示を再読み込みする
 
 画像バックアップをONにしない場合、削除した除外画像はStep 2から復元できません。CSVバックアップは常に作成されます。

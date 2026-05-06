@@ -2,7 +2,7 @@
 
 ## 概要
 
-`extract_frames.py` は、エクイレクタングラー360°動画からSfM/3DGS向けの静止画を抽出し、Step 2で確認できる `selected_frames.csv` を作成します。
+`extract_frames.py` は、エクイレクタングラー360°動画からSfM/3DGS向けの静止画を抽出し、Step 2で確認できる `_stechdrive/frames/selected_frames.csv` を作成します。
 
 このツールの目的は、動画の全フレームを機械的に切り出すことではありません。SfMに使いやすいだけの視点変化を残しつつ、似すぎたフレーム、ブレたフレーム、特徴点が弱いフレームを整理し、後工程で確認しやすい画像セットを作ることです。
 
@@ -14,7 +14,7 @@
 
 360°のエクイレクタングラー画像では、カメラの向きが変わるだけでも画像上の差分が大きく見えます。しかし、向きの変化だけではSfMに有効な視差とは限りません。そのため、ペア解析では水平回転、つまりyaw方向のズレを推定して補正し、その後に残る差分を見ます。これにより、単なる向きの違いではなく、実際に視点や見え方が変わった区間を拾いやすくしています。
 
-自動判定は最終決定ではありません。ブレ、低テクスチャ、追跡できる特徴点の少なさなど、SfMで問題になりそうなフレームは `selected_frames.csv` に確認フラグとして残します。Step 2ではそれらを画像で確認し、採用/除外を調整できます。
+自動判定は最終決定ではありません。ブレ、低テクスチャ、追跡できる特徴点の少なさなど、SfMで問題になりそうなフレームは `_stechdrive/frames/selected_frames.csv` に確認フラグとして残します。Step 2ではそれらを画像で確認し、採用/除外を調整できます。
 
 `drop` 判定のフレームも画像として出力します。これは、後から確認して必要なら採用へ戻せるようにするためです。自動処理で不可逆に捨てるのではなく、SfMに使う画像セットを人が確認して仕上げる、という設計です。
 
@@ -85,7 +85,7 @@ python extract_frames.py input.mp4 ./scene01 --estimate-only --print-summary-jso
 | `--analysis-width` | `1920` | 候補地点の特徴点追跡と鮮明度確認に使う横幅。yaw/残差の監視は内部で最大1280pxに抑える |
 | `--image-ext` | `jpg` | 出力画像形式 |
 | `--jpg-quality` | `2` | FFmpegのJPEG品質。小さいほど高品質 |
-| `--output-mode` | `overwrite` | `selected_frames.csv` と `extract_sessions.json` の扱い。`overwrite`、`append`、`replace-video` |
+| `--output-mode` | `overwrite` | `_stechdrive/frames/selected_frames.csv` と `_stechdrive/frames/extract_sessions.json` の扱い。`overwrite`、`append`、`replace-video` |
 | `--estimate-only` | off | 画像を書き出さず、選別と枚数表示だけを行う |
 
 ## プロファイルと自動閾値
@@ -104,11 +104,11 @@ python extract_frames.py input.mp4 ./scene01 --estimate-only --print-summary-jso
 `output_dir` の下に出力します。
 
 - `images/<prefix>_<source_frame_index>.jpg` または `.png`
-- `selected_frames.csv`
-- `extract_report.json`
-- `extract_sessions.json`
+- `_stechdrive/frames/selected_frames.csv`
+- `_stechdrive/frames/extract_report.json`
+- `_stechdrive/frames/extract_sessions.json`
 
-`selected_frames.csv` の主な列:
+`_stechdrive/frames/selected_frames.csv` の主な列:
 
 - `original_index`, `final_index`, `timestamp_sec`
 - `status`: `ok`, `novelty_added`, `redundant_drop`, `gap_forced`, `motion_blur`, `low_texture`, `weak_match`

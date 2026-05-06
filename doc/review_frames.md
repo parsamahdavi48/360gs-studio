@@ -2,7 +2,7 @@
 
 ## Overview
 
-`review_frames.py` opens a PySide6 GUI to inspect extracted frames and edit keep/drop decisions in `selected_frames.csv`.
+`review_frames.py` opens a PySide6 GUI to inspect extracted frames and edit keep/drop decisions in `_stechdrive/frames/selected_frames.csv`.
 
 Requirements:
 

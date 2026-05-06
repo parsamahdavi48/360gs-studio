@@ -1,6 +1,6 @@
 # Step 1 Frame Extraction GUI
 
-Step 1 turns 360° video into equirectangular still images for SfM and 3DGS. The `images/` folder and `selected_frames.csv` created here become the input for Step 2 review, Step 3 mask generation, and Metashape SfM.
+Step 1 turns 360° video into equirectangular still images for SfM and 3DGS. The `images/` folder and `_stechdrive/frames/selected_frames.csv` created here become the input for Step 2 review, Step 3 mask generation, and Metashape SfM.
 
 In the common workflow, you choose a video, choose a scene folder, and extract frames on a fixed interval. When `Motion` is enabled, the GUI can drop near-duplicate candidates and add extra candidates where viewpoint change is useful.
 
@@ -90,11 +90,11 @@ When unsure, use `Near / Walking` for walking or architectural footage and `Dist
 | Output | Meaning |
 | --- | --- |
 | `images/` | Extracted equirectangular still images |
-| `selected_frames.csv` | Keep/drop candidates and analysis metadata for Step 2 |
-| `extract_report.json` | Extraction settings and run summary |
+| `_stechdrive/frames/selected_frames.csv` | Keep/drop candidates and analysis metadata for Step 2 |
+| `_stechdrive/frames/extract_report.json` | Extraction settings and run summary |
 | `extract_cache.npz` | Cache used to speed up re-analysis |
 
-Step 2 turns `selected_frames.csv` decisions into visible review labels. If there are too many added, dropped, or review-target frames, adjust Step 1 interval or scene distance and extract again.
+Step 2 turns `_stechdrive/frames/selected_frames.csv` decisions into visible review labels. If there are too many added, dropped, or review-target frames, adjust Step 1 interval or scene distance and extract again.
 
 ## Common Decisions
 

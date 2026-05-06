@@ -15,6 +15,7 @@ from PySide6.QtWidgets import QAbstractItemView, QApplication, QToolButton
 from gui import i18n
 from gui.common.perspective_preview import PREVIEW_PROJECTION_EQUIRECT, PREVIEW_PROJECTION_PERSPECTIVE
 from gui.common.preview_mode_toolbar import PREVIEW_MODE_PERSPECTIVE, PREVIEW_MODE_SINGLE, PREVIEW_MODE_THUMBNAILS
+from scene_layout import selected_frames_path
 from review_frames import ReviewWidget, _review_thumbnail_image
 
 
@@ -44,7 +45,8 @@ def _write_scene(tmp_path: Path) -> tuple[Path, Path]:
             }
         )
 
-    csv_path = scene / "selected_frames.csv"
+    csv_path = selected_frames_path(scene)
+    csv_path.parent.mkdir(parents=True, exist_ok=True)
     with csv_path.open("w", encoding="utf-8", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=list(rows[0].keys()))
         writer.writeheader()

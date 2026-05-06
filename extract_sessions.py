@@ -6,7 +6,9 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-MANIFEST_NAME = "extract_sessions.json"
+from scene_layout import EXTRACT_SESSIONS_JSON, extract_sessions_path
+
+MANIFEST_NAME = EXTRACT_SESSIONS_JSON
 
 
 def sanitize_filename_prefix(value: str) -> str:
@@ -19,7 +21,7 @@ def sanitize_filename_prefix(value: str) -> str:
 
 
 def manifest_path(scene_dir: Path) -> Path:
-    return scene_dir / MANIFEST_NAME
+    return extract_sessions_path(scene_dir)
 
 
 def load_manifest(scene_dir: Path) -> dict[str, Any]:
@@ -40,10 +42,11 @@ def load_manifest(scene_dir: Path) -> dict[str, Any]:
 
 
 def save_manifest(scene_dir: Path, manifest: dict[str, Any]) -> None:
-    scene_dir.mkdir(parents=True, exist_ok=True)
+    path = manifest_path(scene_dir)
+    path.parent.mkdir(parents=True, exist_ok=True)
     manifest.setdefault("version", 1)
     manifest.setdefault("sessions", [])
-    manifest_path(scene_dir).write_text(
+    path.write_text(
         json.dumps(manifest, ensure_ascii=False, indent=2),
         encoding="utf-8",
     )

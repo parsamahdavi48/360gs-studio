@@ -32,9 +32,11 @@ def test_release_zip_excludes_tests_but_keeps_runtime_scripts() -> None:
         "AGENTS.md",
         "user_settings.json",
         "stechdrive_export_settings.json",
+        "export_settings.json",
+        "export_settings_3dgut.json",
         "views_config.json",
         ".cache/update_venv.log",
-        "scene/selected_frames.csv",
+        "scene/_stechdrive/frames/selected_frames.csv",
         "pkg/__pycache__/mod.pyc",
     ],
 )

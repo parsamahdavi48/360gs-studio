@@ -37,6 +37,8 @@ UNWANTED_SUFFIXES = (
 UNWANTED_NAMES = {
     "AGENTS.md",
     "extract_report.json",
+    "export_settings.json",
+    "export_settings_3dgut.json",
     "pytorch_model.bin",
     "stechdrive_export_settings.json",
     "update_venv.log",

@@ -15,6 +15,7 @@ from gui import i18n
 from gui.app import MainWindow
 from gui.common.preview_mode_toolbar import PREVIEW_MODE_SINGLE, PREVIEW_MODE_THUMBNAILS
 from gui.steps.step2_review import ReviewStep
+from scene_layout import selected_frames_path
 
 
 def _app():
@@ -43,7 +44,8 @@ def _write_scene(scene: Path, count: int = 2, drop_indices: set[int] | None = No
             }
         )
 
-    csv_path = scene / "selected_frames.csv"
+    csv_path = selected_frames_path(scene)
+    csv_path.parent.mkdir(parents=True, exist_ok=True)
     with csv_path.open("w", encoding="utf-8", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=list(rows[0].keys()))
         writer.writeheader()
@@ -109,7 +111,7 @@ def test_review_step_uses_fixed_selected_frames_csv(tmp_path: Path) -> None:
 
     step.set_scene_dir(str(tmp_path))
 
-    assert step._csv_path() == tmp_path / "selected_frames.csv"
+    assert step._csv_path() == selected_frames_path(tmp_path)
 
 
 def test_review_step_autoloads_csv_when_activated(tmp_path: Path) -> None:

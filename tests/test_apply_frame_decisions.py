@@ -13,10 +13,12 @@ from apply_frame_decisions import (
     pending_drop_image_paths,
     untracked_image_paths,
 )
+from scene_layout import frame_backups_dir, selected_frames_path
 
 
 def _write_csv(csv_path: Path, rows: list[dict]) -> None:
     fieldnames = list(rows[0].keys())
+    csv_path.parent.mkdir(parents=True, exist_ok=True)
     with csv_path.open("w", encoding="utf-8", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=fieldnames)
         writer.writeheader()
@@ -46,7 +48,7 @@ def _make_scene(tmp_path: Path, num_frames: int = 4, drop_indices: list[int] = N
             "output_file": f"images/frame_{i:06d}.jpg",
         })
 
-    _write_csv(scene / "selected_frames.csv", rows)
+    _write_csv(selected_frames_path(scene), rows)
     return scene
 
 
@@ -113,7 +115,7 @@ def test_finalize_in_place_drops_and_preserves_keep_filenames(tmp_path: Path):
     assert "frame_000001.jpg" in files
     assert "frame_000003.jpg" in files
 
-    with (scene / "selected_frames.csv").open("r", encoding="utf-8", newline="") as f:
+    with selected_frames_path(scene).open("r", encoding="utf-8", newline="") as f:
         rows = list(csv.DictReader(f))
     assert [row["seq"] for row in rows] == ["1", "2"]
     assert [row["output_file"] for row in rows] == [
@@ -173,7 +175,7 @@ def test_finalize_in_place_backup_idempotent(tmp_path: Path):
             "decision": "keep",
             "output_file": f"images/{img.name}",
         })
-    _write_csv(scene / "selected_frames.csv", rows)
+    _write_csv(selected_frames_path(scene), rows)
 
     finalize_in_place(scene, "selected_frames.csv", backup_dir=backup_dir)
 
@@ -191,7 +193,7 @@ def test_finalize_in_place_creates_csv_backup(tmp_path: Path):
     finalize_in_place(scene, "selected_frames.csv")
 
     # selected_frames.before_finalize.csv が作られている
-    csv_backup_files = list(scene.glob("selected_frames.before_finalize*.csv"))
+    csv_backup_files = list(frame_backups_dir(scene).glob("selected_frames.before_finalize*.csv"))
     assert len(csv_backup_files) >= 1
 
 

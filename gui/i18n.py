@@ -141,13 +141,13 @@ _JA: dict[str, str] = {
         "除外にしたフレームを images/ から削除します。採用フレームのファイル名は維持します。\n"
         "不可逆。バックアップが必要なら左のチェックボックスを ON に。"
     ),
-    "BACKUP_BEFORE_FINALIZE": "適用前に images_backup/ にバックアップ",
+    "BACKUP_BEFORE_FINALIZE": "適用前に _stechdrive/frames/backups/images/ にバックアップ",
     "BACKUP_BEFORE_FINALIZE_HINT": (
-        "ON: 適用前に images/ を images_backup/ にフルコピー（既存バックアップは上書き）。\n"
+        "ON: 適用前に images/ を _stechdrive/frames/backups/images/ にフルコピー（既存バックアップは上書き）。\n"
         "OFF: バックアップなし（容量節約・復元不可）。"
     ),
     "ACTION_FINALIZE_REVIEW": "適用",
-    "REVIEW_EMBED_NO_SCENE": "ヘッダーのシーンフォルダに抽出済みフォルダを指定すると、selected_frames.csv を自動で読み込みます。",
+    "REVIEW_EMBED_NO_SCENE": "ヘッダーのシーンフォルダに抽出済みフォルダを指定すると、_stechdrive/frames/selected_frames.csv を自動で読み込みます。",
     "REVIEW_EMBED_EMPTY": "Step 1 の抽出完了後、または抽出済みのシーンフォルダを指定すると、ここにフレーム確認ビューが自動表示されます。",
     "REVIEW_EMBED_MISSING": "CSVが見つかりません:\n{path}",
 
@@ -270,11 +270,11 @@ _JA: dict[str, str] = {
     "CUSTOM_MASK_REQUIRED": "カスタムマスク画像を選択してください。",
     "CUSTOM_MASK_NOT_FOUND": "カスタムマスク画像が見つかりません: {path}",
     "MASK_READY_OK": "準備完了: マスクを生成できます。",
-    "MASK_READY_EXTERNAL_IMAGES": "準備完了: selected_frames.csv なしの外部画像としてマスクを生成します。",
+    "MASK_READY_EXTERNAL_IMAGES": "準備完了: _stechdrive/frames/selected_frames.csv なしの外部画像としてマスクを生成します。",
     "MASK_READY_SCENE_NOT_FOUND": "シーンフォルダが見つかりません。",
     "MASK_READY_NO_IMAGES_DIR": "シーンフォルダ内に images/ がありません。Step 1 で抽出するか、外部画像を images/ に配置してください。",
     "MASK_READY_NO_IMAGES": "images/ に対象画像がありません。Step 1 で抽出するか、外部画像を images/ に配置してください。",
-    "MASK_READY_NO_CSV": "selected_frames.csv が見つかりません。Step 1 でフレーム抽出を実行してください。",
+    "MASK_READY_NO_CSV": "_stechdrive/frames/selected_frames.csv が見つかりません。Step 1 でフレーム抽出を実行してください。",
     "EXTERNAL_IMAGES_SECTION": "外部画像",
     "EXTERNAL_IMAGES_HINT": "通常動画や一眼の連番画像を使う場合は、画像フォルダから追加します。追加先は現在のシーンフォルダの images/ です。",
     "EXTERNAL_IMAGES_ADD": "画像フォルダから追加",
@@ -287,7 +287,7 @@ _JA: dict[str, str] = {
     "EXTERNAL_IMAGES_RESULT_TITLE": "外部画像を追加",
     "EXTERNAL_IMAGES_RESULT": "追加 {added} 件 / スキップ {skipped} 件",
     "MASK_PENDING_DROPS_ERROR": "除外予定の画像が画像フォルダに {n} 件残っています。Step 2 で「適用」してからマスクを生成してください。\n{files}",
-    "MASK_UNTRACKED_IMAGES_ERROR": "selected_frames.csv に載っていない画像が画像フォルダに {n} 件あります。古い抽出結果が混在している可能性があります。\n{files}",
+    "MASK_UNTRACKED_IMAGES_ERROR": "_stechdrive/frames/selected_frames.csv に載っていない画像が画像フォルダに {n} 件あります。古い抽出結果が混在している可能性があります。\n{files}",
     "RUN_YOLO": "YOLO実行",
     "RUN_STITCH": "スティッチ実行",
     "RUN_YOLO_STITCH": "YOLO + スティッチ実行",
@@ -735,13 +735,13 @@ _EN: dict[str, str] = {
         "Delete dropped frames from images/ and preserve kept filenames.\n"
         "Irreversible. Enable the backup checkbox if you want a safety copy."
     ),
-    "BACKUP_BEFORE_FINALIZE": "Back up to images_backup/ before Apply",
+    "BACKUP_BEFORE_FINALIZE": "Back up to _stechdrive/frames/backups/images/ before Apply",
     "BACKUP_BEFORE_FINALIZE_HINT": (
-        "ON: snapshot images/ to images_backup/ before Apply (existing backup is replaced).\n"
+        "ON: snapshot images/ to _stechdrive/frames/backups/images/ before Apply (existing backup is replaced).\n"
         "OFF: no backup (saves disk; cannot be undone)."
     ),
     "ACTION_FINALIZE_REVIEW": "Apply",
-    "REVIEW_EMBED_NO_SCENE": "Set an extracted scene folder in the header to automatically load selected_frames.csv.",
+    "REVIEW_EMBED_NO_SCENE": "Set an extracted scene folder in the header to automatically load _stechdrive/frames/selected_frames.csv.",
     "REVIEW_EMBED_EMPTY": "After Step 1 extraction completes, or after you select an extracted scene folder, the frame review view appears here automatically.",
     "REVIEW_EMBED_MISSING": "CSV not found:\n{path}",
 
@@ -864,11 +864,11 @@ _EN: dict[str, str] = {
     "CUSTOM_MASK_REQUIRED": "Select a custom mask image.",
     "CUSTOM_MASK_NOT_FOUND": "Custom mask image was not found: {path}",
     "MASK_READY_OK": "Ready: masks can be generated.",
-    "MASK_READY_EXTERNAL_IMAGES": "Ready: masks will be generated for external images without selected_frames.csv.",
+    "MASK_READY_EXTERNAL_IMAGES": "Ready: masks will be generated for external images without _stechdrive/frames/selected_frames.csv.",
     "MASK_READY_SCENE_NOT_FOUND": "Scene folder was not found.",
     "MASK_READY_NO_IMAGES_DIR": "images/ was not found in the scene folder. Run Step 1 extraction or place external images in images/.",
     "MASK_READY_NO_IMAGES": "No supported images were found in images/. Run Step 1 extraction or place external images in images/.",
-    "MASK_READY_NO_CSV": "selected_frames.csv was not found. Run Step 1 frame extraction first.",
+    "MASK_READY_NO_CSV": "_stechdrive/frames/selected_frames.csv was not found. Run Step 1 frame extraction first.",
     "EXTERNAL_IMAGES_SECTION": "External Images",
     "EXTERNAL_IMAGES_HINT": "For normal video frames or still-camera image sequences, add an image folder here. Images are copied to images/ in the current scene folder.",
     "EXTERNAL_IMAGES_ADD": "Add Image Folder",
@@ -881,7 +881,7 @@ _EN: dict[str, str] = {
     "EXTERNAL_IMAGES_RESULT_TITLE": "Add External Images",
     "EXTERNAL_IMAGES_RESULT": "Added {added} / skipped {skipped}",
     "MASK_PENDING_DROPS_ERROR": "{n} drop-marked images still exist in the image folder. Apply Step 2 before generating masks.\n{files}",
-    "MASK_UNTRACKED_IMAGES_ERROR": "{n} images in the image folder are not listed in selected_frames.csv. Old extraction results may be mixed in.\n{files}",
+    "MASK_UNTRACKED_IMAGES_ERROR": "{n} images in the image folder are not listed in _stechdrive/frames/selected_frames.csv. Old extraction results may be mixed in.\n{files}",
     "RUN_YOLO": "Run YOLO",
     "RUN_STITCH": "Run Stitch",
     "RUN_YOLO_STITCH": "Run YOLO + Stitch",
@@ -1205,7 +1205,7 @@ _EN: dict[str, str] = {
 # ---------------------------------------------------------------------------
 
 _TIPS_JA: dict[str, str] = {
-    "SCENE_DIR": "作業対象のシーンフォルダ。再開時は selected_frames.csv と images/ がある抽出済みフォルダを指定します。images/, masks/ などのサブフォルダが自動認識されます",
+    "SCENE_DIR": "作業対象のシーンフォルダ。再開時は _stechdrive/frames/selected_frames.csv と images/ がある抽出済みフォルダを指定します。images/, masks/ などのサブフォルダが自動認識されます",
     "RUN": "現在のタブの処理を開始します",
     "CANCEL": "実行中の処理を中断します",
     "INPUT_VIDEO": "エクイレクタングラー形式の360度動画ファイルを選択。参照ダイアログでは複数ファイルを選択できます",
@@ -1361,7 +1361,7 @@ _TIPS_JA: dict[str, str] = {
 }
 
 _TIPS_EN: dict[str, str] = {
-    "SCENE_DIR": "Working scene folder. When resuming, select the extracted folder that contains selected_frames.csv and images/. Subfolders like images/, masks/ are auto-detected",
+    "SCENE_DIR": "Working scene folder. When resuming, select the extracted folder that contains _stechdrive/frames/selected_frames.csv and images/. Subfolders like images/, masks/ are auto-detected",
     "RUN": "Start processing for the current tab",
     "CANCEL": "Abort the running process",
     "INPUT_VIDEO": "Select equirectangular 360-degree video files. The browse dialog supports multiple selection",

@@ -2,7 +2,7 @@
 
 ## 概要
 
-`review_frames.py` は、抽出済みフレームを確認し、`selected_frames.csv` の `decision` 列を `keep` / `drop` に編集する単体PySide6 GUIです。
+`review_frames.py` は、抽出済みフレームを確認し、`_stechdrive/frames/selected_frames.csv` の `decision` 列を `keep` / `drop` に編集する単体PySide6 GUIです。
 
 統合GUIのStep 2も同じ確認ウィジェットを使っています。統合GUIでの「適用」まで含めた流れは [review_frames_gui.ja.md](review_frames_gui.ja.md) を参照してください。
 

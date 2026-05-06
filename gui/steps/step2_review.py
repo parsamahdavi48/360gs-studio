@@ -22,6 +22,7 @@ from gui.steps.base_step import (
     BaseStepWidget,
     configure_settings_scroll,
 )
+from scene_layout import frame_backups_dir, selected_frames_path
 
 
 class ReviewStep(BaseStepWidget):
@@ -76,7 +77,7 @@ class ReviewStep(BaseStepWidget):
         root_layout.addWidget(splitter)
 
     def _csv_path(self) -> Path:
-        return Path(self.scene_dir) / "selected_frames.csv"
+        return selected_frames_path(Path(self.scene_dir))
 
     def _has_csv(self) -> bool:
         if not self.scene_dir:
@@ -186,15 +187,15 @@ class ReviewStep(BaseStepWidget):
         if self.backup_cb.isChecked():
             confirm_text = (
                 "除外にしたフレームを images/ から削除し、採用フレームのファイル名は維持します。\n\n"
-                "適用前に images/ を images_backup/ にコピーします（既存バックアップは上書き）。\n"
-                "selected_frames.csv のバックアップも自動作成されます。\n\n"
+                "適用前に images/ を _stechdrive/frames/backups/images/ にコピーします（既存バックアップは上書き）。\n"
+                "_stechdrive/frames/selected_frames.csv のバックアップも自動作成されます。\n\n"
                 "適用してよいですか？"
             )
         else:
             confirm_text = (
                 "除外にしたフレームを images/ から削除し、採用フレームのファイル名は維持します。\n\n"
                 "画像のバックアップは作成されません。削除された画像は復元できません。\n"
-                "selected_frames.csv のみ自動バックアップされます。\n\n"
+                "_stechdrive/frames/selected_frames.csv のみ自動バックアップされます。\n\n"
                 "適用してよいですか？"
             )
         result = QMessageBox.question(
@@ -224,7 +225,7 @@ class ReviewStep(BaseStepWidget):
             return []
         extra = ["--finalize-in-place"]
         if self.backup_cb.isChecked():
-            extra.extend(["--backup-dir", "images_backup"])
+            extra.extend(["--backup-dir", str(frame_backups_dir(Path(self.scene_dir)) / "images")])
         return [("finalize", self._build_apply_cmd(extra))]
 
     def on_queue_finished(self, success: bool) -> None:

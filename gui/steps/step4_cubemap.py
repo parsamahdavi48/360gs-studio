@@ -62,6 +62,16 @@ from gui.steps.cubemap_commands import (
 )
 from gui.user_settings import load_user_settings_section, update_user_settings_section
 from gui.version import APP_VERSION
+from scene_layout import (
+    STEP4_3DGUT_EXPORT_SETTINGS_JSON,
+    STEP4_EXPORT_SETTINGS_JSON,
+    STEP4_META_DIR_NAME,
+    STEP4_VIEWS_CONFIG_JSON,
+    step4_3dgut_export_settings_path,
+    step4_export_settings_path,
+    step4_meta_dir,
+    step4_views_config_path,
+)
 
 _CONVERT_RE = re.compile(r"^Converting\s+(\d+)\s+(?:images|files)\.\.\.$")
 _PROGRESS_RE = re.compile(r"^\[progress\]\s+(\d+)\s*/\s*(\d+)")
@@ -104,7 +114,8 @@ _AXIS_POSTSHOT = "postshot"
 _AXIS_BRUSH = "brush"
 _AXIS_NONE = "none"
 _NORMAL_OUTPUT_SCALE = 2.0 / math.pi
-_EXPORT_SETTINGS_NAME = "stechdrive_export_settings.json"
+_EXPORT_SETTINGS_NAME = STEP4_EXPORT_SETTINGS_JSON
+_DIRECT_EXPORT_SETTINGS_NAME = STEP4_3DGUT_EXPORT_SETTINGS_JSON
 _COLMAP_PROJECT_MANIFEST_NAME = "stechdrive_colmap_project.json"
 _SPHERESFM_PROJECT_MANIFEST_NAME = "stechdrive_spheresfm_project.json"
 _USER_SETTINGS_SECTION = "step4_colmap"
@@ -1463,7 +1474,8 @@ class CubemapStep(BaseStepWidget):
         if enabled > _BLOCK_ENABLED_VIEWS:
             raise ValueError(f"ビュー数が多すぎます ({enabled})。{_BLOCK_ENABLED_VIEWS} 以下にしてください。")
 
-        views_json = self._write_views_config(output, views)
+        views_root = self._colmap_rig_dir() if colmap_rig else output
+        views_json = self._write_views_config(step4_meta_dir(views_root), views)
 
         if colmap_rig:
             yaw_step = 0.0
@@ -1678,7 +1690,7 @@ class CubemapStep(BaseStepWidget):
             raise ValueError(f"ビュー数が多すぎます ({enabled})。{_BLOCK_ENABLED_VIEWS} 以下にしてください。")
 
         output = self._spheresfm_cubemap_dir()
-        views_json = self._write_views_config(output, views)
+        views_json = self._write_views_config(step4_meta_dir(output), views)
         out_fmt = self.output_format_combo.currentData() or "auto"
         out_depth = self.output_bit_depth_combo.currentData() or "8"
 
@@ -1749,15 +1761,19 @@ class CubemapStep(BaseStepWidget):
         return views_config_payload(views)
 
     def _export_settings_path(self) -> Path:
+        if not self.scene_dir:
+            raise ValueError(i18n.t("SCENE_REQUIRED_ACTION_HINT"))
         if self._uses_direct_equirect_output():
-            root = self._direct_output_dir()
+            return step4_3dgut_export_settings_path(Path(self.scene_dir))
         elif self._is_spheresfm_method() and self._spheresfm_runs_conversion():
-            root = self._spheresfm_3dgut_dir() if self._uses_spheresfm_3dgut_output() else self._spheresfm_cubemap_dir()
+            if self._uses_spheresfm_3dgut_output():
+                return step4_3dgut_export_settings_path(Path(self.scene_dir))
+            root = self._spheresfm_cubemap_dir()
         elif self._is_spheresfm_method():
             root = self._spheresfm_project_dir()
         else:
-            root = self._output_dir()
-        return root / _EXPORT_SETTINGS_NAME
+            root = self._display_output_dir()
+        return step4_export_settings_path(root)
 
     @staticmethod
     def _utc_now_iso() -> str:
@@ -1789,7 +1805,7 @@ class CubemapStep(BaseStepWidget):
         views_config_snapshot = self._views_config_payload(views) if route_uses_view_export else None
         views_config_path = ""
         if route_uses_view_export:
-            views_config_path = "views_config.json"
+            views_config_path = f"{STEP4_META_DIR_NAME}/{STEP4_VIEWS_CONFIG_JSON}"
         writes_view_images = route_uses_view_export and self._writes_images()
         writes_view_masks = route_uses_view_export and self._writes_masks()
 
@@ -1912,7 +1928,11 @@ class CubemapStep(BaseStepWidget):
                 "ply_source": str(self._resolve_ply_source() or ""),
             },
             "output_files": {
-                "settings": _EXPORT_SETTINGS_NAME,
+                "settings": (
+                    f"{STEP4_META_DIR_NAME}/{_EXPORT_SETTINGS_NAME}"
+                    if not direct_source_output
+                    else f"{STEP4_META_DIR_NAME}/{_DIRECT_EXPORT_SETTINGS_NAME}"
+                ),
                 "views_config": views_config_path,
                 "transforms_json": "" if spheresfm and not spheresfm_runs_conversion else "transforms.json",
                 "images_dir": "images",
@@ -2314,7 +2334,7 @@ class CubemapStep(BaseStepWidget):
             return [
                 root / "transforms.json",
                 root / "pointcloud.ply",
-                root / _EXPORT_SETTINGS_NAME,
+                step4_3dgut_export_settings_path(root),
             ]
 
         output = self._spheresfm_cubemap_dir()
@@ -2322,8 +2342,8 @@ class CubemapStep(BaseStepWidget):
             self._spheresfm_equirect_dir(),
             output / "transforms.json",
             output / "pointcloud.ply",
-            output / "views_config.json",
-            output / _EXPORT_SETTINGS_NAME,
+            step4_views_config_path(output),
+            step4_export_settings_path(output),
         ]
         if self._writes_images():
             targets.append(output / "images")

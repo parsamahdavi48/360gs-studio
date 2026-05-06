@@ -65,6 +65,7 @@ from gui.user_settings import load_user_settings_section, update_user_settings_s
 from image_io import imread_unicode, imwrite_unicode
 from mask_view_recipes import QUALITY_CHOICES
 from overexposure_mask import detect_overexposure, read_image_preserve_depth
+from scene_layout import selected_frames_path
 from stitch_mask import boundary_width_to_limit_angle, create_angular_stitched_mask
 
 _COCO_CLASS_NAMES = [
@@ -882,7 +883,7 @@ class MaskStep(BaseStepWidget):
         self._update_task_controls()
 
     def _scene_csv_path(self) -> Path:
-        return Path(self.scene_dir) / "selected_frames.csv"
+        return selected_frames_path(Path(self.scene_dir))
 
     def _has_image_files(self) -> bool:
         images = Path(self._images_dir_text())
@@ -1453,7 +1454,7 @@ class MaskStep(BaseStepWidget):
         if not images:
             return
         scene_dir = Path(self.scene_dir)
-        csv_path = scene_dir / "selected_frames.csv"
+        csv_path = selected_frames_path(scene_dir)
         if not csv_path.exists():
             return
 
@@ -1473,7 +1474,7 @@ class MaskStep(BaseStepWidget):
         if not images:
             return
         scene_dir = Path(self.scene_dir)
-        csv_path = scene_dir / "selected_frames.csv"
+        csv_path = selected_frames_path(scene_dir)
         if not csv_path.exists():
             return
 

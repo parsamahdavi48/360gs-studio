@@ -19,6 +19,7 @@ from gui import i18n
 from gui.common.browse_widget import BrowseWidget
 from gui.steps.base_step import SETTINGS_PANE_MARGINS, SETTINGS_PANE_WIDTH
 from gui.steps.step3_mask import MaskStep
+from scene_layout import selected_frames_path
 
 
 def _app():
@@ -46,7 +47,9 @@ def _write_scene(tmp_path: Path, drop_exists: bool = True) -> Path:
         {"seq": "1", "output_file": "images/frame_0001.jpg", "decision": "keep", "status": "ok"},
         {"seq": "2", "output_file": "images/frame_0002.jpg", "decision": "drop", "status": "redundant_drop"},
     ]
-    with (scene / "selected_frames.csv").open("w", encoding="utf-8", newline="") as f:
+    csv_path = selected_frames_path(scene)
+    csv_path.parent.mkdir(parents=True, exist_ok=True)
+    with csv_path.open("w", encoding="utf-8", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=list(rows[0].keys()))
         writer.writeheader()
         writer.writerows(rows)
@@ -197,7 +200,9 @@ def test_mask_step_refreshes_preview_when_activated_after_extraction(tmp_path: P
     image_path = images / "frame_0001.jpg"
     cv2.imwrite(str(image_path), np.full((32, 64, 3), 180, dtype=np.uint8))
     rows = [{"seq": "1", "output_file": "images/frame_0001.jpg", "decision": "keep", "status": "ok"}]
-    with (tmp_path / "selected_frames.csv").open("w", encoding="utf-8", newline="") as f:
+    csv_path = selected_frames_path(tmp_path)
+    csv_path.parent.mkdir(parents=True, exist_ok=True)
+    with csv_path.open("w", encoding="utf-8", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=list(rows[0].keys()))
         writer.writeheader()
         writer.writerows(rows)
@@ -317,7 +322,9 @@ def test_mask_step_preview_render_scheduling_is_debounced() -> None:
 
 def test_mask_step_disables_generation_without_images_dir(tmp_path: Path) -> None:
     _app()
-    (tmp_path / "selected_frames.csv").write_text("seq,output_file,decision,status\n", encoding="utf-8")
+    csv_path = selected_frames_path(tmp_path)
+    csv_path.parent.mkdir(parents=True, exist_ok=True)
+    csv_path.write_text("seq,output_file,decision,status\n", encoding="utf-8")
     step = MaskStep(Path.cwd())
 
     step.set_scene_dir(str(tmp_path))

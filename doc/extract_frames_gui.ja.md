@@ -1,6 +1,6 @@
 # Step 1 フレーム抽出GUI
 
-Step 1 は、360°動画からSfM/3DGSに使うエクイレクタングラー静止画を作る画面です。ここで作った `images/` と `selected_frames.csv` が、Step 2の確認、Step 3のマスク生成、Metashape SfMへ進む土台になります。
+Step 1 は、360°動画からSfM/3DGSに使うエクイレクタングラー静止画を作る画面です。ここで作った `images/` と `_stechdrive/frames/selected_frames.csv` が、Step 2の確認、Step 3のマスク生成、Metashape SfMへ進む土台になります。
 
 多くの場合は、動画を選び、シーンフォルダを指定し、まず固定間隔で抽出します。必要に応じて `変化補正` を使うと、似すぎたフレームを減らし、視点変化が大きい区間の候補を追加できます。
 
@@ -90,11 +90,11 @@ Step 1は、解析用の縮小画像と、実際に保存する画像を分け�
 | 出力 | 内容 |
 | --- | --- |
 | `images/` | 抽出されたエクイレクタングラー静止画 |
-| `selected_frames.csv` | Step 2で確認する採用/除外候補と解析情報 |
-| `extract_report.json` | 抽出条件や結果の記録 |
+| `_stechdrive/frames/selected_frames.csv` | Step 2で確認する採用/除外候補と解析情報 |
+| `_stechdrive/frames/extract_report.json` | 抽出条件や結果の記録 |
 | `extract_cache.npz` | 再解析を速くするためのキャッシュ |
 
-Step 2では、`selected_frames.csv` の判定をGUIラベルに変換して表示します。`追加`、`除外`、`要確認` が多すぎる場合は、Step 1の間隔やシーン距離を見直します。
+Step 2では、`_stechdrive/frames/selected_frames.csv` の判定をGUIラベルに変換して表示します。`追加`、`除外`、`要確認` が多すぎる場合は、Step 1の間隔やシーン距離を見直します。
 
 ## よくある判断
 

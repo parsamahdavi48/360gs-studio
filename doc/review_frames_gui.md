@@ -2,7 +2,7 @@
 
 Step 2 is where you review the frames extracted in Step 1 and keep only the images that should continue to mask generation and Metashape. It shows labels such as `Added`, `Drop`, and `Review` from Step 1 analysis, and lets you manually change keep/drop decisions.
 
-When you press `Apply`, Step 2 removes dropped frames from `images/` and finalizes `selected_frames.csv` to keep-only rows. The resulting `images/` folder becomes the input for Step 3 and Metashape SfM.
+When you press `Apply`, Step 2 removes dropped frames from `images/` and finalizes `_stechdrive/frames/selected_frames.csv` to keep-only rows. The resulting `images/` folder becomes the input for Step 3 and Metashape SfM.
 
 ## Launch
 
@@ -10,7 +10,7 @@ When you press `Apply`, Step 2 removes dropped frames from `images/` and finaliz
 run_gui.bat --scene .\scene01
 ```
 
-Then open `Step 2: Frame Review` in the workflow sidebar. If the scene folder contains `selected_frames.csv`, it loads automatically.
+Then open `Step 2: Frame Review` in the workflow sidebar. If the scene folder contains `_stechdrive/frames/selected_frames.csv`, it loads automatically.
 
 ## First Things To Check
 
@@ -35,7 +35,7 @@ The efficient workflow is to scan the thumbnail list first, then jump through on
 6. Press `Apply` when the decisions are ready.
 7. Continue to Step 3.
 
-Keep/drop changes are written to `selected_frames.csv` immediately. Dropped image files are not removed from `images/` until you press `Apply`.
+Keep/drop changes are written to `_stechdrive/frames/selected_frames.csv` immediately. Dropped image files are not removed from `images/` until you press `Apply`.
 
 ## Review Views
 
@@ -92,14 +92,14 @@ Internally it runs:
 python apply_frame_decisions.py <scene_dir> --finalize-in-place
 ```
 
-If `Back up to images_backup/ before Apply` is enabled, dropped images are copied to `images_backup/` first.
+If `Back up to _stechdrive/frames/backups/images/ before Apply` is enabled, dropped images are copied to `_stechdrive/frames/backups/images/` first.
 
 Apply does the following:
 
 - deletes drop-marked images from `images/`
 - preserves filenames for kept images
-- rewrites `selected_frames.csv` to keep-only rows
-- writes `selected_frames.before_finalize.csv` and `selected_frames_keep.csv`
+- rewrites `_stechdrive/frames/selected_frames.csv` to keep-only rows
+- writes `_stechdrive/frames/backups/selected_frames.before_finalize.csv` and `_stechdrive/frames/selected_frames_keep.csv`
 - refreshes Step 2 after success
 
 Without the image backup option, deleted drop images cannot be restored from Step 2. The CSV backup is still created.

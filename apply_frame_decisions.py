@@ -8,6 +8,8 @@ import sys
 from collections.abc import Sequence
 from pathlib import Path
 
+from scene_layout import frame_backups_dir, selected_frames_keep_path, selected_frames_path
+
 
 def is_image_file(path: Path) -> bool:
     return path.suffix.lower() in {".jpg", ".jpeg", ".png", ".bmp", ".tif", ".tiff", ".webp"}
@@ -35,6 +37,7 @@ def load_rows(csv_path: Path) -> list[dict]:
 
 
 def write_rows(csv_path: Path, fieldnames: Sequence[str], rows: Sequence[dict]) -> None:
+    csv_path.parent.mkdir(parents=True, exist_ok=True)
     with csv_path.open("w", encoding="utf-8", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=list(fieldnames))
         writer.writeheader()
@@ -42,15 +45,16 @@ def write_rows(csv_path: Path, fieldnames: Sequence[str], rows: Sequence[dict]) 
             writer.writerow(row)
 
 
-def ensure_unique_backup_path(csv_path: Path) -> Path:
+def ensure_unique_backup_path(csv_path: Path, backup_dir: Path | None = None) -> Path:
     stem = csv_path.stem
     suffix = csv_path.suffix
-    candidate = csv_path.with_name(f"{stem}.before_finalize{suffix}")
+    root = backup_dir or csv_path.parent
+    candidate = root / f"{stem}.before_finalize{suffix}"
     if not candidate.exists():
         return candidate
 
     for i in range(1, 1000):
-        candidate = csv_path.with_name(f"{stem}.before_finalize.{i}{suffix}")
+        candidate = root / f"{stem}.before_finalize.{i}{suffix}"
         if not candidate.exists():
             return candidate
     raise RuntimeError(f"Failed to allocate backup path near: {csv_path}")
@@ -74,7 +78,7 @@ def pending_drop_image_paths(
     images_dir: Path | None = None,
 ) -> list[Path]:
     """Return drop-marked image files that still exist under images_dir."""
-    csv_path = scene_dir / csv_name
+    csv_path = selected_frames_path(scene_dir, csv_name)
     if not csv_path.exists():
         return []
 
@@ -102,7 +106,7 @@ def untracked_image_paths(
     images_dir: Path | None = None,
 ) -> list[Path]:
     """Return image files in images_dir that are not referenced by the selected CSV."""
-    csv_path = scene_dir / csv_name
+    csv_path = selected_frames_path(scene_dir, csv_name)
     root = images_dir if images_dir is not None else scene_dir / "images"
     if not csv_path.exists() or not root.exists():
         return []
@@ -189,7 +193,7 @@ def finalize_in_place(
     csv_name: str,
     backup_dir: Path | None = None,
 ) -> None:
-    csv_path = scene_dir / csv_name
+    csv_path = selected_frames_path(scene_dir, csv_name)
     if not csv_path.exists():
         raise FileNotFoundError(f"CSV not found: {csv_path}")
 
@@ -257,11 +261,13 @@ def finalize_in_place(
         new_row["output_file"] = src.relative_to(scene_dir).as_posix()
         updated_rows.append(new_row)
 
-    backup_csv = ensure_unique_backup_path(csv_path)
+    csv_backup_dir = frame_backups_dir(scene_dir)
+    csv_backup_dir.mkdir(parents=True, exist_ok=True)
+    backup_csv = ensure_unique_backup_path(csv_path, csv_backup_dir)
     shutil.copy2(csv_path, backup_csv)
     write_rows(csv_path, fieldnames, updated_rows)
 
-    keep_csv = scene_dir / "selected_frames_keep.csv"
+    keep_csv = selected_frames_keep_path(scene_dir)
     write_rows(keep_csv, fieldnames, updated_rows)
 
     print("Finalize mode: inplace images")
@@ -283,7 +289,7 @@ def apply_decisions(
     finalize_inplace: bool,
     backup_dir: Path | None = None,
 ) -> None:
-    csv_path = scene_dir / csv_name
+    csv_path = selected_frames_path(scene_dir, csv_name)
     if not csv_path.exists():
         raise FileNotFoundError(f"CSV not found: {csv_path}")
 
@@ -310,12 +316,12 @@ def parse_args() -> argparse.Namespace:
         "scene_dir",
         nargs="?",
         default=".",
-        help="Scene directory containing selected_frames.csv and images/",
+        help="Scene directory containing _stechdrive/frames/selected_frames.csv and images/",
     )
     parser.add_argument(
         "--csv",
         default="selected_frames.csv",
-        help="CSV filename under scene_dir (default=selected_frames.csv)",
+        help="CSV filename under scene_dir/_stechdrive/frames, or an absolute path (default=selected_frames.csv)",
     )
     parser.add_argument(
         "--output",
@@ -330,7 +336,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--finalize-in-place",
         action="store_true",
-        help="Drop=remove inside scene_dir/images, preserve kept filenames, then update selected_frames.csv",
+        help="Drop=remove inside scene_dir/images, preserve kept filenames, then update _stechdrive/frames/selected_frames.csv",
     )
     parser.add_argument(
         "--backup-dir",

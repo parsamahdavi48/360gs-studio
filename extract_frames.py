@@ -23,6 +23,7 @@ from extract_sessions import (
     session_matches_video,
     video_identity,
 )
+from scene_layout import extract_report_path, selected_frames_path
 
 try:
     import cv2
@@ -1346,6 +1347,7 @@ def write_report(
         },
     }
 
+    report_path.parent.mkdir(parents=True, exist_ok=True)
     with report_path.open("w", encoding="utf-8") as f:
         json.dump(report, f, indent=2)
 
@@ -1609,7 +1611,7 @@ def parse_args() -> argparse.Namespace:
         choices=["overwrite", "append", "replace-video"],
         default="overwrite",
         help=(
-            "How selected_frames.csv and extract_sessions.json are updated. "
+            "How _stechdrive/frames/selected_frames.csv and _stechdrive/frames/extract_sessions.json are updated. "
             "overwrite=current single-extraction behavior, append=add a new video session, "
             "replace-video=remove prior sessions for the same video then append."
         ),
@@ -1617,7 +1619,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--allow-duplicate-video",
         action="store_true",
-        help="Allow appending a video that already exists in extract_sessions.json.",
+        help="Allow appending a video that already exists in _stechdrive/frames/extract_sessions.json.",
     )
 
     parser.add_argument("--ffmpeg", default="ffmpeg", help="Path to ffmpeg executable")
@@ -1678,8 +1680,8 @@ def main() -> None:
     output_root = Path(args.output_dir)
     scene_dir = output_root.resolve()
     images_dir = scene_dir / "images"
-    csv_path = scene_dir / "selected_frames.csv"
-    report_path = scene_dir / "extract_report.json"
+    csv_path = selected_frames_path(scene_dir)
+    report_path = extract_report_path(scene_dir)
 
     try:
         ensure_binary(args.ffmpeg, "ffmpeg")
@@ -1708,7 +1710,7 @@ def main() -> None:
     ]
     if args.output_mode == "append" and matching_sessions and not args.allow_duplicate_video:
         print(
-            "Error: this video already exists in extract_sessions.json. "
+            "Error: this video already exists in _stechdrive/frames/extract_sessions.json. "
             "Use --output-mode replace-video to re-extract it, or --allow-duplicate-video "
             "with a unique --filename-prefix to add it as a separate session."
         )

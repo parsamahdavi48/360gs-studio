@@ -59,6 +59,7 @@ else:
 # i18n は PySide6 に依存しないので無条件 import
 from apply_frame_decisions import pending_drop_image_paths as find_pending_drop_image_paths
 from gui import i18n
+from scene_layout import selected_frames_path
 
 if _PYSIDE_IMPORT_ERROR is None:
     import cv2
@@ -824,7 +825,7 @@ if QMainWindow is not None:
             )
 
         def pending_drop_image_paths(self) -> list[Path]:
-            return find_pending_drop_image_paths(self.scene_dir, self.csv_path.name)
+            return find_pending_drop_image_paths(self.scene_dir, str(self.csv_path))
 
         def has_pending_finalize(self) -> bool:
             return self.has_decision_changes() or bool(self.pending_drop_image_paths())
@@ -959,12 +960,12 @@ def parse_args() -> argparse.Namespace:
         "scene_dir",
         nargs="?",
         default=".",
-        help="Scene directory containing selected_frames.csv and images/",
+        help="Scene directory containing _stechdrive/frames/selected_frames.csv and images/",
     )
     parser.add_argument(
         "--csv",
         default="selected_frames.csv",
-        help="CSV filename under scene_dir (default=selected_frames.csv)",
+        help="CSV filename under scene_dir/_stechdrive/frames, or an absolute path (default=selected_frames.csv)",
     )
     return parser.parse_args()
 
@@ -972,7 +973,7 @@ def parse_args() -> argparse.Namespace:
 def main() -> None:
     args = parse_args()
     scene_dir = Path(args.scene_dir).resolve()
-    csv_path = scene_dir / args.csv
+    csv_path = selected_frames_path(scene_dir, args.csv)
 
     if not csv_path.exists():
         print(f"Error: CSV not found: {csv_path}")

@@ -37,7 +37,7 @@ When unsure, start with `YOLO/SAM2.1` + `High` + `person` for 360° images, then
 7. Scan the thumbnail list for missed regions or false positives.
 8. Select only problem images, adjust settings, and run `Regenerate Mask`.
 
-If `selected_frames.csv` exists, Step 3 validates it against `images/`. If pending drops or untracked images remain, apply Step 2 decisions or resolve the mismatch before generating masks.
+If `_stechdrive/frames/selected_frames.csv` exists, Step 3 validates it against `images/`. If pending drops or untracked images remain, apply Step 2 decisions or resolve the mismatch before generating masks.
 
 ## Model Choice
 

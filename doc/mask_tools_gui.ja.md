@@ -37,7 +37,7 @@ run_gui.bat --scene .\scene01
 7. サムネイル一覧で漏れや誤検出を探します。
 8. 問題がある画像だけ選択し、設定を変えて `マスク再生成` します。
 
-`selected_frames.csv` があるシーンでは、Step 3は `images/` とCSVの整合性を確認します。除外予定の画像やCSVにない画像が残っている場合は、Step 2で適用するか、不一致を解消してから実行してください。
+`_stechdrive/frames/selected_frames.csv` があるシーンでは、Step 3は `images/` とCSVの整合性を確認します。除外予定の画像やCSVにない画像が残っている場合は、Step 2で適用するか、不一致を解消してから実行してください。
 
 ## モデルの選び方
 
