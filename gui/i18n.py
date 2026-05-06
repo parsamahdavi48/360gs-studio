@@ -38,6 +38,9 @@ _JA: dict[str, str] = {
     "SCENE_REQUIRED_ACTION_HINT": "ヘッダーのシーンフォルダを指定してください。",
     "CLEAR_SCENE_DIR": "シーンフォルダをクリア",
     "CLEAR_SCENE_DIR_HINT": "現在のシーンフォルダ指定を解除します。ファイルは削除しません。",
+    "STEP_HELP_BUTTON": "ヘルプ",
+    "STEP_HELP_OPEN_FAILED_TITLE": "ヘルプを開けません",
+    "STEP_HELP_OPEN_FAILED_BODY": "ブラウザで次のURLを開いてください:\n{url}",
     "OUTPUT_DIR": "出力フォルダ",
     "RUN": "実行",
     "GENERATE": "生成",
@@ -653,6 +656,9 @@ _EN: dict[str, str] = {
     "SCENE_REQUIRED_ACTION_HINT": "Set the scene folder in the header first.",
     "CLEAR_SCENE_DIR": "Clear Scene Folder",
     "CLEAR_SCENE_DIR_HINT": "Clear the current scene folder selection. No files are deleted.",
+    "STEP_HELP_BUTTON": "Help",
+    "STEP_HELP_OPEN_FAILED_TITLE": "Could Not Open Help",
+    "STEP_HELP_OPEN_FAILED_BODY": "Open this URL in your browser:\n{url}",
     "OUTPUT_DIR": "Output Folder",
     "RUN": "Run",
     "GENERATE": "Generate",
@@ -1248,6 +1254,7 @@ _EN: dict[str, str] = {
 
 _TIPS_JA: dict[str, str] = {
     "SCENE_DIR": "作業対象のシーンフォルダ。再開時は _stechdrive/frames/selected_frames.csv と images/ がある抽出済みフォルダを指定します。images/, masks/ などのサブフォルダが自動認識されます",
+    "STEP_HELP_BUTTON": "現在のステップの説明ドキュメントをGitHubで開きます。表示言語に合わせて日本語または英語のページを開きます",
     "RUN": "現在のタブの処理を開始します",
     "CANCEL": "実行中の処理を中断します",
     "INPUT_VIDEO": "エクイレクタングラー形式の360度動画ファイルを選択。参照ダイアログでは複数ファイルを選択できます",
@@ -1410,6 +1417,7 @@ _TIPS_JA: dict[str, str] = {
 
 _TIPS_EN: dict[str, str] = {
     "SCENE_DIR": "Working scene folder. When resuming, select the extracted folder that contains _stechdrive/frames/selected_frames.csv and images/. Subfolders like images/, masks/ are auto-detected",
+    "STEP_HELP_BUTTON": "Open the current step's documentation on GitHub. The page follows the active UI language.",
     "RUN": "Start processing for the current tab",
     "CANCEL": "Abort the running process",
     "INPUT_VIDEO": "Select equirectangular 360-degree video files. The browse dialog supports multiple selection",

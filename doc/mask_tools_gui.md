@@ -12,6 +12,8 @@ run_gui.bat --scene .\scene01
 
 Then open `Step 3: Mask Generation` in the workflow sidebar.
 
+The `?` help icon at the right edge of the center-panel header opens this step's GitHub documentation. It opens the Japanese or English page to match the active UI language.
+
 ## First Choice
 
 | Goal | Recommended settings |

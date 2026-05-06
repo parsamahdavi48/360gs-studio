@@ -5,8 +5,8 @@ import argparse
 import sys
 from pathlib import Path
 
-from PySide6.QtCore import Qt
-from PySide6.QtGui import QCloseEvent, QIcon
+from PySide6.QtCore import QSize, Qt, QUrl
+from PySide6.QtGui import QCloseEvent, QDesktopServices, QIcon
 from PySide6.QtWidgets import (
     QApplication,
     QHBoxLayout,
@@ -15,13 +15,14 @@ from PySide6.QtWidgets import (
     QPushButton,
     QSplitter,
     QStackedWidget,
+    QToolButton,
     QVBoxLayout,
     QWidget,
 )
 
 from gui import i18n
 from gui.common.browse_widget import BrowseWidget
-from gui.common.icons import reset_icon
+from gui.common.icons import help_icon, reset_icon
 from gui.common.log_panel import LogPanel
 from gui.common.process_runner import ProcessRunner
 from gui.common.progress_widget import ProgressWidget
@@ -33,12 +34,27 @@ from gui.theme import apply_theme
 from gui.version import app_version_label
 from path_safety import PathSafetyIssue, check_path_safety, normalized_path_text
 
+_GITHUB_DOC_BASE_URL = "https://github.com/stechdrive/stechdrive-3dgs-utils/blob/main/doc"
+_STEP_HELP_DOC_STEMS = (
+    "extract_frames_gui",
+    "review_frames_gui",
+    "mask_tools_gui",
+    "cubemap_tools_gui",
+)
+
 
 def app_icon() -> QIcon:
     icon_path = Path(__file__).resolve().parent / "assets" / "app_icon.ico"
     if not icon_path.exists():
         icon_path = Path(__file__).resolve().parent / "assets" / "app_icon.svg"
     return QIcon(str(icon_path))
+
+
+def step_help_url(index: int, *, lang: str | None = None) -> str:
+    if not 0 <= index < len(_STEP_HELP_DOC_STEMS):
+        raise IndexError(f"step index out of range: {index}")
+    suffix = ".ja.md" if (lang or i18n.LANG).lower().startswith("ja") else ".md"
+    return f"{_GITHUB_DOC_BASE_URL}/{_STEP_HELP_DOC_STEMS[index]}{suffix}"
 
 
 class MainWindow(QWidget):
@@ -157,6 +173,15 @@ class MainWindow(QWidget):
         self.step_subheader.setObjectName("stepSubheader")
         self.step_subheader.setWordWrap(False)
         step_header_row.addWidget(self.step_subheader, stretch=1)
+        self.step_help_btn = QToolButton()
+        self.step_help_btn.setObjectName("iconToolButton")
+        self.step_help_btn.setIcon(help_icon())
+        self.step_help_btn.setIconSize(QSize(18, 18))
+        self.step_help_btn.setToolTip(i18n.tip("STEP_HELP_BUTTON"))
+        self.step_help_btn.setAccessibleName(i18n.t("STEP_HELP_BUTTON"))
+        self.step_help_btn.setFixedSize(28, 28)
+        self.step_help_btn.clicked.connect(self._open_step_help)
+        step_header_row.addWidget(self.step_help_btn)
         content_layout.addLayout(step_header_row)
 
         self.stack = QStackedWidget()
@@ -273,10 +298,21 @@ class MainWindow(QWidget):
             btn.setChecked(i == index)
         self.step_header.setText(self.step_titles[index])
         self.step_subheader.setText(self.step_descriptions[index])
+        self.step_help_btn.setAccessibleName(f"{self.step_titles[index]} {i18n.t('STEP_HELP_BUTTON')}")
         step = self._current_step_widget()
         if step is not None:
             step.on_activated()
         self._update_run_button()
+
+    def _open_step_help(self) -> None:
+        url = step_help_url(self.stack.currentIndex())
+        if QDesktopServices.openUrl(QUrl(url)):
+            return
+        QMessageBox.warning(
+            self,
+            i18n.t("STEP_HELP_OPEN_FAILED_TITLE"),
+            i18n.t("STEP_HELP_OPEN_FAILED_BODY").format(url=url),
+        )
 
     def _update_run_button(self) -> None:
         running = self.runner.is_running()

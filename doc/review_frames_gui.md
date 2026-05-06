@@ -12,6 +12,8 @@ run_gui.bat --scene .\scene01
 
 Then open `Step 2: Frame Review` in the workflow sidebar. If the scene folder contains `_stechdrive/frames/selected_frames.csv`, it loads automatically.
 
+The `?` help icon at the right edge of the center-panel header opens this step's GitHub documentation. It opens the Japanese or English page to match the active UI language.
+
 ## First Things To Check
 
 | Goal | Where to look |
