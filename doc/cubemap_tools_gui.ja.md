@@ -21,7 +21,7 @@ Step 4を開いたら、最初に「自分はどのルートか」を決めま�
 | MetashapeでSfM済みの結果をPostshot / Brush / LichtFeldへ渡したい | `Metashape` | `出力プリセット`, `出力形状`, `カメラXML`, `点群PLY` |
 | LichtFeldでキューブマップ版と3DGUT版を比較したい | `Metashape` | `出力プリセット: LichtFeld Studio`, `出力形状` |
 | Metashapeを使わず、抽出済み360°画像からCOLMAP/GLOMAPへ進みたい | `COLMAP` | `COLMAP実行設定`, `投影視点` |
-| Metashapeを使わず、抽出済みエクイレクタングラー画像を直接SfMしたい | `SphereSfM` | `SphereSfM COLMAP実行ファイル`, `Matcher`, `SfM品質`, `出力形状` |
+| Metashapeを使わず、抽出済みエクイレクタングラー画像を直接SfMしたい | `SphereSfM` | `SphereSfM COLMAP実行ファイル`, `実行範囲`, `Matcher`, `SfM品質`, `出力形状` |
 | すでに作った出力の画像やマスクだけ作り直したい | 元のルート | `出力`, `投影視点`, `画像サイズ` |
 
 `Scene Directory` は、Step 1-3で使っているシーンフォルダです。通常は `images/` と `masks/` が入っています。Metashapeルートでは、そこにMetashapeから書き出したXML/PLYを指定して、3DGS向けのデータを作ります。
@@ -170,18 +170,19 @@ SphereSfM版COLMAPを用意している場合は、抽出済みのエクイレ�
 2. `選択:` を `SphereSfM` にします。
 3. `SphereSfM COLMAP実行ファイル` に、SphereSfM配布版またはビルド済みの `colmap.exe` を指定します。
 4. `masks/ を使用` は通常ONにします。Step 3の白=使用、黒=除外マスクをCOLMAPの `image.jpg.png` 命名へ変換して使います。
-5. `Matcher` は動画フレームなら `Sequential` から始めます。POSファイルがある場合だけ `Spatial` を使います。
-6. `SfM品質` はまず `標準`、試行や大量フレームでは `軽量`、登録が弱い場合は `クオリティ` を試します。
-7. `変換設定` で `出力形状` を選びます。
-8. 実行します。
+5. `実行範囲` を選びます。通常は `SfM + 変換`、SfMだけ作り直す場合は `SfMのみ`、既存の `<scene>/output/spheresfm/sparse/` から変換だけやり直す場合は `既存SfMから変換のみ` を使います。
+6. `Matcher` は動画フレームなら `Sequential` から始めます。POSファイルがある場合だけ `Spatial` を使います。
+7. `SfM品質` はまず `標準`、試行や大量フレームでは `軽量`、登録が弱い場合は `クオリティ` を試します。
+8. `変換設定` で `出力形状` を選びます。
+9. 実行します。
 
 SphereSfM実行の開始時に、GUIは元画像を1枚だけ `<scene>/output/spheresfm/preflight/` へコピーし、フルのdatabaseを作る前に小さなGPU SIFT確認を自動実行します。選択したバイナリが現在のGPUでCUDA SIFTを実行できない場合はそこで停止し、フェーズログから原因を確認できます。
 
-`出力形状` が `3DGUT (LichtFeld)` の場合は、`<scene>/output/spheresfm/3dgut/` に `transforms.json` と `pointcloud.ply` を作ります。フレームパスは元の `images/` を参照するため、持ち出すときはシーンフォルダの構造ごと保ってください。
+`出力形状` が `3DGUT (LichtFeld)` の場合は、`<scene>/transforms.json` と `<scene>/pointcloud.ply` を作ります。フレームパスはシーン直下の `images/` を参照します。既存の `transforms.json` または `pointcloud.ply` がある場合は、上書き前に確認します。
 
-`出力形状` が `投影視点に変換` の場合は、`投影視点` タブと画像/マスク出力のON/OFFを使います。まず `<scene>/output/spheresfm/equirect/` に中間のエクイレクタングラー transforms を作り、そのあと `<scene>/output/spheresfm/cubemap/` に投影視点データを作ります。
+`出力形状` が `投影視点に変換` の場合は、`投影視点` タブと画像/マスク出力のON/OFFを使います。まず `<scene>/output/spheresfm/equirect/` に中間のエクイレクタングラー transforms を作り、そのあとMetashapeルートと同じ `<scene>/output/` 直下に `images/`、`masks/`、`transforms.json` を作ります。
 
-SphereSfMプロジェクト直下には、上記に加えて `preflight/`、`database.db`、`masks_colmap/`、`sparse/`、`stechdrive_spheresfm_project.json` を作ります。
+SphereSfMプロジェクト `<scene>/output/spheresfm/` には、作業用の `preflight/`、`database.db`、`masks_colmap/`、`sparse/`、`equirect/`、`stechdrive_spheresfm_project.json` を作ります。
 
 実行後は `結果をCOLMAP GUIで表示` で、登録されたカメラ位置と疎点群を確認できます。
 
@@ -193,8 +194,8 @@ SphereSfMプロジェクト直下には、上記に加えて `preflight/`、`dat
 | Metashape + `3DGUT (LichtFeld)` | `<scene>/transforms.json`, `<scene>/pointcloud.ply`, `<scene>/stechdrive_export_settings.json` |
 | COLMAP | `<scene>/output/colmap_rig/images/`, `<scene>/output/colmap_rig/masks/`, `<scene>/output/colmap_rig/rig_config.json` |
 | COLMAP実行あり | 上記に加えて、COLMAP/GLOMAPのSfM結果 |
-| SphereSfM + `3DGUT (LichtFeld)` | `<scene>/output/spheresfm/3dgut/transforms.json`, `<scene>/output/spheresfm/3dgut/pointcloud.ply`, およびSphereSfMプロジェクト一式 |
-| SphereSfM + 投影視点に変換 | `<scene>/output/spheresfm/cubemap/images/`, `<scene>/output/spheresfm/cubemap/masks/`, `<scene>/output/spheresfm/cubemap/transforms.json`, およびSphereSfMプロジェクト一式 |
+| SphereSfM + `3DGUT (LichtFeld)` | `<scene>/transforms.json`, `<scene>/pointcloud.ply`, および `<scene>/output/spheresfm/` のSphereSfMプロジェクト一式 |
+| SphereSfM + 投影視点に変換 | `<scene>/output/images/`, `<scene>/output/masks/`, `<scene>/output/transforms.json`, および `<scene>/output/spheresfm/` のSphereSfMプロジェクト一式 |
 
 `LichtFeld Studio` プロファイルでは、最終出力の `transforms.json` と `pointcloud.ply` に同じ向き補正を適用し、LichtFeld上でMetashapeと同じ +X / +Z / 上下方向になるようにします。
 

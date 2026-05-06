@@ -52,6 +52,15 @@ def _write_test_image(path: Path, size: tuple[int, int] = (64, 32)) -> None:
     Image.new("RGB", size, (0, 0, 0)).save(path)
 
 
+def _write_spheresfm_sparse_stub(scene: Path) -> Path:
+    sparse_model = scene / "output" / "spheresfm" / "sparse" / "0"
+    sparse_model.mkdir(parents=True, exist_ok=True)
+    (sparse_model / "cameras.txt").write_text("# cameras\n", encoding="ascii")
+    (sparse_model / "images.txt").write_text("# images\n", encoding="ascii")
+    (sparse_model / "points3D.txt").write_text("# points\n", encoding="ascii")
+    return sparse_model
+
+
 def _is_descendant(widget, ancestor) -> bool:
     current = widget
     while current is not None:
@@ -690,7 +699,7 @@ def test_spheresfm_method_can_queue_3dgut_export_without_projection_views(tmp_pa
     step._set_combo_data(step.spheresfm_output_shape_combo, "equirect_3dgut")
     step.spheresfm_exec_browse.set_text(str(fake_colmap))
 
-    assert step.output_path_label.full_text() == str(tmp_path / "output" / "spheresfm")
+    assert step.output_path_label.full_text() == str(tmp_path)
     assert not step.export_targets_row.isEnabled()
     assert not step.view_config.settings_widget.isEnabled()
 
@@ -716,7 +725,7 @@ def test_spheresfm_method_can_queue_3dgut_export_without_projection_views(tmp_pa
     assert commands[5][1][commands[5][1].index("--Mapper.multiple_models") + 1] == "0"
     assert commands[5][1][commands[5][1].index("--Mapper.ba_global_max_num_iterations") + 1] == "33"
     assert commands[6][1][3] == str(tmp_path / "output" / "spheresfm" / "sparse")
-    assert commands[6][1][4] == str(tmp_path / "output" / "spheresfm" / "3dgut")
+    assert commands[6][1][4] == str(tmp_path)
     assert commands[6][1][commands[6][1].index("--image-path-mode") + 1] == "relative-to-output"
 
 
@@ -736,6 +745,7 @@ def test_spheresfm_method_can_queue_projected_cubemap_export(tmp_path: Path) -> 
     step._set_export_method("spheresfm")
     step.spheresfm_exec_browse.set_text(str(fake_colmap))
 
+    assert step.output_path_label.full_text() == str(tmp_path / "output")
     assert step.export_targets_row.isEnabled()
     assert step.view_config.settings_widget.isEnabled()
 
@@ -756,10 +766,146 @@ def test_spheresfm_method_can_queue_projected_cubemap_export(tmp_path: Path) -> 
     assert transform_cmd[4] == str(tmp_path / "output" / "spheresfm" / "equirect")
     assert transform_cmd[transform_cmd.index("--image-path-mode") + 1] == "relative"
     assert cubemap_cmd[3] == str(tmp_path / "output" / "spheresfm" / "equirect")
-    assert cubemap_cmd[4] == str(tmp_path / "output" / "spheresfm" / "cubemap")
+    assert cubemap_cmd[4] == str(tmp_path / "output")
+    assert cubemap_cmd[cubemap_cmd.index("--views-json") + 1] == str(tmp_path / "output" / "views_config.json")
     assert cubemap_cmd[cubemap_cmd.index("--image-dir") + 1] == str(images)
     assert cubemap_cmd[cubemap_cmd.index("--mask_dir") + 1] == str(masks)
     assert "--no_transform" in cubemap_cmd
+
+
+def test_spheresfm_method_can_queue_sfm_only(tmp_path: Path) -> None:
+    _app()
+    images = tmp_path / "images"
+    masks = tmp_path / "masks"
+    images.mkdir()
+    masks.mkdir()
+    _write_test_image(images / "frame_0001.jpg")
+    _write_test_image(masks / "frame_0001.png")
+    fake_colmap = tmp_path / "colmap.exe"
+    fake_colmap.write_text("", encoding="utf-8")
+
+    step = CubemapStep(Path.cwd())
+    step.set_scene_dir(str(tmp_path))
+    step._set_export_method("spheresfm")
+    step._set_combo_data(step.spheresfm_run_scope_combo, "sfm_only")
+    step.spheresfm_exec_browse.set_text(str(fake_colmap))
+
+    commands = step.build_commands()
+
+    assert [phase for phase, _cmd in commands] == [
+        "spheresfm_preflight",
+        "spheresfm_prepare",
+        "spheresfm_database",
+        "spheresfm_feature",
+        "spheresfm_match",
+        "spheresfm_mapper",
+    ]
+    assert not step.settings_tabs.isTabEnabled(step.spheresfm_convert_tab_index)
+
+
+def test_spheresfm_convert_only_requires_existing_sparse(tmp_path: Path) -> None:
+    _app()
+    images = tmp_path / "images"
+    images.mkdir()
+    _write_test_image(images / "frame_0001.jpg")
+
+    step = CubemapStep(Path.cwd())
+    step.set_scene_dir(str(tmp_path))
+    step._set_export_method("spheresfm")
+    step._set_combo_data(step.spheresfm_run_scope_combo, "convert_only")
+
+    with pytest.raises(ValueError, match="sparse"):
+        step.build_commands()
+
+
+def test_spheresfm_convert_only_queues_3dgut_without_colmap_binary(tmp_path: Path) -> None:
+    _app()
+    images = tmp_path / "images"
+    images.mkdir()
+    _write_test_image(images / "frame_0001.jpg")
+    sparse_model = _write_spheresfm_sparse_stub(tmp_path)
+
+    step = CubemapStep(Path.cwd())
+    step.set_scene_dir(str(tmp_path))
+    step._set_export_method("spheresfm")
+    step._set_combo_data(step.spheresfm_run_scope_combo, "convert_only")
+    step._set_combo_data(step.spheresfm_output_shape_combo, "equirect_3dgut")
+
+    commands = step.build_commands()
+
+    assert [phase for phase, _cmd in commands] == ["spheresfm_transforms"]
+    assert commands[0][1][3] == str(tmp_path / "output" / "spheresfm" / "sparse")
+    assert commands[0][1][4] == str(tmp_path)
+    assert sparse_model.is_dir()
+
+
+def test_spheresfm_3dgut_convert_only_confirms_scene_root_outputs(tmp_path: Path, monkeypatch) -> None:
+    _app()
+    images = tmp_path / "images"
+    masks = tmp_path / "masks"
+    images.mkdir()
+    masks.mkdir()
+    _write_test_image(images / "frame_0001.jpg")
+    _write_test_image(masks / "frame_0001.png")
+    sparse_model = _write_spheresfm_sparse_stub(tmp_path)
+    transforms = tmp_path / "transforms.json"
+    pointcloud = tmp_path / "pointcloud.ply"
+    transforms.write_text("old", encoding="utf-8")
+    pointcloud.write_text("old", encoding="utf-8")
+    monkeypatch.setattr(QMessageBox, "question", lambda *args, **kwargs: QMessageBox.Yes)
+
+    step = CubemapStep(Path.cwd())
+    step.set_scene_dir(str(tmp_path))
+    step._set_export_method("spheresfm")
+    step._set_combo_data(step.spheresfm_run_scope_combo, "convert_only")
+    step._set_combo_data(step.spheresfm_output_shape_combo, "equirect_3dgut")
+
+    commands = step.build_commands()
+
+    assert [phase for phase, _cmd in commands] == ["spheresfm_transforms"]
+    assert not transforms.exists()
+    assert not pointcloud.exists()
+    assert sparse_model.is_dir()
+    assert images.is_dir()
+    assert masks.is_dir()
+
+
+def test_spheresfm_convert_only_resets_conversion_outputs_only(tmp_path: Path, monkeypatch) -> None:
+    _app()
+    images = tmp_path / "images"
+    images.mkdir()
+    _write_test_image(images / "frame_0001.jpg")
+    sparse_model = _write_spheresfm_sparse_stub(tmp_path)
+    database = tmp_path / "output" / "spheresfm" / "database.db"
+    database.write_text("db", encoding="utf-8")
+    old_equirect = tmp_path / "output" / "spheresfm" / "equirect" / "old.txt"
+    old_views = tmp_path / "output" / "views_config.json"
+    old_images = tmp_path / "output" / "images" / "old.jpg"
+    old_masks = tmp_path / "output" / "masks" / "old.png"
+    old_equirect.parent.mkdir(parents=True)
+    old_images.parent.mkdir(parents=True)
+    old_masks.parent.mkdir(parents=True)
+    old_equirect.write_text("old", encoding="utf-8")
+    old_views.write_text("old", encoding="utf-8")
+    old_images.write_text("old", encoding="utf-8")
+    old_masks.write_text("old", encoding="utf-8")
+    monkeypatch.setattr(QMessageBox, "question", lambda *args, **kwargs: QMessageBox.Yes)
+
+    step = CubemapStep(Path.cwd())
+    step.set_scene_dir(str(tmp_path))
+    step._set_export_method("spheresfm")
+    step._set_combo_data(step.spheresfm_run_scope_combo, "convert_only")
+
+    commands = step.build_commands()
+
+    assert [phase for phase, _cmd in commands] == ["spheresfm_transforms", "spheresfm_cubemap"]
+    assert not old_equirect.exists()
+    assert old_views.is_file()
+    assert old_views.read_text(encoding="utf-8") != "old"
+    assert not old_images.exists()
+    assert not old_masks.exists()
+    assert sparse_model.is_dir()
+    assert database.is_file()
 
 
 def test_colmap_user_preferences_restore_executable_and_pipeline_choices(
