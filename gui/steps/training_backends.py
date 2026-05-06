@@ -10,6 +10,7 @@ from pathlib import Path
 _LICHTFELD_REQUIRED_STRATEGIES = {"mrnf", "mcmc", "igs+"}
 _LICHTFELD_MASK_MODES = {"none", "segment", "ignore", "alpha_consistent"}
 _LICHTFELD_TILE_MODES = {1, 2, 4}
+_LICHTFELD_BG_MODES = {"solid_color", "modulation", "image", "random"}
 _LICHTFELD_BASE_IMAGE_COUNT = 300
 
 
@@ -209,6 +210,10 @@ class LichtFeldTrainingOptions:
     undistort: bool = False
     mip_filter: bool = False
     ppisp: bool = False
+    background_mode: str = "solid_color"
+    background_color: tuple[float, float, float] = (0.0, 0.0, 0.0)
+    background_image_path: str = ""
+    config_overrides: dict[str, object] | None = None
     headless: bool = False
     no_splash: bool = True
 
@@ -250,6 +255,12 @@ def build_lichtfeld_config(options: LichtFeldTrainingOptions) -> dict:
         raise ValueError("LichtFeld SH degree must be 0, 1, 2, or 3")
     if options.steps_scaler <= 0:
         raise ValueError("LichtFeld steps scaler must be greater than 0")
+    if options.background_mode not in _LICHTFELD_BG_MODES:
+        raise ValueError(f"Unsupported LichtFeld background mode: {options.background_mode}")
+    if len(options.background_color) != 3 or any(
+        not math.isfinite(c) or c < 0.0 or c > 1.0 for c in options.background_color
+    ):
+        raise ValueError("LichtFeld background color must contain three values between 0 and 1")
 
     steps_scaler = (
         lichtfeld_auto_steps_scaler(options.image_count)
@@ -258,6 +269,8 @@ def build_lichtfeld_config(options: LichtFeldTrainingOptions) -> dict:
     )
     config_iterations = _unscale_lfs_step(int(options.iterations), steps_scaler)
     config = lichtfeld_defaults(strategy)
+    if options.config_overrides:
+        config.update(options.config_overrides)
     config.update(
         {
             "strategy": strategy,
@@ -273,13 +286,19 @@ def build_lichtfeld_config(options: LichtFeldTrainingOptions) -> dict:
             "undistort": bool(options.undistort),
             "mip_filter": bool(options.mip_filter),
             "use_ppisp": bool(options.ppisp),
+            "bg_mode": options.background_mode,
+            "bg_color": [float(c) for c in options.background_color],
             "headless": bool(options.headless),
             "auto_train": True,
             "no_splash": bool(options.no_splash),
         }
     )
-    config["eval_steps"] = [min(7000, config_iterations), config_iterations]
-    config["save_steps"] = [min(7000, config_iterations), config_iterations]
+    if options.background_image_path:
+        config["bg_image_path"] = options.background_image_path
+    if not (options.config_overrides and "eval_steps" in options.config_overrides):
+        config["eval_steps"] = [min(7000, config_iterations), config_iterations]
+    if not (options.config_overrides and "save_steps" in options.config_overrides):
+        config["save_steps"] = [min(7000, config_iterations), config_iterations]
     return config
 
 

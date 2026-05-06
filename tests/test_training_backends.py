@@ -36,6 +36,13 @@ def test_lichtfeld_config_overrides_visible_training_parameters(tmp_path: Path) 
         undistort=True,
         mip_filter=True,
         ppisp=True,
+        background_mode="modulation",
+        background_color=(0.25, 0.5, 0.75),
+        config_overrides={
+            "means_lr": 0.000123,
+            "enable_eval": True,
+            "save_steps": [5000, 30000],
+        },
         headless=True,
     )
 
@@ -54,10 +61,14 @@ def test_lichtfeld_config_overrides_visible_training_parameters(tmp_path: Path) 
     assert config["undistort"] is True
     assert config["mip_filter"] is True
     assert config["use_ppisp"] is True
+    assert config["bg_mode"] == "modulation"
+    assert config["bg_color"] == [0.25, 0.5, 0.75]
+    assert config["means_lr"] == pytest.approx(0.000123)
+    assert config["enable_eval"] is True
+    assert config["save_steps"] == [5000, 30000]
     assert config["headless"] is True
     assert config["auto_train"] is True
     assert config["eval_steps"] == [7000, 30000]
-    assert config["save_steps"] == [7000, 30000]
 
     cmd = build_lichtfeld_training_cmd(options)
 

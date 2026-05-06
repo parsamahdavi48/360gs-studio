@@ -1403,6 +1403,15 @@ def test_training_tab_appends_lichtfeld_command_and_writes_config(tmp_path: Path
     mask_mode_idx = step.lfs_mask_mode_combo.findData("ignore")
     assert mask_mode_idx >= 0
     step.lfs_mask_mode_combo.setCurrentIndex(mask_mode_idx)
+    bg_mode_idx = step.lfs_bg_mode_combo.findData("modulation")
+    assert bg_mode_idx >= 0
+    step.lfs_bg_mode_combo.setCurrentIndex(bg_mode_idx)
+    step.lfs_bg_r_edit.setText("12")
+    step.lfs_bg_g_edit.setText("34")
+    step.lfs_bg_b_edit.setText("56")
+    step.lfs_advanced_edits["means_lr"].setText("0.000123")
+    step.lfs_advanced_checks["enable_eval"].setChecked(True)
+    step.lfs_advanced_edits["save_steps"].setText("5000,30000")
     step.training_headless_cb.setChecked(True)
 
     commands = step.build_commands()
@@ -1427,7 +1436,23 @@ def test_training_tab_appends_lichtfeld_command_and_writes_config(tmp_path: Path
     assert config["steps_scaler"] == pytest.approx(1.56)
     assert config["use_bilateral_grid"] is True
     assert config["mask_mode"] == "ignore"
+    assert config["bg_mode"] == "modulation"
+    assert config["bg_color"] == pytest.approx([12 / 255, 34 / 255, 56 / 255])
+    assert config["means_lr"] == pytest.approx(0.000123)
+    assert config["enable_eval"] is True
+    assert config["save_steps"] == [5000, 30000]
     assert config["headless"] is True
+
+
+def test_training_headless_option_shares_start_row(tmp_path: Path) -> None:
+    step = _ready_step(tmp_path, metashape_inputs=True)
+
+    assert _is_descendant(step.run_training_cb, step.training_run_options_row)
+    assert _is_descendant(step.training_headless_cb, step.training_run_options_row)
+    assert not step.training_headless_cb.isHidden()
+
+    step._set_training_backend("postshot")
+    assert step.training_headless_cb.isHidden()
 
 
 def test_training_tab_auto_scales_lichtfeld_from_projected_image_count(tmp_path: Path) -> None:
