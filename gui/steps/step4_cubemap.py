@@ -957,7 +957,7 @@ class CubemapStep(BaseStepWidget):
 
     def _on_export_method_changed(self) -> None:
         metashape = self._is_metashape_method()
-        self._sync_settings_tabs()
+        self._sync_settings_tabs(prefer_route_tab=True)
         if not metashape:
             self.export_colmap_cb.setChecked(False)
         self._sync_output_shape_controls()
@@ -965,7 +965,7 @@ class CubemapStep(BaseStepWidget):
         self._update_output_count()
         self.primary_action_state_changed.emit()
 
-    def _sync_settings_tabs(self) -> None:
+    def _sync_settings_tabs(self, *, prefer_route_tab: bool = False) -> None:
         current = self.settings_tabs.currentIndex()
         was_route_specific = current in {
             self.metashape_tab_index,
@@ -994,8 +994,17 @@ class CubemapStep(BaseStepWidget):
             self.settings_tabs.setCurrentIndex(route_index)
         elif (not view_enabled) and current == self.view_export_tab_index:
             self.settings_tabs.setCurrentIndex(route_index)
-        elif was_route_specific or not self.settings_tabs.isTabVisible(self.settings_tabs.currentIndex()):
+        elif prefer_route_tab and was_route_specific:
             self.settings_tabs.setCurrentIndex(route_index)
+        elif not self._settings_tab_available(self.settings_tabs.currentIndex()):
+            self.settings_tabs.setCurrentIndex(route_index)
+
+    def _settings_tab_available(self, index: int) -> bool:
+        return (
+            0 <= index < self.settings_tabs.count()
+            and self.settings_tabs.isTabVisible(index)
+            and self.settings_tabs.isTabEnabled(index)
+        )
 
     def _on_spheresfm_run_scope_changed(self, *_args) -> None:
         self._sync_output_shape_controls()

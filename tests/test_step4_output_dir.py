@@ -188,6 +188,24 @@ def test_export_method_switch_keeps_view_export_tab_leftmost() -> None:
     assert not step.settings_tabs.isTabVisible(step.colmap_tab_index)
 
 
+def test_spheresfm_output_shape_change_keeps_conversion_tab_focused() -> None:
+    _app()
+    step = CubemapStep(Path.cwd())
+    step._set_export_method("spheresfm")
+    step.settings_tabs.setCurrentIndex(step.spheresfm_convert_tab_index)
+
+    direct_idx = step.spheresfm_output_shape_combo.findData("equirect_3dgut")
+    projected_idx = step.spheresfm_output_shape_combo.findData("projected")
+    assert direct_idx >= 0
+    assert projected_idx >= 0
+
+    step.spheresfm_output_shape_combo.setCurrentIndex(direct_idx)
+    assert step.settings_tabs.currentIndex() == step.spheresfm_convert_tab_index
+
+    step.spheresfm_output_shape_combo.setCurrentIndex(projected_idx)
+    assert step.settings_tabs.currentIndex() == step.spheresfm_convert_tab_index
+
+
 def test_cubemap_step_does_not_count_repo_images_without_scene_dir() -> None:
     _app()
     step = CubemapStep(Path.cwd())
