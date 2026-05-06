@@ -1330,7 +1330,11 @@ _TIPS_JA: dict[str, str] = {
     "SPHERESFM_EXECUTABLE": "SphereSfM版の colmap.exe を指定します。通常のCOLMAPでは、球面画像のSfMに必要な機能がないため使用できません",
     "SPHERESFM_USE_MASKS": "ONにするとStep 3のマスクをSfM時の除外範囲として使います。必要な形式への変換はアプリが自動で行います",
     "SPHERESFM_RUN_SCOPE": "SfMから変換まで続けるか、SfMだけを作り直すか、既存のSfM結果から変換だけをやり直すかを選びます",
-    "SPHERESFM_MATCHER": "Sequentialは高速で動画の連番フレーム向け。Exhaustiveは全ペアを照合するため精度が出る場合がありますが、枚数が増えると極端に遅く、数十時間規模になることがあります。SpatialはPOSファイルの位置情報で近傍画像を照合します",
+    "SPHERESFM_MATCHER": (
+        "Sequentialは高速で動画の連番フレーム向けです。\n"
+        "Exhaustiveは全ペアを照合するため精度が出る場合がありますが、枚数が増えると極端に遅くなることがあります。\n"
+        "SpatialはPOSファイルの位置情報で近傍画像を照合します"
+    ),
     "SPHERESFM_QUALITY_PRESET": "軽量は処理時間を短くします。標準は処理時間とSfM結果の品質のバランスを取ります。クオリティは時間をかけて、カメラ位置と点群をより丁寧に推定します",
     "SPHERESFM_POSE_FILE": "Spatialを使う場合に指定する位置情報ファイルです。各画像のおおよその撮影位置を使って、照合する画像の組み合わせを絞ります",
     "SPHERESFM_OPEN_GUI": "SphereSfMのSfM結果をCOLMAP GUIで開き、カメラ位置と点群を確認します。表示にはGUI対応のSphereSfM版COLMAPが必要です",
@@ -1486,7 +1490,11 @@ _TIPS_EN: dict[str, str] = {
     "SPHERESFM_EXECUTABLE": "Select SphereSfM's colmap executable. Standard COLMAP cannot be used because it does not include the spherical-image SfM features needed here.",
     "SPHERESFM_USE_MASKS": "When enabled, Step 3 masks are used as excluded areas during SfM. The app automatically converts them to the required format.",
     "SPHERESFM_RUN_SCOPE": "Choose whether to run SfM and conversion together, rebuild only the SfM result, or rerun conversion from an existing SfM result.",
-    "SPHERESFM_MATCHER": "Sequential is fast and suited to ordered video frames. Exhaustive can improve coverage but compares all pairs and can become extremely slow, even tens of hours on large sets. Spatial uses POS priors to match nearby images.",
+    "SPHERESFM_MATCHER": (
+        "Sequential is fast and suited to ordered video frames.\n"
+        "Exhaustive can improve coverage but compares all pairs and can become extremely slow on large sets.\n"
+        "Spatial uses POS priors to match nearby images."
+    ),
     "SPHERESFM_QUALITY_PRESET": "Fast shortens processing time. Standard balances processing time and SfM result quality. Quality spends more time estimating camera positions and sparse points more carefully.",
     "SPHERESFM_POSE_FILE": "Position file used by Spatial. It narrows image matching with each image's approximate capture position.",
     "SPHERESFM_OPEN_GUI": "Open the SphereSfM SfM result in COLMAP GUI to inspect camera positions and sparse points. Display requires a GUI-capable SphereSfM COLMAP build.",
