@@ -1,7 +1,9 @@
-# Step 4 書き出しGUI — キューブマップ / COLMAP Rig書き出し
+# Step 4 書き出しGUI — 投影視点 / 3DGUT / COLMAP Rig書き出し
 
-統合GUIの Step 4 は、`cubemap_transforms_json.py` をプレビュー付きで実行する
-PySide6 GUIです。
+統合GUIの Step 4 は、Metashape SfM結果や抽出済み360°画像から、3DGS向けの
+投影視点データ、LichtFeld 3DGUT直接データ、COLMAP Rigデータを作る
+PySide6 GUIです。投影視点とCOLMAP Rig書き出しでは `cubemap_transforms_json.py` を使い、
+`3DGUT (LichtFeld)` ではMetashapeインポートだけを実行してキューブマップ変換を行いません。
 
 ## 目的
 
@@ -11,6 +13,7 @@ Step 4 は次の用途向けです。
 - Pitchごとに6視点スロットのON/OFFを選びたい
 - エクイレクタングラー画像上で切り出し範囲を確認したい
 - 既存マスクの重ね表示をオン/オフして確認したい
+- LichtFeld 3DGUT比較用に、Metashapeで使ったエクイレクタングラー画像とマスクをそのまま使いたい
 
 ## 起動
 
@@ -25,7 +28,7 @@ run_gui.bat --scene .\scene01
 - `Scene Directory`:
   - `images/` と必要に応じて `transforms.json` を含む作業フォルダ。
 - `Output Directory`:
-  - 出力先。既定は `<scene>/output`。
+  - 投影視点とCOLMAP Rigの出力先。既定は `<scene>/output`。`3DGUT (LichtFeld)` ではシーン直下に `transforms.json` と `pointcloud.ply` を作成します。
 - `選択:`:
   - `Metashape`: Metashape SfM結果から、3DGS向けの視点画像、マスク、`transforms.json` を書き出します。
   - `COLMAP`: 抽出済みの `images/` と `masks/` から、COLMAP Rig形式の視点画像、マスク、`rig_config.json` を `output/colmap_rig/` に書き出します。

@@ -1,7 +1,10 @@
-# Step 4 Export GUI — Cubemap and COLMAP Rig Export
+# Step 4 Export GUI — Projection Views, 3DGUT, and COLMAP Rig Export
 
-Step 4 in the integrated GUI is a PySide6 wrapper around
-`cubemap_transforms_json.py` for preview-driven view selection and export.
+Step 4 in the integrated GUI creates 3DGS-ready projection-view data,
+LichtFeld 3DGUT direct data, or COLMAP Rig data from Metashape SfM results
+and extracted 360° images. Projection-view and COLMAP Rig exports use
+`cubemap_transforms_json.py`; `3DGUT (LichtFeld)` runs only the Metashape
+import step and skips cubemap conversion.
 
 ## Purpose
 
@@ -11,6 +14,7 @@ Use Step 4 when you want to:
 - choose enabled/disabled view slots per pitch row
 - preview extraction regions on an equirectangular image
 - toggle an existing mask overlay on the preview
+- keep Metashape equirectangular images and masks in place for a LichtFeld 3DGUT comparison
 
 ## Launch
 
@@ -25,7 +29,7 @@ Then open `Step 4: Export` in the workflow sidebar.
 - `Scene Directory`:
   - Directory containing `images/` and, when needed, `transforms.json`.
 - `Output Directory`:
-  - Cubemap output directory. Default: `<scene>/output`.
+  - Output directory for projection views and COLMAP Rig data. Default: `<scene>/output`. `3DGUT (LichtFeld)` writes `transforms.json` and `pointcloud.ply` at the scene root instead.
 - `Select:`:
   - `Metashape`: export 3DGS-oriented viewpoint images, masks, and `transforms.json` from Metashape SfM results.
   - `COLMAP`: export COLMAP Rig viewpoint images, masks, and `rig_config.json` from extracted `images/` and `masks/` into `output/colmap_rig/`.

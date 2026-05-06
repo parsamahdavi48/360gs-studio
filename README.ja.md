@@ -18,7 +18,7 @@ Fork元: [tetraface/tetraface-3dgs-utils](https://github.com/tetraface/tetraface
 
 Insta360などの360°カメラで撮影した動画から、SfM向けのエクイレクタングラー静止画を抽出します。抽出後はフレームを確認し、人物、撮影者、三脚、空、スティッチ境界、白飛びをマスクしてからMetashapeに渡せます。
 
-MetashapeでSfMした結果は、LichtFeld Studio / Postshot / Brush 向けの視点画像、マスク、`transforms.json` に変換できます。360°動画を3DGSトレーニング用データセットにするためのメインワークフローです。
+MetashapeでSfMした結果は、Postshot / Brush / LichtFeld Studio向けの視点画像、マスク、`transforms.json` に変換できます。LichtFeld Studioでは、3DGUT比較用にエクイレクタングラー画像とマスクをそのまま使う `transforms.json` / `pointcloud.ply` も作成できます。360°動画を3DGSトレーニング用データセットにするためのメインワークフローです。
 
 ### 2. 360°動画からCOLMAP Rigデータセットへ
 
@@ -37,7 +37,7 @@ Metashapeを使わず、抽出済みの360°画像からCOLMAP Rig形式の視�
 - SAM3.1では、既存マスクに対して「三脚を追加する」「看板やロゴの誤検出を外す」といった加算/減算の補正ができます。手作業で塗り直す量を減らせます。
 - Mask2Formerは、SAM3.1を使わずに空マスクを試したい場合の補助的な選択肢として利用できます。
 - 360°画像だけでなく、通常の静止画や通常動画から作った連番画像にも使えます。人物・車両・空・白飛びなどを、SfMに渡す前のマスク前処理としてまとめて作成できます。
-- MetashapeでSfMした結果を読み込み、Postshot / Brush / LichtFeld Studio 向けの視点画像、マスク、`transforms.json` を書き出せます。利用先に合わせた座標変換や出力視点をGUIで選べます。
+- MetashapeでSfMした結果を読み込み、Postshot / Brush / LichtFeld Studio 向けの視点画像、マスク、`transforms.json` を書き出せます。LichtFeld Studio向けには、投影視点に変換せず `3DGUT (LichtFeld)` 用の直接データセットも作れます。
 - Metashapeを使わない場合は、抽出済みの360°画像からCOLMAP Rig形式の視点画像とマスクを書き出せます。必要に応じてGUIからCOLMAP/GLOMAPのSfM処理まで続けて実行できます。
 - Windows向けセットアップスクリプトで、Python環境、FFmpeg/FFprobe、主要Pythonパッケージの準備をまとめて行えます。通常利用は `run_gui.bat` から起動できます。
 
@@ -110,6 +110,7 @@ checkpointを手動で `models/sam3.1/sam3.1_multiplex.pt` に置くこともで
   -> Step 3: マスク生成
   -> Step 4: 書き出し
       -> Metashape SfM結果から3DGS向けデータを作成
+      -> LichtFeld 3DGUT向けにエクイレクタングラー画像を直接使用
       -> COLMAP Rig視点画像を書き出し、必要に応じてCOLMAP/GLOMAPを実行
 ```
 
@@ -118,7 +119,7 @@ checkpointを手動で `models/sam3.1/sam3.1_multiplex.pt` に置くこともで
 | 1. フレーム抽出 | 360°動画からエクイレクタングラー静止画を抽出 | 固定間隔 + 変化補正 |
 | 2. フレーム確認 | 抽出フレームを単一/サムネイル表示で確認し、採用/除外をCSVに反映 | 低品質候補や不要フレームの確認に対応 |
 | 3. マスク生成 | 人物、スティッチ境界、白飛び、空、カスタムマスクを生成 | YOLO/SAM2.1、高品質設定 |
-| 4. 書き出し | SfM結果からの3DGS出力、またはCOLMAP Rig視点画像を書き出し | Metashapeインポート / LichtFeld / Full / Cube6 |
+| 4. 書き出し | SfM結果からの3DGS出力、またはCOLMAP Rig視点画像を書き出し | Metashapeインポート / LichtFeld / 3DGUT / Cube6 |
 
 各ステップの詳しいGUI説明:
 
@@ -138,7 +139,7 @@ checkpointを手動で `models/sam3.1/sam3.1_multiplex.pt` に置くこともで
 5. マスク漏れが残る場合は、該当画像だけ `品質: 最高` に上げるか、SAM3.1に切り替えて再生成します。SAM3.1を使わずに空だけ試したい場合はMask2Formerも選べます。
 6. 必要に応じてスティッチ境界マスク、白飛びマスク、カスタムマスクも有効にします。
 7. 生成された `masks/` フォルダをMetashapeにマスクとして読み込み、SfMを実行します。
-8. Step 4でMetashapeのXML/PLYを使い、3DGSトレーニング用の画像、マスク、`transforms.json` を出力します。
+8. Step 4でMetashapeのXML/PLYを使い、3DGSトレーニング用の投影視点データ、または `3DGUT (LichtFeld)` 用の直接データセットを出力します。
 
 ## COLMAPルート
 

@@ -18,7 +18,7 @@ Forked from [tetraface/tetraface-3dgs-utils](https://github.com/tetraface/tetraf
 
 Extract equirectangular still frames from Insta360 or similar 360° camera video, review which frames to keep, and generate masks for people, the camera operator, tripods, sky, stitch seams, and blown-out highlights before running SfM in Metashape.
 
-After Metashape SfM, export viewpoint images, masks, and `transforms.json` for LichtFeld Studio, Postshot, and Brush. This is the main workflow for preparing 360° video as a 3DGS training dataset.
+After Metashape SfM, export viewpoint images, masks, and `transforms.json` for Postshot, Brush, and LichtFeld Studio. For LichtFeld Studio comparisons, the app can also create a direct 3DGUT dataset that keeps the equirectangular images and masks in place while writing `transforms.json` and `pointcloud.ply`. This is the main workflow for preparing 360° video as a 3DGS training dataset.
 
 ### 2. 360° Video to COLMAP Rig Dataset
 
@@ -37,7 +37,7 @@ For DSLR, mirrorless, smartphone, or normal video image sequences, Step 3 can ge
 - With SAM3.1, add missed targets such as tripods or subtract false detections such as signs and logos from existing masks. This reduces the amount of manual mask painting needed after the first pass.
 - Mask2Former remains available as a helper option when you want to try sky masks without setting up SAM3.1.
 - Use the same mask-preparation workflow for normal photo sets or normal video frame sequences, not only 360° images. This is useful before sending images to SfM software.
-- Import Metashape SfM results and export viewpoint images, masks, and `transforms.json` for Postshot, Brush, and LichtFeld Studio. Output profiles and viewpoints can be chosen in the GUI.
+- Import Metashape SfM results and export viewpoint images, masks, and `transforms.json` for Postshot, Brush, and LichtFeld Studio. For LichtFeld Studio, the GUI can also create a `3DGUT (LichtFeld)` direct dataset without projection-view conversion.
 - Skip Metashape when needed by exporting COLMAP Rig viewpoint images and masks from extracted 360° frames. The GUI can optionally continue into COLMAP/GLOMAP SfM processing.
 - Prepare the Windows environment with setup scripts that handle Python, FFmpeg/FFprobe, and the main Python packages. Normal use starts from `run_gui.bat`.
 
@@ -110,6 +110,7 @@ If the scene folder path contains non-ASCII characters, an extremely long path, 
   -> Step 3: mask generation
   -> Step 4: export
       -> build 3DGS-ready outputs from Metashape SfM results
+      -> keep equirectangular images in place for LichtFeld 3DGUT
       -> export COLMAP Rig viewpoint images and optionally run COLMAP/GLOMAP
 ```
 
@@ -118,7 +119,7 @@ If the scene folder path contains non-ASCII characters, an extremely long path, 
 | 1. Frame Extraction | Extract equirectangular still frames from 360° video | Fixed interval + motion adjustment |
 | 2. Frame Review | Review extracted frames in single/thumbnail views and apply keep/drop decisions to CSV | Review low-quality candidates and unwanted frames |
 | 3. Mask Generation | Generate model-based masks plus optional stitch seam, overexposure, and custom masks | YOLO/SAM2.1, High quality |
-| 4. Export | Export 3DGS outputs from SfM results, or export COLMAP Rig viewpoint images | Metashape Import / LichtFeld / Full / Cube6 |
+| 4. Export | Export 3DGS outputs from SfM results, or export COLMAP Rig viewpoint images | Metashape Import / LichtFeld / 3DGUT / Cube6 |
 
 Detailed GUI docs:
 
@@ -138,7 +139,7 @@ Detailed GUI docs:
 5. If masks still leak through, switch only the affected images to `Quality: Best` or regenerate them with SAM3.1. Mask2Former is also available when you want to try sky masks without setting up SAM3.1.
 6. Enable stitch seam, overexposure, and custom masks when they match the source material.
 7. Import the generated `masks/` folder into Metashape as per-image masks, then run SfM.
-8. Use Step 4 with the Metashape XML/PLY result to export training images, masks, and `transforms.json`.
+8. Use Step 4 with the Metashape XML/PLY result to export projection-view training data or a direct `3DGUT (LichtFeld)` dataset.
 
 ## COLMAP Route
 
