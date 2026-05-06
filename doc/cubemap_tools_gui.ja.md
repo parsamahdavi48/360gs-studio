@@ -1,8 +1,8 @@
 # Step 4 書き出しGUI
 
-Step 4 は、Step 1-3で用意した360°画像とマスク、MetashapeでSfMした結果、またはSphereSfMで作るSfM結果を、3DGSアプリが読み込める学習データに変換する画面です。
+Step 4 は、Step 1-3で用意した360°画像とマスク、MetashapeでSfMした結果、またはSphereSfMで作るSfM結果を、3DGSアプリが読み込めるトレーニングデータに変換する画面です。
 
-多くの場合は、Metashapeから書き出したカメラXMLと、必要に応じて点群PLYを指定し、Postshot / Brush / LichtFeld Studio のどれに渡すかを選びます。Metashapeを使わない場合は、COLMAP Rig用のキューブマップ画像を書き出すか、SphereSfMでエクイレクタングラー画像を直接SfMしてから3DGS向けデータへ変換できます。必要なら、同じStep 4の `学習` タブからLichtFeld StudioやPostshot CLIの起動まで続けられます。
+多くの場合は、Metashapeから書き出したカメラXMLと、必要に応じて点群PLYを指定し、Postshot / Brush / LichtFeld Studio のどれに渡すかを選びます。Metashapeを使わない場合は、COLMAP Rig用のキューブマップ画像を書き出すか、SphereSfMでエクイレクタングラー画像を直接SfMしてから3DGS向けデータへ変換できます。必要なら、同じStep 4の `トレーニング` タブからLichtFeld StudioやPostshot CLIの起動まで続けられます。
 
 ## 起動
 
@@ -18,7 +18,7 @@ run_gui.bat --scene .\scene01
 
 Step 4を開いたら、最初に「自分はどのルートか」を決めます。
 
-SfMは、複数画像の見え方の差からカメラ位置と疎な点群を推定する処理です。3DGSでは、このカメラ位置を使って学習データを読み込みます。MetashapeルートはMetashapeで作ったSfM結果を変換し、SphereSfMルートとCOLMAP実行ありのCOLMAPルートはこのアプリからSfM処理まで進めます。
+SfMは、複数画像の見え方の差からカメラ位置と疎な点群を推定する処理です。3DGSでは、このカメラ位置を使ってトレーニングデータを読み込みます。MetashapeルートはMetashapeで作ったSfM結果を変換し、SphereSfMルートとCOLMAP実行ありのCOLMAPルートはこのアプリからSfM処理まで進めます。
 
 | やりたいこと | ルート | 主に使う設定 |
 | --- | --- | --- |
@@ -30,7 +30,7 @@ SfMは、複数画像の見え方の差からカメラ位置と疎な点群を�
 
 `シーンフォルダ` は、Step 1-3で使っている作業フォルダです。通常は `images/` と `masks/` が入っています。MetashapeルートではMetashapeから書き出したXML/PLYを組み合わせます。SphereSfMルートでは、この `images/` と `masks/` からSfMと変換を実行します。
 
-ルートボタンは、`Metashape`、`COLMAP`、`SphereSfM` の3つです。下の設定タブは `入力`、`出力`、`投影視点`、`学習`、`詳細` で固定され、選んだルートに必要な項目だけが各タブ内に表示されます。画像/マスクのON/OFFは `出力` タブ、YawやCube6などの視点調整は `投影視点` タブ、CLI学習の設定は `学習` タブにあります。
+ルートボタンは、`Metashape`、`COLMAP`、`SphereSfM` の3つです。下の設定タブは `入力`、`出力`、`投影視点`、`トレーニング`、`詳細` で固定され、選んだルートに必要な項目だけが各タブ内に表示されます。画像/マスクのON/OFFは `出力` タブ、YawやCube6などの視点調整は `投影視点` タブ、CLI実行の設定は `トレーニング` タブにあります。
 
 ## Metashapeルートの基本操作
 
@@ -70,17 +70,17 @@ Step 4は、シーンフォルダが設定された時点でMetashape用の入�
 
 ## 出力形状の選び方
 
-`出力形状` は、エクイレクタングラー画像をどう学習データにするかの選択です。MetashapeルートとSphereSfMルートのどちらでも使います。
+`出力形状` は、エクイレクタングラー画像をどうトレーニングデータにするかの選択です。MetashapeルートとSphereSfMルートのどちらでも使います。
 
 ### 投影視点に変換
 
 通常はこちらを使います。エクイレクタングラー画像をキューブマップ画像に変換し、`output/` に画像、マスク、`transforms.json` を作ります。Cube6が標準ですが、必要に応じて `投影視点` タブで書き出す向きを調整できます。
 
-この出力はPostshot / Brush / LichtFeld Studioで扱いやすく、通常のピンホールカメラに近いデータになります。LichtFeldでこのデータを学習するときは、基本的にGUTやUndistortは使いません。
+この出力はPostshot / Brush / LichtFeld Studioで扱いやすく、通常のピンホールカメラに近いデータになります。LichtFeldでこのデータをトレーニングするときは、基本的にGUTやUndistortは使いません。
 
 ### 3DGUT (LichtFeld)
 
-LichtFeld Studioで3DGUT学習に使うデータを作るモードです。SfMに使ったエクイレクタングラーの `images/` と `masks/` をそのまま使い、キューブマップ画像や変換マスクは作りません。
+LichtFeld Studioで3DGUTトレーニングに使うデータを作るモードです。SfMに使ったエクイレクタングラーの `images/` と `masks/` をそのまま使い、キューブマップ画像や変換マスクは作りません。
 
 このモードでは、LichtFeldへ読み込ませるためにシーン直下へ次のファイルを作ります。
 
@@ -114,7 +114,7 @@ LichtFeldで「キューブマップデータ」と「3DGUTでエクイレクタ
 4. `点群PLY` を確認します。自動入力されていない場合、または候補が違う場合は手動で指定します。
 5. 実行します。
 
-この出力では、既存の `<scene>/images/` と `<scene>/masks/` を使い、`<scene>/transforms.json` と `<scene>/pointcloud.ply` を新しく作ります。LichtFeldでは、この4点がそろった `<scene>/` をデータセットとして指定し、学習時にGUTを有効にします。
+この出力では、既存の `<scene>/images/` と `<scene>/masks/` を使い、`<scene>/transforms.json` と `<scene>/pointcloud.ply` を新しく作ります。LichtFeldでは、この4点がそろった `<scene>/` をデータセットとして指定し、トレーニング時にGUTを有効にします。
 
 ## 投影視点の調整
 
@@ -161,21 +161,21 @@ VRAMや処理時間が厳しい場合は、まず `Normal` または `Half` で�
 
 マスクだけ調整したあとに再出力する場合は、`画像` をOFFにすると既存のキューブマップ画像を再変換せずに済みます。`3DGUT (LichtFeld)` では元画像と元マスクをそのまま使うため、この出力ON/OFFは使いません。
 
-## 学習タブ
+## トレーニングタブ
 
-`学習` タブでは、Step 4の書き出しやSfM変換が終わったあとに、外部の学習CLIを続けて起動できます。上部で学習ソフトを選び、`書き出し後に学習を開始` をONにします。
+`トレーニング` タブでは、Step 4の書き出しやSfM変換が終わったあとに、外部CLIを続けて起動できます。上部でソフトを選び、`書き出し後にトレーニング開始` をONにします。
 
-| 学習ソフト | 使いどころ |
+| ソフト | 使いどころ |
 | --- | --- |
-| `LichtFeld Studio` | LichtFeld StudioのCLIへデータセット、出力先、設定JSONを渡して学習まで進める |
+| `LichtFeld Studio` | LichtFeld StudioのCLIへデータセット、出力先、設定JSONを渡してトレーニングまで進める |
 | `Postshot` | Postshot CLIへ画像と、ある場合はCOLMAP/SphereSfMのsparseモデルを渡して `.psht` を作る |
 | `Custom` | 任意のCLIをテンプレート引数で起動する |
 
-`入力データ` は通常自動設定のままで使います。キューブマップ変換では `<scene>/output/`、3DGUTでは `<scene>/`、COLMAPルートでは `<scene>/output/colmap_rig/` が基準になります。`学習出力先` は既定で `<scene>/output/training/<学習ソフト>/` です。
+`入力データ` は通常自動設定のままで使います。キューブマップ変換では `<scene>/output/`、3DGUTでは `<scene>/`、COLMAPルートでは `<scene>/output/colmap_rig/` が基準になります。`結果出力先` は既定で `<scene>/output/training/<ソフト>/` です。
 
 LichtFeld Studioでは、よく調整する `Strategy`、`Iterations`、`Max Gaussians`、`SH Degree`、`Tile Mode`、`Steps Scaler`、マスク関連オプションをGUIから指定できます。実行時に `_stechdrive/training/lichtfeld_config.json` を作り、そのJSONをCLIへ渡します。
 
-SphereSfMの `SfMのみ` は学習用データセットを作らないため、学習の自動実行とは併用できません。学習まで続けたい場合は `SfM + 変換`、または既存のSfM結果に対して `既存SfMから変換のみ` を使います。
+SphereSfMの `SfMのみ` はトレーニング用データセットを作らないため、自動実行とは併用できません。トレーニングまで続けたい場合は `SfM + 変換`、または既存のSfM結果に対して `既存SfMから変換のみ` を使います。
 
 ## COLMAPルート
 
@@ -235,7 +235,7 @@ SphereSfMプロジェクト `<scene>/output/spheresfm/` には、作業用の `p
 | COLMAP実行あり | 上記に加えて、COLMAP/GLOMAPのSfM結果 |
 | SphereSfM + `3DGUT (LichtFeld)` | `<scene>/images/`, `<scene>/masks/`, `<scene>/transforms.json`, `<scene>/pointcloud.ply` |
 | SphereSfM + キューブマップ変換 (`投影視点に変換`) | 下流アプリへ渡すのは `<scene>/output/`。`images/`, `masks/`, `transforms.json`, `pointcloud.ply` を作ります |
-| 学習タブON | 上記に加えて `<scene>/output/training/<学習ソフト>/` と、LichtFeldでは `_stechdrive/training/lichtfeld_config.json` |
+| トレーニングON | 上記に加えて `<scene>/output/training/<ソフト>/` と、LichtFeldでは `_stechdrive/training/lichtfeld_config.json` |
 
 Step 4の設定記録は `<scene>/_stechdrive/export_settings.json` に保存します。キューブマップを書き出すルートでは、視点構成も `<scene>/_stechdrive/views_config.json` に保存します。これらはこのアプリで再開・再現するためのファイルで、3DGSアプリへ渡すデータセット本体ではありません。
 
@@ -244,9 +244,9 @@ Step 4の設定記録は `<scene>/_stechdrive/export_settings.json` に保存し
 ## よくある判断
 
 - Postshot / Brushへ渡すなら、まず `投影視点に変換` を使います。
-- LichtFeldで通常学習するなら、まず `LichtFeld Studio` + `投影視点に変換` を使います。
+- LichtFeldで通常トレーニングするなら、まず `LichtFeld Studio` + `投影視点に変換` を使います。
 - LichtFeldでGUTを使うなら、`LichtFeld Studio` + `3DGUT (LichtFeld)` を使います。
-- キューブマップデータをLichtFeldで学習するときは、基本的にGUTもUndistortも不要です。
-- `3DGUT (LichtFeld)` で学習するときは、LichtFeld側でGUTを有効にします。
+- キューブマップデータをLichtFeldでトレーニングするときは、基本的にGUTもUndistortも不要です。
+- `3DGUT (LichtFeld)` でトレーニングするときは、LichtFeld側でGUTを有効にします。
 - スティッチが目立たない素材では、スティッチマスクはOFFまたは細めから試します。Yaw 45°は画素を捨てない対策なので、通常は維持して構いません。
 - Metashapeルートで `点群PLY` が必要なプロファイルなのに見つからない場合は、実行前にエラーで止まります。

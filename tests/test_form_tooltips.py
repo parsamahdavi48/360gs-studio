@@ -174,6 +174,129 @@ def test_step4_route_and_training_selectors_use_segmented_track() -> None:
     assert all(button.objectName() == "segmentedOption" for button in step.training_backend_buttons.values())
 
 
+def test_step4_japanese_training_copy_uses_training_wording() -> None:
+    script = textwrap.dedent(
+        """
+        import os
+
+        os.environ["STUDIO_LANG"] = "ja"
+
+        from gui import i18n
+
+        visible_keys = [
+            "PHASE_TRAINING_LICHTFELD",
+            "PHASE_TRAINING_POSTSHOT",
+            "PHASE_TRAINING_CUSTOM",
+            "TRAINING_EXEC_NOT_FOUND",
+            "TRAINING_REQUIRES_DATASET_OUTPUT",
+            "RUN_TRAINING_AFTER_EXPORT",
+            "TRAINING_OUTPUT",
+            "STEP4_TAB_TRAINING",
+        ]
+        tip_keys = [
+            "TRAINING_BACKEND_LICHTFELD",
+            "TRAINING_BACKEND_POSTSHOT",
+            "RUN_TRAINING_AFTER_EXPORT",
+            "TRAINING_EXECUTABLE",
+            "TRAINING_DATASET",
+            "TRAINING_OUTPUT",
+            "TRAINING_HEADLESS",
+            "LFS_STRATEGY",
+            "LFS_ITERATIONS",
+            "LFS_STEPS_SCALER",
+            "POSTSHOT_KSTEPS",
+        ]
+
+        assert i18n.t("STEP4_TAB_TRAINING") == "トレーニング"
+        assert i18n.t("RUN_TRAINING_AFTER_EXPORT") == "書き出し後にトレーニング開始"
+        assert i18n.t("TRAINING_OUTPUT") == "結果出力先"
+        assert all("学習" not in i18n.t(key) for key in visible_keys)
+        assert all("学習" not in i18n.tip(key) for key in tip_keys)
+        """
+    )
+
+    env = os.environ.copy()
+    env["STUDIO_LANG"] = "ja"
+    result = subprocess.run(
+        [sys.executable, "-c", script],
+        cwd=Path.cwd(),
+        env=env,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_step4_scrolls_tab_content_not_whole_settings_pane() -> None:
+    script = textwrap.dedent(
+        """
+        import os
+
+        os.environ["QT_QPA_PLATFORM"] = "offscreen"
+
+        from PySide6.QtCore import Qt
+        from PySide6.QtWidgets import QApplication, QScrollArea
+
+        from gui.app import MainWindow
+        from gui.theme import apply_theme
+
+        app = QApplication([])
+        apply_theme(app)
+        window = MainWindow()
+        window.resize(1280, 920)
+        window.show()
+        window._set_current_step(3)
+        app.processEvents()
+
+        step = window.step4
+        assert step.findChildren(QScrollArea, "settingsScroll") == []
+
+        tab_widgets = [step.settings_tabs.widget(index) for index in range(step.settings_tabs.count())]
+        tab_scrolls = [
+            widget
+            for index, widget in enumerate(tab_widgets)
+            if index != step.training_tab_index
+        ]
+        assert len(tab_scrolls) == 4
+        assert all(isinstance(scroll, QScrollArea) for scroll in tab_scrolls)
+        assert all(scroll.objectName() == "step4TabScroll" for scroll in tab_scrolls)
+        assert all(scroll.horizontalScrollBarPolicy() == Qt.ScrollBarAlwaysOff for scroll in tab_scrolls)
+        assert all(scroll.verticalScrollBarPolicy() == Qt.ScrollBarAsNeeded for scroll in tab_scrolls)
+        assert step.settings_tabs.widget(step.training_tab_index) is step.training_section
+
+        parent = step.export_method_row.parentWidget()
+        while parent is not None:
+            assert not isinstance(parent, QScrollArea)
+            parent = parent.parentWidget()
+
+        step.settings_tabs.setCurrentIndex(step.output_tab_index)
+        app.processEvents()
+        assert step.settings_tabs.widget(step.output_tab_index).verticalScrollBar().maximum() == 0
+
+        step.settings_tabs.setCurrentIndex(step.training_tab_index)
+        app.processEvents()
+        assert step.training_settings_scroll.verticalScrollBar().maximum() > 0
+        parent = step.training_backend_row.parentWidget()
+        while parent is not None:
+            assert not isinstance(parent, QScrollArea)
+            parent = parent.parentWidget()
+        """
+    )
+
+    env = os.environ.copy()
+    env["QT_QPA_PLATFORM"] = "offscreen"
+    result = subprocess.run(
+        [sys.executable, "-c", script],
+        cwd=Path.cwd(),
+        env=env,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
 def test_extract_numeric_labels_share_field_tooltips() -> None:
     _app()
     step = ExtractStep(Path.cwd())

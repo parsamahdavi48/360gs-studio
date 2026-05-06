@@ -43,7 +43,6 @@ from gui.steps.base_step import (
     SETTINGS_PANE_MARGINS,
     SETTINGS_PANE_WIDTH,
     BaseStepWidget,
-    configure_settings_scroll,
 )
 from gui.steps.cubemap_commands import (
     ColmapExportCommand,
@@ -256,15 +255,13 @@ class CubemapStep(BaseStepWidget):
         splitter = QSplitter(Qt.Horizontal)
         splitter.setChildrenCollapsible(False)
 
-        # 左パネル: 設定 (スクロール可能) + 固定サマリー
+        # 左パネル: 固定ヘッダー/タブ + 固定サマリー
         left_pane = QWidget()
         left_pane.setFixedWidth(SETTINGS_PANE_WIDTH)
         left_pane_layout = QVBoxLayout(left_pane)
         left_pane_layout.setContentsMargins(0, 0, 0, 0)
         left_pane_layout.setSpacing(0)
 
-        top_scroll = QScrollArea()
-        configure_settings_scroll(top_scroll)
         top = QWidget()
         top.setObjectName("settingsPane")
         top.setFixedWidth(SETTINGS_PANE_WIDTH)
@@ -780,22 +777,25 @@ class CubemapStep(BaseStepWidget):
         details_layout.addStretch()
 
         self.input_tab_index = self.settings_tabs.addTab(
-            self.input_tab,
+            self._make_tab_scroll_area(self.input_tab),
             i18n.t("STEP4_TAB_INPUT"),
         )
         self.output_tab_index = self.settings_tabs.addTab(
-            self.output_tab,
+            self._make_tab_scroll_area(self.output_tab),
             i18n.t("STEP4_TAB_OUTPUT"),
         )
         self.view_export_tab_index = self.settings_tabs.addTab(
-            self.advanced_output_section,
+            self._make_tab_scroll_area(self.advanced_output_section),
             i18n.t("STEP4_TAB_VIEW_EXPORT"),
         )
         self.training_tab_index = self.settings_tabs.addTab(
             self.training_section,
             i18n.t("STEP4_TAB_TRAINING"),
         )
-        self.details_tab_index = self.settings_tabs.addTab(self.details_tab, i18n.t("STEP4_TAB_DETAILS"))
+        self.details_tab_index = self.settings_tabs.addTab(
+            self._make_tab_scroll_area(self.details_tab),
+            i18n.t("STEP4_TAB_DETAILS"),
+        )
         self.metashape_tab_index = self.input_tab_index
         self.colmap_tab_index = self.input_tab_index
         self.spheresfm_tab_index = self.input_tab_index
@@ -837,8 +837,7 @@ class CubemapStep(BaseStepWidget):
         preview_layout.addLayout(preview_header)
         preview_layout.addWidget(self.preview, stretch=1)
 
-        top_scroll.setWidget(top)
-        left_pane_layout.addWidget(top_scroll, stretch=1)
+        left_pane_layout.addWidget(top, stretch=1)
         left_pane_layout.addWidget(self.export_summary_bar)
         splitter.addWidget(left_pane)
         splitter.addWidget(preview_pane)
@@ -859,6 +858,16 @@ class CubemapStep(BaseStepWidget):
         self._on_colmap_mapper_changed()
         self._on_colmap_run_toggled(self.run_colmap_cb.isChecked())
         self._set_export_method(_METHOD_METASHAPE)
+
+    def _make_tab_scroll_area(self, content: QWidget) -> QScrollArea:
+        scroll = QScrollArea()
+        scroll.setObjectName("step4TabScroll")
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QScrollArea.NoFrame)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        scroll.setWidget(content)
+        return scroll
 
     def _build_training_section(self, exe_filter: str) -> QWidget:
         section = QWidget()
@@ -888,6 +897,19 @@ class CubemapStep(BaseStepWidget):
             self.training_backend_group.addButton(btn)
             self.training_backend_buttons[backend] = btn
         layout.addWidget(self.training_backend_row)
+
+        self.training_settings_content = QWidget()
+        training_settings_layout = QVBoxLayout(self.training_settings_content)
+        training_settings_layout.setContentsMargins(0, 0, 0, 0)
+        training_settings_layout.setSpacing(6)
+
+        self.training_settings_scroll = QScrollArea()
+        self.training_settings_scroll.setObjectName("trainingSettingsScroll")
+        self.training_settings_scroll.setWidgetResizable(True)
+        self.training_settings_scroll.setFrameShape(QScrollArea.NoFrame)
+        self.training_settings_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.training_settings_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        self.training_settings_scroll.setWidget(self.training_settings_content)
 
         form = QFormLayout()
         form.setSpacing(6)
@@ -934,7 +956,7 @@ class CubemapStep(BaseStepWidget):
         self.training_headless_cb = QCheckBox(i18n.t("TRAINING_HEADLESS"))
         self.training_headless_cb.setToolTip(i18n.tip("TRAINING_HEADLESS"))
         form.addRow("", self.training_headless_cb)
-        layout.addLayout(form)
+        training_settings_layout.addLayout(form)
 
         self.training_options_stack = QStackedWidget()
         self.lichtfeld_training_options = self._build_lichtfeld_training_options()
@@ -943,8 +965,9 @@ class CubemapStep(BaseStepWidget):
         self.training_options_stack.addWidget(self.lichtfeld_training_options)
         self.training_options_stack.addWidget(self.postshot_training_options)
         self.training_options_stack.addWidget(self.custom_training_options)
-        layout.addWidget(self.training_options_stack)
-        layout.addStretch()
+        training_settings_layout.addWidget(self.training_options_stack)
+        training_settings_layout.addStretch()
+        layout.addWidget(self.training_settings_scroll, stretch=1)
 
         self._training_dataset_user_edited = False
         self._set_training_backend(_TRAINING_BACKEND_LICHTFELD)
