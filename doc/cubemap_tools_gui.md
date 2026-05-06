@@ -2,7 +2,7 @@
 
 Step 4 converts the 360° images and masks prepared in Steps 1-3, Metashape SfM results, or SphereSfM results created by this step into training data that 3DGS applications can load.
 
-In the common workflow, you select the camera XML exported from Metashape, optionally select a point-cloud PLY, and choose whether the output is for Postshot, Brush, or LichtFeld Studio. If you are not using Metashape, you can export COLMAP Rig cubemap images or run SphereSfM directly on equirectangular images and convert the result into 3DGS-ready data.
+In the common workflow, you select the camera XML exported from Metashape, optionally select a point-cloud PLY, and choose whether the output is for Postshot, Brush, or LichtFeld Studio. If you are not using Metashape, you can export COLMAP Rig cubemap images or run SphereSfM directly on equirectangular images and convert the result into 3DGS-ready data. When needed, the same Step 4 can continue into LichtFeld Studio or Postshot CLI training from the `Training` tab.
 
 ## Launch
 
@@ -20,7 +20,7 @@ When you open Step 4, first decide which route you are on.
 
 SfM, or Structure from Motion, estimates camera positions and a sparse point cloud from differences between multiple images. 3DGS tools use those camera positions to read the training data. The Metashape route converts an SfM result created in Metashape; the SphereSfM route and the COLMAP route with COLMAP enabled can run SfM from this app.
 
-| Goal | `Select:` | Main settings |
+| Goal | Route | Main settings |
 | --- | --- | --- |
 | Use Metashape SfM results in Postshot / Brush / LichtFeld | `Metashape` | `Output Preset`, `Output Shape`, `Camera XML`, `Point Cloud PLY` |
 | Create direct LichtFeld 3DGUT data | `Metashape` | `Output Preset: LichtFeld Studio`, `Output Shape`, `Point Cloud PLY` |
@@ -30,11 +30,13 @@ SfM, or Structure from Motion, estimates camera positions and a sparse point clo
 
 `Scene Directory` is the scene folder used by Steps 1-3. It usually contains `images/` and `masks/`. In the Metashape route, Step 4 combines that scene folder with the XML/PLY exported from Metashape. In the SphereSfM route, Step 4 runs SfM and conversion from these `images/` and `masks/`.
 
+The route buttons are `Metashape`, `COLMAP`, and `SphereSfM`. The settings tabs below them stay fixed as `Input`, `Output`, `Projection Views`, `Training`, and `Details`; each tab shows only the sections needed for the selected route. Image/mask toggles live in `Output`, Cube6 and yaw controls live in `Projection Views`, and external CLI training settings live in `Training`.
+
 ## Metashape Route
 
 If Metashape has already aligned the 360° images, use this flow.
 
-1. Set `Select:` to `Metashape`.
+1. Set the route to `Metashape`.
 2. Check `Camera XML`. If a Metashape-exported XML exists at the scene root, Step 4 fills it automatically.
 3. Check `Point Cloud PLY` when exporting for LichtFeld Studio or when you want to package a point cloud. If a Metashape-exported PLY exists at the scene root, Step 4 fills it automatically.
 4. Choose the downstream app in `Output Preset`.
@@ -95,7 +97,7 @@ To prepare both cubemap data and direct 3DGUT data for LichtFeld, export twice f
 
 ### Cubemap Version
 
-1. Set `Select:` to `Metashape`.
+1. Set the route to `Metashape`.
 2. Set `Output Preset` to `LichtFeld Studio`.
 3. Set `Output Shape` to `Convert to Projection Views`.
 4. Check `Point Cloud PLY`. If it was not filled automatically, or if the candidate is wrong, select it manually.
@@ -106,7 +108,7 @@ The output is normally `<scene>/output/`. Load that `output/` folder in LichtFel
 
 ### 3DGUT Version
 
-1. Set `Select:` to `Metashape`.
+1. Set the route to `Metashape`.
 2. Set `Output Preset` to `LichtFeld Studio`.
 3. Set `Output Shape` to `3DGUT (LichtFeld)`.
 4. Check `Point Cloud PLY`. If it was not filled automatically, or if the candidate is wrong, select it manually.
@@ -159,12 +161,28 @@ The `Output` checkboxes control whether images and/or masks are written.
 
 After adjusting masks, turning `Images` off avoids reconverting existing cubemap images. `3DGUT (LichtFeld)` references source images and masks directly, so these output toggles are not used in that mode.
 
+## Training Tab
+
+The `Training` tab can launch an external training CLI after Step 4 export or SfM conversion finishes. Choose the training application at the top, then enable `Start training after export`.
+
+| Training app | Use when |
+| --- | --- |
+| `LichtFeld Studio` | Pass the dataset, output folder, and generated config JSON to LichtFeld Studio CLI |
+| `Postshot` | Pass images and, when available, a COLMAP/SphereSfM sparse model to Postshot CLI and create a `.psht` project |
+| `Custom` | Launch any CLI with template-based arguments |
+
+Normally, leave `Dataset` on the automatic value. Cubemap conversion uses `<scene>/output/`, 3DGUT uses `<scene>/`, and the COLMAP route uses `<scene>/output/colmap_rig/`. The default `Training Output` is `<scene>/output/training/<training app>/`.
+
+For LichtFeld Studio, the GUI exposes the training parameters that are usually adjusted: `Strategy`, `Iterations`, `Max Gaussians`, `SH Degree`, `Tile Mode`, `Steps Scaler`, and mask-related options. At runtime, Step 4 writes `_stechdrive/training/lichtfeld_config.json` and passes that JSON to the CLI.
+
+SphereSfM `SfM Only` does not create a training dataset, so it cannot be combined with automatic training. To continue into training, use `SfM + Convert`, or use `Convert Existing SfM` after a sparse model already exists.
+
 ## COLMAP Route
 
-If you want to skip Metashape and continue from extracted 360° images to COLMAP/GLOMAP, set `Select:` to `COLMAP`.
+If you want to skip Metashape and continue from extracted 360° images to COLMAP/GLOMAP, set the route to `COLMAP`.
 
 1. Confirm that `Scene Directory` contains `images/` and, when needed, `masks/`.
-2. Set `Select:` to `COLMAP`.
+2. Set the route to `COLMAP`.
 3. Choose view count, yaw, and image size in `Projection Views`.
 4. Enable `Run COLMAP after export` when you want COLMAP/GLOMAP to estimate camera positions and a sparse point cloud. This continues into SfM after writing the cubemap images, so it can take a long time depending on frame count.
 5. Choose `Matcher` and `Mapper`. Start with `Sequential` and `Global` in most video workflows.
@@ -186,13 +204,13 @@ This route requires SphereSfM's `colmap.exe`, not standard COLMAP. The app does 
 On RTX 50-series GPUs, the Windows binary distributed on GitHub can stop during CUDA SIFT. RTX 50-series GPUs need CUDA code built for the newer `sm_120` architecture; if the distributed binary was built without that target, CUDA fails with `no kernel image is available for execution on the device`. For RTX 50-series systems, build SphereSfM locally with a CUDA/CMake environment that supports RTX 50-series GPUs and set `CMAKE_CUDA_ARCHITECTURES=120`, then select that `colmap.exe`.
 
 1. Confirm that `Scene Directory` contains `images/` and, when used, `masks/`.
-2. Set `Select:` to `SphereSfM`.
+2. Set the route to `SphereSfM`.
 3. Set `SphereSfM COLMAP Executable` to the `colmap.exe` from a SphereSfM release or build.
 4. Usually keep `Use masks/` enabled. Step 3 masks use white=keep and black=exclude; the GUI converts them to COLMAP's `image.jpg.png` naming.
 5. Set `Run Scope`. `SfM + Convert` is the normal route, `SfM Only` rebuilds just the sparse model, and `Convert Existing SfM` reuses an existing `<scene>/output/spheresfm/sparse/` model.
 6. Use `Sequential` matcher for video frames. Use `Spatial` only when you provide a POS file.
 7. Start with `SfM Quality: Standard`; use `Fast` for trials or large frame sets and `Quality` when registration coverage is weak.
-8. In `Conversion`, choose `Output Shape`.
+8. In the `Output` tab, choose `Output Shape`.
 9. Run the export.
 
 `SfM Only` creates only the SfM result under `<scene>/output/spheresfm/sparse/`. It does not yet create a dataset for a 3DGS app. `Convert Existing SfM` reuses that sparse result when you only want to rebuild the 3DGUT/cubemap output.
@@ -217,6 +235,7 @@ After the run, use `View Result in COLMAP GUI` to inspect registered camera pose
 | COLMAP with SfM enabled | The COLMAP/GLOMAP SfM result in addition to the files above |
 | SphereSfM + `3DGUT (LichtFeld)` | `<scene>/images/`, `<scene>/masks/`, `<scene>/transforms.json`, `<scene>/pointcloud.ply` |
 | SphereSfM + cubemap conversion (`Convert to Projection Views`) | Load `<scene>/output/` in the downstream app. It contains `images/`, `masks/`, `transforms.json`, and `pointcloud.ply` |
+| Training enabled | The selected route output plus `<scene>/output/training/<training app>/`; LichtFeld also writes `_stechdrive/training/lichtfeld_config.json` |
 
 Step 4 saves this app's settings record to `<scene>/_stechdrive/export_settings.json`. Cubemap routes also save the view layout to `<scene>/_stechdrive/views_config.json`. These files are for reopening and reproducing the export in this app, not the dataset files you pass to 3DGS apps.
 

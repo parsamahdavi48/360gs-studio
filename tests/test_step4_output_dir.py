@@ -99,17 +99,32 @@ def test_cubemap_step_uses_fixed_output_folder_label(tmp_path: Path) -> None:
     assert step.export_images_cb.isChecked()
     assert step.export_masks_cb.isChecked()
     assert step.output_shape_combo.currentData() == "projected"
-    assert step.view_export_tab_index == 0
-    assert step.metashape_tab_index == 1
-    assert step.colmap_tab_index == 2
-    assert step.spheresfm_convert_tab_index == 3
-    assert step.spheresfm_tab_index == 4
-    assert step.settings_tabs.tabText(0) == i18n.t("STEP4_TAB_VIEW_EXPORT")
-    assert step.settings_tabs.tabText(step.metashape_tab_index) == i18n.t("STEP4_TAB_METASHAPE")
+    assert step.input_tab_index == 0
+    assert step.output_tab_index == 1
+    assert step.view_export_tab_index == 2
+    assert step.training_tab_index == 3
+    assert step.details_tab_index == 4
+    assert step.metashape_tab_index == step.input_tab_index
+    assert step.colmap_tab_index == step.input_tab_index
+    assert step.spheresfm_tab_index == step.input_tab_index
+    assert step.spheresfm_convert_tab_index == step.output_tab_index
+    assert [step.settings_tabs.tabText(i) for i in range(step.settings_tabs.count())] == [
+        i18n.t("STEP4_TAB_INPUT"),
+        i18n.t("STEP4_TAB_OUTPUT"),
+        i18n.t("STEP4_TAB_VIEW_EXPORT"),
+        i18n.t("STEP4_TAB_TRAINING"),
+        i18n.t("STEP4_TAB_DETAILS"),
+    ]
+    assert step.export_method_label.isHidden()
+    assert _is_descendant(step.metashape_section, step.input_tab)
+    assert _is_descendant(step.metashape_output_section, step.output_tab)
+    assert _is_descendant(step.export_targets_row, step.output_tab)
     assert step.settings_tabs.tabText(step.view_export_tab_index) == i18n.t("STEP4_TAB_VIEW_EXPORT")
-    assert step.settings_tabs.tabText(step.colmap_tab_index) == i18n.t("STEP4_TAB_COLMAP")
-    assert step.settings_tabs.isTabVisible(step.metashape_tab_index)
-    assert not step.settings_tabs.isTabVisible(step.colmap_tab_index)
+    assert not step.metashape_section.isHidden()
+    assert not step.metashape_output_section.isHidden()
+    assert step.colmap_section.isHidden()
+    assert step.spheresfm_section.isHidden()
+    assert step.spheresfm_convert_section.isHidden()
     assert not _is_descendant(step.export_targets_row, step.advanced_output_section)
     assert _is_descendant(step.view_config.settings_widget, step.advanced_output_section)
     assert _is_descendant(step.view_config.grid_section, step.advanced_output_section)
@@ -120,7 +135,8 @@ def test_cubemap_step_uses_fixed_output_folder_label(tmp_path: Path) -> None:
     assert _is_descendant(step.view_config.pitch_add_btn, step.view_config.pitch_controls_widget)
     assert _is_descendant(step.view_config.pitch_count_label, step.view_config.pitch_controls_widget)
     assert not _is_descendant(step.view_config.pitch_add_btn, step.view_config.grid_controls_widget)
-    assert _is_descendant(step.output_details_section, step.advanced_output_section)
+    assert _is_descendant(step.output_details_section, step.details_tab)
+    assert not _is_descendant(step.output_details_section, step.advanced_output_section)
     assert not _is_descendant(step.export_summary_label, step.advanced_output_section)
     assert not _is_descendant(step.export_summary_label, step.view_config.settings_widget)
     assert step.export_summary_label.text() == step.view_config.summary_text()
@@ -165,29 +181,34 @@ def test_cubemap_step_uses_fixed_output_folder_label(tmp_path: Path) -> None:
     assert normal_scale == pytest.approx(2.0 / math.pi, rel=1e-5)
 
 
-def test_export_method_switch_keeps_view_export_tab_leftmost() -> None:
+def test_export_method_switch_keeps_fixed_tabs_and_swaps_route_sections() -> None:
     _app()
     step = CubemapStep(Path.cwd())
 
-    assert step.settings_tabs.tabText(0) == i18n.t("STEP4_TAB_VIEW_EXPORT")
-    assert step.settings_tabs.currentIndex() == step.view_export_tab_index
+    assert step.settings_tabs.tabText(0) == i18n.t("STEP4_TAB_INPUT")
+    assert step.settings_tabs.tabText(step.view_export_tab_index) == i18n.t("STEP4_TAB_VIEW_EXPORT")
+    assert step.settings_tabs.currentIndex() == step.output_tab_index
+    assert not step.metashape_section.isHidden()
+    assert step.colmap_section.isHidden()
 
-    step.settings_tabs.setCurrentIndex(step.metashape_tab_index)
+    step.settings_tabs.setCurrentIndex(step.input_tab_index)
     step._set_export_method("colmap")
 
-    assert step.settings_tabs.tabText(0) == i18n.t("STEP4_TAB_VIEW_EXPORT")
+    assert step.settings_tabs.tabText(0) == i18n.t("STEP4_TAB_INPUT")
     assert step.settings_tabs.isTabVisible(step.view_export_tab_index)
-    assert not step.settings_tabs.isTabVisible(step.metashape_tab_index)
-    assert step.settings_tabs.isTabVisible(step.colmap_tab_index)
-    assert step.settings_tabs.currentIndex() == step.colmap_tab_index
+    assert step.metashape_section.isHidden()
+    assert step.metashape_output_section.isHidden()
+    assert not step.colmap_section.isHidden()
+    assert step.settings_tabs.currentIndex() == step.output_tab_index
 
     step.settings_tabs.setCurrentIndex(step.view_export_tab_index)
     step._set_export_method("metashape")
 
-    assert step.settings_tabs.tabText(0) == i18n.t("STEP4_TAB_VIEW_EXPORT")
+    assert step.settings_tabs.tabText(0) == i18n.t("STEP4_TAB_INPUT")
     assert step.settings_tabs.currentIndex() == step.view_export_tab_index
-    assert step.settings_tabs.isTabVisible(step.metashape_tab_index)
-    assert not step.settings_tabs.isTabVisible(step.colmap_tab_index)
+    assert not step.metashape_section.isHidden()
+    assert not step.metashape_output_section.isHidden()
+    assert step.colmap_section.isHidden()
 
 
 def test_spheresfm_output_shape_change_keeps_conversion_tab_focused() -> None:
@@ -214,16 +235,20 @@ def test_spheresfm_visible_tabs_follow_projection_conversion_sfm_order() -> None
 
     step._set_export_method("spheresfm")
 
-    visible_tabs = [
-        step.settings_tabs.tabText(i)
-        for i in range(step.settings_tabs.count())
-        if step.settings_tabs.isTabVisible(i)
-    ]
-    assert visible_tabs == [
+    assert [step.settings_tabs.tabText(i) for i in range(step.settings_tabs.count())] == [
+        i18n.t("STEP4_TAB_INPUT"),
+        i18n.t("STEP4_TAB_OUTPUT"),
         i18n.t("STEP4_TAB_VIEW_EXPORT"),
-        i18n.t("STEP4_TAB_SPHERESFM_CONVERT"),
-        i18n.t("STEP4_TAB_SPHERESFM_SFM"),
+        i18n.t("STEP4_TAB_TRAINING"),
+        i18n.t("STEP4_TAB_DETAILS"),
     ]
+    assert step.metashape_section.isHidden()
+    assert step.colmap_section.isHidden()
+    assert not step.spheresfm_section.isHidden()
+    assert not step.spheresfm_convert_section.isHidden()
+    assert step.settings_tabs.isTabEnabled(step.input_tab_index)
+    assert step.settings_tabs.isTabEnabled(step.output_tab_index)
+    assert step.settings_tabs.isTabEnabled(step.view_export_tab_index)
 
 
 def test_spheresfm_conversion_rows_follow_preset_shape_axis_order() -> None:
@@ -418,6 +443,7 @@ def test_pitch_row_controls_are_packed_left_without_clipping() -> None:
     idx = step.view_config.view_mode_combo.findData("custom_views")
     step.view_config.view_mode_combo.setCurrentIndex(idx)
     step.view_config.pitch_rows[0]["pitch_edit"].setValue(-90.0)
+    step.settings_tabs.setCurrentIndex(step.view_export_tab_index)
 
     step.resize(720, 720)
     step.show()
@@ -441,6 +467,7 @@ def test_yaw_slots_share_remaining_grid_width() -> None:
     idx = step.view_config.view_mode_combo.findData("custom_views")
     step.view_config.view_mode_combo.setCurrentIndex(idx)
     step.view_config.set_yaw_slot_count(4)
+    step.settings_tabs.setCurrentIndex(step.view_export_tab_index)
 
     step.resize(720, 720)
     step.show()
@@ -1314,6 +1341,98 @@ def test_switching_profile_away_from_lichtfeld_exits_3dgut_direct_mode(tmp_path:
     assert step.output_shape_combo.currentData() == "projected"
     assert step._uses_direct_equirect_output() is False
     assert step.settings_tabs.isTabEnabled(step.view_export_tab_index)
+
+
+def test_training_tab_appends_lichtfeld_command_and_writes_config(tmp_path: Path) -> None:
+    step = _ready_step(tmp_path, metashape_inputs=True)
+    _write_test_image(tmp_path / "images" / "frame_0001.jpg")
+    fake_lfs = tmp_path / "LichtFeld-Studio.exe"
+    fake_lfs.write_text("", encoding="utf-8")
+
+    step.run_training_cb.setChecked(True)
+    step.training_executable_browse.set_text(str(fake_lfs))
+    step.lfs_iterations_edit.setText("46,700")
+    step.lfs_max_gaussians_edit.setText("5,000,000")
+    step.lfs_steps_scaler_edit.setText("1.56")
+    step.lfs_bilateral_grid_cb.setChecked(True)
+    mask_mode_idx = step.lfs_mask_mode_combo.findData("ignore")
+    assert mask_mode_idx >= 0
+    step.lfs_mask_mode_combo.setCurrentIndex(mask_mode_idx)
+    step.training_headless_cb.setChecked(True)
+
+    commands = step.build_commands()
+
+    assert [phase for phase, _cmd in commands] == ["metashape", "cubemap", "training_lichtfeld"]
+    cmd = commands[-1][1]
+    config_path = step._training_config_path()
+    assert cmd[0] == str(fake_lfs)
+    assert cmd[cmd.index("--data-path") + 1] == str(tmp_path / "output")
+    assert cmd[cmd.index("--output-path") + 1] == str(tmp_path / "output" / "training" / "lichtfeld")
+    assert cmd[cmd.index("--config") + 1] == str(config_path)
+    assert "--train" in cmd
+    assert "--no-splash" in cmd
+    assert "--headless" in cmd
+
+    config = json.loads(config_path.read_text(encoding="utf-8"))
+    assert config["strategy"] == "mrnf"
+    assert config["iterations"] == 46700
+    assert config["max_cap"] == 5_000_000
+    assert config["sh_degree"] == 3
+    assert config["tile_mode"] == 1
+    assert config["steps_scaler"] == pytest.approx(1.56)
+    assert config["use_bilateral_grid"] is True
+    assert config["mask_mode"] == "ignore"
+    assert config["headless"] is True
+
+
+def test_colmap_route_can_append_postshot_training_with_future_sparse_model(tmp_path: Path) -> None:
+    images = tmp_path / "images"
+    masks = tmp_path / "masks"
+    images.mkdir()
+    masks.mkdir()
+    _write_test_image(images / "frame_0001.jpg")
+    _write_test_image(masks / "frame_0001.png")
+    fake_colmap = tmp_path / "colmap.exe"
+    fake_colmap.write_text("", encoding="utf-8")
+    fake_postshot = tmp_path / "postshot-cli.exe"
+    fake_postshot.write_text("", encoding="utf-8")
+
+    step = CubemapStep(Path.cwd())
+    step.set_scene_dir(str(tmp_path))
+    step._set_export_method("colmap")
+    step.run_colmap_cb.setChecked(True)
+    step.colmap_exec_browse.set_text(str(fake_colmap))
+    step._set_training_backend("postshot")
+    step.training_executable_browse.set_text(str(fake_postshot))
+    step.run_training_cb.setChecked(True)
+    step.postshot_project_name_edit.setText("scene.psht")
+    step.postshot_ksteps_edit.setText("42")
+    step.postshot_max_image_size_edit.setText("2048")
+
+    commands = step.build_commands()
+
+    assert [phase for phase, _cmd in commands] == [
+        "colmap_rig_export",
+        "colmap_feature",
+        "colmap_rig_config",
+        "colmap_match",
+        "colmap_mapper",
+        "training_postshot",
+    ]
+    cmd = commands[-1][1]
+    assert cmd == [
+        str(fake_postshot),
+        "train",
+        "--import",
+        str(tmp_path / "output" / "colmap_rig" / "images"),
+        str(tmp_path / "output" / "colmap_rig" / "sparse" / "0"),
+        "--output",
+        str(tmp_path / "output" / "training" / "postshot" / "scene.psht"),
+        "-s",
+        "42",
+        "--max-image-size",
+        "2048",
+    ]
 
 
 def test_cubemap_preview_uses_scene_mask_folder(tmp_path: Path, monkeypatch) -> None:

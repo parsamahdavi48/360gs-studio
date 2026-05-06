@@ -2,7 +2,7 @@
 
 Step 4 は、Step 1-3で用意した360°画像とマスク、MetashapeでSfMした結果、またはSphereSfMで作るSfM結果を、3DGSアプリが読み込める学習データに変換する画面です。
 
-多くの場合は、Metashapeから書き出したカメラXMLと、必要に応じて点群PLYを指定し、Postshot / Brush / LichtFeld Studio のどれに渡すかを選びます。Metashapeを使わない場合は、COLMAP Rig用のキューブマップ画像を書き出すか、SphereSfMでエクイレクタングラー画像を直接SfMしてから3DGS向けデータへ変換できます。
+多くの場合は、Metashapeから書き出したカメラXMLと、必要に応じて点群PLYを指定し、Postshot / Brush / LichtFeld Studio のどれに渡すかを選びます。Metashapeを使わない場合は、COLMAP Rig用のキューブマップ画像を書き出すか、SphereSfMでエクイレクタングラー画像を直接SfMしてから3DGS向けデータへ変換できます。必要なら、同じStep 4の `学習` タブからLichtFeld StudioやPostshot CLIの起動まで続けられます。
 
 ## 起動
 
@@ -20,7 +20,7 @@ Step 4を開いたら、最初に「自分はどのルートか」を決めま�
 
 SfMは、複数画像の見え方の差からカメラ位置と疎な点群を推定する処理です。3DGSでは、このカメラ位置を使って学習データを読み込みます。MetashapeルートはMetashapeで作ったSfM結果を変換し、SphereSfMルートとCOLMAP実行ありのCOLMAPルートはこのアプリからSfM処理まで進めます。
 
-| やりたいこと | `選択:` | 主に使う設定 |
+| やりたいこと | ルート | 主に使う設定 |
 | --- | --- | --- |
 | MetashapeでSfM済みの結果をPostshot / Brush / LichtFeldへ渡したい | `Metashape` | `出力プリセット`, `出力形状`, `カメラXML`, `点群PLY` |
 | LichtFeldで3DGUT用データを作りたい | `Metashape` | `出力プリセット: LichtFeld Studio`, `出力形状`, `点群PLY` |
@@ -30,11 +30,13 @@ SfMは、複数画像の見え方の差からカメラ位置と疎な点群を�
 
 `シーンフォルダ` は、Step 1-3で使っている作業フォルダです。通常は `images/` と `masks/` が入っています。MetashapeルートではMetashapeから書き出したXML/PLYを組み合わせます。SphereSfMルートでは、この `images/` と `masks/` からSfMと変換を実行します。
 
+ルートボタンは、`Metashape`、`COLMAP`、`SphereSfM` の3つです。下の設定タブは `入力`、`出力`、`投影視点`、`学習`、`詳細` で固定され、選んだルートに必要な項目だけが各タブ内に表示されます。画像/マスクのON/OFFは `出力` タブ、YawやCube6などの視点調整は `投影視点` タブ、CLI学習の設定は `学習` タブにあります。
+
 ## Metashapeルートの基本操作
 
 Metashapeで360°画像をアライメント済みなら、基本はこの流れです。
 
-1. `選択:` を `Metashape` にします。
+1. ルートを `Metashape` にします。
 2. `カメラXML` を確認します。シーンフォルダ直下にMetashapeからエクスポートしたXMLがあれば自動入力されます。
 3. LichtFeld Studio向け、または点群も同梱したい場合は `点群PLY` を確認します。シーンフォルダ直下にMetashapeからエクスポートしたPLYがあれば自動入力されます。
 4. `出力プリセット` で渡し先を選びます。
@@ -95,7 +97,7 @@ LichtFeldで「キューブマップデータ」と「3DGUTでエクイレクタ
 
 ### キューブマップ版
 
-1. `選択:` を `Metashape` にします。
+1. ルートを `Metashape` にします。
 2. `出力プリセット` を `LichtFeld Studio` にします。
 3. `出力形状` を `投影視点に変換` にします。
 4. `点群PLY` を確認します。自動入力されていない場合、または候補が違う場合は手動で指定します。
@@ -106,7 +108,7 @@ LichtFeldで「キューブマップデータ」と「3DGUTでエクイレクタ
 
 ### 3DGUT版
 
-1. `選択:` を `Metashape` にします。
+1. ルートを `Metashape` にします。
 2. `出力プリセット` を `LichtFeld Studio` にします。
 3. `出力形状` を `3DGUT (LichtFeld)` にします。
 4. `点群PLY` を確認します。自動入力されていない場合、または候補が違う場合は手動で指定します。
@@ -159,12 +161,28 @@ VRAMや処理時間が厳しい場合は、まず `Normal` または `Half` で�
 
 マスクだけ調整したあとに再出力する場合は、`画像` をOFFにすると既存のキューブマップ画像を再変換せずに済みます。`3DGUT (LichtFeld)` では元画像と元マスクをそのまま使うため、この出力ON/OFFは使いません。
 
+## 学習タブ
+
+`学習` タブでは、Step 4の書き出しやSfM変換が終わったあとに、外部の学習CLIを続けて起動できます。上部で学習ソフトを選び、`書き出し後に学習を開始` をONにします。
+
+| 学習ソフト | 使いどころ |
+| --- | --- |
+| `LichtFeld Studio` | LichtFeld StudioのCLIへデータセット、出力先、設定JSONを渡して学習まで進める |
+| `Postshot` | Postshot CLIへ画像と、ある場合はCOLMAP/SphereSfMのsparseモデルを渡して `.psht` を作る |
+| `Custom` | 任意のCLIをテンプレート引数で起動する |
+
+`入力データ` は通常自動設定のままで使います。キューブマップ変換では `<scene>/output/`、3DGUTでは `<scene>/`、COLMAPルートでは `<scene>/output/colmap_rig/` が基準になります。`学習出力先` は既定で `<scene>/output/training/<学習ソフト>/` です。
+
+LichtFeld Studioでは、よく調整する `Strategy`、`Iterations`、`Max Gaussians`、`SH Degree`、`Tile Mode`、`Steps Scaler`、マスク関連オプションをGUIから指定できます。実行時に `_stechdrive/training/lichtfeld_config.json` を作り、そのJSONをCLIへ渡します。
+
+SphereSfMの `SfMのみ` は学習用データセットを作らないため、学習の自動実行とは併用できません。学習まで続けたい場合は `SfM + 変換`、または既存のSfM結果に対して `既存SfMから変換のみ` を使います。
+
 ## COLMAPルート
 
-Metashapeを使わず、抽出済みの360°画像からCOLMAP/GLOMAPへ進みたい場合は `選択:` を `COLMAP` にします。
+Metashapeを使わず、抽出済みの360°画像からCOLMAP/GLOMAPへ進みたい場合はルートを `COLMAP` にします。
 
 1. `シーンフォルダ` に `images/` と必要なら `masks/` があることを確認します。
-2. `選択:` を `COLMAP` にします。
+2. ルートを `COLMAP` にします。
 3. `投影視点` で視点数、Yaw、画像サイズを決めます。
 4. COLMAP/GLOMAPでカメラ位置と疎な点群まで推定したい場合は、`書き出し後にCOLMAPを実行` をONにします。ONにすると画像書き出し後にSfM処理まで続けて実行するため、フレーム数によって時間がかかります。
 5. `Matcher` と `Mapper` を選びます。通常は `Sequential` と `Global` から始めます。
@@ -186,13 +204,13 @@ SphereSfMルートは、Metashapeを使わずに、抽出済みエクイレク�
 RTX 50系GPUでは、GitHubで配布されているSphereSfMのWindowsバイナリはCUDA SIFTで停止することがあります。RTX 50系は新しいCUDAアーキテクチャ `sm_120` 向けの実行コードが必要ですが、配布版バイナリがそれを含まずにビルドされていると、`no kernel image is available for execution on the device` で失敗します。RTX 50系で使う場合は、SphereSfMをRTX 50系対応のCUDA/CMake環境で `CMAKE_CUDA_ARCHITECTURES=120` を指定して自前ビルドし、その `colmap.exe` を指定してください。
 
 1. `シーンフォルダ` に `images/` と、使用する場合は `masks/` があることを確認します。
-2. `選択:` を `SphereSfM` にします。
+2. ルートを `SphereSfM` にします。
 3. `SphereSfM COLMAP実行ファイル` に、SphereSfM配布版またはビルド済みの `colmap.exe` を指定します。
 4. `masks/ を使用` は通常ONにします。Step 3の白=使用、黒=除外マスクをCOLMAPの `image.jpg.png` 命名へ変換して使います。
 5. `実行範囲` を選びます。通常は `SfM + 変換`、SfMだけ作り直す場合は `SfMのみ`、既存の `<scene>/output/spheresfm/sparse/` から変換だけやり直す場合は `既存SfMから変換のみ` を使います。
 6. `Matcher` は動画フレームなら `Sequential` から始めます。POSファイルがある場合だけ `Spatial` を使います。
 7. `SfM品質` はまず `標準`、試行や大量フレームでは `軽量`、登録が弱い場合は `クオリティ` を試します。
-8. `変換設定` で `出力形状` を選びます。
+8. `出力` タブで `出力形状` を選びます。
 9. 実行します。
 
 `SfMのみ` は、`<scene>/output/spheresfm/sparse/` のSfM結果だけを作ります。3DGSアプリへ渡すデータセットはまだ作られません。`既存SfMから変換のみ` は、この既存sparse結果を再利用して、3DGUT/キューブマップの出力だけを作り直すときに使います。
@@ -217,6 +235,7 @@ SphereSfMプロジェクト `<scene>/output/spheresfm/` には、作業用の `p
 | COLMAP実行あり | 上記に加えて、COLMAP/GLOMAPのSfM結果 |
 | SphereSfM + `3DGUT (LichtFeld)` | `<scene>/images/`, `<scene>/masks/`, `<scene>/transforms.json`, `<scene>/pointcloud.ply` |
 | SphereSfM + キューブマップ変換 (`投影視点に変換`) | 下流アプリへ渡すのは `<scene>/output/`。`images/`, `masks/`, `transforms.json`, `pointcloud.ply` を作ります |
+| 学習タブON | 上記に加えて `<scene>/output/training/<学習ソフト>/` と、LichtFeldでは `_stechdrive/training/lichtfeld_config.json` |
 
 Step 4の設定記録は `<scene>/_stechdrive/export_settings.json` に保存します。キューブマップを書き出すルートでは、視点構成も `<scene>/_stechdrive/views_config.json` に保存します。これらはこのアプリで再開・再現するためのファイルで、3DGSアプリへ渡すデータセット本体ではありません。
 

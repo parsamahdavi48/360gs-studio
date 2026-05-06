@@ -25,6 +25,7 @@ from PySide6.QtWidgets import (
     QPushButton,
     QScrollArea,
     QSplitter,
+    QStackedWidget,
     QTabWidget,
     QVBoxLayout,
     QWidget,
@@ -59,6 +60,15 @@ from gui.steps.cubemap_commands import (
     build_spheresfm_transforms_cmd,
     views_config_payload,
     write_views_config,
+)
+from gui.steps.training_backends import (
+    CustomTrainingOptions,
+    LichtFeldTrainingOptions,
+    PostshotTrainingOptions,
+    TrainingDataset,
+    build_custom_training_cmd,
+    build_lichtfeld_training_cmd,
+    build_postshot_training_cmd,
 )
 from gui.user_settings import load_user_settings_section, update_user_settings_section
 from gui.version import APP_VERSION
@@ -99,6 +109,9 @@ _PROFILE_CUSTOM = "custom"
 _METHOD_METASHAPE = "metashape"
 _METHOD_COLMAP = "colmap"
 _METHOD_SPHERESFM = "spheresfm"
+_TRAINING_BACKEND_LICHTFELD = "lichtfeld"
+_TRAINING_BACKEND_POSTSHOT = "postshot"
+_TRAINING_BACKEND_CUSTOM = "custom"
 _OUTPUT_SHAPE_PROJECTED = "projected"
 _OUTPUT_SHAPE_EQUIRECT_3DGUT = "equirect_3dgut"
 _COLMAP_MAPPER_INCREMENTAL = "incremental"
@@ -225,6 +238,10 @@ class CubemapStep(BaseStepWidget):
         self._spheresfm_gui_processes: list[QProcess] = []
         self._active_runner_phase = ""
         self._preview_render_pending = False
+        self._training_backend_value = _TRAINING_BACKEND_LICHTFELD
+        self._training_dataset_user_edited = False
+        self._training_output_user_edited = False
+        self._syncing_training_paths = False
         self._preview_render_timer = QTimer(self)
         self._preview_render_timer.setSingleShot(True)
         self._preview_render_timer.setInterval(50)
@@ -270,11 +287,11 @@ class CubemapStep(BaseStepWidget):
 
         self.export_method_label = QLabel(i18n.t("EXPORT_METHOD_COMPACT"))
         self.export_method_label.setToolTip(i18n.tip("EXPORT_METHOD"))
+        self.export_method_label.setVisible(False)
         self.export_method_row = QWidget()
         method_row = QHBoxLayout(self.export_method_row)
         method_row.setContentsMargins(0, 0, 0, 0)
         method_row.setSpacing(6)
-        method_row.addWidget(self.export_method_label)
         self.export_method_group = QButtonGroup(self)
         self.export_method_group.setExclusive(True)
         self.export_method_buttons: dict[str, QPushButton] = {}
@@ -315,7 +332,7 @@ class CubemapStep(BaseStepWidget):
             self.export_targets_row,
             i18n.tip("EXPORT_TARGETS"),
         )
-        left_layout.addLayout(export_targets_form)
+        self.export_targets_form = export_targets_form
 
         self.settings_tabs = QTabWidget()
         self.settings_tabs.setObjectName("step4SettingsTabs")
@@ -582,7 +599,8 @@ class CubemapStep(BaseStepWidget):
         self.export_colmap_cb.setToolTip(i18n.t("EXPORT_COLMAP_HINT"))
         profile_form.addRow("", self.export_colmap_cb)
 
-        preprocess_layout.addLayout(profile_form)
+        self.metashape_output_section = QWidget()
+        self.metashape_output_section.setLayout(profile_form)
         pp_form = QFormLayout()
 
         self.ms_images_path_label = ElidedPathLabel("-")
@@ -735,29 +753,59 @@ class CubemapStep(BaseStepWidget):
         output_details.content_layout.addWidget(quality_row)
 
         adv_output_layout.addLayout(adv_form)
-        adv_output_layout.addWidget(output_details)
         adv_output_layout.addStretch()
 
+        self.training_section = self._build_training_section(exe_filter)
+
+        input_tab = QWidget()
+        self.input_tab = input_tab
+        input_layout = QVBoxLayout(input_tab)
+        input_layout.setContentsMargins(8, 8, 8, 8)
+        input_layout.setSpacing(6)
+        input_layout.addWidget(self.metashape_section)
+        input_layout.addWidget(self.colmap_section)
+        input_layout.addWidget(self.spheresfm_section)
+        input_layout.addStretch()
+
+        output_tab = QWidget()
+        self.output_tab = output_tab
+        output_layout = QVBoxLayout(output_tab)
+        output_layout.setContentsMargins(8, 8, 8, 8)
+        output_layout.setSpacing(6)
+        output_layout.addWidget(self.metashape_output_section)
+        output_layout.addWidget(self.spheresfm_convert_section)
+        output_layout.addLayout(self.export_targets_form)
+        output_layout.addStretch()
+
+        details_tab = QWidget()
+        self.details_tab = details_tab
+        details_layout = QVBoxLayout(details_tab)
+        details_layout.setContentsMargins(8, 8, 8, 8)
+        details_layout.setSpacing(6)
+        details_layout.addWidget(self.output_details_section)
+        details_layout.addStretch()
+
+        self.input_tab_index = self.settings_tabs.addTab(
+            self.input_tab,
+            i18n.t("STEP4_TAB_INPUT"),
+        )
+        self.output_tab_index = self.settings_tabs.addTab(
+            self.output_tab,
+            i18n.t("STEP4_TAB_OUTPUT"),
+        )
         self.view_export_tab_index = self.settings_tabs.addTab(
             self.advanced_output_section,
             i18n.t("STEP4_TAB_VIEW_EXPORT"),
         )
-        self.metashape_tab_index = self.settings_tabs.addTab(
-            self.metashape_section,
-            i18n.t("STEP4_TAB_METASHAPE"),
+        self.training_tab_index = self.settings_tabs.addTab(
+            self.training_section,
+            i18n.t("STEP4_TAB_TRAINING"),
         )
-        self.colmap_tab_index = self.settings_tabs.addTab(
-            self.colmap_section,
-            i18n.t("STEP4_TAB_COLMAP"),
-        )
-        self.spheresfm_convert_tab_index = self.settings_tabs.addTab(
-            self.spheresfm_convert_section,
-            i18n.t("STEP4_TAB_SPHERESFM_CONVERT"),
-        )
-        self.spheresfm_tab_index = self.settings_tabs.addTab(
-            self.spheresfm_section,
-            i18n.t("STEP4_TAB_SPHERESFM_SFM"),
-        )
+        self.details_tab_index = self.settings_tabs.addTab(self.details_tab, i18n.t("STEP4_TAB_DETAILS"))
+        self.metashape_tab_index = self.input_tab_index
+        self.colmap_tab_index = self.input_tab_index
+        self.spheresfm_tab_index = self.input_tab_index
+        self.spheresfm_convert_tab_index = self.output_tab_index
         left_layout.addWidget(self.settings_tabs, stretch=1)
 
         left_layout.addStretch()
@@ -818,6 +866,216 @@ class CubemapStep(BaseStepWidget):
         self._on_colmap_run_toggled(self.run_colmap_cb.isChecked())
         self._set_export_method(_METHOD_METASHAPE)
 
+    def _build_training_section(self, exe_filter: str) -> QWidget:
+        section = QWidget()
+        layout = QVBoxLayout(section)
+        layout.setContentsMargins(8, 8, 8, 8)
+        layout.setSpacing(6)
+
+        backend_row = QWidget()
+        backend_layout = QHBoxLayout(backend_row)
+        backend_layout.setContentsMargins(0, 0, 0, 0)
+        backend_layout.setSpacing(6)
+        self.training_backend_group = QButtonGroup(self)
+        self.training_backend_group.setExclusive(True)
+        self.training_backend_buttons: dict[str, QPushButton] = {}
+        for backend, label, tip_key in [
+            (_TRAINING_BACKEND_LICHTFELD, i18n.t("TRAINING_BACKEND_LICHTFELD"), "TRAINING_BACKEND_LICHTFELD"),
+            (_TRAINING_BACKEND_POSTSHOT, i18n.t("TRAINING_BACKEND_POSTSHOT"), "TRAINING_BACKEND_POSTSHOT"),
+            (_TRAINING_BACKEND_CUSTOM, i18n.t("TRAINING_BACKEND_CUSTOM"), "TRAINING_BACKEND_CUSTOM"),
+        ]:
+            btn = QPushButton(label)
+            btn.setObjectName("segmentedOption")
+            btn.setCheckable(True)
+            btn.setToolTip(i18n.tip(tip_key))
+            btn.clicked.connect(lambda _checked=False, b=backend: self._set_training_backend(b))
+            backend_layout.addWidget(btn, stretch=1)
+            self.training_backend_group.addButton(btn)
+            self.training_backend_buttons[backend] = btn
+        layout.addWidget(backend_row)
+
+        form = QFormLayout()
+        form.setSpacing(6)
+
+        self.run_training_cb = QCheckBox(i18n.t("RUN_TRAINING_AFTER_EXPORT"))
+        self.run_training_cb.setToolTip(i18n.tip("RUN_TRAINING_AFTER_EXPORT"))
+        self.run_training_cb.toggled.connect(self._on_training_settings_changed)
+        form.addRow("", self.run_training_cb)
+
+        self.training_executable_browse = BrowseWidget(
+            mode="file",
+            filter_str=exe_filter,
+            placeholder="LichtFeld-Studio.exe",
+        )
+        self.training_executable_browse.setToolTip(i18n.tip("TRAINING_EXECUTABLE"))
+        add_tooltip_row(
+            form,
+            i18n.t("TRAINING_EXECUTABLE"),
+            self.training_executable_browse,
+            i18n.tip("TRAINING_EXECUTABLE"),
+        )
+
+        self.training_dataset_browse = BrowseWidget(mode="dir")
+        self.training_dataset_browse.setToolTip(i18n.tip("TRAINING_DATASET"))
+        self._syncing_training_paths = False
+        self.training_dataset_browse.path_changed.connect(self._on_training_dataset_edited)
+        add_tooltip_row(
+            form,
+            i18n.t("TRAINING_DATASET"),
+            self.training_dataset_browse,
+            i18n.tip("TRAINING_DATASET"),
+        )
+
+        self.training_output_browse = BrowseWidget(mode="dir")
+        self.training_output_browse.setToolTip(i18n.tip("TRAINING_OUTPUT"))
+        self.training_output_browse.path_changed.connect(self._on_training_output_edited)
+        add_tooltip_row(
+            form,
+            i18n.t("TRAINING_OUTPUT"),
+            self.training_output_browse,
+            i18n.tip("TRAINING_OUTPUT"),
+        )
+
+        self.training_headless_cb = QCheckBox(i18n.t("TRAINING_HEADLESS"))
+        self.training_headless_cb.setToolTip(i18n.tip("TRAINING_HEADLESS"))
+        form.addRow("", self.training_headless_cb)
+        layout.addLayout(form)
+
+        self.training_options_stack = QStackedWidget()
+        self.lichtfeld_training_options = self._build_lichtfeld_training_options()
+        self.postshot_training_options = self._build_postshot_training_options()
+        self.custom_training_options = self._build_custom_training_options()
+        self.training_options_stack.addWidget(self.lichtfeld_training_options)
+        self.training_options_stack.addWidget(self.postshot_training_options)
+        self.training_options_stack.addWidget(self.custom_training_options)
+        layout.addWidget(self.training_options_stack)
+        layout.addStretch()
+
+        self._training_dataset_user_edited = False
+        self._set_training_backend(_TRAINING_BACKEND_LICHTFELD)
+        return section
+
+    def _build_lichtfeld_training_options(self) -> QWidget:
+        widget = QWidget()
+        form = QFormLayout(widget)
+        form.setSpacing(6)
+
+        self.lfs_strategy_combo = QComboBox()
+        self.lfs_strategy_combo.addItem("MRNF", "mrnf")
+        self.lfs_strategy_combo.addItem("MCMC", "mcmc")
+        self.lfs_strategy_combo.addItem("IGS+", "igs+")
+        add_tooltip_row(form, i18n.t("LFS_STRATEGY"), self.lfs_strategy_combo, i18n.tip("LFS_STRATEGY"))
+
+        self.lfs_iterations_edit = QLineEdit("30000")
+        self.lfs_iterations_edit.setFixedWidth(96)
+        self.lfs_iterations_edit.setToolTip(i18n.tip("LFS_ITERATIONS"))
+        add_tooltip_row(form, i18n.t("LFS_ITERATIONS"), self.lfs_iterations_edit, i18n.tip("LFS_ITERATIONS"))
+
+        self.lfs_max_gaussians_edit = QLineEdit("5000000")
+        self.lfs_max_gaussians_edit.setFixedWidth(112)
+        self.lfs_max_gaussians_edit.setToolTip(i18n.tip("LFS_MAX_GAUSSIANS"))
+        add_tooltip_row(
+            form,
+            i18n.t("LFS_MAX_GAUSSIANS"),
+            self.lfs_max_gaussians_edit,
+            i18n.tip("LFS_MAX_GAUSSIANS"),
+        )
+
+        self.lfs_sh_degree_combo = QComboBox()
+        for degree in range(4):
+            self.lfs_sh_degree_combo.addItem(str(degree), degree)
+        self.lfs_sh_degree_combo.setCurrentIndex(3)
+        add_tooltip_row(form, i18n.t("LFS_SH_DEGREE"), self.lfs_sh_degree_combo, i18n.tip("LFS_SH_DEGREE"))
+
+        self.lfs_tile_mode_combo = QComboBox()
+        self.lfs_tile_mode_combo.addItem("1 (Full)", 1)
+        self.lfs_tile_mode_combo.addItem("2", 2)
+        self.lfs_tile_mode_combo.addItem("4", 4)
+        add_tooltip_row(form, i18n.t("LFS_TILE_MODE"), self.lfs_tile_mode_combo, i18n.tip("LFS_TILE_MODE"))
+
+        self.lfs_steps_scaler_edit = QLineEdit("1.0")
+        self.lfs_steps_scaler_edit.setFixedWidth(72)
+        self.lfs_steps_scaler_edit.setToolTip(i18n.tip("LFS_STEPS_SCALER"))
+        add_tooltip_row(
+            form,
+            i18n.t("LFS_STEPS_SCALER"),
+            self.lfs_steps_scaler_edit,
+            i18n.tip("LFS_STEPS_SCALER"),
+        )
+
+        checks = QWidget()
+        checks_layout = QVBoxLayout(checks)
+        checks_layout.setContentsMargins(0, 0, 0, 0)
+        checks_layout.setSpacing(3)
+        self.lfs_bilateral_grid_cb = QCheckBox(i18n.t("LFS_BILATERAL_GRID"))
+        self.lfs_mask_mode_combo = QComboBox()
+        self.lfs_mask_mode_combo.addItem("None", "none")
+        self.lfs_mask_mode_combo.addItem("Segment", "segment")
+        self.lfs_mask_mode_combo.addItem("Ignore", "ignore")
+        self.lfs_mask_mode_combo.addItem("Alpha Consistent", "alpha_consistent")
+        self.lfs_sparsity_cb = QCheckBox(i18n.t("LFS_SPARSITY"))
+        self.lfs_gut_cb = QCheckBox(i18n.t("LFS_GUT"))
+        self.lfs_undistort_cb = QCheckBox(i18n.t("LFS_UNDISTORT"))
+        self.lfs_mip_filter_cb = QCheckBox(i18n.t("LFS_MIP_FILTER"))
+        self.lfs_ppisp_cb = QCheckBox(i18n.t("LFS_PPISP"))
+        for cb in (
+            self.lfs_bilateral_grid_cb,
+            self.lfs_sparsity_cb,
+            self.lfs_gut_cb,
+            self.lfs_undistort_cb,
+            self.lfs_mip_filter_cb,
+            self.lfs_ppisp_cb,
+        ):
+            checks_layout.addWidget(cb)
+        form.addRow("", checks)
+        add_tooltip_row(form, i18n.t("LFS_MASK_MODE"), self.lfs_mask_mode_combo, i18n.tip("LFS_MASK_MODE"))
+        return widget
+
+    def _build_postshot_training_options(self) -> QWidget:
+        widget = QWidget()
+        form = QFormLayout(widget)
+        form.setSpacing(6)
+        self.postshot_project_name_edit = QLineEdit("postshot.psht")
+        self.postshot_project_name_edit.setToolTip(i18n.tip("POSTSHOT_PROJECT_NAME"))
+        add_tooltip_row(
+            form,
+            i18n.t("POSTSHOT_PROJECT_NAME"),
+            self.postshot_project_name_edit,
+            i18n.tip("POSTSHOT_PROJECT_NAME"),
+        )
+        self.postshot_ksteps_edit = QLineEdit("60")
+        self.postshot_ksteps_edit.setFixedWidth(72)
+        self.postshot_ksteps_edit.setToolTip(i18n.tip("POSTSHOT_KSTEPS"))
+        add_tooltip_row(form, i18n.t("POSTSHOT_KSTEPS"), self.postshot_ksteps_edit, i18n.tip("POSTSHOT_KSTEPS"))
+        self.postshot_max_image_size_edit = QLineEdit("0")
+        self.postshot_max_image_size_edit.setFixedWidth(72)
+        self.postshot_max_image_size_edit.setToolTip(i18n.tip("POSTSHOT_MAX_IMAGE_SIZE"))
+        add_tooltip_row(
+            form,
+            i18n.t("POSTSHOT_MAX_IMAGE_SIZE"),
+            self.postshot_max_image_size_edit,
+            i18n.tip("POSTSHOT_MAX_IMAGE_SIZE"),
+        )
+        self.postshot_use_imported_poses_cb = QCheckBox(i18n.t("POSTSHOT_USE_IMPORTED_POSES"))
+        self.postshot_use_imported_poses_cb.setToolTip(i18n.tip("POSTSHOT_USE_IMPORTED_POSES"))
+        self.postshot_use_imported_poses_cb.setChecked(True)
+        form.addRow("", self.postshot_use_imported_poses_cb)
+        return widget
+
+    def _build_custom_training_options(self) -> QWidget:
+        widget = QWidget()
+        form = QFormLayout(widget)
+        form.setSpacing(6)
+        self.custom_training_args_edit = QLineEdit("{dataset} {output}")
+        self.custom_training_args_edit.setToolTip(i18n.tip("CUSTOM_TRAINING_ARGS"))
+        add_tooltip_row(
+            form,
+            i18n.t("CUSTOM_TRAINING_ARGS"),
+            self.custom_training_args_edit,
+            i18n.tip("CUSTOM_TRAINING_ARGS"),
+        )
+        return widget
+
     # -- シーンディレクトリ --
 
     def set_scene_dir(self, path: str) -> None:
@@ -831,6 +1089,9 @@ class CubemapStep(BaseStepWidget):
             self.ms_ply_browse.set_text("")
             self.preview.set_scene_dir("")
             self._refresh_input_image_count()
+            self._training_dataset_user_edited = False
+            self._training_output_user_edited = False
+            self._update_training_paths(force=True)
             self._update_output_count()
             self._render_preview()
             return
@@ -843,6 +1104,9 @@ class CubemapStep(BaseStepWidget):
         self.ms_ply_browse.set_text(self._guess_ply(p))
         self.preview.set_scene_dir(path)
         self._refresh_input_image_count()
+        self._training_dataset_user_edited = False
+        self._training_output_user_edited = False
+        self._update_training_paths(force=True)
         self._update_output_count()
         self._render_preview()
 
@@ -877,6 +1141,7 @@ class CubemapStep(BaseStepWidget):
         self.spheresfm_output_shape_combo.currentIndexChanged.connect(lambda _idx: self._save_user_preferences())
         self.spheresfm_profile_combo.currentIndexChanged.connect(lambda _idx: self._save_user_preferences())
         self.spheresfm_axis_transform_combo.currentIndexChanged.connect(lambda _idx: self._save_user_preferences())
+        self.training_executable_browse.path_changed.connect(lambda _path: self._save_user_preferences())
 
     def _load_user_preferences(self) -> None:
         settings = load_user_settings_section(_USER_SETTINGS_SECTION)
@@ -921,6 +1186,17 @@ class CubemapStep(BaseStepWidget):
                 self._set_combo_data(self.spheresfm_profile_combo, spheresfm_profile)
             if spheresfm_axis:
                 self._set_combo_data(self.spheresfm_axis_transform_combo, spheresfm_axis)
+
+            training_backend = str(settings.get("training_backend", "")).strip()
+            if training_backend:
+                self._set_training_backend(training_backend)
+            training_executable = str(settings.get("training_executable", "")).strip()
+            training_output = str(settings.get("training_output", "")).strip()
+            if training_executable:
+                self.training_executable_browse.set_text(training_executable)
+            if training_output:
+                self.training_output_browse.set_text(training_output)
+                self._training_output_user_edited = True
         finally:
             self._syncing_user_preferences = False
         self._on_colmap_mapper_changed()
@@ -942,6 +1218,9 @@ class CubemapStep(BaseStepWidget):
                 "spheresfm_output_shape": self.spheresfm_output_shape_combo.currentData() or _OUTPUT_SHAPE_PROJECTED,
                 "spheresfm_profile": self.spheresfm_profile_combo.currentData() or _PROFILE_LICHTFELD,
                 "spheresfm_axis_transform": self.spheresfm_axis_transform_combo.currentData() or _AXIS_NONE,
+                "training_backend": self._training_backend(),
+                "training_executable": self.training_executable_browse.text(),
+                "training_output": self.training_output_browse.text(),
             },
         )
 
@@ -958,6 +1237,132 @@ class CubemapStep(BaseStepWidget):
 
     def _is_spheresfm_method(self) -> bool:
         return self._export_method() == _METHOD_SPHERESFM
+
+    def _training_backend(self) -> str:
+        return self._training_backend_value
+
+    def _set_training_backend(self, backend: str) -> None:
+        if backend not in {_TRAINING_BACKEND_LICHTFELD, _TRAINING_BACKEND_POSTSHOT, _TRAINING_BACKEND_CUSTOM}:
+            backend = _TRAINING_BACKEND_LICHTFELD
+        self._training_backend_value = backend
+        btn = self.training_backend_buttons.get(backend)
+        if btn is not None and not btn.isChecked():
+            btn.setChecked(True)
+        stack_index = {
+            _TRAINING_BACKEND_LICHTFELD: 0,
+            _TRAINING_BACKEND_POSTSHOT: 1,
+            _TRAINING_BACKEND_CUSTOM: 2,
+        }[backend]
+        self.training_options_stack.setCurrentIndex(stack_index)
+        self.training_executable_browse.line_edit.setPlaceholderText(self._default_training_executable(backend))
+        self.training_headless_cb.setVisible(backend == _TRAINING_BACKEND_LICHTFELD)
+        self._update_training_paths()
+        if getattr(self, "_user_preferences_enabled", False):
+            self._save_user_preferences()
+
+    def _on_training_dataset_edited(self, _path: str) -> None:
+        if self._syncing_training_paths:
+            return
+        self._training_dataset_user_edited = True
+
+    def _on_training_output_edited(self, _path: str) -> None:
+        if self._syncing_training_paths:
+            return
+        self._training_output_user_edited = True
+        self._save_user_preferences()
+
+    def _on_training_settings_changed(self, *_args) -> None:
+        self._update_path_labels()
+        self.primary_action_state_changed.emit()
+
+    def _default_training_executable(self, backend: str | None = None) -> str:
+        backend = backend or self._training_backend()
+        if backend == _TRAINING_BACKEND_POSTSHOT:
+            if os.name == "nt":
+                candidate = Path(os.environ.get("PROGRAMFILES", r"C:\Program Files")) / "Jawset Postshot" / "bin" / "postshot-cli.exe"
+                return str(candidate) if candidate.is_file() else "postshot-cli.exe"
+            return "postshot-cli"
+        if backend == _TRAINING_BACKEND_CUSTOM:
+            return ""
+        if os.name == "nt":
+            candidate = Path(r"D:\GitHub\LichtFeld-Studio\build\LichtFeld-Studio.exe")
+            return str(candidate) if candidate.is_file() else "LichtFeld-Studio.exe"
+        return "LichtFeld-Studio"
+
+    def _resolve_training_executable(self) -> str:
+        return self._resolve_executable(
+            self.training_executable_browse.text(),
+            self._default_training_executable(),
+            "TRAINING_EXEC_NOT_FOUND",
+        )
+
+    def _training_output_dir(self) -> Path:
+        raw = self.training_output_browse.text().strip()
+        if raw:
+            return Path(raw)
+        if not self.scene_dir:
+            raise ValueError(i18n.t("SCENE_REQUIRED_ACTION_HINT"))
+        return Path(self.scene_dir) / "output" / "training" / self._training_backend()
+
+    def _training_config_path(self) -> Path:
+        if not self.scene_dir:
+            raise ValueError(i18n.t("SCENE_REQUIRED_ACTION_HINT"))
+        return step4_meta_dir(Path(self.scene_dir)) / "training" / "lichtfeld_config.json"
+
+    def _default_training_dataset_dir(self) -> Path:
+        if not self.scene_dir:
+            raise ValueError(i18n.t("SCENE_REQUIRED_ACTION_HINT"))
+        return self._display_output_dir()
+
+    def _update_training_paths(self, *, force: bool = False) -> None:
+        if not hasattr(self, "training_dataset_browse"):
+            return
+        if not self.scene_dir:
+            self._syncing_training_paths = True
+            try:
+                self.training_dataset_browse.set_text("")
+                self.training_output_browse.set_text("")
+            finally:
+                self._syncing_training_paths = False
+            return
+
+        self._syncing_training_paths = True
+        try:
+            if force or not self._training_dataset_user_edited or not self.training_dataset_browse.text():
+                self.training_dataset_browse.set_text(str(self._default_training_dataset_dir()))
+            if force or not self._training_output_user_edited or not self.training_output_browse.text():
+                self.training_output_browse.set_text(str(Path(self.scene_dir) / "output" / "training" / self._training_backend()))
+        finally:
+            self._syncing_training_paths = False
+
+    def _training_sparse_model_dir(self) -> Path | None:
+        if self._is_colmap_method():
+            return self._find_colmap_sparse_model() or (self._colmap_sparse_dir() / "0")
+        if self._is_spheresfm_method():
+            return self._find_spheresfm_sparse_model() or (self._spheresfm_sparse_dir() / "0")
+        output_colmap = self._display_output_dir() / "colmap"
+        return output_colmap if output_colmap.is_dir() else None
+
+    def _training_dataset(self) -> TrainingDataset:
+        dataset_root = Path(self.training_dataset_browse.text().strip()) if self.training_dataset_browse.text() else self._default_training_dataset_dir()
+        if self._is_colmap_method():
+            images_dir = self._colmap_rig_images_dir()
+            masks_dir = self._colmap_rig_masks_dir()
+        elif self._uses_direct_equirect_output() or self._uses_spheresfm_3dgut_output():
+            images_dir = Path(self.scene_dir) / "images"
+            masks_dir = self._mask_dir()
+        else:
+            images_dir = dataset_root / "images"
+            masks_dir = dataset_root / "masks"
+        return TrainingDataset(
+            dataset_root=dataset_root,
+            images_dir=images_dir,
+            masks_dir=masks_dir,
+            colmap_sparse_dir=self._training_sparse_model_dir(),
+            transforms_json=dataset_root / "transforms.json",
+            pointcloud_ply=dataset_root / "pointcloud.ply",
+            output_shape=self._output_shape(),
+        )
 
     def _spheresfm_runs_conversion(self) -> bool:
         return self._is_spheresfm_method() and self._spheresfm_run_scope() != _SPHERESFM_RUN_SFM_ONLY
@@ -987,21 +1392,17 @@ class CubemapStep(BaseStepWidget):
             self.export_colmap_cb.setChecked(False)
         self._sync_output_shape_controls()
         self._update_path_labels()
+        self._update_training_paths()
         self._update_output_count()
         self.primary_action_state_changed.emit()
 
     def _sync_settings_tabs(self, *, prefer_route_tab: bool = False) -> None:
         current = self.settings_tabs.currentIndex()
-        was_route_specific = current in {
-            self.metashape_tab_index,
-            self.colmap_tab_index,
-            self.spheresfm_tab_index,
-            self.spheresfm_convert_tab_index,
-        }
-        self.settings_tabs.setTabVisible(self.metashape_tab_index, self._is_metashape_method())
-        self.settings_tabs.setTabVisible(self.colmap_tab_index, self._is_colmap_method())
-        self.settings_tabs.setTabVisible(self.spheresfm_tab_index, self._is_spheresfm_method())
-        self.settings_tabs.setTabVisible(self.spheresfm_convert_tab_index, self._is_spheresfm_method())
+        self.metashape_section.setVisible(self._is_metashape_method())
+        self.metashape_output_section.setVisible(self._is_metashape_method())
+        self.colmap_section.setVisible(self._is_colmap_method())
+        self.spheresfm_section.setVisible(self._is_spheresfm_method())
+        self.spheresfm_convert_section.setVisible(self._is_spheresfm_method())
         spheresfm_sfm_only = self._is_spheresfm_method() and self._spheresfm_run_scope() == _SPHERESFM_RUN_SFM_ONLY
         view_enabled = (
             not self._uses_direct_equirect_output()
@@ -1009,17 +1410,12 @@ class CubemapStep(BaseStepWidget):
             and not spheresfm_sfm_only
         )
         self.settings_tabs.setTabEnabled(self.view_export_tab_index, view_enabled)
-        if self._is_spheresfm_method():
-            route_index = self.spheresfm_tab_index if spheresfm_sfm_only else self.spheresfm_convert_tab_index
-        elif self._is_colmap_method():
-            route_index = self.colmap_tab_index
-        else:
-            route_index = self.metashape_tab_index
-        if spheresfm_sfm_only and current == self.spheresfm_convert_tab_index:
+        route_index = self.output_tab_index if not spheresfm_sfm_only else self.input_tab_index
+        if spheresfm_sfm_only and current == self.output_tab_index:
             self.settings_tabs.setCurrentIndex(route_index)
         elif (not view_enabled) and current == self.view_export_tab_index:
             self.settings_tabs.setCurrentIndex(route_index)
-        elif prefer_route_tab and was_route_specific:
+        elif prefer_route_tab and current in {self.input_tab_index, self.output_tab_index}:
             self.settings_tabs.setCurrentIndex(route_index)
         elif not self._settings_tab_available(self.settings_tabs.currentIndex()):
             self.settings_tabs.setCurrentIndex(route_index)
@@ -1034,6 +1430,7 @@ class CubemapStep(BaseStepWidget):
     def _on_spheresfm_run_scope_changed(self, *_args) -> None:
         self._sync_output_shape_controls()
         self._sync_settings_tabs()
+        self._update_training_paths()
         self._update_output_count()
         self.primary_action_state_changed.emit()
 
@@ -1234,6 +1631,7 @@ class CubemapStep(BaseStepWidget):
         self._sync_output_shape_controls()
         self._sync_settings_tabs()
         self._update_path_labels()
+        self._update_training_paths()
         self._update_output_count()
         self._schedule_render_preview()
         self.primary_action_state_changed.emit()
@@ -1300,7 +1698,7 @@ class CubemapStep(BaseStepWidget):
         self.ms_use_ply_cb.setEnabled(self._is_metashape_method() and not direct)
         self.export_colmap_cb.setEnabled(self._is_metashape_method() and not direct)
         self.settings_tabs.setTabEnabled(self.view_export_tab_index, route_uses_view_export)
-        self.settings_tabs.setTabEnabled(self.spheresfm_convert_tab_index, spheresfm_runs_conversion)
+        self.settings_tabs.setTabEnabled(self.output_tab_index, (not spheresfm) or spheresfm_runs_conversion)
 
     def _preprocess_uses_ply(self) -> bool:
         return self.ms_use_ply_cb.isChecked()
@@ -1424,7 +1822,9 @@ class CubemapStep(BaseStepWidget):
                 self._validate_spheresfm_conversion_export()
                 if not self._prepare_spheresfm_run_outputs(include_project=False, include_conversion=True):
                     return []
-                return self._build_spheresfm_conversion_commands()
+                steps = self._build_spheresfm_conversion_commands()
+                steps.extend(self._build_training_commands())
+                return steps
 
             if not self._prepare_spheresfm_run_outputs(
                 include_project=True,
@@ -1434,6 +1834,7 @@ class CubemapStep(BaseStepWidget):
             steps = self._build_spheresfm_sfm_commands()
             if scope == _SPHERESFM_RUN_FULL:
                 steps.extend(self._build_spheresfm_conversion_commands())
+            steps.extend(self._build_training_commands())
             return steps
 
         if self._is_colmap_method():
@@ -1443,6 +1844,7 @@ class CubemapStep(BaseStepWidget):
             steps = [("colmap_rig_export", self._build_cubemap_cmd(image_only=True, colmap_rig=True))]
             if self.run_colmap_cb.isChecked():
                 steps.extend(self._build_colmap_sfm_commands())
+            steps.extend(self._build_training_commands())
             return steps
 
         self._validate_bundle()
@@ -1450,7 +1852,9 @@ class CubemapStep(BaseStepWidget):
         preprocess_cmd = self._build_preprocess_cmd()
 
         if self._uses_direct_equirect_output():
-            return [("metashape", preprocess_cmd)]
+            steps = [("metashape", preprocess_cmd)]
+            steps.extend(self._build_training_commands())
+            return steps
 
         if not self._prepare_output_dir():
             return []
@@ -1459,6 +1863,7 @@ class CubemapStep(BaseStepWidget):
         steps.append(("cubemap", self._build_cubemap_cmd()))
         if self.export_colmap_cb.isChecked():
             steps.append(("colmap", self._build_colmap_cmd()))
+        steps.extend(self._build_training_commands())
         return steps
 
     def _build_preprocess_cmd(self) -> list[str]:
@@ -1580,6 +1985,97 @@ class CubemapStep(BaseStepWidget):
                 ply=ply_path,
             )
         )
+
+    def _parse_positive_int(self, edit: QLineEdit, label: str) -> int:
+        try:
+            value = int(edit.text().strip().replace(",", ""))
+        except ValueError as exc:
+            raise ValueError(f"{label} は整数で指定してください") from exc
+        if value <= 0:
+            raise ValueError(f"{label} は1以上で指定してください")
+        return value
+
+    def _parse_nonnegative_int(self, edit: QLineEdit, label: str) -> int:
+        try:
+            value = int(edit.text().strip().replace(",", ""))
+        except ValueError as exc:
+            raise ValueError(f"{label} は整数で指定してください") from exc
+        if value < 0:
+            raise ValueError(f"{label} は0以上で指定してください")
+        return value
+
+    def _parse_float(self, edit: QLineEdit, label: str) -> float:
+        try:
+            value = float(edit.text().strip())
+        except ValueError as exc:
+            raise ValueError(f"{label} は数値で指定してください") from exc
+        if not math.isfinite(value):
+            raise ValueError(f"{label} は有限値で指定してください")
+        return value
+
+    def _build_training_commands(self) -> list[tuple[str, list[str]]]:
+        if not self.run_training_cb.isChecked():
+            return []
+        if self._is_spheresfm_method() and self._spheresfm_run_scope() == _SPHERESFM_RUN_SFM_ONLY:
+            raise ValueError(i18n.t("TRAINING_REQUIRES_DATASET_OUTPUT"))
+
+        dataset = self._training_dataset()
+        output_dir = self._training_output_dir()
+        output_dir.mkdir(parents=True, exist_ok=True)
+        executable = self._resolve_training_executable()
+        backend = self._training_backend()
+
+        if backend == _TRAINING_BACKEND_POSTSHOT:
+            cmd = build_postshot_training_cmd(
+                PostshotTrainingOptions(
+                    executable=executable,
+                    dataset=dataset,
+                    output_dir=output_dir,
+                    project_name=self.postshot_project_name_edit.text().strip() or "postshot.psht",
+                    ksteps=self._parse_positive_int(self.postshot_ksteps_edit, i18n.t("POSTSHOT_KSTEPS")),
+                    max_image_size=self._parse_nonnegative_int(
+                        self.postshot_max_image_size_edit,
+                        i18n.t("POSTSHOT_MAX_IMAGE_SIZE"),
+                    ),
+                    use_imported_poses=self.postshot_use_imported_poses_cb.isChecked(),
+                )
+            )
+            return [("training_postshot", cmd)]
+
+        if backend == _TRAINING_BACKEND_CUSTOM:
+            cmd = build_custom_training_cmd(
+                CustomTrainingOptions(
+                    executable=executable,
+                    dataset=dataset,
+                    output_dir=output_dir,
+                    arguments_template=self.custom_training_args_edit.text(),
+                )
+            )
+            return [("training_custom", cmd)]
+
+        cmd = build_lichtfeld_training_cmd(
+            LichtFeldTrainingOptions(
+                executable=executable,
+                dataset=dataset,
+                output_dir=output_dir,
+                config_path=self._training_config_path(),
+                strategy=self.lfs_strategy_combo.currentData() or "mrnf",
+                iterations=self._parse_positive_int(self.lfs_iterations_edit, i18n.t("LFS_ITERATIONS")),
+                max_gaussians=self._parse_positive_int(self.lfs_max_gaussians_edit, i18n.t("LFS_MAX_GAUSSIANS")),
+                sh_degree=int(self.lfs_sh_degree_combo.currentData()),
+                tile_mode=int(self.lfs_tile_mode_combo.currentData()),
+                steps_scaler=self._parse_float(self.lfs_steps_scaler_edit, i18n.t("LFS_STEPS_SCALER")),
+                bilateral_grid=self.lfs_bilateral_grid_cb.isChecked(),
+                mask_mode=self.lfs_mask_mode_combo.currentData() or "none",
+                sparsity=self.lfs_sparsity_cb.isChecked(),
+                gut=self.lfs_gut_cb.isChecked(),
+                undistort=self.lfs_undistort_cb.isChecked(),
+                mip_filter=self.lfs_mip_filter_cb.isChecked(),
+                ppisp=self.lfs_ppisp_cb.isChecked(),
+                headless=self.training_headless_cb.isChecked(),
+            )
+        )
+        return [("training_lichtfeld", cmd)]
 
     def _default_colmap_executable(self) -> str:
         return "colmap.exe" if os.name == "nt" else "colmap"
@@ -2036,6 +2532,7 @@ class CubemapStep(BaseStepWidget):
                 "cubemap_dir": str(self._spheresfm_cubemap_dir()) if spheresfm else "",
                 "gut_dir": str(self._spheresfm_3dgut_dir()) if spheresfm else "",
             },
+            "training": self._collect_training_settings(),
             "inputs": {
                 "transforms_json": str(scene / "transforms.json"),
                 "masks_dir": str(self._mask_dir()),
@@ -2053,6 +2550,45 @@ class CubemapStep(BaseStepWidget):
                 "colmap_project_manifest": f"colmap_rig/{_COLMAP_PROJECT_MANIFEST_NAME}",
                 "spheresfm_project_dir": "spheresfm",
                 "spheresfm_project_manifest": f"spheresfm/{_SPHERESFM_PROJECT_MANIFEST_NAME}",
+            },
+        }
+
+    def _collect_training_settings(self) -> dict:
+        dataset = self._training_dataset() if self.scene_dir else TrainingDataset(dataset_root=Path(""))
+        return {
+            "enabled": self.run_training_cb.isChecked(),
+            "backend": self._training_backend(),
+            "executable": self.training_executable_browse.text(),
+            "dataset_root": str(dataset.dataset_root),
+            "images_dir": str(dataset.images_dir or ""),
+            "masks_dir": str(dataset.masks_dir or ""),
+            "colmap_sparse_dir": str(dataset.colmap_sparse_dir or ""),
+            "output_dir": str(self._training_output_dir()) if self.scene_dir else "",
+            "lichtfeld_config": str(self._training_config_path()) if self.scene_dir else "",
+            "lichtfeld": {
+                "strategy": self.lfs_strategy_combo.currentData() or "mrnf",
+                "iterations": self.lfs_iterations_edit.text().strip(),
+                "max_gaussians": self.lfs_max_gaussians_edit.text().strip(),
+                "sh_degree": self.lfs_sh_degree_combo.currentData(),
+                "tile_mode": self.lfs_tile_mode_combo.currentData(),
+                "steps_scaler": self.lfs_steps_scaler_edit.text().strip(),
+                "bilateral_grid": self.lfs_bilateral_grid_cb.isChecked(),
+                "mask_mode": self.lfs_mask_mode_combo.currentData() or "none",
+                "sparsity": self.lfs_sparsity_cb.isChecked(),
+                "gut": self.lfs_gut_cb.isChecked(),
+                "undistort": self.lfs_undistort_cb.isChecked(),
+                "mip_filter": self.lfs_mip_filter_cb.isChecked(),
+                "ppisp": self.lfs_ppisp_cb.isChecked(),
+                "headless": self.training_headless_cb.isChecked(),
+            },
+            "postshot": {
+                "project_name": self.postshot_project_name_edit.text().strip(),
+                "ksteps": self.postshot_ksteps_edit.text().strip(),
+                "max_image_size": self.postshot_max_image_size_edit.text().strip(),
+                "use_imported_poses": self.postshot_use_imported_poses_cb.isChecked(),
+            },
+            "custom": {
+                "arguments_template": self.custom_training_args_edit.text(),
             },
         }
 
@@ -2826,6 +3362,9 @@ class CubemapStep(BaseStepWidget):
             "spheresfm_mapper": "PHASE_SPHERESFM_MAPPER",
             "spheresfm_transforms": "PHASE_SPHERESFM_TRANSFORMS",
             "spheresfm_cubemap": "PHASE_SPHERESFM_CUBEMAP",
+            "training_lichtfeld": "PHASE_TRAINING_LICHTFELD",
+            "training_postshot": "PHASE_TRAINING_POSTSHOT",
+            "training_custom": "PHASE_TRAINING_CUSTOM",
         }
         key = labels.get(phase)
         return i18n.t(key) if key else phase
