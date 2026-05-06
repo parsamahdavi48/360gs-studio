@@ -21,6 +21,7 @@ When you open Step 4, first decide which route you are on.
 | Use Metashape SfM results in Postshot / Brush / LichtFeld | `Metashape` | `Output Preset`, `Output Shape`, `Camera XML`, `Point Cloud PLY` |
 | Compare cubemap/projection-view training against LichtFeld 3DGUT | `Metashape` | `Output Preset: LichtFeld Studio`, `Output Shape` |
 | Skip Metashape and continue from extracted 360° images to COLMAP/GLOMAP | `COLMAP` | `COLMAP Run Settings`, `Projection Views` |
+| Skip Metashape and run spherical SfM directly on extracted equirectangular images | `SphereSfM` | `SphereSfM COLMAP Executable`, `Matcher`, `Feature` |
 | Rebuild only images, only masks, or metadata for an existing export | Same route as before | `Output`, `Projection Views`, `Image Size` |
 
 `Scene Directory` is the scene folder used by Steps 1-3. It usually contains `images/` and `masks/`. In the Metashape route, Step 4 combines that scene folder with the XML/PLY exported from Metashape to create 3DGS-ready data.
@@ -161,6 +162,22 @@ The COLMAP route writes a COLMAP Rig dataset under `output/colmap_rig/`, includi
 
 Per-frame yaw rotation is always forced to 0 for COLMAP Rig export because changing yaw per frame breaks the fixed-rig assumption.
 
+## SphereSfM Route
+
+If you have SphereSfM's COLMAP build, you can run SfM directly on extracted equirectangular images without creating projection views first.
+
+1. Confirm that `Scene Directory` contains `images/` and, when used, `masks/`.
+2. Set `Select:` to `SphereSfM`.
+3. Set `SphereSfM COLMAP Executable` to the `colmap.exe` from a SphereSfM release or build.
+4. Usually keep `Use masks/` enabled. Step 3 masks use white=keep and black=exclude; the GUI converts them to COLMAP's `image.jpg.png` naming.
+5. Use `Sequential` matcher for video frames. Use `Spatial` only when you provide a POS file.
+6. Start with `Feature: Standard`; try `Robust` if feature coverage is weak.
+7. Run the export.
+
+The SphereSfM route does not use the Projection Views tab or image/mask output toggles. It writes to `<scene>/output/spheresfm/`, including `database.db`, `masks_colmap/`, `sparse/`, and `stechdrive_spheresfm_project.json`.
+
+After the run, use `View Result in COLMAP GUI` to inspect registered camera poses and sparse points.
+
 ## Outputs
 
 | Route | Main outputs |
@@ -169,6 +186,7 @@ Per-frame yaw rotation is always forced to 0 for COLMAP Rig export because chang
 | Metashape + `3DGUT (LichtFeld)` | `<scene>/transforms.json`, `<scene>/pointcloud.ply`, `<scene>/stechdrive_export_settings.json` |
 | COLMAP | `<scene>/output/colmap_rig/images/`, `<scene>/output/colmap_rig/masks/`, `<scene>/output/colmap_rig/rig_config.json` |
 | COLMAP with SfM enabled | The COLMAP/GLOMAP SfM result in addition to the files above |
+| SphereSfM | `<scene>/output/spheresfm/database.db`, `<scene>/output/spheresfm/masks_colmap/`, `<scene>/output/spheresfm/sparse/` |
 
 With the `LichtFeld Studio` profile, Step 4 applies the same final orientation correction to `transforms.json` and `pointcloud.ply` so +X / +Z / up directions match the Metashape scene in LichtFeld.
 

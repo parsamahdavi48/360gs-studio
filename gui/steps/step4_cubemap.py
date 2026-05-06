@@ -11,7 +11,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 import numpy as np
-from PySide6.QtCore import QSize, Qt, QTimer
+from PySide6.QtCore import QProcess, QSize, Qt, QTimer
 from PySide6.QtGui import QFontMetrics
 from PySide6.QtWidgets import (
     QButtonGroup,
@@ -49,10 +49,12 @@ from gui.steps.cubemap_commands import (
     ColmapSfmCommand,
     CubemapConversionCommand,
     MetashapePreprocessCommand,
+    SphereSfmCommand,
     build_colmap_export_cmd,
     build_colmap_sfm_commands,
     build_cubemap_conversion_cmd,
     build_metashape_preprocess_cmd,
+    build_spheresfm_commands,
     views_config_payload,
     write_views_config,
 )
@@ -77,6 +79,7 @@ _PROFILE_LICHTFELD = "lichtfeld"
 _PROFILE_CUSTOM = "custom"
 _METHOD_METASHAPE = "metashape"
 _METHOD_COLMAP = "colmap"
+_METHOD_SPHERESFM = "spheresfm"
 _OUTPUT_SHAPE_PROJECTED = "projected"
 _OUTPUT_SHAPE_EQUIRECT_3DGUT = "equirect_3dgut"
 _COLMAP_MAPPER_INCREMENTAL = "incremental"
@@ -84,12 +87,17 @@ _COLMAP_MAPPER_GLOBAL = "global"
 _COLMAP_MAPPER_GLOMAP = "glomap"
 _COLMAP_MATCHER_SEQUENTIAL = "sequential"
 _COLMAP_MATCHER_EXHAUSTIVE = "exhaustive"
+_SPHERESFM_MATCHER_SPATIAL = "spatial"
+_SPHERESFM_FEATURE_FAST = "fast"
+_SPHERESFM_FEATURE_STANDARD = "standard"
+_SPHERESFM_FEATURE_ROBUST = "robust"
 _AXIS_POSTSHOT = "postshot"
 _AXIS_BRUSH = "brush"
 _AXIS_NONE = "none"
 _NORMAL_OUTPUT_SCALE = 2.0 / math.pi
 _EXPORT_SETTINGS_NAME = "stechdrive_export_settings.json"
 _COLMAP_PROJECT_MANIFEST_NAME = "stechdrive_colmap_project.json"
+_SPHERESFM_PROJECT_MANIFEST_NAME = "stechdrive_spheresfm_project.json"
 _USER_SETTINGS_SECTION = "step4_colmap"
 _LICHTFELD_FINAL_CORRECTION = np.array(
     [
@@ -210,6 +218,7 @@ class CubemapStep(BaseStepWidget):
         for method, label, tip_key in [
             (_METHOD_METASHAPE, i18n.t("METHOD_METASHAPE_IMPORT"), "METHOD_METASHAPE_IMPORT"),
             (_METHOD_COLMAP, i18n.t("METHOD_COLMAP_EXPORT"), "METHOD_COLMAP_EXPORT"),
+            (_METHOD_SPHERESFM, i18n.t("METHOD_SPHERESFM"), "METHOD_SPHERESFM"),
         ]:
             btn = QPushButton(label)
             btn.setObjectName("segmentedOption")
@@ -310,6 +319,78 @@ class CubemapStep(BaseStepWidget):
 
         colmap_section_layout.addLayout(colmap_form)
         colmap_section_layout.addStretch()
+
+        spheresfm_section = QWidget()
+        self.spheresfm_section = spheresfm_section
+        spheresfm_layout = QVBoxLayout(spheresfm_section)
+        spheresfm_layout.setContentsMargins(8, 8, 8, 8)
+        spheresfm_layout.setSpacing(6)
+        spheresfm_form = QFormLayout()
+        spheresfm_form.setSpacing(6)
+
+        self.spheresfm_exec_browse = BrowseWidget(
+            mode="file",
+            filter_str=exe_filter,
+            placeholder="colmap.exe" if os.name == "nt" else "colmap",
+        )
+        self.spheresfm_exec_browse.setToolTip(i18n.tip("SPHERESFM_EXECUTABLE"))
+        add_tooltip_row(
+            spheresfm_form,
+            i18n.t("SPHERESFM_EXECUTABLE"),
+            self.spheresfm_exec_browse,
+            i18n.tip("SPHERESFM_EXECUTABLE"),
+        )
+
+        self.spheresfm_use_masks_cb = QCheckBox(i18n.t("SPHERESFM_USE_MASKS"))
+        self.spheresfm_use_masks_cb.setToolTip(i18n.tip("SPHERESFM_USE_MASKS"))
+        self.spheresfm_use_masks_cb.setChecked(True)
+        spheresfm_form.addRow("", self.spheresfm_use_masks_cb)
+
+        self.spheresfm_matcher_combo = QComboBox()
+        self.spheresfm_matcher_combo.setToolTip(i18n.tip("SPHERESFM_MATCHER"))
+        self.spheresfm_matcher_combo.addItem(i18n.t("COLMAP_MATCHER_SEQUENTIAL"), _COLMAP_MATCHER_SEQUENTIAL)
+        self.spheresfm_matcher_combo.addItem(i18n.t("COLMAP_MATCHER_EXHAUSTIVE"), _COLMAP_MATCHER_EXHAUSTIVE)
+        self.spheresfm_matcher_combo.addItem(i18n.t("SPHERESFM_MATCHER_SPATIAL"), _SPHERESFM_MATCHER_SPATIAL)
+        self.spheresfm_matcher_combo.setFixedWidth(150)
+
+        self.spheresfm_feature_combo = QComboBox()
+        self.spheresfm_feature_combo.setToolTip(i18n.tip("SPHERESFM_FEATURE_PRESET"))
+        self.spheresfm_feature_combo.addItem(i18n.t("SPHERESFM_FEATURE_FAST"), _SPHERESFM_FEATURE_FAST)
+        self.spheresfm_feature_combo.addItem(i18n.t("SPHERESFM_FEATURE_STANDARD"), _SPHERESFM_FEATURE_STANDARD)
+        self.spheresfm_feature_combo.addItem(i18n.t("SPHERESFM_FEATURE_ROBUST"), _SPHERESFM_FEATURE_ROBUST)
+        self.spheresfm_feature_combo.setFixedWidth(150)
+
+        spheresfm_pipeline_row = QWidget()
+        spheresfm_pipeline_layout = QHBoxLayout(spheresfm_pipeline_row)
+        spheresfm_pipeline_layout.setContentsMargins(0, 0, 0, 0)
+        spheresfm_pipeline_layout.setSpacing(8)
+        spheresfm_pipeline_layout.addWidget(QLabel(i18n.t("COLMAP_MATCHER_COMPACT")))
+        spheresfm_pipeline_layout.addWidget(self.spheresfm_matcher_combo)
+        spheresfm_pipeline_layout.addWidget(QLabel(i18n.t("SPHERESFM_FEATURE_COMPACT")))
+        spheresfm_pipeline_layout.addWidget(self.spheresfm_feature_combo)
+        spheresfm_pipeline_layout.addStretch()
+        spheresfm_form.addRow(spheresfm_pipeline_row)
+
+        self.spheresfm_pose_browse = BrowseWidget(
+            mode="file",
+            filter_str="Text (*.txt *.csv);;All (*.*)",
+            placeholder="POS.txt",
+        )
+        self.spheresfm_pose_browse.setToolTip(i18n.tip("SPHERESFM_POSE_FILE"))
+        add_tooltip_row(
+            spheresfm_form,
+            i18n.t("SPHERESFM_POSE_FILE"),
+            self.spheresfm_pose_browse,
+            i18n.tip("SPHERESFM_POSE_FILE"),
+        )
+
+        self.spheresfm_open_gui_btn = QPushButton(i18n.t("SPHERESFM_OPEN_GUI"))
+        self.spheresfm_open_gui_btn.setToolTip(i18n.tip("SPHERESFM_OPEN_GUI"))
+        self.spheresfm_open_gui_btn.clicked.connect(self._open_spheresfm_result)
+        spheresfm_form.addRow("", self.spheresfm_open_gui_btn)
+
+        spheresfm_layout.addLayout(spheresfm_form)
+        spheresfm_layout.addStretch()
 
         # Metashapeインポート設定
         preprocess = QWidget()
@@ -522,6 +603,10 @@ class CubemapStep(BaseStepWidget):
             self.colmap_section,
             i18n.t("STEP4_TAB_COLMAP"),
         )
+        self.spheresfm_tab_index = self.settings_tabs.addTab(
+            self.spheresfm_section,
+            i18n.t("STEP4_TAB_SPHERESFM"),
+        )
         left_layout.addWidget(self.settings_tabs, stretch=1)
 
         left_layout.addStretch()
@@ -630,6 +715,9 @@ class CubemapStep(BaseStepWidget):
         self.glomap_exec_browse.path_changed.connect(lambda _path: self._save_user_preferences())
         self.colmap_matcher_combo.currentIndexChanged.connect(lambda _idx: self._save_user_preferences())
         self.colmap_mapper_combo.currentIndexChanged.connect(lambda _idx: self._save_user_preferences())
+        self.spheresfm_exec_browse.path_changed.connect(lambda _path: self._save_user_preferences())
+        self.spheresfm_matcher_combo.currentIndexChanged.connect(lambda _idx: self._save_user_preferences())
+        self.spheresfm_feature_combo.currentIndexChanged.connect(lambda _idx: self._save_user_preferences())
 
     def _load_user_preferences(self) -> None:
         settings = load_user_settings_section(_USER_SETTINGS_SECTION)
@@ -641,6 +729,9 @@ class CubemapStep(BaseStepWidget):
                 self.colmap_exec_browse.set_text(colmap_exec)
             if glomap_exec:
                 self.glomap_exec_browse.set_text(glomap_exec)
+            spheresfm_exec = str(settings.get("spheresfm_executable", "")).strip()
+            if spheresfm_exec:
+                self.spheresfm_exec_browse.set_text(spheresfm_exec)
 
             matcher = str(settings.get("matcher", "")).strip()
             mapper = str(settings.get("mapper", "")).strip()
@@ -648,6 +739,12 @@ class CubemapStep(BaseStepWidget):
                 self._set_combo_data(self.colmap_matcher_combo, matcher)
             if mapper:
                 self._set_combo_data(self.colmap_mapper_combo, mapper)
+            spheresfm_matcher = str(settings.get("spheresfm_matcher", "")).strip()
+            spheresfm_feature = str(settings.get("spheresfm_feature_preset", "")).strip()
+            if spheresfm_matcher:
+                self._set_combo_data(self.spheresfm_matcher_combo, spheresfm_matcher)
+            if spheresfm_feature:
+                self._set_combo_data(self.spheresfm_feature_combo, spheresfm_feature)
         finally:
             self._syncing_user_preferences = False
         self._on_colmap_mapper_changed()
@@ -662,6 +759,9 @@ class CubemapStep(BaseStepWidget):
                 "glomap_executable": self.glomap_exec_browse.text(),
                 "matcher": self.colmap_matcher_combo.currentData() or _COLMAP_MATCHER_SEQUENTIAL,
                 "mapper": self.colmap_mapper_combo.currentData() or _COLMAP_MAPPER_GLOBAL,
+                "spheresfm_executable": self.spheresfm_exec_browse.text(),
+                "spheresfm_matcher": self.spheresfm_matcher_combo.currentData() or _COLMAP_MATCHER_SEQUENTIAL,
+                "spheresfm_feature_preset": self.spheresfm_feature_combo.currentData() or _SPHERESFM_FEATURE_STANDARD,
             },
         )
 
@@ -673,8 +773,14 @@ class CubemapStep(BaseStepWidget):
     def _is_metashape_method(self) -> bool:
         return self._export_method() == _METHOD_METASHAPE
 
+    def _is_colmap_method(self) -> bool:
+        return self._export_method() == _METHOD_COLMAP
+
+    def _is_spheresfm_method(self) -> bool:
+        return self._export_method() == _METHOD_SPHERESFM
+
     def _set_export_method(self, method: str) -> None:
-        if method not in {_METHOD_METASHAPE, _METHOD_COLMAP}:
+        if method not in {_METHOD_METASHAPE, _METHOD_COLMAP, _METHOD_SPHERESFM}:
             method = _METHOD_METASHAPE
         self._export_method_value = method
         btn = self.export_method_buttons.get(method)
@@ -684,7 +790,7 @@ class CubemapStep(BaseStepWidget):
 
     def _on_export_method_changed(self) -> None:
         metashape = self._is_metashape_method()
-        self._sync_settings_tabs(metashape)
+        self._sync_settings_tabs()
         if not metashape:
             self.export_colmap_cb.setChecked(False)
         self._sync_output_shape_controls()
@@ -692,14 +798,21 @@ class CubemapStep(BaseStepWidget):
         self._update_output_count()
         self.primary_action_state_changed.emit()
 
-    def _sync_settings_tabs(self, metashape: bool) -> None:
+    def _sync_settings_tabs(self) -> None:
         current = self.settings_tabs.currentIndex()
-        was_route_specific = current in {self.metashape_tab_index, self.colmap_tab_index}
-        self.settings_tabs.setTabVisible(self.metashape_tab_index, metashape)
-        self.settings_tabs.setTabVisible(self.colmap_tab_index, not metashape)
-        self.settings_tabs.setTabEnabled(self.view_export_tab_index, not self._uses_direct_equirect_output())
-        route_index = self.metashape_tab_index if metashape else self.colmap_tab_index
-        if self._uses_direct_equirect_output() and current == self.view_export_tab_index:
+        was_route_specific = current in {self.metashape_tab_index, self.colmap_tab_index, self.spheresfm_tab_index}
+        self.settings_tabs.setTabVisible(self.metashape_tab_index, self._is_metashape_method())
+        self.settings_tabs.setTabVisible(self.colmap_tab_index, self._is_colmap_method())
+        self.settings_tabs.setTabVisible(self.spheresfm_tab_index, self._is_spheresfm_method())
+        view_enabled = not self._uses_direct_equirect_output() and not self._is_spheresfm_method()
+        self.settings_tabs.setTabEnabled(self.view_export_tab_index, view_enabled)
+        if self._is_spheresfm_method():
+            route_index = self.spheresfm_tab_index
+        elif self._is_colmap_method():
+            route_index = self.colmap_tab_index
+        else:
+            route_index = self.metashape_tab_index
+        if (not view_enabled) and current == self.view_export_tab_index:
             self.settings_tabs.setCurrentIndex(route_index)
         elif was_route_specific or not self.settings_tabs.isTabVisible(self.settings_tabs.currentIndex()):
             self.settings_tabs.setCurrentIndex(route_index)
@@ -710,6 +823,8 @@ class CubemapStep(BaseStepWidget):
         output = str(self._display_output_dir())
         if self._uses_direct_equirect_output():
             tip_key = "OUTPUT_DIR_LICHTFELD_DIRECT"
+        elif self._is_spheresfm_method():
+            tip_key = "OUTPUT_DIR_SPHERESFM_PROJECT"
         else:
             tip_key = "OUTPUT_DIR_CUBEMAP" if self._is_metashape_method() else "OUTPUT_DIR_COLMAP_PROJECT"
         self.output_path_label.setToolTip(f"{i18n.tip(tip_key)}\n{output}")
@@ -842,7 +957,7 @@ class CubemapStep(BaseStepWidget):
         if self._output_shape() == _OUTPUT_SHAPE_EQUIRECT_3DGUT:
             self._ensure_direct_equirect_defaults()
         self._sync_output_shape_controls()
-        self._sync_settings_tabs(self._is_metashape_method())
+        self._sync_settings_tabs()
         self._update_path_labels()
         self._update_output_count()
         self._schedule_render_preview()
@@ -861,6 +976,7 @@ class CubemapStep(BaseStepWidget):
 
     def _sync_output_shape_controls(self) -> None:
         direct = self._uses_direct_equirect_output()
+        spheresfm = self._is_spheresfm_method()
         if direct:
             if self._saved_projected_export_targets is None:
                 self._saved_projected_export_targets = (
@@ -870,20 +986,30 @@ class CubemapStep(BaseStepWidget):
             self.export_images_cb.setChecked(True)
             self.export_masks_cb.setChecked(True)
             self.export_colmap_cb.setChecked(False)
+        elif spheresfm:
+            if self._saved_projected_export_targets is None:
+                self._saved_projected_export_targets = (
+                    self.export_images_cb.isChecked(),
+                    self.export_masks_cb.isChecked(),
+                )
+            self.export_images_cb.setChecked(False)
+            self.export_masks_cb.setChecked(False)
+            self.export_colmap_cb.setChecked(False)
         elif self._saved_projected_export_targets is not None:
             images, masks = self._saved_projected_export_targets
             self.export_images_cb.setChecked(images)
             self.export_masks_cb.setChecked(masks)
             self._saved_projected_export_targets = None
 
-        self.export_targets_row.setEnabled(not direct)
-        self.view_config.settings_widget.setEnabled(not direct)
-        self.output_details_section.setEnabled(not direct)
+        route_uses_view_export = not direct and not spheresfm
+        self.export_targets_row.setEnabled(route_uses_view_export)
+        self.view_config.settings_widget.setEnabled(route_uses_view_export)
+        self.output_details_section.setEnabled(route_uses_view_export)
         self.output_shape_combo.setEnabled(self._is_metashape_method())
-        self.axis_transform_combo.setEnabled(not direct)
-        self.ms_use_ply_cb.setEnabled(not direct)
+        self.axis_transform_combo.setEnabled(not direct and not spheresfm)
+        self.ms_use_ply_cb.setEnabled(not direct and not spheresfm)
         self.export_colmap_cb.setEnabled(self._is_metashape_method() and not direct)
-        self.settings_tabs.setTabEnabled(self.view_export_tab_index, not direct)
+        self.settings_tabs.setTabEnabled(self.view_export_tab_index, route_uses_view_export)
 
     def _preprocess_uses_ply(self) -> bool:
         return self.ms_use_ply_cb.isChecked()
@@ -923,7 +1049,11 @@ class CubemapStep(BaseStepWidget):
 
     def _render_preview(self) -> None:
         try:
-            views = [] if self._uses_direct_equirect_output() else self.view_config.collect_views(include_disabled=True)
+            views = (
+                []
+                if self._uses_direct_equirect_output() or self._is_spheresfm_method()
+                else self.view_config.collect_views(include_disabled=True)
+            )
         except Exception:
             views = []
         mask_dir = str(self._mask_dir()) if self.scene_dir else ""
@@ -954,7 +1084,7 @@ class CubemapStep(BaseStepWidget):
 
     def _update_output_count(self) -> None:
         label = i18n.t("OUTPUT_IMAGE_COUNT_LABEL")
-        if self._uses_direct_equirect_output():
+        if self._uses_direct_equirect_output() or self._is_spheresfm_method():
             count_text = i18n.t("OUTPUT_IMAGE_COUNT_DIRECT_FORMAT").format(count=self._input_image_count)
             self.view_config.set_output_count_text(f"{label}: {count_text}")
             return
@@ -977,7 +1107,13 @@ class CubemapStep(BaseStepWidget):
     # -- コマンド構築 --
 
     def build_commands(self) -> list[tuple[str, list[str]]]:
-        if not self._is_metashape_method():
+        if self._is_spheresfm_method():
+            self._validate_spheresfm_export()
+            if not self._prepare_spheresfm_dir():
+                return []
+            return self._build_spheresfm_commands()
+
+        if self._is_colmap_method():
             self._validate_image_only_export()
             if not self._prepare_colmap_rig_dir():
                 return []
@@ -1128,6 +1264,9 @@ class CubemapStep(BaseStepWidget):
     def _default_glomap_executable(self) -> str:
         return "glomap.exe" if os.name == "nt" else "glomap"
 
+    def _default_spheresfm_executable(self) -> str:
+        return "colmap.exe" if os.name == "nt" else "colmap"
+
     @staticmethod
     def _looks_like_path(value: str) -> bool:
         return any(sep in value for sep in ("/", "\\")) or Path(value).is_absolute()
@@ -1149,6 +1288,13 @@ class CubemapStep(BaseStepWidget):
             self.colmap_exec_browse.text(),
             self._default_colmap_executable(),
             "COLMAP_EXEC_NOT_FOUND",
+        )
+
+    def _resolve_spheresfm_executable(self) -> str:
+        return self._resolve_executable(
+            self.spheresfm_exec_browse.text(),
+            self._default_spheresfm_executable(),
+            "SPHERESFM_EXEC_NOT_FOUND",
         )
 
     def _resolve_glomap_executable(self) -> str:
@@ -1186,6 +1332,64 @@ class CubemapStep(BaseStepWidget):
             )
         )
 
+    def _build_spheresfm_commands(self) -> list[tuple[str, list[str]]]:
+        script = self.base_dir / "scripts" / "prepare_spheresfm_project.py"
+        if not script.exists():
+            raise FileNotFoundError(f"prepare_spheresfm_project.py が見つかりません: {script}")
+
+        matcher = self.spheresfm_matcher_combo.currentData() or _COLMAP_MATCHER_SEQUENTIAL
+        pose_path = self.spheresfm_pose_browse.text().strip()
+        if matcher == _SPHERESFM_MATCHER_SPATIAL and not pose_path:
+            raise ValueError(i18n.t("SPHERESFM_POSE_REQUIRED"))
+        if pose_path and not Path(pose_path).is_file():
+            raise ValueError(i18n.t("SPHERESFM_POSE_NOT_FOUND").format(path=pose_path))
+
+        return build_spheresfm_commands(
+            SphereSfmCommand(
+                python_executable=sys.executable,
+                prepare_script=script,
+                colmap=self._resolve_spheresfm_executable(),
+                images_dir=self._metashape_images_dir(),
+                source_masks_dir=self._mask_dir(),
+                prepared_masks_dir=self._spheresfm_masks_dir(),
+                database=self._spheresfm_database_path(),
+                sparse=self._spheresfm_sparse_dir(),
+                camera_params=self._spheresfm_camera_params_arg(),
+                use_masks=self._spheresfm_uses_masks(),
+                matcher=matcher,
+                feature_preset=self.spheresfm_feature_combo.currentData() or _SPHERESFM_FEATURE_STANDARD,
+                pose_path=pose_path,
+            )
+        )
+
+    def _open_spheresfm_result(self) -> None:
+        if not self.scene_dir:
+            return
+        model = self._find_spheresfm_sparse_model()
+        if model is None:
+            QMessageBox.warning(
+                self,
+                i18n.t("SPHERESFM_OPEN_GUI"),
+                i18n.t("SPHERESFM_RESULT_NOT_FOUND").format(path=str(self._spheresfm_sparse_dir())),
+            )
+            return
+        try:
+            colmap = self._resolve_spheresfm_executable()
+        except ValueError as exc:
+            QMessageBox.warning(self, i18n.t("SPHERESFM_OPEN_GUI"), str(exc))
+            return
+        args = [
+            "gui",
+            "--database_path",
+            str(self._spheresfm_database_path()),
+            "--image_path",
+            str(self._metashape_images_dir()),
+            "--import_path",
+            str(model),
+        ]
+        if not QProcess.startDetached(colmap, args):
+            QMessageBox.warning(self, i18n.t("SPHERESFM_OPEN_GUI"), i18n.t("SPHERESFM_OPEN_GUI_FAILED"))
+
     def _write_views_config(self, output_dir: Path, views: list[dict]) -> Path:
         return write_views_config(output_dir, views)
 
@@ -1194,7 +1398,12 @@ class CubemapStep(BaseStepWidget):
         return views_config_payload(views)
 
     def _export_settings_path(self) -> Path:
-        root = self._direct_output_dir() if self._uses_direct_equirect_output() else self._output_dir()
+        if self._uses_direct_equirect_output():
+            root = self._direct_output_dir()
+        elif self._is_spheresfm_method():
+            root = self._spheresfm_project_dir()
+        else:
+            root = self._output_dir()
         return root / _EXPORT_SETTINGS_NAME
 
     @staticmethod
@@ -1205,14 +1414,19 @@ class CubemapStep(BaseStepWidget):
         views = self.view_config.collect_views(include_disabled=True)
         scale = float(self.scale_combo.currentData())
         direct = self._uses_direct_equirect_output()
-        yaw_step = 0.0 if self._export_method() == _METHOD_COLMAP or direct else float(self.yaw_per_frame_edit.value())
+        spheresfm = self._is_spheresfm_method()
+        yaw_step = (
+            0.0
+            if self._export_method() == _METHOD_COLMAP or direct or spheresfm
+            else float(self.yaw_per_frame_edit.value())
+        )
         jpg_quality = int(self.jpg_quality_edit.text().strip())
         if not self.scene_dir:
             raise ValueError(i18n.t("SCENE_REQUIRED_ACTION_HINT"))
         scene = Path(self.scene_dir)
         output = self._display_output_dir()
         profile = self._profile_id()
-        views_config_snapshot = None if direct else self._views_config_payload(views)
+        views_config_snapshot = None if direct or spheresfm else self._views_config_payload(views)
 
         return {
             "app": "stechdrive-3dgs-utils",
@@ -1249,7 +1463,7 @@ class CubemapStep(BaseStepWidget):
                     for v in views
                 ],
             },
-            "views_config_path": "" if direct else "views_config.json",
+            "views_config_path": "" if direct or spheresfm else "views_config.json",
             "views_config_snapshot": views_config_snapshot,
             "conversion": {
                 "yaw_offset_per_frame": yaw_step,
@@ -1257,11 +1471,11 @@ class CubemapStep(BaseStepWidget):
                 "output_bit_depth": self.output_bit_depth_combo.currentData() or "8",
                 "jpg_quality": jpg_quality,
                 "invert_masks": self.invert_masks_cb.isChecked(),
-                "write_images": self._writes_images() and not direct,
-                "write_masks": self._writes_masks() and not direct,
-                "no_image": direct or not self._writes_any_view_assets(),
-                "uses_source_images": direct,
-                "uses_source_masks": direct and self._mask_dir().is_dir(),
+                "write_images": self._writes_images() and not direct and not spheresfm,
+                "write_masks": self._writes_masks() and not direct and not spheresfm,
+                "no_image": direct or spheresfm or not self._writes_any_view_assets(),
+                "uses_source_images": direct or spheresfm,
+                "uses_source_masks": (direct or spheresfm) and self._mask_dir().is_dir(),
                 "export_colmap": self._is_metashape_method() and self.export_colmap_cb.isChecked(),
             },
             "postprocess": {
@@ -1298,6 +1512,23 @@ class CubemapStep(BaseStepWidget):
                 "mapper": self.colmap_mapper_combo.currentData() or _COLMAP_MAPPER_INCREMENTAL,
                 "per_frame_yaw_forced_zero": self._export_method() == _METHOD_COLMAP,
             },
+            "spheresfm": {
+                "enabled": spheresfm,
+                "project_dir": str(self._spheresfm_project_dir()),
+                "images_dir": str(self._metashape_images_dir()),
+                "source_masks_dir": str(self._mask_dir()),
+                "prepared_masks_dir": str(self._spheresfm_masks_dir()),
+                "database": str(self._spheresfm_database_path()),
+                "sparse_dir": str(self._spheresfm_sparse_dir()),
+                "sparse_model_dir": str(self._find_spheresfm_sparse_model() or ""),
+                "use_masks": self._spheresfm_uses_masks(),
+                "colmap_executable": self.spheresfm_exec_browse.text(),
+                "matcher": self.spheresfm_matcher_combo.currentData() or _COLMAP_MATCHER_SEQUENTIAL,
+                "feature_preset": self.spheresfm_feature_combo.currentData() or _SPHERESFM_FEATURE_STANDARD,
+                "pose_path": self.spheresfm_pose_browse.text(),
+                "camera_model": "SPHERE",
+                "camera_params": self._spheresfm_camera_params_arg() if spheresfm else "",
+            },
             "inputs": {
                 "transforms_json": str(scene / "transforms.json"),
                 "masks_dir": str(self._mask_dir()),
@@ -1305,7 +1536,7 @@ class CubemapStep(BaseStepWidget):
             },
             "output_files": {
                 "settings": _EXPORT_SETTINGS_NAME,
-                "views_config": "" if direct else "views_config.json",
+                "views_config": "" if direct or spheresfm else "views_config.json",
                 "transforms_json": "transforms.json",
                 "images_dir": "images",
                 "masks_dir": "masks",
@@ -1313,6 +1544,8 @@ class CubemapStep(BaseStepWidget):
                 "colmap_rig_dir": "colmap_rig",
                 "colmap_rig_config": "colmap_rig/rig_config.json",
                 "colmap_project_manifest": f"colmap_rig/{_COLMAP_PROJECT_MANIFEST_NAME}",
+                "spheresfm_project_dir": "spheresfm",
+                "spheresfm_project_manifest": f"spheresfm/{_SPHERESFM_PROJECT_MANIFEST_NAME}",
             },
         }
 
@@ -1350,6 +1583,35 @@ class CubemapStep(BaseStepWidget):
             encoding="utf-8",
         )
 
+    def _write_spheresfm_project_manifest(self) -> None:
+        project = self._spheresfm_project_dir()
+        sparse_model = self._find_spheresfm_sparse_model()
+        payload = {
+            "app": "stechdrive-3dgs-utils",
+            "app_version": APP_VERSION,
+            "export_type": "spheresfm_project",
+            "created_at": self._utc_now_iso(),
+            "project_dir": str(project),
+            "images_dir": str(self._metashape_images_dir()),
+            "source_masks_dir": str(self._mask_dir()),
+            "prepared_masks_dir": "masks_colmap",
+            "sparse_dir": "sparse",
+            "sparse_model_dir": str(sparse_model.relative_to(project).as_posix()) if sparse_model else "",
+            "ready_for_import": sparse_model is not None,
+            "database": "database.db",
+            "use_masks": self._spheresfm_uses_masks(),
+            "matcher": self.spheresfm_matcher_combo.currentData() or _COLMAP_MATCHER_SEQUENTIAL,
+            "feature_preset": self.spheresfm_feature_combo.currentData() or _SPHERESFM_FEATURE_STANDARD,
+            "pose_path": self.spheresfm_pose_browse.text(),
+            "camera_model": "SPHERE",
+            "camera_params": self._spheresfm_camera_params_arg(),
+        }
+        project.mkdir(parents=True, exist_ok=True)
+        (project / _SPHERESFM_PROJECT_MANIFEST_NAME).write_text(
+            json.dumps(payload, indent=2, ensure_ascii=False),
+            encoding="utf-8",
+        )
+
     def _output_dir(self) -> Path:
         if not self.scene_dir:
             raise ValueError(i18n.t("SCENE_REQUIRED_ACTION_HINT"))
@@ -1363,6 +1625,8 @@ class CubemapStep(BaseStepWidget):
     def _display_output_dir(self) -> Path:
         if self._uses_direct_equirect_output():
             return self._direct_output_dir()
+        if self._is_spheresfm_method():
+            return self._spheresfm_project_dir()
         return self._output_dir() if self._is_metashape_method() else self._colmap_rig_dir()
 
     def _mask_dir(self) -> Path:
@@ -1387,6 +1651,50 @@ class CubemapStep(BaseStepWidget):
 
     def _colmap_sparse_dir(self) -> Path:
         return self._colmap_rig_dir() / "sparse"
+
+    def _spheresfm_project_dir(self) -> Path:
+        return self._output_dir() / "spheresfm"
+
+    def _spheresfm_masks_dir(self) -> Path:
+        return self._spheresfm_project_dir() / "masks_colmap"
+
+    def _spheresfm_database_path(self) -> Path:
+        return self._spheresfm_project_dir() / "database.db"
+
+    def _spheresfm_sparse_dir(self) -> Path:
+        return self._spheresfm_project_dir() / "sparse"
+
+    def _find_spheresfm_sparse_model(self) -> Path | None:
+        sparse = self._spheresfm_sparse_dir()
+        if self._has_colmap_sparse_model(sparse):
+            return sparse
+        if not sparse.is_dir():
+            return None
+
+        def sort_key(path: Path) -> tuple[int, int | str]:
+            if path.name.isdigit():
+                return (0, int(path.name))
+            return (1, path.name.lower())
+
+        candidates = [p for p in sparse.iterdir() if p.is_dir() and self._has_colmap_sparse_model(p)]
+        if not candidates:
+            return None
+
+        def score(path: Path) -> tuple[int, tuple[int, int | str]]:
+            images_file = path / "images.txt"
+            registered = 0
+            if images_file.is_file():
+                try:
+                    registered = sum(
+                        1
+                        for line in images_file.read_text(encoding="utf-8", errors="replace").splitlines()
+                        if line.strip() and not line.startswith("#")
+                    ) // 2
+                except OSError:
+                    registered = 0
+            return (registered, sort_key(path))
+
+        return max(candidates, key=score)
 
     def _find_colmap_sparse_model(self) -> Path | None:
         sparse = self._colmap_sparse_dir()
@@ -1418,6 +1726,13 @@ class CubemapStep(BaseStepWidget):
         width, height = self._planned_colmap_image_size()
         params = pinhole_camera_params(width, height, 90.0)
         return ",".join(f"{value:.12g}" for value in params)
+
+    def _spheresfm_camera_params_arg(self) -> str:
+        source = self._first_image_size(self._metashape_images_dir())
+        if source is None:
+            raise ValueError(f"画像フォルダに対象画像がありません: {self._metashape_images_dir()}")
+        width, height = source
+        return f"1,{width / 2:.12g},{height / 2:.12g}"
 
     def _planned_colmap_image_size(self) -> tuple[int, int]:
         if not self._writes_images():
@@ -1563,6 +1878,34 @@ class CubemapStep(BaseStepWidget):
         rig_dir.mkdir(parents=True, exist_ok=True)
         return True
 
+    def _prepare_spheresfm_dir(self) -> bool:
+        if not self.scene_dir:
+            raise ValueError(i18n.t("SCENE_REQUIRED_ACTION_HINT"))
+        output = self._output_dir()
+        project = self._spheresfm_project_dir()
+
+        try:
+            resolved_project = project.resolve()
+        except OSError:
+            resolved_project = project.absolute()
+        if resolved_project.parent != output.resolve():
+            raise ValueError(f"SphereSfM出力フォルダが不正です: {project}")
+
+        if project.exists() and any(project.iterdir()):
+            result = QMessageBox.question(
+                self,
+                i18n.t("OUTPUT_RESET_TITLE"),
+                i18n.t("OUTPUT_RESET_MESSAGE").format(path=str(project)),
+                QMessageBox.Yes | QMessageBox.No,
+                QMessageBox.No,
+            )
+            if result != QMessageBox.Yes:
+                return False
+            self._clear_path(project)
+
+        project.mkdir(parents=True, exist_ok=True)
+        return True
+
     @staticmethod
     def _path_has_contents(path: Path) -> bool:
         if path.is_dir():
@@ -1582,6 +1925,14 @@ class CubemapStep(BaseStepWidget):
             CubemapStep._clear_path(child)
 
     # -- バンドル検証 --
+
+    def _spheresfm_uses_masks(self) -> bool:
+        return self.spheresfm_use_masks_cb.isChecked()
+
+    def _validate_spheresfm_export(self) -> None:
+        self._validate_image_only_export()
+        if self._spheresfm_uses_masks() and not self._mask_dir().is_dir():
+            raise ValueError(i18n.t("SPHERESFM_MASKS_NOT_FOUND").format(path=str(self._mask_dir())))
 
     def _validate_image_only_export(self) -> None:
         if not self.scene_dir:
@@ -1641,7 +1992,12 @@ class CubemapStep(BaseStepWidget):
                 pass
 
     def _finalize_bundle(self) -> None:
-        if not self._is_metashape_method():
+        if self._is_spheresfm_method():
+            self._write_export_settings()
+            self._write_spheresfm_project_manifest()
+            return
+
+        if self._is_colmap_method():
             self._write_export_settings()
             self._write_colmap_project_manifest()
             return
@@ -1790,6 +2146,11 @@ class CubemapStep(BaseStepWidget):
             "colmap_rig_config": "PHASE_COLMAP_RIG_CONFIG",
             "colmap_match": "PHASE_COLMAP_MATCH",
             "colmap_mapper": "PHASE_COLMAP_MAPPER",
+            "spheresfm_prepare": "PHASE_SPHERESFM_PREPARE",
+            "spheresfm_database": "PHASE_SPHERESFM_DATABASE",
+            "spheresfm_feature": "PHASE_SPHERESFM_FEATURE",
+            "spheresfm_match": "PHASE_SPHERESFM_MATCH",
+            "spheresfm_mapper": "PHASE_SPHERESFM_MAPPER",
         }
         key = labels.get(phase)
         return i18n.t(key) if key else phase
@@ -1803,7 +2164,16 @@ class CubemapStep(BaseStepWidget):
         if phase == "colmap_feature":
             total = self._count_colmap_rig_images()
             return 0, total if total > 0 else 0
+        if phase == "spheresfm_prepare":
+            total = self._count_source_images()
+            return 0, total if total > 0 else 0
+        if phase == "spheresfm_feature":
+            total = self._count_source_images()
+            return 0, total if total > 0 else 0
         if phase in {"colmap_rig_config", "colmap_match", "colmap_mapper"}:
+            self._colmap_ba_iterations = 0
+            return 0, 0
+        if phase in {"spheresfm_database", "spheresfm_match", "spheresfm_mapper"}:
             self._colmap_ba_iterations = 0
             return 0, 0
         return None
@@ -1890,6 +2260,15 @@ class CubemapStep(BaseStepWidget):
 
     def _count_colmap_rig_images(self) -> int:
         images_dir = self._colmap_rig_images_dir()
+        if not images_dir.is_dir():
+            return 0
+        supported = {".jpg", ".jpeg", ".png", ".tif", ".tiff", ".webp", ".bmp"}
+        return sum(1 for p in images_dir.rglob("*") if p.is_file() and p.suffix.lower() in supported)
+
+    def _count_source_images(self) -> int:
+        if not self.scene_dir:
+            return 0
+        images_dir = self._metashape_images_dir()
         if not images_dir.is_dir():
             return 0
         supported = {".jpg", ".jpeg", ".png", ".tif", ".tiff", ".webp", ".bmp"}

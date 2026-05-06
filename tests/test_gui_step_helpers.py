@@ -4,12 +4,15 @@ from pathlib import Path
 from gui.steps.cubemap_commands import (
     ColmapSfmCommand,
     CubemapConversionCommand,
+    SphereSfmCommand,
     build_colmap_sfm_commands,
     build_cubemap_conversion_cmd,
+    build_spheresfm_commands,
     write_views_config,
 )
 from gui.steps.mask_commands import MaskCommandContext, build_sam31_prompt_cmd
 from gui.steps.mask_image_import import import_external_images
+from scripts.prepare_spheresfm_project import prepare_masks
 
 
 def _mask_context(base_dir: Path) -> MaskCommandContext:
@@ -143,3 +146,67 @@ def test_colmap_sfm_builder_keeps_mapper_contract(tmp_path: Path) -> None:
     assert commands[2][1][1] == "exhaustive_matcher"
     assert commands[3][1][0:2] == ["colmap.exe", "mapper"]
     assert sparse.is_dir()
+
+
+def test_spheresfm_builder_uses_spherical_camera_and_mask_path(tmp_path: Path) -> None:
+    images = tmp_path / "images"
+    masks = tmp_path / "masks"
+    prepared_masks = tmp_path / "project" / "masks_colmap"
+    sparse = tmp_path / "project" / "sparse"
+    images.mkdir()
+    masks.mkdir()
+    script = tmp_path / "prepare_spheresfm_project.py"
+    script.write_text("", encoding="utf-8")
+
+    commands = build_spheresfm_commands(
+        SphereSfmCommand(
+            python_executable="python.exe",
+            prepare_script=script,
+            colmap="spheresfm_colmap.exe",
+            images_dir=images,
+            source_masks_dir=masks,
+            prepared_masks_dir=prepared_masks,
+            database=tmp_path / "project" / "database.db",
+            sparse=sparse,
+            camera_params="1,32,16",
+            use_masks=True,
+            matcher="spatial",
+            feature_preset="robust",
+            pose_path=str(tmp_path / "POS.txt"),
+        )
+    )
+
+    assert [phase for phase, _cmd in commands] == [
+        "spheresfm_prepare",
+        "spheresfm_database",
+        "spheresfm_feature",
+        "spheresfm_match",
+        "spheresfm_mapper",
+    ]
+    feature_cmd = commands[2][1]
+    assert feature_cmd[0:2] == ["spheresfm_colmap.exe", "feature_extractor"]
+    assert feature_cmd[feature_cmd.index("--ImageReader.camera_model") + 1] == "SPHERE"
+    assert feature_cmd[feature_cmd.index("--ImageReader.camera_params") + 1] == "1,32,16"
+    assert feature_cmd[feature_cmd.index("--ImageReader.mask_path") + 1] == str(prepared_masks)
+    assert feature_cmd[feature_cmd.index("--SiftExtraction.max_num_features") + 1] == "32768"
+    assert commands[3][1][1] == "spatial_matcher"
+    assert commands[4][1][commands[4][1].index("--Mapper.sphere_camera") + 1] == "1"
+    assert sparse.is_dir()
+
+
+def test_prepare_spheresfm_masks_converts_to_colmap_extension_names(tmp_path: Path) -> None:
+    images = tmp_path / "images"
+    source_masks = tmp_path / "masks"
+    output_masks = tmp_path / "spheresfm" / "masks_colmap"
+    (images / "sub").mkdir(parents=True)
+    (source_masks / "sub").mkdir(parents=True)
+    (images / "frame_0001.jpg").write_bytes(b"jpg")
+    (images / "sub" / "frame_0002.png").write_bytes(b"png")
+    (source_masks / "frame_0001.png").write_bytes(b"mask1")
+    (source_masks / "sub" / "frame_0002.png.png").write_bytes(b"mask2")
+
+    copied, missing = prepare_masks(images, source_masks, output_masks)
+
+    assert (copied, missing) == (2, 0)
+    assert (output_masks / "frame_0001.jpg.png").read_bytes() == b"mask1"
+    assert (output_masks / "sub" / "frame_0002.png.png").read_bytes() == b"mask2"

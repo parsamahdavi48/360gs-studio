@@ -64,6 +64,23 @@ class ColmapSfmCommand:
     mapper: str
 
 
+@dataclass(frozen=True)
+class SphereSfmCommand:
+    python_executable: str
+    prepare_script: Path
+    colmap: str
+    images_dir: Path
+    source_masks_dir: Path
+    prepared_masks_dir: Path
+    database: Path
+    sparse: Path
+    camera_params: str
+    use_masks: bool
+    matcher: str
+    feature_preset: str
+    pose_path: str = ""
+
+
 def build_metashape_preprocess_cmd(options: MetashapePreprocessCommand) -> list[str]:
     cmd = [
         options.python_executable,
@@ -217,6 +234,139 @@ def build_colmap_sfm_commands(options: ColmapSfmCommand) -> list[tuple[str, list
         ("colmap_rig_config", rig_cmd),
         ("colmap_match", matcher_cmd),
         ("colmap_mapper", mapper_cmd),
+    ]
+
+
+def _spheresfm_feature_options(preset: str) -> list[str]:
+    if preset == "fast":
+        max_image_size = "3200"
+        max_num_features = "8192"
+    elif preset == "robust":
+        max_image_size = "5000"
+        max_num_features = "32768"
+    else:
+        max_image_size = "4096"
+        max_num_features = "16384"
+    return [
+        "--SiftExtraction.use_gpu",
+        "1",
+        "--SiftExtraction.max_image_size",
+        max_image_size,
+        "--SiftExtraction.max_num_features",
+        max_num_features,
+    ]
+
+
+def build_spheresfm_commands(options: SphereSfmCommand) -> list[tuple[str, list[str]]]:
+    options.sparse.mkdir(parents=True, exist_ok=True)
+    options.database.parent.mkdir(parents=True, exist_ok=True)
+
+    prepare_cmd = [
+        options.python_executable,
+        "-u",
+        str(options.prepare_script),
+        "--colmap",
+        options.colmap,
+        "--images-dir",
+        str(options.images_dir),
+    ]
+    if options.use_masks:
+        prepare_cmd.extend(
+            [
+                "--use-masks",
+                "--source-masks-dir",
+                str(options.source_masks_dir),
+                "--output-masks-dir",
+                str(options.prepared_masks_dir),
+            ]
+        )
+
+    database_cmd = [
+        options.colmap,
+        "database_creator",
+        "--database_path",
+        str(options.database),
+    ]
+
+    feature_cmd = [
+        options.colmap,
+        "feature_extractor",
+        "--database_path",
+        str(options.database),
+        "--image_path",
+        str(options.images_dir),
+        "--ImageReader.camera_model",
+        "SPHERE",
+        "--ImageReader.camera_params",
+        options.camera_params,
+        "--ImageReader.single_camera",
+        "1",
+    ]
+    if options.use_masks:
+        feature_cmd.extend(["--ImageReader.mask_path", str(options.prepared_masks_dir)])
+    if options.pose_path:
+        feature_cmd.extend(["--ImageReader.pose_path", options.pose_path])
+    feature_cmd.extend(_spheresfm_feature_options(options.feature_preset))
+
+    if options.matcher == "spatial":
+        matcher_cmd = [
+            options.colmap,
+            "spatial_matcher",
+            "--database_path",
+            str(options.database),
+            "--SiftMatching.max_error",
+            "4",
+            "--SiftMatching.min_num_inliers",
+            "50",
+            "--SiftMatching.max_num_matches",
+            "32768",
+            "--SpatialMatching.is_gps",
+            "0",
+            "--SpatialMatching.max_distance",
+            "50",
+        ]
+    else:
+        matcher_name = "exhaustive_matcher" if options.matcher == "exhaustive" else "sequential_matcher"
+        matcher_cmd = [
+            options.colmap,
+            matcher_name,
+            "--database_path",
+            str(options.database),
+            "--SiftMatching.max_error",
+            "4",
+            "--SiftMatching.min_num_inliers",
+            "50",
+            "--SiftMatching.max_num_matches",
+            "32768",
+        ]
+        if options.matcher != "exhaustive":
+            matcher_cmd.extend(["--SequentialMatching.overlap", "10"])
+
+    mapper_cmd = [
+        options.colmap,
+        "mapper",
+        "--database_path",
+        str(options.database),
+        "--image_path",
+        str(options.images_dir),
+        "--output_path",
+        str(options.sparse),
+        "--Mapper.ba_refine_focal_length",
+        "0",
+        "--Mapper.ba_refine_principal_point",
+        "0",
+        "--Mapper.ba_refine_extra_params",
+        "0",
+        "--Mapper.sphere_camera",
+        "1",
+    ]
+
+    return [
+        ("spheresfm_prepare", prepare_cmd),
+        ("spheresfm_database", database_cmd),
+        ("spheresfm_feature", feature_cmd),
+        ("spheresfm_match", matcher_cmd),
+        ("spheresfm_mapper", mapper_cmd),
     ]
 
 

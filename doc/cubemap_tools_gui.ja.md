@@ -21,6 +21,7 @@ Step 4を開いたら、最初に「自分はどのルートか」を決めま�
 | MetashapeでSfM済みの結果をPostshot / Brush / LichtFeldへ渡したい | `Metashape` | `出力プリセット`, `出力形状`, `カメラXML`, `点群PLY` |
 | LichtFeldでキューブマップ版と3DGUT版を比較したい | `Metashape` | `出力プリセット: LichtFeld Studio`, `出力形状` |
 | Metashapeを使わず、抽出済み360°画像からCOLMAP/GLOMAPへ進みたい | `COLMAP` | `COLMAP実行設定`, `投影視点` |
+| Metashapeを使わず、抽出済みエクイレクタングラー画像を直接SfMしたい | `SphereSfM` | `SphereSfM COLMAP実行ファイル`, `Matcher`, `Feature` |
 | すでに作った出力の画像やマスクだけ作り直したい | 元のルート | `出力`, `投影視点`, `画像サイズ` |
 
 `Scene Directory` は、Step 1-3で使っているシーンフォルダです。通常は `images/` と `masks/` が入っています。Metashapeルートでは、そこにMetashapeから書き出したXML/PLYを指定して、3DGS向けのデータを作ります。
@@ -161,6 +162,22 @@ COLMAPルートでは、`output/colmap_rig/` にCOLMAP Rig形式の視点画像�
 
 フレーム別Yaw回転は、固定リグの前提を崩すためCOLMAP Rig書き出しでは常に0度です。
 
+## SphereSfMルート
+
+SphereSfM版COLMAPを用意している場合は、抽出済みのエクイレクタングラー画像を投影視点に変換せず、そのまま球面カメラとしてSfMできます。
+
+1. `Scene Directory` に `images/` と、使用する場合は `masks/` があることを確認します。
+2. `選択:` を `SphereSfM` にします。
+3. `SphereSfM COLMAP実行ファイル` に、SphereSfM配布版またはビルド済みの `colmap.exe` を指定します。
+4. `masks/ を使用` は通常ONにします。Step 3の白=使用、黒=除外マスクをCOLMAPの `image.jpg.png` 命名へ変換して使います。
+5. `Matcher` は動画フレームなら `Sequential` から始めます。POSファイルがある場合だけ `Spatial` を使います。
+6. `Feature` はまず `Standard`、特徴点が足りない場合は `Robust` を試します。
+7. 実行します。
+
+SphereSfMルートでは、投影視点タブと画像/マスク出力のON/OFFは使いません。出力先は `<scene>/output/spheresfm/` で、`database.db`、`masks_colmap/`、`sparse/`、`stechdrive_spheresfm_project.json` を作ります。
+
+実行後は `結果をCOLMAP GUIで表示` で、登録されたカメラ位置と疎点群を確認できます。
+
 ## 実行後にできるもの
 
 | ルート | 主な出力 |
@@ -169,6 +186,7 @@ COLMAPルートでは、`output/colmap_rig/` にCOLMAP Rig形式の視点画像�
 | Metashape + `3DGUT (LichtFeld)` | `<scene>/transforms.json`, `<scene>/pointcloud.ply`, `<scene>/stechdrive_export_settings.json` |
 | COLMAP | `<scene>/output/colmap_rig/images/`, `<scene>/output/colmap_rig/masks/`, `<scene>/output/colmap_rig/rig_config.json` |
 | COLMAP実行あり | 上記に加えて、COLMAP/GLOMAPのSfM結果 |
+| SphereSfM | `<scene>/output/spheresfm/database.db`, `<scene>/output/spheresfm/masks_colmap/`, `<scene>/output/spheresfm/sparse/` |
 
 `LichtFeld Studio` プロファイルでは、最終出力の `transforms.json` と `pointcloud.ply` に同じ向き補正を適用し、LichtFeld上でMetashapeと同じ +X / +Z / 上下方向になるようにします。
 

@@ -84,7 +84,7 @@ def test_cubemap_step_uses_fixed_output_folder_label(tmp_path: Path) -> None:
     assert not hasattr(step, "export_method_combo")
     assert not hasattr(step.view_config, "pitch_edit")
     assert not hasattr(step.view_config, "apply_btn")
-    assert set(step.export_method_buttons) == {"metashape", "colmap"}
+    assert set(step.export_method_buttons) == {"metashape", "colmap", "spheresfm"}
     assert step.export_images_cb.isChecked()
     assert step.export_masks_cb.isChecked()
     assert step.output_shape_combo.currentData() == "projected"
@@ -671,6 +671,44 @@ def test_colmap_export_can_queue_colmap_global_mapper(tmp_path: Path) -> None:
 
     assert commands[-1][1][0] == str(fake_colmap)
     assert commands[-1][1][1] == "global_mapper"
+
+
+def test_spheresfm_method_queues_spherical_sfm_without_projection_export(tmp_path: Path) -> None:
+    _app()
+    images = tmp_path / "images"
+    masks = tmp_path / "masks"
+    images.mkdir()
+    masks.mkdir()
+    _write_test_image(images / "frame_0001.jpg")
+    _write_test_image(masks / "frame_0001.png")
+    fake_colmap = tmp_path / "colmap.exe"
+    fake_colmap.write_text("", encoding="utf-8")
+
+    step = CubemapStep(Path.cwd())
+    step.set_scene_dir(str(tmp_path))
+    step._set_export_method("spheresfm")
+    step.spheresfm_exec_browse.set_text(str(fake_colmap))
+
+    assert step.output_path_label.full_text() == str(tmp_path / "output" / "spheresfm")
+    assert not step.export_targets_row.isEnabled()
+    assert not step.view_config.settings_widget.isEnabled()
+
+    commands = step.build_commands()
+
+    assert [phase for phase, _cmd in commands] == [
+        "spheresfm_prepare",
+        "spheresfm_database",
+        "spheresfm_feature",
+        "spheresfm_match",
+        "spheresfm_mapper",
+    ]
+    assert commands[0][1][commands[0][1].index("--colmap") + 1] == str(fake_colmap)
+    assert commands[2][1][commands[2][1].index("--ImageReader.camera_model") + 1] == "SPHERE"
+    assert commands[2][1][commands[2][1].index("--ImageReader.camera_params") + 1] == "1,32,16"
+    assert commands[2][1][commands[2][1].index("--ImageReader.mask_path") + 1] == str(
+        tmp_path / "output" / "spheresfm" / "masks_colmap"
+    )
+    assert commands[4][1][commands[4][1].index("--Mapper.sphere_camera") + 1] == "1"
 
 
 def test_colmap_user_preferences_restore_executable_and_pipeline_choices(
