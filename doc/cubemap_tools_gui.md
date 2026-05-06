@@ -173,7 +173,7 @@ The `Training` tab can launch an external training CLI after Step 4 export or Sf
 
 Normally, leave `Dataset` on the automatic value. Cubemap conversion uses `<scene>/output/`, 3DGUT uses `<scene>/`, and the COLMAP route uses `<scene>/output/colmap_rig/`. The default `Training Output` is `<scene>/output/training/<training app>/`.
 
-For LichtFeld Studio, the GUI exposes the training parameters that are usually adjusted: `Strategy`, `Iterations`, `Max Gaussians`, `SH Degree`, `Tile Mode`, `Steps Scaler`, and mask-related options. At runtime, Step 4 writes `_stechdrive/training/lichtfeld_config.json` and passes that JSON to the CLI.
+For LichtFeld Studio, the GUI exposes the training parameters that are usually adjusted: `Strategy`, `Iterations`, `Max Gaussians`, `SH Degree`, `Tile Mode`, `Steps Scaler`, and mask-related options. With `Steps Scaler` on `Auto`, Step 4 counts the emitted training images and applies the same 300-image baseline scaling LichtFeld Studio uses when loading a dataset in its GUI. At runtime, Step 4 writes `_stechdrive/training/lichtfeld_config.json` and passes that JSON to the CLI.
 
 SphereSfM `SfM Only` does not create a training dataset, so it cannot be combined with automatic training. To continue into training, use `SfM + Convert`, or use `Convert Existing SfM` after a sparse model already exists.
 

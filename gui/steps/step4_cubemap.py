@@ -68,6 +68,7 @@ from gui.steps.training_backends import (
     build_custom_training_cmd,
     build_lichtfeld_training_cmd,
     build_postshot_training_cmd,
+    lichtfeld_auto_steps_scaler,
 )
 from gui.user_settings import load_user_settings_section, update_user_settings_section
 from gui.version import APP_VERSION
@@ -129,6 +130,7 @@ _AXIS_POSTSHOT = "postshot"
 _AXIS_BRUSH = "brush"
 _AXIS_NONE = "none"
 _NORMAL_OUTPUT_SCALE = 2.0 / math.pi
+_SUPPORTED_TRAINING_IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".tif", ".tiff", ".webp", ".bmp"}
 _EXPORT_SETTINGS_NAME = STEP4_EXPORT_SETTINGS_JSON
 _COLMAP_PROJECT_MANIFEST_NAME = "stechdrive_colmap_project.json"
 _SPHERESFM_PROJECT_MANIFEST_NAME = "stechdrive_spheresfm_project.json"
@@ -253,6 +255,8 @@ class CubemapStep(BaseStepWidget):
         self._training_dataset_user_edited = False
         self._training_output_user_edited = False
         self._syncing_training_paths = False
+        self._lfs_iterations_user_edited = False
+        self._syncing_lfs_auto_fields = False
         self._preview_render_timer = QTimer(self)
         self._preview_render_timer.setSingleShot(True)
         self._preview_render_timer.setInterval(50)
@@ -1032,10 +1036,23 @@ class CubemapStep(BaseStepWidget):
         self.lfs_steps_scaler_edit = QLineEdit("1.0")
         self.lfs_steps_scaler_edit.setFixedWidth(72)
         self.lfs_steps_scaler_edit.setToolTip(i18n.tip("LFS_STEPS_SCALER"))
+        self.lfs_auto_steps_scaler_cb = QCheckBox(i18n.t("AUTO"))
+        self.lfs_auto_steps_scaler_cb.setChecked(True)
+        self.lfs_auto_steps_scaler_cb.setToolTip(i18n.tip("LFS_STEPS_SCALER_AUTO"))
+        self.lfs_auto_steps_scaler_cb.toggled.connect(self._on_lfs_auto_steps_scaler_changed)
+        self.lfs_iterations_edit.textEdited.connect(self._on_lfs_iterations_edited)
+        self.lfs_steps_scaler_edit.setEnabled(False)
+        scaler_row = QWidget()
+        scaler_layout = QHBoxLayout(scaler_row)
+        scaler_layout.setContentsMargins(0, 0, 0, 0)
+        scaler_layout.setSpacing(6)
+        scaler_layout.addWidget(self.lfs_steps_scaler_edit)
+        scaler_layout.addWidget(self.lfs_auto_steps_scaler_cb)
+        scaler_layout.addStretch()
         add_tooltip_row(
             form,
             i18n.t("LFS_STEPS_SCALER"),
-            self.lfs_steps_scaler_edit,
+            scaler_row,
             i18n.tip("LFS_STEPS_SCALER"),
         )
 
@@ -1142,7 +1159,9 @@ class CubemapStep(BaseStepWidget):
         self._refresh_input_image_count()
         self._training_dataset_user_edited = False
         self._training_output_user_edited = False
+        self._lfs_iterations_user_edited = False
         self._update_training_paths(force=True)
+        self._update_lfs_auto_steps_scaler()
         self._update_output_count()
         self._render_preview()
 
@@ -1156,6 +1175,7 @@ class CubemapStep(BaseStepWidget):
         self.preview.refresh_image_list(prefer_current=True)
         self._refresh_input_image_count()
         self._update_path_labels()
+        self._update_lfs_auto_steps_scaler()
         self._update_output_count()
         self._render_preview()
 
@@ -1294,6 +1314,8 @@ class CubemapStep(BaseStepWidget):
         self.training_headless_cb.setVisible(backend == _TRAINING_BACKEND_LICHTFELD)
         self._refresh_training_settings_layout()
         self._update_training_paths()
+        if backend == _TRAINING_BACKEND_LICHTFELD:
+            self._update_lfs_auto_steps_scaler()
         if getattr(self, "_user_preferences_enabled", False):
             self._save_user_preferences()
 
@@ -1301,6 +1323,7 @@ class CubemapStep(BaseStepWidget):
         if self._syncing_training_paths:
             return
         self._training_dataset_user_edited = True
+        self._update_lfs_auto_steps_scaler()
 
     def _on_training_output_edited(self, _path: str) -> None:
         if self._syncing_training_paths:
@@ -1311,6 +1334,18 @@ class CubemapStep(BaseStepWidget):
     def _on_training_settings_changed(self, *_args) -> None:
         self._update_path_labels()
         self.primary_action_state_changed.emit()
+
+    def _on_lfs_iterations_edited(self, _text: str) -> None:
+        if self._syncing_lfs_auto_fields:
+            return
+        self._lfs_iterations_user_edited = True
+        self._on_training_settings_changed()
+
+    def _on_lfs_auto_steps_scaler_changed(self, checked: bool) -> None:
+        self.lfs_steps_scaler_edit.setEnabled(not checked)
+        if checked:
+            self._update_lfs_auto_steps_scaler()
+        self._on_training_settings_changed()
 
     def _default_training_executable(self, backend: str | None = None) -> str:
         backend = backend or self._training_backend()
@@ -1394,6 +1429,55 @@ class CubemapStep(BaseStepWidget):
             pointcloud_ply=dataset_root / "pointcloud.ply",
             output_shape=self._output_shape(),
         )
+
+    def _selected_projection_view_count(self) -> int:
+        if self._uses_direct_equirect_output() or self._uses_spheresfm_3dgut_output():
+            return 1
+        try:
+            views = self.view_config.collect_views(include_disabled=True)
+        except Exception:
+            return 0
+        return sum(1 for view in views if view["enabled"])
+
+    @staticmethod
+    def _count_images_in_dir(images_dir: Path | None) -> int:
+        if images_dir is None or not images_dir.is_dir():
+            return 0
+        return sum(
+            1
+            for path in images_dir.rglob("*")
+            if path.is_file() and path.suffix.lower() in _SUPPORTED_TRAINING_IMAGE_EXTS
+        )
+
+    def _training_image_count(self, dataset: TrainingDataset | None = None) -> int:
+        if not self.scene_dir:
+            return 0
+        dataset = dataset or self._training_dataset()
+        if self._uses_direct_equirect_output() or self._uses_spheresfm_3dgut_output():
+            count = self._count_images_in_dir(dataset.images_dir)
+            return count if count > 0 else self._count_source_images()
+
+        if not self._training_dataset_user_edited:
+            source_count = self._count_source_images()
+            view_count = self._selected_projection_view_count()
+            estimated = source_count * view_count
+            if estimated > 0:
+                return estimated
+        return self._count_images_in_dir(dataset.images_dir)
+
+    def _update_lfs_auto_steps_scaler(self) -> None:
+        if not hasattr(self, "lfs_auto_steps_scaler_cb") or not self.lfs_auto_steps_scaler_cb.isChecked():
+            return
+        image_count = self._training_image_count() if self.scene_dir else 0
+        scaler = lichtfeld_auto_steps_scaler(image_count)
+        self._syncing_lfs_auto_fields = True
+        try:
+            self.lfs_steps_scaler_edit.setText(f"{scaler:.2f}")
+            if not self._lfs_iterations_user_edited:
+                base_iterations = 30000
+                self.lfs_iterations_edit.setText(f"{int(math.floor(base_iterations * scaler + 0.5)):,}")
+        finally:
+            self._syncing_lfs_auto_fields = False
 
     def _spheresfm_runs_conversion(self) -> bool:
         return self._is_spheresfm_method() and self._spheresfm_run_scope() != _SPHERESFM_RUN_SFM_ONLY
@@ -1810,11 +1894,13 @@ class CubemapStep(BaseStepWidget):
         ):
             count_text = i18n.t("OUTPUT_IMAGE_COUNT_DIRECT_FORMAT").format(count=self._input_image_count)
             self.view_config.set_output_count_text(f"{label}: {count_text}")
+            self._update_lfs_auto_steps_scaler()
             return
         try:
             views = self.view_config.collect_views(include_disabled=True)
         except Exception:
             self.view_config.set_output_count_text(f"{label}: -")
+            self._update_lfs_auto_steps_scaler()
             return
         enabled = sum(1 for v in views if v["enabled"])
         sources = self._input_image_count
@@ -1826,6 +1912,7 @@ class CubemapStep(BaseStepWidget):
             warn = " [多い]"
         count_text = i18n.t("OUTPUT_IMAGE_COUNT_FORMAT").format(count=total)
         self.view_config.set_output_count_text(f"{label}: {count_text}{warn}")
+        self._update_lfs_auto_steps_scaler()
 
     # -- コマンド構築 --
 
@@ -2096,6 +2183,8 @@ class CubemapStep(BaseStepWidget):
                 sh_degree=int(self.lfs_sh_degree_combo.currentData()),
                 tile_mode=int(self.lfs_tile_mode_combo.currentData()),
                 steps_scaler=self._parse_float(self.lfs_steps_scaler_edit, i18n.t("LFS_STEPS_SCALER")),
+                image_count=self._training_image_count(dataset),
+                auto_steps_scaler=self.lfs_auto_steps_scaler_cb.isChecked(),
                 bilateral_grid=self.lfs_bilateral_grid_cb.isChecked(),
                 mask_mode=self.lfs_mask_mode_combo.currentData() or "none",
                 sparsity=self.lfs_sparsity_cb.isChecked(),
@@ -2603,6 +2692,8 @@ class CubemapStep(BaseStepWidget):
                 "sh_degree": self.lfs_sh_degree_combo.currentData(),
                 "tile_mode": self.lfs_tile_mode_combo.currentData(),
                 "steps_scaler": self.lfs_steps_scaler_edit.text().strip(),
+                "auto_steps_scaler": self.lfs_auto_steps_scaler_cb.isChecked(),
+                "image_count": self._training_image_count(dataset) if self.scene_dir else 0,
                 "bilateral_grid": self.lfs_bilateral_grid_cb.isChecked(),
                 "mask_mode": self.lfs_mask_mode_combo.currentData() or "none",
                 "sparsity": self.lfs_sparsity_cb.isChecked(),
@@ -3518,19 +3609,13 @@ class CubemapStep(BaseStepWidget):
 
     def _count_colmap_rig_images(self) -> int:
         images_dir = self._colmap_rig_images_dir()
-        if not images_dir.is_dir():
-            return 0
-        supported = {".jpg", ".jpeg", ".png", ".tif", ".tiff", ".webp", ".bmp"}
-        return sum(1 for p in images_dir.rglob("*") if p.is_file() and p.suffix.lower() in supported)
+        return self._count_images_in_dir(images_dir)
 
     def _count_source_images(self) -> int:
         if not self.scene_dir:
             return 0
         images_dir = self._metashape_images_dir()
-        if not images_dir.is_dir():
-            return 0
-        supported = {".jpg", ".jpeg", ".png", ".tif", ".tiff", ".webp", ".bmp"}
-        return sum(1 for p in images_dir.rglob("*") if p.is_file() and p.suffix.lower() in supported)
+        return self._count_images_in_dir(images_dir)
 
     # -- ヘルパー --
 

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import math
 import shlex
 from dataclasses import dataclass
 from pathlib import Path
@@ -9,6 +10,7 @@ from pathlib import Path
 _LICHTFELD_REQUIRED_STRATEGIES = {"mrnf", "mcmc", "igs+"}
 _LICHTFELD_MASK_MODES = {"none", "segment", "ignore", "alpha_consistent"}
 _LICHTFELD_TILE_MODES = {1, 2, 4}
+_LICHTFELD_BASE_IMAGE_COUNT = 300
 
 
 def _mrnf_defaults() -> dict:
@@ -157,6 +159,24 @@ def lichtfeld_defaults(strategy: str) -> dict:
     return _mrnf_defaults()
 
 
+def lichtfeld_auto_steps_scaler(image_count: int) -> float:
+    if image_count <= 0:
+        return 1.0
+    if image_count <= _LICHTFELD_BASE_IMAGE_COUNT:
+        return 1.0
+    return image_count / _LICHTFELD_BASE_IMAGE_COUNT
+
+
+def _round_lfs_step(value: float) -> int:
+    return max(1, int(math.floor(value + 0.5)))
+
+
+def _unscale_lfs_step(value: int, scaler: float) -> int:
+    if scaler <= 0.0 or math.isclose(scaler, 1.0):
+        return int(value)
+    return _round_lfs_step(value / scaler)
+
+
 @dataclass(frozen=True)
 class TrainingDataset:
     dataset_root: Path
@@ -180,6 +200,8 @@ class LichtFeldTrainingOptions:
     sh_degree: int
     tile_mode: int
     steps_scaler: float
+    image_count: int | None = None
+    auto_steps_scaler: bool = False
     bilateral_grid: bool = False
     mask_mode: str = "none"
     sparsity: bool = False
@@ -226,16 +248,24 @@ def build_lichtfeld_config(options: LichtFeldTrainingOptions) -> dict:
         raise ValueError("LichtFeld max Gaussians must be greater than 0")
     if options.sh_degree < 0 or options.sh_degree > 3:
         raise ValueError("LichtFeld SH degree must be 0, 1, 2, or 3")
+    if options.steps_scaler <= 0:
+        raise ValueError("LichtFeld steps scaler must be greater than 0")
 
+    steps_scaler = (
+        lichtfeld_auto_steps_scaler(options.image_count)
+        if options.auto_steps_scaler and options.image_count is not None
+        else float(options.steps_scaler)
+    )
+    config_iterations = _unscale_lfs_step(int(options.iterations), steps_scaler)
     config = lichtfeld_defaults(strategy)
     config.update(
         {
             "strategy": strategy,
-            "iterations": int(options.iterations),
+            "iterations": config_iterations,
             "max_cap": int(options.max_gaussians),
             "sh_degree": int(options.sh_degree),
             "tile_mode": int(options.tile_mode),
-            "steps_scaler": float(options.steps_scaler),
+            "steps_scaler": float(steps_scaler),
             "use_bilateral_grid": bool(options.bilateral_grid),
             "mask_mode": options.mask_mode,
             "enable_sparsity": bool(options.sparsity),
@@ -248,8 +278,8 @@ def build_lichtfeld_config(options: LichtFeldTrainingOptions) -> dict:
             "no_splash": bool(options.no_splash),
         }
     )
-    config["eval_steps"] = [min(7000, int(options.iterations)), int(options.iterations)]
-    config["save_steps"] = [min(7000, int(options.iterations)), int(options.iterations)]
+    config["eval_steps"] = [min(7000, config_iterations), config_iterations]
+    config["save_steps"] = [min(7000, config_iterations), config_iterations]
     return config
 
 

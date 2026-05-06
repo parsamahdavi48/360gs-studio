@@ -173,7 +173,7 @@ VRAMや処理時間が厳しい場合は、まず `Normal` または `Half` で�
 
 `入力データ` は通常自動設定のままで使います。キューブマップ変換では `<scene>/output/`、3DGUTでは `<scene>/`、COLMAPルートでは `<scene>/output/colmap_rig/` が基準になります。`出力先` は既定で `<scene>/output/training/<ソフト>/` です。
 
-LichtFeld Studioでは、よく調整する `Strategy`、`Iterations`、`Max Gaussians`、`SH Degree`、`Tile Mode`、`Steps Scaler`、マスク関連オプションをGUIから指定できます。実行時に `_stechdrive/training/lichtfeld_config.json` を作り、そのJSONをCLIへ渡します。
+LichtFeld Studioでは、よく調整する `Strategy`、`Iterations`、`Max Gaussians`、`SH Degree`、`Tile Mode`、`Steps Scaler`、マスク関連オプションをGUIから指定できます。`Steps Scaler` を `Auto` にすると、Step 4が出力されるトレーニング画像数を数え、LichtFeld StudioのGUIがデータセット読み込み時に行う300枚基準のスケーリングと同じ基準で調整します。実行時に `_stechdrive/training/lichtfeld_config.json` を作り、そのJSONをCLIへ渡します。
 
 SphereSfMの `SfMのみ` はトレーニング用データセットを作らないため、自動実行とは併用できません。トレーニングまで続けたい場合は `SfM + 変換`、または既存のSfM結果に対して `既存SfMから変換のみ` を使います。
 

@@ -12,6 +12,7 @@ from gui.steps.training_backends import (
     build_lichtfeld_config,
     build_lichtfeld_training_cmd,
     build_postshot_training_cmd,
+    lichtfeld_auto_steps_scaler,
 )
 
 
@@ -23,7 +24,7 @@ def test_lichtfeld_config_overrides_visible_training_parameters(tmp_path: Path) 
         output_dir=tmp_path / "training",
         config_path=tmp_path / "config.json",
         strategy="mrnf",
-        iterations=46700,
+        iterations=46800,
         max_gaussians=5_000_000,
         sh_degree=2,
         tile_mode=4,
@@ -41,7 +42,7 @@ def test_lichtfeld_config_overrides_visible_training_parameters(tmp_path: Path) 
     config = build_lichtfeld_config(options)
 
     assert config["strategy"] == "mrnf"
-    assert config["iterations"] == 46700
+    assert config["iterations"] == 30000
     assert config["max_cap"] == 5_000_000
     assert config["sh_degree"] == 2
     assert config["tile_mode"] == 4
@@ -55,8 +56,8 @@ def test_lichtfeld_config_overrides_visible_training_parameters(tmp_path: Path) 
     assert config["use_ppisp"] is True
     assert config["headless"] is True
     assert config["auto_train"] is True
-    assert config["eval_steps"] == [7000, 46700]
-    assert config["save_steps"] == [7000, 46700]
+    assert config["eval_steps"] == [7000, 30000]
+    assert config["save_steps"] == [7000, 30000]
 
     cmd = build_lichtfeld_training_cmd(options)
 
@@ -72,7 +73,32 @@ def test_lichtfeld_config_overrides_visible_training_parameters(tmp_path: Path) 
         "--no-splash",
         "--headless",
     ]
-    assert json.loads(options.config_path.read_text(encoding="utf-8"))["iterations"] == 46700
+    assert json.loads(options.config_path.read_text(encoding="utf-8"))["iterations"] == 30000
+
+
+def test_lichtfeld_auto_steps_scaler_matches_image_count(tmp_path: Path) -> None:
+    dataset = TrainingDataset(dataset_root=tmp_path / "output")
+    options = LichtFeldTrainingOptions(
+        executable="LichtFeld-Studio.exe",
+        dataset=dataset,
+        output_dir=tmp_path / "training",
+        config_path=tmp_path / "config.json",
+        strategy="mrnf",
+        iterations=46800,
+        max_gaussians=5_000_000,
+        sh_degree=3,
+        tile_mode=1,
+        steps_scaler=9.99,
+        image_count=468,
+        auto_steps_scaler=True,
+    )
+
+    config = build_lichtfeld_config(options)
+
+    assert lichtfeld_auto_steps_scaler(300) == pytest.approx(1.0)
+    assert lichtfeld_auto_steps_scaler(468) == pytest.approx(1.56)
+    assert config["steps_scaler"] == pytest.approx(1.56)
+    assert config["iterations"] == 30000
 
 
 def test_postshot_command_passes_images_sparse_and_project_file(tmp_path: Path) -> None:

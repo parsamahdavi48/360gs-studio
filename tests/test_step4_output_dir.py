@@ -128,10 +128,11 @@ def test_cubemap_step_uses_fixed_output_folder_label(tmp_path: Path) -> None:
     assert not _is_descendant(step.export_targets_row, step.advanced_output_section)
     assert _is_descendant(step.view_config.settings_widget, step.advanced_output_section)
     assert _is_descendant(step.view_config.grid_section, step.advanced_output_section)
-    assert _is_descendant(step.view_config.all_on_btn, step.view_config.grid_controls_widget)
-    assert _is_descendant(step.view_config.all_off_btn, step.view_config.grid_controls_widget)
-    assert not _is_descendant(step.view_config.all_on_btn, step.view_config.grid_widget)
-    assert not _is_descendant(step.view_config.all_off_btn, step.view_config.grid_widget)
+    assert _is_descendant(step.view_config.all_toggle_btn, step.view_config.grid_controls_widget)
+    assert not _is_descendant(step.view_config.all_toggle_btn, step.view_config.grid_widget)
+    assert step.view_config.all_toggle_btn.isCheckable()
+    assert not hasattr(step.view_config, "all_on_btn")
+    assert not hasattr(step.view_config, "all_off_btn")
     assert _is_descendant(step.view_config.pitch_add_btn, step.view_config.pitch_controls_widget)
     assert _is_descendant(step.view_config.pitch_count_label, step.view_config.pitch_controls_widget)
     assert not _is_descendant(step.view_config.pitch_add_btn, step.view_config.grid_controls_widget)
@@ -531,17 +532,37 @@ def test_custom_grid_bulk_selection_emits_single_change() -> None:
 
     step.view_config.views_changed.connect(on_changed)
 
-    step.view_config._all_off()
+    assert step.view_config.all_toggle_btn.isChecked()
+    assert step.view_config.all_toggle_btn.toolTip() == i18n.t("DESELECT_ALL")
+
+    step.view_config.all_toggle_btn.click()
 
     assert emitted == 1
     assert sum(1 for view in step.view_config.collect_views(include_disabled=True) if view["enabled"]) == 0
+    assert not step.view_config.all_toggle_btn.isChecked()
+    assert step.view_config.all_toggle_btn.toolTip() == i18n.t("SELECT_ALL")
 
-    step.view_config._all_off()
-    assert emitted == 1
-
-    step.view_config._all_on()
+    step.view_config.all_toggle_btn.click()
     assert emitted == 2
     assert sum(1 for view in step.view_config.collect_views(include_disabled=True) if view["enabled"]) == 40
+    assert step.view_config.all_toggle_btn.isChecked()
+    assert step.view_config.all_toggle_btn.toolTip() == i18n.t("DESELECT_ALL")
+
+    step.view_config.pitch_rows[0]["checks"][0].setChecked(False)
+    assert emitted == 3
+    assert not step.view_config.all_toggle_btn.isChecked()
+    assert step.view_config.all_toggle_btn.toolTip() == i18n.t("SELECT_ALL")
+
+    step.view_config._all_off()
+    assert emitted == 4
+
+    step.view_config._all_on()
+    assert emitted == 5
+    assert sum(1 for view in step.view_config.collect_views(include_disabled=True) if view["enabled"]) == 40
+    assert step.view_config.all_toggle_btn.isChecked()
+
+    step.view_config._all_on()
+    assert emitted == 5
 
 
 def test_view_selection_reuses_cached_input_image_count(tmp_path: Path, monkeypatch) -> None:
@@ -1374,6 +1395,7 @@ def test_training_tab_appends_lichtfeld_command_and_writes_config(tmp_path: Path
 
     step.run_training_cb.setChecked(True)
     step.training_executable_browse.set_text(str(fake_lfs))
+    step.lfs_auto_steps_scaler_cb.setChecked(False)
     step.lfs_iterations_edit.setText("46,700")
     step.lfs_max_gaussians_edit.setText("5,000,000")
     step.lfs_steps_scaler_edit.setText("1.56")
@@ -1398,7 +1420,7 @@ def test_training_tab_appends_lichtfeld_command_and_writes_config(tmp_path: Path
 
     config = json.loads(config_path.read_text(encoding="utf-8"))
     assert config["strategy"] == "mrnf"
-    assert config["iterations"] == 46700
+    assert config["iterations"] == 29936
     assert config["max_cap"] == 5_000_000
     assert config["sh_degree"] == 3
     assert config["tile_mode"] == 1
@@ -1406,6 +1428,35 @@ def test_training_tab_appends_lichtfeld_command_and_writes_config(tmp_path: Path
     assert config["use_bilateral_grid"] is True
     assert config["mask_mode"] == "ignore"
     assert config["headless"] is True
+
+
+def test_training_tab_auto_scales_lichtfeld_from_projected_image_count(tmp_path: Path) -> None:
+    step = _ready_step(tmp_path, metashape_inputs=True)
+    enabled_views = sum(1 for view in step.view_config.collect_views(include_disabled=True) if view["enabled"])
+    assert enabled_views > 0
+    source_count = math.ceil(468 / enabled_views)
+    for idx in range(source_count):
+        _write_test_image(tmp_path / "images" / f"frame_{idx:04d}.jpg")
+    expected_image_count = source_count * enabled_views
+    expected_scaler = expected_image_count / 300
+    fake_lfs = tmp_path / "LichtFeld-Studio.exe"
+    fake_lfs.write_text("", encoding="utf-8")
+
+    step.run_training_cb.setChecked(True)
+    step.training_executable_browse.set_text(str(fake_lfs))
+    step._update_lfs_auto_steps_scaler()
+
+    assert step.lfs_auto_steps_scaler_cb.isChecked()
+    assert not step.lfs_steps_scaler_edit.isEnabled()
+    assert float(step.lfs_steps_scaler_edit.text()) == pytest.approx(expected_scaler, abs=0.005)
+    assert int(step.lfs_iterations_edit.text().replace(",", "")) == math.floor(30000 * expected_scaler + 0.5)
+
+    commands = step.build_commands()
+
+    assert commands[-1][0] == "training_lichtfeld"
+    config = json.loads(step._training_config_path().read_text(encoding="utf-8"))
+    assert config["steps_scaler"] == pytest.approx(expected_scaler)
+    assert config["iterations"] == 30000
 
 
 def test_training_executable_placeholders_are_file_names_only() -> None:
