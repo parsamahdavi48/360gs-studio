@@ -120,6 +120,8 @@ _NORMAL_OUTPUT_SCALE = 2.0 / math.pi
 _EXPORT_SETTINGS_NAME = STEP4_EXPORT_SETTINGS_JSON
 _COLMAP_PROJECT_MANIFEST_NAME = "stechdrive_colmap_project.json"
 _SPHERESFM_PROJECT_MANIFEST_NAME = "stechdrive_spheresfm_project.json"
+_COLMAP_REPOSITORY_URL = "https://github.com/colmap/colmap"
+_SPHERESFM_REPOSITORY_URL = "https://github.com/json87/spheresfm"
 _USER_SETTINGS_SECTION = "step4_colmap"
 _LICHTFELD_FINAL_CORRECTION = np.array(
     [
@@ -154,6 +156,15 @@ def _normalize_spheresfm_quality_preset(value: str) -> str:
     if value in {_SPHERESFM_QUALITY_QUALITY, "robust"}:
         return _SPHERESFM_QUALITY_QUALITY
     return _SPHERESFM_QUALITY_STANDARD
+
+
+def _make_external_link(text: str, url: str, tooltip: str, object_name: str) -> QLabel:
+    link = QLabel(f'<a href="{url}">{text}</a>')
+    link.setObjectName(object_name)
+    link.setOpenExternalLinks(True)
+    link.setTextInteractionFlags(Qt.TextBrowserInteraction)
+    link.setToolTip(tooltip)
+    return link
 
 
 class ElidedPathLabel(QLabel):
@@ -371,6 +382,13 @@ class CubemapStep(BaseStepWidget):
 
         colmap_section_layout.addLayout(colmap_form)
         colmap_section_layout.addStretch()
+        self.colmap_repo_link = _make_external_link(
+            i18n.t("COLMAP_REPOSITORY_LINK"),
+            _COLMAP_REPOSITORY_URL,
+            i18n.tip("COLMAP_REPOSITORY_LINK"),
+            "colmapRepositoryLink",
+        )
+        colmap_section_layout.addWidget(self.colmap_repo_link, alignment=Qt.AlignLeft)
 
         spheresfm_section = QWidget()
         self.spheresfm_section = spheresfm_section
@@ -457,6 +475,13 @@ class CubemapStep(BaseStepWidget):
 
         spheresfm_layout.addLayout(spheresfm_form)
         spheresfm_layout.addStretch()
+        self.spheresfm_repo_link = _make_external_link(
+            i18n.t("SPHERESFM_REPOSITORY_LINK"),
+            _SPHERESFM_REPOSITORY_URL,
+            i18n.tip("SPHERESFM_REPOSITORY_LINK"),
+            "spheresfmRepositoryLink",
+        )
+        spheresfm_layout.addWidget(self.spheresfm_repo_link, alignment=Qt.AlignLeft)
 
         spheresfm_convert_section = QWidget()
         self.spheresfm_convert_section = spheresfm_convert_section
