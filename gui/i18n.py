@@ -371,6 +371,20 @@ _JA: dict[str, str] = {
     "SPHERESFM_OPEN_GUI": "結果をCOLMAP GUIで表示",
     "SPHERESFM_RESULT_NOT_FOUND": "SphereSfMのsparseモデルが見つかりません: {path}",
     "SPHERESFM_OPEN_GUI_FAILED": "COLMAP GUIを起動できませんでした。",
+    "SPHERESFM_OPEN_GUI_FAILED_DETAIL": (
+        "COLMAP GUIを起動できませんでした。\n\n"
+        "実行ファイル: {exe}\n"
+        "SfM結果: {model}\n\n"
+        "詳細:\n{detail}"
+    ),
+    "SPHERESFM_OPEN_GUI_UNAVAILABLE": (
+        "選択中のSphereSfM COLMAP実行ファイルではCOLMAP GUIを起動できませんでした。\n\n"
+        "このボタンで結果を見るには、Qt GUI付きでビルドされたSphereSfM版 colmap.exe が必要です。"
+        "SfM結果自体は保存済みです。\n\n"
+        "実行ファイル: {exe}\n"
+        "SfM結果: {model}\n\n"
+        "COLMAP出力:\n{detail}"
+    ),
     "SPHERESFM_EXEC_NOT_FOUND": "SphereSfM COLMAP実行ファイルが見つかりません。SphereSfM版の colmap.exe を指定してください: {path}",
     "SPHERESFM_MASKS_NOT_FOUND": "masks/ を使用する設定ですが、マスクフォルダが見つかりません: {path}",
     "SPHERESFM_CONVERT_ONLY_NO_SPARSE": "SphereSfMのsparseモデルが見つかりません: {path}\n先に「SfMのみ」または「SfM + 変換」を実行してください。",
@@ -965,6 +979,20 @@ _EN: dict[str, str] = {
     "SPHERESFM_OPEN_GUI": "View Result in COLMAP GUI",
     "SPHERESFM_RESULT_NOT_FOUND": "SphereSfM sparse model was not found: {path}",
     "SPHERESFM_OPEN_GUI_FAILED": "Could not start the COLMAP GUI.",
+    "SPHERESFM_OPEN_GUI_FAILED_DETAIL": (
+        "Could not start the COLMAP GUI.\n\n"
+        "Executable: {exe}\n"
+        "SfM result: {model}\n\n"
+        "Details:\n{detail}"
+    ),
+    "SPHERESFM_OPEN_GUI_UNAVAILABLE": (
+        "The selected SphereSfM COLMAP executable cannot start the COLMAP GUI.\n\n"
+        "This button requires a SphereSfM colmap executable built with Qt GUI support. "
+        "The SfM result itself is still saved.\n\n"
+        "Executable: {exe}\n"
+        "SfM result: {model}\n\n"
+        "COLMAP output:\n{detail}"
+    ),
     "SPHERESFM_EXEC_NOT_FOUND": "SphereSfM COLMAP executable was not found. Select SphereSfM's colmap executable: {path}",
     "SPHERESFM_MASKS_NOT_FOUND": "Use masks/ is enabled, but the mask folder was not found: {path}",
     "SPHERESFM_CONVERT_ONLY_NO_SPARSE": "SphereSfM sparse model was not found: {path}\nRun \"SfM Only\" or \"SfM + Convert\" first.",
@@ -1305,7 +1333,7 @@ _TIPS_JA: dict[str, str] = {
     "SPHERESFM_MATCHER": "Matcher。Sequentialは動画フレーム向けの既定、Exhaustiveは少数枚向け、SpatialはPOSファイルの位置情報で近傍画像を照合します",
     "SPHERESFM_QUALITY_PRESET": "SIFT特徴量、マッチ密度、Mapper/BA反復をまとめて調整します。軽量は試行用、標準は通常用、クオリティは時間をかけて登録率と安定性を優先します",
     "SPHERESFM_POSE_FILE": "任意のPOS.txt。Spatial matcherを使う場合に指定します。SphereSfM形式は #F=N,Y,X,Z,W,P,K などです",
-    "SPHERESFM_OPEN_GUI": "SphereSfM実行後のdatabaseとsparseモデルをCOLMAP GUIで開き、カメラ位置と点群を確認します",
+    "SPHERESFM_OPEN_GUI": "SphereSfM実行後のdatabaseとsparseモデルをCOLMAP GUIで開き、カメラ位置と点群を確認します。Qt GUI付きでビルドされたSphereSfM版 colmap.exe が必要です",
     "SPHERESFM_OUTPUT_SHAPE": "SphereSfMのsparseモデルから、LichtFeld 3DGUT用のエクイレクタングラー transforms/点群を作るか、投影視点画像とマスクへ変換するかを選びます",
     "SPHERESFM_TARGET_PROFILE": "SphereSfM結果を投影視点に変換するときの出力先プリセット。3DGUTではLichtFeld用に固定されます",
     "SPHERESFM_AXIS_TRANSFORM": "SphereSfM結果を投影視点に変換するときの座標変換。LichtFeld向けは変換なし、Postshot/Brush向けは各プリセットを使います",
@@ -1461,7 +1489,7 @@ _TIPS_EN: dict[str, str] = {
     "SPHERESFM_MATCHER": "Matcher. Sequential is the default for video frames, Exhaustive is for small image sets, and Spatial uses POS priors to match nearby images.",
     "SPHERESFM_QUALITY_PRESET": "Adjusts SIFT feature budget, matching density, and Mapper/BA iterations together. Fast is for trials, Standard is the normal choice, and Quality prioritizes registration robustness at higher cost.",
     "SPHERESFM_POSE_FILE": "Optional POS.txt. Required for Spatial matcher. SphereSfM expects formats such as #F=N,Y,X,Z,W,P,K.",
-    "SPHERESFM_OPEN_GUI": "Open the SphereSfM database and sparse model in COLMAP GUI to inspect camera poses and sparse points.",
+    "SPHERESFM_OPEN_GUI": "Open the SphereSfM database and sparse model in COLMAP GUI to inspect camera poses and sparse points. Requires a SphereSfM colmap executable built with Qt GUI support.",
     "SPHERESFM_OUTPUT_SHAPE": "Choose whether the SphereSfM sparse model becomes a LichtFeld 3DGUT equirectangular transforms/point-cloud dataset or projected viewpoint images and masks.",
     "SPHERESFM_TARGET_PROFILE": "Target preset for converting SphereSfM results to projected views. 3DGUT output is fixed to LichtFeld.",
     "SPHERESFM_AXIS_TRANSFORM": "Coordinate transform for SphereSfM projected-view output. Use None for LichtFeld and the matching preset for Postshot or Brush.",

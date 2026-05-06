@@ -87,6 +87,11 @@ _SPHERESFM_CUDA_ARCH_ERROR_MARKERS = (
     "no kernel image is available for execution on the device",
     "cudaerrornokernelimagefordevice",
 )
+_COLMAP_GUI_UNAVAILABLE_MARKERS = (
+    "cannot start colmap gui",
+    "built without gui support",
+    "qt dependency is missing",
+)
 _PROFILE_POSTSHOT = "postshot"
 _PROFILE_BRUSH = "brush"
 _PROFILE_LICHTFELD = "lichtfeld"
@@ -135,6 +140,12 @@ def is_spheresfm_rtx50_cuda_error_line(line: str) -> bool:
     if "invalid device function" not in lowered:
         return False
     return any(marker in lowered for marker in ("cuda", "sift", "pyramidcu", "cuteximage"))
+
+
+def is_colmap_gui_unavailable_output(text: str) -> bool:
+    """Detect COLMAP builds that can run CLI commands but cannot launch the Qt GUI."""
+    lowered = text.lower()
+    return any(marker in lowered for marker in _COLMAP_GUI_UNAVAILABLE_MARKERS)
 
 
 def _normalize_spheresfm_quality_preset(value: str) -> str:
@@ -200,6 +211,7 @@ class CubemapStep(BaseStepWidget):
         self._spheresfm_rtx50_cuda_error_seen = False
         self._spheresfm_rtx50_cuda_error_phase: str | None = None
         self._spheresfm_rtx50_cuda_error_shown = False
+        self._spheresfm_gui_processes: list[QProcess] = []
         self._active_runner_phase = ""
         self._preview_render_pending = False
         self._preview_render_timer = QTimer(self)
@@ -1746,8 +1758,90 @@ class CubemapStep(BaseStepWidget):
             "--import_path",
             str(model),
         ]
-        if not QProcess.startDetached(colmap, args):
-            QMessageBox.warning(self, i18n.t("SPHERESFM_OPEN_GUI"), i18n.t("SPHERESFM_OPEN_GUI_FAILED"))
+        process = QProcess(self)
+        process.setProgram(colmap)
+        process.setArguments(args)
+        process.setProcessChannelMode(QProcess.MergedChannels)
+        process.start()
+        if not process.waitForStarted(3000):
+            detail = process.errorString().strip() or "-"
+            QMessageBox.warning(
+                self,
+                i18n.t("SPHERESFM_OPEN_GUI"),
+                i18n.t("SPHERESFM_OPEN_GUI_FAILED_DETAIL").format(
+                    exe=colmap,
+                    model=str(model),
+                    detail=detail,
+                ),
+            )
+            return
+        if process.waitForFinished(1500):
+            detail = self._qprocess_output_text(process) or process.errorString().strip() or "-"
+            if is_colmap_gui_unavailable_output(detail):
+                QMessageBox.warning(
+                    self,
+                    i18n.t("SPHERESFM_OPEN_GUI"),
+                    i18n.t("SPHERESFM_OPEN_GUI_UNAVAILABLE").format(
+                        exe=colmap,
+                        model=str(model),
+                        detail=self._message_detail_tail(detail),
+                    ),
+                )
+                return
+            if process.exitStatus() != QProcess.NormalExit or process.exitCode() != 0:
+                QMessageBox.warning(
+                    self,
+                    i18n.t("SPHERESFM_OPEN_GUI"),
+                    i18n.t("SPHERESFM_OPEN_GUI_FAILED_DETAIL").format(
+                        exe=colmap,
+                        model=str(model),
+                        detail=self._message_detail_tail(detail),
+                    ),
+                )
+            return
+
+        self._spheresfm_gui_processes.append(process)
+        process.finished.connect(
+            lambda _exit_code, _exit_status, proc=process, exe=colmap, model_path=str(model): (
+                self._on_spheresfm_gui_process_finished(proc, exe, model_path)
+            )
+        )
+        if process.state() == QProcess.NotRunning:
+            self._on_spheresfm_gui_process_finished(process, colmap, str(model))
+
+    @staticmethod
+    def _qprocess_output_text(process: QProcess) -> str:
+        raw = bytes(process.readAllStandardOutput()) + bytes(process.readAllStandardError())
+        return raw.decode("utf-8", errors="replace").strip()
+
+    @staticmethod
+    def _message_detail_tail(detail: str, limit: int = 1800) -> str:
+        text = detail.strip()
+        if len(text) <= limit:
+            return text or "-"
+        return "...\n" + text[-limit:]
+
+    def _on_spheresfm_gui_process_finished(self, process: QProcess, colmap: str, model: str) -> None:
+        if not self._forget_spheresfm_gui_process(process):
+            return
+        detail = self._qprocess_output_text(process) or process.errorString().strip() or "-"
+        if is_colmap_gui_unavailable_output(detail):
+            QMessageBox.warning(
+                self,
+                i18n.t("SPHERESFM_OPEN_GUI"),
+                i18n.t("SPHERESFM_OPEN_GUI_UNAVAILABLE").format(
+                    exe=colmap,
+                    model=model,
+                    detail=self._message_detail_tail(detail),
+                ),
+            )
+
+    def _forget_spheresfm_gui_process(self, process: QProcess) -> bool:
+        if not any(p is process for p in self._spheresfm_gui_processes):
+            return False
+        self._spheresfm_gui_processes = [p for p in self._spheresfm_gui_processes if p is not process]
+        process.deleteLater()
+        return True
 
     def _write_views_config(self, output_dir: Path, views: list[dict]) -> Path:
         return write_views_config(output_dir, views)

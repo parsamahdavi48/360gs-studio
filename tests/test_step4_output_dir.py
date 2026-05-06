@@ -11,6 +11,7 @@ from PIL import Image
 from PySide6.QtCore import QPoint
 from PySide6.QtWidgets import QApplication, QMessageBox
 
+import gui.steps.step4_cubemap as step4_cubemap
 from gui import i18n
 from gui.steps.step4_cubemap import CubemapStep
 from scene_layout import step4_export_settings_path, step4_views_config_path
@@ -838,6 +839,80 @@ def test_spheresfm_convert_only_queues_3dgut_without_colmap_binary(tmp_path: Pat
     assert commands[0][1][3] == str(tmp_path / "output" / "spheresfm" / "sparse")
     assert commands[0][1][4] == str(tmp_path)
     assert sparse_model.is_dir()
+
+
+def test_spheresfm_open_gui_warns_when_selected_binary_has_no_gui_support(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    _app()
+    images = tmp_path / "images"
+    images.mkdir()
+    _write_test_image(images / "frame_0001.jpg")
+    sparse_model = _write_spheresfm_sparse_stub(tmp_path)
+    fake_colmap = tmp_path / "colmap.exe"
+    fake_colmap.write_text("", encoding="utf-8")
+    warnings: list[tuple[str, str]] = []
+
+    class FakeGuiLessQProcess:
+        MergedChannels = object()
+        NormalExit = object()
+
+        def __init__(self, parent=None) -> None:
+            self.parent = parent
+            self.program = ""
+            self.arguments: list[str] = []
+
+        def setProgram(self, program: str) -> None:
+            self.program = program
+
+        def setArguments(self, arguments: list[str]) -> None:
+            self.arguments = arguments
+
+        def setProcessChannelMode(self, _mode) -> None:
+            pass
+
+        def start(self) -> None:
+            pass
+
+        def waitForStarted(self, _msecs: int) -> bool:
+            return True
+
+        def waitForFinished(self, _msecs: int) -> bool:
+            return True
+
+        def readAllStandardOutput(self) -> bytes:
+            return (
+                b"ERROR: Cannot start colmap GUI; colmap was built without GUI support "
+                b"or QT dependency is missing."
+            )
+
+        def readAllStandardError(self) -> bytes:
+            return b""
+
+        def errorString(self) -> str:
+            return ""
+
+        def exitStatus(self):
+            return self.NormalExit
+
+        def exitCode(self) -> int:
+            return 1
+
+    monkeypatch.setattr(step4_cubemap, "QProcess", FakeGuiLessQProcess)
+    monkeypatch.setattr(QMessageBox, "warning", lambda _parent, title, text: warnings.append((title, text)))
+
+    step = CubemapStep(Path.cwd())
+    step.set_scene_dir(str(tmp_path))
+    step.spheresfm_exec_browse.set_text(str(fake_colmap))
+
+    step._open_spheresfm_result()
+
+    assert len(warnings) == 1
+    assert warnings[0][0] == i18n.t("SPHERESFM_OPEN_GUI")
+    assert str(fake_colmap) in warnings[0][1]
+    assert str(sparse_model) in warnings[0][1]
+    assert "Qt GUI" in warnings[0][1]
 
 
 def test_spheresfm_3dgut_convert_only_confirms_scene_root_outputs(tmp_path: Path, monkeypatch) -> None:
