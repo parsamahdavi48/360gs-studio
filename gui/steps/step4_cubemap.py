@@ -471,12 +471,6 @@ class CubemapStep(BaseStepWidget):
         self.spheresfm_output_shape_combo.addItem(i18n.t("OUTPUT_SHAPE_PROJECTED"), _OUTPUT_SHAPE_PROJECTED)
         self.spheresfm_output_shape_combo.addItem(i18n.t("OUTPUT_SHAPE_EQUIRECT_3DGUT"), _OUTPUT_SHAPE_EQUIRECT_3DGUT)
         self.spheresfm_output_shape_combo.currentIndexChanged.connect(self._on_output_shape_changed)
-        add_tooltip_row(
-            spheresfm_convert_form,
-            i18n.t("OUTPUT_SHAPE"),
-            self.spheresfm_output_shape_combo,
-            i18n.tip("SPHERESFM_OUTPUT_SHAPE"),
-        )
 
         self.spheresfm_profile_combo = QComboBox()
         self.spheresfm_profile_combo.setToolTip(i18n.tip("SPHERESFM_TARGET_PROFILE"))
@@ -490,6 +484,12 @@ class CubemapStep(BaseStepWidget):
             i18n.TARGET_PROFILE,
             self.spheresfm_profile_combo,
             i18n.tip("SPHERESFM_TARGET_PROFILE"),
+        )
+        add_tooltip_row(
+            spheresfm_convert_form,
+            i18n.t("OUTPUT_SHAPE"),
+            self.spheresfm_output_shape_combo,
+            i18n.tip("SPHERESFM_OUTPUT_SHAPE"),
         )
 
         self.spheresfm_axis_transform_combo = QComboBox()
@@ -725,13 +725,13 @@ class CubemapStep(BaseStepWidget):
             self.colmap_section,
             i18n.t("STEP4_TAB_COLMAP"),
         )
-        self.spheresfm_tab_index = self.settings_tabs.addTab(
-            self.spheresfm_section,
-            i18n.t("STEP4_TAB_SPHERESFM_SFM"),
-        )
         self.spheresfm_convert_tab_index = self.settings_tabs.addTab(
             self.spheresfm_convert_section,
             i18n.t("STEP4_TAB_SPHERESFM_CONVERT"),
+        )
+        self.spheresfm_tab_index = self.settings_tabs.addTab(
+            self.spheresfm_section,
+            i18n.t("STEP4_TAB_SPHERESFM_SFM"),
         )
         left_layout.addWidget(self.settings_tabs, stretch=1)
 
@@ -985,7 +985,7 @@ class CubemapStep(BaseStepWidget):
         )
         self.settings_tabs.setTabEnabled(self.view_export_tab_index, view_enabled)
         if self._is_spheresfm_method():
-            route_index = self.spheresfm_tab_index
+            route_index = self.spheresfm_tab_index if spheresfm_sfm_only else self.spheresfm_convert_tab_index
         elif self._is_colmap_method():
             route_index = self.colmap_tab_index
         else:

@@ -102,6 +102,8 @@ def test_cubemap_step_uses_fixed_output_folder_label(tmp_path: Path) -> None:
     assert step.view_export_tab_index == 0
     assert step.metashape_tab_index == 1
     assert step.colmap_tab_index == 2
+    assert step.spheresfm_convert_tab_index == 3
+    assert step.spheresfm_tab_index == 4
     assert step.settings_tabs.tabText(0) == i18n.t("STEP4_TAB_VIEW_EXPORT")
     assert step.settings_tabs.tabText(step.metashape_tab_index) == i18n.t("STEP4_TAB_METASHAPE")
     assert step.settings_tabs.tabText(step.view_export_tab_index) == i18n.t("STEP4_TAB_VIEW_EXPORT")
@@ -204,6 +206,36 @@ def test_spheresfm_output_shape_change_keeps_conversion_tab_focused() -> None:
 
     step.spheresfm_output_shape_combo.setCurrentIndex(projected_idx)
     assert step.settings_tabs.currentIndex() == step.spheresfm_convert_tab_index
+
+
+def test_spheresfm_visible_tabs_follow_projection_conversion_sfm_order() -> None:
+    _app()
+    step = CubemapStep(Path.cwd())
+
+    step._set_export_method("spheresfm")
+
+    visible_tabs = [
+        step.settings_tabs.tabText(i)
+        for i in range(step.settings_tabs.count())
+        if step.settings_tabs.isTabVisible(i)
+    ]
+    assert visible_tabs == [
+        i18n.t("STEP4_TAB_VIEW_EXPORT"),
+        i18n.t("STEP4_TAB_SPHERESFM_CONVERT"),
+        i18n.t("STEP4_TAB_SPHERESFM_SFM"),
+    ]
+
+
+def test_spheresfm_conversion_rows_follow_preset_shape_axis_order() -> None:
+    _app()
+    step = CubemapStep(Path.cwd())
+    form = step.spheresfm_convert_section.layout().itemAt(0).layout()
+
+    profile_row, _profile_role = form.getWidgetPosition(step.spheresfm_profile_combo)
+    shape_row, _shape_role = form.getWidgetPosition(step.spheresfm_output_shape_combo)
+    axis_row, _axis_role = form.getWidgetPosition(step.spheresfm_axis_transform_combo)
+
+    assert profile_row < shape_row < axis_row
 
 
 def test_cubemap_step_does_not_count_repo_images_without_scene_dir() -> None:
