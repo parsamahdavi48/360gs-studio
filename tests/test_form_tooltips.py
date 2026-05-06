@@ -159,19 +159,23 @@ def test_step4_route_buttons_stay_inside_fixed_settings_pane() -> None:
         assert result.returncode == 0, f"lang={lang}\n{result.stdout}{result.stderr}"
 
 
-def test_step4_route_and_training_selectors_use_segmented_track() -> None:
+def test_step4_route_selector_uses_segmented_track_and_training_uses_combo() -> None:
     _app()
     step = CubemapStep(Path.cwd())
 
-    for row in (step.export_method_row, step.training_backend_row):
-        layout = row.layout()
-        margins = layout.contentsMargins()
-        assert row.objectName() == "segmentedControl"
-        assert layout.spacing() == 0
-        assert (margins.left(), margins.top(), margins.right(), margins.bottom()) == (2, 2, 2, 2)
+    layout = step.export_method_row.layout()
+    margins = layout.contentsMargins()
+    assert step.export_method_row.objectName() == "segmentedControl"
+    assert layout.spacing() == 0
+    assert (margins.left(), margins.top(), margins.right(), margins.bottom()) == (2, 2, 2, 2)
 
     assert all(button.objectName() == "segmentedOption" for button in step.export_method_buttons.values())
-    assert all(button.objectName() == "segmentedOption" for button in step.training_backend_buttons.values())
+    assert step.training_backend_combo.currentData() == "lichtfeld"
+    assert [step.training_backend_combo.itemData(index) for index in range(step.training_backend_combo.count())] == [
+        "lichtfeld",
+        "postshot",
+        "custom",
+    ]
 
 
 def test_step4_japanese_training_copy_uses_training_wording() -> None:
@@ -284,7 +288,7 @@ def test_step4_scrolls_tab_content_not_whole_settings_pane() -> None:
         step._set_training_backend("custom")
         app.processEvents()
         assert step.training_settings_scroll.verticalScrollBar().maximum() == 0
-        parent = step.training_backend_row.parentWidget()
+        parent = step.training_run_options_row.parentWidget()
         while parent is not None:
             assert not isinstance(parent, QScrollArea)
             parent = parent.parentWidget()
@@ -554,9 +558,12 @@ def test_cubemap_labels_share_field_tooltips() -> None:
     assert step.export_method_buttons["metashape"].toolTip() == i18n.tip("METHOD_METASHAPE_IMPORT")
     assert step.export_method_buttons["colmap"].toolTip() == i18n.tip("METHOD_COLMAP_EXPORT")
     assert step.export_method_buttons["spheresfm"].toolTip() == i18n.tip("METHOD_SPHERESFM")
-    assert step.training_backend_buttons["lichtfeld"].toolTip() == i18n.tip("TRAINING_BACKEND_LICHTFELD")
-    assert step.training_backend_buttons["postshot"].toolTip() == i18n.tip("TRAINING_BACKEND_POSTSHOT")
-    assert step.training_backend_buttons["custom"].toolTip() == i18n.tip("TRAINING_BACKEND_CUSTOM")
+    assert step.training_backend_label.toolTip() == i18n.tip("TRAINING_BACKEND_LICHTFELD")
+    assert step.training_backend_combo.toolTip() == i18n.tip("TRAINING_BACKEND_LICHTFELD")
+    step._set_training_backend("postshot")
+    assert step.training_backend_combo.toolTip() == i18n.tip("TRAINING_BACKEND_POSTSHOT")
+    step._set_training_backend("custom")
+    assert step.training_backend_combo.toolTip() == i18n.tip("TRAINING_BACKEND_CUSTOM")
     assert step.run_training_cb.toolTip() == i18n.tip("RUN_TRAINING_AFTER_EXPORT")
     assert _label(step, i18n.t("TRAINING_EXECUTABLE")).toolTip() == i18n.tip("TRAINING_EXECUTABLE")
     assert _label(step, i18n.t("TRAINING_DATASET")).toolTip() == i18n.tip("TRAINING_DATASET")

@@ -939,28 +939,36 @@ class CubemapStep(BaseStepWidget):
         layout.setContentsMargins(8, 8, 8, 8)
         layout.setSpacing(6)
 
-        self.training_backend_row = QWidget()
-        self.training_backend_row.setObjectName("segmentedControl")
-        backend_layout = QHBoxLayout(self.training_backend_row)
-        backend_layout.setContentsMargins(2, 2, 2, 2)
-        backend_layout.setSpacing(0)
-        self.training_backend_group = QButtonGroup(self)
-        self.training_backend_group.setExclusive(True)
-        self.training_backend_buttons: dict[str, QPushButton] = {}
+        self.run_training_cb = QCheckBox(i18n.t("RUN_TRAINING_AFTER_EXPORT"))
+        self.run_training_cb.setToolTip(i18n.tip("RUN_TRAINING_AFTER_EXPORT"))
+        self.run_training_cb.toggled.connect(self._on_training_settings_changed)
+        self.training_headless_cb = QCheckBox(i18n.t("TRAINING_HEADLESS"))
+        self.training_headless_cb.setToolTip(i18n.tip("TRAINING_HEADLESS"))
+        self.training_headless_cb.toggled.connect(self._on_training_settings_changed)
+        self.training_run_options_row = QWidget()
+        run_options_layout = QHBoxLayout(self.training_run_options_row)
+        run_options_layout.setContentsMargins(0, 0, 0, 0)
+        run_options_layout.setSpacing(12)
+        run_options_layout.addWidget(self.run_training_cb)
+        self.training_backend_label = QLabel(i18n.t("TRAINING_BACKEND_LABEL"))
+        self.training_backend_combo = QComboBox()
+        self.training_backend_combo.setMinimumWidth(150)
         for backend, label, tip_key in [
             (_TRAINING_BACKEND_LICHTFELD, i18n.t("TRAINING_BACKEND_LICHTFELD"), "TRAINING_BACKEND_LICHTFELD"),
             (_TRAINING_BACKEND_POSTSHOT, i18n.t("TRAINING_BACKEND_POSTSHOT"), "TRAINING_BACKEND_POSTSHOT"),
             (_TRAINING_BACKEND_CUSTOM, i18n.t("TRAINING_BACKEND_CUSTOM"), "TRAINING_BACKEND_CUSTOM"),
         ]:
-            btn = QPushButton(label)
-            btn.setObjectName("segmentedOption")
-            btn.setCheckable(True)
-            btn.setToolTip(i18n.tip(tip_key))
-            btn.clicked.connect(lambda _checked=False, b=backend: self._set_training_backend(b))
-            backend_layout.addWidget(btn, stretch=1)
-            self.training_backend_group.addButton(btn)
-            self.training_backend_buttons[backend] = btn
-        layout.addWidget(self.training_backend_row)
+            self.training_backend_combo.addItem(label, backend)
+            item_index = self.training_backend_combo.count() - 1
+            self.training_backend_combo.setItemData(item_index, i18n.tip(tip_key), Qt.ToolTipRole)
+        self.training_backend_combo.currentIndexChanged.connect(self._on_training_backend_combo_changed)
+        self.training_backend_label.setToolTip(i18n.tip("TRAINING_BACKEND_LICHTFELD"))
+        self.training_backend_combo.setToolTip(i18n.tip("TRAINING_BACKEND_LICHTFELD"))
+        run_options_layout.addWidget(self.training_backend_label)
+        run_options_layout.addWidget(self.training_backend_combo)
+        run_options_layout.addWidget(self.training_headless_cb)
+        run_options_layout.addStretch()
+        layout.addWidget(self.training_run_options_row)
 
         self.training_settings_content = QWidget()
         training_settings_layout = QVBoxLayout(self.training_settings_content)
@@ -977,21 +985,6 @@ class CubemapStep(BaseStepWidget):
 
         form = QFormLayout()
         form.setSpacing(6)
-
-        self.run_training_cb = QCheckBox(i18n.t("RUN_TRAINING_AFTER_EXPORT"))
-        self.run_training_cb.setToolTip(i18n.tip("RUN_TRAINING_AFTER_EXPORT"))
-        self.run_training_cb.toggled.connect(self._on_training_settings_changed)
-        self.training_headless_cb = QCheckBox(i18n.t("TRAINING_HEADLESS"))
-        self.training_headless_cb.setToolTip(i18n.tip("TRAINING_HEADLESS"))
-        self.training_headless_cb.toggled.connect(self._on_training_settings_changed)
-        self.training_run_options_row = QWidget()
-        run_options_layout = QHBoxLayout(self.training_run_options_row)
-        run_options_layout.setContentsMargins(0, 0, 0, 0)
-        run_options_layout.setSpacing(12)
-        run_options_layout.addWidget(self.run_training_cb)
-        run_options_layout.addWidget(self.training_headless_cb)
-        run_options_layout.addStretch()
-        form.addRow("", self.training_run_options_row)
 
         self.training_executable_browse = BrowseWidget(
             mode="file",
@@ -1611,13 +1604,21 @@ class CubemapStep(BaseStepWidget):
     def _training_backend(self) -> str:
         return self._training_backend_value
 
+    def _on_training_backend_combo_changed(self, _index: int) -> None:
+        backend = self.training_backend_combo.currentData()
+        self._set_training_backend(str(backend) if backend else _TRAINING_BACKEND_LICHTFELD)
+
     def _set_training_backend(self, backend: str) -> None:
         if backend not in {_TRAINING_BACKEND_LICHTFELD, _TRAINING_BACKEND_POSTSHOT, _TRAINING_BACKEND_CUSTOM}:
             backend = _TRAINING_BACKEND_LICHTFELD
         self._training_backend_value = backend
-        btn = self.training_backend_buttons.get(backend)
-        if btn is not None and not btn.isChecked():
-            btn.setChecked(True)
+        combo_index = self.training_backend_combo.findData(backend)
+        if combo_index >= 0 and self.training_backend_combo.currentIndex() != combo_index:
+            self.training_backend_combo.setCurrentIndex(combo_index)
+        current_tip = self.training_backend_combo.itemData(combo_index, Qt.ToolTipRole) if combo_index >= 0 else ""
+        if current_tip:
+            self.training_backend_label.setToolTip(str(current_tip))
+            self.training_backend_combo.setToolTip(str(current_tip))
         stack_index = {
             _TRAINING_BACKEND_LICHTFELD: 0,
             _TRAINING_BACKEND_POSTSHOT: 1,
