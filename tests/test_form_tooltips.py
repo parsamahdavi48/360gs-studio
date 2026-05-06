@@ -288,10 +288,11 @@ def test_step4_scrolls_tab_content_not_whole_settings_pane() -> None:
         step._set_training_backend("custom")
         app.processEvents()
         assert step.training_settings_scroll.verticalScrollBar().maximum() == 0
-        parent = step.training_run_options_row.parentWidget()
-        while parent is not None:
-            assert not isinstance(parent, QScrollArea)
-            parent = parent.parentWidget()
+        for row in (step.training_backend_row, step.training_run_options_row):
+            parent = row.parentWidget()
+            while parent is not None:
+                assert not isinstance(parent, QScrollArea)
+                parent = parent.parentWidget()
         """
     )
 

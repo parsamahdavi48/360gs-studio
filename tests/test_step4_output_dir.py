@@ -1482,6 +1482,8 @@ def test_training_headless_option_shares_start_row(tmp_path: Path) -> None:
 
     assert _is_descendant(step.run_training_cb, step.training_run_options_row)
     assert _is_descendant(step.training_headless_cb, step.training_run_options_row)
+    assert _is_descendant(step.training_backend_combo, step.training_backend_row)
+    assert not _is_descendant(step.training_backend_combo, step.training_run_options_row)
     assert not step.training_headless_cb.isHidden()
 
     step._set_training_backend("postshot")
