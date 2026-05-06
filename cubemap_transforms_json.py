@@ -233,6 +233,15 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("input_dir", help="Input directory containing transforms.json and images")
     parser.add_argument("output_dir", nargs="?", help="Output directory (default=<input_dir>/output)")
     parser.add_argument("--json", help="transforms.json filename override (default='transforms.json')")
+    parser.add_argument(
+        "--image-dir",
+        "--image_dir",
+        dest="image_dir",
+        help=(
+            "Input equirectangular image directory for transforms.json conversion "
+            "(default=<input_dir>)"
+        ),
+    )
     parser.add_argument("--mask_dir", help="Input mask images directory (default=<input_dir>/masks)")
     parser.add_argument("--mask_from_alpha", action="store_true", help="Extract masks from alpha channel")
     parser.add_argument("--invert_masks", action="store_true", help="Invert output masks (black/white)")
@@ -1512,13 +1521,16 @@ def main() -> None:
     output_dir = args.output_dir if args.output_dir else f"{input_dir}/output"
     input_json = args.json if args.json else "transforms.json"
 
-    image_dir = input_dir
+    image_dir = args.image_dir if args.image_dir else input_dir
     mask_dir = args.mask_dir if args.mask_dir else f"{input_dir}/masks"
     output_image_dir = f"{output_dir}/images"
     output_mask_dir = f"{output_dir}/masks"
 
     if args.mask_dir and not os.path.isdir(mask_dir):
         print(f"Error: mask_dir '{mask_dir}' not found")
+        sys.exit(1)
+    if args.image_dir and not os.path.isdir(image_dir):
+        print(f"Error: image_dir '{image_dir}' not found")
         sys.exit(1)
 
     if args.fov <= 0 or args.fov >= 180:

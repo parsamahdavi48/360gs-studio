@@ -673,7 +673,50 @@ def test_colmap_export_can_queue_colmap_global_mapper(tmp_path: Path) -> None:
     assert commands[-1][1][1] == "global_mapper"
 
 
-def test_spheresfm_method_queues_spherical_sfm_without_projection_export(tmp_path: Path) -> None:
+def test_spheresfm_method_can_queue_3dgut_export_without_projection_views(tmp_path: Path) -> None:
+    _app()
+    images = tmp_path / "images"
+    masks = tmp_path / "masks"
+    images.mkdir()
+    masks.mkdir()
+    _write_test_image(images / "frame_0001.jpg")
+    _write_test_image(masks / "frame_0001.png")
+    fake_colmap = tmp_path / "colmap.exe"
+    fake_colmap.write_text("", encoding="utf-8")
+
+    step = CubemapStep(Path.cwd())
+    step.set_scene_dir(str(tmp_path))
+    step._set_export_method("spheresfm")
+    step._set_combo_data(step.spheresfm_output_shape_combo, "equirect_3dgut")
+    step.spheresfm_exec_browse.set_text(str(fake_colmap))
+
+    assert step.output_path_label.full_text() == str(tmp_path / "output" / "spheresfm")
+    assert not step.export_targets_row.isEnabled()
+    assert not step.view_config.settings_widget.isEnabled()
+
+    commands = step.build_commands()
+
+    assert [phase for phase, _cmd in commands] == [
+        "spheresfm_prepare",
+        "spheresfm_database",
+        "spheresfm_feature",
+        "spheresfm_match",
+        "spheresfm_mapper",
+        "spheresfm_transforms",
+    ]
+    assert commands[0][1][commands[0][1].index("--colmap") + 1] == str(fake_colmap)
+    assert commands[2][1][commands[2][1].index("--ImageReader.camera_model") + 1] == "SPHERE"
+    assert commands[2][1][commands[2][1].index("--ImageReader.camera_params") + 1] == "1,32,16"
+    assert commands[2][1][commands[2][1].index("--ImageReader.mask_path") + 1] == str(
+        tmp_path / "output" / "spheresfm" / "masks_colmap"
+    )
+    assert commands[4][1][commands[4][1].index("--Mapper.sphere_camera") + 1] == "1"
+    assert commands[5][1][3] == str(tmp_path / "output" / "spheresfm" / "sparse")
+    assert commands[5][1][4] == str(tmp_path / "output" / "spheresfm" / "3dgut")
+    assert commands[5][1][commands[5][1].index("--image-path-mode") + 1] == "relative-to-output"
+
+
+def test_spheresfm_method_can_queue_projected_cubemap_export(tmp_path: Path) -> None:
     _app()
     images = tmp_path / "images"
     masks = tmp_path / "masks"
@@ -689,9 +732,8 @@ def test_spheresfm_method_queues_spherical_sfm_without_projection_export(tmp_pat
     step._set_export_method("spheresfm")
     step.spheresfm_exec_browse.set_text(str(fake_colmap))
 
-    assert step.output_path_label.full_text() == str(tmp_path / "output" / "spheresfm")
-    assert not step.export_targets_row.isEnabled()
-    assert not step.view_config.settings_widget.isEnabled()
+    assert step.export_targets_row.isEnabled()
+    assert step.view_config.settings_widget.isEnabled()
 
     commands = step.build_commands()
 
@@ -701,14 +743,18 @@ def test_spheresfm_method_queues_spherical_sfm_without_projection_export(tmp_pat
         "spheresfm_feature",
         "spheresfm_match",
         "spheresfm_mapper",
+        "spheresfm_transforms",
+        "spheresfm_cubemap",
     ]
-    assert commands[0][1][commands[0][1].index("--colmap") + 1] == str(fake_colmap)
-    assert commands[2][1][commands[2][1].index("--ImageReader.camera_model") + 1] == "SPHERE"
-    assert commands[2][1][commands[2][1].index("--ImageReader.camera_params") + 1] == "1,32,16"
-    assert commands[2][1][commands[2][1].index("--ImageReader.mask_path") + 1] == str(
-        tmp_path / "output" / "spheresfm" / "masks_colmap"
-    )
-    assert commands[4][1][commands[4][1].index("--Mapper.sphere_camera") + 1] == "1"
+    transform_cmd = commands[5][1]
+    cubemap_cmd = commands[6][1]
+    assert transform_cmd[4] == str(tmp_path / "output" / "spheresfm" / "equirect")
+    assert transform_cmd[transform_cmd.index("--image-path-mode") + 1] == "relative"
+    assert cubemap_cmd[3] == str(tmp_path / "output" / "spheresfm" / "equirect")
+    assert cubemap_cmd[4] == str(tmp_path / "output" / "spheresfm" / "cubemap")
+    assert cubemap_cmd[cubemap_cmd.index("--image-dir") + 1] == str(images)
+    assert cubemap_cmd[cubemap_cmd.index("--mask_dir") + 1] == str(masks)
+    assert "--no_transform" in cubemap_cmd
 
 
 def test_colmap_user_preferences_restore_executable_and_pipeline_choices(

@@ -37,6 +37,8 @@ class CubemapConversionCommand:
     output_format: str
     output_bit_depth: str
     jpg_quality: int
+    image_dir: Path | None = None
+    mask_dir: Path | None = None
 
 
 @dataclass(frozen=True)
@@ -79,6 +81,16 @@ class SphereSfmCommand:
     matcher: str
     feature_preset: str
     pose_path: str = ""
+
+
+@dataclass(frozen=True)
+class SphereSfmTransformsCommand:
+    python_executable: str
+    script: Path
+    sparse: Path
+    output: Path
+    images_dir: Path
+    image_path_mode: str
 
 
 def build_metashape_preprocess_cmd(options: MetashapePreprocessCommand) -> list[str]:
@@ -127,6 +139,10 @@ def build_cubemap_conversion_cmd(options: CubemapConversionCommand) -> list[str]
             cmd.append("--brush")
     if options.invert_masks:
         cmd.append("--invert_masks")
+    if options.image_dir is not None:
+        cmd.extend(["--image-dir", str(options.image_dir)])
+    if options.mask_dir is not None:
+        cmd.extend(["--mask_dir", str(options.mask_dir)])
     if not options.writes_images:
         cmd.append("--skip-images")
     if not options.writes_masks:
@@ -137,6 +153,20 @@ def build_cubemap_conversion_cmd(options: CubemapConversionCommand) -> list[str]
     cmd.extend(["--output-bit-depth", options.output_bit_depth])
     cmd.extend(["--jpg-quality", str(options.jpg_quality)])
     return cmd
+
+
+def build_spheresfm_transforms_cmd(options: SphereSfmTransformsCommand) -> list[str]:
+    return [
+        options.python_executable,
+        "-u",
+        str(options.script),
+        str(options.sparse),
+        str(options.output),
+        "--images-dir",
+        str(options.images_dir),
+        "--image-path-mode",
+        options.image_path_mode,
+    ]
 
 
 def build_colmap_export_cmd(options: ColmapExportCommand) -> list[str]:

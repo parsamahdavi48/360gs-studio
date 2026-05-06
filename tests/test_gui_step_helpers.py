@@ -5,9 +5,11 @@ from gui.steps.cubemap_commands import (
     ColmapSfmCommand,
     CubemapConversionCommand,
     SphereSfmCommand,
+    SphereSfmTransformsCommand,
     build_colmap_sfm_commands,
     build_cubemap_conversion_cmd,
     build_spheresfm_commands,
+    build_spheresfm_transforms_cmd,
     write_views_config,
 )
 from gui.steps.mask_commands import MaskCommandContext, build_sam31_prompt_cmd
@@ -104,11 +106,15 @@ def test_cubemap_command_builder_writes_views_and_flags(tmp_path: Path) -> None:
             output_format="jpg",
             output_bit_depth="8",
             jpg_quality=92,
+            image_dir=tmp_path / "images",
+            mask_dir=tmp_path / "masks",
         )
     )
 
     assert "--brush" in cmd
     assert "--invert_masks" in cmd
+    assert cmd[cmd.index("--image-dir") + 1] == str(tmp_path / "images")
+    assert cmd[cmd.index("--mask_dir") + 1] == str(tmp_path / "masks")
     assert "--skip-images" in cmd
     assert "--skip-masks" not in cmd
     assert cmd[cmd.index("--jpg-quality") + 1] == "92"
@@ -192,6 +198,29 @@ def test_spheresfm_builder_uses_spherical_camera_and_mask_path(tmp_path: Path) -
     assert commands[3][1][1] == "spatial_matcher"
     assert commands[4][1][commands[4][1].index("--Mapper.sphere_camera") + 1] == "1"
     assert sparse.is_dir()
+
+
+def test_spheresfm_transforms_builder_points_at_sparse_and_images(tmp_path: Path) -> None:
+    script = tmp_path / "spheresfm_to_transforms.py"
+    sparse = tmp_path / "sparse"
+    output = tmp_path / "project" / "3dgut"
+    images = tmp_path / "images"
+
+    cmd = build_spheresfm_transforms_cmd(
+        SphereSfmTransformsCommand(
+            python_executable="python.exe",
+            script=script,
+            sparse=sparse,
+            output=output,
+            images_dir=images,
+            image_path_mode="relative-to-output",
+        )
+    )
+
+    assert cmd[0:3] == ["python.exe", "-u", str(script)]
+    assert cmd[3:5] == [str(sparse), str(output)]
+    assert cmd[cmd.index("--images-dir") + 1] == str(images)
+    assert cmd[cmd.index("--image-path-mode") + 1] == "relative-to-output"
 
 
 def test_prepare_spheresfm_masks_converts_to_colmap_extension_names(tmp_path: Path) -> None:

@@ -124,6 +124,7 @@ python cubemap_transforms_json.py . ./cubic --no_transform
 |オプション|引数|説明|
 |------|---|-----------|
 |--json|ファイル名|transforms.jsonを別名で扱う場合のファイル名 (default='transforms.json')|
+|--image-dir|ディレクトリ名|transforms.json の `file_path` を読むときの入力画像ディレクトリ (default=`<input_dir>`)|
 |--mask_dir|ディレクトリ名|入力マスク画像ディレクトリ (default='<input_dir>/masks')|
 |--mask_from_alpha|(no)|Extract masks from alpha channel in images|
 |--invert_masks|(no)|出力マスクの白黒極性を反転します|
