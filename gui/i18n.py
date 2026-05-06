@@ -477,7 +477,7 @@ _JA: dict[str, str] = {
     "RUN_TRAINING_AFTER_EXPORT": "書き出し後にトレーニング開始",
     "TRAINING_EXECUTABLE": "実行ファイル",
     "TRAINING_DATASET": "入力データ",
-    "TRAINING_OUTPUT": "結果出力先",
+    "TRAINING_OUTPUT": "出力先",
     "TRAINING_HEADLESS": "ヘッドレス実行",
     "LFS_STRATEGY": "Strategy",
     "LFS_ITERATIONS": "Iterations",

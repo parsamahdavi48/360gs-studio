@@ -179,6 +179,18 @@ def _make_external_link(text: str, url: str, tooltip: str, object_name: str) -> 
     return link
 
 
+class CurrentPageStack(QStackedWidget):
+    """Stacked widget whose size hint follows only the visible page."""
+
+    def sizeHint(self) -> QSize:
+        widget = self.currentWidget()
+        return widget.sizeHint() if widget is not None else super().sizeHint()
+
+    def minimumSizeHint(self) -> QSize:
+        widget = self.currentWidget()
+        return widget.minimumSizeHint() if widget is not None else super().minimumSizeHint()
+
+
 class ElidedPathLabel(QLabel):
     """Keep long paths on one line while preserving the full path internally."""
 
@@ -958,13 +970,14 @@ class CubemapStep(BaseStepWidget):
         form.addRow("", self.training_headless_cb)
         training_settings_layout.addLayout(form)
 
-        self.training_options_stack = QStackedWidget()
+        self.training_options_stack = CurrentPageStack()
         self.lichtfeld_training_options = self._build_lichtfeld_training_options()
         self.postshot_training_options = self._build_postshot_training_options()
         self.custom_training_options = self._build_custom_training_options()
         self.training_options_stack.addWidget(self.lichtfeld_training_options)
         self.training_options_stack.addWidget(self.postshot_training_options)
         self.training_options_stack.addWidget(self.custom_training_options)
+        self.training_options_stack.currentChanged.connect(lambda _index: self._refresh_training_settings_layout())
         training_settings_layout.addWidget(self.training_options_stack)
         training_settings_layout.addStretch()
         layout.addWidget(self.training_settings_scroll, stretch=1)
@@ -972,6 +985,11 @@ class CubemapStep(BaseStepWidget):
         self._training_dataset_user_edited = False
         self._set_training_backend(_TRAINING_BACKEND_LICHTFELD)
         return section
+
+    def _refresh_training_settings_layout(self) -> None:
+        self.training_options_stack.updateGeometry()
+        self.training_settings_content.updateGeometry()
+        self.training_settings_content.adjustSize()
 
     def _build_lichtfeld_training_options(self) -> QWidget:
         widget = QWidget()
@@ -1274,6 +1292,7 @@ class CubemapStep(BaseStepWidget):
         self.training_options_stack.setCurrentIndex(stack_index)
         self.training_executable_browse.line_edit.setPlaceholderText(self._default_training_executable(backend))
         self.training_headless_cb.setVisible(backend == _TRAINING_BACKEND_LICHTFELD)
+        self._refresh_training_settings_layout()
         self._update_training_paths()
         if getattr(self, "_user_preferences_enabled", False):
             self._save_user_preferences()

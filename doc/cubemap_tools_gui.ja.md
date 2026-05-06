@@ -171,7 +171,7 @@ VRAMや処理時間が厳しい場合は、まず `Normal` または `Half` で�
 | `Postshot` | Postshot CLIへ画像と、ある場合はCOLMAP/SphereSfMのsparseモデルを渡して `.psht` を作る |
 | `Custom` | 任意のCLIをテンプレート引数で起動する |
 
-`入力データ` は通常自動設定のままで使います。キューブマップ変換では `<scene>/output/`、3DGUTでは `<scene>/`、COLMAPルートでは `<scene>/output/colmap_rig/` が基準になります。`結果出力先` は既定で `<scene>/output/training/<ソフト>/` です。
+`入力データ` は通常自動設定のままで使います。キューブマップ変換では `<scene>/output/`、3DGUTでは `<scene>/`、COLMAPルートでは `<scene>/output/colmap_rig/` が基準になります。`出力先` は既定で `<scene>/output/training/<ソフト>/` です。
 
 LichtFeld Studioでは、よく調整する `Strategy`、`Iterations`、`Max Gaussians`、`SH Degree`、`Tile Mode`、`Steps Scaler`、マスク関連オプションをGUIから指定できます。実行時に `_stechdrive/training/lichtfeld_config.json` を作り、そのJSONをCLIへ渡します。
 

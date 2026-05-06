@@ -209,7 +209,7 @@ def test_step4_japanese_training_copy_uses_training_wording() -> None:
 
         assert i18n.t("STEP4_TAB_TRAINING") == "トレーニング"
         assert i18n.t("RUN_TRAINING_AFTER_EXPORT") == "書き出し後にトレーニング開始"
-        assert i18n.t("TRAINING_OUTPUT") == "結果出力先"
+        assert i18n.t("TRAINING_OUTPUT") == "出力先"
         assert all("学習" not in i18n.t(key) for key in visible_keys)
         assert all("学習" not in i18n.tip(key) for key in tip_keys)
         """
@@ -275,8 +275,15 @@ def test_step4_scrolls_tab_content_not_whole_settings_pane() -> None:
         assert step.settings_tabs.widget(step.output_tab_index).verticalScrollBar().maximum() == 0
 
         step.settings_tabs.setCurrentIndex(step.training_tab_index)
+        step._set_training_backend("lichtfeld")
         app.processEvents()
         assert step.training_settings_scroll.verticalScrollBar().maximum() > 0
+        step._set_training_backend("postshot")
+        app.processEvents()
+        assert step.training_settings_scroll.verticalScrollBar().maximum() == 0
+        step._set_training_backend("custom")
+        app.processEvents()
+        assert step.training_settings_scroll.verticalScrollBar().maximum() == 0
         parent = step.training_backend_row.parentWidget()
         while parent is not None:
             assert not isinstance(parent, QScrollArea)
