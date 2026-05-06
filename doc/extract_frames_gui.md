@@ -1,128 +1,106 @@
-# Frame Extraction GUI Parameters
+# Step 1 Frame Extraction GUI
 
-This GUI extracts equirectangular still images from 360-degree video for Metashape SfM. The current extraction baseline is `Fixed Interval`. When `Motion` is enabled, the extractor keeps the fixed cadence but skips low-change candidates and inserts extra candidates in high-motion ranges.
+Step 1 turns 360° video into equirectangular still images for SfM and 3DGS. The `images/` folder and `selected_frames.csv` created here become the input for Step 2 review, Step 3 mask generation, and Metashape SfM.
 
-## Assumptions
+In the common workflow, you choose a video, choose a scene folder, and extract frames on a fixed interval. When `Motion` is enabled, the GUI can drop near-duplicate candidates and add extra candidates where viewpoint change is useful.
 
-- Analysis and image export are separate phases.
-- Analysis uses grayscale frames scaled to `Analysis Width`.
-- Images written to `images/` keep the source video resolution.
-- `Instant Estimate` is the fixed-interval baseline count. With `Motion` enabled, the final count can increase or decrease after analysis.
-- With `Quick extract` enabled, the GUI skips analysis and writes images at the specified interval quickly. Motion adjustment and pair-analysis review metadata are not produced.
-- The integrated GUI stops before running when the scene folder path contains non-ASCII characters, an extremely long path, control characters, or `"`. Use a short ASCII working path.
+## Launch
 
-## Fixed Interval
+```bat
+run_gui.bat --scene .\scene01
+```
 
-### `Interval`
+Then open `Step 1: Frame Extraction` in the workflow sidebar.
 
-- Unit: seconds
-- Meaning: baseline spacing between extracted frame candidates
-- Internal calculation: `step = round(interval_sec * fps)`
-- UI range: `0.05-60.0` seconds
-- Control: horizontal drag on the numeric field
-- Example: at 30fps, `1.0` seconds is about every 30 frames
+## First Choice
 
-Increasing the value reduces the baseline count. Decreasing it increases the count. For 3DGS-oriented SfM, a stable fixed cadence is easier to reason about than a fully variable interval.
+| Goal | Recommended settings |
+| --- | --- |
+| Create normal Metashape-ready frames | `Interval 1.0 sec`, `Motion ON` |
+| Quickly cut frames without analysis | `Quick extract ON` |
+| Walking or indoor footage with nearby structure | `Scene Distance: Near / Walking` |
+| Aerial, plaza, coast, mountain, or distant scenes | `Scene Distance: Distant / Aerial` |
+| Rebuild the same video with new settings | `Output Mode: Reset and Overwrite` |
+| Add multiple videos into one scene | `Output Mode: Add New Only` |
 
-### `Quick extract`
+The GUI stops before running when the scene folder path contains non-ASCII characters, an extremely long path, control characters, or `"`. Use a short ASCII working path because external tools often fail on problematic paths.
 
-Use this fixed-interval option when you want to skip analysis and cut the video quickly at the requested `Interval`. Step 2 does not receive extra quality-review flags from automatic scoring.
+## Basic Flow
 
-Enabling it turns `Motion` off. Turn it off again when you want motion adjustment.
+1. Select `Input Video`. Multiple videos can be selected.
+2. Confirm `Scene Folder`. Output images are written under `images/` inside it.
+3. Choose `Interval`. Start with `1.0` second when unsure.
+4. Keep `Motion` on for normal extraction. Turn `Quick extract` on only when you want a fast fixed-interval cut.
+5. Choose `Output Mode`. `Add New Only` is fine for the first run.
+6. When the preflight status says the run is ready, press `Extract Frames`.
+7. After extraction finishes, continue to Step 2.
 
-## Motion Adjustment
+Step 1 separates analysis from image export. Analysis uses grayscale frames resized to `Analysis Width`; files written to `images/` keep the source video resolution.
 
-`Motion` is an additional option for fixed interval extraction. In the GUI, it uses pair analysis against the last kept frame. The fixed cadence remains the baseline, then analysis applies:
+## Fixed Interval And Motion
 
-- Yaw-compensated residual: estimate the horizontal shift in the 360 equirectangular frame and measure the residual after removing changes explained by pure yaw.
-- Redundant drops: fixed-cadence candidates below the `drop` residual threshold are marked `redundant_drop`.
-- Novelty additions: frames before the next fixed-cadence point can be added as `novelty_added` when residual change reaches the `add` threshold.
-- Safety keeps: if the kept-frame gap reaches `Max`, the candidate is kept as `gap_forced`.
-- Candidate pair tracking: sparse feature tracking runs only at keep/drop decision points. Weak pairs are flagged as `weak_match` for Step 2.
-- Candidate risk checks: sharpness is measured only at keep/drop decision points. Sudden sharpness collapse is flagged as `motion_blur`; persistently weak low-texture candidates are flagged as `low_texture` for Step 2.
+### Fixed Interval
 
-### `Min`
+`Interval` is the baseline spacing between extracted candidates. At 30fps, `1.0` second means roughly one candidate every 30 frames.
 
-- Unit: seconds
-- Meaning: minimum spacing for inserted candidates
-- Internal calculation: `min_gap_frames = round(min_gap_sec * fps)`
-- Default: `0.5` seconds
+Increasing the value reduces the frame count. Decreasing it increases the count. For SfM, a stable fixed cadence is easier to reason about than a fully variable extraction interval.
 
-Extra candidates are never inserted closer than this, even when motion is high.
+### Motion
 
-### `Max`
+`Motion` adds pair-analysis decisions on top of the fixed interval. It compares candidates with the last kept frame and can:
 
-- Unit: seconds
-- Meaning: safety spacing for low-change skipping
-- Internal calculation: `max_gap_frames = round(max_gap_sec * fps)`
-- Default: `2.0` seconds
+- drop candidates as `Drop: similar frame` when they are too redundant
+- add candidates as `Added: viewpoint change` before the next fixed-cadence point
+- keep safety candidates as `Added: preserved spacing` when the gap would become too large
+- flag possible blur, low texture, or weak feature tracking for Step 2 review
 
-Low-change skipping will keep a candidate when dropping it would make the kept-frame gap too large.
+### Quick Extract
 
-## Analysis Width
+`Quick extract` skips analysis and cuts frames directly at the requested `Interval`. It is fast, but it does not create motion-adjustment decisions or Step 2 review labels.
 
-### `Analysis Width`
+Use it for a fast content check or when you only need frames immediately. For production Metashape input, normal extraction with `Motion` is usually safer.
 
-- Unit: pixels
-- Meaning: horizontal decode width used for yaw-compensated residuals, candidate pair tracking, and candidate-only blur/low-texture checks
-- Default: `1920`
+## Interval Settings
 
-Higher values can improve fine-feature detection but increase analysis time. Lower values are faster but can miss subtle motion and feature detail. Yaw-compensated residual monitoring is internally capped to a `1280px` gate width, while feature tracking and blur checks use this analysis width.
+| Setting | Meaning | Starting point |
+| --- | --- | --- |
+| `Interval` | Baseline candidate spacing | `1.0` sec |
+| `Min` | Minimum spacing for inserted candidates | `0.5` sec |
+| `Max` | Safety spacing so low-motion sections do not become too sparse | `2.0` sec |
 
-## Pair-Analysis Review Metadata
+If the output has too many frames, raise `Interval`. If camera motion is fast and useful viewpoints are missing, lower `Interval` or `Min`.
 
-The GUI's normal extraction path uses pair analysis instead of scoring individual frames in isolation. For carefully captured video, the useful question is less "which individual frame is prettier?" and more "does this pair still overlap while adding non-redundant viewpoint change?"
+## Scene Distance
 
-The CSV records these Step 2 review fields:
+`Scene Distance` chooses the assumption used by the automatic motion thresholds.
 
-- `residual_score`: residual change after yaw compensation
-- `raw_change_score`: luma difference before yaw compensation
-- `yaw_shift_deg`: estimated horizontal yaw adjustment
-- `track_count`: tracked feature count for the candidate pair
-- `track_coverage`: screen coverage of tracked points
-- `match_confidence`: review confidence from tracked count and coverage
-- `blur_score_final`: candidate-only sharpness value
-- `sharpness_ratio`: ratio against the recent kept-frame sharpness median
-- `pair_gate_width`: internal gate width used for yaw-compensated residuals
-- `pair_drop_threshold` / `pair_add_threshold`: interval-derived thresholds for redundant drops and novelty additions
+- `Near / Walking`: interiors, buildings, columns, vegetation, furniture, and other nearby structure.
+- `Distant / Aerial`: aerial footage, plazas, mountains, coastlines, and other distant-view scenes where the same movement creates weaker image change.
 
-Use `Scene Distance` in Advanced Settings to choose the assumption behind the automatic thresholds.
+When unsure, use `Near / Walking` for walking or architectural footage and `Distant / Aerial` for drones or open outdoor scenes.
 
-- `Near / Walking`: for scenes with nearby structures such as buildings, interiors, columns, or vegetation. Its 1.0-second reference thresholds are `drop=0.035` and `add=0.090`.
-- `Distant / Aerial`: for aerial, plaza, mountain, coast, or distant-view scenes. Distant scenes often have weaker residual parallax because features are farther away, so this profile uses lower reference thresholds.
+## Analysis Width And JPEG Quality
 
-When the interval changes, thresholds scale gently by `sqrt(interval_sec / reference_interval)`. The clamp bounds are calculated by applying the same formula to each profile's practical fixed-interval range. This keeps short intervals from becoming too sensitive and long intervals from becoming too insensitive.
+`Analysis Width` is the horizontal width used for motion analysis, blur checks, and feature tracking. Larger values can see finer detail but are slower. The default is usually sufficient.
 
-## Image Format
+`JPEG Quality` is ffmpeg's `-q:v` value. Lower values mean higher quality and larger files. The default `2` is high quality.
 
-### `JPEG Quality`
+## Outputs
 
-- Unit: ffmpeg `-q:v`
-- UI range: `1-31`
-- Control: horizontal drag on the numeric field
-- Important: lower values mean higher quality and larger files
-- Default: `2`
+| Output | Meaning |
+| --- | --- |
+| `images/` | Extracted equirectangular still images |
+| `selected_frames.csv` | Keep/drop candidates and analysis metadata for Step 2 |
+| `extract_report.json` | Extraction settings and run summary |
+| `extract_cache.npz` | Cache used to speed up re-analysis |
 
-## Review Status
+Step 2 turns `selected_frames.csv` decisions into visible review labels. If there are too many added, dropped, or review-target frames, adjust Step 1 interval or scene distance and extract again.
 
-Step 2 translates extraction decisions recorded in the CSV into visible review labels and summary counts. The main places to look are:
+## Common Decisions
 
-- Colored advisory label: why the currently displayed frame was marked that way
-- `Review n | +a / -d / gap g / blur b / tex l / weak w | target/normal`: total review counts and whether the current frame is a review target
-- `extract problem ← (Shift+F)` / `extract problem → (F)`: jump through review targets in capture order
-- `Decision: Keep/Drop`: whether Step 2 will leave the frame in the image folder
-
-Colored labels use red for dropped frames, yellow for kept frames that need review, blue for added frames, purple for quick extraction, and green for OK frames. Thumbnail view uses the same category color in the bottom ribbon with a shorter label. The labels mean:
-
-- `OK: kept`: a normal kept frame from fixed-interval or standard extraction (`ok`).
-- `Quick: extracted at the specified interval`: a quick-extract frame cut at the requested interval without analysis (`analysis_pipeline=quick`).
-- `Added: viewpoint change`: an extra frame inserted before the next fixed-cadence point because viewpoint change was useful (`novelty_added`).
-- `Added: preserved spacing`: a safety keep that prevents low-change skipping from exceeding the `Max` gap (`gap_forced`).
-- `Review: possible blur`: kept, but sharpness fell sharply and SfM matches may be weak (`motion_blur`).
-- `Review: low texture`: not necessarily blurred, but low texture may weaken SfM matches (`low_texture`).
-- `Review: weak feature tracking`: kept, but flagged because candidate-pair feature tracking is weak (`weak_match`).
-- `Drop: possible blur`: dropped because blur may weaken SfM (`motion_blur`).
-- `Drop: similar frame`: dropped because the fixed-cadence candidate is too similar to the last kept frame (`redundant_drop`).
-- `Drop: manually excluded`: manually switched to Drop in Step 2.
-
-A practical starting point is `1.0` second, `Min 0.5`, `Max 2.0`, with `Motion` enabled, then review the `+`, `-`, `gap`, `blur`, `tex`, and `weak` counts and examples in Step 2.
+- Start with `Interval 1.0 sec`, `Min 0.5 sec`, `Max 2.0 sec`, and `Motion ON`.
+- If there are too many frames, raise `Interval`.
+- If many frames are similar, review examples in Step 2, then consider raising `Interval` or trying `Distant / Aerial`.
+- If many frames are flagged for blur, inspect the source footage. Step 2 can still keep frames that look acceptable.
+- Use `Reset and Overwrite` when rebuilding the same video with new settings.
+- `Quick extract` is convenient, but normal extraction is better for production selection because it creates Step 2 review labels.

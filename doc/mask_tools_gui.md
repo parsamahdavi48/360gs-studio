@@ -1,126 +1,133 @@
-# STechDrive 3DGS Utils Step 3 — Mask Generation GUI
+# Step 3 Mask Generation GUI
 
-## Overview
+Step 3 creates `masks/` from the `images/` kept in Step 2. These masks exclude regions you do not want SfM or 3DGS to use, such as people, the camera operator, tripods, hands, vehicles, sky, stitch seams, and blown-out highlights.
 
-Step 3 in STechDrive 3DGS Utils is a PySide6 wrapper around:
+Mask polarity is **white = use, black = exclude**. Creating masks before Metashape helps avoid unwanted features from people, sky, or other unstable regions.
 
-- `yolo_mask.py` (YOLO/SAM2.1 model-based mask generation)
-- `sky_mask.py` (Mask2Former ADE20K or SAM3.1 prompt-based masks)
-- `stitch_mask.py` (stitch-region masking)
-- `overexposure_mask.py` (overexposure masking)
-- `custom_mask.py` (user-provided static mask merging)
-
-It is intended for extracted frames or externally prepared image sequences (`images/` -> `masks/`).
-
-## Usage
+## Launch
 
 ```bat
-run_gui.bat --scene ./scene01
+run_gui.bat --scene .\scene01
 ```
 
-## Main Fields
+Then open `Step 3: Mask Generation` in the workflow sidebar.
 
-- `Scene Folder`: base folder. Step 3 fills `images` and `masks` from it.
-- `Images Folder`: input images for mask generation. Use the `+` icon at the right side of the row to copy supported images from another folder into the current scene's `images/`.
-  - If `Scene Folder` is not set, the GUI asks you to choose one first.
-  - Only files directly inside the selected folder are copied; subfolders are not scanned.
-  - Existing filenames in `images/` are skipped and never overwritten.
-  - If `selected_frames.csv` already exists, newly copied files are not added to the CSV automatically. Step 3 will report them as untracked before generation, so resolve the CSV/image mismatch or use a separate scene for external sequences.
-- `Masks Folder`: output masks; also stitch input/output.
-- `Image Type`:
-  - `360°`: choose this when processing equirectangular 360° images.
-  - `Normal`: choose this when processing normal video frames or still images.
-  - Split mixed image types into separate folders and process each type separately.
-- `Options`: optional mask passes added after the model-based mask.
-  - `Stitch`: stitch seam masks for equirectangular 360° images.
-  - `Overexp`: overexposure masks.
-  - `Custom`: user-provided static PNG mask.
-- Settings tabs:
-  - `Mask Settings`: mask model, target classes/prompts, expansion, and projection assist.
-  - `Options`: stitch seam, overexposure, and custom PNG mask settings.
-- `Model`: selects the mask backend.
-  - `YOLO/SAM2.1`: default path. YOLO detects people or selected classes, then SAM2.1 refines the mask.
-  - `Mask2Former`: ADE20K semantic segmentation. The GUI passes selected ADE20K class names to `sky_mask.py --backend mask2former --labels ...`.
-  - `SAM3.1`: prompt-based masks. If `models/sam3.1/sam3.1_multiplex.pt` is missing, the GUI can download it after Hugging Face access approval.
-    If you can open the Files tab or download `sam3.1_multiplex.pt` from `facebook/sam3.1` in the browser, that Hugging Face account has access. GUI downloads require a `Read` token created by the same account. Copy the token immediately after creating it, and do not paste it into issues, chats, screenshots, or logs. This app does not save the token.
-  - All models share the same `Quality` input-view recipe.
-- `Quality`: chooses the balance between accuracy and processing time, forwarded as `--quality standard|high|best`.
-  - `Standard`: direct full-image inference. For 360° images, also runs a light bottom-pole pass.
-  - `High`: recommended default. Adds person-oriented tiles and, for 360° images, top/bottom projection assist.
-  - `Best`: denser tiles and stronger bottom-pole settings for difficult source images.
-  - Normal images use direct inference and whole-image tiling; 360° pole projection is skipped.
-  - Start with `Standard` or `High`, then select only images with missed areas and regenerate them at a higher quality.
-- `Mask Expand`: forwarded to the selected backend as `--expand`.
-  - Positive values mask a wider area; negative values make the boundary tighter.
-  - Default is `0px`; drag horizontally on the number field to adjust.
-  - Clamped to `-16..32px` for safety.
-- `Detection Targets`: collapsed picker for class selection in `YOLO/SAM2.1`.
-  - Choose classes by checkbox labels (`id: name`) instead of memorizing numeric ids.
-  - Default preset is `person` only (`id=0`).
-  - Forwarded to `yolo_mask.py --classes`.
-- `Detection Targets`: collapsed picker used by `Mask2Former`.
-  - Defaults to `sky` and `person`.
-  - Multiple classes are resolved in one model inference and merged into the output mask.
-- `Detection Targets`: SAM3.1 add/subtract prompt fields and quick prompt presets.
-  - Defaults to `person` and `sky`.
-  - Multiple prompts are run one at a time and OR-merged into the output mask.
-  - Custom prompt fields accept comma, semicolon, or newline separators. Spaces around separators are ignored; spaces inside prompts such as `selfie stick` or `cell phone` are kept.
-  - The subtract prompt field removes matching SAM3.1 detections from the positive prompt result.
-- `Op.` is SAM3.1-only and appears in the same row as `Qual.` and `Exp.`. `Replace` rewrites the mask, `Add` blackens detected regions in the existing mask, and `Subtract` turns detected regions white in the existing mask.
-- `Inference Size`: larger values can improve detail and boundaries but use more GPU memory and time. Only Mask2Former can be changed in the GUI; YOLO/SAM2.1 and SAM3.1 use fixed processing sizes.
-- `Model Details`: contains Mask2Former-specific `Min Score` (`0.00-1.00`, `0` disables it).
-- `Sky Mask`: contains sky-only filters.
-  - `Min Area` removes small sky components by image-area ratio.
-  - `Top edge only` keeps only sky components touching the top image edge.
-  - These filters apply only to sky labels/prompts, not to people or other selected targets.
-- `Boundary Mask Width (deg)`: forwarded to `stitch_mask.py --boundary-width`.
-  - Not used when `Image Type` is `Normal`.
-  - Drag horizontally on the number field to adjust.
-  - The GUI clamps the value to `0.0-30.0` degrees for safety.
-- `Stitch Workers`: forwarded to `stitch_mask.py --workers`.
-  - Drag horizontally on the number field to adjust.
-- `Custom Mask`:
-  - AND-merges a user-provided static mask into every mask in `masks/` as the final step.
-  - Input must be PNG. 8-bit/16-bit grayscale, RGB, and RGBA inputs are accepted. RGB/RGBA inputs are converted to grayscale and alpha is ignored.
-  - 8-bit values >=128 and 16-bit values >=32768 become white during 0/255 binarization. White means keep and black means exclude.
-  - The custom mask applies only to source images with matching dimensions. Mismatches are skipped without automatic resizing.
-  - If every image is skipped because none match the custom mask size, the custom step fails.
-  - If `Custom` is turned on before a file is selected, the file picker opens automatically. You can also select a file with the file icon at the right side of the row, or clear it with the delete icon.
-- `Mask Preview` button: builds a temporary mask for the displayed image using the current model and enabled extra masks.
-  - Existing files in `masks/` are not used as the base, except in SAM3.1 `Add`/`Subtract` mode where the saved mask is copied into the temporary preview so the correction can be inspected.
-  - The result is shown as a red overlay and is not saved to `masks/`.
-  - In thumbnail mode, it switches the currently selected image to single-preview mode and shows the temporary result there.
-  - `Show Preview` toggles between the generated temporary preview and the saved mask in `masks/` without deleting the temporary preview.
-  - The first run with a third-party model shows the relevant model/license notice.
-- `Regenerate Mask`: rebuilds and saves the mask for only the currently displayed preview image.
-  - It reruns the selected model for that single image. If `Stitch`, `Overexp`, or `Custom` is enabled, those masks are merged into the same output.
-  - In SAM3.1 `Add`/`Subtract` mode, it applies the current prompt result to the existing saved mask instead of replacing the whole mask.
-  - Results from steps that are now off are not kept, so use it to fix misses found in preview without regenerating the whole set.
-- `Mask Preview`:
-  - Use the icons at the right side of the preview header to switch between single preview and thumbnail list.
-  - Thumbnail mode shows existing masks as red overlays. The mask display icon toggles the overlay on and off without rebuilding thumbnails.
-  - Double-clicking a thumbnail returns to single preview on that image.
-  - The projection button switches 360° equirectangular preview to a square 90° FOV perspective view. Drag the preview to look around; the mouse wheel still performs 2D zoom on the displayed image. Mask overlays are reflected in the perspective view. The perspective view uses OpenGL/GPU acceleration when available and falls back to CPU rendering otherwise.
-  - `Ctrl` click, `Ctrl+Shift` click, and `Shift` click follow Windows Explorer-style multi-selection.
-  - Switching to thumbnail mode focuses the thumbnail list, so arrow keys move the visible thumbnail selection.
-  - In thumbnail mode, `Regenerate N Masks` rebuilds only the selected images with the current mask-generation settings and saves them to `masks/`.
-  - The status text stays on one line and elides when space is tight; the full text is available as a tooltip.
-  - Thumbnail rendering is lazy, prioritizes the visible rows, and reuses cached thumbnails across step switches so large image sets do not rebuild in full on every view change.
+## First Choice
 
-## Actions
+| Goal | Recommended settings |
+| --- | --- |
+| Mask people or the camera operator in 360° frames | `Image Type: 360°`, `Model: YOLO/SAM2.1`, `Quality: High` |
+| Get higher-accuracy person or sky masks | `Model: SAM3.1` |
+| Try sky masks without SAM3.1 | `Model: Mask2Former`, target `sky` |
+| Process normal photos or normal video frames | `Image Type: Normal` |
+| Exclude visible nearby stitch seams | `Stitch` ON |
+| Exclude blown-out windows or lights | `Overexp` ON |
+| Apply your own fixed mask to every image | `Custom` ON |
 
-Choose the mask model in `Mask Settings`, enable any `Options`, then press `Generate`.
-The model-based mask always runs first. Extra masks run in this order: stitch seam, overexposure, custom.
-Existing masks are regenerated from the current model and enabled extra masks. Results from extra masks that are now off are not kept.
+When unsure, start with `YOLO/SAM2.1` + `High` + `person` for 360° images, then regenerate only problem images with higher quality or a different model.
 
-SAM3.1 batch generation runs with saved progress and unfinished-image resume. If GPU memory runs out, completed masks remain saved; rerun with the same settings to continue from unfinished images.
+## Basic Flow
 
-If `selected_frames.csv` is not present, Step 3 can still generate masks as long as `images/` contains supported images.
-In that external-image mode, Step 2 keep/drop validation is skipped.
-If `selected_frames.csv` is present, Step 3 validates `images/` against it and stops when pending drops or untracked files are found.
+1. Confirm that `Images Folder` points to the scene `images/`.
+2. Choose `Image Type`: `360°` for equirectangular images or `Normal` for normal photos/video frames.
+3. Choose the mask `Model` and detection targets.
+4. Enable `Stitch`, `Overexp`, or `Custom` only when needed.
+5. Run `Mask Preview` on one image and inspect the red overlay.
+6. If the preview looks reasonable, press `Generate` for the full set.
+7. Scan the thumbnail list for missed regions or false positives.
+8. Select only problem images, adjust settings, and run `Regenerate Mask`.
+
+If `selected_frames.csv` exists, Step 3 validates it against `images/`. If pending drops or untracked images remain, apply Step 2 decisions or resolve the mismatch before generating masks.
+
+## Model Choice
+
+| Model | Best for |
+| --- | --- |
+| `YOLO/SAM2.1` | Fast default person masking |
+| `SAM3.1` | Higher-accuracy prompt-based masks for people, sky, tripods, hands, phones, and cleanup |
+| `Mask2Former` | Trying semantic masks such as sky without SAM3.1 |
+
+### YOLO/SAM2.1
+
+This is the default fast route. YOLO detects the selected targets, then SAM2.1 refines their shapes. Start with `person` only. Add vehicle or other classes only when you also want to remove them.
+
+### SAM3.1
+
+SAM3.1 uses English prompts. You can add missed targets such as `person`, `sky`, `tripod`, `hand`, `selfie stick`, or `cell phone`, and subtract false positives such as `logo` or `sign`.
+
+On first use, if `models/sam3.1/sam3.1_multiplex.pt` is missing, Hugging Face access approval and SAM License acceptance are required. GUI downloads use a `Read` token from the approved account. This app does not save the token.
+
+### Mask2Former
+
+Mask2Former uses ADE20K semantic classes. Use it when you want to try semantic targets such as sky without setting up SAM3.1.
+
+## Quality And Expansion
+
+`Quality` controls the balance between accuracy and processing time.
+
+| Quality | Use when |
+| --- | --- |
+| `Standard` | Quick checks. Also a reasonable starting point for normal images |
+| `High` | Recommended starting point for 360° images. Adds person-oriented tiles and top/bottom assist |
+| `Best` | Targeted fixes for images that still leak. Slower |
+
+`Mask Expand` grows or shrinks mask boundaries. Positive values make black excluded regions larger; negative values make them tighter. Increase it when silhouettes leak through, and decrease it when masks remove too much.
+
+## Optional Masks
+
+After the model-based mask, Step 3 can merge extra masks. The order is always model -> stitch seam -> overexposure -> custom.
+
+| Option | Use when |
+| --- | --- |
+| `Stitch` | Excluding stitch seams in 360° images |
+| `Overexp` | Excluding blown-out windows, lights, or reflections |
+| `Custom` | AND-merging your own PNG mask into every output |
+
+If stitch seams are barely visible, keep stitch masks off or use a narrow seam mask first. Usually keep it off for stabilized, direction-locked, or AI-stitched footage where seam positions move.
+
+Custom masks use PNG input. White means use, black means exclude. They apply only to images with matching dimensions.
+
+## Preview And Regeneration
+
+### Mask Preview
+
+`Mask Preview` builds a temporary mask for the currently displayed image using the current settings. It does not save to `masks/`. Use it first to check missed regions or over-masking.
+
+`Show Preview` switches between the temporary preview and the saved mask display. For 360° images, perspective preview makes it easier to inspect feet, tripods, silhouettes, and stitch-seam regions.
+
+### Regenerate Mask
+
+`Regenerate Mask` saves a new mask to `masks/` for the current image, or for selected images in thumbnail mode.
+
+With SAM3.1, choose the write mode:
+
+- `Replace`: rebuild the mask from current settings
+- `Add`: add detected regions to the existing mask as black excluded areas
+- `Subtract`: remove detected regions from the existing mask by turning them white
+
+It is usually faster to generate the full set at Standard/High quality, then regenerate only images with visible misses.
+
+## Outputs
+
+| Output | Meaning |
+| --- | --- |
+| `masks/` | Mask images corresponding to `images/` |
+| Temporary preview | Visual check only; not a saved mask |
+| Run log | Shown in the integrated log panel |
+
+Generated `masks/` can be imported into Metashape or converted with projection views in Step 4. Polarity remains white = use, black = exclude.
+
+## Common Decisions
+
+- Start with `YOLO/SAM2.1` + `High` + `person`.
+- Use `SAM3.1` when you also need sky, tripods, hands, or prompt-based cleanup.
+- Use `Mask2Former` for a quick sky-mask test without SAM3.1.
+- If the camera operator or tripod remains near the bottom of a 360° image, raise quality or use SAM3.1 prompts such as `tripod`, `hand`, or `selfie stick`.
+- Turn `Overexp` on only for footage where blown-out areas are actually harmful; it can remove too much in some interiors.
+- Normal images do not use stitch seam masks or 360° pole projection assist.
+- If SAM3.1 stops due to GPU memory, completed masks remain saved. Rerun with the same settings to continue from unfinished images.
 
 ## Notes
 
-- The GUI runs scripts as subprocesses, so behavior stays aligned with CLI.
+- The GUI runs the CLI scripts as subprocesses, so behavior stays aligned with CLI.
 - Semantic/person masking uses third-party libraries and model weights with separate license terms. See [../THIRD_PARTY_LICENSES.md](../THIRD_PARTY_LICENSES.md).
-- Logs from each step are shown in the integrated log panel.
