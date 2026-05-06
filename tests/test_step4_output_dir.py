@@ -211,6 +211,27 @@ def test_export_method_switch_keeps_fixed_tabs_and_swaps_route_sections() -> Non
     assert step.colmap_section.isHidden()
 
 
+def test_export_targets_row_stays_aligned_across_routes() -> None:
+    app = _app()
+    step = CubemapStep(Path.cwd())
+    step.resize(900, 720)
+    step.show()
+    step.settings_tabs.setCurrentIndex(step.output_tab_index)
+    app.processEvents()
+
+    positions = []
+    for method in ("metashape", "colmap", "spheresfm"):
+        step._set_export_method(method)
+        step.settings_tabs.setCurrentIndex(step.output_tab_index)
+        app.processEvents()
+        positions.append(step.export_targets_row.mapTo(step.output_tab, QPoint(0, 0)).x())
+
+    assert len(set(positions)) == 1
+    assert positions[0] == step.output_tab.layout().contentsMargins().left()
+
+    step.close()
+
+
 def test_spheresfm_output_shape_change_keeps_conversion_tab_focused() -> None:
     _app()
     step = CubemapStep(Path.cwd())

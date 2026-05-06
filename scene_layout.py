@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-
 APP_DIR_NAME = "_stechdrive"
 FRAMES_DIR_NAME = "frames"
 FRAME_BACKUPS_DIR_NAME = "backups"

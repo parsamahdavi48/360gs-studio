@@ -6,7 +6,6 @@ import shlex
 from dataclasses import dataclass
 from pathlib import Path
 
-
 _LICHTFELD_REQUIRED_STRATEGIES = {"mrnf", "mcmc", "igs+"}
 _LICHTFELD_MASK_MODES = {"none", "segment", "ignore", "alpha_consistent"}
 _LICHTFELD_TILE_MODES = {1, 2, 4}

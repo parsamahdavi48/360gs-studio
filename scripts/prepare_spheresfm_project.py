@@ -7,7 +7,6 @@ import subprocess
 import sys
 from pathlib import Path
 
-
 IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".tif", ".tiff", ".webp", ".bmp"}
 
 
@@ -114,4 +113,4 @@ if __name__ == "__main__":
         raise SystemExit(main())
     except Exception as exc:
         print(f"ERROR: {exc}", file=sys.stderr, flush=True)
-        raise SystemExit(1)
+        raise SystemExit(1) from exc

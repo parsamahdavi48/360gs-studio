@@ -30,7 +30,7 @@ SfM, or Structure from Motion, estimates camera positions and a sparse point clo
 
 `Scene Directory` is the scene folder used by Steps 1-3. It usually contains `images/` and `masks/`. In the Metashape route, Step 4 combines that scene folder with the XML/PLY exported from Metashape. In the SphereSfM route, Step 4 runs SfM and conversion from these `images/` and `masks/`.
 
-The route buttons are `Metashape`, `COLMAP`, and `SphereSfM`. The settings tabs below them stay fixed as `Input`, `Output`, `Projection Views`, `Training`, and `Details`; each tab shows only the sections needed for the selected route. Image/mask toggles live in `Output`, Cube6 and yaw controls live in `Projection Views`, and external CLI training settings live in `Training`.
+The route buttons are `Metashape`, `COLMAP`, and `SphereSfM`. The settings tabs below them stay fixed as `Input`, `Output`, `Views`, `Train`, and `Details`; each tab shows only the sections needed for the selected route. Image/mask toggles live in `Output`, Cube6 and yaw controls live in `Views`, and external CLI training settings live in `Train`.
 
 ## Metashape Route
 

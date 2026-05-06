@@ -310,10 +310,8 @@ class CubemapStep(BaseStepWidget):
             self.export_method_buttons[method] = btn
         left_layout.addWidget(self.export_method_row)
 
-        export_targets_form = QFormLayout()
-        export_targets_form.setContentsMargins(0, 0, 0, 0)
-        export_targets_form.setSpacing(6)
         self.export_targets_row = QWidget()
+        self.export_targets_row.setToolTip(i18n.tip("EXPORT_TARGETS"))
         export_targets_layout = QHBoxLayout(self.export_targets_row)
         export_targets_layout.setContentsMargins(0, 0, 0, 0)
         export_targets_layout.setSpacing(12)
@@ -326,16 +324,11 @@ class CubemapStep(BaseStepWidget):
         self.export_masks_cb.setChecked(True)
         export_targets_layout.addWidget(self.export_masks_cb)
         export_targets_layout.addStretch()
-        add_tooltip_row(
-            export_targets_form,
-            i18n.t("EXPORT_TARGETS"),
-            self.export_targets_row,
-            i18n.tip("EXPORT_TARGETS"),
-        )
-        self.export_targets_form = export_targets_form
 
         self.settings_tabs = QTabWidget()
         self.settings_tabs.setObjectName("step4SettingsTabs")
+        self.settings_tabs.tabBar().setUsesScrollButtons(False)
+        self.settings_tabs.tabBar().setExpanding(False)
 
         colmap_section = QWidget()
         self.colmap_section = colmap_section
@@ -774,7 +767,7 @@ class CubemapStep(BaseStepWidget):
         output_layout.setSpacing(6)
         output_layout.addWidget(self.metashape_output_section)
         output_layout.addWidget(self.spheresfm_convert_section)
-        output_layout.addLayout(self.export_targets_form)
+        output_layout.addWidget(self.export_targets_row)
         output_layout.addStretch()
 
         details_tab = QWidget()

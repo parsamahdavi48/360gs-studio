@@ -291,6 +291,10 @@ QTabWidget#step4SettingsTabs QTabBar::tab {{
     min-width: 86px;
     padding: 7px 10px;
 }}
+QTabWidget#step4SettingsTabs QTabBar::tab {{
+    min-width: 54px;
+    padding: 7px 6px;
+}}
 
 /* ========== QProgressBar ========== */
 QProgressBar {{

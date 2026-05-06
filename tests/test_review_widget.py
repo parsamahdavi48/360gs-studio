@@ -15,8 +15,8 @@ from PySide6.QtWidgets import QAbstractItemView, QApplication, QToolButton
 from gui import i18n
 from gui.common.perspective_preview import PREVIEW_PROJECTION_EQUIRECT, PREVIEW_PROJECTION_PERSPECTIVE
 from gui.common.preview_mode_toolbar import PREVIEW_MODE_PERSPECTIVE, PREVIEW_MODE_SINGLE, PREVIEW_MODE_THUMBNAILS
-from scene_layout import selected_frames_path
 from review_frames import ReviewWidget, _review_thumbnail_image
+from scene_layout import selected_frames_path
 
 
 def _app():

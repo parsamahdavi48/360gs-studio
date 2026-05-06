@@ -65,6 +65,48 @@ def test_i18n_tips_are_wrapped_in_english() -> None:
     assert result.returncode == 0, result.stdout + result.stderr
 
 
+def test_step4_tabs_fit_fixed_settings_pane_without_scroll_buttons() -> None:
+    script = textwrap.dedent(
+        """
+        import os
+        from pathlib import Path
+
+        os.environ["QT_QPA_PLATFORM"] = "offscreen"
+
+        from PySide6.QtWidgets import QApplication
+
+        from gui.theme import apply_theme
+        from gui.steps.base_step import SETTINGS_PANE_WIDTH
+        from gui.steps.step4_cubemap import CubemapStep
+
+        app = QApplication([])
+        apply_theme(app)
+        step = CubemapStep(Path.cwd())
+        step.resize(1280, 920)
+        step.show()
+        app.processEvents()
+
+        tab_bar = step.settings_tabs.tabBar()
+        tab_widths = [tab_bar.tabRect(i).width() for i in range(tab_bar.count())]
+        assert not tab_bar.usesScrollButtons()
+        assert sum(tab_widths) <= SETTINGS_PANE_WIDTH, (tab_widths, SETTINGS_PANE_WIDTH)
+        """
+    )
+
+    for lang in ("ja", "en"):
+        env = os.environ.copy()
+        env["STUDIO_LANG"] = lang
+        env["QT_QPA_PLATFORM"] = "offscreen"
+        result = subprocess.run(
+            [sys.executable, "-c", script],
+            cwd=Path.cwd(),
+            env=env,
+            capture_output=True,
+            text=True,
+        )
+        assert result.returncode == 0, result.stdout + result.stderr
+
+
 def test_extract_numeric_labels_share_field_tooltips() -> None:
     _app()
     step = ExtractStep(Path.cwd())
@@ -310,7 +352,8 @@ def test_cubemap_labels_share_field_tooltips() -> None:
     step = CubemapStep(Path.cwd())
 
     assert step.export_method_label.toolTip() == i18n.tip("EXPORT_METHOD")
-    assert _label(step, i18n.t("EXPORT_TARGETS")).toolTip() == i18n.tip("EXPORT_TARGETS")
+    assert step.export_targets_row.toolTip() == i18n.tip("EXPORT_TARGETS")
+    assert all(child.text() != i18n.t("EXPORT_TARGETS") for child in step.output_tab.findChildren(QLabel))
     assert step.export_method_buttons["metashape"].toolTip() == i18n.tip("METHOD_METASHAPE_IMPORT")
     assert step.export_method_buttons["colmap"].toolTip() == i18n.tip("METHOD_COLMAP_EXPORT")
     assert step.export_method_buttons["spheresfm"].toolTip() == i18n.tip("METHOD_SPHERESFM")
