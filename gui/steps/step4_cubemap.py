@@ -149,6 +149,36 @@ _LFS_ADVANCED_INT_KEYS = {
     "ppisp_controller_activation_step",
 }
 _LFS_ADVANCED_LIST_KEYS = {"eval_steps", "save_steps"}
+_LFS_ADVANCED_FIELD_WIDTHS = {
+    "means_lr": 112,
+    "means_lr_end": 122,
+    "shs_lr": 102,
+    "opacity_lr": 102,
+    "scaling_lr": 102,
+    "scaling_lr_end": 112,
+    "rotation_lr": 102,
+    "grad_threshold": 116,
+    "mask_opacity_penalty_weight": 104,
+    "mask_opacity_penalty_power": 104,
+    "bilateral_grid_lr": 116,
+    "lambda_dssim": 100,
+    "init_num_pts": 108,
+    "min_opacity": 108,
+    "prune_opacity": 108,
+    "grow_scale3d": 100,
+    "grow_scale2d": 100,
+    "prune_scale3d": 100,
+    "prune_scale2d": 100,
+    "growth_grad_threshold": 116,
+    "means_noise_weight": 104,
+    "bounds_percentile": 100,
+    "sparsify_steps": 108,
+    "ppisp_controller_activation_step": 108,
+    "max_width": 92,
+    "test_every": 86,
+    "eval_steps": 136,
+    "save_steps": 136,
+}
 _EXPORT_SETTINGS_NAME = STEP4_EXPORT_SETTINGS_JSON
 _COLMAP_PROJECT_MANIFEST_NAME = "stechdrive_colmap_project.json"
 _SPHERESFM_PROJECT_MANIFEST_NAME = "stechdrive_spheresfm_project.json"
@@ -1027,6 +1057,8 @@ class CubemapStep(BaseStepWidget):
         self.lfs_options_form = form
         self.lfs_advanced_edits: dict[str, QLineEdit] = {}
         self.lfs_advanced_checks: dict[str, QCheckBox] = {}
+        self.lfs_advanced_sections: dict[str, CollapsibleSection] = {}
+        self.lfs_advanced_rows: dict[str, tuple[QFormLayout, int]] = {}
 
         self.lfs_strategy_combo = QComboBox()
         self.lfs_strategy_combo.addItem("MRNF", "mrnf")
@@ -1095,6 +1127,38 @@ class CubemapStep(BaseStepWidget):
         self.lfs_mask_mode_combo.addItem("Alpha Consistent", "alpha_consistent")
         add_tooltip_row(form, i18n.t("LFS_MASK_MODE"), self.lfs_mask_mode_combo, i18n.tip("LFS_MASK_MODE"))
 
+        self.lfs_mask_invert_row = form.rowCount()
+        self.lfs_invert_masks_cb = QCheckBox()
+        add_tooltip_row(form, i18n.t("LFS_INVERT_MASKS"), self.lfs_invert_masks_cb)
+        self.lfs_mask_threshold_edit = QLineEdit("0.500")
+        self.lfs_mask_threshold_edit.setFixedWidth(_LFS_ADVANCED_FIELD_WIDTHS.get("mask_threshold", 86))
+        self.lfs_mask_threshold_row = form.rowCount()
+        add_tooltip_row(form, i18n.t("LFS_MASK_THRESHOLD"), self.lfs_mask_threshold_edit)
+        self.lfs_use_alpha_as_mask_cb = QCheckBox()
+        self.lfs_use_alpha_as_mask_cb.setChecked(True)
+        self.lfs_use_alpha_as_mask_row = form.rowCount()
+        add_tooltip_row(form, i18n.t("LFS_USE_ALPHA_AS_MASK"), self.lfs_use_alpha_as_mask_cb)
+        self.lfs_mask_opacity_penalty_weight_edit = QLineEdit("1.000")
+        self.lfs_mask_opacity_penalty_weight_edit.setFixedWidth(
+            _LFS_ADVANCED_FIELD_WIDTHS.get("mask_opacity_penalty_weight", 86)
+        )
+        self.lfs_mask_opacity_penalty_weight_row = form.rowCount()
+        add_tooltip_row(
+            form,
+            i18n.t("LFS_MASK_OPACITY_PENALTY_WEIGHT"),
+            self.lfs_mask_opacity_penalty_weight_edit,
+        )
+        self.lfs_mask_opacity_penalty_power_edit = QLineEdit("2.000")
+        self.lfs_mask_opacity_penalty_power_edit.setFixedWidth(
+            _LFS_ADVANCED_FIELD_WIDTHS.get("mask_opacity_penalty_power", 86)
+        )
+        self.lfs_mask_opacity_penalty_power_row = form.rowCount()
+        add_tooltip_row(
+            form,
+            i18n.t("LFS_MASK_OPACITY_PENALTY_POWER"),
+            self.lfs_mask_opacity_penalty_power_edit,
+        )
+
         checks = QWidget()
         checks_layout = QGridLayout(checks)
         checks_layout.setContentsMargins(0, 0, 0, 0)
@@ -1117,12 +1181,43 @@ class CubemapStep(BaseStepWidget):
             checks_layout.addWidget(cb, index // 2, index % 2)
         form.addRow("", checks)
 
+        self.lfs_ppisp_freeze_from_sidecar_cb = QCheckBox()
+        self.lfs_ppisp_freeze_from_sidecar_row = form.rowCount()
+        add_tooltip_row(form, i18n.t("LFS_PPISP_FREEZE_FROM_SIDECAR"), self.lfs_ppisp_freeze_from_sidecar_cb)
+        self.lfs_ppisp_sidecar_browse = BrowseWidget(mode="file")
+        self.lfs_ppisp_sidecar_row = form.rowCount()
+        add_tooltip_row(form, i18n.t("LFS_PPISP_SIDECAR_PATH"), self.lfs_ppisp_sidecar_browse)
+        self.lfs_ppisp_use_controller_cb = QCheckBox()
+        self.lfs_ppisp_use_controller_row = form.rowCount()
+        add_tooltip_row(form, i18n.t("LFS_PPISP_USE_CONTROLLER"), self.lfs_ppisp_use_controller_cb)
+        self.lfs_ppisp_controller_activation_step_edit = QLineEdit("-1")
+        self.lfs_ppisp_controller_activation_step_edit.setFixedWidth(
+            _LFS_ADVANCED_FIELD_WIDTHS.get("ppisp_controller_activation_step", 86)
+        )
+        self.lfs_ppisp_controller_activation_step_row = form.rowCount()
+        add_tooltip_row(
+            form,
+            i18n.t("LFS_PPISP_CONTROLLER_ACTIVATION_STEP"),
+            self.lfs_ppisp_controller_activation_step_edit,
+        )
+        self.lfs_ppisp_controller_lr_edit = QLineEdit("0.0020")
+        self.lfs_ppisp_controller_lr_edit.setFixedWidth(_LFS_ADVANCED_FIELD_WIDTHS.get("ppisp_controller_lr", 86))
+        self.lfs_ppisp_controller_lr_row = form.rowCount()
+        add_tooltip_row(form, i18n.t("LFS_PPISP_CONTROLLER_LR"), self.lfs_ppisp_controller_lr_edit)
+        self.lfs_ppisp_freeze_gaussians_on_distill_cb = QCheckBox()
+        self.lfs_ppisp_freeze_gaussians_on_distill_cb.setChecked(True)
+        self.lfs_ppisp_freeze_gaussians_on_distill_row = form.rowCount()
+        add_tooltip_row(
+            form,
+            i18n.t("LFS_PPISP_FREEZE_GAUSSIANS_ON_DISTILL"),
+            self.lfs_ppisp_freeze_gaussians_on_distill_cb,
+        )
+
         self.lfs_bg_mode_combo = QComboBox()
         self.lfs_bg_mode_combo.addItem("Color", "solid_color")
         self.lfs_bg_mode_combo.addItem("Modulation", "modulation")
         self.lfs_bg_mode_combo.addItem("Image", "image")
         self.lfs_bg_mode_combo.addItem("Random", "random")
-        self.lfs_bg_mode_combo.currentIndexChanged.connect(lambda _idx: self._update_lfs_background_visibility())
         add_tooltip_row(form, i18n.t("LFS_BG_MODE"), self.lfs_bg_mode_combo, i18n.tip("LFS_BG_MODE"))
 
         color_row = QWidget()
@@ -1154,18 +1249,20 @@ class CubemapStep(BaseStepWidget):
         adv_layout = advanced.content_layout
 
         def add_section(title_key: str) -> QFormLayout:
-            title = QLabel(i18n.t(title_key))
-            title.setObjectName("compactSectionTitle")
-            adv_layout.addWidget(title)
+            section = CollapsibleSection(i18n.t(title_key), expanded=False)
+            section.setObjectName("lfsAdvancedSubsection")
+            self.lfs_advanced_sections[title_key] = section
+            adv_layout.addWidget(section)
             section_form = QFormLayout()
             section_form.setSpacing(5)
-            adv_layout.addLayout(section_form)
+            section.content_layout.addLayout(section_form)
             return section_form
 
         def add_edit(section_form: QFormLayout, key: str, default: str, width: int = 86) -> QLineEdit:
             edit = QLineEdit(default)
-            edit.setFixedWidth(width)
+            edit.setFixedWidth(_LFS_ADVANCED_FIELD_WIDTHS.get(key, width))
             self.lfs_advanced_edits[key] = edit
+            self.lfs_advanced_rows[key] = (section_form, section_form.rowCount())
             add_tooltip_row(section_form, i18n.t(f"LFS_{key.upper()}"), edit)
             return edit
 
@@ -1173,8 +1270,32 @@ class CubemapStep(BaseStepWidget):
             cb = QCheckBox()
             cb.setChecked(checked)
             self.lfs_advanced_checks[key] = cb
+            self.lfs_advanced_rows[key] = (section_form, section_form.rowCount())
             add_tooltip_row(section_form, i18n.t(f"LFS_{key.upper()}"), cb)
             return cb
+
+        dataset_form = add_section("LFS_SECTION_DATASET")
+        self.lfs_dataset_resize_factor_combo = QComboBox()
+        self.lfs_dataset_resize_factor_combo.addItem("Auto", "auto")
+        for factor in (1, 2, 4, 8):
+            self.lfs_dataset_resize_factor_combo.addItem(str(factor), str(factor))
+        add_tooltip_row(dataset_form, i18n.t("LFS_RESIZE_FACTOR"), self.lfs_dataset_resize_factor_combo)
+        self.lfs_dataset_max_width_edit = QLineEdit("3840")
+        self.lfs_dataset_max_width_edit.setFixedWidth(_LFS_ADVANCED_FIELD_WIDTHS.get("max_width", 86))
+        add_tooltip_row(dataset_form, i18n.t("LFS_MAX_WIDTH"), self.lfs_dataset_max_width_edit)
+        self.lfs_dataset_cpu_cache_cb = QCheckBox()
+        self.lfs_dataset_cpu_cache_cb.setChecked(True)
+        add_tooltip_row(dataset_form, i18n.t("LFS_CPU_CACHE"), self.lfs_dataset_cpu_cache_cb)
+        self.lfs_dataset_fs_cache_cb = QCheckBox()
+        self.lfs_dataset_fs_cache_cb.setChecked(True)
+        add_tooltip_row(dataset_form, i18n.t("LFS_FS_CACHE"), self.lfs_dataset_fs_cache_cb)
+        add_check(dataset_form, "enable_eval", False)
+        self.lfs_dataset_test_every_edit = QLineEdit("8")
+        self.lfs_dataset_test_every_edit.setFixedWidth(_LFS_ADVANCED_FIELD_WIDTHS.get("test_every", 86))
+        self.lfs_dataset_test_every_row = dataset_form.rowCount()
+        self.lfs_advanced_rows["test_every"] = (dataset_form, self.lfs_dataset_test_every_row)
+        add_tooltip_row(dataset_form, i18n.t("LFS_TEST_EVERY"), self.lfs_dataset_test_every_edit)
+        add_check(dataset_form, "enable_save_eval_images", True)
 
         opt_form = add_section("LFS_SECTION_OPTIMIZATION")
         for key, default in (
@@ -1187,8 +1308,6 @@ class CubemapStep(BaseStepWidget):
             ("rotation_lr", "0.0020"),
         ):
             add_edit(opt_form, key, default)
-
-        refine_form = add_section("LFS_SECTION_REFINEMENT")
         for key, default in (
             ("refine_every", "200"),
             ("start_refine", "0"),
@@ -1198,14 +1317,7 @@ class CubemapStep(BaseStepWidget):
             ("reset_every", "3000"),
             ("sh_degree_interval", "1000"),
         ):
-            add_edit(refine_form, key, default)
-
-        mask_form = add_section("LFS_SECTION_MASK")
-        add_check(mask_form, "invert_masks", False)
-        add_edit(mask_form, "mask_threshold", "0.500")
-        add_check(mask_form, "use_alpha_as_mask", True)
-        add_edit(mask_form, "mask_opacity_penalty_weight", "1.000")
-        add_edit(mask_form, "mask_opacity_penalty_power", "2.000")
+            add_edit(opt_form, key, default)
 
         bilateral_form = add_section("LFS_SECTION_BILATERAL")
         for key, default in (
@@ -1232,7 +1344,7 @@ class CubemapStep(BaseStepWidget):
         add_edit(init_form, "init_num_pts", "100000")
         add_edit(init_form, "init_extent", "3.0")
 
-        strategy_form = add_section("LFS_SECTION_STRATEGY_DETAILS")
+        pruning_form = add_section("LFS_SECTION_PRUNING_GROWING")
         for key, default in (
             ("min_opacity", "0.003922"),
             ("prune_opacity", "0.0050"),
@@ -1241,6 +1353,12 @@ class CubemapStep(BaseStepWidget):
             ("prune_scale3d", "0.100"),
             ("prune_scale2d", "0.150"),
             ("pause_refine_after_reset", "0"),
+        ):
+            add_edit(pruning_form, key, default)
+        add_check(pruning_form, "revised_opacity", True)
+
+        mrnf_form = add_section("LFS_SECTION_MRNF")
+        for key, default in (
             ("growth_grad_threshold", "0.00300"),
             ("grow_fraction", "0.070"),
             ("opacity_decay", "0.0040"),
@@ -1248,37 +1366,36 @@ class CubemapStep(BaseStepWidget):
             ("means_noise_weight", "50.0"),
             ("bounds_percentile", "0.80"),
         ):
-            add_edit(strategy_form, key, default)
-        add_check(strategy_form, "revised_opacity", True)
-        add_check(strategy_form, "use_error_map", True)
-        add_check(strategy_form, "use_edge_map", True)
+            add_edit(mrnf_form, key, default)
+        add_check(mrnf_form, "use_error_map", True)
+        add_check(mrnf_form, "use_edge_map", True)
 
         sparsity_form = add_section("LFS_SECTION_SPARSITY")
         add_edit(sparsity_form, "sparsify_steps", "15000")
         add_edit(sparsity_form, "init_rho", "0.0005")
         add_edit(sparsity_form, "prune_ratio", "0.600")
 
-        ppisp_form = add_section("LFS_SECTION_PPISP")
-        add_edit(ppisp_form, "ppisp_lr", "0.0020")
-        add_edit(ppisp_form, "ppisp_reg_weight", "0.0010")
-        add_edit(ppisp_form, "ppisp_warmup_steps", "500")
-        add_check(ppisp_form, "ppisp_freeze_from_sidecar", False)
-        self.lfs_ppisp_sidecar_browse = BrowseWidget(mode="file")
-        add_tooltip_row(ppisp_form, i18n.t("LFS_PPISP_SIDECAR_PATH"), self.lfs_ppisp_sidecar_browse)
-        add_check(ppisp_form, "ppisp_use_controller", False)
-        add_edit(ppisp_form, "ppisp_controller_activation_step", "-1")
-        add_edit(ppisp_form, "ppisp_controller_lr", "0.0020")
-        add_check(ppisp_form, "ppisp_freeze_gaussians_on_distill", True)
-
         save_form = add_section("LFS_SECTION_SAVE_EVAL")
-        add_check(save_form, "enable_eval", False)
-        add_check(save_form, "enable_save_eval_images", True)
         add_edit(save_form, "eval_steps", "7000,30000", width=120)
         add_edit(save_form, "save_steps", "7000,30000", width=120)
 
         form.addRow(advanced)
         self._update_lfs_color_swatch()
-        self._update_lfs_background_visibility()
+        self.lfs_strategy_combo.currentIndexChanged.connect(lambda _idx: self._update_lfs_conditional_visibility())
+        self.lfs_bilateral_grid_cb.toggled.connect(lambda _checked: self._update_lfs_conditional_visibility())
+        self.lfs_mask_mode_combo.currentIndexChanged.connect(lambda _idx: self._update_lfs_conditional_visibility())
+        self.lfs_sparsity_cb.toggled.connect(lambda _checked: self._update_lfs_conditional_visibility())
+        self.lfs_ppisp_cb.toggled.connect(lambda _checked: self._update_lfs_conditional_visibility())
+        self.lfs_ppisp_freeze_from_sidecar_cb.toggled.connect(
+            lambda _checked: self._update_lfs_conditional_visibility()
+        )
+        self.lfs_ppisp_use_controller_cb.toggled.connect(lambda _checked: self._update_lfs_conditional_visibility())
+        self.lfs_bg_mode_combo.currentIndexChanged.connect(lambda _idx: self._update_lfs_conditional_visibility())
+        self.lfs_advanced_checks["random"].toggled.connect(lambda _checked: self._update_lfs_conditional_visibility())
+        self.lfs_advanced_checks["enable_eval"].toggled.connect(
+            lambda _checked: self._update_lfs_conditional_visibility()
+        )
+        self._update_lfs_conditional_visibility()
         return widget
 
     def _build_postshot_training_options(self) -> QWidget:
@@ -1544,10 +1661,19 @@ class CubemapStep(BaseStepWidget):
             self._update_lfs_auto_steps_scaler()
         self._on_training_settings_changed()
 
-    def _set_lfs_form_row_visible(self, row: int, visible: bool) -> None:
-        form = getattr(self, "lfs_options_form", None)
+    @staticmethod
+    def _set_form_row_visible(form: QFormLayout | None, row: int, visible: bool) -> None:
         if form is not None and hasattr(form, "setRowVisible"):
             form.setRowVisible(row, visible)
+
+    def _set_lfs_form_row_visible(self, row: int, visible: bool) -> None:
+        self._set_form_row_visible(getattr(self, "lfs_options_form", None), row, visible)
+
+    def _set_lfs_advanced_row_visible(self, key: str, visible: bool) -> None:
+        row = getattr(self, "lfs_advanced_rows", {}).get(key)
+        if row is not None:
+            form, row_index = row
+            self._set_form_row_visible(form, row_index, visible)
 
     def _update_lfs_background_visibility(self) -> None:
         if not hasattr(self, "lfs_bg_mode_combo"):
@@ -1556,6 +1682,50 @@ class CubemapStep(BaseStepWidget):
         self._set_lfs_form_row_visible(self.lfs_bg_color_row, mode in {"solid_color", "modulation"})
         self._set_lfs_form_row_visible(self.lfs_bg_image_row, mode == "image")
         self._on_training_settings_changed()
+
+    def _update_lfs_conditional_visibility(self) -> None:
+        if not hasattr(self, "lfs_mask_mode_combo"):
+            return
+
+        mask_mode = self.lfs_mask_mode_combo.currentData() or "none"
+        has_mask = mask_mode != "none"
+        segment_mask = mask_mode == "segment"
+        self._set_lfs_form_row_visible(self.lfs_mask_invert_row, has_mask)
+        self._set_lfs_form_row_visible(self.lfs_mask_threshold_row, has_mask)
+        self._set_lfs_form_row_visible(self.lfs_use_alpha_as_mask_row, has_mask)
+        self._set_lfs_form_row_visible(self.lfs_mask_opacity_penalty_weight_row, segment_mask)
+        self._set_lfs_form_row_visible(self.lfs_mask_opacity_penalty_power_row, segment_mask)
+
+        ppisp = self.lfs_ppisp_cb.isChecked()
+        ppisp_sidecar = ppisp and self.lfs_ppisp_freeze_from_sidecar_cb.isChecked()
+        ppisp_controller = ppisp and self.lfs_ppisp_use_controller_cb.isChecked()
+        self._set_lfs_form_row_visible(self.lfs_ppisp_freeze_from_sidecar_row, ppisp)
+        self._set_lfs_form_row_visible(self.lfs_ppisp_sidecar_row, ppisp_sidecar)
+        self._set_lfs_form_row_visible(self.lfs_ppisp_use_controller_row, ppisp)
+        self._set_lfs_form_row_visible(self.lfs_ppisp_controller_activation_step_row, ppisp_controller)
+        self._set_lfs_form_row_visible(self.lfs_ppisp_controller_lr_row, ppisp_controller)
+        self._set_lfs_form_row_visible(self.lfs_ppisp_freeze_gaussians_on_distill_row, ppisp_controller)
+
+        strategy = self.lfs_strategy_combo.currentData() or "mrnf"
+        is_igs = strategy == "igs+"
+        is_mrnf = strategy in {"mrnf", "mnrf", "lfs"}
+        if is_igs and self.lfs_gut_cb.isChecked():
+            self.lfs_gut_cb.setChecked(False)
+        self.lfs_gut_cb.setEnabled(not is_igs)
+
+        self.lfs_advanced_sections["LFS_SECTION_BILATERAL"].setVisible(self.lfs_bilateral_grid_cb.isChecked())
+        self.lfs_advanced_sections["LFS_SECTION_PRUNING_GROWING"].setVisible(is_igs)
+        self.lfs_advanced_sections["LFS_SECTION_MRNF"].setVisible(is_mrnf)
+        self.lfs_advanced_sections["LFS_SECTION_SPARSITY"].setVisible(self.lfs_sparsity_cb.isChecked())
+        self._set_lfs_advanced_row_visible("grow_until_iter", is_mrnf)
+        self._set_lfs_advanced_row_visible("prune_opacity", is_igs)
+        self._set_lfs_advanced_row_visible("revised_opacity", is_igs)
+        random_init = self.lfs_advanced_checks["random"].isChecked()
+        self._set_lfs_advanced_row_visible("init_num_pts", random_init)
+        self._set_lfs_advanced_row_visible("init_extent", random_init)
+        self._set_lfs_advanced_row_visible("test_every", self.lfs_advanced_checks["enable_eval"].isChecked())
+
+        self._update_lfs_background_visibility()
 
     def _lfs_color_component(self, edit: QLineEdit) -> int:
         try:
@@ -2400,6 +2570,31 @@ class CubemapStep(BaseStepWidget):
 
     def _collect_lfs_config_overrides(self) -> dict[str, object]:
         overrides: dict[str, object] = {}
+        overrides["invert_masks"] = self.lfs_invert_masks_cb.isChecked()
+        overrides["mask_threshold"] = self._parse_float(
+            self.lfs_mask_threshold_edit,
+            i18n.t("LFS_MASK_THRESHOLD"),
+        )
+        overrides["use_alpha_as_mask"] = self.lfs_use_alpha_as_mask_cb.isChecked()
+        overrides["mask_opacity_penalty_weight"] = self._parse_float(
+            self.lfs_mask_opacity_penalty_weight_edit,
+            i18n.t("LFS_MASK_OPACITY_PENALTY_WEIGHT"),
+        )
+        overrides["mask_opacity_penalty_power"] = self._parse_float(
+            self.lfs_mask_opacity_penalty_power_edit,
+            i18n.t("LFS_MASK_OPACITY_PENALTY_POWER"),
+        )
+        overrides["ppisp_freeze_from_sidecar"] = self.lfs_ppisp_freeze_from_sidecar_cb.isChecked()
+        overrides["ppisp_use_controller"] = self.lfs_ppisp_use_controller_cb.isChecked()
+        overrides["ppisp_controller_activation_step"] = self._parse_int(
+            self.lfs_ppisp_controller_activation_step_edit,
+            i18n.t("LFS_PPISP_CONTROLLER_ACTIVATION_STEP"),
+        )
+        overrides["ppisp_controller_lr"] = self._parse_float(
+            self.lfs_ppisp_controller_lr_edit,
+            i18n.t("LFS_PPISP_CONTROLLER_LR"),
+        )
+        overrides["ppisp_freeze_gaussians_on_distill"] = self.lfs_ppisp_freeze_gaussians_on_distill_cb.isChecked()
         for key, edit in self.lfs_advanced_edits.items():
             label = i18n.t(f"LFS_{key.upper()}")
             if key in _LFS_ADVANCED_LIST_KEYS:
@@ -2459,6 +2654,13 @@ class CubemapStep(BaseStepWidget):
             )
             return [("training_custom", cmd)]
 
+        lfs_dataset_resize_factor = self.lfs_dataset_resize_factor_combo.currentData()
+        lfs_dataset_max_width = self._parse_positive_int(self.lfs_dataset_max_width_edit, i18n.t("LFS_MAX_WIDTH"))
+        lfs_dataset_test_every = (
+            self._parse_positive_int(self.lfs_dataset_test_every_edit, i18n.t("LFS_TEST_EVERY"))
+            if self.lfs_advanced_checks["enable_eval"].isChecked()
+            else None
+        )
         cmd = build_lichtfeld_training_cmd(
             LichtFeldTrainingOptions(
                 executable=executable,
@@ -2483,6 +2685,11 @@ class CubemapStep(BaseStepWidget):
                 background_mode=self.lfs_bg_mode_combo.currentData() or "solid_color",
                 background_color=self._parse_lfs_color(),
                 background_image_path=self.lfs_bg_image_browse.text().strip(),
+                dataset_resize_factor=None if lfs_dataset_resize_factor == "auto" else str(lfs_dataset_resize_factor),
+                dataset_max_width=None if lfs_dataset_max_width == 3840 else lfs_dataset_max_width,
+                dataset_use_cpu_cache=self.lfs_dataset_cpu_cache_cb.isChecked(),
+                dataset_use_fs_cache=self.lfs_dataset_fs_cache_cb.isChecked(),
+                dataset_test_every=lfs_dataset_test_every,
                 config_overrides=self._collect_lfs_config_overrides(),
                 headless=self.training_headless_cb.isChecked(),
             )

@@ -112,6 +112,35 @@ def test_lichtfeld_auto_steps_scaler_matches_image_count(tmp_path: Path) -> None
     assert config["iterations"] == 30000
 
 
+def test_lichtfeld_command_includes_dataset_cli_overrides(tmp_path: Path) -> None:
+    dataset = TrainingDataset(dataset_root=tmp_path / "output")
+    options = LichtFeldTrainingOptions(
+        executable="LichtFeld-Studio.exe",
+        dataset=dataset,
+        output_dir=tmp_path / "training",
+        config_path=tmp_path / "config.json",
+        strategy="mrnf",
+        iterations=30000,
+        max_gaussians=5_000_000,
+        sh_degree=3,
+        tile_mode=1,
+        steps_scaler=1.0,
+        dataset_resize_factor="2",
+        dataset_max_width=2048,
+        dataset_use_cpu_cache=False,
+        dataset_use_fs_cache=False,
+        dataset_test_every=12,
+    )
+
+    cmd = build_lichtfeld_training_cmd(options)
+
+    assert cmd[cmd.index("--resize_factor") + 1] == "2"
+    assert cmd[cmd.index("--max-width") + 1] == "2048"
+    assert "--no-cpu-cache" in cmd
+    assert "--no-fs-cache" in cmd
+    assert cmd[cmd.index("--test-every") + 1] == "12"
+
+
 def test_postshot_command_passes_images_sparse_and_project_file(tmp_path: Path) -> None:
     dataset = TrainingDataset(
         dataset_root=tmp_path / "dataset",

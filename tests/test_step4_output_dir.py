@@ -13,6 +13,7 @@ from PySide6.QtWidgets import QApplication, QMessageBox
 
 import gui.steps.step4_cubemap as step4_cubemap
 from gui import i18n
+from gui.common.collapsible_section import CollapsibleSection
 from gui.steps.step4_cubemap import CubemapStep
 from scene_layout import step4_export_settings_path, step4_views_config_path
 from transforms_to_colmap import read_ply_points
@@ -1403,12 +1404,29 @@ def test_training_tab_appends_lichtfeld_command_and_writes_config(tmp_path: Path
     mask_mode_idx = step.lfs_mask_mode_combo.findData("ignore")
     assert mask_mode_idx >= 0
     step.lfs_mask_mode_combo.setCurrentIndex(mask_mode_idx)
+    step.lfs_invert_masks_cb.setChecked(True)
+    step.lfs_mask_threshold_edit.setText("0.250")
+    step.lfs_use_alpha_as_mask_cb.setChecked(False)
+    step.lfs_ppisp_cb.setChecked(True)
+    step.lfs_ppisp_freeze_from_sidecar_cb.setChecked(True)
+    step.lfs_ppisp_sidecar_browse.set_text(str(tmp_path / "frozen.ppisp"))
+    step.lfs_ppisp_use_controller_cb.setChecked(True)
+    step.lfs_ppisp_controller_activation_step_edit.setText("12000")
+    step.lfs_ppisp_controller_lr_edit.setText("0.0015")
+    step.lfs_ppisp_freeze_gaussians_on_distill_cb.setChecked(False)
     bg_mode_idx = step.lfs_bg_mode_combo.findData("modulation")
     assert bg_mode_idx >= 0
     step.lfs_bg_mode_combo.setCurrentIndex(bg_mode_idx)
     step.lfs_bg_r_edit.setText("12")
     step.lfs_bg_g_edit.setText("34")
     step.lfs_bg_b_edit.setText("56")
+    resize_idx = step.lfs_dataset_resize_factor_combo.findData("2")
+    assert resize_idx >= 0
+    step.lfs_dataset_resize_factor_combo.setCurrentIndex(resize_idx)
+    step.lfs_dataset_max_width_edit.setText("2048")
+    step.lfs_dataset_cpu_cache_cb.setChecked(False)
+    step.lfs_dataset_fs_cache_cb.setChecked(False)
+    step.lfs_dataset_test_every_edit.setText("12")
     step.lfs_advanced_edits["means_lr"].setText("0.000123")
     step.lfs_advanced_checks["enable_eval"].setChecked(True)
     step.lfs_advanced_edits["save_steps"].setText("5000,30000")
@@ -1426,6 +1444,11 @@ def test_training_tab_appends_lichtfeld_command_and_writes_config(tmp_path: Path
     assert "--train" in cmd
     assert "--no-splash" in cmd
     assert "--headless" in cmd
+    assert cmd[cmd.index("--resize_factor") + 1] == "2"
+    assert cmd[cmd.index("--max-width") + 1] == "2048"
+    assert "--no-cpu-cache" in cmd
+    assert "--no-fs-cache" in cmd
+    assert cmd[cmd.index("--test-every") + 1] == "12"
 
     config = json.loads(config_path.read_text(encoding="utf-8"))
     assert config["strategy"] == "mrnf"
@@ -1436,6 +1459,16 @@ def test_training_tab_appends_lichtfeld_command_and_writes_config(tmp_path: Path
     assert config["steps_scaler"] == pytest.approx(1.56)
     assert config["use_bilateral_grid"] is True
     assert config["mask_mode"] == "ignore"
+    assert config["invert_masks"] is True
+    assert config["mask_threshold"] == pytest.approx(0.25)
+    assert config["use_alpha_as_mask"] is False
+    assert config["use_ppisp"] is True
+    assert config["ppisp_freeze_from_sidecar"] is True
+    assert config["ppisp_sidecar_path"] == str(tmp_path / "frozen.ppisp")
+    assert config["ppisp_use_controller"] is True
+    assert config["ppisp_controller_activation_step"] == 12000
+    assert config["ppisp_controller_lr"] == pytest.approx(0.0015)
+    assert config["ppisp_freeze_gaussians_on_distill"] is False
     assert config["bg_mode"] == "modulation"
     assert config["bg_color"] == pytest.approx([12 / 255, 34 / 255, 56 / 255])
     assert config["means_lr"] == pytest.approx(0.000123)
@@ -1453,6 +1486,104 @@ def test_training_headless_option_shares_start_row(tmp_path: Path) -> None:
 
     step._set_training_backend("postshot")
     assert step.training_headless_cb.isHidden()
+
+
+def test_lichtfeld_advanced_parameters_are_nested_collapsible_sections(tmp_path: Path) -> None:
+    step = _ready_step(tmp_path, metashape_inputs=True)
+
+    expected_sections = {
+        "LFS_SECTION_DATASET",
+        "LFS_SECTION_OPTIMIZATION",
+        "LFS_SECTION_BILATERAL",
+        "LFS_SECTION_LOSSES",
+        "LFS_SECTION_INITIALIZATION",
+        "LFS_SECTION_PRUNING_GROWING",
+        "LFS_SECTION_MRNF",
+        "LFS_SECTION_SPARSITY",
+        "LFS_SECTION_SAVE_EVAL",
+    }
+
+    assert set(step.lfs_advanced_sections) == expected_sections
+    assert all(isinstance(section, CollapsibleSection) for section in step.lfs_advanced_sections.values())
+    assert all(not section.toggle_button.isChecked() for section in step.lfs_advanced_sections.values())
+    assert step.lfs_advanced_edits["means_lr_end"].width() >= 122
+    assert step.lfs_advanced_edits["grad_threshold"].width() >= 116
+    assert step.lfs_advanced_edits["save_steps"].width() >= 136
+    assert step.lfs_advanced_edits["save_steps"].width() < 180
+    assert step.lfs_dataset_test_every_edit.isHidden()
+    assert step.lfs_advanced_sections["LFS_SECTION_BILATERAL"].isHidden()
+    assert step.lfs_advanced_sections["LFS_SECTION_PRUNING_GROWING"].isHidden()
+    assert not step.lfs_advanced_sections["LFS_SECTION_MRNF"].isHidden()
+    assert step.lfs_advanced_sections["LFS_SECTION_SPARSITY"].isHidden()
+    assert step.lfs_advanced_edits["init_num_pts"].isHidden()
+
+    step.lfs_bilateral_grid_cb.setChecked(True)
+    step.lfs_sparsity_cb.setChecked(True)
+    step.lfs_advanced_checks["random"].setChecked(True)
+    step.lfs_advanced_checks["enable_eval"].setChecked(True)
+
+    assert not step.lfs_advanced_sections["LFS_SECTION_BILATERAL"].isHidden()
+    assert not step.lfs_advanced_sections["LFS_SECTION_SPARSITY"].isHidden()
+    assert not step.lfs_advanced_edits["init_num_pts"].isHidden()
+    assert not step.lfs_dataset_test_every_edit.isHidden()
+
+    igs_idx = step.lfs_strategy_combo.findData("igs+")
+    assert igs_idx >= 0
+    step.lfs_gut_cb.setChecked(True)
+    step.lfs_strategy_combo.setCurrentIndex(igs_idx)
+
+    assert step.lfs_advanced_sections["LFS_SECTION_MRNF"].isHidden()
+    assert not step.lfs_advanced_sections["LFS_SECTION_PRUNING_GROWING"].isHidden()
+    assert step.lfs_advanced_edits["grow_until_iter"].isHidden()
+    assert not step.lfs_advanced_edits["prune_opacity"].isHidden()
+    assert step.lfs_gut_cb.isChecked() is False
+    assert step.lfs_gut_cb.isEnabled() is False
+
+
+def test_lichtfeld_basic_conditional_parameters_follow_source_visibility(tmp_path: Path) -> None:
+    step = _ready_step(tmp_path, metashape_inputs=True)
+
+    assert step.lfs_invert_masks_cb.isHidden()
+    assert step.lfs_mask_threshold_edit.isHidden()
+    assert step.lfs_use_alpha_as_mask_cb.isHidden()
+    assert step.lfs_mask_opacity_penalty_weight_edit.isHidden()
+    assert step.lfs_mask_opacity_penalty_power_edit.isHidden()
+    assert step.lfs_ppisp_freeze_from_sidecar_cb.isHidden()
+    assert step.lfs_ppisp_sidecar_browse.isHidden()
+    assert step.lfs_ppisp_use_controller_cb.isHidden()
+    assert step.lfs_ppisp_controller_activation_step_edit.isHidden()
+
+    ignore_idx = step.lfs_mask_mode_combo.findData("ignore")
+    assert ignore_idx >= 0
+    step.lfs_mask_mode_combo.setCurrentIndex(ignore_idx)
+
+    assert not step.lfs_invert_masks_cb.isHidden()
+    assert not step.lfs_mask_threshold_edit.isHidden()
+    assert not step.lfs_use_alpha_as_mask_cb.isHidden()
+    assert step.lfs_mask_opacity_penalty_weight_edit.isHidden()
+    assert step.lfs_mask_opacity_penalty_power_edit.isHidden()
+
+    segment_idx = step.lfs_mask_mode_combo.findData("segment")
+    assert segment_idx >= 0
+    step.lfs_mask_mode_combo.setCurrentIndex(segment_idx)
+
+    assert not step.lfs_mask_opacity_penalty_weight_edit.isHidden()
+    assert not step.lfs_mask_opacity_penalty_power_edit.isHidden()
+
+    step.lfs_ppisp_cb.setChecked(True)
+
+    assert not step.lfs_ppisp_freeze_from_sidecar_cb.isHidden()
+    assert step.lfs_ppisp_sidecar_browse.isHidden()
+    assert not step.lfs_ppisp_use_controller_cb.isHidden()
+    assert step.lfs_ppisp_controller_activation_step_edit.isHidden()
+
+    step.lfs_ppisp_freeze_from_sidecar_cb.setChecked(True)
+    step.lfs_ppisp_use_controller_cb.setChecked(True)
+
+    assert not step.lfs_ppisp_sidecar_browse.isHidden()
+    assert not step.lfs_ppisp_controller_activation_step_edit.isHidden()
+    assert not step.lfs_ppisp_controller_lr_edit.isHidden()
+    assert not step.lfs_ppisp_freeze_gaussians_on_distill_cb.isHidden()
 
 
 def test_training_tab_auto_scales_lichtfeld_from_projected_image_count(tmp_path: Path) -> None:

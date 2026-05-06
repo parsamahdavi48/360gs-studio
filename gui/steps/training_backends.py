@@ -213,6 +213,11 @@ class LichtFeldTrainingOptions:
     background_mode: str = "solid_color"
     background_color: tuple[float, float, float] = (0.0, 0.0, 0.0)
     background_image_path: str = ""
+    dataset_resize_factor: str | None = None
+    dataset_max_width: int | None = None
+    dataset_use_cpu_cache: bool = True
+    dataset_use_fs_cache: bool = True
+    dataset_test_every: int | None = None
     config_overrides: dict[str, object] | None = None
     headless: bool = False
     no_splash: bool = True
@@ -323,6 +328,20 @@ def build_lichtfeld_training_cmd(options: LichtFeldTrainingOptions) -> list[str]
         str(options.config_path),
         "--train",
     ]
+    if options.dataset_resize_factor:
+        cmd.extend(["--resize_factor", options.dataset_resize_factor])
+    if options.dataset_max_width is not None:
+        if options.dataset_max_width <= 0 or options.dataset_max_width > 4096:
+            raise ValueError("LichtFeld max width must be between 1 and 4096")
+        cmd.extend(["--max-width", str(options.dataset_max_width)])
+    if not options.dataset_use_cpu_cache:
+        cmd.append("--no-cpu-cache")
+    if not options.dataset_use_fs_cache:
+        cmd.append("--no-fs-cache")
+    if options.dataset_test_every is not None:
+        if options.dataset_test_every <= 0:
+            raise ValueError("LichtFeld test every must be greater than 0")
+        cmd.extend(["--test-every", str(options.dataset_test_every)])
     if options.no_splash:
         cmd.append("--no-splash")
     if options.headless:

@@ -173,7 +173,7 @@ VRAMや処理時間が厳しい場合は、まず `Normal` または `Half` で�
 
 `入力データ` は通常自動設定のままで使います。キューブマップ変換では `<scene>/output/`、3DGUTでは `<scene>/`、COLMAPルートでは `<scene>/output/colmap_rig/` が基準になります。`出力先` は既定で `<scene>/output/training/<ソフト>/` です。
 
-LichtFeld Studioでは、本家のトレーニングパネル上部にある `Strategy`、`Iterations`、`Max Gaussians`、`SH Degree`、`Tile Mode`、`Steps Scaler`、マスク関連オプション、背景の `Mode` / `Color` を通常項目として指定できます。頻繁には触らないOptimizer、Refinement、Loss、Initialization、MRNF/IGS+、Sparsity、PPISP、Save/Eval系の項目は `Advanced Training Parameters` にまとめています。`Steps Scaler` を `Auto` にすると、Step 4が出力されるトレーニング画像数を数え、LichtFeld StudioのGUIがデータセット読み込み時に行う300枚基準のスケーリングと同じ基準で調整します。実行時に `_stechdrive/training/lichtfeld_config.json` を作り、そのJSONをCLIへ渡します。
+LichtFeld Studioでは、本家のトレーニングパネル上部にある `Strategy`、`Iterations`、`Max Gaussians`、`SH Degree`、`Tile Mode`、`Steps Scaler`、マスク関連オプション、PPISPの条件項目、背景の `Mode` / `Color` を通常項目として指定できます。頻繁には触らないDataset、Optimizer、Refinement、Loss、Initialization、MRNF/IGS+、Sparsity、Save/Eval系の項目は `Advanced Training Parameters` にまとめ、ストラテジーや上部チェックに対応する項目だけを表示します。`Steps Scaler` を `Auto` にすると、Step 4が出力されるトレーニング画像数を数え、LichtFeld StudioのGUIがデータセット読み込み時に行う300枚基準のスケーリングと同じ基準で調整します。実行時に `_stechdrive/training/lichtfeld_config.json` を作り、そのJSONとデータセット専用のCLIオプションをLichtFeldへ渡します。
 
 SphereSfMの `SfMのみ` はトレーニング用データセットを作らないため、自動実行とは併用できません。トレーニングまで続けたい場合は `SfM + 変換`、または既存のSfM結果に対して `既存SfMから変換のみ` を使います。
 
