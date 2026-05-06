@@ -1,6 +1,6 @@
 # Step 1 Frame Extraction GUI
 
-Step 1 turns 360° video into equirectangular still images for SfM and 3DGS. The `images/` folder and `_stechdrive/frames/selected_frames.csv` created here become the input for Step 2 review, Step 3 mask generation, and Metashape SfM.
+Step 1 turns 360° video into equirectangular still images for SfM and 3DGS. The `images/` folder and `_stechdrive/frames/selected_frames.csv` created here become the input for Step 2 review, Step 3 mask generation, and either Metashape or SphereSfM.
 
 In the common workflow, you choose a video, choose a scene folder, and extract frames on a fixed interval. When `Motion` is enabled, the GUI can drop near-duplicate candidates and add extra candidates where viewpoint change is useful.
 
@@ -16,7 +16,7 @@ Then open `Step 1: Frame Extraction` in the workflow sidebar.
 
 | Goal | Recommended settings |
 | --- | --- |
-| Create normal Metashape-ready frames | `Interval 1.0 sec`, `Motion ON` |
+| Create normal SfM-ready frames | `Interval 1.0 sec`, `Motion ON` |
 | Quickly cut frames without analysis | `Quick extract ON` |
 | Walking or indoor footage with nearby structure | `Scene Distance: Near / Walking` |
 | Aerial, plaza, coast, mountain, or distant scenes | `Scene Distance: Distant / Aerial` |
@@ -58,7 +58,7 @@ Increasing the value reduces the frame count. Decreasing it increases the count.
 
 `Quick extract` skips analysis and cuts frames directly at the requested `Interval`. It is fast, but it does not create motion-adjustment decisions or Step 2 review labels.
 
-Use it for a fast content check or when you only need frames immediately. For production Metashape input, normal extraction with `Motion` is usually safer.
+Use it for a fast content check or when you only need frames immediately. For production Metashape or SphereSfM input, normal extraction with `Motion` is usually safer.
 
 ## Interval Settings
 

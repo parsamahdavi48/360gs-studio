@@ -1,8 +1,8 @@
 # Step 4 書き出しGUI
 
-Step 4 は、Step 1-3で用意した360°画像とマスク、またはMetashapeでSfMした結果を、3DGSアプリが読み込める学習データに変換する画面です。
+Step 4 は、Step 1-3で用意した360°画像とマスク、MetashapeでSfMした結果、またはSphereSfMで作るSfM結果を、3DGSアプリが読み込める学習データに変換する画面です。
 
-多くの場合は、Metashapeから書き出したカメラXMLと、必要に応じて点群PLYを指定し、Postshot / Brush / LichtFeld Studio のどれに渡すかを選びます。LichtFeld Studioでは、通常の投影視点データに加えて、エクイレクタングラー画像をそのまま使う `3DGUT (LichtFeld)` 用データも作れます。
+多くの場合は、Metashapeから書き出したカメラXMLと、必要に応じて点群PLYを指定し、Postshot / Brush / LichtFeld Studio のどれに渡すかを選びます。Metashapeを使わない場合は、COLMAP Rig用のキューブマップ画像を書き出すか、SphereSfMでエクイレクタングラー画像を直接SfMしてから3DGS向けデータへ変換できます。
 
 ## 起動
 
@@ -16,29 +16,40 @@ run_gui.bat --scene .\scene01
 
 Step 4を開いたら、最初に「自分はどのルートか」を決めます。
 
+SfMは、複数画像の見え方の差からカメラ位置と疎な点群を推定する処理です。3DGSでは、このカメラ位置を使って学習データを読み込みます。MetashapeルートはMetashapeで作ったSfM結果を変換し、SphereSfMルートとCOLMAP実行ありのCOLMAPルートはこのアプリからSfM処理まで進めます。
+
 | やりたいこと | `選択:` | 主に使う設定 |
 | --- | --- | --- |
 | MetashapeでSfM済みの結果をPostshot / Brush / LichtFeldへ渡したい | `Metashape` | `出力プリセット`, `出力形状`, `カメラXML`, `点群PLY` |
-| LichtFeldでキューブマップ版と3DGUT版を比較したい | `Metashape` | `出力プリセット: LichtFeld Studio`, `出力形状` |
+| LichtFeldで3DGUT用データを作りたい | `Metashape` | `出力プリセット: LichtFeld Studio`, `出力形状`, `点群PLY` |
 | Metashapeを使わず、抽出済み360°画像からCOLMAP/GLOMAPへ進みたい | `COLMAP` | `COLMAP実行設定`, `投影視点` |
 | Metashapeを使わず、抽出済みエクイレクタングラー画像を直接SfMしたい | `SphereSfM` | `SphereSfM COLMAP実行ファイル`, `実行範囲`, `Matcher`, `SfM品質`, `出力形状` |
 | すでに作った出力の画像やマスクだけ作り直したい | 元のルート | `出力`, `投影視点`, `画像サイズ` |
 
-`Scene Directory` は、Step 1-3で使っているシーンフォルダです。通常は `images/` と `masks/` が入っています。Metashapeルートでは、そこにMetashapeから書き出したXML/PLYを指定して、3DGS向けのデータを作ります。
+`シーンフォルダ` は、Step 1-3で使っている作業フォルダです。通常は `images/` と `masks/` が入っています。MetashapeルートではMetashapeから書き出したXML/PLYを組み合わせます。SphereSfMルートでは、この `images/` と `masks/` からSfMと変換を実行します。
 
 ## Metashapeルートの基本操作
 
 Metashapeで360°画像をアライメント済みなら、基本はこの流れです。
 
 1. `選択:` を `Metashape` にします。
-2. `カメラXML` にMetashapeからエクスポートしたカメラXMLを指定します。
-3. LichtFeld Studio向け、または点群も同梱したい場合は `点群PLY` を指定します。
+2. `カメラXML` を確認します。シーンフォルダ直下にMetashapeからエクスポートしたXMLがあれば自動入力されます。
+3. LichtFeld Studio向け、または点群も同梱したい場合は `点群PLY` を確認します。シーンフォルダ直下にMetashapeからエクスポートしたPLYがあれば自動入力されます。
 4. `出力プリセット` で渡し先を選びます。
-5. `出力形状` で、投影視点に変換するか、`3DGUT (LichtFeld)` にするかを選びます。
-6. 投影視点に変換する場合は、`投影視点` タブでビュー、Yaw、画像サイズを確認します。
+5. `出力形状` で、キューブマップ画像へ変換するか、`3DGUT (LichtFeld)` にするかを選びます。
+6. キューブマップ画像を作る場合は、`投影視点` タブでCube6、Yaw、画像サイズを確認します。
 7. `実行` します。
 
-Metashapeルートでは、最初に同梱の `vendor/metashape_360_lfs/metashape_360_lfs.py` を実行して、Metashape XMLから `transforms.json` を作ります。`出力形状` が `投影視点に変換` の場合は、そのあと `cubemap_transforms_json.py` で視点画像とマスクを作ります。
+Metashapeルートでは、最初に同梱の `vendor/metashape_360_lfs/metashape_360_lfs.py` を実行して、Metashape XMLから `transforms.json` を作ります。`出力形状` が `投影視点に変換` の場合は、そのあと `cubemap_transforms_json.py` でキューブマップ画像とマスクを作ります。
+
+### カメラXMLと点群PLYの自動検出
+
+Step 4は、シーンフォルダが設定された時点でMetashape用の入力候補を自動で探します。候補が違う場合だけ、各行の参照ボタンから手動で選び直します。
+
+- `カメラXML`: `metashape.xml`、`cameras.xml`、シーンフォルダ直下の最初の `.xml` の順に探します。
+- `点群PLY`: `metashape.ply`、`sparse.ply`、シーンフォルダ直下の最初の `.ply` の順に探します。
+
+`pointcloud.ply` はこのアプリがLichtFeld用に作る出力ファイル名なので、Metashapeからエクスポートした入力PLYの自動候補からは除外します。
 
 ## 出力プリセットの選び方
 
@@ -46,75 +57,74 @@ Metashapeルートでは、最初に同梱の `vendor/metashape_360_lfs/metashap
 
 | プリセット | 使う場面 |
 | --- | --- |
-| `Postshot` | Postshot向けに投影視点データを作る |
-| `Brush` | Brush向けに投影視点データを作る |
-| `LichtFeld Studio` | LichtFeld向けに投影視点データ、または3DGUT直接データを作る |
+| `Postshot` | Postshot向けにキューブマップデータを作る |
+| `Brush` | Brush向けにキューブマップデータを作る |
+| `LichtFeld Studio` | LichtFeld向けにキューブマップデータ、または3DGUTデータを作る |
 | `カスタム` | 座標変換やPLY使用を手動で調整する |
 
 通常は渡し先のアプリ名をそのまま選びます。詳細設定で座標変換、PLY使用、Metashapeインポート設定をプリセット値から変えると、自動的に `カスタム` 扱いになります。
 
 ## 出力形状の選び方
 
-`出力形状` は、Metashapeのエクイレクタングラー画像をどう学習データにするかの選択です。
+`出力形状` は、エクイレクタングラー画像をどう学習データにするかの選択です。MetashapeルートとSphereSfMルートのどちらでも使います。
 
 ### 投影視点に変換
 
-通常はこちらを使います。エクイレクタングラー画像をキューブマップ/視点画像に変換し、`output/` に画像、マスク、`transforms.json` を作ります。
+通常はこちらを使います。エクイレクタングラー画像をキューブマップ画像に変換し、`output/` に画像、マスク、`transforms.json` を作ります。Cube6が標準ですが、必要に応じて `投影視点` タブで書き出す向きを調整できます。
 
 この出力はPostshot / Brush / LichtFeld Studioで扱いやすく、通常のピンホールカメラに近いデータになります。LichtFeldでこのデータを学習するときは、基本的にGUTやUndistortは使いません。
 
 ### 3DGUT (LichtFeld)
 
-LichtFeld StudioでGUT学習を試すための比較用モードです。Metashapeで使ったエクイレクタングラーの `images/` と `masks/` をそのまま使い、視点画像や変換マスクは作りません。
+LichtFeld Studioで3DGUT学習に使うデータを作るモードです。SfMに使ったエクイレクタングラーの `images/` と `masks/` をそのまま使い、キューブマップ画像や変換マスクは作りません。
 
-このモードでは、シーン直下に次のファイルを作ります。
+このモードでは、LichtFeldへ読み込ませるためにシーン直下へ次のファイルを作ります。
 
 - `transforms.json`
 - `pointcloud.ply`
-- `_stechdrive/export_settings.json`
 
-`3DGUT (LichtFeld)` では `出力プリセット: LichtFeld Studio` とPLY使用が必要です。選択中は `投影視点` タブ、画像/マスク出力のON/OFF、COLMAP形式モデル追加出力は無効になります。
+あわせて、このアプリ用の設定記録として `_stechdrive/export_settings.json` を保存します。
 
-## LichtFeldで比較したい場合
+Metashapeルートでは `出力プリセット: LichtFeld Studio` と点群PLYの指定が必要です。SphereSfMルートではSfM結果から `pointcloud.ply` を作ります。`3DGUT (LichtFeld)` の選択中は `投影視点` タブ、画像/マスク出力のON/OFF、COLMAP形式モデル追加出力は無効になります。
 
-LichtFeldで「投影視点に変換したデータ」と「3DGUTでエクイレクタングラーを直接読むデータ」を比べたい場合は、同じMetashape結果から2回書き出します。
+## LichtFeldでキューブマップ版と3DGUT版を使い分ける場合
 
-### キューブマップ/投影視点版
+LichtFeldで「キューブマップデータ」と「3DGUTでエクイレクタングラーを直接読むデータ」の両方を用意したい場合は、同じMetashape結果から2回書き出します。
+
+### キューブマップ版
 
 1. `選択:` を `Metashape` にします。
 2. `出力プリセット` を `LichtFeld Studio` にします。
 3. `出力形状` を `投影視点に変換` にします。
-4. `点群PLY` を指定します。
+4. `点群PLY` を確認します。自動入力されていない場合、または候補が違う場合は手動で指定します。
 5. `投影視点` で `Cube6`、Yaw 45°、必要な `画像サイズ` を選びます。
 6. 実行します。
 
 出力先は通常 `<scene>/output/` です。LichtFeldにはこの `output/` を読み込ませます。
 
-### 3DGUT直接版
+### 3DGUT版
 
 1. `選択:` を `Metashape` にします。
 2. `出力プリセット` を `LichtFeld Studio` にします。
 3. `出力形状` を `3DGUT (LichtFeld)` にします。
-4. `点群PLY` を指定します。
+4. `点群PLY` を確認します。自動入力されていない場合、または候補が違う場合は手動で指定します。
 5. 実行します。
 
-出力先はシーンフォルダ直下です。LichtFeldにはシーンフォルダを読み込ませ、学習時にGUTを有効にします。
-
-比較するときは、Metashape XML、PLY、`images/`、`masks/`、LichtFeld側の学習設定をできるだけ揃えてください。違いが見えにくい場合は、近距離物体、細い線、文字、スティッチ境界付近、床や壁のつながりを見ると判断しやすくなります。
+この出力では、既存の `<scene>/images/` と `<scene>/masks/` を使い、`<scene>/transforms.json` と `<scene>/pointcloud.ply` を新しく作ります。LichtFeldでは、この4点がそろった `<scene>/` をデータセットとして指定し、学習時にGUTを有効にします。
 
 ## 投影視点の調整
 
-`出力形状` が `投影視点に変換` の場合、`投影視点` タブでどの方向の画像を作るかを調整します。
+`投影視点に変換` は、360度画像からキューブマップ画像を書き出す出力です。標準の `Cube6` では前後左右上下の6方向を作ります。`投影視点` タブでは、必要に応じて方向数や上下方向の行、書き出す視点のON/OFFを調整できます。
 
 ### まずはCube6
 
-通常は `Cube6` から始めます。上下を含む6面を作る設定で、Postshot / Brush / LichtFeld Studio向けの標準的な比較に使いやすいです。
+通常は `Cube6` から始めます。前後左右上下の6方向を書き出す設定で、Postshot / Brush / LichtFeld Studio向けの標準的な出力として使いやすいです。
 
 `Yaw Offset` は既定の45°が推奨です。補正なしで書き出した2眼360°カメラでは、スティッチ境界がエクイレクタングラー画像の横25%/75%付近に来ることが多く、45°ずらすと境界がキューブ面の中心を横切りにくくなります。
 
 ### Custom Grid
 
-必要な方向だけ増やしたい、上下を減らしたい、斜め上/斜め下の観測を足したい場合は `Custom Grid` を使います。
+6方向では足りない向きを追加したい、上下方向を減らしたい、斜め上/斜め下の視点を足したい場合は `Custom Grid` を使います。
 
 - `Yaw Slots`: 水平方向の分割数です。4から8まで増減できます。
 - `Pitch Rows`: 上下方向の行です。`-90..90` の範囲で最大5行まで使えます。
@@ -124,15 +134,15 @@ LichtFeldで「投影視点に変換したデータ」と「3DGUTでエクイレ
 
 ### 画像サイズ
 
-`画像サイズ` は投影視点1枚の解像度です。
+`画像サイズ` はキューブマップ画像1枚の解像度です。
 
 | 設定 | 使いどころ |
 | --- | --- |
 | `Full` | 最終品質確認。重いが細部が残りやすい |
 | `Normal` | まず試す標準設定。90°視点中央部の角度解像度を元画像に近づける |
-| `Half` | 軽量テスト。速いが柔らかく見えやすい |
+| `Half` | 軽量テスト。速い代わりに細部の解像感が落ちる |
 
-VRAMや処理時間が厳しい場合は、まず `Normal` または `Half` で流れを確認し、最後に `Full` を試すのが現実的です。
+VRAMや処理時間が厳しい場合は、まず `Normal` または `Half` で流れを確認し、最終出力では `Full` を使うのが現実的です。
 
 ## 画像やマスクだけ作り直したい場合
 
@@ -145,28 +155,35 @@ VRAMや処理時間が厳しい場合は、まず `Normal` または `Half` で�
 | 画像だけ作り直す | `画像` ON, `マスク` OFF |
 | カメラ情報だけ更新する | `画像` OFF, `マスク` OFF |
 
-マスクだけ調整したあとに再出力する場合は、`画像` をOFFにすると既存の視点画像を再変換せずに済みます。`3DGUT (LichtFeld)` では元画像と元マスクをそのまま使うため、この出力ON/OFFは使いません。
+マスクだけ調整したあとに再出力する場合は、`画像` をOFFにすると既存のキューブマップ画像を再変換せずに済みます。`3DGUT (LichtFeld)` では元画像と元マスクをそのまま使うため、この出力ON/OFFは使いません。
 
 ## COLMAPルート
 
 Metashapeを使わず、抽出済みの360°画像からCOLMAP/GLOMAPへ進みたい場合は `選択:` を `COLMAP` にします。
 
-1. `Scene Directory` に `images/` と必要なら `masks/` があることを確認します。
+1. `シーンフォルダ` に `images/` と必要なら `masks/` があることを確認します。
 2. `選択:` を `COLMAP` にします。
 3. `投影視点` で視点数、Yaw、画像サイズを決めます。
-4. `書き出し後にCOLMAPを実行` を必要な場合だけONにします。
+4. COLMAP/GLOMAPでカメラ位置と疎な点群まで推定したい場合は、`書き出し後にCOLMAPを実行` をONにします。ONにすると画像書き出し後にSfM処理まで続けて実行するため、フレーム数によって時間がかかります。
 5. `Matcher` と `Mapper` を選びます。通常は `Sequential` と `Global` から始めます。
 6. 実行します。
 
-COLMAPルートでは、`output/colmap_rig/` にCOLMAP Rig形式の視点画像、マスク、`rig_config.json` を作ります。`書き出し後にCOLMAPを実行` がONの場合は、続けてFeature、Rig設定、Matcher、Mapperまで実行します。
+COLMAPルートでは、`output/colmap_rig/` にCOLMAP Rig形式のキューブマップ画像、マスク、`rig_config.json` を作ります。`書き出し後にCOLMAPを実行` がONの場合は、続けてFeature、Rig設定、Matcher、Mapperを実行し、COLMAP/GLOMAPのSfM結果も作ります。
 
 フレーム別Yaw回転は、固定リグの前提を崩すためCOLMAP Rig書き出しでは常に0度です。
 
 ## SphereSfMルート
 
-SphereSfM版COLMAPを用意している場合は、抽出済みのエクイレクタングラー画像を球面カメラとしてSfMし、そのsparseモデルからLichtFeld 3DGUT用データ、または投影視点データを書き出せます。
+SphereSfMルートは、Metashapeを使わずに、抽出済みエクイレクタングラー画像をそのまま球面カメラとしてSfMするルートです。目的は2つあります。
 
-1. `Scene Directory` に `images/` と、使用する場合は `masks/` があることを確認します。
+- LichtFeld 3DGUTで使う直接データセットを作る
+- Postshot / Brush / LichtFeldで扱いやすいキューブマップデータを作る
+
+通常のCOLMAPではなく、SphereSfM版の `colmap.exe` が必要です。アプリにはSphereSfM本体やバイナリは含まれないため、[json87/SphereSfM](https://github.com/json87/spheresfm) のリリースまたはローカルビルドで用意した実行ファイルを指定します。
+
+RTX 50系GPUでは、GitHubで配布されているSphereSfMのWindowsバイナリはCUDA SIFTで停止することがあります。RTX 50系は新しいCUDAアーキテクチャ `sm_120` 向けの実行コードが必要ですが、配布版バイナリがそれを含まずにビルドされていると、`no kernel image is available for execution on the device` で失敗します。RTX 50系で使う場合は、SphereSfMをRTX 50系対応のCUDA/CMake環境で `CMAKE_CUDA_ARCHITECTURES=120` を指定して自前ビルドし、その `colmap.exe` を指定してください。
+
+1. `シーンフォルダ` に `images/` と、使用する場合は `masks/` があることを確認します。
 2. `選択:` を `SphereSfM` にします。
 3. `SphereSfM COLMAP実行ファイル` に、SphereSfM配布版またはビルド済みの `colmap.exe` を指定します。
 4. `masks/ を使用` は通常ONにします。Step 3の白=使用、黒=除外マスクをCOLMAPの `image.jpg.png` 命名へ変換して使います。
@@ -176,26 +193,30 @@ SphereSfM版COLMAPを用意している場合は、抽出済みのエクイレ�
 8. `変換設定` で `出力形状` を選びます。
 9. 実行します。
 
-SphereSfM実行の開始時に、GUIは元画像を1枚だけ `<scene>/output/spheresfm/preflight/` へコピーし、フルのdatabaseを作る前に小さなGPU SIFT確認を自動実行します。選択したバイナリが現在のGPUでCUDA SIFTを実行できない場合はそこで停止し、フェーズログから原因を確認できます。
+`SfMのみ` は、`<scene>/output/spheresfm/sparse/` のSfM結果だけを作ります。3DGSアプリへ渡すデータセットはまだ作られません。`既存SfMから変換のみ` は、この既存sparse結果を再利用して、3DGUT/キューブマップの出力だけを作り直すときに使います。
 
-`出力形状` が `3DGUT (LichtFeld)` の場合は、`<scene>/transforms.json` と `<scene>/pointcloud.ply` を作ります。フレームパスはシーン直下の `images/` を参照します。既存の `transforms.json` または `pointcloud.ply` がある場合は、上書き前に確認します。
+SphereSfM実行の開始時に、GUIは元画像を1枚だけ `<scene>/output/spheresfm/preflight/` へコピーし、フルのdatabaseを作る前に小さなGPU SIFT確認を自動実行します。選択したバイナリが現在のGPUでCUDA SIFTを実行できない場合はそこで停止し、ログへのリンクと原因の候補を表示します。
 
-`出力形状` が `投影視点に変換` の場合は、`投影視点` タブと画像/マスク出力のON/OFFを使います。まず `<scene>/output/spheresfm/equirect/` に中間のエクイレクタングラー transforms を作り、そのあとMetashapeルートと同じ `<scene>/output/` 直下に `images/`、`masks/`、`transforms.json` を作ります。
+`出力形状` が `3DGUT (LichtFeld)` の場合は、既存の `<scene>/images/` と `<scene>/masks/` を使い、`<scene>/transforms.json` と `<scene>/pointcloud.ply` を作ります。LichtFeldで使う3DGUTデータセットは、この4点がそろった `<scene>/` です。既存の `transforms.json` または `pointcloud.ply` がある場合は、上書き前に確認します。
 
-SphereSfMプロジェクト `<scene>/output/spheresfm/` には、作業用の `preflight/`、`database.db`、`masks_colmap/`、`sparse/`、`equirect/`、`stechdrive_spheresfm_project.json` を作ります。
+`出力形状` が `投影視点に変換` の場合は、`<scene>/output/` が下流アプリへ渡すキューブマップデータセットになります。`投影視点` タブと画像/マスク出力のON/OFFを使い、Metashapeルートと同じ形で `<scene>/output/images/`、`<scene>/output/masks/`、`<scene>/output/transforms.json`、`<scene>/output/pointcloud.ply` を作ります。
 
-実行後は `結果をCOLMAP GUIで表示` で、登録されたカメラ位置と疎点群を確認できます。
+SphereSfMプロジェクト `<scene>/output/spheresfm/` には、作業用の `preflight/`、`database.db`、`masks_colmap/`、`sparse/`、`equirect/`、`logs/`、`stechdrive_spheresfm_project.json` を作ります。ここはSfMの再利用やログ確認用で、3DGUTではシーンフォルダ、キューブマップでは `output/` が実際に持ち出すデータセットです。
+
+実行後は `結果をCOLMAP GUIで表示` で、登録されたカメラ位置と疎点群を確認できます。GUIなしでビルドされたSphereSfM版COLMAPではこの表示だけ使えませんが、SfMや変換結果の出力自体とは別です。
 
 ## 実行後にできるもの
 
 | ルート | 主な出力 |
 | --- | --- |
-| Metashape + 投影視点に変換 | `<scene>/output/images/`, `<scene>/output/masks/`, `<scene>/output/transforms.json`, `<scene>/_stechdrive/export_settings.json` |
-| Metashape + `3DGUT (LichtFeld)` | `<scene>/transforms.json`, `<scene>/pointcloud.ply`, `<scene>/_stechdrive/export_settings.json` |
+| Metashape + キューブマップ変換 (`投影視点に変換`) | `<scene>/output/images/`, `<scene>/output/masks/`, `<scene>/output/transforms.json` |
+| Metashape + `3DGUT (LichtFeld)` | `<scene>/images/`, `<scene>/masks/`, `<scene>/transforms.json`, `<scene>/pointcloud.ply` |
 | COLMAP | `<scene>/output/colmap_rig/images/`, `<scene>/output/colmap_rig/masks/`, `<scene>/output/colmap_rig/rig_config.json` |
 | COLMAP実行あり | 上記に加えて、COLMAP/GLOMAPのSfM結果 |
-| SphereSfM + `3DGUT (LichtFeld)` | `<scene>/transforms.json`, `<scene>/pointcloud.ply`, および `<scene>/output/spheresfm/` のSphereSfMプロジェクト一式 |
-| SphereSfM + 投影視点に変換 | `<scene>/output/images/`, `<scene>/output/masks/`, `<scene>/output/transforms.json`, および `<scene>/output/spheresfm/` のSphereSfMプロジェクト一式 |
+| SphereSfM + `3DGUT (LichtFeld)` | `<scene>/images/`, `<scene>/masks/`, `<scene>/transforms.json`, `<scene>/pointcloud.ply` |
+| SphereSfM + キューブマップ変換 (`投影視点に変換`) | 下流アプリへ渡すのは `<scene>/output/`。`images/`, `masks/`, `transforms.json`, `pointcloud.ply` を作ります |
+
+Step 4の設定記録は `<scene>/_stechdrive/export_settings.json` に保存します。キューブマップを書き出すルートでは、視点構成も `<scene>/_stechdrive/views_config.json` に保存します。これらはこのアプリで再開・再現するためのファイルで、3DGSアプリへ渡すデータセット本体ではありません。
 
 `LichtFeld Studio` プロファイルでは、最終出力の `transforms.json` と `pointcloud.ply` に同じ向き補正を適用し、LichtFeld上でMetashapeと同じ +X / +Z / 上下方向になるようにします。
 
@@ -203,8 +224,8 @@ SphereSfMプロジェクト `<scene>/output/spheresfm/` には、作業用の `p
 
 - Postshot / Brushへ渡すなら、まず `投影視点に変換` を使います。
 - LichtFeldで通常学習するなら、まず `LichtFeld Studio` + `投影視点に変換` を使います。
-- LichtFeldでGUTを試すなら、`LichtFeld Studio` + `3DGUT (LichtFeld)` を使います。
-- キューブマップ/投影視点データをLichtFeldで学習するときは、基本的にGUTもUndistortも不要です。
+- LichtFeldでGUTを使うなら、`LichtFeld Studio` + `3DGUT (LichtFeld)` を使います。
+- キューブマップデータをLichtFeldで学習するときは、基本的にGUTもUndistortも不要です。
 - `3DGUT (LichtFeld)` で学習するときは、LichtFeld側でGUTを有効にします。
 - スティッチが目立たない素材では、スティッチマスクはOFFまたは細めから試します。Yaw 45°は画素を捨てない対策なので、通常は維持して構いません。
-- `点群PLY` が必要なプロファイルで見つからない場合は、実行前にエラーで止まります。
+- Metashapeルートで `点群PLY` が必要なプロファイルなのに見つからない場合は、実行前にエラーで止まります。

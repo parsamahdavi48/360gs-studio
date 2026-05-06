@@ -2,7 +2,7 @@
 
 Step 3 creates `masks/` from the `images/` kept in Step 2. These masks exclude regions you do not want SfM or 3DGS to use, such as people, the camera operator, tripods, hands, vehicles, sky, stitch seams, and blown-out highlights.
 
-Mask polarity is **white = use, black = exclude**. Creating masks before Metashape helps avoid unwanted features from people, sky, or other unstable regions.
+Mask polarity is **white = use, black = exclude**. Creating masks before Metashape or SphereSfM helps avoid unwanted features from people, sky, or other unstable regions.
 
 ## Launch
 
@@ -115,7 +115,7 @@ It is usually faster to generate the full set at Standard/High quality, then reg
 | Temporary preview | Visual check only; not a saved mask |
 | Run log | Shown in the integrated log panel |
 
-Generated `masks/` can be imported into Metashape or converted with projection views in Step 4. Polarity remains white = use, black = exclude.
+Generated `masks/` can be imported into Metashape, or used by the SphereSfM route in Step 4 as excluded regions during SfM. When you export cubemap data, Step 4 converts the masks to match the cubemap images. Polarity remains white = use, black = exclude.
 
 ## Common Decisions
 

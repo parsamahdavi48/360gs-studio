@@ -1,8 +1,8 @@
 # Step 2 Frame Review GUI
 
-Step 2 is where you review the frames extracted in Step 1 and keep only the images that should continue to mask generation and Metashape. It shows labels such as `Added`, `Drop`, and `Review` from Step 1 analysis, and lets you manually change keep/drop decisions.
+Step 2 is where you review the frames extracted in Step 1 and keep only the images that should continue to Step 3 mask generation and then Metashape or SphereSfM. It shows labels such as `Added`, `Drop`, and `Review` from Step 1 analysis, and lets you manually change keep/drop decisions.
 
-When you press `Apply`, Step 2 removes dropped frames from `images/` and finalizes `_stechdrive/frames/selected_frames.csv` to keep-only rows. The resulting `images/` folder becomes the input for Step 3 and Metashape SfM.
+When you press `Apply`, Step 2 removes dropped frames from `images/` and finalizes `_stechdrive/frames/selected_frames.csv` to keep-only rows. The resulting `images/` folder becomes the input for Step 3 and for Metashape or SphereSfM SfM.
 
 ## Launch
 
@@ -74,13 +74,13 @@ Red labels are dropped frames, yellow labels are kept frames that need review, b
 
 ## Keep/Drop Decisions
 
-When unsure, judge whether the frame will help Metashape SfM.
+When unsure, judge whether the frame will help the later SfM step estimate camera positions.
 
 - Drop frames with strong blur or weak visible features.
 - Drop redundant runs where many frames show almost the same camera position.
 - Keep frames with useful viewpoint change, especially around nearby objects.
 - For 360° images, use perspective preview to inspect floors, walls, columns, text, and thin lines.
-- It is acceptable to keep borderline frames. You can return later if masks or Metashape alignment show a problem.
+- It is acceptable to keep borderline frames. You can return later if masks or SfM results show a problem.
 
 ## Apply
 
