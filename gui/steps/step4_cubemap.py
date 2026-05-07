@@ -1891,9 +1891,6 @@ class CubemapStep(BaseStepWidget):
         if self._is_colmap_method():
             images_dir = self._colmap_rig_images_dir()
             masks_dir = self._colmap_rig_masks_dir()
-        elif self._uses_direct_equirect_output() or self._uses_spheresfm_3dgut_output():
-            images_dir = Path(self.scene_dir) / "images"
-            masks_dir = self._mask_dir()
         else:
             images_dir = dataset_root / "images"
             masks_dir = dataset_root / "masks"
@@ -2030,7 +2027,9 @@ class CubemapStep(BaseStepWidget):
         if not self.scene_dir:
             return
         output = str(self._display_output_dir())
-        if self._uses_direct_equirect_output():
+        if self._uses_direct_equirect_output() or (
+            self._spheresfm_runs_conversion() and self._uses_spheresfm_3dgut_output()
+        ):
             tip_key = "OUTPUT_DIR_LICHTFELD_DIRECT"
         elif self._is_spheresfm_method():
             tip_key = "OUTPUT_DIR_SPHERESFM_PROJECT"
@@ -2412,6 +2411,9 @@ class CubemapStep(BaseStepWidget):
             self._reset_spheresfm_rtx50_diagnostics()
             self._validate_spheresfm_export()
             scope = self._spheresfm_run_scope()
+            if self.run_training_cb.isChecked() and scope == _SPHERESFM_RUN_SFM_ONLY:
+                raise ValueError(i18n.t("TRAINING_REQUIRES_DATASET_OUTPUT"))
+            self._guard_existing_training_output_targets()
             if scope == _SPHERESFM_RUN_CONVERT_ONLY:
                 self._require_spheresfm_sparse_model()
                 self._validate_spheresfm_conversion_export()
@@ -2434,6 +2436,7 @@ class CubemapStep(BaseStepWidget):
 
         if self._is_colmap_method():
             self._validate_image_only_export()
+            self._guard_existing_training_output_targets()
             if not self._prepare_colmap_rig_dir():
                 return []
             steps = [("colmap_rig_export", self._build_cubemap_cmd(image_only=True, colmap_rig=True))]
@@ -2445,8 +2448,11 @@ class CubemapStep(BaseStepWidget):
         self._validate_bundle()
 
         preprocess_cmd = self._build_preprocess_cmd()
+        self._guard_existing_training_output_targets()
 
         if self._uses_direct_equirect_output():
+            if not self._prepare_3dgut_output_dir():
+                return []
             steps = [("metashape", preprocess_cmd)]
             steps.extend(self._build_training_commands())
             return steps
@@ -2491,7 +2497,7 @@ class CubemapStep(BaseStepWidget):
                 script=script,
                 images=Path(images),
                 xml=xml,
-                output=scene,
+                output=self._display_output_dir() if self._uses_direct_equirect_output() else scene,
                 scale=scale,
                 use_ply=self._preprocess_uses_ply(),
                 ply=ply,
@@ -2705,6 +2711,32 @@ class CubemapStep(BaseStepWidget):
     def _guard_training_output_target(path: Path) -> None:
         if path.exists():
             raise ValueError(i18n.t("TRAINING_OUTPUT_EXISTS").format(path=str(path)))
+
+    def _guard_existing_training_output_targets(self) -> None:
+        if not self.run_training_cb.isChecked():
+            return
+        output_dir = self._training_output_dir()
+        backend = self._training_backend()
+        if backend == _TRAINING_BACKEND_POSTSHOT:
+            project_name = self._filename_only(
+                self.postshot_project_name_edit.text().strip() or self._default_postshot_project_name(),
+                i18n.t("POSTSHOT_PROJECT_NAME"),
+            )
+            self._guard_training_output_target(output_dir / project_name)
+            return
+        if backend == _TRAINING_BACKEND_CUSTOM:
+            return
+
+        lfs_output_name = self._filename_only(
+            self.lfs_output_name_edit.text().strip(),
+            i18n.t("LFS_OUTPUT_PLY_NAME"),
+        )
+        lfs_output_stem = lichtfeld_output_name_stem(lfs_output_name)
+        if not lfs_output_stem:
+            return
+        self._guard_training_output_target(output_dir / f"{lfs_output_stem}.ply")
+        if self.lfs_ppisp_cb.isChecked():
+            self._guard_training_output_target(output_dir / f"{lfs_output_stem}.ppisp")
 
     def _build_training_commands(self) -> list[tuple[str, list[str]]]:
         if not self.run_training_cb.isChecked():
@@ -2922,7 +2954,7 @@ class CubemapStep(BaseStepWidget):
 
         steps: list[tuple[str, list[str]]] = []
         transforms_output = self._spheresfm_3dgut_dir() if self._uses_spheresfm_3dgut_output() else self._spheresfm_equirect_dir()
-        image_path_mode = "relative-to-output" if self._uses_spheresfm_3dgut_output() else "relative"
+        image_path_mode = "images-prefix" if self._uses_spheresfm_3dgut_output() else "relative"
         steps.append(
             (
                 "spheresfm_transforms",
@@ -3261,7 +3293,9 @@ class CubemapStep(BaseStepWidget):
             },
             "training": self._collect_training_settings(),
             "inputs": {
-                "transforms_json": str(scene / "transforms.json"),
+                "transforms_json": str(output / "transforms.json")
+                if direct_source_output
+                else str(scene / "transforms.json"),
                 "masks_dir": str(self._mask_dir()),
                 "ply_source": str(self._resolve_ply_source() or ""),
             },
@@ -3412,7 +3446,7 @@ class CubemapStep(BaseStepWidget):
     def _direct_output_dir(self) -> Path:
         if not self.scene_dir:
             raise ValueError(i18n.t("SCENE_REQUIRED_ACTION_HINT"))
-        return Path(self.scene_dir)
+        return self._output_dir()
 
     def _display_output_dir(self) -> Path:
         if self._uses_direct_equirect_output():
@@ -3468,7 +3502,7 @@ class CubemapStep(BaseStepWidget):
         return self._output_dir()
 
     def _spheresfm_3dgut_dir(self) -> Path:
-        return self._direct_output_dir()
+        return self._output_dir()
 
     def _find_spheresfm_sparse_model(self) -> Path | None:
         sparse = self._spheresfm_sparse_dir()
@@ -3580,11 +3614,9 @@ class CubemapStep(BaseStepWidget):
             raise ValueError(i18n.t("SCENE_REQUIRED_ACTION_HINT"))
         return Path(self.scene_dir) / "images"
 
-    def _prepare_output_dir(self) -> bool:
+    def _validate_scene_output_dir(self, output: Path) -> None:
         if not self.scene_dir:
             raise ValueError(i18n.t("SCENE_REQUIRED_ACTION_HINT"))
-        output = self._output_dir()
-
         scene = Path(self.scene_dir).resolve()
         try:
             resolved_output = output.resolve()
@@ -3592,6 +3624,73 @@ class CubemapStep(BaseStepWidget):
             resolved_output = output.absolute()
         if resolved_output.parent != scene:
             raise ValueError(f"出力フォルダがシーンフォルダ外です: {output}")
+
+    def _3dgut_output_reset_targets(self) -> list[Path]:
+        output = self._output_dir()
+        targets = [
+            output / "images",
+            output / "masks",
+            output / "transforms.json",
+            output / "pointcloud.ply",
+        ]
+        return targets
+
+    def _prepare_3dgut_output_dir(self) -> bool:
+        output = self._output_dir()
+        self._validate_scene_output_dir(output)
+        existing_targets = self._dedupe_nested_paths(
+            [path for path in self._3dgut_output_reset_targets() if self._path_has_contents(path)]
+        )
+        if existing_targets:
+            target_text = "\n".join(str(path) for path in existing_targets)
+            result = QMessageBox.question(
+                self,
+                i18n.t("OUTPUT_PARTIAL_RESET_TITLE"),
+                i18n.t("OUTPUT_PARTIAL_RESET_MESSAGE").format(paths=target_text),
+                QMessageBox.Yes | QMessageBox.No,
+                QMessageBox.No,
+            )
+            if result != QMessageBox.Yes:
+                return False
+            for target in existing_targets:
+                self._clear_path(target)
+
+        output.mkdir(parents=True, exist_ok=True)
+        self._link_3dgut_assets(output)
+        return True
+
+    def _link_3dgut_assets(self, output: Path) -> None:
+        self._link_or_copy_tree(self._metashape_images_dir(), output / "images")
+        masks = self._mask_dir()
+        if masks.is_dir():
+            self._link_or_copy_tree(masks, output / "masks")
+
+    @staticmethod
+    def _link_or_copy_tree(source_root: Path, dest_root: Path) -> None:
+        if not source_root.is_dir():
+            return
+        for source in sorted(source_root.rglob("*"), key=lambda path: str(path).lower()):
+            relative = source.relative_to(source_root)
+            dest = dest_root / relative
+            if source.is_dir():
+                dest.mkdir(parents=True, exist_ok=True)
+                continue
+            if not source.is_file():
+                continue
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            if dest.exists():
+                dest.unlink()
+            try:
+                os.link(source, dest)
+            except OSError:
+                shutil.copy2(source, dest)
+
+    def _prepare_output_dir(self) -> bool:
+        if not self.scene_dir:
+            raise ValueError(i18n.t("SCENE_REQUIRED_ACTION_HINT"))
+        output = self._output_dir()
+
+        self._validate_scene_output_dir(output)
 
         if not self._writes_any_view_assets():
             output.mkdir(parents=True, exist_ok=True)
@@ -3711,6 +3810,7 @@ class CubemapStep(BaseStepWidget):
         if include_conversion:
             if self._uses_spheresfm_3dgut_output():
                 self._spheresfm_3dgut_dir().mkdir(parents=True, exist_ok=True)
+                self._link_3dgut_assets(self._spheresfm_3dgut_dir())
             else:
                 self._spheresfm_cubemap_dir().mkdir(parents=True, exist_ok=True)
         return True
@@ -3719,9 +3819,10 @@ class CubemapStep(BaseStepWidget):
         if self._uses_spheresfm_3dgut_output():
             root = self._spheresfm_3dgut_dir()
             return [
+                root / "images",
+                root / "masks",
                 root / "transforms.json",
                 root / "pointcloud.ply",
-                step4_export_settings_path(root),
             ]
 
         output = self._spheresfm_cubemap_dir()

@@ -830,7 +830,7 @@ def test_spheresfm_method_can_queue_3dgut_export_without_projection_views(tmp_pa
     step._set_combo_data(step.spheresfm_output_shape_combo, "equirect_3dgut")
     step.spheresfm_exec_browse.set_text(str(fake_colmap))
 
-    assert step.output_path_label.full_text() == str(tmp_path)
+    assert step.output_path_label.full_text() == str(tmp_path / "output")
     assert not step.export_targets_row.isEnabled()
     assert not step.view_config.settings_widget.isEnabled()
 
@@ -856,8 +856,10 @@ def test_spheresfm_method_can_queue_3dgut_export_without_projection_views(tmp_pa
     assert commands[5][1][commands[5][1].index("--Mapper.multiple_models") + 1] == "0"
     assert commands[5][1][commands[5][1].index("--Mapper.ba_global_max_num_iterations") + 1] == "33"
     assert commands[6][1][3] == str(tmp_path / "output" / "spheresfm" / "sparse")
-    assert commands[6][1][4] == str(tmp_path)
-    assert commands[6][1][commands[6][1].index("--image-path-mode") + 1] == "relative-to-output"
+    assert commands[6][1][4] == str(tmp_path / "output")
+    assert commands[6][1][commands[6][1].index("--image-path-mode") + 1] == "images-prefix"
+    assert os.path.samefile(images / "frame_0001.jpg", tmp_path / "output" / "images" / "frame_0001.jpg")
+    assert os.path.samefile(masks / "frame_0001.png", tmp_path / "output" / "masks" / "frame_0001.png")
 
 
 def test_spheresfm_method_can_queue_projected_cubemap_export(tmp_path: Path) -> None:
@@ -966,7 +968,8 @@ def test_spheresfm_convert_only_queues_3dgut_without_colmap_binary(tmp_path: Pat
 
     assert [phase for phase, _cmd in commands] == ["spheresfm_transforms"]
     assert commands[0][1][3] == str(tmp_path / "output" / "spheresfm" / "sparse")
-    assert commands[0][1][4] == str(tmp_path)
+    assert commands[0][1][4] == str(tmp_path / "output")
+    assert commands[0][1][commands[0][1].index("--image-path-mode") + 1] == "images-prefix"
     assert sparse_model.is_dir()
 
 
@@ -1044,7 +1047,7 @@ def test_spheresfm_open_gui_warns_when_selected_binary_has_no_gui_support(
     assert "Qt GUI" in warnings[0][1]
 
 
-def test_spheresfm_3dgut_convert_only_confirms_scene_root_outputs(tmp_path: Path, monkeypatch) -> None:
+def test_spheresfm_3dgut_convert_only_confirms_output_dataset_targets(tmp_path: Path, monkeypatch) -> None:
     _app()
     images = tmp_path / "images"
     masks = tmp_path / "masks"
@@ -1053,10 +1056,16 @@ def test_spheresfm_3dgut_convert_only_confirms_scene_root_outputs(tmp_path: Path
     _write_test_image(images / "frame_0001.jpg")
     _write_test_image(masks / "frame_0001.png")
     sparse_model = _write_spheresfm_sparse_stub(tmp_path)
-    transforms = tmp_path / "transforms.json"
-    pointcloud = tmp_path / "pointcloud.ply"
+    transforms = tmp_path / "output" / "transforms.json"
+    pointcloud = tmp_path / "output" / "pointcloud.ply"
+    old_linked_image = tmp_path / "output" / "images" / "old.jpg"
+    old_linked_mask = tmp_path / "output" / "masks" / "old.png"
+    old_linked_image.parent.mkdir(parents=True)
+    old_linked_mask.parent.mkdir(parents=True)
     transforms.write_text("old", encoding="utf-8")
     pointcloud.write_text("old", encoding="utf-8")
+    old_linked_image.write_text("old", encoding="utf-8")
+    old_linked_mask.write_text("old", encoding="utf-8")
     monkeypatch.setattr(QMessageBox, "question", lambda *args, **kwargs: QMessageBox.Yes)
 
     step = CubemapStep(Path.cwd())
@@ -1070,6 +1079,10 @@ def test_spheresfm_3dgut_convert_only_confirms_scene_root_outputs(tmp_path: Path
     assert [phase for phase, _cmd in commands] == ["spheresfm_transforms"]
     assert not transforms.exists()
     assert not pointcloud.exists()
+    assert not old_linked_image.exists()
+    assert not old_linked_mask.exists()
+    assert os.path.samefile(images / "frame_0001.jpg", tmp_path / "output" / "images" / "frame_0001.jpg")
+    assert os.path.samefile(masks / "frame_0001.png", tmp_path / "output" / "masks" / "frame_0001.png")
     assert sparse_model.is_dir()
     assert images.is_dir()
     assert masks.is_dir()
@@ -1341,7 +1354,7 @@ def test_lichtfeld_3dgut_direct_mode_runs_metashape_only_and_disables_view_expor
     assert step._effective_profile() == "lichtfeld"
     assert step.axis_transform_combo.currentData() == "none"
     assert step.ms_use_ply_cb.isChecked()
-    assert step.output_path_label.full_text() == str(tmp_path)
+    assert step.output_path_label.full_text() == str(tmp_path / "output")
     assert not step.settings_tabs.isTabEnabled(step.view_export_tab_index)
     assert not step.export_targets_row.isEnabled()
     assert step.export_images_cb.isChecked()
@@ -1354,8 +1367,27 @@ def test_lichtfeld_3dgut_direct_mode_runs_metashape_only_and_disables_view_expor
 
     assert [phase for phase, _cmd in commands] == ["metashape"]
     assert "--ply" in commands[0][1]
+    assert commands[0][1][commands[0][1].index("--output") + 1] == str(tmp_path / "output")
+    assert os.path.samefile(tmp_path / "images" / "frame_0001.jpg", tmp_path / "output" / "images" / "frame_0001.jpg")
     assert old_file.is_file()
     assert not step4_views_config_path(tmp_path).exists()
+
+
+def test_lichtfeld_3dgut_asset_links_fallback_to_copy(tmp_path: Path, monkeypatch) -> None:
+    step = _ready_step(tmp_path, metashape_inputs=True)
+    image = tmp_path / "images" / "frame_0001.jpg"
+    _write_test_image(image)
+    direct_idx = step.output_shape_combo.findData("equirect_3dgut")
+    assert direct_idx >= 0
+    step.output_shape_combo.setCurrentIndex(direct_idx)
+    monkeypatch.setattr(step4_cubemap.os, "link", lambda *_args: (_ for _ in ()).throw(OSError("no link")))
+
+    commands = step.build_commands()
+
+    linked = tmp_path / "output" / "images" / "frame_0001.jpg"
+    assert [phase for phase, _cmd in commands] == ["metashape"]
+    assert linked.is_file()
+    assert not os.path.samefile(image, linked)
 
 
 def test_lichtfeld_3dgut_direct_mode_restores_projection_export_targets(tmp_path: Path) -> None:
@@ -1495,7 +1527,7 @@ def test_training_headless_option_shares_start_row(tmp_path: Path) -> None:
     assert step.training_headless_cb.isHidden()
 
 
-def test_lichtfeld_training_refuses_existing_output_ply(tmp_path: Path) -> None:
+def test_lichtfeld_training_refuses_existing_output_ply(tmp_path: Path, monkeypatch) -> None:
     step = _ready_step(tmp_path, metashape_inputs=True)
     _write_test_image(tmp_path / "images" / "frame_0001.jpg")
     direct_idx = step.output_shape_combo.findData("equirect_3dgut")
@@ -1506,12 +1538,21 @@ def test_lichtfeld_training_refuses_existing_output_ply(tmp_path: Path) -> None:
     existing = tmp_path / "output" / f"{tmp_path.name}.ply"
     existing.parent.mkdir(exist_ok=True)
     existing.write_text("existing", encoding="utf-8")
+    old_dataset_file = tmp_path / "output" / "images" / "old.jpg"
+    old_dataset_file.parent.mkdir()
+    old_dataset_file.write_text("old", encoding="utf-8")
+    monkeypatch.setattr(
+        QMessageBox,
+        "question",
+        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("confirmation should not open")),
+    )
 
     step.run_training_cb.setChecked(True)
     step.training_executable_browse.set_text(str(fake_lfs))
 
     with pytest.raises(ValueError, match=existing.name):
         step.build_commands()
+    assert old_dataset_file.is_file()
 
 
 def test_postshot_training_defaults_to_scene_project_and_refuses_collision(tmp_path: Path) -> None:
@@ -1879,8 +1920,10 @@ def test_lichtfeld_3dgut_finalize_writes_scene_dataset_settings_and_correction(
     assert direct_idx >= 0
     step.output_shape_combo.setCurrentIndex(direct_idx)
     monkeypatch.setattr(CubemapStep, "_transform_ply_with_open3d", staticmethod(lambda _path, _matrix: False))
-    _write_ascii_ply(tmp_path / "pointcloud.ply", [(1.0, 2.0, 3.0)])
-    (tmp_path / "transforms.json").write_text(
+    output = tmp_path / "output"
+    output.mkdir()
+    _write_ascii_ply(output / "pointcloud.ply", [(1.0, 2.0, 3.0)])
+    (output / "transforms.json").write_text(
         json.dumps(
             {
                 "camera_model": "EQUIRECTANGULAR",
@@ -1892,11 +1935,10 @@ def test_lichtfeld_3dgut_finalize_writes_scene_dataset_settings_and_correction(
 
     step._finalize_bundle()
 
-    assert not step4_export_settings_path(tmp_path / "output").exists()
     settings = json.loads(step4_export_settings_path(tmp_path).read_text(encoding="utf-8"))
     assert settings["export_method"] == "metashape"
     assert settings["output_shape"] == "equirect_3dgut"
-    assert settings["output_dir"] == str(tmp_path)
+    assert settings["output_dir"] == str(output)
     assert settings["views_config_path"] == ""
     assert settings["views_config_snapshot"] is None
     assert settings["conversion"]["no_image"] is True
@@ -1905,7 +1947,7 @@ def test_lichtfeld_3dgut_finalize_writes_scene_dataset_settings_and_correction(
     assert settings["conversion"]["uses_source_images"] is True
     assert settings["output_files"]["pointcloud"] == "pointcloud.ply"
 
-    data = json.loads((tmp_path / "transforms.json").read_text(encoding="utf-8"))
+    data = json.loads((output / "transforms.json").read_text(encoding="utf-8"))
     corrected = np.array(data["frames"][0]["transform_matrix"])
     expected = np.array(
         [
@@ -1916,7 +1958,7 @@ def test_lichtfeld_3dgut_finalize_writes_scene_dataset_settings_and_correction(
         ]
     )
     assert np.allclose(corrected, expected)
-    points, _colors = read_ply_points(tmp_path / "pointcloud.ply")
+    points, _colors = read_ply_points(output / "pointcloud.ply")
     assert np.allclose(points[0], [3.0, -2.0, 1.0])
 
 

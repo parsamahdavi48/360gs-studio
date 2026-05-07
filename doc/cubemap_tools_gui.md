@@ -80,16 +80,16 @@ This output is easier to use in Postshot, Brush, and LichtFeld Studio because it
 
 ### 3DGUT (LichtFeld)
 
-This mode creates data for LichtFeld Studio's 3DGUT training path. It keeps the source equirectangular `images/` and `masks/` used for SfM in place, and does not create converted cubemap images or converted masks.
+This mode creates data for LichtFeld Studio's 3DGUT training path. It places the source equirectangular `images/` and `masks/` under `output/` with hard links where possible, and does not create converted cubemap images or converted masks.
 
-This mode writes these files at the scene root for the LichtFeld 3DGUT dataset:
+This mode writes these files under `output/` for the LichtFeld 3DGUT dataset:
 
 - `transforms.json`
 - `pointcloud.ply`
 
 It also saves `_stechdrive/export_settings.json` as this app's settings record.
 
-In the Metashape route, `Output Preset: LichtFeld Studio` and a point-cloud PLY are required. In the SphereSfM route, Step 4 creates `pointcloud.ply` from the SfM result. While `3DGUT (LichtFeld)` is active, the `Projection Views` tab, image/mask output toggles, and COLMAP text-model export are disabled.
+In the Metashape route, `Output Preset: LichtFeld Studio` and a point-cloud PLY are required. In the SphereSfM route, Step 4 creates `pointcloud.ply` from the SfM result. While `3DGUT (LichtFeld)` is active, the `Projection Views` tab, image/mask output toggles, and COLMAP text-model export are disabled. The finished dataset is still `<scene>/output/`.
 
 ## Using Cubemap Data And 3DGUT In LichtFeld
 
@@ -114,7 +114,7 @@ The output is normally `<scene>/output/`. Load that `output/` folder in LichtFel
 4. Check `Point Cloud PLY`. If it was not filled automatically, or if the candidate is wrong, select it manually.
 5. Run the export.
 
-This output uses the existing `<scene>/images/` and `<scene>/masks/`, then writes `<scene>/transforms.json` and `<scene>/pointcloud.ply`. In LichtFeld, use the `<scene>/` dataset containing those four items and enable GUT during training.
+This output links the existing `<scene>/images/` and `<scene>/masks/` into `<scene>/output/images/` and `<scene>/output/masks/`, then writes `<scene>/output/transforms.json` and `<scene>/output/pointcloud.ply`. In LichtFeld, use `<scene>/output/` as the dataset and enable GUT during training.
 
 ## Projection View Settings
 
@@ -217,11 +217,11 @@ On RTX 50-series GPUs, the Windows binary distributed on GitHub can stop during 
 
 At the start of a SphereSfM run, the GUI automatically copies one source image into `<scene>/output/spheresfm/preflight/` and runs a small GPU SIFT check before the full database is populated. If the selected binary cannot run CUDA SIFT on the current GPU, the run stops there and shows the phase log and likely cause.
 
-When `Output Shape` is `3DGUT (LichtFeld)`, Step 4 uses the existing `<scene>/images/` and `<scene>/masks/`, then writes `<scene>/transforms.json` and `<scene>/pointcloud.ply`. The LichtFeld 3DGUT dataset is the `<scene>/` folder containing those four items. If an existing `transforms.json` or `pointcloud.ply` is present, the GUI asks before replacing it.
+When `Output Shape` is `3DGUT (LichtFeld)`, Step 4 uses the existing `<scene>/images/` and `<scene>/masks/`, places them under `<scene>/output/images/` and `<scene>/output/masks/` with hard links where possible, then writes `<scene>/output/transforms.json` and `<scene>/output/pointcloud.ply`. The LichtFeld 3DGUT dataset is `<scene>/output/`. If existing 3DGUT dataset files are present in `output/`, the GUI asks before replacing them.
 
 When `Output Shape` is `Convert to Projection Views`, `<scene>/output/` is the cubemap dataset to load in the downstream app. The `Projection Views` tab and image/mask output toggles are active, and Step 4 writes `<scene>/output/images/`, `<scene>/output/masks/`, `<scene>/output/transforms.json`, and `<scene>/output/pointcloud.ply`, matching the Metashape route.
 
-The SphereSfM project root at `<scene>/output/spheresfm/` contains working files such as `preflight/`, `database.db`, `masks_colmap/`, `sparse/`, `equirect/`, `logs/`, and `stechdrive_spheresfm_project.json`. This folder is for SfM reuse and log inspection; the portable training dataset is the scene folder for 3DGUT output or `output/` for cubemap output.
+The SphereSfM project root at `<scene>/output/spheresfm/` contains working files such as `preflight/`, `database.db`, `masks_colmap/`, `sparse/`, `equirect/`, `logs/`, and `stechdrive_spheresfm_project.json`. This folder is for SfM reuse and log inspection; the portable training dataset is `output/` for both 3DGUT and cubemap output.
 
 After the run, use `View Result in COLMAP GUI` to inspect registered camera poses and sparse points. If your SphereSfM build has no Qt GUI support, only this viewer button is unavailable; SfM and conversion output are separate from that viewer.
 
@@ -230,10 +230,10 @@ After the run, use `View Result in COLMAP GUI` to inspect registered camera pose
 | Route | Main outputs |
 | --- | --- |
 | Metashape + cubemap conversion (`Convert to Projection Views`) | `<scene>/output/images/`, `<scene>/output/masks/`, `<scene>/output/transforms.json` |
-| Metashape + `3DGUT (LichtFeld)` | `<scene>/images/`, `<scene>/masks/`, `<scene>/transforms.json`, `<scene>/pointcloud.ply` |
+| Metashape + `3DGUT (LichtFeld)` | `<scene>/output/images/`, `<scene>/output/masks/`, `<scene>/output/transforms.json`, `<scene>/output/pointcloud.ply` |
 | COLMAP | `<scene>/output/colmap_rig/images/`, `<scene>/output/colmap_rig/masks/`, `<scene>/output/colmap_rig/rig_config.json` |
 | COLMAP with SfM enabled | The COLMAP/GLOMAP SfM result in addition to the files above |
-| SphereSfM + `3DGUT (LichtFeld)` | `<scene>/images/`, `<scene>/masks/`, `<scene>/transforms.json`, `<scene>/pointcloud.ply` |
+| SphereSfM + `3DGUT (LichtFeld)` | `<scene>/output/images/`, `<scene>/output/masks/`, `<scene>/output/transforms.json`, `<scene>/output/pointcloud.ply` |
 | SphereSfM + cubemap conversion (`Convert to Projection Views`) | Load `<scene>/output/` in the downstream app. It contains `images/`, `masks/`, `transforms.json`, and `pointcloud.ply` |
 | Training enabled | The selected route output plus training results in `<scene>/output/`; LichtFeld also writes `_stechdrive/training/lichtfeld_config.json` |
 

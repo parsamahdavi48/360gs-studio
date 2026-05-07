@@ -80,16 +80,16 @@ Step 4は、シーンフォルダが設定された時点でMetashape用の入�
 
 ### 3DGUT (LichtFeld)
 
-LichtFeld Studioで3DGUTトレーニングに使うデータを作るモードです。SfMに使ったエクイレクタングラーの `images/` と `masks/` をそのまま使い、キューブマップ画像や変換マスクは作りません。
+LichtFeld Studioで3DGUTトレーニングに使うデータを作るモードです。SfMに使ったエクイレクタングラーの `images/` と `masks/` を可能ならハードリンクで `output/` 配下に配置し、キューブマップ画像や変換マスクは作りません。
 
-このモードでは、LichtFeldへ読み込ませるためにシーン直下へ次のファイルを作ります。
+このモードでは、LichtFeldへ読み込ませるために `output/` へ次のファイルを作ります。
 
 - `transforms.json`
 - `pointcloud.ply`
 
 あわせて、このアプリ用の設定記録として `_stechdrive/export_settings.json` を保存します。
 
-Metashapeルートでは `出力プリセット: LichtFeld Studio` と点群PLYの指定が必要です。SphereSfMルートではSfM結果から `pointcloud.ply` を作ります。`3DGUT (LichtFeld)` の選択中は `投影視点` タブ、画像/マスク出力のON/OFF、COLMAP形式モデル追加出力は無効になります。
+Metashapeルートでは `出力プリセット: LichtFeld Studio` と点群PLYの指定が必要です。SphereSfMルートではSfM結果から `pointcloud.ply` を作ります。`3DGUT (LichtFeld)` の選択中は `投影視点` タブ、画像/マスク出力のON/OFF、COLMAP形式モデル追加出力は無効になります。完成データセットはこの場合も `<scene>/output/` です。
 
 ## LichtFeldでキューブマップ版と3DGUT版を使い分ける場合
 
@@ -114,7 +114,7 @@ LichtFeldで「キューブマップデータ」と「3DGUTでエクイレクタ
 4. `点群PLY` を確認します。自動入力されていない場合、または候補が違う場合は手動で指定します。
 5. 実行します。
 
-この出力では、既存の `<scene>/images/` と `<scene>/masks/` を使い、`<scene>/transforms.json` と `<scene>/pointcloud.ply` を新しく作ります。LichtFeldでは、この4点がそろった `<scene>/` をデータセットとして指定し、トレーニング時にGUTを有効にします。
+この出力では、既存の `<scene>/images/` と `<scene>/masks/` を `<scene>/output/images/` と `<scene>/output/masks/` に配置し、`<scene>/output/transforms.json` と `<scene>/output/pointcloud.ply` を新しく作ります。LichtFeldでは `<scene>/output/` をデータセットとして指定し、トレーニング時にGUTを有効にします。
 
 ## 投影視点の調整
 
@@ -217,11 +217,11 @@ RTX 50系GPUでは、GitHubで配布されているSphereSfMのWindowsバイナ�
 
 SphereSfM実行の開始時に、GUIは元画像を1枚だけ `<scene>/output/spheresfm/preflight/` へコピーし、フルのdatabaseを作る前に小さなGPU SIFT確認を自動実行します。選択したバイナリが現在のGPUでCUDA SIFTを実行できない場合はそこで停止し、ログへのリンクと原因の候補を表示します。
 
-`出力形状` が `3DGUT (LichtFeld)` の場合は、既存の `<scene>/images/` と `<scene>/masks/` を使い、`<scene>/transforms.json` と `<scene>/pointcloud.ply` を作ります。LichtFeldで使う3DGUTデータセットは、この4点がそろった `<scene>/` です。既存の `transforms.json` または `pointcloud.ply` がある場合は、上書き前に確認します。
+`出力形状` が `3DGUT (LichtFeld)` の場合は、既存の `<scene>/images/` と `<scene>/masks/` を可能ならハードリンクで `<scene>/output/images/` と `<scene>/output/masks/` に配置し、`<scene>/output/transforms.json` と `<scene>/output/pointcloud.ply` を作ります。LichtFeldで使う3DGUTデータセットは `<scene>/output/` です。`output/` 内に既存の3DGUTデータセットファイルがある場合は、上書き前に確認します。
 
 `出力形状` が `投影視点に変換` の場合は、`<scene>/output/` が下流アプリへ渡すキューブマップデータセットになります。`投影視点` タブと画像/マスク出力のON/OFFを使い、Metashapeルートと同じ形で `<scene>/output/images/`、`<scene>/output/masks/`、`<scene>/output/transforms.json`、`<scene>/output/pointcloud.ply` を作ります。
 
-SphereSfMプロジェクト `<scene>/output/spheresfm/` には、作業用の `preflight/`、`database.db`、`masks_colmap/`、`sparse/`、`equirect/`、`logs/`、`stechdrive_spheresfm_project.json` を作ります。ここはSfMの再利用やログ確認用で、3DGUTではシーンフォルダ、キューブマップでは `output/` が実際に持ち出すデータセットです。
+SphereSfMプロジェクト `<scene>/output/spheresfm/` には、作業用の `preflight/`、`database.db`、`masks_colmap/`、`sparse/`、`equirect/`、`logs/`、`stechdrive_spheresfm_project.json` を作ります。ここはSfMの再利用やログ確認用で、3DGUTでもキューブマップでも実際に持ち出すデータセットは `output/` です。
 
 実行後は `結果をCOLMAP GUIで表示` で、登録されたカメラ位置と疎点群を確認できます。GUIなしでビルドされたSphereSfM版COLMAPではこの表示だけ使えませんが、SfMや変換結果の出力自体とは別です。
 
@@ -230,10 +230,10 @@ SphereSfMプロジェクト `<scene>/output/spheresfm/` には、作業用の `p
 | ルート | 主な出力 |
 | --- | --- |
 | Metashape + キューブマップ変換 (`投影視点に変換`) | `<scene>/output/images/`, `<scene>/output/masks/`, `<scene>/output/transforms.json` |
-| Metashape + `3DGUT (LichtFeld)` | `<scene>/images/`, `<scene>/masks/`, `<scene>/transforms.json`, `<scene>/pointcloud.ply` |
+| Metashape + `3DGUT (LichtFeld)` | `<scene>/output/images/`, `<scene>/output/masks/`, `<scene>/output/transforms.json`, `<scene>/output/pointcloud.ply` |
 | COLMAP | `<scene>/output/colmap_rig/images/`, `<scene>/output/colmap_rig/masks/`, `<scene>/output/colmap_rig/rig_config.json` |
 | COLMAP実行あり | 上記に加えて、COLMAP/GLOMAPのSfM結果 |
-| SphereSfM + `3DGUT (LichtFeld)` | `<scene>/images/`, `<scene>/masks/`, `<scene>/transforms.json`, `<scene>/pointcloud.ply` |
+| SphereSfM + `3DGUT (LichtFeld)` | `<scene>/output/images/`, `<scene>/output/masks/`, `<scene>/output/transforms.json`, `<scene>/output/pointcloud.ply` |
 | SphereSfM + キューブマップ変換 (`投影視点に変換`) | 下流アプリへ渡すのは `<scene>/output/`。`images/`, `masks/`, `transforms.json`, `pointcloud.ply` を作ります |
 | トレーニングON | 上記に加えて `<scene>/output/` 直下のトレーニング結果と、LichtFeldでは `_stechdrive/training/lichtfeld_config.json` |
 
