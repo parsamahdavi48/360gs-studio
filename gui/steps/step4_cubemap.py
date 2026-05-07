@@ -70,6 +70,7 @@ from gui.steps.training_backends import (
     build_lichtfeld_training_cmd,
     build_postshot_training_cmd,
     lichtfeld_auto_steps_scaler,
+    lichtfeld_output_name_stem,
 )
 from gui.user_settings import load_user_settings_section, update_user_settings_section
 from gui.version import APP_VERSION
@@ -303,6 +304,10 @@ class CubemapStep(BaseStepWidget):
         self._training_dataset_user_edited = False
         self._training_output_user_edited = False
         self._syncing_training_paths = False
+        self._lfs_output_name_user_edited = False
+        self._syncing_lfs_output_name = False
+        self._postshot_project_name_user_edited = False
+        self._syncing_postshot_project_name = False
         self._lfs_iterations_user_edited = False
         self._syncing_lfs_auto_fields = False
         self._preview_render_timer = QTimer(self)
@@ -1082,6 +1087,16 @@ class CubemapStep(BaseStepWidget):
             i18n.tip("LFS_MAX_GAUSSIANS"),
         )
 
+        self.lfs_output_name_edit = QLineEdit()
+        self.lfs_output_name_edit.setToolTip(i18n.tip("LFS_OUTPUT_PLY_NAME"))
+        self.lfs_output_name_edit.textEdited.connect(self._on_lfs_output_name_edited)
+        add_tooltip_row(
+            form,
+            i18n.t("LFS_OUTPUT_PLY_NAME"),
+            self.lfs_output_name_edit,
+            i18n.tip("LFS_OUTPUT_PLY_NAME"),
+        )
+
         self.lfs_sh_degree_combo = QComboBox()
         for degree in range(4):
             self.lfs_sh_degree_combo.addItem(str(degree), degree)
@@ -1405,6 +1420,7 @@ class CubemapStep(BaseStepWidget):
         form.setSpacing(6)
         self.postshot_project_name_edit = QLineEdit("postshot.psht")
         self.postshot_project_name_edit.setToolTip(i18n.tip("POSTSHOT_PROJECT_NAME"))
+        self.postshot_project_name_edit.textEdited.connect(self._on_postshot_project_name_edited)
         add_tooltip_row(
             form,
             i18n.t("POSTSHOT_PROJECT_NAME"),
@@ -1459,7 +1475,11 @@ class CubemapStep(BaseStepWidget):
             self._refresh_input_image_count()
             self._training_dataset_user_edited = False
             self._training_output_user_edited = False
+            self._lfs_output_name_user_edited = False
+            self._postshot_project_name_user_edited = False
             self._update_training_paths(force=True)
+            self._update_lfs_output_name(force=True)
+            self._update_postshot_project_name(force=True)
             self._update_output_count()
             self._render_preview()
             return
@@ -1474,8 +1494,12 @@ class CubemapStep(BaseStepWidget):
         self._refresh_input_image_count()
         self._training_dataset_user_edited = False
         self._training_output_user_edited = False
+        self._lfs_output_name_user_edited = False
+        self._postshot_project_name_user_edited = False
         self._lfs_iterations_user_edited = False
         self._update_training_paths(force=True)
+        self._update_lfs_output_name(force=True)
+        self._update_postshot_project_name(force=True)
         self._update_lfs_auto_steps_scaler()
         self._update_output_count()
         self._render_preview()
@@ -1637,6 +1661,8 @@ class CubemapStep(BaseStepWidget):
         self.training_headless_cb.setVisible(backend == _TRAINING_BACKEND_LICHTFELD)
         self._refresh_training_settings_layout()
         self._update_training_paths()
+        if backend == _TRAINING_BACKEND_POSTSHOT:
+            self._update_postshot_project_name()
         if backend == _TRAINING_BACKEND_LICHTFELD:
             self._update_lfs_auto_steps_scaler()
         if getattr(self, "_user_preferences_enabled", False):
@@ -1653,6 +1679,18 @@ class CubemapStep(BaseStepWidget):
             return
         self._training_output_user_edited = True
         self._save_user_preferences()
+
+    def _on_lfs_output_name_edited(self, _text: str) -> None:
+        if self._syncing_lfs_output_name:
+            return
+        self._lfs_output_name_user_edited = True
+        self._on_training_settings_changed()
+
+    def _on_postshot_project_name_edited(self, _text: str) -> None:
+        if self._syncing_postshot_project_name:
+            return
+        self._postshot_project_name_user_edited = True
+        self._on_training_settings_changed()
 
     def _on_training_settings_changed(self, *_args) -> None:
         self._update_path_labels()
@@ -1772,9 +1810,12 @@ class CubemapStep(BaseStepWidget):
         raw = self.training_output_browse.text().strip()
         if raw:
             return Path(raw)
+        return self._default_training_output_dir()
+
+    def _default_training_output_dir(self) -> Path:
         if not self.scene_dir:
             raise ValueError(i18n.t("SCENE_REQUIRED_ACTION_HINT"))
-        return Path(self.scene_dir) / "output" / "training" / self._training_backend()
+        return Path(self.scene_dir) / "output"
 
     def _training_config_path(self) -> Path:
         if not self.scene_dir:
@@ -1785,6 +1826,36 @@ class CubemapStep(BaseStepWidget):
         if not self.scene_dir:
             raise ValueError(i18n.t("SCENE_REQUIRED_ACTION_HINT"))
         return self._display_output_dir()
+
+    def _default_lfs_output_name(self) -> str:
+        return Path(self.scene_dir).name if self.scene_dir else ""
+
+    def _default_postshot_project_name(self) -> str:
+        if not self.scene_dir:
+            return "postshot.psht"
+        return f"{Path(self.scene_dir).name}.psht"
+
+    def _update_lfs_output_name(self, *, force: bool = False) -> None:
+        if not hasattr(self, "lfs_output_name_edit"):
+            return
+        default_name = self._default_lfs_output_name()
+        if force or not self._lfs_output_name_user_edited or not self.lfs_output_name_edit.text().strip():
+            self._syncing_lfs_output_name = True
+            try:
+                self.lfs_output_name_edit.setText(default_name)
+            finally:
+                self._syncing_lfs_output_name = False
+
+    def _update_postshot_project_name(self, *, force: bool = False) -> None:
+        if not hasattr(self, "postshot_project_name_edit"):
+            return
+        default_name = self._default_postshot_project_name()
+        if force or not self._postshot_project_name_user_edited or not self.postshot_project_name_edit.text().strip():
+            self._syncing_postshot_project_name = True
+            try:
+                self.postshot_project_name_edit.setText(default_name)
+            finally:
+                self._syncing_postshot_project_name = False
 
     def _update_training_paths(self, *, force: bool = False) -> None:
         if not hasattr(self, "training_dataset_browse"):
@@ -1803,7 +1874,7 @@ class CubemapStep(BaseStepWidget):
             if force or not self._training_dataset_user_edited or not self.training_dataset_browse.text():
                 self.training_dataset_browse.set_text(str(self._default_training_dataset_dir()))
             if force or not self._training_output_user_edited or not self.training_output_browse.text():
-                self.training_output_browse.set_text(str(Path(self.scene_dir) / "output" / "training" / self._training_backend()))
+                self.training_output_browse.set_text(str(self._default_training_output_dir()))
         finally:
             self._syncing_training_paths = False
 
@@ -2623,6 +2694,18 @@ class CubemapStep(BaseStepWidget):
             overrides["ppisp_sidecar_path"] = sidecar
         return overrides
 
+    @staticmethod
+    def _filename_only(value: str, label: str) -> str:
+        name = value.strip()
+        if any(sep in name for sep in ("/", "\\")):
+            raise ValueError(i18n.t("TRAINING_OUTPUT_NAME_PATH_ERROR").format(label=label))
+        return name
+
+    @staticmethod
+    def _guard_training_output_target(path: Path) -> None:
+        if path.exists():
+            raise ValueError(i18n.t("TRAINING_OUTPUT_EXISTS").format(path=str(path)))
+
     def _build_training_commands(self) -> list[tuple[str, list[str]]]:
         if not self.run_training_cb.isChecked():
             return []
@@ -2636,12 +2719,17 @@ class CubemapStep(BaseStepWidget):
         backend = self._training_backend()
 
         if backend == _TRAINING_BACKEND_POSTSHOT:
+            project_name = self._filename_only(
+                self.postshot_project_name_edit.text().strip() or self._default_postshot_project_name(),
+                i18n.t("POSTSHOT_PROJECT_NAME"),
+            )
+            self._guard_training_output_target(output_dir / project_name)
             cmd = build_postshot_training_cmd(
                 PostshotTrainingOptions(
                     executable=executable,
                     dataset=dataset,
                     output_dir=output_dir,
-                    project_name=self.postshot_project_name_edit.text().strip() or "postshot.psht",
+                    project_name=project_name,
                     ksteps=self._parse_positive_int(self.postshot_ksteps_edit, i18n.t("POSTSHOT_KSTEPS")),
                     max_image_size=self._parse_nonnegative_int(
                         self.postshot_max_image_size_edit,
@@ -2663,6 +2751,16 @@ class CubemapStep(BaseStepWidget):
             )
             return [("training_custom", cmd)]
 
+        lfs_output_name = self._filename_only(
+            self.lfs_output_name_edit.text().strip(),
+            i18n.t("LFS_OUTPUT_PLY_NAME"),
+        )
+        lfs_output_stem = lichtfeld_output_name_stem(lfs_output_name)
+        if lfs_output_stem:
+            self._guard_training_output_target(output_dir / f"{lfs_output_stem}.ply")
+            if self.lfs_ppisp_cb.isChecked():
+                self._guard_training_output_target(output_dir / f"{lfs_output_stem}.ppisp")
+
         lfs_dataset_resize_factor = self.lfs_dataset_resize_factor_combo.currentData()
         lfs_dataset_max_width = self._parse_positive_int(self.lfs_dataset_max_width_edit, i18n.t("LFS_MAX_WIDTH"))
         lfs_dataset_test_every = (
@@ -2676,6 +2774,7 @@ class CubemapStep(BaseStepWidget):
                 dataset=dataset,
                 output_dir=output_dir,
                 config_path=self._training_config_path(),
+                output_name=lfs_output_name,
                 strategy=self.lfs_strategy_combo.currentData() or "mrnf",
                 iterations=self._parse_positive_int(self.lfs_iterations_edit, i18n.t("LFS_ITERATIONS")),
                 max_gaussians=self._parse_positive_int(self.lfs_max_gaussians_edit, i18n.t("LFS_MAX_GAUSSIANS")),

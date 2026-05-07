@@ -201,6 +201,7 @@ class LichtFeldTrainingOptions:
     sh_degree: int
     tile_mode: int
     steps_scaler: float
+    output_name: str = ""
     image_count: int | None = None
     auto_steps_scaler: bool = False
     bilateral_grid: bool = False
@@ -316,7 +317,21 @@ def write_lichtfeld_config(options: LichtFeldTrainingOptions) -> Path:
     return options.config_path
 
 
+def lichtfeld_output_name_stem(value: str) -> str:
+    name = value.strip()
+    if not name:
+        return ""
+    if any(sep in name for sep in ("/", "\\")):
+        raise ValueError("LichtFeld output PLY name must be a file name, not a path")
+    if name.lower().endswith(".ply"):
+        name = name[:-4].strip()
+    if not name:
+        raise ValueError("LichtFeld output PLY name must not be empty")
+    return name
+
+
 def build_lichtfeld_training_cmd(options: LichtFeldTrainingOptions) -> list[str]:
+    output_name = lichtfeld_output_name_stem(options.output_name)
     write_lichtfeld_config(options)
     cmd = [
         options.executable,
@@ -328,6 +343,8 @@ def build_lichtfeld_training_cmd(options: LichtFeldTrainingOptions) -> list[str]
         str(options.config_path),
         "--train",
     ]
+    if output_name:
+        cmd.extend(["--output-name", output_name])
     if options.dataset_resize_factor:
         cmd.extend(["--resize_factor", options.dataset_resize_factor])
     if options.dataset_max_width is not None:

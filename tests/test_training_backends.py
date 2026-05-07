@@ -125,6 +125,7 @@ def test_lichtfeld_command_includes_dataset_cli_overrides(tmp_path: Path) -> Non
         sh_degree=3,
         tile_mode=1,
         steps_scaler=1.0,
+        output_name="scene_final.ply",
         dataset_resize_factor="2",
         dataset_max_width=2048,
         dataset_use_cpu_cache=False,
@@ -134,11 +135,32 @@ def test_lichtfeld_command_includes_dataset_cli_overrides(tmp_path: Path) -> Non
 
     cmd = build_lichtfeld_training_cmd(options)
 
+    assert cmd[cmd.index("--output-name") + 1] == "scene_final"
     assert cmd[cmd.index("--resize_factor") + 1] == "2"
     assert cmd[cmd.index("--max-width") + 1] == "2048"
     assert "--no-cpu-cache" in cmd
     assert "--no-fs-cache" in cmd
     assert cmd[cmd.index("--test-every") + 1] == "12"
+
+
+def test_lichtfeld_output_name_rejects_paths(tmp_path: Path) -> None:
+    dataset = TrainingDataset(dataset_root=tmp_path / "output")
+    options = LichtFeldTrainingOptions(
+        executable="LichtFeld-Studio.exe",
+        dataset=dataset,
+        output_dir=tmp_path / "training",
+        config_path=tmp_path / "config.json",
+        strategy="mrnf",
+        iterations=30000,
+        max_gaussians=5_000_000,
+        sh_degree=3,
+        tile_mode=1,
+        steps_scaler=1.0,
+        output_name="nested/final",
+    )
+
+    with pytest.raises(ValueError, match="file name"):
+        build_lichtfeld_training_cmd(options)
 
 
 def test_postshot_command_passes_images_sparse_and_project_file(tmp_path: Path) -> None:

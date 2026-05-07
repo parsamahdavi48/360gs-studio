@@ -207,6 +207,7 @@ def test_step4_japanese_training_copy_uses_training_wording() -> None:
             "TRAINING_HEADLESS",
             "LFS_STRATEGY",
             "LFS_ITERATIONS",
+            "LFS_OUTPUT_PLY_NAME",
             "LFS_STEPS_SCALER",
             "POSTSHOT_KSTEPS",
         ]
@@ -573,6 +574,7 @@ def test_cubemap_labels_share_field_tooltips() -> None:
     assert _label(step, i18n.t("LFS_STRATEGY")).toolTip() == i18n.tip("LFS_STRATEGY")
     assert _label(step, i18n.t("LFS_ITERATIONS")).toolTip() == i18n.tip("LFS_ITERATIONS")
     assert _label(step, i18n.t("LFS_MAX_GAUSSIANS")).toolTip() == i18n.tip("LFS_MAX_GAUSSIANS")
+    assert _label(step, i18n.t("LFS_OUTPUT_PLY_NAME")).toolTip() == i18n.tip("LFS_OUTPUT_PLY_NAME")
     assert _label(step, i18n.t("LFS_MASK_MODE")).toolTip() == i18n.tip("LFS_MASK_MODE")
     assert _label(step, i18n.t("POSTSHOT_PROJECT_NAME")).toolTip() == i18n.tip("POSTSHOT_PROJECT_NAME")
     assert _label(step, i18n.t("CUSTOM_TRAINING_ARGS")).toolTip() == i18n.tip("CUSTOM_TRAINING_ARGS")

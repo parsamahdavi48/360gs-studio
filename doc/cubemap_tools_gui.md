@@ -171,9 +171,9 @@ The `Training` tab can launch an external training CLI after Step 4 export or Sf
 | `Postshot` | Pass images and, when available, a COLMAP/SphereSfM sparse model to Postshot CLI and create a `.psht` project |
 | `Custom` | Launch any CLI with template-based arguments |
 
-Normally, leave `Dataset` on the automatic value. Cubemap conversion uses `<scene>/output/`, 3DGUT uses `<scene>/`, and the COLMAP route uses `<scene>/output/colmap_rig/`. The default `Training Output` is `<scene>/output/training/<training app>/`.
+Normally, leave `Dataset` on the automatic value. Cubemap conversion uses `<scene>/output/`, 3DGUT uses `<scene>/`, and the COLMAP route uses `<scene>/output/colmap_rig/`. The default `Training Output` is `<scene>/output/`, so the portable dataset and training result stay together.
 
-For LichtFeld Studio, the visible controls mirror the parameters LichtFeld keeps at the top of its own training panel: `Strategy`, `Iterations`, `Max Gaussians`, `SH Degree`, `Tile Mode`, `Steps Scaler`, mask toggles, PPISP conditionals, and background `Mode` / `Color`. Less common dataset, optimizer, refinement, loss, initialization, MRNF/IGS+, sparsity, and save/eval settings are under `Advanced Training Parameters`; sections appear only when the matching strategy or top-level checkbox makes them relevant. With `Steps Scaler` on `Auto`, Step 4 counts the emitted training images and applies the same 300-image baseline scaling LichtFeld Studio uses when loading a dataset in its GUI. At runtime, Step 4 writes `_stechdrive/training/lichtfeld_config.json` and passes that JSON plus dataset-only CLI options to LichtFeld.
+For LichtFeld Studio, the visible controls mirror the parameters LichtFeld keeps at the top of its own training panel: `Strategy`, `Iterations`, `Max Gaussians`, output PLY name, `SH Degree`, `Tile Mode`, `Steps Scaler`, mask toggles, PPISP conditionals, and background `Mode` / `Color`. The output PLY name defaults to the scene folder name and is passed as LichtFeld's `--output-name`. Less common dataset, optimizer, refinement, loss, initialization, MRNF/IGS+, sparsity, and save/eval settings are under `Advanced Training Parameters`; sections appear only when the matching strategy or top-level checkbox makes them relevant. With `Steps Scaler` on `Auto`, Step 4 counts the emitted training images and applies the same 300-image baseline scaling LichtFeld Studio uses when loading a dataset in its GUI. At runtime, Step 4 writes `_stechdrive/training/lichtfeld_config.json` and passes that JSON plus dataset-only CLI options to LichtFeld.
 
 SphereSfM `SfM Only` does not create a training dataset, so it cannot be combined with automatic training. To continue into training, use `SfM + Convert`, or use `Convert Existing SfM` after a sparse model already exists.
 
@@ -235,7 +235,7 @@ After the run, use `View Result in COLMAP GUI` to inspect registered camera pose
 | COLMAP with SfM enabled | The COLMAP/GLOMAP SfM result in addition to the files above |
 | SphereSfM + `3DGUT (LichtFeld)` | `<scene>/images/`, `<scene>/masks/`, `<scene>/transforms.json`, `<scene>/pointcloud.ply` |
 | SphereSfM + cubemap conversion (`Convert to Projection Views`) | Load `<scene>/output/` in the downstream app. It contains `images/`, `masks/`, `transforms.json`, and `pointcloud.ply` |
-| Training enabled | The selected route output plus `<scene>/output/training/<training app>/`; LichtFeld also writes `_stechdrive/training/lichtfeld_config.json` |
+| Training enabled | The selected route output plus training results in `<scene>/output/`; LichtFeld also writes `_stechdrive/training/lichtfeld_config.json` |
 
 Step 4 saves this app's settings record to `<scene>/_stechdrive/export_settings.json`. Cubemap routes also save the view layout to `<scene>/_stechdrive/views_config.json`. These files are for reopening and reproducing the export in this app, not the dataset files you pass to 3DGS apps.
 

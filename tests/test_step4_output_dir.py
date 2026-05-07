@@ -306,8 +306,11 @@ def test_cubemap_step_does_not_use_current_directory_without_scene_dir(
 ) -> None:
     _app()
     images = tmp_path / "images"
+    masks = tmp_path / "masks"
     images.mkdir()
+    masks.mkdir()
     _write_test_image(images / "frame_0001.jpg")
+    _write_test_image(masks / "frame_0001.png")
     (tmp_path / "pointcloud.ply").write_text("ply\n", encoding="utf-8")
     monkeypatch.chdir(tmp_path)
     step = CubemapStep(Path.cwd())
@@ -1394,6 +1397,7 @@ def test_training_tab_appends_lichtfeld_command_and_writes_config(tmp_path: Path
     fake_lfs = tmp_path / "LichtFeld-Studio.exe"
     fake_lfs.write_text("", encoding="utf-8")
 
+    assert step.lfs_output_name_edit.text() == tmp_path.name
     step.run_training_cb.setChecked(True)
     step.training_executable_browse.set_text(str(fake_lfs))
     step.lfs_auto_steps_scaler_cb.setChecked(False)
@@ -1439,7 +1443,8 @@ def test_training_tab_appends_lichtfeld_command_and_writes_config(tmp_path: Path
     config_path = step._training_config_path()
     assert cmd[0] == str(fake_lfs)
     assert cmd[cmd.index("--data-path") + 1] == str(tmp_path / "output")
-    assert cmd[cmd.index("--output-path") + 1] == str(tmp_path / "output" / "training" / "lichtfeld")
+    assert cmd[cmd.index("--output-path") + 1] == str(tmp_path / "output")
+    assert cmd[cmd.index("--output-name") + 1] == tmp_path.name
     assert cmd[cmd.index("--config") + 1] == str(config_path)
     assert "--train" in cmd
     assert "--no-splash" in cmd
@@ -1488,6 +1493,55 @@ def test_training_headless_option_shares_start_row(tmp_path: Path) -> None:
 
     step._set_training_backend("postshot")
     assert step.training_headless_cb.isHidden()
+
+
+def test_lichtfeld_training_refuses_existing_output_ply(tmp_path: Path) -> None:
+    step = _ready_step(tmp_path, metashape_inputs=True)
+    _write_test_image(tmp_path / "images" / "frame_0001.jpg")
+    direct_idx = step.output_shape_combo.findData("equirect_3dgut")
+    assert direct_idx >= 0
+    step.output_shape_combo.setCurrentIndex(direct_idx)
+    fake_lfs = tmp_path / "LichtFeld-Studio.exe"
+    fake_lfs.write_text("", encoding="utf-8")
+    existing = tmp_path / "output" / f"{tmp_path.name}.ply"
+    existing.parent.mkdir(exist_ok=True)
+    existing.write_text("existing", encoding="utf-8")
+
+    step.run_training_cb.setChecked(True)
+    step.training_executable_browse.set_text(str(fake_lfs))
+
+    with pytest.raises(ValueError, match=existing.name):
+        step.build_commands()
+
+
+def test_postshot_training_defaults_to_scene_project_and_refuses_collision(tmp_path: Path) -> None:
+    images = tmp_path / "images"
+    masks = tmp_path / "masks"
+    images.mkdir()
+    masks.mkdir()
+    _write_test_image(images / "frame_0001.jpg")
+    _write_test_image(masks / "frame_0001.png")
+    fake_colmap = tmp_path / "colmap.exe"
+    fake_colmap.write_text("", encoding="utf-8")
+    fake_postshot = tmp_path / "postshot-cli.exe"
+    fake_postshot.write_text("", encoding="utf-8")
+    existing = tmp_path / "output" / f"{tmp_path.name}.psht"
+    existing.parent.mkdir(exist_ok=True)
+    existing.write_text("existing", encoding="utf-8")
+
+    step = CubemapStep(Path.cwd())
+    step.set_scene_dir(str(tmp_path))
+    step._set_export_method("colmap")
+    step.run_colmap_cb.setChecked(True)
+    step.colmap_exec_browse.set_text(str(fake_colmap))
+    step._set_training_backend("postshot")
+    step.training_executable_browse.set_text(str(fake_postshot))
+    step.run_training_cb.setChecked(True)
+
+    assert step.training_output_browse.text() == str(tmp_path / "output")
+    assert step.postshot_project_name_edit.text() == f"{tmp_path.name}.psht"
+    with pytest.raises(ValueError, match=existing.name):
+        step.build_commands()
 
 
 def test_lichtfeld_advanced_parameters_are_nested_collapsible_sections(tmp_path: Path) -> None:
@@ -1653,6 +1707,7 @@ def test_colmap_route_can_append_postshot_training_with_future_sparse_model(tmp_
     step.run_colmap_cb.setChecked(True)
     step.colmap_exec_browse.set_text(str(fake_colmap))
     step._set_training_backend("postshot")
+    assert step.postshot_project_name_edit.text() == f"{tmp_path.name}.psht"
     step.training_executable_browse.set_text(str(fake_postshot))
     step.run_training_cb.setChecked(True)
     step.postshot_project_name_edit.setText("scene.psht")
@@ -1677,7 +1732,7 @@ def test_colmap_route_can_append_postshot_training_with_future_sparse_model(tmp_
         str(tmp_path / "output" / "colmap_rig" / "images"),
         str(tmp_path / "output" / "colmap_rig" / "sparse" / "0"),
         "--output",
-        str(tmp_path / "output" / "training" / "postshot" / "scene.psht"),
+        str(tmp_path / "output" / "scene.psht"),
         "-s",
         "42",
         "--max-image-size",
