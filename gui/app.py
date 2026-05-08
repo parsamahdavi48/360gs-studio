@@ -147,7 +147,7 @@ class MainWindow(QWidget):
         self.step_buttons: list[QPushButton] = []
         self.step4_sub_buttons: dict[str, QPushButton] = {}
         self.step4_sub_intent_buttons: dict[str, QToolButton] = {}
-        self.step4_sub_status_labels: dict[str, QLabel] = {}
+        self.step4_sub_status_labels: dict[str, QToolButton] = {}
         self.step4_sub_text_labels: dict[str, QLabel] = {}
         self.step4_subnav_rail: QWidget | None = None
         for index, title_text in enumerate(self.step_nav_titles):
@@ -191,10 +191,13 @@ class MainWindow(QWidget):
                     intent_btn.clicked.connect(
                         lambda _checked=False, s=stage: self._toggle_step4_pipeline_stage_intent(s)
                     )
-                    status_label = QLabel("")
-                    status_label.setObjectName("navSubStepIcon")
-                    status_label.setFixedWidth(13)
-                    status_label.setAlignment(Qt.AlignCenter)
+                    status_label = QToolButton()
+                    status_label.setObjectName("navSubStepStatus")
+                    status_label.setAutoRaise(True)
+                    status_label.setFixedSize(13, 18)
+                    status_label.clicked.connect(
+                        lambda _checked=False, s=stage: self._activate_step4_pipeline_stage(s)
+                    )
                     text_label = QLabel("")
                     text_label.setObjectName("navSubStepText")
                     text_label.setWordWrap(False)
@@ -451,6 +454,8 @@ class MainWindow(QWidget):
         for btn in self.step4_sub_buttons.values():
             btn.setEnabled(unlocked)
         for btn in self.step4_sub_intent_buttons.values():
+            btn.setEnabled(unlocked)
+        for btn in self.step4_sub_status_labels.values():
             btn.setEnabled(unlocked)
 
     def _on_run(self) -> None:

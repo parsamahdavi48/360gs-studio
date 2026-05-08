@@ -131,7 +131,6 @@ QPushButton#navSubStep:checked {{
     border-color: {ACCENT};
     color: {TEXT_BRIGHT};
 }}
-QLabel#navSubStepIcon,
 QLabel#navSubStepText {{
     background-color: transparent;
     color: {TEXT_DIM};
@@ -158,25 +157,31 @@ QToolButton#navSubStepIntent:disabled {{
     color: {TEXT_DIM};
     border-color: transparent;
 }}
+QToolButton#navSubStepStatus {{
+    background-color: transparent;
+    border: 1px solid transparent;
+    border-radius: 3px;
+    color: {TEXT_DIM};
+    padding: 0;
+    font-size: 8pt;
+    font-weight: 700;
+}}
+QToolButton#navSubStepStatus:hover {{
+    color: {TEXT};
+    border-color: {BORDER};
+}}
 QLabel#navSubStepText[active="true"] {{
     color: {TEXT_BRIGHT};
 }}
-QLabel#navSubStepIcon[status="ready"] {{
+QToolButton#navSubStepStatus[status="ready"] {{
     color: {SUCCESS};
 }}
-QLabel#navSubStepIcon[status="planned"] {{
-    color: {ACCENT_HOVER};
-}}
-QLabel#navSubStepIcon[status="warning"] {{
+QToolButton#navSubStepStatus[status="warning"] {{
     color: {WARNING};
 }}
-QLabel#navSubStepIcon[status="off"] {{
+QToolButton#navSubStepStatus[status="off"] {{
     color: {TEXT_DIM};
 }}
-QLabel#navSubStepIcon[status="disabled"] {{
-    color: {TEXT_DIM};
-}}
-QLabel#navSubStepIcon:disabled,
 QLabel#navSubStepText:disabled {{
     color: {TEXT_DIM};
 }}

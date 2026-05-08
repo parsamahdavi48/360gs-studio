@@ -127,11 +127,8 @@ _PIPELINE_STAGE_SFM = "sfm"
 _PIPELINE_STAGE_CONVERSION = "conversion"
 _PIPELINE_STAGE_TRAINING = "training"
 _PIPELINE_STATUS_READY = "ready"
-_PIPELINE_STATUS_PLANNED = "planned"
-_PIPELINE_STATUS_PENDING = "pending"
 _PIPELINE_STATUS_WARNING = "warning"
 _PIPELINE_STATUS_OFF = "off"
-_PIPELINE_STATUS_DISABLED = "disabled"
 _OUTPUT_SHAPE_PROJECTED = "projected"
 _OUTPUT_SHAPE_EQUIRECT_3DGUT = "equirect_3dgut"
 _COLMAP_MAPPER_INCREMENTAL = "incremental"
@@ -1032,7 +1029,7 @@ class CubemapStep(BaseStepWidget):
     def pipeline_stage_intent(self, stage: str) -> bool:
         if stage == _PIPELINE_STAGE_SFM:
             if self._is_metashape_method():
-                return False
+                return True
             if self._is_colmap_method():
                 return self.run_colmap_cb.isChecked()
             return self._spheresfm_runs_sfm()
@@ -1046,6 +1043,11 @@ class CubemapStep(BaseStepWidget):
 
     def pipeline_stage_intent_enabled(self, stage: str) -> bool:
         return not (stage == _PIPELINE_STAGE_SFM and self._is_metashape_method())
+
+    def _pipeline_stage_runs_in_app(self, stage: str) -> bool:
+        if stage == _PIPELINE_STAGE_SFM:
+            return not self._is_metashape_method() and self.pipeline_stage_intent(stage)
+        return self.pipeline_stage_intent(stage)
 
     def toggle_pipeline_stage_intent(self, stage: str) -> None:
         self.set_pipeline_stage_intent(stage, not self.pipeline_stage_intent(stage))
@@ -1113,7 +1115,9 @@ class CubemapStep(BaseStepWidget):
             intent = self.pipeline_stage_intent(stage)
             intent_enabled = self.pipeline_stage_intent_enabled(stage)
             intent_key = "STEP4_PIPELINE_INTENT_ON" if intent else "STEP4_PIPELINE_INTENT_OFF"
-            if not intent_enabled:
+            if intent and not intent_enabled:
+                intent_tooltip = i18n.t("STEP4_PIPELINE_INTENT_LOCKED_ON").format(stage=label)
+            elif not intent_enabled:
                 intent_tooltip = i18n.t("STEP4_PIPELINE_INTENT_DISABLED").format(stage=label)
             else:
                 intent_tooltip = i18n.t(intent_key).format(stage=label)
@@ -1135,33 +1139,30 @@ class CubemapStep(BaseStepWidget):
 
     def _pipeline_sfm_status(self) -> tuple[str, str, str]:
         if not self.scene_dir:
-            return (_PIPELINE_STATUS_PENDING, "○", i18n.t("STEP4_PIPELINE_DETAIL_SCENE_REQUIRED"))
+            return (_PIPELINE_STATUS_WARNING, "!", i18n.t("STEP4_PIPELINE_DETAIL_SCENE_REQUIRED"))
         if self._is_metashape_method():
             xml = Path(self.ms_xml_browse.text().strip()) if self.ms_xml_browse.text().strip() else Path(self.scene_dir) / "metashape.xml"
             if xml.is_file():
-                return (_PIPELINE_STATUS_DISABLED, "·", i18n.t("STEP4_PIPELINE_DETAIL_METASHAPE_READY"))
+                return (_PIPELINE_STATUS_READY, "✓", i18n.t("STEP4_PIPELINE_DETAIL_METASHAPE_READY"))
             return (_PIPELINE_STATUS_WARNING, "!", i18n.t("STEP4_PIPELINE_DETAIL_METASHAPE_NEEDS_XML"))
         if self._is_colmap_method():
+            if not self.run_colmap_cb.isChecked():
+                return (_PIPELINE_STATUS_OFF, "-", i18n.t("STEP4_PIPELINE_DETAIL_COLMAP_OFF"))
             if self.run_colmap_cb.isChecked():
                 if not self.pipeline_stage_intent(_PIPELINE_STAGE_CONVERSION) and not self._colmap_rig_images_dir().is_dir():
                     return (_PIPELINE_STATUS_WARNING, "!", i18n.t("STEP4_PIPELINE_DETAIL_COLMAP_NEEDS_RIG"))
                 return (_PIPELINE_STATUS_READY, "✓", i18n.t("STEP4_PIPELINE_DETAIL_COLMAP_RUNS"))
-            if self._find_colmap_sparse_model() is not None:
-                return (_PIPELINE_STATUS_READY, "✓", i18n.t("STEP4_PIPELINE_DETAIL_COLMAP_READY"))
-            return (_PIPELINE_STATUS_OFF, "·", i18n.t("STEP4_PIPELINE_DETAIL_COLMAP_OFF"))
-        if self._spheresfm_runs_sfm():
-            return (_PIPELINE_STATUS_READY, "✓", i18n.t("STEP4_PIPELINE_DETAIL_SPHERESFM_RUNS"))
-        if self._find_spheresfm_sparse_model() is not None:
-            return (_PIPELINE_STATUS_READY, "✓", i18n.t("STEP4_PIPELINE_DETAIL_SPHERESFM_READY"))
-        return (_PIPELINE_STATUS_OFF, "·", i18n.t("STEP4_PIPELINE_DETAIL_SPHERESFM_OFF"))
+        if not self._spheresfm_runs_sfm():
+            return (_PIPELINE_STATUS_OFF, "-", i18n.t("STEP4_PIPELINE_DETAIL_SPHERESFM_OFF"))
+        return (_PIPELINE_STATUS_READY, "✓", i18n.t("STEP4_PIPELINE_DETAIL_SPHERESFM_RUNS"))
 
     def _pipeline_conversion_status(self) -> tuple[str, str, str]:
         if not self.scene_dir:
-            return (_PIPELINE_STATUS_PENDING, "○", i18n.t("STEP4_PIPELINE_DETAIL_SCENE_REQUIRED"))
+            return (_PIPELINE_STATUS_WARNING, "!", i18n.t("STEP4_PIPELINE_DETAIL_SCENE_REQUIRED"))
         if not self.pipeline_stage_intent(_PIPELINE_STAGE_CONVERSION):
-            return (_PIPELINE_STATUS_OFF, "·", i18n.t("STEP4_PIPELINE_DETAIL_CONVERSION_OFF"))
+            return (_PIPELINE_STATUS_OFF, "-", i18n.t("STEP4_PIPELINE_DETAIL_CONVERSION_OFF"))
         if self._is_spheresfm_method() and self._spheresfm_runs_sfm():
-            return (_PIPELINE_STATUS_PLANNED, "…", i18n.t("STEP4_PIPELINE_DETAIL_CONVERSION_AFTER_SFM"))
+            return (_PIPELINE_STATUS_READY, "✓", i18n.t("STEP4_PIPELINE_DETAIL_CONVERSION_AFTER_SFM"))
         if self._is_spheresfm_method() and self._find_spheresfm_sparse_model() is None:
             return (_PIPELINE_STATUS_WARNING, "!", i18n.t("STEP4_PIPELINE_DETAIL_SPHERESFM_NEEDS_SPARSE"))
         if self._is_metashape_method() and not self.ms_xml_browse.text().strip() and not (Path(self.scene_dir) / "metashape.xml").is_file():
@@ -1170,14 +1171,14 @@ class CubemapStep(BaseStepWidget):
 
     def _pipeline_training_status(self) -> tuple[str, str, str]:
         if not self.scene_dir:
-            return (_PIPELINE_STATUS_PENDING, "○", i18n.t("STEP4_PIPELINE_DETAIL_SCENE_REQUIRED"))
+            return (_PIPELINE_STATUS_WARNING, "!", i18n.t("STEP4_PIPELINE_DETAIL_SCENE_REQUIRED"))
         if not self.run_training_cb.isChecked():
-            return (_PIPELINE_STATUS_OFF, "·", i18n.t("STEP4_PIPELINE_DETAIL_TRAINING_OFF"))
+            return (_PIPELINE_STATUS_OFF, "-", i18n.t("STEP4_PIPELINE_DETAIL_TRAINING_OFF"))
         if self.pipeline_stage_intent(_PIPELINE_STAGE_CONVERSION):
             backend = self._training_backend_display_name(self._training_backend()) if hasattr(self, "training_backend_buttons") else ""
             return (
-                _PIPELINE_STATUS_PLANNED,
-                "…",
+                _PIPELINE_STATUS_READY,
+                "✓",
                 i18n.t("STEP4_PIPELINE_DETAIL_TRAINING_RUNS").format(backend=backend),
             )
         if not self._training_dataset_available():
@@ -1940,10 +1941,10 @@ class CubemapStep(BaseStepWidget):
             _PIPELINE_STAGE_TRAINING: self._pipeline_training_status(),
         }
         for stage, (status, _symbol, _detail) in status_by_stage.items():
-            if not self.pipeline_stage_intent(stage):
+            if not self._pipeline_stage_runs_in_app(stage):
                 continue
             selected = True
-            if status in {_PIPELINE_STATUS_PENDING, _PIPELINE_STATUS_WARNING, _PIPELINE_STATUS_DISABLED}:
+            if status == _PIPELINE_STATUS_WARNING:
                 return False
         return selected
 

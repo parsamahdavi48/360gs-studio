@@ -210,9 +210,14 @@ def test_step4_pipeline_intent_controls_execution_plan(tmp_path: Path) -> None:
     step = _ready_step(tmp_path, metashape_inputs=True)
 
     assert step.primary_action_text() == i18n.t("RUN")
-    assert step.pipeline_stage_intent("sfm") is False
+    assert step.pipeline_stage_intent("sfm") is True
     assert step.pipeline_stage_intent_enabled("sfm") is False
     assert step.pipeline_stage_intent("conversion") is True
+    sfm_item = next(item for item in step.pipeline_nav_items() if item["stage"] == "sfm")
+    assert sfm_item["intent_checked"] is True
+    assert sfm_item["intent_enabled"] is False
+    assert sfm_item["status"] == "ready"
+    assert sfm_item["status_symbol"] == "✓"
 
     step.set_pipeline_stage_intent("conversion", False)
     assert step.pipeline_stage_intent("conversion") is False
