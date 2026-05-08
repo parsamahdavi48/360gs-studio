@@ -1183,7 +1183,16 @@ class CubemapStep(BaseStepWidget):
                 intent_checked = intent
             else:
                 intent_tooltip = i18n.t(intent_key).format(stage=label)
-                if self._is_colmap_method() and stage == _PIPELINE_STAGE_SFM and not intent:
+                if self._is_metashape_method() and stage == _PIPELINE_STAGE_CONVERSION:
+                    intent_tooltip = self._append_tooltip_note(
+                        intent_tooltip,
+                        i18n.t(
+                            "STEP4_PIPELINE_METASHAPE_CUBE_DISABLES_INPUT"
+                            if intent
+                            else "STEP4_PIPELINE_METASHAPE_CUBE_ENABLES_INPUT"
+                        ),
+                    )
+                elif self._is_colmap_method() and stage == _PIPELINE_STAGE_SFM and not intent:
                     intent_tooltip = self._append_tooltip_note(
                         intent_tooltip,
                         i18n.t("STEP4_PIPELINE_COLMAP_SFM_ENABLES_CUBE"),

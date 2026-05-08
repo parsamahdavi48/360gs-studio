@@ -50,7 +50,13 @@ class MetashapeRouteBackend(SfmRouteBackend):
         return
 
     def set_conversion_intent(self, step: Any, enabled: bool) -> None:
-        step._conversion_intent = bool(enabled)
+        run_conversion = bool(enabled)
+        was_conversion = self.conversion_intent(step)
+        step._conversion_intent = run_conversion
+        if run_conversion and not was_conversion:
+            step._set_pipeline_notice("STEP4_PIPELINE_NOTICE_METASHAPE_ENABLED_INPUT")
+        elif not run_conversion and was_conversion:
+            step._set_pipeline_notice("STEP4_PIPELINE_NOTICE_METASHAPE_DISABLED_INPUT")
 
     def sfm_intent_toggle_enabled(self, _step: Any) -> bool:
         return False

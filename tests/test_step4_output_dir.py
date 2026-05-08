@@ -393,11 +393,18 @@ def test_step4_pipeline_intent_controls_execution_plan(tmp_path: Path) -> None:
     step.set_pipeline_stage_intent("conversion", False)
     assert step.pipeline_stage_intent("conversion") is False
     assert step.pipeline_stage_intent("sfm") is False
+    assert step.take_pipeline_notice() == i18n.t("STEP4_PIPELINE_NOTICE_METASHAPE_DISABLED_INPUT")
     assert step.primary_action_enabled() is False
     sfm_item = next(item for item in step.pipeline_nav_items() if item["stage"] == "sfm")
     assert sfm_item["status"] == "off"
     assert "Metashape" in sfm_item["status_tooltip"]
     assert step.build_commands() == []
+    step.set_pipeline_stage_intent("conversion", True)
+    assert step.pipeline_stage_intent("sfm") is True
+    assert step.pipeline_stage_intent("conversion") is True
+    assert step.take_pipeline_notice() == i18n.t("STEP4_PIPELINE_NOTICE_METASHAPE_ENABLED_INPUT")
+    step.set_pipeline_stage_intent("conversion", False)
+    assert step.take_pipeline_notice() == i18n.t("STEP4_PIPELINE_NOTICE_METASHAPE_DISABLED_INPUT")
 
     step._set_export_method("colmap")
     assert step.pipeline_stage_intent("sfm") is False
