@@ -96,9 +96,18 @@ from scene_layout import (
     STEP4_EXPORT_SETTINGS_JSON,
     STEP4_META_DIR_NAME,
     STEP4_VIEWS_CONFIG_JSON,
+    legacy_step4_export_settings_path,
     step4_export_settings_path,
     step4_meta_dir,
     step4_views_config_path,
+)
+from scene_project import (
+    append_step4_dataset_run,
+    append_step4_sfm_run,
+    append_step4_training_run,
+    file_identity,
+    scene_relative,
+    utc_now_iso,
 )
 
 _CONVERT_RE = re.compile(r"^Converting\s+(\d+)\s+(?:images|files)\.\.\.$")
@@ -1246,7 +1255,11 @@ class CubemapStep(BaseStepWidget):
         try:
             settings = json.loads(settings_path.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError):
-            return ""
+            legacy_path = legacy_step4_export_settings_path(Path(self.scene_dir))
+            try:
+                settings = json.loads(legacy_path.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                return ""
         shape = str(settings.get("output_shape", "")).strip()
         return shape if shape in {_OUTPUT_SHAPE_PROJECTED, _OUTPUT_SHAPE_EQUIRECT_3DGUT} else ""
 
@@ -3290,7 +3303,7 @@ class CubemapStep(BaseStepWidget):
         if not self._is_spheresfm_method():
             return None
         try:
-            return self._spheresfm_project_dir() / "logs"
+            return step4_meta_dir(Path(self.scene_dir)) / "logs" / "spheresfm"
         except ValueError:
             return None
 
@@ -4371,9 +4384,9 @@ class CubemapStep(BaseStepWidget):
                 "pointcloud": "pointcloud.ply" if direct or spheresfm_3dgut or spheresfm_projected else "",
                 "colmap_rig_dir": "colmap_rig",
                 "colmap_rig_config": "colmap_rig/rig_config.json",
-                "colmap_project_manifest": f"colmap_rig/{_COLMAP_PROJECT_MANIFEST_NAME}",
+                "colmap_project_manifest": f"{STEP4_META_DIR_NAME}/sfm/{_COLMAP_PROJECT_MANIFEST_NAME}",
                 "spheresfm_project_dir": "spheresfm",
-                "spheresfm_project_manifest": f"spheresfm/{_SPHERESFM_PROJECT_MANIFEST_NAME}",
+                "spheresfm_project_manifest": f"{STEP4_META_DIR_NAME}/sfm/{_SPHERESFM_PROJECT_MANIFEST_NAME}",
             },
         }
 
@@ -4461,9 +4474,127 @@ class CubemapStep(BaseStepWidget):
         payload = self._collect_export_settings()
         path.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
 
+    @staticmethod
+    def _step4_run_id(prefix: str) -> str:
+        return f"{prefix}_{utc_now_iso().replace(':', '').replace('-', '')}"
+
+    def _current_export_settings_snapshot(self) -> dict:
+        if not self.scene_dir:
+            return {}
+        scene = Path(self.scene_dir)
+        for path in (
+            step4_export_settings_path(scene),
+            legacy_step4_export_settings_path(scene),
+        ):
+            try:
+                data = json.loads(path.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                continue
+            if isinstance(data, dict):
+                return data
+        return {}
+
+    def _step4_artifact_snapshot(self, root: Path) -> dict:
+        scene = Path(self.scene_dir)
+        return {
+            "root": scene_relative(scene, root),
+            "transforms_json": file_identity(root / "transforms.json"),
+            "pointcloud": file_identity(root / "pointcloud.ply"),
+            "images_dir": file_identity(root / "images"),
+            "masks_dir": file_identity(root / "masks"),
+            "colmap_sparse_dir": file_identity(root / "sparse"),
+        }
+
+    def _current_dataset_root_for_manifest(self) -> Path:
+        if self._is_spheresfm_method():
+            if self._uses_spheresfm_3dgut_output():
+                return self._spheresfm_3dgut_dir()
+            if self._spheresfm_runs_conversion():
+                return self._spheresfm_cubemap_dir()
+            return self._spheresfm_project_dir()
+        if self._is_colmap_method():
+            return self._colmap_project_dir()
+        if self._uses_direct_equirect_output():
+            return self._direct_output_dir()
+        return self._output_dir()
+
+    def _record_step4_sfm_run(self, mode: str) -> None:
+        if not self.scene_dir:
+            return
+        scene = Path(self.scene_dir)
+        route = self._export_method()
+        if route == _METHOD_COLMAP:
+            project_dir = self._colmap_project_dir()
+            sparse_model = self._find_colmap_sparse_model()
+        elif route == _METHOD_SPHERESFM:
+            project_dir = self._spheresfm_project_dir()
+            sparse_model = self._find_spheresfm_sparse_model()
+        else:
+            project_dir = scene
+            sparse_model = self._resolve_ply_source()
+        append_step4_sfm_run(
+            scene,
+            {
+                "id": self._step4_run_id("sfm"),
+                "created_at": self._utc_now_iso(),
+                "route": route,
+                "mode": mode,
+                "project_dir": scene_relative(scene, project_dir),
+                "sparse_model_dir": scene_relative(scene, sparse_model) if sparse_model else "",
+                "ready_for_conversion": sparse_model is not None,
+                "settings": self._current_export_settings_snapshot(),
+            },
+        )
+
+    def _record_step4_dataset_run(self) -> None:
+        if not self.scene_dir:
+            return
+        scene = Path(self.scene_dir)
+        root = self._current_dataset_root_for_manifest()
+        append_step4_dataset_run(
+            scene,
+            {
+                "id": self._step4_run_id("dataset"),
+                "created_at": self._utc_now_iso(),
+                "route": self._export_method(),
+                "output_shape": self._output_shape(),
+                "target_profile": self._spheresfm_profile_id()
+                if self._is_spheresfm_method()
+                else self._profile_id(),
+                "dataset_root": scene_relative(scene, root),
+                "artifacts": self._step4_artifact_snapshot(root),
+                "settings": self._current_export_settings_snapshot(),
+            },
+        )
+
+    def _record_step4_training_run(self) -> None:
+        if not self.scene_dir or not self.run_training_cb.isChecked():
+            return
+        scene = Path(self.scene_dir)
+        dataset = self._training_dataset()
+        append_step4_training_run(
+            scene,
+            {
+                "id": self._step4_run_id("training"),
+                "created_at": self._utc_now_iso(),
+                "backend": self._training_backend(),
+                "dataset_root": scene_relative(scene, dataset.dataset_root),
+                "output_dir": scene_relative(scene, self._training_output_dir()),
+                "settings": self._collect_training_settings(),
+            },
+        )
+
+    def _record_step4_runs(self, *, sfm_mode: str | None, dataset: bool) -> None:
+        if sfm_mode:
+            self._record_step4_sfm_run(sfm_mode)
+        if dataset:
+            self._record_step4_dataset_run()
+        self._record_step4_training_run()
+
     def _write_colmap_project_manifest(self) -> None:
         project = self._colmap_project_dir()
         sparse_model = self._find_colmap_sparse_model()
+        manifest_path = step4_meta_dir(Path(self.scene_dir)) / "sfm" / _COLMAP_PROJECT_MANIFEST_NAME
         payload = {
             "app": "stechdrive-3dgs-utils",
             "app_version": APP_VERSION,
@@ -4484,7 +4615,8 @@ class CubemapStep(BaseStepWidget):
             "camera_params": self._colmap_camera_params_arg(),
         }
         project.mkdir(parents=True, exist_ok=True)
-        (project / _COLMAP_PROJECT_MANIFEST_NAME).write_text(
+        manifest_path.parent.mkdir(parents=True, exist_ok=True)
+        manifest_path.write_text(
             json.dumps(payload, indent=2, ensure_ascii=False),
             encoding="utf-8",
         )
@@ -4492,6 +4624,7 @@ class CubemapStep(BaseStepWidget):
     def _write_spheresfm_project_manifest(self) -> None:
         project = self._spheresfm_project_dir()
         sparse_model = self._find_spheresfm_sparse_model()
+        manifest_path = step4_meta_dir(Path(self.scene_dir)) / "sfm" / _SPHERESFM_PROJECT_MANIFEST_NAME
         payload = {
             "app": "stechdrive-3dgs-utils",
             "app_version": APP_VERSION,
@@ -4521,7 +4654,8 @@ class CubemapStep(BaseStepWidget):
             "gut_dir": str(self._spheresfm_3dgut_dir()),
         }
         project.mkdir(parents=True, exist_ok=True)
-        (project / _SPHERESFM_PROJECT_MANIFEST_NAME).write_text(
+        manifest_path.parent.mkdir(parents=True, exist_ok=True)
+        manifest_path.write_text(
             json.dumps(payload, indent=2, ensure_ascii=False),
             encoding="utf-8",
         )
@@ -5133,17 +5267,29 @@ class CubemapStep(BaseStepWidget):
                 self._apply_lichtfeld_final_correction(self._spheresfm_3dgut_dir())
             self._write_export_settings()
             self._write_spheresfm_project_manifest()
+            self._record_step4_runs(
+                sfm_mode="spheresfm" if self._spheresfm_runs_sfm() else None,
+                dataset=self._spheresfm_runs_conversion(),
+            )
             return
 
         if self._is_colmap_method():
             self._write_export_settings()
             self._write_colmap_project_manifest()
+            self._record_step4_runs(
+                sfm_mode="colmap" if self.pipeline_stage_intent(_PIPELINE_STAGE_SFM) else None,
+                dataset=self.pipeline_stage_intent(_PIPELINE_STAGE_CONVERSION),
+            )
             return
 
         if self._uses_direct_equirect_output():
             if self._uses_lichtfeld_final_correction():
                 self._apply_lichtfeld_final_correction(self._direct_output_dir())
             self._write_export_settings()
+            self._record_step4_runs(
+                sfm_mode="metashape_import" if self.pipeline_stage_intent(_PIPELINE_STAGE_CONVERSION) else None,
+                dataset=self.pipeline_stage_intent(_PIPELINE_STAGE_CONVERSION),
+            )
             return
 
         output = self._output_dir()
@@ -5166,6 +5312,10 @@ class CubemapStep(BaseStepWidget):
 
         if self._writes_any_view_assets():
             self._write_export_settings()
+        self._record_step4_runs(
+            sfm_mode="metashape_import" if self.pipeline_stage_intent(_PIPELINE_STAGE_CONVERSION) else None,
+            dataset=self.pipeline_stage_intent(_PIPELINE_STAGE_CONVERSION),
+        )
 
     def _apply_lichtfeld_final_correction(self, output: Path) -> None:
         transforms = output / "transforms.json"

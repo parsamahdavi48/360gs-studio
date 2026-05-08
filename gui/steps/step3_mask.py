@@ -40,6 +40,7 @@ from gui.common.collapsible_section import CollapsibleSection
 from gui.common.drag_spinbox import DragDoubleSpinBox, DragSpinBox
 from gui.common.form_rows import add_tooltip_row
 from gui.common.icons import delete_icon, file_picker_icon, minus_icon, plus_icon
+from gui.mask.mask_files import iter_image_files
 from gui.mask.mask_preview import MaskPreviewConfig, MaskPreviewWidget
 from gui.steps import mask_commands as mask_command_defs
 from gui.steps.base_step import (
@@ -66,6 +67,7 @@ from image_io import imread_unicode, imwrite_unicode
 from mask_view_recipes import QUALITY_CHOICES
 from overexposure_mask import detect_overexposure, read_image_preserve_depth
 from scene_layout import selected_frames_path
+from scene_project import append_mask_run, scene_relative, utc_now_iso, write_mask_item
 from stitch_mask import boundary_width_to_limit_angle, create_angular_stitched_mask
 
 _COCO_CLASS_NAMES = [
@@ -206,6 +208,10 @@ class MaskStep(BaseStepWidget):
         self._current_reprocess_failed: list[Path] = []
         self._current_reprocess_succeeded: list[Path] = []
         self._current_reprocess_last_success: Path | None = None
+        self._current_reprocess_run_id = ""
+        self._current_reprocess_settings: dict | None = None
+        self._mask_batch_settings: dict | None = None
+        self._mask_batch_phases: list[str] = []
         self._mask_preview_render_pending = False
         self._mask_preview_render_timer = QTimer(self)
         self._mask_preview_render_timer.setSingleShot(True)
@@ -1333,6 +1339,8 @@ class MaskStep(BaseStepWidget):
         if "custom" in requested_steps:
             steps.append(("custom", self._build_custom_cmd(replace=fresh_base_needed)))
             fresh_base_needed = False
+        self._mask_batch_settings = self._mask_settings_snapshot()
+        self._mask_batch_phases = [phase for phase, _cmd in steps]
         return steps
 
     def confirm_commands(self, commands: list[tuple[str, list[str]]]) -> bool:
@@ -1509,6 +1517,126 @@ class MaskStep(BaseStepWidget):
             sam_prompts=tuple(self._selected_sam_prompts()),
             sam_subtract_prompts=tuple(self._selected_sam_subtract_prompts()),
             sam31_merge_mode=self._sam31_merge_mode_arg(),
+        )
+
+    def _mask_settings_snapshot(self) -> dict:
+        context = self._mask_command_context()
+        return {
+            "projection": context.projection,
+            "tasks": self._selected_mask_tasks(),
+            "primary_backend": self._person_backend_arg(),
+            "quality": context.quality,
+            "yolo": {
+                "level_index": self.yolo_level_combo.currentIndex(),
+                "level_label": self.yolo_level_combo.currentText(),
+                "expand": context.yolo_expand,
+                "classes": list(context.yolo_classes),
+                "extra_args": list(context.yolo_extra_args),
+            },
+            "mask2former": {
+                "ade_labels": list(context.ade_labels),
+            },
+            "sam31": {
+                "prompts": list(context.sam_prompts),
+                "subtract_prompts": list(context.sam_subtract_prompts),
+                "merge_mode": context.sam31_merge_mode,
+            },
+            "sky": {
+                "backend": self._sky_backend_arg(),
+                "inference_size": context.sky_inference_size,
+                "min_score": context.sky_min_score,
+                "min_area_ratio": context.sky_min_area_ratio,
+                "top_connected": context.sky_top_connected,
+            },
+            "stitch": {
+                "enabled": self._projection() == _PROJECTION_EQUIRECT and self.run_stitch_cb.isChecked(),
+                "boundary_width": context.stitch_boundary_width,
+                "workers": context.stitch_workers,
+            },
+            "overexposure": {
+                "enabled": self.run_overexp_cb.isChecked(),
+                "threshold": context.overexposure_threshold,
+                "dilate": context.overexposure_dilate,
+            },
+            "custom_mask": {
+                "enabled": self.run_custom_cb.isChecked(),
+                "path": context.custom_mask,
+            },
+            "images_dir": self._images_dir_text(),
+            "masks_dir": self._masks_dir_text(),
+        }
+
+    @staticmethod
+    def _new_mask_run_id(prefix: str) -> str:
+        return f"{prefix}_{utc_now_iso().replace(':', '').replace('-', '')}"
+
+    @staticmethod
+    def _mask_stats(mask_path: Path) -> dict:
+        mask = imread_unicode(mask_path, cv2.IMREAD_GRAYSCALE)
+        if mask is None or mask.size <= 0:
+            return {"readable": False}
+        total = int(mask.size)
+        black = int(np.count_nonzero(mask < 128))
+        white = total - black
+        return {
+            "readable": True,
+            "width": int(mask.shape[1]),
+            "height": int(mask.shape[0]),
+            "black_pixels": black,
+            "white_pixels": white,
+            "black_ratio": black / total,
+            "white_ratio": white / total,
+        }
+
+    def _record_mask_outputs(
+        self,
+        image_paths: list[Path],
+        *,
+        mode: str,
+        settings: dict | None,
+        phases: list[str],
+        run_id: str | None = None,
+    ) -> None:
+        if not self.scene_dir or not image_paths:
+            return
+        scene = Path(self.scene_dir)
+        settings = settings or self._mask_settings_snapshot()
+        run_id = run_id or self._new_mask_run_id("mask")
+        generated: list[dict] = []
+        for image_path in image_paths:
+            mask_path = self._mask_output_path_for_image(image_path)
+            if not mask_path.is_file():
+                continue
+            stats = self._mask_stats(mask_path)
+            write_mask_item(
+                scene,
+                image_path=image_path,
+                mask_path=mask_path,
+                settings=settings,
+                run_id=run_id,
+                stats=stats,
+            )
+            generated.append(
+                {
+                    "image": scene_relative(scene, image_path),
+                    "mask": scene_relative(scene, mask_path),
+                    "stats": stats,
+                }
+            )
+        if not generated:
+            return
+        append_mask_run(
+            scene,
+            {
+                "id": run_id,
+                "created_at": utc_now_iso(),
+                "mode": mode,
+                "phases": phases,
+                "settings": settings,
+                "image_count": len(image_paths),
+                "mask_count": len(generated),
+                "generated": generated,
+            },
         )
 
     def _build_yolo_cmd(self) -> list[str]:
@@ -1745,6 +1873,8 @@ class MaskStep(BaseStepWidget):
         self._current_reprocess_failed = []
         self._current_reprocess_succeeded = []
         self._current_reprocess_last_success = None
+        self._current_reprocess_run_id = self._new_mask_run_id("mask_reprocess")
+        self._current_reprocess_settings = self._mask_settings_snapshot()
         self.mask_preview.set_current_reprocess_running(True)
         self.mask_preview.wait_for_thumbnail_rendering()
         self._start_next_current_reprocess()
@@ -1902,6 +2032,13 @@ class MaskStep(BaseStepWidget):
         self._mask_preview_render_timer.stop()
         self._mask_preview_render_pending = False
         self._update_ready_status()
+        self._record_mask_outputs(
+            succeeded_images,
+            mode="selected_reprocess",
+            settings=self._current_reprocess_settings,
+            phases=self._selected_mask_tasks(),
+            run_id=self._current_reprocess_run_id,
+        )
 
         if last_success and last_image is not None:
             self.mask_preview.set_status_text(
@@ -1917,6 +2054,8 @@ class MaskStep(BaseStepWidget):
             )
         self._current_reprocess_failed = []
         self._current_reprocess_succeeded = []
+        self._current_reprocess_run_id = ""
+        self._current_reprocess_settings = None
 
     def _apply_current_image_postprocess(
         self,
@@ -2060,11 +2199,21 @@ class MaskStep(BaseStepWidget):
 
     def on_queue_finished(self, success: bool) -> None:
         if not success:
+            self._mask_batch_settings = None
+            self._mask_batch_phases = []
             return
         self.mask_preview.clear_yolo_preview_mask()
         self.mask_preview.refresh_image_list(prefer_current=True, force_thumbnails=True)
         self._render_mask_preview()
         self._update_ready_status()
+        self._record_mask_outputs(
+            iter_image_files(self._images_dir_text()),
+            mode="batch",
+            settings=self._mask_batch_settings,
+            phases=list(self._mask_batch_phases),
+        )
+        self._mask_batch_settings = None
+        self._mask_batch_phases = []
 
     def shutdown(self) -> None:
         self.mask_preview.shutdown()

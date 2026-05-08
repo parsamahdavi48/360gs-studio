@@ -27,7 +27,7 @@ from gui.steps.sfm_route_specs import (
 )
 from gui.steps.step4_cubemap import CubemapStep
 from gui.steps.training_backends import lichtfeld_defaults
-from scene_layout import step4_export_settings_path, step4_views_config_path
+from scene_layout import step4_export_settings_path, step4_meta_dir, step4_views_config_path
 from transforms_to_colmap import read_ply_points
 
 
@@ -917,7 +917,7 @@ def test_colmap_export_finalize_writes_export_method_settings(tmp_path: Path) ->
     assert settings["colmap_rig"]["dir"] == str(tmp_path / "output" / "colmap_rig")
     assert settings["colmap_rig"]["project_dir"] == str(tmp_path / "output" / "colmap_rig")
 
-    manifest_path = tmp_path / "output" / "colmap_rig" / "stechdrive_colmap_project.json"
+    manifest_path = step4_meta_dir(tmp_path) / "sfm" / "stechdrive_colmap_project.json"
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     assert manifest["export_type"] == "colmap_project"
     assert manifest["project_dir"] == str(tmp_path / "output" / "colmap_rig")
@@ -940,7 +940,7 @@ def test_colmap_export_manifest_marks_sparse_project_ready(tmp_path: Path) -> No
     step._finalize_bundle()
 
     manifest = json.loads(
-        (tmp_path / "output" / "colmap_rig" / "stechdrive_colmap_project.json").read_text(encoding="utf-8")
+        (step4_meta_dir(tmp_path) / "sfm" / "stechdrive_colmap_project.json").read_text(encoding="utf-8")
     )
     assert manifest["ready_for_import"] is True
     assert manifest["sparse_model_dir"] == "sparse/0"
@@ -2287,9 +2287,9 @@ def test_cubemap_finalize_writes_export_settings(tmp_path: Path) -> None:
     assert settings["view_config"]["cube6_drop_top"] is False
     assert settings["view_config"]["cube6_drop_bottom"] is False
     assert settings["metashape_import"]["use_ply"] is True
-    assert settings["output_files"]["settings"] == "_stechdrive/export_settings.json"
+    assert settings["output_files"]["settings"] == "_stechdrive/step4/export_settings.json"
     assert settings["view_config"]["views"]
-    assert settings["views_config_path"] == "_stechdrive/views_config.json"
+    assert settings["views_config_path"] == "_stechdrive/step4/views_config.json"
     assert settings["views_config_snapshot"] == json.loads(
         step4_views_config_path(tmp_path).read_text(encoding="utf-8")
     )

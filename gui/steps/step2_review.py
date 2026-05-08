@@ -15,6 +15,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from apply_frame_decisions import load_rows, normalize_decision, pending_drop_image_paths
 from gui import i18n
 from gui.steps.base_step import (
     SETTINGS_PANE_MARGINS,
@@ -23,6 +24,7 @@ from gui.steps.base_step import (
     configure_settings_scroll,
 )
 from scene_layout import frame_backups_dir, selected_frames_path
+from scene_project import append_review_run, file_identity, scene_relative, utc_now_iso
 
 
 class ReviewStep(BaseStepWidget):
@@ -30,6 +32,7 @@ class ReviewStep(BaseStepWidget):
         super().__init__(base_dir, parent)
         self._review_widget: QWidget | None = None
         self._loaded_csv_signature: tuple[Path, int, int] | None = None
+        self._pending_review_run: dict | None = None
         self._build_ui()
 
     def _build_ui(self) -> None:
@@ -226,11 +229,54 @@ class ReviewStep(BaseStepWidget):
         extra = ["--finalize-in-place"]
         if self.backup_cb.isChecked():
             extra.extend(["--backup-dir", str(frame_backups_dir(Path(self.scene_dir)) / "images")])
+        self._pending_review_run = self._review_run_snapshot(backup_images=self.backup_cb.isChecked())
         return [("finalize", self._build_apply_cmd(extra))]
 
     def on_queue_finished(self, success: bool) -> None:
         if success:
+            self._finish_review_run_snapshot()
             self._refresh_embedded_review(force=True, show_error=False)
+        else:
+            self._pending_review_run = None
+
+    def _review_counts(self) -> dict:
+        csv_path = self._csv_path()
+        try:
+            rows = load_rows(csv_path)
+        except Exception:
+            rows = []
+        keep = 0
+        drop = 0
+        for row in rows:
+            if normalize_decision(row) == "drop":
+                drop += 1
+            else:
+                keep += 1
+        return {"rows": len(rows), "keep": keep, "drop": drop}
+
+    def _review_run_snapshot(self, *, backup_images: bool) -> dict:
+        scene = Path(self.scene_dir)
+        dropped = pending_drop_image_paths(scene)
+        return {
+            "id": f"review_{utc_now_iso().replace(':', '').replace('-', '')}",
+            "created_at": utc_now_iso(),
+            "mode": "finalize_in_place",
+            "backup_images": backup_images,
+            "csv_before": file_identity(self._csv_path()),
+            "counts_before": self._review_counts(),
+            "pending_drop_images": [scene_relative(scene, p) for p in dropped],
+        }
+
+    def _finish_review_run_snapshot(self) -> None:
+        if not self.scene_dir or self._pending_review_run is None:
+            return
+        scene = Path(self.scene_dir)
+        record = dict(self._pending_review_run)
+        record["completed_at"] = utc_now_iso()
+        record["csv_after"] = file_identity(self._csv_path())
+        record["counts_after"] = self._review_counts()
+        append_review_run(scene, record)
+        self._pending_review_run = None
 
     def shutdown(self) -> None:
         widget = self._review_widget

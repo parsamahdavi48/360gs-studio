@@ -36,6 +36,7 @@ from gui.steps.base_step import (
     BaseStepWidget,
     configure_settings_scroll,
 )
+from scene_project import source_video_record, upsert_source_videos
 
 _FIXED_INTERVAL_MIN = 0.05
 _FIXED_INTERVAL_MAX = 60.0
@@ -358,6 +359,7 @@ class ExtractStep(BaseStepWidget):
         self._update_images_path_label()
         self._update_video_info_label()
         self._update_instant_estimate()
+        self._save_source_video_registry()
         self._update_ready_status()
 
     def _update_images_path_label(self) -> None:
@@ -669,6 +671,10 @@ class ExtractStep(BaseStepWidget):
                 pass
         return None
 
+    def on_queue_finished(self, success: bool) -> None:
+        if success:
+            self._save_source_video_registry()
+
     # -- 動画情報 --
 
     def _clear_input_videos(self) -> None:
@@ -777,6 +783,7 @@ class ExtractStep(BaseStepWidget):
                 key = self._video_key(videos[0])
                 self.video_infos[key] = self.video_info
                 self.video_info_failures.pop(key, None)
+            self._save_source_video_registry()
             self._update_video_info_label()
             self._mark_estimate_stale()
             self._update_ready_status()
@@ -810,6 +817,7 @@ class ExtractStep(BaseStepWidget):
             self.video_info_failures.pop(key, None)
 
         self._update_video_info_label()
+        self._save_source_video_registry()
         self._mark_estimate_stale()
         self._update_ready_status()
         if failures and show_error:
@@ -834,9 +842,16 @@ class ExtractStep(BaseStepWidget):
             raise ValueError(f"入力動画が見つかりません: {video}")
 
         cmd = [
-            ffprobe, "-v", "error", "-select_streams", "v:0",
-            "-show_entries", "stream=width,height,avg_frame_rate,r_frame_rate,nb_frames,duration",
-            "-show_entries", "format=duration", "-of", "json", video,
+            ffprobe,
+            "-v",
+            "error",
+            "-select_streams",
+            "v:0",
+            "-show_streams",
+            "-show_format",
+            "-of",
+            "json",
+            video,
         ]
         proc = subprocess.run(cmd, capture_output=True, text=True)
         if proc.returncode != 0:
@@ -848,11 +863,12 @@ class ExtractStep(BaseStepWidget):
             raise RuntimeError("動画ストリームが見つかりません")
 
         s = streams[0]
+        fmt = data.get("format") if isinstance(data.get("format"), dict) else {}
         w, h = int(s.get("width", 0)), int(s.get("height", 0))
         fps = self._parse_fraction(s.get("avg_frame_rate", "0"))
         if fps <= 0:
             fps = self._parse_fraction(s.get("r_frame_rate", "0"))
-        dur = float(s.get("duration") or data.get("format", {}).get("duration") or 0.0)
+        dur = float(s.get("duration") or fmt.get("duration") or 0.0)
         nb = int(s["nb_frames"]) if s.get("nb_frames", "").isdigit() else 0
 
         if fps <= 0 and dur > 0 and nb > 0:
@@ -864,7 +880,35 @@ class ExtractStep(BaseStepWidget):
         if nb <= 0 and dur > 0:
             nb = max(1, int(round(dur * fps)))
 
-        return {"width": w, "height": h, "fps": fps, "duration_sec": dur, "total_frames": nb}
+        return {
+            "width": w,
+            "height": h,
+            "fps": fps,
+            "duration_sec": dur,
+            "total_frames": nb,
+            "tags": s.get("tags") if isinstance(s.get("tags"), dict) else {},
+            "format_tags": fmt.get("tags") if isinstance(fmt.get("tags"), dict) else {},
+            "side_data_list": s.get("side_data_list") if isinstance(s.get("side_data_list"), list) else [],
+        }
+
+    def _save_source_video_registry(self) -> None:
+        if not self.scene_dir:
+            return
+        records: list[dict] = []
+        for video in self._selected_video_paths():
+            if not video.is_file():
+                continue
+            info = self.video_infos.get(self._video_key(video))
+            if info is None and len(self._selected_video_paths()) == 1:
+                info = self.video_info
+            if not isinstance(info, dict):
+                continue
+            try:
+                records.append(source_video_record(video, info))
+            except OSError:
+                continue
+        if records:
+            upsert_source_videos(Path(self.scene_dir), records)
 
     def _update_video_info_label(self) -> None:
         if self._is_multi_video_input():
