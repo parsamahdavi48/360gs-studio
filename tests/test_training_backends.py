@@ -15,6 +15,47 @@ from gui.steps.training_backends import (
     lichtfeld_auto_steps_scaler,
     lichtfeld_defaults,
 )
+from gui.steps.training_backend_specs import (
+    DEFAULT_TRAINING_BACKEND,
+    OTHER_TRAINING_BACKEND_IDS,
+    PRIMARY_TRAINING_BACKEND_IDS,
+    TRAINING_BACKEND_CUSTOM,
+    TRAINING_BACKEND_LICHTFELD,
+    TRAINING_BACKEND_POSTSHOT,
+    get_training_backend_spec,
+    normalize_training_backend,
+    training_backend_default_executable,
+    training_backend_phase_name,
+    training_backend_specs,
+)
+
+
+def test_training_backend_specs_define_ui_order_and_command_metadata() -> None:
+    primary_ids = tuple(spec.backend_id for spec in training_backend_specs(category="primary"))
+    other_ids = tuple(spec.backend_id for spec in training_backend_specs(category="other"))
+
+    assert DEFAULT_TRAINING_BACKEND == TRAINING_BACKEND_LICHTFELD
+    assert primary_ids == (TRAINING_BACKEND_LICHTFELD, TRAINING_BACKEND_POSTSHOT)
+    assert other_ids == (TRAINING_BACKEND_CUSTOM,)
+    assert PRIMARY_TRAINING_BACKEND_IDS == primary_ids
+    assert OTHER_TRAINING_BACKEND_IDS == other_ids
+
+    ordered_specs = training_backend_specs()
+    assert [spec.stack_order for spec in ordered_specs] == [0, 1, 2]
+    assert get_training_backend_spec(TRAINING_BACKEND_LICHTFELD).supports_headless is True
+    assert get_training_backend_spec(TRAINING_BACKEND_POSTSHOT).supports_headless is False
+    assert training_backend_phase_name(TRAINING_BACKEND_CUSTOM) == "training_custom"
+    assert training_backend_default_executable(
+        TRAINING_BACKEND_LICHTFELD,
+        windows=True,
+    ) == "LichtFeld-Studio.exe"
+    assert training_backend_default_executable(
+        TRAINING_BACKEND_POSTSHOT,
+        windows=False,
+    ) == "postshot-cli"
+    assert training_backend_default_executable(TRAINING_BACKEND_CUSTOM, windows=True) == ""
+    assert normalize_training_backend("POSTSHOT") == TRAINING_BACKEND_POSTSHOT
+    assert normalize_training_backend("missing") == DEFAULT_TRAINING_BACKEND
 
 
 def test_lichtfeld_config_overrides_visible_training_parameters(tmp_path: Path) -> None:

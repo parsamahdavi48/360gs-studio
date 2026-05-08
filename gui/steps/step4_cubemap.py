@@ -74,6 +74,16 @@ from gui.steps.training_backends import (
     lichtfeld_defaults,
     lichtfeld_output_name_stem,
 )
+from gui.steps.training_backend_selector import TrainingBackendSelector
+from gui.steps.training_backend_specs import (
+    TRAINING_BACKEND_CUSTOM as _TRAINING_BACKEND_CUSTOM,
+    TRAINING_BACKEND_LICHTFELD as _TRAINING_BACKEND_LICHTFELD,
+    TRAINING_BACKEND_POSTSHOT as _TRAINING_BACKEND_POSTSHOT,
+    get_training_backend_spec,
+    normalize_training_backend,
+    training_backend_default_executable,
+    training_backend_phase_name,
+)
 from gui.user_settings import load_user_settings_section, update_user_settings_section
 from gui.version import APP_VERSION
 from scene_layout import (
@@ -121,9 +131,6 @@ _PIPELINE_STATUS_PLANNED = "planned"
 _PIPELINE_STATUS_PENDING = "pending"
 _PIPELINE_STATUS_WARNING = "warning"
 _PIPELINE_STATUS_OFF = "off"
-_TRAINING_BACKEND_LICHTFELD = "lichtfeld"
-_TRAINING_BACKEND_POSTSHOT = "postshot"
-_TRAINING_BACKEND_CUSTOM = "custom"
 _OUTPUT_SHAPE_PROJECTED = "projected"
 _OUTPUT_SHAPE_EQUIRECT_3DGUT = "equirect_3dgut"
 _COLMAP_MAPPER_INCREMENTAL = "incremental"
@@ -1102,30 +1109,13 @@ class CubemapStep(BaseStepWidget):
         self.training_headless_cb.setToolTip(i18n.tip("TRAINING_HEADLESS"))
         self.training_headless_cb.toggled.connect(self._on_training_settings_changed)
 
-        self.training_backend_row = QWidget()
-        backend_layout = QHBoxLayout(self.training_backend_row)
-        backend_layout.setContentsMargins(0, 0, 0, 0)
-        backend_layout.setSpacing(10)
-        self.training_backend_label = QLabel(i18n.t("TRAINING_BACKEND_LABEL"))
-        self.training_backend_group = QButtonGroup(self)
-        self.training_backend_group.setExclusive(True)
-        self.training_backend_buttons: dict[str, QRadioButton] = {}
-        for backend, label, tip_key in [
-            (_TRAINING_BACKEND_LICHTFELD, i18n.t("TRAINING_BACKEND_LICHTFELD_SHORT"), "TRAINING_BACKEND_LICHTFELD"),
-            (_TRAINING_BACKEND_POSTSHOT, i18n.t("TRAINING_BACKEND_POSTSHOT_SHORT"), "TRAINING_BACKEND_POSTSHOT"),
-            (_TRAINING_BACKEND_CUSTOM, i18n.t("TRAINING_BACKEND_CUSTOM_SHORT"), "TRAINING_BACKEND_CUSTOM"),
-        ]:
-            btn = QRadioButton(label)
-            btn.setObjectName("optionRadio")
-            btn.setToolTip(i18n.tip(tip_key))
-            btn.clicked.connect(lambda _checked=False, b=backend: self._set_training_backend(b))
-            self.training_backend_group.addButton(btn)
-            self.training_backend_buttons[backend] = btn
-        self.training_backend_label.setToolTip(i18n.tip("TRAINING_BACKEND_LICHTFELD"))
-        backend_layout.addWidget(self.training_backend_label)
-        for btn in self.training_backend_buttons.values():
-            backend_layout.addWidget(btn)
-        backend_layout.addStretch()
+        self.training_backend_selector = TrainingBackendSelector()
+        self.training_backend_selector.backend_changed.connect(self._set_training_backend)
+        self.training_backend_row = self.training_backend_selector
+        self.training_backend_label = self.training_backend_selector.label
+        self.training_backend_buttons = self.training_backend_selector.backend_buttons
+        self.training_backend_other_button = self.training_backend_selector.other_button
+        self.training_backend_other_row = self.training_backend_selector.other_row
         layout.addWidget(self.training_backend_row)
 
         self.training_run_options_row = QWidget()
@@ -1156,7 +1146,7 @@ class CubemapStep(BaseStepWidget):
         self.training_executable_browse = BrowseWidget(
             mode="file",
             filter_str=exe_filter,
-            placeholder="LichtFeld-Studio.exe",
+            placeholder=self._default_training_executable(_TRAINING_BACKEND_LICHTFELD),
         )
         self.training_executable_browse.setToolTip(i18n.tip("TRAINING_EXECUTABLE"))
         add_tooltip_row(
@@ -1193,9 +1183,20 @@ class CubemapStep(BaseStepWidget):
         self.lichtfeld_training_options = self._build_lichtfeld_training_options()
         self.postshot_training_options = self._build_postshot_training_options()
         self.custom_training_options = self._build_custom_training_options()
-        self.training_options_stack.addWidget(self.lichtfeld_training_options)
-        self.training_options_stack.addWidget(self.postshot_training_options)
-        self.training_options_stack.addWidget(self.custom_training_options)
+        self.training_option_widgets = {
+            _TRAINING_BACKEND_LICHTFELD: self.lichtfeld_training_options,
+            _TRAINING_BACKEND_POSTSHOT: self.postshot_training_options,
+            _TRAINING_BACKEND_CUSTOM: self.custom_training_options,
+        }
+        self.training_options_stack_indices: dict[str, int] = {}
+        for backend, widget in sorted(
+            self.training_option_widgets.items(),
+            key=lambda item: get_training_backend_spec(item[0]).stack_order,
+        ):
+            index = self.training_options_stack.addWidget(widget)
+            self.training_options_stack_indices[backend] = (
+                index if isinstance(index, int) else self.training_options_stack.indexOf(widget)
+            )
         self.training_options_stack.currentChanged.connect(lambda _index: self._refresh_training_settings_layout())
         training_settings_layout.addWidget(self.training_options_stack)
         training_settings_layout.addStretch()
@@ -1964,33 +1965,21 @@ class CubemapStep(BaseStepWidget):
         return self._training_backend_value
 
     def _training_backend_display_name(self, backend: str) -> str:
-        btn = getattr(self, "training_backend_buttons", {}).get(backend)
-        if btn is not None:
-            return btn.text()
-        return {
-            _TRAINING_BACKEND_LICHTFELD: i18n.t("TRAINING_BACKEND_LICHTFELD_SHORT"),
-            _TRAINING_BACKEND_POSTSHOT: i18n.t("TRAINING_BACKEND_POSTSHOT_SHORT"),
-            _TRAINING_BACKEND_CUSTOM: i18n.t("TRAINING_BACKEND_CUSTOM_SHORT"),
-        }.get(backend, "")
+        if hasattr(self, "training_backend_selector"):
+            return self.training_backend_selector.display_name(backend)
+        return i18n.t(get_training_backend_spec(backend).short_label_key)
 
     def _set_training_backend(self, backend: str) -> None:
-        if backend not in {_TRAINING_BACKEND_LICHTFELD, _TRAINING_BACKEND_POSTSHOT, _TRAINING_BACKEND_CUSTOM}:
-            backend = _TRAINING_BACKEND_LICHTFELD
+        backend = normalize_training_backend(backend)
+        spec = get_training_backend_spec(backend)
         self._training_backend_value = backend
-        btn = self.training_backend_buttons.get(backend)
-        if btn is not None and not btn.isChecked():
-            btn.setChecked(True)
-        current_tip = btn.toolTip() if btn is not None else ""
-        if current_tip:
-            self.training_backend_label.setToolTip(str(current_tip))
-        stack_index = {
-            _TRAINING_BACKEND_LICHTFELD: 0,
-            _TRAINING_BACKEND_POSTSHOT: 1,
-            _TRAINING_BACKEND_CUSTOM: 2,
-        }[backend]
+        if hasattr(self, "training_backend_selector"):
+            self.training_backend_selector.set_backend(backend)
+        self.training_backend_label.setToolTip(i18n.tip(spec.tooltip_key))
+        stack_index = self.training_options_stack_indices[backend]
         self.training_options_stack.setCurrentIndex(stack_index)
         self.training_executable_browse.line_edit.setPlaceholderText(self._default_training_executable(backend))
-        self.training_headless_cb.setVisible(backend == _TRAINING_BACKEND_LICHTFELD)
+        self.training_headless_cb.setVisible(spec.supports_headless)
         self._refresh_training_settings_layout()
         self._update_training_paths()
         if backend == _TRAINING_BACKEND_POSTSHOT:
@@ -2485,12 +2474,10 @@ class CubemapStep(BaseStepWidget):
         )
 
     def _default_training_executable(self, backend: str | None = None) -> str:
-        backend = backend or self._training_backend()
-        if backend == _TRAINING_BACKEND_POSTSHOT:
-            return "postshot-cli.exe" if os.name == "nt" else "postshot-cli"
-        if backend == _TRAINING_BACKEND_CUSTOM:
-            return ""
-        return "LichtFeld-Studio.exe" if os.name == "nt" else "LichtFeld-Studio"
+        return training_backend_default_executable(
+            backend or self._training_backend(),
+            windows=os.name == "nt",
+        )
 
     def _resolve_training_executable(self) -> str:
         return self._resolve_executable(
@@ -3626,7 +3613,7 @@ class CubemapStep(BaseStepWidget):
                     export_splat_path=export_splat_path,
                 )
             )
-            return [("training_postshot", cmd)]
+            return [(training_backend_phase_name(backend), cmd)]
 
         if backend == _TRAINING_BACKEND_CUSTOM:
             cmd = build_custom_training_cmd(
@@ -3637,7 +3624,7 @@ class CubemapStep(BaseStepWidget):
                     arguments_template=self.custom_training_args_edit.text(),
                 )
             )
-            return [("training_custom", cmd)]
+            return [(training_backend_phase_name(backend), cmd)]
 
         if self.lfs_auto_steps_scaler_cb.isChecked():
             self._save_lfs_active_state()
@@ -3694,7 +3681,7 @@ class CubemapStep(BaseStepWidget):
                 headless=self.training_headless_cb.isChecked(),
             )
         )
-        return [("training_lichtfeld", cmd)]
+        return [(training_backend_phase_name(backend), cmd)]
 
     def _default_colmap_executable(self) -> str:
         return "colmap.exe" if os.name == "nt" else "colmap"

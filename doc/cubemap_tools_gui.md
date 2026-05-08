@@ -163,13 +163,13 @@ After adjusting masks, turning `Images` off avoids reconverting existing cubemap
 
 ## Training Tab
 
-The `Training` tab can launch an external training CLI after Step 4 export or SfM conversion finishes. Choose the training application at the top, then enable `Start training after export`.
+The `Training` tab can launch an external training CLI after Step 4 export or SfM conversion finishes. Choose `LichtFeld`, `Postshot`, or `Other...` at the top, then enable `Start training after export`. `Other...` expands secondary backends such as `Custom` without crowding the main choices.
 
 | Training app | Use when |
 | --- | --- |
 | `LichtFeld Studio` | Pass the dataset, output folder, and generated config JSON to LichtFeld Studio CLI |
 | `Postshot` | Pass images and, when available, a COLMAP/SphereSfM sparse model to Postshot CLI and create a `.psht` project |
-| `Custom` | Launch any CLI with template-based arguments |
+| `Other... > Custom` | Launch any CLI with template-based arguments |
 
 Normally, leave `Dataset` on the automatic value. Cubemap conversion uses `<scene>/output/`, 3DGUT uses `<scene>/`, and the COLMAP route uses `<scene>/output/colmap_rig/`. The default `Training Output` is `<scene>/output/`, so the portable dataset and training result stay together.
 

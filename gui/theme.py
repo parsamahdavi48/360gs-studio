@@ -277,6 +277,12 @@ QWidget#segmentedControl {{
 QWidget#radioOptionRow {{
     background-color: transparent;
 }}
+QWidget#trainingBackendPrimaryRow, QWidget#trainingBackendOtherRow {{
+    background-color: transparent;
+}}
+QLabel#subOptionLabel {{
+    color: {TEXT_DIM};
+}}
 QRadioButton#optionRadio {{
     color: {TEXT_DIM};
     font-weight: 600;
