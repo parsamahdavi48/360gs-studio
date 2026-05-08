@@ -1,4 +1,4 @@
-# Step 4 変換 / Step 5 学習GUI
+# Step 4 変換GUI
 
 Step 4 は、Step 1-3で用意した360°画像とマスク、MetashapeでSfMした結果、またはSphereSfMで作るSfM結果を、3DGSアプリが読み込めるトレーニングデータに変換する画面です。
 
@@ -161,25 +161,11 @@ VRAMや処理時間が厳しい場合は、まず `Normal` または `Half` で�
 
 マスクだけ調整したあとに再出力する場合は、`画像` をOFFにすると既存のキューブマップ画像を再変換せずに済みます。`3DGUT (LichtFeld)` では元画像と元マスクをそのまま使うため、この出力ON/OFFは使いません。
 
-## Step 5 学習
+## Step 5へ進む
 
-Step 5では、Step 4で作成済みのデータセットを使って外部CLIを起動できます。左側に実行アプリ、Headless、実行ファイル、入力データ、出力先などの共通設定があり、右側にLichtFeld / Postshot / Customごとの詳細設定があります。下部ボタンの `起動` で実行します。`その他...` は `Custom` など追加候補だけをメニューで開き、主要候補を混雑させないための選択です。
+Step 4は、3DGSアプリへ渡すデータセットを作る工程です。LichtFeld StudioやPostshotのCLIをこのアプリから起動する場合は、Step 4でデータセットを作成してから `Step 5: 学習` を開きます。
 
-| ソフト | 使いどころ |
-| --- | --- |
-| `LichtFeld Studio` | LichtFeld StudioのCLIへデータセット、出力先、設定JSONを渡してトレーニングまで進める |
-| `Postshot` | Postshot CLIへ画像と、ある場合はCOLMAP/SphereSfMのsparseモデルを渡して `.psht` を作る |
-| `その他... > Custom` | 任意のCLIをテンプレート引数で起動する |
-
-`入力データ` は通常自動設定のままで使います。Metashape / SphereSfMのキューブマップ変換と3DGUTはどちらも `<scene>/output/`、COLMAPルートでは `<scene>/output/colmap_rig/` が基準になります。`出力先` は既定で `<scene>/output/` になり、持ち出すデータセットとトレーニング結果を同じフォルダにまとめます。
-
-LichtFeld Studioでは、本家のトレーニングパネル上部にある `Strategy`、`Iterations`、`Max Gaussians`、出力PLY名、`SH Degree`、`Tile Mode`、`Steps Scaler`、マスク関連オプション、PPISPの条件項目、背景の `Mode` / `Color` を通常項目として指定できます。出力PLY名はシーンフォルダ名を既定値にし、LichtFeldの `--output-name` として渡します。頻繁には触らないDataset、Optimizer、Refinement、Loss、Initialization、MRNF/IGS+、Sparsity、Save/Eval系の項目は `Advanced Training Parameters` にまとめ、ストラテジーや上部チェックに対応する項目だけを表示します。`Steps Scaler` を `Auto` にすると、Step 5が既存データセット内のトレーニング画像数を数え、LichtFeld StudioのGUIがデータセット読み込み時に行う300枚基準のスケーリングと同じ基準で調整します。実行時に `_stechdrive/step4/training/lichtfeld_config.json` を作り、そのJSONとデータセット専用のCLIオプションをLichtFeldへ渡します。
-
-Step 5は、選択したトレーニング方式とデータ形状の整合性も確認します。LichtFeldの `GUT` は `pointcloud.ply` を含む3DGUT出力、通常のLichtFeldとPostshotは投影Cubemapデータを前提にします。
-
-Postshotでは、プロジェクトファイル名、モデル `Profile`、自動または固定の `kSteps`、最大画像サイズ、マスク読み込み、画像選択、`Camera Poses` を通常項目として指定できます。`Camera Poses` は既定で `Import` になり、COLMAP / SphereSfMではsparseモデル、Metashape変換では `transforms.json` と利用可能なRAW Metashape PLYを渡します。Postshot側でポーズ推定させる場合だけ `Estimate` に切り替え、`Pose Quality` を使います。Postshotのマスク設定は、このGUIでは用途名より極性を優先して表示します。アプリ標準の白=使用、黒=除外マスクは `黒を除外・白を使用 (background)`、白い領域を一時的な遮蔽物として無視する場合だけ `白を除外・黒を使用 (occluders)` を使います。GPU、プロファイル依存のモデル上限、Anti-Aliasing、Sky Model、継続学習データ、Crop/ROI、PLY/SPZ書き出しは `Postshot詳細パラメーター` にまとめています。
-
-SphereSfMで `SfM` ON / `Cube` OFF の場合はトレーニング用データセットを作りません。Step 5で起動する前に、Step 4で `Cube` もONにしてデータセットを作成してください。既存のSfM結果から始める場合は `SfM` OFF / `Cube` ON にします。
+Step 5の操作は [Step 5 学習GUI](training_gui.ja.md) を参照してください。
 
 ## COLMAPルート
 
@@ -241,7 +227,6 @@ SphereSfMプロジェクト `<scene>/output/spheresfm/` には、作業用の `p
 | COLMAP実行あり | 上記に加えて、COLMAP/GLOMAPのSfM結果 |
 | SphereSfM + `3DGUT (LichtFeld)` | `<scene>/output/images/`, `<scene>/output/masks/`, `<scene>/output/transforms.json`, `<scene>/output/pointcloud.ply` |
 | SphereSfM + キューブマップ変換 (`投影視点に変換`) | 下流アプリへ渡すのは `<scene>/output/`。`images/`, `masks/`, `transforms.json`, `pointcloud.ply` を作ります |
-| Step 5 学習 | 作成済みデータセットに加えて `<scene>/output/` 直下のトレーニング結果と、LichtFeldでは `_stechdrive/step4/training/lichtfeld_config.json` |
 
 Step 4では `<scene>/output/` を、他PCへコピーしたり3DGSアプリへ直接読み込ませたりする現在のポータブルな正本データセットとして扱います。アプリ内で再現するための状態は別に保存します。Step 4の設定記録は `<scene>/_stechdrive/step4/export_settings.json` に保存し、キューブマップを書き出すルートでは視点構成も `<scene>/_stechdrive/step4/views_config.json` に保存します。これらはこのアプリで再開・再現するためのメタデータで、3DGSアプリへ渡すデータセット本体ではありません。
 

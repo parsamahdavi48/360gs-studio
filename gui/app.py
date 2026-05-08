@@ -41,7 +41,7 @@ _STEP_HELP_DOC_STEMS = (
     "review_frames_gui",
     "mask_tools_gui",
     "cubemap_tools_gui",
-    "cubemap_tools_gui",
+    "training_gui",
 )
 
 

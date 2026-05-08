@@ -34,7 +34,11 @@ def test_step_help_url_follows_language() -> None:
     )
     assert (
         step_help_url(4, lang="ja")
-        == "https://github.com/stechdrive/stechdrive-3dgs-utils/blob/main/doc/cubemap_tools_gui.ja.md"
+        == "https://github.com/stechdrive/stechdrive-3dgs-utils/blob/main/doc/training_gui.ja.md"
+    )
+    assert (
+        step_help_url(4, lang="en")
+        == "https://github.com/stechdrive/stechdrive-3dgs-utils/blob/main/doc/training_gui.md"
     )
 
 

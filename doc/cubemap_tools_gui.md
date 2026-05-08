@@ -1,4 +1,4 @@
-# Step 4 Convert / Step 5 Training GUI
+# Step 4 Convert GUI
 
 Step 4 converts the 360° images and masks prepared in Steps 1-3, Metashape SfM results, or SphereSfM results created by this step into training data that 3DGS applications can load.
 
@@ -161,25 +161,11 @@ The `Output` checkboxes control whether images and/or masks are written.
 
 After adjusting masks, turning `Images` off avoids reconverting existing cubemap images. `3DGUT (LichtFeld)` references source images and masks directly, so these output toggles are not used in that mode.
 
-## Step 5 Training
+## Continue To Step 5
 
-Step 5 configures and launches an external training CLI using an existing dataset created by Step 4. Common settings such as the training app, Headless, executable, dataset, and output folder are on the left. LichtFeld / Postshot / Custom-specific settings are on the right. Press the bottom `Launch` button to run it. `Other...` opens a menu for secondary backends such as `Custom` without crowding the main choices.
+Step 4 creates the dataset that downstream 3DGS apps load. To launch LichtFeld Studio or Postshot CLI from this app, create the dataset in Step 4, then open `Step 5: Training`.
 
-| Training app | Use when |
-| --- | --- |
-| `LichtFeld Studio` | Pass the dataset, output folder, and generated config JSON to LichtFeld Studio CLI |
-| `Postshot` | Pass images and, when available, a COLMAP/SphereSfM sparse model to Postshot CLI and create a `.psht` project |
-| `Other... > Custom` | Launch any CLI with template-based arguments |
-
-Normally, leave `Dataset` on the automatic value. Metashape / SphereSfM cubemap conversion and 3DGUT both use `<scene>/output/`, and the COLMAP route uses `<scene>/output/colmap_rig/`. The default `Training Output` is `<scene>/output/`, so the portable dataset and training result stay together.
-
-For LichtFeld Studio, the visible controls mirror the parameters LichtFeld keeps at the top of its own training panel: `Strategy`, `Iterations`, `Max Gaussians`, output PLY name, `SH Degree`, `Tile Mode`, `Steps Scaler`, mask toggles, PPISP conditionals, and background `Mode` / `Color`. The output PLY name defaults to the scene folder name and is passed as LichtFeld's `--output-name`. Less common dataset, optimizer, refinement, loss, initialization, MRNF/IGS+, sparsity, and save/eval settings are under `Advanced Training Parameters`; sections appear only when the matching strategy or top-level checkbox makes them relevant. With `Steps Scaler` on `Auto`, Step 5 counts the existing dataset images and applies the same 300-image baseline scaling LichtFeld Studio uses when loading a dataset in its GUI. At runtime, Step 5 writes `_stechdrive/step4/training/lichtfeld_config.json` and passes that JSON plus dataset-only CLI options to LichtFeld.
-
-Step 5 checks that the selected training mode matches the dataset shape. LichtFeld `GUT` expects 3DGUT output with `pointcloud.ply`; normal LichtFeld and Postshot expect projected Cubemap data.
-
-For Postshot, the main controls cover the project file, model `Profile`, automatic or fixed `kSteps`, maximum image size, optional mask import, image selection, and `Camera Poses`. `Camera Poses` defaults to `Import`; COLMAP / SphereSfM routes pass a sparse model, while Metashape conversion passes `transforms.json` and the raw Metashape PLY when available. Switch to `Estimate` only when Postshot should estimate poses and use `Pose Quality`. Postshot mask wording is polarity-driven in this GUI: use `Exclude black / use white (background)` for the app's normal white=usable, black=excluded masks, and `Exclude white / use black (occluders)` only when white marks temporary occluders to ignore. Less common GPU, profile-specific model limits, anti-aliasing, sky/training-context flags, Crop/ROI boxes, and optional PLY/SPZ export are grouped under `Postshot Advanced Parameters`.
-
-SphereSfM with `SfM` on and `Cube` off does not create a training dataset. Before launching Step 5, run Step 4 with `Cube` on to create the dataset. To start from an existing sparse result, use `SfM` off and `Cube` on.
+See [Step 5 Training GUI](training_gui.md) for Step 5 usage.
 
 ## COLMAP Route
 
@@ -241,7 +227,6 @@ After the run, use `View Result in COLMAP GUI` to inspect registered camera pose
 | COLMAP with SfM enabled | The COLMAP/GLOMAP SfM result in addition to the files above |
 | SphereSfM + `3DGUT (LichtFeld)` | `<scene>/output/images/`, `<scene>/output/masks/`, `<scene>/output/transforms.json`, `<scene>/output/pointcloud.ply` |
 | SphereSfM + cubemap conversion (`Convert to Projection Views`) | Load `<scene>/output/` in the downstream app. It contains `images/`, `masks/`, `transforms.json`, and `pointcloud.ply` |
-| Step 5 Training | The existing dataset plus training results in `<scene>/output/`; LichtFeld also writes `_stechdrive/step4/training/lichtfeld_config.json` |
 
 Step 4 treats `<scene>/output/` as the active portable dataset: the folder you can copy to another machine or load directly in a 3DGS app. The app's reproducibility state is separate. It saves Step 4 settings to `<scene>/_stechdrive/step4/export_settings.json`, and cubemap routes also save the view layout to `<scene>/_stechdrive/step4/views_config.json`. These metadata files are for reopening and reproducing the export in this app, not the dataset files you pass to 3DGS apps.
 

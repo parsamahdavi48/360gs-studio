@@ -136,7 +136,8 @@ Detailed GUI docs:
 | Step 1 Frame Extraction | [EN](doc/extract_frames_gui.md) / [JP](doc/extract_frames_gui.ja.md) |
 | Step 2 Frame Review | [EN](doc/review_frames_gui.md) / [JP](doc/review_frames_gui.ja.md) |
 | Step 3 Mask Generation | [EN](doc/mask_tools_gui.md) / [JP](doc/mask_tools_gui.ja.md) |
-| Step 4 Convert / Step 5 Training | [EN](doc/cubemap_tools_gui.md) / [JP](doc/cubemap_tools_gui.ja.md) |
+| Step 4 Convert | [EN](doc/cubemap_tools_gui.md) / [JP](doc/cubemap_tools_gui.ja.md) |
+| Step 5 Training | [EN](doc/training_gui.md) / [JP](doc/training_gui.ja.md) |
 
 ## Recommended Workflow: Metashape Route
 

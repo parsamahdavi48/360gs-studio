@@ -136,7 +136,8 @@ checkpointを手動で `models/sam3.1/sam3.1_multiplex.pt` に置くこともで
 | Step 1 フレーム抽出 | [JP](doc/extract_frames_gui.ja.md) / [EN](doc/extract_frames_gui.md) |
 | Step 2 フレーム確認 | [JP](doc/review_frames_gui.ja.md) / [EN](doc/review_frames_gui.md) |
 | Step 3 マスク生成 | [JP](doc/mask_tools_gui.ja.md) / [EN](doc/mask_tools_gui.md) |
-| Step 4 変換 / Step 5 学習 | [JP](doc/cubemap_tools_gui.ja.md) / [EN](doc/cubemap_tools_gui.md) |
+| Step 4 変換 | [JP](doc/cubemap_tools_gui.ja.md) / [EN](doc/cubemap_tools_gui.md) |
+| Step 5 学習 | [JP](doc/training_gui.ja.md) / [EN](doc/training_gui.md) |
 
 ## 推奨ワークフロー: Metashapeルート
 
