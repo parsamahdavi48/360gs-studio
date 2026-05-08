@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from sam31_download import SAM31_CHECKPOINT_NAME, SAM31_REPO_ID, download_sam31_checkpoint
+from core.sam31_download import SAM31_CHECKPOINT_NAME, SAM31_REPO_ID, download_sam31_checkpoint
 
 
 def test_download_sam31_checkpoint_requires_token(tmp_path: Path) -> None:

@@ -6,8 +6,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from scene_layout import EXTRACT_SESSIONS_JSON, extract_sessions_path
-from scene_project import write_json_atomic
+from core.scene_layout import EXTRACT_SESSIONS_JSON, extract_sessions_path
+from core.scene_project import write_json_atomic
 
 MANIFEST_NAME = EXTRACT_SESSIONS_JSON
 

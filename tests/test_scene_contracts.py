@@ -4,10 +4,10 @@ from pathlib import Path
 
 import pytest
 
-from mask_targets import load_image_targets
-from path_safety import safe_clear_path
-from scene_layout import scene_images_dir, scene_masks_dir, scene_output_dir
-from scene_project import load_json, write_json
+from core.mask_targets import load_image_targets
+from core.path_safety import safe_clear_path
+from core.scene_layout import scene_images_dir, scene_masks_dir, scene_output_dir
+from core.scene_project import load_json, write_json
 
 
 def test_scene_layout_names_primary_scene_folders(tmp_path: Path) -> None:

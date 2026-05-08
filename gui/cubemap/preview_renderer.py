@@ -1,4 +1,5 @@
 """エクイレクタングラープレビュー描画（ビュー境界オーバーレイ付き）"""
+
 from __future__ import annotations
 
 from collections import OrderedDict
@@ -18,6 +19,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from core.image_io import imread_unicode
 from gui import i18n
 from gui.common.icons import (
     mask_overlay_off_icon,
@@ -32,14 +34,13 @@ from gui.common.perspective_preview import (
     equirect_to_perspective,
     params_from_drag,
 )
-from image_io import imread_unicode
 
 _PITCH_PALETTE_BGR: tuple[tuple[int, int, int], ...] = (
-    (0, 159, 230),    # orange
-    (233, 180, 86),   # sky blue
-    (115, 158, 0),    # bluish green
+    (0, 159, 230),  # orange
+    (233, 180, 86),  # sky blue
+    (115, 158, 0),  # bluish green
     (167, 121, 204),  # reddish purple
-    (66, 228, 240),   # yellow
+    (66, 228, 240),  # yellow
 )
 _LINE_OUTER = (0, 0, 0)
 _LINE_MID = (245, 245, 245)
@@ -58,25 +59,34 @@ _PREVIEW_CACHE_LIMIT = 4
 def _rotation_matrix(yaw_deg: float, pitch_deg: float) -> np.ndarray:
     yaw = np.deg2rad(yaw_deg)
     pitch = np.deg2rad(pitch_deg)
-    ry = np.array([
-        [np.cos(yaw), 0, np.sin(yaw)],
-        [0, 1, 0],
-        [-np.sin(yaw), 0, np.cos(yaw)],
-    ], dtype=np.float64)
-    rx = np.array([
-        [1, 0, 0],
-        [0, np.cos(pitch), -np.sin(pitch)],
-        [0, np.sin(pitch), np.cos(pitch)],
-    ], dtype=np.float64)
+    ry = np.array(
+        [
+            [np.cos(yaw), 0, np.sin(yaw)],
+            [0, 1, 0],
+            [-np.sin(yaw), 0, np.cos(yaw)],
+        ],
+        dtype=np.float64,
+    )
+    rx = np.array(
+        [
+            [1, 0, 0],
+            [0, np.cos(pitch), -np.sin(pitch)],
+            [0, np.sin(pitch), np.cos(pitch)],
+        ],
+        dtype=np.float64,
+    )
     r = ry @ rx
     r[np.abs(r) < 1e-10] = 0.0
     return r
 
 
 def _view_boundary_segments(
-    width: int, height: int,
-    yaw_deg: float, pitch_deg: float,
-    fov_deg: float, samples_per_edge: int = 120,
+    width: int,
+    height: int,
+    yaw_deg: float,
+    pitch_deg: float,
+    fov_deg: float,
+    samples_per_edge: int = 120,
 ) -> list[np.ndarray]:
     t = np.linspace(-1.0, 1.0, samples_per_edge)
     u = np.concatenate([t, np.ones_like(t), t[::-1], -np.ones_like(t), np.array([-1.0])])
@@ -149,10 +159,7 @@ def _apply_view_fill(
         return
     alpha = max(0.0, min(1.0, float(alpha)))
     color_arr = np.array(color, dtype=np.float32)
-    img[mask] = (
-        img[mask].astype(np.float32) * (1.0 - alpha)
-        + color_arr[None, :] * alpha
-    ).astype(np.uint8)
+    img[mask] = (img[mask].astype(np.float32) * (1.0 - alpha) + color_arr[None, :] * alpha).astype(np.uint8)
 
 
 def _pitch_color_map(views: list[dict]) -> dict[float, tuple[int, int, int]]:
@@ -227,11 +234,14 @@ def _point_inside_view(
 ) -> bool:
     lon = ((float(x) / max(width, 1)) * 2.0 - 1.0) * np.pi
     lat = (0.5 - float(y) / max(height, 1)) * np.pi
-    world = np.array([
-        np.cos(lat) * np.sin(lon),
-        np.sin(lat),
-        np.cos(lat) * np.cos(lon),
-    ], dtype=np.float64)
+    world = np.array(
+        [
+            np.cos(lat) * np.sin(lon),
+            np.sin(lat),
+            np.cos(lat) * np.cos(lon),
+        ],
+        dtype=np.float64,
+    )
     local = world @ _rotation_matrix(yaw_deg, pitch_deg)
     if local[2] <= 1e-6:
         return False
@@ -328,15 +338,17 @@ def _layout_view_labels(
         _, box, origin, center = best
         occupied.append(box)
         pitch_key = round(pitch, 6)
-        labels.append({
-            "label": label,
-            "box": box,
-            "origin": origin,
-            "center": center,
-            "color": pitch_colors.get(pitch_key, (90, 240, 120)),
-            "highlighted": bool(view.get("highlighted", False)),
-            "view": view,
-        })
+        labels.append(
+            {
+                "label": label,
+                "box": box,
+                "origin": origin,
+                "center": center,
+                "color": pitch_colors.get(pitch_key, (90, 240, 120)),
+                "highlighted": bool(view.get("highlighted", False)),
+                "view": view,
+            }
+        )
     return labels
 
 
@@ -347,10 +359,13 @@ def _perspective_view_anchor(
     view_pitch_deg: float,
     perspective: PerspectiveParams,
 ) -> tuple[float, float] | None:
-    world = np.array([[0.0, 0.0, 1.0]], dtype=np.float64) @ _rotation_matrix(
-        view_yaw_deg,
-        view_pitch_deg,
-    ).T
+    world = (
+        np.array([[0.0, 0.0, 1.0]], dtype=np.float64)
+        @ _rotation_matrix(
+            view_yaw_deg,
+            view_pitch_deg,
+        ).T
+    )
     local = world[0] @ _rotation_matrix(perspective.yaw_deg, perspective.pitch_deg)
     if local[2] <= 1e-6:
         return None
@@ -408,15 +423,17 @@ def _layout_perspective_view_labels(
         occupied.append(box)
         pitch = float(view.get("pitch", 0.0))
         pitch_key = round(pitch, 6)
-        labels.append({
-            "label": label,
-            "box": box,
-            "origin": origin,
-            "center": center,
-            "color": pitch_colors.get(pitch_key, (90, 240, 120)),
-            "highlighted": bool(view.get("highlighted", False)),
-            "view": view,
-        })
+        labels.append(
+            {
+                "label": label,
+                "box": box,
+                "origin": origin,
+                "center": center,
+                "color": pitch_colors.get(pitch_key, (90, 240, 120)),
+                "highlighted": bool(view.get("highlighted", False)),
+                "view": view,
+            }
+        )
     return labels
 
 
@@ -444,9 +461,20 @@ def _draw_view_label_box(
     border = color if highlighted else _LINE_MID
     cv2.rectangle(img, (x1, y1), (x2, y2), _LINE_OUTER, 4 if highlighted else 2, lineType=cv2.LINE_AA)
     cv2.rectangle(img, (x1, y1), (x2, y2), border, 2 if highlighted else 1, lineType=cv2.LINE_AA)
-    cv2.putText(img, label, origin, _LABEL_FONT, _LABEL_SCALE, _LINE_OUTER, 4 if highlighted else 3, lineType=cv2.LINE_AA)
+    cv2.putText(
+        img, label, origin, _LABEL_FONT, _LABEL_SCALE, _LINE_OUTER, 4 if highlighted else 3, lineType=cv2.LINE_AA
+    )
     text_color = _LINE_MID if highlighted else color
-    cv2.putText(img, label, origin, _LABEL_FONT, _LABEL_SCALE, text_color, 2 if highlighted else _LABEL_THICKNESS, lineType=cv2.LINE_AA)
+    cv2.putText(
+        img,
+        label,
+        origin,
+        _LABEL_FONT,
+        _LABEL_SCALE,
+        text_color,
+        2 if highlighted else _LABEL_THICKNESS,
+        lineType=cv2.LINE_AA,
+    )
 
 
 class PreviewWidget(QWidget):

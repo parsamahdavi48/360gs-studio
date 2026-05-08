@@ -3,7 +3,7 @@ import math
 
 import pytest
 
-from colmap_rig_export import (
+from core.colmap_rig_export import (
     build_rig_config,
     cam_from_rig_rotation_quaternion,
     camera_name_for_index,

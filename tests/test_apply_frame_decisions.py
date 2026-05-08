@@ -13,7 +13,7 @@ from apply_frame_decisions import (
     pending_drop_image_paths,
     untracked_image_paths,
 )
-from scene_layout import frame_backups_dir, selected_frames_path
+from core.scene_layout import frame_backups_dir, selected_frames_path
 
 
 def _write_csv(csv_path: Path, rows: list[dict]) -> None:

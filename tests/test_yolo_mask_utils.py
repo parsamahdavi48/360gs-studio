@@ -1,4 +1,4 @@
-from yolo_mask_utils import EXPAND_DEFAULT, EXPAND_MAX, EXPAND_MIN, clamp_expand_px
+from core.yolo_mask_utils import EXPAND_DEFAULT, EXPAND_MAX, EXPAND_MIN, clamp_expand_px
 
 
 def test_yolo_expand_default_is_neutral() -> None:

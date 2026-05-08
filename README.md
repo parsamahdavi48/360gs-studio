@@ -201,7 +201,7 @@ numpy, opencv-python, Pillow, open3d, ultralytics, transformers, safetensors, tq
 
 ## CLI Tools
 
-The GUI wraps these CLI engines, which can also be used directly.
+The GUI wraps these CLI engines, which can also be used directly. The root-level scripts are stable public entry points; shared implementation code lives under `core/`.
 
 | Script | Purpose | Docs |
 | --- | --- | --- |

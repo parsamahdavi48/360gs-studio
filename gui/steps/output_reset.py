@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from path_safety import safe_clear_path
+from core.path_safety import safe_clear_path
 
 
 def path_has_contents(path: Path) -> bool:

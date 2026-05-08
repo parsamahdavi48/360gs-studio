@@ -12,6 +12,12 @@ from PySide6.QtCore import QPoint
 from PySide6.QtWidgets import QApplication, QMessageBox
 
 import gui.steps.step4_cubemap as step4_cubemap
+from core.scene_layout import (
+    step4_export_settings_path,
+    step4_meta_dir,
+    step4_training_runs_path,
+    step4_views_config_path,
+)
 from gui import i18n
 from gui.common.collapsible_section import CollapsibleSection
 from gui.steps.sfm_route_backends import get_sfm_route_backend
@@ -29,12 +35,6 @@ from gui.steps.step4_cubemap import CubemapStep
 from gui.steps.step4_settings import STEP4_SETTINGS_VERSION
 from gui.steps.step5_training import TrainingStep
 from gui.steps.training_backends import lichtfeld_defaults
-from scene_layout import (
-    step4_export_settings_path,
-    step4_meta_dir,
-    step4_training_runs_path,
-    step4_views_config_path,
-)
 from transforms_to_colmap import read_ply_points
 
 

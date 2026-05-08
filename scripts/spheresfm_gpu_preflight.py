@@ -8,7 +8,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from path_safety import safe_clear_path
+from core.path_safety import safe_clear_path
 
 try:
     from prepare_spheresfm_project import validate_spheresfm_colmap

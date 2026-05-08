@@ -21,6 +21,8 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from core.path_safety import PathSafetyIssue, check_path_safety, normalized_path_text
+from core.scene_layout import scene_images_dir, scene_masks_dir, scene_output_dir
 from gui import i18n
 from gui.common.browse_widget import BrowseWidget
 from gui.common.icons import help_icon, reset_icon
@@ -34,8 +36,6 @@ from gui.steps.step4_cubemap import CubemapStep
 from gui.steps.step5_training import TrainingStep
 from gui.theme import apply_theme
 from gui.version import app_version_label
-from path_safety import PathSafetyIssue, check_path_safety, normalized_path_text
-from scene_layout import scene_images_dir, scene_masks_dir, scene_output_dir
 
 _GITHUB_DOC_BASE_URL = "https://github.com/stechdrive/stechdrive-3dgs-utils/blob/main/doc"
 _STEP_HELP_DOC_STEMS = (

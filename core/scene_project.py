@@ -11,7 +11,7 @@ from typing import Any
 
 from PIL import Image
 
-from scene_layout import (
+from core.scene_layout import (
     mask_items_dir,
     mask_runs_path,
     project_path,

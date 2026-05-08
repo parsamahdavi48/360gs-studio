@@ -34,7 +34,26 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from colmap_rig_export import pinhole_camera_params
+from core.colmap_rig_export import pinhole_camera_params
+from core.scene_layout import (
+    STEP4_EXPORT_SETTINGS_JSON,
+    STEP4_META_DIR_NAME,
+    STEP4_VIEWS_CONFIG_JSON,
+    scene_images_dir,
+    scene_masks_dir,
+    scene_output_dir,
+    step4_export_settings_path,
+    step4_meta_dir,
+    step4_views_config_path,
+)
+from core.scene_project import (
+    append_step4_dataset_run,
+    append_step4_sfm_run,
+    append_step4_training_run,
+    file_identity,
+    scene_relative,
+    utc_now_iso,
+)
 from gui import i18n
 from gui.common.browse_widget import BrowseWidget
 from gui.common.collapsible_section import CollapsibleSection
@@ -114,25 +133,6 @@ from gui.steps.training_backends import (
 )
 from gui.user_settings import load_user_settings_section, update_user_settings_section
 from gui.version import APP_VERSION
-from scene_layout import (
-    STEP4_EXPORT_SETTINGS_JSON,
-    STEP4_META_DIR_NAME,
-    STEP4_VIEWS_CONFIG_JSON,
-    scene_images_dir,
-    scene_masks_dir,
-    scene_output_dir,
-    step4_export_settings_path,
-    step4_meta_dir,
-    step4_views_config_path,
-)
-from scene_project import (
-    append_step4_dataset_run,
-    append_step4_sfm_run,
-    append_step4_training_run,
-    file_identity,
-    scene_relative,
-    utc_now_iso,
-)
 
 _CONVERT_RE = re.compile(r"^Converting\s+(\d+)\s+(?:images|files)\.\.\.$")
 _PROGRESS_RE = re.compile(r"^\[progress\]\s+(\d+)\s*/\s*(\d+)")

@@ -30,7 +30,15 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from extract_sessions import load_manifest, matching_video_sessions, sanitize_filename_prefix
+from core.extract_sessions import load_manifest, matching_video_sessions, sanitize_filename_prefix
+from core.scene_layout import APP_DIR_NAME, scene_images_dir, source_videos_path
+from core.scene_project import (
+    infer_video_projection,
+    load_json,
+    remove_source_videos,
+    source_video_record,
+    upsert_source_videos,
+)
 from gui import i18n
 from gui.common.browse_widget import BrowseWidget
 from gui.common.collapsible_section import CollapsibleSection
@@ -42,14 +50,6 @@ from gui.steps.base_step import (
     SETTINGS_PANE_WIDTH,
     BaseStepWidget,
     configure_settings_scroll,
-)
-from scene_layout import APP_DIR_NAME, scene_images_dir, source_videos_path
-from scene_project import (
-    infer_video_projection,
-    load_json,
-    remove_source_videos,
-    source_video_record,
-    upsert_source_videos,
 )
 
 _FIXED_INTERVAL_MIN = 0.05

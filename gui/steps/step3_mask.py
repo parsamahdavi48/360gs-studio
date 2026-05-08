@@ -30,7 +30,19 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from apply_frame_decisions import pending_drop_image_paths, untracked_image_paths
+from core.apply_frame_decisions import pending_drop_image_paths, untracked_image_paths
+from core.mask_view_recipes import QUALITY_CHOICES
+from core.scene_layout import scene_images_dir, scene_masks_dir, selected_frames_path
+from core.scene_project import (
+    append_mask_run,
+    append_source_image_set,
+    resolve_scene_image_projection,
+    scene_image_projection_map,
+    scene_relative,
+    source_image_set_record,
+    utc_now_iso,
+    write_mask_item,
+)
 from gui import i18n
 from gui.common.collapsible_section import CollapsibleSection
 from gui.common.drag_spinbox import DragDoubleSpinBox, DragSpinBox
@@ -60,18 +72,6 @@ from gui.steps.mask_image_import import import_external_images_with_records
 from gui.steps.mask_postprocess import MaskPostprocessOptions, apply_mask_postprocess, mask_stats
 from gui.steps.sam31_setup import ensure_sam31_checkpoint_available
 from gui.user_settings import load_user_settings_section, update_user_settings_section
-from mask_view_recipes import QUALITY_CHOICES
-from scene_layout import scene_images_dir, scene_masks_dir, selected_frames_path
-from scene_project import (
-    append_mask_run,
-    append_source_image_set,
-    resolve_scene_image_projection,
-    scene_image_projection_map,
-    scene_relative,
-    source_image_set_record,
-    utc_now_iso,
-    write_mask_item,
-)
 
 _COCO_CLASS_NAMES = [
     "person",
