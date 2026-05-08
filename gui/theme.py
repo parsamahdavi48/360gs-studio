@@ -1,7 +1,9 @@
 """ダークモダンテーマ (DaVinci Resolve / Blender 風)"""
 from __future__ import annotations
 
-from PySide6.QtGui import QFont
+from pathlib import Path
+
+from PySide6.QtGui import QFont, QFontDatabase
 from PySide6.QtWidgets import QApplication
 
 # カラーパレット
@@ -26,6 +28,29 @@ SCROLL_HANDLE = "#4b5563"
 
 FONT_FAMILY = "Meiryo UI"
 FONT_SIZE = 10
+_EXTRA_FONT_PATHS = (
+    Path("C:/Windows/Fonts/meiryo.ttc"),
+    Path("C:/Windows/Fonts/YuGothR.ttc"),
+    Path("C:/Windows/Fonts/msgothic.ttc"),
+)
+_EXTRA_FONTS_LOADED = False
+
+
+def _ensure_font_available() -> None:
+    """Load Windows Japanese fonts explicitly when Qt offscreen skips system fonts."""
+    global _EXTRA_FONTS_LOADED
+    if _EXTRA_FONTS_LOADED:
+        return
+
+    families = set(QFontDatabase.families())
+    if FONT_FAMILY in families:
+        _EXTRA_FONTS_LOADED = True
+        return
+
+    for path in _EXTRA_FONT_PATHS:
+        if path.exists():
+            QFontDatabase.addApplicationFont(str(path))
+    _EXTRA_FONTS_LOADED = True
 
 QSS = f"""
 /* ========== Global ========== */
@@ -523,6 +548,7 @@ QToolTip {{
 
 def apply_theme(app: QApplication) -> None:
     """QApplicationにダークテーマを適用する。"""
+    _ensure_font_available()
     app.setStyleSheet(QSS)
     font = QFont()
     font.setFamily(FONT_FAMILY)

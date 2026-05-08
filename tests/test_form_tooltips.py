@@ -27,6 +27,39 @@ def _label(widget: QWidget, text: str) -> QLabel:
     raise AssertionError(f"label not found: {text}")
 
 
+def test_offscreen_theme_loads_windows_japanese_fonts() -> None:
+    if not Path("C:/Windows/Fonts/meiryo.ttc").exists():
+        return
+
+    script = textwrap.dedent(
+        """
+        import os
+
+        os.environ["QT_QPA_PLATFORM"] = "offscreen"
+
+        from PySide6.QtGui import QFontDatabase
+        from PySide6.QtWidgets import QApplication
+
+        from gui.theme import apply_theme
+
+        app = QApplication([])
+        assert len(QFontDatabase.families()) == 0
+        apply_theme(app)
+        families = set(QFontDatabase.families())
+        assert "Meiryo UI" in families
+        """
+    )
+
+    result = subprocess.run(
+        [sys.executable, "-c", script],
+        cwd=Path.cwd(),
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
 def test_i18n_tips_are_wrapped() -> None:
     for key in i18n._tips:
         lines = i18n.tip(key).splitlines()
