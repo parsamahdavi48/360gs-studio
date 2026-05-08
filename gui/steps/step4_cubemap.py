@@ -2323,9 +2323,7 @@ class CubemapStep(BaseStepWidget):
             if mapper:
                 self._set_combo_data(self.colmap_mapper_combo, mapper)
             spheresfm_matcher = str(settings.get("spheresfm_matcher", "")).strip()
-            spheresfm_quality = str(
-                settings.get("spheresfm_quality_preset", "") or settings.get("spheresfm_feature_preset", "")
-            ).strip()
+            spheresfm_quality = str(settings.get("spheresfm_quality_preset", "")).strip()
             spheresfm_run_scope = str(settings.get("spheresfm_run_scope", "")).strip()
             spheresfm_output_shape = str(settings.get("spheresfm_output_shape", "")).strip()
             spheresfm_profile = str(settings.get("spheresfm_profile", "")).strip()

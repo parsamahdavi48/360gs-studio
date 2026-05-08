@@ -80,7 +80,10 @@ def _write_output_dataset(scene: Path, *, output_shape: str, pointcloud: bool = 
         _write_ascii_ply(output / "pointcloud.ply", [(0.0, 0.0, 0.0)])
     settings_path = step4_export_settings_path(scene)
     settings_path.parent.mkdir(parents=True, exist_ok=True)
-    settings_path.write_text(json.dumps({"output_shape": output_shape}), encoding="utf-8")
+    settings_path.write_text(
+        json.dumps({"settings_version": STEP4_SETTINGS_VERSION, "output_shape": output_shape}),
+        encoding="utf-8",
+    )
 
 
 def _write_spheresfm_sparse_stub(scene: Path) -> Path:
@@ -1360,7 +1363,7 @@ def test_colmap_user_preferences_restore_executable_and_pipeline_choices(
     assert second.colmap_mapper_combo.currentData() == "incremental"
 
 
-def test_spheresfm_user_preferences_migrate_feature_preset_to_quality(
+def test_spheresfm_user_preferences_restore_quality_preset(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
@@ -1368,7 +1371,7 @@ def test_spheresfm_user_preferences_migrate_feature_preset_to_quality(
     settings_path = tmp_path / "settings.json"
     monkeypatch.setenv("STECHDRIVE_USER_SETTINGS_PATH", str(settings_path))
     settings_path.write_text(
-        json.dumps({"step4_colmap": {"spheresfm_feature_preset": "robust"}}),
+        json.dumps({"step4_colmap": {"spheresfm_quality_preset": "quality"}}),
         encoding="utf-8",
     )
 
@@ -1376,6 +1379,22 @@ def test_spheresfm_user_preferences_migrate_feature_preset_to_quality(
     step.enable_user_preferences()
 
     assert step.spheresfm_quality_combo.currentData() == "quality"
+
+
+def test_step4_scene_settings_ignore_pre_v2_payload(tmp_path: Path) -> None:
+    _app()
+    tmp_path.mkdir(exist_ok=True)
+    (tmp_path / "images").mkdir()
+    (tmp_path / "metashape.xml").write_text("<root />", encoding="utf-8")
+    _write_ascii_ply(tmp_path / "metashape.ply", [(1.0, 2.0, 3.0)])
+    settings_path = step4_export_settings_path(tmp_path)
+    settings_path.parent.mkdir(parents=True, exist_ok=True)
+    settings_path.write_text(json.dumps({"output_shape": "equirect_3dgut"}), encoding="utf-8")
+
+    step = CubemapStep(Path.cwd())
+    step.set_scene_dir(str(tmp_path))
+
+    assert step.output_shape_combo.currentData() == "projected"
 
 
 def test_step4_scene_settings_restore_export_and_training_choices(tmp_path: Path) -> None:

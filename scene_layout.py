@@ -109,14 +109,6 @@ def step4_export_settings_path(scene_dir: Path) -> Path:
     return step4_meta_dir(scene_dir) / STEP4_EXPORT_SETTINGS_JSON
 
 
-def legacy_step4_views_config_path(scene_dir: Path) -> Path:
-    return app_dir(scene_dir) / STEP4_VIEWS_CONFIG_JSON
-
-
-def legacy_step4_export_settings_path(scene_dir: Path) -> Path:
-    return app_dir(scene_dir) / STEP4_EXPORT_SETTINGS_JSON
-
-
 def step4_sfm_runs_path(scene_dir: Path) -> Path:
     return step4_meta_dir(scene_dir) / "sfm_runs.json"
 

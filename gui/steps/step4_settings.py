@@ -4,30 +4,25 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from scene_layout import (
-    legacy_step4_export_settings_path,
-    step4_export_settings_path,
-)
+from scene_layout import step4_export_settings_path
 from scene_project import load_json, write_json
 
 STEP4_SETTINGS_VERSION = 2
 
 
-def step4_export_settings_candidates(scene_dir: Path) -> tuple[Path, ...]:
-    """Return current and legacy Step 4 settings paths, in read preference order."""
-    return (
-        step4_export_settings_path(scene_dir),
-        legacy_step4_export_settings_path(scene_dir),
-    )
+def _settings_version(payload: dict[str, Any]) -> int:
+    try:
+        return int(payload.get("settings_version", 0))
+    except (TypeError, ValueError):
+        return 0
 
 
 def load_step4_export_settings(scene_dir: Path) -> dict[str, Any]:
-    """Load Step 4 settings from the current path, falling back to the legacy path."""
-    for path in step4_export_settings_candidates(scene_dir):
-        data = load_json(path, {})
-        if data:
-            return data
-    return {}
+    """Load current Step 4 project settings."""
+    data = load_json(step4_export_settings_path(scene_dir), {})
+    if not data or _settings_version(data) < STEP4_SETTINGS_VERSION:
+        return {}
+    return data
 
 
 def write_step4_export_settings(scene_dir: Path, payload: dict[str, Any]) -> Path:
