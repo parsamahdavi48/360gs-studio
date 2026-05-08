@@ -30,7 +30,7 @@ SfM, or Structure from Motion, estimates camera positions and a sparse point clo
 
 `Scene Directory` is the scene folder used by Steps 1-3. It usually contains `images/` and `masks/`. In the Metashape route, Step 4 combines that scene folder with the XML/PLY exported from Metashape. In the SphereSfM route, Step 4 runs SfM and conversion from these `images/` and `masks/`.
 
-The left navigation always shows the Step 4 sub-stages `SfM`, `Cube`, and `Train`. The left icon on each row selects whether that sub-stage is part of this run; the right icon shows `Ready`, `Not Ready`, or `Skipped` for that choice. In the Metashape route, `SfM` stays on to show that Metashape camera poses are used as input; it does not add an SfM command. Hover either icon for the next action. Inside Step 4, the route buttons `Metashape`, `COLMAP`, and `SphereSfM` live in the `SfM` tab. Output preset, image/mask toggles, Cube6, yaw, and image size live in `Cubemap`; external CLI training settings live in `Training`.
+The left navigation always shows the Step 4 sub-stages `SfM`, `Cube`, and `Train`. The left icon on each row selects whether that sub-stage is part of this run; the right icon shows `Ready`, `Not Ready`, or `Skipped` for that choice. In the Metashape route, `SfM` uses an input marker instead of an on/off control because Metashape camera poses are prepared outside this app. Hover either icon for the next action. Inside Step 4, the route buttons `Metashape`, `COLMAP`, and `SphereSfM` live in the `SfM` tab. Output preset, image/mask toggles, Cube6, yaw, and image size live in `Cubemap`; external CLI training settings live in `Training`.
 
 ## Metashape Route
 

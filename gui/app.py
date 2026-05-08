@@ -374,6 +374,10 @@ class MainWindow(QWidget):
         self._refresh_step4_subnav()
 
     def _toggle_step4_pipeline_stage_intent(self, stage: str) -> None:
+        if not self.step4.pipeline_stage_intent_toggle_enabled(stage):
+            self._activate_step4_pipeline_stage(stage)
+            self._update_run_button()
+            return
         self._set_current_step(3)
         self.step4.toggle_pipeline_stage_intent(stage)
         self.step4.set_pipeline_stage(stage)
@@ -401,6 +405,7 @@ class MainWindow(QWidget):
                 intent_btn.setText(str(item["intent_symbol"]))
                 intent_btn.setChecked(bool(item["intent_checked"]))
                 intent_btn.setEnabled(bool(item["intent_enabled"]))
+                intent_btn.setProperty("mode", item["intent_mode"])
                 intent_btn.setToolTip(str(item["intent_tooltip"]))
             if status_label is not None:
                 status_label.setText(str(item["status_symbol"]))

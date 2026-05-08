@@ -212,10 +212,14 @@ def test_step4_pipeline_intent_controls_execution_plan(tmp_path: Path) -> None:
     assert step.primary_action_text() == i18n.t("RUN")
     assert step.pipeline_stage_intent("sfm") is True
     assert step.pipeline_stage_intent_enabled("sfm") is True
+    assert step.pipeline_stage_intent_toggle_enabled("sfm") is False
     assert step.pipeline_stage_intent("conversion") is True
     sfm_item = next(item for item in step.pipeline_nav_items() if item["stage"] == "sfm")
-    assert sfm_item["intent_checked"] is True
+    assert sfm_item["intent_checked"] is False
     assert sfm_item["intent_enabled"] is True
+    assert sfm_item["intent_toggle_enabled"] is False
+    assert sfm_item["intent_mode"] == "input"
+    assert sfm_item["intent_symbol"] == "→"
     assert sfm_item["status"] == "ready"
     assert sfm_item["status_symbol"] == "✓"
 
@@ -224,8 +228,16 @@ def test_step4_pipeline_intent_controls_execution_plan(tmp_path: Path) -> None:
     assert step.pipeline_stage_intent("conversion") is True
     assert step.primary_action_enabled() is True
     sfm_item = next(item for item in step.pipeline_nav_items() if item["stage"] == "sfm")
-    assert sfm_item["intent_checked"] is True
+    assert sfm_item["intent_checked"] is False
     assert sfm_item["status"] == "ready"
+
+    step.ms_use_ply_cb.setChecked(True)
+    ply = Path(step.ms_ply_browse.text())
+    ply.unlink()
+    sfm_item = next(item for item in step.pipeline_nav_items() if item["stage"] == "sfm")
+    assert sfm_item["status"] == "warning"
+    assert "PLY" in sfm_item["status_tooltip"]
+    _write_ascii_ply(ply, [(1.0, 2.0, 3.0)])
 
     step.set_pipeline_stage_intent("conversion", False)
     assert step.pipeline_stage_intent("conversion") is False

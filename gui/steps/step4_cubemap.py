@@ -1044,6 +1044,11 @@ class CubemapStep(BaseStepWidget):
     def pipeline_stage_intent_enabled(self, stage: str) -> bool:
         return stage in {_PIPELINE_STAGE_SFM, _PIPELINE_STAGE_CONVERSION, _PIPELINE_STAGE_TRAINING}
 
+    def pipeline_stage_intent_toggle_enabled(self, stage: str) -> bool:
+        return self.pipeline_stage_intent_enabled(stage) and not (
+            stage == _PIPELINE_STAGE_SFM and self._is_metashape_method()
+        )
+
     def _pipeline_stage_runs_in_app(self, stage: str) -> bool:
         if stage == _PIPELINE_STAGE_SFM:
             return not self._is_metashape_method() and self.pipeline_stage_intent(stage)
@@ -1112,15 +1117,28 @@ class CubemapStep(BaseStepWidget):
             status_text = i18n.t(f"STEP4_PIPELINE_STATUS_{status.upper()}")
             intent = self.pipeline_stage_intent(stage)
             intent_enabled = self.pipeline_stage_intent_enabled(stage)
+            intent_toggle_enabled = self.pipeline_stage_intent_toggle_enabled(stage)
             intent_key = "STEP4_PIPELINE_INTENT_ON" if intent else "STEP4_PIPELINE_INTENT_OFF"
             if stage == _PIPELINE_STAGE_SFM and self._is_metashape_method():
                 intent_tooltip = i18n.t("STEP4_PIPELINE_INTENT_METASHAPE_INPUT")
+                intent_symbol = "→"
+                intent_mode = "input"
+                intent_checked = False
             elif intent and not intent_enabled:
                 intent_tooltip = i18n.t("STEP4_PIPELINE_INTENT_LOCKED_ON").format(stage=label)
+                intent_symbol = "●" if intent else "○"
+                intent_mode = "toggle"
+                intent_checked = intent
             elif not intent_enabled:
                 intent_tooltip = i18n.t("STEP4_PIPELINE_INTENT_DISABLED").format(stage=label)
+                intent_symbol = "●" if intent else "○"
+                intent_mode = "toggle"
+                intent_checked = intent
             else:
                 intent_tooltip = i18n.t(intent_key).format(stage=label)
+                intent_symbol = "●" if intent else "○"
+                intent_mode = "toggle"
+                intent_checked = intent
             result.append(
                 {
                     "stage": stage,
@@ -1128,9 +1146,11 @@ class CubemapStep(BaseStepWidget):
                     "status": status,
                     "status_symbol": symbol,
                     "status_tooltip": f"{label}: {status_text}\n{detail}",
-                    "intent_checked": intent,
+                    "intent_checked": intent_checked,
                     "intent_enabled": intent_enabled,
-                    "intent_symbol": "●" if intent else "○",
+                    "intent_toggle_enabled": intent_toggle_enabled,
+                    "intent_mode": intent_mode,
+                    "intent_symbol": intent_symbol,
                     "intent_tooltip": intent_tooltip,
                     "navigate_tooltip": i18n.t("STEP4_PIPELINE_NAVIGATE").format(stage=label),
                 }
@@ -1145,10 +1165,10 @@ class CubemapStep(BaseStepWidget):
         if not self.scene_dir:
             return (_PIPELINE_STATUS_WARNING, "!", i18n.t("STEP4_PIPELINE_DETAIL_SCENE_REQUIRED"))
         if self._is_metashape_method():
-            xml = Path(self.ms_xml_browse.text().strip()) if self.ms_xml_browse.text().strip() else Path(self.scene_dir) / "metashape.xml"
-            if xml.is_file():
-                return (_PIPELINE_STATUS_READY, "✓", i18n.t("STEP4_PIPELINE_DETAIL_METASHAPE_READY"))
-            return (_PIPELINE_STATUS_WARNING, "!", i18n.t("STEP4_PIPELINE_DETAIL_METASHAPE_NEEDS_XML"))
+            missing = self._metashape_input_missing_detail()
+            if missing is not None:
+                return (_PIPELINE_STATUS_WARNING, "!", missing)
+            return (_PIPELINE_STATUS_READY, "✓", i18n.t("STEP4_PIPELINE_DETAIL_METASHAPE_READY"))
         if self._is_colmap_method():
             if self.run_colmap_cb.isChecked():
                 if not self.pipeline_stage_intent(_PIPELINE_STAGE_CONVERSION) and not self._colmap_rig_images_dir().is_dir():
@@ -1165,9 +1185,24 @@ class CubemapStep(BaseStepWidget):
             return (_PIPELINE_STATUS_READY, "✓", i18n.t("STEP4_PIPELINE_DETAIL_CONVERSION_AFTER_SFM"))
         if self._is_spheresfm_method() and self._find_spheresfm_sparse_model() is None:
             return (_PIPELINE_STATUS_WARNING, "!", i18n.t("STEP4_PIPELINE_DETAIL_SPHERESFM_NEEDS_SPARSE"))
-        if self._is_metashape_method() and not self.ms_xml_browse.text().strip() and not (Path(self.scene_dir) / "metashape.xml").is_file():
-            return (_PIPELINE_STATUS_WARNING, "!", i18n.t("STEP4_PIPELINE_DETAIL_METASHAPE_NEEDS_XML"))
+        if self._is_metashape_method():
+            missing = self._metashape_input_missing_detail()
+            if missing is not None:
+                return (_PIPELINE_STATUS_WARNING, "!", missing)
         return (_PIPELINE_STATUS_READY, "✓", i18n.t("STEP4_PIPELINE_DETAIL_CONVERSION_RUNS"))
+
+    def _metashape_input_missing_detail(self) -> str | None:
+        if not self.scene_dir:
+            return i18n.t("STEP4_PIPELINE_DETAIL_SCENE_REQUIRED")
+        xml_text = self.ms_xml_browse.text().strip()
+        xml = Path(xml_text) if xml_text else Path(self.scene_dir) / "metashape.xml"
+        if not xml.is_file():
+            return i18n.t("STEP4_PIPELINE_DETAIL_METASHAPE_NEEDS_XML")
+        if self._preprocess_uses_ply():
+            ply_text = self.ms_ply_browse.text().strip()
+            if not ply_text or not Path(ply_text).is_file():
+                return i18n.t("STEP4_PIPELINE_DETAIL_METASHAPE_NEEDS_PLY")
+        return None
 
     def _pipeline_training_status(self) -> tuple[str, str, str]:
         if not self.run_training_cb.isChecked():
