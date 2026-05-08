@@ -100,13 +100,14 @@ QPushButton#navStep:checked {{
 }}
 QWidget#navSubSteps {{
     background-color: transparent;
+    border-left: 1px solid {BORDER};
 }}
 QPushButton#navSubStep {{
     background-color: transparent;
     border: 1px solid transparent;
     border-radius: 5px;
     color: {TEXT_DIM};
-    padding: 2px 2px;
+    padding: 0;
     font-size: 8pt;
     font-weight: 600;
     min-height: 18px;
@@ -121,16 +122,30 @@ QPushButton#navSubStep:checked {{
     border-color: {ACCENT};
     color: {TEXT_BRIGHT};
 }}
-QPushButton#navSubStep[status="ready"] {{
+QLabel#navSubStepIcon,
+QLabel#navSubStepText {{
+    background-color: transparent;
+    color: {TEXT_DIM};
+    font-size: 8pt;
+    font-weight: 600;
+}}
+QLabel#navSubStepText[active="true"] {{
+    color: {TEXT_BRIGHT};
+}}
+QLabel#navSubStepIcon[status="ready"] {{
     color: {SUCCESS};
 }}
-QPushButton#navSubStep[status="planned"] {{
+QLabel#navSubStepIcon[status="planned"] {{
     color: {ACCENT_HOVER};
 }}
-QPushButton#navSubStep[status="warning"] {{
+QLabel#navSubStepIcon[status="warning"] {{
     color: {WARNING};
 }}
-QPushButton#navSubStep[status="off"] {{
+QLabel#navSubStepIcon[status="off"] {{
+    color: {TEXT_DIM};
+}}
+QLabel#navSubStepIcon:disabled,
+QLabel#navSubStepText:disabled {{
     color: {TEXT_DIM};
 }}
 QWidget#contentPanel {{

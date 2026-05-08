@@ -292,7 +292,7 @@ def test_step4_scrolls_tab_content_not_whole_settings_pane() -> None:
 
         os.environ["QT_QPA_PLATFORM"] = "offscreen"
 
-        from PySide6.QtCore import Qt
+        from PySide6.QtCore import QPoint, Qt
         from PySide6.QtWidgets import QApplication, QScrollArea
 
         from gui.app import MainWindow
@@ -329,10 +329,21 @@ def test_step4_scrolls_tab_content_not_whole_settings_pane() -> None:
             parent = parent.parentWidget()
         assert found_route_scroll
 
-        assert [button.width() for button in window.step4_sub_buttons.values()] == [70, 70, 70]
-        assert window.step4_sub_buttons["sfm"].text().endswith("SfM")
-        assert window.step4_sub_buttons["conversion"].text().endswith("変換")
-        assert window.step4_sub_buttons["training"].text().endswith("トレーニング")
+        assert [button.width() for button in window.step4_sub_buttons.values()] == [66, 66, 66]
+        assert [label.width() for label in window.step4_sub_status_labels.values()] == [13, 13, 13]
+        assert window.step4_sub_text_labels["sfm"].text() == "SfM"
+        assert window.step4_sub_text_labels["conversion"].text() == "変換"
+        assert window.step4_sub_text_labels["training"].text() == "トレーニング"
+        icon_x = [
+            label.mapTo(window, QPoint(0, 0)).x()
+            for label in window.step4_sub_status_labels.values()
+        ]
+        text_x = [
+            label.mapTo(window, QPoint(0, 0)).x()
+            for label in window.step4_sub_text_labels.values()
+        ]
+        assert len(set(icon_x)) == 1
+        assert len(set(text_x)) == 1
         window._activate_step4_pipeline_stage("training")
         assert window.stack.currentIndex() == 3
         assert step.settings_tabs.currentIndex() == step.training_tab_index

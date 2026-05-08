@@ -146,6 +146,8 @@ class MainWindow(QWidget):
         sidebar_layout.setSpacing(6)
         self.step_buttons: list[QPushButton] = []
         self.step4_sub_buttons: dict[str, QPushButton] = {}
+        self.step4_sub_status_labels: dict[str, QLabel] = {}
+        self.step4_sub_text_labels: dict[str, QLabel] = {}
         for index, title_text in enumerate(self.step_nav_titles):
             btn = QPushButton(title_text)
             btn.setObjectName("navStep")
@@ -159,18 +161,32 @@ class MainWindow(QWidget):
                 subnav = QWidget()
                 subnav.setObjectName("navSubSteps")
                 subnav_layout = QVBoxLayout(subnav)
-                subnav_layout.setContentsMargins(0, 0, 0, 0)
-                subnav_layout.setSpacing(3)
+                subnav_layout.setContentsMargins(4, 2, 0, 2)
+                subnav_layout.setSpacing(2)
                 for stage in ("sfm", "conversion", "training"):
                     sub_btn = QPushButton("")
                     sub_btn.setObjectName("navSubStep")
                     sub_btn.setCheckable(True)
-                    sub_btn.setFixedSize(70, 24)
+                    sub_btn.setFixedSize(66, 24)
+                    sub_btn_layout = QHBoxLayout(sub_btn)
+                    sub_btn_layout.setContentsMargins(3, 0, 2, 0)
+                    sub_btn_layout.setSpacing(1)
+                    status_label = QLabel("")
+                    status_label.setObjectName("navSubStepIcon")
+                    status_label.setFixedWidth(13)
+                    status_label.setAlignment(Qt.AlignCenter)
+                    text_label = QLabel("")
+                    text_label.setObjectName("navSubStepText")
+                    text_label.setWordWrap(False)
+                    sub_btn_layout.addWidget(status_label)
+                    sub_btn_layout.addWidget(text_label, stretch=1)
                     sub_btn.clicked.connect(
                         lambda _checked=False, s=stage: self._activate_step4_pipeline_stage(s)
                     )
                     subnav_layout.addWidget(sub_btn)
                     self.step4_sub_buttons[stage] = sub_btn
+                    self.step4_sub_status_labels[stage] = status_label
+                    self.step4_sub_text_labels[stage] = text_label
                 sidebar_layout.addWidget(subnav)
         sidebar_layout.addStretch()
         workspace_layout.addWidget(sidebar)
@@ -338,12 +354,22 @@ class MainWindow(QWidget):
             button = self.step4_sub_buttons.get(item["stage"])
             if button is None:
                 continue
-            button.setText(f"{item['symbol']}{item['label']}")
+            status_label = self.step4_sub_status_labels.get(item["stage"])
+            text_label = self.step4_sub_text_labels.get(item["stage"])
+            active = active_stage == item["stage"]
+            if status_label is not None:
+                status_label.setText(item["symbol"])
+                status_label.setProperty("status", item["status"])
+            if text_label is not None:
+                text_label.setText(item["label"])
+                text_label.setProperty("active", "true" if active else "false")
             button.setToolTip(item["tooltip"])
-            button.setChecked(active_stage == item["stage"])
+            button.setChecked(active)
             button.setProperty("status", item["status"])
-            button.style().unpolish(button)
-            button.style().polish(button)
+            for widget in (button, status_label, text_label):
+                if widget is not None:
+                    widget.style().unpolish(widget)
+                    widget.style().polish(widget)
 
     def _open_step_help(self) -> None:
         url = step_help_url(self.stack.currentIndex())
