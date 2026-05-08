@@ -112,6 +112,14 @@ _PROFILE_CUSTOM = "custom"
 _METHOD_METASHAPE = "metashape"
 _METHOD_COLMAP = "colmap"
 _METHOD_SPHERESFM = "spheresfm"
+_PIPELINE_STAGE_SFM = "sfm"
+_PIPELINE_STAGE_CONVERSION = "conversion"
+_PIPELINE_STAGE_TRAINING = "training"
+_PIPELINE_STATUS_READY = "ready"
+_PIPELINE_STATUS_PLANNED = "planned"
+_PIPELINE_STATUS_PENDING = "pending"
+_PIPELINE_STATUS_WARNING = "warning"
+_PIPELINE_STATUS_OFF = "off"
 _TRAINING_BACKEND_LICHTFELD = "lichtfeld"
 _TRAINING_BACKEND_POSTSHOT = "postshot"
 _TRAINING_BACKEND_CUSTOM = "custom"
@@ -403,6 +411,7 @@ class CubemapStep(BaseStepWidget):
         self.export_method_label.setVisible(False)
         self.export_method_row = QWidget()
         self.export_method_row.setObjectName("segmentedControl")
+        self.export_method_row.setMaximumWidth(SETTINGS_PANE_WIDTH - SETTINGS_PANE_MARGINS[2] - 18)
         method_row = QHBoxLayout(self.export_method_row)
         method_row.setContentsMargins(2, 2, 2, 2)
         method_row.setSpacing(0)
@@ -422,7 +431,6 @@ class CubemapStep(BaseStepWidget):
             method_row.addWidget(btn, stretch=1)
             self.export_method_group.addButton(btn)
             self.export_method_buttons[method] = btn
-        left_layout.addWidget(self.export_method_row)
 
         self.export_targets_row = QWidget()
         self.export_targets_row.setToolTip(i18n.tip("EXPORT_TARGETS"))
@@ -869,6 +877,7 @@ class CubemapStep(BaseStepWidget):
         input_layout = QVBoxLayout(input_tab)
         input_layout.setContentsMargins(8, 8, 8, 8)
         input_layout.setSpacing(6)
+        input_layout.addWidget(self.export_method_row)
         input_layout.addWidget(self.metashape_section)
         input_layout.addWidget(self.colmap_section)
         input_layout.addWidget(self.spheresfm_section)
@@ -882,6 +891,7 @@ class CubemapStep(BaseStepWidget):
         output_layout.addWidget(self.export_targets_row)
         output_layout.addWidget(self.metashape_output_section)
         output_layout.addWidget(self.spheresfm_convert_section)
+        output_layout.addWidget(self.advanced_output_section)
         output_layout.addStretch()
 
         details_tab = QWidget()
@@ -900,10 +910,6 @@ class CubemapStep(BaseStepWidget):
             self._make_tab_scroll_area(self.output_tab),
             i18n.t("STEP4_TAB_OUTPUT"),
         )
-        self.view_export_tab_index = self.settings_tabs.addTab(
-            self._make_tab_scroll_area(self.advanced_output_section),
-            i18n.t("STEP4_TAB_VIEW_EXPORT"),
-        )
         self.training_tab_index = self.settings_tabs.addTab(
             self.training_section,
             i18n.t("STEP4_TAB_TRAINING"),
@@ -915,7 +921,9 @@ class CubemapStep(BaseStepWidget):
         self.metashape_tab_index = self.input_tab_index
         self.colmap_tab_index = self.input_tab_index
         self.spheresfm_tab_index = self.input_tab_index
+        self.view_export_tab_index = self.output_tab_index
         self.spheresfm_convert_tab_index = self.output_tab_index
+        self.settings_tabs.currentChanged.connect(lambda _index: self.primary_action_state_changed.emit())
         left_layout.addWidget(self.settings_tabs, stretch=1)
 
         left_layout.addStretch()
@@ -984,6 +992,97 @@ class CubemapStep(BaseStepWidget):
         scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
         scroll.setWidget(content)
         return scroll
+
+    def set_pipeline_stage(self, stage: str) -> None:
+        if stage == _PIPELINE_STAGE_TRAINING:
+            index = self.training_tab_index
+        elif stage == _PIPELINE_STAGE_CONVERSION:
+            index = self.output_tab_index
+        else:
+            index = self.input_tab_index
+        if not self._settings_tab_available(index):
+            index = self.input_tab_index
+        self.settings_tabs.setCurrentIndex(index)
+
+    def pipeline_stage(self) -> str:
+        current = self.settings_tabs.currentIndex()
+        if current == self.training_tab_index:
+            return _PIPELINE_STAGE_TRAINING
+        if current == self.output_tab_index:
+            return _PIPELINE_STAGE_CONVERSION
+        return _PIPELINE_STAGE_SFM
+
+    def pipeline_nav_items(self) -> list[dict[str, str]]:
+        items: list[tuple[str, str, tuple[str, str, str]]] = [
+            (_PIPELINE_STAGE_SFM, i18n.t("STEP4_PIPELINE_SFM"), self._pipeline_sfm_status()),
+            (
+                _PIPELINE_STAGE_CONVERSION,
+                i18n.t("STEP4_PIPELINE_CONVERSION"),
+                self._pipeline_conversion_status(),
+            ),
+            (
+                _PIPELINE_STAGE_TRAINING,
+                i18n.t("STEP4_PIPELINE_TRAINING"),
+                self._pipeline_training_status(),
+            ),
+        ]
+        result: list[dict[str, str]] = []
+        for stage, label, (status, symbol, detail) in items:
+            status_text = i18n.t(f"STEP4_PIPELINE_STATUS_{status.upper()}")
+            result.append(
+                {
+                    "stage": stage,
+                    "label": label,
+                    "status": status,
+                    "symbol": symbol,
+                    "tooltip": f"{label}: {status_text}\n{detail}",
+                }
+            )
+        return result
+
+    def _pipeline_sfm_status(self) -> tuple[str, str, str]:
+        if not self.scene_dir:
+            return (_PIPELINE_STATUS_PENDING, "○", i18n.t("STEP4_PIPELINE_DETAIL_SCENE_REQUIRED"))
+        if self._is_metashape_method():
+            xml = Path(self.ms_xml_browse.text().strip()) if self.ms_xml_browse.text().strip() else Path(self.scene_dir) / "metashape.xml"
+            if xml.is_file():
+                return (_PIPELINE_STATUS_READY, "✓", i18n.t("STEP4_PIPELINE_DETAIL_METASHAPE_READY"))
+            return (_PIPELINE_STATUS_WARNING, "!", i18n.t("STEP4_PIPELINE_DETAIL_METASHAPE_NEEDS_XML"))
+        if self._is_colmap_method():
+            if self.run_colmap_cb.isChecked():
+                return (_PIPELINE_STATUS_PLANNED, "▶", i18n.t("STEP4_PIPELINE_DETAIL_COLMAP_RUNS"))
+            if self._find_colmap_sparse_model() is not None:
+                return (_PIPELINE_STATUS_READY, "✓", i18n.t("STEP4_PIPELINE_DETAIL_COLMAP_READY"))
+            return (_PIPELINE_STATUS_WARNING, "!", i18n.t("STEP4_PIPELINE_DETAIL_COLMAP_NEEDS_POSES"))
+        scope = self._spheresfm_run_scope()
+        if scope != _SPHERESFM_RUN_CONVERT_ONLY:
+            return (_PIPELINE_STATUS_PLANNED, "▶", i18n.t("STEP4_PIPELINE_DETAIL_SPHERESFM_RUNS"))
+        if self._find_spheresfm_sparse_model() is not None:
+            return (_PIPELINE_STATUS_READY, "✓", i18n.t("STEP4_PIPELINE_DETAIL_SPHERESFM_READY"))
+        return (_PIPELINE_STATUS_WARNING, "!", i18n.t("STEP4_PIPELINE_DETAIL_SPHERESFM_NEEDS_SPARSE"))
+
+    def _pipeline_conversion_status(self) -> tuple[str, str, str]:
+        if not self.scene_dir:
+            return (_PIPELINE_STATUS_PENDING, "○", i18n.t("STEP4_PIPELINE_DETAIL_SCENE_REQUIRED"))
+        if self._is_spheresfm_method() and self._spheresfm_run_scope() == _SPHERESFM_RUN_SFM_ONLY:
+            return (_PIPELINE_STATUS_OFF, "·", i18n.t("STEP4_PIPELINE_DETAIL_CONVERSION_OFF"))
+        if self._is_metashape_method() and not self.ms_xml_browse.text().strip() and not (Path(self.scene_dir) / "metashape.xml").is_file():
+            return (_PIPELINE_STATUS_WARNING, "!", i18n.t("STEP4_PIPELINE_DETAIL_METASHAPE_NEEDS_XML"))
+        return (_PIPELINE_STATUS_PLANNED, "▶", i18n.t("STEP4_PIPELINE_DETAIL_CONVERSION_RUNS"))
+
+    def _pipeline_training_status(self) -> tuple[str, str, str]:
+        if not self.scene_dir:
+            return (_PIPELINE_STATUS_PENDING, "○", i18n.t("STEP4_PIPELINE_DETAIL_SCENE_REQUIRED"))
+        if not self.run_training_cb.isChecked():
+            return (_PIPELINE_STATUS_OFF, "·", i18n.t("STEP4_PIPELINE_DETAIL_TRAINING_OFF"))
+        if self._is_spheresfm_method() and self._spheresfm_run_scope() == _SPHERESFM_RUN_SFM_ONLY:
+            return (_PIPELINE_STATUS_WARNING, "!", i18n.t("STEP4_PIPELINE_DETAIL_TRAINING_NEEDS_CONVERSION"))
+        backend = self.training_backend_combo.currentText() if hasattr(self, "training_backend_combo") else ""
+        return (
+            _PIPELINE_STATUS_PLANNED,
+            "▶",
+            i18n.t("STEP4_PIPELINE_DETAIL_TRAINING_RUNS").format(backend=backend),
+        )
 
     def _build_training_section(self, exe_filter: str) -> QWidget:
         section = QWidget()
@@ -2596,20 +2695,14 @@ class CubemapStep(BaseStepWidget):
         self.metashape_output_section.setVisible(self._is_metashape_method())
         self.colmap_section.setVisible(self._is_colmap_method())
         self.spheresfm_section.setVisible(self._is_spheresfm_method())
-        self.spheresfm_convert_section.setVisible(self._is_spheresfm_method())
+        self.spheresfm_convert_section.setVisible(self._is_spheresfm_method() and self._spheresfm_runs_conversion())
         spheresfm_sfm_only = self._is_spheresfm_method() and self._spheresfm_run_scope() == _SPHERESFM_RUN_SFM_ONLY
-        view_enabled = (
-            not self._uses_direct_equirect_output()
-            and not self._uses_spheresfm_3dgut_output()
-            and not spheresfm_sfm_only
-        )
-        self.settings_tabs.setTabEnabled(self.view_export_tab_index, view_enabled)
-        route_index = self.output_tab_index if not spheresfm_sfm_only else self.input_tab_index
+        conversion_enabled = not spheresfm_sfm_only
+        self.settings_tabs.setTabEnabled(self.output_tab_index, conversion_enabled)
+        route_index = self.input_tab_index
         if spheresfm_sfm_only and current == self.output_tab_index:
             self.settings_tabs.setCurrentIndex(route_index)
-        elif (not view_enabled) and current == self.view_export_tab_index:
-            self.settings_tabs.setCurrentIndex(route_index)
-        elif prefer_route_tab and current in {self.input_tab_index, self.output_tab_index}:
+        elif prefer_route_tab:
             self.settings_tabs.setCurrentIndex(route_index)
         elif not self._settings_tab_available(self.settings_tabs.currentIndex()):
             self.settings_tabs.setCurrentIndex(route_index)
@@ -2893,7 +2986,6 @@ class CubemapStep(BaseStepWidget):
         self.spheresfm_axis_transform_combo.setEnabled(spheresfm_projected)
         self.ms_use_ply_cb.setEnabled(self._is_metashape_method() and not direct)
         self.export_colmap_cb.setEnabled(self._is_metashape_method() and not direct)
-        self.settings_tabs.setTabEnabled(self.view_export_tab_index, route_uses_view_export)
         self.settings_tabs.setTabEnabled(self.output_tab_index, (not spheresfm) or spheresfm_runs_conversion)
 
     def _preprocess_uses_ply(self) -> bool:

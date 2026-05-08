@@ -116,9 +116,9 @@ def test_cubemap_step_uses_fixed_output_folder_label(tmp_path: Path) -> None:
     assert step.output_shape_combo.currentData() == "projected"
     assert step.input_tab_index == 0
     assert step.output_tab_index == 1
-    assert step.view_export_tab_index == 2
-    assert step.training_tab_index == 3
-    assert step.details_tab_index == 4
+    assert step.view_export_tab_index == step.output_tab_index
+    assert step.training_tab_index == 2
+    assert step.details_tab_index == 3
     assert step.metashape_tab_index == step.input_tab_index
     assert step.colmap_tab_index == step.input_tab_index
     assert step.spheresfm_tab_index == step.input_tab_index
@@ -126,22 +126,22 @@ def test_cubemap_step_uses_fixed_output_folder_label(tmp_path: Path) -> None:
     assert [step.settings_tabs.tabText(i) for i in range(step.settings_tabs.count())] == [
         i18n.t("STEP4_TAB_INPUT"),
         i18n.t("STEP4_TAB_OUTPUT"),
-        i18n.t("STEP4_TAB_VIEW_EXPORT"),
         i18n.t("STEP4_TAB_TRAINING"),
         i18n.t("STEP4_TAB_DETAILS"),
     ]
     assert step.export_method_label.isHidden()
+    assert _is_descendant(step.export_method_row, step.input_tab)
     assert _is_descendant(step.metashape_section, step.input_tab)
     assert _is_descendant(step.metashape_output_section, step.output_tab)
     assert _is_descendant(step.export_targets_row, step.output_tab)
-    assert step.settings_tabs.tabText(step.view_export_tab_index) == i18n.t("STEP4_TAB_VIEW_EXPORT")
+    assert step.settings_tabs.tabText(step.output_tab_index) == i18n.t("STEP4_TAB_OUTPUT")
     assert not step.metashape_section.isHidden()
     assert not step.metashape_output_section.isHidden()
     assert step.colmap_section.isHidden()
     assert step.spheresfm_section.isHidden()
     assert step.spheresfm_convert_section.isHidden()
-    assert not _is_descendant(step.export_targets_row, step.advanced_output_section)
     assert _is_descendant(step.view_config.settings_widget, step.advanced_output_section)
+    assert _is_descendant(step.advanced_output_section, step.output_tab)
     assert _is_descendant(step.view_config.grid_section, step.advanced_output_section)
     assert _is_descendant(step.view_config.all_toggle_btn, step.view_config.grid_controls_widget)
     assert not _is_descendant(step.view_config.all_toggle_btn, step.view_config.grid_widget)
@@ -204,8 +204,7 @@ def test_export_method_switch_keeps_fixed_tabs_and_swaps_route_sections() -> Non
     step = CubemapStep(Path.cwd())
 
     assert step.settings_tabs.tabText(0) == i18n.t("STEP4_TAB_INPUT")
-    assert step.settings_tabs.tabText(step.view_export_tab_index) == i18n.t("STEP4_TAB_VIEW_EXPORT")
-    assert step.settings_tabs.currentIndex() == step.output_tab_index
+    assert step.settings_tabs.currentIndex() == step.input_tab_index
     assert not step.metashape_section.isHidden()
     assert step.colmap_section.isHidden()
 
@@ -213,17 +212,16 @@ def test_export_method_switch_keeps_fixed_tabs_and_swaps_route_sections() -> Non
     step._set_export_method("colmap")
 
     assert step.settings_tabs.tabText(0) == i18n.t("STEP4_TAB_INPUT")
-    assert step.settings_tabs.isTabVisible(step.view_export_tab_index)
     assert step.metashape_section.isHidden()
     assert step.metashape_output_section.isHidden()
     assert not step.colmap_section.isHidden()
-    assert step.settings_tabs.currentIndex() == step.output_tab_index
+    assert step.settings_tabs.currentIndex() == step.input_tab_index
 
     step.settings_tabs.setCurrentIndex(step.view_export_tab_index)
     step._set_export_method("metashape")
 
     assert step.settings_tabs.tabText(0) == i18n.t("STEP4_TAB_INPUT")
-    assert step.settings_tabs.currentIndex() == step.view_export_tab_index
+    assert step.settings_tabs.currentIndex() == step.input_tab_index
     assert not step.metashape_section.isHidden()
     assert not step.metashape_output_section.isHidden()
     assert step.colmap_section.isHidden()
@@ -279,7 +277,6 @@ def test_spheresfm_visible_tabs_follow_projection_conversion_sfm_order() -> None
     assert [step.settings_tabs.tabText(i) for i in range(step.settings_tabs.count())] == [
         i18n.t("STEP4_TAB_INPUT"),
         i18n.t("STEP4_TAB_OUTPUT"),
-        i18n.t("STEP4_TAB_VIEW_EXPORT"),
         i18n.t("STEP4_TAB_TRAINING"),
         i18n.t("STEP4_TAB_DETAILS"),
     ]
@@ -289,7 +286,6 @@ def test_spheresfm_visible_tabs_follow_projection_conversion_sfm_order() -> None
     assert not step.spheresfm_convert_section.isHidden()
     assert step.settings_tabs.isTabEnabled(step.input_tab_index)
     assert step.settings_tabs.isTabEnabled(step.output_tab_index)
-    assert step.settings_tabs.isTabEnabled(step.view_export_tab_index)
 
 
 def test_spheresfm_conversion_rows_follow_preset_shape_axis_order() -> None:
@@ -1390,7 +1386,8 @@ def test_lichtfeld_3dgut_direct_mode_runs_metashape_only_and_disables_view_expor
     assert step.axis_transform_combo.currentData() == "none"
     assert step.ms_use_ply_cb.isChecked()
     assert step.output_path_label.full_text() == str(tmp_path / "output")
-    assert not step.settings_tabs.isTabEnabled(step.view_export_tab_index)
+    assert step.settings_tabs.isTabEnabled(step.output_tab_index)
+    assert not step.view_config.settings_widget.isEnabled()
     assert not step.export_targets_row.isEnabled()
     assert step.export_images_cb.isChecked()
     assert step.export_masks_cb.isChecked()

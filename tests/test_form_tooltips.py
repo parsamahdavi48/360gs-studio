@@ -129,7 +129,7 @@ def test_step4_route_buttons_stay_inside_fixed_settings_pane() -> None:
 
         os.environ["QT_QPA_PLATFORM"] = "offscreen"
 
-        from PySide6.QtCore import Qt
+        from PySide6.QtCore import QPoint, Qt
         from PySide6.QtTest import QTest
         from PySide6.QtWidgets import QApplication
 
@@ -147,13 +147,17 @@ def test_step4_route_buttons_stay_inside_fixed_settings_pane() -> None:
         content_width = SETTINGS_PANE_WIDTH - SETTINGS_PANE_MARGINS[2]
         row_widths = []
         for method in ("spheresfm", "colmap", "metashape", "spheresfm"):
+            step.settings_tabs.setCurrentIndex(step.input_tab_index)
             QTest.mouseClick(step.export_method_buttons[method], Qt.LeftButton)
             app.processEvents()
             settings_pane = step.export_method_row.parentWidget()
+            while settings_pane is not None and settings_pane.width() != SETTINGS_PANE_WIDTH:
+                settings_pane = settings_pane.parentWidget()
             row_widths.append(step.export_method_row.width())
-            assert settings_pane.width() == SETTINGS_PANE_WIDTH
+            assert settings_pane is not None
             assert step.export_method_row.width() <= content_width
-            assert step.export_method_row.geometry().right() < SETTINGS_PANE_WIDTH
+            row_pos = step.export_method_row.mapTo(settings_pane, QPoint(0, 0))
+            assert row_pos.x() + step.export_method_row.width() < SETTINGS_PANE_WIDTH
 
         assert len(set(row_widths)) == 1
         """
@@ -210,6 +214,7 @@ def test_step4_japanese_training_copy_uses_training_wording() -> None:
             "RUN_TRAINING_AFTER_EXPORT",
             "TRAINING_OUTPUT",
             "STEP4_TAB_TRAINING",
+            "STEP4_PIPELINE_TRAINING",
         ]
         tip_keys = [
             "TRAINING_BACKEND_LICHTFELD",
@@ -277,7 +282,7 @@ def test_step4_scrolls_tab_content_not_whole_settings_pane() -> None:
             for index, widget in enumerate(tab_widgets)
             if index != step.training_tab_index
         ]
-        assert len(tab_scrolls) == 4
+        assert len(tab_scrolls) == 3
         assert all(isinstance(scroll, QScrollArea) for scroll in tab_scrolls)
         assert all(scroll.objectName() == "step4TabScroll" for scroll in tab_scrolls)
         assert all(scroll.horizontalScrollBarPolicy() == Qt.ScrollBarAlwaysOff for scroll in tab_scrolls)
@@ -285,13 +290,23 @@ def test_step4_scrolls_tab_content_not_whole_settings_pane() -> None:
         assert step.settings_tabs.widget(step.training_tab_index) is step.training_section
 
         parent = step.export_method_row.parentWidget()
+        found_route_scroll = False
         while parent is not None:
-            assert not isinstance(parent, QScrollArea)
+            found_route_scroll = found_route_scroll or isinstance(parent, QScrollArea)
             parent = parent.parentWidget()
+        assert found_route_scroll
 
-        step.settings_tabs.setCurrentIndex(step.output_tab_index)
-        app.processEvents()
-        assert step.settings_tabs.widget(step.output_tab_index).verticalScrollBar().maximum() == 0
+        assert [button.width() for button in window.step4_sub_buttons.values()] == [70, 70, 70]
+        assert window.step4_sub_buttons["sfm"].text().endswith("SfM")
+        assert window.step4_sub_buttons["conversion"].text().endswith("変換")
+        assert window.step4_sub_buttons["training"].text().endswith("トレーニング")
+        window._activate_step4_pipeline_stage("training")
+        assert window.stack.currentIndex() == 3
+        assert step.settings_tabs.currentIndex() == step.training_tab_index
+        assert window.step4_sub_buttons["training"].isChecked()
+        window._activate_step4_pipeline_stage("conversion")
+        assert step.settings_tabs.currentIndex() == step.output_tab_index
+        assert window.step4_sub_buttons["conversion"].isChecked()
 
         step.settings_tabs.setCurrentIndex(step.training_tab_index)
         step._set_training_backend("lichtfeld")

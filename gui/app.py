@@ -145,6 +145,7 @@ class MainWindow(QWidget):
         sidebar_layout.setContentsMargins(6, 8, 6, 8)
         sidebar_layout.setSpacing(6)
         self.step_buttons: list[QPushButton] = []
+        self.step4_sub_buttons: dict[str, QPushButton] = {}
         for index, title_text in enumerate(self.step_nav_titles):
             btn = QPushButton(title_text)
             btn.setObjectName("navStep")
@@ -154,6 +155,23 @@ class MainWindow(QWidget):
             btn.clicked.connect(lambda _checked=False, i=index: self._set_current_step(i))
             sidebar_layout.addWidget(btn)
             self.step_buttons.append(btn)
+            if index == 3:
+                subnav = QWidget()
+                subnav.setObjectName("navSubSteps")
+                subnav_layout = QVBoxLayout(subnav)
+                subnav_layout.setContentsMargins(0, 0, 0, 0)
+                subnav_layout.setSpacing(3)
+                for stage in ("sfm", "conversion", "training"):
+                    sub_btn = QPushButton("")
+                    sub_btn.setObjectName("navSubStep")
+                    sub_btn.setCheckable(True)
+                    sub_btn.setFixedSize(70, 24)
+                    sub_btn.clicked.connect(
+                        lambda _checked=False, s=stage: self._activate_step4_pipeline_stage(s)
+                    )
+                    subnav_layout.addWidget(sub_btn)
+                    self.step4_sub_buttons[stage] = sub_btn
+                sidebar_layout.addWidget(subnav)
         sidebar_layout.addStretch()
         workspace_layout.addWidget(sidebar)
 
@@ -248,6 +266,7 @@ class MainWindow(QWidget):
         self.runner.queue_finished.connect(self._on_queue_finished)
         for step in self.steps:
             step.primary_action_state_changed.connect(self._update_run_button)
+        self.step4.primary_action_state_changed.connect(self._refresh_step4_subnav)
 
         self._on_scene_changed(self.scene_browse.text())
 
@@ -266,6 +285,7 @@ class MainWindow(QWidget):
         step = self._current_step_widget()
         if step is not None:
             step.on_activated()
+        self._refresh_step4_subnav()
 
     def _on_scene_suggested(self, path: str) -> None:
         if self.scene_browse.text():
@@ -303,6 +323,27 @@ class MainWindow(QWidget):
         if step is not None:
             step.on_activated()
         self._update_run_button()
+        self._refresh_step4_subnav()
+
+    def _activate_step4_pipeline_stage(self, stage: str) -> None:
+        self._set_current_step(3)
+        self.step4.set_pipeline_stage(stage)
+        self._refresh_step4_subnav()
+
+    def _refresh_step4_subnav(self) -> None:
+        if not self.step4_sub_buttons:
+            return
+        active_stage = self.step4.pipeline_stage() if self.stack.currentIndex() == 3 else ""
+        for item in self.step4.pipeline_nav_items():
+            button = self.step4_sub_buttons.get(item["stage"])
+            if button is None:
+                continue
+            button.setText(f"{item['symbol']}{item['label']}")
+            button.setToolTip(item["tooltip"])
+            button.setChecked(active_stage == item["stage"])
+            button.setProperty("status", item["status"])
+            button.style().unpolish(button)
+            button.style().polish(button)
 
     def _open_step_help(self) -> None:
         url = step_help_url(self.stack.currentIndex())
@@ -339,6 +380,8 @@ class MainWindow(QWidget):
         self.clear_scene_btn.setEnabled(unlocked and bool(self.scene_browse.text()))
         self.stack.setEnabled(unlocked)
         for btn in self.step_buttons:
+            btn.setEnabled(unlocked)
+        for btn in self.step4_sub_buttons.values():
             btn.setEnabled(unlocked)
 
     def _on_run(self) -> None:

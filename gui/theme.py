@@ -73,6 +73,41 @@ QPushButton#navStep:checked {{
     border-color: {ACCENT};
     color: {TEXT_BRIGHT};
 }}
+QWidget#navSubSteps {{
+    background-color: transparent;
+}}
+QPushButton#navSubStep {{
+    background-color: transparent;
+    border: 1px solid transparent;
+    border-radius: 5px;
+    color: {TEXT_DIM};
+    padding: 2px 2px;
+    font-size: 8pt;
+    font-weight: 600;
+    min-height: 18px;
+}}
+QPushButton#navSubStep:hover {{
+    background-color: {BG_PANEL};
+    border-color: {BORDER};
+    color: {TEXT};
+}}
+QPushButton#navSubStep:checked {{
+    background-color: {BG_PANEL};
+    border-color: {ACCENT};
+    color: {TEXT_BRIGHT};
+}}
+QPushButton#navSubStep[status="ready"] {{
+    color: {SUCCESS};
+}}
+QPushButton#navSubStep[status="planned"] {{
+    color: {ACCENT_HOVER};
+}}
+QPushButton#navSubStep[status="warning"] {{
+    color: {WARNING};
+}}
+QPushButton#navSubStep[status="off"] {{
+    color: {TEXT_DIM};
+}}
 QWidget#contentPanel {{
     background-color: {BG_MID};
     border: 1px solid {BORDER};
