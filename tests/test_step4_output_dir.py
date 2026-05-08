@@ -112,10 +112,10 @@ def test_cubemap_step_uses_fixed_output_folder_label(tmp_path: Path) -> None:
     assert not hasattr(step.view_config, "apply_btn")
     assert not hasattr(step, "training_backend_combo")
     assert set(step.export_method_buttons) == {"metashape", "colmap", "spheresfm"}
-    assert set(step.training_backend_buttons) == {"lichtfeld", "postshot", "custom"}
+    assert set(step.training_backend_buttons) == {"lichtfeld", "postshot"}
     assert set(step.training_backend_selector.primary_backend_buttons) == {"lichtfeld", "postshot"}
-    assert set(step.training_backend_selector.other_backend_buttons) == {"custom"}
-    assert step.training_backend_other_row.isHidden()
+    assert set(step.training_backend_selector.other_backend_actions) == {"custom"}
+    assert not hasattr(step, "training_backend_other_row")
     assert step.export_images_cb.isChecked()
     assert step.export_masks_cb.isChecked()
     assert step.output_shape_combo.currentData() == "projected"
@@ -1629,11 +1629,11 @@ def test_training_headless_option_shares_start_row(tmp_path: Path) -> None:
 
     step._set_training_backend("postshot")
     assert step.training_headless_cb.isHidden()
-    assert step.training_backend_other_row.isHidden()
+    assert not step.training_backend_other_button.isChecked()
 
     step._set_training_backend("custom")
     assert step.training_backend_other_button.isChecked()
-    assert not step.training_backend_other_row.isHidden()
+    assert step.training_backend_selector.other_backend_actions["custom"].isChecked()
 
 
 def test_lichtfeld_training_refuses_existing_output_ply(tmp_path: Path, monkeypatch) -> None:

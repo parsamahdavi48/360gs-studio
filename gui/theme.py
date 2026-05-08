@@ -277,11 +277,8 @@ QWidget#segmentedControl {{
 QWidget#radioOptionRow {{
     background-color: transparent;
 }}
-QWidget#trainingBackendPrimaryRow, QWidget#trainingBackendOtherRow {{
+QWidget#trainingBackendPrimaryRow {{
     background-color: transparent;
-}}
-QLabel#subOptionLabel {{
-    color: {TEXT_DIM};
 }}
 QRadioButton#optionRadio {{
     color: {TEXT_DIM};
@@ -290,6 +287,28 @@ QRadioButton#optionRadio {{
 }}
 QRadioButton#optionRadio:checked {{
     color: {TEXT_BRIGHT};
+}}
+QToolButton#optionMenuButton {{
+    background-color: transparent;
+    border: 1px solid transparent;
+    border-radius: 4px;
+    color: {TEXT_DIM};
+    font-weight: 600;
+    min-height: 22px;
+    padding: 2px 8px;
+}}
+QToolButton#optionMenuButton:checked {{
+    background-color: {BG_PANEL};
+    border-color: {ACCENT};
+    color: {TEXT_BRIGHT};
+}}
+QToolButton#optionMenuButton:hover:!checked {{
+    background-color: {BG_PANEL};
+    border-color: {BORDER_FOCUS};
+    color: {TEXT};
+}}
+QToolButton#optionMenuButton:pressed {{
+    background-color: {BG_MID};
 }}
 QPushButton#segmentedOption {{
     background-color: transparent;

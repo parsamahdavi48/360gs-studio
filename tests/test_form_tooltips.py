@@ -6,7 +6,7 @@ from pathlib import Path
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PySide6.QtWidgets import QApplication, QLabel, QRadioButton, QWidget
+from PySide6.QtWidgets import QApplication, QLabel, QRadioButton, QToolButton, QWidget
 
 from gui import i18n
 from gui.common.drag_spinbox import DragDoubleSpinBox, DragSpinBox
@@ -222,19 +222,33 @@ def test_step4_route_and_training_selectors_use_radio_buttons() -> None:
 
     assert all(isinstance(button, QRadioButton) for button in step.export_method_buttons.values())
     assert all(button.objectName() == "optionRadio" for button in step.export_method_buttons.values())
-    assert all(isinstance(button, QRadioButton) for button in step.training_backend_buttons.values())
-    assert all(button.objectName() == "optionRadio" for button in step.training_backend_buttons.values())
-    assert set(step.training_backend_buttons) == {"lichtfeld", "postshot", "custom"}
+    assert all(
+        isinstance(button, QRadioButton)
+        for button in step.training_backend_selector.primary_backend_buttons.values()
+    )
+    assert all(
+        button.objectName() == "optionRadio"
+        for button in step.training_backend_selector.primary_backend_buttons.values()
+    )
+    assert isinstance(step.training_backend_other_button, QToolButton)
+    assert step.training_backend_other_button.objectName() == "optionMenuButton"
+    assert set(step.training_backend_buttons) == {"lichtfeld", "postshot"}
     assert set(step.training_backend_selector.primary_backend_buttons) == {"lichtfeld", "postshot"}
-    assert set(step.training_backend_selector.other_backend_buttons) == {"custom"}
+    assert set(step.training_backend_selector.other_backend_actions) == {"custom"}
     assert step.training_backend_buttons["lichtfeld"].isChecked()
     assert step.training_backend_other_button.text() == i18n.t("TRAINING_BACKEND_OTHER")
-    assert step.training_backend_other_row.isHidden()
+    assert not hasattr(step, "training_backend_other_row")
+    assert not step.training_backend_other_button.isChecked()
 
     step._set_training_backend("custom")
     assert step.training_backend_other_button.isChecked()
-    assert not step.training_backend_other_row.isHidden()
-    assert step.training_backend_buttons["custom"].isChecked()
+    assert step.training_backend_other_button.text() == i18n.t("TRAINING_BACKEND_CUSTOM_SHORT")
+    assert step.training_backend_selector.other_backend_actions["custom"].isChecked()
+
+    step._set_training_backend("lichtfeld")
+    step.training_backend_selector.other_backend_actions["custom"].trigger()
+    assert step._training_backend() == "custom"
+    assert step.training_backend_other_button.isChecked()
 
 
 def test_step4_japanese_training_copy_uses_training_wording() -> None:
@@ -652,9 +666,9 @@ def test_cubemap_labels_share_field_tooltips() -> None:
     step._set_training_backend("custom")
     assert step.training_backend_label.toolTip() == i18n.tip("TRAINING_BACKEND_CUSTOM")
     assert step.training_backend_other_button.isChecked()
-    assert not step.training_backend_other_row.isHidden()
-    assert step.training_backend_buttons["custom"].isChecked()
-    assert step.training_backend_other_button.toolTip() == i18n.tip("TRAINING_BACKEND_OTHER")
+    assert step.training_backend_other_button.text() == i18n.t("TRAINING_BACKEND_CUSTOM_SHORT")
+    assert step.training_backend_selector.other_backend_actions["custom"].isChecked()
+    assert step.training_backend_other_button.toolTip() == i18n.tip("TRAINING_BACKEND_CUSTOM")
     assert step.run_training_cb.toolTip() == i18n.tip("RUN_TRAINING_AFTER_EXPORT")
     assert _label(step, i18n.t("TRAINING_EXECUTABLE")).toolTip() == i18n.tip("TRAINING_EXECUTABLE")
     assert _label(step, i18n.t("TRAINING_DATASET")).toolTip() == i18n.tip("TRAINING_DATASET")
