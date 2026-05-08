@@ -43,7 +43,7 @@ class TrainingStep(BaseStepWidget):
         return self.dataset_step.build_training_launch_commands()
 
     def process_log_dir(self) -> Path | None:
-        return self.dataset_step.process_log_dir()
+        return self.dataset_step.training_process_log_dir()
 
     def phase_display_name(self, phase: str) -> str:
         return self.dataset_step.phase_display_name(phase)

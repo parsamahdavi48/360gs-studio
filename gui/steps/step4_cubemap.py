@@ -380,6 +380,7 @@ class CubemapStep(BaseStepWidget):
         self._saved_projected_export_targets: tuple[bool, bool] | None = None
         self._input_image_count = 0
         self._spheresfm_phase_logs: dict[str, Path] = {}
+        self._training_phase_logs: dict[str, Path] = {}
         self._spheresfm_rtx50_cuda_error_seen = False
         self._spheresfm_rtx50_cuda_error_phase: str | None = None
         self._spheresfm_rtx50_cuda_error_shown = False
@@ -4113,6 +4114,14 @@ class CubemapStep(BaseStepWidget):
         except ValueError:
             return None
 
+    def training_process_log_dir(self) -> Path | None:
+        if not self.scene_dir:
+            return None
+        try:
+            return step4_meta_dir(Path(self.scene_dir)) / "logs" / "training"
+        except ValueError:
+            return None
+
     def _reset_spheresfm_rtx50_diagnostics(self) -> None:
         self._spheresfm_phase_logs.clear()
         self._spheresfm_rtx50_cuda_error_seen = False
@@ -4724,6 +4733,7 @@ class CubemapStep(BaseStepWidget):
         return self._training_dataset_issue() is None
 
     def build_training_launch_commands(self) -> list[tuple[str, list[str]]]:
+        self._training_phase_logs.clear()
         self.prepare_training_step()
         return self._build_training_commands()
 
@@ -5410,9 +5420,20 @@ class CubemapStep(BaseStepWidget):
                 "backend": self._training_backend(),
                 "dataset_root": scene_relative(scene, dataset.dataset_root),
                 "output_dir": scene_relative(scene, self._training_output_dir()),
+                "logs": self._training_log_snapshot(scene),
                 "settings": self._collect_training_settings(),
             },
         )
+
+    def _training_log_snapshot(self, scene: Path) -> dict[str, object]:
+        log_dir = self.training_process_log_dir()
+        return {
+            "log_dir": scene_relative(scene, log_dir) if log_dir is not None else "",
+            "phase_logs": {
+                phase: scene_relative(scene, path)
+                for phase, path in sorted(self._training_phase_logs.items())
+            },
+        }
 
     def _record_step4_runs(self, *, sfm_mode: str | None, dataset: bool) -> None:
         if sfm_mode:
@@ -6094,6 +6115,8 @@ class CubemapStep(BaseStepWidget):
     def on_phase_log_started(self, phase: str, path: str) -> None:
         if phase.startswith("spheresfm_"):
             self._spheresfm_phase_logs[phase] = Path(path)
+        elif phase.startswith("training_"):
+            self._training_phase_logs[phase] = Path(path)
 
     def on_phase_finished(self, phase: str, exit_code: int, canceled: bool) -> None:
         if (

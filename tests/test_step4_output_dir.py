@@ -29,7 +29,12 @@ from gui.steps.step4_cubemap import CubemapStep
 from gui.steps.step4_settings import STEP4_SETTINGS_VERSION
 from gui.steps.step5_training import TrainingStep
 from gui.steps.training_backends import lichtfeld_defaults
-from scene_layout import step4_export_settings_path, step4_meta_dir, step4_views_config_path
+from scene_layout import (
+    step4_export_settings_path,
+    step4_meta_dir,
+    step4_training_runs_path,
+    step4_views_config_path,
+)
 from transforms_to_colmap import read_ply_points
 
 
@@ -1863,6 +1868,43 @@ def test_switching_profile_away_from_lichtfeld_exits_3dgut_direct_mode(tmp_path:
     assert step.output_shape_combo.currentData() == "projected"
     assert step._uses_direct_equirect_output() is False
     assert step.settings_tabs.isTabEnabled(step.view_export_tab_index)
+
+
+def test_step5_uses_training_log_dir_independent_of_step4_route(tmp_path: Path) -> None:
+    step = _ready_step(tmp_path, metashape_inputs=True)
+    training = TrainingStep(Path.cwd(), step)
+    training.set_scene_dir(str(tmp_path))
+
+    expected_training_logs = step4_meta_dir(tmp_path) / "logs" / "training"
+    assert training.process_log_dir() == expected_training_logs
+    assert step.process_log_dir() is None
+
+    step._set_export_method("spheresfm")
+
+    assert step.process_log_dir() == step4_meta_dir(tmp_path) / "logs" / "spheresfm"
+    assert training.process_log_dir() == expected_training_logs
+
+
+def test_step5_records_training_phase_logs(tmp_path: Path) -> None:
+    step = _ready_step(tmp_path, metashape_inputs=True)
+    _write_output_dataset(tmp_path, output_shape="projected")
+    training = TrainingStep(Path.cwd(), step)
+    training.set_scene_dir(str(tmp_path))
+    training.on_activated()
+
+    log_path = step4_meta_dir(tmp_path) / "logs" / "training" / "20260509_training_lichtfeld.log"
+    training.on_phase_log_started("training_lichtfeld", str(log_path))
+    training.on_queue_finished(True)
+
+    runs = json.loads(step4_training_runs_path(tmp_path).read_text(encoding="utf-8"))["runs"]
+    record = runs[-1]
+
+    assert record["logs"] == {
+        "log_dir": "_stechdrive/step4/logs/training",
+        "phase_logs": {
+            "training_lichtfeld": "_stechdrive/step4/logs/training/20260509_training_lichtfeld.log",
+        },
+    }
 
 
 def test_step5_launch_builds_lichtfeld_command_and_writes_config(tmp_path: Path) -> None:
