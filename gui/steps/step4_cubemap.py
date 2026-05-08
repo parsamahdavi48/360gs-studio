@@ -14,7 +14,6 @@ import numpy as np
 from PySide6.QtCore import QProcess, QSize, Qt, QTimer
 from PySide6.QtGui import QFontMetrics
 from PySide6.QtWidgets import (
-    QButtonGroup,
     QCheckBox,
     QComboBox,
     QFormLayout,
@@ -24,7 +23,6 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QMessageBox,
     QPushButton,
-    QRadioButton,
     QScrollArea,
     QSplitter,
     QStackedWidget,
@@ -61,6 +59,14 @@ from gui.steps.cubemap_commands import (
     build_spheresfm_transforms_cmd,
     views_config_payload,
     write_views_config,
+)
+from gui.steps.sfm_route_backends import get_sfm_route_backend
+from gui.steps.sfm_route_selector import SfmRouteSelector
+from gui.steps.sfm_route_specs import (
+    SFM_ROUTE_COLMAP as _METHOD_COLMAP,
+    SFM_ROUTE_METASHAPE as _METHOD_METASHAPE,
+    SFM_ROUTE_SPHERESFM as _METHOD_SPHERESFM,
+    normalize_sfm_route,
 )
 from gui.steps.training_backends import (
     CustomTrainingOptions,
@@ -120,9 +126,6 @@ _PROFILE_POSTSHOT = "postshot"
 _PROFILE_BRUSH = "brush"
 _PROFILE_LICHTFELD = "lichtfeld"
 _PROFILE_CUSTOM = "custom"
-_METHOD_METASHAPE = "metashape"
-_METHOD_COLMAP = "colmap"
-_METHOD_SPHERESFM = "spheresfm"
 _PIPELINE_STAGE_SFM = "sfm"
 _PIPELINE_STAGE_CONVERSION = "conversion"
 _PIPELINE_STAGE_TRAINING = "training"
@@ -419,28 +422,11 @@ class CubemapStep(BaseStepWidget):
         self.export_method_label = QLabel(i18n.t("EXPORT_METHOD_COMPACT"))
         self.export_method_label.setToolTip(i18n.tip("EXPORT_METHOD"))
         self.export_method_label.setVisible(False)
-        self.export_method_row = QWidget()
-        self.export_method_row.setObjectName("radioOptionRow")
+        self.export_method_selector = SfmRouteSelector()
+        self.export_method_selector.route_changed.connect(self._set_export_method)
+        self.export_method_row = self.export_method_selector
         self.export_method_row.setMaximumWidth(SETTINGS_PANE_WIDTH - SETTINGS_PANE_MARGINS[2] - 18)
-        method_row = QHBoxLayout(self.export_method_row)
-        method_row.setContentsMargins(0, 0, 0, 0)
-        method_row.setSpacing(10)
-        self.export_method_group = QButtonGroup(self)
-        self.export_method_group.setExclusive(True)
-        self.export_method_buttons: dict[str, QRadioButton] = {}
-        for method, label, tip_key in [
-            (_METHOD_METASHAPE, i18n.t("METHOD_METASHAPE_IMPORT"), "METHOD_METASHAPE_IMPORT"),
-            (_METHOD_COLMAP, i18n.t("METHOD_COLMAP_EXPORT"), "METHOD_COLMAP_EXPORT"),
-            (_METHOD_SPHERESFM, i18n.t("METHOD_SPHERESFM"), "METHOD_SPHERESFM"),
-        ]:
-            btn = QRadioButton(label)
-            btn.setObjectName("optionRadio")
-            btn.setToolTip(i18n.tip(tip_key))
-            btn.clicked.connect(lambda _checked=False, m=method: self._set_export_method(m))
-            method_row.addWidget(btn)
-            self.export_method_group.addButton(btn)
-            self.export_method_buttons[method] = btn
-        method_row.addStretch()
+        self.export_method_buttons = self.export_method_selector.route_buttons
 
         self.export_targets_row = QWidget()
         self.export_targets_row.setToolTip(i18n.tip("EXPORT_TARGETS"))
@@ -1028,15 +1014,9 @@ class CubemapStep(BaseStepWidget):
 
     def pipeline_stage_intent(self, stage: str) -> bool:
         if stage == _PIPELINE_STAGE_SFM:
-            if self._is_metashape_method():
-                return self.pipeline_stage_intent(_PIPELINE_STAGE_CONVERSION)
-            if self._is_colmap_method():
-                return self.run_colmap_cb.isChecked()
-            return self._spheresfm_runs_sfm()
+            return self._sfm_route_backend().sfm_intent(self)
         if stage == _PIPELINE_STAGE_CONVERSION:
-            if self._is_spheresfm_method():
-                return self._spheresfm_runs_conversion()
-            return self._conversion_intent
+            return self._sfm_route_backend().conversion_intent(self)
         if stage == _PIPELINE_STAGE_TRAINING:
             return self.run_training_cb.isChecked()
         return False
@@ -1045,13 +1025,13 @@ class CubemapStep(BaseStepWidget):
         return stage in {_PIPELINE_STAGE_SFM, _PIPELINE_STAGE_CONVERSION, _PIPELINE_STAGE_TRAINING}
 
     def pipeline_stage_intent_toggle_enabled(self, stage: str) -> bool:
-        return self.pipeline_stage_intent_enabled(stage) and not (
-            stage == _PIPELINE_STAGE_SFM and self._is_metashape_method()
-        )
+        if stage == _PIPELINE_STAGE_SFM:
+            return self._sfm_route_backend().sfm_intent_toggle_enabled(self)
+        return self.pipeline_stage_intent_enabled(stage)
 
     def _pipeline_stage_runs_in_app(self, stage: str) -> bool:
         if stage == _PIPELINE_STAGE_SFM:
-            return not self._is_metashape_method() and self.pipeline_stage_intent(stage)
+            return self._sfm_route_backend().sfm_runs_in_app(self)
         return self.pipeline_stage_intent(stage)
 
     def toggle_pipeline_stage_intent(self, stage: str) -> None:
@@ -1060,21 +1040,9 @@ class CubemapStep(BaseStepWidget):
     def set_pipeline_stage_intent(self, stage: str, enabled: bool) -> None:
         enabled = bool(enabled)
         if stage == _PIPELINE_STAGE_SFM:
-            if self._is_colmap_method():
-                self.run_colmap_cb.setChecked(enabled)
-            elif not self._is_metashape_method():
-                self._set_spheresfm_stage_intents(
-                    run_sfm=enabled,
-                    run_conversion=self._spheresfm_runs_conversion(),
-                )
+            self._sfm_route_backend().set_sfm_intent(self, enabled)
         elif stage == _PIPELINE_STAGE_CONVERSION:
-            if self._is_spheresfm_method():
-                self._set_spheresfm_stage_intents(
-                    run_sfm=self._spheresfm_runs_sfm(),
-                    run_conversion=enabled,
-                )
-            else:
-                self._conversion_intent = enabled
+            self._sfm_route_backend().set_conversion_intent(self, enabled)
         elif stage == _PIPELINE_STAGE_TRAINING:
             self.run_training_cb.setChecked(enabled)
         self._sync_settings_tabs()
@@ -2153,6 +2121,9 @@ class CubemapStep(BaseStepWidget):
     def _export_method(self) -> str:
         return self._export_method_value
 
+    def _sfm_route_backend(self):
+        return get_sfm_route_backend(self._export_method())
+
     def _is_metashape_method(self) -> bool:
         return self._export_method() == _METHOD_METASHAPE
 
@@ -2875,12 +2846,10 @@ class CubemapStep(BaseStepWidget):
         return _SPHERESFM_RUN_FULL
 
     def _set_export_method(self, method: str) -> None:
-        if method not in {_METHOD_METASHAPE, _METHOD_COLMAP, _METHOD_SPHERESFM}:
-            method = _METHOD_METASHAPE
+        method = normalize_sfm_route(method)
         self._export_method_value = method
-        btn = self.export_method_buttons.get(method)
-        if btn is not None and not btn.isChecked():
-            btn.setChecked(True)
+        if hasattr(self, "export_method_selector"):
+            self.export_method_selector.set_route(method)
         self._on_export_method_changed()
 
     def _on_export_method_changed(self) -> None:

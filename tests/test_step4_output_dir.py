@@ -14,6 +14,17 @@ from PySide6.QtWidgets import QApplication, QMessageBox
 import gui.steps.step4_cubemap as step4_cubemap
 from gui import i18n
 from gui.common.collapsible_section import CollapsibleSection
+from gui.steps.sfm_route_backends import get_sfm_route_backend
+from gui.steps.sfm_route_specs import (
+    OUTPUT_SHAPE_EQUIRECT_3DGUT,
+    OUTPUT_SHAPE_PROJECTED,
+    SFM_ROUTE_IDS,
+    SFM_ROUTE_COLMAP,
+    SFM_ROUTE_METASHAPE,
+    SFM_ROUTE_SPHERESFM,
+    get_sfm_route_spec,
+    normalize_sfm_route,
+)
 from gui.steps.step4_cubemap import CubemapStep
 from gui.steps.training_backends import lichtfeld_defaults
 from scene_layout import step4_export_settings_path, step4_views_config_path
@@ -89,6 +100,31 @@ def _is_descendant(widget, ancestor) -> bool:
     return False
 
 
+def test_sfm_route_registry_describes_current_routes() -> None:
+    assert SFM_ROUTE_IDS == (SFM_ROUTE_METASHAPE, SFM_ROUTE_COLMAP, SFM_ROUTE_SPHERESFM)
+    assert normalize_sfm_route("missing") == SFM_ROUTE_METASHAPE
+
+    metashape = get_sfm_route_spec(SFM_ROUTE_METASHAPE)
+    colmap = get_sfm_route_spec(SFM_ROUTE_COLMAP)
+    spheresfm = get_sfm_route_spec(SFM_ROUTE_SPHERESFM)
+
+    assert metashape.kind == "external_input"
+    assert not metashape.runs_sfm_in_app
+    assert metashape.supports_output_shape(OUTPUT_SHAPE_PROJECTED)
+    assert metashape.supports_output_shape(OUTPUT_SHAPE_EQUIRECT_3DGUT)
+    assert colmap.kind == "in_app"
+    assert colmap.runs_sfm_in_app
+    assert colmap.supports_output_shape(OUTPUT_SHAPE_PROJECTED)
+    assert not colmap.supports_output_shape(OUTPUT_SHAPE_EQUIRECT_3DGUT)
+    assert spheresfm.kind == "in_app"
+    assert spheresfm.runs_sfm_in_app
+    assert spheresfm.supports_output_shape(OUTPUT_SHAPE_PROJECTED)
+    assert spheresfm.supports_output_shape(OUTPUT_SHAPE_EQUIRECT_3DGUT)
+    for route_id in SFM_ROUTE_IDS:
+        assert get_sfm_route_backend(route_id).spec.route_id == route_id
+    assert get_sfm_route_backend("missing").spec.route_id == SFM_ROUTE_METASHAPE
+
+
 def _ready_lichtfeld_training_step(scene: Path) -> CubemapStep:
     step = _ready_step(scene, metashape_inputs=True)
     _write_test_image(scene / "images" / "frame_0001.jpg")
@@ -124,7 +160,8 @@ def test_cubemap_step_uses_fixed_output_folder_label(tmp_path: Path) -> None:
     assert not hasattr(step.view_config, "pitch_edit")
     assert not hasattr(step.view_config, "apply_btn")
     assert not hasattr(step, "training_backend_combo")
-    assert set(step.export_method_buttons) == {"metashape", "colmap", "spheresfm"}
+    assert set(step.export_method_buttons) == set(SFM_ROUTE_IDS)
+    assert step.export_method_selector.current_route() == SFM_ROUTE_METASHAPE
     assert set(step.training_backend_buttons) == {"lichtfeld", "postshot"}
     assert set(step.training_backend_selector.primary_backend_buttons) == {"lichtfeld", "postshot"}
     assert set(step.training_backend_selector.other_backend_actions) == {"custom"}
