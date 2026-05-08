@@ -1,4 +1,5 @@
 """Step 4: 視点画像書き出し (Metashape / COLMAP modes)."""
+
 from __future__ import annotations
 
 import json
@@ -63,18 +64,41 @@ from gui.steps.cubemap_commands import (
     views_config_payload,
     write_views_config,
 )
+from gui.steps.output_reset import clear_output_dir, clear_path, dedupe_nested_paths, path_has_contents
 from gui.steps.sfm_route_backends import get_sfm_route_backend
 from gui.steps.sfm_route_selector import SfmRouteSelector
 from gui.steps.sfm_route_specs import (
     SFM_ROUTE_COLMAP as _METHOD_COLMAP,
+)
+from gui.steps.sfm_route_specs import (
     SFM_ROUTE_METASHAPE as _METHOD_METASHAPE,
+)
+from gui.steps.sfm_route_specs import (
     SFM_ROUTE_SPHERESFM as _METHOD_SPHERESFM,
+)
+from gui.steps.sfm_route_specs import (
     normalize_sfm_route,
 )
 from gui.steps.step4_settings import (
     STEP4_SETTINGS_VERSION,
     load_step4_export_settings,
     write_step4_export_settings,
+)
+from gui.steps.training_backend_selector import TrainingBackendSelector
+from gui.steps.training_backend_specs import (
+    TRAINING_BACKEND_CUSTOM as _TRAINING_BACKEND_CUSTOM,
+)
+from gui.steps.training_backend_specs import (
+    TRAINING_BACKEND_LICHTFELD as _TRAINING_BACKEND_LICHTFELD,
+)
+from gui.steps.training_backend_specs import (
+    TRAINING_BACKEND_POSTSHOT as _TRAINING_BACKEND_POSTSHOT,
+)
+from gui.steps.training_backend_specs import (
+    get_training_backend_spec,
+    normalize_training_backend,
+    training_backend_default_executable,
+    training_backend_phase_name,
 )
 from gui.steps.training_backends import (
     CustomTrainingOptions,
@@ -88,22 +112,15 @@ from gui.steps.training_backends import (
     lichtfeld_defaults,
     lichtfeld_output_name_stem,
 )
-from gui.steps.training_backend_selector import TrainingBackendSelector
-from gui.steps.training_backend_specs import (
-    TRAINING_BACKEND_CUSTOM as _TRAINING_BACKEND_CUSTOM,
-    TRAINING_BACKEND_LICHTFELD as _TRAINING_BACKEND_LICHTFELD,
-    TRAINING_BACKEND_POSTSHOT as _TRAINING_BACKEND_POSTSHOT,
-    get_training_backend_spec,
-    normalize_training_backend,
-    training_backend_default_executable,
-    training_backend_phase_name,
-)
 from gui.user_settings import load_user_settings_section, update_user_settings_section
 from gui.version import APP_VERSION
 from scene_layout import (
     STEP4_EXPORT_SETTINGS_JSON,
     STEP4_META_DIR_NAME,
     STEP4_VIEWS_CONFIG_JSON,
+    scene_images_dir,
+    scene_masks_dir,
+    scene_output_dir,
     step4_export_settings_path,
     step4_meta_dir,
     step4_views_config_path,
@@ -1890,9 +1907,7 @@ class CubemapStep(BaseStepWidget):
         form.addRow(advanced)
         self._syncing_lfs_strategy_state = False
         self._lfs_active_strategy = "mrnf"
-        self._lfs_strategy_states = {
-            strategy: self._default_lfs_ui_state(strategy) for strategy in _LFS_STRATEGIES
-        }
+        self._lfs_strategy_states = {strategy: self._default_lfs_ui_state(strategy) for strategy in _LFS_STRATEGIES}
         self._apply_lfs_ui_state(self._lfs_strategy_states[self._lfs_active_strategy])
         self._update_lfs_color_swatch()
         self.lfs_strategy_combo.currentIndexChanged.connect(self._on_lfs_strategy_combo_changed)
@@ -2045,7 +2060,12 @@ class CubemapStep(BaseStepWidget):
         self.postshot_gpu_index_edit.setFixedWidth(72)
         add_row(camera_form, "gpu_index", self.postshot_gpu_index_edit, i18n.tip("POSTSHOT_GPU_INDEX"))
         self.postshot_no_recenter_points_cb = QCheckBox()
-        add_row(camera_form, "no_recenter_points", self.postshot_no_recenter_points_cb, i18n.tip("POSTSHOT_NO_RECENTER_POINTS"))
+        add_row(
+            camera_form,
+            "no_recenter_points",
+            self.postshot_no_recenter_points_cb,
+            i18n.tip("POSTSHOT_NO_RECENTER_POINTS"),
+        )
 
         model_form = add_section("POSTSHOT_SECTION_MODEL")
         self.postshot_splat_density_edit = QLineEdit("1.0")
@@ -2065,7 +2085,9 @@ class CubemapStep(BaseStepWidget):
         self.postshot_max_sh_degree_combo.setCurrentIndex(3)
         add_row(model_form, "max_sh_degree", self.postshot_max_sh_degree_combo, i18n.tip("POSTSHOT_MAX_SH_DEGREE"))
         self.postshot_create_sky_model_cb = QCheckBox()
-        add_row(model_form, "create_sky_model", self.postshot_create_sky_model_cb, i18n.tip("POSTSHOT_CREATE_SKY_MODEL"))
+        add_row(
+            model_form, "create_sky_model", self.postshot_create_sky_model_cb, i18n.tip("POSTSHOT_CREATE_SKY_MODEL")
+        )
         self.postshot_store_training_context_cb = QCheckBox()
         add_row(
             model_form,
@@ -2074,7 +2096,9 @@ class CubemapStep(BaseStepWidget):
             i18n.tip("POSTSHOT_STORE_TRAINING_CONTEXT"),
         )
         self.postshot_show_train_error_cb = QCheckBox()
-        add_row(model_form, "show_train_error", self.postshot_show_train_error_cb, i18n.tip("POSTSHOT_SHOW_TRAIN_ERROR"))
+        add_row(
+            model_form, "show_train_error", self.postshot_show_train_error_cb, i18n.tip("POSTSHOT_SHOW_TRAIN_ERROR")
+        )
 
         region_form = add_section("POSTSHOT_SECTION_REGION")
         self.postshot_crop_box_combo = QComboBox()
@@ -2103,11 +2127,21 @@ class CubemapStep(BaseStepWidget):
         form.addRow(advanced)
         self.postshot_ksteps_auto_cb.toggled.connect(lambda _checked: self._update_postshot_conditional_visibility())
         self.postshot_import_masks_cb.toggled.connect(lambda _checked: self._update_postshot_conditional_visibility())
-        self.postshot_profile_combo.currentIndexChanged.connect(lambda _idx: self._update_postshot_conditional_visibility())
-        self.postshot_image_select_combo.currentIndexChanged.connect(lambda _idx: self._update_postshot_conditional_visibility())
-        self.postshot_camera_poses_combo.currentIndexChanged.connect(lambda _idx: self._update_postshot_conditional_visibility())
-        self.postshot_crop_box_combo.currentIndexChanged.connect(lambda _idx: self._update_postshot_conditional_visibility())
-        self.postshot_roi_box_combo.currentIndexChanged.connect(lambda _idx: self._update_postshot_conditional_visibility())
+        self.postshot_profile_combo.currentIndexChanged.connect(
+            lambda _idx: self._update_postshot_conditional_visibility()
+        )
+        self.postshot_image_select_combo.currentIndexChanged.connect(
+            lambda _idx: self._update_postshot_conditional_visibility()
+        )
+        self.postshot_camera_poses_combo.currentIndexChanged.connect(
+            lambda _idx: self._update_postshot_conditional_visibility()
+        )
+        self.postshot_crop_box_combo.currentIndexChanged.connect(
+            lambda _idx: self._update_postshot_conditional_visibility()
+        )
+        self.postshot_roi_box_combo.currentIndexChanged.connect(
+            lambda _idx: self._update_postshot_conditional_visibility()
+        )
         self._update_postshot_conditional_visibility()
         return widget
 
@@ -2743,8 +2777,7 @@ class CubemapStep(BaseStepWidget):
         defaults = lichtfeld_defaults(strategy)
         bg_color = defaults.get("bg_color", [0.0, 0.0, 0.0])
         color_values = [
-            max(0, min(255, int(math.floor(float(component) * 255.0 + 0.5))))
-            for component in list(bg_color)[:3]
+            max(0, min(255, int(math.floor(float(component) * 255.0 + 0.5)))) for component in list(bg_color)[:3]
         ]
         while len(color_values) < 3:
             color_values.append(0)
@@ -2786,9 +2819,7 @@ class CubemapStep(BaseStepWidget):
                 "ppisp_controller_lr",
                 defaults.get("ppisp_controller_lr", 0.002),
             ),
-            "ppisp_freeze_gaussians_on_distill": bool(
-                defaults.get("ppisp_freeze_gaussians_on_distill", True)
-            ),
+            "ppisp_freeze_gaussians_on_distill": bool(defaults.get("ppisp_freeze_gaussians_on_distill", True)),
             "background_mode": str(defaults.get("bg_mode", "solid_color")),
             "background_color": color_values,
             "background_image": str(defaults.get("bg_image_path", "")),
@@ -2797,10 +2828,7 @@ class CubemapStep(BaseStepWidget):
                 for key in self.lfs_advanced_edits
                 if key in defaults
             },
-            "advanced_checks": {
-                key: bool(defaults.get(key, False))
-                for key in self.lfs_advanced_checks
-            },
+            "advanced_checks": {key: bool(defaults.get(key, False)) for key in self.lfs_advanced_checks},
         }
 
     @staticmethod
@@ -2863,20 +2891,14 @@ class CubemapStep(BaseStepWidget):
             self.lfs_invert_masks_cb.setChecked(bool(state.get("invert_masks", False)))
             self.lfs_mask_threshold_edit.setText(str(state.get("mask_threshold", "0.500")))
             self.lfs_use_alpha_as_mask_cb.setChecked(bool(state.get("use_alpha_as_mask", True)))
-            self.lfs_mask_opacity_penalty_weight_edit.setText(
-                str(state.get("mask_opacity_penalty_weight", "1.000"))
-            )
-            self.lfs_mask_opacity_penalty_power_edit.setText(
-                str(state.get("mask_opacity_penalty_power", "2.000"))
-            )
+            self.lfs_mask_opacity_penalty_weight_edit.setText(str(state.get("mask_opacity_penalty_weight", "1.000")))
+            self.lfs_mask_opacity_penalty_power_edit.setText(str(state.get("mask_opacity_penalty_power", "2.000")))
             self.lfs_sparsity_cb.setChecked(bool(state.get("sparsity", False)))
             self.lfs_gut_cb.setChecked(bool(state.get("gut", False)))
             self.lfs_undistort_cb.setChecked(bool(state.get("undistort", False)))
             self.lfs_mip_filter_cb.setChecked(bool(state.get("mip_filter", False)))
             self.lfs_ppisp_cb.setChecked(bool(state.get("ppisp", False)))
-            self.lfs_ppisp_freeze_from_sidecar_cb.setChecked(
-                bool(state.get("ppisp_freeze_from_sidecar", False))
-            )
+            self.lfs_ppisp_freeze_from_sidecar_cb.setChecked(bool(state.get("ppisp_freeze_from_sidecar", False)))
             self.lfs_ppisp_sidecar_browse.set_text(str(state.get("ppisp_sidecar_path", "")))
             self.lfs_ppisp_use_controller_cb.setChecked(bool(state.get("ppisp_use_controller", False)))
             self.lfs_ppisp_controller_activation_step_edit.setText(
@@ -2936,10 +2958,7 @@ class CubemapStep(BaseStepWidget):
         for key in _LFS_ADVANCED_LIST_KEYS:
             if key in numbers:
                 scaled = sorted(
-                    {
-                        self._round_lfs_ui_step(value * ratio)
-                        for value in self._parse_lfs_steps_text_value(numbers[key])
-                    }
+                    {self._round_lfs_ui_step(value * ratio) for value in self._parse_lfs_steps_text_value(numbers[key])}
                 )
                 numbers[key] = self._format_lfs_steps_list([value for value in scaled if value > 0])
         state["advanced_numbers"] = numbers
@@ -3108,9 +3127,7 @@ class CubemapStep(BaseStepWidget):
         r = self._lfs_color_component(self.lfs_bg_r_edit)
         g = self._lfs_color_component(self.lfs_bg_g_edit)
         b = self._lfs_color_component(self.lfs_bg_b_edit)
-        self.lfs_bg_color_swatch.setStyleSheet(
-            f"background-color: rgb({r}, {g}, {b}); border: 1px solid #4b5563;"
-        )
+        self.lfs_bg_color_swatch.setStyleSheet(f"background-color: rgb({r}, {g}, {b}); border: 1px solid #4b5563;")
 
     def _default_training_executable(self, backend: str | None = None) -> str:
         return training_backend_default_executable(
@@ -3140,7 +3157,7 @@ class CubemapStep(BaseStepWidget):
     def _default_training_output_dir(self) -> Path:
         if not self.scene_dir:
             raise ValueError(i18n.t("SCENE_REQUIRED_ACTION_HINT"))
-        return Path(self.scene_dir) / "output"
+        return scene_output_dir(Path(self.scene_dir))
 
     def _training_config_path(self) -> Path:
         if not self.scene_dir:
@@ -3413,8 +3430,7 @@ class CubemapStep(BaseStepWidget):
         self.training_dataset_summary_value.set_full_text(dataset or "-")
         self.training_output_summary_value.set_full_text(output or "-")
         summary_tooltip = tooltip or (
-            f"{i18n.t('STEP4_SUMMARY_INPUT')}: {dataset or '-'}\n"
-            f"{i18n.t('STEP4_SUMMARY_OUTPUT')}: {output or '-'}"
+            f"{i18n.t('STEP4_SUMMARY_INPUT')}: {dataset or '-'}\n{i18n.t('STEP4_SUMMARY_OUTPUT')}: {output or '-'}"
         )
         for widget in (
             self.training_path_summary_row,
@@ -3860,10 +3876,7 @@ class CubemapStep(BaseStepWidget):
         if current != _PROFILE_CUSTOM:
             axis_changed = self._axis_transform_mode() != self._profile_axis_default(current)
             ply_changed = self.ms_use_ply_cb.isChecked() != self._profile_use_ply_default(current)
-            no_fix_changed = (
-                self.ms_no_fix_rot_cb.isChecked()
-                != self._profile_no_fix_rotation_default(current)
-            )
+            no_fix_changed = self.ms_no_fix_rot_cb.isChecked() != self._profile_no_fix_rotation_default(current)
             try:
                 scale_changed = not math.isclose(
                     float(self.ms_scale_edit.text().strip()),
@@ -4058,7 +4071,7 @@ class CubemapStep(BaseStepWidget):
         if not self.scene_dir:
             return 0
         scene = Path(self.scene_dir)
-        images = scene / "images"
+        images = scene_images_dir(scene)
         roots = [images] if images.is_dir() else [scene]
         exts = {".jpg", ".jpeg", ".png"}
         seen: set[str] = set()
@@ -4499,7 +4512,11 @@ class CubemapStep(BaseStepWidget):
                 default = self._parse_lfs_float_text_value(default_numbers.get(key, ""), 0.0)
                 if not math.isclose(current, default, rel_tol=1e-9, abs_tol=1e-12):
                     overrides[key] = current
-        if self.lfs_advanced_checks["enable_eval"].isChecked() and "save_steps" in overrides and "eval_steps" not in overrides:
+        if (
+            self.lfs_advanced_checks["enable_eval"].isChecked()
+            and "save_steps" in overrides
+            and "eval_steps" not in overrides
+        ):
             overrides["eval_steps"] = list(overrides["save_steps"])
 
         default_checks = dict(default_state.get("advanced_checks", {}))
@@ -4574,9 +4591,7 @@ class CubemapStep(BaseStepWidget):
             if export_splat_text:
                 raw_export_splat_path = Path(export_splat_text)
                 export_splat_path = (
-                    raw_export_splat_path
-                    if raw_export_splat_path.is_absolute()
-                    else output_dir / raw_export_splat_path
+                    raw_export_splat_path if raw_export_splat_path.is_absolute() else output_dir / raw_export_splat_path
                 )
             if export_splat_path is not None:
                 self._guard_training_output_target(export_splat_path)
@@ -4797,7 +4812,9 @@ class CubemapStep(BaseStepWidget):
 
         matcher = self.colmap_matcher_combo.currentData() or _COLMAP_MATCHER_SEQUENTIAL
         mapper = self.colmap_mapper_combo.currentData() or _COLMAP_MAPPER_INCREMENTAL
-        glomap = self._resolve_glomap_executable() if mapper == _COLMAP_MAPPER_GLOMAP else self._default_glomap_executable()
+        glomap = (
+            self._resolve_glomap_executable() if mapper == _COLMAP_MAPPER_GLOMAP else self._default_glomap_executable()
+        )
         return build_colmap_sfm_commands(
             ColmapSfmCommand(
                 colmap=colmap,
@@ -4858,7 +4875,9 @@ class CubemapStep(BaseStepWidget):
             raise FileNotFoundError(f"spheresfm_to_transforms.py が見つかりません: {transforms_script}")
 
         steps: list[tuple[str, list[str]]] = []
-        transforms_output = self._spheresfm_3dgut_dir() if self._uses_spheresfm_3dgut_output() else self._spheresfm_equirect_dir()
+        transforms_output = (
+            self._spheresfm_3dgut_dir() if self._uses_spheresfm_3dgut_output() else self._spheresfm_equirect_dir()
+        )
         image_path_mode = "images-prefix" if self._uses_spheresfm_3dgut_output() else "relative"
         steps.append(
             (
@@ -5141,12 +5160,10 @@ class CubemapStep(BaseStepWidget):
             },
             "postprocess": {
                 "lichtfeld_final_orientation_correction": (
-                    self._uses_lichtfeld_final_correction()
-                    or self._uses_spheresfm_lichtfeld_final_correction()
+                    self._uses_lichtfeld_final_correction() or self._uses_spheresfm_lichtfeld_final_correction()
                 ),
                 "lichtfeld_final_orientation_matrix": _LICHTFELD_FINAL_CORRECTION.tolist()
-                if self._uses_lichtfeld_final_correction()
-                or self._uses_spheresfm_lichtfeld_final_correction()
+                if self._uses_lichtfeld_final_correction() or self._uses_spheresfm_lichtfeld_final_correction()
                 else None,
             },
             "metashape_import": {
@@ -5154,9 +5171,7 @@ class CubemapStep(BaseStepWidget):
                 "use_ply": self._preprocess_uses_ply(),
                 "images_dir": str(self._metashape_images_dir()),
                 "xml": self.ms_xml_browse.text(),
-                "ply": self.ms_ply_browse.text()
-                if self._is_metashape_method() and self._preprocess_uses_ply()
-                else "",
+                "ply": self.ms_ply_browse.text() if self._is_metashape_method() and self._preprocess_uses_ply() else "",
                 "ply_approved": self._metashape_ply_approved,
                 "scale": float(self.ms_scale_edit.text().strip()),
                 "no_fix_rotation": self.ms_no_fix_rot_cb.isChecked(),
@@ -5398,9 +5413,7 @@ class CubemapStep(BaseStepWidget):
                 "created_at": self._utc_now_iso(),
                 "route": self._export_method(),
                 "output_shape": self._output_shape(),
-                "target_profile": self._spheresfm_profile_id()
-                if self._is_spheresfm_method()
-                else self._profile_id(),
+                "target_profile": self._spheresfm_profile_id() if self._is_spheresfm_method() else self._profile_id(),
                 "dataset_root": scene_relative(scene, root),
                 "artifacts": self._step4_artifact_snapshot(root),
                 "settings": self._current_export_settings_snapshot(),
@@ -5430,8 +5443,7 @@ class CubemapStep(BaseStepWidget):
         return {
             "log_dir": scene_relative(scene, log_dir) if log_dir is not None else "",
             "phase_logs": {
-                phase: scene_relative(scene, path)
-                for phase, path in sorted(self._training_phase_logs.items())
+                phase: scene_relative(scene, path) for phase, path in sorted(self._training_phase_logs.items())
             },
         }
 
@@ -5520,7 +5532,7 @@ class CubemapStep(BaseStepWidget):
     def _output_dir(self) -> Path:
         if not self.scene_dir:
             raise ValueError(i18n.t("SCENE_REQUIRED_ACTION_HINT"))
-        return Path(self.scene_dir) / "output"
+        return scene_output_dir(Path(self.scene_dir))
 
     def _direct_output_dir(self) -> Path:
         if not self.scene_dir:
@@ -5539,7 +5551,7 @@ class CubemapStep(BaseStepWidget):
     def _mask_dir(self) -> Path:
         if not self.scene_dir:
             raise ValueError(i18n.t("SCENE_REQUIRED_ACTION_HINT"))
-        return Path(self.scene_dir) / "masks"
+        return scene_masks_dir(Path(self.scene_dir))
 
     def _colmap_rig_dir(self) -> Path:
         return self._output_dir() / "colmap_rig"
@@ -5622,11 +5634,14 @@ class CubemapStep(BaseStepWidget):
             registered = 0
             if images_file.is_file():
                 try:
-                    registered = sum(
-                        1
-                        for line in images_file.read_text(encoding="utf-8", errors="replace").splitlines()
-                        if line.strip() and not line.startswith("#")
-                    ) // 2
+                    registered = (
+                        sum(
+                            1
+                            for line in images_file.read_text(encoding="utf-8", errors="replace").splitlines()
+                            if line.strip() and not line.startswith("#")
+                        )
+                        // 2
+                    )
                 except OSError:
                     registered = 0
             return (registered, sort_key(path))
@@ -5678,9 +5693,8 @@ class CubemapStep(BaseStepWidget):
     def _has_colmap_sparse_model(path: Path) -> bool:
         if not path.is_dir():
             return False
-        return (
-            all((path / name).is_file() for name in ("cameras.bin", "images.bin", "points3D.bin"))
-            or all((path / name).is_file() for name in ("cameras.txt", "images.txt", "points3D.txt"))
+        return all((path / name).is_file() for name in ("cameras.bin", "images.bin", "points3D.bin")) or all(
+            (path / name).is_file() for name in ("cameras.txt", "images.txt", "points3D.txt")
         )
 
     def _colmap_camera_params_arg(self) -> str:
@@ -5701,7 +5715,7 @@ class CubemapStep(BaseStepWidget):
             if existing is not None:
                 return existing
 
-        source = self._first_image_size(Path(self.scene_dir) / "images") if self.scene_dir else None
+        source = self._first_image_size(scene_images_dir(Path(self.scene_dir))) if self.scene_dir else None
         if source is not None:
             scale = float(self.scale_combo.currentData())
             output_size = max(1, int(round(source[1] * scale)))
@@ -5733,7 +5747,7 @@ class CubemapStep(BaseStepWidget):
     def _metashape_images_dir(self) -> Path:
         if not self.scene_dir:
             raise ValueError(i18n.t("SCENE_REQUIRED_ACTION_HINT"))
-        return Path(self.scene_dir) / "images"
+        return scene_images_dir(Path(self.scene_dir))
 
     def _validate_scene_output_dir(self, output: Path) -> None:
         if not self.scene_dir:
@@ -5800,7 +5814,7 @@ class CubemapStep(BaseStepWidget):
                 continue
             dest.parent.mkdir(parents=True, exist_ok=True)
             if dest.exists():
-                dest.unlink()
+                clear_path(dest, allowed_roots=[dest_root])
             try:
                 os.link(source, dest)
             except OSError:
@@ -5962,30 +5976,7 @@ class CubemapStep(BaseStepWidget):
 
     @staticmethod
     def _dedupe_nested_paths(paths: list[Path]) -> list[Path]:
-        kept: list[Path] = []
-        for path in sorted(paths, key=lambda p: len(p.parts)):
-            try:
-                resolved = path.resolve()
-            except OSError:
-                resolved = path.absolute()
-            nested = False
-            for parent in kept:
-                try:
-                    parent_resolved = parent.resolve()
-                except OSError:
-                    parent_resolved = parent.absolute()
-                if resolved == parent_resolved:
-                    nested = True
-                    break
-                try:
-                    resolved.relative_to(parent_resolved)
-                    nested = True
-                    break
-                except ValueError:
-                    pass
-            if not nested:
-                kept.append(path)
-        return kept
+        return dedupe_nested_paths(paths)
 
     def _validate_spheresfm_project_dir(self) -> None:
         if not self.scene_dir:
@@ -6001,21 +5992,15 @@ class CubemapStep(BaseStepWidget):
 
     @staticmethod
     def _path_has_contents(path: Path) -> bool:
-        if path.is_dir():
-            return any(path.iterdir())
-        return path.exists()
+        return path_has_contents(path)
 
     @staticmethod
     def _clear_path(path: Path) -> None:
-        if path.is_dir():
-            shutil.rmtree(path)
-        elif path.exists():
-            path.unlink()
+        clear_path(path, allowed_roots=[path.parent])
 
     @staticmethod
     def _clear_output_dir(output: Path) -> None:
-        for child in output.iterdir():
-            CubemapStep._clear_path(child)
+        clear_output_dir(output)
 
     # -- バンドル検証 --
 
@@ -6034,11 +6019,7 @@ class CubemapStep(BaseStepWidget):
 
     def _validate_spheresfm_export(self) -> None:
         self._validate_image_only_export()
-        if (
-            self._spheresfm_runs_sfm()
-            and self._spheresfm_uses_masks()
-            and not self._mask_dir().is_dir()
-        ):
+        if self._spheresfm_runs_sfm() and self._spheresfm_uses_masks() and not self._mask_dir().is_dir():
             raise ValueError(i18n.t("SPHERESFM_MASKS_NOT_FOUND").format(path=str(self._mask_dir())))
 
     def _require_spheresfm_sparse_model(self) -> Path:
@@ -6087,7 +6068,9 @@ class CubemapStep(BaseStepWidget):
         if profile == _PROFILE_LICHTFELD and self._preprocess_uses_ply():
             return
         if profile == _PROFILE_LICHTFELD:
-            raise ValueError("LichtFeldプロファイルにはpointcloud.plyが必要です。Metashapeインポート設定でPLY使用を有効にしてください。")
+            raise ValueError(
+                "LichtFeldプロファイルにはpointcloud.plyが必要です。Metashapeインポート設定でPLY使用を有効にしてください。"
+            )
         raise ValueError(
             "Postshot/BrushプロファイルにはMetashapeからエクスポートしたRAW PLYが必要です。"
             "LichtFeld用のpointcloud.plyは使用できません。"
@@ -6271,9 +6254,7 @@ class CubemapStep(BaseStepWidget):
 
         header = lines[: end_idx + 1]
         if not any(line.strip().startswith("format ascii") for line in header):
-            raise ValueError(
-                f"Binary PLY correction requires open3d, but open3d could not transform: {path}"
-            )
+            raise ValueError(f"Binary PLY correction requires open3d, but open3d could not transform: {path}")
 
         vertex_count = 0
         vertex_props: list[str] = []
@@ -6511,11 +6492,7 @@ class CubemapStep(BaseStepWidget):
     def _scene_ply_candidates(scene_dir: Path) -> tuple[Path, ...]:
         return tuple(
             sorted(
-                [
-                    p
-                    for p in scene_dir.glob("*.ply")
-                    if p.is_file() and p.name.lower() != _GENERATED_POINTCLOUD_NAME
-                ],
+                [p for p in scene_dir.glob("*.ply") if p.is_file() and p.name.lower() != _GENERATED_POINTCLOUD_NAME],
                 key=lambda x: x.name.lower(),
             )
         )
@@ -6622,7 +6599,7 @@ class CubemapStep(BaseStepWidget):
 
     @staticmethod
     def _metashape_image_name_sets(scene_dir: Path) -> tuple[set[str], set[str]]:
-        images_dir = scene_dir / "images"
+        images_dir = scene_images_dir(scene_dir)
         if not images_dir.is_dir():
             return set(), set()
         names: set[str] = set()

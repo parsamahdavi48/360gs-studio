@@ -1,5 +1,5 @@
-"""apply_frame_decisions.py の finalize_in_place + バックアップ機能テスト。
-"""
+"""apply_frame_decisions.py の finalize_in_place + バックアップ機能テスト。"""
+
 from __future__ import annotations
 
 import csv
@@ -39,14 +39,16 @@ def _make_scene(tmp_path: Path, num_frames: int = 4, drop_indices: list[int] = N
     for i in range(1, num_frames + 1):
         img = images / f"frame_{i:06d}.jpg"
         img.write_bytes(b"fake image " + str(i).encode())
-        rows.append({
-            "seq": str(i),
-            "original_index": str(i * 10),
-            "final_index": str(i * 10),
-            "status": "ok",
-            "decision": "drop" if i in drop_indices else "keep",
-            "output_file": f"images/frame_{i:06d}.jpg",
-        })
+        rows.append(
+            {
+                "seq": str(i),
+                "original_index": str(i * 10),
+                "final_index": str(i * 10),
+                "status": "ok",
+                "decision": "drop" if i in drop_indices else "keep",
+                "output_file": f"images/frame_{i:06d}.jpg",
+            }
+        )
 
     _write_csv(selected_frames_path(scene), rows)
     return scene
@@ -88,6 +90,32 @@ def test_backup_images_dir_replaces_existing_backup(tmp_path: Path):
     # 古いファイルは消えて新しい内容のみ
     assert not (backup / "old.jpg").exists()
     assert (backup / "new.jpg").read_bytes() == b"new"
+
+
+def test_backup_images_dir_refuses_non_backup_existing_target(tmp_path: Path):
+    images = tmp_path / "images"
+    images.mkdir()
+    (images / "new.jpg").write_bytes(b"new")
+
+    target = tmp_path / "important"
+    target.mkdir()
+    (target / "old.jpg").write_bytes(b"old")
+
+    with pytest.raises(RuntimeError, match="does not look like a backup"):
+        backup_images_dir(images, target)
+
+    assert (target / "old.jpg").read_bytes() == b"old"
+
+
+def test_backup_images_dir_refuses_target_inside_images(tmp_path: Path):
+    images = tmp_path / "images"
+    images.mkdir()
+    (images / "new.jpg").write_bytes(b"new")
+
+    target = images / "backup"
+
+    with pytest.raises(RuntimeError, match="inside images"):
+        backup_images_dir(images, target)
 
 
 def test_backup_images_dir_handles_missing_source(tmp_path: Path):
@@ -167,14 +195,16 @@ def test_finalize_in_place_backup_idempotent(tmp_path: Path):
     images = scene / "images"
     rows = []
     for i, img in enumerate(sorted(images.glob("*.jpg")), start=1):
-        rows.append({
-            "seq": str(i),
-            "original_index": str(i),
-            "final_index": str(i),
-            "status": "ok",
-            "decision": "keep",
-            "output_file": f"images/{img.name}",
-        })
+        rows.append(
+            {
+                "seq": str(i),
+                "original_index": str(i),
+                "final_index": str(i),
+                "status": "ok",
+                "decision": "keep",
+                "output_file": f"images/{img.name}",
+            }
+        )
     _write_csv(selected_frames_path(scene), rows)
 
     finalize_in_place(scene, "selected_frames.csv", backup_dir=backup_dir)

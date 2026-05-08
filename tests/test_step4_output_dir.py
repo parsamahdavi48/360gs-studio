@@ -18,8 +18,8 @@ from gui.steps.sfm_route_backends import get_sfm_route_backend
 from gui.steps.sfm_route_specs import (
     OUTPUT_SHAPE_EQUIRECT_3DGUT,
     OUTPUT_SHAPE_PROJECTED,
-    SFM_ROUTE_IDS,
     SFM_ROUTE_COLMAP,
+    SFM_ROUTE_IDS,
     SFM_ROUTE_METASHAPE,
     SFM_ROUTE_SPHERESFM,
     get_sfm_route_spec,
@@ -683,11 +683,7 @@ def test_editing_cube6_grid_switches_to_custom_without_resetting_grid() -> None:
     step = CubemapStep(Path.cwd())
 
     assert step.view_config.view_mode() == "cube6"
-    first_enabled = next(
-        view
-        for view in step.view_config.collect_views(include_disabled=True)
-        if view["name"] == "px"
-    )
+    first_enabled = next(view for view in step.view_config.collect_views(include_disabled=True) if view["name"] == "px")
     middle_row_index = step.view_config.pitch_values().index(0.0)
     step.view_config.pitch_rows[middle_row_index]["checks"][first_enabled["slot"]].setChecked(False)
 
@@ -809,10 +805,7 @@ def test_yaw_slots_share_remaining_grid_width() -> None:
     pitch_cell = first_row["pitch_edit"].parentWidget()
     grid = step.view_config.grid_widget
     checkboxes = first_row["checks"]
-    centers = [
-        cb.mapTo(grid, QPoint(0, 0)).x() + cb.width() / 2.0
-        for cb in checkboxes
-    ]
+    centers = [cb.mapTo(grid, QPoint(0, 0)).x() + cb.width() / 2.0 for cb in checkboxes]
     gaps = [b - a for a, b in zip(centers, centers[1:], strict=False)]
     pitch_width = pitch_cell.width()
     available_width = grid.width() - pitch_width
@@ -1346,10 +1339,7 @@ def test_spheresfm_open_gui_warns_when_selected_binary_has_no_gui_support(
             return True
 
         def readAllStandardOutput(self) -> bytes:
-            return (
-                b"ERROR: Cannot start colmap GUI; colmap was built without GUI support "
-                b"or QT dependency is missing."
-            )
+            return b"ERROR: Cannot start colmap GUI; colmap was built without GUI support or QT dependency is missing."
 
         def readAllStandardError(self) -> bytes:
             return b""
@@ -2090,9 +2080,10 @@ def test_training_headless_option_stays_in_run_options_row(tmp_path: Path) -> No
     step._set_training_backend("custom")
     assert step.training_backend_other_button.isChecked()
     assert step.training_backend_selector.other_backend_actions["custom"].isChecked()
-    assert step.training_backend_other_button.geometry().center().y() == step.training_backend_buttons[
-        "postshot"
-    ].geometry().center().y()
+    assert (
+        step.training_backend_other_button.geometry().center().y()
+        == step.training_backend_buttons["postshot"].geometry().center().y()
+    )
 
 
 def test_lichtfeld_training_refuses_existing_output_ply(tmp_path: Path, monkeypatch) -> None:

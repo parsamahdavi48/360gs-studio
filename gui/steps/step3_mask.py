@@ -1,4 +1,5 @@
 """Step 3: マスク生成 (人物 + スティッチ + 白飛び + 空 + カスタム)"""
+
 from __future__ import annotations
 
 import json
@@ -10,8 +11,6 @@ import sys
 import tempfile
 from pathlib import Path
 
-import cv2
-import numpy as np
 from PySide6.QtCore import QProcess, QSize, Qt, QTimer, Signal
 from PySide6.QtWidgets import (
     QCheckBox,
@@ -32,7 +31,6 @@ from PySide6.QtWidgets import (
 )
 
 from apply_frame_decisions import pending_drop_image_paths, untracked_image_paths
-from custom_mask import load_custom_mask
 from gui import i18n
 from gui.common.collapsible_section import CollapsibleSection
 from gui.common.drag_spinbox import DragDoubleSpinBox, DragSpinBox
@@ -59,12 +57,11 @@ from gui.steps.mask_commands import (
 )
 from gui.steps.mask_image_import import IMAGE_EXTENSIONS as _IMAGE_EXTS
 from gui.steps.mask_image_import import import_external_images_with_records
+from gui.steps.mask_postprocess import MaskPostprocessOptions, apply_mask_postprocess, mask_stats
 from gui.steps.sam31_setup import ensure_sam31_checkpoint_available
 from gui.user_settings import load_user_settings_section, update_user_settings_section
-from image_io import imread_unicode, imwrite_unicode
 from mask_view_recipes import QUALITY_CHOICES
-from overexposure_mask import detect_overexposure, read_image_preserve_depth
-from scene_layout import selected_frames_path
+from scene_layout import scene_images_dir, scene_masks_dir, selected_frames_path
 from scene_project import (
     append_mask_run,
     append_source_image_set,
@@ -75,20 +72,87 @@ from scene_project import (
     utc_now_iso,
     write_mask_item,
 )
-from stitch_mask import boundary_width_to_limit_angle, create_angular_stitched_mask
 
 _COCO_CLASS_NAMES = [
-    "person", "bicycle", "car", "motorcycle", "airplane", "bus", "train", "truck",
-    "boat", "traffic light", "fire hydrant", "stop sign", "parking meter", "bench",
-    "bird", "cat", "dog", "horse", "sheep", "cow", "elephant", "bear", "zebra",
-    "giraffe", "backpack", "umbrella", "handbag", "tie", "suitcase", "frisbee",
-    "skis", "snowboard", "sports ball", "kite", "baseball bat", "baseball glove",
-    "skateboard", "surfboard", "tennis racket", "bottle", "wine glass", "cup",
-    "fork", "knife", "spoon", "bowl", "banana", "apple", "sandwich", "orange",
-    "broccoli", "carrot", "hot dog", "pizza", "donut", "cake", "chair", "couch",
-    "potted plant", "bed", "dining table", "toilet", "tv", "laptop", "mouse",
-    "remote", "keyboard", "cell phone", "microwave", "oven", "toaster", "sink",
-    "refrigerator", "book", "clock", "vase", "scissors", "teddy bear", "hair drier",
+    "person",
+    "bicycle",
+    "car",
+    "motorcycle",
+    "airplane",
+    "bus",
+    "train",
+    "truck",
+    "boat",
+    "traffic light",
+    "fire hydrant",
+    "stop sign",
+    "parking meter",
+    "bench",
+    "bird",
+    "cat",
+    "dog",
+    "horse",
+    "sheep",
+    "cow",
+    "elephant",
+    "bear",
+    "zebra",
+    "giraffe",
+    "backpack",
+    "umbrella",
+    "handbag",
+    "tie",
+    "suitcase",
+    "frisbee",
+    "skis",
+    "snowboard",
+    "sports ball",
+    "kite",
+    "baseball bat",
+    "baseball glove",
+    "skateboard",
+    "surfboard",
+    "tennis racket",
+    "bottle",
+    "wine glass",
+    "cup",
+    "fork",
+    "knife",
+    "spoon",
+    "bowl",
+    "banana",
+    "apple",
+    "sandwich",
+    "orange",
+    "broccoli",
+    "carrot",
+    "hot dog",
+    "pizza",
+    "donut",
+    "cake",
+    "chair",
+    "couch",
+    "potted plant",
+    "bed",
+    "dining table",
+    "toilet",
+    "tv",
+    "laptop",
+    "mouse",
+    "remote",
+    "keyboard",
+    "cell phone",
+    "microwave",
+    "oven",
+    "toaster",
+    "sink",
+    "refrigerator",
+    "book",
+    "clock",
+    "vase",
+    "scissors",
+    "teddy bear",
+    "hair drier",
     "toothbrush",
 ]
 
@@ -123,26 +187,156 @@ _SAM31_PROMPT_PRESETS: tuple[tuple[str, str], ...] = (
     ("car", "車"),
 )
 _ADE20K_FALLBACK_CLASSES = (
-    "wall", "building", "sky", "floor", "tree", "ceiling", "road", "bed ", "windowpane",
-    "grass", "cabinet", "sidewalk", "person", "earth", "door", "table", "mountain",
-    "plant", "curtain", "chair", "car", "water", "painting", "sofa", "shelf", "house",
-    "sea", "mirror", "rug", "field", "armchair", "seat", "fence", "desk", "rock",
-    "wardrobe", "lamp", "bathtub", "railing", "cushion", "base", "box", "column",
-    "signboard", "chest of drawers", "counter", "sand", "sink", "skyscraper",
-    "fireplace", "refrigerator", "grandstand", "path", "stairs", "runway", "case",
-    "pool table", "pillow", "screen door", "stairway", "river", "bridge", "bookcase",
-    "blind", "coffee table", "toilet", "flower", "book", "hill", "bench", "countertop",
-    "stove", "palm", "kitchen island", "computer", "swivel chair", "boat", "bar",
-    "arcade machine", "hovel", "bus", "towel", "light", "truck", "tower", "chandelier",
-    "awning", "streetlight", "booth", "television receiver", "airplane", "dirt track",
-    "apparel", "pole", "land", "bannister", "escalator", "ottoman", "bottle", "buffet",
-    "poster", "stage", "van", "ship", "fountain", "conveyer belt", "canopy", "washer",
-    "plaything", "swimming pool", "stool", "barrel", "basket", "waterfall", "tent",
-    "bag", "minibike", "cradle", "oven", "ball", "food", "step", "tank", "trade name",
-    "microwave", "pot", "animal", "bicycle", "lake", "dishwasher", "screen", "blanket",
-    "sculpture", "hood", "sconce", "vase", "traffic light", "tray", "ashcan", "fan",
-    "pier", "crt screen", "plate", "monitor", "bulletin board", "shower", "radiator",
-    "glass", "clock", "flag",
+    "wall",
+    "building",
+    "sky",
+    "floor",
+    "tree",
+    "ceiling",
+    "road",
+    "bed ",
+    "windowpane",
+    "grass",
+    "cabinet",
+    "sidewalk",
+    "person",
+    "earth",
+    "door",
+    "table",
+    "mountain",
+    "plant",
+    "curtain",
+    "chair",
+    "car",
+    "water",
+    "painting",
+    "sofa",
+    "shelf",
+    "house",
+    "sea",
+    "mirror",
+    "rug",
+    "field",
+    "armchair",
+    "seat",
+    "fence",
+    "desk",
+    "rock",
+    "wardrobe",
+    "lamp",
+    "bathtub",
+    "railing",
+    "cushion",
+    "base",
+    "box",
+    "column",
+    "signboard",
+    "chest of drawers",
+    "counter",
+    "sand",
+    "sink",
+    "skyscraper",
+    "fireplace",
+    "refrigerator",
+    "grandstand",
+    "path",
+    "stairs",
+    "runway",
+    "case",
+    "pool table",
+    "pillow",
+    "screen door",
+    "stairway",
+    "river",
+    "bridge",
+    "bookcase",
+    "blind",
+    "coffee table",
+    "toilet",
+    "flower",
+    "book",
+    "hill",
+    "bench",
+    "countertop",
+    "stove",
+    "palm",
+    "kitchen island",
+    "computer",
+    "swivel chair",
+    "boat",
+    "bar",
+    "arcade machine",
+    "hovel",
+    "bus",
+    "towel",
+    "light",
+    "truck",
+    "tower",
+    "chandelier",
+    "awning",
+    "streetlight",
+    "booth",
+    "television receiver",
+    "airplane",
+    "dirt track",
+    "apparel",
+    "pole",
+    "land",
+    "bannister",
+    "escalator",
+    "ottoman",
+    "bottle",
+    "buffet",
+    "poster",
+    "stage",
+    "van",
+    "ship",
+    "fountain",
+    "conveyer belt",
+    "canopy",
+    "washer",
+    "plaything",
+    "swimming pool",
+    "stool",
+    "barrel",
+    "basket",
+    "waterfall",
+    "tent",
+    "bag",
+    "minibike",
+    "cradle",
+    "oven",
+    "ball",
+    "food",
+    "step",
+    "tank",
+    "trade name",
+    "microwave",
+    "pot",
+    "animal",
+    "bicycle",
+    "lake",
+    "dishwasher",
+    "screen",
+    "blanket",
+    "sculpture",
+    "hood",
+    "sconce",
+    "vase",
+    "traffic light",
+    "tray",
+    "ashcan",
+    "fan",
+    "pier",
+    "crt screen",
+    "plate",
+    "monitor",
+    "bulletin board",
+    "shower",
+    "radiator",
+    "glass",
+    "clock",
+    "flag",
 )
 _OVEREXP_THRESHOLD_MIN = 1
 _OVEREXP_THRESHOLD_MAX = 254
@@ -824,8 +1018,8 @@ class MaskStep(BaseStepWidget):
         super().set_scene_dir(path)
         if path:
             p = Path(path)
-            self.images_path_label.setText(str(p / "images"))
-            self.masks_path_label.setText(str(p / "masks"))
+            self.images_path_label.setText(str(scene_images_dir(p)))
+            self.masks_path_label.setText(str(scene_masks_dir(p)))
         else:
             self.images_path_label.setText("-")
             self.masks_path_label.setText("-")
@@ -853,12 +1047,12 @@ class MaskStep(BaseStepWidget):
     def _images_dir_text(self) -> str:
         if not self.scene_dir:
             return ""
-        return str(Path(self.scene_dir) / "images")
+        return str(scene_images_dir(Path(self.scene_dir)))
 
     def _masks_dir_text(self) -> str:
         if not self.scene_dir:
             return ""
-        return str(Path(self.scene_dir) / "masks")
+        return str(scene_masks_dir(Path(self.scene_dir)))
 
     def _selected_mask_tasks(self) -> list[str]:
         requested_steps = ["yolo"]
@@ -900,7 +1094,9 @@ class MaskStep(BaseStepWidget):
         if self._projection_mixed:
             label_key = "MASK_IMAGE_TYPE_MIXED"
         else:
-            label_key = "MASK_IMAGE_TYPE_EQUIRECT" if self._projection() == _PROJECTION_EQUIRECT else "MASK_IMAGE_TYPE_NORMAL"
+            label_key = (
+                "MASK_IMAGE_TYPE_EQUIRECT" if self._projection() == _PROJECTION_EQUIRECT else "MASK_IMAGE_TYPE_NORMAL"
+            )
         source_text = i18n.t("MASK_IMAGE_TYPE_SOURCE_PROJECT")
         if self._projection_source == "image_header_sample":
             source_text = i18n.t("MASK_IMAGE_TYPE_SOURCE_HEADER")
@@ -959,10 +1155,7 @@ class MaskStep(BaseStepWidget):
         images = Path(self._images_dir_text())
         if not images.is_dir():
             return False
-        return any(
-            path.is_file() and path.suffix.lower() in _IMAGE_EXTS
-            for path in images.rglob("*")
-        )
+        return any(path.is_file() and path.suffix.lower() in _IMAGE_EXTS for path in images.rglob("*"))
 
     def _readiness(self) -> tuple[bool, str]:
         if not self.scene_dir:
@@ -996,7 +1189,9 @@ class MaskStep(BaseStepWidget):
         return [i for i, cb in enumerate(self.class_cbs) if cb.isChecked()]
 
     def _selected_ade_labels(self) -> list[str]:
-        labels = [name.strip() for name, cb in zip(self.ade_class_names, self.ade_class_cbs, strict=True) if cb.isChecked()]
+        labels = [
+            name.strip() for name, cb in zip(self.ade_class_names, self.ade_class_cbs, strict=True) if cb.isChecked()
+        ]
         return [label for label in labels if label] or ["person", "sky"]
 
     @staticmethod
@@ -1060,14 +1255,20 @@ class MaskStep(BaseStepWidget):
         return self._sam31_checkpoint_path().is_file()
 
     def _on_sky_backend_changed(self) -> None:
-        if self._sky_backend_arg() == "sam31" and self.sky_inference_size_combo.currentText() != _SKY_SAM31_INFERENCE_SIZE:
+        if (
+            self._sky_backend_arg() == "sam31"
+            and self.sky_inference_size_combo.currentText() != _SKY_SAM31_INFERENCE_SIZE
+        ):
             idx = self.sky_inference_size_combo.findText(_SKY_SAM31_INFERENCE_SIZE)
             if idx >= 0:
                 self.sky_inference_size_combo.setCurrentIndex(idx)
         self._schedule_render_mask_preview()
 
     def _on_sky_inference_size_changed(self) -> None:
-        if self._sky_backend_arg() == "sam31" and self.sky_inference_size_combo.currentText() != _SKY_SAM31_INFERENCE_SIZE:
+        if (
+            self._sky_backend_arg() == "sam31"
+            and self.sky_inference_size_combo.currentText() != _SKY_SAM31_INFERENCE_SIZE
+        ):
             idx = self.sky_inference_size_combo.findText(_SKY_SAM31_INFERENCE_SIZE)
             if idx >= 0:
                 self.sky_inference_size_combo.blockSignals(True)
@@ -1155,9 +1356,7 @@ class MaskStep(BaseStepWidget):
         item = model.item(2) if hasattr(model, "item") else None
         if item is not None:
             item.setEnabled(True)
-            item.setToolTip(
-                i18n.tip("PERSON_MODEL_SAM31") if sam_available else i18n.tip("SAM31_CHECKPOINT_DOWNLOAD")
-            )
+            item.setToolTip(i18n.tip("PERSON_MODEL_SAM31") if sam_available else i18n.tip("SAM31_CHECKPOINT_DOWNLOAD"))
             self.person_backend_combo.setItemData(
                 2,
                 i18n.tip("PERSON_MODEL_SAM31") if sam_available else i18n.tip("SAM31_CHECKPOINT_DOWNLOAD"),
@@ -1170,9 +1369,7 @@ class MaskStep(BaseStepWidget):
         item = model.item(1) if hasattr(model, "item") else None
         if item is not None:
             item.setEnabled(True)
-            item.setToolTip(
-                i18n.tip("SKY_MODEL_SAM31") if sam_available else i18n.tip("SAM31_CHECKPOINT_DOWNLOAD")
-            )
+            item.setToolTip(i18n.tip("SKY_MODEL_SAM31") if sam_available else i18n.tip("SAM31_CHECKPOINT_DOWNLOAD"))
             self.sky_backend_combo.setItemData(
                 1,
                 i18n.tip("SKY_MODEL_SAM31") if sam_available else i18n.tip("SAM31_CHECKPOINT_DOWNLOAD"),
@@ -1444,15 +1641,25 @@ class MaskStep(BaseStepWidget):
             equirect_manifest = manifests.get(_PROJECTION_EQUIRECT)
             normal_manifest = manifests.get(_PROJECTION_NORMAL)
             if equirect_manifest is not None:
-                steps.append(("yolo_equirect", self._build_yolo_cmd(
-                    projection=_PROJECTION_EQUIRECT,
-                    image_list=equirect_manifest,
-                )))
+                steps.append(
+                    (
+                        "yolo_equirect",
+                        self._build_yolo_cmd(
+                            projection=_PROJECTION_EQUIRECT,
+                            image_list=equirect_manifest,
+                        ),
+                    )
+                )
             if normal_manifest is not None:
-                steps.append(("yolo_normal", self._build_yolo_cmd(
-                    projection=_PROJECTION_NORMAL,
-                    image_list=normal_manifest,
-                )))
+                steps.append(
+                    (
+                        "yolo_normal",
+                        self._build_yolo_cmd(
+                            projection=_PROJECTION_NORMAL,
+                            image_list=normal_manifest,
+                        ),
+                    )
+                )
         all_manifest = manifests.get("all")
         equirect_manifest = manifests.get(_PROJECTION_EQUIRECT)
         if "stitch" in requested_steps and equirect_manifest is not None:
@@ -1731,21 +1938,7 @@ class MaskStep(BaseStepWidget):
 
     @staticmethod
     def _mask_stats(mask_path: Path) -> dict:
-        mask = imread_unicode(mask_path, cv2.IMREAD_GRAYSCALE)
-        if mask is None or mask.size <= 0:
-            return {"readable": False}
-        total = int(mask.size)
-        black = int(np.count_nonzero(mask < 128))
-        white = total - black
-        return {
-            "readable": True,
-            "width": int(mask.shape[1]),
-            "height": int(mask.shape[0]),
-            "black_pixels": black,
-            "white_pixels": white,
-            "black_ratio": black / total,
-            "white_ratio": white / total,
-        }
+        return mask_stats(mask_path)
 
     def _record_mask_outputs(
         self,
@@ -1968,7 +2161,9 @@ class MaskStep(BaseStepWidget):
                     ok = False
                     self.mask_preview.set_status_text(str(e))
             if ok and image_path is not None and output_path is not None and config is not None:
-                ok = output_path.is_file() and self.mask_preview.set_temporary_preview_mask(image_path, output_path, config)
+                ok = output_path.is_file() and self.mask_preview.set_temporary_preview_mask(
+                    image_path, output_path, config
+                )
             self.mask_preview.set_mask_preview_running(False)
             if ok:
                 self.mask_preview.set_status_text(i18n.t("MASK_PREVIEW_TEMP"))
@@ -2222,9 +2417,7 @@ class MaskStep(BaseStepWidget):
         )
 
         if last_success and last_image is not None:
-            self.mask_preview.set_status_text(
-                i18n.t("MASK_REPROCESS_CURRENT_DONE").format(name=last_image.name)
-            )
+            self.mask_preview.set_status_text(i18n.t("MASK_REPROCESS_CURRENT_DONE").format(name=last_image.name))
         elif failed == 0:
             self.mask_preview.set_status_text(
                 i18n.t("MASK_REPROCESS_SELECTED_DONE").format(done=completed, total=total)
@@ -2245,73 +2438,26 @@ class MaskStep(BaseStepWidget):
         *,
         replace: bool = False,
     ) -> None:
-        source_img: np.ndarray | None = None
-        mask: np.ndarray | None = None
-
-        def load_source() -> np.ndarray:
-            nonlocal source_img
-            if source_img is None:
-                source_img = read_image_preserve_depth(str(image_path))
-                if source_img is None:
-                    raise RuntimeError(i18n.t("PREVIEW_LOAD_FAIL"))
-            return source_img
-
-        def current_mask(target_shape: tuple[int, int]) -> np.ndarray:
-            nonlocal mask
-            if mask is None:
-                existing = None if replace else imread_unicode(mask_path, cv2.IMREAD_GRAYSCALE)
-                if existing is None:
-                    mask = np.full(target_shape, 255, dtype=np.uint8)
-                else:
-                    mask = existing
-            if mask.shape != target_shape:
-                mask = cv2.resize(mask, (target_shape[1], target_shape[0]), interpolation=cv2.INTER_NEAREST)
-            return mask
-
-        if self._projection_for_image(image_path) == _PROJECTION_EQUIRECT and self.run_stitch_cb.isChecked():
-            if mask is None and not replace and mask_path.is_file():
-                existing = imread_unicode(mask_path, cv2.IMREAD_GRAYSCALE)
-                target_shape = existing.shape[:2] if existing is not None else load_source().shape[:2]
-            else:
-                target_shape = load_source().shape[:2]
-            base = current_mask(target_shape)
-            h, w = base.shape[:2]
-            stitch = create_angular_stitched_mask(
-                w,
-                h,
-                boundary_width_to_limit_angle(self._stitch_boundary_width()),
-            )
-            mask = cv2.bitwise_and(base, stitch)
-
-        if self.run_overexp_cb.isChecked():
-            source = load_source()
-            overexp = detect_overexposure(
-                source,
-                threshold=int(self.overexp_threshold_edit.value()),
-                dilate_px=int(self.overexp_dilate_edit.value()),
-            )
-            mask = cv2.bitwise_and(current_mask(overexp.shape), overexp)
-
-        if self.run_custom_cb.isChecked():
-            custom_mask = self._custom_mask_path_text()
-            if not custom_mask:
-                raise RuntimeError(i18n.t("CUSTOM_MASK_REQUIRED"))
-            loaded_custom, load_error = load_custom_mask(custom_mask)
-            if loaded_custom is None:
-                raise RuntimeError(load_error or i18n.t("CUSTOM_MASK_NOT_FOUND").format(path=custom_mask))
-            source_shape = load_source().shape[:2]
-            if loaded_custom.mask.shape != source_shape:
-                raise RuntimeError(
-                    f"Skipped (size mismatch): {image_path.name} "
-                    f"image={source_shape[1]}x{source_shape[0]} "
-                    f"custom={loaded_custom.mask.shape[1]}x{loaded_custom.mask.shape[0]}"
-                )
-            mask = cv2.bitwise_and(current_mask(loaded_custom.mask.shape), loaded_custom.mask)
-
-        if mask is not None:
-            mask_path.parent.mkdir(parents=True, exist_ok=True)
-            if not imwrite_unicode(mask_path, mask):
-                raise RuntimeError(i18n.t("MASK_REPROCESS_CURRENT_FAILED"))
+        apply_mask_postprocess(
+            image_path,
+            mask_path,
+            MaskPostprocessOptions(
+                projection=self._projection_for_image(image_path),
+                equirect_projection=_PROJECTION_EQUIRECT,
+                apply_stitch=self.run_stitch_cb.isChecked(),
+                stitch_boundary_width=self._stitch_boundary_width(),
+                apply_overexposure=self.run_overexp_cb.isChecked(),
+                overexposure_threshold=int(self.overexp_threshold_edit.value()),
+                overexposure_dilate=int(self.overexp_dilate_edit.value()),
+                apply_custom=self.run_custom_cb.isChecked(),
+                custom_mask_path=self._custom_mask_path_text(),
+                replace=replace,
+                preview_load_fail_message=i18n.t("PREVIEW_LOAD_FAIL"),
+                custom_required_message=i18n.t("CUSTOM_MASK_REQUIRED"),
+                custom_not_found_message=i18n.t("CUSTOM_MASK_NOT_FOUND"),
+                write_failed_message=i18n.t("MASK_REPROCESS_CURRENT_FAILED"),
+            ),
+        )
 
     def _build_stitch_cmd(self, *, image_list: str | Path | None = None) -> list[str]:
         masks = self._masks_dir_text()

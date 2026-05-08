@@ -8,7 +8,8 @@ import sys
 from collections.abc import Sequence
 from pathlib import Path
 
-from scene_layout import frame_backups_dir, selected_frames_keep_path, selected_frames_path
+from path_safety import is_path_inside, safe_clear_path
+from scene_layout import frame_backups_dir, scene_images_dir, selected_frames_keep_path, selected_frames_path
 
 
 def is_image_file(path: Path) -> bool:
@@ -83,7 +84,7 @@ def pending_drop_image_paths(
         return []
 
     rows = load_rows(csv_path)
-    root = images_dir if images_dir is not None else scene_dir / "images"
+    root = images_dir if images_dir is not None else scene_images_dir(scene_dir)
     if not root.exists():
         return []
 
@@ -107,7 +108,7 @@ def untracked_image_paths(
 ) -> list[Path]:
     """Return image files in images_dir that are not referenced by the selected CSV."""
     csv_path = selected_frames_path(scene_dir, csv_name)
-    root = images_dir if images_dir is not None else scene_dir / "images"
+    root = images_dir if images_dir is not None else scene_images_dir(scene_dir)
     if not csv_path.exists() or not root.exists():
         return []
 
@@ -174,6 +175,28 @@ def copy_keep_rows(
             print(f"  ... and {len(missing) - 10} more")
 
 
+def _looks_like_backup_path(path: Path) -> bool:
+    name = path.name.casefold()
+    parent_name = path.parent.name.casefold()
+    return "backup" in name or parent_name in {"backup", "backups"}
+
+
+def _validate_backup_target(images_dir: Path, backup_dir: Path) -> None:
+    try:
+        source = images_dir.resolve(strict=False)
+        target = backup_dir.resolve(strict=False)
+    except OSError as exc:
+        raise RuntimeError(f"Failed to resolve backup paths: {exc}") from exc
+    if target == source:
+        raise RuntimeError(f"Backup directory must be separate from images/: {backup_dir}")
+    if is_path_inside(target, source, allow_equal=False):
+        raise RuntimeError(f"Backup directory must not be inside images/: {backup_dir}")
+    if is_path_inside(source, target, allow_equal=False):
+        raise RuntimeError(f"Backup directory must not contain images/: {backup_dir}")
+    if backup_dir.exists() and not _looks_like_backup_path(backup_dir):
+        raise RuntimeError(f"Refusing to replace a directory that does not look like a backup path: {backup_dir}")
+
+
 def backup_images_dir(images_dir: Path, backup_dir: Path) -> int:
     """images/ の現状を backup_dir にフルコピー（既存 backup は事前に削除）。
 
@@ -182,8 +205,9 @@ def backup_images_dir(images_dir: Path, backup_dir: Path) -> int:
     """
     if not images_dir.is_dir():
         return 0
+    _validate_backup_target(images_dir, backup_dir)
     if backup_dir.exists():
-        shutil.rmtree(backup_dir)
+        safe_clear_path(backup_dir, allowed_roots=[backup_dir.parent])
     shutil.copytree(images_dir, backup_dir)
     return sum(1 for p in backup_dir.rglob("*") if p.is_file())
 
@@ -199,7 +223,7 @@ def finalize_in_place(
 
     rows = load_rows(csv_path)
     fieldnames = list(rows[0].keys())
-    images_dir = scene_dir / "images"
+    images_dir = scene_images_dir(scene_dir)
     images_dir.mkdir(parents=True, exist_ok=True)
 
     if backup_dir is not None:
@@ -220,7 +244,7 @@ def finalize_in_place(
                 missing.append("<empty output_file>")
             continue
 
-        src = (scene_dir / rel_path)
+        src = scene_dir / rel_path
         if normalize_decision(row) == "drop":
             dropped_rows += 1
             if src.exists() and is_under(src, images_dir) and src.is_file():

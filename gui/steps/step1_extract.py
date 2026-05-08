@@ -1,4 +1,5 @@
 """Step 1: フレーム抽出"""
+
 from __future__ import annotations
 
 import json
@@ -42,8 +43,14 @@ from gui.steps.base_step import (
     BaseStepWidget,
     configure_settings_scroll,
 )
-from scene_layout import APP_DIR_NAME, source_videos_path
-from scene_project import infer_video_projection, load_json, remove_source_videos, source_video_record, upsert_source_videos
+from scene_layout import APP_DIR_NAME, scene_images_dir, source_videos_path
+from scene_project import (
+    infer_video_projection,
+    load_json,
+    remove_source_videos,
+    source_video_record,
+    upsert_source_videos,
+)
 
 _FIXED_INTERVAL_MIN = 0.05
 _FIXED_INTERVAL_MAX = 60.0
@@ -375,14 +382,16 @@ class ExtractStep(BaseStepWidget):
 
         # ffmpeg / ffprobe: PATH から自動検出して初期値にセット。参照ボタンで上書き可能
         ffmpeg_filter = "Executable (*.exe);;すべて (*.*)" if sys.platform == "win32" else "すべて (*.*)"
-        self.ffmpeg_browse = BrowseWidget(mode="file", filter_str=ffmpeg_filter,
-                                          placeholder="ffmpeg (PATH から自動検出)")
+        self.ffmpeg_browse = BrowseWidget(
+            mode="file", filter_str=ffmpeg_filter, placeholder="ffmpeg (PATH から自動検出)"
+        )
         self.ffmpeg_browse.set_text(_detect_binary("ffmpeg"))
         self.ffmpeg_browse.setToolTip(i18n.tip("FFMPEG_PATH"))
         add_tooltip_row(path_form, i18n.FFMPEG_PATH, self.ffmpeg_browse, i18n.tip("FFMPEG_PATH"))
 
-        self.ffprobe_browse = BrowseWidget(mode="file", filter_str=ffmpeg_filter,
-                                           placeholder="ffprobe (PATH から自動検出)")
+        self.ffprobe_browse = BrowseWidget(
+            mode="file", filter_str=ffmpeg_filter, placeholder="ffprobe (PATH から自動検出)"
+        )
         self.ffprobe_browse.set_text(_detect_binary("ffprobe"))
         self.ffprobe_browse.setToolTip(i18n.tip("FFPROBE_PATH"))
         self.ffprobe_browse.path_changed.connect(lambda _path: self._reload_video_info_if_selected())
@@ -422,7 +431,7 @@ class ExtractStep(BaseStepWidget):
 
     def _update_images_path_label(self) -> None:
         if self.scene_dir:
-            self.images_path_label.setText(str(Path(self.scene_dir) / "images"))
+            self.images_path_label.setText(str(scene_images_dir(Path(self.scene_dir))))
         else:
             self.images_path_label.setText("-")
 
@@ -817,7 +826,7 @@ class ExtractStep(BaseStepWidget):
         for session in manifest.get("sessions", []):
             if isinstance(session, dict) and session.get("filename_prefix") == prefix:
                 return True
-        images = scene / "images"
+        images = scene_images_dir(scene)
         if images.exists():
             return any(images.glob(f"{prefix}_*"))
         return False
@@ -918,10 +927,7 @@ class ExtractStep(BaseStepWidget):
             raise ValueError(i18n.t("EXTRACT_READY_QUEUE_ALL_DUPLICATE").format(n=len(self._selected_video_paths())))
 
         used_prefixes: set[str] = set()
-        return [
-            (f"extract: {video.name}", self._build_extract_cmd_for_video(video, used_prefixes))
-            for video in videos
-        ]
+        return [(f"extract: {video.name}", self._build_extract_cmd_for_video(video, used_prefixes)) for video in videos]
 
     def _build_extract_cmd(self) -> list[str]:
         videos = self._selected_video_paths()
@@ -950,19 +956,31 @@ class ExtractStep(BaseStepWidget):
         quick_extract = self.quick_extract_cb.isChecked()
 
         cmd = [
-            sys.executable, "-u", str(script),
-            str(video_path), self.scene_dir,
-            "--image-ext", self.image_ext_combo.currentText(),
-            "--jpg-quality", str(self.jpg_quality_edit.value()),
-            "--ffmpeg", self.ffmpeg_browse.text() or "ffmpeg",
-            "--ffprobe", self.ffprobe_browse.text() or "ffprobe",
-            "--output-mode", output_mode,
+            sys.executable,
+            "-u",
+            str(script),
+            str(video_path),
+            self.scene_dir,
+            "--image-ext",
+            self.image_ext_combo.currentText(),
+            "--jpg-quality",
+            str(self.jpg_quality_edit.value()),
+            "--ffmpeg",
+            self.ffmpeg_browse.text() or "ffmpeg",
+            "--ffprobe",
+            self.ffprobe_browse.text() or "ffprobe",
+            "--output-mode",
+            output_mode,
         ]
         if not quick_extract:
-            cmd.extend([
-                "--pair-motion-profile", str(self.pair_motion_profile_combo.currentData() or "walk"),
-                "--analysis-width", self.analysis_width_edit.text().strip(),
-            ])
+            cmd.extend(
+                [
+                    "--pair-motion-profile",
+                    str(self.pair_motion_profile_combo.currentData() or "walk"),
+                    "--analysis-width",
+                    self.analysis_width_edit.text().strip(),
+                ]
+            )
         if prefix:
             cmd.extend(["--filename-prefix", prefix])
 
@@ -970,11 +988,15 @@ class ExtractStep(BaseStepWidget):
         if quick_extract:
             cmd.append("--quick-extract")
         elif self.smart_fixed_cb.isChecked():
-            cmd.extend([
-                "--fixed-smart",
-                "--min-gap-sec", f"{self.min_gap_edit.value():g}",
-                "--max-gap-sec", f"{self.max_gap_edit.value():g}",
-            ])
+            cmd.extend(
+                [
+                    "--fixed-smart",
+                    "--min-gap-sec",
+                    f"{self.min_gap_edit.value():g}",
+                    "--max-gap-sec",
+                    f"{self.max_gap_edit.value():g}",
+                ]
+            )
 
         return cmd
 
@@ -983,13 +1005,13 @@ class ExtractStep(BaseStepWidget):
     def on_line(self, line: str) -> tuple[int, int] | None:
         progress_prefix = "[progress] "
         if line.startswith(progress_prefix):
-            text = line[len(progress_prefix):]
+            text = line[len(progress_prefix) :]
             match = re.search(r"(\d+)/(\d+)", text)
             if match:
                 return int(match.group(1)), int(match.group(2))
 
         if line.startswith("SUMMARY_JSON:"):
-            payload = line[len("SUMMARY_JSON:"):]
+            payload = line[len("SUMMARY_JSON:") :]
             try:
                 summary = json.loads(payload)
                 self.last_estimate_summary = summary
@@ -1261,7 +1283,11 @@ class ExtractStep(BaseStepWidget):
         if self._is_multi_video_input():
             videos = self._selected_video_paths()
             queued, skipped = self._queued_selected_videos()
-            info_rows = [(video, self.video_infos[self._video_key(video)]) for video in videos if self._video_key(video) in self.video_infos]
+            info_rows = [
+                (video, self.video_infos[self._video_key(video)])
+                for video in videos
+                if self._video_key(video) in self.video_infos
+            ]
             if info_rows:
                 failed = len([video for video in videos if self._video_key(video) in self.video_info_failures])
                 lines = [
@@ -1329,7 +1355,11 @@ class ExtractStep(BaseStepWidget):
     def _update_instant_estimate(self) -> None:
         if self._is_multi_video_input():
             queued, skipped = self._queued_selected_videos()
-            info_rows = [(video, self.video_infos[self._video_key(video)]) for video in queued if self._video_key(video) in self.video_infos]
+            info_rows = [
+                (video, self.video_infos[self._video_key(video)])
+                for video in queued
+                if self._video_key(video) in self.video_infos
+            ]
             if info_rows:
                 counts = [(video, self._fixed_estimate_count(info)) for video, info in info_rows]
                 total_estimated = sum(count for _video, count in counts)

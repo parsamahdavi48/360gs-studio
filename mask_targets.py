@@ -1,4 +1,5 @@
 """Shared image-list handling for mask generation CLIs."""
+
 from __future__ import annotations
 
 import json
@@ -61,6 +62,7 @@ def collect_image_targets(
     add_ext: bool = False,
     image_list: str | Path | None = None,
     projection_filter: str | None = None,
+    allow_cwd_fallback: bool = False,
 ) -> tuple[Path, list[MaskTarget]]:
     images_root = Path(images)
     masks_root = Path(masks_dir)
@@ -71,6 +73,7 @@ def collect_image_targets(
             masks_root=masks_root,
             add_ext=add_ext,
             projection_filter=projection_filter,
+            allow_cwd_fallback=allow_cwd_fallback,
         )
 
     root, image_files = iter_image_files(images_root)
@@ -92,6 +95,7 @@ def load_image_targets(
     masks_root: Path,
     add_ext: bool = False,
     projection_filter: str | None = None,
+    allow_cwd_fallback: bool = False,
 ) -> list[MaskTarget]:
     filter_projection = normalize_projection(projection_filter)
     entries = _load_entries(Path(image_list))
@@ -105,7 +109,12 @@ def load_image_targets(
         projection = normalize_projection(projection)
         if filter_projection and projection and projection != filter_projection:
             continue
-        image_path = _resolve_image_path(image_value, images_root)
+        image_path = _resolve_image_path(
+            image_value,
+            images_root,
+            manifest_base=Path(image_list).parent,
+            allow_cwd_fallback=allow_cwd_fallback,
+        )
         if image_path.suffix.lower() not in IMAGE_EXTS:
             continue
         mask_path = (
@@ -135,6 +144,7 @@ def load_mask_paths_from_image_list(
     images_root: str | Path | None = None,
     add_ext: bool = False,
     projection_filter: str | None = None,
+    allow_cwd_fallback: bool = False,
 ) -> list[Path]:
     masks_dir = Path(masks_root)
     images_dir = Path(images_root) if images_root is not None else masks_dir.parent / "images"
@@ -144,6 +154,7 @@ def load_mask_paths_from_image_list(
         masks_root=masks_dir,
         add_ext=add_ext,
         projection_filter=projection_filter,
+        allow_cwd_fallback=allow_cwd_fallback,
     )
     return [target.mask_path for target in targets]
 
@@ -189,13 +200,7 @@ def _parse_entry(entry: Any) -> tuple[str, str, str] | None:
         return entry, "", ""
     if not isinstance(entry, dict):
         return None
-    image_value = (
-        entry.get("image")
-        or entry.get("image_path")
-        or entry.get("path")
-        or entry.get("source")
-        or ""
-    )
+    image_value = entry.get("image") or entry.get("image_path") or entry.get("path") or entry.get("source") or ""
     if not image_value:
         return None
     mask_value = entry.get("mask") or entry.get("mask_path") or ""
@@ -203,15 +208,34 @@ def _parse_entry(entry: Any) -> tuple[str, str, str] | None:
     return str(image_value), str(mask_value), str(projection)
 
 
-def _resolve_image_path(value: str, images_root: Path) -> Path:
-    return _resolve_relative_path(value, images_root, default_base=_target_root(images_root))
+def _resolve_image_path(
+    value: str,
+    images_root: Path,
+    *,
+    manifest_base: Path,
+    allow_cwd_fallback: bool,
+) -> Path:
+    return _resolve_relative_path(
+        value,
+        images_root,
+        default_base=_target_root(images_root),
+        manifest_base=manifest_base,
+        allow_cwd_fallback=allow_cwd_fallback,
+    )
 
 
 def _resolve_mask_path(value: str, masks_root: Path) -> Path:
-    return _resolve_relative_path(value, masks_root, default_base=masks_root)
+    return _resolve_relative_path(value, masks_root, default_base=masks_root, manifest_base=None)
 
 
-def _resolve_relative_path(value: str, root: Path, *, default_base: Path) -> Path:
+def _resolve_relative_path(
+    value: str,
+    root: Path,
+    *,
+    default_base: Path,
+    manifest_base: Path | None,
+    allow_cwd_fallback: bool = False,
+) -> Path:
     raw = Path(value)
     if raw.is_absolute():
         return raw
@@ -227,9 +251,15 @@ def _resolve_relative_path(value: str, root: Path, *, default_base: Path) -> Pat
     if candidate.exists():
         return candidate
 
-    cwd_candidate = Path.cwd() / raw
-    if cwd_candidate.exists():
-        return cwd_candidate
+    if manifest_base is not None:
+        manifest_candidate = manifest_base / raw
+        if manifest_candidate.exists():
+            return manifest_candidate
+
+    if allow_cwd_fallback:
+        cwd_candidate = Path.cwd() / raw
+        if cwd_candidate.exists():
+            return cwd_candidate
 
     if parts and parts[0].casefold() == root_base.name.casefold():
         return root_base.parent / raw

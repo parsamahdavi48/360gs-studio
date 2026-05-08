@@ -5,7 +5,6 @@ import argparse
 import csv
 import json
 import math
-import shutil
 import subprocess
 import sys
 import tempfile
@@ -24,7 +23,8 @@ from extract_sessions import (
     session_matches_video,
     video_identity,
 )
-from scene_layout import extract_report_path, frame_cache_dir, selected_frames_path
+from path_safety import safe_clear_path
+from scene_layout import extract_report_path, frame_cache_dir, scene_images_dir, selected_frames_path
 
 try:
     import cv2
@@ -528,9 +528,8 @@ def assess_pair_frame_risk(
         min_count = max(0, int(track_min_count))
         min_confidence = max(0.0, float(track_min_confidence))
         weak_match = track.track_count < min_count or track.confidence < min_confidence
-        weak_for_blur = (
-            track.track_count < max(12, min_count // 2)
-            or track.confidence < max(0.15, min_confidence * 0.75)
+        weak_for_blur = track.track_count < max(12, min_count // 2) or track.confidence < max(
+            0.15, min_confidence * 0.75
         )
         low_texture_track = (
             track.track_count < max(12, min_count)
@@ -821,7 +820,9 @@ def analyze_pair_selection(
         blur_score: float | None = None,
     ) -> dict:
         track_shift_px = int(round(metrics.yaw_shift_px * (frame.shape[1] / float(max(1, gate_w)))))
-        track = compute_pair_track_metrics(last_keep_frame, frame, track_shift_px) if last_keep_frame is not None else None
+        track = (
+            compute_pair_track_metrics(last_keep_frame, frame, track_shift_px) if last_keep_frame is not None else None
+        )
         tokens = list(status_tokens)
         risk = assess_pair_frame_risk(
             blur_score=compute_pair_blur_score(frame) if blur_score is None else float(blur_score),
@@ -1194,14 +1195,12 @@ def extract_selected_frames(
                 f"keeping {len(extracted_files)} extracted frame(s) and dropping {missing} trailing request(s)",
                 flush=True,
             )
-            frame_indices = frame_indices[:len(extracted_files)]
+            frame_indices = frame_indices[: len(extracted_files)]
         else:
             for p in extracted_files:
                 p.unlink(missing_ok=True)
             tmp_dir.rmdir()
-            raise RuntimeError(
-                f"Expected {len(frame_indices)} extracted files, got {len(extracted_files)}"
-            )
+            raise RuntimeError(f"Expected {len(frame_indices)} extracted files, got {len(extracted_files)}")
     rename_total = len(frame_indices)
     rename_step = max(1, rename_total // 100)
     last_rename_report = 0
@@ -1598,14 +1597,13 @@ def output_files_for_indices(
     frame_digits: int,
 ) -> list[str]:
     return [
-        f"images/{frame_filename(filename_prefix, frame_idx, image_ext, frame_digits)}"
-        for frame_idx in final_indices
+        f"images/{frame_filename(filename_prefix, frame_idx, image_ext, frame_digits)}" for frame_idx in final_indices
     ]
 
 
 def remove_session_outputs(scene_dir: Path, output_files: Sequence[str]) -> int:
     removed = 0
-    images_dir = (scene_dir / "images").resolve()
+    images_dir = scene_images_dir(scene_dir).resolve()
     for rel in output_files:
         path = (scene_dir / rel).resolve()
         try:
@@ -1624,7 +1622,7 @@ def commit_staged_frame_outputs(
     output_files: Sequence[str],
     replaced_output_files: set[str],
 ) -> int:
-    images_dir = (scene_dir / "images").resolve()
+    images_dir = scene_images_dir(scene_dir).resolve()
     images_dir.mkdir(parents=True, exist_ok=True)
     expected_files = list(output_files)
     missing = [Path(rel).name for rel in expected_files if not (staging_dir / Path(rel).name).is_file()]
@@ -1651,7 +1649,7 @@ def commit_staged_frame_outputs(
 
     stale_replaced = sorted(set(replaced_output_files) - set(expected_files))
     removed += remove_session_outputs(scene_dir, stale_replaced)
-    shutil.rmtree(staging_dir, ignore_errors=True)
+    safe_clear_path(staging_dir, allowed_roots=[frame_cache_dir(scene_dir)])
     return removed
 
 
@@ -1706,9 +1704,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--quick-extract",
         action="store_true",
-        help=(
-            "Extract the requested fixed cadence directly without pair analysis or motion adjustment."
-        ),
+        help=("Extract the requested fixed cadence directly without pair analysis or motion adjustment."),
     )
     parser.add_argument(
         "--fixed-smart-max-inserts-per-interval",
@@ -1838,7 +1834,7 @@ def main() -> None:
 
     output_root = Path(args.output_dir)
     scene_dir = output_root.resolve()
-    images_dir = scene_dir / "images"
+    images_dir = scene_images_dir(scene_dir)
     csv_path = selected_frames_path(scene_dir)
     report_path = extract_report_path(scene_dir)
 
@@ -1861,9 +1857,7 @@ def main() -> None:
 
     current_video_identity = video_identity(input_video)
     manifest = load_manifest(scene_dir)
-    manifest_sessions = [
-        session for session in manifest.get("sessions", []) if isinstance(session, dict)
-    ]
+    manifest_sessions = [session for session in manifest.get("sessions", []) if isinstance(session, dict)]
     matching_sessions = [
         session for session in manifest_sessions if session_matches_video(session, current_video_identity)
     ]
@@ -1995,18 +1989,14 @@ def main() -> None:
             replaced_output_files,
         )
         active_manifest_sessions = [
-            session
-            for session in active_manifest_sessions
-            if str(session.get("id") or "") not in replaced_session_ids
+            session for session in active_manifest_sessions if str(session.get("id") or "") not in replaced_session_ids
         ]
-        print(f"Prior sessions for this video will be replaced after extraction succeeds: {len(matching_sessions)} session(s)")
+        print(
+            f"Prior sessions for this video will be replaced after extraction succeeds: {len(matching_sessions)} session(s)"
+        )
 
     if args.output_mode in {"append", "replace-video"}:
-        collisions = [
-            rel
-            for rel in output_files
-            if (scene_dir / rel).exists() and rel not in replaced_output_files
-        ]
+        collisions = [rel for rel in output_files if (scene_dir / rel).exists() and rel not in replaced_output_files]
         if collisions:
             preview = ", ".join(collisions[:3])
             print(
@@ -2019,7 +2009,8 @@ def main() -> None:
     extraction_output_dir = images_dir
     if replaced_output_files:
         staging_dir = frame_cache_dir(scene_dir) / f"extract_staging_{session_id}"
-        shutil.rmtree(staging_dir, ignore_errors=True)
+        if staging_dir.exists():
+            safe_clear_path(staging_dir, allowed_roots=[frame_cache_dir(scene_dir)])
         extraction_output_dir = staging_dir
 
     try:
@@ -2036,7 +2027,8 @@ def main() -> None:
         )
     except Exception as e:
         if staging_dir is not None:
-            shutil.rmtree(staging_dir, ignore_errors=True)
+            if staging_dir.exists():
+                safe_clear_path(staging_dir, allowed_roots=[frame_cache_dir(scene_dir)])
         print(f"Error during extraction: {e}")
         sys.exit(1)
 
@@ -2068,7 +2060,9 @@ def main() -> None:
         except Exception as e:
             print(f"Error while committing replacement frames: {e}")
             sys.exit(1)
-        print(f"Replaced prior sessions for this video: {len(matching_sessions)} session(s), {removed} file(s) replaced/removed")
+        print(
+            f"Replaced prior sessions for this video: {len(matching_sessions)} session(s), {removed} file(s) replaced/removed"
+        )
 
     write_selected_csv(
         enriched_rows,

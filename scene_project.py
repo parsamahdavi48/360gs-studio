@@ -4,6 +4,7 @@ import csv
 import hashlib
 import json
 import math
+import uuid
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -15,6 +16,7 @@ from scene_layout import (
     mask_runs_path,
     project_path,
     review_runs_path,
+    scene_images_dir,
     selected_frames_path,
     source_image_sets_path,
     source_videos_path,
@@ -42,7 +44,20 @@ def load_json(path: Path, default: dict[str, Any] | None = None) -> dict[str, An
 
 def write_json(path: Path, payload: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
+    write_json_atomic(path, payload)
+
+
+def write_json_atomic(path: Path, payload: dict[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temp_path = path.with_name(f".{path.name}.{uuid.uuid4().hex}.tmp")
+    try:
+        temp_path.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
+        temp_path.replace(path)
+    finally:
+        try:
+            temp_path.unlink(missing_ok=True)
+        except OSError:
+            pass
 
 
 def scene_relative(scene_dir: Path, path: Path | str) -> str:
@@ -232,9 +247,7 @@ def upsert_source_videos(scene_dir: Path, records: list[dict[str, Any]]) -> None
         videos = []
 
     by_id: dict[str, dict[str, Any]] = {
-        str(item.get("id")): item
-        for item in videos
-        if isinstance(item, dict) and item.get("id")
+        str(item.get("id")): item for item in videos if isinstance(item, dict) and item.get("id")
     }
     for record in records:
         existing = by_id.get(str(record.get("id")))
@@ -389,7 +402,7 @@ def _source_image_set_projections(scene_dir: Path) -> set[str]:
 
 
 def scene_image_projection_map(scene_dir: Path, image_paths: list[Path] | None = None) -> dict[str, str]:
-    images_dir = scene_dir / "images"
+    images_dir = scene_images_dir(scene_dir)
     if image_paths is None:
         image_paths = sorted(
             (
@@ -524,7 +537,7 @@ def resolve_scene_image_projection(scene_dir: Path) -> dict[str, Any]:
     source = "project"
 
     if not projections:
-        projections = _sample_image_projections(scene_dir / "images")
+        projections = _sample_image_projections(scene_images_dir(scene_dir))
         source = "image_header_sample"
 
     if len(projections) == 1:
@@ -585,7 +598,9 @@ def write_mask_item(
 
 def append_mask_run(scene_dir: Path, record: dict[str, Any]) -> None:
     append_run(mask_runs_path(scene_dir), "runs", record, max_items=200)
-    update_project(scene_dir, "masks", {"last_run_id": record.get("id", ""), "last_run_at": record.get("created_at", "")})
+    update_project(
+        scene_dir, "masks", {"last_run_id": record.get("id", ""), "last_run_at": record.get("created_at", "")}
+    )
 
 
 def append_review_run(scene_dir: Path, record: dict[str, Any]) -> None:

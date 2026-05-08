@@ -1,4 +1,5 @@
 """Prepare a scene folder for SphereSfM CLI execution."""
+
 from __future__ import annotations
 
 import argparse
@@ -6,6 +7,8 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
+
+from path_safety import safe_clear_path
 
 IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".tif", ".tiff", ".webp", ".bmp"}
 
@@ -56,7 +59,7 @@ def source_mask_candidates(source_masks_dir: Path, rel_image: Path) -> list[Path
 
 def prepare_masks(images_dir: Path, source_masks_dir: Path, output_masks_dir: Path) -> tuple[int, int]:
     if output_masks_dir.exists():
-        shutil.rmtree(output_masks_dir)
+        safe_clear_path(output_masks_dir, allowed_roots=[output_masks_dir.parent])
     output_masks_dir.mkdir(parents=True, exist_ok=True)
 
     copied = 0
