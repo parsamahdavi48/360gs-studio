@@ -22,7 +22,7 @@ MetashapeでSfMした結果は、Postshot / Brush / LichtFeld Studio向けのキ
 
 ### 2. 360°動画からSphereSfM、LichtFeld 3DGUT / キューブマップデータへ
 
-Metashapeを使わず、抽出済みのエクイレクタングラー画像をSphereSfM版COLMAPで球面カメラとしてSfMできます。SfM結果から、LichtFeld 3DGUT用にシーン直下へ `transforms.json` / `pointcloud.ply` を作るか、Postshot / Brush / LichtFeld向けに `output/` へキューブマップデータを書き出せます。
+Metashapeを使わず、抽出済みのエクイレクタングラー画像をSphereSfM版COLMAPで球面カメラとしてSfMできます。SfM結果から、LichtFeld 3DGUT用データまたはPostshot / Brush / LichtFeld向けキューブマップデータを `output/` に作成できます。
 
 ### 3. 360°動画からCOLMAP Rigデータセットへ
 
@@ -113,11 +113,12 @@ checkpointを手動で `models/sam3.1/sam3.1_multiplex.pt` に置くこともで
   -> Step 1: フレーム抽出
   -> Step 2: フレーム確認・採用/除外
   -> Step 3: マスク生成
-  -> Step 4: 書き出し
+  -> Step 4: 変換
       -> Metashape SfM結果から3DGS向けデータを作成
-      -> SphereSfMで360°画像をSfMし、3DGUTまたはキューブマップデータを作成
-      -> LichtFeld 3DGUT向けにエクイレクタングラー画像を直接使用
+      -> SphereSfMで360°画像をSfMし、3DGUTまたはキューブマップデータへ変換
       -> COLMAP Rigキューブマップ画像を書き出し、必要に応じてCOLMAP/GLOMAPを実行
+  -> Step 5: 学習
+      -> 作成済みデータセットでLichtFeld Studio / Postshot / 任意CLIを起動
 ```
 
 | Step | 内容 | 主なデフォルト |
@@ -125,7 +126,8 @@ checkpointを手動で `models/sam3.1/sam3.1_multiplex.pt` に置くこともで
 | 1. フレーム抽出 | 360°動画からエクイレクタングラー静止画を抽出 | 固定間隔 + 変化補正 |
 | 2. フレーム確認 | 抽出フレームを単一/サムネイル表示で確認し、採用/除外をCSVに反映 | 低品質候補や不要フレームの確認に対応 |
 | 3. マスク生成 | 人物、スティッチ境界、白飛び、空、カスタムマスクを生成 | YOLO/SAM2.1、高品質設定 |
-| 4. 書き出し | SfM結果からの3DGS出力、SphereSfM実行、またはCOLMAP Rigキューブマップ画像を書き出し | Metashape / SphereSfM / LichtFeld / 3DGUT / Cube6 |
+| 4. 変換 | SfM結果からの3DGSデータセット作成、SphereSfM実行、またはCOLMAP Rigキューブマップ画像を書き出し | Metashape / SphereSfM / LichtFeld / 3DGUT / Cube6 |
+| 5. 学習 | 作成済みデータセットを使って外部3DGSアプリを起動 | LichtFeld Studio / Postshot / Custom |
 
 各ステップの詳しいGUI説明:
 
@@ -134,7 +136,7 @@ checkpointを手動で `models/sam3.1/sam3.1_multiplex.pt` に置くこともで
 | Step 1 フレーム抽出 | [JP](doc/extract_frames_gui.ja.md) / [EN](doc/extract_frames_gui.md) |
 | Step 2 フレーム確認 | [JP](doc/review_frames_gui.ja.md) / [EN](doc/review_frames_gui.md) |
 | Step 3 マスク生成 | [JP](doc/mask_tools_gui.ja.md) / [EN](doc/mask_tools_gui.md) |
-| Step 4 書き出し | [JP](doc/cubemap_tools_gui.ja.md) / [EN](doc/cubemap_tools_gui.md) |
+| Step 4 変換 / Step 5 学習 | [JP](doc/cubemap_tools_gui.ja.md) / [EN](doc/cubemap_tools_gui.md) |
 
 ## 推奨ワークフロー: Metashapeルート
 
@@ -146,12 +148,13 @@ checkpointを手動で `models/sam3.1/sam3.1_multiplex.pt` に置くこともで
 6. 必要に応じてスティッチ境界マスク、白飛びマスク、カスタムマスクも有効にします。
 7. 生成された `masks/` フォルダをMetashapeにマスクとして読み込み、SfMを実行します。
 8. Step 4でMetashapeのXML/PLYを使い、3DGSトレーニング用のキューブマップデータ、または `3DGUT (LichtFeld)` 用の直接データセットを出力します。
+9. 必要ならStep 5でLichtFeld StudioやPostshot CLIを起動し、作成済みデータセットで結果を試します。
 
 ## COLMAPルート
 
 1. Step 1からStep 3まではMetashapeルートと同じです。
 2. Step 4で `COLMAP` を選び、キューブマップ画像とマスクを `output/colmap_rig/` に書き出します。
-3. COLMAP/GLOMAPでカメラ位置と疎な点群まで推定したい場合は、`書き出し後にCOLMAPを実行` をONにします。ONにすると画像書き出し後にSfM処理まで続けて実行するため、フレーム数によって時間がかかります。
+3. COLMAP/GLOMAPでカメラ位置と疎な点群まで推定したい場合は、左サブ工程の `SfM` をONにします。COLMAP SfMにはキューブマップ画像が必要なため、`SfM` をONにすると `Cube` もONになります。
 4. 完了後は `output/colmap_rig/` をCOLMAPプロジェクトとして、COLMAP対応の3DGSアプリに渡します。
 
 ## SphereSfMルート
@@ -159,9 +162,9 @@ checkpointを手動で `models/sam3.1/sam3.1_multiplex.pt` に置くこともで
 1. Step 1からStep 3まではMetashapeルートと同じです。`images/` と、使う場合は `masks/` を用意します。
 2. Step 4で `SphereSfM` を選び、[json87/SphereSfM](https://github.com/json87/spheresfm) のリリースまたはローカルビルドで用意したSphereSfM版 `colmap.exe` を指定します。通常のCOLMAPでは球面画像用の機能が足りないため使えません。
 3. RTX 50系GPUでは、GitHub配布版バイナリはCUDA SIFTで停止することがあります。RTX 50系で使う場合は、SphereSfMを `CMAKE_CUDA_ARCHITECTURES=120` 付きで自前ビルドした `colmap.exe` を指定してください。
-4. まずは `実行範囲: SfM + 変換`, `Matcher: Sequential`, `SfM品質: 標準` から始めます。
-5. `出力形状` で、LichtFeld 3DGUT用にシーンフォルダ直下へ出すか、Postshot / Brush / LichtFeld向けに `output/` へキューブマップデータを出すかを選びます。
-6. 完了後、3DGUTでは `<scene>/images/`, `<scene>/masks/`, `<scene>/transforms.json`, `<scene>/pointcloud.ply` のセットを使います。キューブマップでは `output/` を下流アプリへ渡します。SfMの作業ファイルとログは `output/spheresfm/` にまとまります。
+4. まずは左サブ工程の `SfM` と `Cube` をONにし、`Matcher: Sequential`, `SfM品質: 標準` から始めます。
+5. `出力形状` で、LichtFeld 3DGUT用データにするか、Postshot / Brush / LichtFeld向けキューブマップデータにするかを選びます。
+6. 完了後、3DGUTでもキューブマップでも下流アプリへ渡すデータセットは `output/` です。SphereSfMの作業ファイルとログは `output/spheresfm/` にまとまります。
 
 ## 通常画像・通常動画のマスク前処理
 

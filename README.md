@@ -22,7 +22,7 @@ After Metashape SfM, export cubemap images, masks, and `transforms.json` for Pos
 
 ### 2. 360° Video to SphereSfM, LichtFeld 3DGUT, or Cubemap Data
 
-You can skip Metashape and run spherical SfM directly on the extracted equirectangular images with SphereSfM's COLMAP build. From that result, the GUI can write a LichtFeld 3DGUT dataset at the scene root or cubemap data under `output/` for Postshot, Brush, or LichtFeld.
+You can skip Metashape and run spherical SfM directly on the extracted equirectangular images with SphereSfM's COLMAP build. From that result, the GUI can write either LichtFeld 3DGUT data or cubemap data under `output/` for Postshot, Brush, or LichtFeld.
 
 ### 3. 360° Video to COLMAP Rig Dataset
 
@@ -113,11 +113,12 @@ If the scene folder path contains non-ASCII characters, an extremely long path, 
   -> Step 1: frame extraction
   -> Step 2: frame review and keep/drop decisions
   -> Step 3: mask generation
-  -> Step 4: export
+  -> Step 4: convert
       -> build 3DGS-ready outputs from Metashape SfM results
-      -> run SphereSfM on 360° images and export 3DGUT or cubemap data
-      -> keep equirectangular images in place for LichtFeld 3DGUT
+      -> run SphereSfM on 360° images and convert to 3DGUT or cubemap data
       -> export COLMAP Rig cubemap images and optionally run COLMAP/GLOMAP
+  -> Step 5: training
+      -> launch LichtFeld Studio / Postshot / custom CLI with an existing dataset
 ```
 
 | Step | Purpose | Current Default |
@@ -125,7 +126,8 @@ If the scene folder path contains non-ASCII characters, an extremely long path, 
 | 1. Frame Extraction | Extract equirectangular still frames from 360° video | Fixed interval + motion adjustment |
 | 2. Frame Review | Review extracted frames in single/thumbnail views and apply keep/drop decisions to CSV | Review low-quality candidates and unwanted frames |
 | 3. Mask Generation | Generate model-based masks plus optional stitch seam, overexposure, and custom masks | YOLO/SAM2.1, High quality |
-| 4. Export | Export 3DGS outputs from SfM results, run SphereSfM, or export COLMAP Rig cubemap images | Metashape / SphereSfM / LichtFeld / 3DGUT / Cube6 |
+| 4. Convert | Create 3DGS datasets from SfM results, run SphereSfM, or export COLMAP Rig cubemap images | Metashape / SphereSfM / LichtFeld / 3DGUT / Cube6 |
+| 5. Training | Launch an external 3DGS application with an existing dataset | LichtFeld Studio / Postshot / Custom |
 
 Detailed GUI docs:
 
@@ -134,7 +136,7 @@ Detailed GUI docs:
 | Step 1 Frame Extraction | [EN](doc/extract_frames_gui.md) / [JP](doc/extract_frames_gui.ja.md) |
 | Step 2 Frame Review | [EN](doc/review_frames_gui.md) / [JP](doc/review_frames_gui.ja.md) |
 | Step 3 Mask Generation | [EN](doc/mask_tools_gui.md) / [JP](doc/mask_tools_gui.ja.md) |
-| Step 4 Export | [EN](doc/cubemap_tools_gui.md) / [JP](doc/cubemap_tools_gui.ja.md) |
+| Step 4 Convert / Step 5 Training | [EN](doc/cubemap_tools_gui.md) / [JP](doc/cubemap_tools_gui.ja.md) |
 
 ## Recommended Workflow: Metashape Route
 
@@ -146,12 +148,13 @@ Detailed GUI docs:
 6. Enable stitch seam, overexposure, and custom masks when they match the source material.
 7. Import the generated `masks/` folder into Metashape as per-image masks, then run SfM.
 8. Use Step 4 with the Metashape XML/PLY result to export cubemap training data or a direct `3DGUT (LichtFeld)` dataset.
+9. When needed, use Step 5 to launch LichtFeld Studio or Postshot CLI with the dataset you just created.
 
 ## COLMAP Route
 
 1. Use Steps 1-3 in the same way as the Metashape route.
 2. In Step 4, choose `COLMAP` to write cubemap images and masks to `output/colmap_rig/`.
-3. Enable `Run COLMAP after export` when you want COLMAP/GLOMAP to estimate camera positions and a sparse point cloud. This continues into SfM after writing the cubemap images, so it can take a long time depending on frame count.
+3. Turn on the left `SfM` sub-stage when you want COLMAP/GLOMAP to estimate camera positions and a sparse point cloud. COLMAP SfM needs cubemap images, so turning on `SfM` also turns on `Cube`.
 4. After completion, pass `output/colmap_rig/` as the COLMAP project folder to COLMAP-compatible 3DGS tools.
 
 ## SphereSfM Route
@@ -159,9 +162,9 @@ Detailed GUI docs:
 1. Use Steps 1-3 in the same way as the Metashape route. Prepare `images/` and, when used, `masks/`.
 2. In Step 4, choose `SphereSfM` and select SphereSfM's `colmap.exe` from a [json87/SphereSfM](https://github.com/json87/spheresfm) release or local build. Standard COLMAP cannot be used because it lacks the spherical-image SfM features.
 3. On RTX 50-series GPUs, the GitHub-distributed binary can stop during CUDA SIFT. For RTX 50-series systems, build SphereSfM locally with `CMAKE_CUDA_ARCHITECTURES=120` and select that `colmap.exe`.
-4. Start with `Run Scope: SfM + Convert`, `Matcher: Sequential`, and `SfM Quality: Standard`.
-5. In `Output Shape`, choose whether to write a LichtFeld 3DGUT dataset at the scene root or cubemap data under `output/` for Postshot, Brush, or LichtFeld.
-6. After completion, 3DGUT output uses `<scene>/images/`, `<scene>/masks/`, `<scene>/transforms.json`, and `<scene>/pointcloud.ply`. Cubemap output is passed to downstream apps as `output/`. SphereSfM working files and logs stay under `output/spheresfm/`.
+4. Start with both left sub-stages, `SfM` and `Cube`, turned on, plus `Matcher: Sequential` and `SfM Quality: Standard`.
+5. In `Output Shape`, choose whether to create LichtFeld 3DGUT data or cubemap data for Postshot, Brush, or LichtFeld.
+6. After completion, `output/` is the dataset passed to downstream apps for both 3DGUT and cubemap output. SphereSfM working files and logs stay under `output/spheresfm/`.
 
 ## Mask Preprocessing for Normal Images
 

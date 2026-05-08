@@ -163,7 +163,7 @@ After adjusting masks, turning `Images` off avoids reconverting existing cubemap
 
 ## Step 5 Training
 
-Step 5 configures and launches an external training CLI using an existing dataset created by Step 4. Choose `LichtFeld`, `Postshot`, or `Other...` at the top, then press the bottom `Launch` button. `Other...` opens a menu for secondary backends such as `Custom` without crowding the main choices.
+Step 5 configures and launches an external training CLI using an existing dataset created by Step 4. Common settings such as the training app, Headless, executable, dataset, and output folder are on the left. LichtFeld / Postshot / Custom-specific settings are on the right. Press the bottom `Launch` button to run it. `Other...` opens a menu for secondary backends such as `Custom` without crowding the main choices.
 
 | Training app | Use when |
 | --- | --- |
@@ -171,13 +171,13 @@ Step 5 configures and launches an external training CLI using an existing datase
 | `Postshot` | Pass images and, when available, a COLMAP/SphereSfM sparse model to Postshot CLI and create a `.psht` project |
 | `Other... > Custom` | Launch any CLI with template-based arguments |
 
-Normally, leave `Dataset` on the automatic value. Cubemap conversion and 3DGUT both use `<scene>/output/`, and the COLMAP route uses `<scene>/output/colmap_rig/`. The default `Training Output` is `<scene>/output/`, so the portable dataset and training result stay together.
+Normally, leave `Dataset` on the automatic value. Metashape / SphereSfM cubemap conversion and 3DGUT both use `<scene>/output/`, and the COLMAP route uses `<scene>/output/colmap_rig/`. The default `Training Output` is `<scene>/output/`, so the portable dataset and training result stay together.
 
 For LichtFeld Studio, the visible controls mirror the parameters LichtFeld keeps at the top of its own training panel: `Strategy`, `Iterations`, `Max Gaussians`, output PLY name, `SH Degree`, `Tile Mode`, `Steps Scaler`, mask toggles, PPISP conditionals, and background `Mode` / `Color`. The output PLY name defaults to the scene folder name and is passed as LichtFeld's `--output-name`. Less common dataset, optimizer, refinement, loss, initialization, MRNF/IGS+, sparsity, and save/eval settings are under `Advanced Training Parameters`; sections appear only when the matching strategy or top-level checkbox makes them relevant. With `Steps Scaler` on `Auto`, Step 5 counts the existing dataset images and applies the same 300-image baseline scaling LichtFeld Studio uses when loading a dataset in its GUI. At runtime, Step 5 writes `_stechdrive/step4/training/lichtfeld_config.json` and passes that JSON plus dataset-only CLI options to LichtFeld.
 
 Step 5 checks that the selected training mode matches the dataset shape. LichtFeld `GUT` expects 3DGUT output with `pointcloud.ply`; normal LichtFeld and Postshot expect projected Cubemap data.
 
-For Postshot, the main controls cover the project file, model `Profile`, automatic or fixed `kSteps`, maximum image size, optional mask import, image selection, and `Camera Poses`. `Camera Poses` defaults to `Import`, so the CLI receives the generated images, `transforms.json`, and the raw Metashape PLY when available; switch to `Estimate` only when Postshot should estimate poses and use `Pose Quality`. Postshot mask wording is polarity-driven in this GUI: use `Exclude black / use white (background)` for the app's normal white=usable, black=excluded masks, and `Exclude white / use black (occluders)` only when white marks temporary occluders to ignore. Less common GPU, profile-specific model limits, anti-aliasing, sky/training-context flags, Crop/ROI boxes, and optional PLY/SPZ export are grouped under `Postshot Advanced Parameters`.
+For Postshot, the main controls cover the project file, model `Profile`, automatic or fixed `kSteps`, maximum image size, optional mask import, image selection, and `Camera Poses`. `Camera Poses` defaults to `Import`; COLMAP / SphereSfM routes pass a sparse model, while Metashape conversion passes `transforms.json` and the raw Metashape PLY when available. Switch to `Estimate` only when Postshot should estimate poses and use `Pose Quality`. Postshot mask wording is polarity-driven in this GUI: use `Exclude black / use white (background)` for the app's normal white=usable, black=excluded masks, and `Exclude white / use black (occluders)` only when white marks temporary occluders to ignore. Less common GPU, profile-specific model limits, anti-aliasing, sky/training-context flags, Crop/ROI boxes, and optional PLY/SPZ export are grouped under `Postshot Advanced Parameters`.
 
 SphereSfM with `SfM` on and `Cube` off does not create a training dataset. Before launching Step 5, run Step 4 with `Cube` on to create the dataset. To start from an existing sparse result, use `SfM` off and `Cube` on.
 
