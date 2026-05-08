@@ -332,8 +332,8 @@ def test_step4_scrolls_tab_content_not_whole_settings_pane() -> None:
         assert [button.width() for button in window.step4_sub_buttons.values()] == [66, 66, 66]
         assert [label.width() for label in window.step4_sub_status_labels.values()] == [13, 13, 13]
         assert window.step4_sub_text_labels["sfm"].text() == "SfM"
-        assert window.step4_sub_text_labels["conversion"].text() == "変換"
-        assert window.step4_sub_text_labels["training"].text() == "トレーニング"
+        assert window.step4_sub_text_labels["conversion"].text() == "Cubemap"
+        assert window.step4_sub_text_labels["training"].text() == "Train"
         icon_x = [
             label.mapTo(window, QPoint(0, 0)).x()
             for label in window.step4_sub_status_labels.values()
