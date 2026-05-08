@@ -217,6 +217,20 @@ QLabel#stickySummaryLabel {{
     font-size: 9pt;
     padding-top: 2px;
 }}
+QWidget#tabPathSummary {{
+    background-color: transparent;
+    border-bottom: 1px solid {BORDER};
+    padding-bottom: 3px;
+}}
+QLabel#tabPathSummaryKind {{
+    color: {TEXT_DIM};
+    font-size: 8pt;
+    font-weight: 600;
+}}
+QLabel#tabPathSummaryValue {{
+    color: {TEXT};
+    font-size: 8pt;
+}}
 QWidget#workPane {{
     background-color: {BG_INPUT};
     border: 1px solid {BORDER};

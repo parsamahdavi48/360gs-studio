@@ -234,7 +234,7 @@ def _ready_lichtfeld_training_step(scene: Path) -> CubemapStep:
     return step
 
 
-def test_cubemap_step_uses_fixed_output_folder_label(tmp_path: Path) -> None:
+def test_cubemap_step_uses_tab_path_summaries(tmp_path: Path) -> None:
     step = _ready_step(tmp_path)
 
     assert not hasattr(step, "output_browse")
@@ -314,6 +314,9 @@ def test_cubemap_step_uses_fixed_output_folder_label(tmp_path: Path) -> None:
     assert _is_descendant(step.output_bit_depth_combo, step.output_details_section)
     assert _is_descendant(step.invert_masks_cb, step.output_details_section)
     assert not _is_descendant(step.output_details_section, step.advanced_output_section)
+    assert _is_descendant(step.sfm_path_summary_row, step.input_tab)
+    assert _is_descendant(step.cubemap_path_summary_row, step.output_tab)
+    assert _is_descendant(step.training_path_summary_row, step.training_section)
     assert not _is_descendant(step.export_summary_label, step.advanced_output_section)
     assert not _is_descendant(step.export_summary_label, step.view_config.settings_widget)
     assert step.export_summary_label.text() == step.view_config.summary_text()
@@ -328,8 +331,10 @@ def test_cubemap_step_uses_fixed_output_folder_label(tmp_path: Path) -> None:
     assert sum(1 for v in cube6_views if not v["enabled"]) == 6
     assert step._export_method() == "metashape"
     assert step.export_method_buttons["metashape"].isChecked()
-    assert not step.output_path_label.wordWrap()
-    assert step.output_path_label.full_text() == str(tmp_path / "output")
+    assert not hasattr(step, "output_path_label")
+    assert not step.cubemap_path_summary_value.wordWrap()
+    assert step.cubemap_path_summary_kind.text() == i18n.t("STEP4_SUMMARY_OUTPUT")
+    assert step.cubemap_path_summary_value.full_text() == "output/"
     assert step.ms_images_path_label.full_text() == str(tmp_path / "images")
     assert step.scale_combo.itemText(0) == "Full"
     assert step.scale_combo.itemText(1) == "Normal"
@@ -1071,16 +1076,23 @@ def test_colmap_export_manifest_marks_sparse_project_ready(tmp_path: Path) -> No
     assert manifest["sparse_model_dir"] == "sparse/0"
 
 
-def test_colmap_export_method_displays_colmap_project_folder(tmp_path: Path) -> None:
+def test_colmap_export_method_displays_colmap_project_folder_summary(tmp_path: Path) -> None:
     _app()
     step = CubemapStep(Path.cwd())
     step.set_scene_dir(str(tmp_path))
 
-    assert step.output_path_label.full_text() == str(tmp_path / "output")
+    assert step.cubemap_path_summary_value.full_text() == "output/"
 
     step._set_export_method("colmap")
 
-    assert step.output_path_label.full_text() == str(tmp_path / "output" / "colmap_rig")
+    assert step.sfm_path_summary_kind.text() == i18n.t("STEP4_SUMMARY_INPUT")
+    assert step.sfm_path_summary_value.full_text() == "output/colmap_rig/sparse/"
+
+    step.set_pipeline_stage_intent("sfm", True)
+
+    assert step.sfm_path_summary_kind.text() == i18n.t("STEP4_SUMMARY_OUTPUT")
+    assert step.sfm_path_summary_value.full_text() == "output/colmap_rig/"
+    assert step.cubemap_path_summary_value.full_text() == "output/colmap_rig/"
 
 
 def test_colmap_export_can_queue_colmap_sfm_with_custom_executable(tmp_path: Path) -> None:
@@ -1153,7 +1165,8 @@ def test_spheresfm_method_can_queue_3dgut_export_without_projection_views(tmp_pa
     step._set_combo_data(step.spheresfm_output_shape_combo, "equirect_3dgut")
     step.spheresfm_exec_browse.set_text(str(fake_colmap))
 
-    assert step.output_path_label.full_text() == str(tmp_path / "output")
+    assert step.sfm_path_summary_value.full_text() == "output/spheresfm/"
+    assert step.cubemap_path_summary_value.full_text() == "output/"
     assert not step.export_targets_row.isEnabled()
     assert not step.view_config.settings_widget.isEnabled()
 
@@ -1201,7 +1214,8 @@ def test_spheresfm_method_can_queue_projected_cubemap_export(tmp_path: Path) -> 
     step._set_export_method("spheresfm")
     step.spheresfm_exec_browse.set_text(str(fake_colmap))
 
-    assert step.output_path_label.full_text() == str(tmp_path / "output")
+    assert step.sfm_path_summary_value.full_text() == "output/spheresfm/"
+    assert step.cubemap_path_summary_value.full_text() == "output/"
     assert step.export_targets_row.isEnabled()
     assert step.view_config.settings_widget.isEnabled()
 
@@ -1791,7 +1805,7 @@ def test_lichtfeld_3dgut_direct_mode_runs_metashape_only_and_disables_view_expor
     assert step._effective_profile() == "lichtfeld"
     assert step.axis_transform_combo.currentData() == "none"
     assert step.ms_use_ply_cb.isChecked()
-    assert step.output_path_label.full_text() == str(tmp_path / "output")
+    assert step.cubemap_path_summary_value.full_text() == "output/"
     assert step.settings_tabs.isTabEnabled(step.output_tab_index)
     assert not step.view_config.settings_widget.isEnabled()
     assert not step.export_targets_row.isEnabled()
@@ -1843,7 +1857,7 @@ def test_lichtfeld_3dgut_direct_mode_restores_projection_export_targets(tmp_path
     assert step.export_images_cb.isChecked() is False
     assert step.export_masks_cb.isChecked() is True
     assert step.settings_tabs.isTabEnabled(step.view_export_tab_index)
-    assert step.output_path_label.full_text() == str(tmp_path / "output")
+    assert step.cubemap_path_summary_value.full_text() == "output/"
 
 
 def test_switching_profile_away_from_lichtfeld_exits_3dgut_direct_mode(tmp_path: Path) -> None:

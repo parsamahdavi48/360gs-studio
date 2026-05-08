@@ -433,18 +433,6 @@ class CubemapStep(BaseStepWidget):
         top_layout.setSpacing(8)
         left_layout = top_layout  # 既存コードとの互換用エイリアス
 
-        output_dir_label = QLabel(i18n.OUTPUT_DIR)
-        output_dir_label.setToolTip(i18n.tip("OUTPUT_DIR_CUBEMAP"))
-        self.output_path_label = ElidedPathLabel("-")
-        self.output_path_label.setToolTip(i18n.tip("OUTPUT_DIR_CUBEMAP"))
-        output_row = QWidget()
-        output_row_layout = QHBoxLayout(output_row)
-        output_row_layout.setContentsMargins(0, 0, 0, 0)
-        output_row_layout.setSpacing(6)
-        output_row_layout.addWidget(output_dir_label)
-        output_row_layout.addWidget(self.output_path_label, stretch=1)
-        left_layout.addWidget(output_row)
-
         self.export_method_label = QLabel(i18n.t("EXPORT_METHOD_COMPACT"))
         self.export_method_label.setToolTip(i18n.tip("EXPORT_METHOD"))
         self.export_method_label.setVisible(False)
@@ -473,6 +461,17 @@ class CubemapStep(BaseStepWidget):
         self.settings_tabs.setObjectName("step4SettingsTabs")
         self.settings_tabs.tabBar().setUsesScrollButtons(False)
         self.settings_tabs.tabBar().setExpanding(False)
+
+        (
+            self.sfm_path_summary_row,
+            self.sfm_path_summary_kind,
+            self.sfm_path_summary_value,
+        ) = self._make_tab_path_summary_row()
+        (
+            self.cubemap_path_summary_row,
+            self.cubemap_path_summary_kind,
+            self.cubemap_path_summary_value,
+        ) = self._make_tab_path_summary_row()
 
         colmap_section = QWidget()
         self.colmap_section = colmap_section
@@ -964,6 +963,7 @@ class CubemapStep(BaseStepWidget):
         input_layout = QVBoxLayout(input_tab)
         input_layout.setContentsMargins(8, 8, 8, 8)
         input_layout.setSpacing(6)
+        input_layout.addWidget(self.sfm_path_summary_row)
         input_layout.addWidget(self.export_method_row)
         input_layout.addWidget(self.sfm_input_section)
         input_layout.addWidget(self.colmap_section)
@@ -975,6 +975,7 @@ class CubemapStep(BaseStepWidget):
         output_layout = QVBoxLayout(output_tab)
         output_layout.setContentsMargins(8, 8, 8, 8)
         output_layout.setSpacing(6)
+        output_layout.addWidget(self.cubemap_path_summary_row)
         output_layout.addWidget(self.export_targets_row)
         output_layout.addWidget(self.metashape_output_section)
         output_layout.addWidget(self.spheresfm_convert_section)
@@ -1079,6 +1080,43 @@ class CubemapStep(BaseStepWidget):
         scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
         scroll.setWidget(content)
         return scroll
+
+    def _make_tab_path_summary_row(self) -> tuple[QWidget, QLabel, ElidedPathLabel]:
+        row = QWidget()
+        row.setObjectName("tabPathSummary")
+        layout = QHBoxLayout(row)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(6)
+        kind = QLabel("-")
+        kind.setObjectName("tabPathSummaryKind")
+        kind.setWordWrap(False)
+        value = ElidedPathLabel("-")
+        value.setObjectName("tabPathSummaryValue")
+        layout.addWidget(kind)
+        layout.addWidget(value, stretch=1)
+        return row, kind, value
+
+    def _make_training_path_summary_row(
+        self,
+    ) -> tuple[QWidget, QLabel, ElidedPathLabel, QLabel, ElidedPathLabel]:
+        row = QWidget()
+        row.setObjectName("tabPathSummary")
+        layout = QHBoxLayout(row)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(6)
+        dataset_kind = QLabel(i18n.t("STEP4_SUMMARY_INPUT"))
+        dataset_kind.setObjectName("tabPathSummaryKind")
+        dataset_value = ElidedPathLabel("-")
+        dataset_value.setObjectName("tabPathSummaryValue")
+        output_kind = QLabel(i18n.t("STEP4_SUMMARY_OUTPUT"))
+        output_kind.setObjectName("tabPathSummaryKind")
+        output_value = ElidedPathLabel("-")
+        output_value.setObjectName("tabPathSummaryValue")
+        layout.addWidget(dataset_kind)
+        layout.addWidget(dataset_value, stretch=1)
+        layout.addWidget(output_kind)
+        layout.addWidget(output_value, stretch=1)
+        return row, dataset_kind, dataset_value, output_kind, output_value
 
     def pipeline_stage(self) -> str:
         current = self.settings_tabs.currentIndex()
@@ -1374,6 +1412,15 @@ class CubemapStep(BaseStepWidget):
         layout = QVBoxLayout(section)
         layout.setContentsMargins(8, 8, 8, 8)
         layout.setSpacing(6)
+
+        (
+            self.training_path_summary_row,
+            self.training_dataset_summary_kind,
+            self.training_dataset_summary_value,
+            self.training_output_summary_kind,
+            self.training_output_summary_value,
+        ) = self._make_training_path_summary_row()
+        layout.addWidget(self.training_path_summary_row)
 
         self.run_training_cb = QCheckBox(i18n.t("RUN_TRAINING_AFTER_EXPORT"))
         self.run_training_cb.setToolTip(i18n.tip("RUN_TRAINING_AFTER_EXPORT"))
@@ -2067,8 +2114,6 @@ class CubemapStep(BaseStepWidget):
     def set_scene_dir(self, path: str) -> None:
         super().set_scene_dir(path)
         if not path:
-            self.output_path_label.setToolTip(i18n.tip("OUTPUT_DIR_CUBEMAP"))
-            self.output_path_label.set_full_text("-")
             self.ms_images_path_label.setToolTip(i18n.tip("MS_IMAGES"))
             self.ms_images_path_label.set_full_text("-")
             self.ms_xml_browse.set_text("")
@@ -2087,6 +2132,7 @@ class CubemapStep(BaseStepWidget):
             self._lfs_output_name_user_edited = False
             self._postshot_project_name_user_edited = False
             self._update_training_paths(force=True)
+            self._update_path_labels()
             self._update_lfs_output_name(force=True)
             self._update_postshot_project_name(force=True)
             self._update_output_count()
@@ -2566,12 +2612,14 @@ class CubemapStep(BaseStepWidget):
         if self._syncing_training_paths:
             return
         self._training_dataset_user_edited = True
+        self._update_path_labels()
         self._update_lfs_auto_steps_scaler()
 
     def _on_training_output_edited(self, _path: str) -> None:
         if self._syncing_training_paths:
             return
         self._training_output_user_edited = True
+        self._update_path_labels()
         self._save_user_preferences()
 
     def _on_lfs_output_name_edited(self, _text: str) -> None:
@@ -3069,6 +3117,12 @@ class CubemapStep(BaseStepWidget):
             return Path(raw)
         return self._default_training_output_dir()
 
+    def _training_dataset_dir(self) -> Path:
+        raw = self.training_dataset_browse.text().strip()
+        if raw:
+            return Path(raw)
+        return self._default_training_dataset_dir()
+
     def _default_training_output_dir(self) -> Path:
         if not self.scene_dir:
             raise ValueError(i18n.t("SCENE_REQUIRED_ACTION_HINT"))
@@ -3144,7 +3198,7 @@ class CubemapStep(BaseStepWidget):
         return output_colmap if output_colmap.is_dir() else None
 
     def _training_dataset(self) -> TrainingDataset:
-        dataset_root = Path(self.training_dataset_browse.text().strip()) if self.training_dataset_browse.text() else self._default_training_dataset_dir()
+        dataset_root = self._training_dataset_dir()
         if self._is_colmap_method():
             images_dir = self._colmap_rig_images_dir()
             masks_dir = self._colmap_rig_masks_dir()
@@ -3312,23 +3366,187 @@ class CubemapStep(BaseStepWidget):
 
     def _update_path_labels(self) -> None:
         if not self.scene_dir:
+            self._set_single_path_summary(
+                self.sfm_path_summary_row,
+                self.sfm_path_summary_kind,
+                self.sfm_path_summary_value,
+                i18n.t("STEP4_SUMMARY_INPUT"),
+                "-",
+            )
+            self._set_single_path_summary(
+                self.cubemap_path_summary_row,
+                self.cubemap_path_summary_kind,
+                self.cubemap_path_summary_value,
+                i18n.t("STEP4_SUMMARY_OUTPUT"),
+                "-",
+            )
+            self._set_training_path_summary("-", "-")
             return
-        output = str(self._display_output_dir())
-        if self._uses_direct_equirect_output() or (
+        self._update_sfm_path_summary()
+        self._update_cubemap_path_summary()
+        self._update_training_path_summary()
+
+    def _set_single_path_summary(
+        self,
+        row: QWidget,
+        kind_label: QLabel,
+        value_label: ElidedPathLabel,
+        kind: str,
+        value: str,
+        *,
+        tooltip: str = "",
+    ) -> None:
+        kind_label.setText(kind)
+        value_label.set_full_text(value or "-")
+        summary_tooltip = tooltip or f"{kind}: {value or '-'}"
+        row.setToolTip(summary_tooltip)
+        kind_label.setToolTip(summary_tooltip)
+        value_label.setToolTip(summary_tooltip)
+
+    def _set_training_path_summary(self, dataset: str, output: str, *, tooltip: str = "") -> None:
+        self.training_dataset_summary_kind.setText(i18n.t("STEP4_SUMMARY_INPUT"))
+        self.training_output_summary_kind.setText(i18n.t("STEP4_SUMMARY_OUTPUT"))
+        self.training_dataset_summary_value.set_full_text(dataset or "-")
+        self.training_output_summary_value.set_full_text(output or "-")
+        summary_tooltip = tooltip or (
+            f"{i18n.t('STEP4_SUMMARY_INPUT')}: {dataset or '-'}\n"
+            f"{i18n.t('STEP4_SUMMARY_OUTPUT')}: {output or '-'}"
+        )
+        for widget in (
+            self.training_path_summary_row,
+            self.training_dataset_summary_kind,
+            self.training_dataset_summary_value,
+            self.training_output_summary_kind,
+            self.training_output_summary_value,
+        ):
+            widget.setToolTip(summary_tooltip)
+
+    def _summary_path_text(self, path: Path, *, directory: bool = True) -> str:
+        separator = os.sep
+        if self.scene_dir:
+            try:
+                text = path.relative_to(Path(self.scene_dir)).as_posix()
+                separator = "/"
+            except ValueError:
+                text = str(path)
+        else:
+            text = str(path)
+        if directory and text != "-":
+            text = text.rstrip("/\\") + separator
+        return text
+
+    def _summary_full_path(self, path: Path, *, directory: bool = True) -> str:
+        text = str(path)
+        if directory:
+            text = text.rstrip("/\\") + os.sep
+        return text
+
+    def _update_sfm_path_summary(self) -> None:
+        if self._is_metashape_method():
+            parts: list[str] = []
+            tooltip_parts: list[str] = []
+            xml_text = self.ms_xml_browse.text().strip()
+            if xml_text:
+                xml = Path(xml_text)
+                parts.append(f"XML {self._summary_path_text(xml, directory=False)}")
+                tooltip_parts.append(f"{i18n.METASHAPE_XML}: {xml}")
+            else:
+                parts.append("XML")
+                tooltip_parts.append(f"{i18n.METASHAPE_XML}: -")
+            if self._preprocess_uses_ply():
+                ply_text = self.ms_ply_browse.text().strip()
+                if ply_text:
+                    ply = Path(ply_text)
+                    parts.append(f"PLY {self._summary_path_text(ply, directory=False)}")
+                    tooltip_parts.append(f"{i18n.METASHAPE_PLY}: {ply}")
+                else:
+                    parts.append("PLY")
+                    tooltip_parts.append(f"{i18n.METASHAPE_PLY}: -")
+            self._set_single_path_summary(
+                self.sfm_path_summary_row,
+                self.sfm_path_summary_kind,
+                self.sfm_path_summary_value,
+                i18n.t("STEP4_SUMMARY_INPUT"),
+                " / ".join(parts),
+                tooltip="\n".join(tooltip_parts),
+            )
+            return
+
+        if self._is_colmap_method():
+            if self.pipeline_stage_intent(_PIPELINE_STAGE_SFM):
+                target = self._colmap_rig_dir()
+                kind = i18n.t("STEP4_SUMMARY_OUTPUT")
+                tip_key = "OUTPUT_DIR_COLMAP_PROJECT"
+            else:
+                target = self._find_colmap_sparse_model() or self._colmap_sparse_dir()
+                kind = i18n.t("STEP4_SUMMARY_INPUT")
+                tip_key = "COLMAP_SPARSE_MODEL"
+            self._set_single_path_summary(
+                self.sfm_path_summary_row,
+                self.sfm_path_summary_kind,
+                self.sfm_path_summary_value,
+                kind,
+                self._summary_path_text(target),
+                tooltip=f"{i18n.tip(tip_key)}\n{self._summary_full_path(target)}",
+            )
+            return
+
+        if self._spheresfm_runs_sfm():
+            target = self._spheresfm_project_dir()
+            kind = i18n.t("STEP4_SUMMARY_WORK")
+            tip_key = "OUTPUT_DIR_SPHERESFM_PROJECT"
+        else:
+            target = self._find_spheresfm_sparse_model() or self._spheresfm_sparse_dir()
+            kind = i18n.t("STEP4_SUMMARY_INPUT")
+            tip_key = "SPHERESFM_SPARSE_MODEL"
+        self._set_single_path_summary(
+            self.sfm_path_summary_row,
+            self.sfm_path_summary_kind,
+            self.sfm_path_summary_value,
+            kind,
+            self._summary_path_text(target),
+            tooltip=f"{i18n.tip(tip_key)}\n{self._summary_full_path(target)}",
+        )
+
+    def _update_cubemap_path_summary(self) -> None:
+        target = self._colmap_rig_dir() if self._is_colmap_method() else self._output_dir()
+        if self._is_colmap_method():
+            tip_key = "OUTPUT_DIR_COLMAP_PROJECT"
+        elif self._uses_direct_equirect_output() or (
             self._spheresfm_runs_conversion() and self._uses_spheresfm_3dgut_output()
         ):
             tip_key = "OUTPUT_DIR_LICHTFELD_DIRECT"
-        elif self._is_spheresfm_method():
-            tip_key = "OUTPUT_DIR_SPHERESFM_PROJECT"
         else:
-            tip_key = "OUTPUT_DIR_CUBEMAP" if self._is_metashape_method() else "OUTPUT_DIR_COLMAP_PROJECT"
-        self.output_path_label.setToolTip(f"{i18n.tip(tip_key)}\n{output}")
-        self.output_path_label.set_full_text(output)
+            tip_key = "OUTPUT_DIR_CUBEMAP"
+        value = self._summary_path_text(target)
+        if not self.pipeline_stage_intent(_PIPELINE_STAGE_CONVERSION):
+            value = i18n.t("STEP4_SUMMARY_DISABLED_PATH").format(path=value)
+        self._set_single_path_summary(
+            self.cubemap_path_summary_row,
+            self.cubemap_path_summary_kind,
+            self.cubemap_path_summary_value,
+            i18n.t("STEP4_SUMMARY_OUTPUT"),
+            value,
+            tooltip=f"{i18n.tip(tip_key)}\n{self._summary_full_path(target)}",
+        )
+
+    def _update_training_path_summary(self) -> None:
+        dataset = self._training_dataset_dir()
+        output = self._training_output_dir()
+        self._set_training_path_summary(
+            self._summary_path_text(dataset),
+            self._summary_path_text(output),
+            tooltip=(
+                f"{i18n.t('STEP4_SUMMARY_INPUT')}: {self._summary_full_path(dataset)}\n"
+                f"{i18n.t('STEP4_SUMMARY_OUTPUT')}: {self._summary_full_path(output)}"
+            ),
+        )
 
     def _on_metashape_input_path_changed(self, *_args) -> None:
         if self.sender() is self.ms_ply_browse and not self._syncing_metashape_auto_inputs:
             self._set_metashape_ply_approved(bool(self.ms_ply_browse.text().strip()))
         self._update_metashape_input_hint()
+        self._update_path_labels()
         self.primary_action_state_changed.emit()
 
     def _on_metashape_ply_text_edited(self, _text: str) -> None:
@@ -3362,6 +3580,7 @@ class CubemapStep(BaseStepWidget):
             self._colmap_sparse_user_edited = True
         self._update_sfm_input_tooltips()
         self._update_training_paths()
+        self._update_path_labels()
         self.primary_action_state_changed.emit()
 
     def _on_spheresfm_sparse_path_changed(self, _path: str) -> None:
@@ -3369,6 +3588,7 @@ class CubemapStep(BaseStepWidget):
             self._spheresfm_sparse_user_edited = True
         self._update_sfm_input_tooltips()
         self._update_training_paths()
+        self._update_path_labels()
         self.primary_action_state_changed.emit()
 
     def _sync_sfm_input_paths(self, *, force: bool = False) -> None:
@@ -3389,6 +3609,7 @@ class CubemapStep(BaseStepWidget):
         finally:
             self._syncing_sfm_input_paths = False
         self._update_sfm_input_tooltips()
+        self._update_path_labels()
 
     def _update_sfm_input_tooltips(self) -> None:
         if not hasattr(self, "colmap_sparse_browse"):

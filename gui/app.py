@@ -122,13 +122,6 @@ class MainWindow(QWidget):
             i18n.t("STEP3_NAV"),
             i18n.t("STEP4_NAV"),
         ]
-        self.step_descriptions = [
-            i18n.t("STEP1_DESC"),
-            i18n.t("STEP2_DESC"),
-            i18n.t("STEP3_DESC"),
-            i18n.t("STEP4_DESC"),
-        ]
-
         # --- メイン分割: 作業領域 / 実行状態 ---
         splitter = QSplitter(Qt.Vertical)
         splitter.setChildrenCollapsible(False)
@@ -329,6 +322,7 @@ class MainWindow(QWidget):
         step = self._current_step_widget()
         if step is not None:
             step.on_activated()
+        self._update_step_header()
         self._refresh_step4_subnav()
 
     def _on_scene_suggested(self, path: str) -> None:
@@ -360,8 +354,7 @@ class MainWindow(QWidget):
         self.stack.setCurrentIndex(index)
         for i, btn in enumerate(self.step_buttons):
             btn.setChecked(i == index)
-        self.step_header.setText(self.step_titles[index])
-        self.step_subheader.setText(self.step_descriptions[index])
+        self._update_step_header()
         self.step_help_btn.setAccessibleName(f"{self.step_titles[index]} {i18n.t('STEP_HELP_BUTTON')}")
         step = self._current_step_widget()
         if step is not None:
@@ -371,6 +364,37 @@ class MainWindow(QWidget):
             self.step4_subnotice_timer.stop()
         self._update_run_button()
         self._refresh_step4_subnav()
+
+    def _update_step_header(self) -> None:
+        index = self.stack.currentIndex()
+        if not 0 <= index < len(self.step_titles):
+            return
+        self.step_header.setText(self.step_titles[index])
+        label, path = self._step_header_path(index)
+        self.step_subheader.setText(f"{label}: {path}")
+        self.step_subheader.setToolTip(self._step_header_path_tooltip(index, label, path))
+
+    def _step_header_path(self, index: int) -> tuple[str, str]:
+        if not self.scene_browse.text():
+            label = i18n.t("STEP_HEADER_OUTPUT_ROOT") if index == 3 else i18n.t("STEP_HEADER_OUTPUT")
+            if index == 1:
+                label = i18n.t("STEP_HEADER_TARGET")
+            return label, "-"
+        if index == 0:
+            return i18n.t("STEP_HEADER_OUTPUT"), "images/"
+        if index == 1:
+            return i18n.t("STEP_HEADER_TARGET"), "images/"
+        if index == 2:
+            return i18n.t("STEP_HEADER_OUTPUT"), "masks/"
+        return i18n.t("STEP_HEADER_OUTPUT_ROOT"), "output/"
+
+    def _step_header_path_tooltip(self, index: int, label: str, path: str) -> str:
+        scene_text = self.scene_browse.text()
+        if not scene_text or path == "-":
+            return f"{label}: -"
+        scene = Path(scene_text)
+        target = scene / path.rstrip("/")
+        return f"{label}: {target}"
 
     def _toggle_step4_pipeline_stage_intent(self, stage: str) -> None:
         if not self.step4.pipeline_stage_intent_toggle_enabled(stage):
@@ -464,6 +488,7 @@ class MainWindow(QWidget):
                 self.run_btn.setToolTip(step.primary_action_tooltip())
             else:
                 self.run_btn.setToolTip(i18n.t("SCENE_REQUIRED_ACTION_HINT"))
+        self._update_step_header()
 
         self.run_btn.setVisible(True)
         action_enabled = step.primary_action_enabled() if step is not None else True
