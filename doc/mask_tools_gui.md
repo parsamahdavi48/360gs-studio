@@ -18,10 +18,10 @@ The `?` help icon at the right edge of the center-panel header opens this step's
 
 | Goal | Recommended settings |
 | --- | --- |
-| Mask people or the camera operator in 360° frames | `Image Type: 360°`, `Model: YOLO/SAM2.1`, `Quality: High` |
+| Mask people or the camera operator in 360° frames | Confirm `Image Type: 360°`, then use `Model: YOLO/SAM2.1`, `Quality: High` |
 | Get higher-accuracy person or sky masks | `Model: SAM3.1` |
 | Try sky masks without SAM3.1 | `Model: Mask2Former`, target `sky` |
-| Process normal photos or normal video frames | `Image Type: Normal` |
+| Process normal photos or normal video frames | Add or copy them into the scene and confirm `Image Type: Normal` |
 | Exclude visible nearby stitch seams | `Stitch` ON |
 | Exclude blown-out windows or lights | `Overexp` ON |
 | Apply your own fixed mask to every image | `Custom` ON |
@@ -31,7 +31,7 @@ When unsure, start with `YOLO/SAM2.1` + `High` + `person` for 360° images, then
 ## Basic Flow
 
 1. Confirm that `Images Folder` points to the scene `images/`.
-2. Choose `Image Type`: `360°` for equirectangular images or `Normal` for normal photos/video frames.
+2. Confirm the `Image Type` status. Step 3 detects it from Step 1 records, external image registration, or image headers, and splits mixed inputs by image type automatically.
 3. Choose the mask `Model` and detection targets.
 4. Enable `Stitch`, `Overexp`, or `Custom` only when needed.
 5. Run `Mask Preview` on one image and inspect the red overlay.

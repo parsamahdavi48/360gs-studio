@@ -158,6 +158,7 @@ class MaskPreviewWidget(QWidget):
         self.projection_toggle_btn = self.mode_toolbar.perspective_preview_btn
         if self.projection_toggle_btn is None:
             raise RuntimeError("Perspective preview button was not created")
+        self._perspective_enabled = True
         self.single_preview_btn = self.mode_toolbar.single_preview_btn
         self.thumbnail_preview_btn = self.mode_toolbar.thumbnail_preview_btn
 
@@ -581,6 +582,8 @@ class MaskPreviewWidget(QWidget):
     def set_preview_mode(self, mode: str) -> None:
         if mode not in {PREVIEW_MODE_PERSPECTIVE, PREVIEW_MODE_SINGLE, PREVIEW_MODE_THUMBNAILS}:
             return
+        if mode == PREVIEW_MODE_PERSPECTIVE and not self._perspective_enabled:
+            return
         if mode == self._preview_mode:
             return
         self._preview_mode = mode
@@ -598,6 +601,17 @@ class MaskPreviewWidget(QWidget):
 
     def preview_projection(self) -> str:
         return self._preview_projection
+
+    def set_perspective_enabled(self, enabled: bool) -> None:
+        enabled = bool(enabled)
+        self._perspective_enabled = enabled
+        if self.projection_toggle_btn is not None:
+            self.projection_toggle_btn.setEnabled(enabled)
+            self.projection_toggle_btn.setVisible(enabled)
+        if not enabled and self._preview_mode == PREVIEW_MODE_PERSPECTIVE:
+            self.set_preview_mode(PREVIEW_MODE_SINGLE)
+            return
+        self._update_projection_button()
 
     def _on_mask_overlay_toggled(self, checked: bool) -> None:
         self._mask_overlay_visible = checked
@@ -628,7 +642,11 @@ class MaskPreviewWidget(QWidget):
         finally:
             self.projection_toggle_btn.blockSignals(False)
         self.projection_toggle_btn.setIcon(perspective_preview_icon())
-        self.projection_toggle_btn.setToolTip(i18n.tip("PREVIEW_PROJECTION_TOGGLE"))
+        self.projection_toggle_btn.setToolTip(
+            i18n.tip("PREVIEW_PROJECTION_TOGGLE")
+            if self._perspective_enabled
+            else i18n.tip("PREVIEW_PROJECTION_DISABLED_NORMAL")
+        )
 
     def _on_perspective_dragged(self, delta_x: float, delta_y: float) -> None:
         if self._preview_projection != PREVIEW_PROJECTION_PERSPECTIVE:

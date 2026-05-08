@@ -23,6 +23,7 @@ import numpy as np
 from PIL import Image
 
 from image_io import imread_unicode, imwrite_unicode
+from mask_targets import MaskTarget, collect_image_targets
 from mask_view_recipes import (
     DEFAULT_QUALITY,
     PROJECTION_EQUIRECT,
@@ -625,6 +626,7 @@ def _completed_record_matches(
     images_root: Path,
     masks_dir: Path,
     options: SkyMaskOptions,
+    mask_path: Path | None = None,
 ) -> bool:
     completed = state.get("completed")
     if not isinstance(completed, dict):
@@ -639,7 +641,7 @@ def _completed_record_matches(
         return False
     if record.get("source") != source:
         return False
-    mask_out = mask_output_path_for_image(image_path, images_root, masks_dir, add_ext=options.add_ext)
+    mask_out = mask_path or mask_output_path_for_image(image_path, images_root, masks_dir, add_ext=options.add_ext)
     return mask_out.is_file()
 
 
@@ -650,13 +652,14 @@ def _mark_resume_completed(
     images_root: Path,
     masks_dir: Path,
     options: SkyMaskOptions,
+    mask_path: Path | None = None,
 ) -> None:
     completed = state.setdefault("completed", {})
     if not isinstance(completed, dict):
         completed = {}
         state["completed"] = completed
     key = _relative_key(image_path, images_root)
-    mask_out = mask_output_path_for_image(image_path, images_root, masks_dir, add_ext=options.add_ext)
+    mask_out = mask_path or mask_output_path_for_image(image_path, images_root, masks_dir, add_ext=options.add_ext)
     completed[key] = {
         "source": _source_identity(image_path, images_root),
         "mask": _relative_key(mask_out, masks_dir),
@@ -665,7 +668,7 @@ def _mark_resume_completed(
 
 
 def _valid_completed_count(
-    image_files: list[Path],
+    targets: list[MaskTarget],
     images_root: Path,
     masks_dir: Path,
     state: dict[str, object],
@@ -673,8 +676,8 @@ def _valid_completed_count(
 ) -> int:
     return sum(
         1
-        for image_path in image_files
-        if _completed_record_matches(state, image_path, images_root, masks_dir, options)
+        for target in targets
+        if _completed_record_matches(state, target.image_path, images_root, masks_dir, options, target.mask_path)
     )
 
 
@@ -1052,12 +1055,13 @@ def process_image(
     masks_dir: Path,
     segmenter: Any,
     options: SkyMaskOptions,
+    mask_path: Path | None = None,
 ) -> str | None:
     image = imread_unicode(image_path, cv2.IMREAD_UNCHANGED)
     if image is None:
         return f"Skipped (read error): {image_path.name}"
     sky_mask = detect_sky_mask(image, segmenter, options)
-    mask_out = mask_output_path_for_image(image_path, images_root, masks_dir, add_ext=options.add_ext)
+    mask_out = mask_path or mask_output_path_for_image(image_path, images_root, masks_dir, add_ext=options.add_ext)
     merged = merge_with_existing(mask_out, sky_mask, replace=options.replace, merge_mode=options.merge_mode)
     if not imwrite_unicode_atomic(mask_out, merged):
         return f"Skipped (write error): {mask_out.name}"
@@ -1076,13 +1080,19 @@ def run(
     max_images: int | None = None,
     progress_offset: int | None = None,
     progress_total: int | None = None,
+    image_list: str | Path | None = None,
 ) -> SkyMaskRunResult:
     images_path = Path(images)
     masks_path = Path(masks_dir)
     options = options or SkyMaskOptions()
-    image_files = iter_image_files(images_path)
-    result = SkyMaskRunResult(total=len(image_files))
-    if not image_files:
+    images_root, targets = collect_image_targets(
+        images_path,
+        masks_path,
+        add_ext=options.add_ext,
+        image_list=image_list,
+    )
+    result = SkyMaskRunResult(total=len(targets))
+    if not targets:
         print(f"No images found in {images_path}", flush=True)
         return result
 
@@ -1125,22 +1135,30 @@ def run(
         _print_memory_stats("before", _cuda_memory_stats(segmenter))
         _reset_cuda_peak(segmenter)
 
-    pending_files: list[Path] = []
-    for image_path in image_files:
-        if state is not None and _completed_record_matches(state, image_path, images_path, masks_path, options):
+    pending_targets: list[MaskTarget] = []
+    for target in targets:
+        if state is not None and _completed_record_matches(
+            state,
+            target.image_path,
+            images_root,
+            masks_path,
+            options,
+            target.mask_path,
+        ):
             result.resumed += 1
             continue
-        pending_files.append(image_path)
+        pending_targets.append(target)
     if max_images is not None and max_images > 0:
-        pending_files = pending_files[: int(max_images)]
+        pending_targets = pending_targets[: int(max_images)]
 
-    total_for_progress = int(progress_total) if progress_total and progress_total > 0 else len(image_files)
+    total_for_progress = int(progress_total) if progress_total and progress_total > 0 else len(targets)
     done_base = int(progress_offset) if progress_offset is not None and progress_offset >= 0 else result.resumed
     print(f"[progress] {done_base}/{total_for_progress}", flush=True)
     printed_first_memory = False
-    for local_done, image_path in enumerate(pending_files, start=1):
+    for local_done, target in enumerate(pending_targets, start=1):
+        image_path = target.image_path
         try:
-            error = process_image(image_path, images_path, masks_path, segmenter, options)
+            error = process_image(image_path, images_root, masks_path, segmenter, options, target.mask_path)
         except Exception as e:  # noqa: BLE001 - keep batch processing alive.
             if is_out_of_memory_error(e):
                 _empty_cuda_cache(segmenter)
@@ -1157,7 +1175,7 @@ def run(
         if error is None:
             result.applied += 1
             if state is not None:
-                _mark_resume_completed(state_path, state, image_path, images_path, masks_path, options)
+                _mark_resume_completed(state_path, state, image_path, images_root, masks_path, options, target.mask_path)
             if backend == BACKEND_SAM31 and not printed_first_memory:
                 _print_memory_stats("after_first_image", _cuda_memory_stats(segmenter))
                 printed_first_memory = True
@@ -1170,8 +1188,8 @@ def run(
     for message in result.messages or []:
         print(message, flush=True)
     if state is not None and result.fatal_error is None:
-        valid_completed = _valid_completed_count(image_files, images_path, masks_path, state, options)
-        if valid_completed >= len(image_files):
+        valid_completed = _valid_completed_count(targets, images_root, masks_path, state, options)
+        if valid_completed >= len(targets):
             try:
                 state_path.unlink()
             except OSError:
@@ -1237,6 +1255,9 @@ def _build_child_args(
         cmd.append("--add-ext")
     if args.replace:
         cmd.append("--replace")
+    image_list = getattr(args, "image_list", None)
+    if image_list:
+        cmd.extend(["--image-list", str(image_list)])
     for prompt in args.sam_prompt or []:
         cmd.extend(["--sam-prompt", str(prompt)])
     for prompt in args.subtract_sam_prompt or []:
@@ -1271,15 +1292,20 @@ def _safe_batch_completed_count(
     options: SkyMaskOptions,
     *,
     settings_hash: str,
-) -> tuple[int, int, dict[str, object], list[Path], Path, Path, Path]:
+) -> tuple[int, int, dict[str, object], list[MaskTarget], Path, Path, Path]:
     images_path = Path(args.images)
     masks_path = Path(args.masks_dir)
-    image_files = iter_image_files(images_path)
+    images_root, targets = collect_image_targets(
+        images_path,
+        masks_path,
+        add_ext=options.add_ext,
+        image_list=getattr(args, "image_list", None),
+    )
     state_path = resume_state_path(masks_path)
     state = _load_resume_state(state_path, settings_hash)
     _write_json_atomic(state_path, state)
-    completed = _valid_completed_count(image_files, images_path, masks_path, state, options)
-    return completed, len(image_files), state, image_files, images_path, masks_path, state_path
+    completed = _valid_completed_count(targets, images_root, masks_path, state, options)
+    return completed, len(targets), state, targets, images_root, masks_path, state_path
 
 
 def run_safe_batch(args: argparse.Namespace, options: SkyMaskOptions) -> int:
@@ -1297,6 +1323,7 @@ def run_safe_batch(args: argparse.Namespace, options: SkyMaskOptions) -> int:
             max_images=int(args.max_images) if int(args.max_images) > 0 else None,
             progress_offset=int(args.progress_offset) if int(args.progress_offset) >= 0 else None,
             progress_total=int(args.progress_total) if int(args.progress_total) > 0 else None,
+            image_list=getattr(args, "image_list", None),
         )
         return 0 if result.ok else 1
 
@@ -1307,7 +1334,7 @@ def run_safe_batch(args: argparse.Namespace, options: SkyMaskOptions) -> int:
         device=args.device,
         options=options,
     )
-    completed, total, _state, _image_files, _images_root, _masks_path, state_path = _safe_batch_completed_count(
+    completed, total, _state, _targets, _images_root, _masks_path, state_path = _safe_batch_completed_count(
         args,
         options,
         settings_hash=settings_hash,
@@ -1334,7 +1361,7 @@ def run_safe_batch(args: argparse.Namespace, options: SkyMaskOptions) -> int:
         )
         exit_code, oom = _run_child_and_stream(cmd)
         previous_completed = completed
-        completed, total, _state, _image_files, _images_root, _masks_path, state_path = _safe_batch_completed_count(
+        completed, total, _state, _targets, _images_root, _masks_path, state_path = _safe_batch_completed_count(
             args,
             options,
             settings_hash=settings_hash,
@@ -1427,6 +1454,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--max-images", type=int, default=0, help=argparse.SUPPRESS)
     parser.add_argument("--progress-offset", type=int, default=-1, help=argparse.SUPPRESS)
     parser.add_argument("--progress-total", type=int, default=0, help=argparse.SUPPRESS)
+    parser.add_argument("--image-list", default=None, help="JSON or JSONL list of images to process")
     return parser.parse_args()
 
 
@@ -1483,6 +1511,7 @@ def main() -> int:
             max_images=int(args.max_images) if int(args.max_images) > 0 else None,
             progress_offset=int(args.progress_offset) if int(args.progress_offset) >= 0 else None,
             progress_total=int(args.progress_total) if int(args.progress_total) > 0 else None,
+            image_list=getattr(args, "image_list", None),
         )
     except Exception as e:  # noqa: BLE001 - CLI should report concise errors to the GUI log.
         print(f"Error: {e}", flush=True)

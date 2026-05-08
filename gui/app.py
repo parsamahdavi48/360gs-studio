@@ -145,6 +145,11 @@ class MainWindow(QWidget):
         sidebar_layout.setContentsMargins(6, 8, 6, 8)
         sidebar_layout.setSpacing(6)
         self.step_buttons: list[QPushButton] = []
+        self.step4_sub_buttons: dict[str, QPushButton] = {}
+        self.step4_sub_intent_buttons: dict[str, QToolButton] = {}
+        self.step4_sub_status_labels: dict[str, QToolButton] = {}
+        self.step4_sub_text_labels: dict[str, QLabel] = {}
+        self.step4_subnav_rail: QWidget | None = None
         for index, title_text in enumerate(self.step_nav_titles):
             btn = QPushButton(title_text)
             btn.setObjectName("navStep")
@@ -154,6 +159,62 @@ class MainWindow(QWidget):
             btn.clicked.connect(lambda _checked=False, i=index: self._set_current_step(i))
             sidebar_layout.addWidget(btn)
             self.step_buttons.append(btn)
+            if index == 3:
+                subnav = QWidget()
+                subnav.setObjectName("navSubSteps")
+                subnav_layout = QHBoxLayout(subnav)
+                subnav_layout.setContentsMargins(4, 0, 0, 2)
+                subnav_layout.setSpacing(3)
+                rail = QWidget()
+                rail.setObjectName("navSubRail")
+                rail.setFixedWidth(2)
+                subnav_layout.addWidget(rail)
+                self.step4_subnav_rail = rail
+                subnav_rows = QWidget()
+                subnav_rows.setObjectName("navSubRows")
+                subnav_rows_layout = QVBoxLayout(subnav_rows)
+                subnav_rows_layout.setContentsMargins(0, 0, 0, 0)
+                subnav_rows_layout.setSpacing(2)
+                for stage in ("sfm", "conversion", "training"):
+                    sub_btn = QPushButton("")
+                    sub_btn.setObjectName("navSubStep")
+                    sub_btn.setCheckable(True)
+                    sub_btn.setFixedSize(63, 22)
+                    sub_btn_layout = QHBoxLayout(sub_btn)
+                    sub_btn_layout.setContentsMargins(2, 0, 1, 0)
+                    sub_btn_layout.setSpacing(1)
+                    intent_btn = QToolButton()
+                    intent_btn.setObjectName("navSubStepIntent")
+                    intent_btn.setCheckable(True)
+                    intent_btn.setAutoRaise(True)
+                    intent_btn.setFixedSize(13, 18)
+                    intent_btn.clicked.connect(
+                        lambda _checked=False, s=stage: self._toggle_step4_pipeline_stage_intent(s)
+                    )
+                    status_label = QToolButton()
+                    status_label.setObjectName("navSubStepStatus")
+                    status_label.setAutoRaise(True)
+                    status_label.setFixedSize(13, 18)
+                    status_label.clicked.connect(
+                        lambda _checked=False, s=stage: self._activate_step4_pipeline_stage(s)
+                    )
+                    text_label = QLabel("")
+                    text_label.setObjectName("navSubStepText")
+                    text_label.setWordWrap(False)
+                    text_label.setAttribute(Qt.WA_TransparentForMouseEvents, True)
+                    sub_btn_layout.addWidget(intent_btn)
+                    sub_btn_layout.addWidget(text_label, stretch=1)
+                    sub_btn_layout.addWidget(status_label)
+                    sub_btn.clicked.connect(
+                        lambda _checked=False, s=stage: self._toggle_step4_pipeline_stage_intent(s)
+                    )
+                    subnav_rows_layout.addWidget(sub_btn)
+                    self.step4_sub_buttons[stage] = sub_btn
+                    self.step4_sub_intent_buttons[stage] = intent_btn
+                    self.step4_sub_status_labels[stage] = status_label
+                    self.step4_sub_text_labels[stage] = text_label
+                subnav_layout.addWidget(subnav_rows)
+                sidebar_layout.addWidget(subnav)
         sidebar_layout.addStretch()
         workspace_layout.addWidget(sidebar)
 
@@ -248,6 +309,7 @@ class MainWindow(QWidget):
         self.runner.queue_finished.connect(self._on_queue_finished)
         for step in self.steps:
             step.primary_action_state_changed.connect(self._update_run_button)
+        self.step4.primary_action_state_changed.connect(self._refresh_step4_subnav)
 
         self._on_scene_changed(self.scene_browse.text())
 
@@ -266,6 +328,7 @@ class MainWindow(QWidget):
         step = self._current_step_widget()
         if step is not None:
             step.on_activated()
+        self._refresh_step4_subnav()
 
     def _on_scene_suggested(self, path: str) -> None:
         if self.scene_browse.text():
@@ -303,6 +366,61 @@ class MainWindow(QWidget):
         if step is not None:
             step.on_activated()
         self._update_run_button()
+        self._refresh_step4_subnav()
+
+    def _activate_step4_pipeline_stage(self, stage: str) -> None:
+        self._set_current_step(3)
+        self.step4.set_pipeline_stage(stage)
+        self._refresh_step4_subnav()
+
+    def _toggle_step4_pipeline_stage_intent(self, stage: str) -> None:
+        if not self.step4.pipeline_stage_intent_toggle_enabled(stage):
+            self._activate_step4_pipeline_stage(stage)
+            self._update_run_button()
+            return
+        self._set_current_step(3)
+        self.step4.toggle_pipeline_stage_intent(stage)
+        self.step4.set_pipeline_stage(stage)
+        self._refresh_step4_subnav()
+        self._update_run_button()
+
+    def _refresh_step4_subnav(self) -> None:
+        if not self.step4_sub_buttons:
+            return
+        active_stage = self.step4.pipeline_stage() if self.stack.currentIndex() == 3 else ""
+        step4_active = self.stack.currentIndex() == 3
+        if self.step4_subnav_rail is not None:
+            self.step4_subnav_rail.setProperty("active", "true" if step4_active else "false")
+            self.step4_subnav_rail.style().unpolish(self.step4_subnav_rail)
+            self.step4_subnav_rail.style().polish(self.step4_subnav_rail)
+        for item in self.step4.pipeline_nav_items():
+            button = self.step4_sub_buttons.get(item["stage"])
+            if button is None:
+                continue
+            status_label = self.step4_sub_status_labels.get(item["stage"])
+            text_label = self.step4_sub_text_labels.get(item["stage"])
+            intent_btn = self.step4_sub_intent_buttons.get(item["stage"])
+            active = active_stage == item["stage"]
+            if intent_btn is not None:
+                intent_btn.setText(str(item["intent_symbol"]))
+                intent_btn.setChecked(bool(item["intent_checked"]))
+                intent_btn.setEnabled(bool(item["intent_enabled"]))
+                intent_btn.setToolTip(str(item["intent_tooltip"]))
+            if status_label is not None:
+                status_label.setText(str(item["status_symbol"]))
+                status_label.setProperty("status", item["status"])
+                status_label.setToolTip(str(item["status_tooltip"]))
+            if text_label is not None:
+                text_label.setText(str(item["label"]))
+                text_label.setProperty("active", "true" if active else "false")
+                text_label.setToolTip(str(item["navigate_tooltip"]))
+            button.setToolTip(str(item["intent_tooltip"]))
+            button.setChecked(active)
+            button.setProperty("status", item["status"])
+            for widget in (button, intent_btn, status_label, text_label):
+                if widget is not None:
+                    widget.style().unpolish(widget)
+                    widget.style().polish(widget)
 
     def _open_step_help(self) -> None:
         url = step_help_url(self.stack.currentIndex())
@@ -339,6 +457,12 @@ class MainWindow(QWidget):
         self.clear_scene_btn.setEnabled(unlocked and bool(self.scene_browse.text()))
         self.stack.setEnabled(unlocked)
         for btn in self.step_buttons:
+            btn.setEnabled(unlocked)
+        for btn in self.step4_sub_buttons.values():
+            btn.setEnabled(unlocked)
+        for btn in self.step4_sub_intent_buttons.values():
+            btn.setEnabled(unlocked)
+        for btn in self.step4_sub_status_labels.values():
             btn.setEnabled(unlocked)
 
     def _on_run(self) -> None:

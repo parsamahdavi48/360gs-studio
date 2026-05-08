@@ -13,8 +13,21 @@ from PySide6.QtWidgets import QApplication, QMessageBox
 
 import gui.steps.step4_cubemap as step4_cubemap
 from gui import i18n
+from gui.common.collapsible_section import CollapsibleSection
+from gui.steps.sfm_route_backends import get_sfm_route_backend
+from gui.steps.sfm_route_specs import (
+    OUTPUT_SHAPE_EQUIRECT_3DGUT,
+    OUTPUT_SHAPE_PROJECTED,
+    SFM_ROUTE_IDS,
+    SFM_ROUTE_COLMAP,
+    SFM_ROUTE_METASHAPE,
+    SFM_ROUTE_SPHERESFM,
+    get_sfm_route_spec,
+    normalize_sfm_route,
+)
 from gui.steps.step4_cubemap import CubemapStep
-from scene_layout import step4_export_settings_path, step4_views_config_path
+from gui.steps.training_backends import lichtfeld_defaults
+from scene_layout import step4_export_settings_path, step4_meta_dir, step4_views_config_path
 from transforms_to_colmap import read_ply_points
 
 
@@ -30,6 +43,8 @@ def _ready_step(scene: Path, *, metashape_inputs: bool = False) -> CubemapStep:
         (scene / "images").mkdir(exist_ok=True)
         (scene / "metashape.xml").write_text("<root />", encoding="utf-8")
         _write_ascii_ply(scene / "metashape.ply", [(1.0, 2.0, 3.0)])
+    _app()
+    _app()
     step = CubemapStep(Path.cwd())
     step.set_scene_dir(str(scene))
     return step
@@ -54,6 +69,19 @@ def _write_test_image(path: Path, size: tuple[int, int] = (64, 32)) -> None:
     Image.new("RGB", size, (0, 0, 0)).save(path)
 
 
+def _write_output_dataset(scene: Path, *, output_shape: str, pointcloud: bool = True) -> None:
+    output = scene / "output"
+    images = output / "images"
+    images.mkdir(parents=True, exist_ok=True)
+    _write_test_image(images / "frame_0001.jpg")
+    (output / "transforms.json").write_text("{}", encoding="utf-8")
+    if pointcloud:
+        _write_ascii_ply(output / "pointcloud.ply", [(0.0, 0.0, 0.0)])
+    settings_path = step4_export_settings_path(scene)
+    settings_path.parent.mkdir(parents=True, exist_ok=True)
+    settings_path.write_text(json.dumps({"output_shape": output_shape}), encoding="utf-8")
+
+
 def _write_spheresfm_sparse_stub(scene: Path) -> Path:
     sparse_model = scene / "output" / "spheresfm" / "sparse" / "0"
     sparse_model.mkdir(parents=True, exist_ok=True)
@@ -70,6 +98,42 @@ def _is_descendant(widget, ancestor) -> bool:
             return True
         current = current.parentWidget()
     return False
+
+
+def test_sfm_route_registry_describes_current_routes() -> None:
+    assert SFM_ROUTE_IDS == (SFM_ROUTE_METASHAPE, SFM_ROUTE_COLMAP, SFM_ROUTE_SPHERESFM)
+    assert normalize_sfm_route("missing") == SFM_ROUTE_METASHAPE
+
+    metashape = get_sfm_route_spec(SFM_ROUTE_METASHAPE)
+    colmap = get_sfm_route_spec(SFM_ROUTE_COLMAP)
+    spheresfm = get_sfm_route_spec(SFM_ROUTE_SPHERESFM)
+
+    assert metashape.kind == "external_input"
+    assert not metashape.runs_sfm_in_app
+    assert metashape.supports_output_shape(OUTPUT_SHAPE_PROJECTED)
+    assert metashape.supports_output_shape(OUTPUT_SHAPE_EQUIRECT_3DGUT)
+    assert colmap.kind == "in_app"
+    assert colmap.runs_sfm_in_app
+    assert colmap.supports_output_shape(OUTPUT_SHAPE_PROJECTED)
+    assert not colmap.supports_output_shape(OUTPUT_SHAPE_EQUIRECT_3DGUT)
+    assert spheresfm.kind == "in_app"
+    assert spheresfm.runs_sfm_in_app
+    assert spheresfm.supports_output_shape(OUTPUT_SHAPE_PROJECTED)
+    assert spheresfm.supports_output_shape(OUTPUT_SHAPE_EQUIRECT_3DGUT)
+    for route_id in SFM_ROUTE_IDS:
+        assert get_sfm_route_backend(route_id).spec.route_id == route_id
+    assert get_sfm_route_backend("missing").spec.route_id == SFM_ROUTE_METASHAPE
+
+
+def _ready_lichtfeld_training_step(scene: Path) -> CubemapStep:
+    step = _ready_step(scene, metashape_inputs=True)
+    _write_test_image(scene / "images" / "frame_0001.jpg")
+    fake_lfs = scene / "LichtFeld-Studio.exe"
+    fake_lfs.write_text("", encoding="utf-8")
+    step.run_training_cb.setChecked(True)
+    step.training_executable_browse.set_text(str(fake_lfs))
+    step.lfs_auto_steps_scaler_cb.setChecked(False)
+    return step
 
 
 def test_cubemap_step_uses_fixed_output_folder_label(tmp_path: Path) -> None:
@@ -95,32 +159,59 @@ def test_cubemap_step_uses_fixed_output_folder_label(tmp_path: Path) -> None:
     assert not hasattr(step, "export_method_combo")
     assert not hasattr(step.view_config, "pitch_edit")
     assert not hasattr(step.view_config, "apply_btn")
-    assert set(step.export_method_buttons) == {"metashape", "colmap", "spheresfm"}
+    assert not hasattr(step, "training_backend_combo")
+    assert set(step.export_method_buttons) == set(SFM_ROUTE_IDS)
+    assert step.export_method_selector.current_route() == SFM_ROUTE_METASHAPE
+    assert set(step.training_backend_buttons) == {"lichtfeld", "postshot"}
+    assert set(step.training_backend_selector.primary_backend_buttons) == {"lichtfeld", "postshot"}
+    assert set(step.training_backend_selector.other_backend_actions) == {"custom"}
+    assert not hasattr(step, "training_backend_other_row")
     assert step.export_images_cb.isChecked()
     assert step.export_masks_cb.isChecked()
     assert step.output_shape_combo.currentData() == "projected"
-    assert step.view_export_tab_index == 0
-    assert step.metashape_tab_index == 1
-    assert step.colmap_tab_index == 2
-    assert step.spheresfm_convert_tab_index == 3
-    assert step.spheresfm_tab_index == 4
-    assert step.settings_tabs.tabText(0) == i18n.t("STEP4_TAB_VIEW_EXPORT")
-    assert step.settings_tabs.tabText(step.metashape_tab_index) == i18n.t("STEP4_TAB_METASHAPE")
-    assert step.settings_tabs.tabText(step.view_export_tab_index) == i18n.t("STEP4_TAB_VIEW_EXPORT")
-    assert step.settings_tabs.tabText(step.colmap_tab_index) == i18n.t("STEP4_TAB_COLMAP")
-    assert step.settings_tabs.isTabVisible(step.metashape_tab_index)
-    assert not step.settings_tabs.isTabVisible(step.colmap_tab_index)
-    assert not _is_descendant(step.export_targets_row, step.advanced_output_section)
+    assert step.input_tab_index == 0
+    assert step.output_tab_index == 1
+    assert step.view_export_tab_index == step.output_tab_index
+    assert step.training_tab_index == 2
+    assert step.details_tab_index == 3
+    assert step.metashape_tab_index == step.input_tab_index
+    assert step.colmap_tab_index == step.input_tab_index
+    assert step.spheresfm_tab_index == step.input_tab_index
+    assert step.spheresfm_convert_tab_index == step.output_tab_index
+    assert [step.settings_tabs.tabText(i) for i in range(step.settings_tabs.count())] == [
+        i18n.t("STEP4_TAB_INPUT"),
+        i18n.t("STEP4_TAB_OUTPUT"),
+        i18n.t("STEP4_TAB_TRAINING"),
+        i18n.t("STEP4_TAB_DETAILS"),
+    ]
+    assert step.export_method_label.isHidden()
+    assert _is_descendant(step.export_method_row, step.input_tab)
+    assert _is_descendant(step.metashape_section, step.input_tab)
+    assert _is_descendant(step.metashape_output_section, step.output_tab)
+    assert _is_descendant(step.export_targets_row, step.output_tab)
+    assert step.settings_tabs.tabText(step.output_tab_index) == i18n.t("STEP4_TAB_OUTPUT")
+    assert not step.metashape_section.isHidden()
+    assert not step.metashape_output_section.isHidden()
+    assert step.colmap_section.isHidden()
+    assert step.spheresfm_section.isHidden()
+    assert step.spheresfm_convert_section.isHidden()
     assert _is_descendant(step.view_config.settings_widget, step.advanced_output_section)
+    assert _is_descendant(step.advanced_output_section, step.output_tab)
     assert _is_descendant(step.view_config.grid_section, step.advanced_output_section)
-    assert _is_descendant(step.view_config.all_on_btn, step.view_config.grid_controls_widget)
-    assert _is_descendant(step.view_config.all_off_btn, step.view_config.grid_controls_widget)
-    assert not _is_descendant(step.view_config.all_on_btn, step.view_config.grid_widget)
-    assert not _is_descendant(step.view_config.all_off_btn, step.view_config.grid_widget)
+    assert _is_descendant(step.view_config.all_toggle_btn, step.view_config.grid_controls_widget)
+    assert not _is_descendant(step.view_config.all_toggle_btn, step.view_config.grid_widget)
+    assert step.view_config.all_toggle_btn.isCheckable()
+    assert not hasattr(step.view_config, "all_on_btn")
+    assert not hasattr(step.view_config, "all_off_btn")
     assert _is_descendant(step.view_config.pitch_add_btn, step.view_config.pitch_controls_widget)
     assert _is_descendant(step.view_config.pitch_count_label, step.view_config.pitch_controls_widget)
     assert not _is_descendant(step.view_config.pitch_add_btn, step.view_config.grid_controls_widget)
-    assert _is_descendant(step.output_details_section, step.advanced_output_section)
+    assert _is_descendant(step.output_details_section, step.details_tab)
+    assert not isinstance(step.output_details_section, CollapsibleSection)
+    assert _is_descendant(step.output_format_combo, step.output_details_section)
+    assert _is_descendant(step.output_bit_depth_combo, step.output_details_section)
+    assert _is_descendant(step.invert_masks_cb, step.output_details_section)
+    assert not _is_descendant(step.output_details_section, step.advanced_output_section)
     assert not _is_descendant(step.export_summary_label, step.advanced_output_section)
     assert not _is_descendant(step.export_summary_label, step.view_config.settings_widget)
     assert step.export_summary_label.text() == step.view_config.summary_text()
@@ -165,29 +256,165 @@ def test_cubemap_step_uses_fixed_output_folder_label(tmp_path: Path) -> None:
     assert normal_scale == pytest.approx(2.0 / math.pi, rel=1e-5)
 
 
-def test_export_method_switch_keeps_view_export_tab_leftmost() -> None:
+def test_step4_pipeline_intent_controls_execution_plan(tmp_path: Path) -> None:
+    step = _ready_step(tmp_path, metashape_inputs=True)
+
+    assert step.primary_action_text() == i18n.t("RUN")
+    assert step.pipeline_stage_intent("sfm") is True
+    assert step.pipeline_stage_intent_enabled("sfm") is True
+    assert step.pipeline_stage_intent_toggle_enabled("sfm") is False
+    assert step.pipeline_stage_intent("conversion") is True
+    sfm_item = next(item for item in step.pipeline_nav_items() if item["stage"] == "sfm")
+    assert sfm_item["intent_checked"] is True
+    assert sfm_item["intent_enabled"] is True
+    assert sfm_item["intent_toggle_enabled"] is False
+    assert sfm_item["intent_symbol"] == "●"
+    assert sfm_item["status"] == "ready"
+    assert sfm_item["status_symbol"] == "✓"
+
+    step.set_pipeline_stage_intent("sfm", False)
+    assert step.pipeline_stage_intent("sfm") is True
+    assert step.pipeline_stage_intent("conversion") is True
+    assert step.primary_action_enabled() is True
+    sfm_item = next(item for item in step.pipeline_nav_items() if item["stage"] == "sfm")
+    assert sfm_item["intent_checked"] is True
+    assert sfm_item["status"] == "ready"
+
+    step.ms_use_ply_cb.setChecked(True)
+    ply = Path(step.ms_ply_browse.text())
+    ply.unlink()
+    sfm_item = next(item for item in step.pipeline_nav_items() if item["stage"] == "sfm")
+    assert sfm_item["status"] == "warning"
+    assert "PLY" in sfm_item["status_tooltip"]
+    _write_ascii_ply(ply, [(1.0, 2.0, 3.0)])
+
+    step.set_pipeline_stage_intent("conversion", False)
+    assert step.pipeline_stage_intent("conversion") is False
+    assert step.pipeline_stage_intent("sfm") is False
+    assert step.primary_action_enabled() is False
+    sfm_item = next(item for item in step.pipeline_nav_items() if item["stage"] == "sfm")
+    assert sfm_item["status"] == "off"
+    assert "Metashape" in sfm_item["status_tooltip"]
+    assert step.build_commands() == []
+
+    step._set_export_method("colmap")
+    assert step.pipeline_stage_intent("sfm") is False
+    step.set_pipeline_stage_intent("sfm", True)
+    assert step.run_colmap_cb.isChecked()
+    assert step.pipeline_stage_intent("sfm") is True
+
+    step._set_export_method("spheresfm")
+    step.set_pipeline_stage_intent("sfm", True)
+    step.set_pipeline_stage_intent("conversion", True)
+    assert step.pipeline_stage_intent("sfm") is True
+    assert step.pipeline_stage_intent("conversion") is True
+    step.set_pipeline_stage_intent("conversion", False)
+    assert step.pipeline_stage_intent("sfm") is True
+    assert step.pipeline_stage_intent("conversion") is False
+    step.set_pipeline_stage_intent("sfm", False)
+    assert step.pipeline_stage_intent("sfm") is False
+    assert step.pipeline_stage_intent("conversion") is False
+
+
+def test_training_status_matches_planned_cube_output_shape(tmp_path: Path) -> None:
+    step = _ready_step(tmp_path, metashape_inputs=True)
+    step.set_pipeline_stage_intent("training", True)
+    step.lfs_gut_cb.setChecked(True)
+
+    training_item = next(item for item in step.pipeline_nav_items() if item["stage"] == "training")
+    assert training_item["status"] == "warning"
+    assert "3DGUT" in training_item["status_tooltip"]
+    assert not step.primary_action_enabled()
+
+    direct_idx = step.output_shape_combo.findData("equirect_3dgut")
+    assert direct_idx >= 0
+    step.output_shape_combo.setCurrentIndex(direct_idx)
+
+    training_item = next(item for item in step.pipeline_nav_items() if item["stage"] == "training")
+    assert training_item["status"] == "ready"
+    assert step.primary_action_enabled()
+
+
+def test_training_status_checks_existing_output_shape_when_cube_is_skipped(tmp_path: Path) -> None:
+    step = _ready_step(tmp_path, metashape_inputs=True)
+    _write_output_dataset(tmp_path, output_shape="projected")
+    step.set_pipeline_stage_intent("conversion", False)
+    step.set_pipeline_stage_intent("training", True)
+    step.lfs_gut_cb.setChecked(True)
+
+    training_item = next(item for item in step.pipeline_nav_items() if item["stage"] == "training")
+    assert training_item["status"] == "warning"
+    assert "3DGUT" in training_item["status_tooltip"]
+    with pytest.raises(ValueError, match="3DGUT"):
+        step.build_commands()
+
+    _write_output_dataset(tmp_path, output_shape="equirect_3dgut")
+    training_item = next(item for item in step.pipeline_nav_items() if item["stage"] == "training")
+    assert training_item["status"] == "ready"
+
+    (tmp_path / "output" / "pointcloud.ply").unlink()
+    training_item = next(item for item in step.pipeline_nav_items() if item["stage"] == "training")
+    assert training_item["status"] == "warning"
+    assert "pointcloud.ply" in training_item["status_tooltip"]
+    _write_ascii_ply(tmp_path / "output" / "pointcloud.ply", [(0.0, 0.0, 0.0)])
+
+    step.lfs_gut_cb.setChecked(False)
+    training_item = next(item for item in step.pipeline_nav_items() if item["stage"] == "training")
+    assert training_item["status"] == "warning"
+    assert "3DGUT" in training_item["status_tooltip"]
+
+
+def test_export_method_switch_keeps_fixed_tabs_and_swaps_route_sections() -> None:
+    _app()
+    _app()
     _app()
     step = CubemapStep(Path.cwd())
 
-    assert step.settings_tabs.tabText(0) == i18n.t("STEP4_TAB_VIEW_EXPORT")
-    assert step.settings_tabs.currentIndex() == step.view_export_tab_index
+    assert step.settings_tabs.tabText(0) == i18n.t("STEP4_TAB_INPUT")
+    assert step.settings_tabs.currentIndex() == step.input_tab_index
+    assert not step.metashape_section.isHidden()
+    assert step.colmap_section.isHidden()
 
-    step.settings_tabs.setCurrentIndex(step.metashape_tab_index)
+    step.settings_tabs.setCurrentIndex(step.input_tab_index)
     step._set_export_method("colmap")
 
-    assert step.settings_tabs.tabText(0) == i18n.t("STEP4_TAB_VIEW_EXPORT")
-    assert step.settings_tabs.isTabVisible(step.view_export_tab_index)
-    assert not step.settings_tabs.isTabVisible(step.metashape_tab_index)
-    assert step.settings_tabs.isTabVisible(step.colmap_tab_index)
-    assert step.settings_tabs.currentIndex() == step.colmap_tab_index
+    assert step.settings_tabs.tabText(0) == i18n.t("STEP4_TAB_INPUT")
+    assert step.metashape_section.isHidden()
+    assert step.metashape_output_section.isHidden()
+    assert not step.colmap_section.isHidden()
+    assert step.settings_tabs.currentIndex() == step.input_tab_index
 
     step.settings_tabs.setCurrentIndex(step.view_export_tab_index)
     step._set_export_method("metashape")
 
-    assert step.settings_tabs.tabText(0) == i18n.t("STEP4_TAB_VIEW_EXPORT")
-    assert step.settings_tabs.currentIndex() == step.view_export_tab_index
-    assert step.settings_tabs.isTabVisible(step.metashape_tab_index)
-    assert not step.settings_tabs.isTabVisible(step.colmap_tab_index)
+    assert step.settings_tabs.tabText(0) == i18n.t("STEP4_TAB_INPUT")
+    assert step.settings_tabs.currentIndex() == step.input_tab_index
+    assert not step.metashape_section.isHidden()
+    assert not step.metashape_output_section.isHidden()
+    assert step.colmap_section.isHidden()
+
+
+def test_export_targets_row_stays_at_output_tab_top_across_routes() -> None:
+    app = _app()
+    step = CubemapStep(Path.cwd())
+    step.resize(900, 720)
+    step.show()
+    step.settings_tabs.setCurrentIndex(step.output_tab_index)
+    app.processEvents()
+
+    positions = []
+    for method in ("metashape", "colmap", "spheresfm"):
+        step._set_export_method(method)
+        step.settings_tabs.setCurrentIndex(step.output_tab_index)
+        app.processEvents()
+        position = step.export_targets_row.mapTo(step.output_tab, QPoint(0, 0))
+        positions.append((position.x(), position.y()))
+
+    assert len(set(positions)) == 1
+    margins = step.output_tab.layout().contentsMargins()
+    assert positions[0] == (margins.left(), margins.top())
+
+    step.close()
 
 
 def test_spheresfm_output_shape_change_keeps_conversion_tab_focused() -> None:
@@ -214,16 +441,18 @@ def test_spheresfm_visible_tabs_follow_projection_conversion_sfm_order() -> None
 
     step._set_export_method("spheresfm")
 
-    visible_tabs = [
-        step.settings_tabs.tabText(i)
-        for i in range(step.settings_tabs.count())
-        if step.settings_tabs.isTabVisible(i)
+    assert [step.settings_tabs.tabText(i) for i in range(step.settings_tabs.count())] == [
+        i18n.t("STEP4_TAB_INPUT"),
+        i18n.t("STEP4_TAB_OUTPUT"),
+        i18n.t("STEP4_TAB_TRAINING"),
+        i18n.t("STEP4_TAB_DETAILS"),
     ]
-    assert visible_tabs == [
-        i18n.t("STEP4_TAB_VIEW_EXPORT"),
-        i18n.t("STEP4_TAB_SPHERESFM_CONVERT"),
-        i18n.t("STEP4_TAB_SPHERESFM_SFM"),
-    ]
+    assert step.metashape_section.isHidden()
+    assert step.colmap_section.isHidden()
+    assert not step.spheresfm_section.isHidden()
+    assert not step.spheresfm_convert_section.isHidden()
+    assert step.settings_tabs.isTabEnabled(step.input_tab_index)
+    assert step.settings_tabs.isTabEnabled(step.output_tab_index)
 
 
 def test_spheresfm_conversion_rows_follow_preset_shape_axis_order() -> None:
@@ -256,8 +485,11 @@ def test_cubemap_step_does_not_use_current_directory_without_scene_dir(
 ) -> None:
     _app()
     images = tmp_path / "images"
+    masks = tmp_path / "masks"
     images.mkdir()
+    masks.mkdir()
     _write_test_image(images / "frame_0001.jpg")
+    _write_test_image(masks / "frame_0001.png")
     (tmp_path / "pointcloud.ply").write_text("ply\n", encoding="utf-8")
     monkeypatch.chdir(tmp_path)
     step = CubemapStep(Path.cwd())
@@ -418,6 +650,7 @@ def test_pitch_row_controls_are_packed_left_without_clipping() -> None:
     idx = step.view_config.view_mode_combo.findData("custom_views")
     step.view_config.view_mode_combo.setCurrentIndex(idx)
     step.view_config.pitch_rows[0]["pitch_edit"].setValue(-90.0)
+    step.settings_tabs.setCurrentIndex(step.view_export_tab_index)
 
     step.resize(720, 720)
     step.show()
@@ -441,6 +674,7 @@ def test_yaw_slots_share_remaining_grid_width() -> None:
     idx = step.view_config.view_mode_combo.findData("custom_views")
     step.view_config.view_mode_combo.setCurrentIndex(idx)
     step.view_config.set_yaw_slot_count(4)
+    step.settings_tabs.setCurrentIndex(step.view_export_tab_index)
 
     step.resize(720, 720)
     step.show()
@@ -481,17 +715,37 @@ def test_custom_grid_bulk_selection_emits_single_change() -> None:
 
     step.view_config.views_changed.connect(on_changed)
 
-    step.view_config._all_off()
+    assert step.view_config.all_toggle_btn.isChecked()
+    assert step.view_config.all_toggle_btn.toolTip() == i18n.t("DESELECT_ALL")
+
+    step.view_config.all_toggle_btn.click()
 
     assert emitted == 1
     assert sum(1 for view in step.view_config.collect_views(include_disabled=True) if view["enabled"]) == 0
+    assert not step.view_config.all_toggle_btn.isChecked()
+    assert step.view_config.all_toggle_btn.toolTip() == i18n.t("SELECT_ALL")
 
-    step.view_config._all_off()
-    assert emitted == 1
-
-    step.view_config._all_on()
+    step.view_config.all_toggle_btn.click()
     assert emitted == 2
     assert sum(1 for view in step.view_config.collect_views(include_disabled=True) if view["enabled"]) == 40
+    assert step.view_config.all_toggle_btn.isChecked()
+    assert step.view_config.all_toggle_btn.toolTip() == i18n.t("DESELECT_ALL")
+
+    step.view_config.pitch_rows[0]["checks"][0].setChecked(False)
+    assert emitted == 3
+    assert not step.view_config.all_toggle_btn.isChecked()
+    assert step.view_config.all_toggle_btn.toolTip() == i18n.t("SELECT_ALL")
+
+    step.view_config._all_off()
+    assert emitted == 4
+
+    step.view_config._all_on()
+    assert emitted == 5
+    assert sum(1 for view in step.view_config.collect_views(include_disabled=True) if view["enabled"]) == 40
+    assert step.view_config.all_toggle_btn.isChecked()
+
+    step.view_config._all_on()
+    assert emitted == 5
 
 
 def test_view_selection_reuses_cached_input_image_count(tmp_path: Path, monkeypatch) -> None:
@@ -588,6 +842,9 @@ def test_colmap_export_method_uses_image_only_conversion(tmp_path: Path) -> None
 
     assert not step.metashape_section.isVisible()
     assert step.export_method_buttons["colmap"].isChecked()
+    assert step.yaw_per_frame_edit.value() == 0.0
+    assert not step.yaw_per_frame_edit.isEnabled()
+    assert step.yaw_per_frame_edit.toolTip() == i18n.t("YAW_OFFSET_PER_FRAME_COLMAP_HINT")
     commands = step.build_commands()
     assert [phase for phase, _cmd in commands] == ["colmap_rig_export"]
     cmd = commands[0][1]
@@ -599,6 +856,22 @@ def test_colmap_export_method_uses_image_only_conversion(tmp_path: Path) -> None
     assert "--no_image" not in cmd
     assert "--skip-images" not in cmd
     assert "--skip-masks" not in cmd
+
+
+def test_colmap_export_method_restores_yaw_step_when_leaving_route(tmp_path: Path) -> None:
+    step = _ready_step(tmp_path)
+    step.yaw_per_frame_edit.setValue(45.0)
+
+    step._set_export_method("colmap")
+
+    assert step.yaw_per_frame_edit.value() == 0.0
+    assert not step.yaw_per_frame_edit.isEnabled()
+
+    step._set_export_method("metashape")
+
+    assert step.yaw_per_frame_edit.isEnabled()
+    assert step.yaw_per_frame_edit.value() == 45.0
+    assert step.yaw_per_frame_edit.toolTip() == i18n.t("YAW_OFFSET_PER_FRAME_HINT")
 
 
 def test_colmap_export_method_validates_images_before_resetting_output(tmp_path: Path, monkeypatch) -> None:
@@ -644,7 +917,7 @@ def test_colmap_export_finalize_writes_export_method_settings(tmp_path: Path) ->
     assert settings["colmap_rig"]["dir"] == str(tmp_path / "output" / "colmap_rig")
     assert settings["colmap_rig"]["project_dir"] == str(tmp_path / "output" / "colmap_rig")
 
-    manifest_path = tmp_path / "output" / "colmap_rig" / "stechdrive_colmap_project.json"
+    manifest_path = step4_meta_dir(tmp_path) / "sfm" / "stechdrive_colmap_project.json"
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     assert manifest["export_type"] == "colmap_project"
     assert manifest["project_dir"] == str(tmp_path / "output" / "colmap_rig")
@@ -667,7 +940,7 @@ def test_colmap_export_manifest_marks_sparse_project_ready(tmp_path: Path) -> No
     step._finalize_bundle()
 
     manifest = json.loads(
-        (tmp_path / "output" / "colmap_rig" / "stechdrive_colmap_project.json").read_text(encoding="utf-8")
+        (step4_meta_dir(tmp_path) / "sfm" / "stechdrive_colmap_project.json").read_text(encoding="utf-8")
     )
     assert manifest["ready_for_import"] is True
     assert manifest["sparse_model_dir"] == "sparse/0"
@@ -755,7 +1028,7 @@ def test_spheresfm_method_can_queue_3dgut_export_without_projection_views(tmp_pa
     step._set_combo_data(step.spheresfm_output_shape_combo, "equirect_3dgut")
     step.spheresfm_exec_browse.set_text(str(fake_colmap))
 
-    assert step.output_path_label.full_text() == str(tmp_path)
+    assert step.output_path_label.full_text() == str(tmp_path / "output")
     assert not step.export_targets_row.isEnabled()
     assert not step.view_config.settings_widget.isEnabled()
 
@@ -781,8 +1054,10 @@ def test_spheresfm_method_can_queue_3dgut_export_without_projection_views(tmp_pa
     assert commands[5][1][commands[5][1].index("--Mapper.multiple_models") + 1] == "0"
     assert commands[5][1][commands[5][1].index("--Mapper.ba_global_max_num_iterations") + 1] == "33"
     assert commands[6][1][3] == str(tmp_path / "output" / "spheresfm" / "sparse")
-    assert commands[6][1][4] == str(tmp_path)
-    assert commands[6][1][commands[6][1].index("--image-path-mode") + 1] == "relative-to-output"
+    assert commands[6][1][4] == str(tmp_path / "output")
+    assert commands[6][1][commands[6][1].index("--image-path-mode") + 1] == "images-prefix"
+    assert os.path.samefile(images / "frame_0001.jpg", tmp_path / "output" / "images" / "frame_0001.jpg")
+    assert os.path.samefile(masks / "frame_0001.png", tmp_path / "output" / "masks" / "frame_0001.png")
 
 
 def test_spheresfm_method_can_queue_projected_cubemap_export(tmp_path: Path) -> None:
@@ -891,7 +1166,8 @@ def test_spheresfm_convert_only_queues_3dgut_without_colmap_binary(tmp_path: Pat
 
     assert [phase for phase, _cmd in commands] == ["spheresfm_transforms"]
     assert commands[0][1][3] == str(tmp_path / "output" / "spheresfm" / "sparse")
-    assert commands[0][1][4] == str(tmp_path)
+    assert commands[0][1][4] == str(tmp_path / "output")
+    assert commands[0][1][commands[0][1].index("--image-path-mode") + 1] == "images-prefix"
     assert sparse_model.is_dir()
 
 
@@ -969,7 +1245,7 @@ def test_spheresfm_open_gui_warns_when_selected_binary_has_no_gui_support(
     assert "Qt GUI" in warnings[0][1]
 
 
-def test_spheresfm_3dgut_convert_only_confirms_scene_root_outputs(tmp_path: Path, monkeypatch) -> None:
+def test_spheresfm_3dgut_convert_only_confirms_output_dataset_targets(tmp_path: Path, monkeypatch) -> None:
     _app()
     images = tmp_path / "images"
     masks = tmp_path / "masks"
@@ -978,10 +1254,16 @@ def test_spheresfm_3dgut_convert_only_confirms_scene_root_outputs(tmp_path: Path
     _write_test_image(images / "frame_0001.jpg")
     _write_test_image(masks / "frame_0001.png")
     sparse_model = _write_spheresfm_sparse_stub(tmp_path)
-    transforms = tmp_path / "transforms.json"
-    pointcloud = tmp_path / "pointcloud.ply"
+    transforms = tmp_path / "output" / "transforms.json"
+    pointcloud = tmp_path / "output" / "pointcloud.ply"
+    old_linked_image = tmp_path / "output" / "images" / "old.jpg"
+    old_linked_mask = tmp_path / "output" / "masks" / "old.png"
+    old_linked_image.parent.mkdir(parents=True)
+    old_linked_mask.parent.mkdir(parents=True)
     transforms.write_text("old", encoding="utf-8")
     pointcloud.write_text("old", encoding="utf-8")
+    old_linked_image.write_text("old", encoding="utf-8")
+    old_linked_mask.write_text("old", encoding="utf-8")
     monkeypatch.setattr(QMessageBox, "question", lambda *args, **kwargs: QMessageBox.Yes)
 
     step = CubemapStep(Path.cwd())
@@ -995,6 +1277,10 @@ def test_spheresfm_3dgut_convert_only_confirms_scene_root_outputs(tmp_path: Path
     assert [phase for phase, _cmd in commands] == ["spheresfm_transforms"]
     assert not transforms.exists()
     assert not pointcloud.exists()
+    assert not old_linked_image.exists()
+    assert not old_linked_mask.exists()
+    assert os.path.samefile(images / "frame_0001.jpg", tmp_path / "output" / "images" / "frame_0001.jpg")
+    assert os.path.samefile(masks / "frame_0001.png", tmp_path / "output" / "masks" / "frame_0001.png")
     assert sparse_model.is_dir()
     assert images.is_dir()
     assert masks.is_dir()
@@ -1266,8 +1552,9 @@ def test_lichtfeld_3dgut_direct_mode_runs_metashape_only_and_disables_view_expor
     assert step._effective_profile() == "lichtfeld"
     assert step.axis_transform_combo.currentData() == "none"
     assert step.ms_use_ply_cb.isChecked()
-    assert step.output_path_label.full_text() == str(tmp_path)
-    assert not step.settings_tabs.isTabEnabled(step.view_export_tab_index)
+    assert step.output_path_label.full_text() == str(tmp_path / "output")
+    assert step.settings_tabs.isTabEnabled(step.output_tab_index)
+    assert not step.view_config.settings_widget.isEnabled()
     assert not step.export_targets_row.isEnabled()
     assert step.export_images_cb.isChecked()
     assert step.export_masks_cb.isChecked()
@@ -1279,8 +1566,27 @@ def test_lichtfeld_3dgut_direct_mode_runs_metashape_only_and_disables_view_expor
 
     assert [phase for phase, _cmd in commands] == ["metashape"]
     assert "--ply" in commands[0][1]
+    assert commands[0][1][commands[0][1].index("--output") + 1] == str(tmp_path / "output")
+    assert os.path.samefile(tmp_path / "images" / "frame_0001.jpg", tmp_path / "output" / "images" / "frame_0001.jpg")
     assert old_file.is_file()
     assert not step4_views_config_path(tmp_path).exists()
+
+
+def test_lichtfeld_3dgut_asset_links_fallback_to_copy(tmp_path: Path, monkeypatch) -> None:
+    step = _ready_step(tmp_path, metashape_inputs=True)
+    image = tmp_path / "images" / "frame_0001.jpg"
+    _write_test_image(image)
+    direct_idx = step.output_shape_combo.findData("equirect_3dgut")
+    assert direct_idx >= 0
+    step.output_shape_combo.setCurrentIndex(direct_idx)
+    monkeypatch.setattr(step4_cubemap.os, "link", lambda *_args: (_ for _ in ()).throw(OSError("no link")))
+
+    commands = step.build_commands()
+
+    linked = tmp_path / "output" / "images" / "frame_0001.jpg"
+    assert [phase for phase, _cmd in commands] == ["metashape"]
+    assert linked.is_file()
+    assert not os.path.samefile(image, linked)
 
 
 def test_lichtfeld_3dgut_direct_mode_restores_projection_export_targets(tmp_path: Path) -> None:
@@ -1314,6 +1620,549 @@ def test_switching_profile_away_from_lichtfeld_exits_3dgut_direct_mode(tmp_path:
     assert step.output_shape_combo.currentData() == "projected"
     assert step._uses_direct_equirect_output() is False
     assert step.settings_tabs.isTabEnabled(step.view_export_tab_index)
+
+
+def test_training_tab_appends_lichtfeld_command_and_writes_config(tmp_path: Path) -> None:
+    step = _ready_step(tmp_path, metashape_inputs=True)
+    _write_test_image(tmp_path / "images" / "frame_0001.jpg")
+    fake_lfs = tmp_path / "LichtFeld-Studio.exe"
+    fake_lfs.write_text("", encoding="utf-8")
+
+    assert step.lfs_output_name_edit.text() == tmp_path.name
+    step.run_training_cb.setChecked(True)
+    step.training_executable_browse.set_text(str(fake_lfs))
+    step.lfs_auto_steps_scaler_cb.setChecked(False)
+    step.lfs_steps_scaler_edit.setText("1.56")
+    step._on_lfs_steps_scaler_editing_finished()
+    step.lfs_iterations_edit.setText("46,700")
+    step.lfs_max_gaussians_edit.setText("5,000,000")
+    step.lfs_bilateral_grid_cb.setChecked(True)
+    mask_mode_idx = step.lfs_mask_mode_combo.findData("ignore")
+    assert mask_mode_idx >= 0
+    step.lfs_mask_mode_combo.setCurrentIndex(mask_mode_idx)
+    step.lfs_invert_masks_cb.setChecked(True)
+    step.lfs_mask_threshold_edit.setText("0.250")
+    step.lfs_use_alpha_as_mask_cb.setChecked(False)
+    step.lfs_ppisp_cb.setChecked(True)
+    step.lfs_ppisp_freeze_from_sidecar_cb.setChecked(True)
+    step.lfs_ppisp_sidecar_browse.set_text(str(tmp_path / "frozen.ppisp"))
+    step.lfs_ppisp_use_controller_cb.setChecked(True)
+    step.lfs_ppisp_controller_activation_step_edit.setText("12000")
+    step.lfs_ppisp_controller_lr_edit.setText("0.0015")
+    step.lfs_ppisp_freeze_gaussians_on_distill_cb.setChecked(False)
+    bg_mode_idx = step.lfs_bg_mode_combo.findData("modulation")
+    assert bg_mode_idx >= 0
+    step.lfs_bg_mode_combo.setCurrentIndex(bg_mode_idx)
+    step.lfs_bg_r_edit.setText("12")
+    step.lfs_bg_g_edit.setText("34")
+    step.lfs_bg_b_edit.setText("56")
+    resize_idx = step.lfs_dataset_resize_factor_combo.findData("2")
+    assert resize_idx >= 0
+    step.lfs_dataset_resize_factor_combo.setCurrentIndex(resize_idx)
+    step.lfs_dataset_max_width_edit.setText("2048")
+    step.lfs_dataset_cpu_cache_cb.setChecked(False)
+    step.lfs_dataset_fs_cache_cb.setChecked(False)
+    step.lfs_dataset_test_every_edit.setText("12")
+    step.lfs_advanced_edits["means_lr"].setText("0.000123")
+    step.lfs_advanced_checks["enable_eval"].setChecked(True)
+    step.lfs_advanced_edits["save_steps"].setText("5000,30000")
+    step.training_headless_cb.setChecked(True)
+
+    commands = step.build_commands()
+
+    assert [phase for phase, _cmd in commands] == ["metashape", "cubemap", "training_lichtfeld"]
+    cmd = commands[-1][1]
+    config_path = step._training_config_path()
+    assert cmd[0] == str(fake_lfs)
+    assert cmd[cmd.index("--data-path") + 1] == str(tmp_path / "output")
+    assert cmd[cmd.index("--output-path") + 1] == str(tmp_path / "output")
+    assert cmd[cmd.index("--output-name") + 1] == tmp_path.name
+    assert cmd[cmd.index("--config") + 1] == str(config_path)
+    assert "--train" in cmd
+    assert "--no-splash" in cmd
+    assert "--headless" in cmd
+    assert cmd[cmd.index("--resize_factor") + 1] == "2"
+    assert cmd[cmd.index("--max-width") + 1] == "2048"
+    assert "--no-cpu-cache" in cmd
+    assert "--no-fs-cache" in cmd
+    assert cmd[cmd.index("--test-every") + 1] == "12"
+
+    config = json.loads(config_path.read_text(encoding="utf-8"))
+    assert config["strategy"] == "mrnf"
+    assert config["iterations"] == 29936
+    assert config["max_cap"] == 5_000_000
+    assert config["sh_degree"] == 3
+    assert config["tile_mode"] == 1
+    assert config["steps_scaler"] == pytest.approx(1.56)
+    assert config["use_bilateral_grid"] is True
+    assert config["mask_mode"] == "ignore"
+    assert config["invert_masks"] is True
+    assert config["mask_threshold"] == pytest.approx(0.25)
+    assert config["use_alpha_as_mask"] is False
+    assert config["use_ppisp"] is True
+    assert config["ppisp_freeze_from_sidecar"] is True
+    assert config["ppisp_sidecar_path"] == str(tmp_path / "frozen.ppisp")
+    assert config["ppisp_use_controller"] is True
+    assert config["ppisp_controller_activation_step"] == 12000
+    assert config["ppisp_controller_lr"] == pytest.approx(0.0015)
+    assert config["ppisp_freeze_gaussians_on_distill"] is False
+    assert config["bg_mode"] == "modulation"
+    assert config["bg_color"] == pytest.approx([12 / 255, 34 / 255, 56 / 255])
+    assert config["means_lr"] == pytest.approx(0.000123)
+    assert config["enable_eval"] is True
+    assert config["eval_steps"] == [3205, 19231]
+    assert config["save_steps"] == [3205, 19231]
+    assert config["headless"] is True
+
+
+def test_lichtfeld_strategy_defaults_match_written_configs(tmp_path: Path) -> None:
+    step = _ready_lichtfeld_training_step(tmp_path)
+
+    for strategy in ("mrnf", "igs+", "mcmc"):
+        strategy_idx = step.lfs_strategy_combo.findData(strategy)
+        assert strategy_idx >= 0
+        step.lfs_strategy_combo.setCurrentIndex(strategy_idx)
+
+        commands = step._build_training_commands()
+
+        assert commands[-1][0] == "training_lichtfeld"
+        config = json.loads(step._training_config_path().read_text(encoding="utf-8"))
+        defaults = lichtfeld_defaults(strategy)
+        for key, expected in defaults.items():
+            assert key in config
+            if isinstance(expected, float):
+                assert config[key] == pytest.approx(expected)
+            elif isinstance(expected, list) and any(isinstance(value, float) for value in expected):
+                assert config[key] == pytest.approx(expected)
+            else:
+                assert config[key] == expected
+
+
+def test_lichtfeld_strategy_switch_preserves_each_strategy_state(tmp_path: Path) -> None:
+    step = _ready_lichtfeld_training_step(tmp_path)
+
+    step.lfs_max_gaussians_edit.setText("6,000,000")
+    step.lfs_advanced_edits["means_lr"].setText("0.000123")
+
+    mcmc_idx = step.lfs_strategy_combo.findData("mcmc")
+    assert mcmc_idx >= 0
+    step.lfs_strategy_combo.setCurrentIndex(mcmc_idx)
+
+    assert step.lfs_max_gaussians_edit.text() == "1,000,000"
+    assert step.lfs_advanced_edits["means_lr"].text() == "0.000016"
+    assert step.lfs_advanced_edits["opacity_lr"].text() == "0.0250"
+    assert step.lfs_advanced_edits["opacity_reg"].text() == "0.0100"
+    assert step.lfs_advanced_checks["revised_opacity"].isChecked() is False
+
+    igs_idx = step.lfs_strategy_combo.findData("igs+")
+    assert igs_idx >= 0
+    step.lfs_strategy_combo.setCurrentIndex(igs_idx)
+
+    assert step.lfs_max_gaussians_edit.text() == "4,000,000"
+    assert step.lfs_advanced_edits["shs_lr"].text() == "0.0050"
+    assert step.lfs_advanced_edits["scaling_lr"].text() == "0.0200"
+    assert step.lfs_advanced_edits["stop_refine"].text() == "15,000"
+    assert step.lfs_advanced_edits["opacity_reg"].text() == "0.0000"
+    assert step.lfs_advanced_edits["init_opacity"].text() == "0.100"
+    assert step.lfs_advanced_edits["tv_loss_weight"].text() == "5.0"
+    assert step.lfs_advanced_checks["revised_opacity"].isChecked() is True
+
+    mrnf_idx = step.lfs_strategy_combo.findData("mrnf")
+    assert mrnf_idx >= 0
+    step.lfs_strategy_combo.setCurrentIndex(mrnf_idx)
+
+    assert step.lfs_max_gaussians_edit.text() == "6,000,000"
+    assert step.lfs_advanced_edits["means_lr"].text() == "0.000123"
+
+
+def test_training_headless_option_stays_in_run_options_row(tmp_path: Path) -> None:
+    step = _ready_step(tmp_path, metashape_inputs=True)
+    step.resize(1280, 920)
+    step.show()
+    _app().processEvents()
+
+    assert not _is_descendant(step.run_training_cb, step.training_run_options_row)
+    assert _is_descendant(step.training_headless_cb, step.training_run_options_row)
+    assert _is_descendant(step.training_backend_buttons["lichtfeld"], step.training_backend_row)
+    assert _is_descendant(step.training_backend_other_button, step.training_backend_row)
+    assert _is_descendant(step.training_backend_other_menu_button, step.training_backend_row)
+    assert not _is_descendant(step.training_backend_buttons["lichtfeld"], step.training_run_options_row)
+    assert not step.training_headless_cb.isHidden()
+
+    step._set_training_backend("postshot")
+    assert step.training_headless_cb.isHidden()
+    assert not step.training_backend_other_button.isChecked()
+
+    step._set_training_backend("custom")
+    assert step.training_backend_other_button.isChecked()
+    assert step.training_backend_selector.other_backend_actions["custom"].isChecked()
+    assert step.training_backend_other_button.geometry().center().y() == step.training_backend_buttons[
+        "postshot"
+    ].geometry().center().y()
+
+
+def test_lichtfeld_training_refuses_existing_output_ply(tmp_path: Path, monkeypatch) -> None:
+    step = _ready_step(tmp_path, metashape_inputs=True)
+    _write_test_image(tmp_path / "images" / "frame_0001.jpg")
+    direct_idx = step.output_shape_combo.findData("equirect_3dgut")
+    assert direct_idx >= 0
+    step.output_shape_combo.setCurrentIndex(direct_idx)
+    fake_lfs = tmp_path / "LichtFeld-Studio.exe"
+    fake_lfs.write_text("", encoding="utf-8")
+    existing = tmp_path / "output" / f"{tmp_path.name}.ply"
+    existing.parent.mkdir(exist_ok=True)
+    existing.write_text("existing", encoding="utf-8")
+    old_dataset_file = tmp_path / "output" / "images" / "old.jpg"
+    old_dataset_file.parent.mkdir()
+    old_dataset_file.write_text("old", encoding="utf-8")
+    monkeypatch.setattr(
+        QMessageBox,
+        "question",
+        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("confirmation should not open")),
+    )
+
+    step.run_training_cb.setChecked(True)
+    step.training_executable_browse.set_text(str(fake_lfs))
+
+    with pytest.raises(ValueError, match=existing.name):
+        step.build_commands()
+    assert old_dataset_file.is_file()
+
+
+def test_postshot_training_defaults_to_scene_project_and_refuses_collision(tmp_path: Path) -> None:
+    images = tmp_path / "images"
+    masks = tmp_path / "masks"
+    images.mkdir()
+    masks.mkdir()
+    _write_test_image(images / "frame_0001.jpg")
+    _write_test_image(masks / "frame_0001.png")
+    fake_colmap = tmp_path / "colmap.exe"
+    fake_colmap.write_text("", encoding="utf-8")
+    fake_postshot = tmp_path / "postshot-cli.exe"
+    fake_postshot.write_text("", encoding="utf-8")
+    existing = tmp_path / "output" / f"{tmp_path.name}.psht"
+    existing.parent.mkdir(exist_ok=True)
+    existing.write_text("existing", encoding="utf-8")
+
+    _app()
+    step = CubemapStep(Path.cwd())
+    step.set_scene_dir(str(tmp_path))
+    step._set_export_method("colmap")
+    step.run_colmap_cb.setChecked(True)
+    step.colmap_exec_browse.set_text(str(fake_colmap))
+    step._set_training_backend("postshot")
+    step.training_executable_browse.set_text(str(fake_postshot))
+    step.run_training_cb.setChecked(True)
+
+    assert step.training_output_browse.text() == str(tmp_path / "output")
+    assert step.postshot_project_name_edit.text() == f"{tmp_path.name}.psht"
+    with pytest.raises(ValueError, match=existing.name):
+        step.build_commands()
+
+
+def test_postshot_cli_options_are_grouped_and_conditional(tmp_path: Path) -> None:
+    step = _ready_step(tmp_path, metashape_inputs=True)
+    step._set_training_backend("postshot")
+
+    assert step.postshot_profile_combo.currentData() == "Splat3"
+    assert step.postshot_ksteps_auto_cb.isChecked()
+    assert not step.postshot_ksteps_edit.isEnabled()
+    assert step.postshot_max_image_size_edit.text() == "3840"
+    assert step.postshot_import_masks_cb.isChecked() is False
+    assert step.postshot_mask_mode_combo.isHidden()
+    assert step.postshot_image_select_combo.currentData() == "all"
+    assert not step.postshot_num_train_images_edit.isEnabled()
+    assert step.postshot_camera_poses_combo.currentData() == "import"
+    assert not step.postshot_pose_quality_combo.isEnabled()
+
+    expected_sections = {
+        "POSTSHOT_SECTION_CAMERA",
+        "POSTSHOT_SECTION_MODEL",
+        "POSTSHOT_SECTION_REGION",
+        "POSTSHOT_SECTION_OUTPUT",
+    }
+    assert set(step.postshot_advanced_sections) == expected_sections
+    assert all(isinstance(section, CollapsibleSection) for section in step.postshot_advanced_sections.values())
+    assert all(not section.toggle_button.isChecked() for section in step.postshot_advanced_sections.values())
+    assert step.postshot_splat_density_edit.isHidden()
+    assert step.postshot_max_num_splats_edit.isHidden()
+    assert step.postshot_crop_box_min_edit.isHidden()
+    assert step.postshot_roi_box_min_edit.isHidden()
+
+    step.postshot_import_masks_cb.setChecked(True)
+    assert not step.postshot_mask_mode_combo.isHidden()
+
+    adc_idx = step.postshot_profile_combo.findData("Splat ADC")
+    assert adc_idx >= 0
+    step.postshot_profile_combo.setCurrentIndex(adc_idx)
+    assert not step.postshot_splat_density_edit.isHidden()
+    assert step.postshot_max_num_splats_edit.isHidden()
+
+    mcmc_idx = step.postshot_profile_combo.findData("Splat MCMC")
+    assert mcmc_idx >= 0
+    step.postshot_profile_combo.setCurrentIndex(mcmc_idx)
+    assert step.postshot_splat_density_edit.isHidden()
+    assert not step.postshot_max_num_splats_edit.isHidden()
+
+    best_idx = step.postshot_image_select_combo.findData("best")
+    assert best_idx >= 0
+    step.postshot_image_select_combo.setCurrentIndex(best_idx)
+    assert step.postshot_num_train_images_edit.isEnabled()
+
+    estimate_idx = step.postshot_camera_poses_combo.findData("estimate")
+    assert estimate_idx >= 0
+    step.postshot_camera_poses_combo.setCurrentIndex(estimate_idx)
+    assert step.postshot_pose_quality_combo.isEnabled()
+
+    custom_idx = step.postshot_crop_box_combo.findData("custom")
+    assert custom_idx >= 0
+    step.postshot_crop_box_combo.setCurrentIndex(custom_idx)
+    assert not step.postshot_crop_box_min_edit.isHidden()
+    assert not step.postshot_crop_box_max_edit.isHidden()
+
+
+def test_postshot_training_imports_transforms_and_raw_ply_for_metashape(tmp_path: Path) -> None:
+    step = _ready_step(tmp_path, metashape_inputs=True)
+    fake_postshot = tmp_path / "postshot-cli.exe"
+    fake_postshot.write_text("", encoding="utf-8")
+    postshot_idx = step.profile_combo.findData("postshot")
+    assert postshot_idx >= 0
+    step.profile_combo.setCurrentIndex(postshot_idx)
+
+    step._set_training_backend("postshot")
+    step.training_executable_browse.set_text(str(fake_postshot))
+    step.run_training_cb.setChecked(True)
+
+    phase, cmd = step._build_training_commands()[0]
+
+    assert phase == "training_postshot"
+    import_index = cmd.index("--import")
+    assert cmd[import_index + 1 : import_index + 4] == [
+        str(tmp_path / "output" / "images"),
+        str(tmp_path / "output" / "transforms.json"),
+        str(tmp_path / "metashape.ply"),
+    ]
+
+
+def test_lichtfeld_advanced_parameters_are_nested_collapsible_sections(tmp_path: Path) -> None:
+    step = _ready_step(tmp_path, metashape_inputs=True)
+
+    expected_sections = {
+        "LFS_SECTION_DATASET",
+        "LFS_SECTION_OPTIMIZATION",
+        "LFS_SECTION_BILATERAL",
+        "LFS_SECTION_LOSSES",
+        "LFS_SECTION_INITIALIZATION",
+        "LFS_SECTION_PRUNING_GROWING",
+        "LFS_SECTION_MRNF",
+        "LFS_SECTION_SPARSITY",
+        "LFS_SECTION_SAVE_EVAL",
+    }
+
+    assert set(step.lfs_advanced_sections) == expected_sections
+    assert all(isinstance(section, CollapsibleSection) for section in step.lfs_advanced_sections.values())
+    assert all(not section.toggle_button.isChecked() for section in step.lfs_advanced_sections.values())
+    assert step.lfs_advanced_edits["means_lr_end"].width() >= 122
+    assert step.lfs_advanced_edits["grad_threshold"].width() >= 116
+    assert step.lfs_advanced_edits["save_steps"].width() >= 136
+    assert step.lfs_advanced_edits["save_steps"].width() < 180
+    assert step.lfs_dataset_test_every_edit.isHidden()
+    assert step.lfs_advanced_sections["LFS_SECTION_BILATERAL"].isHidden()
+    assert step.lfs_advanced_sections["LFS_SECTION_PRUNING_GROWING"].isHidden()
+    assert not step.lfs_advanced_sections["LFS_SECTION_MRNF"].isHidden()
+    assert step.lfs_advanced_sections["LFS_SECTION_SPARSITY"].isHidden()
+    assert step.lfs_advanced_edits["init_num_pts"].isHidden()
+    assert step.lfs_tile_mode_combo.isHidden()
+
+    step.lfs_bilateral_grid_cb.setChecked(True)
+    step.lfs_sparsity_cb.setChecked(True)
+    step.lfs_gut_cb.setChecked(True)
+    step.lfs_advanced_checks["random"].setChecked(True)
+    step.lfs_advanced_checks["enable_eval"].setChecked(True)
+
+    assert not step.lfs_advanced_sections["LFS_SECTION_BILATERAL"].isHidden()
+    assert not step.lfs_advanced_sections["LFS_SECTION_SPARSITY"].isHidden()
+    assert not step.lfs_advanced_edits["init_num_pts"].isHidden()
+    assert not step.lfs_dataset_test_every_edit.isHidden()
+    assert not step.lfs_tile_mode_combo.isHidden()
+
+    igs_idx = step.lfs_strategy_combo.findData("igs+")
+    assert igs_idx >= 0
+    step.lfs_strategy_combo.setCurrentIndex(igs_idx)
+
+    assert step.lfs_advanced_sections["LFS_SECTION_MRNF"].isHidden()
+    assert not step.lfs_advanced_sections["LFS_SECTION_PRUNING_GROWING"].isHidden()
+    assert step.lfs_advanced_edits["grow_until_iter"].isHidden()
+    assert not step.lfs_advanced_edits["prune_opacity"].isHidden()
+    assert step.lfs_gut_cb.isChecked() is False
+    assert step.lfs_gut_cb.isEnabled() is False
+    assert step.lfs_tile_mode_combo.isHidden()
+
+
+def test_lichtfeld_basic_conditional_parameters_follow_source_visibility(tmp_path: Path) -> None:
+    step = _ready_step(tmp_path, metashape_inputs=True)
+
+    assert step.lfs_invert_masks_cb.isHidden()
+    assert step.lfs_mask_threshold_edit.isHidden()
+    assert step.lfs_use_alpha_as_mask_cb.isHidden()
+    assert step.lfs_mask_opacity_penalty_weight_edit.isHidden()
+    assert step.lfs_mask_opacity_penalty_power_edit.isHidden()
+    assert step.lfs_ppisp_freeze_from_sidecar_cb.isHidden()
+    assert step.lfs_ppisp_sidecar_browse.isHidden()
+    assert step.lfs_ppisp_use_controller_cb.isHidden()
+    assert step.lfs_ppisp_controller_activation_step_edit.isHidden()
+
+    ignore_idx = step.lfs_mask_mode_combo.findData("ignore")
+    assert ignore_idx >= 0
+    step.lfs_mask_mode_combo.setCurrentIndex(ignore_idx)
+
+    assert not step.lfs_invert_masks_cb.isHidden()
+    assert not step.lfs_mask_threshold_edit.isHidden()
+    assert not step.lfs_use_alpha_as_mask_cb.isHidden()
+    assert step.lfs_mask_opacity_penalty_weight_edit.isHidden()
+    assert step.lfs_mask_opacity_penalty_power_edit.isHidden()
+
+    segment_idx = step.lfs_mask_mode_combo.findData("segment")
+    assert segment_idx >= 0
+    step.lfs_mask_mode_combo.setCurrentIndex(segment_idx)
+
+    assert not step.lfs_mask_opacity_penalty_weight_edit.isHidden()
+    assert not step.lfs_mask_opacity_penalty_power_edit.isHidden()
+
+    step.lfs_ppisp_cb.setChecked(True)
+
+    assert not step.lfs_ppisp_freeze_from_sidecar_cb.isHidden()
+    assert step.lfs_ppisp_sidecar_browse.isHidden()
+    assert not step.lfs_ppisp_use_controller_cb.isHidden()
+    assert step.lfs_ppisp_controller_activation_step_edit.isHidden()
+
+    step.lfs_ppisp_freeze_from_sidecar_cb.setChecked(True)
+    step.lfs_ppisp_use_controller_cb.setChecked(True)
+
+    assert not step.lfs_ppisp_sidecar_browse.isHidden()
+    assert not step.lfs_ppisp_controller_activation_step_edit.isHidden()
+    assert not step.lfs_ppisp_controller_lr_edit.isHidden()
+    assert not step.lfs_ppisp_freeze_gaussians_on_distill_cb.isHidden()
+
+
+def test_training_tab_auto_scales_lichtfeld_from_projected_image_count(tmp_path: Path) -> None:
+    step = _ready_step(tmp_path, metashape_inputs=True)
+    enabled_views = sum(1 for view in step.view_config.collect_views(include_disabled=True) if view["enabled"])
+    assert enabled_views > 0
+    source_count = math.ceil(468 / enabled_views)
+    for idx in range(source_count):
+        _write_test_image(tmp_path / "images" / f"frame_{idx:04d}.jpg")
+    expected_image_count = source_count * enabled_views
+    expected_scaler = expected_image_count / 300
+    fake_lfs = tmp_path / "LichtFeld-Studio.exe"
+    fake_lfs.write_text("", encoding="utf-8")
+
+    step.run_training_cb.setChecked(True)
+    step.training_executable_browse.set_text(str(fake_lfs))
+    step._update_lfs_auto_steps_scaler()
+
+    assert step.lfs_auto_steps_scaler_cb.isChecked()
+    assert not step.lfs_steps_scaler_edit.isEnabled()
+    assert float(step.lfs_steps_scaler_edit.text()) == pytest.approx(expected_scaler, abs=0.005)
+    assert int(step.lfs_iterations_edit.text().replace(",", "")) == math.floor(30000 * expected_scaler + 0.5)
+    assert int(step.lfs_advanced_edits["stop_refine"].text().replace(",", "")) == math.floor(
+        28500 * expected_scaler + 0.5
+    )
+
+    mcmc_idx = step.lfs_strategy_combo.findData("mcmc")
+    assert mcmc_idx >= 0
+    step.lfs_strategy_combo.setCurrentIndex(mcmc_idx)
+    assert int(step.lfs_iterations_edit.text().replace(",", "")) == math.floor(30000 * expected_scaler + 0.5)
+    assert int(step.lfs_advanced_edits["stop_refine"].text().replace(",", "")) == math.floor(
+        25000 * expected_scaler + 0.5
+    )
+
+    commands = step.build_commands()
+
+    assert commands[-1][0] == "training_lichtfeld"
+    config = json.loads(step._training_config_path().read_text(encoding="utf-8"))
+    assert config["strategy"] == "mcmc"
+    assert config["steps_scaler"] == pytest.approx(expected_scaler)
+    assert config["iterations"] == 30000
+    assert config["stop_refine"] == 25000
+    assert config["max_cap"] == 1_000_000
+
+
+def test_training_executable_placeholders_are_file_names_only() -> None:
+    _app()
+    step = CubemapStep(Path.cwd())
+
+    expected_lichtfeld = "LichtFeld-Studio.exe" if os.name == "nt" else "LichtFeld-Studio"
+    expected_postshot = "postshot-cli.exe" if os.name == "nt" else "postshot-cli"
+
+    assert step.training_executable_browse.line_edit.placeholderText() == expected_lichtfeld
+    assert not Path(step._default_training_executable("lichtfeld")).is_absolute()
+
+    step._set_training_backend("postshot")
+    assert step.training_executable_browse.line_edit.placeholderText() == expected_postshot
+    assert not Path(step._default_training_executable("postshot")).is_absolute()
+
+    step._set_training_backend("custom")
+    assert step.training_executable_browse.line_edit.placeholderText() == ""
+
+
+def test_colmap_route_can_append_postshot_training_with_future_sparse_model(tmp_path: Path) -> None:
+    images = tmp_path / "images"
+    masks = tmp_path / "masks"
+    images.mkdir()
+    masks.mkdir()
+    _write_test_image(images / "frame_0001.jpg")
+    _write_test_image(masks / "frame_0001.png")
+    fake_colmap = tmp_path / "colmap.exe"
+    fake_colmap.write_text("", encoding="utf-8")
+    fake_postshot = tmp_path / "postshot-cli.exe"
+    fake_postshot.write_text("", encoding="utf-8")
+
+    _app()
+    step = CubemapStep(Path.cwd())
+    step.set_scene_dir(str(tmp_path))
+    step._set_export_method("colmap")
+    step.run_colmap_cb.setChecked(True)
+    step.colmap_exec_browse.set_text(str(fake_colmap))
+    step._set_training_backend("postshot")
+    assert step.postshot_project_name_edit.text() == f"{tmp_path.name}.psht"
+    step.training_executable_browse.set_text(str(fake_postshot))
+    step.run_training_cb.setChecked(True)
+    step.postshot_project_name_edit.setText("scene.psht")
+    step.postshot_ksteps_auto_cb.setChecked(False)
+    step.postshot_ksteps_edit.setText("42")
+    step.postshot_max_image_size_edit.setText("2048")
+
+    commands = step.build_commands()
+
+    assert [phase for phase, _cmd in commands] == [
+        "colmap_rig_export",
+        "colmap_feature",
+        "colmap_rig_config",
+        "colmap_match",
+        "colmap_mapper",
+        "training_postshot",
+    ]
+    cmd = commands[-1][1]
+    assert cmd == [
+        str(fake_postshot),
+        "train",
+        "--import",
+        str(tmp_path / "output" / "colmap_rig" / "images"),
+        str(tmp_path / "output" / "colmap_rig" / "sparse" / "0"),
+        "--output",
+        str(tmp_path / "output" / "scene.psht"),
+        "--profile",
+        "Splat3",
+        "-s",
+        "42",
+        "--max-image-size",
+        "2048",
+        "--image-select",
+        "all",
+        "--max-sh-degree",
+        "3",
+    ]
 
 
 def test_cubemap_preview_uses_scene_mask_folder(tmp_path: Path, monkeypatch) -> None:
@@ -1438,9 +2287,9 @@ def test_cubemap_finalize_writes_export_settings(tmp_path: Path) -> None:
     assert settings["view_config"]["cube6_drop_top"] is False
     assert settings["view_config"]["cube6_drop_bottom"] is False
     assert settings["metashape_import"]["use_ply"] is True
-    assert settings["output_files"]["settings"] == "_stechdrive/export_settings.json"
+    assert settings["output_files"]["settings"] == "_stechdrive/step4/export_settings.json"
     assert settings["view_config"]["views"]
-    assert settings["views_config_path"] == "_stechdrive/views_config.json"
+    assert settings["views_config_path"] == "_stechdrive/step4/views_config.json"
     assert settings["views_config_snapshot"] == json.loads(
         step4_views_config_path(tmp_path).read_text(encoding="utf-8")
     )
@@ -1455,8 +2304,10 @@ def test_lichtfeld_3dgut_finalize_writes_scene_dataset_settings_and_correction(
     assert direct_idx >= 0
     step.output_shape_combo.setCurrentIndex(direct_idx)
     monkeypatch.setattr(CubemapStep, "_transform_ply_with_open3d", staticmethod(lambda _path, _matrix: False))
-    _write_ascii_ply(tmp_path / "pointcloud.ply", [(1.0, 2.0, 3.0)])
-    (tmp_path / "transforms.json").write_text(
+    output = tmp_path / "output"
+    output.mkdir()
+    _write_ascii_ply(output / "pointcloud.ply", [(1.0, 2.0, 3.0)])
+    (output / "transforms.json").write_text(
         json.dumps(
             {
                 "camera_model": "EQUIRECTANGULAR",
@@ -1468,11 +2319,10 @@ def test_lichtfeld_3dgut_finalize_writes_scene_dataset_settings_and_correction(
 
     step._finalize_bundle()
 
-    assert not step4_export_settings_path(tmp_path / "output").exists()
     settings = json.loads(step4_export_settings_path(tmp_path).read_text(encoding="utf-8"))
     assert settings["export_method"] == "metashape"
     assert settings["output_shape"] == "equirect_3dgut"
-    assert settings["output_dir"] == str(tmp_path)
+    assert settings["output_dir"] == str(output)
     assert settings["views_config_path"] == ""
     assert settings["views_config_snapshot"] is None
     assert settings["conversion"]["no_image"] is True
@@ -1481,7 +2331,7 @@ def test_lichtfeld_3dgut_finalize_writes_scene_dataset_settings_and_correction(
     assert settings["conversion"]["uses_source_images"] is True
     assert settings["output_files"]["pointcloud"] == "pointcloud.ply"
 
-    data = json.loads((tmp_path / "transforms.json").read_text(encoding="utf-8"))
+    data = json.loads((output / "transforms.json").read_text(encoding="utf-8"))
     corrected = np.array(data["frames"][0]["transform_matrix"])
     expected = np.array(
         [
@@ -1492,7 +2342,7 @@ def test_lichtfeld_3dgut_finalize_writes_scene_dataset_settings_and_correction(
         ]
     )
     assert np.allclose(corrected, expected)
-    points, _colors = read_ply_points(tmp_path / "pointcloud.ply")
+    points, _colors = read_ply_points(output / "pointcloud.ply")
     assert np.allclose(points[0], [3.0, -2.0, 1.0])
 
 

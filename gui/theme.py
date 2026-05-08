@@ -1,7 +1,9 @@
 """ダークモダンテーマ (DaVinci Resolve / Blender 風)"""
 from __future__ import annotations
 
-from PySide6.QtGui import QFont
+from pathlib import Path
+
+from PySide6.QtGui import QFont, QFontDatabase
 from PySide6.QtWidgets import QApplication
 
 # カラーパレット
@@ -26,6 +28,29 @@ SCROLL_HANDLE = "#4b5563"
 
 FONT_FAMILY = "Meiryo UI"
 FONT_SIZE = 10
+_EXTRA_FONT_PATHS = (
+    Path("C:/Windows/Fonts/meiryo.ttc"),
+    Path("C:/Windows/Fonts/YuGothR.ttc"),
+    Path("C:/Windows/Fonts/msgothic.ttc"),
+)
+_EXTRA_FONTS_LOADED = False
+
+
+def _ensure_font_available() -> None:
+    """Load Windows Japanese fonts explicitly when Qt offscreen skips system fonts."""
+    global _EXTRA_FONTS_LOADED
+    if _EXTRA_FONTS_LOADED:
+        return
+
+    families = set(QFontDatabase.families())
+    if FONT_FAMILY in families:
+        _EXTRA_FONTS_LOADED = True
+        return
+
+    for path in _EXTRA_FONT_PATHS:
+        if path.exists():
+            QFontDatabase.addApplicationFont(str(path))
+    _EXTRA_FONTS_LOADED = True
 
 QSS = f"""
 /* ========== Global ========== */
@@ -72,6 +97,93 @@ QPushButton#navStep:checked {{
     background-color: {BG_PANEL};
     border-color: {ACCENT};
     color: {TEXT_BRIGHT};
+}}
+QWidget#navSubSteps {{
+    background-color: transparent;
+}}
+QWidget#navSubRail {{
+    background-color: {BORDER};
+    border-radius: 1px;
+}}
+QWidget#navSubRail[active="true"] {{
+    background-color: {ACCENT};
+}}
+QWidget#navSubRows {{
+    background-color: transparent;
+}}
+QPushButton#navSubStep {{
+    background-color: transparent;
+    border: 1px solid transparent;
+    border-radius: 5px;
+    color: {TEXT_DIM};
+    padding: 0;
+    font-size: 8pt;
+    font-weight: 600;
+    min-height: 16px;
+}}
+QPushButton#navSubStep:hover {{
+    background-color: {BG_PANEL};
+    border-color: {BORDER};
+    color: {TEXT};
+}}
+QPushButton#navSubStep:checked {{
+    background-color: {BG_PANEL};
+    border-color: {ACCENT};
+    color: {TEXT_BRIGHT};
+}}
+QLabel#navSubStepText {{
+    background-color: transparent;
+    color: {TEXT_DIM};
+    font-size: 8pt;
+    font-weight: 600;
+}}
+QToolButton#navSubStepIntent {{
+    background-color: transparent;
+    border: 1px solid transparent;
+    border-radius: 3px;
+    color: {TEXT_DIM};
+    padding: 0;
+    font-size: 8pt;
+    font-weight: 700;
+}}
+QToolButton#navSubStepIntent:hover {{
+    color: {TEXT};
+    border-color: {BORDER};
+}}
+QToolButton#navSubStepIntent:checked {{
+    color: {ACCENT_HOVER};
+}}
+QToolButton#navSubStepIntent:disabled {{
+    color: {TEXT_DIM};
+    border-color: transparent;
+}}
+QToolButton#navSubStepStatus {{
+    background-color: transparent;
+    border: 1px solid transparent;
+    border-radius: 3px;
+    color: {TEXT_DIM};
+    padding: 0;
+    font-size: 8pt;
+    font-weight: 700;
+}}
+QToolButton#navSubStepStatus:hover {{
+    color: {TEXT};
+    border-color: {BORDER};
+}}
+QLabel#navSubStepText[active="true"] {{
+    color: {TEXT_BRIGHT};
+}}
+QToolButton#navSubStepStatus[status="ready"] {{
+    color: {SUCCESS};
+}}
+QToolButton#navSubStepStatus[status="warning"] {{
+    color: {WARNING};
+}}
+QToolButton#navSubStepStatus[status="off"] {{
+    color: {TEXT_DIM};
+}}
+QLabel#navSubStepText:disabled {{
+    color: {TEXT_DIM};
 }}
 QWidget#contentPanel {{
     background-color: {BG_MID};
@@ -123,6 +235,14 @@ QLabel#workflowNote {{
     color: {ACCENT_HOVER};
     padding: 12px;
     font-size: 9pt;
+}}
+QLabel#imageTypeChip {{
+    background-color: {BG_INPUT};
+    border: 1px solid {BORDER};
+    border-radius: 4px;
+    color: {TEXT_DIM};
+    padding: 3px 7px;
+    font-size: 8pt;
 }}
 QLabel#emptyPaneMessage {{
     color: {TEXT_DIM};
@@ -185,17 +305,68 @@ QPushButton:disabled {{
     background-color: {BG_MID};
     border-color: {BG_MID};
 }}
-QPushButton#segmentedOption {{
-    padding: 6px 8px;
+QWidget#segmentedControl {{
+    background-color: {BG_INPUT};
+    border: 1px solid {BORDER};
+    border-radius: 6px;
+}}
+QWidget#radioOptionRow {{
+    background-color: transparent;
+}}
+QWidget#trainingBackendPrimaryRow {{
+    background-color: transparent;
+}}
+QWidget#trainingBackendOtherPicker {{
+    background-color: transparent;
+}}
+QRadioButton#optionRadio {{
+    color: {TEXT_DIM};
     font-weight: 600;
+    padding: 2px 0px;
+}}
+QRadioButton#optionRadio:checked {{
+    color: {TEXT_BRIGHT};
+}}
+QToolButton#optionMenuArrow {{
+    background-color: transparent;
+    border: 1px solid transparent;
+    color: {TEXT_DIM};
+    min-width: 13px;
+    max-width: 13px;
+    min-height: 20px;
+    padding: 0px;
+}}
+QToolButton#optionMenuArrow:hover {{
+    background-color: transparent;
+    border-color: transparent;
+    color: {TEXT};
+}}
+QToolButton#optionMenuArrow::menu-indicator {{
+    image: none;
+    width: 0px;
+    height: 0px;
+}}
+QPushButton#segmentedOption {{
+    background-color: transparent;
+    border: 1px solid transparent;
+    border-radius: 4px;
+    color: {TEXT_DIM};
+    font-weight: 600;
+    min-height: 22px;
+    padding: 5px 6px;
 }}
 QPushButton#segmentedOption:checked {{
-    background-color: {ACCENT};
+    background-color: {BG_PANEL};
     border-color: {ACCENT};
     color: {TEXT_BRIGHT};
 }}
 QPushButton#segmentedOption:hover:!checked {{
+    background-color: {BG_PANEL};
     border-color: {BORDER_FOCUS};
+    color: {TEXT};
+}}
+QPushButton#segmentedOption:pressed {{
+    background-color: {BG_MID};
 }}
 
 /* Primary buttons (objectName = "primary") */
@@ -290,6 +461,10 @@ QTabWidget#maskSettingsTabs QTabBar::tab,
 QTabWidget#step4SettingsTabs QTabBar::tab {{
     min-width: 86px;
     padding: 7px 10px;
+}}
+QTabWidget#step4SettingsTabs QTabBar::tab {{
+    min-width: 54px;
+    padding: 7px 6px;
 }}
 
 /* ========== QProgressBar ========== */
@@ -469,6 +644,7 @@ QToolTip {{
 
 def apply_theme(app: QApplication) -> None:
     """QApplicationにダークテーマを適用する。"""
+    _ensure_font_available()
     app.setStyleSheet(QSS)
     font = QFont()
     font.setFamily(FONT_FAMILY)

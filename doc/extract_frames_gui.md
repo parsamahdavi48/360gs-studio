@@ -36,20 +36,24 @@ The `?` help icon at the right edge of the center-panel header opens this step's
 | Quickly cut frames without analysis | `Quick extract ON` |
 | Walking or indoor footage with nearby structure | `Scene Distance: Near / Walking` |
 | Aerial, plaza, coast, mountain, or distant scenes | `Scene Distance: Distant / Aerial` |
-| Rebuild the same video with new settings | `Output Mode: Reset and Overwrite` |
-| Add multiple videos into one scene | `Output Mode: Add New Only` |
+| Rebuild the same video with new settings | `Extraction Target: Re-extract Selected` |
+| Add multiple videos into one scene | `Extraction Target: Add Unextracted Videos` |
 
 The GUI stops before running when the scene folder path contains non-ASCII characters, an extremely long path, control characters, or `"`. Use a short ASCII working path because external tools often fail on problematic paths.
 
 ## Basic Flow
 
-1. Select `Input Video`. Multiple videos can be selected.
+1. In `Video Queue` on the right, press `Add Videos` and add the videos to extract. Adding videos keeps the existing queue, so videos from other folders can be added later.
 2. Confirm `Scene Folder`. Output images are written under `images/` inside it.
 3. Choose `Interval`. Start with `1.0` second when unsure.
 4. Keep `Motion` on for normal extraction. Turn `Quick extract` on only when you want a fast fixed-interval cut.
-5. Choose `Output Mode`. `Add New Only` is fine for the first run.
+5. Choose `Extraction Target`. `Add Unextracted Videos` is fine for the first run or for adding different videos.
 6. When the preflight status says the run is ready, press `Extract Frames`.
 7. After extraction finishes, continue to Step 2.
+
+When Step 1 has an empty video queue and you select a scene folder, the GUI looks for videos in `_stechdrive/sources/videos.json`, then existing extraction sessions, then video files under the scene folder. Found videos are added to the queue automatically. If the queue already has videos, the GUI keeps that selection.
+
+The video queue shows each video's extraction status, 360°/normal detection, resolution, fps, duration, and estimated frame count. If a video was added by mistake, select its row in the queue and remove it. The video file itself is not deleted.
 
 Step 1 separates analysis from image export. Analysis uses grayscale frames resized to `Analysis Width`; files written to `images/` keep the source video resolution.
 

@@ -16,7 +16,7 @@ from PySide6.QtWidgets import (
 
 from gui import i18n
 from gui.common.drag_spinbox import DragDoubleSpinBox
-from gui.common.icons import delete_icon, deselect_all_icon, minus_icon, plus_icon, select_all_icon
+from gui.common.icons import delete_icon, minus_icon, plus_icon, select_all_icon
 
 _MIN_YAW_SLOTS = 4
 _MAX_YAW_SLOTS = 8
@@ -174,18 +174,13 @@ class ViewConfigWidget(QWidget):
         self.grid_title_label = QLabel(i18n.t("VIEW_SELECTION_COMPACT_SECTION"))
         self.grid_title_label.setToolTip(i18n.tip("VIEW_SELECTION_SECTION"))
         grid_controls.addWidget(self.grid_title_label)
-        self.all_on_btn = self._make_grid_control_button(
+        self.all_toggle_btn = self._make_grid_control_button(
             select_all_icon(),
             i18n.t("SELECT_ALL"),
-            self._all_on,
+            self._toggle_all_views,
         )
-        self.all_off_btn = self._make_grid_control_button(
-            deselect_all_icon(),
-            i18n.t("DESELECT_ALL"),
-            self._all_off,
-        )
-        grid_controls.addWidget(self.all_on_btn)
-        grid_controls.addWidget(self.all_off_btn)
+        self.all_toggle_btn.setCheckable(True)
+        grid_controls.addWidget(self.all_toggle_btn)
         grid_controls.addStretch()
 
         self.yaw_remove_btn = self._make_grid_control_button(
@@ -363,6 +358,7 @@ class ViewConfigWidget(QWidget):
             return
         self._mark_custom_if_user_changed()
         self._update_selected_label()
+        self._sync_all_toggle_state()
         self.views_changed.emit()
 
     def _parse_pitches(self) -> list[float]:
@@ -586,6 +582,7 @@ class ViewConfigWidget(QWidget):
         self.pitch_add_btn.setEnabled(pitch_count < _MAX_PITCH_ROWS)
         for button in self.pitch_delete_buttons:
             button.setEnabled(pitch_count > _MIN_PITCH_ROWS)
+        self._sync_all_toggle_state()
 
     def _update_selected_label(self) -> None:
         try:
@@ -613,6 +610,9 @@ class ViewConfigWidget(QWidget):
     def _all_off(self) -> None:
         self._set_all_checked(False)
 
+    def _toggle_all_views(self, checked: bool) -> None:
+        self._set_all_checked(bool(checked))
+
     def _set_all_checked(self, checked: bool) -> None:
         changed = False
         self.grid_widget.setUpdatesEnabled(False)
@@ -632,6 +632,20 @@ class ViewConfigWidget(QWidget):
 
         if changed:
             self._on_selection_changed()
+        else:
+            self._sync_all_toggle_state()
+
+    def _sync_all_toggle_state(self) -> None:
+        views = self.collect_views(include_disabled=True)
+        all_checked = bool(views) and all(view["enabled"] for view in views)
+        was_blocked = self.all_toggle_btn.blockSignals(True)
+        try:
+            self.all_toggle_btn.setChecked(all_checked)
+        finally:
+            self.all_toggle_btn.blockSignals(was_blocked)
+        label = i18n.t("DESELECT_ALL") if all_checked else i18n.t("SELECT_ALL")
+        self.all_toggle_btn.setToolTip(label)
+        self.all_toggle_btn.setAccessibleName(label)
 
     def _apply_grid_preset(
         self,

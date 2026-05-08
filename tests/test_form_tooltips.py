@@ -6,7 +6,7 @@ from pathlib import Path
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PySide6.QtWidgets import QApplication, QLabel, QWidget
+from PySide6.QtWidgets import QApplication, QLabel, QRadioButton, QToolButton, QWidget
 
 from gui import i18n
 from gui.common.drag_spinbox import DragDoubleSpinBox, DragSpinBox
@@ -25,6 +25,39 @@ def _label(widget: QWidget, text: str) -> QLabel:
         if child.text() == text:
             return child
     raise AssertionError(f"label not found: {text}")
+
+
+def test_offscreen_theme_loads_windows_japanese_fonts() -> None:
+    if not Path("C:/Windows/Fonts/meiryo.ttc").exists():
+        return
+
+    script = textwrap.dedent(
+        """
+        import os
+
+        os.environ["QT_QPA_PLATFORM"] = "offscreen"
+
+        from PySide6.QtGui import QFontDatabase
+        from PySide6.QtWidgets import QApplication
+
+        from gui.theme import apply_theme
+
+        app = QApplication([])
+        assert len(QFontDatabase.families()) == 0
+        apply_theme(app)
+        families = set(QFontDatabase.families())
+        assert "Meiryo UI" in families
+        """
+    )
+
+    result = subprocess.run(
+        [sys.executable, "-c", script],
+        cwd=Path.cwd(),
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
 
 
 def test_i18n_tips_are_wrapped() -> None:
@@ -54,6 +87,337 @@ def test_i18n_tips_are_wrapped_in_english() -> None:
     env = os.environ.copy()
     env["STUDIO_LANG"] = "en"
 
+    result = subprocess.run(
+        [sys.executable, "-c", script],
+        cwd=Path.cwd(),
+        env=env,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_lfs_mask_mode_tooltip_guides_app_generated_masks() -> None:
+    ja_tip = i18n._TIPS_JA["LFS_MASK_MODE"]
+    en_tip = i18n._TIPS_EN["LFS_MASK_MODE"]
+
+    assert "通常はNone" not in ja_tip
+    assert "標準のマスク値は白=使用、黒=背景/除外対象" in ja_tip
+    assert "Ignore" in ja_tip
+    assert "色の学習から除外" in ja_tip
+    assert "アルファ値に生成結果の透明度を合わせる" in ja_tip
+    assert "Standard mask values are white=used and black=background/exclusion target" in en_tip
+    assert "exclude black from color training" in en_tip
+    assert "match rendered opacity to alpha values" in en_tip
+
+
+def test_step4_tabs_fit_fixed_settings_pane_without_scroll_buttons() -> None:
+    script = textwrap.dedent(
+        """
+        import os
+        from pathlib import Path
+
+        os.environ["QT_QPA_PLATFORM"] = "offscreen"
+
+        from PySide6.QtWidgets import QApplication
+
+        from gui.theme import apply_theme
+        from gui.steps.base_step import SETTINGS_PANE_WIDTH
+        from gui.steps.step4_cubemap import CubemapStep
+
+        app = QApplication([])
+        apply_theme(app)
+        step = CubemapStep(Path.cwd())
+        step.resize(1280, 920)
+        step.show()
+        app.processEvents()
+
+        tab_bar = step.settings_tabs.tabBar()
+        tab_widths = [tab_bar.tabRect(i).width() for i in range(tab_bar.count())]
+        assert not tab_bar.usesScrollButtons()
+        assert sum(tab_widths) <= SETTINGS_PANE_WIDTH, (tab_widths, SETTINGS_PANE_WIDTH)
+        """
+    )
+
+    for lang in ("ja", "en"):
+        env = os.environ.copy()
+        env["STUDIO_LANG"] = lang
+        env["QT_QPA_PLATFORM"] = "offscreen"
+        result = subprocess.run(
+            [sys.executable, "-c", script],
+            cwd=Path.cwd(),
+            env=env,
+            capture_output=True,
+            text=True,
+        )
+        assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_step4_route_buttons_stay_inside_fixed_settings_pane() -> None:
+    script = textwrap.dedent(
+        """
+        import os
+        from pathlib import Path
+
+        os.environ["QT_QPA_PLATFORM"] = "offscreen"
+
+        from PySide6.QtCore import QPoint, Qt
+        from PySide6.QtTest import QTest
+        from PySide6.QtWidgets import QApplication
+
+        from gui.theme import apply_theme
+        from gui.steps.base_step import SETTINGS_PANE_MARGINS, SETTINGS_PANE_WIDTH
+        from gui.steps.step4_cubemap import CubemapStep
+
+        app = QApplication([])
+        apply_theme(app)
+        step = CubemapStep(Path.cwd())
+        step.resize(1280, 920)
+        step.show()
+        app.processEvents()
+
+        content_width = SETTINGS_PANE_WIDTH - SETTINGS_PANE_MARGINS[2]
+        row_widths = []
+        for method in ("spheresfm", "colmap", "metashape", "spheresfm"):
+            step.settings_tabs.setCurrentIndex(step.input_tab_index)
+            QTest.mouseClick(step.export_method_buttons[method], Qt.LeftButton)
+            app.processEvents()
+            settings_pane = step.export_method_row.parentWidget()
+            while settings_pane is not None and settings_pane.width() != SETTINGS_PANE_WIDTH:
+                settings_pane = settings_pane.parentWidget()
+            row_widths.append(step.export_method_row.width())
+            assert settings_pane is not None
+            assert step.export_method_row.width() <= content_width
+            row_pos = step.export_method_row.mapTo(settings_pane, QPoint(0, 0))
+            assert row_pos.x() + step.export_method_row.width() < SETTINGS_PANE_WIDTH
+
+        assert len(set(row_widths)) == 1
+        """
+    )
+
+    for lang in ("ja", "en"):
+        env = os.environ.copy()
+        env["STUDIO_LANG"] = lang
+        env["QT_QPA_PLATFORM"] = "offscreen"
+        result = subprocess.run(
+            [sys.executable, "-c", script],
+            cwd=Path.cwd(),
+            env=env,
+            capture_output=True,
+            text=True,
+        )
+        assert result.returncode == 0, f"lang={lang}\n{result.stdout}{result.stderr}"
+
+
+def test_step4_route_and_training_selectors_use_radio_buttons() -> None:
+    _app()
+    step = CubemapStep(Path.cwd())
+
+    layout = step.export_method_row.layout()
+    margins = layout.contentsMargins()
+    assert step.export_method_row.objectName() == "radioOptionRow"
+    assert layout.spacing() == 10
+    assert (margins.left(), margins.top(), margins.right(), margins.bottom()) == (0, 0, 0, 0)
+
+    assert all(isinstance(button, QRadioButton) for button in step.export_method_buttons.values())
+    assert all(button.objectName() == "optionRadio" for button in step.export_method_buttons.values())
+    assert all(
+        isinstance(button, QRadioButton)
+        for button in step.training_backend_selector.primary_backend_buttons.values()
+    )
+    assert all(
+        button.objectName() == "optionRadio"
+        for button in step.training_backend_selector.primary_backend_buttons.values()
+    )
+    assert isinstance(step.training_backend_other_button, QRadioButton)
+    assert step.training_backend_other_button.objectName() == "optionRadio"
+    assert isinstance(step.training_backend_other_menu_button, QToolButton)
+    assert step.training_backend_other_menu_button.objectName() == "optionMenuArrow"
+    assert set(step.training_backend_buttons) == {"lichtfeld", "postshot"}
+    assert set(step.training_backend_selector.primary_backend_buttons) == {"lichtfeld", "postshot"}
+    assert set(step.training_backend_selector.other_backend_actions) == {"custom"}
+    assert step.training_backend_buttons["lichtfeld"].isChecked()
+    assert step.training_backend_other_button.text() == i18n.t("TRAINING_BACKEND_OTHER")
+    assert not hasattr(step, "training_backend_other_row")
+    assert not step.training_backend_other_button.isChecked()
+
+    step._set_training_backend("custom")
+    assert step.training_backend_other_button.isChecked()
+    assert step.training_backend_other_button.text() == i18n.t("TRAINING_BACKEND_CUSTOM_SHORT")
+    assert step.training_backend_selector.other_backend_actions["custom"].isChecked()
+
+    step._set_training_backend("lichtfeld")
+    step.training_backend_selector.other_backend_actions["custom"].trigger()
+    assert step._training_backend() == "custom"
+    assert step.training_backend_other_button.isChecked()
+
+
+def test_step4_japanese_training_copy_uses_training_wording() -> None:
+    script = textwrap.dedent(
+        """
+        import os
+
+        os.environ["STUDIO_LANG"] = "ja"
+
+        from gui import i18n
+
+        visible_keys = [
+            "PHASE_TRAINING_LICHTFELD",
+            "PHASE_TRAINING_POSTSHOT",
+            "PHASE_TRAINING_CUSTOM",
+            "TRAINING_EXEC_NOT_FOUND",
+            "TRAINING_REQUIRES_DATASET_OUTPUT",
+            "TRAINING_OUTPUT",
+            "STEP4_TAB_TRAINING",
+            "STEP4_PIPELINE_TRAINING",
+        ]
+        tip_keys = [
+            "TRAINING_BACKEND_LICHTFELD",
+            "TRAINING_BACKEND_POSTSHOT",
+            "TRAINING_EXECUTABLE",
+            "TRAINING_DATASET",
+            "TRAINING_OUTPUT",
+            "TRAINING_HEADLESS",
+            "LFS_STRATEGY",
+            "LFS_ITERATIONS",
+            "LFS_OUTPUT_PLY_NAME",
+            "LFS_STEPS_SCALER",
+            "POSTSHOT_KSTEPS",
+        ]
+
+        assert i18n.t("STEP4_TAB_TRAINING") == "Training"
+        assert i18n.t("TRAINING_OUTPUT") == "出力先"
+        assert all("学習" not in i18n.t(key) for key in visible_keys)
+        assert all("学習" not in i18n.tip(key) for key in tip_keys)
+        """
+    )
+
+    env = os.environ.copy()
+    env["STUDIO_LANG"] = "ja"
+    result = subprocess.run(
+        [sys.executable, "-c", script],
+        cwd=Path.cwd(),
+        env=env,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_step4_scrolls_tab_content_not_whole_settings_pane() -> None:
+    script = textwrap.dedent(
+        """
+        import os
+
+        os.environ["QT_QPA_PLATFORM"] = "offscreen"
+
+        from PySide6.QtCore import QPoint, Qt
+        from PySide6.QtTest import QTest
+        from PySide6.QtWidgets import QApplication, QScrollArea
+
+        from gui import i18n
+        from gui.app import MainWindow
+        from gui.theme import apply_theme
+
+        app = QApplication([])
+        apply_theme(app)
+        window = MainWindow()
+        window.resize(1280, 920)
+        window.show()
+        window._set_current_step(3)
+        app.processEvents()
+
+        step = window.step4
+        assert step.findChildren(QScrollArea, "settingsScroll") == []
+
+        tab_widgets = [step.settings_tabs.widget(index) for index in range(step.settings_tabs.count())]
+        tab_scrolls = [
+            widget
+            for index, widget in enumerate(tab_widgets)
+            if index != step.training_tab_index
+        ]
+        assert len(tab_scrolls) == 3
+        assert all(isinstance(scroll, QScrollArea) for scroll in tab_scrolls)
+        assert all(scroll.objectName() == "step4TabScroll" for scroll in tab_scrolls)
+        assert all(scroll.horizontalScrollBarPolicy() == Qt.ScrollBarAlwaysOff for scroll in tab_scrolls)
+        assert all(scroll.verticalScrollBarPolicy() == Qt.ScrollBarAsNeeded for scroll in tab_scrolls)
+        assert step.settings_tabs.widget(step.training_tab_index) is step.training_section
+
+        parent = step.export_method_row.parentWidget()
+        found_route_scroll = False
+        while parent is not None:
+            found_route_scroll = found_route_scroll or isinstance(parent, QScrollArea)
+            parent = parent.parentWidget()
+        assert found_route_scroll
+
+        assert [button.width() for button in window.step4_sub_buttons.values()] == [63, 63, 63]
+        assert [button.width() for button in window.step4_sub_intent_buttons.values()] == [13, 13, 13]
+        assert [label.width() for label in window.step4_sub_status_labels.values()] == [13, 13, 13]
+        assert window.step4_subnav_rail.width() == 2
+        assert window.step4_sub_text_labels["sfm"].text() == "SfM"
+        assert window.step4_sub_text_labels["conversion"].text() == "Cube"
+        assert window.step4_sub_text_labels["training"].text() == "Train"
+        rail_x = window.step4_subnav_rail.mapTo(window, QPoint(0, 0)).x()
+        intent_x = [
+            button.mapTo(window, QPoint(0, 0)).x()
+            for button in window.step4_sub_intent_buttons.values()
+        ]
+        status_x = [
+            label.mapTo(window, QPoint(0, 0)).x()
+            for label in window.step4_sub_status_labels.values()
+        ]
+        text_x = [
+            label.mapTo(window, QPoint(0, 0)).x()
+            for label in window.step4_sub_text_labels.values()
+        ]
+        assert rail_x < intent_x[0] < text_x[0] < status_x[0]
+        assert len(set(intent_x)) == 1
+        assert len(set(text_x)) == 1
+        assert len(set(status_x)) == 1
+        assert window.step4_sub_intent_buttons["conversion"].toolTip()
+        assert window.step4_sub_status_labels["conversion"].toolTip()
+        assert window.step4_sub_intent_buttons["sfm"].text() == "●"
+        QTest.mouseClick(window.step4_sub_buttons["sfm"], Qt.LeftButton)
+        assert step.pipeline_stage_intent("sfm") is True
+        assert step.settings_tabs.currentIndex() == step.input_tab_index
+        assert window.step4_sub_intent_buttons["sfm"].text() == "●"
+        assert not step.run_training_cb.isChecked()
+        QTest.mouseClick(window.step4_sub_buttons["training"], Qt.LeftButton)
+        assert step.run_training_cb.isChecked()
+        assert step.settings_tabs.currentIndex() == step.training_tab_index
+        QTest.mouseClick(window.step4_sub_buttons["training"], Qt.LeftButton)
+        assert not step.run_training_cb.isChecked()
+        window._activate_step4_pipeline_stage("training")
+        assert window.stack.currentIndex() == 3
+        assert step.settings_tabs.currentIndex() == step.training_tab_index
+        assert window.step4_sub_buttons["training"].isChecked()
+        window._activate_step4_pipeline_stage("conversion")
+        assert step.settings_tabs.currentIndex() == step.output_tab_index
+        assert window.step4_sub_buttons["conversion"].isChecked()
+        assert window.run_btn.text().strip() == i18n.t("RUN")
+
+        step.settings_tabs.setCurrentIndex(step.training_tab_index)
+        step._set_training_backend("lichtfeld")
+        app.processEvents()
+        assert step.training_settings_scroll.verticalScrollBar().maximum() > 0
+        step._set_training_backend("postshot")
+        app.processEvents()
+        assert step.training_settings_scroll.verticalScrollBar().maximum() > 0
+        step._set_training_backend("custom")
+        app.processEvents()
+        assert step.training_settings_scroll.verticalScrollBar().maximum() == 0
+        for row in (step.training_backend_row, step.training_run_options_row):
+            parent = row.parentWidget()
+            while parent is not None:
+                assert not isinstance(parent, QScrollArea)
+                parent = parent.parentWidget()
+        """
+    )
+
+    env = os.environ.copy()
+    env["QT_QPA_PLATFORM"] = "offscreen"
     result = subprocess.run(
         [sys.executable, "-c", script],
         cwd=Path.cwd(),
@@ -242,9 +606,8 @@ def test_mask_numeric_labels_share_field_tooltips() -> None:
     _app()
     step = MaskStep(Path.cwd())
 
-    assert step.projection_label.toolTip() == i18n.tip("MASK_IMAGE_TYPE")
-    assert step.projection_buttons["equirect"].toolTip() == i18n.tip("MASK_IMAGE_TYPE_EQUIRECT")
-    assert step.projection_buttons["normal"].toolTip() == i18n.tip("MASK_IMAGE_TYPE_NORMAL")
+    assert i18n.t("MASK_IMAGE_TYPE_EQUIRECT") in step.projection_label.toolTip()
+    assert not hasattr(step, "projection_buttons")
     assert step.person_backend_label.toolTip() == i18n.tip("PERSON_MODEL")
     assert step.person_backend_combo.toolTip() == i18n.tip("PERSON_MODEL")
     assert step.yolo_level_label.toolTip() == i18n.tip("MASK_QUALITY")
@@ -309,11 +672,37 @@ def test_cubemap_labels_share_field_tooltips() -> None:
     _app()
     step = CubemapStep(Path.cwd())
 
-    assert _label(step, i18n.t("EXPORT_METHOD_COMPACT")).toolTip() == i18n.tip("EXPORT_METHOD")
-    assert _label(step, i18n.t("EXPORT_TARGETS")).toolTip() == i18n.tip("EXPORT_TARGETS")
+    assert step.export_method_label.toolTip() == i18n.tip("EXPORT_METHOD")
+    assert step.export_targets_row.toolTip() == i18n.tip("EXPORT_TARGETS")
+    assert all(child.text() != i18n.t("EXPORT_TARGETS") for child in step.output_tab.findChildren(QLabel))
     assert step.export_method_buttons["metashape"].toolTip() == i18n.tip("METHOD_METASHAPE_IMPORT")
     assert step.export_method_buttons["colmap"].toolTip() == i18n.tip("METHOD_COLMAP_EXPORT")
     assert step.export_method_buttons["spheresfm"].toolTip() == i18n.tip("METHOD_SPHERESFM")
+    assert step.training_backend_label.toolTip() == i18n.tip("TRAINING_BACKEND_LICHTFELD")
+    assert step.training_backend_buttons["lichtfeld"].toolTip() == i18n.tip("TRAINING_BACKEND_LICHTFELD")
+    step._set_training_backend("postshot")
+    assert step.training_backend_label.toolTip() == i18n.tip("TRAINING_BACKEND_POSTSHOT")
+    assert step.training_backend_buttons["postshot"].isChecked()
+    step._set_training_backend("custom")
+    assert step.training_backend_label.toolTip() == i18n.tip("TRAINING_BACKEND_CUSTOM")
+    assert step.training_backend_other_button.isChecked()
+    assert step.training_backend_other_button.text() == i18n.t("TRAINING_BACKEND_CUSTOM_SHORT")
+    assert step.training_backend_selector.other_backend_actions["custom"].isChecked()
+    assert step.training_backend_other_button.toolTip() == i18n.tip("TRAINING_BACKEND_CUSTOM")
+    assert step.training_backend_other_menu_button.toolTip() == i18n.tip("TRAINING_BACKEND_OTHER")
+    assert _label(step, i18n.t("TRAINING_EXECUTABLE")).toolTip() == i18n.tip("TRAINING_EXECUTABLE")
+    assert _label(step, i18n.t("TRAINING_DATASET")).toolTip() == i18n.tip("TRAINING_DATASET")
+    assert _label(step, i18n.t("TRAINING_OUTPUT")).toolTip() == i18n.tip("TRAINING_OUTPUT")
+    assert step.training_headless_cb.toolTip() == i18n.tip("TRAINING_HEADLESS")
+    assert _label(step, i18n.t("LFS_STRATEGY")).toolTip() == i18n.tip("LFS_STRATEGY")
+    assert _label(step, i18n.t("LFS_ITERATIONS")).toolTip() == i18n.tip("LFS_ITERATIONS")
+    assert _label(step, i18n.t("LFS_MAX_GAUSSIANS")).toolTip() == i18n.tip("LFS_MAX_GAUSSIANS")
+    assert _label(step, i18n.t("LFS_OUTPUT_PLY_NAME")).toolTip() == i18n.tip("LFS_OUTPUT_PLY_NAME")
+    assert _label(step, i18n.t("LFS_MASK_MODE")).toolTip() == i18n.tip("LFS_MASK_MODE")
+    assert _label(step, i18n.t("LFS_INVERT_MASKS")).toolTip() == i18n.tip("LFS_INVERT_MASKS")
+    assert step.lfs_invert_masks_cb.toolTip() == i18n.tip("LFS_INVERT_MASKS")
+    assert _label(step, i18n.t("POSTSHOT_PROJECT_NAME")).toolTip() == i18n.tip("POSTSHOT_PROJECT_NAME")
+    assert _label(step, i18n.t("CUSTOM_TRAINING_ARGS")).toolTip() == i18n.tip("CUSTOM_TRAINING_ARGS")
     assert step.colmap_repo_link.openExternalLinks()
     assert step.colmap_repo_link.toolTip() == i18n.tip("COLMAP_REPOSITORY_LINK")
     assert i18n.t("COLMAP_REPOSITORY_LINK") in step.colmap_repo_link.text()

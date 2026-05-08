@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -10,15 +11,20 @@ from pathlib import Path
 
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
+    QAbstractItemView,
     QCheckBox,
     QComboBox,
+    QFileDialog,
     QFormLayout,
     QHBoxLayout,
     QLabel,
     QLineEdit,
+    QListWidget,
+    QListWidgetItem,
     QMessageBox,
     QScrollArea,
     QSplitter,
+    QToolButton,
     QVBoxLayout,
     QWidget,
 )
@@ -29,13 +35,15 @@ from gui.common.browse_widget import BrowseWidget
 from gui.common.collapsible_section import CollapsibleSection
 from gui.common.drag_spinbox import DragDoubleSpinBox, DragSpinBox
 from gui.common.form_rows import add_tooltip_row
-from gui.common.icons import reset_icon
+from gui.common.icons import delete_icon, plus_icon, reset_icon
 from gui.steps.base_step import (
     SETTINGS_PANE_MARGINS,
     SETTINGS_PANE_WIDTH,
     BaseStepWidget,
     configure_settings_scroll,
 )
+from scene_layout import APP_DIR_NAME, source_videos_path
+from scene_project import infer_video_projection, load_json, remove_source_videos, source_video_record, upsert_source_videos
 
 _FIXED_INTERVAL_MIN = 0.05
 _FIXED_INTERVAL_MAX = 60.0
@@ -45,6 +53,17 @@ _GAP_SPINBOX_WIDTH = 112
 _JPEG_QUALITY_MIN = 1
 _JPEG_QUALITY_MAX = 31
 _JPEG_QUALITY_DEFAULT = 2
+_VIDEO_EXTENSIONS = {".mp4", ".mov", ".mkv", ".avi", ".m4v"}
+_VIDEO_SCAN_EXCLUDED_DIRS = {
+    APP_DIR_NAME.casefold(),
+    ".git",
+    ".venv",
+    "__pycache__",
+    "images",
+    "masks",
+    "output",
+    "outputs",
+}
 
 
 def _detect_binary(name: str) -> str:
@@ -105,26 +124,21 @@ class ExtractStep(BaseStepWidget):
         basic.setSpacing(6)
 
         self.video_browse = BrowseWidget(
+            self,
             mode="files",
             filter_str=i18n.t("VIDEO_FILE_FILTER"),
             placeholder=i18n.t("INPUT_VIDEO_PLACEHOLDER"),
         )
         self.video_browse.setToolTip(i18n.tip("INPUT_VIDEO"))
         self.video_browse.path_changed.connect(self._on_video_changed)
-        self.clear_video_btn = self.video_browse.add_icon_button(
-            reset_icon(),
-            i18n.t("CLEAR_INPUT_VIDEO_HINT"),
-            self._clear_input_videos,
-            accessible_name=i18n.t("CLEAR_INPUT_VIDEO"),
-        )
-        add_tooltip_row(basic, i18n.INPUT_VIDEO, self.video_browse, i18n.tip("INPUT_VIDEO"))
+        self.video_browse.hide()
 
         self.output_mode_combo = QComboBox()
         self.output_mode_combo.setToolTip(i18n.tip("EXTRACT_OUTPUT_MODE"))
         self.output_mode_combo.addItem(i18n.t("EXTRACT_OUTPUT_APPEND"), "append")
         self.output_mode_combo.addItem(i18n.t("EXTRACT_OUTPUT_REPLACE_VIDEO"), "replace-video")
         self.output_mode_combo.setFixedWidth(180)
-        self.output_mode_combo.currentIndexChanged.connect(lambda _: self._update_ready_status())
+        self.output_mode_combo.currentIndexChanged.connect(lambda _: self._on_output_mode_changed())
         add_tooltip_row(basic, i18n.t("EXTRACT_OUTPUT_MODE"), self.output_mode_combo, i18n.tip("EXTRACT_OUTPUT_MODE"))
 
         self.images_path_label = QLabel("-")
@@ -269,16 +283,59 @@ class ExtractStep(BaseStepWidget):
         self.extract_action_row = info_row_widget
         layout.addWidget(info_row_widget)
 
+        queue_header = QHBoxLayout()
+        queue_header.setContentsMargins(0, 0, 0, 0)
+        queue_header.setSpacing(6)
+        queue_header.addWidget(QLabel(i18n.t("VIDEO_QUEUE_SECTION")))
+        self.video_queue_summary_label = QLabel("")
+        self.video_queue_summary_label.setObjectName("videoQueueSummary")
+        self.video_queue_summary_label.setStyleSheet("color: #8888aa; font-size: 9pt;")
+        self.video_queue_summary_label.setWordWrap(False)
+        queue_header.addWidget(self.video_queue_summary_label, stretch=1)
+        queue_header.addStretch()
+        self.add_video_btn = QToolButton()
+        self.add_video_btn.setObjectName("iconToolButton")
+        self.add_video_btn.setIcon(plus_icon())
+        self.add_video_btn.setToolTip(i18n.tip("ADD_INPUT_VIDEO"))
+        self.add_video_btn.setAccessibleName(i18n.t("ADD_INPUT_VIDEO"))
+        self.add_video_btn.setFixedSize(32, 32)
+        self.add_video_btn.clicked.connect(self._add_input_videos)
+        queue_header.addWidget(self.add_video_btn)
+        self.remove_video_btn = QToolButton()
+        self.remove_video_btn.setObjectName("iconToolButton")
+        self.remove_video_btn.setIcon(delete_icon())
+        self.remove_video_btn.setToolTip(i18n.tip("REMOVE_INPUT_VIDEO"))
+        self.remove_video_btn.setAccessibleName(i18n.t("REMOVE_INPUT_VIDEO"))
+        self.remove_video_btn.setFixedSize(32, 32)
+        self.remove_video_btn.clicked.connect(self._remove_selected_input_videos)
+        queue_header.addWidget(self.remove_video_btn)
+        self.clear_video_btn = QToolButton()
+        self.clear_video_btn.setObjectName("iconToolButton")
+        self.clear_video_btn.setIcon(reset_icon())
+        self.clear_video_btn.setToolTip(i18n.t("CLEAR_INPUT_VIDEO_HINT"))
+        self.clear_video_btn.setAccessibleName(i18n.t("CLEAR_INPUT_VIDEO"))
+        self.clear_video_btn.setFixedSize(32, 32)
+        self.clear_video_btn.clicked.connect(self._clear_input_videos)
+        queue_header.addWidget(self.clear_video_btn)
+        work_layout.addLayout(queue_header)
+
+        self.video_queue_list = QListWidget()
+        self.video_queue_list.setSelectionMode(QAbstractItemView.ExtendedSelection)
+        self.video_queue_list.setMinimumHeight(150)
+        self.video_queue_list.setToolTip(i18n.tip("VIDEO_QUEUE_SECTION"))
+        self.video_queue_list.itemSelectionChanged.connect(self._update_video_queue_buttons)
+        work_layout.addWidget(self.video_queue_list)
+
         work_layout.addWidget(QLabel(i18n.t("EXTRACT_READY_SECTION")))
         self.ready_status_label = QLabel()
         self.ready_status_label.setWordWrap(True)
         work_layout.addWidget(self.ready_status_label)
 
-        work_layout.addWidget(QLabel(i18n.VIDEO_INFO))
         self.video_info_label = QLabel(i18n.t("VIDEO_LABEL_DEFAULT"))
         self.video_info_label.setStyleSheet("color: #8888aa;")
         self.video_info_label.setWordWrap(True)
         work_layout.addWidget(self.video_info_label)
+        self.video_info_label.hide()
 
         work_layout.addWidget(QLabel(i18n.FRAME_ESTIMATE))
         self.estimate_label = QLabel()
@@ -349,12 +406,15 @@ class ExtractStep(BaseStepWidget):
         splitter.setSizes([SETTINGS_PANE_WIDTH, 760])
         root_layout.addWidget(splitter)
         self._update_mode_widgets()
+        self._refresh_video_queue_list()
         self._update_ready_status()
 
     # -- シーンディレクトリ --
 
     def set_scene_dir(self, path: str) -> None:
         super().set_scene_dir(path)
+        self._prune_missing_selected_videos()
+        self._autoload_videos_from_scene_if_empty()
         self._update_images_path_label()
         self._update_video_info_label()
         self._update_instant_estimate()
@@ -441,12 +501,137 @@ class ExtractStep(BaseStepWidget):
         raw_paths = [part.strip().strip('"') for part in text.split(";")]
         return [Path(part) for part in raw_paths if part]
 
+    def _set_video_queue_paths(self, videos: list[Path]) -> None:
+        unique: list[Path] = []
+        seen: set[str] = set()
+        for video in videos:
+            key = str(video).replace("\\", "/").casefold()
+            if key in seen:
+                continue
+            seen.add(key)
+            unique.append(video)
+        self.video_browse.set_text("; ".join(str(video) for video in unique))
+        if not unique:
+            self._refresh_video_queue_list()
+
+    def _queue_dialog_start_path(self) -> str:
+        videos = self._selected_video_paths()
+        for video in videos:
+            if video.is_file():
+                return str(video.parent)
+        if self.scene_dir:
+            return self.scene_dir
+        return ""
+
+    def _add_input_videos(self) -> None:
+        paths, _selected_filter = QFileDialog.getOpenFileNames(
+            self,
+            i18n.t("ADD_INPUT_VIDEO"),
+            self._queue_dialog_start_path(),
+            i18n.t("VIDEO_FILE_FILTER"),
+        )
+        if not paths:
+            return
+        self._set_video_queue_paths([*self._selected_video_paths(), *(Path(path) for path in paths)])
+
+    def _remove_selected_input_videos(self) -> None:
+        selected_paths = {str(item.data(Qt.UserRole)) for item in self.video_queue_list.selectedItems()}
+        if not selected_paths:
+            return
+        videos = self._selected_video_paths()
+        removed = [video for video in videos if str(video) in selected_paths]
+        self._forget_source_videos(removed)
+        self._set_video_queue_paths([video for video in videos if str(video) not in selected_paths])
+
+    def _video_info_for_queue_item(self, video: Path) -> dict | None:
+        info = self.video_infos.get(self._video_key(video))
+        if info is None and len(self._selected_video_paths()) == 1:
+            info = self.video_info
+        return info if isinstance(info, dict) else None
+
+    def _video_queue_item_text(self, video: Path) -> str:
+        key = self._video_key(video)
+        info = self._video_info_for_queue_item(video)
+        if key in self.video_info_failures:
+            status = i18n.t("VIDEO_QUEUE_STATUS_ERROR")
+        else:
+            status = self._video_queue_status_text(video)
+        if info is not None:
+            return i18n.t("VIDEO_QUEUE_ITEM_INFO_FORMAT").format(
+                name=video.name or str(video),
+                status=status,
+                projection=self._video_projection_text(info),
+                width=info["width"],
+                height=info["height"],
+                fps=info["fps"],
+                duration=self._format_duration(float(info.get("duration_sec", 0))),
+                frames=self._format_number(self._estimated_total_frames(info)),
+                folder=str(video.parent),
+            )
+        return i18n.t("VIDEO_QUEUE_ITEM_FORMAT").format(
+            name=video.name or str(video),
+            status=status,
+            projection=self._video_projection_text(info),
+            folder=str(video.parent),
+        )
+
+    def _update_video_queue_summary_label(self) -> None:
+        if not hasattr(self, "video_queue_summary_label"):
+            return
+        videos = self._selected_video_paths()
+        if not videos:
+            self.video_queue_summary_label.setText(i18n.t("NO_VIDEO"))
+            return
+        queued, skipped = self._queued_selected_videos()
+        probed = sum(1 for video in videos if self._video_info_for_queue_item(video) is not None)
+        failed = sum(1 for video in videos if self._video_key(video) in self.video_info_failures)
+        text = i18n.t("VIDEO_QUEUE_SUMMARY_FORMAT").format(
+            total=len(videos),
+            queued=len(queued),
+            skipped=skipped,
+            probed=probed,
+        )
+        if failed:
+            text += i18n.t("VIDEO_INFO_FAILED_SUFFIX").format(failed=failed)
+        self.video_queue_summary_label.setText(text)
+
+    def _refresh_video_queue_list(self) -> None:
+        if not hasattr(self, "video_queue_list"):
+            return
+        selected_paths = {str(item.data(Qt.UserRole)) for item in self.video_queue_list.selectedItems()}
+        self.video_queue_list.blockSignals(True)
+        try:
+            self.video_queue_list.clear()
+            for video in self._selected_video_paths():
+                item = QListWidgetItem(self._video_queue_item_text(video))
+                item.setData(Qt.UserRole, str(video))
+                item.setToolTip(str(video))
+                self.video_queue_list.addItem(item)
+                if str(video) in selected_paths:
+                    item.setSelected(True)
+        finally:
+            self.video_queue_list.blockSignals(False)
+        self._update_video_queue_summary_label()
+        self._update_video_queue_buttons()
+
+    def _update_video_queue_buttons(self) -> None:
+        if not hasattr(self, "video_queue_list"):
+            return
+        has_videos = bool(self._selected_video_paths())
+        self.remove_video_btn.setEnabled(bool(self.video_queue_list.selectedItems()))
+        self.clear_video_btn.setEnabled(has_videos)
+
     def _is_multi_video_input(self) -> bool:
         return len(self._selected_video_paths()) > 1
 
     def _extract_output_mode(self) -> str:
         data = self.output_mode_combo.currentData()
         return str(data or "append")
+
+    def _on_output_mode_changed(self) -> None:
+        self._update_video_info_label()
+        self._update_instant_estimate()
+        self._update_ready_status()
 
     def _matching_video_sessions_for_path(self, video: Path) -> list[dict]:
         if not self.scene_dir:
@@ -460,6 +645,143 @@ class ExtractStep(BaseStepWidget):
         if not videos:
             return []
         return self._matching_video_sessions_for_path(videos[0])
+
+    def _autoload_videos_from_scene_if_empty(self) -> None:
+        if not self.scene_dir or self.video_browse.text():
+            return
+        scene = Path(self.scene_dir)
+        if not scene.is_dir():
+            return
+        videos = self._source_video_paths_from_project(scene)
+        if not videos:
+            videos = self._source_video_paths_from_extract_manifest(scene)
+        if not videos:
+            videos = self._scan_video_paths_under_scene(scene)
+        if videos:
+            self.video_browse.set_text("; ".join(str(video) for video in videos))
+
+    def _prune_missing_selected_videos(self) -> bool:
+        videos = self._selected_video_paths()
+        if not videos:
+            return False
+        existing = [video for video in videos if video.is_file()]
+        if len(existing) == len(videos):
+            return False
+        missing_keys = {self._video_key(video) for video in videos if not video.is_file()}
+        self.video_infos = {key: value for key, value in self.video_infos.items() if key not in missing_keys}
+        self.video_info_failures = {
+            key: value for key, value in self.video_info_failures.items() if key not in missing_keys
+        }
+        if not existing:
+            self.video_info = None
+        self.video_browse.set_text("; ".join(str(video) for video in existing))
+        if not existing:
+            self._autoload_videos_from_scene_if_empty()
+        return True
+
+    @staticmethod
+    def _resolve_scene_or_absolute_path(scene: Path, value: str) -> Path:
+        path = Path(value)
+        return path if path.is_absolute() else scene / path
+
+    @staticmethod
+    def _is_supported_video_file(path: Path) -> bool:
+        return path.is_file() and path.suffix.lower() in _VIDEO_EXTENSIONS
+
+    def _unique_existing_video_paths(self, scene: Path, values: list[str]) -> list[Path]:
+        videos: list[Path] = []
+        seen: set[str] = set()
+        for value in values:
+            if not value:
+                continue
+            path = self._resolve_scene_or_absolute_path(scene, value)
+            if not self._is_supported_video_file(path):
+                continue
+            try:
+                key = str(path.resolve()).casefold()
+            except OSError:
+                key = str(path).casefold()
+            if key in seen:
+                continue
+            seen.add(key)
+            videos.append(path)
+        return videos
+
+    def _source_video_paths_from_project(self, scene: Path) -> list[Path]:
+        data = load_json(source_videos_path(scene), {"videos": []})
+        records = data.get("videos")
+        if not isinstance(records, list):
+            return []
+        values: list[str] = []
+        for record in records:
+            if not isinstance(record, dict):
+                continue
+            source = record.get("source")
+            if not isinstance(source, dict):
+                continue
+            values.append(str(source.get("path") or ""))
+        return self._unique_existing_video_paths(scene, values)
+
+    def _source_video_paths_from_extract_manifest(self, scene: Path) -> list[Path]:
+        values: list[str] = []
+        for session in load_manifest(scene).get("sessions", []):
+            if not isinstance(session, dict):
+                continue
+            source = session.get("source_video")
+            if isinstance(source, dict):
+                values.append(str(source.get("path") or ""))
+            else:
+                values.append(str(session.get("source_video_path") or ""))
+        return self._unique_existing_video_paths(scene, values)
+
+    def _scan_video_paths_under_scene(self, scene: Path) -> list[Path]:
+        videos: list[Path] = []
+        try:
+            for root, dirs, files in os.walk(scene):
+                dirs[:] = sorted(
+                    [
+                        name
+                        for name in dirs
+                        if name.casefold() not in _VIDEO_SCAN_EXCLUDED_DIRS and not name.startswith(".")
+                    ],
+                    key=str.lower,
+                )
+                for name in sorted(files, key=str.lower):
+                    path = Path(root) / name
+                    if self._is_supported_video_file(path):
+                        videos.append(path)
+        except OSError:
+            return []
+        return videos
+
+    def _video_queue_status_key(self, video: Path) -> str:
+        if not video.is_file():
+            return "missing"
+        matching = self._matching_video_sessions_for_path(video)
+        if self._extract_output_mode() == "replace-video":
+            return "reextract" if matching else "new"
+        return "skip" if matching else "new"
+
+    def _video_queue_status_text(self, video: Path) -> str:
+        key = self._video_queue_status_key(video)
+        if key == "skip":
+            return i18n.t("VIDEO_QUEUE_STATUS_SKIP")
+        if key == "reextract":
+            return i18n.t("VIDEO_QUEUE_STATUS_REEXTRACT")
+        if key == "missing":
+            return i18n.t("VIDEO_QUEUE_STATUS_MISSING")
+        return i18n.t("VIDEO_QUEUE_STATUS_NEW")
+
+    def _video_projection_text(self, info: dict | None) -> str:
+        if not isinstance(info, dict):
+            return i18n.t("VIDEO_PROJECTION_UNKNOWN")
+        detected = infer_video_projection(info)
+        projection = str(detected.get("projection") or "")
+        if projection == "equirectangular":
+            return i18n.t("VIDEO_PROJECTION_EQUIRECT")
+        if projection == "normal":
+            return i18n.t("VIDEO_PROJECTION_NORMAL")
+        return i18n.t("VIDEO_PROJECTION_UNKNOWN")
 
     def _queued_selected_videos(self) -> tuple[list[Path], int]:
         videos = self._selected_video_paths()
@@ -583,6 +905,11 @@ class ExtractStep(BaseStepWidget):
     # -- コマンド構築 --
 
     def build_commands(self) -> list[tuple[str, list[str]]]:
+        videos = self._selected_video_paths()
+        missing = [video for video in videos if not video.is_file()]
+        if missing:
+            preview = ", ".join(str(video) for video in missing[:3])
+            raise ValueError(f"{i18n.t('EXTRACT_READY_VIDEO_NOT_FOUND')}\n{preview}")
         if not self._is_multi_video_input():
             return [("extract", self._build_extract_cmd())]
 
@@ -601,7 +928,7 @@ class ExtractStep(BaseStepWidget):
         if not videos:
             raise ValueError("入力動画が指定されていません")
         video = videos[0]
-        if not video.exists():
+        if not video.is_file():
             raise ValueError(f"入力動画が見つかりません: {video}")
         if not self.scene_dir:
             raise ValueError("シーンフォルダが指定されていません")
@@ -609,6 +936,8 @@ class ExtractStep(BaseStepWidget):
         return self._build_extract_cmd_for_video(video, set())
 
     def _build_extract_cmd_for_video(self, video_path: Path, used_prefixes: set[str]) -> list[str]:
+        if not video_path.is_file():
+            raise ValueError(f"入力動画が見つかりません: {video_path}")
         if not self.scene_dir:
             raise ValueError("シーンフォルダが指定されていません")
 
@@ -669,11 +998,30 @@ class ExtractStep(BaseStepWidget):
                 pass
         return None
 
+    def on_queue_finished(self, success: bool) -> None:
+        if success:
+            self._save_source_video_registry()
+            self._refresh_finished_run_state(revalidate_video_info=False)
+        else:
+            self._refresh_finished_run_state(revalidate_video_info=True)
+
+    def _refresh_finished_run_state(self, *, revalidate_video_info: bool) -> None:
+        videos = self._selected_video_paths()
+        if self._prune_missing_selected_videos():
+            return
+        if revalidate_video_info and videos:
+            self._load_video_info(show_error=False)
+            return
+        self._update_video_info_label()
+        self._update_ready_status()
+
     # -- 動画情報 --
 
     def _clear_input_videos(self) -> None:
         self.last_estimate_summary = None
+        videos = self._selected_video_paths()
         if self.video_browse.text():
+            self._forget_source_videos(videos)
             self.video_browse.set_text("")
         else:
             self.video_info = None
@@ -684,8 +1032,14 @@ class ExtractStep(BaseStepWidget):
             self._update_ready_status()
         self.input_videos_cleared.emit()
 
+    def _forget_source_videos(self, videos: list[Path]) -> None:
+        if not self.scene_dir or not videos:
+            return
+        remove_source_videos(Path(self.scene_dir), videos)
+
     def _on_video_changed(self, path: str) -> None:
         videos = self._selected_video_paths()
+        self._refresh_video_queue_list()
         self._suggest_scene_dir_from_videos(videos)
         if len(videos) == 1 and videos[0].is_file():
             self._load_video_info(show_error=False)
@@ -834,9 +1188,16 @@ class ExtractStep(BaseStepWidget):
             raise ValueError(f"入力動画が見つかりません: {video}")
 
         cmd = [
-            ffprobe, "-v", "error", "-select_streams", "v:0",
-            "-show_entries", "stream=width,height,avg_frame_rate,r_frame_rate,nb_frames,duration",
-            "-show_entries", "format=duration", "-of", "json", video,
+            ffprobe,
+            "-v",
+            "error",
+            "-select_streams",
+            "v:0",
+            "-show_streams",
+            "-show_format",
+            "-of",
+            "json",
+            video,
         ]
         proc = subprocess.run(cmd, capture_output=True, text=True)
         if proc.returncode != 0:
@@ -848,11 +1209,12 @@ class ExtractStep(BaseStepWidget):
             raise RuntimeError("動画ストリームが見つかりません")
 
         s = streams[0]
+        fmt = data.get("format") if isinstance(data.get("format"), dict) else {}
         w, h = int(s.get("width", 0)), int(s.get("height", 0))
         fps = self._parse_fraction(s.get("avg_frame_rate", "0"))
         if fps <= 0:
             fps = self._parse_fraction(s.get("r_frame_rate", "0"))
-        dur = float(s.get("duration") or data.get("format", {}).get("duration") or 0.0)
+        dur = float(s.get("duration") or fmt.get("duration") or 0.0)
         nb = int(s["nb_frames"]) if s.get("nb_frames", "").isdigit() else 0
 
         if fps <= 0 and dur > 0 and nb > 0:
@@ -864,9 +1226,38 @@ class ExtractStep(BaseStepWidget):
         if nb <= 0 and dur > 0:
             nb = max(1, int(round(dur * fps)))
 
-        return {"width": w, "height": h, "fps": fps, "duration_sec": dur, "total_frames": nb}
+        return {
+            "width": w,
+            "height": h,
+            "fps": fps,
+            "duration_sec": dur,
+            "total_frames": nb,
+            "tags": s.get("tags") if isinstance(s.get("tags"), dict) else {},
+            "format_tags": fmt.get("tags") if isinstance(fmt.get("tags"), dict) else {},
+            "side_data_list": s.get("side_data_list") if isinstance(s.get("side_data_list"), list) else [],
+        }
+
+    def _save_source_video_registry(self) -> None:
+        if not self.scene_dir:
+            return
+        records: list[dict] = []
+        for video in self._selected_video_paths():
+            if not video.is_file():
+                continue
+            info = self.video_infos.get(self._video_key(video))
+            if info is None and len(self._selected_video_paths()) == 1:
+                info = self.video_info
+            if not isinstance(info, dict):
+                continue
+            try:
+                records.append(source_video_record(video, info))
+            except OSError:
+                continue
+        if records:
+            upsert_source_videos(Path(self.scene_dir), records)
 
     def _update_video_info_label(self) -> None:
+        self._refresh_video_queue_list()
         if self._is_multi_video_input():
             videos = self._selected_video_paths()
             queued, skipped = self._queued_selected_videos()
@@ -885,6 +1276,8 @@ class ExtractStep(BaseStepWidget):
                     lines.append(
                         i18n.t("VIDEO_INFO_MULTI_ITEM_FORMAT").format(
                             name=video.name,
+                            status=self._video_queue_status_text(video),
+                            projection=self._video_projection_text(info),
                             width=info["width"],
                             height=info["height"],
                             fps=info["fps"],
@@ -909,8 +1302,12 @@ class ExtractStep(BaseStepWidget):
             return
         i = self.video_info
         d = self._format_duration(float(i["duration_sec"]))
+        videos = self._selected_video_paths()
+        status = self._video_queue_status_text(videos[0]) if videos else i18n.t("VIDEO_QUEUE_STATUS_NEW")
         self.video_info_label.setText(
             i18n.t("VIDEO_INFO_SINGLE_FORMAT").format(
+                status=status,
+                projection=self._video_projection_text(i),
                 width=i["width"],
                 height=i["height"],
                 fps=i["fps"],

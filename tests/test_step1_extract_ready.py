@@ -9,6 +9,8 @@ from extract_sessions import build_session_record, load_manifest, save_manifest
 from gui import i18n
 from gui.app import MainWindow
 from gui.steps.step1_extract import ExtractStep
+from scene_layout import source_videos_path
+from scene_project import load_json, source_video_record, upsert_source_videos
 
 
 def _app():
@@ -99,6 +101,110 @@ def test_extract_step_shows_standard_images_folder_when_scene_is_set(tmp_path: P
     step.set_scene_dir("")
 
     assert step.images_path_label.text() == "-"
+
+
+def test_extract_step_autoloads_registered_source_videos_when_scene_is_set(tmp_path: Path, monkeypatch) -> None:
+    _app()
+    scene = tmp_path / "scene"
+    source = tmp_path / "source"
+    scene.mkdir()
+    source.mkdir()
+    video = source / "registered.mp4"
+    video.write_bytes(b"dummy")
+    upsert_source_videos(scene, [source_video_record(video, _video_info())])
+    step = ExtractStep(Path.cwd())
+    monkeypatch.setattr(step, "_probe_video_info_for_path", lambda _path: _video_info())
+
+    step.set_scene_dir(str(scene))
+
+    assert step.video_browse.text() == str(video)
+    assert step.video_info == _video_info()
+
+
+def test_extract_step_autoloads_scene_videos_when_no_registry_exists(tmp_path: Path, monkeypatch) -> None:
+    _app()
+    video = tmp_path / "camera.MP4"
+    ignored = tmp_path / "images" / "render.mov"
+    video.write_bytes(b"dummy")
+    ignored.parent.mkdir()
+    ignored.write_bytes(b"generated")
+    step = ExtractStep(Path.cwd())
+    monkeypatch.setattr(step, "_probe_video_info_for_path", lambda _path: _video_info())
+
+    step.set_scene_dir(str(tmp_path))
+
+    assert step.video_browse.text() == str(video)
+    assert step.video_info == _video_info()
+
+
+def test_extract_step_does_not_autoload_over_existing_video_selection(tmp_path: Path, monkeypatch) -> None:
+    _app()
+    scene = tmp_path / "scene"
+    source = tmp_path / "source"
+    scene.mkdir()
+    source.mkdir()
+    selected = source / "selected.mp4"
+    candidate = scene / "candidate.mp4"
+    selected.write_bytes(b"selected")
+    candidate.write_bytes(b"candidate")
+    step = ExtractStep(Path.cwd())
+    monkeypatch.setattr(step, "_probe_video_info_for_path", lambda _path: _video_info())
+
+    step.video_browse.set_text(str(selected))
+    step.set_scene_dir(str(scene))
+
+    assert step.video_browse.text() == str(selected)
+
+
+def test_extract_video_queue_adds_and_removes_videos_from_right_pane(tmp_path: Path, monkeypatch) -> None:
+    _app()
+    scene = tmp_path / "scene"
+    first = tmp_path / "first"
+    second = tmp_path / "second"
+    scene.mkdir()
+    first.mkdir()
+    second.mkdir()
+    video_a = first / "a.mp4"
+    video_b = second / "b.mov"
+    video_a.write_bytes(b"a")
+    video_b.write_bytes(b"b")
+    step = ExtractStep(Path.cwd())
+    step.set_scene_dir(str(scene))
+    monkeypatch.setattr(step, "_probe_video_info_for_path", lambda _path: _video_info())
+
+    monkeypatch.setattr(
+        "gui.steps.step1_extract.QFileDialog.getOpenFileNames",
+        lambda *_args, **_kwargs: ([str(video_a)], ""),
+    )
+    step.add_video_btn.click()
+    monkeypatch.setattr(
+        "gui.steps.step1_extract.QFileDialog.getOpenFileNames",
+        lambda *_args, **_kwargs: ([str(video_b)], ""),
+    )
+    step.add_video_btn.click()
+
+    assert step._selected_video_paths() == [video_a, video_b]
+    assert step.video_queue_list.count() == 2
+    assert video_a.name in step.video_queue_list.item(0).text()
+    assert "7680x3840" in step.video_queue_list.item(0).text()
+    assert video_b.name in step.video_queue_list.item(1).text()
+    assert i18n.t("VIDEO_QUEUE_SUMMARY_FORMAT").format(total=2, queued=2, skipped=0, probed=2) in (
+        step.video_queue_summary_label.text()
+    )
+
+    step.video_queue_list.item(0).setSelected(True)
+    step.remove_video_btn.click()
+
+    assert step._selected_video_paths() == [video_b]
+    assert step.video_queue_list.count() == 1
+    assert video_b.name in step.video_queue_list.item(0).text()
+
+
+def test_extract_video_info_label_is_integrated_into_queue() -> None:
+    _app()
+    step = ExtractStep(Path.cwd())
+
+    assert step.video_info_label.isHidden()
 
 
 def test_extract_run_disabled_for_invalid_analysis_width(tmp_path: Path) -> None:
@@ -279,6 +385,45 @@ def test_extract_clear_input_videos_keeps_manual_scene(tmp_path: Path, monkeypat
     window.close()
 
 
+def test_extract_video_probe_does_not_persist_accidental_source_selection(tmp_path: Path, monkeypatch) -> None:
+    _app()
+    scene = tmp_path / "scene"
+    source = tmp_path / "source"
+    scene.mkdir()
+    source.mkdir()
+    video = source / "wrong.mp4"
+    video.write_bytes(b"dummy")
+    window = MainWindow(str(scene))
+    monkeypatch.setattr(window.step1, "_probe_video_info_for_path", lambda _path: _video_info())
+
+    window.step1.video_browse.set_text(str(video))
+
+    assert window.step1.video_info == _video_info()
+    assert not source_videos_path(scene).exists()
+    window.close()
+
+
+def test_extract_clear_input_videos_forgets_registered_source_video(tmp_path: Path, monkeypatch) -> None:
+    _app()
+    scene = tmp_path / "scene"
+    source = tmp_path / "source"
+    scene.mkdir()
+    source.mkdir()
+    video = source / "wrong.mp4"
+    video.write_bytes(b"dummy")
+    upsert_source_videos(scene, [source_video_record(video, _video_info())])
+    step = ExtractStep(Path.cwd())
+    monkeypatch.setattr(step, "_probe_video_info_for_path", lambda _path: _video_info())
+
+    step.set_scene_dir(str(scene))
+    assert step.video_browse.text() == str(video)
+
+    step.clear_video_btn.click()
+
+    assert step.video_browse.text() == ""
+    assert load_json(source_videos_path(scene), {"videos": []}).get("videos") == []
+
+
 def test_extract_run_disabled_when_same_video_would_be_appended(tmp_path: Path) -> None:
     _app()
     video = tmp_path / "input.mp4"
@@ -330,6 +475,26 @@ def test_extract_multi_select_queues_only_unextracted_videos(tmp_path: Path) -> 
     assert cmd[cmd.index("--filename-prefix") + 1] == "b"
 
 
+def test_extract_multi_select_build_commands_rechecks_missing_videos(tmp_path: Path) -> None:
+    _app()
+    video_a = tmp_path / "a.mp4"
+    video_b = tmp_path / "b.mov"
+    video_a.write_bytes(b"a")
+    video_b.write_bytes(b"b")
+    step = ExtractStep(Path.cwd())
+
+    _select_videos(step, [video_a, video_b], tmp_path)
+    video_b.unlink()
+
+    try:
+        step.build_commands()
+    except ValueError as exc:
+        assert i18n.t("EXTRACT_READY_VIDEO_NOT_FOUND") in str(exc)
+        assert str(video_b) in str(exc)
+    else:
+        raise AssertionError("missing video should stop command construction")
+
+
 def test_extract_multi_select_disables_when_all_videos_are_already_extracted(tmp_path: Path) -> None:
     _app()
     video_a = tmp_path / "a.mp4"
@@ -364,14 +529,100 @@ def test_extract_multi_select_replace_mode_queues_all_videos(tmp_path: Path) -> 
     assert [cmd[cmd.index("--output-mode") + 1] for _phase, cmd in commands] == ["replace-video", "replace-video"]
 
 
-def test_extract_output_mode_has_only_add_and_overwrite() -> None:
+def test_extract_output_mode_has_only_add_and_reextract() -> None:
     _app()
     step = ExtractStep(Path.cwd())
 
     assert step.output_mode_combo.count() == 2
+    assert step.output_mode_combo.itemText(0) == i18n.t("EXTRACT_OUTPUT_APPEND")
+    assert step.output_mode_combo.itemText(1) == i18n.t("EXTRACT_OUTPUT_REPLACE_VIDEO")
     assert step.output_mode_combo.itemData(0) == "append"
     assert step.output_mode_combo.itemData(1) == "replace-video"
     assert step.output_mode_combo.maximumWidth() == 180 or step.output_mode_combo.width() <= 180
+
+
+def test_extract_video_info_status_follows_output_mode(tmp_path: Path) -> None:
+    _app()
+    video = tmp_path / "input.mp4"
+    video.write_bytes(b"dummy")
+    _write_session(tmp_path, video)
+    step = ExtractStep(Path.cwd())
+
+    _make_ready(step, video, tmp_path)
+    step._update_video_info_label()
+
+    assert step.output_mode_combo.currentData() == "append"
+    assert step.video_info_label.text().startswith(i18n.t("VIDEO_QUEUE_STATUS_SKIP"))
+
+    step.output_mode_combo.setCurrentIndex(1)
+
+    assert step.video_info_label.text().startswith(i18n.t("VIDEO_QUEUE_STATUS_REEXTRACT"))
+
+
+def test_extract_queue_finish_refreshes_append_state_after_success(tmp_path: Path) -> None:
+    _app()
+    video = tmp_path / "input.mp4"
+    video.write_bytes(b"dummy")
+    step = ExtractStep(Path.cwd())
+    _make_ready(step, video, tmp_path)
+
+    assert step.primary_action_enabled()
+
+    _write_session(tmp_path, video)
+    step.on_queue_finished(True)
+
+    assert not step.primary_action_enabled()
+    assert i18n.t("EXTRACT_READY_DUPLICATE_VIDEO").split("{n}")[0] in step.ready_status_label.text()
+    assert step.video_info_label.text().startswith(i18n.t("VIDEO_QUEUE_STATUS_SKIP"))
+
+
+def test_extract_queue_finish_revalidates_missing_video_after_failure(tmp_path: Path) -> None:
+    _app()
+    video = tmp_path / "input.mp4"
+    video.write_bytes(b"dummy")
+    step = ExtractStep(Path.cwd())
+    _make_ready(step, video, tmp_path)
+
+    video.unlink()
+    step.on_queue_finished(False)
+
+    assert step.video_info is None
+    assert step.video_browse.text() == ""
+    assert not step.primary_action_enabled()
+    assert step.ready_status_label.text() == i18n.t("EXTRACT_READY_NO_VIDEO")
+
+
+def test_extract_queue_finish_prunes_missing_video_and_keeps_remaining_queue(tmp_path: Path, monkeypatch) -> None:
+    _app()
+    video_a = tmp_path / "a.mp4"
+    video_b = tmp_path / "b.mov"
+    video_a.write_bytes(b"a")
+    video_b.write_bytes(b"b")
+    step = ExtractStep(Path.cwd())
+    monkeypatch.setattr(step, "_probe_video_info_for_path", lambda _path: _video_info())
+    _select_videos(step, [video_a, video_b], tmp_path)
+
+    video_b.unlink()
+    step.on_queue_finished(False)
+
+    assert step.video_browse.text() == str(video_a)
+    assert step.primary_action_enabled()
+    assert step.ready_status_label.text() == i18n.t("EXTRACT_READY_OK")
+
+
+def test_extract_queue_finish_revalidates_unreadable_video_after_failure(tmp_path: Path, monkeypatch) -> None:
+    _app()
+    video = tmp_path / "input.mp4"
+    video.write_bytes(b"dummy")
+    step = ExtractStep(Path.cwd())
+    _make_ready(step, video, tmp_path)
+    monkeypatch.setattr(step, "_probe_video_info_for_path", lambda _path: (_ for _ in ()).throw(RuntimeError("bad video")))
+
+    step.on_queue_finished(False)
+
+    assert step.video_info is None
+    assert not step.primary_action_enabled()
+    assert step.ready_status_label.text() == i18n.t("EXTRACT_READY_NO_VIDEO_INFO")
 
 
 def test_extract_video_info_button_is_removed() -> None:
@@ -393,6 +644,8 @@ def test_extract_single_video_shows_fast_fixed_interval_estimate() -> None:
     step._update_instant_estimate()
 
     assert step.video_info_label.text() == i18n.t("VIDEO_INFO_SINGLE_FORMAT").format(
+        status=i18n.t("VIDEO_QUEUE_STATUS_NEW"),
+        projection=i18n.t("VIDEO_PROJECTION_EQUIRECT"),
         width=7680,
         height=3840,
         fps=29.97,
@@ -432,7 +685,7 @@ def test_extract_multi_video_auto_probes_and_shows_total_estimate(tmp_path: Path
             return _video_info()
         return {
             "width": 3840,
-            "height": 1920,
+            "height": 2160,
             "fps": 30.0,
             "duration_sec": 20.0,
             "total_frames": 600,
@@ -448,6 +701,8 @@ def test_extract_multi_video_auto_probes_and_shows_total_estimate(tmp_path: Path
             i18n.t("VIDEO_INFO_MULTI_HEADER_FORMAT").format(total=2, queued=2, skipped=0, probed=2),
             i18n.t("VIDEO_INFO_MULTI_ITEM_FORMAT").format(
                 name="a.mp4",
+                status=i18n.t("VIDEO_QUEUE_STATUS_NEW"),
+                projection=i18n.t("VIDEO_PROJECTION_EQUIRECT"),
                 width=7680,
                 height=3840,
                 fps=29.97,
@@ -456,8 +711,10 @@ def test_extract_multi_video_auto_probes_and_shows_total_estimate(tmp_path: Path
             ),
             i18n.t("VIDEO_INFO_MULTI_ITEM_FORMAT").format(
                 name="b.mov",
+                status=i18n.t("VIDEO_QUEUE_STATUS_NEW"),
+                projection=i18n.t("VIDEO_PROJECTION_NORMAL"),
                 width=3840,
-                height=1920,
+                height=2160,
                 fps=30.0,
                 duration="00:00:20",
                 frames="600",
