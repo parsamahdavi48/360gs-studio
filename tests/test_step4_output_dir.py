@@ -220,16 +220,16 @@ def test_step4_pipeline_intent_controls_execution_plan(tmp_path: Path) -> None:
     assert sfm_item["status_symbol"] == "✓"
 
     step.set_pipeline_stage_intent("sfm", False)
-    assert step.pipeline_stage_intent("sfm") is False
-    assert step.pipeline_stage_intent("conversion") is False
-    assert step.primary_action_enabled() is False
+    assert step.pipeline_stage_intent("sfm") is True
+    assert step.pipeline_stage_intent("conversion") is True
+    assert step.primary_action_enabled() is True
     sfm_item = next(item for item in step.pipeline_nav_items() if item["stage"] == "sfm")
-    assert sfm_item["status"] == "off"
-    step.set_pipeline_stage_intent("sfm", True)
-    step.set_pipeline_stage_intent("conversion", True)
+    assert sfm_item["intent_checked"] is True
+    assert sfm_item["status"] == "ready"
 
     step.set_pipeline_stage_intent("conversion", False)
     assert step.pipeline_stage_intent("conversion") is False
+    assert step.pipeline_stage_intent("sfm") is True
     assert step.primary_action_enabled() is False
     assert step.build_commands() == []
 

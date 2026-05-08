@@ -353,7 +353,6 @@ class CubemapStep(BaseStepWidget):
         self._syncing_spheresfm_scope_from_intent = False
         self._user_preferences_enabled = False
         self._export_method_value = _METHOD_METASHAPE
-        self._metashape_sfm_intent = True
         self._conversion_intent = True
         self._spheresfm_sfm_intent_override: bool | None = None
         self._spheresfm_conversion_intent_override: bool | None = None
@@ -1030,7 +1029,7 @@ class CubemapStep(BaseStepWidget):
     def pipeline_stage_intent(self, stage: str) -> bool:
         if stage == _PIPELINE_STAGE_SFM:
             if self._is_metashape_method():
-                return self._metashape_sfm_intent
+                return True
             if self._is_colmap_method():
                 return self.run_colmap_cb.isChecked()
             return self._spheresfm_runs_sfm()
@@ -1056,13 +1055,9 @@ class CubemapStep(BaseStepWidget):
     def set_pipeline_stage_intent(self, stage: str, enabled: bool) -> None:
         enabled = bool(enabled)
         if stage == _PIPELINE_STAGE_SFM:
-            if self._is_metashape_method():
-                self._metashape_sfm_intent = enabled
-                if not enabled:
-                    self._conversion_intent = False
-            elif self._is_colmap_method():
+            if self._is_colmap_method():
                 self.run_colmap_cb.setChecked(enabled)
-            else:
+            elif not self._is_metashape_method():
                 self._set_spheresfm_stage_intents(
                     run_sfm=enabled,
                     run_conversion=self._spheresfm_runs_conversion(),
@@ -1075,8 +1070,6 @@ class CubemapStep(BaseStepWidget):
                 )
             else:
                 self._conversion_intent = enabled
-                if enabled and self._is_metashape_method():
-                    self._metashape_sfm_intent = True
         elif stage == _PIPELINE_STAGE_TRAINING:
             self.run_training_cb.setChecked(enabled)
         self._sync_settings_tabs()
@@ -1120,7 +1113,9 @@ class CubemapStep(BaseStepWidget):
             intent = self.pipeline_stage_intent(stage)
             intent_enabled = self.pipeline_stage_intent_enabled(stage)
             intent_key = "STEP4_PIPELINE_INTENT_ON" if intent else "STEP4_PIPELINE_INTENT_OFF"
-            if intent and not intent_enabled:
+            if stage == _PIPELINE_STAGE_SFM and self._is_metashape_method():
+                intent_tooltip = i18n.t("STEP4_PIPELINE_INTENT_METASHAPE_INPUT")
+            elif intent and not intent_enabled:
                 intent_tooltip = i18n.t("STEP4_PIPELINE_INTENT_LOCKED_ON").format(stage=label)
             elif not intent_enabled:
                 intent_tooltip = i18n.t("STEP4_PIPELINE_INTENT_DISABLED").format(stage=label)
@@ -1144,8 +1139,6 @@ class CubemapStep(BaseStepWidget):
 
     def _pipeline_sfm_status(self) -> tuple[str, str, str]:
         if not self.pipeline_stage_intent(_PIPELINE_STAGE_SFM):
-            if self._is_metashape_method():
-                return (_PIPELINE_STATUS_OFF, "-", i18n.t("STEP4_PIPELINE_DETAIL_METASHAPE_OFF"))
             if self._is_colmap_method():
                 return (_PIPELINE_STATUS_OFF, "-", i18n.t("STEP4_PIPELINE_DETAIL_COLMAP_OFF"))
             return (_PIPELINE_STATUS_OFF, "-", i18n.t("STEP4_PIPELINE_DETAIL_SPHERESFM_OFF"))
