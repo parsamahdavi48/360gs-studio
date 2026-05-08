@@ -329,11 +329,13 @@ def test_step4_scrolls_tab_content_not_whole_settings_pane() -> None:
             parent = parent.parentWidget()
         assert found_route_scroll
 
-        assert [button.width() for button in window.step4_sub_buttons.values()] == [66, 66, 66]
+        assert [button.width() for button in window.step4_sub_buttons.values()] == [58, 58, 58]
         assert [label.width() for label in window.step4_sub_status_labels.values()] == [13, 13, 13]
+        assert window.step4_subnav_rail.width() == 2
         assert window.step4_sub_text_labels["sfm"].text() == "SfM"
-        assert window.step4_sub_text_labels["conversion"].text() == "Cubemap"
+        assert window.step4_sub_text_labels["conversion"].text() == "Cube"
         assert window.step4_sub_text_labels["training"].text() == "Train"
+        rail_x = window.step4_subnav_rail.mapTo(window, QPoint(0, 0)).x()
         icon_x = [
             label.mapTo(window, QPoint(0, 0)).x()
             for label in window.step4_sub_status_labels.values()
@@ -342,6 +344,7 @@ def test_step4_scrolls_tab_content_not_whole_settings_pane() -> None:
             label.mapTo(window, QPoint(0, 0)).x()
             for label in window.step4_sub_text_labels.values()
         ]
+        assert rail_x < icon_x[0]
         assert len(set(icon_x)) == 1
         assert len(set(text_x)) == 1
         window._activate_step4_pipeline_stage("training")

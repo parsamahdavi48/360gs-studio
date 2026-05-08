@@ -100,7 +100,16 @@ QPushButton#navStep:checked {{
 }}
 QWidget#navSubSteps {{
     background-color: transparent;
-    border-left: 1px solid {BORDER};
+}}
+QWidget#navSubRail {{
+    background-color: {BORDER};
+    border-radius: 1px;
+}}
+QWidget#navSubRail[active="true"] {{
+    background-color: {ACCENT};
+}}
+QWidget#navSubRows {{
+    background-color: transparent;
 }}
 QPushButton#navSubStep {{
     background-color: transparent;
@@ -110,7 +119,7 @@ QPushButton#navSubStep {{
     padding: 0;
     font-size: 8pt;
     font-weight: 600;
-    min-height: 18px;
+    min-height: 16px;
 }}
 QPushButton#navSubStep:hover {{
     background-color: {BG_PANEL};
