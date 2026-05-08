@@ -24,6 +24,7 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QMessageBox,
     QPushButton,
+    QRadioButton,
     QScrollArea,
     QSplitter,
     QStackedWidget,
@@ -410,27 +411,27 @@ class CubemapStep(BaseStepWidget):
         self.export_method_label.setToolTip(i18n.tip("EXPORT_METHOD"))
         self.export_method_label.setVisible(False)
         self.export_method_row = QWidget()
-        self.export_method_row.setObjectName("segmentedControl")
+        self.export_method_row.setObjectName("radioOptionRow")
         self.export_method_row.setMaximumWidth(SETTINGS_PANE_WIDTH - SETTINGS_PANE_MARGINS[2] - 18)
         method_row = QHBoxLayout(self.export_method_row)
-        method_row.setContentsMargins(2, 2, 2, 2)
-        method_row.setSpacing(0)
+        method_row.setContentsMargins(0, 0, 0, 0)
+        method_row.setSpacing(10)
         self.export_method_group = QButtonGroup(self)
         self.export_method_group.setExclusive(True)
-        self.export_method_buttons: dict[str, QPushButton] = {}
+        self.export_method_buttons: dict[str, QRadioButton] = {}
         for method, label, tip_key in [
             (_METHOD_METASHAPE, i18n.t("METHOD_METASHAPE_IMPORT"), "METHOD_METASHAPE_IMPORT"),
             (_METHOD_COLMAP, i18n.t("METHOD_COLMAP_EXPORT"), "METHOD_COLMAP_EXPORT"),
             (_METHOD_SPHERESFM, i18n.t("METHOD_SPHERESFM"), "METHOD_SPHERESFM"),
         ]:
-            btn = QPushButton(label)
-            btn.setObjectName("segmentedOption")
-            btn.setCheckable(True)
+            btn = QRadioButton(label)
+            btn.setObjectName("optionRadio")
             btn.setToolTip(i18n.tip(tip_key))
             btn.clicked.connect(lambda _checked=False, m=method: self._set_export_method(m))
-            method_row.addWidget(btn, stretch=1)
+            method_row.addWidget(btn)
             self.export_method_group.addButton(btn)
             self.export_method_buttons[method] = btn
+        method_row.addStretch()
 
         self.export_targets_row = QWidget()
         self.export_targets_row.setToolTip(i18n.tip("EXPORT_TARGETS"))
@@ -1081,7 +1082,7 @@ class CubemapStep(BaseStepWidget):
             return (_PIPELINE_STATUS_OFF, "·", i18n.t("STEP4_PIPELINE_DETAIL_TRAINING_OFF"))
         if self._is_spheresfm_method() and self._spheresfm_run_scope() == _SPHERESFM_RUN_SFM_ONLY:
             return (_PIPELINE_STATUS_WARNING, "!", i18n.t("STEP4_PIPELINE_DETAIL_TRAINING_NEEDS_CONVERSION"))
-        backend = self.training_backend_combo.currentText() if hasattr(self, "training_backend_combo") else ""
+        backend = self._training_backend_display_name(self._training_backend()) if hasattr(self, "training_backend_buttons") else ""
         return (
             _PIPELINE_STATUS_PLANNED,
             "▶",
@@ -1104,23 +1105,26 @@ class CubemapStep(BaseStepWidget):
         self.training_backend_row = QWidget()
         backend_layout = QHBoxLayout(self.training_backend_row)
         backend_layout.setContentsMargins(0, 0, 0, 0)
-        backend_layout.setSpacing(8)
+        backend_layout.setSpacing(10)
         self.training_backend_label = QLabel(i18n.t("TRAINING_BACKEND_LABEL"))
-        self.training_backend_combo = QComboBox()
-        self.training_backend_combo.setMinimumWidth(150)
+        self.training_backend_group = QButtonGroup(self)
+        self.training_backend_group.setExclusive(True)
+        self.training_backend_buttons: dict[str, QRadioButton] = {}
         for backend, label, tip_key in [
-            (_TRAINING_BACKEND_LICHTFELD, i18n.t("TRAINING_BACKEND_LICHTFELD"), "TRAINING_BACKEND_LICHTFELD"),
-            (_TRAINING_BACKEND_POSTSHOT, i18n.t("TRAINING_BACKEND_POSTSHOT"), "TRAINING_BACKEND_POSTSHOT"),
-            (_TRAINING_BACKEND_CUSTOM, i18n.t("TRAINING_BACKEND_CUSTOM"), "TRAINING_BACKEND_CUSTOM"),
+            (_TRAINING_BACKEND_LICHTFELD, i18n.t("TRAINING_BACKEND_LICHTFELD_SHORT"), "TRAINING_BACKEND_LICHTFELD"),
+            (_TRAINING_BACKEND_POSTSHOT, i18n.t("TRAINING_BACKEND_POSTSHOT_SHORT"), "TRAINING_BACKEND_POSTSHOT"),
+            (_TRAINING_BACKEND_CUSTOM, i18n.t("TRAINING_BACKEND_CUSTOM_SHORT"), "TRAINING_BACKEND_CUSTOM"),
         ]:
-            self.training_backend_combo.addItem(label, backend)
-            item_index = self.training_backend_combo.count() - 1
-            self.training_backend_combo.setItemData(item_index, i18n.tip(tip_key), Qt.ToolTipRole)
-        self.training_backend_combo.currentIndexChanged.connect(self._on_training_backend_combo_changed)
+            btn = QRadioButton(label)
+            btn.setObjectName("optionRadio")
+            btn.setToolTip(i18n.tip(tip_key))
+            btn.clicked.connect(lambda _checked=False, b=backend: self._set_training_backend(b))
+            self.training_backend_group.addButton(btn)
+            self.training_backend_buttons[backend] = btn
         self.training_backend_label.setToolTip(i18n.tip("TRAINING_BACKEND_LICHTFELD"))
-        self.training_backend_combo.setToolTip(i18n.tip("TRAINING_BACKEND_LICHTFELD"))
         backend_layout.addWidget(self.training_backend_label)
-        backend_layout.addWidget(self.training_backend_combo, stretch=1)
+        for btn in self.training_backend_buttons.values():
+            backend_layout.addWidget(btn)
         backend_layout.addStretch()
         layout.addWidget(self.training_backend_row)
 
@@ -1959,21 +1963,26 @@ class CubemapStep(BaseStepWidget):
     def _training_backend(self) -> str:
         return self._training_backend_value
 
-    def _on_training_backend_combo_changed(self, _index: int) -> None:
-        backend = self.training_backend_combo.currentData()
-        self._set_training_backend(str(backend) if backend else _TRAINING_BACKEND_LICHTFELD)
+    def _training_backend_display_name(self, backend: str) -> str:
+        btn = getattr(self, "training_backend_buttons", {}).get(backend)
+        if btn is not None:
+            return btn.text()
+        return {
+            _TRAINING_BACKEND_LICHTFELD: i18n.t("TRAINING_BACKEND_LICHTFELD_SHORT"),
+            _TRAINING_BACKEND_POSTSHOT: i18n.t("TRAINING_BACKEND_POSTSHOT_SHORT"),
+            _TRAINING_BACKEND_CUSTOM: i18n.t("TRAINING_BACKEND_CUSTOM_SHORT"),
+        }.get(backend, "")
 
     def _set_training_backend(self, backend: str) -> None:
         if backend not in {_TRAINING_BACKEND_LICHTFELD, _TRAINING_BACKEND_POSTSHOT, _TRAINING_BACKEND_CUSTOM}:
             backend = _TRAINING_BACKEND_LICHTFELD
         self._training_backend_value = backend
-        combo_index = self.training_backend_combo.findData(backend)
-        if combo_index >= 0 and self.training_backend_combo.currentIndex() != combo_index:
-            self.training_backend_combo.setCurrentIndex(combo_index)
-        current_tip = self.training_backend_combo.itemData(combo_index, Qt.ToolTipRole) if combo_index >= 0 else ""
+        btn = self.training_backend_buttons.get(backend)
+        if btn is not None and not btn.isChecked():
+            btn.setChecked(True)
+        current_tip = btn.toolTip() if btn is not None else ""
         if current_tip:
             self.training_backend_label.setToolTip(str(current_tip))
-            self.training_backend_combo.setToolTip(str(current_tip))
         stack_index = {
             _TRAINING_BACKEND_LICHTFELD: 0,
             _TRAINING_BACKEND_POSTSHOT: 1,

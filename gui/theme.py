@@ -274,6 +274,17 @@ QWidget#segmentedControl {{
     border: 1px solid {BORDER};
     border-radius: 6px;
 }}
+QWidget#radioOptionRow {{
+    background-color: transparent;
+}}
+QRadioButton#optionRadio {{
+    color: {TEXT_DIM};
+    font-weight: 600;
+    padding: 2px 0px;
+}}
+QRadioButton#optionRadio:checked {{
+    color: {TEXT_BRIGHT};
+}}
 QPushButton#segmentedOption {{
     background-color: transparent;
     border: 1px solid transparent;

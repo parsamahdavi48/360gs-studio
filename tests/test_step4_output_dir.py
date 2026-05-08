@@ -110,7 +110,9 @@ def test_cubemap_step_uses_fixed_output_folder_label(tmp_path: Path) -> None:
     assert not hasattr(step, "export_method_combo")
     assert not hasattr(step.view_config, "pitch_edit")
     assert not hasattr(step.view_config, "apply_btn")
+    assert not hasattr(step, "training_backend_combo")
     assert set(step.export_method_buttons) == {"metashape", "colmap", "spheresfm"}
+    assert set(step.training_backend_buttons) == {"lichtfeld", "postshot", "custom"}
     assert step.export_images_cb.isChecked()
     assert step.export_masks_cb.isChecked()
     assert step.output_shape_combo.currentData() == "projected"
@@ -1617,8 +1619,8 @@ def test_training_headless_option_shares_start_row(tmp_path: Path) -> None:
 
     assert _is_descendant(step.run_training_cb, step.training_run_options_row)
     assert _is_descendant(step.training_headless_cb, step.training_run_options_row)
-    assert _is_descendant(step.training_backend_combo, step.training_backend_row)
-    assert not _is_descendant(step.training_backend_combo, step.training_run_options_row)
+    assert _is_descendant(step.training_backend_buttons["lichtfeld"], step.training_backend_row)
+    assert not _is_descendant(step.training_backend_buttons["lichtfeld"], step.training_run_options_row)
     assert not step.training_headless_cb.isHidden()
 
     step._set_training_backend("postshot")
