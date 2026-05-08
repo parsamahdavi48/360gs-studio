@@ -816,8 +816,11 @@ class CubemapStep(BaseStepWidget):
 
         adv_form.addRow(self.view_config.settings_widget)
 
-        output_details = CollapsibleSection(i18n.t("OUTPUT_DETAIL"), expanded=False)
+        output_details = QWidget()
         self.output_details_section = output_details
+        output_details_layout = QVBoxLayout(output_details)
+        output_details_layout.setContentsMargins(0, 0, 0, 0)
+        output_details_layout.setSpacing(8)
 
         self.output_format_combo = QComboBox()
         self.output_format_combo.setToolTip(i18n.tip("OUTPUT_FORMAT"))
@@ -845,7 +848,7 @@ class CubemapStep(BaseStepWidget):
         format_layout.addWidget(self.output_bit_depth_label)
         format_layout.addWidget(self.output_bit_depth_combo)
         format_layout.addStretch()
-        output_details.content_layout.addWidget(format_row)
+        output_details_layout.addWidget(format_row)
 
         self.invert_masks_cb = QCheckBox(i18n.INVERT_MASKS)
         self.invert_masks_cb.setToolTip(i18n.tip("INVERT_MASKS"))
@@ -865,7 +868,8 @@ class CubemapStep(BaseStepWidget):
         quality_layout.addWidget(self.jpg_quality_label)
         quality_layout.addWidget(self.jpg_quality_edit)
         quality_layout.addStretch()
-        output_details.content_layout.addWidget(quality_row)
+        output_details_layout.addWidget(quality_row)
+        output_details_layout.addStretch()
 
         adv_output_layout.addLayout(adv_form)
         adv_output_layout.addStretch()
