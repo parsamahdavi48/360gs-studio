@@ -230,8 +230,10 @@ def test_step4_route_and_training_selectors_use_radio_buttons() -> None:
         button.objectName() == "optionRadio"
         for button in step.training_backend_selector.primary_backend_buttons.values()
     )
-    assert isinstance(step.training_backend_other_button, QToolButton)
-    assert step.training_backend_other_button.objectName() == "optionMenuButton"
+    assert isinstance(step.training_backend_other_button, QRadioButton)
+    assert step.training_backend_other_button.objectName() == "optionRadio"
+    assert isinstance(step.training_backend_other_menu_button, QToolButton)
+    assert step.training_backend_other_menu_button.objectName() == "optionMenuArrow"
     assert set(step.training_backend_buttons) == {"lichtfeld", "postshot"}
     assert set(step.training_backend_selector.primary_backend_buttons) == {"lichtfeld", "postshot"}
     assert set(step.training_backend_selector.other_backend_actions) == {"custom"}
@@ -669,6 +671,7 @@ def test_cubemap_labels_share_field_tooltips() -> None:
     assert step.training_backend_other_button.text() == i18n.t("TRAINING_BACKEND_CUSTOM_SHORT")
     assert step.training_backend_selector.other_backend_actions["custom"].isChecked()
     assert step.training_backend_other_button.toolTip() == i18n.tip("TRAINING_BACKEND_CUSTOM")
+    assert step.training_backend_other_menu_button.toolTip() == i18n.tip("TRAINING_BACKEND_OTHER")
     assert step.run_training_cb.toolTip() == i18n.tip("RUN_TRAINING_AFTER_EXPORT")
     assert _label(step, i18n.t("TRAINING_EXECUTABLE")).toolTip() == i18n.tip("TRAINING_EXECUTABLE")
     assert _label(step, i18n.t("TRAINING_DATASET")).toolTip() == i18n.tip("TRAINING_DATASET")

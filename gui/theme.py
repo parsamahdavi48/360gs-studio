@@ -280,6 +280,9 @@ QWidget#radioOptionRow {{
 QWidget#trainingBackendPrimaryRow {{
     background-color: transparent;
 }}
+QWidget#trainingBackendOtherPicker {{
+    background-color: transparent;
+}}
 QRadioButton#optionRadio {{
     color: {TEXT_DIM};
     font-weight: 600;
@@ -288,34 +291,24 @@ QRadioButton#optionRadio {{
 QRadioButton#optionRadio:checked {{
     color: {TEXT_BRIGHT};
 }}
-QToolButton#optionMenuButton {{
+QToolButton#optionMenuArrow {{
     background-color: transparent;
     border: 1px solid transparent;
-    border-radius: 4px;
     color: {TEXT_DIM};
-    font-weight: 600;
-    min-height: 22px;
-    padding: 2px 18px 2px 8px;
+    min-width: 13px;
+    max-width: 13px;
+    min-height: 20px;
+    padding: 0px;
 }}
-QToolButton#optionMenuButton:checked {{
-    background-color: {BG_PANEL};
-    border-color: {ACCENT};
-    color: {TEXT_BRIGHT};
-}}
-QToolButton#optionMenuButton:hover:!checked {{
-    background-color: {BG_PANEL};
-    border-color: {BORDER_FOCUS};
+QToolButton#optionMenuArrow:hover {{
+    background-color: transparent;
+    border-color: transparent;
     color: {TEXT};
 }}
-QToolButton#optionMenuButton:pressed {{
-    background-color: {BG_MID};
-}}
-QToolButton#optionMenuButton::menu-indicator {{
-    subcontrol-origin: padding;
-    subcontrol-position: center right;
-    right: 5px;
-    width: 8px;
-    height: 8px;
+QToolButton#optionMenuArrow::menu-indicator {{
+    image: none;
+    width: 0px;
+    height: 0px;
 }}
 QPushButton#segmentedOption {{
     background-color: transparent;

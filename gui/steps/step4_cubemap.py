@@ -1115,6 +1115,7 @@ class CubemapStep(BaseStepWidget):
         self.training_backend_label = self.training_backend_selector.label
         self.training_backend_buttons = self.training_backend_selector.backend_buttons
         self.training_backend_other_button = self.training_backend_selector.other_button
+        self.training_backend_other_menu_button = self.training_backend_selector.other_menu_button
         self.training_backend_other_actions = self.training_backend_selector.other_backend_actions
         layout.addWidget(self.training_backend_row)
 

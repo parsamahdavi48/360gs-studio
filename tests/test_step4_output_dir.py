@@ -1619,11 +1619,15 @@ def test_lichtfeld_strategy_switch_preserves_each_strategy_state(tmp_path: Path)
 
 def test_training_headless_option_shares_start_row(tmp_path: Path) -> None:
     step = _ready_step(tmp_path, metashape_inputs=True)
+    step.resize(1280, 920)
+    step.show()
+    _app().processEvents()
 
     assert _is_descendant(step.run_training_cb, step.training_run_options_row)
     assert _is_descendant(step.training_headless_cb, step.training_run_options_row)
     assert _is_descendant(step.training_backend_buttons["lichtfeld"], step.training_backend_row)
     assert _is_descendant(step.training_backend_other_button, step.training_backend_row)
+    assert _is_descendant(step.training_backend_other_menu_button, step.training_backend_row)
     assert not _is_descendant(step.training_backend_buttons["lichtfeld"], step.training_run_options_row)
     assert not step.training_headless_cb.isHidden()
 
@@ -1634,6 +1638,9 @@ def test_training_headless_option_shares_start_row(tmp_path: Path) -> None:
     step._set_training_backend("custom")
     assert step.training_backend_other_button.isChecked()
     assert step.training_backend_selector.other_backend_actions["custom"].isChecked()
+    assert step.training_backend_other_button.geometry().center().y() == step.training_backend_buttons[
+        "postshot"
+    ].geometry().center().y()
 
 
 def test_lichtfeld_training_refuses_existing_output_ply(tmp_path: Path, monkeypatch) -> None:

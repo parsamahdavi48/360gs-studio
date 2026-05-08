@@ -65,13 +65,25 @@ class TrainingBackendSelector(QWidget):
             self.backend_buttons[spec.backend_id] = btn
             primary_layout.addWidget(btn)
 
-        self.other_button = QToolButton()
-        self.other_button.setObjectName("optionMenuButton")
-        self.other_button.setCheckable(True)
+        self.other_picker = QWidget()
+        self.other_picker.setObjectName("trainingBackendOtherPicker")
+        other_picker_layout = QHBoxLayout(self.other_picker)
+        other_picker_layout.setContentsMargins(0, 0, 0, 0)
+        other_picker_layout.setSpacing(1)
+
+        self.other_button = QRadioButton()
+        self.other_button.setObjectName("optionRadio")
         self.other_button.setText(i18n.t("TRAINING_BACKEND_OTHER"))
         self.other_button.setToolTip(i18n.tip("TRAINING_BACKEND_OTHER"))
-        self.other_button.setToolButtonStyle(Qt.ToolButtonTextOnly)
-        self.other_button.setPopupMode(QToolButton.InstantPopup)
+        self.other_button.clicked.connect(lambda _checked=False: self._show_other_menu())
+        other_picker_layout.addWidget(self.other_button)
+
+        self.other_menu_button = QToolButton()
+        self.other_menu_button.setObjectName("optionMenuArrow")
+        self.other_menu_button.setArrowType(Qt.DownArrow)
+        self.other_menu_button.setAutoRaise(True)
+        self.other_menu_button.setToolTip(i18n.tip("TRAINING_BACKEND_OTHER"))
+        self.other_menu_button.setPopupMode(QToolButton.InstantPopup)
         self.other_menu = QMenu(self.other_button)
         for spec in training_backend_specs(category="other"):
             action = QAction(i18n.t(spec.short_label_key), self.other_menu)
@@ -82,9 +94,11 @@ class TrainingBackendSelector(QWidget):
             )
             self.other_menu.addAction(action)
             self.other_backend_actions[spec.backend_id] = action
-        self.other_button.setMenu(self.other_menu)
+        self.other_menu_button.setMenu(self.other_menu)
+        other_picker_layout.addWidget(self.other_menu_button)
+
         self.primary_group.addButton(self.other_button)
-        primary_layout.addWidget(self.other_button)
+        primary_layout.addWidget(self.other_picker)
         primary_layout.addStretch()
         layout.addWidget(self.primary_row)
 
@@ -103,6 +117,12 @@ class TrainingBackendSelector(QWidget):
     def display_name(self, backend_id: str | None = None) -> str:
         spec = get_training_backend_spec(backend_id or self._backend)
         return i18n.t(spec.short_label_key)
+
+    def _show_other_menu(self) -> None:
+        previous_backend = self._backend
+        selected_action = self.other_menu.exec(self.other_button.mapToGlobal(self.other_button.rect().bottomLeft()))
+        if selected_action is None and self._backend == previous_backend:
+            self.set_backend(previous_backend)
 
     def set_backend(self, backend_id: str | None, *, emit: bool = False) -> None:
         backend = normalize_training_backend(backend_id)
