@@ -253,7 +253,7 @@ def test_step4_route_and_training_selectors_use_radio_buttons() -> None:
     assert step.training_backend_other_button.isChecked()
 
 
-def test_step4_japanese_training_copy_uses_training_wording() -> None:
+def test_step5_japanese_training_copy_uses_learning_step_wording() -> None:
     script = textwrap.dedent(
         """
         import os
@@ -263,16 +263,18 @@ def test_step4_japanese_training_copy_uses_training_wording() -> None:
         from gui import i18n
 
         visible_keys = [
+            "STEP5_TITLE",
+            "STEP5_NAV",
+            "LAUNCH",
             "PHASE_TRAINING_LICHTFELD",
             "PHASE_TRAINING_POSTSHOT",
             "PHASE_TRAINING_CUSTOM",
             "TRAINING_EXEC_NOT_FOUND",
             "TRAINING_REQUIRES_DATASET_OUTPUT",
             "TRAINING_OUTPUT",
-            "STEP4_TAB_TRAINING",
-            "STEP4_PIPELINE_TRAINING",
         ]
         tip_keys = [
+            "LAUNCH_TRAINING",
             "TRAINING_BACKEND_LICHTFELD",
             "TRAINING_BACKEND_POSTSHOT",
             "TRAINING_EXECUTABLE",
@@ -286,10 +288,12 @@ def test_step4_japanese_training_copy_uses_training_wording() -> None:
             "POSTSHOT_KSTEPS",
         ]
 
-        assert i18n.t("STEP4_TAB_TRAINING") == "Training"
+        assert i18n.t("STEP4_TITLE") == "4. 変換"
+        assert i18n.t("STEP5_TITLE") == "5. 学習"
+        assert i18n.t("LAUNCH") == "起動"
         assert i18n.t("TRAINING_OUTPUT") == "出力先"
-        assert all("学習" not in i18n.t(key) for key in visible_keys)
-        assert all("学習" not in i18n.tip(key) for key in tip_keys)
+        assert all("書き出し後" not in i18n.t(key) for key in visible_keys)
+        assert all("書き出し後" not in i18n.tip(key) for key in tip_keys)
         """
     )
 
@@ -332,18 +336,12 @@ def test_step4_scrolls_tab_content_not_whole_settings_pane() -> None:
         step = window.step4
         assert step.findChildren(QScrollArea, "settingsScroll") == []
 
-        tab_widgets = [step.settings_tabs.widget(index) for index in range(step.settings_tabs.count())]
-        tab_scrolls = [
-            widget
-            for index, widget in enumerate(tab_widgets)
-            if index != step.training_tab_index
-        ]
+        tab_scrolls = [step.settings_tabs.widget(index) for index in range(step.settings_tabs.count())]
         assert len(tab_scrolls) == 3
         assert all(isinstance(scroll, QScrollArea) for scroll in tab_scrolls)
         assert all(scroll.objectName() == "step4TabScroll" for scroll in tab_scrolls)
         assert all(scroll.horizontalScrollBarPolicy() == Qt.ScrollBarAlwaysOff for scroll in tab_scrolls)
         assert all(scroll.verticalScrollBarPolicy() == Qt.ScrollBarAsNeeded for scroll in tab_scrolls)
-        assert step.settings_tabs.widget(step.training_tab_index) is step.training_section
 
         parent = step.export_method_row.parentWidget()
         found_route_scroll = False
@@ -352,13 +350,12 @@ def test_step4_scrolls_tab_content_not_whole_settings_pane() -> None:
             parent = parent.parentWidget()
         assert found_route_scroll
 
-        assert [button.width() for button in window.step4_sub_buttons.values()] == [63, 63, 63]
-        assert [button.width() for button in window.step4_sub_intent_buttons.values()] == [13, 13, 13]
-        assert [label.width() for label in window.step4_sub_status_labels.values()] == [13, 13, 13]
+        assert [button.width() for button in window.step4_sub_buttons.values()] == [63, 63]
+        assert [button.width() for button in window.step4_sub_intent_buttons.values()] == [13, 13]
+        assert [label.width() for label in window.step4_sub_status_labels.values()] == [13, 13]
         assert window.step4_subnav_rail.width() == 2
         assert window.step4_sub_text_labels["sfm"].text() == "SfM"
         assert window.step4_sub_text_labels["conversion"].text() == "Cube"
-        assert window.step4_sub_text_labels["training"].text() == "Train"
         rail_x = window.step4_subnav_rail.mapTo(window, QPoint(0, 0)).x()
         intent_x = [
             button.mapTo(window, QPoint(0, 0)).x()
@@ -384,23 +381,15 @@ def test_step4_scrolls_tab_content_not_whole_settings_pane() -> None:
         assert step.pipeline_stage_intent("sfm") is True
         assert step.settings_tabs.currentIndex() == step.input_tab_index
         assert window.step4_sub_intent_buttons["sfm"].text() == "●"
-        assert not step.run_training_cb.isChecked()
-        QTest.mouseClick(window.step4_sub_buttons["training"], Qt.LeftButton)
-        assert not step.run_training_cb.isChecked()
-        assert step.settings_tabs.currentIndex() == step.input_tab_index
-        QTest.mouseClick(window.step4_sub_intent_buttons["training"], Qt.LeftButton)
-        assert step.run_training_cb.isChecked()
-        assert step.settings_tabs.currentIndex() == step.input_tab_index
-        QTest.mouseClick(window.step4_sub_intent_buttons["training"], Qt.LeftButton)
-        assert not step.run_training_cb.isChecked()
-        step.settings_tabs.setCurrentIndex(step.training_tab_index)
         app.processEvents()
-        assert step.settings_tabs.currentIndex() == step.training_tab_index
-        assert window.step4_sub_buttons["training"].property("active") == "true"
         QTest.mouseClick(window.step4_sub_status_labels["conversion"], Qt.LeftButton)
-        assert step.settings_tabs.currentIndex() == step.training_tab_index
         assert window.step4_sub_buttons["conversion"].property("active") == "false"
         assert window.run_btn.text().strip() == i18n.t("RUN")
+
+        window._set_current_step(4)
+        app.processEvents()
+        assert window.run_btn.text().strip() == i18n.t("LAUNCH")
+        assert window.step5.dataset_step is step
 
         step._set_training_backend("lichtfeld")
         app.processEvents()
@@ -736,19 +725,20 @@ def test_cubemap_labels_share_field_tooltips() -> None:
     assert step.training_backend_selector.other_backend_actions["custom"].isChecked()
     assert step.training_backend_other_button.toolTip() == i18n.tip("TRAINING_BACKEND_CUSTOM")
     assert step.training_backend_other_menu_button.toolTip() == i18n.tip("TRAINING_BACKEND_OTHER")
-    assert _label(step, i18n.t("TRAINING_EXECUTABLE")).toolTip() == i18n.tip("TRAINING_EXECUTABLE")
-    assert _label(step, i18n.t("TRAINING_DATASET")).toolTip() == i18n.tip("TRAINING_DATASET")
-    assert _label(step, i18n.t("TRAINING_OUTPUT")).toolTip() == i18n.tip("TRAINING_OUTPUT")
+    training_widget = step.training_section
+    assert _label(training_widget, i18n.t("TRAINING_EXECUTABLE")).toolTip() == i18n.tip("TRAINING_EXECUTABLE")
+    assert _label(training_widget, i18n.t("TRAINING_DATASET")).toolTip() == i18n.tip("TRAINING_DATASET")
+    assert _label(training_widget, i18n.t("TRAINING_OUTPUT")).toolTip() == i18n.tip("TRAINING_OUTPUT")
     assert step.training_headless_cb.toolTip() == i18n.tip("TRAINING_HEADLESS")
-    assert _label(step, i18n.t("LFS_STRATEGY")).toolTip() == i18n.tip("LFS_STRATEGY")
-    assert _label(step, i18n.t("LFS_ITERATIONS")).toolTip() == i18n.tip("LFS_ITERATIONS")
-    assert _label(step, i18n.t("LFS_MAX_GAUSSIANS")).toolTip() == i18n.tip("LFS_MAX_GAUSSIANS")
-    assert _label(step, i18n.t("LFS_OUTPUT_PLY_NAME")).toolTip() == i18n.tip("LFS_OUTPUT_PLY_NAME")
-    assert _label(step, i18n.t("LFS_MASK_MODE")).toolTip() == i18n.tip("LFS_MASK_MODE")
-    assert _label(step, i18n.t("LFS_INVERT_MASKS")).toolTip() == i18n.tip("LFS_INVERT_MASKS")
+    assert _label(training_widget, i18n.t("LFS_STRATEGY")).toolTip() == i18n.tip("LFS_STRATEGY")
+    assert _label(training_widget, i18n.t("LFS_ITERATIONS")).toolTip() == i18n.tip("LFS_ITERATIONS")
+    assert _label(training_widget, i18n.t("LFS_MAX_GAUSSIANS")).toolTip() == i18n.tip("LFS_MAX_GAUSSIANS")
+    assert _label(training_widget, i18n.t("LFS_OUTPUT_PLY_NAME")).toolTip() == i18n.tip("LFS_OUTPUT_PLY_NAME")
+    assert _label(training_widget, i18n.t("LFS_MASK_MODE")).toolTip() == i18n.tip("LFS_MASK_MODE")
+    assert _label(training_widget, i18n.t("LFS_INVERT_MASKS")).toolTip() == i18n.tip("LFS_INVERT_MASKS")
     assert step.lfs_invert_masks_cb.toolTip() == i18n.tip("LFS_INVERT_MASKS")
-    assert _label(step, i18n.t("POSTSHOT_PROJECT_NAME")).toolTip() == i18n.tip("POSTSHOT_PROJECT_NAME")
-    assert _label(step, i18n.t("CUSTOM_TRAINING_ARGS")).toolTip() == i18n.tip("CUSTOM_TRAINING_ARGS")
+    assert _label(training_widget, i18n.t("POSTSHOT_PROJECT_NAME")).toolTip() == i18n.tip("POSTSHOT_PROJECT_NAME")
+    assert _label(training_widget, i18n.t("CUSTOM_TRAINING_ARGS")).toolTip() == i18n.tip("CUSTOM_TRAINING_ARGS")
     assert step.colmap_repo_link.openExternalLinks()
     assert step.colmap_repo_link.toolTip() == i18n.tip("COLMAP_REPOSITORY_LINK")
     assert i18n.t("COLMAP_REPOSITORY_LINK") in step.colmap_repo_link.text()

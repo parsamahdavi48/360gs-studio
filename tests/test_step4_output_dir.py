@@ -27,6 +27,7 @@ from gui.steps.sfm_route_specs import (
 )
 from gui.steps.step4_cubemap import CubemapStep
 from gui.steps.step4_settings import STEP4_SETTINGS_VERSION
+from gui.steps.step5_training import TrainingStep
 from gui.steps.training_backends import lichtfeld_defaults
 from scene_layout import step4_export_settings_path, step4_meta_dir, step4_views_config_path
 from transforms_to_colmap import read_ply_points
@@ -225,7 +226,7 @@ def test_sfm_route_registry_describes_current_routes() -> None:
 
 def _ready_lichtfeld_training_step(scene: Path) -> CubemapStep:
     step = _ready_step(scene, metashape_inputs=True)
-    _write_test_image(scene / "images" / "frame_0001.jpg")
+    _write_output_dataset(scene, output_shape="projected")
     fake_lfs = scene / "LichtFeld-Studio.exe"
     fake_lfs.write_text("", encoding="utf-8")
     step.run_training_cb.setChecked(True)
@@ -270,8 +271,7 @@ def test_cubemap_step_uses_tab_path_summaries(tmp_path: Path) -> None:
     assert step.input_tab_index == 0
     assert step.output_tab_index == 1
     assert step.view_export_tab_index == step.output_tab_index
-    assert step.training_tab_index == 2
-    assert step.details_tab_index == 3
+    assert step.details_tab_index == 2
     assert step.metashape_tab_index == step.input_tab_index
     assert step.colmap_tab_index == step.input_tab_index
     assert step.spheresfm_tab_index == step.input_tab_index
@@ -279,7 +279,6 @@ def test_cubemap_step_uses_tab_path_summaries(tmp_path: Path) -> None:
     assert [step.settings_tabs.tabText(i) for i in range(step.settings_tabs.count())] == [
         i18n.t("STEP4_TAB_INPUT"),
         i18n.t("STEP4_TAB_OUTPUT"),
-        i18n.t("STEP4_TAB_TRAINING"),
         i18n.t("STEP4_TAB_DETAILS"),
     ]
     assert step.export_method_label.isHidden()
@@ -435,52 +434,44 @@ def test_step4_pipeline_intent_controls_execution_plan(tmp_path: Path) -> None:
     assert step.pipeline_stage_intent("conversion") is False
 
 
-def test_training_status_matches_planned_cube_output_shape(tmp_path: Path) -> None:
+def test_training_launch_requires_existing_dataset_shape(tmp_path: Path) -> None:
     step = _ready_step(tmp_path, metashape_inputs=True)
-    step.set_pipeline_stage_intent("training", True)
     step.lfs_gut_cb.setChecked(True)
 
-    training_item = next(item for item in step.pipeline_nav_items() if item["stage"] == "training")
-    assert training_item["status"] == "warning"
-    assert "3DGUT" in training_item["status_tooltip"]
-    assert not step.primary_action_enabled()
+    assert step.training_primary_action_enabled() is False
 
     direct_idx = step.output_shape_combo.findData("equirect_3dgut")
     assert direct_idx >= 0
     step.output_shape_combo.setCurrentIndex(direct_idx)
 
-    training_item = next(item for item in step.pipeline_nav_items() if item["stage"] == "training")
-    assert training_item["status"] == "ready"
-    assert step.primary_action_enabled()
+    assert step.training_primary_action_enabled() is False
+
+    _write_output_dataset(tmp_path, output_shape="equirect_3dgut")
+
+    assert step.training_primary_action_enabled() is True
 
 
 def test_training_status_checks_existing_output_shape_when_cube_is_skipped(tmp_path: Path) -> None:
     step = _ready_step(tmp_path, metashape_inputs=True)
     _write_output_dataset(tmp_path, output_shape="projected")
     step.set_pipeline_stage_intent("conversion", False)
-    step.set_pipeline_stage_intent("training", True)
     step.lfs_gut_cb.setChecked(True)
 
-    training_item = next(item for item in step.pipeline_nav_items() if item["stage"] == "training")
-    assert training_item["status"] == "warning"
-    assert "3DGUT" in training_item["status_tooltip"]
+    assert step.training_primary_action_enabled() is False
     with pytest.raises(ValueError, match="3DGUT"):
-        step.build_commands()
+        step.build_training_launch_commands()
 
     _write_output_dataset(tmp_path, output_shape="equirect_3dgut")
-    training_item = next(item for item in step.pipeline_nav_items() if item["stage"] == "training")
-    assert training_item["status"] == "ready"
+    assert step.training_primary_action_enabled() is True
 
     (tmp_path / "output" / "pointcloud.ply").unlink()
-    training_item = next(item for item in step.pipeline_nav_items() if item["stage"] == "training")
-    assert training_item["status"] == "warning"
-    assert "pointcloud.ply" in training_item["status_tooltip"]
+    assert step.training_primary_action_enabled() is False
+    with pytest.raises(ValueError, match="pointcloud.ply"):
+        step.build_training_launch_commands()
     _write_ascii_ply(tmp_path / "output" / "pointcloud.ply", [(0.0, 0.0, 0.0)])
 
     step.lfs_gut_cb.setChecked(False)
-    training_item = next(item for item in step.pipeline_nav_items() if item["stage"] == "training")
-    assert training_item["status"] == "warning"
-    assert "3DGUT" in training_item["status_tooltip"]
+    assert step.training_primary_action_enabled() is False
 
 
 def test_export_method_switch_keeps_fixed_tabs_and_swaps_route_sections() -> None:
@@ -571,7 +562,6 @@ def test_spheresfm_visible_tabs_follow_projection_conversion_sfm_order() -> None
     assert [step.settings_tabs.tabText(i) for i in range(step.settings_tabs.count())] == [
         i18n.t("STEP4_TAB_INPUT"),
         i18n.t("STEP4_TAB_OUTPUT"),
-        i18n.t("STEP4_TAB_TRAINING"),
         i18n.t("STEP4_TAB_DETAILS"),
     ]
     assert step.metashape_section.isHidden()
@@ -1875,14 +1865,15 @@ def test_switching_profile_away_from_lichtfeld_exits_3dgut_direct_mode(tmp_path:
     assert step.settings_tabs.isTabEnabled(step.view_export_tab_index)
 
 
-def test_training_tab_appends_lichtfeld_command_and_writes_config(tmp_path: Path) -> None:
+def test_step5_launch_builds_lichtfeld_command_and_writes_config(tmp_path: Path) -> None:
     step = _ready_step(tmp_path, metashape_inputs=True)
-    _write_test_image(tmp_path / "images" / "frame_0001.jpg")
+    _write_output_dataset(tmp_path, output_shape="projected")
     fake_lfs = tmp_path / "LichtFeld-Studio.exe"
     fake_lfs.write_text("", encoding="utf-8")
+    training = TrainingStep(Path.cwd(), step)
+    training.set_scene_dir(str(tmp_path))
 
     assert step.lfs_output_name_edit.text() == tmp_path.name
-    step.run_training_cb.setChecked(True)
     step.training_executable_browse.set_text(str(fake_lfs))
     step.lfs_auto_steps_scaler_cb.setChecked(False)
     step.lfs_steps_scaler_edit.setText("1.56")
@@ -1921,10 +1912,18 @@ def test_training_tab_appends_lichtfeld_command_and_writes_config(tmp_path: Path
     step.lfs_advanced_edits["save_steps"].setText("5000,30000")
     step.training_headless_cb.setChecked(True)
 
-    commands = step.build_commands()
+    conversion_scene = tmp_path / "convert_only"
+    conversion_step = _ready_step(conversion_scene, metashape_inputs=True)
+    _write_test_image(conversion_scene / "images" / "frame_0001.jpg")
+    conversion_step.run_training_cb.setChecked(True)
+    assert all(not phase.startswith("training_") for phase, _cmd in conversion_step.build_commands())
+    assert training.primary_action_text() == i18n.t("LAUNCH")
+    assert training.primary_action_enabled() is True
 
-    assert [phase for phase, _cmd in commands] == ["metashape", "cubemap", "training_lichtfeld"]
-    cmd = commands[-1][1]
+    commands = training.build_commands()
+
+    assert [phase for phase, _cmd in commands] == ["training_lichtfeld"]
+    cmd = commands[0][1]
     config_path = step._training_config_path()
     assert cmd[0] == str(fake_lfs)
     assert cmd[cmd.index("--data-path") + 1] == str(tmp_path / "output")
@@ -2056,17 +2055,15 @@ def test_training_headless_option_stays_in_run_options_row(tmp_path: Path) -> No
 
 def test_lichtfeld_training_refuses_existing_output_ply(tmp_path: Path, monkeypatch) -> None:
     step = _ready_step(tmp_path, metashape_inputs=True)
-    _write_test_image(tmp_path / "images" / "frame_0001.jpg")
     direct_idx = step.output_shape_combo.findData("equirect_3dgut")
     assert direct_idx >= 0
     step.output_shape_combo.setCurrentIndex(direct_idx)
+    _write_output_dataset(tmp_path, output_shape="equirect_3dgut")
     fake_lfs = tmp_path / "LichtFeld-Studio.exe"
     fake_lfs.write_text("", encoding="utf-8")
     existing = tmp_path / "output" / f"{tmp_path.name}.ply"
-    existing.parent.mkdir(exist_ok=True)
     existing.write_text("existing", encoding="utf-8")
     old_dataset_file = tmp_path / "output" / "images" / "old.jpg"
-    old_dataset_file.parent.mkdir()
     old_dataset_file.write_text("old", encoding="utf-8")
     monkeypatch.setattr(
         QMessageBox,
@@ -2075,10 +2072,11 @@ def test_lichtfeld_training_refuses_existing_output_ply(tmp_path: Path, monkeypa
     )
 
     step.run_training_cb.setChecked(True)
+    step.lfs_gut_cb.setChecked(True)
     step.training_executable_browse.set_text(str(fake_lfs))
 
     with pytest.raises(ValueError, match=existing.name):
-        step.build_commands()
+        step.build_training_launch_commands()
     assert old_dataset_file.is_file()
 
 
@@ -2096,6 +2094,14 @@ def test_postshot_training_defaults_to_scene_project_and_refuses_collision(tmp_p
     existing = tmp_path / "output" / f"{tmp_path.name}.psht"
     existing.parent.mkdir(exist_ok=True)
     existing.write_text("existing", encoding="utf-8")
+    colmap_images = tmp_path / "output" / "colmap_rig" / "images"
+    colmap_images.mkdir(parents=True)
+    _write_test_image(colmap_images / "frame_0001.jpg")
+    colmap_sparse = tmp_path / "output" / "colmap_rig" / "sparse" / "0"
+    colmap_sparse.mkdir(parents=True)
+    (colmap_sparse / "cameras.txt").write_text("", encoding="utf-8")
+    (colmap_sparse / "images.txt").write_text("", encoding="utf-8")
+    (colmap_sparse / "points3D.txt").write_text("", encoding="utf-8")
 
     _app()
     step = CubemapStep(Path.cwd())
@@ -2110,7 +2116,7 @@ def test_postshot_training_defaults_to_scene_project_and_refuses_collision(tmp_p
     assert step.training_output_browse.text() == str(tmp_path / "output")
     assert step.postshot_project_name_edit.text() == f"{tmp_path.name}.psht"
     with pytest.raises(ValueError, match=existing.name):
-        step.build_commands()
+        step.build_training_launch_commands()
 
 
 def test_postshot_cli_options_are_grouped_and_conditional(tmp_path: Path) -> None:
@@ -2176,6 +2182,7 @@ def test_postshot_cli_options_are_grouped_and_conditional(tmp_path: Path) -> Non
 
 def test_postshot_training_imports_transforms_and_raw_ply_for_metashape(tmp_path: Path) -> None:
     step = _ready_step(tmp_path, metashape_inputs=True)
+    _write_output_dataset(tmp_path, output_shape="projected")
     fake_postshot = tmp_path / "postshot-cli.exe"
     fake_postshot.write_text("", encoding="utf-8")
     postshot_idx = step.profile_combo.findData("postshot")
@@ -2186,7 +2193,7 @@ def test_postshot_training_imports_transforms_and_raw_ply_for_metashape(tmp_path
     step.training_executable_browse.set_text(str(fake_postshot))
     step.run_training_cb.setChecked(True)
 
-    phase, cmd = step._build_training_commands()[0]
+    phase, cmd = step.build_training_launch_commands()[0]
 
     assert phase == "training_postshot"
     import_index = cmd.index("--import")
@@ -2300,12 +2307,18 @@ def test_lichtfeld_basic_conditional_parameters_follow_source_visibility(tmp_pat
 
 def test_training_tab_auto_scales_lichtfeld_from_projected_image_count(tmp_path: Path) -> None:
     step = _ready_step(tmp_path, metashape_inputs=True)
-    enabled_views = sum(1 for view in step.view_config.collect_views(include_disabled=True) if view["enabled"])
-    assert enabled_views > 0
-    source_count = math.ceil(468 / enabled_views)
-    for idx in range(source_count):
-        _write_test_image(tmp_path / "images" / f"frame_{idx:04d}.jpg")
-    expected_image_count = source_count * enabled_views
+    output_images = tmp_path / "output" / "images"
+    output_images.mkdir(parents=True)
+    expected_image_count = 468
+    for idx in range(expected_image_count):
+        _write_test_image(output_images / f"view_{idx:04d}.jpg")
+    (tmp_path / "output" / "transforms.json").write_text("{}", encoding="utf-8")
+    settings_path = step4_export_settings_path(tmp_path)
+    settings_path.parent.mkdir(parents=True, exist_ok=True)
+    settings_path.write_text(
+        json.dumps({"settings_version": STEP4_SETTINGS_VERSION, "output_shape": "projected"}),
+        encoding="utf-8",
+    )
     expected_scaler = expected_image_count / 300
     fake_lfs = tmp_path / "LichtFeld-Studio.exe"
     fake_lfs.write_text("", encoding="utf-8")
@@ -2330,9 +2343,9 @@ def test_training_tab_auto_scales_lichtfeld_from_projected_image_count(tmp_path:
         25000 * expected_scaler + 0.5
     )
 
-    commands = step.build_commands()
+    commands = step.build_training_launch_commands()
 
-    assert commands[-1][0] == "training_lichtfeld"
+    assert commands[0][0] == "training_lichtfeld"
     config = json.loads(step._training_config_path().read_text(encoding="utf-8"))
     assert config["strategy"] == "mcmc"
     assert config["steps_scaler"] == pytest.approx(expected_scaler)
@@ -2359,7 +2372,7 @@ def test_training_executable_placeholders_are_file_names_only() -> None:
     assert step.training_executable_browse.line_edit.placeholderText() == ""
 
 
-def test_colmap_route_can_append_postshot_training_with_future_sparse_model(tmp_path: Path) -> None:
+def test_colmap_route_splits_conversion_and_step5_postshot_training(tmp_path: Path) -> None:
     images = tmp_path / "images"
     masks = tmp_path / "masks"
     images.mkdir()
@@ -2394,9 +2407,19 @@ def test_colmap_route_can_append_postshot_training_with_future_sparse_model(tmp_
         "colmap_rig_config",
         "colmap_match",
         "colmap_mapper",
-        "training_postshot",
     ]
-    cmd = commands[-1][1]
+    assert all(not phase.startswith("training_") for phase, _cmd in commands)
+
+    rig_images = tmp_path / "output" / "colmap_rig" / "images"
+    rig_images.mkdir(parents=True, exist_ok=True)
+    _write_test_image(rig_images / "frame_0001.jpg")
+    sparse = tmp_path / "output" / "colmap_rig" / "sparse" / "0"
+    sparse.mkdir(parents=True, exist_ok=True)
+    (sparse / "cameras.txt").write_text("", encoding="utf-8")
+    (sparse / "images.txt").write_text("", encoding="utf-8")
+    (sparse / "points3D.txt").write_text("", encoding="utf-8")
+
+    cmd = step.build_training_launch_commands()[0][1]
     assert cmd == [
         str(fake_postshot),
         "train",

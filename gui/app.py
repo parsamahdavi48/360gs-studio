@@ -30,6 +30,7 @@ from gui.steps.step1_extract import ExtractStep
 from gui.steps.step2_review import ReviewStep
 from gui.steps.step3_mask import MaskStep
 from gui.steps.step4_cubemap import CubemapStep
+from gui.steps.step5_training import TrainingStep
 from gui.theme import apply_theme
 from gui.version import app_version_label
 from path_safety import PathSafetyIssue, check_path_safety, normalized_path_text
@@ -39,6 +40,7 @@ _STEP_HELP_DOC_STEMS = (
     "extract_frames_gui",
     "review_frames_gui",
     "mask_tools_gui",
+    "cubemap_tools_gui",
     "cubemap_tools_gui",
 )
 
@@ -113,14 +115,22 @@ class MainWindow(QWidget):
         self.step2 = ReviewStep(self.base_dir)
         self.step3 = MaskStep(self.base_dir)
         self.step4 = CubemapStep(self.base_dir)
+        self.step5 = TrainingStep(self.base_dir, self.step4)
         self.step4.enable_user_preferences()
-        self.steps = [self.step1, self.step2, self.step3, self.step4]
-        self.step_titles = [i18n.STEP1_TITLE, i18n.STEP2_TITLE, i18n.STEP3_TITLE, i18n.STEP4_TITLE]
+        self.steps = [self.step1, self.step2, self.step3, self.step4, self.step5]
+        self.step_titles = [
+            i18n.STEP1_TITLE,
+            i18n.STEP2_TITLE,
+            i18n.STEP3_TITLE,
+            i18n.STEP4_TITLE,
+            i18n.STEP5_TITLE,
+        ]
         self.step_nav_titles = [
             i18n.t("STEP1_NAV"),
             i18n.t("STEP2_NAV"),
             i18n.t("STEP3_NAV"),
             i18n.t("STEP4_NAV"),
+            i18n.t("STEP5_NAV"),
         ]
         # --- メイン分割: 作業領域 / 実行状態 ---
         splitter = QSplitter(Qt.Vertical)
@@ -176,7 +186,7 @@ class MainWindow(QWidget):
                 subnav_rows_layout = QVBoxLayout(subnav_rows)
                 subnav_rows_layout.setContentsMargins(0, 0, 0, 0)
                 subnav_rows_layout.setSpacing(2)
-                for stage in ("sfm", "conversion", "training"):
+                for stage in ("sfm", "conversion"):
                     sub_btn = QWidget()
                     sub_btn.setObjectName("navSubStep")
                     sub_btn.setFixedSize(63, 22)
@@ -385,6 +395,8 @@ class MainWindow(QWidget):
             return str(scene / "images")
         if index == 2:
             return str(scene / "masks")
+        if index == 3:
+            return str(scene / "output")
         return str(scene / "output")
 
     def _toggle_step4_pipeline_stage_intent(self, stage: str) -> None:
