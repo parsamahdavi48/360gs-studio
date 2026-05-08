@@ -20,7 +20,7 @@ class TrainingStep(BaseStepWidget):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
-        layout.addWidget(self.dataset_step.training_section)
+        layout.addWidget(self.dataset_step.apply_training_wide_layout())
 
     def set_scene_dir(self, path: str) -> None:
         super().set_scene_dir(path)

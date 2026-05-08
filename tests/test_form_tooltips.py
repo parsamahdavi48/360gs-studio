@@ -393,18 +393,24 @@ def test_step4_scrolls_tab_content_not_whole_settings_pane() -> None:
 
         step._set_training_backend("lichtfeld")
         app.processEvents()
-        assert step.training_settings_scroll.verticalScrollBar().maximum() > 0
+        assert step.training_settings_scroll.verticalScrollBar().maximum() == 0
         step._set_training_backend("postshot")
         app.processEvents()
-        assert step.training_settings_scroll.verticalScrollBar().maximum() > 0
+        assert step.training_settings_scroll.verticalScrollBar().maximum() == 0
         step._set_training_backend("custom")
         app.processEvents()
         assert step.training_settings_scroll.verticalScrollBar().maximum() == 0
-        for row in (step.training_backend_row, step.training_run_options_row):
+        for row in (step.training_backend_row, step.training_run_options_row, step.training_common_fields_widget):
             parent = row.parentWidget()
             while parent is not None:
                 assert not isinstance(parent, QScrollArea)
                 parent = parent.parentWidget()
+        parent = step.training_options_stack.parentWidget()
+        found_training_options_scroll = False
+        while parent is not None:
+            found_training_options_scroll = found_training_options_scroll or parent is step.training_settings_scroll
+            parent = parent.parentWidget()
+        assert found_training_options_scroll
 
         step._set_export_method("metashape")
         window._refresh_step4_subnav()

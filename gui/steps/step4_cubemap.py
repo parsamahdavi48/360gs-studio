@@ -25,6 +25,7 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QPushButton,
     QScrollArea,
+    QSizePolicy,
     QSplitter,
     QStackedWidget,
     QTabWidget,
@@ -1364,6 +1365,7 @@ class CubemapStep(BaseStepWidget):
 
     def _build_training_section(self, exe_filter: str) -> QWidget:
         section = QWidget()
+        self.training_section = section
         layout = QVBoxLayout(section)
         layout.setContentsMargins(8, 8, 8, 8)
         layout.setSpacing(6)
@@ -1415,7 +1417,8 @@ class CubemapStep(BaseStepWidget):
         self.training_settings_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
         self.training_settings_scroll.setWidget(self.training_settings_content)
 
-        form = QFormLayout()
+        self.training_common_fields_widget = QWidget()
+        form = QFormLayout(self.training_common_fields_widget)
         form.setSpacing(6)
 
         self.training_executable_browse = BrowseWidget(
@@ -1452,7 +1455,7 @@ class CubemapStep(BaseStepWidget):
             i18n.tip("TRAINING_OUTPUT"),
         )
 
-        training_settings_layout.addLayout(form)
+        training_settings_layout.addWidget(self.training_common_fields_widget)
 
         self.training_options_stack = CurrentPageStack()
         self.lichtfeld_training_options = self._build_lichtfeld_training_options()
@@ -1480,6 +1483,63 @@ class CubemapStep(BaseStepWidget):
         self._training_dataset_user_edited = False
         self._set_training_backend(_TRAINING_BACKEND_LICHTFELD)
         return section
+
+    def apply_training_wide_layout(self) -> QWidget:
+        if getattr(self, "_training_wide_layout_applied", False):
+            return self.training_section
+
+        section_layout = self.training_section.layout()
+        if section_layout is None:
+            return self.training_section
+
+        for widget in (
+            self.training_path_summary_row,
+            self.training_backend_row,
+            self.training_run_options_row,
+            self.training_settings_scroll,
+        ):
+            section_layout.removeWidget(widget)
+
+        old_settings_layout = self.training_settings_content.layout()
+        if old_settings_layout is not None:
+            old_settings_layout.removeWidget(self.training_common_fields_widget)
+            old_settings_layout.removeWidget(self.training_options_stack)
+        self.training_settings_scroll.takeWidget()
+
+        self.training_options_scroll_content = QWidget()
+        options_layout = QVBoxLayout(self.training_options_scroll_content)
+        options_layout.setContentsMargins(0, 0, 0, 0)
+        options_layout.setSpacing(0)
+        options_layout.addWidget(self.training_options_stack)
+        options_layout.addStretch()
+        self.training_settings_scroll.setWidget(self.training_options_scroll_content)
+        self.training_settings_scroll.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        self.training_options_stack.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Maximum)
+
+        self.training_wide_controls_panel = QWidget()
+        self.training_wide_controls_panel.setObjectName("trainingStepControls")
+        self.training_wide_controls_panel.setMinimumWidth(360)
+        self.training_wide_controls_panel.setMaximumWidth(460)
+        controls_layout = QVBoxLayout(self.training_wide_controls_panel)
+        controls_layout.setContentsMargins(0, 0, 12, 0)
+        controls_layout.setSpacing(8)
+        controls_layout.addWidget(self.training_backend_row)
+        controls_layout.addWidget(self.training_run_options_row)
+        controls_layout.addWidget(self.training_common_fields_widget)
+        controls_layout.addStretch()
+
+        self.training_wide_body = QWidget()
+        body_layout = QHBoxLayout(self.training_wide_body)
+        body_layout.setContentsMargins(0, 0, 0, 0)
+        body_layout.setSpacing(12)
+        body_layout.addWidget(self.training_wide_controls_panel)
+        body_layout.addWidget(self.training_settings_scroll, stretch=1)
+
+        section_layout.addWidget(self.training_path_summary_row)
+        section_layout.addWidget(self.training_wide_body, stretch=1)
+        self._training_wide_layout_applied = True
+        self._refresh_training_settings_layout()
+        return self.training_section
 
     def _refresh_training_settings_layout(self) -> None:
         self.training_options_stack.updateGeometry()
