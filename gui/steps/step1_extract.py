@@ -287,6 +287,11 @@ class ExtractStep(BaseStepWidget):
         queue_header.setContentsMargins(0, 0, 0, 0)
         queue_header.setSpacing(6)
         queue_header.addWidget(QLabel(i18n.t("VIDEO_QUEUE_SECTION")))
+        self.video_queue_summary_label = QLabel("")
+        self.video_queue_summary_label.setObjectName("videoQueueSummary")
+        self.video_queue_summary_label.setStyleSheet("color: #8888aa; font-size: 9pt;")
+        self.video_queue_summary_label.setWordWrap(False)
+        queue_header.addWidget(self.video_queue_summary_label, stretch=1)
         queue_header.addStretch()
         self.add_video_btn = QToolButton()
         self.add_video_btn.setObjectName("iconToolButton")
@@ -326,11 +331,11 @@ class ExtractStep(BaseStepWidget):
         self.ready_status_label.setWordWrap(True)
         work_layout.addWidget(self.ready_status_label)
 
-        work_layout.addWidget(QLabel(i18n.VIDEO_INFO))
         self.video_info_label = QLabel(i18n.t("VIDEO_LABEL_DEFAULT"))
         self.video_info_label.setStyleSheet("color: #8888aa;")
         self.video_info_label.setWordWrap(True)
         work_layout.addWidget(self.video_info_label)
+        self.video_info_label.hide()
 
         work_layout.addWidget(QLabel(i18n.FRAME_ESTIMATE))
         self.estimate_label = QLabel()
@@ -538,21 +543,57 @@ class ExtractStep(BaseStepWidget):
         self._forget_source_videos(removed)
         self._set_video_queue_paths([video for video in videos if str(video) not in selected_paths])
 
-    def _video_queue_item_text(self, video: Path) -> str:
-        key = self._video_key(video)
-        info = self.video_infos.get(key)
+    def _video_info_for_queue_item(self, video: Path) -> dict | None:
+        info = self.video_infos.get(self._video_key(video))
         if info is None and len(self._selected_video_paths()) == 1:
             info = self.video_info
+        return info if isinstance(info, dict) else None
+
+    def _video_queue_item_text(self, video: Path) -> str:
+        key = self._video_key(video)
+        info = self._video_info_for_queue_item(video)
         if key in self.video_info_failures:
             status = i18n.t("VIDEO_QUEUE_STATUS_ERROR")
         else:
             status = self._video_queue_status_text(video)
+        if info is not None:
+            return i18n.t("VIDEO_QUEUE_ITEM_INFO_FORMAT").format(
+                name=video.name or str(video),
+                status=status,
+                projection=self._video_projection_text(info),
+                width=info["width"],
+                height=info["height"],
+                fps=info["fps"],
+                duration=self._format_duration(float(info.get("duration_sec", 0))),
+                frames=self._format_number(self._estimated_total_frames(info)),
+                folder=str(video.parent),
+            )
         return i18n.t("VIDEO_QUEUE_ITEM_FORMAT").format(
             name=video.name or str(video),
             status=status,
             projection=self._video_projection_text(info),
             folder=str(video.parent),
         )
+
+    def _update_video_queue_summary_label(self) -> None:
+        if not hasattr(self, "video_queue_summary_label"):
+            return
+        videos = self._selected_video_paths()
+        if not videos:
+            self.video_queue_summary_label.setText(i18n.t("NO_VIDEO"))
+            return
+        queued, skipped = self._queued_selected_videos()
+        probed = sum(1 for video in videos if self._video_info_for_queue_item(video) is not None)
+        failed = sum(1 for video in videos if self._video_key(video) in self.video_info_failures)
+        text = i18n.t("VIDEO_QUEUE_SUMMARY_FORMAT").format(
+            total=len(videos),
+            queued=len(queued),
+            skipped=skipped,
+            probed=probed,
+        )
+        if failed:
+            text += i18n.t("VIDEO_INFO_FAILED_SUFFIX").format(failed=failed)
+        self.video_queue_summary_label.setText(text)
 
     def _refresh_video_queue_list(self) -> None:
         if not hasattr(self, "video_queue_list"):
@@ -570,6 +611,7 @@ class ExtractStep(BaseStepWidget):
                     item.setSelected(True)
         finally:
             self.video_queue_list.blockSignals(False)
+        self._update_video_queue_summary_label()
         self._update_video_queue_buttons()
 
     def _update_video_queue_buttons(self) -> None:

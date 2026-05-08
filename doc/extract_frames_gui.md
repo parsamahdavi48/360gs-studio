@@ -53,7 +53,7 @@ The GUI stops before running when the scene folder path contains non-ASCII chara
 
 When Step 1 has an empty video queue and you select a scene folder, the GUI looks for videos in `_stechdrive/sources/videos.json`, then existing extraction sessions, then video files under the scene folder. Found videos are added to the queue automatically. If the queue already has videos, the GUI keeps that selection.
 
-If a video was added by mistake, select its row in the video queue and remove it. The video file itself is not deleted.
+The video queue shows each video's extraction status, 360°/normal detection, resolution, fps, duration, and estimated frame count. If a video was added by mistake, select its row in the queue and remove it. The video file itself is not deleted.
 
 Step 1 separates analysis from image export. Analysis uses grayscale frames resized to `Analysis Width`; files written to `images/` keep the source video resolution.
 

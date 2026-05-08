@@ -186,7 +186,11 @@ def test_extract_video_queue_adds_and_removes_videos_from_right_pane(tmp_path: P
     assert step._selected_video_paths() == [video_a, video_b]
     assert step.video_queue_list.count() == 2
     assert video_a.name in step.video_queue_list.item(0).text()
+    assert "7680x3840" in step.video_queue_list.item(0).text()
     assert video_b.name in step.video_queue_list.item(1).text()
+    assert i18n.t("VIDEO_QUEUE_SUMMARY_FORMAT").format(total=2, queued=2, skipped=0, probed=2) in (
+        step.video_queue_summary_label.text()
+    )
 
     step.video_queue_list.item(0).setSelected(True)
     step.remove_video_btn.click()
@@ -194,6 +198,13 @@ def test_extract_video_queue_adds_and_removes_videos_from_right_pane(tmp_path: P
     assert step._selected_video_paths() == [video_b]
     assert step.video_queue_list.count() == 1
     assert video_b.name in step.video_queue_list.item(0).text()
+
+
+def test_extract_video_info_label_is_integrated_into_queue() -> None:
+    _app()
+    step = ExtractStep(Path.cwd())
+
+    assert step.video_info_label.isHidden()
 
 
 def test_extract_run_disabled_for_invalid_analysis_width(tmp_path: Path) -> None:
