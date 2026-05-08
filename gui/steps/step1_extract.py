@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -36,7 +37,8 @@ from gui.steps.base_step import (
     BaseStepWidget,
     configure_settings_scroll,
 )
-from scene_project import infer_video_projection, source_video_record, upsert_source_videos
+from scene_layout import APP_DIR_NAME, source_videos_path
+from scene_project import infer_video_projection, load_json, source_video_record, upsert_source_videos
 
 _FIXED_INTERVAL_MIN = 0.05
 _FIXED_INTERVAL_MAX = 60.0
@@ -46,6 +48,17 @@ _GAP_SPINBOX_WIDTH = 112
 _JPEG_QUALITY_MIN = 1
 _JPEG_QUALITY_MAX = 31
 _JPEG_QUALITY_DEFAULT = 2
+_VIDEO_EXTENSIONS = {".mp4", ".mov", ".mkv", ".avi", ".m4v"}
+_VIDEO_SCAN_EXCLUDED_DIRS = {
+    APP_DIR_NAME.casefold(),
+    ".git",
+    ".venv",
+    "__pycache__",
+    "images",
+    "masks",
+    "output",
+    "outputs",
+}
 
 
 def _detect_binary(name: str) -> str:
@@ -356,6 +369,7 @@ class ExtractStep(BaseStepWidget):
 
     def set_scene_dir(self, path: str) -> None:
         super().set_scene_dir(path)
+        self._autoload_videos_from_scene_if_empty()
         self._update_images_path_label()
         self._update_video_info_label()
         self._update_instant_estimate()
@@ -467,6 +481,95 @@ class ExtractStep(BaseStepWidget):
         if not videos:
             return []
         return self._matching_video_sessions_for_path(videos[0])
+
+    def _autoload_videos_from_scene_if_empty(self) -> None:
+        if not self.scene_dir or self.video_browse.text():
+            return
+        scene = Path(self.scene_dir)
+        if not scene.is_dir():
+            return
+        videos = self._source_video_paths_from_project(scene)
+        if not videos:
+            videos = self._source_video_paths_from_extract_manifest(scene)
+        if not videos:
+            videos = self._scan_video_paths_under_scene(scene)
+        if videos:
+            self.video_browse.set_text("; ".join(str(video) for video in videos))
+
+    @staticmethod
+    def _resolve_scene_or_absolute_path(scene: Path, value: str) -> Path:
+        path = Path(value)
+        return path if path.is_absolute() else scene / path
+
+    @staticmethod
+    def _is_supported_video_file(path: Path) -> bool:
+        return path.is_file() and path.suffix.lower() in _VIDEO_EXTENSIONS
+
+    def _unique_existing_video_paths(self, scene: Path, values: list[str]) -> list[Path]:
+        videos: list[Path] = []
+        seen: set[str] = set()
+        for value in values:
+            if not value:
+                continue
+            path = self._resolve_scene_or_absolute_path(scene, value)
+            if not self._is_supported_video_file(path):
+                continue
+            try:
+                key = str(path.resolve()).casefold()
+            except OSError:
+                key = str(path).casefold()
+            if key in seen:
+                continue
+            seen.add(key)
+            videos.append(path)
+        return videos
+
+    def _source_video_paths_from_project(self, scene: Path) -> list[Path]:
+        data = load_json(source_videos_path(scene), {"videos": []})
+        records = data.get("videos")
+        if not isinstance(records, list):
+            return []
+        values: list[str] = []
+        for record in records:
+            if not isinstance(record, dict):
+                continue
+            source = record.get("source")
+            if not isinstance(source, dict):
+                continue
+            values.append(str(source.get("path") or ""))
+        return self._unique_existing_video_paths(scene, values)
+
+    def _source_video_paths_from_extract_manifest(self, scene: Path) -> list[Path]:
+        values: list[str] = []
+        for session in load_manifest(scene).get("sessions", []):
+            if not isinstance(session, dict):
+                continue
+            source = session.get("source_video")
+            if isinstance(source, dict):
+                values.append(str(source.get("path") or ""))
+            else:
+                values.append(str(session.get("source_video_path") or ""))
+        return self._unique_existing_video_paths(scene, values)
+
+    def _scan_video_paths_under_scene(self, scene: Path) -> list[Path]:
+        videos: list[Path] = []
+        try:
+            for root, dirs, files in os.walk(scene):
+                dirs[:] = sorted(
+                    [
+                        name
+                        for name in dirs
+                        if name.casefold() not in _VIDEO_SCAN_EXCLUDED_DIRS and not name.startswith(".")
+                    ],
+                    key=str.lower,
+                )
+                for name in sorted(files, key=str.lower):
+                    path = Path(root) / name
+                    if self._is_supported_video_file(path):
+                        videos.append(path)
+        except OSError:
+            return []
+        return videos
 
     def _video_queue_status_key(self, video: Path) -> str:
         if not video.is_file():

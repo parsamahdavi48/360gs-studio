@@ -9,6 +9,7 @@ from extract_sessions import build_session_record, load_manifest, save_manifest
 from gui import i18n
 from gui.app import MainWindow
 from gui.steps.step1_extract import ExtractStep
+from scene_project import source_video_record, upsert_source_videos
 
 
 def _app():
@@ -99,6 +100,59 @@ def test_extract_step_shows_standard_images_folder_when_scene_is_set(tmp_path: P
     step.set_scene_dir("")
 
     assert step.images_path_label.text() == "-"
+
+
+def test_extract_step_autoloads_registered_source_videos_when_scene_is_set(tmp_path: Path, monkeypatch) -> None:
+    _app()
+    scene = tmp_path / "scene"
+    source = tmp_path / "source"
+    scene.mkdir()
+    source.mkdir()
+    video = source / "registered.mp4"
+    video.write_bytes(b"dummy")
+    upsert_source_videos(scene, [source_video_record(video, _video_info())])
+    step = ExtractStep(Path.cwd())
+    monkeypatch.setattr(step, "_probe_video_info_for_path", lambda _path: _video_info())
+
+    step.set_scene_dir(str(scene))
+
+    assert step.video_browse.text() == str(video)
+    assert step.video_info == _video_info()
+
+
+def test_extract_step_autoloads_scene_videos_when_no_registry_exists(tmp_path: Path, monkeypatch) -> None:
+    _app()
+    video = tmp_path / "camera.MP4"
+    ignored = tmp_path / "images" / "render.mov"
+    video.write_bytes(b"dummy")
+    ignored.parent.mkdir()
+    ignored.write_bytes(b"generated")
+    step = ExtractStep(Path.cwd())
+    monkeypatch.setattr(step, "_probe_video_info_for_path", lambda _path: _video_info())
+
+    step.set_scene_dir(str(tmp_path))
+
+    assert step.video_browse.text() == str(video)
+    assert step.video_info == _video_info()
+
+
+def test_extract_step_does_not_autoload_over_existing_video_selection(tmp_path: Path, monkeypatch) -> None:
+    _app()
+    scene = tmp_path / "scene"
+    source = tmp_path / "source"
+    scene.mkdir()
+    source.mkdir()
+    selected = source / "selected.mp4"
+    candidate = scene / "candidate.mp4"
+    selected.write_bytes(b"selected")
+    candidate.write_bytes(b"candidate")
+    step = ExtractStep(Path.cwd())
+    monkeypatch.setattr(step, "_probe_video_info_for_path", lambda _path: _video_info())
+
+    step.video_browse.set_text(str(selected))
+    step.set_scene_dir(str(scene))
+
+    assert step.video_browse.text() == str(selected)
 
 
 def test_extract_run_disabled_for_invalid_analysis_width(tmp_path: Path) -> None:
