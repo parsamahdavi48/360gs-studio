@@ -743,6 +743,7 @@ class CubemapStep(BaseStepWidget):
             placeholder=i18n.t("MS_XML_PLACEHOLDER"),
         )
         self.ms_xml_browse.setToolTip(i18n.tip("MS_XML"))
+        self.ms_xml_browse.line_edit.setToolTip(i18n.tip("MS_XML"))
         add_tooltip_row(pp_form, i18n.METASHAPE_XML, self.ms_xml_browse, i18n.tip("MS_XML"))
 
         self.ms_ply_browse = BrowseWidget(
@@ -751,13 +752,9 @@ class CubemapStep(BaseStepWidget):
             placeholder=i18n.t("MS_PLY_PLACEHOLDER"),
         )
         self.ms_ply_browse.setToolTip(i18n.tip("MS_PLY"))
+        self.ms_ply_browse.line_edit.setToolTip(i18n.tip("MS_PLY"))
         add_tooltip_row(pp_form, i18n.METASHAPE_PLY, self.ms_ply_browse, i18n.tip("MS_PLY"))
 
-        self.metashape_input_hint = QLabel("")
-        self.metashape_input_hint.setWordWrap(True)
-        self.metashape_input_hint.setStyleSheet("color: #8888aa; font-size: 9pt;")
-        self.metashape_input_hint.setVisible(False)
-        pp_form.addRow("", self.metashape_input_hint)
         self.ms_xml_browse.path_changed.connect(self._on_metashape_input_path_changed)
         self.ms_ply_browse.path_changed.connect(self._on_metashape_input_path_changed)
 
@@ -3268,60 +3265,63 @@ class CubemapStep(BaseStepWidget):
             self._update_metashape_input_hint()
 
     def _update_metashape_input_hint(self) -> None:
-        if not hasattr(self, "metashape_input_hint"):
+        if not hasattr(self, "ms_xml_browse") or not hasattr(self, "ms_ply_browse"):
             return
         if not self.scene_dir:
-            self.metashape_input_hint.setVisible(False)
-            self.metashape_input_hint.setText("")
+            self._set_metashape_input_tooltips("", "")
             return
 
         scene = Path(self.scene_dir)
-        notes: list[str] = []
+        xml_note = ""
+        ply_note = ""
         xml_text = self.ms_xml_browse.text().strip()
         if not xml_text:
             if self._metashape_auto_xml_candidates:
-                notes.append(
-                    i18n.t("MS_XML_MANUAL_SELECTION_HINT").format(
-                        names=self._format_candidate_names(self._metashape_auto_xml_candidates)
-                    )
+                xml_note = i18n.t("MS_XML_MANUAL_SELECTION_HINT").format(
+                    names=self._format_candidate_names(self._metashape_auto_xml_candidates)
                 )
             else:
-                notes.append(
-                    i18n.t("MS_XML_MISSING_HINT").format(names=", ".join(_METASHAPE_XML_AUTO_NAMES))
-                )
+                xml_note = i18n.t("MS_XML_MISSING_HINT").format(names=", ".join(_METASHAPE_XML_AUTO_NAMES))
         else:
             xml = Path(xml_text)
             issue = self._metashape_input_output_path_issue(xml)
             if issue:
-                notes.append(issue)
+                xml_note = issue
             elif not xml.is_file():
-                notes.append(i18n.t("MS_XML_SELECTED_MISSING_HINT").format(path=xml_text))
+                xml_note = i18n.t("MS_XML_SELECTED_MISSING_HINT").format(path=xml_text)
 
         if self._preprocess_uses_ply():
             ply_text = self.ms_ply_browse.text().strip()
             if not ply_text:
                 if self._metashape_auto_ply_candidates:
-                    notes.append(
-                        i18n.t("MS_PLY_MANUAL_SELECTION_HINT").format(
-                            names=self._format_candidate_names(self._metashape_auto_ply_candidates)
-                        )
+                    ply_note = i18n.t("MS_PLY_MANUAL_SELECTION_HINT").format(
+                        names=self._format_candidate_names(self._metashape_auto_ply_candidates)
                     )
                 elif (scene / _GENERATED_POINTCLOUD_NAME).is_file():
-                    notes.append(i18n.t("MS_PLY_ONLY_POINTCLOUD_HINT"))
+                    ply_note = i18n.t("MS_PLY_ONLY_POINTCLOUD_HINT")
                 else:
-                    notes.append(
-                        i18n.t("MS_PLY_MISSING_HINT").format(names=", ".join(_METASHAPE_PLY_AUTO_NAMES))
-                    )
+                    ply_note = i18n.t("MS_PLY_MISSING_HINT").format(names=", ".join(_METASHAPE_PLY_AUTO_NAMES))
             else:
                 ply = Path(ply_text)
                 issue = self._metashape_input_output_path_issue(ply)
                 if issue:
-                    notes.append(issue)
+                    ply_note = issue
                 elif not ply.is_file():
-                    notes.append(i18n.t("MS_PLY_SELECTED_MISSING_HINT").format(path=ply_text))
+                    ply_note = i18n.t("MS_PLY_SELECTED_MISSING_HINT").format(path=ply_text)
 
-        self.metashape_input_hint.setText("\n".join(notes))
-        self.metashape_input_hint.setVisible(bool(notes))
+        self._set_metashape_input_tooltips(xml_note, ply_note)
+
+    def _set_metashape_input_tooltips(self, xml_note: str, ply_note: str) -> None:
+        xml_tip = self._append_tooltip_note(i18n.tip("MS_XML"), xml_note)
+        ply_tip = self._append_tooltip_note(i18n.tip("MS_PLY"), ply_note)
+        self.ms_xml_browse.setToolTip(xml_tip)
+        self.ms_xml_browse.line_edit.setToolTip(xml_tip)
+        self.ms_ply_browse.setToolTip(ply_tip)
+        self.ms_ply_browse.line_edit.setToolTip(ply_tip)
+
+    @staticmethod
+    def _append_tooltip_note(base: str, note: str) -> str:
+        return f"{base}\n{note}" if note else base
 
     def _on_colmap_run_toggled(self, checked: bool) -> None:
         self.colmap_exec_browse.setEnabled(checked)

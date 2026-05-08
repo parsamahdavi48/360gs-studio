@@ -93,7 +93,8 @@ def test_metashape_inputs_start_empty_when_exports_are_missing(tmp_path: Path) -
     assert step.ms_ply_browse.text() == ""
     assert step.ms_xml_browse.line_edit.placeholderText() == i18n.t("MS_XML_PLACEHOLDER")
     assert step.ms_ply_browse.line_edit.placeholderText() == i18n.t("MS_PLY_PLACEHOLDER")
-    assert "pointcloud.ply" in step.metashape_input_hint.text()
+    assert not hasattr(step, "metashape_input_hint")
+    assert "pointcloud.ply" in step.ms_ply_browse.line_edit.toolTip()
     assert step.primary_action_enabled() is False
 
 
@@ -109,7 +110,7 @@ def test_metashape_inputs_auto_detect_standard_names(tmp_path: Path) -> None:
 
     assert Path(step.ms_xml_browse.text()) == tmp_path / "cameras.xml"
     assert Path(step.ms_ply_browse.text()) == tmp_path / "sparse.ply"
-    assert step.metashape_input_hint.isVisible() is False
+    assert not hasattr(step, "metashape_input_hint")
 
 
 def test_metashape_inputs_do_not_auto_select_nonstandard_candidates(tmp_path: Path) -> None:
@@ -124,9 +125,8 @@ def test_metashape_inputs_do_not_auto_select_nonstandard_candidates(tmp_path: Pa
 
     assert step.ms_xml_browse.text() == ""
     assert step.ms_ply_browse.text() == ""
-    hint = step.metashape_input_hint.text()
-    assert "exported_pose.xml" in hint
-    assert "raw_scan.ply" in hint
+    assert "exported_pose.xml" in step.ms_xml_browse.line_edit.toolTip()
+    assert "raw_scan.ply" in step.ms_ply_browse.line_edit.toolTip()
     assert step.primary_action_enabled() is False
 
 
@@ -145,7 +145,8 @@ def test_metashape_inputs_reject_output_dir_sources(tmp_path: Path) -> None:
     step.ms_ply_browse.set_text(str(output / "metashape.ply"))
 
     assert step.primary_action_enabled() is False
-    assert "output" in step.metashape_input_hint.text()
+    assert "output" in step.ms_xml_browse.line_edit.toolTip()
+    assert "output" in step.ms_ply_browse.line_edit.toolTip()
     with pytest.raises(ValueError, match="output"):
         step._build_preprocess_cmd()
 
