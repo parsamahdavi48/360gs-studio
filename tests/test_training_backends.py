@@ -13,6 +13,7 @@ from gui.steps.training_backends import (
     build_lichtfeld_training_cmd,
     build_postshot_training_cmd,
     lichtfeld_auto_steps_scaler,
+    lichtfeld_defaults,
 )
 
 
@@ -65,7 +66,7 @@ def test_lichtfeld_config_overrides_visible_training_parameters(tmp_path: Path) 
     assert config["bg_color"] == [0.25, 0.5, 0.75]
     assert config["means_lr"] == pytest.approx(0.000123)
     assert config["enable_eval"] is True
-    assert config["save_steps"] == [5000, 30000]
+    assert config["save_steps"] == [3205, 19231]
     assert config["headless"] is True
     assert config["auto_train"] is True
     assert config["eval_steps"] == [7000, 30000]
@@ -85,6 +86,66 @@ def test_lichtfeld_config_overrides_visible_training_parameters(tmp_path: Path) 
         "--headless",
     ]
     assert json.loads(options.config_path.read_text(encoding="utf-8"))["iterations"] == 30000
+
+
+def test_lichtfeld_strategy_defaults_match_upstream_presets() -> None:
+    mrnf = lichtfeld_defaults("mrnf")
+    mcmc = lichtfeld_defaults("mcmc")
+    igs = lichtfeld_defaults("igs+")
+
+    assert mrnf["strategy"] == "mrnf"
+    assert mrnf["max_cap"] == 5_000_000
+    assert mrnf["means_lr"] == pytest.approx(0.00002)
+    assert mrnf["means_lr_end"] == pytest.approx(0.0000002)
+    assert mrnf["shs_lr"] == pytest.approx(0.002)
+    assert mrnf["opacity_lr"] == pytest.approx(0.012)
+    assert mrnf["scaling_lr"] == pytest.approx(0.007)
+    assert mrnf["rotation_lr"] == pytest.approx(0.002)
+    assert mrnf["refine_every"] == 200
+    assert mrnf["start_refine"] == 0
+    assert mrnf["stop_refine"] == 28_500
+    assert mrnf["min_opacity"] == pytest.approx(1.0 / 255.0)
+    assert mrnf["grad_threshold"] == pytest.approx(0.003)
+    assert mrnf["opacity_reg"] == pytest.approx(0.0)
+    assert mrnf["scale_reg"] == pytest.approx(0.0)
+    assert mrnf["revised_opacity"] is True
+
+    assert mcmc["strategy"] == "mcmc"
+    assert mcmc["max_cap"] == 1_000_000
+    assert mcmc["means_lr"] == pytest.approx(0.000016)
+    assert mcmc["means_lr_end"] == pytest.approx(0.00000016)
+    assert mcmc["shs_lr"] == pytest.approx(0.0025)
+    assert mcmc["opacity_lr"] == pytest.approx(0.025)
+    assert mcmc["scaling_lr"] == pytest.approx(0.005)
+    assert mcmc["rotation_lr"] == pytest.approx(0.001)
+    assert mcmc["refine_every"] == 100
+    assert mcmc["start_refine"] == 500
+    assert mcmc["stop_refine"] == 25_000
+    assert mcmc["min_opacity"] == pytest.approx(0.005)
+    assert mcmc["grad_threshold"] == pytest.approx(0.0002)
+    assert mcmc["opacity_reg"] == pytest.approx(0.01)
+    assert mcmc["scale_reg"] == pytest.approx(0.01)
+    assert mcmc["revised_opacity"] is False
+
+    assert igs["strategy"] == "igs+"
+    assert igs["max_cap"] == 4_000_000
+    assert igs["means_lr"] == pytest.approx(0.000016)
+    assert igs["means_lr_end"] == pytest.approx(0.00000016)
+    assert igs["shs_lr"] == pytest.approx(0.005)
+    assert igs["opacity_lr"] == pytest.approx(0.025)
+    assert igs["scaling_lr"] == pytest.approx(0.02)
+    assert igs["rotation_lr"] == pytest.approx(0.0015)
+    assert igs["refine_every"] == 500
+    assert igs["start_refine"] == 500
+    assert igs["stop_refine"] == 15_000
+    assert igs["min_opacity"] == pytest.approx(0.005)
+    assert igs["grad_threshold"] == pytest.approx(0.0002)
+    assert igs["opacity_reg"] == pytest.approx(0.0)
+    assert igs["scale_reg"] == pytest.approx(0.0)
+    assert igs["init_opacity"] == pytest.approx(0.1)
+    assert igs["init_scaling"] == pytest.approx(0.1)
+    assert igs["tv_loss_weight"] == pytest.approx(5.0)
+    assert igs["revised_opacity"] is True
 
 
 def test_lichtfeld_auto_steps_scaler_matches_image_count(tmp_path: Path) -> None:
@@ -189,11 +250,132 @@ def test_postshot_command_passes_images_sparse_and_project_file(tmp_path: Path) 
         str(dataset.colmap_sparse_dir),
         "--output",
         str(tmp_path / "training" / "scene.psht"),
+        "--profile",
+        "Splat3",
         "-s",
         "60",
         "--max-image-size",
         "4096",
+        "--image-select",
+        "all",
+        "--max-sh-degree",
+        "3",
     ]
+
+
+def test_postshot_command_passes_masks_profile_and_advanced_options(tmp_path: Path) -> None:
+    dataset = TrainingDataset(
+        dataset_root=tmp_path / "dataset",
+        images_dir=tmp_path / "dataset" / "images",
+        masks_dir=tmp_path / "dataset" / "masks",
+    )
+
+    cmd = build_postshot_training_cmd(
+        PostshotTrainingOptions(
+            executable="postshot-cli.exe",
+            dataset=dataset,
+            output_dir=tmp_path / "training",
+            project_name="scene.psht",
+            ksteps=None,
+            max_image_size=3840,
+            profile="Splat MCMC",
+            use_imported_poses=False,
+            import_masks=True,
+            mask_mode="background",
+            image_select="best",
+            num_train_images=180,
+            pose_quality=4,
+            gpu_index=1,
+            max_num_splats=4500,
+            anti_aliasing=False,
+            max_sh_degree=2,
+            create_sky_model=True,
+            store_training_context=True,
+            show_train_error=True,
+            no_recenter_points=True,
+            crop_box_min=(-1.0, -2.0, -3.0),
+            crop_box_max=(1.0, 2.0, 3.0),
+            roi_box_default=True,
+            export_splat_path=tmp_path / "training" / "scene.spz",
+        )
+    )
+
+    assert cmd == [
+        "postshot-cli.exe",
+        "train",
+        "--import",
+        str(dataset.images_dir),
+        "--import-masks",
+        str(dataset.masks_dir),
+        "--mask-mode",
+        "background",
+        "--output",
+        str(tmp_path / "training" / "scene.psht"),
+        "--export-splat",
+        str(tmp_path / "training" / "scene.spz"),
+        "--profile",
+        "Splat MCMC",
+        "--max-image-size",
+        "3840",
+        "--image-select",
+        "best",
+        "--num-train-images",
+        "180",
+        "--pose-quality",
+        "4",
+        "--gpu",
+        "1",
+        "--no-recenter-points",
+        "--max-num-splats",
+        "4500",
+        "--anti-aliasing",
+        "false",
+        "--max-sh-degree",
+        "2",
+        "--create-sky-model",
+        "--store-training-context",
+        "--show-train-error",
+        "--crop-box-min",
+        "-1",
+        "-2",
+        "-3",
+        "--crop-box-max",
+        "1",
+        "2",
+        "3",
+        "--roi-box-default",
+    ]
+
+
+def test_postshot_command_imports_transforms_and_pointcloud_for_imported_poses(tmp_path: Path) -> None:
+    dataset = TrainingDataset(
+        dataset_root=tmp_path / "dataset",
+        images_dir=tmp_path / "dataset" / "images",
+        transforms_json=tmp_path / "dataset" / "transforms.json",
+        pointcloud_ply=tmp_path / "source" / "metashape.ply",
+    )
+
+    cmd = build_postshot_training_cmd(
+        PostshotTrainingOptions(
+            executable="postshot-cli.exe",
+            dataset=dataset,
+            output_dir=tmp_path / "training",
+            project_name="scene.psht",
+            ksteps=None,
+            max_image_size=3840,
+        )
+    )
+
+    assert cmd[:7] == [
+        "postshot-cli.exe",
+        "train",
+        "--import",
+        str(dataset.images_dir),
+        str(dataset.transforms_json),
+        str(dataset.pointcloud_ply),
+        "--output",
+    ]
+    assert "--pose-quality" not in cmd
 
 
 def test_custom_training_command_renders_dataset_placeholders(tmp_path: Path) -> None:

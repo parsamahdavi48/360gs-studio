@@ -15,6 +15,7 @@ import gui.steps.step4_cubemap as step4_cubemap
 from gui import i18n
 from gui.common.collapsible_section import CollapsibleSection
 from gui.steps.step4_cubemap import CubemapStep
+from gui.steps.training_backends import lichtfeld_defaults
 from scene_layout import step4_export_settings_path, step4_views_config_path
 from transforms_to_colmap import read_ply_points
 
@@ -31,6 +32,8 @@ def _ready_step(scene: Path, *, metashape_inputs: bool = False) -> CubemapStep:
         (scene / "images").mkdir(exist_ok=True)
         (scene / "metashape.xml").write_text("<root />", encoding="utf-8")
         _write_ascii_ply(scene / "metashape.ply", [(1.0, 2.0, 3.0)])
+    _app()
+    _app()
     step = CubemapStep(Path.cwd())
     step.set_scene_dir(str(scene))
     return step
@@ -71,6 +74,17 @@ def _is_descendant(widget, ancestor) -> bool:
             return True
         current = current.parentWidget()
     return False
+
+
+def _ready_lichtfeld_training_step(scene: Path) -> CubemapStep:
+    step = _ready_step(scene, metashape_inputs=True)
+    _write_test_image(scene / "images" / "frame_0001.jpg")
+    fake_lfs = scene / "LichtFeld-Studio.exe"
+    fake_lfs.write_text("", encoding="utf-8")
+    step.run_training_cb.setChecked(True)
+    step.training_executable_browse.set_text(str(fake_lfs))
+    step.lfs_auto_steps_scaler_cb.setChecked(False)
+    return step
 
 
 def test_cubemap_step_uses_fixed_output_folder_label(tmp_path: Path) -> None:
@@ -184,6 +198,8 @@ def test_cubemap_step_uses_fixed_output_folder_label(tmp_path: Path) -> None:
 
 
 def test_export_method_switch_keeps_fixed_tabs_and_swaps_route_sections() -> None:
+    _app()
+    _app()
     _app()
     step = CubemapStep(Path.cwd())
 
@@ -663,6 +679,9 @@ def test_colmap_export_method_uses_image_only_conversion(tmp_path: Path) -> None
 
     assert not step.metashape_section.isVisible()
     assert step.export_method_buttons["colmap"].isChecked()
+    assert step.yaw_per_frame_edit.value() == 0.0
+    assert not step.yaw_per_frame_edit.isEnabled()
+    assert step.yaw_per_frame_edit.toolTip() == i18n.t("YAW_OFFSET_PER_FRAME_COLMAP_HINT")
     commands = step.build_commands()
     assert [phase for phase, _cmd in commands] == ["colmap_rig_export"]
     cmd = commands[0][1]
@@ -674,6 +693,22 @@ def test_colmap_export_method_uses_image_only_conversion(tmp_path: Path) -> None
     assert "--no_image" not in cmd
     assert "--skip-images" not in cmd
     assert "--skip-masks" not in cmd
+
+
+def test_colmap_export_method_restores_yaw_step_when_leaving_route(tmp_path: Path) -> None:
+    step = _ready_step(tmp_path)
+    step.yaw_per_frame_edit.setValue(45.0)
+
+    step._set_export_method("colmap")
+
+    assert step.yaw_per_frame_edit.value() == 0.0
+    assert not step.yaw_per_frame_edit.isEnabled()
+
+    step._set_export_method("metashape")
+
+    assert step.yaw_per_frame_edit.isEnabled()
+    assert step.yaw_per_frame_edit.value() == 45.0
+    assert step.yaw_per_frame_edit.toolTip() == i18n.t("YAW_OFFSET_PER_FRAME_HINT")
 
 
 def test_colmap_export_method_validates_images_before_resetting_output(tmp_path: Path, monkeypatch) -> None:
@@ -1433,9 +1468,10 @@ def test_training_tab_appends_lichtfeld_command_and_writes_config(tmp_path: Path
     step.run_training_cb.setChecked(True)
     step.training_executable_browse.set_text(str(fake_lfs))
     step.lfs_auto_steps_scaler_cb.setChecked(False)
+    step.lfs_steps_scaler_edit.setText("1.56")
+    step._on_lfs_steps_scaler_editing_finished()
     step.lfs_iterations_edit.setText("46,700")
     step.lfs_max_gaussians_edit.setText("5,000,000")
-    step.lfs_steps_scaler_edit.setText("1.56")
     step.lfs_bilateral_grid_cb.setChecked(True)
     mask_mode_idx = step.lfs_mask_mode_combo.findData("ignore")
     assert mask_mode_idx >= 0
@@ -1510,8 +1546,69 @@ def test_training_tab_appends_lichtfeld_command_and_writes_config(tmp_path: Path
     assert config["bg_color"] == pytest.approx([12 / 255, 34 / 255, 56 / 255])
     assert config["means_lr"] == pytest.approx(0.000123)
     assert config["enable_eval"] is True
-    assert config["save_steps"] == [5000, 30000]
+    assert config["eval_steps"] == [3205, 19231]
+    assert config["save_steps"] == [3205, 19231]
     assert config["headless"] is True
+
+
+def test_lichtfeld_strategy_defaults_match_written_configs(tmp_path: Path) -> None:
+    step = _ready_lichtfeld_training_step(tmp_path)
+
+    for strategy in ("mrnf", "igs+", "mcmc"):
+        strategy_idx = step.lfs_strategy_combo.findData(strategy)
+        assert strategy_idx >= 0
+        step.lfs_strategy_combo.setCurrentIndex(strategy_idx)
+
+        commands = step._build_training_commands()
+
+        assert commands[-1][0] == "training_lichtfeld"
+        config = json.loads(step._training_config_path().read_text(encoding="utf-8"))
+        defaults = lichtfeld_defaults(strategy)
+        for key, expected in defaults.items():
+            assert key in config
+            if isinstance(expected, float):
+                assert config[key] == pytest.approx(expected)
+            elif isinstance(expected, list) and any(isinstance(value, float) for value in expected):
+                assert config[key] == pytest.approx(expected)
+            else:
+                assert config[key] == expected
+
+
+def test_lichtfeld_strategy_switch_preserves_each_strategy_state(tmp_path: Path) -> None:
+    step = _ready_lichtfeld_training_step(tmp_path)
+
+    step.lfs_max_gaussians_edit.setText("6,000,000")
+    step.lfs_advanced_edits["means_lr"].setText("0.000123")
+
+    mcmc_idx = step.lfs_strategy_combo.findData("mcmc")
+    assert mcmc_idx >= 0
+    step.lfs_strategy_combo.setCurrentIndex(mcmc_idx)
+
+    assert step.lfs_max_gaussians_edit.text() == "1,000,000"
+    assert step.lfs_advanced_edits["means_lr"].text() == "0.000016"
+    assert step.lfs_advanced_edits["opacity_lr"].text() == "0.0250"
+    assert step.lfs_advanced_edits["opacity_reg"].text() == "0.0100"
+    assert step.lfs_advanced_checks["revised_opacity"].isChecked() is False
+
+    igs_idx = step.lfs_strategy_combo.findData("igs+")
+    assert igs_idx >= 0
+    step.lfs_strategy_combo.setCurrentIndex(igs_idx)
+
+    assert step.lfs_max_gaussians_edit.text() == "4,000,000"
+    assert step.lfs_advanced_edits["shs_lr"].text() == "0.0050"
+    assert step.lfs_advanced_edits["scaling_lr"].text() == "0.0200"
+    assert step.lfs_advanced_edits["stop_refine"].text() == "15,000"
+    assert step.lfs_advanced_edits["opacity_reg"].text() == "0.0000"
+    assert step.lfs_advanced_edits["init_opacity"].text() == "0.100"
+    assert step.lfs_advanced_edits["tv_loss_weight"].text() == "5.0"
+    assert step.lfs_advanced_checks["revised_opacity"].isChecked() is True
+
+    mrnf_idx = step.lfs_strategy_combo.findData("mrnf")
+    assert mrnf_idx >= 0
+    step.lfs_strategy_combo.setCurrentIndex(mrnf_idx)
+
+    assert step.lfs_max_gaussians_edit.text() == "6,000,000"
+    assert step.lfs_advanced_edits["means_lr"].text() == "0.000123"
 
 
 def test_training_headless_option_shares_start_row(tmp_path: Path) -> None:
@@ -1570,6 +1667,7 @@ def test_postshot_training_defaults_to_scene_project_and_refuses_collision(tmp_p
     existing.parent.mkdir(exist_ok=True)
     existing.write_text("existing", encoding="utf-8")
 
+    _app()
     step = CubemapStep(Path.cwd())
     step.set_scene_dir(str(tmp_path))
     step._set_export_method("colmap")
@@ -1583,6 +1681,90 @@ def test_postshot_training_defaults_to_scene_project_and_refuses_collision(tmp_p
     assert step.postshot_project_name_edit.text() == f"{tmp_path.name}.psht"
     with pytest.raises(ValueError, match=existing.name):
         step.build_commands()
+
+
+def test_postshot_cli_options_are_grouped_and_conditional(tmp_path: Path) -> None:
+    step = _ready_step(tmp_path, metashape_inputs=True)
+    step._set_training_backend("postshot")
+
+    assert step.postshot_profile_combo.currentData() == "Splat3"
+    assert step.postshot_ksteps_auto_cb.isChecked()
+    assert not step.postshot_ksteps_edit.isEnabled()
+    assert step.postshot_max_image_size_edit.text() == "3840"
+    assert step.postshot_import_masks_cb.isChecked() is False
+    assert step.postshot_mask_mode_combo.isHidden()
+    assert step.postshot_image_select_combo.currentData() == "all"
+    assert not step.postshot_num_train_images_edit.isEnabled()
+    assert step.postshot_camera_poses_combo.currentData() == "import"
+    assert not step.postshot_pose_quality_combo.isEnabled()
+
+    expected_sections = {
+        "POSTSHOT_SECTION_CAMERA",
+        "POSTSHOT_SECTION_MODEL",
+        "POSTSHOT_SECTION_REGION",
+        "POSTSHOT_SECTION_OUTPUT",
+    }
+    assert set(step.postshot_advanced_sections) == expected_sections
+    assert all(isinstance(section, CollapsibleSection) for section in step.postshot_advanced_sections.values())
+    assert all(not section.toggle_button.isChecked() for section in step.postshot_advanced_sections.values())
+    assert step.postshot_splat_density_edit.isHidden()
+    assert step.postshot_max_num_splats_edit.isHidden()
+    assert step.postshot_crop_box_min_edit.isHidden()
+    assert step.postshot_roi_box_min_edit.isHidden()
+
+    step.postshot_import_masks_cb.setChecked(True)
+    assert not step.postshot_mask_mode_combo.isHidden()
+
+    adc_idx = step.postshot_profile_combo.findData("Splat ADC")
+    assert adc_idx >= 0
+    step.postshot_profile_combo.setCurrentIndex(adc_idx)
+    assert not step.postshot_splat_density_edit.isHidden()
+    assert step.postshot_max_num_splats_edit.isHidden()
+
+    mcmc_idx = step.postshot_profile_combo.findData("Splat MCMC")
+    assert mcmc_idx >= 0
+    step.postshot_profile_combo.setCurrentIndex(mcmc_idx)
+    assert step.postshot_splat_density_edit.isHidden()
+    assert not step.postshot_max_num_splats_edit.isHidden()
+
+    best_idx = step.postshot_image_select_combo.findData("best")
+    assert best_idx >= 0
+    step.postshot_image_select_combo.setCurrentIndex(best_idx)
+    assert step.postshot_num_train_images_edit.isEnabled()
+
+    estimate_idx = step.postshot_camera_poses_combo.findData("estimate")
+    assert estimate_idx >= 0
+    step.postshot_camera_poses_combo.setCurrentIndex(estimate_idx)
+    assert step.postshot_pose_quality_combo.isEnabled()
+
+    custom_idx = step.postshot_crop_box_combo.findData("custom")
+    assert custom_idx >= 0
+    step.postshot_crop_box_combo.setCurrentIndex(custom_idx)
+    assert not step.postshot_crop_box_min_edit.isHidden()
+    assert not step.postshot_crop_box_max_edit.isHidden()
+
+
+def test_postshot_training_imports_transforms_and_raw_ply_for_metashape(tmp_path: Path) -> None:
+    step = _ready_step(tmp_path, metashape_inputs=True)
+    fake_postshot = tmp_path / "postshot-cli.exe"
+    fake_postshot.write_text("", encoding="utf-8")
+    postshot_idx = step.profile_combo.findData("postshot")
+    assert postshot_idx >= 0
+    step.profile_combo.setCurrentIndex(postshot_idx)
+
+    step._set_training_backend("postshot")
+    step.training_executable_browse.set_text(str(fake_postshot))
+    step.run_training_cb.setChecked(True)
+
+    phase, cmd = step._build_training_commands()[0]
+
+    assert phase == "training_postshot"
+    import_index = cmd.index("--import")
+    assert cmd[import_index + 1 : import_index + 4] == [
+        str(tmp_path / "output" / "images"),
+        str(tmp_path / "output" / "transforms.json"),
+        str(tmp_path / "metashape.ply"),
+    ]
 
 
 def test_lichtfeld_advanced_parameters_are_nested_collapsible_sections(tmp_path: Path) -> None:
@@ -1613,9 +1795,11 @@ def test_lichtfeld_advanced_parameters_are_nested_collapsible_sections(tmp_path:
     assert not step.lfs_advanced_sections["LFS_SECTION_MRNF"].isHidden()
     assert step.lfs_advanced_sections["LFS_SECTION_SPARSITY"].isHidden()
     assert step.lfs_advanced_edits["init_num_pts"].isHidden()
+    assert step.lfs_tile_mode_combo.isHidden()
 
     step.lfs_bilateral_grid_cb.setChecked(True)
     step.lfs_sparsity_cb.setChecked(True)
+    step.lfs_gut_cb.setChecked(True)
     step.lfs_advanced_checks["random"].setChecked(True)
     step.lfs_advanced_checks["enable_eval"].setChecked(True)
 
@@ -1623,10 +1807,10 @@ def test_lichtfeld_advanced_parameters_are_nested_collapsible_sections(tmp_path:
     assert not step.lfs_advanced_sections["LFS_SECTION_SPARSITY"].isHidden()
     assert not step.lfs_advanced_edits["init_num_pts"].isHidden()
     assert not step.lfs_dataset_test_every_edit.isHidden()
+    assert not step.lfs_tile_mode_combo.isHidden()
 
     igs_idx = step.lfs_strategy_combo.findData("igs+")
     assert igs_idx >= 0
-    step.lfs_gut_cb.setChecked(True)
     step.lfs_strategy_combo.setCurrentIndex(igs_idx)
 
     assert step.lfs_advanced_sections["LFS_SECTION_MRNF"].isHidden()
@@ -1635,6 +1819,7 @@ def test_lichtfeld_advanced_parameters_are_nested_collapsible_sections(tmp_path:
     assert not step.lfs_advanced_edits["prune_opacity"].isHidden()
     assert step.lfs_gut_cb.isChecked() is False
     assert step.lfs_gut_cb.isEnabled() is False
+    assert step.lfs_tile_mode_combo.isHidden()
 
 
 def test_lichtfeld_basic_conditional_parameters_follow_source_visibility(tmp_path: Path) -> None:
@@ -1703,13 +1888,27 @@ def test_training_tab_auto_scales_lichtfeld_from_projected_image_count(tmp_path:
     assert not step.lfs_steps_scaler_edit.isEnabled()
     assert float(step.lfs_steps_scaler_edit.text()) == pytest.approx(expected_scaler, abs=0.005)
     assert int(step.lfs_iterations_edit.text().replace(",", "")) == math.floor(30000 * expected_scaler + 0.5)
+    assert int(step.lfs_advanced_edits["stop_refine"].text().replace(",", "")) == math.floor(
+        28500 * expected_scaler + 0.5
+    )
+
+    mcmc_idx = step.lfs_strategy_combo.findData("mcmc")
+    assert mcmc_idx >= 0
+    step.lfs_strategy_combo.setCurrentIndex(mcmc_idx)
+    assert int(step.lfs_iterations_edit.text().replace(",", "")) == math.floor(30000 * expected_scaler + 0.5)
+    assert int(step.lfs_advanced_edits["stop_refine"].text().replace(",", "")) == math.floor(
+        25000 * expected_scaler + 0.5
+    )
 
     commands = step.build_commands()
 
     assert commands[-1][0] == "training_lichtfeld"
     config = json.loads(step._training_config_path().read_text(encoding="utf-8"))
+    assert config["strategy"] == "mcmc"
     assert config["steps_scaler"] == pytest.approx(expected_scaler)
     assert config["iterations"] == 30000
+    assert config["stop_refine"] == 25000
+    assert config["max_cap"] == 1_000_000
 
 
 def test_training_executable_placeholders_are_file_names_only() -> None:
@@ -1742,6 +1941,7 @@ def test_colmap_route_can_append_postshot_training_with_future_sparse_model(tmp_
     fake_postshot = tmp_path / "postshot-cli.exe"
     fake_postshot.write_text("", encoding="utf-8")
 
+    _app()
     step = CubemapStep(Path.cwd())
     step.set_scene_dir(str(tmp_path))
     step._set_export_method("colmap")
@@ -1752,6 +1952,7 @@ def test_colmap_route_can_append_postshot_training_with_future_sparse_model(tmp_
     step.training_executable_browse.set_text(str(fake_postshot))
     step.run_training_cb.setChecked(True)
     step.postshot_project_name_edit.setText("scene.psht")
+    step.postshot_ksteps_auto_cb.setChecked(False)
     step.postshot_ksteps_edit.setText("42")
     step.postshot_max_image_size_edit.setText("2048")
 
@@ -1774,10 +1975,16 @@ def test_colmap_route_can_append_postshot_training_with_future_sparse_model(tmp_
         str(tmp_path / "output" / "colmap_rig" / "sparse" / "0"),
         "--output",
         str(tmp_path / "output" / "scene.psht"),
+        "--profile",
+        "Splat3",
         "-s",
         "42",
         "--max-image-size",
         "2048",
+        "--image-select",
+        "all",
+        "--max-sh-degree",
+        "3",
     ]
 
 

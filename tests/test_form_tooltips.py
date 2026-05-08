@@ -65,6 +65,20 @@ def test_i18n_tips_are_wrapped_in_english() -> None:
     assert result.returncode == 0, result.stdout + result.stderr
 
 
+def test_lfs_mask_mode_tooltip_guides_app_generated_masks() -> None:
+    ja_tip = i18n._TIPS_JA["LFS_MASK_MODE"]
+    en_tip = i18n._TIPS_EN["LFS_MASK_MODE"]
+
+    assert "通常はNone" not in ja_tip
+    assert "標準のマスク値は白=使用、黒=背景/除外対象" in ja_tip
+    assert "Ignore" in ja_tip
+    assert "色の学習から除外" in ja_tip
+    assert "アルファ値に生成結果の透明度を合わせる" in ja_tip
+    assert "Standard mask values are white=used and black=background/exclusion target" in en_tip
+    assert "exclude black from color training" in en_tip
+    assert "match rendered opacity to alpha values" in en_tip
+
+
 def test_step4_tabs_fit_fixed_settings_pane_without_scroll_buttons() -> None:
     script = textwrap.dedent(
         """
@@ -285,7 +299,7 @@ def test_step4_scrolls_tab_content_not_whole_settings_pane() -> None:
         assert step.training_settings_scroll.verticalScrollBar().maximum() > 0
         step._set_training_backend("postshot")
         app.processEvents()
-        assert step.training_settings_scroll.verticalScrollBar().maximum() == 0
+        assert step.training_settings_scroll.verticalScrollBar().maximum() > 0
         step._set_training_backend("custom")
         app.processEvents()
         assert step.training_settings_scroll.verticalScrollBar().maximum() == 0
@@ -576,6 +590,8 @@ def test_cubemap_labels_share_field_tooltips() -> None:
     assert _label(step, i18n.t("LFS_MAX_GAUSSIANS")).toolTip() == i18n.tip("LFS_MAX_GAUSSIANS")
     assert _label(step, i18n.t("LFS_OUTPUT_PLY_NAME")).toolTip() == i18n.tip("LFS_OUTPUT_PLY_NAME")
     assert _label(step, i18n.t("LFS_MASK_MODE")).toolTip() == i18n.tip("LFS_MASK_MODE")
+    assert _label(step, i18n.t("LFS_INVERT_MASKS")).toolTip() == i18n.tip("LFS_INVERT_MASKS")
+    assert step.lfs_invert_masks_cb.toolTip() == i18n.tip("LFS_INVERT_MASKS")
     assert _label(step, i18n.t("POSTSHOT_PROJECT_NAME")).toolTip() == i18n.tip("POSTSHOT_PROJECT_NAME")
     assert _label(step, i18n.t("CUSTOM_TRAINING_ARGS")).toolTip() == i18n.tip("CUSTOM_TRAINING_ARGS")
     assert step.colmap_repo_link.openExternalLinks()
