@@ -1097,23 +1097,14 @@ class CubemapStep(BaseStepWidget):
         scroll.setWidget(content)
         return scroll
 
-    def set_pipeline_stage(self, stage: str) -> None:
-        if stage == _PIPELINE_STAGE_TRAINING:
-            index = self.training_tab_index
-        elif stage == _PIPELINE_STAGE_CONVERSION:
-            index = self.output_tab_index
-        else:
-            index = self.input_tab_index
-        if not self._settings_tab_available(index):
-            index = self.input_tab_index
-        self.settings_tabs.setCurrentIndex(index)
-
     def pipeline_stage(self) -> str:
         current = self.settings_tabs.currentIndex()
         if current == self.training_tab_index:
             return _PIPELINE_STAGE_TRAINING
         if current == self.output_tab_index:
             return _PIPELINE_STAGE_CONVERSION
+        if current == self.details_tab_index:
+            return ""
         return _PIPELINE_STAGE_SFM
 
     def pipeline_stage_intent(self, stage: str) -> bool:
@@ -1219,7 +1210,12 @@ class CubemapStep(BaseStepWidget):
                     "intent_toggle_enabled": intent_toggle_enabled,
                     "intent_symbol": intent_symbol,
                     "intent_tooltip": intent_tooltip,
-                    "navigate_tooltip": i18n.t("STEP4_PIPELINE_NAVIGATE").format(stage=label),
+                    "row_tooltip": i18n.t("STEP4_PIPELINE_ROW_TOOLTIP").format(
+                        stage=label,
+                        status=status_text,
+                        detail=detail,
+                    ),
+                    "current_tab_tooltip": i18n.t("STEP4_PIPELINE_CURRENT_TAB").format(stage=label),
                 }
             )
         return result

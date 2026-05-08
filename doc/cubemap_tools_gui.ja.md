@@ -30,7 +30,7 @@ SfMは、複数画像の見え方の差からカメラ位置と疎な点群を�
 
 `シーンフォルダ` は、Step 1-3で使っている作業フォルダです。通常は `images/` と `masks/` が入っています。MetashapeルートではMetashapeから書き出したXML/PLYを組み合わせます。SphereSfMルートでは、この `images/` と `masks/` からSfMと変換を実行します。
 
-左ナビゲーションには、Step 4のサブ工程として `SfM`、`Cube`、`Train` が常に表示されます。各行の左アイコンで今回その工程を対象にするかを選び、右アイコンでその選択が `準備済み`、`未準備`、`スキップ` のどれかを確認します。Metashapeルートでは、`Cube` がMetashapeのカメラポーズを必要とするときだけ `SfM` が自動でONになります。次に何をすればよいかは各アイコンのツールチップで確認できます。Step 4内では、ルートボタン `Metashape`、`COLMAP`、`SphereSfM` と、Cubeが参照するXML/PLYや既存sparseモデルは `SfM` タブにあります。出力プリセット、画像/マスクのON/OFF、Cube6、Yaw、画像サイズは `Cubemap`、CLI実行の設定は `Training` にあります。
+左ナビゲーションには、Step 4のサブ工程として `SfM`、`Cube`、`Train` が常に表示されます。各行の左アイコンで今回その工程を対象にするかを選び、右アイコンでその選択が `準備済み`、`未準備`、`スキップ` のどれかを確認します。行のハイライトは現在開いている設定タブとの対応を示すだけで、タブ移動は上部タブで行います。Metashapeルートでは、`Cube` がMetashapeのカメラポーズを必要とするときだけ `SfM` が自動でONになります。次に何をすればよいかは各アイコンのツールチップで確認できます。Step 4内では、ルートボタン `Metashape`、`COLMAP`、`SphereSfM` と、Cubeが参照するXML/PLYや既存sparseモデルは `SfM` タブにあります。出力プリセット、画像/マスクのON/OFF、Cube6、Yaw、画像サイズは `Cubemap`、CLI実行の設定は `Training` にあります。
 
 ## Metashapeルートの基本操作
 

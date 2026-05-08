@@ -378,6 +378,7 @@ def test_step4_scrolls_tab_content_not_whole_settings_pane() -> None:
         assert len(set(status_x)) == 1
         assert window.step4_sub_intent_buttons["conversion"].toolTip()
         assert window.step4_sub_status_labels["conversion"].toolTip()
+        assert "ON/OFF" in window.step4_sub_buttons["conversion"].toolTip()
         assert window.step4_sub_intent_buttons["sfm"].text() == "●"
         QTest.mouseClick(window.step4_sub_buttons["sfm"], Qt.LeftButton)
         assert step.pipeline_stage_intent("sfm") is True
@@ -385,20 +386,22 @@ def test_step4_scrolls_tab_content_not_whole_settings_pane() -> None:
         assert window.step4_sub_intent_buttons["sfm"].text() == "●"
         assert not step.run_training_cb.isChecked()
         QTest.mouseClick(window.step4_sub_buttons["training"], Qt.LeftButton)
-        assert step.run_training_cb.isChecked()
-        assert step.settings_tabs.currentIndex() == step.training_tab_index
-        QTest.mouseClick(window.step4_sub_buttons["training"], Qt.LeftButton)
         assert not step.run_training_cb.isChecked()
-        window._activate_step4_pipeline_stage("training")
-        assert window.stack.currentIndex() == 3
+        assert step.settings_tabs.currentIndex() == step.input_tab_index
+        QTest.mouseClick(window.step4_sub_intent_buttons["training"], Qt.LeftButton)
+        assert step.run_training_cb.isChecked()
+        assert step.settings_tabs.currentIndex() == step.input_tab_index
+        QTest.mouseClick(window.step4_sub_intent_buttons["training"], Qt.LeftButton)
+        assert not step.run_training_cb.isChecked()
+        step.settings_tabs.setCurrentIndex(step.training_tab_index)
+        app.processEvents()
         assert step.settings_tabs.currentIndex() == step.training_tab_index
-        assert window.step4_sub_buttons["training"].isChecked()
-        window._activate_step4_pipeline_stage("conversion")
-        assert step.settings_tabs.currentIndex() == step.output_tab_index
-        assert window.step4_sub_buttons["conversion"].isChecked()
+        assert window.step4_sub_buttons["training"].property("active") == "true"
+        QTest.mouseClick(window.step4_sub_status_labels["conversion"], Qt.LeftButton)
+        assert step.settings_tabs.currentIndex() == step.training_tab_index
+        assert window.step4_sub_buttons["conversion"].property("active") == "false"
         assert window.run_btn.text().strip() == i18n.t("RUN")
 
-        step.settings_tabs.setCurrentIndex(step.training_tab_index)
         step._set_training_backend("lichtfeld")
         app.processEvents()
         assert step.training_settings_scroll.verticalScrollBar().maximum() > 0
