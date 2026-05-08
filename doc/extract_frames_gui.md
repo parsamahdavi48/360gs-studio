@@ -43,7 +43,7 @@ The GUI stops before running when the scene folder path contains non-ASCII chara
 
 ## Basic Flow
 
-1. Select `Input Video`. Multiple videos can be selected.
+1. In `Video Queue` on the right, press `Add Videos` and add the videos to extract. Adding videos keeps the existing queue, so videos from other folders can be added later.
 2. Confirm `Scene Folder`. Output images are written under `images/` inside it.
 3. Choose `Interval`. Start with `1.0` second when unsure.
 4. Keep `Motion` on for normal extraction. Turn `Quick extract` on only when you want a fast fixed-interval cut.
@@ -51,7 +51,9 @@ The GUI stops before running when the scene folder path contains non-ASCII chara
 6. When the preflight status says the run is ready, press `Extract Frames`.
 7. After extraction finishes, continue to Step 2.
 
-When Step 1 has no input video and you select a scene folder, the GUI looks for videos in `_stechdrive/sources/videos.json`, then existing extraction sessions, then video files under the scene folder. Found videos are set as the input automatically. If an input video is already selected, the GUI keeps that selection.
+When Step 1 has an empty video queue and you select a scene folder, the GUI looks for videos in `_stechdrive/sources/videos.json`, then existing extraction sessions, then video files under the scene folder. Found videos are added to the queue automatically. If the queue already has videos, the GUI keeps that selection.
+
+If a video was added by mistake, select its row in the video queue and remove it. The video file itself is not deleted.
 
 Step 1 separates analysis from image export. Analysis uses grayscale frames resized to `Analysis Width`; files written to `images/` keep the source video resolution.
 

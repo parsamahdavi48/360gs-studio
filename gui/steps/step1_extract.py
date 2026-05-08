@@ -11,15 +11,20 @@ from pathlib import Path
 
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
+    QAbstractItemView,
     QCheckBox,
     QComboBox,
+    QFileDialog,
     QFormLayout,
     QHBoxLayout,
     QLabel,
     QLineEdit,
+    QListWidget,
+    QListWidgetItem,
     QMessageBox,
     QScrollArea,
     QSplitter,
+    QToolButton,
     QVBoxLayout,
     QWidget,
 )
@@ -30,7 +35,7 @@ from gui.common.browse_widget import BrowseWidget
 from gui.common.collapsible_section import CollapsibleSection
 from gui.common.drag_spinbox import DragDoubleSpinBox, DragSpinBox
 from gui.common.form_rows import add_tooltip_row
-from gui.common.icons import reset_icon
+from gui.common.icons import delete_icon, plus_icon, reset_icon
 from gui.steps.base_step import (
     SETTINGS_PANE_MARGINS,
     SETTINGS_PANE_WIDTH,
@@ -119,19 +124,14 @@ class ExtractStep(BaseStepWidget):
         basic.setSpacing(6)
 
         self.video_browse = BrowseWidget(
+            self,
             mode="files",
             filter_str=i18n.t("VIDEO_FILE_FILTER"),
             placeholder=i18n.t("INPUT_VIDEO_PLACEHOLDER"),
         )
         self.video_browse.setToolTip(i18n.tip("INPUT_VIDEO"))
         self.video_browse.path_changed.connect(self._on_video_changed)
-        self.clear_video_btn = self.video_browse.add_icon_button(
-            reset_icon(),
-            i18n.t("CLEAR_INPUT_VIDEO_HINT"),
-            self._clear_input_videos,
-            accessible_name=i18n.t("CLEAR_INPUT_VIDEO"),
-        )
-        add_tooltip_row(basic, i18n.INPUT_VIDEO, self.video_browse, i18n.tip("INPUT_VIDEO"))
+        self.video_browse.hide()
 
         self.output_mode_combo = QComboBox()
         self.output_mode_combo.setToolTip(i18n.tip("EXTRACT_OUTPUT_MODE"))
@@ -283,6 +283,44 @@ class ExtractStep(BaseStepWidget):
         self.extract_action_row = info_row_widget
         layout.addWidget(info_row_widget)
 
+        queue_header = QHBoxLayout()
+        queue_header.setContentsMargins(0, 0, 0, 0)
+        queue_header.setSpacing(6)
+        queue_header.addWidget(QLabel(i18n.t("VIDEO_QUEUE_SECTION")))
+        queue_header.addStretch()
+        self.add_video_btn = QToolButton()
+        self.add_video_btn.setObjectName("iconToolButton")
+        self.add_video_btn.setIcon(plus_icon())
+        self.add_video_btn.setToolTip(i18n.tip("ADD_INPUT_VIDEO"))
+        self.add_video_btn.setAccessibleName(i18n.t("ADD_INPUT_VIDEO"))
+        self.add_video_btn.setFixedSize(32, 32)
+        self.add_video_btn.clicked.connect(self._add_input_videos)
+        queue_header.addWidget(self.add_video_btn)
+        self.remove_video_btn = QToolButton()
+        self.remove_video_btn.setObjectName("iconToolButton")
+        self.remove_video_btn.setIcon(delete_icon())
+        self.remove_video_btn.setToolTip(i18n.tip("REMOVE_INPUT_VIDEO"))
+        self.remove_video_btn.setAccessibleName(i18n.t("REMOVE_INPUT_VIDEO"))
+        self.remove_video_btn.setFixedSize(32, 32)
+        self.remove_video_btn.clicked.connect(self._remove_selected_input_videos)
+        queue_header.addWidget(self.remove_video_btn)
+        self.clear_video_btn = QToolButton()
+        self.clear_video_btn.setObjectName("iconToolButton")
+        self.clear_video_btn.setIcon(reset_icon())
+        self.clear_video_btn.setToolTip(i18n.t("CLEAR_INPUT_VIDEO_HINT"))
+        self.clear_video_btn.setAccessibleName(i18n.t("CLEAR_INPUT_VIDEO"))
+        self.clear_video_btn.setFixedSize(32, 32)
+        self.clear_video_btn.clicked.connect(self._clear_input_videos)
+        queue_header.addWidget(self.clear_video_btn)
+        work_layout.addLayout(queue_header)
+
+        self.video_queue_list = QListWidget()
+        self.video_queue_list.setSelectionMode(QAbstractItemView.ExtendedSelection)
+        self.video_queue_list.setMinimumHeight(150)
+        self.video_queue_list.setToolTip(i18n.tip("VIDEO_QUEUE_SECTION"))
+        self.video_queue_list.itemSelectionChanged.connect(self._update_video_queue_buttons)
+        work_layout.addWidget(self.video_queue_list)
+
         work_layout.addWidget(QLabel(i18n.t("EXTRACT_READY_SECTION")))
         self.ready_status_label = QLabel()
         self.ready_status_label.setWordWrap(True)
@@ -363,6 +401,7 @@ class ExtractStep(BaseStepWidget):
         splitter.setSizes([SETTINGS_PANE_WIDTH, 760])
         root_layout.addWidget(splitter)
         self._update_mode_widgets()
+        self._refresh_video_queue_list()
         self._update_ready_status()
 
     # -- シーンディレクトリ --
@@ -456,6 +495,89 @@ class ExtractStep(BaseStepWidget):
             return []
         raw_paths = [part.strip().strip('"') for part in text.split(";")]
         return [Path(part) for part in raw_paths if part]
+
+    def _set_video_queue_paths(self, videos: list[Path]) -> None:
+        unique: list[Path] = []
+        seen: set[str] = set()
+        for video in videos:
+            key = str(video).replace("\\", "/").casefold()
+            if key in seen:
+                continue
+            seen.add(key)
+            unique.append(video)
+        self.video_browse.set_text("; ".join(str(video) for video in unique))
+        if not unique:
+            self._refresh_video_queue_list()
+
+    def _queue_dialog_start_path(self) -> str:
+        videos = self._selected_video_paths()
+        for video in videos:
+            if video.is_file():
+                return str(video.parent)
+        if self.scene_dir:
+            return self.scene_dir
+        return ""
+
+    def _add_input_videos(self) -> None:
+        paths, _selected_filter = QFileDialog.getOpenFileNames(
+            self,
+            i18n.t("ADD_INPUT_VIDEO"),
+            self._queue_dialog_start_path(),
+            i18n.t("VIDEO_FILE_FILTER"),
+        )
+        if not paths:
+            return
+        self._set_video_queue_paths([*self._selected_video_paths(), *(Path(path) for path in paths)])
+
+    def _remove_selected_input_videos(self) -> None:
+        selected_paths = {str(item.data(Qt.UserRole)) for item in self.video_queue_list.selectedItems()}
+        if not selected_paths:
+            return
+        videos = self._selected_video_paths()
+        removed = [video for video in videos if str(video) in selected_paths]
+        self._forget_source_videos(removed)
+        self._set_video_queue_paths([video for video in videos if str(video) not in selected_paths])
+
+    def _video_queue_item_text(self, video: Path) -> str:
+        key = self._video_key(video)
+        info = self.video_infos.get(key)
+        if info is None and len(self._selected_video_paths()) == 1:
+            info = self.video_info
+        if key in self.video_info_failures:
+            status = i18n.t("VIDEO_QUEUE_STATUS_ERROR")
+        else:
+            status = self._video_queue_status_text(video)
+        return i18n.t("VIDEO_QUEUE_ITEM_FORMAT").format(
+            name=video.name or str(video),
+            status=status,
+            projection=self._video_projection_text(info),
+            folder=str(video.parent),
+        )
+
+    def _refresh_video_queue_list(self) -> None:
+        if not hasattr(self, "video_queue_list"):
+            return
+        selected_paths = {str(item.data(Qt.UserRole)) for item in self.video_queue_list.selectedItems()}
+        self.video_queue_list.blockSignals(True)
+        try:
+            self.video_queue_list.clear()
+            for video in self._selected_video_paths():
+                item = QListWidgetItem(self._video_queue_item_text(video))
+                item.setData(Qt.UserRole, str(video))
+                item.setToolTip(str(video))
+                self.video_queue_list.addItem(item)
+                if str(video) in selected_paths:
+                    item.setSelected(True)
+        finally:
+            self.video_queue_list.blockSignals(False)
+        self._update_video_queue_buttons()
+
+    def _update_video_queue_buttons(self) -> None:
+        if not hasattr(self, "video_queue_list"):
+            return
+        has_videos = bool(self._selected_video_paths())
+        self.remove_video_btn.setEnabled(bool(self.video_queue_list.selectedItems()))
+        self.clear_video_btn.setEnabled(has_videos)
 
     def _is_multi_video_input(self) -> bool:
         return len(self._selected_video_paths()) > 1
@@ -875,6 +997,7 @@ class ExtractStep(BaseStepWidget):
 
     def _on_video_changed(self, path: str) -> None:
         videos = self._selected_video_paths()
+        self._refresh_video_queue_list()
         self._suggest_scene_dir_from_videos(videos)
         if len(videos) == 1 and videos[0].is_file():
             self._load_video_info(show_error=False)
@@ -1092,6 +1215,7 @@ class ExtractStep(BaseStepWidget):
             upsert_source_videos(Path(self.scene_dir), records)
 
     def _update_video_info_label(self) -> None:
+        self._refresh_video_queue_list()
         if self._is_multi_video_input():
             videos = self._selected_video_paths()
             queued, skipped = self._queued_selected_videos()

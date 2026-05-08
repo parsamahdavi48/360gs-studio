@@ -156,6 +156,46 @@ def test_extract_step_does_not_autoload_over_existing_video_selection(tmp_path: 
     assert step.video_browse.text() == str(selected)
 
 
+def test_extract_video_queue_adds_and_removes_videos_from_right_pane(tmp_path: Path, monkeypatch) -> None:
+    _app()
+    scene = tmp_path / "scene"
+    first = tmp_path / "first"
+    second = tmp_path / "second"
+    scene.mkdir()
+    first.mkdir()
+    second.mkdir()
+    video_a = first / "a.mp4"
+    video_b = second / "b.mov"
+    video_a.write_bytes(b"a")
+    video_b.write_bytes(b"b")
+    step = ExtractStep(Path.cwd())
+    step.set_scene_dir(str(scene))
+    monkeypatch.setattr(step, "_probe_video_info_for_path", lambda _path: _video_info())
+
+    monkeypatch.setattr(
+        "gui.steps.step1_extract.QFileDialog.getOpenFileNames",
+        lambda *_args, **_kwargs: ([str(video_a)], ""),
+    )
+    step.add_video_btn.click()
+    monkeypatch.setattr(
+        "gui.steps.step1_extract.QFileDialog.getOpenFileNames",
+        lambda *_args, **_kwargs: ([str(video_b)], ""),
+    )
+    step.add_video_btn.click()
+
+    assert step._selected_video_paths() == [video_a, video_b]
+    assert step.video_queue_list.count() == 2
+    assert video_a.name in step.video_queue_list.item(0).text()
+    assert video_b.name in step.video_queue_list.item(1).text()
+
+    step.video_queue_list.item(0).setSelected(True)
+    step.remove_video_btn.click()
+
+    assert step._selected_video_paths() == [video_b]
+    assert step.video_queue_list.count() == 1
+    assert video_b.name in step.video_queue_list.item(0).text()
+
+
 def test_extract_run_disabled_for_invalid_analysis_width(tmp_path: Path) -> None:
     _app()
     video = tmp_path / "input.mp4"
