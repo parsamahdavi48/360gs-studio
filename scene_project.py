@@ -248,6 +248,36 @@ def upsert_source_videos(scene_dir: Path, records: list[dict[str, Any]]) -> None
     update_project(scene_dir, "sources", {"video_count": len(data["videos"])})
 
 
+def remove_source_videos(scene_dir: Path, video_paths: list[Path]) -> None:
+    targets = {_path_lookup_key(str(path)) for path in video_paths}
+    targets.discard("")
+    if not targets:
+        return
+
+    path = source_videos_path(scene_dir)
+    data = load_json(path, {"version": 1, "videos": []})
+    videos = data.get("videos")
+    if not isinstance(videos, list):
+        return
+
+    kept: list[dict[str, Any]] = []
+    for item in videos:
+        if not isinstance(item, dict):
+            continue
+        source = item.get("source")
+        path_text = source.get("path") if isinstance(source, dict) else ""
+        if _path_lookup_key(str(path_text or "")) in targets:
+            continue
+        kept.append(item)
+
+    if len(kept) == len(videos):
+        return
+    data["version"] = int(data.get("version") or 1)
+    data["videos"] = kept
+    write_json(path, data)
+    update_project(scene_dir, "sources", {"video_count": len(kept)})
+
+
 def _normalize_projection(value: str) -> str:
     text = str(value or "").strip().lower()
     if text in {"equirect", "equirectangular", "360", "360°"}:

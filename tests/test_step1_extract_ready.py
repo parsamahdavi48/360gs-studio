@@ -9,7 +9,8 @@ from extract_sessions import build_session_record, load_manifest, save_manifest
 from gui import i18n
 from gui.app import MainWindow
 from gui.steps.step1_extract import ExtractStep
-from scene_project import source_video_record, upsert_source_videos
+from scene_layout import source_videos_path
+from scene_project import load_json, source_video_record, upsert_source_videos
 
 
 def _app():
@@ -333,6 +334,45 @@ def test_extract_clear_input_videos_keeps_manual_scene(tmp_path: Path, monkeypat
     window.close()
 
 
+def test_extract_video_probe_does_not_persist_accidental_source_selection(tmp_path: Path, monkeypatch) -> None:
+    _app()
+    scene = tmp_path / "scene"
+    source = tmp_path / "source"
+    scene.mkdir()
+    source.mkdir()
+    video = source / "wrong.mp4"
+    video.write_bytes(b"dummy")
+    window = MainWindow(str(scene))
+    monkeypatch.setattr(window.step1, "_probe_video_info_for_path", lambda _path: _video_info())
+
+    window.step1.video_browse.set_text(str(video))
+
+    assert window.step1.video_info == _video_info()
+    assert not source_videos_path(scene).exists()
+    window.close()
+
+
+def test_extract_clear_input_videos_forgets_registered_source_video(tmp_path: Path, monkeypatch) -> None:
+    _app()
+    scene = tmp_path / "scene"
+    source = tmp_path / "source"
+    scene.mkdir()
+    source.mkdir()
+    video = source / "wrong.mp4"
+    video.write_bytes(b"dummy")
+    upsert_source_videos(scene, [source_video_record(video, _video_info())])
+    step = ExtractStep(Path.cwd())
+    monkeypatch.setattr(step, "_probe_video_info_for_path", lambda _path: _video_info())
+
+    step.set_scene_dir(str(scene))
+    assert step.video_browse.text() == str(video)
+
+    step.clear_video_btn.click()
+
+    assert step.video_browse.text() == ""
+    assert load_json(source_videos_path(scene), {"videos": []}).get("videos") == []
+
+
 def test_extract_run_disabled_when_same_video_would_be_appended(tmp_path: Path) -> None:
     _app()
     video = tmp_path / "input.mp4"
@@ -496,8 +536,27 @@ def test_extract_queue_finish_revalidates_missing_video_after_failure(tmp_path: 
     step.on_queue_finished(False)
 
     assert step.video_info is None
+    assert step.video_browse.text() == ""
     assert not step.primary_action_enabled()
-    assert step.ready_status_label.text() == i18n.t("EXTRACT_READY_VIDEO_NOT_FOUND")
+    assert step.ready_status_label.text() == i18n.t("EXTRACT_READY_NO_VIDEO")
+
+
+def test_extract_queue_finish_prunes_missing_video_and_keeps_remaining_queue(tmp_path: Path, monkeypatch) -> None:
+    _app()
+    video_a = tmp_path / "a.mp4"
+    video_b = tmp_path / "b.mov"
+    video_a.write_bytes(b"a")
+    video_b.write_bytes(b"b")
+    step = ExtractStep(Path.cwd())
+    monkeypatch.setattr(step, "_probe_video_info_for_path", lambda _path: _video_info())
+    _select_videos(step, [video_a, video_b], tmp_path)
+
+    video_b.unlink()
+    step.on_queue_finished(False)
+
+    assert step.video_browse.text() == str(video_a)
+    assert step.primary_action_enabled()
+    assert step.ready_status_label.text() == i18n.t("EXTRACT_READY_OK")
 
 
 def test_extract_queue_finish_revalidates_unreadable_video_after_failure(tmp_path: Path, monkeypatch) -> None:

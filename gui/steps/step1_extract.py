@@ -38,7 +38,7 @@ from gui.steps.base_step import (
     configure_settings_scroll,
 )
 from scene_layout import APP_DIR_NAME, source_videos_path
-from scene_project import infer_video_projection, load_json, source_video_record, upsert_source_videos
+from scene_project import infer_video_projection, load_json, remove_source_videos, source_video_record, upsert_source_videos
 
 _FIXED_INTERVAL_MIN = 0.05
 _FIXED_INTERVAL_MAX = 60.0
@@ -369,11 +369,11 @@ class ExtractStep(BaseStepWidget):
 
     def set_scene_dir(self, path: str) -> None:
         super().set_scene_dir(path)
+        self._prune_missing_selected_videos()
         self._autoload_videos_from_scene_if_empty()
         self._update_images_path_label()
         self._update_video_info_label()
         self._update_instant_estimate()
-        self._save_source_video_registry()
         self._update_ready_status()
 
     def _update_images_path_label(self) -> None:
@@ -495,6 +495,25 @@ class ExtractStep(BaseStepWidget):
             videos = self._scan_video_paths_under_scene(scene)
         if videos:
             self.video_browse.set_text("; ".join(str(video) for video in videos))
+
+    def _prune_missing_selected_videos(self) -> bool:
+        videos = self._selected_video_paths()
+        if not videos:
+            return False
+        existing = [video for video in videos if video.is_file()]
+        if len(existing) == len(videos):
+            return False
+        missing_keys = {self._video_key(video) for video in videos if not video.is_file()}
+        self.video_infos = {key: value for key, value in self.video_infos.items() if key not in missing_keys}
+        self.video_info_failures = {
+            key: value for key, value in self.video_info_failures.items() if key not in missing_keys
+        }
+        if not existing:
+            self.video_info = None
+        self.video_browse.set_text("; ".join(str(video) for video in existing))
+        if not existing:
+            self._autoload_videos_from_scene_if_empty()
+        return True
 
     @staticmethod
     def _resolve_scene_or_absolute_path(scene: Path, value: str) -> Path:
@@ -824,17 +843,11 @@ class ExtractStep(BaseStepWidget):
 
     def _refresh_finished_run_state(self, *, revalidate_video_info: bool) -> None:
         videos = self._selected_video_paths()
+        if self._prune_missing_selected_videos():
+            return
         if revalidate_video_info and videos:
             self._load_video_info(show_error=False)
             return
-        missing_keys = {self._video_key(video) for video in videos if not video.is_file()}
-        if missing_keys:
-            self.video_infos = {key: value for key, value in self.video_infos.items() if key not in missing_keys}
-            self.video_info_failures = {
-                key: value for key, value in self.video_info_failures.items() if key not in missing_keys
-            }
-            if len(videos) == 1 and self._video_key(videos[0]) in missing_keys:
-                self.video_info = None
         self._update_video_info_label()
         self._update_ready_status()
 
@@ -842,7 +855,9 @@ class ExtractStep(BaseStepWidget):
 
     def _clear_input_videos(self) -> None:
         self.last_estimate_summary = None
+        videos = self._selected_video_paths()
         if self.video_browse.text():
+            self._forget_source_videos(videos)
             self.video_browse.set_text("")
         else:
             self.video_info = None
@@ -852,6 +867,11 @@ class ExtractStep(BaseStepWidget):
             self._update_instant_estimate()
             self._update_ready_status()
         self.input_videos_cleared.emit()
+
+    def _forget_source_videos(self, videos: list[Path]) -> None:
+        if not self.scene_dir or not videos:
+            return
+        remove_source_videos(Path(self.scene_dir), videos)
 
     def _on_video_changed(self, path: str) -> None:
         videos = self._selected_video_paths()
@@ -946,7 +966,6 @@ class ExtractStep(BaseStepWidget):
                 key = self._video_key(videos[0])
                 self.video_infos[key] = self.video_info
                 self.video_info_failures.pop(key, None)
-            self._save_source_video_registry()
             self._update_video_info_label()
             self._mark_estimate_stale()
             self._update_ready_status()
@@ -980,7 +999,6 @@ class ExtractStep(BaseStepWidget):
             self.video_info_failures.pop(key, None)
 
         self._update_video_info_label()
-        self._save_source_video_registry()
         self._mark_estimate_stale()
         self._update_ready_status()
         if failures and show_error:
