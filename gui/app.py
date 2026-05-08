@@ -146,6 +146,7 @@ class MainWindow(QWidget):
         sidebar_layout.setSpacing(6)
         self.step_buttons: list[QPushButton] = []
         self.step4_sub_buttons: dict[str, QPushButton] = {}
+        self.step4_sub_intent_buttons: dict[str, QToolButton] = {}
         self.step4_sub_status_labels: dict[str, QLabel] = {}
         self.step4_sub_text_labels: dict[str, QLabel] = {}
         self.step4_subnav_rail: QWidget | None = None
@@ -182,6 +183,14 @@ class MainWindow(QWidget):
                     sub_btn_layout = QHBoxLayout(sub_btn)
                     sub_btn_layout.setContentsMargins(2, 0, 1, 0)
                     sub_btn_layout.setSpacing(1)
+                    intent_btn = QToolButton()
+                    intent_btn.setObjectName("navSubStepIntent")
+                    intent_btn.setCheckable(True)
+                    intent_btn.setAutoRaise(True)
+                    intent_btn.setFixedSize(13, 18)
+                    intent_btn.clicked.connect(
+                        lambda _checked=False, s=stage: self._toggle_step4_pipeline_stage_intent(s)
+                    )
                     status_label = QLabel("")
                     status_label.setObjectName("navSubStepIcon")
                     status_label.setFixedWidth(13)
@@ -189,13 +198,15 @@ class MainWindow(QWidget):
                     text_label = QLabel("")
                     text_label.setObjectName("navSubStepText")
                     text_label.setWordWrap(False)
-                    sub_btn_layout.addWidget(status_label)
+                    sub_btn_layout.addWidget(intent_btn)
                     sub_btn_layout.addWidget(text_label, stretch=1)
+                    sub_btn_layout.addWidget(status_label)
                     sub_btn.clicked.connect(
                         lambda _checked=False, s=stage: self._activate_step4_pipeline_stage(s)
                     )
                     subnav_rows_layout.addWidget(sub_btn)
                     self.step4_sub_buttons[stage] = sub_btn
+                    self.step4_sub_intent_buttons[stage] = intent_btn
                     self.step4_sub_status_labels[stage] = status_label
                     self.step4_sub_text_labels[stage] = text_label
                 subnav_layout.addWidget(subnav_rows)
@@ -358,6 +369,11 @@ class MainWindow(QWidget):
         self.step4.set_pipeline_stage(stage)
         self._refresh_step4_subnav()
 
+    def _toggle_step4_pipeline_stage_intent(self, stage: str) -> None:
+        self.step4.toggle_pipeline_stage_intent(stage)
+        self._refresh_step4_subnav()
+        self._update_run_button()
+
     def _refresh_step4_subnav(self) -> None:
         if not self.step4_sub_buttons:
             return
@@ -373,17 +389,25 @@ class MainWindow(QWidget):
                 continue
             status_label = self.step4_sub_status_labels.get(item["stage"])
             text_label = self.step4_sub_text_labels.get(item["stage"])
+            intent_btn = self.step4_sub_intent_buttons.get(item["stage"])
             active = active_stage == item["stage"]
+            if intent_btn is not None:
+                intent_btn.setText(str(item["intent_symbol"]))
+                intent_btn.setChecked(bool(item["intent_checked"]))
+                intent_btn.setEnabled(bool(item["intent_enabled"]))
+                intent_btn.setToolTip(str(item["intent_tooltip"]))
             if status_label is not None:
-                status_label.setText(item["symbol"])
+                status_label.setText(str(item["status_symbol"]))
                 status_label.setProperty("status", item["status"])
+                status_label.setToolTip(str(item["status_tooltip"]))
             if text_label is not None:
-                text_label.setText(item["label"])
+                text_label.setText(str(item["label"]))
                 text_label.setProperty("active", "true" if active else "false")
-            button.setToolTip(item["tooltip"])
+                text_label.setToolTip(str(item["navigate_tooltip"]))
+            button.setToolTip(str(item["navigate_tooltip"]))
             button.setChecked(active)
             button.setProperty("status", item["status"])
-            for widget in (button, status_label, text_label):
+            for widget in (button, intent_btn, status_label, text_label):
                 if widget is not None:
                     widget.style().unpolish(widget)
                     widget.style().polish(widget)
@@ -425,6 +449,8 @@ class MainWindow(QWidget):
         for btn in self.step_buttons:
             btn.setEnabled(unlocked)
         for btn in self.step4_sub_buttons.values():
+            btn.setEnabled(unlocked)
+        for btn in self.step4_sub_intent_buttons.values():
             btn.setEnabled(unlocked)
 
     def _on_run(self) -> None:

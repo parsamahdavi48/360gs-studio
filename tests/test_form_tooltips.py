@@ -319,6 +319,7 @@ def test_step4_scrolls_tab_content_not_whole_settings_pane() -> None:
         from PySide6.QtCore import QPoint, Qt
         from PySide6.QtWidgets import QApplication, QScrollArea
 
+        from gui import i18n
         from gui.app import MainWindow
         from gui.theme import apply_theme
 
@@ -354,13 +355,18 @@ def test_step4_scrolls_tab_content_not_whole_settings_pane() -> None:
         assert found_route_scroll
 
         assert [button.width() for button in window.step4_sub_buttons.values()] == [58, 58, 58]
+        assert [button.width() for button in window.step4_sub_intent_buttons.values()] == [13, 13, 13]
         assert [label.width() for label in window.step4_sub_status_labels.values()] == [13, 13, 13]
         assert window.step4_subnav_rail.width() == 2
         assert window.step4_sub_text_labels["sfm"].text() == "SfM"
         assert window.step4_sub_text_labels["conversion"].text() == "Cube"
         assert window.step4_sub_text_labels["training"].text() == "Train"
         rail_x = window.step4_subnav_rail.mapTo(window, QPoint(0, 0)).x()
-        icon_x = [
+        intent_x = [
+            button.mapTo(window, QPoint(0, 0)).x()
+            for button in window.step4_sub_intent_buttons.values()
+        ]
+        status_x = [
             label.mapTo(window, QPoint(0, 0)).x()
             for label in window.step4_sub_status_labels.values()
         ]
@@ -368,9 +374,12 @@ def test_step4_scrolls_tab_content_not_whole_settings_pane() -> None:
             label.mapTo(window, QPoint(0, 0)).x()
             for label in window.step4_sub_text_labels.values()
         ]
-        assert rail_x < icon_x[0]
-        assert len(set(icon_x)) == 1
+        assert rail_x < intent_x[0] < text_x[0] < status_x[0]
+        assert len(set(intent_x)) == 1
         assert len(set(text_x)) == 1
+        assert len(set(status_x)) == 1
+        assert window.step4_sub_intent_buttons["conversion"].toolTip()
+        assert window.step4_sub_status_labels["conversion"].toolTip()
         window._activate_step4_pipeline_stage("training")
         assert window.stack.currentIndex() == 3
         assert step.settings_tabs.currentIndex() == step.training_tab_index
@@ -378,6 +387,7 @@ def test_step4_scrolls_tab_content_not_whole_settings_pane() -> None:
         window._activate_step4_pipeline_stage("conversion")
         assert step.settings_tabs.currentIndex() == step.output_tab_index
         assert window.step4_sub_buttons["conversion"].isChecked()
+        assert window.run_btn.text().strip() == i18n.t("RUN")
 
         step.settings_tabs.setCurrentIndex(step.training_tab_index)
         step._set_training_backend("lichtfeld")

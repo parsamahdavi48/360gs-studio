@@ -138,6 +138,26 @@ QLabel#navSubStepText {{
     font-size: 8pt;
     font-weight: 600;
 }}
+QToolButton#navSubStepIntent {{
+    background-color: transparent;
+    border: 1px solid transparent;
+    border-radius: 3px;
+    color: {TEXT_DIM};
+    padding: 0;
+    font-size: 8pt;
+    font-weight: 700;
+}}
+QToolButton#navSubStepIntent:hover {{
+    color: {TEXT};
+    border-color: {BORDER};
+}}
+QToolButton#navSubStepIntent:checked {{
+    color: {ACCENT_HOVER};
+}}
+QToolButton#navSubStepIntent:disabled {{
+    color: {TEXT_DIM};
+    border-color: transparent;
+}}
 QLabel#navSubStepText[active="true"] {{
     color: {TEXT_BRIGHT};
 }}
@@ -151,6 +171,9 @@ QLabel#navSubStepIcon[status="warning"] {{
     color: {WARNING};
 }}
 QLabel#navSubStepIcon[status="off"] {{
+    color: {TEXT_DIM};
+}}
+QLabel#navSubStepIcon[status="disabled"] {{
     color: {TEXT_DIM};
 }}
 QLabel#navSubStepIcon:disabled,

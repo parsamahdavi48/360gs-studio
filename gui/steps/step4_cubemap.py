@@ -131,6 +131,7 @@ _PIPELINE_STATUS_PLANNED = "planned"
 _PIPELINE_STATUS_PENDING = "pending"
 _PIPELINE_STATUS_WARNING = "warning"
 _PIPELINE_STATUS_OFF = "off"
+_PIPELINE_STATUS_DISABLED = "disabled"
 _OUTPUT_SHAPE_PROJECTED = "projected"
 _OUTPUT_SHAPE_EQUIRECT_3DGUT = "equirect_3dgut"
 _COLMAP_MAPPER_INCREMENTAL = "incremental"
@@ -352,8 +353,12 @@ class CubemapStep(BaseStepWidget):
         self._syncing_profile_controls = False
         self._syncing_output_shape_controls = False
         self._syncing_user_preferences = False
+        self._syncing_spheresfm_scope_from_intent = False
         self._user_preferences_enabled = False
         self._export_method_value = _METHOD_METASHAPE
+        self._conversion_intent = True
+        self._spheresfm_sfm_intent_override: bool | None = None
+        self._spheresfm_conversion_intent_override: bool | None = None
         self._saved_projected_export_targets: tuple[bool, bool] | None = None
         self._input_image_count = 0
         self._spheresfm_phase_logs: dict[str, Path] = {}
@@ -1024,7 +1029,71 @@ class CubemapStep(BaseStepWidget):
             return _PIPELINE_STAGE_CONVERSION
         return _PIPELINE_STAGE_SFM
 
-    def pipeline_nav_items(self) -> list[dict[str, str]]:
+    def pipeline_stage_intent(self, stage: str) -> bool:
+        if stage == _PIPELINE_STAGE_SFM:
+            if self._is_metashape_method():
+                return False
+            if self._is_colmap_method():
+                return self.run_colmap_cb.isChecked()
+            return self._spheresfm_runs_sfm()
+        if stage == _PIPELINE_STAGE_CONVERSION:
+            if self._is_spheresfm_method():
+                return self._spheresfm_runs_conversion()
+            return self._conversion_intent
+        if stage == _PIPELINE_STAGE_TRAINING:
+            return self.run_training_cb.isChecked()
+        return False
+
+    def pipeline_stage_intent_enabled(self, stage: str) -> bool:
+        return not (stage == _PIPELINE_STAGE_SFM and self._is_metashape_method())
+
+    def toggle_pipeline_stage_intent(self, stage: str) -> None:
+        self.set_pipeline_stage_intent(stage, not self.pipeline_stage_intent(stage))
+
+    def set_pipeline_stage_intent(self, stage: str, enabled: bool) -> None:
+        enabled = bool(enabled)
+        if stage == _PIPELINE_STAGE_SFM:
+            if self._is_metashape_method():
+                return
+            if self._is_colmap_method():
+                self.run_colmap_cb.setChecked(enabled)
+            else:
+                self._set_spheresfm_stage_intents(
+                    run_sfm=enabled,
+                    run_conversion=self._spheresfm_runs_conversion(),
+                )
+        elif stage == _PIPELINE_STAGE_CONVERSION:
+            if self._is_spheresfm_method():
+                self._set_spheresfm_stage_intents(
+                    run_sfm=self._spheresfm_runs_sfm(),
+                    run_conversion=enabled,
+                )
+            else:
+                self._conversion_intent = enabled
+        elif stage == _PIPELINE_STAGE_TRAINING:
+            self.run_training_cb.setChecked(enabled)
+        self._sync_settings_tabs()
+        self._update_path_labels()
+        self._update_training_paths()
+        self._update_output_count()
+        self.primary_action_state_changed.emit()
+
+    def _set_spheresfm_stage_intents(self, *, run_sfm: bool, run_conversion: bool) -> None:
+        self._spheresfm_sfm_intent_override = bool(run_sfm)
+        self._spheresfm_conversion_intent_override = bool(run_conversion)
+        if run_sfm and run_conversion:
+            scope = _SPHERESFM_RUN_FULL
+        elif run_sfm:
+            scope = _SPHERESFM_RUN_SFM_ONLY
+        else:
+            scope = _SPHERESFM_RUN_CONVERT_ONLY
+        self._syncing_spheresfm_scope_from_intent = True
+        try:
+            self._set_combo_data(self.spheresfm_run_scope_combo, scope)
+        finally:
+            self._syncing_spheresfm_scope_from_intent = False
+
+    def pipeline_nav_items(self) -> list[dict[str, object]]:
         items: list[tuple[str, str, tuple[str, str, str]]] = [
             (_PIPELINE_STAGE_SFM, i18n.t("STEP4_PIPELINE_SFM"), self._pipeline_sfm_status()),
             (
@@ -1038,16 +1107,28 @@ class CubemapStep(BaseStepWidget):
                 self._pipeline_training_status(),
             ),
         ]
-        result: list[dict[str, str]] = []
+        result: list[dict[str, object]] = []
         for stage, label, (status, symbol, detail) in items:
             status_text = i18n.t(f"STEP4_PIPELINE_STATUS_{status.upper()}")
+            intent = self.pipeline_stage_intent(stage)
+            intent_enabled = self.pipeline_stage_intent_enabled(stage)
+            intent_key = "STEP4_PIPELINE_INTENT_ON" if intent else "STEP4_PIPELINE_INTENT_OFF"
+            if not intent_enabled:
+                intent_tooltip = i18n.t("STEP4_PIPELINE_INTENT_DISABLED").format(stage=label)
+            else:
+                intent_tooltip = i18n.t(intent_key).format(stage=label)
             result.append(
                 {
                     "stage": stage,
                     "label": label,
                     "status": status,
-                    "symbol": symbol,
-                    "tooltip": f"{label}: {status_text}\n{detail}",
+                    "status_symbol": symbol,
+                    "status_tooltip": f"{label}: {status_text}\n{detail}",
+                    "intent_checked": intent,
+                    "intent_enabled": intent_enabled,
+                    "intent_symbol": "●" if intent else "○",
+                    "intent_tooltip": intent_tooltip,
+                    "navigate_tooltip": i18n.t("STEP4_PIPELINE_NAVIGATE").format(stage=label),
                 }
             )
         return result
@@ -1058,41 +1139,53 @@ class CubemapStep(BaseStepWidget):
         if self._is_metashape_method():
             xml = Path(self.ms_xml_browse.text().strip()) if self.ms_xml_browse.text().strip() else Path(self.scene_dir) / "metashape.xml"
             if xml.is_file():
-                return (_PIPELINE_STATUS_READY, "✓", i18n.t("STEP4_PIPELINE_DETAIL_METASHAPE_READY"))
+                return (_PIPELINE_STATUS_DISABLED, "·", i18n.t("STEP4_PIPELINE_DETAIL_METASHAPE_READY"))
             return (_PIPELINE_STATUS_WARNING, "!", i18n.t("STEP4_PIPELINE_DETAIL_METASHAPE_NEEDS_XML"))
         if self._is_colmap_method():
             if self.run_colmap_cb.isChecked():
-                return (_PIPELINE_STATUS_PLANNED, "▶", i18n.t("STEP4_PIPELINE_DETAIL_COLMAP_RUNS"))
+                if not self.pipeline_stage_intent(_PIPELINE_STAGE_CONVERSION) and not self._colmap_rig_images_dir().is_dir():
+                    return (_PIPELINE_STATUS_WARNING, "!", i18n.t("STEP4_PIPELINE_DETAIL_COLMAP_NEEDS_RIG"))
+                return (_PIPELINE_STATUS_READY, "✓", i18n.t("STEP4_PIPELINE_DETAIL_COLMAP_RUNS"))
             if self._find_colmap_sparse_model() is not None:
                 return (_PIPELINE_STATUS_READY, "✓", i18n.t("STEP4_PIPELINE_DETAIL_COLMAP_READY"))
-            return (_PIPELINE_STATUS_WARNING, "!", i18n.t("STEP4_PIPELINE_DETAIL_COLMAP_NEEDS_POSES"))
-        scope = self._spheresfm_run_scope()
-        if scope != _SPHERESFM_RUN_CONVERT_ONLY:
-            return (_PIPELINE_STATUS_PLANNED, "▶", i18n.t("STEP4_PIPELINE_DETAIL_SPHERESFM_RUNS"))
+            return (_PIPELINE_STATUS_OFF, "·", i18n.t("STEP4_PIPELINE_DETAIL_COLMAP_OFF"))
+        if self._spheresfm_runs_sfm():
+            return (_PIPELINE_STATUS_READY, "✓", i18n.t("STEP4_PIPELINE_DETAIL_SPHERESFM_RUNS"))
         if self._find_spheresfm_sparse_model() is not None:
             return (_PIPELINE_STATUS_READY, "✓", i18n.t("STEP4_PIPELINE_DETAIL_SPHERESFM_READY"))
-        return (_PIPELINE_STATUS_WARNING, "!", i18n.t("STEP4_PIPELINE_DETAIL_SPHERESFM_NEEDS_SPARSE"))
+        return (_PIPELINE_STATUS_OFF, "·", i18n.t("STEP4_PIPELINE_DETAIL_SPHERESFM_OFF"))
 
     def _pipeline_conversion_status(self) -> tuple[str, str, str]:
         if not self.scene_dir:
             return (_PIPELINE_STATUS_PENDING, "○", i18n.t("STEP4_PIPELINE_DETAIL_SCENE_REQUIRED"))
-        if self._is_spheresfm_method() and self._spheresfm_run_scope() == _SPHERESFM_RUN_SFM_ONLY:
+        if not self.pipeline_stage_intent(_PIPELINE_STAGE_CONVERSION):
             return (_PIPELINE_STATUS_OFF, "·", i18n.t("STEP4_PIPELINE_DETAIL_CONVERSION_OFF"))
+        if self._is_spheresfm_method() and self._spheresfm_runs_sfm():
+            return (_PIPELINE_STATUS_PLANNED, "…", i18n.t("STEP4_PIPELINE_DETAIL_CONVERSION_AFTER_SFM"))
+        if self._is_spheresfm_method() and self._find_spheresfm_sparse_model() is None:
+            return (_PIPELINE_STATUS_WARNING, "!", i18n.t("STEP4_PIPELINE_DETAIL_SPHERESFM_NEEDS_SPARSE"))
         if self._is_metashape_method() and not self.ms_xml_browse.text().strip() and not (Path(self.scene_dir) / "metashape.xml").is_file():
             return (_PIPELINE_STATUS_WARNING, "!", i18n.t("STEP4_PIPELINE_DETAIL_METASHAPE_NEEDS_XML"))
-        return (_PIPELINE_STATUS_PLANNED, "▶", i18n.t("STEP4_PIPELINE_DETAIL_CONVERSION_RUNS"))
+        return (_PIPELINE_STATUS_READY, "✓", i18n.t("STEP4_PIPELINE_DETAIL_CONVERSION_RUNS"))
 
     def _pipeline_training_status(self) -> tuple[str, str, str]:
         if not self.scene_dir:
             return (_PIPELINE_STATUS_PENDING, "○", i18n.t("STEP4_PIPELINE_DETAIL_SCENE_REQUIRED"))
         if not self.run_training_cb.isChecked():
             return (_PIPELINE_STATUS_OFF, "·", i18n.t("STEP4_PIPELINE_DETAIL_TRAINING_OFF"))
-        if self._is_spheresfm_method() and self._spheresfm_run_scope() == _SPHERESFM_RUN_SFM_ONLY:
+        if self.pipeline_stage_intent(_PIPELINE_STAGE_CONVERSION):
+            backend = self._training_backend_display_name(self._training_backend()) if hasattr(self, "training_backend_buttons") else ""
+            return (
+                _PIPELINE_STATUS_PLANNED,
+                "…",
+                i18n.t("STEP4_PIPELINE_DETAIL_TRAINING_RUNS").format(backend=backend),
+            )
+        if not self._training_dataset_available():
             return (_PIPELINE_STATUS_WARNING, "!", i18n.t("STEP4_PIPELINE_DETAIL_TRAINING_NEEDS_CONVERSION"))
         backend = self._training_backend_display_name(self._training_backend()) if hasattr(self, "training_backend_buttons") else ""
         return (
-            _PIPELINE_STATUS_PLANNED,
-            "▶",
+            _PIPELINE_STATUS_READY,
+            "✓",
             i18n.t("STEP4_PIPELINE_DETAIL_TRAINING_RUNS").format(backend=backend),
         )
 
@@ -1834,10 +1927,25 @@ class CubemapStep(BaseStepWidget):
         self._render_preview()
 
     def primary_action_text(self) -> str:
-        return i18n.t("EXPORT")
+        return i18n.t("RUN")
 
     def primary_action_tooltip(self) -> str:
         return i18n.tip("RUN_CUBEMAP")
+
+    def primary_action_enabled(self) -> bool:
+        selected = False
+        status_by_stage = {
+            _PIPELINE_STAGE_SFM: self._pipeline_sfm_status(),
+            _PIPELINE_STAGE_CONVERSION: self._pipeline_conversion_status(),
+            _PIPELINE_STAGE_TRAINING: self._pipeline_training_status(),
+        }
+        for stage, (status, _symbol, _detail) in status_by_stage.items():
+            if not self.pipeline_stage_intent(stage):
+                continue
+            selected = True
+            if status in {_PIPELINE_STATUS_PENDING, _PIPELINE_STATUS_WARNING, _PIPELINE_STATUS_DISABLED}:
+                return False
+        return selected
 
     def on_activated(self) -> None:
         self.preview.refresh_image_list(prefer_current=True)
@@ -2585,6 +2693,17 @@ class CubemapStep(BaseStepWidget):
             output_shape=self._output_shape(),
         )
 
+    def _training_dataset_available(self) -> bool:
+        if not self.scene_dir or not hasattr(self, "training_dataset_browse"):
+            return False
+        try:
+            dataset = self._training_dataset()
+        except ValueError:
+            return False
+        if dataset.images_dir is not None and self._count_images_in_dir(dataset.images_dir) > 0:
+            return True
+        return bool(dataset.transforms_json and dataset.transforms_json.is_file())
+
     def _selected_projection_view_count(self) -> int:
         if self._uses_direct_equirect_output() or self._uses_spheresfm_3dgut_output():
             return 1
@@ -2640,10 +2759,18 @@ class CubemapStep(BaseStepWidget):
             self._syncing_lfs_auto_fields = False
 
     def _spheresfm_runs_conversion(self) -> bool:
-        return self._is_spheresfm_method() and self._spheresfm_run_scope() != _SPHERESFM_RUN_SFM_ONLY
+        if not self._is_spheresfm_method():
+            return False
+        if self._spheresfm_conversion_intent_override is not None:
+            return self._spheresfm_conversion_intent_override
+        return self._spheresfm_run_scope() != _SPHERESFM_RUN_SFM_ONLY
 
     def _spheresfm_runs_sfm(self) -> bool:
-        return self._is_spheresfm_method() and self._spheresfm_run_scope() != _SPHERESFM_RUN_CONVERT_ONLY
+        if not self._is_spheresfm_method():
+            return False
+        if self._spheresfm_sfm_intent_override is not None:
+            return self._spheresfm_sfm_intent_override
+        return self._spheresfm_run_scope() != _SPHERESFM_RUN_CONVERT_ONLY
 
     @staticmethod
     def _normalize_spheresfm_run_scope(value: str) -> str:
@@ -2697,11 +2824,11 @@ class CubemapStep(BaseStepWidget):
         self.colmap_section.setVisible(self._is_colmap_method())
         self.spheresfm_section.setVisible(self._is_spheresfm_method())
         self.spheresfm_convert_section.setVisible(self._is_spheresfm_method() and self._spheresfm_runs_conversion())
-        spheresfm_sfm_only = self._is_spheresfm_method() and self._spheresfm_run_scope() == _SPHERESFM_RUN_SFM_ONLY
-        conversion_enabled = not spheresfm_sfm_only
+        spheresfm_conversion_off = self._is_spheresfm_method() and not self._spheresfm_runs_conversion()
+        conversion_enabled = not spheresfm_conversion_off
         self.settings_tabs.setTabEnabled(self.output_tab_index, conversion_enabled)
         route_index = self.input_tab_index
-        if spheresfm_sfm_only and current == self.output_tab_index:
+        if spheresfm_conversion_off and current == self.output_tab_index:
             self.settings_tabs.setCurrentIndex(route_index)
         elif prefer_route_tab:
             self.settings_tabs.setCurrentIndex(route_index)
@@ -2716,6 +2843,9 @@ class CubemapStep(BaseStepWidget):
         )
 
     def _on_spheresfm_run_scope_changed(self, *_args) -> None:
+        if not self._syncing_spheresfm_scope_from_intent:
+            self._spheresfm_sfm_intent_override = None
+            self._spheresfm_conversion_intent_override = None
         self._sync_output_shape_controls()
         self._sync_settings_tabs()
         self._update_training_paths()
@@ -2741,6 +2871,7 @@ class CubemapStep(BaseStepWidget):
         self.colmap_exec_browse.setEnabled(checked)
         self.colmap_pipeline_row.setEnabled(checked)
         self._on_colmap_mapper_changed()
+        self.primary_action_state_changed.emit()
 
     def _on_colmap_mapper_changed(self, *_args) -> None:
         needs_glomap = (
@@ -3107,12 +3238,14 @@ class CubemapStep(BaseStepWidget):
     def build_commands(self) -> list[tuple[str, list[str]]]:
         if self._is_spheresfm_method():
             self._reset_spheresfm_rtx50_diagnostics()
-            self._validate_spheresfm_export()
-            scope = self._spheresfm_run_scope()
-            if self.run_training_cb.isChecked() and scope == _SPHERESFM_RUN_SFM_ONLY:
+            run_sfm = self._spheresfm_runs_sfm()
+            run_conversion = self._spheresfm_runs_conversion()
+            if run_sfm or run_conversion:
+                self._validate_spheresfm_export()
+            if self.run_training_cb.isChecked() and not run_conversion and not self._training_dataset_available():
                 raise ValueError(i18n.t("TRAINING_REQUIRES_DATASET_OUTPUT"))
             self._guard_existing_training_output_targets()
-            if scope == _SPHERESFM_RUN_CONVERT_ONLY:
+            if run_conversion and not run_sfm:
                 self._require_spheresfm_sparse_model()
                 self._validate_spheresfm_conversion_export()
                 if not self._prepare_spheresfm_run_outputs(include_project=False, include_conversion=True):
@@ -3121,32 +3254,46 @@ class CubemapStep(BaseStepWidget):
                 steps.extend(self._build_training_commands())
                 return steps
 
-            if not self._prepare_spheresfm_run_outputs(
-                include_project=True,
-                include_conversion=scope == _SPHERESFM_RUN_FULL,
-            ):
-                return []
-            steps = self._build_spheresfm_sfm_commands()
-            if scope == _SPHERESFM_RUN_FULL:
+            steps: list[tuple[str, list[str]]] = []
+            if run_sfm:
+                if not self._prepare_spheresfm_run_outputs(
+                    include_project=True,
+                    include_conversion=run_conversion,
+                ):
+                    return []
+                steps.extend(self._build_spheresfm_sfm_commands())
+            if run_conversion:
+                self._validate_spheresfm_conversion_export()
                 steps.extend(self._build_spheresfm_conversion_commands())
             steps.extend(self._build_training_commands())
             return steps
 
         if self._is_colmap_method():
-            self._validate_image_only_export()
+            run_conversion = self.pipeline_stage_intent(_PIPELINE_STAGE_CONVERSION)
+            run_sfm = self.pipeline_stage_intent(_PIPELINE_STAGE_SFM)
+            if run_conversion or run_sfm:
+                self._validate_image_only_export()
             self._guard_existing_training_output_targets()
-            if not self._prepare_colmap_rig_dir():
+            if run_conversion and not self._prepare_colmap_rig_dir():
                 return []
-            steps = [("colmap_rig_export", self._build_cubemap_cmd(image_only=True, colmap_rig=True))]
-            if self.run_colmap_cb.isChecked():
+            steps: list[tuple[str, list[str]]] = []
+            if run_conversion:
+                steps.append(("colmap_rig_export", self._build_cubemap_cmd(image_only=True, colmap_rig=True)))
+            if run_sfm:
+                if not run_conversion and not self._colmap_rig_images_dir().is_dir():
+                    raise ValueError(i18n.t("STEP4_PIPELINE_DETAIL_COLMAP_NEEDS_RIG"))
                 steps.extend(self._build_colmap_sfm_commands())
             steps.extend(self._build_training_commands())
             return steps
 
-        self._validate_bundle()
-
-        preprocess_cmd = self._build_preprocess_cmd()
+        run_conversion = self.pipeline_stage_intent(_PIPELINE_STAGE_CONVERSION)
+        if run_conversion:
+            self._validate_bundle()
+            preprocess_cmd = self._build_preprocess_cmd()
         self._guard_existing_training_output_targets()
+
+        if not run_conversion:
+            return self._build_training_commands()
 
         if self._uses_direct_equirect_output():
             if not self._prepare_3dgut_output_dir():
@@ -3518,7 +3665,7 @@ class CubemapStep(BaseStepWidget):
     def _build_training_commands(self) -> list[tuple[str, list[str]]]:
         if not self.run_training_cb.isChecked():
             return []
-        if self._is_spheresfm_method() and self._spheresfm_run_scope() == _SPHERESFM_RUN_SFM_ONLY:
+        if not self.pipeline_stage_intent(_PIPELINE_STAGE_CONVERSION) and not self._training_dataset_available():
             raise ValueError(i18n.t("TRAINING_REQUIRES_DATASET_OUTPUT"))
 
         dataset = self._training_dataset()
@@ -4783,7 +4930,7 @@ class CubemapStep(BaseStepWidget):
     def _validate_spheresfm_export(self) -> None:
         self._validate_image_only_export()
         if (
-            self._spheresfm_run_scope() != _SPHERESFM_RUN_CONVERT_ONLY
+            self._spheresfm_runs_sfm()
             and self._spheresfm_uses_masks()
             and not self._mask_dir().is_dir()
         ):

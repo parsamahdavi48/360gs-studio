@@ -206,6 +206,38 @@ def test_cubemap_step_uses_fixed_output_folder_label(tmp_path: Path) -> None:
     assert normal_scale == pytest.approx(2.0 / math.pi, rel=1e-5)
 
 
+def test_step4_pipeline_intent_controls_execution_plan(tmp_path: Path) -> None:
+    step = _ready_step(tmp_path, metashape_inputs=True)
+
+    assert step.primary_action_text() == i18n.t("RUN")
+    assert step.pipeline_stage_intent("sfm") is False
+    assert step.pipeline_stage_intent_enabled("sfm") is False
+    assert step.pipeline_stage_intent("conversion") is True
+
+    step.set_pipeline_stage_intent("conversion", False)
+    assert step.pipeline_stage_intent("conversion") is False
+    assert step.primary_action_enabled() is False
+    assert step.build_commands() == []
+
+    step._set_export_method("colmap")
+    assert step.pipeline_stage_intent("sfm") is False
+    step.set_pipeline_stage_intent("sfm", True)
+    assert step.run_colmap_cb.isChecked()
+    assert step.pipeline_stage_intent("sfm") is True
+
+    step._set_export_method("spheresfm")
+    step.set_pipeline_stage_intent("sfm", True)
+    step.set_pipeline_stage_intent("conversion", True)
+    assert step.pipeline_stage_intent("sfm") is True
+    assert step.pipeline_stage_intent("conversion") is True
+    step.set_pipeline_stage_intent("conversion", False)
+    assert step.pipeline_stage_intent("sfm") is True
+    assert step.pipeline_stage_intent("conversion") is False
+    step.set_pipeline_stage_intent("sfm", False)
+    assert step.pipeline_stage_intent("sfm") is False
+    assert step.pipeline_stage_intent("conversion") is False
+
+
 def test_export_method_switch_keeps_fixed_tabs_and_swaps_route_sections() -> None:
     _app()
     _app()
