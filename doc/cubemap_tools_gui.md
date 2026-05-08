@@ -188,11 +188,11 @@ If you want to skip Metashape and continue from extracted 360° images to COLMAP
 1. Confirm that `Scene Directory` contains `images/` and, when needed, `masks/`.
 2. Set the route to `COLMAP`.
 3. Choose view count, yaw, and image size in `Cubemap`.
-4. Enable `Run COLMAP after export` when you want COLMAP/GLOMAP to estimate camera positions and a sparse point cloud. This continues into SfM after writing the cubemap images, so it can take a long time depending on frame count.
+4. Turn on the left `SfM` sub-stage when you want COLMAP/GLOMAP to estimate camera positions and a sparse point cloud. COLMAP SfM needs view images, so turning on `SfM` also turns on `Cube`. Turning off `Cube` also turns off `SfM`.
 5. Choose `Matcher` and `Mapper`. Start with `Sequential` and `Global` in most video workflows.
 6. Run the export.
 
-The COLMAP route writes a COLMAP Rig dataset under `output/colmap_rig/`, including cubemap images, masks, and `rig_config.json`. If `Run COLMAP after export` is enabled, the GUI then runs Feature, Rig setup, Matcher, and Mapper to create a COLMAP/GLOMAP SfM result.
+The COLMAP route writes a COLMAP Rig dataset under `output/colmap_rig/`, including cubemap images, masks, and `rig_config.json`. If the left `SfM` sub-stage is on, the GUI then runs Feature, Rig setup, Matcher, and Mapper to create a COLMAP/GLOMAP SfM result. `Cube` on / `SfM` off only writes the COLMAP Rig view images.
 
 The COLMAP route is projected COLMAP Rig data only. Create 3DGUT equirectangular output with the Metashape or SphereSfM route instead. If you want to pass an existing COLMAP sparse model into training, select it in `SfM Input` on the `SfM` tab.
 

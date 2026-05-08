@@ -188,11 +188,11 @@ Metashapeを使わず、抽出済みの360°画像からCOLMAP/GLOMAPへ進み�
 1. `シーンフォルダ` に `images/` と必要なら `masks/` があることを確認します。
 2. ルートを `COLMAP` にします。
 3. `Cubemap` で視点数、Yaw、画像サイズを決めます。
-4. COLMAP/GLOMAPでカメラ位置と疎な点群まで推定したい場合は、`書き出し後にCOLMAPを実行` をONにします。ONにすると画像書き出し後にSfM処理まで続けて実行するため、フレーム数によって時間がかかります。
+4. COLMAP/GLOMAPでカメラ位置と疎な点群まで推定したい場合は、左サブ工程の `SfM` をONにします。COLMAP SfMには視点画像が必要なため、`SfM` をONにすると `Cube` もONになります。`Cube` をOFFにすると `SfM` もOFFになります。
 5. `Matcher` と `Mapper` を選びます。通常は `Sequential` と `Global` から始めます。
 6. 実行します。
 
-COLMAPルートでは、`output/colmap_rig/` にCOLMAP Rig形式のキューブマップ画像、マスク、`rig_config.json` を作ります。`書き出し後にCOLMAPを実行` がONの場合は、続けてFeature、Rig設定、Matcher、Mapperを実行し、COLMAP/GLOMAPのSfM結果も作ります。
+COLMAPルートでは、`output/colmap_rig/` にCOLMAP Rig形式のキューブマップ画像、マスク、`rig_config.json` を作ります。左サブ工程の `SfM` がONの場合は、続けてFeature、Rig設定、Matcher、Mapperを実行し、COLMAP/GLOMAPのSfM結果も作ります。`Cube` ON / `SfM` OFF は、COLMAP Rig形式の視点画像だけを書き出します。
 
 COLMAPルートは投影視点のCOLMAP Rigデータ専用です。3DGUT用のエクイレクタングラー出力はMetashapeルートまたはSphereSfMルートで作成します。既存のCOLMAP sparseモデルをトレーニングに渡したい場合は、`SfM` タブの `SfM入力` で選択できます。
 

@@ -58,16 +58,32 @@ class MetashapeRouteBackend(SfmRouteBackend):
 
 class ColmapRouteBackend(SfmRouteBackend):
     def sfm_intent(self, step: Any) -> bool:
-        return step.run_colmap_cb.isChecked()
+        return bool(step._colmap_sfm_intent)
 
     def conversion_intent(self, step: Any) -> bool:
         return bool(step._conversion_intent)
 
     def set_sfm_intent(self, step: Any, enabled: bool) -> None:
-        step.run_colmap_cb.setChecked(bool(enabled))
+        run_sfm = bool(enabled)
+        was_conversion = self.conversion_intent(step)
+        step._set_colmap_stage_intents(
+            run_sfm=run_sfm,
+            run_conversion=True if run_sfm else was_conversion,
+            notice_key="STEP4_PIPELINE_NOTICE_COLMAP_ENABLED_CUBE"
+            if run_sfm and not was_conversion
+            else "",
+        )
 
     def set_conversion_intent(self, step: Any, enabled: bool) -> None:
-        step._conversion_intent = bool(enabled)
+        run_conversion = bool(enabled)
+        was_sfm = self.sfm_intent(step)
+        step._set_colmap_stage_intents(
+            run_sfm=False if not run_conversion and was_sfm else was_sfm,
+            run_conversion=run_conversion,
+            notice_key="STEP4_PIPELINE_NOTICE_COLMAP_DISABLED_SFM"
+            if not run_conversion and was_sfm
+            else "",
+        )
 
 
 class SphereSfmRouteBackend(SfmRouteBackend):

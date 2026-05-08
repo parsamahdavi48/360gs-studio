@@ -176,6 +176,15 @@ QLabel#navSubStepStatus[status="off"] {{
 QLabel#navSubStepText:disabled {{
     color: {TEXT_DIM};
 }}
+QLabel#navSubNotice {{
+    background-color: {BG_PANEL};
+    border: 1px solid {BORDER_FOCUS};
+    border-radius: 5px;
+    color: {ACCENT_HOVER};
+    padding: 5px 7px;
+    font-size: 8pt;
+    font-weight: 600;
+}}
 QWidget#contentPanel {{
     background-color: {BG_MID};
     border: 1px solid {BORDER};

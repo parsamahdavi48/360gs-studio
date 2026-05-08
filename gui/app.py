@@ -5,7 +5,7 @@ import argparse
 import sys
 from pathlib import Path
 
-from PySide6.QtCore import QSize, Qt, QUrl
+from PySide6.QtCore import QPoint, QSize, Qt, QTimer, QUrl
 from PySide6.QtGui import QCloseEvent, QDesktopServices, QIcon
 from PySide6.QtWidgets import (
     QApplication,
@@ -150,6 +150,14 @@ class MainWindow(QWidget):
         self.step4_sub_status_labels: dict[str, QLabel] = {}
         self.step4_sub_text_labels: dict[str, QLabel] = {}
         self.step4_subnav_rail: QWidget | None = None
+        self.step4_subnotice_label = QLabel("", self)
+        self.step4_subnotice_label.setObjectName("navSubNotice")
+        self.step4_subnotice_label.setWordWrap(False)
+        self.step4_subnotice_label.setAttribute(Qt.WA_TransparentForMouseEvents, True)
+        self.step4_subnotice_label.hide()
+        self.step4_subnotice_timer = QTimer(self)
+        self.step4_subnotice_timer.setSingleShot(True)
+        self.step4_subnotice_timer.timeout.connect(self.step4_subnotice_label.hide)
         for index, title_text in enumerate(self.step_nav_titles):
             btn = QPushButton(title_text)
             btn.setObjectName("navStep")
@@ -358,6 +366,9 @@ class MainWindow(QWidget):
         step = self._current_step_widget()
         if step is not None:
             step.on_activated()
+        if index != 3:
+            self.step4_subnotice_label.hide()
+            self.step4_subnotice_timer.stop()
         self._update_run_button()
         self._refresh_step4_subnav()
 
@@ -369,8 +380,28 @@ class MainWindow(QWidget):
             return
         self._set_current_step(3)
         self.step4.toggle_pipeline_stage_intent(stage)
+        self._show_step4_pipeline_notice(self.step4.take_pipeline_notice())
         self._refresh_step4_subnav()
         self._update_run_button()
+
+    def _show_step4_pipeline_notice(self, text: str) -> None:
+        if not text:
+            return
+        self.step4_subnotice_label.setText(text)
+        self.step4_subnotice_label.adjustSize()
+        self._position_step4_pipeline_notice()
+        self.step4_subnotice_label.show()
+        self.step4_subnotice_label.raise_()
+        self.step4_subnotice_timer.start(4200)
+
+    def _position_step4_pipeline_notice(self) -> None:
+        if not self.step4_subnotice_label.isVisible() and not self.step4_subnotice_label.text():
+            return
+        anchor = self.step4_sub_buttons.get("sfm")
+        if anchor is None:
+            return
+        top_right = anchor.mapTo(self, QPoint(anchor.width() + 8, 0))
+        self.step4_subnotice_label.move(top_right)
 
     def _refresh_step4_subnav(self) -> None:
         if not self.step4_sub_buttons:
@@ -409,6 +440,8 @@ class MainWindow(QWidget):
                 if widget is not None:
                     widget.style().unpolish(widget)
                     widget.style().polish(widget)
+        if self.step4_subnotice_label.isVisible():
+            self._position_step4_pipeline_notice()
 
     def _open_step_help(self) -> None:
         url = step_help_url(self.stack.currentIndex())

@@ -402,8 +402,13 @@ def test_step4_pipeline_intent_controls_execution_plan(tmp_path: Path) -> None:
     step._set_export_method("colmap")
     assert step.pipeline_stage_intent("sfm") is False
     step.set_pipeline_stage_intent("sfm", True)
-    assert step.run_colmap_cb.isChecked()
     assert step.pipeline_stage_intent("sfm") is True
+    assert step.pipeline_stage_intent("conversion") is True
+    assert step.take_pipeline_notice() == i18n.t("STEP4_PIPELINE_NOTICE_COLMAP_ENABLED_CUBE")
+    step.set_pipeline_stage_intent("conversion", False)
+    assert step.pipeline_stage_intent("conversion") is False
+    assert step.pipeline_stage_intent("sfm") is False
+    assert step.take_pipeline_notice() == i18n.t("STEP4_PIPELINE_NOTICE_COLMAP_DISABLED_SFM")
 
     step._set_export_method("spheresfm")
     step.set_pipeline_stage_intent("sfm", True)
@@ -1081,7 +1086,7 @@ def test_colmap_export_can_queue_colmap_sfm_with_custom_executable(tmp_path: Pat
     step = CubemapStep(Path.cwd())
     step.set_scene_dir(str(tmp_path))
     step._set_export_method("colmap")
-    step.run_colmap_cb.setChecked(True)
+    step.set_pipeline_stage_intent("sfm", True)
     step.colmap_exec_browse.set_text(str(fake_colmap))
 
     commands = step.build_commands()
@@ -1112,7 +1117,7 @@ def test_colmap_export_can_queue_colmap_global_mapper(tmp_path: Path) -> None:
     step = CubemapStep(Path.cwd())
     step.set_scene_dir(str(tmp_path))
     step._set_export_method("colmap")
-    step.run_colmap_cb.setChecked(True)
+    step.set_pipeline_stage_intent("sfm", True)
     step.colmap_exec_browse.set_text(str(fake_colmap))
     idx = step.colmap_mapper_combo.findData("global")
     assert idx >= 0
@@ -1512,6 +1517,31 @@ def test_spheresfm_scene_settings_restore_stage_intents(tmp_path: Path) -> None:
     assert step.pipeline_stage_intent("sfm") is False
     assert step.pipeline_stage_intent("conversion") is True
     assert step._spheresfm_run_scope() == "convert_only"
+
+
+def test_colmap_scene_settings_restore_stage_intents(tmp_path: Path) -> None:
+    _app()
+    settings_path = step4_export_settings_path(tmp_path)
+    settings_path.parent.mkdir(parents=True, exist_ok=True)
+    settings_path.write_text(
+        json.dumps(
+            {
+                "settings_version": STEP4_SETTINGS_VERSION,
+                "export_method": "colmap",
+                "colmap_rig": {"run_sfm": True},
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    step = CubemapStep(Path.cwd())
+    step.set_scene_dir(str(tmp_path))
+
+    assert step._export_method() == "colmap"
+    assert step.pipeline_stage_intent("sfm") is True
+    assert step.pipeline_stage_intent("conversion") is True
+    assert step.colmap_exec_browse.isEnabled()
+    assert step.take_pipeline_notice() == ""
 
 
 def test_step4_scene_settings_ignore_pre_v2_payload(tmp_path: Path) -> None:
@@ -2050,7 +2080,7 @@ def test_postshot_training_defaults_to_scene_project_and_refuses_collision(tmp_p
     step = CubemapStep(Path.cwd())
     step.set_scene_dir(str(tmp_path))
     step._set_export_method("colmap")
-    step.run_colmap_cb.setChecked(True)
+    step.set_pipeline_stage_intent("sfm", True)
     step.colmap_exec_browse.set_text(str(fake_colmap))
     step._set_training_backend("postshot")
     step.training_executable_browse.set_text(str(fake_postshot))
@@ -2324,7 +2354,7 @@ def test_colmap_route_can_append_postshot_training_with_future_sparse_model(tmp_
     step = CubemapStep(Path.cwd())
     step.set_scene_dir(str(tmp_path))
     step._set_export_method("colmap")
-    step.run_colmap_cb.setChecked(True)
+    step.set_pipeline_stage_intent("sfm", True)
     step.colmap_exec_browse.set_text(str(fake_colmap))
     step._set_training_backend("postshot")
     assert step.postshot_project_name_edit.text() == f"{tmp_path.name}.psht"

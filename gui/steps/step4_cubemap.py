@@ -373,8 +373,10 @@ class CubemapStep(BaseStepWidget):
         self._user_preferences_enabled = False
         self._export_method_value = _METHOD_METASHAPE
         self._conversion_intent = True
+        self._colmap_sfm_intent = False
         self._spheresfm_sfm_intent = True
         self._spheresfm_conversion_intent = True
+        self._pipeline_notice_text = ""
         self._saved_projected_export_targets: tuple[bool, bool] | None = None
         self._input_image_count = 0
         self._spheresfm_phase_logs: dict[str, Path] = {}
@@ -479,11 +481,6 @@ class CubemapStep(BaseStepWidget):
         colmap_section_layout.setSpacing(6)
         colmap_form = QFormLayout()
         colmap_form.setSpacing(6)
-
-        self.run_colmap_cb = QCheckBox(i18n.t("RUN_COLMAP_SFM"))
-        self.run_colmap_cb.setToolTip(i18n.tip("RUN_COLMAP_SFM"))
-        self.run_colmap_cb.toggled.connect(self._on_colmap_run_toggled)
-        colmap_form.addRow("", self.run_colmap_cb)
 
         exe_filter = "Executable (*.exe);;All (*.*)" if os.name == "nt" else "All (*)"
         self.colmap_exec_browse = BrowseWidget(
@@ -1070,7 +1067,7 @@ class CubemapStep(BaseStepWidget):
         self._on_spheresfm_profile_changed(self.spheresfm_profile_combo.currentIndex())
         self._on_output_shape_changed(self.output_shape_combo.currentIndex())
         self._on_colmap_mapper_changed()
-        self._on_colmap_run_toggled(self.run_colmap_cb.isChecked())
+        self._sync_colmap_sfm_controls()
         self._set_export_method(_METHOD_METASHAPE)
 
     def _make_tab_scroll_area(self, content: QWidget) -> QScrollArea:
@@ -1132,6 +1129,21 @@ class CubemapStep(BaseStepWidget):
         self._update_output_count()
         self.primary_action_state_changed.emit()
 
+    def take_pipeline_notice(self) -> str:
+        text = self._pipeline_notice_text
+        self._pipeline_notice_text = ""
+        return text
+
+    def _set_pipeline_notice(self, key: str) -> None:
+        if key and not self._syncing_project_settings:
+            self._pipeline_notice_text = i18n.t(key)
+
+    def _set_colmap_stage_intents(self, *, run_sfm: bool, run_conversion: bool, notice_key: str = "") -> None:
+        self._colmap_sfm_intent = bool(run_sfm)
+        self._conversion_intent = bool(run_conversion)
+        self._set_pipeline_notice(notice_key)
+        self._sync_colmap_sfm_controls()
+
     def _set_spheresfm_stage_intents(self, *, run_sfm: bool, run_conversion: bool) -> None:
         self._spheresfm_sfm_intent = bool(run_sfm)
         self._spheresfm_conversion_intent = bool(run_conversion)
@@ -1171,6 +1183,21 @@ class CubemapStep(BaseStepWidget):
                 intent_checked = intent
             else:
                 intent_tooltip = i18n.t(intent_key).format(stage=label)
+                if self._is_colmap_method() and stage == _PIPELINE_STAGE_SFM and not intent:
+                    intent_tooltip = self._append_tooltip_note(
+                        intent_tooltip,
+                        i18n.t("STEP4_PIPELINE_COLMAP_SFM_ENABLES_CUBE"),
+                    )
+                elif (
+                    self._is_colmap_method()
+                    and stage == _PIPELINE_STAGE_CONVERSION
+                    and intent
+                    and self.pipeline_stage_intent(_PIPELINE_STAGE_SFM)
+                ):
+                    intent_tooltip = self._append_tooltip_note(
+                        intent_tooltip,
+                        i18n.t("STEP4_PIPELINE_COLMAP_CUBE_DISABLES_SFM"),
+                    )
                 intent_symbol = "●" if intent else "○"
                 intent_checked = intent
             result.append(
@@ -1210,10 +1237,7 @@ class CubemapStep(BaseStepWidget):
                 return (_PIPELINE_STATUS_WARNING, "!", missing)
             return (_PIPELINE_STATUS_READY, "✓", i18n.t("STEP4_PIPELINE_DETAIL_METASHAPE_READY"))
         if self._is_colmap_method():
-            if self.run_colmap_cb.isChecked():
-                if not self.pipeline_stage_intent(_PIPELINE_STAGE_CONVERSION) and not self._colmap_rig_images_dir().is_dir():
-                    return (_PIPELINE_STATUS_WARNING, "!", i18n.t("STEP4_PIPELINE_DETAIL_COLMAP_NEEDS_RIG"))
-                return (_PIPELINE_STATUS_READY, "✓", i18n.t("STEP4_PIPELINE_DETAIL_COLMAP_RUNS"))
+            return (_PIPELINE_STATUS_READY, "✓", i18n.t("STEP4_PIPELINE_DETAIL_COLMAP_RUNS"))
         return (_PIPELINE_STATUS_READY, "✓", i18n.t("STEP4_PIPELINE_DETAIL_SPHERESFM_RUNS"))
 
     def _pipeline_conversion_status(self) -> tuple[str, str, str]:
@@ -2181,7 +2205,11 @@ class CubemapStep(BaseStepWidget):
 
         colmap = settings.get("colmap_rig")
         if isinstance(colmap, dict):
-            self.run_colmap_cb.setChecked(bool(colmap.get("run_sfm", self.run_colmap_cb.isChecked())))
+            if "run_sfm" in colmap:
+                self._set_colmap_stage_intents(
+                    run_sfm=bool(colmap.get("run_sfm")),
+                    run_conversion=self._conversion_intent or bool(colmap.get("run_sfm")),
+                )
             self._set_combo_data(self.colmap_matcher_combo, str(colmap.get("matcher", "")).strip())
             self._set_combo_data(self.colmap_mapper_combo, str(colmap.get("mapper", "")).strip())
             colmap_exec = self._settings_text(colmap.get("colmap_executable"))
@@ -3219,6 +3247,7 @@ class CubemapStep(BaseStepWidget):
             self.export_colmap_cb.setChecked(False)
         self._sync_output_shape_controls()
         self._sync_yaw_per_frame_control()
+        self._sync_colmap_sfm_controls()
         self._sync_sfm_input_paths()
         self._update_path_labels()
         self._update_training_paths()
@@ -3483,15 +3512,16 @@ class CubemapStep(BaseStepWidget):
     def _append_tooltip_note(base: str, note: str) -> str:
         return f"{base}\n{note}" if note else base
 
-    def _on_colmap_run_toggled(self, checked: bool) -> None:
-        self.colmap_exec_browse.setEnabled(checked)
-        self.colmap_pipeline_row.setEnabled(checked)
+    def _sync_colmap_sfm_controls(self) -> None:
+        enabled = self._is_colmap_method() and self._colmap_sfm_intent
+        self.colmap_exec_browse.setEnabled(enabled)
+        self.colmap_pipeline_row.setEnabled(enabled)
         self._on_colmap_mapper_changed()
-        self.primary_action_state_changed.emit()
 
     def _on_colmap_mapper_changed(self, *_args) -> None:
         needs_glomap = (
-            self.run_colmap_cb.isChecked()
+            self._is_colmap_method()
+            and self._colmap_sfm_intent
             and self.colmap_mapper_combo.currentData() == _COLMAP_MAPPER_GLOMAP
         )
         self.glomap_exec_row_label.setVisible(needs_glomap)
@@ -4895,7 +4925,7 @@ class CubemapStep(BaseStepWidget):
                 "selected_sparse_model_dir": (
                     self.colmap_sparse_browse.text() if self._colmap_sparse_user_edited else ""
                 ),
-                "run_sfm": self.run_colmap_cb.isChecked(),
+                "run_sfm": self._colmap_sfm_intent,
                 "colmap_executable": self.colmap_exec_browse.text(),
                 "glomap_executable": self.glomap_exec_browse.text(),
                 "matcher": self.colmap_matcher_combo.currentData() or _COLMAP_MATCHER_SEQUENTIAL,
@@ -5169,7 +5199,7 @@ class CubemapStep(BaseStepWidget):
             "ready_for_import": sparse_model is not None,
             "database": "database.db",
             "rig_config": "rig_config.json",
-            "run_sfm": self.run_colmap_cb.isChecked(),
+            "run_sfm": self._colmap_sfm_intent,
             "matcher": self.colmap_matcher_combo.currentData() or _COLMAP_MATCHER_SEQUENTIAL,
             "mapper": self.colmap_mapper_combo.currentData() or _COLMAP_MAPPER_INCREMENTAL,
             "camera_model": "PINHOLE",
@@ -5595,7 +5625,7 @@ class CubemapStep(BaseStepWidget):
                 targets.append(self._colmap_rig_images_dir())
             if self._writes_masks():
                 targets.append(self._colmap_rig_masks_dir())
-            if self.run_colmap_cb.isChecked():
+            if self._colmap_sfm_intent:
                 targets.extend([self._colmap_database_path(), self._colmap_sparse_dir()])
             existing_targets = [p for p in targets if self._path_has_contents(p)]
             if existing_targets:

@@ -416,6 +416,29 @@ def test_step4_scrolls_tab_content_not_whole_settings_pane() -> None:
             while parent is not None:
                 assert not isinstance(parent, QScrollArea)
                 parent = parent.parentWidget()
+
+        step._set_export_method("colmap")
+        step.set_pipeline_stage_intent("conversion", False)
+        window._refresh_step4_subnav()
+        QTest.mouseClick(window.step4_sub_intent_buttons["sfm"], Qt.LeftButton)
+        app.processEvents()
+        assert step.pipeline_stage_intent("sfm") is True
+        assert step.pipeline_stage_intent("conversion") is True
+        assert window.step4_subnotice_label.isVisible()
+        assert window.step4_subnotice_label.text() == i18n.t("STEP4_PIPELINE_NOTICE_COLMAP_ENABLED_CUBE")
+        assert window.step4_subnotice_label.text().count("\\n") == 1
+        assert not window.step4_subnotice_label.wordWrap()
+        notice_width = window.step4_subnotice_label.contentsRect().width()
+        metrics = window.step4_subnotice_label.fontMetrics()
+        for line in window.step4_subnotice_label.text().splitlines():
+            assert metrics.horizontalAdvance(line) <= notice_width
+
+        QTest.mouseClick(window.step4_sub_intent_buttons["conversion"], Qt.LeftButton)
+        app.processEvents()
+        assert step.pipeline_stage_intent("sfm") is False
+        assert step.pipeline_stage_intent("conversion") is False
+        assert window.step4_subnotice_label.text() == i18n.t("STEP4_PIPELINE_NOTICE_COLMAP_DISABLED_SFM")
+        assert window.step4_subnotice_label.text().count("\\n") == 1
         """
     )
 
@@ -709,6 +732,7 @@ def test_cubemap_labels_share_field_tooltips() -> None:
     assert step.colmap_repo_link.openExternalLinks()
     assert step.colmap_repo_link.toolTip() == i18n.tip("COLMAP_REPOSITORY_LINK")
     assert i18n.t("COLMAP_REPOSITORY_LINK") in step.colmap_repo_link.text()
+    assert not hasattr(step, "run_colmap_cb")
     assert step.spheresfm_repo_link.openExternalLinks()
     assert step.spheresfm_repo_link.toolTip() == i18n.tip("SPHERESFM_REPOSITORY_LINK")
     assert i18n.t("SPHERESFM_REPOSITORY_LINK") in step.spheresfm_repo_link.text()
