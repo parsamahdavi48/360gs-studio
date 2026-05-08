@@ -24,10 +24,25 @@ EXTRACT_REPORT_JSON = "extract_report.json"
 EXTRACT_SESSIONS_JSON = "extract_sessions.json"
 STEP4_EXPORT_SETTINGS_JSON = "export_settings.json"
 STEP4_VIEWS_CONFIG_JSON = "views_config.json"
+SCENE_IMAGES_DIR_NAME = "images"
+SCENE_MASKS_DIR_NAME = "masks"
+SCENE_OUTPUT_DIR_NAME = "output"
 
 
 def app_dir(scene_dir: Path) -> Path:
     return scene_dir / APP_DIR_NAME
+
+
+def scene_images_dir(scene_dir: Path) -> Path:
+    return scene_dir / SCENE_IMAGES_DIR_NAME
+
+
+def scene_masks_dir(scene_dir: Path) -> Path:
+    return scene_dir / SCENE_MASKS_DIR_NAME
+
+
+def scene_output_dir(scene_dir: Path) -> Path:
+    return scene_dir / SCENE_OUTPUT_DIR_NAME
 
 
 def project_path(scene_dir: Path) -> Path:

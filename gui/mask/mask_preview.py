@@ -1,4 +1,5 @@
 """Mask preview for Step 3."""
+
 from __future__ import annotations
 
 from collections import OrderedDict
@@ -23,6 +24,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from core.image_io import imread_unicode
 from custom_mask import load_custom_mask
 from gui import i18n
 from gui.common.icons import (
@@ -50,7 +52,6 @@ from gui.common.thumbnail_list_model import visible_rows_for_view
 from gui.mask.mask_files import iter_image_files, mask_candidates_for_image, path_key
 from gui.mask.thumbnail_delegate import MaskThumbnailDelegate
 from gui.mask.thumbnail_model import MaskThumbnailModel
-from image_io import imread_unicode
 from overexposure_mask import detect_overexposure, read_image_preserve_depth
 from stitch_mask import boundary_width_to_limit_angle, create_angular_stitched_mask
 
@@ -263,9 +264,7 @@ class MaskPreviewWidget(QWidget):
         self._sync_thumbnail_model(config, scroll=False)
         if self._preview_mode == PREVIEW_MODE_THUMBNAILS:
             self._update_mask_preview_button_text()
-            self.status_label.setText(
-                i18n.t("MASK_PREVIEW_THUMBNAIL_STATUS").format(count=len(self.preview_images))
-            )
+            self.status_label.setText(i18n.t("MASK_PREVIEW_THUMBNAIL_STATUS").format(count=len(self.preview_images)))
             self._queue_thumbnail_priority()
             return
 
@@ -299,9 +298,7 @@ class MaskPreviewWidget(QWidget):
         status_parts: list[str] = []
 
         temporary_mask = (
-            self._load_temporary_preview_mask(image_path, config)
-            if self._temporary_preview_visible
-            else None
+            self._load_temporary_preview_mask(image_path, config) if self._temporary_preview_visible else None
         )
         if temporary_mask is not None:
             if temporary_mask.shape != combined.shape:
@@ -348,8 +345,8 @@ class MaskPreviewWidget(QWidget):
                 i18n.t("MASK_PREVIEW_OVEREXP_STATUS").format(
                     threshold=config.overexposure_threshold,
                     dilate=config.overexposure_dilate,
-                    )
                 )
+            )
 
         if temporary_mask is None and config.use_sky:
             sky_mask = self._load_existing_mask(image_path, config, combined.shape)
@@ -375,8 +372,7 @@ class MaskPreviewWidget(QWidget):
             overlay = np.zeros_like(img)
             overlay[:, :, 2] = 255
             img[excluded] = (
-                (1.0 - alpha) * img[excluded].astype(np.float32)
-                + alpha * overlay[excluded].astype(np.float32)
+                (1.0 - alpha) * img[excluded].astype(np.float32) + alpha * overlay[excluded].astype(np.float32)
             ).astype(np.uint8)
 
         if alpha > 0 and np.any(excluded):
@@ -387,15 +383,12 @@ class MaskPreviewWidget(QWidget):
             )
             cv2.drawContours(img, contours, -1, (0, 0, 255), 1, lineType=cv2.LINE_AA)
 
-        self.status_label.setText(
-            " / ".join(status_parts) if status_parts else i18n.t("MASK_PREVIEW_NO_ACTIVE_MASK")
-        )
+        self.status_label.setText(" / ".join(status_parts) if status_parts else i18n.t("MASK_PREVIEW_NO_ACTIVE_MASK"))
         self._update_mask_preview_button_text()
         self._update_preview_visibility_button()
 
-        if (
-            self._preview_projection == PREVIEW_PROJECTION_PERSPECTIVE
-            and self.image_label.set_perspective_image_bgr(img, self._perspective_params)
+        if self._preview_projection == PREVIEW_PROJECTION_PERSPECTIVE and self.image_label.set_perspective_image_bgr(
+            img, self._perspective_params
         ):
             self._pixmap = None
             return
@@ -723,9 +716,7 @@ class MaskPreviewWidget(QWidget):
         self._thumbnail_sync = True
         try:
             selected_rows = {
-                index.row()
-                for index in self.thumbnail_view.selectionModel().selectedIndexes()
-                if index.isValid()
+                index.row() for index in self.thumbnail_view.selectionModel().selectedIndexes() if index.isValid()
             }
             flags = (
                 QItemSelectionModel.NoUpdate
@@ -742,9 +733,7 @@ class MaskPreviewWidget(QWidget):
         if self._preview_mode == PREVIEW_MODE_THUMBNAILS:
             count = len(self.thumbnail_view.selectionModel().selectedIndexes())
             if count > 0:
-                self.reprocess_current_btn.setText(
-                    i18n.t("MASK_REPROCESS_SELECTED_BUTTON").format(count=count)
-                )
+                self.reprocess_current_btn.setText(i18n.t("MASK_REPROCESS_SELECTED_BUTTON").format(count=count))
                 return
             self.reprocess_current_btn.setText(i18n.t("MASK_REPROCESS_SELECTED_FALLBACK_BUTTON"))
             return

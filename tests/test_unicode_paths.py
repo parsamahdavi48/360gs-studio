@@ -9,8 +9,8 @@ import cubemap_transforms_json as cubemap
 import overexposure_mask
 import stitch_mask
 import yolo_mask
-from image_io import image_size_unicode, imread_unicode, imwrite_unicode
-from path_safety import check_path_safety
+from core.image_io import image_size_unicode, imread_unicode, imwrite_unicode
+from core.path_safety import check_path_safety
 
 
 def test_image_io_roundtrips_unicode_path(tmp_path: Path) -> None:

@@ -37,7 +37,7 @@ Options:
 - `scene_dir`: scene directory containing `_stechdrive/frames/selected_frames.csv` and extracted `images/`
 - `--csv`: CSV filename under `_stechdrive/frames/`, or an absolute CSV path (default: `selected_frames.csv`)
 - `--finalize-in-place`: apply decisions directly in `images/` and rewrite CSV
-- `--backup-dir`: with `--finalize-in-place`, snapshot `images/` to this directory before modification (relative path resolved under scene_dir, or absolute path). Existing target is replaced. Default empty = no backup
+- `--backup-dir`: with `--finalize-in-place`, snapshot `images/` to this directory before modification. Existing targets are replaced only when the path is clearly a backup path such as `backups` or `images_backup`. Default empty = no backup
 - `--output`: copy-mode destination folder under scene directory (default: `metashape_images`)
 - `--clean-output`: copy-mode only; remove existing image files in output folder before export
 

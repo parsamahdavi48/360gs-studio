@@ -6,8 +6,8 @@ from pathlib import Path
 import cv2
 import numpy as np
 
+from core.mask_targets import collect_image_targets, load_mask_paths_from_image_list
 from init_masks import run as init_masks_run
-from mask_targets import collect_image_targets, load_mask_paths_from_image_list
 
 
 def test_image_list_resolves_scene_relative_image_and_mask_paths(tmp_path: Path) -> None:

@@ -1,4 +1,5 @@
 """SAM3.1 checkpoint setup UI helpers."""
+
 from __future__ import annotations
 
 from collections.abc import Callable
@@ -7,8 +8,8 @@ from pathlib import Path
 from PySide6.QtCore import QEventLoop, QObject, Qt, QThread, Signal
 from PySide6.QtWidgets import QInputDialog, QLineEdit, QMessageBox, QProgressDialog, QWidget
 
+from core.sam31_download import download_sam31_checkpoint
 from gui import i18n
-from sam31_download import download_sam31_checkpoint
 
 
 class Sam31DownloadWorker(QObject):

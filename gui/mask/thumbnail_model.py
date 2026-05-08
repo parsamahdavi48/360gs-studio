@@ -1,4 +1,5 @@
 """Mask thumbnail rendering plugged into the shared async thumbnail model."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -9,6 +10,7 @@ import numpy as np
 from PySide6.QtCore import QObject, QSize, Qt
 from PySide6.QtGui import QColor, QImage, QPainter, QPen
 
+from core.image_io import imread_unicode
 from gui import theme
 from gui.common.thumbnail_list_model import (
     DEFAULT_GRID_SIZE,
@@ -17,7 +19,6 @@ from gui.common.thumbnail_list_model import (
     ThumbnailItem,
 )
 from gui.mask.mask_files import mask_candidates_for_image
-from image_io import imread_unicode
 from overexposure_mask import read_image_preserve_depth
 
 

@@ -1,4 +1,5 @@
 """STechDrive 3DGS Utils メインウィンドウ"""
+
 from __future__ import annotations
 
 import argparse
@@ -20,6 +21,8 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from core.path_safety import PathSafetyIssue, check_path_safety, normalized_path_text
+from core.scene_layout import scene_images_dir, scene_masks_dir, scene_output_dir
 from gui import i18n
 from gui.common.browse_widget import BrowseWidget
 from gui.common.icons import help_icon, reset_icon
@@ -33,7 +36,6 @@ from gui.steps.step4_cubemap import CubemapStep
 from gui.steps.step5_training import TrainingStep
 from gui.theme import apply_theme
 from gui.version import app_version_label
-from path_safety import PathSafetyIssue, check_path_safety, normalized_path_text
 
 _GITHUB_DOC_BASE_URL = "https://github.com/stechdrive/stechdrive-3dgs-utils/blob/main/doc"
 _STEP_HELP_DOC_STEMS = (
@@ -390,14 +392,14 @@ class MainWindow(QWidget):
             return "-"
         scene = Path(self.scene_browse.text())
         if index == 0:
-            return str(scene / "images")
+            return str(scene_images_dir(scene))
         if index == 1:
-            return str(scene / "images")
+            return str(scene_images_dir(scene))
         if index == 2:
-            return str(scene / "masks")
+            return str(scene_masks_dir(scene))
         if index == 3:
-            return str(scene / "output")
-        return str(scene / "output")
+            return str(scene_output_dir(scene))
+        return str(scene_output_dir(scene))
 
     def _toggle_step4_pipeline_stage_intent(self, stage: str) -> None:
         if not self.step4.pipeline_stage_intent_toggle_enabled(stage):

@@ -1,4 +1,5 @@
 """Step 2: フレーム確認 + 選別確定"""
+
 from __future__ import annotations
 
 import shutil
@@ -16,7 +17,9 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from apply_frame_decisions import load_rows, normalize_decision, pending_drop_image_paths
+from core.apply_frame_decisions import load_rows, normalize_decision, pending_drop_image_paths
+from core.scene_layout import review_dir, selected_frames_path
+from core.scene_project import append_review_run, file_identity, scene_relative, utc_now_iso
 from gui import i18n
 from gui.steps.base_step import (
     SETTINGS_PANE_MARGINS,
@@ -24,8 +27,6 @@ from gui.steps.base_step import (
     BaseStepWidget,
     configure_settings_scroll,
 )
-from scene_layout import review_dir, selected_frames_path
-from scene_project import append_review_run, file_identity, scene_relative, utc_now_iso
 
 
 class ReviewStep(BaseStepWidget):
@@ -173,7 +174,7 @@ class ReviewStep(BaseStepWidget):
             return
 
         try:
-            from review_frames import ReviewWidget
+            from core.review_frames import ReviewWidget
 
             widget = ReviewWidget(Path(self.scene_dir), self._csv_path())
         except Exception as e:

@@ -3,18 +3,6 @@ from pathlib import Path
 
 import pytest
 
-from gui.steps.training_backends import (
-    CustomTrainingOptions,
-    LichtFeldTrainingOptions,
-    PostshotTrainingOptions,
-    TrainingDataset,
-    build_custom_training_cmd,
-    build_lichtfeld_config,
-    build_lichtfeld_training_cmd,
-    build_postshot_training_cmd,
-    lichtfeld_auto_steps_scaler,
-    lichtfeld_defaults,
-)
 from gui.steps.training_backend_specs import (
     DEFAULT_TRAINING_BACKEND,
     OTHER_TRAINING_BACKEND_IDS,
@@ -27,6 +15,18 @@ from gui.steps.training_backend_specs import (
     training_backend_default_executable,
     training_backend_phase_name,
     training_backend_specs,
+)
+from gui.steps.training_backends import (
+    CustomTrainingOptions,
+    LichtFeldTrainingOptions,
+    PostshotTrainingOptions,
+    TrainingDataset,
+    build_custom_training_cmd,
+    build_lichtfeld_config,
+    build_lichtfeld_training_cmd,
+    build_postshot_training_cmd,
+    lichtfeld_auto_steps_scaler,
+    lichtfeld_defaults,
 )
 
 
@@ -45,14 +45,20 @@ def test_training_backend_specs_define_ui_order_and_command_metadata() -> None:
     assert get_training_backend_spec(TRAINING_BACKEND_LICHTFELD).supports_headless is True
     assert get_training_backend_spec(TRAINING_BACKEND_POSTSHOT).supports_headless is False
     assert training_backend_phase_name(TRAINING_BACKEND_CUSTOM) == "training_custom"
-    assert training_backend_default_executable(
-        TRAINING_BACKEND_LICHTFELD,
-        windows=True,
-    ) == "LichtFeld-Studio.exe"
-    assert training_backend_default_executable(
-        TRAINING_BACKEND_POSTSHOT,
-        windows=False,
-    ) == "postshot-cli"
+    assert (
+        training_backend_default_executable(
+            TRAINING_BACKEND_LICHTFELD,
+            windows=True,
+        )
+        == "LichtFeld-Studio.exe"
+    )
+    assert (
+        training_backend_default_executable(
+            TRAINING_BACKEND_POSTSHOT,
+            windows=False,
+        )
+        == "postshot-cli"
+    )
     assert training_backend_default_executable(TRAINING_BACKEND_CUSTOM, windows=True) == ""
     assert normalize_training_backend("POSTSHOT") == TRAINING_BACKEND_POSTSHOT
     assert normalize_training_backend("missing") == DEFAULT_TRAINING_BACKEND

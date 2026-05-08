@@ -201,7 +201,7 @@ numpy, opencv-python, Pillow, open3d, ultralytics, transformers, safetensors, tq
 
 ## CLIツール
 
-GUIは以下のCLIエンジンを呼び出しています。必要なら単体でも実行できます。
+GUIは以下のCLIエンジンを呼び出しています。必要なら単体でも実行できます。root直下のスクリプトは互換性のための公開エントリポイントで、共通の実装コードは `core/` 以下にあります。
 
 | スクリプト | 内容 | ドキュメント |
 | --- | --- | --- |

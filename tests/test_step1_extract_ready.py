@@ -5,12 +5,12 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PySide6.QtWidgets import QApplication, QLabel, QPushButton, QToolButton
 
-from extract_sessions import build_session_record, load_manifest, save_manifest
+from core.extract_sessions import build_session_record, load_manifest, save_manifest
+from core.scene_layout import source_videos_path
+from core.scene_project import load_json, source_video_record, upsert_source_videos
 from gui import i18n
 from gui.app import MainWindow
 from gui.steps.step1_extract import ExtractStep
-from scene_layout import source_videos_path
-from scene_project import load_json, source_video_record, upsert_source_videos
 
 
 def _app():
@@ -616,7 +616,9 @@ def test_extract_queue_finish_revalidates_unreadable_video_after_failure(tmp_pat
     video.write_bytes(b"dummy")
     step = ExtractStep(Path.cwd())
     _make_ready(step, video, tmp_path)
-    monkeypatch.setattr(step, "_probe_video_info_for_path", lambda _path: (_ for _ in ()).throw(RuntimeError("bad video")))
+    monkeypatch.setattr(
+        step, "_probe_video_info_for_path", lambda _path: (_ for _ in ()).throw(RuntimeError("bad video"))
+    )
 
     step.on_queue_finished(False)
 

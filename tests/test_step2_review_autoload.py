@@ -11,11 +11,11 @@ from PySide6.QtCore import Qt
 from PySide6.QtGui import QPixmap
 from PySide6.QtWidgets import QApplication, QComboBox, QLabel, QLineEdit, QPushButton
 
+from core.scene_layout import selected_frames_path
 from gui import i18n
 from gui.app import MainWindow
 from gui.common.preview_mode_toolbar import PREVIEW_MODE_SINGLE, PREVIEW_MODE_THUMBNAILS
 from gui.steps.step2_review import ReviewStep
-from scene_layout import selected_frames_path
 
 
 def _app():

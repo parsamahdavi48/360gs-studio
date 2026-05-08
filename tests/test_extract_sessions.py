@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from extract_sessions import (
+from core.extract_sessions import (
     build_session_record,
     matching_video_sessions,
     sanitize_filename_prefix,

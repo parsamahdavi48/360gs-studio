@@ -1,11 +1,12 @@
 """Step 4 project settings persistence helpers."""
+
 from __future__ import annotations
 
 from pathlib import Path
 from typing import Any
 
-from scene_layout import step4_export_settings_path
-from scene_project import load_json, write_json
+from core.scene_layout import step4_export_settings_path
+from core.scene_project import load_json, write_json
 
 STEP4_SETTINGS_VERSION = 2
 

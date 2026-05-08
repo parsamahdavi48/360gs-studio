@@ -1,4 +1,5 @@
 """Run a tiny isolated GPU SIFT preflight for SphereSfM."""
+
 from __future__ import annotations
 
 import argparse
@@ -6,6 +7,8 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
+
+from core.path_safety import safe_clear_path
 
 try:
     from prepare_spheresfm_project import validate_spheresfm_colmap
@@ -30,9 +33,9 @@ def reset_preflight_workspace(work_dir: Path) -> Path:
     images_dir = work_dir / "images"
     database = work_dir / "database.db"
     if images_dir.exists():
-        shutil.rmtree(images_dir)
+        safe_clear_path(images_dir, allowed_roots=[work_dir])
     if database.exists():
-        database.unlink()
+        safe_clear_path(database, allowed_roots=[work_dir])
     images_dir.mkdir(parents=True, exist_ok=True)
     return images_dir
 

@@ -6,7 +6,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from scene_layout import EXTRACT_SESSIONS_JSON, extract_sessions_path
+from core.scene_layout import EXTRACT_SESSIONS_JSON, extract_sessions_path
+from core.scene_project import write_json_atomic
 
 MANIFEST_NAME = EXTRACT_SESSIONS_JSON
 
@@ -43,13 +44,9 @@ def load_manifest(scene_dir: Path) -> dict[str, Any]:
 
 def save_manifest(scene_dir: Path, manifest: dict[str, Any]) -> None:
     path = manifest_path(scene_dir)
-    path.parent.mkdir(parents=True, exist_ok=True)
     manifest.setdefault("version", 1)
     manifest.setdefault("sessions", [])
-    path.write_text(
-        json.dumps(manifest, ensure_ascii=False, indent=2),
-        encoding="utf-8",
-    )
+    write_json_atomic(path, manifest)
 
 
 def video_identity(video_path: Path) -> dict[str, Any]:

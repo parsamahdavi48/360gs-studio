@@ -15,11 +15,11 @@ from PySide6.QtCore import QItemSelectionModel
 from PySide6.QtWidgets import QApplication, QLabel, QPushButton, QToolButton
 
 import gui.steps.step3_mask as step3_mask_module
+from core.scene_layout import selected_frames_path
 from gui import i18n
 from gui.common.browse_widget import BrowseWidget
 from gui.steps.base_step import SETTINGS_PANE_MARGINS, SETTINGS_PANE_WIDTH
 from gui.steps.step3_mask import MaskStep
-from scene_layout import selected_frames_path
 
 
 def _app():
@@ -832,7 +832,7 @@ def test_mask_step_reprocesses_selected_thumbnail_images_only(tmp_path: Path, mo
     for idx in range(3):
         image_path = images / f"frame_{idx:04d}.png"
         image = np.full((24, 32, 3), 120, dtype=np.uint8)
-        image[4 + idx:8 + idx, 6:10] = 255
+        image[4 + idx : 8 + idx, 6:10] = 255
         cv2.imwrite(str(image_path), image)
         image_paths.append(image_path)
     step = MaskStep(Path.cwd())
