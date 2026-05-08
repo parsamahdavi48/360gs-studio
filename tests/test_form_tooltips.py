@@ -223,8 +223,7 @@ def test_step4_route_and_training_selectors_use_radio_buttons() -> None:
     assert all(isinstance(button, QRadioButton) for button in step.export_method_buttons.values())
     assert all(button.objectName() == "optionRadio" for button in step.export_method_buttons.values())
     assert all(
-        isinstance(button, QRadioButton)
-        for button in step.training_backend_selector.primary_backend_buttons.values()
+        isinstance(button, QRadioButton) for button in step.training_backend_selector.primary_backend_buttons.values()
     )
     assert all(
         button.objectName() == "optionRadio"
@@ -590,10 +589,20 @@ def test_extract_mode_numbers_are_draggable_and_clamped() -> None:
     assert step.jpg_quality_edit.value() == 2
 
     step.min_gap_edit.setValue(3.0)
+    assert step.interval_edit.value() == 3.0
     assert step.max_gap_edit.value() == 3.0
 
     step.max_gap_edit.setValue(1.0)
+    assert step.interval_edit.value() == 1.0
     assert step.min_gap_edit.value() == 1.0
+
+    step.interval_edit.setValue(0.5)
+    assert step.min_gap_edit.value() == 0.5
+    assert step.max_gap_edit.value() == 1.0
+
+    step.interval_edit.setValue(4.0)
+    assert step.min_gap_edit.value() == 0.5
+    assert step.max_gap_edit.value() == 4.0
 
 
 def test_extract_command_uses_drag_spinbox_values(tmp_path: Path) -> None:
@@ -753,7 +762,9 @@ def test_cubemap_labels_share_field_tooltips() -> None:
     assert step.spheresfm_repo_link.toolTip() == i18n.tip("SPHERESFM_REPOSITORY_LINK")
     assert i18n.t("SPHERESFM_REPOSITORY_LINK") in step.spheresfm_repo_link.text()
     assert not hasattr(step, "spheresfm_run_scope_combo")
-    axis_label_tips = [child.toolTip() for child in step.findChildren(QLabel) if child.text() == i18n.t("AXIS_TRANSFORM")]
+    axis_label_tips = [
+        child.toolTip() for child in step.findChildren(QLabel) if child.text() == i18n.t("AXIS_TRANSFORM")
+    ]
     assert i18n.tip("AXIS_TRANSFORM") in axis_label_tips
     assert i18n.tip("SPHERESFM_AXIS_TRANSFORM") in axis_label_tips
     assert _label(step, i18n.t("YAW_OFFSET_PER_FRAME")).toolTip() == i18n.t("YAW_OFFSET_PER_FRAME_HINT")

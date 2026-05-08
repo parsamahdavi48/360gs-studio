@@ -166,6 +166,7 @@ class ExtractStep(BaseStepWidget):
         )
         self.interval_edit.setToolTip(i18n.tip("INTERVAL"))
         self.interval_edit.setFixedWidth(86)
+        self.interval_edit.valueChanged.connect(lambda _: self._clamp_interval_constraints("interval"))
         self.interval_edit.valueChanged.connect(self._mark_estimate_stale)
 
         self.min_gap_edit = DragDoubleSpinBox(
@@ -179,7 +180,7 @@ class ExtractStep(BaseStepWidget):
         )
         self.min_gap_edit.setToolTip(i18n.tip("MIN_GAP"))
         self.min_gap_edit.setFixedWidth(_GAP_SPINBOX_WIDTH)
-        self.min_gap_edit.valueChanged.connect(lambda _: self._clamp_gap_order("min"))
+        self.min_gap_edit.valueChanged.connect(lambda _: self._clamp_interval_constraints("min"))
         self.min_gap_edit.valueChanged.connect(self._mark_estimate_stale)
 
         self.max_gap_edit = DragDoubleSpinBox(
@@ -193,7 +194,7 @@ class ExtractStep(BaseStepWidget):
         )
         self.max_gap_edit.setToolTip(i18n.tip("MAX_GAP"))
         self.max_gap_edit.setFixedWidth(_GAP_SPINBOX_WIDTH)
-        self.max_gap_edit.valueChanged.connect(lambda _: self._clamp_gap_order("max"))
+        self.max_gap_edit.valueChanged.connect(lambda _: self._clamp_interval_constraints("max"))
         self.max_gap_edit.valueChanged.connect(self._mark_estimate_stale)
 
         self.smart_fixed_cb = QCheckBox(i18n.t("FIXED_SMART"))
@@ -479,20 +480,33 @@ class ExtractStep(BaseStepWidget):
         ):
             if widget is not None:
                 widget.setEnabled(not quick_enabled)
+        self._clamp_interval_constraints("interval")
 
-    def _clamp_gap_order(self, changed: str) -> None:
+    def _clamp_interval_constraints(self, changed: str) -> None:
         if self._syncing_gap_fields:
             return
+        if self.quick_extract_cb.isChecked() or not self.smart_fixed_cb.isChecked():
+            return
+        interval = self.interval_edit.value()
         min_gap = self.min_gap_edit.value()
         max_gap = self.max_gap_edit.value()
-        if min_gap <= max_gap:
-            return
         self._syncing_gap_fields = True
         try:
-            if changed == "min":
-                self.max_gap_edit.setValue(min_gap)
-            else:
-                self.min_gap_edit.setValue(max_gap)
+            if changed == "interval":
+                if min_gap > interval:
+                    self.min_gap_edit.setValue(interval)
+                if max_gap < interval:
+                    self.max_gap_edit.setValue(interval)
+            elif changed == "min":
+                if min_gap > interval:
+                    self.interval_edit.setValue(min_gap)
+                if min_gap > max_gap:
+                    self.max_gap_edit.setValue(min_gap)
+            elif changed == "max":
+                if max_gap < interval:
+                    self.interval_edit.setValue(max_gap)
+                if max_gap < min_gap:
+                    self.min_gap_edit.setValue(max_gap)
         finally:
             self._syncing_gap_fields = False
 
