@@ -36,7 +36,7 @@ from gui.steps.base_step import (
     BaseStepWidget,
     configure_settings_scroll,
 )
-from scene_project import source_video_record, upsert_source_videos
+from scene_project import infer_video_projection, source_video_record, upsert_source_videos
 
 _FIXED_INTERVAL_MIN = 0.05
 _FIXED_INTERVAL_MAX = 60.0
@@ -125,7 +125,7 @@ class ExtractStep(BaseStepWidget):
         self.output_mode_combo.addItem(i18n.t("EXTRACT_OUTPUT_APPEND"), "append")
         self.output_mode_combo.addItem(i18n.t("EXTRACT_OUTPUT_REPLACE_VIDEO"), "replace-video")
         self.output_mode_combo.setFixedWidth(180)
-        self.output_mode_combo.currentIndexChanged.connect(lambda _: self._update_ready_status())
+        self.output_mode_combo.currentIndexChanged.connect(lambda _: self._on_output_mode_changed())
         add_tooltip_row(basic, i18n.t("EXTRACT_OUTPUT_MODE"), self.output_mode_combo, i18n.tip("EXTRACT_OUTPUT_MODE"))
 
         self.images_path_label = QLabel("-")
@@ -450,6 +450,11 @@ class ExtractStep(BaseStepWidget):
         data = self.output_mode_combo.currentData()
         return str(data or "append")
 
+    def _on_output_mode_changed(self) -> None:
+        self._update_video_info_label()
+        self._update_instant_estimate()
+        self._update_ready_status()
+
     def _matching_video_sessions_for_path(self, video: Path) -> list[dict]:
         if not self.scene_dir:
             return []
@@ -462,6 +467,35 @@ class ExtractStep(BaseStepWidget):
         if not videos:
             return []
         return self._matching_video_sessions_for_path(videos[0])
+
+    def _video_queue_status_key(self, video: Path) -> str:
+        if not video.is_file():
+            return "missing"
+        matching = self._matching_video_sessions_for_path(video)
+        if self._extract_output_mode() == "replace-video":
+            return "reextract" if matching else "new"
+        return "skip" if matching else "new"
+
+    def _video_queue_status_text(self, video: Path) -> str:
+        key = self._video_queue_status_key(video)
+        if key == "skip":
+            return i18n.t("VIDEO_QUEUE_STATUS_SKIP")
+        if key == "reextract":
+            return i18n.t("VIDEO_QUEUE_STATUS_REEXTRACT")
+        if key == "missing":
+            return i18n.t("VIDEO_QUEUE_STATUS_MISSING")
+        return i18n.t("VIDEO_QUEUE_STATUS_NEW")
+
+    def _video_projection_text(self, info: dict | None) -> str:
+        if not isinstance(info, dict):
+            return i18n.t("VIDEO_PROJECTION_UNKNOWN")
+        detected = infer_video_projection(info)
+        projection = str(detected.get("projection") or "")
+        if projection == "equirectangular":
+            return i18n.t("VIDEO_PROJECTION_EQUIRECT")
+        if projection == "normal":
+            return i18n.t("VIDEO_PROJECTION_NORMAL")
+        return i18n.t("VIDEO_PROJECTION_UNKNOWN")
 
     def _queued_selected_videos(self) -> tuple[list[Path], int]:
         videos = self._selected_video_paths()
@@ -929,6 +963,8 @@ class ExtractStep(BaseStepWidget):
                     lines.append(
                         i18n.t("VIDEO_INFO_MULTI_ITEM_FORMAT").format(
                             name=video.name,
+                            status=self._video_queue_status_text(video),
+                            projection=self._video_projection_text(info),
                             width=info["width"],
                             height=info["height"],
                             fps=info["fps"],
@@ -953,8 +989,12 @@ class ExtractStep(BaseStepWidget):
             return
         i = self.video_info
         d = self._format_duration(float(i["duration_sec"]))
+        videos = self._selected_video_paths()
+        status = self._video_queue_status_text(videos[0]) if videos else i18n.t("VIDEO_QUEUE_STATUS_NEW")
         self.video_info_label.setText(
             i18n.t("VIDEO_INFO_SINGLE_FORMAT").format(
+                status=status,
+                projection=self._video_projection_text(i),
                 width=i["width"],
                 height=i["height"],
                 fps=i["fps"],

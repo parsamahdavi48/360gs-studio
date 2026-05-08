@@ -364,14 +364,34 @@ def test_extract_multi_select_replace_mode_queues_all_videos(tmp_path: Path) -> 
     assert [cmd[cmd.index("--output-mode") + 1] for _phase, cmd in commands] == ["replace-video", "replace-video"]
 
 
-def test_extract_output_mode_has_only_add_and_overwrite() -> None:
+def test_extract_output_mode_has_only_add_and_reextract() -> None:
     _app()
     step = ExtractStep(Path.cwd())
 
     assert step.output_mode_combo.count() == 2
+    assert step.output_mode_combo.itemText(0) == i18n.t("EXTRACT_OUTPUT_APPEND")
+    assert step.output_mode_combo.itemText(1) == i18n.t("EXTRACT_OUTPUT_REPLACE_VIDEO")
     assert step.output_mode_combo.itemData(0) == "append"
     assert step.output_mode_combo.itemData(1) == "replace-video"
     assert step.output_mode_combo.maximumWidth() == 180 or step.output_mode_combo.width() <= 180
+
+
+def test_extract_video_info_status_follows_output_mode(tmp_path: Path) -> None:
+    _app()
+    video = tmp_path / "input.mp4"
+    video.write_bytes(b"dummy")
+    _write_session(tmp_path, video)
+    step = ExtractStep(Path.cwd())
+
+    _make_ready(step, video, tmp_path)
+    step._update_video_info_label()
+
+    assert step.output_mode_combo.currentData() == "append"
+    assert step.video_info_label.text().startswith(i18n.t("VIDEO_QUEUE_STATUS_SKIP"))
+
+    step.output_mode_combo.setCurrentIndex(1)
+
+    assert step.video_info_label.text().startswith(i18n.t("VIDEO_QUEUE_STATUS_REEXTRACT"))
 
 
 def test_extract_video_info_button_is_removed() -> None:
@@ -393,6 +413,8 @@ def test_extract_single_video_shows_fast_fixed_interval_estimate() -> None:
     step._update_instant_estimate()
 
     assert step.video_info_label.text() == i18n.t("VIDEO_INFO_SINGLE_FORMAT").format(
+        status=i18n.t("VIDEO_QUEUE_STATUS_NEW"),
+        projection=i18n.t("VIDEO_PROJECTION_EQUIRECT"),
         width=7680,
         height=3840,
         fps=29.97,
@@ -432,7 +454,7 @@ def test_extract_multi_video_auto_probes_and_shows_total_estimate(tmp_path: Path
             return _video_info()
         return {
             "width": 3840,
-            "height": 1920,
+            "height": 2160,
             "fps": 30.0,
             "duration_sec": 20.0,
             "total_frames": 600,
@@ -448,6 +470,8 @@ def test_extract_multi_video_auto_probes_and_shows_total_estimate(tmp_path: Path
             i18n.t("VIDEO_INFO_MULTI_HEADER_FORMAT").format(total=2, queued=2, skipped=0, probed=2),
             i18n.t("VIDEO_INFO_MULTI_ITEM_FORMAT").format(
                 name="a.mp4",
+                status=i18n.t("VIDEO_QUEUE_STATUS_NEW"),
+                projection=i18n.t("VIDEO_PROJECTION_EQUIRECT"),
                 width=7680,
                 height=3840,
                 fps=29.97,
@@ -456,8 +480,10 @@ def test_extract_multi_video_auto_probes_and_shows_total_estimate(tmp_path: Path
             ),
             i18n.t("VIDEO_INFO_MULTI_ITEM_FORMAT").format(
                 name="b.mov",
+                status=i18n.t("VIDEO_QUEUE_STATUS_NEW"),
+                projection=i18n.t("VIDEO_PROJECTION_NORMAL"),
                 width=3840,
-                height=1920,
+                height=2160,
                 fps=30.0,
                 duration="00:00:20",
                 frames="600",
