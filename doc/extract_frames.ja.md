@@ -22,6 +22,8 @@
 
 現在の本線は、固定間隔を基準にしたペア解析です。ペア解析では、次に判断する候補フレームと直前の採用フレームを比較します。yaw補正後の残差変化で冗長除外や中間追加を判断し、候補地点だけで疎な特徴点追跡と鮮明度確認を行って、Step 2の確認フラグを作ります。
 
+固定間隔や中間追加の候補がブレ候補として除外された場合は、その時点から最大間隔までの有限範囲で代替候補を探します。代替候補は鮮明度だけで即採用せず、直前の採用フレームに対するyaw補正後の残差、特徴点追跡、低テクスチャ判定も再評価します。採用できる代替があれば `blur_replacement` として残し、元のブレ候補は `motion_blur` の `drop` 行として確認できるようにします。
+
 `--quick-extract` だけが解析を行わない経路です。ペア解析と変化補正をスキップし、指定した固定間隔で直接抽出します。解析処理を飛ばして、指定間隔で素早く動画を切り出したい場合に使います。
 
 ## 必要なもの
@@ -111,10 +113,10 @@ python extract_frames.py input.mp4 ./scene01 --estimate-only --print-summary-jso
 `_stechdrive/frames/selected_frames.csv` の主な列:
 
 - `original_index`, `final_index`, `timestamp_sec`
-- `status`: `ok`, `novelty_added`, `redundant_drop`, `gap_forced`, `motion_blur`, `low_texture`, `weak_match`
+- `status`: `ok`, `novelty_added`, `blur_replacement`, `redundant_drop`, `gap_forced`, `motion_blur`, `low_texture`, `weak_match`
 - `decision`: `keep` または `drop`。Step 2で編集する列
 - `analysis_pipeline`: `pair` または `quick`
-- `selection_reason`: `initial`, `fixed_interval`, `novelty_added`, `redundant_drop`, `gap_forced`, `endpoint`, `quick_extract`
+- `selection_reason`: `initial`, `fixed_interval`, `novelty_added`, `blur_replacement`, `redundant_drop`, `gap_forced`, `endpoint`, `quick_extract`
 - `residual_score`, `raw_change_score`, `yaw_shift_deg`, `track_count`, `track_coverage`, `match_confidence`
 - `blur_score_final`, `sharpness_baseline`, `sharpness_ratio`
 - `pair_motion_profile`, `pair_drop_threshold`, `pair_add_threshold`
@@ -125,6 +127,7 @@ python extract_frames.py input.mp4 ./scene01 --estimate-only --print-summary-jso
 ## 補足
 
 - `drop` 行も画像として抽出されます。Step 2で確認してから適用できるようにするためです。
+- `blur_replacement` は、ブレ候補の代わりに近傍から採用したフレームです。元のブレ候補も `drop` 行として残ります。
 - 既定のファイル名接頭辞は入力動画ファイルのstemです。`--filename-prefix` で変更できます。
 - 反復確認中は `--image-ext jpg` が高速です。
 - このスクリプトは既存のマスクファイルを変更しません。

@@ -178,6 +178,23 @@ def test_review_widget_advisory_labels_do_not_show_internal_pair_analysis(tmp_pa
     assert widget.advisory_label.text() == i18n.t("REVIEW_ADVISORY_GAP_FORCED")
 
 
+def test_review_widget_labels_blur_replacements(tmp_path: Path) -> None:
+    _app()
+    scene, csv_path = _write_scene(tmp_path)
+    with csv_path.open("r", encoding="utf-8", newline="") as f:
+        rows = list(csv.DictReader(f))
+    rows[0]["analysis_pipeline"] = "pair"
+    rows[0]["status"] = "blur_replacement"
+    with csv_path.open("w", encoding="utf-8", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=list(rows[0].keys()))
+        writer.writeheader()
+        writer.writerows(rows)
+
+    widget = ReviewWidget(scene, csv_path)
+
+    assert widget.advisory_label.text() == i18n.t("REVIEW_ADVISORY_BLUR_REPLACEMENT")
+
+
 def test_review_summary_label_is_readable_single_line(tmp_path: Path) -> None:
     _app()
     scene, csv_path = _write_scene(tmp_path)
