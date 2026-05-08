@@ -384,6 +384,26 @@ def test_extract_multi_select_queues_only_unextracted_videos(tmp_path: Path) -> 
     assert cmd[cmd.index("--filename-prefix") + 1] == "b"
 
 
+def test_extract_multi_select_build_commands_rechecks_missing_videos(tmp_path: Path) -> None:
+    _app()
+    video_a = tmp_path / "a.mp4"
+    video_b = tmp_path / "b.mov"
+    video_a.write_bytes(b"a")
+    video_b.write_bytes(b"b")
+    step = ExtractStep(Path.cwd())
+
+    _select_videos(step, [video_a, video_b], tmp_path)
+    video_b.unlink()
+
+    try:
+        step.build_commands()
+    except ValueError as exc:
+        assert i18n.t("EXTRACT_READY_VIDEO_NOT_FOUND") in str(exc)
+        assert str(video_b) in str(exc)
+    else:
+        raise AssertionError("missing video should stop command construction")
+
+
 def test_extract_multi_select_disables_when_all_videos_are_already_extracted(tmp_path: Path) -> None:
     _app()
     video_a = tmp_path / "a.mp4"
@@ -446,6 +466,53 @@ def test_extract_video_info_status_follows_output_mode(tmp_path: Path) -> None:
     step.output_mode_combo.setCurrentIndex(1)
 
     assert step.video_info_label.text().startswith(i18n.t("VIDEO_QUEUE_STATUS_REEXTRACT"))
+
+
+def test_extract_queue_finish_refreshes_append_state_after_success(tmp_path: Path) -> None:
+    _app()
+    video = tmp_path / "input.mp4"
+    video.write_bytes(b"dummy")
+    step = ExtractStep(Path.cwd())
+    _make_ready(step, video, tmp_path)
+
+    assert step.primary_action_enabled()
+
+    _write_session(tmp_path, video)
+    step.on_queue_finished(True)
+
+    assert not step.primary_action_enabled()
+    assert i18n.t("EXTRACT_READY_DUPLICATE_VIDEO").split("{n}")[0] in step.ready_status_label.text()
+    assert step.video_info_label.text().startswith(i18n.t("VIDEO_QUEUE_STATUS_SKIP"))
+
+
+def test_extract_queue_finish_revalidates_missing_video_after_failure(tmp_path: Path) -> None:
+    _app()
+    video = tmp_path / "input.mp4"
+    video.write_bytes(b"dummy")
+    step = ExtractStep(Path.cwd())
+    _make_ready(step, video, tmp_path)
+
+    video.unlink()
+    step.on_queue_finished(False)
+
+    assert step.video_info is None
+    assert not step.primary_action_enabled()
+    assert step.ready_status_label.text() == i18n.t("EXTRACT_READY_VIDEO_NOT_FOUND")
+
+
+def test_extract_queue_finish_revalidates_unreadable_video_after_failure(tmp_path: Path, monkeypatch) -> None:
+    _app()
+    video = tmp_path / "input.mp4"
+    video.write_bytes(b"dummy")
+    step = ExtractStep(Path.cwd())
+    _make_ready(step, video, tmp_path)
+    monkeypatch.setattr(step, "_probe_video_info_for_path", lambda _path: (_ for _ in ()).throw(RuntimeError("bad video")))
+
+    step.on_queue_finished(False)
+
+    assert step.video_info is None
+    assert not step.primary_action_enabled()
+    assert step.ready_status_label.text() == i18n.t("EXTRACT_READY_NO_VIDEO_INFO")
 
 
 def test_extract_video_info_button_is_removed() -> None:

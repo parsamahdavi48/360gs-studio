@@ -9,6 +9,7 @@ from extract_frames import (
     build_quick_extract_rows,
     build_selected_csv_rows,
     build_summary_from_counts,
+    commit_staged_frame_outputs,
     extract_selected_frames,
 )
 
@@ -112,3 +113,54 @@ def test_quick_extract_allows_missing_trailing_frame_outputs(tmp_path: Path, mon
     assert (tmp_path / "images" / "clip_00.jpg").read_bytes() == b"a"
     assert (tmp_path / "images" / "clip_10.jpg").read_bytes() == b"b"
     assert not (tmp_path / "images" / "clip_20.jpg").exists()
+
+
+def test_staged_replace_keeps_existing_frames_until_commit(tmp_path: Path, monkeypatch) -> None:
+    def fake_run_cmd_with_ffmpeg_progress(cmd: list[str], **_kwargs) -> subprocess.CompletedProcess:
+        out_pattern = Path(cmd[-1])
+        out_dir = out_pattern.parent
+        out_dir.mkdir(parents=True, exist_ok=True)
+        (out_dir / "00000001.jpg").write_bytes(b"new-a")
+        (out_dir / "00000002.jpg").write_bytes(b"new-b")
+        return subprocess.CompletedProcess(cmd, 0, "", "")
+
+    monkeypatch.setattr(
+        "extract_frames.run_cmd_with_ffmpeg_progress",
+        fake_run_cmd_with_ffmpeg_progress,
+    )
+    scene = tmp_path / "scene"
+    images = scene / "images"
+    staging = scene / "_stechdrive" / "frames" / "cache" / "extract_staging_test"
+    images.mkdir(parents=True)
+    (images / "clip_00.jpg").write_bytes(b"old-a")
+    (images / "clip_10.jpg").write_bytes(b"old-b")
+    (images / "clip_20.jpg").write_bytes(b"old-stale")
+
+    extracted = extract_selected_frames(
+        video_path=tmp_path / "input.mp4",
+        ffmpeg_bin="ffmpeg",
+        frame_indices=[0, 10],
+        output_dir=staging,
+        image_ext="jpg",
+        jpg_quality=2,
+        filename_prefix="clip",
+        frame_digits=2,
+    )
+
+    assert extracted == [0, 10]
+    assert (images / "clip_00.jpg").read_bytes() == b"old-a"
+    assert (images / "clip_10.jpg").read_bytes() == b"old-b"
+    assert (staging / "clip_00.jpg").read_bytes() == b"new-a"
+
+    removed = commit_staged_frame_outputs(
+        scene,
+        staging,
+        ["images/clip_00.jpg", "images/clip_10.jpg"],
+        {"images/clip_00.jpg", "images/clip_10.jpg", "images/clip_20.jpg"},
+    )
+
+    assert removed == 3
+    assert (images / "clip_00.jpg").read_bytes() == b"new-a"
+    assert (images / "clip_10.jpg").read_bytes() == b"new-b"
+    assert not (images / "clip_20.jpg").exists()
+    assert not staging.exists()

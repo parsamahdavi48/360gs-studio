@@ -722,6 +722,11 @@ class ExtractStep(BaseStepWidget):
     # -- コマンド構築 --
 
     def build_commands(self) -> list[tuple[str, list[str]]]:
+        videos = self._selected_video_paths()
+        missing = [video for video in videos if not video.is_file()]
+        if missing:
+            preview = ", ".join(str(video) for video in missing[:3])
+            raise ValueError(f"{i18n.t('EXTRACT_READY_VIDEO_NOT_FOUND')}\n{preview}")
         if not self._is_multi_video_input():
             return [("extract", self._build_extract_cmd())]
 
@@ -740,7 +745,7 @@ class ExtractStep(BaseStepWidget):
         if not videos:
             raise ValueError("入力動画が指定されていません")
         video = videos[0]
-        if not video.exists():
+        if not video.is_file():
             raise ValueError(f"入力動画が見つかりません: {video}")
         if not self.scene_dir:
             raise ValueError("シーンフォルダが指定されていません")
@@ -748,6 +753,8 @@ class ExtractStep(BaseStepWidget):
         return self._build_extract_cmd_for_video(video, set())
 
     def _build_extract_cmd_for_video(self, video_path: Path, used_prefixes: set[str]) -> list[str]:
+        if not video_path.is_file():
+            raise ValueError(f"入力動画が見つかりません: {video_path}")
         if not self.scene_dir:
             raise ValueError("シーンフォルダが指定されていません")
 
@@ -811,6 +818,25 @@ class ExtractStep(BaseStepWidget):
     def on_queue_finished(self, success: bool) -> None:
         if success:
             self._save_source_video_registry()
+            self._refresh_finished_run_state(revalidate_video_info=False)
+        else:
+            self._refresh_finished_run_state(revalidate_video_info=True)
+
+    def _refresh_finished_run_state(self, *, revalidate_video_info: bool) -> None:
+        videos = self._selected_video_paths()
+        if revalidate_video_info and videos:
+            self._load_video_info(show_error=False)
+            return
+        missing_keys = {self._video_key(video) for video in videos if not video.is_file()}
+        if missing_keys:
+            self.video_infos = {key: value for key, value in self.video_infos.items() if key not in missing_keys}
+            self.video_info_failures = {
+                key: value for key, value in self.video_info_failures.items() if key not in missing_keys
+            }
+            if len(videos) == 1 and self._video_key(videos[0]) in missing_keys:
+                self.video_info = None
+        self._update_video_info_label()
+        self._update_ready_status()
 
     # -- 動画情報 --
 

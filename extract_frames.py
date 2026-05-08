@@ -5,6 +5,7 @@ import argparse
 import csv
 import json
 import math
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -23,7 +24,7 @@ from extract_sessions import (
     session_matches_video,
     video_identity,
 )
-from scene_layout import extract_report_path, selected_frames_path
+from scene_layout import extract_report_path, frame_cache_dir, selected_frames_path
 
 try:
     import cv2
@@ -1617,6 +1618,43 @@ def remove_session_outputs(scene_dir: Path, output_files: Sequence[str]) -> int:
     return removed
 
 
+def commit_staged_frame_outputs(
+    scene_dir: Path,
+    staging_dir: Path,
+    output_files: Sequence[str],
+    replaced_output_files: set[str],
+) -> int:
+    images_dir = (scene_dir / "images").resolve()
+    images_dir.mkdir(parents=True, exist_ok=True)
+    expected_files = list(output_files)
+    missing = [Path(rel).name for rel in expected_files if not (staging_dir / Path(rel).name).is_file()]
+    if missing:
+        preview = ", ".join(missing[:3])
+        raise RuntimeError(f"staged extraction is incomplete ({len(missing)} missing). Example: {preview}")
+
+    removed = 0
+    for rel in expected_files:
+        dst = (scene_dir / rel).resolve()
+        try:
+            dst.relative_to(images_dir)
+        except ValueError as exc:
+            raise RuntimeError(f"unsafe output path: {rel}") from exc
+        if dst.exists() and rel not in replaced_output_files:
+            raise RuntimeError(f"output file already exists: {rel}")
+
+    for rel in expected_files:
+        src = staging_dir / Path(rel).name
+        dst = (scene_dir / rel).resolve()
+        if dst.is_file() and rel in replaced_output_files:
+            removed += 1
+        src.replace(dst)
+
+    stale_replaced = sorted(set(replaced_output_files) - set(expected_files))
+    removed += remove_session_outputs(scene_dir, stale_replaced)
+    shutil.rmtree(staging_dir, ignore_errors=True)
+    return removed
+
+
 def filter_rows_for_replaced_sessions(
     rows: Sequence[dict],
     replaced_session_ids: set[str],
@@ -1734,7 +1772,7 @@ def parse_args() -> argparse.Namespace:
         help=(
             "How _stechdrive/frames/selected_frames.csv and _stechdrive/frames/extract_sessions.json are updated. "
             "overwrite=current single-extraction behavior, append=add a new video session, "
-            "replace-video=remove prior sessions for the same video then append."
+            "replace-video=replace prior sessions for the same video after successful extraction."
         ),
     )
     parser.add_argument(
@@ -1951,7 +1989,6 @@ def main() -> None:
             for rel in session.get("output_files", []) or []:
                 if isinstance(rel, str):
                     replaced_output_files.add(rel)
-        removed = remove_session_outputs(scene_dir, sorted(replaced_output_files))
         existing_rows = filter_rows_for_replaced_sessions(
             existing_rows,
             replaced_session_ids,
@@ -1962,7 +1999,7 @@ def main() -> None:
             for session in active_manifest_sessions
             if str(session.get("id") or "") not in replaced_session_ids
         ]
-        print(f"Replaced prior sessions for this video: {len(matching_sessions)} session(s), {removed} file(s) removed")
+        print(f"Prior sessions for this video will be replaced after extraction succeeds: {len(matching_sessions)} session(s)")
 
     if args.output_mode in {"append", "replace-video"}:
         collisions = [
@@ -1978,12 +2015,19 @@ def main() -> None:
             )
             sys.exit(1)
 
+    staging_dir: Path | None = None
+    extraction_output_dir = images_dir
+    if replaced_output_files:
+        staging_dir = frame_cache_dir(scene_dir) / f"extract_staging_{session_id}"
+        shutil.rmtree(staging_dir, ignore_errors=True)
+        extraction_output_dir = staging_dir
+
     try:
         extracted_indices = extract_selected_frames(
             input_video,
             args.ffmpeg,
             final_indices,
-            images_dir,
+            extraction_output_dir,
             args.image_ext,
             args.jpg_quality,
             resolved_prefix,
@@ -1991,6 +2035,8 @@ def main() -> None:
             allow_partial_tail=args.quick_extract,
         )
     except Exception as e:
+        if staging_dir is not None:
+            shutil.rmtree(staging_dir, ignore_errors=True)
         print(f"Error during extraction: {e}")
         sys.exit(1)
 
@@ -2015,6 +2061,14 @@ def main() -> None:
             frame_digits=summary["params"]["frame_number_digits"],
             estimate_mode="quick_extract" if args.quick_extract else "full",
         )
+
+    if staging_dir is not None:
+        try:
+            removed = commit_staged_frame_outputs(scene_dir, staging_dir, output_files, replaced_output_files)
+        except Exception as e:
+            print(f"Error while committing replacement frames: {e}")
+            sys.exit(1)
+        print(f"Replaced prior sessions for this video: {len(matching_sessions)} session(s), {removed} file(s) replaced/removed")
 
     write_selected_csv(
         enriched_rows,
