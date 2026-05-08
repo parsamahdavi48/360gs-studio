@@ -96,6 +96,13 @@ _HELP_SVG = """
 </svg>
 """.strip()
 
+_CHECK_SVG = """
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none">
+  <path d="m5.2 12.4 4.2 4.1 9.4-9.8" stroke="#2dd4bf" stroke-width="2.2"
+        stroke-linecap="round" stroke-linejoin="round"/>
+</svg>
+""".strip()
+
 _SINGLE_PREVIEW_SVG = """
 <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none">
   <rect x="4" y="5" width="16" height="14" rx="1.8" stroke="#e5e7eb" stroke-width="1.8"/>
@@ -213,6 +220,10 @@ def file_picker_icon(size: int = 18) -> QIcon:
 
 def help_icon(size: int = 18) -> QIcon:
     return svg_icon(_HELP_SVG, size)
+
+
+def check_icon(size: int = 18) -> QIcon:
+    return svg_icon(_CHECK_SVG, size)
 
 
 def single_preview_icon(size: int = 18) -> QIcon:

@@ -7,6 +7,7 @@ import os
 import re
 import shutil
 import sys
+import xml.etree.ElementTree as ET
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -37,6 +38,7 @@ from gui.common.browse_widget import BrowseWidget
 from gui.common.collapsible_section import CollapsibleSection
 from gui.common.drag_spinbox import DragDoubleSpinBox
 from gui.common.form_rows import add_tooltip_row
+from gui.common.icons import check_icon
 from gui.cubemap.preview_renderer import PreviewWidget
 from gui.cubemap.view_config import _BLOCK_ENABLED_VIEWS, _WARN_ENABLED_VIEWS, ViewConfigWidget
 from gui.steps.base_step import (
@@ -164,8 +166,6 @@ _AXIS_BRUSH = "brush"
 _AXIS_NONE = "none"
 _NORMAL_OUTPUT_SCALE = 2.0 / math.pi
 _SUPPORTED_TRAINING_IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".tif", ".tiff", ".webp", ".bmp"}
-_METASHAPE_XML_AUTO_NAMES = ("metashape.xml", "cameras.xml")
-_METASHAPE_PLY_AUTO_NAMES = ("metashape.ply", "sparse.ply")
 _GENERATED_POINTCLOUD_NAME = "pointcloud.ply"
 _LFS_ADVANCED_INT_KEYS = {
     "refine_every",
@@ -397,6 +397,12 @@ class CubemapStep(BaseStepWidget):
         self._yaw_per_frame_non_colmap_value = 30.0
         self._metashape_auto_xml_candidates: tuple[Path, ...] = ()
         self._metashape_auto_ply_candidates: tuple[Path, ...] = ()
+        self._syncing_metashape_auto_inputs = False
+        self._metashape_ply_approved = False
+        self._metashape_ply_auto_candidate = False
+        self._colmap_sparse_user_edited = False
+        self._spheresfm_sparse_user_edited = False
+        self._syncing_sfm_input_paths = False
         self._preview_render_timer = QTimer(self)
         self._preview_render_timer.setSingleShot(True)
         self._preview_render_timer.setInterval(50)
@@ -687,8 +693,10 @@ class CubemapStep(BaseStepWidget):
         spheresfm_convert_layout.addStretch()
 
         # Metashapeインポート設定
+        self.metashape_section = QWidget()
+        self.metashape_section.setLayout(QVBoxLayout())
         preprocess = QWidget()
-        self.metashape_section = preprocess
+        self.metashape_sfm_input_widget = preprocess
         preprocess_layout = QVBoxLayout(preprocess)
         preprocess_layout.setContentsMargins(8, 8, 8, 8)
         preprocess_layout.setSpacing(6)
@@ -755,8 +763,16 @@ class CubemapStep(BaseStepWidget):
         self.ms_ply_browse.line_edit.setToolTip(i18n.tip("MS_PLY"))
         add_tooltip_row(pp_form, i18n.METASHAPE_PLY, self.ms_ply_browse, i18n.tip("MS_PLY"))
 
+        self.ms_ply_approve_btn = self.ms_ply_browse.add_icon_button(
+            check_icon(),
+            i18n.t("MS_PLY_APPROVE"),
+            self._approve_metashape_ply,
+            accessible_name=i18n.t("MS_PLY_APPROVE"),
+        )
+        self.ms_ply_approve_btn.setCheckable(True)
         self.ms_xml_browse.path_changed.connect(self._on_metashape_input_path_changed)
         self.ms_ply_browse.path_changed.connect(self._on_metashape_input_path_changed)
+        self.ms_ply_browse.line_edit.textEdited.connect(self._on_metashape_ply_text_edited)
 
         import_advanced = CollapsibleSection(i18n.t("ADVANCED_SETTINGS"), expanded=False)
         import_adv_form = QFormLayout()
@@ -792,6 +808,62 @@ class CubemapStep(BaseStepWidget):
         preprocess_layout.addLayout(pp_form)
         preprocess_layout.addWidget(import_advanced)
         preprocess_layout.addStretch()
+
+        self.colmap_sfm_input_widget = QWidget()
+        colmap_sfm_input_layout = QVBoxLayout(self.colmap_sfm_input_widget)
+        colmap_sfm_input_layout.setContentsMargins(8, 8, 8, 8)
+        colmap_sfm_input_layout.setSpacing(6)
+        colmap_sfm_input_form = QFormLayout()
+        colmap_sfm_input_form.setSpacing(6)
+        self.colmap_sparse_browse = BrowseWidget(
+            mode="dir",
+            placeholder=i18n.t("SFM_SPARSE_MODEL_PLACEHOLDER"),
+        )
+        self.colmap_sparse_browse.setToolTip(i18n.tip("COLMAP_SPARSE_MODEL"))
+        self.colmap_sparse_browse.line_edit.setToolTip(i18n.tip("COLMAP_SPARSE_MODEL"))
+        add_tooltip_row(
+            colmap_sfm_input_form,
+            i18n.t("SFM_SPARSE_MODEL"),
+            self.colmap_sparse_browse,
+            i18n.tip("COLMAP_SPARSE_MODEL"),
+        )
+        colmap_sfm_input_layout.addLayout(colmap_sfm_input_form)
+        colmap_sfm_input_layout.addStretch()
+
+        self.spheresfm_sfm_input_widget = QWidget()
+        spheresfm_sfm_input_layout = QVBoxLayout(self.spheresfm_sfm_input_widget)
+        spheresfm_sfm_input_layout.setContentsMargins(8, 8, 8, 8)
+        spheresfm_sfm_input_layout.setSpacing(6)
+        spheresfm_sfm_input_form = QFormLayout()
+        spheresfm_sfm_input_form.setSpacing(6)
+        self.spheresfm_sparse_browse = BrowseWidget(
+            mode="dir",
+            placeholder=i18n.t("SFM_SPARSE_MODEL_PLACEHOLDER"),
+        )
+        self.spheresfm_sparse_browse.setToolTip(i18n.tip("SPHERESFM_SPARSE_MODEL"))
+        self.spheresfm_sparse_browse.line_edit.setToolTip(i18n.tip("SPHERESFM_SPARSE_MODEL"))
+        add_tooltip_row(
+            spheresfm_sfm_input_form,
+            i18n.t("SFM_SPARSE_MODEL"),
+            self.spheresfm_sparse_browse,
+            i18n.tip("SPHERESFM_SPARSE_MODEL"),
+        )
+        spheresfm_sfm_input_layout.addLayout(spheresfm_sfm_input_form)
+        spheresfm_sfm_input_layout.addStretch()
+
+        self.colmap_sparse_browse.path_changed.connect(self._on_colmap_sparse_path_changed)
+        self.spheresfm_sparse_browse.path_changed.connect(self._on_spheresfm_sparse_path_changed)
+
+        self.sfm_input_section = QWidget()
+        sfm_input_layout = QVBoxLayout(self.sfm_input_section)
+        sfm_input_layout.setContentsMargins(0, 0, 0, 0)
+        sfm_input_layout.setSpacing(4)
+        self.sfm_input_title = QLabel(i18n.t("SFM_INPUT_SECTION"))
+        self.sfm_input_title.setToolTip(i18n.tip("SFM_INPUT_SECTION"))
+        sfm_input_layout.addWidget(self.sfm_input_title)
+        sfm_input_layout.addWidget(self.metashape_sfm_input_widget)
+        sfm_input_layout.addWidget(self.colmap_sfm_input_widget)
+        sfm_input_layout.addWidget(self.spheresfm_sfm_input_widget)
 
         self.view_config = ViewConfigWidget(show_settings=False, show_summary=False)
         self.view_config.views_changed.connect(self._on_views_changed)
@@ -910,7 +982,6 @@ class CubemapStep(BaseStepWidget):
         input_layout.setContentsMargins(8, 8, 8, 8)
         input_layout.setSpacing(6)
         input_layout.addWidget(self.export_method_row)
-        input_layout.addWidget(self.metashape_section)
         input_layout.addWidget(self.colmap_section)
         input_layout.addWidget(self.spheresfm_section)
         input_layout.addStretch()
@@ -920,6 +991,7 @@ class CubemapStep(BaseStepWidget):
         output_layout = QVBoxLayout(output_tab)
         output_layout.setContentsMargins(8, 8, 8, 8)
         output_layout.setSpacing(6)
+        output_layout.addWidget(self.sfm_input_section)
         output_layout.addWidget(self.export_targets_row)
         output_layout.addWidget(self.metashape_output_section)
         output_layout.addWidget(self.spheresfm_convert_section)
@@ -1210,6 +1282,8 @@ class CubemapStep(BaseStepWidget):
                 return i18n.t("STEP4_PIPELINE_DETAIL_METASHAPE_INPUT_IN_OUTPUT")
             if not ply.is_file():
                 return i18n.t("STEP4_PIPELINE_DETAIL_METASHAPE_NEEDS_PLY")
+            if not self._metashape_ply_approved:
+                return i18n.t("STEP4_PIPELINE_DETAIL_METASHAPE_NEEDS_PLY_APPROVAL")
         return None
 
     def _pipeline_training_status(self) -> tuple[str, str, str]:
@@ -1997,6 +2071,10 @@ class CubemapStep(BaseStepWidget):
             self.ms_ply_browse.set_text("")
             self._metashape_auto_xml_candidates = ()
             self._metashape_auto_ply_candidates = ()
+            self._set_metashape_ply_approved(False)
+            self._colmap_sparse_user_edited = False
+            self._spheresfm_sparse_user_edited = False
+            self._sync_sfm_input_paths(force=True)
             self._update_metashape_input_hint()
             self.preview.set_scene_dir("")
             self._refresh_input_image_count()
@@ -2016,6 +2094,9 @@ class CubemapStep(BaseStepWidget):
         self.ms_images_path_label.setToolTip(f"{i18n.tip('MS_IMAGES')}\n{images_dir}")
         self.ms_images_path_label.set_full_text(images_dir)
         self._apply_metashape_auto_inputs(p)
+        self._colmap_sparse_user_edited = False
+        self._spheresfm_sparse_user_edited = False
+        self._sync_sfm_input_paths(force=True)
         self._training_dataset_user_edited = False
         self._training_output_user_edited = False
         self._lfs_output_name_user_edited = False
@@ -2119,6 +2200,7 @@ class CubemapStep(BaseStepWidget):
                 self.ms_xml_browse.set_text(xml)
             if ply:
                 self.ms_ply_browse.set_text(ply)
+                self._set_metashape_ply_approved(bool(metashape.get("ply_approved", True)))
             if "use_ply" in metashape:
                 self.ms_use_ply_cb.setChecked(bool(metashape.get("use_ply")))
             if "scale" in metashape:
@@ -2137,6 +2219,13 @@ class CubemapStep(BaseStepWidget):
                 self.colmap_exec_browse.set_text(colmap_exec)
             if glomap_exec:
                 self.glomap_exec_browse.set_text(glomap_exec)
+            sparse = self._settings_path_text(
+                scene,
+                colmap.get("selected_sparse_model_dir"),
+            )
+            if sparse:
+                self.colmap_sparse_browse.set_text(sparse)
+                self._colmap_sparse_user_edited = True
 
         spheresfm = settings.get("spheresfm")
         if isinstance(spheresfm, dict):
@@ -2157,6 +2246,13 @@ class CubemapStep(BaseStepWidget):
             spheresfm_exec = self._settings_text(spheresfm.get("colmap_executable"))
             if spheresfm_exec:
                 self.spheresfm_exec_browse.set_text(spheresfm_exec)
+            sparse = self._settings_path_text(
+                scene,
+                spheresfm.get("selected_sparse_model_dir"),
+            )
+            if sparse:
+                self.spheresfm_sparse_browse.set_text(sparse)
+                self._spheresfm_sparse_user_edited = True
 
     def _restore_training_settings(self, scene: Path, settings: dict) -> None:
         training = settings.get("training")
@@ -2308,6 +2404,7 @@ class CubemapStep(BaseStepWidget):
 
     def on_activated(self) -> None:
         self._refresh_metashape_auto_inputs_if_empty()
+        self._sync_sfm_input_paths()
         self.preview.refresh_image_list(prefer_current=True)
         self._refresh_input_image_count()
         self._update_path_labels()
@@ -3157,6 +3254,7 @@ class CubemapStep(BaseStepWidget):
             self.export_colmap_cb.setChecked(False)
         self._sync_output_shape_controls()
         self._sync_yaw_per_frame_control()
+        self._sync_sfm_input_paths()
         self._update_path_labels()
         self._update_training_paths()
         self._update_output_count()
@@ -3182,7 +3280,11 @@ class CubemapStep(BaseStepWidget):
 
     def _sync_settings_tabs(self, *, prefer_route_tab: bool = False) -> None:
         current = self.settings_tabs.currentIndex()
-        self.metashape_section.setVisible(self._is_metashape_method())
+        self.metashape_section.setVisible(False)
+        self.sfm_input_section.setVisible(True)
+        self.metashape_sfm_input_widget.setVisible(self._is_metashape_method())
+        self.colmap_sfm_input_widget.setVisible(self._is_colmap_method())
+        self.spheresfm_sfm_input_widget.setVisible(self._is_spheresfm_method())
         self.metashape_output_section.setVisible(self._is_metashape_method())
         self.colmap_section.setVisible(self._is_colmap_method())
         self.spheresfm_section.setVisible(self._is_spheresfm_method())
@@ -3231,14 +3333,102 @@ class CubemapStep(BaseStepWidget):
         self.output_path_label.set_full_text(output)
 
     def _on_metashape_input_path_changed(self, *_args) -> None:
+        if self.sender() is self.ms_ply_browse and not self._syncing_metashape_auto_inputs:
+            self._set_metashape_ply_approved(bool(self.ms_ply_browse.text().strip()))
         self._update_metashape_input_hint()
         self.primary_action_state_changed.emit()
+
+    def _on_metashape_ply_text_edited(self, _text: str) -> None:
+        if self._syncing_metashape_auto_inputs:
+            return
+        self._set_metashape_ply_approved(bool(self.ms_ply_browse.text().strip()))
+
+    def _approve_metashape_ply(self) -> None:
+        self._set_metashape_ply_approved(bool(self.ms_ply_browse.text().strip()))
+        self._update_metashape_input_hint()
+        self.primary_action_state_changed.emit()
+
+    def _set_metashape_ply_approved(self, approved: bool, *, auto_candidate: bool = False) -> None:
+        self._metashape_ply_approved = bool(approved)
+        self._metashape_ply_auto_candidate = bool(auto_candidate and not approved)
+        if not hasattr(self, "ms_ply_approve_btn"):
+            return
+        has_path = bool(self.ms_ply_browse.text().strip())
+        self.ms_ply_approve_btn.setEnabled(has_path and self._preprocess_uses_ply())
+        self.ms_ply_approve_btn.setChecked(self._metashape_ply_approved)
+        if self._metashape_ply_approved:
+            tooltip = i18n.t("MS_PLY_APPROVED")
+        elif self._metashape_ply_auto_candidate:
+            tooltip = i18n.t("MS_PLY_APPROVE_CANDIDATE")
+        else:
+            tooltip = i18n.t("MS_PLY_APPROVE")
+        self.ms_ply_approve_btn.setToolTip(tooltip)
+
+    def _on_colmap_sparse_path_changed(self, _path: str) -> None:
+        if not self._syncing_sfm_input_paths:
+            self._colmap_sparse_user_edited = True
+        self._update_sfm_input_tooltips()
+        self._update_training_paths()
+        self.primary_action_state_changed.emit()
+
+    def _on_spheresfm_sparse_path_changed(self, _path: str) -> None:
+        if not self._syncing_sfm_input_paths:
+            self._spheresfm_sparse_user_edited = True
+        self._update_sfm_input_tooltips()
+        self._update_training_paths()
+        self.primary_action_state_changed.emit()
+
+    def _sync_sfm_input_paths(self, *, force: bool = False) -> None:
+        if not hasattr(self, "colmap_sparse_browse"):
+            return
+        self._syncing_sfm_input_paths = True
+        try:
+            if not self.scene_dir:
+                self.colmap_sparse_browse.set_text("")
+                self.spheresfm_sparse_browse.set_text("")
+                return
+            if force or (not self._colmap_sparse_user_edited and not self.colmap_sparse_browse.text().strip()):
+                model = self._auto_find_colmap_sparse_model()
+                self.colmap_sparse_browse.set_text(str(model) if model else "")
+            if force or (not self._spheresfm_sparse_user_edited and not self.spheresfm_sparse_browse.text().strip()):
+                model = self._auto_find_spheresfm_sparse_model()
+                self.spheresfm_sparse_browse.set_text(str(model) if model else "")
+        finally:
+            self._syncing_sfm_input_paths = False
+        self._update_sfm_input_tooltips()
+
+    def _update_sfm_input_tooltips(self) -> None:
+        if not hasattr(self, "colmap_sparse_browse"):
+            return
+        colmap_note = self._sparse_model_input_note(self.colmap_sparse_browse.text())
+        colmap_tip = self._append_tooltip_note(i18n.tip("COLMAP_SPARSE_MODEL"), colmap_note)
+        self.colmap_sparse_browse.setToolTip(colmap_tip)
+        self.colmap_sparse_browse.line_edit.setToolTip(colmap_tip)
+
+        spheresfm_note = self._sparse_model_input_note(self.spheresfm_sparse_browse.text())
+        spheresfm_tip = self._append_tooltip_note(i18n.tip("SPHERESFM_SPARSE_MODEL"), spheresfm_note)
+        self.spheresfm_sparse_browse.setToolTip(spheresfm_tip)
+        self.spheresfm_sparse_browse.line_edit.setToolTip(spheresfm_tip)
+
+    def _sparse_model_input_note(self, text: str) -> str:
+        raw = text.strip()
+        if not raw:
+            return i18n.t("SFM_SPARSE_MODEL_AUTO_HINT")
+        path = Path(raw)
+        if self._has_colmap_sparse_model(path):
+            return i18n.t("SFM_SPARSE_MODEL_READY_HINT")
+        return i18n.t("SFM_SPARSE_MODEL_INVALID_HINT").format(path=raw)
 
     def _apply_metashape_auto_inputs(self, scene: Path) -> None:
         xml = self._guess_xml(scene)
         ply = self._guess_ply(scene)
-        self.ms_xml_browse.set_text(str(xml) if xml else "")
-        self.ms_ply_browse.set_text(str(ply) if ply else "")
+        self._syncing_metashape_auto_inputs = True
+        try:
+            self.ms_xml_browse.set_text(str(xml) if xml else "")
+            self.ms_ply_browse.set_text(str(ply) if ply else "")
+        finally:
+            self._syncing_metashape_auto_inputs = False
+        self._set_metashape_ply_approved(False, auto_candidate=ply is not None)
 
     def _refresh_metashape_auto_inputs_if_empty(self) -> None:
         if not self.scene_dir:
@@ -3250,12 +3440,21 @@ class CubemapStep(BaseStepWidget):
         if not self.ms_xml_browse.text().strip():
             xml = self._guess_xml(scene)
             if xml:
-                self.ms_xml_browse.set_text(str(xml))
+                self._syncing_metashape_auto_inputs = True
+                try:
+                    self.ms_xml_browse.set_text(str(xml))
+                finally:
+                    self._syncing_metashape_auto_inputs = False
                 changed = True
         if not self.ms_ply_browse.text().strip():
             ply = self._guess_ply(scene)
             if ply:
-                self.ms_ply_browse.set_text(str(ply))
+                self._syncing_metashape_auto_inputs = True
+                try:
+                    self.ms_ply_browse.set_text(str(ply))
+                finally:
+                    self._syncing_metashape_auto_inputs = False
+                self._set_metashape_ply_approved(False, auto_candidate=True)
                 changed = True
         if (
             changed
@@ -3281,7 +3480,7 @@ class CubemapStep(BaseStepWidget):
                     names=self._format_candidate_names(self._metashape_auto_xml_candidates)
                 )
             else:
-                xml_note = i18n.t("MS_XML_MISSING_HINT").format(names=", ".join(_METASHAPE_XML_AUTO_NAMES))
+                xml_note = i18n.t("MS_XML_MISSING_HINT")
         else:
             xml = Path(xml_text)
             issue = self._metashape_input_output_path_issue(xml)
@@ -3300,7 +3499,7 @@ class CubemapStep(BaseStepWidget):
                 elif (scene / _GENERATED_POINTCLOUD_NAME).is_file():
                     ply_note = i18n.t("MS_PLY_ONLY_POINTCLOUD_HINT")
                 else:
-                    ply_note = i18n.t("MS_PLY_MISSING_HINT").format(names=", ".join(_METASHAPE_PLY_AUTO_NAMES))
+                    ply_note = i18n.t("MS_PLY_MISSING_HINT")
             else:
                 ply = Path(ply_text)
                 issue = self._metashape_input_output_path_issue(ply)
@@ -3308,8 +3507,14 @@ class CubemapStep(BaseStepWidget):
                     ply_note = issue
                 elif not ply.is_file():
                     ply_note = i18n.t("MS_PLY_SELECTED_MISSING_HINT").format(path=ply_text)
+                elif not self._metashape_ply_approved:
+                    ply_note = i18n.t("MS_PLY_APPROVAL_HINT")
 
         self._set_metashape_input_tooltips(xml_note, ply_note)
+        self._set_metashape_ply_approved(
+            self._metashape_ply_approved,
+            auto_candidate=self._metashape_ply_auto_candidate,
+        )
 
     def _set_metashape_input_tooltips(self, xml_note: str, ply_note: str) -> None:
         xml_tip = self._append_tooltip_note(i18n.tip("MS_XML"), xml_note)
@@ -3581,6 +3786,10 @@ class CubemapStep(BaseStepWidget):
 
     def _sync_ply_browse_enabled(self) -> None:
         self.ms_ply_browse.setEnabled(self._preprocess_uses_ply())
+        self._set_metashape_ply_approved(
+            self._metashape_ply_approved,
+            auto_candidate=self._metashape_ply_auto_candidate,
+        )
         self._update_metashape_input_hint()
 
     def _writes_images(self) -> bool:
@@ -3800,6 +4009,8 @@ class CubemapStep(BaseStepWidget):
                 raise ValueError(f"PLYファイルが見つかりません: {ply}")
             if self._metashape_input_output_path_issue(Path(ply)):
                 raise ValueError(i18n.t("METASHAPE_INPUT_IN_OUTPUT_ERROR").format(path=ply))
+            if not self._metashape_ply_approved:
+                raise ValueError(i18n.t("METASHAPE_PLY_APPROVAL_ERROR").format(path=ply))
         return build_metashape_preprocess_cmd(
             MetashapePreprocessCommand(
                 python_executable=sys.executable,
@@ -4422,7 +4633,7 @@ class CubemapStep(BaseStepWidget):
                     SphereSfmTransformsCommand(
                         python_executable=sys.executable,
                         script=transforms_script,
-                        sparse=self._spheresfm_sparse_dir(),
+                        sparse=self._spheresfm_sparse_model_for_conversion(),
                         output=transforms_output,
                         images_dir=self._metashape_images_dir(),
                         image_path_mode=image_path_mode,
@@ -4712,6 +4923,7 @@ class CubemapStep(BaseStepWidget):
                 "ply": self.ms_ply_browse.text()
                 if self._is_metashape_method() and self._preprocess_uses_ply()
                 else "",
+                "ply_approved": self._metashape_ply_approved,
                 "scale": float(self.ms_scale_edit.text().strip()),
                 "no_fix_rotation": self.ms_no_fix_rot_cb.isChecked(),
             },
@@ -4725,6 +4937,9 @@ class CubemapStep(BaseStepWidget):
                 "database": str(self._colmap_database_path()),
                 "sparse_dir": str(self._colmap_sparse_dir()),
                 "sparse_model_dir": str(self._find_colmap_sparse_model() or ""),
+                "selected_sparse_model_dir": (
+                    self.colmap_sparse_browse.text() if self._colmap_sparse_user_edited else ""
+                ),
                 "run_sfm": self.run_colmap_cb.isChecked(),
                 "colmap_executable": self.colmap_exec_browse.text(),
                 "glomap_executable": self.glomap_exec_browse.text(),
@@ -4741,6 +4956,9 @@ class CubemapStep(BaseStepWidget):
                 "database": str(self._spheresfm_database_path()),
                 "sparse_dir": str(self._spheresfm_sparse_dir()),
                 "sparse_model_dir": str(self._find_spheresfm_sparse_model() or ""),
+                "selected_sparse_model_dir": (
+                    self.spheresfm_sparse_browse.text() if self._spheresfm_sparse_user_edited else ""
+                ),
                 "use_masks": self._spheresfm_uses_masks(),
                 "colmap_executable": self.spheresfm_exec_browse.text(),
                 "matcher": self.spheresfm_matcher_combo.currentData() or _COLMAP_MATCHER_SEQUENTIAL,
@@ -4992,7 +5210,7 @@ class CubemapStep(BaseStepWidget):
             "images_dir": "images",
             "masks_dir": "masks",
             "sparse_dir": "sparse",
-            "sparse_model_dir": str(sparse_model.relative_to(project).as_posix()) if sparse_model else "",
+            "sparse_model_dir": self._path_text_relative_to(sparse_model, project) if sparse_model else "",
             "ready_for_import": sparse_model is not None,
             "database": "database.db",
             "rig_config": "rig_config.json",
@@ -5023,7 +5241,7 @@ class CubemapStep(BaseStepWidget):
             "source_masks_dir": str(self._mask_dir()),
             "prepared_masks_dir": "masks_colmap",
             "sparse_dir": "sparse",
-            "sparse_model_dir": str(sparse_model.relative_to(project).as_posix()) if sparse_model else "",
+            "sparse_model_dir": self._path_text_relative_to(sparse_model, project) if sparse_model else "",
             "ready_for_import": sparse_model is not None,
             "database": "database.db",
             "use_masks": self._spheresfm_uses_masks(),
@@ -5047,6 +5265,13 @@ class CubemapStep(BaseStepWidget):
             json.dumps(payload, indent=2, ensure_ascii=False),
             encoding="utf-8",
         )
+
+    @staticmethod
+    def _path_text_relative_to(path: Path, root: Path) -> str:
+        try:
+            return str(path.relative_to(root).as_posix())
+        except ValueError:
+            return str(path)
 
     def _output_dir(self) -> Path:
         if not self.scene_dir:
@@ -5114,7 +5339,25 @@ class CubemapStep(BaseStepWidget):
     def _spheresfm_3dgut_dir(self) -> Path:
         return self._output_dir()
 
-    def _find_spheresfm_sparse_model(self) -> Path | None:
+    def _selected_colmap_sparse_model(self) -> Path | None:
+        if not hasattr(self, "colmap_sparse_browse"):
+            return None
+        text = self.colmap_sparse_browse.text().strip()
+        if not text:
+            return None
+        path = Path(text)
+        return path if self._has_colmap_sparse_model(path) else None
+
+    def _selected_spheresfm_sparse_model(self) -> Path | None:
+        if not hasattr(self, "spheresfm_sparse_browse"):
+            return None
+        text = self.spheresfm_sparse_browse.text().strip()
+        if not text:
+            return None
+        path = Path(text)
+        return path if self._has_colmap_sparse_model(path) else None
+
+    def _auto_find_spheresfm_sparse_model(self) -> Path | None:
         sparse = self._spheresfm_sparse_dir()
         if self._has_colmap_sparse_model(sparse):
             return sparse
@@ -5146,7 +5389,22 @@ class CubemapStep(BaseStepWidget):
 
         return max(candidates, key=score)
 
-    def _find_colmap_sparse_model(self) -> Path | None:
+    def _find_spheresfm_sparse_model(self) -> Path | None:
+        selected_text = self.spheresfm_sparse_browse.text().strip() if hasattr(self, "spheresfm_sparse_browse") else ""
+        selected = self._selected_spheresfm_sparse_model()
+        if selected is not None:
+            return selected
+        if selected_text and self._spheresfm_sparse_user_edited:
+            return None
+        return self._auto_find_spheresfm_sparse_model()
+
+    def _spheresfm_sparse_model_for_conversion(self) -> Path:
+        if self._spheresfm_runs_sfm():
+            return self._spheresfm_sparse_dir()
+        model = self._find_spheresfm_sparse_model()
+        return model if model is not None else self._spheresfm_sparse_dir()
+
+    def _auto_find_colmap_sparse_model(self) -> Path | None:
         sparse = self._colmap_sparse_dir()
         if self._has_colmap_sparse_model(sparse):
             return sparse
@@ -5162,6 +5420,15 @@ class CubemapStep(BaseStepWidget):
             if self._has_colmap_sparse_model(candidate):
                 return candidate
         return None
+
+    def _find_colmap_sparse_model(self) -> Path | None:
+        selected_text = self.colmap_sparse_browse.text().strip() if hasattr(self, "colmap_sparse_browse") else ""
+        selected = self._selected_colmap_sparse_model()
+        if selected is not None:
+            return selected
+        if selected_text and self._colmap_sparse_user_edited:
+            return None
+        return self._auto_find_colmap_sparse_model()
 
     @staticmethod
     def _has_colmap_sparse_model(path: Path) -> bool:
@@ -5588,18 +5855,11 @@ class CubemapStep(BaseStepWidget):
                 if c.is_file():
                     return c
             return None
-        else:
-            candidates = [scene / name for name in _METASHAPE_PLY_AUTO_NAMES]
-
-        for c in candidates:
-            if c.is_file():
-                return c
-        plys = sorted(
-            [p for p in scene.glob("*.ply") if p.is_file() and p.name.lower() != _GENERATED_POINTCLOUD_NAME],
-            key=lambda x: x.name.lower(),
-        )
-        if plys:
-            return plys[0]
+        ply_text = self.ms_ply_browse.text().strip() if hasattr(self, "ms_ply_browse") else ""
+        if ply_text:
+            ply = Path(ply_text)
+            if ply.is_file() and self._metashape_ply_approved:
+                return ply
         return None
 
     # -- バンドル後処理 --
@@ -5994,14 +6254,6 @@ class CubemapStep(BaseStepWidget):
         return None
 
     @staticmethod
-    def _named_scene_file(scene_dir: Path, names: tuple[str, ...]) -> Path | None:
-        for name in names:
-            candidate = scene_dir / name
-            if candidate.is_file():
-                return candidate
-        return None
-
-    @staticmethod
     def _scene_xml_candidates(scene_dir: Path) -> tuple[Path, ...]:
         return tuple(sorted([p for p in scene_dir.glob("*.xml") if p.is_file()], key=lambda x: x.name.lower()))
 
@@ -6019,11 +6271,123 @@ class CubemapStep(BaseStepWidget):
         )
 
     def _guess_xml(self, scene_dir: Path) -> Path | None:
-        trusted = self._named_scene_file(scene_dir, _METASHAPE_XML_AUTO_NAMES)
-        self._metashape_auto_xml_candidates = () if trusted else self._scene_xml_candidates(scene_dir)
-        return trusted
+        scored = [
+            score
+            for candidate in self._scene_xml_candidates(scene_dir)
+            if (score := self._metashape_xml_candidate_score(candidate, scene_dir)) is not None
+        ]
+        self._metashape_auto_xml_candidates = tuple(score[0] for score in scored)
+        if not scored:
+            return None
+        if len(scored) == 1:
+            return scored[0][0]
+        scored.sort(key=lambda item: (item[1], item[2], item[3], item[0].name.lower()), reverse=True)
+        best = scored[0]
+        second = scored[1]
+        if best[1] > second[1]:
+            return best[0]
+        return None
 
     def _guess_ply(self, scene_dir: Path) -> Path | None:
-        trusted = self._named_scene_file(scene_dir, _METASHAPE_PLY_AUTO_NAMES)
-        self._metashape_auto_ply_candidates = () if trusted else self._scene_ply_candidates(scene_dir)
-        return trusted
+        candidates = self._scene_ply_candidates(scene_dir)
+        self._metashape_auto_ply_candidates = candidates
+        return candidates[0] if len(candidates) == 1 else None
+
+    def _metashape_xml_candidate_score(self, path: Path, scene_dir: Path) -> tuple[Path, int, int, int] | None:
+        try:
+            root = ET.parse(path).getroot()
+        except (ET.ParseError, OSError):
+            return None
+        if self._xml_tag_name(root.tag) != "document":
+            return None
+        image_names, image_stems = self._metashape_image_name_sets(scene_dir)
+        total_cameras = 0
+        transformed_cameras = 0
+        image_matches = 0
+        chunks = [node for node in root.iter() if self._xml_tag_name(node.tag) == "chunk"]
+        for chunk in chunks:
+            sensors = self._metashape_sensor_ids(chunk)
+            if not sensors:
+                continue
+            cameras_parent = self._xml_child(chunk, "cameras")
+            if cameras_parent is None:
+                continue
+            for camera in self._xml_children(cameras_parent, "camera"):
+                if str(camera.get("sensor_id") or "").strip() not in sensors:
+                    continue
+                label = str(camera.get("label") or "").strip()
+                if not label:
+                    continue
+                total_cameras += 1
+                transform = self._xml_child(camera, "transform")
+                if self._xml_transform_has_16_numbers(transform):
+                    transformed_cameras += 1
+                if self._metashape_label_matches_image(label, image_names, image_stems):
+                    image_matches += 1
+        if total_cameras <= 0 or transformed_cameras <= 0:
+            return None
+        return (path, image_matches, transformed_cameras, total_cameras)
+
+    @staticmethod
+    def _xml_tag_name(tag: str) -> str:
+        return tag.rsplit("}", 1)[-1].lower()
+
+    @classmethod
+    def _xml_child(cls, element: ET.Element, name: str) -> ET.Element | None:
+        for child in element:
+            if cls._xml_tag_name(child.tag) == name:
+                return child
+        return None
+
+    @classmethod
+    def _xml_children(cls, element: ET.Element, name: str) -> list[ET.Element]:
+        return [child for child in element if cls._xml_tag_name(child.tag) == name]
+
+    @classmethod
+    def _metashape_sensor_ids(cls, chunk: ET.Element) -> set[str]:
+        sensors_parent = cls._xml_child(chunk, "sensors")
+        if sensors_parent is None:
+            return set()
+        sensor_ids: set[str] = set()
+        for sensor in cls._xml_children(sensors_parent, "sensor"):
+            sensor_id = str(sensor.get("id") or "").strip()
+            if not sensor_id:
+                continue
+            if str(sensor.get("type") or "").strip() or cls._xml_child(sensor, "calibration") is not None:
+                sensor_ids.add(sensor_id)
+        return sensor_ids
+
+    @staticmethod
+    def _xml_transform_has_16_numbers(transform: ET.Element | None) -> bool:
+        if transform is None or not transform.text:
+            return False
+        parts = transform.text.split()
+        if len(parts) != 16:
+            return False
+        try:
+            values = [float(part) for part in parts]
+        except ValueError:
+            return False
+        return all(math.isfinite(value) for value in values)
+
+    @staticmethod
+    def _metashape_image_name_sets(scene_dir: Path) -> tuple[set[str], set[str]]:
+        images_dir = scene_dir / "images"
+        if not images_dir.is_dir():
+            return set(), set()
+        names: set[str] = set()
+        stems: set[str] = set()
+        for image in images_dir.iterdir():
+            if not image.is_file() or image.suffix.lower() not in _SUPPORTED_TRAINING_IMAGE_EXTS:
+                continue
+            names.add(image.name)
+            stems.add(image.stem)
+        return names, stems
+
+    @staticmethod
+    def _metashape_label_matches_image(label: str, image_names: set[str], image_stems: set[str]) -> bool:
+        if not image_names and not image_stems:
+            return False
+        name = label.replace("\\", "/").rsplit("/", 1)[-1]
+        stem = Path(name).stem
+        return name in image_names or stem in image_stems or label in image_names or label in image_stems

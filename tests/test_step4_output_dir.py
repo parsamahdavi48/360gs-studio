@@ -42,13 +42,39 @@ def _ready_step(scene: Path, *, metashape_inputs: bool = False) -> CubemapStep:
     _write_ascii_ply(scene / "pointcloud.ply", [(0.0, 0.0, 0.0)])
     if metashape_inputs:
         (scene / "images").mkdir(exist_ok=True)
-        (scene / "metashape.xml").write_text("<root />", encoding="utf-8")
+        _write_metashape_xml(scene / "metashape.xml")
         _write_ascii_ply(scene / "metashape.ply", [(1.0, 2.0, 3.0)])
     _app()
     _app()
     step = CubemapStep(Path.cwd())
     step.set_scene_dir(str(scene))
+    if metashape_inputs:
+        step._approve_metashape_ply()
     return step
+
+
+def _write_metashape_xml(path: Path, labels: list[str] | None = None) -> None:
+    labels = labels or ["frame_0001"]
+    cameras = "\n".join(
+        f'        <camera id="{idx}" sensor_id="0" label="{label}">\n'
+        "          <transform>1 0 0 0 0 1 0 0 0 0 1 0 0 0 0 1</transform>\n"
+        "        </camera>"
+        for idx, label in enumerate(labels)
+    )
+    path.write_text(
+        '<?xml version="1.0" encoding="UTF-8"?>\n'
+        '<document version="1.2.0">\n'
+        "  <chunk>\n"
+        "    <sensors>\n"
+        '      <sensor id="0" label="camera" type="spherical" />\n'
+        "    </sensors>\n"
+        "    <cameras>\n"
+        f"{cameras}\n"
+        "    </cameras>\n"
+        "  </chunk>\n"
+        "</document>\n",
+        encoding="utf-8",
+    )
 
 
 def _write_ascii_ply(path: Path, points: list[tuple[float, float, float]]) -> None:
@@ -102,7 +128,7 @@ def test_metashape_inputs_auto_detect_standard_names(tmp_path: Path) -> None:
     _app()
     tmp_path.mkdir(exist_ok=True)
     (tmp_path / "images").mkdir()
-    (tmp_path / "cameras.xml").write_text("<root />", encoding="utf-8")
+    _write_metashape_xml(tmp_path / "cameras.xml")
     _write_ascii_ply(tmp_path / "sparse.ply", [(1.0, 2.0, 3.0)])
 
     step = CubemapStep(Path.cwd())
@@ -110,24 +136,27 @@ def test_metashape_inputs_auto_detect_standard_names(tmp_path: Path) -> None:
 
     assert Path(step.ms_xml_browse.text()) == tmp_path / "cameras.xml"
     assert Path(step.ms_ply_browse.text()) == tmp_path / "sparse.ply"
+    assert not step._metashape_ply_approved
     assert not hasattr(step, "metashape_input_hint")
 
 
-def test_metashape_inputs_do_not_auto_select_nonstandard_candidates(tmp_path: Path) -> None:
+def test_metashape_inputs_auto_detect_nonstandard_xml_and_require_ply_approval(tmp_path: Path) -> None:
     _app()
     tmp_path.mkdir(exist_ok=True)
     (tmp_path / "images").mkdir()
-    (tmp_path / "exported_pose.xml").write_text("<root />", encoding="utf-8")
+    _write_metashape_xml(tmp_path / "exported_pose.xml")
     _write_ascii_ply(tmp_path / "raw_scan.ply", [(1.0, 2.0, 3.0)])
 
     step = CubemapStep(Path.cwd())
     step.set_scene_dir(str(tmp_path))
 
-    assert step.ms_xml_browse.text() == ""
-    assert step.ms_ply_browse.text() == ""
-    assert "exported_pose.xml" in step.ms_xml_browse.line_edit.toolTip()
-    assert "raw_scan.ply" in step.ms_ply_browse.line_edit.toolTip()
+    assert Path(step.ms_xml_browse.text()) == tmp_path / "exported_pose.xml"
+    assert Path(step.ms_ply_browse.text()) == tmp_path / "raw_scan.ply"
+    assert not step._metashape_ply_approved
+    assert "承認" in step.ms_ply_browse.line_edit.toolTip()
     assert step.primary_action_enabled() is False
+    step._approve_metashape_ply()
+    assert step.primary_action_enabled() is True
 
 
 def test_metashape_inputs_reject_output_dir_sources(tmp_path: Path) -> None:
@@ -255,11 +284,15 @@ def test_cubemap_step_uses_fixed_output_folder_label(tmp_path: Path) -> None:
     ]
     assert step.export_method_label.isHidden()
     assert _is_descendant(step.export_method_row, step.input_tab)
-    assert _is_descendant(step.metashape_section, step.input_tab)
+    assert _is_descendant(step.sfm_input_section, step.output_tab)
+    assert _is_descendant(step.metashape_sfm_input_widget, step.sfm_input_section)
     assert _is_descendant(step.metashape_output_section, step.output_tab)
     assert _is_descendant(step.export_targets_row, step.output_tab)
     assert step.settings_tabs.tabText(step.output_tab_index) == i18n.t("STEP4_TAB_OUTPUT")
-    assert not step.metashape_section.isHidden()
+    assert step.metashape_section.isHidden()
+    assert not step.metashape_sfm_input_widget.isHidden()
+    assert step.colmap_sfm_input_widget.isHidden()
+    assert step.spheresfm_sfm_input_widget.isHidden()
     assert not step.metashape_output_section.isHidden()
     assert step.colmap_section.isHidden()
     assert step.spheresfm_section.isHidden()
@@ -441,16 +474,20 @@ def test_export_method_switch_keeps_fixed_tabs_and_swaps_route_sections() -> Non
 
     assert step.settings_tabs.tabText(0) == i18n.t("STEP4_TAB_INPUT")
     assert step.settings_tabs.currentIndex() == step.input_tab_index
-    assert not step.metashape_section.isHidden()
+    assert step.metashape_section.isHidden()
+    assert not step.metashape_sfm_input_widget.isHidden()
     assert step.colmap_section.isHidden()
+    assert step.colmap_sfm_input_widget.isHidden()
 
     step.settings_tabs.setCurrentIndex(step.input_tab_index)
     step._set_export_method("colmap")
 
     assert step.settings_tabs.tabText(0) == i18n.t("STEP4_TAB_INPUT")
     assert step.metashape_section.isHidden()
+    assert step.metashape_sfm_input_widget.isHidden()
     assert step.metashape_output_section.isHidden()
     assert not step.colmap_section.isHidden()
+    assert not step.colmap_sfm_input_widget.isHidden()
     assert step.settings_tabs.currentIndex() == step.input_tab_index
 
     step.settings_tabs.setCurrentIndex(step.view_export_tab_index)
@@ -458,12 +495,14 @@ def test_export_method_switch_keeps_fixed_tabs_and_swaps_route_sections() -> Non
 
     assert step.settings_tabs.tabText(0) == i18n.t("STEP4_TAB_INPUT")
     assert step.settings_tabs.currentIndex() == step.input_tab_index
-    assert not step.metashape_section.isHidden()
+    assert step.metashape_section.isHidden()
+    assert not step.metashape_sfm_input_widget.isHidden()
     assert not step.metashape_output_section.isHidden()
     assert step.colmap_section.isHidden()
+    assert step.colmap_sfm_input_widget.isHidden()
 
 
-def test_export_targets_row_stays_at_output_tab_top_across_routes() -> None:
+def test_sfm_input_section_stays_at_output_tab_top_across_routes() -> None:
     app = _app()
     step = CubemapStep(Path.cwd())
     step.resize(900, 720)
@@ -476,7 +515,7 @@ def test_export_targets_row_stays_at_output_tab_top_across_routes() -> None:
         step._set_export_method(method)
         step.settings_tabs.setCurrentIndex(step.output_tab_index)
         app.processEvents()
-        position = step.export_targets_row.mapTo(step.output_tab, QPoint(0, 0))
+        position = step.sfm_input_section.mapTo(step.output_tab, QPoint(0, 0))
         positions.append((position.x(), position.y()))
 
     assert len(set(positions)) == 1
@@ -517,7 +556,10 @@ def test_spheresfm_visible_tabs_follow_projection_conversion_sfm_order() -> None
         i18n.t("STEP4_TAB_DETAILS"),
     ]
     assert step.metashape_section.isHidden()
+    assert step.metashape_sfm_input_widget.isHidden()
     assert step.colmap_section.isHidden()
+    assert step.colmap_sfm_input_widget.isHidden()
+    assert not step.spheresfm_sfm_input_widget.isHidden()
     assert not step.spheresfm_section.isHidden()
     assert not step.spheresfm_convert_section.isHidden()
     assert step.settings_tabs.isTabEnabled(step.input_tab_index)
@@ -1234,7 +1276,7 @@ def test_spheresfm_convert_only_queues_3dgut_without_colmap_binary(tmp_path: Pat
     commands = step.build_commands()
 
     assert [phase for phase, _cmd in commands] == ["spheresfm_transforms"]
-    assert commands[0][1][3] == str(tmp_path / "output" / "spheresfm" / "sparse")
+    assert commands[0][1][3] == str(sparse_model)
     assert commands[0][1][4] == str(tmp_path / "output")
     assert commands[0][1][commands[0][1].index("--image-path-mode") + 1] == "images-prefix"
     assert sparse_model.is_dir()
@@ -1511,8 +1553,9 @@ def test_step4_scene_settings_restore_export_and_training_choices(tmp_path: Path
 def test_metashape_import_uses_scene_images_and_lf_ply(tmp_path: Path) -> None:
     step = _ready_step(tmp_path)
     (tmp_path / "images").mkdir()
-    (tmp_path / "metashape.xml").write_text("<root />", encoding="utf-8")
+    _write_metashape_xml(tmp_path / "metashape.xml")
     (tmp_path / "metashape.ply").write_text("ply\n", encoding="utf-8")
+    step.ms_xml_browse.set_text(str(tmp_path / "metashape.xml"))
     step.ms_ply_browse.set_text(str(tmp_path / "metashape.ply"))
 
     cmd = step._build_preprocess_cmd()
@@ -1582,8 +1625,9 @@ def test_manual_axis_change_switches_to_custom_profile(tmp_path: Path) -> None:
 def test_manual_metashape_ply_toggle_switches_to_custom_profile(tmp_path: Path) -> None:
     step = _ready_step(tmp_path)
     (tmp_path / "images").mkdir()
-    (tmp_path / "metashape.xml").write_text("<root />", encoding="utf-8")
+    _write_metashape_xml(tmp_path / "metashape.xml")
     (tmp_path / "metashape.ply").write_text("ply\n", encoding="utf-8")
+    step.ms_xml_browse.set_text(str(tmp_path / "metashape.xml"))
     step.ms_ply_browse.set_text(str(tmp_path / "metashape.ply"))
     postshot_idx = step.profile_combo.findData("postshot")
     assert postshot_idx >= 0
@@ -1617,6 +1661,7 @@ def test_postshot_accepts_raw_ply_with_custom_name(tmp_path: Path) -> None:
     step = _ready_step(tmp_path)
     raw_ply = tmp_path / "raw_scan.ply"
     raw_ply.write_text("ply\n", encoding="utf-8")
+    step.ms_ply_browse.set_text(str(raw_ply))
     idx = step.profile_combo.findData("postshot")
     assert idx >= 0
     step.profile_combo.setCurrentIndex(idx)
@@ -1628,7 +1673,7 @@ def test_lichtfeld_import_requires_raw_ply_when_ply_enabled(tmp_path: Path) -> N
     _app()
     tmp_path.mkdir(exist_ok=True)
     (tmp_path / "images").mkdir()
-    (tmp_path / "metashape.xml").write_text("<root />", encoding="utf-8")
+    _write_metashape_xml(tmp_path / "metashape.xml")
     step = CubemapStep(Path.cwd())
     step.set_scene_dir(str(tmp_path))
 

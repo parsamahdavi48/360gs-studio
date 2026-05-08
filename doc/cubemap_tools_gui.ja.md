@@ -30,15 +30,15 @@ SfMは、複数画像の見え方の差からカメラ位置と疎な点群を�
 
 `シーンフォルダ` は、Step 1-3で使っている作業フォルダです。通常は `images/` と `masks/` が入っています。MetashapeルートではMetashapeから書き出したXML/PLYを組み合わせます。SphereSfMルートでは、この `images/` と `masks/` からSfMと変換を実行します。
 
-左ナビゲーションには、Step 4のサブ工程として `SfM`、`Cube`、`Train` が常に表示されます。各行の左アイコンで今回その工程を対象にするかを選び、右アイコンでその選択が `準備済み`、`未準備`、`スキップ` のどれかを確認します。Metashapeルートでは、`Cube` がMetashapeのカメラポーズを必要とするときだけ `SfM` が自動でONになり、クリックしてもOFFにせず `SfM` タブを表示します。次に何をすればよいかは各アイコンのツールチップで確認できます。Step 4内では、ルートボタン `Metashape`、`COLMAP`、`SphereSfM` は `SfM` タブにあります。出力プリセット、画像/マスクのON/OFF、Cube6、Yaw、画像サイズは `Cubemap`、CLI実行の設定は `Training` にあります。
+左ナビゲーションには、Step 4のサブ工程として `SfM`、`Cube`、`Train` が常に表示されます。各行の左アイコンで今回その工程を対象にするかを選び、右アイコンでその選択が `準備済み`、`未準備`、`スキップ` のどれかを確認します。Metashapeルートでは、`Cube` がMetashapeのカメラポーズを必要とするときだけ `SfM` が自動でONになります。次に何をすればよいかは各アイコンのツールチップで確認できます。Step 4内では、ルートボタン `Metashape`、`COLMAP`、`SphereSfM` は `SfM` タブにあります。Cubeが参照するXML/PLYや既存sparseモデルは `Cubemap` タブ上部の `SfM入力` にまとまり、出力プリセット、画像/マスクのON/OFF、Cube6、Yaw、画像サイズも `Cubemap`、CLI実行の設定は `Training` にあります。
 
 ## Metashapeルートの基本操作
 
 Metashapeで360°画像をアライメント済みなら、基本はこの流れです。
 
 1. ルートを `Metashape` にします。
-2. `カメラXML` を確認します。シーンフォルダ直下の `metashape.xml` / `cameras.xml` は自動入力されます。
-3. LichtFeld Studio向け、または点群も同梱したい場合は `点群PLY` を確認します。シーンフォルダ直下の `metashape.ply` / `sparse.ply` は自動入力されます。
+2. `カメラXML` を確認します。シーンフォルダ直下のXMLは内容を読み取り、Metashapeのカメラ情報として判定できるものを自動入力します。
+3. LichtFeld Studio向け、または点群も同梱したい場合は `点群PLY` を確認します。シーンフォルダ直下のPLY候補が1つなら入力欄に表示されます。使う場合はチェックボタンで承認します。
 4. `出力プリセット` で渡し先を選びます。
 5. `出力形状` で、キューブマップ画像へ変換するか、`3DGUT (LichtFeld)` にするかを選びます。
 6. キューブマップ画像を作る場合は、`Cubemap` タブでCube6、Yaw、画像サイズを確認します。
@@ -48,12 +48,12 @@ Metashapeルートでは、最初に同梱の `vendor/metashape_360_lfs/metashap
 
 ### カメラXMLと点群PLYの自動検出
 
-Step 4は、シーンフォルダが設定された時点でMetashape用の入力候補を自動で探します。安全に判断できる標準名だけを自動入力し、別名のファイルや複数候補がある場合は手動選択を促します。
+Step 4は、シーンフォルダが設定された時点でMetashape用の入力候補を自動で探します。XMLはファイル名ではなく内容を読み、Metashapeの `document` / `chunk` / `sensors` / `cameras` / 4x4 `transform` があり、可能なら `images/` の画像名と照合できるものを自動入力します。
 
-- `カメラXML`: シーンフォルダ直下の `metashape.xml`、`cameras.xml` をこの順に探します。別名の `.xml` は自動選択しません。
-- `点群PLY`: シーンフォルダ直下の `metashape.ply`、`sparse.ply` をこの順に探します。別名の `.ply` は自動選択しません。
+- `カメラXML`: シーンフォルダ直下の `.xml` を解析します。複数の有効XMLが同点で曖昧な場合は自動選択せず、候補をツールチップに表示します。
+- `点群PLY`: シーンフォルダ直下の `.ply` を候補にします。1つだけなら入力欄へ表示しますが、汎用形式なのでチェックボタンで承認するまで実行しません。
 
-`pointcloud.ply` はこのアプリがLichtFeld用に作る出力ファイル名なので、Metashapeからエクスポートした入力PLYの自動候補からは除外します。Metashapeから出した元XML/PLYは `output/` の外に置いてください。
+`pointcloud.ply` はこのアプリがLichtFeld用に作る出力ファイル名なので、Metashapeからエクスポートした入力PLYの候補からは除外します。Metashapeから出した元XML/PLYは `output/` の外に置いてください。
 
 ## 出力プリセットの選び方
 
@@ -100,7 +100,7 @@ LichtFeldで「キューブマップデータ」と「3DGUTでエクイレクタ
 1. ルートを `Metashape` にします。
 2. `出力プリセット` を `LichtFeld Studio` にします。
 3. `出力形状` を `投影視点に変換` にします。
-4. `点群PLY` を確認します。自動入力されていない場合、または候補が違う場合は手動で指定します。
+4. `点群PLY` を確認します。候補が正しければチェックボタンで承認し、違う場合は手動で指定します。
 5. `Cubemap` で `Cube6`、Yaw 45°、必要な `画像サイズ` を選びます。
 6. 実行します。
 
@@ -111,7 +111,7 @@ LichtFeldで「キューブマップデータ」と「3DGUTでエクイレクタ
 1. ルートを `Metashape` にします。
 2. `出力プリセット` を `LichtFeld Studio` にします。
 3. `出力形状` を `3DGUT (LichtFeld)` にします。
-4. `点群PLY` を確認します。自動入力されていない場合、または候補が違う場合は手動で指定します。
+4. `点群PLY` を確認します。候補が正しければチェックボタンで承認し、違う場合は手動で指定します。
 5. 実行します。
 
 この出力では、既存の `<scene>/images/` と `<scene>/masks/` を `<scene>/output/images/` と `<scene>/output/masks/` に配置し、`<scene>/output/transforms.json` と `<scene>/output/pointcloud.ply` を新しく作ります。LichtFeldでは `<scene>/output/` をデータセットとして指定し、トレーニング時にGUTを有効にします。
@@ -194,6 +194,8 @@ Metashapeを使わず、抽出済みの360°画像からCOLMAP/GLOMAPへ進み�
 
 COLMAPルートでは、`output/colmap_rig/` にCOLMAP Rig形式のキューブマップ画像、マスク、`rig_config.json` を作ります。`書き出し後にCOLMAPを実行` がONの場合は、続けてFeature、Rig設定、Matcher、Mapperを実行し、COLMAP/GLOMAPのSfM結果も作ります。
 
+COLMAPルートは投影視点のCOLMAP Rigデータ専用です。3DGUT用のエクイレクタングラー出力はMetashapeルートまたはSphereSfMルートで作成します。既存のCOLMAP sparseモデルをトレーニングに渡したい場合は、`Cubemap` タブ上部の `SfM入力` で選択できます。
+
 フレーム別Yaw回転は、固定リグの前提を崩すためCOLMAP Rig書き出しでは常に0度です。
 
 ## SphereSfMルート
@@ -211,13 +213,13 @@ RTX 50系GPUでは、GitHubで配布されているSphereSfMのWindowsバイナ�
 2. ルートを `SphereSfM` にします。
 3. `SphereSfM COLMAP実行ファイル` に、SphereSfM配布版またはビルド済みの `colmap.exe` を指定します。
 4. `masks/ を使用` は通常ONにします。Step 3の白=使用、黒=除外マスクをCOLMAPの `image.jpg.png` 命名へ変換して使います。
-5. `実行範囲` を選びます。通常は `SfM + 変換`、SfMだけ作り直す場合は `SfMのみ`、既存の `<scene>/output/spheresfm/sparse/` から変換だけやり直す場合は `既存SfMから変換のみ` を使います。
+5. `実行範囲` を選びます。通常は `SfM + 変換`、SfMだけ作り直す場合は `SfMのみ`、既存の `<scene>/output/spheresfm/sparse/` から変換だけやり直す場合は `既存SfMから変換のみ` を使います。既存sparseを明示したい場合は `Cubemap` タブ上部の `SfM入力` で選びます。
 6. `Matcher` は動画フレームなら `Sequential` から始めます。POSファイルがある場合だけ `Spatial` を使います。
 7. `SfM品質` はまず `標準`、試行や大量フレームでは `軽量`、登録が弱い場合は `クオリティ` を試します。
 8. `Cubemap` タブで `出力形状` を選びます。
 9. 実行します。
 
-`SfMのみ` は、`<scene>/output/spheresfm/sparse/` のSfM結果だけを作ります。3DGSアプリへ渡すデータセットはまだ作られません。`既存SfMから変換のみ` は、この既存sparse結果を再利用して、3DGUT/キューブマップの出力だけを作り直すときに使います。
+`SfMのみ` は、`<scene>/output/spheresfm/sparse/` のSfM結果だけを作ります。3DGSアプリへ渡すデータセットはまだ作られません。`既存SfMから変換のみ` は、`SfM入力` で選んだ既存sparse結果を再利用して、3DGUT/キューブマップの出力だけを作り直すときに使います。
 
 SphereSfM実行の開始時に、GUIは元画像を1枚だけ `<scene>/output/spheresfm/preflight/` へコピーし、フルのdatabaseを作る前に小さなGPU SIFT確認を自動実行します。選択したバイナリが現在のGPUでCUDA SIFTを実行できない場合はそこで停止し、ログへのリンクと原因の候補を表示します。
 
@@ -253,4 +255,4 @@ Step 4では `<scene>/output/` を、他PCへコピーしたり3DGSアプリへ�
 - キューブマップデータをLichtFeldでトレーニングするときは、基本的にGUTもUndistortも不要です。
 - `3DGUT (LichtFeld)` でトレーニングするときは、LichtFeld側でGUTを有効にします。
 - スティッチが目立たない素材では、スティッチマスクはOFFまたは細めから試します。Yaw 45°は画素を捨てない対策なので、通常は維持して構いません。
-- Metashapeルートで `点群PLY` が必要なプロファイルなのに見つからない場合は、実行前にエラーで止まります。
+- Metashapeルートで `点群PLY` が必要なプロファイルなのに見つからない、または自動候補が未承認の場合は、実行前にエラーで止まります。
