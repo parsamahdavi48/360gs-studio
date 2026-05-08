@@ -370,12 +370,11 @@ class CubemapStep(BaseStepWidget):
         self._syncing_output_shape_controls = False
         self._syncing_user_preferences = False
         self._syncing_project_settings = False
-        self._syncing_spheresfm_scope_from_intent = False
         self._user_preferences_enabled = False
         self._export_method_value = _METHOD_METASHAPE
         self._conversion_intent = True
-        self._spheresfm_sfm_intent_override: bool | None = None
-        self._spheresfm_conversion_intent_override: bool | None = None
+        self._spheresfm_sfm_intent = True
+        self._spheresfm_conversion_intent = True
         self._saved_projected_export_targets: tuple[bool, bool] | None = None
         self._input_image_count = 0
         self._spheresfm_phase_logs: dict[str, Path] = {}
@@ -568,19 +567,6 @@ class CubemapStep(BaseStepWidget):
         self.spheresfm_use_masks_cb.setToolTip(i18n.tip("SPHERESFM_USE_MASKS"))
         self.spheresfm_use_masks_cb.setChecked(True)
         spheresfm_form.addRow("", self.spheresfm_use_masks_cb)
-
-        self.spheresfm_run_scope_combo = QComboBox()
-        self.spheresfm_run_scope_combo.setToolTip(i18n.tip("SPHERESFM_RUN_SCOPE"))
-        self.spheresfm_run_scope_combo.addItem(i18n.t("SPHERESFM_RUN_FULL"), _SPHERESFM_RUN_FULL)
-        self.spheresfm_run_scope_combo.addItem(i18n.t("SPHERESFM_RUN_SFM_ONLY"), _SPHERESFM_RUN_SFM_ONLY)
-        self.spheresfm_run_scope_combo.addItem(i18n.t("SPHERESFM_RUN_CONVERT_ONLY"), _SPHERESFM_RUN_CONVERT_ONLY)
-        self.spheresfm_run_scope_combo.currentIndexChanged.connect(self._on_spheresfm_run_scope_changed)
-        add_tooltip_row(
-            spheresfm_form,
-            i18n.t("SPHERESFM_RUN_SCOPE"),
-            self.spheresfm_run_scope_combo,
-            i18n.tip("SPHERESFM_RUN_SCOPE"),
-        )
 
         self.spheresfm_matcher_combo = QComboBox()
         self.spheresfm_matcher_combo.setToolTip(i18n.tip("SPHERESFM_MATCHER"))
@@ -1147,19 +1133,8 @@ class CubemapStep(BaseStepWidget):
         self.primary_action_state_changed.emit()
 
     def _set_spheresfm_stage_intents(self, *, run_sfm: bool, run_conversion: bool) -> None:
-        self._spheresfm_sfm_intent_override = bool(run_sfm)
-        self._spheresfm_conversion_intent_override = bool(run_conversion)
-        if run_sfm and run_conversion:
-            scope = _SPHERESFM_RUN_FULL
-        elif run_sfm:
-            scope = _SPHERESFM_RUN_SFM_ONLY
-        else:
-            scope = _SPHERESFM_RUN_CONVERT_ONLY
-        self._syncing_spheresfm_scope_from_intent = True
-        try:
-            self._set_combo_data(self.spheresfm_run_scope_combo, scope)
-        finally:
-            self._syncing_spheresfm_scope_from_intent = False
+        self._spheresfm_sfm_intent = bool(run_sfm)
+        self._spheresfm_conversion_intent = bool(run_conversion)
 
     def pipeline_nav_items(self) -> list[dict[str, object]]:
         items: list[tuple[str, str, tuple[str, str, str]]] = [
@@ -2232,10 +2207,13 @@ class CubemapStep(BaseStepWidget):
                 self.spheresfm_quality_combo,
                 _normalize_spheresfm_quality_preset(str(spheresfm.get("quality_preset", "")).strip()),
             )
-            self._set_combo_data(
-                self.spheresfm_run_scope_combo,
-                self._normalize_spheresfm_run_scope(str(spheresfm.get("run_scope", "")).strip()),
-            )
+            run_scope = str(spheresfm.get("run_scope", "")).strip()
+            if run_scope:
+                run_scope = self._normalize_spheresfm_run_scope(run_scope)
+                self._set_spheresfm_stage_intents(
+                    run_sfm=run_scope != _SPHERESFM_RUN_CONVERT_ONLY,
+                    run_conversion=run_scope != _SPHERESFM_RUN_SFM_ONLY,
+                )
             pose = self._settings_path_text(scene, spheresfm.get("pose_path"), require_file=True)
             if pose:
                 self.spheresfm_pose_browse.set_text(pose)
@@ -2422,7 +2400,6 @@ class CubemapStep(BaseStepWidget):
         self.spheresfm_exec_browse.path_changed.connect(lambda _path: self._save_user_preferences())
         self.spheresfm_matcher_combo.currentIndexChanged.connect(lambda _idx: self._save_user_preferences())
         self.spheresfm_quality_combo.currentIndexChanged.connect(lambda _idx: self._save_user_preferences())
-        self.spheresfm_run_scope_combo.currentIndexChanged.connect(lambda _idx: self._save_user_preferences())
         self.spheresfm_output_shape_combo.currentIndexChanged.connect(lambda _idx: self._save_user_preferences())
         self.spheresfm_profile_combo.currentIndexChanged.connect(lambda _idx: self._save_user_preferences())
         self.spheresfm_axis_transform_combo.currentIndexChanged.connect(lambda _idx: self._save_user_preferences())
@@ -2450,7 +2427,6 @@ class CubemapStep(BaseStepWidget):
                 self._set_combo_data(self.colmap_mapper_combo, mapper)
             spheresfm_matcher = str(settings.get("spheresfm_matcher", "")).strip()
             spheresfm_quality = str(settings.get("spheresfm_quality_preset", "")).strip()
-            spheresfm_run_scope = str(settings.get("spheresfm_run_scope", "")).strip()
             spheresfm_output_shape = str(settings.get("spheresfm_output_shape", "")).strip()
             spheresfm_profile = str(settings.get("spheresfm_profile", "")).strip()
             spheresfm_axis = str(settings.get("spheresfm_axis_transform", "")).strip()
@@ -2461,8 +2437,6 @@ class CubemapStep(BaseStepWidget):
                     self.spheresfm_quality_combo,
                     _normalize_spheresfm_quality_preset(spheresfm_quality),
                 )
-            if spheresfm_run_scope:
-                self._set_combo_data(self.spheresfm_run_scope_combo, self._normalize_spheresfm_run_scope(spheresfm_run_scope))
             if spheresfm_output_shape:
                 self._set_combo_data(self.spheresfm_output_shape_combo, spheresfm_output_shape)
             if spheresfm_profile:
@@ -2497,7 +2471,6 @@ class CubemapStep(BaseStepWidget):
                 "spheresfm_executable": self.spheresfm_exec_browse.text(),
                 "spheresfm_matcher": self.spheresfm_matcher_combo.currentData() or _COLMAP_MATCHER_SEQUENTIAL,
                 "spheresfm_quality_preset": self._spheresfm_quality_preset(),
-                "spheresfm_run_scope": self._spheresfm_run_scope(),
                 "spheresfm_output_shape": self.spheresfm_output_shape_combo.currentData() or _OUTPUT_SHAPE_PROJECTED,
                 "spheresfm_profile": self.spheresfm_profile_combo.currentData() or _PROFILE_LICHTFELD,
                 "spheresfm_axis_transform": self.spheresfm_axis_transform_combo.currentData() or _AXIS_NONE,
@@ -3219,16 +3192,12 @@ class CubemapStep(BaseStepWidget):
     def _spheresfm_runs_conversion(self) -> bool:
         if not self._is_spheresfm_method():
             return False
-        if self._spheresfm_conversion_intent_override is not None:
-            return self._spheresfm_conversion_intent_override
-        return self._spheresfm_run_scope() != _SPHERESFM_RUN_SFM_ONLY
+        return self._spheresfm_conversion_intent
 
     def _spheresfm_runs_sfm(self) -> bool:
         if not self._is_spheresfm_method():
             return False
-        if self._spheresfm_sfm_intent_override is not None:
-            return self._spheresfm_sfm_intent_override
-        return self._spheresfm_run_scope() != _SPHERESFM_RUN_CONVERT_ONLY
+        return self._spheresfm_sfm_intent
 
     @staticmethod
     def _normalize_spheresfm_run_scope(value: str) -> str:
@@ -3302,16 +3271,6 @@ class CubemapStep(BaseStepWidget):
             and self.settings_tabs.isTabVisible(index)
             and self.settings_tabs.isTabEnabled(index)
         )
-
-    def _on_spheresfm_run_scope_changed(self, *_args) -> None:
-        if not self._syncing_spheresfm_scope_from_intent:
-            self._spheresfm_sfm_intent_override = None
-            self._spheresfm_conversion_intent_override = None
-        self._sync_output_shape_controls()
-        self._sync_settings_tabs()
-        self._update_training_paths()
-        self._update_output_count()
-        self.primary_action_state_changed.emit()
 
     def _update_path_labels(self) -> None:
         if not self.scene_dir:
@@ -5778,7 +5737,11 @@ class CubemapStep(BaseStepWidget):
         return _normalize_spheresfm_quality_preset(str(self.spheresfm_quality_combo.currentData() or ""))
 
     def _spheresfm_run_scope(self) -> str:
-        return self._normalize_spheresfm_run_scope(str(self.spheresfm_run_scope_combo.currentData() or ""))
+        if self._spheresfm_sfm_intent and self._spheresfm_conversion_intent:
+            return _SPHERESFM_RUN_FULL
+        if self._spheresfm_sfm_intent:
+            return _SPHERESFM_RUN_SFM_ONLY
+        return _SPHERESFM_RUN_CONVERT_ONLY
 
     def _validate_spheresfm_export(self) -> None:
         self._validate_image_only_export()

@@ -25,7 +25,7 @@ SfM, or Structure from Motion, estimates camera positions and a sparse point clo
 | Use Metashape SfM results in Postshot / Brush / LichtFeld | `Metashape` | `Output Preset`, `Output Shape`, `Camera XML`, `Point Cloud PLY` |
 | Create direct LichtFeld 3DGUT data | `Metashape` | `Output Preset: LichtFeld Studio`, `Output Shape`, `Point Cloud PLY` |
 | Skip Metashape and continue from extracted 360° images to COLMAP/GLOMAP | `COLMAP` | `COLMAP Run Settings`, `Cubemap` |
-| Skip Metashape and run spherical SfM directly on extracted equirectangular images | `SphereSfM` | `SphereSfM COLMAP Executable`, `Run Scope`, `Matcher`, `SfM Quality`, `Output Shape` |
+| Skip Metashape and run spherical SfM directly on extracted equirectangular images | `SphereSfM` | `SphereSfM COLMAP Executable`, `SfM Input`, `Matcher`, `SfM Quality`, `Output Shape` |
 | Rebuild only images, only masks, or metadata for an existing export | Same route as before | `Cubemap`, `Image Size` |
 
 `Scene Directory` is the scene folder used by Steps 1-3. It usually contains `images/` and `masks/`. In the Metashape route, Step 4 combines that scene folder with the XML/PLY exported from Metashape. In the SphereSfM route, Step 4 runs SfM and conversion from these `images/` and `masks/`.
@@ -179,7 +179,7 @@ When `Train` is on, Step 4 checks that the selected training mode matches the da
 
 For Postshot, the main controls cover the project file, model `Profile`, automatic or fixed `kSteps`, maximum image size, optional mask import, image selection, and `Camera Poses`. `Camera Poses` defaults to `Import`, so the CLI receives the generated images, `transforms.json`, and the raw Metashape PLY when available; switch to `Estimate` only when Postshot should estimate poses and use `Pose Quality`. Postshot mask wording is polarity-driven in this GUI: use `Exclude black / use white (background)` for the app's normal white=usable, black=excluded masks, and `Exclude white / use black (occluders)` only when white marks temporary occluders to ignore. Less common GPU, profile-specific model limits, anti-aliasing, sky/training-context flags, Crop/ROI boxes, and optional PLY/SPZ export are grouped under `Postshot Advanced Parameters`.
 
-SphereSfM `SfM Only` does not create a training dataset, so it cannot be combined with automatic training. To continue into training, use `SfM + Convert`, or use `Convert Existing SfM` after a sparse model already exists.
+SphereSfM with `SfM` on and `Cube` off does not create a training dataset, so it cannot be combined with automatic training. To continue into training, keep `Cube` on too. To start from an existing sparse result, use `SfM` off and `Cube` on.
 
 ## COLMAP Route
 
@@ -213,13 +213,13 @@ On RTX 50-series GPUs, the Windows binary distributed on GitHub can stop during 
 2. Set the route to `SphereSfM`.
 3. Set `SphereSfM COLMAP Executable` to the `colmap.exe` from a SphereSfM release or build.
 4. Usually keep `Use masks/` enabled. Step 3 masks use white=keep and black=exclude; the GUI converts them to COLMAP's `image.jpg.png` naming.
-5. Set `Run Scope`. `SfM + Convert` is the normal route, `SfM Only` rebuilds just the sparse model, and `Convert Existing SfM` reuses an existing `<scene>/output/spheresfm/sparse/` model. To choose a specific existing sparse model, use `SfM Input` on the `SfM` tab.
+5. Use the left sub-stage controls to choose what this run should execute. Normally keep both `SfM` and `Cube` on; turn `Cube` off to rebuild only SfM, or turn `SfM` off to reconvert from an existing sparse model. To choose a specific existing sparse model, use `SfM Input` on the `SfM` tab.
 6. Use `Sequential` matcher for video frames. Use `Spatial` only when you provide a POS file.
 7. Start with `SfM Quality: Standard`; use `Fast` for trials or large frame sets and `Quality` when registration coverage is weak.
 8. In the `Cubemap` tab, choose `Output Shape`.
 9. Run the export.
 
-`SfM Only` creates only the SfM result under `<scene>/output/spheresfm/sparse/`. It does not yet create a dataset for a 3DGS app. `Convert Existing SfM` reuses the sparse result selected in `SfM Input` when you only want to rebuild the 3DGUT/cubemap output.
+`SfM` on / `Cube` off creates only the SfM result under `<scene>/output/spheresfm/sparse/`. It does not yet create a dataset for a 3DGS app. `SfM` off / `Cube` on reuses the sparse result selected in `SfM Input` when you only want to rebuild the 3DGUT/cubemap output.
 
 At the start of a SphereSfM run, the GUI automatically copies one source image into `<scene>/output/spheresfm/preflight/` and runs a small GPU SIFT check before the full database is populated. If the selected binary cannot run CUDA SIFT on the current GPU, the run stops there and shows the phase log and likely cause.
 

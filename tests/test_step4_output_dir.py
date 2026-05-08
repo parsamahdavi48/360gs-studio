@@ -1231,7 +1231,7 @@ def test_spheresfm_method_can_queue_sfm_only(tmp_path: Path) -> None:
     step = CubemapStep(Path.cwd())
     step.set_scene_dir(str(tmp_path))
     step._set_export_method("spheresfm")
-    step._set_combo_data(step.spheresfm_run_scope_combo, "sfm_only")
+    step.set_pipeline_stage_intent("conversion", False)
     step.spheresfm_exec_browse.set_text(str(fake_colmap))
 
     commands = step.build_commands()
@@ -1256,7 +1256,7 @@ def test_spheresfm_convert_only_requires_existing_sparse(tmp_path: Path) -> None
     step = CubemapStep(Path.cwd())
     step.set_scene_dir(str(tmp_path))
     step._set_export_method("spheresfm")
-    step._set_combo_data(step.spheresfm_run_scope_combo, "convert_only")
+    step.set_pipeline_stage_intent("sfm", False)
 
     with pytest.raises(ValueError, match="sparse"):
         step.build_commands()
@@ -1272,7 +1272,7 @@ def test_spheresfm_convert_only_queues_3dgut_without_colmap_binary(tmp_path: Pat
     step = CubemapStep(Path.cwd())
     step.set_scene_dir(str(tmp_path))
     step._set_export_method("spheresfm")
-    step._set_combo_data(step.spheresfm_run_scope_combo, "convert_only")
+    step.set_pipeline_stage_intent("sfm", False)
     step._set_combo_data(step.spheresfm_output_shape_combo, "equirect_3dgut")
 
     commands = step.build_commands()
@@ -1382,7 +1382,7 @@ def test_spheresfm_3dgut_convert_only_confirms_output_dataset_targets(tmp_path: 
     step = CubemapStep(Path.cwd())
     step.set_scene_dir(str(tmp_path))
     step._set_export_method("spheresfm")
-    step._set_combo_data(step.spheresfm_run_scope_combo, "convert_only")
+    step.set_pipeline_stage_intent("sfm", False)
     step._set_combo_data(step.spheresfm_output_shape_combo, "equirect_3dgut")
 
     commands = step.build_commands()
@@ -1424,7 +1424,7 @@ def test_spheresfm_convert_only_resets_conversion_outputs_only(tmp_path: Path, m
     step = CubemapStep(Path.cwd())
     step.set_scene_dir(str(tmp_path))
     step._set_export_method("spheresfm")
-    step._set_combo_data(step.spheresfm_run_scope_combo, "convert_only")
+    step.set_pipeline_stage_intent("sfm", False)
 
     commands = step.build_commands()
 
@@ -1488,6 +1488,30 @@ def test_spheresfm_user_preferences_restore_quality_preset(
     step.enable_user_preferences()
 
     assert step.spheresfm_quality_combo.currentData() == "quality"
+
+
+def test_spheresfm_scene_settings_restore_stage_intents(tmp_path: Path) -> None:
+    _app()
+    settings_path = step4_export_settings_path(tmp_path)
+    settings_path.parent.mkdir(parents=True, exist_ok=True)
+    settings_path.write_text(
+        json.dumps(
+            {
+                "settings_version": STEP4_SETTINGS_VERSION,
+                "export_method": "spheresfm",
+                "spheresfm": {"run_scope": "convert_only"},
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    step = CubemapStep(Path.cwd())
+    step.set_scene_dir(str(tmp_path))
+
+    assert step._export_method() == "spheresfm"
+    assert step.pipeline_stage_intent("sfm") is False
+    assert step.pipeline_stage_intent("conversion") is True
+    assert step._spheresfm_run_scope() == "convert_only"
 
 
 def test_step4_scene_settings_ignore_pre_v2_payload(tmp_path: Path) -> None:

@@ -712,8 +712,7 @@ def test_cubemap_labels_share_field_tooltips() -> None:
     assert step.spheresfm_repo_link.openExternalLinks()
     assert step.spheresfm_repo_link.toolTip() == i18n.tip("SPHERESFM_REPOSITORY_LINK")
     assert i18n.t("SPHERESFM_REPOSITORY_LINK") in step.spheresfm_repo_link.text()
-    assert _label(step, i18n.t("SPHERESFM_RUN_SCOPE")).toolTip() == i18n.tip("SPHERESFM_RUN_SCOPE")
-    assert step.spheresfm_run_scope_combo.toolTip() == i18n.tip("SPHERESFM_RUN_SCOPE")
+    assert not hasattr(step, "spheresfm_run_scope_combo")
     axis_label_tips = [child.toolTip() for child in step.findChildren(QLabel) if child.text() == i18n.t("AXIS_TRANSFORM")]
     assert i18n.tip("AXIS_TRANSFORM") in axis_label_tips
     assert i18n.tip("SPHERESFM_AXIS_TRANSFORM") in axis_label_tips

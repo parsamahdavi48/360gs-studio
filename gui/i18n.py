@@ -394,10 +394,6 @@ _JA: dict[str, str] = {
     "SPHERESFM_EXECUTABLE": "SphereSfM COLMAP実行ファイル",
     "SPHERESFM_REPOSITORY_LINK": "SphereSfM GitHub",
     "SPHERESFM_USE_MASKS": "masks/ を使用",
-    "SPHERESFM_RUN_SCOPE": "実行範囲",
-    "SPHERESFM_RUN_FULL": "SfM + 変換",
-    "SPHERESFM_RUN_SFM_ONLY": "SfMのみ",
-    "SPHERESFM_RUN_CONVERT_ONLY": "既存SfMから変換のみ",
     "SPHERESFM_QUALITY_COMPACT": "SfM品質:",
     "SPHERESFM_QUALITY_FAST": "軽量",
     "SPHERESFM_QUALITY_STANDARD": "標準",
@@ -423,7 +419,7 @@ _JA: dict[str, str] = {
     ),
     "SPHERESFM_EXEC_NOT_FOUND": "SphereSfM COLMAP実行ファイルが見つかりません。SphereSfM版の colmap.exe を指定してください: {path}",
     "SPHERESFM_MASKS_NOT_FOUND": "masks/ を使用する設定ですが、マスクフォルダが見つかりません: {path}",
-    "SPHERESFM_CONVERT_ONLY_NO_SPARSE": "SphereSfMのsparseモデルが見つかりません: {path}\n先に「SfMのみ」または「SfM + 変換」を実行してください。",
+    "SPHERESFM_CONVERT_ONLY_NO_SPARSE": "SphereSfMのsparseモデルが見つかりません: {path}\n左サブ工程でSfMをONにして、先にsparseモデルを作成してください。",
     "SPHERESFM_POSE_REQUIRED": "Spatial matcherにはPOSファイルが必要です。",
     "SPHERESFM_POSE_NOT_FOUND": "POSファイルが見つかりません: {path}",
     "SPHERESFM_RTX50_CUDA_ERROR_TITLE": "SphereSfM CUDA互換性エラー",
@@ -461,7 +457,7 @@ _JA: dict[str, str] = {
     "COLMAP_EXEC_NOT_FOUND": "COLMAP実行ファイルが見つかりません。インストール先の colmap.exe を指定してください: {path}",
     "GLOMAP_EXEC_NOT_FOUND": "GLOMAP実行ファイルが見つかりません。GLOMAPを使う場合は glomap.exe を指定してください: {path}",
     "TRAINING_EXEC_NOT_FOUND": "実行ファイルが見つかりません。インストール先の実行ファイルを指定してください: {path}",
-    "TRAINING_REQUIRES_DATASET_OUTPUT": "SfMのみではトレーニング用データが作成されません。トレーニングまで続ける場合は「SfM + 変換」または「既存SfMから変換のみ」を選んでください。",
+    "TRAINING_REQUIRES_DATASET_OUTPUT": "SfMだけではトレーニング用データが作成されません。トレーニングまで続ける場合は左サブ工程でCubeもONにしてください。",
     "TRAINING_DATASET_NEEDS_3DGUT_OUTPUT": "3DGUTでトレーニングするには、Cubemapの出力形状を3DGUTにしてください。",
     "TRAINING_DATASET_NEEDS_PROJECTED_OUTPUT": "通常トレーニングには投影Cubemapデータが必要です。3DGUTで進める場合はTraining側のGUTをONにしてください。",
     "TRAINING_DATASET_EXISTING_NOT_3DGUT": "Trainingは3DGUTですが、既存outputは3DGUT形式ではありません。CubeをONにして3DGUT用データを作成してください。",
@@ -1276,10 +1272,6 @@ _EN: dict[str, str] = {
     "SPHERESFM_EXECUTABLE": "SphereSfM COLMAP Executable",
     "SPHERESFM_REPOSITORY_LINK": "SphereSfM GitHub",
     "SPHERESFM_USE_MASKS": "Use masks/",
-    "SPHERESFM_RUN_SCOPE": "Run Scope",
-    "SPHERESFM_RUN_FULL": "SfM + Convert",
-    "SPHERESFM_RUN_SFM_ONLY": "SfM Only",
-    "SPHERESFM_RUN_CONVERT_ONLY": "Convert Existing SfM",
     "SPHERESFM_QUALITY_COMPACT": "SfM Quality:",
     "SPHERESFM_QUALITY_FAST": "Fast",
     "SPHERESFM_QUALITY_STANDARD": "Standard",
@@ -1305,7 +1297,7 @@ _EN: dict[str, str] = {
     ),
     "SPHERESFM_EXEC_NOT_FOUND": "SphereSfM COLMAP executable was not found. Select SphereSfM's colmap executable: {path}",
     "SPHERESFM_MASKS_NOT_FOUND": "Use masks/ is enabled, but the mask folder was not found: {path}",
-    "SPHERESFM_CONVERT_ONLY_NO_SPARSE": "SphereSfM sparse model was not found: {path}\nRun \"SfM Only\" or \"SfM + Convert\" first.",
+    "SPHERESFM_CONVERT_ONLY_NO_SPARSE": "SphereSfM sparse model was not found: {path}\nTurn on the SfM sub-stage first to create a sparse model.",
     "SPHERESFM_POSE_REQUIRED": "Spatial matcher requires a POS file.",
     "SPHERESFM_POSE_NOT_FOUND": "POS file was not found: {path}",
     "SPHERESFM_RTX50_CUDA_ERROR_TITLE": "SphereSfM CUDA compatibility error",
@@ -1342,7 +1334,7 @@ _EN: dict[str, str] = {
     "COLMAP_EXEC_NOT_FOUND": "COLMAP executable was not found. Select the installed colmap executable: {path}",
     "GLOMAP_EXEC_NOT_FOUND": "GLOMAP executable was not found. Select glomap executable when using GLOMAP: {path}",
     "TRAINING_EXEC_NOT_FOUND": "Training executable was not found. Select the installed training application executable: {path}",
-    "TRAINING_REQUIRES_DATASET_OUTPUT": "SfM Only does not create a training dataset. To start training afterward, choose SfM + Convert or Convert Existing SfM.",
+    "TRAINING_REQUIRES_DATASET_OUTPUT": "SfM alone does not create a training dataset. To continue into training, turn on the Cube sub-stage too.",
     "TRAINING_DATASET_NEEDS_3DGUT_OUTPUT": "3DGUT training needs Cubemap Output Shape set to 3DGUT.",
     "TRAINING_DATASET_NEEDS_PROJECTED_OUTPUT": "Standard training needs projected Cubemap data. Turn on GUT in Training if you want to use 3DGUT.",
     "TRAINING_DATASET_EXISTING_NOT_3DGUT": "Training is set to 3DGUT, but the existing output is not 3DGUT data. Turn on Cube and create 3DGUT data.",
@@ -1939,7 +1931,6 @@ _TIPS_JA: dict[str, str] = {
     "GLOMAP_EXECUTABLE": "GLOMAP mapperを選ぶ場合に使う glomap.exe のパス。COLMAPのGlobal Mapperを使う場合は不要です",
     "SPHERESFM_EXECUTABLE": "SphereSfM版の colmap.exe を指定します。通常のCOLMAPでは、球面画像のSfMに必要な機能がないため使用できません",
     "SPHERESFM_USE_MASKS": "ONにするとStep 3のマスクをSfM時の除外範囲として使います。必要な形式への変換はアプリが自動で行います",
-    "SPHERESFM_RUN_SCOPE": "SfMから変換まで続けるか、SfMだけを作り直すか、既存のSfM結果から変換だけをやり直すかを選びます",
     "SPHERESFM_MATCHER": (
         "Sequentialは高速で動画の連番フレーム向けです。\n"
         "Exhaustiveは全ペアを照合するため精度が出る場合がありますが、枚数が増えると極端に遅くなることがあります。\n"
@@ -2164,7 +2155,6 @@ _TIPS_EN: dict[str, str] = {
     "GLOMAP_EXECUTABLE": "Path to glomap executable when using the legacy GLOMAP mapper. Not needed for COLMAP Global Mapper.",
     "SPHERESFM_EXECUTABLE": "Select SphereSfM's colmap executable. Standard COLMAP cannot be used because it does not include the spherical-image SfM features needed here.",
     "SPHERESFM_USE_MASKS": "When enabled, Step 3 masks are used as excluded areas during SfM. The app automatically converts them to the required format.",
-    "SPHERESFM_RUN_SCOPE": "Choose whether to run SfM and conversion together, rebuild only the SfM result, or rerun conversion from an existing SfM result.",
     "SPHERESFM_MATCHER": (
         "Sequential is fast and suited to ordered video frames.\n"
         "Exhaustive can improve coverage but compares all pairs and can become extremely slow on large sets.\n"

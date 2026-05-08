@@ -25,7 +25,7 @@ SfMは、複数画像の見え方の差からカメラ位置と疎な点群を�
 | MetashapeでSfM済みの結果をPostshot / Brush / LichtFeldへ渡したい | `Metashape` | `出力プリセット`, `出力形状`, `カメラXML`, `点群PLY` |
 | LichtFeldで3DGUT用データを作りたい | `Metashape` | `出力プリセット: LichtFeld Studio`, `出力形状`, `点群PLY` |
 | Metashapeを使わず、抽出済み360°画像からCOLMAP/GLOMAPへ進みたい | `COLMAP` | `COLMAP実行設定`, `Cubemap` |
-| Metashapeを使わず、抽出済みエクイレクタングラー画像を直接SfMしたい | `SphereSfM` | `SphereSfM COLMAP実行ファイル`, `実行範囲`, `Matcher`, `SfM品質`, `出力形状` |
+| Metashapeを使わず、抽出済みエクイレクタングラー画像を直接SfMしたい | `SphereSfM` | `SphereSfM COLMAP実行ファイル`, `SfM入力`, `Matcher`, `SfM品質`, `出力形状` |
 | すでに作った出力の画像やマスクだけ作り直したい | 元のルート | `Cubemap`, `画像サイズ` |
 
 `シーンフォルダ` は、Step 1-3で使っている作業フォルダです。通常は `images/` と `masks/` が入っています。MetashapeルートではMetashapeから書き出したXML/PLYを組み合わせます。SphereSfMルートでは、この `images/` と `masks/` からSfMと変換を実行します。
@@ -179,7 +179,7 @@ LichtFeld Studioでは、本家のトレーニングパネル上部にある `St
 
 Postshotでは、プロジェクトファイル名、モデル `Profile`、自動または固定の `kSteps`、最大画像サイズ、マスク読み込み、画像選択、`Camera Poses` を通常項目として指定できます。`Camera Poses` は既定で `Import` になり、CLIには生成画像、`transforms.json`、利用可能なRAW Metashape PLYを渡します。Postshot側でポーズ推定させる場合だけ `Estimate` に切り替え、`Pose Quality` を使います。Postshotのマスク設定は、このGUIでは用途名より極性を優先して表示します。アプリ標準の白=使用、黒=除外マスクは `黒を除外・白を使用 (background)`、白い領域を一時的な遮蔽物として無視する場合だけ `白を除外・黒を使用 (occluders)` を使います。GPU、プロファイル依存のモデル上限、Anti-Aliasing、Sky Model、継続学習データ、Crop/ROI、PLY/SPZ書き出しは `Postshot詳細パラメーター` にまとめています。
 
-SphereSfMの `SfMのみ` はトレーニング用データセットを作らないため、自動実行とは併用できません。トレーニングまで続けたい場合は `SfM + 変換`、または既存のSfM結果に対して `既存SfMから変換のみ` を使います。
+SphereSfMで `SfM` ON / `Cube` OFF の場合はトレーニング用データセットを作らないため、自動実行とは併用できません。トレーニングまで続けたい場合は `Cube` もONにします。既存のSfM結果から始める場合は `SfM` OFF / `Cube` ON にします。
 
 ## COLMAPルート
 
@@ -213,13 +213,13 @@ RTX 50系GPUでは、GitHubで配布されているSphereSfMのWindowsバイナ�
 2. ルートを `SphereSfM` にします。
 3. `SphereSfM COLMAP実行ファイル` に、SphereSfM配布版またはビルド済みの `colmap.exe` を指定します。
 4. `masks/ を使用` は通常ONにします。Step 3の白=使用、黒=除外マスクをCOLMAPの `image.jpg.png` 命名へ変換して使います。
-5. `実行範囲` を選びます。通常は `SfM + 変換`、SfMだけ作り直す場合は `SfMのみ`、既存の `<scene>/output/spheresfm/sparse/` から変換だけやり直す場合は `既存SfMから変換のみ` を使います。既存sparseを明示したい場合は `SfM` タブの `SfM入力` で選びます。
+5. 左サブ工程で今回実行する範囲を選びます。通常は `SfM` と `Cube` をON、SfMだけ作り直す場合は `Cube` をOFF、既存sparseから変換だけやり直す場合は `SfM` をOFFにします。既存sparseを明示したい場合は `SfM` タブの `SfM入力` で選びます。
 6. `Matcher` は動画フレームなら `Sequential` から始めます。POSファイルがある場合だけ `Spatial` を使います。
 7. `SfM品質` はまず `標準`、試行や大量フレームでは `軽量`、登録が弱い場合は `クオリティ` を試します。
 8. `Cubemap` タブで `出力形状` を選びます。
 9. 実行します。
 
-`SfMのみ` は、`<scene>/output/spheresfm/sparse/` のSfM結果だけを作ります。3DGSアプリへ渡すデータセットはまだ作られません。`既存SfMから変換のみ` は、`SfM入力` で選んだ既存sparse結果を再利用して、3DGUT/キューブマップの出力だけを作り直すときに使います。
+`SfM` ON / `Cube` OFF は、`<scene>/output/spheresfm/sparse/` のSfM結果だけを作ります。3DGSアプリへ渡すデータセットはまだ作られません。`SfM` OFF / `Cube` ON は、`SfM入力` で選んだ既存sparse結果を再利用して、3DGUT/キューブマップの出力だけを作り直すときに使います。
 
 SphereSfM実行の開始時に、GUIは元画像を1枚だけ `<scene>/output/spheresfm/preflight/` へコピーし、フルのdatabaseを作る前に小さなGPU SIFT確認を自動実行します。選択したバイナリが現在のGPUでCUDA SIFTを実行できない場合はそこで停止し、ログへのリンクと原因の候補を表示します。
 
