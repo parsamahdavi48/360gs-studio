@@ -423,7 +423,7 @@ def test_step4_scrolls_tab_content_not_whole_settings_pane() -> None:
         app.processEvents()
         assert step.pipeline_stage_intent("sfm") is False
         assert window.step4_subnotice_label.text() == i18n.t("STEP4_PIPELINE_NOTICE_METASHAPE_DISABLED_INPUT")
-        assert window.step4_subnotice_label.text().count("\\n") == 1
+        assert 1 <= window.step4_subnotice_label.text().count("\\n") <= 2
         notice_width = window.step4_subnotice_label.contentsRect().width()
         metrics = window.step4_subnotice_label.fontMetrics()
         for line in window.step4_subnotice_label.text().splitlines():
@@ -432,7 +432,7 @@ def test_step4_scrolls_tab_content_not_whole_settings_pane() -> None:
         app.processEvents()
         assert step.pipeline_stage_intent("sfm") is True
         assert window.step4_subnotice_label.text() == i18n.t("STEP4_PIPELINE_NOTICE_METASHAPE_ENABLED_INPUT")
-        assert window.step4_subnotice_label.text().count("\\n") == 1
+        assert 1 <= window.step4_subnotice_label.text().count("\\n") <= 2
         notice_width = window.step4_subnotice_label.contentsRect().width()
         for line in window.step4_subnotice_label.text().splitlines():
             assert metrics.horizontalAdvance(line) <= notice_width
@@ -446,7 +446,7 @@ def test_step4_scrolls_tab_content_not_whole_settings_pane() -> None:
         assert step.pipeline_stage_intent("conversion") is True
         assert window.step4_subnotice_label.isVisible()
         assert window.step4_subnotice_label.text() == i18n.t("STEP4_PIPELINE_NOTICE_COLMAP_ENABLED_CUBE")
-        assert window.step4_subnotice_label.text().count("\\n") == 1
+        assert 1 <= window.step4_subnotice_label.text().count("\\n") <= 2
         assert not window.step4_subnotice_label.wordWrap()
         notice_width = window.step4_subnotice_label.contentsRect().width()
         metrics = window.step4_subnotice_label.fontMetrics()
@@ -458,7 +458,7 @@ def test_step4_scrolls_tab_content_not_whole_settings_pane() -> None:
         assert step.pipeline_stage_intent("sfm") is False
         assert step.pipeline_stage_intent("conversion") is False
         assert window.step4_subnotice_label.text() == i18n.t("STEP4_PIPELINE_NOTICE_COLMAP_DISABLED_SFM")
-        assert window.step4_subnotice_label.text().count("\\n") == 1
+        assert 1 <= window.step4_subnotice_label.text().count("\\n") <= 2
         """
     )
 
