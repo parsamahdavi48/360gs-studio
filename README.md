@@ -165,7 +165,7 @@ Detailed GUI docs:
 
 ## Mask Preprocessing for Normal Images
 
-For normal video frames or still-camera image sequences, place them in `images/` or use the `+` icon on the Step 3 `Images Folder` row to copy them into the scene. Then choose `Image Type: Normal`. This keeps model-based masking and overexposure masking available while disabling stitch seam masking and 360° pole projection assist.
+For normal video frames or still-camera image sequences, place them in `images/` or use the `+` icon on the Step 3 `Images Folder` row to copy them into the scene. Step 3 detects the image type from Step 1 records, external image registration, or image headers. Normal images keep model-based masking and overexposure masking available while disabling stitch seam masking and 360° pole projection assist.
 
 Use this when you want to exclude people, vehicles, blown-out regions, or similar areas before importing images into SfM software.
 
