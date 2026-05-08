@@ -607,8 +607,7 @@ def test_mask_numeric_labels_share_field_tooltips() -> None:
     step = MaskStep(Path.cwd())
 
     assert step.projection_label.toolTip() == i18n.tip("MASK_IMAGE_TYPE")
-    assert step.projection_buttons["equirect"].toolTip() == i18n.tip("MASK_IMAGE_TYPE_EQUIRECT")
-    assert step.projection_buttons["normal"].toolTip() == i18n.tip("MASK_IMAGE_TYPE_NORMAL")
+    assert not hasattr(step, "projection_buttons")
     assert step.person_backend_label.toolTip() == i18n.tip("PERSON_MODEL")
     assert step.person_backend_combo.toolTip() == i18n.tip("PERSON_MODEL")
     assert step.yolo_level_label.toolTip() == i18n.tip("MASK_QUALITY")

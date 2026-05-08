@@ -142,14 +142,18 @@ _JA: dict[str, str] = {
     "FINALIZE_BUTTON": "選別を確定 (除外分を削除)",
     "FINALIZE_BUTTON_HINT": (
         "除外にしたフレームを images/ から削除します。採用フレームのファイル名は維持します。\n"
-        "不可逆。バックアップが必要なら左のチェックボックスを ON に。"
+        "除外画像とCSVは _stechdrive/review/backups/ に退避します。"
     ),
-    "BACKUP_BEFORE_FINALIZE": "適用前に _stechdrive/frames/backups/images/ にバックアップ",
-    "BACKUP_BEFORE_FINALIZE_HINT": (
-        "ON: 適用前に images/ を _stechdrive/frames/backups/images/ にフルコピー（既存バックアップは上書き）。\n"
-        "OFF: バックアップなし（容量節約・復元不可）。"
+    "FINALIZE_CONFIRM_MESSAGE": (
+        "除外にしたフレームを images/ から削除し、採用フレームのファイル名は維持します。\n\n"
+        "削除される画像とCSVは _stechdrive/review/backups/ に退避します。\n\n"
+        "適用してよいですか？"
     ),
     "ACTION_FINALIZE_REVIEW": "適用",
+    "REVIEW_SOURCE_FILTER": "表示範囲",
+    "REVIEW_SOURCE_FILTER_ALL": "すべて ({n})",
+    "REVIEW_SOURCE_FILTER_ITEM": "{name} ({n})",
+    "REVIEW_SOURCE_FILTER_UNASSIGNED": "未分類",
     "REVIEW_EMBED_NO_SCENE": "ヘッダーのシーンフォルダに抽出済みフォルダを指定すると、_stechdrive/frames/selected_frames.csv を自動で読み込みます。",
     "REVIEW_EMBED_EMPTY": "Step 1 の抽出完了後、または抽出済みのシーンフォルダを指定すると、ここにフレーム確認ビューが自動表示されます。",
     "REVIEW_EMBED_MISSING": "CSVが見つかりません:\n{path}",
@@ -258,6 +262,10 @@ _JA: dict[str, str] = {
     "MASK_IMAGE_TYPE": "画像タイプ:",
     "MASK_IMAGE_TYPE_EQUIRECT": "360°",
     "MASK_IMAGE_TYPE_NORMAL": "通常",
+    "MASK_IMAGE_TYPE_STATUS": "画像タイプ: {image_type} ({source})",
+    "MASK_IMAGE_TYPE_SOURCE_PROJECT": "プロジェクト",
+    "MASK_IMAGE_TYPE_SOURCE_HEADER": "画像ヘッダー推定",
+    "MASK_IMAGE_TYPE_SOURCE_DEFAULT": "既定",
     "MASK_TASK_YOLO": "人物",
     "MASK_TASK_STITCH": "スティッチ",
     "MASK_TASK_OVEREXPOSURE": "白飛び",
@@ -284,6 +292,7 @@ _JA: dict[str, str] = {
     "MASK_READY_SCENE_NOT_FOUND": "シーンフォルダが見つかりません。",
     "MASK_READY_NO_IMAGES_DIR": "シーンフォルダ内に images/ がありません。Step 1 で抽出するか、外部画像を images/ に配置してください。",
     "MASK_READY_NO_IMAGES": "images/ に対象画像がありません。Step 1 で抽出するか、外部画像を images/ に配置してください。",
+    "MASK_READY_MIXED_IMAGE_TYPES": "360°画像と通常画像が混在しています。画像タイプごとにシーンまたはフォルダを分けてください。",
     "MASK_READY_NO_CSV": "_stechdrive/frames/selected_frames.csv が見つかりません。Step 1 でフレーム抽出を実行してください。",
     "EXTERNAL_IMAGES_SECTION": "外部画像",
     "EXTERNAL_IMAGES_HINT": "通常動画や一眼の連番画像を使う場合は、画像フォルダから追加します。追加先は現在のシーンフォルダの images/ です。",
@@ -975,14 +984,18 @@ _EN: dict[str, str] = {
     "FINALIZE_BUTTON": "Finalize (Delete Drops)",
     "FINALIZE_BUTTON_HINT": (
         "Delete dropped frames from images/ and preserve kept filenames.\n"
-        "Irreversible. Enable the backup checkbox if you want a safety copy."
+        "Dropped images and CSV copies are saved under _stechdrive/review/backups/."
     ),
-    "BACKUP_BEFORE_FINALIZE": "Back up to _stechdrive/frames/backups/images/ before Apply",
-    "BACKUP_BEFORE_FINALIZE_HINT": (
-        "ON: snapshot images/ to _stechdrive/frames/backups/images/ before Apply (existing backup is replaced).\n"
-        "OFF: no backup (saves disk; cannot be undone)."
+    "FINALIZE_CONFIRM_MESSAGE": (
+        "Dropped frames will be removed from images/ and kept filenames will be preserved.\n\n"
+        "Removed images and CSV copies are saved under _stechdrive/review/backups/.\n\n"
+        "Apply these changes?"
     ),
     "ACTION_FINALIZE_REVIEW": "Apply",
+    "REVIEW_SOURCE_FILTER": "Preview Range",
+    "REVIEW_SOURCE_FILTER_ALL": "All ({n})",
+    "REVIEW_SOURCE_FILTER_ITEM": "{name} ({n})",
+    "REVIEW_SOURCE_FILTER_UNASSIGNED": "Unassigned",
     "REVIEW_EMBED_NO_SCENE": "Set an extracted scene folder in the header to automatically load _stechdrive/frames/selected_frames.csv.",
     "REVIEW_EMBED_EMPTY": "After Step 1 extraction completes, or after you select an extracted scene folder, the frame review view appears here automatically.",
     "REVIEW_EMBED_MISSING": "CSV not found:\n{path}",
@@ -1091,6 +1104,10 @@ _EN: dict[str, str] = {
     "MASK_IMAGE_TYPE": "Image Type:",
     "MASK_IMAGE_TYPE_EQUIRECT": "360°",
     "MASK_IMAGE_TYPE_NORMAL": "Normal",
+    "MASK_IMAGE_TYPE_STATUS": "Image Type: {image_type} ({source})",
+    "MASK_IMAGE_TYPE_SOURCE_PROJECT": "project",
+    "MASK_IMAGE_TYPE_SOURCE_HEADER": "image headers",
+    "MASK_IMAGE_TYPE_SOURCE_DEFAULT": "default",
     "MASK_TASK_YOLO": "Person",
     "MASK_TASK_STITCH": "Stitch",
     "MASK_TASK_OVEREXPOSURE": "Overexp",
@@ -1117,6 +1134,7 @@ _EN: dict[str, str] = {
     "MASK_READY_SCENE_NOT_FOUND": "Scene folder was not found.",
     "MASK_READY_NO_IMAGES_DIR": "images/ was not found in the scene folder. Run Step 1 extraction or place external images in images/.",
     "MASK_READY_NO_IMAGES": "No supported images were found in images/. Run Step 1 extraction or place external images in images/.",
+    "MASK_READY_MIXED_IMAGE_TYPES": "360° and normal images are mixed. Split them by image type before generating masks.",
     "MASK_READY_NO_CSV": "_stechdrive/frames/selected_frames.csv was not found. Run Step 1 frame extraction first.",
     "EXTERNAL_IMAGES_SECTION": "External Images",
     "EXTERNAL_IMAGES_HINT": "For normal video frames or still-camera image sequences, add an image folder here. Images are copied to images/ in the current scene folder.",
@@ -1731,11 +1749,13 @@ _TIPS_JA: dict[str, str] = {
     "CUSTOM_MASK_FILE": "全フレームに重ねるPNGカスタムマスクです。白=使用、黒=除外として合成します。画像サイズが合うフレームだけに適用されます",
     "CUSTOM_MASK_BROWSE": "PNGカスタムマスクを選択します。選択するとカスタム処理もONになります",
     "CUSTOM_MASK_CLEAR": "選択中のカスタムマスクを解除し、カスタム処理をOFFにします",
-    "MASK_IMAGE_TYPE": "処理する画像がエクイレクタングラー360°画像か、通常画像かで選びます。混在する場合はフォルダを分けて処理してください",
-    "MASK_IMAGE_TYPE_EQUIRECT": "エクイレクタングラー形式の360°画像を処理するときに選びます",
-    "MASK_IMAGE_TYPE_NORMAL": "通常の動画フレームや静止画を処理するときに選びます",
+    "REVIEW_SOURCE_FILTER": "複数動画から抽出した場合に、プレビュー対象を動画ごとに絞り込みます。採用/除外の保存先CSVは同じです",
+    "MASK_IMAGE_TYPE": "Step 1または外部画像登録の情報から自動判定されます。混在する場合はフォルダを分けて処理してください",
+    "MASK_IMAGE_TYPE_EQUIRECT": "エクイレクタングラー形式の360°画像として処理されます",
+    "MASK_IMAGE_TYPE_NORMAL": "通常の動画フレームや静止画として処理されます",
+    "PREVIEW_PROJECTION_DISABLED_NORMAL": "通常画像ではFOV 90°パース表示は使いません",
     "EXTERNAL_IMAGES_SECTION": "画像フォルダ行の操作ボタンで、別フォルダから画像を追加します",
-    "EXTERNAL_IMAGES_ADD": "別の画像フォルダから対応画像をこのシーンの images/ にコピーします。画像タイプは「360°」または「通常」から選びます",
+    "EXTERNAL_IMAGES_ADD": "別の画像フォルダから対応画像をこのシーンの images/ にコピーし、画像ヘッダーから画像タイプをプロジェクトに登録します",
     "RUN_ALL": "YOLO人物検出 → スティッチマスク → 白飛びマスクの全工程を順番に実行",
     "RUN_YOLO_STITCH": "YOLO人物検出 → スティッチマスクの2工程を実行 (白飛びは含まない)",
     "PERSON_MODEL": "人物だけを高速に処理するならYOLO/SAM2.1。人物や空を高精度に処理するならSAM3.1。Mask2FormerはSAM3.1なしで空マスクを試す場合の選択肢です",
@@ -1947,11 +1967,13 @@ _TIPS_EN: dict[str, str] = {
     "CUSTOM_MASK_FILE": "PNG custom mask merged across frames. White means keep and black means exclude. It applies only to frames with matching image dimensions",
     "CUSTOM_MASK_BROWSE": "Select a PNG custom mask. Selecting a file also enables custom processing",
     "CUSTOM_MASK_CLEAR": "Clear the selected custom mask and disable custom processing",
-    "MASK_IMAGE_TYPE": "Choose whether the images you are processing are equirectangular 360° images or normal images. Split mixed folders and process each type separately",
-    "MASK_IMAGE_TYPE_EQUIRECT": "Choose this when processing equirectangular 360° images",
-    "MASK_IMAGE_TYPE_NORMAL": "Choose this when processing normal video frames or still images",
+    "REVIEW_SOURCE_FILTER": "When frames were extracted from multiple videos, limit the preview range by source video. Keep/drop changes still write to the same CSV",
+    "MASK_IMAGE_TYPE": "Detected from Step 1 or external image registration. Split mixed image types before processing",
+    "MASK_IMAGE_TYPE_EQUIRECT": "Processed as equirectangular 360° images",
+    "MASK_IMAGE_TYPE_NORMAL": "Processed as normal video frames or still images",
+    "PREVIEW_PROJECTION_DISABLED_NORMAL": "FOV 90° perspective preview is not used for normal images",
     "EXTERNAL_IMAGES_SECTION": "Use the image-folder row button to add images from another folder",
-    "EXTERNAL_IMAGES_ADD": "Copy supported images from another folder into this scene's images/. Choose 360° or Normal in Image Type",
+    "EXTERNAL_IMAGES_ADD": "Copy supported images into this scene's images/ and register the image type from image headers",
     "RUN_ALL": "Run YOLO person detection, stitch mask, and overexposure mask in sequence",
     "RUN_YOLO_STITCH": "Run YOLO person detection then stitch mask (no overexposure)",
     "PERSON_MODEL": "Use YOLO/SAM2.1 for fast person-only masks. Use SAM3.1 for higher-accuracy person or sky masks. Use Mask2Former to try sky masks without SAM3.1",

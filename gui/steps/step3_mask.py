@@ -14,7 +14,6 @@ import cv2
 import numpy as np
 from PySide6.QtCore import QProcess, QSize, Qt, QTimer, Signal
 from PySide6.QtWidgets import (
-    QButtonGroup,
     QCheckBox,
     QComboBox,
     QFileDialog,
@@ -24,7 +23,6 @@ from PySide6.QtWidgets import (
     QLabel,
     QLineEdit,
     QMessageBox,
-    QPushButton,
     QScrollArea,
     QSplitter,
     QTabWidget,
@@ -60,14 +58,22 @@ from gui.steps.mask_commands import (
     build_stitch_cmd,
 )
 from gui.steps.mask_image_import import IMAGE_EXTENSIONS as _IMAGE_EXTS
-from gui.steps.mask_image_import import import_external_images
+from gui.steps.mask_image_import import import_external_images_with_records
 from gui.steps.sam31_setup import ensure_sam31_checkpoint_available
 from gui.user_settings import load_user_settings_section, update_user_settings_section
 from image_io import imread_unicode, imwrite_unicode
 from mask_view_recipes import QUALITY_CHOICES
 from overexposure_mask import detect_overexposure, read_image_preserve_depth
 from scene_layout import selected_frames_path
-from scene_project import append_mask_run, scene_relative, utc_now_iso, write_mask_item
+from scene_project import (
+    append_mask_run,
+    append_source_image_set,
+    resolve_scene_image_projection,
+    scene_relative,
+    source_image_set_record,
+    utc_now_iso,
+    write_mask_item,
+)
 from stitch_mask import boundary_width_to_limit_angle, create_angular_stitched_mask
 
 _COCO_CLASS_NAMES = [
@@ -212,6 +218,9 @@ class MaskStep(BaseStepWidget):
         self._current_reprocess_settings: dict | None = None
         self._mask_batch_settings: dict | None = None
         self._mask_batch_phases: list[str] = []
+        self._project_projection = _PROJECTION_EQUIRECT
+        self._projection_mixed = False
+        self._projection_source = "default"
         self._mask_preview_render_pending = False
         self._mask_preview_render_timer = QTimer(self)
         self._mask_preview_render_timer.setSingleShot(True)
@@ -264,27 +273,11 @@ class MaskStep(BaseStepWidget):
         add_tooltip_row(path_form, i18n.MASKS_DIR, self.masks_path_label, i18n.tip("MASKS_DIR"))
         layout.addLayout(path_form)
 
-        projection_row = QHBoxLayout()
-        projection_row.setSpacing(6)
-        self.projection_label = QLabel(i18n.t("MASK_IMAGE_TYPE"))
+        self.projection_label = QLabel()
+        self.projection_label.setObjectName("workflowNote")
         self.projection_label.setToolTip(i18n.tip("MASK_IMAGE_TYPE"))
-        projection_row.addWidget(self.projection_label)
-        self.projection_group = QButtonGroup(self)
-        self.projection_group.setExclusive(True)
-        self.projection_buttons: dict[str, QPushButton] = {}
-        for projection, label, tip_key in [
-            (_PROJECTION_EQUIRECT, i18n.t("MASK_IMAGE_TYPE_EQUIRECT"), "MASK_IMAGE_TYPE_EQUIRECT"),
-            (_PROJECTION_NORMAL, i18n.t("MASK_IMAGE_TYPE_NORMAL"), "MASK_IMAGE_TYPE_NORMAL"),
-        ]:
-            btn = QPushButton(label)
-            btn.setObjectName("segmentedOption")
-            btn.setCheckable(True)
-            btn.setToolTip(i18n.tip(tip_key))
-            btn.clicked.connect(lambda _checked=False, p=projection: self._set_projection(p))
-            projection_row.addWidget(btn, stretch=1)
-            self.projection_group.addButton(btn)
-            self.projection_buttons[projection] = btn
-        layout.addLayout(projection_row)
+        self.projection_label.setWordWrap(True)
+        layout.addWidget(self.projection_label)
 
         # --- 追加マスク ---
         task_row = QHBoxLayout()
@@ -833,6 +826,7 @@ class MaskStep(BaseStepWidget):
         else:
             self.images_path_label.setText("-")
             self.masks_path_label.setText("-")
+        self._sync_projection_from_project()
         self._on_images_dir_changed(self._images_dir_text())
         self._render_mask_preview()
         self._update_ready_status()
@@ -874,19 +868,42 @@ class MaskStep(BaseStepWidget):
         return requested_steps
 
     def _projection(self) -> str:
-        for projection, btn in self.projection_buttons.items():
-            if btn.isChecked():
-                return projection
-        return _PROJECTION_EQUIRECT
+        return self._project_projection
 
     def _set_projection(self, projection: str) -> None:
         if projection not in {_PROJECTION_EQUIRECT, _PROJECTION_NORMAL}:
             projection = _PROJECTION_EQUIRECT
-        btn = self.projection_buttons.get(projection)
-        if btn is not None and not btn.isChecked():
-            btn.setChecked(True)
+        self._project_projection = projection
         self.yolo_level_combo.setCurrentIndex(0 if projection == _PROJECTION_NORMAL else 1)
+        self._update_projection_label()
+        if hasattr(self, "mask_preview"):
+            self.mask_preview.set_perspective_enabled(projection == _PROJECTION_EQUIRECT)
         self._update_task_controls()
+
+    def _sync_projection_from_project(self) -> None:
+        if not self.scene_dir:
+            self._projection_mixed = False
+            self._projection_source = "default"
+            self._set_projection(_PROJECTION_EQUIRECT)
+            return
+        resolved = resolve_scene_image_projection(Path(self.scene_dir))
+        self._projection_mixed = bool(resolved.get("mixed"))
+        self._projection_source = str(resolved.get("source") or "default")
+        self._set_projection(str(resolved.get("mask_projection") or _PROJECTION_EQUIRECT))
+
+    def _update_projection_label(self) -> None:
+        label_key = "MASK_IMAGE_TYPE_EQUIRECT" if self._projection() == _PROJECTION_EQUIRECT else "MASK_IMAGE_TYPE_NORMAL"
+        source_text = i18n.t("MASK_IMAGE_TYPE_SOURCE_PROJECT")
+        if self._projection_source == "image_header_sample":
+            source_text = i18n.t("MASK_IMAGE_TYPE_SOURCE_HEADER")
+        elif self._projection_source == "default":
+            source_text = i18n.t("MASK_IMAGE_TYPE_SOURCE_DEFAULT")
+        self.projection_label.setText(
+            i18n.t("MASK_IMAGE_TYPE_STATUS").format(
+                image_type=i18n.t(label_key),
+                source=source_text,
+            )
+        )
 
     def _scene_csv_path(self) -> Path:
         return selected_frames_path(Path(self.scene_dir))
@@ -910,6 +927,8 @@ class MaskStep(BaseStepWidget):
             return False, i18n.t("MASK_READY_NO_IMAGES_DIR")
         if not self._has_image_files():
             return False, i18n.t("MASK_READY_NO_IMAGES")
+        if self._projection_mixed:
+            return False, i18n.t("MASK_READY_MIXED_IMAGE_TYPES")
         if self.run_custom_cb.isChecked():
             custom_mask = self._custom_mask_path_text()
             if not custom_mask:
@@ -1227,11 +1246,21 @@ class MaskStep(BaseStepWidget):
             raise ValueError(i18n.t("EXTERNAL_IMAGES_SOURCE_NOT_FOUND").format(path=source_dir))
 
         images_dir = Path(self._images_dir_text())
-        added, skipped = import_external_images(source_dir, images_dir)
+        added, skipped, imported = import_external_images_with_records(source_dir, images_dir)
+        if imported:
+            append_source_image_set(
+                Path(self.scene_dir),
+                source_image_set_record(
+                    source_dir=source_dir,
+                    scene_dir=Path(self.scene_dir),
+                    imported=imported,
+                ),
+            )
 
         self.images_path_label.setText(str(images_dir))
         self._on_images_dir_changed(str(images_dir))
         self.mask_preview.refresh_image_list(prefer_current=True)
+        self._sync_projection_from_project()
         self._render_mask_preview()
         self._update_ready_status()
         return added, skipped

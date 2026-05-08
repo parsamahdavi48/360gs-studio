@@ -6,6 +6,7 @@ APP_DIR_NAME = "_stechdrive"
 PROJECT_JSON = "project.json"
 SOURCES_DIR_NAME = "sources"
 SOURCE_VIDEOS_JSON = "videos.json"
+SOURCE_IMAGE_SETS_JSON = "image_sets.json"
 FRAMES_DIR_NAME = "frames"
 FRAME_BACKUPS_DIR_NAME = "backups"
 FRAME_CACHE_DIR_NAME = "cache"
@@ -39,6 +40,10 @@ def sources_dir(scene_dir: Path) -> Path:
 
 def source_videos_path(scene_dir: Path) -> Path:
     return sources_dir(scene_dir) / SOURCE_VIDEOS_JSON
+
+
+def source_image_sets_path(scene_dir: Path) -> Path:
+    return sources_dir(scene_dir) / SOURCE_IMAGE_SETS_JSON
 
 
 def frames_dir(scene_dir: Path) -> Path:

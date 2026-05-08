@@ -125,7 +125,7 @@ def test_mask_step_yolo_level_and_expand_share_compact_row() -> None:
     assert step.yolo_expand_label.toolTip() == i18n.tip("YOLO_EXPAND")
     assert step.yolo_expand_edit.value() == 0
     assert step.yolo_bottom_settings_row.isHidden()
-    assert step.projection_buttons["equirect"].text() == "360°"
+    assert step.projection_label.text().startswith(i18n.t("MASK_IMAGE_TYPE").rstrip(":"))
 
 
 def test_mask_step_sam31_apply_mode_shares_compact_settings_row(tmp_path: Path, monkeypatch) -> None:
@@ -875,7 +875,7 @@ def test_mask_step_normal_image_type_disables_stitch_and_uses_normal_yolo_projec
     step._set_projection("normal")
     step.run_stitch_cb.setChecked(True)
 
-    assert step.projection_buttons["normal"].isChecked()
+    assert step._projection() == "normal"
     assert not step.run_stitch_cb.isChecked()
     assert not step.run_stitch_cb.isEnabled()
     commands = step.build_commands()

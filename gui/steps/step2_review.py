@@ -1,12 +1,13 @@
 """Step 2: フレーム確認 + 選別確定"""
 from __future__ import annotations
 
+import shutil
 import sys
 from pathlib import Path
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
-    QCheckBox,
+    QComboBox,
     QLabel,
     QMessageBox,
     QScrollArea,
@@ -23,7 +24,7 @@ from gui.steps.base_step import (
     BaseStepWidget,
     configure_settings_scroll,
 )
-from scene_layout import frame_backups_dir, selected_frames_path
+from scene_layout import review_dir, selected_frames_path
 from scene_project import append_review_run, file_identity, scene_relative, utc_now_iso
 
 
@@ -52,10 +53,13 @@ class ReviewStep(BaseStepWidget):
         settings_layout.setContentsMargins(*SETTINGS_PANE_MARGINS)
         settings_layout.setSpacing(10)
 
-        self.backup_cb = QCheckBox(i18n.t("BACKUP_BEFORE_FINALIZE"))
-        self.backup_cb.setToolTip(i18n.t("BACKUP_BEFORE_FINALIZE_HINT"))
-        self.backup_cb.setChecked(False)
-        settings_layout.addWidget(self.backup_cb)
+        self.filter_label = QLabel(i18n.t("REVIEW_SOURCE_FILTER"))
+        self.filter_label.setToolTip(i18n.tip("REVIEW_SOURCE_FILTER"))
+        settings_layout.addWidget(self.filter_label)
+        self.source_filter_combo = QComboBox()
+        self.source_filter_combo.setToolTip(i18n.tip("REVIEW_SOURCE_FILTER"))
+        self.source_filter_combo.currentIndexChanged.connect(self._on_source_filter_changed)
+        settings_layout.addWidget(self.source_filter_combo)
 
         notice = QLabel(i18n.NEXT_STEP_MASK_NOTICE)
         notice.setObjectName("workflowNote")
@@ -136,6 +140,7 @@ class ReviewStep(BaseStepWidget):
                 widget.setParent(None)
                 widget.deleteLater()
         self._review_widget = None
+        self._sync_source_filter_combo([])
 
     def _set_review_placeholder(self, text: str) -> None:
         self._clear_review_pane()
@@ -184,23 +189,37 @@ class ReviewStep(BaseStepWidget):
         if decisions_changed is not None:
             decisions_changed.connect(self._on_review_decisions_changed)
         self.review_layout.addWidget(widget, stretch=1)
+        options = []
+        source_filter_options = getattr(widget, "source_filter_options", None)
+        if callable(source_filter_options):
+            options = source_filter_options()
+        self._sync_source_filter_combo(options)
         self.primary_action_state_changed.emit()
 
+    def _sync_source_filter_combo(self, options: list[dict]) -> None:
+        self.source_filter_combo.blockSignals(True)
+        try:
+            self.source_filter_combo.clear()
+            if not options:
+                self.source_filter_combo.addItem(i18n.t("REVIEW_SOURCE_FILTER_ALL").format(n=0), "all")
+            else:
+                for option in options:
+                    self.source_filter_combo.addItem(str(option.get("label") or ""), str(option.get("key") or "all"))
+            self.source_filter_combo.setEnabled(len(options) > 1)
+        finally:
+            self.source_filter_combo.blockSignals(False)
+
+    def _on_source_filter_changed(self, _index: int) -> None:
+        widget = self._review_widget
+        if widget is None:
+            return
+        set_source_filter = getattr(widget, "set_source_filter", None)
+        if not callable(set_source_filter):
+            return
+        set_source_filter(str(self.source_filter_combo.currentData() or "all"))
+
     def _confirm_finalize(self) -> bool:
-        if self.backup_cb.isChecked():
-            confirm_text = (
-                "除外にしたフレームを images/ から削除し、採用フレームのファイル名は維持します。\n\n"
-                "適用前に images/ を _stechdrive/frames/backups/images/ にコピーします（既存バックアップは上書き）。\n"
-                "_stechdrive/frames/selected_frames.csv のバックアップも自動作成されます。\n\n"
-                "適用してよいですか？"
-            )
-        else:
-            confirm_text = (
-                "除外にしたフレームを images/ から削除し、採用フレームのファイル名は維持します。\n\n"
-                "画像のバックアップは作成されません。削除された画像は復元できません。\n"
-                "_stechdrive/frames/selected_frames.csv のみ自動バックアップされます。\n\n"
-                "適用してよいですか？"
-            )
+        confirm_text = i18n.t("FINALIZE_CONFIRM_MESSAGE")
         result = QMessageBox.question(
             self,
             i18n.t("ACTION_FINALIZE_REVIEW"),
@@ -227,9 +246,8 @@ class ReviewStep(BaseStepWidget):
         if not self._confirm_finalize():
             return []
         extra = ["--finalize-in-place"]
-        if self.backup_cb.isChecked():
-            extra.extend(["--backup-dir", str(frame_backups_dir(Path(self.scene_dir)) / "images")])
-        self._pending_review_run = self._review_run_snapshot(backup_images=self.backup_cb.isChecked())
+        self._pending_review_run = self._review_run_snapshot()
+        self._prepare_review_backup(self._pending_review_run)
         return [("finalize", self._build_apply_cmd(extra))]
 
     def on_queue_finished(self, success: bool) -> None:
@@ -254,18 +272,45 @@ class ReviewStep(BaseStepWidget):
                 keep += 1
         return {"rows": len(rows), "keep": keep, "drop": drop}
 
-    def _review_run_snapshot(self, *, backup_images: bool) -> dict:
+    def _review_run_snapshot(self) -> dict:
         scene = Path(self.scene_dir)
         dropped = pending_drop_image_paths(scene)
+        run_id = f"review_{utc_now_iso().replace(':', '').replace('-', '')}"
+        backup_root = review_dir(scene) / "backups" / run_id
         return {
-            "id": f"review_{utc_now_iso().replace(':', '').replace('-', '')}",
+            "id": run_id,
             "created_at": utc_now_iso(),
             "mode": "finalize_in_place",
-            "backup_images": backup_images,
+            "backup_mode": "dropped_images",
+            "backup_dir": scene_relative(scene, backup_root),
             "csv_before": file_identity(self._csv_path()),
             "counts_before": self._review_counts(),
             "pending_drop_images": [scene_relative(scene, p) for p in dropped],
+            "backed_up_drop_images": [],
         }
+
+    def _prepare_review_backup(self, record: dict) -> None:
+        if not self.scene_dir:
+            return
+        scene = Path(self.scene_dir)
+        backup_root = scene / str(record.get("backup_dir", ""))
+        backup_root.mkdir(parents=True, exist_ok=True)
+        csv_before = backup_root / "selected_frames.before.csv"
+        shutil.copy2(self._csv_path(), csv_before)
+        record["csv_before_copy"] = scene_relative(scene, csv_before)
+
+        backed_up: list[str] = []
+        dropped = pending_drop_image_paths(scene)
+        for path in dropped:
+            try:
+                rel = path.resolve().relative_to(scene.resolve())
+            except (OSError, ValueError):
+                rel = Path(path.name)
+            dest = backup_root / "dropped_images" / rel
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(path, dest)
+            backed_up.append(scene_relative(scene, dest))
+        record["backed_up_drop_images"] = backed_up
 
     def _finish_review_run_snapshot(self) -> None:
         if not self.scene_dir or self._pending_review_run is None:
@@ -275,6 +320,11 @@ class ReviewStep(BaseStepWidget):
         record["completed_at"] = utc_now_iso()
         record["csv_after"] = file_identity(self._csv_path())
         record["counts_after"] = self._review_counts()
+        backup_dir = scene / str(record.get("backup_dir", ""))
+        if backup_dir.is_dir():
+            csv_after = backup_dir / "selected_frames.after.csv"
+            shutil.copy2(self._csv_path(), csv_after)
+            record["csv_after_copy"] = scene_relative(scene, csv_after)
         append_review_run(scene, record)
         self._pending_review_run = None
 

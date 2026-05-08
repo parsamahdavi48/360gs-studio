@@ -7,11 +7,14 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from PIL import Image
+
 from scene_layout import (
     mask_items_dir,
     mask_runs_path,
     project_path,
     review_runs_path,
+    source_image_sets_path,
     source_videos_path,
     step4_dataset_runs_path,
     step4_sfm_runs_path,
@@ -157,6 +160,45 @@ def infer_video_projection(video_info: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def infer_image_projection(width: int, height: int) -> dict[str, Any]:
+    if width > 0 and height > 0:
+        ratio = width / height
+        if math.isfinite(ratio) and abs(ratio - 2.0) <= 0.04:
+            return {
+                "projection": "equirectangular",
+                "confidence": "medium",
+                "reason": "2:1 image aspect ratio",
+            }
+        return {
+            "projection": "normal",
+            "confidence": "medium",
+            "reason": "image aspect ratio is not 2:1",
+        }
+    return {
+        "projection": "unknown",
+        "confidence": "low",
+        "reason": "image dimensions unavailable",
+    }
+
+
+def image_header_info(path: Path) -> dict[str, Any]:
+    try:
+        with Image.open(path) as img:
+            width, height = img.size
+            mode = img.mode
+    except Exception:
+        width, height, mode = 0, 0, ""
+    detected = infer_image_projection(int(width), int(height))
+    return {
+        "width": int(width),
+        "height": int(height),
+        "mode": mode,
+        "detected_projection": detected["projection"],
+        "projection_confidence": detected["confidence"],
+        "projection_reason": detected["reason"],
+    }
+
+
 def source_video_record(video_path: Path, video_info: dict[str, Any]) -> dict[str, Any]:
     identity = file_identity(video_path)
     detected = infer_video_projection(video_info)
@@ -202,6 +244,166 @@ def upsert_source_videos(scene_dir: Path, records: list[dict[str, Any]]) -> None
     data["videos"] = sorted(by_id.values(), key=lambda item: str(item.get("source", {}).get("path", "")).lower())
     write_json(path, data)
     update_project(scene_dir, "sources", {"video_count": len(data["videos"])})
+
+
+def _normalize_projection(value: str) -> str:
+    text = str(value or "").strip().lower()
+    if text in {"equirect", "equirectangular", "360", "360°"}:
+        return "equirectangular"
+    if text in {"normal", "perspective", "flat"}:
+        return "normal"
+    return "unknown"
+
+
+def _projection_for_record(record: dict[str, Any]) -> str:
+    override = _normalize_projection(str(record.get("projection_override") or ""))
+    if override != "unknown":
+        return override
+    explicit = _normalize_projection(str(record.get("projection") or ""))
+    if explicit != "unknown":
+        return explicit
+    return _normalize_projection(str(record.get("detected_projection") or ""))
+
+
+def source_image_set_record(
+    *,
+    source_dir: Path,
+    scene_dir: Path,
+    imported: list[tuple[Path, Path]],
+) -> dict[str, Any]:
+    projections: list[str] = []
+    files: list[dict[str, Any]] = []
+    for index, (source_path, scene_path) in enumerate(imported, start=1):
+        header = image_header_info(scene_path)
+        projection = _normalize_projection(str(header.get("detected_projection") or ""))
+        if projection != "unknown":
+            projections.append(projection)
+        files.append(
+            {
+                "source_path": str(source_path),
+                "scene_path": scene_relative(scene_dir, scene_path),
+                "sequence_index": index,
+                "file": file_identity(scene_path),
+                "source_file": file_identity(source_path),
+                "image": {
+                    "width": int(header.get("width") or 0),
+                    "height": int(header.get("height") or 0),
+                    "mode": str(header.get("mode") or ""),
+                },
+                "detected_projection": header.get("detected_projection", "unknown"),
+                "projection_confidence": header.get("projection_confidence", "low"),
+                "projection_reason": header.get("projection_reason", ""),
+            }
+        )
+
+    unique = sorted(set(projections))
+    projection = unique[0] if len(unique) == 1 else ("mixed" if unique else "unknown")
+    identity = file_identity(source_dir)
+    return {
+        "id": f"imageset_{_identity_key(identity)}",
+        "source_type": "external_images",
+        "imported_at": utc_now_iso(),
+        "updated_at": utc_now_iso(),
+        "source_dir": str(source_dir),
+        "scene_images_dir": "images",
+        "projection": projection,
+        "projection_source": "image_header",
+        "projection_override": None,
+        "file_count": len(files),
+        "files": files,
+    }
+
+
+def append_source_image_set(scene_dir: Path, record: dict[str, Any]) -> None:
+    path = source_image_sets_path(scene_dir)
+    data = load_json(path, {"version": 1, "image_sets": []})
+    image_sets = data.get("image_sets")
+    if not isinstance(image_sets, list):
+        image_sets = []
+
+    image_sets.append(record)
+    data["version"] = 1
+    data["image_sets"] = image_sets[-200:]
+    write_json(path, data)
+    update_project(scene_dir, "sources", {"image_set_count": len(data["image_sets"])})
+
+
+def _source_video_projections(scene_dir: Path) -> set[str]:
+    data = load_json(source_videos_path(scene_dir), {"videos": []})
+    videos = data.get("videos")
+    if not isinstance(videos, list):
+        return set()
+    return {
+        projection
+        for item in videos
+        if isinstance(item, dict)
+        for projection in [_projection_for_record(item)]
+        if projection != "unknown"
+    }
+
+
+def _source_image_set_projections(scene_dir: Path) -> set[str]:
+    data = load_json(source_image_sets_path(scene_dir), {"image_sets": []})
+    image_sets = data.get("image_sets")
+    if not isinstance(image_sets, list):
+        return set()
+    return {
+        projection
+        for item in image_sets
+        if isinstance(item, dict)
+        for projection in [_projection_for_record(item)]
+        if projection != "unknown" and projection != "mixed"
+    }
+
+
+def _sample_image_projections(images_dir: Path, *, limit: int = 12) -> set[str]:
+    if not images_dir.is_dir():
+        return set()
+    projections: set[str] = set()
+    count = 0
+    for path in sorted(images_dir.rglob("*"), key=lambda p: str(p).lower()):
+        if not path.is_file() or path.suffix.lower() not in {".jpg", ".jpeg", ".png", ".tif", ".tiff"}:
+            continue
+        projection = _normalize_projection(str(image_header_info(path).get("detected_projection") or ""))
+        if projection != "unknown":
+            projections.add(projection)
+        count += 1
+        if count >= limit:
+            break
+    return projections
+
+
+def resolve_scene_image_projection(scene_dir: Path) -> dict[str, Any]:
+    video_projections = _source_video_projections(scene_dir)
+    image_set_projections = _source_image_set_projections(scene_dir)
+    projections = video_projections | image_set_projections
+    source = "project"
+
+    if not projections:
+        projections = _sample_image_projections(scene_dir / "images")
+        source = "image_header_sample"
+
+    if len(projections) == 1:
+        projection = next(iter(projections))
+        return {
+            "projection": projection,
+            "mask_projection": "equirect" if projection == "equirectangular" else "normal",
+            "source": source,
+            "mixed": False,
+        }
+    if len(projections) > 1:
+        return {
+            "projection": "mixed",
+            "mask_projection": "equirect",
+            "source": source,
+            "mixed": True,
+        }
+    return {
+        "projection": "equirectangular",
+        "mask_projection": "equirect",
+        "source": "default",
+        "mixed": False,
+    }
 
 
 def mask_item_path(scene_dir: Path, image_relpath: str) -> Path:

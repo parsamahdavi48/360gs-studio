@@ -172,10 +172,13 @@ if QMainWindow is not None:
             super().__init__()
             self.scene_dir = scene_dir
             self.csv_path = csv_path
-            self.rows = self._load_rows(csv_path)
-            if not self.rows:
+            self._all_rows = self._load_rows(csv_path)
+            if not self._all_rows:
                 raise RuntimeError(f"No rows found in {csv_path}")
-            self._initial_decisions = [row["decision"] for row in self.rows]
+            self._initial_decisions = [row["decision"] for row in self._all_rows]
+            self._source_filter_key = "all"
+            self._visible_indices = list(range(len(self._all_rows)))
+            self.rows = list(self._all_rows)
             self.problem_indices = self._collect_problem_indices()
 
             self.index = 0
@@ -194,6 +197,85 @@ if QMainWindow is not None:
             self._build_ui()
             self._bind_shortcuts()
             self._render_current()
+
+        def source_filter_options(self) -> list[dict[str, str]]:
+            options = [
+                {
+                    "key": "all",
+                    "label": i18n.t("REVIEW_SOURCE_FILTER_ALL").format(n=len(self._all_rows)),
+                }
+            ]
+            groups: dict[str, dict[str, object]] = {}
+            for idx, row in enumerate(self._all_rows):
+                session = row.get("source_session", "").strip()
+                video = row.get("source_video", "").strip()
+                if session:
+                    key = f"session:{session}"
+                elif video:
+                    key = f"video:{video}"
+                else:
+                    key = "unassigned"
+                group = groups.setdefault(
+                    key,
+                    {
+                        "count": 0,
+                        "name": Path(video).name if video else i18n.t("REVIEW_SOURCE_FILTER_UNASSIGNED"),
+                        "first_index": idx,
+                    },
+                )
+                group["count"] = int(group["count"]) + 1
+
+            for key, group in sorted(groups.items(), key=lambda item: int(item[1]["first_index"])):
+                label = i18n.t("REVIEW_SOURCE_FILTER_ITEM").format(
+                    name=str(group["name"]),
+                    n=int(group["count"]),
+                )
+                options.append({"key": key, "label": label})
+            return options
+
+        def set_source_filter(self, key: str) -> None:
+            key = key or "all"
+            if key == self._source_filter_key:
+                return
+            self._source_filter_key = key
+            if key == "all":
+                self._visible_indices = list(range(len(self._all_rows)))
+            elif key == "unassigned":
+                self._visible_indices = [
+                    idx
+                    for idx, row in enumerate(self._all_rows)
+                    if not row.get("source_session", "").strip() and not row.get("source_video", "").strip()
+                ]
+            elif key.startswith("session:"):
+                session = key.split(":", 1)[1]
+                self._visible_indices = [
+                    idx for idx, row in enumerate(self._all_rows) if row.get("source_session", "").strip() == session
+                ]
+            elif key.startswith("video:"):
+                video = key.split(":", 1)[1]
+                self._visible_indices = [
+                    idx for idx, row in enumerate(self._all_rows) if row.get("source_video", "").strip() == video
+                ]
+            else:
+                self._visible_indices = list(range(len(self._all_rows)))
+            if not self._visible_indices:
+                self._visible_indices = list(range(len(self._all_rows)))
+            self.rows = [self._all_rows[idx] for idx in self._visible_indices]
+            self.problem_indices = self._collect_problem_indices()
+            self.index = 0
+            self._pixmap_cache.clear()
+            self._slider_sync = True
+            self.frame_slider.setRange(0, max(0, len(self.rows) - 1))
+            self.frame_slider.setEnabled(len(self.rows) > 1)
+            self.frame_slider.setValue(0)
+            self._slider_sync = False
+            self._sync_thumbnail_model(force=True)
+            self._render_current()
+
+        def _all_index(self, visible_index: int) -> int:
+            if not (0 <= visible_index < len(self._visible_indices)):
+                return visible_index
+            return self._visible_indices[visible_index]
 
         def _load_rows(self, path: Path) -> list[dict[str, str]]:
             with path.open("r", encoding="utf-8", newline="") as f:
@@ -817,7 +899,7 @@ if QMainWindow is not None:
                 "}"
             )
             reset_enabled = any(
-                self.rows[idx].get("decision", "keep") != self._initial_decisions[idx]
+                self.rows[idx].get("decision", "keep") != self._initial_decisions[self._all_index(idx)]
                 for idx in self._decision_action_indices()
             )
             self.reset_decision_button.setEnabled(reset_enabled)
@@ -829,7 +911,7 @@ if QMainWindow is not None:
         def has_decision_changes(self) -> bool:
             return any(
                 row.get("decision", "keep") != initial
-                for row, initial in zip(self.rows, self._initial_decisions, strict=False)
+                for row, initial in zip(self._all_rows, self._initial_decisions, strict=False)
             )
 
         def pending_drop_image_paths(self) -> list[Path]:
@@ -839,11 +921,11 @@ if QMainWindow is not None:
             return self.has_decision_changes() or bool(self.pending_drop_image_paths())
 
         def _write_rows(self) -> None:
-            fieldnames = list(self.rows[0].keys())
+            fieldnames = list(self._all_rows[0].keys())
             with self.csv_path.open("w", encoding="utf-8", newline="") as f:
                 writer = csv.DictWriter(f, fieldnames=fieldnames)
                 writer.writeheader()
-                writer.writerows(self.rows)
+                writer.writerows(self._all_rows)
 
         def _set_decisions(self, decisions_by_index: dict[int, str]) -> None:
             changes: dict[int, str] = {}
@@ -924,7 +1006,9 @@ if QMainWindow is not None:
             self._focus_thumbnail_view_if_active()
 
         def reset_decision(self) -> None:
-            self._set_decisions({idx: self._initial_decisions[idx] for idx in self._decision_action_indices()})
+            self._set_decisions(
+                {idx: self._initial_decisions[self._all_index(idx)] for idx in self._decision_action_indices()}
+            )
             self._focus_thumbnail_view_if_active()
 
         def shutdown(self) -> None:

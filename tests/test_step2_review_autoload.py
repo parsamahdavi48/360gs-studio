@@ -9,7 +9,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 import pytest
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QPixmap
-from PySide6.QtWidgets import QApplication, QCheckBox, QLabel, QLineEdit, QPushButton
+from PySide6.QtWidgets import QApplication, QComboBox, QLabel, QLineEdit, QPushButton
 
 from gui import i18n
 from gui.app import MainWindow
@@ -85,7 +85,6 @@ def test_review_step_left_pane_guides_apply_before_mask_step() -> None:
 
     labels = [label.text() for label in step.findChildren(QLabel)]
     buttons = [button.text() for button in step.findChildren(QPushButton)]
-    checkboxes = [checkbox.text() for checkbox in step.findChildren(QCheckBox)]
 
     assert all("確認+選別" not in text for text in labels)
     assert all("Review + Select" not in text for text in labels)
@@ -96,7 +95,7 @@ def test_review_step_left_pane_guides_apply_before_mask_step() -> None:
     assert "別ウィンドウで開く" not in buttons
     assert "Open Separate Window" not in buttons
     assert not step.findChildren(QLineEdit)
-    assert i18n.t("BACKUP_BEFORE_FINALIZE") in checkboxes
+    assert not step.findChildren(QComboBox)[0].isEnabled()
     assert i18n.NEXT_STEP_MASK_NOTICE in labels
     notice = next(label for label in step.findChildren(QLabel) if label.text() == i18n.NEXT_STEP_MASK_NOTICE)
     assert notice.alignment() & Qt.AlignLeft
