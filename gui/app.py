@@ -227,6 +227,7 @@ class MainWindow(QWidget):
         self.step_subheader = QLabel("")
         self.step_subheader.setObjectName("stepSubheader")
         self.step_subheader.setWordWrap(False)
+        self.step_subheader.setTextInteractionFlags(Qt.TextSelectableByMouse)
         step_header_row.addWidget(self.step_subheader, stretch=1)
         self.step_help_btn = QToolButton()
         self.step_help_btn.setObjectName("iconToolButton")
@@ -370,31 +371,21 @@ class MainWindow(QWidget):
         if not 0 <= index < len(self.step_titles):
             return
         self.step_header.setText(self.step_titles[index])
-        label, path = self._step_header_path(index)
-        self.step_subheader.setText(f"{label}: {path}")
-        self.step_subheader.setToolTip(self._step_header_path_tooltip(index, label, path))
+        path = self._step_header_path(index)
+        self.step_subheader.setText(path)
+        self.step_subheader.setToolTip(path)
 
-    def _step_header_path(self, index: int) -> tuple[str, str]:
+    def _step_header_path(self, index: int) -> str:
         if not self.scene_browse.text():
-            label = i18n.t("STEP_HEADER_OUTPUT_ROOT") if index == 3 else i18n.t("STEP_HEADER_OUTPUT")
-            if index == 1:
-                label = i18n.t("STEP_HEADER_TARGET")
-            return label, "-"
+            return "-"
+        scene = Path(self.scene_browse.text())
         if index == 0:
-            return i18n.t("STEP_HEADER_OUTPUT"), "images/"
+            return str(scene / "images")
         if index == 1:
-            return i18n.t("STEP_HEADER_TARGET"), "images/"
+            return str(scene / "images")
         if index == 2:
-            return i18n.t("STEP_HEADER_OUTPUT"), "masks/"
-        return i18n.t("STEP_HEADER_OUTPUT_ROOT"), "output/"
-
-    def _step_header_path_tooltip(self, index: int, label: str, path: str) -> str:
-        scene_text = self.scene_browse.text()
-        if not scene_text or path == "-":
-            return f"{label}: -"
-        scene = Path(scene_text)
-        target = scene / path.rstrip("/")
-        return f"{label}: {target}"
+            return str(scene / "masks")
+        return str(scene / "output")
 
     def _toggle_step4_pipeline_stage_intent(self, stage: str) -> None:
         if not self.step4.pipeline_stage_intent_toggle_enabled(stage):

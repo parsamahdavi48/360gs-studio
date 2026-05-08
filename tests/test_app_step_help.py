@@ -53,19 +53,19 @@ def test_main_window_step_help_button_opens_current_step_doc(tmp_path: Path, mon
     window.close()
 
 
-def test_step_header_shows_scene_relative_work_root(tmp_path: Path) -> None:
+def test_step_header_shows_full_work_path(tmp_path: Path) -> None:
     _app()
     window = MainWindow(str(tmp_path))
 
     expected = [
-        f"{i18n.t('STEP_HEADER_OUTPUT')}: images/",
-        f"{i18n.t('STEP_HEADER_TARGET')}: images/",
-        f"{i18n.t('STEP_HEADER_OUTPUT')}: masks/",
-        f"{i18n.t('STEP_HEADER_OUTPUT_ROOT')}: output/",
+        str(tmp_path / "images"),
+        str(tmp_path / "images"),
+        str(tmp_path / "masks"),
+        str(tmp_path / "output"),
     ]
     for index, text in enumerate(expected):
         window._set_current_step(index)
         assert window.step_subheader.text() == text
-        assert str(tmp_path) in window.step_subheader.toolTip()
+        assert window.step_subheader.toolTip() == text
 
     window.close()
