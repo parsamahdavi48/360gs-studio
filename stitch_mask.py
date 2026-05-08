@@ -8,6 +8,7 @@ import cv2
 import numpy as np
 
 from image_io import imread_unicode, imwrite_unicode
+from mask_targets import load_mask_paths_from_image_list
 
 # 進捗バー表示用 (インストールされていない場合はエラー回避)
 try:
@@ -25,6 +26,7 @@ parser.add_argument("--single", nargs=2, type=int, metavar=("w", "h"), help="Out
 parser.add_argument("--fov", type=float, default=None, help="Field of View of fisheye lens (legacy, default=175.0 degrees)")
 parser.add_argument("--boundary-width", type=float, default=5.0, help="Total stitch boundary mask width in degrees (default=5.0, equivalent to --fov 175)")
 parser.add_argument("--workers", type=int, default=os.cpu_count(), help="Number of parallel workers")
+parser.add_argument("--image-list", default=None, help="JSON or JSONL list of image/mask targets to process")
 
 # --- グローバル変数（ワーカープロセス内でのマスク共有用） ---
 shared_base_mask = None
@@ -116,31 +118,20 @@ def process_single_image(file_info):
         return f"Skipped (Write Error): {os.path.basename(output_path)}"
     return None # 成功時はNoneを返す
 
-def process_existing_masks_parallel(input_dir, output_dir, limit_angle_deg, max_workers):
-    if not os.path.exists(output_dir):
-        os.makedirs(output_dir)
-
-    files = [f for f in os.listdir(input_dir) if f.lower().endswith('.png')]
-    if not files:
+def process_mask_tasks_parallel(tasks, limit_angle_deg, max_workers, *, sample_label):
+    if not tasks:
         return
 
     # 最初の1枚からサイズを取得してベースマスクを作成
-    first_img_path = os.path.join(input_dir, files[0])
+    first_img_path = tasks[0][0]
     sample = imread_unicode(first_img_path, cv2.IMREAD_GRAYSCALE)
     if sample is None:
         print(f"Error reading sample image: {first_img_path}")
         return
 
     h, w = sample.shape
-    print(f"Generating base mask ({w}x{h}) for directory: {input_dir} ...")
+    print(f"Generating base mask ({w}x{h}) for: {sample_label} ...")
     base_mask = create_angular_stitched_mask(w, h, limit_angle_deg)
-
-    # 処理タスクのリスト作成
-    tasks = []
-    for filename in files:
-        in_path = os.path.join(input_dir, filename)
-        out_path = os.path.join(output_dir, filename)
-        tasks.append((in_path, out_path))
 
     print(f"Processing {len(tasks)} images with {max_workers} workers...")
     print(f"[progress] 0/{len(tasks)}", flush=True)
@@ -158,6 +149,39 @@ def process_existing_masks_parallel(input_dir, output_dir, limit_angle_deg, max_
     for res in results:
         if res:
             print(res)
+
+
+def process_existing_masks_parallel(input_dir, output_dir, limit_angle_deg, max_workers):
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir)
+
+    files = [f for f in os.listdir(input_dir) if f.lower().endswith('.png')]
+    if not files:
+        return
+
+    tasks = []
+    for filename in files:
+        in_path = os.path.join(input_dir, filename)
+        out_path = os.path.join(output_dir, filename)
+        tasks.append((in_path, out_path))
+    process_mask_tasks_parallel(tasks, limit_angle_deg, max_workers, sample_label=input_dir)
+
+
+def process_listed_masks_parallel(input_dir, output_dir, image_list, limit_angle_deg, max_workers):
+    input_root = Path(input_dir)
+    output_root = Path(output_dir)
+    mask_paths = [path for path in load_mask_paths_from_image_list(image_list, masks_root=input_root) if path.is_file()]
+    tasks = []
+    for mask_path in mask_paths:
+        try:
+            rel = mask_path.resolve().relative_to(input_root.resolve())
+        except Exception:
+            rel = Path(mask_path.name)
+        out_path = output_root / rel
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        tasks.append((str(mask_path), str(out_path)))
+    process_mask_tasks_parallel(tasks, limit_angle_deg, max_workers, sample_label=str(image_list))
+
 
 def main():
     args = parser.parse_args()
@@ -191,6 +215,8 @@ def main():
             print(f"Error writing single mask: {os.path.join(INPUT_DIR, 'single_mask.png')}")
             sys.exit(1)
         print("Processed: single_mask.png")
+    elif args.image_list:
+        process_listed_masks_parallel(INPUT_DIR, OUTPUT_DIR, args.image_list, limit_angle_deg, workers)
     else:
         base = Path(INPUT_DIR)
         # サブディレクトリ構造を維持して探索

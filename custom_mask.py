@@ -16,8 +16,7 @@ import cv2
 import numpy as np
 
 from image_io import image_size_unicode, imread_unicode, imwrite_unicode
-
-IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".tif", ".tiff"}
+from mask_targets import IMAGE_EXTS, collect_image_targets
 
 
 @dataclass(frozen=True)
@@ -107,6 +106,7 @@ def merge_custom_mask_for_image(
     custom_mask: np.ndarray,
     *,
     replace: bool = False,
+    mask_output_path: Path | None = None,
 ) -> CustomMaskMergeResult:
     source_size = image_size_unicode(image_path)
     if source_size is None:
@@ -121,7 +121,7 @@ def merge_custom_mask_for_image(
             ),
         )
 
-    mask_out = mask_output_path_for_image(image_path, images_dir, masks_dir)
+    mask_out = mask_output_path or mask_output_path_for_image(image_path, images_dir, masks_dir)
     existing = None if replace else imread_unicode(mask_out, cv2.IMREAD_GRAYSCALE) if mask_out.is_file() else None
     if existing is not None:
         if existing.shape != custom_mask.shape:
@@ -148,6 +148,7 @@ def run(
     custom_mask_path: str | Path,
     *,
     replace: bool = False,
+    image_list: str | Path | None = None,
 ) -> CustomMaskRunResult:
     images_path = Path(images_dir)
     masks_path = Path(masks_dir)
@@ -157,17 +158,28 @@ def run(
         return CustomMaskRunResult(failed=1, messages=[load_error or f"Custom mask read error: {custom_path}"])
     custom = loaded_custom.mask
 
-    image_files = iter_image_files(images_path)
-    if not image_files:
+    _images_root, targets = collect_image_targets(
+        images_path,
+        masks_path,
+        image_list=image_list,
+    )
+    if not targets:
         print(f"No images found in {images_path}")
         return CustomMaskRunResult()
 
-    print(f"Applying custom mask to {len(image_files)} images (replace={replace})")
+    print(f"Applying custom mask to {len(targets)} images (replace={replace})")
     print(loaded_custom.description)
-    print(f"[progress] 0/{len(image_files)}", flush=True)
-    result = CustomMaskRunResult(total=len(image_files))
-    for done, image_path in enumerate(image_files, start=1):
-        merge_result = merge_custom_mask_for_image(image_path, images_path, masks_path, custom, replace=replace)
+    print(f"[progress] 0/{len(targets)}", flush=True)
+    result = CustomMaskRunResult(total=len(targets))
+    for done, target in enumerate(targets, start=1):
+        merge_result = merge_custom_mask_for_image(
+            target.image_path,
+            images_path,
+            masks_path,
+            custom,
+            replace=replace,
+            mask_output_path=target.mask_path,
+        )
         if merge_result.applied:
             result.applied += 1
         elif merge_result.skipped:
@@ -176,7 +188,7 @@ def run(
             result.failed += 1
         if merge_result.message is not None:
             result.messages.append(merge_result.message)
-        print(f"[progress] {done}/{len(image_files)}", flush=True)
+        print(f"[progress] {done}/{len(targets)}", flush=True)
 
     for message in result.messages:
         print(message)
@@ -194,9 +206,10 @@ def main() -> None:
     parser.add_argument("masks_dir", help="Mask output directory")
     parser.add_argument("custom_mask", help="PNG custom mask to apply to every source image")
     parser.add_argument("--replace", action="store_true", help="Ignore existing masks and write custom-only masks")
+    parser.add_argument("--image-list", default=None, help="JSON or JSONL list of images to process")
     args = parser.parse_args()
 
-    result = run(args.images_dir, args.masks_dir, args.custom_mask, replace=bool(args.replace))
+    result = run(args.images_dir, args.masks_dir, args.custom_mask, replace=bool(args.replace), image_list=args.image_list)
     if not result.ok:
         sys.exit(1)
 

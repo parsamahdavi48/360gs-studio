@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import csv
 import hashlib
 import json
 import math
@@ -14,6 +15,7 @@ from scene_layout import (
     mask_runs_path,
     project_path,
     review_runs_path,
+    selected_frames_path,
     source_image_sets_path,
     source_videos_path,
     step4_dataset_runs_path,
@@ -354,6 +356,118 @@ def _source_image_set_projections(scene_dir: Path) -> set[str]:
         for projection in [_projection_for_record(item)]
         if projection != "unknown" and projection != "mixed"
     }
+
+
+def scene_image_projection_map(scene_dir: Path, image_paths: list[Path] | None = None) -> dict[str, str]:
+    images_dir = scene_dir / "images"
+    if image_paths is None:
+        image_paths = sorted(
+            (
+                path
+                for path in images_dir.rglob("*")
+                if path.is_file() and path.suffix.lower() in {".jpg", ".jpeg", ".png", ".tif", ".tiff"}
+            ),
+            key=lambda path: str(path).lower(),
+        )
+
+    rel_keys = [scene_relative(scene_dir, path).replace("\\", "/") for path in image_paths]
+    result: dict[str, str] = {}
+    result.update(_image_set_file_projection_map(scene_dir))
+    result.update(_selected_frame_projection_map(scene_dir))
+
+    for key, path in zip(rel_keys, image_paths, strict=False):
+        projection = _normalize_projection(result.get(key, ""))
+        if projection == "unknown":
+            projection = _normalize_projection(str(image_header_info(path).get("detected_projection") or ""))
+        if projection == "unknown":
+            projection = "equirectangular"
+        result[key] = projection
+    return {key: result.get(key, "equirectangular") for key in rel_keys}
+
+
+def _image_set_file_projection_map(scene_dir: Path) -> dict[str, str]:
+    data = load_json(source_image_sets_path(scene_dir), {"image_sets": []})
+    image_sets = data.get("image_sets")
+    if not isinstance(image_sets, list):
+        return {}
+    result: dict[str, str] = {}
+    for image_set in image_sets:
+        if not isinstance(image_set, dict):
+            continue
+        set_projection = _projection_for_record(image_set)
+        if set_projection == "mixed":
+            set_projection = "unknown"
+        files = image_set.get("files")
+        if not isinstance(files, list):
+            continue
+        for item in files:
+            if not isinstance(item, dict):
+                continue
+            rel = str(item.get("scene_path") or "").replace("\\", "/").strip("/")
+            if not rel:
+                continue
+            projection = _projection_for_record(item)
+            if projection == "unknown":
+                projection = set_projection
+            if projection != "unknown":
+                result[rel] = projection
+    return result
+
+
+def _selected_frame_projection_map(scene_dir: Path) -> dict[str, str]:
+    csv_path = selected_frames_path(scene_dir)
+    if not csv_path.is_file():
+        return {}
+    video_projection = _source_video_projection_by_path(scene_dir)
+    if not video_projection:
+        return {}
+    unique_projections = set(video_projection.values())
+    fallback_projection = next(iter(unique_projections)) if len(unique_projections) == 1 else ""
+    result: dict[str, str] = {}
+    try:
+        with csv_path.open("r", encoding="utf-8-sig", newline="") as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                output = str(row.get("output_file") or "").replace("\\", "/").strip("/")
+                if not output:
+                    continue
+                source_video = _path_lookup_key(str(row.get("source_video") or ""))
+                projection = video_projection.get(source_video) or fallback_projection
+                if projection:
+                    result[output] = projection
+    except OSError:
+        return {}
+    return result
+
+
+def _source_video_projection_by_path(scene_dir: Path) -> dict[str, str]:
+    data = load_json(source_videos_path(scene_dir), {"videos": []})
+    videos = data.get("videos")
+    if not isinstance(videos, list):
+        return {}
+    result: dict[str, str] = {}
+    for item in videos:
+        if not isinstance(item, dict):
+            continue
+        projection = _projection_for_record(item)
+        if projection == "unknown":
+            continue
+        source = item.get("source")
+        path_text = source.get("path") if isinstance(source, dict) else ""
+        key = _path_lookup_key(str(path_text or ""))
+        if key:
+            result[key] = projection
+    return result
+
+
+def _path_lookup_key(value: str) -> str:
+    text = value.replace("\\", "/").strip()
+    if not text:
+        return ""
+    try:
+        return str(Path(text).resolve()).replace("\\", "/").casefold()
+    except OSError:
+        return text.casefold()
 
 
 def _sample_image_projections(images_dir: Path, *, limit: int = 12) -> set[str]:

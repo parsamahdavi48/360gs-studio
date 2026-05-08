@@ -16,6 +16,7 @@ import cv2
 import numpy as np
 
 from image_io import imread_unicode, imwrite_unicode
+from mask_targets import collect_image_targets
 
 try:
     from tqdm import tqdm
@@ -103,6 +104,7 @@ def _process_one(args: tuple[str, str, str | None]) -> str | None:
                 )
             overexp = cv2.bitwise_and(mask, overexp)
 
+    Path(mask_out).parent.mkdir(parents=True, exist_ok=True)
     if not imwrite_unicode(mask_out, overexp):
         return f"Skipped (write error): {os.path.basename(mask_out)}"
     return None
@@ -129,6 +131,7 @@ def run(
     dilate_px: int = 1,
     workers: int | None = None,
     replace: bool = False,
+    image_list: str | Path | None = None,
 ) -> None:
     images_path = Path(images_dir)
     masks_path = Path(masks_dir)
@@ -137,25 +140,22 @@ def run(
     if workers is None:
         workers = os.cpu_count() or 4
 
-    # 画像一覧を収集
-    exts = {".jpg", ".jpeg", ".png", ".tif", ".tiff"}
-    image_files = sorted(
-        [p for p in images_path.iterdir() if p.is_file() and p.suffix.lower() in exts],
-        key=lambda p: p.name.lower(),
+    _images_root, targets = collect_image_targets(
+        images_path,
+        masks_path,
+        image_list=image_list,
     )
-
-    if not image_files:
+    if not targets:
         print(f"No images found in {images_dir}")
         return
 
     # タスク構築
     tasks: list[tuple[str, str, str | None]] = []
-    for img_path in image_files:
-        mask_name = f"{img_path.stem}.png"
-        mask_out = str(masks_path / mask_name)
-
+    for target in targets:
+        img_path = target.image_path
+        mask_out = str(target.mask_path)
         # 既存マスクがあればAND合成
-        existing = masks_path / mask_name
+        existing = target.mask_path
         existing_str = None if replace else str(existing) if existing.is_file() else None
 
         tasks.append((str(img_path), mask_out, existing_str))
@@ -201,6 +201,7 @@ def main() -> None:
         "--replace", action="store_true",
         help="Ignore existing masks and write overexposure-only masks",
     )
+    parser.add_argument("--image-list", default=None, help="JSON or JSONL list of images to process")
     args = parser.parse_args()
 
     if args.threshold < 1 or args.threshold > 254:
@@ -214,6 +215,7 @@ def main() -> None:
         dilate_px=args.dilate,
         workers=args.workers,
         replace=bool(args.replace),
+        image_list=args.image_list,
     )
 
 

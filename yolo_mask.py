@@ -12,6 +12,7 @@ import cv2
 import numpy as np
 
 from image_io import imread_unicode, imwrite_unicode
+from mask_targets import collect_image_targets
 from mask_view_recipes import (
     QUALITY_CHOICES,
     QUALITY_STANDARD,
@@ -256,6 +257,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
         default=None,
         help="Write detailed timing and detection metrics to this JSON file (default=off)",
     )
+    parser.add_argument("--image-list", default=None, help="JSON or JSONL list of images to process")
     return parser
 
 
@@ -577,13 +579,13 @@ def detect_bottom_mask(img, pano_width: int, pano_height: int) -> tuple[np.ndarr
 # =========================
 # メイン処理
 # =========================
-def process_file(input_dir, output_dir, fname, add_ext=True) -> ProcessResult:
-    print(f"Processing: {fname}", flush=True)
+def process_image_path(image_path: str | Path, output_path: str | Path, display_name: str) -> ProcessResult:
+    print(f"Processing: {display_name}", flush=True)
 
     # 画像読み込み
-    img_path = os.path.join(input_dir, fname)
+    img_path = Path(image_path)
     if PROFILE is not None:
-        PROFILE.begin_image(fname, img_path)
+        PROFILE.begin_image(display_name, img_path)
     image_started = perf_counter() if PROFILE is not None else None
     with profile_timer("image.read"):
         img = imread_unicode(img_path)
@@ -651,23 +653,26 @@ def process_file(input_dir, output_dir, fname, add_ext=True) -> ProcessResult:
         mask = 255 - mask
 
     # ---------- 保存 ----------
-    if add_ext:
-        outname = fname + ".png"
-    else:
-        outname = os.path.splitext(fname)[0] + ".png"
-    out_path = os.path.join(output_dir, outname)
+    out_path = Path(output_path)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
     with profile_timer("image.write"):
         if not imwrite_unicode(out_path, mask):
             raise OSError(f"Failed to write mask: {out_path}")
     result = ProcessResult(
         output_path=Path(out_path),
-        group_key=str(Path(output_dir).resolve()),
+        group_key=str(Path(out_path).parent.resolve()),
     )
     if PROFILE is not None:
         if image_started is not None:
             PROFILE.add_timing("image.total", perf_counter() - image_started)
         PROFILE.finish_image(result.output_path)
     return result
+
+
+def process_file(input_dir, output_dir, fname, add_ext=True) -> ProcessResult:
+    img_path = Path(input_dir) / fname
+    outname = fname + ".png" if add_ext else os.path.splitext(fname)[0] + ".png"
+    return process_image_path(img_path, Path(output_dir) / outname, fname)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -751,37 +756,19 @@ def main(argv: list[str] | None = None) -> int:
     # =========================
     # 連番画像を処理
     # =========================
-    if os.path.isdir(input_dir):
-        # サブディレクトリを含めて処理
-        base = Path(input_dir)
-        dirs = [p.relative_to(base) for p in [base, *base.rglob("*")] if p.is_dir()]
-        tasks = []
-        for subdir in dirs:
-            dir = input_dir if subdir == "." else os.path.join(input_dir, subdir)
-            task_output_dir = output_dir if subdir == "." else os.path.join(output_dir, subdir)
-            os.makedirs(task_output_dir, exist_ok=True)
-
-            image_files = sorted([
-                f for f in os.listdir(dir)
-                if f.lower().endswith((".jpg", ".jpeg", ".png", ".tif", ".tiff"))
-            ])
-            tasks.extend((dir, task_output_dir, fname) for fname in image_files)
-
-        total = len(tasks)
-        print(f"[progress] 0/{total}", flush=True)
-        for done, (dir, task_output_dir, fname) in enumerate(tasks, start=1):
-            process_file(dir, task_output_dir, fname, add_ext)
-            print(f"Processed: {fname}", flush=True)
-            print(f"[progress] {done}/{total}", flush=True)
-    else:
-        # 単一ファイルの処理
-        fname = os.path.basename(input_dir)
-        source_dir = os.path.dirname(input_dir)
-        os.makedirs(output_dir, exist_ok=True)
-        print("[progress] 0/1", flush=True)
-        process_file(source_dir, output_dir, fname, add_ext)
-        print(f"Processed: {fname}", flush=True)
-        print("[progress] 1/1", flush=True)
+    _images_root, targets = collect_image_targets(
+        input_dir,
+        output_dir,
+        add_ext=add_ext,
+        image_list=args.image_list,
+    )
+    total = len(targets)
+    print(f"[progress] 0/{total}", flush=True)
+    for done, target in enumerate(targets, start=1):
+        display_name = target.rel_path or target.image_path.name
+        process_image_path(target.image_path, target.mask_path, display_name)
+        print(f"Processed: {display_name}", flush=True)
+        print(f"[progress] {done}/{total}", flush=True)
 
     if PROFILE is not None:
         profile = PROFILE

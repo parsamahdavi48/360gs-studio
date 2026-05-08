@@ -236,6 +236,14 @@ QLabel#workflowNote {{
     padding: 12px;
     font-size: 9pt;
 }}
+QLabel#imageTypeChip {{
+    background-color: {BG_INPUT};
+    border: 1px solid {BORDER};
+    border-radius: 4px;
+    color: {TEXT_DIM};
+    padding: 3px 7px;
+    font-size: 8pt;
+}}
 QLabel#emptyPaneMessage {{
     color: {TEXT_DIM};
     font-size: 10pt;

@@ -125,7 +125,7 @@ def test_mask_step_yolo_level_and_expand_share_compact_row() -> None:
     assert step.yolo_expand_label.toolTip() == i18n.tip("YOLO_EXPAND")
     assert step.yolo_expand_edit.value() == 0
     assert step.yolo_bottom_settings_row.isHidden()
-    assert step.projection_label.text().startswith(i18n.t("MASK_IMAGE_TYPE").rstrip(":"))
+    assert step.projection_label.text() == i18n.t("MASK_IMAGE_TYPE_EQUIRECT")
 
 
 def test_mask_step_sam31_apply_mode_shares_compact_settings_row(tmp_path: Path, monkeypatch) -> None:
@@ -886,6 +886,38 @@ def test_mask_step_normal_image_type_disables_stitch_and_uses_normal_yolo_projec
     assert yolo_cmd[yolo_cmd.index("--quality") + 1] == "standard"
     assert "--bottom-conf" not in yolo_cmd
     assert not step.yolo_bottom_enhance_combo.isEnabled()
+
+
+def test_mask_step_mixed_image_type_splits_commands_by_manifest(tmp_path: Path) -> None:
+    _app()
+    scene = tmp_path
+    images = scene / "images"
+    images.mkdir()
+    equirect = images / "pano.jpg"
+    normal = images / "normal.jpg"
+    cv2.imwrite(str(equirect), np.full((32, 64, 3), 180, dtype=np.uint8))
+    cv2.imwrite(str(normal), np.full((32, 32, 3), 120, dtype=np.uint8))
+    step = MaskStep(Path.cwd())
+    step.set_scene_dir(str(scene))
+
+    step.run_stitch_cb.setChecked(True)
+    commands = step.build_commands()
+
+    assert step.projection_label.text() == i18n.t("MASK_IMAGE_TYPE_MIXED")
+    assert [phase for phase, _cmd in commands] == ["yolo_equirect", "yolo_normal", "stitch_equirect"]
+    yolo_equirect = commands[0][1]
+    yolo_normal = commands[1][1]
+    stitch = commands[2][1]
+    assert yolo_equirect[yolo_equirect.index("--projection") + 1] == "equirect"
+    assert yolo_normal[yolo_normal.index("--projection") + 1] == "normal"
+    equirect_manifest = Path(yolo_equirect[yolo_equirect.index("--image-list") + 1])
+    normal_manifest = Path(yolo_normal[yolo_normal.index("--image-list") + 1])
+    stitch_manifest = Path(stitch[stitch.index("--image-list") + 1])
+    assert stitch_manifest == equirect_manifest
+    assert "images/pano.jpg" in equirect_manifest.read_text(encoding="utf-8")
+    assert "images/normal.jpg" not in equirect_manifest.read_text(encoding="utf-8")
+    assert "images/normal.jpg" in normal_manifest.read_text(encoding="utf-8")
+    assert "images/pano.jpg" not in normal_manifest.read_text(encoding="utf-8")
 
 
 def test_mask_step_quality_best_is_forwarded_to_primary_command(tmp_path: Path) -> None:

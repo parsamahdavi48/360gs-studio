@@ -69,9 +69,10 @@ def build_primary_mask_cmd(
     masks: str | Path,
     *,
     backend: str,
+    image_list: str | Path | None = None,
 ) -> list[str]:
     if backend == PERSON_BACKEND_MASK2FORMER:
-        return build_mask2former_cmd(context, images, masks, replace=True)
+        return build_mask2former_cmd(context, images, masks, replace=True, image_list=image_list)
     if backend == PERSON_BACKEND_SAM31:
         return build_sam31_prompt_cmd(
             context,
@@ -80,14 +81,17 @@ def build_primary_mask_cmd(
             prompts=list(context.sam_prompts),
             subtract_prompts=list(context.sam_subtract_prompts),
             merge_mode=context.sam31_merge_mode,
+            image_list=image_list,
         )
-    return build_yolo_sam_cmd(context, images, masks)
+    return build_yolo_sam_cmd(context, images, masks, image_list=image_list)
 
 
 def build_yolo_sam_cmd(
     context: MaskCommandContext,
     images: str | Path,
     masks: str | Path,
+    *,
+    image_list: str | Path | None = None,
 ) -> list[str]:
     images_text, masks_text = _require_images_masks(images, masks)
     script = _script_path(context, "yolo_mask.py")
@@ -106,6 +110,8 @@ def build_yolo_sam_cmd(
     ]
     if context.yolo_classes:
         cmd.extend(["--classes", ",".join(str(c) for c in context.yolo_classes)])
+    if image_list:
+        cmd.extend(["--image-list", str(image_list)])
     cmd.extend(context.yolo_extra_args)
     return cmd
 
@@ -119,6 +125,7 @@ def build_sam31_prompt_cmd(
     subtract_prompts: list[str] | None = None,
     merge_mode: str | None = None,
     replace: bool = False,
+    image_list: str | Path | None = None,
 ) -> list[str]:
     images_text, masks_text = _require_images_masks(images, masks)
     script = _script_path(context, "sky_mask.py")
@@ -154,6 +161,8 @@ def build_sam31_prompt_cmd(
         cmd.extend(["--subtract-sam-prompt", prompt])
     if effective_merge_mode == SAM31_MERGE_REPLACE:
         cmd.append("--replace")
+    if image_list:
+        cmd.extend(["--image-list", str(image_list)])
     try:
         if Path(images_text).is_dir():
             cmd.append("--safe-batch")
@@ -168,6 +177,7 @@ def build_mask2former_cmd(
     masks: str | Path,
     *,
     replace: bool = False,
+    image_list: str | Path | None = None,
 ) -> list[str]:
     images_text, masks_text = _require_images_masks(images, masks)
     script = _script_path(context, "sky_mask.py")
@@ -195,21 +205,37 @@ def build_mask2former_cmd(
     cmd.extend(_sky_postprocess_args(context))
     if replace:
         cmd.append("--replace")
+    if image_list:
+        cmd.extend(["--image-list", str(image_list)])
     return cmd
 
 
-def build_init_masks_cmd(context: MaskCommandContext, images: str | Path, masks: str | Path) -> list[str]:
+def build_init_masks_cmd(
+    context: MaskCommandContext,
+    images: str | Path,
+    masks: str | Path,
+    *,
+    image_list: str | Path | None = None,
+) -> list[str]:
     images_text, masks_text = _require_images_masks(images, masks)
     script = _script_path(context, "init_masks.py")
-    return [context.python_executable, "-u", str(script), images_text, masks_text]
+    cmd = [context.python_executable, "-u", str(script), images_text, masks_text]
+    if image_list:
+        cmd.extend(["--image-list", str(image_list)])
+    return cmd
 
 
-def build_stitch_cmd(context: MaskCommandContext, masks: str | Path) -> list[str]:
+def build_stitch_cmd(
+    context: MaskCommandContext,
+    masks: str | Path,
+    *,
+    image_list: str | Path | None = None,
+) -> list[str]:
     masks_text = str(masks)
     if not masks_text:
         raise ValueError("マスクフォルダが指定されていません")
     script = _script_path(context, "stitch_mask.py")
-    return [
+    cmd = [
         context.python_executable,
         "-u",
         str(script),
@@ -220,6 +246,9 @@ def build_stitch_cmd(context: MaskCommandContext, masks: str | Path) -> list[str
         "--workers",
         context.stitch_workers,
     ]
+    if image_list:
+        cmd.extend(["--image-list", str(image_list)])
+    return cmd
 
 
 def build_overexposure_cmd(
@@ -228,6 +257,7 @@ def build_overexposure_cmd(
     masks: str | Path,
     *,
     replace: bool = False,
+    image_list: str | Path | None = None,
 ) -> list[str]:
     images_text, masks_text = _require_images_masks(images, masks)
     script = _script_path(context, "overexposure_mask.py")
@@ -246,6 +276,8 @@ def build_overexposure_cmd(
     ]
     if replace:
         cmd.append("--replace")
+    if image_list:
+        cmd.extend(["--image-list", str(image_list)])
     return cmd
 
 
@@ -255,6 +287,7 @@ def build_custom_cmd(
     masks: str | Path,
     *,
     replace: bool = False,
+    image_list: str | Path | None = None,
 ) -> list[str]:
     images_text, masks_text = _require_images_masks(images, masks)
     if not context.custom_mask:
@@ -270,4 +303,6 @@ def build_custom_cmd(
     ]
     if replace:
         cmd.append("--replace")
+    if image_list:
+        cmd.extend(["--image-list", str(image_list)])
     return cmd
