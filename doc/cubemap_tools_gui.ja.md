@@ -87,7 +87,7 @@ LichtFeld Studioで3DGUTトレーニングに使うデータを作るモード�
 - `transforms.json`
 - `pointcloud.ply`
 
-あわせて、このアプリ用の設定記録として `_stechdrive/export_settings.json` を保存します。
+あわせて、このアプリ用の設定記録として `_stechdrive/step4/export_settings.json` を保存します。
 
 Metashapeルートでは `出力プリセット: LichtFeld Studio` と点群PLYの指定が必要です。SphereSfMルートではSfM結果から `pointcloud.ply` を作ります。`3DGUT (LichtFeld)` の選択中は投影視点の調整、画像/マスク出力のON/OFF、COLMAP形式モデル追加出力は無効になります。完成データセットはこの場合も `<scene>/output/` です。
 
@@ -173,7 +173,7 @@ VRAMや処理時間が厳しい場合は、まず `Normal` または `Half` で�
 
 `入力データ` は通常自動設定のままで使います。キューブマップ変換と3DGUTはどちらも `<scene>/output/`、COLMAPルートでは `<scene>/output/colmap_rig/` が基準になります。`出力先` は既定で `<scene>/output/` になり、持ち出すデータセットとトレーニング結果を同じフォルダにまとめます。
 
-LichtFeld Studioでは、本家のトレーニングパネル上部にある `Strategy`、`Iterations`、`Max Gaussians`、出力PLY名、`SH Degree`、`Tile Mode`、`Steps Scaler`、マスク関連オプション、PPISPの条件項目、背景の `Mode` / `Color` を通常項目として指定できます。出力PLY名はシーンフォルダ名を既定値にし、LichtFeldの `--output-name` として渡します。頻繁には触らないDataset、Optimizer、Refinement、Loss、Initialization、MRNF/IGS+、Sparsity、Save/Eval系の項目は `Advanced Training Parameters` にまとめ、ストラテジーや上部チェックに対応する項目だけを表示します。`Steps Scaler` を `Auto` にすると、Step 4が出力されるトレーニング画像数を数え、LichtFeld StudioのGUIがデータセット読み込み時に行う300枚基準のスケーリングと同じ基準で調整します。実行時に `_stechdrive/training/lichtfeld_config.json` を作り、そのJSONとデータセット専用のCLIオプションをLichtFeldへ渡します。
+LichtFeld Studioでは、本家のトレーニングパネル上部にある `Strategy`、`Iterations`、`Max Gaussians`、出力PLY名、`SH Degree`、`Tile Mode`、`Steps Scaler`、マスク関連オプション、PPISPの条件項目、背景の `Mode` / `Color` を通常項目として指定できます。出力PLY名はシーンフォルダ名を既定値にし、LichtFeldの `--output-name` として渡します。頻繁には触らないDataset、Optimizer、Refinement、Loss、Initialization、MRNF/IGS+、Sparsity、Save/Eval系の項目は `Advanced Training Parameters` にまとめ、ストラテジーや上部チェックに対応する項目だけを表示します。`Steps Scaler` を `Auto` にすると、Step 4が出力されるトレーニング画像数を数え、LichtFeld StudioのGUIがデータセット読み込み時に行う300枚基準のスケーリングと同じ基準で調整します。実行時に `_stechdrive/step4/training/lichtfeld_config.json` を作り、そのJSONとデータセット専用のCLIオプションをLichtFeldへ渡します。
 
 `Train` がONのときは、選択したトレーニング方式とデータ形状の整合性も確認します。LichtFeldの `GUT` は `pointcloud.ply` を含む3DGUT出力、通常のLichtFeldとPostshotは投影Cubemapデータを前提にします。
 
@@ -239,9 +239,9 @@ SphereSfMプロジェクト `<scene>/output/spheresfm/` には、作業用の `p
 | COLMAP実行あり | 上記に加えて、COLMAP/GLOMAPのSfM結果 |
 | SphereSfM + `3DGUT (LichtFeld)` | `<scene>/output/images/`, `<scene>/output/masks/`, `<scene>/output/transforms.json`, `<scene>/output/pointcloud.ply` |
 | SphereSfM + キューブマップ変換 (`投影視点に変換`) | 下流アプリへ渡すのは `<scene>/output/`。`images/`, `masks/`, `transforms.json`, `pointcloud.ply` を作ります |
-| トレーニングON | 上記に加えて `<scene>/output/` 直下のトレーニング結果と、LichtFeldでは `_stechdrive/training/lichtfeld_config.json` |
+| トレーニングON | 上記に加えて `<scene>/output/` 直下のトレーニング結果と、LichtFeldでは `_stechdrive/step4/training/lichtfeld_config.json` |
 
-Step 4の設定記録は `<scene>/_stechdrive/export_settings.json` に保存します。キューブマップを書き出すルートでは、視点構成も `<scene>/_stechdrive/views_config.json` に保存します。これらはこのアプリで再開・再現するためのファイルで、3DGSアプリへ渡すデータセット本体ではありません。
+Step 4では `<scene>/output/` を、他PCへコピーしたり3DGSアプリへ直接読み込ませたりする現在のポータブルな正本データセットとして扱います。アプリ内で再現するための状態は別に保存します。Step 4の設定記録は `<scene>/_stechdrive/step4/export_settings.json` に保存し、キューブマップを書き出すルートでは視点構成も `<scene>/_stechdrive/step4/views_config.json` に保存します。これらはこのアプリで再開・再現するためのメタデータで、3DGSアプリへ渡すデータセット本体ではありません。
 
 `LichtFeld Studio` プロファイルでは、最終出力の `transforms.json` と `pointcloud.ply` に同じ向き補正を適用し、LichtFeld上でMetashapeと同じ +X / +Z / 上下方向になるようにします。
 

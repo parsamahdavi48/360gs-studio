@@ -26,6 +26,7 @@ from gui.steps.sfm_route_specs import (
     normalize_sfm_route,
 )
 from gui.steps.step4_cubemap import CubemapStep
+from gui.steps.step4_settings import STEP4_SETTINGS_VERSION
 from gui.steps.training_backends import lichtfeld_defaults
 from scene_layout import step4_export_settings_path, step4_meta_dir, step4_views_config_path
 from transforms_to_colmap import read_ply_points
@@ -1377,6 +1378,52 @@ def test_spheresfm_user_preferences_migrate_feature_preset_to_quality(
     assert step.spheresfm_quality_combo.currentData() == "quality"
 
 
+def test_step4_scene_settings_restore_export_and_training_choices(tmp_path: Path) -> None:
+    step = _ready_step(tmp_path, metashape_inputs=True)
+    postshot_profile = step.profile_combo.findData("postshot")
+    assert postshot_profile >= 0
+    step.profile_combo.setCurrentIndex(postshot_profile)
+    step.export_images_cb.setChecked(False)
+    step.export_masks_cb.setChecked(True)
+    step._set_combo_data(step.scale_combo, 0.5)
+    step._set_combo_data(step.output_format_combo, "png")
+    step._set_combo_data(step.output_bit_depth_combo, "source")
+    step.jpg_quality_edit.setText("88")
+    step.invert_masks_cb.setChecked(True)
+    custom_mode = step.view_config.view_mode_combo.findData("custom_views")
+    assert custom_mode >= 0
+    step.view_config.view_mode_combo.setCurrentIndex(custom_mode)
+    step.view_config.set_yaw_slot_count(5)
+    step.view_config.set_pitch_row_count(2)
+    step.view_config.yaw_offset_edit.setValue(12.0)
+    step.view_config.pitch_rows[0]["checks"][0].setChecked(False)
+    step.run_training_cb.setChecked(True)
+    step._set_training_backend("postshot")
+    step.postshot_project_name_edit.setText("compare.psht")
+    step._write_export_settings()
+
+    restored = CubemapStep(Path.cwd())
+    restored.set_scene_dir(str(tmp_path))
+
+    assert restored.profile_combo.currentData() == "postshot"
+    assert restored.axis_transform_combo.currentData() == "postshot"
+    assert restored.export_images_cb.isChecked() is False
+    assert restored.export_masks_cb.isChecked() is True
+    assert restored.scale_combo.currentData() == 0.5
+    assert restored.output_format_combo.currentData() == "png"
+    assert restored.output_bit_depth_combo.currentData() == "source"
+    assert restored.jpg_quality_edit.text() == "88"
+    assert restored.invert_masks_cb.isChecked() is True
+    assert restored.view_config.view_mode() == "custom_views"
+    assert restored.view_config.yaw_slot_count() == 5
+    assert restored.view_config.pitch_row_count() == 2
+    assert restored.view_config.yaw_offset() == pytest.approx(12.0)
+    assert restored.view_config.collect_views(include_disabled=True)[0]["enabled"] is False
+    assert restored.run_training_cb.isChecked() is True
+    assert restored._training_backend() == "postshot"
+    assert restored.postshot_project_name_edit.text() == "compare.psht"
+
+
 def test_metashape_import_uses_scene_images_and_lf_ply(tmp_path: Path) -> None:
     step = _ready_step(tmp_path)
     (tmp_path / "images").mkdir()
@@ -2271,7 +2318,12 @@ def test_cubemap_finalize_writes_export_settings(tmp_path: Path) -> None:
     assert settings_path.is_file()
     settings = json.loads(settings_path.read_text(encoding="utf-8"))
     assert settings["app"] == "stechdrive-3dgs-utils"
-    assert settings["settings_version"] == 1
+    assert settings["settings_version"] == STEP4_SETTINGS_VERSION
+    assert settings["portable_output"] == {
+        "root": "output",
+        "dataset_kind": "projection_views",
+        "active": True,
+    }
     assert settings["export_method"] == "metashape"
     assert settings["target_profile"] == "lichtfeld"
     assert settings["effective_profile"] == "lichtfeld"
@@ -2323,6 +2375,7 @@ def test_lichtfeld_3dgut_finalize_writes_scene_dataset_settings_and_correction(
     assert settings["export_method"] == "metashape"
     assert settings["output_shape"] == "equirect_3dgut"
     assert settings["output_dir"] == str(output)
+    assert settings["portable_output"]["dataset_kind"] == "3dgut"
     assert settings["views_config_path"] == ""
     assert settings["views_config_snapshot"] is None
     assert settings["conversion"]["no_image"] is True

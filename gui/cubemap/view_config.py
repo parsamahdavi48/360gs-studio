@@ -310,6 +310,86 @@ class ViewConfigWidget(QWidget):
     def collect_views(self, include_disabled: bool = False) -> list[dict]:
         return self._grid_views(include_disabled=include_disabled)
 
+    def apply_settings_snapshot(self, snapshot: dict) -> None:
+        """Restore the view grid from a Step 4 settings snapshot."""
+        if not isinstance(snapshot, dict):
+            return
+
+        mode = str(snapshot.get("mode") or VIEW_MODE_CUBE6)
+        if mode not in {VIEW_MODE_CUBE6, VIEW_MODE_CUSTOM}:
+            mode = VIEW_MODE_CUBE6
+
+        try:
+            yaw_offset = float(snapshot.get("yaw_offset", self.yaw_offset()))
+        except (TypeError, ValueError):
+            yaw_offset = self.yaw_offset()
+        self.yaw_offset_edit.setValue(yaw_offset)
+
+        rows = self._rows_from_settings_snapshot(snapshot)
+        mode_blocked = self.view_mode_combo.blockSignals(True)
+        self._applying_preset = True
+        try:
+            idx = self.view_mode_combo.findData(mode)
+            if idx >= 0:
+                self.view_mode_combo.setCurrentIndex(idx)
+            if rows:
+                self._rebuild_grid(rows)
+            elif mode == VIEW_MODE_CUBE6:
+                self._apply_cube6_preset()
+            else:
+                self._apply_custom_defaults()
+        finally:
+            self._applying_preset = False
+            self.view_mode_combo.blockSignals(mode_blocked)
+
+    def _rows_from_settings_snapshot(self, snapshot: dict) -> list[dict]:
+        try:
+            yaw_slots = int(snapshot.get("yaw_slots") or self.yaw_slot_count())
+        except (TypeError, ValueError):
+            yaw_slots = self.yaw_slot_count()
+        yaw_slots = max(_MIN_YAW_SLOTS, min(_MAX_YAW_SLOTS, yaw_slots))
+
+        raw_pitches = snapshot.get("pitch_rows")
+        pitches: list[float] = []
+        if isinstance(raw_pitches, list):
+            for value in raw_pitches[:_MAX_PITCH_ROWS]:
+                try:
+                    pitches.append(_clamp_pitch(float(value)))
+                except (TypeError, ValueError):
+                    continue
+
+        raw_views = snapshot.get("views")
+        views = raw_views if isinstance(raw_views, list) else []
+        if not pitches and views:
+            for view in views:
+                if not isinstance(view, dict):
+                    continue
+                try:
+                    pitch = _clamp_pitch(float(view.get("pitch")))
+                except (TypeError, ValueError):
+                    continue
+                if _pitch_key(pitch) not in {_pitch_key(existing) for existing in pitches}:
+                    pitches.append(pitch)
+                if len(pitches) >= _MAX_PITCH_ROWS:
+                    break
+
+        if not pitches:
+            return []
+
+        rows: list[dict] = []
+        for row_index, pitch in enumerate(pitches):
+            checks: list[bool] = []
+            for slot in range(yaw_slots):
+                view_index = row_index * yaw_slots + slot
+                if view_index < len(views) and isinstance(views[view_index], dict):
+                    checks.append(bool(views[view_index].get("enabled", True)))
+                else:
+                    checks.append(True)
+            rows.append({"pitch": pitch, "checks": checks})
+
+        self._yaw_slot_count = yaw_slots
+        return rows
+
     def _grid_views(self, include_disabled: bool = False) -> list[dict]:
         step = 360.0 / float(self.yaw_slot_count())
         views = []

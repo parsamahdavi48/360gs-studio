@@ -68,6 +68,11 @@ from gui.steps.sfm_route_specs import (
     SFM_ROUTE_SPHERESFM as _METHOD_SPHERESFM,
     normalize_sfm_route,
 )
+from gui.steps.step4_settings import (
+    STEP4_SETTINGS_VERSION,
+    load_step4_export_settings,
+    write_step4_export_settings,
+)
 from gui.steps.training_backends import (
     CustomTrainingOptions,
     LichtFeldTrainingOptions,
@@ -96,7 +101,6 @@ from scene_layout import (
     STEP4_EXPORT_SETTINGS_JSON,
     STEP4_META_DIR_NAME,
     STEP4_VIEWS_CONFIG_JSON,
-    legacy_step4_export_settings_path,
     step4_export_settings_path,
     step4_meta_dir,
     step4_views_config_path,
@@ -362,6 +366,7 @@ class CubemapStep(BaseStepWidget):
         self._syncing_profile_controls = False
         self._syncing_output_shape_controls = False
         self._syncing_user_preferences = False
+        self._syncing_project_settings = False
         self._syncing_spheresfm_scope_from_intent = False
         self._user_preferences_enabled = False
         self._export_method_value = _METHOD_METASHAPE
@@ -1251,15 +1256,9 @@ class CubemapStep(BaseStepWidget):
                 return ""
         except OSError:
             return ""
-        settings_path = step4_export_settings_path(Path(self.scene_dir))
-        try:
-            settings = json.loads(settings_path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
-            legacy_path = legacy_step4_export_settings_path(Path(self.scene_dir))
-            try:
-                settings = json.loads(legacy_path.read_text(encoding="utf-8"))
-            except (OSError, json.JSONDecodeError):
-                return ""
+        settings = load_step4_export_settings(Path(self.scene_dir))
+        if not settings:
+            return ""
         shape = str(settings.get("output_shape", "")).strip()
         return shape if shape in {_OUTPUT_SHAPE_PROJECTED, _OUTPUT_SHAPE_EQUIRECT_3DGUT} else ""
 
@@ -1986,18 +1985,273 @@ class CubemapStep(BaseStepWidget):
         self.ms_images_path_label.set_full_text(images_dir)
         self.ms_xml_browse.set_text(str(self._guess_xml(p)))
         self.ms_ply_browse.set_text(self._guess_ply(p))
-        self.preview.set_scene_dir(path)
-        self._refresh_input_image_count()
         self._training_dataset_user_edited = False
         self._training_output_user_edited = False
         self._lfs_output_name_user_edited = False
         self._postshot_project_name_user_edited = False
-        self._update_training_paths(force=True)
-        self._update_lfs_output_name(force=True)
-        self._update_postshot_project_name(force=True)
+        restored = self._restore_project_settings(p)
+        self.preview.set_scene_dir(path)
+        self._refresh_input_image_count()
+        self._update_training_paths(force=not restored)
+        self._update_lfs_output_name(force=not restored)
+        self._update_postshot_project_name(force=not restored)
         self._update_lfs_auto_steps_scaler()
         self._update_output_count()
         self._render_preview()
+
+    def _restore_project_settings(self, scene: Path) -> bool:
+        settings = load_step4_export_settings(scene)
+        if not settings:
+            return False
+
+        self._syncing_project_settings = True
+        self._syncing_user_preferences = True
+        try:
+            self._apply_project_settings(scene, settings)
+        finally:
+            self._syncing_user_preferences = False
+            self._syncing_project_settings = False
+        return True
+
+    def _apply_project_settings(self, scene: Path, settings: dict) -> None:
+        route = normalize_sfm_route(str(settings.get("export_method", "")))
+        self._set_export_method(route)
+
+        self._restore_conversion_settings(settings)
+        self._restore_route_settings(scene, settings)
+        self._restore_training_settings(scene, settings)
+
+        self._sync_output_shape_controls()
+        self._sync_yaw_per_frame_control()
+        self._sync_settings_tabs()
+        self._update_path_labels()
+
+    def _restore_conversion_settings(self, settings: dict) -> None:
+        image_size = settings.get("image_size") if isinstance(settings.get("image_size"), dict) else {}
+        scale = image_size.get("scale")
+        if scale is not None:
+            try:
+                self._set_combo_data(self.scale_combo, float(scale))
+            except (TypeError, ValueError):
+                pass
+
+        view_config = settings.get("view_config")
+        if isinstance(view_config, dict):
+            self.view_config.apply_settings_snapshot(view_config)
+
+        conversion = settings.get("conversion") if isinstance(settings.get("conversion"), dict) else {}
+        if "write_images" in conversion:
+            self.export_images_cb.setChecked(bool(conversion.get("write_images")))
+        if "write_masks" in conversion:
+            self.export_masks_cb.setChecked(bool(conversion.get("write_masks")))
+        if "yaw_offset_per_frame" in conversion and not self._is_colmap_method():
+            try:
+                self.yaw_per_frame_edit.setValue(float(conversion.get("yaw_offset_per_frame")))
+            except (TypeError, ValueError):
+                pass
+        output_format = str(conversion.get("output_format", "")).strip()
+        output_bit_depth = str(conversion.get("output_bit_depth", "")).strip()
+        if output_format:
+            self._set_combo_data(self.output_format_combo, output_format)
+        if output_bit_depth:
+            self._set_combo_data(self.output_bit_depth_combo, output_bit_depth)
+        if "jpg_quality" in conversion:
+            self.jpg_quality_edit.setText(str(conversion.get("jpg_quality")))
+        if "invert_masks" in conversion:
+            self.invert_masks_cb.setChecked(bool(conversion.get("invert_masks")))
+
+    def _restore_route_settings(self, scene: Path, settings: dict) -> None:
+        output_shape = str(settings.get("output_shape", "")).strip()
+        if output_shape:
+            combo = self.spheresfm_output_shape_combo if self._is_spheresfm_method() else self.output_shape_combo
+            self._set_combo_data(combo, output_shape)
+
+        target_profile = str(settings.get("target_profile", "")).strip()
+        axis_transform = str(settings.get("axis_transform", "")).strip()
+        if self._is_spheresfm_method():
+            if target_profile:
+                self._set_combo_data(self.spheresfm_profile_combo, target_profile)
+            if axis_transform:
+                self._set_combo_data(self.spheresfm_axis_transform_combo, axis_transform)
+        else:
+            if target_profile:
+                self._set_combo_data(self.profile_combo, target_profile)
+            if axis_transform:
+                self._set_combo_data(self.axis_transform_combo, axis_transform)
+
+        metashape = settings.get("metashape_import")
+        if isinstance(metashape, dict):
+            xml = self._settings_path_text(scene, metashape.get("xml"), require_file=True)
+            ply = self._settings_path_text(scene, metashape.get("ply"), require_file=True)
+            if xml:
+                self.ms_xml_browse.set_text(xml)
+            if ply:
+                self.ms_ply_browse.set_text(ply)
+            if "use_ply" in metashape:
+                self.ms_use_ply_cb.setChecked(bool(metashape.get("use_ply")))
+            if "scale" in metashape:
+                self.ms_scale_edit.setText(str(metashape.get("scale")))
+            if "no_fix_rotation" in metashape:
+                self.ms_no_fix_rot_cb.setChecked(bool(metashape.get("no_fix_rotation")))
+
+        colmap = settings.get("colmap_rig")
+        if isinstance(colmap, dict):
+            self.run_colmap_cb.setChecked(bool(colmap.get("run_sfm", self.run_colmap_cb.isChecked())))
+            self._set_combo_data(self.colmap_matcher_combo, str(colmap.get("matcher", "")).strip())
+            self._set_combo_data(self.colmap_mapper_combo, str(colmap.get("mapper", "")).strip())
+            colmap_exec = self._settings_text(colmap.get("colmap_executable"))
+            glomap_exec = self._settings_text(colmap.get("glomap_executable"))
+            if colmap_exec:
+                self.colmap_exec_browse.set_text(colmap_exec)
+            if glomap_exec:
+                self.glomap_exec_browse.set_text(glomap_exec)
+
+        spheresfm = settings.get("spheresfm")
+        if isinstance(spheresfm, dict):
+            if "use_masks" in spheresfm:
+                self.spheresfm_use_masks_cb.setChecked(bool(spheresfm.get("use_masks")))
+            self._set_combo_data(self.spheresfm_matcher_combo, str(spheresfm.get("matcher", "")).strip())
+            self._set_combo_data(
+                self.spheresfm_quality_combo,
+                _normalize_spheresfm_quality_preset(str(spheresfm.get("quality_preset", "")).strip()),
+            )
+            self._set_combo_data(
+                self.spheresfm_run_scope_combo,
+                self._normalize_spheresfm_run_scope(str(spheresfm.get("run_scope", "")).strip()),
+            )
+            pose = self._settings_path_text(scene, spheresfm.get("pose_path"), require_file=True)
+            if pose:
+                self.spheresfm_pose_browse.set_text(pose)
+            spheresfm_exec = self._settings_text(spheresfm.get("colmap_executable"))
+            if spheresfm_exec:
+                self.spheresfm_exec_browse.set_text(spheresfm_exec)
+
+    def _restore_training_settings(self, scene: Path, settings: dict) -> None:
+        training = settings.get("training")
+        if not isinstance(training, dict):
+            return
+        self.run_training_cb.setChecked(bool(training.get("enabled", False)))
+        backend = str(training.get("backend", "")).strip()
+        if backend:
+            self._set_training_backend(backend)
+        executable = self._settings_text(training.get("executable"))
+        if executable:
+            self.training_executable_browse.set_text(executable)
+        dataset_root = self._settings_path_text(scene, training.get("dataset_root"))
+        if dataset_root:
+            self.training_dataset_browse.set_text(dataset_root)
+            self._training_dataset_user_edited = Path(dataset_root) != self._default_training_dataset_dir()
+        output_dir = self._settings_path_text(scene, training.get("output_dir"))
+        if output_dir:
+            self.training_output_browse.set_text(output_dir)
+            self._training_output_user_edited = Path(output_dir) != self._default_training_output_dir()
+
+        self._restore_lfs_settings(training.get("lichtfeld"))
+        self._restore_postshot_settings(training.get("postshot"))
+        custom = training.get("custom") if isinstance(training.get("custom"), dict) else {}
+        if "arguments_template" in custom:
+            self.custom_training_args_edit.setText(str(custom.get("arguments_template", "")))
+
+    def _restore_lfs_settings(self, payload: object) -> None:
+        if not isinstance(payload, dict):
+            return
+        advanced = payload.get("advanced") if isinstance(payload.get("advanced"), dict) else {}
+        state = {
+            "strategy": payload.get("strategy", "mrnf"),
+            "iterations": payload.get("iterations", "30,000"),
+            "max_gaussians": payload.get("max_gaussians", "1,000,000"),
+            "sh_degree": payload.get("sh_degree", 3),
+            "tile_mode": payload.get("tile_mode", 1),
+            "steps_scaler": payload.get("steps_scaler", "1.00"),
+            "bilateral_grid": payload.get("bilateral_grid", False),
+            "mask_mode": payload.get("mask_mode", "none"),
+            "invert_masks": payload.get("invert_masks", False),
+            "mask_threshold": payload.get("mask_threshold", self.lfs_mask_threshold_edit.text()),
+            "use_alpha_as_mask": payload.get("use_alpha_as_mask", self.lfs_use_alpha_as_mask_cb.isChecked()),
+            "mask_opacity_penalty_weight": payload.get(
+                "mask_opacity_penalty_weight",
+                self.lfs_mask_opacity_penalty_weight_edit.text(),
+            ),
+            "mask_opacity_penalty_power": payload.get(
+                "mask_opacity_penalty_power",
+                self.lfs_mask_opacity_penalty_power_edit.text(),
+            ),
+            "sparsity": payload.get("sparsity", False),
+            "gut": payload.get("gut", False),
+            "undistort": payload.get("undistort", False),
+            "mip_filter": payload.get("mip_filter", False),
+            "ppisp": payload.get("ppisp", False),
+            "ppisp_freeze_from_sidecar": payload.get(
+                "ppisp_freeze_from_sidecar",
+                self.lfs_ppisp_freeze_from_sidecar_cb.isChecked(),
+            ),
+            "ppisp_sidecar_path": advanced.get("ppisp_sidecar_path", ""),
+            "ppisp_use_controller": payload.get("ppisp_use_controller", self.lfs_ppisp_use_controller_cb.isChecked()),
+            "ppisp_controller_activation_step": payload.get(
+                "ppisp_controller_activation_step",
+                self.lfs_ppisp_controller_activation_step_edit.text(),
+            ),
+            "ppisp_controller_lr": payload.get("ppisp_controller_lr", self.lfs_ppisp_controller_lr_edit.text()),
+            "ppisp_freeze_gaussians_on_distill": payload.get(
+                "ppisp_freeze_gaussians_on_distill",
+                self.lfs_ppisp_freeze_gaussians_on_distill_cb.isChecked(),
+            ),
+            "background_mode": payload.get("background_mode", "solid_color"),
+            "background_color": payload.get("background_color", [0, 0, 0]),
+            "background_image": payload.get("background_image", ""),
+            "advanced_numbers": advanced.get("numbers", {}),
+            "advanced_checks": advanced.get("checks", {}),
+        }
+        strategy = str(state.get("strategy", "mrnf"))
+        self._lfs_active_strategy = strategy if strategy in _LFS_STRATEGIES else "mrnf"
+        self._lfs_strategy_states[self._lfs_active_strategy] = state
+        self._apply_lfs_ui_state(state)
+        if "auto_steps_scaler" in payload:
+            self.lfs_auto_steps_scaler_cb.setChecked(bool(payload.get("auto_steps_scaler")))
+        if "headless" in payload:
+            self.training_headless_cb.setChecked(bool(payload.get("headless")))
+        if "output_name" in payload:
+            self.lfs_output_name_edit.setText(str(payload.get("output_name", "")))
+            self._lfs_output_name_user_edited = bool(self.lfs_output_name_edit.text().strip())
+
+    def _restore_postshot_settings(self, payload: object) -> None:
+        if not isinstance(payload, dict):
+            return
+        if "project_name" in payload:
+            self.postshot_project_name_edit.setText(str(payload.get("project_name", "")))
+            self._postshot_project_name_user_edited = bool(self.postshot_project_name_edit.text().strip())
+        self._set_combo_data(self.postshot_profile_combo, str(payload.get("profile", "")).strip())
+        if "ksteps" in payload:
+            self.postshot_ksteps_edit.setText(str(payload.get("ksteps", "")))
+        if "auto_ksteps" in payload:
+            self.postshot_ksteps_auto_cb.setChecked(bool(payload.get("auto_ksteps")))
+        if "max_image_size" in payload:
+            self.postshot_max_image_size_edit.setText(str(payload.get("max_image_size", "")))
+        self._set_combo_data(self.postshot_camera_poses_combo, str(payload.get("camera_poses", "")).strip())
+        if "import_masks" in payload:
+            self.postshot_import_masks_cb.setChecked(bool(payload.get("import_masks")))
+        self._set_combo_data(self.postshot_mask_mode_combo, str(payload.get("mask_mode", "")).strip())
+        self._set_combo_data(self.postshot_image_select_combo, str(payload.get("image_select", "")).strip())
+        if "num_train_images" in payload:
+            self.postshot_num_train_images_edit.setText(str(payload.get("num_train_images", "")))
+        self._set_combo_data(self.postshot_pose_quality_combo, payload.get("pose_quality"))
+        self._update_postshot_conditional_visibility()
+
+    @staticmethod
+    def _settings_text(value: object) -> str:
+        return str(value or "").strip()
+
+    @staticmethod
+    def _settings_path_text(scene: Path, value: object, *, require_file: bool = False) -> str:
+        text = str(value or "").strip()
+        if not text:
+            return ""
+        path = Path(text)
+        if not path.is_absolute():
+            path = scene / path
+        if require_file and not path.is_file():
+            return ""
+        return str(path)
 
     def primary_action_text(self) -> str:
         return i18n.t("RUN")
@@ -2107,7 +2361,7 @@ class CubemapStep(BaseStepWidget):
         self._on_colmap_mapper_changed()
 
     def _save_user_preferences(self) -> None:
-        if self._syncing_user_preferences:
+        if self._syncing_user_preferences or self._syncing_project_settings:
             return
         update_user_settings_section(
             _USER_SETTINGS_SECTION,
@@ -4253,14 +4507,20 @@ class CubemapStep(BaseStepWidget):
             views_config_path = f"{STEP4_META_DIR_NAME}/{STEP4_VIEWS_CONFIG_JSON}"
         writes_view_images = route_uses_view_export and self._writes_images()
         writes_view_masks = route_uses_view_export and self._writes_masks()
+        portable_dataset_kind = "3dgut" if direct_source_output else "projection_views"
 
         return {
             "app": "stechdrive-3dgs-utils",
             "app_version": APP_VERSION,
-            "settings_version": 1,
+            "settings_version": STEP4_SETTINGS_VERSION,
             "created_at": self._utc_now_iso(),
             "scene_dir": str(scene),
             "output_dir": str(output),
+            "portable_output": {
+                "root": "output",
+                "dataset_kind": portable_dataset_kind,
+                "active": True,
+            },
             "export_method": self._export_method(),
             "output_shape": self._output_shape(),
             "target_profile": profile,
@@ -4408,6 +4668,7 @@ class CubemapStep(BaseStepWidget):
                 "strategy": self.lfs_strategy_combo.currentData() or "mrnf",
                 "iterations": self.lfs_iterations_edit.text().strip(),
                 "max_gaussians": self.lfs_max_gaussians_edit.text().strip(),
+                "output_name": self.lfs_output_name_edit.text().strip(),
                 "sh_degree": self.lfs_sh_degree_combo.currentData(),
                 "tile_mode": self.lfs_tile_mode_combo.currentData(),
                 "steps_scaler": self.lfs_steps_scaler_edit.text().strip(),
@@ -4415,11 +4676,21 @@ class CubemapStep(BaseStepWidget):
                 "image_count": self._training_image_count(dataset) if self.scene_dir else 0,
                 "bilateral_grid": self.lfs_bilateral_grid_cb.isChecked(),
                 "mask_mode": self.lfs_mask_mode_combo.currentData() or "none",
+                "invert_masks": self.lfs_invert_masks_cb.isChecked(),
+                "mask_threshold": self.lfs_mask_threshold_edit.text().strip(),
+                "use_alpha_as_mask": self.lfs_use_alpha_as_mask_cb.isChecked(),
+                "mask_opacity_penalty_weight": self.lfs_mask_opacity_penalty_weight_edit.text().strip(),
+                "mask_opacity_penalty_power": self.lfs_mask_opacity_penalty_power_edit.text().strip(),
                 "sparsity": self.lfs_sparsity_cb.isChecked(),
                 "gut": self.lfs_gut_cb.isChecked(),
                 "undistort": self.lfs_undistort_cb.isChecked(),
                 "mip_filter": self.lfs_mip_filter_cb.isChecked(),
                 "ppisp": self.lfs_ppisp_cb.isChecked(),
+                "ppisp_freeze_from_sidecar": self.lfs_ppisp_freeze_from_sidecar_cb.isChecked(),
+                "ppisp_use_controller": self.lfs_ppisp_use_controller_cb.isChecked(),
+                "ppisp_controller_activation_step": self.lfs_ppisp_controller_activation_step_edit.text().strip(),
+                "ppisp_controller_lr": self.lfs_ppisp_controller_lr_edit.text().strip(),
+                "ppisp_freeze_gaussians_on_distill": self.lfs_ppisp_freeze_gaussians_on_distill_cb.isChecked(),
                 "background_mode": self.lfs_bg_mode_combo.currentData() or "solid_color",
                 "background_color": [
                     self.lfs_bg_r_edit.text().strip(),
@@ -4469,10 +4740,8 @@ class CubemapStep(BaseStepWidget):
         }
 
     def _write_export_settings(self) -> None:
-        path = self._export_settings_path()
-        path.parent.mkdir(parents=True, exist_ok=True)
         payload = self._collect_export_settings()
-        path.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
+        write_step4_export_settings(Path(self.scene_dir), payload)
 
     @staticmethod
     def _step4_run_id(prefix: str) -> str:
@@ -4481,18 +4750,7 @@ class CubemapStep(BaseStepWidget):
     def _current_export_settings_snapshot(self) -> dict:
         if not self.scene_dir:
             return {}
-        scene = Path(self.scene_dir)
-        for path in (
-            step4_export_settings_path(scene),
-            legacy_step4_export_settings_path(scene),
-        ):
-            try:
-                data = json.loads(path.read_text(encoding="utf-8"))
-            except (OSError, json.JSONDecodeError):
-                continue
-            if isinstance(data, dict):
-                return data
-        return {}
+        return load_step4_export_settings(Path(self.scene_dir))
 
     def _step4_artifact_snapshot(self, root: Path) -> dict:
         scene = Path(self.scene_dir)

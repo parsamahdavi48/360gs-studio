@@ -87,7 +87,7 @@ This mode writes these files under `output/` for the LichtFeld 3DGUT dataset:
 - `transforms.json`
 - `pointcloud.ply`
 
-It also saves `_stechdrive/export_settings.json` as this app's settings record.
+It also saves `_stechdrive/step4/export_settings.json` as this app's settings record.
 
 In the Metashape route, `Output Preset: LichtFeld Studio` and a point-cloud PLY are required. In the SphereSfM route, Step 4 creates `pointcloud.ply` from the SfM result. While `3DGUT (LichtFeld)` is active, projection-view controls, image/mask output toggles, and COLMAP text-model export are disabled. The finished dataset is still `<scene>/output/`.
 
@@ -173,7 +173,7 @@ The `Training` tab configures the external training CLI that can run after Step 
 
 Normally, leave `Dataset` on the automatic value. Cubemap conversion and 3DGUT both use `<scene>/output/`, and the COLMAP route uses `<scene>/output/colmap_rig/`. The default `Training Output` is `<scene>/output/`, so the portable dataset and training result stay together.
 
-For LichtFeld Studio, the visible controls mirror the parameters LichtFeld keeps at the top of its own training panel: `Strategy`, `Iterations`, `Max Gaussians`, output PLY name, `SH Degree`, `Tile Mode`, `Steps Scaler`, mask toggles, PPISP conditionals, and background `Mode` / `Color`. The output PLY name defaults to the scene folder name and is passed as LichtFeld's `--output-name`. Less common dataset, optimizer, refinement, loss, initialization, MRNF/IGS+, sparsity, and save/eval settings are under `Advanced Training Parameters`; sections appear only when the matching strategy or top-level checkbox makes them relevant. With `Steps Scaler` on `Auto`, Step 4 counts the emitted training images and applies the same 300-image baseline scaling LichtFeld Studio uses when loading a dataset in its GUI. At runtime, Step 4 writes `_stechdrive/training/lichtfeld_config.json` and passes that JSON plus dataset-only CLI options to LichtFeld.
+For LichtFeld Studio, the visible controls mirror the parameters LichtFeld keeps at the top of its own training panel: `Strategy`, `Iterations`, `Max Gaussians`, output PLY name, `SH Degree`, `Tile Mode`, `Steps Scaler`, mask toggles, PPISP conditionals, and background `Mode` / `Color`. The output PLY name defaults to the scene folder name and is passed as LichtFeld's `--output-name`. Less common dataset, optimizer, refinement, loss, initialization, MRNF/IGS+, sparsity, and save/eval settings are under `Advanced Training Parameters`; sections appear only when the matching strategy or top-level checkbox makes them relevant. With `Steps Scaler` on `Auto`, Step 4 counts the emitted training images and applies the same 300-image baseline scaling LichtFeld Studio uses when loading a dataset in its GUI. At runtime, Step 4 writes `_stechdrive/step4/training/lichtfeld_config.json` and passes that JSON plus dataset-only CLI options to LichtFeld.
 
 When `Train` is on, Step 4 checks that the selected training mode matches the dataset shape. LichtFeld `GUT` expects 3DGUT output with `pointcloud.ply`; normal LichtFeld and Postshot expect projected Cubemap data.
 
@@ -239,9 +239,9 @@ After the run, use `View Result in COLMAP GUI` to inspect registered camera pose
 | COLMAP with SfM enabled | The COLMAP/GLOMAP SfM result in addition to the files above |
 | SphereSfM + `3DGUT (LichtFeld)` | `<scene>/output/images/`, `<scene>/output/masks/`, `<scene>/output/transforms.json`, `<scene>/output/pointcloud.ply` |
 | SphereSfM + cubemap conversion (`Convert to Projection Views`) | Load `<scene>/output/` in the downstream app. It contains `images/`, `masks/`, `transforms.json`, and `pointcloud.ply` |
-| Training enabled | The selected route output plus training results in `<scene>/output/`; LichtFeld also writes `_stechdrive/training/lichtfeld_config.json` |
+| Training enabled | The selected route output plus training results in `<scene>/output/`; LichtFeld also writes `_stechdrive/step4/training/lichtfeld_config.json` |
 
-Step 4 saves this app's settings record to `<scene>/_stechdrive/export_settings.json`. Cubemap routes also save the view layout to `<scene>/_stechdrive/views_config.json`. These files are for reopening and reproducing the export in this app, not the dataset files you pass to 3DGS apps.
+Step 4 treats `<scene>/output/` as the active portable dataset: the folder you can copy to another machine or load directly in a 3DGS app. The app's reproducibility state is separate. It saves Step 4 settings to `<scene>/_stechdrive/step4/export_settings.json`, and cubemap routes also save the view layout to `<scene>/_stechdrive/step4/views_config.json`. These metadata files are for reopening and reproducing the export in this app, not the dataset files you pass to 3DGS apps.
 
 With the `LichtFeld Studio` profile, Step 4 applies the same final orientation correction to `transforms.json` and `pointcloud.ply` so +X / +Z / up directions match the Metashape scene in LichtFeld.
 
