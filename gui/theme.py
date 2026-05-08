@@ -295,7 +295,7 @@ QToolButton#optionMenuButton {{
     color: {TEXT_DIM};
     font-weight: 600;
     min-height: 22px;
-    padding: 2px 8px;
+    padding: 2px 18px 2px 8px;
 }}
 QToolButton#optionMenuButton:checked {{
     background-color: {BG_PANEL};
@@ -309,6 +309,13 @@ QToolButton#optionMenuButton:hover:!checked {{
 }}
 QToolButton#optionMenuButton:pressed {{
     background-color: {BG_MID};
+}}
+QToolButton#optionMenuButton::menu-indicator {{
+    subcontrol-origin: padding;
+    subcontrol-position: center right;
+    right: 5px;
+    width: 8px;
+    height: 8px;
 }}
 QPushButton#segmentedOption {{
     background-color: transparent;
