@@ -2,7 +2,7 @@
 
 Step 4 は、Step 1-3で用意した360°画像とマスク、MetashapeでSfMした結果、またはSphereSfMで作るSfM結果を、3DGSアプリが読み込めるトレーニングデータに変換する画面です。
 
-多くの場合は、Metashapeから書き出したカメラXMLと、必要に応じて点群PLYを指定し、Postshot / Brush / LichtFeld Studio のどれに渡すかを選びます。Metashapeを使わない場合は、COLMAP Rig用のキューブマップ画像を書き出すか、SphereSfMでエクイレクタングラー画像を直接SfMしてから3DGS向けデータへ変換できます。必要なら、同じStep 4の `トレーニング` タブからLichtFeld StudioやPostshot CLIの起動まで続けられます。
+多くの場合は、Metashapeから書き出したカメラXMLと、必要に応じて点群PLYを指定し、Postshot / Brush / LichtFeld Studio のどれに渡すかを選びます。Metashapeを使わない場合は、COLMAP Rig用のキューブマップ画像を書き出すか、SphereSfMでエクイレクタングラー画像を直接SfMしてから3DGS向けデータへ変換できます。必要なら、同じStep 4の `Training` タブからLichtFeld StudioやPostshot CLIの起動まで続けられます。
 
 ## 起動
 
@@ -30,7 +30,7 @@ SfMは、複数画像の見え方の差からカメラ位置と疎な点群を�
 
 `シーンフォルダ` は、Step 1-3で使っている作業フォルダです。通常は `images/` と `masks/` が入っています。MetashapeルートではMetashapeから書き出したXML/PLYを組み合わせます。SphereSfMルートでは、この `images/` と `masks/` からSfMと変換を実行します。
 
-左ナビゲーションには、Step 4のサブ工程として `SfM`、`Cube`、`Train` が常に表示されます。各行の左アイコンで今回その工程を対象にするかを選び、右アイコンでその選択が `準備済み`、`未準備`、`スキップ` のどれかを確認します。次に何をすればよいかは各アイコンのツールチップで確認できます。Step 4内では、ルートボタン `Metashape`、`COLMAP`、`SphereSfM` は `SfM` タブにあります。出力プリセット、画像/マスクのON/OFF、Cube6、Yaw、画像サイズは `Cubemap`、CLI実行の設定は `トレーニング` にあります。
+左ナビゲーションには、Step 4のサブ工程として `SfM`、`Cube`、`Train` が常に表示されます。各行の左アイコンで今回その工程を対象にするかを選び、右アイコンでその選択が `準備済み`、`未準備`、`スキップ` のどれかを確認します。次に何をすればよいかは各アイコンのツールチップで確認できます。Step 4内では、ルートボタン `Metashape`、`COLMAP`、`SphereSfM` は `SfM` タブにあります。出力プリセット、画像/マスクのON/OFF、Cube6、Yaw、画像サイズは `Cubemap`、CLI実行の設定は `Training` にあります。
 
 ## Metashapeルートの基本操作
 
@@ -161,9 +161,9 @@ VRAMや処理時間が厳しい場合は、まず `Normal` または `Half` で�
 
 マスクだけ調整したあとに再出力する場合は、`画像` をOFFにすると既存のキューブマップ画像を再変換せずに済みます。`3DGUT (LichtFeld)` では元画像と元マスクをそのまま使うため、この出力ON/OFFは使いません。
 
-## トレーニングタブ
+## Trainingタブ
 
-`トレーニング` タブでは、Step 4の書き出しやSfM変換が終わったあとに、外部CLIを続けて起動できます。上部で `LichtFeld`、`Postshot`、`その他...` を選び、`書き出し後にトレーニング開始` をONにします。`その他...` は `Custom` など追加候補だけをメニューで開き、主要候補を混雑させないための選択です。
+`Training` タブでは、Step 4の書き出しやSfM変換が終わったあとに、外部CLIを続けて起動できます。上部で `LichtFeld`、`Postshot`、`その他...` を選び、`書き出し後にトレーニング開始` をONにします。`その他...` は `Custom` など追加候補だけをメニューで開き、主要候補を混雑させないための選択です。
 
 | ソフト | 使いどころ |
 | --- | --- |

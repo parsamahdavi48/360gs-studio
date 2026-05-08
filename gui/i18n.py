@@ -773,7 +773,7 @@ _JA: dict[str, str] = {
     "MS_IMAGES_LABEL": "画像フォルダ",
     "STEP4_TAB_INPUT": "SfM",
     "STEP4_TAB_OUTPUT": "Cubemap",
-    "STEP4_TAB_TRAINING": "トレーニング",
+    "STEP4_TAB_TRAINING": "Training",
     "STEP4_TAB_DETAILS": "詳細",
     "STEP4_TAB_METASHAPE": "変換設定",
     "STEP4_TAB_VIEW_EXPORT": "投影視点",

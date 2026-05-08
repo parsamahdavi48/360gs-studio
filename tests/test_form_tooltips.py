@@ -288,7 +288,7 @@ def test_step4_japanese_training_copy_uses_training_wording() -> None:
             "POSTSHOT_KSTEPS",
         ]
 
-        assert i18n.t("STEP4_TAB_TRAINING") == "トレーニング"
+        assert i18n.t("STEP4_TAB_TRAINING") == "Training"
         assert i18n.t("RUN_TRAINING_AFTER_EXPORT") == "書き出し後にトレーニング開始"
         assert i18n.t("TRAINING_OUTPUT") == "出力先"
         assert all("学習" not in i18n.t(key) for key in visible_keys)
@@ -354,7 +354,7 @@ def test_step4_scrolls_tab_content_not_whole_settings_pane() -> None:
             parent = parent.parentWidget()
         assert found_route_scroll
 
-        assert [button.width() for button in window.step4_sub_buttons.values()] == [58, 58, 58]
+        assert [button.width() for button in window.step4_sub_buttons.values()] == [63, 63, 63]
         assert [button.width() for button in window.step4_sub_intent_buttons.values()] == [13, 13, 13]
         assert [label.width() for label in window.step4_sub_status_labels.values()] == [13, 13, 13]
         assert window.step4_subnav_rail.width() == 2
