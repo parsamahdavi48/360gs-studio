@@ -582,6 +582,14 @@ if QMainWindow is not None:
                     warning_bg,
                 )
 
+            if "blur_replacement" in status:
+                return (
+                    i18n.t("REVIEW_ADVISORY_BLUR_REPLACEMENT"),
+                    i18n.t("REVIEW_ADVISORY_SHORT_BLUR_REPLACEMENT"),
+                    added_fg,
+                    added_bg,
+                )
+
             if "gap_forced" in status:
                 return (
                     i18n.t("REVIEW_ADVISORY_GAP_FORCED"),

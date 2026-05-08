@@ -22,6 +22,8 @@ Frames marked `drop` are still extracted as images. This is intentional: you can
 
 The analyzed extraction path is fixed interval plus pair analysis. Pair analysis compares each decision candidate with the last kept frame: yaw-compensated residual change drives redundant drops and novelty additions, and sparse feature tracking plus candidate-only sharpness checks produce Step 2 review flags.
 
+When a fixed-interval or novelty candidate is dropped as possible motion blur, the analyzer searches the finite range from that point to the maximum allowed gap for a replacement. Replacement candidates are not accepted by sharpness alone: yaw-compensated residual change, sparse tracking, and low-texture checks are evaluated again against the last kept frame. Accepted replacements are marked `blur_replacement`, while the original blurred candidate remains as a `motion_blur` `drop` row for review.
+
 Quick extraction is the only non-analyzed path. It skips pair analysis and motion adjustment, then extracts the requested fixed cadence directly. Use it when you want to skip analysis and quickly cut the video at the specified interval.
 
 ## Requirements
@@ -111,10 +113,10 @@ Under `output_dir`:
 `_stechdrive/frames/selected_frames.csv` fields include:
 
 - `original_index`, `final_index`, `timestamp_sec`
-- `status`: `ok`, `novelty_added`, `redundant_drop`, `gap_forced`, `motion_blur`, `low_texture`, `weak_match`
+- `status`: `ok`, `novelty_added`, `blur_replacement`, `redundant_drop`, `gap_forced`, `motion_blur`, `low_texture`, `weak_match`
 - `decision`: `keep` or `drop`, editable in Step 2
 - `analysis_pipeline`: `pair` or `quick`
-- `selection_reason`: `initial`, `fixed_interval`, `novelty_added`, `redundant_drop`, `gap_forced`, `endpoint`, or `quick_extract`
+- `selection_reason`: `initial`, `fixed_interval`, `novelty_added`, `blur_replacement`, `redundant_drop`, `gap_forced`, `endpoint`, or `quick_extract`
 - `residual_score`, `raw_change_score`, `yaw_shift_deg`, `track_count`, `track_coverage`, `match_confidence`
 - `blur_score_final`, `sharpness_baseline`, `sharpness_ratio`
 - `pair_motion_profile`, `pair_drop_threshold`, `pair_add_threshold`
@@ -125,6 +127,7 @@ With `--quick-extract`, analysis score columns are blank because no pair analysi
 ## Notes
 
 - Drop rows are still extracted so Step 2 can preview them before finalizing.
+- `blur_replacement` rows are frames selected near a dropped blur candidate. The original blur candidate remains as a `drop` row.
 - Default filename prefix is the input video filename stem; override with `--filename-prefix`.
 - `--image-ext jpg` is recommended for speed during iteration.
 - This script does not modify existing mask files.

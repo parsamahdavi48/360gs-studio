@@ -151,3 +151,59 @@ def test_analyze_pair_selection_marks_motion_blur_candidate_for_review(tmp_path:
     assert blur_rows[0]["decision"] == "drop"
     assert blur_rows[0]["review_required"] == "1"
     assert float(blur_rows[0]["sharpness_ratio"]) <= 0.35
+
+
+def test_analyze_pair_selection_replaces_blur_with_sharp_candidate(tmp_path: Path) -> None:
+    wrapper = _fake_ffmpeg_wrapper(
+        tmp_path,
+        "fake_ffmpeg_blur_replacement.py",
+        [
+            "import sys",
+            "w, h = 64, 32",
+            "def frame_a():",
+            "    return bytes((255 if ((x // 2 + y // 2) % 2) else 0) for y in range(h) for x in range(w))",
+            "def frame_b():",
+            "    return bytes((255 if (((x * 3 + y * 5) // 2) % 2) else 0) for y in range(h) for x in range(w))",
+            "def frame_c():",
+            "    return bytes((255 if ((x // 8 + y // 8) % 2) else 0) for y in range(h) for x in range(w))",
+            "blur = bytes([128]) * (w * h)",
+            "frames = [frame_a(), frame_a(), blur, frame_b(), frame_c(), frame_a()]",
+            "for frame in frames:",
+            "    sys.stdout.buffer.write(frame)",
+            "    sys.stdout.flush()",
+        ],
+    )
+
+    rows, *_ = analyze_pair_selection(
+        video_path=tmp_path / "dummy.mp4",
+        ffmpeg_bin=str(wrapper),
+        video_info=VideoInfo(width=64, height=32, fps=1.0, duration=6.0, total_frames=6),
+        analysis_width=64,
+        interval_sec=2.0,
+        fixed_smart=True,
+        min_gap_sec=1.0,
+        max_gap_sec=4.0,
+        drop_threshold=0.03,
+        add_threshold=0.80,
+        threshold_profile="walk",
+        threshold_mode="manual",
+        max_inserts_per_interval=0,
+        track_min_confidence=0.0,
+        track_min_count=0,
+        progress_phase="",
+    )
+
+    blur_rows = [row for row in rows if "motion_blur" in row["status"]]
+    replacement_rows = [row for row in rows if "blur_replacement" in row["status"]]
+
+    assert blur_rows
+    assert blur_rows[0]["final_index"] == 2
+    assert blur_rows[0]["decision"] == "drop"
+    assert replacement_rows
+    assert replacement_rows[0]["final_index"] == 3
+    assert replacement_rows[0]["decision"] == "keep"
+    assert replacement_rows[0]["prev_kept_index"] == 0
+
+    post_replacement_rows = [row for row in rows if row["final_index"] == 5]
+    assert post_replacement_rows
+    assert post_replacement_rows[0]["prev_kept_index"] == 3
