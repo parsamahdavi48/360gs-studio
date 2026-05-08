@@ -77,6 +77,14 @@ class PairFrameRisk:
     weak_match: bool
 
 
+@dataclass
+class PairCandidateFrame:
+    idx: int
+    frame: np.ndarray
+    gate_frame: np.ndarray
+    blur_score: float
+
+
 @dataclass(frozen=True)
 class PairThresholdProfile:
     reference_interval_sec: float
@@ -730,14 +738,17 @@ def analyze_pair_selection(
 
     rows: list[dict] = []
     seen_rows: set[int] = set()
-    inserted_by_slot: dict[int, int] = {}
+    novelty_inserts_since_anchor = 0
     kept_sharpness: list[float] = []
     last_keep_frame: np.ndarray | None = None
     last_keep_gate_frame: np.ndarray | None = None
     last_keep_idx: int | None = None
+    next_due_idx: int | None = None
     last_frame: np.ndarray | None = None
     last_frame_idx = -1
     last_progress_report = 0
+    replacement_origin_row: dict | None = None
+    replacement_candidates: list[PairCandidateFrame] = []
 
     def emit_progress(processed_frames: int, force: bool = False) -> None:
         nonlocal last_progress_report
@@ -762,6 +773,41 @@ def analyze_pair_selection(
         rows.append(row)
         seen_rows.add(idx)
 
+    def schedule_next_due(anchor_idx: int) -> None:
+        nonlocal next_due_idx
+        next_due_idx = int(anchor_idx) + interval_frames
+
+    def remember_replacement_candidate(
+        idx: int,
+        frame: np.ndarray,
+        gate_frame: np.ndarray,
+        blur_score: float | None = None,
+    ) -> None:
+        replacement_candidates.append(
+            PairCandidateFrame(
+                idx=idx,
+                frame=frame.copy(),
+                gate_frame=gate_frame.copy(),
+                blur_score=compute_pair_blur_score(frame) if blur_score is None else float(blur_score),
+            )
+        )
+
+    def adopt_keep(row: dict, frame: np.ndarray, gate_frame: np.ndarray, *, reset_novelty: bool) -> None:
+        nonlocal last_keep_frame, last_keep_gate_frame, last_keep_idx, novelty_inserts_since_anchor
+        if row.get("decision") == "drop":
+            return
+        if "motion_blur" not in row.get("status", ""):
+            row_blur = row.get("blur_score_final")
+            if row_blur not in (None, ""):
+                kept_sharpness.append(float(row_blur))
+                del kept_sharpness[:-PAIR_SHARPNESS_HISTORY]
+        last_keep_frame = frame.copy()
+        last_keep_gate_frame = gate_frame.copy()
+        last_keep_idx = int(row["final_index"])
+        schedule_next_due(last_keep_idx)
+        if reset_novelty:
+            novelty_inserts_since_anchor = 0
+
     def evaluate_row(
         *,
         idx: int,
@@ -771,12 +817,13 @@ def analyze_pair_selection(
         reason: str,
         metrics: PairMetrics,
         allow_motion_blur_drop: bool,
+        blur_score: float | None = None,
     ) -> dict:
         track_shift_px = int(round(metrics.yaw_shift_px * (frame.shape[1] / float(max(1, gate_w)))))
         track = compute_pair_track_metrics(last_keep_frame, frame, track_shift_px) if last_keep_frame is not None else None
         tokens = list(status_tokens)
         risk = assess_pair_frame_risk(
-            blur_score=compute_pair_blur_score(frame),
+            blur_score=compute_pair_blur_score(frame) if blur_score is None else float(blur_score),
             sharpness_baseline=_median_or_none(kept_sharpness),
             track=track,
             track_min_confidence=track_min_confidence,
@@ -805,6 +852,58 @@ def analyze_pair_selection(
             gate_w=gate_w,
             thresholds=thresholds,
         )
+
+    def finalize_replacement_search() -> None:
+        nonlocal replacement_origin_row, replacement_candidates
+        if replacement_origin_row is None:
+            return
+
+        append_row(replacement_origin_row)
+        accepted: tuple[dict, PairCandidateFrame] | None = None
+        assert last_keep_idx is not None
+        assert last_keep_gate_frame is not None
+
+        for candidate in sorted(replacement_candidates, key=lambda item: item.blur_score, reverse=True):
+            metrics = compute_pair_metrics(last_keep_gate_frame, candidate.gate_frame, weights)
+            gap = candidate.idx - last_keep_idx
+            if metrics.residual < thresholds.drop and gap < max_gap_frames:
+                continue
+            row = evaluate_row(
+                idx=candidate.idx,
+                frame=candidate.frame,
+                status_tokens=["blur_replacement"],
+                decision="keep",
+                reason="blur_replacement",
+                metrics=metrics,
+                allow_motion_blur_drop=True,
+                blur_score=candidate.blur_score,
+            )
+            if row.get("decision") != "drop" and "motion_blur" not in row.get("status", ""):
+                accepted = (row, candidate)
+                break
+
+        if accepted is not None:
+            row, candidate = accepted
+            append_row(row)
+            adopt_keep(row, candidate.frame, candidate.gate_frame, reset_novelty=True)
+        elif replacement_candidates:
+            candidate = replacement_candidates[-1]
+            metrics = compute_pair_metrics(last_keep_gate_frame, candidate.gate_frame, weights)
+            row = evaluate_row(
+                idx=candidate.idx,
+                frame=candidate.frame,
+                status_tokens=["gap_forced"],
+                decision="keep",
+                reason="gap_forced",
+                metrics=metrics,
+                allow_motion_blur_drop=False,
+                blur_score=candidate.blur_score,
+            )
+            append_row(row)
+            adopt_keep(row, candidate.frame, candidate.gate_frame, reset_novelty=True)
+
+        replacement_origin_row = None
+        replacement_candidates = []
 
     try:
         while True:
@@ -849,37 +948,43 @@ def analyze_pair_selection(
                 last_keep_frame = frame.copy()
                 last_keep_gate_frame = gate_frame.copy()
                 last_keep_idx = idx
+                schedule_next_due(idx)
                 emit_progress(idx + 1, force=True)
                 continue
 
             assert last_keep_idx is not None
             gap = idx - last_keep_idx
+
+            if replacement_origin_row is not None:
+                gate_frame = pair_gate_frame(frame, gate_w, gate_h)
+                remember_replacement_candidate(idx, frame, gate_frame)
+                if gap >= max_gap_frames:
+                    finalize_replacement_search()
+                emit_progress(idx + 1)
+                continue
+
             if gap < min_gap_frames:
                 emit_progress(idx + 1)
                 continue
 
-            slot = idx // interval_frames
-            base_due = (idx % interval_frames) == 0
+            base_due = next_due_idx is not None and idx >= next_due_idx
             max_due = gap >= max_gap_frames
             assert last_keep_gate_frame is not None
             gate_frame = pair_gate_frame(frame, gate_w, gate_h)
             metrics = compute_pair_metrics(last_keep_gate_frame, gate_frame, weights)
             high_novelty = thresholds.add <= 0.0 or metrics.residual >= thresholds.add
             low_redundancy = metrics.residual < thresholds.drop
-            inserted = inserted_by_slot.get(slot, 0)
 
             row: dict | None = None
             keep_current = False
             status_tokens: list[str] = []
             reason = "ok"
             decision = "keep"
-            insert_slot: int | None = None
 
-            if fixed_smart and not base_due and high_novelty and inserted < max_inserts:
+            if fixed_smart and not base_due and high_novelty and novelty_inserts_since_anchor < max_inserts:
                 keep_current = True
                 status_tokens.append("novelty_added")
                 reason = "novelty_added"
-                insert_slot = slot
             elif base_due:
                 if fixed_smart and low_redundancy and not max_due:
                     decision = "drop"
@@ -907,18 +1012,28 @@ def analyze_pair_selection(
                     metrics=metrics,
                     allow_motion_blur_drop=not max_due,
                 )
+                if (
+                    fixed_smart
+                    and row.get("decision") == "drop"
+                    and "motion_blur" in row.get("status", "")
+                    and not max_due
+                ):
+                    replacement_origin_row = row
+                    replacement_candidates = []
+                    schedule_next_due(idx)
+                    emit_progress(idx + 1)
+                    continue
+
                 append_row(row)
+                if decision == "drop" and row.get("selection_reason") == "redundant_drop":
+                    schedule_next_due(idx)
                 if keep_current and row.get("decision") != "drop":
-                    if insert_slot is not None:
-                        inserted_by_slot[insert_slot] = inserted + 1
-                    if "motion_blur" not in row.get("status", ""):
-                        row_blur = row.get("blur_score_final")
-                        if row_blur not in (None, ""):
-                            kept_sharpness.append(float(row_blur))
-                            del kept_sharpness[:-PAIR_SHARPNESS_HISTORY]
-                    last_keep_frame = frame.copy()
-                    last_keep_gate_frame = gate_frame.copy()
-                    last_keep_idx = idx
+                    if row.get("selection_reason") == "novelty_added":
+                        novelty_inserts_since_anchor += 1
+                        reset_novelty = False
+                    else:
+                        reset_novelty = True
+                    adopt_keep(row, frame, gate_frame, reset_novelty=reset_novelty)
 
             emit_progress(idx + 1)
     finally:
@@ -930,6 +1045,9 @@ def analyze_pair_selection(
         raise RuntimeError(f"ffmpeg pair analysis failed: {stderr_text.strip()}")
     if last_frame_idx < 0 or last_frame is None:
         raise RuntimeError("No frames decoded during pair analysis")
+
+    if replacement_origin_row is not None:
+        finalize_replacement_search()
 
     if last_keep_idx is not None and last_frame_idx != last_keep_idx and last_frame_idx not in seen_rows:
         endpoint_gate_frame = pair_gate_frame(last_frame, gate_w, gate_h)
@@ -1339,6 +1457,7 @@ def write_report(
             "dropped_count": dropped_count,
             "review_row_count": len(selected_rows),
             "novelty_added_count": sum(1 for r in selected_rows if "novelty_added" in r.get("status", "")),
+            "blur_replacement_count": sum(1 for r in selected_rows if "blur_replacement" in r.get("status", "")),
             "redundant_drop_count": sum(1 for r in selected_rows if "redundant_drop" in r.get("status", "")),
             "gap_forced_count": sum(1 for r in selected_rows if "gap_forced" in r.get("status", "")),
             "motion_blur_count": sum(1 for r in selected_rows if "motion_blur" in r.get("status", "")),
@@ -1429,6 +1548,7 @@ def build_summary(
     estimate_mode: str = "full",
 ) -> dict:
     novelty_added_count = sum(1 for r in selected_rows if "novelty_added" in r.get("status", ""))
+    blur_replacement_count = sum(1 for r in selected_rows if "blur_replacement" in r.get("status", ""))
     redundant_drop_count = sum(1 for r in selected_rows if "redundant_drop" in r.get("status", ""))
     gap_forced_count = sum(1 for r in selected_rows if "gap_forced" in r.get("status", ""))
     motion_blur_count = sum(1 for r in selected_rows if "motion_blur" in r.get("status", ""))
@@ -1451,6 +1571,7 @@ def build_summary(
     summary["result"]["dropped_count"] = dropped_count
     summary["result"]["review_row_count"] = len(selected_rows)
     summary["result"]["novelty_added_count"] = novelty_added_count
+    summary["result"]["blur_replacement_count"] = blur_replacement_count
     summary["result"]["redundant_drop_count"] = redundant_drop_count
     summary["result"]["gap_forced_count"] = gap_forced_count
     summary["result"]["motion_blur_count"] = motion_blur_count
@@ -1793,6 +1914,7 @@ def main() -> None:
         print(f"Estimated selected frames: {summary['result']['selected_count']}")
         if not args.quick_extract:
             print(f"Estimated pair novelty additions: {summary['result'].get('novelty_added_count', 0)}")
+            print(f"Estimated pair blur replacements: {summary['result'].get('blur_replacement_count', 0)}")
             print(f"Estimated pair redundant drops: {summary['result'].get('redundant_drop_count', 0)}")
             print(f"Estimated pair motion-blur review frames: {summary['result'].get('motion_blur_count', 0)}")
             print(f"Estimated pair low-texture review frames: {summary['result'].get('low_texture_count', 0)}")
@@ -1935,6 +2057,7 @@ def main() -> None:
     )
 
     novelty_added_count = sum(1 for r in enriched_rows if "novelty_added" in r.get("status", ""))
+    blur_replacement_count = sum(1 for r in enriched_rows if "blur_replacement" in r.get("status", ""))
     redundant_drop_count = sum(1 for r in enriched_rows if "redundant_drop" in r.get("status", ""))
     gap_forced_count = sum(1 for r in enriched_rows if "gap_forced" in r.get("status", ""))
     motion_blur_count = sum(1 for r in enriched_rows if "motion_blur" in r.get("status", ""))
@@ -1947,6 +2070,8 @@ def main() -> None:
         print(f"Dropped review rows: {dropped_count}")
     if novelty_added_count > 0:
         print(f"Pair novelty additions: {novelty_added_count}")
+    if blur_replacement_count > 0:
+        print(f"Pair blur replacements: {blur_replacement_count}")
     if redundant_drop_count > 0:
         print(f"Pair redundant drops: {redundant_drop_count}")
     if gap_forced_count > 0:
