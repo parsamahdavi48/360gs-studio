@@ -378,10 +378,11 @@ def test_step4_scrolls_tab_content_not_whole_settings_pane() -> None:
         assert len(set(status_x)) == 1
         assert window.step4_sub_intent_buttons["conversion"].toolTip()
         assert window.step4_sub_status_labels["conversion"].toolTip()
-        assert window.step4_sub_intent_buttons["sfm"].text() == "→"
+        assert window.step4_sub_intent_buttons["sfm"].text() == "●"
         QTest.mouseClick(window.step4_sub_buttons["sfm"], Qt.LeftButton)
         assert step.pipeline_stage_intent("sfm") is True
         assert step.settings_tabs.currentIndex() == step.input_tab_index
+        assert window.step4_sub_intent_buttons["sfm"].text() == "●"
         assert not step.run_training_cb.isChecked()
         QTest.mouseClick(window.step4_sub_buttons["training"], Qt.LeftButton)
         assert step.run_training_cb.isChecked()

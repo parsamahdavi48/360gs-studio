@@ -405,7 +405,6 @@ class MainWindow(QWidget):
                 intent_btn.setText(str(item["intent_symbol"]))
                 intent_btn.setChecked(bool(item["intent_checked"]))
                 intent_btn.setEnabled(bool(item["intent_enabled"]))
-                intent_btn.setProperty("mode", item["intent_mode"])
                 intent_btn.setToolTip(str(item["intent_tooltip"]))
             if status_label is not None:
                 status_label.setText(str(item["status_symbol"]))

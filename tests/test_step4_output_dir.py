@@ -58,6 +58,19 @@ def _write_test_image(path: Path, size: tuple[int, int] = (64, 32)) -> None:
     Image.new("RGB", size, (0, 0, 0)).save(path)
 
 
+def _write_output_dataset(scene: Path, *, output_shape: str, pointcloud: bool = True) -> None:
+    output = scene / "output"
+    images = output / "images"
+    images.mkdir(parents=True, exist_ok=True)
+    _write_test_image(images / "frame_0001.jpg")
+    (output / "transforms.json").write_text("{}", encoding="utf-8")
+    if pointcloud:
+        _write_ascii_ply(output / "pointcloud.ply", [(0.0, 0.0, 0.0)])
+    settings_path = step4_export_settings_path(scene)
+    settings_path.parent.mkdir(parents=True, exist_ok=True)
+    settings_path.write_text(json.dumps({"output_shape": output_shape}), encoding="utf-8")
+
+
 def _write_spheresfm_sparse_stub(scene: Path) -> Path:
     sparse_model = scene / "output" / "spheresfm" / "sparse" / "0"
     sparse_model.mkdir(parents=True, exist_ok=True)
@@ -215,11 +228,10 @@ def test_step4_pipeline_intent_controls_execution_plan(tmp_path: Path) -> None:
     assert step.pipeline_stage_intent_toggle_enabled("sfm") is False
     assert step.pipeline_stage_intent("conversion") is True
     sfm_item = next(item for item in step.pipeline_nav_items() if item["stage"] == "sfm")
-    assert sfm_item["intent_checked"] is False
+    assert sfm_item["intent_checked"] is True
     assert sfm_item["intent_enabled"] is True
     assert sfm_item["intent_toggle_enabled"] is False
-    assert sfm_item["intent_mode"] == "input"
-    assert sfm_item["intent_symbol"] == "→"
+    assert sfm_item["intent_symbol"] == "●"
     assert sfm_item["status"] == "ready"
     assert sfm_item["status_symbol"] == "✓"
 
@@ -228,7 +240,7 @@ def test_step4_pipeline_intent_controls_execution_plan(tmp_path: Path) -> None:
     assert step.pipeline_stage_intent("conversion") is True
     assert step.primary_action_enabled() is True
     sfm_item = next(item for item in step.pipeline_nav_items() if item["stage"] == "sfm")
-    assert sfm_item["intent_checked"] is False
+    assert sfm_item["intent_checked"] is True
     assert sfm_item["status"] == "ready"
 
     step.ms_use_ply_cb.setChecked(True)
@@ -241,8 +253,11 @@ def test_step4_pipeline_intent_controls_execution_plan(tmp_path: Path) -> None:
 
     step.set_pipeline_stage_intent("conversion", False)
     assert step.pipeline_stage_intent("conversion") is False
-    assert step.pipeline_stage_intent("sfm") is True
+    assert step.pipeline_stage_intent("sfm") is False
     assert step.primary_action_enabled() is False
+    sfm_item = next(item for item in step.pipeline_nav_items() if item["stage"] == "sfm")
+    assert sfm_item["status"] == "off"
+    assert "Metashape" in sfm_item["status_tooltip"]
     assert step.build_commands() == []
 
     step._set_export_method("colmap")
@@ -262,6 +277,54 @@ def test_step4_pipeline_intent_controls_execution_plan(tmp_path: Path) -> None:
     step.set_pipeline_stage_intent("sfm", False)
     assert step.pipeline_stage_intent("sfm") is False
     assert step.pipeline_stage_intent("conversion") is False
+
+
+def test_training_status_matches_planned_cube_output_shape(tmp_path: Path) -> None:
+    step = _ready_step(tmp_path, metashape_inputs=True)
+    step.set_pipeline_stage_intent("training", True)
+    step.lfs_gut_cb.setChecked(True)
+
+    training_item = next(item for item in step.pipeline_nav_items() if item["stage"] == "training")
+    assert training_item["status"] == "warning"
+    assert "3DGUT" in training_item["status_tooltip"]
+    assert not step.primary_action_enabled()
+
+    direct_idx = step.output_shape_combo.findData("equirect_3dgut")
+    assert direct_idx >= 0
+    step.output_shape_combo.setCurrentIndex(direct_idx)
+
+    training_item = next(item for item in step.pipeline_nav_items() if item["stage"] == "training")
+    assert training_item["status"] == "ready"
+    assert step.primary_action_enabled()
+
+
+def test_training_status_checks_existing_output_shape_when_cube_is_skipped(tmp_path: Path) -> None:
+    step = _ready_step(tmp_path, metashape_inputs=True)
+    _write_output_dataset(tmp_path, output_shape="projected")
+    step.set_pipeline_stage_intent("conversion", False)
+    step.set_pipeline_stage_intent("training", True)
+    step.lfs_gut_cb.setChecked(True)
+
+    training_item = next(item for item in step.pipeline_nav_items() if item["stage"] == "training")
+    assert training_item["status"] == "warning"
+    assert "3DGUT" in training_item["status_tooltip"]
+    with pytest.raises(ValueError, match="3DGUT"):
+        step.build_commands()
+
+    _write_output_dataset(tmp_path, output_shape="equirect_3dgut")
+    training_item = next(item for item in step.pipeline_nav_items() if item["stage"] == "training")
+    assert training_item["status"] == "ready"
+
+    (tmp_path / "output" / "pointcloud.ply").unlink()
+    training_item = next(item for item in step.pipeline_nav_items() if item["stage"] == "training")
+    assert training_item["status"] == "warning"
+    assert "pointcloud.ply" in training_item["status_tooltip"]
+    _write_ascii_ply(tmp_path / "output" / "pointcloud.ply", [(0.0, 0.0, 0.0)])
+
+    step.lfs_gut_cb.setChecked(False)
+    training_item = next(item for item in step.pipeline_nav_items() if item["stage"] == "training")
+    assert training_item["status"] == "warning"
+    assert "3DGUT" in training_item["status_tooltip"]
 
 
 def test_export_method_switch_keeps_fixed_tabs_and_swaps_route_sections() -> None:

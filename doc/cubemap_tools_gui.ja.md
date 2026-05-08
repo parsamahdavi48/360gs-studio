@@ -30,7 +30,7 @@ SfMは、複数画像の見え方の差からカメラ位置と疎な点群を�
 
 `シーンフォルダ` は、Step 1-3で使っている作業フォルダです。通常は `images/` と `masks/` が入っています。MetashapeルートではMetashapeから書き出したXML/PLYを組み合わせます。SphereSfMルートでは、この `images/` と `masks/` からSfMと変換を実行します。
 
-左ナビゲーションには、Step 4のサブ工程として `SfM`、`Cube`、`Train` が常に表示されます。各行の左アイコンで今回その工程を対象にするかを選び、右アイコンでその選択が `準備済み`、`未準備`、`スキップ` のどれかを確認します。Metashapeルートの `SfM` は、このアプリでON/OFFする工程ではなく、Metashapeで作成したカメラポーズを使う入力マーカーとして表示します。次に何をすればよいかは各アイコンのツールチップで確認できます。Step 4内では、ルートボタン `Metashape`、`COLMAP`、`SphereSfM` は `SfM` タブにあります。出力プリセット、画像/マスクのON/OFF、Cube6、Yaw、画像サイズは `Cubemap`、CLI実行の設定は `Training` にあります。
+左ナビゲーションには、Step 4のサブ工程として `SfM`、`Cube`、`Train` が常に表示されます。各行の左アイコンで今回その工程を対象にするかを選び、右アイコンでその選択が `準備済み`、`未準備`、`スキップ` のどれかを確認します。Metashapeルートでは、`Cube` がMetashapeのカメラポーズを必要とするときだけ `SfM` が自動でONになり、クリックしてもOFFにせず `SfM` タブを表示します。次に何をすればよいかは各アイコンのツールチップで確認できます。Step 4内では、ルートボタン `Metashape`、`COLMAP`、`SphereSfM` は `SfM` タブにあります。出力プリセット、画像/マスクのON/OFF、Cube6、Yaw、画像サイズは `Cubemap`、CLI実行の設定は `Training` にあります。
 
 ## Metashapeルートの基本操作
 
@@ -171,9 +171,11 @@ VRAMや処理時間が厳しい場合は、まず `Normal` または `Half` で�
 | `Postshot` | Postshot CLIへ画像と、ある場合はCOLMAP/SphereSfMのsparseモデルを渡して `.psht` を作る |
 | `その他... > Custom` | 任意のCLIをテンプレート引数で起動する |
 
-`入力データ` は通常自動設定のままで使います。キューブマップ変換では `<scene>/output/`、3DGUTでは `<scene>/`、COLMAPルートでは `<scene>/output/colmap_rig/` が基準になります。`出力先` は既定で `<scene>/output/` になり、持ち出すデータセットとトレーニング結果を同じフォルダにまとめます。
+`入力データ` は通常自動設定のままで使います。キューブマップ変換と3DGUTはどちらも `<scene>/output/`、COLMAPルートでは `<scene>/output/colmap_rig/` が基準になります。`出力先` は既定で `<scene>/output/` になり、持ち出すデータセットとトレーニング結果を同じフォルダにまとめます。
 
 LichtFeld Studioでは、本家のトレーニングパネル上部にある `Strategy`、`Iterations`、`Max Gaussians`、出力PLY名、`SH Degree`、`Tile Mode`、`Steps Scaler`、マスク関連オプション、PPISPの条件項目、背景の `Mode` / `Color` を通常項目として指定できます。出力PLY名はシーンフォルダ名を既定値にし、LichtFeldの `--output-name` として渡します。頻繁には触らないDataset、Optimizer、Refinement、Loss、Initialization、MRNF/IGS+、Sparsity、Save/Eval系の項目は `Advanced Training Parameters` にまとめ、ストラテジーや上部チェックに対応する項目だけを表示します。`Steps Scaler` を `Auto` にすると、Step 4が出力されるトレーニング画像数を数え、LichtFeld StudioのGUIがデータセット読み込み時に行う300枚基準のスケーリングと同じ基準で調整します。実行時に `_stechdrive/training/lichtfeld_config.json` を作り、そのJSONとデータセット専用のCLIオプションをLichtFeldへ渡します。
+
+`Train` がONのときは、選択したトレーニング方式とデータ形状の整合性も確認します。LichtFeldの `GUT` は `pointcloud.ply` を含む3DGUT出力、通常のLichtFeldとPostshotは投影Cubemapデータを前提にします。
 
 Postshotでは、プロジェクトファイル名、モデル `Profile`、自動または固定の `kSteps`、最大画像サイズ、マスク読み込み、画像選択、`Camera Poses` を通常項目として指定できます。`Camera Poses` は既定で `Import` になり、CLIには生成画像、`transforms.json`、利用可能なRAW Metashape PLYを渡します。Postshot側でポーズ推定させる場合だけ `Estimate` に切り替え、`Pose Quality` を使います。Postshotのマスク設定は、このGUIでは用途名より極性を優先して表示します。アプリ標準の白=使用、黒=除外マスクは `黒を除外・白を使用 (background)`、白い領域を一時的な遮蔽物として無視する場合だけ `白を除外・黒を使用 (occluders)` を使います。GPU、プロファイル依存のモデル上限、Anti-Aliasing、Sky Model、継続学習データ、Crop/ROI、PLY/SPZ書き出しは `Postshot詳細パラメーター` にまとめています。
 

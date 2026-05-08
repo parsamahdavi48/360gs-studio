@@ -1029,7 +1029,7 @@ class CubemapStep(BaseStepWidget):
     def pipeline_stage_intent(self, stage: str) -> bool:
         if stage == _PIPELINE_STAGE_SFM:
             if self._is_metashape_method():
-                return True
+                return self.pipeline_stage_intent(_PIPELINE_STAGE_CONVERSION)
             if self._is_colmap_method():
                 return self.run_colmap_cb.isChecked()
             return self._spheresfm_runs_sfm()
@@ -1121,23 +1121,19 @@ class CubemapStep(BaseStepWidget):
             intent_key = "STEP4_PIPELINE_INTENT_ON" if intent else "STEP4_PIPELINE_INTENT_OFF"
             if stage == _PIPELINE_STAGE_SFM and self._is_metashape_method():
                 intent_tooltip = i18n.t("STEP4_PIPELINE_INTENT_METASHAPE_INPUT")
-                intent_symbol = "→"
-                intent_mode = "input"
-                intent_checked = False
+                intent_symbol = "●" if intent else "○"
+                intent_checked = intent
             elif intent and not intent_enabled:
                 intent_tooltip = i18n.t("STEP4_PIPELINE_INTENT_LOCKED_ON").format(stage=label)
                 intent_symbol = "●" if intent else "○"
-                intent_mode = "toggle"
                 intent_checked = intent
             elif not intent_enabled:
                 intent_tooltip = i18n.t("STEP4_PIPELINE_INTENT_DISABLED").format(stage=label)
                 intent_symbol = "●" if intent else "○"
-                intent_mode = "toggle"
                 intent_checked = intent
             else:
                 intent_tooltip = i18n.t(intent_key).format(stage=label)
                 intent_symbol = "●" if intent else "○"
-                intent_mode = "toggle"
                 intent_checked = intent
             result.append(
                 {
@@ -1149,7 +1145,6 @@ class CubemapStep(BaseStepWidget):
                     "intent_checked": intent_checked,
                     "intent_enabled": intent_enabled,
                     "intent_toggle_enabled": intent_toggle_enabled,
-                    "intent_mode": intent_mode,
                     "intent_symbol": intent_symbol,
                     "intent_tooltip": intent_tooltip,
                     "navigate_tooltip": i18n.t("STEP4_PIPELINE_NAVIGATE").format(stage=label),
@@ -1159,6 +1154,8 @@ class CubemapStep(BaseStepWidget):
 
     def _pipeline_sfm_status(self) -> tuple[str, str, str]:
         if not self.pipeline_stage_intent(_PIPELINE_STAGE_SFM):
+            if self._is_metashape_method():
+                return (_PIPELINE_STATUS_OFF, "-", i18n.t("STEP4_PIPELINE_DETAIL_METASHAPE_OFF"))
             if self._is_colmap_method():
                 return (_PIPELINE_STATUS_OFF, "-", i18n.t("STEP4_PIPELINE_DETAIL_COLMAP_OFF"))
             return (_PIPELINE_STATUS_OFF, "-", i18n.t("STEP4_PIPELINE_DETAIL_SPHERESFM_OFF"))
@@ -1209,6 +1206,9 @@ class CubemapStep(BaseStepWidget):
             return (_PIPELINE_STATUS_OFF, "-", i18n.t("STEP4_PIPELINE_DETAIL_TRAINING_OFF"))
         if not self.scene_dir:
             return (_PIPELINE_STATUS_WARNING, "!", i18n.t("STEP4_PIPELINE_DETAIL_SCENE_REQUIRED"))
+        issue = self._training_dataset_issue()
+        if issue is not None:
+            return (_PIPELINE_STATUS_WARNING, "!", issue)
         if self.pipeline_stage_intent(_PIPELINE_STAGE_CONVERSION):
             backend = self._training_backend_display_name(self._training_backend()) if hasattr(self, "training_backend_buttons") else ""
             return (
@@ -1216,14 +1216,71 @@ class CubemapStep(BaseStepWidget):
                 "✓",
                 i18n.t("STEP4_PIPELINE_DETAIL_TRAINING_RUNS").format(backend=backend),
             )
-        if not self._training_dataset_available():
-            return (_PIPELINE_STATUS_WARNING, "!", i18n.t("STEP4_PIPELINE_DETAIL_TRAINING_NEEDS_CONVERSION"))
         backend = self._training_backend_display_name(self._training_backend()) if hasattr(self, "training_backend_buttons") else ""
         return (
             _PIPELINE_STATUS_READY,
             "✓",
             i18n.t("STEP4_PIPELINE_DETAIL_TRAINING_RUNS").format(backend=backend),
         )
+
+    def _training_required_output_shape(self) -> str:
+        backend = self._training_backend()
+        if backend == _TRAINING_BACKEND_LICHTFELD:
+            return _OUTPUT_SHAPE_EQUIRECT_3DGUT if self.lfs_gut_cb.isChecked() else _OUTPUT_SHAPE_PROJECTED
+        if backend == _TRAINING_BACKEND_POSTSHOT:
+            return _OUTPUT_SHAPE_PROJECTED
+        return ""
+
+    def _training_dataset_issue(self) -> str | None:
+        required_shape = self._training_required_output_shape()
+        if self.pipeline_stage_intent(_PIPELINE_STAGE_CONVERSION):
+            return self._planned_training_dataset_issue(required_shape)
+        return self._existing_training_dataset_issue(required_shape)
+
+    def _planned_training_dataset_issue(self, required_shape: str) -> str | None:
+        if not required_shape:
+            return None
+        planned_shape = self._output_shape()
+        if required_shape == _OUTPUT_SHAPE_EQUIRECT_3DGUT:
+            if planned_shape != _OUTPUT_SHAPE_EQUIRECT_3DGUT:
+                return i18n.t("TRAINING_DATASET_NEEDS_3DGUT_OUTPUT")
+            return None
+        if planned_shape == _OUTPUT_SHAPE_EQUIRECT_3DGUT:
+            return i18n.t("TRAINING_DATASET_NEEDS_PROJECTED_OUTPUT")
+        return None
+
+    def _existing_training_dataset_issue(self, required_shape: str) -> str | None:
+        if not self._training_dataset_available():
+            return i18n.t("TRAINING_REQUIRES_DATASET_OUTPUT")
+        if not required_shape:
+            return None
+        dataset = self._training_dataset()
+        actual_shape = self._training_dataset_export_shape(dataset.dataset_root)
+        if required_shape == _OUTPUT_SHAPE_EQUIRECT_3DGUT:
+            if actual_shape == _OUTPUT_SHAPE_PROJECTED:
+                return i18n.t("TRAINING_DATASET_EXISTING_NOT_3DGUT")
+            if not (dataset.dataset_root / "pointcloud.ply").is_file():
+                return i18n.t("TRAINING_DATASET_3DGUT_NEEDS_PLY")
+            return None
+        if actual_shape == _OUTPUT_SHAPE_EQUIRECT_3DGUT:
+            return i18n.t("TRAINING_DATASET_EXISTING_NOT_PROJECTED")
+        return None
+
+    def _training_dataset_export_shape(self, dataset_root: Path) -> str:
+        if not self.scene_dir:
+            return ""
+        try:
+            if dataset_root.resolve() != self._output_dir().resolve():
+                return ""
+        except OSError:
+            return ""
+        settings_path = step4_export_settings_path(Path(self.scene_dir))
+        try:
+            settings = json.loads(settings_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            return ""
+        shape = str(settings.get("output_shape", "")).strip()
+        return shape if shape in {_OUTPUT_SHAPE_PROJECTED, _OUTPUT_SHAPE_EQUIRECT_3DGUT} else ""
 
     def _build_training_section(self, exe_filter: str) -> QWidget:
         section = QWidget()
@@ -1693,7 +1750,7 @@ class CubemapStep(BaseStepWidget):
         self.lfs_bilateral_grid_cb.toggled.connect(lambda _checked: self._update_lfs_conditional_visibility())
         self.lfs_mask_mode_combo.currentIndexChanged.connect(lambda _idx: self._update_lfs_conditional_visibility())
         self.lfs_sparsity_cb.toggled.connect(lambda _checked: self._update_lfs_conditional_visibility())
-        self.lfs_gut_cb.toggled.connect(lambda _checked: self._update_lfs_conditional_visibility())
+        self.lfs_gut_cb.toggled.connect(self._on_lfs_gut_changed)
         self.lfs_ppisp_cb.toggled.connect(lambda _checked: self._update_lfs_conditional_visibility())
         self.lfs_ppisp_freeze_from_sidecar_cb.toggled.connect(
             lambda _checked: self._update_lfs_conditional_visibility()
@@ -2172,6 +2229,10 @@ class CubemapStep(BaseStepWidget):
             self._update_lfs_auto_steps_scaler()
         else:
             self._save_lfs_active_state()
+        self._on_training_settings_changed()
+
+    def _on_lfs_gut_changed(self, _checked: bool) -> None:
+        self._update_lfs_conditional_visibility()
         self._on_training_settings_changed()
 
     @staticmethod
@@ -3277,8 +3338,10 @@ class CubemapStep(BaseStepWidget):
             run_conversion = self._spheresfm_runs_conversion()
             if run_sfm or run_conversion:
                 self._validate_spheresfm_export()
-            if self.run_training_cb.isChecked() and not run_conversion and not self._training_dataset_available():
-                raise ValueError(i18n.t("TRAINING_REQUIRES_DATASET_OUTPUT"))
+            if self.run_training_cb.isChecked() and not run_conversion:
+                issue = self._training_dataset_issue()
+                if issue is not None:
+                    raise ValueError(issue)
             self._guard_existing_training_output_targets()
             if run_conversion and not run_sfm:
                 self._require_spheresfm_sparse_model()
@@ -3700,8 +3763,9 @@ class CubemapStep(BaseStepWidget):
     def _build_training_commands(self) -> list[tuple[str, list[str]]]:
         if not self.run_training_cb.isChecked():
             return []
-        if not self.pipeline_stage_intent(_PIPELINE_STAGE_CONVERSION) and not self._training_dataset_available():
-            raise ValueError(i18n.t("TRAINING_REQUIRES_DATASET_OUTPUT"))
+        issue = self._training_dataset_issue()
+        if issue is not None:
+            raise ValueError(issue)
 
         dataset = self._training_dataset()
         output_dir = self._training_output_dir()

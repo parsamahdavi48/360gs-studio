@@ -153,9 +153,6 @@ QToolButton#navSubStepIntent:hover {{
 QToolButton#navSubStepIntent:checked {{
     color: {ACCENT_HOVER};
 }}
-QToolButton#navSubStepIntent[mode="input"] {{
-    color: {ACCENT_HOVER};
-}}
 QToolButton#navSubStepIntent:disabled {{
     color: {TEXT_DIM};
     border-color: transparent;
