@@ -89,4 +89,3 @@ When checking the PySide GUI offscreen in Codex or CI-like environments, set
 `QT_QPA_PLATFORM=offscreen` and call `apply_theme(app)` before constructing
 `MainWindow`. The theme applies a Windows Japanese-capable font such as Meiryo
 UI, which prevents Japanese labels from rendering as square glyphs.
-
