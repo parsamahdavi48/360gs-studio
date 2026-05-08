@@ -216,6 +216,11 @@ The GUI wraps these CLI engines, which can also be used directly. The root-level
 | `cubemap_transforms_json.py` | Convert equirectangular images to cubemap views | [EN](doc/cubemap_transforms_json.md) |
 | `transforms_to_colmap.py` | Export COLMAP files from `transforms.json` | [EN](doc/transforms_to_colmap.md) |
 
+## Development Notes
+
+For code ownership, module boundaries, and verification rules used by ongoing
+maintenance work, see [Maintenance Architecture](doc/architecture.md).
+
 ## License
 
 MIT License. See [LICENSE](LICENSE).

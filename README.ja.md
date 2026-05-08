@@ -216,6 +216,11 @@ GUIは以下のCLIエンジンを呼び出しています。必要なら単体�
 | `cubemap_transforms_json.py` | エクイレクタングラーからキューブマップへ変換 | [JP](doc/cubemap_transforms_json.ja.md) / [EN](doc/cubemap_transforms_json.md) |
 | `transforms_to_colmap.py` | `transforms.json` からCOLMAP形式を書き出し | [JP](doc/transforms_to_colmap.ja.md) / [EN](doc/transforms_to_colmap.md) |
 
+## 開発者向けメモ
+
+今後の保守で使うコード所有範囲、モジュール境界、検証ルールは
+[保守向けアーキテクチャ](doc/architecture.ja.md) にまとめています。
+
 ## ライセンス
 
 MIT License。詳細は [LICENSE](LICENSE) を参照してください。

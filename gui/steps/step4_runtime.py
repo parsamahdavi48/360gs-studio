@@ -1,0 +1,677 @@
+"""Step 4 runtime finalization, progress parsing, and input discovery."""
+
+from __future__ import annotations
+
+import json
+import math
+import re
+import shutil
+import sys
+import xml.etree.ElementTree as ET
+from pathlib import Path
+
+import numpy as np
+from PySide6.QtCore import QProcess
+from PySide6.QtWidgets import QMessageBox
+
+from core.scene_layout import scene_images_dir
+from gui import i18n
+from gui.steps.step4_contracts import (
+    _GENERATED_POINTCLOUD_NAME,
+    _LICHTFELD_FINAL_CORRECTION,
+    _PIPELINE_STAGE_CONVERSION,
+    _PIPELINE_STAGE_SFM,
+    _SUPPORTED_TRAINING_IMAGE_EXTS,
+    is_colmap_gui_unavailable_output,
+    is_spheresfm_rtx50_cuda_error_line,
+)
+
+_CONVERT_RE = re.compile(r"^Converting\s+(\d+)\s+(?:images|files)\.\.\.$")
+_PROGRESS_RE = re.compile(r"^\[progress\]\s+(\d+)\s*/\s*(\d+)")
+_COLMAP_FEATURE_RE = re.compile(r"Processed file \[(\d+)/(\d+)\]")
+_COLMAP_MATCH_IMAGE_RE = re.compile(r"Matching image \[(\d+)/(\d+)\]")
+_COLMAP_MATCH_BLOCK_RE = re.compile(r"Matching block \[(\d+)/(\d+),\s*(\d+)/(\d+)\]")
+_COLMAP_GLOBAL_BA_FIXED_RE = re.compile(
+    r"Global bundle adjustment iteration\s+(\d+)\s*/\s*(\d+),\s*fixed-rotation stage finished"
+)
+_COLMAP_GLOBAL_BA_DONE_RE = re.compile(r"Global bundle adjustment iteration\s+(\d+)\s*/\s*(\d+)\s+finished")
+_COLMAP_RETRIANGULATION_START_RE = re.compile(r"=== Running iterative retriangulation and refinement ===")
+_COLMAP_RETRIANGULATION_DONE_RE = re.compile(r"Iterative retriangulation and refinement done")
+_COLMAP_RECONSTRUCTION_DONE_RE = re.compile(r"Reconstruction done")
+
+
+class Step4RuntimeMixin:
+    def _open_spheresfm_result(self) -> None:
+        if not self.scene_dir:
+            return
+        model = self._find_spheresfm_sparse_model()
+        if model is None:
+            QMessageBox.warning(
+                self,
+                i18n.t("SPHERESFM_OPEN_GUI"),
+                i18n.t("SPHERESFM_RESULT_NOT_FOUND").format(path=str(self._spheresfm_sparse_dir())),
+            )
+            return
+        try:
+            colmap = self._resolve_spheresfm_executable()
+        except ValueError as exc:
+            QMessageBox.warning(self, i18n.t("SPHERESFM_OPEN_GUI"), str(exc))
+            return
+        args = [
+            "gui",
+            "--database_path",
+            str(self._spheresfm_database_path()),
+            "--image_path",
+            str(self._metashape_images_dir()),
+            "--import_path",
+            str(model),
+        ]
+        process_cls = getattr(sys.modules.get("gui.steps.step4_cubemap"), "QProcess", QProcess)
+        process = process_cls(self)
+        process.setProgram(colmap)
+        process.setArguments(args)
+        process.setProcessChannelMode(QProcess.MergedChannels)
+        process.start()
+        if not process.waitForStarted(3000):
+            detail = process.errorString().strip() or "-"
+            QMessageBox.warning(
+                self,
+                i18n.t("SPHERESFM_OPEN_GUI"),
+                i18n.t("SPHERESFM_OPEN_GUI_FAILED_DETAIL").format(
+                    exe=colmap,
+                    model=str(model),
+                    detail=detail,
+                ),
+            )
+            return
+        if process.waitForFinished(1500):
+            detail = self._qprocess_output_text(process) or process.errorString().strip() or "-"
+            if is_colmap_gui_unavailable_output(detail):
+                QMessageBox.warning(
+                    self,
+                    i18n.t("SPHERESFM_OPEN_GUI"),
+                    i18n.t("SPHERESFM_OPEN_GUI_UNAVAILABLE").format(
+                        exe=colmap,
+                        model=str(model),
+                        detail=self._message_detail_tail(detail),
+                    ),
+                )
+                return
+            if process.exitStatus() != QProcess.NormalExit or process.exitCode() != 0:
+                QMessageBox.warning(
+                    self,
+                    i18n.t("SPHERESFM_OPEN_GUI"),
+                    i18n.t("SPHERESFM_OPEN_GUI_FAILED_DETAIL").format(
+                        exe=colmap,
+                        model=str(model),
+                        detail=self._message_detail_tail(detail),
+                    ),
+                )
+            return
+
+        self._spheresfm_gui_processes.append(process)
+        process.finished.connect(
+            lambda _exit_code, _exit_status, proc=process, exe=colmap, model_path=str(model): (
+                self._on_spheresfm_gui_process_finished(proc, exe, model_path)
+            )
+        )
+        if process.state() == QProcess.NotRunning:
+            self._on_spheresfm_gui_process_finished(process, colmap, str(model))
+
+    @staticmethod
+    def _qprocess_output_text(process: QProcess) -> str:
+        raw = bytes(process.readAllStandardOutput()) + bytes(process.readAllStandardError())
+        return raw.decode("utf-8", errors="replace").strip()
+
+    @staticmethod
+    def _message_detail_tail(detail: str, limit: int = 1800) -> str:
+        text = detail.strip()
+        if len(text) <= limit:
+            return text or "-"
+        return "...\n" + text[-limit:]
+
+    def _on_spheresfm_gui_process_finished(self, process: QProcess, colmap: str, model: str) -> None:
+        if not self._forget_spheresfm_gui_process(process):
+            return
+        detail = self._qprocess_output_text(process) or process.errorString().strip() or "-"
+        if is_colmap_gui_unavailable_output(detail):
+            QMessageBox.warning(
+                self,
+                i18n.t("SPHERESFM_OPEN_GUI"),
+                i18n.t("SPHERESFM_OPEN_GUI_UNAVAILABLE").format(
+                    exe=colmap,
+                    model=model,
+                    detail=self._message_detail_tail(detail),
+                ),
+            )
+
+    def _forget_spheresfm_gui_process(self, process: QProcess) -> bool:
+        if not any(p is process for p in self._spheresfm_gui_processes):
+            return False
+        self._spheresfm_gui_processes = [p for p in self._spheresfm_gui_processes if p is not process]
+        process.deleteLater()
+        return True
+
+    def on_phase_log_started(self, phase: str, path: str) -> None:
+        if phase.startswith("spheresfm_"):
+            self._spheresfm_phase_logs[phase] = Path(path)
+        elif phase.startswith("training_"):
+            self._training_phase_logs[phase] = Path(path)
+
+    def on_phase_finished(self, phase: str, exit_code: int, canceled: bool) -> None:
+        if (
+            phase.startswith("spheresfm_")
+            and exit_code != 0
+            and not canceled
+            and self._spheresfm_rtx50_cuda_error_seen
+            and self._spheresfm_rtx50_cuda_error_phase == phase
+            and not self._spheresfm_rtx50_cuda_error_shown
+        ):
+            self._show_spheresfm_rtx50_cuda_error(phase)
+
+    def _show_spheresfm_rtx50_cuda_error(self, phase: str) -> None:
+        self._spheresfm_rtx50_cuda_error_shown = True
+        log_path = self._spheresfm_phase_logs.get(phase)
+        log_text = str(log_path) if log_path is not None else "-"
+        QMessageBox.warning(
+            self,
+            i18n.t("SPHERESFM_RTX50_CUDA_ERROR_TITLE"),
+            i18n.t("SPHERESFM_RTX50_CUDA_ERROR_BODY").format(log_path=log_text),
+        )
+
+    def on_queue_finished(self, success: bool) -> None:
+        if success:
+            try:
+                self._finalize_bundle()
+            except Exception:
+                pass
+
+    def _finalize_bundle(self) -> None:
+        if self._is_spheresfm_method():
+            if self._uses_spheresfm_projected_output():
+                source_ply = self._spheresfm_equirect_dir() / "pointcloud.ply"
+                dest_ply = self._spheresfm_cubemap_dir() / "pointcloud.ply"
+                if source_ply.is_file():
+                    dest_ply.parent.mkdir(parents=True, exist_ok=True)
+                    shutil.copy2(source_ply, dest_ply)
+                    transforms = self._spheresfm_cubemap_dir() / "transforms.json"
+                    if transforms.is_file():
+                        data = json.loads(transforms.read_text(encoding="utf-8"))
+                        data["ply_file_path"] = dest_ply.name
+                        transforms.write_text(json.dumps(data, indent=2), encoding="utf-8")
+                if self._uses_spheresfm_lichtfeld_final_correction():
+                    self._apply_lichtfeld_final_correction(self._spheresfm_cubemap_dir())
+            elif self._uses_spheresfm_3dgut_output() and self._uses_spheresfm_lichtfeld_final_correction():
+                self._apply_lichtfeld_final_correction(self._spheresfm_3dgut_dir())
+            self._write_export_settings()
+            self._write_spheresfm_project_manifest()
+            self._record_step4_runs(
+                sfm_mode="spheresfm" if self._spheresfm_runs_sfm() else None,
+                dataset=self._spheresfm_runs_conversion(),
+            )
+            return
+
+        if self._is_colmap_method():
+            self._write_export_settings()
+            self._write_colmap_project_manifest()
+            self._record_step4_runs(
+                sfm_mode="colmap" if self.pipeline_stage_intent(_PIPELINE_STAGE_SFM) else None,
+                dataset=self.pipeline_stage_intent(_PIPELINE_STAGE_CONVERSION),
+            )
+            return
+
+        if self._uses_direct_equirect_output():
+            if self._uses_lichtfeld_final_correction():
+                self._apply_lichtfeld_final_correction(self._direct_output_dir())
+            self._write_export_settings()
+            self._record_step4_runs(
+                sfm_mode="metashape_import" if self.pipeline_stage_intent(_PIPELINE_STAGE_CONVERSION) else None,
+                dataset=self.pipeline_stage_intent(_PIPELINE_STAGE_CONVERSION),
+            )
+            return
+
+        output = self._output_dir()
+        output.mkdir(parents=True, exist_ok=True)
+
+        source = self._resolve_ply_source()
+        if source is not None:
+            dest = output / source.name
+            if source.resolve() != dest.resolve():
+                shutil.copy2(source, dest)
+
+            transforms = output / "transforms.json"
+            if transforms.is_file():
+                data = json.loads(transforms.read_text(encoding="utf-8"))
+                data["ply_file_path"] = dest.name
+                transforms.write_text(json.dumps(data, indent=2), encoding="utf-8")
+
+        if self._uses_lichtfeld_final_correction():
+            self._apply_lichtfeld_final_correction(output)
+
+        if self._writes_any_view_assets():
+            self._write_export_settings()
+        self._record_step4_runs(
+            sfm_mode="metashape_import" if self.pipeline_stage_intent(_PIPELINE_STAGE_CONVERSION) else None,
+            dataset=self.pipeline_stage_intent(_PIPELINE_STAGE_CONVERSION),
+        )
+
+    def _apply_lichtfeld_final_correction(self, output: Path) -> None:
+        transforms = output / "transforms.json"
+        if transforms.is_file():
+            self._transform_transforms_json(transforms, _LICHTFELD_FINAL_CORRECTION)
+
+        pointcloud = output / "pointcloud.ply"
+        if pointcloud.is_file():
+            self._transform_ply_points(pointcloud, _LICHTFELD_FINAL_CORRECTION)
+
+    @staticmethod
+    def _transform_transforms_json(path: Path, matrix: np.ndarray) -> None:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        frames = data.get("frames", [])
+        if not isinstance(frames, list):
+            return
+        for frame in frames:
+            if not isinstance(frame, dict) or "transform_matrix" not in frame:
+                continue
+            transform = np.array(frame["transform_matrix"], dtype=np.float64)
+            if transform.shape != (4, 4):
+                continue
+            frame["transform_matrix"] = (matrix @ transform).tolist()
+        path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+
+    @classmethod
+    def _transform_ply_points(cls, path: Path, matrix: np.ndarray) -> None:
+        if cls._transform_ply_with_open3d(path, matrix):
+            return
+        cls._transform_ascii_ply(path, matrix)
+
+    @staticmethod
+    def _transform_ply_with_open3d(path: Path, matrix: np.ndarray) -> bool:
+        try:
+            import open3d as o3d  # type: ignore
+        except Exception:
+            return False
+        try:
+            pc = o3d.io.read_point_cloud(str(path))
+            if pc.is_empty():
+                return False
+            pc.transform(matrix)
+            return bool(o3d.io.write_point_cloud(str(path), pc))
+        except Exception:
+            return False
+
+    @staticmethod
+    def _transform_ascii_ply(path: Path, matrix: np.ndarray) -> None:
+        text = path.read_text(encoding="ascii", errors="strict")
+        lines = text.splitlines(keepends=True)
+        try:
+            end_idx = next(i for i, line in enumerate(lines) if line.strip() == "end_header")
+        except StopIteration as e:
+            raise ValueError(f"PLY header is missing end_header: {path}") from e
+
+        header = lines[: end_idx + 1]
+        if not any(line.strip().startswith("format ascii") for line in header):
+            raise ValueError(f"Binary PLY correction requires open3d, but open3d could not transform: {path}")
+
+        vertex_count = 0
+        vertex_props: list[str] = []
+        in_vertex = False
+        for line in header:
+            parts = line.strip().split()
+            if not parts:
+                continue
+            if parts[0] == "element":
+                in_vertex = len(parts) >= 3 and parts[1] == "vertex"
+                if in_vertex:
+                    vertex_count = int(parts[2])
+                continue
+            if in_vertex and parts[0] == "property" and len(parts) >= 3:
+                vertex_props.append(parts[-1])
+
+        try:
+            x_idx = vertex_props.index("x")
+            y_idx = vertex_props.index("y")
+            z_idx = vertex_props.index("z")
+        except ValueError as e:
+            raise ValueError(f"PLY vertex element must contain x/y/z properties: {path}") from e
+
+        data_start = end_idx + 1
+        if len(lines) < data_start + vertex_count:
+            raise ValueError(f"PLY vertex data is truncated: {path}")
+
+        rot = matrix[:3, :3]
+        trans = matrix[:3, 3]
+        for i in range(vertex_count):
+            line_idx = data_start + i
+            line = lines[line_idx]
+            newline = "\n" if line.endswith("\n") else ""
+            tokens = line.split()
+            if len(tokens) < len(vertex_props):
+                raise ValueError(f"PLY vertex row is truncated at row {i}: {path}")
+            point = np.array(
+                [float(tokens[x_idx]), float(tokens[y_idx]), float(tokens[z_idx])],
+                dtype=np.float64,
+            )
+            corrected = rot @ point + trans
+            tokens[x_idx] = f"{corrected[0]:.9g}"
+            tokens[y_idx] = f"{corrected[1]:.9g}"
+            tokens[z_idx] = f"{corrected[2]:.9g}"
+            lines[line_idx] = " ".join(tokens) + newline
+
+        path.write_text("".join(lines), encoding="ascii")
+
+    # -- プログレス --
+
+    def phase_display_name(self, phase: str) -> str:
+        labels = {
+            "metashape": "PHASE_METASHAPE_IMPORT",
+            "colmap_rig_export": "PHASE_COLMAP_RIG_EXPORT",
+            "colmap_feature": "PHASE_COLMAP_FEATURE",
+            "colmap_rig_config": "PHASE_COLMAP_RIG_CONFIG",
+            "colmap_match": "PHASE_COLMAP_MATCH",
+            "colmap_mapper": "PHASE_COLMAP_MAPPER",
+            "spheresfm_preflight": "PHASE_SPHERESFM_PREFLIGHT",
+            "spheresfm_prepare": "PHASE_SPHERESFM_PREPARE",
+            "spheresfm_database": "PHASE_SPHERESFM_DATABASE",
+            "spheresfm_feature": "PHASE_SPHERESFM_FEATURE",
+            "spheresfm_match": "PHASE_SPHERESFM_MATCH",
+            "spheresfm_mapper": "PHASE_SPHERESFM_MAPPER",
+            "spheresfm_transforms": "PHASE_SPHERESFM_TRANSFORMS",
+            "spheresfm_cubemap": "PHASE_SPHERESFM_CUBEMAP",
+            "training_lichtfeld": "PHASE_TRAINING_LICHTFELD",
+            "training_postshot": "PHASE_TRAINING_POSTSHOT",
+            "training_custom": "PHASE_TRAINING_CUSTOM",
+        }
+        key = labels.get(phase)
+        return i18n.t(key) if key else phase
+
+    def on_phase_started(self, phase: str) -> tuple[int, int] | None:
+        self._active_runner_phase = phase
+        if phase == "colmap_rig_export":
+            self._converted_total = 0
+            self._processed = 0
+            self._explicit_progress = False
+            return None
+        if phase == "spheresfm_cubemap":
+            self._converted_total = 0
+            self._processed = 0
+            self._explicit_progress = False
+            return None
+        if phase == "colmap_feature":
+            total = self._count_colmap_rig_images()
+            return 0, total if total > 0 else 0
+        if phase == "spheresfm_prepare":
+            total = self._count_source_images()
+            return 0, total if total > 0 else 0
+        if phase == "spheresfm_preflight":
+            return 0, 1
+        if phase == "spheresfm_feature":
+            total = self._count_source_images()
+            return 0, total if total > 0 else 0
+        if phase in {"colmap_rig_config", "colmap_match", "colmap_mapper"}:
+            self._colmap_ba_iterations = 0
+            return 0, 0
+        if phase in {"spheresfm_database", "spheresfm_match", "spheresfm_mapper", "spheresfm_transforms"}:
+            self._colmap_ba_iterations = 0
+            return 0, 0
+        return None
+
+    def on_line(self, line: str) -> tuple[int, int] | None:
+        if self._is_spheresfm_method() and is_spheresfm_rtx50_cuda_error_line(line):
+            self._spheresfm_rtx50_cuda_error_seen = True
+            if self._active_runner_phase.startswith("spheresfm_"):
+                self._spheresfm_rtx50_cuda_error_phase = self._active_runner_phase
+
+        colmap_feature = _COLMAP_FEATURE_RE.search(line)
+        if colmap_feature:
+            return int(colmap_feature.group(1)), int(colmap_feature.group(2))
+
+        colmap_match_image = _COLMAP_MATCH_IMAGE_RE.search(line)
+        if colmap_match_image:
+            return int(colmap_match_image.group(1)), int(colmap_match_image.group(2))
+
+        colmap_match_block = _COLMAP_MATCH_BLOCK_RE.search(line)
+        if colmap_match_block:
+            block_row = int(colmap_match_block.group(1))
+            block_rows = int(colmap_match_block.group(2))
+            block_col = int(colmap_match_block.group(3))
+            block_cols = int(colmap_match_block.group(4))
+            total = max(1, block_rows * block_cols)
+            done = min(total, max(1, (block_row - 1) * block_cols + block_col))
+            return done, total
+
+        colmap_ba_fixed = _COLMAP_GLOBAL_BA_FIXED_RE.search(line)
+        if colmap_ba_fixed:
+            return self._colmap_global_ba_progress(
+                int(colmap_ba_fixed.group(1)),
+                int(colmap_ba_fixed.group(2)),
+                fixed_rotation=True,
+            )
+
+        colmap_ba_done = _COLMAP_GLOBAL_BA_DONE_RE.search(line)
+        if colmap_ba_done:
+            return self._colmap_global_ba_progress(
+                int(colmap_ba_done.group(1)),
+                int(colmap_ba_done.group(2)),
+                fixed_rotation=False,
+            )
+
+        if _COLMAP_RETRIANGULATION_START_RE.search(line):
+            return self._colmap_retriangulation_progress(done=False)
+
+        if _COLMAP_RETRIANGULATION_DONE_RE.search(line) or _COLMAP_RECONSTRUCTION_DONE_RE.search(line):
+            return self._colmap_retriangulation_progress(done=True)
+
+        progress = _PROGRESS_RE.match(line)
+        if progress:
+            self._processed = int(progress.group(1))
+            self._converted_total = int(progress.group(2))
+            self._explicit_progress = True
+            return self._processed, self._converted_total
+
+        m = _CONVERT_RE.match(line)
+        if m:
+            self._converted_total = int(m.group(1))
+            self._processed = 0
+            self._explicit_progress = False
+            return 0, self._converted_total
+
+        if line.startswith("Processing:") and self._converted_total > 0 and not self._explicit_progress:
+            self._processed += 1
+            return self._processed, self._converted_total
+
+        return None
+
+    def _colmap_global_ba_progress(
+        self,
+        iteration: int,
+        total_iterations: int,
+        *,
+        fixed_rotation: bool,
+    ) -> tuple[int, int]:
+        total_iterations = max(1, total_iterations)
+        iteration = min(max(1, iteration), total_iterations)
+        self._colmap_ba_iterations = max(self._colmap_ba_iterations, total_iterations)
+        total_units = total_iterations * 2 + 2
+        done_units = (iteration - 1) * 2 + (1 if fixed_rotation else 2)
+        return done_units, total_units
+
+    def _colmap_retriangulation_progress(self, *, done: bool) -> tuple[int, int]:
+        iterations = max(1, self._colmap_ba_iterations)
+        total_units = iterations * 2 + 2
+        return (total_units if done else total_units - 1), total_units
+
+    def _count_colmap_rig_images(self) -> int:
+        images_dir = self._colmap_rig_images_dir()
+        return self._count_images_in_dir(images_dir)
+
+    def _count_source_images(self) -> int:
+        if not self.scene_dir:
+            return 0
+        images_dir = self._metashape_images_dir()
+        return self._count_images_in_dir(images_dir)
+
+    # -- ヘルパー --
+
+    @staticmethod
+    def _format_candidate_names(paths: tuple[Path, ...] | list[Path]) -> str:
+        names = [p.name for p in paths]
+        if len(names) > 4:
+            names = names[:4] + [f"+{len(names) - 4}"]
+        return ", ".join(names)
+
+    @staticmethod
+    def _path_is_same_or_descendant(path: Path, root: Path) -> bool:
+        try:
+            resolved_path = path.resolve()
+            resolved_root = root.resolve()
+        except OSError:
+            resolved_path = path.absolute()
+            resolved_root = root.absolute()
+        return resolved_path == resolved_root or resolved_root in resolved_path.parents
+
+    def _metashape_input_output_path_issue(self, path: Path) -> str | None:
+        if not self.scene_dir:
+            return None
+        try:
+            output = self._display_output_dir()
+        except ValueError:
+            return None
+        if self._path_is_same_or_descendant(path, output):
+            return i18n.t("MS_INPUT_IN_OUTPUT_HINT").format(path=str(path), output=str(output))
+        return None
+
+    @staticmethod
+    def _scene_xml_candidates(scene_dir: Path) -> tuple[Path, ...]:
+        return tuple(sorted([p for p in scene_dir.glob("*.xml") if p.is_file()], key=lambda x: x.name.lower()))
+
+    @staticmethod
+    def _scene_ply_candidates(scene_dir: Path) -> tuple[Path, ...]:
+        return tuple(
+            sorted(
+                [p for p in scene_dir.glob("*.ply") if p.is_file() and p.name.lower() != _GENERATED_POINTCLOUD_NAME],
+                key=lambda x: x.name.lower(),
+            )
+        )
+
+    def _guess_xml(self, scene_dir: Path) -> Path | None:
+        scored = [
+            score
+            for candidate in self._scene_xml_candidates(scene_dir)
+            if (score := self._metashape_xml_candidate_score(candidate, scene_dir)) is not None
+        ]
+        self._metashape_auto_xml_candidates = tuple(score[0] for score in scored)
+        if not scored:
+            return None
+        if len(scored) == 1:
+            return scored[0][0]
+        scored.sort(key=lambda item: (item[1], item[2], item[3], item[0].name.lower()), reverse=True)
+        best = scored[0]
+        second = scored[1]
+        if best[1] > second[1]:
+            return best[0]
+        return None
+
+    def _guess_ply(self, scene_dir: Path) -> Path | None:
+        candidates = self._scene_ply_candidates(scene_dir)
+        self._metashape_auto_ply_candidates = candidates
+        return candidates[0] if len(candidates) == 1 else None
+
+    def _metashape_xml_candidate_score(self, path: Path, scene_dir: Path) -> tuple[Path, int, int, int] | None:
+        try:
+            root = ET.parse(path).getroot()
+        except (ET.ParseError, OSError):
+            return None
+        if self._xml_tag_name(root.tag) != "document":
+            return None
+        image_names, image_stems = self._metashape_image_name_sets(scene_dir)
+        total_cameras = 0
+        transformed_cameras = 0
+        image_matches = 0
+        chunks = [node for node in root.iter() if self._xml_tag_name(node.tag) == "chunk"]
+        for chunk in chunks:
+            sensors = self._metashape_sensor_ids(chunk)
+            if not sensors:
+                continue
+            cameras_parent = self._xml_child(chunk, "cameras")
+            if cameras_parent is None:
+                continue
+            for camera in self._xml_children(cameras_parent, "camera"):
+                if str(camera.get("sensor_id") or "").strip() not in sensors:
+                    continue
+                label = str(camera.get("label") or "").strip()
+                if not label:
+                    continue
+                total_cameras += 1
+                transform = self._xml_child(camera, "transform")
+                if self._xml_transform_has_16_numbers(transform):
+                    transformed_cameras += 1
+                if self._metashape_label_matches_image(label, image_names, image_stems):
+                    image_matches += 1
+        if total_cameras <= 0 or transformed_cameras <= 0:
+            return None
+        return (path, image_matches, transformed_cameras, total_cameras)
+
+    @staticmethod
+    def _xml_tag_name(tag: str) -> str:
+        return tag.rsplit("}", 1)[-1].lower()
+
+    @classmethod
+    def _xml_child(cls, element: ET.Element, name: str) -> ET.Element | None:
+        for child in element:
+            if cls._xml_tag_name(child.tag) == name:
+                return child
+        return None
+
+    @classmethod
+    def _xml_children(cls, element: ET.Element, name: str) -> list[ET.Element]:
+        return [child for child in element if cls._xml_tag_name(child.tag) == name]
+
+    @classmethod
+    def _metashape_sensor_ids(cls, chunk: ET.Element) -> set[str]:
+        sensors_parent = cls._xml_child(chunk, "sensors")
+        if sensors_parent is None:
+            return set()
+        sensor_ids: set[str] = set()
+        for sensor in cls._xml_children(sensors_parent, "sensor"):
+            sensor_id = str(sensor.get("id") or "").strip()
+            if not sensor_id:
+                continue
+            if str(sensor.get("type") or "").strip() or cls._xml_child(sensor, "calibration") is not None:
+                sensor_ids.add(sensor_id)
+        return sensor_ids
+
+    @staticmethod
+    def _xml_transform_has_16_numbers(transform: ET.Element | None) -> bool:
+        if transform is None or not transform.text:
+            return False
+        parts = transform.text.split()
+        if len(parts) != 16:
+            return False
+        try:
+            values = [float(part) for part in parts]
+        except ValueError:
+            return False
+        return all(math.isfinite(value) for value in values)
+
+    @staticmethod
+    def _metashape_image_name_sets(scene_dir: Path) -> tuple[set[str], set[str]]:
+        images_dir = scene_images_dir(scene_dir)
+        if not images_dir.is_dir():
+            return set(), set()
+        names: set[str] = set()
+        stems: set[str] = set()
+        for image in images_dir.iterdir():
+            if not image.is_file() or image.suffix.lower() not in _SUPPORTED_TRAINING_IMAGE_EXTS:
+                continue
+            names.add(image.name)
+            stems.add(image.stem)
+        return names, stems
+
+    @staticmethod
+    def _metashape_label_matches_image(label: str, image_names: set[str], image_stems: set[str]) -> bool:
+        if not image_names and not image_stems:
+            return False
+        name = label.replace("\\", "/").rsplit("/", 1)[-1]
+        stem = Path(name).stem
+        return name in image_names or stem in image_stems or label in image_names or label in image_stems
