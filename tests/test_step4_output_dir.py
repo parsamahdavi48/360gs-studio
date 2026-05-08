@@ -211,13 +211,22 @@ def test_step4_pipeline_intent_controls_execution_plan(tmp_path: Path) -> None:
 
     assert step.primary_action_text() == i18n.t("RUN")
     assert step.pipeline_stage_intent("sfm") is True
-    assert step.pipeline_stage_intent_enabled("sfm") is False
+    assert step.pipeline_stage_intent_enabled("sfm") is True
     assert step.pipeline_stage_intent("conversion") is True
     sfm_item = next(item for item in step.pipeline_nav_items() if item["stage"] == "sfm")
     assert sfm_item["intent_checked"] is True
-    assert sfm_item["intent_enabled"] is False
+    assert sfm_item["intent_enabled"] is True
     assert sfm_item["status"] == "ready"
     assert sfm_item["status_symbol"] == "✓"
+
+    step.set_pipeline_stage_intent("sfm", False)
+    assert step.pipeline_stage_intent("sfm") is False
+    assert step.pipeline_stage_intent("conversion") is False
+    assert step.primary_action_enabled() is False
+    sfm_item = next(item for item in step.pipeline_nav_items() if item["stage"] == "sfm")
+    assert sfm_item["status"] == "off"
+    step.set_pipeline_stage_intent("sfm", True)
+    step.set_pipeline_stage_intent("conversion", True)
 
     step.set_pipeline_stage_intent("conversion", False)
     assert step.pipeline_stage_intent("conversion") is False
@@ -1654,13 +1663,13 @@ def test_lichtfeld_strategy_switch_preserves_each_strategy_state(tmp_path: Path)
     assert step.lfs_advanced_edits["means_lr"].text() == "0.000123"
 
 
-def test_training_headless_option_shares_start_row(tmp_path: Path) -> None:
+def test_training_headless_option_stays_in_run_options_row(tmp_path: Path) -> None:
     step = _ready_step(tmp_path, metashape_inputs=True)
     step.resize(1280, 920)
     step.show()
     _app().processEvents()
 
-    assert _is_descendant(step.run_training_cb, step.training_run_options_row)
+    assert not _is_descendant(step.run_training_cb, step.training_run_options_row)
     assert _is_descendant(step.training_headless_cb, step.training_run_options_row)
     assert _is_descendant(step.training_backend_buttons["lichtfeld"], step.training_backend_row)
     assert _is_descendant(step.training_backend_other_button, step.training_backend_row)

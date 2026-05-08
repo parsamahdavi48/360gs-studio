@@ -268,7 +268,6 @@ def test_step4_japanese_training_copy_uses_training_wording() -> None:
             "PHASE_TRAINING_CUSTOM",
             "TRAINING_EXEC_NOT_FOUND",
             "TRAINING_REQUIRES_DATASET_OUTPUT",
-            "RUN_TRAINING_AFTER_EXPORT",
             "TRAINING_OUTPUT",
             "STEP4_TAB_TRAINING",
             "STEP4_PIPELINE_TRAINING",
@@ -276,7 +275,6 @@ def test_step4_japanese_training_copy_uses_training_wording() -> None:
         tip_keys = [
             "TRAINING_BACKEND_LICHTFELD",
             "TRAINING_BACKEND_POSTSHOT",
-            "RUN_TRAINING_AFTER_EXPORT",
             "TRAINING_EXECUTABLE",
             "TRAINING_DATASET",
             "TRAINING_OUTPUT",
@@ -289,7 +287,6 @@ def test_step4_japanese_training_copy_uses_training_wording() -> None:
         ]
 
         assert i18n.t("STEP4_TAB_TRAINING") == "Training"
-        assert i18n.t("RUN_TRAINING_AFTER_EXPORT") == "書き出し後にトレーニング開始"
         assert i18n.t("TRAINING_OUTPUT") == "出力先"
         assert all("学習" not in i18n.t(key) for key in visible_keys)
         assert all("学習" not in i18n.tip(key) for key in tip_keys)
@@ -317,6 +314,7 @@ def test_step4_scrolls_tab_content_not_whole_settings_pane() -> None:
         os.environ["QT_QPA_PLATFORM"] = "offscreen"
 
         from PySide6.QtCore import QPoint, Qt
+        from PySide6.QtTest import QTest
         from PySide6.QtWidgets import QApplication, QScrollArea
 
         from gui import i18n
@@ -380,6 +378,12 @@ def test_step4_scrolls_tab_content_not_whole_settings_pane() -> None:
         assert len(set(status_x)) == 1
         assert window.step4_sub_intent_buttons["conversion"].toolTip()
         assert window.step4_sub_status_labels["conversion"].toolTip()
+        assert not step.run_training_cb.isChecked()
+        QTest.mouseClick(window.step4_sub_buttons["training"], Qt.LeftButton)
+        assert step.run_training_cb.isChecked()
+        assert step.settings_tabs.currentIndex() == step.training_tab_index
+        QTest.mouseClick(window.step4_sub_buttons["training"], Qt.LeftButton)
+        assert not step.run_training_cb.isChecked()
         window._activate_step4_pipeline_stage("training")
         assert window.stack.currentIndex() == 3
         assert step.settings_tabs.currentIndex() == step.training_tab_index
@@ -682,7 +686,6 @@ def test_cubemap_labels_share_field_tooltips() -> None:
     assert step.training_backend_selector.other_backend_actions["custom"].isChecked()
     assert step.training_backend_other_button.toolTip() == i18n.tip("TRAINING_BACKEND_CUSTOM")
     assert step.training_backend_other_menu_button.toolTip() == i18n.tip("TRAINING_BACKEND_OTHER")
-    assert step.run_training_cb.toolTip() == i18n.tip("RUN_TRAINING_AFTER_EXPORT")
     assert _label(step, i18n.t("TRAINING_EXECUTABLE")).toolTip() == i18n.tip("TRAINING_EXECUTABLE")
     assert _label(step, i18n.t("TRAINING_DATASET")).toolTip() == i18n.tip("TRAINING_DATASET")
     assert _label(step, i18n.t("TRAINING_OUTPUT")).toolTip() == i18n.tip("TRAINING_OUTPUT")

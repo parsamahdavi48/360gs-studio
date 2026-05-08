@@ -353,6 +353,7 @@ class CubemapStep(BaseStepWidget):
         self._syncing_spheresfm_scope_from_intent = False
         self._user_preferences_enabled = False
         self._export_method_value = _METHOD_METASHAPE
+        self._metashape_sfm_intent = True
         self._conversion_intent = True
         self._spheresfm_sfm_intent_override: bool | None = None
         self._spheresfm_conversion_intent_override: bool | None = None
@@ -1029,7 +1030,7 @@ class CubemapStep(BaseStepWidget):
     def pipeline_stage_intent(self, stage: str) -> bool:
         if stage == _PIPELINE_STAGE_SFM:
             if self._is_metashape_method():
-                return True
+                return self._metashape_sfm_intent
             if self._is_colmap_method():
                 return self.run_colmap_cb.isChecked()
             return self._spheresfm_runs_sfm()
@@ -1042,7 +1043,7 @@ class CubemapStep(BaseStepWidget):
         return False
 
     def pipeline_stage_intent_enabled(self, stage: str) -> bool:
-        return not (stage == _PIPELINE_STAGE_SFM and self._is_metashape_method())
+        return stage in {_PIPELINE_STAGE_SFM, _PIPELINE_STAGE_CONVERSION, _PIPELINE_STAGE_TRAINING}
 
     def _pipeline_stage_runs_in_app(self, stage: str) -> bool:
         if stage == _PIPELINE_STAGE_SFM:
@@ -1056,8 +1057,10 @@ class CubemapStep(BaseStepWidget):
         enabled = bool(enabled)
         if stage == _PIPELINE_STAGE_SFM:
             if self._is_metashape_method():
-                return
-            if self._is_colmap_method():
+                self._metashape_sfm_intent = enabled
+                if not enabled:
+                    self._conversion_intent = False
+            elif self._is_colmap_method():
                 self.run_colmap_cb.setChecked(enabled)
             else:
                 self._set_spheresfm_stage_intents(
@@ -1072,6 +1075,8 @@ class CubemapStep(BaseStepWidget):
                 )
             else:
                 self._conversion_intent = enabled
+                if enabled and self._is_metashape_method():
+                    self._metashape_sfm_intent = True
         elif stage == _PIPELINE_STAGE_TRAINING:
             self.run_training_cb.setChecked(enabled)
         self._sync_settings_tabs()
@@ -1138,6 +1143,12 @@ class CubemapStep(BaseStepWidget):
         return result
 
     def _pipeline_sfm_status(self) -> tuple[str, str, str]:
+        if not self.pipeline_stage_intent(_PIPELINE_STAGE_SFM):
+            if self._is_metashape_method():
+                return (_PIPELINE_STATUS_OFF, "-", i18n.t("STEP4_PIPELINE_DETAIL_METASHAPE_OFF"))
+            if self._is_colmap_method():
+                return (_PIPELINE_STATUS_OFF, "-", i18n.t("STEP4_PIPELINE_DETAIL_COLMAP_OFF"))
+            return (_PIPELINE_STATUS_OFF, "-", i18n.t("STEP4_PIPELINE_DETAIL_SPHERESFM_OFF"))
         if not self.scene_dir:
             return (_PIPELINE_STATUS_WARNING, "!", i18n.t("STEP4_PIPELINE_DETAIL_SCENE_REQUIRED"))
         if self._is_metashape_method():
@@ -1146,21 +1157,17 @@ class CubemapStep(BaseStepWidget):
                 return (_PIPELINE_STATUS_READY, "✓", i18n.t("STEP4_PIPELINE_DETAIL_METASHAPE_READY"))
             return (_PIPELINE_STATUS_WARNING, "!", i18n.t("STEP4_PIPELINE_DETAIL_METASHAPE_NEEDS_XML"))
         if self._is_colmap_method():
-            if not self.run_colmap_cb.isChecked():
-                return (_PIPELINE_STATUS_OFF, "-", i18n.t("STEP4_PIPELINE_DETAIL_COLMAP_OFF"))
             if self.run_colmap_cb.isChecked():
                 if not self.pipeline_stage_intent(_PIPELINE_STAGE_CONVERSION) and not self._colmap_rig_images_dir().is_dir():
                     return (_PIPELINE_STATUS_WARNING, "!", i18n.t("STEP4_PIPELINE_DETAIL_COLMAP_NEEDS_RIG"))
                 return (_PIPELINE_STATUS_READY, "✓", i18n.t("STEP4_PIPELINE_DETAIL_COLMAP_RUNS"))
-        if not self._spheresfm_runs_sfm():
-            return (_PIPELINE_STATUS_OFF, "-", i18n.t("STEP4_PIPELINE_DETAIL_SPHERESFM_OFF"))
         return (_PIPELINE_STATUS_READY, "✓", i18n.t("STEP4_PIPELINE_DETAIL_SPHERESFM_RUNS"))
 
     def _pipeline_conversion_status(self) -> tuple[str, str, str]:
-        if not self.scene_dir:
-            return (_PIPELINE_STATUS_WARNING, "!", i18n.t("STEP4_PIPELINE_DETAIL_SCENE_REQUIRED"))
         if not self.pipeline_stage_intent(_PIPELINE_STAGE_CONVERSION):
             return (_PIPELINE_STATUS_OFF, "-", i18n.t("STEP4_PIPELINE_DETAIL_CONVERSION_OFF"))
+        if not self.scene_dir:
+            return (_PIPELINE_STATUS_WARNING, "!", i18n.t("STEP4_PIPELINE_DETAIL_SCENE_REQUIRED"))
         if self._is_spheresfm_method() and self._spheresfm_runs_sfm():
             return (_PIPELINE_STATUS_READY, "✓", i18n.t("STEP4_PIPELINE_DETAIL_CONVERSION_AFTER_SFM"))
         if self._is_spheresfm_method() and self._find_spheresfm_sparse_model() is None:
@@ -1170,10 +1177,10 @@ class CubemapStep(BaseStepWidget):
         return (_PIPELINE_STATUS_READY, "✓", i18n.t("STEP4_PIPELINE_DETAIL_CONVERSION_RUNS"))
 
     def _pipeline_training_status(self) -> tuple[str, str, str]:
-        if not self.scene_dir:
-            return (_PIPELINE_STATUS_WARNING, "!", i18n.t("STEP4_PIPELINE_DETAIL_SCENE_REQUIRED"))
         if not self.run_training_cb.isChecked():
             return (_PIPELINE_STATUS_OFF, "-", i18n.t("STEP4_PIPELINE_DETAIL_TRAINING_OFF"))
+        if not self.scene_dir:
+            return (_PIPELINE_STATUS_WARNING, "!", i18n.t("STEP4_PIPELINE_DETAIL_SCENE_REQUIRED"))
         if self.pipeline_stage_intent(_PIPELINE_STAGE_CONVERSION):
             backend = self._training_backend_display_name(self._training_backend()) if hasattr(self, "training_backend_buttons") else ""
             return (
@@ -1217,7 +1224,6 @@ class CubemapStep(BaseStepWidget):
         run_options_layout = QHBoxLayout(self.training_run_options_row)
         run_options_layout.setContentsMargins(0, 0, 0, 0)
         run_options_layout.setSpacing(12)
-        run_options_layout.addWidget(self.run_training_cb)
         run_options_layout.addWidget(self.training_headless_cb)
         run_options_layout.addStretch()
         layout.addWidget(self.training_run_options_row)

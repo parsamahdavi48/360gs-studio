@@ -163,7 +163,7 @@ After adjusting masks, turning `Images` off avoids reconverting existing cubemap
 
 ## Training Tab
 
-The `Training` tab can launch an external training CLI after Step 4 export or SfM conversion finishes. Choose `LichtFeld`, `Postshot`, or `Other...` at the top, then enable `Start training after export`. `Other...` opens a menu for secondary backends such as `Custom` without crowding the main choices.
+The `Training` tab configures the external training CLI that can run after Step 4 export or SfM conversion finishes. Choose `LichtFeld`, `Postshot`, or `Other...` at the top, then turn on the left-navigation `Train` sub-stage when you want to include training in the run. `Other...` opens a menu for secondary backends such as `Custom` without crowding the main choices.
 
 | Training app | Use when |
 | --- | --- |

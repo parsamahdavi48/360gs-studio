@@ -201,11 +201,12 @@ class MainWindow(QWidget):
                     text_label = QLabel("")
                     text_label.setObjectName("navSubStepText")
                     text_label.setWordWrap(False)
+                    text_label.setAttribute(Qt.WA_TransparentForMouseEvents, True)
                     sub_btn_layout.addWidget(intent_btn)
                     sub_btn_layout.addWidget(text_label, stretch=1)
                     sub_btn_layout.addWidget(status_label)
                     sub_btn.clicked.connect(
-                        lambda _checked=False, s=stage: self._activate_step4_pipeline_stage(s)
+                        lambda _checked=False, s=stage: self._toggle_step4_pipeline_stage_intent(s)
                     )
                     subnav_rows_layout.addWidget(sub_btn)
                     self.step4_sub_buttons[stage] = sub_btn
@@ -373,7 +374,9 @@ class MainWindow(QWidget):
         self._refresh_step4_subnav()
 
     def _toggle_step4_pipeline_stage_intent(self, stage: str) -> None:
+        self._set_current_step(3)
         self.step4.toggle_pipeline_stage_intent(stage)
+        self.step4.set_pipeline_stage(stage)
         self._refresh_step4_subnav()
         self._update_run_button()
 
@@ -407,7 +410,7 @@ class MainWindow(QWidget):
                 text_label.setText(str(item["label"]))
                 text_label.setProperty("active", "true" if active else "false")
                 text_label.setToolTip(str(item["navigate_tooltip"]))
-            button.setToolTip(str(item["navigate_tooltip"]))
+            button.setToolTip(str(item["intent_tooltip"]))
             button.setChecked(active)
             button.setProperty("status", item["status"])
             for widget in (button, intent_btn, status_label, text_label):
