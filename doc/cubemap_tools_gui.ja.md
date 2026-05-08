@@ -37,8 +37,8 @@ SfMは、複数画像の見え方の差からカメラ位置と疎な点群を�
 Metashapeで360°画像をアライメント済みなら、基本はこの流れです。
 
 1. ルートを `Metashape` にします。
-2. `カメラXML` を確認します。シーンフォルダ直下にMetashapeからエクスポートしたXMLがあれば自動入力されます。
-3. LichtFeld Studio向け、または点群も同梱したい場合は `点群PLY` を確認します。シーンフォルダ直下にMetashapeからエクスポートしたPLYがあれば自動入力されます。
+2. `カメラXML` を確認します。シーンフォルダ直下の `metashape.xml` / `cameras.xml` は自動入力されます。
+3. LichtFeld Studio向け、または点群も同梱したい場合は `点群PLY` を確認します。シーンフォルダ直下の `metashape.ply` / `sparse.ply` は自動入力されます。
 4. `出力プリセット` で渡し先を選びます。
 5. `出力形状` で、キューブマップ画像へ変換するか、`3DGUT (LichtFeld)` にするかを選びます。
 6. キューブマップ画像を作る場合は、`Cubemap` タブでCube6、Yaw、画像サイズを確認します。
@@ -48,12 +48,12 @@ Metashapeルートでは、最初に同梱の `vendor/metashape_360_lfs/metashap
 
 ### カメラXMLと点群PLYの自動検出
 
-Step 4は、シーンフォルダが設定された時点でMetashape用の入力候補を自動で探します。候補が違う場合だけ、各行の参照ボタンから手動で選び直します。
+Step 4は、シーンフォルダが設定された時点でMetashape用の入力候補を自動で探します。安全に判断できる標準名だけを自動入力し、別名のファイルや複数候補がある場合は手動選択を促します。
 
-- `カメラXML`: `metashape.xml`、`cameras.xml`、シーンフォルダ直下の最初の `.xml` の順に探します。
-- `点群PLY`: `metashape.ply`、`sparse.ply`、シーンフォルダ直下の最初の `.ply` の順に探します。
+- `カメラXML`: シーンフォルダ直下の `metashape.xml`、`cameras.xml` をこの順に探します。別名の `.xml` は自動選択しません。
+- `点群PLY`: シーンフォルダ直下の `metashape.ply`、`sparse.ply` をこの順に探します。別名の `.ply` は自動選択しません。
 
-`pointcloud.ply` はこのアプリがLichtFeld用に作る出力ファイル名なので、Metashapeからエクスポートした入力PLYの自動候補からは除外します。
+`pointcloud.ply` はこのアプリがLichtFeld用に作る出力ファイル名なので、Metashapeからエクスポートした入力PLYの自動候補からは除外します。Metashapeから出した元XML/PLYは `output/` の外に置いてください。
 
 ## 出力プリセットの選び方
 

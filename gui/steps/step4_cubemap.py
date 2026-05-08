@@ -164,6 +164,9 @@ _AXIS_BRUSH = "brush"
 _AXIS_NONE = "none"
 _NORMAL_OUTPUT_SCALE = 2.0 / math.pi
 _SUPPORTED_TRAINING_IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".tif", ".tiff", ".webp", ".bmp"}
+_METASHAPE_XML_AUTO_NAMES = ("metashape.xml", "cameras.xml")
+_METASHAPE_PLY_AUTO_NAMES = ("metashape.ply", "sparse.ply")
+_GENERATED_POINTCLOUD_NAME = "pointcloud.ply"
 _LFS_ADVANCED_INT_KEYS = {
     "refine_every",
     "start_refine",
@@ -392,6 +395,8 @@ class CubemapStep(BaseStepWidget):
         self._syncing_postshot_project_name = False
         self._syncing_lfs_auto_fields = False
         self._yaw_per_frame_non_colmap_value = 30.0
+        self._metashape_auto_xml_candidates: tuple[Path, ...] = ()
+        self._metashape_auto_ply_candidates: tuple[Path, ...] = ()
         self._preview_render_timer = QTimer(self)
         self._preview_render_timer.setSingleShot(True)
         self._preview_render_timer.setInterval(50)
@@ -732,13 +737,29 @@ class CubemapStep(BaseStepWidget):
         self.ms_images_path_label.setToolTip(i18n.tip("MS_IMAGES"))
         add_tooltip_row(pp_form, i18n.t("MS_IMAGES_LABEL"), self.ms_images_path_label, i18n.tip("MS_IMAGES"))
 
-        self.ms_xml_browse = BrowseWidget(mode="file", filter_str="XML (*.xml);;すべて (*.*)")
+        self.ms_xml_browse = BrowseWidget(
+            mode="file",
+            filter_str="XML (*.xml);;すべて (*.*)",
+            placeholder=i18n.t("MS_XML_PLACEHOLDER"),
+        )
         self.ms_xml_browse.setToolTip(i18n.tip("MS_XML"))
         add_tooltip_row(pp_form, i18n.METASHAPE_XML, self.ms_xml_browse, i18n.tip("MS_XML"))
 
-        self.ms_ply_browse = BrowseWidget(mode="file", filter_str="PLY (*.ply);;すべて (*.*)")
+        self.ms_ply_browse = BrowseWidget(
+            mode="file",
+            filter_str="PLY (*.ply);;すべて (*.*)",
+            placeholder=i18n.t("MS_PLY_PLACEHOLDER"),
+        )
         self.ms_ply_browse.setToolTip(i18n.tip("MS_PLY"))
         add_tooltip_row(pp_form, i18n.METASHAPE_PLY, self.ms_ply_browse, i18n.tip("MS_PLY"))
+
+        self.metashape_input_hint = QLabel("")
+        self.metashape_input_hint.setWordWrap(True)
+        self.metashape_input_hint.setStyleSheet("color: #8888aa; font-size: 9pt;")
+        self.metashape_input_hint.setVisible(False)
+        pp_form.addRow("", self.metashape_input_hint)
+        self.ms_xml_browse.path_changed.connect(self._on_metashape_input_path_changed)
+        self.ms_ply_browse.path_changed.connect(self._on_metashape_input_path_changed)
 
         import_advanced = CollapsibleSection(i18n.t("ADVANCED_SETTINGS"), expanded=False)
         import_adv_form = QFormLayout()
@@ -1173,13 +1194,24 @@ class CubemapStep(BaseStepWidget):
     def _metashape_input_missing_detail(self) -> str | None:
         if not self.scene_dir:
             return i18n.t("STEP4_PIPELINE_DETAIL_SCENE_REQUIRED")
+        self._refresh_metashape_auto_inputs_if_empty()
+        self._update_metashape_input_hint()
         xml_text = self.ms_xml_browse.text().strip()
-        xml = Path(xml_text) if xml_text else Path(self.scene_dir) / "metashape.xml"
+        if not xml_text:
+            return i18n.t("STEP4_PIPELINE_DETAIL_METASHAPE_NEEDS_XML")
+        xml = Path(xml_text)
+        if self._metashape_input_output_path_issue(xml):
+            return i18n.t("STEP4_PIPELINE_DETAIL_METASHAPE_INPUT_IN_OUTPUT")
         if not xml.is_file():
             return i18n.t("STEP4_PIPELINE_DETAIL_METASHAPE_NEEDS_XML")
         if self._preprocess_uses_ply():
             ply_text = self.ms_ply_browse.text().strip()
-            if not ply_text or not Path(ply_text).is_file():
+            if not ply_text:
+                return i18n.t("STEP4_PIPELINE_DETAIL_METASHAPE_NEEDS_PLY")
+            ply = Path(ply_text)
+            if self._metashape_input_output_path_issue(ply):
+                return i18n.t("STEP4_PIPELINE_DETAIL_METASHAPE_INPUT_IN_OUTPUT")
+            if not ply.is_file():
                 return i18n.t("STEP4_PIPELINE_DETAIL_METASHAPE_NEEDS_PLY")
         return None
 
@@ -1966,6 +1998,9 @@ class CubemapStep(BaseStepWidget):
             self.ms_images_path_label.set_full_text("-")
             self.ms_xml_browse.set_text("")
             self.ms_ply_browse.set_text("")
+            self._metashape_auto_xml_candidates = ()
+            self._metashape_auto_ply_candidates = ()
+            self._update_metashape_input_hint()
             self.preview.set_scene_dir("")
             self._refresh_input_image_count()
             self._training_dataset_user_edited = False
@@ -1983,8 +2018,7 @@ class CubemapStep(BaseStepWidget):
         self._update_path_labels()
         self.ms_images_path_label.setToolTip(f"{i18n.tip('MS_IMAGES')}\n{images_dir}")
         self.ms_images_path_label.set_full_text(images_dir)
-        self.ms_xml_browse.set_text(str(self._guess_xml(p)))
-        self.ms_ply_browse.set_text(self._guess_ply(p))
+        self._apply_metashape_auto_inputs(p)
         self._training_dataset_user_edited = False
         self._training_output_user_edited = False
         self._lfs_output_name_user_edited = False
@@ -1997,6 +2031,7 @@ class CubemapStep(BaseStepWidget):
         self._update_postshot_project_name(force=not restored)
         self._update_lfs_auto_steps_scaler()
         self._update_output_count()
+        self._update_metashape_input_hint()
         self._render_preview()
 
     def _restore_project_settings(self, scene: Path) -> bool:
@@ -2275,6 +2310,7 @@ class CubemapStep(BaseStepWidget):
         return selected
 
     def on_activated(self) -> None:
+        self._refresh_metashape_auto_inputs_if_empty()
         self.preview.refresh_image_list(prefer_current=True)
         self._refresh_input_image_count()
         self._update_path_labels()
@@ -3197,6 +3233,96 @@ class CubemapStep(BaseStepWidget):
         self.output_path_label.setToolTip(f"{i18n.tip(tip_key)}\n{output}")
         self.output_path_label.set_full_text(output)
 
+    def _on_metashape_input_path_changed(self, *_args) -> None:
+        self._update_metashape_input_hint()
+        self.primary_action_state_changed.emit()
+
+    def _apply_metashape_auto_inputs(self, scene: Path) -> None:
+        xml = self._guess_xml(scene)
+        ply = self._guess_ply(scene)
+        self.ms_xml_browse.set_text(str(xml) if xml else "")
+        self.ms_ply_browse.set_text(str(ply) if ply else "")
+
+    def _refresh_metashape_auto_inputs_if_empty(self) -> None:
+        if not self.scene_dir:
+            return
+        scene = Path(self.scene_dir)
+        old_xml_candidates = self._metashape_auto_xml_candidates
+        old_ply_candidates = self._metashape_auto_ply_candidates
+        changed = False
+        if not self.ms_xml_browse.text().strip():
+            xml = self._guess_xml(scene)
+            if xml:
+                self.ms_xml_browse.set_text(str(xml))
+                changed = True
+        if not self.ms_ply_browse.text().strip():
+            ply = self._guess_ply(scene)
+            if ply:
+                self.ms_ply_browse.set_text(str(ply))
+                changed = True
+        if (
+            changed
+            or old_xml_candidates != self._metashape_auto_xml_candidates
+            or old_ply_candidates != self._metashape_auto_ply_candidates
+        ):
+            self._update_metashape_input_hint()
+
+    def _update_metashape_input_hint(self) -> None:
+        if not hasattr(self, "metashape_input_hint"):
+            return
+        if not self.scene_dir:
+            self.metashape_input_hint.setVisible(False)
+            self.metashape_input_hint.setText("")
+            return
+
+        scene = Path(self.scene_dir)
+        notes: list[str] = []
+        xml_text = self.ms_xml_browse.text().strip()
+        if not xml_text:
+            if self._metashape_auto_xml_candidates:
+                notes.append(
+                    i18n.t("MS_XML_MANUAL_SELECTION_HINT").format(
+                        names=self._format_candidate_names(self._metashape_auto_xml_candidates)
+                    )
+                )
+            else:
+                notes.append(
+                    i18n.t("MS_XML_MISSING_HINT").format(names=", ".join(_METASHAPE_XML_AUTO_NAMES))
+                )
+        else:
+            xml = Path(xml_text)
+            issue = self._metashape_input_output_path_issue(xml)
+            if issue:
+                notes.append(issue)
+            elif not xml.is_file():
+                notes.append(i18n.t("MS_XML_SELECTED_MISSING_HINT").format(path=xml_text))
+
+        if self._preprocess_uses_ply():
+            ply_text = self.ms_ply_browse.text().strip()
+            if not ply_text:
+                if self._metashape_auto_ply_candidates:
+                    notes.append(
+                        i18n.t("MS_PLY_MANUAL_SELECTION_HINT").format(
+                            names=self._format_candidate_names(self._metashape_auto_ply_candidates)
+                        )
+                    )
+                elif (scene / _GENERATED_POINTCLOUD_NAME).is_file():
+                    notes.append(i18n.t("MS_PLY_ONLY_POINTCLOUD_HINT"))
+                else:
+                    notes.append(
+                        i18n.t("MS_PLY_MISSING_HINT").format(names=", ".join(_METASHAPE_PLY_AUTO_NAMES))
+                    )
+            else:
+                ply = Path(ply_text)
+                issue = self._metashape_input_output_path_issue(ply)
+                if issue:
+                    notes.append(issue)
+                elif not ply.is_file():
+                    notes.append(i18n.t("MS_PLY_SELECTED_MISSING_HINT").format(path=ply_text))
+
+        self.metashape_input_hint.setText("\n".join(notes))
+        self.metashape_input_hint.setVisible(bool(notes))
+
     def _on_colmap_run_toggled(self, checked: bool) -> None:
         self.colmap_exec_browse.setEnabled(checked)
         self.colmap_pipeline_row.setEnabled(checked)
@@ -3455,6 +3581,7 @@ class CubemapStep(BaseStepWidget):
 
     def _sync_ply_browse_enabled(self) -> None:
         self.ms_ply_browse.setEnabled(self._preprocess_uses_ply())
+        self._update_metashape_input_hint()
 
     def _writes_images(self) -> bool:
         return self.export_images_cb.isChecked()
@@ -3645,6 +3772,7 @@ class CubemapStep(BaseStepWidget):
         return steps
 
     def _build_preprocess_cmd(self) -> list[str]:
+        self._refresh_metashape_auto_inputs_if_empty()
         script = self.base_dir / "vendor" / "metashape_360_lfs" / "metashape_360_lfs.py"
         if not script.exists():
             raise FileNotFoundError(f"metashape_360_lfs.py が見つかりません: {script}")
@@ -3658,6 +3786,8 @@ class CubemapStep(BaseStepWidget):
             raise ValueError(f"Metashape画像フォルダが見つかりません: {images}")
         if not xml or not Path(xml).is_file():
             raise ValueError(f"Metashape XMLが見つかりません: {xml}")
+        if self._metashape_input_output_path_issue(Path(xml)):
+            raise ValueError(i18n.t("METASHAPE_INPUT_IN_OUTPUT_ERROR").format(path=xml))
 
         scale = float(self.ms_scale_edit.text().strip())
         if not math.isfinite(scale) or scale <= 0:
@@ -3668,6 +3798,8 @@ class CubemapStep(BaseStepWidget):
             ply = self.ms_ply_browse.text()
             if not ply or not Path(ply).is_file():
                 raise ValueError(f"PLYファイルが見つかりません: {ply}")
+            if self._metashape_input_output_path_issue(Path(ply)):
+                raise ValueError(i18n.t("METASHAPE_INPUT_IN_OUTPUT_ERROR").format(path=ply))
         return build_metashape_preprocess_cmd(
             MetashapePreprocessCommand(
                 python_executable=sys.executable,
@@ -5451,19 +5583,19 @@ class CubemapStep(BaseStepWidget):
             return None
         scene = Path(self.scene_dir)
         if self._axis_transform_mode() == _AXIS_NONE:
-            candidates = [scene / "pointcloud.ply"]
+            candidates = [scene / _GENERATED_POINTCLOUD_NAME]
             for c in candidates:
                 if c.is_file():
                     return c
             return None
         else:
-            candidates = [scene / "metashape.ply", scene / "sparse.ply"]
+            candidates = [scene / name for name in _METASHAPE_PLY_AUTO_NAMES]
 
         for c in candidates:
             if c.is_file():
                 return c
         plys = sorted(
-            [p for p in scene.glob("*.ply") if p.is_file() and p.name.lower() != "pointcloud.ply"],
+            [p for p in scene.glob("*.ply") if p.is_file() and p.name.lower() != _GENERATED_POINTCLOUD_NAME],
             key=lambda x: x.name.lower(),
         )
         if plys:
@@ -5834,22 +5966,64 @@ class CubemapStep(BaseStepWidget):
     # -- ヘルパー --
 
     @staticmethod
-    def _guess_xml(scene_dir: Path) -> Path:
-        for name in ["metashape.xml", "cameras.xml"]:
-            c = scene_dir / name
-            if c.is_file():
-                return c
-        xmls = sorted([p for p in scene_dir.glob("*.xml") if p.is_file()], key=lambda x: x.name.lower())
-        return xmls[0] if xmls else scene_dir / "metashape.xml"
+    def _format_candidate_names(paths: tuple[Path, ...] | list[Path]) -> str:
+        names = [p.name for p in paths]
+        if len(names) > 4:
+            names = names[:4] + [f"+{len(names) - 4}"]
+        return ", ".join(names)
 
     @staticmethod
-    def _guess_ply(scene_dir: Path) -> str:
-        for name in ["metashape.ply", "sparse.ply"]:
-            c = scene_dir / name
-            if c.is_file():
-                return str(c)
-        plys = sorted(
-            [p for p in scene_dir.glob("*.ply") if p.is_file() and p.name.lower() != "pointcloud.ply"],
-            key=lambda x: x.name.lower(),
+    def _path_is_same_or_descendant(path: Path, root: Path) -> bool:
+        try:
+            resolved_path = path.resolve()
+            resolved_root = root.resolve()
+        except OSError:
+            resolved_path = path.absolute()
+            resolved_root = root.absolute()
+        return resolved_path == resolved_root or resolved_root in resolved_path.parents
+
+    def _metashape_input_output_path_issue(self, path: Path) -> str | None:
+        if not self.scene_dir:
+            return None
+        try:
+            output = self._display_output_dir()
+        except ValueError:
+            return None
+        if self._path_is_same_or_descendant(path, output):
+            return i18n.t("MS_INPUT_IN_OUTPUT_HINT").format(path=str(path), output=str(output))
+        return None
+
+    @staticmethod
+    def _named_scene_file(scene_dir: Path, names: tuple[str, ...]) -> Path | None:
+        for name in names:
+            candidate = scene_dir / name
+            if candidate.is_file():
+                return candidate
+        return None
+
+    @staticmethod
+    def _scene_xml_candidates(scene_dir: Path) -> tuple[Path, ...]:
+        return tuple(sorted([p for p in scene_dir.glob("*.xml") if p.is_file()], key=lambda x: x.name.lower()))
+
+    @staticmethod
+    def _scene_ply_candidates(scene_dir: Path) -> tuple[Path, ...]:
+        return tuple(
+            sorted(
+                [
+                    p
+                    for p in scene_dir.glob("*.ply")
+                    if p.is_file() and p.name.lower() != _GENERATED_POINTCLOUD_NAME
+                ],
+                key=lambda x: x.name.lower(),
+            )
         )
-        return str(plys[0]) if plys else ""
+
+    def _guess_xml(self, scene_dir: Path) -> Path | None:
+        trusted = self._named_scene_file(scene_dir, _METASHAPE_XML_AUTO_NAMES)
+        self._metashape_auto_xml_candidates = () if trusted else self._scene_xml_candidates(scene_dir)
+        return trusted
+
+    def _guess_ply(self, scene_dir: Path) -> Path | None:
+        trusted = self._named_scene_file(scene_dir, _METASHAPE_PLY_AUTO_NAMES)
+        self._metashape_auto_ply_candidates = () if trusted else self._scene_ply_candidates(scene_dir)
+        return trusted

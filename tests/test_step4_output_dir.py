@@ -86,6 +86,70 @@ def _write_output_dataset(scene: Path, *, output_shape: str, pointcloud: bool = 
     )
 
 
+def test_metashape_inputs_start_empty_when_exports_are_missing(tmp_path: Path) -> None:
+    step = _ready_step(tmp_path)
+
+    assert step.ms_xml_browse.text() == ""
+    assert step.ms_ply_browse.text() == ""
+    assert step.ms_xml_browse.line_edit.placeholderText() == i18n.t("MS_XML_PLACEHOLDER")
+    assert step.ms_ply_browse.line_edit.placeholderText() == i18n.t("MS_PLY_PLACEHOLDER")
+    assert "pointcloud.ply" in step.metashape_input_hint.text()
+    assert step.primary_action_enabled() is False
+
+
+def test_metashape_inputs_auto_detect_standard_names(tmp_path: Path) -> None:
+    _app()
+    tmp_path.mkdir(exist_ok=True)
+    (tmp_path / "images").mkdir()
+    (tmp_path / "cameras.xml").write_text("<root />", encoding="utf-8")
+    _write_ascii_ply(tmp_path / "sparse.ply", [(1.0, 2.0, 3.0)])
+
+    step = CubemapStep(Path.cwd())
+    step.set_scene_dir(str(tmp_path))
+
+    assert Path(step.ms_xml_browse.text()) == tmp_path / "cameras.xml"
+    assert Path(step.ms_ply_browse.text()) == tmp_path / "sparse.ply"
+    assert step.metashape_input_hint.isVisible() is False
+
+
+def test_metashape_inputs_do_not_auto_select_nonstandard_candidates(tmp_path: Path) -> None:
+    _app()
+    tmp_path.mkdir(exist_ok=True)
+    (tmp_path / "images").mkdir()
+    (tmp_path / "exported_pose.xml").write_text("<root />", encoding="utf-8")
+    _write_ascii_ply(tmp_path / "raw_scan.ply", [(1.0, 2.0, 3.0)])
+
+    step = CubemapStep(Path.cwd())
+    step.set_scene_dir(str(tmp_path))
+
+    assert step.ms_xml_browse.text() == ""
+    assert step.ms_ply_browse.text() == ""
+    hint = step.metashape_input_hint.text()
+    assert "exported_pose.xml" in hint
+    assert "raw_scan.ply" in hint
+    assert step.primary_action_enabled() is False
+
+
+def test_metashape_inputs_reject_output_dir_sources(tmp_path: Path) -> None:
+    _app()
+    tmp_path.mkdir(exist_ok=True)
+    (tmp_path / "images").mkdir()
+    output = tmp_path / "output"
+    output.mkdir()
+    (output / "metashape.xml").write_text("<root />", encoding="utf-8")
+    _write_ascii_ply(output / "metashape.ply", [(1.0, 2.0, 3.0)])
+
+    step = CubemapStep(Path.cwd())
+    step.set_scene_dir(str(tmp_path))
+    step.ms_xml_browse.set_text(str(output / "metashape.xml"))
+    step.ms_ply_browse.set_text(str(output / "metashape.ply"))
+
+    assert step.primary_action_enabled() is False
+    assert "output" in step.metashape_input_hint.text()
+    with pytest.raises(ValueError, match="output"):
+        step._build_preprocess_cmd()
+
+
 def _write_spheresfm_sparse_stub(scene: Path) -> Path:
     sparse_model = scene / "output" / "spheresfm" / "sparse" / "0"
     sparse_model.mkdir(parents=True, exist_ok=True)

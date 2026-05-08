@@ -37,8 +37,8 @@ The left navigation always shows the Step 4 sub-stages `SfM`, `Cube`, and `Train
 If Metashape has already aligned the 360° images, use this flow.
 
 1. Set the route to `Metashape`.
-2. Check `Camera XML`. If a Metashape-exported XML exists at the scene root, Step 4 fills it automatically.
-3. Check `Point Cloud PLY` when exporting for LichtFeld Studio or when you want to package a point cloud. If a Metashape-exported PLY exists at the scene root, Step 4 fills it automatically.
+2. Check `Camera XML`. Step 4 auto-fills `metashape.xml` or `cameras.xml` at the scene root.
+3. Check `Point Cloud PLY` when exporting for LichtFeld Studio or when you want to package a point cloud. Step 4 auto-fills `metashape.ply` or `sparse.ply` at the scene root.
 4. Choose the downstream app in `Output Preset`.
 5. Choose whether to convert to cubemap images or create `3DGUT (LichtFeld)` in `Output Shape`.
 6. If creating cubemap images, review Cube6, yaw, and image size in the `Cubemap` tab.
@@ -48,12 +48,12 @@ In the Metashape route, Step 4 first runs the bundled `vendor/metashape_360_lfs/
 
 ### Auto-Detecting Camera XML And Point Cloud PLY
 
-When the scene folder is set, Step 4 automatically looks for Metashape input candidates. If the chosen candidate is wrong, use the browse button on that row to select the correct file manually.
+When the scene folder is set, Step 4 automatically looks for Metashape input candidates. It only auto-fills standard names it can identify safely; files with other names, or ambiguous candidate sets, require manual selection.
 
-- `Camera XML`: checks `metashape.xml`, `cameras.xml`, then the first `.xml` file at the scene root.
-- `Point Cloud PLY`: checks `metashape.ply`, `sparse.ply`, then the first `.ply` file at the scene root.
+- `Camera XML`: checks `metashape.xml`, then `cameras.xml` at the scene root. Other `.xml` names are not auto-selected.
+- `Point Cloud PLY`: checks `metashape.ply`, then `sparse.ply` at the scene root. Other `.ply` names are not auto-selected.
 
-`pointcloud.ply` is the output filename this app writes for LichtFeld, so it is excluded from automatic Metashape input candidates.
+`pointcloud.ply` is the output filename this app writes for LichtFeld, so it is excluded from automatic Metashape input candidates. Keep original Metashape XML/PLY inputs outside `output/`.
 
 ## Output Preset
 
