@@ -108,7 +108,7 @@ Without the image backup option, deleted drop images cannot be restored from Ste
 
 ## Common Decisions
 
-- If `Apply` is disabled, there is nothing pending for the image folder. You can continue to Step 3.
+- If there are no changes to write into the image folder, no extra action is needed. You can continue to Step 3.
 - If many frames are `Drop: similar frame`, you do not need to inspect every one when the remaining coverage is sufficient.
 - Always inspect `Review: possible blur`. If it looks acceptable, keep it.
 - To rerun extraction, return to Step 1 and use `Reset and Overwrite`.

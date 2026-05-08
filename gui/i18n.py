@@ -233,7 +233,7 @@ _JA: dict[str, str] = {
     "REVIEW_PAIR_PROBLEMS_FORMAT": (
         "確認 {n} | 追加 {a} / 冗長 {d} / 上限 {g} / ブレ {b} / 低特徴 {l} / 弱追跡 {w} | 表示 {cur}"
     ),
-    "NEXT_STEP_MASK_NOTICE": "除外予定の画像が残っている場合、または採用/除外を変更した場合は、\n下部の「適用」で画像フォルダへ反映します。\n「適用」が無効なら、そのまま Step 3 (マスク生成) へ進めます。",
+    "NEXT_STEP_MASK_NOTICE": "除外予定の画像がある場合や、採用/除外を変更した場合は、\n下部の「適用」で画像フォルダへ反映します。\n反映する変更がない場合は、追加操作は不要です。そのまま Step 3 (マスク生成) へ進めます。",
     "METASHAPE_NOTICE": (
         "マスク生成後は、用途に合わせて次へ進みます。\n"
         "Metashapeルートでは masks/ をマスクとして読み込み、SfM後にStep 4で3DGS向けに書き出します。\n"
@@ -1090,7 +1090,7 @@ _EN: dict[str, str] = {
     "REVIEW_PAIR_PROBLEMS_FORMAT": (
         "Review {n} | +{a} / -{d} / gap {g} / blur {b} / tex {l} / weak {w} | {cur}"
     ),
-    "NEXT_STEP_MASK_NOTICE": "If drop-marked images remain, or if you changed keep/drop choices, press Apply at the bottom to write them into the image folder.\nIf Apply is disabled, proceed directly to Step 3 (Mask Generation).",
+    "NEXT_STEP_MASK_NOTICE": "If there are drop-marked images or you changed keep/drop choices, press Apply at the bottom to write them into the image folder.\nIf there are no changes to write, no extra action is needed. You can continue to Step 3 (Mask Generation).",
     "METASHAPE_NOTICE": (
         "After mask generation, continue with the route that matches your dataset.\n"
         "For the Metashape route, import masks/ as masks, run SfM, then use Step 4 for 3DGS export.\n"
