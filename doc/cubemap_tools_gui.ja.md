@@ -30,7 +30,7 @@ SfMは、複数画像の見え方の差からカメラ位置と疎な点群を�
 
 `シーンフォルダ` は、Step 1-3で使っている作業フォルダです。通常は `images/` と `masks/` が入っています。MetashapeルートではMetashapeから書き出したXML/PLYを組み合わせます。SphereSfMルートでは、この `images/` と `masks/` からSfMと変換を実行します。
 
-左ナビゲーションには、Step 4のサブ工程として `SfM`、`Cube`、`Train` が常に表示されます。各行の左アイコンで今回その工程を対象にするかを選び、右アイコンでその選択が `準備済み`、`未準備`、`スキップ` のどれかを確認します。Metashapeルートでは、`Cube` がMetashapeのカメラポーズを必要とするときだけ `SfM` が自動でONになります。次に何をすればよいかは各アイコンのツールチップで確認できます。Step 4内では、ルートボタン `Metashape`、`COLMAP`、`SphereSfM` は `SfM` タブにあります。Cubeが参照するXML/PLYや既存sparseモデルは `Cubemap` タブ上部の `SfM入力` にまとまり、出力プリセット、画像/マスクのON/OFF、Cube6、Yaw、画像サイズも `Cubemap`、CLI実行の設定は `Training` にあります。
+左ナビゲーションには、Step 4のサブ工程として `SfM`、`Cube`、`Train` が常に表示されます。各行の左アイコンで今回その工程を対象にするかを選び、右アイコンでその選択が `準備済み`、`未準備`、`スキップ` のどれかを確認します。Metashapeルートでは、`Cube` がMetashapeのカメラポーズを必要とするときだけ `SfM` が自動でONになります。次に何をすればよいかは各アイコンのツールチップで確認できます。Step 4内では、ルートボタン `Metashape`、`COLMAP`、`SphereSfM` と、Cubeが参照するXML/PLYや既存sparseモデルは `SfM` タブにあります。出力プリセット、画像/マスクのON/OFF、Cube6、Yaw、画像サイズは `Cubemap`、CLI実行の設定は `Training` にあります。
 
 ## Metashapeルートの基本操作
 
@@ -194,7 +194,7 @@ Metashapeを使わず、抽出済みの360°画像からCOLMAP/GLOMAPへ進み�
 
 COLMAPルートでは、`output/colmap_rig/` にCOLMAP Rig形式のキューブマップ画像、マスク、`rig_config.json` を作ります。`書き出し後にCOLMAPを実行` がONの場合は、続けてFeature、Rig設定、Matcher、Mapperを実行し、COLMAP/GLOMAPのSfM結果も作ります。
 
-COLMAPルートは投影視点のCOLMAP Rigデータ専用です。3DGUT用のエクイレクタングラー出力はMetashapeルートまたはSphereSfMルートで作成します。既存のCOLMAP sparseモデルをトレーニングに渡したい場合は、`Cubemap` タブ上部の `SfM入力` で選択できます。
+COLMAPルートは投影視点のCOLMAP Rigデータ専用です。3DGUT用のエクイレクタングラー出力はMetashapeルートまたはSphereSfMルートで作成します。既存のCOLMAP sparseモデルをトレーニングに渡したい場合は、`SfM` タブの `SfM入力` で選択できます。
 
 フレーム別Yaw回転は、固定リグの前提を崩すためCOLMAP Rig書き出しでは常に0度です。
 
@@ -213,7 +213,7 @@ RTX 50系GPUでは、GitHubで配布されているSphereSfMのWindowsバイナ�
 2. ルートを `SphereSfM` にします。
 3. `SphereSfM COLMAP実行ファイル` に、SphereSfM配布版またはビルド済みの `colmap.exe` を指定します。
 4. `masks/ を使用` は通常ONにします。Step 3の白=使用、黒=除外マスクをCOLMAPの `image.jpg.png` 命名へ変換して使います。
-5. `実行範囲` を選びます。通常は `SfM + 変換`、SfMだけ作り直す場合は `SfMのみ`、既存の `<scene>/output/spheresfm/sparse/` から変換だけやり直す場合は `既存SfMから変換のみ` を使います。既存sparseを明示したい場合は `Cubemap` タブ上部の `SfM入力` で選びます。
+5. `実行範囲` を選びます。通常は `SfM + 変換`、SfMだけ作り直す場合は `SfMのみ`、既存の `<scene>/output/spheresfm/sparse/` から変換だけやり直す場合は `既存SfMから変換のみ` を使います。既存sparseを明示したい場合は `SfM` タブの `SfM入力` で選びます。
 6. `Matcher` は動画フレームなら `Sequential` から始めます。POSファイルがある場合だけ `Spatial` を使います。
 7. `SfM品質` はまず `標準`、試行や大量フレームでは `軽量`、登録が弱い場合は `クオリティ` を試します。
 8. `Cubemap` タブで `出力形状` を選びます。

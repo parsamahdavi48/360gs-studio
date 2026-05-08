@@ -284,7 +284,7 @@ def test_cubemap_step_uses_fixed_output_folder_label(tmp_path: Path) -> None:
     ]
     assert step.export_method_label.isHidden()
     assert _is_descendant(step.export_method_row, step.input_tab)
-    assert _is_descendant(step.sfm_input_section, step.output_tab)
+    assert _is_descendant(step.sfm_input_section, step.input_tab)
     assert _is_descendant(step.metashape_sfm_input_widget, step.sfm_input_section)
     assert _is_descendant(step.metashape_output_section, step.output_tab)
     assert _is_descendant(step.export_targets_row, step.output_tab)
@@ -502,7 +502,7 @@ def test_export_method_switch_keeps_fixed_tabs_and_swaps_route_sections() -> Non
     assert step.colmap_sfm_input_widget.isHidden()
 
 
-def test_sfm_input_section_stays_at_output_tab_top_across_routes() -> None:
+def test_sfm_input_section_stays_under_route_selector_across_routes() -> None:
     app = _app()
     step = CubemapStep(Path.cwd())
     step.resize(900, 720)
@@ -513,14 +513,16 @@ def test_sfm_input_section_stays_at_output_tab_top_across_routes() -> None:
     positions = []
     for method in ("metashape", "colmap", "spheresfm"):
         step._set_export_method(method)
-        step.settings_tabs.setCurrentIndex(step.output_tab_index)
+        step.settings_tabs.setCurrentIndex(step.input_tab_index)
         app.processEvents()
-        position = step.sfm_input_section.mapTo(step.output_tab, QPoint(0, 0))
+        position = step.sfm_input_section.mapTo(step.input_tab, QPoint(0, 0))
         positions.append((position.x(), position.y()))
 
     assert len(set(positions)) == 1
-    margins = step.output_tab.layout().contentsMargins()
-    assert positions[0] == (margins.left(), margins.top())
+    margins = step.input_tab.layout().contentsMargins()
+    route_position = step.export_method_row.mapTo(step.input_tab, QPoint(0, 0))
+    assert positions[0][0] == margins.left()
+    assert positions[0][1] > route_position.y()
 
     step.close()
 

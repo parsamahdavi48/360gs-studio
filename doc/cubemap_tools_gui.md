@@ -30,7 +30,7 @@ SfM, or Structure from Motion, estimates camera positions and a sparse point clo
 
 `Scene Directory` is the scene folder used by Steps 1-3. It usually contains `images/` and `masks/`. In the Metashape route, Step 4 combines that scene folder with the XML/PLY exported from Metashape. In the SphereSfM route, Step 4 runs SfM and conversion from these `images/` and `masks/`.
 
-The left navigation always shows the Step 4 sub-stages `SfM`, `Cube`, and `Train`. The left icon on each row selects whether that sub-stage is part of this run; the right icon shows `Ready`, `Not Ready`, or `Skipped` for that choice. In the Metashape route, `SfM` turns on automatically when `Cube` needs Metashape camera poses. Hover either icon for the next action. Inside Step 4, the route buttons `Metashape`, `COLMAP`, and `SphereSfM` live in the `SfM` tab. The XML/PLY or existing sparse model consumed by Cube is grouped under `SfM Input` at the top of `Cubemap`; output preset, image/mask toggles, Cube6, yaw, and image size also live in `Cubemap`; external CLI training settings live in `Training`.
+The left navigation always shows the Step 4 sub-stages `SfM`, `Cube`, and `Train`. The left icon on each row selects whether that sub-stage is part of this run; the right icon shows `Ready`, `Not Ready`, or `Skipped` for that choice. In the Metashape route, `SfM` turns on automatically when `Cube` needs Metashape camera poses. Hover either icon for the next action. Inside Step 4, the route buttons `Metashape`, `COLMAP`, and `SphereSfM`, plus the XML/PLY or existing sparse model consumed by Cube, live in the `SfM` tab. Output preset, image/mask toggles, Cube6, yaw, and image size live in `Cubemap`; external CLI training settings live in `Training`.
 
 ## Metashape Route
 
@@ -194,7 +194,7 @@ If you want to skip Metashape and continue from extracted 360° images to COLMAP
 
 The COLMAP route writes a COLMAP Rig dataset under `output/colmap_rig/`, including cubemap images, masks, and `rig_config.json`. If `Run COLMAP after export` is enabled, the GUI then runs Feature, Rig setup, Matcher, and Mapper to create a COLMAP/GLOMAP SfM result.
 
-The COLMAP route is projected COLMAP Rig data only. Create 3DGUT equirectangular output with the Metashape or SphereSfM route instead. If you want to pass an existing COLMAP sparse model into training, select it in `SfM Input` at the top of the `Cubemap` tab.
+The COLMAP route is projected COLMAP Rig data only. Create 3DGUT equirectangular output with the Metashape or SphereSfM route instead. If you want to pass an existing COLMAP sparse model into training, select it in `SfM Input` on the `SfM` tab.
 
 Per-frame yaw rotation is always forced to 0 for COLMAP Rig export because changing yaw per frame breaks the fixed-rig assumption.
 
@@ -213,7 +213,7 @@ On RTX 50-series GPUs, the Windows binary distributed on GitHub can stop during 
 2. Set the route to `SphereSfM`.
 3. Set `SphereSfM COLMAP Executable` to the `colmap.exe` from a SphereSfM release or build.
 4. Usually keep `Use masks/` enabled. Step 3 masks use white=keep and black=exclude; the GUI converts them to COLMAP's `image.jpg.png` naming.
-5. Set `Run Scope`. `SfM + Convert` is the normal route, `SfM Only` rebuilds just the sparse model, and `Convert Existing SfM` reuses an existing `<scene>/output/spheresfm/sparse/` model. To choose a specific existing sparse model, use `SfM Input` at the top of the `Cubemap` tab.
+5. Set `Run Scope`. `SfM + Convert` is the normal route, `SfM Only` rebuilds just the sparse model, and `Convert Existing SfM` reuses an existing `<scene>/output/spheresfm/sparse/` model. To choose a specific existing sparse model, use `SfM Input` on the `SfM` tab.
 6. Use `Sequential` matcher for video frames. Use `Spatial` only when you provide a POS file.
 7. Start with `SfM Quality: Standard`; use `Fast` for trials or large frame sets and `Quality` when registration coverage is weak.
 8. In the `Cubemap` tab, choose `Output Shape`.
