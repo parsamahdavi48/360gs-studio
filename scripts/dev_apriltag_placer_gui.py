@@ -93,9 +93,6 @@ GRID_Z_AXIS_BGR = (90, 180, 245)
 AXIS_GIZMO_X_BGR = (92, 92, 255)
 AXIS_GIZMO_Y_BGR = (130, 245, 120)
 AXIS_GIZMO_Z_BGR = (255, 170, 96)
-CAMERA_PREVIEW_AXIS_SIGN = np.array([-1.0, 1.0, -1.0], dtype=np.float64)
-CAMERA_PREVIEW_AXIS_MATRIX = np.diag([*CAMERA_PREVIEW_AXIS_SIGN.tolist(), 1.0]).astype(np.float64)
-CAMERA_PREVIEW_TO_WORLD_MATRIX = np.linalg.inv(CAMERA_PREVIEW_AXIS_MATRIX[:3, :3]).T
 
 
 def _preview_rotation_matrix(yaw_deg: float, pitch_deg: float, roll_deg: float) -> np.ndarray:
@@ -153,6 +150,14 @@ def _transform_vectors_for_world_display(vectors: np.ndarray, matrix: np.ndarray
         return values.copy()
     transform = np.asarray(matrix, dtype=np.float64)
     return values @ transform[:3, :3].T
+
+
+def _transform_vectors_from_world_display(vectors: np.ndarray, matrix: np.ndarray | None) -> np.ndarray:
+    values = np.asarray(vectors, dtype=np.float64)
+    if matrix is None:
+        return values.copy()
+    transform = np.asarray(matrix, dtype=np.float64)
+    return values @ np.linalg.inv(transform[:3, :3]).T
 
 
 def _transform_frame_for_world_display(frame: PinholeFrame, matrix: np.ndarray | None) -> PinholeFrame:
@@ -729,9 +734,6 @@ class DevAprilTagPlacerWindow(QWidget):
         profile = self.case.coordinate_profile if self.case is not None else self.coordinate_profile_combo.currentData()
         return world_display_matrix(profile)
 
-    def _camera_preview_matrix(self) -> np.ndarray | None:
-        return _compose_display_matrices(CAMERA_PREVIEW_AXIS_MATRIX, self._world_display_matrix())
-
     def _update_world_display_alignment(self) -> None:
         self._metashape_world_display_matrix = None
         self._metashape_world_alignment_rmse = None
@@ -753,6 +755,13 @@ class DevAprilTagPlacerWindow(QWidget):
         if matrix is None:
             return self._cubemap_groups
         return tuple(_transform_group_for_world_display(group, matrix) for group in self._cubemap_groups)
+
+    def _world_display_group_for(self, group: CubemapFrameGroup) -> CubemapFrameGroup:
+        return _transform_group_for_world_display(group, self._world_display_matrix())
+
+    def _selected_world_display_group(self) -> CubemapFrameGroup | None:
+        group = self._selected_group()
+        return None if group is None else self._world_display_group_for(group)
 
     def _set_coordinate_profile(self, value: str | None) -> None:
         profile = normalize_coordinate_profile(value)
@@ -880,7 +889,7 @@ class DevAprilTagPlacerWindow(QWidget):
         display_matrix = self._world_display_matrix()
         self.world_debug_view.set_groups(self._world_display_groups())
         self.world_debug_view.set_selected_group(group.name if group is not None else "")
-        self.world_debug_view.set_preview_to_world_matrix(CAMERA_PREVIEW_TO_WORLD_MATRIX)
+        self.world_debug_view.set_preview_to_world_matrix(None)
         self.world_debug_view.set_preview_params(
             yaw_deg=self._scene_preview_params.yaw_deg,
             pitch_deg=self._scene_preview_params.pitch_deg,
@@ -933,14 +942,13 @@ class DevAprilTagPlacerWindow(QWidget):
         self._append_log(f"Selected camera from 3D view: {group_name}")
 
     def _jump_to_face(self, face: str) -> None:
-        group = self._selected_group()
+        group = self._selected_world_display_group()
         if group is None:
             return
         params = axis_face_view_params(
             group,
             face,
             fov_deg=self.look_fov_spin.value(),
-            sfm_to_preview_matrix=self._camera_preview_matrix(),
         )
         if params is None:
             self._append_log(f"Face not available in this group: {face}")
@@ -980,8 +988,12 @@ class DevAprilTagPlacerWindow(QWidget):
 
     def _render_scene_preview(self) -> None:
         group = self._selected_group()
+        display_group = self._selected_world_display_group()
         if group is None:
             self.preview_label.setText("Cubemap画像グループがありません")
+            return
+        if display_group is None:
+            self.preview_label.setText("表示用カメラを作成できません")
             return
         case = self._require_case()
         if case is None:
@@ -998,15 +1010,14 @@ class DevAprilTagPlacerWindow(QWidget):
                     logical_size=QSize(self._scene_preview_size, self._scene_preview_size),
                 )
             else:
-                cache_key = f"camera-axis:{normalize_coordinate_profile(case.coordinate_profile)}:{group.name}"
+                cache_key = f"world-display-camera:{normalize_coordinate_profile(case.coordinate_profile)}:{group.name}"
                 image = self._equirect_preview_cache.get(cache_key)
                 if image is None:
                     image = render_cubemap_axis_equirect(
-                        group,
+                        display_group,
                         output_width=2048,
                         output_height=1024,
                         image_cache=self._cubemap_image_cache,
-                        sfm_to_preview_matrix=self._camera_preview_matrix(),
                     )
                     self._equirect_preview_cache[cache_key] = image
                 shown = self.preview_label.set_perspective_image_bgr(
@@ -1063,13 +1074,14 @@ class DevAprilTagPlacerWindow(QWidget):
             self._append_log("Preview click ignored: enable 'クリックで配置を更新' to move the tag.")
             return
         group = self._selected_group()
-        if group is None:
+        display_group = self._selected_world_display_group()
+        if group is None or display_group is None:
             return
         size = float(self._scene_preview_size)
         x_px = max(0.0, min(size - 1.0, x))
         y_px = max(0.0, min(size - 1.0, y))
-        ray, up, face = view_pixel_to_axis_world_ray_and_up(
-            group,
+        ray_display, up_display, face = view_pixel_to_axis_world_ray_and_up(
+            display_group,
             x_px=x_px,
             y_px=y_px,
             output_size=self._scene_preview_size,
@@ -1077,8 +1089,13 @@ class DevAprilTagPlacerWindow(QWidget):
             pitch_deg=self._scene_preview_params.pitch_deg,
             fov_deg=self._scene_preview_params.fov_deg,
             roll_deg=self._scene_preview_params.roll_deg,
-            sfm_to_preview_matrix=self._camera_preview_matrix(),
         )
+        display_matrix = self._world_display_matrix()
+        ray = _transform_vectors_from_world_display(ray_display.reshape(1, 3), display_matrix)[0]
+        ray /= max(float(np.linalg.norm(ray)), 1e-12)
+        up = _transform_vectors_from_world_display(up_display.reshape(1, 3), display_matrix)[0]
+        up = up - ray * float(up @ ray)
+        up /= max(float(np.linalg.norm(up)), 1e-12)
         self._last_click_state = (group.name, ray.copy(), up.copy())
         self._apply_click_placement(group, ray, up)
         self._append_log(
@@ -1138,7 +1155,7 @@ class DevAprilTagPlacerWindow(QWidget):
             )
         ]
         for label, axis, color in axes:
-            view = (axis * CAMERA_PREVIEW_AXIS_SIGN) @ rotation
+            view = axis @ rotation
             screen_delta = np.array([view[0], -view[1]], dtype=np.float64)
             end = origin + screen_delta * length
             label_offset = np.array([5.0, -5.0], dtype=np.float64)
@@ -1158,25 +1175,29 @@ class DevAprilTagPlacerWindow(QWidget):
         return overlays
 
     def _project_preview_points(self, points_sfm: np.ndarray) -> np.ndarray | None:
-        group = self._selected_group()
+        group = self._selected_world_display_group()
         if group is None:
             return None
+        points_display = _transform_points_for_world_display(
+            np.asarray(points_sfm, dtype=np.float64),
+            self._world_display_matrix(),
+        )
         return project_sfm_points_to_axis_preview_points(
             group,
-            points_sfm,
+            points_display,
             output_size=self._scene_preview_size,
             yaw_deg=self._scene_preview_params.yaw_deg,
             pitch_deg=self._scene_preview_params.pitch_deg,
             fov_deg=self._scene_preview_params.fov_deg,
             roll_deg=self._scene_preview_params.roll_deg,
-            sfm_to_preview_matrix=self._camera_preview_matrix(),
         )
 
     def _grid_preview_overlays(self) -> list[PerspectiveLabelOverlay]:
         if not self.grid_overlay_check.isChecked():
             return []
         group = self._selected_group()
-        if group is None:
+        display_group = self._selected_world_display_group()
+        if group is None or display_group is None:
             return []
         try:
             display_matrix = self._world_display_matrix()
@@ -1194,7 +1215,7 @@ class DevAprilTagPlacerWindow(QWidget):
             return []
 
         overlays: list[PerspectiveLabelOverlay] = []
-        x_min, x_max, z_min, z_max = self._visible_ground_bounds(group, center, camera, max_distance, step)
+        x_min, x_max, z_min, z_max = self._visible_ground_bounds(display_group, center, camera, max_distance, step)
         draw_step = step
         while max((x_max - x_min) / draw_step, (z_max - z_min) / draw_step) > 80:
             draw_step *= 2.0
@@ -1322,7 +1343,6 @@ class DevAprilTagPlacerWindow(QWidget):
             np.array([0.0, 0.0, 0.0], dtype=float),
             np.array([camera[0], 0.0, camera[2]], dtype=float),
         ]
-        display_matrix = self._world_display_matrix()
         for x_px, y_px in edge_pixels:
             ray, _up, _face = view_pixel_to_axis_world_ray_and_up(
                 group,
@@ -1333,10 +1353,7 @@ class DevAprilTagPlacerWindow(QWidget):
                 pitch_deg=self._scene_preview_params.pitch_deg,
                 fov_deg=self._scene_preview_params.fov_deg,
                 roll_deg=self._scene_preview_params.roll_deg,
-                sfm_to_preview_matrix=self._camera_preview_matrix(),
             )
-            ray = _transform_vectors_for_world_display(ray.reshape(1, 3), display_matrix)[0]
-            ray /= max(float(np.linalg.norm(ray)), 1e-12)
             if abs(float(ray[1])) > 1e-8:
                 distance = float(-camera[1] / ray[1])
                 if 0.0 < distance <= max_distance:
@@ -1359,12 +1376,26 @@ class DevAprilTagPlacerWindow(QWidget):
             z_min, z_max = center[2] - max_distance, center[2] + max_distance
         return x_min, x_max, z_min, z_max
 
-    def _project_preview_polyline_segments(self, points_sfm: np.ndarray) -> list[tuple[tuple[float, float], ...]]:
+    def _project_world_display_points_to_preview(self, points_world_display: np.ndarray) -> np.ndarray | None:
+        group = self._selected_world_display_group()
+        if group is None:
+            return None
+        return project_sfm_points_to_axis_preview_points(
+            group,
+            np.asarray(points_world_display, dtype=np.float64),
+            output_size=self._scene_preview_size,
+            yaw_deg=self._scene_preview_params.yaw_deg,
+            pitch_deg=self._scene_preview_params.pitch_deg,
+            fov_deg=self._scene_preview_params.fov_deg,
+            roll_deg=self._scene_preview_params.roll_deg,
+        )
+
+    def _project_world_display_polyline_segments(self, points_world_display: np.ndarray) -> list[tuple[tuple[float, float], ...]]:
         size = int(self._scene_preview_size)
         segments: list[tuple[tuple[float, float], ...]] = []
         current: list[tuple[float, float]] = []
-        for point in np.asarray(points_sfm, dtype=float):
-            projected = self._project_preview_points(point.reshape(1, 3))
+        for point in np.asarray(points_world_display, dtype=float):
+            projected = self._project_world_display_points_to_preview(point.reshape(1, 3))
             if projected is None or not np.all(np.isfinite(projected)):
                 if len(current) >= 2:
                     segments.append(tuple(current))
@@ -1380,20 +1411,6 @@ class DevAprilTagPlacerWindow(QWidget):
         if len(current) >= 2:
             segments.append(tuple(current))
         return segments
-
-    def _project_world_display_points_to_preview(self, points_world_display: np.ndarray) -> np.ndarray | None:
-        points_sfm = _transform_points_from_world_display(
-            points_world_display,
-            self._world_display_matrix(),
-        )
-        return self._project_preview_points(points_sfm)
-
-    def _project_world_display_polyline_segments(self, points_world_display: np.ndarray) -> list[tuple[tuple[float, float], ...]]:
-        points_sfm = _transform_points_from_world_display(
-            points_world_display,
-            self._world_display_matrix(),
-        )
-        return self._project_preview_polyline_segments(points_sfm)
 
     def _point_marker_overlay(
         self,
@@ -1431,16 +1448,7 @@ class DevAprilTagPlacerWindow(QWidget):
                 float(self.tag_size_spin.value()),
                 float(self.true_scale_spin.value()),
             )
-            points = project_sfm_points_to_axis_preview_points(
-                group,
-                corners,
-                output_size=self._scene_preview_size,
-                yaw_deg=self._scene_preview_params.yaw_deg,
-                pitch_deg=self._scene_preview_params.pitch_deg,
-                fov_deg=self._scene_preview_params.fov_deg,
-                roll_deg=self._scene_preview_params.roll_deg,
-                sfm_to_preview_matrix=self._camera_preview_matrix(),
-            )
+            points = self._project_preview_points(corners)
         except Exception:
             return []
         if points is None or not np.all(np.isfinite(points)):

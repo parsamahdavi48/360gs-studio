@@ -12,7 +12,7 @@ from PySide6.QtWidgets import QApplication
 
 from core.apriltag_geometry import PinholeFrame
 from devtools.apriltag.coordinates import combined_pointcloud_display_matrix, pointcloud_display_matrix, world_display_matrix
-from devtools.apriltag.cubemap_preview import CubemapFrameGroup
+from devtools.apriltag.cubemap_preview import CubemapFrameGroup, view_pixel_to_axis_world_ray_and_up
 from devtools.apriltag.world_debug_view import (
     AprilTagWorldDebugView,
     PointCloudSample,
@@ -21,7 +21,6 @@ from devtools.apriltag.world_debug_view import (
 )
 from gui.common.perspective_preview import PerspectiveParams
 from scripts.dev_apriltag_placer_gui import (
-    CAMERA_PREVIEW_TO_WORLD_MATRIX,
     GRID_X_AXIS_BGR,
     GRID_Z_AXIS_BGR,
     DevAprilTagPlacerWindow,
@@ -238,7 +237,7 @@ def test_dev_placer_world_view_uses_display_axes_without_changing_raw_groups() -
     assert np.allclose(displayed_group.camera_position_sfm, [-1.0, 2.0, -3.0])
     assert np.allclose(window.world_debug_view._tag_center, [-1.0, 2.0, -3.0])
     assert np.allclose(window.world_debug_view._tag_normal, [0.0, 0.0, -1.0])
-    assert np.allclose(window.world_debug_view._preview_to_world_matrix, CAMERA_PREVIEW_TO_WORLD_MATRIX)
+    assert np.allclose(window.world_debug_view._preview_to_world_matrix, np.eye(3))
     window.deleteLater()
 
 
@@ -341,7 +340,7 @@ def test_dev_placer_camera_axis_gizmo_marks_positive_axes() -> None:
     plus_z = np.asarray(by_label["+Z"].polyline[-1], dtype=float)
 
     assert {"+X", "+Y", "+Z"}.issubset(by_label)
-    assert plus_x[0] < origin[0]
+    assert plus_x[0] > origin[0]
     assert plus_y[1] < origin[1]
     assert np.linalg.norm(plus_z - origin) < 1.0
     window.deleteLater()
@@ -369,9 +368,7 @@ def test_dev_placer_camera_grid_axes_include_origin() -> None:
     window.coordinate_profile_combo.setCurrentIndex(window.coordinate_profile_combo.findData("custom"))
     window.grid_step_spin.setValue(1.0)
     window.grid_extent_spin.setValue(12.0)
-    window.look_yaw_spin.setValue(180.0)
-    window.look_pitch_spin.setValue(0.0)
-    window.look_fov_spin.setValue(90.0)
+    window._scene_preview_params = PerspectiveParams(yaw_deg=0.0, pitch_deg=0.0, fov_deg=90.0)
 
     overlays = window._grid_preview_overlays()
     origin = next(overlay for overlay in overlays if overlay.label == "O").polyline[0]
@@ -405,9 +402,7 @@ def test_dev_placer_camera_grid_axes_reach_distant_visible_origin() -> None:
     window.coordinate_profile_combo.setCurrentIndex(window.coordinate_profile_combo.findData("custom"))
     window.grid_step_spin.setValue(1.0)
     window.grid_extent_spin.setValue(12.0)
-    window.look_yaw_spin.setValue(180.0)
-    window.look_pitch_spin.setValue(0.0)
-    window.look_fov_spin.setValue(90.0)
+    window._scene_preview_params = PerspectiveParams(yaw_deg=0.0, pitch_deg=0.0, fov_deg=90.0)
 
     overlays = window._grid_preview_overlays()
     origin = next(overlay for overlay in overlays if overlay.label == "O").polyline[0]
@@ -440,7 +435,7 @@ def test_dev_placer_camera_grid_projects_display_x_axis_direction() -> None:
     group = CubemapFrameGroup(name="frame_0001", frames_by_face={"pz": frame})
     window = DevAprilTagPlacerWindow()
     window._cubemap_groups = (group,)
-    window._scene_preview_params = PerspectiveParams(yaw_deg=np.rad2deg(np.arctan2(10.0, 5.0)), pitch_deg=0.0, fov_deg=90.0)
+    window._scene_preview_params = PerspectiveParams(yaw_deg=np.rad2deg(np.arctan2(-10.0, -5.0)), pitch_deg=0.0, fov_deg=90.0)
 
     projected = window._project_world_display_points_to_preview(
         np.array(
@@ -457,4 +452,46 @@ def test_dev_placer_camera_grid_projects_display_x_axis_direction() -> None:
     origin, plus_x, minus_x = projected
     assert plus_x[0] < origin[0]
     assert minus_x[0] > origin[0]
+    window.deleteLater()
+
+
+def test_dev_placer_world_frustum_uses_display_camera_basis() -> None:
+    _app()
+    display_camera = np.array([[10.0, 0.0, 5.0]], dtype=float)
+    raw_camera = _transform_points_from_world_display(display_camera, world_display_matrix("lichtfeld_cube6"))[0]
+    transform = np.eye(4)
+    transform[:3, 3] = raw_camera
+    frame = PinholeFrame(
+        frame_id="frame_0001_pz",
+        file_path="images/frame_0001_pz.png",
+        image_path=Path("images/frame_0001_pz.png"),
+        width=100,
+        height=100,
+        fl_x=50.0,
+        fl_y=50.0,
+        cx=49.5,
+        cy=49.5,
+        transform_matrix=transform,
+    )
+    group = CubemapFrameGroup(name="frame_0001", frames_by_face={"pz": frame})
+    window = DevAprilTagPlacerWindow()
+    window._cubemap_groups = (group,)
+    window._scene_preview_params = PerspectiveParams(yaw_deg=30.0, pitch_deg=0.0, fov_deg=90.0)
+
+    window._sync_world_debug_view()
+    frustum_forward, _corners = window.world_debug_view._preview_frustum_rays_in_world()
+    display_group = window._selected_world_display_group()
+    assert display_group is not None
+    ray, _up, _face = view_pixel_to_axis_world_ray_and_up(
+        display_group,
+        x_px=(window._scene_preview_size - 1) / 2.0,
+        y_px=(window._scene_preview_size - 1) / 2.0,
+        output_size=window._scene_preview_size,
+        yaw_deg=window._scene_preview_params.yaw_deg,
+        pitch_deg=window._scene_preview_params.pitch_deg,
+        fov_deg=window._scene_preview_params.fov_deg,
+        roll_deg=window._scene_preview_params.roll_deg,
+    )
+
+    assert np.allclose(frustum_forward, ray)
     window.deleteLater()
