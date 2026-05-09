@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+import xml.etree.ElementTree as ET
 
 import cv2
 import numpy as np
@@ -62,6 +63,32 @@ def load_cubemap_frame_groups(transforms_json: Path) -> tuple[CubemapFrameGroup,
         for name, frames in sorted(groups.items())
         if len(frames) >= 4
     )
+
+
+def load_metashape_camera_labels(xml_path: Path) -> tuple[str, ...]:
+    if not xml_path.is_file():
+        return ()
+    try:
+        root = ET.parse(xml_path).getroot()
+    except ET.ParseError:
+        return ()
+    labels: list[str] = []
+    for camera in root.findall(".//camera"):
+        label = str(camera.attrib.get("label") or "").strip()
+        if label:
+            labels.append(Path(label).stem)
+    return tuple(labels)
+
+
+def order_groups_by_labels(
+    groups: tuple[CubemapFrameGroup, ...],
+    labels: tuple[str, ...],
+) -> tuple[CubemapFrameGroup, ...]:
+    if not labels:
+        return groups
+    order = {label: index for index, label in enumerate(labels)}
+    fallback = len(order)
+    return tuple(sorted(groups, key=lambda group: (order.get(group.name, fallback), group.name)))
 
 
 def _rotation_matrix(yaw_deg: float, pitch_deg: float) -> np.ndarray:
@@ -125,6 +152,18 @@ def view_up_world(group: CubemapFrameGroup, *, yaw_deg: float, pitch_deg: float)
     up = np.array([0.0, 1.0, 0.0], dtype=np.float64)
     up = up @ virtual_camera_rotation(group, yaw_deg=yaw_deg, pitch_deg=pitch_deg).T
     return up / max(float(np.linalg.norm(up)), 1e-12)
+
+
+def face_view_params(group: CubemapFrameGroup, face: str, *, fov_deg: float = 90.0) -> tuple[float, float, float] | None:
+    frame = group.frames_by_face.get(face)
+    if frame is None:
+        return None
+    forward_world = np.array([0.0, 0.0, 1.0], dtype=np.float64) @ frame.camera_to_world_rotation.T
+    local = forward_world @ group.reference_frame.camera_to_world_rotation
+    local /= max(float(np.linalg.norm(local)), 1e-12)
+    yaw = float(np.rad2deg(np.arctan2(local[0], local[2])))
+    pitch = float(np.rad2deg(np.arcsin(np.clip(local[1], -1.0, 1.0))))
+    return yaw, pitch, float(fov_deg)
 
 
 def render_cubemap_perspective(

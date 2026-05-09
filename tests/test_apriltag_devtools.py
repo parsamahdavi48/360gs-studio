@@ -13,7 +13,13 @@ from devtools.apriltag.case import (
     run_dir_for_placement,
     save_placement,
 )
-from devtools.apriltag.cubemap_preview import load_cubemap_frame_groups, split_cubemap_face
+from devtools.apriltag.cubemap_preview import (
+    face_view_params,
+    load_cubemap_frame_groups,
+    load_metashape_camera_labels,
+    order_groups_by_labels,
+    split_cubemap_face,
+)
 from devtools.apriltag.printable import create_printable_target
 
 
@@ -185,3 +191,39 @@ def test_cubemap_preview_groups_faces_by_frame_prefix(tmp_path: Path) -> None:
     assert len(groups) == 1
     assert groups[0].name == "frame_0001"
     assert set(groups[0].frames_by_face) == {"px", "nx", "pz", "nz", "top", "bottom"}
+
+
+def test_metashape_labels_can_order_cubemap_preview_groups(tmp_path: Path) -> None:
+    xml = tmp_path / "metashape.xml"
+    xml.write_text(
+        """<?xml version="1.0" encoding="UTF-8"?>
+<document><chunk><cameras>
+  <camera id="0" label="frame_b.jpg"/>
+  <camera id="1" label="frame_a.jpg"/>
+</cameras></chunk></document>
+""",
+        encoding="utf-8",
+    )
+    groups = (
+        type("Group", (), {"name": "frame_a"})(),
+        type("Group", (), {"name": "frame_b"})(),
+    )
+
+    labels = load_metashape_camera_labels(xml)
+    ordered = order_groups_by_labels(groups, labels)
+
+    assert labels == ("frame_b", "frame_a")
+    assert [group.name for group in ordered] == ["frame_b", "frame_a"]
+
+
+def test_face_view_params_uses_transform_relationships(tmp_path: Path) -> None:
+    transforms = _write_cubemap_transforms(tmp_path / "transforms.json")
+    group = load_cubemap_frame_groups(transforms)[0]
+
+    params = face_view_params(group, "pz")
+
+    assert params is not None
+    yaw, pitch, fov = params
+    assert abs(yaw) < 1e-6
+    assert abs(pitch) < 1e-6
+    assert fov == 90.0

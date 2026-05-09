@@ -50,7 +50,10 @@ from devtools.apriltag.case import (
 )
 from devtools.apriltag.cubemap_preview import (
     CubemapFrameGroup,
+    face_view_params,
     load_cubemap_frame_groups,
+    load_metashape_camera_labels,
+    order_groups_by_labels,
     render_cubemap_equirect,
     view_pixel_to_world_ray,
     view_up_world,
@@ -210,13 +213,20 @@ class DevAprilTagPlacerWindow(QWidget):
         row = QHBoxLayout()
         self.frame_group_combo = QComboBox()
         self.frame_group_combo.setMinimumWidth(260)
+        self.prev_camera_btn = QPushButton("前")
+        self.next_camera_btn = QPushButton("次")
         self.reload_groups_btn = QPushButton("画像リスト更新")
         self.render_scene_preview_btn = QPushButton("プレビュー表示")
-        row.addWidget(QLabel("画像"))
+        row.addWidget(QLabel("カメラ位置"))
+        row.addWidget(self.prev_camera_btn)
         row.addWidget(self.frame_group_combo, stretch=1)
+        row.addWidget(self.next_camera_btn)
         row.addWidget(self.reload_groups_btn)
         row.addWidget(self.render_scene_preview_btn)
         layout.addLayout(row)
+
+        self.camera_status_label = QLabel("-")
+        layout.addWidget(self.camera_status_label)
 
         params = QHBoxLayout()
         self.look_yaw_spin = QDoubleSpinBox()
@@ -247,6 +257,17 @@ class DevAprilTagPlacerWindow(QWidget):
             params.addWidget(widget)
         params.addStretch(1)
         layout.addLayout(params)
+
+        face_row = QHBoxLayout()
+        face_row.addWidget(QLabel("面へ移動"))
+        self.face_buttons: dict[str, QPushButton] = {}
+        for face in ("pz", "px", "nx", "nz", "top", "bottom"):
+            button = QPushButton(face)
+            button.setFixedWidth(58)
+            self.face_buttons[face] = button
+            face_row.addWidget(button)
+        face_row.addStretch(1)
+        layout.addLayout(face_row)
 
         hint = QLabel("Cubemap 6面から擬似360ビューを再構築します。ドラッグで視点回転、クリックで深度値に沿って中心SfM/法線/上方向を入力します。")
         hint.setWordWrap(True)
@@ -330,6 +351,10 @@ class DevAprilTagPlacerWindow(QWidget):
         self.reload_groups_btn.clicked.connect(self._load_preview_groups)
         self.render_scene_preview_btn.clicked.connect(self._render_scene_preview)
         self.frame_group_combo.currentIndexChanged.connect(lambda _index: self._render_scene_preview())
+        self.prev_camera_btn.clicked.connect(lambda: self._step_camera(-1))
+        self.next_camera_btn.clicked.connect(lambda: self._step_camera(1))
+        for face, button in self.face_buttons.items():
+            button.clicked.connect(lambda _checked=False, face=face: self._jump_to_face(face))
         self.look_yaw_spin.valueChanged.connect(self._on_preview_spin_changed)
         self.look_pitch_spin.valueChanged.connect(self._on_preview_spin_changed)
         self.look_fov_spin.valueChanged.connect(self._on_preview_spin_changed)
@@ -399,6 +424,8 @@ class DevAprilTagPlacerWindow(QWidget):
             f"入力: {case.transforms_for_processing()}\n"
             f"画像モード: {'コピー' if case.input_mode == 'copy' else '参照'}"
         )
+        self._cubemap_image_cache.clear()
+        self._equirect_preview_cache.clear()
         self._load_preview_groups()
 
     def _load_preview_groups(self) -> None:
@@ -406,7 +433,9 @@ class DevAprilTagPlacerWindow(QWidget):
         if case is None:
             return
         try:
-            self._cubemap_groups = load_cubemap_frame_groups(case.transforms_for_processing())
+            groups = load_cubemap_frame_groups(case.transforms_for_processing())
+            labels = load_metashape_camera_labels(case.source_metashape_xml) if case.source_metashape_xml else ()
+            self._cubemap_groups = order_groups_by_labels(groups, labels)
         except Exception as e:
             QMessageBox.critical(self, "プレビュー読み込みエラー", str(e))
             return
@@ -423,6 +452,8 @@ class DevAprilTagPlacerWindow(QWidget):
         self._append_log(f"Cubemap preview groups: {len(self._cubemap_groups)}")
         if self._cubemap_groups:
             self._render_scene_preview()
+        else:
+            self.camera_status_label.setText("Cubemap画像グループがありません")
 
     def _create_printable_target(self) -> None:
         case = self._require_case()
@@ -490,6 +521,31 @@ class DevAprilTagPlacerWindow(QWidget):
             return self._cubemap_groups[0]
         return self._cubemap_groups[index]
 
+    def _step_camera(self, delta: int) -> None:
+        count = self.frame_group_combo.count()
+        if count <= 0:
+            return
+        index = (self.frame_group_combo.currentIndex() + int(delta)) % count
+        self.frame_group_combo.setCurrentIndex(index)
+
+    def _jump_to_face(self, face: str) -> None:
+        group = self._selected_group()
+        if group is None:
+            return
+        params = face_view_params(group, face, fov_deg=self.look_fov_spin.value())
+        if params is None:
+            self._append_log(f"Face not available in this group: {face}")
+            return
+        yaw, pitch, fov = params
+        self._scene_preview_params = PerspectiveParams(
+            yaw_deg=normalize_yaw_deg(yaw),
+            pitch_deg=clamp_pitch_deg(pitch),
+            fov_deg=fov,
+        )
+        self._sync_preview_spins()
+        self.preview_label.set_perspective_params(self._scene_preview_params)
+        self._append_log(f"Jumped to face {face}: yaw={yaw:.1f}, pitch={pitch:.1f}")
+
     def _on_preview_spin_changed(self) -> None:
         self._scene_preview_params = PerspectiveParams(
             yaw_deg=normalize_yaw_deg(self.look_yaw_spin.value()),
@@ -537,6 +593,14 @@ class DevAprilTagPlacerWindow(QWidget):
         if not shown:
             self.preview_label.setText("GPU透視投影プレビューを初期化できませんでした")
         self.reference_frame_edit.setText(group.name)
+        index = self.frame_group_combo.currentIndex()
+        position = group.camera_position_sfm
+        self.camera_status_label.setText(
+            f"{index + 1} / {len(self._cubemap_groups)}  {group.name}  "
+            f"pos=({position[0]:.3f}, {position[1]:.3f}, {position[2]:.3f})"
+        )
+        for face, button in self.face_buttons.items():
+            button.setEnabled(face in group.frames_by_face)
 
     def _on_scene_preview_dragged(self, delta_x: float, delta_y: float) -> None:
         if not self._cubemap_groups:
