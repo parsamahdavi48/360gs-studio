@@ -2,16 +2,6 @@
 
 Step 5 は、Step 4で作成済みの3DGS用データセットを使って、LichtFeld Studio、Postshot、または任意のCLIを起動する画面です。画像変換やSfMはここでは行いません。データセットを作る作業は `Step 4: 変換`、そのデータで学習アプリを起動する作業が `Step 5: 学習` です。
 
-## 起動
-
-```bat
-run_gui.bat --scene .\scene01
-```
-
-起動後、ワークフロー左側の `Step 5: 学習` を開きます。下部ボタンは `起動` です。
-
-中央パネルのヘッダー右端にある `?` ヘルプアイコンから、このStepのGitHubドキュメントを開けます。GUIの表示言語が日本語なら日本語版、英語なら英語版を開きます。
-
 ## まず決めること
 
 Step 5を開いたら、最初に「どのアプリで、どのデータを試すか」を決めます。
@@ -86,7 +76,7 @@ LichtFeldの最終PLY、Postshotの `.psht`、Postshotの任意書き出しPLY/S
 
 ## LichtFeld Studio
 
-LichtFeld Studioでは、データセット、出力先、自動生成した設定JSONをCLIへ渡して学習を開始します。
+LichtFeld Studioでは、データセット、出力先、学習設定を指定して学習を開始します。
 
 ### まず確認する項目
 
@@ -127,7 +117,7 @@ Step 4で `3DGUT (LichtFeld)` を使ったデータです。`入力データ` �
 
 ## Postshot
 
-Postshotでは、画像とカメラポーズをPostshot CLIへ渡し、`.psht` プロジェクトを作成します。
+Postshotでは、画像とカメラポーズから `.psht` プロジェクトを作成します。
 
 ### まず確認する項目
 

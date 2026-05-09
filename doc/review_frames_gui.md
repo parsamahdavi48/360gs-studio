@@ -4,16 +4,6 @@ Step 2 is where you review the frames extracted in Step 1 and keep only the imag
 
 When you press `Apply`, Step 2 removes dropped frames from `images/` and finalizes `_stechdrive/frames/selected_frames.csv` to keep-only rows. Kept filenames are preserved by default; before masks or Step 4 outputs exist, you can also enable `Renumber kept images` to rename the kept files in CSV order. The resulting `images/` folder becomes the input for Step 3 and for Metashape or SphereSfM SfM.
 
-## Launch
-
-```bat
-run_gui.bat --scene .\scene01
-```
-
-Then open `Step 2: Frame Review` in the workflow sidebar. If the scene folder contains `_stechdrive/frames/selected_frames.csv`, it loads automatically.
-
-The `?` help icon at the right edge of the center-panel header opens this step's GitHub documentation. It opens the Japanese or English page to match the active UI language.
-
 ## First Things To Check
 
 | Goal | Where to look |
@@ -90,15 +80,7 @@ When unsure, judge whether the frame will help the later SfM step estimate camer
 
 `Apply` writes the current keep/drop decisions into the image folder.
 
-Internally it runs:
-
-```bash
-python apply_frame_decisions.py <scene_dir> --finalize-in-place
-```
-
-If `Renumber kept images` is enabled, the command also adds `--renumber-kept-images`.
-
-Before running the command, the integrated GUI saves a review backup under `_stechdrive/review/backups/<review_id>/`. This backup contains `selected_frames.before.csv`, `selected_frames.after.csv` after success, and copies of the dropped image files that existed at apply time. The CLI also writes its own CSV backup under `_stechdrive/frames/backups/`.
+Before applying changes, the GUI saves a review backup under `_stechdrive/review/backups/<review_id>/`. This backup contains `selected_frames.before.csv`, `selected_frames.after.csv` after success, and copies of the dropped image files that existed at apply time. It also writes a CSV backup under `_stechdrive/frames/backups/`.
 
 Apply does the following:
 

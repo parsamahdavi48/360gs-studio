@@ -4,16 +4,6 @@ Step 4 は、Step 1-3で用意した360°画像とマスク、MetashapeでSfMし
 
 多くの場合は、Metashapeから書き出したカメラXMLと、必要に応じて点群PLYを指定し、Postshot / Brush / LichtFeld Studio のどれに渡すかを選びます。Metashapeを使わない場合は、COLMAP Rig用のキューブマップ画像を書き出すか、SphereSfMでエクイレクタングラー画像を直接SfMしてから3DGS向けデータへ変換できます。学習アプリの起動はStep 5で、Step 4が作成済みのデータセットを読み込んで実行します。
 
-## 起動
-
-```bat
-run_gui.bat --scene .\scene01
-```
-
-起動後、ワークフロー左側の `Step 4: 変換` を開きます。作成済みデータセットで学習アプリを起動する場合は `Step 5: 学習` を開きます。
-
-中央パネルのヘッダー右端にある `?` ヘルプアイコンから、このStepのGitHubドキュメントを開けます。GUIの表示言語が日本語なら日本語版、英語なら英語版を開きます。
-
 ## まず決めること
 
 Step 4を開いたら、最初に「自分はどのルートか」を決めます。
@@ -163,7 +153,7 @@ VRAMや処理時間が厳しい場合は、まず `Normal` または `Half` で�
 
 ## Step 5へ進む
 
-Step 4は、3DGSアプリへ渡すデータセットを作る工程です。LichtFeld StudioやPostshotのCLIをこのアプリから起動する場合は、Step 4でデータセットを作成してから `Step 5: 学習` を開きます。
+Step 4は、3DGSアプリへ渡すデータセットを作る工程です。LichtFeld StudioやPostshotで使う場合は、Step 4でデータセットを作成してから `Step 5: 学習` を開きます。
 
 Step 5の操作は [Step 5 学習GUI](training_gui.ja.md) を参照してください。
 

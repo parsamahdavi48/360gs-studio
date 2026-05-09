@@ -2,7 +2,7 @@
 
 Step 1 turns 360° video into equirectangular still images for SfM and 3DGS. The `images/` folder and `_stechdrive/frames/selected_frames.csv` created here become the input for Step 2 review, Step 3 mask generation, and either Metashape or SphereSfM.
 
-In the common workflow, you choose a video, choose a scene folder, and extract frames on a fixed interval. When `Motion` is enabled, the GUI can drop near-duplicate candidates and add extra candidates where viewpoint change is useful.
+Choose a scene folder, choose a video, and extract frames at the specified interval. `Motion` is on by default; it reduces redundant near-duplicate candidates and adds candidates where viewpoint change is useful. Turn `Motion` off when you want faster extraction.
 
 ## Extraction Approach
 
@@ -17,16 +17,6 @@ Choosing only the sharpest nearby frame is not enough for SfM. A frame can be sh
 The design focuses expensive decisions where they matter. It does not run a high-resolution, high-cost search for the sharpest image everywhere. Instead, it starts from a fixed interval and pays extra attention to candidates that look too similar, lack viewpoint change, or may be blurred. This keeps candidate quality reviewable while helping reduce processing time, output count, and downstream SfM cost.
 
 The main capture assumptions are walking footage and drone footage. Walking footage often contains nearby structure, so the same camera movement creates stronger parallax. Drone and distant-view footage tends to produce weaker image change for the same movement. `Scene Distance` chooses whether the motion thresholds should assume near / walking footage or distant / aerial footage.
-
-## Launch
-
-```bat
-run_gui.bat --scene .\scene01
-```
-
-Then open `Step 1: Frame Extraction` in the workflow sidebar.
-
-The `?` help icon at the right edge of the center-panel header opens this step's GitHub documentation. It opens the Japanese or English page to match the active UI language.
 
 ## First Choice
 
@@ -43,19 +33,16 @@ The GUI stops before running when the scene folder path contains non-ASCII chara
 
 ## Basic Flow
 
-1. In `Video Queue` on the right, press `Add Videos` and add the videos to extract. Adding videos keeps the existing queue, so videos from other folders can be added later.
-2. Confirm `Scene Folder`. Output images are written under `images/` inside it.
-3. Choose `Interval`. Start with `1.0` second when unsure.
-4. Keep `Motion` on for normal extraction. Turn `Quick extract` on only when you want a fast fixed-interval cut.
-5. Choose `Extraction Target`. `Add Unextracted Videos` is fine for the first run or for adding different videos.
-6. When the preflight status says the run is ready, press `Extract Frames`.
-7. After extraction finishes, continue to Step 2.
+1. First choose `Scene Folder`. Output images are written under `images/` inside it.
+2. Check `Video Queue` on the right. Videos inside the scene folder are registered automatically.
+3. If the video you want is not in the queue, press `Add Videos` and add it. Adding videos keeps the existing queue, so videos from other folders can be added later.
+4. Choose `Interval`. Start with `1.0` second when unsure.
+5. Keep `Motion` on for normal extraction. Turn `Quick extract` on only when you want a fast fixed-interval cut.
+6. Choose `Extraction Target`. `Add Unextracted Videos` is fine for the first run or for adding different videos.
+7. When the preflight status says the run is ready, press `Extract Frames`.
+8. After extraction finishes, continue to Step 2.
 
-When Step 1 has an empty video queue and you select a scene folder, the GUI looks for videos in `_stechdrive/sources/videos.json`, then existing extraction sessions, then video files under the scene folder. Found videos are added to the queue automatically. If the queue already has videos, the GUI keeps that selection.
-
-The video queue shows each video's extraction status, 360°/normal detection, resolution, fps, duration, and estimated frame count. If a video was added by mistake, select its row in the queue and remove it. The video file itself is not deleted.
-
-Step 1 separates analysis from image export. Analysis uses grayscale frames resized to `Analysis Width`; files written to `images/` keep the source video resolution.
+The video queue is where you confirm the videos that will be processed. It shows each video's extraction status, 360°/normal detection, resolution, fps, duration, and estimated frame count. If a video was added by mistake, select its row in the queue and remove it. The video file itself is not deleted.
 
 ## Fixed Interval And Motion
 
@@ -104,9 +91,9 @@ When unsure, use `Near / Walking` for walking or architectural footage and `Dist
 
 ## Analysis Width And JPEG Quality
 
-`Analysis Width` is the horizontal width used for motion analysis, blur checks, and feature tracking. Larger values can see finer detail but are slower. The default is usually sufficient.
+`Analysis Width` controls how much detail motion analysis, blur checks, and feature tracking inspect. Larger values can make some fine-detail decisions more stable, but processing becomes slower. It does not change the resolution of files written to `images/`. The default is usually sufficient; adjust it only when decisions are clearly unstable for the source material.
 
-`JPEG Quality` is ffmpeg's `-q:v` value. Lower values mean higher quality and larger files. The default `2` is high quality.
+`JPEG Quality` controls the balance between saved image quality and file size. Lower values mean higher quality and larger files. The default `2` is already high quality, so it usually does not need to change.
 
 ## Outputs
 

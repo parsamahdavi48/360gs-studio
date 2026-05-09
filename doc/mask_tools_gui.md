@@ -4,16 +4,6 @@ Step 3 creates `masks/` from the `images/` kept in Step 2. These masks exclude r
 
 Mask polarity is **white = use, black = exclude**. Creating masks before Metashape or SphereSfM helps avoid unwanted features from people, sky, or other unstable regions.
 
-## Launch
-
-```bat
-run_gui.bat --scene .\scene01
-```
-
-Then open `Step 3: Mask Generation` in the workflow sidebar.
-
-The `?` help icon at the right edge of the center-panel header opens this step's GitHub documentation. It opens the Japanese or English page to match the active UI language.
-
 ## First Choice
 
 | Goal | Recommended settings |
@@ -131,5 +121,4 @@ Generated `masks/` can be imported into Metashape, or used by the SphereSfM rout
 
 ## Notes
 
-- The GUI runs the CLI scripts as subprocesses, so behavior stays aligned with CLI.
 - Semantic/person masking uses third-party libraries and model weights with separate license terms. See [../THIRD_PARTY_LICENSES.md](../THIRD_PARTY_LICENSES.md).

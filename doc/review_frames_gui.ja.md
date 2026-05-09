@@ -4,16 +4,6 @@ Step 2 は、Step 1で抽出したフレームを見て、Step 3のマスク生�
 
 最後に `適用` を押すと、除外フレームを `images/` から外し、`_stechdrive/frames/selected_frames.csv` を採用フレームだけに確定します。採用フレームのファイル名は既定では維持しますが、マスクやStep 4出力を作る前なら `採用画像を連番化` でCSV順の連番へ整理できます。ここで確定した `images/` がStep 3のマスク生成と、MetashapeまたはSphereSfMのSfM入力になります。
 
-## 起動
-
-```bat
-run_gui.bat --scene .\scene01
-```
-
-起動後、ワークフロー左側の `Step 2: フレーム確認` を開きます。シーンフォルダに `_stechdrive/frames/selected_frames.csv` があれば自動で読み込みます。
-
-中央パネルのヘッダー右端にある `?` ヘルプアイコンから、このStepのGitHubドキュメントを開けます。GUIの表示言語が日本語なら日本語版、英語なら英語版を開きます。
-
 ## まず見ること
 
 | やりたいこと | 見る場所 |
@@ -90,15 +80,7 @@ Step 2のラベルは、別の品質スコアではありません。そのフ�
 
 `適用` は、画面上の採用/除外判断を実際の画像フォルダへ反映する処理です。
 
-内部では次を実行します。
-
-```bash
-python apply_frame_decisions.py <scene_dir> --finalize-in-place
-```
-
-`採用画像を連番化` がONの場合は、ここに `--renumber-kept-images` も付きます。
-
-統合GUIでは、コマンド実行前に `_stechdrive/review/backups/<review_id>/` へレビュー用バックアップを保存します。この中には `selected_frames.before.csv`、成功後の `selected_frames.after.csv`、適用時点で存在した除外画像のコピーが入ります。CLI側でも `_stechdrive/frames/backups/` にCSVバックアップを作ります。
+適用前に、GUIは `_stechdrive/review/backups/<review_id>/` へレビュー用バックアップを保存します。この中には `selected_frames.before.csv`、成功後の `selected_frames.after.csv`、適用時点で存在した除外画像のコピーが入ります。あわせて `_stechdrive/frames/backups/` にCSVバックアップを作ります。
 
 適用すると次を行います。
 

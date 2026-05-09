@@ -4,16 +4,6 @@ Step 4 converts the 360° images and masks prepared in Steps 1-3, Metashape SfM 
 
 In the common workflow, you select the camera XML exported from Metashape, optionally select a point-cloud PLY, and choose whether the output is for Postshot, Brush, or LichtFeld Studio. If you are not using Metashape, you can export COLMAP Rig cubemap images or run SphereSfM directly on equirectangular images and convert the result into 3DGS-ready data. Training applications are launched from Step 5, using a dataset that Step 4 has already created.
 
-## Launch
-
-```bat
-run_gui.bat --scene .\scene01
-```
-
-Then open `Step 4: Convert` in the workflow sidebar. To launch a training application with an existing dataset, open `Step 5: Training`.
-
-The `?` help icon at the right edge of the center-panel header opens this step's GitHub documentation. It opens the Japanese or English page to match the active UI language.
-
 ## First Choice
 
 When you open Step 4, first decide which route you are on.
@@ -163,7 +153,7 @@ After adjusting masks, turning `Images` off avoids reconverting existing cubemap
 
 ## Continue To Step 5
 
-Step 4 creates the dataset that downstream 3DGS apps load. To launch LichtFeld Studio or Postshot CLI from this app, create the dataset in Step 4, then open `Step 5: Training`.
+Step 4 creates the dataset that downstream 3DGS apps load. To use it with LichtFeld Studio or Postshot, create the dataset in Step 4, then open `Step 5: Training`.
 
 See [Step 5 Training GUI](training_gui.md) for Step 5 usage.
 

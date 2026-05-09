@@ -2,16 +2,6 @@
 
 Step 5 launches LichtFeld Studio, Postshot, or a custom CLI with a 3DGS dataset that Step 4 has already created. It does not run image conversion or SfM. Use `Step 4: Convert` to create the dataset, then use `Step 5: Training` to launch a training application with that dataset.
 
-## Launch
-
-```bat
-run_gui.bat --scene .\scene01
-```
-
-Then open `Step 5: Training` in the workflow sidebar. The bottom action button is `Launch`.
-
-The `?` help icon at the right edge of the center-panel header opens this step's GitHub documentation. It opens the Japanese or English page to match the active UI language.
-
 ## First Choice
 
 When you open Step 5, first decide which app you want to run and which dataset you want to test.
@@ -86,7 +76,7 @@ If the final LichtFeld PLY, Postshot `.psht`, or optional Postshot PLY/SPZ expor
 
 ## LichtFeld Studio
 
-For LichtFeld Studio, Step 5 passes the dataset, output folder, and an auto-generated config JSON to the CLI and starts training.
+For LichtFeld Studio, Step 5 starts training with the selected dataset, output folder, and training settings.
 
 ### Main Settings
 
@@ -127,7 +117,7 @@ Less common Dataset, Optimizer, Refinement, Loss, Initialization, MRNF/IGS+, Spa
 
 ## Postshot
 
-For Postshot, Step 5 passes images and camera poses to Postshot CLI and creates a `.psht` project.
+For Postshot, Step 5 creates a `.psht` project from the selected images and camera poses.
 
 ### Main Settings
 
