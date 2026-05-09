@@ -785,6 +785,7 @@ class DevAprilTagPlacerWindow(QWidget):
                         output_height=1024,
                         image_cache=self._cubemap_image_cache,
                     )
+                    image = self._camera_texture_for_preview(image)
                     self._equirect_preview_cache[cache_key] = image
         except Exception as e:
             self.preview_label.setText(f"プレビュー生成エラー: {e}")
@@ -807,6 +808,11 @@ class DevAprilTagPlacerWindow(QWidget):
         for face, button in self.face_buttons.items():
             button.setEnabled(face in group.frames_by_face)
         self._sync_world_debug_view()
+
+    @staticmethod
+    def _camera_texture_for_preview(image: np.ndarray) -> np.ndarray:
+        """Match cubemap texture longitude to the world-space overlay convention."""
+        return np.ascontiguousarray(np.asarray(image)[:, ::-1])
 
     def _grid_only_equirect_preview(self) -> np.ndarray:
         cache_key = "__grid_only__"

@@ -187,6 +187,18 @@ def test_dev_placer_grid_only_preview_background() -> None:
     window.deleteLater()
 
 
+def test_dev_placer_camera_texture_preview_flips_longitude_only() -> None:
+    image = np.arange(2 * 4 * 3, dtype=np.uint8).reshape(2, 4, 3)
+
+    flipped = DevAprilTagPlacerWindow._camera_texture_for_preview(image)
+
+    assert np.array_equal(flipped[:, 0], image[:, -1])
+    assert np.array_equal(flipped[:, -1], image[:, 0])
+    assert np.array_equal(flipped[0], image[0, ::-1])
+    assert np.array_equal(flipped[1], image[1, ::-1])
+    assert flipped.flags.c_contiguous
+
+
 def test_dev_placer_camera_grid_axes_include_origin() -> None:
     _app()
     transform = np.eye(4)
