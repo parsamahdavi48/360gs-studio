@@ -118,6 +118,60 @@ def test_scene_import_runs_off_gui_thread_and_reports_start(tmp_path: Path, monk
         window.shutdown()
 
 
+def test_scene_import_finish_defers_current_step_refresh(tmp_path: Path, monkeypatch) -> None:
+    app = _app()
+    scene = tmp_path / "scene"
+    scene.mkdir()
+    window = MainWindow("")
+
+    result = SceneImportResult(
+        scene_dir=scene,
+        import_id="import_test",
+        status="ok",
+        image_count=1,
+        mask_count=0,
+        output_image_count=0,
+        output_mask_count=0,
+        output_shape="",
+        dataset_kind="",
+        warnings=(),
+        errors=(),
+        backup_dir=None,
+        report_path=scene / "_stechdrive" / "imports" / "scene_imports.json",
+        selected_frames_csv=None,
+        export_settings_json=scene / "_stechdrive" / "step4" / "export_settings.json",
+    )
+
+    calls = {"set_scene_dir": 0, "activated": 0}
+
+    def count_set_scene_dir(_path: str) -> None:
+        calls["set_scene_dir"] += 1
+
+    def count_activated() -> None:
+        calls["activated"] += 1
+
+    try:
+        window._set_current_step(2)
+        monkeypatch.setattr(window.step3, "set_scene_dir", count_set_scene_dir)
+        monkeypatch.setattr(window.step3, "on_activated", count_activated)
+
+        window._on_scene_import_finished(result, "", False)
+        app.processEvents()
+
+        assert window.scene_browse.text() == str(scene)
+        assert calls == {"set_scene_dir": 0, "activated": 0}
+        assert window._step_scene_sync_deferred(window.step3)
+        assert not window.run_btn.isEnabled()
+        assert i18n.t("IMPORT_SCENE_DEFERRED_REFRESH") in window.log_panel.toPlainText()
+
+        window._set_current_step(2)
+
+        assert calls == {"set_scene_dir": 1, "activated": 1}
+        assert not window._step_scene_sync_deferred(window.step3)
+    finally:
+        window.shutdown()
+
+
 def test_scene_import_cancel_requests_worker_and_keeps_metadata_unchanged(tmp_path: Path, monkeypatch) -> None:
     app = _app()
     window = MainWindow(str(tmp_path))

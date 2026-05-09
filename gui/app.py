@@ -6,7 +6,7 @@ import argparse
 import sys
 from pathlib import Path
 
-from PySide6.QtCore import QPoint, QSize, Qt, QThread, QTimer, QUrl
+from PySide6.QtCore import QPoint, QSignalBlocker, QSize, Qt, QThread, QTimer, QUrl
 from PySide6.QtGui import QCloseEvent, QDesktopServices, QIcon
 from PySide6.QtWidgets import (
     QApplication,
@@ -32,6 +32,7 @@ from gui.common.log_panel import LogPanel
 from gui.common.process_runner import ProcessRunner
 from gui.common.progress_widget import ProgressWidget
 from gui.common.scene_import_worker import SceneImportWorker
+from gui.steps.base_step import BaseStepWidget
 from gui.steps.step1_extract import ExtractStep
 from gui.steps.step2_review import ReviewStep
 from gui.steps.step3_mask import MaskStep
@@ -81,6 +82,8 @@ class MainWindow(QWidget):
         self._scene_import_cancel_requested = False
         self._scene_import_thread: QThread | None = None
         self._scene_import_worker: SceneImportWorker | None = None
+        self._deferred_scene_sync_path: str | None = None
+        self._deferred_scene_sync_step_ids: set[int] = set()
 
         self._build_ui(initial_scene_dir)
         self._connect_signals()
@@ -340,16 +343,61 @@ class MainWindow(QWidget):
         return None
 
     def _on_scene_changed(self, path: str) -> None:
+        self._apply_scene_dir(path, activate_current=True)
+
+    def _apply_scene_dir(self, path: str, *, activate_current: bool, defer_step_sync: bool = False) -> None:
         if not self._applying_scene_suggestion and path != self._auto_scene_from_input:
             self._auto_scene_from_input = None
-        for step in self.steps:
-            step.set_scene_dir(path)
+        if defer_step_sync:
+            for step in self.steps:
+                BaseStepWidget.set_scene_dir(step, path)
+            self._deferred_scene_sync_path = path
+            self._deferred_scene_sync_step_ids = {id(step) for step in self.steps}
+        else:
+            self._clear_deferred_scene_sync()
+            for step in self.steps:
+                step.set_scene_dir(path)
         self.clear_scene_btn.setEnabled(bool(path))
-        step = self._current_step_widget()
-        if step is not None:
-            step.on_activated()
+        if activate_current:
+            step = self._current_step_widget()
+            if step is not None:
+                self._sync_step_scene_if_deferred(step)
+                step.on_activated()
         self._update_step_header()
-        self._refresh_step4_subnav()
+        if not self._step_scene_sync_deferred(self.step4):
+            self._refresh_step4_subnav()
+
+    def _set_scene_browse_text_silently(self, path: str) -> None:
+        blocker = QSignalBlocker(self.scene_browse.line_edit)
+        try:
+            self.scene_browse.set_text(path)
+        finally:
+            del blocker
+
+    def _clear_deferred_scene_sync(self) -> None:
+        self._deferred_scene_sync_path = None
+        self._deferred_scene_sync_step_ids.clear()
+
+    def _step_scene_sync_deferred(self, step: BaseStepWidget | None) -> bool:
+        if step is None:
+            return False
+        if not self._deferred_scene_sync_path:
+            return False
+        if self.scene_browse.text() != self._deferred_scene_sync_path:
+            return False
+        return id(step) in self._deferred_scene_sync_step_ids
+
+    def _sync_step_scene_if_deferred(self, step: BaseStepWidget) -> None:
+        path = self._deferred_scene_sync_path
+        if not path or self.scene_browse.text() != path or id(step) not in self._deferred_scene_sync_step_ids:
+            return
+        if step is self.step5 and id(self.step4) in self._deferred_scene_sync_step_ids:
+            self.step4.set_scene_dir(path)
+            self._deferred_scene_sync_step_ids.discard(id(self.step4))
+        step.set_scene_dir(path)
+        self._deferred_scene_sync_step_ids.discard(id(step))
+        if not self._deferred_scene_sync_step_ids:
+            self._deferred_scene_sync_path = None
 
     def _on_scene_suggested(self, path: str) -> None:
         if self.scene_browse.text():
@@ -439,10 +487,9 @@ class MainWindow(QWidget):
         for line in result.summary_lines():
             self.log_panel.append_log(line)
         self._auto_scene_from_input = None
-        if self.scene_browse.text() != scene:
-            self.scene_browse.set_text(scene)
-        else:
-            self._on_scene_changed(scene)
+        self._set_scene_browse_text_silently(scene)
+        self._apply_scene_dir(scene, activate_current=False, defer_step_sync=True)
+        self.log_panel.append_log(i18n.t("IMPORT_SCENE_DEFERRED_REFRESH"))
         self.progress.finish_phase(complete=not bool(result.errors))
         if result.errors:
             self.progress.set_status(i18n.t("IMPORT_SCENE_FAILED"))
@@ -471,6 +518,7 @@ class MainWindow(QWidget):
         self.step_help_btn.setAccessibleName(f"{self.step_titles[index]} {i18n.t('STEP_HELP_BUTTON')}")
         step = self._current_step_widget()
         if step is not None:
+            self._sync_step_scene_if_deferred(step)
             step.on_activated()
         if index != 3:
             self.step4_subnotice_label.hide()
@@ -535,6 +583,8 @@ class MainWindow(QWidget):
     def _refresh_step4_subnav(self) -> None:
         if not self.step4_sub_buttons:
             return
+        if self._step_scene_sync_deferred(self.step4):
+            return
         active_stage = self.step4.pipeline_stage() if self.stack.currentIndex() == 3 else ""
         step4_active = self.stack.currentIndex() == 3
         if self.step4_subnav_rail is not None:
@@ -590,14 +640,22 @@ class MainWindow(QWidget):
         self._set_workflow_locked(busy)
         if step is not None:
             self.run_btn.setText(f"  {step.primary_action_text()}")
-            if scene_selected:
+            deferred_scene_sync = self._step_scene_sync_deferred(step)
+            if scene_selected and deferred_scene_sync:
+                self.run_btn.setToolTip(i18n.t("IMPORT_SCENE_DEFERRED_ACTION_HINT"))
+            elif scene_selected:
                 self.run_btn.setToolTip(step.primary_action_tooltip())
             else:
                 self.run_btn.setToolTip(i18n.t("SCENE_REQUIRED_ACTION_HINT"))
         self._update_step_header()
 
         self.run_btn.setVisible(True)
-        action_enabled = step.primary_action_enabled() if step is not None else True
+        if self._step_scene_sync_deferred(step):
+            action_enabled = False
+        elif step is not None:
+            action_enabled = step.primary_action_enabled()
+        else:
+            action_enabled = True
         self.run_btn.setEnabled(not busy and scene_selected and action_enabled)
 
         self.cancel_btn.setVisible(True)

@@ -35,6 +35,8 @@ STRINGS: dict[str, str] = {
     "IMPORT_SCENE_CANCELED": "シーン取り込みをキャンセルしました。管理情報は置き換えていません。",
     "IMPORT_SCENE_DONE": "シーン取り込み完了: 画像 {images} / マスク {masks} / 出力画像 {output_images}",
     "IMPORT_SCENE_FAILED": "シーン取り込み失敗。下部ログを確認してください。",
+    "IMPORT_SCENE_DEFERRED_REFRESH": "取り込み後の詳細表示は、各ステップを開いたときに更新します。",
+    "IMPORT_SCENE_DEFERRED_ACTION_HINT": "取り込み直後のため、このステップを選択すると表示と実行条件を更新します。",
     "CLEAR_SCENE_DIR": "シーンフォルダをクリア",
     "CLEAR_SCENE_DIR_HINT": "現在のシーンフォルダ指定を解除します。ファイルは削除しません。",
     "STEP_HELP_BUTTON": "ヘルプ",

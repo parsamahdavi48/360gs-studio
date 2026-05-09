@@ -35,6 +35,8 @@ STRINGS: dict[str, str] = {
     "IMPORT_SCENE_CANCELED": "Scene import canceled. Management metadata was not replaced.",
     "IMPORT_SCENE_DONE": "Scene import complete: images {images} / masks {masks} / output images {output_images}",
     "IMPORT_SCENE_FAILED": "Scene import failed. Check the log below.",
+    "IMPORT_SCENE_DEFERRED_REFRESH": "Detailed views will refresh when each step is opened.",
+    "IMPORT_SCENE_DEFERRED_ACTION_HINT": "This step needs to refresh after import. Select the step to update its view and run state.",
     "CLEAR_SCENE_DIR": "Clear Scene Folder",
     "CLEAR_SCENE_DIR_HINT": "Clear the current scene folder selection. No files are deleted.",
     "STEP_HELP_BUTTON": "Help",
