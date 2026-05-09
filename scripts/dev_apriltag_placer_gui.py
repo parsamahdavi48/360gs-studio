@@ -918,20 +918,24 @@ class DevAprilTagPlacerWindow(QWidget):
 
         samples = max(8, min(80, int(round(max(x_max - x_min, z_max - z_min) / max(draw_step, 1e-6))) * 2 + 1))
         for x in x_values:
-            zs = np.linspace(z_min, z_max, samples)
-            color = (130, 130, 130) if abs(x) > draw_step * 0.25 else (80, 210, 255)
+            is_axis = abs(x) <= draw_step * 0.25
+            zs = self._line_samples(z_min, z_max, samples, include_zero=is_axis)
+            x_value = 0.0 if is_axis else float(x)
+            color = (80, 210, 255) if is_axis else (130, 130, 130)
             add_grid_line(
-                np.column_stack([np.full_like(zs, x), np.zeros_like(zs), zs]),
+                np.column_stack([np.full_like(zs, x_value), np.zeros_like(zs), zs]),
                 color,
-                abs(x) <= draw_step * 0.25,
+                is_axis,
             )
         for z in z_values:
-            xs = np.linspace(x_min, x_max, samples)
-            color = (130, 130, 130) if abs(z) > draw_step * 0.25 else (255, 190, 80)
+            is_axis = abs(z) <= draw_step * 0.25
+            xs = self._line_samples(x_min, x_max, samples, include_zero=is_axis)
+            z_value = 0.0 if is_axis else float(z)
+            color = (255, 190, 80) if is_axis else (130, 130, 130)
             add_grid_line(
-                np.column_stack([xs, np.zeros_like(xs), np.full_like(xs, z)]),
+                np.column_stack([xs, np.zeros_like(xs), np.full_like(xs, z_value)]),
                 color,
-                abs(z) <= draw_step * 0.25,
+                is_axis,
             )
 
         foot = np.array([center[0], 0.0, center[2]], dtype=float)
@@ -955,6 +959,13 @@ class DevAprilTagPlacerWindow(QWidget):
         if origin_marker is not None:
             overlays.append(origin_marker)
         return overlays
+
+    @staticmethod
+    def _line_samples(start: float, stop: float, count: int, *, include_zero: bool) -> np.ndarray:
+        samples = np.linspace(float(start), float(stop), max(2, int(count)))
+        if include_zero and float(start) <= 0.0 <= float(stop) and not np.any(np.isclose(samples, 0.0)):
+            samples = np.sort(np.append(samples, 0.0))
+        return samples
 
     def _visible_ground_bounds(
         self,
