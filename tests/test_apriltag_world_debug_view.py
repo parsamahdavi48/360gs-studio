@@ -388,7 +388,21 @@ def test_dev_placer_pointcloud_perspective_uses_selected_camera_rotation() -> No
     window.deleteLater()
 
 
-def test_dev_placer_pointcloud_preview_undoes_lichtfeld_display_rotation_for_view() -> None:
+def test_dev_placer_pointcloud_preview_rotates_lichtfeld_scene_points() -> None:
+    _app()
+    window = DevAprilTagPlacerWindow()
+    window.coordinate_profile_combo.setCurrentIndex(window.coordinate_profile_combo.findData("lichtfeld_cube6"))
+    window.pointcloud_preview_check.blockSignals(True)
+    window.pointcloud_preview_check.setChecked(True)
+    window.pointcloud_preview_check.blockSignals(False)
+
+    points = window._pointcloud_preview_points_for_projection(np.array([[1.0, 2.0, 3.0]], dtype=float))
+
+    assert np.allclose(points, [[-1.0, 2.0, -3.0]])
+    window.deleteLater()
+
+
+def test_dev_placer_pointcloud_preview_uses_lichtfeld_scene_rotation_for_view() -> None:
     _app()
     group = CubemapFrameGroup(name="frame_0001", frames_by_face={"pz": _frame_at("frame_0001", (0.0, 0.0, 0.0))})
     window = DevAprilTagPlacerWindow()

@@ -95,6 +95,13 @@ GRID_Z_AXIS_BGR = (245, 175, 90)
 AXIS_GIZMO_X_BGR = (92, 92, 255)
 AXIS_GIZMO_Y_BGR = (130, 245, 120)
 AXIS_GIZMO_Z_BGR = (255, 170, 96)
+POINTCLOUD_PREVIEW_XZ_ROTATION = np.diag([-1.0, 1.0, -1.0])
+POINTCLOUD_PREVIEW_XZ_ROTATION_PROFILES = frozenset(
+    {
+        "lichtfeld_cube6",
+        "lichtfeld_cube6_pre_final_ply",
+    }
+)
 
 
 def _preview_rotation_matrix(yaw_deg: float, pitch_deg: float, roll_deg: float) -> np.ndarray:
@@ -1160,7 +1167,7 @@ class DevAprilTagPlacerWindow(QWidget):
         display_group: CubemapFrameGroup,
         points_world_display: np.ndarray,
     ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-        points = np.asarray(points_world_display, dtype=np.float64)
+        points = self._pointcloud_preview_points_for_projection(points_world_display)
         if points.ndim != 2 or points.shape[1] != 3:
             raise ValueError("points_world_display must be an Nx3 array")
         vectors = points - display_group.camera_position_sfm.reshape(1, 3)
@@ -1178,6 +1185,17 @@ class DevAprilTagPlacerWindow(QWidget):
         valid &= np.all(np.isfinite(xy), axis=1)
         return xy, depth, valid
 
+    def _pointcloud_preview_points_for_projection(self, points_world_display: np.ndarray) -> np.ndarray:
+        points = np.asarray(points_world_display, dtype=np.float64)
+        if not self.pointcloud_preview_check.isChecked():
+            return points
+        profile = normalize_coordinate_profile(
+            self.case.coordinate_profile if self.case is not None else self.coordinate_profile_combo.currentData()
+        )
+        if profile not in POINTCLOUD_PREVIEW_XZ_ROTATION_PROFILES:
+            return points
+        return points @ POINTCLOUD_PREVIEW_XZ_ROTATION.T
+
     def _preview_camera_rotation_for_display_group(self, display_group: CubemapFrameGroup) -> np.ndarray:
         local_rotation = _preview_rotation_matrix(
             self._scene_preview_params.yaw_deg,
@@ -1185,12 +1203,6 @@ class DevAprilTagPlacerWindow(QWidget):
             self._scene_preview_params.roll_deg,
         )
         camera_rotation = np.asarray(display_group.reference_frame.camera_to_world_rotation, dtype=np.float64)
-        display_matrix = self._world_display_matrix()
-        if display_matrix is not None:
-            display_rotation = np.asarray(display_matrix, dtype=np.float64)[:3, :3]
-            # Keep camera centers in display/world axes, but do not double-apply
-            # the LichtFeld X/Z display flip to the pinhole view basis.
-            camera_rotation = np.linalg.inv(display_rotation) @ camera_rotation
         return camera_rotation @ local_rotation
 
     def _draw_preview_overlays_bgr(self, image: np.ndarray, overlays: list[PerspectiveLabelOverlay]) -> None:
