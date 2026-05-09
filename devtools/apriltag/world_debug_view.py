@@ -192,6 +192,7 @@ class AprilTagWorldDebugView(QWidget):
     """Orthographic world-space viewport synced with the AprilTag image preview."""
 
     camera_clicked = Signal(str)
+    fixed_view_dragged = Signal(float, float)
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -217,6 +218,9 @@ class AprilTagWorldDebugView(QWidget):
         self._view_pitch_deg = -28.0
         self._view_center = np.array([0.0, 0.0, 0.0], dtype=np.float64)
         self._pixels_per_unit = 18.0
+        self._fixed_view_basis: tuple[np.ndarray, np.ndarray, np.ndarray] | None = None
+        self._fixed_projection = "orthographic"
+        self._fixed_perspective_fov_deg = 90.0
         self._last_mouse: QPointF | None = None
         self._press_pos: QPointF | None = None
         self._press_button: Qt.MouseButton | None = None
@@ -265,6 +269,49 @@ class AprilTagWorldDebugView(QWidget):
         self._grid_extent = max(self._grid_step, float(extent))
         self.update()
 
+    def set_fixed_view(
+        self,
+        *,
+        center: np.ndarray,
+        right: np.ndarray,
+        up: np.ndarray,
+        forward: np.ndarray,
+        pixels_per_unit: float,
+    ) -> None:
+        self._view_center = np.asarray(center, dtype=np.float64).reshape(3)
+        self._fixed_view_basis = (
+            _normalized(np.asarray(right, dtype=np.float64).reshape(3), fallback=(1.0, 0.0, 0.0)),
+            _normalized(np.asarray(up, dtype=np.float64).reshape(3), fallback=(0.0, 1.0, 0.0)),
+            _normalized(np.asarray(forward, dtype=np.float64).reshape(3), fallback=(0.0, 0.0, 1.0)),
+        )
+        self._fixed_projection = "orthographic"
+        self._pixels_per_unit = max(0.01, min(10000.0, float(pixels_per_unit)))
+        self.update()
+
+    def set_fixed_perspective_view(
+        self,
+        *,
+        camera_position: np.ndarray,
+        right: np.ndarray,
+        up: np.ndarray,
+        forward: np.ndarray,
+        fov_deg: float,
+    ) -> None:
+        self._view_center = np.asarray(camera_position, dtype=np.float64).reshape(3)
+        self._fixed_view_basis = (
+            _normalized(np.asarray(right, dtype=np.float64).reshape(3), fallback=(1.0, 0.0, 0.0)),
+            _normalized(np.asarray(up, dtype=np.float64).reshape(3), fallback=(0.0, 1.0, 0.0)),
+            _normalized(np.asarray(forward, dtype=np.float64).reshape(3), fallback=(0.0, 0.0, 1.0)),
+        )
+        self._fixed_projection = "perspective"
+        self._fixed_perspective_fov_deg = max(1.0, min(179.0, float(fov_deg)))
+        self.update()
+
+    def clear_fixed_view(self) -> None:
+        self._fixed_view_basis = None
+        self._fixed_projection = "orthographic"
+        self.update()
+
     def set_tag(
         self,
         *,
@@ -307,9 +354,12 @@ class AprilTagWorldDebugView(QWidget):
         buttons = event.buttons()
         if buttons & Qt.LeftButton:
             self._user_navigated = True
-            self._view_yaw_deg -= float(delta.x()) * 0.35
-            self._view_pitch_deg = max(-85.0, min(85.0, self._view_pitch_deg + float(delta.y()) * 0.25))
-            self.update()
+            if self._fixed_view_basis is not None:
+                self.fixed_view_dragged.emit(float(delta.x()), float(delta.y()))
+            else:
+                self._view_yaw_deg -= float(delta.x()) * 0.35
+                self._view_pitch_deg = max(-85.0, min(85.0, self._view_pitch_deg + float(delta.y()) * 0.25))
+                self.update()
         elif buttons & (Qt.RightButton | Qt.MiddleButton):
             self._user_navigated = True
             right, up, _forward = self._view_basis()
@@ -370,6 +420,8 @@ class AprilTagWorldDebugView(QWidget):
             self._pixels_per_unit = max(0.01, min(5000.0, viewport / (span * 1.4)))
 
     def _view_basis(self) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+        if self._fixed_view_basis is not None:
+            return self._fixed_view_basis
         yaw = np.deg2rad(self._view_yaw_deg)
         pitch = np.deg2rad(self._view_pitch_deg)
         forward = np.array(
@@ -390,9 +442,20 @@ class AprilTagWorldDebugView(QWidget):
         points = np.asarray(points, dtype=np.float64).reshape(-1, 3)
         right, up, forward = self._view_basis()
         rel = points - self._view_center
+        depth = rel @ forward
+        if self._fixed_projection == "perspective":
+            size = float(max(1, min(max(self.width(), 1), max(self.height(), 1))))
+            focal = 0.5 * size / np.tan(np.deg2rad(self._fixed_perspective_fov_deg) * 0.5)
+            view_x = rel @ right
+            view_y = rel @ up
+            xy = np.full((len(points), 2), np.nan, dtype=np.float64)
+            valid = np.isfinite(depth) & (depth > 1e-8)
+            with np.errstate(divide="ignore", invalid="ignore"):
+                xy[valid, 0] = self.width() * 0.5 + focal * (view_x[valid] / depth[valid])
+                xy[valid, 1] = self.height() * 0.5 - focal * (view_y[valid] / depth[valid])
+            return xy, depth
         x = rel @ right * self._pixels_per_unit + self.width() * 0.5
         y = -(rel @ up) * self._pixels_per_unit + self.height() * 0.5
-        depth = rel @ forward
         return np.column_stack([x, y]), depth
 
     def _draw_grid(self, painter: QPainter) -> None:
@@ -487,6 +550,8 @@ class AprilTagWorldDebugView(QWidget):
         positions = np.asarray([group.camera_position_sfm for group in self._groups], dtype=np.float64)
         xy, _depth = self._project(positions)
         for group, point in zip(self._groups, xy, strict=True):
+            if not np.all(np.isfinite(point)):
+                continue
             selected = group.name == self._selected_group_name
             color = QColor(255, 218, 92) if selected else QColor(95, 160, 255)
             radius = 5 if selected else 3
@@ -496,8 +561,10 @@ class AprilTagWorldDebugView(QWidget):
             painter.setBrush(Qt.NoBrush)
         selected = self._selected_group()
         if selected is not None:
-            self._draw_selected_frustum(painter, selected)
-            self._draw_world_line(painter, selected.camera_position_sfm, self._tag_center, QColor(120, 230, 180), 1, dashed=True)
+            self._draw_selected_face_rays(painter, selected)
+            if self._fixed_projection != "perspective":
+                self._draw_selected_frustum(painter, selected)
+                self._draw_world_line(painter, selected.camera_position_sfm, self._tag_center, QColor(120, 230, 180), 1, dashed=True)
 
     def _camera_name_at_screen_pos(self, pos: QPointF, *, max_distance_px: float = 12.0) -> str | None:
         if not self._groups:
@@ -530,6 +597,46 @@ class AprilTagWorldDebugView(QWidget):
             self._draw_world_line(painter, a, b, color, 2)
         self._draw_world_line(painter, position, center + forward * distance, QColor(255, 245, 150), 2)
 
+    def _draw_selected_face_rays(self, painter: QPainter, group: CubemapFrameGroup) -> None:
+        for label, start, end, color in self._selected_face_ray_segments(group):
+            self._draw_world_arrow(painter, start, end, color, label, width=2)
+
+    def _selected_face_ray_segments(
+        self,
+        group: CubemapFrameGroup,
+    ) -> tuple[tuple[str, np.ndarray, np.ndarray, QColor], ...]:
+        position = np.asarray(group.camera_position_sfm, dtype=np.float64)
+        scene_scale = max(self._grid_step * 2.0, self._grid_extent * 0.12, self._tag_size_m / self._true_scale * 2.0)
+        length = max(0.5, scene_scale)
+        start_distance = max(length * 0.06, 1e-4)
+        colors = {
+            "pz": QColor(255, 245, 150),
+            "nz": QColor(210, 130, 255),
+            "px": QColor(255, 100, 100),
+            "nx": QColor(255, 150, 190),
+            "top": QColor(120, 255, 130),
+            "bottom": QColor(90, 220, 255),
+            "py": QColor(120, 255, 130),
+            "ny": QColor(90, 220, 255),
+        }
+        ordered_faces = ("pz", "px", "nx", "nz", "top", "bottom", "py", "ny")
+        segments: list[tuple[str, np.ndarray, np.ndarray, QColor]] = []
+        for face in ordered_faces:
+            frame = group.frames_by_face.get(face)
+            if frame is None:
+                continue
+            direction = np.array([0.0, 0.0, 1.0], dtype=np.float64) @ frame.camera_to_world_rotation.T
+            direction = _normalized(direction, fallback=(0.0, 0.0, 1.0))
+            segments.append(
+                (
+                    face,
+                    position + direction * start_distance,
+                    position + direction * length,
+                    colors[face],
+                )
+            )
+        return tuple(segments)
+
     def _preview_frustum_rays_in_world(self) -> tuple[np.ndarray, np.ndarray]:
         forward, corner_rays = axis_preview_frustum_rays(
             output_size=129,
@@ -557,6 +664,8 @@ class AprilTagWorldDebugView(QWidget):
         except Exception:
             return
         xy, _depth = self._project(corners)
+        if not np.all(np.isfinite(xy)):
+            return
         polygon = QPolygonF([QPointF(float(x), float(y)) for x, y in xy])
         painter.setPen(QPen(QColor(0, 255, 180), 3))
         painter.setBrush(QColor(0, 255, 180, 35))
@@ -588,6 +697,8 @@ class AprilTagWorldDebugView(QWidget):
         dashed: bool = False,
     ) -> None:
         xy, _depth = self._project(np.vstack([a, b]))
+        if not np.all(np.isfinite(xy)):
+            return
         pen = QPen(color, width)
         if dashed:
             pen.setStyle(Qt.DashLine)
@@ -606,6 +717,8 @@ class AprilTagWorldDebugView(QWidget):
         width: int,
     ) -> None:
         xy, _depth = self._project(np.vstack([a, b]))
+        if not np.all(np.isfinite(xy)):
+            return
         self._draw_screen_arrow(
             painter,
             QPointF(float(xy[0, 0]), float(xy[0, 1])),
@@ -657,6 +770,8 @@ class AprilTagWorldDebugView(QWidget):
 
     def _draw_marker(self, painter: QPainter, point: np.ndarray, color: QColor, label: str, *, radius: int) -> None:
         xy, _depth = self._project(np.asarray(point, dtype=np.float64).reshape(1, 3))
+        if not np.all(np.isfinite(xy)):
+            return
         center = QPointF(float(xy[0, 0]), float(xy[0, 1]))
         painter.setPen(QPen(QColor(7, 10, 14), 3))
         painter.setBrush(color)

@@ -51,6 +51,23 @@ def _frame_at(name: str, position: tuple[float, float, float]) -> PinholeFrame:
     )
 
 
+def _frame_with_rotation(name: str, face: str, rotation: np.ndarray) -> PinholeFrame:
+    transform = np.eye(4)
+    transform[:3, :3] = np.asarray(rotation, dtype=float)
+    return PinholeFrame(
+        frame_id=f"{name}_{face}",
+        file_path=f"images/{name}_{face}.png",
+        image_path=Path(f"images/{name}_{face}.png"),
+        width=100,
+        height=100,
+        fl_x=50.0,
+        fl_y=50.0,
+        cx=49.5,
+        cy=49.5,
+        transform_matrix=transform,
+    )
+
+
 def test_load_point_cloud_sample_ascii_ply(tmp_path: Path) -> None:
     ply = tmp_path / "points.ply"
     ply.write_text(
@@ -170,6 +187,49 @@ def test_world_debug_frustum_converts_camera_preview_axes_to_world_axes() -> Non
     view.deleteLater()
 
 
+def test_world_debug_view_selected_face_rays_follow_frame_rotations() -> None:
+    _app()
+    view = AprilTagWorldDebugView()
+    group = CubemapFrameGroup(
+        name="frame_0001",
+        frames_by_face={
+            "pz": _frame_with_rotation("frame_0001", "pz", np.eye(3)),
+            "nz": _frame_with_rotation("frame_0001", "nz", np.diag([-1.0, 1.0, -1.0])),
+        },
+    )
+
+    segments = view._selected_face_ray_segments(group)
+    directions = {
+        label: (end - start) / np.linalg.norm(end - start)
+        for label, start, end, _color in segments
+    }
+
+    assert np.allclose(directions["pz"], [0.0, 0.0, 1.0])
+    assert np.allclose(directions["nz"], [0.0, 0.0, -1.0])
+    view.deleteLater()
+
+
+def test_world_debug_view_face_direction_rays_use_frame_rotations_directly() -> None:
+    _app()
+    view = AprilTagWorldDebugView()
+    group = CubemapFrameGroup(
+        name="frame_0001",
+        frames_by_face={
+            "pz": _frame_with_rotation("frame_0001", "pz", np.eye(3)),
+            "nz": _frame_with_rotation("frame_0001", "nz", np.diag([-1.0, 1.0, -1.0])),
+        },
+    )
+    segments = view._selected_face_ray_segments(group)
+    directions = {
+        label: (end - start) / np.linalg.norm(end - start)
+        for label, start, end, _color in segments
+    }
+
+    assert np.allclose(directions["pz"], [0.0, 0.0, 1.0])
+    assert np.allclose(directions["nz"], [0.0, 0.0, -1.0])
+    view.deleteLater()
+
+
 def test_world_display_group_rotates_camera_position_and_rotation() -> None:
     transform = np.eye(4)
     transform[:3, 3] = np.array([1.0, 2.0, 3.0])
@@ -277,6 +337,102 @@ def test_world_debug_view_orientation_gizmo_matches_viewport_z_convention() -> N
     view.deleteLater()
 
 
+def test_world_debug_view_fixed_view_uses_same_projection_path() -> None:
+    _app()
+    view = AprilTagWorldDebugView()
+    view.resize(400, 300)
+
+    view.set_fixed_view(
+        center=np.array([0.0, 0.0, 0.0]),
+        right=np.array([1.0, 0.0, 0.0]),
+        up=np.array([0.0, 1.0, 0.0]),
+        forward=np.array([0.0, 0.0, 1.0]),
+        pixels_per_unit=20.0,
+    )
+    projected, depth = view._project(np.array([[1.0, 2.0, 3.0]], dtype=float))
+
+    assert np.allclose(projected[0], [view.width() * 0.5 + 20.0, view.height() * 0.5 - 40.0])
+    assert np.allclose(depth[0], 3.0)
+    view.clear_fixed_view()
+    assert view._fixed_view_basis is None
+    view.deleteLater()
+
+
+def test_world_debug_view_fixed_perspective_view_uses_pinhole_projection() -> None:
+    _app()
+    view = AprilTagWorldDebugView()
+    view.resize(400, 300)
+
+    view.set_fixed_perspective_view(
+        camera_position=np.array([0.0, 0.0, 0.0]),
+        right=np.array([1.0, 0.0, 0.0]),
+        up=np.array([0.0, 1.0, 0.0]),
+        forward=np.array([0.0, 0.0, 1.0]),
+        fov_deg=90.0,
+    )
+    projected, depth = view._project(np.array([[1.0, 0.0, 2.0], [0.0, 0.0, -1.0]], dtype=float))
+
+    focal = min(view.width(), view.height()) * 0.5
+    assert np.allclose(projected[0], [view.width() * 0.5 + focal * 0.5, view.height() * 0.5])
+    assert np.allclose(depth[0], 2.0)
+    assert np.all(np.isnan(projected[1]))
+    view.deleteLater()
+
+
+def test_world_debug_view_fixed_view_drag_emits_camera_delta() -> None:
+    _app()
+
+    class MouseEventStub:
+        def __init__(
+            self,
+            position: QPointF,
+            button: Qt.MouseButton,
+            buttons: Qt.MouseButton,
+        ) -> None:
+            self._position = position
+            self._button = button
+            self._buttons = buttons
+
+        def position(self) -> QPointF:
+            return self._position
+
+        def button(self) -> Qt.MouseButton:
+            return self._button
+
+        def buttons(self) -> Qt.MouseButton:
+            return self._buttons
+
+    view = AprilTagWorldDebugView()
+    view.resize(400, 300)
+    view.set_fixed_view(
+        center=np.array([0.0, 0.0, 0.0]),
+        right=np.array([1.0, 0.0, 0.0]),
+        up=np.array([0.0, 1.0, 0.0]),
+        forward=np.array([0.0, 0.0, 1.0]),
+        pixels_per_unit=20.0,
+    )
+    deltas: list[tuple[float, float]] = []
+    view.fixed_view_dragged.connect(lambda dx, dy: deltas.append((dx, dy)))
+
+    view.mousePressEvent(
+        MouseEventStub(
+            QPointF(100.0, 100.0),
+            Qt.MouseButton.LeftButton,
+            Qt.MouseButton.LeftButton,
+        )
+    )
+    view.mouseMoveEvent(
+        MouseEventStub(
+            QPointF(112.0, 93.0),
+            Qt.MouseButton.NoButton,
+            Qt.MouseButton.LeftButton,
+        )
+    )
+
+    assert deltas == [(12.0, -7.0)]
+    view.deleteLater()
+
+
 def test_world_debug_view_camera_point_click_emits_group_name() -> None:
     _app()
     group_a = CubemapFrameGroup(name="frame_a", frames_by_face={"pz": _frame_at("frame_a", (-2.0, 0.0, 0.0))})
@@ -311,6 +467,51 @@ def test_dev_placer_selects_frame_group_by_world_view_name() -> None:
     window.frame_group_combo.blockSignals(False)
 
     assert window.frame_group_combo.currentData() == "frame_b"
+    window.deleteLater()
+
+
+def test_dev_placer_pointcloud_mode_uses_second_world_debug_view() -> None:
+    _app()
+    group = CubemapFrameGroup(name="frame_0001", frames_by_face={"pz": _frame_at("frame_0001", (0.0, 0.0, 0.0))})
+    window = DevAprilTagPlacerWindow()
+    window._cubemap_groups = (group,)
+    window.frame_group_combo.blockSignals(True)
+    window.frame_group_combo.addItem("frame_0001 (1 faces)", "frame_0001")
+    window.frame_group_combo.blockSignals(False)
+    window.coordinate_profile_combo.setCurrentIndex(window.coordinate_profile_combo.findData("custom"))
+    window.center_editor.set_value((0.0, 0.0, 5.0))
+    window.pointcloud_preview_check.blockSignals(True)
+    window.pointcloud_preview_check.setChecked(True)
+    window.pointcloud_preview_check.blockSignals(False)
+    window._scene_preview_params = PerspectiveParams(yaw_deg=0.0, pitch_deg=0.0, fov_deg=90.0)
+
+    window._sync_world_debug_view()
+
+    assert window.preview_stack.currentWidget() is window.camera_debug_view
+    assert window.camera_debug_view._fixed_view_basis is not None
+    assert window.camera_debug_view._fixed_projection == "perspective"
+    xy, _depth = window.camera_debug_view._project(np.array([[1.0, 0.0, 2.5]], dtype=float))
+    assert xy[0, 0] > window.camera_debug_view.width() * 0.5
+    window.deleteLater()
+
+
+def test_dev_placer_pointcloud_camera_pose_uses_loaded_face_layout() -> None:
+    _app()
+    group = CubemapFrameGroup(name="frame_0001", frames_by_face={"pz": _frame_at("frame_0001", (0.0, 0.0, 0.0))})
+    window = DevAprilTagPlacerWindow()
+    window.coordinate_profile_combo.setCurrentIndex(window.coordinate_profile_combo.findData("lichtfeld_cube6"))
+
+    window._scene_preview_params = PerspectiveParams(yaw_deg=0.0, pitch_deg=0.0, fov_deg=90.0)
+    _camera, right, up, forward = window._camera_debug_view_pose(group)
+
+    assert np.allclose(right, [1.0, 0.0, 0.0])
+    assert np.allclose(up, [0.0, 1.0, 0.0])
+    assert np.allclose(forward, [0.0, 0.0, 1.0])
+
+    window._scene_preview_params = PerspectiveParams(yaw_deg=90.0, pitch_deg=0.0, fov_deg=90.0)
+    _camera, _right, _up, forward_px = window._camera_debug_view_pose(group)
+
+    assert np.allclose(forward_px, [1.0, 0.0, 0.0], atol=1e-12)
     window.deleteLater()
 
 
@@ -388,7 +589,7 @@ def test_dev_placer_pointcloud_perspective_uses_selected_camera_rotation() -> No
     window.deleteLater()
 
 
-def test_dev_placer_pointcloud_preview_rotates_lichtfeld_scene_points() -> None:
+def test_dev_placer_pointcloud_preview_keeps_world_display_points() -> None:
     _app()
     window = DevAprilTagPlacerWindow()
     window.coordinate_profile_combo.setCurrentIndex(window.coordinate_profile_combo.findData("lichtfeld_cube6"))
@@ -398,7 +599,7 @@ def test_dev_placer_pointcloud_preview_rotates_lichtfeld_scene_points() -> None:
 
     points = window._pointcloud_preview_points_for_projection(np.array([[1.0, 2.0, 3.0]], dtype=float))
 
-    assert np.allclose(points, [[-1.0, 2.0, -3.0]])
+    assert np.allclose(points, [[1.0, 2.0, 3.0]])
     window.deleteLater()
 
 
@@ -417,12 +618,12 @@ def test_dev_placer_pointcloud_preview_uses_lichtfeld_scene_rotation_for_view() 
     assert display_group is not None
     projected, _depth, valid = window._project_world_display_points_for_preview(
         display_group,
-        np.array([[0.0, 0.0, 5.0], [1.0, 0.0, 5.0], [0.0, 0.0, 6.0]], dtype=np.float32),
+        np.array([[0.0, 0.0, -5.0], [1.0, 0.0, -5.0], [0.0, 0.0, -6.0]], dtype=np.float32),
     )
     center, plus_x, farther_z = projected
 
     assert np.all(valid)
-    assert plus_x[0] > center[0]
+    assert plus_x[0] < center[0]
     assert abs(float(farther_z[0] - center[0])) < 1.0
     window.deleteLater()
 

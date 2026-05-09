@@ -9,6 +9,7 @@ import xml.etree.ElementTree as ET
 import cv2
 import numpy as np
 
+from core.apriltag_cubemap import infer_generated_cubemap_face_rotations
 from core.apriltag_geometry import PinholeFrame, load_pinhole_frames, points_intersect_image, project_sfm_points
 from core.image_io import imread_unicode
 
@@ -178,6 +179,9 @@ def _fixed_standard_cube6_face_rotations(group: CubemapFrameGroup) -> dict[str, 
 
 
 def _standard_cube6_face_rotations(group: CubemapFrameGroup) -> dict[str, np.ndarray] | None:
+    generated = infer_generated_cubemap_face_rotations(group.frames_by_face)
+    if generated is not None:
+        return generated
     fixed = _fixed_standard_cube6_face_rotations(group)
     if fixed is None:
         return None
@@ -325,7 +329,46 @@ def _best_standard_face(
 
 def virtual_camera_rotation(group: CubemapFrameGroup, *, yaw_deg: float, pitch_deg: float) -> np.ndarray:
     """Return a camera-to-world rotation for the interactive preview view."""
-    return group.reference_frame.camera_to_world_rotation @ _rotation_matrix(yaw_deg, pitch_deg)
+    return virtual_camera_rotation_with_roll(group, yaw_deg=yaw_deg, pitch_deg=pitch_deg, roll_deg=0.0)
+
+
+def virtual_camera_rotation_with_roll(
+    group: CubemapFrameGroup,
+    *,
+    yaw_deg: float,
+    pitch_deg: float,
+    roll_deg: float = 0.0,
+) -> np.ndarray:
+    """Return a camera-to-world rotation for the interactive preview view."""
+    local_rotation = _rotation_matrix(yaw_deg, pitch_deg, roll_deg)
+    base_rotation = _preview_base_rotation(group)
+    if base_rotation is not None:
+        return base_rotation @ local_rotation
+    return group.reference_frame.camera_to_world_rotation @ local_rotation
+
+
+def _preview_base_rotation(group: CubemapFrameGroup) -> np.ndarray | None:
+    rotations = _standard_cube6_face_rotations(group)
+    if rotations is None:
+        return None
+    bases: list[np.ndarray] = []
+    for face, rotation in rotations.items():
+        frame = group.frames_by_face.get(face)
+        if frame is None:
+            continue
+        bases.append(frame.camera_to_world_rotation @ rotation.T)
+    if not bases:
+        return None
+    matrix = np.mean(np.stack(bases, axis=0), axis=0)
+    try:
+        u, _s, vt = np.linalg.svd(matrix)
+    except np.linalg.LinAlgError:
+        return bases[0]
+    base = u @ vt
+    if float(np.linalg.det(base)) < 0.0:
+        u[:, -1] *= -1.0
+        base = u @ vt
+    return base
 
 
 def _view_rays(output_size: int, fov_deg: float) -> np.ndarray:

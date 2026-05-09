@@ -201,6 +201,63 @@ def _write_generated_cube6_transforms(path: Path) -> Path:
     return path
 
 
+def _export_rotation(yaw_deg: float, pitch_deg: float) -> np.ndarray:
+    yaw = np.deg2rad(yaw_deg)
+    pitch = np.deg2rad(pitch_deg)
+    ry = np.array(
+        [
+            [np.cos(yaw), 0.0, np.sin(yaw)],
+            [0.0, 1.0, 0.0],
+            [-np.sin(yaw), 0.0, np.cos(yaw)],
+        ],
+        dtype=float,
+    )
+    rx = np.array(
+        [
+            [1.0, 0.0, 0.0],
+            [0.0, np.cos(pitch), -np.sin(pitch)],
+            [0.0, np.sin(pitch), np.cos(pitch)],
+        ],
+        dtype=float,
+    )
+    return rx @ ry
+
+
+def _write_gui_cube6_generated_transforms(path: Path) -> Path:
+    image_dir = path.parent / "images"
+    image_dir.mkdir(parents=True, exist_ok=True)
+    views = (
+        ("bottom", -90.0, -90.0),
+        ("px", 0.0, 0.0),
+        ("nz", 90.0, 0.0),
+        ("nx", 180.0, 0.0),
+        ("pz", -90.0, 0.0),
+        ("top", -90.0, 90.0),
+    )
+    frames = []
+    for name, yaw, pitch in views:
+        (image_dir / f"frame_0001_{name}.jpg").write_bytes(b"fake image bytes")
+        transform = np.eye(4)
+        transform[:3, :3] = _export_rotation(yaw, pitch).T
+        frames.append({"file_path": f"images/frame_0001_{name}.jpg", "transform_matrix": transform.tolist()})
+    path.write_text(
+        json.dumps(
+            {
+                "camera_model": "SIMPLE_PINHOLE",
+                "w": 100,
+                "h": 100,
+                "fl_x": 50.0,
+                "fl_y": 50.0,
+                "cx": 49.5,
+                "cy": 49.5,
+                "frames": frames,
+            }
+        ),
+        encoding="utf-8",
+    )
+    return path
+
+
 def test_create_case_reference_mode_copies_metadata_only(tmp_path: Path) -> None:
     source = _write_transforms(tmp_path / "source" / "transforms.json")
     ply = tmp_path / "source" / "pointcloud.ply"
@@ -986,6 +1043,39 @@ def test_generated_cube6_transforms_are_normalized_for_preview_projection(tmp_pa
 
     assert face == "px"
     assert np.allclose(ray, np.array([1.0, 0.0, 0.0]))
+    assert projected is not None
+    assert np.allclose(projected[0], np.array([49.5, 49.5]))
+
+
+def test_gui_cube6_generated_transforms_use_gui_face_layout(tmp_path: Path) -> None:
+    transforms = _write_gui_cube6_generated_transforms(tmp_path / "transforms.json")
+    group = load_cubemap_frame_groups(transforms)[0]
+
+    assert face_view_params(group, "px") == (0.0, -0.0, 90.0)
+    assert face_view_params(group, "nz") == (90.0, -0.0, 90.0)
+    assert face_view_params(group, "nx") == (180.0, -0.0, 90.0)
+    assert face_view_params(group, "pz") == (-90.0, -0.0, 90.0)
+
+    ray, _up, face = view_pixel_to_world_ray_and_up(
+        group,
+        x_px=49.5,
+        y_px=49.5,
+        output_size=100,
+        yaw_deg=-90.0,
+        pitch_deg=0.0,
+        fov_deg=90.0,
+    )
+    projected = project_sfm_points_to_preview_points(
+        group,
+        np.array([[-10.0, 0.0, 0.0]], dtype=float),
+        output_size=100,
+        yaw_deg=-90.0,
+        pitch_deg=0.0,
+        fov_deg=90.0,
+    )
+
+    assert face == "pz"
+    assert np.allclose(ray, np.array([-1.0, 0.0, 0.0]))
     assert projected is not None
     assert np.allclose(projected[0], np.array([49.5, 49.5]))
 

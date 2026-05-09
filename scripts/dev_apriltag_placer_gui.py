@@ -34,6 +34,7 @@ from PySide6.QtWidgets import (
     QSizePolicy,
     QSplitter,
     QSpinBox,
+    QStackedWidget,
     QTextEdit,
     QVBoxLayout,
     QWidget,
@@ -74,6 +75,7 @@ from devtools.apriltag.cubemap_preview import (
     project_sfm_points_to_axis_preview_points,
     render_cubemap_axis_equirect,
     view_pixel_to_axis_world_ray_and_up,
+    virtual_camera_rotation_with_roll,
 )
 from devtools.apriltag.printable import create_printable_target
 from devtools.apriltag.world_debug_view import (
@@ -95,13 +97,6 @@ GRID_Z_AXIS_BGR = (245, 175, 90)
 AXIS_GIZMO_X_BGR = (92, 92, 255)
 AXIS_GIZMO_Y_BGR = (130, 245, 120)
 AXIS_GIZMO_Z_BGR = (255, 170, 96)
-POINTCLOUD_PREVIEW_XZ_ROTATION = np.diag([-1.0, 1.0, -1.0])
-POINTCLOUD_PREVIEW_XZ_ROTATION_PROFILES = frozenset(
-    {
-        "lichtfeld_cube6",
-        "lichtfeld_cube6_pre_final_ply",
-    }
-)
 
 
 def _preview_rotation_matrix(yaw_deg: float, pitch_deg: float, roll_deg: float) -> np.ndarray:
@@ -393,7 +388,15 @@ class DevAprilTagPlacerWindow(QWidget):
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setWidget(self.preview_label)
-        image_layout.addWidget(scroll)
+        self.camera_debug_view = AprilTagWorldDebugView()
+        self.camera_debug_view.setMinimumSize(520, 360)
+        self.camera_debug_view.setToolTip("選択カメラの向きに固定した3Dワールド表示です。左の3Dワールドと同じ描画経路を使います。")
+        self.camera_debug_view.camera_clicked.connect(self._select_frame_group_by_name)
+        self.camera_debug_view.fixed_view_dragged.connect(self._on_camera_debug_view_dragged)
+        self.preview_stack = QStackedWidget()
+        self.preview_stack.addWidget(scroll)
+        self.preview_stack.addWidget(self.camera_debug_view)
+        image_layout.addWidget(self.preview_stack)
         viewport_splitter.addWidget(image_group)
         viewport_splitter.setStretchFactor(0, 1)
         viewport_splitter.setStretchFactor(1, 1)
@@ -719,6 +722,7 @@ class DevAprilTagPlacerWindow(QWidget):
         if pointcloud_path is None or not pointcloud_path.is_file():
             self._world_pointcloud = None
             self.world_debug_view.set_pointcloud(None)
+            self.camera_debug_view.set_pointcloud(None)
             self._append_log("Point cloud: none")
             return
         try:
@@ -731,9 +735,11 @@ class DevAprilTagPlacerWindow(QWidget):
         except Exception as e:
             self._world_pointcloud = None
             self.world_debug_view.set_pointcloud(None)
+            self.camera_debug_view.set_pointcloud(None)
             self._append_log(f"Point cloud load failed: {e}")
             return
         self.world_debug_view.set_pointcloud(self._world_pointcloud)
+        self.camera_debug_view.set_pointcloud(self._world_pointcloud)
         self._append_log(
             f"Point cloud loaded: {pointcloud_path} "
             f"({len(self._world_pointcloud.points)} / {self._world_pointcloud.source_count} points)"
@@ -903,24 +909,30 @@ class DevAprilTagPlacerWindow(QWidget):
         group = self._selected_group()
         display_matrix = self._world_display_matrix()
         display_group = None if group is None else self._world_display_group_for(group)
-        self.world_debug_view.set_groups(self._world_display_groups())
-        self.world_debug_view.set_selected_group(group.name if group is not None else "")
+        display_groups = self._world_display_groups()
+        for view in (self.world_debug_view, self.camera_debug_view):
+            view.set_groups(display_groups)
+            view.set_selected_group(group.name if group is not None else "")
         if self.pointcloud_preview_check.isChecked() and display_group is not None:
             self.world_debug_view.set_preview_to_world_matrix(
                 self._preview_camera_rotation_for_display_group(display_group).T
             )
         else:
             self.world_debug_view.set_preview_to_world_matrix(None)
-        self.world_debug_view.set_preview_params(
-            yaw_deg=self._scene_preview_params.yaw_deg,
-            pitch_deg=self._scene_preview_params.pitch_deg,
-            roll_deg=self._scene_preview_params.roll_deg,
-            fov_deg=self._scene_preview_params.fov_deg,
+        self.camera_debug_view.set_preview_to_world_matrix(
+            None if display_group is None else self._preview_camera_rotation_for_display_group(display_group).T
         )
-        self.world_debug_view.set_grid(
-            step=self.grid_step_spin.value(),
-            extent=self.grid_extent_spin.value(),
-        )
+        for view in (self.world_debug_view, self.camera_debug_view):
+            view.set_preview_params(
+                yaw_deg=self._scene_preview_params.yaw_deg,
+                pitch_deg=self._scene_preview_params.pitch_deg,
+                roll_deg=self._scene_preview_params.roll_deg,
+                fov_deg=self._scene_preview_params.fov_deg,
+            )
+            view.set_grid(
+                step=self.grid_step_spin.value(),
+                extent=self.grid_extent_spin.value(),
+            )
         try:
             center = _transform_points_for_world_display(
                 np.asarray(self.center_editor.value(), dtype=float).reshape(1, 3),
@@ -934,15 +946,68 @@ class DevAprilTagPlacerWindow(QWidget):
                 np.asarray(self.up_editor.value(), dtype=float).reshape(1, 3),
                 display_matrix,
             )[0]
-            self.world_debug_view.set_tag(
-                center=center,
-                normal=normal,
-                up=up,
-                tag_size_m=float(self.tag_size_spin.value()),
-                true_scale=float(self.true_scale_spin.value()),
-            )
+            for view in (self.world_debug_view, self.camera_debug_view):
+                view.set_tag(
+                    center=center,
+                    normal=normal,
+                    up=up,
+                    tag_size_m=float(self.tag_size_spin.value()),
+                    true_scale=float(self.true_scale_spin.value()),
+                )
         except Exception:
             pass
+        if self.pointcloud_preview_check.isChecked() and display_group is not None:
+            camera, right, up, forward = self._camera_debug_view_pose(display_group)
+            self.camera_debug_view.set_fixed_perspective_view(
+                camera_position=camera,
+                right=right,
+                up=up,
+                forward=forward,
+                fov_deg=self._scene_preview_params.fov_deg,
+            )
+        else:
+            self.camera_debug_view.clear_fixed_view()
+        self.preview_stack.setCurrentIndex(1 if self.pointcloud_preview_check.isChecked() else 0)
+
+    def _sync_camera_debug_view_pose_only(self) -> None:
+        display_group = self._selected_world_display_group()
+        if display_group is None:
+            return
+        preview_to_world = self._preview_camera_rotation_for_display_group(display_group).T
+        self.world_debug_view.set_preview_to_world_matrix(preview_to_world)
+        self.camera_debug_view.set_preview_to_world_matrix(preview_to_world)
+        for view in (self.world_debug_view, self.camera_debug_view):
+            view.set_preview_params(
+                yaw_deg=self._scene_preview_params.yaw_deg,
+                pitch_deg=self._scene_preview_params.pitch_deg,
+                roll_deg=self._scene_preview_params.roll_deg,
+                fov_deg=self._scene_preview_params.fov_deg,
+            )
+        camera, right, up, forward = self._camera_debug_view_pose(display_group)
+        self.camera_debug_view.set_fixed_perspective_view(
+            camera_position=camera,
+            right=right,
+            up=up,
+            forward=forward,
+            fov_deg=self._scene_preview_params.fov_deg,
+        )
+        self.preview_stack.setCurrentIndex(1)
+
+    def _camera_debug_view_pose(
+        self,
+        display_group: CubemapFrameGroup,
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+        rotation = self._preview_camera_rotation_for_display_group(display_group)
+        right = np.array([1.0, 0.0, 0.0], dtype=np.float64) @ rotation.T
+        up = np.array([0.0, 1.0, 0.0], dtype=np.float64) @ rotation.T
+        forward = np.array([0.0, 0.0, 1.0], dtype=np.float64) @ rotation.T
+        right /= max(float(np.linalg.norm(right)), 1e-12)
+        up = up - right * float(up @ right)
+        up /= max(float(np.linalg.norm(up)), 1e-12)
+        forward = forward - right * float(forward @ right) - up * float(forward @ up)
+        forward /= max(float(np.linalg.norm(forward)), 1e-12)
+        camera = np.asarray(display_group.camera_position_sfm, dtype=np.float64)
+        return camera, right, up, forward
 
     def _step_camera(self, delta: int) -> None:
         count = self.frame_group_combo.count()
@@ -1033,11 +1098,13 @@ class DevAprilTagPlacerWindow(QWidget):
         if case is None:
             return
         self._set_scene_preview_params_from_spins()
-        overlays = self._preview_overlays()
+        self._sync_world_debug_view()
         try:
             if self.pointcloud_preview_check.isChecked():
-                shown = self._render_pointcloud_perspective_preview(display_group, overlays)
-            elif self.grid_only_preview_check.isChecked():
+                self.preview_stack.setCurrentIndex(1)
+                return
+            overlays = self._preview_overlays()
+            if self.grid_only_preview_check.isChecked():
                 image = self._grid_only_equirect_preview()
                 shown = self.preview_label.set_perspective_image_bgr(
                     image,
@@ -1187,23 +1254,15 @@ class DevAprilTagPlacerWindow(QWidget):
 
     def _pointcloud_preview_points_for_projection(self, points_world_display: np.ndarray) -> np.ndarray:
         points = np.asarray(points_world_display, dtype=np.float64)
-        if not self.pointcloud_preview_check.isChecked():
-            return points
-        profile = normalize_coordinate_profile(
-            self.case.coordinate_profile if self.case is not None else self.coordinate_profile_combo.currentData()
-        )
-        if profile not in POINTCLOUD_PREVIEW_XZ_ROTATION_PROFILES:
-            return points
-        return points @ POINTCLOUD_PREVIEW_XZ_ROTATION.T
+        return points
 
     def _preview_camera_rotation_for_display_group(self, display_group: CubemapFrameGroup) -> np.ndarray:
-        local_rotation = _preview_rotation_matrix(
-            self._scene_preview_params.yaw_deg,
-            self._scene_preview_params.pitch_deg,
-            self._scene_preview_params.roll_deg,
+        return virtual_camera_rotation_with_roll(
+            display_group,
+            yaw_deg=self._scene_preview_params.yaw_deg,
+            pitch_deg=self._scene_preview_params.pitch_deg,
+            roll_deg=self._scene_preview_params.roll_deg,
         )
-        camera_rotation = np.asarray(display_group.reference_frame.camera_to_world_rotation, dtype=np.float64)
-        return camera_rotation @ local_rotation
 
     def _draw_preview_overlays_bgr(self, image: np.ndarray, overlays: list[PerspectiveLabelOverlay]) -> None:
         for item in overlays:
@@ -1273,10 +1332,17 @@ class DevAprilTagPlacerWindow(QWidget):
         self._scene_preview_params = params_from_drag(self._scene_preview_params, delta_x, delta_y)
         self._sync_preview_spins()
         if self.pointcloud_preview_check.isChecked():
-            self._render_scene_preview()
+            self._sync_camera_debug_view_pose_only()
         else:
             self.preview_label.set_perspective_params(self._scene_preview_params)
             self._update_tag_preview_overlay()
+
+    def _on_camera_debug_view_dragged(self, delta_x: float, delta_y: float) -> None:
+        if not self._cubemap_groups:
+            return
+        self._scene_preview_params = params_from_drag(self._scene_preview_params, delta_x, delta_y)
+        self._sync_preview_spins()
+        self._sync_camera_debug_view_pose_only()
 
     def _on_scene_preview_clicked(self, x: float, y: float) -> None:
         if not self.place_click_check.isChecked():
