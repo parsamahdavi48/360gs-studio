@@ -243,7 +243,7 @@ def test_world_debug_view_orientation_gizmo_marks_positive_axes() -> None:
     view.deleteLater()
 
 
-def test_world_debug_view_orientation_gizmo_rotates_without_mirroring() -> None:
+def test_world_debug_view_orientation_gizmo_matches_viewport_z_convention() -> None:
     _app()
     view = AprilTagWorldDebugView()
     origin = QPointF(100.0, 100.0)
@@ -252,7 +252,7 @@ def test_world_debug_view_orientation_gizmo_rotates_without_mirroring() -> None:
 
     points = view._orientation_axis_points(origin, 20.0)
 
-    assert points["Z"].x() < origin.x()
+    assert points["Z"].x() > origin.x()
     assert points["Z"].y() == origin.y()
     assert points["Y"].x() == origin.x()
     assert points["Y"].y() < origin.y()

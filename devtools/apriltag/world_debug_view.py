@@ -366,7 +366,10 @@ class AprilTagWorldDebugView(QWidget):
         right = _normalized(right, fallback=(1.0, 0.0, 0.0))
         up = np.cross(forward, right)
         up = _normalized(up, fallback=(0.0, 1.0, 0.0))
-        return right, up, forward
+        # Match the Metashape/LichtFeld viewport convention: +X and +Y keep the
+        # same screen direction, while +Z is displayed on the opposite side.
+        screen_z_flip = np.array([1.0, 1.0, -1.0], dtype=np.float64)
+        return right * screen_z_flip, up * screen_z_flip, forward * screen_z_flip
 
     def _project(self, points: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
         points = np.asarray(points, dtype=np.float64).reshape(-1, 3)
