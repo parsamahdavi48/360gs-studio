@@ -9,7 +9,7 @@ import cv2
 import numpy as np
 
 from core.image_io import imread_unicode, imwrite_unicode
-from core.mask_metadata import mask_file_summary
+from core.mask_metadata import PIXEL_STATS_SKIPPED
 from custom_mask import load_custom_mask
 from overexposure_mask import detect_overexposure, read_image_preserve_depth
 from stitch_mask import boundary_width_to_limit_angle, create_angular_stitched_mask
@@ -34,7 +34,10 @@ class MaskPostprocessOptions:
 
 
 def mask_stats(mask_path: Path) -> dict:
-    return mask_file_summary(mask_path)
+    return {
+        "readable": mask_path.is_file(),
+        "pixel_stats": PIXEL_STATS_SKIPPED,
+    }
 
 
 def apply_mask_postprocess(image_path: Path, mask_path: Path, options: MaskPostprocessOptions) -> None:

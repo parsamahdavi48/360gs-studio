@@ -1,20 +1,22 @@
-from pathlib import Path
-
-from PIL import Image
-
 from gui.steps.mask_postprocess import mask_stats
 
 
-def test_mask_stats_records_header_without_pixel_counts(tmp_path: Path) -> None:
+def test_mask_stats_records_minimal_step3_ledger_state_without_reading_image(tmp_path) -> None:
     mask = tmp_path / "mask.png"
-    Image.new("L", (12, 8), 255).save(mask)
+    mask.write_bytes(b"not decoded by step3 ledger metadata")
 
     stats = mask_stats(mask)
 
     assert stats == {
         "readable": True,
-        "width": 12,
-        "height": 8,
-        "mode": "L",
+        "pixel_stats": "skipped",
+    }
+
+
+def test_mask_stats_marks_missing_masks_unreadable(tmp_path) -> None:
+    stats = mask_stats(tmp_path / "missing.png")
+
+    assert stats == {
+        "readable": False,
         "pixel_stats": "skipped",
     }
