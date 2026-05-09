@@ -1470,6 +1470,8 @@ class CubemapStep(
             str(self.apriltag_family_combo.currentData() or "tag36h11"),
             "--report-json",
             str(report_path),
+            "--equirect-temp-dir",
+            str(step4_meta_dir(Path(self.scene_dir)) / "apriltag_projection"),
         ]
         tag_id = self.apriltag_id_edit.text().strip()
         if tag_id:

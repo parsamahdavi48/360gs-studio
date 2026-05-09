@@ -10,6 +10,7 @@ import numpy as np
 from core.apriltag_detection import detect_apriltags
 from core.apriltag_geometry import load_pinhole_frames
 from core.apriltag_pipeline import run_apriltag_scale_estimation
+from core.apriltag_projection import EquirectProjectionConfig, prepare_equirect_detection_dataset
 from core.apriltag_synthetic import SyntheticAprilTagConfig, inject_synthetic_apriltag
 from core.image_io import imwrite_unicode
 
@@ -116,3 +117,39 @@ def test_synthetic_injection_can_validate_scale_pipeline(tmp_path: Path) -> None
     assert run.estimate.observation_count == 2
     assert run.estimate.pair_count == 1
     assert math.isclose(run.estimate.scale, 0.25, rel_tol=0.08)
+
+
+def test_equirect_detection_projection_writes_temporary_pinhole_dataset(tmp_path: Path) -> None:
+    images = tmp_path / "images"
+    images.mkdir()
+    assert imwrite_unicode(images / "a.png", np.full((32, 64, 3), 255, dtype=np.uint8))
+    transforms = tmp_path / "transforms.json"
+    transforms.write_text(
+        json.dumps(
+            {
+                "camera_model": "EQUIRECTANGULAR",
+                "frames": [
+                    {
+                        "file_path": "images/a.png",
+                        "transform_matrix": np.eye(4).tolist(),
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    projected = prepare_equirect_detection_dataset(
+        EquirectProjectionConfig(
+            transforms_json=transforms,
+            output_dir=tmp_path / "apriltag_projection",
+            output_scale=0.5,
+            workers=1,
+            remap_cache_limit=1,
+        )
+    )
+
+    data = json.loads(projected.read_text(encoding="utf-8"))
+    assert data["camera_model"] == "SIMPLE_PINHOLE"
+    assert len(data["frames"]) == 6
+    assert (projected.parent / "images" / "a_px.png").is_file()
