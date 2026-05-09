@@ -90,6 +90,40 @@ from gui.theme import apply_theme
 # colors used for the same XZ axes in AprilTagWorldDebugView.
 GRID_X_AXIS_BGR = (245, 175, 90)
 GRID_Z_AXIS_BGR = (90, 180, 245)
+AXIS_GIZMO_X_BGR = (92, 92, 255)
+AXIS_GIZMO_Y_BGR = (130, 245, 120)
+AXIS_GIZMO_Z_BGR = (255, 170, 96)
+
+
+def _preview_rotation_matrix(yaw_deg: float, pitch_deg: float, roll_deg: float) -> np.ndarray:
+    yaw = np.deg2rad(float(yaw_deg))
+    pitch = np.deg2rad(float(pitch_deg))
+    roll = np.deg2rad(float(roll_deg))
+    ry = np.array(
+        [
+            [np.cos(yaw), 0.0, np.sin(yaw)],
+            [0.0, 1.0, 0.0],
+            [-np.sin(yaw), 0.0, np.cos(yaw)],
+        ],
+        dtype=np.float64,
+    )
+    rx = np.array(
+        [
+            [1.0, 0.0, 0.0],
+            [0.0, np.cos(pitch), -np.sin(pitch)],
+            [0.0, np.sin(pitch), np.cos(pitch)],
+        ],
+        dtype=np.float64,
+    )
+    rz = np.array(
+        [
+            [np.cos(roll), -np.sin(roll), 0.0],
+            [np.sin(roll), np.cos(roll), 0.0],
+            [0.0, 0.0, 1.0],
+        ],
+        dtype=np.float64,
+    )
+    return ry @ rx @ rz
 
 
 def _transform_points_for_world_display(points: np.ndarray, matrix: np.ndarray | None) -> np.ndarray:
@@ -1056,7 +1090,56 @@ class DevAprilTagPlacerWindow(QWidget):
         self._apply_click_placement(group, ray, up)
 
     def _preview_overlays(self) -> list[PerspectiveLabelOverlay]:
-        return [*self._grid_preview_overlays(), *self._tag_preview_overlays()]
+        return [
+            *self._grid_preview_overlays(),
+            *self._tag_preview_overlays(),
+            *self._camera_axis_gizmo_overlays(),
+        ]
+
+    def _camera_axis_gizmo_overlays(self) -> list[PerspectiveLabelOverlay]:
+        size = float(self._scene_preview_size)
+        origin = np.array([54.0, max(46.0, size - 48.0)], dtype=np.float64)
+        length = 34.0
+        rotation = _preview_rotation_matrix(
+            self._scene_preview_params.yaw_deg,
+            self._scene_preview_params.pitch_deg,
+            self._scene_preview_params.roll_deg,
+        )
+        axes = (
+            ("+X", np.array([1.0, 0.0, 0.0], dtype=np.float64), AXIS_GIZMO_X_BGR),
+            ("+Y", np.array([0.0, 1.0, 0.0], dtype=np.float64), AXIS_GIZMO_Y_BGR),
+            ("+Z", np.array([0.0, 0.0, 1.0], dtype=np.float64), AXIS_GIZMO_Z_BGR),
+        )
+        overlays: list[PerspectiveLabelOverlay] = [
+            PerspectiveLabelOverlay(
+                label="",
+                box=(int(origin[0] - 4), int(origin[1] - 4), int(origin[0] + 4), int(origin[1] + 4)),
+                origin=(int(origin[0]), int(origin[1])),
+                color_bgr=(245, 245, 245),
+                highlighted=True,
+                polyline=((float(origin[0]), float(origin[1])),),
+                point_radius=4.0,
+            )
+        ]
+        for label, axis, color in axes:
+            view = axis @ rotation
+            screen_delta = np.array([view[0], -view[1]], dtype=np.float64)
+            end = origin + screen_delta * length
+            label_offset = np.array([5.0, -5.0], dtype=np.float64)
+            if float(np.linalg.norm(screen_delta)) < 0.15:
+                label_offset = np.array([5.0, 12.0 if float(view[2]) >= 0.0 else -12.0], dtype=np.float64)
+            overlays.append(
+                PerspectiveLabelOverlay(
+                    label=label,
+                    box=(int(end[0] - 4), int(end[1] - 4), int(end[0] + 4), int(end[1] + 4)),
+                    origin=(int(end[0] + label_offset[0]), int(end[1] + label_offset[1])),
+                    color_bgr=color,
+                    highlighted=True,
+                    polyline=((float(origin[0]), float(origin[1])), (float(end[0]), float(end[1]))),
+                    point_radius=3.0,
+                )
+            )
+        return overlays
 
     def _project_preview_points(self, points_sfm: np.ndarray) -> np.ndarray | None:
         group = self._selected_group()

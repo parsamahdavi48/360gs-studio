@@ -312,6 +312,24 @@ def test_dev_placer_grid_only_preview_background() -> None:
     window.deleteLater()
 
 
+def test_dev_placer_camera_axis_gizmo_marks_positive_axes() -> None:
+    _app()
+    window = DevAprilTagPlacerWindow()
+
+    overlays = window._camera_axis_gizmo_overlays()
+    by_label = {overlay.label: overlay for overlay in overlays if overlay.label}
+    origin = np.asarray(overlays[0].polyline[0], dtype=float)
+    plus_x = np.asarray(by_label["+X"].polyline[-1], dtype=float)
+    plus_y = np.asarray(by_label["+Y"].polyline[-1], dtype=float)
+    plus_z = np.asarray(by_label["+Z"].polyline[-1], dtype=float)
+
+    assert {"+X", "+Y", "+Z"}.issubset(by_label)
+    assert plus_x[0] > origin[0]
+    assert plus_y[1] < origin[1]
+    assert np.linalg.norm(plus_z - origin) < 1.0
+    window.deleteLater()
+
+
 def test_dev_placer_camera_grid_axes_include_origin() -> None:
     _app()
     transform = np.eye(4)
