@@ -426,22 +426,11 @@ def test_render_cubemap_equirect_uses_standard_cube6_face_layout(tmp_path: Path)
     rendered = render_cubemap_equirect(group, output_width=source_w, output_height=source_h)
 
     assert float(np.mean(np.abs(rendered.astype(np.int16) - source.astype(np.int16)))) < 3.0
+    assert image_ray_matrix(COORDINATE_PROFILE_LICHTFELD_CUBE6) is None
 
-    rendered_rotated = render_cubemap_equirect(
-        group,
-        output_width=source_w,
-        output_height=source_h,
-        ray_transform=image_ray_matrix(COORDINATE_PROFILE_LICHTFELD_CUBE6),
-    )
-    expected_rotated = np.dstack(
-        [
-            ((-np.sin(lon)[None, :] * cos_lat * 0.5 + 0.5) * 255).astype(np.uint8),
-            ((np.sin(lat)[:, None] * 0.5 + 0.5) * 255).repeat(source_w, axis=1).astype(np.uint8),
-            ((-np.cos(lon)[None, :] * cos_lat * 0.5 + 0.5) * 255).astype(np.uint8),
-        ]
-    )
 
-    assert float(np.mean(np.abs(rendered_rotated.astype(np.int16) - expected_rotated.astype(np.int16)))) < 3.0
+def test_lichtfeld_pre_final_profile_does_not_rotate_preview_texture() -> None:
+    assert image_ray_matrix(COORDINATE_PROFILE_LICHTFELD_CUBE6_PRE_FINAL_PLY) is None
 
 
 def test_standard_cube6_preview_click_ray_uses_matching_face_transform(tmp_path: Path) -> None:

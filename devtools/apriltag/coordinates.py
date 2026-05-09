@@ -49,14 +49,12 @@ COORDINATE_PROFILES: tuple[CoordinateProfile, ...] = (
         label="LichtFeld Cube6出力",
         pointcloud_note="output/pointcloud.plyをJSON表示座標へ重ねるため、表示時だけY 180度回転を適用します。",
         pointcloud_display_matrix=LICHTFELD_CAMERA_POINTCLOUD_ALIGNMENT,
-        image_ray_matrix=LICHTFELD_CAMERA_POINTCLOUD_ALIGNMENT,
     ),
     CoordinateProfile(
         id=COORDINATE_PROFILE_LICHTFELD_CUBE6_PRE_FINAL_PLY,
         label="LichtFeld Cube6 JSON + 補正前PLY",
         pointcloud_note="scene直下の補正前pointcloud.plyをJSON表示座標へ重ねるため、表示時だけ複合補正を適用します。",
         pointcloud_display_matrix=LICHTFELD_PRE_FINAL_POINTCLOUD_ALIGNMENT,
-        image_ray_matrix=LICHTFELD_CAMERA_POINTCLOUD_ALIGNMENT,
     ),
     CoordinateProfile(
         id=COORDINATE_PROFILE_POSTSHOT_CUBE6,

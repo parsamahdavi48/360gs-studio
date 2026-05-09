@@ -58,7 +58,6 @@ from devtools.apriltag.coordinates import (
     DEFAULT_COORDINATE_PROFILE,
     coordinate_profile_label,
     coordinate_profile_note,
-    image_ray_matrix,
     normalize_coordinate_profile,
     pointcloud_display_matrix,
 )
@@ -772,7 +771,6 @@ class DevAprilTagPlacerWindow(QWidget):
                         output_width=2048,
                         output_height=1024,
                         image_cache=self._cubemap_image_cache,
-                        ray_transform=image_ray_matrix(case.coordinate_profile),
                     )
                     self._equirect_preview_cache[cache_key] = image
         except Exception as e:
