@@ -963,6 +963,7 @@ class DevAprilTagPlacerWindow(QWidget):
                     self._scene_preview_params,
                     overlays=overlays,
                     logical_size=QSize(self._scene_preview_size, self._scene_preview_size),
+                    texture_ray_sign=(-1.0, 1.0, -1.0),
                 )
         except Exception as e:
             self.preview_label.setText(f"プレビュー生成エラー: {e}")
