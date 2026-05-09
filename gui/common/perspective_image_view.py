@@ -35,6 +35,9 @@ class PerspectiveLabelOverlay:
     highlighted: bool = False
     polygon: tuple[tuple[float, float], ...] = ()
     fill_alpha: float = 0.0
+    polyline: tuple[tuple[float, float], ...] = ()
+    dashed: bool = False
+    point_radius: float = 0.0
 
 
 def bgr_to_qimage(image: np.ndarray) -> QImage:
@@ -441,6 +444,10 @@ class PerspectiveGLImageView(QOpenGLWidget):
         x1, y1, x2, y2 = item.box
         rect = QRectF(float(x1), float(y1), float(max(1, x2 - x1)), float(max(1, y2 - y1)))
         color = QColor(int(item.color_bgr[2]), int(item.color_bgr[1]), int(item.color_bgr[0]))
+        if item.polyline:
+            self._draw_polyline_overlay(painter, item, color)
+            return
+
         if item.polygon:
             polygon = QPolygonF([QPointF(float(x), float(y)) for x, y in item.polygon])
             fill = QColor(color)
@@ -479,6 +486,32 @@ class PerspectiveGLImageView(QOpenGLWidget):
         painter.drawText(origin, item.label)
         painter.setPen(QPen(QColor(245, 245, 245) if item.highlighted else color, 1))
         painter.drawText(origin, item.label)
+
+    def _draw_polyline_overlay(self, painter: QPainter, item: PerspectiveLabelOverlay, color: QColor) -> None:
+        points = [QPointF(float(x), float(y)) for x, y in item.polyline]
+        width = 3 if item.highlighted else 1
+        pen = QPen(color, width)
+        if item.dashed:
+            pen.setStyle(Qt.DashLine)
+        painter.setPen(pen)
+        painter.setBrush(Qt.NoBrush)
+        for a, b in zip(points, points[1:], strict=False):
+            painter.drawLine(a, b)
+        if item.point_radius > 0.0 and points:
+            center = points[-1]
+            radius = float(item.point_radius)
+            painter.setPen(QPen(QColor(0, 0, 0), max(2, width + 2)))
+            painter.setBrush(color)
+            painter.drawEllipse(center, radius, radius)
+            painter.setPen(QPen(QColor(245, 245, 245), 1))
+            painter.setBrush(Qt.NoBrush)
+            painter.drawEllipse(center, radius, radius)
+        if item.label:
+            origin = QPointF(float(item.origin[0]), float(item.origin[1]))
+            painter.setPen(QPen(QColor(0, 0, 0), 4))
+            painter.drawText(origin, item.label)
+            painter.setPen(QPen(color, 1))
+            painter.drawText(origin, item.label)
 
 
 class PerspectiveImageView(QWidget):

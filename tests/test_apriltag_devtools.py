@@ -24,6 +24,7 @@ from devtools.apriltag.cubemap_preview import (
     load_metashape_camera_labels,
     order_groups_by_labels,
     project_sfm_points_to_preview,
+    project_sfm_points_to_preview_points,
     render_cubemap_equirect,
     split_cubemap_face,
     view_pixel_to_world_ray,
@@ -472,6 +473,18 @@ def test_project_sfm_points_to_standard_cube6_preview_center(tmp_path: Path) -> 
 
     assert projected_px is not None
     assert np.allclose(projected_px[0], np.array([49.5, 49.5]))
+
+    point_projected = project_sfm_points_to_preview_points(
+        group,
+        np.array([[10.0, 0.0, 0.0]], dtype=float),
+        output_size=100,
+        yaw_deg=90.0,
+        pitch_deg=0.0,
+        fov_deg=90.0,
+    )
+
+    assert point_projected is not None
+    assert np.allclose(point_projected[0], np.array([49.5, 49.5]))
 
 
 def test_standard_cube6_click_ray_and_up_use_clicked_face(tmp_path: Path) -> None:

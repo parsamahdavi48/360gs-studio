@@ -57,6 +57,7 @@ from devtools.apriltag.cubemap_preview import (
     load_metashape_camera_labels,
     order_groups_by_labels,
     project_sfm_points_to_preview,
+    project_sfm_points_to_preview_points,
     render_cubemap_equirect,
     view_pixel_to_world_ray_and_up,
 )
@@ -279,6 +280,27 @@ class DevAprilTagPlacerWindow(QWidget):
         face_row.addStretch(1)
         layout.addLayout(face_row)
 
+        grid_row = QHBoxLayout()
+        self.grid_overlay_check = QCheckBox("XZグリッド")
+        self.grid_overlay_check.setChecked(True)
+        self.grid_step_spin = QDoubleSpinBox()
+        self.grid_step_spin.setRange(0.1, 1000.0)
+        self.grid_step_spin.setDecimals(2)
+        self.grid_step_spin.setSingleStep(0.5)
+        self.grid_step_spin.setValue(2.0)
+        self.grid_extent_spin = QDoubleSpinBox()
+        self.grid_extent_spin.setRange(1.0, 100000.0)
+        self.grid_extent_spin.setDecimals(1)
+        self.grid_extent_spin.setSingleStep(5.0)
+        self.grid_extent_spin.setValue(20.0)
+        grid_row.addWidget(self.grid_overlay_check)
+        grid_row.addWidget(QLabel("間隔SfM"))
+        grid_row.addWidget(self.grid_step_spin)
+        grid_row.addWidget(QLabel("範囲SfM"))
+        grid_row.addWidget(self.grid_extent_spin)
+        grid_row.addStretch(1)
+        layout.addLayout(grid_row)
+
         hint = QLabel("Cubemap 6面から擬似360ビューを再構築します。ドラッグで視点回転、クリックで深度値に沿って中心SfM/法線/上方向を入力します。")
         hint.setWordWrap(True)
         layout.addWidget(hint)
@@ -372,6 +394,9 @@ class DevAprilTagPlacerWindow(QWidget):
         self.tag_size_spin.valueChanged.connect(lambda _value: self._update_tag_preview_overlay())
         self.tag_id_spin.valueChanged.connect(lambda _value: self._update_tag_preview_overlay())
         self.placement_depth_spin.valueChanged.connect(lambda _value: self._reapply_last_preview_click_depth())
+        self.grid_overlay_check.toggled.connect(lambda _checked: self._update_tag_preview_overlay())
+        self.grid_step_spin.valueChanged.connect(lambda _value: self._update_tag_preview_overlay())
+        self.grid_extent_spin.valueChanged.connect(lambda _value: self._update_tag_preview_overlay())
         for editor in (self.center_editor, self.normal_editor, self.up_editor):
             editor.value_changed.connect(self._update_tag_preview_overlay)
         self.save_placement_btn.clicked.connect(lambda: self._save_current_placement(show_message=True))
@@ -605,7 +630,7 @@ class DevAprilTagPlacerWindow(QWidget):
         shown = self.preview_label.set_perspective_image_bgr(
             image,
             self._scene_preview_params,
-            overlays=self._tag_preview_overlays(),
+            overlays=self._preview_overlays(),
             logical_size=QSize(self._scene_preview_size, self._scene_preview_size),
         )
         if not shown:
@@ -672,6 +697,102 @@ class DevAprilTagPlacerWindow(QWidget):
             return
         self._apply_click_placement(group, ray, up)
 
+    def _preview_overlays(self) -> list[PerspectiveLabelOverlay]:
+        return [*self._grid_preview_overlays(), *self._tag_preview_overlays()]
+
+    def _project_preview_points(self, points_sfm: np.ndarray) -> np.ndarray | None:
+        group = self._selected_group()
+        if group is None:
+            return None
+        return project_sfm_points_to_preview_points(
+            group,
+            points_sfm,
+            output_size=self._scene_preview_size,
+            yaw_deg=self._scene_preview_params.yaw_deg,
+            pitch_deg=self._scene_preview_params.pitch_deg,
+            fov_deg=self._scene_preview_params.fov_deg,
+        )
+
+    def _grid_preview_overlays(self) -> list[PerspectiveLabelOverlay]:
+        if not self.grid_overlay_check.isChecked():
+            return []
+        try:
+            center = np.asarray(self.center_editor.value(), dtype=float)
+            step = max(0.1, float(self.grid_step_spin.value()))
+            extent = max(step, float(self.grid_extent_spin.value()))
+        except Exception:
+            return []
+
+        overlays: list[PerspectiveLabelOverlay] = []
+        x_min = np.floor((center[0] - extent) / step) * step
+        x_max = np.ceil((center[0] + extent) / step) * step
+        z_min = np.floor((center[2] - extent) / step) * step
+        z_max = np.ceil((center[2] + extent) / step) * step
+        x_values = np.arange(x_min, x_max + step * 0.5, step)
+        z_values = np.arange(z_min, z_max + step * 0.5, step)
+        if len(x_values) > 80 or len(z_values) > 80:
+            return []
+
+        def add_grid_line(points: np.ndarray, color_bgr: tuple[int, int, int], highlighted: bool = False) -> None:
+            projected = self._project_preview_points(points)
+            if projected is None or not np.all(np.isfinite(projected)):
+                return
+            size = int(self._scene_preview_size)
+            min_xy = projected.min(axis=0)
+            max_xy = projected.max(axis=0)
+            if max_xy[0] < -size or max_xy[1] < -size or min_xy[0] > size * 2 or min_xy[1] > size * 2:
+                return
+            overlays.append(
+                PerspectiveLabelOverlay(
+                    label="",
+                    box=(0, 0, 0, 0),
+                    origin=(0, 0),
+                    color_bgr=color_bgr,
+                    highlighted=highlighted,
+                    polyline=tuple((float(x), float(y)) for x, y in projected),
+                )
+            )
+
+        samples = max(4, min(24, int(round(extent / max(step, 1e-6))) + 1))
+        for x in x_values:
+            zs = np.linspace(z_min, z_max, samples)
+            color = (130, 130, 130) if abs(x) > step * 0.25 else (80, 210, 255)
+            add_grid_line(np.column_stack([np.full_like(zs, x), np.zeros_like(zs), zs]), color, abs(x) <= step * 0.25)
+        for z in z_values:
+            xs = np.linspace(x_min, x_max, samples)
+            color = (130, 130, 130) if abs(z) > step * 0.25 else (255, 190, 80)
+            add_grid_line(np.column_stack([xs, np.zeros_like(xs), np.full_like(xs, z)]), color, abs(z) <= step * 0.25)
+
+        foot = np.array([center[0], 0.0, center[2]], dtype=float)
+        vertical = self._project_preview_points(np.vstack([center, foot]))
+        if vertical is not None and np.all(np.isfinite(vertical)):
+            overlays.append(
+                PerspectiveLabelOverlay(
+                    label="",
+                    box=(0, 0, 0, 0),
+                    origin=(0, 0),
+                    color_bgr=(0, 255, 255),
+                    highlighted=True,
+                    polyline=tuple((float(x), float(y)) for x, y in vertical),
+                    dashed=True,
+                )
+            )
+        foot_px = self._project_preview_points(foot.reshape(1, 3))
+        if foot_px is not None and np.all(np.isfinite(foot_px)):
+            x, y = (float(foot_px[0, 0]), float(foot_px[0, 1]))
+            overlays.append(
+                PerspectiveLabelOverlay(
+                    label="XZ",
+                    box=(int(x - 8), int(y - 8), int(x + 8), int(y + 8)),
+                    origin=(int(x + 10), int(y - 10)),
+                    color_bgr=(0, 255, 255),
+                    highlighted=True,
+                    polyline=((x, y),),
+                    point_radius=7.0,
+                )
+            )
+        return overlays
+
     def _tag_preview_overlays(self) -> list[PerspectiveLabelOverlay]:
         group = self._selected_group()
         if group is None:
@@ -717,7 +838,7 @@ class DevAprilTagPlacerWindow(QWidget):
         ]
 
     def _update_tag_preview_overlay(self) -> None:
-        self.preview_label.set_perspective_label_overlays(self._tag_preview_overlays())
+        self.preview_label.set_perspective_label_overlays(self._preview_overlays())
 
     def _save_current_placement(self, *, show_message: bool) -> tuple[AprilTagDevCase, AprilTagPlacement, Path] | None:
         case = self._require_case()
