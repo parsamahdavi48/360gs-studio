@@ -245,8 +245,8 @@ def test_standard_cube6_face_view_params_use_preview_convention(tmp_path: Path) 
     assert face_view_params(group, "pz") == (0.0, 0.0, 90.0)
     assert face_view_params(group, "px") == (90.0, 0.0, 90.0)
     assert face_view_params(group, "nx") == (-90.0, 0.0, 90.0)
-    assert face_view_params(group, "top") == (0.0, 90.0, 90.0)
-    assert face_view_params(group, "bottom") == (0.0, -90.0, 90.0)
+    assert face_view_params(group, "top") == (0.0, -90.0, 90.0)
+    assert face_view_params(group, "bottom") == (0.0, 90.0, 90.0)
 
 
 def test_face_view_params_matches_preview_pitch_sign(tmp_path: Path) -> None:

@@ -30,6 +30,18 @@ _STANDARD_FACE_VIEW_PARAMS: dict[str, tuple[float, float]] = {
     "py": (0.0, -90.0),
     "ny": (0.0, 90.0),
 }
+_STANDARD_FACE_LOOK_PARAMS: dict[str, tuple[float, float]] = {
+    "pz": (0.0, 0.0),
+    "px": (90.0, 0.0),
+    "nz": (180.0, 0.0),
+    "nx": (-90.0, 0.0),
+    # Human-facing preview pitch: negative looks up, positive looks down.
+    # Keep this separate from the exported face layout above.
+    "top": (0.0, -90.0),
+    "bottom": (0.0, 90.0),
+    "py": (0.0, -90.0),
+    "ny": (0.0, 90.0),
+}
 
 
 @dataclass(frozen=True)
@@ -379,8 +391,8 @@ def face_view_params(group: CubemapFrameGroup, face: str, *, fov_deg: float = 90
     frame = group.frames_by_face.get(face)
     if frame is None:
         return None
-    if _standard_cube6_face_rotations(group) is not None and face in _STANDARD_FACE_VIEW_PARAMS:
-        yaw, pitch = _STANDARD_FACE_VIEW_PARAMS[face]
+    if _standard_cube6_face_rotations(group) is not None and face in _STANDARD_FACE_LOOK_PARAMS:
+        yaw, pitch = _STANDARD_FACE_LOOK_PARAMS[face]
         return float(yaw), float(pitch), float(fov_deg)
     forward_world = np.array([0.0, 0.0, 1.0], dtype=np.float64) @ frame.camera_to_world_rotation.T
     local = forward_world @ group.reference_frame.camera_to_world_rotation
