@@ -418,6 +418,12 @@ def test_step4_scrolls_tab_content_not_whole_settings_pane() -> None:
 
         step._set_export_method("metashape")
         window._refresh_step4_subnav()
+        QTest.mouseClick(window.step4_sub_buttons["sfm"], Qt.LeftButton)
+        app.processEvents()
+        assert step.pipeline_stage_intent("sfm") is True
+        assert window.step4_sub_intent_buttons["sfm"].property("toggleEnabled") == "false"
+        assert window.step4_subnotice_label.text() == i18n.t("STEP4_PIPELINE_NOTICE_METASHAPE_INPUT_LOCKED_ON")
+        assert 1 <= window.step4_subnotice_label.text().count("\\n") <= 2
         QTest.mouseClick(window.step4_sub_intent_buttons["conversion"], Qt.LeftButton)
         app.processEvents()
         assert step.pipeline_stage_intent("sfm") is False
@@ -427,6 +433,11 @@ def test_step4_scrolls_tab_content_not_whole_settings_pane() -> None:
         metrics = window.step4_subnotice_label.fontMetrics()
         for line in window.step4_subnotice_label.text().splitlines():
             assert metrics.horizontalAdvance(line) <= notice_width
+        QTest.mouseClick(window.step4_sub_buttons["sfm"], Qt.LeftButton)
+        app.processEvents()
+        assert step.pipeline_stage_intent("sfm") is False
+        assert window.step4_subnotice_label.text() == i18n.t("STEP4_PIPELINE_NOTICE_METASHAPE_INPUT_LOCKED_OFF")
+        assert 1 <= window.step4_subnotice_label.text().count("\\n") <= 2
         QTest.mouseClick(window.step4_sub_intent_buttons["conversion"], Qt.LeftButton)
         app.processEvents()
         assert step.pipeline_stage_intent("sfm") is True

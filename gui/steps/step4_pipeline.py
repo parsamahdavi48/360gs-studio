@@ -51,6 +51,16 @@ class Step4PipelineMixin:
     def toggle_pipeline_stage_intent(self, stage: str) -> None:
         self.set_pipeline_stage_intent(stage, not self.pipeline_stage_intent(stage))
 
+    def pipeline_stage_toggle_blocked_notice(self, stage: str) -> str:
+        if stage == _PIPELINE_STAGE_SFM and self._is_metashape_method():
+            key = (
+                "STEP4_PIPELINE_NOTICE_METASHAPE_INPUT_LOCKED_ON"
+                if self.pipeline_stage_intent(stage)
+                else "STEP4_PIPELINE_NOTICE_METASHAPE_INPUT_LOCKED_OFF"
+            )
+            return i18n.t(key)
+        return ""
+
     def set_pipeline_stage_intent(self, stage: str, enabled: bool) -> None:
         enabled = bool(enabled)
         if stage == _PIPELINE_STAGE_SFM:
@@ -103,6 +113,7 @@ class Step4PipelineMixin:
             intent = self.pipeline_stage_intent(stage)
             intent_enabled = self.pipeline_stage_intent_enabled(stage)
             intent_toggle_enabled = self.pipeline_stage_intent_toggle_enabled(stage)
+            blocked_notice = self.pipeline_stage_toggle_blocked_notice(stage)
             intent_key = "STEP4_PIPELINE_INTENT_ON" if intent else "STEP4_PIPELINE_INTENT_OFF"
             if stage == _PIPELINE_STAGE_SFM and self._is_metashape_method():
                 intent_tooltip = i18n.t("STEP4_PIPELINE_INTENT_METASHAPE_INPUT")
@@ -154,6 +165,7 @@ class Step4PipelineMixin:
                     "intent_checked": intent_checked,
                     "intent_enabled": intent_enabled,
                     "intent_toggle_enabled": intent_toggle_enabled,
+                    "toggle_blocked_notice": blocked_notice,
                     "intent_symbol": intent_symbol,
                     "intent_tooltip": intent_tooltip,
                     "row_tooltip": i18n.t(

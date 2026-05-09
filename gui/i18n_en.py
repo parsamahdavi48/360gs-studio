@@ -833,6 +833,8 @@ STRINGS: dict[str, str] = {
     "STEP4_PIPELINE_METASHAPE_CUBE_DISABLES_INPUT": "Turning off Cubemap conversion that uses XML/PLY also turns off the Metashape input check.",
     "STEP4_PIPELINE_NOTICE_METASHAPE_ENABLED_INPUT": "Cubemap conversion\nuses XML/PLY\nMetashape input check is on",
     "STEP4_PIPELINE_NOTICE_METASHAPE_DISABLED_INPUT": "Cubemap conversion\nusing XML/PLY is off\nMetashape input check is off",
+    "STEP4_PIPELINE_NOTICE_METASHAPE_INPUT_LOCKED_OFF": "Metashape input check\nfollows Cubemap conversion\nTurn on Cubemap conversion to enable it",
+    "STEP4_PIPELINE_NOTICE_METASHAPE_INPUT_LOCKED_ON": "Metashape input check\nfollows Cubemap conversion\nTurn off Cubemap conversion to disable it",
     "STEP4_PIPELINE_COLMAP_SFM_ENABLES_CUBE": "COLMAP SfM uses Cubemap images, so enabling SfM also enables Cubemap conversion.",
     "STEP4_PIPELINE_COLMAP_CUBE_DISABLES_SFM": "Turning off Cubemap conversion skips the view images, so COLMAP SfM is turned off too.",
     "STEP4_PIPELINE_NOTICE_COLMAP_ENABLED_CUBE": "COLMAP SfM\nuses Cubemap images\nCubemap conversion is on too",

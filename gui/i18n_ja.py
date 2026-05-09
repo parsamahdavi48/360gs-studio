@@ -836,6 +836,8 @@ STRINGS: dict[str, str] = {
     "STEP4_PIPELINE_METASHAPE_CUBE_DISABLES_INPUT": "XML/PLYを使うCubemap変換をOFFにすると、Metashape入力確認もOFFになります。",
     "STEP4_PIPELINE_NOTICE_METASHAPE_ENABLED_INPUT": "Cubemap変換は\nXML/PLYを使うため\nMetashape入力確認もONにしました",
     "STEP4_PIPELINE_NOTICE_METASHAPE_DISABLED_INPUT": "XML/PLYを使う\nCubemap変換をOFFにしたため\nMetashape入力確認もOFFにしました",
+    "STEP4_PIPELINE_NOTICE_METASHAPE_INPUT_LOCKED_OFF": "Metashape入力確認は\nCubemap変換と連動します\nCubemap変換をONにすると有効になります",
+    "STEP4_PIPELINE_NOTICE_METASHAPE_INPUT_LOCKED_ON": "Metashape入力確認は\nCubemap変換と連動します\nOFFにする場合はCubemap変換をOFFにしてください",
     "STEP4_PIPELINE_COLMAP_SFM_ENABLES_CUBE": "COLMAP SfMはCubemap画像を使うため、ONにするとCubemap変換もONになります。",
     "STEP4_PIPELINE_COLMAP_CUBE_DISABLES_SFM": "Cubemap変換をOFFにすると視点画像を作らないため、COLMAP SfMもOFFになります。",
     "STEP4_PIPELINE_NOTICE_COLMAP_ENABLED_CUBE": "COLMAP SfMは\nCubemap画像を使うため\nCubemap変換もONにしました",

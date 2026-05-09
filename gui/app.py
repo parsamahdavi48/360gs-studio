@@ -541,7 +541,7 @@ class MainWindow(QWidget):
         if event.type() == QEvent.Type.MouseButtonRelease:
             for stage, widget in self.step4_sub_buttons.items():
                 if watched is widget:
-                    if widget.isEnabled() and self.step4.pipeline_stage_intent_toggle_enabled(stage):
+                    if widget.isEnabled():
                         self._toggle_step4_pipeline_stage_intent(stage)
                         return True
                     return False
@@ -577,6 +577,7 @@ class MainWindow(QWidget):
     def _toggle_step4_pipeline_stage_intent(self, stage: str) -> None:
         if not self.step4.pipeline_stage_intent_toggle_enabled(stage):
             self._set_current_step(3)
+            self._show_step4_pipeline_notice(self.step4.pipeline_stage_toggle_blocked_notice(stage))
             self._refresh_step4_subnav()
             self._update_run_button()
             return
@@ -638,6 +639,7 @@ class MainWindow(QWidget):
                 intent_btn.setText(str(item["intent_symbol"]))
                 intent_btn.setChecked(bool(item["intent_checked"]))
                 intent_btn.setEnabled(bool(item["intent_enabled"]))
+                intent_btn.setProperty("toggleEnabled", "true" if item["intent_toggle_enabled"] else "false")
                 intent_btn.setToolTip(str(item["intent_tooltip"]))
             if status_label is not None:
                 status_label.setText(str(item["status_symbol"]))
@@ -655,7 +657,7 @@ class MainWindow(QWidget):
             button.setToolTip(str(item["row_tooltip"]))
             button.setCursor(
                 Qt.CursorShape.PointingHandCursor
-                if item["intent_toggle_enabled"]
+                if item["intent_toggle_enabled"] or item["toggle_blocked_notice"]
                 else Qt.CursorShape.ArrowCursor
             )
             button.setProperty("active", "false")

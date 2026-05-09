@@ -152,6 +152,10 @@ QToolButton#navSubStepIntent:disabled {{
     color: {TEXT_DIM};
     border-color: transparent;
 }}
+QToolButton#navSubStepIntent[toggleEnabled="false"] {{
+    color: {TEXT_DIM};
+    border-color: transparent;
+}}
 QLabel#navSubStepStatus {{
     background-color: transparent;
     border: 1px solid transparent;
