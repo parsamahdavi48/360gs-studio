@@ -13,6 +13,7 @@ from devtools.apriltag.case import (
     run_dir_for_placement,
     save_placement,
 )
+from devtools.apriltag.cubemap_preview import load_cubemap_frame_groups, split_cubemap_face
 from devtools.apriltag.printable import create_printable_target
 
 
@@ -43,6 +44,42 @@ def _write_transforms(path: Path, *, absolute_image: bool = False) -> Path:
         ],
     }
     path.write_text(json.dumps(data), encoding="utf-8")
+    return path
+
+
+def _write_cubemap_transforms(path: Path) -> Path:
+    image_dir = path.parent / "images"
+    image_dir.mkdir(parents=True, exist_ok=True)
+    frames = []
+    for name in ("px", "nx", "pz", "nz", "top", "bottom"):
+        image_path = image_dir / f"frame_0001_{name}.jpg"
+        image_path.write_bytes(b"fake image bytes")
+        frames.append(
+            {
+                "file_path": f"images/frame_0001_{name}.jpg",
+                "transform_matrix": [
+                    [1.0, 0.0, 0.0, 0.0],
+                    [0.0, 1.0, 0.0, 0.0],
+                    [0.0, 0.0, 1.0, 0.0],
+                    [0.0, 0.0, 0.0, 1.0],
+                ],
+            }
+        )
+    path.write_text(
+        json.dumps(
+            {
+                "camera_model": "SIMPLE_PINHOLE",
+                "w": 100,
+                "h": 100,
+                "fl_x": 50.0,
+                "fl_y": 50.0,
+                "cx": 50.0,
+                "cy": 50.0,
+                "frames": frames,
+            }
+        ),
+        encoding="utf-8",
+    )
     return path
 
 
@@ -137,3 +174,14 @@ def test_printable_crop_marks_stay_outside_tag_square(tmp_path: Path) -> None:
     assert image.getpixel((x + tag_w + 10, y + tag_h - 1)) == (255, 255, 255)
     assert image.getpixel((x - 10, y)) == (255, 255, 255)
     assert image.getpixel((x - 10, y + tag_h - 1)) == (255, 255, 255)
+
+
+def test_cubemap_preview_groups_faces_by_frame_prefix(tmp_path: Path) -> None:
+    transforms = _write_cubemap_transforms(tmp_path / "transforms.json")
+
+    groups = load_cubemap_frame_groups(transforms)
+
+    assert split_cubemap_face("images/frame_0001_px.jpg") == ("frame_0001", "px")
+    assert len(groups) == 1
+    assert groups[0].name == "frame_0001"
+    assert set(groups[0].frames_by_face) == {"px", "nx", "pz", "nz", "top", "bottom"}

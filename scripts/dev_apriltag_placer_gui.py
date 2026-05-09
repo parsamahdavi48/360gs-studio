@@ -48,8 +48,17 @@ from devtools.apriltag.case import (
     run_dir_for_placement,
     save_placement,
 )
+from devtools.apriltag.cubemap_preview import (
+    CubemapFrameGroup,
+    load_cubemap_frame_groups,
+    render_cubemap_equirect,
+    view_pixel_to_world_ray,
+    view_up_world,
+)
 from devtools.apriltag.printable import create_printable_target
 from gui.common.browse_widget import BrowseWidget
+from gui.common.perspective_image_view import PerspectiveImageView
+from gui.common.perspective_preview import PerspectiveParams, clamp_pitch_deg, normalize_yaw_deg, params_from_drag
 from gui.theme import apply_theme
 
 
@@ -97,6 +106,11 @@ class DevAprilTagPlacerWindow(QWidget):
         self._process: QProcess | None = None
         self._queue: list[tuple[str, list[str], Callable[[], None] | None]] = []
         self._last_preview_path: Path | None = None
+        self._cubemap_groups: tuple[CubemapFrameGroup, ...] = ()
+        self._cubemap_image_cache = {}
+        self._equirect_preview_cache = {}
+        self._scene_preview_params = PerspectiveParams()
+        self._scene_preview_size = 768
 
         self._build_ui()
         self._connect_signals()
@@ -147,10 +161,13 @@ class DevAprilTagPlacerWindow(QWidget):
         self.status_label.setWordWrap(True)
         right_layout.addWidget(self.status_label)
 
-        self.preview_label = QLabel("プレビュー未作成")
-        self.preview_label.setAlignment(Qt.AlignCenter)
+        right_layout.addWidget(self._build_scene_preview_group())
+
+        self.preview_label = PerspectiveImageView("プレビュー未作成")
         self.preview_label.setMinimumSize(520, 360)
         self.preview_label.setStyleSheet("background-color: #101316; border: 1px solid #3a424d;")
+        self.preview_label.look_dragged.connect(self._on_scene_preview_dragged)
+        self.preview_label.image_clicked.connect(self._on_scene_preview_clicked)
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setWidget(self.preview_label)
@@ -185,6 +202,55 @@ class DevAprilTagPlacerWindow(QWidget):
         row.addWidget(self.create_case_btn)
         row.addWidget(self.open_case_btn)
         form.addRow("", row)
+        return group
+
+    def _build_scene_preview_group(self) -> QGroupBox:
+        group = QGroupBox("配置プレビュー")
+        layout = QVBoxLayout(group)
+        row = QHBoxLayout()
+        self.frame_group_combo = QComboBox()
+        self.frame_group_combo.setMinimumWidth(260)
+        self.reload_groups_btn = QPushButton("画像リスト更新")
+        self.render_scene_preview_btn = QPushButton("プレビュー表示")
+        row.addWidget(QLabel("画像"))
+        row.addWidget(self.frame_group_combo, stretch=1)
+        row.addWidget(self.reload_groups_btn)
+        row.addWidget(self.render_scene_preview_btn)
+        layout.addLayout(row)
+
+        params = QHBoxLayout()
+        self.look_yaw_spin = QDoubleSpinBox()
+        self.look_yaw_spin.setRange(-180.0, 180.0)
+        self.look_yaw_spin.setDecimals(1)
+        self.look_yaw_spin.setSingleStep(5.0)
+        self.look_pitch_spin = QDoubleSpinBox()
+        self.look_pitch_spin.setRange(-89.0, 89.0)
+        self.look_pitch_spin.setDecimals(1)
+        self.look_pitch_spin.setSingleStep(5.0)
+        self.look_fov_spin = QDoubleSpinBox()
+        self.look_fov_spin.setRange(20.0, 120.0)
+        self.look_fov_spin.setDecimals(1)
+        self.look_fov_spin.setSingleStep(5.0)
+        self.look_fov_spin.setValue(90.0)
+        self.placement_depth_spin = QDoubleSpinBox()
+        self.placement_depth_spin.setRange(0.01, 10000.0)
+        self.placement_depth_spin.setDecimals(3)
+        self.placement_depth_spin.setSingleStep(1.0)
+        self.placement_depth_spin.setValue(10.0)
+        for label, widget in (
+            ("yaw", self.look_yaw_spin),
+            ("pitch", self.look_pitch_spin),
+            ("FOV", self.look_fov_spin),
+            ("クリック深度SfM", self.placement_depth_spin),
+        ):
+            params.addWidget(QLabel(label))
+            params.addWidget(widget)
+        params.addStretch(1)
+        layout.addLayout(params)
+
+        hint = QLabel("Cubemap 6面から擬似360ビューを再構築します。ドラッグで視点回転、クリックで深度値に沿って中心SfM/法線/上方向を入力します。")
+        hint.setWordWrap(True)
+        layout.addWidget(hint)
         return group
 
     def _build_tag_group(self) -> QGroupBox:
@@ -261,6 +327,12 @@ class DevAprilTagPlacerWindow(QWidget):
         self.create_case_btn.clicked.connect(self._create_case)
         self.open_case_btn.clicked.connect(self._browse_case)
         self.create_printable_btn.clicked.connect(self._create_printable_target)
+        self.reload_groups_btn.clicked.connect(self._load_preview_groups)
+        self.render_scene_preview_btn.clicked.connect(self._render_scene_preview)
+        self.frame_group_combo.currentIndexChanged.connect(lambda _index: self._render_scene_preview())
+        self.look_yaw_spin.valueChanged.connect(self._on_preview_spin_changed)
+        self.look_pitch_spin.valueChanged.connect(self._on_preview_spin_changed)
+        self.look_fov_spin.valueChanged.connect(self._on_preview_spin_changed)
         self.save_placement_btn.clicked.connect(lambda: self._save_current_placement(show_message=True))
         self.inject_btn.clicked.connect(self._run_injection)
         self.estimate_btn.clicked.connect(self._run_estimation)
@@ -327,6 +399,30 @@ class DevAprilTagPlacerWindow(QWidget):
             f"入力: {case.transforms_for_processing()}\n"
             f"画像モード: {'コピー' if case.input_mode == 'copy' else '参照'}"
         )
+        self._load_preview_groups()
+
+    def _load_preview_groups(self) -> None:
+        case = self._require_case()
+        if case is None:
+            return
+        try:
+            self._cubemap_groups = load_cubemap_frame_groups(case.transforms_for_processing())
+        except Exception as e:
+            QMessageBox.critical(self, "プレビュー読み込みエラー", str(e))
+            return
+        current = self.frame_group_combo.currentText()
+        self.frame_group_combo.blockSignals(True)
+        self.frame_group_combo.clear()
+        for group in self._cubemap_groups:
+            self.frame_group_combo.addItem(f"{group.name} ({len(group.frames)} faces)", group.name)
+        if current:
+            index = self.frame_group_combo.findText(current)
+            if index >= 0:
+                self.frame_group_combo.setCurrentIndex(index)
+        self.frame_group_combo.blockSignals(False)
+        self._append_log(f"Cubemap preview groups: {len(self._cubemap_groups)}")
+        if self._cubemap_groups:
+            self._render_scene_preview()
 
     def _create_printable_target(self) -> None:
         case = self._require_case()
@@ -384,6 +480,101 @@ class DevAprilTagPlacerWindow(QWidget):
             tag_up_sfm=self.up_editor.value(),
             reference_frame=self.reference_frame_edit.text().strip(),
             note=self.note_edit.text().strip(),
+        )
+
+    def _selected_group(self) -> CubemapFrameGroup | None:
+        if not self._cubemap_groups:
+            return None
+        index = self.frame_group_combo.currentIndex()
+        if index < 0 or index >= len(self._cubemap_groups):
+            return self._cubemap_groups[0]
+        return self._cubemap_groups[index]
+
+    def _on_preview_spin_changed(self) -> None:
+        self._scene_preview_params = PerspectiveParams(
+            yaw_deg=normalize_yaw_deg(self.look_yaw_spin.value()),
+            pitch_deg=clamp_pitch_deg(self.look_pitch_spin.value()),
+            fov_deg=float(self.look_fov_spin.value()),
+        )
+        self.preview_label.set_perspective_params(self._scene_preview_params)
+
+    def _sync_preview_spins(self) -> None:
+        self.look_yaw_spin.blockSignals(True)
+        self.look_pitch_spin.blockSignals(True)
+        self.look_fov_spin.blockSignals(True)
+        self.look_yaw_spin.setValue(self._scene_preview_params.yaw_deg)
+        self.look_pitch_spin.setValue(self._scene_preview_params.pitch_deg)
+        self.look_fov_spin.setValue(self._scene_preview_params.fov_deg)
+        self.look_yaw_spin.blockSignals(False)
+        self.look_pitch_spin.blockSignals(False)
+        self.look_fov_spin.blockSignals(False)
+
+    def _render_scene_preview(self) -> None:
+        group = self._selected_group()
+        if group is None:
+            self.preview_label.setText("Cubemap画像グループがありません")
+            return
+        self._on_preview_spin_changed()
+        try:
+            image = self._equirect_preview_cache.get(group.name)
+            if image is None:
+                image = render_cubemap_equirect(
+                    group,
+                    output_width=2048,
+                    output_height=1024,
+                    image_cache=self._cubemap_image_cache,
+                )
+                self._equirect_preview_cache[group.name] = image
+        except Exception as e:
+            self.preview_label.setText(f"プレビュー生成エラー: {e}")
+            return
+        self.preview_label.set_drag_mode("look")
+        shown = self.preview_label.set_perspective_image_bgr(
+            image,
+            self._scene_preview_params,
+            logical_size=QSize(self._scene_preview_size, self._scene_preview_size),
+        )
+        if not shown:
+            self.preview_label.setText("GPU透視投影プレビューを初期化できませんでした")
+        self.reference_frame_edit.setText(group.name)
+
+    def _on_scene_preview_dragged(self, delta_x: float, delta_y: float) -> None:
+        if not self._cubemap_groups:
+            return
+        self._scene_preview_params = params_from_drag(self._scene_preview_params, delta_x, delta_y)
+        self._sync_preview_spins()
+        self.preview_label.set_perspective_params(self._scene_preview_params)
+
+    def _on_scene_preview_clicked(self, x: float, y: float) -> None:
+        group = self._selected_group()
+        if group is None:
+            return
+        size = float(self._scene_preview_size)
+        x_px = max(0.0, min(size - 1.0, x))
+        y_px = max(0.0, min(size - 1.0, y))
+        ray = view_pixel_to_world_ray(
+            group,
+            x_px=x_px,
+            y_px=y_px,
+            output_size=self._scene_preview_size,
+            yaw_deg=self._scene_preview_params.yaw_deg,
+            pitch_deg=self._scene_preview_params.pitch_deg,
+            fov_deg=self._scene_preview_params.fov_deg,
+        )
+        center = group.camera_position_sfm + ray * float(self.placement_depth_spin.value())
+        normal = -ray
+        up = view_up_world(
+            group,
+            yaw_deg=self._scene_preview_params.yaw_deg,
+            pitch_deg=self._scene_preview_params.pitch_deg,
+        )
+        self.center_editor.set_value(tuple(float(v) for v in center))
+        self.normal_editor.set_value(tuple(float(v) for v in normal))
+        self.up_editor.set_value(tuple(float(v) for v in up))
+        self.reference_frame_edit.setText(group.name)
+        self._append_log(
+            "Placement filled from preview click: "
+            f"group={group.name}, depth_sfm={self.placement_depth_spin.value():.3f}"
         )
 
     def _save_current_placement(self, *, show_message: bool) -> tuple[AprilTagDevCase, AprilTagPlacement, Path] | None:
@@ -574,13 +765,17 @@ class DevAprilTagPlacerWindow(QWidget):
         pixmap = QPixmap(str(self._last_preview_path))
         if pixmap.isNull():
             return
-        self.preview_label.setPixmap(pixmap.scaled(self.preview_label.size(), Qt.KeepAspectRatio, Qt.SmoothTransformation))
-        self.preview_label.setMinimumSize(QSize(520, 360))
+        self.preview_label.set_drag_mode("pan")
+        self.preview_label.set_source_pixmap(pixmap)
         self._append_log(f"Preview loaded: {self._last_preview_path}")
 
     def resizeEvent(self, event) -> None:  # noqa: ANN001, N802 - Qt API
         super().resizeEvent(event)
-        if self._last_preview_path and self._last_preview_path.is_file():
+        if (
+            self._last_preview_path
+            and self._last_preview_path.is_file()
+            and not self.preview_label.is_showing_gpu_perspective()
+        ):
             self._load_preview()
 
     def _open_run_dir(self) -> None:
@@ -619,4 +814,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

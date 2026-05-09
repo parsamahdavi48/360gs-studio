@@ -10,12 +10,14 @@ class ZoomableImageLabel(QLabel):
     """QLabel-like image view with wheel zoom, drag pan, and double-click reset."""
 
     look_dragged = Signal(float, float)
+    image_clicked = Signal(float, float)
 
     def __init__(self, text: str = "", parent=None) -> None:
         super().__init__(text, parent)
         self._source_pixmap: QPixmap | None = None
         self._zoom = 1.0
         self._pan = QPointF(0.0, 0.0)
+        self._drag_start: QPointF | None = None
         self._drag_last: QPointF | None = None
         self._drag_mode = "pan"
         self.setAlignment(Qt.AlignCenter)
@@ -87,6 +89,7 @@ class ZoomableImageLabel(QLabel):
 
     def mousePressEvent(self, event: QMouseEvent) -> None:
         if self._source_pixmap is not None and event.button() == Qt.LeftButton:
+            self._drag_start = event.position()
             self._drag_last = event.position()
             self.setCursor(Qt.ClosedHandCursor)
             event.accept()
@@ -110,8 +113,15 @@ class ZoomableImageLabel(QLabel):
 
     def mouseReleaseEvent(self, event: QMouseEvent) -> None:
         if event.button() == Qt.LeftButton and self._drag_last is not None:
+            start = self._drag_start
+            release = event.position()
             self._drag_last = None
+            self._drag_start = None
             self.setCursor(Qt.OpenHandCursor)
+            if start is not None and (release - start).manhattanLength() < 4:
+                clicked = self._logical_point_from_widget(release)
+                if clicked is not None:
+                    self.image_clicked.emit(clicked.x(), clicked.y())
             event.accept()
             return
         super().mouseReleaseEvent(event)
@@ -149,6 +159,16 @@ class ZoomableImageLabel(QLabel):
         left = (self.width() - draw_w) / 2.0 + self._pan.x()
         top = (self.height() - draw_h) / 2.0 + self._pan.y()
         return QRectF(left, top, draw_w, draw_h)
+
+    def _logical_point_from_widget(self, point: QPointF) -> QPointF | None:
+        if self._source_pixmap is None:
+            return None
+        target = self._target_rect()
+        if not target.contains(point):
+            return None
+        x = (point.x() - target.left()) / max(target.width(), 1e-12) * self._source_pixmap.width()
+        y = (point.y() - target.top()) / max(target.height(), 1e-12) * self._source_pixmap.height()
+        return QPointF(float(x), float(y))
 
     def _clamp_pan(self) -> None:
         if self._source_pixmap is None or self._source_pixmap.isNull():

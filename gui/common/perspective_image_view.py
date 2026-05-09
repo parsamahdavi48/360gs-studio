@@ -63,6 +63,7 @@ class PerspectiveGLImageView(QOpenGLWidget):
     """OpenGL-backed FOV perspective view over an equirectangular texture."""
 
     look_dragged = Signal(float, float)
+    image_clicked = Signal(float, float)
     gpu_failed = Signal()
 
     _VERTEX_SHADER = """
@@ -132,6 +133,7 @@ class PerspectiveGLImageView(QOpenGLWidget):
         self._overlays: list[PerspectiveLabelOverlay] = []
         self._zoom = 1.0
         self._pan = QPointF(0.0, 0.0)
+        self._drag_start: QPointF | None = None
         self._drag_last: QPointF | None = None
         self._drag_mode = "look"
         self.setMouseTracking(True)
@@ -310,6 +312,7 @@ class PerspectiveGLImageView(QOpenGLWidget):
 
     def mousePressEvent(self, event: QMouseEvent) -> None:  # noqa: N802 - Qt API
         if not self._source_image.isNull() and event.button() == Qt.LeftButton:
+            self._drag_start = event.position()
             self._drag_last = event.position()
             self.setCursor(Qt.ClosedHandCursor)
             event.accept()
@@ -333,8 +336,15 @@ class PerspectiveGLImageView(QOpenGLWidget):
 
     def mouseReleaseEvent(self, event: QMouseEvent) -> None:  # noqa: N802 - Qt API
         if event.button() == Qt.LeftButton and self._drag_last is not None:
+            start = self._drag_start
+            release = event.position()
             self._drag_last = None
+            self._drag_start = None
             self.setCursor(Qt.OpenHandCursor)
+            if start is not None and (release - start).manhattanLength() < 4:
+                clicked = self._logical_point_from_widget(release)
+                if clicked is not None:
+                    self.image_clicked.emit(clicked.x(), clicked.y())
             event.accept()
             return
         super().mouseReleaseEvent(event)
@@ -384,6 +394,16 @@ class PerspectiveGLImageView(QOpenGLWidget):
         left = (self.width() - draw_w) / 2.0 + self._pan.x()
         top = (self.height() - draw_h) / 2.0 + self._pan.y()
         return QRectF(left, top, draw_w, draw_h)
+
+    def _logical_point_from_widget(self, point: QPointF) -> QPointF | None:
+        target = self._target_rect()
+        if not target.contains(point):
+            return None
+        logical_w = max(1.0, float(self._logical_size.width()))
+        logical_h = max(1.0, float(self._logical_size.height()))
+        x = (point.x() - target.left()) / max(target.width(), 1e-12) * logical_w
+        y = (point.y() - target.top()) / max(target.height(), 1e-12) * logical_h
+        return QPointF(float(x), float(y))
 
     def _clamp_pan(self) -> None:
         if self._logical_size.width() <= 0 or self._logical_size.height() <= 0:
@@ -442,6 +462,7 @@ class PerspectiveImageView(QWidget):
     """Switches between the existing CPU pixmap view and GPU perspective view."""
 
     look_dragged = Signal(float, float)
+    image_clicked = Signal(float, float)
     gpu_failed = Signal()
 
     def __init__(self, text: str = "", parent: QWidget | None = None) -> None:
@@ -449,6 +470,7 @@ class PerspectiveImageView(QWidget):
         self._cpu_view = ZoomableImageLabel(text)
         self._gpu_view: PerspectiveGLImageView | None = PerspectiveGLImageView(text)
         self._gpu_view.look_dragged.connect(self.look_dragged.emit)
+        self._gpu_view.image_clicked.connect(self.image_clicked.emit)
         self._gpu_view.gpu_failed.connect(self._on_gpu_failed)
         self._gpu_failed = False
         self._drag_mode = "pan"
@@ -460,6 +482,7 @@ class PerspectiveImageView(QWidget):
         self._stack.setCurrentWidget(self._cpu_view)
 
         self._cpu_view.look_dragged.connect(self.look_dragged.emit)
+        self._cpu_view.image_clicked.connect(self.image_clicked.emit)
 
     @property
     def _source_pixmap(self):  # noqa: ANN001 - compatibility with existing preview tests
