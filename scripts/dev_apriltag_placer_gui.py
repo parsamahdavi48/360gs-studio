@@ -29,6 +29,7 @@ from PySide6.QtWidgets import (
     QPushButton,
     QScrollArea,
     QSizePolicy,
+    QSplitter,
     QSpinBox,
     QTextEdit,
     QVBoxLayout,
@@ -63,6 +64,7 @@ from devtools.apriltag.cubemap_preview import (
     view_pixel_to_world_ray_and_up,
 )
 from devtools.apriltag.printable import create_printable_target
+from devtools.apriltag.world_debug_view import AprilTagWorldDebugView, PointCloudSample, load_point_cloud_sample
 from gui.common.browse_widget import BrowseWidget
 from gui.common.perspective_image_view import PerspectiveImageView, PerspectiveLabelOverlay
 from gui.common.perspective_preview import PerspectiveParams, clamp_pitch_deg, normalize_yaw_deg, params_from_drag
@@ -122,6 +124,7 @@ class DevAprilTagPlacerWindow(QWidget):
         self._scene_preview_params = PerspectiveParams()
         self._scene_preview_size = 768
         self._last_click_state: tuple[str, np.ndarray, np.ndarray] | None = None
+        self._world_pointcloud: PointCloudSample | None = None
 
         self._build_ui()
         self._connect_signals()
@@ -174,6 +177,19 @@ class DevAprilTagPlacerWindow(QWidget):
 
         right_layout.addWidget(self._build_scene_preview_group())
 
+        viewport_splitter = QSplitter(Qt.Horizontal)
+        right_layout.addWidget(viewport_splitter, stretch=1)
+
+        world_group = QGroupBox("3Dワールド")
+        world_layout = QVBoxLayout(world_group)
+        world_layout.setContentsMargins(6, 6, 6, 6)
+        self.world_debug_view = AprilTagWorldDebugView()
+        world_layout.addWidget(self.world_debug_view)
+        viewport_splitter.addWidget(world_group)
+
+        image_group = QGroupBox("カメラ画像")
+        image_layout = QVBoxLayout(image_group)
+        image_layout.setContentsMargins(6, 6, 6, 6)
         self.preview_label = PerspectiveImageView("プレビュー未作成")
         self.preview_label.setMinimumSize(520, 360)
         self.preview_label.setStyleSheet("background-color: #101316; border: 1px solid #3a424d;")
@@ -182,7 +198,10 @@ class DevAprilTagPlacerWindow(QWidget):
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setWidget(self.preview_label)
-        right_layout.addWidget(scroll, stretch=1)
+        image_layout.addWidget(scroll)
+        viewport_splitter.addWidget(image_group)
+        viewport_splitter.setStretchFactor(0, 1)
+        viewport_splitter.setStretchFactor(1, 1)
 
         self.log = QTextEdit()
         self.log.setReadOnly(True)
@@ -468,7 +487,31 @@ class DevAprilTagPlacerWindow(QWidget):
         )
         self._cubemap_image_cache.clear()
         self._equirect_preview_cache.clear()
+        self._load_world_pointcloud(case)
         self._load_preview_groups()
+
+    def _load_world_pointcloud(self, case: AprilTagDevCase) -> None:
+        pointcloud_path = case.source_pointcloud
+        copied_pointcloud = case.input_dir / "pointcloud.ply"
+        if copied_pointcloud.is_file():
+            pointcloud_path = copied_pointcloud
+        if pointcloud_path is None or not pointcloud_path.is_file():
+            self._world_pointcloud = None
+            self.world_debug_view.set_pointcloud(None)
+            self._append_log("Point cloud: none")
+            return
+        try:
+            self._world_pointcloud = load_point_cloud_sample(pointcloud_path)
+        except Exception as e:
+            self._world_pointcloud = None
+            self.world_debug_view.set_pointcloud(None)
+            self._append_log(f"Point cloud load failed: {e}")
+            return
+        self.world_debug_view.set_pointcloud(self._world_pointcloud)
+        self._append_log(
+            f"Point cloud loaded: {pointcloud_path} "
+            f"({len(self._world_pointcloud.points)} / {self._world_pointcloud.source_count} points)"
+        )
 
     def _load_preview_groups(self) -> None:
         case = self._require_case()
@@ -492,6 +535,8 @@ class DevAprilTagPlacerWindow(QWidget):
                 self.frame_group_combo.setCurrentIndex(index)
         self.frame_group_combo.blockSignals(False)
         self._append_log(f"Cubemap preview groups: {len(self._cubemap_groups)}")
+        self.world_debug_view.set_groups(self._cubemap_groups)
+        self._sync_world_debug_view()
         if self._cubemap_groups:
             self._render_scene_preview()
         else:
@@ -563,6 +608,30 @@ class DevAprilTagPlacerWindow(QWidget):
             return self._cubemap_groups[0]
         return self._cubemap_groups[index]
 
+    def _sync_world_debug_view(self) -> None:
+        group = self._selected_group()
+        self.world_debug_view.set_groups(self._cubemap_groups)
+        self.world_debug_view.set_selected_group(group.name if group is not None else "")
+        self.world_debug_view.set_preview_params(
+            yaw_deg=self._scene_preview_params.yaw_deg,
+            pitch_deg=self._scene_preview_params.pitch_deg,
+            fov_deg=self._scene_preview_params.fov_deg,
+        )
+        self.world_debug_view.set_grid(
+            step=self.grid_step_spin.value(),
+            extent=self.grid_extent_spin.value(),
+        )
+        try:
+            self.world_debug_view.set_tag(
+                center=np.asarray(self.center_editor.value(), dtype=float),
+                normal=np.asarray(self.normal_editor.value(), dtype=float),
+                up=np.asarray(self.up_editor.value(), dtype=float),
+                tag_size_m=float(self.tag_size_spin.value()),
+                true_scale=float(self.true_scale_spin.value()),
+            )
+        except Exception:
+            pass
+
     def _step_camera(self, delta: int) -> None:
         count = self.frame_group_combo.count()
         if count <= 0:
@@ -586,6 +655,7 @@ class DevAprilTagPlacerWindow(QWidget):
         )
         self._sync_preview_spins()
         self.preview_label.set_perspective_params(self._scene_preview_params)
+        self._update_tag_preview_overlay()
         self._append_log(f"Jumped to face {face}: yaw={yaw:.1f}, pitch={pitch:.1f}")
 
     def _on_preview_spin_changed(self) -> None:
@@ -644,6 +714,7 @@ class DevAprilTagPlacerWindow(QWidget):
         )
         for face, button in self.face_buttons.items():
             button.setEnabled(face in group.frames_by_face)
+        self._sync_world_debug_view()
 
     def _on_scene_preview_dragged(self, delta_x: float, delta_y: float) -> None:
         if not self._cubemap_groups:
@@ -934,6 +1005,7 @@ class DevAprilTagPlacerWindow(QWidget):
 
     def _update_tag_preview_overlay(self) -> None:
         self.preview_label.set_perspective_label_overlays(self._preview_overlays())
+        self._sync_world_debug_view()
 
     def _save_current_placement(self, *, show_message: bool) -> tuple[AprilTagDevCase, AprilTagPlacement, Path] | None:
         case = self._require_case()
