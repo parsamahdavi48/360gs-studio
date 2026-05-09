@@ -14,6 +14,21 @@ from core.image_io import imread_unicode
 
 _FACE_NAMES = ("px", "nx", "pz", "nz", "top", "bottom", "py", "ny")
 _REFERENCE_FACE_ORDER = ("pz", "px", "nz", "nx", "top", "bottom", "py", "ny")
+_STANDARD_SIDE_FACES = frozenset({"px", "nx", "pz", "nz"})
+_STANDARD_VERTICAL_FACE_SETS = (frozenset({"top", "bottom"}), frozenset({"py", "ny"}))
+_STANDARD_FACE_VIEW_PARAMS: dict[str, tuple[float, float]] = {
+    "pz": (0.0, 0.0),
+    "px": (90.0, 0.0),
+    "nz": (180.0, 0.0),
+    "nx": (-90.0, 0.0),
+    # GUI Cube6 output names currently follow the generated pitch rows:
+    # top is the +90 pitch face, bottom is the -90 pitch face.
+    "top": (0.0, 90.0),
+    "bottom": (0.0, -90.0),
+    # Legacy/default converter names.
+    "py": (0.0, -90.0),
+    "ny": (0.0, 90.0),
+}
 
 
 @dataclass(frozen=True)
@@ -113,6 +128,64 @@ def _rotation_matrix(yaw_deg: float, pitch_deg: float) -> np.ndarray:
     return ry @ rx
 
 
+def _standard_cube6_face_rotations(group: CubemapFrameGroup) -> dict[str, np.ndarray] | None:
+    faces = set(group.frames_by_face)
+    if not _STANDARD_SIDE_FACES.issubset(faces):
+        return None
+    vertical_faces = next((pair for pair in _STANDARD_VERTICAL_FACE_SETS if pair.issubset(faces)), None)
+    if vertical_faces is None:
+        return None
+    standard_faces = _STANDARD_SIDE_FACES | vertical_faces
+    return {
+        face: _rotation_matrix(*_STANDARD_FACE_VIEW_PARAMS[face])
+        for face in standard_faces
+        if face in group.frames_by_face
+    }
+
+
+def _view_ray_local(
+    *,
+    x_px: float,
+    y_px: float,
+    output_size: int,
+    yaw_deg: float,
+    pitch_deg: float,
+    fov_deg: float,
+) -> np.ndarray:
+    size = max(1, int(output_size))
+    cx = float(x_px) - (size - 1) / 2.0
+    cy = float(y_px) - (size - 1) / 2.0
+    focal = 0.5 * size / np.tan(np.deg2rad(float(fov_deg)) / 2.0)
+    ray = np.array([cx, -cy, focal], dtype=np.float64)
+    ray /= max(float(np.linalg.norm(ray)), 1e-12)
+    return ray @ _rotation_matrix(yaw_deg, pitch_deg).T
+
+
+def _best_standard_face(
+    group: CubemapFrameGroup,
+    preview_ray: np.ndarray,
+) -> tuple[PinholeFrame, np.ndarray] | None:
+    rotations = _standard_cube6_face_rotations(group)
+    if rotations is None:
+        return None
+    best_frame: PinholeFrame | None = None
+    best_local: np.ndarray | None = None
+    best_z = -np.inf
+    for face, rotation in rotations.items():
+        frame = group.frames_by_face.get(face)
+        if frame is None:
+            continue
+        local = preview_ray @ rotation
+        z = float(local[2])
+        if z > best_z:
+            best_frame = frame
+            best_local = local
+            best_z = z
+    if best_frame is None or best_local is None or best_z <= 1e-8:
+        return None
+    return best_frame, best_local
+
+
 def virtual_camera_rotation(group: CubemapFrameGroup, *, yaw_deg: float, pitch_deg: float) -> np.ndarray:
     """Return a camera-to-world rotation for the interactive preview view."""
     return _rotation_matrix(yaw_deg, pitch_deg) @ group.reference_frame.camera_to_world_rotation
@@ -139,17 +212,38 @@ def view_pixel_to_world_ray(
     pitch_deg: float,
     fov_deg: float,
 ) -> np.ndarray:
-    size = max(1, int(output_size))
-    cx = float(x_px) - (size - 1) / 2.0
-    cy = float(y_px) - (size - 1) / 2.0
-    focal = 0.5 * size / np.tan(np.deg2rad(float(fov_deg)) / 2.0)
-    ray = np.array([cx, -cy, focal], dtype=np.float64)
-    ray /= max(float(np.linalg.norm(ray)), 1e-12)
+    ray = _view_ray_local(
+        x_px=x_px,
+        y_px=y_px,
+        output_size=output_size,
+        yaw_deg=yaw_deg,
+        pitch_deg=pitch_deg,
+        fov_deg=fov_deg,
+    )
+    standard_face = _best_standard_face(group, ray)
+    if standard_face is not None:
+        frame, local = standard_face
+        world_ray = local @ frame.camera_to_world_rotation.T
+        return world_ray / max(float(np.linalg.norm(world_ray)), 1e-12)
     return ray @ virtual_camera_rotation(group, yaw_deg=yaw_deg, pitch_deg=pitch_deg).T
 
 
 def view_up_world(group: CubemapFrameGroup, *, yaw_deg: float, pitch_deg: float) -> np.ndarray:
-    up = np.array([0.0, 1.0, 0.0], dtype=np.float64)
+    rotation = _rotation_matrix(yaw_deg, pitch_deg)
+    center_ray = np.array([0.0, 0.0, 1.0], dtype=np.float64) @ rotation.T
+    up = np.array([0.0, 1.0, 0.0], dtype=np.float64) @ rotation.T
+    standard_face = _best_standard_face(group, center_ray)
+    if standard_face is not None:
+        frame, _local_center = standard_face
+        face_rotation = None
+        rotations = _standard_cube6_face_rotations(group) or {}
+        for face, candidate_frame in group.frames_by_face.items():
+            if candidate_frame is frame:
+                face_rotation = rotations.get(face)
+                break
+        if face_rotation is not None:
+            up = (up @ face_rotation) @ frame.camera_to_world_rotation.T
+            return up / max(float(np.linalg.norm(up)), 1e-12)
     up = up @ virtual_camera_rotation(group, yaw_deg=yaw_deg, pitch_deg=pitch_deg).T
     return up / max(float(np.linalg.norm(up)), 1e-12)
 
@@ -158,11 +252,16 @@ def face_view_params(group: CubemapFrameGroup, face: str, *, fov_deg: float = 90
     frame = group.frames_by_face.get(face)
     if frame is None:
         return None
+    if _standard_cube6_face_rotations(group) is not None and face in _STANDARD_FACE_VIEW_PARAMS:
+        yaw, pitch = _STANDARD_FACE_VIEW_PARAMS[face]
+        return float(yaw), float(pitch), float(fov_deg)
     forward_world = np.array([0.0, 0.0, 1.0], dtype=np.float64) @ frame.camera_to_world_rotation.T
     local = forward_world @ group.reference_frame.camera_to_world_rotation
     local /= max(float(np.linalg.norm(local)), 1e-12)
     yaw = float(np.rad2deg(np.arctan2(local[0], local[2])))
-    pitch = float(np.rad2deg(np.arcsin(np.clip(local[1], -1.0, 1.0))))
+    # PerspectiveImageView's shader applies positive pitch toward local -Y.
+    # Convert transform-space local +Y/-Y to the same UI convention.
+    pitch = float(-np.rad2deg(np.arcsin(np.clip(local[1], -1.0, 1.0))))
     return yaw, pitch, float(fov_deg)
 
 
@@ -221,6 +320,10 @@ def render_cubemap_perspective(
 
 
 def _equirect_world_rays(width: int, height: int, reference_rotation: np.ndarray) -> np.ndarray:
+    return _equirect_local_rays(width, height) @ reference_rotation.T
+
+
+def _equirect_local_rays(width: int, height: int) -> np.ndarray:
     xs = (np.arange(width, dtype=np.float64) + 0.5) / max(width, 1)
     ys = (np.arange(height, dtype=np.float64) + 0.5) / max(height, 1)
     lon = (xs * 2.0 - 1.0) * np.pi
@@ -234,7 +337,42 @@ def _equirect_world_rays(width: int, height: int, reference_rotation: np.ndarray
         ],
         axis=-1,
     )
-    return rays_ref @ reference_rotation.T
+    return rays_ref
+
+
+def _sample_frame_to_output(
+    *,
+    frame: PinholeFrame,
+    image: np.ndarray,
+    local_rays: np.ndarray,
+    output: np.ndarray,
+    best_score: np.ndarray,
+) -> None:
+    image_bgr = image[:, :, :3] if image.ndim == 3 else cv2.cvtColor(image, cv2.COLOR_GRAY2BGR)
+    z = local_rays[:, :, 2]
+    with np.errstate(divide="ignore", invalid="ignore"):
+        map_x = frame.fl_x * (local_rays[:, :, 0] / z) + frame.cx
+        map_y = frame.cy - frame.fl_y * (local_rays[:, :, 1] / z)
+    valid = (
+        (z > 1e-8)
+        & (map_x >= 0.0)
+        & (map_y >= 0.0)
+        & (map_x < frame.width - 1)
+        & (map_y < frame.height - 1)
+    )
+    better = valid & (z > best_score)
+    if not np.any(better):
+        return
+    sampled = cv2.remap(
+        image_bgr,
+        map_x.astype(np.float32),
+        map_y.astype(np.float32),
+        cv2.INTER_LINEAR,
+        borderMode=cv2.BORDER_CONSTANT,
+        borderValue=(16, 16, 16),
+    )
+    output[better] = sampled[better]
+    best_score[better] = z[better]
 
 
 def render_cubemap_equirect(
@@ -251,11 +389,19 @@ def render_cubemap_equirect(
     """
     width = max(1, int(output_width))
     height = max(1, int(output_height))
-    world_rays = _equirect_world_rays(width, height, group.reference_frame.camera_to_world_rotation)
+    standard_rotations = _standard_cube6_face_rotations(group)
+    rays = (
+        _equirect_local_rays(width, height)
+        if standard_rotations is not None
+        else _equirect_world_rays(width, height, group.reference_frame.camera_to_world_rotation)
+    )
 
     output = np.full((height, width, 3), 16, dtype=np.uint8)
     best_score = np.full((height, width), -np.inf, dtype=np.float64)
-    for frame in group.frames:
+    for face, frame in group.frames_by_face.items():
+        face_rotation = standard_rotations.get(face) if standard_rotations is not None else None
+        if standard_rotations is not None and face_rotation is None:
+            continue
         image = None
         if image_cache is not None:
             image = image_cache.get(frame.image_path)
@@ -265,30 +411,12 @@ def render_cubemap_equirect(
                 image_cache[frame.image_path] = image
         if image is None:
             continue
-        image_bgr = image[:, :, :3] if image.ndim == 3 else cv2.cvtColor(image, cv2.COLOR_GRAY2BGR)
-        local = world_rays @ frame.camera_to_world_rotation
-        z = local[:, :, 2]
-        with np.errstate(divide="ignore", invalid="ignore"):
-            map_x = frame.fl_x * (local[:, :, 0] / z) + frame.cx
-            map_y = frame.cy - frame.fl_y * (local[:, :, 1] / z)
-        valid = (
-            (z > 1e-8)
-            & (map_x >= 0.0)
-            & (map_y >= 0.0)
-            & (map_x < frame.width - 1)
-            & (map_y < frame.height - 1)
+        local = rays @ face_rotation if face_rotation is not None else rays @ frame.camera_to_world_rotation
+        _sample_frame_to_output(
+            frame=frame,
+            image=image,
+            local_rays=local,
+            output=output,
+            best_score=best_score,
         )
-        better = valid & (z > best_score)
-        if not np.any(better):
-            continue
-        sampled = cv2.remap(
-            image_bgr,
-            map_x.astype(np.float32),
-            map_y.astype(np.float32),
-            cv2.INTER_LINEAR,
-            borderMode=cv2.BORDER_CONSTANT,
-            borderValue=(16, 16, 16),
-        )
-        output[better] = sampled[better]
-        best_score[better] = z[better]
     return output
