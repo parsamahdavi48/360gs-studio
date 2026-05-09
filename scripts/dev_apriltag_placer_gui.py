@@ -698,6 +698,11 @@ class DevAprilTagPlacerWindow(QWidget):
             return []
         min_xy = np.floor(points.min(axis=0)).astype(int)
         max_xy = np.ceil(points.max(axis=0)).astype(int)
+        size = int(self._scene_preview_size)
+        if max_xy[0] < 0 or max_xy[1] < 0 or min_xy[0] > size or min_xy[1] > size:
+            return []
+        if int(max(max_xy - min_xy)) > size * 3:
+            return []
         origin_y = max(18, int(min_xy[1]) - 8)
         return [
             PerspectiveLabelOverlay(

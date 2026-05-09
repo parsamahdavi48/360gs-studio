@@ -461,6 +461,18 @@ def test_project_sfm_points_to_standard_cube6_preview_center(tmp_path: Path) -> 
     assert projected is not None
     assert np.allclose(projected[0], np.array([49.5, 49.5]))
 
+    projected_px = project_sfm_points_to_preview(
+        group,
+        np.array([[10.0, 0.0, 0.0]], dtype=float),
+        output_size=100,
+        yaw_deg=90.0,
+        pitch_deg=0.0,
+        fov_deg=90.0,
+    )
+
+    assert projected_px is not None
+    assert np.allclose(projected_px[0], np.array([49.5, 49.5]))
+
 
 def test_standard_cube6_click_ray_and_up_use_clicked_face(tmp_path: Path) -> None:
     px_transform = np.eye(4)

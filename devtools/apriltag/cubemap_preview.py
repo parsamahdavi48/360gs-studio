@@ -9,7 +9,7 @@ import xml.etree.ElementTree as ET
 import cv2
 import numpy as np
 
-from core.apriltag_geometry import PinholeFrame, load_pinhole_frames
+from core.apriltag_geometry import PinholeFrame, load_pinhole_frames, points_intersect_image, project_sfm_points
 from core.image_io import imread_unicode
 
 _FACE_NAMES = ("px", "nx", "pz", "nz", "top", "bottom", "py", "ny")
@@ -286,29 +286,46 @@ def view_up_world(group: CubemapFrameGroup, *, yaw_deg: float, pitch_deg: float)
     return up / max(float(np.linalg.norm(up)), 1e-12)
 
 
-def _standard_preview_ray_for_world_point(group: CubemapFrameGroup, point_sfm: np.ndarray) -> np.ndarray | None:
+def _preview_ray_from_face_pixel(frame: PinholeFrame, face_rotation: np.ndarray, point_px: np.ndarray) -> np.ndarray:
+    local = np.array(
+        [
+            (float(point_px[0]) - frame.cx) / frame.fl_x,
+            (frame.cy - float(point_px[1])) / frame.fl_y,
+            1.0,
+        ],
+        dtype=np.float64,
+    )
+    local /= max(float(np.linalg.norm(local)), 1e-12)
+    preview_ray = local @ face_rotation.T
+    return preview_ray / max(float(np.linalg.norm(preview_ray)), 1e-12)
+
+
+def _project_sfm_points_to_standard_preview_rays(
+    group: CubemapFrameGroup,
+    points_sfm: np.ndarray,
+) -> list[np.ndarray] | None:
     rotations = _standard_cube6_face_rotations(group)
     if rotations is None:
         return None
-    vector_world = np.asarray(point_sfm, dtype=np.float64) - group.camera_position_sfm
-    norm = float(np.linalg.norm(vector_world))
-    if norm <= 1e-12:
-        return None
-    best_ray: np.ndarray | None = None
-    best_z = -np.inf
+    center = np.asarray(points_sfm, dtype=np.float64).mean(axis=0)
+    best: tuple[float, PinholeFrame, np.ndarray, np.ndarray] | None = None
     for face, rotation in rotations.items():
         frame = group.frames_by_face.get(face)
         if frame is None:
             continue
-        local = vector_world @ frame.camera_to_world_rotation
-        z = float(local[2])
-        if z <= 1e-8 or z <= best_z:
+        projected = project_sfm_points(frame, points_sfm)
+        if projected is None or not points_intersect_image(projected, frame.width, frame.height):
             continue
-        best_ray = (local / norm) @ rotation.T
-        best_z = z
-    if best_ray is None:
+        center_local = (center - frame.camera_position_sfm) @ frame.camera_to_world_rotation
+        z = float(center_local[2])
+        if z <= 1e-8:
+            continue
+        if best is None or z > best[0]:
+            best = (z, frame, rotation, projected)
+    if best is None:
         return None
-    return best_ray / max(float(np.linalg.norm(best_ray)), 1e-12)
+    _z, frame, rotation, projected = best
+    return [_preview_ray_from_face_pixel(frame, rotation, point) for point in projected]
 
 
 def project_sfm_points_to_preview(
@@ -332,18 +349,24 @@ def project_sfm_points_to_preview(
     projected: list[tuple[float, float]] = []
     standard = _standard_cube6_face_rotations(group) is not None
     virtual_rotation = virtual_camera_rotation(group, yaw_deg=yaw_deg, pitch_deg=pitch_deg)
-    for point in points:
-        if standard:
-            preview_ray = _standard_preview_ray_for_world_point(group, point)
-            if preview_ray is None:
-                return None
-            view_local = preview_ray @ view_rotation
-        else:
+    if standard:
+        preview_rays = _project_sfm_points_to_standard_preview_rays(group, points)
+        if preview_rays is None:
+            return None
+    else:
+        preview_rays = []
+        for point in points:
             view_local = (point - group.camera_position_sfm) @ virtual_rotation
             norm = float(np.linalg.norm(view_local))
             if norm <= 1e-12:
                 return None
-            view_local = view_local / norm
+            preview_rays.append(view_local / norm)
+
+    for preview_ray in preview_rays:
+        if standard:
+            view_local = preview_ray @ view_rotation
+        else:
+            view_local = preview_ray
         if float(view_local[2]) <= 1e-8:
             return None
         x = center + focal * float(view_local[0] / view_local[2])
