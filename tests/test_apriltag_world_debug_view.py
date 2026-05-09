@@ -154,8 +154,8 @@ def test_dev_placer_camera_grid_axes_include_origin() -> None:
 
     overlays = window._grid_preview_overlays()
     origin = next(overlay for overlay in overlays if overlay.label == "O").polyline[0]
-    x_axis = [overlay for overlay in overlays if overlay.color_bgr == (80, 210, 255) and overlay.polyline]
-    z_axis = [overlay for overlay in overlays if overlay.color_bgr == (255, 190, 80) and overlay.polyline]
+    x_axis = [overlay for overlay in overlays if overlay.color_bgr == (245, 175, 90) and overlay.polyline]
+    z_axis = [overlay for overlay in overlays if overlay.color_bgr == (90, 180, 245) and overlay.polyline]
 
     assert any(any(np.allclose(point, origin) for point in overlay.polyline) for overlay in x_axis)
     assert any(any(np.allclose(point, origin) for point in overlay.polyline) for overlay in z_axis)

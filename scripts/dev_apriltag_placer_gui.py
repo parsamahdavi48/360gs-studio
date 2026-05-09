@@ -87,6 +87,13 @@ from gui.common.perspective_preview import PerspectiveParams, clamp_pitch_deg, n
 from gui.theme import apply_theme
 
 
+# PerspectiveLabelOverlay stores OpenCV-style BGR values; these match the RGB
+# colors used for the same XZ axes in AprilTagWorldDebugView.
+GRID_X_AXIS_BGR = (245, 175, 90)
+GRID_Z_AXIS_BGR = (90, 180, 245)
+GRID_LINE_BGR = (130, 130, 130)
+
+
 class Vec3Editor(QWidget):
     value_changed = Signal()
 
@@ -921,7 +928,7 @@ class DevAprilTagPlacerWindow(QWidget):
             is_axis = abs(x) <= draw_step * 0.25
             zs = self._line_samples(z_min, z_max, samples, include_zero=is_axis)
             x_value = 0.0 if is_axis else float(x)
-            color = (80, 210, 255) if is_axis else (130, 130, 130)
+            color = GRID_X_AXIS_BGR if is_axis else GRID_LINE_BGR
             add_grid_line(
                 np.column_stack([np.full_like(zs, x_value), np.zeros_like(zs), zs]),
                 color,
@@ -931,7 +938,7 @@ class DevAprilTagPlacerWindow(QWidget):
             is_axis = abs(z) <= draw_step * 0.25
             xs = self._line_samples(x_min, x_max, samples, include_zero=is_axis)
             z_value = 0.0 if is_axis else float(z)
-            color = (255, 190, 80) if is_axis else (130, 130, 130)
+            color = GRID_Z_AXIS_BGR if is_axis else GRID_LINE_BGR
             add_grid_line(
                 np.column_stack([xs, np.zeros_like(xs), np.full_like(xs, z_value)]),
                 color,
