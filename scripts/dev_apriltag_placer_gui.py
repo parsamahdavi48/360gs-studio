@@ -254,6 +254,9 @@ class DevAprilTagPlacerWindow(QWidget):
         self.placement_depth_spin.setDecimals(3)
         self.placement_depth_spin.setSingleStep(1.0)
         self.placement_depth_spin.setValue(10.0)
+        self.place_click_check = QCheckBox("クリックで配置を更新")
+        self.place_click_check.setChecked(True)
+        self.place_click_check.setToolTip("オンのときだけプレビュークリックでタグ位置を更新します。配置後は自動でオフになります。")
         for label, widget in (
             ("yaw", self.look_yaw_spin),
             ("pitch", self.look_pitch_spin),
@@ -262,6 +265,7 @@ class DevAprilTagPlacerWindow(QWidget):
         ):
             params.addWidget(QLabel(label))
             params.addWidget(widget)
+        params.addWidget(self.place_click_check)
         params.addStretch(1)
         layout.addLayout(params)
 
@@ -607,7 +611,6 @@ class DevAprilTagPlacerWindow(QWidget):
         )
         if not shown:
             self.preview_label.setText("GPU透視投影プレビューを初期化できませんでした")
-        self.reference_frame_edit.setText(group.name)
         index = self.frame_group_combo.currentIndex()
         position = group.camera_position_sfm
         self.camera_status_label.setText(
@@ -626,6 +629,9 @@ class DevAprilTagPlacerWindow(QWidget):
         self._update_tag_preview_overlay()
 
     def _on_scene_preview_clicked(self, x: float, y: float) -> None:
+        if not self.place_click_check.isChecked():
+            self._append_log("Preview click ignored: enable 'クリックで配置を更新' to move the tag.")
+            return
         group = self._selected_group()
         if group is None:
             return
@@ -652,6 +658,7 @@ class DevAprilTagPlacerWindow(QWidget):
             "Placement filled from preview click: "
             f"group={group.name}, depth_sfm={self.placement_depth_spin.value():.3f}"
         )
+        self.place_click_check.setChecked(False)
 
     def _apply_click_placement(self, group: CubemapFrameGroup, ray: np.ndarray, up: np.ndarray) -> None:
         center = group.camera_position_sfm + ray * float(self.placement_depth_spin.value())
