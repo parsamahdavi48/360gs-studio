@@ -24,6 +24,16 @@ LICHTFELD_FINAL_ORIENTATION = np.array(
     ],
     dtype=np.float64,
 )
+LICHTFELD_CAMERA_POINTCLOUD_ALIGNMENT = np.array(
+    [
+        [-1.0, 0.0, 0.0, 0.0],
+        [0.0, 1.0, 0.0, 0.0],
+        [0.0, 0.0, -1.0, 0.0],
+        [0.0, 0.0, 0.0, 1.0],
+    ],
+    dtype=np.float64,
+)
+LICHTFELD_PRE_FINAL_POINTCLOUD_ALIGNMENT = LICHTFELD_CAMERA_POINTCLOUD_ALIGNMENT @ LICHTFELD_FINAL_ORIENTATION
 
 COORDINATE_PROFILE_LICHTFELD_CUBE6 = "lichtfeld_cube6"
 COORDINATE_PROFILE_LICHTFELD_CUBE6_PRE_FINAL_PLY = "lichtfeld_cube6_pre_final_ply"
@@ -36,13 +46,14 @@ COORDINATE_PROFILES: tuple[CoordinateProfile, ...] = (
     CoordinateProfile(
         id=COORDINATE_PROFILE_LICHTFELD_CUBE6,
         label="LichtFeld Cube6出力",
-        pointcloud_note="output/transforms.json と output/pointcloud.ply が同じ最終座標系にある前提です。",
+        pointcloud_note="output/pointcloud.plyをJSON表示座標へ重ねるため、表示時だけY 180度回転を適用します。",
+        pointcloud_display_matrix=LICHTFELD_CAMERA_POINTCLOUD_ALIGNMENT,
     ),
     CoordinateProfile(
         id=COORDINATE_PROFILE_LICHTFELD_CUBE6_PRE_FINAL_PLY,
         label="LichtFeld Cube6 JSON + 補正前PLY",
-        pointcloud_note="表示時だけLichtFeld最終向き補正をPLYへ適用します。",
-        pointcloud_display_matrix=LICHTFELD_FINAL_ORIENTATION,
+        pointcloud_note="scene直下の補正前pointcloud.plyをJSON表示座標へ重ねるため、表示時だけ複合補正を適用します。",
+        pointcloud_display_matrix=LICHTFELD_PRE_FINAL_POINTCLOUD_ALIGNMENT,
     ),
     CoordinateProfile(
         id=COORDINATE_PROFILE_POSTSHOT_CUBE6,

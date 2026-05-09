@@ -63,9 +63,21 @@ def test_transform_point_cloud_sample_applies_lichtfeld_display_matrix() -> None
         source_count=1,
     )
 
+    transformed = transform_point_cloud_sample(sample, pointcloud_display_matrix("lichtfeld_cube6"))
+
+    assert np.allclose(transformed.points[0], [-1.0, 2.0, -3.0])
+
+
+def test_transform_point_cloud_sample_aligns_pre_final_lichtfeld_pointcloud() -> None:
+    sample = PointCloudSample(
+        points=np.array([[3.0, -2.0, 1.0]], dtype=np.float32),
+        colors=None,
+        source_count=1,
+    )
+
     transformed = transform_point_cloud_sample(sample, pointcloud_display_matrix("lichtfeld_cube6_pre_final_ply"))
 
-    assert np.allclose(transformed.points[0], [3.0, -2.0, 1.0])
+    assert np.allclose(transformed.points[0], [-1.0, 2.0, -3.0])
 
 
 def test_world_debug_view_accepts_scene_and_tag() -> None:
