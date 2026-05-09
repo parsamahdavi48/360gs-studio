@@ -49,6 +49,7 @@ _STEP_HELP_DOC_STEMS = (
     "cubemap_tools_gui",
     "training_gui",
 )
+_STEP4_PIPELINE_NOTICE_MS = 1800
 
 
 def app_icon() -> QIcon:
@@ -84,9 +85,14 @@ class MainWindow(QWidget):
         self._scene_import_worker: SceneImportWorker | None = None
         self._deferred_scene_sync_path: str | None = None
         self._deferred_scene_sync_step_ids: set[int] = set()
+        self._app_event_filter_installed = False
 
         self._build_ui(initial_scene_dir)
         self._connect_signals()
+        app = QApplication.instance()
+        if app is not None:
+            app.installEventFilter(self)
+            self._app_event_filter_installed = True
 
     def _build_ui(self, initial_scene_dir: str) -> None:
         root = QVBoxLayout(self)
@@ -174,11 +180,11 @@ class MainWindow(QWidget):
         self.step4_subnotice_label = QLabel("", self)
         self.step4_subnotice_label.setObjectName("navSubNotice")
         self.step4_subnotice_label.setWordWrap(False)
-        self.step4_subnotice_label.setAttribute(Qt.WA_TransparentForMouseEvents, True)
+        self.step4_subnotice_label.setCursor(Qt.CursorShape.PointingHandCursor)
         self.step4_subnotice_label.hide()
         self.step4_subnotice_timer = QTimer(self)
         self.step4_subnotice_timer.setSingleShot(True)
-        self.step4_subnotice_timer.timeout.connect(self.step4_subnotice_label.hide)
+        self.step4_subnotice_timer.timeout.connect(self._hide_step4_pipeline_notice)
         for index, title_text in enumerate(self.step_nav_titles):
             btn = QPushButton(title_text)
             btn.setObjectName("navStep")
@@ -525,12 +531,13 @@ class MainWindow(QWidget):
             self._sync_step_scene_if_deferred(step)
             step.on_activated()
         if index != 3:
-            self.step4_subnotice_label.hide()
-            self.step4_subnotice_timer.stop()
+            self._hide_step4_pipeline_notice()
         self._update_run_button()
         self._refresh_step4_subnav()
 
     def eventFilter(self, watched: QObject, event: QEvent) -> bool:
+        if event.type() == QEvent.Type.MouseButtonPress and self.step4_subnotice_label.isVisible():
+            self._hide_step4_pipeline_notice()
         if event.type() == QEvent.Type.MouseButtonRelease:
             for stage, widget in self.step4_sub_buttons.items():
                 if watched is widget:
@@ -595,7 +602,12 @@ class MainWindow(QWidget):
         self._position_step4_pipeline_notice()
         self.step4_subnotice_label.show()
         self.step4_subnotice_label.raise_()
-        self.step4_subnotice_timer.start(4200)
+        self.step4_subnotice_timer.start(_STEP4_PIPELINE_NOTICE_MS)
+
+    def _hide_step4_pipeline_notice(self) -> None:
+        self.step4_subnotice_timer.stop()
+        self.step4_subnotice_label.hide()
+        self.step4_subnotice_label.setText("")
 
     def _position_step4_pipeline_notice(self) -> None:
         if not self.step4_subnotice_label.isVisible() and not self.step4_subnotice_label.text():
@@ -831,6 +843,10 @@ class MainWindow(QWidget):
         if self._shutdown:
             return
         self._shutdown = True
+        app = QApplication.instance()
+        if app is not None and self._app_event_filter_installed:
+            app.removeEventFilter(self)
+            self._app_event_filter_installed = False
         if self.runner.is_running():
             self.runner.cancel()
         if self._scene_import_thread is not None and self._scene_import_thread.isRunning():

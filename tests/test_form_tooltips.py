@@ -458,6 +458,11 @@ def test_step4_scrolls_tab_content_not_whole_settings_pane() -> None:
         assert step.pipeline_stage_intent("conversion") is False
         assert window.step4_subnotice_label.text() == i18n.t("STEP4_PIPELINE_NOTICE_COLMAP_DISABLED_SFM")
         assert 1 <= window.step4_subnotice_label.text().count("\\n") <= 2
+        assert window.step4_subnotice_timer.interval() == 1800
+        QTest.mouseClick(window.step_header, Qt.LeftButton)
+        app.processEvents()
+        assert not window.step4_subnotice_label.isVisible()
+        assert window.step4_subnotice_label.text() == ""
         """
     )
 
