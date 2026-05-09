@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import csv
 import shutil
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -13,6 +14,7 @@ from core.scene_import_contracts import (
     MASK_EXTS,
     SELECTED_CSV_FIELDNAMES,
     IssueSummary,
+    SceneImportCancelToken,
     import_origin,
     is_external_import_record,
 )
@@ -40,13 +42,36 @@ from core.scene_project import (
 )
 
 
-def iter_scene_images(root: Path) -> list[Path]:
+@dataclass(frozen=True)
+class ImportedMaskItem:
+    image_path: Path
+    mask_path: Path
+    stats: dict[str, Any]
+
+
+@dataclass(frozen=True)
+class ExternalMaskPlan:
+    kept_runs: list[dict[str, Any]]
+    removed_run_ids: set[str]
+    run_id: str
+    settings: dict[str, Any]
+    image_count: int
+    items: list[ImportedMaskItem]
+    created_at: str
+
+
+def iter_scene_images(root: Path, cancel_token: SceneImportCancelToken | None = None) -> list[Path]:
     if not root.is_dir():
         return []
-    return sorted(
-        (path for path in root.rglob("*") if path.is_file() and path.suffix.lower() in IMAGE_EXTS),
-        key=lambda path: str(path).lower(),
-    )
+    paths: list[Path] = []
+    for index, path in enumerate(root.rglob("*"), start=1):
+        if cancel_token is not None and index % 256 == 0:
+            cancel_token.check_cancelled()
+        if path.is_file() and path.suffix.lower() in IMAGE_EXTS:
+            paths.append(path)
+    if cancel_token is not None:
+        cancel_token.check_cancelled()
+    return sorted(paths, key=lambda path: str(path).lower())
 
 
 def image_size(path: Path) -> tuple[int, int] | None:
@@ -104,11 +129,19 @@ def backup_existing_import_metadata(scene: Path, import_id: str) -> Path | None:
     return backup_root if copied else None
 
 
-def build_source_image_set_record(scene: Path, import_id: str, image_paths: list[Path]) -> dict[str, Any]:
+def build_source_image_set_record(
+    scene: Path,
+    import_id: str,
+    image_paths: list[Path],
+    cancel_token: SceneImportCancelToken | None = None,
+) -> dict[str, Any]:
     projections: list[str] = []
     files: list[dict[str, Any]] = []
     for index, path in enumerate(image_paths, start=1):
+        if cancel_token is not None and index % 128 == 0:
+            cancel_token.check_cancelled()
         header = image_header_info(path)
+        identity = file_identity(path)
         projection = str(header.get("detected_projection") or "unknown")
         if projection != "unknown":
             projections.append(projection)
@@ -117,8 +150,8 @@ def build_source_image_set_record(scene: Path, import_id: str, image_paths: list
                 "source_path": str(path),
                 "scene_path": scene_relative(scene, path),
                 "sequence_index": index,
-                "file": file_identity(path),
-                "source_file": file_identity(path),
+                "file": identity,
+                "source_file": identity,
                 "image": {
                     "width": int(header.get("width") or 0),
                     "height": int(header.get("height") or 0),
@@ -130,6 +163,8 @@ def build_source_image_set_record(scene: Path, import_id: str, image_paths: list
                 "origin": import_origin(import_id),
             }
         )
+    if cancel_token is not None:
+        cancel_token.check_cancelled()
 
     unique = sorted(set(projections))
     projection = unique[0] if len(unique) == 1 else ("mixed" if unique else "unknown")
@@ -259,7 +294,13 @@ def first_existing_mask(image_path: Path, images_root: Path, masks_root: Path) -
     return None
 
 
-def replace_external_masks(scene: Path, import_id: str, image_paths: list[Path], warnings: list[str]) -> int:
+def build_external_mask_plan(
+    scene: Path,
+    import_id: str,
+    image_paths: list[Path],
+    warnings: list[str],
+    cancel_token: SceneImportCancelToken | None = None,
+) -> ExternalMaskPlan:
     previous_runs = load_json(mask_runs_path(scene), {"version": 1, "runs": []})
     runs = previous_runs.get("runs")
     if not isinstance(runs, list):
@@ -270,17 +311,9 @@ def replace_external_masks(scene: Path, import_id: str, image_paths: list[Path],
         if isinstance(run, dict) and (is_external_import_record(run) or run.get("mode") == EXTERNAL_IMPORT_KIND)
     }
     kept_runs = [run for run in runs if not (isinstance(run, dict) and str(run.get("id")) in removed_run_ids)]
-    remove_external_mask_items(scene, removed_run_ids)
 
     masks_root = scene_masks_dir(scene)
-    if not image_paths or not masks_root.is_dir():
-        write_json(mask_runs_path(scene), {"version": 1, "runs": kept_runs})
-        return 0
-
-    missing = IssueSummary("masks/ missing matching files")
-    size_mismatch = IssueSummary("masks/ size mismatch")
-    unreadable = IssueSummary("masks/ unreadable files")
-    generated: list[dict[str, Any]] = []
+    run_id = f"mask_{import_id}"
     settings = {
         "mode": EXTERNAL_IMPORT_KIND,
         "origin": import_origin(import_id),
@@ -288,8 +321,24 @@ def replace_external_masks(scene: Path, import_id: str, image_paths: list[Path],
         "masks_dir": "masks",
         "mask_polarity": "white_keep_black_exclude",
     }
-    run_id = f"mask_{import_id}"
-    for image_path in image_paths:
+    if not image_paths or not masks_root.is_dir():
+        return ExternalMaskPlan(
+            kept_runs=kept_runs,
+            removed_run_ids=removed_run_ids,
+            run_id=run_id,
+            settings=settings,
+            image_count=len(image_paths),
+            items=[],
+            created_at=utc_now_iso(),
+        )
+
+    missing = IssueSummary("masks/ missing matching files")
+    size_mismatch = IssueSummary("masks/ size mismatch")
+    unreadable = IssueSummary("masks/ unreadable files")
+    items: list[ImportedMaskItem] = []
+    for index, image_path in enumerate(image_paths, start=1):
+        if cancel_token is not None and index % 128 == 0:
+            cancel_token.check_cancelled()
         mask_path = first_existing_mask(image_path, scene_images_dir(scene), masks_root)
         if mask_path is None:
             missing.add(scene_relative(scene, image_path))
@@ -303,45 +352,71 @@ def replace_external_masks(scene: Path, import_id: str, image_paths: list[Path],
             size_mismatch.add(f"{scene_relative(scene, image_path)} -> {scene_relative(scene, mask_path)}")
             continue
         stats = mask_stats(mask_path)
-        write_mask_item(
-            scene,
-            image_path=image_path,
-            mask_path=mask_path,
-            settings=settings,
-            run_id=run_id,
-            stats=stats,
-        )
-        generated.append(
-            {
-                "image": scene_relative(scene, image_path),
-                "mask": scene_relative(scene, mask_path),
-                "stats": stats,
-            }
-        )
+        items.append(ImportedMaskItem(image_path=image_path, mask_path=mask_path, stats=stats))
+
+    if cancel_token is not None:
+        cancel_token.check_cancelled()
 
     for issue in (missing, size_mismatch, unreadable):
         message = issue.message()
         if message:
             warnings.append(message)
 
-    if generated:
-        created_at = utc_now_iso()
-        kept_runs.append(
+    return ExternalMaskPlan(
+        kept_runs=kept_runs,
+        removed_run_ids=removed_run_ids,
+        run_id=run_id,
+        settings=settings,
+        image_count=len(image_paths),
+        items=items,
+        created_at=utc_now_iso(),
+    )
+
+
+def apply_external_mask_plan(scene: Path, plan: ExternalMaskPlan) -> int:
+    remove_external_mask_items(scene, plan.removed_run_ids)
+
+    generated: list[dict[str, Any]] = []
+    for item in plan.items:
+        write_mask_item(
+            scene,
+            image_path=item.image_path,
+            mask_path=item.mask_path,
+            settings=plan.settings,
+            run_id=plan.run_id,
+            stats=item.stats,
+        )
+        generated.append(
             {
-                "id": run_id,
-                "created_at": created_at,
+                "image": scene_relative(scene, item.image_path),
+                "mask": scene_relative(scene, item.mask_path),
+                "stats": item.stats,
+            }
+        )
+
+    runs = list(plan.kept_runs)
+    if generated:
+        runs.append(
+            {
+                "id": plan.run_id,
+                "created_at": plan.created_at,
                 "mode": EXTERNAL_IMPORT_KIND,
-                "origin": import_origin(import_id),
+                "origin": plan.settings["origin"],
                 "phases": [EXTERNAL_IMPORT_KIND],
-                "settings": settings,
-                "image_count": len(image_paths),
+                "settings": plan.settings,
+                "image_count": plan.image_count,
                 "mask_count": len(generated),
                 "generated": generated,
             }
         )
-        update_project(scene, "masks", {"last_run_id": run_id, "last_run_at": created_at})
-    write_json(mask_runs_path(scene), {"version": 1, "runs": kept_runs[-200:]})
+        update_project(scene, "masks", {"last_run_id": plan.run_id, "last_run_at": plan.created_at})
+    write_json(mask_runs_path(scene), {"version": 1, "runs": runs[-200:]})
     return len(generated)
+
+
+def replace_external_masks(scene: Path, import_id: str, image_paths: list[Path], warnings: list[str]) -> int:
+    plan = build_external_mask_plan(scene, import_id, image_paths, warnings)
+    return apply_external_mask_plan(scene, plan)
 
 
 def remove_external_mask_items(scene: Path, removed_run_ids: set[str]) -> None:

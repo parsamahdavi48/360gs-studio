@@ -3,11 +3,13 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
+from threading import Event
 from typing import Any
 
 EXTERNAL_IMPORT_KIND = "external_import"
 IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".tif", ".tiff", ".webp", ".bmp"}
 MASK_EXTS = IMAGE_EXTS
+DEFAULT_OUTPUT_VALIDATION_SAMPLE_LIMIT = 96
 
 SELECTED_CSV_FIELDNAMES = [
     "seq",
@@ -48,6 +50,30 @@ SELECTED_CSV_FIELDNAMES = [
     "source_label",
     "import_id",
 ]
+
+
+@dataclass(frozen=True)
+class SceneImportOptions:
+    output_validation_sample_limit: int = DEFAULT_OUTPUT_VALIDATION_SAMPLE_LIMIT
+
+
+class SceneImportCancelled(Exception):
+    """Raised when a scene import is cooperatively canceled before apply."""
+
+
+class SceneImportCancelToken:
+    def __init__(self) -> None:
+        self._event = Event()
+
+    def request_cancel(self) -> None:
+        self._event.set()
+
+    def is_cancelled(self) -> bool:
+        return self._event.is_set()
+
+    def check_cancelled(self) -> None:
+        if self.is_cancelled():
+            raise SceneImportCancelled("Scene import canceled.")
 
 
 @dataclass(frozen=True)

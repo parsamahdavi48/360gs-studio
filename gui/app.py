@@ -78,6 +78,7 @@ class MainWindow(QWidget):
         self._applying_scene_suggestion = False
         self._shutdown = False
         self._scene_import_running = False
+        self._scene_import_cancel_requested = False
         self._scene_import_thread: QThread | None = None
         self._scene_import_worker: SceneImportWorker | None = None
 
@@ -390,6 +391,7 @@ class MainWindow(QWidget):
             return
 
         self._scene_import_running = True
+        self._scene_import_cancel_requested = False
         self.progress.reset()
         self.progress.start_phase()
         self.progress.set_status(i18n.t("IMPORT_SCENE_RUNNING"))
@@ -400,6 +402,7 @@ class MainWindow(QWidget):
         worker = SceneImportWorker(Path(scene), importer=import_scene)
         worker.moveToThread(thread)
         thread.started.connect(worker.run)
+        worker.progress.connect(self.log_panel.append_log)
         worker.finished.connect(self._on_scene_import_finished)
         worker.finished.connect(thread.quit)
         worker.finished.connect(worker.deleteLater)
@@ -409,8 +412,15 @@ class MainWindow(QWidget):
         self._scene_import_worker = worker
         thread.start()
 
-    def _on_scene_import_finished(self, result: object, error: str) -> None:
+    def _on_scene_import_finished(self, result: object, error: str, canceled: bool) -> None:
         self._scene_import_running = False
+        self._scene_import_cancel_requested = False
+        if canceled:
+            self.progress.finish_phase(complete=False)
+            self.log_panel.append_log(i18n.t("IMPORT_SCENE_CANCELED"))
+            self.progress.set_status(i18n.STATUS_CANCELED)
+            self._update_run_button()
+            return
         if error:
             self.progress.finish_phase(complete=False)
             self.log_panel.append_log(f"{i18n.t('IMPORT_SCENE_FAILED')}: {error}")
@@ -591,7 +601,7 @@ class MainWindow(QWidget):
         self.run_btn.setEnabled(not busy and scene_selected and action_enabled)
 
         self.cancel_btn.setVisible(True)
-        self.cancel_btn.setEnabled(runner_running)
+        self.cancel_btn.setEnabled(runner_running or self._scene_import_running)
 
     def _workflow_busy(self) -> bool:
         return self.runner.is_running() or self._scene_import_running
@@ -668,6 +678,15 @@ class MainWindow(QWidget):
         return i18n.t("UNSAFE_PATH_REASON_UNKNOWN")
 
     def _on_cancel(self) -> None:
+        if self._scene_import_running:
+            if not self._scene_import_cancel_requested:
+                self._scene_import_cancel_requested = True
+                if self._scene_import_worker is not None:
+                    self._scene_import_worker.cancel()
+                self.log_panel.append_log(i18n.t("IMPORT_SCENE_CANCELING"))
+                self.progress.set_status(i18n.t("IMPORT_SCENE_CANCELING"))
+            self._update_run_button()
+            return
         self.runner.cancel()
         self.progress.finish_phase(complete=False)
         self.progress.set_status(i18n.STATUS_CANCELED)
@@ -724,6 +743,8 @@ class MainWindow(QWidget):
         if self.runner.is_running():
             self.runner.cancel()
         if self._scene_import_thread is not None and self._scene_import_thread.isRunning():
+            if self._scene_import_worker is not None:
+                self._scene_import_worker.cancel()
             self._scene_import_thread.quit()
             self._scene_import_thread.wait(3000)
         for step in self.steps:

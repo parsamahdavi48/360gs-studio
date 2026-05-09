@@ -5,9 +5,11 @@ import json
 from pathlib import Path
 
 import numpy as np
+import pytest
 from PIL import Image
 
 from core.scene_import import import_scene
+from core.scene_import_contracts import SceneImportCancelled, SceneImportCancelToken, SceneImportOptions
 from core.scene_layout import (
     mask_runs_path,
     scene_imports_path,
@@ -145,3 +147,52 @@ def test_scene_import_records_warnings_without_blocking(tmp_path: Path) -> None:
     assert any("missing images" in warning for warning in result.warnings)
     record = json.loads(scene_imports_path(scene).read_text(encoding="utf-8"))["imports"][-1]
     assert record["validation"]["warnings"] == list(result.warnings)
+
+
+def test_scene_import_cancel_before_apply_leaves_metadata_unchanged(tmp_path: Path) -> None:
+    scene = tmp_path
+    _write_image(scene / "images" / "frame_0001.jpg")
+    token = SceneImportCancelToken()
+
+    def progress(message: str) -> None:
+        if "build source metadata" in message:
+            token.request_cancel()
+
+    with pytest.raises(SceneImportCancelled):
+        import_scene(scene, cancel_token=token, progress_callback=progress)
+
+    assert not selected_frames_path(scene).exists()
+    assert not source_image_sets_path(scene).exists()
+    assert not scene_imports_path(scene).exists()
+
+
+def test_scene_import_samples_large_output_image_validation(tmp_path: Path, monkeypatch) -> None:
+    scene = tmp_path
+    output_images = scene / "output" / "images"
+    output_images.mkdir(parents=True)
+    frames = []
+    for index in range(200):
+        name = f"frame_{index:04d}.jpg"
+        (output_images / name).write_bytes(b"placeholder")
+        frames.append({"file_path": f"images/{name}", "transform_matrix": np.eye(4).tolist()})
+    (scene / "output" / "transforms.json").write_text(
+        json.dumps({"camera_model": "SIMPLE_PINHOLE", "frames": frames}),
+        encoding="utf-8",
+    )
+
+    calls: list[Path] = []
+
+    def fake_image_size(path: Path) -> tuple[int, int]:
+        calls.append(path)
+        return (64, 64)
+
+    monkeypatch.setattr("core.scene_import_outputs.image_size", fake_image_size)
+
+    result = import_scene(scene, options=SceneImportOptions(output_validation_sample_limit=10))
+
+    assert result.status == "ok"
+    assert result.output_image_count == 200
+    assert len(calls) == 10
+    record = json.loads(scene_imports_path(scene).read_text(encoding="utf-8"))["imports"][-1]
+    assert record["validation"]["output_image_sample_count"] == 10
+    assert record["validation"]["output_image_sample_limit"] == 10

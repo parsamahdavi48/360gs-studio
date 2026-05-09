@@ -27,3 +27,11 @@ The previous management files are backed up under `_stechdrive/imports/backups/`
 ## Validation
 
 Import checks mask pairing, image sizes, `output/transforms.json` references, 4x4 transform matrices, and `pointcloud.ply` presence when relevant. Warnings do not block import; they are written to `_stechdrive/imports/scene_imports.json` and the bottom log panel.
+
+To keep large cubemap datasets responsive, image-size validation under `output/images/` uses sampled validation by default. `transforms.json` image references are checked against the image paths already found during folder scanning.
+
+## Cancellation
+
+Scene import can be canceled while it is running. If cancellation happens during scan, validation, or metadata build, the import stops without replacing management metadata.
+
+After the final apply step starts, the app prioritizes metadata consistency and finishes the apply step. In that case, avoiding a partially written `_stechdrive` state takes precedence over canceling immediately.

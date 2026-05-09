@@ -5,7 +5,14 @@ import math
 from pathlib import Path
 from typing import Any
 
-from core.scene_import_contracts import EXTERNAL_IMPORT_KIND, IssueSummary, import_origin, is_external_import_record
+from core.scene_import_contracts import (
+    EXTERNAL_IMPORT_KIND,
+    IssueSummary,
+    SceneImportCancelToken,
+    SceneImportOptions,
+    import_origin,
+    is_external_import_record,
+)
 from core.scene_import_sources import first_existing_mask, image_size, iter_scene_images
 from core.scene_layout import (
     STEP4_SETTINGS_VERSION,
@@ -18,10 +25,17 @@ from core.scene_layout import (
 from core.scene_project import file_identity, load_json, scene_relative, update_project, utc_now_iso, write_json
 
 
-def inspect_output_dataset(scene: Path, warnings: list[str]) -> dict[str, Any]:
+def inspect_output_dataset(
+    scene: Path,
+    warnings: list[str],
+    *,
+    options: SceneImportOptions | None = None,
+    cancel_token: SceneImportCancelToken | None = None,
+) -> dict[str, Any]:
+    options = options or SceneImportOptions()
     output = scene_output_dir(scene)
-    images = iter_scene_images(output / "images")
-    masks = iter_scene_images(output / "masks")
+    images = iter_scene_images(output / "images", cancel_token)
+    masks = iter_scene_images(output / "masks", cancel_token)
     transforms = output / "transforms.json"
     pointcloud = output / "pointcloud.ply"
     data: dict[str, Any] = {}
@@ -36,18 +50,21 @@ def inspect_output_dataset(scene: Path, warnings: list[str]) -> dict[str, Any]:
             camera_model = str(data.get("camera_model") or "")
             raw_frames = data.get("frames")
             frames = raw_frames if isinstance(raw_frames, list) else []
-    elif output.exists() and (images or masks):
+    if cancel_token is not None:
+        cancel_token.check_cancelled()
+    if not transforms.is_file() and output.exists() and (images or masks):
         warnings.append("output/ exists but output/transforms.json was not found.")
 
     output_shape = infer_output_shape(camera_model, images)
     dataset_kind = "3dgut" if output_shape == "equirect_3dgut" else ("projection_views" if output_shape else "")
+    image_sample = sample_paths(images, options.output_validation_sample_limit)
 
     if images and output_shape == "projected":
-        validate_projected_output_images(images, warnings)
+        validate_projected_output_images(images, warnings, sample_paths=image_sample, cancel_token=cancel_token)
     if frames:
-        validate_transform_frames(output, frames, warnings)
+        validate_transform_frames(output, frames, warnings, image_paths=images, cancel_token=cancel_token)
     if images and masks:
-        validate_output_masks(output, images, warnings)
+        validate_output_masks(output, images, warnings, sample_paths=image_sample, cancel_token=cancel_token)
     if output_shape == "equirect_3dgut" and not pointcloud.is_file():
         warnings.append("3DGUT-style output was detected, but output/pointcloud.ply was not found.")
 
@@ -62,6 +79,8 @@ def inspect_output_dataset(scene: Path, warnings: list[str]) -> dict[str, Any]:
         "frames_count": len(frames),
         "output_shape": output_shape,
         "dataset_kind": dataset_kind,
+        "validation_sample_count": len(image_sample),
+        "validation_sample_limit": options.output_validation_sample_limit,
     }
 
 
@@ -86,11 +105,29 @@ def all_square(paths: list[Path]) -> bool:
     return True
 
 
-def validate_projected_output_images(images: list[Path], warnings: list[str]) -> None:
+def sample_paths(paths: list[Path], limit: int) -> list[Path]:
+    if not paths or limit <= 0 or len(paths) <= limit:
+        return list(paths)
+    if limit == 1:
+        return [paths[0]]
+    indexes = sorted({round(i * (len(paths) - 1) / (limit - 1)) for i in range(limit)})
+    return [paths[index] for index in indexes]
+
+
+def validate_projected_output_images(
+    images: list[Path],
+    warnings: list[str],
+    *,
+    sample_paths: list[Path] | None = None,
+    cancel_token: SceneImportCancelToken | None = None,
+) -> None:
+    targets = sample_paths if sample_paths is not None else images
     sizes: set[tuple[int, int]] = set()
     non_square = IssueSummary("output/images non-square projected images")
     unreadable = IssueSummary("output/images unreadable images")
-    for path in images:
+    for index, path in enumerate(targets, start=1):
+        if cancel_token is not None and index % 64 == 0:
+            cancel_token.check_cancelled()
         size = image_size(path)
         if size is None:
             unreadable.add(path.name)
@@ -107,15 +144,28 @@ def validate_projected_output_images(images: list[Path], warnings: list[str]) ->
             warnings.append(message)
 
 
-def validate_transform_frames(output: Path, frames: list[Any], warnings: list[str]) -> None:
+def validate_transform_frames(
+    output: Path,
+    frames: list[Any],
+    warnings: list[str],
+    *,
+    image_paths: list[Path] | None = None,
+    cancel_token: SceneImportCancelToken | None = None,
+) -> None:
+    known_images = {normalize_frame_path(scene_relative(output, path)) for path in image_paths or []}
     missing = IssueSummary("transforms.json references missing images")
     invalid = IssueSummary("transforms.json has invalid transform matrices")
-    for frame in frames:
+    for index, frame in enumerate(frames, start=1):
+        if cancel_token is not None and index % 256 == 0:
+            cancel_token.check_cancelled()
         if not isinstance(frame, dict):
             invalid.add("<non-object frame>")
             continue
         file_path = str(frame.get("file_path") or "").strip()
-        if file_path and not (output / file_path).is_file():
+        normalized = normalize_frame_path(file_path)
+        if normalized and known_images and normalized not in known_images:
+            missing.add(file_path)
+        elif normalized and not known_images and not (output / file_path).is_file():
             missing.add(file_path)
         matrix = frame.get("transform_matrix")
         if not valid_transform_matrix(matrix):
@@ -142,12 +192,29 @@ def valid_transform_matrix(value: object) -> bool:
     return True
 
 
-def validate_output_masks(output: Path, images: list[Path], warnings: list[str]) -> None:
+def normalize_frame_path(path: str) -> str:
+    value = path.replace("\\", "/").strip()
+    while value.startswith("./"):
+        value = value[2:]
+    return value
+
+
+def validate_output_masks(
+    output: Path,
+    images: list[Path],
+    warnings: list[str],
+    *,
+    sample_paths: list[Path] | None = None,
+    cancel_token: SceneImportCancelToken | None = None,
+) -> None:
     masks_root = output / "masks"
     images_root = output / "images"
+    targets = sample_paths if sample_paths is not None else images
     missing = IssueSummary("output/masks missing matching files")
     mismatch = IssueSummary("output/masks size mismatch")
-    for image_path in images:
+    for index, image_path in enumerate(targets, start=1):
+        if cancel_token is not None and index % 64 == 0:
+            cancel_token.check_cancelled()
         mask_path = first_existing_mask(image_path, images_root, masks_root)
         if mask_path is None:
             missing.add(scene_relative(output, image_path))

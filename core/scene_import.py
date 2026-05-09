@@ -1,20 +1,28 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from pathlib import Path
+from time import perf_counter
 from typing import Any
 
-from core.scene_import_contracts import SceneImportResult, new_import_id
+from core.scene_import_contracts import (
+    SceneImportCancelToken,
+    SceneImportOptions,
+    SceneImportResult,
+    new_import_id,
+)
 from core.scene_import_outputs import (
     inspect_output_dataset,
     replace_external_dataset_run,
     write_external_step4_settings,
 )
 from core.scene_import_sources import (
+    apply_external_mask_plan,
     backup_existing_import_metadata,
+    build_external_mask_plan,
     build_source_image_set_record,
     iter_scene_images,
     remove_external_selected_frames_csv,
-    replace_external_masks,
     replace_external_source_image_set,
     write_selected_frames_csv,
 )
@@ -25,19 +33,50 @@ from core.scene_layout import (
 )
 from core.scene_project import load_json, scene_relative, update_project, utc_now_iso, write_json
 
+SceneImportProgressCallback = Callable[[str], None]
 
-def import_scene(scene_dir: str | Path) -> SceneImportResult:
+
+def import_scene(
+    scene_dir: str | Path,
+    *,
+    options: SceneImportOptions | None = None,
+    cancel_token: SceneImportCancelToken | None = None,
+    progress_callback: SceneImportProgressCallback | None = None,
+) -> SceneImportResult:
     scene = Path(scene_dir)
     if not scene.is_dir():
         raise FileNotFoundError(f"Scene folder not found: {scene}")
 
+    options = options or SceneImportOptions()
+    cancel_token = cancel_token or SceneImportCancelToken()
     import_id = new_import_id()
     warnings: list[str] = []
     errors: list[str] = []
-    backup_dir = backup_existing_import_metadata(scene, import_id)
 
-    source_images = iter_scene_images(scene_images_dir(scene))
-    output_info = inspect_output_dataset(scene, warnings)
+    def emit(message: str) -> None:
+        if progress_callback is not None:
+            progress_callback(message)
+
+    def checkpoint() -> None:
+        cancel_token.check_cancelled()
+
+    def run_phase[T](label: str, func: Callable[[], T], *, cancellable_after: bool = True) -> T:
+        checkpoint()
+        started = perf_counter()
+        emit(f"[scene import] {label}...")
+        checkpoint()
+        result = func()
+        elapsed = perf_counter() - started
+        emit(f"[scene import] {label} done ({elapsed:.1f}s)")
+        if cancellable_after:
+            checkpoint()
+        return result
+
+    source_images = run_phase("scan source images", lambda: iter_scene_images(scene_images_dir(scene), cancel_token))
+    output_info = run_phase(
+        "scan output dataset",
+        lambda: inspect_output_dataset(scene, warnings, options=options, cancel_token=cancel_token),
+    )
     output_images = output_info["images"]
     output_masks = output_info["masks"]
 
@@ -45,16 +84,29 @@ def import_scene(scene_dir: str | Path) -> SceneImportResult:
         errors.append("No source images or output dataset images were found.")
 
     selected_csv: Path | None = None
-    source_record = build_source_image_set_record(scene, import_id, source_images) if source_images else None
-    replace_external_source_image_set(scene, source_record)
-    if source_images:
-        selected_csv = write_selected_frames_csv(scene, import_id, source_images)
-    else:
-        remove_external_selected_frames_csv(scene)
+    source_record = run_phase(
+        "build source metadata",
+        lambda: build_source_image_set_record(scene, import_id, source_images, cancel_token) if source_images else None,
+    )
+    mask_plan = run_phase(
+        "build mask metadata",
+        lambda: build_external_mask_plan(scene, import_id, source_images, warnings, cancel_token),
+    )
 
-    mask_count = replace_external_masks(scene, import_id, source_images, warnings)
-    write_external_step4_settings(scene, import_id, output_info)
-    replace_external_dataset_run(scene, import_id, output_info)
+    def apply_metadata() -> tuple[Path | None, int, Path | None]:
+        backup_dir = backup_existing_import_metadata(scene, import_id)
+        replace_external_source_image_set(scene, source_record)
+        selected_csv: Path | None = None
+        if source_images:
+            selected_csv = write_selected_frames_csv(scene, import_id, source_images)
+        else:
+            remove_external_selected_frames_csv(scene)
+        mask_count = apply_external_mask_plan(scene, mask_plan)
+        write_external_step4_settings(scene, import_id, output_info)
+        replace_external_dataset_run(scene, import_id, output_info)
+        return backup_dir, mask_count, selected_csv
+
+    backup_dir, mask_count, selected_csv = run_phase("apply metadata", apply_metadata, cancellable_after=False)
 
     status = "error" if errors else ("warning" if warnings else "ok")
     report_path = write_import_record(
@@ -136,6 +188,8 @@ def write_import_record(
         "validation": {
             "errors": list(errors),
             "warnings": list(warnings),
+            "output_image_sample_count": int(output_info.get("validation_sample_count") or 0),
+            "output_image_sample_limit": int(output_info.get("validation_sample_limit") or 0),
         },
     }
     imports.append(record)

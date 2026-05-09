@@ -67,7 +67,7 @@ def test_scene_import_runs_off_gui_thread_and_reports_start(tmp_path: Path, monk
     app = _app()
     window = MainWindow(str(tmp_path))
 
-    def fake_import(scene: Path) -> SceneImportResult:
+    def fake_import(scene: Path, **_kwargs) -> SceneImportResult:
         time.sleep(0.2)
         return SceneImportResult(
             scene_dir=scene,
@@ -99,7 +99,7 @@ def test_scene_import_runs_off_gui_thread_and_reports_start(tmp_path: Path, monk
         assert not window.scene_browse.isEnabled()
         assert not window.import_scene_btn.isEnabled()
         assert not window.stack.isEnabled()
-        assert not window.cancel_btn.isEnabled()
+        assert window.cancel_btn.isEnabled()
         assert i18n.t("IMPORT_SCENE_STARTED").format(scene=str(tmp_path)) in window.log_panel.toPlainText()
         assert window.progress.status_label.text() == i18n.t("IMPORT_SCENE_RUNNING")
 
@@ -114,5 +114,38 @@ def test_scene_import_runs_off_gui_thread_and_reports_start(tmp_path: Path, monk
             masks=0,
             output_images=0,
         )
+    finally:
+        window.shutdown()
+
+
+def test_scene_import_cancel_requests_worker_and_keeps_metadata_unchanged(tmp_path: Path, monkeypatch) -> None:
+    app = _app()
+    window = MainWindow(str(tmp_path))
+
+    def fake_import(scene: Path, **kwargs) -> SceneImportResult:
+        progress_callback = kwargs["progress_callback"]
+        cancel_token = kwargs["cancel_token"]
+        progress_callback("fake scan started")
+        while not cancel_token.is_cancelled():
+            time.sleep(0.01)
+        cancel_token.check_cancelled()
+        raise AssertionError("unreachable")
+
+    monkeypatch.setattr("gui.app.import_scene", fake_import)
+
+    try:
+        window._start_scene_import(str(tmp_path))
+        app.processEvents()
+        assert _process_events_until(app, lambda: "fake scan started" in window.log_panel.toPlainText())
+        assert window._scene_import_running
+        assert window.cancel_btn.isEnabled()
+
+        window._on_cancel()
+
+        assert i18n.t("IMPORT_SCENE_CANCELING") in window.log_panel.toPlainText()
+        assert _process_events_until(app, lambda: not window._scene_import_running)
+        assert window.progress.status_label.text() == i18n.STATUS_CANCELED
+        assert i18n.t("IMPORT_SCENE_CANCELED") in window.log_panel.toPlainText()
+        assert not (tmp_path / "_stechdrive" / "imports" / "scene_imports.json").exists()
     finally:
         window.shutdown()
