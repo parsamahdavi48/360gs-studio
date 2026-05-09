@@ -2,7 +2,7 @@
 
 Step 2 is where you review the frames extracted in Step 1 and keep only the images that should continue to Step 3 mask generation and then Metashape or SphereSfM. It shows labels such as `Added`, `Drop`, and `Review` from Step 1 analysis, and lets you manually change keep/drop decisions.
 
-When you press `Apply`, Step 2 removes dropped frames from `images/` and finalizes `_stechdrive/frames/selected_frames.csv` to keep-only rows. The resulting `images/` folder becomes the input for Step 3 and for Metashape or SphereSfM SfM.
+When you press `Apply`, Step 2 removes dropped frames from `images/` and finalizes `_stechdrive/frames/selected_frames.csv` to keep-only rows. Kept filenames are preserved by default; before masks or Step 4 outputs exist, you can also enable `Renumber kept images` to rename the kept files in CSV order. The resulting `images/` folder becomes the input for Step 3 and for Metashape or SphereSfM SfM.
 
 ## Launch
 
@@ -23,6 +23,7 @@ The `?` help icon at the right edge of the center-panel header opens this step's
 | View a 360° image like a normal camera | `90° Perspective Preview` |
 | Review only frames flagged by Step 1 | `Next Review Target` / `Previous Review Target` |
 | Change whether a frame is kept or dropped | Flag keep/drop button |
+| Rename kept images to a clean sequence before masks/Step 4 | `Renumber kept images` |
 | Apply decisions to the actual `images/` folder | `Apply` |
 
 The efficient workflow is to scan the thumbnail list first, then jump through only the review targets and dropped frames that need attention.
@@ -34,8 +35,9 @@ The efficient workflow is to scan the thumbnail list first, then jump through on
 3. Use `Next Review Target` to move through frames flagged by Step 1.
 4. Use single preview for detailed checks. For 360° images, switch to the 90° perspective preview when detail is easier to judge that way.
 5. Mark useful frames as Keep and unwanted frames as Drop.
-6. Press `Apply` when the decisions are ready.
-7. Continue to Step 3.
+6. If needed, enable `Renumber kept images` before masks or Step 4 outputs exist.
+7. Press `Apply` when the decisions are ready.
+8. Continue to Step 3.
 
 Keep/drop changes are written to `_stechdrive/frames/selected_frames.csv` immediately. Dropped image files are not removed from `images/` until you press `Apply`.
 
@@ -94,17 +96,28 @@ Internally it runs:
 python apply_frame_decisions.py <scene_dir> --finalize-in-place
 ```
 
-If `Back up to _stechdrive/frames/backups/images/ before Apply` is enabled, dropped images are copied to `_stechdrive/frames/backups/images/` first.
+If `Renumber kept images` is enabled, the command also adds `--renumber-kept-images`.
+
+Before running the command, the integrated GUI saves a review backup under `_stechdrive/review/backups/<review_id>/`. This backup contains `selected_frames.before.csv`, `selected_frames.after.csv` after success, and copies of the dropped image files that existed at apply time. The CLI also writes its own CSV backup under `_stechdrive/frames/backups/`.
 
 Apply does the following:
 
 - deletes drop-marked images from `images/`
-- preserves filenames for kept images
+- preserves filenames for kept images by default
+- optionally renumbers kept images to `images/frame_000001.ext`, `frame_000002.ext`, ... in CSV order
 - rewrites `_stechdrive/frames/selected_frames.csv` to keep-only rows
 - writes `_stechdrive/frames/backups/selected_frames.before_finalize.csv` and `_stechdrive/frames/selected_frames_keep.csv`
+- records the GUI review run and review backup under `_stechdrive/review/`
+- updates frame/source metadata paths when kept images are renumbered
 - refreshes Step 2 after success
 
-Without the image backup option, deleted drop images cannot be restored from Step 2. The CSV backup is still created.
+### Renumber Kept Images
+
+Use this only as a cleanup step before Step 3 mask generation and before Step 4 export. It renames kept files in the current CSV order and preserves each file's original extension.
+
+The option is disabled if downstream outputs already exist, including `masks/`, mask metadata, `output/`, or `_stechdrive/step4/`. Those assets may already refer to the old image filenames.
+
+Deleted drop images can be restored manually from the review backup if needed. The CSV backup is always created.
 
 ## Common Decisions
 

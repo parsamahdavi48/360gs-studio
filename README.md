@@ -138,6 +138,7 @@ Detailed GUI docs:
 | Step 3 Mask Generation | [EN](doc/mask_tools_gui.md) / [JP](doc/mask_tools_gui.ja.md) |
 | Step 4 Convert | [EN](doc/cubemap_tools_gui.md) / [JP](doc/cubemap_tools_gui.ja.md) |
 | Step 5 Training | [EN](doc/training_gui.md) / [JP](doc/training_gui.ja.md) |
+| Scene Import | [EN](doc/scene_import.md) / [JP](doc/scene_import.ja.md) |
 
 ## Recommended Workflow: Metashape Route
 

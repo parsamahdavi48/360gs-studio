@@ -26,6 +26,12 @@ the GUI depends on.
   runtime dependencies.
 - `core/extract_frames.py` owns FFmpeg/FFprobe frame extraction, cache handling,
   stationary thinning, decision CSV writing, and CLI argument handling.
+- `core/frame_renumbering.py` owns the Step 2 kept-image renumbering contract:
+  downstream-output blockers, collision-safe rename planning/application, and
+  updates to frame/source image metadata when paths change.
+- `core/scene_import*.py` owns external scene re-registration. Import should
+  scan only the app-defined scene folders, replace external-import metadata as a
+  full reimport, and avoid deleting real image/mask/output assets.
 - Mask modules preserve the repository-wide mask polarity contract:
   white pixels are usable, black pixels are excluded. Mask merges should remain
   AND-style unless a tool explicitly documents a different operation.

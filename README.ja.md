@@ -138,6 +138,7 @@ checkpointを手動で `models/sam3.1/sam3.1_multiplex.pt` に置くこともで
 | Step 3 マスク生成 | [JP](doc/mask_tools_gui.ja.md) / [EN](doc/mask_tools_gui.md) |
 | Step 4 変換 | [JP](doc/cubemap_tools_gui.ja.md) / [EN](doc/cubemap_tools_gui.md) |
 | Step 5 学習 | [JP](doc/training_gui.ja.md) / [EN](doc/training_gui.md) |
+| シーン取り込み | [JP](doc/scene_import.ja.md) / [EN](doc/scene_import.md) |
 
 ## 推奨ワークフロー: Metashapeルート
 

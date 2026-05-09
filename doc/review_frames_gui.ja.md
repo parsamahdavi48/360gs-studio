@@ -2,7 +2,7 @@
 
 Step 2 は、Step 1で抽出したフレームを見て、Step 3のマスク生成と、その後のMetashapeまたはSphereSfMへ進める画像だけを残す画面です。Step 1の解析で付いた `追加`、`除外`、`要確認` ラベルを確認し、必要なら採用/除外を手動で切り替えます。
 
-最後に `適用` を押すと、除外フレームを `images/` から外し、`_stechdrive/frames/selected_frames.csv` を採用フレームだけに確定します。ここで確定した `images/` がStep 3のマスク生成と、MetashapeまたはSphereSfMのSfM入力になります。
+最後に `適用` を押すと、除外フレームを `images/` から外し、`_stechdrive/frames/selected_frames.csv` を採用フレームだけに確定します。採用フレームのファイル名は既定では維持しますが、マスクやStep 4出力を作る前なら `採用画像を連番化` でCSV順の連番へ整理できます。ここで確定した `images/` がStep 3のマスク生成と、MetashapeまたはSphereSfMのSfM入力になります。
 
 ## 起動
 
@@ -23,6 +23,7 @@ run_gui.bat --scene .\scene01
 | 360°画像を通常カメラのように見たい | `90°パース表示` |
 | Step 1が要確認にしたフレームだけ見たい | `次の確認対象` / `前の確認対象` |
 | フレームを残す/外す判断を変えたい | 旗アイコンの採用/除外ボタン |
+| マスクやStep 4の前に採用画像を連番化したい | `採用画像を連番化` |
 | 変更を実際の `images/` に反映したい | `適用` |
 
 まずはサムネイル一覧で全体の密度を見て、`要確認` や `除外` のフレームだけを順番に確認するのが効率的です。
@@ -34,8 +35,9 @@ run_gui.bat --scene .\scene01
 3. `次の確認対象` で、Step 1が印を付けたフレームを順番に確認します。
 4. 1枚プレビューで必要なフレームを詳しく見ます。360°画像では `90°パース表示` に切り替えると細部を確認しやすくなります。
 5. 残したいフレームは `採用`、不要なフレームは `除外` にします。
-6. 判断が終わったら `適用` を押します。
-7. Step 3へ進みます。
+6. 必要なら、マスクやStep 4出力を作る前に `採用画像を連番化` をONにします。
+7. 判断が終わったら `適用` を押します。
+8. Step 3へ進みます。
 
 採用/除外の変更は `_stechdrive/frames/selected_frames.csv` に即時保存されます。ただし、`images/` から除外画像を実際に消すのは `適用` を押したときです。
 
@@ -94,17 +96,28 @@ Step 2のラベルは、別の品質スコアではありません。そのフ�
 python apply_frame_decisions.py <scene_dir> --finalize-in-place
 ```
 
-`適用前に _stechdrive/frames/backups/images/ にバックアップ` がONの場合は、除外前の画像を `_stechdrive/frames/backups/images/` に保存します。
+`採用画像を連番化` がONの場合は、ここに `--renumber-kept-images` も付きます。
+
+統合GUIでは、コマンド実行前に `_stechdrive/review/backups/<review_id>/` へレビュー用バックアップを保存します。この中には `selected_frames.before.csv`、成功後の `selected_frames.after.csv`、適用時点で存在した除外画像のコピーが入ります。CLI側でも `_stechdrive/frames/backups/` にCSVバックアップを作ります。
 
 適用すると次を行います。
 
 - `drop` の画像を `images/` から削除する
-- `keep` の画像ファイル名は維持する
+- `keep` の画像ファイル名は既定では維持する
+- `採用画像を連番化` がONなら、採用画像をCSV順で `images/frame_000001.ext`, `frame_000002.ext`, ... にリネームする
 - `_stechdrive/frames/selected_frames.csv` を採用行だけに書き換える
 - `_stechdrive/frames/backups/selected_frames.before_finalize.csv` と `_stechdrive/frames/selected_frames_keep.csv` を作る
+- `_stechdrive/review/` にレビュー実行履歴とバックアップ情報を記録する
+- 連番化した場合は、フレーム/ソース台帳の画像パスも更新する
 - 成功後、Step 2の表示を再読み込みする
 
-画像バックアップをONにしない場合、削除した除外画像はStep 2から復元できません。CSVバックアップは常に作成されます。
+### 採用画像を連番化
+
+Step 3のマスク生成やStep 4の出力を作る前に、画像名を整理したい場合だけ使います。現在のCSV順に採用画像をリネームし、各ファイルの元の拡張子は維持します。
+
+`masks/`、マスク台帳、`output/`、`_stechdrive/step4/` が既にある場合、このオプションは無効になります。これらの成果物が旧ファイル名を参照している可能性があるためです。
+
+削除した除外画像が必要になった場合は、レビュー用バックアップから手動で戻せます。CSVバックアップは常に作成されます。
 
 ## よくある判断
 

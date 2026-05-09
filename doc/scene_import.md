@@ -4,9 +4,10 @@
 
 ## Behavior
 
-1. Press `Import Scene` in the header.
-2. Select the folder to import.
-3. The app rescans the current folder contents and rebuilds external-import metadata.
+1. Open the three-line `Scene Actions Menu` next to the `Scene Folder` field.
+2. Choose `Import Scene...`. The same menu also contains `Open Scene Folder...` and `Clear Scene Folder Selection`; those are normal scene-selection shortcuts, while import is the re-registration action.
+3. Select the folder to import.
+4. The app rescans the current folder contents and rebuilds external-import metadata.
 
 No confirmation dialog is shown. Image files, mask files, and `output/` assets are not deleted.
 
