@@ -388,6 +388,31 @@ def test_dev_placer_pointcloud_perspective_uses_selected_camera_rotation() -> No
     window.deleteLater()
 
 
+def test_dev_placer_pointcloud_preview_undoes_lichtfeld_display_rotation_for_view() -> None:
+    _app()
+    group = CubemapFrameGroup(name="frame_0001", frames_by_face={"pz": _frame_at("frame_0001", (0.0, 0.0, 0.0))})
+    window = DevAprilTagPlacerWindow()
+    window._cubemap_groups = (group,)
+    window.coordinate_profile_combo.setCurrentIndex(window.coordinate_profile_combo.findData("lichtfeld_cube6"))
+    window.pointcloud_preview_check.blockSignals(True)
+    window.pointcloud_preview_check.setChecked(True)
+    window.pointcloud_preview_check.blockSignals(False)
+    window._scene_preview_params = PerspectiveParams(yaw_deg=0.0, pitch_deg=0.0, fov_deg=90.0)
+
+    display_group = window._selected_world_display_group()
+    assert display_group is not None
+    projected, _depth, valid = window._project_world_display_points_for_preview(
+        display_group,
+        np.array([[0.0, 0.0, 5.0], [1.0, 0.0, 5.0], [0.0, 0.0, 6.0]], dtype=np.float32),
+    )
+    center, plus_x, farther_z = projected
+
+    assert np.all(valid)
+    assert plus_x[0] > center[0]
+    assert abs(float(farther_z[0] - center[0])) < 1.0
+    window.deleteLater()
+
+
 def test_dev_placer_camera_axis_gizmo_marks_positive_axes() -> None:
     _app()
     window = DevAprilTagPlacerWindow()

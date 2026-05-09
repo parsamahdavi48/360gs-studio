@@ -74,7 +74,6 @@ from devtools.apriltag.cubemap_preview import (
     project_sfm_points_to_axis_preview_points,
     render_cubemap_axis_equirect,
     view_pixel_to_axis_world_ray_and_up,
-    view_pixel_to_world_ray_and_up,
 )
 from devtools.apriltag.printable import create_printable_target
 from devtools.apriltag.world_debug_view import (
@@ -900,7 +899,9 @@ class DevAprilTagPlacerWindow(QWidget):
         self.world_debug_view.set_groups(self._world_display_groups())
         self.world_debug_view.set_selected_group(group.name if group is not None else "")
         if self.pointcloud_preview_check.isChecked() and display_group is not None:
-            self.world_debug_view.set_preview_to_world_matrix(display_group.reference_frame.camera_to_world_rotation.T)
+            self.world_debug_view.set_preview_to_world_matrix(
+                self._preview_camera_rotation_for_display_group(display_group).T
+            )
         else:
             self.world_debug_view.set_preview_to_world_matrix(None)
         self.world_debug_view.set_preview_params(
@@ -1183,7 +1184,14 @@ class DevAprilTagPlacerWindow(QWidget):
             self._scene_preview_params.pitch_deg,
             self._scene_preview_params.roll_deg,
         )
-        return np.asarray(display_group.reference_frame.camera_to_world_rotation, dtype=np.float64) @ local_rotation
+        camera_rotation = np.asarray(display_group.reference_frame.camera_to_world_rotation, dtype=np.float64)
+        display_matrix = self._world_display_matrix()
+        if display_matrix is not None:
+            display_rotation = np.asarray(display_matrix, dtype=np.float64)[:3, :3]
+            # Keep camera centers in display/world axes, but do not double-apply
+            # the LichtFeld X/Z display flip to the pinhole view basis.
+            camera_rotation = np.linalg.inv(display_rotation) @ camera_rotation
+        return camera_rotation @ local_rotation
 
     def _draw_preview_overlays_bgr(self, image: np.ndarray, overlays: list[PerspectiveLabelOverlay]) -> None:
         for item in overlays:
@@ -1636,15 +1644,18 @@ class DevAprilTagPlacerWindow(QWidget):
         y_px: float,
     ) -> tuple[np.ndarray, np.ndarray, str | None]:
         if self.pointcloud_preview_check.isChecked():
-            return view_pixel_to_world_ray_and_up(
-                group,
+            ray = self._preview_pixel_to_local_ray(
                 x_px=x_px,
                 y_px=y_px,
-                output_size=self._scene_preview_size,
-                yaw_deg=self._scene_preview_params.yaw_deg,
-                pitch_deg=self._scene_preview_params.pitch_deg,
-                fov_deg=self._scene_preview_params.fov_deg,
             )
+            up_ray = self._preview_pixel_to_local_ray(x_px=x_px, y_px=y_px - 1.0)
+            rotation = self._preview_camera_rotation_for_display_group(group)
+            ray_display = ray @ rotation.T
+            ray_display /= max(float(np.linalg.norm(ray_display)), 1e-12)
+            up_display_ray = up_ray @ rotation.T
+            up = up_display_ray - ray_display * float(up_display_ray @ ray_display)
+            up /= max(float(np.linalg.norm(up)), 1e-12)
+            return ray_display, up, None
         return view_pixel_to_axis_world_ray_and_up(
             group,
             x_px=x_px,
@@ -1655,6 +1666,19 @@ class DevAprilTagPlacerWindow(QWidget):
             fov_deg=self._scene_preview_params.fov_deg,
             roll_deg=self._scene_preview_params.roll_deg,
         )
+
+    def _preview_pixel_to_local_ray(self, *, x_px: float, y_px: float) -> np.ndarray:
+        size = max(1, int(self._scene_preview_size))
+        cx = float(x_px) - (size - 1) / 2.0
+        cy = float(y_px) - (size - 1) / 2.0
+        focal = 0.5 * size / np.tan(np.deg2rad(float(self._scene_preview_params.fov_deg)) / 2.0)
+        ray = np.array([cx, -cy, focal], dtype=np.float64)
+        ray /= max(float(np.linalg.norm(ray)), 1e-12)
+        return ray @ _preview_rotation_matrix(
+            self._scene_preview_params.yaw_deg,
+            self._scene_preview_params.pitch_deg,
+            self._scene_preview_params.roll_deg,
+        ).T
 
     def _project_world_display_polyline_segments(self, points_world_display: np.ndarray) -> list[tuple[tuple[float, float], ...]]:
         size = int(self._scene_preview_size)
