@@ -75,7 +75,6 @@ from devtools.apriltag.cubemap_preview import (
     view_pixel_to_world_ray,
     view_pixel_to_world_ray_and_up,
 )
-from devtools.apriltag.cubemap_gl_view import AprilTagCubemapPreviewView
 from devtools.apriltag.printable import create_printable_target
 from devtools.apriltag.world_debug_view import (
     AprilTagWorldDebugView,
@@ -84,7 +83,7 @@ from devtools.apriltag.world_debug_view import (
     transform_point_cloud_sample,
 )
 from gui.common.browse_widget import BrowseWidget
-from gui.common.perspective_image_view import PerspectiveLabelOverlay
+from gui.common.perspective_image_view import PerspectiveImageView, PerspectiveLabelOverlay
 from gui.common.perspective_preview import PerspectiveParams, clamp_pitch_deg, normalize_yaw_deg, params_from_drag
 from gui.theme import apply_theme
 
@@ -327,7 +326,7 @@ class DevAprilTagPlacerWindow(QWidget):
         image_group = QGroupBox("カメラ画像")
         image_layout = QVBoxLayout(image_group)
         image_layout.setContentsMargins(6, 6, 6, 6)
-        self.preview_label = AprilTagCubemapPreviewView("プレビュー未作成")
+        self.preview_label = PerspectiveImageView("プレビュー未作成")
         self.preview_label.setMinimumSize(520, 360)
         self.preview_label.setStyleSheet("background-color: #101316; border: 1px solid #3a424d;")
         self.preview_label.look_dragged.connect(self._on_scene_preview_dragged)
@@ -469,7 +468,7 @@ class DevAprilTagPlacerWindow(QWidget):
         grid_row.addStretch(1)
         layout.addLayout(grid_row)
 
-        hint = QLabel("Cubemap 6面を直接サンプリングしてカメラ画像を表示します。ドラッグで視点回転、クリックで深度値に沿って中心SfM/法線/上方向を入力します。3Dワールドのカメラ点クリックで画像セットを切り替えます。")
+        hint = QLabel("Cubemap 6面から疑似360画像を一度構築してカメラ画像を表示します。ドラッグで視点回転、クリックで深度値に沿って中心SfM/法線/上方向を入力します。3Dワールドのカメラ点クリックで画像セットを切り替えます。")
         hint.setWordWrap(True)
         layout.addWidget(hint)
         return group
@@ -942,30 +941,22 @@ class DevAprilTagPlacerWindow(QWidget):
                     logical_size=QSize(self._scene_preview_size, self._scene_preview_size),
                 )
             else:
-                shown = self.preview_label.set_cubemap_group(
-                    group,
+                cache_key = f"{normalize_coordinate_profile(case.coordinate_profile)}:{group.name}"
+                image = self._equirect_preview_cache.get(cache_key)
+                if image is None:
+                    image = render_cubemap_equirect(
+                        group,
+                        output_width=2048,
+                        output_height=1024,
+                        image_cache=self._cubemap_image_cache,
+                    )
+                    self._equirect_preview_cache[cache_key] = image
+                shown = self.preview_label.set_perspective_image_bgr(
+                    image,
                     self._scene_preview_params,
                     overlays=overlays,
                     logical_size=QSize(self._scene_preview_size, self._scene_preview_size),
-                    image_cache=self._cubemap_image_cache,
                 )
-                if not shown:
-                    cache_key = f"{normalize_coordinate_profile(case.coordinate_profile)}:{group.name}"
-                    image = self._equirect_preview_cache.get(cache_key)
-                    if image is None:
-                        image = render_cubemap_equirect(
-                            group,
-                            output_width=2048,
-                            output_height=1024,
-                            image_cache=self._cubemap_image_cache,
-                        )
-                        self._equirect_preview_cache[cache_key] = image
-                    shown = self.preview_label.set_perspective_image_bgr(
-                        image,
-                        self._scene_preview_params,
-                        overlays=overlays,
-                        logical_size=QSize(self._scene_preview_size, self._scene_preview_size),
-                    )
         except Exception as e:
             self.preview_label.setText(f"プレビュー生成エラー: {e}")
             return
