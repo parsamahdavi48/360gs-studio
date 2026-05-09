@@ -399,11 +399,21 @@ class Step4TrainingMixin:
         self.lfs_mask_threshold_edit = QLineEdit("0.500")
         self.lfs_mask_threshold_edit.setFixedWidth(_LFS_ADVANCED_FIELD_WIDTHS.get("mask_threshold", 86))
         self.lfs_mask_threshold_row = form.rowCount()
-        add_tooltip_row(form, i18n.t("LFS_MASK_THRESHOLD"), self.lfs_mask_threshold_edit)
+        add_tooltip_row(
+            form,
+            i18n.t("LFS_MASK_THRESHOLD"),
+            self.lfs_mask_threshold_edit,
+            i18n.tip("LFS_MASK_THRESHOLD"),
+        )
         self.lfs_use_alpha_as_mask_cb = QCheckBox()
         self.lfs_use_alpha_as_mask_cb.setChecked(True)
         self.lfs_use_alpha_as_mask_row = form.rowCount()
-        add_tooltip_row(form, i18n.t("LFS_USE_ALPHA_AS_MASK"), self.lfs_use_alpha_as_mask_cb)
+        add_tooltip_row(
+            form,
+            i18n.t("LFS_USE_ALPHA_AS_MASK"),
+            self.lfs_use_alpha_as_mask_cb,
+            i18n.tip("LFS_USE_ALPHA_AS_MASK"),
+        )
         self.lfs_mask_opacity_penalty_weight_edit = QLineEdit("1.000")
         self.lfs_mask_opacity_penalty_weight_edit.setFixedWidth(
             _LFS_ADVANCED_FIELD_WIDTHS.get("mask_opacity_penalty_weight", 86)
@@ -413,6 +423,7 @@ class Step4TrainingMixin:
             form,
             i18n.t("LFS_MASK_OPACITY_PENALTY_WEIGHT"),
             self.lfs_mask_opacity_penalty_weight_edit,
+            i18n.tip("LFS_MASK_OPACITY_PENALTY_WEIGHT"),
         )
         self.lfs_mask_opacity_penalty_power_edit = QLineEdit("2.000")
         self.lfs_mask_opacity_penalty_power_edit.setFixedWidth(
@@ -423,6 +434,7 @@ class Step4TrainingMixin:
             form,
             i18n.t("LFS_MASK_OPACITY_PENALTY_POWER"),
             self.lfs_mask_opacity_penalty_power_edit,
+            i18n.tip("LFS_MASK_OPACITY_PENALTY_POWER"),
         )
 
         checks = QWidget()
@@ -435,27 +447,43 @@ class Step4TrainingMixin:
         self.lfs_undistort_cb = QCheckBox(i18n.t("LFS_UNDISTORT"))
         self.lfs_mip_filter_cb = QCheckBox(i18n.t("LFS_MIP_FILTER"))
         self.lfs_ppisp_cb = QCheckBox(i18n.t("LFS_PPISP"))
-        for index, cb in enumerate(
+        for index, (cb, tip_key) in enumerate(
             (
-                self.lfs_sparsity_cb,
-                self.lfs_gut_cb,
-                self.lfs_undistort_cb,
-                self.lfs_mip_filter_cb,
-                self.lfs_ppisp_cb,
+                (self.lfs_sparsity_cb, "LFS_SPARSITY"),
+                (self.lfs_gut_cb, "LFS_GUT"),
+                (self.lfs_undistort_cb, "LFS_UNDISTORT"),
+                (self.lfs_mip_filter_cb, "LFS_MIP_FILTER"),
+                (self.lfs_ppisp_cb, "LFS_PPISP"),
             )
         ):
+            cb.setToolTip(i18n.tip(tip_key))
             checks_layout.addWidget(cb, index // 2, index % 2)
         form.addRow("", checks)
 
         self.lfs_ppisp_freeze_from_sidecar_cb = QCheckBox()
         self.lfs_ppisp_freeze_from_sidecar_row = form.rowCount()
-        add_tooltip_row(form, i18n.t("LFS_PPISP_FREEZE_FROM_SIDECAR"), self.lfs_ppisp_freeze_from_sidecar_cb)
+        add_tooltip_row(
+            form,
+            i18n.t("LFS_PPISP_FREEZE_FROM_SIDECAR"),
+            self.lfs_ppisp_freeze_from_sidecar_cb,
+            i18n.tip("LFS_PPISP_FREEZE_FROM_SIDECAR"),
+        )
         self.lfs_ppisp_sidecar_browse = BrowseWidget(mode="file")
         self.lfs_ppisp_sidecar_row = form.rowCount()
-        add_tooltip_row(form, i18n.t("LFS_PPISP_SIDECAR_PATH"), self.lfs_ppisp_sidecar_browse)
+        add_tooltip_row(
+            form,
+            i18n.t("LFS_PPISP_SIDECAR_PATH"),
+            self.lfs_ppisp_sidecar_browse,
+            i18n.tip("LFS_PPISP_SIDECAR_PATH"),
+        )
         self.lfs_ppisp_use_controller_cb = QCheckBox()
         self.lfs_ppisp_use_controller_row = form.rowCount()
-        add_tooltip_row(form, i18n.t("LFS_PPISP_USE_CONTROLLER"), self.lfs_ppisp_use_controller_cb)
+        add_tooltip_row(
+            form,
+            i18n.t("LFS_PPISP_USE_CONTROLLER"),
+            self.lfs_ppisp_use_controller_cb,
+            i18n.tip("LFS_PPISP_USE_CONTROLLER"),
+        )
         self.lfs_ppisp_controller_activation_step_edit = QLineEdit("-1")
         self.lfs_ppisp_controller_activation_step_edit.setFixedWidth(
             _LFS_ADVANCED_FIELD_WIDTHS.get("ppisp_controller_activation_step", 86)
@@ -465,11 +493,17 @@ class Step4TrainingMixin:
             form,
             i18n.t("LFS_PPISP_CONTROLLER_ACTIVATION_STEP"),
             self.lfs_ppisp_controller_activation_step_edit,
+            i18n.tip("LFS_PPISP_CONTROLLER_ACTIVATION_STEP"),
         )
         self.lfs_ppisp_controller_lr_edit = QLineEdit("0.0020")
         self.lfs_ppisp_controller_lr_edit.setFixedWidth(_LFS_ADVANCED_FIELD_WIDTHS.get("ppisp_controller_lr", 86))
         self.lfs_ppisp_controller_lr_row = form.rowCount()
-        add_tooltip_row(form, i18n.t("LFS_PPISP_CONTROLLER_LR"), self.lfs_ppisp_controller_lr_edit)
+        add_tooltip_row(
+            form,
+            i18n.t("LFS_PPISP_CONTROLLER_LR"),
+            self.lfs_ppisp_controller_lr_edit,
+            i18n.tip("LFS_PPISP_CONTROLLER_LR"),
+        )
         self.lfs_ppisp_freeze_gaussians_on_distill_cb = QCheckBox()
         self.lfs_ppisp_freeze_gaussians_on_distill_cb.setChecked(True)
         self.lfs_ppisp_freeze_gaussians_on_distill_row = form.rowCount()
@@ -477,6 +511,7 @@ class Step4TrainingMixin:
             form,
             i18n.t("LFS_PPISP_FREEZE_GAUSSIANS_ON_DISTILL"),
             self.lfs_ppisp_freeze_gaussians_on_distill_cb,
+            i18n.tip("LFS_PPISP_FREEZE_GAUSSIANS_ON_DISTILL"),
         )
 
         self.lfs_bg_mode_combo = QComboBox()
@@ -512,11 +547,15 @@ class Step4TrainingMixin:
         add_tooltip_row(form, i18n.t("LFS_BG_IMAGE"), self.lfs_bg_image_browse, i18n.tip("LFS_BG_IMAGE"))
 
         advanced = CollapsibleSection(i18n.t("LFS_ADVANCED_PARAMETERS"), expanded=False)
+        advanced.setToolTip(i18n.tip("LFS_ADVANCED_PARAMETERS"))
+        advanced.toggle_button.setToolTip(i18n.tip("LFS_ADVANCED_PARAMETERS"))
         adv_layout = advanced.content_layout
 
         def add_section(title_key: str) -> QFormLayout:
             section = CollapsibleSection(i18n.t(title_key), expanded=False)
             section.setObjectName("lfsAdvancedSubsection")
+            section.setToolTip(i18n.tip(title_key))
+            section.toggle_button.setToolTip(i18n.tip(title_key))
             self.lfs_advanced_sections[title_key] = section
             adv_layout.addWidget(section)
             section_form = QFormLayout()
@@ -529,7 +568,8 @@ class Step4TrainingMixin:
             edit.setFixedWidth(_LFS_ADVANCED_FIELD_WIDTHS.get(key, width))
             self.lfs_advanced_edits[key] = edit
             self.lfs_advanced_rows[key] = (section_form, section_form.rowCount())
-            add_tooltip_row(section_form, i18n.t(f"LFS_{key.upper()}"), edit)
+            tip_key = f"LFS_{key.upper()}"
+            add_tooltip_row(section_form, i18n.t(tip_key), edit, i18n.tip(tip_key))
             return edit
 
         def add_check(section_form: QFormLayout, key: str, checked: bool = False) -> QCheckBox:
@@ -537,7 +577,8 @@ class Step4TrainingMixin:
             cb.setChecked(checked)
             self.lfs_advanced_checks[key] = cb
             self.lfs_advanced_rows[key] = (section_form, section_form.rowCount())
-            add_tooltip_row(section_form, i18n.t(f"LFS_{key.upper()}"), cb)
+            tip_key = f"LFS_{key.upper()}"
+            add_tooltip_row(section_form, i18n.t(tip_key), cb, i18n.tip(tip_key))
             return cb
 
         dataset_form = add_section("LFS_SECTION_DATASET")
@@ -545,22 +586,47 @@ class Step4TrainingMixin:
         self.lfs_dataset_resize_factor_combo.addItem("Auto", "auto")
         for factor in (1, 2, 4, 8):
             self.lfs_dataset_resize_factor_combo.addItem(str(factor), str(factor))
-        add_tooltip_row(dataset_form, i18n.t("LFS_RESIZE_FACTOR"), self.lfs_dataset_resize_factor_combo)
+        add_tooltip_row(
+            dataset_form,
+            i18n.t("LFS_RESIZE_FACTOR"),
+            self.lfs_dataset_resize_factor_combo,
+            i18n.tip("LFS_RESIZE_FACTOR"),
+        )
         self.lfs_dataset_max_width_edit = QLineEdit("3840")
         self.lfs_dataset_max_width_edit.setFixedWidth(_LFS_ADVANCED_FIELD_WIDTHS.get("max_width", 86))
-        add_tooltip_row(dataset_form, i18n.t("LFS_MAX_WIDTH"), self.lfs_dataset_max_width_edit)
+        add_tooltip_row(
+            dataset_form,
+            i18n.t("LFS_MAX_WIDTH"),
+            self.lfs_dataset_max_width_edit,
+            i18n.tip("LFS_MAX_WIDTH"),
+        )
         self.lfs_dataset_cpu_cache_cb = QCheckBox()
         self.lfs_dataset_cpu_cache_cb.setChecked(True)
-        add_tooltip_row(dataset_form, i18n.t("LFS_CPU_CACHE"), self.lfs_dataset_cpu_cache_cb)
+        add_tooltip_row(
+            dataset_form,
+            i18n.t("LFS_CPU_CACHE"),
+            self.lfs_dataset_cpu_cache_cb,
+            i18n.tip("LFS_CPU_CACHE"),
+        )
         self.lfs_dataset_fs_cache_cb = QCheckBox()
         self.lfs_dataset_fs_cache_cb.setChecked(True)
-        add_tooltip_row(dataset_form, i18n.t("LFS_FS_CACHE"), self.lfs_dataset_fs_cache_cb)
+        add_tooltip_row(
+            dataset_form,
+            i18n.t("LFS_FS_CACHE"),
+            self.lfs_dataset_fs_cache_cb,
+            i18n.tip("LFS_FS_CACHE"),
+        )
         add_check(dataset_form, "enable_eval", False)
         self.lfs_dataset_test_every_edit = QLineEdit("8")
         self.lfs_dataset_test_every_edit.setFixedWidth(_LFS_ADVANCED_FIELD_WIDTHS.get("test_every", 86))
         self.lfs_dataset_test_every_row = dataset_form.rowCount()
         self.lfs_advanced_rows["test_every"] = (dataset_form, self.lfs_dataset_test_every_row)
-        add_tooltip_row(dataset_form, i18n.t("LFS_TEST_EVERY"), self.lfs_dataset_test_every_edit)
+        add_tooltip_row(
+            dataset_form,
+            i18n.t("LFS_TEST_EVERY"),
+            self.lfs_dataset_test_every_edit,
+            i18n.tip("LFS_TEST_EVERY"),
+        )
         add_check(dataset_form, "enable_save_eval_images", True)
 
         opt_form = add_section("LFS_SECTION_OPTIMIZATION")

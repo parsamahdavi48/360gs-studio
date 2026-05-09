@@ -785,6 +785,44 @@ def test_cubemap_labels_share_field_tooltips() -> None:
     assert _label(training_widget, i18n.t("LFS_MASK_MODE")).toolTip() == i18n.tip("LFS_MASK_MODE")
     assert _label(training_widget, i18n.t("LFS_INVERT_MASKS")).toolTip() == i18n.tip("LFS_INVERT_MASKS")
     assert step.lfs_invert_masks_cb.toolTip() == i18n.tip("LFS_INVERT_MASKS")
+    for field, key in (
+        (step.lfs_sparsity_cb, "LFS_SPARSITY"),
+        (step.lfs_gut_cb, "LFS_GUT"),
+        (step.lfs_undistort_cb, "LFS_UNDISTORT"),
+        (step.lfs_mip_filter_cb, "LFS_MIP_FILTER"),
+        (step.lfs_ppisp_cb, "LFS_PPISP"),
+    ):
+        assert field.toolTip() == i18n.tip(key)
+    for field, key in (
+        (step.lfs_mask_threshold_edit, "LFS_MASK_THRESHOLD"),
+        (step.lfs_use_alpha_as_mask_cb, "LFS_USE_ALPHA_AS_MASK"),
+        (step.lfs_mask_opacity_penalty_weight_edit, "LFS_MASK_OPACITY_PENALTY_WEIGHT"),
+        (step.lfs_mask_opacity_penalty_power_edit, "LFS_MASK_OPACITY_PENALTY_POWER"),
+        (step.lfs_ppisp_freeze_from_sidecar_cb, "LFS_PPISP_FREEZE_FROM_SIDECAR"),
+        (step.lfs_ppisp_sidecar_browse, "LFS_PPISP_SIDECAR_PATH"),
+        (step.lfs_ppisp_use_controller_cb, "LFS_PPISP_USE_CONTROLLER"),
+        (step.lfs_ppisp_controller_activation_step_edit, "LFS_PPISP_CONTROLLER_ACTIVATION_STEP"),
+        (step.lfs_ppisp_controller_lr_edit, "LFS_PPISP_CONTROLLER_LR"),
+        (step.lfs_ppisp_freeze_gaussians_on_distill_cb, "LFS_PPISP_FREEZE_GAUSSIANS_ON_DISTILL"),
+        (step.lfs_dataset_resize_factor_combo, "LFS_RESIZE_FACTOR"),
+        (step.lfs_dataset_max_width_edit, "LFS_MAX_WIDTH"),
+        (step.lfs_dataset_cpu_cache_cb, "LFS_CPU_CACHE"),
+        (step.lfs_dataset_fs_cache_cb, "LFS_FS_CACHE"),
+        (step.lfs_dataset_test_every_edit, "LFS_TEST_EVERY"),
+    ):
+        assert field.toolTip() == i18n.tip(key)
+        assert _label(training_widget, i18n.t(key)).toolTip() == i18n.tip(key)
+    for key, section in step.lfs_advanced_sections.items():
+        assert section.toolTip() == i18n.tip(key)
+        assert section.toggle_button.toolTip() == i18n.tip(key)
+    for key, field in step.lfs_advanced_edits.items():
+        tip_key = f"LFS_{key.upper()}"
+        assert field.toolTip() == i18n.tip(tip_key)
+        assert _label(training_widget, i18n.t(tip_key)).toolTip() == i18n.tip(tip_key)
+    for key, field in step.lfs_advanced_checks.items():
+        tip_key = f"LFS_{key.upper()}"
+        assert field.toolTip() == i18n.tip(tip_key)
+        assert _label(training_widget, i18n.t(tip_key)).toolTip() == i18n.tip(tip_key)
     assert _label(training_widget, i18n.t("POSTSHOT_PROJECT_NAME")).toolTip() == i18n.tip("POSTSHOT_PROJECT_NAME")
     assert _label(training_widget, i18n.t("CUSTOM_TRAINING_ARGS")).toolTip() == i18n.tip("CUSTOM_TRAINING_ARGS")
     assert step.colmap_repo_link.openExternalLinks()
