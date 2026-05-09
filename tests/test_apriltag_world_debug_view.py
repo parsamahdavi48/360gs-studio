@@ -11,7 +11,7 @@ from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication
 
 from core.apriltag_geometry import PinholeFrame
-from devtools.apriltag.coordinates import pointcloud_display_matrix
+from devtools.apriltag.coordinates import combined_pointcloud_display_matrix, pointcloud_display_matrix, world_display_matrix
 from devtools.apriltag.cubemap_preview import CubemapFrameGroup
 from devtools.apriltag.world_debug_view import (
     AprilTagWorldDebugView,
@@ -23,6 +23,7 @@ from scripts.dev_apriltag_placer_gui import (
     GRID_X_AXIS_BGR,
     GRID_Z_AXIS_BGR,
     DevAprilTagPlacerWindow,
+    _transform_group_for_world_display,
 )
 
 
@@ -103,6 +104,23 @@ def test_transform_point_cloud_sample_aligns_pre_final_lichtfeld_pointcloud() ->
     assert np.allclose(transformed.points[0], [-1.0, 2.0, -3.0])
 
 
+def test_lichtfeld_world_display_matrix_restores_metashape_axes() -> None:
+    sample = PointCloudSample(
+        points=np.array([[1.0, 2.0, 3.0]], dtype=np.float32),
+        colors=None,
+        source_count=1,
+    )
+
+    world_matrix = world_display_matrix("lichtfeld_cube6")
+    final_pointcloud_matrix = combined_pointcloud_display_matrix("lichtfeld_cube6")
+    transformed_world = transform_point_cloud_sample(sample, world_matrix)
+    transformed_pointcloud = transform_point_cloud_sample(sample, final_pointcloud_matrix)
+
+    assert transformed_world is not None
+    assert np.allclose(transformed_world.points[0], [-1.0, 2.0, -3.0])
+    assert np.allclose(transformed_pointcloud.points[0], [1.0, 2.0, 3.0])
+
+
 def test_world_debug_view_accepts_scene_and_tag() -> None:
     _app()
     frame = PinholeFrame(
@@ -134,6 +152,49 @@ def test_world_debug_view_accepts_scene_and_tag() -> None:
 
     assert view.sizeHint().width() > 0
     view.deleteLater()
+
+
+def test_world_display_group_rotates_camera_position_and_rotation() -> None:
+    transform = np.eye(4)
+    transform[:3, 3] = np.array([1.0, 2.0, 3.0])
+    frame = PinholeFrame(
+        frame_id="frame_0001_pz",
+        file_path="images/frame_0001_pz.png",
+        image_path=Path("images/frame_0001_pz.png"),
+        width=100,
+        height=100,
+        fl_x=50.0,
+        fl_y=50.0,
+        cx=49.5,
+        cy=49.5,
+        transform_matrix=transform,
+    )
+    group = CubemapFrameGroup(name="frame_0001", frames_by_face={"pz": frame})
+
+    transformed = _transform_group_for_world_display(group, world_display_matrix("lichtfeld_cube6"))
+    transformed_frame = transformed.frames_by_face["pz"]
+
+    assert np.allclose(transformed_frame.camera_position_sfm, [-1.0, 2.0, -3.0])
+    assert np.allclose(transformed_frame.camera_to_world_rotation, np.diag([-1.0, 1.0, -1.0]))
+
+
+def test_dev_placer_world_view_uses_display_axes_without_changing_raw_groups() -> None:
+    _app()
+    group = CubemapFrameGroup(name="frame_0001", frames_by_face={"pz": _frame_at("frame_0001", (1.0, 2.0, 3.0))})
+    window = DevAprilTagPlacerWindow()
+    window._cubemap_groups = (group,)
+    window.center_editor.set_value((1.0, 2.0, 3.0))
+    window.normal_editor.set_value((0.0, 0.0, 1.0))
+    window.up_editor.set_value((0.0, 1.0, 0.0))
+
+    window._sync_world_debug_view()
+
+    displayed_group = window.world_debug_view._groups[0]
+    assert np.allclose(group.camera_position_sfm, [1.0, 2.0, 3.0])
+    assert np.allclose(displayed_group.camera_position_sfm, [-1.0, 2.0, -3.0])
+    assert np.allclose(window.world_debug_view._tag_center, [-1.0, 2.0, -3.0])
+    assert np.allclose(window.world_debug_view._tag_normal, [0.0, 0.0, -1.0])
+    window.deleteLater()
 
 
 def test_world_debug_view_orientation_gizmo_marks_positive_axes() -> None:

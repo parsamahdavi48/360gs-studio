@@ -42,7 +42,7 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from core.apriltag_detection import available_families
-from core.apriltag_geometry import tag_corners_sfm
+from core.apriltag_geometry import PinholeFrame, tag_corners_sfm
 from devtools.apriltag.case import (
     DEFAULT_CASE_ROOT,
     AprilTagDevCase,
@@ -56,10 +56,11 @@ from devtools.apriltag.case import (
 from devtools.apriltag.coordinates import (
     COORDINATE_PROFILES,
     DEFAULT_COORDINATE_PROFILE,
+    combined_pointcloud_display_matrix,
     coordinate_profile_label,
     coordinate_profile_note,
     normalize_coordinate_profile,
-    pointcloud_display_matrix,
+    world_display_matrix,
 )
 from devtools.apriltag.cubemap_preview import (
     CubemapFrameGroup,
@@ -91,6 +92,44 @@ from gui.theme import apply_theme
 # colors used for the same XZ axes in AprilTagWorldDebugView.
 GRID_X_AXIS_BGR = (245, 175, 90)
 GRID_Z_AXIS_BGR = (90, 180, 245)
+
+
+def _transform_points_for_world_display(points: np.ndarray, matrix: np.ndarray | None) -> np.ndarray:
+    values = np.asarray(points, dtype=np.float64)
+    if matrix is None:
+        return values.copy()
+    transform = np.asarray(matrix, dtype=np.float64)
+    return values @ transform[:3, :3].T + transform[:3, 3]
+
+
+def _transform_vectors_for_world_display(vectors: np.ndarray, matrix: np.ndarray | None) -> np.ndarray:
+    values = np.asarray(vectors, dtype=np.float64)
+    if matrix is None:
+        return values.copy()
+    transform = np.asarray(matrix, dtype=np.float64)
+    return values @ transform[:3, :3].T
+
+
+def _transform_frame_for_world_display(frame: PinholeFrame, matrix: np.ndarray | None) -> PinholeFrame:
+    if matrix is None:
+        return frame
+    transform = np.asarray(matrix, dtype=np.float64)
+    output = np.array(frame.transform_matrix, dtype=np.float64, copy=True)
+    output[:3, :3] = transform[:3, :3] @ frame.camera_to_world_rotation
+    output[:3, 3] = _transform_points_for_world_display(frame.camera_position_sfm.reshape(1, 3), matrix)[0]
+    return replace(frame, transform_matrix=output)
+
+
+def _transform_group_for_world_display(group: CubemapFrameGroup, matrix: np.ndarray | None) -> CubemapFrameGroup:
+    if matrix is None:
+        return group
+    return CubemapFrameGroup(
+        name=group.name,
+        frames_by_face={
+            face: _transform_frame_for_world_display(frame, matrix)
+            for face, frame in group.frames_by_face.items()
+        },
+    )
 GRID_LINE_BGR = (130, 130, 130)
 
 
@@ -547,7 +586,7 @@ class DevAprilTagPlacerWindow(QWidget):
             return
         try:
             sample = load_point_cloud_sample(pointcloud_path)
-            matrix = pointcloud_display_matrix(case.coordinate_profile)
+            matrix = combined_pointcloud_display_matrix(case.coordinate_profile)
             self._world_pointcloud = transform_point_cloud_sample(sample, matrix)
         except Exception as e:
             self._world_pointcloud = None
@@ -563,6 +602,16 @@ class DevAprilTagPlacerWindow(QWidget):
             f"Coordinate profile: {coordinate_profile_label(case.coordinate_profile)} - "
             f"{coordinate_profile_note(case.coordinate_profile)}"
         )
+
+    def _world_display_matrix(self) -> np.ndarray | None:
+        profile = self.case.coordinate_profile if self.case is not None else self.coordinate_profile_combo.currentData()
+        return world_display_matrix(profile)
+
+    def _world_display_groups(self) -> tuple[CubemapFrameGroup, ...]:
+        matrix = self._world_display_matrix()
+        if matrix is None:
+            return self._cubemap_groups
+        return tuple(_transform_group_for_world_display(group, matrix) for group in self._cubemap_groups)
 
     def _set_coordinate_profile(self, value: str | None) -> None:
         profile = normalize_coordinate_profile(value)
@@ -610,7 +659,6 @@ class DevAprilTagPlacerWindow(QWidget):
                 self.frame_group_combo.setCurrentIndex(index)
         self.frame_group_combo.blockSignals(False)
         self._append_log(f"Cubemap preview groups: {len(self._cubemap_groups)}")
-        self.world_debug_view.set_groups(self._cubemap_groups)
         self._sync_world_debug_view()
         if self._cubemap_groups:
             self._render_scene_preview()
@@ -685,7 +733,8 @@ class DevAprilTagPlacerWindow(QWidget):
 
     def _sync_world_debug_view(self) -> None:
         group = self._selected_group()
-        self.world_debug_view.set_groups(self._cubemap_groups)
+        display_matrix = self._world_display_matrix()
+        self.world_debug_view.set_groups(self._world_display_groups())
         self.world_debug_view.set_selected_group(group.name if group is not None else "")
         self.world_debug_view.set_preview_params(
             yaw_deg=self._scene_preview_params.yaw_deg,
@@ -697,10 +746,22 @@ class DevAprilTagPlacerWindow(QWidget):
             extent=self.grid_extent_spin.value(),
         )
         try:
+            center = _transform_points_for_world_display(
+                np.asarray(self.center_editor.value(), dtype=float).reshape(1, 3),
+                display_matrix,
+            )[0]
+            normal = _transform_vectors_for_world_display(
+                np.asarray(self.normal_editor.value(), dtype=float).reshape(1, 3),
+                display_matrix,
+            )[0]
+            up = _transform_vectors_for_world_display(
+                np.asarray(self.up_editor.value(), dtype=float).reshape(1, 3),
+                display_matrix,
+            )[0]
             self.world_debug_view.set_tag(
-                center=np.asarray(self.center_editor.value(), dtype=float),
-                normal=np.asarray(self.normal_editor.value(), dtype=float),
-                up=np.asarray(self.up_editor.value(), dtype=float),
+                center=center,
+                normal=normal,
+                up=up,
                 tag_size_m=float(self.tag_size_spin.value()),
                 true_scale=float(self.true_scale_spin.value()),
             )

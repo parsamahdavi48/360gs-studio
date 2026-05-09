@@ -13,6 +13,7 @@ class CoordinateProfile:
     label: str
     pointcloud_note: str
     pointcloud_display_matrix: np.ndarray | None = None
+    world_display_matrix: np.ndarray | None = None
     image_ray_matrix: np.ndarray | None = None
 
 
@@ -47,14 +48,16 @@ COORDINATE_PROFILES: tuple[CoordinateProfile, ...] = (
     CoordinateProfile(
         id=COORDINATE_PROFILE_LICHTFELD_CUBE6,
         label="LichtFeld Cube6出力",
-        pointcloud_note="output/pointcloud.plyをJSON表示座標へ重ねるため、表示時だけY 180度回転を適用します。",
+        pointcloud_note="PLYをJSONカメラ座標へ重ねたうえで、3Dワールド表示全体をMetashape軸向きに戻します。",
         pointcloud_display_matrix=LICHTFELD_CAMERA_POINTCLOUD_ALIGNMENT,
+        world_display_matrix=LICHTFELD_CAMERA_POINTCLOUD_ALIGNMENT,
     ),
     CoordinateProfile(
         id=COORDINATE_PROFILE_LICHTFELD_CUBE6_PRE_FINAL_PLY,
         label="LichtFeld Cube6 JSON + 補正前PLY",
-        pointcloud_note="scene直下の補正前pointcloud.plyをJSON表示座標へ重ねるため、表示時だけ複合補正を適用します。",
+        pointcloud_note="補正前PLYをJSONカメラ座標へ重ねたうえで、3Dワールド表示全体をMetashape軸向きに戻します。",
         pointcloud_display_matrix=LICHTFELD_PRE_FINAL_POINTCLOUD_ALIGNMENT,
+        world_display_matrix=LICHTFELD_CAMERA_POINTCLOUD_ALIGNMENT,
     ),
     CoordinateProfile(
         id=COORDINATE_PROFILE_POSTSHOT_CUBE6,
@@ -93,6 +96,21 @@ def coordinate_profile_note(value: str | None) -> str:
 def pointcloud_display_matrix(value: str | None) -> np.ndarray | None:
     matrix = COORDINATE_PROFILE_BY_ID[normalize_coordinate_profile(value)].pointcloud_display_matrix
     return None if matrix is None else matrix.copy()
+
+
+def world_display_matrix(value: str | None) -> np.ndarray | None:
+    matrix = COORDINATE_PROFILE_BY_ID[normalize_coordinate_profile(value)].world_display_matrix
+    return None if matrix is None else matrix.copy()
+
+
+def combined_pointcloud_display_matrix(value: str | None) -> np.ndarray | None:
+    pointcloud_matrix = pointcloud_display_matrix(value)
+    world_matrix = world_display_matrix(value)
+    if pointcloud_matrix is None:
+        return world_matrix
+    if world_matrix is None:
+        return pointcloud_matrix
+    return world_matrix @ pointcloud_matrix
 
 
 def image_ray_matrix(value: str | None) -> np.ndarray | None:
