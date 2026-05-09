@@ -926,24 +926,52 @@ class DevAprilTagPlacerWindow(QWidget):
         samples = max(8, min(80, int(round(max(x_max - x_min, z_max - z_min) / max(draw_step, 1e-6))) * 2 + 1))
         for x in x_values:
             is_axis = abs(x) <= draw_step * 0.25
+            if is_axis:
+                continue
             zs = self._line_samples(z_min, z_max, samples, include_zero=is_axis)
-            x_value = 0.0 if is_axis else float(x)
-            color = GRID_X_AXIS_BGR if is_axis else GRID_LINE_BGR
             add_grid_line(
-                np.column_stack([np.full_like(zs, x_value), np.zeros_like(zs), zs]),
-                color,
-                is_axis,
+                np.column_stack([np.full_like(zs, float(x)), np.zeros_like(zs), zs]),
+                GRID_LINE_BGR,
+                False,
             )
         for z in z_values:
             is_axis = abs(z) <= draw_step * 0.25
+            if is_axis:
+                continue
             xs = self._line_samples(x_min, x_max, samples, include_zero=is_axis)
-            z_value = 0.0 if is_axis else float(z)
-            color = GRID_Z_AXIS_BGR if is_axis else GRID_LINE_BGR
             add_grid_line(
-                np.column_stack([xs, np.zeros_like(xs), np.full_like(xs, z_value)]),
-                color,
-                is_axis,
+                np.column_stack([xs, np.zeros_like(xs), np.full_like(xs, float(z))]),
+                GRID_LINE_BGR,
+                False,
             )
+
+        camera = group.camera_position_sfm
+        axis_x_min = min(x_min, 0.0, float(center[0]), float(camera[0]))
+        axis_x_max = max(x_max, 0.0, float(center[0]), float(camera[0]))
+        axis_z_min = min(z_min, 0.0, float(center[2]), float(camera[2]))
+        axis_z_max = max(z_max, 0.0, float(center[2]), float(camera[2]))
+        axis_samples = max(
+            samples,
+            max(
+                16,
+                min(
+                    160,
+                    int(round(max(axis_x_max - axis_x_min, axis_z_max - axis_z_min) / max(draw_step, 1e-6))) * 2 + 1,
+                ),
+            ),
+        )
+        axis_zs = self._line_samples(axis_z_min, axis_z_max, axis_samples, include_zero=True)
+        add_grid_line(
+            np.column_stack([np.zeros_like(axis_zs), np.zeros_like(axis_zs), axis_zs]),
+            GRID_X_AXIS_BGR,
+            True,
+        )
+        axis_xs = self._line_samples(axis_x_min, axis_x_max, axis_samples, include_zero=True)
+        add_grid_line(
+            np.column_stack([axis_xs, np.zeros_like(axis_xs), np.zeros_like(axis_xs)]),
+            GRID_Z_AXIS_BGR,
+            True,
+        )
 
         foot = np.array([center[0], 0.0, center[2]], dtype=float)
         vertical = self._project_preview_points(np.vstack([center, foot]))

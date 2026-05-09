@@ -17,7 +17,11 @@ from devtools.apriltag.world_debug_view import (
     load_point_cloud_sample,
     transform_point_cloud_sample,
 )
-from scripts.dev_apriltag_placer_gui import DevAprilTagPlacerWindow
+from scripts.dev_apriltag_placer_gui import (
+    GRID_X_AXIS_BGR,
+    GRID_Z_AXIS_BGR,
+    DevAprilTagPlacerWindow,
+)
 
 
 def _app() -> QApplication:
@@ -154,8 +158,43 @@ def test_dev_placer_camera_grid_axes_include_origin() -> None:
 
     overlays = window._grid_preview_overlays()
     origin = next(overlay for overlay in overlays if overlay.label == "O").polyline[0]
-    x_axis = [overlay for overlay in overlays if overlay.color_bgr == (245, 175, 90) and overlay.polyline]
-    z_axis = [overlay for overlay in overlays if overlay.color_bgr == (90, 180, 245) and overlay.polyline]
+    x_axis = [overlay for overlay in overlays if overlay.color_bgr == GRID_X_AXIS_BGR and overlay.polyline]
+    z_axis = [overlay for overlay in overlays if overlay.color_bgr == GRID_Z_AXIS_BGR and overlay.polyline]
+
+    assert any(any(np.allclose(point, origin) for point in overlay.polyline) for overlay in x_axis)
+    assert any(any(np.allclose(point, origin) for point in overlay.polyline) for overlay in z_axis)
+    window.deleteLater()
+
+
+def test_dev_placer_camera_grid_axes_reach_distant_visible_origin() -> None:
+    _app()
+    transform = np.eye(4)
+    transform[:3, 3] = np.array([0.0, 1.0, -50.0])
+    frame = PinholeFrame(
+        frame_id="frame_0001_pz",
+        file_path="images/frame_0001_pz.png",
+        image_path=Path("images/frame_0001_pz.png"),
+        width=100,
+        height=100,
+        fl_x=50.0,
+        fl_y=50.0,
+        cx=49.5,
+        cy=49.5,
+        transform_matrix=transform,
+    )
+    group = CubemapFrameGroup(name="frame_0001", frames_by_face={"pz": frame})
+    window = DevAprilTagPlacerWindow()
+    window._cubemap_groups = (group,)
+    window.grid_step_spin.setValue(1.0)
+    window.grid_extent_spin.setValue(12.0)
+    window.look_yaw_spin.setValue(0.0)
+    window.look_pitch_spin.setValue(0.0)
+    window.look_fov_spin.setValue(90.0)
+
+    overlays = window._grid_preview_overlays()
+    origin = next(overlay for overlay in overlays if overlay.label == "O").polyline[0]
+    x_axis = [overlay for overlay in overlays if overlay.color_bgr == GRID_X_AXIS_BGR and overlay.polyline]
+    z_axis = [overlay for overlay in overlays if overlay.color_bgr == GRID_Z_AXIS_BGR and overlay.polyline]
 
     assert any(any(np.allclose(point, origin) for point in overlay.polyline) for overlay in x_axis)
     assert any(any(np.allclose(point, origin) for point in overlay.polyline) for overlay in z_axis)
