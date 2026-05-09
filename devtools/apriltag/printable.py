@@ -57,15 +57,22 @@ def _draw_crop_marks(draw: ImageDraw.ImageDraw, x: int, y: int, size: int) -> No
     mark_len = 72
     gap = 28
     width = 4
-    corners = (
-        (x, y, -1, -1),
-        (x + size, y, 1, -1),
-        (x, y + size, -1, 1),
-        (x + size, y + size, 1, 1),
-    )
-    for cx, cy, sx, sy in corners:
-        draw.line([(cx + sx * gap, cy), (cx + sx * (gap + mark_len), cy)], fill="black", width=width)
-        draw.line([(cx, cy + sy * gap), (cx, cy + sy * (gap + mark_len))], fill="black", width=width)
+    left = x - gap
+    right = x + size + gap
+    top = y - gap
+    bottom = y + size + gap
+
+    draw.line([(left - mark_len, top), (left, top)], fill="black", width=width)
+    draw.line([(left, top - mark_len), (left, top)], fill="black", width=width)
+
+    draw.line([(right, top), (right + mark_len, top)], fill="black", width=width)
+    draw.line([(right, top - mark_len), (right, top)], fill="black", width=width)
+
+    draw.line([(left - mark_len, bottom), (left, bottom)], fill="black", width=width)
+    draw.line([(left, bottom), (left, bottom + mark_len)], fill="black", width=width)
+
+    draw.line([(right, bottom), (right + mark_len, bottom)], fill="black", width=width)
+    draw.line([(right, bottom), (right, bottom + mark_len)], fill="black", width=width)
 
 
 def create_printable_target(
@@ -149,4 +156,3 @@ def create_printable_target(
 def marker_image_array(family: str, tag_id: int, size_px: int) -> np.ndarray:
     dictionary = _dictionary_for_family(family)
     return cv2.aruco.generateImageMarker(dictionary, int(tag_id), int(size_px))
-

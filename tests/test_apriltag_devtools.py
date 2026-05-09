@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from PIL import Image
+
 from devtools.apriltag.case import (
     AprilTagPlacement,
     create_case,
@@ -120,3 +122,18 @@ def test_create_printable_target_outputs_marker_and_a4_files(tmp_path: Path) -> 
     assert target.page_pixels == (2480, 3508)
     assert target.marker_pixels == (1890, 1890)
 
+
+def test_printable_crop_marks_stay_outside_tag_square(tmp_path: Path) -> None:
+    target = create_printable_target(tmp_path, family="tag36h11", tag_id=7, tag_size_m=0.160, dpi=300)
+    image = Image.open(target.a4_png).convert("RGB")
+    tag_w, tag_h = target.marker_pixels
+    page_w, page_h = target.page_pixels
+    x = (page_w - tag_w) // 2
+    y = max(260, int(page_h * 0.12))
+
+    # The margin immediately outside the marker must remain white. Crop marks are
+    # drawn farther out so they cannot be mistaken for part of the detected tag.
+    assert image.getpixel((x + tag_w + 10, y)) == (255, 255, 255)
+    assert image.getpixel((x + tag_w + 10, y + tag_h - 1)) == (255, 255, 255)
+    assert image.getpixel((x - 10, y)) == (255, 255, 255)
+    assert image.getpixel((x - 10, y + tag_h - 1)) == (255, 255, 255)
