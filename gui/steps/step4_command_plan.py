@@ -94,6 +94,7 @@ class Step4CommandPlanMixin:
 
         if not self._prepare_output_dir():
             return []
+        self._prepare_metashape_import_work_dir()
 
         steps = [("metashape", preprocess_cmd)]
         steps.append(("cubemap", self._build_cubemap_cmd()))
@@ -136,7 +137,9 @@ class Step4CommandPlanMixin:
                 script=script,
                 images=Path(images),
                 xml=xml,
-                output=self._display_output_dir() if self._uses_direct_equirect_output() else scene,
+                output=self._display_output_dir()
+                if self._uses_direct_equirect_output()
+                else self._metashape_import_work_dir(),
                 scale=scale,
                 use_ply=self._preprocess_uses_ply(),
                 ply=ply,
@@ -154,6 +157,15 @@ class Step4CommandPlanMixin:
             raise ValueError(f"シーンフォルダが見つかりません: {scene}")
 
         output = self._output_dir()
+        input_dir = scene
+        image_dir = None
+        mask_dir = None
+        if not image_only and self._is_metashape_method():
+            input_dir = self._metashape_import_work_dir()
+            image_dir = scene
+            masks = self._mask_dir()
+            if masks.is_dir():
+                mask_dir = masks
 
         views = self.view_config.collect_views(include_disabled=True)
         enabled = sum(1 for v in views if v["enabled"])
@@ -182,7 +194,7 @@ class Step4CommandPlanMixin:
             CubemapConversionCommand(
                 python_executable=sys.executable,
                 script=script,
-                scene=scene,
+                scene=input_dir,
                 output=output,
                 views_json=views_json,
                 scale=float(self.scale_combo.currentData()),
@@ -196,6 +208,8 @@ class Step4CommandPlanMixin:
                 output_format=out_fmt,
                 output_bit_depth=out_depth,
                 jpg_quality=jpgq,
+                image_dir=image_dir,
+                mask_dir=mask_dir,
             )
         )
 

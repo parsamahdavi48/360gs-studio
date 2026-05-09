@@ -79,6 +79,12 @@ class Step4ManifestMixin:
         writes_view_images = route_uses_view_export and self._writes_images()
         writes_view_masks = route_uses_view_export and self._writes_masks()
         portable_dataset_kind = "3dgut" if direct_source_output else "projection_views"
+        if direct_source_output:
+            input_transforms_json = output / "transforms.json"
+        elif self._is_metashape_method():
+            input_transforms_json = self._metashape_import_work_dir() / "transforms.json"
+        else:
+            input_transforms_json = scene / "transforms.json"
 
         return {
             "app": "stechdrive-3dgs-utils",
@@ -203,9 +209,7 @@ class Step4ManifestMixin:
             },
             "training": self._collect_training_settings(),
             "inputs": {
-                "transforms_json": str(output / "transforms.json")
-                if direct_source_output
-                else str(scene / "transforms.json"),
+                "transforms_json": str(input_transforms_json),
                 "masks_dir": str(self._mask_dir()),
                 "ply_source": str(self._resolve_ply_source() or ""),
             },
