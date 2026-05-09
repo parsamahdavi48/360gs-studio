@@ -7,6 +7,7 @@ import argparse
 import os
 import sys
 from collections.abc import Callable
+from dataclasses import replace
 from pathlib import Path
 
 import numpy as np
@@ -49,7 +50,16 @@ from devtools.apriltag.case import (
     create_case,
     load_case,
     run_dir_for_placement,
+    save_case,
     save_placement,
+)
+from devtools.apriltag.coordinates import (
+    COORDINATE_PROFILES,
+    DEFAULT_COORDINATE_PROFILE,
+    coordinate_profile_label,
+    coordinate_profile_note,
+    normalize_coordinate_profile,
+    pointcloud_display_matrix,
 )
 from devtools.apriltag.cubemap_preview import (
     CubemapFrameGroup,
@@ -64,7 +74,12 @@ from devtools.apriltag.cubemap_preview import (
     view_pixel_to_world_ray_and_up,
 )
 from devtools.apriltag.printable import create_printable_target
-from devtools.apriltag.world_debug_view import AprilTagWorldDebugView, PointCloudSample, load_point_cloud_sample
+from devtools.apriltag.world_debug_view import (
+    AprilTagWorldDebugView,
+    PointCloudSample,
+    load_point_cloud_sample,
+    transform_point_cloud_sample,
+)
 from gui.common.browse_widget import BrowseWidget
 from gui.common.perspective_image_view import PerspectiveImageView, PerspectiveLabelOverlay
 from gui.common.perspective_preview import PerspectiveParams, clamp_pitch_deg, normalize_yaw_deg, params_from_drag
@@ -218,6 +233,13 @@ class DevAprilTagPlacerWindow(QWidget):
         self.transforms_browse = BrowseWidget(mode="file", filter_str="JSON (*.json);;All files (*)")
         self.pointcloud_browse = BrowseWidget(mode="file", filter_str="PLY (*.ply);;All files (*)")
         self.xml_browse = BrowseWidget(mode="file", filter_str="XML (*.xml);;All files (*)")
+        self.coordinate_profile_combo = QComboBox()
+        for profile in COORDINATE_PROFILES:
+            self.coordinate_profile_combo.addItem(profile.label, profile.id)
+        self.coordinate_profile_combo.setCurrentIndex(self.coordinate_profile_combo.findData(DEFAULT_COORDINATE_PROFILE))
+        self.coordinate_profile_combo.setToolTip(
+            "仮想タグデバッグでJSONとPLYをどういう出力座標系として重ねるかを指定します。既定はLichtFeld Cube6です。"
+        )
         self.copy_images_check = QCheckBox("画像もケース内へコピーする")
         self.copy_images_check.setToolTip("通常はオフ推奨。Cubemap画像が大きい場合は参照だけにします。")
         form.addRow("ケース保存先", self.case_root_browse)
@@ -225,6 +247,7 @@ class DevAprilTagPlacerWindow(QWidget):
         form.addRow("transforms.json", self.transforms_browse)
         form.addRow("pointcloud.ply", self.pointcloud_browse)
         form.addRow("Metashape XML", self.xml_browse)
+        form.addRow("座標解釈", self.coordinate_profile_combo)
         form.addRow("", self.copy_images_check)
         row = QHBoxLayout()
         self.create_case_btn = QPushButton("このセットでテストケースを作成")
@@ -402,6 +425,7 @@ class DevAprilTagPlacerWindow(QWidget):
     def _connect_signals(self) -> None:
         self.create_case_btn.clicked.connect(self._create_case)
         self.open_case_btn.clicked.connect(self._browse_case)
+        self.coordinate_profile_combo.currentIndexChanged.connect(self._on_coordinate_profile_changed)
         self.create_printable_btn.clicked.connect(self._create_printable_target)
         self.reload_groups_btn.clicked.connect(self._load_preview_groups)
         self.render_scene_preview_btn.clicked.connect(self._render_scene_preview)
@@ -452,6 +476,7 @@ class DevAprilTagPlacerWindow(QWidget):
                 tag_id=self.tag_id_spin.value(),
                 default_tag_size_m=self.tag_size_spin.value(),
                 true_scale=self.true_scale_spin.value(),
+                coordinate_profile=self.coordinate_profile_combo.currentData() or DEFAULT_COORDINATE_PROFILE,
             )
         except Exception as e:
             QMessageBox.critical(self, "ケース作成エラー", str(e))
@@ -480,19 +505,25 @@ class DevAprilTagPlacerWindow(QWidget):
         self.transforms_browse.set_text(str(case.source_transforms))
         self.pointcloud_browse.set_text(str(case.source_pointcloud or ""))
         self.xml_browse.set_text(str(case.source_metashape_xml or ""))
+        self._set_coordinate_profile(case.coordinate_profile)
         self.family_combo.setCurrentText(case.tag_family)
         self.tag_id_spin.setValue(case.tag_id)
         self.tag_size_spin.setValue(case.default_tag_size_m)
         self.true_scale_spin.setValue(case.true_scale)
-        self.status_label.setText(
-            f"ケース: {case.case_dir}\n"
-            f"入力: {case.transforms_for_processing()}\n"
-            f"画像モード: {'コピー' if case.input_mode == 'copy' else '参照'}"
-        )
+        self.status_label.setText(self._case_status_text(case))
         self._cubemap_image_cache.clear()
         self._equirect_preview_cache.clear()
         self._load_world_pointcloud(case)
         self._load_preview_groups()
+
+    @staticmethod
+    def _case_status_text(case: AprilTagDevCase) -> str:
+        return (
+            f"ケース: {case.case_dir}\n"
+            f"入力: {case.transforms_for_processing()}\n"
+            f"画像モード: {'コピー' if case.input_mode == 'copy' else '参照'}\n"
+            f"座標解釈: {coordinate_profile_label(case.coordinate_profile)}"
+        )
 
     def _load_world_pointcloud(self, case: AprilTagDevCase) -> None:
         pointcloud_path = case.source_pointcloud
@@ -505,7 +536,9 @@ class DevAprilTagPlacerWindow(QWidget):
             self._append_log("Point cloud: none")
             return
         try:
-            self._world_pointcloud = load_point_cloud_sample(pointcloud_path)
+            sample = load_point_cloud_sample(pointcloud_path)
+            matrix = pointcloud_display_matrix(case.coordinate_profile)
+            self._world_pointcloud = transform_point_cloud_sample(sample, matrix)
         except Exception as e:
             self._world_pointcloud = None
             self.world_debug_view.set_pointcloud(None)
@@ -516,6 +549,32 @@ class DevAprilTagPlacerWindow(QWidget):
             f"Point cloud loaded: {pointcloud_path} "
             f"({len(self._world_pointcloud.points)} / {self._world_pointcloud.source_count} points)"
         )
+        self._append_log(
+            f"Coordinate profile: {coordinate_profile_label(case.coordinate_profile)} - "
+            f"{coordinate_profile_note(case.coordinate_profile)}"
+        )
+
+    def _set_coordinate_profile(self, value: str | None) -> None:
+        profile = normalize_coordinate_profile(value)
+        index = self.coordinate_profile_combo.findData(profile)
+        if index < 0:
+            index = self.coordinate_profile_combo.findData(DEFAULT_COORDINATE_PROFILE)
+        self.coordinate_profile_combo.blockSignals(True)
+        self.coordinate_profile_combo.setCurrentIndex(max(0, index))
+        self.coordinate_profile_combo.blockSignals(False)
+
+    def _on_coordinate_profile_changed(self, _index: int) -> None:
+        if self.case is None:
+            return
+        profile = normalize_coordinate_profile(self.coordinate_profile_combo.currentData())
+        self.case = replace(self.case, coordinate_profile=profile)
+        try:
+            save_case(self.case)
+        except Exception as e:
+            self._append_log(f"Case coordinate profile save failed: {e}")
+        self.status_label.setText(self._case_status_text(self.case))
+        self._load_world_pointcloud(self.case)
+        self._sync_world_debug_view()
 
     def _load_preview_groups(self) -> None:
         case = self._require_case()

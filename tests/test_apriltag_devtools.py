@@ -17,6 +17,10 @@ from devtools.apriltag.case import (
     run_dir_for_placement,
     save_placement,
 )
+from devtools.apriltag.coordinates import (
+    COORDINATE_PROFILE_LICHTFELD_CUBE6,
+    COORDINATE_PROFILE_LICHTFELD_CUBE6_PRE_FINAL_PLY,
+)
 from devtools.apriltag.cubemap_preview import (
     CubemapFrameGroup,
     face_view_params,
@@ -178,6 +182,21 @@ def test_create_case_reference_mode_copies_metadata_only(tmp_path: Path) -> None
     loaded = load_case(case.case_dir)
     assert loaded.source_transforms == source.resolve()
     assert loaded.source_pointcloud == ply.resolve()
+    assert loaded.coordinate_profile == COORDINATE_PROFILE_LICHTFELD_CUBE6
+
+
+def test_create_case_saves_coordinate_profile(tmp_path: Path) -> None:
+    source = _write_transforms(tmp_path / "source" / "transforms.json")
+
+    case = create_case(
+        case_root=tmp_path / "cases",
+        case_name="profile",
+        source_transforms=source,
+        coordinate_profile=COORDINATE_PROFILE_LICHTFELD_CUBE6_PRE_FINAL_PLY,
+    )
+
+    loaded = load_case(case.case_dir)
+    assert loaded.coordinate_profile == COORDINATE_PROFILE_LICHTFELD_CUBE6_PRE_FINAL_PLY
 
 
 def test_create_case_copy_mode_rewrites_absolute_image_paths(tmp_path: Path) -> None:

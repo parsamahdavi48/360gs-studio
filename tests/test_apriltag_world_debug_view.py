@@ -9,8 +9,14 @@ import numpy as np
 from PySide6.QtWidgets import QApplication
 
 from core.apriltag_geometry import PinholeFrame
+from devtools.apriltag.coordinates import pointcloud_display_matrix
 from devtools.apriltag.cubemap_preview import CubemapFrameGroup
-from devtools.apriltag.world_debug_view import AprilTagWorldDebugView, load_point_cloud_sample
+from devtools.apriltag.world_debug_view import (
+    AprilTagWorldDebugView,
+    PointCloudSample,
+    load_point_cloud_sample,
+    transform_point_cloud_sample,
+)
 from scripts.dev_apriltag_placer_gui import DevAprilTagPlacerWindow
 
 
@@ -48,6 +54,18 @@ def test_load_point_cloud_sample_ascii_ply(tmp_path: Path) -> None:
     assert sample.points.shape == (2, 3)
     assert sample.colors is not None
     assert sample.colors.shape == (2, 3)
+
+
+def test_transform_point_cloud_sample_applies_lichtfeld_display_matrix() -> None:
+    sample = PointCloudSample(
+        points=np.array([[1.0, 2.0, 3.0]], dtype=np.float32),
+        colors=None,
+        source_count=1,
+    )
+
+    transformed = transform_point_cloud_sample(sample, pointcloud_display_matrix("lichtfeld_cube6_pre_final_ply"))
+
+    assert np.allclose(transformed.points[0], [3.0, -2.0, 1.0])
 
 
 def test_world_debug_view_accepts_scene_and_tag() -> None:
@@ -90,6 +108,7 @@ def test_dev_placer_grid_only_preview_background() -> None:
     image = window._grid_only_equirect_preview()
 
     assert window.grid_only_preview_check.text() == "画像OFF"
+    assert window.coordinate_profile_combo.currentData() == "lichtfeld_cube6"
     assert image.shape == (1024, 2048, 3)
     assert image.dtype == np.uint8
     assert image[512, 1024, 0] > image[16, 16, 0]

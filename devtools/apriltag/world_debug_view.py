@@ -56,6 +56,17 @@ def load_point_cloud_sample(path: Path, *, max_points: int = 80_000) -> PointClo
     return _sample_points(points, colors, max_points=max_points, source_count=vertex_count)
 
 
+def transform_point_cloud_sample(sample: PointCloudSample, matrix: np.ndarray | None) -> PointCloudSample:
+    if matrix is None:
+        return sample
+    transform = np.asarray(matrix, dtype=np.float64)
+    if transform.shape != (4, 4):
+        raise ValueError("point cloud transform must be a 4x4 matrix")
+    points = np.asarray(sample.points, dtype=np.float64)
+    transformed = points @ transform[:3, :3].T + transform[:3, 3]
+    return PointCloudSample(transformed.astype(np.float32, copy=False), sample.colors, sample.source_count)
+
+
 def _read_ply_header(f) -> tuple[str, int, list[tuple[str, str]]]:
     first = f.readline().decode("ascii", errors="replace").strip()
     if first != "ply":
@@ -302,7 +313,14 @@ class AprilTagWorldDebugView(QWidget):
             pc = self._pointcloud.points
             if len(pc) > 5000:
                 pc = pc[np.linspace(0, len(pc) - 1, 5000, dtype=np.int64)]
-            points.append(pc.astype(np.float64, copy=False))
+            pc = pc.astype(np.float64, copy=False)
+            if len(pc) >= 20:
+                lower = np.percentile(pc, 1.0, axis=0)
+                upper = np.percentile(pc, 99.0, axis=0)
+                inside = np.all((pc >= lower) & (pc <= upper), axis=1)
+                if np.count_nonzero(inside) >= 10:
+                    pc = pc[inside]
+            points.append(pc)
         camera_positions = [group.camera_position_sfm for group in self._groups]
         if camera_positions:
             points.append(np.asarray(camera_positions, dtype=np.float64))

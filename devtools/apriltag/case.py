@@ -10,6 +10,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from devtools.apriltag.coordinates import DEFAULT_COORDINATE_PROFILE, normalize_coordinate_profile
+
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_CASE_ROOT = REPO_ROOT / "_compare" / "apriltag_test" / "cases"
 
@@ -27,6 +29,7 @@ class AprilTagDevCase:
     tag_id: int = 7
     default_tag_size_m: float = 0.160
     true_scale: float = 0.25
+    coordinate_profile: str = DEFAULT_COORDINATE_PROFILE
 
     @property
     def case_json_path(self) -> Path:
@@ -158,6 +161,7 @@ def create_case(
     tag_id: int = 7,
     default_tag_size_m: float = 0.160,
     true_scale: float = 0.25,
+    coordinate_profile: str = DEFAULT_COORDINATE_PROFILE,
 ) -> AprilTagDevCase:
     source_transforms = source_transforms.resolve()
     if not source_transforms.is_file():
@@ -189,6 +193,7 @@ def create_case(
         tag_id=int(tag_id),
         default_tag_size_m=float(default_tag_size_m),
         true_scale=float(true_scale),
+        coordinate_profile=normalize_coordinate_profile(coordinate_profile),
     )
     save_case(case)
     case.assets_dir.mkdir(parents=True, exist_ok=True)
@@ -203,7 +208,7 @@ def _path_text(path: Path | None) -> str | None:
 
 def save_case(case: AprilTagDevCase) -> None:
     data = {
-        "schema_version": 1,
+        "schema_version": 2,
         "name": case.name,
         "input_mode": case.input_mode,
         "source_transforms": str(case.source_transforms),
@@ -214,6 +219,7 @@ def save_case(case: AprilTagDevCase) -> None:
         "tag_id": case.tag_id,
         "default_tag_size_m": case.default_tag_size_m,
         "true_scale": case.true_scale,
+        "coordinate_profile": normalize_coordinate_profile(case.coordinate_profile),
     }
     case.case_dir.mkdir(parents=True, exist_ok=True)
     case.case_json_path.write_text(json.dumps(data, indent=2), encoding="utf-8")
@@ -234,6 +240,7 @@ def load_case(case_dir: Path) -> AprilTagDevCase:
         tag_id=int(data.get("tag_id", 7)),
         default_tag_size_m=float(data.get("default_tag_size_m", 0.160)),
         true_scale=float(data.get("true_scale", 0.25)),
+        coordinate_profile=normalize_coordinate_profile(data.get("coordinate_profile")),
     )
 
 
@@ -283,4 +290,3 @@ def load_placement(path: Path) -> AprilTagPlacement:
 
 def run_dir_for_placement(case: AprilTagDevCase, placement: AprilTagPlacement) -> Path:
     return case.runs_dir / placement.run_dir_name()
-
