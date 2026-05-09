@@ -248,6 +248,72 @@ def view_up_world(group: CubemapFrameGroup, *, yaw_deg: float, pitch_deg: float)
     return up / max(float(np.linalg.norm(up)), 1e-12)
 
 
+def _standard_preview_ray_for_world_point(group: CubemapFrameGroup, point_sfm: np.ndarray) -> np.ndarray | None:
+    rotations = _standard_cube6_face_rotations(group)
+    if rotations is None:
+        return None
+    vector_world = np.asarray(point_sfm, dtype=np.float64) - group.camera_position_sfm
+    norm = float(np.linalg.norm(vector_world))
+    if norm <= 1e-12:
+        return None
+    best_ray: np.ndarray | None = None
+    best_z = -np.inf
+    for face, rotation in rotations.items():
+        frame = group.frames_by_face.get(face)
+        if frame is None:
+            continue
+        local = vector_world @ frame.camera_to_world_rotation
+        z = float(local[2])
+        if z <= 1e-8 or z <= best_z:
+            continue
+        best_ray = (local / norm) @ rotation.T
+        best_z = z
+    if best_ray is None:
+        return None
+    return best_ray / max(float(np.linalg.norm(best_ray)), 1e-12)
+
+
+def project_sfm_points_to_preview(
+    group: CubemapFrameGroup,
+    points_sfm: np.ndarray,
+    *,
+    output_size: int,
+    yaw_deg: float,
+    pitch_deg: float,
+    fov_deg: float,
+) -> np.ndarray | None:
+    """Project SfM points into the current square perspective preview."""
+    points = np.asarray(points_sfm, dtype=np.float64)
+    if points.ndim != 2 or points.shape[1] != 3:
+        raise ValueError("points_sfm must be an Nx3 array")
+    size = max(1, int(output_size))
+    focal = 0.5 * size / np.tan(np.deg2rad(float(fov_deg)) / 2.0)
+    center = (size - 1) / 2.0
+    view_rotation = _rotation_matrix(yaw_deg, pitch_deg)
+
+    projected: list[tuple[float, float]] = []
+    standard = _standard_cube6_face_rotations(group) is not None
+    virtual_rotation = virtual_camera_rotation(group, yaw_deg=yaw_deg, pitch_deg=pitch_deg)
+    for point in points:
+        if standard:
+            preview_ray = _standard_preview_ray_for_world_point(group, point)
+            if preview_ray is None:
+                return None
+            view_local = preview_ray @ view_rotation
+        else:
+            view_local = (point - group.camera_position_sfm) @ virtual_rotation
+            norm = float(np.linalg.norm(view_local))
+            if norm <= 1e-12:
+                return None
+            view_local = view_local / norm
+        if float(view_local[2]) <= 1e-8:
+            return None
+        x = center + focal * float(view_local[0] / view_local[2])
+        y = center - focal * float(view_local[1] / view_local[2])
+        projected.append((x, y))
+    return np.asarray(projected, dtype=np.float32)
+
+
 def face_view_params(group: CubemapFrameGroup, face: str, *, fov_deg: float = 90.0) -> tuple[float, float, float] | None:
     frame = group.frames_by_face.get(face)
     if frame is None:

@@ -23,6 +23,7 @@ from devtools.apriltag.cubemap_preview import (
     load_cubemap_frame_groups,
     load_metashape_camera_labels,
     order_groups_by_labels,
+    project_sfm_points_to_preview,
     render_cubemap_equirect,
     split_cubemap_face,
     view_pixel_to_world_ray,
@@ -393,3 +394,68 @@ def test_standard_cube6_preview_click_ray_uses_matching_face_transform(tmp_path:
     )
 
     assert np.allclose(ray, np.array([1.0, 0.0, 0.0]))
+
+
+def test_project_sfm_points_to_standard_cube6_preview_center(tmp_path: Path) -> None:
+    views = {
+        "pz": (0.0, 0.0),
+        "px": (90.0, 0.0),
+        "nz": (180.0, 0.0),
+        "nx": (-90.0, 0.0),
+        "top": (0.0, 90.0),
+        "bottom": (0.0, -90.0),
+    }
+
+    def rotation(yaw_deg: float, pitch_deg: float) -> np.ndarray:
+        yaw = np.deg2rad(yaw_deg)
+        pitch = np.deg2rad(pitch_deg)
+        ry = np.array(
+            [
+                [np.cos(yaw), 0.0, np.sin(yaw)],
+                [0.0, 1.0, 0.0],
+                [-np.sin(yaw), 0.0, np.cos(yaw)],
+            ]
+        )
+        rx = np.array(
+            [
+                [1.0, 0.0, 0.0],
+                [0.0, np.cos(pitch), -np.sin(pitch)],
+                [0.0, np.sin(pitch), np.cos(pitch)],
+            ]
+        )
+        return ry @ rx
+
+    def frame(name: str) -> PinholeFrame:
+        transform = np.eye(4)
+        transform[:3, :3] = rotation(*views[name])
+        return PinholeFrame(
+            frame_id=name,
+            file_path=f"images/frame_{name}.png",
+            image_path=tmp_path / f"frame_{name}.png",
+            width=100,
+            height=100,
+            fl_x=50.0,
+            fl_y=50.0,
+            cx=49.5,
+            cy=49.5,
+            transform_matrix=transform,
+        )
+
+    group = CubemapFrameGroup(
+        name="frame",
+        frames_by_face={
+            name: frame(name) for name in views
+        },
+    )
+
+    projected = project_sfm_points_to_preview(
+        group,
+        np.array([[0.0, 0.0, 10.0]], dtype=float),
+        output_size=100,
+        yaw_deg=0.0,
+        pitch_deg=0.0,
+        fov_deg=90.0,
+    )
+
+    assert projected is not None
+    assert np.allclose(projected[0], np.array([49.5, 49.5]))

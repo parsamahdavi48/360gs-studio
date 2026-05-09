@@ -6,7 +6,7 @@ from dataclasses import dataclass
 import cv2
 import numpy as np
 from PySide6.QtCore import QPointF, QRectF, QSize, Qt, Signal
-from PySide6.QtGui import QColor, QImage, QMouseEvent, QPainter, QPen, QWheelEvent
+from PySide6.QtGui import QColor, QImage, QMouseEvent, QPainter, QPen, QPolygonF, QWheelEvent
 from PySide6.QtOpenGL import (
     QOpenGLBuffer,
     QOpenGLShader,
@@ -33,6 +33,8 @@ class PerspectiveLabelOverlay:
     origin: tuple[int, int]
     color_bgr: tuple[int, int, int]
     highlighted: bool = False
+    polygon: tuple[tuple[float, float], ...] = ()
+    fill_alpha: float = 0.0
 
 
 def bgr_to_qimage(image: np.ndarray) -> QImage:
@@ -439,6 +441,27 @@ class PerspectiveGLImageView(QOpenGLWidget):
         x1, y1, x2, y2 = item.box
         rect = QRectF(float(x1), float(y1), float(max(1, x2 - x1)), float(max(1, y2 - y1)))
         color = QColor(int(item.color_bgr[2]), int(item.color_bgr[1]), int(item.color_bgr[0]))
+        if item.polygon:
+            polygon = QPolygonF([QPointF(float(x), float(y)) for x, y in item.polygon])
+            fill = QColor(color)
+            fill.setAlphaF(max(0.0, min(1.0, float(item.fill_alpha))))
+            if item.fill_alpha > 0.0:
+                painter.setPen(Qt.NoPen)
+                painter.setBrush(fill)
+                painter.drawPolygon(polygon)
+            painter.setBrush(Qt.NoBrush)
+            painter.setPen(QPen(QColor(0, 0, 0), 6 if item.highlighted else 4))
+            painter.drawPolygon(polygon)
+            painter.setPen(QPen(color, 3 if item.highlighted else 2))
+            painter.drawPolygon(polygon)
+
+            origin = QPointF(float(item.origin[0]), float(item.origin[1]))
+            painter.setPen(QPen(QColor(0, 0, 0), 4 if item.highlighted else 3))
+            painter.drawText(origin, item.label)
+            painter.setPen(QPen(QColor(245, 245, 245) if item.highlighted else color, 1))
+            painter.drawText(origin, item.label)
+            return
+
         if item.highlighted:
             bg = QColor(color)
             bg.setAlphaF(0.42)

@@ -9,7 +9,8 @@ import sys
 from collections.abc import Callable
 from pathlib import Path
 
-from PySide6.QtCore import QProcess, QSize, Qt, QUrl
+import numpy as np
+from PySide6.QtCore import QProcess, QSize, Qt, QUrl, Signal
 from PySide6.QtGui import QDesktopServices, QIcon, QPixmap
 from PySide6.QtWidgets import (
     QApplication,
@@ -39,6 +40,7 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from core.apriltag_detection import available_families
+from core.apriltag_geometry import tag_corners_sfm
 from devtools.apriltag.case import (
     DEFAULT_CASE_ROOT,
     AprilTagDevCase,
@@ -54,18 +56,21 @@ from devtools.apriltag.cubemap_preview import (
     load_cubemap_frame_groups,
     load_metashape_camera_labels,
     order_groups_by_labels,
+    project_sfm_points_to_preview,
     render_cubemap_equirect,
     view_pixel_to_world_ray,
     view_up_world,
 )
 from devtools.apriltag.printable import create_printable_target
 from gui.common.browse_widget import BrowseWidget
-from gui.common.perspective_image_view import PerspectiveImageView
+from gui.common.perspective_image_view import PerspectiveImageView, PerspectiveLabelOverlay
 from gui.common.perspective_preview import PerspectiveParams, clamp_pitch_deg, normalize_yaw_deg, params_from_drag
 from gui.theme import apply_theme
 
 
 class Vec3Editor(QWidget):
+    value_changed = Signal()
+
     def __init__(self, values: tuple[float, float, float], parent: QWidget | None = None) -> None:
         super().__init__(parent)
         layout = QHBoxLayout(self)
@@ -79,6 +84,7 @@ class Vec3Editor(QWidget):
             spin.setSingleStep(0.1)
             spin.setValue(float(value))
             spin.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+            spin.valueChanged.connect(lambda _value: self.value_changed.emit())
             self._spins.append(spin)
             layout.addWidget(spin)
 
@@ -114,6 +120,7 @@ class DevAprilTagPlacerWindow(QWidget):
         self._equirect_preview_cache = {}
         self._scene_preview_params = PerspectiveParams()
         self._scene_preview_size = 768
+        self._last_click_state: tuple[str, np.ndarray, np.ndarray] | None = None
 
         self._build_ui()
         self._connect_signals()
@@ -358,6 +365,12 @@ class DevAprilTagPlacerWindow(QWidget):
         self.look_yaw_spin.valueChanged.connect(self._on_preview_spin_changed)
         self.look_pitch_spin.valueChanged.connect(self._on_preview_spin_changed)
         self.look_fov_spin.valueChanged.connect(self._on_preview_spin_changed)
+        self.true_scale_spin.valueChanged.connect(lambda _value: self._update_tag_preview_overlay())
+        self.tag_size_spin.valueChanged.connect(lambda _value: self._update_tag_preview_overlay())
+        self.tag_id_spin.valueChanged.connect(lambda _value: self._update_tag_preview_overlay())
+        self.placement_depth_spin.valueChanged.connect(lambda _value: self._reapply_last_preview_click_depth())
+        for editor in (self.center_editor, self.normal_editor, self.up_editor):
+            editor.value_changed.connect(self._update_tag_preview_overlay)
         self.save_placement_btn.clicked.connect(lambda: self._save_current_placement(show_message=True))
         self.inject_btn.clicked.connect(self._run_injection)
         self.estimate_btn.clicked.connect(self._run_estimation)
@@ -553,6 +566,7 @@ class DevAprilTagPlacerWindow(QWidget):
             fov_deg=float(self.look_fov_spin.value()),
         )
         self.preview_label.set_perspective_params(self._scene_preview_params)
+        self._update_tag_preview_overlay()
 
     def _sync_preview_spins(self) -> None:
         self.look_yaw_spin.blockSignals(True)
@@ -588,6 +602,7 @@ class DevAprilTagPlacerWindow(QWidget):
         shown = self.preview_label.set_perspective_image_bgr(
             image,
             self._scene_preview_params,
+            overlays=self._tag_preview_overlays(),
             logical_size=QSize(self._scene_preview_size, self._scene_preview_size),
         )
         if not shown:
@@ -608,6 +623,7 @@ class DevAprilTagPlacerWindow(QWidget):
         self._scene_preview_params = params_from_drag(self._scene_preview_params, delta_x, delta_y)
         self._sync_preview_spins()
         self.preview_label.set_perspective_params(self._scene_preview_params)
+        self._update_tag_preview_overlay()
 
     def _on_scene_preview_clicked(self, x: float, y: float) -> None:
         group = self._selected_group()
@@ -625,21 +641,77 @@ class DevAprilTagPlacerWindow(QWidget):
             pitch_deg=self._scene_preview_params.pitch_deg,
             fov_deg=self._scene_preview_params.fov_deg,
         )
-        center = group.camera_position_sfm + ray * float(self.placement_depth_spin.value())
-        normal = -ray
         up = view_up_world(
             group,
             yaw_deg=self._scene_preview_params.yaw_deg,
             pitch_deg=self._scene_preview_params.pitch_deg,
         )
-        self.center_editor.set_value(tuple(float(v) for v in center))
-        self.normal_editor.set_value(tuple(float(v) for v in normal))
-        self.up_editor.set_value(tuple(float(v) for v in up))
-        self.reference_frame_edit.setText(group.name)
+        self._last_click_state = (group.name, ray.copy(), up.copy())
+        self._apply_click_placement(group, ray, up)
         self._append_log(
             "Placement filled from preview click: "
             f"group={group.name}, depth_sfm={self.placement_depth_spin.value():.3f}"
         )
+
+    def _apply_click_placement(self, group: CubemapFrameGroup, ray: np.ndarray, up: np.ndarray) -> None:
+        center = group.camera_position_sfm + ray * float(self.placement_depth_spin.value())
+        normal = -ray
+        self.center_editor.set_value(tuple(float(v) for v in center))
+        self.normal_editor.set_value(tuple(float(v) for v in normal))
+        self.up_editor.set_value(tuple(float(v) for v in up))
+        self.reference_frame_edit.setText(group.name)
+        self._update_tag_preview_overlay()
+
+    def _reapply_last_preview_click_depth(self) -> None:
+        if self._last_click_state is None:
+            return
+        group_name, ray, up = self._last_click_state
+        group = next((candidate for candidate in self._cubemap_groups if candidate.name == group_name), None)
+        if group is None:
+            return
+        self._apply_click_placement(group, ray, up)
+
+    def _tag_preview_overlays(self) -> list[PerspectiveLabelOverlay]:
+        group = self._selected_group()
+        if group is None:
+            return []
+        try:
+            corners = tag_corners_sfm(
+                np.asarray(self.center_editor.value(), dtype=float),
+                np.asarray(self.normal_editor.value(), dtype=float),
+                np.asarray(self.up_editor.value(), dtype=float),
+                float(self.tag_size_spin.value()),
+                float(self.true_scale_spin.value()),
+            )
+            points = project_sfm_points_to_preview(
+                group,
+                corners,
+                output_size=self._scene_preview_size,
+                yaw_deg=self._scene_preview_params.yaw_deg,
+                pitch_deg=self._scene_preview_params.pitch_deg,
+                fov_deg=self._scene_preview_params.fov_deg,
+            )
+        except Exception:
+            return []
+        if points is None or not np.all(np.isfinite(points)):
+            return []
+        min_xy = np.floor(points.min(axis=0)).astype(int)
+        max_xy = np.ceil(points.max(axis=0)).astype(int)
+        origin_y = max(18, int(min_xy[1]) - 8)
+        return [
+            PerspectiveLabelOverlay(
+                label=f"tag {self.tag_id_spin.value()}",
+                box=(int(min_xy[0]), int(min_xy[1]), int(max_xy[0]), int(max_xy[1])),
+                origin=(int(min_xy[0]), origin_y),
+                color_bgr=(0, 255, 180),
+                highlighted=True,
+                polygon=tuple((float(x), float(y)) for x, y in points),
+                fill_alpha=0.16,
+            )
+        ]
+
+    def _update_tag_preview_overlay(self) -> None:
+        self.preview_label.set_perspective_label_overlays(self._tag_preview_overlays())
 
     def _save_current_placement(self, *, show_message: bool) -> tuple[AprilTagDevCase, AprilTagPlacement, Path] | None:
         case = self._require_case()
