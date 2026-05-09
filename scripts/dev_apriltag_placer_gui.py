@@ -244,12 +244,15 @@ class DevAprilTagPlacerWindow(QWidget):
         self.next_camera_btn = QPushButton("次")
         self.reload_groups_btn = QPushButton("画像リスト更新")
         self.render_scene_preview_btn = QPushButton("プレビュー表示")
+        self.grid_only_preview_check = QCheckBox("画像OFF")
+        self.grid_only_preview_check.setToolTip("カメラ画像を隠し、同じ投影経路でグリッドとタグだけを確認します。")
         row.addWidget(QLabel("カメラ位置"))
         row.addWidget(self.prev_camera_btn)
         row.addWidget(self.frame_group_combo, stretch=1)
         row.addWidget(self.next_camera_btn)
         row.addWidget(self.reload_groups_btn)
         row.addWidget(self.render_scene_preview_btn)
+        row.addWidget(self.grid_only_preview_check)
         layout.addLayout(row)
 
         self.camera_status_label = QLabel("-")
@@ -402,6 +405,7 @@ class DevAprilTagPlacerWindow(QWidget):
         self.create_printable_btn.clicked.connect(self._create_printable_target)
         self.reload_groups_btn.clicked.connect(self._load_preview_groups)
         self.render_scene_preview_btn.clicked.connect(self._render_scene_preview)
+        self.grid_only_preview_check.toggled.connect(lambda _checked: self._render_scene_preview())
         self.frame_group_combo.currentIndexChanged.connect(lambda _index: self._render_scene_preview())
         self.prev_camera_btn.clicked.connect(lambda: self._step_camera(-1))
         self.next_camera_btn.clicked.connect(lambda: self._step_camera(1))
@@ -685,15 +689,18 @@ class DevAprilTagPlacerWindow(QWidget):
             return
         self._on_preview_spin_changed()
         try:
-            image = self._equirect_preview_cache.get(group.name)
-            if image is None:
-                image = render_cubemap_equirect(
-                    group,
-                    output_width=2048,
-                    output_height=1024,
-                    image_cache=self._cubemap_image_cache,
-                )
-                self._equirect_preview_cache[group.name] = image
+            if self.grid_only_preview_check.isChecked():
+                image = self._grid_only_equirect_preview()
+            else:
+                image = self._equirect_preview_cache.get(group.name)
+                if image is None:
+                    image = render_cubemap_equirect(
+                        group,
+                        output_width=2048,
+                        output_height=1024,
+                        image_cache=self._cubemap_image_cache,
+                    )
+                    self._equirect_preview_cache[group.name] = image
         except Exception as e:
             self.preview_label.setText(f"プレビュー生成エラー: {e}")
             return
@@ -715,6 +722,25 @@ class DevAprilTagPlacerWindow(QWidget):
         for face, button in self.face_buttons.items():
             button.setEnabled(face in group.frames_by_face)
         self._sync_world_debug_view()
+
+    def _grid_only_equirect_preview(self) -> np.ndarray:
+        cache_key = "__grid_only__"
+        image = self._equirect_preview_cache.get(cache_key)
+        if image is not None:
+            return image
+        height, width = 1024, 2048
+        image = np.full((height, width, 3), (20, 24, 30), dtype=np.uint8)
+        longitude_color = np.array([45, 52, 64], dtype=np.uint8)
+        latitude_color = np.array([40, 46, 56], dtype=np.uint8)
+        major_color = np.array([76, 88, 105], dtype=np.uint8)
+        for x in range(0, width, width // 24):
+            image[:, max(0, x - 1) : min(width, x + 1)] = longitude_color
+        for y in range(0, height, height // 12):
+            image[max(0, y - 1) : min(height, y + 1), :] = latitude_color
+        image[:, width // 2 - 2 : width // 2 + 2] = np.array([90, 175, 245], dtype=np.uint8)
+        image[height // 2 - 2 : height // 2 + 2, :] = major_color
+        self._equirect_preview_cache[cache_key] = image
+        return image
 
     def _on_scene_preview_dragged(self, delta_x: float, delta_y: float) -> None:
         if not self._cubemap_groups:

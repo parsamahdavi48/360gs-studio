@@ -11,6 +11,7 @@ from PySide6.QtWidgets import QApplication
 from core.apriltag_geometry import PinholeFrame
 from devtools.apriltag.cubemap_preview import CubemapFrameGroup
 from devtools.apriltag.world_debug_view import AprilTagWorldDebugView, load_point_cloud_sample
+from scripts.dev_apriltag_placer_gui import DevAprilTagPlacerWindow
 
 
 def _app() -> QApplication:
@@ -80,3 +81,16 @@ def test_world_debug_view_accepts_scene_and_tag() -> None:
 
     assert view.sizeHint().width() > 0
     view.deleteLater()
+
+
+def test_dev_placer_grid_only_preview_background() -> None:
+    _app()
+    window = DevAprilTagPlacerWindow()
+
+    image = window._grid_only_equirect_preview()
+
+    assert window.grid_only_preview_check.text() == "画像OFF"
+    assert image.shape == (1024, 2048, 3)
+    assert image.dtype == np.uint8
+    assert image[512, 1024, 0] > image[16, 16, 0]
+    window.deleteLater()
