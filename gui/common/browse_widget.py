@@ -60,7 +60,7 @@ class BrowseWidget(QWidget):
         self.browse_button.setToolTip(BROWSE)
         self.browse_button.setAccessibleName(BROWSE)
         self.browse_button.setFixedSize(32, 32)
-        self.browse_button.clicked.connect(self._browse)
+        self.browse_button.clicked.connect(self.browse)
         if button_position == "below":
             self._layout.addWidget(self.browse_button, alignment=Qt.AlignLeft)
         else:
@@ -71,6 +71,9 @@ class BrowseWidget(QWidget):
 
     def set_text(self, path: str) -> None:
         self.line_edit.setText(path)
+
+    def browse(self) -> None:
+        self._browse()
 
     def add_icon_button(
         self,

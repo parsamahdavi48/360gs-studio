@@ -338,6 +338,15 @@ def test_main_window_clear_scene_button_clears_header_scene(tmp_path: Path) -> N
     assert window.scene_menu_btn.toolTip() == i18n.t("SCENE_ACTIONS_MENU_HINT")
     assert window.scene_menu_btn.menu() is window.scene_actions_menu
     assert window.scene_actions_menu.toolTipsVisible()
+    actions = window.scene_actions_menu.actions()
+    assert actions[0] is window.open_scene_action
+    assert actions[1] is window.clear_scene_action
+    assert actions[2].isSeparator()
+    assert actions[3] is window.import_scene_action
+    assert window.open_scene_action.text() == i18n.t("OPEN_SCENE_DIR")
+    assert window.open_scene_action.toolTip() == i18n.t("OPEN_SCENE_DIR_HINT")
+    assert window.clear_scene_action.text() == i18n.t("CLEAR_SCENE_DIR_MENU_ITEM")
+    assert window.clear_scene_action.toolTip() == i18n.t("CLEAR_SCENE_DIR_HINT")
     assert window.import_scene_action.text() == i18n.t("IMPORT_SCENE_MENU_ITEM")
     assert window.import_scene_action.toolTip() == i18n.tip("IMPORT_SCENE")
 
@@ -346,6 +355,7 @@ def test_main_window_clear_scene_button_clears_header_scene(tmp_path: Path) -> N
     assert window.scene_browse.text() == ""
     assert window.step1.scene_dir == ""
     assert not window.clear_scene_btn.isEnabled()
+    assert not window.clear_scene_action.isEnabled()
     window.close()
 
 
