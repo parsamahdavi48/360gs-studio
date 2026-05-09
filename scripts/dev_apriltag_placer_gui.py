@@ -137,6 +137,16 @@ def _transform_points_for_world_display(points: np.ndarray, matrix: np.ndarray |
     return values @ transform[:3, :3].T + transform[:3, 3]
 
 
+def _transform_points_from_world_display(points: np.ndarray, matrix: np.ndarray | None) -> np.ndarray:
+    values = np.asarray(points, dtype=np.float64)
+    if matrix is None:
+        return values.copy()
+    transform = np.asarray(matrix, dtype=np.float64)
+    linear = transform[:3, :3]
+    translation = transform[:3, 3]
+    return (values - translation) @ np.linalg.inv(linear).T
+
+
 def _transform_vectors_for_world_display(vectors: np.ndarray, matrix: np.ndarray | None) -> np.ndarray:
     values = np.asarray(vectors, dtype=np.float64)
     if matrix is None:
@@ -1169,14 +1179,22 @@ class DevAprilTagPlacerWindow(QWidget):
         if group is None:
             return []
         try:
-            center = np.asarray(self.center_editor.value(), dtype=float)
+            display_matrix = self._world_display_matrix()
+            center = _transform_points_for_world_display(
+                np.asarray(self.center_editor.value(), dtype=float).reshape(1, 3),
+                display_matrix,
+            )[0]
+            camera = _transform_points_for_world_display(
+                group.camera_position_sfm.reshape(1, 3),
+                display_matrix,
+            )[0]
             step = max(0.1, float(self.grid_step_spin.value()))
             max_distance = max(step, float(self.grid_extent_spin.value()))
         except Exception:
             return []
 
         overlays: list[PerspectiveLabelOverlay] = []
-        x_min, x_max, z_min, z_max = self._visible_ground_bounds(group, center, max_distance, step)
+        x_min, x_max, z_min, z_max = self._visible_ground_bounds(group, center, camera, max_distance, step)
         draw_step = step
         while max((x_max - x_min) / draw_step, (z_max - z_min) / draw_step) > 80:
             draw_step *= 2.0
@@ -1188,7 +1206,7 @@ class DevAprilTagPlacerWindow(QWidget):
         z_values = np.arange(z_min, z_max + draw_step * 0.5, draw_step)
 
         def add_grid_line(points: np.ndarray, color_bgr: tuple[int, int, int], highlighted: bool = False) -> None:
-            for segment in self._project_preview_polyline_segments(points):
+            for segment in self._project_world_display_polyline_segments(points):
                 overlays.append(
                     PerspectiveLabelOverlay(
                         label="",
@@ -1222,7 +1240,6 @@ class DevAprilTagPlacerWindow(QWidget):
                 False,
             )
 
-        camera = group.camera_position_sfm
         axis_x_min = min(x_min, 0.0, float(center[0]), float(camera[0]))
         axis_x_max = max(x_max, 0.0, float(center[0]), float(camera[0]))
         axis_z_min = min(z_min, 0.0, float(center[2]), float(camera[2]))
@@ -1251,7 +1268,7 @@ class DevAprilTagPlacerWindow(QWidget):
         )
 
         foot = np.array([center[0], 0.0, center[2]], dtype=float)
-        vertical = self._project_preview_points(np.vstack([center, foot]))
+        vertical = self._project_world_display_points_to_preview(np.vstack([center, foot]))
         if vertical is not None and np.all(np.isfinite(vertical)):
             overlays.append(
                 PerspectiveLabelOverlay(
@@ -1264,10 +1281,16 @@ class DevAprilTagPlacerWindow(QWidget):
                     dashed=True,
                 )
             )
-        foot_marker = self._point_marker_overlay(foot, "XZ", (0, 255, 255), radius=7.0)
+        foot_marker = self._point_marker_overlay(foot, "XZ", (0, 255, 255), radius=7.0, world_display=True)
         if foot_marker is not None:
             overlays.append(foot_marker)
-        origin_marker = self._point_marker_overlay(np.array([0.0, 0.0, 0.0], dtype=float), "O", (255, 80, 255), radius=8.0)
+        origin_marker = self._point_marker_overlay(
+            np.array([0.0, 0.0, 0.0], dtype=float),
+            "O",
+            (255, 80, 255),
+            radius=8.0,
+            world_display=True,
+        )
         if origin_marker is not None:
             overlays.append(origin_marker)
         return overlays
@@ -1283,10 +1306,10 @@ class DevAprilTagPlacerWindow(QWidget):
         self,
         group: CubemapFrameGroup,
         center: np.ndarray,
+        camera: np.ndarray,
         max_distance: float,
         step: float,
     ) -> tuple[float, float, float, float]:
-        camera = group.camera_position_sfm
         samples = np.linspace(0.0, float(self._scene_preview_size - 1), 17)
         edge_pixels = (
             [(x, 0.0) for x in samples]
@@ -1299,6 +1322,7 @@ class DevAprilTagPlacerWindow(QWidget):
             np.array([0.0, 0.0, 0.0], dtype=float),
             np.array([camera[0], 0.0, camera[2]], dtype=float),
         ]
+        display_matrix = self._world_display_matrix()
         for x_px, y_px in edge_pixels:
             ray, _up, _face = view_pixel_to_axis_world_ray_and_up(
                 group,
@@ -1311,6 +1335,8 @@ class DevAprilTagPlacerWindow(QWidget):
                 roll_deg=self._scene_preview_params.roll_deg,
                 sfm_to_preview_matrix=self._camera_preview_matrix(),
             )
+            ray = _transform_vectors_for_world_display(ray.reshape(1, 3), display_matrix)[0]
+            ray /= max(float(np.linalg.norm(ray)), 1e-12)
             if abs(float(ray[1])) > 1e-8:
                 distance = float(-camera[1] / ray[1])
                 if 0.0 < distance <= max_distance:
@@ -1355,6 +1381,20 @@ class DevAprilTagPlacerWindow(QWidget):
             segments.append(tuple(current))
         return segments
 
+    def _project_world_display_points_to_preview(self, points_world_display: np.ndarray) -> np.ndarray | None:
+        points_sfm = _transform_points_from_world_display(
+            points_world_display,
+            self._world_display_matrix(),
+        )
+        return self._project_preview_points(points_sfm)
+
+    def _project_world_display_polyline_segments(self, points_world_display: np.ndarray) -> list[tuple[tuple[float, float], ...]]:
+        points_sfm = _transform_points_from_world_display(
+            points_world_display,
+            self._world_display_matrix(),
+        )
+        return self._project_preview_polyline_segments(points_sfm)
+
     def _point_marker_overlay(
         self,
         point_sfm: np.ndarray,
@@ -1362,8 +1402,10 @@ class DevAprilTagPlacerWindow(QWidget):
         color_bgr: tuple[int, int, int],
         *,
         radius: float,
+        world_display: bool = False,
     ) -> PerspectiveLabelOverlay | None:
-        projected = self._project_preview_points(np.asarray(point_sfm, dtype=float).reshape(1, 3))
+        points = np.asarray(point_sfm, dtype=float).reshape(1, 3)
+        projected = self._project_world_display_points_to_preview(points) if world_display else self._project_preview_points(points)
         if projected is None or not np.all(np.isfinite(projected)):
             return None
         x, y = (float(projected[0, 0]), float(projected[0, 1]))

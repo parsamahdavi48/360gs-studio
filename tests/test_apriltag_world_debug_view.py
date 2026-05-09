@@ -19,6 +19,7 @@ from devtools.apriltag.world_debug_view import (
     load_point_cloud_sample,
     transform_point_cloud_sample,
 )
+from gui.common.perspective_preview import PerspectiveParams
 from scripts.dev_apriltag_placer_gui import (
     CAMERA_PREVIEW_TO_WORLD_MATRIX,
     GRID_X_AXIS_BGR,
@@ -26,6 +27,7 @@ from scripts.dev_apriltag_placer_gui import (
     DevAprilTagPlacerWindow,
     _estimate_world_display_matrix_from_metashape,
     _transform_group_for_world_display,
+    _transform_points_from_world_display,
 )
 
 
@@ -414,4 +416,45 @@ def test_dev_placer_camera_grid_axes_reach_distant_visible_origin() -> None:
 
     assert any(any(np.allclose(point, origin) for point in overlay.polyline) for overlay in x_axis)
     assert any(any(np.allclose(point, origin) for point in overlay.polyline) for overlay in z_axis)
+    window.deleteLater()
+
+
+def test_dev_placer_camera_grid_projects_display_x_axis_direction() -> None:
+    _app()
+    display_camera = np.array([[10.0, 0.0, 5.0]], dtype=float)
+    raw_camera = _transform_points_from_world_display(display_camera, world_display_matrix("lichtfeld_cube6"))[0]
+    transform = np.eye(4)
+    transform[:3, 3] = raw_camera
+    frame = PinholeFrame(
+        frame_id="frame_0001_pz",
+        file_path="images/frame_0001_pz.png",
+        image_path=Path("images/frame_0001_pz.png"),
+        width=100,
+        height=100,
+        fl_x=50.0,
+        fl_y=50.0,
+        cx=49.5,
+        cy=49.5,
+        transform_matrix=transform,
+    )
+    group = CubemapFrameGroup(name="frame_0001", frames_by_face={"pz": frame})
+    window = DevAprilTagPlacerWindow()
+    window._cubemap_groups = (group,)
+    window._scene_preview_params = PerspectiveParams(yaw_deg=np.rad2deg(np.arctan2(10.0, 5.0)), pitch_deg=0.0, fov_deg=90.0)
+
+    projected = window._project_world_display_points_to_preview(
+        np.array(
+            [
+                [0.0, 0.0, 0.0],
+                [5.0, 0.0, 0.0],
+                [-5.0, 0.0, 0.0],
+            ],
+            dtype=float,
+        )
+    )
+
+    assert projected is not None
+    origin, plus_x, minus_x = projected
+    assert plus_x[0] < origin[0]
+    assert minus_x[0] > origin[0]
     window.deleteLater()
