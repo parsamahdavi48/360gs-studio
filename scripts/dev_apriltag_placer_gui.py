@@ -1317,11 +1317,7 @@ class DevAprilTagPlacerWindow(QWidget):
         size = float(self._scene_preview_size)
         origin = np.array([54.0, max(46.0, size - 48.0)], dtype=np.float64)
         length = 34.0
-        rotation = _preview_rotation_matrix(
-            self._scene_preview_params.yaw_deg,
-            self._scene_preview_params.pitch_deg,
-            self._scene_preview_params.roll_deg,
-        )
+        rotation = self._camera_axis_gizmo_rotation()
         axes = (
             ("+X", np.array([1.0, 0.0, 0.0], dtype=np.float64), AXIS_GIZMO_X_BGR),
             ("+Y", np.array([0.0, 1.0, 0.0], dtype=np.float64), AXIS_GIZMO_Y_BGR),
@@ -1357,6 +1353,16 @@ class DevAprilTagPlacerWindow(QWidget):
                 )
             )
         return overlays
+
+    def _camera_axis_gizmo_rotation(self) -> np.ndarray:
+        group = self._selected_world_display_group()
+        if self.pointcloud_preview_check.isChecked() and group is not None:
+            return self._preview_camera_rotation_for_display_group(group)
+        return _preview_rotation_matrix(
+            self._scene_preview_params.yaw_deg,
+            self._scene_preview_params.pitch_deg,
+            self._scene_preview_params.roll_deg,
+        )
 
     def _project_preview_points(self, points_sfm: np.ndarray) -> np.ndarray | None:
         group = self._selected_world_display_group()

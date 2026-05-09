@@ -406,6 +406,47 @@ def test_dev_placer_camera_axis_gizmo_marks_positive_axes() -> None:
     window.deleteLater()
 
 
+def test_dev_placer_pointcloud_axis_gizmo_uses_selected_camera_rotation() -> None:
+    _app()
+    transform = np.eye(4)
+    transform[:3, :3] = np.diag([-1.0, 1.0, -1.0])
+    frame = PinholeFrame(
+        frame_id="frame_0001_pz",
+        file_path="images/frame_0001_pz.png",
+        image_path=Path("images/frame_0001_pz.png"),
+        width=100,
+        height=100,
+        fl_x=50.0,
+        fl_y=50.0,
+        cx=49.5,
+        cy=49.5,
+        transform_matrix=transform,
+    )
+    group = CubemapFrameGroup(name="frame_0001", frames_by_face={"pz": frame})
+    window = DevAprilTagPlacerWindow()
+    window._cubemap_groups = (group,)
+    window.coordinate_profile_combo.setCurrentIndex(window.coordinate_profile_combo.findData("custom"))
+    window.pointcloud_preview_check.blockSignals(True)
+    window.pointcloud_preview_check.setChecked(True)
+    window.pointcloud_preview_check.blockSignals(False)
+    window._scene_preview_params = PerspectiveParams(yaw_deg=35.0, pitch_deg=0.0, fov_deg=90.0)
+
+    overlays = window._camera_axis_gizmo_overlays()
+    by_label = {overlay.label: overlay for overlay in overlays if overlay.label}
+    origin = np.asarray(overlays[0].polyline[0], dtype=float)
+    rotation = window._preview_camera_rotation_for_display_group(group)
+
+    for label, axis in (
+        ("+X", np.array([1.0, 0.0, 0.0], dtype=float)),
+        ("+Z", np.array([0.0, 0.0, 1.0], dtype=float)),
+    ):
+        expected_view = axis @ rotation
+        expected_screen = np.array([expected_view[0], -expected_view[1]], dtype=float)
+        actual_screen = np.asarray(by_label[label].polyline[-1], dtype=float) - origin
+        assert float(actual_screen @ expected_screen) > 0.0
+    window.deleteLater()
+
+
 def test_dev_placer_camera_grid_axes_include_origin() -> None:
     _app()
     transform = np.eye(4)
