@@ -86,10 +86,10 @@ from gui.common.perspective_preview import PerspectiveParams, clamp_pitch_deg, n
 from gui.theme import apply_theme
 
 
-# PerspectiveLabelOverlay stores OpenCV-style BGR values; these match the RGB
-# colors used for the same XZ axes in AprilTagWorldDebugView.
-GRID_X_AXIS_BGR = (245, 175, 90)
-GRID_Z_AXIS_BGR = (90, 180, 245)
+# PerspectiveLabelOverlay stores OpenCV-style BGR values. These match the
+# highlighted X/Z grid axes in AprilTagWorldDebugView.
+GRID_X_AXIS_BGR = (90, 180, 245)
+GRID_Z_AXIS_BGR = (245, 175, 90)
 AXIS_GIZMO_X_BGR = (92, 92, 255)
 AXIS_GIZMO_Y_BGR = (130, 245, 120)
 AXIS_GIZMO_Z_BGR = (255, 170, 96)
@@ -1278,14 +1278,21 @@ class DevAprilTagPlacerWindow(QWidget):
         axis_zs = self._line_samples(axis_z_min, axis_z_max, axis_samples, include_zero=True)
         add_grid_line(
             np.column_stack([np.zeros_like(axis_zs), np.zeros_like(axis_zs), axis_zs]),
-            GRID_X_AXIS_BGR,
+            GRID_Z_AXIS_BGR,
             True,
         )
         axis_xs = self._line_samples(axis_x_min, axis_x_max, axis_samples, include_zero=True)
         add_grid_line(
             np.column_stack([axis_xs, np.zeros_like(axis_xs), np.zeros_like(axis_xs)]),
-            GRID_Z_AXIS_BGR,
+            GRID_X_AXIS_BGR,
             True,
+        )
+        overlays.extend(
+            self._positive_axis_marker_overlays(
+                axis_x_max=axis_x_max,
+                axis_z_max=axis_z_max,
+                step=draw_step,
+            )
         )
 
         foot = np.array([center[0], 0.0, center[2]], dtype=float)
@@ -1315,6 +1322,44 @@ class DevAprilTagPlacerWindow(QWidget):
         if origin_marker is not None:
             overlays.append(origin_marker)
         return overlays
+
+    def _positive_axis_marker_overlays(
+        self,
+        *,
+        axis_x_max: float,
+        axis_z_max: float,
+        step: float,
+    ) -> list[PerspectiveLabelOverlay]:
+        overlays: list[PerspectiveLabelOverlay] = []
+        x_marker = self._axis_marker_distance(axis_x_max, step)
+        if x_marker is not None:
+            marker = self._point_marker_overlay(
+                np.array([x_marker, 0.0, 0.0], dtype=float),
+                "+X",
+                AXIS_GIZMO_X_BGR,
+                radius=5.0,
+                world_display=True,
+            )
+            if marker is not None:
+                overlays.append(marker)
+        z_marker = self._axis_marker_distance(axis_z_max, step)
+        if z_marker is not None:
+            marker = self._point_marker_overlay(
+                np.array([0.0, 0.0, z_marker], dtype=float),
+                "+Z",
+                AXIS_GIZMO_Z_BGR,
+                radius=5.0,
+                world_display=True,
+            )
+            if marker is not None:
+                overlays.append(marker)
+        return overlays
+
+    @staticmethod
+    def _axis_marker_distance(axis_max: float, step: float) -> float | None:
+        if axis_max <= max(0.25, step * 0.5):
+            return None
+        return min(float(axis_max), max(float(step) * 2.0, float(axis_max) * 0.55))
 
     @staticmethod
     def _line_samples(start: float, stop: float, count: int, *, include_zero: bool) -> np.ndarray:

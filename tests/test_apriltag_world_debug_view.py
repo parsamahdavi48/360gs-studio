@@ -455,6 +455,38 @@ def test_dev_placer_camera_grid_projects_display_x_axis_direction() -> None:
     window.deleteLater()
 
 
+def test_dev_placer_camera_grid_marks_positive_axis_sides() -> None:
+    _app()
+    transform = np.eye(4)
+    transform[:3, 3] = np.array([0.0, 1.0, -8.0])
+    frame = PinholeFrame(
+        frame_id="frame_0001_pz",
+        file_path="images/frame_0001_pz.png",
+        image_path=Path("images/frame_0001_pz.png"),
+        width=100,
+        height=100,
+        fl_x=50.0,
+        fl_y=50.0,
+        cx=49.5,
+        cy=49.5,
+        transform_matrix=transform,
+    )
+    group = CubemapFrameGroup(name="frame_0001", frames_by_face={"pz": frame})
+    window = DevAprilTagPlacerWindow()
+    window._cubemap_groups = (group,)
+    window.coordinate_profile_combo.setCurrentIndex(window.coordinate_profile_combo.findData("custom"))
+    window.grid_step_spin.setValue(1.0)
+    window.grid_extent_spin.setValue(12.0)
+    window._scene_preview_params = PerspectiveParams(yaw_deg=0.0, pitch_deg=0.0, fov_deg=90.0)
+
+    overlays = window._grid_preview_overlays()
+    by_label = {overlay.label: overlay for overlay in overlays if overlay.label}
+
+    assert "+X" in by_label
+    assert "+Z" in by_label
+    window.deleteLater()
+
+
 def test_dev_placer_world_frustum_uses_display_camera_basis() -> None:
     _app()
     display_camera = np.array([[10.0, 0.0, 5.0]], dtype=float)
