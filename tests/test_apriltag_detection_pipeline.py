@@ -11,7 +11,7 @@ from core.apriltag_detection import detect_apriltags
 from core.apriltag_geometry import load_pinhole_frames
 from core.apriltag_pipeline import run_apriltag_scale_estimation
 from core.apriltag_projection import EquirectProjectionConfig, prepare_equirect_detection_dataset
-from core.apriltag_synthetic import SyntheticAprilTagConfig, inject_synthetic_apriltag
+from devtools.apriltag.synthetic import SyntheticAprilTagConfig, inject_synthetic_apriltag
 from core.image_io import imwrite_unicode
 
 

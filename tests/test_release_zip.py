@@ -11,13 +11,19 @@ from scripts.create_release_zip import include_in_release, release_setup_preflig
 
 def test_release_zip_excludes_tests_but_keeps_runtime_scripts() -> None:
     assert not include_in_release("tests/test_smoke.py")
+    assert not include_in_release("devtools/apriltag/synthetic.py")
     assert not include_in_release("scripts/create_release_zip.py")
+    assert not include_in_release("scripts/dev_apriltag_placer_gui.py")
+    assert not include_in_release("scripts/dev_apriltag_preview.py")
+    assert not include_in_release("scripts/inject_synthetic_apriltag.py")
     assert include_in_release("scripts/update_venv.py")
     assert include_in_release("scripts/check_venv.py")
+    assert include_in_release("scripts/estimate_apriltag_scale.py")
     assert include_in_release("sky_mask.py")
     assert include_in_release("mask_view_recipes.py")
     assert include_in_release("models/README.md")
     assert include_in_release("run_gui.bat")
+    assert include_in_release("run_gui_apriltag.bat")
 
 
 @pytest.mark.parametrize(

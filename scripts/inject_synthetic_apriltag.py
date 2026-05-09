@@ -13,7 +13,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from core.apriltag_synthetic import SyntheticAprilTagConfig, inject_synthetic_apriltag
+from devtools.apriltag.synthetic import SyntheticAprilTagConfig, inject_synthetic_apriltag
 
 
 def _parse_vec3(text: str, name: str) -> np.ndarray:
