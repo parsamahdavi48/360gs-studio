@@ -11,7 +11,7 @@ from PySide6.QtGui import QColor, QMouseEvent, QPainter, QPen, QPolygonF, QWheel
 from PySide6.QtWidgets import QWidget
 
 from core.apriltag_geometry import tag_corners_sfm
-from devtools.apriltag.cubemap_preview import CubemapFrameGroup, preview_frustum_rays
+from devtools.apriltag.cubemap_preview import CubemapFrameGroup, axis_preview_frustum_rays
 
 
 @dataclass(frozen=True)
@@ -208,6 +208,7 @@ class AprilTagWorldDebugView(QWidget):
         self._true_scale = 0.25
         self._preview_yaw_deg = 0.0
         self._preview_pitch_deg = 0.0
+        self._preview_roll_deg = 0.0
         self._preview_fov_deg = 90.0
         self._grid_step = 2.0
         self._grid_extent = 20.0
@@ -239,9 +240,10 @@ class AprilTagWorldDebugView(QWidget):
         self._selected_group_name = group_name
         self.update()
 
-    def set_preview_params(self, *, yaw_deg: float, pitch_deg: float, fov_deg: float) -> None:
+    def set_preview_params(self, *, yaw_deg: float, pitch_deg: float, fov_deg: float, roll_deg: float = 0.0) -> None:
         self._preview_yaw_deg = float(yaw_deg)
         self._preview_pitch_deg = float(pitch_deg)
+        self._preview_roll_deg = float(roll_deg)
         self._preview_fov_deg = float(fov_deg)
         self.update()
 
@@ -502,11 +504,11 @@ class AprilTagWorldDebugView(QWidget):
 
     def _draw_selected_frustum(self, painter: QPainter, group: CubemapFrameGroup) -> None:
         position = group.camera_position_sfm
-        forward, corner_rays = preview_frustum_rays(
-            group,
+        forward, corner_rays = axis_preview_frustum_rays(
             output_size=129,
             yaw_deg=self._preview_yaw_deg,
             pitch_deg=self._preview_pitch_deg,
+            roll_deg=self._preview_roll_deg,
             fov_deg=self._preview_fov_deg,
         )
         scene_scale = max(self._grid_step * 2.0, self._grid_extent * 0.12, self._tag_size_m / self._true_scale * 2.0)

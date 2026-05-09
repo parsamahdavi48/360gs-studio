@@ -25,6 +25,7 @@ from devtools.apriltag.coordinates import (
 )
 from devtools.apriltag.cubemap_preview import (
     CubemapFrameGroup,
+    axis_face_view_params,
     cubemap_preview_sampler_faces,
     face_view_params,
     load_cubemap_frame_groups,
@@ -33,6 +34,7 @@ from devtools.apriltag.cubemap_preview import (
     project_sfm_points_to_preview,
     project_sfm_points_to_preview_points,
     preview_frustum_rays,
+    render_cubemap_axis_equirect,
     render_cubemap_equirect,
     render_cubemap_direct_preview,
     split_cubemap_face,
@@ -42,6 +44,7 @@ from devtools.apriltag.cubemap_preview import (
     view_pixel_to_world_ray_and_up,
 )
 from devtools.apriltag.printable import create_printable_target
+from gui.common.perspective_preview import PerspectiveParams, equirect_to_perspective
 
 
 def _write_transforms(path: Path, *, absolute_image: bool = False) -> Path:
@@ -130,6 +133,37 @@ def _rotation(yaw_deg: float, pitch_deg: float) -> np.ndarray:
         dtype=float,
     )
     return ry @ rx
+
+
+def _rotation_ypr(yaw_deg: float, pitch_deg: float, roll_deg: float) -> np.ndarray:
+    yaw = np.deg2rad(yaw_deg)
+    pitch = np.deg2rad(pitch_deg)
+    roll = np.deg2rad(roll_deg)
+    ry = np.array(
+        [
+            [np.cos(yaw), 0.0, np.sin(yaw)],
+            [0.0, 1.0, 0.0],
+            [-np.sin(yaw), 0.0, np.cos(yaw)],
+        ],
+        dtype=float,
+    )
+    rx = np.array(
+        [
+            [1.0, 0.0, 0.0],
+            [0.0, np.cos(pitch), -np.sin(pitch)],
+            [0.0, np.sin(pitch), np.cos(pitch)],
+        ],
+        dtype=float,
+    )
+    rz = np.array(
+        [
+            [np.cos(roll), -np.sin(roll), 0.0],
+            [np.sin(roll), np.cos(roll), 0.0],
+            [0.0, 0.0, 1.0],
+        ],
+        dtype=float,
+    )
+    return ry @ rx @ rz
 
 
 def _write_generated_cube6_transforms(path: Path) -> Path:
@@ -329,8 +363,8 @@ def test_standard_cube6_face_view_params_use_preview_convention(tmp_path: Path) 
     assert face_view_params(group, "pz") == (0.0, 0.0, 90.0)
     assert face_view_params(group, "px") == (90.0, 0.0, 90.0)
     assert face_view_params(group, "nx") == (-90.0, 0.0, 90.0)
-    assert face_view_params(group, "top") == (0.0, -90.0, 90.0)
-    assert face_view_params(group, "bottom") == (0.0, 90.0, 90.0)
+    assert face_view_params(group, "top") == (0.0, 90.0, 90.0)
+    assert face_view_params(group, "bottom") == (0.0, -90.0, 90.0)
 
 
 def test_face_view_params_matches_preview_pitch_sign(tmp_path: Path) -> None:
@@ -431,6 +465,82 @@ def test_render_cubemap_equirect_uses_standard_cube6_face_layout(tmp_path: Path)
 
     assert float(np.mean(np.abs(rendered.astype(np.int16) - source.astype(np.int16)))) < 3.0
     assert image_ray_matrix(COORDINATE_PROFILE_LICHTFELD_CUBE6) is None
+
+
+def test_render_cubemap_axis_equirect_preserves_world_aligned_face_roll(tmp_path: Path) -> None:
+    source_w, source_h = 192, 96
+    face_size = 64
+    xs = (np.arange(source_w, dtype=np.float64) + 0.5) / source_w
+    ys = (np.arange(source_h, dtype=np.float64) + 0.5) / source_h
+    lon = (xs * 2.0 - 1.0) * np.pi
+    lat = (0.5 - ys) * np.pi
+    cos_lat = np.cos(lat)[:, None]
+    source = np.dstack(
+        [
+            ((np.sin(lon)[None, :] * cos_lat * 0.5 + 0.5) * 255).astype(np.uint8),
+            ((np.sin(lat)[:, None] * 0.5 + 0.5) * 255).repeat(source_w, axis=1).astype(np.uint8),
+            ((np.cos(lon)[None, :] * cos_lat * 0.5 + 0.5) * 255).astype(np.uint8),
+        ]
+    )
+    faces = {
+        "pz": (0.0, 0.0),
+        "px": (90.0, 0.0),
+        "nz": (180.0, 0.0),
+        "nx": (-90.0, 0.0),
+        "top": (0.0, 90.0),
+        "bottom": (0.0, -90.0),
+    }
+    base = _rotation_ypr(37.0, -6.0, 11.0)
+
+    def render_face(rotation: np.ndarray) -> np.ndarray:
+        coords = (np.arange(face_size, dtype=np.float64) + 0.5) / face_size
+        u = coords * 2.0 - 1.0
+        v = 1.0 - coords * 2.0
+        uu, vv = np.meshgrid(u, v)
+        rays = np.stack([uu, vv, np.ones_like(uu)], axis=-1)
+        rays /= np.linalg.norm(rays, axis=-1, keepdims=True)
+        rays = rays @ rotation.T
+        map_x = ((np.arctan2(rays[..., 0], rays[..., 2]) / np.pi + 1.0) * 0.5 * source_w).astype(np.float32)
+        map_y = ((0.5 - np.arcsin(np.clip(rays[..., 1], -1.0, 1.0)) / np.pi) * source_h).astype(np.float32)
+        return cv2.remap(source, map_x, map_y, cv2.INTER_LINEAR, borderMode=cv2.BORDER_WRAP)
+
+    def frame(name: str, rotation: np.ndarray) -> PinholeFrame:
+        image = render_face(rotation)
+        image_path = tmp_path / f"axis_{name}.png"
+        assert cv2.imwrite(str(image_path), image)
+        transform = np.eye(4)
+        transform[:3, :3] = rotation
+        return PinholeFrame(
+            frame_id=name,
+            file_path=f"images/axis_{name}.png",
+            image_path=image_path,
+            width=face_size,
+            height=face_size,
+            fl_x=face_size / 2.0,
+            fl_y=face_size / 2.0,
+            cx=(face_size - 1) / 2.0,
+            cy=(face_size - 1) / 2.0,
+            transform_matrix=transform,
+        )
+
+    frames = {
+        name: frame(name, base @ _rotation(yaw, pitch))
+        for name, (yaw, pitch) in faces.items()
+    }
+    group = CubemapFrameGroup(name="axis", frames_by_face=frames)
+
+    rendered = render_cubemap_axis_equirect(group, output_width=source_w, output_height=source_h)
+
+    assert float(np.mean(np.abs(rendered.astype(np.int16) - source.astype(np.int16)))) < 4.0
+    for face_name, source_frame in frames.items():
+        yaw, pitch, roll, fov = axis_face_view_params(group, face_name)
+        reprojected = equirect_to_perspective(
+            rendered,
+            PerspectiveParams(yaw_deg=yaw, pitch_deg=pitch, fov_deg=fov, roll_deg=roll),
+            output_size=face_size,
+        )
+        source_image = cv2.imread(str(source_frame.image_path), cv2.IMREAD_COLOR)
+        assert float(np.mean(np.abs(reprojected.astype(np.int16) - source_image.astype(np.int16)))) < 10.0
 
 
 def test_lichtfeld_pre_final_profile_does_not_rotate_preview_texture() -> None:

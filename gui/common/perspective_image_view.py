@@ -87,6 +87,7 @@ class PerspectiveGLImageView(QOpenGLWidget):
         uniform sampler2D u_texture;
         uniform float u_yaw_rad;
         uniform float u_pitch_rad;
+        uniform float u_roll_rad;
         uniform float u_fov_rad;
         uniform vec2 u_viewport_origin;
         uniform vec2 u_viewport_size;
@@ -100,12 +101,20 @@ class PerspectiveGLImageView(QOpenGLWidget):
             float focal = 1.0 / tan(u_fov_rad * 0.5);
             vec3 ray = normalize(vec3(view_x, view_y, focal));
 
+            float cr = cos(u_roll_rad);
+            float sr = sin(u_roll_rad);
+            vec3 rolled = vec3(
+                cr * ray.x - sr * ray.y,
+                sr * ray.x + cr * ray.y,
+                ray.z
+            );
+
             float cp = cos(u_pitch_rad);
             float sp = sin(u_pitch_rad);
             vec3 pitched = vec3(
-                ray.x,
-                cp * ray.y - sp * ray.z,
-                sp * ray.y + cp * ray.z
+                rolled.x,
+                cp * rolled.y - sp * rolled.z,
+                sp * rolled.y + cp * rolled.z
             );
 
             float cy = cos(u_yaw_rad);
@@ -265,6 +274,10 @@ class PerspectiveGLImageView(QOpenGLWidget):
         self._program.setUniformValue1f(
             self._program.uniformLocation(b"u_pitch_rad"),
             float(np.deg2rad(float(self._params.pitch_deg))),
+        )
+        self._program.setUniformValue1f(
+            self._program.uniformLocation(b"u_roll_rad"),
+            float(np.deg2rad(float(getattr(self._params, "roll_deg", 0.0)))),
         )
         self._program.setUniformValue1f(
             self._program.uniformLocation(b"u_fov_rad"),

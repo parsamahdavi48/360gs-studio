@@ -19,6 +19,7 @@ class PerspectiveParams:
     yaw_deg: float = 0.0
     pitch_deg: float = 0.0
     fov_deg: float = PERSPECTIVE_PREVIEW_FOV_DEG
+    roll_deg: float = 0.0
 
 
 def normalize_yaw_deg(yaw_deg: float) -> float:
@@ -40,12 +41,14 @@ def params_from_drag(
         yaw_deg=normalize_yaw_deg(params.yaw_deg - float(delta_x) * degrees_per_pixel),
         pitch_deg=clamp_pitch_deg(params.pitch_deg - float(delta_y) * degrees_per_pixel),
         fov_deg=params.fov_deg,
+        roll_deg=params.roll_deg,
     )
 
 
-def _rotation_matrix(yaw_deg: float, pitch_deg: float) -> np.ndarray:
+def _rotation_matrix(yaw_deg: float, pitch_deg: float, roll_deg: float = 0.0) -> np.ndarray:
     yaw = np.deg2rad(yaw_deg)
     pitch = np.deg2rad(pitch_deg)
+    roll = np.deg2rad(roll_deg)
     ry = np.array(
         [
             [np.cos(yaw), 0.0, np.sin(yaw)],
@@ -62,7 +65,15 @@ def _rotation_matrix(yaw_deg: float, pitch_deg: float) -> np.ndarray:
         ],
         dtype=np.float64,
     )
-    return ry @ rx
+    rz = np.array(
+        [
+            [np.cos(roll), -np.sin(roll), 0.0],
+            [np.sin(roll), np.cos(roll), 0.0],
+            [0.0, 0.0, 1.0],
+        ],
+        dtype=np.float64,
+    )
+    return ry @ rx @ rz
 
 
 @lru_cache(maxsize=8)
@@ -72,6 +83,7 @@ def perspective_remap_maps(
     output_size: int,
     yaw_deg: float,
     pitch_deg: float,
+    roll_deg: float,
     fov_deg: float,
 ) -> tuple[np.ndarray, np.ndarray]:
     source_width = max(1, int(source_width))
@@ -87,7 +99,7 @@ def perspective_remap_maps(
     focal = 1.0 / np.tan(np.deg2rad(fov_deg) / 2.0)
     rays = np.stack([uu, vv, np.full_like(uu, focal)], axis=-1)
     rays /= np.linalg.norm(rays, axis=-1, keepdims=True)
-    rays = rays @ _rotation_matrix(float(yaw_deg), float(pitch_deg)).T
+    rays = rays @ _rotation_matrix(float(yaw_deg), float(pitch_deg), float(roll_deg)).T
 
     lon = np.arctan2(rays[..., 0], rays[..., 2])
     lat = np.arcsin(np.clip(rays[..., 1], -1.0, 1.0))
@@ -122,6 +134,7 @@ def equirect_to_perspective(
         int(size),
         round(float(params.yaw_deg), 6),
         round(float(params.pitch_deg), 6),
+        round(float(params.roll_deg), 6),
         round(float(params.fov_deg), 6),
     )
     return cv2.remap(

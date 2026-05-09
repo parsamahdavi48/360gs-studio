@@ -65,15 +65,13 @@ from devtools.apriltag.coordinates import (
 )
 from devtools.apriltag.cubemap_preview import (
     CubemapFrameGroup,
-    face_view_params,
+    axis_face_view_params,
     load_cubemap_frame_groups,
     load_metashape_camera_labels,
     order_groups_by_labels,
-    project_sfm_points_to_preview,
-    project_sfm_points_to_preview_points,
-    render_cubemap_equirect,
-    view_pixel_to_world_ray,
-    view_pixel_to_world_ray_and_up,
+    project_sfm_points_to_axis_preview_points,
+    render_cubemap_axis_equirect,
+    view_pixel_to_axis_world_ray_and_up,
 )
 from devtools.apriltag.printable import create_printable_target
 from devtools.apriltag.world_debug_view import (
@@ -835,6 +833,7 @@ class DevAprilTagPlacerWindow(QWidget):
         self.world_debug_view.set_preview_params(
             yaw_deg=self._scene_preview_params.yaw_deg,
             pitch_deg=self._scene_preview_params.pitch_deg,
+            roll_deg=self._scene_preview_params.roll_deg,
             fov_deg=self._scene_preview_params.fov_deg,
         )
         self.world_debug_view.set_grid(
@@ -886,26 +885,33 @@ class DevAprilTagPlacerWindow(QWidget):
         group = self._selected_group()
         if group is None:
             return
-        params = face_view_params(group, face, fov_deg=self.look_fov_spin.value())
+        params = axis_face_view_params(
+            group,
+            face,
+            fov_deg=self.look_fov_spin.value(),
+            sfm_to_preview_matrix=self._world_display_matrix(),
+        )
         if params is None:
             self._append_log(f"Face not available in this group: {face}")
             return
-        yaw, pitch, fov = params
+        yaw, pitch, roll, fov = params
         self._scene_preview_params = PerspectiveParams(
             yaw_deg=normalize_yaw_deg(yaw),
             pitch_deg=clamp_pitch_deg(pitch),
             fov_deg=fov,
+            roll_deg=roll,
         )
         self._sync_preview_spins()
         self.preview_label.set_perspective_params(self._scene_preview_params)
         self._update_tag_preview_overlay()
-        self._append_log(f"Jumped to face {face}: yaw={yaw:.1f}, pitch={pitch:.1f}")
+        self._append_log(f"Jumped to face {face}: yaw={yaw:.1f}, pitch={pitch:.1f}, roll={roll:.1f}")
 
     def _on_preview_spin_changed(self) -> None:
         self._scene_preview_params = PerspectiveParams(
             yaw_deg=normalize_yaw_deg(self.look_yaw_spin.value()),
             pitch_deg=clamp_pitch_deg(self.look_pitch_spin.value()),
             fov_deg=float(self.look_fov_spin.value()),
+            roll_deg=self._scene_preview_params.roll_deg,
         )
         self.preview_label.set_perspective_params(self._scene_preview_params)
         self._update_tag_preview_overlay()
@@ -941,14 +947,15 @@ class DevAprilTagPlacerWindow(QWidget):
                     logical_size=QSize(self._scene_preview_size, self._scene_preview_size),
                 )
             else:
-                cache_key = f"{normalize_coordinate_profile(case.coordinate_profile)}:{group.name}"
+                cache_key = f"axis:{normalize_coordinate_profile(case.coordinate_profile)}:{group.name}"
                 image = self._equirect_preview_cache.get(cache_key)
                 if image is None:
-                    image = render_cubemap_equirect(
+                    image = render_cubemap_axis_equirect(
                         group,
                         output_width=2048,
                         output_height=1024,
                         image_cache=self._cubemap_image_cache,
+                        sfm_to_preview_matrix=self._world_display_matrix(),
                     )
                     self._equirect_preview_cache[cache_key] = image
                 shown = self.preview_label.set_perspective_image_bgr(
@@ -1010,7 +1017,7 @@ class DevAprilTagPlacerWindow(QWidget):
         size = float(self._scene_preview_size)
         x_px = max(0.0, min(size - 1.0, x))
         y_px = max(0.0, min(size - 1.0, y))
-        ray, up, face = view_pixel_to_world_ray_and_up(
+        ray, up, face = view_pixel_to_axis_world_ray_and_up(
             group,
             x_px=x_px,
             y_px=y_px,
@@ -1018,6 +1025,8 @@ class DevAprilTagPlacerWindow(QWidget):
             yaw_deg=self._scene_preview_params.yaw_deg,
             pitch_deg=self._scene_preview_params.pitch_deg,
             fov_deg=self._scene_preview_params.fov_deg,
+            roll_deg=self._scene_preview_params.roll_deg,
+            sfm_to_preview_matrix=self._world_display_matrix(),
         )
         self._last_click_state = (group.name, ray.copy(), up.copy())
         self._apply_click_placement(group, ray, up)
@@ -1052,13 +1061,15 @@ class DevAprilTagPlacerWindow(QWidget):
         group = self._selected_group()
         if group is None:
             return None
-        return project_sfm_points_to_preview_points(
+        return project_sfm_points_to_axis_preview_points(
             group,
             points_sfm,
             output_size=self._scene_preview_size,
             yaw_deg=self._scene_preview_params.yaw_deg,
             pitch_deg=self._scene_preview_params.pitch_deg,
             fov_deg=self._scene_preview_params.fov_deg,
+            roll_deg=self._scene_preview_params.roll_deg,
+            sfm_to_preview_matrix=self._world_display_matrix(),
         )
 
     def _grid_preview_overlays(self) -> list[PerspectiveLabelOverlay]:
@@ -1199,7 +1210,7 @@ class DevAprilTagPlacerWindow(QWidget):
             np.array([camera[0], 0.0, camera[2]], dtype=float),
         ]
         for x_px, y_px in edge_pixels:
-            ray = view_pixel_to_world_ray(
+            ray, _up, _face = view_pixel_to_axis_world_ray_and_up(
                 group,
                 x_px=x_px,
                 y_px=y_px,
@@ -1207,6 +1218,8 @@ class DevAprilTagPlacerWindow(QWidget):
                 yaw_deg=self._scene_preview_params.yaw_deg,
                 pitch_deg=self._scene_preview_params.pitch_deg,
                 fov_deg=self._scene_preview_params.fov_deg,
+                roll_deg=self._scene_preview_params.roll_deg,
+                sfm_to_preview_matrix=self._world_display_matrix(),
             )
             if abs(float(ray[1])) > 1e-8:
                 distance = float(-camera[1] / ray[1])
@@ -1286,13 +1299,15 @@ class DevAprilTagPlacerWindow(QWidget):
                 float(self.tag_size_spin.value()),
                 float(self.true_scale_spin.value()),
             )
-            points = project_sfm_points_to_preview(
+            points = project_sfm_points_to_axis_preview_points(
                 group,
                 corners,
                 output_size=self._scene_preview_size,
                 yaw_deg=self._scene_preview_params.yaw_deg,
                 pitch_deg=self._scene_preview_params.pitch_deg,
                 fov_deg=self._scene_preview_params.fov_deg,
+                roll_deg=self._scene_preview_params.roll_deg,
+                sfm_to_preview_matrix=self._world_display_matrix(),
             )
         except Exception:
             return []

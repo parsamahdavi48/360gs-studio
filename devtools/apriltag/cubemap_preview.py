@@ -35,10 +35,8 @@ _STANDARD_FACE_LOOK_PARAMS: dict[str, tuple[float, float]] = {
     "px": (90.0, 0.0),
     "nz": (180.0, 0.0),
     "nx": (-90.0, 0.0),
-    # Human-facing preview pitch: negative looks up, positive looks down.
-    # Keep this separate from the exported face layout above.
-    "top": (0.0, -90.0),
-    "bottom": (0.0, 90.0),
+    "top": (0.0, 90.0),
+    "bottom": (0.0, -90.0),
     "py": (0.0, -90.0),
     "ny": (0.0, 90.0),
 }
@@ -133,9 +131,10 @@ def order_groups_by_labels(
     return tuple(sorted(groups, key=lambda group: (order.get(group.name, fallback), group.name)))
 
 
-def _rotation_matrix(yaw_deg: float, pitch_deg: float) -> np.ndarray:
+def _rotation_matrix(yaw_deg: float, pitch_deg: float, roll_deg: float = 0.0) -> np.ndarray:
     yaw = np.deg2rad(float(yaw_deg))
     pitch = np.deg2rad(float(pitch_deg))
+    roll = np.deg2rad(float(roll_deg))
     ry = np.array(
         [
             [np.cos(yaw), 0.0, np.sin(yaw)],
@@ -152,7 +151,15 @@ def _rotation_matrix(yaw_deg: float, pitch_deg: float) -> np.ndarray:
         ],
         dtype=np.float64,
     )
-    return ry @ rx
+    rz = np.array(
+        [
+            [np.cos(roll), -np.sin(roll), 0.0],
+            [np.sin(roll), np.cos(roll), 0.0],
+            [0.0, 0.0, 1.0],
+        ],
+        dtype=np.float64,
+    )
+    return ry @ rx @ rz
 
 
 def _fixed_standard_cube6_face_rotations(group: CubemapFrameGroup) -> dict[str, np.ndarray] | None:
@@ -238,6 +245,36 @@ def _has_distinct_cube_face_centers(rotations: dict[str, np.ndarray]) -> bool:
     return True
 
 
+def _direction_matrix_sfm_to_preview(sfm_to_preview_matrix: np.ndarray | None) -> np.ndarray:
+    if sfm_to_preview_matrix is None:
+        return np.eye(3, dtype=np.float64)
+    transform = np.asarray(sfm_to_preview_matrix, dtype=np.float64)
+    if transform.shape != (4, 4):
+        raise ValueError("sfm_to_preview_matrix must be a 4x4 matrix")
+    return transform[:3, :3].T
+
+
+def _direction_matrix_preview_to_sfm(sfm_to_preview_matrix: np.ndarray | None) -> np.ndarray:
+    if sfm_to_preview_matrix is None:
+        return np.eye(3, dtype=np.float64)
+    transform = np.asarray(sfm_to_preview_matrix, dtype=np.float64)
+    if transform.shape != (4, 4):
+        raise ValueError("sfm_to_preview_matrix must be a 4x4 matrix")
+    return np.linalg.inv(transform[:3, :3]).T
+
+
+def _best_face_for_sfm_ray(group: CubemapFrameGroup, ray_sfm: np.ndarray) -> str | None:
+    best_face: str | None = None
+    best_z = -np.inf
+    for face, frame in group.frames_by_face.items():
+        local = np.asarray(ray_sfm, dtype=np.float64) @ frame.camera_to_world_rotation
+        z = float(local[2])
+        if z > best_z:
+            best_face = face
+            best_z = z
+    return best_face if best_z > 1e-8 else None
+
+
 def _view_ray_local(
     *,
     x_px: float,
@@ -246,6 +283,7 @@ def _view_ray_local(
     yaw_deg: float,
     pitch_deg: float,
     fov_deg: float,
+    roll_deg: float = 0.0,
 ) -> np.ndarray:
     size = max(1, int(output_size))
     cx = float(x_px) - (size - 1) / 2.0
@@ -253,7 +291,7 @@ def _view_ray_local(
     focal = 0.5 * size / np.tan(np.deg2rad(float(fov_deg)) / 2.0)
     ray = np.array([cx, -cy, focal], dtype=np.float64)
     ray /= max(float(np.linalg.norm(ray)), 1e-12)
-    return ray @ _rotation_matrix(yaw_deg, pitch_deg).T
+    return ray @ _rotation_matrix(yaw_deg, pitch_deg, roll_deg).T
 
 
 def _best_standard_face(
@@ -360,6 +398,43 @@ def preview_frustum_rays(
     return center_ray, corners
 
 
+def axis_preview_frustum_rays(
+    *,
+    output_size: int,
+    yaw_deg: float,
+    pitch_deg: float,
+    roll_deg: float = 0.0,
+    fov_deg: float,
+) -> tuple[np.ndarray, np.ndarray]:
+    size = max(1, int(output_size))
+    center = (size - 1) / 2.0
+    center_ray = _view_ray_local(
+        x_px=center,
+        y_px=center,
+        output_size=size,
+        yaw_deg=yaw_deg,
+        pitch_deg=pitch_deg,
+        fov_deg=fov_deg,
+        roll_deg=roll_deg,
+    )
+    corners = np.asarray(
+        [
+            _view_ray_local(
+                x_px=x,
+                y_px=y,
+                output_size=size,
+                yaw_deg=yaw_deg,
+                pitch_deg=pitch_deg,
+                fov_deg=fov_deg,
+                roll_deg=roll_deg,
+            )
+            for x, y in ((0.0, 0.0), (size - 1.0, 0.0), (size - 1.0, size - 1.0), (0.0, size - 1.0))
+        ],
+        dtype=np.float64,
+    )
+    return center_ray, corners
+
+
 def view_pixel_to_world_ray_and_up(
     group: CubemapFrameGroup,
     *,
@@ -402,6 +477,46 @@ def view_pixel_to_world_ray_and_up(
     up = world_up_ray - world_ray * float(world_up_ray @ world_ray)
     up /= max(float(np.linalg.norm(up)), 1e-12)
     return world_ray, up, None
+
+
+def view_pixel_to_axis_world_ray_and_up(
+    group: CubemapFrameGroup,
+    *,
+    x_px: float,
+    y_px: float,
+    output_size: int,
+    yaw_deg: float,
+    pitch_deg: float,
+    fov_deg: float,
+    roll_deg: float = 0.0,
+    sfm_to_preview_matrix: np.ndarray | None = None,
+) -> tuple[np.ndarray, np.ndarray, str | None]:
+    """Map a fixed-axis preview pixel back into the original SFM world."""
+    preview_to_sfm = _direction_matrix_preview_to_sfm(sfm_to_preview_matrix)
+    ray_preview = _view_ray_local(
+        x_px=x_px,
+        y_px=y_px,
+        output_size=output_size,
+        yaw_deg=yaw_deg,
+        pitch_deg=pitch_deg,
+        fov_deg=fov_deg,
+        roll_deg=roll_deg,
+    )
+    up_preview = _view_ray_local(
+        x_px=x_px,
+        y_px=y_px - 1.0,
+        output_size=output_size,
+        yaw_deg=yaw_deg,
+        pitch_deg=pitch_deg,
+        fov_deg=fov_deg,
+        roll_deg=roll_deg,
+    )
+    ray_sfm = ray_preview @ preview_to_sfm
+    ray_sfm /= max(float(np.linalg.norm(ray_sfm)), 1e-12)
+    up_sfm_ray = up_preview @ preview_to_sfm
+    up = up_sfm_ray - ray_sfm * float(up_sfm_ray @ ray_sfm)
+    up /= max(float(np.linalg.norm(up)), 1e-12)
+    return ray_sfm, up, _best_face_for_sfm_ray(group, ray_sfm)
 
 
 def view_up_world(group: CubemapFrameGroup, *, yaw_deg: float, pitch_deg: float) -> np.ndarray:
@@ -525,6 +640,43 @@ def project_sfm_points_to_preview_points(
     return np.asarray(projected, dtype=np.float32)
 
 
+def project_sfm_points_to_axis_preview_points(
+    group: CubemapFrameGroup,
+    points_sfm: np.ndarray,
+    *,
+    output_size: int,
+    yaw_deg: float,
+    pitch_deg: float,
+    fov_deg: float,
+    roll_deg: float = 0.0,
+    sfm_to_preview_matrix: np.ndarray | None = None,
+) -> np.ndarray | None:
+    """Project SFM points into a fixed-axis square perspective preview."""
+    points = np.asarray(points_sfm, dtype=np.float64)
+    if points.ndim != 2 or points.shape[1] != 3:
+        raise ValueError("points_sfm must be an Nx3 array")
+    vectors = points - group.camera_position_sfm.reshape(1, 3)
+    norms = np.linalg.norm(vectors, axis=1)
+    if np.any(norms <= 1e-12):
+        return None
+    sfm_to_preview = _direction_matrix_sfm_to_preview(sfm_to_preview_matrix)
+    preview_rays = (vectors / norms[:, None]) @ sfm_to_preview
+
+    size = max(1, int(output_size))
+    focal = 0.5 * size / np.tan(np.deg2rad(float(fov_deg)) / 2.0)
+    center = (size - 1) / 2.0
+    view_rotation = _rotation_matrix(yaw_deg, pitch_deg, roll_deg)
+    projected: list[tuple[float, float]] = []
+    for preview_ray in preview_rays:
+        view_local = preview_ray @ view_rotation
+        if float(view_local[2]) <= 1e-8:
+            return None
+        x = center + focal * float(view_local[0] / view_local[2])
+        y = center - focal * float(view_local[1] / view_local[2])
+        projected.append((x, y))
+    return np.asarray(projected, dtype=np.float32)
+
+
 def project_sfm_points_to_preview(
     group: CubemapFrameGroup,
     points_sfm: np.ndarray,
@@ -595,6 +747,40 @@ def face_view_params(group: CubemapFrameGroup, face: str, *, fov_deg: float = 90
     # Convert transform-space local +Y/-Y to the same UI convention.
     pitch = float(-np.rad2deg(np.arcsin(np.clip(local[1], -1.0, 1.0))))
     return yaw, pitch, float(fov_deg)
+
+
+def axis_face_view_params(
+    group: CubemapFrameGroup,
+    face: str,
+    *,
+    fov_deg: float = 90.0,
+    sfm_to_preview_matrix: np.ndarray | None = None,
+) -> tuple[float, float, float, float] | None:
+    """Return yaw/pitch/roll/fov for a cubemap face in fixed preview axes."""
+    frame = group.frames_by_face.get(face)
+    if frame is None:
+        return None
+    sfm_to_preview = _direction_matrix_sfm_to_preview(sfm_to_preview_matrix)
+    forward_sfm = np.array([0.0, 0.0, 1.0], dtype=np.float64) @ frame.camera_to_world_rotation.T
+    up_sfm = np.array([0.0, 1.0, 0.0], dtype=np.float64) @ frame.camera_to_world_rotation.T
+    forward = forward_sfm @ sfm_to_preview
+    forward /= max(float(np.linalg.norm(forward)), 1e-12)
+    up = up_sfm @ sfm_to_preview
+    up = up - forward * float(up @ forward)
+    up /= max(float(np.linalg.norm(up)), 1e-12)
+    right = np.cross(up, forward)
+    right /= max(float(np.linalg.norm(right)), 1e-12)
+    up = np.cross(forward, right)
+    up /= max(float(np.linalg.norm(up)), 1e-12)
+    view_rotation = np.column_stack([right, up, forward])
+    yaw = float(np.rad2deg(np.arctan2(view_rotation[0, 2], view_rotation[2, 2])))
+    pitch = float(-np.rad2deg(np.arcsin(np.clip(view_rotation[1, 2], -1.0, 1.0))))
+    cp = max(float(np.hypot(view_rotation[0, 2], view_rotation[2, 2])), 1e-12)
+    if cp <= 1e-8:
+        roll = 0.0
+    else:
+        roll = float(np.rad2deg(np.arctan2(view_rotation[1, 0], view_rotation[1, 1])))
+    return yaw, pitch, roll, float(fov_deg)
 
 
 def render_cubemap_perspective(
@@ -868,6 +1054,43 @@ def render_cubemap_equirect(
         if image is None:
             continue
         local = rays @ face_rotation if face_rotation is not None else rays @ frame.camera_to_world_rotation
+        _sample_frame_to_output(
+            frame=frame,
+            image=image,
+            local_rays=local,
+            output=output,
+            best_score=best_score,
+        )
+    return output
+
+
+def render_cubemap_axis_equirect(
+    group: CubemapFrameGroup,
+    *,
+    output_width: int = 2048,
+    output_height: int = 1024,
+    image_cache: dict[Path, np.ndarray] | None = None,
+    sfm_to_preview_matrix: np.ndarray | None = None,
+) -> np.ndarray:
+    """Rebuild an equirect texture whose axes match the 3D debug viewport."""
+    width = max(1, int(output_width))
+    height = max(1, int(output_height))
+    preview_to_sfm = _direction_matrix_preview_to_sfm(sfm_to_preview_matrix)
+    rays_sfm = _equirect_local_rays(width, height) @ preview_to_sfm
+
+    output = np.full((height, width, 3), 16, dtype=np.uint8)
+    best_score = np.full((height, width), -np.inf, dtype=np.float64)
+    for frame in group.frames:
+        image = None
+        if image_cache is not None:
+            image = image_cache.get(frame.image_path)
+        if image is None:
+            image = imread_unicode(frame.image_path)
+            if image_cache is not None and image is not None:
+                image_cache[frame.image_path] = image
+        if image is None:
+            continue
+        local = rays_sfm @ frame.camera_to_world_rotation
         _sample_frame_to_output(
             frame=frame,
             image=image,
