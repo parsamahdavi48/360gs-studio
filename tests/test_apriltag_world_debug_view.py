@@ -20,6 +20,7 @@ from devtools.apriltag.world_debug_view import (
     transform_point_cloud_sample,
 )
 from scripts.dev_apriltag_placer_gui import (
+    CAMERA_PREVIEW_TO_WORLD_MATRIX,
     GRID_X_AXIS_BGR,
     GRID_Z_AXIS_BGR,
     DevAprilTagPlacerWindow,
@@ -155,6 +156,19 @@ def test_world_debug_view_accepts_scene_and_tag() -> None:
     view.deleteLater()
 
 
+def test_world_debug_frustum_converts_camera_preview_axes_to_world_axes() -> None:
+    _app()
+    view = AprilTagWorldDebugView()
+
+    view.set_preview_params(yaw_deg=180.0, pitch_deg=0.0, fov_deg=90.0)
+    view.set_preview_to_world_matrix(np.diag([-1.0, 1.0, -1.0]))
+    forward, corners = view._preview_frustum_rays_in_world()
+
+    assert np.allclose(forward, [0.0, 0.0, 1.0])
+    assert np.all(corners @ forward > 0.0)
+    view.deleteLater()
+
+
 def test_world_display_group_rotates_camera_position_and_rotation() -> None:
     transform = np.eye(4)
     transform[:3, 3] = np.array([1.0, 2.0, 3.0])
@@ -222,6 +236,7 @@ def test_dev_placer_world_view_uses_display_axes_without_changing_raw_groups() -
     assert np.allclose(displayed_group.camera_position_sfm, [-1.0, 2.0, -3.0])
     assert np.allclose(window.world_debug_view._tag_center, [-1.0, 2.0, -3.0])
     assert np.allclose(window.world_debug_view._tag_normal, [0.0, 0.0, -1.0])
+    assert np.allclose(window.world_debug_view._preview_to_world_matrix, CAMERA_PREVIEW_TO_WORLD_MATRIX)
     window.deleteLater()
 
 

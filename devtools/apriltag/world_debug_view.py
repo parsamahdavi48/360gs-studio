@@ -210,6 +210,7 @@ class AprilTagWorldDebugView(QWidget):
         self._preview_pitch_deg = 0.0
         self._preview_roll_deg = 0.0
         self._preview_fov_deg = 90.0
+        self._preview_to_world_matrix = np.eye(3, dtype=np.float64)
         self._grid_step = 2.0
         self._grid_extent = 20.0
         self._view_yaw_deg = 35.0
@@ -245,6 +246,18 @@ class AprilTagWorldDebugView(QWidget):
         self._preview_pitch_deg = float(pitch_deg)
         self._preview_roll_deg = float(roll_deg)
         self._preview_fov_deg = float(fov_deg)
+        self.update()
+
+    def set_preview_to_world_matrix(self, matrix: np.ndarray | None) -> None:
+        if matrix is None:
+            self._preview_to_world_matrix = np.eye(3, dtype=np.float64)
+        else:
+            value = np.asarray(matrix, dtype=np.float64)
+            if value.shape == (4, 4):
+                value = value[:3, :3]
+            if value.shape != (3, 3):
+                raise ValueError("preview-to-world matrix must be 3x3 or 4x4")
+            self._preview_to_world_matrix = value.copy()
         self.update()
 
     def set_grid(self, *, step: float, extent: float) -> None:
@@ -504,13 +517,7 @@ class AprilTagWorldDebugView(QWidget):
 
     def _draw_selected_frustum(self, painter: QPainter, group: CubemapFrameGroup) -> None:
         position = group.camera_position_sfm
-        forward, corner_rays = axis_preview_frustum_rays(
-            output_size=129,
-            yaw_deg=self._preview_yaw_deg,
-            pitch_deg=self._preview_pitch_deg,
-            roll_deg=self._preview_roll_deg,
-            fov_deg=self._preview_fov_deg,
-        )
+        forward, corner_rays = self._preview_frustum_rays_in_world()
         scene_scale = max(self._grid_step * 2.0, self._grid_extent * 0.12, self._tag_size_m / self._true_scale * 2.0)
         distance = max(0.5, scene_scale)
         plane_scales = distance / np.maximum(corner_rays @ forward, 1e-6)
@@ -522,6 +529,21 @@ class AprilTagWorldDebugView(QWidget):
         for a, b in zip(corners, np.roll(corners, -1, axis=0), strict=True):
             self._draw_world_line(painter, a, b, color, 2)
         self._draw_world_line(painter, position, center + forward * distance, QColor(255, 245, 150), 2)
+
+    def _preview_frustum_rays_in_world(self) -> tuple[np.ndarray, np.ndarray]:
+        forward, corner_rays = axis_preview_frustum_rays(
+            output_size=129,
+            yaw_deg=self._preview_yaw_deg,
+            pitch_deg=self._preview_pitch_deg,
+            roll_deg=self._preview_roll_deg,
+            fov_deg=self._preview_fov_deg,
+        )
+        matrix = self._preview_to_world_matrix
+        forward = _normalized(forward @ matrix, fallback=(0.0, 0.0, 1.0))
+        corner_rays = corner_rays @ matrix
+        norms = np.linalg.norm(corner_rays, axis=1, keepdims=True)
+        corner_rays = corner_rays / np.maximum(norms, 1e-12)
+        return forward, corner_rays
 
     def _draw_tag(self, painter: QPainter) -> None:
         try:

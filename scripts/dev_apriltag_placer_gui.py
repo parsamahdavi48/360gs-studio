@@ -95,6 +95,7 @@ AXIS_GIZMO_Y_BGR = (130, 245, 120)
 AXIS_GIZMO_Z_BGR = (255, 170, 96)
 CAMERA_PREVIEW_AXIS_SIGN = np.array([-1.0, 1.0, -1.0], dtype=np.float64)
 CAMERA_PREVIEW_AXIS_MATRIX = np.diag([*CAMERA_PREVIEW_AXIS_SIGN.tolist(), 1.0]).astype(np.float64)
+CAMERA_PREVIEW_TO_WORLD_MATRIX = np.linalg.inv(CAMERA_PREVIEW_AXIS_MATRIX[:3, :3]).T
 
 
 def _preview_rotation_matrix(yaw_deg: float, pitch_deg: float, roll_deg: float) -> np.ndarray:
@@ -869,6 +870,7 @@ class DevAprilTagPlacerWindow(QWidget):
         display_matrix = self._world_display_matrix()
         self.world_debug_view.set_groups(self._world_display_groups())
         self.world_debug_view.set_selected_group(group.name if group is not None else "")
+        self.world_debug_view.set_preview_to_world_matrix(CAMERA_PREVIEW_TO_WORLD_MATRIX)
         self.world_debug_view.set_preview_params(
             yaw_deg=self._scene_preview_params.yaw_deg,
             pitch_deg=self._scene_preview_params.pitch_deg,
