@@ -210,6 +210,55 @@ def test_review_step_apply_uses_flag_changed_across_preview_modes(
     assert [row["decision"] for row in rows] == ["keep", "keep"]
 
 
+def test_review_step_can_renumber_kept_images_on_finalize(tmp_path: Path, monkeypatch) -> None:
+    _app()
+    csv_path = _write_scene(tmp_path, count=3, drop_indices={2})
+    step = ReviewStep(Path.cwd())
+    step.set_scene_dir(str(tmp_path))
+    step.on_activated()
+    step.renumber_kept_images_cb.setChecked(True)
+    monkeypatch.setattr(step, "_confirm_finalize", lambda: True)
+
+    commands = step.build_commands()
+
+    assert len(commands) == 1
+    _label, cmd = commands[0]
+    assert cmd[-3:] == [str(tmp_path), "--finalize-in-place", "--renumber-kept-images"]
+    assert step._pending_review_run is not None
+    assert step._pending_review_run["renumber_kept_images"] is True
+    assert step._pending_review_run["renamed_images"] == [
+        {"from": "images/frame_000003.png", "to": "images/frame_000002.png"}
+    ]
+
+    result = subprocess.run(cmd, cwd=Path.cwd(), capture_output=True, text=True)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert sorted(path.name for path in (tmp_path / "images").glob("*.png")) == [
+        "frame_000001.png",
+        "frame_000002.png",
+    ]
+    rows = _read_rows(csv_path)
+    assert [row["output_file"] for row in rows] == [
+        "images/frame_000001.png",
+        "images/frame_000002.png",
+    ]
+
+
+def test_review_step_disables_renumber_after_masks_exist(tmp_path: Path) -> None:
+    _app()
+    _write_scene(tmp_path, count=2)
+    masks = tmp_path / "masks"
+    masks.mkdir()
+    (masks / "frame_000001.png").write_bytes(b"mask")
+    step = ReviewStep(Path.cwd())
+
+    step.set_scene_dir(str(tmp_path))
+    step.on_activated()
+
+    assert not step.renumber_kept_images_cb.isEnabled()
+    assert i18n.t("REVIEW_RENUMBER_BLOCKED") in step.renumber_kept_images_cb.toolTip()
+
+
 def test_review_step_apply_enabled_when_initial_drop_image_exists(tmp_path: Path) -> None:
     _app()
     _write_scene(tmp_path, drop_indices={1})

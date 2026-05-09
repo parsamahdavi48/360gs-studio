@@ -8,6 +8,7 @@ from pathlib import Path
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
+    QCheckBox,
     QComboBox,
     QLabel,
     QMessageBox,
@@ -18,6 +19,7 @@ from PySide6.QtWidgets import (
 )
 
 from core.apply_frame_decisions import load_rows, normalize_decision, pending_drop_image_paths
+from core.frame_renumbering import build_renumber_plan, find_renumber_blockers, rename_records
 from core.scene_layout import review_dir, selected_frames_path
 from core.scene_project import append_review_run, file_identity, scene_relative, utc_now_iso
 from gui import i18n
@@ -61,6 +63,11 @@ class ReviewStep(BaseStepWidget):
         self.source_filter_combo.setToolTip(i18n.tip("REVIEW_SOURCE_FILTER"))
         self.source_filter_combo.currentIndexChanged.connect(self._on_source_filter_changed)
         settings_layout.addWidget(self.source_filter_combo)
+
+        self.renumber_kept_images_cb = QCheckBox(i18n.t("REVIEW_RENUMBER_KEPT_IMAGES"))
+        self.renumber_kept_images_cb.setToolTip(i18n.tip("REVIEW_RENUMBER_KEPT_IMAGES"))
+        self.renumber_kept_images_cb.toggled.connect(lambda _checked: self.primary_action_state_changed.emit())
+        settings_layout.addWidget(self.renumber_kept_images_cb)
 
         notice = QLabel(i18n.NEXT_STEP_MASK_NOTICE)
         notice.setObjectName("workflowNote")
@@ -107,12 +114,14 @@ class ReviewStep(BaseStepWidget):
         super().set_scene_dir(path)
         if changed:
             self._loaded_csv_signature = None
+            self._update_renumber_option_state()
             if path:
                 self._set_review_placeholder(i18n.t("REVIEW_EMBED_EMPTY"))
             else:
                 self._set_review_placeholder(i18n.t("REVIEW_EMBED_NO_SCENE"))
 
     def on_activated(self) -> None:
+        self._update_renumber_option_state()
         self._refresh_embedded_review(force=False, show_error=False)
 
     def primary_action_text(self) -> str:
@@ -128,7 +137,7 @@ class ReviewStep(BaseStepWidget):
         has_pending = getattr(widget, "has_pending_finalize", None)
         if not callable(has_pending):
             return False
-        return bool(has_pending())
+        return bool(has_pending()) or self._renumber_kept_images()
 
     def _clear_review_pane(self) -> None:
         while self.review_layout.count():
@@ -219,6 +228,24 @@ class ReviewStep(BaseStepWidget):
             return
         set_source_filter(str(self.source_filter_combo.currentData() or "all"))
 
+    def _renumber_kept_images(self) -> bool:
+        return self.renumber_kept_images_cb.isEnabled() and self.renumber_kept_images_cb.isChecked()
+
+    def _update_renumber_option_state(self) -> None:
+        if not self.scene_dir:
+            self.renumber_kept_images_cb.setEnabled(False)
+            self.renumber_kept_images_cb.setToolTip(i18n.tip("REVIEW_RENUMBER_KEPT_IMAGES"))
+            return
+        blockers = find_renumber_blockers(Path(self.scene_dir))
+        enabled = not blockers
+        self.renumber_kept_images_cb.setEnabled(enabled)
+        if not enabled and self.renumber_kept_images_cb.isChecked():
+            self.renumber_kept_images_cb.setChecked(False)
+        tooltip = i18n.tip("REVIEW_RENUMBER_KEPT_IMAGES")
+        if blockers:
+            tooltip = f"{tooltip}\n{i18n.t('REVIEW_RENUMBER_BLOCKED')}"
+        self.renumber_kept_images_cb.setToolTip(tooltip)
+
     def _confirm_finalize(self) -> bool:
         confirm_text = i18n.t("FINALIZE_CONFIRM_MESSAGE")
         result = QMessageBox.question(
@@ -247,6 +274,8 @@ class ReviewStep(BaseStepWidget):
         if not self._confirm_finalize():
             return []
         extra = ["--finalize-in-place"]
+        if self._renumber_kept_images():
+            extra.append("--renumber-kept-images")
         self._pending_review_run = self._review_run_snapshot()
         self._prepare_review_backup(self._pending_review_run)
         return [("finalize", self._build_apply_cmd(extra))]
@@ -255,6 +284,7 @@ class ReviewStep(BaseStepWidget):
         if success:
             self._finish_review_run_snapshot()
             self._refresh_embedded_review(force=True, show_error=False)
+            self._update_renumber_option_state()
         else:
             self._pending_review_run = None
 
@@ -276,6 +306,15 @@ class ReviewStep(BaseStepWidget):
     def _review_run_snapshot(self) -> dict:
         scene = Path(self.scene_dir)
         dropped = pending_drop_image_paths(scene)
+        renumber_plan = []
+        if self._renumber_kept_images():
+            rows = load_rows(self._csv_path())
+            sources = [
+                scene / str(row.get("output_file", "")).strip()
+                for row in rows
+                if normalize_decision(row) != "drop" and str(row.get("output_file", "")).strip()
+            ]
+            renumber_plan = build_renumber_plan(scene, sources, allowed_existing_targets=dropped)
         run_id = f"review_{utc_now_iso().replace(':', '').replace('-', '')}"
         backup_root = review_dir(scene) / "backups" / run_id
         return {
@@ -288,6 +327,8 @@ class ReviewStep(BaseStepWidget):
             "counts_before": self._review_counts(),
             "pending_drop_images": [scene_relative(scene, p) for p in dropped],
             "backed_up_drop_images": [],
+            "renumber_kept_images": bool(renumber_plan),
+            "renamed_images": rename_records(renumber_plan),
         }
 
     def _prepare_review_backup(self, record: dict) -> None:

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import csv
+import json
 from pathlib import Path
 
 import pytest
@@ -13,7 +14,14 @@ from apply_frame_decisions import (
     pending_drop_image_paths,
     untracked_image_paths,
 )
-from core.scene_layout import frame_backups_dir, selected_frames_path
+from core.scene_layout import (
+    extract_sessions_path,
+    frame_backups_dir,
+    selected_frames_keep_path,
+    selected_frames_path,
+    source_image_sets_path,
+)
+from core.scene_project import file_identity, write_json
 
 
 def _write_csv(csv_path: Path, rows: list[dict]) -> None:
@@ -24,6 +32,11 @@ def _write_csv(csv_path: Path, rows: list[dict]) -> None:
         writer.writeheader()
         for row in rows:
             writer.writerow(row)
+
+
+def _read_csv(csv_path: Path) -> list[dict[str, str]]:
+    with csv_path.open("r", encoding="utf-8", newline="") as f:
+        return list(csv.DictReader(f))
 
 
 def _make_scene(tmp_path: Path, num_frames: int = 4, drop_indices: list[int] = None) -> Path:
@@ -225,6 +238,177 @@ def test_finalize_in_place_creates_csv_backup(tmp_path: Path):
     # selected_frames.before_finalize.csv が作られている
     csv_backup_files = list(frame_backups_dir(scene).glob("selected_frames.before_finalize*.csv"))
     assert len(csv_backup_files) >= 1
+
+
+def test_finalize_in_place_can_renumber_kept_images_and_update_frame_metadata(tmp_path: Path):
+    scene = tmp_path / "scene"
+    images = scene / "images"
+    images.mkdir(parents=True)
+    (images / "clip_0010.jpg").write_bytes(b"keep-a")
+    (images / "clip_0020.jpg").write_bytes(b"drop-b")
+    (images / "clip_0030.jpg").write_bytes(b"keep-c")
+    rows = [
+        {
+            "seq": "1",
+            "original_index": "10",
+            "final_index": "10",
+            "status": "ok",
+            "decision": "keep",
+            "output_file": "images/clip_0010.jpg",
+        },
+        {
+            "seq": "2",
+            "original_index": "20",
+            "final_index": "20",
+            "status": "ok",
+            "decision": "drop",
+            "output_file": "images/clip_0020.jpg",
+        },
+        {
+            "seq": "3",
+            "original_index": "30",
+            "final_index": "30",
+            "status": "ok",
+            "decision": "keep",
+            "output_file": "images/clip_0030.jpg",
+        },
+    ]
+    _write_csv(selected_frames_path(scene), rows)
+    write_json(
+        extract_sessions_path(scene),
+        {
+            "version": 1,
+            "sessions": [
+                {
+                    "id": "session_1",
+                    "output_files": [
+                        "images/clip_0010.jpg",
+                        "images/clip_0020.jpg",
+                        "images/clip_0030.jpg",
+                    ],
+                }
+            ],
+        },
+    )
+    write_json(
+        source_image_sets_path(scene),
+        {
+            "version": 1,
+            "image_sets": [
+                {
+                    "id": "imageset_1",
+                    "updated_at": "old",
+                    "files": [
+                        {
+                            "source_path": str(images / "clip_0010.jpg"),
+                            "scene_path": "images/clip_0010.jpg",
+                            "file": file_identity(images / "clip_0010.jpg"),
+                            "source_file": file_identity(images / "clip_0010.jpg"),
+                        },
+                        {
+                            "source_path": str(images / "clip_0020.jpg"),
+                            "scene_path": "images/clip_0020.jpg",
+                            "file": file_identity(images / "clip_0020.jpg"),
+                            "source_file": file_identity(images / "clip_0020.jpg"),
+                        },
+                        {
+                            "source_path": str(images / "clip_0030.jpg"),
+                            "scene_path": "images/clip_0030.jpg",
+                            "file": file_identity(images / "clip_0030.jpg"),
+                            "source_file": file_identity(images / "clip_0030.jpg"),
+                        },
+                    ],
+                }
+            ],
+        },
+    )
+
+    finalize_in_place(scene, "selected_frames.csv", renumber_kept_images=True)
+
+    assert sorted(path.name for path in images.glob("*.jpg")) == ["frame_000001.jpg", "frame_000002.jpg"]
+    assert (images / "frame_000001.jpg").read_bytes() == b"keep-a"
+    assert (images / "frame_000002.jpg").read_bytes() == b"keep-c"
+    assert not (images / "clip_0020.jpg").exists()
+
+    selected_rows = _read_csv(selected_frames_path(scene))
+    assert [row["output_file"] for row in selected_rows] == [
+        "images/frame_000001.jpg",
+        "images/frame_000002.jpg",
+    ]
+    keep_rows = _read_csv(selected_frames_keep_path(scene))
+    assert [row["output_file"] for row in keep_rows] == [
+        "images/frame_000001.jpg",
+        "images/frame_000002.jpg",
+    ]
+
+    sessions = json.loads(extract_sessions_path(scene).read_text(encoding="utf-8"))["sessions"]
+    assert sessions[0]["output_files"] == [
+        "images/frame_000001.jpg",
+        "images/clip_0020.jpg",
+        "images/frame_000002.jpg",
+    ]
+    image_set = json.loads(source_image_sets_path(scene).read_text(encoding="utf-8"))["image_sets"][0]
+    assert [item["scene_path"] for item in image_set["files"]] == [
+        "images/frame_000001.jpg",
+        "images/clip_0020.jpg",
+        "images/frame_000002.jpg",
+    ]
+    assert image_set["files"][0]["file"]["path"].endswith("frame_000001.jpg")
+    assert image_set["files"][2]["file"]["path"].endswith("frame_000002.jpg")
+    assert image_set["files"][0]["source_path"].endswith("frame_000001.jpg")
+    assert image_set["files"][2]["source_path"].endswith("frame_000002.jpg")
+    assert image_set["files"][0]["source_file"]["path"].endswith("frame_000001.jpg")
+    assert image_set["files"][2]["source_file"]["path"].endswith("frame_000002.jpg")
+    assert image_set["updated_at"] != "old"
+
+
+def test_finalize_in_place_renumber_refuses_existing_untracked_target(tmp_path: Path):
+    scene = tmp_path / "scene"
+    images = scene / "images"
+    images.mkdir(parents=True)
+    (images / "clip_a.jpg").write_bytes(b"A")
+    (images / "clip_b.jpg").write_bytes(b"B")
+    (images / "frame_000001.jpg").write_bytes(b"stale")
+    _write_csv(
+        selected_frames_path(scene),
+        [
+            {
+                "seq": "1",
+                "original_index": "1",
+                "final_index": "1",
+                "status": "ok",
+                "decision": "keep",
+                "output_file": "images/clip_a.jpg",
+            },
+            {
+                "seq": "2",
+                "original_index": "2",
+                "final_index": "2",
+                "status": "ok",
+                "decision": "keep",
+                "output_file": "images/clip_b.jpg",
+            },
+        ],
+    )
+
+    with pytest.raises(RuntimeError, match="Renumber target already exists"):
+        finalize_in_place(scene, "selected_frames.csv", renumber_kept_images=True)
+
+    assert (images / "clip_a.jpg").read_bytes() == b"A"
+    assert (images / "clip_b.jpg").read_bytes() == b"B"
+    assert (images / "frame_000001.jpg").read_bytes() == b"stale"
+
+
+def test_finalize_in_place_renumber_refuses_downstream_outputs(tmp_path: Path):
+    scene = _make_scene(tmp_path, num_frames=3, drop_indices=[2])
+    masks = scene / "masks"
+    masks.mkdir()
+    (masks / "frame_000001.png").write_bytes(b"mask")
+
+    with pytest.raises(RuntimeError, match="downstream outputs"):
+        finalize_in_place(scene, "selected_frames.csv", renumber_kept_images=True)
+
+    assert (scene / "images" / "frame_000002.jpg").is_file()
 
 
 def test_finalize_in_place_raises_on_no_keep(tmp_path: Path):

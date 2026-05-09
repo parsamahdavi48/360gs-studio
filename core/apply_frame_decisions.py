@@ -8,6 +8,13 @@ import sys
 from collections.abc import Sequence
 from pathlib import Path
 
+from core.frame_renumbering import (
+    apply_renumber_plan,
+    build_renumber_plan,
+    ensure_can_renumber,
+    plan_source_mapping,
+    update_frame_path_metadata,
+)
 from core.path_safety import is_path_inside, safe_clear_path
 from core.scene_layout import frame_backups_dir, scene_images_dir, selected_frames_keep_path, selected_frames_path
 
@@ -216,6 +223,8 @@ def finalize_in_place(
     scene_dir: Path,
     csv_name: str,
     backup_dir: Path | None = None,
+    *,
+    renumber_kept_images: bool = False,
 ) -> None:
     csv_path = selected_frames_path(scene_dir, csv_name)
     if not csv_path.exists():
@@ -269,6 +278,16 @@ def finalize_in_place(
     if len(keep_source_set) != len(keep_entries):
         raise RuntimeError("Duplicate keep source detected")
 
+    renumber_plan = []
+    if renumber_kept_images:
+        ensure_can_renumber(scene_dir)
+        renumber_plan = build_renumber_plan(
+            scene_dir,
+            [src for _row, src in keep_entries],
+            allowed_existing_targets=dropped_paths,
+        )
+    renumber_rel_by_source = plan_source_mapping(renumber_plan)
+
     removed_drop_files = 0
     for p in dropped_paths:
         if str(p.resolve()) in keep_source_set:
@@ -277,12 +296,19 @@ def finalize_in_place(
             p.unlink()
             removed_drop_files += 1
 
+    if renumber_plan:
+        apply_renumber_plan(renumber_plan)
+        update_frame_path_metadata(scene_dir, renumber_plan)
+
     updated_rows: list[dict] = []
     for seq, (row, src) in enumerate(keep_entries, start=1):
         new_row = dict(row)
         new_row["seq"] = str(seq)
         new_row["decision"] = "keep"
-        new_row["output_file"] = src.relative_to(scene_dir).as_posix()
+        new_row["output_file"] = renumber_rel_by_source.get(
+            str(src.resolve(strict=False)).replace("\\", "/").casefold(),
+            src.relative_to(scene_dir).as_posix(),
+        )
         updated_rows.append(new_row)
 
     csv_backup_dir = frame_backups_dir(scene_dir)
@@ -299,7 +325,10 @@ def finalize_in_place(
     print(f"Dropped rows: {dropped_rows}")
     print(f"Removed dropped image files: {removed_drop_files}")
     print(f"Images dir: {images_dir}")
-    print("Kept filenames: preserved")
+    if renumber_kept_images:
+        print(f"Kept filenames: renumbered ({len(renumber_rel_by_source)} file(s) renamed)")
+    else:
+        print("Kept filenames: preserved")
     print(f"CSV backup: {backup_csv}")
     print(f"Updated CSV: {csv_path}")
     print(f"Keep CSV: {keep_csv}")
@@ -312,13 +341,21 @@ def apply_decisions(
     clean_output: bool,
     finalize_inplace: bool,
     backup_dir: Path | None = None,
+    renumber_kept_images: bool = False,
 ) -> None:
     csv_path = selected_frames_path(scene_dir, csv_name)
     if not csv_path.exists():
         raise FileNotFoundError(f"CSV not found: {csv_path}")
+    if renumber_kept_images and not finalize_inplace:
+        raise RuntimeError("--renumber-kept-images requires --finalize-in-place")
 
     if finalize_inplace:
-        finalize_in_place(scene_dir, csv_name, backup_dir=backup_dir)
+        finalize_in_place(
+            scene_dir,
+            csv_name,
+            backup_dir=backup_dir,
+            renumber_kept_images=renumber_kept_images,
+        )
         return
 
     rows = load_rows(csv_path)
@@ -371,6 +408,14 @@ def parse_args() -> argparse.Namespace:
             "or an absolute path. Default empty = no backup."
         ),
     )
+    parser.add_argument(
+        "--renumber-kept-images",
+        action="store_true",
+        help=(
+            "With --finalize-in-place, rename kept files in images/ to frame_000001.ext order "
+            "and update frame metadata paths. Refuses to run after masks/output/Step 4 metadata exist."
+        ),
+    )
     return parser.parse_args()
 
 
@@ -391,6 +436,7 @@ def main() -> None:
             clean_output=args.clean_output,
             finalize_inplace=args.finalize_in_place,
             backup_dir=backup_dir,
+            renumber_kept_images=args.renumber_kept_images,
         )
     except Exception as e:
         print(f"Error: {e}")
