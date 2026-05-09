@@ -1,0 +1,297 @@
+from __future__ import annotations
+
+import json
+import math
+from pathlib import Path
+from typing import Any
+
+from core.scene_import_contracts import EXTERNAL_IMPORT_KIND, IssueSummary, import_origin, is_external_import_record
+from core.scene_import_sources import first_existing_mask, image_size, iter_scene_images
+from core.scene_layout import (
+    STEP4_SETTINGS_VERSION,
+    scene_images_dir,
+    scene_masks_dir,
+    scene_output_dir,
+    step4_dataset_runs_path,
+    step4_export_settings_path,
+)
+from core.scene_project import file_identity, load_json, scene_relative, update_project, utc_now_iso, write_json
+
+
+def inspect_output_dataset(scene: Path, warnings: list[str]) -> dict[str, Any]:
+    output = scene_output_dir(scene)
+    images = iter_scene_images(output / "images")
+    masks = iter_scene_images(output / "masks")
+    transforms = output / "transforms.json"
+    pointcloud = output / "pointcloud.ply"
+    data: dict[str, Any] = {}
+    camera_model = ""
+    frames: list[Any] = []
+    if transforms.is_file():
+        try:
+            data = json.loads(transforms.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            warnings.append(f"output/transforms.json could not be read: {exc}")
+        if isinstance(data, dict):
+            camera_model = str(data.get("camera_model") or "")
+            raw_frames = data.get("frames")
+            frames = raw_frames if isinstance(raw_frames, list) else []
+    elif output.exists() and (images or masks):
+        warnings.append("output/ exists but output/transforms.json was not found.")
+
+    output_shape = infer_output_shape(camera_model, images)
+    dataset_kind = "3dgut" if output_shape == "equirect_3dgut" else ("projection_views" if output_shape else "")
+
+    if images and output_shape == "projected":
+        validate_projected_output_images(images, warnings)
+    if frames:
+        validate_transform_frames(output, frames, warnings)
+    if images and masks:
+        validate_output_masks(output, images, warnings)
+    if output_shape == "equirect_3dgut" and not pointcloud.is_file():
+        warnings.append("3DGUT-style output was detected, but output/pointcloud.ply was not found.")
+
+    return {
+        "root": output,
+        "active": bool(images or transforms.is_file()),
+        "images": images,
+        "masks": masks,
+        "transforms_json": transforms,
+        "pointcloud": pointcloud,
+        "camera_model": camera_model,
+        "frames_count": len(frames),
+        "output_shape": output_shape,
+        "dataset_kind": dataset_kind,
+    }
+
+
+def infer_output_shape(camera_model: str, images: list[Path]) -> str:
+    model = camera_model.strip().upper()
+    if model == "EQUIRECTANGULAR":
+        return "equirect_3dgut"
+    if model in {"SIMPLE_PINHOLE", "PINHOLE"}:
+        return "projected"
+    if images and all_square(images[:24]):
+        return "projected"
+    return ""
+
+
+def all_square(paths: list[Path]) -> bool:
+    if not paths:
+        return False
+    for path in paths:
+        size = image_size(path)
+        if size is None or size[0] != size[1]:
+            return False
+    return True
+
+
+def validate_projected_output_images(images: list[Path], warnings: list[str]) -> None:
+    sizes: set[tuple[int, int]] = set()
+    non_square = IssueSummary("output/images non-square projected images")
+    unreadable = IssueSummary("output/images unreadable images")
+    for path in images:
+        size = image_size(path)
+        if size is None:
+            unreadable.add(path.name)
+            continue
+        sizes.add(size)
+        if size[0] != size[1]:
+            non_square.add(path.name)
+    if len(sizes) > 1:
+        examples = ", ".join(f"{w}x{h}" for w, h in sorted(sizes)[:6])
+        warnings.append(f"output/images has mixed image sizes: {examples}")
+    for issue in (non_square, unreadable):
+        message = issue.message()
+        if message:
+            warnings.append(message)
+
+
+def validate_transform_frames(output: Path, frames: list[Any], warnings: list[str]) -> None:
+    missing = IssueSummary("transforms.json references missing images")
+    invalid = IssueSummary("transforms.json has invalid transform matrices")
+    for frame in frames:
+        if not isinstance(frame, dict):
+            invalid.add("<non-object frame>")
+            continue
+        file_path = str(frame.get("file_path") or "").strip()
+        if file_path and not (output / file_path).is_file():
+            missing.add(file_path)
+        matrix = frame.get("transform_matrix")
+        if not valid_transform_matrix(matrix):
+            invalid.add(file_path or "<empty file_path>")
+    for issue in (missing, invalid):
+        message = issue.message()
+        if message:
+            warnings.append(message)
+
+
+def valid_transform_matrix(value: object) -> bool:
+    if not isinstance(value, list) or len(value) != 4:
+        return False
+    for row in value:
+        if not isinstance(row, list) or len(row) != 4:
+            return False
+        for item in row:
+            try:
+                number = float(item)
+            except (TypeError, ValueError):
+                return False
+            if not math.isfinite(number):
+                return False
+    return True
+
+
+def validate_output_masks(output: Path, images: list[Path], warnings: list[str]) -> None:
+    masks_root = output / "masks"
+    images_root = output / "images"
+    missing = IssueSummary("output/masks missing matching files")
+    mismatch = IssueSummary("output/masks size mismatch")
+    for image_path in images:
+        mask_path = first_existing_mask(image_path, images_root, masks_root)
+        if mask_path is None:
+            missing.add(scene_relative(output, image_path))
+            continue
+        source_size = image_size(image_path)
+        mask_size = image_size(mask_path)
+        if source_size is not None and mask_size is not None and source_size != mask_size:
+            mismatch.add(f"{scene_relative(output, image_path)} -> {scene_relative(output, mask_path)}")
+    for issue in (missing, mismatch):
+        message = issue.message()
+        if message:
+            warnings.append(message)
+
+
+def write_external_step4_settings(scene: Path, import_id: str, output_info: dict[str, Any]) -> None:
+    output = scene_output_dir(scene)
+    output_shape = str(output_info.get("output_shape") or "")
+    dataset_kind = str(output_info.get("dataset_kind") or "")
+    active = bool(output_info.get("active"))
+    settings = {
+        "app": "stechdrive-3dgs-utils",
+        "settings_version": STEP4_SETTINGS_VERSION,
+        "created_at": utc_now_iso(),
+        "scene_dir": str(scene),
+        "output_dir": str(output),
+        "origin": import_origin(import_id),
+        "portable_output": {
+            "root": "output",
+            "dataset_kind": dataset_kind,
+            "active": active,
+        },
+        "export_method": "metashape",
+        "output_shape": output_shape,
+        "target_profile": "lichtfeld" if output_shape == "equirect_3dgut" else "custom",
+        "effective_profile": "lichtfeld" if output_shape == "equirect_3dgut" else "custom",
+        "axis_transform": "none",
+        "fov": 90.0,
+        "image_size": {"label": "Imported", "scale": 1.0},
+        "view_config": {
+            "mode": "external_import",
+            "yaw_offset": 0.0,
+            "yaw_slots": 0,
+            "pitch_rows": [],
+            "pitch_rows_text": "",
+            "cube6_drop_top": False,
+            "cube6_drop_bottom": False,
+            "views": [],
+        },
+        "views_config_path": "",
+        "views_config_snapshot": None,
+        "conversion": {
+            "yaw_offset_per_frame": 0.0,
+            "output_format": "auto",
+            "output_bit_depth": "source",
+            "jpg_quality": 95,
+            "invert_masks": False,
+            "write_images": False,
+            "write_masks": False,
+            "no_image": True,
+            "uses_source_images": output_shape == "equirect_3dgut",
+            "uses_source_masks": output_shape == "equirect_3dgut" and (output / "masks").is_dir(),
+            "export_colmap": False,
+        },
+        "postprocess": {
+            "lichtfeld_final_orientation_correction": False,
+            "lichtfeld_final_orientation_matrix": None,
+        },
+        "metashape_import": {
+            "enabled": False,
+            "use_ply": False,
+            "images_dir": str(scene_images_dir(scene)),
+            "xml": "",
+            "ply": "",
+            "ply_approved": False,
+            "scale": 1.0,
+            "no_fix_rotation": True,
+        },
+        "colmap_rig": {"enabled": False, "run_sfm": False},
+        "spheresfm": {"enabled": False, "run_scope": "convert_only"},
+        "training": {
+            "enabled": False,
+            "backend": "lichtfeld",
+            "executable": "",
+            "dataset_root": str(output),
+            "images_dir": str(output / "images"),
+            "masks_dir": str(output / "masks"),
+            "colmap_sparse_dir": "",
+            "output_dir": str(output),
+            "lichtfeld_config": "",
+        },
+        "inputs": {
+            "transforms_json": str(output / "transforms.json"),
+            "masks_dir": str(scene_masks_dir(scene)),
+            "ply_source": str(output / "pointcloud.ply") if (output / "pointcloud.ply").is_file() else "",
+        },
+        "registered_assets": {
+            "images_dir": "output/images" if (output / "images").is_dir() else "",
+            "masks_dir": "output/masks" if (output / "masks").is_dir() else "",
+            "transforms_json": "output/transforms.json" if (output / "transforms.json").is_file() else "",
+            "pointcloud": "output/pointcloud.ply" if (output / "pointcloud.ply").is_file() else "",
+        },
+        "output_files": {
+            "settings": "_stechdrive/step4/export_settings.json",
+            "views_config": "",
+            "transforms_json": "transforms.json" if (output / "transforms.json").is_file() else "",
+            "images_dir": "images" if (output / "images").is_dir() else "",
+            "masks_dir": "masks" if (output / "masks").is_dir() else "",
+            "pointcloud": "pointcloud.ply" if (output / "pointcloud.ply").is_file() else "",
+            "colmap_rig_dir": "colmap_rig",
+        },
+    }
+    write_json(step4_export_settings_path(scene), settings)
+
+
+def replace_external_dataset_run(scene: Path, import_id: str, output_info: dict[str, Any]) -> None:
+    path = step4_dataset_runs_path(scene)
+    data = load_json(path, {"version": 1, "runs": []})
+    runs = data.get("runs")
+    if not isinstance(runs, list):
+        runs = []
+    kept = [run for run in runs if not is_external_import_record(run)]
+    if output_info.get("active"):
+        run_id = f"dataset_{import_id}"
+        root = scene_output_dir(scene)
+        output_shape = str(output_info.get("output_shape") or "")
+        kept.append(
+            {
+                "id": run_id,
+                "created_at": utc_now_iso(),
+                "route": EXTERNAL_IMPORT_KIND,
+                "output_shape": output_shape,
+                "target_profile": "lichtfeld" if output_shape == "equirect_3dgut" else "custom",
+                "dataset_root": "output",
+                "origin": import_origin(import_id),
+                "artifacts": {
+                    "root": "output",
+                    "transforms_json": file_identity(root / "transforms.json"),
+                    "pointcloud": file_identity(root / "pointcloud.ply"),
+                    "images_dir": file_identity(root / "images"),
+                    "masks_dir": file_identity(root / "masks"),
+                    "colmap_sparse_dir": file_identity(root / "sparse"),
+                },
+                "settings": load_json(step4_export_settings_path(scene), {}),
+            }
+        )
+        update_project(scene, "step4", {"last_dataset_run_id": run_id})
+    write_json(path, {"version": 1, "runs": kept[-200:]})

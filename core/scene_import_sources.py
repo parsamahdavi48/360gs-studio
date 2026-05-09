@@ -1,0 +1,355 @@
+from __future__ import annotations
+
+import csv
+import shutil
+from pathlib import Path
+from typing import Any
+
+from PIL import Image
+
+from core.scene_import_contracts import (
+    EXTERNAL_IMPORT_KIND,
+    IMAGE_EXTS,
+    MASK_EXTS,
+    SELECTED_CSV_FIELDNAMES,
+    IssueSummary,
+    import_origin,
+    is_external_import_record,
+)
+from core.scene_layout import (
+    mask_items_dir,
+    mask_runs_path,
+    scene_images_dir,
+    scene_import_backups_dir,
+    scene_imports_path,
+    scene_masks_dir,
+    selected_frames_path,
+    source_image_sets_path,
+    step4_dataset_runs_path,
+    step4_export_settings_path,
+)
+from core.scene_project import (
+    file_identity,
+    image_header_info,
+    load_json,
+    scene_relative,
+    update_project,
+    utc_now_iso,
+    write_json,
+    write_mask_item,
+)
+
+
+def iter_scene_images(root: Path) -> list[Path]:
+    if not root.is_dir():
+        return []
+    return sorted(
+        (path for path in root.rglob("*") if path.is_file() and path.suffix.lower() in IMAGE_EXTS),
+        key=lambda path: str(path).lower(),
+    )
+
+
+def image_size(path: Path) -> tuple[int, int] | None:
+    try:
+        with Image.open(path) as image:
+            return int(image.width), int(image.height)
+    except Exception:
+        return None
+
+
+def mask_stats(path: Path) -> dict[str, Any]:
+    try:
+        with Image.open(path) as image:
+            gray = image.convert("L")
+            width, height = gray.size
+            histogram = gray.histogram()
+    except Exception:
+        return {"readable": False}
+    total = int(width * height)
+    black = int(sum(histogram[:128]))
+    white = total - black
+    return {
+        "readable": True,
+        "width": int(width),
+        "height": int(height),
+        "black_pixels": black,
+        "white_pixels": white,
+        "black_ratio": black / total if total else 0.0,
+        "white_ratio": white / total if total else 0.0,
+    }
+
+
+def backup_existing_import_metadata(scene: Path, import_id: str) -> Path | None:
+    backup_root = scene_import_backups_dir(scene) / import_id
+    copied = 0
+    targets = [
+        (selected_frames_path(scene), "frames/selected_frames.csv"),
+        (source_image_sets_path(scene), "sources/image_sets.json"),
+        (mask_runs_path(scene), "masks/mask_runs.json"),
+        (mask_items_dir(scene), "masks/items"),
+        (step4_export_settings_path(scene), "step4/export_settings.json"),
+        (step4_dataset_runs_path(scene), "step4/dataset_runs.json"),
+        (scene_imports_path(scene), "imports/scene_imports.json"),
+    ]
+    for source, rel in targets:
+        if not source.exists():
+            continue
+        dest = backup_root / rel
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        if source.is_dir():
+            shutil.copytree(source, dest, dirs_exist_ok=True)
+        else:
+            shutil.copy2(source, dest)
+        copied += 1
+    return backup_root if copied else None
+
+
+def build_source_image_set_record(scene: Path, import_id: str, image_paths: list[Path]) -> dict[str, Any]:
+    projections: list[str] = []
+    files: list[dict[str, Any]] = []
+    for index, path in enumerate(image_paths, start=1):
+        header = image_header_info(path)
+        projection = str(header.get("detected_projection") or "unknown")
+        if projection != "unknown":
+            projections.append(projection)
+        files.append(
+            {
+                "source_path": str(path),
+                "scene_path": scene_relative(scene, path),
+                "sequence_index": index,
+                "file": file_identity(path),
+                "source_file": file_identity(path),
+                "image": {
+                    "width": int(header.get("width") or 0),
+                    "height": int(header.get("height") or 0),
+                    "mode": str(header.get("mode") or ""),
+                },
+                "detected_projection": projection,
+                "projection_confidence": header.get("projection_confidence", "low"),
+                "projection_reason": header.get("projection_reason", ""),
+                "origin": import_origin(import_id),
+            }
+        )
+
+    unique = sorted(set(projections))
+    projection = unique[0] if len(unique) == 1 else ("mixed" if unique else "unknown")
+    return {
+        "id": f"imageset_{import_id}",
+        "source_type": "external_images",
+        "origin": import_origin(import_id),
+        "registration_mode": "in_place",
+        "imported_at": utc_now_iso(),
+        "updated_at": utc_now_iso(),
+        "source_dir": str(scene_images_dir(scene)),
+        "scene_images_dir": "images",
+        "projection": projection,
+        "projection_source": "image_header",
+        "projection_override": None,
+        "file_count": len(files),
+        "files": files,
+    }
+
+
+def replace_external_source_image_set(scene: Path, record: dict[str, Any] | None) -> None:
+    path = source_image_sets_path(scene)
+    data = load_json(path, {"version": 1, "image_sets": []})
+    image_sets = data.get("image_sets")
+    if not isinstance(image_sets, list):
+        image_sets = []
+    kept = [item for item in image_sets if not is_external_import_record(item)]
+    if record is not None:
+        kept.append(record)
+    write_json(path, {"version": 1, "image_sets": kept})
+    update_project(scene, "sources", {"image_set_count": len(kept)})
+
+
+def write_selected_frames_csv(scene: Path, import_id: str, image_paths: list[Path]) -> Path:
+    rows: list[dict[str, Any]] = []
+    for seq, path in enumerate(image_paths, start=1):
+        rows.append(
+            {
+                "seq": str(seq),
+                "source_session": import_id,
+                "source_video": "",
+                "original_index": str(seq),
+                "final_index": str(seq),
+                "timestamp_sec": "",
+                "change_score_original": "",
+                "change_score_final": "",
+                "blur_score_original": "",
+                "blur_score_final": "",
+                "sharpness_baseline": "",
+                "sharpness_ratio": "",
+                "status": "ok",
+                "decision": "keep",
+                "analysis_pipeline": EXTERNAL_IMPORT_KIND,
+                "selection_reason": EXTERNAL_IMPORT_KIND,
+                "review_required": "0",
+                "prev_kept_index": "",
+                "gap_sec": "",
+                "yaw_shift_px": "",
+                "yaw_shift_deg": "",
+                "residual_score": "",
+                "raw_change_score": "",
+                "track_count": "",
+                "track_coverage": "",
+                "match_confidence": "",
+                "risk_flags": "",
+                "analysis_width": "",
+                "pair_gate_width": "",
+                "pair_motion_profile": "",
+                "pair_threshold_mode": "",
+                "pair_drop_threshold": "",
+                "pair_add_threshold": "",
+                "output_file": scene_relative(scene, path),
+                "source_type": "external_images",
+                "source_label": scene.name,
+                "import_id": import_id,
+            }
+        )
+
+    path = selected_frames_path(scene)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", encoding="utf-8", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=SELECTED_CSV_FIELDNAMES)
+        writer.writeheader()
+        writer.writerows(rows)
+    return path
+
+
+def selected_csv_is_external_import(path: Path) -> bool:
+    if not path.is_file():
+        return False
+    try:
+        with path.open("r", encoding="utf-8", newline="") as f:
+            rows = list(csv.DictReader(f))
+    except OSError:
+        return False
+    return bool(rows) and all(row.get("analysis_pipeline") == EXTERNAL_IMPORT_KIND for row in rows)
+
+
+def remove_external_selected_frames_csv(scene: Path) -> None:
+    path = selected_frames_path(scene)
+    if selected_csv_is_external_import(path):
+        path.unlink(missing_ok=True)
+
+
+def mask_candidates_for_image(image_path: Path, images_root: Path, masks_root: Path) -> list[Path]:
+    try:
+        rel_parent = image_path.resolve().relative_to(images_root.resolve()).parent
+    except Exception:
+        rel_parent = Path()
+    return [
+        masks_root / rel_parent / f"{image_path.stem}.png",
+        masks_root / rel_parent / f"{image_path.name}.png",
+        masks_root / f"{image_path.name}.png",
+        masks_root / f"{image_path.stem}.png",
+    ]
+
+
+def first_existing_mask(image_path: Path, images_root: Path, masks_root: Path) -> Path | None:
+    seen: set[str] = set()
+    for candidate in mask_candidates_for_image(image_path, images_root, masks_root):
+        key = str(candidate).lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        if candidate.is_file() and candidate.suffix.lower() in MASK_EXTS:
+            return candidate
+    return None
+
+
+def replace_external_masks(scene: Path, import_id: str, image_paths: list[Path], warnings: list[str]) -> int:
+    previous_runs = load_json(mask_runs_path(scene), {"version": 1, "runs": []})
+    runs = previous_runs.get("runs")
+    if not isinstance(runs, list):
+        runs = []
+    removed_run_ids = {
+        str(run.get("id"))
+        for run in runs
+        if isinstance(run, dict) and (is_external_import_record(run) or run.get("mode") == EXTERNAL_IMPORT_KIND)
+    }
+    kept_runs = [run for run in runs if not (isinstance(run, dict) and str(run.get("id")) in removed_run_ids)]
+    remove_external_mask_items(scene, removed_run_ids)
+
+    masks_root = scene_masks_dir(scene)
+    if not image_paths or not masks_root.is_dir():
+        write_json(mask_runs_path(scene), {"version": 1, "runs": kept_runs})
+        return 0
+
+    missing = IssueSummary("masks/ missing matching files")
+    size_mismatch = IssueSummary("masks/ size mismatch")
+    unreadable = IssueSummary("masks/ unreadable files")
+    generated: list[dict[str, Any]] = []
+    settings = {
+        "mode": EXTERNAL_IMPORT_KIND,
+        "origin": import_origin(import_id),
+        "images_dir": "images",
+        "masks_dir": "masks",
+        "mask_polarity": "white_keep_black_exclude",
+    }
+    run_id = f"mask_{import_id}"
+    for image_path in image_paths:
+        mask_path = first_existing_mask(image_path, scene_images_dir(scene), masks_root)
+        if mask_path is None:
+            missing.add(scene_relative(scene, image_path))
+            continue
+        source_size = image_size(image_path)
+        candidate_size = image_size(mask_path)
+        if source_size is None or candidate_size is None:
+            unreadable.add(scene_relative(scene, mask_path))
+            continue
+        if source_size != candidate_size:
+            size_mismatch.add(f"{scene_relative(scene, image_path)} -> {scene_relative(scene, mask_path)}")
+            continue
+        stats = mask_stats(mask_path)
+        write_mask_item(
+            scene,
+            image_path=image_path,
+            mask_path=mask_path,
+            settings=settings,
+            run_id=run_id,
+            stats=stats,
+        )
+        generated.append(
+            {
+                "image": scene_relative(scene, image_path),
+                "mask": scene_relative(scene, mask_path),
+                "stats": stats,
+            }
+        )
+
+    for issue in (missing, size_mismatch, unreadable):
+        message = issue.message()
+        if message:
+            warnings.append(message)
+
+    if generated:
+        created_at = utc_now_iso()
+        kept_runs.append(
+            {
+                "id": run_id,
+                "created_at": created_at,
+                "mode": EXTERNAL_IMPORT_KIND,
+                "origin": import_origin(import_id),
+                "phases": [EXTERNAL_IMPORT_KIND],
+                "settings": settings,
+                "image_count": len(image_paths),
+                "mask_count": len(generated),
+                "generated": generated,
+            }
+        )
+        update_project(scene, "masks", {"last_run_id": run_id, "last_run_at": created_at})
+    write_json(mask_runs_path(scene), {"version": 1, "runs": kept_runs[-200:]})
+    return len(generated)
+
+
+def remove_external_mask_items(scene: Path, removed_run_ids: set[str]) -> None:
+    root = mask_items_dir(scene)
+    if not root.is_dir():
+        return
+    for path in root.glob("*.json"):
+        data = load_json(path, {})
+        settings = data.get("settings") if isinstance(data.get("settings"), dict) else {}
+        if str(data.get("run_id") or "") in removed_run_ids or is_external_import_record(settings):
+            path.unlink(missing_ok=True)

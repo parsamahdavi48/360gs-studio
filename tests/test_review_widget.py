@@ -152,6 +152,25 @@ def test_review_widget_labels_quick_extract_rows_separately(tmp_path: Path) -> N
     assert "#5b21b6" in widget.advisory_label.styleSheet()
 
 
+def test_review_widget_labels_external_import_rows_separately(tmp_path: Path) -> None:
+    _app()
+    scene, csv_path = _write_scene(tmp_path)
+    with csv_path.open("r", encoding="utf-8", newline="") as f:
+        rows = list(csv.DictReader(f))
+    rows[0]["analysis_pipeline"] = "external_import"
+    rows[1]["analysis_pipeline"] = "external_import"
+    with csv_path.open("w", encoding="utf-8", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=list(rows[0].keys()))
+        writer.writeheader()
+        writer.writerows(rows)
+
+    widget = ReviewWidget(scene, csv_path)
+
+    assert widget.advisory_label.text() == i18n.t("REVIEW_ADVISORY_EXTERNAL_IMPORT")
+    assert "#ccfbf1" in widget.advisory_label.styleSheet()
+    assert "#0f766e" in widget.advisory_label.styleSheet()
+
+
 def test_review_widget_advisory_labels_do_not_show_internal_pair_analysis(tmp_path: Path) -> None:
     _app()
     scene, csv_path = _write_scene(tmp_path)

@@ -1550,6 +1550,24 @@ def test_colmap_scene_settings_restore_stage_intents(tmp_path: Path) -> None:
     assert step.take_pipeline_notice() == ""
 
 
+def test_external_import_scene_settings_do_not_arm_conversion(tmp_path: Path) -> None:
+    _app()
+    _write_output_dataset(tmp_path, output_shape="projected")
+    settings = json.loads(step4_export_settings_path(tmp_path).read_text(encoding="utf-8"))
+    settings["origin"] = {"kind": "external_import", "import_id": "import_test"}
+    settings["export_method"] = "metashape"
+    step4_export_settings_path(tmp_path).write_text(json.dumps(settings), encoding="utf-8")
+
+    step = CubemapStep(Path.cwd())
+    step.set_scene_dir(str(tmp_path))
+
+    assert step._export_method() == "metashape"
+    assert step.pipeline_stage_intent("sfm") is False
+    assert step.pipeline_stage_intent("conversion") is False
+    assert step.primary_action_enabled() is False
+    assert step._training_dataset_export_shape(tmp_path / "output") == "projected"
+
+
 def test_step4_scene_settings_ignore_pre_v2_payload(tmp_path: Path) -> None:
     _app()
     tmp_path.mkdir(exist_ok=True)

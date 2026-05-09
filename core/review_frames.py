@@ -619,6 +619,7 @@ if QMainWindow is not None:
             warning_fg, warning_bg = "#92400e", "#fef3c7"
             added_fg, added_bg = "#1e40af", "#dbeafe"
             quick_fg, quick_bg = "#5b21b6", "#ede9fe"
+            external_fg, external_bg = "#0f766e", "#ccfbf1"
             ok_fg, ok_bg = "#166534", "#dcfce7"
 
             if decision == "drop":
@@ -697,6 +698,14 @@ if QMainWindow is not None:
                     i18n.t("REVIEW_ADVISORY_SHORT_QUICK"),
                     quick_fg,
                     quick_bg,
+                )
+
+            if pipeline == "external_import":
+                return (
+                    i18n.t("REVIEW_ADVISORY_EXTERNAL_IMPORT"),
+                    i18n.t("REVIEW_ADVISORY_SHORT_EXTERNAL_IMPORT"),
+                    external_fg,
+                    external_bg,
                 )
 
             # 緑: 通常品質

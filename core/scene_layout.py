@@ -15,6 +15,8 @@ REVIEW_RUNS_JSON = "review_runs.json"
 MASKS_META_DIR_NAME = "masks"
 MASK_RUNS_JSON = "mask_runs.json"
 MASK_ITEMS_DIR_NAME = "items"
+IMPORTS_DIR_NAME = "imports"
+SCENE_IMPORTS_JSON = "scene_imports.json"
 STEP4_DIR_NAME = "step4"
 STEP4_META_DIR_NAME = f"{APP_DIR_NAME}/{STEP4_DIR_NAME}"
 
@@ -24,6 +26,7 @@ EXTRACT_REPORT_JSON = "extract_report.json"
 EXTRACT_SESSIONS_JSON = "extract_sessions.json"
 STEP4_EXPORT_SETTINGS_JSON = "export_settings.json"
 STEP4_VIEWS_CONFIG_JSON = "views_config.json"
+STEP4_SETTINGS_VERSION = 2
 SCENE_IMAGES_DIR_NAME = "images"
 SCENE_MASKS_DIR_NAME = "masks"
 SCENE_OUTPUT_DIR_NAME = "output"
@@ -110,6 +113,18 @@ def mask_runs_path(scene_dir: Path) -> Path:
 
 def mask_items_dir(scene_dir: Path) -> Path:
     return masks_meta_dir(scene_dir) / MASK_ITEMS_DIR_NAME
+
+
+def scene_imports_dir(scene_dir: Path) -> Path:
+    return app_dir(scene_dir) / IMPORTS_DIR_NAME
+
+
+def scene_imports_path(scene_dir: Path) -> Path:
+    return scene_imports_dir(scene_dir) / SCENE_IMPORTS_JSON
+
+
+def scene_import_backups_dir(scene_dir: Path) -> Path:
+    return scene_imports_dir(scene_dir) / "backups"
 
 
 def step4_meta_dir(scene_dir: Path) -> Path:

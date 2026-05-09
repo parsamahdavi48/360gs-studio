@@ -10,6 +10,7 @@ from PySide6.QtCore import QPoint, QSize, Qt, QTimer, QUrl
 from PySide6.QtGui import QCloseEvent, QDesktopServices, QIcon
 from PySide6.QtWidgets import (
     QApplication,
+    QFileDialog,
     QHBoxLayout,
     QLabel,
     QMessageBox,
@@ -22,6 +23,7 @@ from PySide6.QtWidgets import (
 )
 
 from core.path_safety import PathSafetyIssue, check_path_safety, normalized_path_text
+from core.scene_import import import_scene
 from core.scene_layout import scene_images_dir, scene_masks_dir, scene_output_dir
 from gui import i18n
 from gui.common.browse_widget import BrowseWidget
@@ -108,6 +110,10 @@ class MainWindow(QWidget):
         )
         self.clear_scene_btn.setEnabled(bool(initial_scene_dir))
         header.addWidget(self.scene_browse, stretch=1)
+        self.import_scene_btn = QPushButton(i18n.t("IMPORT_SCENE"))
+        self.import_scene_btn.setToolTip(i18n.tip("IMPORT_SCENE"))
+        self.import_scene_btn.setFixedHeight(32)
+        header.addWidget(self.import_scene_btn)
         header_widget = QWidget()
         header_widget.setObjectName("appHeader")
         header_widget.setLayout(header)
@@ -303,6 +309,7 @@ class MainWindow(QWidget):
 
     def _connect_signals(self) -> None:
         self.scene_browse.path_changed.connect(self._on_scene_changed)
+        self.import_scene_btn.clicked.connect(self._import_scene_from_folder)
         self.step1.scene_dir_suggested.connect(self._on_scene_suggested)
         self.step1.input_videos_cleared.connect(self._on_input_videos_cleared)
         self.step3.scene_dir_suggested.connect(self._on_scene_suggested)
@@ -360,6 +367,44 @@ class MainWindow(QWidget):
         self._auto_scene_from_input = None
         if self.scene_browse.text():
             self.scene_browse.set_text("")
+
+    def _import_scene_from_folder(self) -> None:
+        if self.runner.is_running():
+            self.log_panel.append_log(i18n.BUSY_MSG)
+            return
+        start_dir = self.scene_browse.text().strip() or str(Path.cwd())
+        scene = QFileDialog.getExistingDirectory(self, i18n.t("IMPORT_SCENE_SELECT_FOLDER"), start_dir)
+        if not scene:
+            return
+
+        self.progress.reset()
+        self.progress.set_status(i18n.t("IMPORT_SCENE_RUNNING"))
+        try:
+            result = import_scene(Path(scene))
+        except Exception as e:
+            self.log_panel.append_log(f"{i18n.t('IMPORT_SCENE_FAILED')}: {e}")
+            self.progress.set_status(i18n.STATUS_FAILED)
+            self._update_run_button()
+            return
+
+        for line in result.summary_lines():
+            self.log_panel.append_log(line)
+        self._auto_scene_from_input = None
+        if self.scene_browse.text() != scene:
+            self.scene_browse.set_text(scene)
+        else:
+            self._on_scene_changed(scene)
+        if result.errors:
+            self.progress.set_status(i18n.t("IMPORT_SCENE_FAILED"))
+        else:
+            self.progress.set_status(
+                i18n.t("IMPORT_SCENE_DONE").format(
+                    images=result.image_count,
+                    masks=result.mask_count,
+                    output_images=result.output_image_count,
+                )
+            )
+        self._update_run_button()
 
     def _set_current_step(self, index: int) -> None:
         if not 0 <= index < len(self.steps):
@@ -506,6 +551,7 @@ class MainWindow(QWidget):
         unlocked = not locked
         self.scene_browse.setEnabled(unlocked)
         self.clear_scene_btn.setEnabled(unlocked and bool(self.scene_browse.text()))
+        self.import_scene_btn.setEnabled(unlocked)
         self.stack.setEnabled(unlocked)
         for btn in self.step_buttons:
             btn.setEnabled(unlocked)

@@ -27,6 +27,11 @@ STRINGS: dict[str, str] = {
     "SCENE_DIR": "Scene Folder",
     "SCENE_DIR_PLACEHOLDER": "Select the working scene folder first...",
     "SCENE_REQUIRED_ACTION_HINT": "Set the scene folder in the header first.",
+    "IMPORT_SCENE": "Import Scene",
+    "IMPORT_SCENE_SELECT_FOLDER": "Select Scene Folder to Import",
+    "IMPORT_SCENE_RUNNING": "Importing scene",
+    "IMPORT_SCENE_DONE": "Scene import complete: images {images} / masks {masks} / output images {output_images}",
+    "IMPORT_SCENE_FAILED": "Scene import failed. Check the log below.",
     "CLEAR_SCENE_DIR": "Clear Scene Folder",
     "CLEAR_SCENE_DIR_HINT": "Clear the current scene folder selection. No files are deleted.",
     "STEP_HELP_BUTTON": "Help",
@@ -203,6 +208,7 @@ STRINGS: dict[str, str] = {
     "REVIEW_ADVISORY_BLUR_REPLACEMENT": "Added: blur replacement",
     "REVIEW_ADVISORY_GAP_FORCED": "Added: preserved spacing",
     "REVIEW_ADVISORY_QUICK": "Quick: extracted at the specified interval",
+    "REVIEW_ADVISORY_EXTERNAL_IMPORT": "External: imported image",
     "REVIEW_ADVISORY_NORMAL": "OK: kept",
     "REVIEW_ADVISORY_SHORT_DROP_BLUR": "Drop: blur",
     "REVIEW_ADVISORY_SHORT_DROP_REDUNDANT": "Drop: similar",
@@ -214,6 +220,7 @@ STRINGS: dict[str, str] = {
     "REVIEW_ADVISORY_SHORT_BLUR_REPLACEMENT": "Added: blur",
     "REVIEW_ADVISORY_SHORT_GAP_FORCED": "Added: gap",
     "REVIEW_ADVISORY_SHORT_QUICK": "Quick",
+    "REVIEW_ADVISORY_SHORT_EXTERNAL_IMPORT": "External",
     "REVIEW_ADVISORY_SHORT_NORMAL": "OK",
     "REVIEW_PAIR_INFO_FORMAT": (
         "Video position: {ts}  |  Gap: {gap}s  |  Residual: {residual}  |  Yaw adjust: {yaw}°  |  "
@@ -879,6 +886,7 @@ STRINGS: dict[str, str] = {
 
 TIPS: dict[str, str] = {
     "SCENE_DIR": "Working scene folder. When resuming, select the extracted folder that contains _stechdrive/frames/selected_frames.csv and images/. Subfolders like images/, masks/ are auto-detected",
+    "IMPORT_SCENE": "Rescan images/, masks/, and output/ in the selected folder and rebuild external-import metadata. No confirmation dialog is shown, and asset files are not deleted.",
     "STEP_HELP_BUTTON": "Open the current step's documentation on GitHub. The page follows the active UI language.",
     "RUN": "Start processing for the current tab",
     "LAUNCH_TRAINING": "Launch the selected 3DGS app with the existing dataset.",

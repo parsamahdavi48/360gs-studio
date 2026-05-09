@@ -27,6 +27,11 @@ STRINGS: dict[str, str] = {
     "SCENE_DIR": "シーンフォルダ",
     "SCENE_DIR_PLACEHOLDER": "まず作業シーンフォルダを選択...",
     "SCENE_REQUIRED_ACTION_HINT": "ヘッダーのシーンフォルダを指定してください。",
+    "IMPORT_SCENE": "シーン取り込み",
+    "IMPORT_SCENE_SELECT_FOLDER": "取り込むシーンフォルダを選択",
+    "IMPORT_SCENE_RUNNING": "シーンを取り込み中",
+    "IMPORT_SCENE_DONE": "シーン取り込み完了: 画像 {images} / マスク {masks} / 出力画像 {output_images}",
+    "IMPORT_SCENE_FAILED": "シーン取り込み失敗。下部ログを確認してください。",
     "CLEAR_SCENE_DIR": "シーンフォルダをクリア",
     "CLEAR_SCENE_DIR_HINT": "現在のシーンフォルダ指定を解除します。ファイルは削除しません。",
     "STEP_HELP_BUTTON": "ヘルプ",
@@ -203,6 +208,7 @@ STRINGS: dict[str, str] = {
     "REVIEW_ADVISORY_BLUR_REPLACEMENT": "追加: ブレ候補を置換",
     "REVIEW_ADVISORY_GAP_FORCED": "追加: 間隔の空きすぎを防止",
     "REVIEW_ADVISORY_QUICK": "クイック: 指定間隔で抽出",
+    "REVIEW_ADVISORY_EXTERNAL_IMPORT": "外部: 取り込み済み画像",
     "REVIEW_ADVISORY_NORMAL": "OK: 採用中",
     "REVIEW_ADVISORY_SHORT_DROP_BLUR": "除外: ブレ",
     "REVIEW_ADVISORY_SHORT_DROP_REDUNDANT": "除外: 類似",
@@ -214,6 +220,7 @@ STRINGS: dict[str, str] = {
     "REVIEW_ADVISORY_SHORT_BLUR_REPLACEMENT": "追加: ブレ置換",
     "REVIEW_ADVISORY_SHORT_GAP_FORCED": "追加: 間隔維持",
     "REVIEW_ADVISORY_SHORT_QUICK": "クイック",
+    "REVIEW_ADVISORY_SHORT_EXTERNAL_IMPORT": "外部",
     "REVIEW_ADVISORY_SHORT_NORMAL": "OK",
     "REVIEW_PAIR_INFO_FORMAT": (
         "動画位置: {ts}  |  間隔: {gap}s  |  残差: {residual}  |  yaw補正: {yaw}°  |  "
@@ -878,6 +885,7 @@ STRINGS: dict[str, str] = {
 
 TIPS: dict[str, str] = {
     "SCENE_DIR": "作業対象のシーンフォルダ。再開時は _stechdrive/frames/selected_frames.csv と images/ がある抽出済みフォルダを指定します。images/, masks/ などのサブフォルダが自動認識されます",
+    "IMPORT_SCENE": "選択したフォルダ内の images/, masks/, output/ を全量走査し、外部取り込みシーンとして管理情報を作り直します。確認ダイアログは出さず、実アセットは削除しません",
     "STEP_HELP_BUTTON": "現在のステップの説明ドキュメントをGitHubで開きます。表示言語に合わせて日本語または英語のページを開きます",
     "RUN": "現在のタブの処理を開始します",
     "LAUNCH_TRAINING": "選択中の3DGSアプリを既存データセットで起動します",

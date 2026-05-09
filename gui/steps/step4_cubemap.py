@@ -952,6 +952,11 @@ class CubemapStep(
     def _apply_project_settings(self, scene: Path, settings: dict) -> None:
         route = normalize_sfm_route(str(settings.get("export_method", "")))
         self._set_export_method(route)
+        if self._settings_origin_kind(settings) == "external_import":
+            self._conversion_intent = False
+            self._colmap_sfm_intent = False
+            self._spheresfm_sfm_intent = False
+            self._spheresfm_conversion_intent = False
 
         self._restore_conversion_settings(settings)
         self._restore_route_settings(scene, settings)
@@ -961,6 +966,13 @@ class CubemapStep(
         self._sync_yaw_per_frame_control()
         self._sync_settings_tabs()
         self._update_path_labels()
+
+    @staticmethod
+    def _settings_origin_kind(settings: dict) -> str:
+        origin = settings.get("origin")
+        if not isinstance(origin, dict):
+            return ""
+        return str(origin.get("kind") or "").strip()
 
     def _restore_conversion_settings(self, settings: dict) -> None:
         image_size = settings.get("image_size") if isinstance(settings.get("image_size"), dict) else {}
