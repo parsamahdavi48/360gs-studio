@@ -6,6 +6,8 @@ from pathlib import Path
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 import numpy as np
+from PySide6.QtCore import QPointF, Qt
+from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication
 
 from core.apriltag_geometry import PinholeFrame
@@ -26,6 +28,23 @@ from scripts.dev_apriltag_placer_gui import (
 
 def _app() -> QApplication:
     return QApplication.instance() or QApplication([])
+
+
+def _frame_at(name: str, position: tuple[float, float, float]) -> PinholeFrame:
+    transform = np.eye(4)
+    transform[:3, 3] = np.asarray(position, dtype=float)
+    return PinholeFrame(
+        frame_id=f"{name}_pz",
+        file_path=f"images/{name}_pz.png",
+        image_path=Path(f"images/{name}_pz.png"),
+        width=100,
+        height=100,
+        fl_x=50.0,
+        fl_y=50.0,
+        cx=49.5,
+        cy=49.5,
+        transform_matrix=transform,
+    )
 
 
 def test_load_point_cloud_sample_ascii_ply(tmp_path: Path) -> None:
@@ -115,6 +134,43 @@ def test_world_debug_view_accepts_scene_and_tag() -> None:
 
     assert view.sizeHint().width() > 0
     view.deleteLater()
+
+
+def test_world_debug_view_camera_point_click_emits_group_name() -> None:
+    _app()
+    group_a = CubemapFrameGroup(name="frame_a", frames_by_face={"pz": _frame_at("frame_a", (-2.0, 0.0, 0.0))})
+    group_b = CubemapFrameGroup(name="frame_b", frames_by_face={"pz": _frame_at("frame_b", (3.0, 0.0, 0.0))})
+    view = AprilTagWorldDebugView()
+    view.resize(500, 400)
+    view.set_groups((group_a, group_b))
+    view.set_selected_group("frame_a")
+    clicked: list[str] = []
+    view.camera_clicked.connect(clicked.append)
+    xy, _depth = view._project(np.asarray([group_b.camera_position_sfm], dtype=float))
+    pos = QPointF(float(xy[0, 0]), float(xy[0, 1]))
+
+    assert view._camera_name_at_screen_pos(pos) == "frame_b"
+    QTest.mouseClick(view, Qt.LeftButton, Qt.NoModifier, pos.toPoint())
+
+    assert clicked == ["frame_b"]
+    view.deleteLater()
+
+
+def test_dev_placer_selects_frame_group_by_world_view_name() -> None:
+    _app()
+    group_a = CubemapFrameGroup(name="frame_a", frames_by_face={"pz": _frame_at("frame_a", (-2.0, 0.0, 0.0))})
+    group_b = CubemapFrameGroup(name="frame_b", frames_by_face={"pz": _frame_at("frame_b", (3.0, 0.0, 0.0))})
+    window = DevAprilTagPlacerWindow()
+    window._cubemap_groups = (group_a, group_b)
+    window.frame_group_combo.blockSignals(True)
+    for group in window._cubemap_groups:
+        window.frame_group_combo.addItem(f"{group.name} ({len(group.frames)} faces)", group.name)
+    window.frame_group_combo.setCurrentIndex(0)
+    window._select_frame_group_by_name("frame_b")
+    window.frame_group_combo.blockSignals(False)
+
+    assert window.frame_group_combo.currentData() == "frame_b"
+    window.deleteLater()
 
 
 def test_dev_placer_grid_only_preview_background() -> None:

@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
-from PySide6.QtCore import QPointF, QSize, Qt
+from PySide6.QtCore import QPointF, QSize, Qt, Signal
 from PySide6.QtGui import QColor, QMouseEvent, QPainter, QPen, QPolygonF, QWheelEvent
 from PySide6.QtWidgets import QWidget
 
@@ -191,6 +191,8 @@ def _sample_points(
 class AprilTagWorldDebugView(QWidget):
     """Orthographic world-space viewport synced with the AprilTag image preview."""
 
+    camera_clicked = Signal(str)
+
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.setMinimumSize(360, 320)
@@ -214,6 +216,8 @@ class AprilTagWorldDebugView(QWidget):
         self._view_center = np.array([0.0, 0.0, 0.0], dtype=np.float64)
         self._pixels_per_unit = 18.0
         self._last_mouse: QPointF | None = None
+        self._press_pos: QPointF | None = None
+        self._press_button: Qt.MouseButton | None = None
         self._user_navigated = False
 
     def sizeHint(self) -> QSize:
@@ -274,7 +278,8 @@ class AprilTagWorldDebugView(QWidget):
 
     def mousePressEvent(self, event: QMouseEvent) -> None:
         self._last_mouse = event.position()
-        self._user_navigated = True
+        self._press_pos = event.position()
+        self._press_button = event.button()
 
     def mouseMoveEvent(self, event: QMouseEvent) -> None:
         if self._last_mouse is None:
@@ -284,17 +289,27 @@ class AprilTagWorldDebugView(QWidget):
         self._last_mouse = event.position()
         buttons = event.buttons()
         if buttons & Qt.LeftButton:
+            self._user_navigated = True
             self._view_yaw_deg -= float(delta.x()) * 0.35
             self._view_pitch_deg = max(-85.0, min(85.0, self._view_pitch_deg + float(delta.y()) * 0.25))
             self.update()
         elif buttons & (Qt.RightButton | Qt.MiddleButton):
+            self._user_navigated = True
             right, up, _forward = self._view_basis()
             self._view_center -= right * (float(delta.x()) / max(self._pixels_per_unit, 1e-6))
             self._view_center += up * (float(delta.y()) / max(self._pixels_per_unit, 1e-6))
             self.update()
 
-    def mouseReleaseEvent(self, _event: QMouseEvent) -> None:
+    def mouseReleaseEvent(self, event: QMouseEvent) -> None:
+        if self._press_button == Qt.LeftButton and self._press_pos is not None:
+            delta = event.position() - self._press_pos
+            if abs(float(delta.x())) <= 4.0 and abs(float(delta.y())) <= 4.0:
+                group_name = self._camera_name_at_screen_pos(event.position())
+                if group_name:
+                    self.camera_clicked.emit(group_name)
         self._last_mouse = None
+        self._press_pos = None
+        self._press_button = None
 
     def wheelEvent(self, event: QWheelEvent) -> None:
         delta = event.angleDelta().y()
@@ -419,6 +434,22 @@ class AprilTagWorldDebugView(QWidget):
         if selected is not None:
             self._draw_selected_frustum(painter, selected)
             self._draw_world_line(painter, selected.camera_position_sfm, self._tag_center, QColor(120, 230, 180), 1, dashed=True)
+
+    def _camera_name_at_screen_pos(self, pos: QPointF, *, max_distance_px: float = 12.0) -> str | None:
+        if not self._groups:
+            return None
+        positions = np.asarray([group.camera_position_sfm for group in self._groups], dtype=np.float64)
+        xy, _depth = self._project(positions)
+        target = np.array([float(pos.x()), float(pos.y())], dtype=np.float64)
+        finite = np.isfinite(xy).all(axis=1)
+        if not np.any(finite):
+            return None
+        distances = np.linalg.norm(xy - target[None, :], axis=1)
+        distances[~finite] = np.inf
+        index = int(np.argmin(distances))
+        if float(distances[index]) > float(max_distance_px):
+            return None
+        return self._groups[index].name
 
     def _draw_selected_frustum(self, painter: QPainter, group: CubemapFrameGroup) -> None:
         position = group.camera_position_sfm

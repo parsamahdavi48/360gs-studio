@@ -206,6 +206,7 @@ class DevAprilTagPlacerWindow(QWidget):
         world_layout = QVBoxLayout(world_group)
         world_layout.setContentsMargins(6, 6, 6, 6)
         self.world_debug_view = AprilTagWorldDebugView()
+        self.world_debug_view.setToolTip("カメラ点をクリックすると対応する画像セットへ移動します。左ドラッグで回転、右ドラッグで平行移動します。")
         world_layout.addWidget(self.world_debug_view)
         viewport_splitter.addWidget(world_group)
 
@@ -354,7 +355,7 @@ class DevAprilTagPlacerWindow(QWidget):
         grid_row.addStretch(1)
         layout.addLayout(grid_row)
 
-        hint = QLabel("Cubemap 6面から擬似360ビューを再構築します。ドラッグで視点回転、クリックで深度値に沿って中心SfM/法線/上方向を入力します。")
+        hint = QLabel("Cubemap 6面から擬似360ビューを再構築します。カメラ画像はドラッグで視点回転、クリックで深度値に沿って中心SfM/法線/上方向を入力します。3Dワールドのカメラ点クリックで画像セットを切り替えます。")
         hint.setWordWrap(True)
         layout.addWidget(hint)
         return group
@@ -438,6 +439,7 @@ class DevAprilTagPlacerWindow(QWidget):
         self.render_scene_preview_btn.clicked.connect(self._render_scene_preview)
         self.grid_only_preview_check.toggled.connect(lambda _checked: self._render_scene_preview())
         self.frame_group_combo.currentIndexChanged.connect(lambda _index: self._render_scene_preview())
+        self.world_debug_view.camera_clicked.connect(self._select_frame_group_by_name)
         self.prev_camera_btn.clicked.connect(lambda: self._step_camera(-1))
         self.next_camera_btn.clicked.connect(lambda: self._step_camera(1))
         for face, button in self.face_buttons.items():
@@ -710,6 +712,17 @@ class DevAprilTagPlacerWindow(QWidget):
             return
         index = (self.frame_group_combo.currentIndex() + int(delta)) % count
         self.frame_group_combo.setCurrentIndex(index)
+
+    def _select_frame_group_by_name(self, group_name: str) -> None:
+        index = self.frame_group_combo.findData(str(group_name))
+        if index < 0:
+            self._append_log(f"Camera group not found: {group_name}")
+            return
+        if index == self.frame_group_combo.currentIndex():
+            self._sync_world_debug_view()
+            return
+        self.frame_group_combo.setCurrentIndex(index)
+        self._append_log(f"Selected camera from 3D view: {group_name}")
 
     def _jump_to_face(self, face: str) -> None:
         group = self._selected_group()
