@@ -14,6 +14,7 @@ from core.image_io import imread_unicode
 
 _FACE_NAMES = ("px", "nx", "pz", "nz", "top", "bottom", "py", "ny")
 _REFERENCE_FACE_ORDER = ("pz", "px", "nz", "nx", "top", "bottom", "py", "ny")
+_STANDARD_FACE_ORDER = ("pz", "px", "nz", "nx", "top", "bottom", "py", "ny")
 _STANDARD_SIDE_FACES = frozenset({"px", "nx", "pz", "nz"})
 _STANDARD_VERTICAL_FACE_SETS = (frozenset({"top", "bottom"}), frozenset({"py", "ny"}))
 _STANDARD_FACE_VIEW_PARAMS: dict[str, tuple[float, float]] = {
@@ -135,10 +136,10 @@ def _standard_cube6_face_rotations(group: CubemapFrameGroup) -> dict[str, np.nda
     vertical_faces = next((pair for pair in _STANDARD_VERTICAL_FACE_SETS if pair.issubset(faces)), None)
     if vertical_faces is None:
         return None
-    standard_faces = _STANDARD_SIDE_FACES | vertical_faces
     return {
         face: _rotation_matrix(*_STANDARD_FACE_VIEW_PARAMS[face])
-        for face in standard_faces
+        for face in _STANDARD_FACE_ORDER
+        if face in _STANDARD_SIDE_FACES or face in vertical_faces
         if face in group.frames_by_face
     }
 
@@ -164,12 +165,14 @@ def _view_ray_local(
 def _best_standard_face(
     group: CubemapFrameGroup,
     preview_ray: np.ndarray,
-) -> tuple[PinholeFrame, np.ndarray] | None:
+) -> tuple[str, PinholeFrame, np.ndarray, np.ndarray] | None:
     rotations = _standard_cube6_face_rotations(group)
     if rotations is None:
         return None
+    best_face: str | None = None
     best_frame: PinholeFrame | None = None
     best_local: np.ndarray | None = None
+    best_rotation: np.ndarray | None = None
     best_z = -np.inf
     for face, rotation in rotations.items():
         frame = group.frames_by_face.get(face)
@@ -178,12 +181,14 @@ def _best_standard_face(
         local = preview_ray @ rotation
         z = float(local[2])
         if z > best_z:
+            best_face = face
             best_frame = frame
             best_local = local
+            best_rotation = rotation
             best_z = z
-    if best_frame is None or best_local is None or best_z <= 1e-8:
+    if best_face is None or best_frame is None or best_local is None or best_rotation is None or best_z <= 1e-8:
         return None
-    return best_frame, best_local
+    return best_face, best_frame, best_local, best_rotation
 
 
 def virtual_camera_rotation(group: CubemapFrameGroup, *, yaw_deg: float, pitch_deg: float) -> np.ndarray:
@@ -212,6 +217,28 @@ def view_pixel_to_world_ray(
     pitch_deg: float,
     fov_deg: float,
 ) -> np.ndarray:
+    ray, _up, _face = view_pixel_to_world_ray_and_up(
+        group,
+        x_px=x_px,
+        y_px=y_px,
+        output_size=output_size,
+        yaw_deg=yaw_deg,
+        pitch_deg=pitch_deg,
+        fov_deg=fov_deg,
+    )
+    return ray
+
+
+def view_pixel_to_world_ray_and_up(
+    group: CubemapFrameGroup,
+    *,
+    x_px: float,
+    y_px: float,
+    output_size: int,
+    yaw_deg: float,
+    pitch_deg: float,
+    fov_deg: float,
+) -> tuple[np.ndarray, np.ndarray, str | None]:
     ray = _view_ray_local(
         x_px=x_px,
         y_px=y_px,
@@ -220,12 +247,30 @@ def view_pixel_to_world_ray(
         pitch_deg=pitch_deg,
         fov_deg=fov_deg,
     )
+    up_ray = _view_ray_local(
+        x_px=x_px,
+        y_px=y_px - 1.0,
+        output_size=output_size,
+        yaw_deg=yaw_deg,
+        pitch_deg=pitch_deg,
+        fov_deg=fov_deg,
+    )
     standard_face = _best_standard_face(group, ray)
     if standard_face is not None:
-        frame, local = standard_face
+        face, frame, local, face_rotation = standard_face
         world_ray = local @ frame.camera_to_world_rotation.T
-        return world_ray / max(float(np.linalg.norm(world_ray)), 1e-12)
-    return ray @ virtual_camera_rotation(group, yaw_deg=yaw_deg, pitch_deg=pitch_deg).T
+        world_ray = world_ray / max(float(np.linalg.norm(world_ray)), 1e-12)
+        local_up_ray = up_ray @ face_rotation
+        world_up_ray = local_up_ray @ frame.camera_to_world_rotation.T
+        up = world_up_ray - world_ray * float(world_up_ray @ world_ray)
+        up /= max(float(np.linalg.norm(up)), 1e-12)
+        return world_ray, up, face
+    world_ray = ray @ virtual_camera_rotation(group, yaw_deg=yaw_deg, pitch_deg=pitch_deg).T
+    world_ray /= max(float(np.linalg.norm(world_ray)), 1e-12)
+    world_up_ray = up_ray @ virtual_camera_rotation(group, yaw_deg=yaw_deg, pitch_deg=pitch_deg).T
+    up = world_up_ray - world_ray * float(world_up_ray @ world_ray)
+    up /= max(float(np.linalg.norm(up)), 1e-12)
+    return world_ray, up, None
 
 
 def view_up_world(group: CubemapFrameGroup, *, yaw_deg: float, pitch_deg: float) -> np.ndarray:
@@ -234,16 +279,9 @@ def view_up_world(group: CubemapFrameGroup, *, yaw_deg: float, pitch_deg: float)
     up = np.array([0.0, 1.0, 0.0], dtype=np.float64) @ rotation.T
     standard_face = _best_standard_face(group, center_ray)
     if standard_face is not None:
-        frame, _local_center = standard_face
-        face_rotation = None
-        rotations = _standard_cube6_face_rotations(group) or {}
-        for face, candidate_frame in group.frames_by_face.items():
-            if candidate_frame is frame:
-                face_rotation = rotations.get(face)
-                break
-        if face_rotation is not None:
-            up = (up @ face_rotation) @ frame.camera_to_world_rotation.T
-            return up / max(float(np.linalg.norm(up)), 1e-12)
+        _face, frame, _local_center, face_rotation = standard_face
+        up = (up @ face_rotation) @ frame.camera_to_world_rotation.T
+        return up / max(float(np.linalg.norm(up)), 1e-12)
     up = up @ virtual_camera_rotation(group, yaw_deg=yaw_deg, pitch_deg=pitch_deg).T
     return up / max(float(np.linalg.norm(up)), 1e-12)
 

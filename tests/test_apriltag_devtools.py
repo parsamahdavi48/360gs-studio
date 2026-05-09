@@ -27,6 +27,7 @@ from devtools.apriltag.cubemap_preview import (
     render_cubemap_equirect,
     split_cubemap_face,
     view_pixel_to_world_ray,
+    view_pixel_to_world_ray_and_up,
 )
 from devtools.apriltag.printable import create_printable_target
 
@@ -459,3 +460,54 @@ def test_project_sfm_points_to_standard_cube6_preview_center(tmp_path: Path) -> 
 
     assert projected is not None
     assert np.allclose(projected[0], np.array([49.5, 49.5]))
+
+
+def test_standard_cube6_click_ray_and_up_use_clicked_face(tmp_path: Path) -> None:
+    px_transform = np.eye(4)
+    px_transform[:3, :3] = np.array(
+        [
+            [0.0, 0.0, 1.0],
+            [0.0, 1.0, 0.0],
+            [-1.0, 0.0, 0.0],
+        ]
+    )
+
+    def frame(name: str, transform: np.ndarray | None = None) -> PinholeFrame:
+        return PinholeFrame(
+            frame_id=name,
+            file_path=f"images/frame_{name}.png",
+            image_path=tmp_path / f"frame_{name}.png",
+            width=100,
+            height=100,
+            fl_x=50.0,
+            fl_y=50.0,
+            cx=49.5,
+            cy=49.5,
+            transform_matrix=np.eye(4) if transform is None else transform,
+        )
+
+    group = CubemapFrameGroup(
+        name="frame",
+        frames_by_face={
+            "pz": frame("pz"),
+            "px": frame("px", px_transform),
+            "nx": frame("nx"),
+            "nz": frame("nz"),
+            "top": frame("top"),
+            "bottom": frame("bottom"),
+        },
+    )
+
+    ray, up, face = view_pixel_to_world_ray_and_up(
+        group,
+        x_px=49.5,
+        y_px=49.5,
+        output_size=100,
+        yaw_deg=90.0,
+        pitch_deg=0.0,
+        fov_deg=90.0,
+    )
+
+    assert face == "px"
+    assert np.allclose(ray, np.array([1.0, 0.0, 0.0]))
+    assert abs(float(ray @ up)) < 1e-9

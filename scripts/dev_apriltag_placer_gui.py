@@ -58,8 +58,7 @@ from devtools.apriltag.cubemap_preview import (
     order_groups_by_labels,
     project_sfm_points_to_preview,
     render_cubemap_equirect,
-    view_pixel_to_world_ray,
-    view_up_world,
+    view_pixel_to_world_ray_and_up,
 )
 from devtools.apriltag.printable import create_printable_target
 from gui.common.browse_widget import BrowseWidget
@@ -638,7 +637,7 @@ class DevAprilTagPlacerWindow(QWidget):
         size = float(self._scene_preview_size)
         x_px = max(0.0, min(size - 1.0, x))
         y_px = max(0.0, min(size - 1.0, y))
-        ray = view_pixel_to_world_ray(
+        ray, up, face = view_pixel_to_world_ray_and_up(
             group,
             x_px=x_px,
             y_px=y_px,
@@ -647,16 +646,11 @@ class DevAprilTagPlacerWindow(QWidget):
             pitch_deg=self._scene_preview_params.pitch_deg,
             fov_deg=self._scene_preview_params.fov_deg,
         )
-        up = view_up_world(
-            group,
-            yaw_deg=self._scene_preview_params.yaw_deg,
-            pitch_deg=self._scene_preview_params.pitch_deg,
-        )
         self._last_click_state = (group.name, ray.copy(), up.copy())
         self._apply_click_placement(group, ray, up)
         self._append_log(
             "Placement filled from preview click: "
-            f"group={group.name}, depth_sfm={self.placement_depth_spin.value():.3f}"
+            f"group={group.name}, face={face or '-'}, depth_sfm={self.placement_depth_spin.value():.3f}"
         )
         self.place_click_check.setChecked(False)
 
