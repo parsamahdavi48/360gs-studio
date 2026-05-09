@@ -11,7 +11,7 @@ from PySide6.QtGui import QColor, QMouseEvent, QPainter, QPen, QPolygonF, QWheel
 from PySide6.QtWidgets import QWidget
 
 from core.apriltag_geometry import tag_corners_sfm
-from devtools.apriltag.cubemap_preview import CubemapFrameGroup, virtual_camera_rotation
+from devtools.apriltag.cubemap_preview import CubemapFrameGroup, preview_frustum_rays
 
 
 @dataclass(frozen=True)
@@ -422,27 +422,18 @@ class AprilTagWorldDebugView(QWidget):
 
     def _draw_selected_frustum(self, painter: QPainter, group: CubemapFrameGroup) -> None:
         position = group.camera_position_sfm
-        rotation = virtual_camera_rotation(
+        forward, corner_rays = preview_frustum_rays(
             group,
+            output_size=129,
             yaw_deg=self._preview_yaw_deg,
             pitch_deg=self._preview_pitch_deg,
+            fov_deg=self._preview_fov_deg,
         )
-        forward = np.array([0.0, 0.0, 1.0], dtype=np.float64) @ rotation.T
-        right = np.array([1.0, 0.0, 0.0], dtype=np.float64) @ rotation.T
-        up = np.array([0.0, 1.0, 0.0], dtype=np.float64) @ rotation.T
         scene_scale = max(self._grid_step * 2.0, self._grid_extent * 0.12, self._tag_size_m / self._true_scale * 2.0)
         distance = max(0.5, scene_scale)
-        half = np.tan(np.deg2rad(self._preview_fov_deg) * 0.5) * distance
+        plane_scales = distance / np.maximum(corner_rays @ forward, 1e-6)
         center = position + forward * distance
-        corners = np.array(
-            [
-                center - right * half + up * half,
-                center + right * half + up * half,
-                center + right * half - up * half,
-                center - right * half - up * half,
-            ],
-            dtype=np.float64,
-        )
+        corners = position + corner_rays * plane_scales[:, None]
         color = QColor(255, 218, 92)
         for corner in corners:
             self._draw_world_line(painter, position, corner, color, 2)

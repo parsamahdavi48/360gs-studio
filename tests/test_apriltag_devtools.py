@@ -20,6 +20,7 @@ from devtools.apriltag.case import (
 from devtools.apriltag.coordinates import (
     COORDINATE_PROFILE_LICHTFELD_CUBE6,
     COORDINATE_PROFILE_LICHTFELD_CUBE6_PRE_FINAL_PLY,
+    image_ray_matrix,
 )
 from devtools.apriltag.cubemap_preview import (
     CubemapFrameGroup,
@@ -29,6 +30,7 @@ from devtools.apriltag.cubemap_preview import (
     order_groups_by_labels,
     project_sfm_points_to_preview,
     project_sfm_points_to_preview_points,
+    preview_frustum_rays,
     render_cubemap_equirect,
     split_cubemap_face,
     virtual_camera_rotation,
@@ -425,6 +427,22 @@ def test_render_cubemap_equirect_uses_standard_cube6_face_layout(tmp_path: Path)
 
     assert float(np.mean(np.abs(rendered.astype(np.int16) - source.astype(np.int16)))) < 3.0
 
+    rendered_rotated = render_cubemap_equirect(
+        group,
+        output_width=source_w,
+        output_height=source_h,
+        ray_transform=image_ray_matrix(COORDINATE_PROFILE_LICHTFELD_CUBE6),
+    )
+    expected_rotated = np.dstack(
+        [
+            ((-np.sin(lon)[None, :] * cos_lat * 0.5 + 0.5) * 255).astype(np.uint8),
+            ((np.sin(lat)[:, None] * 0.5 + 0.5) * 255).repeat(source_w, axis=1).astype(np.uint8),
+            ((-np.cos(lon)[None, :] * cos_lat * 0.5 + 0.5) * 255).astype(np.uint8),
+        ]
+    )
+
+    assert float(np.mean(np.abs(rendered_rotated.astype(np.int16) - expected_rotated.astype(np.int16)))) < 3.0
+
 
 def test_standard_cube6_preview_click_ray_uses_matching_face_transform(tmp_path: Path) -> None:
     px_transform = np.eye(4)
@@ -518,6 +536,58 @@ def test_virtual_camera_rotation_matches_preview_ray_with_tilted_base(tmp_path: 
         frustum_forward = np.array([0.0, 0.0, 1.0]) @ rotation.T
 
         assert np.allclose(ray, frustum_forward)
+
+
+def test_preview_frustum_rays_use_same_mapping_as_click_ray(tmp_path: Path) -> None:
+    base = _rotation(35.0, 12.0)
+    views = {
+        "pz": (0.0, 0.0),
+        "px": (90.0, 0.0),
+        "nz": (180.0, 0.0),
+        "nx": (-90.0, 0.0),
+        "top": (0.0, 90.0),
+        "bottom": (0.0, -90.0),
+    }
+
+    def frame(name: str, view: tuple[float, float]) -> PinholeFrame:
+        transform = np.eye(4)
+        transform[:3, :3] = base @ _rotation(*view)
+        return PinholeFrame(
+            frame_id=name,
+            file_path=f"images/frame_{name}.png",
+            image_path=tmp_path / f"frame_{name}.png",
+            width=100,
+            height=100,
+            fl_x=50.0,
+            fl_y=50.0,
+            cx=49.5,
+            cy=49.5,
+            transform_matrix=transform,
+        )
+
+    group = CubemapFrameGroup(name="frame", frames_by_face={name: frame(name, view) for name, view in views.items()})
+
+    center_ray, corner_rays = preview_frustum_rays(
+        group,
+        output_size=101,
+        yaw_deg=42.0,
+        pitch_deg=-18.0,
+        fov_deg=90.0,
+    )
+    click_ray = view_pixel_to_world_ray(
+        group,
+        x_px=50.0,
+        y_px=50.0,
+        output_size=101,
+        yaw_deg=42.0,
+        pitch_deg=-18.0,
+        fov_deg=90.0,
+    )
+
+    assert np.allclose(center_ray, click_ray)
+    assert corner_rays.shape == (4, 3)
+    assert np.allclose(np.linalg.norm(corner_rays, axis=1), np.ones(4))
+    assert np.all(corner_rays @ center_ray > 0.0)
 
 
 def test_project_sfm_points_to_standard_cube6_preview_center(tmp_path: Path) -> None:

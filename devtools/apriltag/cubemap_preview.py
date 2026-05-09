@@ -241,6 +241,43 @@ def view_pixel_to_world_ray(
     return ray
 
 
+def preview_frustum_rays(
+    group: CubemapFrameGroup,
+    *,
+    output_size: int,
+    yaw_deg: float,
+    pitch_deg: float,
+    fov_deg: float,
+) -> tuple[np.ndarray, np.ndarray]:
+    size = max(1, int(output_size))
+    center = (size - 1) / 2.0
+    center_ray = view_pixel_to_world_ray(
+        group,
+        x_px=center,
+        y_px=center,
+        output_size=size,
+        yaw_deg=yaw_deg,
+        pitch_deg=pitch_deg,
+        fov_deg=fov_deg,
+    )
+    corners = np.asarray(
+        [
+            view_pixel_to_world_ray(
+                group,
+                x_px=x,
+                y_px=y,
+                output_size=size,
+                yaw_deg=yaw_deg,
+                pitch_deg=pitch_deg,
+                fov_deg=fov_deg,
+            )
+            for x, y in ((0.0, 0.0), (size - 1.0, 0.0), (size - 1.0, size - 1.0), (0.0, size - 1.0))
+        ],
+        dtype=np.float64,
+    )
+    return center_ray, corners
+
+
 def view_pixel_to_world_ray_and_up(
     group: CubemapFrameGroup,
     *,
@@ -586,6 +623,7 @@ def render_cubemap_equirect(
     output_width: int = 2048,
     output_height: int = 1024,
     image_cache: dict[Path, np.ndarray] | None = None,
+    ray_transform: np.ndarray | None = None,
 ) -> np.ndarray:
     """Rebuild a lightweight equirectangular preview texture from cubemap faces.
 
@@ -600,6 +638,14 @@ def render_cubemap_equirect(
         if standard_rotations is not None
         else _equirect_world_rays(width, height, group.reference_frame.camera_to_world_rotation)
     )
+    if ray_transform is not None:
+        transform = np.asarray(ray_transform, dtype=np.float64)
+        if transform.shape != (4, 4):
+            raise ValueError("ray_transform must be a 4x4 matrix")
+        # The matrix maps image/source coordinates into the displayed world
+        # profile. Sampling needs the inverse; for these orthonormal profile
+        # transforms that is the non-transposed 3x3 block in row-vector form.
+        rays = rays @ transform[:3, :3]
 
     output = np.full((height, width, 3), 16, dtype=np.uint8)
     best_score = np.full((height, width), -np.inf, dtype=np.float64)

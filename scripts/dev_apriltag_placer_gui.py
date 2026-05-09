@@ -58,6 +58,7 @@ from devtools.apriltag.coordinates import (
     DEFAULT_COORDINATE_PROFILE,
     coordinate_profile_label,
     coordinate_profile_note,
+    image_ray_matrix,
     normalize_coordinate_profile,
     pointcloud_display_matrix,
 )
@@ -573,8 +574,10 @@ class DevAprilTagPlacerWindow(QWidget):
         except Exception as e:
             self._append_log(f"Case coordinate profile save failed: {e}")
         self.status_label.setText(self._case_status_text(self.case))
+        self._equirect_preview_cache.clear()
         self._load_world_pointcloud(self.case)
         self._sync_world_debug_view()
+        self._render_scene_preview()
 
     def _load_preview_groups(self) -> None:
         case = self._require_case()
@@ -746,20 +749,25 @@ class DevAprilTagPlacerWindow(QWidget):
         if group is None:
             self.preview_label.setText("Cubemap画像グループがありません")
             return
+        case = self._require_case()
+        if case is None:
+            return
         self._on_preview_spin_changed()
         try:
             if self.grid_only_preview_check.isChecked():
                 image = self._grid_only_equirect_preview()
             else:
-                image = self._equirect_preview_cache.get(group.name)
+                cache_key = f"{normalize_coordinate_profile(case.coordinate_profile)}:{group.name}"
+                image = self._equirect_preview_cache.get(cache_key)
                 if image is None:
                     image = render_cubemap_equirect(
                         group,
                         output_width=2048,
                         output_height=1024,
                         image_cache=self._cubemap_image_cache,
+                        ray_transform=image_ray_matrix(case.coordinate_profile),
                     )
-                    self._equirect_preview_cache[group.name] = image
+                    self._equirect_preview_cache[cache_key] = image
         except Exception as e:
             self.preview_label.setText(f"プレビュー生成エラー: {e}")
             return

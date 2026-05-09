@@ -13,6 +13,7 @@ class CoordinateProfile:
     label: str
     pointcloud_note: str
     pointcloud_display_matrix: np.ndarray | None = None
+    image_ray_matrix: np.ndarray | None = None
 
 
 LICHTFELD_FINAL_ORIENTATION = np.array(
@@ -48,12 +49,14 @@ COORDINATE_PROFILES: tuple[CoordinateProfile, ...] = (
         label="LichtFeld Cube6出力",
         pointcloud_note="output/pointcloud.plyをJSON表示座標へ重ねるため、表示時だけY 180度回転を適用します。",
         pointcloud_display_matrix=LICHTFELD_CAMERA_POINTCLOUD_ALIGNMENT,
+        image_ray_matrix=LICHTFELD_CAMERA_POINTCLOUD_ALIGNMENT,
     ),
     CoordinateProfile(
         id=COORDINATE_PROFILE_LICHTFELD_CUBE6_PRE_FINAL_PLY,
         label="LichtFeld Cube6 JSON + 補正前PLY",
         pointcloud_note="scene直下の補正前pointcloud.plyをJSON表示座標へ重ねるため、表示時だけ複合補正を適用します。",
         pointcloud_display_matrix=LICHTFELD_PRE_FINAL_POINTCLOUD_ALIGNMENT,
+        image_ray_matrix=LICHTFELD_CAMERA_POINTCLOUD_ALIGNMENT,
     ),
     CoordinateProfile(
         id=COORDINATE_PROFILE_POSTSHOT_CUBE6,
@@ -91,4 +94,9 @@ def coordinate_profile_note(value: str | None) -> str:
 
 def pointcloud_display_matrix(value: str | None) -> np.ndarray | None:
     matrix = COORDINATE_PROFILE_BY_ID[normalize_coordinate_profile(value)].pointcloud_display_matrix
+    return None if matrix is None else matrix.copy()
+
+
+def image_ray_matrix(value: str | None) -> np.ndarray | None:
+    matrix = COORDINATE_PROFILE_BY_ID[normalize_coordinate_profile(value)].image_ray_matrix
     return None if matrix is None else matrix.copy()
