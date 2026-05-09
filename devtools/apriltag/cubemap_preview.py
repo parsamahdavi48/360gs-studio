@@ -141,7 +141,7 @@ def _rotation_matrix(yaw_deg: float, pitch_deg: float) -> np.ndarray:
     return ry @ rx
 
 
-def _standard_cube6_face_rotations(group: CubemapFrameGroup) -> dict[str, np.ndarray] | None:
+def _fixed_standard_cube6_face_rotations(group: CubemapFrameGroup) -> dict[str, np.ndarray] | None:
     faces = set(group.frames_by_face)
     if not _STANDARD_SIDE_FACES.issubset(faces):
         return None
@@ -154,6 +154,74 @@ def _standard_cube6_face_rotations(group: CubemapFrameGroup) -> dict[str, np.nda
         if face in _STANDARD_SIDE_FACES or face in vertical_faces
         if face in group.frames_by_face
     }
+
+
+def _standard_cube6_face_rotations(group: CubemapFrameGroup) -> dict[str, np.ndarray] | None:
+    fixed = _fixed_standard_cube6_face_rotations(group)
+    if fixed is None:
+        return None
+    derived = _transform_relative_face_rotations(group, fixed)
+    return derived if derived is not None else fixed
+
+
+def _transform_relative_face_rotations(
+    group: CubemapFrameGroup,
+    fixed_rotations: dict[str, np.ndarray],
+) -> dict[str, np.ndarray] | None:
+    reference_rotation = np.asarray(group.reference_frame.camera_to_world_rotation, dtype=np.float64)
+    if not _is_rotation_like(reference_rotation):
+        return None
+    rotations: dict[str, np.ndarray] = {}
+    for face in fixed_rotations:
+        frame = group.frames_by_face.get(face)
+        if frame is None:
+            return None
+        face_rotation = np.asarray(frame.camera_to_world_rotation, dtype=np.float64)
+        if not _is_rotation_like(face_rotation):
+            return None
+        relative = _orthonormalized_rotation(reference_rotation.T @ face_rotation)
+        if relative is None:
+            return None
+        rotations[face] = relative
+    if not _has_distinct_cube_face_centers(rotations):
+        return None
+    return rotations
+
+
+def _is_rotation_like(value: np.ndarray) -> bool:
+    return value.shape == (3, 3) and bool(np.all(np.isfinite(value)))
+
+
+def _orthonormalized_rotation(value: np.ndarray) -> np.ndarray | None:
+    matrix = np.asarray(value, dtype=np.float64)
+    if np.allclose(matrix.T @ matrix, np.eye(3), atol=1e-3):
+        return matrix if float(np.linalg.det(matrix)) > 0.0 else None
+    try:
+        u, _s, vt = np.linalg.svd(matrix)
+    except np.linalg.LinAlgError:
+        return None
+    rotation = u @ vt
+    if float(np.linalg.det(rotation)) < 0.0:
+        u[:, -1] *= -1.0
+        rotation = u @ vt
+    if not np.allclose(rotation.T @ rotation, np.eye(3), atol=1e-3):
+        return None
+    return rotation
+
+
+def _has_distinct_cube_face_centers(rotations: dict[str, np.ndarray]) -> bool:
+    if len(rotations) < 4:
+        return False
+    centers = []
+    for rotation in rotations.values():
+        center = np.array([0.0, 0.0, 1.0], dtype=np.float64) @ rotation.T
+        center /= max(float(np.linalg.norm(center)), 1e-12)
+        centers.append(center)
+    for index, center in enumerate(centers):
+        for other in centers[index + 1 :]:
+            if float(center @ other) > 0.985:
+                return False
+    return True
 
 
 def _view_ray_local(
@@ -494,9 +562,17 @@ def face_view_params(group: CubemapFrameGroup, face: str, *, fov_deg: float = 90
     frame = group.frames_by_face.get(face)
     if frame is None:
         return None
-    if _standard_cube6_face_rotations(group) is not None and face in _STANDARD_FACE_LOOK_PARAMS:
-        yaw, pitch = _STANDARD_FACE_LOOK_PARAMS[face]
-        return float(yaw), float(pitch), float(fov_deg)
+    standard_rotations = _standard_cube6_face_rotations(group)
+    if standard_rotations is not None and face in standard_rotations:
+        if face in _STANDARD_SIDE_FACES:
+            center_ray = np.array([0.0, 0.0, 1.0], dtype=np.float64) @ standard_rotations[face].T
+            center_ray /= max(float(np.linalg.norm(center_ray)), 1e-12)
+            yaw = float(np.rad2deg(np.arctan2(center_ray[0], center_ray[2])))
+            pitch = float(-np.rad2deg(np.arcsin(np.clip(center_ray[1], -1.0, 1.0))))
+            return yaw, pitch, float(fov_deg)
+        if face in _STANDARD_FACE_LOOK_PARAMS:
+            yaw, pitch = _STANDARD_FACE_LOOK_PARAMS[face]
+            return float(yaw), float(pitch), float(fov_deg)
     forward_world = np.array([0.0, 0.0, 1.0], dtype=np.float64) @ frame.camera_to_world_rotation.T
     local = forward_world @ group.reference_frame.camera_to_world_rotation
     local /= max(float(np.linalg.norm(local)), 1e-12)

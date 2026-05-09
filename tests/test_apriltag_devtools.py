@@ -5,6 +5,7 @@ from pathlib import Path
 
 import cv2
 import numpy as np
+import pytest
 from PIL import Image
 
 from core.apriltag_geometry import PinholeFrame
@@ -431,6 +432,64 @@ def test_render_cubemap_equirect_uses_standard_cube6_face_layout(tmp_path: Path)
 
 def test_lichtfeld_pre_final_profile_does_not_rotate_preview_texture() -> None:
     assert image_ray_matrix(COORDINATE_PROFILE_LICHTFELD_CUBE6_PRE_FINAL_PLY) is None
+
+
+def test_render_cubemap_equirect_uses_transform_relative_face_layout(tmp_path: Path) -> None:
+    source_w, source_h = 192, 96
+    face_size = 64
+    xs = (np.arange(source_w, dtype=np.float64) + 0.5) / source_w
+    ys = (np.arange(source_h, dtype=np.float64) + 0.5) / source_h
+    lon = (xs * 2.0 - 1.0) * np.pi
+    lat = (0.5 - ys) * np.pi
+    cos_lat = np.cos(lat)[:, None]
+    source = np.dstack(
+        [
+            ((np.sin(lon)[None, :] * cos_lat * 0.5 + 0.5) * 255).astype(np.uint8),
+            ((np.sin(lat)[:, None] * 0.5 + 0.5) * 255).repeat(source_w, axis=1).astype(np.uint8),
+            ((np.cos(lon)[None, :] * cos_lat * 0.5 + 0.5) * 255).astype(np.uint8),
+        ]
+    )
+    views = {
+        "pz": (0.0, 0.0),
+        "px": (-90.0, 0.0),
+        "nz": (180.0, 0.0),
+        "nx": (90.0, 0.0),
+        "top": (0.0, 90.0),
+        "bottom": (0.0, -90.0),
+    }
+
+    def frame(name: str) -> PinholeFrame:
+        yaw, pitch = views[name]
+        map_x, map_y = build_remap((source_w, source_h), 90.0, yaw, pitch, face_size)
+        image = cv2.remap(source, map_x, map_y, cv2.INTER_LINEAR, borderMode=cv2.BORDER_WRAP)
+        image_path = tmp_path / f"custom_{name}.png"
+        assert cv2.imwrite(str(image_path), image)
+        transform = np.eye(4)
+        transform[:3, :3] = _rotation(yaw, pitch)
+        return PinholeFrame(
+            frame_id=name,
+            file_path=f"images/custom_{name}.png",
+            image_path=image_path,
+            width=face_size,
+            height=face_size,
+            fl_x=face_size / 2.0,
+            fl_y=face_size / 2.0,
+            cx=(face_size - 1) / 2.0,
+            cy=(face_size - 1) / 2.0,
+            transform_matrix=transform,
+        )
+
+    group = CubemapFrameGroup(name="custom", frames_by_face={name: frame(name) for name in views})
+
+    rendered = render_cubemap_equirect(group, output_width=source_w, output_height=source_h)
+    px_yaw, px_pitch, _fov = face_view_params(group, "px")
+    nx_yaw, nx_pitch, _fov = face_view_params(group, "nx")
+
+    assert float(np.mean(np.abs(rendered.astype(np.int16) - source.astype(np.int16)))) < 3.0
+    assert px_yaw == pytest.approx(-90.0)
+    assert px_pitch == pytest.approx(0.0)
+    assert nx_yaw == pytest.approx(90.0)
+    assert nx_pitch == pytest.approx(0.0)
 
 
 def test_standard_cube6_preview_click_ray_uses_matching_face_transform(tmp_path: Path) -> None:
