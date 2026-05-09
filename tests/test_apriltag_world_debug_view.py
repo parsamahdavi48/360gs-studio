@@ -321,10 +321,34 @@ def test_dev_placer_grid_only_preview_background() -> None:
     image = window._grid_only_equirect_preview()
 
     assert window.grid_only_preview_check.text() == "画像OFF"
+    assert window.pointcloud_preview_check.text() == "点群ビュー"
     assert window.coordinate_profile_combo.currentData() == "lichtfeld_cube6"
     assert image.shape == (1024, 2048, 3)
     assert image.dtype == np.uint8
     assert image[512, 1024, 0] > image[16, 16, 0]
+    window.deleteLater()
+
+
+def test_dev_placer_pointcloud_perspective_preview_projects_world_points() -> None:
+    _app()
+    group = CubemapFrameGroup(name="frame_0001", frames_by_face={"pz": _frame_at("frame_0001", (0.0, 0.0, 0.0))})
+    window = DevAprilTagPlacerWindow()
+    window._cubemap_groups = (group,)
+    window.coordinate_profile_combo.setCurrentIndex(window.coordinate_profile_combo.findData("custom"))
+    window._world_pointcloud = PointCloudSample(
+        points=np.array([[1.0, 1.0, 5.0]], dtype=np.float32),
+        colors=np.array([[255, 0, 0]], dtype=np.uint8),
+        source_count=1,
+    )
+    window._scene_preview_params = PerspectiveParams(yaw_deg=0.0, pitch_deg=0.0, fov_deg=90.0)
+
+    image = window._pointcloud_perspective_preview_bgr(group)
+    xy, _depth, valid = window._project_world_display_points_for_preview(group, window._world_pointcloud.points)
+    x, y = np.rint(xy[0]).astype(int)
+
+    assert image.shape == (window._scene_preview_size, window._scene_preview_size, 3)
+    assert bool(valid[0])
+    assert image[y, x, 2] > 200
     window.deleteLater()
 
 

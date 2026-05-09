@@ -11,6 +11,7 @@ from dataclasses import replace
 from pathlib import Path
 import xml.etree.ElementTree as ET
 
+import cv2
 import numpy as np
 from PySide6.QtCore import QProcess, QSize, Qt, QUrl, Signal
 from PySide6.QtGui import QDesktopServices, QIcon, QPixmap
@@ -81,7 +82,7 @@ from devtools.apriltag.world_debug_view import (
     transform_point_cloud_sample,
 )
 from gui.common.browse_widget import BrowseWidget
-from gui.common.perspective_image_view import PerspectiveImageView, PerspectiveLabelOverlay
+from gui.common.perspective_image_view import PerspectiveImageView, PerspectiveLabelOverlay, bgr_to_qimage
 from gui.common.perspective_preview import PerspectiveParams, clamp_pitch_deg, normalize_yaw_deg, params_from_drag
 from gui.theme import apply_theme
 
@@ -440,6 +441,10 @@ class DevAprilTagPlacerWindow(QWidget):
         self.render_scene_preview_btn = QPushButton("プレビュー表示")
         self.grid_only_preview_check = QCheckBox("画像OFF")
         self.grid_only_preview_check.setToolTip("カメラ画像を隠し、同じ投影経路でグリッドとタグだけを確認します。")
+        self.pointcloud_preview_check = QCheckBox("点群ビュー")
+        self.pointcloud_preview_check.setToolTip(
+            "Cubemap画像を貼らず、3Dワールド上の点群とカメラ点を選択カメラから透視投影します。"
+        )
         row.addWidget(QLabel("カメラ位置"))
         row.addWidget(self.prev_camera_btn)
         row.addWidget(self.frame_group_combo, stretch=1)
@@ -447,6 +452,7 @@ class DevAprilTagPlacerWindow(QWidget):
         row.addWidget(self.reload_groups_btn)
         row.addWidget(self.render_scene_preview_btn)
         row.addWidget(self.grid_only_preview_check)
+        row.addWidget(self.pointcloud_preview_check)
         layout.addLayout(row)
 
         self.camera_status_label = QLabel("-")
@@ -601,6 +607,7 @@ class DevAprilTagPlacerWindow(QWidget):
         self.reload_groups_btn.clicked.connect(self._load_preview_groups)
         self.render_scene_preview_btn.clicked.connect(self._render_scene_preview)
         self.grid_only_preview_check.toggled.connect(lambda _checked: self._render_scene_preview())
+        self.pointcloud_preview_check.toggled.connect(lambda _checked: self._render_scene_preview())
         self.frame_group_combo.currentIndexChanged.connect(lambda _index: self._render_scene_preview())
         self.world_debug_view.camera_clicked.connect(self._select_frame_group_by_name)
         self.prev_camera_btn.clicked.connect(lambda: self._step_camera(-1))
@@ -961,19 +968,28 @@ class DevAprilTagPlacerWindow(QWidget):
             roll_deg=roll,
         )
         self._sync_preview_spins()
-        self.preview_label.set_perspective_params(self._scene_preview_params)
-        self._update_tag_preview_overlay()
+        if self.pointcloud_preview_check.isChecked():
+            self._render_scene_preview()
+        else:
+            self.preview_label.set_perspective_params(self._scene_preview_params)
+            self._update_tag_preview_overlay()
         self._append_log(f"Jumped to face {face}: yaw={yaw:.1f}, pitch={pitch:.1f}, roll={roll:.1f}")
 
     def _on_preview_spin_changed(self) -> None:
+        self._set_scene_preview_params_from_spins()
+        if self.pointcloud_preview_check.isChecked():
+            self._render_scene_preview()
+        else:
+            self.preview_label.set_perspective_params(self._scene_preview_params)
+            self._update_tag_preview_overlay()
+
+    def _set_scene_preview_params_from_spins(self) -> None:
         self._scene_preview_params = PerspectiveParams(
             yaw_deg=normalize_yaw_deg(self.look_yaw_spin.value()),
             pitch_deg=clamp_pitch_deg(self.look_pitch_spin.value()),
             fov_deg=float(self.look_fov_spin.value()),
             roll_deg=self._scene_preview_params.roll_deg,
         )
-        self.preview_label.set_perspective_params(self._scene_preview_params)
-        self._update_tag_preview_overlay()
 
     def _sync_preview_spins(self) -> None:
         self.look_yaw_spin.blockSignals(True)
@@ -998,10 +1014,12 @@ class DevAprilTagPlacerWindow(QWidget):
         case = self._require_case()
         if case is None:
             return
-        self._on_preview_spin_changed()
+        self._set_scene_preview_params_from_spins()
         overlays = self._preview_overlays()
         try:
-            if self.grid_only_preview_check.isChecked():
+            if self.pointcloud_preview_check.isChecked():
+                shown = self._render_pointcloud_perspective_preview(display_group, overlays)
+            elif self.grid_only_preview_check.isChecked():
                 image = self._grid_only_equirect_preview()
                 shown = self.preview_label.set_perspective_image_bgr(
                     image,
@@ -1061,13 +1079,170 @@ class DevAprilTagPlacerWindow(QWidget):
         self._equirect_preview_cache[cache_key] = image
         return image
 
+    def _render_pointcloud_perspective_preview(
+        self,
+        display_group: CubemapFrameGroup,
+        overlays: list[PerspectiveLabelOverlay],
+    ) -> bool:
+        image = self._pointcloud_perspective_preview_bgr(display_group)
+        self._draw_preview_overlays_bgr(image, overlays)
+        pixmap = QPixmap.fromImage(bgr_to_qimage(image))
+        if pixmap.isNull():
+            return False
+        self.preview_label.set_source_pixmap(pixmap)
+        return True
+
+    def _pointcloud_perspective_preview_bgr(self, display_group: CubemapFrameGroup) -> np.ndarray:
+        size = int(self._scene_preview_size)
+        image = np.full((size, size, 3), (14, 18, 24), dtype=np.uint8)
+        pointcloud = self._world_pointcloud
+        if pointcloud is not None and pointcloud.points.size:
+            xy, depth, valid = self._project_world_display_points_for_preview(display_group, pointcloud.points)
+            in_frame = (
+                valid
+                & (xy[:, 0] >= 0.0)
+                & (xy[:, 0] < size)
+                & (xy[:, 1] >= 0.0)
+                & (xy[:, 1] < size)
+            )
+            visible = np.flatnonzero(in_frame)
+            if visible.size:
+                order = visible[np.argsort(depth[visible])[::-1]]
+                x = np.rint(xy[order, 0]).astype(np.int32)
+                y = np.rint(xy[order, 1]).astype(np.int32)
+                x = np.clip(x, 0, size - 1)
+                y = np.clip(y, 0, size - 1)
+                if pointcloud.colors is None:
+                    colors = np.full((order.size, 3), (188, 188, 188), dtype=np.uint8)
+                else:
+                    source_colors = np.asarray(pointcloud.colors, dtype=np.uint8)
+                    colors = source_colors[order][:, ::-1]
+                image[y, x] = colors
+
+        self._draw_preview_camera_points_bgr(image, display_group)
+        center = (size - 1) // 2
+        cv2.line(image, (center - 10, center), (center + 10, center), (180, 190, 205), 1, cv2.LINE_AA)
+        cv2.line(image, (center, center - 10), (center, center + 10), (180, 190, 205), 1, cv2.LINE_AA)
+        return image
+
+    def _draw_preview_camera_points_bgr(self, image: np.ndarray, display_group: CubemapFrameGroup) -> None:
+        groups = self._world_display_groups()
+        if not groups:
+            return
+        camera_points = np.asarray([group.camera_position_sfm for group in groups], dtype=np.float64)
+        xy, _depth, valid = self._project_world_display_points_for_preview(display_group, camera_points)
+        size = int(self._scene_preview_size)
+        for group, point, is_valid in zip(groups, xy, valid, strict=True):
+            if not is_valid:
+                continue
+            x, y = int(round(float(point[0]))), int(round(float(point[1])))
+            if x < 0 or y < 0 or x >= size or y >= size:
+                continue
+            selected = group.name == display_group.name
+            color = (55, 220, 255) if selected else (255, 150, 70)
+            radius = 5 if selected else 3
+            cv2.circle(image, (x, y), radius + 2, (0, 0, 0), -1, cv2.LINE_AA)
+            cv2.circle(image, (x, y), radius, color, -1, cv2.LINE_AA)
+
+    def _project_world_display_points_for_preview(
+        self,
+        display_group: CubemapFrameGroup,
+        points_world_display: np.ndarray,
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+        points = np.asarray(points_world_display, dtype=np.float64)
+        if points.ndim != 2 or points.shape[1] != 3:
+            raise ValueError("points_world_display must be an Nx3 array")
+        vectors = points - display_group.camera_position_sfm.reshape(1, 3)
+        view_rotation = _preview_rotation_matrix(
+            self._scene_preview_params.yaw_deg,
+            self._scene_preview_params.pitch_deg,
+            self._scene_preview_params.roll_deg,
+        )
+        view = vectors @ view_rotation
+        depth = view[:, 2]
+        size = float(self._scene_preview_size)
+        focal = 0.5 * size / np.tan(np.deg2rad(float(self._scene_preview_params.fov_deg)) / 2.0)
+        center = (size - 1.0) / 2.0
+        xy = np.full((len(points), 2), np.nan, dtype=np.float32)
+        valid = np.isfinite(depth) & (depth > 1e-8)
+        with np.errstate(divide="ignore", invalid="ignore"):
+            xy[valid, 0] = center + focal * (view[valid, 0] / depth[valid])
+            xy[valid, 1] = center - focal * (view[valid, 1] / depth[valid])
+        valid &= np.all(np.isfinite(xy), axis=1)
+        return xy, depth, valid
+
+    def _draw_preview_overlays_bgr(self, image: np.ndarray, overlays: list[PerspectiveLabelOverlay]) -> None:
+        for item in overlays:
+            color = tuple(int(channel) for channel in item.color_bgr)
+            width = 3 if item.highlighted else 1
+            if item.polygon:
+                points = np.rint(np.asarray(item.polygon, dtype=np.float32)).astype(np.int32)
+                if len(points) >= 3 and item.fill_alpha > 0.0:
+                    layer = image.copy()
+                    cv2.fillPoly(layer, [points], color, lineType=cv2.LINE_AA)
+                    cv2.addWeighted(layer, float(item.fill_alpha), image, 1.0 - float(item.fill_alpha), 0.0, image)
+                if len(points) >= 2:
+                    cv2.polylines(image, [points], True, color, width, cv2.LINE_AA)
+            if item.polyline:
+                points = np.rint(np.asarray(item.polyline, dtype=np.float32)).astype(np.int32)
+                for start, end in zip(points, points[1:], strict=False):
+                    self._draw_preview_overlay_line(image, tuple(start), tuple(end), color, width, item.dashed)
+                if item.point_radius > 0.0 and len(points):
+                    center = tuple(int(v) for v in points[-1])
+                    radius = max(1, int(round(float(item.point_radius))))
+                    cv2.circle(image, center, radius + 2, (0, 0, 0), -1, cv2.LINE_AA)
+                    cv2.circle(image, center, radius, color, -1, cv2.LINE_AA)
+                    cv2.circle(image, center, radius, (245, 245, 245), 1, cv2.LINE_AA)
+            if item.label:
+                origin = (int(item.origin[0]), int(item.origin[1]))
+                cv2.putText(image, item.label, origin, cv2.FONT_HERSHEY_SIMPLEX, 0.45, (0, 0, 0), 3, cv2.LINE_AA)
+                cv2.putText(image, item.label, origin, cv2.FONT_HERSHEY_SIMPLEX, 0.45, color, 1, cv2.LINE_AA)
+
+    @staticmethod
+    def _draw_preview_overlay_line(
+        image: np.ndarray,
+        start: tuple[int, int],
+        end: tuple[int, int],
+        color: tuple[int, int, int],
+        width: int,
+        dashed: bool,
+    ) -> None:
+        if not dashed:
+            cv2.line(image, start, end, color, width, cv2.LINE_AA)
+            return
+        start_vec = np.asarray(start, dtype=np.float64)
+        end_vec = np.asarray(end, dtype=np.float64)
+        delta = end_vec - start_vec
+        length = float(np.linalg.norm(delta))
+        if length <= 1e-6:
+            return
+        direction = delta / length
+        dash = 10.0
+        gap = 7.0
+        position = 0.0
+        while position < length:
+            segment_start = start_vec + direction * position
+            segment_end = start_vec + direction * min(position + dash, length)
+            cv2.line(
+                image,
+                tuple(np.rint(segment_start).astype(np.int32)),
+                tuple(np.rint(segment_end).astype(np.int32)),
+                color,
+                width,
+                cv2.LINE_AA,
+            )
+            position += dash + gap
+
     def _on_scene_preview_dragged(self, delta_x: float, delta_y: float) -> None:
         if not self._cubemap_groups:
             return
         self._scene_preview_params = params_from_drag(self._scene_preview_params, delta_x, delta_y)
         self._sync_preview_spins()
-        self.preview_label.set_perspective_params(self._scene_preview_params)
-        self._update_tag_preview_overlay()
+        if self.pointcloud_preview_check.isChecked():
+            self._render_scene_preview()
+        else:
+            self.preview_label.set_perspective_params(self._scene_preview_params)
+            self._update_tag_preview_overlay()
 
     def _on_scene_preview_clicked(self, x: float, y: float) -> None:
         if not self.place_click_check.isChecked():
@@ -1519,6 +1694,9 @@ class DevAprilTagPlacerWindow(QWidget):
         ]
 
     def _update_tag_preview_overlay(self) -> None:
+        if self.pointcloud_preview_check.isChecked():
+            self._render_scene_preview()
+            return
         self.preview_label.set_perspective_label_overlays(self._preview_overlays())
         self._sync_world_debug_view()
 
