@@ -716,6 +716,41 @@ def render_cubemap_direct_preview(
     return output
 
 
+def visible_cubemap_preview_face_indices(
+    faces: tuple[CubemapPreviewSamplerFace, ...],
+    *,
+    yaw_deg: float,
+    pitch_deg: float,
+    fov_deg: float,
+    sample_grid: int = 7,
+) -> tuple[int, ...]:
+    """Return direct-preview face indices that can contribute to the current view."""
+    if not faces:
+        return ()
+    grid = max(3, int(sample_grid))
+    if grid % 2 == 0:
+        grid += 1
+    preview_rays = _view_rays(grid, fov_deg) @ _rotation_matrix(yaw_deg, pitch_deg).T
+    visible: list[int] = []
+    for index, face in enumerate(faces):
+        frame = face.frame
+        local = preview_rays @ face.preview_to_face_rotation
+        z = local[:, :, 2]
+        with np.errstate(divide="ignore", invalid="ignore"):
+            map_x = frame.fl_x * (local[:, :, 0] / z) + frame.cx
+            map_y = frame.cy - frame.fl_y * (local[:, :, 1] / z)
+        valid = (
+            (z > 1e-8)
+            & (map_x >= 0.0)
+            & (map_y >= 0.0)
+            & (map_x < frame.width - 1)
+            & (map_y < frame.height - 1)
+        )
+        if bool(np.any(valid)):
+            visible.append(index)
+    return tuple(visible) if visible else tuple(range(len(faces)))
+
+
 def _load_frame_image(
     frame: PinholeFrame,
     *,

@@ -14,6 +14,7 @@ from devtools.apriltag.cubemap_preview import (
     CubemapFrameGroup,
     CubemapPreviewSamplerFace,
     cubemap_preview_sampler_faces,
+    visible_cubemap_preview_face_indices,
 )
 from gui.common.perspective_image_view import (
     _GL_COLOR_BUFFER_BIT,
@@ -199,7 +200,9 @@ class AprilTagCubemapGLView(PerspectiveGLImageView):
 
     def __init__(self, text: str = "", parent: QWidget | None = None) -> None:
         super().__init__(text, parent)
+        self._all_sampler_faces: tuple[CubemapPreviewSamplerFace, ...] = ()
         self._sampler_faces: tuple[CubemapPreviewSamplerFace, ...] = ()
+        self._active_face_indices: tuple[int, ...] = ()
         self._face_images: list[QImage] = []
         self._textures: list[QOpenGLTexture] = []
 
@@ -211,16 +214,17 @@ class AprilTagCubemapGLView(PerspectiveGLImageView):
         overlays: list[PerspectiveLabelOverlay] | None = None,
         logical_size: QSize | None = None,
     ) -> None:
-        self._sampler_faces = tuple(faces[:8])
+        self._all_sampler_faces = tuple(faces[:8])
         self._face_images = [
             bgr_to_qimage(face.image_bgr).convertToFormat(QImage.Format_RGBA8888)
-            for face in self._sampler_faces
+            for face in self._all_sampler_faces
         ]
         self._source_image = QImage(1, 1, QImage.Format_RGBA8888)
         size = logical_size or QSize(768, 768)
         self._logical_size = QSize(max(1, size.width()), max(1, size.height()))
         self._params = params
         self._overlays = list(overlays or [])
+        self._update_active_faces()
         if self._initialized and not self._failed:
             self.makeCurrent()
             try:
@@ -228,6 +232,11 @@ class AprilTagCubemapGLView(PerspectiveGLImageView):
             finally:
                 self.doneCurrent()
         self._clamp_pan()
+        self.update()
+
+    def set_perspective_params(self, params: PerspectiveParams) -> None:
+        self._params = params
+        self._update_active_faces()
         self.update()
 
     def _upload_texture(self) -> None:
@@ -260,7 +269,7 @@ class AprilTagCubemapGLView(PerspectiveGLImageView):
         self._functions.glClearColor(0.0, 0.0, 0.0, 0.0)
         self._functions.glClear(_GL_COLOR_BUFFER_BIT)
 
-        if not self._textures or self._program is None or self._vao is None:
+        if not self._textures or not self._sampler_faces or self._program is None or self._vao is None:
             return
         target = self._target_rect()
         if target.width() <= 0 or target.height() <= 0:
@@ -273,9 +282,10 @@ class AprilTagCubemapGLView(PerspectiveGLImageView):
         self._functions.glViewport(viewport_x, viewport_y, viewport_w, viewport_h)
 
         self._program.bind()
-        face_count = min(len(self._textures), len(self._sampler_faces), 8)
+        face_count = min(len(self._active_face_indices), len(self._sampler_faces), 8)
         self._program.setUniformValue1i(self._program.uniformLocation(b"u_face_count"), face_count)
-        for index, texture in enumerate(self._textures[:face_count]):
+        for index, source_index in enumerate(self._active_face_indices[:face_count]):
+            texture = self._textures[source_index]
             self._functions.glActiveTexture(_GL_TEXTURE0 + index)
             texture.bind(index)
             self._program.setUniformValue1i(self._program.uniformLocation(f"u_tex{index}".encode("ascii")), index)
@@ -306,8 +316,8 @@ class AprilTagCubemapGLView(PerspectiveGLImageView):
         self._vao.bind()
         self._functions.glDrawArrays(_GL_TRIANGLE_STRIP, 0, 4)
         self._vao.release()
-        for texture in self._textures[:face_count]:
-            texture.release()
+        for source_index in self._active_face_indices[:face_count]:
+            self._textures[source_index].release()
         self._program.release()
 
         self._functions.glViewport(0, 0, full_w, full_h)
@@ -332,6 +342,16 @@ class AprilTagCubemapGLView(PerspectiveGLImageView):
             float(frame.width),
             float(frame.height),
         )
+
+    def _update_active_faces(self) -> None:
+        indices = visible_cubemap_preview_face_indices(
+            self._all_sampler_faces,
+            yaw_deg=self._params.yaw_deg,
+            pitch_deg=self._params.pitch_deg,
+            fov_deg=self._params.fov_deg,
+        )
+        self._active_face_indices = indices
+        self._sampler_faces = tuple(self._all_sampler_faces[index] for index in indices)
 
 
 class AprilTagCubemapPreviewView(QWidget):

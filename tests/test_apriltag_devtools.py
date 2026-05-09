@@ -37,6 +37,7 @@ from devtools.apriltag.cubemap_preview import (
     render_cubemap_direct_preview,
     split_cubemap_face,
     virtual_camera_rotation,
+    visible_cubemap_preview_face_indices,
     view_pixel_to_world_ray,
     view_pixel_to_world_ray_and_up,
 )
@@ -571,6 +572,49 @@ def test_render_cubemap_direct_preview_uses_transform_relative_face_layout(tmp_p
     assert tuple(int(value) for value in rendered_px[16, 16]) == colors["px"]
     assert tuple(int(value) for value in rendered_nx[16, 16]) == colors["nx"]
     assert {face.face for face in faces} == {"pz", "px", "nz", "nx", "top", "bottom"}
+
+
+def test_direct_preview_visible_faces_are_culled_for_current_view(tmp_path: Path) -> None:
+    group, _colors = _constant_color_cube_group(tmp_path)
+    faces = cubemap_preview_sampler_faces(group)
+
+    front_indices = visible_cubemap_preview_face_indices(
+        faces,
+        yaw_deg=0.0,
+        pitch_deg=0.0,
+        fov_deg=90.0,
+    )
+    seam_indices = visible_cubemap_preview_face_indices(
+        faces,
+        yaw_deg=45.0,
+        pitch_deg=0.0,
+        fov_deg=90.0,
+    )
+
+    assert [faces[index].face for index in front_indices] == ["pz"]
+    assert {"pz", "px"}.issubset({faces[index].face for index in seam_indices})
+    assert len(seam_indices) < len(faces)
+
+
+def test_direct_preview_visible_faces_follow_transform_relative_layout(tmp_path: Path) -> None:
+    views = {
+        "pz": (0.0, 0.0),
+        "px": (-90.0, 0.0),
+        "nz": (180.0, 0.0),
+        "nx": (90.0, 0.0),
+        "top": (0.0, 90.0),
+        "bottom": (0.0, -90.0),
+    }
+    group, _colors = _constant_color_cube_group(tmp_path, views=views)
+    faces = cubemap_preview_sampler_faces(group)
+    indices = visible_cubemap_preview_face_indices(
+        faces,
+        yaw_deg=-90.0,
+        pitch_deg=0.0,
+        fov_deg=90.0,
+    )
+
+    assert [faces[index].face for index in indices] == ["px"]
 
 
 def test_standard_cube6_preview_click_ray_uses_matching_face_transform(tmp_path: Path) -> None:
