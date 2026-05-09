@@ -1,8 +1,8 @@
 # Step 2 Frame Review GUI
 
-Step 2 is where you review the frames extracted in Step 1 and keep only the images that should continue to Step 3 mask generation and then Metashape or SphereSfM. It shows labels such as `Added`, `Drop`, and `Review` from Step 1 analysis, and lets you manually change keep/drop decisions.
+Step 2 is where you review the frames extracted in Step 1 and keep only the images that should continue to Step 3 mask generation and then Metashape or SphereSfM. It shows labels such as `Added`, `Drop`, and `Review` from Step 1 analysis, plus `External` for images registered through scene import, and lets you manually change keep/drop decisions.
 
-When you press `Apply`, Step 2 removes dropped frames from `images/` and finalizes `_stechdrive/frames/selected_frames.csv` to keep-only rows. Kept filenames are preserved by default; before masks or Step 4 outputs exist, you can also enable `Renumber kept images` to rename the kept files in CSV order. The resulting `images/` folder becomes the input for Step 3 and for Metashape or SphereSfM SfM.
+When you press `Apply`, Step 2 removes dropped frames from `images/`. Kept filenames are preserved by default; before masks or Step 4 outputs exist, you can also enable `Renumber kept images` to rename the kept files into a clean sequence. The resulting `images/` folder becomes the input for Step 3 and for Metashape or SphereSfM SfM.
 
 ## First Things To Check
 
@@ -29,7 +29,7 @@ The efficient workflow is to scan the thumbnail list first, then jump through on
 7. Press `Apply` when the decisions are ready.
 8. Continue to Step 3.
 
-Keep/drop changes are written to `_stechdrive/frames/selected_frames.csv` immediately. Dropped image files are not removed from `images/` until you press `Apply`.
+Keep/drop decisions are kept as you work. Dropped image files are not removed from `images/` until you press `Apply`.
 
 ## Review Views
 
@@ -56,6 +56,7 @@ Step 2 labels are not a separate quality score. They explain why a frame is kept
 | `OK: kept` | Normal kept frame |
 | `Quick: extracted at the specified interval` | From quick extraction; no analysis label |
 | `Added: viewpoint change` | Added before the fixed cadence because viewpoint change was useful |
+| `Added: blur replacement` | Added as a more usable nearby candidate for a frame that may have been blurred |
 | `Added: preserved spacing` | Kept as a safety frame so the gap does not become too large |
 | `Review: possible blur` | Kept, but blur may be present |
 | `Review: low texture` | Kept, but SfM features may be weak |
@@ -63,8 +64,9 @@ Step 2 labels are not a separate quality score. They explain why a frame is kept
 | `Drop: similar frame` | Planned drop because it is too similar to the previous kept frame |
 | `Drop: possible blur` | Planned drop because blur may weaken SfM |
 | `Drop: manually excluded` | Manually switched to Drop |
+| `External: imported image` | Image registered through scene import or external image add |
 
-Red labels are dropped frames, yellow labels are kept frames that need review, blue labels are added frames, purple labels are quick-extract frames, and green labels are normal OK frames. Thumbnail view uses the same category colors in the bottom ribbon.
+Thumbnail view shows a short label and category color in the bottom ribbon of each image. Dropped, review, added, quick-extract, external-import, and normal kept images can be distinguished by color.
 
 ## Keep/Drop Decisions
 
@@ -80,26 +82,23 @@ When unsure, judge whether the frame will help the later SfM step estimate camer
 
 `Apply` writes the current keep/drop decisions into the image folder.
 
-Before applying changes, the GUI saves a review backup under `_stechdrive/review/backups/<review_id>/`. This backup contains `selected_frames.before.csv`, `selected_frames.after.csv` after success, and copies of the dropped image files that existed at apply time. It also writes a CSV backup under `_stechdrive/frames/backups/`.
+Before applying changes, the GUI creates a review backup so removed images can be restored manually if needed.
 
 Apply does the following:
 
-- deletes drop-marked images from `images/`
-- preserves filenames for kept images by default
-- optionally renumbers kept images to `images/frame_000001.ext`, `frame_000002.ext`, ... in CSV order
-- rewrites `_stechdrive/frames/selected_frames.csv` to keep-only rows
-- writes `_stechdrive/frames/backups/selected_frames.before_finalize.csv` and `_stechdrive/frames/selected_frames_keep.csv`
-- records the GUI review run and review backup under `_stechdrive/review/`
-- updates frame/source metadata paths when kept images are renumbered
+- removes dropped images from `images/`
+- keeps accepted image filenames unchanged by default
+- when `Renumber kept images` is on, renames accepted images into a sequence starting at `frame_000001`
+- keeps the original image format when renumbering
 - refreshes Step 2 after success
 
 ### Renumber Kept Images
 
-Use this only as a cleanup step before Step 3 mask generation and before Step 4 export. It renames kept files in the current CSV order and preserves each file's original extension.
+Use this only as a cleanup step before Step 3 mask generation and before Step 4 export. It renames kept files in the current order and preserves the image format.
 
-The option is disabled if downstream outputs already exist, including `masks/`, mask metadata, `output/`, or `_stechdrive/step4/`. Those assets may already refer to the old image filenames.
+This option is unavailable once masks or Step 4 conversion outputs already exist. That prevents existing masks or converted datasets from breaking because they still refer to the old image names.
 
-Deleted drop images can be restored manually from the review backup if needed. The CSV backup is always created.
+Removed images can be restored manually from the review backup if needed.
 
 ## Common Decisions
 

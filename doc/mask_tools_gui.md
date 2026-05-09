@@ -24,28 +24,32 @@ When unsure, start with `YOLO/SAM2.1` + `High` + `person` for 360° images, then
 2. Confirm the `Image Type` status. Step 3 detects it from Step 1 records, external image registration, or image headers, and splits mixed inputs by image type automatically.
 3. Choose the mask `Model` and detection targets.
 4. Enable `Stitch`, `Overexp`, or `Custom` only when needed.
-5. Run `Mask Preview` on one image and inspect the red overlay.
+5. Run `Mask Preview` on one image and confirm that the regions to be masked are shown with a red overlay.
 6. If the preview looks reasonable, press `Generate` for the full set.
 7. Scan the thumbnail list for missed regions or false positives.
 8. Select only problem images, adjust settings, and run `Regenerate Mask`.
 
-If `_stechdrive/frames/selected_frames.csv` exists, Step 3 validates it against `images/`. If pending drops or untracked images remain, apply Step 2 decisions or resolve the mismatch before generating masks.
+Step 3 stops before running if images marked for removal still remain, or if unrelated images are mixed into the scene. Apply Step 2 decisions first, or clean up `images/` so it contains only the images you want to mask.
 
 ## Model Choice
 
 | Model | Best for |
 | --- | --- |
-| `YOLO/SAM2.1` | Fast default person masking |
-| `SAM3.1` | Higher-accuracy prompt-based masks for people, sky, tripods, hands, phones, and cleanup |
+| `YOLO/SAM2.1` | Recommended route for fast person masking |
+| `SAM3.1` | Higher-accuracy English-prompt masks for people, sky, tripods, hands, phones, and cleanup |
 | `Mask2Former` | Trying semantic masks such as sky without SAM3.1 |
 
 ### YOLO/SAM2.1
 
-This is the default fast route. YOLO detects the selected targets, then SAM2.1 refines their shapes. Start with `person` only. Add vehicle or other classes only when you also want to remove them.
+This is the recommended route when you want fast person masks. YOLO detects the selected targets, then SAM2.1 refines their shapes. The usual target is `person` only. Add vehicles or other available targets only when you also want to mask them.
 
 ### SAM3.1
 
-SAM3.1 uses English prompts. You can add missed targets such as `person`, `sky`, `tripod`, `hand`, `selfie stick`, or `cell phone`, and subtract false positives such as `logo` or `sign`.
+SAM3.1 is prompt-driven rather than a fixed class list. You describe what to mask with English prompts. Single words such as `person`, `sky`, or `tripod` work, and short natural-language phrases such as `selfie stick`, `cell phone`, `person wearing a red jacket`, `hand holding a phone`, or `tripod legs near the floor` can also be used. The checkboxes are shortcuts for common prompts, so you do not have to type them manually. Add any missing targets in the extra prompt field.
+
+After generation, select only images with misses or false detections and combine prompts with the mask regeneration mode to add regions to the current mask or remove unwanted targets such as `logo` or `sign` from the masked area.
+
+Use add prompts to pick up targets that were not masked. For example, enter `tripod legs near the floor` for a missed tripod near the feet, or `hand holding a phone` for a missed phone, set the mode to `Add`, and regenerate only the affected images. Use subtract prompts when areas you do not want masked were picked up by mistake. For example, enter `male icon`, `female icon`, `logo`, or `sign`, set the mode to `Subtract`, and remove those targets from the masked area.
 
 On first use, if `models/sam3.1/sam3.1_multiplex.pt` is missing, Hugging Face access approval and SAM License acceptance are required. GUI downloads use a `Read` token from the approved account. This app does not save the token.
 
@@ -91,11 +95,11 @@ Custom masks use PNG input. White means use, black means exclude. They apply onl
 
 `Regenerate Mask` saves a new mask to `masks/` for the current image, or for selected images in thumbnail mode.
 
-With SAM3.1, choose the write mode:
+With SAM3.1, choose how prompt detections are applied to the saved mask:
 
 - `Replace`: rebuild the mask from current settings
-- `Add`: add detected regions to the existing mask as black excluded areas
-- `Subtract`: remove detected regions from the existing mask by turning them white
+- `Add`: add detected targets to the masked area
+- `Subtract`: remove detected targets from the masked area
 
 It is usually faster to generate the full set at Standard/High quality, then regenerate only images with visible misses.
 
@@ -114,7 +118,7 @@ Generated `masks/` can be imported into Metashape, or used by the SphereSfM rout
 - Start with `YOLO/SAM2.1` + `High` + `person`.
 - Use `SAM3.1` when you also need sky, tripods, hands, or prompt-based cleanup.
 - Use `Mask2Former` for a quick sky-mask test without SAM3.1.
-- If the camera operator or tripod remains near the bottom of a 360° image, raise quality or use SAM3.1 prompts such as `tripod`, `hand`, or `selfie stick`.
+- If the camera operator or tripod remains near the bottom of a 360° image, raise quality or use SAM3.1 prompts such as `tripod`, `hand`, or `selfie stick` to add those areas to the mask.
 - Turn `Overexp` on only for footage where blown-out areas are actually harmful; it can remove too much in some interiors.
 - Normal images do not use stitch seam masks or 360° pole projection assist.
 - If SAM3.1 stops due to GPU memory, completed masks remain saved. Rerun with the same settings to continue from unfinished images.
