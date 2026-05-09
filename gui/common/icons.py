@@ -87,6 +87,17 @@ _FILE_PICKER_SVG = """
 </svg>
 """.strip()
 
+_IMPORT_SCENE_SVG = """
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none">
+  <path d="M3.8 7.4h5.8l1.8 2.1h8.8v7.7a2.1 2.1 0 0 1-2.1 2.1H5.9a2.1 2.1 0 0 1-2.1-2.1V7.4Z"
+        stroke="#e5e7eb" stroke-width="1.8" stroke-linejoin="round"/>
+  <path d="M12 5.1v8.2" stroke="#2dd4bf" stroke-width="1.9" stroke-linecap="round"/>
+  <path d="m8.9 10.4 3.1 3.1 3.1-3.1" stroke="#2dd4bf" stroke-width="1.9"
+        stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M7.2 16.2h9.6" stroke="#9ca3af" stroke-width="1.6" stroke-linecap="round"/>
+</svg>
+""".strip()
+
 _HELP_SVG = """
 <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none">
   <circle cx="12" cy="12" r="9" stroke="#e5e7eb" stroke-width="1.8"/>
@@ -216,6 +227,10 @@ def folder_icon(size: int = 18) -> QIcon:
 
 def file_picker_icon(size: int = 18) -> QIcon:
     return svg_icon(_FILE_PICKER_SVG, size)
+
+
+def import_scene_icon(size: int = 18) -> QIcon:
+    return svg_icon(_IMPORT_SCENE_SVG, size)
 
 
 def help_icon(size: int = 18) -> QIcon:

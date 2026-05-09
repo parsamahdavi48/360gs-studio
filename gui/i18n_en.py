@@ -30,6 +30,7 @@ STRINGS: dict[str, str] = {
     "IMPORT_SCENE": "Import Scene",
     "IMPORT_SCENE_SELECT_FOLDER": "Select Scene Folder to Import",
     "IMPORT_SCENE_RUNNING": "Importing scene",
+    "IMPORT_SCENE_STARTED": "Scene import started: {scene}",
     "IMPORT_SCENE_DONE": "Scene import complete: images {images} / masks {masks} / output images {output_images}",
     "IMPORT_SCENE_FAILED": "Scene import failed. Check the log below.",
     "CLEAR_SCENE_DIR": "Clear Scene Folder",

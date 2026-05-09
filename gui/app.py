@@ -6,7 +6,7 @@ import argparse
 import sys
 from pathlib import Path
 
-from PySide6.QtCore import QPoint, QSize, Qt, QTimer, QUrl
+from PySide6.QtCore import QPoint, QSize, Qt, QThread, QTimer, QUrl
 from PySide6.QtGui import QCloseEvent, QDesktopServices, QIcon
 from PySide6.QtWidgets import (
     QApplication,
@@ -23,14 +23,15 @@ from PySide6.QtWidgets import (
 )
 
 from core.path_safety import PathSafetyIssue, check_path_safety, normalized_path_text
-from core.scene_import import import_scene
+from core.scene_import import SceneImportResult, import_scene
 from core.scene_layout import scene_images_dir, scene_masks_dir, scene_output_dir
 from gui import i18n
 from gui.common.browse_widget import BrowseWidget
-from gui.common.icons import help_icon, reset_icon
+from gui.common.icons import help_icon, import_scene_icon, reset_icon
 from gui.common.log_panel import LogPanel
 from gui.common.process_runner import ProcessRunner
 from gui.common.progress_widget import ProgressWidget
+from gui.common.scene_import_worker import SceneImportWorker
 from gui.steps.step1_extract import ExtractStep
 from gui.steps.step2_review import ReviewStep
 from gui.steps.step3_mask import MaskStep
@@ -76,6 +77,9 @@ class MainWindow(QWidget):
         self._auto_scene_from_input: str | None = None
         self._applying_scene_suggestion = False
         self._shutdown = False
+        self._scene_import_running = False
+        self._scene_import_thread: QThread | None = None
+        self._scene_import_worker: SceneImportWorker | None = None
 
         self._build_ui(initial_scene_dir)
         self._connect_signals()
@@ -109,11 +113,13 @@ class MainWindow(QWidget):
             accessible_name=i18n.t("CLEAR_SCENE_DIR"),
         )
         self.clear_scene_btn.setEnabled(bool(initial_scene_dir))
+        self.import_scene_btn = self.scene_browse.add_icon_button(
+            import_scene_icon(),
+            i18n.tip("IMPORT_SCENE"),
+            self._import_scene_from_folder,
+            accessible_name=i18n.t("IMPORT_SCENE"),
+        )
         header.addWidget(self.scene_browse, stretch=1)
-        self.import_scene_btn = QPushButton(i18n.t("IMPORT_SCENE"))
-        self.import_scene_btn.setToolTip(i18n.tip("IMPORT_SCENE"))
-        self.import_scene_btn.setFixedHeight(32)
-        header.addWidget(self.import_scene_btn)
         header_widget = QWidget()
         header_widget.setObjectName("appHeader")
         header_widget.setLayout(header)
@@ -309,7 +315,6 @@ class MainWindow(QWidget):
 
     def _connect_signals(self) -> None:
         self.scene_browse.path_changed.connect(self._on_scene_changed)
-        self.import_scene_btn.clicked.connect(self._import_scene_from_folder)
         self.step1.scene_dir_suggested.connect(self._on_scene_suggested)
         self.step1.input_videos_cleared.connect(self._on_input_videos_cleared)
         self.step3.scene_dir_suggested.connect(self._on_scene_suggested)
@@ -369,7 +374,7 @@ class MainWindow(QWidget):
             self.scene_browse.set_text("")
 
     def _import_scene_from_folder(self) -> None:
-        if self.runner.is_running():
+        if self._workflow_busy():
             self.log_panel.append_log(i18n.BUSY_MSG)
             return
         start_dir = self.scene_browse.text().strip() or str(Path.cwd())
@@ -377,16 +382,50 @@ class MainWindow(QWidget):
         if not scene:
             return
 
+        self._start_scene_import(scene)
+
+    def _start_scene_import(self, scene: str) -> None:
+        if self._workflow_busy():
+            self.log_panel.append_log(i18n.BUSY_MSG)
+            return
+
+        self._scene_import_running = True
         self.progress.reset()
+        self.progress.start_phase()
         self.progress.set_status(i18n.t("IMPORT_SCENE_RUNNING"))
-        try:
-            result = import_scene(Path(scene))
-        except Exception as e:
-            self.log_panel.append_log(f"{i18n.t('IMPORT_SCENE_FAILED')}: {e}")
+        self.log_panel.append_log(i18n.t("IMPORT_SCENE_STARTED").format(scene=scene))
+        self._update_run_button()
+
+        thread = QThread(self)
+        worker = SceneImportWorker(Path(scene), importer=import_scene)
+        worker.moveToThread(thread)
+        thread.started.connect(worker.run)
+        worker.finished.connect(self._on_scene_import_finished)
+        worker.finished.connect(thread.quit)
+        worker.finished.connect(worker.deleteLater)
+        thread.finished.connect(self._on_scene_import_thread_finished)
+        thread.finished.connect(thread.deleteLater)
+        self._scene_import_thread = thread
+        self._scene_import_worker = worker
+        thread.start()
+
+    def _on_scene_import_finished(self, result: object, error: str) -> None:
+        self._scene_import_running = False
+        if error:
+            self.progress.finish_phase(complete=False)
+            self.log_panel.append_log(f"{i18n.t('IMPORT_SCENE_FAILED')}: {error}")
             self.progress.set_status(i18n.STATUS_FAILED)
             self._update_run_button()
             return
 
+        if not isinstance(result, SceneImportResult):
+            self.progress.finish_phase(complete=False)
+            self.log_panel.append_log(f"{i18n.t('IMPORT_SCENE_FAILED')}: invalid worker result")
+            self.progress.set_status(i18n.STATUS_FAILED)
+            self._update_run_button()
+            return
+
+        scene = str(result.scene_dir)
         for line in result.summary_lines():
             self.log_panel.append_log(line)
         self._auto_scene_from_input = None
@@ -394,6 +433,7 @@ class MainWindow(QWidget):
             self.scene_browse.set_text(scene)
         else:
             self._on_scene_changed(scene)
+        self.progress.finish_phase(complete=not bool(result.errors))
         if result.errors:
             self.progress.set_status(i18n.t("IMPORT_SCENE_FAILED"))
         else:
@@ -405,6 +445,11 @@ class MainWindow(QWidget):
                 )
             )
         self._update_run_button()
+
+    def _on_scene_import_thread_finished(self) -> None:
+        if self.sender() is self._scene_import_thread:
+            self._scene_import_thread = None
+            self._scene_import_worker = None
 
     def _set_current_step(self, index: int) -> None:
         if not 0 <= index < len(self.steps):
@@ -528,10 +573,11 @@ class MainWindow(QWidget):
         )
 
     def _update_run_button(self) -> None:
-        running = self.runner.is_running()
+        runner_running = self.runner.is_running()
+        busy = self._workflow_busy()
         step = self._current_step_widget()
         scene_selected = bool(self.scene_browse.text())
-        self._set_workflow_locked(running)
+        self._set_workflow_locked(busy)
         if step is not None:
             self.run_btn.setText(f"  {step.primary_action_text()}")
             if scene_selected:
@@ -542,10 +588,13 @@ class MainWindow(QWidget):
 
         self.run_btn.setVisible(True)
         action_enabled = step.primary_action_enabled() if step is not None else True
-        self.run_btn.setEnabled(not running and scene_selected and action_enabled)
+        self.run_btn.setEnabled(not busy and scene_selected and action_enabled)
 
         self.cancel_btn.setVisible(True)
-        self.cancel_btn.setEnabled(running)
+        self.cancel_btn.setEnabled(runner_running)
+
+    def _workflow_busy(self) -> bool:
+        return self.runner.is_running() or self._scene_import_running
 
     def _set_workflow_locked(self, locked: bool) -> None:
         unlocked = not locked
@@ -674,6 +723,9 @@ class MainWindow(QWidget):
         self._shutdown = True
         if self.runner.is_running():
             self.runner.cancel()
+        if self._scene_import_thread is not None and self._scene_import_thread.isRunning():
+            self._scene_import_thread.quit()
+            self._scene_import_thread.wait(3000)
         for step in self.steps:
             step.shutdown()
 

@@ -30,6 +30,7 @@ STRINGS: dict[str, str] = {
     "IMPORT_SCENE": "シーン取り込み",
     "IMPORT_SCENE_SELECT_FOLDER": "取り込むシーンフォルダを選択",
     "IMPORT_SCENE_RUNNING": "シーンを取り込み中",
+    "IMPORT_SCENE_STARTED": "シーン取り込み開始: {scene}",
     "IMPORT_SCENE_DONE": "シーン取り込み完了: 画像 {images} / マスク {masks} / 出力画像 {output_images}",
     "IMPORT_SCENE_FAILED": "シーン取り込み失敗。下部ログを確認してください。",
     "CLEAR_SCENE_DIR": "シーンフォルダをクリア",
