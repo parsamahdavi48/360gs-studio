@@ -97,7 +97,8 @@ def test_scene_import_runs_off_gui_thread_and_reports_start(tmp_path: Path, monk
 
         assert window._scene_import_running
         assert not window.scene_browse.isEnabled()
-        assert not window.import_scene_btn.isEnabled()
+        assert not window.scene_menu_btn.isEnabled()
+        assert not window.import_scene_action.isEnabled()
         assert not window.stack.isEnabled()
         assert window.cancel_btn.isEnabled()
         assert i18n.t("IMPORT_SCENE_STARTED").format(scene=str(tmp_path)) in window.log_panel.toPlainText()
@@ -106,7 +107,8 @@ def test_scene_import_runs_off_gui_thread_and_reports_start(tmp_path: Path, monk
         assert _process_events_until(app, lambda: not window._scene_import_running)
 
         assert window.scene_browse.isEnabled()
-        assert window.import_scene_btn.isEnabled()
+        assert window.scene_menu_btn.isEnabled()
+        assert window.import_scene_action.isEnabled()
         assert window.stack.isEnabled()
         assert "Scene import:" in window.log_panel.toPlainText()
         assert window.progress.status_label.text() == i18n.t("IMPORT_SCENE_DONE").format(

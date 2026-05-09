@@ -332,6 +332,14 @@ def test_main_window_clear_scene_button_clears_header_scene(tmp_path: Path) -> N
     assert window.clear_scene_btn.text() == ""
     assert window.clear_scene_btn.accessibleName() == i18n.t("CLEAR_SCENE_DIR")
     assert window.clear_scene_btn.toolTip() == i18n.t("CLEAR_SCENE_DIR_HINT")
+    assert isinstance(window.scene_menu_btn, QToolButton)
+    assert window.scene_menu_btn.text() == ""
+    assert window.scene_menu_btn.accessibleName() == i18n.t("SCENE_ACTIONS_MENU")
+    assert window.scene_menu_btn.toolTip() == i18n.t("SCENE_ACTIONS_MENU_HINT")
+    assert window.scene_menu_btn.menu() is window.scene_actions_menu
+    assert window.scene_actions_menu.toolTipsVisible()
+    assert window.import_scene_action.text() == i18n.t("IMPORT_SCENE_MENU_ITEM")
+    assert window.import_scene_action.toolTip() == i18n.tip("IMPORT_SCENE")
 
     window.clear_scene_btn.click()
 

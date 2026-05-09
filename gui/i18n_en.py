@@ -27,7 +27,10 @@ STRINGS: dict[str, str] = {
     "SCENE_DIR": "Scene Folder",
     "SCENE_DIR_PLACEHOLDER": "Select the working scene folder first...",
     "SCENE_REQUIRED_ACTION_HINT": "Set the scene folder in the header first.",
+    "SCENE_ACTIONS_MENU": "Scene Actions Menu",
+    "SCENE_ACTIONS_MENU_HINT": "Open additional actions for the scene folder.",
     "IMPORT_SCENE": "Import Scene",
+    "IMPORT_SCENE_MENU_ITEM": "Import Scene...",
     "IMPORT_SCENE_SELECT_FOLDER": "Select Scene Folder to Import",
     "IMPORT_SCENE_RUNNING": "Importing scene",
     "IMPORT_SCENE_STARTED": "Scene import started: {scene}",
@@ -895,7 +898,7 @@ STRINGS: dict[str, str] = {
 
 TIPS: dict[str, str] = {
     "SCENE_DIR": "Working scene folder. When resuming, select the extracted folder that contains _stechdrive/frames/selected_frames.csv and images/. Subfolders like images/, masks/ are auto-detected",
-    "IMPORT_SCENE": "Rescan images/, masks/, and output/ in the selected folder and rebuild external-import metadata. No confirmation dialog is shown, and asset files are not deleted.",
+    "IMPORT_SCENE": "Rescan existing images/, masks/, and output/ and rebuild this app's management metadata. Usually do not use this when resuming work. No confirmation dialog is shown, and asset files are not deleted.",
     "STEP_HELP_BUTTON": "Open the current step's documentation on GitHub. The page follows the active UI language.",
     "RUN": "Start processing for the current tab",
     "LAUNCH_TRAINING": "Launch the selected 3DGS app with the existing dataset.",

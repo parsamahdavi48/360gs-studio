@@ -27,7 +27,10 @@ STRINGS: dict[str, str] = {
     "SCENE_DIR": "シーンフォルダ",
     "SCENE_DIR_PLACEHOLDER": "まず作業シーンフォルダを選択...",
     "SCENE_REQUIRED_ACTION_HINT": "ヘッダーのシーンフォルダを指定してください。",
+    "SCENE_ACTIONS_MENU": "シーン操作メニュー",
+    "SCENE_ACTIONS_MENU_HINT": "シーンフォルダに対する追加操作を開きます。",
     "IMPORT_SCENE": "シーン取り込み",
+    "IMPORT_SCENE_MENU_ITEM": "シーン取り込み...",
     "IMPORT_SCENE_SELECT_FOLDER": "取り込むシーンフォルダを選択",
     "IMPORT_SCENE_RUNNING": "シーンを取り込み中",
     "IMPORT_SCENE_STARTED": "シーン取り込み開始: {scene}",
@@ -894,7 +897,7 @@ STRINGS: dict[str, str] = {
 
 TIPS: dict[str, str] = {
     "SCENE_DIR": "作業対象のシーンフォルダ。再開時は _stechdrive/frames/selected_frames.csv と images/ がある抽出済みフォルダを指定します。images/, masks/ などのサブフォルダが自動認識されます",
-    "IMPORT_SCENE": "選択したフォルダ内の images/, masks/, output/ を全量走査し、外部取り込みシーンとして管理情報を作り直します。確認ダイアログは出さず、実アセットは削除しません",
+    "IMPORT_SCENE": "既存の images/, masks/, output/ を全量走査し、このアプリの管理情報を作り直します。作業再開では通常使いません。確認ダイアログは出さず、実アセットは削除しません",
     "STEP_HELP_BUTTON": "現在のステップの説明ドキュメントをGitHubで開きます。表示言語に合わせて日本語または英語のページを開きます",
     "RUN": "現在のタブの処理を開始します",
     "LAUNCH_TRAINING": "選択中の3DGSアプリを既存データセットで起動します",

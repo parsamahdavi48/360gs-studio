@@ -7,12 +7,13 @@ import sys
 from pathlib import Path
 
 from PySide6.QtCore import QEvent, QObject, QPoint, QSignalBlocker, QSize, Qt, QThread, QTimer, QUrl
-from PySide6.QtGui import QCloseEvent, QDesktopServices, QIcon
+from PySide6.QtGui import QAction, QCloseEvent, QDesktopServices, QIcon
 from PySide6.QtWidgets import (
     QApplication,
     QFileDialog,
     QHBoxLayout,
     QLabel,
+    QMenu,
     QMessageBox,
     QPushButton,
     QSplitter,
@@ -27,7 +28,7 @@ from core.scene_import import SceneImportResult, import_scene
 from core.scene_layout import scene_images_dir, scene_masks_dir, scene_output_dir
 from gui import i18n
 from gui.common.browse_widget import BrowseWidget
-from gui.common.icons import help_icon, import_scene_icon, reset_icon
+from gui.common.icons import help_icon, import_scene_icon, menu_icon, reset_icon
 from gui.common.log_panel import LogPanel
 from gui.common.process_runner import ProcessRunner
 from gui.common.progress_widget import ProgressWidget
@@ -123,12 +124,25 @@ class MainWindow(QWidget):
             accessible_name=i18n.t("CLEAR_SCENE_DIR"),
         )
         self.clear_scene_btn.setEnabled(bool(initial_scene_dir))
-        self.import_scene_btn = self.scene_browse.add_icon_button(
-            import_scene_icon(),
-            i18n.tip("IMPORT_SCENE"),
-            self._import_scene_from_folder,
-            accessible_name=i18n.t("IMPORT_SCENE"),
+        self.scene_menu_btn = self.scene_browse.add_icon_button(
+            menu_icon(),
+            i18n.t("SCENE_ACTIONS_MENU_HINT"),
+            None,
+            accessible_name=i18n.t("SCENE_ACTIONS_MENU"),
         )
+        self.scene_actions_menu = QMenu(self.scene_menu_btn)
+        self.scene_actions_menu.setToolTipsVisible(True)
+        self.import_scene_action = QAction(
+            import_scene_icon(),
+            i18n.t("IMPORT_SCENE_MENU_ITEM"),
+            self.scene_actions_menu,
+        )
+        self.import_scene_action.setToolTip(i18n.tip("IMPORT_SCENE"))
+        self.import_scene_action.setStatusTip(i18n.tip("IMPORT_SCENE"))
+        self.import_scene_action.triggered.connect(lambda _checked=False: self._import_scene_from_folder())
+        self.scene_actions_menu.addAction(self.import_scene_action)
+        self.scene_menu_btn.setMenu(self.scene_actions_menu)
+        self.scene_menu_btn.setPopupMode(QToolButton.InstantPopup)
         header.addWidget(self.scene_browse, stretch=1)
         header_widget = QWidget()
         header_widget.setObjectName("appHeader")
@@ -715,7 +729,8 @@ class MainWindow(QWidget):
         unlocked = not locked
         self.scene_browse.setEnabled(unlocked)
         self.clear_scene_btn.setEnabled(unlocked and bool(self.scene_browse.text()))
-        self.import_scene_btn.setEnabled(unlocked)
+        self.scene_menu_btn.setEnabled(unlocked)
+        self.import_scene_action.setEnabled(unlocked)
         self.stack.setEnabled(unlocked)
         for btn in self.step_buttons:
             btn.setEnabled(unlocked)

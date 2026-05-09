@@ -87,7 +87,8 @@ class BrowseWidget(QWidget):
         button.setFixedSize(32, 32)
         if accessible_name:
             button.setAccessibleName(accessible_name)
-        button.clicked.connect(callback)
+        if callback is not None:
+            button.clicked.connect(callback)
         if self._button_position == "below":
             self._layout.addWidget(button, alignment=Qt.AlignLeft)
         else:
