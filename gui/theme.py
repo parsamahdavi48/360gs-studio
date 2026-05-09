@@ -441,6 +441,11 @@ QToolButton#iconToolButton:disabled {{
     background-color: {BG_MID};
     border-color: {BG_MID};
 }}
+QToolButton#iconToolButton[hideMenuIndicator="true"]::menu-indicator {{
+    image: none;
+    width: 0px;
+    height: 0px;
+}}
 
 /* ========== QTabWidget ========== */
 QTabWidget::pane {{

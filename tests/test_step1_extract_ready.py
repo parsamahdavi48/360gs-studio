@@ -336,6 +336,7 @@ def test_main_window_clear_scene_button_clears_header_scene(tmp_path: Path) -> N
     assert window.scene_menu_btn.text() == ""
     assert window.scene_menu_btn.accessibleName() == i18n.t("SCENE_ACTIONS_MENU")
     assert window.scene_menu_btn.toolTip() == i18n.t("SCENE_ACTIONS_MENU_HINT")
+    assert window.scene_menu_btn.property("hideMenuIndicator") == "true"
     assert window.scene_menu_btn.menu() is window.scene_actions_menu
     assert window.scene_actions_menu.toolTipsVisible()
     actions = window.scene_actions_menu.actions()

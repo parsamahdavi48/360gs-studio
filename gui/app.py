@@ -130,6 +130,7 @@ class MainWindow(QWidget):
             None,
             accessible_name=i18n.t("SCENE_ACTIONS_MENU"),
         )
+        self.scene_menu_btn.setProperty("hideMenuIndicator", "true")
         self.scene_actions_menu = QMenu(self.scene_menu_btn)
         self.scene_actions_menu.setToolTipsVisible(True)
         self.open_scene_action = QAction(
