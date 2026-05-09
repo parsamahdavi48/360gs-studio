@@ -25,6 +25,7 @@ from devtools.apriltag.coordinates import (
 )
 from devtools.apriltag.cubemap_preview import (
     CubemapFrameGroup,
+    cubemap_preview_sampler_faces,
     face_view_params,
     load_cubemap_frame_groups,
     load_metashape_camera_labels,
@@ -33,6 +34,7 @@ from devtools.apriltag.cubemap_preview import (
     project_sfm_points_to_preview_points,
     preview_frustum_rays,
     render_cubemap_equirect,
+    render_cubemap_direct_preview,
     split_cubemap_face,
     virtual_camera_rotation,
     view_pixel_to_world_ray,
@@ -490,6 +492,85 @@ def test_render_cubemap_equirect_uses_transform_relative_face_layout(tmp_path: P
     assert px_pitch == pytest.approx(0.0)
     assert nx_yaw == pytest.approx(90.0)
     assert nx_pitch == pytest.approx(0.0)
+
+
+def _constant_color_cube_group(
+    tmp_path: Path,
+    *,
+    views: dict[str, tuple[float, float]] | None = None,
+) -> tuple[CubemapFrameGroup, dict[str, tuple[int, int, int]]]:
+    face_size = 32
+    colors = {
+        "pz": (10, 20, 30),
+        "px": (40, 50, 60),
+        "nz": (70, 80, 90),
+        "nx": (100, 110, 120),
+        "top": (130, 140, 150),
+        "bottom": (160, 170, 180),
+    }
+    transforms = views or {face: (0.0, 0.0) for face in colors}
+
+    def frame(name: str) -> PinholeFrame:
+        image_path = tmp_path / f"direct_{name}.png"
+        image = np.full((face_size, face_size, 3), colors[name], dtype=np.uint8)
+        assert cv2.imwrite(str(image_path), image)
+        transform = np.eye(4)
+        yaw, pitch = transforms[name]
+        transform[:3, :3] = _rotation(yaw, pitch)
+        return PinholeFrame(
+            frame_id=name,
+            file_path=f"images/direct_{name}.png",
+            image_path=image_path,
+            width=face_size,
+            height=face_size,
+            fl_x=face_size / 2.0,
+            fl_y=face_size / 2.0,
+            cx=(face_size - 1) / 2.0,
+            cy=(face_size - 1) / 2.0,
+            transform_matrix=transform,
+        )
+
+    return CubemapFrameGroup(name="direct", frames_by_face={face: frame(face) for face in colors}), colors
+
+
+def test_render_cubemap_direct_preview_samples_standard_side_faces(tmp_path: Path) -> None:
+    group, colors = _constant_color_cube_group(tmp_path)
+
+    cases = {
+        "pz": 0.0,
+        "px": 90.0,
+        "nz": 180.0,
+        "nx": -90.0,
+    }
+    for face, yaw in cases.items():
+        rendered = render_cubemap_direct_preview(
+            group,
+            yaw_deg=yaw,
+            pitch_deg=0.0,
+            output_size=33,
+        )
+
+        assert tuple(int(value) for value in rendered[16, 16]) == colors[face]
+
+
+def test_render_cubemap_direct_preview_uses_transform_relative_face_layout(tmp_path: Path) -> None:
+    views = {
+        "pz": (0.0, 0.0),
+        "px": (-90.0, 0.0),
+        "nz": (180.0, 0.0),
+        "nx": (90.0, 0.0),
+        "top": (0.0, 90.0),
+        "bottom": (0.0, -90.0),
+    }
+    group, colors = _constant_color_cube_group(tmp_path, views=views)
+
+    rendered_px = render_cubemap_direct_preview(group, yaw_deg=-90.0, pitch_deg=0.0, output_size=33)
+    rendered_nx = render_cubemap_direct_preview(group, yaw_deg=90.0, pitch_deg=0.0, output_size=33)
+    faces = cubemap_preview_sampler_faces(group)
+
+    assert tuple(int(value) for value in rendered_px[16, 16]) == colors["px"]
+    assert tuple(int(value) for value in rendered_nx[16, 16]) == colors["nx"]
+    assert {face.face for face in faces} == {"pz", "px", "nz", "nx", "top", "bottom"}
 
 
 def test_standard_cube6_preview_click_ray_uses_matching_face_transform(tmp_path: Path) -> None:

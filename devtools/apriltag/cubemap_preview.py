@@ -66,6 +66,20 @@ class CubemapFrameGroup:
         return self.reference_frame.camera_position_sfm
 
 
+@dataclass(frozen=True)
+class CubemapPreviewSamplerFace:
+    """One loaded cubemap face for direct preview sampling.
+
+    ``preview_to_face_rotation`` maps the interactive preview ray into the
+    pinhole camera space of this face using row-vector convention.
+    """
+
+    face: str
+    frame: PinholeFrame
+    image_bgr: np.ndarray
+    preview_to_face_rotation: np.ndarray
+
+
 def split_cubemap_face(file_path: str) -> tuple[str, str] | None:
     path = Path(file_path)
     stem = path.stem
@@ -635,6 +649,86 @@ def render_cubemap_perspective(
         output[better] = sampled[better]
         best_score[better] = z[better]
     return output
+
+
+def cubemap_preview_sampler_faces(
+    group: CubemapFrameGroup,
+    *,
+    image_cache: dict[Path, np.ndarray] | None = None,
+) -> tuple[CubemapPreviewSamplerFace, ...]:
+    """Load face textures for direct preview sampling.
+
+    The normal camera-image preview needs to show the actual Cube6 pinhole
+    images without rebuilding an intermediate equirectangular texture. This
+    returns the face images plus the same transform-relative face rotations used
+    by click/grid/tag projection.
+    """
+    standard_rotations = _standard_cube6_face_rotations(group)
+    if standard_rotations is None:
+        return ()
+    faces: list[CubemapPreviewSamplerFace] = []
+    for face in _STANDARD_FACE_ORDER:
+        frame = group.frames_by_face.get(face)
+        rotation = standard_rotations.get(face)
+        if frame is None or rotation is None:
+            continue
+        image = _load_frame_image(frame, image_cache=image_cache)
+        if image is None:
+            continue
+        faces.append(
+            CubemapPreviewSamplerFace(
+                face=face,
+                frame=frame,
+                image_bgr=image,
+                preview_to_face_rotation=np.asarray(rotation, dtype=np.float64),
+            )
+        )
+    return tuple(faces)
+
+
+def render_cubemap_direct_preview(
+    group: CubemapFrameGroup,
+    *,
+    yaw_deg: float,
+    pitch_deg: float,
+    fov_deg: float = 90.0,
+    output_size: int = 768,
+    image_cache: dict[Path, np.ndarray] | None = None,
+) -> np.ndarray:
+    """CPU reference renderer for the direct Cube6 preview shader."""
+    faces = cubemap_preview_sampler_faces(group, image_cache=image_cache)
+    if not faces:
+        raise ValueError("Direct cubemap preview requires a standard Cube6 image group")
+    size = max(1, int(output_size))
+    preview_rays = _view_rays(size, fov_deg) @ _rotation_matrix(yaw_deg, pitch_deg).T
+
+    output = np.full((size, size, 3), 16, dtype=np.uint8)
+    best_score = np.full((size, size), -np.inf, dtype=np.float64)
+    for sampler_face in faces:
+        local = preview_rays @ sampler_face.preview_to_face_rotation
+        _sample_frame_to_output(
+            frame=sampler_face.frame,
+            image=sampler_face.image_bgr,
+            local_rays=local,
+            output=output,
+            best_score=best_score,
+        )
+    return output
+
+
+def _load_frame_image(
+    frame: PinholeFrame,
+    *,
+    image_cache: dict[Path, np.ndarray] | None = None,
+) -> np.ndarray | None:
+    image = image_cache.get(frame.image_path) if image_cache is not None else None
+    if image is None:
+        image = imread_unicode(frame.image_path)
+        if image_cache is not None and image is not None:
+            image_cache[frame.image_path] = image
+    if image is None:
+        return None
+    return image[:, :, :3] if image.ndim == 3 else cv2.cvtColor(image, cv2.COLOR_GRAY2BGR)
 
 
 def _equirect_world_rays(width: int, height: int, reference_rotation: np.ndarray) -> np.ndarray:
