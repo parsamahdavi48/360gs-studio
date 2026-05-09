@@ -196,3 +196,21 @@ def test_scene_import_samples_large_output_image_validation(tmp_path: Path, monk
     record = json.loads(scene_imports_path(scene).read_text(encoding="utf-8"))["imports"][-1]
     assert record["validation"]["output_image_sample_count"] == 10
     assert record["validation"]["output_image_sample_limit"] == 10
+
+
+def test_scene_import_empty_mask_dir_skips_per_image_mask_checks(tmp_path: Path, monkeypatch) -> None:
+    scene = tmp_path
+    (scene / "masks").mkdir()
+    for index in range(8):
+        _write_image(scene / "images" / f"frame_{index:04d}.jpg")
+
+    def fail_image_size(path: Path) -> tuple[int, int]:
+        raise AssertionError(f"unexpected mask size check: {path}")
+
+    monkeypatch.setattr("core.scene_import_sources.image_size", fail_image_size)
+
+    result = import_scene(scene)
+
+    assert result.status == "ok"
+    assert result.mask_count == 0
+    assert not any("masks/ missing matching files" in warning for warning in result.warnings)

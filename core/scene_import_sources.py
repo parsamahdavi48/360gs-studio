@@ -294,6 +294,43 @@ def first_existing_mask(image_path: Path, images_root: Path, masks_root: Path) -
     return None
 
 
+def mask_lookup_for_root(masks_root: Path, cancel_token: SceneImportCancelToken | None = None) -> dict[str, Path]:
+    lookup: dict[str, Path] = {}
+    for path in iter_scene_images(masks_root, cancel_token):
+        try:
+            rel = path.relative_to(masks_root).as_posix().lower()
+        except ValueError:
+            rel = path.name.lower()
+        lookup.setdefault(rel, path)
+        lookup.setdefault(path.name.lower(), path)
+        lookup.setdefault(f"{path.stem.lower()}.png", path)
+    return lookup
+
+
+def indexed_mask_for_image(
+    image_path: Path,
+    images_root: Path,
+    lookup: dict[str, Path],
+) -> Path | None:
+    try:
+        rel_parent = image_path.relative_to(images_root).parent.as_posix().lower()
+    except ValueError:
+        rel_parent = ""
+    name = image_path.name.lower()
+    stem = image_path.stem.lower()
+    keys = [
+        f"{rel_parent}/{stem}.png" if rel_parent else f"{stem}.png",
+        f"{rel_parent}/{name}.png" if rel_parent else f"{name}.png",
+        f"{name}.png",
+        f"{stem}.png",
+    ]
+    for key in keys:
+        path = lookup.get(key)
+        if path is not None:
+            return path
+    return None
+
+
 def build_external_mask_plan(
     scene: Path,
     import_id: str,
@@ -332,14 +369,27 @@ def build_external_mask_plan(
             created_at=utc_now_iso(),
         )
 
+    mask_lookup = mask_lookup_for_root(masks_root, cancel_token)
+    if not mask_lookup:
+        return ExternalMaskPlan(
+            kept_runs=kept_runs,
+            removed_run_ids=removed_run_ids,
+            run_id=run_id,
+            settings=settings,
+            image_count=len(image_paths),
+            items=[],
+            created_at=utc_now_iso(),
+        )
+
     missing = IssueSummary("masks/ missing matching files")
     size_mismatch = IssueSummary("masks/ size mismatch")
     unreadable = IssueSummary("masks/ unreadable files")
     items: list[ImportedMaskItem] = []
+    images_root = scene_images_dir(scene)
     for index, image_path in enumerate(image_paths, start=1):
         if cancel_token is not None and index % 128 == 0:
             cancel_token.check_cancelled()
-        mask_path = first_existing_mask(image_path, scene_images_dir(scene), masks_root)
+        mask_path = indexed_mask_for_image(image_path, images_root, mask_lookup)
         if mask_path is None:
             missing.add(scene_relative(scene, image_path))
             continue

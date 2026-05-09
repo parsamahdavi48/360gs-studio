@@ -549,9 +549,10 @@ class PreviewWidget(QWidget):
 
     # -- public --
 
-    def set_scene_dir(self, scene_dir: str) -> None:
+    def set_scene_dir(self, scene_dir: str, *, refresh: bool = True) -> None:
         self._scene_dir = scene_dir
-        self.refresh_image_list(prefer_current=False)
+        if refresh:
+            self.refresh_image_list(prefer_current=False)
 
     def render(self, views: list[dict], mask_dir: str = "") -> None:
         self._last_views = list(views)

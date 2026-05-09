@@ -13,6 +13,7 @@ from PySide6.QtWidgets import QApplication, QMessageBox
 
 import gui.steps.step4_cubemap as step4_cubemap
 from core.scene_layout import (
+    project_path,
     step4_export_settings_path,
     step4_meta_dir,
     step4_training_runs_path,
@@ -2403,6 +2404,18 @@ def test_training_tab_auto_scales_lichtfeld_from_projected_image_count(tmp_path:
     assert config["iterations"] == 30000
     assert config["stop_refine"] == 25000
     assert config["max_cap"] == 1_000_000
+
+
+def test_training_image_count_uses_import_project_metadata(tmp_path: Path) -> None:
+    step = _ready_step(tmp_path, metashape_inputs=True)
+    output_images = tmp_path / "output" / "images"
+    output_images.mkdir(parents=True)
+    expected = 12_345
+    project = project_path(tmp_path)
+    project.parent.mkdir(parents=True, exist_ok=True)
+    project.write_text(json.dumps({"assets": {"output_image_count": expected}}), encoding="utf-8")
+
+    assert step._training_image_count() == expected
 
 
 def test_training_executable_placeholders_are_file_names_only() -> None:

@@ -21,7 +21,8 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from core.scene_layout import scene_output_dir, step4_meta_dir
+from core.scene_layout import project_path, scene_images_dir, scene_output_dir, step4_meta_dir
+from core.scene_project import load_json
 from gui import i18n
 from gui.common.browse_widget import BrowseWidget
 from gui.common.collapsible_section import CollapsibleSection
@@ -1650,10 +1651,12 @@ class Step4TrainingMixin:
             return 0
         return sum(1 for view in views if view["enabled"])
 
-    @staticmethod
-    def _count_images_in_dir(images_dir: Path | None) -> int:
+    def _count_images_in_dir(self, images_dir: Path | None) -> int:
         if images_dir is None or not images_dir.is_dir():
             return 0
+        metadata_count = self._metadata_image_count_for_dir(images_dir)
+        if metadata_count is not None:
+            return metadata_count
         return sum(
             1
             for path in images_dir.rglob("*")
@@ -1665,6 +1668,32 @@ class Step4TrainingMixin:
             return 0
         dataset = dataset or self._training_dataset()
         return self._count_images_in_dir(dataset.images_dir)
+
+    def _metadata_image_count_for_dir(self, images_dir: Path) -> int | None:
+        if not self.scene_dir:
+            return None
+        scene = Path(self.scene_dir)
+        try:
+            target = images_dir.resolve()
+            output_images = (scene_output_dir(scene) / "images").resolve()
+            source_images = scene_images_dir(scene).resolve()
+        except OSError:
+            return None
+
+        project = load_json(project_path(scene), {})
+        assets = project.get("assets") if isinstance(project.get("assets"), dict) else {}
+        key = ""
+        if target == output_images:
+            key = "output_image_count"
+        elif target == source_images:
+            key = "source_image_count"
+        if not key:
+            return None
+        try:
+            count = int(assets.get(key))
+        except (TypeError, ValueError):
+            return None
+        return count if count > 0 else None
 
     def _update_lfs_auto_steps_scaler(self) -> None:
         if not hasattr(self, "lfs_auto_steps_scaler_cb") or not self.lfs_auto_steps_scaler_cb.isChecked():

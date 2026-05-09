@@ -925,15 +925,14 @@ class CubemapStep(
         self._lfs_output_name_user_edited = False
         self._postshot_project_name_user_edited = False
         restored = self._restore_project_settings(p)
-        self.preview.set_scene_dir(path)
-        self._refresh_input_image_count()
+        self.preview.set_scene_dir(path, refresh=False)
+        self._input_image_count = 0
         self._update_training_paths(force=not restored)
         self._update_lfs_output_name(force=not restored)
         self._update_postshot_project_name(force=not restored)
         self._update_lfs_auto_steps_scaler()
         self._update_output_count()
         self._update_metashape_input_hint()
-        self._render_preview()
 
     def _restore_project_settings(self, scene: Path) -> bool:
         settings = load_step4_export_settings(scene)
