@@ -23,6 +23,7 @@ from scripts.dev_apriltag_placer_gui import (
     GRID_X_AXIS_BGR,
     GRID_Z_AXIS_BGR,
     DevAprilTagPlacerWindow,
+    _estimate_world_display_matrix_from_metashape,
     _transform_group_for_world_display,
 )
 
@@ -176,6 +177,33 @@ def test_world_display_group_rotates_camera_position_and_rotation() -> None:
 
     assert np.allclose(transformed_frame.camera_position_sfm, [-1.0, 2.0, -3.0])
     assert np.allclose(transformed_frame.camera_to_world_rotation, np.diag([-1.0, 1.0, -1.0]))
+
+
+def test_world_display_matrix_can_be_estimated_from_metashape_xml(tmp_path: Path) -> None:
+    xml = tmp_path / "metashape.xml"
+    xml.write_text(
+        """<?xml version="1.0" encoding="UTF-8"?>
+<document><chunk><cameras>
+  <camera id="0" label="frame_a"><transform>1 0 0 -1 0 1 0 2 0 0 1 -3 0 0 0 1</transform></camera>
+  <camera id="1" label="frame_b"><transform>1 0 0 -4 0 1 0 5 0 0 1 -6 0 0 0 1</transform></camera>
+  <camera id="2" label="frame_c"><transform>1 0 0 7 0 1 0 8 0 0 1 9 0 0 0 1</transform></camera>
+</cameras></chunk></document>
+""",
+        encoding="utf-8",
+    )
+    groups = (
+        CubemapFrameGroup(name="frame_a", frames_by_face={"pz": _frame_at("frame_a", (1.0, 2.0, 3.0))}),
+        CubemapFrameGroup(name="frame_b", frames_by_face={"pz": _frame_at("frame_b", (4.0, 5.0, 6.0))}),
+        CubemapFrameGroup(name="frame_c", frames_by_face={"pz": _frame_at("frame_c", (-7.0, 8.0, -9.0))}),
+    )
+
+    estimated = _estimate_world_display_matrix_from_metashape(groups, xml)
+
+    assert estimated is not None
+    matrix, rmse, count = estimated
+    assert count == 3
+    assert rmse < 1e-9
+    assert np.allclose(matrix[:3, :3], np.diag([-1.0, 1.0, -1.0]))
 
 
 def test_dev_placer_world_view_uses_display_axes_without_changing_raw_groups() -> None:

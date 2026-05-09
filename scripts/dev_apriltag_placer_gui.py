@@ -9,6 +9,7 @@ import sys
 from collections.abc import Callable
 from dataclasses import replace
 from pathlib import Path
+import xml.etree.ElementTree as ET
 
 import numpy as np
 from PySide6.QtCore import QProcess, QSize, Qt, QUrl, Signal
@@ -56,10 +57,10 @@ from devtools.apriltag.case import (
 from devtools.apriltag.coordinates import (
     COORDINATE_PROFILES,
     DEFAULT_COORDINATE_PROFILE,
-    combined_pointcloud_display_matrix,
     coordinate_profile_label,
     coordinate_profile_note,
     normalize_coordinate_profile,
+    pointcloud_display_matrix,
     world_display_matrix,
 )
 from devtools.apriltag.cubemap_preview import (
@@ -130,6 +131,77 @@ def _transform_group_for_world_display(group: CubemapFrameGroup, matrix: np.ndar
             for face, frame in group.frames_by_face.items()
         },
     )
+
+
+def _compose_display_matrices(first: np.ndarray | None, second: np.ndarray | None) -> np.ndarray | None:
+    if first is None:
+        return None if second is None else second.copy()
+    if second is None:
+        return first.copy()
+    return first @ second
+
+
+def _load_metashape_camera_positions(xml_path: Path) -> dict[str, np.ndarray]:
+    if not xml_path.is_file():
+        return {}
+    try:
+        root = ET.parse(xml_path).getroot()
+    except ET.ParseError:
+        return {}
+    positions: dict[str, np.ndarray] = {}
+    for camera in root.findall(".//camera"):
+        label = str(camera.attrib.get("label") or "").strip()
+        transform_text = camera.findtext("transform")
+        if not label or not transform_text:
+            continue
+        values = [float(value) for value in transform_text.split()]
+        if len(values) != 16:
+            continue
+        transform = np.asarray(values, dtype=np.float64).reshape(4, 4)
+        if np.all(np.isfinite(transform)):
+            positions[Path(label).stem] = transform[:3, 3].copy()
+    return positions
+
+
+def _estimate_world_display_matrix_from_metashape(
+    groups: tuple[CubemapFrameGroup, ...],
+    xml_path: Path | None,
+) -> tuple[np.ndarray, float, int] | None:
+    if xml_path is None:
+        return None
+    metashape_positions = _load_metashape_camera_positions(xml_path)
+    if not metashape_positions:
+        return None
+    source: list[np.ndarray] = []
+    target: list[np.ndarray] = []
+    for group in groups:
+        metashape_position = metashape_positions.get(group.name)
+        if metashape_position is None:
+            continue
+        source.append(group.camera_position_sfm)
+        target.append(metashape_position)
+    if len(source) < 3:
+        return None
+    source_points = np.asarray(source, dtype=np.float64)
+    target_points = np.asarray(target, dtype=np.float64)
+    linear = np.linalg.lstsq(source_points, target_points, rcond=None)[0].T
+    try:
+        u, _s, vt = np.linalg.svd(linear)
+    except np.linalg.LinAlgError:
+        return None
+    rotation = u @ vt
+    if float(np.linalg.det(rotation)) < 0.0:
+        u[:, -1] *= -1.0
+        rotation = u @ vt
+    transformed = source_points @ rotation.T
+    rmse = float(np.sqrt(np.mean((transformed - target_points) ** 2)))
+    span = float(np.max(np.ptp(target_points, axis=0)))
+    tolerance = max(1e-5, span * 1e-4)
+    if rmse > tolerance:
+        return None
+    matrix = np.eye(4, dtype=np.float64)
+    matrix[:3, :3] = rotation
+    return matrix, rmse, len(source)
 GRID_LINE_BGR = (130, 130, 130)
 
 
@@ -187,6 +259,8 @@ class DevAprilTagPlacerWindow(QWidget):
         self._scene_preview_size = 768
         self._last_click_state: tuple[str, np.ndarray, np.ndarray] | None = None
         self._world_pointcloud: PointCloudSample | None = None
+        self._metashape_world_display_matrix: np.ndarray | None = None
+        self._metashape_world_alignment_rmse: float | None = None
 
         self._build_ui()
         self._connect_signals()
@@ -562,7 +636,6 @@ class DevAprilTagPlacerWindow(QWidget):
         self.status_label.setText(self._case_status_text(case))
         self._cubemap_image_cache.clear()
         self._equirect_preview_cache.clear()
-        self._load_world_pointcloud(case)
         self._load_preview_groups()
 
     @staticmethod
@@ -586,7 +659,10 @@ class DevAprilTagPlacerWindow(QWidget):
             return
         try:
             sample = load_point_cloud_sample(pointcloud_path)
-            matrix = combined_pointcloud_display_matrix(case.coordinate_profile)
+            matrix = _compose_display_matrices(
+                self._world_display_matrix(),
+                pointcloud_display_matrix(case.coordinate_profile),
+            )
             self._world_pointcloud = transform_point_cloud_sample(sample, matrix)
         except Exception as e:
             self._world_pointcloud = None
@@ -604,8 +680,26 @@ class DevAprilTagPlacerWindow(QWidget):
         )
 
     def _world_display_matrix(self) -> np.ndarray | None:
+        if self._metashape_world_display_matrix is not None:
+            return self._metashape_world_display_matrix.copy()
         profile = self.case.coordinate_profile if self.case is not None else self.coordinate_profile_combo.currentData()
         return world_display_matrix(profile)
+
+    def _update_world_display_alignment(self) -> None:
+        self._metashape_world_display_matrix = None
+        self._metashape_world_alignment_rmse = None
+        if self.case is None or not self._cubemap_groups:
+            return
+        estimated = _estimate_world_display_matrix_from_metashape(
+            self._cubemap_groups,
+            self.case.source_metashape_xml,
+        )
+        if estimated is None:
+            return
+        matrix, rmse, count = estimated
+        self._metashape_world_display_matrix = matrix
+        self._metashape_world_alignment_rmse = rmse
+        self._append_log(f"Metashape axis alignment: XML camera match, count={count}, rmse={rmse:.6g}")
 
     def _world_display_groups(self) -> tuple[CubemapFrameGroup, ...]:
         matrix = self._world_display_matrix()
@@ -633,6 +727,7 @@ class DevAprilTagPlacerWindow(QWidget):
             self._append_log(f"Case coordinate profile save failed: {e}")
         self.status_label.setText(self._case_status_text(self.case))
         self._equirect_preview_cache.clear()
+        self._update_world_display_alignment()
         self._load_world_pointcloud(self.case)
         self._sync_world_debug_view()
         self._render_scene_preview()
@@ -659,6 +754,8 @@ class DevAprilTagPlacerWindow(QWidget):
                 self.frame_group_combo.setCurrentIndex(index)
         self.frame_group_combo.blockSignals(False)
         self._append_log(f"Cubemap preview groups: {len(self._cubemap_groups)}")
+        self._update_world_display_alignment()
+        self._load_world_pointcloud(case)
         self._sync_world_debug_view()
         if self._cubemap_groups:
             self._render_scene_preview()
