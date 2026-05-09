@@ -1,0 +1,102 @@
+"""Synthetic AprilTag injection for development validation."""
+
+from __future__ import annotations
+
+import json
+import shutil
+from dataclasses import dataclass
+from pathlib import Path
+
+import cv2
+import numpy as np
+
+from core.apriltag_geometry import load_pinhole_frames, points_intersect_image, project_sfm_points, tag_corners_sfm
+from core.image_io import imread_unicode, imwrite_unicode
+
+
+@dataclass(frozen=True)
+class SyntheticAprilTagConfig:
+    input_transforms: Path
+    output_dir: Path
+    tag_image: Path
+    tag_size_m: float
+    true_scale: float
+    tag_center_sfm: np.ndarray
+    tag_normal_sfm: np.ndarray
+    tag_up_sfm: np.ndarray
+
+
+def _load_tag_rgba(path: Path) -> np.ndarray:
+    tag = imread_unicode(path, cv2.IMREAD_UNCHANGED)
+    if tag is None:
+        raise ValueError(f"Failed to read tag image: {path}")
+    if tag.ndim == 2:
+        bgr = cv2.cvtColor(tag, cv2.COLOR_GRAY2BGR)
+        alpha = np.full(tag.shape, 255, dtype=np.uint8)
+    elif tag.shape[2] == 4:
+        bgr = tag[:, :, :3]
+        alpha = tag[:, :, 3]
+    else:
+        bgr = tag[:, :, :3]
+        alpha = np.full(tag.shape[:2], 255, dtype=np.uint8)
+    return np.dstack([bgr, alpha])
+
+
+def _warp_tag(base: np.ndarray, tag_rgba: np.ndarray, dst_points: np.ndarray) -> np.ndarray:
+    height, width = base.shape[:2]
+    tag_h, tag_w = tag_rgba.shape[:2]
+    src_points = np.array([[0, 0], [tag_w - 1, 0], [tag_w - 1, tag_h - 1], [0, tag_h - 1]], dtype=np.float32)
+    homography = cv2.getPerspectiveTransform(src_points, dst_points.astype(np.float32))
+    warped = cv2.warpPerspective(tag_rgba, homography, (width, height), flags=cv2.INTER_LINEAR)
+
+    base_bgr = base[:, :, :3] if base.ndim == 3 else cv2.cvtColor(base, cv2.COLOR_GRAY2BGR)
+    alpha = warped[:, :, 3:4].astype(np.float32) / 255.0
+    blended = base_bgr.astype(np.float32) * (1.0 - alpha) + warped[:, :, :3].astype(np.float32) * alpha
+    return np.clip(blended, 0, 255).astype(np.uint8)
+
+
+def inject_synthetic_apriltag(config: SyntheticAprilTagConfig) -> dict:
+    config.output_dir.mkdir(parents=True, exist_ok=True)
+    frames = load_pinhole_frames(config.input_transforms)
+    tag_rgba = _load_tag_rgba(config.tag_image)
+    corners = tag_corners_sfm(
+        config.tag_center_sfm,
+        config.tag_normal_sfm,
+        config.tag_up_sfm,
+        config.tag_size_m,
+        config.true_scale,
+    )
+
+    written = 0
+    skipped = 0
+    for frame in frames:
+        dst = config.output_dir / frame.file_path
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        image = imread_unicode(frame.image_path, cv2.IMREAD_UNCHANGED)
+        if image is None:
+            skipped += 1
+            continue
+        projected = project_sfm_points(frame, corners)
+        if projected is None or not points_intersect_image(projected, image.shape[1], image.shape[0]):
+            shutil.copy2(frame.image_path, dst)
+            skipped += 1
+            continue
+        imwrite_unicode(dst, _warp_tag(image, tag_rgba, projected))
+        written += 1
+
+    data = json.loads(config.input_transforms.read_text(encoding="utf-8"))
+    (config.output_dir / "transforms.json").write_text(json.dumps(data, indent=2), encoding="utf-8")
+    report = {
+        "schema_version": 1,
+        "input_transforms": str(config.input_transforms),
+        "output_dir": str(config.output_dir),
+        "tag_size_m": config.tag_size_m,
+        "true_scale": config.true_scale,
+        "tag_center_sfm": config.tag_center_sfm.tolist(),
+        "tag_normal_sfm": config.tag_normal_sfm.tolist(),
+        "tag_up_sfm": config.tag_up_sfm.tolist(),
+        "frames_written": written,
+        "frames_skipped": skipped,
+    }
+    (config.output_dir / "synthetic_apriltag_report.json").write_text(json.dumps(report, indent=2), encoding="utf-8")
+    return report

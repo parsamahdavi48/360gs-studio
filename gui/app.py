@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 from pathlib import Path
 
@@ -907,11 +908,18 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=i18n.APP_TITLE)
     parser.add_argument("--scene", default="", help="Initial scene directory")
     parser.add_argument(
+        "--enable-apriltag",
+        action="store_true",
+        help="Enable experimental AprilTag scale-estimation UI",
+    )
+    parser.add_argument(
         "--version",
         action="version",
         version=f"{i18n.APP_TITLE} {app_version_label()}",
     )
     args = parser.parse_args()
+    if args.enable_apriltag:
+        os.environ["STECHDRIVE_ENABLE_APRILTAG"] = "1"
 
     app = QApplication(sys.argv)
     app.setWindowIcon(app_icon())
