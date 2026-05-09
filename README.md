@@ -16,7 +16,7 @@ Forked from [tetraface/tetraface-3dgs-utils](https://github.com/tetraface/tetraf
 
 ### 1. 360° Video to Metashape SfM and 3DGS Training
 
-Extract equirectangular still frames from Insta360 or similar 360° camera video, review which frames to keep, and generate masks for people, the camera operator, tripods, sky, stitch seams, and blown-out highlights before running SfM in Metashape.
+Extract equirectangular still frames from Insta360 / Osmo 360 or similar 360° camera video, review which frames to keep, and generate masks for people, the camera operator, tripods, sky, stitch seams, and blown-out highlights before running SfM in Metashape.
 
 After Metashape SfM, export cubemap images, masks, and `transforms.json` for Postshot, Brush, and LichtFeld Studio. For LichtFeld Studio 3DGUT workflows, the app can also create a direct dataset that keeps the equirectangular images and masks in place while writing `transforms.json` and `pointcloud.ply`. This is the main workflow for preparing 360° video as a 3DGS training dataset.
 
@@ -26,11 +26,11 @@ You can skip Metashape and run spherical SfM directly on the extracted equirecta
 
 ### 3. 360° Video to COLMAP Rig Dataset
 
-You can also skip Metashape and export a COLMAP Rig cubemap dataset from extracted 360° frames. The GUI can optionally run COLMAP/GLOMAP so the result is ready to pass to COLMAP-compatible 3DGS tools.
+You can also skip Metashape and export a COLMAP Rig cubemap dataset from extracted 360° frames. The GUI can optionally run COLMAP so the result is ready to pass to COLMAP-compatible 3DGS tools.
 
 ### 4. Mask Preprocessing for Normal Photos or Video Frames
 
-For DSLR, mirrorless, smartphone, or normal video image sequences, Step 3 can generate fast YOLO/SAM2.1 masks for people, vehicles, and other selectable object types, higher-accuracy SAM3.1 prompt masks for people and sky, optional Mask2Former sky masks, plus overexposure masks. This is useful as a mask-preparation stage before sending images to SfM software.
+For video or image sequences from DSLR, mirrorless, smartphone, or other normal cameras, Step 3 can generate fast YOLO/SAM2.1 masks for people, vehicles, and other selectable object types, higher-accuracy SAM3.1 prompt masks for people and sky, optional Mask2Former sky masks, plus overexposure masks. This is useful as a mask-preparation stage before sending images to SfM software.
 
 ## Highlights
 
@@ -40,10 +40,10 @@ For DSLR, mirrorless, smartphone, or normal video image sequences, Step 3 can ge
 - Preview mask results before saving and inspect them in the thumbnail list. When only a few frames have misses or false detections, regenerate just those frames instead of rerunning the whole image set.
 - With SAM3.1, add missed targets such as tripods or subtract false detections such as signs and logos from existing masks. This reduces the amount of manual mask painting needed after the first pass.
 - Mask2Former remains available as a helper option when you want to try sky masks without setting up SAM3.1.
-- Use the same mask-preparation workflow for normal photo sets or normal video frame sequences, not only 360° images. This is useful before sending images to SfM software.
+- Use the same mask-preparation workflow for normal-camera video after Step 1 extraction and for normal photo or image-sequence sets, not only 360° images. This is useful before sending images to SfM software.
 - Import Metashape SfM results and export cubemap images, masks, and `transforms.json` for Postshot, Brush, and LichtFeld Studio. For LichtFeld Studio, the GUI can also create a `3DGUT (LichtFeld)` direct dataset without cubemap conversion.
 - Select SphereSfM's `colmap.exe` to run spherical SfM without Metashape, then convert the result into either LichtFeld 3DGUT data or cubemap data.
-- Skip Metashape when needed by exporting COLMAP Rig cubemap images and masks from extracted 360° frames. The GUI can optionally continue into COLMAP/GLOMAP SfM processing.
+- Skip Metashape when needed by exporting COLMAP Rig cubemap images and masks from extracted 360° frames. The GUI can optionally continue into COLMAP SfM processing.
 - Prepare the Windows environment with setup scripts that handle Python, FFmpeg/FFprobe, and the main Python packages. Normal use starts from `run_gui.bat`.
 
 ## Easy Setup
@@ -73,7 +73,7 @@ This is usually unnecessary. To update an existing environment to the latest com
 update_venv.bat
 ```
 
-To rebuild with the pinned known-good package set from `requirements/`, run `update_venv.bat --locked`. To recreate the environment from scratch, run `setup_windows.bat --force`.
+To rebuild with the pinned verified package set from `requirements/`, run `update_venv.bat --locked`. To recreate the environment from scratch, run `setup_windows.bat --force`.
 
 YOLO/SAM2, Mask2Former, and SAM3.1 model weights may be downloaded on first use. Local YOLO/SAM weights can be placed under `models/ultralytics/`; local Mask2Former weights can be placed under `models/mask2former-swin-large-ade-semantic/`; SAM3.1 prompt masking uses `models/sam3.1/sam3.1_multiplex.pt`. Release ZIP assets do not include model weights, generated scene data, user settings, or local setup logs. These third-party libraries and model weights are governed by separate license terms; see [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md).
 
@@ -99,8 +99,8 @@ When mask accuracy is the priority, SAM3.1 is recommended over YOLO/SAM2.1. Use 
 3. Create a Hugging Face access token from your account settings.
    - App downloads require a `Read` token created by the same Hugging Face account that has access. Browser login state is not used by this app.
    - Copy the token value immediately after creating it. Hugging Face may not show existing token values again from the token list. If you missed the value, create a new `Read` token or use `Invalidate and refresh` to issue a new value. Refreshing invalidates the old token.
-   - Treat access tokens as secrets equivalent to passwords. Do not paste them into README files, issues, chats, screenshots, or logs. `Read` permission is enough for downloading the SAM3.1 checkpoint. Prefer creating a dedicated token for SAM3.1, and delete or refresh it from Hugging Face settings when you no longer need it. This app does not save the token.
-4. In Step 3, choose `SAM3.1`. If `models/sam3.1/sam3.1_multiplex.pt` is missing, the app asks for the token and downloads the checkpoint. The token is used only for that download and is not saved by this app.
+   - Treat access tokens as secrets equivalent to passwords. Do not paste them into README files, issues, chats, screenshots, or logs. `Read` permission is enough for downloading the SAM3.1 checkpoint. Prefer creating a dedicated token for SAM3.1, and delete or refresh it from Hugging Face settings when you no longer need it.
+4. In Step 3, choose `SAM3.1`. If `models/sam3.1/sam3.1_multiplex.pt` is missing, the app asks for the token and downloads the checkpoint. The token is passed only to that download request. The app does not save the token for automatic reuse and does not write it to app settings, the scene folder, or execution logs. This reduces the risk of a token leaking from local files or being reused unintentionally. Enter a token again if you need to download the checkpoint again.
 
 You can also place the checkpoint manually at `models/sam3.1/sam3.1_multiplex.pt`.
 
@@ -116,7 +116,7 @@ If the scene folder path contains non-ASCII characters, an extremely long path, 
   -> Step 4: convert
       -> build 3DGS-ready outputs from Metashape SfM results
       -> run SphereSfM on 360° images and convert to 3DGUT or cubemap data
-      -> export COLMAP Rig cubemap images and optionally run COLMAP/GLOMAP
+      -> export COLMAP Rig cubemap images and optionally run COLMAP
   -> Step 5: training
       -> launch LichtFeld Studio / Postshot / custom CLI with an existing dataset
 ```
@@ -142,7 +142,7 @@ Detailed GUI docs:
 
 ## Recommended Workflow: Metashape Route
 
-1. Prepare 360° video from an Insta360 or similar camera.
+1. Prepare 360° video from an Insta360 / Osmo 360 or similar camera.
 2. Extract SfM-friendly frames in Step 1.
 3. Review low-quality or unnecessary frames in Step 2.
 4. Generate masks for people, camera operators, tripods, sky, or similar SfM-unfriendly regions in Step 3. `Quality: High` is the recommended starting point.
@@ -156,7 +156,7 @@ Detailed GUI docs:
 
 1. Use Steps 1-3 in the same way as the Metashape route.
 2. In Step 4, choose `COLMAP` to write cubemap images and masks to `output/colmap_rig/`.
-3. Turn on the left `SfM` sub-stage when you want COLMAP/GLOMAP to estimate camera positions and a sparse point cloud. COLMAP SfM needs cubemap images, so turning on `SfM` also turns on `Cube`.
+3. Turn on the left `SfM` sub-stage when you want COLMAP to estimate camera positions and a sparse point cloud. COLMAP SfM needs cubemap images, so turning on `SfM` also turns on `Cube`.
 4. After completion, pass `output/colmap_rig/` as the COLMAP project folder to COLMAP-compatible 3DGS tools.
 
 ## SphereSfM Route
@@ -170,7 +170,7 @@ Detailed GUI docs:
 
 ## Mask Preprocessing for Normal Images
 
-For normal video frames or still-camera image sequences, place them in `images/` or use the `+` icon on the Step 3 `Images Folder` row to copy them into the scene. Step 3 detects the image type from Step 1 records, external image registration, or image headers. Normal images keep model-based masking and overexposure masking available while disabling stitch seam masking and 360° pole projection assist.
+For normal-camera video from DSLR, mirrorless, smartphone, or similar cameras, extract frames in Step 1. For existing image sequences, place them in `images/` or use the `+` icon on the Step 3 `Images Folder` row to copy them into the scene. Step 3 detects the image type from Step 1 records, external image registration, or image headers. Normal images keep model-based masking and overexposure masking available while disabling stitch seam masking and 360° pole projection assist.
 
 Use this when you want to exclude people, vehicles, blown-out regions, or similar areas before importing images into SfM software.
 
@@ -198,7 +198,7 @@ torch / torchvision / torchaudio from the CUDA 12.8 wheel index
 numpy, opencv-python, Pillow, open3d, ultralytics, transformers, safetensors, tqdm, PySide6, sam3
 ```
 
-`setup_windows.bat` uses the pinned known-good package set under `requirements/` for reproducible first-time setup. `update_venv.bat` resolves the latest compatible packages by default; pass `--locked` when you want to rebuild from the pinned set instead.
+`setup_windows.bat` uses the pinned verified package set under `requirements/` for reproducible first-time setup. `update_venv.bat` resolves the latest compatible packages by default; pass `--locked` when you want to rebuild from the pinned set instead.
 
 ## CLI Tools
 

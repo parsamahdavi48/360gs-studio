@@ -16,7 +16,7 @@ Fork元: [tetraface/tetraface-3dgs-utils](https://github.com/tetraface/tetraface
 
 ### 1. 360°動画からMetashape SfM、3DGSトレーニングへ
 
-Insta360などの360°カメラで撮影した動画から、SfM向けのエクイレクタングラー静止画を抽出します。抽出後はフレームを確認し、人物、撮影者、三脚、空、スティッチ境界、白飛びをマスクしてからMetashapeに渡せます。
+Insta360 / Osmo 360などの360°カメラで撮影した動画から、SfM向けのエクイレクタングラー静止画を抽出します。抽出後はフレームを確認し、人物、撮影者、三脚、空、スティッチ境界、白飛びをマスクしてからMetashapeに渡せます。
 
 MetashapeでSfMした結果は、Postshot / Brush / LichtFeld Studio向けのキューブマップ画像、マスク、`transforms.json` に変換できます。LichtFeld Studioでは、3DGUT用にエクイレクタングラー画像とマスクをそのまま使う `transforms.json` / `pointcloud.ply` も作成できます。360°動画を3DGSトレーニング用データセットにするためのメインワークフローです。
 
@@ -26,11 +26,11 @@ Metashapeを使わず、抽出済みのエクイレクタングラー画像をSp
 
 ### 3. 360°動画からCOLMAP Rigデータセットへ
 
-Metashapeを使わず、抽出済みの360°画像からCOLMAP Rig形式のキューブマップ画像セットを書き出すこともできます。必要に応じてGUIからCOLMAP/GLOMAPまで実行し、3DGSソフトに渡せるSfM済みデータを作成できます。
+Metashapeを使わず、抽出済みの360°画像からCOLMAP Rig形式のキューブマップ画像セットを書き出すこともできます。必要に応じてGUIからCOLMAPまで実行し、3DGSソフトに渡せるSfM済みデータを作成できます。
 
 ### 4. 通常の静止画・動画向けのマスク前処理
 
-デジタル一眼、スマホ、通常動画の連番画像に対しても、YOLO/SAM2.1による高速な人物・車両などのマスク、SAM3.1による人物・空などの高精度マスク、補助的なMask2Former空マスク、白飛びマスクを作成できます。SfMソフトに読み込む前のマスク生成ツールとして使えます。
+デジタル一眼・スマホなどで撮影した通常動画、または通常画像の連番画像に対しても、YOLO/SAM2.1による高速な人物・車両などのマスク、SAM3.1による人物・空などの高精度マスク、補助的なMask2Former空マスク、白飛びマスクを作成できます。SfMソフトに読み込む前のマスク生成ツールとして使えます。
 
 ## 主な特徴
 
@@ -40,10 +40,10 @@ Metashapeを使わず、抽出済みの360°画像からCOLMAP Rig形式のキ�
 - マスク結果は保存前にプレビューでき、サムネイル一覧でも確認できます。漏れや誤検出がある画像だけを選んで再生成できるため、全画像を最初からやり直す必要がありません。
 - SAM3.1では、既存マスクに対して「三脚を追加する」「看板やロゴの誤検出を外す」といった加算/減算の補正ができます。手作業で塗り直す量を減らせます。
 - Mask2Formerは、SAM3.1を使わずに空マスクを試したい場合の補助的な選択肢として利用できます。
-- 360°画像だけでなく、通常の静止画や通常動画から作った連番画像にも使えます。人物・車両・空・白飛びなどを、SfMに渡す前のマスク前処理としてまとめて作成できます。
+- 360°画像だけでなく、通常動画からのフレーム抽出や通常画像の連番画像にも使えます。人物・車両・空・白飛びなどを、SfMに渡す前のマスク前処理としてまとめて作成できます。
 - MetashapeでSfMした結果を読み込み、Postshot / Brush / LichtFeld Studio 向けのキューブマップ画像、マスク、`transforms.json` を書き出せます。LichtFeld Studio向けには、キューブマップ変換せず `3DGUT (LichtFeld)` 用の直接データセットも作れます。
 - SphereSfM版の `colmap.exe` を指定すれば、Metashapeなしでエクイレクタングラー画像をSfMし、そのままLichtFeld 3DGUT用データまたはキューブマップデータへ変換できます。
-- Metashapeを使わない場合は、抽出済みの360°画像からCOLMAP Rig形式のキューブマップ画像とマスクを書き出せます。必要に応じてGUIからCOLMAP/GLOMAPのSfM処理まで続けて実行できます。
+- Metashapeを使わない場合は、抽出済みの360°画像からCOLMAP Rig形式のキューブマップ画像とマスクを書き出せます。必要に応じてGUIからCOLMAPのSfM処理まで続けて実行できます。
 - Windows向けセットアップスクリプトで、Python環境、FFmpeg/FFprobe、主要Pythonパッケージの準備をまとめて行えます。通常利用は `run_gui.bat` から起動できます。
 
 ## かんたん導入
@@ -73,7 +73,7 @@ Pythonパッケージは `.venv/` に閉じ込めるため、システム全体�
 update_venv.bat
 ```
 
-`requirements/` の固定済み既知良好セットで作り直す場合は `update_venv.bat --locked`、環境を最初から作り直す場合は `setup_windows.bat --force` を使います。
+`requirements/` の検証済み固定セットで作り直す場合は `update_venv.bat --locked`、環境を最初から作り直す場合は `setup_windows.bat --force` を使います。
 
 YOLO/SAM2、Mask2Former、SAM3.1のモデルファイルは初回利用時にダウンロードされる場合があります。ローカルのYOLO/SAM重みは `models/ultralytics/`、Mask2Former重みは `models/mask2former-swin-large-ade-semantic/`、SAM3.1プロンプトマスクは `models/sam3.1/sam3.1_multiplex.pt` を使います。リリースZIPにはモデル重み、生成データ、ユーザー設定、ローカルセットアップログは含めていません。これらの第三者ライブラリおよびモデル重みには別ライセンスが適用されます。詳細は [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md) を参照してください。
 
@@ -99,8 +99,8 @@ SAM3.1の一括処理中にGPUメモリ不足が発生した場合でも、完�
 3. Hugging Faceのアカウント設定からアクセストークンを作成します。
    - アプリからのダウンロードには、承認済みの同じHugging Faceアカウントで作成した `Read` トークンを使ってください。ブラウザでログインしていても、このアプリはブラウザのログイン状態を使いません。
    - トークンは作成直後に表示される値を必ずコピーしてください。Hugging Faceのトークン一覧では、既存トークンの値を後から再表示・コピーできない場合があります。コピーし忘れた場合は、新しい `Read` トークンを作成するか、既存トークンを `Invalidate and refresh` して新しい値を発行します。`Invalidate and refresh` すると古いトークンは無効になります。
-   - アクセストークンはパスワード相当の秘密情報として扱ってください。README、Issue、チャット、スクリーンショット、実行ログなどに貼らないでください。SAM3.1 checkpointのダウンロード用途では `Read` 権限で足ります。可能ならSAM3.1用の専用トークンを作り、不要になったらHugging Faceの設定画面で削除またはrefreshしてください。このアプリは入力されたトークンを保存しません。
-4. Step 3で `SAM3.1` を選びます。`models/sam3.1/sam3.1_multiplex.pt` が無い場合、アプリがトークン入力を求めてcheckpointをダウンロードします。このアプリはトークンを保存しません。
+   - アクセストークンはパスワード相当の秘密情報として扱ってください。README、Issue、チャット、スクリーンショット、実行ログなどに貼らないでください。SAM3.1 checkpointのダウンロード用途では `Read` 権限で足ります。可能ならSAM3.1用の専用トークンを作り、不要になったらHugging Faceの設定画面で削除またはrefreshしてください。
+4. Step 3で `SAM3.1` を選びます。`models/sam3.1/sam3.1_multiplex.pt` が無い場合、アプリがトークン入力を求めてcheckpointをダウンロードします。入力されたトークンは、その場のダウンロード処理にだけ渡されます。トークンを保存して自動再利用する仕組みではなく、アプリ設定、シーンフォルダ、実行ログにも書き込みません。このため、ローカルに残るファイルからトークンが漏れたり、意図せず使い回されたりするリスクを抑えた挙動になっています。checkpointを再取得する場合は再入力が必要です。
 
 checkpointを手動で `models/sam3.1/sam3.1_multiplex.pt` に置くこともできます。
 
@@ -116,7 +116,7 @@ checkpointを手動で `models/sam3.1/sam3.1_multiplex.pt` に置くこともで
   -> Step 4: 変換
       -> Metashape SfM結果から3DGS向けデータを作成
       -> SphereSfMで360°画像をSfMし、3DGUTまたはキューブマップデータへ変換
-      -> COLMAP Rigキューブマップ画像を書き出し、必要に応じてCOLMAP/GLOMAPを実行
+      -> COLMAP Rigキューブマップ画像を書き出し、必要に応じてCOLMAPを実行
   -> Step 5: 学習
       -> 作成済みデータセットでLichtFeld Studio / Postshot / 任意CLIを起動
 ```
@@ -142,7 +142,7 @@ checkpointを手動で `models/sam3.1/sam3.1_multiplex.pt` に置くこともで
 
 ## 推奨ワークフロー: Metashapeルート
 
-1. Insta360などの360°動画を用意します。
+1. Insta360 / Osmo 360などの360°動画を用意します。
 2. Step 1でSfM向けフレームを抽出します。
 3. Step 2で低品質候補や不要フレームを確認して除外します。
 4. Step 3で人物・撮影者・三脚・空など、SfMに使いたくない領域のマスクを生成します。`品質: 高品質` が推奨開始点です。
@@ -156,7 +156,7 @@ checkpointを手動で `models/sam3.1/sam3.1_multiplex.pt` に置くこともで
 
 1. Step 1からStep 3まではMetashapeルートと同じです。
 2. Step 4で `COLMAP` を選び、キューブマップ画像とマスクを `output/colmap_rig/` に書き出します。
-3. COLMAP/GLOMAPでカメラ位置と疎な点群まで推定したい場合は、左サブ工程の `SfM` をONにします。COLMAP SfMにはキューブマップ画像が必要なため、`SfM` をONにすると `Cube` もONになります。
+3. COLMAPでカメラ位置と疎な点群まで推定したい場合は、左サブ工程の `SfM` をONにします。COLMAP SfMにはキューブマップ画像が必要なため、`SfM` をONにすると `Cube` もONになります。
 4. 完了後は `output/colmap_rig/` をCOLMAPプロジェクトとして、COLMAP対応の3DGSアプリに渡します。
 
 ## SphereSfMルート
@@ -170,7 +170,7 @@ checkpointを手動で `models/sam3.1/sam3.1_multiplex.pt` に置くこともで
 
 ## 通常画像・通常動画のマスク前処理
 
-通常動画やデジタル一眼・スマホの連番画像は、`images/` に直接置くか、Step 3 の `画像フォルダ` 行にある `+` アイコンからシーンへコピーします。画像タイプはStep 1の記録、外部画像登録、画像ヘッダー推定から自動判定されます。通常画像ではスティッチ境界と360°専用の極投影補助を使わず、モデルによるマスク生成や白飛びマスクを使えます。
+デジタル一眼・スマホなどで撮影した通常動画は、Step 1でフレーム抽出できます。すでにある連番画像は `images/` に直接置くか、Step 3 の `画像フォルダ` 行にある `+` アイコンからシーンへコピーします。画像タイプはStep 1の記録、外部画像登録、画像ヘッダー推定から自動判定されます。通常画像ではスティッチ境界と360°専用の極投影補助を使わず、モデルによるマスク生成や白飛びマスクを使えます。
 
 人物、車両、白飛びなどをSfM前に除外したい場合の前処理として使えます。
 
@@ -198,7 +198,7 @@ torch / torchvision / torchaudio from the CUDA 12.8 wheel index
 numpy, opencv-python, Pillow, open3d, ultralytics, transformers, safetensors, tqdm, PySide6, sam3
 ```
 
-`setup_windows.bat` は `requirements/` 以下の固定済み既知良好セットを使い、初回セットアップの再現性を優先します。`update_venv.bat` はデフォルトで互換する最新パッケージを解決し、固定セットで作り直したい場合だけ `--locked` を渡します。
+`setup_windows.bat` は `requirements/` 以下の検証済み固定セットを使い、初回セットアップの再現性を優先します。`update_venv.bat` はデフォルトで互換する最新パッケージを解決し、固定セットで作り直したい場合だけ `--locked` を渡します。
 
 ## CLIツール
 
