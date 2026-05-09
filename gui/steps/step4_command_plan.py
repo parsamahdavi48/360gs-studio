@@ -130,8 +130,6 @@ class Step4CommandPlanMixin:
                 raise ValueError(f"PLYファイルが見つかりません: {ply}")
             if self._metashape_input_output_path_issue(Path(ply)):
                 raise ValueError(i18n.t("METASHAPE_INPUT_IN_OUTPUT_ERROR").format(path=ply))
-            if not self._metashape_ply_approved:
-                raise ValueError(i18n.t("METASHAPE_PLY_APPROVAL_ERROR").format(path=ply))
         return build_metashape_preprocess_cmd(
             MetashapePreprocessCommand(
                 python_executable=sys.executable,

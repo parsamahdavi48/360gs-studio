@@ -106,7 +106,7 @@ QWidget#navSubRail {{
     border-radius: 1px;
 }}
 QWidget#navSubRail[active="true"] {{
-    background-color: {ACCENT};
+    background-color: {BORDER};
 }}
 QWidget#navSubRows {{
     background-color: transparent;
@@ -122,9 +122,9 @@ QWidget#navSubStep {{
     min-height: 16px;
 }}
 QWidget#navSubStep[active="true"] {{
-    background-color: {BG_PANEL};
-    border-color: {ACCENT};
-    color: {TEXT_BRIGHT};
+    background-color: transparent;
+    border-color: transparent;
+    color: {TEXT_DIM};
 }}
 QLabel#navSubStepText {{
     background-color: transparent;
@@ -162,7 +162,7 @@ QLabel#navSubStepStatus {{
     font-weight: 700;
 }}
 QLabel#navSubStepText[active="true"] {{
-    color: {TEXT_BRIGHT};
+    color: {TEXT_DIM};
 }}
 QLabel#navSubStepStatus[status="ready"] {{
     color: {SUCCESS};

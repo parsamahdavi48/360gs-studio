@@ -382,8 +382,13 @@ def test_step4_scrolls_tab_content_not_whole_settings_pane() -> None:
         assert window.step4_sub_intent_buttons["sfm"].text() == "●"
         app.processEvents()
         QTest.mouseClick(window.step4_sub_status_labels["conversion"], Qt.LeftButton)
+        assert step.settings_tabs.currentIndex() == step.output_tab_index
         assert window.step4_sub_buttons["conversion"].property("active") == "false"
         assert window.run_btn.text().strip() == i18n.t("RUN")
+        QTest.mouseClick(window.step4_sub_buttons["conversion"], Qt.LeftButton)
+        assert step.pipeline_stage_intent("conversion") is False
+        QTest.mouseClick(window.step4_sub_buttons["conversion"], Qt.LeftButton)
+        assert step.pipeline_stage_intent("conversion") is True
 
         window._set_current_step(4)
         app.processEvents()

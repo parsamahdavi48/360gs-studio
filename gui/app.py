@@ -6,7 +6,7 @@ import argparse
 import sys
 from pathlib import Path
 
-from PySide6.QtCore import QPoint, QSignalBlocker, QSize, Qt, QThread, QTimer, QUrl
+from PySide6.QtCore import QEvent, QObject, QPoint, QSignalBlocker, QSize, Qt, QThread, QTimer, QUrl
 from PySide6.QtGui import QCloseEvent, QDesktopServices, QIcon
 from PySide6.QtWidgets import (
     QApplication,
@@ -208,6 +208,8 @@ class MainWindow(QWidget):
                     sub_btn = QWidget()
                     sub_btn.setObjectName("navSubStep")
                     sub_btn.setFixedSize(63, 22)
+                    sub_btn.setProperty("stage", stage)
+                    sub_btn.installEventFilter(self)
                     sub_btn_layout = QHBoxLayout(sub_btn)
                     sub_btn_layout.setContentsMargins(2, 0, 1, 0)
                     sub_btn_layout.setSpacing(1)
@@ -223,6 +225,8 @@ class MainWindow(QWidget):
                     status_label.setObjectName("navSubStepStatus")
                     status_label.setFixedSize(13, 18)
                     status_label.setAlignment(Qt.AlignCenter)
+                    status_label.setProperty("stage", stage)
+                    status_label.installEventFilter(self)
                     text_label = QLabel("")
                     text_label.setObjectName("navSubStepText")
                     text_label.setWordWrap(False)
@@ -526,6 +530,20 @@ class MainWindow(QWidget):
         self._update_run_button()
         self._refresh_step4_subnav()
 
+    def eventFilter(self, watched: QObject, event: QEvent) -> bool:
+        if event.type() == QEvent.Type.MouseButtonRelease:
+            for stage, widget in self.step4_sub_buttons.items():
+                if watched is widget:
+                    if widget.isEnabled() and self.step4.pipeline_stage_intent_toggle_enabled(stage):
+                        self._toggle_step4_pipeline_stage_intent(stage)
+                        return True
+                    return False
+            for stage, widget in self.step4_sub_status_labels.items():
+                if watched is widget and widget.property("status") == "warning":
+                    self._open_step4_pipeline_stage(stage)
+                    return True
+        return super().eventFilter(watched, event)
+
     def _update_step_header(self) -> None:
         index = self.stack.currentIndex()
         if not 0 <= index < len(self.step_titles):
@@ -561,6 +579,14 @@ class MainWindow(QWidget):
         self._refresh_step4_subnav()
         self._update_run_button()
 
+    def _open_step4_pipeline_stage(self, stage: str) -> None:
+        if self._workflow_busy():
+            return
+        self._set_current_step(3)
+        self.step4.activate_pipeline_stage(stage)
+        self._update_run_button()
+        self._refresh_step4_subnav()
+
     def _show_step4_pipeline_notice(self, text: str) -> None:
         if not text:
             return
@@ -585,10 +611,8 @@ class MainWindow(QWidget):
             return
         if self._step_scene_sync_deferred(self.step4):
             return
-        active_stage = self.step4.pipeline_stage() if self.stack.currentIndex() == 3 else ""
-        step4_active = self.stack.currentIndex() == 3
         if self.step4_subnav_rail is not None:
-            self.step4_subnav_rail.setProperty("active", "true" if step4_active else "false")
+            self.step4_subnav_rail.setProperty("active", "false")
             self.step4_subnav_rail.style().unpolish(self.step4_subnav_rail)
             self.step4_subnav_rail.style().polish(self.step4_subnav_rail)
         for item in self.step4.pipeline_nav_items():
@@ -598,7 +622,6 @@ class MainWindow(QWidget):
             status_label = self.step4_sub_status_labels.get(item["stage"])
             text_label = self.step4_sub_text_labels.get(item["stage"])
             intent_btn = self.step4_sub_intent_buttons.get(item["stage"])
-            active = active_stage == item["stage"]
             if intent_btn is not None:
                 intent_btn.setText(str(item["intent_symbol"]))
                 intent_btn.setChecked(bool(item["intent_checked"]))
@@ -608,12 +631,22 @@ class MainWindow(QWidget):
                 status_label.setText(str(item["status_symbol"]))
                 status_label.setProperty("status", item["status"])
                 status_label.setToolTip(str(item["status_tooltip"]))
+                status_label.setCursor(
+                    Qt.CursorShape.PointingHandCursor
+                    if item["status"] == "warning"
+                    else Qt.CursorShape.ArrowCursor
+                )
             if text_label is not None:
                 text_label.setText(str(item["label"]))
-                text_label.setProperty("active", "true" if active else "false")
-                text_label.setToolTip(str(item["current_tab_tooltip"]) if active else "")
+                text_label.setProperty("active", "false")
+                text_label.setToolTip("")
             button.setToolTip(str(item["row_tooltip"]))
-            button.setProperty("active", "true" if active else "false")
+            button.setCursor(
+                Qt.CursorShape.PointingHandCursor
+                if item["intent_toggle_enabled"]
+                else Qt.CursorShape.ArrowCursor
+            )
+            button.setProperty("active", "false")
             button.setProperty("status", item["status"])
             for widget in (button, intent_btn, status_label, text_label):
                 if widget is not None:

@@ -143,11 +143,11 @@ def test_metashape_inputs_auto_detect_standard_names(tmp_path: Path) -> None:
 
     assert Path(step.ms_xml_browse.text()) == tmp_path / "cameras.xml"
     assert Path(step.ms_ply_browse.text()) == tmp_path / "sparse.ply"
-    assert not step._metashape_ply_approved
+    assert step._metashape_ply_approved
     assert not hasattr(step, "metashape_input_hint")
 
 
-def test_metashape_inputs_auto_detect_nonstandard_xml_and_require_ply_approval(tmp_path: Path) -> None:
+def test_metashape_inputs_auto_detect_single_ply_without_approval(tmp_path: Path) -> None:
     _app()
     tmp_path.mkdir(exist_ok=True)
     (tmp_path / "images").mkdir()
@@ -159,11 +159,28 @@ def test_metashape_inputs_auto_detect_nonstandard_xml_and_require_ply_approval(t
 
     assert Path(step.ms_xml_browse.text()) == tmp_path / "exported_pose.xml"
     assert Path(step.ms_ply_browse.text()) == tmp_path / "raw_scan.ply"
-    assert not step._metashape_ply_approved
-    assert "承認" in step.ms_ply_browse.line_edit.toolTip()
-    assert step.primary_action_enabled() is False
-    step._approve_metashape_ply()
+    assert step._metashape_ply_approved
+    assert "承認" not in step.ms_ply_browse.line_edit.toolTip()
     assert step.primary_action_enabled() is True
+
+
+def test_metashape_inputs_leave_multiple_scene_ply_for_manual_selection(tmp_path: Path) -> None:
+    _app()
+    tmp_path.mkdir(exist_ok=True)
+    (tmp_path / "images").mkdir()
+    _write_metashape_xml(tmp_path / "exported_pose.xml")
+    _write_ascii_ply(tmp_path / "scan_a.ply", [(1.0, 2.0, 3.0)])
+    _write_ascii_ply(tmp_path / "scan_b.ply", [(1.0, 2.0, 3.0)])
+
+    step = CubemapStep(Path.cwd())
+    step.set_scene_dir(str(tmp_path))
+
+    assert Path(step.ms_xml_browse.text()) == tmp_path / "exported_pose.xml"
+    assert step.ms_ply_browse.text() == ""
+    assert not step._metashape_ply_approved
+    assert "scan_a.ply" in step.ms_ply_browse.line_edit.toolTip()
+    assert "scan_b.ply" in step.ms_ply_browse.line_edit.toolTip()
+    assert step.primary_action_enabled() is False
 
 
 def test_metashape_inputs_reject_output_dir_sources(tmp_path: Path) -> None:

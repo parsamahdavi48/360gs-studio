@@ -598,7 +598,7 @@ class Step4PathMixin:
         ply_text = self.ms_ply_browse.text().strip() if hasattr(self, "ms_ply_browse") else ""
         if ply_text:
             ply = Path(ply_text)
-            if ply.is_file() and self._metashape_ply_approved:
+            if ply.is_file():
                 return ply
         return None
 

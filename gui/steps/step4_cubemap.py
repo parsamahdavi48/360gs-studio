@@ -32,7 +32,6 @@ from gui.common.browse_widget import BrowseWidget
 from gui.common.collapsible_section import CollapsibleSection
 from gui.common.drag_spinbox import DragDoubleSpinBox
 from gui.common.form_rows import add_tooltip_row
-from gui.common.icons import check_icon
 from gui.cubemap.preview_renderer import PreviewWidget
 from gui.cubemap.view_config import _BLOCK_ENABLED_VIEWS, _WARN_ENABLED_VIEWS, ViewConfigWidget
 from gui.steps.base_step import (
@@ -515,13 +514,6 @@ class CubemapStep(
         self.ms_ply_browse.line_edit.setToolTip(i18n.tip("MS_PLY"))
         add_tooltip_row(pp_form, i18n.METASHAPE_PLY, self.ms_ply_browse, i18n.tip("MS_PLY"))
 
-        self.ms_ply_approve_btn = self.ms_ply_browse.add_icon_button(
-            check_icon(),
-            i18n.t("MS_PLY_APPROVE"),
-            self._approve_metashape_ply,
-            accessible_name=i18n.t("MS_PLY_APPROVE"),
-        )
-        self.ms_ply_approve_btn.setCheckable(True)
         self.ms_xml_browse.path_changed.connect(self._on_metashape_input_path_changed)
         self.ms_ply_browse.path_changed.connect(self._on_metashape_input_path_changed)
         self.ms_ply_browse.line_edit.textEdited.connect(self._on_metashape_ply_text_edited)
@@ -1034,7 +1026,7 @@ class CubemapStep(
                 self.ms_xml_browse.set_text(xml)
             if ply:
                 self.ms_ply_browse.set_text(ply)
-                self._set_metashape_ply_approved(bool(metashape.get("ply_approved", True)))
+                self._set_metashape_ply_approved(True)
             if "use_ply" in metashape:
                 self.ms_use_ply_cb.setChecked(bool(metashape.get("use_ply")))
             if "scale" in metashape:
@@ -1612,7 +1604,7 @@ class CubemapStep(
             self.ms_ply_browse.set_text(str(ply) if ply else "")
         finally:
             self._syncing_metashape_auto_inputs = False
-        self._set_metashape_ply_approved(False, auto_candidate=ply is not None)
+        self._set_metashape_ply_approved(ply is not None, auto_candidate=False)
 
     def _refresh_metashape_auto_inputs_if_empty(self) -> None:
         if not self.scene_dir:
@@ -1638,7 +1630,7 @@ class CubemapStep(
                     self.ms_ply_browse.set_text(str(ply))
                 finally:
                     self._syncing_metashape_auto_inputs = False
-                self._set_metashape_ply_approved(False, auto_candidate=True)
+                self._set_metashape_ply_approved(True, auto_candidate=False)
                 changed = True
         if (
             changed
@@ -1691,8 +1683,6 @@ class CubemapStep(
                     ply_note = issue
                 elif not ply.is_file():
                     ply_note = i18n.t("MS_PLY_SELECTED_MISSING_HINT").format(path=ply_text)
-                elif not self._metashape_ply_approved:
-                    ply_note = i18n.t("MS_PLY_APPROVAL_HINT")
 
         self._set_metashape_input_tooltips(xml_note, ply_note)
         self._set_metashape_ply_approved(

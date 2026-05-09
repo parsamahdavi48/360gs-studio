@@ -23,6 +23,11 @@ class Step4PipelineMixin:
             return ""
         return _PIPELINE_STAGE_SFM
 
+    def activate_pipeline_stage(self, stage: str) -> None:
+        target = self.output_tab_index if stage == _PIPELINE_STAGE_CONVERSION else self.input_tab_index
+        if self._settings_tab_available(target):
+            self.settings_tabs.setCurrentIndex(target)
+
     def pipeline_stage_intent(self, stage: str) -> bool:
         if stage == _PIPELINE_STAGE_SFM:
             return self._sfm_route_backend().sfm_intent(self)
@@ -89,6 +94,12 @@ class Step4PipelineMixin:
         result: list[dict[str, object]] = []
         for stage, label, (status, symbol, detail) in items:
             status_text = i18n.t(f"STEP4_PIPELINE_STATUS_{status.upper()}")
+            status_tooltip = f"{label}: {status_text}\n{detail}"
+            if status == _PIPELINE_STATUS_WARNING:
+                status_tooltip = self._append_tooltip_note(
+                    status_tooltip,
+                    i18n.t("STEP4_PIPELINE_STATUS_WARNING_CLICK"),
+                )
             intent = self.pipeline_stage_intent(stage)
             intent_enabled = self.pipeline_stage_intent_enabled(stage)
             intent_toggle_enabled = self.pipeline_stage_intent_toggle_enabled(stage)
@@ -139,13 +150,17 @@ class Step4PipelineMixin:
                     "label": label,
                     "status": status,
                     "status_symbol": symbol,
-                    "status_tooltip": f"{label}: {status_text}\n{detail}",
+                    "status_tooltip": status_tooltip,
                     "intent_checked": intent_checked,
                     "intent_enabled": intent_enabled,
                     "intent_toggle_enabled": intent_toggle_enabled,
                     "intent_symbol": intent_symbol,
                     "intent_tooltip": intent_tooltip,
-                    "row_tooltip": i18n.t("STEP4_PIPELINE_ROW_TOOLTIP").format(
+                    "row_tooltip": i18n.t(
+                        "STEP4_PIPELINE_ROW_TOGGLE_TOOLTIP"
+                        if intent_toggle_enabled
+                        else "STEP4_PIPELINE_ROW_TOOLTIP"
+                    ).format(
                         stage=label,
                         status=status_text,
                         detail=detail,
@@ -210,6 +225,4 @@ class Step4PipelineMixin:
                 return i18n.t("STEP4_PIPELINE_DETAIL_METASHAPE_INPUT_IN_OUTPUT")
             if not ply.is_file():
                 return i18n.t("STEP4_PIPELINE_DETAIL_METASHAPE_NEEDS_PLY")
-            if not self._metashape_ply_approved:
-                return i18n.t("STEP4_PIPELINE_DETAIL_METASHAPE_NEEDS_PLY_APPROVAL")
         return None
