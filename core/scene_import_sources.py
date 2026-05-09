@@ -8,6 +8,7 @@ from typing import Any
 
 from PIL import Image
 
+from core.mask_metadata import mask_file_summary, summary_size
 from core.scene_import_contracts import (
     EXTERNAL_IMPORT_KIND,
     IMAGE_EXTS,
@@ -80,28 +81,6 @@ def image_size(path: Path) -> tuple[int, int] | None:
             return int(image.width), int(image.height)
     except Exception:
         return None
-
-
-def mask_stats(path: Path) -> dict[str, Any]:
-    try:
-        with Image.open(path) as image:
-            gray = image.convert("L")
-            width, height = gray.size
-            histogram = gray.histogram()
-    except Exception:
-        return {"readable": False}
-    total = int(width * height)
-    black = int(sum(histogram[:128]))
-    white = total - black
-    return {
-        "readable": True,
-        "width": int(width),
-        "height": int(height),
-        "black_pixels": black,
-        "white_pixels": white,
-        "black_ratio": black / total if total else 0.0,
-        "white_ratio": white / total if total else 0.0,
-    }
 
 
 def backup_existing_import_metadata(scene: Path, import_id: str) -> Path | None:
@@ -183,6 +162,30 @@ def build_source_image_set_record(
         "file_count": len(files),
         "files": files,
     }
+
+
+def source_image_size_lookup(source_record: dict[str, Any] | None) -> dict[str, tuple[int, int]]:
+    if not isinstance(source_record, dict):
+        return {}
+    files = source_record.get("files")
+    if not isinstance(files, list):
+        return {}
+    result: dict[str, tuple[int, int]] = {}
+    for item in files:
+        if not isinstance(item, dict):
+            continue
+        rel = str(item.get("scene_path") or "").replace("\\", "/").strip("/")
+        image = item.get("image")
+        if not rel or not isinstance(image, dict):
+            continue
+        try:
+            width = int(image.get("width") or 0)
+            height = int(image.get("height") or 0)
+        except (TypeError, ValueError):
+            continue
+        if width > 0 and height > 0:
+            result[rel] = (width, height)
+    return result
 
 
 def replace_external_source_image_set(scene: Path, record: dict[str, Any] | None) -> None:
@@ -337,6 +340,7 @@ def build_external_mask_plan(
     image_paths: list[Path],
     warnings: list[str],
     cancel_token: SceneImportCancelToken | None = None,
+    source_record: dict[str, Any] | None = None,
 ) -> ExternalMaskPlan:
     previous_runs = load_json(mask_runs_path(scene), {"version": 1, "runs": []})
     runs = previous_runs.get("runs")
@@ -386,22 +390,24 @@ def build_external_mask_plan(
     unreadable = IssueSummary("masks/ unreadable files")
     items: list[ImportedMaskItem] = []
     images_root = scene_images_dir(scene)
+    source_sizes = source_image_size_lookup(source_record)
     for index, image_path in enumerate(image_paths, start=1):
         if cancel_token is not None and index % 128 == 0:
             cancel_token.check_cancelled()
+        image_rel = scene_relative(scene, image_path)
         mask_path = indexed_mask_for_image(image_path, images_root, mask_lookup)
         if mask_path is None:
-            missing.add(scene_relative(scene, image_path))
+            missing.add(image_rel)
             continue
-        source_size = image_size(image_path)
-        candidate_size = image_size(mask_path)
+        source_size = source_sizes.get(image_rel) or image_size(image_path)
+        stats = mask_file_summary(mask_path)
+        candidate_size = summary_size(stats)
         if source_size is None or candidate_size is None:
             unreadable.add(scene_relative(scene, mask_path))
             continue
         if source_size != candidate_size:
-            size_mismatch.add(f"{scene_relative(scene, image_path)} -> {scene_relative(scene, mask_path)}")
+            size_mismatch.add(f"{image_rel} -> {scene_relative(scene, mask_path)}")
             continue
-        stats = mask_stats(mask_path)
         items.append(ImportedMaskItem(image_path=image_path, mask_path=mask_path, stats=stats))
 
     if cancel_token is not None:

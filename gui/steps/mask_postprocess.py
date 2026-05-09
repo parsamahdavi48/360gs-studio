@@ -9,6 +9,7 @@ import cv2
 import numpy as np
 
 from core.image_io import imread_unicode, imwrite_unicode
+from core.mask_metadata import mask_file_summary
 from custom_mask import load_custom_mask
 from overexposure_mask import detect_overexposure, read_image_preserve_depth
 from stitch_mask import boundary_width_to_limit_angle, create_angular_stitched_mask
@@ -33,21 +34,7 @@ class MaskPostprocessOptions:
 
 
 def mask_stats(mask_path: Path) -> dict:
-    mask = imread_unicode(mask_path, cv2.IMREAD_GRAYSCALE)
-    if mask is None or mask.size <= 0:
-        return {"readable": False}
-    total = int(mask.size)
-    black = int(np.count_nonzero(mask < 128))
-    white = total - black
-    return {
-        "readable": True,
-        "width": int(mask.shape[1]),
-        "height": int(mask.shape[0]),
-        "black_pixels": black,
-        "white_pixels": white,
-        "black_ratio": black / total,
-        "white_ratio": white / total,
-    }
+    return mask_file_summary(mask_path)
 
 
 def apply_mask_postprocess(image_path: Path, mask_path: Path, options: MaskPostprocessOptions) -> None:

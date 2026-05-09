@@ -90,7 +90,7 @@ def import_scene(
     )
     mask_plan = run_phase(
         "build mask metadata",
-        lambda: build_external_mask_plan(scene, import_id, source_images, warnings, cancel_token),
+        lambda: build_external_mask_plan(scene, import_id, source_images, warnings, cancel_token, source_record),
     )
 
     def apply_metadata() -> tuple[Path | None, int, Path | None]:

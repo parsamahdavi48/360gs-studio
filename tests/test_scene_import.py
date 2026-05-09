@@ -88,6 +88,12 @@ def test_scene_import_registers_existing_scene_assets(tmp_path: Path) -> None:
     mask_runs = json.loads(mask_runs_path(scene).read_text(encoding="utf-8"))["runs"]
     assert len(mask_runs) == 1
     assert mask_runs[0]["mode"] == "external_import"
+    stats = mask_runs[0]["generated"][0]["stats"]
+    assert stats["readable"] is True
+    assert stats["width"] == 64
+    assert stats["height"] == 32
+    assert stats["pixel_stats"] == "skipped"
+    assert "black_pixels" not in stats
 
     settings = json.loads(step4_export_settings_path(scene).read_text(encoding="utf-8"))
     assert settings["origin"]["kind"] == "external_import"
@@ -214,3 +220,31 @@ def test_scene_import_empty_mask_dir_skips_per_image_mask_checks(tmp_path: Path,
     assert result.status == "ok"
     assert result.mask_count == 0
     assert not any("masks/ missing matching files" in warning for warning in result.warnings)
+
+
+def test_scene_import_mask_metadata_reuses_source_headers_and_skips_pixel_stats(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    scene = tmp_path
+    _write_image(scene / "images" / "frame_0001.jpg")
+    _write_mask(scene / "masks" / "frame_0001.png")
+
+    def fail_image_size(path: Path) -> tuple[int, int]:
+        raise AssertionError(f"unexpected image size read: {path}")
+
+    monkeypatch.setattr("core.scene_import_sources.image_size", fail_image_size)
+
+    result = import_scene(scene)
+
+    assert result.status == "ok"
+    assert result.mask_count == 1
+    mask_runs = json.loads(mask_runs_path(scene).read_text(encoding="utf-8"))["runs"]
+    stats = mask_runs[0]["generated"][0]["stats"]
+    assert stats == {
+        "readable": True,
+        "width": 64,
+        "height": 32,
+        "mode": "L",
+        "pixel_stats": "skipped",
+    }
