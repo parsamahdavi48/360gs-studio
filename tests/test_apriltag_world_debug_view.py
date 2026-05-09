@@ -352,6 +352,42 @@ def test_dev_placer_pointcloud_perspective_preview_projects_world_points() -> No
     window.deleteLater()
 
 
+def test_dev_placer_pointcloud_perspective_uses_selected_camera_rotation() -> None:
+    _app()
+    transform = np.eye(4)
+    transform[:3, :3] = np.diag([-1.0, 1.0, -1.0])
+    frame = PinholeFrame(
+        frame_id="frame_0001_pz",
+        file_path="images/frame_0001_pz.png",
+        image_path=Path("images/frame_0001_pz.png"),
+        width=100,
+        height=100,
+        fl_x=50.0,
+        fl_y=50.0,
+        cx=49.5,
+        cy=49.5,
+        transform_matrix=transform,
+    )
+    group = CubemapFrameGroup(name="frame_0001", frames_by_face={"pz": frame})
+    window = DevAprilTagPlacerWindow()
+    window._cubemap_groups = (group,)
+    window.coordinate_profile_combo.setCurrentIndex(window.coordinate_profile_combo.findData("custom"))
+    window.pointcloud_preview_check.blockSignals(True)
+    window.pointcloud_preview_check.setChecked(True)
+    window.pointcloud_preview_check.blockSignals(False)
+    window._scene_preview_params = PerspectiveParams(yaw_deg=0.0, pitch_deg=0.0, fov_deg=90.0)
+
+    points = np.array([[0.0, 0.0, -5.0], [1.0, 0.0, -5.0], [-1.0, 0.0, -5.0]], dtype=np.float32)
+    projected, _depth, valid = window._project_world_display_points_for_preview(group, points)
+    center, plus_x, minus_x = projected
+
+    assert np.all(valid)
+    assert np.allclose(center, [(window._scene_preview_size - 1) / 2.0, (window._scene_preview_size - 1) / 2.0])
+    assert plus_x[0] < center[0]
+    assert minus_x[0] > center[0]
+    window.deleteLater()
+
+
 def test_dev_placer_camera_axis_gizmo_marks_positive_axes() -> None:
     _app()
     window = DevAprilTagPlacerWindow()
