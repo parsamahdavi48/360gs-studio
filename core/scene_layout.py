@@ -19,6 +19,8 @@ IMPORTS_DIR_NAME = "imports"
 SCENE_IMPORTS_JSON = "scene_imports.json"
 STEP4_DIR_NAME = "step4"
 STEP4_META_DIR_NAME = f"{APP_DIR_NAME}/{STEP4_DIR_NAME}"
+STEP4_WORK_DIR_NAME = "work"
+STEP4_METASHAPE_IMPORT_WORK_DIR_NAME = "metashape_import"
 
 SELECTED_FRAMES_CSV = "selected_frames.csv"
 SELECTED_FRAMES_KEEP_CSV = "selected_frames_keep.csv"
@@ -129,6 +131,14 @@ def scene_import_backups_dir(scene_dir: Path) -> Path:
 
 def step4_meta_dir(scene_dir: Path) -> Path:
     return app_dir(scene_dir) / STEP4_DIR_NAME
+
+
+def step4_work_dir(scene_dir: Path) -> Path:
+    return step4_meta_dir(scene_dir) / STEP4_WORK_DIR_NAME
+
+
+def step4_metashape_import_work_dir(scene_dir: Path) -> Path:
+    return step4_work_dir(scene_dir) / STEP4_METASHAPE_IMPORT_WORK_DIR_NAME
 
 
 def step4_views_config_path(scene_dir: Path) -> Path:

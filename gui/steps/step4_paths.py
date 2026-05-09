@@ -13,6 +13,7 @@ from core.scene_layout import (
     scene_images_dir,
     scene_masks_dir,
     scene_output_dir,
+    step4_metashape_import_work_dir,
     step4_export_settings_path,
     step4_views_config_path,
 )
@@ -42,6 +43,11 @@ class Step4PathMixin:
         if not self.scene_dir:
             raise ValueError(i18n.t("SCENE_REQUIRED_ACTION_HINT"))
         return scene_output_dir(Path(self.scene_dir))
+
+    def _metashape_import_work_dir(self) -> Path:
+        if not self.scene_dir:
+            raise ValueError(i18n.t("SCENE_REQUIRED_ACTION_HINT"))
+        return step4_metashape_import_work_dir(Path(self.scene_dir))
 
     def _direct_output_dir(self) -> Path:
         if not self.scene_dir:
@@ -376,6 +382,13 @@ class Step4PathMixin:
         output.mkdir(parents=True, exist_ok=True)
         return True
 
+    def _prepare_metashape_import_work_dir(self) -> Path:
+        work = self._metashape_import_work_dir()
+        if self._path_has_contents(work):
+            self._clear_path(work)
+        work.mkdir(parents=True, exist_ok=True)
+        return work
+
     def _prepare_colmap_rig_dir(self) -> bool:
         if not self.scene_dir:
             raise ValueError(i18n.t("SCENE_REQUIRED_ACTION_HINT"))
@@ -588,13 +601,9 @@ class Step4PathMixin:
     def _resolve_ply_source(self) -> Path | None:
         if not self.scene_dir:
             return None
-        scene = Path(self.scene_dir)
         if self._axis_transform_mode() == _AXIS_NONE:
-            candidates = [scene / _GENERATED_POINTCLOUD_NAME]
-            for c in candidates:
-                if c.is_file():
-                    return c
-            return None
+            pointcloud = self._metashape_import_work_dir() / _GENERATED_POINTCLOUD_NAME
+            return pointcloud if pointcloud.is_file() else None
         ply_text = self.ms_ply_browse.text().strip() if hasattr(self, "ms_ply_browse") else ""
         if ply_text:
             ply = Path(ply_text)

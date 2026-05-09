@@ -366,8 +366,10 @@ def test_cubemap_step_uses_tab_path_summaries(tmp_path: Path) -> None:
 
     cmd = step._build_cubemap_cmd()
 
-    assert cmd[3] == str(tmp_path)
+    metashape_work = step4_meta_dir(tmp_path) / "work" / "metashape_import"
+    assert cmd[3] == str(metashape_work)
     assert cmd[4] == str(tmp_path / "output")
+    assert cmd[cmd.index("--image-dir") + 1] == str(tmp_path)
     assert "--json" not in cmd
     assert "--mask_dir" not in cmd
     assert "--mask_from_alpha" not in cmd
@@ -383,6 +385,28 @@ def test_cubemap_step_uses_tab_path_summaries(tmp_path: Path) -> None:
     normal_cmd = step._build_cubemap_cmd()
     normal_scale = float(normal_cmd[normal_cmd.index("--output_scale") + 1])
     assert normal_scale == pytest.approx(2.0 / math.pi, rel=1e-5)
+
+
+def test_metashape_projected_uses_step4_work_dir_for_intermediate_outputs(tmp_path: Path) -> None:
+    step = _ready_step(tmp_path, metashape_inputs=True)
+    (tmp_path / "masks").mkdir()
+    metashape_work = step4_meta_dir(tmp_path) / "work" / "metashape_import"
+    metashape_work.mkdir(parents=True)
+    stale = metashape_work / "old.txt"
+    stale.write_text("old", encoding="utf-8")
+
+    commands = step.build_commands()
+
+    assert [phase for phase, _cmd in commands] == ["metashape", "cubemap"]
+    preprocess_cmd = commands[0][1]
+    cubemap_cmd = commands[1][1]
+    assert preprocess_cmd[preprocess_cmd.index("--output") + 1] == str(metashape_work)
+    assert cubemap_cmd[3] == str(metashape_work)
+    assert cubemap_cmd[4] == str(tmp_path / "output")
+    assert cubemap_cmd[cubemap_cmd.index("--image-dir") + 1] == str(tmp_path)
+    assert cubemap_cmd[cubemap_cmd.index("--mask_dir") + 1] == str(tmp_path / "masks")
+    assert not stale.exists()
+    assert not (tmp_path / "transforms.json").exists()
 
 
 def test_step4_pipeline_intent_controls_execution_plan(tmp_path: Path) -> None:
@@ -2748,7 +2772,10 @@ def test_lichtfeld_3dgut_finalize_writes_scene_dataset_settings_and_correction(
 
 
 def test_lichtfeld_finalize_applies_final_orientation_correction(tmp_path: Path, monkeypatch) -> None:
-    _write_ascii_ply(tmp_path / "pointcloud.ply", [(1.0, 2.0, 3.0)])
+    _write_ascii_ply(tmp_path / "pointcloud.ply", [(9.0, 9.0, 9.0)])
+    metashape_work = step4_meta_dir(tmp_path) / "work" / "metashape_import"
+    metashape_work.mkdir(parents=True)
+    _write_ascii_ply(metashape_work / "pointcloud.ply", [(1.0, 2.0, 3.0)])
     step = CubemapStep(Path.cwd())
     step.set_scene_dir(str(tmp_path))
     monkeypatch.setattr(CubemapStep, "_transform_ply_with_open3d", staticmethod(lambda _path, _matrix: False))
