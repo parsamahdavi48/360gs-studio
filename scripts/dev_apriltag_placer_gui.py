@@ -59,6 +59,7 @@ from devtools.apriltag.cubemap_preview import (
     project_sfm_points_to_preview,
     project_sfm_points_to_preview_points,
     render_cubemap_equirect,
+    view_pixel_to_world_ray,
     view_pixel_to_world_ray_and_up,
 )
 from devtools.apriltag.printable import create_printable_target
@@ -296,7 +297,7 @@ class DevAprilTagPlacerWindow(QWidget):
         grid_row.addWidget(self.grid_overlay_check)
         grid_row.addWidget(QLabel("間隔SfM"))
         grid_row.addWidget(self.grid_step_spin)
-        grid_row.addWidget(QLabel("範囲SfM"))
+        grid_row.addWidget(QLabel("最大距離SfM"))
         grid_row.addWidget(self.grid_extent_spin)
         grid_row.addStretch(1)
         layout.addLayout(grid_row)
@@ -716,52 +717,58 @@ class DevAprilTagPlacerWindow(QWidget):
     def _grid_preview_overlays(self) -> list[PerspectiveLabelOverlay]:
         if not self.grid_overlay_check.isChecked():
             return []
+        group = self._selected_group()
+        if group is None:
+            return []
         try:
             center = np.asarray(self.center_editor.value(), dtype=float)
             step = max(0.1, float(self.grid_step_spin.value()))
-            extent = max(step, float(self.grid_extent_spin.value()))
+            max_distance = max(step, float(self.grid_extent_spin.value()))
         except Exception:
             return []
 
         overlays: list[PerspectiveLabelOverlay] = []
-        x_min = np.floor((center[0] - extent) / step) * step
-        x_max = np.ceil((center[0] + extent) / step) * step
-        z_min = np.floor((center[2] - extent) / step) * step
-        z_max = np.ceil((center[2] + extent) / step) * step
-        x_values = np.arange(x_min, x_max + step * 0.5, step)
-        z_values = np.arange(z_min, z_max + step * 0.5, step)
-        if len(x_values) > 80 or len(z_values) > 80:
-            return []
+        x_min, x_max, z_min, z_max = self._visible_ground_bounds(group, center, max_distance, step)
+        draw_step = step
+        while max((x_max - x_min) / draw_step, (z_max - z_min) / draw_step) > 80:
+            draw_step *= 2.0
+        x_min = np.floor(x_min / draw_step) * draw_step
+        x_max = np.ceil(x_max / draw_step) * draw_step
+        z_min = np.floor(z_min / draw_step) * draw_step
+        z_max = np.ceil(z_max / draw_step) * draw_step
+        x_values = np.arange(x_min, x_max + draw_step * 0.5, draw_step)
+        z_values = np.arange(z_min, z_max + draw_step * 0.5, draw_step)
 
         def add_grid_line(points: np.ndarray, color_bgr: tuple[int, int, int], highlighted: bool = False) -> None:
-            projected = self._project_preview_points(points)
-            if projected is None or not np.all(np.isfinite(projected)):
-                return
-            size = int(self._scene_preview_size)
-            min_xy = projected.min(axis=0)
-            max_xy = projected.max(axis=0)
-            if max_xy[0] < -size or max_xy[1] < -size or min_xy[0] > size * 2 or min_xy[1] > size * 2:
-                return
-            overlays.append(
-                PerspectiveLabelOverlay(
-                    label="",
-                    box=(0, 0, 0, 0),
-                    origin=(0, 0),
-                    color_bgr=color_bgr,
-                    highlighted=highlighted,
-                    polyline=tuple((float(x), float(y)) for x, y in projected),
+            for segment in self._project_preview_polyline_segments(points):
+                overlays.append(
+                    PerspectiveLabelOverlay(
+                        label="",
+                        box=(0, 0, 0, 0),
+                        origin=(0, 0),
+                        color_bgr=color_bgr,
+                        highlighted=highlighted,
+                        polyline=segment,
+                    )
                 )
-            )
 
-        samples = max(4, min(24, int(round(extent / max(step, 1e-6))) + 1))
+        samples = max(8, min(80, int(round(max(x_max - x_min, z_max - z_min) / max(draw_step, 1e-6))) * 2 + 1))
         for x in x_values:
             zs = np.linspace(z_min, z_max, samples)
-            color = (130, 130, 130) if abs(x) > step * 0.25 else (80, 210, 255)
-            add_grid_line(np.column_stack([np.full_like(zs, x), np.zeros_like(zs), zs]), color, abs(x) <= step * 0.25)
+            color = (130, 130, 130) if abs(x) > draw_step * 0.25 else (80, 210, 255)
+            add_grid_line(
+                np.column_stack([np.full_like(zs, x), np.zeros_like(zs), zs]),
+                color,
+                abs(x) <= draw_step * 0.25,
+            )
         for z in z_values:
             xs = np.linspace(x_min, x_max, samples)
-            color = (130, 130, 130) if abs(z) > step * 0.25 else (255, 190, 80)
-            add_grid_line(np.column_stack([xs, np.zeros_like(xs), np.full_like(xs, z)]), color, abs(z) <= step * 0.25)
+            color = (130, 130, 130) if abs(z) > draw_step * 0.25 else (255, 190, 80)
+            add_grid_line(
+                np.column_stack([xs, np.zeros_like(xs), np.full_like(xs, z)]),
+                color,
+                abs(z) <= draw_step * 0.25,
+            )
 
         foot = np.array([center[0], 0.0, center[2]], dtype=float)
         vertical = self._project_preview_points(np.vstack([center, foot]))
@@ -777,21 +784,109 @@ class DevAprilTagPlacerWindow(QWidget):
                     dashed=True,
                 )
             )
-        foot_px = self._project_preview_points(foot.reshape(1, 3))
-        if foot_px is not None and np.all(np.isfinite(foot_px)):
-            x, y = (float(foot_px[0, 0]), float(foot_px[0, 1]))
-            overlays.append(
-                PerspectiveLabelOverlay(
-                    label="XZ",
-                    box=(int(x - 8), int(y - 8), int(x + 8), int(y + 8)),
-                    origin=(int(x + 10), int(y - 10)),
-                    color_bgr=(0, 255, 255),
-                    highlighted=True,
-                    polyline=((x, y),),
-                    point_radius=7.0,
-                )
-            )
+        foot_marker = self._point_marker_overlay(foot, "XZ", (0, 255, 255), radius=7.0)
+        if foot_marker is not None:
+            overlays.append(foot_marker)
+        origin_marker = self._point_marker_overlay(np.array([0.0, 0.0, 0.0], dtype=float), "O", (255, 80, 255), radius=8.0)
+        if origin_marker is not None:
+            overlays.append(origin_marker)
         return overlays
+
+    def _visible_ground_bounds(
+        self,
+        group: CubemapFrameGroup,
+        center: np.ndarray,
+        max_distance: float,
+        step: float,
+    ) -> tuple[float, float, float, float]:
+        camera = group.camera_position_sfm
+        samples = np.linspace(0.0, float(self._scene_preview_size - 1), 17)
+        edge_pixels = (
+            [(x, 0.0) for x in samples]
+            + [(x, float(self._scene_preview_size - 1)) for x in samples]
+            + [(0.0, y) for y in samples[1:-1]]
+            + [(float(self._scene_preview_size - 1), y) for y in samples[1:-1]]
+        )
+        points: list[np.ndarray] = [
+            np.array([center[0], 0.0, center[2]], dtype=float),
+            np.array([0.0, 0.0, 0.0], dtype=float),
+            np.array([camera[0], 0.0, camera[2]], dtype=float),
+        ]
+        for x_px, y_px in edge_pixels:
+            ray = view_pixel_to_world_ray(
+                group,
+                x_px=x_px,
+                y_px=y_px,
+                output_size=self._scene_preview_size,
+                yaw_deg=self._scene_preview_params.yaw_deg,
+                pitch_deg=self._scene_preview_params.pitch_deg,
+                fov_deg=self._scene_preview_params.fov_deg,
+            )
+            if abs(float(ray[1])) > 1e-8:
+                distance = float(-camera[1] / ray[1])
+                if 0.0 < distance <= max_distance:
+                    points.append(camera + ray * distance)
+                    continue
+            direction_xz = np.array([ray[0], ray[2]], dtype=float)
+            norm = float(np.linalg.norm(direction_xz))
+            if norm > 1e-8:
+                xz = np.array([camera[0], camera[2]], dtype=float) + direction_xz / norm * max_distance
+                points.append(np.array([xz[0], 0.0, xz[1]], dtype=float))
+        xz_points = np.asarray([[point[0], point[2]] for point in points], dtype=float)
+        margin = max(step * 2.0, max_distance * 0.05)
+        x_min = max(float(np.min(xz_points[:, 0]) - margin), float(camera[0] - max_distance))
+        x_max = min(float(np.max(xz_points[:, 0]) + margin), float(camera[0] + max_distance))
+        z_min = max(float(np.min(xz_points[:, 1]) - margin), float(camera[2] - max_distance))
+        z_max = min(float(np.max(xz_points[:, 1]) + margin), float(camera[2] + max_distance))
+        if x_max <= x_min:
+            x_min, x_max = center[0] - max_distance, center[0] + max_distance
+        if z_max <= z_min:
+            z_min, z_max = center[2] - max_distance, center[2] + max_distance
+        return x_min, x_max, z_min, z_max
+
+    def _project_preview_polyline_segments(self, points_sfm: np.ndarray) -> list[tuple[tuple[float, float], ...]]:
+        size = int(self._scene_preview_size)
+        segments: list[tuple[tuple[float, float], ...]] = []
+        current: list[tuple[float, float]] = []
+        for point in np.asarray(points_sfm, dtype=float):
+            projected = self._project_preview_points(point.reshape(1, 3))
+            if projected is None or not np.all(np.isfinite(projected)):
+                if len(current) >= 2:
+                    segments.append(tuple(current))
+                current = []
+                continue
+            x, y = float(projected[0, 0]), float(projected[0, 1])
+            if x < -size or y < -size or x > size * 2 or y > size * 2:
+                if len(current) >= 2:
+                    segments.append(tuple(current))
+                current = []
+                continue
+            current.append((x, y))
+        if len(current) >= 2:
+            segments.append(tuple(current))
+        return segments
+
+    def _point_marker_overlay(
+        self,
+        point_sfm: np.ndarray,
+        label: str,
+        color_bgr: tuple[int, int, int],
+        *,
+        radius: float,
+    ) -> PerspectiveLabelOverlay | None:
+        projected = self._project_preview_points(np.asarray(point_sfm, dtype=float).reshape(1, 3))
+        if projected is None or not np.all(np.isfinite(projected)):
+            return None
+        x, y = (float(projected[0, 0]), float(projected[0, 1]))
+        return PerspectiveLabelOverlay(
+            label=label,
+            box=(int(x - radius), int(y - radius), int(x + radius), int(y + radius)),
+            origin=(int(x + radius + 3), int(y - radius - 3)),
+            color_bgr=color_bgr,
+            highlighted=True,
+            polyline=((x, y),),
+            point_radius=radius,
+        )
 
     def _tag_preview_overlays(self) -> list[PerspectiveLabelOverlay]:
         group = self._selected_group()

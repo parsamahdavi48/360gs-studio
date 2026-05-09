@@ -63,7 +63,12 @@ def _resolve_image_path(image_root: Path, file_path: str) -> Path:
     return image_root / file_path
 
 
-def load_pinhole_frames(transforms_json: Path, image_root: Path | None = None) -> tuple[PinholeFrame, ...]:
+def load_pinhole_frames(
+    transforms_json: Path,
+    image_root: Path | None = None,
+    *,
+    normalize_cubemap: bool = True,
+) -> tuple[PinholeFrame, ...]:
     """Load PINHOLE or SIMPLE_PINHOLE frames from a transforms.json file."""
     data = json.loads(transforms_json.read_text(encoding="utf-8"))
     if data.get("camera_model") not in {"PINHOLE", "SIMPLE_PINHOLE"}:
@@ -93,7 +98,12 @@ def load_pinhole_frames(transforms_json: Path, image_root: Path | None = None) -
                 transform_matrix=transform,
             )
         )
-    return tuple(frames)
+    loaded = tuple(frames)
+    if normalize_cubemap:
+        from core.apriltag_cubemap import normalize_standard_cubemap_frames
+
+        loaded = normalize_standard_cubemap_frames(loaded)
+    return loaded
 
 
 def normalized(vec: np.ndarray, name: str) -> np.ndarray:
