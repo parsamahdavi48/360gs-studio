@@ -324,7 +324,7 @@ def test_dev_placer_camera_axis_gizmo_marks_positive_axes() -> None:
     plus_z = np.asarray(by_label["+Z"].polyline[-1], dtype=float)
 
     assert {"+X", "+Y", "+Z"}.issubset(by_label)
-    assert plus_x[0] > origin[0]
+    assert plus_x[0] < origin[0]
     assert plus_y[1] < origin[1]
     assert np.linalg.norm(plus_z - origin) < 1.0
     window.deleteLater()
@@ -352,7 +352,7 @@ def test_dev_placer_camera_grid_axes_include_origin() -> None:
     window.coordinate_profile_combo.setCurrentIndex(window.coordinate_profile_combo.findData("custom"))
     window.grid_step_spin.setValue(1.0)
     window.grid_extent_spin.setValue(12.0)
-    window.look_yaw_spin.setValue(0.0)
+    window.look_yaw_spin.setValue(180.0)
     window.look_pitch_spin.setValue(0.0)
     window.look_fov_spin.setValue(90.0)
 
@@ -388,7 +388,7 @@ def test_dev_placer_camera_grid_axes_reach_distant_visible_origin() -> None:
     window.coordinate_profile_combo.setCurrentIndex(window.coordinate_profile_combo.findData("custom"))
     window.grid_step_spin.setValue(1.0)
     window.grid_extent_spin.setValue(12.0)
-    window.look_yaw_spin.setValue(0.0)
+    window.look_yaw_spin.setValue(180.0)
     window.look_pitch_spin.setValue(0.0)
     window.look_fov_spin.setValue(90.0)
 

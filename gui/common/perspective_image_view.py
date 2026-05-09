@@ -6,7 +6,7 @@ from dataclasses import dataclass
 import cv2
 import numpy as np
 from PySide6.QtCore import QPointF, QRectF, QSize, Qt, Signal
-from PySide6.QtGui import QColor, QImage, QMouseEvent, QPainter, QPen, QPolygonF, QVector3D, QWheelEvent
+from PySide6.QtGui import QColor, QImage, QMouseEvent, QPainter, QPen, QPolygonF, QWheelEvent
 from PySide6.QtOpenGL import (
     QOpenGLBuffer,
     QOpenGLShader,
@@ -89,7 +89,6 @@ class PerspectiveGLImageView(QOpenGLWidget):
         uniform float u_pitch_rad;
         uniform float u_roll_rad;
         uniform float u_fov_rad;
-        uniform vec3 u_texture_ray_sign;
         uniform vec2 u_viewport_origin;
         uniform vec2 u_viewport_size;
 
@@ -126,9 +125,8 @@ class PerspectiveGLImageView(QOpenGLWidget):
                 -sy * pitched.x + cy * pitched.z
             );
 
-            vec3 texture_ray = world * u_texture_ray_sign;
-            float lon = atan(texture_ray.x, texture_ray.z);
-            float lat = asin(clamp(texture_ray.y, -1.0, 1.0));
+            float lon = atan(world.x, world.z);
+            float lat = asin(clamp(world.y, -1.0, 1.0));
             vec2 pano_uv = vec2((lon / PI + 1.0) * 0.5, 0.5 - lat / PI);
             gl_FragColor = texture2D(u_texture, pano_uv);
         }
@@ -145,7 +143,6 @@ class PerspectiveGLImageView(QOpenGLWidget):
         self._initialized = False
         self._failed = False
         self._params = PerspectiveParams()
-        self._texture_ray_sign = (1.0, 1.0, 1.0)
         self._logical_size = QSize(1, 1)
         self._overlays: list[PerspectiveLabelOverlay] = []
         self._zoom = 1.0
@@ -188,17 +185,6 @@ class PerspectiveGLImageView(QOpenGLWidget):
 
     def set_perspective_params(self, params: PerspectiveParams) -> None:
         self._params = params
-        self.update()
-
-    def set_texture_ray_sign(self, sign: float | tuple[float, float, float]) -> None:
-        if isinstance(sign, tuple):
-            values = sign
-        else:
-            value = float(sign)
-            values = (value, value, value)
-        self._texture_ray_sign = tuple(-1.0 if float(value) < 0.0 else 1.0 for value in values[:3])
-        if len(self._texture_ray_sign) != 3:
-            self._texture_ray_sign = (1.0, 1.0, 1.0)
         self.update()
 
     def set_label_overlays(self, overlays: list[PerspectiveLabelOverlay]) -> None:
@@ -296,10 +282,6 @@ class PerspectiveGLImageView(QOpenGLWidget):
         self._program.setUniformValue1f(
             self._program.uniformLocation(b"u_fov_rad"),
             float(np.deg2rad(float(self._params.fov_deg))),
-        )
-        self._program.setUniformValue(
-            self._program.uniformLocation(b"u_texture_ray_sign"),
-            QVector3D(*self._texture_ray_sign),
         )
         self._program.setUniformValue(
             self._program.uniformLocation(b"u_viewport_origin"),
@@ -609,13 +591,11 @@ class PerspectiveImageView(QWidget):
         *,
         overlays: list[PerspectiveLabelOverlay] | None = None,
         logical_size: QSize | None = None,
-        texture_ray_sign: float | tuple[float, float, float] = 1.0,
     ) -> bool:
         if self._gpu_view is None or self._gpu_failed or self._gpu_view.failed():
             return False
         size = logical_size or QSize(perspective_output_size(image), perspective_output_size(image))
         self._gpu_view.set_drag_mode(self._drag_mode)
-        self._gpu_view.set_texture_ray_sign(texture_ray_sign)
         self._gpu_view.set_source_image(bgr_to_qimage(image), logical_size=size)
         self._gpu_view.set_perspective_params(params)
         self._gpu_view.set_label_overlays(overlays or [])

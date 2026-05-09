@@ -93,6 +93,8 @@ GRID_Z_AXIS_BGR = (90, 180, 245)
 AXIS_GIZMO_X_BGR = (92, 92, 255)
 AXIS_GIZMO_Y_BGR = (130, 245, 120)
 AXIS_GIZMO_Z_BGR = (255, 170, 96)
+CAMERA_PREVIEW_AXIS_SIGN = np.array([-1.0, 1.0, -1.0], dtype=np.float64)
+CAMERA_PREVIEW_AXIS_MATRIX = np.diag([*CAMERA_PREVIEW_AXIS_SIGN.tolist(), 1.0]).astype(np.float64)
 
 
 def _preview_rotation_matrix(yaw_deg: float, pitch_deg: float, roll_deg: float) -> np.ndarray:
@@ -716,6 +718,9 @@ class DevAprilTagPlacerWindow(QWidget):
         profile = self.case.coordinate_profile if self.case is not None else self.coordinate_profile_combo.currentData()
         return world_display_matrix(profile)
 
+    def _camera_preview_matrix(self) -> np.ndarray | None:
+        return _compose_display_matrices(CAMERA_PREVIEW_AXIS_MATRIX, self._world_display_matrix())
+
     def _update_world_display_alignment(self) -> None:
         self._metashape_world_display_matrix = None
         self._metashape_world_alignment_rmse = None
@@ -923,7 +928,7 @@ class DevAprilTagPlacerWindow(QWidget):
             group,
             face,
             fov_deg=self.look_fov_spin.value(),
-            sfm_to_preview_matrix=self._world_display_matrix(),
+            sfm_to_preview_matrix=self._camera_preview_matrix(),
         )
         if params is None:
             self._append_log(f"Face not available in this group: {face}")
@@ -981,7 +986,7 @@ class DevAprilTagPlacerWindow(QWidget):
                     logical_size=QSize(self._scene_preview_size, self._scene_preview_size),
                 )
             else:
-                cache_key = f"axis:{normalize_coordinate_profile(case.coordinate_profile)}:{group.name}"
+                cache_key = f"camera-axis:{normalize_coordinate_profile(case.coordinate_profile)}:{group.name}"
                 image = self._equirect_preview_cache.get(cache_key)
                 if image is None:
                     image = render_cubemap_axis_equirect(
@@ -989,7 +994,7 @@ class DevAprilTagPlacerWindow(QWidget):
                         output_width=2048,
                         output_height=1024,
                         image_cache=self._cubemap_image_cache,
-                        sfm_to_preview_matrix=self._world_display_matrix(),
+                        sfm_to_preview_matrix=self._camera_preview_matrix(),
                     )
                     self._equirect_preview_cache[cache_key] = image
                 shown = self.preview_label.set_perspective_image_bgr(
@@ -997,7 +1002,6 @@ class DevAprilTagPlacerWindow(QWidget):
                     self._scene_preview_params,
                     overlays=overlays,
                     logical_size=QSize(self._scene_preview_size, self._scene_preview_size),
-                    texture_ray_sign=(-1.0, 1.0, -1.0),
                 )
         except Exception as e:
             self.preview_label.setText(f"プレビュー生成エラー: {e}")
@@ -1061,7 +1065,7 @@ class DevAprilTagPlacerWindow(QWidget):
             pitch_deg=self._scene_preview_params.pitch_deg,
             fov_deg=self._scene_preview_params.fov_deg,
             roll_deg=self._scene_preview_params.roll_deg,
-            sfm_to_preview_matrix=self._world_display_matrix(),
+            sfm_to_preview_matrix=self._camera_preview_matrix(),
         )
         self._last_click_state = (group.name, ray.copy(), up.copy())
         self._apply_click_placement(group, ray, up)
@@ -1122,7 +1126,7 @@ class DevAprilTagPlacerWindow(QWidget):
             )
         ]
         for label, axis, color in axes:
-            view = axis @ rotation
+            view = (axis * CAMERA_PREVIEW_AXIS_SIGN) @ rotation
             screen_delta = np.array([view[0], -view[1]], dtype=np.float64)
             end = origin + screen_delta * length
             label_offset = np.array([5.0, -5.0], dtype=np.float64)
@@ -1153,7 +1157,7 @@ class DevAprilTagPlacerWindow(QWidget):
             pitch_deg=self._scene_preview_params.pitch_deg,
             fov_deg=self._scene_preview_params.fov_deg,
             roll_deg=self._scene_preview_params.roll_deg,
-            sfm_to_preview_matrix=self._world_display_matrix(),
+            sfm_to_preview_matrix=self._camera_preview_matrix(),
         )
 
     def _grid_preview_overlays(self) -> list[PerspectiveLabelOverlay]:
@@ -1303,7 +1307,7 @@ class DevAprilTagPlacerWindow(QWidget):
                 pitch_deg=self._scene_preview_params.pitch_deg,
                 fov_deg=self._scene_preview_params.fov_deg,
                 roll_deg=self._scene_preview_params.roll_deg,
-                sfm_to_preview_matrix=self._world_display_matrix(),
+                sfm_to_preview_matrix=self._camera_preview_matrix(),
             )
             if abs(float(ray[1])) > 1e-8:
                 distance = float(-camera[1] / ray[1])
@@ -1391,7 +1395,7 @@ class DevAprilTagPlacerWindow(QWidget):
                 pitch_deg=self._scene_preview_params.pitch_deg,
                 fov_deg=self._scene_preview_params.fov_deg,
                 roll_deg=self._scene_preview_params.roll_deg,
-                sfm_to_preview_matrix=self._world_display_matrix(),
+                sfm_to_preview_matrix=self._camera_preview_matrix(),
             )
         except Exception:
             return []
