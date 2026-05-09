@@ -205,7 +205,7 @@ def _best_standard_face(
 
 def virtual_camera_rotation(group: CubemapFrameGroup, *, yaw_deg: float, pitch_deg: float) -> np.ndarray:
     """Return a camera-to-world rotation for the interactive preview view."""
-    return _rotation_matrix(yaw_deg, pitch_deg) @ group.reference_frame.camera_to_world_rotation
+    return group.reference_frame.camera_to_world_rotation @ _rotation_matrix(yaw_deg, pitch_deg)
 
 
 def _view_rays(output_size: int, fov_deg: float) -> np.ndarray:

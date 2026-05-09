@@ -31,6 +31,7 @@ from devtools.apriltag.cubemap_preview import (
     project_sfm_points_to_preview_points,
     render_cubemap_equirect,
     split_cubemap_face,
+    virtual_camera_rotation,
     view_pixel_to_world_ray,
     view_pixel_to_world_ray_and_up,
 )
@@ -472,6 +473,51 @@ def test_standard_cube6_preview_click_ray_uses_matching_face_transform(tmp_path:
     )
 
     assert np.allclose(ray, np.array([1.0, 0.0, 0.0]))
+
+
+def test_virtual_camera_rotation_matches_preview_ray_with_tilted_base(tmp_path: Path) -> None:
+    base = _rotation(35.0, 12.0)
+    views = {
+        "pz": (0.0, 0.0),
+        "px": (90.0, 0.0),
+        "nz": (180.0, 0.0),
+        "nx": (-90.0, 0.0),
+        "top": (0.0, 90.0),
+        "bottom": (0.0, -90.0),
+    }
+
+    def frame(name: str, view: tuple[float, float]) -> PinholeFrame:
+        transform = np.eye(4)
+        transform[:3, :3] = base @ _rotation(*view)
+        return PinholeFrame(
+            frame_id=name,
+            file_path=f"images/frame_{name}.png",
+            image_path=tmp_path / f"frame_{name}.png",
+            width=100,
+            height=100,
+            fl_x=50.0,
+            fl_y=50.0,
+            cx=49.5,
+            cy=49.5,
+            transform_matrix=transform,
+        )
+
+    group = CubemapFrameGroup(name="frame", frames_by_face={name: frame(name, view) for name, view in views.items()})
+
+    for yaw, pitch in ((0.0, 0.0), (90.0, 0.0), (45.0, -15.0), (-60.0, 20.0)):
+        ray = view_pixel_to_world_ray(
+            group,
+            x_px=49.5,
+            y_px=49.5,
+            output_size=100,
+            yaw_deg=yaw,
+            pitch_deg=pitch,
+            fov_deg=90.0,
+        )
+        rotation = virtual_camera_rotation(group, yaw_deg=yaw, pitch_deg=pitch)
+        frustum_forward = np.array([0.0, 0.0, 1.0]) @ rotation.T
+
+        assert np.allclose(ray, frustum_forward)
 
 
 def test_project_sfm_points_to_standard_cube6_preview_center(tmp_path: Path) -> None:
