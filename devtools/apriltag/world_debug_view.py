@@ -274,6 +274,8 @@ class AprilTagWorldDebugView(QWidget):
         self._draw_pointcloud(painter)
         self._draw_cameras(painter)
         self._draw_tag(painter)
+        self._draw_world_axes(painter)
+        self._draw_orientation_gizmo(painter)
         painter.end()
 
     def mousePressEvent(self, event: QMouseEvent) -> None:
@@ -393,6 +395,50 @@ class AprilTagWorldDebugView(QWidget):
             color = QColor(245, 180, 90) if abs(z) <= step * 0.25 else QColor(55, 63, 72)
             self._draw_world_line(painter, np.array([x_min, 0.0, z]), np.array([x_max, 0.0, z]), color, 2 if abs(z) <= step * 0.25 else 1)
         self._draw_marker(painter, np.array([0.0, 0.0, 0.0]), QColor(255, 80, 255), "O", radius=5)
+
+    def _draw_world_axes(self, painter: QPainter) -> None:
+        origin = np.array([0.0, 0.0, 0.0], dtype=np.float64)
+        length = max(self._grid_step * 2.0, self._grid_extent * 0.16)
+        for label, axis, color in self._axis_definitions():
+            end = origin + axis * length
+            self._draw_world_arrow(painter, origin, end, color, f"+{label}", width=2)
+
+    def _draw_orientation_gizmo(self, painter: QPainter) -> None:
+        origin = QPointF(52.0, float(self.height()) - 48.0)
+        length = 34.0
+        endpoints = self._orientation_axis_points(origin, length)
+        _right, _up, forward = self._view_basis()
+        axes = sorted(
+            self._axis_definitions(),
+            key=lambda item: float(item[1] @ forward),
+        )
+        painter.setPen(QPen(QColor(255, 255, 255, 70), 1))
+        painter.setBrush(QColor(7, 10, 14, 130))
+        painter.drawEllipse(origin, 4.0, 4.0)
+        for label, _axis, color in axes:
+            self._draw_screen_arrow(painter, origin, endpoints[label], color, f"+{label}", width=2)
+
+    def _orientation_axis_points(self, origin: QPointF, length: float) -> dict[str, QPointF]:
+        right, up, _forward = self._view_basis()
+        points: dict[str, QPointF] = {}
+        for label, axis, _color in self._axis_definitions():
+            screen = np.array(
+                [
+                    float(origin.x()) + float(axis @ right) * float(length),
+                    float(origin.y()) - float(axis @ up) * float(length),
+                ],
+                dtype=np.float64,
+            )
+            points[label] = QPointF(float(screen[0]), float(screen[1]))
+        return points
+
+    @staticmethod
+    def _axis_definitions() -> tuple[tuple[str, np.ndarray, QColor], ...]:
+        return (
+            ("X", np.array([1.0, 0.0, 0.0], dtype=np.float64), QColor(255, 92, 92)),
+            ("Y", np.array([0.0, 1.0, 0.0], dtype=np.float64), QColor(120, 245, 130)),
+            ("Z", np.array([0.0, 0.0, 1.0], dtype=np.float64), QColor(96, 170, 255)),
+        )
 
     def _draw_pointcloud(self, painter: QPainter) -> None:
         if self._pointcloud is None or len(self._pointcloud.points) == 0:
@@ -521,6 +567,66 @@ class AprilTagWorldDebugView(QWidget):
         painter.setPen(pen)
         painter.setBrush(Qt.NoBrush)
         painter.drawLine(QPointF(float(xy[0, 0]), float(xy[0, 1])), QPointF(float(xy[1, 0]), float(xy[1, 1])))
+
+    def _draw_world_arrow(
+        self,
+        painter: QPainter,
+        a: np.ndarray,
+        b: np.ndarray,
+        color: QColor,
+        label: str,
+        *,
+        width: int,
+    ) -> None:
+        xy, _depth = self._project(np.vstack([a, b]))
+        self._draw_screen_arrow(
+            painter,
+            QPointF(float(xy[0, 0]), float(xy[0, 1])),
+            QPointF(float(xy[1, 0]), float(xy[1, 1])),
+            color,
+            label,
+            width=width,
+        )
+
+    def _draw_screen_arrow(
+        self,
+        painter: QPainter,
+        start: QPointF,
+        end: QPointF,
+        color: QColor,
+        label: str,
+        *,
+        width: int,
+    ) -> None:
+        delta = end - start
+        length = float((delta.x() ** 2 + delta.y() ** 2) ** 0.5)
+        painter.setPen(QPen(QColor(7, 10, 14), width + 2))
+        painter.drawLine(start, end)
+        painter.setPen(QPen(color, width))
+        painter.drawLine(start, end)
+        if length >= 6.0:
+            direction = np.array([float(delta.x()), float(delta.y())], dtype=np.float64) / length
+            normal = np.array([-direction[1], direction[0]], dtype=np.float64)
+            head_len = min(10.0, max(6.0, length * 0.22))
+            head_w = head_len * 0.45
+            end_np = np.array([float(end.x()), float(end.y())], dtype=np.float64)
+            p1 = end_np - direction * head_len + normal * head_w
+            p2 = end_np - direction * head_len - normal * head_w
+            painter.setBrush(color)
+            painter.setPen(QPen(QColor(7, 10, 14), width + 2))
+            painter.drawPolygon(QPolygonF([end, QPointF(float(p1[0]), float(p1[1])), QPointF(float(p2[0]), float(p2[1]))]))
+            painter.setPen(QPen(color, width))
+            painter.drawPolygon(QPolygonF([end, QPointF(float(p1[0]), float(p1[1])), QPointF(float(p2[0]), float(p2[1]))]))
+            label_pos = end + QPointF(float(direction[0]) * 6.0, float(direction[1]) * 6.0)
+        else:
+            painter.setBrush(color)
+            painter.drawEllipse(end, 4.0, 4.0)
+            label_pos = end + QPointF(6.0, -6.0)
+        painter.setBrush(Qt.NoBrush)
+        painter.setPen(QPen(QColor(7, 10, 14), 3))
+        painter.drawText(label_pos, label)
+        painter.setPen(QPen(color, 1))
+        painter.drawText(label_pos, label)
 
     def _draw_marker(self, painter: QPainter, point: np.ndarray, color: QColor, label: str, *, radius: int) -> None:
         xy, _depth = self._project(np.asarray(point, dtype=np.float64).reshape(1, 3))

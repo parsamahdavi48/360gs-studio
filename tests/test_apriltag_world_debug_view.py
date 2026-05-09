@@ -136,6 +136,42 @@ def test_world_debug_view_accepts_scene_and_tag() -> None:
     view.deleteLater()
 
 
+def test_world_debug_view_orientation_gizmo_marks_positive_axes() -> None:
+    _app()
+    view = AprilTagWorldDebugView()
+    origin = QPointF(100.0, 100.0)
+    view._view_yaw_deg = 0.0
+    view._view_pitch_deg = 0.0
+
+    points = view._orientation_axis_points(origin, 20.0)
+
+    assert points["X"].x() > origin.x()
+    assert points["X"].y() == origin.y()
+    assert points["Y"].x() == origin.x()
+    assert points["Y"].y() < origin.y()
+    assert points["Z"].x() == origin.x()
+    assert points["Z"].y() == origin.y()
+    view.deleteLater()
+
+
+def test_world_debug_view_orientation_gizmo_rotates_without_mirroring() -> None:
+    _app()
+    view = AprilTagWorldDebugView()
+    origin = QPointF(100.0, 100.0)
+    view._view_yaw_deg = 90.0
+    view._view_pitch_deg = 0.0
+
+    points = view._orientation_axis_points(origin, 20.0)
+
+    assert points["Z"].x() < origin.x()
+    assert points["Z"].y() == origin.y()
+    assert points["Y"].x() == origin.x()
+    assert points["Y"].y() < origin.y()
+    assert abs(points["X"].x() - origin.x()) < 1e-12
+    assert abs(points["X"].y() - origin.y()) < 1e-12
+    view.deleteLater()
+
+
 def test_world_debug_view_camera_point_click_emits_group_name() -> None:
     _app()
     group_a = CubemapFrameGroup(name="frame_a", frames_by_face={"pz": _frame_at("frame_a", (-2.0, 0.0, 0.0))})
