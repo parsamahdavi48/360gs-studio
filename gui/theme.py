@@ -517,6 +517,9 @@ QCheckBox, QRadioButton {{
     spacing: 6px;
     color: {TEXT};
 }}
+QCheckBox:disabled, QRadioButton:disabled {{
+    color: {TEXT_DIM};
+}}
 QCheckBox::indicator, QRadioButton::indicator {{
     width: 16px;
     height: 16px;
@@ -540,6 +543,10 @@ QRadioButton::indicator:checked {{
 QCheckBox::indicator:disabled, QRadioButton::indicator:disabled {{
     background-color: {BG_MID};
     border-color: {BG_MID};
+}}
+QCheckBox::indicator:checked:disabled, QRadioButton::indicator:checked:disabled {{
+    background-color: {ACCENT_PRESSED};
+    border-color: {ACCENT_PRESSED};
 }}
 
 /* ========== QScrollBar ========== */

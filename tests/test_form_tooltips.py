@@ -9,6 +9,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from PySide6.QtWidgets import QApplication, QLabel, QRadioButton, QToolButton, QWidget
 
 from gui import i18n
+from gui import theme
 from gui.common.drag_spinbox import DragDoubleSpinBox, DragSpinBox
 from gui.steps.base_step import SETTINGS_PANE_MARGINS, SETTINGS_PANE_WIDTH
 from gui.steps.step1_extract import ExtractStep
@@ -96,6 +97,17 @@ def test_i18n_tips_are_wrapped_in_english() -> None:
     )
 
     assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_disabled_checked_controls_keep_selected_indicator_style() -> None:
+    disabled_rule = "QCheckBox::indicator:disabled, QRadioButton::indicator:disabled"
+    checked_disabled_rule = "QCheckBox::indicator:checked:disabled, QRadioButton::indicator:checked:disabled"
+
+    assert disabled_rule in theme.QSS
+    assert checked_disabled_rule in theme.QSS
+    assert theme.QSS.index(checked_disabled_rule) > theme.QSS.index(disabled_rule)
+    rule_body = theme.QSS.split(checked_disabled_rule, 1)[1].split("}", 1)[0]
+    assert theme.ACCENT_PRESSED in rule_body
 
 
 def test_lfs_mask_mode_tooltip_guides_app_generated_masks() -> None:
