@@ -1586,6 +1586,44 @@ def test_external_import_scene_settings_do_not_arm_conversion(tmp_path: Path) ->
     assert step._training_dataset_export_shape(tmp_path / "output") == "projected"
 
 
+def test_external_import_with_metashape_inputs_arms_default_conversion(tmp_path: Path) -> None:
+    _app()
+    (tmp_path / "images").mkdir()
+    _write_test_image(tmp_path / "images" / "frame_0001.jpg")
+    _write_metashape_xml(tmp_path / "metashape.xml", labels=["frame_0001.jpg"])
+    _write_ascii_ply(tmp_path / "metashape.ply", [(1.0, 2.0, 3.0)])
+    _write_output_dataset(tmp_path, output_shape="projected")
+    settings_path = step4_export_settings_path(tmp_path)
+    settings = json.loads(settings_path.read_text(encoding="utf-8"))
+    settings["origin"] = {"kind": "external_import", "import_id": "import_test"}
+    settings["export_method"] = "metashape"
+    settings["target_profile"] = "custom"
+    settings["view_config"] = {"mode": "external_import", "yaw_slots": 0, "pitch_rows": [], "views": []}
+    settings["conversion"] = {"write_images": False, "write_masks": False}
+    settings["metashape_import"] = {"xml": "", "ply": "", "use_ply": False}
+    settings_path.write_text(json.dumps(settings), encoding="utf-8")
+
+    step = CubemapStep(Path.cwd())
+    step.set_scene_dir(str(tmp_path))
+
+    assert step._export_method() == "metashape"
+    assert step.profile_combo.currentData() == "lichtfeld"
+    assert step.output_shape_combo.currentData() == "projected"
+    assert step.view_config.view_mode() == "cube6"
+    assert step.ms_xml_browse.text() == str(tmp_path / "metashape.xml")
+    assert step.ms_ply_browse.text() == str(tmp_path / "metashape.ply")
+    assert step.ms_use_ply_cb.isChecked()
+    assert step.export_images_cb.isChecked()
+    assert step.export_masks_cb.isChecked()
+    assert step.pipeline_stage_intent("sfm") is True
+    assert step.pipeline_stage_intent("conversion") is True
+    assert step.primary_action_enabled() is True
+    sfm_item = next(item for item in step.pipeline_nav_items() if item["stage"] == "sfm")
+    assert sfm_item["intent_symbol"] == "●"
+    assert sfm_item["intent_toggle_enabled"] is False
+    assert sfm_item["status"] == "ready"
+
+
 def test_step4_scene_settings_ignore_pre_v2_payload(tmp_path: Path) -> None:
     _app()
     tmp_path.mkdir(exist_ok=True)

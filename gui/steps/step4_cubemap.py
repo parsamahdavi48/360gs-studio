@@ -942,8 +942,9 @@ class CubemapStep(
 
     def _apply_project_settings(self, scene: Path, settings: dict) -> None:
         route = normalize_sfm_route(str(settings.get("export_method", "")))
+        external_import = self._settings_origin_kind(settings) == "external_import"
         self._set_export_method(route)
-        if self._settings_origin_kind(settings) == "external_import":
+        if external_import:
             self._conversion_intent = False
             self._colmap_sfm_intent = False
             self._spheresfm_sfm_intent = False
@@ -952,6 +953,8 @@ class CubemapStep(
         self._restore_conversion_settings(settings)
         self._restore_route_settings(scene, settings)
         self._restore_training_settings(scene, settings)
+        if external_import:
+            self._arm_external_import_metashape_defaults_if_ready()
 
         self._sync_output_shape_controls()
         self._sync_yaw_per_frame_control()
@@ -964,6 +967,38 @@ class CubemapStep(
         if not isinstance(origin, dict):
             return ""
         return str(origin.get("kind") or "").strip()
+
+    def _arm_external_import_metashape_defaults_if_ready(self) -> None:
+        if not self._is_metashape_method() or not self._external_import_metashape_inputs_ready():
+            return
+
+        self._conversion_intent = True
+        self._colmap_sfm_intent = False
+        self._spheresfm_sfm_intent = False
+        self._spheresfm_conversion_intent = False
+        self.export_images_cb.setChecked(True)
+        self.export_masks_cb.setChecked(True)
+        self.export_colmap_cb.setChecked(False)
+        self._set_combo_data(self.output_shape_combo, _OUTPUT_SHAPE_PROJECTED)
+        self.view_config.apply_settings_snapshot({"mode": "cube6", "yaw_offset": 0.0})
+        self._set_combo_data(self.profile_combo, _PROFILE_LICHTFELD)
+        self._sync_profile_defaults(_PROFILE_LICHTFELD)
+        self._set_metashape_ply_approved(True, auto_candidate=False)
+        self._sync_ply_browse_enabled()
+
+    def _external_import_metashape_inputs_ready(self) -> bool:
+        xml_text = self.ms_xml_browse.text().strip()
+        ply_text = self.ms_ply_browse.text().strip()
+        if not xml_text or not ply_text:
+            return False
+        xml = Path(xml_text)
+        ply = Path(ply_text)
+        if not xml.is_file() or not ply.is_file():
+            return False
+        return (
+            self._metashape_input_output_path_issue(xml) is None
+            and self._metashape_input_output_path_issue(ply) is None
+        )
 
     def _restore_conversion_settings(self, settings: dict) -> None:
         image_size = settings.get("image_size") if isinstance(settings.get("image_size"), dict) else {}
