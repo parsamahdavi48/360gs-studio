@@ -289,6 +289,10 @@ def test_scene_viewer_uses_generated_json_image_rays_for_world_faces(tmp_path: P
     assert np.allclose(directions["pz"], [-diagonal, 0.0, diagonal], atol=1e-6)
     assert np.allclose(directions["top"], [0.0, -1.0, 0.0], atol=1e-6)
     assert np.allclose(directions["bottom"], [0.0, 1.0, 0.0], atol=1e-6)
+    assert window.point_view._fixed_view_basis is not None
+    right, up, forward = window.point_view._fixed_view_basis
+    assert np.linalg.det(np.column_stack([right, up, -forward])) > 0.999
+    assert np.allclose(forward, directions["pz"], atol=1e-6)
     assert "transforms.json normalized Cube6 image rays" in window.case_label.text()
     window.deleteLater()
 

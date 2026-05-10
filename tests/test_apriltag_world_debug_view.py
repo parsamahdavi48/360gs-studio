@@ -332,7 +332,7 @@ def test_world_debug_view_orientation_gizmo_uses_right_handed_view_basis() -> No
 
     points = view._orientation_axis_points(origin, 20.0)
     right, up, forward = view._view_basis()
-    basis = np.column_stack([right, up, forward])
+    basis = np.column_stack([right, up, -forward])
 
     assert np.linalg.det(basis) > 0.999
     assert points["Z"].x() < origin.x()
@@ -351,14 +351,14 @@ def test_world_debug_view_fixed_view_uses_same_projection_path() -> None:
 
     view.set_fixed_view(
         center=np.array([0.0, 0.0, 0.0]),
-        right=np.array([1.0, 0.0, 0.0]),
+        right=np.array([-1.0, 0.0, 0.0]),
         up=np.array([0.0, 1.0, 0.0]),
         forward=np.array([0.0, 0.0, 1.0]),
         pixels_per_unit=20.0,
     )
     projected, depth = view._project(np.array([[1.0, 2.0, 3.0]], dtype=float))
 
-    assert np.allclose(projected[0], [view.width() * 0.5 + 20.0, view.height() * 0.5 - 40.0])
+    assert np.allclose(projected[0], [view.width() * 0.5 - 20.0, view.height() * 0.5 - 40.0])
     assert np.allclose(depth[0], 3.0)
     view.clear_fixed_view()
     assert view._fixed_view_basis is None
@@ -372,7 +372,7 @@ def test_world_debug_view_fixed_perspective_view_uses_pinhole_projection() -> No
 
     view.set_fixed_perspective_view(
         camera_position=np.array([0.0, 0.0, 0.0]),
-        right=np.array([1.0, 0.0, 0.0]),
+        right=np.array([-1.0, 0.0, 0.0]),
         up=np.array([0.0, 1.0, 0.0]),
         forward=np.array([0.0, 0.0, 1.0]),
         fov_deg=90.0,
@@ -380,13 +380,13 @@ def test_world_debug_view_fixed_perspective_view_uses_pinhole_projection() -> No
     projected, depth = view._project(np.array([[1.0, 0.0, 2.0], [0.0, 0.0, -1.0]], dtype=float))
 
     focal = min(view.width(), view.height()) * 0.5
-    assert np.allclose(projected[0], [view.width() * 0.5 + focal * 0.5, view.height() * 0.5])
+    assert np.allclose(projected[0], [view.width() * 0.5 - focal * 0.5, view.height() * 0.5])
     assert np.allclose(depth[0], 2.0)
     assert np.all(np.isnan(projected[1]))
     view.deleteLater()
 
 
-def test_world_debug_view_fixed_perspective_view_rejects_mirrored_basis() -> None:
+def test_world_debug_view_fixed_perspective_view_uses_right_handed_screen_basis() -> None:
     _app()
     view = AprilTagWorldDebugView()
 
@@ -399,7 +399,7 @@ def test_world_debug_view_fixed_perspective_view_rejects_mirrored_basis() -> Non
     )
     assert view._fixed_view_basis is not None
     right, up, forward = view._fixed_view_basis
-    basis = np.column_stack([right, up, forward])
+    basis = np.column_stack([right, up, -forward])
 
     assert np.linalg.det(basis) > 0.999
     assert np.allclose(forward, [1.0, 0.0, 0.0])
@@ -519,7 +519,7 @@ def test_dev_placer_pointcloud_mode_uses_second_world_debug_view() -> None:
     assert window.camera_debug_view._fixed_view_basis is not None
     assert window.camera_debug_view._fixed_projection == "perspective"
     xy, _depth = window.camera_debug_view._project(np.array([[1.0, 0.0, 2.5]], dtype=float))
-    assert xy[0, 0] > window.camera_debug_view.width() * 0.5
+    assert xy[0, 0] < window.camera_debug_view.width() * 0.5
     window.deleteLater()
 
 

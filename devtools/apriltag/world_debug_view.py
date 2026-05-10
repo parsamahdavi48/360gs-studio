@@ -424,11 +424,12 @@ class AprilTagWorldDebugView(QWidget):
             return self._fixed_view_basis
         yaw = np.deg2rad(self._view_yaw_deg)
         pitch = np.deg2rad(self._view_pitch_deg)
-        forward = np.array(
+        back = np.array(
             [np.sin(yaw) * np.cos(pitch), np.sin(pitch), np.cos(yaw) * np.cos(pitch)],
             dtype=np.float64,
         )
-        forward = _normalized(forward, fallback=(0.0, 0.0, 1.0))
+        back = _normalized(back, fallback=(0.0, 0.0, 1.0))
+        forward = -back
         right = np.array([np.cos(yaw), 0.0, -np.sin(yaw)], dtype=np.float64)
         return _right_handed_view_basis(
             right=right,
@@ -793,14 +794,15 @@ def _right_handed_view_basis(
     forward: np.ndarray,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     forward = _normalized(np.asarray(forward, dtype=np.float64), fallback=(0.0, 0.0, 1.0))
-    right = np.asarray(right, dtype=np.float64) - forward * float(np.asarray(right, dtype=np.float64) @ forward)
+    back = -forward
+    right = np.asarray(right, dtype=np.float64) - back * float(np.asarray(right, dtype=np.float64) @ back)
     if float(np.linalg.norm(right)) <= 1e-12:
-        right = np.cross(np.asarray(up, dtype=np.float64), forward)
+        right = np.cross(np.asarray(up, dtype=np.float64), back)
     right = _normalized(right, fallback=(1.0, 0.0, 0.0))
-    up_from_basis = np.cross(forward, right)
+    up_from_basis = np.cross(back, right)
     up_from_basis = _normalized(up_from_basis, fallback=(0.0, 1.0, 0.0))
     if float(up_from_basis @ np.asarray(up, dtype=np.float64)) < 0.0:
         right = -right
-        up_from_basis = np.cross(forward, right)
+        up_from_basis = np.cross(back, right)
         up_from_basis = _normalized(up_from_basis, fallback=(0.0, 1.0, 0.0))
     return right, up_from_basis, forward
