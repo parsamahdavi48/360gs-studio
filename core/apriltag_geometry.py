@@ -3,10 +3,15 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import numpy as np
+
+if TYPE_CHECKING:
+    from core.apriltag_cubemap import CubemapViewMetadata
 
 
 @dataclass(frozen=True)
@@ -68,6 +73,8 @@ def load_pinhole_frames(
     image_root: Path | None = None,
     *,
     normalize_cubemap: bool = True,
+    cubemap_view_params: CubemapViewMetadata | Mapping[str, tuple[float, float]] | None = None,
+    discover_cubemap_views: bool = True,
 ) -> tuple[PinholeFrame, ...]:
     """Load PINHOLE or SIMPLE_PINHOLE frames from a transforms.json file."""
     data = json.loads(transforms_json.read_text(encoding="utf-8"))
@@ -100,9 +107,12 @@ def load_pinhole_frames(
         )
     loaded = tuple(frames)
     if normalize_cubemap:
-        from core.apriltag_cubemap import normalize_standard_cubemap_frames
+        from core.apriltag_cubemap import discover_cubemap_view_metadata, normalize_standard_cubemap_frames
 
-        loaded = normalize_standard_cubemap_frames(loaded)
+        view_params = cubemap_view_params
+        if view_params is None and discover_cubemap_views:
+            view_params = discover_cubemap_view_metadata(transforms_json)
+        loaded = normalize_standard_cubemap_frames(loaded, view_params=view_params)
     return loaded
 
 

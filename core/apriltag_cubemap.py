@@ -2,12 +2,16 @@
 
 from __future__ import annotations
 
+import json
+from collections.abc import Mapping
 from dataclasses import dataclass, replace
 from pathlib import Path
 
 import numpy as np
 
 from core.apriltag_geometry import PinholeFrame
+
+CubemapViewParams = Mapping[str, tuple[float, float]]
 
 _FACE_NAMES = ("px", "nx", "pz", "nz", "top", "bottom", "py", "ny")
 _REFERENCE_FACE_ORDER = ("pz", "px", "nz", "nx", "top", "bottom", "py", "ny")
@@ -38,7 +42,8 @@ _GUI_CUBE6_VIEW_PARAMS: dict[str, tuple[float, float]] = {
 @dataclass(frozen=True)
 class _GeneratedCubemapLayout:
     name: str
-    view_params: dict[str, tuple[float, float]]
+    image_view_params: dict[str, tuple[float, float]]
+    export_view_params: dict[str, tuple[float, float]]
     face_order: tuple[str, ...]
 
 
@@ -51,9 +56,15 @@ class _GeneratedCubemapMatch:
     max_error: float
 
 
+@dataclass(frozen=True)
+class CubemapViewMetadata:
+    view_params: dict[str, tuple[float, float]]
+    yaw_offset_per_frame: float = 0.0
+
+
 _GENERATED_CUBEMAP_LAYOUTS = (
-    _GeneratedCubemapLayout("standard", _FACE_VIEW_PARAMS, _REFERENCE_FACE_ORDER),
-    _GeneratedCubemapLayout("gui_cube6", _GUI_CUBE6_VIEW_PARAMS, ("bottom", "px", "nz", "nx", "pz", "top")),
+    _GeneratedCubemapLayout("standard", _FACE_VIEW_PARAMS, _FACE_VIEW_PARAMS, _REFERENCE_FACE_ORDER),
+    _GeneratedCubemapLayout("gui_cube6", _GUI_CUBE6_VIEW_PARAMS, _GUI_CUBE6_VIEW_PARAMS, ("bottom", "px", "nz", "nx", "pz", "top")),
 )
 
 
@@ -75,7 +86,11 @@ def cubemap_face_rotation(face: str) -> np.ndarray | None:
     return _rotation_matrix(*params)
 
 
-def infer_generated_cubemap_face_rotations(face_frames: dict[str, PinholeFrame]) -> dict[str, np.ndarray] | None:
+def infer_generated_cubemap_face_rotations(
+    face_frames: dict[str, PinholeFrame],
+    *,
+    view_params: CubemapViewParams | None = None,
+) -> dict[str, np.ndarray] | None:
     """Infer image-space face rotations from converter-generated cube frames.
 
     ``cubemap_transforms_json.py`` writes cubemap frame transforms with the
@@ -84,11 +99,23 @@ def infer_generated_cubemap_face_rotations(face_frames: dict[str, PinholeFrame])
     layout lets AprilTag tools recover image-space pinhole poses without
     treating the face suffix as a hard-coded world direction.
     """
-    match = _match_generated_cubemap_layout(face_frames)
-    return None if match is None else {face: rotation.copy() for face, rotation in match.image_rotations.items()}
+    match = _match_generated_cubemap_layout(face_frames, view_params=view_params)
+    if match is None:
+        return None
+    if match.mode == "image":
+        source_order = tuple(face for face in face_frames)
+        if _layout_order_error(match.layout, source_order) != 0:
+            return None
+    elif match.mode != "transform":
+        return None
+    return {face: rotation.copy() for face, rotation in match.image_rotations.items()}
 
 
-def normalize_standard_cubemap_frames(frames: tuple[PinholeFrame, ...]) -> tuple[PinholeFrame, ...]:
+def normalize_standard_cubemap_frames(
+    frames: tuple[PinholeFrame, ...],
+    *,
+    view_params: CubemapViewMetadata | CubemapViewParams | None = None,
+) -> tuple[PinholeFrame, ...]:
     """Return frames whose rotations match generated cubemap face images.
 
     The cubemap converter stores face rotations in the downstream 3DGS dataset
@@ -104,9 +131,13 @@ def normalize_standard_cubemap_frames(frames: tuple[PinholeFrame, ...]) -> tuple
         prefix, face = parsed
         grouped.setdefault(prefix, {})[face] = frame
 
+    metadata = _coerce_view_metadata(view_params)
     replacements: dict[str, PinholeFrame] = {}
-    for face_frames in grouped.values():
-        generated = _match_generated_cubemap_layout(face_frames)
+    for group_index, face_frames in enumerate(grouped.values()):
+        generated = _match_generated_cubemap_layout(
+            face_frames,
+            view_params=_view_params_for_group(metadata, group_index),
+        )
         if generated is not None:
             if generated.mode == "transform":
                 for face, frame in face_frames.items():
@@ -193,21 +224,96 @@ def _export_rotation_matrix(yaw_deg: float, pitch_deg: float) -> np.ndarray:
 
 def _layout_image_rotations(layout: _GeneratedCubemapLayout, faces: set[str]) -> dict[str, np.ndarray]:
     return {
-        face: _rotation_matrix(*layout.view_params[face])
+        face: _rotation_matrix(*layout.image_view_params[face])
         for face in _REFERENCE_FACE_ORDER
-        if face in faces and face in layout.view_params
+        if face in faces and face in layout.image_view_params
     }
 
 
 def _layout_export_rotations(layout: _GeneratedCubemapLayout, faces: set[str]) -> dict[str, np.ndarray]:
     return {
-        face: _export_rotation_matrix(*layout.view_params[face])
+        face: _export_rotation_matrix(*layout.export_view_params[face])
         for face in _REFERENCE_FACE_ORDER
-        if face in faces and face in layout.view_params
+        if face in faces and face in layout.export_view_params
     }
 
 
-def _match_generated_cubemap_layout(face_frames: dict[str, PinholeFrame]) -> _GeneratedCubemapMatch | None:
+def _coerce_view_metadata(
+    view_params: CubemapViewMetadata | CubemapViewParams | None,
+) -> CubemapViewMetadata | None:
+    if view_params is None:
+        return None
+    if isinstance(view_params, CubemapViewMetadata):
+        return view_params
+    params = _valid_view_params(view_params)
+    return None if params is None else CubemapViewMetadata(params)
+
+
+def _valid_view_params(view_params: CubemapViewParams | None) -> dict[str, tuple[float, float]] | None:
+    if not view_params:
+        return None
+    params: dict[str, tuple[float, float]] = {}
+    for face, raw in view_params.items():
+        if face not in _FACE_NAMES:
+            continue
+        if not isinstance(raw, tuple | list) or len(raw) != 2:
+            continue
+        yaw, pitch = float(raw[0]), float(raw[1])
+        if not np.isfinite(yaw) or not np.isfinite(pitch):
+            continue
+        params[face] = (yaw, pitch)
+    if len(_SIDE_FACES.intersection(params)) < 4:
+        return None
+    return params
+
+
+def _frame_yaw_offset(frame_index: int, step_deg: float) -> float:
+    if step_deg == 0.0:
+        return 0.0
+    return (float(frame_index) * float(step_deg)) % 360.0
+
+
+def _view_params_for_group(
+    metadata: CubemapViewMetadata | None,
+    group_index: int,
+) -> dict[str, tuple[float, float]] | None:
+    if metadata is None:
+        return None
+    offset = _frame_yaw_offset(group_index, metadata.yaw_offset_per_frame)
+    if offset == 0.0:
+        return metadata.view_params
+    return {face: (yaw + offset, pitch) for face, (yaw, pitch) in metadata.view_params.items()}
+
+
+def cubemap_view_params_for_group(
+    metadata: CubemapViewMetadata | CubemapViewParams | None,
+    group_index: int,
+) -> dict[str, tuple[float, float]] | None:
+    """Return generated face yaw/pitch values for one cubemap camera group."""
+    return _view_params_for_group(_coerce_view_metadata(metadata), group_index)
+
+
+def _metadata_layout(view_params: CubemapViewParams | None) -> _GeneratedCubemapLayout | None:
+    params = _valid_view_params(view_params)
+    if params is None:
+        return None
+    return _GeneratedCubemapLayout("metadata", params, params, tuple(params))
+
+
+def _candidate_generated_layouts(
+    view_params: CubemapViewParams | None,
+) -> tuple[_GeneratedCubemapLayout, ...]:
+    metadata = _metadata_layout(view_params)
+    if metadata is None:
+        return _GENERATED_CUBEMAP_LAYOUTS
+    return (metadata, *_GENERATED_CUBEMAP_LAYOUTS)
+
+
+def _match_generated_cubemap_layout(
+    face_frames: dict[str, PinholeFrame],
+    *,
+    view_params: CubemapViewParams | None = None,
+) -> _GeneratedCubemapMatch | None:
     if not _same_camera_center(face_frames, _reference_frame(face_frames)):
         return None
     faces = set(face_frames)
@@ -217,7 +323,7 @@ def _match_generated_cubemap_layout(face_frames: dict[str, PinholeFrame]) -> _Ge
         return None
 
     candidates: list[_GeneratedCubemapMatch] = []
-    for layout in _GENERATED_CUBEMAP_LAYOUTS:
+    for layout in _candidate_generated_layouts(view_params):
         image_rotations = _layout_image_rotations(layout, faces)
         export_rotations = _layout_export_rotations(layout, faces)
         if len(image_rotations) < 4 or set(image_rotations) != set(export_rotations):
@@ -249,12 +355,113 @@ def _match_generated_cubemap_layout(face_frames: dict[str, PinholeFrame]) -> _Ge
     source_order = tuple(face for face in face_frames if face in faces)
     candidates.sort(
         key=lambda item: (
+            0 if item.layout.name == "metadata" else 1,
             item.max_error,
             _layout_order_error(item.layout, source_order),
             0 if item.mode == "image" else 1,
         )
     )
     return candidates[0]
+
+
+def _views_from_payload(data: object) -> dict[str, tuple[float, float]] | None:
+    if not isinstance(data, dict):
+        return None
+    raw_views = data.get("views")
+    if raw_views is None and isinstance(data.get("views_config_snapshot"), dict):
+        raw_views = data["views_config_snapshot"].get("views")
+    if raw_views is None and isinstance(data.get("view_config"), dict):
+        raw_views = data["view_config"].get("views")
+    if not isinstance(raw_views, list):
+        return None
+    params: dict[str, tuple[float, float]] = {}
+    for raw in raw_views:
+        if not isinstance(raw, dict):
+            continue
+        name = str(raw.get("name") or "").strip()
+        if name not in _FACE_NAMES:
+            continue
+        if raw.get("enabled", True) is False:
+            continue
+        try:
+            yaw = float(raw["yaw"])
+            pitch = float(raw["pitch"])
+        except (KeyError, TypeError, ValueError):
+            continue
+        if np.isfinite(yaw) and np.isfinite(pitch):
+            params[name] = (yaw, pitch)
+    return params or None
+
+
+def _yaw_offset_per_frame_from_payload(data: object) -> float:
+    if not isinstance(data, dict):
+        return 0.0
+    raw = data.get("yaw_offset_per_frame")
+    if raw is None and isinstance(data.get("conversion"), dict):
+        raw = data["conversion"].get("yaw_offset_per_frame")
+    try:
+        value = float(raw)
+    except (TypeError, ValueError):
+        return 0.0
+    return value if np.isfinite(value) else 0.0
+
+
+def load_cubemap_view_metadata(path: Path) -> CubemapViewMetadata | None:
+    """Load face yaw/pitch metadata from Step 4 settings or views_config JSON."""
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return None
+    params = _views_from_payload(data)
+    if not params:
+        return None
+    return CubemapViewMetadata(params, yaw_offset_per_frame=_yaw_offset_per_frame_from_payload(data))
+
+
+def load_cubemap_view_params(path: Path) -> dict[str, tuple[float, float]] | None:
+    """Load base face yaw/pitch metadata without per-frame yaw offsets."""
+    metadata = load_cubemap_view_metadata(path)
+    return None if metadata is None else metadata.view_params
+
+
+def discover_cubemap_view_metadata(transforms_json: Path) -> CubemapViewMetadata | None:
+    """Find the view metadata that generated a cubemap transforms.json, if available."""
+    transforms_json = Path(transforms_json)
+    roots = [transforms_json.parent]
+    if transforms_json.parent.name.lower() in {"output", "metashape_import"}:
+        roots.append(transforms_json.parent.parent)
+    roots.append(transforms_json.parent.parent)
+
+    candidates: list[Path] = []
+    for root in roots:
+        candidates.extend(
+            [
+                root / "view_export_settings.json",
+                root / "_stechdrive" / "step4" / "export_settings.json",
+                root / "_stechdrive" / "step4" / "views_config.json",
+            ]
+        )
+    seen: set[Path] = set()
+    for candidate in candidates:
+        try:
+            resolved = candidate.resolve()
+        except OSError:
+            resolved = candidate
+        if resolved in seen:
+            continue
+        seen.add(resolved)
+        if not candidate.is_file():
+            continue
+        metadata = load_cubemap_view_metadata(candidate)
+        if metadata:
+            return metadata
+    return None
+
+
+def discover_cubemap_view_params(transforms_json: Path) -> dict[str, tuple[float, float]] | None:
+    """Find base face yaw/pitch metadata without per-frame yaw offsets."""
+    metadata = discover_cubemap_view_metadata(transforms_json)
+    return None if metadata is None else metadata.view_params
 
 
 def _layout_order_error(layout: _GeneratedCubemapLayout, source_order: tuple[str, ...]) -> int:

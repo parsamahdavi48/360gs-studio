@@ -8,7 +8,7 @@ import numpy as np
 import pytest
 from PIL import Image
 
-from core.apriltag_geometry import PinholeFrame
+from core.apriltag_geometry import PinholeFrame, load_pinhole_frames
 from core.cubemap_transforms_json import build_remap
 from devtools.apriltag.case import (
     AprilTagPlacement,
@@ -31,17 +31,17 @@ from devtools.apriltag.cubemap_preview import (
     load_cubemap_frame_groups,
     load_metashape_camera_labels,
     order_groups_by_labels,
+    preview_frustum_rays,
     project_sfm_points_to_preview,
     project_sfm_points_to_preview_points,
-    preview_frustum_rays,
     render_cubemap_axis_equirect,
-    render_cubemap_equirect,
     render_cubemap_direct_preview,
+    render_cubemap_equirect,
     split_cubemap_face,
-    virtual_camera_rotation,
-    visible_cubemap_preview_face_indices,
     view_pixel_to_world_ray,
     view_pixel_to_world_ray_and_up,
+    virtual_camera_rotation,
+    visible_cubemap_preview_face_indices,
 )
 from devtools.apriltag.printable import create_printable_target
 from gui.common.perspective_preview import PerspectiveParams, equirect_to_perspective
@@ -1078,6 +1078,108 @@ def test_gui_cube6_generated_transforms_use_gui_face_layout(tmp_path: Path) -> N
     assert np.allclose(ray, np.array([-1.0, 0.0, 0.0]))
     assert projected is not None
     assert np.allclose(projected[0], np.array([49.5, 49.5]))
+
+
+def test_generated_cube6_normalization_uses_view_metadata(tmp_path: Path) -> None:
+    view_params = {
+        "bottom": (-45.0, -90.0),
+        "px": (45.0, 0.0),
+        "nz": (135.0, 0.0),
+        "nx": (-135.0, 0.0),
+        "pz": (-45.0, 0.0),
+        "top": (-45.0, 90.0),
+    }
+    image_dir = tmp_path / "images"
+    image_dir.mkdir()
+    frames_json = []
+    for face, (yaw, pitch) in view_params.items():
+        (image_dir / f"frame_0001_{face}.jpg").write_bytes(b"fake image bytes")
+        transform = np.eye(4)
+        transform[:3, :3] = _export_rotation(yaw, pitch).T
+        frames_json.append({"file_path": f"images/frame_0001_{face}.jpg", "transform_matrix": transform.tolist()})
+    transforms = tmp_path / "transforms.json"
+    transforms.write_text(
+        json.dumps(
+            {
+                "camera_model": "SIMPLE_PINHOLE",
+                "w": 100,
+                "h": 100,
+                "fl_x": 50.0,
+                "fl_y": 50.0,
+                "cx": 49.5,
+                "cy": 49.5,
+                "frames": frames_json,
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    frames = {
+        Path(frame.file_path).stem.rsplit("_", 1)[-1]: frame
+        for frame in load_pinhole_frames(transforms, cubemap_view_params=view_params)
+    }
+
+    for face, (yaw, pitch) in view_params.items():
+        expected = np.array([0.0, 0.0, 1.0], dtype=np.float64) @ _rotation(yaw, pitch).T
+        actual = np.array([0.0, 0.0, 1.0], dtype=np.float64) @ frames[face].camera_to_world_rotation.T
+        assert np.allclose(actual, expected, atol=1e-6)
+
+
+def test_generated_cube6_normalization_discovers_step4_view_metadata(tmp_path: Path) -> None:
+    view_params = {
+        "bottom": (-45.0, -90.0),
+        "px": (45.0, 0.0),
+        "nz": (135.0, 0.0),
+        "nx": (-135.0, 0.0),
+        "pz": (-45.0, 0.0),
+        "top": (-45.0, 90.0),
+    }
+    output = tmp_path / "output"
+    image_dir = output / "images"
+    image_dir.mkdir(parents=True)
+    frames_json = []
+    for frame_index, prefix in enumerate(("frame_0001", "frame_0002")):
+        yaw_offset = frame_index * 30.0
+        for face, (yaw, pitch) in view_params.items():
+            (image_dir / f"{prefix}_{face}.jpg").write_bytes(b"fake image bytes")
+            transform = np.eye(4)
+            transform[:3, :3] = _export_rotation(yaw + yaw_offset, pitch).T
+            frames_json.append({"file_path": f"images/{prefix}_{face}.jpg", "transform_matrix": transform.tolist()})
+    transforms = output / "transforms.json"
+    transforms.write_text(
+        json.dumps(
+            {
+                "camera_model": "SIMPLE_PINHOLE",
+                "w": 100,
+                "h": 100,
+                "fl_x": 50.0,
+                "fl_y": 50.0,
+                "cx": 49.5,
+                "cy": 49.5,
+                "frames": frames_json,
+            }
+        ),
+        encoding="utf-8",
+    )
+    settings = tmp_path / "_stechdrive" / "step4" / "export_settings.json"
+    settings.parent.mkdir(parents=True)
+    settings.write_text(
+        json.dumps(
+            {
+                "views_config_snapshot": {
+                    "views": [{"name": k, "yaw": v[0], "pitch": v[1]} for k, v in view_params.items()]
+                },
+                "conversion": {"yaw_offset_per_frame": 30.0},
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    frames = {Path(frame.file_path).stem: frame for frame in load_pinhole_frames(transforms)}
+
+    actual = np.array([0.0, 0.0, 1.0], dtype=np.float64) @ frames["frame_0002_px"].camera_to_world_rotation.T
+    expected = np.array([0.0, 0.0, 1.0], dtype=np.float64) @ _rotation(75.0, 0.0).T
+    assert np.allclose(actual, expected, atol=1e-6)
 
 
 def test_standard_cube6_click_ray_and_up_use_clicked_face(tmp_path: Path) -> None:

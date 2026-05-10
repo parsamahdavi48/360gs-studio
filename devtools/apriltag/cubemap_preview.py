@@ -2,14 +2,15 @@
 
 from __future__ import annotations
 
+import xml.etree.ElementTree as ET
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
-import xml.etree.ElementTree as ET
 
 import cv2
 import numpy as np
 
-from core.apriltag_cubemap import infer_generated_cubemap_face_rotations
+from core.apriltag_cubemap import CubemapViewMetadata, infer_generated_cubemap_face_rotations
 from core.apriltag_geometry import PinholeFrame, load_pinhole_frames, points_intersect_image, project_sfm_points
 from core.image_io import imread_unicode
 
@@ -47,6 +48,7 @@ _STANDARD_FACE_LOOK_PARAMS: dict[str, tuple[float, float]] = {
 class CubemapFrameGroup:
     name: str
     frames_by_face: dict[str, PinholeFrame]
+    group_index: int = 0
 
     @property
     def frames(self) -> tuple[PinholeFrame, ...]:
@@ -91,16 +93,21 @@ def split_cubemap_face(file_path: str) -> tuple[str, str] | None:
     return None
 
 
-def load_cubemap_frame_groups(transforms_json: Path) -> tuple[CubemapFrameGroup, ...]:
+def load_cubemap_frame_groups(
+    transforms_json: Path,
+    *,
+    cubemap_view_params: CubemapViewMetadata | Mapping[str, tuple[float, float]] | None = None,
+) -> tuple[CubemapFrameGroup, ...]:
     groups: dict[str, dict[str, PinholeFrame]] = {}
-    for frame in load_pinhole_frames(transforms_json):
+    for frame in load_pinhole_frames(transforms_json, cubemap_view_params=cubemap_view_params):
         parsed = split_cubemap_face(frame.file_path)
         if parsed is None:
             continue
         prefix, face = parsed
         groups.setdefault(prefix, {})[face] = frame
+    group_indices = {name: index for index, name in enumerate(groups)}
     return tuple(
-        CubemapFrameGroup(name=name, frames_by_face=frames)
+        CubemapFrameGroup(name=name, frames_by_face=frames, group_index=group_indices[name])
         for name, frames in sorted(groups.items())
         if len(frames) >= 4
     )
