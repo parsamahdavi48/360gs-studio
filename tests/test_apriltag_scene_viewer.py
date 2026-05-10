@@ -6,6 +6,7 @@ from pathlib import Path
 import numpy as np
 from PySide6.QtWidgets import QApplication
 
+from core.apriltag_cubemap import CubemapViewMetadata
 from core.apriltag_geometry import PinholeFrame
 from core.image_io import imwrite_unicode
 from devtools.apriltag.case import AprilTagDevCase, save_case
@@ -13,6 +14,7 @@ from devtools.apriltag.cubemap_preview import CubemapFrameGroup
 from devtools.apriltag.scene_viewer import (
     AprilTagSceneViewerWindow,
     camera_pose_from_perspective_params,
+    transform_group_for_world_display,
 )
 from gui.common.perspective_preview import PerspectiveParams
 
@@ -295,6 +297,54 @@ def test_scene_viewer_uses_generated_json_image_rays_for_world_faces(tmp_path: P
     assert np.allclose(forward, directions["pz"], atol=1e-6)
     assert "transforms.json normalized Cube6 image rays" in window.case_label.text()
     window.deleteLater()
+
+
+def test_lichtfeld_image_ray_correction_preserves_cube6_cut_yaw_and_vertical_names(tmp_path: Path) -> None:
+    views = {
+        "bottom": (-45.0, -90.0),
+        "px": (45.0, 0.0),
+        "nz": (135.0, 0.0),
+        "nx": (-135.0, 0.0),
+        "pz": (-45.0, 0.0),
+        "top": (-45.0, 90.0),
+    }
+    opengl_base = np.diag([1.0, -1.0, -1.0])
+    frames: dict[str, PinholeFrame] = {}
+    for face, (yaw, pitch) in views.items():
+        transform = np.eye(4, dtype=np.float64)
+        transform[:3, :3] = opengl_base @ _rotation(yaw, pitch)
+        frames[face] = PinholeFrame(
+            frame_id=face,
+            file_path=f"images/frame_0001_{face}.jpg",
+            image_path=tmp_path / f"frame_0001_{face}.jpg",
+            width=64,
+            height=64,
+            fl_x=32.0,
+            fl_y=32.0,
+            cx=31.5,
+            cy=31.5,
+            transform_matrix=transform,
+        )
+    group = CubemapFrameGroup("frame_0001", frames)
+    corrected = transform_group_for_world_display(
+        group,
+        None,
+        image_ray_correction=np.diag([1.0, 1.0, -1.0, 1.0]),
+        cubemap_view_params=CubemapViewMetadata(views),
+    )
+
+    image_local = np.diag([1.0, -1.0, 1.0])
+    for face, (yaw, pitch) in views.items():
+        actual = np.array([0.0, 0.0, 1.0]) @ corrected.frames_by_face[face].camera_to_world_rotation.T
+        expected = np.array([0.0, 0.0, 1.0]) @ (image_local @ _rotation(yaw, pitch)).T
+        assert np.allclose(actual, expected, atol=1e-6)
+
+    original_top = np.array([0.0, 0.0, 1.0]) @ frames["top"].camera_to_world_rotation.T
+    original_bottom = np.array([0.0, 0.0, 1.0]) @ frames["bottom"].camera_to_world_rotation.T
+    corrected_top = np.array([0.0, 0.0, 1.0]) @ corrected.frames_by_face["top"].camera_to_world_rotation.T
+    corrected_bottom = np.array([0.0, 0.0, 1.0]) @ corrected.frames_by_face["bottom"].camera_to_world_rotation.T
+    assert np.allclose(corrected_top, original_top, atol=1e-6)
+    assert np.allclose(corrected_bottom, original_bottom, atol=1e-6)
 
 
 def test_scene_viewer_loads_case_and_selects_camera(tmp_path: Path) -> None:

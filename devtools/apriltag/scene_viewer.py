@@ -33,6 +33,7 @@ from devtools.apriltag.coordinates import (
     DEFAULT_COORDINATE_PROFILE,
     coordinate_profile_label,
     coordinate_profile_note,
+    image_ray_matrix,
     normalize_coordinate_profile,
     pointcloud_display_matrix,
     world_display_matrix,
@@ -40,6 +41,7 @@ from devtools.apriltag.coordinates import (
 from devtools.apriltag.cubemap_preview import (
     CubemapFrameGroup,
     axis_face_view_params,
+    cubemap_image_face_rotations,
     load_cubemap_frame_groups,
     load_metashape_camera_labels,
     order_groups_by_labels,
@@ -72,27 +74,71 @@ def _transform_points(points: np.ndarray, matrix: np.ndarray | None) -> np.ndarr
     return values @ transform[:3, :3].T + transform[:3, 3]
 
 
-def _transform_frame_for_world_display(frame: PinholeFrame, matrix: np.ndarray | None) -> PinholeFrame:
+def _transform_frame_for_world_display(
+    frame: PinholeFrame,
+    matrix: np.ndarray | None,
+    *,
+    local_correction: np.ndarray | None = None,
+) -> PinholeFrame:
     if matrix is None:
-        return frame
-    transform = np.asarray(matrix, dtype=np.float64)
+        transform = np.eye(4, dtype=np.float64)
+    else:
+        transform = np.asarray(matrix, dtype=np.float64)
     output = np.array(frame.transform_matrix, dtype=np.float64, copy=True)
     output[:3, :3] = transform[:3, :3] @ frame.camera_to_world_rotation
+    if local_correction is not None:
+        output[:3, :3] = output[:3, :3] @ local_correction
     output[:3, 3] = _transform_points(frame.camera_position_sfm.reshape(1, 3), matrix)[0]
     return replace(frame, transform_matrix=output)
 
 
-def transform_group_for_world_display(group: CubemapFrameGroup, matrix: np.ndarray | None) -> CubemapFrameGroup:
-    if matrix is None:
+def transform_group_for_world_display(
+    group: CubemapFrameGroup,
+    matrix: np.ndarray | None,
+    *,
+    image_ray_correction: np.ndarray | None = None,
+    cubemap_view_params: CubemapViewMetadata | None = None,
+) -> CubemapFrameGroup:
+    face_corrections = _face_local_image_ray_corrections(
+        group,
+        image_ray_correction,
+        cubemap_view_params=cubemap_view_params,
+    )
+    if matrix is None and not face_corrections:
         return group
     return CubemapFrameGroup(
         name=group.name,
         frames_by_face={
-            face: _transform_frame_for_world_display(frame, matrix)
+            face: _transform_frame_for_world_display(
+                frame,
+                matrix,
+                local_correction=face_corrections.get(face),
+            )
             for face, frame in group.frames_by_face.items()
         },
         group_index=group.group_index,
     )
+
+
+def _face_local_image_ray_corrections(
+    group: CubemapFrameGroup,
+    image_ray_correction: np.ndarray | None,
+    *,
+    cubemap_view_params: CubemapViewMetadata | None = None,
+) -> dict[str, np.ndarray]:
+    if image_ray_correction is None:
+        return {}
+    correction = np.asarray(image_ray_correction, dtype=np.float64)
+    if correction.shape != (4, 4):
+        return {}
+    rotations = cubemap_image_face_rotations(group, cubemap_view_params=cubemap_view_params)
+    if rotations is None:
+        return {}
+    local = correction[:3, :3]
+    return {
+        face: rotation.T @ local @ rotation
+        for face, rotation in rotations.items()
+    }
 
 
 def compose_display_matrices(first: np.ndarray | None, second: np.ndarray | None) -> np.ndarray | None:
@@ -371,11 +417,17 @@ class AprilTagSceneViewerWindow(QWidget):
             labels = load_metashape_camera_labels(self.case.source_metashape_xml) if self.case.source_metashape_xml else ()
             self._raw_groups = order_groups_by_labels(groups, labels)
             self._update_world_matrix()
+            image_correction = image_ray_matrix(self.case.coordinate_profile)
             self._world_groups = tuple(
-                transform_group_for_world_display(group, self._world_matrix)
+                transform_group_for_world_display(
+                    group,
+                    self._world_matrix,
+                    image_ray_correction=image_correction,
+                    cubemap_view_params=metadata,
+                )
                 for group in self._raw_groups
             )
-            self._image_ray_source = "transforms.json normalized Cube6 image rays"
+            self._image_ray_source = "transforms.json normalized Cube6 image rays + profile image-ray correction"
             self._load_pointcloud()
         except Exception as e:
             QMessageBox.critical(self, "シーン読み込みエラー", str(e))

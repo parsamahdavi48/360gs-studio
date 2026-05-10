@@ -10,7 +10,11 @@ from pathlib import Path
 import cv2
 import numpy as np
 
-from core.apriltag_cubemap import CubemapViewMetadata, infer_generated_cubemap_face_rotations
+from core.apriltag_cubemap import (
+    CubemapViewMetadata,
+    cubemap_view_params_for_group,
+    infer_generated_cubemap_face_rotations,
+)
 from core.apriltag_geometry import PinholeFrame, load_pinhole_frames, points_intersect_image, project_sfm_points
 from core.image_io import imread_unicode
 
@@ -194,6 +198,27 @@ def _standard_cube6_face_rotations(group: CubemapFrameGroup) -> dict[str, np.nda
         return None
     derived = _transform_relative_face_rotations(group, fixed)
     return derived if derived is not None else fixed
+
+
+def cubemap_image_face_rotations(
+    group: CubemapFrameGroup,
+    *,
+    cubemap_view_params: CubemapViewMetadata | Mapping[str, tuple[float, float]] | None = None,
+) -> dict[str, np.ndarray] | None:
+    """Return generated face-local image rotations for a Cube6 group."""
+    params = cubemap_view_params_for_group(cubemap_view_params, group.group_index)
+    if params is not None:
+        rotations = {
+            face: _rotation_matrix(yaw, pitch)
+            for face, (yaw, pitch) in params.items()
+            if face in group.frames_by_face
+        }
+        if rotations:
+            return rotations
+    rotations = _standard_cube6_face_rotations(group)
+    if rotations is None:
+        return None
+    return {face: rotation.copy() for face, rotation in rotations.items()}
 
 
 def _transform_relative_face_rotations(

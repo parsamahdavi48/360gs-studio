@@ -36,6 +36,19 @@ LICHTFELD_CAMERA_POINTCLOUD_ALIGNMENT = np.array(
     dtype=np.float64,
 )
 LICHTFELD_PRE_FINAL_POINTCLOUD_ALIGNMENT = LICHTFELD_CAMERA_POINTCLOUD_ALIGNMENT @ LICHTFELD_FINAL_ORIENTATION
+# metashape_360_lfs.py flips Y/Z columns when it builds the LichtFeld
+# camera poses. Cube6 image pixels are cut from equirectangular image rays, so
+# the debug viewer must undo only the extra local Z flip after applying each
+# face yaw/pitch, including per-frame yaw offsets.
+LICHTFELD_CUBE6_IMAGE_RAY_CORRECTION = np.array(
+    [
+        [1.0, 0.0, 0.0, 0.0],
+        [0.0, 1.0, 0.0, 0.0],
+        [0.0, 0.0, -1.0, 0.0],
+        [0.0, 0.0, 0.0, 1.0],
+    ],
+    dtype=np.float64,
+)
 
 COORDINATE_PROFILE_LICHTFELD_CUBE6 = "lichtfeld_cube6"
 COORDINATE_PROFILE_LICHTFELD_CUBE6_PRE_FINAL_PLY = "lichtfeld_cube6_pre_final_ply"
@@ -51,6 +64,7 @@ COORDINATE_PROFILES: tuple[CoordinateProfile, ...] = (
         pointcloud_note="PLYをJSONカメラ座標へ重ねたうえで、3Dワールド表示全体をMetashape軸向きに戻します。",
         pointcloud_display_matrix=LICHTFELD_CAMERA_POINTCLOUD_ALIGNMENT,
         world_display_matrix=LICHTFELD_CAMERA_POINTCLOUD_ALIGNMENT,
+        image_ray_matrix=LICHTFELD_CUBE6_IMAGE_RAY_CORRECTION,
     ),
     CoordinateProfile(
         id=COORDINATE_PROFILE_LICHTFELD_CUBE6_PRE_FINAL_PLY,
@@ -58,6 +72,7 @@ COORDINATE_PROFILES: tuple[CoordinateProfile, ...] = (
         pointcloud_note="補正前PLYをJSONカメラ座標へ重ねたうえで、3Dワールド表示全体をMetashape軸向きに戻します。",
         pointcloud_display_matrix=LICHTFELD_PRE_FINAL_POINTCLOUD_ALIGNMENT,
         world_display_matrix=LICHTFELD_CAMERA_POINTCLOUD_ALIGNMENT,
+        image_ray_matrix=LICHTFELD_CUBE6_IMAGE_RAY_CORRECTION,
     ),
     CoordinateProfile(
         id=COORDINATE_PROFILE_POSTSHOT_CUBE6,
