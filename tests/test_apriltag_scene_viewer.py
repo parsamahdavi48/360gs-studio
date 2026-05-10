@@ -4,13 +4,14 @@ import json
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
+import cv2
 import numpy as np
 import pytest
 from PySide6.QtWidgets import QApplication
 
 from core.apriltag_cubemap import CubemapViewMetadata
 from core.apriltag_geometry import PinholeFrame
-from core.image_io import imwrite_unicode
+from core.image_io import imread_unicode, imwrite_unicode
 from devtools.apriltag.case import AprilTagDevCase, load_case, save_case
 from devtools.apriltag.cubemap_preview import (
     CubemapFrameGroup,
@@ -23,9 +24,11 @@ from devtools.apriltag.scene_viewer import (
     case_cubemap_view_metadata,
     closest_image_face_for_world_face,
     face_forward_ray,
+    image_ray_display_matrix_for_profile,
     opposite_image_face_for_world_face,
     transform_group_for_world_display,
 )
+from devtools.apriltag.coordinates import world_display_matrix
 from gui.common.perspective_preview import PerspectiveParams, equirect_to_perspective
 
 
@@ -436,6 +439,14 @@ def test_world_display_pz_image_preview_is_not_mirrored_by_image_ray_correction(
     assert direct_error * 4.0 < mirrored_error
 
 
+def test_lichtfeld_image_rays_are_not_world_display_transformed_twice() -> None:
+    matrix = np.diag([-1.0, 1.0, -1.0, 1.0])
+
+    assert image_ray_display_matrix_for_profile("lichtfeld_cube6", matrix) is None
+    assert image_ray_display_matrix_for_profile("lichtfeld_cube6_pre_final_ply", matrix) is None
+    assert np.allclose(image_ray_display_matrix_for_profile("custom", matrix), matrix)
+
+
 def test_current_case_reports_world_to_image_ray_mapping() -> None:
     case_dir = Path("_compare/apriltag_test/cases/current")
     if not (case_dir / "case.json").is_file():
@@ -443,25 +454,30 @@ def test_current_case_reports_world_to_image_ray_mapping() -> None:
     _app()
     window = AprilTagSceneViewerWindow(initial_case=case_dir)
     world_group = window.selected_world_group()
-    image_group = window.selected_image_ray_group()
+    image_group = window.selected_image_render_group()
+    raw_image_group = window.selected_image_ray_group()
 
     assert world_group is not None
     assert image_group is not None
+    assert raw_image_group is not None
     assert world_group.name == "frame_000001"
     closest = closest_image_face_for_world_face(world_group, image_group, "pz")
     opposite = opposite_image_face_for_world_face(world_group, image_group, "pz")
     image_basis_closest = closest_image_face_for_world_face(image_group, image_group, "pz")
+    raw_closest = closest_image_face_for_world_face(world_group, raw_image_group, "pz")
     assert closest is not None
     assert opposite is not None
     assert image_basis_closest is not None
-    assert closest[0] == "px"
+    assert raw_closest is not None
+    assert raw_closest[0] == "nx"
+    assert closest[0] == "nz"
     assert closest[1] < 1e-4
-    assert closest[2] == pytest.approx(90.0)
-    assert opposite[0] == "nx"
+    assert closest[2] == pytest.approx(180.0, abs=0.1)
+    assert opposite[0] == "pz"
     assert opposite[1] < 1e-4
     assert image_basis_closest[0] == "pz"
     assert image_basis_closest[1] < 1e-4
-    assert "active pz->image px" in window.case_label.text()
+    assert "active pz->image nz" in window.case_label.text()
     window.ray_basis_combo.setCurrentIndex(window.ray_basis_combo.findData("image"))
     assert "active pz->image pz" in window.case_label.text()
     window.deleteLater()
@@ -500,6 +516,7 @@ def test_current_case_image_ray_group_matches_metashape_build_remap_rays() -> No
         yaw, pitch = metadata.view_params[face]
         ray = np.array([0.0, 0.0, 1.0]) @ _rotation(yaw, pitch).T
         ray = ray @ metashape_local_from_lfs_local.T @ metashape_transform[:3, :3].T
+        ray = ray @ world_display_matrix(case.coordinate_profile)[:3, :3].T
         expected[face] = ray / max(float(np.linalg.norm(ray)), 1e-12)
 
     actual_image = {face: face_forward_ray(image_group, face) for face in expected}
@@ -510,8 +527,53 @@ def test_current_case_image_ray_group_matches_metashape_build_remap_rays() -> No
         assert float(actual_image[face] @ expected_ray) > 0.999
         assert actual_world[face] is not None
         assert abs(float(actual_world[face] @ expected_ray)) < 0.1
-    assert closest_image_face_for_world_face(world_group, image_group, "pz")[0] == "px"
-    assert opposite_image_face_for_world_face(world_group, image_group, "pz")[0] == "nx"
+    assert closest_image_face_for_world_face(world_group, image_group, "pz")[0] == "nx"
+    assert opposite_image_face_for_world_face(world_group, image_group, "pz")[0] == "px"
+    window.deleteLater()
+
+
+def test_current_case_json_face_image_preview_matches_expected_saved_faces() -> None:
+    case_dir = Path("_compare/apriltag_test/cases/current")
+    if not (case_dir / "case.json").is_file():
+        pytest.skip("local AprilTag comparison case is not available")
+    _app()
+    window = AprilTagSceneViewerWindow(initial_case=case_dir)
+    world_group = window.selected_world_group()
+    image_group = window.selected_image_render_group()
+    assert world_group is not None
+    assert image_group is not None
+
+    equirect = render_cubemap_axis_equirect(image_group, output_width=1024, output_height=512)
+    image_root = case_dir / "input" / "images"
+    expected = {
+        "pz": "nz",
+        "px": "nx",
+        "nx": "px",
+        "nz": "pz",
+        "top": "top",
+        "bottom": "bottom",
+    }
+
+    def error_to(rendered: np.ndarray, face: str) -> float:
+        saved = imread_unicode(image_root / f"frame_000001_{face}.jpg")
+        saved = cv2.resize(saved[:, :, :3], (512, 512), interpolation=cv2.INTER_AREA)
+        return float(np.mean(np.abs(rendered.astype(np.int16) - saved.astype(np.int16))))
+
+    for json_face, saved_face in expected.items():
+        yaw, pitch, roll, fov = axis_face_view_params(world_group, json_face, fov_deg=90.0)
+        rendered = equirect_to_perspective(
+            equirect,
+            PerspectiveParams(yaw_deg=yaw, pitch_deg=pitch, roll_deg=roll, fov_deg=fov),
+            output_size=512,
+        )
+        expected_error = error_to(rendered, saved_face)
+        other_errors = [
+            error_to(rendered, face)
+            for face in expected.values()
+            if face != saved_face
+        ]
+        assert expected_error < 12.0, json_face
+        assert expected_error * 4.0 < min(other_errors), json_face
     window.deleteLater()
 
 

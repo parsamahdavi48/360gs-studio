@@ -29,6 +29,8 @@ from core.apriltag_cubemap import CubemapViewMetadata, discover_cubemap_view_met
 from core.apriltag_geometry import PinholeFrame
 from devtools.apriltag.case import DEFAULT_CASE_ROOT, AprilTagDevCase, load_case, save_case
 from devtools.apriltag.coordinates import (
+    COORDINATE_PROFILE_LICHTFELD_CUBE6,
+    COORDINATE_PROFILE_LICHTFELD_CUBE6_PRE_FINAL_PLY,
     COORDINATE_PROFILES,
     DEFAULT_COORDINATE_PROFILE,
     coordinate_profile_label,
@@ -66,6 +68,20 @@ FACE_ORDER = ("pz", "px", "nx", "nz", "top", "bottom", "py", "ny")
 RAY_BASIS_WORLD = "world"
 RAY_BASIS_IMAGE = "image"
 RAY_BASIS_BOTH = "both"
+LICHTFELD_IMAGE_RAY_DISPLAY_PROFILES = {
+    COORDINATE_PROFILE_LICHTFELD_CUBE6,
+    COORDINATE_PROFILE_LICHTFELD_CUBE6_PRE_FINAL_PLY,
+}
+LICHTFELD_JSON_FACE_TO_IMAGE_FACE = {
+    "pz": "nz",
+    "px": "nx",
+    "nx": "px",
+    "nz": "pz",
+    "top": "top",
+    "bottom": "bottom",
+    "py": "py",
+    "ny": "ny",
+}
 
 
 def _transform_points(points: np.ndarray, matrix: np.ndarray | None) -> np.ndarray:
@@ -111,6 +127,68 @@ def transform_group_for_world_display(
         },
         group_index=group.group_index,
     )
+
+
+def image_ray_display_matrix_for_profile(
+    profile: str | None,
+    world_matrix: np.ndarray | None,
+) -> np.ndarray | None:
+    """Return the display transform for generated Cube6 image rays.
+
+    LichtFeld camera poses need ``world_display_matrix`` to line up with the
+    corrected PLY. The saved Cube6 image rays come from the Metashape panorama
+    pixels, so after ``image_space_cubemap_frame_group`` they are already in
+    the display/Metashape orientation. Applying the LichtFeld world display
+    matrix again rotates the image preview to the opposite horizontal faces.
+    """
+    if normalize_coordinate_profile(profile) in LICHTFELD_IMAGE_RAY_DISPLAY_PROFILES:
+        return None
+    return None if world_matrix is None else world_matrix.copy()
+
+
+def lichtfeld_image_preview_group(
+    world_group: CubemapFrameGroup,
+    image_group: CubemapFrameGroup,
+) -> CubemapFrameGroup:
+    """Return image sampling poses with LichtFeld Cube6 JSON-face slots fixed."""
+    frames: dict[str, PinholeFrame] = {}
+    for world_face, image_face in LICHTFELD_JSON_FACE_TO_IMAGE_FACE.items():
+        world_frame = world_group.frames_by_face.get(world_face)
+        image_frame = image_group.frames_by_face.get(image_face)
+        if world_frame is None or image_frame is None:
+            continue
+        frames[image_face] = replace(
+            world_frame,
+            frame_id=image_frame.frame_id,
+            file_path=image_frame.file_path,
+            image_path=image_frame.image_path,
+            width=image_frame.width,
+            height=image_frame.height,
+            fl_x=image_frame.fl_x,
+            fl_y=image_frame.fl_y,
+            cx=image_frame.cx,
+            cy=image_frame.cy,
+        )
+    if not frames:
+        return image_group
+    for face, frame in image_group.frames_by_face.items():
+        if face not in frames:
+            frames[face] = frame
+    return CubemapFrameGroup(
+        name=image_group.name,
+        frames_by_face=frames,
+        group_index=image_group.group_index,
+    )
+
+
+def image_preview_group_for_profile(
+    profile: str | None,
+    world_group: CubemapFrameGroup,
+    image_group: CubemapFrameGroup,
+) -> CubemapFrameGroup:
+    if normalize_coordinate_profile(profile) in LICHTFELD_IMAGE_RAY_DISPLAY_PROFILES:
+        return lichtfeld_image_preview_group(world_group, image_group)
+    return image_group
 
 
 def compose_display_matrices(first: np.ndarray | None, second: np.ndarray | None) -> np.ndarray | None:
@@ -340,6 +418,7 @@ class AprilTagSceneViewerWindow(QWidget):
         self._raw_groups: tuple[CubemapFrameGroup, ...] = ()
         self._world_groups: tuple[CubemapFrameGroup, ...] = ()
         self._image_ray_groups: tuple[CubemapFrameGroup, ...] = ()
+        self._image_preview_groups: tuple[CubemapFrameGroup, ...] = ()
         self._world_pointcloud: PointCloudSample | None = None
         self._world_matrix: np.ndarray | None = None
         self._metashape_alignment: tuple[float, int] | None = None
@@ -483,13 +562,25 @@ class AprilTagSceneViewerWindow(QWidget):
                 )
                 for group in self._raw_groups
             )
+            image_ray_display_matrix = image_ray_display_matrix_for_profile(
+                self.case.coordinate_profile,
+                self._world_matrix,
+            )
             self._image_ray_groups = tuple(
                 transform_group_for_world_display(
                     image_space_cubemap_frame_group(group, cubemap_view_params=metadata),
-                    self._world_matrix,
+                    image_ray_display_matrix,
                     cubemap_view_params=metadata,
                 )
                 for group in self._raw_groups
+            )
+            self._image_preview_groups = tuple(
+                image_preview_group_for_profile(
+                    self.case.coordinate_profile,
+                    world_group,
+                    image_group,
+                )
+                for world_group, image_group in zip(self._world_groups, self._image_ray_groups, strict=True)
             )
             self._world_ray_source = "transforms.json face +Z"
             self._image_ray_source = "Cube6 export yaw/pitch"
@@ -538,6 +629,19 @@ class AprilTagSceneViewerWindow(QWidget):
         if index < 0 or index >= len(self._image_ray_groups):
             return self._image_ray_groups[0]
         return self._image_ray_groups[index]
+
+    def selected_image_preview_group(self) -> CubemapFrameGroup | None:
+        if not self._image_preview_groups:
+            return self.selected_image_ray_group()
+        index = self.camera_combo.currentIndex()
+        if index < 0 or index >= len(self._image_preview_groups):
+            return self._image_preview_groups[0]
+        return self._image_preview_groups[index]
+
+    def selected_image_render_group(self) -> CubemapFrameGroup | None:
+        if self._ray_basis_mode() == RAY_BASIS_IMAGE:
+            return self.selected_image_ray_group()
+        return self.selected_image_preview_group()
 
     def selected_face_basis_group(self) -> CubemapFrameGroup | None:
         if self._ray_basis_mode() == RAY_BASIS_IMAGE:
@@ -714,11 +818,14 @@ class AprilTagSceneViewerWindow(QWidget):
 
     def _render_image_view(self) -> None:
         world_group = self.selected_world_group()
-        image_group = self.selected_image_ray_group()
+        image_group = self.selected_image_render_group()
         if world_group is None or image_group is None:
             self.image_view.setText("Cubemap画像グループがありません")
             return
-        key = f"{self.case.coordinate_profile if self.case else ''}:image-rays:{image_group.name}"
+        key = (
+            f"{self.case.coordinate_profile if self.case else ''}:"
+            f"image-rays:{self._ray_basis_mode()}:{image_group.name}"
+        )
         if self._displayed_image_key == key and self.image_view.set_perspective_params(self._params):
             self.image_view.set_drag_mode("look")
             return
@@ -761,7 +868,7 @@ class AprilTagSceneViewerWindow(QWidget):
             return
         group = self.selected_world_group()
         basis_group = self.selected_face_basis_group()
-        image_group = self.selected_image_ray_group()
+        image_group = self.selected_image_render_group()
         point_count = 0 if self._world_pointcloud is None else len(self._world_pointcloud.points)
         alignment = ""
         if self._metashape_alignment is not None:
