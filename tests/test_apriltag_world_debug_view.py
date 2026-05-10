@@ -11,7 +11,11 @@ from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication
 
 from core.apriltag_geometry import PinholeFrame
-from devtools.apriltag.coordinates import combined_pointcloud_display_matrix, pointcloud_display_matrix, world_display_matrix
+from devtools.apriltag.coordinates import (
+    combined_pointcloud_display_matrix,
+    pointcloud_display_matrix,
+    world_display_matrix,
+)
 from devtools.apriltag.cubemap_preview import CubemapFrameGroup, view_pixel_to_axis_world_ray_and_up
 from devtools.apriltag.world_debug_view import (
     AprilTagWorldDebugView,
@@ -319,7 +323,7 @@ def test_world_debug_view_orientation_gizmo_marks_positive_axes() -> None:
     view.deleteLater()
 
 
-def test_world_debug_view_orientation_gizmo_matches_viewport_z_convention() -> None:
+def test_world_debug_view_orientation_gizmo_uses_right_handed_view_basis() -> None:
     _app()
     view = AprilTagWorldDebugView()
     origin = QPointF(100.0, 100.0)
@@ -327,8 +331,11 @@ def test_world_debug_view_orientation_gizmo_matches_viewport_z_convention() -> N
     view._view_pitch_deg = 0.0
 
     points = view._orientation_axis_points(origin, 20.0)
+    right, up, forward = view._view_basis()
+    basis = np.column_stack([right, up, forward])
 
-    assert points["Z"].x() > origin.x()
+    assert np.linalg.det(basis) > 0.999
+    assert points["Z"].x() < origin.x()
     assert points["Z"].y() == origin.y()
     assert points["Y"].x() == origin.x()
     assert points["Y"].y() < origin.y()
@@ -376,6 +383,27 @@ def test_world_debug_view_fixed_perspective_view_uses_pinhole_projection() -> No
     assert np.allclose(projected[0], [view.width() * 0.5 + focal * 0.5, view.height() * 0.5])
     assert np.allclose(depth[0], 2.0)
     assert np.all(np.isnan(projected[1]))
+    view.deleteLater()
+
+
+def test_world_debug_view_fixed_perspective_view_rejects_mirrored_basis() -> None:
+    _app()
+    view = AprilTagWorldDebugView()
+
+    view.set_fixed_perspective_view(
+        camera_position=np.array([0.0, 0.0, 0.0]),
+        right=np.array([0.0, 0.0, 1.0]),
+        up=np.array([0.0, 1.0, 0.0]),
+        forward=np.array([1.0, 0.0, 0.0]),
+        fov_deg=90.0,
+    )
+    assert view._fixed_view_basis is not None
+    right, up, forward = view._fixed_view_basis
+    basis = np.column_stack([right, up, forward])
+
+    assert np.linalg.det(basis) > 0.999
+    assert np.allclose(forward, [1.0, 0.0, 0.0])
+    assert float(up @ np.array([0.0, 1.0, 0.0])) > 0.999
     view.deleteLater()
 
 

@@ -279,10 +279,10 @@ class AprilTagWorldDebugView(QWidget):
         pixels_per_unit: float,
     ) -> None:
         self._view_center = np.asarray(center, dtype=np.float64).reshape(3)
-        self._fixed_view_basis = (
-            _normalized(np.asarray(right, dtype=np.float64).reshape(3), fallback=(1.0, 0.0, 0.0)),
-            _normalized(np.asarray(up, dtype=np.float64).reshape(3), fallback=(0.0, 1.0, 0.0)),
-            _normalized(np.asarray(forward, dtype=np.float64).reshape(3), fallback=(0.0, 0.0, 1.0)),
+        self._fixed_view_basis = _right_handed_view_basis(
+            right=np.asarray(right, dtype=np.float64).reshape(3),
+            up=np.asarray(up, dtype=np.float64).reshape(3),
+            forward=np.asarray(forward, dtype=np.float64).reshape(3),
         )
         self._fixed_projection = "orthographic"
         self._pixels_per_unit = max(0.01, min(10000.0, float(pixels_per_unit)))
@@ -298,10 +298,10 @@ class AprilTagWorldDebugView(QWidget):
         fov_deg: float,
     ) -> None:
         self._view_center = np.asarray(camera_position, dtype=np.float64).reshape(3)
-        self._fixed_view_basis = (
-            _normalized(np.asarray(right, dtype=np.float64).reshape(3), fallback=(1.0, 0.0, 0.0)),
-            _normalized(np.asarray(up, dtype=np.float64).reshape(3), fallback=(0.0, 1.0, 0.0)),
-            _normalized(np.asarray(forward, dtype=np.float64).reshape(3), fallback=(0.0, 0.0, 1.0)),
+        self._fixed_view_basis = _right_handed_view_basis(
+            right=np.asarray(right, dtype=np.float64).reshape(3),
+            up=np.asarray(up, dtype=np.float64).reshape(3),
+            forward=np.asarray(forward, dtype=np.float64).reshape(3),
         )
         self._fixed_projection = "perspective"
         self._fixed_perspective_fov_deg = max(1.0, min(179.0, float(fov_deg)))
@@ -430,13 +430,11 @@ class AprilTagWorldDebugView(QWidget):
         )
         forward = _normalized(forward, fallback=(0.0, 0.0, 1.0))
         right = np.array([np.cos(yaw), 0.0, -np.sin(yaw)], dtype=np.float64)
-        right = _normalized(right, fallback=(1.0, 0.0, 0.0))
-        up = np.cross(forward, right)
-        up = _normalized(up, fallback=(0.0, 1.0, 0.0))
-        # Match the Metashape/LichtFeld viewport convention: +X and +Y keep the
-        # same screen direction, while +Z is displayed on the opposite side.
-        screen_z_flip = np.array([1.0, 1.0, -1.0], dtype=np.float64)
-        return right * screen_z_flip, up * screen_z_flip, forward * screen_z_flip
+        return _right_handed_view_basis(
+            right=right,
+            up=np.array([0.0, 1.0, 0.0], dtype=np.float64),
+            forward=forward,
+        )
 
     def _project(self, points: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
         points = np.asarray(points, dtype=np.float64).reshape(-1, 3)
@@ -786,3 +784,23 @@ def _normalized(value: np.ndarray, *, fallback: tuple[float, float, float]) -> n
     if norm <= 1e-12 or not np.isfinite(norm):
         return np.asarray(fallback, dtype=np.float64)
     return value / norm
+
+
+def _right_handed_view_basis(
+    *,
+    right: np.ndarray,
+    up: np.ndarray,
+    forward: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    forward = _normalized(np.asarray(forward, dtype=np.float64), fallback=(0.0, 0.0, 1.0))
+    right = np.asarray(right, dtype=np.float64) - forward * float(np.asarray(right, dtype=np.float64) @ forward)
+    if float(np.linalg.norm(right)) <= 1e-12:
+        right = np.cross(np.asarray(up, dtype=np.float64), forward)
+    right = _normalized(right, fallback=(1.0, 0.0, 0.0))
+    up_from_basis = np.cross(forward, right)
+    up_from_basis = _normalized(up_from_basis, fallback=(0.0, 1.0, 0.0))
+    if float(up_from_basis @ np.asarray(up, dtype=np.float64)) < 0.0:
+        right = -right
+        up_from_basis = np.cross(forward, right)
+        up_from_basis = _normalized(up_from_basis, fallback=(0.0, 1.0, 0.0))
+    return right, up_from_basis, forward
