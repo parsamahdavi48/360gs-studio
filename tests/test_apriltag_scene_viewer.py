@@ -24,6 +24,7 @@ from devtools.apriltag.cubemap_preview import (
 from devtools.apriltag.scene_viewer import (
     AprilTagSceneViewerWindow,
     RAY_BASIS_BOTH,
+    RAY_BASIS_IMAGE,
     _resolve_source_equirect_paths,
     _source_equirect_preview_params,
     camera_pose_from_perspective_params,
@@ -32,6 +33,7 @@ from devtools.apriltag.scene_viewer import (
     face_forward_ray,
     image_ray_display_matrix_for_profile,
     opposite_image_face_for_world_face,
+    rotation_from_perspective_params,
     transform_group_for_world_display,
 )
 from devtools.apriltag.coordinates import world_display_matrix
@@ -706,6 +708,54 @@ def test_current_case_source_equirect_faces_match_expected_orientation() -> None
     window.deleteLater()
 
 
+def test_current_case_source_equirect_tangent_axes_match_expected_faces() -> None:
+    case_dir = Path("_compare/apriltag_test/cases/current")
+    if not (case_dir / "case.json").is_file():
+        pytest.skip("local AprilTag comparison case is not available")
+    _app()
+    case = load_case(case_dir)
+    metadata = case_cubemap_view_metadata(case)
+    if metadata is None:
+        pytest.skip("local AprilTag comparison Cube6 metadata is not available")
+    window = AprilTagSceneViewerWindow(initial_case=case_dir)
+    world_group = window.selected_world_group()
+    source_rotation = window._source_equirect_rotations.get("frame_000001")
+    if source_rotation is None:
+        pytest.skip("local AprilTag source equirect image is not available")
+    assert world_group is not None
+
+    display_matrix = world_display_matrix(case.coordinate_profile)
+    preview_to_sfm = np.linalg.inv(display_matrix[:3, :3]).T
+    expected_mapping = {
+        "pz": "nz",
+        "px": "nx",
+        "nx": "px",
+        "nz": "pz",
+        "top": "top",
+        "bottom": "bottom",
+    }
+    for face, expected_face in expected_mapping.items():
+        yaw, pitch, roll, fov = axis_face_view_params(world_group, face, fov_deg=90.0)
+        params = PerspectiveParams(yaw_deg=yaw, pitch_deg=pitch, roll_deg=roll, fov_deg=fov)
+        display_params = _source_equirect_preview_params(params, face, RAY_BASIS_BOTH, params)
+        display_rotation = rotation_from_perspective_params(display_params)
+
+        source_right = np.array([1.0, 0.0, 0.0]) @ display_rotation.T @ preview_to_sfm @ source_rotation
+        source_up = np.array([0.0, 1.0, 0.0]) @ display_rotation.T @ preview_to_sfm @ source_rotation
+        source_forward = np.array([0.0, 0.0, 1.0]) @ display_rotation.T @ preview_to_sfm @ source_rotation
+
+        expected_yaw, expected_pitch = metadata.view_params[expected_face]
+        expected_rotation = _rotation(expected_yaw, expected_pitch)
+        expected_right = np.array([1.0, 0.0, 0.0]) @ expected_rotation.T
+        expected_up = np.array([0.0, 1.0, 0.0]) @ expected_rotation.T
+        expected_forward = np.array([0.0, 0.0, 1.0]) @ expected_rotation.T
+
+        assert float(source_right @ expected_right) > 0.999
+        assert float(source_up @ expected_up) > 0.999
+        assert float(source_forward @ expected_forward) > 0.999
+    window.deleteLater()
+
+
 def test_current_case_source_equirect_drag_matches_pointcloud_camera_motion() -> None:
     case_dir = Path("_compare/apriltag_test/cases/current")
     if not (case_dir / "case.json").is_file():
@@ -758,6 +808,8 @@ def test_current_case_source_equirect_preview_inverts_only_vertical_display_moti
     assert displayed_dragged.yaw_deg == dragged.yaw_deg
     assert dragged.pitch_deg < anchor.pitch_deg
     assert displayed_dragged.pitch_deg > displayed_anchor.pitch_deg
+    assert _source_equirect_preview_params(dragged, "top", RAY_BASIS_BOTH, anchor) == dragged
+    assert _source_equirect_preview_params(dragged, "pz", RAY_BASIS_IMAGE, anchor) == dragged
     window.deleteLater()
 
 
