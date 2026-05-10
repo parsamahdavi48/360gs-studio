@@ -42,6 +42,7 @@ from devtools.apriltag.scene_viewer import (
 )
 from devtools.apriltag.coordinates import world_display_matrix
 from gui.common.perspective_preview import PerspectiveParams, equirect_to_perspective, params_from_drag
+from gui.common.perspective_preview import normalize_yaw_deg
 
 
 def _app() -> QApplication:
@@ -756,7 +757,7 @@ def test_current_case_generated_cube6_reconstruction_matches_expected_orientatio
         assert target is not None
         yaw, pitch, roll, fov = axis_face_view_params(world_group, face, fov_deg=90.0)
         anchor = PerspectiveParams(yaw_deg=yaw, pitch_deg=pitch, roll_deg=roll, fov_deg=fov)
-        params = _source_equirect_preview_params(anchor, face, RAY_BASIS_BOTH, anchor)
+        params = _source_equirect_preview_params(anchor, face, RAY_BASIS_BOTH)
         rendered = equirect_to_perspective(reconstructed, params, output_size=512)
         target = cv2.resize(target, (512, 512), interpolation=cv2.INTER_AREA)
         error = float(np.mean(np.abs(rendered.astype(np.int16) - target.astype(np.int16))))
@@ -793,7 +794,7 @@ def test_current_case_source_equirect_tangent_axes_match_expected_faces() -> Non
     for face, expected_face in expected_mapping.items():
         yaw, pitch, roll, fov = axis_face_view_params(world_group, face, fov_deg=90.0)
         params = PerspectiveParams(yaw_deg=yaw, pitch_deg=pitch, roll_deg=roll, fov_deg=fov)
-        display_params = _source_equirect_preview_params(params, face, RAY_BASIS_BOTH, params)
+        display_params = _source_equirect_preview_params(params, face, RAY_BASIS_BOTH)
         display_rotation = rotation_from_perspective_params(display_params)
 
         source_right = np.array([1.0, 0.0, 0.0]) @ display_rotation.T @ preview_to_sfm @ source_rotation
@@ -824,28 +825,26 @@ def test_current_case_source_equirect_drag_matches_pointcloud_camera_motion() ->
     window.set_active_face("pz")
 
     start_params = window._params
-    expected = params_from_drag(start_params, 0.0, 10.0)
+    expected = params_from_drag(start_params, -10.0, -10.0)
 
-    pointcloud_mode = window.mode_combo.findData(RIGHT_VIEW_POINTCLOUD)
-    assert pointcloud_mode >= 0
-    window.mode_combo.setCurrentIndex(pointcloud_mode)
-    window._on_right_view_dragged(0.0, 10.0)
-    pointcloud_params = window._params
+    actual: dict[str, PerspectiveParams] = {}
+    for mode in (RIGHT_VIEW_POINTCLOUD, RIGHT_VIEW_SOURCE_EQUIRECT, RIGHT_VIEW_RECONSTRUCTED_CUBE6):
+        index = window.mode_combo.findData(mode)
+        assert index >= 0
+        window._params = start_params
+        window.mode_combo.setCurrentIndex(index)
+        window._on_right_view_dragged(10.0, 10.0)
+        actual[mode] = window._params
 
-    window._params = start_params
-    image_mode = window.mode_combo.findData(RIGHT_VIEW_SOURCE_EQUIRECT)
-    assert image_mode >= 0
-    window.mode_combo.setCurrentIndex(image_mode)
-    window._on_right_view_dragged(0.0, 10.0)
-    image_params = window._params
-
-    assert pointcloud_params == image_params
-    assert image_params == expected
-    assert image_params.pitch_deg < start_params.pitch_deg
+    assert actual[RIGHT_VIEW_POINTCLOUD] == actual[RIGHT_VIEW_SOURCE_EQUIRECT]
+    assert actual[RIGHT_VIEW_POINTCLOUD] == actual[RIGHT_VIEW_RECONSTRUCTED_CUBE6]
+    assert actual[RIGHT_VIEW_POINTCLOUD] == expected
+    assert actual[RIGHT_VIEW_POINTCLOUD].yaw_deg > start_params.yaw_deg
+    assert actual[RIGHT_VIEW_POINTCLOUD].pitch_deg > start_params.pitch_deg
     window.deleteLater()
 
 
-def test_current_case_source_equirect_preview_inverts_only_vertical_display_motion() -> None:
+def test_current_case_source_equirect_preview_keeps_yaw_pitch_and_rolls_side_faces() -> None:
     case_dir = Path("_compare/apriltag_test/cases/current")
     if not (case_dir / "case.json").is_file():
         pytest.skip("local AprilTag comparison case is not available")
@@ -856,16 +855,18 @@ def test_current_case_source_equirect_preview_inverts_only_vertical_display_moti
     window.set_active_face("pz")
 
     anchor = window._params
-    dragged = params_from_drag(anchor, 10.0, 10.0)
-    displayed_anchor = _source_equirect_preview_params(anchor, "pz", RAY_BASIS_BOTH, anchor)
-    displayed_dragged = _source_equirect_preview_params(dragged, "pz", RAY_BASIS_BOTH, anchor)
+    dragged = params_from_drag(anchor, -10.0, -10.0)
+    displayed_anchor = _source_equirect_preview_params(anchor, "pz", RAY_BASIS_BOTH)
+    displayed_dragged = _source_equirect_preview_params(dragged, "pz", RAY_BASIS_BOTH)
 
-    assert dragged.yaw_deg < anchor.yaw_deg
+    assert dragged.yaw_deg > anchor.yaw_deg
     assert displayed_dragged.yaw_deg == dragged.yaw_deg
-    assert dragged.pitch_deg < anchor.pitch_deg
-    assert displayed_dragged.pitch_deg > displayed_anchor.pitch_deg
-    assert _source_equirect_preview_params(dragged, "top", RAY_BASIS_BOTH, anchor) == dragged
-    assert _source_equirect_preview_params(dragged, "pz", RAY_BASIS_IMAGE, anchor) == dragged
+    assert dragged.pitch_deg > anchor.pitch_deg
+    assert displayed_dragged.pitch_deg == dragged.pitch_deg
+    assert displayed_anchor.roll_deg == normalize_yaw_deg(anchor.roll_deg + 180.0)
+    assert displayed_dragged.roll_deg == normalize_yaw_deg(dragged.roll_deg + 180.0)
+    assert _source_equirect_preview_params(dragged, "top", RAY_BASIS_BOTH) == dragged
+    assert _source_equirect_preview_params(dragged, "pz", RAY_BASIS_IMAGE) == dragged
     window.deleteLater()
 
 

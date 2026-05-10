@@ -269,23 +269,18 @@ def _source_equirect_preview_params(
     params: PerspectiveParams,
     active_face: str,
     ray_basis_mode: str,
-    anchor_params: PerspectiveParams | None = None,
 ) -> PerspectiveParams:
     """Return source-panorama view params for JSONFace/both preview modes.
 
     After LichtFeld's Y-180 pre-compensation and the final display correction,
     side-face center rays line up but the JSONFace tangent frame is rolled 180
-    degrees from the source panorama image remap. Keep the fix on the image
-    preview only; world poses and pointcloud inspection stay intact.
+    degrees from the source panorama image remap. Keep the roll fix on the
+    image preview only; world poses and pointcloud inspection stay intact.
     """
     if ray_basis_mode == RAY_BASIS_IMAGE or active_face not in SIDE_FACE_ORDER:
         return params
-    pitch_deg = float(params.pitch_deg)
-    if anchor_params is not None:
-        pitch_deg = 2.0 * float(anchor_params.pitch_deg) - pitch_deg
     return replace(
         params,
-        pitch_deg=clamp_pitch_deg(pitch_deg),
         roll_deg=normalize_yaw_deg(float(params.roll_deg) + 180.0),
     )
 
@@ -945,24 +940,11 @@ class AprilTagSceneViewerWindow(QWidget):
             if use_source_equirect
             else self._source_equirect_rotation_for_group(world_group)
         )
-        anchor_params = None
-        if use_source_equirect or use_reconstructed_cube6:
-            basis_group = self.selected_face_basis_group() or world_group
-            params = axis_face_view_params(basis_group, self._active_face, fov_deg=self._params.fov_deg)
-            if params is not None:
-                yaw, pitch, roll, fov = params
-                anchor_params = PerspectiveParams(
-                    yaw_deg=normalize_yaw_deg(yaw),
-                    pitch_deg=clamp_pitch_deg(pitch),
-                    roll_deg=roll,
-                    fov_deg=float(fov),
-                )
         view_params = (
             _source_equirect_preview_params(
                 self._params,
                 self._active_face,
                 self._ray_basis_mode(),
-                anchor_params,
             )
             if use_source_equirect or use_reconstructed_cube6
             else self._params
@@ -1113,7 +1095,10 @@ class AprilTagSceneViewerWindow(QWidget):
     def _on_right_view_dragged(self, delta_x: float, delta_y: float) -> None:
         if not self._world_groups:
             return
-        self._params = params_from_drag(self._params, delta_x, delta_y)
+        # Right-view drags are camera-look controls, not image grab/pan
+        # controls. Keep the resulting params as the single source of truth for
+        # both the right view and the left frustum.
+        self._params = params_from_drag(self._params, -delta_x, -delta_y)
         self._sync_views()
 
     def _append_log(self, text: str) -> None:
