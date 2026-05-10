@@ -9,7 +9,7 @@ import numpy as np
 import pytest
 from PySide6.QtWidgets import QApplication
 
-from core.apriltag_cubemap import CubemapViewMetadata
+from core.apriltag_cubemap import CubemapViewMetadata, cubemap_view_params_for_group
 from core.apriltag_geometry import PinholeFrame
 from core.image_io import imread_unicode, imwrite_unicode
 from devtools.apriltag.case import AprilTagDevCase, load_case, save_case
@@ -82,6 +82,23 @@ def _export_rotation(yaw_deg: float, pitch_deg: float) -> np.ndarray:
         dtype=np.float64,
     )
     return rx @ ry
+
+
+def _source_face_centers(metadata: CubemapViewMetadata, group_index: int) -> dict[str, np.ndarray]:
+    params = cubemap_view_params_for_group(metadata, group_index)
+    assert params is not None
+    centers: dict[str, np.ndarray] = {}
+    for face, (yaw, pitch) in params.items():
+        ray = np.array([0.0, 0.0, 1.0], dtype=np.float64) @ _rotation(yaw, pitch).T
+        centers[face] = ray / max(float(np.linalg.norm(ray)), 1e-12)
+    return centers
+
+
+def _closest_source_face(source_local_ray: np.ndarray, metadata: CubemapViewMetadata, group_index: int) -> str:
+    ray = np.asarray(source_local_ray, dtype=np.float64)
+    ray = ray / max(float(np.linalg.norm(ray)), 1e-12)
+    centers = _source_face_centers(metadata, group_index)
+    return max(centers, key=lambda face: float(ray @ centers[face]))
 
 
 def _write_cube6_case(root: Path) -> Path:
@@ -536,6 +553,102 @@ def test_current_case_image_ray_group_matches_metashape_build_remap_rays() -> No
     window.deleteLater()
 
 
+def test_current_case_source_equirect_rotation_maps_json_faces_to_source_centers() -> None:
+    case_dir = Path("_compare/apriltag_test/cases/current")
+    if not (case_dir / "case.json").is_file():
+        pytest.skip("local AprilTag comparison case is not available")
+    _app()
+    case = load_case(case_dir)
+    metadata = case_cubemap_view_metadata(case)
+    if metadata is None:
+        pytest.skip("local AprilTag comparison Cube6 metadata is not available")
+    window = AprilTagSceneViewerWindow(initial_case=case_dir)
+    raw_group = window.selected_raw_group()
+    world_group = window.selected_world_group()
+    source_rotation = window._source_equirect_rotations.get("frame_000001")
+    assert raw_group is not None
+    assert world_group is not None
+    assert source_rotation is not None
+
+    code_chain_rotation = source_equirect_base_rotation(raw_group, cubemap_view_params=metadata)
+    assert code_chain_rotation is not None
+    source_local_from_lichtfeld_local = np.diag([1.0, -1.0, -1.0])
+    assert np.allclose(source_rotation, code_chain_rotation @ source_local_from_lichtfeld_local, atol=1e-6)
+
+    display_matrix = world_display_matrix(case.coordinate_profile)
+    preview_to_sfm = np.linalg.inv(display_matrix[:3, :3]).T
+    actual: dict[str, str] = {}
+    for face in ("pz", "px", "nx", "nz", "top", "bottom"):
+        ray = face_forward_ray(world_group, face)
+        assert ray is not None
+        source_local = ray @ preview_to_sfm @ source_rotation
+        actual[face] = _closest_source_face(source_local, metadata, world_group.group_index)
+
+    # These are assertions for the code-derived transform, not inputs used to
+    # construct the rotation above.
+    assert actual == {
+        "pz": "nz",
+        "px": "nx",
+        "nx": "px",
+        "nz": "pz",
+        "top": "top",
+        "bottom": "bottom",
+    }
+    window.deleteLater()
+
+
+def test_current_case_source_equirect_center_pixels_match_expected_faces() -> None:
+    case_dir = Path("_compare/apriltag_test/cases/current")
+    if not (case_dir / "case.json").is_file():
+        pytest.skip("local AprilTag comparison case is not available")
+    _app()
+    case = load_case(case_dir)
+    window = AprilTagSceneViewerWindow(initial_case=case_dir)
+    raw_group = window.selected_raw_group()
+    world_group = window.selected_world_group()
+    source_path = _resolve_source_equirect_paths(case, ("frame_000001",)).get("frame_000001")
+    source_rotation = window._source_equirect_rotations.get("frame_000001")
+    if source_path is None or source_rotation is None:
+        pytest.skip("local AprilTag source equirect image is not available")
+    assert raw_group is not None
+    assert world_group is not None
+    source = imread_unicode(source_path)
+    if source is None:
+        pytest.skip("local AprilTag source equirect image cannot be read")
+
+    display_matrix = world_display_matrix(case.coordinate_profile)
+    expected_mapping = {
+        "pz": "nz",
+        "px": "nx",
+        "nx": "px",
+        "nz": "pz",
+        "top": "top",
+        "bottom": "bottom",
+    }
+    for face, expected_face in expected_mapping.items():
+        target_frame = raw_group.frames_by_face.get(expected_face)
+        assert target_frame is not None
+        target = imread_unicode(target_frame.image_path)
+        assert target is not None
+        yaw, pitch, roll, fov = axis_face_view_params(world_group, face, fov_deg=90.0)
+        rendered = render_source_equirect_perspective(
+            source,
+            source_rotation,
+            yaw_deg=yaw,
+            pitch_deg=pitch,
+            roll_deg=roll,
+            fov_deg=fov,
+            output_size=513,
+            sfm_to_preview_matrix=display_matrix,
+        )
+        target = cv2.resize(target, (513, 513), interpolation=cv2.INTER_AREA)
+        center_error = float(
+            np.mean(np.abs(rendered[256, 256].astype(np.int16) - target[256, 256].astype(np.int16)))
+        )
+        assert center_error < 15.0
+    window.deleteLater()
+
+
 def test_current_case_image_preview_uses_source_equirect_when_available() -> None:
     case_dir = Path("_compare/apriltag_test/cases/current")
     if not (case_dir / "case.json").is_file():
@@ -559,7 +672,8 @@ def test_current_case_image_preview_uses_source_equirect_when_available() -> Non
     assert raw_group is not None
     expected_rotation = source_equirect_base_rotation(raw_group, cubemap_view_params=case_cubemap_view_metadata(case))
     assert expected_rotation is not None
-    assert np.allclose(source_rotation, expected_rotation, atol=1e-6)
+    source_local_from_lichtfeld_local = np.diag([1.0, -1.0, -1.0])
+    assert np.allclose(source_rotation, expected_rotation @ source_local_from_lichtfeld_local, atol=1e-6)
 
     source = imread_unicode(source_path)
     display_matrix = world_display_matrix(case.coordinate_profile)

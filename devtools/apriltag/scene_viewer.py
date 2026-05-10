@@ -77,6 +77,7 @@ LICHTFELD_IMAGE_RAY_DISPLAY_PROFILES = {
     COORDINATE_PROFILE_LICHTFELD_CUBE6_PRE_FINAL_PLY,
 }
 SOURCE_EQUIRECT_IMAGE_EXTS = (".jpg", ".jpeg", ".png", ".tif", ".tiff", ".webp", ".bmp")
+SOURCE_EQUIRECT_LOCAL_FROM_LICHTFELD_LOCAL = np.diag([1.0, -1.0, -1.0])
 
 
 def _transform_points(points: np.ndarray, matrix: np.ndarray | None) -> np.ndarray:
@@ -249,7 +250,13 @@ def _source_equirect_rotations_from_groups(
     for group in groups:
         rotation = source_equirect_base_rotation(group, cubemap_view_params=metadata)
         if rotation is not None:
-            rotations[group.name] = rotation
+            # ``source_equirect_base_rotation`` recovers the source camera basis
+            # from final Cube6 poses. Those poses include
+            # metashape_360_lfs.py::transform_camera_matrix Step 2, which flips
+            # local Y/Z for LichtFeld/OpenGL. The source panorama pixels are
+            # sampled in the original equirectangular local basis, so undo that
+            # local flip only for image lookup.
+            rotations[group.name] = rotation @ SOURCE_EQUIRECT_LOCAL_FROM_LICHTFELD_LOCAL
     return rotations
 
 
