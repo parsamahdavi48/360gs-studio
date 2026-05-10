@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import csv
 import xml.etree.ElementTree as ET
 from dataclasses import replace
 from pathlib import Path
@@ -27,6 +28,7 @@ from PySide6.QtWidgets import (
 
 from core.apriltag_cubemap import CubemapViewMetadata, discover_cubemap_view_metadata
 from core.apriltag_geometry import PinholeFrame
+from core.image_io import imread_unicode
 from devtools.apriltag.case import DEFAULT_CASE_ROOT, AprilTagDevCase, load_case, save_case
 from devtools.apriltag.coordinates import (
     COORDINATE_PROFILE_LICHTFELD_CUBE6,
@@ -47,6 +49,8 @@ from devtools.apriltag.cubemap_preview import (
     load_metashape_camera_labels,
     order_groups_by_labels,
     render_cubemap_axis_equirect,
+    render_source_equirect_axis,
+    source_equirect_base_rotation,
 )
 from devtools.apriltag.world_debug_view import (
     AprilTagWorldDebugView,
@@ -72,16 +76,7 @@ LICHTFELD_IMAGE_RAY_DISPLAY_PROFILES = {
     COORDINATE_PROFILE_LICHTFELD_CUBE6,
     COORDINATE_PROFILE_LICHTFELD_CUBE6_PRE_FINAL_PLY,
 }
-LICHTFELD_JSON_FACE_TO_IMAGE_FACE = {
-    "pz": "nz",
-    "px": "nx",
-    "nx": "px",
-    "nz": "pz",
-    "top": "top",
-    "bottom": "bottom",
-    "py": "py",
-    "ny": "ny",
-}
+SOURCE_EQUIRECT_IMAGE_EXTS = (".jpg", ".jpeg", ".png", ".tif", ".tiff", ".webp", ".bmp")
 
 
 def _transform_points(points: np.ndarray, matrix: np.ndarray | None) -> np.ndarray:
@@ -146,48 +141,12 @@ def image_ray_display_matrix_for_profile(
     return None if world_matrix is None else world_matrix.copy()
 
 
-def lichtfeld_image_preview_group(
-    world_group: CubemapFrameGroup,
-    image_group: CubemapFrameGroup,
-) -> CubemapFrameGroup:
-    """Return image sampling poses with LichtFeld Cube6 JSON-face slots fixed."""
-    frames: dict[str, PinholeFrame] = {}
-    for world_face, image_face in LICHTFELD_JSON_FACE_TO_IMAGE_FACE.items():
-        world_frame = world_group.frames_by_face.get(world_face)
-        image_frame = image_group.frames_by_face.get(image_face)
-        if world_frame is None or image_frame is None:
-            continue
-        frames[image_face] = replace(
-            world_frame,
-            frame_id=image_frame.frame_id,
-            file_path=image_frame.file_path,
-            image_path=image_frame.image_path,
-            width=image_frame.width,
-            height=image_frame.height,
-            fl_x=image_frame.fl_x,
-            fl_y=image_frame.fl_y,
-            cx=image_frame.cx,
-            cy=image_frame.cy,
-        )
-    if not frames:
-        return image_group
-    for face, frame in image_group.frames_by_face.items():
-        if face not in frames:
-            frames[face] = frame
-    return CubemapFrameGroup(
-        name=image_group.name,
-        frames_by_face=frames,
-        group_index=image_group.group_index,
-    )
-
-
 def image_preview_group_for_profile(
     profile: str | None,
     world_group: CubemapFrameGroup,
     image_group: CubemapFrameGroup,
 ) -> CubemapFrameGroup:
-    if normalize_coordinate_profile(profile) in LICHTFELD_IMAGE_RAY_DISPLAY_PROFILES:
-        return lichtfeld_image_preview_group(world_group, image_group)
+    _ = profile, world_group
     return image_group
 
 
@@ -207,6 +166,91 @@ def case_cubemap_view_metadata(case: AprilTagDevCase) -> CubemapViewMetadata | N
         if metadata:
             return metadata
     return None
+
+
+def _scene_root_candidates(case: AprilTagDevCase) -> tuple[Path, ...]:
+    candidates: list[Path] = []
+    for path in (
+        case.image_root,
+        case.source_transforms.parent,
+        case.source_metashape_xml.parent if case.source_metashape_xml else None,
+    ):
+        if path is None:
+            continue
+        candidates.append(path)
+        if path.name.lower() == "output":
+            candidates.append(path.parent)
+        parent = path.parent
+        if parent.name.lower() == "output":
+            candidates.append(parent.parent)
+    unique: list[Path] = []
+    seen: set[str] = set()
+    for candidate in candidates:
+        try:
+            key = str(candidate.resolve()).lower()
+        except OSError:
+            key = str(candidate).lower()
+        if key not in seen:
+            seen.add(key)
+            unique.append(candidate)
+    return tuple(unique)
+
+
+def _selected_frame_output_map(scene_root: Path) -> dict[str, Path]:
+    csv_path = scene_root / "_stechdrive" / "frames" / "selected_frames.csv"
+    if not csv_path.is_file():
+        return {}
+    mapping: dict[str, Path] = {}
+    try:
+        with csv_path.open("r", encoding="utf-8-sig", newline="") as handle:
+            for row in csv.DictReader(handle):
+                output_file = str(row.get("output_file") or "").strip()
+                if not output_file:
+                    continue
+                path = scene_root / Path(output_file)
+                if path.is_file():
+                    mapping[Path(output_file).stem] = path
+    except OSError:
+        return {}
+    return mapping
+
+
+def _resolve_source_equirect_paths(case: AprilTagDevCase, group_names: tuple[str, ...]) -> dict[str, Path]:
+    names = tuple(dict.fromkeys(str(name) for name in group_names if name))
+    if not names:
+        return {}
+    resolved: dict[str, Path] = {}
+    for scene_root in _scene_root_candidates(case):
+        from_csv = _selected_frame_output_map(scene_root)
+        for name in names:
+            path = from_csv.get(name)
+            if path is not None and path.is_file():
+                resolved.setdefault(name, path)
+        image_dir = scene_root / "images"
+        if image_dir.is_dir():
+            for name in names:
+                if name in resolved:
+                    continue
+                for ext in SOURCE_EQUIRECT_IMAGE_EXTS:
+                    path = image_dir / f"{name}{ext}"
+                    if path.is_file():
+                        resolved[name] = path
+                        break
+        if len(resolved) == len(names):
+            break
+    return resolved
+
+
+def _source_equirect_rotations_from_groups(
+    groups: tuple[CubemapFrameGroup, ...],
+    metadata: CubemapViewMetadata | None,
+) -> dict[str, np.ndarray]:
+    rotations: dict[str, np.ndarray] = {}
+    for group in groups:
+        rotation = source_equirect_base_rotation(group, cubemap_view_params=metadata)
+        if rotation is not None:
+            rotations[group.name] = rotation
+    return rotations
 
 
 def _load_metashape_camera_transforms(xml_path: Path) -> dict[str, np.ndarray]:
@@ -426,6 +470,8 @@ class AprilTagSceneViewerWindow(QWidget):
         self._image_ray_source = ""
         self._image_cache: dict[Path, np.ndarray] = {}
         self._equirect_cache: dict[str, np.ndarray] = {}
+        self._source_equirect_paths: dict[str, Path] = {}
+        self._source_equirect_rotations: dict[str, np.ndarray] = {}
         self._displayed_image_key = ""
         self._params = PerspectiveParams(fov_deg=90.0)
         self._active_face = "pz"
@@ -543,6 +589,8 @@ class AprilTagSceneViewerWindow(QWidget):
             return
         self._image_cache.clear()
         self._equirect_cache.clear()
+        self._source_equirect_paths = {}
+        self._source_equirect_rotations = {}
         self._displayed_image_key = ""
         try:
             metadata = case_cubemap_view_metadata(self.case)
@@ -553,6 +601,14 @@ class AprilTagSceneViewerWindow(QWidget):
             )
             labels = load_metashape_camera_labels(self.case.source_metashape_xml) if self.case.source_metashape_xml else ()
             self._raw_groups = order_groups_by_labels(groups, labels)
+            self._source_equirect_paths = _resolve_source_equirect_paths(
+                self.case,
+                tuple(group.name for group in self._raw_groups),
+            )
+            self._source_equirect_rotations = _source_equirect_rotations_from_groups(
+                self._raw_groups,
+                metadata,
+            )
             self._update_world_matrix()
             self._world_groups = tuple(
                 transform_group_for_world_display(
@@ -647,6 +703,17 @@ class AprilTagSceneViewerWindow(QWidget):
         if self._ray_basis_mode() == RAY_BASIS_IMAGE:
             return self.selected_image_ray_group() or self.selected_world_group()
         return self.selected_world_group()
+
+    def _source_equirect_for_group(self, group: CubemapFrameGroup | None) -> tuple[Path, np.ndarray] | None:
+        if group is None or self.case is None:
+            return None
+        if normalize_coordinate_profile(self.case.coordinate_profile) not in LICHTFELD_IMAGE_RAY_DISPLAY_PROFILES:
+            return None
+        path = self._source_equirect_paths.get(group.name)
+        rotation = self._source_equirect_rotations.get(group.name)
+        if path is None or rotation is None:
+            return None
+        return path, rotation
 
     def _choose_case(self) -> None:
         start = str((self.case.case_dir if self.case else DEFAULT_VIEWER_CASE).parent)
@@ -822,9 +889,15 @@ class AprilTagSceneViewerWindow(QWidget):
         if world_group is None or image_group is None:
             self.image_view.setText("Cubemap画像グループがありません")
             return
+        source_equirect = self._source_equirect_for_group(world_group)
+        use_source_equirect = source_equirect is not None
+        source_path = source_equirect[0] if source_equirect is not None else None
+        source_rotation = source_equirect[1] if source_equirect is not None else None
         key = (
             f"{self.case.coordinate_profile if self.case else ''}:"
-            f"image-rays:{self._ray_basis_mode()}:{image_group.name}"
+            f"{'source-equirect' if use_source_equirect else 'cube6-axis'}:"
+            f"{self._ray_basis_mode()}:{image_group.name}:"
+            f"{source_path if use_source_equirect else ''}"
         )
         if self._displayed_image_key == key and self.image_view.set_perspective_params(self._params):
             self.image_view.set_drag_mode("look")
@@ -832,12 +905,30 @@ class AprilTagSceneViewerWindow(QWidget):
         image = self._equirect_cache.get(key)
         if image is None:
             try:
-                image = render_cubemap_axis_equirect(
-                    image_group,
-                    output_width=2048,
-                    output_height=1024,
-                    image_cache=self._image_cache,
-                )
+                if use_source_equirect:
+                    assert source_path is not None
+                    assert source_rotation is not None
+                    source = self._image_cache.get(source_path)
+                    if source is None:
+                        source = imread_unicode(source_path)
+                        if source is not None:
+                            self._image_cache[source_path] = source
+                    if source is None:
+                        raise OSError(f"Cannot read source equirect image: {source_path}")
+                    image = render_source_equirect_axis(
+                        source,
+                        source_rotation,
+                        output_width=2048,
+                        output_height=1024,
+                        sfm_to_preview_matrix=self._world_matrix,
+                    )
+                else:
+                    image = render_cubemap_axis_equirect(
+                        image_group,
+                        output_width=2048,
+                        output_height=1024,
+                        image_cache=self._image_cache,
+                    )
             except Exception as e:
                 self.image_view.setText(f"Cubemap画像生成エラー: {e}")
                 return
@@ -880,8 +971,14 @@ class AprilTagSceneViewerWindow(QWidget):
             f" / active basis={self._ray_basis_label()}"
         )
         group_text = "-" if group is None else group.name
+        source_image_text = ""
+        source_equirect = self._source_equirect_for_group(group)
+        if source_equirect is not None:
+            source_image_text = f" / source equirect={source_equirect[0].name}"
         mapping = ""
-        if basis_group is not None and image_group is not None:
+        if source_equirect is not None:
+            mapping = " / image preview=source equirect direct"
+        elif basis_group is not None and image_group is not None:
             closest = closest_image_face_for_world_face(
                 basis_group,
                 image_group,
@@ -900,16 +997,17 @@ class AprilTagSceneViewerWindow(QWidget):
         self.case_label.setText(
             f"ケース: {self.case.case_dir} / カメラ: {group_text} / "
             f"点群: {point_count} sampled / 座標: {coordinate_profile_label(self.case.coordinate_profile)}"
-            f"{alignment}{ray_source}{mapping}"
+            f"{alignment}{ray_source}{source_image_text}{mapping}"
         )
         self._append_log_once(
             "scene",
             f"Loaded {len(self._world_groups)} camera groups, point sample={point_count}. "
             f"{coordinate_profile_note(self.case.coordinate_profile)}"
             f" World rays: {self._world_ray_source or 'transforms.json face +Z'}."
-            f" Image rays: {self._image_ray_source or 'transforms.json'}.",
+            f" Image rays: {self._image_ray_source or 'transforms.json'}."
+            f" Source equirect images: {len(self._source_equirect_paths)}.",
         )
-        if group is not None and image_group is not None:
+        if group is not None and image_group is not None and source_equirect is None:
             self._append_log_once(
                 f"mapping:{group.name}",
                 f"Face/image ray mapping for {group.name}: {face_mapping_summary(group, image_group)}",

@@ -341,6 +341,39 @@ def cubemap_image_face_rotations(
     return {face: rotation.copy() for face, rotation in rotations.items()}
 
 
+def source_equirect_base_rotation(
+    group: CubemapFrameGroup,
+    *,
+    cubemap_view_params: CubemapViewMetadata | Mapping[str, tuple[float, float]] | None = None,
+) -> np.ndarray | None:
+    """Return the source equirectangular camera rotation from Cube6 poses.
+
+    ``cubemap_transforms_json.py`` writes each pinhole face as
+    ``source_camera @ export_rotation.T``. Averaging the inverse relation over
+    the generated faces gives the source equirectangular camera-to-world
+    rotation in the same world basis as ``group``.
+    """
+    params = cubemap_view_params_for_group(cubemap_view_params, group.group_index)
+    if params is None:
+        fixed = _fixed_standard_cube6_face_rotations(group)
+        if fixed is None:
+            return None
+        params = {
+            face: _STANDARD_FACE_VIEW_PARAMS[face]
+            for face in fixed
+            if face in _STANDARD_FACE_VIEW_PARAMS
+        }
+    export_rotations = {
+        face: _export_rotation_matrix(yaw, pitch)
+        for face, (yaw, pitch) in params.items()
+        if face in group.frames_by_face
+    }
+    if len(export_rotations) < 4:
+        return None
+    base = _image_space_base_rotation(group, export_rotations)
+    return None if base is None else base.copy()
+
+
 def _transform_relative_face_rotations(
     group: CubemapFrameGroup,
     fixed_rotations: dict[str, np.ndarray],
@@ -1294,3 +1327,89 @@ def render_cubemap_axis_equirect(
             best_score=best_score,
         )
     return output
+
+
+def render_source_equirect_axis(
+    image: np.ndarray,
+    source_world_to_image_rotation: np.ndarray,
+    *,
+    output_width: int = 2048,
+    output_height: int = 1024,
+    sfm_to_preview_matrix: np.ndarray | None = None,
+) -> np.ndarray:
+    """Resample a source equirectangular image into the fixed preview axes."""
+    if image is None or image.size == 0:
+        raise ValueError("Source equirect image is empty")
+    rotation = np.asarray(source_world_to_image_rotation, dtype=np.float64)
+    if rotation.shape != (3, 3):
+        raise ValueError("source_world_to_image_rotation must be a 3x3 matrix")
+
+    width = max(1, int(output_width))
+    height = max(1, int(output_height))
+    preview_to_sfm = _direction_matrix_preview_to_sfm(sfm_to_preview_matrix)
+    rays_sfm = _equirect_local_rays(width, height) @ preview_to_sfm
+    source_local = rays_sfm @ rotation
+
+    dx = source_local[..., 0]
+    dy = source_local[..., 1]
+    dz = source_local[..., 2]
+    lon = np.arctan2(dx, dz)
+    lat = np.arcsin(np.clip(dy, -1.0, 1.0))
+
+    source = image[:, :, :3] if image.ndim == 3 else cv2.cvtColor(image, cv2.COLOR_GRAY2BGR)
+    source_h, source_w = source.shape[:2]
+    map_x = ((lon / np.pi + 1.0) * 0.5 * source_w).astype(np.float32)
+    map_y = ((0.5 - lat / np.pi) * source_h).astype(np.float32)
+    map_x = np.mod(map_x, float(source_w))
+    map_y = np.clip(map_y, 0.0, float(source_h - 1))
+    return cv2.remap(
+        source,
+        map_x,
+        map_y,
+        cv2.INTER_LINEAR,
+        borderMode=cv2.BORDER_WRAP,
+    )
+
+
+def render_source_equirect_perspective(
+    image: np.ndarray,
+    source_world_to_image_rotation: np.ndarray,
+    *,
+    yaw_deg: float,
+    pitch_deg: float,
+    roll_deg: float = 0.0,
+    fov_deg: float = 90.0,
+    output_size: int = 768,
+    sfm_to_preview_matrix: np.ndarray | None = None,
+) -> np.ndarray:
+    """Render a perspective crop from a source equirect image using preview rays."""
+    if image is None or image.size == 0:
+        raise ValueError("Source equirect image is empty")
+    rotation = np.asarray(source_world_to_image_rotation, dtype=np.float64)
+    if rotation.shape != (3, 3):
+        raise ValueError("source_world_to_image_rotation must be a 3x3 matrix")
+
+    size = max(1, int(output_size))
+    preview_to_sfm = _direction_matrix_preview_to_sfm(sfm_to_preview_matrix)
+    rays_sfm = _view_rays(size, fov_deg) @ _rotation_matrix(yaw_deg, pitch_deg, roll_deg).T @ preview_to_sfm
+    source_local = rays_sfm @ rotation
+
+    dx = source_local[..., 0]
+    dy = source_local[..., 1]
+    dz = source_local[..., 2]
+    lon = np.arctan2(dx, dz)
+    lat = np.arcsin(np.clip(dy, -1.0, 1.0))
+
+    source = image[:, :, :3] if image.ndim == 3 else cv2.cvtColor(image, cv2.COLOR_GRAY2BGR)
+    source_h, source_w = source.shape[:2]
+    map_x = ((lon / np.pi + 1.0) * 0.5 * source_w).astype(np.float32)
+    map_y = ((0.5 - lat / np.pi) * source_h).astype(np.float32)
+    map_x = np.mod(map_x, float(source_w))
+    map_y = np.clip(map_y, 0.0, float(source_h - 1))
+    return cv2.remap(
+        source,
+        map_x,
+        map_y,
+        cv2.INTER_LINEAR,
+        borderMode=cv2.BORDER_WRAP,
+    )

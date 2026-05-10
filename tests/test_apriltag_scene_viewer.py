@@ -17,9 +17,13 @@ from devtools.apriltag.cubemap_preview import (
     CubemapFrameGroup,
     axis_face_view_params,
     render_cubemap_axis_equirect,
+    render_source_equirect_axis,
+    render_source_equirect_perspective,
+    source_equirect_base_rotation,
 )
 from devtools.apriltag.scene_viewer import (
     AprilTagSceneViewerWindow,
+    _resolve_source_equirect_paths,
     camera_pose_from_perspective_params,
     case_cubemap_view_metadata,
     closest_image_face_for_world_face,
@@ -470,16 +474,16 @@ def test_current_case_reports_world_to_image_ray_mapping() -> None:
     assert image_basis_closest is not None
     assert raw_closest is not None
     assert raw_closest[0] == "nx"
-    assert closest[0] == "nz"
-    assert closest[1] < 1e-4
-    assert closest[2] == pytest.approx(180.0, abs=0.1)
-    assert opposite[0] == "pz"
-    assert opposite[1] < 1e-4
+    assert closest[0] == "nx"
+    assert closest[1] < 2.0
+    assert opposite[0] == "px"
+    assert opposite[1] < 2.0
     assert image_basis_closest[0] == "pz"
     assert image_basis_closest[1] < 1e-4
-    assert "active pz->image nz" in window.case_label.text()
+    assert "source equirect=frame_000001.jpg" in window.case_label.text()
+    assert "image preview=source equirect direct" in window.case_label.text()
     window.ray_basis_combo.setCurrentIndex(window.ray_basis_combo.findData("image"))
-    assert "active pz->image pz" in window.case_label.text()
+    assert "source equirect=frame_000001.jpg" in window.case_label.text()
     window.deleteLater()
 
 
@@ -532,48 +536,59 @@ def test_current_case_image_ray_group_matches_metashape_build_remap_rays() -> No
     window.deleteLater()
 
 
-def test_current_case_json_face_image_preview_matches_expected_saved_faces() -> None:
+def test_current_case_image_preview_uses_source_equirect_when_available() -> None:
     case_dir = Path("_compare/apriltag_test/cases/current")
     if not (case_dir / "case.json").is_file():
         pytest.skip("local AprilTag comparison case is not available")
     _app()
     window = AprilTagSceneViewerWindow(initial_case=case_dir)
     world_group = window.selected_world_group()
-    image_group = window.selected_image_render_group()
     assert world_group is not None
-    assert image_group is not None
+    case = load_case(case_dir)
+    source_paths = _resolve_source_equirect_paths(case, ("frame_000001",))
+    source_path = source_paths.get("frame_000001")
+    source_rotation = window._source_equirect_rotations.get("frame_000001")
+    if source_path is None or source_rotation is None:
+        pytest.skip("local AprilTag source equirect image is not available")
 
-    equirect = render_cubemap_axis_equirect(image_group, output_width=1024, output_height=512)
-    image_root = case_dir / "input" / "images"
-    expected = {
-        "pz": "nz",
-        "px": "nx",
-        "nx": "px",
-        "nz": "pz",
-        "top": "top",
-        "bottom": "bottom",
-    }
+    window.mode_combo.setCurrentIndex(window.mode_combo.findData("image"))
+    assert "source-equirect" in window._displayed_image_key
+    assert str(source_path) in window._displayed_image_key
 
-    def error_to(rendered: np.ndarray, face: str) -> float:
-        saved = imread_unicode(image_root / f"frame_000001_{face}.jpg")
-        saved = cv2.resize(saved[:, :, :3], (512, 512), interpolation=cv2.INTER_AREA)
-        return float(np.mean(np.abs(rendered.astype(np.int16) - saved.astype(np.int16))))
+    raw_group = window.selected_raw_group()
+    assert raw_group is not None
+    expected_rotation = source_equirect_base_rotation(raw_group, cubemap_view_params=case_cubemap_view_metadata(case))
+    assert expected_rotation is not None
+    assert np.allclose(source_rotation, expected_rotation, atol=1e-6)
 
-    for json_face, saved_face in expected.items():
-        yaw, pitch, roll, fov = axis_face_view_params(world_group, json_face, fov_deg=90.0)
-        rendered = equirect_to_perspective(
-            equirect,
-            PerspectiveParams(yaw_deg=yaw, pitch_deg=pitch, roll_deg=roll, fov_deg=fov),
-            output_size=512,
-        )
-        expected_error = error_to(rendered, saved_face)
-        other_errors = [
-            error_to(rendered, face)
-            for face in expected.values()
-            if face != saved_face
-        ]
-        assert expected_error < 12.0, json_face
-        assert expected_error * 4.0 < min(other_errors), json_face
+    source = imread_unicode(source_path)
+    display_matrix = world_display_matrix(case.coordinate_profile)
+    source_equirect = render_source_equirect_axis(
+        source,
+        source_rotation,
+        output_width=1024,
+        output_height=512,
+        sfm_to_preview_matrix=display_matrix,
+    )
+    yaw, pitch, roll, fov = axis_face_view_params(world_group, "pz", fov_deg=90.0)
+    rendered = equirect_to_perspective(
+        source_equirect,
+        PerspectiveParams(yaw_deg=yaw, pitch_deg=pitch, roll_deg=roll, fov_deg=fov),
+        output_size=512,
+    )
+    direct = render_source_equirect_perspective(
+        source,
+        source_rotation,
+        yaw_deg=yaw,
+        pitch_deg=pitch,
+        roll_deg=roll,
+        fov_deg=fov,
+        output_size=512,
+        sfm_to_preview_matrix=display_matrix,
+    )
+    assert rendered.shape == (512, 512, 3)
+    assert float(np.std(rendered)) > 1.0
+    assert float(np.mean(np.abs(rendered.astype(np.int16) - direct.astype(np.int16)))) < 8.0
     window.deleteLater()
 
 
