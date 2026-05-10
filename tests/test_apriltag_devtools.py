@@ -21,7 +21,6 @@ from devtools.apriltag.case import (
 from devtools.apriltag.coordinates import (
     COORDINATE_PROFILE_LICHTFELD_CUBE6,
     COORDINATE_PROFILE_LICHTFELD_CUBE6_PRE_FINAL_PLY,
-    image_ray_matrix,
 )
 from devtools.apriltag.cubemap_preview import (
     CubemapFrameGroup,
@@ -521,9 +520,6 @@ def test_render_cubemap_equirect_uses_standard_cube6_face_layout(tmp_path: Path)
     rendered = render_cubemap_equirect(group, output_width=source_w, output_height=source_h)
 
     assert float(np.mean(np.abs(rendered.astype(np.int16) - source.astype(np.int16)))) < 3.0
-    matrix = image_ray_matrix(COORDINATE_PROFILE_LICHTFELD_CUBE6)
-    assert matrix is not None
-    assert np.allclose(matrix[:3, :3], np.diag([1.0, 1.0, -1.0]))
 
 
 def test_render_cubemap_axis_equirect_preserves_world_aligned_face_roll(tmp_path: Path) -> None:
@@ -600,12 +596,6 @@ def test_render_cubemap_axis_equirect_preserves_world_aligned_face_roll(tmp_path
         )
         source_image = cv2.imread(str(source_frame.image_path), cv2.IMREAD_COLOR)
         assert float(np.mean(np.abs(reprojected.astype(np.int16) - source_image.astype(np.int16)))) < 10.0
-
-
-def test_lichtfeld_pre_final_profile_uses_cube6_image_ray_correction() -> None:
-    matrix = image_ray_matrix(COORDINATE_PROFILE_LICHTFELD_CUBE6_PRE_FINAL_PLY)
-    assert matrix is not None
-    assert np.allclose(matrix[:3, :3], np.diag([1.0, 1.0, -1.0]))
 
 
 def test_render_cubemap_equirect_uses_transform_relative_face_layout(tmp_path: Path) -> None:

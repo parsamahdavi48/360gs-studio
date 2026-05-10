@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import xml.etree.ElementTree as ET
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 import cv2
@@ -101,9 +101,14 @@ def load_cubemap_frame_groups(
     transforms_json: Path,
     *,
     cubemap_view_params: CubemapViewMetadata | Mapping[str, tuple[float, float]] | None = None,
+    normalize_cubemap: bool = True,
 ) -> tuple[CubemapFrameGroup, ...]:
     groups: dict[str, dict[str, PinholeFrame]] = {}
-    for frame in load_pinhole_frames(transforms_json, cubemap_view_params=cubemap_view_params):
+    for frame in load_pinhole_frames(
+        transforms_json,
+        cubemap_view_params=cubemap_view_params,
+        normalize_cubemap=normalize_cubemap,
+    ):
         parsed = split_cubemap_face(frame.file_path)
         if parsed is None:
             continue
@@ -172,6 +177,121 @@ def _rotation_matrix(yaw_deg: float, pitch_deg: float, roll_deg: float = 0.0) ->
         dtype=np.float64,
     )
     return ry @ rx @ rz
+
+
+def _export_rotation_matrix(yaw_deg: float, pitch_deg: float) -> np.ndarray:
+    yaw = np.deg2rad(float(yaw_deg))
+    pitch = np.deg2rad(float(pitch_deg))
+    ry = np.array(
+        [
+            [np.cos(yaw), 0.0, np.sin(yaw)],
+            [0.0, 1.0, 0.0],
+            [-np.sin(yaw), 0.0, np.cos(yaw)],
+        ],
+        dtype=np.float64,
+    )
+    rx = np.array(
+        [
+            [1.0, 0.0, 0.0],
+            [0.0, np.cos(pitch), -np.sin(pitch)],
+            [0.0, np.sin(pitch), np.cos(pitch)],
+        ],
+        dtype=np.float64,
+    )
+    return rx @ ry
+
+
+def image_space_cubemap_frame_group(
+    group: CubemapFrameGroup,
+    *,
+    cubemap_view_params: CubemapViewMetadata | Mapping[str, tuple[float, float]] | None = None,
+) -> CubemapFrameGroup:
+    """Return face poses whose pinhole rays match the saved Cube6 images.
+
+    ``cubemap_transforms_json.py`` writes image pixels with ``rotation_matrix(...,
+    forward=False)`` but writes ``transforms.json`` face poses with
+    ``rotation_matrix(..., forward=True).T``. The debug viewer is an image/point
+    inspection tool, so its face buttons and image preview must follow the saved
+    jpg ray directions rather than the downstream trainer's raw pose convention.
+    """
+    params = cubemap_view_params_for_group(cubemap_view_params, group.group_index)
+    if params is None:
+        fixed = _fixed_standard_cube6_face_rotations(group)
+        if fixed is None:
+            return group
+        params = {
+            face: _STANDARD_FACE_VIEW_PARAMS[face]
+            for face in fixed
+            if face in _STANDARD_FACE_VIEW_PARAMS
+        }
+    image_rotations: dict[str, np.ndarray] = {}
+    export_rotations: dict[str, np.ndarray] = {}
+    for face, (yaw, pitch) in params.items():
+        if face not in group.frames_by_face:
+            continue
+        image_rotations[face] = _rotation_matrix(yaw, pitch)
+        export_rotations[face] = _export_rotation_matrix(yaw, pitch)
+    base = _image_space_base_rotation(group, export_rotations)
+    if base is None:
+        return group
+    position = group.reference_frame.camera_position_sfm
+    return CubemapFrameGroup(
+        name=group.name,
+        frames_by_face={
+            face: _replace_frame_pose(frame, base @ image_rotations[face], position)
+            for face, frame in group.frames_by_face.items()
+            if face in image_rotations
+        },
+        group_index=group.group_index,
+    )
+
+
+def _image_space_base_rotation(
+    group: CubemapFrameGroup,
+    export_rotations: dict[str, np.ndarray],
+) -> np.ndarray | None:
+    bases: list[np.ndarray] = []
+    for face, export_rotation in export_rotations.items():
+        frame = group.frames_by_face.get(face)
+        if frame is None:
+            continue
+        frame_rotation = np.asarray(frame.camera_to_world_rotation, dtype=np.float64)
+        if not _is_rotation_like(frame_rotation):
+            return None
+        bases.append(frame_rotation @ export_rotation)
+    if len(bases) < 4:
+        return None
+    base = _average_rotations(bases)
+    errors = [_rotation_angle(base, candidate) for candidate in bases]
+    if max(errors) > np.deg2rad(0.1):
+        return None
+    return base
+
+
+def _average_rotations(rotations: list[np.ndarray]) -> np.ndarray:
+    matrix = np.mean(np.stack(rotations, axis=0), axis=0)
+    try:
+        u, _s, vt = np.linalg.svd(matrix)
+    except np.linalg.LinAlgError:
+        return rotations[0]
+    rotation = u @ vt
+    if float(np.linalg.det(rotation)) < 0.0:
+        u[:, -1] *= -1.0
+        rotation = u @ vt
+    return rotation
+
+
+def _rotation_angle(a: np.ndarray, b: np.ndarray) -> float:
+    delta = np.asarray(a, dtype=np.float64).T @ np.asarray(b, dtype=np.float64)
+    value = (float(np.trace(delta)) - 1.0) * 0.5
+    return float(np.arccos(np.clip(value, -1.0, 1.0)))
+
+
+def _replace_frame_pose(frame: PinholeFrame, rotation: np.ndarray, position: np.ndarray) -> PinholeFrame:
+    transform = np.array(frame.transform_matrix, dtype=np.float64, copy=True)
+    transform[:3, :3] = np.asarray(rotation, dtype=np.float64)
+    transform[:3, 3] = np.asarray(position, dtype=np.float64).reshape(3)
+    return replace(frame, transform_matrix=transform)
 
 
 def _fixed_standard_cube6_face_rotations(group: CubemapFrameGroup) -> dict[str, np.ndarray] | None:

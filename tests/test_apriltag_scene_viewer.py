@@ -1,22 +1,34 @@
 from __future__ import annotations
 
 import json
+import xml.etree.ElementTree as ET
 from pathlib import Path
 
+import cv2
 import numpy as np
+import pytest
 from PySide6.QtWidgets import QApplication
 
 from core.apriltag_cubemap import CubemapViewMetadata
 from core.apriltag_geometry import PinholeFrame
 from core.image_io import imwrite_unicode
-from devtools.apriltag.case import AprilTagDevCase, save_case
-from devtools.apriltag.cubemap_preview import CubemapFrameGroup
+from devtools.apriltag.case import AprilTagDevCase, load_case, save_case
+from devtools.apriltag.coordinates import world_display_matrix
+from devtools.apriltag.cubemap_preview import (
+    CubemapFrameGroup,
+    axis_face_view_params,
+    load_cubemap_frame_groups,
+    load_metashape_camera_labels,
+    order_groups_by_labels,
+    render_cubemap_axis_equirect,
+)
 from devtools.apriltag.scene_viewer import (
     AprilTagSceneViewerWindow,
     camera_pose_from_perspective_params,
+    case_cubemap_view_metadata,
     transform_group_for_world_display,
 )
-from gui.common.perspective_preview import PerspectiveParams
+from gui.common.perspective_preview import PerspectiveParams, equirect_to_perspective
 
 
 def _app() -> QApplication:
@@ -295,11 +307,11 @@ def test_scene_viewer_uses_generated_json_image_rays_for_world_faces(tmp_path: P
     right, up, forward = window.point_view._fixed_view_basis
     assert np.linalg.det(np.column_stack([right, up, -forward])) > 0.999
     assert np.allclose(forward, directions["pz"], atol=1e-6)
-    assert "transforms.json normalized Cube6 image rays" in window.case_label.text()
+    assert "Cube6 jpg rays reconstructed from export yaw/pitch" in window.case_label.text()
     window.deleteLater()
 
 
-def test_lichtfeld_image_ray_correction_preserves_cube6_cut_yaw_and_vertical_names(tmp_path: Path) -> None:
+def test_world_display_does_not_mix_image_ray_correction_into_camera_poses(tmp_path: Path) -> None:
     views = {
         "bottom": (-45.0, -90.0),
         "px": (45.0, 0.0),
@@ -326,25 +338,147 @@ def test_lichtfeld_image_ray_correction_preserves_cube6_cut_yaw_and_vertical_nam
             transform_matrix=transform,
         )
     group = CubemapFrameGroup("frame_0001", frames)
-    corrected = transform_group_for_world_display(
+    world_matrix = np.diag([-1.0, 1.0, -1.0, 1.0])
+    displayed = transform_group_for_world_display(
         group,
-        None,
+        world_matrix,
         image_ray_correction=np.diag([1.0, 1.0, -1.0, 1.0]),
         cubemap_view_params=CubemapViewMetadata(views),
     )
 
-    image_local = np.diag([1.0, -1.0, 1.0])
-    for face, (yaw, pitch) in views.items():
-        actual = np.array([0.0, 0.0, 1.0]) @ corrected.frames_by_face[face].camera_to_world_rotation.T
-        expected = np.array([0.0, 0.0, 1.0]) @ (image_local @ _rotation(yaw, pitch)).T
+    for face, frame in frames.items():
+        actual = displayed.frames_by_face[face].camera_to_world_rotation
+        expected = world_matrix[:3, :3] @ frame.camera_to_world_rotation
         assert np.allclose(actual, expected, atol=1e-6)
+        assert float(np.linalg.det(actual)) > 0.999
 
-    original_top = np.array([0.0, 0.0, 1.0]) @ frames["top"].camera_to_world_rotation.T
-    original_bottom = np.array([0.0, 0.0, 1.0]) @ frames["bottom"].camera_to_world_rotation.T
-    corrected_top = np.array([0.0, 0.0, 1.0]) @ corrected.frames_by_face["top"].camera_to_world_rotation.T
-    corrected_bottom = np.array([0.0, 0.0, 1.0]) @ corrected.frames_by_face["bottom"].camera_to_world_rotation.T
-    assert np.allclose(corrected_top, original_top, atol=1e-6)
-    assert np.allclose(corrected_bottom, original_bottom, atol=1e-6)
+
+def test_world_display_pz_image_preview_is_not_mirrored_by_image_ray_correction(tmp_path: Path) -> None:
+    size = 96
+    views = {
+        "bottom": (-45.0, -90.0),
+        "px": (45.0, 0.0),
+        "nz": (135.0, 0.0),
+        "nx": (-135.0, 0.0),
+        "pz": (-45.0, 0.0),
+        "top": (-45.0, 90.0),
+    }
+    opengl_base = np.diag([1.0, -1.0, -1.0])
+    frames: dict[str, PinholeFrame] = {}
+    pz_image = np.full((size, size, 3), 40, dtype=np.uint8)
+    horizontal = np.linspace(0, 255, size, dtype=np.uint8)
+    pz_image[:, :, 0] = horizontal[None, :]
+    pz_image[:, :, 1] = np.arange(size, dtype=np.uint8)[:, None]
+    pz_image[:, :, 2] = 255 - horizontal[None, :]
+    for face, (yaw, pitch) in views.items():
+        image = pz_image if face == "pz" else np.full((size, size, 3), 40, dtype=np.uint8)
+        image_path = tmp_path / f"frame_000001_{face}.png"
+        assert imwrite_unicode(image_path, image)
+        transform = np.eye(4, dtype=np.float64)
+        transform[:3, :3] = opengl_base @ _rotation(yaw, pitch)
+        frames[face] = PinholeFrame(
+            frame_id=face,
+            file_path=f"images/frame_000001_{face}.png",
+            image_path=image_path,
+            width=size,
+            height=size,
+            fl_x=size / 2.0,
+            fl_y=size / 2.0,
+            cx=(size - 1) / 2.0,
+            cy=(size - 1) / 2.0,
+            transform_matrix=transform,
+        )
+    group = transform_group_for_world_display(
+        CubemapFrameGroup("frame_000001", frames),
+        np.diag([-1.0, 1.0, -1.0, 1.0]),
+        image_ray_correction=np.diag([1.0, 1.0, -1.0, 1.0]),
+        cubemap_view_params=CubemapViewMetadata(views),
+    )
+    yaw, pitch, roll, fov = axis_face_view_params(group, "pz", fov_deg=90.0)
+
+    equirect = render_cubemap_axis_equirect(group, output_width=256, output_height=128)
+    rendered = equirect_to_perspective(
+        equirect,
+        PerspectiveParams(yaw_deg=yaw, pitch_deg=pitch, roll_deg=roll, fov_deg=fov),
+        output_size=size,
+    )
+
+    direct_error = float(np.mean(np.abs(rendered.astype(np.int16) - pz_image.astype(np.int16))))
+    mirrored_error = float(np.mean(np.abs(rendered.astype(np.int16) - pz_image[:, ::-1].astype(np.int16))))
+    assert direct_error < 8.0
+    assert direct_error * 4.0 < mirrored_error
+
+
+def test_current_case_frame_000001_pz_image_mode_is_not_mirrored() -> None:
+    case_dir = Path("_compare/apriltag_test/cases/current")
+    source_image = Path(r"D:\3DGS\test_apriltag\output\images\frame_000001_pz.jpg")
+    if not (case_dir / "case.json").is_file() or not source_image.is_file():
+        pytest.skip("local AprilTag comparison case is not available")
+    case = load_case(case_dir)
+    metadata = case_cubemap_view_metadata(case)
+    groups = load_cubemap_frame_groups(case.transforms_for_processing(), cubemap_view_params=metadata)
+    labels = load_metashape_camera_labels(case.source_metashape_xml) if case.source_metashape_xml else ()
+    raw_group = order_groups_by_labels(groups, labels)[0]
+    matrix = world_display_matrix(case.coordinate_profile)
+    group = transform_group_for_world_display(raw_group, matrix, cubemap_view_params=metadata)
+    yaw, pitch, roll, fov = axis_face_view_params(group, "pz", fov_deg=90.0)
+
+    equirect = render_cubemap_axis_equirect(group, output_width=512, output_height=256)
+    rendered = equirect_to_perspective(
+        equirect,
+        PerspectiveParams(yaw_deg=yaw, pitch_deg=pitch, roll_deg=roll, fov_deg=fov),
+        output_size=384,
+    )
+    expected = cv2.resize(cv2.imread(str(source_image), cv2.IMREAD_COLOR), (384, 384), interpolation=cv2.INTER_AREA)
+
+    direct_error = float(np.mean(np.abs(rendered.astype(np.int16) - expected.astype(np.int16))))
+    mirrored_error = float(np.mean(np.abs(rendered.astype(np.int16) - expected[:, ::-1].astype(np.int16))))
+    assert direct_error < mirrored_error * 0.5
+
+
+def test_current_case_face_buttons_match_metashape_build_remap_rays() -> None:
+    case_dir = Path("_compare/apriltag_test/cases/current")
+    if not (case_dir / "case.json").is_file():
+        pytest.skip("local AprilTag comparison case is not available")
+    _app()
+    case = load_case(case_dir)
+    if case.source_metashape_xml is None or not case.source_metashape_xml.is_file():
+        pytest.skip("local AprilTag comparison Metashape XML is not available")
+    metadata = case_cubemap_view_metadata(case)
+    if metadata is None:
+        pytest.skip("local AprilTag comparison Cube6 metadata is not available")
+    xml_root = ET.parse(case.source_metashape_xml).getroot()
+    metashape_transform = None
+    for camera in xml_root.findall(".//camera"):
+        if Path(str(camera.attrib.get("label") or "")).stem == "frame_000001":
+            text = camera.findtext("transform")
+            if text:
+                metashape_transform = np.asarray([float(value) for value in text.split()], dtype=np.float64).reshape(4, 4)
+                break
+    if metashape_transform is None:
+        pytest.skip("frame_000001 is not present in the local Metashape XML")
+    window = AprilTagSceneViewerWindow(initial_case=case_dir)
+    group = window.selected_world_group()
+    assert group is not None
+
+    metashape_local_from_lfs_local = np.diag([1.0, -1.0, -1.0])
+    expected: dict[str, np.ndarray] = {}
+    for face in ("px", "nz", "nx", "pz"):
+        yaw, pitch = metadata.view_params[face]
+        ray = np.array([0.0, 0.0, 1.0]) @ _rotation(yaw, pitch).T
+        ray = ray @ metashape_local_from_lfs_local.T @ metashape_transform[:3, :3].T
+        expected[face] = ray / max(float(np.linalg.norm(ray)), 1e-12)
+
+    actual = {
+        face: (np.array([0.0, 0.0, 1.0]) @ group.frames_by_face[face].camera_to_world_rotation.T)
+        for face in expected
+    }
+    actual = {face: ray / max(float(np.linalg.norm(ray)), 1e-12) for face, ray in actual.items()}
+
+    for face, expected_ray in expected.items():
+        assert float(actual[face] @ expected_ray) > 0.999
+    assert float(actual["pz"] @ expected["nx"]) < 0.1
+    window.deleteLater()
 
 
 def test_scene_viewer_loads_case_and_selects_camera(tmp_path: Path) -> None:

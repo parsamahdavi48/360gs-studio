@@ -365,6 +365,22 @@ def test_world_debug_view_orientation_gizmo_matches_orthographic_projection() ->
     view.deleteLater()
 
 
+def test_world_debug_view_default_gizmo_screen_vectors_are_projection_locked() -> None:
+    _app()
+    view = AprilTagWorldDebugView()
+    origin = QPointF(100.0, 100.0)
+
+    points = view._orientation_axis_points(origin, 20.0)
+
+    assert points["X"].x() < origin.x()
+    assert points["X"].y() < origin.y()
+    assert abs(points["Y"].x() - origin.x()) < 1e-12
+    assert points["Y"].y() < origin.y()
+    assert points["Z"].x() > origin.x()
+    assert points["Z"].y() < origin.y()
+    view.deleteLater()
+
+
 def test_world_debug_view_free_and_fixed_views_share_projection_contract() -> None:
     _app()
     free_view = AprilTagWorldDebugView()
