@@ -201,6 +201,8 @@ class AprilTagWorldDebugView(QWidget):
         self.setFocusPolicy(Qt.StrongFocus)
         self._pointcloud: PointCloudSample | None = None
         self._groups: tuple[CubemapFrameGroup, ...] = ()
+        self._image_ray_groups: tuple[CubemapFrameGroup, ...] = ()
+        self._face_ray_mode = "both"
         self._selected_group_name = ""
         self._tag_center = np.array([0.0, 0.0, 0.0], dtype=np.float64)
         self._tag_normal = np.array([0.0, 0.0, -1.0], dtype=np.float64)
@@ -239,6 +241,14 @@ class AprilTagWorldDebugView(QWidget):
         if self._selected_group_name and not any(group.name == self._selected_group_name for group in groups):
             self._selected_group_name = ""
         self._fit_scene_if_needed(force=not self._user_navigated)
+        self.update()
+
+    def set_image_ray_groups(self, groups: tuple[CubemapFrameGroup, ...]) -> None:
+        self._image_ray_groups = groups
+        self.update()
+
+    def set_face_ray_mode(self, mode: str) -> None:
+        self._face_ray_mode = mode if mode in {"world", "image", "both"} else "both"
         self.update()
 
     def set_selected_group(self, group_name: str) -> None:
@@ -556,7 +566,13 @@ class AprilTagWorldDebugView(QWidget):
             painter.setBrush(Qt.NoBrush)
         selected = self._selected_group()
         if selected is not None:
-            self._draw_selected_face_rays(painter, selected)
+            image_ray_group = self._selected_image_ray_group()
+            if self._face_ray_mode == "image" and image_ray_group is not None:
+                self._draw_selected_image_rays(painter, image_ray_group, primary=True)
+            else:
+                self._draw_selected_face_rays(painter, selected)
+            if self._face_ray_mode == "both" and image_ray_group is not None:
+                self._draw_selected_image_rays(painter, image_ray_group)
             if self._fixed_projection != "perspective":
                 self._draw_selected_frustum(painter, selected)
                 self._draw_world_line(painter, selected.camera_position_sfm, self._tag_center, QColor(120, 230, 180), 1, dashed=True)
@@ -596,6 +612,16 @@ class AprilTagWorldDebugView(QWidget):
         for label, start, end, color in self._selected_face_ray_segments(group):
             self._draw_world_arrow(painter, start, end, color, label, width=2)
 
+    def _draw_selected_image_rays(self, painter: QPainter, group: CubemapFrameGroup, *, primary: bool = False) -> None:
+        for label, start, end, color in self._selected_image_ray_segments(group):
+            if primary:
+                solid = QColor(color)
+                solid.setAlpha(255)
+                self._draw_world_arrow(painter, start, end, solid, f"img {label}", width=2)
+            else:
+                self._draw_world_line(painter, start, end, color, 2, dashed=True)
+                self._draw_marker(painter, end, color, f"img {label}", radius=3)
+
     def _selected_face_ray_segments(
         self,
         group: CubemapFrameGroup,
@@ -613,6 +639,42 @@ class AprilTagWorldDebugView(QWidget):
             "bottom": QColor(90, 220, 255),
             "py": QColor(120, 255, 130),
             "ny": QColor(90, 220, 255),
+        }
+        ordered_faces = ("pz", "px", "nx", "nz", "top", "bottom", "py", "ny")
+        segments: list[tuple[str, np.ndarray, np.ndarray, QColor]] = []
+        for face in ordered_faces:
+            frame = group.frames_by_face.get(face)
+            if frame is None:
+                continue
+            direction = np.array([0.0, 0.0, 1.0], dtype=np.float64) @ frame.camera_to_world_rotation.T
+            direction = _normalized(direction, fallback=(0.0, 0.0, 1.0))
+            segments.append(
+                (
+                    face,
+                    position + direction * start_distance,
+                    position + direction * length,
+                    colors[face],
+                )
+            )
+        return tuple(segments)
+
+    def _selected_image_ray_segments(
+        self,
+        group: CubemapFrameGroup,
+    ) -> tuple[tuple[str, np.ndarray, np.ndarray, QColor], ...]:
+        position = np.asarray(group.camera_position_sfm, dtype=np.float64)
+        scene_scale = max(self._grid_step * 2.0, self._grid_extent * 0.12, self._tag_size_m / self._true_scale * 2.0)
+        length = max(0.5, scene_scale) * 0.78
+        start_distance = max(length * 0.08, 1e-4)
+        colors = {
+            "pz": QColor(255, 245, 150, 150),
+            "nz": QColor(210, 130, 255, 150),
+            "px": QColor(255, 100, 100, 150),
+            "nx": QColor(255, 150, 190, 150),
+            "top": QColor(120, 255, 130, 150),
+            "bottom": QColor(90, 220, 255, 150),
+            "py": QColor(120, 255, 130, 150),
+            "ny": QColor(90, 220, 255, 150),
         }
         ordered_faces = ("pz", "px", "nx", "nz", "top", "bottom", "py", "ny")
         segments: list[tuple[str, np.ndarray, np.ndarray, QColor]] = []
@@ -680,6 +742,11 @@ class AprilTagWorldDebugView(QWidget):
         if not self._selected_group_name:
             return None
         return next((group for group in self._groups if group.name == self._selected_group_name), None)
+
+    def _selected_image_ray_group(self) -> CubemapFrameGroup | None:
+        if not self._selected_group_name:
+            return None
+        return next((group for group in self._image_ray_groups if group.name == self._selected_group_name), None)
 
     def _draw_world_line(
         self,

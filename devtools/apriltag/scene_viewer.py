@@ -63,6 +63,9 @@ from gui.common.perspective_preview import (
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_VIEWER_CASE = DEFAULT_CASE_ROOT / "current"
 FACE_ORDER = ("pz", "px", "nx", "nz", "top", "bottom", "py", "ny")
+RAY_BASIS_WORLD = "world"
+RAY_BASIS_IMAGE = "image"
+RAY_BASIS_BOTH = "both"
 
 
 def _transform_points(points: np.ndarray, matrix: np.ndarray | None) -> np.ndarray:
@@ -245,6 +248,81 @@ def camera_pose_from_perspective_params(
     return np.asarray(group.camera_position_sfm, dtype=np.float64), right, up, forward
 
 
+def face_forward_ray(group: CubemapFrameGroup, face: str) -> np.ndarray | None:
+    frame = group.frames_by_face.get(face)
+    if frame is None:
+        return None
+    ray = np.array([0.0, 0.0, 1.0], dtype=np.float64) @ frame.camera_to_world_rotation.T
+    norm = float(np.linalg.norm(ray))
+    if norm <= 1e-12 or not np.isfinite(norm):
+        return None
+    return ray / norm
+
+
+def closest_image_face_for_world_face(
+    world_group: CubemapFrameGroup,
+    image_group: CubemapFrameGroup,
+    world_face: str,
+) -> tuple[str, float, float] | None:
+    world_ray = face_forward_ray(world_group, world_face)
+    if world_ray is None:
+        return None
+    best: tuple[str, float] | None = None
+    same_label_angle = np.nan
+    for image_face in FACE_ORDER:
+        image_ray = face_forward_ray(image_group, image_face)
+        if image_ray is None:
+            continue
+        dot = float(np.clip(world_ray @ image_ray, -1.0, 1.0))
+        angle = float(np.rad2deg(np.arccos(dot)))
+        if image_face == world_face:
+            same_label_angle = angle
+        if best is None or angle < best[1]:
+            best = (image_face, angle)
+    if best is None:
+        return None
+    return best[0], best[1], same_label_angle
+
+
+def opposite_image_face_for_world_face(
+    world_group: CubemapFrameGroup,
+    image_group: CubemapFrameGroup,
+    world_face: str,
+) -> tuple[str, float] | None:
+    world_ray = face_forward_ray(world_group, world_face)
+    if world_ray is None:
+        return None
+    best: tuple[str, float] | None = None
+    for image_face in FACE_ORDER:
+        image_ray = face_forward_ray(image_group, image_face)
+        if image_ray is None:
+            continue
+        dot = float(np.clip((-world_ray) @ image_ray, -1.0, 1.0))
+        angle = float(np.rad2deg(np.arccos(dot)))
+        if best is None or angle < best[1]:
+            best = (image_face, angle)
+    return best
+
+
+def face_mapping_summary(
+    world_group: CubemapFrameGroup,
+    image_group: CubemapFrameGroup,
+) -> str:
+    parts: list[str] = []
+    for face in FACE_ORDER:
+        if face not in world_group.frames_by_face:
+            continue
+        closest = closest_image_face_for_world_face(world_group, image_group, face)
+        if closest is None:
+            continue
+        image_face, angle, same_label_angle = closest
+        opposite = opposite_image_face_for_world_face(world_group, image_group, face)
+        opposite_text = "" if opposite is None else f", reverse={opposite[0]} {opposite[1]:.1f}deg"
+        same = "" if not np.isfinite(same_label_angle) else f", same={same_label_angle:.1f}deg"
+        parts.append(f"{face}->img {image_face} ({angle:.1f}deg{same}{opposite_text})")
+    return "; ".join(parts)
+
+
 class AprilTagSceneViewerWindow(QWidget):
     """Two-pane debug viewer for Cube6 transforms and point clouds."""
 
@@ -261,9 +339,11 @@ class AprilTagSceneViewerWindow(QWidget):
         self.case: AprilTagDevCase | None = None
         self._raw_groups: tuple[CubemapFrameGroup, ...] = ()
         self._world_groups: tuple[CubemapFrameGroup, ...] = ()
+        self._image_ray_groups: tuple[CubemapFrameGroup, ...] = ()
         self._world_pointcloud: PointCloudSample | None = None
         self._world_matrix: np.ndarray | None = None
         self._metashape_alignment: tuple[float, int] | None = None
+        self._world_ray_source = ""
         self._image_ray_source = ""
         self._image_cache: dict[Path, np.ndarray] = {}
         self._equirect_cache: dict[str, np.ndarray] = {}
@@ -300,6 +380,10 @@ class AprilTagSceneViewerWindow(QWidget):
         self.mode_combo = QComboBox()
         self.mode_combo.addItem("点群モード", "pointcloud")
         self.mode_combo.addItem("Cubemap画像モード", "image")
+        self.ray_basis_combo = QComboBox()
+        self.ray_basis_combo.addItem("両方", RAY_BASIS_BOTH)
+        self.ray_basis_combo.addItem("JSON Face", RAY_BASIS_WORLD)
+        self.ray_basis_combo.addItem("画像レイ", RAY_BASIS_IMAGE)
         self.profile_combo = QComboBox()
         for profile in COORDINATE_PROFILES:
             self.profile_combo.addItem(profile.label, profile.id)
@@ -310,6 +394,9 @@ class AprilTagSceneViewerWindow(QWidget):
         controls.addSpacing(12)
         controls.addWidget(QLabel("右ビュー"))
         controls.addWidget(self.mode_combo)
+        controls.addSpacing(12)
+        controls.addWidget(QLabel("Face線基準"))
+        controls.addWidget(self.ray_basis_combo)
         controls.addSpacing(12)
         controls.addWidget(QLabel("座標解釈"))
         controls.addWidget(self.profile_combo)
@@ -355,6 +442,7 @@ class AprilTagSceneViewerWindow(QWidget):
         self.prev_button.clicked.connect(lambda: self._step_camera(-1))
         self.next_button.clicked.connect(lambda: self._step_camera(1))
         self.mode_combo.currentIndexChanged.connect(lambda _index: self._sync_views())
+        self.ray_basis_combo.currentIndexChanged.connect(self._on_ray_basis_changed)
         self.profile_combo.currentIndexChanged.connect(self._on_profile_changed)
         self.world_view.camera_clicked.connect(self.select_camera_by_name)
         self.point_view.fixed_view_dragged.connect(self._on_right_view_dragged)
@@ -387,19 +475,24 @@ class AprilTagSceneViewerWindow(QWidget):
             labels = load_metashape_camera_labels(self.case.source_metashape_xml) if self.case.source_metashape_xml else ()
             self._raw_groups = order_groups_by_labels(groups, labels)
             self._update_world_matrix()
-            image_groups = tuple(
-                image_space_cubemap_frame_group(group, cubemap_view_params=metadata)
-                for group in self._raw_groups
-            )
             self._world_groups = tuple(
                 transform_group_for_world_display(
                     group,
                     self._world_matrix,
                     cubemap_view_params=metadata,
                 )
-                for group in image_groups
+                for group in self._raw_groups
             )
-            self._image_ray_source = "Cube6 jpg rays reconstructed from export yaw/pitch"
+            self._image_ray_groups = tuple(
+                transform_group_for_world_display(
+                    image_space_cubemap_frame_group(group, cubemap_view_params=metadata),
+                    self._world_matrix,
+                    cubemap_view_params=metadata,
+                )
+                for group in self._raw_groups
+            )
+            self._world_ray_source = "transforms.json face +Z"
+            self._image_ray_source = "Cube6 export yaw/pitch"
             self._load_pointcloud()
         except Exception as e:
             QMessageBox.critical(self, "シーン読み込みエラー", str(e))
@@ -438,6 +531,19 @@ class AprilTagSceneViewerWindow(QWidget):
             return self._raw_groups[0]
         return self._raw_groups[index]
 
+    def selected_image_ray_group(self) -> CubemapFrameGroup | None:
+        if not self._image_ray_groups:
+            return None
+        index = self.camera_combo.currentIndex()
+        if index < 0 or index >= len(self._image_ray_groups):
+            return self._image_ray_groups[0]
+        return self._image_ray_groups[index]
+
+    def selected_face_basis_group(self) -> CubemapFrameGroup | None:
+        if self._ray_basis_mode() == RAY_BASIS_IMAGE:
+            return self.selected_image_ray_group() or self.selected_world_group()
+        return self.selected_world_group()
+
     def _choose_case(self) -> None:
         start = str((self.case.case_dir if self.case else DEFAULT_VIEWER_CASE).parent)
         chosen = QFileDialog.getExistingDirectory(self, "AprilTagケースを選択", start)
@@ -467,6 +573,24 @@ class AprilTagSceneViewerWindow(QWidget):
     def _on_camera_changed(self, _index: int) -> None:
         self._set_params_from_active_face()
         self._sync_views()
+
+    def _on_ray_basis_changed(self, _index: int) -> None:
+        self._set_params_from_active_face()
+        self._sync_views()
+
+    def _ray_basis_mode(self) -> str:
+        data = str(self.ray_basis_combo.currentData() or RAY_BASIS_BOTH)
+        if data in {RAY_BASIS_WORLD, RAY_BASIS_IMAGE, RAY_BASIS_BOTH}:
+            return data
+        return RAY_BASIS_BOTH
+
+    def _ray_basis_label(self) -> str:
+        mode = self._ray_basis_mode()
+        if mode == RAY_BASIS_IMAGE:
+            return "Cube6 image ray"
+        if mode == RAY_BASIS_WORLD:
+            return "transforms.json face +Z"
+        return "both (active=transforms.json face +Z)"
 
     def _step_camera(self, delta: int) -> None:
         count = self.camera_combo.count()
@@ -526,7 +650,7 @@ class AprilTagSceneViewerWindow(QWidget):
         self._world_pointcloud = transform_point_cloud_sample(sample, matrix)
 
     def _set_params_from_active_face(self) -> None:
-        group = self.selected_world_group()
+        group = self.selected_face_basis_group()
         if group is None:
             return
         params = axis_face_view_params(group, self._active_face, fov_deg=90.0)
@@ -548,9 +672,13 @@ class AprilTagSceneViewerWindow(QWidget):
 
     def _sync_views(self) -> None:
         group = self.selected_world_group()
+        basis_group = self.selected_face_basis_group()
         selected_name = group.name if group is not None else ""
+        ray_mode = self._ray_basis_mode()
         for view in (self.world_view, self.point_view):
             view.set_groups(self._world_groups)
+            view.set_image_ray_groups(self._image_ray_groups)
+            view.set_face_ray_mode(ray_mode)
             view.set_selected_group(selected_name)
             view.set_pointcloud(self._world_pointcloud)
             view.set_preview_params(
@@ -559,8 +687,8 @@ class AprilTagSceneViewerWindow(QWidget):
                 roll_deg=self._params.roll_deg,
                 fov_deg=self._params.fov_deg,
             )
-        if group is not None:
-            self._sync_point_view(group)
+        if basis_group is not None:
+            self._sync_point_view(basis_group)
         self._sync_mode_visibility()
         self._sync_face_buttons()
         self._update_status()
@@ -585,11 +713,12 @@ class AprilTagSceneViewerWindow(QWidget):
             self.right_stack.setCurrentWidget(self.point_view)
 
     def _render_image_view(self) -> None:
-        group = self.selected_world_group()
-        if group is None:
+        world_group = self.selected_world_group()
+        image_group = self.selected_image_ray_group()
+        if world_group is None or image_group is None:
             self.image_view.setText("Cubemap画像グループがありません")
             return
-        key = f"{self.case.coordinate_profile if self.case else ''}:{group.name}"
+        key = f"{self.case.coordinate_profile if self.case else ''}:image-rays:{image_group.name}"
         if self._displayed_image_key == key and self.image_view.set_perspective_params(self._params):
             self.image_view.set_drag_mode("look")
             return
@@ -597,7 +726,7 @@ class AprilTagSceneViewerWindow(QWidget):
         if image is None:
             try:
                 image = render_cubemap_axis_equirect(
-                    group,
+                    image_group,
                     output_width=2048,
                     output_height=1024,
                     image_cache=self._image_cache,
@@ -618,7 +747,7 @@ class AprilTagSceneViewerWindow(QWidget):
             self.image_view.setText("GPU透視投影プレビューを初期化できませんでした")
 
     def _sync_face_buttons(self) -> None:
-        group = self.selected_world_group()
+        group = self.selected_face_basis_group() or self.selected_world_group()
         faces = set(group.frames_by_face) if group is not None else set()
         for face, button in self.face_buttons.items():
             button.blockSignals(True)
@@ -631,24 +760,44 @@ class AprilTagSceneViewerWindow(QWidget):
             self.case_label.setText("ケース未選択")
             return
         group = self.selected_world_group()
+        image_group = self.selected_image_ray_group()
         point_count = 0 if self._world_pointcloud is None else len(self._world_pointcloud.points)
         alignment = ""
         if self._metashape_alignment is not None:
             rmse, count = self._metashape_alignment
             alignment = f" / Metashape XML alignment count={count}, rmse={rmse:.3g}"
-        ray_source = f" / image rays={self._image_ray_source or 'transforms.json'}"
+        ray_source = (
+            f" / world rays={self._world_ray_source or 'transforms.json face +Z'}"
+            f" / image rays={self._image_ray_source or 'transforms.json'}"
+            f" / active basis={self._ray_basis_label()}"
+        )
         group_text = "-" if group is None else group.name
+        mapping = ""
+        if group is not None and image_group is not None:
+            closest = closest_image_face_for_world_face(group, image_group, self._active_face)
+            if closest is not None:
+                image_face, angle, same_label_angle = closest
+                opposite = opposite_image_face_for_world_face(group, image_group, self._active_face)
+                opposite_text = "" if opposite is None else f", reverse={opposite[0]} {opposite[1]:.1f}deg"
+                same = "" if not np.isfinite(same_label_angle) else f", same-label={same_label_angle:.1f}deg"
+                mapping = f" / world {self._active_face}->image {image_face} ({angle:.1f}deg{same}{opposite_text})"
         self.case_label.setText(
             f"ケース: {self.case.case_dir} / カメラ: {group_text} / "
             f"点群: {point_count} sampled / 座標: {coordinate_profile_label(self.case.coordinate_profile)}"
-            f"{alignment}{ray_source}"
+            f"{alignment}{ray_source}{mapping}"
         )
         self._append_log_once(
             "scene",
             f"Loaded {len(self._world_groups)} camera groups, point sample={point_count}. "
             f"{coordinate_profile_note(self.case.coordinate_profile)}"
+            f" World rays: {self._world_ray_source or 'transforms.json face +Z'}."
             f" Image rays: {self._image_ray_source or 'transforms.json'}.",
         )
+        if group is not None and image_group is not None:
+            self._append_log_once(
+                f"mapping:{group.name}",
+                f"Face/image ray mapping for {group.name}: {face_mapping_summary(group, image_group)}",
+            )
 
     def _on_right_view_dragged(self, delta_x: float, delta_y: float) -> None:
         if not self._world_groups:

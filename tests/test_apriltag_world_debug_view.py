@@ -234,6 +234,45 @@ def test_world_debug_view_face_direction_rays_use_frame_rotations_directly() -> 
     view.deleteLater()
 
 
+def test_world_debug_view_keeps_image_rays_separate_from_world_face_rays() -> None:
+    _app()
+    view = AprilTagWorldDebugView()
+    world_group = CubemapFrameGroup(
+        name="frame_0001",
+        frames_by_face={
+            "pz": _frame_with_rotation("frame_0001", "pz", np.eye(3)),
+        },
+    )
+    image_group = CubemapFrameGroup(
+        name="frame_0001",
+        frames_by_face={
+            "pz": _frame_with_rotation("frame_0001", "pz", np.diag([-1.0, 1.0, -1.0])),
+        },
+    )
+
+    view.set_groups((world_group,))
+    view.set_image_ray_groups((image_group,))
+    view.set_selected_group("frame_0001")
+    view.set_face_ray_mode("image")
+    world_segments = view._selected_face_ray_segments(view._selected_group())
+    image_segments = view._selected_image_ray_segments(view._selected_image_ray_group())
+    world_direction = (world_segments[0][2] - world_segments[0][1]) / np.linalg.norm(
+        world_segments[0][2] - world_segments[0][1]
+    )
+    image_direction = (image_segments[0][2] - image_segments[0][1]) / np.linalg.norm(
+        image_segments[0][2] - image_segments[0][1]
+    )
+
+    assert view._selected_group() is world_group
+    assert view._selected_image_ray_group() is image_group
+    assert view._face_ray_mode == "image"
+    assert np.allclose(world_direction, [0.0, 0.0, 1.0])
+    assert np.allclose(image_direction, [0.0, 0.0, -1.0])
+    view.set_face_ray_mode("both")
+    assert view._face_ray_mode == "both"
+    view.deleteLater()
+
+
 def test_world_display_group_rotates_camera_position_and_rotation() -> None:
     transform = np.eye(4)
     transform[:3, 3] = np.array([1.0, 2.0, 3.0])
