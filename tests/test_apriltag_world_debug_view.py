@@ -314,7 +314,8 @@ def test_world_debug_view_orientation_gizmo_marks_positive_axes() -> None:
 
     points = view._orientation_axis_points(origin, 20.0)
 
-    assert points["X"].x() > origin.x()
+    assert view._screen_basis_determinant() > 0.999
+    assert points["X"].x() < origin.x()
     assert points["X"].y() == origin.y()
     assert points["Y"].x() == origin.x()
     assert points["Y"].y() < origin.y()
@@ -331,17 +332,76 @@ def test_world_debug_view_orientation_gizmo_uses_right_handed_view_basis() -> No
     view._view_pitch_deg = 0.0
 
     points = view._orientation_axis_points(origin, 20.0)
-    right, up, forward = view._view_basis()
-    basis = np.column_stack([right, up, -forward])
 
-    assert np.linalg.det(basis) > 0.999
-    assert points["Z"].x() < origin.x()
+    assert view._screen_basis_determinant() > 0.999
+    assert points["Z"].x() > origin.x()
     assert points["Z"].y() == origin.y()
     assert points["Y"].x() == origin.x()
     assert points["Y"].y() < origin.y()
     assert abs(points["X"].x() - origin.x()) < 1e-12
     assert abs(points["X"].y() - origin.y()) < 1e-12
     view.deleteLater()
+
+
+def test_world_debug_view_orientation_gizmo_matches_orthographic_projection() -> None:
+    _app()
+    view = AprilTagWorldDebugView()
+    view.resize(400, 300)
+    view._view_center = np.zeros(3)
+    view._pixels_per_unit = 25.0
+    view._view_yaw_deg = 33.0
+    view._view_pitch_deg = -18.0
+    origin = QPointF(view.width() * 0.5, view.height() * 0.5)
+
+    gizmo_points = view._orientation_axis_points(origin, view._pixels_per_unit)
+    axis_points = {
+        label: axis
+        for label, axis, _color in view._axis_definitions()
+    }
+
+    for label, axis in axis_points.items():
+        projected, _depth = view._project(axis.reshape(1, 3))
+        assert np.allclose([gizmo_points[label].x(), gizmo_points[label].y()], projected[0])
+    view.deleteLater()
+
+
+def test_world_debug_view_free_and_fixed_views_share_projection_contract() -> None:
+    _app()
+    free_view = AprilTagWorldDebugView()
+    fixed_view = AprilTagWorldDebugView()
+    for view in (free_view, fixed_view):
+        view.resize(400, 300)
+        view._view_center = np.zeros(3)
+        view._pixels_per_unit = 25.0
+    free_view._view_yaw_deg = 33.0
+    free_view._view_pitch_deg = -18.0
+    right, up, forward = free_view._view_basis()
+    fixed_view.set_fixed_view(
+        center=np.zeros(3),
+        right=right,
+        up=up,
+        forward=forward,
+        pixels_per_unit=25.0,
+    )
+    points = np.array(
+        [
+            [1.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0],
+            [0.0, 0.0, 1.0],
+            [1.0, 2.0, 3.0],
+        ],
+        dtype=float,
+    )
+
+    free_xy, free_depth = free_view._project(points)
+    fixed_xy, fixed_depth = fixed_view._project(points)
+
+    assert free_view._screen_basis_determinant() > 0.999
+    assert fixed_view._screen_basis_determinant() > 0.999
+    assert np.allclose(free_xy, fixed_xy)
+    assert np.allclose(free_depth, fixed_depth)
+    free_view.deleteLater()
+    fixed_view.deleteLater()
 
 
 def test_world_debug_view_fixed_view_uses_same_projection_path() -> None:
@@ -402,6 +462,7 @@ def test_world_debug_view_fixed_perspective_view_uses_right_handed_screen_basis(
     basis = np.column_stack([right, up, -forward])
 
     assert np.linalg.det(basis) > 0.999
+    assert view._screen_basis_determinant() > 0.999
     assert np.allclose(forward, [1.0, 0.0, 0.0])
     assert float(up @ np.array([0.0, 1.0, 0.0])) > 0.999
     view.deleteLater()

@@ -424,13 +424,11 @@ class AprilTagWorldDebugView(QWidget):
             return self._fixed_view_basis
         yaw = np.deg2rad(self._view_yaw_deg)
         pitch = np.deg2rad(self._view_pitch_deg)
-        back = np.array(
+        forward = np.array(
             [np.sin(yaw) * np.cos(pitch), np.sin(pitch), np.cos(yaw) * np.cos(pitch)],
             dtype=np.float64,
         )
-        back = _normalized(back, fallback=(0.0, 0.0, 1.0))
-        forward = -back
-        right = np.array([np.cos(yaw), 0.0, -np.sin(yaw)], dtype=np.float64)
+        right = np.array([-np.cos(yaw), 0.0, np.sin(yaw)], dtype=np.float64)
         return _right_handed_view_basis(
             right=right,
             up=np.array([0.0, 1.0, 0.0], dtype=np.float64),
@@ -502,15 +500,13 @@ class AprilTagWorldDebugView(QWidget):
         right, up, _forward = self._view_basis()
         points: dict[str, QPointF] = {}
         for label, axis, _color in self._axis_definitions():
-            screen = np.array(
-                [
-                    float(origin.x()) + float(axis @ right) * float(length),
-                    float(origin.y()) - float(axis @ up) * float(length),
-                ],
-                dtype=np.float64,
-            )
-            points[label] = QPointF(float(screen[0]), float(screen[1]))
+            delta = _screen_axis_delta(axis=axis, right=right, up=up, length=length)
+            points[label] = QPointF(float(origin.x()) + float(delta[0]), float(origin.y()) + float(delta[1]))
         return points
+
+    def _screen_basis_determinant(self) -> float:
+        right, up, forward = self._view_basis()
+        return float(np.linalg.det(np.column_stack([right, up, -forward])))
 
     @staticmethod
     def _axis_definitions() -> tuple[tuple[str, np.ndarray, QColor], ...]:
@@ -785,6 +781,22 @@ def _normalized(value: np.ndarray, *, fallback: tuple[float, float, float]) -> n
     if norm <= 1e-12 or not np.isfinite(norm):
         return np.asarray(fallback, dtype=np.float64)
     return value / norm
+
+
+def _screen_axis_delta(
+    *,
+    axis: np.ndarray,
+    right: np.ndarray,
+    up: np.ndarray,
+    length: float,
+) -> np.ndarray:
+    return np.array(
+        [
+            float(axis @ right) * float(length),
+            -float(axis @ up) * float(length),
+        ],
+        dtype=np.float64,
+    )
 
 
 def _right_handed_view_basis(
