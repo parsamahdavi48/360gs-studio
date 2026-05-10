@@ -319,7 +319,7 @@ def test_scene_viewer_keeps_world_face_rays_separate_from_generated_image_rays(t
     assert "world rays=transforms.json face +Z" in window.case_label.text()
     assert "image rays=Cube6 export yaw/pitch" in window.case_label.text()
     assert "active basis=both (active=transforms.json face +Z)" in window.case_label.text()
-    assert "world pz->image px" in window.case_label.text()
+    assert "active pz->image px" in window.case_label.text()
     assert "reverse=nx" in window.case_label.text()
 
     window.ray_basis_combo.setCurrentIndex(window.ray_basis_combo.findData("image"))
@@ -450,15 +450,20 @@ def test_current_case_reports_world_to_image_ray_mapping() -> None:
     assert world_group.name == "frame_000001"
     closest = closest_image_face_for_world_face(world_group, image_group, "pz")
     opposite = opposite_image_face_for_world_face(world_group, image_group, "pz")
+    image_basis_closest = closest_image_face_for_world_face(image_group, image_group, "pz")
     assert closest is not None
     assert opposite is not None
+    assert image_basis_closest is not None
     assert closest[0] == "px"
     assert closest[1] < 1e-4
     assert closest[2] == pytest.approx(90.0)
     assert opposite[0] == "nx"
     assert opposite[1] < 1e-4
-    assert "world pz->image px" in window.case_label.text()
-    assert "reverse=nx" in window.case_label.text()
+    assert image_basis_closest[0] == "pz"
+    assert image_basis_closest[1] < 1e-4
+    assert "active pz->image px" in window.case_label.text()
+    window.ray_basis_combo.setCurrentIndex(window.ray_basis_combo.findData("image"))
+    assert "active pz->image pz" in window.case_label.text()
     window.deleteLater()
 
 

@@ -760,6 +760,7 @@ class AprilTagSceneViewerWindow(QWidget):
             self.case_label.setText("ケース未選択")
             return
         group = self.selected_world_group()
+        basis_group = self.selected_face_basis_group()
         image_group = self.selected_image_ray_group()
         point_count = 0 if self._world_pointcloud is None else len(self._world_pointcloud.points)
         alignment = ""
@@ -773,14 +774,22 @@ class AprilTagSceneViewerWindow(QWidget):
         )
         group_text = "-" if group is None else group.name
         mapping = ""
-        if group is not None and image_group is not None:
-            closest = closest_image_face_for_world_face(group, image_group, self._active_face)
+        if basis_group is not None and image_group is not None:
+            closest = closest_image_face_for_world_face(
+                basis_group,
+                image_group,
+                self._active_face,
+            )
             if closest is not None:
                 image_face, angle, same_label_angle = closest
-                opposite = opposite_image_face_for_world_face(group, image_group, self._active_face)
+                opposite = opposite_image_face_for_world_face(
+                    basis_group,
+                    image_group,
+                    self._active_face,
+                )
                 opposite_text = "" if opposite is None else f", reverse={opposite[0]} {opposite[1]:.1f}deg"
                 same = "" if not np.isfinite(same_label_angle) else f", same-label={same_label_angle:.1f}deg"
-                mapping = f" / world {self._active_face}->image {image_face} ({angle:.1f}deg{same}{opposite_text})"
+                mapping = f" / active {self._active_face}->image {image_face} ({angle:.1f}deg{same}{opposite_text})"
         self.case_label.setText(
             f"ケース: {self.case.case_dir} / カメラ: {group_text} / "
             f"点群: {point_count} sampled / 座標: {coordinate_profile_label(self.case.coordinate_profile)}"
