@@ -49,6 +49,7 @@ from devtools.apriltag.cubemap_preview import (
     load_metashape_camera_labels,
     order_groups_by_labels,
     render_cubemap_axis_equirect,
+    render_generated_cubemap_source_axis,
     render_source_equirect_axis,
     source_equirect_base_rotation,
 )
@@ -73,6 +74,9 @@ SIDE_FACE_ORDER = frozenset({"pz", "px", "nx", "nz"})
 RAY_BASIS_WORLD = "world"
 RAY_BASIS_IMAGE = "image"
 RAY_BASIS_BOTH = "both"
+RIGHT_VIEW_POINTCLOUD = "pointcloud"
+RIGHT_VIEW_SOURCE_EQUIRECT = "image"
+RIGHT_VIEW_RECONSTRUCTED_CUBE6 = "cube6_reconstruct"
 LICHTFELD_IMAGE_RAY_DISPLAY_PROFILES = {
     COORDINATE_PROFILE_LICHTFELD_CUBE6,
     COORDINATE_PROFILE_LICHTFELD_CUBE6_PRE_FINAL_PLY,
@@ -536,8 +540,9 @@ class AprilTagSceneViewerWindow(QWidget):
         self.prev_button = QPushButton("前")
         self.next_button = QPushButton("次")
         self.mode_combo = QComboBox()
-        self.mode_combo.addItem("点群モード", "pointcloud")
-        self.mode_combo.addItem("Cubemap画像モード", "image")
+        self.mode_combo.addItem("点群モード", RIGHT_VIEW_POINTCLOUD)
+        self.mode_combo.addItem("Cubemap画像モード", RIGHT_VIEW_SOURCE_EQUIRECT)
+        self.mode_combo.addItem("Cube6再構築画像モード", RIGHT_VIEW_RECONSTRUCTED_CUBE6)
         self.ray_basis_combo = QComboBox()
         self.ray_basis_combo.addItem("両方", RAY_BASIS_BOTH)
         self.ray_basis_combo.addItem("JSON Face", RAY_BASIS_WORLD)
@@ -748,6 +753,13 @@ class AprilTagSceneViewerWindow(QWidget):
             return None
         return path, rotation
 
+    def _source_equirect_rotation_for_group(self, group: CubemapFrameGroup | None) -> np.ndarray | None:
+        if group is None or self.case is None:
+            return None
+        if normalize_coordinate_profile(self.case.coordinate_profile) not in LICHTFELD_IMAGE_RAY_DISPLAY_PROFILES:
+            return None
+        return self._source_equirect_rotations.get(group.name)
+
     def _choose_case(self) -> None:
         start = str((self.case.case_dir if self.case else DEFAULT_VIEWER_CASE).parent)
         chosen = QFileDialog.getExistingDirectory(self, "AprilTagケースを選択", start)
@@ -909,25 +921,32 @@ class AprilTagSceneViewerWindow(QWidget):
         self.point_view.set_preview_to_world_matrix(rotation_from_perspective_params(self._params).T)
 
     def _sync_mode_visibility(self) -> None:
-        mode = str(self.mode_combo.currentData() or "pointcloud")
-        if mode == "image":
+        mode = str(self.mode_combo.currentData() or RIGHT_VIEW_POINTCLOUD)
+        if mode in {RIGHT_VIEW_SOURCE_EQUIRECT, RIGHT_VIEW_RECONSTRUCTED_CUBE6}:
             self.right_stack.setCurrentWidget(self.image_view)
             self._render_image_view()
         else:
             self.right_stack.setCurrentWidget(self.point_view)
 
     def _render_image_view(self) -> None:
+        mode = str(self.mode_combo.currentData() or RIGHT_VIEW_POINTCLOUD)
         world_group = self.selected_world_group()
+        raw_group = self.selected_raw_group()
         image_group = self.selected_image_render_group()
-        if world_group is None or image_group is None:
+        if world_group is None or raw_group is None or image_group is None:
             self.image_view.setText("Cubemap画像グループがありません")
             return
         source_equirect = self._source_equirect_for_group(world_group)
-        use_source_equirect = source_equirect is not None
+        use_source_equirect = mode == RIGHT_VIEW_SOURCE_EQUIRECT and source_equirect is not None
+        use_reconstructed_cube6 = mode == RIGHT_VIEW_RECONSTRUCTED_CUBE6
         source_path = source_equirect[0] if source_equirect is not None else None
-        source_rotation = source_equirect[1] if source_equirect is not None else None
+        source_rotation = (
+            source_equirect[1]
+            if use_source_equirect
+            else self._source_equirect_rotation_for_group(world_group)
+        )
         anchor_params = None
-        if use_source_equirect:
+        if use_source_equirect or use_reconstructed_cube6:
             basis_group = self.selected_face_basis_group() or world_group
             params = axis_face_view_params(basis_group, self._active_face, fov_deg=self._params.fov_deg)
             if params is not None:
@@ -945,12 +964,19 @@ class AprilTagSceneViewerWindow(QWidget):
                 self._ray_basis_mode(),
                 anchor_params,
             )
-            if use_source_equirect
+            if use_source_equirect or use_reconstructed_cube6
             else self._params
+        )
+        image_source = (
+            "source-equirect"
+            if use_source_equirect
+            else "cube6-reconstruct"
+            if use_reconstructed_cube6
+            else "cube6-axis"
         )
         key = (
             f"{self.case.coordinate_profile if self.case else ''}:"
-            f"{'source-equirect' if use_source_equirect else 'cube6-axis'}:"
+            f"{image_source}:"
             f"{self._ray_basis_mode()}:{image_group.name}:"
             f"{source_path if use_source_equirect else ''}"
         )
@@ -975,6 +1001,18 @@ class AprilTagSceneViewerWindow(QWidget):
                         source_rotation,
                         output_width=2048,
                         output_height=1024,
+                        sfm_to_preview_matrix=self._world_matrix,
+                    )
+                elif use_reconstructed_cube6:
+                    if source_rotation is None:
+                        raise ValueError("Cube6再構築には source camera rotation が必要です")
+                    image = render_generated_cubemap_source_axis(
+                        raw_group,
+                        source_rotation,
+                        cubemap_view_params=case_cubemap_view_metadata(self.case) if self.case else None,
+                        output_width=2048,
+                        output_height=1024,
+                        image_cache=self._image_cache,
                         sfm_to_preview_matrix=self._world_matrix,
                     )
                 else:
@@ -1012,6 +1050,7 @@ class AprilTagSceneViewerWindow(QWidget):
         if self.case is None:
             self.case_label.setText("ケース未選択")
             return
+        mode = str(self.mode_combo.currentData() or RIGHT_VIEW_POINTCLOUD)
         group = self.selected_world_group()
         basis_group = self.selected_face_basis_group()
         image_group = self.selected_image_render_group()
@@ -1031,7 +1070,10 @@ class AprilTagSceneViewerWindow(QWidget):
         if source_equirect is not None:
             source_image_text = f" / source equirect={source_equirect[0].name}"
         mapping = ""
-        if source_equirect is not None:
+        if mode == RIGHT_VIEW_RECONSTRUCTED_CUBE6 and group is not None:
+            if self._source_equirect_rotation_for_group(group) is not None:
+                mapping = " / image preview=Cube6 reconstructed"
+        elif mode == RIGHT_VIEW_SOURCE_EQUIRECT and source_equirect is not None:
             mapping = " / image preview=source equirect direct"
         elif basis_group is not None and image_group is not None:
             closest = closest_image_face_for_world_face(

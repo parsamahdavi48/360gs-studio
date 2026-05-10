@@ -1329,6 +1329,56 @@ def render_cubemap_axis_equirect(
     return output
 
 
+def render_generated_cubemap_source_axis(
+    group: CubemapFrameGroup,
+    source_world_to_image_rotation: np.ndarray,
+    *,
+    cubemap_view_params: CubemapViewMetadata | Mapping[str, tuple[float, float]] | None = None,
+    output_width: int = 2048,
+    output_height: int = 1024,
+    image_cache: dict[Path, np.ndarray] | None = None,
+    sfm_to_preview_matrix: np.ndarray | None = None,
+) -> np.ndarray:
+    """Rebuild the source-panorama preview axes from generated Cube6 faces."""
+    rotation = np.asarray(source_world_to_image_rotation, dtype=np.float64)
+    if rotation.shape != (3, 3):
+        raise ValueError("source_world_to_image_rotation must be a 3x3 matrix")
+    face_rotations = cubemap_image_face_rotations(group, cubemap_view_params=cubemap_view_params)
+    if face_rotations is None:
+        raise ValueError("Cube6 image reconstruction requires generated view yaw/pitch metadata")
+
+    width = max(1, int(output_width))
+    height = max(1, int(output_height))
+    preview_to_sfm = _direction_matrix_preview_to_sfm(sfm_to_preview_matrix)
+    rays_sfm = _equirect_local_rays(width, height) @ preview_to_sfm
+    source_local = rays_sfm @ rotation
+
+    output = np.full((height, width, 3), 16, dtype=np.uint8)
+    best_score = np.full((height, width), -np.inf, dtype=np.float64)
+    for face, frame in group.frames_by_face.items():
+        face_rotation = face_rotations.get(face)
+        if face_rotation is None:
+            continue
+        image = None
+        if image_cache is not None:
+            image = image_cache.get(frame.image_path)
+        if image is None:
+            image = imread_unicode(frame.image_path)
+            if image_cache is not None and image is not None:
+                image_cache[frame.image_path] = image
+        if image is None:
+            continue
+        local = source_local @ face_rotation
+        _sample_frame_to_output(
+            frame=frame,
+            image=image,
+            local_rays=local,
+            output=output,
+            best_score=best_score,
+        )
+    return output
+
+
 def render_source_equirect_axis(
     image: np.ndarray,
     source_world_to_image_rotation: np.ndarray,

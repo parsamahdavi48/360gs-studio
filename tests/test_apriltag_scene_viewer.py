@@ -17,6 +17,7 @@ from devtools.apriltag.cubemap_preview import (
     CubemapFrameGroup,
     axis_face_view_params,
     render_cubemap_axis_equirect,
+    render_generated_cubemap_source_axis,
     render_source_equirect_axis,
     render_source_equirect_perspective,
     source_equirect_base_rotation,
@@ -25,6 +26,9 @@ from devtools.apriltag.scene_viewer import (
     AprilTagSceneViewerWindow,
     RAY_BASIS_BOTH,
     RAY_BASIS_IMAGE,
+    RIGHT_VIEW_POINTCLOUD,
+    RIGHT_VIEW_RECONSTRUCTED_CUBE6,
+    RIGHT_VIEW_SOURCE_EQUIRECT,
     _resolve_source_equirect_paths,
     _source_equirect_preview_params,
     camera_pose_from_perspective_params,
@@ -502,6 +506,7 @@ def test_current_case_reports_world_to_image_ray_mapping() -> None:
     assert image_basis_closest[0] == "pz"
     assert image_basis_closest[1] < 1e-4
     assert "source equirect=frame_000001.jpg" in window.case_label.text()
+    window.mode_combo.setCurrentIndex(window.mode_combo.findData(RIGHT_VIEW_SOURCE_EQUIRECT))
     assert "image preview=source equirect direct" in window.case_label.text()
     window.ray_basis_combo.setCurrentIndex(window.ray_basis_combo.findData("image"))
     assert "source equirect=frame_000001.jpg" in window.case_label.text()
@@ -708,6 +713,57 @@ def test_current_case_source_equirect_faces_match_expected_orientation() -> None
     window.deleteLater()
 
 
+def test_current_case_generated_cube6_reconstruction_matches_expected_orientation() -> None:
+    case_dir = Path("_compare/apriltag_test/cases/current")
+    if not (case_dir / "case.json").is_file():
+        pytest.skip("local AprilTag comparison case is not available")
+    _app()
+    case = load_case(case_dir)
+    metadata = case_cubemap_view_metadata(case)
+    if metadata is None:
+        pytest.skip("local AprilTag comparison Cube6 metadata is not available")
+    window = AprilTagSceneViewerWindow(initial_case=case_dir)
+    raw_group = window.selected_raw_group()
+    world_group = window.selected_world_group()
+    source_rotation = window._source_equirect_rotations.get("frame_000001")
+    if source_rotation is None:
+        pytest.skip("local AprilTag source equirect rotation is not available")
+    assert raw_group is not None
+    assert world_group is not None
+
+    display_matrix = world_display_matrix(case.coordinate_profile)
+    reconstructed = render_generated_cubemap_source_axis(
+        raw_group,
+        source_rotation,
+        cubemap_view_params=metadata,
+        output_width=1024,
+        output_height=512,
+        image_cache={},
+        sfm_to_preview_matrix=display_matrix,
+    )
+    expected_mapping = {
+        "pz": "nz",
+        "px": "nx",
+        "nx": "px",
+        "nz": "pz",
+        "top": "top",
+        "bottom": "bottom",
+    }
+    for face, expected_face in expected_mapping.items():
+        target_frame = raw_group.frames_by_face.get(expected_face)
+        assert target_frame is not None
+        target = imread_unicode(target_frame.image_path)
+        assert target is not None
+        yaw, pitch, roll, fov = axis_face_view_params(world_group, face, fov_deg=90.0)
+        anchor = PerspectiveParams(yaw_deg=yaw, pitch_deg=pitch, roll_deg=roll, fov_deg=fov)
+        params = _source_equirect_preview_params(anchor, face, RAY_BASIS_BOTH, anchor)
+        rendered = equirect_to_perspective(reconstructed, params, output_size=512)
+        target = cv2.resize(target, (512, 512), interpolation=cv2.INTER_AREA)
+        error = float(np.mean(np.abs(rendered.astype(np.int16) - target.astype(np.int16))))
+        assert error < 10.0
+    window.deleteLater()
+
+
 def test_current_case_source_equirect_tangent_axes_match_expected_faces() -> None:
     case_dir = Path("_compare/apriltag_test/cases/current")
     if not (case_dir / "case.json").is_file():
@@ -770,14 +826,14 @@ def test_current_case_source_equirect_drag_matches_pointcloud_camera_motion() ->
     start_params = window._params
     expected = params_from_drag(start_params, 0.0, 10.0)
 
-    pointcloud_mode = window.mode_combo.findData("pointcloud")
+    pointcloud_mode = window.mode_combo.findData(RIGHT_VIEW_POINTCLOUD)
     assert pointcloud_mode >= 0
     window.mode_combo.setCurrentIndex(pointcloud_mode)
     window._on_right_view_dragged(0.0, 10.0)
     pointcloud_params = window._params
 
     window._params = start_params
-    image_mode = window.mode_combo.findData("image")
+    image_mode = window.mode_combo.findData(RIGHT_VIEW_SOURCE_EQUIRECT)
     assert image_mode >= 0
     window.mode_combo.setCurrentIndex(image_mode)
     window._on_right_view_dragged(0.0, 10.0)
@@ -828,7 +884,7 @@ def test_current_case_image_preview_uses_source_equirect_when_available() -> Non
     if source_path is None or source_rotation is None:
         pytest.skip("local AprilTag source equirect image is not available")
 
-    window.mode_combo.setCurrentIndex(window.mode_combo.findData("image"))
+    window.mode_combo.setCurrentIndex(window.mode_combo.findData(RIGHT_VIEW_SOURCE_EQUIRECT))
     assert "source-equirect" in window._displayed_image_key
     assert str(source_path) in window._displayed_image_key
 
@@ -867,6 +923,25 @@ def test_current_case_image_preview_uses_source_equirect_when_available() -> Non
     assert rendered.shape == (512, 512, 3)
     assert float(np.std(rendered)) > 1.0
     assert float(np.mean(np.abs(rendered.astype(np.int16) - direct.astype(np.int16)))) < 8.0
+    window.deleteLater()
+
+
+def test_current_case_image_preview_can_use_generated_cube6_reconstruction() -> None:
+    case_dir = Path("_compare/apriltag_test/cases/current")
+    if not (case_dir / "case.json").is_file():
+        pytest.skip("local AprilTag comparison case is not available")
+    _app()
+    window = AprilTagSceneViewerWindow(initial_case=case_dir)
+    if "frame_000001" not in window._source_equirect_rotations:
+        pytest.skip("local AprilTag source equirect rotation is not available")
+
+    mode = window.mode_combo.findData(RIGHT_VIEW_RECONSTRUCTED_CUBE6)
+    assert mode >= 0
+    window.mode_combo.setCurrentIndex(mode)
+
+    assert "cube6-reconstruct" in window._displayed_image_key
+    assert "source-equirect" not in window._displayed_image_key
+    assert "image preview=Cube6 reconstructed" in window.case_label.text()
     window.deleteLater()
 
 
