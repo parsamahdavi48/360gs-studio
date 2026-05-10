@@ -23,7 +23,9 @@ from devtools.apriltag.cubemap_preview import (
 )
 from devtools.apriltag.scene_viewer import (
     AprilTagSceneViewerWindow,
+    RAY_BASIS_BOTH,
     _resolve_source_equirect_paths,
+    _source_equirect_preview_params,
     camera_pose_from_perspective_params,
     case_cubemap_view_metadata,
     closest_image_face_for_world_face,
@@ -646,6 +648,61 @@ def test_current_case_source_equirect_center_pixels_match_expected_faces() -> No
             np.mean(np.abs(rendered[256, 256].astype(np.int16) - target[256, 256].astype(np.int16)))
         )
         assert center_error < 15.0
+    window.deleteLater()
+
+
+def test_current_case_source_equirect_faces_match_expected_orientation() -> None:
+    case_dir = Path("_compare/apriltag_test/cases/current")
+    if not (case_dir / "case.json").is_file():
+        pytest.skip("local AprilTag comparison case is not available")
+    _app()
+    case = load_case(case_dir)
+    window = AprilTagSceneViewerWindow(initial_case=case_dir)
+    raw_group = window.selected_raw_group()
+    world_group = window.selected_world_group()
+    source_path = _resolve_source_equirect_paths(case, ("frame_000001",)).get("frame_000001")
+    source_rotation = window._source_equirect_rotations.get("frame_000001")
+    if source_path is None or source_rotation is None:
+        pytest.skip("local AprilTag source equirect image is not available")
+    assert raw_group is not None
+    assert world_group is not None
+    source = imread_unicode(source_path)
+    if source is None:
+        pytest.skip("local AprilTag source equirect image cannot be read")
+
+    display_matrix = world_display_matrix(case.coordinate_profile)
+    expected_mapping = {
+        "pz": "nz",
+        "px": "nx",
+        "nx": "px",
+        "nz": "pz",
+        "top": "top",
+        "bottom": "bottom",
+    }
+    for face, expected_face in expected_mapping.items():
+        target_frame = raw_group.frames_by_face.get(expected_face)
+        assert target_frame is not None
+        target = imread_unicode(target_frame.image_path)
+        assert target is not None
+        yaw, pitch, roll, fov = axis_face_view_params(world_group, face, fov_deg=90.0)
+        params = _source_equirect_preview_params(
+            PerspectiveParams(yaw_deg=yaw, pitch_deg=pitch, roll_deg=roll, fov_deg=fov),
+            face,
+            RAY_BASIS_BOTH,
+        )
+        rendered = render_source_equirect_perspective(
+            source,
+            source_rotation,
+            yaw_deg=params.yaw_deg,
+            pitch_deg=params.pitch_deg,
+            roll_deg=params.roll_deg,
+            fov_deg=params.fov_deg,
+            output_size=512,
+            sfm_to_preview_matrix=display_matrix,
+        )
+        target = cv2.resize(target, (512, 512), interpolation=cv2.INTER_AREA)
+        error = float(np.mean(np.abs(rendered.astype(np.int16) - target.astype(np.int16))))
+        assert error < 8.0
     window.deleteLater()
 
 

@@ -69,6 +69,7 @@ from gui.common.perspective_preview import (
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_VIEWER_CASE = DEFAULT_CASE_ROOT / "current"
 FACE_ORDER = ("pz", "px", "nx", "nz", "top", "bottom", "py", "ny")
+SIDE_FACE_ORDER = frozenset({"pz", "px", "nx", "nz"})
 RAY_BASIS_WORLD = "world"
 RAY_BASIS_IMAGE = "image"
 RAY_BASIS_BOTH = "both"
@@ -258,6 +259,23 @@ def _source_equirect_rotations_from_groups(
             # local flip only for image lookup.
             rotations[group.name] = rotation @ SOURCE_EQUIRECT_LOCAL_FROM_LICHTFELD_LOCAL
     return rotations
+
+
+def _source_equirect_preview_params(
+    params: PerspectiveParams,
+    active_face: str,
+    ray_basis_mode: str,
+) -> PerspectiveParams:
+    """Return source-panorama view params for JSONFace/both preview modes.
+
+    After LichtFeld's Y-180 pre-compensation and the final display correction,
+    side-face center rays line up but the JSONFace tangent frame is rolled 180
+    degrees from the source panorama image remap. Keep the fix as a rotation on
+    the image preview only; world poses and pointcloud inspection stay intact.
+    """
+    if ray_basis_mode == RAY_BASIS_IMAGE or active_face not in SIDE_FACE_ORDER:
+        return params
+    return replace(params, roll_deg=normalize_yaw_deg(float(params.roll_deg) + 180.0))
 
 
 def _load_metashape_camera_transforms(xml_path: Path) -> dict[str, np.ndarray]:
@@ -900,13 +918,18 @@ class AprilTagSceneViewerWindow(QWidget):
         use_source_equirect = source_equirect is not None
         source_path = source_equirect[0] if source_equirect is not None else None
         source_rotation = source_equirect[1] if source_equirect is not None else None
+        view_params = (
+            _source_equirect_preview_params(self._params, self._active_face, self._ray_basis_mode())
+            if use_source_equirect
+            else self._params
+        )
         key = (
             f"{self.case.coordinate_profile if self.case else ''}:"
             f"{'source-equirect' if use_source_equirect else 'cube6-axis'}:"
             f"{self._ray_basis_mode()}:{image_group.name}:"
             f"{source_path if use_source_equirect else ''}"
         )
-        if self._displayed_image_key == key and self.image_view.set_perspective_params(self._params):
+        if self._displayed_image_key == key and self.image_view.set_perspective_params(view_params):
             self.image_view.set_drag_mode("look")
             return
         image = self._equirect_cache.get(key)
@@ -942,7 +965,7 @@ class AprilTagSceneViewerWindow(QWidget):
             self._equirect_cache[key] = image
         shown = self.image_view.set_perspective_image_bgr(
             image,
-            self._params,
+            view_params,
             overlays=[],
             logical_size=QSize(768, 768),
         )
