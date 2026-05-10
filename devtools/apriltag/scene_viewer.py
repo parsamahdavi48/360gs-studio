@@ -33,6 +33,7 @@ from devtools.apriltag.coordinates import (
     DEFAULT_COORDINATE_PROFILE,
     coordinate_profile_label,
     coordinate_profile_note,
+    image_preview_ray_rotation_matrix,
     normalize_coordinate_profile,
     pointcloud_display_matrix,
     world_display_matrix,
@@ -263,10 +264,18 @@ def closest_image_face_for_world_face(
     world_group: CubemapFrameGroup,
     image_group: CubemapFrameGroup,
     world_face: str,
+    *,
+    image_preview_ray_rotation: np.ndarray | None = None,
 ) -> tuple[str, float, float] | None:
     world_ray = face_forward_ray(world_group, world_face)
     if world_ray is None:
         return None
+    if image_preview_ray_rotation is not None:
+        rotation = np.asarray(image_preview_ray_rotation, dtype=np.float64)
+        if rotation.shape != (3, 3):
+            raise ValueError("image_preview_ray_rotation must be a 3x3 matrix")
+        world_ray = world_ray @ rotation
+        world_ray = world_ray / max(float(np.linalg.norm(world_ray)), 1e-12)
     best: tuple[str, float] | None = None
     same_label_angle = np.nan
     for image_face in FACE_ORDER:
@@ -288,10 +297,18 @@ def opposite_image_face_for_world_face(
     world_group: CubemapFrameGroup,
     image_group: CubemapFrameGroup,
     world_face: str,
+    *,
+    image_preview_ray_rotation: np.ndarray | None = None,
 ) -> tuple[str, float] | None:
     world_ray = face_forward_ray(world_group, world_face)
     if world_ray is None:
         return None
+    if image_preview_ray_rotation is not None:
+        rotation = np.asarray(image_preview_ray_rotation, dtype=np.float64)
+        if rotation.shape != (3, 3):
+            raise ValueError("image_preview_ray_rotation must be a 3x3 matrix")
+        world_ray = world_ray @ rotation
+        world_ray = world_ray / max(float(np.linalg.norm(world_ray)), 1e-12)
     best: tuple[str, float] | None = None
     for image_face in FACE_ORDER:
         image_ray = face_forward_ray(image_group, image_face)
@@ -307,16 +324,28 @@ def opposite_image_face_for_world_face(
 def face_mapping_summary(
     world_group: CubemapFrameGroup,
     image_group: CubemapFrameGroup,
+    *,
+    image_preview_ray_rotation: np.ndarray | None = None,
 ) -> str:
     parts: list[str] = []
     for face in FACE_ORDER:
         if face not in world_group.frames_by_face:
             continue
-        closest = closest_image_face_for_world_face(world_group, image_group, face)
+        closest = closest_image_face_for_world_face(
+            world_group,
+            image_group,
+            face,
+            image_preview_ray_rotation=image_preview_ray_rotation,
+        )
         if closest is None:
             continue
         image_face, angle, same_label_angle = closest
-        opposite = opposite_image_face_for_world_face(world_group, image_group, face)
+        opposite = opposite_image_face_for_world_face(
+            world_group,
+            image_group,
+            face,
+            image_preview_ray_rotation=image_preview_ray_rotation,
+        )
         opposite_text = "" if opposite is None else f", reverse={opposite[0]} {opposite[1]:.1f}deg"
         same = "" if not np.isfinite(same_label_angle) else f", same={same_label_angle:.1f}deg"
         parts.append(f"{face}->img {image_face} ({angle:.1f}deg{same}{opposite_text})")
@@ -343,6 +372,7 @@ class AprilTagSceneViewerWindow(QWidget):
         self._world_pointcloud: PointCloudSample | None = None
         self._world_matrix: np.ndarray | None = None
         self._metashape_alignment: tuple[float, int] | None = None
+        self._image_preview_ray_rotation: np.ndarray | None = None
         self._world_ray_source = ""
         self._image_ray_source = ""
         self._image_cache: dict[Path, np.ndarray] = {}
@@ -493,6 +523,7 @@ class AprilTagSceneViewerWindow(QWidget):
             )
             self._world_ray_source = "transforms.json face +Z"
             self._image_ray_source = "Cube6 export yaw/pitch"
+            self._image_preview_ray_rotation = image_preview_ray_rotation_matrix(self.case.coordinate_profile)
             self._load_pointcloud()
         except Exception as e:
             QMessageBox.critical(self, "シーン読み込みエラー", str(e))
@@ -718,7 +749,8 @@ class AprilTagSceneViewerWindow(QWidget):
         if world_group is None or image_group is None:
             self.image_view.setText("Cubemap画像グループがありません")
             return
-        key = f"{self.case.coordinate_profile if self.case else ''}:image-rays:{image_group.name}"
+        rotation_key = "y-cw90" if self._image_preview_ray_rotation is not None else "none"
+        key = f"{self.case.coordinate_profile if self.case else ''}:image-rays:{rotation_key}:{image_group.name}"
         if self._displayed_image_key == key and self.image_view.set_perspective_params(self._params):
             self.image_view.set_drag_mode("look")
             return
@@ -730,6 +762,7 @@ class AprilTagSceneViewerWindow(QWidget):
                     output_width=2048,
                     output_height=1024,
                     image_cache=self._image_cache,
+                    preview_ray_rotation=self._image_preview_ray_rotation,
                 )
             except Exception as e:
                 self.image_view.setText(f"Cubemap画像生成エラー: {e}")
@@ -771,6 +804,7 @@ class AprilTagSceneViewerWindow(QWidget):
             f" / world rays={self._world_ray_source or 'transforms.json face +Z'}"
             f" / image rays={self._image_ray_source or 'transforms.json'}"
             f" / active basis={self._ray_basis_label()}"
+            f" / image rotation={'+Y clockwise 90deg' if self._image_preview_ray_rotation is not None else 'none'}"
         )
         group_text = "-" if group is None else group.name
         mapping = ""
@@ -779,6 +813,7 @@ class AprilTagSceneViewerWindow(QWidget):
                 basis_group,
                 image_group,
                 self._active_face,
+                image_preview_ray_rotation=self._image_preview_ray_rotation,
             )
             if closest is not None:
                 image_face, angle, same_label_angle = closest
@@ -786,6 +821,7 @@ class AprilTagSceneViewerWindow(QWidget):
                     basis_group,
                     image_group,
                     self._active_face,
+                    image_preview_ray_rotation=self._image_preview_ray_rotation,
                 )
                 opposite_text = "" if opposite is None else f", reverse={opposite[0]} {opposite[1]:.1f}deg"
                 same = "" if not np.isfinite(same_label_angle) else f", same-label={same_label_angle:.1f}deg"
@@ -805,7 +841,8 @@ class AprilTagSceneViewerWindow(QWidget):
         if group is not None and image_group is not None:
             self._append_log_once(
                 f"mapping:{group.name}",
-                f"Face/image ray mapping for {group.name}: {face_mapping_summary(group, image_group)}",
+                f"Face/image ray mapping for {group.name}: "
+                f"{face_mapping_summary(group, image_group, image_preview_ray_rotation=self._image_preview_ray_rotation)}",
             )
 
     def _on_right_view_dragged(self, delta_x: float, delta_y: float) -> None:

@@ -1266,12 +1266,21 @@ def render_cubemap_axis_equirect(
     output_height: int = 1024,
     image_cache: dict[Path, np.ndarray] | None = None,
     sfm_to_preview_matrix: np.ndarray | None = None,
+    preview_ray_rotation: np.ndarray | None = None,
 ) -> np.ndarray:
     """Rebuild an equirect texture whose axes match the 3D debug viewport."""
     width = max(1, int(output_width))
     height = max(1, int(output_height))
     preview_to_sfm = _direction_matrix_preview_to_sfm(sfm_to_preview_matrix)
-    rays_sfm = _equirect_local_rays(width, height) @ preview_to_sfm
+    rays = _equirect_local_rays(width, height)
+    if preview_ray_rotation is not None:
+        rotation = np.asarray(preview_ray_rotation, dtype=np.float64)
+        if rotation.shape != (3, 3):
+            raise ValueError("preview_ray_rotation must be a 3x3 matrix")
+        if abs(float(np.linalg.det(rotation)) - 1.0) > 1e-6:
+            raise ValueError("preview_ray_rotation must be a proper rotation")
+        rays = rays @ rotation
+    rays_sfm = rays @ preview_to_sfm
 
     output = np.full((height, width, 3), 16, dtype=np.uint8)
     best_score = np.full((height, width), -np.inf, dtype=np.float64)

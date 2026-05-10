@@ -12,6 +12,10 @@ from core.apriltag_cubemap import CubemapViewMetadata
 from core.apriltag_geometry import PinholeFrame
 from core.image_io import imwrite_unicode
 from devtools.apriltag.case import AprilTagDevCase, load_case, save_case
+from devtools.apriltag.coordinates import (
+    LEFT_VIEW_PLUS_Y_CLOCKWISE_90,
+    image_preview_ray_rotation_matrix,
+)
 from devtools.apriltag.cubemap_preview import (
     CubemapFrameGroup,
     axis_face_view_params,
@@ -75,6 +79,20 @@ def _export_rotation(yaw_deg: float, pitch_deg: float) -> np.ndarray:
         dtype=np.float64,
     )
     return rx @ ry
+
+
+def test_lichtfeld_image_preview_rotation_is_clockwise_from_left_view_positive_y() -> None:
+    clockwise = LEFT_VIEW_PLUS_Y_CLOCKWISE_90
+    assert np.linalg.det(clockwise) == pytest.approx(1.0)
+    assert np.allclose(np.array([0.0, 0.0, 1.0]) @ clockwise, [1.0, 0.0, 0.0])
+    assert np.allclose(np.array([1.0, 0.0, 0.0]) @ clockwise, [0.0, 0.0, -1.0])
+    assert np.allclose(np.array([0.0, 1.0, 0.0]) @ clockwise, [0.0, 1.0, 0.0])
+
+    sampling_rotation = image_preview_ray_rotation_matrix("lichtfeld_cube6")
+    assert sampling_rotation is not None
+    assert np.linalg.det(sampling_rotation) == pytest.approx(1.0)
+    assert np.allclose(sampling_rotation, clockwise.T)
+    assert image_preview_ray_rotation_matrix("custom") is None
 
 
 def _write_cube6_case(root: Path) -> Path:
@@ -319,6 +337,7 @@ def test_scene_viewer_keeps_world_face_rays_separate_from_generated_image_rays(t
     assert "world rays=transforms.json face +Z" in window.case_label.text()
     assert "image rays=Cube6 export yaw/pitch" in window.case_label.text()
     assert "active basis=both (active=transforms.json face +Z)" in window.case_label.text()
+    assert "image rotation=none" in window.case_label.text()
     assert "active pz->image px" in window.case_label.text()
     assert "reverse=nx" in window.case_label.text()
 
@@ -444,26 +463,47 @@ def test_current_case_reports_world_to_image_ray_mapping() -> None:
     window = AprilTagSceneViewerWindow(initial_case=case_dir)
     world_group = window.selected_world_group()
     image_group = window.selected_image_ray_group()
+    rotation = image_preview_ray_rotation_matrix(window.case.coordinate_profile if window.case else None)
 
     assert world_group is not None
     assert image_group is not None
+    assert rotation is not None
     assert world_group.name == "frame_000001"
-    closest = closest_image_face_for_world_face(world_group, image_group, "pz")
-    opposite = opposite_image_face_for_world_face(world_group, image_group, "pz")
-    image_basis_closest = closest_image_face_for_world_face(image_group, image_group, "pz")
+    raw_closest = closest_image_face_for_world_face(world_group, image_group, "pz")
+    closest = closest_image_face_for_world_face(
+        world_group,
+        image_group,
+        "pz",
+        image_preview_ray_rotation=rotation,
+    )
+    opposite = opposite_image_face_for_world_face(
+        world_group,
+        image_group,
+        "pz",
+        image_preview_ray_rotation=rotation,
+    )
+    image_basis_closest = closest_image_face_for_world_face(
+        image_group,
+        image_group,
+        "pz",
+        image_preview_ray_rotation=rotation,
+    )
+    assert raw_closest is not None
     assert closest is not None
     assert opposite is not None
     assert image_basis_closest is not None
-    assert closest[0] == "px"
-    assert closest[1] < 1e-4
-    assert closest[2] == pytest.approx(90.0)
-    assert opposite[0] == "nx"
-    assert opposite[1] < 1e-4
-    assert image_basis_closest[0] == "pz"
-    assert image_basis_closest[1] < 1e-4
-    assert "active pz->image px" in window.case_label.text()
-    window.ray_basis_combo.setCurrentIndex(window.ray_basis_combo.findData("image"))
+    assert raw_closest[0] == "px"
+    assert closest[0] == "pz"
+    assert closest[1] < 2.0
+    assert closest[2] < 2.0
+    assert opposite[0] == "nz"
+    assert opposite[1] < 2.0
+    assert image_basis_closest[0] == "nx"
+    assert image_basis_closest[1] < 2.0
+    assert "image rotation=+Y clockwise 90deg" in window.case_label.text()
     assert "active pz->image pz" in window.case_label.text()
+    window.ray_basis_combo.setCurrentIndex(window.ray_basis_combo.findData("image"))
+    assert "active pz->image nx" in window.case_label.text()
     window.deleteLater()
 
 
@@ -493,6 +533,8 @@ def test_current_case_image_ray_group_matches_metashape_build_remap_rays() -> No
     image_group = window.selected_image_ray_group()
     assert world_group is not None
     assert image_group is not None
+    rotation = image_preview_ray_rotation_matrix(case.coordinate_profile)
+    assert rotation is not None
 
     metashape_local_from_lfs_local = np.diag([1.0, -1.0, -1.0])
     expected: dict[str, np.ndarray] = {}
@@ -511,7 +553,18 @@ def test_current_case_image_ray_group_matches_metashape_build_remap_rays() -> No
         assert actual_world[face] is not None
         assert abs(float(actual_world[face] @ expected_ray)) < 0.1
     assert closest_image_face_for_world_face(world_group, image_group, "pz")[0] == "px"
-    assert opposite_image_face_for_world_face(world_group, image_group, "pz")[0] == "nx"
+    assert closest_image_face_for_world_face(
+        world_group,
+        image_group,
+        "pz",
+        image_preview_ray_rotation=rotation,
+    )[0] == "pz"
+    assert opposite_image_face_for_world_face(
+        world_group,
+        image_group,
+        "pz",
+        image_preview_ray_rotation=rotation,
+    )[0] == "nz"
     window.deleteLater()
 
 

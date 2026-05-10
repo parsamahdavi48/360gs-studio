@@ -35,6 +35,15 @@ LICHTFELD_CAMERA_POINTCLOUD_ALIGNMENT = np.array(
     dtype=np.float64,
 )
 LICHTFELD_PRE_FINAL_POINTCLOUD_ALIGNMENT = LICHTFELD_CAMERA_POINTCLOUD_ALIGNMENT @ LICHTFELD_FINAL_ORIENTATION
+LEFT_VIEW_PLUS_Y_CLOCKWISE_90 = np.array(
+    [
+        [0.0, 0.0, -1.0],
+        [0.0, 1.0, 0.0],
+        [1.0, 0.0, 0.0],
+    ],
+    dtype=np.float64,
+)
+LICHTFELD_CUBE6_IMAGE_PREVIEW_RAY_ROTATION = LEFT_VIEW_PLUS_Y_CLOCKWISE_90.T
 
 COORDINATE_PROFILE_LICHTFELD_CUBE6 = "lichtfeld_cube6"
 COORDINATE_PROFILE_LICHTFELD_CUBE6_PRE_FINAL_PLY = "lichtfeld_cube6_pre_final_ply"
@@ -110,3 +119,10 @@ def combined_pointcloud_display_matrix(value: str | None) -> np.ndarray | None:
     if world_matrix is None:
         return pointcloud_matrix
     return world_matrix @ pointcloud_matrix
+
+
+def image_preview_ray_rotation_matrix(value: str | None) -> np.ndarray | None:
+    profile = normalize_coordinate_profile(value)
+    if profile in {COORDINATE_PROFILE_LICHTFELD_CUBE6, COORDINATE_PROFILE_LICHTFELD_CUBE6_PRE_FINAL_PLY}:
+        return LICHTFELD_CUBE6_IMAGE_PREVIEW_RAY_ROTATION.copy()
+    return None
