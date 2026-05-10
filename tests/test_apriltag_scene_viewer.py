@@ -25,6 +25,7 @@ from devtools.apriltag.scene_viewer import (
     AprilTagSceneViewerWindow,
     RAY_BASIS_BOTH,
     _resolve_source_equirect_paths,
+    _source_equirect_drag_delta,
     _source_equirect_preview_params,
     camera_pose_from_perspective_params,
     case_cubemap_view_metadata,
@@ -32,6 +33,7 @@ from devtools.apriltag.scene_viewer import (
     face_forward_ray,
     image_ray_display_matrix_for_profile,
     opposite_image_face_for_world_face,
+    rotation_from_perspective_params,
     transform_group_for_world_display,
 )
 from devtools.apriltag.coordinates import world_display_matrix
@@ -703,6 +705,45 @@ def test_current_case_source_equirect_faces_match_expected_orientation() -> None
         target = cv2.resize(target, (512, 512), interpolation=cv2.INTER_AREA)
         error = float(np.mean(np.abs(rendered.astype(np.int16) - target.astype(np.int16))))
         assert error < 8.0
+    window.deleteLater()
+
+
+def test_current_case_source_equirect_vertical_drag_follows_displayed_up() -> None:
+    case_dir = Path("_compare/apriltag_test/cases/current")
+    if not (case_dir / "case.json").is_file():
+        pytest.skip("local AprilTag comparison case is not available")
+    _app()
+    case = load_case(case_dir)
+    window = AprilTagSceneViewerWindow(initial_case=case_dir)
+    world_group = window.selected_world_group()
+    source_rotation = window._source_equirect_rotations.get("frame_000001")
+    source_path = _resolve_source_equirect_paths(case, ("frame_000001",)).get("frame_000001")
+    if source_path is None or source_rotation is None:
+        pytest.skip("local AprilTag source equirect image is not available")
+    assert world_group is not None
+    image_mode = window.mode_combo.findData("image")
+    assert image_mode >= 0
+    window.mode_combo.setCurrentIndex(image_mode)
+    window.set_active_face("pz")
+
+    display_matrix = world_display_matrix(case.coordinate_profile)
+    preview_to_sfm = np.linalg.inv(display_matrix[:3, :3]).T
+    before_params = _source_equirect_preview_params(window._params, "pz", RAY_BASIS_BOTH)
+    before_rotation = rotation_from_perspective_params(before_params)
+    before_center = np.array([0.0, 0.0, 1.0]) @ before_rotation.T @ preview_to_sfm @ source_rotation
+    displayed_up = np.array([0.0, 1.0, 0.0]) @ before_rotation.T @ preview_to_sfm @ source_rotation
+    displayed_up /= max(float(np.linalg.norm(displayed_up)), 1e-12)
+
+    window._on_right_view_dragged(0.0, 10.0)
+    after_params = _source_equirect_preview_params(window._params, "pz", RAY_BASIS_BOTH)
+    after_center = np.array([0.0, 0.0, 1.0]) @ rotation_from_perspective_params(after_params).T
+    after_center = after_center @ preview_to_sfm @ source_rotation
+    movement = after_center - before_center
+    movement /= max(float(np.linalg.norm(movement)), 1e-12)
+
+    assert float(movement @ displayed_up) > 0.99
+    assert _source_equirect_drag_delta(8.0, 10.0, "pz", RAY_BASIS_BOTH) == (8.0, -10.0)
+    assert _source_equirect_drag_delta(8.0, 10.0, "top", RAY_BASIS_BOTH) == (8.0, 10.0)
     window.deleteLater()
 
 

@@ -278,6 +278,17 @@ def _source_equirect_preview_params(
     return replace(params, roll_deg=normalize_yaw_deg(float(params.roll_deg) + 180.0))
 
 
+def _source_equirect_drag_delta(
+    delta_x: float,
+    delta_y: float,
+    active_face: str,
+    ray_basis_mode: str,
+) -> tuple[float, float]:
+    if ray_basis_mode == RAY_BASIS_IMAGE or active_face not in SIDE_FACE_ORDER:
+        return float(delta_x), float(delta_y)
+    return float(delta_x), -float(delta_y)
+
+
 def _load_metashape_camera_transforms(xml_path: Path) -> dict[str, np.ndarray]:
     if not xml_path.is_file():
         return {}
@@ -1046,6 +1057,16 @@ class AprilTagSceneViewerWindow(QWidget):
     def _on_right_view_dragged(self, delta_x: float, delta_y: float) -> None:
         if not self._world_groups:
             return
+        if (
+            self.right_stack.currentWidget() is self.image_view
+            and self._source_equirect_for_group(self.selected_world_group()) is not None
+        ):
+            delta_x, delta_y = _source_equirect_drag_delta(
+                delta_x,
+                delta_y,
+                self._active_face,
+                self._ray_basis_mode(),
+            )
         self._params = params_from_drag(self._params, delta_x, delta_y)
         self._sync_views()
 
