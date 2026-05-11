@@ -24,6 +24,7 @@ class SyntheticAprilTagConfig:
     tag_center_sfm: np.ndarray
     tag_normal_sfm: np.ndarray
     tag_up_sfm: np.ndarray
+    frame_file_paths: frozenset[str] | None = None
 
 
 def _load_tag_rgba(path: Path) -> np.ndarray:
@@ -58,6 +59,7 @@ def _warp_tag(base: np.ndarray, tag_rgba: np.ndarray, dst_points: np.ndarray) ->
 def inject_synthetic_apriltag(config: SyntheticAprilTagConfig) -> dict:
     config.output_dir.mkdir(parents=True, exist_ok=True)
     frames = load_pinhole_frames(config.input_transforms)
+    allowed_paths = None if config.frame_file_paths is None else set(config.frame_file_paths)
     tag_rgba = _load_tag_rgba(config.tag_image)
     corners = tag_corners_sfm(
         config.tag_center_sfm,
@@ -74,6 +76,10 @@ def inject_synthetic_apriltag(config: SyntheticAprilTagConfig) -> dict:
         dst.parent.mkdir(parents=True, exist_ok=True)
         image = imread_unicode(frame.image_path, cv2.IMREAD_UNCHANGED)
         if image is None:
+            skipped += 1
+            continue
+        if allowed_paths is not None and frame.file_path not in allowed_paths:
+            shutil.copy2(frame.image_path, dst)
             skipped += 1
             continue
         projected = project_sfm_points(frame, corners)
@@ -95,6 +101,7 @@ def inject_synthetic_apriltag(config: SyntheticAprilTagConfig) -> dict:
         "tag_center_sfm": config.tag_center_sfm.tolist(),
         "tag_normal_sfm": config.tag_normal_sfm.tolist(),
         "tag_up_sfm": config.tag_up_sfm.tolist(),
+        "frame_file_paths": None if config.frame_file_paths is None else sorted(config.frame_file_paths),
         "frames_written": written,
         "frames_skipped": skipped,
     }

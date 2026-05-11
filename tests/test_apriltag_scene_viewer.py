@@ -185,6 +185,83 @@ def _write_cube6_case(root: Path) -> Path:
     return case_dir
 
 
+def _write_scale_validation_cube6_case(root: Path) -> Path:
+    source = root / "source_validation"
+    images = source / "images"
+    images.mkdir(parents=True)
+    size = 400
+    faces = {
+        "pz": (0.0, 0.0),
+        "px": (90.0, 0.0),
+        "nx": (-90.0, 0.0),
+        "nz": (180.0, 0.0),
+        "top": (0.0, 90.0),
+        "bottom": (0.0, -90.0),
+    }
+    frames = []
+    for prefix, x in (("cam_001", 0.0), ("cam_002", 0.5)):
+        for face, view in faces.items():
+            image = np.full((size, size, 3), 255, dtype=np.uint8)
+            assert imwrite_unicode(images / f"{prefix}_{face}.png", image)
+            transform = np.eye(4, dtype=np.float64)
+            transform[:3, :3] = _rotation(*view).T
+            transform[:3, 3] = (x, 0.0, 0.0)
+            frames.append(
+                {
+                    "file_path": f"images/{prefix}_{face}.png",
+                    "transform_matrix": transform.tolist(),
+                }
+            )
+    transforms = source / "transforms.json"
+    transforms.write_text(
+        json.dumps(
+            {
+                "camera_model": "SIMPLE_PINHOLE",
+                "w": size,
+                "h": size,
+                "fl_x": 240.0,
+                "fl_y": 240.0,
+                "cx": (size - 1) / 2.0,
+                "cy": (size - 1) / 2.0,
+                "frames": frames,
+            }
+        ),
+        encoding="utf-8",
+    )
+    pointcloud = source / "pointcloud.ply"
+    pointcloud.write_text(
+        "\n".join(
+            [
+                "ply",
+                "format ascii 1.0",
+                "element vertex 4",
+                "property float x",
+                "property float y",
+                "property float z",
+                "end_header",
+                "0 0 2",
+                "0.5 0 2",
+                "0 0.5 2",
+                "0.5 0.5 2",
+            ]
+        ),
+        encoding="ascii",
+    )
+    case_dir = root / "case_validation"
+    case = AprilTagDevCase(
+        name="case_validation",
+        case_dir=case_dir,
+        input_mode="reference",
+        source_transforms=transforms,
+        source_pointcloud=pointcloud,
+        default_tag_size_m=0.160,
+        true_scale=0.25,
+        coordinate_profile="custom",
+    )
+    save_case(case)
+    return case_dir
+
+
 def _write_generated_cube6_case(root: Path) -> Path:
     source = root / "source"
     images = source / "images"
@@ -1056,6 +1133,71 @@ def test_scene_viewer_tag_transform_controls_sync_world_and_point_views(tmp_path
         assert np.allclose(view._tag_up, [0.0, 1.0, 0.0], atol=1e-6)
         assert view._tag_size_m == pytest.approx(1.25)
         assert view._true_scale == pytest.approx(1.0)
+    window.deleteLater()
+
+
+def test_scene_viewer_synthetic_candidates_use_tag_front_side(tmp_path: Path) -> None:
+    _app()
+    case_dir = _write_cube6_case(tmp_path)
+
+    window = AprilTagSceneViewerWindow(initial_case=case_dir)
+    window.validation_min_area_spin.setValue(1.0)
+    window.validation_distance_spin.setValue(10.0)
+    window.validation_angle_spin.setValue(80.0)
+    window.set_tag_transform(
+        center=(0.0, 0.0, 3.0),
+        yaw_deg=0.0,
+        pitch_deg=0.0,
+        roll_deg=0.0,
+        size_sfm=1.0,
+    )
+
+    candidates, total_frames = window._synthetic_tag_candidates()
+
+    assert total_frames == 12
+    paths = {candidate.frame.file_path for candidate in candidates}
+    assert "images/cam_001_pz.jpg" in paths
+    assert all(path.endswith("_pz.jpg") for path in paths)
+
+    window.set_tag_transform(
+        center=(0.0, 0.0, 3.0),
+        yaw_deg=180.0,
+        pitch_deg=0.0,
+        roll_deg=0.0,
+        size_sfm=1.0,
+    )
+    back_candidates, _total_frames = window._synthetic_tag_candidates()
+    assert back_candidates == ()
+    window.deleteLater()
+
+
+def test_scene_viewer_synthetic_scale_validation_writes_result(tmp_path: Path) -> None:
+    _app()
+    case_dir = _write_scale_validation_cube6_case(tmp_path)
+
+    window = AprilTagSceneViewerWindow(initial_case=case_dir)
+    window.validation_min_area_spin.setValue(1.0)
+    window.validation_distance_spin.setValue(10.0)
+    window.validation_angle_spin.setValue(80.0)
+    window.set_active_face("pz")
+    window.set_tag_transform(
+        center=(0.0, 0.0, 2.0),
+        yaw_deg=0.0,
+        pitch_deg=0.0,
+        roll_deg=0.0,
+        size_sfm=0.64,
+    )
+
+    window.run_synthetic_scale_validation()
+
+    report_paths = sorted((case_dir / "runs").glob("viewer_synthetic_*/viewer_scale_validation_report.json"))
+    assert len(report_paths) == 1
+    report = json.loads(report_paths[0].read_text(encoding="utf-8"))
+    assert report["candidate_count"] == 2
+    assert report["synthetic_report"]["frames_written"] == 2
+    assert report["observation_count"] >= 2
+    assert report["estimate"]["scale"] == pytest.approx(0.25, rel=0.08)
+    assert "scale=" in window.validation_status_label.text()
     window.deleteLater()
 
 

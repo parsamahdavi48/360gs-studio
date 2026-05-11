@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import csv
+import json
 import xml.etree.ElementTree as ET
-from dataclasses import replace
+from dataclasses import dataclass, replace
+from datetime import datetime
 from pathlib import Path
 
 import numpy as np
@@ -28,7 +30,15 @@ from PySide6.QtWidgets import (
 )
 
 from core.apriltag_cubemap import CubemapViewMetadata, discover_cubemap_view_metadata
-from core.apriltag_geometry import PinholeFrame, tag_corners_sfm
+from core.apriltag_geometry import (
+    PinholeFrame,
+    load_pinhole_frames,
+    points_intersect_image,
+    project_sfm_points,
+    tag_corners_sfm,
+)
+from core.apriltag_pipeline import collect_observations
+from core.apriltag_scale import estimate_scene_scale
 from core.image_io import imread_unicode
 from devtools.apriltag.case import DEFAULT_CASE_ROOT, AprilTagDevCase, load_case, save_case
 from devtools.apriltag.coordinates import (
@@ -54,6 +64,8 @@ from devtools.apriltag.cubemap_preview import (
     render_source_equirect_axis,
     source_equirect_base_rotation,
 )
+from devtools.apriltag.printable import create_printable_target
+from devtools.apriltag.synthetic import SyntheticAprilTagConfig, inject_synthetic_apriltag
 from devtools.apriltag.world_debug_view import (
     AprilTagWorldDebugView,
     PointCloudSample,
@@ -87,12 +99,47 @@ SOURCE_EQUIRECT_IMAGE_EXTS = (".jpg", ".jpeg", ".png", ".tif", ".tiff", ".webp",
 SOURCE_EQUIRECT_LOCAL_FROM_LICHTFELD_LOCAL = np.diag([1.0, -1.0, -1.0])
 
 
+@dataclass(frozen=True)
+class SyntheticTagFrameCandidate:
+    frame: PinholeFrame
+    projected_points: np.ndarray
+    distance_sfm: float
+    view_angle_deg: float
+    area_px: float
+
+
 def _transform_points(points: np.ndarray, matrix: np.ndarray | None) -> np.ndarray:
     values = np.asarray(points, dtype=np.float64)
     if matrix is None:
         return values.copy()
     transform = np.asarray(matrix, dtype=np.float64)
     return values @ transform[:3, :3].T + transform[:3, 3]
+
+
+def _transform_points_from_world_display(points: np.ndarray, matrix: np.ndarray | None) -> np.ndarray:
+    values = np.asarray(points, dtype=np.float64)
+    if matrix is None:
+        return values.copy()
+    transform = np.asarray(matrix, dtype=np.float64)
+    inverse_linear = np.linalg.inv(transform[:3, :3])
+    return (values - transform[:3, 3]) @ inverse_linear.T
+
+
+def _transform_vectors_from_world_display(vectors: np.ndarray, matrix: np.ndarray | None) -> np.ndarray:
+    values = np.asarray(vectors, dtype=np.float64)
+    if matrix is None:
+        return values.copy()
+    inverse_linear = np.linalg.inv(np.asarray(matrix, dtype=np.float64)[:3, :3])
+    return values @ inverse_linear.T
+
+
+def _polygon_area_px(points: np.ndarray) -> float:
+    xy = np.asarray(points, dtype=np.float64).reshape(-1, 2)
+    if len(xy) < 3:
+        return 0.0
+    x = xy[:, 0]
+    y = xy[:, 1]
+    return float(abs(0.5 * np.sum(x * np.roll(y, -1) - y * np.roll(x, -1))))
 
 
 def _transform_frame_for_world_display(
@@ -712,6 +759,28 @@ class AprilTagSceneViewerWindow(QWidget):
         size_form.addRow("一辺SfM", self.tag_size_sfm_spin)
         size_form.addRow("", self.reset_tag_button)
         layout.addLayout(size_form)
+
+        validation_form = QFormLayout()
+        validation_form.setLabelAlignment(Qt.AlignRight)
+        self.validation_distance_spin = self._double_spin(
+            0.0,
+            1_000_000.0,
+            self._default_validation_distance_sfm(),
+            decimals=3,
+            step=0.5,
+        )
+        self.validation_angle_spin = self._double_spin(0.0, 180.0, 75.0, decimals=1, step=5.0)
+        self.validation_min_area_spin = self._double_spin(0.0, 1_000_000.0, 64.0, decimals=0, step=64.0)
+        self.run_validation_button = QPushButton("合成→検出")
+        self.validation_status_label = QLabel("検証未実行")
+        self.validation_status_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        self.validation_status_label.setWordWrap(True)
+        validation_form.addRow("最大距離SfM", self.validation_distance_spin)
+        validation_form.addRow("最大角度", self.validation_angle_spin)
+        validation_form.addRow("最小面積px", self.validation_min_area_spin)
+        validation_form.addRow("", self.run_validation_button)
+        validation_form.addRow("結果", self.validation_status_label)
+        layout.addLayout(validation_form)
         layout.addStretch(1)
         return group
 
@@ -760,6 +829,7 @@ class AprilTagSceneViewerWindow(QWidget):
         ):
             spin.valueChanged.connect(lambda _value: self._on_tag_transform_changed())
         self.reset_tag_button.clicked.connect(self.reset_tag_transform)
+        self.run_validation_button.clicked.connect(self.run_synthetic_scale_validation)
 
     def load_case_dir(self, case_dir: Path) -> None:
         try:
@@ -932,6 +1002,9 @@ class AprilTagSceneViewerWindow(QWidget):
             return 0.64
         return max(0.0001, float(case.default_tag_size_m) / max(float(case.true_scale), 1e-12))
 
+    def _default_validation_distance_sfm(self) -> float:
+        return max(2.0, float(self._tag_size_sfm) * 30.0)
+
     def _set_tag_defaults_from_case(self, case: AprilTagDevCase) -> None:
         self._set_spin_value_blocked(self.tag_x_spin, 0.0)
         self._set_spin_value_blocked(self.tag_y_spin, 0.0)
@@ -941,6 +1014,10 @@ class AprilTagSceneViewerWindow(QWidget):
         self._set_spin_value_blocked(self.tag_roll_spin, 0.0)
         self._set_spin_value_blocked(self.tag_size_sfm_spin, self._default_tag_size_sfm(case))
         self._read_tag_transform_from_controls()
+        if hasattr(self, "validation_distance_spin"):
+            self._set_spin_value_blocked(self.validation_distance_spin, self._default_validation_distance_sfm())
+        if hasattr(self, "validation_status_label"):
+            self.validation_status_label.setText("検証未実行")
 
     def _on_tag_transform_changed(self) -> None:
         self._read_tag_transform_from_controls()
@@ -1033,6 +1110,213 @@ class AprilTagSceneViewerWindow(QWidget):
                 fill_alpha=0.16,
             )
         ]
+
+    def _synthetic_tag_placement_sfm(self) -> tuple[np.ndarray, np.ndarray, np.ndarray, float]:
+        if self.case is None:
+            raise ValueError("ケースが読み込まれていません")
+        normal_display, up_display = self._tag_normal_up()
+        center_sfm = _transform_points_from_world_display(
+            self._tag_center.reshape(1, 3),
+            self._world_matrix,
+        )[0]
+        vectors_sfm = _transform_vectors_from_world_display(
+            np.vstack([normal_display, up_display]),
+            self._world_matrix,
+        )
+        normal_sfm = _normalized_vector(vectors_sfm[0], (0.0, 0.0, -1.0))
+        up_sfm = vectors_sfm[1] - normal_sfm * float(vectors_sfm[1] @ normal_sfm)
+        up_sfm = _normalized_vector(up_sfm, (0.0, 1.0, 0.0))
+        true_scale = float(self.case.default_tag_size_m) / max(float(self._tag_size_sfm), 1e-12)
+        return center_sfm, normal_sfm, up_sfm, true_scale
+
+    def _synthetic_tag_candidates(self) -> tuple[tuple[SyntheticTagFrameCandidate, ...], int]:
+        if self.case is None:
+            return (), 0
+        center_sfm, normal_sfm, up_sfm, true_scale = self._synthetic_tag_placement_sfm()
+        frames = load_pinhole_frames(self.case.transforms_for_processing())
+        corners = tag_corners_sfm(
+            center_sfm,
+            normal_sfm,
+            up_sfm,
+            float(self.case.default_tag_size_m),
+            true_scale,
+        )
+        max_distance = float(self.validation_distance_spin.value()) if hasattr(self, "validation_distance_spin") else 0.0
+        max_angle_deg = float(self.validation_angle_spin.value()) if hasattr(self, "validation_angle_spin") else 180.0
+        min_area = float(self.validation_min_area_spin.value()) if hasattr(self, "validation_min_area_spin") else 0.0
+        min_cos = float(np.cos(np.deg2rad(max(0.0, min(180.0, max_angle_deg)))))
+        candidates: list[SyntheticTagFrameCandidate] = []
+        for frame in frames:
+            camera_delta = np.asarray(frame.camera_position_sfm, dtype=np.float64) - center_sfm
+            distance = float(np.linalg.norm(camera_delta))
+            if distance <= 1e-12 or not np.isfinite(distance):
+                continue
+            if max_distance > 0.0 and distance > max_distance:
+                continue
+            view_dot = float(np.clip(normal_sfm @ (camera_delta / distance), -1.0, 1.0))
+            if view_dot < min_cos:
+                continue
+            projected = project_sfm_points(frame, corners)
+            if projected is None or not points_intersect_image(projected, frame.width, frame.height):
+                continue
+            area = _polygon_area_px(projected)
+            if area < min_area:
+                continue
+            candidates.append(
+                SyntheticTagFrameCandidate(
+                    frame=frame,
+                    projected_points=projected,
+                    distance_sfm=distance,
+                    view_angle_deg=float(np.rad2deg(np.arccos(view_dot))),
+                    area_px=area,
+                )
+            )
+        return tuple(candidates), len(frames)
+
+    def _next_validation_run_dir(self) -> Path:
+        if self.case is None:
+            raise ValueError("ケースが読み込まれていません")
+        self.case.runs_dir.mkdir(parents=True, exist_ok=True)
+        stem = "viewer_synthetic_" + datetime.now().strftime("%Y%m%d_%H%M%S")
+        candidate = self.case.runs_dir / stem
+        if not candidate.exists():
+            return candidate
+        for index in range(2, 1000):
+            numbered = self.case.runs_dir / f"{stem}_{index:03d}"
+            if not numbered.exists():
+                return numbered
+        raise RuntimeError(f"Could not create a unique validation run directory under {self.case.runs_dir}")
+
+    def _candidate_report(self, candidates: tuple[SyntheticTagFrameCandidate, ...]) -> list[dict]:
+        return [
+            {
+                "frame_id": candidate.frame.frame_id,
+                "file_path": candidate.frame.file_path,
+                "distance_sfm": candidate.distance_sfm,
+                "view_angle_deg": candidate.view_angle_deg,
+                "area_px": candidate.area_px,
+                "projected_points": candidate.projected_points.tolist(),
+            }
+            for candidate in candidates
+        ]
+
+    def run_synthetic_scale_validation(self) -> None:
+        if self.case is None:
+            QMessageBox.warning(self, "AprilTag検証", "ケースを読み込んでください。")
+            return
+        try:
+            center_sfm, normal_sfm, up_sfm, true_scale = self._synthetic_tag_placement_sfm()
+            candidates, total_frames = self._synthetic_tag_candidates()
+            if not candidates:
+                self.validation_status_label.setText("合成候補なし")
+                self._append_log("[validation] 合成候補がありません。タグ表面、距離、投影面積を確認してください。")
+                return
+
+            run_dir = self._next_validation_run_dir()
+            target = create_printable_target(
+                run_dir / "assets",
+                family=self.case.tag_family,
+                tag_id=self.case.tag_id,
+                tag_size_m=float(self.case.default_tag_size_m),
+            )
+            selected_paths = frozenset(candidate.frame.file_path for candidate in candidates)
+            synthetic_report = inject_synthetic_apriltag(
+                SyntheticAprilTagConfig(
+                    input_transforms=self.case.transforms_for_processing(),
+                    output_dir=run_dir,
+                    tag_image=target.marker_png,
+                    tag_size_m=float(self.case.default_tag_size_m),
+                    true_scale=true_scale,
+                    tag_center_sfm=center_sfm,
+                    tag_normal_sfm=normal_sfm,
+                    tag_up_sfm=up_sfm,
+                    frame_file_paths=selected_paths,
+                )
+            )
+            frames, frame_detections, observations = collect_observations(
+                run_dir / "transforms.json",
+                image_root=None,
+                tag_size_m=float(self.case.default_tag_size_m),
+                family=self.case.tag_family,
+                tag_ids={int(self.case.tag_id)},
+            )
+            estimate = None
+            estimate_error = ""
+            try:
+                estimate = estimate_scene_scale(observations)
+            except ValueError as e:
+                estimate_error = str(e)
+
+            expected_scale = float(self.case.default_tag_size_m) / max(float(self._tag_size_sfm), 1e-12)
+            detected_frames = sum(1 for item in frame_detections if item.detections)
+            detection_count = sum(len(item.detections) for item in frame_detections)
+            result: dict[str, object] = {
+                "schema_version": 1,
+                "case_dir": str(self.case.case_dir),
+                "run_dir": str(run_dir),
+                "input_transforms": str(self.case.transforms_for_processing()),
+                "expected_scale": expected_scale,
+                "tag_display": {
+                    "center": self._tag_center.tolist(),
+                    "yaw_deg": self._tag_yaw_deg,
+                    "pitch_deg": self._tag_pitch_deg,
+                    "roll_deg": self._tag_roll_deg,
+                    "size_sfm": self._tag_size_sfm,
+                },
+                "tag_sfm": {
+                    "center": center_sfm.tolist(),
+                    "normal": normal_sfm.tolist(),
+                    "up": up_sfm.tolist(),
+                    "true_scale": true_scale,
+                },
+                "candidate_filters": {
+                    "max_distance_sfm": float(self.validation_distance_spin.value()),
+                    "max_view_angle_deg": float(self.validation_angle_spin.value()),
+                    "min_area_px": float(self.validation_min_area_spin.value()),
+                },
+                "candidate_count": len(candidates),
+                "total_frame_count": total_frames,
+                "candidates": self._candidate_report(candidates),
+                "synthetic_report": synthetic_report,
+                "loaded_frame_count": len(frames),
+                "detected_frame_count": detected_frames,
+                "detection_count": detection_count,
+                "observation_count": len(observations),
+                "estimate_error": estimate_error,
+            }
+            if estimate is not None:
+                error_pct = (estimate.scale - expected_scale) / expected_scale * 100.0 if expected_scale else 0.0
+                result["estimate"] = {
+                    "scale": estimate.scale,
+                    "pair_count": estimate.pair_count,
+                    "inlier_count": estimate.inlier_count,
+                    "rms_residual_m": estimate.rms_residual_m,
+                    "median_pair_scale": estimate.median_pair_scale,
+                    "mad_pair_scale": estimate.mad_pair_scale,
+                    "error_pct": error_pct,
+                }
+                status = (
+                    f"scale={estimate.scale:.6g} m/SfM "
+                    f"(期待 {expected_scale:.6g}, 誤差 {error_pct:+.2f}%) / "
+                    f"候補 {len(candidates)}/{total_frames}, 合成 {synthetic_report['frames_written']}, "
+                    f"検出 {detection_count}, obs {len(observations)}, pairs {estimate.pair_count}"
+                )
+            else:
+                status = (
+                    f"推定不可: {estimate_error} / "
+                    f"候補 {len(candidates)}/{total_frames}, 合成 {synthetic_report['frames_written']}, "
+                    f"検出 {detection_count}, obs {len(observations)}"
+                )
+            (run_dir / "viewer_scale_validation_report.json").write_text(
+                json.dumps(result, indent=2),
+                encoding="utf-8",
+            )
+            self.validation_status_label.setText(status)
+            self._append_log(f"[validation] {status}")
+            self._append_log(f"[validation] output={run_dir}")
+        except Exception as e:
+            self.validation_status_label.setText(f"検証エラー: {e}")
+            QMessageBox.critical(self, "AprilTag検証エラー", str(e))
 
     def selected_face_basis_group(self) -> CubemapFrameGroup | None:
         if self._ray_basis_mode() == RAY_BASIS_IMAGE:
