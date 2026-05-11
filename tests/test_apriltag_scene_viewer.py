@@ -29,13 +29,17 @@ from devtools.apriltag.cubemap_preview import (
 )
 from devtools.apriltag.scene_viewer import (
     AprilTagSceneViewerWindow,
+    DEFAULT_EQUIRECT_PREVIEW_SIZE,
     RAY_BASIS_BOTH,
     RAY_BASIS_IMAGE,
     RAY_BASIS_WORLD,
     RIGHT_VIEW_POINTCLOUD,
     RIGHT_VIEW_RECONSTRUCTED_CUBE6,
     RIGHT_VIEW_SOURCE_EQUIRECT,
+    _case_source_equirect_metadata_size,
+    _clamp_equirect_preview_size,
     _resolve_source_equirect_paths,
+    _source_equirect_size_from_payload,
     _source_equirect_preview_params,
     camera_pose_from_perspective_params,
     case_cubemap_view_metadata,
@@ -407,6 +411,36 @@ def test_camera_pose_from_perspective_params_uses_fov_view_axes() -> None:
     assert np.allclose(right, np.array([0.0, 0.0, -1.0]), atol=1e-6)
     assert np.allclose(up, np.array([0.0, 1.0, 0.0]), atol=1e-6)
     assert np.allclose(forward, np.array([1.0, 0.0, 0.0]), atol=1e-6)
+
+
+def test_reconstructed_equirect_size_is_capped_by_source_resolution() -> None:
+    source = (7680, 3840)
+
+    assert _clamp_equirect_preview_size(source, (15360, 7680)) == source
+    assert _clamp_equirect_preview_size(source, (3840, 1920)) == (3840, 1920)
+    assert _clamp_equirect_preview_size(None, (15360, 7680)) == DEFAULT_EQUIRECT_PREVIEW_SIZE
+    assert _clamp_equirect_preview_size(None, (2048, 1024)) == (2048, 1024)
+
+
+def test_source_equirect_size_is_read_from_export_and_extract_metadata(tmp_path: Path) -> None:
+    assert _source_equirect_size_from_payload({"input_size": {"w": 7680, "h": 3840}}) == (7680, 3840)
+    assert _source_equirect_size_from_payload(
+        {"sessions": [{"video": {"width": 3840, "height": 1920}}, {"video": {"width": 7680, "height": 3840}}]}
+    ) == (7680, 3840)
+
+    case_dir = _write_generated_cube6_case(tmp_path)
+    case = load_case(case_dir)
+    (case.source_transforms.parent / "view_export_settings.json").write_text(
+        json.dumps(
+            {
+                "input_size": {"w": 7680, "h": 3840},
+                "views": [{"name": "pz", "yaw": 0.0, "pitch": 0.0, "enabled": True}],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    assert _case_source_equirect_metadata_size(case) == (7680, 3840)
 
 
 def test_scene_viewer_keeps_world_face_rays_separate_from_generated_image_rays(tmp_path: Path) -> None:

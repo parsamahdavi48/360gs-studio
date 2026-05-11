@@ -11,6 +11,7 @@ from datetime import datetime
 from pathlib import Path
 
 import numpy as np
+from PIL import Image
 from PySide6.QtCore import QObject, QSize, Qt, QThread, Signal, Slot
 from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import (
@@ -112,6 +113,7 @@ SYNTHETIC_OUTPUT_FACE_ROTATION_FACE = {
     "top": "bottom",
     "bottom": "top",
 }
+DEFAULT_EQUIRECT_PREVIEW_SIZE = (4096, 2048)
 
 
 @dataclass(frozen=True)
@@ -424,6 +426,7 @@ def _scene_root_candidates(case: AprilTagDevCase) -> tuple[Path, ...]:
     for path in (
         case.image_root,
         case.source_transforms.parent,
+        case.transforms_for_processing().parent,
         case.source_metashape_xml.parent if case.source_metashape_xml else None,
     ):
         if path is None:
@@ -445,6 +448,131 @@ def _scene_root_candidates(case: AprilTagDevCase) -> tuple[Path, ...]:
             seen.add(key)
             unique.append(candidate)
     return tuple(unique)
+
+
+def _normalized_size(width: object, height: object) -> tuple[int, int] | None:
+    try:
+        w = int(width)  # type: ignore[arg-type]
+        h = int(height)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return None
+    if w <= 0 or h <= 0:
+        return None
+    return w, h
+
+
+def _size_from_object(value: object) -> tuple[int, int] | None:
+    if isinstance(value, Mapping):
+        return _normalized_size(
+            value.get("w", value.get("width")),
+            value.get("h", value.get("height")),
+        )
+    if isinstance(value, str):
+        text = value.strip().lower().replace(" ", "")
+        if "x" in text:
+            width, height = text.split("x", 1)
+            return _normalized_size(width, height)
+    if isinstance(value, list | tuple) and len(value) >= 2:
+        return _normalized_size(value[0], value[1])
+    return None
+
+
+def _source_equirect_size_from_payload(payload: object) -> tuple[int, int] | None:
+    if not isinstance(payload, Mapping):
+        return None
+    for key in ("input_size", "source_size", "source_equirect_size", "equirect_size", "video"):
+        size = _size_from_object(payload.get(key))
+        if size is not None:
+            return size
+    sessions = payload.get("sessions")
+    if isinstance(sessions, list):
+        for session in reversed(sessions):
+            if not isinstance(session, Mapping):
+                continue
+            size = _size_from_object(session.get("video"))
+            if size is not None:
+                return size
+    return None
+
+
+def _source_equirect_size_from_json(path: Path) -> tuple[int, int] | None:
+    if not path.is_file():
+        return None
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    return _source_equirect_size_from_payload(payload)
+
+
+def _case_source_equirect_metadata_size(case: AprilTagDevCase) -> tuple[int, int] | None:
+    candidates: list[Path] = []
+    for root in _scene_root_candidates(case):
+        candidates.extend(
+            [
+                root / "view_export_settings.json",
+                root / "_stechdrive" / "frames" / "extract_report.json",
+                root / "_stechdrive" / "frames" / "extract_sessions.json",
+                root / "_stechdrive" / "step4" / "export_settings.json",
+            ]
+        )
+    seen: set[str] = set()
+    for candidate in candidates:
+        try:
+            key = str(candidate.resolve()).lower()
+        except OSError:
+            key = str(candidate).lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        size = _source_equirect_size_from_json(candidate)
+        if size is not None:
+            return size
+    return None
+
+
+def _image_size(path: Path) -> tuple[int, int] | None:
+    try:
+        with Image.open(path) as image:
+            return _normalized_size(image.width, image.height)
+    except Exception:
+        return None
+
+
+def _image_array_size(image: np.ndarray | None) -> tuple[int, int] | None:
+    if image is None or image.size == 0 or image.ndim < 2:
+        return None
+    height, width = image.shape[:2]
+    return _normalized_size(width, height)
+
+
+def _cubemap_equirect_preview_size(group: CubemapFrameGroup | None) -> tuple[int, int] | None:
+    if group is None:
+        return None
+    face_size = 0
+    for frame in group.frames:
+        face_size = max(face_size, int(frame.width), int(frame.height))
+    if face_size <= 0:
+        return None
+    return face_size * 4, face_size * 2
+
+
+def _clamp_equirect_preview_size(
+    source_size: tuple[int, int] | None,
+    cubemap_size: tuple[int, int] | None,
+    *,
+    fallback_size: tuple[int, int] = DEFAULT_EQUIRECT_PREVIEW_SIZE,
+) -> tuple[int, int]:
+    fallback = _size_from_object(fallback_size) or DEFAULT_EQUIRECT_PREVIEW_SIZE
+    source = _size_from_object(source_size) if source_size is not None else None
+    cubemap = _size_from_object(cubemap_size) if cubemap_size is not None else None
+    if source is not None and cubemap is not None:
+        return max(1, min(source[0], cubemap[0])), max(1, min(source[1], cubemap[1]))
+    if source is not None:
+        return source
+    if cubemap is not None:
+        return max(1, min(cubemap[0], fallback[0])), max(1, min(cubemap[1], fallback[1]))
+    return fallback
 
 
 def _selected_frame_output_map(scene_root: Path) -> dict[str, Path]:
@@ -874,9 +1002,11 @@ class AprilTagSceneViewerWindow(QWidget):
         self._world_ray_source = ""
         self._image_ray_source = ""
         self._image_cache: dict[Path, np.ndarray] = {}
+        self._image_size_cache: dict[Path, tuple[int, int]] = {}
         self._equirect_cache: dict[str, np.ndarray] = {}
         self._source_equirect_paths: dict[str, Path] = {}
         self._source_equirect_rotations: dict[str, np.ndarray] = {}
+        self._source_equirect_metadata_size: tuple[int, int] | None = None
         self._displayed_image_key = ""
         self._params = PerspectiveParams(fov_deg=90.0)
         self._active_face = "pz"
@@ -1179,12 +1309,15 @@ class AprilTagSceneViewerWindow(QWidget):
         if self.case is None:
             return
         self._image_cache.clear()
+        self._image_size_cache.clear()
         self._equirect_cache.clear()
         self._source_equirect_paths = {}
         self._source_equirect_rotations = {}
+        self._source_equirect_metadata_size = None
         self._displayed_image_key = ""
         try:
             metadata = case_cubemap_view_metadata(self.case)
+            self._source_equirect_metadata_size = _case_source_equirect_metadata_size(self.case)
             groups = load_cubemap_frame_groups(
                 self.case.transforms_for_processing(),
                 cubemap_view_params=metadata,
@@ -1945,12 +2078,38 @@ class AprilTagSceneViewerWindow(QWidget):
             return None
         return path, rotation
 
+    def _source_equirect_size_for_group(self, group: CubemapFrameGroup | None) -> tuple[int, int] | None:
+        if group is not None:
+            path = self._source_equirect_paths.get(group.name)
+            if path is not None:
+                size = self._image_size_cache.get(path)
+                if size is None:
+                    size = _image_size(path)
+                    if size is not None:
+                        self._image_size_cache[path] = size
+                if size is not None:
+                    return size
+        return self._source_equirect_metadata_size
+
     def _source_equirect_rotation_for_group(self, group: CubemapFrameGroup | None) -> np.ndarray | None:
         if group is None or self.case is None:
             return None
         if normalize_coordinate_profile(self.case.coordinate_profile) not in LICHTFELD_IMAGE_RAY_DISPLAY_PROFILES:
             return None
         return self._source_equirect_rotations.get(group.name)
+
+    def _right_image_equirect_size(
+        self,
+        *,
+        world_group: CubemapFrameGroup | None,
+        cubemap_group: CubemapFrameGroup | None,
+        use_source_equirect: bool,
+        source_image: np.ndarray | None = None,
+    ) -> tuple[int, int]:
+        source_size = _image_array_size(source_image) or self._source_equirect_size_for_group(world_group)
+        if use_source_equirect:
+            return source_size or DEFAULT_EQUIRECT_PREVIEW_SIZE
+        return _clamp_equirect_preview_size(source_size, _cubemap_equirect_preview_size(cubemap_group))
 
     def _choose_case(self) -> None:
         start = str(self._case_dialog_start_dir())
@@ -2148,6 +2307,12 @@ class AprilTagSceneViewerWindow(QWidget):
         use_reconstructed_cube6 = mode == RIGHT_VIEW_RECONSTRUCTED_CUBE6 or (
             mode == RIGHT_VIEW_IMAGE_POINTCLOUD and source_equirect is None and source_rotation_for_group is not None
         )
+        equirect_group = raw_group if use_reconstructed_cube6 else image_group
+        equirect_width, equirect_height = self._right_image_equirect_size(
+            world_group=world_group,
+            cubemap_group=equirect_group,
+            use_source_equirect=use_source_equirect,
+        )
         source_path = source_equirect[0] if source_equirect is not None else None
         source_rotation = (
             source_equirect[1]
@@ -2187,7 +2352,8 @@ class AprilTagSceneViewerWindow(QWidget):
             f"{self.case.coordinate_profile if self.case else ''}:"
             f"{image_source}:"
             f"{self._ray_basis_mode()}:{image_group.name}:"
-            f"{source_path if use_source_equirect else ''}"
+            f"{source_path if use_source_equirect else ''}:"
+            f"{equirect_width}x{equirect_height}"
         )
         overlays = []
         if use_pointcloud_overlay:
@@ -2216,11 +2382,17 @@ class AprilTagSceneViewerWindow(QWidget):
                             self._image_cache[source_path] = source
                     if source is None:
                         raise OSError(f"Cannot read source equirect image: {source_path}")
+                    equirect_width, equirect_height = self._right_image_equirect_size(
+                        world_group=world_group,
+                        cubemap_group=equirect_group,
+                        use_source_equirect=True,
+                        source_image=source,
+                    )
                     image = render_source_equirect_axis(
                         source,
                         source_rotation,
-                        output_width=2048,
-                        output_height=1024,
+                        output_width=equirect_width,
+                        output_height=equirect_height,
                         sfm_to_preview_matrix=self._world_matrix,
                     )
                 elif use_reconstructed_cube6:
@@ -2230,16 +2402,16 @@ class AprilTagSceneViewerWindow(QWidget):
                         raw_group,
                         source_rotation,
                         cubemap_view_params=case_cubemap_view_metadata(self.case) if self.case else None,
-                        output_width=2048,
-                        output_height=1024,
+                        output_width=equirect_width,
+                        output_height=equirect_height,
                         image_cache=self._image_cache,
                         sfm_to_preview_matrix=self._world_matrix,
                     )
                 else:
                     image = render_cubemap_axis_equirect(
                         image_group,
-                        output_width=2048,
-                        output_height=1024,
+                        output_width=equirect_width,
+                        output_height=equirect_height,
                         image_cache=self._image_cache,
                     )
             except Exception as e:
@@ -2296,6 +2468,22 @@ class AprilTagSceneViewerWindow(QWidget):
         source_equirect = self._source_equirect_for_group(group)
         if source_equirect is not None:
             source_image_text = f" / source equirect={source_equirect[0].name}"
+        preview_size_text = ""
+        if mode in RIGHT_VIEW_IMAGE_MODES and group is not None:
+            raw_group = self.selected_raw_group()
+            use_source = mode in {RIGHT_VIEW_SOURCE_EQUIRECT, RIGHT_VIEW_IMAGE_POINTCLOUD} and source_equirect is not None
+            use_reconstructed = mode == RIGHT_VIEW_RECONSTRUCTED_CUBE6 or (
+                mode == RIGHT_VIEW_IMAGE_POINTCLOUD
+                and source_equirect is None
+                and self._source_equirect_rotation_for_group(group) is not None
+            )
+            equirect_group = raw_group if use_reconstructed else image_group
+            width, height = self._right_image_equirect_size(
+                world_group=group,
+                cubemap_group=equirect_group,
+                use_source_equirect=use_source,
+            )
+            preview_size_text = f" / preview equirect={width}x{height}"
         mapping = ""
         if mode == RIGHT_VIEW_IMAGE_POINTCLOUD and group is not None:
             if source_equirect is not None:
@@ -2331,7 +2519,7 @@ class AprilTagSceneViewerWindow(QWidget):
             f"カメラ: {group_text} / "
             f"点群: {point_text} / 点群描画: {self.world_view.pointcloud_renderer_label()} / "
             f"座標: {coordinate_profile_label(self.case.coordinate_profile)}"
-            f"{alignment}{ray_source}{source_image_text}{mapping}"
+            f"{alignment}{ray_source}{source_image_text}{mapping}{preview_size_text}"
         )
         self._append_log_once(
             "scene",
