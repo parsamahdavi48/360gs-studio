@@ -734,9 +734,26 @@ class AprilTagWorldDebugView(QWidget):
         self._draw_world_line(painter, self._tag_center, foot, QColor(0, 255, 255), 2, dashed=True)
         self._draw_marker(painter, foot, QColor(0, 255, 255), "XZ", radius=5)
 
-        arrow_len = max(self._tag_size_m / self._true_scale, self._grid_step) * 0.8
-        self._draw_world_line(painter, self._tag_center, self._tag_center + self._tag_normal * arrow_len, QColor(255, 110, 110), 2)
-        self._draw_world_line(painter, self._tag_center, self._tag_center + self._tag_up * arrow_len, QColor(125, 255, 125), 2)
+        for label, start, end, color, dashed in self._tag_orientation_segments():
+            if dashed:
+                self._draw_world_line(painter, start, end, color, 2, dashed=True)
+                self._draw_marker(painter, end, color, label, radius=3)
+            else:
+                self._draw_world_arrow(painter, start, end, color, label, width=3 if label == "front" else 2)
+
+    def _tag_orientation_segments(self) -> tuple[tuple[str, np.ndarray, np.ndarray, QColor, bool], ...]:
+        side_sfm = self._tag_size_m / self._true_scale
+        arrow_len = max(side_sfm, self._grid_step) * 0.85
+        back_len = arrow_len * 0.45
+        normal = _normalized(self._tag_normal, fallback=(0.0, 0.0, -1.0))
+        up = self._tag_up - normal * float(self._tag_up @ normal)
+        up = _normalized(up, fallback=(0.0, 1.0, 0.0))
+        center = np.asarray(self._tag_center, dtype=np.float64)
+        return (
+            ("front", center, center + normal * arrow_len, QColor(255, 110, 110), False),
+            ("back", center, center - normal * back_len, QColor(255, 110, 110, 130), True),
+            ("up", center, center + up * arrow_len, QColor(125, 255, 125), False),
+        )
 
     def _selected_group(self) -> CubemapFrameGroup | None:
         if not self._selected_group_name:

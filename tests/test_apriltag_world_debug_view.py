@@ -178,6 +178,33 @@ def test_world_debug_view_accepts_scene_and_tag() -> None:
     view.deleteLater()
 
 
+def test_world_debug_view_exposes_tag_front_direction_segment() -> None:
+    _app()
+    view = AprilTagWorldDebugView()
+    view.set_grid(step=1.0, extent=10.0)
+    view.set_tag(
+        center=np.array([1.0, 2.0, 3.0]),
+        normal=np.array([0.0, 0.0, -1.0]),
+        up=np.array([0.0, 1.0, 0.0]),
+        tag_size_m=0.16,
+        true_scale=0.25,
+    )
+
+    segments = {label: (start, end, dashed) for label, start, end, _color, dashed in view._tag_orientation_segments()}
+    front_start, front_end, front_dashed = segments["front"]
+    back_start, back_end, back_dashed = segments["back"]
+    up_start, up_end, up_dashed = segments["up"]
+
+    assert np.allclose(front_start, [1.0, 2.0, 3.0])
+    assert np.allclose((front_end - front_start) / np.linalg.norm(front_end - front_start), [0.0, 0.0, -1.0])
+    assert front_dashed is False
+    assert np.allclose((back_end - back_start) / np.linalg.norm(back_end - back_start), [0.0, 0.0, 1.0])
+    assert back_dashed is True
+    assert np.allclose((up_end - up_start) / np.linalg.norm(up_end - up_start), [0.0, 1.0, 0.0])
+    assert up_dashed is False
+    view.deleteLater()
+
+
 def test_world_debug_frustum_converts_camera_preview_axes_to_world_axes() -> None:
     _app()
     view = AprilTagWorldDebugView()
