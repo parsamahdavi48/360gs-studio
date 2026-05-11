@@ -12,7 +12,9 @@ from PySide6.QtCore import QSize, Qt, Signal
 from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import (
     QComboBox,
+    QDoubleSpinBox,
     QFileDialog,
+    QFormLayout,
     QGroupBox,
     QHBoxLayout,
     QLabel,
@@ -27,7 +29,7 @@ from PySide6.QtWidgets import (
 )
 
 from core.apriltag_cubemap import CubemapViewMetadata, discover_cubemap_view_metadata
-from core.apriltag_geometry import PinholeFrame
+from core.apriltag_geometry import PinholeFrame, tag_corners_sfm
 from core.image_io import imread_unicode
 from devtools.apriltag.case import DEFAULT_CASE_ROOT, AprilTagDevCase, load_case, save_case
 from devtools.apriltag.coordinates import (
@@ -48,6 +50,7 @@ from devtools.apriltag.cubemap_preview import (
     load_cubemap_frame_groups,
     load_metashape_camera_labels,
     order_groups_by_labels,
+    project_sfm_points_to_axis_preview_points,
     render_cubemap_axis_equirect,
     render_generated_cubemap_source_axis,
     render_source_equirect_axis,
@@ -59,7 +62,7 @@ from devtools.apriltag.world_debug_view import (
     load_point_cloud_sample,
     transform_point_cloud_sample,
 )
-from gui.common.perspective_image_view import PerspectiveImageView
+from gui.common.perspective_image_view import PerspectiveImageView, PerspectiveLabelOverlay
 from gui.common.perspective_preview import (
     PerspectiveParams,
     clamp_pitch_deg,
@@ -507,6 +510,11 @@ class AprilTagSceneViewerWindow(QWidget):
         self._displayed_image_key = ""
         self._params = PerspectiveParams(fov_deg=90.0)
         self._active_face = "pz"
+        self._tag_center = np.array([0.0, 0.0, 0.0], dtype=np.float64)
+        self._tag_yaw_deg = 0.0
+        self._tag_pitch_deg = 0.0
+        self._tag_roll_deg = 0.0
+        self._tag_size_sfm = 0.64
 
         self._build_ui()
         self._connect_signals()
@@ -572,6 +580,8 @@ class AprilTagSceneViewerWindow(QWidget):
         face_layout.addStretch(1)
         root.addWidget(face_box)
 
+        root.addWidget(self._build_tag_controls())
+
         splitter = QSplitter(Qt.Horizontal)
         self.world_view = AprilTagWorldDebugView()
         self.world_view.setMinimumSize(520, 420)
@@ -593,6 +603,59 @@ class AprilTagSceneViewerWindow(QWidget):
         self.log.setMaximumHeight(150)
         root.addWidget(self.log)
 
+    def _build_tag_controls(self) -> QGroupBox:
+        group = QGroupBox("AprilTag配置")
+        layout = QHBoxLayout(group)
+        layout.setContentsMargins(8, 8, 8, 8)
+        layout.setSpacing(12)
+
+        position_form = QFormLayout()
+        position_form.setLabelAlignment(Qt.AlignRight)
+        self.tag_x_spin = self._double_spin(-1_000_000.0, 1_000_000.0, 0.0, decimals=3, step=0.05)
+        self.tag_y_spin = self._double_spin(-1_000_000.0, 1_000_000.0, 0.0, decimals=3, step=0.05)
+        self.tag_z_spin = self._double_spin(-1_000_000.0, 1_000_000.0, 0.0, decimals=3, step=0.05)
+        position_form.addRow("X", self.tag_x_spin)
+        position_form.addRow("Y", self.tag_y_spin)
+        position_form.addRow("Z", self.tag_z_spin)
+        layout.addLayout(position_form)
+
+        rotation_form = QFormLayout()
+        rotation_form.setLabelAlignment(Qt.AlignRight)
+        self.tag_yaw_spin = self._double_spin(-180.0, 180.0, 0.0, decimals=1, step=5.0)
+        self.tag_pitch_spin = self._double_spin(-89.0, 89.0, 0.0, decimals=1, step=5.0)
+        self.tag_roll_spin = self._double_spin(-180.0, 180.0, 0.0, decimals=1, step=5.0)
+        rotation_form.addRow("yaw", self.tag_yaw_spin)
+        rotation_form.addRow("pitch", self.tag_pitch_spin)
+        rotation_form.addRow("roll", self.tag_roll_spin)
+        layout.addLayout(rotation_form)
+
+        size_form = QFormLayout()
+        size_form.setLabelAlignment(Qt.AlignRight)
+        self.tag_size_sfm_spin = self._double_spin(0.0001, 1_000_000.0, self._tag_size_sfm, decimals=4, step=0.05)
+        self.reset_tag_button = QPushButton("原点へ戻す")
+        size_form.addRow("一辺SfM", self.tag_size_sfm_spin)
+        size_form.addRow("", self.reset_tag_button)
+        layout.addLayout(size_form)
+        layout.addStretch(1)
+        return group
+
+    @staticmethod
+    def _double_spin(
+        minimum: float,
+        maximum: float,
+        value: float,
+        *,
+        decimals: int,
+        step: float,
+    ) -> QDoubleSpinBox:
+        spin = QDoubleSpinBox()
+        spin.setRange(float(minimum), float(maximum))
+        spin.setDecimals(int(decimals))
+        spin.setSingleStep(float(step))
+        spin.setValue(float(value))
+        spin.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        return spin
+
     def _connect_signals(self) -> None:
         self.open_case_button.clicked.connect(self._choose_case)
         self.reload_button.clicked.connect(self.reload)
@@ -607,6 +670,17 @@ class AprilTagSceneViewerWindow(QWidget):
         self.image_view.look_dragged.connect(self._on_right_view_dragged)
         for face, button in self.face_buttons.items():
             button.clicked.connect(lambda _checked=False, value=face: self.set_active_face(value))
+        for spin in (
+            self.tag_x_spin,
+            self.tag_y_spin,
+            self.tag_z_spin,
+            self.tag_yaw_spin,
+            self.tag_pitch_spin,
+            self.tag_roll_spin,
+            self.tag_size_sfm_spin,
+        ):
+            spin.valueChanged.connect(lambda _value: self._on_tag_transform_changed())
+        self.reset_tag_button.clicked.connect(self.reset_tag_transform)
 
     def load_case_dir(self, case_dir: Path) -> None:
         try:
@@ -615,6 +689,7 @@ class AprilTagSceneViewerWindow(QWidget):
             QMessageBox.critical(self, "ケース読み込みエラー", str(e))
             return
         self._set_profile_combo(self.case.coordinate_profile)
+        self._set_tag_defaults_from_case(self.case)
         self.reload()
 
     def reload(self) -> None:
@@ -731,6 +806,157 @@ class AprilTagSceneViewerWindow(QWidget):
         if self._ray_basis_mode() == RAY_BASIS_IMAGE:
             return self.selected_image_ray_group()
         return self.selected_image_preview_group()
+
+    def set_tag_transform(
+        self,
+        *,
+        center: tuple[float, float, float] | np.ndarray | None = None,
+        yaw_deg: float | None = None,
+        pitch_deg: float | None = None,
+        roll_deg: float | None = None,
+        size_sfm: float | None = None,
+    ) -> None:
+        if center is not None:
+            values = np.asarray(center, dtype=np.float64).reshape(3)
+            self._set_spin_value_blocked(self.tag_x_spin, float(values[0]))
+            self._set_spin_value_blocked(self.tag_y_spin, float(values[1]))
+            self._set_spin_value_blocked(self.tag_z_spin, float(values[2]))
+        if yaw_deg is not None:
+            self._set_spin_value_blocked(self.tag_yaw_spin, float(yaw_deg))
+        if pitch_deg is not None:
+            self._set_spin_value_blocked(self.tag_pitch_spin, float(pitch_deg))
+        if roll_deg is not None:
+            self._set_spin_value_blocked(self.tag_roll_spin, float(roll_deg))
+        if size_sfm is not None:
+            self._set_spin_value_blocked(self.tag_size_sfm_spin, max(0.0001, float(size_sfm)))
+        self._read_tag_transform_from_controls()
+        self._sync_views()
+
+    def reset_tag_transform(self) -> None:
+        self.set_tag_transform(
+            center=(0.0, 0.0, 0.0),
+            yaw_deg=0.0,
+            pitch_deg=0.0,
+            roll_deg=0.0,
+            size_sfm=self._default_tag_size_sfm(self.case),
+        )
+
+    @staticmethod
+    def _set_spin_value_blocked(spin: QDoubleSpinBox, value: float) -> None:
+        spin.blockSignals(True)
+        spin.setValue(float(value))
+        spin.blockSignals(False)
+
+    @staticmethod
+    def _default_tag_size_sfm(case: AprilTagDevCase | None) -> float:
+        if case is None:
+            return 0.64
+        return max(0.0001, float(case.default_tag_size_m) / max(float(case.true_scale), 1e-12))
+
+    def _set_tag_defaults_from_case(self, case: AprilTagDevCase) -> None:
+        self._set_spin_value_blocked(self.tag_x_spin, 0.0)
+        self._set_spin_value_blocked(self.tag_y_spin, 0.0)
+        self._set_spin_value_blocked(self.tag_z_spin, 0.0)
+        self._set_spin_value_blocked(self.tag_yaw_spin, 0.0)
+        self._set_spin_value_blocked(self.tag_pitch_spin, 0.0)
+        self._set_spin_value_blocked(self.tag_roll_spin, 0.0)
+        self._set_spin_value_blocked(self.tag_size_sfm_spin, self._default_tag_size_sfm(case))
+        self._read_tag_transform_from_controls()
+
+    def _on_tag_transform_changed(self) -> None:
+        self._read_tag_transform_from_controls()
+        self._sync_views()
+
+    def _read_tag_transform_from_controls(self) -> None:
+        self._tag_center = np.array(
+            [
+                self.tag_x_spin.value(),
+                self.tag_y_spin.value(),
+                self.tag_z_spin.value(),
+            ],
+            dtype=np.float64,
+        )
+        self._tag_yaw_deg = float(self.tag_yaw_spin.value())
+        self._tag_pitch_deg = float(self.tag_pitch_spin.value())
+        self._tag_roll_deg = float(self.tag_roll_spin.value())
+        self._tag_size_sfm = max(0.0001, float(self.tag_size_sfm_spin.value()))
+
+    def _tag_normal_up(self) -> tuple[np.ndarray, np.ndarray]:
+        rotation = rotation_from_perspective_params(
+            PerspectiveParams(
+                yaw_deg=self._tag_yaw_deg,
+                pitch_deg=self._tag_pitch_deg,
+                roll_deg=self._tag_roll_deg,
+                fov_deg=90.0,
+            )
+        )
+        normal = np.array([0.0, 0.0, -1.0], dtype=np.float64) @ rotation.T
+        up = np.array([0.0, 1.0, 0.0], dtype=np.float64) @ rotation.T
+        return normal, up
+
+    def _tag_corners_world_display(self) -> np.ndarray:
+        normal, up = self._tag_normal_up()
+        return tag_corners_sfm(
+            self._tag_center,
+            normal,
+            up,
+            self._tag_size_sfm,
+            1.0,
+        )
+
+    def _sync_tag_views(self) -> None:
+        normal, up = self._tag_normal_up()
+        for view in (self.world_view, self.point_view):
+            view.set_tag(
+                center=self._tag_center,
+                normal=normal,
+                up=up,
+                tag_size_m=self._tag_size_sfm,
+                true_scale=1.0,
+            )
+
+    def _tag_image_overlays(
+        self,
+        group: CubemapFrameGroup | None,
+        view_params: PerspectiveParams,
+        *,
+        output_size: int = 768,
+    ) -> list[PerspectiveLabelOverlay]:
+        if group is None:
+            return []
+        try:
+            projected = project_sfm_points_to_axis_preview_points(
+                group,
+                self._tag_corners_world_display(),
+                output_size=output_size,
+                yaw_deg=view_params.yaw_deg,
+                pitch_deg=view_params.pitch_deg,
+                roll_deg=view_params.roll_deg,
+                fov_deg=view_params.fov_deg,
+            )
+        except Exception:
+            return []
+        if projected is None or not np.all(np.isfinite(projected)):
+            return []
+        min_xy = np.floor(projected.min(axis=0)).astype(int)
+        max_xy = np.ceil(projected.max(axis=0)).astype(int)
+        size = int(output_size)
+        if max_xy[0] < 0 or max_xy[1] < 0 or min_xy[0] > size or min_xy[1] > size:
+            return []
+        if int(max(max_xy - min_xy)) > size * 3:
+            return []
+        origin_y = max(18, int(min_xy[1]) - 8)
+        return [
+            PerspectiveLabelOverlay(
+                label="tag",
+                box=(int(min_xy[0]), int(min_xy[1]), int(max_xy[0]), int(max_xy[1])),
+                origin=(int(min_xy[0]), origin_y),
+                color_bgr=(0, 255, 180),
+                highlighted=True,
+                polygon=tuple((float(x), float(y)) for x, y in projected),
+                fill_alpha=0.16,
+            )
+        ]
 
     def selected_face_basis_group(self) -> CubemapFrameGroup | None:
         if self._ray_basis_mode() == RAY_BASIS_IMAGE:
@@ -898,6 +1124,7 @@ class AprilTagSceneViewerWindow(QWidget):
                 roll_deg=self._params.roll_deg,
                 fov_deg=self._params.fov_deg,
             )
+        self._sync_tag_views()
         if basis_group is not None:
             self._sync_point_view(basis_group)
         self._sync_mode_visibility()
@@ -962,8 +1189,10 @@ class AprilTagSceneViewerWindow(QWidget):
             f"{self._ray_basis_mode()}:{image_group.name}:"
             f"{source_path if use_source_equirect else ''}"
         )
+        overlays = self._tag_image_overlays(world_group, view_params, output_size=768)
         if self._displayed_image_key == key and self.image_view.set_perspective_params(view_params):
             self.image_view.set_drag_mode("look")
+            self.image_view.set_perspective_label_overlays(overlays)
             return
         image = self._equirect_cache.get(key)
         if image is None:
@@ -1011,7 +1240,7 @@ class AprilTagSceneViewerWindow(QWidget):
         shown = self.image_view.set_perspective_image_bgr(
             image,
             view_params,
-            overlays=[],
+            overlays=overlays,
             logical_size=QSize(768, 768),
         )
         self.image_view.set_drag_mode("look")

@@ -963,3 +963,58 @@ def test_scene_viewer_loads_case_and_selects_camera(tmp_path: Path) -> None:
     assert window.right_stack.currentWidget() is window.point_view
     window.mode_combo.setCurrentIndex(window.mode_combo.findData("image"))
     assert window.right_stack.currentWidget() is window.image_view
+    window.deleteLater()
+
+
+def test_scene_viewer_tag_transform_controls_sync_world_and_point_views(tmp_path: Path) -> None:
+    _app()
+    case_dir = _write_cube6_case(tmp_path)
+
+    window = AprilTagSceneViewerWindow(initial_case=case_dir)
+    assert window.tag_size_sfm_spin.value() == pytest.approx(0.64)
+
+    window.set_tag_transform(
+        center=(1.0, 2.0, 3.0),
+        yaw_deg=90.0,
+        pitch_deg=0.0,
+        roll_deg=0.0,
+        size_sfm=1.25,
+    )
+
+    for view in (window.world_view, window.point_view):
+        assert np.allclose(view._tag_center, [1.0, 2.0, 3.0])
+        assert np.allclose(view._tag_normal, [-1.0, 0.0, 0.0], atol=1e-6)
+        assert np.allclose(view._tag_up, [0.0, 1.0, 0.0], atol=1e-6)
+        assert view._tag_size_m == pytest.approx(1.25)
+        assert view._true_scale == pytest.approx(1.0)
+    window.deleteLater()
+
+
+def test_scene_viewer_projects_tag_overlay_into_image_view_params(tmp_path: Path) -> None:
+    _app()
+    case_dir = _write_cube6_case(tmp_path)
+
+    window = AprilTagSceneViewerWindow(initial_case=case_dir)
+    window.set_active_face("pz")
+    window.set_tag_transform(
+        center=(0.0, 0.0, 3.0),
+        yaw_deg=0.0,
+        pitch_deg=0.0,
+        roll_deg=0.0,
+        size_sfm=1.0,
+    )
+    group = window.selected_world_group()
+    assert group is not None
+
+    overlays = window._tag_image_overlays(group, window._params, output_size=768)
+
+    assert len(overlays) == 1
+    points = np.asarray(overlays[0].polygon, dtype=np.float64)
+    assert points.shape == (4, 2)
+    assert np.all(np.isfinite(points))
+    assert np.allclose(points.mean(axis=0), [383.5, 383.5], atol=1.0)
+    assert 310.0 < float(points[:, 0].min()) < 330.0
+    assert 437.0 < float(points[:, 0].max()) < 457.0
+    assert 310.0 < float(points[:, 1].min()) < 330.0
+    assert 437.0 < float(points[:, 1].max()) < 457.0
+    window.deleteLater()
