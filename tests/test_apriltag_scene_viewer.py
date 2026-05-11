@@ -12,7 +12,8 @@ from PySide6.QtCore import QEventLoop, QTimer
 from PySide6.QtWidgets import QAbstractSpinBox, QApplication
 
 from core.apriltag_cubemap import CubemapViewMetadata, cubemap_view_params_for_group
-from core.apriltag_geometry import PinholeFrame
+from core.apriltag_detection import detect_apriltags
+from core.apriltag_geometry import PinholeFrame, load_pinhole_frames
 from core.image_io import imread_unicode, imwrite_unicode
 from devtools.apriltag.case import AprilTagDevCase, load_case, save_case
 from devtools.apriltag.cubemap_preview import (
@@ -933,6 +934,116 @@ def test_current_case_synthetic_output_reconstructs_at_world_overlay_position(tm
     window.deleteLater()
 
 
+def test_current_case_synthetic_floor_tag_uses_floor_pole_image() -> None:
+    case_dir = Path("_compare/apriltag_test/cases/current")
+    if not (case_dir / "case.json").is_file():
+        pytest.skip("local AprilTag comparison case is not available")
+    _app()
+    window = AprilTagSceneViewerWindow(initial_case=case_dir)
+    if "frame_000012" not in {group.name for group in window._raw_groups}:
+        pytest.skip("local AprilTag floor regression frame is not available")
+    window.validation_distance_spin.setValue(4.7)
+    window.validation_angle_spin.setValue(75.0)
+    window.validation_min_area_spin.setValue(64.0)
+    window.set_tag_transform(
+        center=(0.0, -1.817, -0.9),
+        yaw_deg=180.0,
+        pitch_deg=0.0,
+        roll_deg=0.0,
+        size_sfm=0.1733,
+    )
+
+    candidates, _total = window._synthetic_tag_candidates()
+    selected = {
+        candidate.frame.file_path
+        for candidate in candidates
+        if candidate.frame.file_path.startswith("images/frame_000012_")
+    }
+
+    assert "images/frame_000012_top.jpg" in selected
+    assert "images/frame_000012_bottom.jpg" not in selected
+    window.deleteLater()
+
+
+def test_current_case_synthetic_output_tag_is_not_mirrored(tmp_path: Path) -> None:
+    case_dir = Path("_compare/apriltag_test/cases/current")
+    if not (case_dir / "case.json").is_file():
+        pytest.skip("local AprilTag comparison case is not available")
+    _app()
+    window = AprilTagSceneViewerWindow(initial_case=case_dir)
+    if "frame_000012" not in {group.name for group in window._raw_groups}:
+        pytest.skip("local AprilTag floor regression frame is not available")
+    window.validation_distance_spin.setValue(4.7)
+    window.validation_angle_spin.setValue(75.0)
+    window.validation_min_area_spin.setValue(64.0)
+    window.set_tag_transform(
+        center=(0.0, -1.817, -0.9),
+        yaw_deg=-180.0,
+        pitch_deg=0.0,
+        roll_deg=0.0,
+        size_sfm=0.1733,
+    )
+
+    candidates, _total = window._synthetic_tag_candidates()
+    inside = [
+        candidate
+        for candidate in candidates
+        if float(candidate.projected_points[:, 0].min()) > 8.0
+        and float(candidate.projected_points[:, 1].min()) > 8.0
+        and float(candidate.projected_points[:, 0].max()) < candidate.frame.width - 8.0
+        and float(candidate.projected_points[:, 1].max()) < candidate.frame.height - 8.0
+    ]
+    if not inside:
+        pytest.skip("local AprilTag mirrored-output regression frame is not visible")
+    candidate = max(inside, key=lambda item: item.area_px)
+    marker = cv2.aruco.generateImageMarker(cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_APRILTAG_36H11), 7, 240)
+    marker_path = tmp_path / "tag.png"
+    assert imwrite_unicode(marker_path, marker)
+
+    center_sfm, normal_sfm, up_sfm, true_scale = window._synthetic_tag_placement_sfm()
+    output_dir = tmp_path / "tagged"
+    report = inject_synthetic_apriltag(
+        SyntheticAprilTagConfig(
+            input_transforms=window.case.transforms_for_processing(),
+            output_dir=output_dir,
+            tag_image=marker_path,
+            tag_size_m=float(window.case.default_tag_size_m),
+            true_scale=true_scale,
+            tag_center_sfm=center_sfm,
+            tag_normal_sfm=normal_sfm,
+            tag_up_sfm=up_sfm,
+            frame_file_paths=frozenset({candidate.frame.file_path}),
+            copy_unselected_frames=False,
+            output_tagged_only=True,
+            cubemap_view_params=case_cubemap_view_metadata(window.case),
+            frame_transform_overrides=window._synthetic_frame_transform_overrides(),
+            write_normalized_transforms=True,
+        )
+    )
+    assert report["frames_written"] == 1
+    frame = load_pinhole_frames(output_dir / "transforms.json", normalize_cubemap=False)[0]
+    image = cv2.imread(str(output_dir / frame.file_path), cv2.IMREAD_COLOR)
+    detections = detect_apriltags(image, frame, tag_size_m=float(window.case.default_tag_size_m), family="tag36h11", tag_ids={7})
+
+    assert len(detections) == 1
+    assert detections[0].tag_id == 7
+    assert not detect_apriltags(
+        cv2.flip(image, 1),
+        frame,
+        tag_size_m=float(window.case.default_tag_size_m),
+        family="tag36h11",
+        tag_ids={7},
+    )
+    assert not detect_apriltags(
+        cv2.flip(image, 0),
+        frame,
+        tag_size_m=float(window.case.default_tag_size_m),
+        family="tag36h11",
+        tag_ids={7},
+    )
+    window.deleteLater()
+
+
 def test_current_case_image_overlay_respects_synthetic_front_side() -> None:
     case_dir = Path("_compare/apriltag_test/cases/current")
     if not (case_dir / "case.json").is_file():
@@ -1256,6 +1367,47 @@ def test_current_case_image_preview_can_use_generated_cube6_reconstruction() -> 
     assert "cube6-reconstruct" in window._displayed_image_key
     assert "source-equirect" not in window._displayed_image_key
     assert "image preview=Cube6 reconstructed" in window.case_label.text()
+    window.deleteLater()
+
+
+def test_current_case_reconstructed_image_tag_overlay_tracks_view_drag() -> None:
+    case_dir = Path("_compare/apriltag_test/cases/current")
+    if not (case_dir / "case.json").is_file():
+        pytest.skip("local AprilTag comparison case is not available")
+    _app()
+    window = AprilTagSceneViewerWindow(initial_case=case_dir)
+    if "frame_000001" not in window._source_equirect_rotations:
+        pytest.skip("local AprilTag source equirect rotation is not available")
+    window.select_camera_by_name("frame_000001")
+    window.ray_basis_combo.setCurrentIndex(window.ray_basis_combo.findData(RAY_BASIS_WORLD))
+    window.mode_combo.setCurrentIndex(window.mode_combo.findData(RIGHT_VIEW_RECONSTRUCTED_CUBE6))
+    window.set_active_face("pz")
+    group = window.selected_world_group()
+    assert group is not None
+    camera, right, up, forward = camera_pose_from_perspective_params(group, window._params)
+    window.set_tag_transform(
+        center=tuple(camera + forward * 5.0 + right * 0.5 + up * 0.25),
+        yaw_deg=window._params.yaw_deg,
+        pitch_deg=window._params.pitch_deg,
+        roll_deg=window._params.roll_deg,
+        size_sfm=1.0,
+    )
+
+    before = window._right_image_tag_overlays(group, use_output_projection=True, output_size=768)
+    assert len(before) == 1
+    assert np.allclose(
+        np.asarray(before[0].polygon),
+        np.asarray(window._tag_image_overlays(group, window._params, output_size=768)[0].polygon),
+        atol=1e-4,
+    )
+
+    window._on_right_view_dragged(-24.0, 12.0)
+    after = window._right_image_tag_overlays(group, use_output_projection=True, output_size=768)
+    assert len(after) == 1
+    expected = window._tag_image_overlays(group, window._params, output_size=768)
+    assert len(expected) == 1
+    assert np.allclose(np.asarray(after[0].polygon), np.asarray(expected[0].polygon), atol=1e-4)
+    assert not np.allclose(np.asarray(after[0].polygon), np.asarray(before[0].polygon), atol=1.0)
     window.deleteLater()
 
 

@@ -50,10 +50,26 @@ def _load_tag_rgba(path: Path) -> np.ndarray:
     return np.dstack([bgr, alpha])
 
 
+def _signed_area_2d(points: np.ndarray) -> float:
+    xy = np.asarray(points, dtype=np.float64).reshape(-1, 2)
+    if xy.shape[0] < 3:
+        return 0.0
+    x = xy[:, 0]
+    y = xy[:, 1]
+    return float(0.5 * np.sum(x * np.roll(y, -1) - y * np.roll(x, -1)))
+
+
 def _warp_tag(base: np.ndarray, tag_rgba: np.ndarray, dst_points: np.ndarray) -> np.ndarray:
     height, width = base.shape[:2]
     tag_h, tag_w = tag_rgba.shape[:2]
     src_points = np.array([[0, 0], [tag_w - 1, 0], [tag_w - 1, tag_h - 1], [0, tag_h - 1]], dtype=np.float32)
+    # The viewer can project into saved Cube6 rasters through an image-axis
+    # adapter whose polygon winding is opposite to a normal pinhole raster.
+    # That is a raster convention, not a mirrored physical tag: keep the
+    # marker's bit pattern front-facing by matching source and destination
+    # winding before building the homography.
+    if _signed_area_2d(src_points) * _signed_area_2d(dst_points) < 0.0:
+        src_points = src_points[[3, 2, 1, 0]]
     homography = cv2.getPerspectiveTransform(src_points, dst_points.astype(np.float32))
     warped = cv2.warpPerspective(tag_rgba, homography, (width, height), flags=cv2.INTER_LINEAR)
 

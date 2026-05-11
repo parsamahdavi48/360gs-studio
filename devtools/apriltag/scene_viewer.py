@@ -102,6 +102,10 @@ LICHTFELD_IMAGE_RAY_DISPLAY_PROFILES = {
 SOURCE_EQUIRECT_IMAGE_EXTS = (".jpg", ".jpeg", ".png", ".tif", ".tiff", ".webp", ".bmp")
 SOURCE_EQUIRECT_LOCAL_FROM_LICHTFELD_LOCAL = np.diag([1.0, -1.0, -1.0])
 SYNTHETIC_IMAGE_RASTER_Y_FLIP = np.diag([1.0, -1.0, 1.0])
+SYNTHETIC_OUTPUT_FACE_ROTATION_FACE = {
+    "top": "bottom",
+    "bottom": "top",
+}
 
 
 @dataclass(frozen=True)
@@ -498,6 +502,18 @@ def _source_equirect_rotations_from_groups(
             # local flip only for image lookup.
             rotations[group.name] = rotation @ SOURCE_EQUIRECT_LOCAL_FROM_LICHTFELD_LOCAL
     return rotations
+
+
+def _synthetic_output_face_rotation_face(face: str) -> str:
+    """Return the generated face rotation key for synthetic output projection.
+
+    ``SOURCE_EQUIRECT_LOCAL_FROM_LICHTFELD_LOCAL`` undoes the source panorama's
+    local Y/Z flip for image lookup. That makes the pole directions opposite
+    for projection into saved Cube6 JPG rasters: the file path stays unchanged,
+    but top/bottom need the opposite generated pitch when deciding which image
+    receives synthetic pixels.
+    """
+    return SYNTHETIC_OUTPUT_FACE_ROTATION_FACE.get(face, face)
 
 
 def _source_equirect_preview_params(
@@ -1364,6 +1380,23 @@ class AprilTagSceneViewerWindow(QWidget):
             output_size=output_size,
         )
 
+    def _tag_viewport_image_overlays(
+        self,
+        world_group: CubemapFrameGroup,
+        *,
+        output_size: int = 768,
+    ) -> list[PerspectiveLabelOverlay]:
+        raw_group = self.selected_raw_group()
+        if raw_group is None:
+            return []
+        candidates, _total = self._synthetic_tag_candidates()
+        if not any(
+            (parsed := split_cubemap_face(candidate.frame.file_path)) is not None and parsed[0] == raw_group.name
+            for candidate in candidates
+        ):
+            return []
+        return self._tag_image_overlays(world_group, self._params, output_size=output_size)
+
     def _right_image_tag_overlays(
         self,
         world_group: CubemapFrameGroup,
@@ -1372,7 +1405,7 @@ class AprilTagSceneViewerWindow(QWidget):
         output_size: int = 768,
     ) -> list[PerspectiveLabelOverlay]:
         if use_output_projection:
-            overlays = self._tag_output_image_overlays(output_size=output_size)
+            overlays = self._tag_viewport_image_overlays(world_group, output_size=output_size)
             if overlays or self._synthetic_frame_transform_overrides():
                 return overlays
         return self._tag_image_overlays(world_group, self._params, output_size=output_size)
@@ -1412,15 +1445,17 @@ class AprilTagSceneViewerWindow(QWidget):
                 continue
             position = group.reference_frame.camera_position_sfm
             for face, frame in group.frames_by_face.items():
-                face_rotation = face_rotations.get(face)
+                face_rotation = face_rotations.get(_synthetic_output_face_rotation_face(face))
                 if face_rotation is None:
                     continue
                 transform = np.array(frame.transform_matrix, dtype=np.float64, copy=True)
                 # The reconstructed preview samples Cube6 JPG pixels in the
-                # source equirect basis, but the actual raster Y axis is the
-                # inverse of the right-handed pinhole +Y convention used by
-                # project_sfm_points(). Reflect only this synthetic projection
-                # frame so written pixels land where the viewer displays them.
+                # source equirect basis, but the saved raster Y axis is the
+                # inverse of the pinhole +Y convention used by
+                # project_sfm_points(). This override is a raster projection
+                # adapter so written pixels land where the viewer displays
+                # them; the synthetic compositor preserves marker chirality
+                # when this adapter produces negative polygon winding.
                 transform[:3, :3] = source_rotation @ face_rotation @ SYNTHETIC_IMAGE_RASTER_Y_FLIP
                 transform[:3, 3] = position
                 overrides[frame.file_path] = transform
