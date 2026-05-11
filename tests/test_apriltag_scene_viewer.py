@@ -12,6 +12,7 @@ import pytest
 from PySide6.QtCore import QEventLoop, QTimer
 from PySide6.QtWidgets import QAbstractSpinBox, QApplication, QLabel
 
+import devtools.apriltag.scene_viewer as scene_viewer_module
 from core.apriltag_cubemap import CubemapViewMetadata, cubemap_view_params_for_group
 from core.apriltag_detection import detect_apriltags
 from core.apriltag_geometry import PinholeFrame, load_pinhole_frames
@@ -479,6 +480,24 @@ def test_scene_viewer_starts_empty_without_explicit_case() -> None:
     assert window.case is None
     assert window.case_label.text() == "シーン未選択"
     assert window.camera_combo.count() == 0
+    window.deleteLater()
+
+
+def test_scene_viewer_open_dialog_does_not_default_to_compare(monkeypatch) -> None:
+    _app()
+    starts: list[str] = []
+
+    def fake_get_existing_directory(_parent, _title, start):
+        starts.append(start)
+        return ""
+
+    monkeypatch.setattr(scene_viewer_module.QFileDialog, "getExistingDirectory", fake_get_existing_directory)
+    window = AprilTagSceneViewerWindow()
+
+    window._choose_case()
+
+    assert starts == [str(Path.home())]
+    assert "_compare" not in starts[0]
     window.deleteLater()
 
 

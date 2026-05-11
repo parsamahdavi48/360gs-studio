@@ -44,7 +44,7 @@ from core.apriltag_geometry import (
 from core.apriltag_pipeline import collect_observations
 from core.apriltag_scale import estimate_scene_scale
 from core.image_io import imread_unicode
-from devtools.apriltag.case import DEFAULT_CASE_ROOT, AprilTagDevCase, load_case_or_scene, save_case
+from devtools.apriltag.case import AprilTagDevCase, load_case_or_scene, save_case
 from devtools.apriltag.coordinates import (
     COORDINATE_PROFILE_LICHTFELD_CUBE6,
     COORDINATE_PROFILE_LICHTFELD_CUBE6_PRE_FINAL_PLY,
@@ -87,7 +87,6 @@ from gui.common.perspective_preview import (
 )
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_VIEWER_CASE = DEFAULT_CASE_ROOT / "current"
 FACE_ORDER = ("pz", "px", "nx", "nz", "top", "bottom", "py", "ny")
 SIDE_FACE_ORDER = frozenset({"pz", "px", "nx", "nz"})
 RAY_BASIS_WORLD = "world"
@@ -1812,13 +1811,19 @@ class AprilTagSceneViewerWindow(QWidget):
         return self._source_equirect_rotations.get(group.name)
 
     def _choose_case(self) -> None:
-        start_path = self.case.case_dir if self.case else DEFAULT_VIEWER_CASE
-        if self.case is not None and self.case.validation_runs_dir is not None:
-            start_path = self.case.validation_runs_dir.parent.parent
-        start = str(start_path.parent if start_path else DEFAULT_CASE_ROOT)
+        start = str(self._case_dialog_start_dir())
         chosen = QFileDialog.getExistingDirectory(self, "シーンまたはAprilTagケースを選択", start)
         if chosen:
             self.load_case_dir(Path(chosen))
+
+    def _case_dialog_start_dir(self) -> Path:
+        if self.case is None:
+            return Path.home()
+        if self.case.validation_runs_dir is not None:
+            scene_dir = self.case.validation_runs_dir.parent.parent
+            return scene_dir.parent if scene_dir.parent != scene_dir else scene_dir
+        case_parent = self.case.case_dir.parent
+        return case_parent if case_parent != self.case.case_dir else self.case.case_dir
 
     def _set_profile_combo(self, profile: str | None) -> None:
         normalized = normalize_coordinate_profile(profile)
