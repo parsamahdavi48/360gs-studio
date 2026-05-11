@@ -7,6 +7,7 @@ from pathlib import Path
 import cv2
 import numpy as np
 import pytest
+from PySide6.QtCore import QEventLoop, QTimer
 from PySide6.QtWidgets import QAbstractSpinBox, QApplication
 
 from core.apriltag_cubemap import CubemapViewMetadata, cubemap_view_params_for_group
@@ -1190,7 +1191,17 @@ def test_scene_viewer_synthetic_scale_validation_writes_result(tmp_path: Path) -
         size_sfm=0.64,
     )
 
+    loop = QEventLoop()
+    window.validation_finished.connect(loop.quit)
     window.run_synthetic_scale_validation()
+
+    assert window._validation_running
+    assert not window.run_validation_button.isEnabled()
+    assert window.run_validation_button.text() == "実行中..."
+    QTimer.singleShot(10_000, loop.quit)
+    loop.exec()
+
+    assert not window._validation_running
 
     report_paths = sorted((case_dir / "runs").glob("viewer_synthetic_*/viewer_scale_validation_report.json"))
     assert len(report_paths) == 1

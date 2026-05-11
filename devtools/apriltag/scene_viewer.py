@@ -10,7 +10,7 @@ from datetime import datetime
 from pathlib import Path
 
 import numpy as np
-from PySide6.QtCore import QSize, Qt, Signal
+from PySide6.QtCore import QObject, QSize, Qt, QThread, Signal, Slot
 from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import (
     QApplication,
@@ -107,6 +107,156 @@ class SyntheticTagFrameCandidate:
     distance_sfm: float
     view_angle_deg: float
     area_px: float
+
+
+@dataclass(frozen=True)
+class SyntheticScaleValidationRequest:
+    case_dir: Path
+    transforms_json: Path
+    run_dir: Path
+    tag_family: str
+    tag_id: int
+    tag_size_m: float
+    true_scale: float
+    expected_scale: float
+    tag_center_sfm: np.ndarray
+    tag_normal_sfm: np.ndarray
+    tag_up_sfm: np.ndarray
+    selected_paths: frozenset[str]
+    candidate_count: int
+    total_frame_count: int
+    candidate_report: list[dict]
+    tag_display: dict[str, object]
+    candidate_filters: dict[str, float]
+
+
+class SyntheticScaleValidationWorker(QObject):
+    progress = Signal(str, bool)
+    finished = Signal(object, str)
+
+    def __init__(self, request: SyntheticScaleValidationRequest) -> None:
+        super().__init__()
+        self._request = request
+
+    @Slot()
+    def run(self) -> None:
+        request = self._request
+        try:
+            self.progress.emit(
+                f"実行中 2/6: タグ画像を生成中... 候補 {request.candidate_count}/{request.total_frame_count}",
+                True,
+            )
+            target = create_printable_target(
+                request.run_dir / "assets",
+                family=request.tag_family,
+                tag_id=request.tag_id,
+                tag_size_m=request.tag_size_m,
+            )
+            self.progress.emit(
+                f"実行中 3/6: Cube6画像へタグを合成中... 候補 {request.candidate_count}/{request.total_frame_count}",
+                True,
+            )
+            synthetic_report = inject_synthetic_apriltag(
+                SyntheticAprilTagConfig(
+                    input_transforms=request.transforms_json,
+                    output_dir=request.run_dir,
+                    tag_image=target.marker_png,
+                    tag_size_m=request.tag_size_m,
+                    true_scale=request.true_scale,
+                    tag_center_sfm=request.tag_center_sfm,
+                    tag_normal_sfm=request.tag_normal_sfm,
+                    tag_up_sfm=request.tag_up_sfm,
+                    frame_file_paths=request.selected_paths,
+                    copy_unselected_frames=False,
+                    output_tagged_only=True,
+                )
+            )
+            self.progress.emit(
+                f"実行中 4/6: AprilTagを検出中... 合成 {synthetic_report['frames_written']} / "
+                f"書き出し対象 {request.candidate_count} frames",
+                True,
+            )
+            frames, frame_detections, observations = collect_observations(
+                request.run_dir / "transforms.json",
+                image_root=None,
+                tag_size_m=request.tag_size_m,
+                family=request.tag_family,
+                tag_ids={int(request.tag_id)},
+            )
+            self.progress.emit(
+                f"実行中 5/6: スケールを推定中... 観測 {len(observations)}",
+                True,
+            )
+            estimate = None
+            estimate_error = ""
+            try:
+                estimate = estimate_scene_scale(observations)
+            except ValueError as e:
+                estimate_error = str(e)
+
+            detected_frames = sum(1 for item in frame_detections if item.detections)
+            detection_count = sum(len(item.detections) for item in frame_detections)
+            result: dict[str, object] = {
+                "schema_version": 1,
+                "case_dir": str(request.case_dir),
+                "run_dir": str(request.run_dir),
+                "input_transforms": str(request.transforms_json),
+                "expected_scale": request.expected_scale,
+                "tag_display": request.tag_display,
+                "tag_sfm": {
+                    "center": request.tag_center_sfm.tolist(),
+                    "normal": request.tag_normal_sfm.tolist(),
+                    "up": request.tag_up_sfm.tolist(),
+                    "true_scale": request.true_scale,
+                },
+                "candidate_filters": request.candidate_filters,
+                "candidate_count": request.candidate_count,
+                "total_frame_count": request.total_frame_count,
+                "candidates": request.candidate_report,
+                "synthetic_report": synthetic_report,
+                "loaded_frame_count": len(frames),
+                "detected_frame_count": detected_frames,
+                "detection_count": detection_count,
+                "observation_count": len(observations),
+                "estimate_error": estimate_error,
+            }
+            if estimate is not None:
+                error_pct = (
+                    (estimate.scale - request.expected_scale) / request.expected_scale * 100.0
+                    if request.expected_scale
+                    else 0.0
+                )
+                result["estimate"] = {
+                    "scale": estimate.scale,
+                    "pair_count": estimate.pair_count,
+                    "inlier_count": estimate.inlier_count,
+                    "rms_residual_m": estimate.rms_residual_m,
+                    "median_pair_scale": estimate.median_pair_scale,
+                    "mad_pair_scale": estimate.mad_pair_scale,
+                    "error_pct": error_pct,
+                }
+                status = (
+                    f"scale={estimate.scale:.6g} m/SfM "
+                    f"(期待 {request.expected_scale:.6g}, 誤差 {error_pct:+.2f}%) / "
+                    f"候補 {request.candidate_count}/{request.total_frame_count}, "
+                    f"合成 {synthetic_report['frames_written']}, "
+                    f"検出 {detection_count}, obs {len(observations)}, pairs {estimate.pair_count}"
+                )
+            else:
+                status = (
+                    f"推定不可: {estimate_error} / "
+                    f"候補 {request.candidate_count}/{request.total_frame_count}, "
+                    f"合成 {synthetic_report['frames_written']}, "
+                    f"検出 {detection_count}, obs {len(observations)}"
+                )
+            self.progress.emit("実行中 6/6: レポートを書き出し中...", True)
+            (request.run_dir / "viewer_scale_validation_report.json").write_text(
+                json.dumps(result, indent=2),
+                encoding="utf-8",
+            )
+            self.finished.emit({"status": status, "run_dir": str(request.run_dir), "result": result}, "")
+        except Exception as e:
+            self.finished.emit(None, str(e))
 
 
 def _transform_points(points: np.ndarray, matrix: np.ndarray | None) -> np.ndarray:
@@ -608,6 +758,7 @@ class AprilTagSceneViewerWindow(QWidget):
     """Two-pane debug viewer for Cube6 transforms and point clouds."""
 
     scene_loaded = Signal()
+    validation_finished = Signal()
 
     def __init__(self, *, initial_case: Path | None = None) -> None:
         super().__init__()
@@ -640,6 +791,8 @@ class AprilTagSceneViewerWindow(QWidget):
         self._tag_roll_deg = 0.0
         self._tag_size_sfm = 0.64
         self._validation_running = False
+        self._validation_thread: QThread | None = None
+        self._validation_worker: SyntheticScaleValidationWorker | None = None
 
         self._build_ui()
         self._connect_signals()
@@ -1214,6 +1367,31 @@ class AprilTagSceneViewerWindow(QWidget):
         if app is not None:
             app.processEvents()
 
+    def _set_validation_controls_enabled(self, enabled: bool) -> None:
+        for widget in (
+            self.tag_x_spin,
+            self.tag_y_spin,
+            self.tag_z_spin,
+            self.tag_yaw_spin,
+            self.tag_pitch_spin,
+            self.tag_roll_spin,
+            self.tag_size_sfm_spin,
+            self.validation_distance_spin,
+            self.validation_angle_spin,
+            self.validation_min_area_spin,
+            self.reset_tag_button,
+            self.run_validation_button,
+        ):
+            widget.setEnabled(bool(enabled))
+
+    def _finish_validation_run(self) -> None:
+        self._validation_running = False
+        self._set_validation_controls_enabled(True)
+        self.run_validation_button.setText("合成→検出")
+        app = QApplication.instance()
+        if app is not None:
+            app.processEvents()
+
     def run_synthetic_scale_validation(self) -> None:
         if self.case is None:
             QMessageBox.warning(self, "AprilTag検証", "ケースを読み込んでください。")
@@ -1221,8 +1399,9 @@ class AprilTagSceneViewerWindow(QWidget):
         if self._validation_running:
             self._set_validation_status("実行中: 前回の合成検出がまだ完了していません。")
             return
+        case = self.case
         self._validation_running = True
-        self.run_validation_button.setEnabled(False)
+        self._set_validation_controls_enabled(False)
         self.run_validation_button.setText("実行中...")
         try:
             self._set_validation_status("実行中 1/6: 候補フレームを選別中...", log=True)
@@ -1231,140 +1410,87 @@ class AprilTagSceneViewerWindow(QWidget):
             if not candidates:
                 self._set_validation_status("合成候補なし")
                 self._append_log("[validation] 合成候補がありません。タグ表面、距離、投影面積を確認してください。")
+                self._finish_validation_run()
+                self.validation_finished.emit()
                 return
 
-            self._set_validation_status(
-                f"実行中 2/6: タグ画像を生成中... 候補 {len(candidates)}/{total_frames}",
-                log=True,
-            )
             run_dir = self._next_validation_run_dir()
-            target = create_printable_target(
-                run_dir / "assets",
-                family=self.case.tag_family,
-                tag_id=self.case.tag_id,
-                tag_size_m=float(self.case.default_tag_size_m),
-            )
             selected_paths = frozenset(candidate.frame.file_path for candidate in candidates)
-            self._set_validation_status(
-                f"実行中 3/6: Cube6画像へタグを合成中... 候補 {len(candidates)}/{total_frames}",
-                log=True,
-            )
-            synthetic_report = inject_synthetic_apriltag(
-                SyntheticAprilTagConfig(
-                    input_transforms=self.case.transforms_for_processing(),
-                    output_dir=run_dir,
-                    tag_image=target.marker_png,
-                    tag_size_m=float(self.case.default_tag_size_m),
-                    true_scale=true_scale,
-                    tag_center_sfm=center_sfm,
-                    tag_normal_sfm=normal_sfm,
-                    tag_up_sfm=up_sfm,
-                    frame_file_paths=selected_paths,
-                    copy_unselected_frames=False,
-                    output_tagged_only=True,
-                )
-            )
-            self._set_validation_status(
-                f"実行中 4/6: AprilTagを検出中... 合成 {synthetic_report['frames_written']} / "
-                f"書き出し対象 {len(candidates)} frames",
-                log=True,
-            )
-            frames, frame_detections, observations = collect_observations(
-                run_dir / "transforms.json",
-                image_root=None,
-                tag_size_m=float(self.case.default_tag_size_m),
-                family=self.case.tag_family,
-                tag_ids={int(self.case.tag_id)},
-            )
-            self._set_validation_status(
-                f"実行中 5/6: スケールを推定中... 観測 {len(observations)}",
-                log=True,
-            )
-            estimate = None
-            estimate_error = ""
-            try:
-                estimate = estimate_scene_scale(observations)
-            except ValueError as e:
-                estimate_error = str(e)
-
-            expected_scale = float(self.case.default_tag_size_m) / max(float(self._tag_size_sfm), 1e-12)
-            detected_frames = sum(1 for item in frame_detections if item.detections)
-            detection_count = sum(len(item.detections) for item in frame_detections)
-            result: dict[str, object] = {
-                "schema_version": 1,
-                "case_dir": str(self.case.case_dir),
-                "run_dir": str(run_dir),
-                "input_transforms": str(self.case.transforms_for_processing()),
-                "expected_scale": expected_scale,
-                "tag_display": {
+            expected_scale = float(case.default_tag_size_m) / max(float(self._tag_size_sfm), 1e-12)
+            request = SyntheticScaleValidationRequest(
+                case_dir=case.case_dir,
+                transforms_json=case.transforms_for_processing(),
+                run_dir=run_dir,
+                tag_family=case.tag_family,
+                tag_id=int(case.tag_id),
+                tag_size_m=float(case.default_tag_size_m),
+                true_scale=true_scale,
+                expected_scale=expected_scale,
+                tag_center_sfm=center_sfm,
+                tag_normal_sfm=normal_sfm,
+                tag_up_sfm=up_sfm,
+                selected_paths=selected_paths,
+                candidate_count=len(candidates),
+                total_frame_count=total_frames,
+                candidate_report=self._candidate_report(candidates),
+                tag_display={
                     "center": self._tag_center.tolist(),
                     "yaw_deg": self._tag_yaw_deg,
                     "pitch_deg": self._tag_pitch_deg,
                     "roll_deg": self._tag_roll_deg,
                     "size_sfm": self._tag_size_sfm,
                 },
-                "tag_sfm": {
-                    "center": center_sfm.tolist(),
-                    "normal": normal_sfm.tolist(),
-                    "up": up_sfm.tolist(),
-                    "true_scale": true_scale,
-                },
-                "candidate_filters": {
+                candidate_filters={
                     "max_distance_sfm": float(self.validation_distance_spin.value()),
                     "max_view_angle_deg": float(self.validation_angle_spin.value()),
                     "min_area_px": float(self.validation_min_area_spin.value()),
                 },
-                "candidate_count": len(candidates),
-                "total_frame_count": total_frames,
-                "candidates": self._candidate_report(candidates),
-                "synthetic_report": synthetic_report,
-                "loaded_frame_count": len(frames),
-                "detected_frame_count": detected_frames,
-                "detection_count": detection_count,
-                "observation_count": len(observations),
-                "estimate_error": estimate_error,
-            }
-            if estimate is not None:
-                error_pct = (estimate.scale - expected_scale) / expected_scale * 100.0 if expected_scale else 0.0
-                result["estimate"] = {
-                    "scale": estimate.scale,
-                    "pair_count": estimate.pair_count,
-                    "inlier_count": estimate.inlier_count,
-                    "rms_residual_m": estimate.rms_residual_m,
-                    "median_pair_scale": estimate.median_pair_scale,
-                    "mad_pair_scale": estimate.mad_pair_scale,
-                    "error_pct": error_pct,
-                }
-                status = (
-                    f"scale={estimate.scale:.6g} m/SfM "
-                    f"(期待 {expected_scale:.6g}, 誤差 {error_pct:+.2f}%) / "
-                    f"候補 {len(candidates)}/{total_frames}, 合成 {synthetic_report['frames_written']}, "
-                    f"検出 {detection_count}, obs {len(observations)}, pairs {estimate.pair_count}"
-                )
-            else:
-                status = (
-                    f"推定不可: {estimate_error} / "
-                    f"候補 {len(candidates)}/{total_frames}, 合成 {synthetic_report['frames_written']}, "
-                    f"検出 {detection_count}, obs {len(observations)}"
-                )
-            self._set_validation_status("実行中 6/6: レポートを書き出し中...", log=True)
-            (run_dir / "viewer_scale_validation_report.json").write_text(
-                json.dumps(result, indent=2),
-                encoding="utf-8",
             )
-            self._set_validation_status(status)
-            self._append_log(f"[validation] {status}")
-            self._append_log(f"[validation] output={run_dir}")
+            self._start_validation_worker(request)
         except Exception as e:
             self._set_validation_status(f"検証エラー: {e}")
             QMessageBox.critical(self, "AprilTag検証エラー", str(e))
-        finally:
-            self._validation_running = False
-            self.run_validation_button.setEnabled(True)
-            self.run_validation_button.setText("合成→検出")
-            app = QApplication.instance()
-            if app is not None:
-                app.processEvents()
+            self._finish_validation_run()
+            self.validation_finished.emit()
+
+    def _start_validation_worker(self, request: SyntheticScaleValidationRequest) -> None:
+        thread = QThread(self)
+        worker = SyntheticScaleValidationWorker(request)
+        worker.moveToThread(thread)
+        thread.started.connect(worker.run)
+        worker.progress.connect(self._on_validation_worker_progress)
+        worker.finished.connect(self._on_validation_worker_finished)
+        worker.finished.connect(thread.quit)
+        worker.finished.connect(worker.deleteLater)
+        thread.finished.connect(self._on_validation_thread_finished)
+        thread.finished.connect(thread.deleteLater)
+        self._validation_thread = thread
+        self._validation_worker = worker
+        thread.start()
+
+    def _on_validation_worker_progress(self, text: str, log: bool) -> None:
+        self._set_validation_status(str(text), log=bool(log))
+
+    def _on_validation_worker_finished(self, payload: object, error: str) -> None:
+        if error:
+            self._set_validation_status(f"検証エラー: {error}")
+            QMessageBox.critical(self, "AprilTag検証エラー", error)
+        elif isinstance(payload, dict):
+            status = str(payload.get("status", "検証完了"))
+            run_dir = str(payload.get("run_dir", ""))
+            self._set_validation_status(status)
+            self._append_log(f"[validation] {status}")
+            if run_dir:
+                self._append_log(f"[validation] output={run_dir}")
+        else:
+            self._set_validation_status("検証エラー: worker result is invalid")
+            QMessageBox.critical(self, "AprilTag検証エラー", "worker result is invalid")
+
+    def _on_validation_thread_finished(self) -> None:
+        self._validation_thread = None
+        self._validation_worker = None
+        self._finish_validation_run()
+        self.validation_finished.emit()
 
     def selected_face_basis_group(self) -> CubemapFrameGroup | None:
         if self._ray_basis_mode() == RAY_BASIS_IMAGE:
