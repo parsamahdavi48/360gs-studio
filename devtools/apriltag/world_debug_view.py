@@ -21,6 +21,19 @@ class PointCloudSample:
     source_count: int
 
 
+@dataclass(frozen=True)
+class GridBounds:
+    x_min: float
+    x_max: float
+    z_min: float
+    z_max: float
+    core_x_min: float
+    core_x_max: float
+    core_z_min: float
+    core_z_max: float
+    step: float
+
+
 _PLY_TYPES = {
     "char": "i1",
     "int8": "i1",
@@ -465,24 +478,182 @@ class AprilTagWorldDebugView(QWidget):
         y = -(rel @ up) * self._pixels_per_unit + self.height() * 0.5
         return np.column_stack([x, y]), depth
 
-    def _draw_grid(self, painter: QPainter) -> None:
+    def _screen_ground_points(self, *, margin_px: float = 0.0) -> np.ndarray:
+        width = float(max(1, self.width()))
+        height = float(max(1, self.height()))
+        margin = max(0.0, float(margin_px))
+        screen_points = (
+            (-margin, -margin),
+            (width + margin, -margin),
+            (width + margin, height + margin),
+            (-margin, height + margin),
+        )
+        right, up, forward = self._view_basis()
+        points: list[np.ndarray] = []
+        if self._fixed_projection == "perspective":
+            focal = 0.5 * float(max(1, min(self.width(), self.height()))) / np.tan(
+                np.deg2rad(self._fixed_perspective_fov_deg) * 0.5
+            )
+            for sx, sy in screen_points:
+                ray = (
+                    forward
+                    + right * ((float(sx) - width * 0.5) / max(focal, 1e-12))
+                    + up * (-(float(sy) - height * 0.5) / max(focal, 1e-12))
+                )
+                if abs(float(ray[1])) <= 1e-8:
+                    continue
+                t = -float(self._view_center[1]) / float(ray[1])
+                if t < 0.0:
+                    continue
+                point = self._view_center + ray * t
+                if np.all(np.isfinite(point)):
+                    points.append(point)
+        else:
+            pixels_per_unit = max(self._pixels_per_unit, 1e-12)
+            for sx, sy in screen_points:
+                offset_x = (float(sx) - width * 0.5) / pixels_per_unit
+                offset_y = -(float(sy) - height * 0.5) / pixels_per_unit
+                ray_origin = self._view_center + right * offset_x + up * offset_y
+                if abs(float(forward[1])) <= 1e-8:
+                    continue
+                t = -float(ray_origin[1]) / float(forward[1])
+                point = ray_origin + forward * t
+                if np.all(np.isfinite(point)):
+                    points.append(point)
+        if not points:
+            return np.empty((0, 3), dtype=np.float64)
+        return np.asarray(points, dtype=np.float64)
+
+    def _fallback_grid_bounds(self) -> tuple[float, float, float, float]:
         visible_units = max(self.width(), self.height()) / max(self._pixels_per_unit, 1e-6)
-        extent = max(self._grid_extent, visible_units * 0.75)
+        half = max(self._grid_extent, visible_units * 0.75)
+        return (
+            float(self._view_center[0] - half),
+            float(self._view_center[0] + half),
+            float(self._view_center[2] - half),
+            float(self._view_center[2] + half),
+        )
+
+    def _grid_bounds(self) -> GridBounds:
+        visible_units = max(self.width(), self.height()) / max(self._pixels_per_unit, 1e-6)
+        fallback = self._fallback_grid_bounds()
+        core_points = self._screen_ground_points(margin_px=0.0)
+        falloff_margin_px = max(80.0, min(max(self.width(), self.height()) * 0.18, 180.0))
+        expanded_points = self._screen_ground_points(margin_px=falloff_margin_px)
+        if len(core_points) >= 3 and len(expanded_points) >= 3:
+            core_x_min = float(np.min(core_points[:, 0]))
+            core_x_max = float(np.max(core_points[:, 0]))
+            core_z_min = float(np.min(core_points[:, 2]))
+            core_z_max = float(np.max(core_points[:, 2]))
+            x_min = float(np.min(expanded_points[:, 0]))
+            x_max = float(np.max(expanded_points[:, 0]))
+            z_min = float(np.min(expanded_points[:, 2]))
+            z_max = float(np.max(expanded_points[:, 2]))
+        else:
+            x_min, x_max, z_min, z_max = fallback
+            core_x_min, core_x_max, core_z_min, core_z_max = fallback
+
+        center_x = float(self._view_center[0])
+        center_z = float(self._view_center[2])
+        minimum_half = max(self._grid_extent, visible_units * 0.75)
+        x_min = min(x_min, center_x - minimum_half)
+        x_max = max(x_max, center_x + minimum_half)
+        z_min = min(z_min, center_z - minimum_half)
+        z_max = max(z_max, center_z + minimum_half)
+        core_x_min = min(core_x_min, center_x - minimum_half)
+        core_x_max = max(core_x_max, center_x + minimum_half)
+        core_z_min = min(core_z_min, center_z - minimum_half)
+        core_z_max = max(core_z_max, center_z + minimum_half)
+
+        max_span = max(self._grid_extent * 24.0, visible_units * 16.0, self._grid_step * 180.0)
+        x_min, x_max = _clamp_interval(x_min, x_max, center_x, max_span)
+        z_min, z_max = _clamp_interval(z_min, z_max, center_z, max_span)
+        core_x_min = max(core_x_min, x_min)
+        core_x_max = min(core_x_max, x_max)
+        core_z_min = max(core_z_min, z_min)
+        core_z_max = min(core_z_max, z_max)
+
         step = self._grid_step
-        while extent / step > 90:
+        max_lines = 180
+        while ((x_max - x_min) / step + (z_max - z_min) / step) > max_lines:
             step *= 2.0
-        x_min = np.floor((self._view_center[0] - extent) / step) * step
-        x_max = np.ceil((self._view_center[0] + extent) / step) * step
-        z_min = np.floor((self._view_center[2] - extent) / step) * step
-        z_max = np.ceil((self._view_center[2] + extent) / step) * step
+        return GridBounds(
+            x_min=x_min,
+            x_max=x_max,
+            z_min=z_min,
+            z_max=z_max,
+            core_x_min=core_x_min,
+            core_x_max=core_x_max,
+            core_z_min=core_z_min,
+            core_z_max=core_z_max,
+            step=step,
+        )
+
+    def _draw_grid(self, painter: QPainter) -> None:
+        bounds = self._grid_bounds()
+        step = bounds.step
+        x_min = np.floor(bounds.x_min / step) * step
+        x_max = np.ceil(bounds.x_max / step) * step
+        z_min = np.floor(bounds.z_min / step) * step
+        z_max = np.ceil(bounds.z_max / step) * step
 
         for x in np.arange(x_min, x_max + step * 0.5, step):
-            color = QColor(90, 175, 245) if abs(x) <= step * 0.25 else QColor(55, 63, 72)
-            self._draw_world_line(painter, np.array([x, 0.0, z_min]), np.array([x, 0.0, z_max]), color, 2 if abs(x) <= step * 0.25 else 1)
+            if abs(x) <= step * 0.25:
+                color = QColor(90, 175, 245)
+                width = 2
+            else:
+                color = self._grid_falloff_color(
+                    55,
+                    63,
+                    72,
+                    value=float(x),
+                    core_min=bounds.core_x_min,
+                    core_max=bounds.core_x_max,
+                    outer_min=bounds.x_min,
+                    outer_max=bounds.x_max,
+                )
+                width = 1
+            self._draw_world_line(painter, np.array([x, 0.0, z_min]), np.array([x, 0.0, z_max]), color, width)
         for z in np.arange(z_min, z_max + step * 0.5, step):
-            color = QColor(245, 180, 90) if abs(z) <= step * 0.25 else QColor(55, 63, 72)
-            self._draw_world_line(painter, np.array([x_min, 0.0, z]), np.array([x_max, 0.0, z]), color, 2 if abs(z) <= step * 0.25 else 1)
+            if abs(z) <= step * 0.25:
+                color = QColor(245, 180, 90)
+                width = 2
+            else:
+                color = self._grid_falloff_color(
+                    55,
+                    63,
+                    72,
+                    value=float(z),
+                    core_min=bounds.core_z_min,
+                    core_max=bounds.core_z_max,
+                    outer_min=bounds.z_min,
+                    outer_max=bounds.z_max,
+                )
+                width = 1
+            self._draw_world_line(painter, np.array([x_min, 0.0, z]), np.array([x_max, 0.0, z]), color, width)
         self._draw_marker(painter, np.array([0.0, 0.0, 0.0]), QColor(255, 80, 255), "O", radius=5)
+
+    @staticmethod
+    def _grid_falloff_color(
+        red: int,
+        green: int,
+        blue: int,
+        *,
+        value: float,
+        core_min: float,
+        core_max: float,
+        outer_min: float,
+        outer_max: float,
+    ) -> QColor:
+        if core_min <= value <= core_max:
+            alpha = 115
+        elif value < core_min:
+            span = max(core_min - outer_min, 1e-12)
+            alpha = 28 + 87 * max(0.0, min(1.0, (value - outer_min) / span))
+        else:
+            span = max(outer_max - core_max, 1e-12)
+            alpha = 28 + 87 * max(0.0, min(1.0, (outer_max - value) / span))
+        return QColor(int(red), int(green), int(blue), int(alpha))
 
     def _draw_world_axes(self, painter: QPainter) -> None:
         origin = np.array([0.0, 0.0, 0.0], dtype=np.float64)
@@ -865,6 +1036,20 @@ def _normalized(value: np.ndarray, *, fallback: tuple[float, float, float]) -> n
     if norm <= 1e-12 or not np.isfinite(norm):
         return np.asarray(fallback, dtype=np.float64)
     return value / norm
+
+
+def _clamp_interval(minimum: float, maximum: float, center: float, max_span: float) -> tuple[float, float]:
+    lower = float(minimum)
+    upper = float(maximum)
+    if not np.isfinite(lower) or not np.isfinite(upper) or lower > upper:
+        half = max(float(max_span) * 0.5, 1e-6)
+        return float(center) - half, float(center) + half
+    span = upper - lower
+    limit = max(float(max_span), 1e-6)
+    if span <= limit:
+        return lower, upper
+    interval_center = float(np.clip(float(center), lower + limit * 0.5, upper - limit * 0.5))
+    return interval_center - limit * 0.5, interval_center + limit * 0.5
 
 
 def _screen_axis_delta(

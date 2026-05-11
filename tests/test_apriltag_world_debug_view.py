@@ -431,6 +431,52 @@ def test_world_debug_view_orientation_gizmo_matches_orthographic_projection() ->
     view.deleteLater()
 
 
+def test_world_debug_view_grid_bounds_cover_oblique_viewport_ground_projection() -> None:
+    _app()
+    view = AprilTagWorldDebugView()
+    view.resize(800, 600)
+    view._view_center = np.zeros(3)
+    view._pixels_per_unit = 20.0
+    view._view_yaw_deg = 35.0
+    view._view_pitch_deg = -28.0
+
+    fallback = view._fallback_grid_bounds()
+    ground = view._screen_ground_points(margin_px=0.0)
+    bounds = view._grid_bounds()
+
+    assert ground.shape == (4, 3)
+    assert bounds.x_min <= float(np.min(ground[:, 0])) <= float(np.max(ground[:, 0])) <= bounds.x_max
+    assert bounds.z_min <= float(np.min(ground[:, 2])) <= float(np.max(ground[:, 2])) <= bounds.z_max
+    assert (bounds.x_max - bounds.x_min) > (fallback[1] - fallback[0])
+    assert (bounds.z_max - bounds.z_min) > (fallback[3] - fallback[2])
+    assert ((bounds.x_max - bounds.x_min) / bounds.step + (bounds.z_max - bounds.z_min) / bounds.step) <= 180.0
+    view.deleteLater()
+
+
+def test_world_debug_view_grid_bounds_fall_back_near_horizon() -> None:
+    _app()
+    view = AprilTagWorldDebugView()
+    view.resize(800, 600)
+    view._view_center = np.zeros(3)
+    view._pixels_per_unit = 20.0
+    view._view_yaw_deg = 35.0
+    view._view_pitch_deg = 0.0
+
+    bounds = view._grid_bounds()
+
+    assert np.isfinite(
+        [
+            bounds.x_min,
+            bounds.x_max,
+            bounds.z_min,
+            bounds.z_max,
+            bounds.step,
+        ]
+    ).all()
+    assert (bounds.x_min, bounds.x_max, bounds.z_min, bounds.z_max) == view._fallback_grid_bounds()
+    view.deleteLater()
+
+
 def test_world_debug_view_default_gizmo_screen_vectors_are_projection_locked() -> None:
     _app()
     view = AprilTagWorldDebugView()
