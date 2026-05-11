@@ -52,8 +52,22 @@ from gui.common.perspective_preview import PerspectiveParams, equirect_to_perspe
 from gui.common.perspective_preview import normalize_yaw_deg
 
 
+LOCAL_APRILTAG_CASE_DIR = Path("_compare/apriltag_test/cases/current")
+LOCAL_APRILTAG_CASE_SKIP_REASON = (
+    "optional local AprilTag comparison case is not available; "
+    "_compare/apriltag_test/cases/current is intentionally empty unless "
+    "a developer restores local integration assets"
+)
+
+
 def _app() -> QApplication:
     return QApplication.instance() or QApplication([])
+
+
+def _local_apriltag_case_dir() -> Path:
+    if not (LOCAL_APRILTAG_CASE_DIR / "case.json").is_file():
+        pytest.skip(LOCAL_APRILTAG_CASE_SKIP_REASON)
+    return LOCAL_APRILTAG_CASE_DIR
 
 
 def _rotation(yaw_deg: float, pitch_deg: float) -> np.ndarray:
@@ -655,9 +669,7 @@ def test_lichtfeld_image_rays_are_not_world_display_transformed_twice() -> None:
 
 
 def test_current_case_reports_world_to_image_ray_mapping() -> None:
-    case_dir = Path("_compare/apriltag_test/cases/current")
-    if not (case_dir / "case.json").is_file():
-        pytest.skip("local AprilTag comparison case is not available")
+    case_dir = _local_apriltag_case_dir()
     _app()
     window = AprilTagSceneViewerWindow(initial_case=case_dir)
     world_group = window.selected_world_group()
@@ -692,9 +704,7 @@ def test_current_case_reports_world_to_image_ray_mapping() -> None:
 
 
 def test_current_case_image_ray_group_matches_metashape_build_remap_rays() -> None:
-    case_dir = Path("_compare/apriltag_test/cases/current")
-    if not (case_dir / "case.json").is_file():
-        pytest.skip("local AprilTag comparison case is not available")
+    case_dir = _local_apriltag_case_dir()
     _app()
     case = load_case(case_dir)
     if case.source_metashape_xml is None or not case.source_metashape_xml.is_file():
@@ -741,9 +751,7 @@ def test_current_case_image_ray_group_matches_metashape_build_remap_rays() -> No
 
 
 def test_current_case_source_equirect_rotation_maps_json_faces_to_source_centers() -> None:
-    case_dir = Path("_compare/apriltag_test/cases/current")
-    if not (case_dir / "case.json").is_file():
-        pytest.skip("local AprilTag comparison case is not available")
+    case_dir = _local_apriltag_case_dir()
     _app()
     case = load_case(case_dir)
     metadata = case_cubemap_view_metadata(case)
@@ -785,9 +793,7 @@ def test_current_case_source_equirect_rotation_maps_json_faces_to_source_centers
 
 
 def test_current_case_source_equirect_center_pixels_match_expected_faces() -> None:
-    case_dir = Path("_compare/apriltag_test/cases/current")
-    if not (case_dir / "case.json").is_file():
-        pytest.skip("local AprilTag comparison case is not available")
+    case_dir = _local_apriltag_case_dir()
     _app()
     case = load_case(case_dir)
     window = AprilTagSceneViewerWindow(initial_case=case_dir)
@@ -837,9 +843,7 @@ def test_current_case_source_equirect_center_pixels_match_expected_faces() -> No
 
 
 def test_current_case_source_equirect_faces_match_expected_orientation() -> None:
-    case_dir = Path("_compare/apriltag_test/cases/current")
-    if not (case_dir / "case.json").is_file():
-        pytest.skip("local AprilTag comparison case is not available")
+    case_dir = _local_apriltag_case_dir()
     _app()
     case = load_case(case_dir)
     window = AprilTagSceneViewerWindow(initial_case=case_dir)
@@ -892,9 +896,7 @@ def test_current_case_source_equirect_faces_match_expected_orientation() -> None
 
 
 def test_current_case_image_overlay_uses_synthetic_output_projection() -> None:
-    case_dir = Path("_compare/apriltag_test/cases/current")
-    if not (case_dir / "case.json").is_file():
-        pytest.skip("local AprilTag comparison case is not available")
+    case_dir = _local_apriltag_case_dir()
     _app()
     window = AprilTagSceneViewerWindow(initial_case=case_dir)
     if "frame_000001" not in window._source_equirect_rotations:
@@ -929,9 +931,7 @@ def test_current_case_image_overlay_uses_synthetic_output_projection() -> None:
 
 
 def test_current_case_synthetic_output_reconstructs_at_world_overlay_position(tmp_path: Path) -> None:
-    case_dir = Path("_compare/apriltag_test/cases/current")
-    if not (case_dir / "case.json").is_file():
-        pytest.skip("local AprilTag comparison case is not available")
+    case_dir = _local_apriltag_case_dir()
     _app()
     case = load_case(case_dir)
     metadata = case_cubemap_view_metadata(case)
@@ -1029,9 +1029,7 @@ def test_current_case_synthetic_output_reconstructs_at_world_overlay_position(tm
 
 
 def test_current_case_synthetic_floor_tag_uses_floor_pole_image() -> None:
-    case_dir = Path("_compare/apriltag_test/cases/current")
-    if not (case_dir / "case.json").is_file():
-        pytest.skip("local AprilTag comparison case is not available")
+    case_dir = _local_apriltag_case_dir()
     _app()
     window = AprilTagSceneViewerWindow(initial_case=case_dir)
     if "frame_000012" not in {group.name for group in window._raw_groups}:
@@ -1060,9 +1058,7 @@ def test_current_case_synthetic_floor_tag_uses_floor_pole_image() -> None:
 
 
 def test_current_case_synthetic_output_tag_is_not_mirrored(tmp_path: Path) -> None:
-    case_dir = Path("_compare/apriltag_test/cases/current")
-    if not (case_dir / "case.json").is_file():
-        pytest.skip("local AprilTag comparison case is not available")
+    case_dir = _local_apriltag_case_dir()
     _app()
     window = AprilTagSceneViewerWindow(initial_case=case_dir)
     if "frame_000012" not in {group.name for group in window._raw_groups}:
@@ -1139,9 +1135,7 @@ def test_current_case_synthetic_output_tag_is_not_mirrored(tmp_path: Path) -> No
 
 
 def test_current_case_image_overlay_respects_synthetic_front_side() -> None:
-    case_dir = Path("_compare/apriltag_test/cases/current")
-    if not (case_dir / "case.json").is_file():
-        pytest.skip("local AprilTag comparison case is not available")
+    case_dir = _local_apriltag_case_dir()
     _app()
     window = AprilTagSceneViewerWindow(initial_case=case_dir)
     if "frame_000001" not in window._source_equirect_rotations:
@@ -1178,9 +1172,7 @@ def test_current_case_image_overlay_respects_synthetic_front_side() -> None:
 
 
 def test_current_case_image_overlay_uses_selected_camera_front_side_not_output_candidates() -> None:
-    case_dir = Path("_compare/apriltag_test/cases/current")
-    if not (case_dir / "case.json").is_file():
-        pytest.skip("local AprilTag comparison case is not available")
+    case_dir = _local_apriltag_case_dir()
     _app()
     window = AprilTagSceneViewerWindow(initial_case=case_dir)
     if "frame_000010" not in {group.name for group in window._raw_groups}:
@@ -1213,9 +1205,7 @@ def test_current_case_image_overlay_uses_selected_camera_front_side_not_output_c
 
 
 def test_current_case_generated_cube6_reconstruction_matches_expected_orientation() -> None:
-    case_dir = Path("_compare/apriltag_test/cases/current")
-    if not (case_dir / "case.json").is_file():
-        pytest.skip("local AprilTag comparison case is not available")
+    case_dir = _local_apriltag_case_dir()
     _app()
     case = load_case(case_dir)
     metadata = case_cubemap_view_metadata(case)
@@ -1264,9 +1254,7 @@ def test_current_case_generated_cube6_reconstruction_matches_expected_orientatio
 
 
 def test_current_case_source_equirect_tangent_axes_match_expected_faces() -> None:
-    case_dir = Path("_compare/apriltag_test/cases/current")
-    if not (case_dir / "case.json").is_file():
-        pytest.skip("local AprilTag comparison case is not available")
+    case_dir = _local_apriltag_case_dir()
     _app()
     case = load_case(case_dir)
     metadata = case_cubemap_view_metadata(case)
@@ -1312,9 +1300,7 @@ def test_current_case_source_equirect_tangent_axes_match_expected_faces() -> Non
 
 
 def test_current_case_pointcloud_drag_uses_grab_style_camera_motion() -> None:
-    case_dir = Path("_compare/apriltag_test/cases/current")
-    if not (case_dir / "case.json").is_file():
-        pytest.skip("local AprilTag comparison case is not available")
+    case_dir = _local_apriltag_case_dir()
     _app()
     window = AprilTagSceneViewerWindow(initial_case=case_dir)
     window.set_active_face("pz")
@@ -1349,9 +1335,7 @@ def test_current_case_pointcloud_drag_uses_grab_style_camera_motion() -> None:
 
 
 def test_current_case_source_equirect_drag_uses_grab_style_display_motion() -> None:
-    case_dir = Path("_compare/apriltag_test/cases/current")
-    if not (case_dir / "case.json").is_file():
-        pytest.skip("local AprilTag comparison case is not available")
+    case_dir = _local_apriltag_case_dir()
     _app()
     case = load_case(case_dir)
     window = AprilTagSceneViewerWindow(initial_case=case_dir)
@@ -1399,9 +1383,7 @@ def test_current_case_source_equirect_drag_uses_grab_style_display_motion() -> N
 
 
 def test_current_case_source_equirect_preview_reflects_vertical_display_motion() -> None:
-    case_dir = Path("_compare/apriltag_test/cases/current")
-    if not (case_dir / "case.json").is_file():
-        pytest.skip("local AprilTag comparison case is not available")
+    case_dir = _local_apriltag_case_dir()
     _app()
     window = AprilTagSceneViewerWindow(initial_case=case_dir)
     if "frame_000001" not in window._source_equirect_rotations:
@@ -1426,9 +1408,7 @@ def test_current_case_source_equirect_preview_reflects_vertical_display_motion()
 
 
 def test_current_case_image_preview_uses_source_equirect_when_available() -> None:
-    case_dir = Path("_compare/apriltag_test/cases/current")
-    if not (case_dir / "case.json").is_file():
-        pytest.skip("local AprilTag comparison case is not available")
+    case_dir = _local_apriltag_case_dir()
     _app()
     window = AprilTagSceneViewerWindow(initial_case=case_dir)
     world_group = window.selected_world_group()
@@ -1483,9 +1463,7 @@ def test_current_case_image_preview_uses_source_equirect_when_available() -> Non
 
 
 def test_current_case_image_preview_can_use_generated_cube6_reconstruction() -> None:
-    case_dir = Path("_compare/apriltag_test/cases/current")
-    if not (case_dir / "case.json").is_file():
-        pytest.skip("local AprilTag comparison case is not available")
+    case_dir = _local_apriltag_case_dir()
     _app()
     window = AprilTagSceneViewerWindow(initial_case=case_dir)
     if "frame_000001" not in window._source_equirect_rotations:
@@ -1502,9 +1480,7 @@ def test_current_case_image_preview_can_use_generated_cube6_reconstruction() -> 
 
 
 def test_current_case_reconstructed_image_tag_overlay_tracks_view_drag() -> None:
-    case_dir = Path("_compare/apriltag_test/cases/current")
-    if not (case_dir / "case.json").is_file():
-        pytest.skip("local AprilTag comparison case is not available")
+    case_dir = _local_apriltag_case_dir()
     _app()
     window = AprilTagSceneViewerWindow(initial_case=case_dir)
     if "frame_000001" not in window._source_equirect_rotations:
