@@ -201,11 +201,8 @@ class Step4RuntimeMixin:
                         transforms.write_text(json.dumps(data, indent=2), encoding="utf-8")
                 if self._uses_spheresfm_lichtfeld_final_correction():
                     self._apply_lichtfeld_final_correction(self._spheresfm_cubemap_dir())
-                self._annotate_output_transforms(self._spheresfm_cubemap_dir())
-            elif self._uses_spheresfm_3dgut_output():
-                if self._uses_spheresfm_lichtfeld_final_correction():
-                    self._apply_lichtfeld_final_correction(self._spheresfm_3dgut_dir())
-                self._annotate_output_transforms(self._spheresfm_3dgut_dir())
+            elif self._uses_spheresfm_3dgut_output() and self._uses_spheresfm_lichtfeld_final_correction():
+                self._apply_lichtfeld_final_correction(self._spheresfm_3dgut_dir())
             self._write_export_settings()
             self._write_spheresfm_project_manifest()
             self._record_step4_runs(
@@ -226,7 +223,6 @@ class Step4RuntimeMixin:
         if self._uses_direct_equirect_output():
             if self._uses_lichtfeld_final_correction():
                 self._apply_lichtfeld_final_correction(self._direct_output_dir())
-            self._annotate_output_transforms(self._direct_output_dir())
             self._write_export_settings()
             self._record_step4_runs(
                 sfm_mode="metashape_import" if self.pipeline_stage_intent(_PIPELINE_STAGE_CONVERSION) else None,
@@ -252,24 +248,12 @@ class Step4RuntimeMixin:
         if self._uses_lichtfeld_final_correction():
             self._apply_lichtfeld_final_correction(output)
 
-        self._annotate_output_transforms(output)
-
         if self._writes_any_view_assets():
             self._write_export_settings()
         self._record_step4_runs(
             sfm_mode="metashape_import" if self.pipeline_stage_intent(_PIPELINE_STAGE_CONVERSION) else None,
             dataset=self.pipeline_stage_intent(_PIPELINE_STAGE_CONVERSION),
         )
-
-    def _annotate_output_transforms(self, output: Path) -> None:
-        transforms = output / "transforms.json"
-        if not transforms.is_file():
-            return
-        data = json.loads(transforms.read_text(encoding="utf-8"))
-        if not isinstance(data, dict):
-            return
-        data["stechdrive_coordinate_contract"] = self._coordinate_contract_payload()
-        transforms.write_text(json.dumps(data, indent=2), encoding="utf-8")
 
     def _apply_lichtfeld_final_correction(self, output: Path) -> None:
         transforms = output / "transforms.json"
@@ -326,22 +310,23 @@ class Step4RuntimeMixin:
             raise ValueError(f"PLY header is missing end_header: {path}") from e
 
         header = lines[: end_idx + 1]
-        vertex_count: int | None = None
+        if not any(line.strip().startswith("format ascii") for line in header):
+            raise ValueError(f"Binary PLY correction requires open3d, but open3d could not transform: {path}")
+
+        vertex_count = 0
         vertex_props: list[str] = []
         in_vertex = False
-        for raw in header:
-            stripped = raw.strip()
-            parts = stripped.split()
-            if len(parts) >= 3 and parts[0] == "element":
-                in_vertex = parts[1] == "vertex"
+        for line in header:
+            parts = line.strip().split()
+            if not parts:
+                continue
+            if parts[0] == "element":
+                in_vertex = len(parts) >= 3 and parts[1] == "vertex"
                 if in_vertex:
                     vertex_count = int(parts[2])
                 continue
-            if in_vertex and len(parts) >= 3 and parts[0] == "property":
+            if in_vertex and parts[0] == "property" and len(parts) >= 3:
                 vertex_props.append(parts[-1])
-
-        if vertex_count is None:
-            raise ValueError(f"PLY header is missing vertex element: {path}")
 
         try:
             x_idx = vertex_props.index("x")
@@ -367,10 +352,10 @@ class Step4RuntimeMixin:
                 [float(tokens[x_idx]), float(tokens[y_idx]), float(tokens[z_idx])],
                 dtype=np.float64,
             )
-            transformed = rot @ point + trans
-            tokens[x_idx] = f"{transformed[0]:.9g}"
-            tokens[y_idx] = f"{transformed[1]:.9g}"
-            tokens[z_idx] = f"{transformed[2]:.9g}"
+            corrected = rot @ point + trans
+            tokens[x_idx] = f"{corrected[0]:.9g}"
+            tokens[y_idx] = f"{corrected[1]:.9g}"
+            tokens[z_idx] = f"{corrected[2]:.9g}"
             lines[line_idx] = " ".join(tokens) + newline
 
         path.write_text("".join(lines), encoding="ascii")

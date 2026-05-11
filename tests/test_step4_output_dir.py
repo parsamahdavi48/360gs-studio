@@ -33,7 +33,6 @@ from gui.steps.sfm_route_specs import (
     normalize_sfm_route,
 )
 from gui.steps.step4_cubemap import CubemapStep
-from gui.steps.step4_contracts import _LICHTFELD_FINAL_CORRECTION
 from gui.steps.step4_settings import STEP4_SETTINGS_VERSION
 from gui.steps.step5_training import TrainingStep
 from gui.steps.training_backends import lichtfeld_defaults
@@ -2712,12 +2711,6 @@ def test_cubemap_finalize_writes_export_settings(tmp_path: Path) -> None:
     assert settings["conversion"]["no_image"] is False
     assert settings["conversion"]["write_images"] is True
     assert settings["conversion"]["write_masks"] is True
-    assert settings["postprocess"]["lichtfeld_final_orientation_correction"] is True
-    assert settings["postprocess"]["lichtfeld_final_orientation_matrix"] == _LICHTFELD_FINAL_CORRECTION.tolist()
-    assert settings["coordinate_contract"]["version"] >= 2
-    assert settings["coordinate_contract"]["profile"] == "lichtfeld"
-    assert settings["coordinate_contract"]["view_config"]["views"]
-    assert settings["coordinate_contract"]["yaw_offset_per_frame"] == 30.0
     assert settings["view_config"]["cube6_drop_top"] is False
     assert settings["view_config"]["cube6_drop_bottom"] is False
     assert settings["metashape_import"]["use_ply"] is True
@@ -2731,11 +2724,13 @@ def test_cubemap_finalize_writes_export_settings(tmp_path: Path) -> None:
 
 def test_lichtfeld_3dgut_finalize_writes_scene_dataset_settings_and_correction(
     tmp_path: Path,
+    monkeypatch,
 ) -> None:
     step = _ready_step(tmp_path, metashape_inputs=True)
     direct_idx = step.output_shape_combo.findData("equirect_3dgut")
     assert direct_idx >= 0
     step.output_shape_combo.setCurrentIndex(direct_idx)
+    monkeypatch.setattr(CubemapStep, "_transform_ply_with_open3d", staticmethod(lambda _path, _matrix: False))
     output = tmp_path / "output"
     output.mkdir()
     _write_ascii_ply(output / "pointcloud.ply", [(1.0, 2.0, 3.0)])
@@ -2763,26 +2758,30 @@ def test_lichtfeld_3dgut_finalize_writes_scene_dataset_settings_and_correction(
     assert settings["conversion"]["write_masks"] is False
     assert settings["conversion"]["uses_source_images"] is True
     assert settings["output_files"]["pointcloud"] == "pointcloud.ply"
-    assert settings["postprocess"]["lichtfeld_final_orientation_correction"] is True
-    assert settings["postprocess"]["lichtfeld_final_orientation_matrix"] == _LICHTFELD_FINAL_CORRECTION.tolist()
-    assert settings["coordinate_contract"]["version"] >= 2
-    assert settings["coordinate_contract"]["profile"] == "lichtfeld"
-    assert settings["coordinate_contract"]["view_config"] is None
 
     data = json.loads((output / "transforms.json").read_text(encoding="utf-8"))
-    assert data["stechdrive_coordinate_contract"]["version"] >= 2
-    assert np.allclose(np.array(data["frames"][0]["transform_matrix"]), _LICHTFELD_FINAL_CORRECTION)
+    corrected = np.array(data["frames"][0]["transform_matrix"])
+    expected = np.array(
+        [
+            [0.0, 0.0, 1.0, 0.0],
+            [0.0, -1.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0, 0.0],
+            [0.0, 0.0, 0.0, 1.0],
+        ]
+    )
+    assert np.allclose(corrected, expected)
     points, _colors = read_ply_points(output / "pointcloud.ply")
     assert np.allclose(points[0], [3.0, -2.0, 1.0])
 
 
-def test_lichtfeld_finalize_applies_final_orientation_correction(tmp_path: Path) -> None:
+def test_lichtfeld_finalize_applies_final_orientation_correction(tmp_path: Path, monkeypatch) -> None:
     _write_ascii_ply(tmp_path / "pointcloud.ply", [(9.0, 9.0, 9.0)])
     metashape_work = step4_meta_dir(tmp_path) / "work" / "metashape_import"
     metashape_work.mkdir(parents=True)
     _write_ascii_ply(metashape_work / "pointcloud.ply", [(1.0, 2.0, 3.0)])
     step = CubemapStep(Path.cwd())
     step.set_scene_dir(str(tmp_path))
+    monkeypatch.setattr(CubemapStep, "_transform_ply_with_open3d", staticmethod(lambda _path, _matrix: False))
 
     output = tmp_path / "output"
     output.mkdir()
@@ -2799,13 +2798,19 @@ def test_lichtfeld_finalize_applies_final_orientation_correction(tmp_path: Path)
     step._finalize_bundle()
 
     data = json.loads((output / "transforms.json").read_text(encoding="utf-8"))
-    assert data["stechdrive_coordinate_contract"]["version"] >= 2
-    assert np.allclose(np.array(data["frames"][0]["transform_matrix"]), _LICHTFELD_FINAL_CORRECTION)
+    corrected = np.array(data["frames"][0]["transform_matrix"])
+    expected = np.array(
+        [
+            [0.0, 0.0, 1.0, 0.0],
+            [0.0, -1.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0, 0.0],
+            [0.0, 0.0, 0.0, 1.0],
+        ]
+    )
+    assert np.allclose(corrected, expected)
 
     points, _colors = read_ply_points(output / "pointcloud.ply")
     assert np.allclose(points[0], [3.0, -2.0, 1.0])
 
     settings = json.loads(step4_export_settings_path(tmp_path).read_text(encoding="utf-8"))
     assert settings["postprocess"]["lichtfeld_final_orientation_correction"] is True
-    assert settings["postprocess"]["lichtfeld_final_orientation_matrix"] == _LICHTFELD_FINAL_CORRECTION.tolist()
-    assert settings["coordinate_contract"]["version"] >= 2

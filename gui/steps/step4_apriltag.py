@@ -25,11 +25,6 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from core.apriltag_cubemap import (
-    CUBEMAP_POSE_PRESET_AUTO,
-    CUBEMAP_POSE_PRESET_STANDARD,
-    CUBEMAP_POSE_PRESET_STECHDRIVE_CUBE6,
-)
 from core.apriltag_markers import (
     DEFAULT_APRILTAG_FAMILY,
     DEFAULT_APRILTAG_ID,
@@ -100,28 +95,6 @@ class Step4AprilTagMixin:
         self.apriltag_id_edit.editingFinished.connect(self._normalize_apriltag_tag_ids)
         self.apriltag_id_edit.textChanged.connect(self._update_apriltag_marker_tooltips)
         add_tooltip_row(form, i18n.t("APRILTAG_TAG_IDS"), self.apriltag_id_edit, i18n.tip("APRILTAG_TAG_IDS"))
-
-        self.apriltag_output_preset_combo = QComboBox()
-        self.apriltag_output_preset_combo.setFixedWidth(180)
-        self.apriltag_output_preset_combo.setToolTip(i18n.tip("APRILTAG_OUTPUT_PRESET"))
-        self.apriltag_output_preset_combo.addItem(
-            i18n.t("APRILTAG_OUTPUT_PRESET_AUTO"),
-            CUBEMAP_POSE_PRESET_AUTO,
-        )
-        self.apriltag_output_preset_combo.addItem(
-            i18n.t("APRILTAG_OUTPUT_PRESET_STECHDRIVE_CUBE6"),
-            CUBEMAP_POSE_PRESET_STECHDRIVE_CUBE6,
-        )
-        self.apriltag_output_preset_combo.addItem(
-            i18n.t("APRILTAG_OUTPUT_PRESET_STANDARD"),
-            CUBEMAP_POSE_PRESET_STANDARD,
-        )
-        add_tooltip_row(
-            form,
-            i18n.t("APRILTAG_OUTPUT_PRESET"),
-            self.apriltag_output_preset_combo,
-            i18n.tip("APRILTAG_OUTPUT_PRESET"),
-        )
 
         action_row = QWidget()
         action_layout = QHBoxLayout(action_row)
@@ -332,7 +305,6 @@ class Step4AprilTagMixin:
             self.apriltag_tag_size_edit,
             self.apriltag_family_combo,
             self.apriltag_id_edit,
-            self.apriltag_output_preset_combo,
         ):
             widget.setEnabled(not running)
         if hasattr(self, "apriltag_copy_scale_btn"):
@@ -367,9 +339,6 @@ class Step4AprilTagMixin:
             "--report-json",
             str(report_path),
         ]
-        pose_preset = str(self.apriltag_output_preset_combo.currentData() or CUBEMAP_POSE_PRESET_AUTO)
-        if pose_preset != CUBEMAP_POSE_PRESET_AUTO:
-            cmd.extend(["--cubemap-pose-preset", pose_preset])
         for tag_id in tag_ids:
             cmd.extend(["--tag-id", str(tag_id)])
         return cmd

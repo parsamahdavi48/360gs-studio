@@ -9,11 +9,7 @@ from pathlib import Path
 import cv2
 import numpy as np
 
-from core.apriltag_cubemap import (
-    CubemapViewMetadata,
-    cubemap_view_metadata_for_pose_preset,
-    discover_cubemap_view_metadata,
-)
+from core.apriltag_cubemap import CubemapViewMetadata, discover_cubemap_view_metadata
 from core.apriltag_detection import detect_apriltags
 from core.apriltag_geometry import load_pinhole_frames, project_sfm_points
 from core.apriltag_pipeline import run_apriltag_scale_estimation
@@ -267,7 +263,7 @@ def _write_lichtfeld_export_settings(scene: Path, views: dict[str, tuple[float, 
                     ]
                 },
                 "conversion": {"yaw_offset_per_frame": 30.0},
-                "postprocess": {"lichtfeld_final_orientation_correction": False},
+                "postprocess": {"lichtfeld_final_orientation_correction": True},
             }
         ),
         encoding="utf-8",
@@ -508,51 +504,25 @@ def test_lichtfeld_cube6_metadata_normalizes_to_saved_raster_pose(tmp_path: Path
 
     discovered = discover_cubemap_view_metadata(transforms)
     assert discovered is not None
-    assert discovered.view_params == metadata.view_params
-    assert discovered.yaw_offset_per_frame == metadata.yaw_offset_per_frame
+    assert discovered.image_pose_profile == "lichtfeld_cube6"
 
     frames = {frame.file_path: frame for frame in load_pinhole_frames(transforms)}
+    source_local_from_lichtfeld = np.diag([1.0, -1.0, -1.0])
+    raster_y_flip = np.diag([1.0, -1.0, 1.0])
+    vertical_face_map = {"top": "bottom", "bottom": "top"}
 
     for group_index, prefix in enumerate(("frame_0001", "frame_0002")):
         yaw_offset = group_index * 30.0
         for face, (yaw, pitch) in metadata.view_params.items():
-            expected = _rotation(yaw + yaw_offset, pitch)
+            raster_face = vertical_face_map.get(face, face)
+            raster_yaw, raster_pitch = metadata.view_params[raster_face]
+            expected = (
+                source_local_from_lichtfeld
+                @ _rotation(raster_yaw + yaw_offset, raster_pitch)
+                @ raster_y_flip
+            )
             frame = frames[f"images/{prefix}_{face}.png"]
             assert np.allclose(frame.camera_to_world_rotation, expected, atol=1e-8)
-
-
-def test_embedded_coordinate_contract_supplies_cube6_metadata(tmp_path: Path) -> None:
-    transforms, metadata = _write_generated_cube6_yaw_offset_dataset(tmp_path)
-    data = json.loads(transforms.read_text(encoding="utf-8"))
-    data["stechdrive_coordinate_contract"] = {
-        "version": 2,
-        "profile": "lichtfeld",
-        "axis_transform": "none",
-        "output_shape": "projected",
-        "view_config": {
-            "views": [
-                {"name": face, "yaw": yaw, "pitch": pitch, "enabled": True}
-                for face, (yaw, pitch) in metadata.view_params.items()
-            ],
-        },
-        "yaw_offset_per_frame": metadata.yaw_offset_per_frame,
-    }
-    transforms.write_text(json.dumps(data), encoding="utf-8")
-
-    discovered = discover_cubemap_view_metadata(transforms)
-
-    assert discovered is not None
-    assert discovered.view_params == metadata.view_params
-    assert discovered.yaw_offset_per_frame == metadata.yaw_offset_per_frame
-
-
-def test_explicit_stechdrive_cube6_pose_preset_uses_current_defaults() -> None:
-    metadata = cubemap_view_metadata_for_pose_preset("stechdrive_cube6")
-
-    assert metadata is not None
-    assert metadata.view_params["px"] == (45.0, 0.0)
-    assert metadata.view_params["pz"] == (-45.0, 0.0)
-    assert metadata.yaw_offset_per_frame == 30.0
 
 
 def test_equirect_detection_projection_writes_temporary_pinhole_dataset(tmp_path: Path) -> None:
@@ -586,7 +556,7 @@ def test_equirect_detection_projection_writes_temporary_pinhole_dataset(tmp_path
     )
 
     data = json.loads(projected.read_text(encoding="utf-8"))
-    assert data["camera_model"] == "PINHOLE"
+    assert data["camera_model"] == "SIMPLE_PINHOLE"
     assert len(data["frames"]) == 6
     assert (projected.parent / "images" / "a_px.png").is_file()
 

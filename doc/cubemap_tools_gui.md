@@ -158,7 +158,7 @@ After capture:
 
 1. Create the Step 4 Cubemap output normally. Scale estimation needs the projected `output/transforms.json` and images under `output/`. Direct equirectangular output for 3DGUT cannot be estimated here.
 2. Open `Scale`.
-3. Enter the printed tag size, family, and tag IDs used in the capture. Keep the default `tag36h11 / ID 7` unless you intentionally printed another tag. Leave `Output Preset` on `Auto` unless the Step 4 settings are missing and you know the dataset was created with one of the listed Cubemap rules.
+3. Enter the printed tag size, family, and tag IDs used in the capture. Keep the default `tag36h11 / ID 7` unless you intentionally printed another tag.
 4. Click `Estimate`. The bottom log and progress bar show detection progress. The result shows the estimated scale and observation statistics without modifying files.
 5. Click `Apply to Scale` only when the result looks reasonable. Step 4 backs up the current files to `output/apriltag_scale_backup_TIMESTAMP/`, then scales camera positions in `output/transforms.json` and points in `output/pointcloud.ply` when that PLY exists.
 
@@ -231,7 +231,7 @@ After the run, use `View Result in COLMAP GUI` to inspect registered camera pose
 
 Step 4 treats `<scene>/output/` as the active dataset: the folder you can copy to another machine or load directly in a 3DGS app. In most downstream apps, choose this `output/` folder.
 
-With the `LichtFeld Studio` profile, Step 4 writes cubemap `transforms.json` as `PINHOLE`, then applies the LichtFeld final orientation correction to `transforms.json` and `pointcloud.ply` together. Treat those two files as a matched set; do not rotate or replace only one of them.
+With the `LichtFeld Studio` profile, Step 4 applies the same final orientation correction to `transforms.json` and `pointcloud.ply` so +X / +Z / up directions match the Metashape scene in LichtFeld.
 
 ## Common Decisions
 

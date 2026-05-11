@@ -6,7 +6,6 @@ import json
 from datetime import UTC, datetime
 from pathlib import Path
 
-from core.cubemap_contracts import CUBEMAP_CONTRACT_VERSION
 from core.scene_layout import STEP4_META_DIR_NAME, STEP4_VIEWS_CONFIG_JSON, step4_export_settings_path, step4_meta_dir
 from core.scene_project import (
     append_step4_dataset_run,
@@ -72,9 +71,6 @@ class Step4ManifestMixin:
         profile = self._spheresfm_profile_id() if spheresfm else self._profile_id()
         effective_profile = self._spheresfm_effective_profile() if spheresfm else self._effective_profile()
         axis_transform = self._spheresfm_axis_transform_mode() if spheresfm else self._axis_transform_mode()
-        uses_lichtfeld_final_correction = (
-            self._uses_lichtfeld_final_correction() or self._uses_spheresfm_lichtfeld_final_correction()
-        )
         route_uses_view_export = not direct_source_output and (not spheresfm or spheresfm_projected)
         views_config_snapshot = self._views_config_payload(views) if route_uses_view_export else None
         views_config_path = ""
@@ -107,7 +103,6 @@ class Step4ManifestMixin:
             "target_profile": profile,
             "effective_profile": effective_profile,
             "axis_transform": axis_transform,
-            "coordinate_contract": self._coordinate_contract_payload(),
             "fov": 90.0,
             "image_size": {
                 "label": self.scale_combo.currentText(),
@@ -147,10 +142,12 @@ class Step4ManifestMixin:
                 "export_colmap": self._is_metashape_method() and self.export_colmap_cb.isChecked(),
             },
             "postprocess": {
-                "lichtfeld_final_orientation_correction": uses_lichtfeld_final_correction,
-                "lichtfeld_final_orientation_matrix": (
-                    _LICHTFELD_FINAL_CORRECTION.tolist() if uses_lichtfeld_final_correction else None
+                "lichtfeld_final_orientation_correction": (
+                    self._uses_lichtfeld_final_correction() or self._uses_spheresfm_lichtfeld_final_correction()
                 ),
+                "lichtfeld_final_orientation_matrix": _LICHTFELD_FINAL_CORRECTION.tolist()
+                if self._uses_lichtfeld_final_correction() or self._uses_spheresfm_lichtfeld_final_correction()
+                else None,
             },
             "metashape_import": {
                 "enabled": self._is_metashape_method(),
@@ -229,29 +226,6 @@ class Step4ManifestMixin:
                 "spheresfm_project_dir": "spheresfm",
                 "spheresfm_project_manifest": f"{STEP4_META_DIR_NAME}/sfm/{_SPHERESFM_PROJECT_MANIFEST_NAME}",
             },
-        }
-
-    def _coordinate_contract_payload(self) -> dict:
-        direct = self._uses_direct_equirect_output()
-        spheresfm = self._is_spheresfm_method()
-        spheresfm_runs_conversion = self._spheresfm_runs_conversion()
-        direct_source_output = direct or (spheresfm_runs_conversion and self._uses_spheresfm_3dgut_output())
-        yaw_step = (
-            0.0
-            if self._export_method() == _METHOD_COLMAP or direct_source_output
-            else float(self.yaw_per_frame_edit.value())
-        )
-        effective_profile = self._spheresfm_effective_profile() if spheresfm else self._effective_profile()
-        axis_transform = self._spheresfm_axis_transform_mode() if spheresfm else self._axis_transform_mode()
-        route_uses_view_export = not direct_source_output and (not spheresfm or self._uses_spheresfm_projected_output())
-        views = self.view_config.collect_views(include_disabled=True) if route_uses_view_export else []
-        return {
-            "version": CUBEMAP_CONTRACT_VERSION,
-            "profile": effective_profile,
-            "axis_transform": axis_transform,
-            "output_shape": self._output_shape(),
-            "view_config": self._views_config_payload(views) if route_uses_view_export else None,
-            "yaw_offset_per_frame": yaw_step,
         }
 
     def _collect_training_settings(self) -> dict:

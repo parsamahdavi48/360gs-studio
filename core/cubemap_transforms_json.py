@@ -780,11 +780,8 @@ def transform_json(
 
     focal = output_size / 2.0 / np.tan(np.deg2rad(fov) / 2.0)
     principal = (output_size - 1) / 2.0
-    # Current LichtFeld builds explicitly handle PINHOLE but only warn/fallback
-    # for SIMPLE_PINHOLE, so keep no-transform LichtFeld output on PINHOLE.
-    output_camera_model = "PINHOLE" if no_transform else "SIMPLE_PINHOLE"
     out = {
-        "camera_model": output_camera_model,
+        "camera_model": "SIMPLE_PINHOLE",
         "w": output_size,
         "h": output_size,
         "fl_x": focal,
