@@ -158,7 +158,7 @@ After capture:
 
 1. Create the Step 4 Cubemap output normally. Scale estimation needs the projected `output/transforms.json` and images under `output/`. Direct equirectangular output for 3DGUT cannot be estimated here.
 2. Open `Scale`.
-3. Enter the printed tag size, family, and tag IDs used in the capture. Keep the default `tag36h11 / ID 7` unless you intentionally printed another tag.
+3. Enter the printed tag size, family, and tag IDs used in the capture. Keep the default `tag36h11 / ID 7` unless you intentionally printed another tag. Usually leave `Conversion preset` set to `Auto`. If Cube6 output was brought in from another location and estimation looks wrong, choose the preset used during conversion, such as `LichtFeld`, `Postshot`, or `Brush`.
 4. Click `Estimate`. The bottom log and progress bar show detection progress. The result shows the estimated scale and observation statistics without modifying files.
 5. Click `Apply to Scale` only when the result looks reasonable. Step 4 backs up the current files to `output/apriltag_scale_backup_TIMESTAMP/`, then scales camera positions in `output/transforms.json` and points in `output/pointcloud.ply` when that PLY exists.
 

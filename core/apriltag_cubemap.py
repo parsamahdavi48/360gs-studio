@@ -13,6 +13,20 @@ from core.apriltag_geometry import PinholeFrame
 
 CubemapViewParams = Mapping[str, tuple[float, float]]
 
+CUBEMAP_POSE_PRESET_AUTO = "auto"
+CUBEMAP_POSE_PRESET_LICHTFELD = "lichtfeld"
+CUBEMAP_POSE_PRESET_POSTSHOT = "postshot"
+CUBEMAP_POSE_PRESET_BRUSH = "brush"
+CUBEMAP_POSE_PRESET_STANDARD = "standard"
+CUBEMAP_POSE_PRESETS = (
+    CUBEMAP_POSE_PRESET_AUTO,
+    CUBEMAP_POSE_PRESET_LICHTFELD,
+    CUBEMAP_POSE_PRESET_POSTSHOT,
+    CUBEMAP_POSE_PRESET_BRUSH,
+    CUBEMAP_POSE_PRESET_STANDARD,
+)
+_GUI_CUBE6_DEFAULT_YAW_OFFSET = 45.0
+_GUI_CUBE6_DEFAULT_YAW_OFFSET_PER_FRAME = 30.0
 _FACE_NAMES = ("px", "nx", "pz", "nz", "top", "bottom", "py", "ny")
 _REFERENCE_FACE_ORDER = ("pz", "px", "nz", "nx", "top", "bottom", "py", "ny")
 _SIDE_FACES = frozenset({"px", "nx", "pz", "nz"})
@@ -299,6 +313,17 @@ def _frame_yaw_offset(frame_index: int, step_deg: float) -> float:
     return (float(frame_index) * float(step_deg)) % 360.0
 
 
+def _normalize_angle(angle_deg: float) -> float:
+    return ((float(angle_deg) + 180.0) % 360.0) - 180.0
+
+
+def _view_params_with_yaw_offset(
+    params: dict[str, tuple[float, float]],
+    yaw_offset: float,
+) -> dict[str, tuple[float, float]]:
+    return {face: (_normalize_angle(yaw + yaw_offset), pitch) for face, (yaw, pitch) in params.items()}
+
+
 def _view_params_for_group(
     metadata: CubemapViewMetadata | None,
     group_index: int,
@@ -340,6 +365,27 @@ def cubemap_view_params_for_group(
 ) -> dict[str, tuple[float, float]] | None:
     """Return generated face yaw/pitch values for one cubemap camera group."""
     return _view_params_for_group(_coerce_view_metadata(metadata), group_index)
+
+
+def cubemap_view_metadata_for_pose_preset(preset: str | None) -> CubemapViewMetadata | None:
+    """Return fallback metadata for a user-selected conversion preset."""
+    value = str(preset or CUBEMAP_POSE_PRESET_AUTO).strip().lower()
+    if value in {"", CUBEMAP_POSE_PRESET_AUTO}:
+        return None
+    if value == CUBEMAP_POSE_PRESET_LICHTFELD:
+        return CubemapViewMetadata(
+            _view_params_with_yaw_offset(_GUI_CUBE6_VIEW_PARAMS, _GUI_CUBE6_DEFAULT_YAW_OFFSET),
+            yaw_offset_per_frame=_GUI_CUBE6_DEFAULT_YAW_OFFSET_PER_FRAME,
+            image_pose_profile=_IMAGE_POSE_PROFILE_LICHTFELD_CUBE6,
+        )
+    if value in {CUBEMAP_POSE_PRESET_POSTSHOT, CUBEMAP_POSE_PRESET_BRUSH}:
+        return CubemapViewMetadata(
+            _view_params_with_yaw_offset(_GUI_CUBE6_VIEW_PARAMS, _GUI_CUBE6_DEFAULT_YAW_OFFSET),
+            yaw_offset_per_frame=_GUI_CUBE6_DEFAULT_YAW_OFFSET_PER_FRAME,
+        )
+    if value == CUBEMAP_POSE_PRESET_STANDARD:
+        return CubemapViewMetadata(dict(_FACE_VIEW_PARAMS))
+    raise ValueError(f"unsupported cubemap pose preset: {preset}")
 
 
 def _metadata_layout(view_params: CubemapViewParams | None) -> _GeneratedCubemapLayout | None:
