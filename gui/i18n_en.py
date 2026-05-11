@@ -1150,8 +1150,9 @@ TIPS: dict[str, str] = {
         "pairs = same-ID observations seen from different camera positions. 0 pairs means scale cannot be estimated.\n"
         "inliers = pairs kept after outlier rejection. If this is low compared with pairs, check duplicate physical "
         "locations using the same ID, tag size, print scaling, or false detections.\n"
-        "RMS = residual of the kept pairs. Lower is more consistent; if it is high, review settings and capture "
-        "conditions before applying scale."
+        "RMS = the typical mismatch between comparison pairs used for scale. It is measured in meters, and 0 is ideal. "
+        "For tags around 16 cm, <0.02 m is good, 0.02-0.05 m needs review, >0.05 m needs caution, and >0.10 m usually "
+        "should not be applied as-is. The guide changes with tag size, distance, and motion blur."
     ),
     "APRILTAG_PRINT_FAMILY": "AprilTag family to export to PDF. Usually keep this the same as the estimation family.",
     "APRILTAG_PRINT_TAG_ID": "Tag ID to export to PDF. Hover to preview the tag pattern.",

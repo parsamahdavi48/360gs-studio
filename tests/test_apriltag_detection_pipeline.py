@@ -9,7 +9,7 @@ from pathlib import Path
 import cv2
 import numpy as np
 
-from core.apriltag_cubemap import CubemapViewMetadata
+from core.apriltag_cubemap import CubemapViewMetadata, discover_cubemap_view_metadata
 from core.apriltag_detection import detect_apriltags
 from core.apriltag_geometry import load_pinhole_frames, project_sfm_points
 from core.apriltag_pipeline import run_apriltag_scale_estimation
@@ -246,6 +246,30 @@ def _write_generated_cube6_yaw_offset_dataset(root: Path) -> tuple[Path, Cubemap
     return transforms, CubemapViewMetadata(views, yaw_offset_per_frame=30.0)
 
 
+def _write_lichtfeld_export_settings(scene: Path, views: dict[str, tuple[float, float]]) -> None:
+    settings = scene / "_stechdrive" / "step4" / "export_settings.json"
+    settings.parent.mkdir(parents=True, exist_ok=True)
+    settings.write_text(
+        json.dumps(
+            {
+                "effective_profile": "lichtfeld",
+                "target_profile": "lichtfeld",
+                "axis_transform": "none",
+                "output_shape": "projected",
+                "views_config_snapshot": {
+                    "views": [
+                        {"name": face, "yaw": yaw, "pitch": pitch, "enabled": True}
+                        for face, (yaw, pitch) in views.items()
+                    ]
+                },
+                "conversion": {"yaw_offset_per_frame": 30.0},
+                "postprocess": {"lichtfeld_final_orientation_correction": True},
+            }
+        ),
+        encoding="utf-8",
+    )
+
+
 def test_detect_apriltag_generated_marker_returns_metric_camera_vector(tmp_path: Path) -> None:
     transforms = _write_tagged_scale_dataset(tmp_path)
     frame = load_pinhole_frames(transforms)[0]
@@ -470,6 +494,35 @@ def test_generated_cube6_transforms_are_normalized_for_projection(tmp_path: Path
     assert projected_px is not None
     assert np.allclose(projected_px[0], np.array([99.5, 99.5]))
     assert projected_nx is None
+
+
+def test_lichtfeld_cube6_metadata_normalizes_to_saved_raster_pose(tmp_path: Path) -> None:
+    scene = tmp_path / "scene"
+    output = scene / "output"
+    transforms, metadata = _write_generated_cube6_yaw_offset_dataset(output)
+    _write_lichtfeld_export_settings(scene, metadata.view_params)
+
+    discovered = discover_cubemap_view_metadata(transforms)
+    assert discovered is not None
+    assert discovered.image_pose_profile == "lichtfeld_cube6"
+
+    frames = {frame.file_path: frame for frame in load_pinhole_frames(transforms)}
+    source_local_from_lichtfeld = np.diag([1.0, -1.0, -1.0])
+    raster_y_flip = np.diag([1.0, -1.0, 1.0])
+    vertical_face_map = {"top": "bottom", "bottom": "top"}
+
+    for group_index, prefix in enumerate(("frame_0001", "frame_0002")):
+        yaw_offset = group_index * 30.0
+        for face, (yaw, pitch) in metadata.view_params.items():
+            raster_face = vertical_face_map.get(face, face)
+            raster_yaw, raster_pitch = metadata.view_params[raster_face]
+            expected = (
+                source_local_from_lichtfeld
+                @ _rotation(raster_yaw + yaw_offset, raster_pitch)
+                @ raster_y_flip
+            )
+            frame = frames[f"images/{prefix}_{face}.png"]
+            assert np.allclose(frame.camera_to_world_rotation, expected, atol=1e-8)
 
 
 def test_equirect_detection_projection_writes_temporary_pinhole_dataset(tmp_path: Path) -> None:
