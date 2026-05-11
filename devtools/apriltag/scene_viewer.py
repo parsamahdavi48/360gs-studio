@@ -66,6 +66,7 @@ from devtools.apriltag.cubemap_preview import (
     render_generated_cubemap_source_axis,
     render_source_equirect_axis,
     source_equirect_base_rotation,
+    split_cubemap_face,
 )
 from devtools.apriltag.printable import create_printable_target
 from devtools.apriltag.synthetic import SyntheticAprilTagConfig, inject_synthetic_apriltag
@@ -1346,8 +1347,11 @@ class AprilTagSceneViewerWindow(QWidget):
         if raw_group is None:
             return []
         candidates, _total = self._synthetic_tag_candidates()
-        prefix = f"images/{raw_group.name}_"
-        selected = [candidate for candidate in candidates if candidate.frame.file_path.startswith(prefix)]
+        selected = [
+            candidate
+            for candidate in candidates
+            if (parsed := split_cubemap_face(candidate.frame.file_path)) is not None and parsed[0] == raw_group.name
+        ]
         if not selected:
             return []
         selected.sort(key=lambda candidate: (-candidate.area_px, candidate.frame.file_path))
@@ -1358,6 +1362,19 @@ class AprilTagSceneViewerWindow(QWidget):
             height=candidate.frame.height,
             output_size=output_size,
         )
+
+    def _right_image_tag_overlays(
+        self,
+        world_group: CubemapFrameGroup,
+        *,
+        use_output_projection: bool,
+        output_size: int = 768,
+    ) -> list[PerspectiveLabelOverlay]:
+        if use_output_projection:
+            overlays = self._tag_output_image_overlays(output_size=output_size)
+            if overlays or self._synthetic_frame_transform_overrides():
+                return overlays
+        return self._tag_image_overlays(world_group, self._params, output_size=output_size)
 
     def _synthetic_tag_placement_sfm(self) -> tuple[np.ndarray, np.ndarray, np.ndarray, float]:
         if self.case is None:
@@ -1860,13 +1877,11 @@ class AprilTagSceneViewerWindow(QWidget):
             f"{self._ray_basis_mode()}:{image_group.name}:"
             f"{source_path if use_source_equirect else ''}"
         )
-        overlays = (
-            self._tag_output_image_overlays(output_size=768)
-            if use_source_equirect or use_reconstructed_cube6
-            else []
+        overlays = self._right_image_tag_overlays(
+            world_group,
+            use_output_projection=use_source_equirect or use_reconstructed_cube6,
+            output_size=768,
         )
-        if not overlays:
-            overlays = self._tag_image_overlays(world_group, self._params, output_size=768)
         if self._displayed_image_key == key and self.image_view.set_perspective_params(view_params):
             self.image_view.set_drag_mode("look")
             self.image_view.set_perspective_label_overlays(overlays)

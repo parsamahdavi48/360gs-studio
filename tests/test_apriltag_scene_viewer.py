@@ -828,6 +828,43 @@ def test_current_case_image_overlay_uses_synthetic_output_projection() -> None:
     window.deleteLater()
 
 
+def test_current_case_image_overlay_respects_synthetic_front_side() -> None:
+    case_dir = Path("_compare/apriltag_test/cases/current")
+    if not (case_dir / "case.json").is_file():
+        pytest.skip("local AprilTag comparison case is not available")
+    _app()
+    window = AprilTagSceneViewerWindow(initial_case=case_dir)
+    if "frame_000001" not in window._source_equirect_rotations:
+        pytest.skip("local AprilTag source equirect rotation is not available")
+    window.select_camera_by_name("frame_000001")
+    window.ray_basis_combo.setCurrentIndex(window.ray_basis_combo.findData(RAY_BASIS_WORLD))
+    window.set_active_face("pz")
+    group = window.selected_world_group()
+    assert group is not None
+    camera, right, up, forward = camera_pose_from_perspective_params(group, window._params)
+    center = camera + forward * 5.0 + right * 0.5 + up * 0.25
+
+    window.set_tag_transform(
+        center=tuple(center),
+        yaw_deg=window._params.yaw_deg,
+        pitch_deg=window._params.pitch_deg,
+        roll_deg=window._params.roll_deg,
+        size_sfm=1.0,
+    )
+    assert len(window._right_image_tag_overlays(group, use_output_projection=True, output_size=768)) == 1
+
+    window.set_tag_transform(
+        center=tuple(center),
+        yaw_deg=window._params.yaw_deg + 180.0,
+        pitch_deg=-window._params.pitch_deg,
+        roll_deg=window._params.roll_deg,
+        size_sfm=1.0,
+    )
+    assert window._tag_image_overlays(group, window._params, output_size=768)
+    assert window._right_image_tag_overlays(group, use_output_projection=True, output_size=768) == []
+    window.deleteLater()
+
+
 def test_current_case_generated_cube6_reconstruction_matches_expected_orientation() -> None:
     case_dir = Path("_compare/apriltag_test/cases/current")
     if not (case_dir / "case.json").is_file():
