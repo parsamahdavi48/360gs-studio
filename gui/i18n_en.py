@@ -900,6 +900,11 @@ STRINGS: dict[str, str] = {
     "APRILTAG_TAG_SIZE": "Tag Size (m)",
     "APRILTAG_FAMILY": "Tag Family",
     "APRILTAG_TAG_ID": "Tag ID",
+    "APRILTAG_TAG_IDS": "Tag IDs",
+    "APRILTAG_OUTPUT_PRESET": "Output Preset",
+    "APRILTAG_OUTPUT_PRESET_AUTO": "Auto",
+    "APRILTAG_OUTPUT_PRESET_STECHDRIVE_CUBE6": "Step 4 Cube6 Default",
+    "APRILTAG_OUTPUT_PRESET_STANDARD": "Standard Cubemap",
     "APRILTAG_ESTIMATE": "Estimate",
     "APRILTAG_APPLY_SCALE": "Apply to Scale",
     "APRILTAG_RESULT": "Result",
@@ -910,8 +915,19 @@ STRINGS: dict[str, str] = {
     "APRILTAG_TAG_SIZE_INVALID": "Enter a positive number for the tag size.",
     "APRILTAG_RUNNING": "Estimating...",
     "APRILTAG_FAILED": "Estimation failed.\n{detail}",
-    "APRILTAG_RESULT_FORMAT": "scale={scale}\nobservations={observations}, pairs={pairs}, inliers={inliers}, RMS={rms:.6g} m",
-    "APRILTAG_APPLIED": "Applied the estimated scale to the Metashape import settings.",
+    "APRILTAG_RESULT_FORMAT": "scale={scale}\nobservations={observations}\npairs={pairs}, inliers={inliers}\nRMS={rms:.6g} m",
+    "APRILTAG_COPY_SCALE": "Copy scale",
+    "APRILTAG_SCALE_COPIED": "Copied scale",
+    "APRILTAG_APPLIED": "Applied the estimated scale to the output dataset.",
+    "APRILTAG_APPLIED_FORMAT": (
+        "Applied scale={scale} to output/transforms.json and pointcloud.ply.\n"
+        "Cameras={frames}, points={points}\nBackup:\n{backup}"
+    ),
+    "APRILTAG_PRINT_SECTION": "Tag PDF",
+    "APRILTAG_PRINT_TAG_ID": "Print ID",
+    "APRILTAG_PRINT_PAGE": "Paper",
+    "APRILTAG_PRINT_EXPORT": "Export PDF",
+    "APRILTAG_PRINT_SAVED": "Saved PDF:\n{path}",
 }
 
 # ---------------------------------------------------------------------------
@@ -1118,13 +1134,43 @@ TIPS: dict[str, str] = {
     "SPHERESFM_SPARSE_MODEL": "Sparse model folder used for SphereSfM conversion. If empty, output/spheresfm/sparse/ is auto-detected.",
     "MS_USE_PLY": "Pass --ply during Metashape import. ON for LichtFeld and usually OFF for Postshot/Brush. Changing this switches the output preset to Custom",
     "SCALE_FACTOR": "Scale factor applied to camera positions and point coordinates. Usually leave at 1.0",
-    "APRILTAG_SCALE_ENABLE": "Experimental scale estimation from Metashape SfM results and known-size AprilTag observations.",
+    "APRILTAG_SCALE_ENABLE": "Estimate dataset scale from known-size AprilTag observations.",
     "APRILTAG_TAG_SIZE": "Physical side length of the printed AprilTag outer black square, in meters.",
-    "APRILTAG_FAMILY": "AprilTag family used for capture. tag36h11 is the recommended starting point.",
-    "APRILTAG_TAG_ID": "Use only this tag ID. Leave empty to consider all detected tags.",
-    "APRILTAG_ESTIMATE": "Generate detection projection images from the Metashape XML and run scale estimation.",
-    "APRILTAG_APPLY_SCALE": "Put the estimated factor into the Metashape import Scale field.",
-    "APRILTAG_RESULT": "Shows estimated scale, accepted observations, inlier ratio, and residual.",
+    "APRILTAG_FAMILY": (
+        "Use tag36h11 unless your printed tag uses another family. It has strong error resistance "
+        "and enough IDs, so it is the default for both walking and drone captures. "
+        "For long-distance captures, print a larger tag from the same family."
+    ),
+    "APRILTAG_TAG_ID": "Use only this tag ID.",
+    "APRILTAG_TAG_IDS": (
+        "Tag IDs used in the capture. You can enter up to 16 IDs.\n"
+        "Do not place the same ID in multiple locations; use a different ID for each physical location."
+    ),
+    "APRILTAG_OUTPUT_PRESET": (
+        "Usually leave this on Auto. The estimator reads Cubemap face directions and per-frame yaw rotation "
+        "from Step 4 settings or the coordinate contract embedded in transforms.json. Choose an explicit preset "
+        "only when that metadata is missing and you know how the output was created."
+    ),
+    "APRILTAG_ESTIMATE": "Detect AprilTags from projected Cubemap output/transforms.json and output images, then estimate meters per scene unit. For equirectangular output, create Cubemap images first.",
+    "APRILTAG_APPLY_SCALE": "Multiply camera positions in output/transforms.json and output/pointcloud.ply by the estimated factor. Original files are backed up.",
+    "APRILTAG_RESULT": (
+        "How to read the result:\n"
+        "observations = accepted tag detections. More observations usually make the estimate more stable.\n"
+        "pairs = same-ID observations seen from different camera positions. 0 pairs means scale cannot be estimated.\n"
+        "inliers = pairs kept after outlier rejection. If this is low compared with pairs, check duplicate physical "
+        "locations using the same ID, tag size, print scaling, or false detections.\n"
+        "RMS = the typical mismatch between comparison pairs used for scale. It is measured in meters, and 0 is ideal. "
+        "For tags around 16 cm, <0.02 m is good, 0.02-0.05 m needs review, >0.05 m needs caution, and >0.10 m usually "
+        "should not be applied as-is. The guide changes with tag size, distance, and motion blur."
+    ),
+    "APRILTAG_PRINT_FAMILY": "AprilTag family to export to PDF. Usually keep this the same as the estimation family.",
+    "APRILTAG_PRINT_TAG_ID": "Tag ID to export to PDF. Hover to preview the tag pattern.",
+    "APRILTAG_PRINT_PAGE": (
+        "PDF paper size. Export stops if the requested tag size does not fit with margins.\n"
+        "Choose A3 or reduce tag size. Print at actual size / 100%."
+    ),
+    "APRILTAG_PRINT_EXPORT": "Create a printable PDF with the current tag size, family, ID, and paper size.",
+    "APRILTAG_TAB_PRIMARY_ACTION": "Run scale estimation and apply scale from the buttons inside this tab.",
     "NO_FIX_ROTATION": "Disable orientation correction when importing Metashape data. Usually leave OFF",
     "VIEW_MODE": "Cube6: standard preset that exports front, back, left, right, up, and down views. Custom Grid lets you adjust which directions and rows are exported.",
     "VIEW_SELECTION_SECTION": "Turn export viewpoints on or off. Hover a viewpoint to highlight the matching area in the preview.",

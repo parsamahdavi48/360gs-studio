@@ -10,8 +10,6 @@ from __future__ import annotations
 
 import math
 
-import numpy as np
-
 from core.scene_layout import STEP4_EXPORT_SETTINGS_JSON
 from gui.steps import sfm_route_specs as _sfm_route_specs
 
@@ -155,15 +153,6 @@ _SPHERESFM_PROJECT_MANIFEST_NAME = "stechdrive_spheresfm_project.json"
 _COLMAP_REPOSITORY_URL = "https://github.com/colmap/colmap"
 _SPHERESFM_REPOSITORY_URL = "https://github.com/json87/spheresfm"
 _USER_SETTINGS_SECTION = "step4_colmap"
-_LICHTFELD_FINAL_CORRECTION = np.array(
-    [
-        [0.0, 0.0, 1.0, 0.0],
-        [0.0, -1.0, 0.0, 0.0],
-        [1.0, 0.0, 0.0, 0.0],
-        [0.0, 0.0, 0.0, 1.0],
-    ],
-    dtype=np.float64,
-)
 
 
 def is_spheresfm_rtx50_cuda_error_line(line: str) -> bool:

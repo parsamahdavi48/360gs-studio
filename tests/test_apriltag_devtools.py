@@ -293,7 +293,7 @@ def test_create_case_saves_coordinate_profile(tmp_path: Path) -> None:
     )
 
     loaded = load_case(case.case_dir)
-    assert loaded.coordinate_profile == COORDINATE_PROFILE_LICHTFELD_CUBE6_PRE_FINAL_PLY
+    assert loaded.coordinate_profile == COORDINATE_PROFILE_LICHTFELD_CUBE6
 
 
 def test_create_case_copy_mode_rewrites_absolute_image_paths(tmp_path: Path) -> None:

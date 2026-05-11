@@ -17,7 +17,7 @@ Metashape SfM
   → metashape_360_lfs.py
     → transforms.json (EQUIRECTANGULAR)
       → cubemap_transforms_json.py
-        → transforms.json (SIMPLE_PINHOLE / cubemap views)
+        → transforms.json (SIMPLE_PINHOLE or PINHOLE / cubemap views)
           → transforms_to_colmap.py   ← THIS SCRIPT
             → cameras.txt + images.txt + points3D.txt
 ```

@@ -8,14 +8,9 @@ import cv2
 import numpy as np
 
 from core.apriltag_geometry import PinholeFrame
+from core.apriltag_markers import available_families as _available_families
+from core.apriltag_markers import dictionary_for_family
 from core.apriltag_scale import TagObservation, score_tag_observation
-
-_FAMILY_TO_DICT = {
-    "tag16h5": "DICT_APRILTAG_16H5",
-    "tag25h9": "DICT_APRILTAG_25H9",
-    "tag36h10": "DICT_APRILTAG_36H10",
-    "tag36h11": "DICT_APRILTAG_36H11",
-}
 
 
 @dataclass(frozen=True)
@@ -30,22 +25,14 @@ class AprilTagDetection:
 
 
 def available_families() -> tuple[str, ...]:
-    return tuple(_FAMILY_TO_DICT)
-
-
-def _dictionary_for_family(family: str) -> cv2.aruco.Dictionary:
-    key = family.strip().lower()
-    attr = _FAMILY_TO_DICT.get(key)
-    if attr is None:
-        raise ValueError(f"Unsupported AprilTag family: {family}")
-    return cv2.aruco.getPredefinedDictionary(getattr(cv2.aruco, attr))
+    return _available_families()
 
 
 def _detector_for_family(family: str) -> cv2.aruco.ArucoDetector:
     parameters = cv2.aruco.DetectorParameters()
     if hasattr(cv2.aruco, "CORNER_REFINE_APRILTAG"):
         parameters.cornerRefinementMethod = cv2.aruco.CORNER_REFINE_APRILTAG
-    return cv2.aruco.ArucoDetector(_dictionary_for_family(family), parameters)
+    return cv2.aruco.ArucoDetector(dictionary_for_family(family), parameters)
 
 
 def _object_points(tag_size_m: float) -> np.ndarray:

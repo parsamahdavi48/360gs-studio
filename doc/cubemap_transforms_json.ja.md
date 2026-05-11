@@ -111,7 +111,10 @@ python cubemap_transforms_json.py . ./cubic --brush
 
 ### LichtFeld Studio向け
 
-LichtFeld Studioの場合、 `--no_transform` を指定してください。
+LichtFeld Studioの場合、 `--no_transform` を指定してください。Cubemapの
+`transforms.json` は `PINHOLE` として出力し、`transforms.json` のカメラ姿勢と
+`pointcloud.ply` の点群は、現在のLichtFeldが内部で正規化する同じ入力世界座標の
+セットとして扱います。
 
 ```
 python metashape_360_lfs.py --images images --xml metashape.xml \
@@ -186,3 +189,6 @@ JPEG と WebP は 8-bit のみで α 非対応のため、これらを指定し�
 - transforms.json (出力ディレクトリ内)
 - images (出力ディレクトリ内)
 - masks (出力ディレクトリ内: オプション)
+
+`transforms.json` のカメラ姿勢と `pointcloud.ply` の点群はセットです。片方だけに
+追加の向き補正をかけないでください。

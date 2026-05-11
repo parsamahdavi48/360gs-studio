@@ -23,6 +23,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from core.cubemap_contracts import CUBE6_DEFAULT_YAW_OFFSET_PER_FRAME
 from core.scene_layout import (
     scene_images_dir,
     step4_meta_dir,
@@ -44,6 +45,7 @@ from gui.steps.sfm_route_selector import SfmRouteSelector
 from gui.steps.sfm_route_specs import (
     normalize_sfm_route,
 )
+from gui.steps.step4_apriltag import Step4AprilTagMixin
 from gui.steps.step4_command_plan import Step4CommandPlanMixin
 from gui.steps.step4_contracts import (
     _AXIS_BRUSH,
@@ -82,7 +84,6 @@ from gui.steps.step4_contracts import (
     is_colmap_gui_unavailable_output,  # noqa: F401 - re-exported for existing tests/imports
     is_spheresfm_rtx50_cuda_error_line,  # noqa: F401 - re-exported for existing tests/imports
 )
-from gui.steps.step4_apriltag import Step4AprilTagMixin
 from gui.steps.step4_manifest import Step4ManifestMixin
 from gui.steps.step4_paths import Step4PathMixin
 from gui.steps.step4_pipeline import Step4PipelineMixin
@@ -166,7 +167,7 @@ class CubemapStep(
         self._postshot_project_name_user_edited = False
         self._syncing_postshot_project_name = False
         self._syncing_lfs_auto_fields = False
-        self._yaw_per_frame_non_colmap_value = 30.0
+        self._yaw_per_frame_non_colmap_value = CUBE6_DEFAULT_YAW_OFFSET_PER_FRAME
         self._metashape_auto_xml_candidates: tuple[Path, ...] = ()
         self._metashape_auto_ply_candidates: tuple[Path, ...] = ()
         self._syncing_metashape_auto_inputs = False
@@ -645,7 +646,7 @@ class CubemapStep(
             maximum=180.0,
             step=1.0,
             decimals=1,
-            value=30.0,
+            value=CUBE6_DEFAULT_YAW_OFFSET_PER_FRAME,
             drag_pixels_per_step=6.0,
         )
         self.yaw_per_frame_edit.setFixedWidth(76)
@@ -756,8 +757,7 @@ class CubemapStep(
         details_layout.addStretch()
 
         self.apriltag_tab_index: int | None = None
-        if self._apriltag_scale_ui_enabled:
-            self.apriltag_tab = self._build_apriltag_scale_tab()
+        self.apriltag_tab = self._build_apriltag_scale_tab()
 
         self.input_tab_index = self.settings_tabs.addTab(
             self._make_tab_scroll_area(self.input_tab),
@@ -767,11 +767,10 @@ class CubemapStep(
             self._make_tab_scroll_area(self.output_tab),
             i18n.t("STEP4_TAB_OUTPUT"),
         )
-        if self._apriltag_scale_ui_enabled:
-            self.apriltag_tab_index = self.settings_tabs.addTab(
-                self._make_tab_scroll_area(self.apriltag_tab),
-                i18n.t("STEP4_TAB_APRILTAG_SCALE"),
-            )
+        self.apriltag_tab_index = self.settings_tabs.addTab(
+            self._make_tab_scroll_area(self.apriltag_tab),
+            i18n.t("STEP4_TAB_APRILTAG_SCALE"),
+        )
         self.details_tab_index = self.settings_tabs.addTab(
             self._make_tab_scroll_area(self.details_tab),
             i18n.t("STEP4_TAB_DETAILS"),
@@ -1154,9 +1153,13 @@ class CubemapStep(
         return i18n.t("RUN")
 
     def primary_action_tooltip(self) -> str:
+        if self._apriltag_tab_selected():
+            return i18n.tip("APRILTAG_TAB_PRIMARY_ACTION")
         return i18n.tip("RUN_CUBEMAP")
 
     def primary_action_enabled(self) -> bool:
+        if self._apriltag_tab_selected():
+            return False
         selected = False
         status_by_stage = {
             _PIPELINE_STAGE_SFM: self._pipeline_sfm_status(),
@@ -1359,12 +1362,8 @@ class CubemapStep(
         spheresfm_conversion_off = self._is_spheresfm_method() and not self._spheresfm_runs_conversion()
         conversion_enabled = not spheresfm_conversion_off
         self.settings_tabs.setTabEnabled(self.output_tab_index, conversion_enabled)
-        if self.apriltag_tab_index is not None:
-            self.settings_tabs.setTabEnabled(self.apriltag_tab_index, self._is_metashape_method())
         route_index = self.input_tab_index
         if spheresfm_conversion_off and current == self.output_tab_index:
-            self.settings_tabs.setCurrentIndex(route_index)
-        elif self.apriltag_tab_index is not None and current == self.apriltag_tab_index and not self._is_metashape_method():
             self.settings_tabs.setCurrentIndex(route_index)
         elif prefer_route_tab:
             self.settings_tabs.setCurrentIndex(route_index)
@@ -1839,12 +1838,6 @@ class CubemapStep(
         if mode == _AXIS_BRUSH:
             return _PROFILE_BRUSH
         return _PROFILE_POSTSHOT
-
-    def _uses_lichtfeld_final_correction(self) -> bool:
-        return self._is_metashape_method() and self._effective_profile() == _PROFILE_LICHTFELD
-
-    def _uses_spheresfm_lichtfeld_final_correction(self) -> bool:
-        return self._is_spheresfm_method() and self._spheresfm_effective_profile() == _PROFILE_LICHTFELD
 
     def _on_profile_changed(self, _index: int) -> None:
         p = self._profile_id()

@@ -54,7 +54,6 @@ from devtools.apriltag.coordinates import world_display_matrix
 from devtools.apriltag.synthetic import SyntheticAprilTagConfig, inject_synthetic_apriltag
 from gui.common.drag_spinbox import DragDoubleSpinBox
 from gui.common.perspective_preview import PerspectiveParams, equirect_to_perspective, params_from_drag
-from gui.common.perspective_preview import normalize_yaw_deg
 
 
 LOCAL_APRILTAG_CASE_DIR = Path("_compare/apriltag_test/cases/current")
@@ -717,11 +716,11 @@ def test_world_display_pz_image_preview_is_not_mirrored_by_image_ray_correction(
     assert direct_error * 4.0 < mirrored_error
 
 
-def test_lichtfeld_image_rays_are_not_world_display_transformed_twice() -> None:
+def test_image_rays_follow_world_display_transform() -> None:
     matrix = np.diag([-1.0, 1.0, -1.0, 1.0])
 
-    assert image_ray_display_matrix_for_profile("lichtfeld_cube6", matrix) is None
-    assert image_ray_display_matrix_for_profile("lichtfeld_cube6_pre_final_ply", matrix) is None
+    assert np.allclose(image_ray_display_matrix_for_profile("lichtfeld_cube6", matrix), matrix)
+    assert np.allclose(image_ray_display_matrix_for_profile("lichtfeld_cube6_pre_final_ply", matrix), matrix)
     assert np.allclose(image_ray_display_matrix_for_profile("custom", matrix), matrix)
 
 
@@ -745,10 +744,10 @@ def test_current_case_reports_world_to_image_ray_mapping() -> None:
     assert opposite is not None
     assert image_basis_closest is not None
     assert raw_closest is not None
-    assert raw_closest[0] == "nx"
-    assert closest[0] == "nx"
+    assert raw_closest[0] == "pz"
+    assert closest[0] == "pz"
     assert closest[1] < 2.0
-    assert opposite[0] == "px"
+    assert opposite[0] == "nz"
     assert opposite[1] < 2.0
     assert image_basis_closest[0] == "pz"
     assert image_basis_closest[1] < 1e-4
@@ -785,13 +784,14 @@ def test_current_case_image_ray_group_matches_metashape_build_remap_rays() -> No
     assert world_group is not None
     assert image_group is not None
 
-    metashape_local_from_lfs_local = np.diag([1.0, -1.0, -1.0])
+    display_matrix = world_display_matrix(case.coordinate_profile)
+    display_rotation = np.eye(3) if display_matrix is None else display_matrix[:3, :3]
     expected: dict[str, np.ndarray] = {}
     for face in ("px", "nz", "nx", "pz"):
         yaw, pitch = metadata.view_params[face]
         ray = np.array([0.0, 0.0, 1.0]) @ _rotation(yaw, pitch).T
-        ray = ray @ metashape_local_from_lfs_local.T @ metashape_transform[:3, :3].T
-        ray = ray @ world_display_matrix(case.coordinate_profile)[:3, :3].T
+        ray = ray @ metashape_transform[:3, :3].T
+        ray = ray @ display_rotation.T
         expected[face] = ray / max(float(np.linalg.norm(ray)), 1e-12)
 
     actual_image = {face: face_forward_ray(image_group, face) for face in expected}
@@ -824,11 +824,11 @@ def test_current_case_source_equirect_rotation_maps_json_faces_to_source_centers
 
     code_chain_rotation = source_equirect_base_rotation(raw_group, cubemap_view_params=metadata)
     assert code_chain_rotation is not None
-    source_local_from_lichtfeld_local = np.diag([1.0, -1.0, -1.0])
-    assert np.allclose(source_rotation, code_chain_rotation @ source_local_from_lichtfeld_local, atol=1e-6)
+    assert np.allclose(source_rotation, code_chain_rotation, atol=1e-6)
 
     display_matrix = world_display_matrix(case.coordinate_profile)
-    preview_to_sfm = np.linalg.inv(display_matrix[:3, :3]).T
+    display_rotation = np.eye(3) if display_matrix is None else display_matrix[:3, :3]
+    preview_to_sfm = np.linalg.inv(display_rotation).T
     actual: dict[str, str] = {}
     for face in ("pz", "px", "nx", "nz", "top", "bottom"):
         ray = face_forward_ray(world_group, face)
@@ -839,10 +839,10 @@ def test_current_case_source_equirect_rotation_maps_json_faces_to_source_centers
     # These are assertions for the code-derived transform, not inputs used to
     # construct the rotation above.
     assert actual == {
-        "pz": "nz",
-        "px": "nx",
-        "nx": "px",
-        "nz": "pz",
+        "pz": "pz",
+        "px": "px",
+        "nx": "nx",
+        "nz": "nz",
         "top": "top",
         "bottom": "bottom",
     }
@@ -868,10 +868,10 @@ def test_current_case_source_equirect_center_pixels_match_expected_faces() -> No
 
     display_matrix = world_display_matrix(case.coordinate_profile)
     expected_mapping = {
-        "pz": "nz",
-        "px": "nx",
-        "nx": "px",
-        "nz": "pz",
+        "pz": "pz",
+        "px": "px",
+        "nx": "nx",
+        "nz": "nz",
         "top": "top",
         "bottom": "bottom",
     }
@@ -918,10 +918,10 @@ def test_current_case_source_equirect_faces_match_expected_orientation() -> None
 
     display_matrix = world_display_matrix(case.coordinate_profile)
     expected_mapping = {
-        "pz": "nz",
-        "px": "nx",
-        "nx": "px",
-        "nz": "pz",
+        "pz": "pz",
+        "px": "px",
+        "nx": "nx",
+        "nz": "nz",
         "top": "top",
         "bottom": "bottom",
     }
@@ -1288,10 +1288,10 @@ def test_current_case_generated_cube6_reconstruction_matches_expected_orientatio
         sfm_to_preview_matrix=display_matrix,
     )
     expected_mapping = {
-        "pz": "nz",
-        "px": "nx",
-        "nx": "px",
-        "nz": "pz",
+        "pz": "pz",
+        "px": "px",
+        "nx": "nx",
+        "nz": "nz",
         "top": "top",
         "bottom": "bottom",
     }
@@ -1325,12 +1325,13 @@ def test_current_case_source_equirect_tangent_axes_match_expected_faces() -> Non
     assert world_group is not None
 
     display_matrix = world_display_matrix(case.coordinate_profile)
-    preview_to_sfm = np.linalg.inv(display_matrix[:3, :3]).T
+    display_rotation = np.eye(3) if display_matrix is None else display_matrix[:3, :3]
+    preview_to_sfm = np.linalg.inv(display_rotation).T
     expected_mapping = {
-        "pz": "nz",
-        "px": "nx",
-        "nx": "px",
-        "nz": "pz",
+        "pz": "pz",
+        "px": "px",
+        "nx": "nx",
+        "nz": "nz",
         "top": "top",
         "bottom": "bottom",
     }
@@ -1403,7 +1404,8 @@ def test_current_case_source_equirect_drag_uses_grab_style_display_motion() -> N
 
     start_params = window._params
     display_matrix = world_display_matrix(case.coordinate_profile)
-    preview_to_sfm = np.linalg.inv(display_matrix[:3, :3]).T
+    display_rotation = np.eye(3) if display_matrix is None else display_matrix[:3, :3]
+    preview_to_sfm = np.linalg.inv(display_rotation).T
 
     def source_basis(params: PerspectiveParams) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
         display_params = _source_equirect_preview_params(params, "pz", RAY_BASIS_BOTH, start_params)
@@ -1426,7 +1428,7 @@ def test_current_case_source_equirect_drag_uses_grab_style_display_motion() -> N
         after_left_forward, _right, _up = source_basis(window._params)
         left_movement = after_left_forward - start_forward
         left_movement /= max(float(np.linalg.norm(left_movement)), 1e-12)
-        assert window._params == params_from_drag(start_params, 10.0, 0.0)
+        assert window._params == params_from_drag(start_params, -10.0, 0.0)
         assert float(left_movement @ start_right) > 0.99
 
         window._params = start_params
@@ -1439,7 +1441,7 @@ def test_current_case_source_equirect_drag_uses_grab_style_display_motion() -> N
     window.deleteLater()
 
 
-def test_current_case_source_equirect_preview_reflects_vertical_display_motion() -> None:
+def test_current_case_source_equirect_preview_uses_canonical_drag_axes() -> None:
     case_dir = _local_apriltag_case_dir()
     _app()
     window = AprilTagSceneViewerWindow(initial_case=case_dir)
@@ -1455,10 +1457,9 @@ def test_current_case_source_equirect_preview_reflects_vertical_display_motion()
     assert dragged.yaw_deg > anchor.yaw_deg
     assert displayed_dragged.yaw_deg == dragged.yaw_deg
     assert dragged.pitch_deg > anchor.pitch_deg
-    assert displayed_dragged.pitch_deg < displayed_anchor.pitch_deg
-    assert displayed_dragged.pitch_deg == pytest.approx(2.0 * anchor.pitch_deg - dragged.pitch_deg)
-    assert displayed_anchor.roll_deg == normalize_yaw_deg(anchor.roll_deg + 180.0)
-    assert displayed_dragged.roll_deg == normalize_yaw_deg(dragged.roll_deg + 180.0)
+    assert displayed_dragged.pitch_deg == dragged.pitch_deg
+    assert displayed_anchor.roll_deg == anchor.roll_deg
+    assert displayed_dragged.roll_deg == dragged.roll_deg
     assert _source_equirect_preview_params(dragged, "top", RAY_BASIS_BOTH, anchor) == dragged
     assert _source_equirect_preview_params(dragged, "pz", RAY_BASIS_IMAGE, anchor) == dragged
     window.deleteLater()
@@ -1485,8 +1486,7 @@ def test_current_case_image_preview_uses_source_equirect_when_available() -> Non
     assert raw_group is not None
     expected_rotation = source_equirect_base_rotation(raw_group, cubemap_view_params=case_cubemap_view_metadata(case))
     assert expected_rotation is not None
-    source_local_from_lichtfeld_local = np.diag([1.0, -1.0, -1.0])
-    assert np.allclose(source_rotation, expected_rotation @ source_local_from_lichtfeld_local, atol=1e-6)
+    assert np.allclose(source_rotation, expected_rotation, atol=1e-6)
 
     source = imread_unicode(source_path)
     display_matrix = world_display_matrix(case.coordinate_profile)

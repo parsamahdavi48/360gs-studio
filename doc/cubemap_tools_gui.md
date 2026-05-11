@@ -148,6 +148,20 @@ The `Output` checkboxes control whether images and/or masks are written.
 
 After adjusting masks, turning `Images` off avoids reconverting existing cubemap images. `3DGUT (LichtFeld)` references source images and masks directly, so these output toggles are not used in that mode.
 
+## Scale From AprilTags
+
+If you want to estimate scale with AprilTags, print and place the tags before capture. The folded `Tag PDF` section in the `Scale` tab can create a printable PDF for the selected tag family, ID, physical size, and paper size. Print at actual size / 100%; printer scaling changes the physical tag size and invalidates the estimate.
+
+When placing tags in multiple locations, use a different tag ID for each location. Reusing the same ID in multiple places makes the observations ambiguous and breaks the estimate. Keep tags fixed during capture, and place them so they are visible from multiple frames when possible.
+
+After capture:
+
+1. Create the Step 4 Cubemap output normally. Scale estimation needs the projected `output/transforms.json` and images under `output/`. Direct equirectangular output for 3DGUT cannot be estimated here.
+2. Open `Scale`.
+3. Enter the printed tag size, family, and tag IDs used in the capture. Keep the default `tag36h11 / ID 7` unless you intentionally printed another tag. Leave `Output Preset` on `Auto` unless the Step 4 settings are missing and you know the dataset was created with one of the listed Cubemap rules.
+4. Click `Estimate`. The bottom log and progress bar show detection progress. The result shows the estimated scale and observation statistics without modifying files.
+5. Click `Apply to Scale` only when the result looks reasonable. Step 4 backs up the current files to `output/apriltag_scale_backup_TIMESTAMP/`, then scales camera positions in `output/transforms.json` and points in `output/pointcloud.ply` when that PLY exists.
+
 ## Continue To Step 5
 
 Step 4 creates the dataset that downstream 3DGS apps load. To use it with LichtFeld Studio or Postshot, create the dataset in Step 4, then open `Step 5: Training`.
@@ -217,7 +231,7 @@ After the run, use `View Result in COLMAP GUI` to inspect registered camera pose
 
 Step 4 treats `<scene>/output/` as the active dataset: the folder you can copy to another machine or load directly in a 3DGS app. In most downstream apps, choose this `output/` folder.
 
-With the `LichtFeld Studio` profile, Step 4 applies the same final orientation correction to `transforms.json` and `pointcloud.ply` so +X / +Z / up directions match the Metashape scene in LichtFeld.
+With the `LichtFeld Studio` profile, Step 4 writes cubemap `transforms.json` as `PINHOLE` and keeps `transforms.json` camera poses and `pointcloud.ply` points in the same input-world contract expected by current LichtFeld builds. It no longer applies a separate final orientation correction after export.
 
 ## Common Decisions
 

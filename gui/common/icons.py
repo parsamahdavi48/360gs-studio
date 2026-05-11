@@ -121,6 +121,14 @@ _CHECK_SVG = """
 </svg>
 """.strip()
 
+_COPY_SVG = """
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none">
+  <rect x="8" y="7" width="10" height="12" rx="1.6" stroke="#e5e7eb" stroke-width="1.8"/>
+  <path d="M6 15.8H5.7A1.7 1.7 0 0 1 4 14.1V5.7A1.7 1.7 0 0 1 5.7 4h8.4A1.7 1.7 0 0 1 15.8 5.7V6"
+        stroke="#2dd4bf" stroke-width="1.8" stroke-linecap="round"/>
+</svg>
+""".strip()
+
 _SINGLE_PREVIEW_SVG = """
 <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none">
   <rect x="4" y="5" width="16" height="14" rx="1.8" stroke="#e5e7eb" stroke-width="1.8"/>
@@ -250,6 +258,10 @@ def help_icon(size: int = 18) -> QIcon:
 
 def check_icon(size: int = 18) -> QIcon:
     return svg_icon(_CHECK_SVG, size)
+
+
+def copy_icon(size: int = 18) -> QIcon:
+    return svg_icon(_COPY_SVG, size)
 
 
 def single_preview_icon(size: int = 18) -> QIcon:

@@ -14,6 +14,15 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from core.cubemap_contracts import (
+    CUBE6_DEFAULT_YAW_OFFSET,
+    CUBE6_ENABLED_CELLS as _CUBE6_ENABLED_CELLS,
+    CUBE6_PITCHES as _CUBE6_PITCHES,
+    CUBE6_VIEW_CELLS as _CUBE6_VIEW_CELLS,
+    CUBE6_YAW_SLOTS as _CUBE6_YAW_SLOTS,
+    cube6_views,
+    normalize_angle as _normalize_angle,
+)
 from gui import i18n
 from gui.common.drag_spinbox import DragDoubleSpinBox
 from gui.common.icons import delete_icon, minus_icon, plus_icon, select_all_icon
@@ -28,17 +37,6 @@ _MIN_PITCH_DEG = -90.0
 _MAX_PITCH_DEG = 90.0
 _WARN_ENABLED_VIEWS = 24
 _BLOCK_ENABLED_VIEWS = 40
-_CUBE6_YAW_SLOTS = 4
-_CUBE6_PITCHES = (-90.0, 0.0, 90.0)
-_CUBE6_ENABLED_CELLS = frozenset({(0, 3), (1, 0), (1, 1), (1, 2), (1, 3), (2, 3)})
-_CUBE6_VIEW_CELLS = (
-    ("px", 1, 0),
-    ("nx", 1, 2),
-    ("pz", 1, 3),
-    ("nz", 1, 1),
-    ("top", 2, 3),
-    ("bottom", 0, 3),
-)
 _CUBE6_CELL_TO_NAME = {(row, slot): name for name, row, slot in _CUBE6_VIEW_CELLS}
 _PITCH_DELETE_BUTTON_SIZE = 24
 _PITCH_CELL_SPACING = 2
@@ -48,10 +46,6 @@ _YAW_SLOT_COLUMN_MIN_WIDTH = 39
 
 VIEW_MODE_CUSTOM = "custom_views"
 VIEW_MODE_CUBE6 = "cube6"
-
-
-def _normalize_angle(angle_deg: float) -> float:
-    return ((angle_deg + 180.0) % 360.0) - 180.0
 
 
 def _angle_token(angle: float) -> str:
@@ -143,7 +137,7 @@ class ViewConfigWidget(QWidget):
             maximum=180.0,
             step=1.0,
             decimals=1,
-            value=45.0,
+            value=CUBE6_DEFAULT_YAW_OFFSET,
             drag_pixels_per_step=6.0,
         )
         self.yaw_offset_edit.setToolTip(i18n.tip("YAW_OFFSET"))
@@ -785,18 +779,7 @@ class ViewConfigWidget(QWidget):
         )
 
     def _cube6_views(self, yaw_offset: float) -> list[dict]:
-        step = 360.0 / float(_CUBE6_YAW_SLOTS)
-        return [
-            {
-                "name": name,
-                "yaw": _normalize_angle(float(yaw_offset) + slot * step),
-                "pitch": _CUBE6_PITCHES[row],
-                "enabled": True,
-                "slot": slot,
-                "label": name,
-            }
-            for name, row, slot in _CUBE6_VIEW_CELLS
-        ]
+        return cube6_views(yaw_offset)
 
 
 class _HoverCheckBox(QCheckBox):

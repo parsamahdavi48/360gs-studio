@@ -2,12 +2,18 @@ from __future__ import annotations
 
 import json
 import math
+import subprocess
+import sys
 from pathlib import Path
 
 import cv2
 import numpy as np
 
-from core.apriltag_cubemap import CubemapViewMetadata
+from core.apriltag_cubemap import (
+    CubemapViewMetadata,
+    cubemap_view_metadata_for_pose_preset,
+    discover_cubemap_view_metadata,
+)
 from core.apriltag_detection import detect_apriltags
 from core.apriltag_geometry import load_pinhole_frames, project_sfm_points
 from core.apriltag_pipeline import run_apriltag_scale_estimation
@@ -244,6 +250,30 @@ def _write_generated_cube6_yaw_offset_dataset(root: Path) -> tuple[Path, Cubemap
     return transforms, CubemapViewMetadata(views, yaw_offset_per_frame=30.0)
 
 
+def _write_lichtfeld_export_settings(scene: Path, views: dict[str, tuple[float, float]]) -> None:
+    settings = scene / "_stechdrive" / "step4" / "export_settings.json"
+    settings.parent.mkdir(parents=True, exist_ok=True)
+    settings.write_text(
+        json.dumps(
+            {
+                "effective_profile": "lichtfeld",
+                "target_profile": "lichtfeld",
+                "axis_transform": "none",
+                "output_shape": "projected",
+                "views_config_snapshot": {
+                    "views": [
+                        {"name": face, "yaw": yaw, "pitch": pitch, "enabled": True}
+                        for face, (yaw, pitch) in views.items()
+                    ]
+                },
+                "conversion": {"yaw_offset_per_frame": 30.0},
+                "postprocess": {"lichtfeld_final_orientation_correction": False},
+            }
+        ),
+        encoding="utf-8",
+    )
+
+
 def test_detect_apriltag_generated_marker_returns_metric_camera_vector(tmp_path: Path) -> None:
     transforms = _write_tagged_scale_dataset(tmp_path)
     frame = load_pinhole_frames(transforms)[0]
@@ -272,6 +302,29 @@ def test_tagged_images_can_validate_scale_pipeline(tmp_path: Path) -> None:
     assert run.estimate.observation_count == 2
     assert run.estimate.pair_count == 1
     assert math.isclose(run.estimate.scale, 0.25, rel_tol=0.08)
+
+
+def test_scale_pipeline_reports_progress_and_supports_parallel_detection(tmp_path: Path) -> None:
+    transforms = _write_tagged_scale_dataset(tmp_path)
+    progress: list[tuple[int, int]] = []
+    logs: list[str] = []
+
+    run = run_apriltag_scale_estimation(
+        transforms,
+        tag_size_m=0.8,
+        family="tag36h11",
+        tag_ids={7},
+        workers=2,
+        progress_callback=lambda done, total: progress.append((done, total)),
+        log_callback=logs.append,
+    )
+
+    assert run.estimate.observation_count == 2
+    assert progress[0] == (0, 2)
+    assert progress[-1] == (2, 2)
+    assert any("detection start" in line for line in logs)
+    assert any("detection complete" in line for line in logs)
+    assert run.timings_sec["total"] >= 0.0
 
 
 def test_synthetic_injection_detects_metric_camera_vector(tmp_path: Path) -> None:
@@ -447,6 +500,61 @@ def test_generated_cube6_transforms_are_normalized_for_projection(tmp_path: Path
     assert projected_nx is None
 
 
+def test_lichtfeld_cube6_metadata_normalizes_to_saved_raster_pose(tmp_path: Path) -> None:
+    scene = tmp_path / "scene"
+    output = scene / "output"
+    transforms, metadata = _write_generated_cube6_yaw_offset_dataset(output)
+    _write_lichtfeld_export_settings(scene, metadata.view_params)
+
+    discovered = discover_cubemap_view_metadata(transforms)
+    assert discovered is not None
+    assert discovered.view_params == metadata.view_params
+    assert discovered.yaw_offset_per_frame == metadata.yaw_offset_per_frame
+
+    frames = {frame.file_path: frame for frame in load_pinhole_frames(transforms)}
+
+    for group_index, prefix in enumerate(("frame_0001", "frame_0002")):
+        yaw_offset = group_index * 30.0
+        for face, (yaw, pitch) in metadata.view_params.items():
+            expected = _rotation(yaw + yaw_offset, pitch)
+            frame = frames[f"images/{prefix}_{face}.png"]
+            assert np.allclose(frame.camera_to_world_rotation, expected, atol=1e-8)
+
+
+def test_embedded_coordinate_contract_supplies_cube6_metadata(tmp_path: Path) -> None:
+    transforms, metadata = _write_generated_cube6_yaw_offset_dataset(tmp_path)
+    data = json.loads(transforms.read_text(encoding="utf-8"))
+    data["stechdrive_coordinate_contract"] = {
+        "version": 2,
+        "profile": "lichtfeld",
+        "axis_transform": "none",
+        "output_shape": "projected",
+        "view_config": {
+            "views": [
+                {"name": face, "yaw": yaw, "pitch": pitch, "enabled": True}
+                for face, (yaw, pitch) in metadata.view_params.items()
+            ],
+        },
+        "yaw_offset_per_frame": metadata.yaw_offset_per_frame,
+    }
+    transforms.write_text(json.dumps(data), encoding="utf-8")
+
+    discovered = discover_cubemap_view_metadata(transforms)
+
+    assert discovered is not None
+    assert discovered.view_params == metadata.view_params
+    assert discovered.yaw_offset_per_frame == metadata.yaw_offset_per_frame
+
+
+def test_explicit_stechdrive_cube6_pose_preset_uses_current_defaults() -> None:
+    metadata = cubemap_view_metadata_for_pose_preset("stechdrive_cube6")
+
+    assert metadata is not None
+    assert metadata.view_params["px"] == (45.0, 0.0)
+    assert metadata.view_params["pz"] == (-45.0, 0.0)
+    assert metadata.yaw_offset_per_frame == 30.0
+
+
 def test_equirect_detection_projection_writes_temporary_pinhole_dataset(tmp_path: Path) -> None:
     images = tmp_path / "images"
     images.mkdir()
@@ -478,6 +586,40 @@ def test_equirect_detection_projection_writes_temporary_pinhole_dataset(tmp_path
     )
 
     data = json.loads(projected.read_text(encoding="utf-8"))
-    assert data["camera_model"] == "SIMPLE_PINHOLE"
+    assert data["camera_model"] == "PINHOLE"
     assert len(data["frames"]) == 6
     assert (projected.parent / "images" / "a_px.png").is_file()
+
+
+def test_estimate_apriltag_scale_cli_rejects_equirectangular_input(tmp_path: Path) -> None:
+    transforms = tmp_path / "transforms.json"
+    transforms.write_text(
+        json.dumps(
+            {
+                "camera_model": "EQUIRECTANGULAR",
+                "frames": [
+                    {
+                        "file_path": "images/a.png",
+                        "transform_matrix": np.eye(4).tolist(),
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            "scripts/estimate_apriltag_scale.py",
+            str(transforms),
+            "--tag-size-m",
+            "0.16",
+        ],
+        cwd=Path.cwd(),
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 1
+    assert "requires projected Cubemap output images" in result.stdout

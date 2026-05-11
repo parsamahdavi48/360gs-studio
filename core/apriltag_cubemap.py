@@ -10,33 +10,34 @@ from pathlib import Path
 import numpy as np
 
 from core.apriltag_geometry import PinholeFrame
+from core.cubemap_contracts import (
+    CUBE6_DEFAULT_YAW_OFFSET,
+    CUBE6_DEFAULT_YAW_OFFSET_PER_FRAME,
+    CUBEMAP_FACE_NAMES,
+    CUBEMAP_REFERENCE_FACE_ORDER,
+    CUBEMAP_SIDE_FACES,
+    CUBEMAP_STANDARD_FACE_VIEW_PARAMS,
+    CUBEMAP_VERTICAL_FACE_SETS,
+    cube6_view_params,
+)
 
 CubemapViewParams = Mapping[str, tuple[float, float]]
 
-_FACE_NAMES = ("px", "nx", "pz", "nz", "top", "bottom", "py", "ny")
-_REFERENCE_FACE_ORDER = ("pz", "px", "nz", "nx", "top", "bottom", "py", "ny")
-_SIDE_FACES = frozenset({"px", "nx", "pz", "nz"})
-_VERTICAL_FACE_SETS = (frozenset({"top", "bottom"}), frozenset({"py", "ny"}))
-_FACE_VIEW_PARAMS: dict[str, tuple[float, float]] = {
-    "pz": (0.0, 0.0),
-    "px": (90.0, 0.0),
-    "nz": (180.0, 0.0),
-    "nx": (-90.0, 0.0),
-    "top": (0.0, 90.0),
-    "bottom": (0.0, -90.0),
-    "py": (0.0, -90.0),
-    "ny": (0.0, 90.0),
-}
-_GUI_CUBE6_VIEW_PARAMS: dict[str, tuple[float, float]] = {
-    # Mirrors gui.cubemap.view_config._CUBE6_VIEW_CELLS with four yaw slots:
-    # px=slot0, nz=slot1, nx=slot2, pz=slot3, top/bottom=slot3.
-    "px": (0.0, 0.0),
-    "nz": (90.0, 0.0),
-    "nx": (180.0, 0.0),
-    "pz": (-90.0, 0.0),
-    "top": (-90.0, 90.0),
-    "bottom": (-90.0, -90.0),
-}
+CUBEMAP_POSE_PRESET_AUTO = "auto"
+CUBEMAP_POSE_PRESET_STECHDRIVE_CUBE6 = "stechdrive_cube6"
+CUBEMAP_POSE_PRESET_STANDARD = "standard"
+CUBEMAP_POSE_PRESETS = (
+    CUBEMAP_POSE_PRESET_AUTO,
+    CUBEMAP_POSE_PRESET_STECHDRIVE_CUBE6,
+    CUBEMAP_POSE_PRESET_STANDARD,
+)
+
+_FACE_NAMES = CUBEMAP_FACE_NAMES
+_REFERENCE_FACE_ORDER = CUBEMAP_REFERENCE_FACE_ORDER
+_SIDE_FACES = CUBEMAP_SIDE_FACES
+_VERTICAL_FACE_SETS = CUBEMAP_VERTICAL_FACE_SETS
+_FACE_VIEW_PARAMS = CUBEMAP_STANDARD_FACE_VIEW_PARAMS
+_GUI_CUBE6_VIEW_PARAMS = cube6_view_params(0.0)
 
 
 @dataclass(frozen=True)
@@ -367,11 +368,16 @@ def _match_generated_cubemap_layout(
 def _views_from_payload(data: object) -> dict[str, tuple[float, float]] | None:
     if not isinstance(data, dict):
         return None
+    embedded_contract = data.get("stechdrive_coordinate_contract")
+    if not isinstance(embedded_contract, dict):
+        embedded_contract = data.get("coordinate_contract")
     raw_views = data.get("views")
     if raw_views is None and isinstance(data.get("views_config_snapshot"), dict):
         raw_views = data["views_config_snapshot"].get("views")
     if raw_views is None and isinstance(data.get("view_config"), dict):
         raw_views = data["view_config"].get("views")
+    if raw_views is None and isinstance(embedded_contract, dict):
+        return _views_from_payload(embedded_contract)
     if not isinstance(raw_views, list):
         return None
     params: dict[str, tuple[float, float]] = {}
@@ -399,6 +405,10 @@ def _yaw_offset_per_frame_from_payload(data: object) -> float:
     raw = data.get("yaw_offset_per_frame")
     if raw is None and isinstance(data.get("conversion"), dict):
         raw = data["conversion"].get("yaw_offset_per_frame")
+    if raw is None and isinstance(data.get("stechdrive_coordinate_contract"), dict):
+        return _yaw_offset_per_frame_from_payload(data["stechdrive_coordinate_contract"])
+    if raw is None and isinstance(data.get("coordinate_contract"), dict):
+        return _yaw_offset_per_frame_from_payload(data["coordinate_contract"])
     try:
         value = float(raw)
     except (TypeError, ValueError):
@@ -415,7 +425,10 @@ def load_cubemap_view_metadata(path: Path) -> CubemapViewMetadata | None:
     params = _views_from_payload(data)
     if not params:
         return None
-    return CubemapViewMetadata(params, yaw_offset_per_frame=_yaw_offset_per_frame_from_payload(data))
+    return CubemapViewMetadata(
+        params,
+        yaw_offset_per_frame=_yaw_offset_per_frame_from_payload(data),
+    )
 
 
 def load_cubemap_view_params(path: Path) -> dict[str, tuple[float, float]] | None:
@@ -424,9 +437,27 @@ def load_cubemap_view_params(path: Path) -> dict[str, tuple[float, float]] | Non
     return None if metadata is None else metadata.view_params
 
 
+def cubemap_view_metadata_for_pose_preset(preset: str | None) -> CubemapViewMetadata | None:
+    """Return explicit fallback metadata for a known cubemap pose preset."""
+    value = str(preset or CUBEMAP_POSE_PRESET_AUTO).strip().lower()
+    if value in {"", CUBEMAP_POSE_PRESET_AUTO}:
+        return None
+    if value == CUBEMAP_POSE_PRESET_STECHDRIVE_CUBE6:
+        return CubemapViewMetadata(
+            cube6_view_params(CUBE6_DEFAULT_YAW_OFFSET),
+            yaw_offset_per_frame=CUBE6_DEFAULT_YAW_OFFSET_PER_FRAME,
+        )
+    if value == CUBEMAP_POSE_PRESET_STANDARD:
+        return CubemapViewMetadata(dict(_FACE_VIEW_PARAMS), yaw_offset_per_frame=0.0)
+    raise ValueError(f"unsupported cubemap pose preset: {preset}")
+
+
 def discover_cubemap_view_metadata(transforms_json: Path) -> CubemapViewMetadata | None:
     """Find the view metadata that generated a cubemap transforms.json, if available."""
     transforms_json = Path(transforms_json)
+    metadata = load_cubemap_view_metadata(transforms_json)
+    if metadata:
+        return metadata
     roots = [transforms_json.parent]
     if transforms_json.parent.name.lower() in {"output", "metashape_import"}:
         roots.append(transforms_json.parent.parent)

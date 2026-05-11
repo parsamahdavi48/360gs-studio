@@ -819,7 +819,7 @@ STRINGS: dict[str, str] = {
     "MS_IMAGES_LABEL": "画像フォルダ",
     "STEP4_TAB_INPUT": "SfM",
     "STEP4_TAB_OUTPUT": "Cubemap",
-    "STEP4_TAB_APRILTAG_SCALE": "実寸",
+    "STEP4_TAB_APRILTAG_SCALE": "スケール",
     "STEP4_TAB_DETAILS": "詳細",
     "STEP4_TAB_METASHAPE": "変換設定",
     "STEP4_TAB_VIEW_EXPORT": "投影視点",
@@ -903,6 +903,11 @@ STRINGS: dict[str, str] = {
     "APRILTAG_TAG_SIZE": "タグ実寸 (m)",
     "APRILTAG_FAMILY": "タグファミリ",
     "APRILTAG_TAG_ID": "タグID",
+    "APRILTAG_TAG_IDS": "タグID",
+    "APRILTAG_OUTPUT_PRESET": "出力プリセット",
+    "APRILTAG_OUTPUT_PRESET_AUTO": "自動判定",
+    "APRILTAG_OUTPUT_PRESET_STECHDRIVE_CUBE6": "Step 4 Cube6既定",
+    "APRILTAG_OUTPUT_PRESET_STANDARD": "標準Cubemap",
     "APRILTAG_ESTIMATE": "推定",
     "APRILTAG_APPLY_SCALE": "Scaleへ反映",
     "APRILTAG_RESULT": "結果",
@@ -913,8 +918,19 @@ STRINGS: dict[str, str] = {
     "APRILTAG_TAG_SIZE_INVALID": "タグ実寸は正の数値で入力してください。",
     "APRILTAG_RUNNING": "推定中...",
     "APRILTAG_FAILED": "推定に失敗しました。\n{detail}",
-    "APRILTAG_RESULT_FORMAT": "scale={scale}\n観測={observations}, ペア={pairs}, inlier={inliers}, RMS={rms:.6g} m",
-    "APRILTAG_APPLIED": "推定scaleをMetashapeインポート設定へ反映しました。",
+    "APRILTAG_RESULT_FORMAT": "scale={scale}\n観測={observations}\nペア={pairs}, inlier={inliers}\nRMS={rms:.6g} m",
+    "APRILTAG_COPY_SCALE": "scaleをコピー",
+    "APRILTAG_SCALE_COPIED": "scaleをコピーしました",
+    "APRILTAG_APPLIED": "推定scaleを出力データへ反映しました。",
+    "APRILTAG_APPLIED_FORMAT": (
+        "scale={scale} を output/transforms.json と pointcloud.ply に反映しました。\n"
+        "カメラ={frames}, 点={points}\nバックアップ:\n{backup}"
+    ),
+    "APRILTAG_PRINT_SECTION": "タグPDF",
+    "APRILTAG_PRINT_TAG_ID": "印刷ID",
+    "APRILTAG_PRINT_PAGE": "用紙",
+    "APRILTAG_PRINT_EXPORT": "PDF出力",
+    "APRILTAG_PRINT_SAVED": "PDFを保存しました:\n{path}",
 }
 
 TIPS: dict[str, str] = {
@@ -1117,13 +1133,43 @@ TIPS: dict[str, str] = {
     "SPHERESFM_SPARSE_MODEL": "SphereSfM変換に使うsparseモデルフォルダ。未選択なら output/spheresfm/sparse/ から自動検出します",
     "MS_USE_PLY": "Metashapeインポート時に --ply を渡します。LichtFeldではON、Postshot/Brushでは通常OFFです。変更するとカスタムになります",
     "SCALE_FACTOR": "カメラ位置と点群座標に掛けるスケール係数。通常は1.0のまま",
-    "APRILTAG_SCALE_ENABLE": "Metashape SfM結果と既知サイズのAprilTag観測から、実寸スケール係数を求める実験機能です",
+    "APRILTAG_SCALE_ENABLE": "既知サイズのAprilTag観測から、出力済みデータセットのスケール係数を求めます",
     "APRILTAG_TAG_SIZE": "印刷したAprilTagの黒枠外側1辺の実寸をメートルで入力します",
-    "APRILTAG_FAMILY": "撮影に使ったAprilTagファミリです。まずはtag36h11を推奨します",
-    "APRILTAG_TAG_ID": "特定IDだけを使う場合に入力します。空欄では検出されたタグをすべて候補にします",
-    "APRILTAG_ESTIMATE": "Metashape XMLと画像から検出用の投影画像を作り、スケール推定を実行します",
-    "APRILTAG_APPLY_SCALE": "推定した係数をMetashapeインポート設定のScale欄へ入れます",
-    "APRILTAG_RESULT": "推定scale、採用観測数、inlier率、残差を表示します",
+    "APRILTAG_FAMILY": (
+        "通常はtag36h11を選びます。誤検出に強くID数も多いため、歩行撮影・ドローン撮影どちらにも推奨です。"
+        "遠距離撮影では、同じファミリのタグを大きく印刷して使ってください"
+    ),
+    "APRILTAG_TAG_ID": "特定IDだけを使う場合に入力します",
+    "APRILTAG_TAG_IDS": (
+        "撮影に使ったタグIDを指定します。複数指定できます（最大16個）。\n"
+        "同じIDのタグを複数の場所に置くと位置を区別できません。場所ごとに別IDにしてください"
+    ),
+    "APRILTAG_OUTPUT_PRESET": (
+        "通常は自動判定のまま使います。Step 4の設定またはtransforms.json内の座標契約から、"
+        "Cubemapの面方向とフレームごとのYaw回転を読み取ります。設定がない出力で、"
+        "Step 4既定のCube6ルールで作ったと分かっている場合だけ明示指定してください"
+    ),
+    "APRILTAG_ESTIMATE": "投影済みCubemapの output/transforms.json と出力画像からAprilTagを検出し、メートル換算のスケールを推定します。エクイレクタングラー出力の場合は先にCubemap画像を書き出してください",
+    "APRILTAG_APPLY_SCALE": "推定した係数を output/transforms.json のカメラ位置と output/pointcloud.ply に掛けます。元ファイルはバックアップします",
+    "APRILTAG_RESULT": (
+        "結果の読み方:\n"
+        "観測=採用されたタグ検出数。多いほど安定しやすいです。\n"
+        "ペア=同じIDのタグを別カメラ位置から見た組み合わせ数。0なら推定できません。\n"
+        "inlier=外れ値を除いた後にscale計算へ使ったペア数。ペア数に対して少ない場合は、"
+        "同じIDの複数配置、タグ実寸、印刷倍率、誤検出を確認してください。\n"
+        "RMS=scale計算に使った比較同士のズレの目安です。単位はメートルで、0が理想です。"
+        "16cm前後のタグなら、0.02m未満は良好、0.02-0.05mは要確認、"
+        "0.05m超は注意、0.10m超は通常そのままScaleへ反映しないでください。"
+        "目安はタグ実寸、距離、ブレで変わります"
+    ),
+    "APRILTAG_PRINT_FAMILY": "PDFに出力するAprilTagファミリです。通常は推定に使うファミリと同じにします",
+    "APRILTAG_PRINT_TAG_ID": "PDFに出力するタグIDです。マウスを重ねるとタグ形状を確認できます",
+    "APRILTAG_PRINT_PAGE": (
+        "PDFの用紙サイズです。指定したタグ実寸が余白込みで収まらない場合は出力を止めます。\n"
+        "A3を選ぶか、タグ実寸を小さくしてください。印刷は100%/実寸で出力してください"
+    ),
+    "APRILTAG_PRINT_EXPORT": "現在のタグ実寸、ファミリ、ID、用紙サイズで印刷用PDFを作成します",
+    "APRILTAG_TAB_PRIMARY_ACTION": "スケール推定と反映はこのタブ内のボタンで実行します",
     "NO_FIX_ROTATION": "Metashapeデータ読み込み時の向き補正を無効化。通常はOFFのまま",
     "VIEW_MODE": "Cube6: 前後左右上下の6方向を書き出す標準プリセットです。カスタムグリッドでは、書き出す向きや行数を調整できます",
     "VIEW_SELECTION_SECTION": "書き出す視点をオン/オフできます。項目にマウスを重ねると、プレビュー上で対応する視点をハイライトします",

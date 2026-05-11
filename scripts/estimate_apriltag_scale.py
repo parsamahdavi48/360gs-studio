@@ -13,8 +13,9 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from core.apriltag_detection import available_families
+from core.apriltag_cubemap import CUBEMAP_POSE_PRESETS, cubemap_view_metadata_for_pose_preset
 from core.apriltag_pipeline import AprilTagScaleRun, run_apriltag_scale_estimation
-from core.apriltag_projection import EquirectProjectionConfig, camera_model, prepare_equirect_detection_dataset
+from core.apriltag_projection import camera_model
 
 
 def _parse_tag_ids(values: list[str]) -> set[int] | None:
@@ -60,11 +61,13 @@ def _report(run: AprilTagScaleRun, args: argparse.Namespace) -> dict:
         "schema_version": 1,
         "transforms_json": str(args.transforms_json),
         "image_root": str(args.image_root) if args.image_root else None,
-        "equirect_temp_dir": str(args.equirect_temp_dir) if args.equirect_temp_dir else None,
         "family": args.family,
         "tag_size_m": args.tag_size_m,
         "tag_ids": sorted(args.tag_ids) if args.tag_ids else None,
         "min_score": args.min_score,
+        "workers": args.workers,
+        "cubemap_pose_preset": args.cubemap_pose_preset,
+        "timings_sec": dict(run.timings_sec),
         "estimate": {
             "scale": estimate.scale,
             "observation_count": estimate.observation_count,
@@ -81,7 +84,7 @@ def _report(run: AprilTagScaleRun, args: argparse.Namespace) -> dict:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Estimate meters-per-SfM-unit scale from AprilTags.")
-    parser.add_argument("transforms_json", type=Path, help="PINHOLE/SIMPLE_PINHOLE or EQUIRECTANGULAR transforms.json")
+    parser.add_argument("transforms_json", type=Path, help="PINHOLE/SIMPLE_PINHOLE Cubemap output transforms.json")
     parser.add_argument("--image-root", type=Path, default=None, help="Image root for relative file_path entries")
     parser.add_argument("--tag-size-m", type=float, required=True, help="Physical AprilTag side length in meters")
     parser.add_argument("--family", default="tag36h11", choices=available_families(), help="AprilTag family")
@@ -89,23 +92,15 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--min-score", type=float, default=0.0, help="Drop observations below this score")
     parser.add_argument("--min-baseline-sfm", type=float, default=1e-6, help="Minimum camera baseline in SfM units")
     parser.add_argument("--report-json", type=Path, default=None, help="Write detailed JSON report")
+    parser.add_argument("--workers", default="auto", help="AprilTag detection worker count: auto or positive integer")
     parser.add_argument(
-        "--equirect-temp-dir",
-        type=Path,
-        default=None,
-        help="Temporary output directory used when input transforms.json is EQUIRECTANGULAR",
-    )
-    parser.add_argument(
-        "--equirect-output-scale",
-        type=float,
-        default=0.5,
-        help="Temporary cubemap face size ratio for EQUIRECTANGULAR input",
-    )
-    parser.add_argument("--workers", default="auto", help="Temporary projection worker count: auto or positive integer")
-    parser.add_argument(
-        "--remap-cache-limit",
+        "--cubemap-pose-preset",
+        choices=CUBEMAP_POSE_PRESETS,
         default="auto",
-        help="Temporary projection per-worker remap cache limit: auto or positive integer",
+        help=(
+            "Cubemap face pose rule. auto uses embedded Step 4 metadata when available; "
+            "stechdrive_cube6 uses the current Step 4 Cube6 defaults."
+        ),
     )
     args = parser.parse_args()
     if not args.transforms_json.is_file():
@@ -127,26 +122,28 @@ def _resolve_estimation_input(args: argparse.Namespace) -> Path:
     model = camera_model(args.transforms_json)
     if model in {"PINHOLE", "SIMPLE_PINHOLE"}:
         return args.transforms_json
-    if model != "EQUIRECTANGULAR":
-        raise ValueError(f"Unsupported camera_model for AprilTag scale estimation: {model or '-'}")
-    if args.equirect_temp_dir is None:
-        raise ValueError("EQUIRECTANGULAR input requires --equirect-temp-dir for temporary pinhole projection")
-    return prepare_equirect_detection_dataset(
-        EquirectProjectionConfig(
-            transforms_json=args.transforms_json,
-            output_dir=args.equirect_temp_dir,
-            image_root=args.image_root,
-            output_scale=args.equirect_output_scale,
-            workers=args.workers,
-            remap_cache_limit=args.remap_cache_limit,
+    if model == "EQUIRECTANGULAR":
+        raise ValueError(
+            "AprilTag scale estimation requires projected Cubemap output images. "
+            "Run Step 4 with Cubemap image output first, then use output/transforms.json."
         )
-    )
+    raise ValueError(f"Unsupported camera_model for AprilTag scale estimation: {model or '-'}")
+
+
+def _log(message: str) -> None:
+    print(f"[apriltag] {message}", flush=True)
+
+
+def _progress(done: int, total: int) -> None:
+    print(f"[progress] {done}/{total}", flush=True)
 
 
 def main() -> int:
     args = parse_args()
     try:
+        _log("validating input dataset")
         estimation_transforms = _resolve_estimation_input(args)
+        cubemap_view_params = cubemap_view_metadata_for_pose_preset(args.cubemap_pose_preset)
         run = run_apriltag_scale_estimation(
             estimation_transforms,
             image_root=None,
@@ -155,6 +152,10 @@ def main() -> int:
             tag_ids=args.tag_ids,
             min_score=args.min_score,
             min_baseline_sfm=args.min_baseline_sfm,
+            workers=args.workers,
+            cubemap_view_params=cubemap_view_params,
+            progress_callback=_progress,
+            log_callback=_log,
         )
     except Exception as e:
         print(f"Error: {e}")

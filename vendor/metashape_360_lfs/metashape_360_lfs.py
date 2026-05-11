@@ -202,18 +202,11 @@ def transform_camera_matrix(transform: np.ndarray, fix_upside_down: bool = True)
         ], dtype=np.float64)
         transform = rot_x_pos90 @ transform
     
-    # Step 4: Pre-compensate for LichtFeld's 180° Y-rotation
-    # LichtFeld applies a Y-rotation to convert from OpenGL to COLMAP convention
-    # We apply the inverse here so they cancel out
-    cos_pi = -1.0  # cos(180°) = -1
-    sin_pi = 0.0   # sin(180°) = 0
-    y_rot_180 = np.array([
-        [cos_pi, 0, sin_pi, 0],
-        [0, 1, 0, 0],
-        [-sin_pi, 0, cos_pi, 0],
-        [0, 0, 0, 1]
-    ], dtype=np.float64)
-    transform = y_rot_180 @ transform
+    # Current LichtFeld expects this NeRF/Blender-style camera-to-world input
+    # and normalizes camera axes/world basis internally while applying the
+    # matching world-basis conversion to the point cloud. Older workflows needed
+    # a camera-only 180° Y pre-compensation here, but applying it now makes
+    # cameras disagree with the point cloud and generated cubemap image rays.
     
     return transform
 
@@ -223,8 +216,7 @@ def get_applied_transform(fix_upside_down: bool = True) -> np.ndarray:
     """
     Get the 3x4 transformation matrix applied to point cloud.
     
-    Note: LichtFeld only applies Y-rotation to cameras, not point clouds.
-    So we don't need Y-rotation pre-compensation here.
+    Note: camera and point cloud output now share the same world transform.
     """
     # Base transform: row swap [2, 0, 1]
     applied_transform = np.eye(4)[:3, :]
@@ -241,7 +233,9 @@ def get_applied_transform(fix_upside_down: bool = True) -> np.ndarray:
         ], dtype=np.float64)
         applied_transform[:3, :3] = rot_x_pos90 @ applied_transform[:3, :3]
     
-    # NOTE: No Y-rotation here - LichtFeld only applies Y-rot to cameras, not point clouds
+    # NOTE: No legacy Y-rotation here. The external contract is that JSON
+    # cameras and PLY points leave this converter in the same world frame;
+    # current LichtFeld normalizes both consistently during dataset import.
     
     return applied_transform
 
