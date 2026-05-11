@@ -158,7 +158,7 @@ Use it when you placed printed AprilTags with a known outer black-square size in
 2. Open `Scale`.
 3. Enter the printed tag size, family, and tag IDs used in the capture. Keep the default `tag36h11 / ID 7` unless you intentionally printed another tag.
 4. Click `Estimate`. The bottom log and progress bar show detection progress. The result shows the estimated scale and observation statistics without modifying files.
-5. Click `Apply to Scale` only when the result looks reasonable. Step 4 backs up the current files, then scales camera positions in `output/transforms.json` and points in `output/pointcloud.ply` when that PLY exists.
+5. Click `Apply to Scale` only when the result looks reasonable. Step 4 backs up the current files to `output/apriltag_scale_backup_TIMESTAMP/`, then scales camera positions in `output/transforms.json` and points in `output/pointcloud.ply` when that PLY exists.
 
 The folded `Tag PDF` section can create printable A4, A3, or Letter PDFs for a selected tag. Print at actual size / 100%; printer scaling changes the physical tag size and invalidates the estimate.
 

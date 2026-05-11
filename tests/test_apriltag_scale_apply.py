@@ -99,6 +99,10 @@ def test_apply_scene_output_scale_updates_transforms_and_pointcloud_with_backups
     assert result.transforms_backup.is_file()
     assert result.pointcloud_backup is not None
     assert result.pointcloud_backup.is_file()
+    assert result.transforms_backup.parent.parent == tmp_path / "output"
+    assert result.transforms_backup.parent.name.startswith("apriltag_scale_backup_")
+    assert result.pointcloud_backup.parent == result.transforms_backup.parent
+    assert not (tmp_path / "_stechdrive" / "step4" / "apriltag_scale_backups").exists()
     assert result.frames_scaled == 2
     assert result.points_scaled == 2
 

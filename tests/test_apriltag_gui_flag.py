@@ -259,7 +259,7 @@ def test_apriltag_result_wraps_and_copy_button_copies_scale(tmp_path: Path) -> N
         assert QApplication.clipboard().text() == "1.23456789"
         assert step.apriltag_copy_scale_btn.toolTip() == i18n.t("APRILTAG_SCALE_COPIED")
 
-        backup = Path({str(long_scene)!r}) / "_stechdrive" / "step4" / "apriltag_scale_backups" / "20260511_120000" / "transforms.json"
+        backup = Path({str(long_scene)!r}) / "output" / "apriltag_scale_backup_20260511_120000" / "transforms.json"
         result = SimpleNamespace(
             scale=1.23456789,
             frames_scaled=123,

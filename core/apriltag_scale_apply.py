@@ -11,7 +11,7 @@ from pathlib import Path
 
 import numpy as np
 
-from core.scene_layout import scene_output_dir, step4_meta_dir
+from core.scene_layout import scene_output_dir
 
 
 @dataclass(frozen=True)
@@ -114,8 +114,17 @@ def _validate_scale(scale: float) -> float:
 
 
 def _default_backup_dir(transforms_json: Path) -> Path:
-    scene = transforms_json.parent.parent
-    return step4_meta_dir(scene) / "apriltag_scale_backups" / datetime.now().strftime("%Y%m%d_%H%M%S")
+    output_dir = transforms_json.parent
+    stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    base = output_dir / f"apriltag_scale_backup_{stamp}"
+    if not base.exists():
+        return base
+    index = 2
+    while True:
+        candidate = output_dir / f"{base.name}_{index}"
+        if not candidate.exists():
+            return candidate
+        index += 1
 
 
 def _copy_backup(path: Path, backup_dir: Path) -> Path:
@@ -267,5 +276,4 @@ def apply_scale_to_transforms_and_pointcloud(
 
 def apply_scene_output_scale(scene_dir: Path, scale: float) -> ScaleApplyResult:
     dataset = validate_scale_output_dataset(scene_dir)
-    backup_dir = step4_meta_dir(Path(scene_dir)) / "apriltag_scale_backups" / datetime.now().strftime("%Y%m%d_%H%M%S")
-    return apply_scale_to_transforms_and_pointcloud(dataset.transforms_json, scale, backup_dir=backup_dir)
+    return apply_scale_to_transforms_and_pointcloud(dataset.transforms_json, scale)
