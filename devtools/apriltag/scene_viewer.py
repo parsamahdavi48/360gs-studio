@@ -101,6 +101,7 @@ LICHTFELD_IMAGE_RAY_DISPLAY_PROFILES = {
 }
 SOURCE_EQUIRECT_IMAGE_EXTS = (".jpg", ".jpeg", ".png", ".tif", ".tiff", ".webp", ".bmp")
 SOURCE_EQUIRECT_LOCAL_FROM_LICHTFELD_LOCAL = np.diag([1.0, -1.0, -1.0])
+SYNTHETIC_IMAGE_RASTER_Y_FLIP = np.diag([1.0, -1.0, 1.0])
 
 
 @dataclass(frozen=True)
@@ -1415,7 +1416,12 @@ class AprilTagSceneViewerWindow(QWidget):
                 if face_rotation is None:
                     continue
                 transform = np.array(frame.transform_matrix, dtype=np.float64, copy=True)
-                transform[:3, :3] = source_rotation @ face_rotation
+                # The reconstructed preview samples Cube6 JPG pixels in the
+                # source equirect basis, but the actual raster Y axis is the
+                # inverse of the right-handed pinhole +Y convention used by
+                # project_sfm_points(). Reflect only this synthetic projection
+                # frame so written pixels land where the viewer displays them.
+                transform[:3, :3] = source_rotation @ face_rotation @ SYNTHETIC_IMAGE_RASTER_Y_FLIP
                 transform[:3, 3] = position
                 overrides[frame.file_path] = transform
         return overrides

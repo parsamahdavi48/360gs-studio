@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import xml.etree.ElementTree as ET
+from dataclasses import replace
 from pathlib import Path
 
 import cv2
@@ -43,6 +44,7 @@ from devtools.apriltag.scene_viewer import (
     transform_group_for_world_display,
 )
 from devtools.apriltag.coordinates import world_display_matrix
+from devtools.apriltag.synthetic import SyntheticAprilTagConfig, inject_synthetic_apriltag
 from gui.common.drag_spinbox import DragDoubleSpinBox
 from gui.common.perspective_preview import PerspectiveParams, equirect_to_perspective, params_from_drag
 from gui.common.perspective_preview import normalize_yaw_deg
@@ -825,6 +827,109 @@ def test_current_case_image_overlay_uses_synthetic_output_projection() -> None:
     assert selected[0].frame.file_path == "images/frame_000001_nz.jpg"
     expected = selected[0].projected_points * (768.0 / selected[0].frame.width)
     assert np.allclose(np.asarray(overlays[0].polygon), expected, atol=1e-4)
+    world_overlay = window._tag_image_overlays(group, window._params, output_size=768)
+    assert len(world_overlay) == 1
+    assert np.allclose(np.asarray(overlays[0].polygon), np.asarray(world_overlay[0].polygon), atol=1.0)
+    window.deleteLater()
+
+
+def test_current_case_synthetic_output_reconstructs_at_world_overlay_position(tmp_path: Path) -> None:
+    case_dir = Path("_compare/apriltag_test/cases/current")
+    if not (case_dir / "case.json").is_file():
+        pytest.skip("local AprilTag comparison case is not available")
+    _app()
+    case = load_case(case_dir)
+    metadata = case_cubemap_view_metadata(case)
+    if metadata is None:
+        pytest.skip("local AprilTag comparison Cube6 metadata is not available")
+    window = AprilTagSceneViewerWindow(initial_case=case_dir)
+    if "frame_000001" not in window._source_equirect_rotations:
+        pytest.skip("local AprilTag source equirect rotation is not available")
+    window.select_camera_by_name("frame_000001")
+    window.ray_basis_combo.setCurrentIndex(window.ray_basis_combo.findData(RAY_BASIS_WORLD))
+    window.set_active_face("pz")
+    group = window.selected_world_group()
+    raw_group = window.selected_raw_group()
+    assert group is not None
+    assert raw_group is not None
+    camera, right, up, forward = camera_pose_from_perspective_params(group, window._params)
+    window.set_tag_transform(
+        center=tuple(camera + forward * 5.0 + right * 0.5 + up * 0.25),
+        yaw_deg=window._params.yaw_deg,
+        pitch_deg=window._params.pitch_deg,
+        roll_deg=window._params.roll_deg,
+        size_sfm=1.0,
+    )
+    world_overlay = np.asarray(window._tag_image_overlays(group, window._params, output_size=768)[0].polygon)
+    candidates, _total = window._synthetic_tag_candidates()
+    selected = frozenset(
+        candidate.frame.file_path
+        for candidate in candidates
+        if candidate.frame.file_path.startswith("images/frame_000001_")
+    )
+    assert selected == frozenset({"images/frame_000001_nz.jpg"})
+
+    marker = tmp_path / "black_marker.png"
+    assert imwrite_unicode(marker, np.zeros((128, 128), dtype=np.uint8))
+    center_sfm, normal_sfm, up_sfm, true_scale = window._synthetic_tag_placement_sfm()
+    output_dir = tmp_path / "tagged"
+    report = inject_synthetic_apriltag(
+        SyntheticAprilTagConfig(
+            input_transforms=case.transforms_for_processing(),
+            output_dir=output_dir,
+            tag_image=marker,
+            tag_size_m=float(case.default_tag_size_m),
+            true_scale=true_scale,
+            tag_center_sfm=center_sfm,
+            tag_normal_sfm=normal_sfm,
+            tag_up_sfm=up_sfm,
+            frame_file_paths=selected,
+            copy_unselected_frames=False,
+            output_tagged_only=True,
+            cubemap_view_params=metadata,
+            frame_transform_overrides=window._synthetic_frame_transform_overrides(),
+            write_normalized_transforms=True,
+        )
+    )
+    assert report["frames_written"] == 1
+
+    source_rotation = window._source_equirect_rotation_for_group(group)
+    assert source_rotation is not None
+    display_matrix = world_display_matrix(case.coordinate_profile)
+    base_equirect = render_generated_cubemap_source_axis(
+        raw_group,
+        source_rotation,
+        cubemap_view_params=metadata,
+        output_width=1024,
+        output_height=512,
+        image_cache={},
+        sfm_to_preview_matrix=display_matrix,
+    )
+    output_frames = {
+        face: replace(frame, image_path=output_dir / frame.file_path)
+        if (output_dir / frame.file_path).is_file()
+        else frame
+        for face, frame in raw_group.frames_by_face.items()
+    }
+    tagged_equirect = render_generated_cubemap_source_axis(
+        CubemapFrameGroup(raw_group.name, output_frames, raw_group.group_index),
+        source_rotation,
+        cubemap_view_params=metadata,
+        output_width=1024,
+        output_height=512,
+        image_cache={},
+        sfm_to_preview_matrix=display_matrix,
+    )
+    yaw, pitch, roll, fov = axis_face_view_params(group, "pz", fov_deg=window._params.fov_deg)
+    anchor = PerspectiveParams(yaw_deg=yaw, pitch_deg=pitch, roll_deg=roll, fov_deg=fov)
+    params = _source_equirect_preview_params(window._params, "pz", RAY_BASIS_WORLD, anchor)
+    base_view = equirect_to_perspective(base_equirect, params, output_size=768)
+    tagged_view = equirect_to_perspective(tagged_equirect, params, output_size=768)
+    diff = np.max(np.abs(tagged_view.astype(np.int16) - base_view.astype(np.int16)), axis=2)
+    ys, xs = np.where(diff > 30)
+
+    assert len(xs) > 100
+    assert np.allclose([float(xs.mean()), float(ys.mean())], world_overlay.mean(axis=0), atol=2.0)
     window.deleteLater()
 
 
