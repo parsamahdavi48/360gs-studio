@@ -38,6 +38,8 @@ class PerspectiveLabelOverlay:
     polyline: tuple[tuple[float, float], ...] = ()
     dashed: bool = False
     point_radius: float = 0.0
+    points: tuple[tuple[float, float], ...] = ()
+    point_alpha: float = 1.0
 
 
 def bgr_to_qimage(image: np.ndarray) -> QImage:
@@ -457,6 +459,9 @@ class PerspectiveGLImageView(QOpenGLWidget):
         x1, y1, x2, y2 = item.box
         rect = QRectF(float(x1), float(y1), float(max(1, x2 - x1)), float(max(1, y2 - y1)))
         color = QColor(int(item.color_bgr[2]), int(item.color_bgr[1]), int(item.color_bgr[0]))
+        if item.points:
+            self._draw_points_overlay(painter, item, color)
+            return
         if item.polyline:
             self._draw_polyline_overlay(painter, item, color)
             return
@@ -525,6 +530,20 @@ class PerspectiveGLImageView(QOpenGLWidget):
             painter.drawText(origin, item.label)
             painter.setPen(QPen(color, 1))
             painter.drawText(origin, item.label)
+
+    def _draw_points_overlay(self, painter: QPainter, item: PerspectiveLabelOverlay, color: QColor) -> None:
+        color.setAlphaF(max(0.0, min(1.0, float(item.point_alpha))))
+        points = QPolygonF([QPointF(float(x), float(y)) for x, y in item.points])
+        radius = float(item.point_radius)
+        if radius <= 1.0:
+            painter.setPen(QPen(color, max(1, int(round(max(radius, 1.0))))))
+            painter.setBrush(Qt.NoBrush)
+            painter.drawPoints(points)
+            return
+        painter.setPen(Qt.NoPen)
+        painter.setBrush(color)
+        for point in points:
+            painter.drawEllipse(point, radius, radius)
 
 
 class PerspectiveImageView(QWidget):

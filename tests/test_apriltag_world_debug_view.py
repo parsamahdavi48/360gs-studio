@@ -6,6 +6,7 @@ from pathlib import Path
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 import numpy as np
+import pytest
 from PySide6.QtCore import QPointF, Qt
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication
@@ -714,6 +715,87 @@ def test_world_debug_view_fixed_view_drag_emits_camera_delta() -> None:
     )
 
     assert deltas == [(12.0, -7.0)]
+    view.deleteLater()
+
+
+def test_world_debug_view_can_disable_fixed_view_pan_and_wheel() -> None:
+    _app()
+
+    class MouseEventStub:
+        def __init__(
+            self,
+            position: QPointF,
+            button: Qt.MouseButton,
+            buttons: Qt.MouseButton,
+        ) -> None:
+            self._position = position
+            self._button = button
+            self._buttons = buttons
+            self.accepted = False
+
+        def position(self) -> QPointF:
+            return self._position
+
+        def button(self) -> Qt.MouseButton:
+            return self._button
+
+        def buttons(self) -> Qt.MouseButton:
+            return self._buttons
+
+        def accept(self) -> None:
+            self.accepted = True
+
+    class AngleDeltaStub:
+        def __init__(self, value: int) -> None:
+            self._value = value
+
+        def y(self) -> int:
+            return self._value
+
+    class WheelEventStub:
+        def __init__(self, value: int) -> None:
+            self._value = value
+            self.accepted = False
+
+        def angleDelta(self) -> AngleDeltaStub:
+            return AngleDeltaStub(self._value)
+
+        def accept(self) -> None:
+            self.accepted = True
+
+    view = AprilTagWorldDebugView()
+    view.resize(400, 300)
+    view.set_fixed_perspective_view(
+        camera_position=np.array([1.0, 2.0, 3.0]),
+        right=np.array([1.0, 0.0, 0.0]),
+        up=np.array([0.0, 1.0, 0.0]),
+        forward=np.array([0.0, 0.0, 1.0]),
+        fov_deg=90.0,
+    )
+    view.set_fixed_navigation_enabled(False)
+    start_center = view._view_center.copy()
+    start_pixels = float(view._pixels_per_unit)
+
+    view.mousePressEvent(
+        MouseEventStub(
+            QPointF(100.0, 100.0),
+            Qt.MouseButton.RightButton,
+            Qt.MouseButton.RightButton,
+        )
+    )
+    move_event = MouseEventStub(
+        QPointF(150.0, 125.0),
+        Qt.MouseButton.NoButton,
+        Qt.MouseButton.RightButton,
+    )
+    view.mouseMoveEvent(move_event)
+    wheel_event = WheelEventStub(120)
+    view.wheelEvent(wheel_event)  # type: ignore[arg-type]
+
+    assert move_event.accepted
+    assert wheel_event.accepted
+    assert np.allclose(view._view_center, start_center)
+    assert view._pixels_per_unit == pytest.approx(start_pixels)
     view.deleteLater()
 
 

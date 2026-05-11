@@ -32,6 +32,7 @@ from devtools.apriltag.scene_viewer import (
     RAY_BASIS_BOTH,
     RAY_BASIS_IMAGE,
     RAY_BASIS_WORLD,
+    RIGHT_VIEW_IMAGE_POINTCLOUD,
     RIGHT_VIEW_POINTCLOUD,
     RIGHT_VIEW_RECONSTRUCTED_CUBE6,
     RIGHT_VIEW_SOURCE_EQUIRECT,
@@ -508,6 +509,8 @@ def test_scene_viewer_ui_defaults_target_scene_validation_workflow(tmp_path: Pat
     window = AprilTagSceneViewerWindow(initial_case=case_dir)
 
     assert window.open_case_button.text() == "シーンを開く"
+    assert window.mode_combo.currentData() == RIGHT_VIEW_IMAGE_POINTCLOUD
+    assert window.mode_combo.itemText(window.mode_combo.findData(RIGHT_VIEW_IMAGE_POINTCLOUD)) == "画像+点群"
     assert window.mode_combo.itemText(window.mode_combo.findData(RIGHT_VIEW_POINTCLOUD)) == "点群"
     assert window.mode_combo.itemText(window.mode_combo.findData(RIGHT_VIEW_SOURCE_EQUIRECT)) == "元360画像"
     assert window.mode_combo.itemText(window.mode_combo.findData(RIGHT_VIEW_RECONSTRUCTED_CUBE6)) == "Cube6再構築"
@@ -1568,7 +1571,7 @@ def test_scene_viewer_loads_case_and_selects_camera(tmp_path: Path) -> None:
     assert window.selected_world_group().name == "cam_002"
     assert window._world_pointcloud is not None
     assert len(window._world_pointcloud.points) == 4
-    assert window.right_stack.currentWidget() is window.point_view
+    assert window.right_stack.currentWidget() is window.image_view
     window.mode_combo.setCurrentIndex(window.mode_combo.findData("image"))
     assert window.right_stack.currentWidget() is window.image_view
     window.deleteLater()
@@ -1788,4 +1791,26 @@ def test_scene_viewer_image_tag_overlay_matches_pointcloud_projection(tmp_path: 
 
     assert len(overlays) == 1
     assert np.allclose(np.asarray(overlays[0].polygon), point_projection, atol=1e-4)
+    window.deleteLater()
+
+
+def test_scene_viewer_image_pointcloud_overlay_projects_visible_points(tmp_path: Path) -> None:
+    _app()
+    case_dir = _write_cube6_case(tmp_path)
+
+    window = AprilTagSceneViewerWindow(initial_case=case_dir)
+    window.set_active_face("pz")
+    group = window.selected_world_group()
+    assert group is not None
+
+    overlays = window._pointcloud_image_overlays(group, window._params, output_size=768)
+
+    assert len(overlays) == 1
+    assert overlays[0].label == ""
+    assert overlays[0].point_radius == pytest.approx(1.0)
+    assert 0.0 < overlays[0].point_alpha < 1.0
+    points = np.asarray(overlays[0].points, dtype=np.float64)
+    assert points.shape == (4, 2)
+    assert np.all(np.isfinite(points))
+    assert np.all((points >= 0.0) & (points < 768.0))
     window.deleteLater()

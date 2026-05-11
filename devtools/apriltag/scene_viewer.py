@@ -92,9 +92,15 @@ SIDE_FACE_ORDER = frozenset({"pz", "px", "nx", "nz"})
 RAY_BASIS_WORLD = "world"
 RAY_BASIS_IMAGE = "image"
 RAY_BASIS_BOTH = "both"
+RIGHT_VIEW_IMAGE_POINTCLOUD = "image_pointcloud"
 RIGHT_VIEW_POINTCLOUD = "pointcloud"
 RIGHT_VIEW_SOURCE_EQUIRECT = "image"
 RIGHT_VIEW_RECONSTRUCTED_CUBE6 = "cube6_reconstruct"
+RIGHT_VIEW_IMAGE_MODES = {
+    RIGHT_VIEW_IMAGE_POINTCLOUD,
+    RIGHT_VIEW_SOURCE_EQUIRECT,
+    RIGHT_VIEW_RECONSTRUCTED_CUBE6,
+}
 LICHTFELD_IMAGE_RAY_DISPLAY_PROFILES = {
     COORDINATE_PROFILE_LICHTFELD_CUBE6,
     COORDINATE_PROFILE_LICHTFELD_CUBE6_PRE_FINAL_PLY,
@@ -730,6 +736,44 @@ def project_world_points_to_right_view(
     return np.column_stack([x, y]).astype(np.float32)
 
 
+def project_world_points_to_right_view_visible(
+    group: CubemapFrameGroup,
+    params: PerspectiveParams,
+    points: np.ndarray,
+    *,
+    output_size: int,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    points = np.asarray(points, dtype=np.float64).reshape(-1, 3)
+    if len(points) == 0:
+        return (
+            np.empty((0, 2), dtype=np.float32),
+            np.empty((0,), dtype=np.float64),
+            np.empty((0,), dtype=np.int64),
+        )
+    camera, right, up, forward = camera_pose_from_perspective_params(group, params)
+    right, up, forward = _right_view_screen_basis(right=right, up=up, forward=forward)
+    rel = points - camera.reshape(1, 3)
+    depth = rel @ forward
+    valid = np.isfinite(depth) & (depth > 1e-8)
+    if not np.any(valid):
+        return (
+            np.empty((0, 2), dtype=np.float32),
+            np.empty((0,), dtype=np.float64),
+            np.empty((0,), dtype=np.int64),
+        )
+    valid_indices = np.nonzero(valid)[0]
+    size = max(1, int(output_size))
+    focal = 0.5 * float(size) / np.tan(np.deg2rad(float(params.fov_deg)) * 0.5)
+    center = float(size) * 0.5
+    rel = rel[valid]
+    depth = depth[valid]
+    x = center + focal * ((rel @ right) / depth)
+    y = center - focal * ((rel @ up) / depth)
+    xy = np.column_stack([x, y]).astype(np.float32)
+    finite = np.isfinite(xy).all(axis=1)
+    return xy[finite], depth[finite], valid_indices[finite]
+
+
 def face_forward_ray(group: CubemapFrameGroup, face: str) -> np.ndarray | None:
     frame = group.frames_by_face.get(face)
     if frame is None:
@@ -875,6 +919,7 @@ class AprilTagSceneViewerWindow(QWidget):
         self.prev_button = QPushButton("前")
         self.next_button = QPushButton("次")
         self.mode_combo = QComboBox()
+        self.mode_combo.addItem("画像+点群", RIGHT_VIEW_IMAGE_POINTCLOUD)
         self.mode_combo.addItem("点群", RIGHT_VIEW_POINTCLOUD)
         self.mode_combo.addItem("元360画像", RIGHT_VIEW_SOURCE_EQUIRECT)
         self.mode_combo.addItem("Cube6再構築", RIGHT_VIEW_RECONSTRUCTED_CUBE6)
@@ -946,6 +991,7 @@ class AprilTagSceneViewerWindow(QWidget):
         self.world_view.setMinimumSize(520, 420)
         self.right_stack = QStackedWidget()
         self.point_view = AprilTagWorldDebugView()
+        self.point_view.set_fixed_navigation_enabled(False)
         self.point_view.setMinimumSize(520, 420)
         self.image_view = PerspectiveImageView("Cubemap画像を読み込みます")
         self.image_view.setMinimumSize(520, 420)
@@ -1401,6 +1447,77 @@ class AprilTagSceneViewerWindow(QWidget):
                 fill_alpha=0.16,
             )
         ]
+
+    def _pointcloud_image_overlays(
+        self,
+        group: CubemapFrameGroup | None,
+        params: PerspectiveParams,
+        *,
+        output_size: int = 768,
+        max_points: int = 30_000,
+    ) -> list[PerspectiveLabelOverlay]:
+        if group is None or self._world_pointcloud is None or len(self._world_pointcloud.points) == 0:
+            return []
+        points = self._world_pointcloud.points
+        colors = self._world_pointcloud.colors
+        if len(points) > max_points:
+            indices = np.linspace(0, len(points) - 1, max_points, dtype=np.int64)
+            points = points[indices]
+            colors = colors[indices] if colors is not None else None
+        projected, _depth, indices = project_world_points_to_right_view_visible(
+            group,
+            params,
+            points,
+            output_size=output_size,
+        )
+        if len(projected) == 0:
+            return []
+        size = float(max(1, int(output_size)))
+        mask = (
+            (projected[:, 0] >= 0.0)
+            & (projected[:, 1] >= 0.0)
+            & (projected[:, 0] < size)
+            & (projected[:, 1] < size)
+        )
+        if not np.any(mask):
+            return []
+        projected = projected[mask]
+        colors = colors[indices[mask]] if colors is not None else None
+        if colors is None:
+            return [
+                PerspectiveLabelOverlay(
+                    label="",
+                    box=(0, 0, 0, 0),
+                    origin=(0, 0),
+                    color_bgr=(164, 155, 145),
+                    points=tuple((float(x), float(y)) for x, y in projected),
+                    point_alpha=0.58,
+                    point_radius=1.0,
+                )
+            ]
+
+        overlays: list[PerspectiveLabelOverlay] = []
+        quantized = (np.clip(colors, 0, 255).astype(np.uint8) // 64) * 64 + 32
+        keys = (
+            quantized[:, 0].astype(np.uint32) << 16
+            | quantized[:, 1].astype(np.uint32) << 8
+            | quantized[:, 2].astype(np.uint32)
+        )
+        for key in np.unique(keys):
+            group_mask = keys == key
+            rgb = quantized[group_mask][0]
+            overlays.append(
+                PerspectiveLabelOverlay(
+                    label="",
+                    box=(0, 0, 0, 0),
+                    origin=(0, 0),
+                    color_bgr=(int(rgb[2]), int(rgb[1]), int(rgb[0])),
+                    points=tuple((float(x), float(y)) for x, y in projected[group_mask]),
+                    point_alpha=0.62,
+                    point_radius=1.0,
+                )
+            )
+        return overlays
 
     def _tag_overlay_color(self, points: np.ndarray) -> tuple[int, int, int]:
         min_area = float(self.validation_min_area_spin.value()) if hasattr(self, "validation_min_area_spin") else 0.0
@@ -1982,7 +2099,7 @@ class AprilTagSceneViewerWindow(QWidget):
 
     def _sync_mode_visibility(self) -> None:
         mode = str(self.mode_combo.currentData() or RIGHT_VIEW_POINTCLOUD)
-        if mode in {RIGHT_VIEW_SOURCE_EQUIRECT, RIGHT_VIEW_RECONSTRUCTED_CUBE6}:
+        if mode in RIGHT_VIEW_IMAGE_MODES:
             self.right_stack.setCurrentWidget(self.image_view)
             self._render_image_view()
         else:
@@ -1997,13 +2114,20 @@ class AprilTagSceneViewerWindow(QWidget):
             self.image_view.setText("Cubemap画像グループがありません")
             return
         source_equirect = self._source_equirect_for_group(world_group)
-        use_source_equirect = mode == RIGHT_VIEW_SOURCE_EQUIRECT and source_equirect is not None
-        use_reconstructed_cube6 = mode == RIGHT_VIEW_RECONSTRUCTED_CUBE6
+        source_rotation_for_group = self._source_equirect_rotation_for_group(world_group)
+        use_pointcloud_overlay = mode == RIGHT_VIEW_IMAGE_POINTCLOUD
+        use_source_equirect = (
+            mode in {RIGHT_VIEW_SOURCE_EQUIRECT, RIGHT_VIEW_IMAGE_POINTCLOUD}
+            and source_equirect is not None
+        )
+        use_reconstructed_cube6 = mode == RIGHT_VIEW_RECONSTRUCTED_CUBE6 or (
+            mode == RIGHT_VIEW_IMAGE_POINTCLOUD and source_equirect is None and source_rotation_for_group is not None
+        )
         source_path = source_equirect[0] if source_equirect is not None else None
         source_rotation = (
             source_equirect[1]
             if use_source_equirect
-            else self._source_equirect_rotation_for_group(world_group)
+            else source_rotation_for_group
         )
         anchor_params = None
         if use_source_equirect or use_reconstructed_cube6:
@@ -2040,10 +2164,15 @@ class AprilTagSceneViewerWindow(QWidget):
             f"{self._ray_basis_mode()}:{image_group.name}:"
             f"{source_path if use_source_equirect else ''}"
         )
-        overlays = self._right_image_tag_overlays(
-            world_group,
-            use_output_projection=use_source_equirect or use_reconstructed_cube6,
-            output_size=768,
+        overlays = []
+        if use_pointcloud_overlay:
+            overlays.extend(self._pointcloud_image_overlays(world_group, self._params, output_size=768))
+        overlays.extend(
+            self._right_image_tag_overlays(
+                world_group,
+                use_output_projection=use_source_equirect or use_reconstructed_cube6,
+                output_size=768,
+            )
         )
         if self._displayed_image_key == key and self.image_view.set_perspective_params(view_params):
             self.image_view.set_drag_mode("look")
@@ -2143,12 +2272,19 @@ class AprilTagSceneViewerWindow(QWidget):
         if source_equirect is not None:
             source_image_text = f" / source equirect={source_equirect[0].name}"
         mapping = ""
-        if mode == RIGHT_VIEW_RECONSTRUCTED_CUBE6 and group is not None:
+        if mode == RIGHT_VIEW_IMAGE_POINTCLOUD and group is not None:
+            if source_equirect is not None:
+                mapping = " / image preview=source equirect + pointcloud"
+            elif self._source_equirect_rotation_for_group(group) is not None:
+                mapping = " / image preview=Cube6 reconstructed + pointcloud"
+            else:
+                mapping = " / image preview=Cube6 axis + pointcloud"
+        elif mode == RIGHT_VIEW_RECONSTRUCTED_CUBE6 and group is not None:
             if self._source_equirect_rotation_for_group(group) is not None:
                 mapping = " / image preview=Cube6 reconstructed"
         elif mode == RIGHT_VIEW_SOURCE_EQUIRECT and source_equirect is not None:
             mapping = " / image preview=source equirect direct"
-        elif basis_group is not None and image_group is not None:
+        if (not mapping or mode == RIGHT_VIEW_IMAGE_POINTCLOUD) and basis_group is not None and image_group is not None:
             closest = closest_image_face_for_world_face(
                 basis_group,
                 image_group,
@@ -2163,7 +2299,7 @@ class AprilTagSceneViewerWindow(QWidget):
                 )
                 opposite_text = "" if opposite is None else f", reverse={opposite[0]} {opposite[1]:.1f}deg"
                 same = "" if not np.isfinite(same_label_angle) else f", same-label={same_label_angle:.1f}deg"
-                mapping = f" / active {self._active_face}->image {image_face} ({angle:.1f}deg{same}{opposite_text})"
+                mapping += f" / active {self._active_face}->image {image_face} ({angle:.1f}deg{same}{opposite_text})"
         display_path = self.case.image_root if self.case.input_mode == "scene" and self.case.image_root else self.case.case_dir
         self.case_label.setText(str(display_path))
         self._last_status_detail = (
@@ -2200,7 +2336,12 @@ class AprilTagSceneViewerWindow(QWidget):
         if self.right_stack.currentWidget() is not self.image_view:
             return False
         mode = str(self.mode_combo.currentData() or RIGHT_VIEW_POINTCLOUD)
-        if mode == RIGHT_VIEW_RECONSTRUCTED_CUBE6:
+        if mode == RIGHT_VIEW_IMAGE_POINTCLOUD:
+            source_preview = (
+                self._source_equirect_for_group(self.selected_world_group()) is not None
+                or self._source_equirect_rotation_for_group(self.selected_world_group()) is not None
+            )
+        elif mode == RIGHT_VIEW_RECONSTRUCTED_CUBE6:
             source_preview = self._source_equirect_rotation_for_group(self.selected_world_group()) is not None
         elif mode == RIGHT_VIEW_SOURCE_EQUIRECT:
             source_preview = self._source_equirect_for_group(self.selected_world_group()) is not None

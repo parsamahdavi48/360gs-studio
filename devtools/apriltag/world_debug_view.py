@@ -337,6 +337,7 @@ class AprilTagWorldDebugView(QOpenGLWidget):
         self._press_pos: QPointF | None = None
         self._press_button: Qt.MouseButton | None = None
         self._user_navigated = False
+        self._fixed_navigation_enabled = True
         self._gpu_pointcloud_enabled = True
         self._gpu_failed = False
         self._gpu_initialized = False
@@ -359,6 +360,9 @@ class AprilTagWorldDebugView(QOpenGLWidget):
     def set_gpu_pointcloud_enabled(self, enabled: bool) -> None:
         self._gpu_pointcloud_enabled = bool(enabled)
         self.update()
+
+    def set_fixed_navigation_enabled(self, enabled: bool) -> None:
+        self._fixed_navigation_enabled = bool(enabled)
 
     def gpu_pointcloud_active(self) -> bool:
         return (
@@ -565,6 +569,9 @@ class AprilTagWorldDebugView(QOpenGLWidget):
                 self._view_pitch_deg = max(-85.0, min(85.0, self._view_pitch_deg + float(delta.y()) * 0.25))
                 self.update()
         elif buttons & (Qt.RightButton | Qt.MiddleButton):
+            if self._fixed_view_basis is not None and not self._fixed_navigation_enabled:
+                event.accept()
+                return
             self._user_navigated = True
             right, up, _forward = self._view_basis()
             self._view_center -= right * (float(delta.x()) / max(self._pixels_per_unit, 1e-6))
@@ -583,6 +590,9 @@ class AprilTagWorldDebugView(QOpenGLWidget):
         self._press_button = None
 
     def wheelEvent(self, event: QWheelEvent) -> None:
+        if self._fixed_view_basis is not None and not self._fixed_navigation_enabled:
+            event.accept()
+            return
         delta = event.angleDelta().y()
         if delta == 0:
             return
