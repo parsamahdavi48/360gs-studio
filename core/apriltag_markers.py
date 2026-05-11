@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 import html
 
 import cv2
@@ -78,23 +79,17 @@ def parse_tag_ids(
 
 
 def marker_tooltip_html(family: str, tag_id: int, *, cell_px: int = 9) -> str:
-    """Return a small HTML table preview for a marker without creating an image file."""
+    """Return a square inline-image preview for a marker without creating a file."""
     dictionary = dictionary_for_family(family)
     modules = int(dictionary.markerSize) + 2
-    marker = cv2.aruco.generateImageMarker(dictionary, clamp_tag_id(family, tag_id), modules * cell_px)
-    rows: list[str] = []
-    for row in range(modules):
-        cells: list[str] = []
-        y = row * cell_px + cell_px // 2
-        for col in range(modules):
-            x = col * cell_px + cell_px // 2
-            color = "#ffffff" if int(marker[y, x]) > 127 else "#000000"
-            cells.append(f'<td bgcolor="{color}" width="{cell_px}" height="{cell_px}"></td>')
-        rows.append("<tr>" + "".join(cells) + "</tr>")
+    preview_px = modules * cell_px
+    marker = cv2.aruco.generateImageMarker(dictionary, clamp_tag_id(family, tag_id), preview_px)
+    ok, encoded = cv2.imencode(".png", marker)
+    if not ok:
+        raise ValueError("Failed to encode AprilTag marker preview")
+    data = base64.b64encode(encoded.tobytes()).decode("ascii")
     label = html.escape(f"{family} / ID {clamp_tag_id(family, tag_id)}")
     return (
         f"<b>{label}</b><br>"
-        '<table cellspacing="0" cellpadding="0" border="1" style="border-collapse:collapse">'
-        + "".join(rows)
-        + "</table>"
+        f'<img src="data:image/png;base64,{data}" width="{preview_px}" height="{preview_px}">'
     )

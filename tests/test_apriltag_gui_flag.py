@@ -128,7 +128,9 @@ def test_apriltag_scale_tab_uses_internal_actions() -> None:
         assert step.apriltag_print_page_combo.findData("A4") >= 0
         assert step.apriltag_print_page_combo.findData("A3") >= 0
         assert step.apriltag_print_page_combo.findData("Letter") >= 0
-        assert "<table" in step.apriltag_id_edit.toolTip()
+        tooltip = step.apriltag_id_edit.toolTip()
+        assert 'src="data:image/png;base64,' in tooltip
+        assert 'width="72" height="72"' in tooltip
         """
     )
 
