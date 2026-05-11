@@ -1134,8 +1134,8 @@ TIPS: dict[str, str] = {
     "APRILTAG_TAG_SIZE": "Physical side length of the printed AprilTag outer black square, in meters.",
     "APRILTAG_FAMILY": (
         "Use tag36h11 unless your printed tag uses another family. It has strong error resistance "
-        "and enough IDs, so it is the default for both walking and drone captures.\n"
-        "For longer distance, increase tag size instead of changing family."
+        "and enough IDs, so it is the default for both walking and drone captures. "
+        "For long-distance captures, print a larger tag from the same family."
     ),
     "APRILTAG_TAG_ID": "Use only this tag ID.",
     "APRILTAG_TAG_IDS": (

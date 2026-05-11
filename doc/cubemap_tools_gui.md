@@ -150,17 +150,17 @@ After adjusting masks, turning `Images` off avoids reconverting existing cubemap
 
 ## Scale From AprilTags
 
-The `Scale` tab is a post-export tool. It is not part of the bottom `Run` button because scale estimation needs an existing projected Cubemap output: `<scene>/output/transforms.json` plus pinhole images under `output/`. Direct equirectangular output for 3DGUT is not estimated here; create Cubemap images first.
+If you want to estimate scale with AprilTags, print and place the tags before capture. The folded `Tag PDF` section in the `Scale` tab can create a printable PDF for the selected tag family, ID, physical size, and paper size. Print at actual size / 100%; printer scaling changes the physical tag size and invalidates the estimate.
 
-Use it when you placed printed AprilTags with a known outer black-square size in the scene.
+When placing tags in multiple locations, use a different tag ID for each location. Reusing the same ID in multiple places makes the observations ambiguous and breaks the estimate. Keep tags fixed during capture, and place them so they are visible from multiple frames when possible.
 
-1. Create the Step 4 output first.
+After capture:
+
+1. Create the Step 4 Cubemap output normally. Scale estimation needs the projected `output/transforms.json` and images under `output/`. Direct equirectangular output for 3DGUT cannot be estimated here.
 2. Open `Scale`.
 3. Enter the printed tag size, family, and tag IDs used in the capture. Keep the default `tag36h11 / ID 7` unless you intentionally printed another tag.
 4. Click `Estimate`. The bottom log and progress bar show detection progress. The result shows the estimated scale and observation statistics without modifying files.
 5. Click `Apply to Scale` only when the result looks reasonable. Step 4 backs up the current files to `output/apriltag_scale_backup_TIMESTAMP/`, then scales camera positions in `output/transforms.json` and points in `output/pointcloud.ply` when that PLY exists.
-
-The folded `Tag PDF` section can create printable A4, A3, or Letter PDFs for a selected tag. Print at actual size / 100%; printer scaling changes the physical tag size and invalidates the estimate.
 
 ## Continue To Step 5
 
