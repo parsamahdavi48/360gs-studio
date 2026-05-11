@@ -208,10 +208,17 @@ def test_apriltag_scale_tab_uses_internal_actions() -> None:
         assert step.primary_action_enabled() is False
         assert step.primary_action_tooltip() == i18n.tip("APRILTAG_TAB_PRIMARY_ACTION")
         assert step.apriltag_apply_btn.isEnabled() is False
+        assert step.apriltag_scale_row.isHidden()
         assert step.apriltag_copy_scale_btn.isHidden()
         assert step.apriltag_print_page_combo.findData("A4") >= 0
         assert step.apriltag_print_page_combo.findData("A3") >= 0
         assert step.apriltag_print_page_combo.findData("Letter") >= 0
+        result_tip = step.apriltag_result_label.toolTip()
+        assert "観測" in result_tip or "observations" in result_tip
+        assert "ペア" in result_tip or "pairs" in result_tip
+        assert "inlier" in result_tip
+        assert "RMS" in result_tip
+        assert "Scaleへ反映" in result_tip or "applying scale" in result_tip
         tooltip = step.apriltag_id_edit.toolTip()
         assert 'src="data:image/png;base64,' in tooltip
         assert 'width="72" height="72"' in tooltip
@@ -251,10 +258,14 @@ def test_apriltag_result_wraps_and_copy_button_copies_scale(tmp_path: Path) -> N
             {{"observation_count": 12, "pair_count": 8, "inlier_count": 7, "rms_residual_m": 0.0123}},
         )
         step._sync_apriltag_controls()
+        assert step.apriltag_scale_value_label.text() == "scale=1.23456789"
+        assert step.apriltag_scale_row.layout().itemAt(0).widget() is step.apriltag_scale_value_label
+        assert step.apriltag_scale_row.layout().itemAt(1).widget() is step.apriltag_copy_scale_btn
         assert not step.apriltag_copy_scale_btn.isHidden()
         assert step.apriltag_copy_scale_btn.isEnabled()
         assert step.apriltag_result_label.wordWrap()
-        assert step.apriltag_result_label.text().count("\\n") >= 3
+        assert not step.apriltag_result_label.text().startswith("scale=")
+        assert step.apriltag_result_label.text().count("\\n") >= 2
         step._copy_apriltag_scale()
         assert QApplication.clipboard().text() == "1.23456789"
         assert step.apriltag_copy_scale_btn.toolTip() == i18n.t("APRILTAG_SCALE_COPIED")
@@ -267,7 +278,9 @@ def test_apriltag_result_wraps_and_copy_button_copies_scale(tmp_path: Path) -> N
             transforms_backup=backup,
         )
         step._show_apriltag_applied_result(result)
+        assert step.apriltag_scale_value_label.text() == "scale=1.23456789"
         assert "\\n" in step.apriltag_result_label.text()
+        assert not step.apriltag_result_label.text().startswith("scale=")
         assert "バックアップ:" in step.apriltag_result_label.text() or "Backup:" in step.apriltag_result_label.text()
         assert str(backup.parent) in step.apriltag_result_label.toolTip()
         assert step.apriltag_copy_scale_btn.toolTip() == i18n.t("APRILTAG_COPY_SCALE")

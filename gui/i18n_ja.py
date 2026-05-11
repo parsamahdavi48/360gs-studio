@@ -1142,7 +1142,15 @@ TIPS: dict[str, str] = {
     ),
     "APRILTAG_ESTIMATE": "投影済みCubemapの output/transforms.json と出力画像からAprilTagを検出し、メートル換算のスケールを推定します。エクイレクタングラー出力の場合は先にCubemap画像を書き出してください",
     "APRILTAG_APPLY_SCALE": "推定した係数を output/transforms.json のカメラ位置と output/pointcloud.ply に掛けます。元ファイルはバックアップします",
-    "APRILTAG_RESULT": "推定scale、採用観測数、inlier率、残差を表示します",
+    "APRILTAG_RESULT": (
+        "結果の読み方:\n"
+        "観測=採用されたタグ検出数。多いほど安定しやすいです。\n"
+        "ペア=同じIDのタグを別カメラ位置から見た組み合わせ数。0なら推定できません。\n"
+        "inlier=外れ値を除いた後にscale計算へ使ったペア数。ペア数に対して少ない場合は、"
+        "同じIDの複数配置、タグ実寸、印刷倍率、誤検出を確認してください。\n"
+        "RMS=採用ペアの残差です。小さいほど観測同士の整合が良く、"
+        "大きい場合はScaleへ反映する前に設定と撮影条件を見直してください"
+    ),
     "APRILTAG_PRINT_FAMILY": "PDFに出力するAprilTagファミリです。通常は推定に使うファミリと同じにします",
     "APRILTAG_PRINT_TAG_ID": "PDFに出力するタグIDです。マウスを重ねるとタグ形状を確認できます",
     "APRILTAG_PRINT_PAGE": (

@@ -1144,7 +1144,15 @@ TIPS: dict[str, str] = {
     ),
     "APRILTAG_ESTIMATE": "Detect AprilTags from projected Cubemap output/transforms.json and output images, then estimate meters per scene unit. For equirectangular output, create Cubemap images first.",
     "APRILTAG_APPLY_SCALE": "Multiply camera positions in output/transforms.json and output/pointcloud.ply by the estimated factor. Original files are backed up.",
-    "APRILTAG_RESULT": "Shows estimated scale, accepted observations, inlier ratio, and residual.",
+    "APRILTAG_RESULT": (
+        "How to read the result:\n"
+        "observations = accepted tag detections. More observations usually make the estimate more stable.\n"
+        "pairs = same-ID observations seen from different camera positions. 0 pairs means scale cannot be estimated.\n"
+        "inliers = pairs kept after outlier rejection. If this is low compared with pairs, check duplicate physical "
+        "locations using the same ID, tag size, print scaling, or false detections.\n"
+        "RMS = residual of the kept pairs. Lower is more consistent; if it is high, review settings and capture "
+        "conditions before applying scale."
+    ),
     "APRILTAG_PRINT_FAMILY": "AprilTag family to export to PDF. Usually keep this the same as the estimation family.",
     "APRILTAG_PRINT_TAG_ID": "Tag ID to export to PDF. Hover to preview the tag pattern.",
     "APRILTAG_PRINT_PAGE": (

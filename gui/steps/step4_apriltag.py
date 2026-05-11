@@ -111,11 +111,21 @@ class Step4AprilTagMixin:
         action_layout.addStretch()
         form.addRow("", action_row)
 
-        result_row = QWidget()
-        result_layout = QHBoxLayout(result_row)
+        result_widget = QWidget()
+        result_layout = QVBoxLayout(result_widget)
         result_layout.setContentsMargins(0, 0, 0, 0)
-        result_layout.setSpacing(4)
-        result_row.setMinimumWidth(0)
+        result_layout.setSpacing(2)
+        result_widget.setMinimumWidth(0)
+
+        self.apriltag_scale_row = QWidget()
+        scale_layout = QHBoxLayout(self.apriltag_scale_row)
+        scale_layout.setContentsMargins(0, 0, 0, 0)
+        scale_layout.setSpacing(4)
+        self.apriltag_scale_value_label = QLabel("")
+        self.apriltag_scale_value_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        self.apriltag_scale_value_label.setSizePolicy(QSizePolicy.Maximum, QSizePolicy.Preferred)
+        self.apriltag_scale_value_label.setToolTip(i18n.tip("APRILTAG_RESULT"))
+        scale_layout.addWidget(self.apriltag_scale_value_label)
 
         self.apriltag_result_label = QLabel(i18n.t("APRILTAG_RESULT_EMPTY"))
         self.apriltag_result_label.setMinimumWidth(0)
@@ -123,7 +133,6 @@ class Step4AprilTagMixin:
         self.apriltag_result_label.setWordWrap(True)
         self.apriltag_result_label.setToolTip(i18n.tip("APRILTAG_RESULT"))
         self.apriltag_result_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
-        result_layout.addWidget(self.apriltag_result_label, stretch=1)
 
         self.apriltag_copy_scale_btn = QToolButton()
         self.apriltag_copy_scale_btn.setObjectName("iconToolButton")
@@ -133,9 +142,14 @@ class Step4AprilTagMixin:
         self.apriltag_copy_scale_btn.setToolTip(i18n.t("APRILTAG_COPY_SCALE"))
         self.apriltag_copy_scale_btn.clicked.connect(self._copy_apriltag_scale)
         self.apriltag_copy_scale_btn.setVisible(False)
-        result_layout.addWidget(self.apriltag_copy_scale_btn)
+        scale_layout.addWidget(self.apriltag_copy_scale_btn)
+        scale_layout.addStretch()
+        self.apriltag_scale_row.setVisible(False)
 
-        form.addRow(i18n.t("APRILTAG_RESULT"), result_row)
+        result_layout.addWidget(self.apriltag_scale_row)
+        result_layout.addWidget(self.apriltag_result_label)
+
+        form.addRow(i18n.t("APRILTAG_RESULT"), result_widget)
 
         layout.addLayout(form)
         layout.addWidget(self._build_apriltag_print_section())
@@ -295,6 +309,7 @@ class Step4AprilTagMixin:
             widget.setEnabled(not running)
         if hasattr(self, "apriltag_copy_scale_btn"):
             has_scale = self._apriltag_last_scale is not None
+            self.apriltag_scale_row.setVisible(has_scale)
             self.apriltag_copy_scale_btn.setVisible(has_scale)
             self.apriltag_copy_scale_btn.setEnabled(has_scale and not running)
 
@@ -335,6 +350,8 @@ class Step4AprilTagMixin:
     def _set_apriltag_result_text(self, text: str, *, tooltip: str | None = None) -> None:
         self.apriltag_result_label.setText(text)
         self.apriltag_result_label.setToolTip(tooltip or i18n.tip("APRILTAG_RESULT"))
+        if self._apriltag_last_scale is None and hasattr(self, "apriltag_scale_value_label"):
+            self.apriltag_scale_value_label.setText("")
 
     def _copy_apriltag_scale(self) -> None:
         text = self._apriltag_last_scale_text.strip()
@@ -346,19 +363,31 @@ class Step4AprilTagMixin:
         clipboard.setText(text)
         self.apriltag_copy_scale_btn.setToolTip(i18n.t("APRILTAG_SCALE_COPIED"))
 
+    def _set_apriltag_scale_result_line(self, scale_text: str) -> None:
+        self.apriltag_scale_value_label.setText(f"scale={scale_text}")
+        self.apriltag_scale_value_label.setToolTip(i18n.tip("APRILTAG_RESULT"))
+
+    @staticmethod
+    def _without_first_result_line(text: str) -> str:
+        _first, separator, rest = text.partition("\n")
+        return rest if separator else text
+
     def _show_apriltag_estimate_result(self, scale: float, estimate: dict[str, object]) -> None:
         scale_text = f"{scale:.9g}"
         self._apriltag_last_scale = scale
         self._apriltag_last_scale_text = scale_text
         self._apriltag_scale_applied = False
+        self._set_apriltag_scale_result_line(scale_text)
         self.apriltag_copy_scale_btn.setToolTip(i18n.t("APRILTAG_COPY_SCALE"))
         self._set_apriltag_result_text(
-            i18n.t("APRILTAG_RESULT_FORMAT").format(
-                scale=scale_text,
-                observations=int(estimate.get("observation_count", 0)),
-                pairs=int(estimate.get("pair_count", 0)),
-                inliers=int(estimate.get("inlier_count", 0)),
-                rms=float(estimate.get("rms_residual_m", 0.0)),
+            self._without_first_result_line(
+                i18n.t("APRILTAG_RESULT_FORMAT").format(
+                    scale=scale_text,
+                    observations=int(estimate.get("observation_count", 0)),
+                    pairs=int(estimate.get("pair_count", 0)),
+                    inliers=int(estimate.get("inlier_count", 0)),
+                    rms=float(estimate.get("rms_residual_m", 0.0)),
+                )
             )
         )
 
@@ -368,13 +397,16 @@ class Step4AprilTagMixin:
         self._apriltag_last_scale = result.scale
         self._apriltag_last_scale_text = scale_text
         self._apriltag_scale_applied = True
+        self._set_apriltag_scale_result_line(scale_text)
         self.apriltag_copy_scale_btn.setToolTip(i18n.t("APRILTAG_COPY_SCALE"))
         self._set_apriltag_result_text(
-            i18n.t("APRILTAG_APPLIED_FORMAT").format(
-                scale=scale_text,
-                frames=result.frames_scaled,
-                points=result.points_scaled,
-                backup=self._wrapped_apriltag_path(backup_dir),
+            self._without_first_result_line(
+                i18n.t("APRILTAG_APPLIED_FORMAT").format(
+                    scale=scale_text,
+                    frames=result.frames_scaled,
+                    points=result.points_scaled,
+                    backup=self._wrapped_apriltag_path(backup_dir),
+                )
             ),
             tooltip=f"{i18n.tip('APRILTAG_RESULT')}\n{backup_dir}",
         )
