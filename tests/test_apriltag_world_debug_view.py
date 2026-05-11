@@ -23,6 +23,8 @@ from devtools.apriltag.scene_viewer import (
 )
 from devtools.apriltag.world_debug_view import (
     AprilTagWorldDebugView,
+    GRID_X_AXIS_COLOR,
+    GRID_Z_AXIS_COLOR,
     PointCloudSample,
     load_point_cloud_sample,
     transform_point_cloud_sample,
@@ -478,6 +480,11 @@ def test_world_debug_view_grid_bounds_fall_back_near_horizon() -> None:
     ).all()
     assert (bounds.x_min, bounds.x_max, bounds.z_min, bounds.z_max) == view._fallback_grid_bounds()
     view.deleteLater()
+
+
+def test_world_debug_view_grid_x_axis_line_is_red() -> None:
+    assert GRID_X_AXIS_COLOR.getRgb()[:3] == (255, 92, 92)
+    assert GRID_Z_AXIS_COLOR.getRgb()[:3] == (90, 175, 245)
 
 
 def test_world_debug_view_default_gizmo_screen_vectors_are_projection_locked() -> None:

@@ -14,6 +14,10 @@ from core.apriltag_geometry import tag_corners_sfm
 from devtools.apriltag.cubemap_preview import CubemapFrameGroup, axis_preview_frustum_rays
 
 
+GRID_X_AXIS_COLOR = QColor(255, 92, 92)
+GRID_Z_AXIS_COLOR = QColor(90, 175, 245)
+
+
 @dataclass(frozen=True)
 class PointCloudSample:
     points: np.ndarray
@@ -608,7 +612,7 @@ class AprilTagWorldDebugView(QWidget):
 
         for x in np.arange(x_min, x_max + step * 0.5, step):
             if abs(x) <= step * 0.25:
-                color = QColor(90, 175, 245)
+                color = GRID_Z_AXIS_COLOR
                 width = 2
             else:
                 color = self._grid_falloff_color(
@@ -625,7 +629,7 @@ class AprilTagWorldDebugView(QWidget):
             self._draw_world_line(painter, np.array([x, 0.0, z_min]), np.array([x, 0.0, z_max]), color, width)
         for z in np.arange(z_min, z_max + step * 0.5, step):
             if abs(z) <= step * 0.25:
-                color = QColor(245, 180, 90)
+                color = GRID_X_AXIS_COLOR
                 width = 2
             else:
                 color = self._grid_falloff_color(
