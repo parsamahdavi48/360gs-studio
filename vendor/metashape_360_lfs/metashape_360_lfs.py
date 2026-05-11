@@ -202,24 +202,17 @@ def transform_camera_matrix(transform: np.ndarray, fix_upside_down: bool = True)
         ], dtype=np.float64)
         transform = rot_x_pos90 @ transform
     
-    # Step 4's downstream LichtFeld output still needs this camera-side
-    # pre-compensation. Current LichtFeld builds convert transforms datasets by
-    # flipping OpenGL camera axes, then applying an internal 180° Y rotation to
-    # camera extrinsics. The source PLY import path does not receive this same
-    # camera-local rotation, so the JSON camera poses must be pre-compensated
-    # here and Step 4 applies its final orientation correction to JSON and PLY
-    # together.
-    cos_pi = -1.0
-    sin_pi = 0.0
-    y_rot_180 = np.array(
-        [
-            [cos_pi, 0, sin_pi, 0],
-            [0, 1, 0, 0],
-            [-sin_pi, 0, cos_pi, 0],
-            [0, 0, 0, 1],
-        ],
-        dtype=np.float64,
-    )
+    # Step 4: Pre-compensate for LichtFeld's 180° Y-rotation
+    # LichtFeld applies a Y-rotation to convert from OpenGL to COLMAP convention
+    # We apply the inverse here so they cancel out
+    cos_pi = -1.0  # cos(180°) = -1
+    sin_pi = 0.0   # sin(180°) = 0
+    y_rot_180 = np.array([
+        [cos_pi, 0, sin_pi, 0],
+        [0, 1, 0, 0],
+        [-sin_pi, 0, cos_pi, 0],
+        [0, 0, 0, 1]
+    ], dtype=np.float64)
     transform = y_rot_180 @ transform
     
     return transform
@@ -230,7 +223,8 @@ def get_applied_transform(fix_upside_down: bool = True) -> np.ndarray:
     """
     Get the 3x4 transformation matrix applied to point cloud.
     
-    Note: camera and point cloud output now share the same world transform.
+    Note: LichtFeld only applies Y-rotation to cameras, not point clouds.
+    So we don't need Y-rotation pre-compensation here.
     """
     # Base transform: row swap [2, 0, 1]
     applied_transform = np.eye(4)[:3, :]
@@ -247,8 +241,7 @@ def get_applied_transform(fix_upside_down: bool = True) -> np.ndarray:
         ], dtype=np.float64)
         applied_transform[:3, :3] = rot_x_pos90 @ applied_transform[:3, :3]
     
-    # NOTE: No Y-rotation here. The Y180 pre-compensation is camera-side only;
-    # applying it to the source PLY would double-compensate the point cloud.
+    # NOTE: No Y-rotation here - LichtFeld only applies Y-rot to cameras, not point clouds
     
     return applied_transform
 

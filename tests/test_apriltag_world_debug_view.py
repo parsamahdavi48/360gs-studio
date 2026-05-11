@@ -159,7 +159,7 @@ def test_world_debug_view_gpu_vertex_data_uses_point_colors() -> None:
     view.deleteLater()
 
 
-def test_transform_point_cloud_sample_keeps_latest_lichtfeld_points_in_json_world() -> None:
+def test_transform_point_cloud_sample_applies_lichtfeld_display_matrix() -> None:
     sample = PointCloudSample(
         points=np.array([[1.0, 2.0, 3.0]], dtype=np.float32),
         colors=None,
@@ -168,10 +168,10 @@ def test_transform_point_cloud_sample_keeps_latest_lichtfeld_points_in_json_worl
 
     transformed = transform_point_cloud_sample(sample, pointcloud_display_matrix("lichtfeld_cube6"))
 
-    assert np.allclose(transformed.points[0], [1.0, 2.0, 3.0])
+    assert np.allclose(transformed.points[0], [-1.0, 2.0, -3.0])
 
 
-def test_legacy_pre_final_profile_falls_back_to_latest_lichtfeld_contract() -> None:
+def test_transform_point_cloud_sample_aligns_pre_final_lichtfeld_pointcloud() -> None:
     sample = PointCloudSample(
         points=np.array([[3.0, -2.0, 1.0]], dtype=np.float32),
         colors=None,
@@ -180,10 +180,10 @@ def test_legacy_pre_final_profile_falls_back_to_latest_lichtfeld_contract() -> N
 
     transformed = transform_point_cloud_sample(sample, pointcloud_display_matrix("lichtfeld_cube6_pre_final_ply"))
 
-    assert np.allclose(transformed.points[0], [3.0, -2.0, 1.0])
+    assert np.allclose(transformed.points[0], [-1.0, 2.0, -3.0])
 
 
-def test_lichtfeld_world_display_matrix_uses_json_world_without_extra_rotation() -> None:
+def test_lichtfeld_world_display_matrix_restores_metashape_axes() -> None:
     sample = PointCloudSample(
         points=np.array([[1.0, 2.0, 3.0]], dtype=np.float32),
         colors=None,
@@ -195,9 +195,8 @@ def test_lichtfeld_world_display_matrix_uses_json_world_without_extra_rotation()
     transformed_world = transform_point_cloud_sample(sample, world_matrix)
     transformed_pointcloud = transform_point_cloud_sample(sample, final_pointcloud_matrix)
 
-    assert world_matrix is None
-    assert final_pointcloud_matrix is None
-    assert np.allclose(transformed_world.points[0], [1.0, 2.0, 3.0])
+    assert transformed_world is not None
+    assert np.allclose(transformed_world.points[0], [-1.0, 2.0, -3.0])
     assert np.allclose(transformed_pointcloud.points[0], [1.0, 2.0, 3.0])
 
 
@@ -404,8 +403,8 @@ def test_world_display_group_rotates_camera_position_and_rotation() -> None:
     transformed = transform_group_for_world_display(group, world_display_matrix("lichtfeld_cube6"))
     transformed_frame = transformed.frames_by_face["pz"]
 
-    assert np.allclose(transformed_frame.camera_position_sfm, [1.0, 2.0, 3.0])
-    assert np.allclose(transformed_frame.camera_to_world_rotation, np.eye(3))
+    assert np.allclose(transformed_frame.camera_position_sfm, [-1.0, 2.0, -3.0])
+    assert np.allclose(transformed_frame.camera_to_world_rotation, np.diag([-1.0, 1.0, -1.0]))
 
 
 def test_world_display_matrix_can_be_estimated_from_metashape_xml(tmp_path: Path) -> None:

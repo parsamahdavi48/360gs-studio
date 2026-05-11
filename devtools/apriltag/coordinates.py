@@ -15,6 +15,27 @@ class CoordinateProfile:
     pointcloud_display_matrix: np.ndarray | None = None
     world_display_matrix: np.ndarray | None = None
 
+
+LICHTFELD_FINAL_ORIENTATION = np.array(
+    [
+        [0.0, 0.0, 1.0, 0.0],
+        [0.0, -1.0, 0.0, 0.0],
+        [1.0, 0.0, 0.0, 0.0],
+        [0.0, 0.0, 0.0, 1.0],
+    ],
+    dtype=np.float64,
+)
+LICHTFELD_CAMERA_POINTCLOUD_ALIGNMENT = np.array(
+    [
+        [-1.0, 0.0, 0.0, 0.0],
+        [0.0, 1.0, 0.0, 0.0],
+        [0.0, 0.0, -1.0, 0.0],
+        [0.0, 0.0, 0.0, 1.0],
+    ],
+    dtype=np.float64,
+)
+LICHTFELD_PRE_FINAL_POINTCLOUD_ALIGNMENT = LICHTFELD_CAMERA_POINTCLOUD_ALIGNMENT @ LICHTFELD_FINAL_ORIENTATION
+
 COORDINATE_PROFILE_LICHTFELD_CUBE6 = "lichtfeld_cube6"
 COORDINATE_PROFILE_LICHTFELD_CUBE6_PRE_FINAL_PLY = "lichtfeld_cube6_pre_final_ply"
 COORDINATE_PROFILE_POSTSHOT_CUBE6 = "postshot_cube6"
@@ -26,7 +47,16 @@ COORDINATE_PROFILES: tuple[CoordinateProfile, ...] = (
     CoordinateProfile(
         id=COORDINATE_PROFILE_LICHTFELD_CUBE6,
         label="LichtFeld Cube6出力",
-        pointcloud_note="最新のLichtFeld向け出力では、JSONカメラとPLYを同じ世界座標として扱います。",
+        pointcloud_note="PLYをJSONカメラ座標へ重ねたうえで、3Dワールド表示全体をMetashape軸向きに戻します。",
+        pointcloud_display_matrix=LICHTFELD_CAMERA_POINTCLOUD_ALIGNMENT,
+        world_display_matrix=LICHTFELD_CAMERA_POINTCLOUD_ALIGNMENT,
+    ),
+    CoordinateProfile(
+        id=COORDINATE_PROFILE_LICHTFELD_CUBE6_PRE_FINAL_PLY,
+        label="LichtFeld Cube6 JSON + 補正前PLY",
+        pointcloud_note="補正前PLYをJSONカメラ座標へ重ねたうえで、3Dワールド表示全体をMetashape軸向きに戻します。",
+        pointcloud_display_matrix=LICHTFELD_PRE_FINAL_POINTCLOUD_ALIGNMENT,
+        world_display_matrix=LICHTFELD_CAMERA_POINTCLOUD_ALIGNMENT,
     ),
     CoordinateProfile(
         id=COORDINATE_PROFILE_POSTSHOT_CUBE6,
