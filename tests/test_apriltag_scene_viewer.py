@@ -10,7 +10,7 @@ import cv2
 import numpy as np
 import pytest
 from PySide6.QtCore import QEventLoop, QTimer
-from PySide6.QtWidgets import QAbstractSpinBox, QApplication, QBoxLayout
+from PySide6.QtWidgets import QAbstractSpinBox, QApplication
 
 from core.apriltag_cubemap import CubemapViewMetadata, cubemap_view_params_for_group
 from core.apriltag_detection import detect_apriltags
@@ -487,19 +487,18 @@ def test_scene_viewer_ui_defaults_target_scene_validation_workflow(tmp_path: Pat
     window.deleteLater()
 
 
-def test_scene_viewer_adapts_face_and_validation_controls_to_width(tmp_path: Path) -> None:
+def test_scene_viewer_places_face_and_validation_controls_in_left_sidebar(tmp_path: Path) -> None:
     _app()
     case_dir = _write_cube6_case(tmp_path)
 
     window = AprilTagSceneViewerWindow(initial_case=case_dir)
 
-    window.resize(1500, 900)
-    window._sync_tools_layout_direction()
-    assert window.tools_layout.direction() == QBoxLayout.LeftToRight
-
-    window.resize(1000, 900)
-    window._sync_tools_layout_direction()
-    assert window.tools_layout.direction() == QBoxLayout.TopToBottom
+    assert window.content_splitter.widget(0) is window.sidebar_scroll
+    assert window.content_splitter.widget(1) is window.view_splitter
+    assert window.sidebar_scroll.minimumWidth() == 300
+    assert window.sidebar_scroll.maximumWidth() == 420
+    assert window.face_box.parentWidget() is window.sidebar_scroll.widget()
+    assert window.tag_controls_box.parentWidget() is window.sidebar_scroll.widget()
     window.deleteLater()
 
 

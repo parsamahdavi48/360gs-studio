@@ -15,7 +15,6 @@ from PySide6.QtCore import QObject, QSize, Qt, QThread, Signal, Slot
 from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import (
     QApplication,
-    QBoxLayout,
     QComboBox,
     QFileDialog,
     QFormLayout,
@@ -25,6 +24,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QMessageBox,
     QPushButton,
+    QScrollArea,
     QSizePolicy,
     QSplitter,
     QStackedWidget,
@@ -845,7 +845,6 @@ class AprilTagSceneViewerWindow(QWidget):
         self._tag_physical_size_m = 0.160
         self._last_validation_scale_text = ""
         self._last_status_detail = ""
-        self._tools_layout_is_horizontal = False
         self._validation_running = False
         self._validation_thread: QThread | None = None
         self._validation_worker: SyntheticScaleValidationWorker | None = None
@@ -902,10 +901,15 @@ class AprilTagSceneViewerWindow(QWidget):
         controls.addWidget(self.profile_combo)
         root.addLayout(controls)
 
-        self.tools_layout = QBoxLayout(QBoxLayout.LeftToRight)
-        self.tools_layout.setContentsMargins(0, 0, 0, 0)
-        self.tools_layout.setSpacing(8)
-        root.addLayout(self.tools_layout)
+        content_splitter = QSplitter(Qt.Horizontal)
+        self.sidebar_scroll = QScrollArea()
+        self.sidebar_scroll.setWidgetResizable(True)
+        self.sidebar_scroll.setMinimumWidth(300)
+        self.sidebar_scroll.setMaximumWidth(420)
+        sidebar = QWidget()
+        sidebar_layout = QVBoxLayout(sidebar)
+        sidebar_layout.setContentsMargins(0, 0, 8, 0)
+        sidebar_layout.setSpacing(8)
 
         self.face_box = QGroupBox("FOV 90° Face")
         face_layout = QGridLayout(self.face_box)
@@ -918,12 +922,10 @@ class AprilTagSceneViewerWindow(QWidget):
             button.setCheckable(True)
             self.face_buttons[face] = button
             face_layout.addWidget(button, index // 4, index % 4)
-        self.tools_layout.addWidget(self.face_box)
+        sidebar_layout.addWidget(self.face_box)
 
         self.tag_controls_box = self._build_tag_controls()
-        self.tools_layout.addWidget(self.tag_controls_box)
-        self.tools_layout.setStretch(0, 0)
-        self.tools_layout.setStretch(1, 1)
+        sidebar_layout.addWidget(self.tag_controls_box)
 
         result_row = QHBoxLayout()
         result_row.setContentsMargins(0, 0, 0, 0)
@@ -934,7 +936,16 @@ class AprilTagSceneViewerWindow(QWidget):
         self.validation_status_label.setWordWrap(False)
         self.validation_status_label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         result_row.addWidget(self.validation_status_label, 1)
-        root.addLayout(result_row)
+        sidebar_layout.addLayout(result_row)
+
+        self.log = QTextEdit()
+        self.log.setReadOnly(True)
+        self.log.setMinimumHeight(100)
+        self.log.setMaximumHeight(170)
+        sidebar_layout.addWidget(self.log)
+        sidebar_layout.addStretch(1)
+        self.sidebar_scroll.setWidget(sidebar)
+        content_splitter.addWidget(self.sidebar_scroll)
 
         splitter = QSplitter(Qt.Horizontal)
         self.world_view = AprilTagWorldDebugView()
@@ -950,33 +961,19 @@ class AprilTagSceneViewerWindow(QWidget):
         splitter.addWidget(self.world_view)
         splitter.addWidget(self.right_stack)
         splitter.setSizes([760, 740])
-        root.addWidget(splitter, 1)
-
-        self.log = QTextEdit()
-        self.log.setReadOnly(True)
-        self.log.setMaximumHeight(120)
-        root.addWidget(self.log)
-        self._sync_tools_layout_direction()
-
-    def resizeEvent(self, event) -> None:
-        super().resizeEvent(event)
-        if hasattr(self, "tools_layout"):
-            self._sync_tools_layout_direction()
-
-    def _sync_tools_layout_direction(self) -> None:
-        horizontal = self.width() >= 1280
-        if horizontal == self._tools_layout_is_horizontal:
-            return
-        self._tools_layout_is_horizontal = horizontal
-        self.tools_layout.setDirection(QBoxLayout.LeftToRight if horizontal else QBoxLayout.TopToBottom)
-        self.tools_layout.setStretch(0, 0)
-        self.tools_layout.setStretch(1, 1)
+        self.view_splitter = splitter
+        content_splitter.addWidget(splitter)
+        content_splitter.setSizes([340, 1180])
+        content_splitter.setStretchFactor(0, 0)
+        content_splitter.setStretchFactor(1, 1)
+        self.content_splitter = content_splitter
+        root.addWidget(content_splitter, 1)
 
     def _build_tag_controls(self) -> QGroupBox:
         group = QGroupBox("AprilTag検証")
-        layout = QHBoxLayout(group)
+        layout = QVBoxLayout(group)
         layout.setContentsMargins(8, 8, 8, 8)
-        layout.setSpacing(12)
+        layout.setSpacing(8)
 
         position_form = QFormLayout()
         position_form.setLabelAlignment(Qt.AlignRight)
@@ -1037,7 +1034,6 @@ class AprilTagSceneViewerWindow(QWidget):
         validation_form.addRow("最小投影面積", self.validation_min_area_spin)
         validation_form.addRow("", validation_actions)
         layout.addLayout(validation_form)
-        layout.addStretch(1)
         return group
 
     @staticmethod
