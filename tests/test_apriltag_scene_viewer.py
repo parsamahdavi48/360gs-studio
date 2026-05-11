@@ -844,7 +844,7 @@ def test_current_case_source_equirect_drag_matches_pointcloud_camera_motion() ->
     window.deleteLater()
 
 
-def test_current_case_source_equirect_preview_keeps_yaw_pitch_and_rolls_side_faces() -> None:
+def test_current_case_source_equirect_preview_reflects_vertical_display_motion() -> None:
     case_dir = Path("_compare/apriltag_test/cases/current")
     if not (case_dir / "case.json").is_file():
         pytest.skip("local AprilTag comparison case is not available")
@@ -856,17 +856,18 @@ def test_current_case_source_equirect_preview_keeps_yaw_pitch_and_rolls_side_fac
 
     anchor = window._params
     dragged = params_from_drag(anchor, -10.0, -10.0)
-    displayed_anchor = _source_equirect_preview_params(anchor, "pz", RAY_BASIS_BOTH)
-    displayed_dragged = _source_equirect_preview_params(dragged, "pz", RAY_BASIS_BOTH)
+    displayed_anchor = _source_equirect_preview_params(anchor, "pz", RAY_BASIS_BOTH, anchor)
+    displayed_dragged = _source_equirect_preview_params(dragged, "pz", RAY_BASIS_BOTH, anchor)
 
     assert dragged.yaw_deg > anchor.yaw_deg
     assert displayed_dragged.yaw_deg == dragged.yaw_deg
     assert dragged.pitch_deg > anchor.pitch_deg
-    assert displayed_dragged.pitch_deg == dragged.pitch_deg
+    assert displayed_dragged.pitch_deg < displayed_anchor.pitch_deg
+    assert displayed_dragged.pitch_deg == pytest.approx(2.0 * anchor.pitch_deg - dragged.pitch_deg)
     assert displayed_anchor.roll_deg == normalize_yaw_deg(anchor.roll_deg + 180.0)
     assert displayed_dragged.roll_deg == normalize_yaw_deg(dragged.roll_deg + 180.0)
-    assert _source_equirect_preview_params(dragged, "top", RAY_BASIS_BOTH) == dragged
-    assert _source_equirect_preview_params(dragged, "pz", RAY_BASIS_IMAGE) == dragged
+    assert _source_equirect_preview_params(dragged, "top", RAY_BASIS_BOTH, anchor) == dragged
+    assert _source_equirect_preview_params(dragged, "pz", RAY_BASIS_IMAGE, anchor) == dragged
     window.deleteLater()
 
 
