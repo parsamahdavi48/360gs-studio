@@ -294,6 +294,28 @@ def _source_equirect_preview_params(
     )
 
 
+def _uses_source_preview_screen_axis_adapter(active_face: str, ray_basis_mode: str) -> bool:
+    return ray_basis_mode != RAY_BASIS_IMAGE and active_face in SIDE_FACE_ORDER
+
+
+def _params_from_grab_drag(
+    params: PerspectiveParams,
+    delta_x: float,
+    delta_y: float,
+    *,
+    source_preview_screen_axis_adapter: bool,
+) -> PerspectiveParams:
+    """Apply viewport drags as grab/pan-style view movement.
+
+    The canonical pointcloud view uses the preview axes directly. JSONFace
+    source previews add image-only roll/pitch compensation, so their displayed
+    horizontal screen axis is reversed relative to the canonical yaw axis.
+    """
+    if source_preview_screen_axis_adapter:
+        return params_from_drag(params, -delta_x, delta_y)
+    return params_from_drag(params, delta_x, delta_y)
+
+
 def _load_metashape_camera_transforms(xml_path: Path) -> dict[str, np.ndarray]:
     if not xml_path.is_file():
         return {}
@@ -1343,11 +1365,25 @@ class AprilTagSceneViewerWindow(QWidget):
     def _on_right_view_dragged(self, delta_x: float, delta_y: float) -> None:
         if not self._world_groups:
             return
-        # Right-view drags are camera-look controls, not image grab/pan
-        # controls. Keep the resulting params as the single source of truth for
-        # both the right view and the left frustum.
-        self._params = params_from_drag(self._params, -delta_x, -delta_y)
+        self._params = _params_from_grab_drag(
+            self._params,
+            delta_x,
+            delta_y,
+            source_preview_screen_axis_adapter=self._right_view_uses_source_preview_screen_axis_adapter(),
+        )
         self._sync_views()
+
+    def _right_view_uses_source_preview_screen_axis_adapter(self) -> bool:
+        if self.right_stack.currentWidget() is not self.image_view:
+            return False
+        mode = str(self.mode_combo.currentData() or RIGHT_VIEW_POINTCLOUD)
+        if mode == RIGHT_VIEW_RECONSTRUCTED_CUBE6:
+            source_preview = self._source_equirect_rotation_for_group(self.selected_world_group()) is not None
+        elif mode == RIGHT_VIEW_SOURCE_EQUIRECT:
+            source_preview = self._source_equirect_for_group(self.selected_world_group()) is not None
+        else:
+            source_preview = False
+        return bool(source_preview and _uses_source_preview_screen_axis_adapter(self._active_face, self._ray_basis_mode()))
 
     def _append_log(self, text: str) -> None:
         self.log.append(text)

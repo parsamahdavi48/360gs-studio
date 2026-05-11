@@ -813,11 +813,49 @@ def test_current_case_source_equirect_tangent_axes_match_expected_faces() -> Non
     window.deleteLater()
 
 
-def test_current_case_source_equirect_drag_matches_pointcloud_camera_motion() -> None:
+def test_current_case_pointcloud_drag_uses_grab_style_camera_motion() -> None:
     case_dir = Path("_compare/apriltag_test/cases/current")
     if not (case_dir / "case.json").is_file():
         pytest.skip("local AprilTag comparison case is not available")
     _app()
+    window = AprilTagSceneViewerWindow(initial_case=case_dir)
+    window.set_active_face("pz")
+    window.mode_combo.setCurrentIndex(window.mode_combo.findData(RIGHT_VIEW_POINTCLOUD))
+
+    start_params = window._params
+    start_rotation = rotation_from_perspective_params(start_params)
+    start_forward = np.array([0.0, 0.0, 1.0]) @ start_rotation.T
+    start_right = np.array([1.0, 0.0, 0.0]) @ start_rotation.T
+    start_up = np.array([0.0, 1.0, 0.0]) @ start_rotation.T
+
+    window._params = start_params
+    window._on_right_view_dragged(-10.0, 0.0)
+    after_left_rotation = rotation_from_perspective_params(window._params)
+    after_left_forward = np.array([0.0, 0.0, 1.0]) @ after_left_rotation.T
+    left_movement = after_left_forward - start_forward
+    left_movement /= max(float(np.linalg.norm(left_movement)), 1e-12)
+    assert window._params == params_from_drag(start_params, -10.0, 0.0)
+    assert window._params.yaw_deg > start_params.yaw_deg
+    assert float(left_movement @ start_right) > 0.99
+
+    window._params = start_params
+    window._on_right_view_dragged(0.0, 10.0)
+    after_down_rotation = rotation_from_perspective_params(window._params)
+    after_down_forward = np.array([0.0, 0.0, 1.0]) @ after_down_rotation.T
+    down_movement = after_down_forward - start_forward
+    down_movement /= max(float(np.linalg.norm(down_movement)), 1e-12)
+    assert window._params == params_from_drag(start_params, 0.0, 10.0)
+    assert window._params.pitch_deg < start_params.pitch_deg
+    assert float(down_movement @ start_up) > 0.99
+    window.deleteLater()
+
+
+def test_current_case_source_equirect_drag_uses_grab_style_display_motion() -> None:
+    case_dir = Path("_compare/apriltag_test/cases/current")
+    if not (case_dir / "case.json").is_file():
+        pytest.skip("local AprilTag comparison case is not available")
+    _app()
+    case = load_case(case_dir)
     window = AprilTagSceneViewerWindow(initial_case=case_dir)
     source_rotation = window._source_equirect_rotations.get("frame_000001")
     if source_rotation is None:
@@ -825,22 +863,40 @@ def test_current_case_source_equirect_drag_matches_pointcloud_camera_motion() ->
     window.set_active_face("pz")
 
     start_params = window._params
-    expected = params_from_drag(start_params, -10.0, -10.0)
+    display_matrix = world_display_matrix(case.coordinate_profile)
+    preview_to_sfm = np.linalg.inv(display_matrix[:3, :3]).T
 
-    actual: dict[str, PerspectiveParams] = {}
-    for mode in (RIGHT_VIEW_POINTCLOUD, RIGHT_VIEW_SOURCE_EQUIRECT, RIGHT_VIEW_RECONSTRUCTED_CUBE6):
-        index = window.mode_combo.findData(mode)
-        assert index >= 0
+    def source_basis(params: PerspectiveParams) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+        display_params = _source_equirect_preview_params(params, "pz", RAY_BASIS_BOTH, start_params)
+        rotation = rotation_from_perspective_params(display_params)
+        forward = np.array([0.0, 0.0, 1.0]) @ rotation.T @ preview_to_sfm @ source_rotation
+        right = np.array([1.0, 0.0, 0.0]) @ rotation.T @ preview_to_sfm @ source_rotation
+        up = np.array([0.0, 1.0, 0.0]) @ rotation.T @ preview_to_sfm @ source_rotation
+        forward /= max(float(np.linalg.norm(forward)), 1e-12)
+        right /= max(float(np.linalg.norm(right)), 1e-12)
+        up /= max(float(np.linalg.norm(up)), 1e-12)
+        return forward, right, up
+
+    start_forward, start_right, start_up = source_basis(start_params)
+
+    for mode in (RIGHT_VIEW_SOURCE_EQUIRECT, RIGHT_VIEW_RECONSTRUCTED_CUBE6):
+        window.mode_combo.setCurrentIndex(window.mode_combo.findData(mode))
+
         window._params = start_params
-        window.mode_combo.setCurrentIndex(index)
-        window._on_right_view_dragged(10.0, 10.0)
-        actual[mode] = window._params
+        window._on_right_view_dragged(-10.0, 0.0)
+        after_left_forward, _right, _up = source_basis(window._params)
+        left_movement = after_left_forward - start_forward
+        left_movement /= max(float(np.linalg.norm(left_movement)), 1e-12)
+        assert window._params == params_from_drag(start_params, 10.0, 0.0)
+        assert float(left_movement @ start_right) > 0.99
 
-    assert actual[RIGHT_VIEW_POINTCLOUD] == actual[RIGHT_VIEW_SOURCE_EQUIRECT]
-    assert actual[RIGHT_VIEW_POINTCLOUD] == actual[RIGHT_VIEW_RECONSTRUCTED_CUBE6]
-    assert actual[RIGHT_VIEW_POINTCLOUD] == expected
-    assert actual[RIGHT_VIEW_POINTCLOUD].yaw_deg > start_params.yaw_deg
-    assert actual[RIGHT_VIEW_POINTCLOUD].pitch_deg > start_params.pitch_deg
+        window._params = start_params
+        window._on_right_view_dragged(0.0, 10.0)
+        after_down_forward, _right, _up = source_basis(window._params)
+        down_movement = after_down_forward - start_forward
+        down_movement /= max(float(np.linalg.norm(down_movement)), 1e-12)
+        assert window._params == params_from_drag(start_params, 0.0, 10.0)
+        assert float(down_movement @ start_up) > 0.99
     window.deleteLater()
 
 
