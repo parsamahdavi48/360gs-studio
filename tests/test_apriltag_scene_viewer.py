@@ -27,6 +27,7 @@ from devtools.apriltag.scene_viewer import (
     AprilTagSceneViewerWindow,
     RAY_BASIS_BOTH,
     RAY_BASIS_IMAGE,
+    RAY_BASIS_WORLD,
     RIGHT_VIEW_POINTCLOUD,
     RIGHT_VIEW_RECONSTRUCTED_CUBE6,
     RIGHT_VIEW_SOURCE_EQUIRECT,
@@ -790,6 +791,40 @@ def test_current_case_source_equirect_faces_match_expected_orientation() -> None
         target = cv2.resize(target, (512, 512), interpolation=cv2.INTER_AREA)
         error = float(np.mean(np.abs(rendered.astype(np.int16) - target.astype(np.int16))))
         assert error < 8.0
+    window.deleteLater()
+
+
+def test_current_case_image_overlay_uses_synthetic_output_projection() -> None:
+    case_dir = Path("_compare/apriltag_test/cases/current")
+    if not (case_dir / "case.json").is_file():
+        pytest.skip("local AprilTag comparison case is not available")
+    _app()
+    window = AprilTagSceneViewerWindow(initial_case=case_dir)
+    if "frame_000001" not in window._source_equirect_rotations:
+        pytest.skip("local AprilTag source equirect rotation is not available")
+    window.select_camera_by_name("frame_000001")
+    window.ray_basis_combo.setCurrentIndex(window.ray_basis_combo.findData(RAY_BASIS_WORLD))
+    window.set_active_face("pz")
+    group = window.selected_world_group()
+    assert group is not None
+    camera, right, up, forward = camera_pose_from_perspective_params(group, window._params)
+    window.set_tag_transform(
+        center=tuple(camera + forward * 5.0 + right * 0.5 + up * 0.25),
+        yaw_deg=window._params.yaw_deg,
+        pitch_deg=window._params.pitch_deg,
+        roll_deg=window._params.roll_deg,
+        size_sfm=1.0,
+    )
+
+    overlays = window._tag_output_image_overlays(output_size=768)
+    candidates, _total = window._synthetic_tag_candidates()
+    selected = [candidate for candidate in candidates if candidate.frame.file_path.startswith("images/frame_000001_")]
+
+    assert len(overlays) == 1
+    assert len(selected) == 1
+    assert selected[0].frame.file_path == "images/frame_000001_nz.jpg"
+    expected = selected[0].projected_points * (768.0 / selected[0].frame.width)
+    assert np.allclose(np.asarray(overlays[0].polygon), expected, atol=1e-4)
     window.deleteLater()
 
 

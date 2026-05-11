@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import shutil
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 import cv2
@@ -30,6 +30,7 @@ class SyntheticAprilTagConfig:
     copy_unselected_frames: bool = True
     output_tagged_only: bool = False
     cubemap_view_params: CubemapViewMetadata | Mapping[str, tuple[float, float]] | None = None
+    frame_transform_overrides: Mapping[str, np.ndarray] | None = None
     write_normalized_transforms: bool = False
 
 
@@ -68,6 +69,16 @@ def inject_synthetic_apriltag(config: SyntheticAprilTagConfig) -> dict:
         config.input_transforms,
         cubemap_view_params=config.cubemap_view_params,
     )
+    if config.frame_transform_overrides:
+        frames = tuple(
+            replace(
+                frame,
+                transform_matrix=np.asarray(config.frame_transform_overrides[frame.file_path], dtype=float),
+            )
+            if frame.file_path in config.frame_transform_overrides
+            else frame
+            for frame in frames
+        )
     frames_by_path = {frame.file_path: frame for frame in frames}
     allowed_paths = None if config.frame_file_paths is None else set(config.frame_file_paths)
     tag_rgba = _load_tag_rgba(config.tag_image)
@@ -145,6 +156,9 @@ def inject_synthetic_apriltag(config: SyntheticAprilTagConfig) -> dict:
         "frame_file_paths": None if config.frame_file_paths is None else sorted(config.frame_file_paths),
         "copy_unselected_frames": config.copy_unselected_frames,
         "output_tagged_only": config.output_tagged_only,
+        "frame_transform_override_count": 0
+        if config.frame_transform_overrides is None
+        else len(config.frame_transform_overrides),
         "write_normalized_transforms": config.write_normalized_transforms,
         "frames_written": written,
         "frames_copied": copied,

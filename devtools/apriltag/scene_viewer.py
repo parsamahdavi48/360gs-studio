@@ -5,6 +5,7 @@ from __future__ import annotations
 import csv
 import json
 import xml.etree.ElementTree as ET
+from collections.abc import Mapping
 from dataclasses import dataclass, replace
 from datetime import datetime
 from pathlib import Path
@@ -56,6 +57,7 @@ from devtools.apriltag.coordinates import (
 from devtools.apriltag.cubemap_preview import (
     CubemapFrameGroup,
     axis_face_view_params,
+    cubemap_image_face_rotations,
     image_space_cubemap_frame_group,
     load_cubemap_frame_groups,
     load_metashape_camera_labels,
@@ -115,6 +117,7 @@ class SyntheticScaleValidationRequest:
     transforms_json: Path
     run_dir: Path
     cubemap_view_metadata: CubemapViewMetadata | None
+    frame_transform_overrides: dict[str, np.ndarray]
     tag_family: str
     tag_id: int
     tag_size_m: float
@@ -171,6 +174,7 @@ class SyntheticScaleValidationWorker(QObject):
                     copy_unselected_frames=False,
                     output_tagged_only=True,
                     cubemap_view_params=request.cubemap_view_metadata,
+                    frame_transform_overrides=request.frame_transform_overrides,
                     write_normalized_transforms=True,
                 )
             )
@@ -206,6 +210,7 @@ class SyntheticScaleValidationWorker(QObject):
                 "run_dir": str(request.run_dir),
                 "input_transforms": str(request.transforms_json),
                 "cubemap_view_metadata": _cubemap_view_metadata_report(request.cubemap_view_metadata),
+                "frame_transform_override_count": len(request.frame_transform_overrides),
                 "expected_scale": request.expected_scale,
                 "tag_display": request.tag_display,
                 "tag_sfm": {
@@ -386,6 +391,20 @@ def _cubemap_view_metadata_report(metadata: CubemapViewMetadata | None) -> dict[
         "view_params": {face: [float(yaw), float(pitch)] for face, (yaw, pitch) in metadata.view_params.items()},
         "yaw_offset_per_frame": float(metadata.yaw_offset_per_frame),
     }
+
+
+def _apply_frame_transform_overrides(
+    frames: tuple[PinholeFrame, ...],
+    overrides: Mapping[str, np.ndarray],
+) -> tuple[PinholeFrame, ...]:
+    if not overrides:
+        return frames
+    return tuple(
+        replace(frame, transform_matrix=np.asarray(overrides[frame.file_path], dtype=np.float64))
+        if frame.file_path in overrides
+        else frame
+        for frame in frames
+    )
 
 
 def _scene_root_candidates(case: AprilTagDevCase) -> tuple[Path, ...]:
@@ -1284,6 +1303,62 @@ class AprilTagSceneViewerWindow(QWidget):
             )
         ]
 
+    def _tag_projected_overlay(
+        self,
+        projected: np.ndarray,
+        *,
+        width: int,
+        height: int,
+        output_size: int = 768,
+    ) -> list[PerspectiveLabelOverlay]:
+        points = np.asarray(projected, dtype=np.float64).reshape(-1, 2)
+        if points.shape != (4, 2) or not np.all(np.isfinite(points)):
+            return []
+        scale = float(max(1, int(output_size))) / float(max(1, min(int(width), int(height))))
+        scaled = points * scale
+        min_xy = np.floor(scaled.min(axis=0)).astype(int)
+        max_xy = np.ceil(scaled.max(axis=0)).astype(int)
+        size = int(output_size)
+        if max_xy[0] < 0 or max_xy[1] < 0 or min_xy[0] > size or min_xy[1] > size:
+            return []
+        if int(max(max_xy - min_xy)) > size * 3:
+            return []
+        origin_y = max(18, int(min_xy[1]) - 8)
+        return [
+            PerspectiveLabelOverlay(
+                label="tag",
+                box=(int(min_xy[0]), int(min_xy[1]), int(max_xy[0]), int(max_xy[1])),
+                origin=(int(min_xy[0]), origin_y),
+                color_bgr=(0, 255, 180),
+                highlighted=True,
+                polygon=tuple((float(x), float(y)) for x, y in scaled),
+                fill_alpha=0.16,
+            )
+        ]
+
+    def _tag_output_image_overlays(self, *, output_size: int = 768) -> list[PerspectiveLabelOverlay]:
+        if self.case is None:
+            return []
+        overrides = self._synthetic_frame_transform_overrides()
+        if not overrides:
+            return []
+        raw_group = self.selected_raw_group()
+        if raw_group is None:
+            return []
+        candidates, _total = self._synthetic_tag_candidates()
+        prefix = f"images/{raw_group.name}_"
+        selected = [candidate for candidate in candidates if candidate.frame.file_path.startswith(prefix)]
+        if not selected:
+            return []
+        selected.sort(key=lambda candidate: (-candidate.area_px, candidate.frame.file_path))
+        candidate = selected[0]
+        return self._tag_projected_overlay(
+            candidate.projected_points,
+            width=candidate.frame.width,
+            height=candidate.frame.height,
+            output_size=output_size,
+        )
+
     def _synthetic_tag_placement_sfm(self) -> tuple[np.ndarray, np.ndarray, np.ndarray, float]:
         if self.case is None:
             raise ValueError("ケースが読み込まれていません")
@@ -1302,6 +1377,32 @@ class AprilTagSceneViewerWindow(QWidget):
         true_scale = float(self.case.default_tag_size_m) / max(float(self._tag_size_sfm), 1e-12)
         return center_sfm, normal_sfm, up_sfm, true_scale
 
+    def _synthetic_frame_transform_overrides(self) -> dict[str, np.ndarray]:
+        if self.case is None:
+            return {}
+        if normalize_coordinate_profile(self.case.coordinate_profile) not in LICHTFELD_IMAGE_RAY_DISPLAY_PROFILES:
+            return {}
+        metadata = case_cubemap_view_metadata(self.case)
+        if metadata is None or not self._raw_groups:
+            return {}
+        source_rotations = _source_equirect_rotations_from_groups(self._raw_groups, metadata)
+        overrides: dict[str, np.ndarray] = {}
+        for group in self._raw_groups:
+            source_rotation = source_rotations.get(group.name)
+            face_rotations = cubemap_image_face_rotations(group, cubemap_view_params=metadata)
+            if source_rotation is None or face_rotations is None:
+                continue
+            position = group.reference_frame.camera_position_sfm
+            for face, frame in group.frames_by_face.items():
+                face_rotation = face_rotations.get(face)
+                if face_rotation is None:
+                    continue
+                transform = np.array(frame.transform_matrix, dtype=np.float64, copy=True)
+                transform[:3, :3] = source_rotation @ face_rotation
+                transform[:3, 3] = position
+                overrides[frame.file_path] = transform
+        return overrides
+
     def _synthetic_tag_candidates(self) -> tuple[tuple[SyntheticTagFrameCandidate, ...], int]:
         if self.case is None:
             return (), 0
@@ -1311,6 +1412,7 @@ class AprilTagSceneViewerWindow(QWidget):
             self.case.transforms_for_processing(),
             cubemap_view_params=metadata,
         )
+        frames = _apply_frame_transform_overrides(frames, self._synthetic_frame_transform_overrides())
         corners = tag_corners_sfm(
             center_sfm,
             normal_sfm,
@@ -1436,11 +1538,13 @@ class AprilTagSceneViewerWindow(QWidget):
             selected_paths = frozenset(candidate.frame.file_path for candidate in candidates)
             expected_scale = float(case.default_tag_size_m) / max(float(self._tag_size_sfm), 1e-12)
             metadata = case_cubemap_view_metadata(case)
+            frame_transform_overrides = self._synthetic_frame_transform_overrides()
             request = SyntheticScaleValidationRequest(
                 case_dir=case.case_dir,
                 transforms_json=case.transforms_for_processing(),
                 run_dir=run_dir,
                 cubemap_view_metadata=metadata,
+                frame_transform_overrides=frame_transform_overrides,
                 tag_family=case.tag_family,
                 tag_id=int(case.tag_id),
                 tag_size_m=float(case.default_tag_size_m),
@@ -1756,7 +1860,13 @@ class AprilTagSceneViewerWindow(QWidget):
             f"{self._ray_basis_mode()}:{image_group.name}:"
             f"{source_path if use_source_equirect else ''}"
         )
-        overlays = self._tag_image_overlays(world_group, self._params, output_size=768)
+        overlays = (
+            self._tag_output_image_overlays(output_size=768)
+            if use_source_equirect or use_reconstructed_cube6
+            else []
+        )
+        if not overlays:
+            overlays = self._tag_image_overlays(world_group, self._params, output_size=768)
         if self._displayed_image_key == key and self.image_view.set_perspective_params(view_params):
             self.image_view.set_drag_mode("look")
             self.image_view.set_perspective_label_overlays(overlays)
