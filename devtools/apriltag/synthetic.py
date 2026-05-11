@@ -67,9 +67,10 @@ def _warp_tag(base: np.ndarray, tag_rgba: np.ndarray, dst_points: np.ndarray) ->
     # adapter whose polygon winding is opposite to a normal pinhole raster.
     # That is a raster convention, not a mirrored physical tag: keep the
     # marker's bit pattern front-facing by matching source and destination
-    # winding before building the homography.
+    # winding before building the homography, while keeping the marker's top
+    # edge on the saved raster's top side.
     if _signed_area_2d(src_points) * _signed_area_2d(dst_points) < 0.0:
-        src_points = src_points[[3, 2, 1, 0]]
+        src_points = src_points[[1, 0, 3, 2]]
     homography = cv2.getPerspectiveTransform(src_points, dst_points.astype(np.float32))
     warped = cv2.warpPerspective(tag_rgba, homography, (width, height), flags=cv2.INTER_LINEAR)
 

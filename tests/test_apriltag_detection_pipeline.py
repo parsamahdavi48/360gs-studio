@@ -13,7 +13,7 @@ from core.apriltag_geometry import load_pinhole_frames, project_sfm_points
 from core.apriltag_pipeline import run_apriltag_scale_estimation
 from core.apriltag_projection import EquirectProjectionConfig, prepare_equirect_detection_dataset
 from core.image_io import imwrite_unicode
-from devtools.apriltag.synthetic import SyntheticAprilTagConfig, inject_synthetic_apriltag
+from devtools.apriltag.synthetic import SyntheticAprilTagConfig, _warp_tag, inject_synthetic_apriltag
 
 
 def _marker_image(marker_id: int = 7, size: int = 96) -> np.ndarray:
@@ -302,6 +302,29 @@ def test_synthetic_injection_detects_metric_camera_vector(tmp_path: Path) -> Non
     assert detection.score > 0.0
     assert detection.reprojection_error_px < 1.0
     assert math.isclose(detection.camera_to_tag_m[2], 2.0, rel_tol=0.05)
+
+
+def test_synthetic_warp_keeps_reflected_raster_tag_upright() -> None:
+    base = np.zeros((100, 100, 3), dtype=np.uint8)
+    tag_rgba = np.zeros((20, 20, 4), dtype=np.uint8)
+    tag_rgba[:10, :, :3] = 240
+    tag_rgba[10:, :, :3] = 40
+    tag_rgba[:, :, 3] = 255
+    reflected_dst = np.array(
+        [
+            [80.0, 20.0],
+            [20.0, 20.0],
+            [20.0, 80.0],
+            [80.0, 80.0],
+        ],
+        dtype=np.float32,
+    )
+
+    warped = _warp_tag(base, tag_rgba, reflected_dst)
+
+    top_mean = float(np.mean(warped[25:35, 30:70, 0]))
+    bottom_mean = float(np.mean(warped[65:75, 30:70, 0]))
+    assert top_mean > bottom_mean
 
 
 def test_synthetic_injection_can_validate_scale_pipeline(tmp_path: Path) -> None:
