@@ -13,6 +13,7 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from core.apriltag_detection import available_families
+from core.apriltag_cubemap import CUBEMAP_POSE_PRESETS, cubemap_view_metadata_for_pose_preset
 from core.apriltag_pipeline import AprilTagScaleRun, run_apriltag_scale_estimation
 from core.apriltag_projection import camera_model
 
@@ -65,6 +66,7 @@ def _report(run: AprilTagScaleRun, args: argparse.Namespace) -> dict:
         "tag_ids": sorted(args.tag_ids) if args.tag_ids else None,
         "min_score": args.min_score,
         "workers": args.workers,
+        "cubemap_pose_preset": args.cubemap_pose_preset,
         "timings_sec": dict(run.timings_sec),
         "estimate": {
             "scale": estimate.scale,
@@ -91,6 +93,15 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--min-baseline-sfm", type=float, default=1e-6, help="Minimum camera baseline in SfM units")
     parser.add_argument("--report-json", type=Path, default=None, help="Write detailed JSON report")
     parser.add_argument("--workers", default="auto", help="AprilTag detection worker count: auto or positive integer")
+    parser.add_argument(
+        "--cubemap-pose-preset",
+        choices=CUBEMAP_POSE_PRESETS,
+        default="auto",
+        help=(
+            "Cubemap face pose rule. auto uses embedded Step 4 metadata when available; "
+            "stechdrive_cube6 uses the current Step 4 Cube6 defaults."
+        ),
+    )
     args = parser.parse_args()
     if not args.transforms_json.is_file():
         parser.error(f"transforms_json not found: {args.transforms_json}")
@@ -132,6 +143,7 @@ def main() -> int:
     try:
         _log("validating input dataset")
         estimation_transforms = _resolve_estimation_input(args)
+        cubemap_view_params = cubemap_view_metadata_for_pose_preset(args.cubemap_pose_preset)
         run = run_apriltag_scale_estimation(
             estimation_transforms,
             image_root=None,
@@ -141,6 +153,7 @@ def main() -> int:
             min_score=args.min_score,
             min_baseline_sfm=args.min_baseline_sfm,
             workers=args.workers,
+            cubemap_view_params=cubemap_view_params,
             progress_callback=_progress,
             log_callback=_log,
         )

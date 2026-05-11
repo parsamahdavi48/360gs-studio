@@ -901,6 +901,10 @@ STRINGS: dict[str, str] = {
     "APRILTAG_FAMILY": "Tag Family",
     "APRILTAG_TAG_ID": "Tag ID",
     "APRILTAG_TAG_IDS": "Tag IDs",
+    "APRILTAG_OUTPUT_PRESET": "Output Preset",
+    "APRILTAG_OUTPUT_PRESET_AUTO": "Auto",
+    "APRILTAG_OUTPUT_PRESET_STECHDRIVE_CUBE6": "Step 4 Cube6 Default",
+    "APRILTAG_OUTPUT_PRESET_STANDARD": "Standard Cubemap",
     "APRILTAG_ESTIMATE": "Estimate",
     "APRILTAG_APPLY_SCALE": "Apply to Scale",
     "APRILTAG_RESULT": "Result",
@@ -1141,6 +1145,11 @@ TIPS: dict[str, str] = {
     "APRILTAG_TAG_IDS": (
         "Tag IDs used in the capture. You can enter up to 16 IDs.\n"
         "Do not place the same ID in multiple locations; use a different ID for each physical location."
+    ),
+    "APRILTAG_OUTPUT_PRESET": (
+        "Usually leave this on Auto. The estimator reads Cubemap face directions and per-frame yaw rotation "
+        "from Step 4 settings or the coordinate contract embedded in transforms.json. Choose an explicit preset "
+        "only when that metadata is missing and you know how the output was created."
     ),
     "APRILTAG_ESTIMATE": "Detect AprilTags from projected Cubemap output/transforms.json and output images, then estimate meters per scene unit. For equirectangular output, create Cubemap images first.",
     "APRILTAG_APPLY_SCALE": "Multiply camera positions in output/transforms.json and output/pointcloud.ply by the estimated factor. Original files are backed up.",

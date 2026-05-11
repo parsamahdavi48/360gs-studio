@@ -904,6 +904,10 @@ STRINGS: dict[str, str] = {
     "APRILTAG_FAMILY": "タグファミリ",
     "APRILTAG_TAG_ID": "タグID",
     "APRILTAG_TAG_IDS": "タグID",
+    "APRILTAG_OUTPUT_PRESET": "出力プリセット",
+    "APRILTAG_OUTPUT_PRESET_AUTO": "自動判定",
+    "APRILTAG_OUTPUT_PRESET_STECHDRIVE_CUBE6": "Step 4 Cube6既定",
+    "APRILTAG_OUTPUT_PRESET_STANDARD": "標準Cubemap",
     "APRILTAG_ESTIMATE": "推定",
     "APRILTAG_APPLY_SCALE": "Scaleへ反映",
     "APRILTAG_RESULT": "結果",
@@ -1139,6 +1143,11 @@ TIPS: dict[str, str] = {
     "APRILTAG_TAG_IDS": (
         "撮影に使ったタグIDを指定します。複数指定できます（最大16個）。\n"
         "同じIDのタグを複数の場所に置くと位置を区別できません。場所ごとに別IDにしてください"
+    ),
+    "APRILTAG_OUTPUT_PRESET": (
+        "通常は自動判定のまま使います。Step 4の設定またはtransforms.json内の座標契約から、"
+        "Cubemapの面方向とフレームごとのYaw回転を読み取ります。設定がない出力で、"
+        "Step 4既定のCube6ルールで作ったと分かっている場合だけ明示指定してください"
     ),
     "APRILTAG_ESTIMATE": "投影済みCubemapの output/transforms.json と出力画像からAprilTagを検出し、メートル換算のスケールを推定します。エクイレクタングラー出力の場合は先にCubemap画像を書き出してください",
     "APRILTAG_APPLY_SCALE": "推定した係数を output/transforms.json のカメラ位置と output/pointcloud.ply に掛けます。元ファイルはバックアップします",

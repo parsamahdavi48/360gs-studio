@@ -16,36 +16,22 @@ from core.apriltag_cubemap import (
     infer_generated_cubemap_face_rotations,
 )
 from core.apriltag_geometry import PinholeFrame, load_pinhole_frames, points_intersect_image, project_sfm_points
+from core.cubemap_contracts import (
+    CUBEMAP_FACE_NAMES,
+    CUBEMAP_REFERENCE_FACE_ORDER,
+    CUBEMAP_SIDE_FACES,
+    CUBEMAP_STANDARD_FACE_VIEW_PARAMS,
+    CUBEMAP_VERTICAL_FACE_SETS,
+)
 from core.image_io import imread_unicode
 
-_FACE_NAMES = ("px", "nx", "pz", "nz", "top", "bottom", "py", "ny")
-_REFERENCE_FACE_ORDER = ("pz", "px", "nz", "nx", "top", "bottom", "py", "ny")
-_STANDARD_FACE_ORDER = ("pz", "px", "nz", "nx", "top", "bottom", "py", "ny")
-_STANDARD_SIDE_FACES = frozenset({"px", "nx", "pz", "nz"})
-_STANDARD_VERTICAL_FACE_SETS = (frozenset({"top", "bottom"}), frozenset({"py", "ny"}))
-_STANDARD_FACE_VIEW_PARAMS: dict[str, tuple[float, float]] = {
-    "pz": (0.0, 0.0),
-    "px": (90.0, 0.0),
-    "nz": (180.0, 0.0),
-    "nx": (-90.0, 0.0),
-    # GUI Cube6 output names currently follow the generated pitch rows:
-    # top is the +90 pitch face, bottom is the -90 pitch face.
-    "top": (0.0, 90.0),
-    "bottom": (0.0, -90.0),
-    # Legacy/default converter names.
-    "py": (0.0, -90.0),
-    "ny": (0.0, 90.0),
-}
-_STANDARD_FACE_LOOK_PARAMS: dict[str, tuple[float, float]] = {
-    "pz": (0.0, 0.0),
-    "px": (90.0, 0.0),
-    "nz": (180.0, 0.0),
-    "nx": (-90.0, 0.0),
-    "top": (0.0, 90.0),
-    "bottom": (0.0, -90.0),
-    "py": (0.0, -90.0),
-    "ny": (0.0, 90.0),
-}
+_FACE_NAMES = CUBEMAP_FACE_NAMES
+_REFERENCE_FACE_ORDER = CUBEMAP_REFERENCE_FACE_ORDER
+_STANDARD_FACE_ORDER = CUBEMAP_REFERENCE_FACE_ORDER
+_STANDARD_SIDE_FACES = CUBEMAP_SIDE_FACES
+_STANDARD_VERTICAL_FACE_SETS = CUBEMAP_VERTICAL_FACE_SETS
+_STANDARD_FACE_VIEW_PARAMS = CUBEMAP_STANDARD_FACE_VIEW_PARAMS
+_STANDARD_FACE_LOOK_PARAMS = CUBEMAP_STANDARD_FACE_VIEW_PARAMS
 
 
 @dataclass(frozen=True)

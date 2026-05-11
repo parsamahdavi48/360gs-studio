@@ -10,33 +10,34 @@ from pathlib import Path
 import numpy as np
 
 from core.apriltag_geometry import PinholeFrame
+from core.cubemap_contracts import (
+    CUBE6_DEFAULT_YAW_OFFSET,
+    CUBE6_DEFAULT_YAW_OFFSET_PER_FRAME,
+    CUBEMAP_FACE_NAMES,
+    CUBEMAP_REFERENCE_FACE_ORDER,
+    CUBEMAP_SIDE_FACES,
+    CUBEMAP_STANDARD_FACE_VIEW_PARAMS,
+    CUBEMAP_VERTICAL_FACE_SETS,
+    cube6_view_params,
+)
 
 CubemapViewParams = Mapping[str, tuple[float, float]]
 
-_FACE_NAMES = ("px", "nx", "pz", "nz", "top", "bottom", "py", "ny")
-_REFERENCE_FACE_ORDER = ("pz", "px", "nz", "nx", "top", "bottom", "py", "ny")
-_SIDE_FACES = frozenset({"px", "nx", "pz", "nz"})
-_VERTICAL_FACE_SETS = (frozenset({"top", "bottom"}), frozenset({"py", "ny"}))
-_FACE_VIEW_PARAMS: dict[str, tuple[float, float]] = {
-    "pz": (0.0, 0.0),
-    "px": (90.0, 0.0),
-    "nz": (180.0, 0.0),
-    "nx": (-90.0, 0.0),
-    "top": (0.0, 90.0),
-    "bottom": (0.0, -90.0),
-    "py": (0.0, -90.0),
-    "ny": (0.0, 90.0),
-}
-_GUI_CUBE6_VIEW_PARAMS: dict[str, tuple[float, float]] = {
-    # Mirrors gui.cubemap.view_config._CUBE6_VIEW_CELLS with four yaw slots:
-    # px=slot0, nz=slot1, nx=slot2, pz=slot3, top/bottom=slot3.
-    "px": (0.0, 0.0),
-    "nz": (90.0, 0.0),
-    "nx": (180.0, 0.0),
-    "pz": (-90.0, 0.0),
-    "top": (-90.0, 90.0),
-    "bottom": (-90.0, -90.0),
-}
+CUBEMAP_POSE_PRESET_AUTO = "auto"
+CUBEMAP_POSE_PRESET_STECHDRIVE_CUBE6 = "stechdrive_cube6"
+CUBEMAP_POSE_PRESET_STANDARD = "standard"
+CUBEMAP_POSE_PRESETS = (
+    CUBEMAP_POSE_PRESET_AUTO,
+    CUBEMAP_POSE_PRESET_STECHDRIVE_CUBE6,
+    CUBEMAP_POSE_PRESET_STANDARD,
+)
+
+_FACE_NAMES = CUBEMAP_FACE_NAMES
+_REFERENCE_FACE_ORDER = CUBEMAP_REFERENCE_FACE_ORDER
+_SIDE_FACES = CUBEMAP_SIDE_FACES
+_VERTICAL_FACE_SETS = CUBEMAP_VERTICAL_FACE_SETS
+_FACE_VIEW_PARAMS = CUBEMAP_STANDARD_FACE_VIEW_PARAMS
+_GUI_CUBE6_VIEW_PARAMS = cube6_view_params(0.0)
 
 
 @dataclass(frozen=True)
@@ -60,20 +61,12 @@ class _GeneratedCubemapMatch:
 class CubemapViewMetadata:
     view_params: dict[str, tuple[float, float]]
     yaw_offset_per_frame: float = 0.0
-    image_pose_profile: str = ""
 
 
 _GENERATED_CUBEMAP_LAYOUTS = (
     _GeneratedCubemapLayout("standard", _FACE_VIEW_PARAMS, _FACE_VIEW_PARAMS, _REFERENCE_FACE_ORDER),
     _GeneratedCubemapLayout("gui_cube6", _GUI_CUBE6_VIEW_PARAMS, _GUI_CUBE6_VIEW_PARAMS, ("bottom", "px", "nz", "nx", "pz", "top")),
 )
-_IMAGE_POSE_PROFILE_LICHTFELD_CUBE6 = "lichtfeld_cube6"
-_SOURCE_EQUIRECT_LOCAL_FROM_LICHTFELD_LOCAL = np.diag([1.0, -1.0, -1.0])
-_SAVED_RASTER_Y_FLIP = np.diag([1.0, -1.0, 1.0])
-_LICHTFELD_VERTICAL_FACE_MAP = {
-    "top": "bottom",
-    "bottom": "top",
-}
 
 
 def cubemap_face_from_path(file_path: str) -> tuple[str, str] | None:
@@ -149,11 +142,11 @@ def normalize_standard_cubemap_frames(
         if generated is not None:
             if generated.mode == "transform":
                 for face, frame in face_frames.items():
-                    rotation = _image_rotation_for_saved_raster(generated.image_rotations, face, metadata)
+                    rotation = generated.image_rotations.get(face)
                     if rotation is None:
                         continue
                     transform = np.array(frame.transform_matrix, dtype=float, copy=True)
-                    transform[:3, :3] = _saved_raster_camera_rotation(generated.base_rotation, rotation, metadata)
+                    transform[:3, :3] = generated.base_rotation @ rotation
                     transform[:3, 3] = _generated_base_position(face_frames)
                     replacements[frame.file_path] = replace(frame, transform_matrix=transform)
             continue
@@ -293,29 +286,6 @@ def _view_params_for_group(
     return {face: (yaw + offset, pitch) for face, (yaw, pitch) in metadata.view_params.items()}
 
 
-def _uses_lichtfeld_saved_raster_adapter(metadata: CubemapViewMetadata | None) -> bool:
-    return metadata is not None and metadata.image_pose_profile == _IMAGE_POSE_PROFILE_LICHTFELD_CUBE6
-
-
-def _image_rotation_for_saved_raster(
-    image_rotations: dict[str, np.ndarray],
-    face: str,
-    metadata: CubemapViewMetadata | None,
-) -> np.ndarray | None:
-    key = _LICHTFELD_VERTICAL_FACE_MAP.get(face, face) if _uses_lichtfeld_saved_raster_adapter(metadata) else face
-    return image_rotations.get(key)
-
-
-def _saved_raster_camera_rotation(
-    base_rotation: np.ndarray,
-    image_rotation: np.ndarray,
-    metadata: CubemapViewMetadata | None,
-) -> np.ndarray:
-    if not _uses_lichtfeld_saved_raster_adapter(metadata):
-        return base_rotation @ image_rotation
-    return base_rotation @ _SOURCE_EQUIRECT_LOCAL_FROM_LICHTFELD_LOCAL @ image_rotation @ _SAVED_RASTER_Y_FLIP
-
-
 def cubemap_view_params_for_group(
     metadata: CubemapViewMetadata | CubemapViewParams | None,
     group_index: int,
@@ -398,11 +368,16 @@ def _match_generated_cubemap_layout(
 def _views_from_payload(data: object) -> dict[str, tuple[float, float]] | None:
     if not isinstance(data, dict):
         return None
+    embedded_contract = data.get("stechdrive_coordinate_contract")
+    if not isinstance(embedded_contract, dict):
+        embedded_contract = data.get("coordinate_contract")
     raw_views = data.get("views")
     if raw_views is None and isinstance(data.get("views_config_snapshot"), dict):
         raw_views = data["views_config_snapshot"].get("views")
     if raw_views is None and isinstance(data.get("view_config"), dict):
         raw_views = data["view_config"].get("views")
+    if raw_views is None and isinstance(embedded_contract, dict):
+        return _views_from_payload(embedded_contract)
     if not isinstance(raw_views, list):
         return None
     params: dict[str, tuple[float, float]] = {}
@@ -430,31 +405,15 @@ def _yaw_offset_per_frame_from_payload(data: object) -> float:
     raw = data.get("yaw_offset_per_frame")
     if raw is None and isinstance(data.get("conversion"), dict):
         raw = data["conversion"].get("yaw_offset_per_frame")
+    if raw is None and isinstance(data.get("stechdrive_coordinate_contract"), dict):
+        return _yaw_offset_per_frame_from_payload(data["stechdrive_coordinate_contract"])
+    if raw is None and isinstance(data.get("coordinate_contract"), dict):
+        return _yaw_offset_per_frame_from_payload(data["coordinate_contract"])
     try:
         value = float(raw)
     except (TypeError, ValueError):
         return 0.0
     return value if np.isfinite(value) else 0.0
-
-
-def _image_pose_profile_from_payload(data: object) -> str:
-    if not isinstance(data, dict):
-        return ""
-    profile = str(data.get("effective_profile") or data.get("target_profile") or "").strip().lower()
-    axis_transform = str(data.get("axis_transform") or "").strip().lower()
-    output_shape = str(data.get("output_shape") or "").strip().lower()
-    postprocess = data.get("postprocess")
-    has_lichtfeld_final_fix = isinstance(postprocess, dict) and bool(
-        postprocess.get("lichtfeld_final_orientation_correction")
-    )
-    if (
-        profile == "lichtfeld"
-        and axis_transform in {"none", ""}
-        and output_shape in {"projected", "projection_views", ""}
-        and (has_lichtfeld_final_fix or axis_transform == "none")
-    ):
-        return _IMAGE_POSE_PROFILE_LICHTFELD_CUBE6
-    return ""
 
 
 def load_cubemap_view_metadata(path: Path) -> CubemapViewMetadata | None:
@@ -469,7 +428,6 @@ def load_cubemap_view_metadata(path: Path) -> CubemapViewMetadata | None:
     return CubemapViewMetadata(
         params,
         yaw_offset_per_frame=_yaw_offset_per_frame_from_payload(data),
-        image_pose_profile=_image_pose_profile_from_payload(data),
     )
 
 
@@ -479,9 +437,27 @@ def load_cubemap_view_params(path: Path) -> dict[str, tuple[float, float]] | Non
     return None if metadata is None else metadata.view_params
 
 
+def cubemap_view_metadata_for_pose_preset(preset: str | None) -> CubemapViewMetadata | None:
+    """Return explicit fallback metadata for a known cubemap pose preset."""
+    value = str(preset or CUBEMAP_POSE_PRESET_AUTO).strip().lower()
+    if value in {"", CUBEMAP_POSE_PRESET_AUTO}:
+        return None
+    if value == CUBEMAP_POSE_PRESET_STECHDRIVE_CUBE6:
+        return CubemapViewMetadata(
+            cube6_view_params(CUBE6_DEFAULT_YAW_OFFSET),
+            yaw_offset_per_frame=CUBE6_DEFAULT_YAW_OFFSET_PER_FRAME,
+        )
+    if value == CUBEMAP_POSE_PRESET_STANDARD:
+        return CubemapViewMetadata(dict(_FACE_VIEW_PARAMS), yaw_offset_per_frame=0.0)
+    raise ValueError(f"unsupported cubemap pose preset: {preset}")
+
+
 def discover_cubemap_view_metadata(transforms_json: Path) -> CubemapViewMetadata | None:
     """Find the view metadata that generated a cubemap transforms.json, if available."""
     transforms_json = Path(transforms_json)
+    metadata = load_cubemap_view_metadata(transforms_json)
+    if metadata:
+        return metadata
     roots = [transforms_json.parent]
     if transforms_json.parent.name.lower() in {"output", "metashape_import"}:
         roots.append(transforms_json.parent.parent)

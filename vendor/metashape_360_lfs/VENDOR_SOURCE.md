@@ -19,3 +19,10 @@ generic Metashape export replacement.
 - Pinned source revision at retrieval: `71434c86922a55c318d14b9d30ccdd2f4264898a` (`refs/heads/main`)
 - Retrieved on (UTC): `2026-02-08`
 - SHA256 (vendored file): `f54c748fd31fa4de2f289c292c27ffe2e40c6e160bf12b3ad7f5356b22463df0`
+
+Local divergence:
+
+- The old LichtFeld camera-only 180° Y pre-compensation was removed for the
+  current StechDrive/LichtFeld workflow. Camera transforms and point clouds now
+  leave this converter in the same world frame; downstream Step 4 no longer
+  applies a separate LichtFeld final-orientation correction.

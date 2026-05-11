@@ -93,9 +93,16 @@ def test_apriltag_scale_command_targets_existing_cubemap_output(tmp_path: Path) 
         assert str(output / "transforms.json") in cmd
         assert cmd[cmd.index("--tag-size-m") + 1] == "0.2"
         assert "--equirect-temp-dir" not in cmd
+        assert "--cubemap-pose-preset" not in cmd
         assert cmd.count("--tag-id") == 2
         assert cmd[cmd.index("--tag-id") + 1] == "7"
         assert cmd[cmd.index("--tag-id", cmd.index("--tag-id") + 1) + 1] == "8"
+
+        step.apriltag_output_preset_combo.setCurrentIndex(
+            step.apriltag_output_preset_combo.findData("stechdrive_cube6")
+        )
+        explicit = step._build_apriltag_scale_cmd(scene / "_stechdrive" / "step4" / "apriltag_scale_report.json")
+        assert explicit[explicit.index("--cubemap-pose-preset") + 1] == "stechdrive_cube6"
         """
     )
 
@@ -213,6 +220,8 @@ def test_apriltag_scale_tab_uses_internal_actions() -> None:
         assert step.apriltag_print_page_combo.findData("A4") >= 0
         assert step.apriltag_print_page_combo.findData("A3") >= 0
         assert step.apriltag_print_page_combo.findData("Letter") >= 0
+        assert step.apriltag_output_preset_combo.currentData() == "auto"
+        assert step.apriltag_output_preset_combo.findData("stechdrive_cube6") >= 0
         result_tip = step.apriltag_result_label.toolTip()
         assert "観測" in result_tip or "observations" in result_tip
         assert "ペア" in result_tip or "pairs" in result_tip

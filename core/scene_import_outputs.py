@@ -5,6 +5,7 @@ import math
 from pathlib import Path
 from typing import Any
 
+from core.cubemap_contracts import CUBEMAP_CONTRACT_VERSION
 from core.scene_import_contracts import (
     EXTERNAL_IMPORT_KIND,
     IssueSummary,
@@ -281,6 +282,14 @@ def write_external_step4_settings(scene: Path, import_id: str, output_info: dict
         "postprocess": {
             "lichtfeld_final_orientation_correction": False,
             "lichtfeld_final_orientation_matrix": None,
+        },
+        "coordinate_contract": {
+            "version": CUBEMAP_CONTRACT_VERSION,
+            "profile": "lichtfeld" if output_shape == "equirect_3dgut" else "custom",
+            "axis_transform": "none",
+            "output_shape": output_shape,
+            "view_config": None,
+            "yaw_offset_per_frame": 0.0,
         },
         "metashape_import": {
             "enabled": False,

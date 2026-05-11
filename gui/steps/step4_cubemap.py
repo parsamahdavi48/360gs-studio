@@ -23,6 +23,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from core.cubemap_contracts import CUBE6_DEFAULT_YAW_OFFSET_PER_FRAME
 from core.scene_layout import (
     scene_images_dir,
     step4_meta_dir,
@@ -166,7 +167,7 @@ class CubemapStep(
         self._postshot_project_name_user_edited = False
         self._syncing_postshot_project_name = False
         self._syncing_lfs_auto_fields = False
-        self._yaw_per_frame_non_colmap_value = 30.0
+        self._yaw_per_frame_non_colmap_value = CUBE6_DEFAULT_YAW_OFFSET_PER_FRAME
         self._metashape_auto_xml_candidates: tuple[Path, ...] = ()
         self._metashape_auto_ply_candidates: tuple[Path, ...] = ()
         self._syncing_metashape_auto_inputs = False
@@ -645,7 +646,7 @@ class CubemapStep(
             maximum=180.0,
             step=1.0,
             decimals=1,
-            value=30.0,
+            value=CUBE6_DEFAULT_YAW_OFFSET_PER_FRAME,
             drag_pixels_per_step=6.0,
         )
         self.yaw_per_frame_edit.setFixedWidth(76)
@@ -1837,12 +1838,6 @@ class CubemapStep(
         if mode == _AXIS_BRUSH:
             return _PROFILE_BRUSH
         return _PROFILE_POSTSHOT
-
-    def _uses_lichtfeld_final_correction(self) -> bool:
-        return self._is_metashape_method() and self._effective_profile() == _PROFILE_LICHTFELD
-
-    def _uses_spheresfm_lichtfeld_final_correction(self) -> bool:
-        return self._is_spheresfm_method() and self._spheresfm_effective_profile() == _PROFILE_LICHTFELD
 
     def _on_profile_changed(self, _index: int) -> None:
         p = self._profile_id()
