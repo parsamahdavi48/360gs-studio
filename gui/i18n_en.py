@@ -1133,7 +1133,7 @@ TIPS: dict[str, str] = {
     "APRILTAG_FAMILY": "AprilTag family used for capture. tag36h11 is the recommended starting point.",
     "APRILTAG_TAG_ID": "Use only this tag ID.",
     "APRILTAG_TAG_IDS": "Comma-separated tag IDs to use. Up to 16 IDs are used. Do not reuse the same ID for multiple physical tags.",
-    "APRILTAG_ESTIMATE": "Detect AprilTags from the converted output/transforms.json and output images, then estimate meters per scene unit.",
+    "APRILTAG_ESTIMATE": "Detect AprilTags from projected Cubemap output/transforms.json and output images, then estimate meters per scene unit. For equirectangular output, create Cubemap images first.",
     "APRILTAG_APPLY_SCALE": "Multiply camera positions in output/transforms.json and output/pointcloud.ply by the estimated factor. Original files are backed up.",
     "APRILTAG_RESULT": "Shows estimated scale, accepted observations, inlier ratio, and residual.",
     "APRILTAG_PRINT_FAMILY": "AprilTag family to export to PDF. Usually keep this the same as the estimation family.",

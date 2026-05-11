@@ -33,6 +33,11 @@ class BaseStepWidget(QWidget):
     """
 
     primary_action_state_changed = Signal()
+    background_task_started = Signal(str)
+    background_line_received = Signal(str)
+    background_progress_changed = Signal(int, int)
+    background_status_changed = Signal(str)
+    background_task_finished = Signal(bool, bool)
 
     def __init__(self, base_dir: Path, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -86,6 +91,14 @@ class BaseStepWidget(QWidget):
 
     def on_activated(self) -> None:
         """ステップが表示された時のフック（オプション）"""
+        pass
+
+    def has_background_task(self) -> bool:
+        """Return whether this step owns a currently running internal task."""
+        return False
+
+    def cancel_background_task(self) -> None:
+        """Cancel a running internal task if the step has one."""
         pass
 
     def shutdown(self) -> None:

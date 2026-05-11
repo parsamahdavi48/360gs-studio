@@ -84,6 +84,12 @@ def validate_scale_output_dataset(scene_dir: Path, *, max_image_checks: int = 12
     if not transforms_json.is_file():
         raise ValueError(f"Cubemap output transforms.json was not found: {transforms_json}")
     data = _load_transforms(transforms_json)
+    camera_model = str(data.get("camera_model") or "")
+    if camera_model not in {"PINHOLE", "SIMPLE_PINHOLE"}:
+        raise ValueError(
+            "AprilTag scale estimation requires projected Cubemap output with PINHOLE/SIMPLE_PINHOLE "
+            "transforms.json. Run Step 4 with Cubemap image output first."
+        )
     pointcloud = _pointcloud_path(transforms_json, data)
 
     image_paths = _iter_frame_image_paths(transforms_json, data)

@@ -5,10 +5,11 @@ from __future__ import annotations
 import html
 import json
 import math
+import re
 import sys
 from pathlib import Path
 
-from PySide6.QtCore import QProcess, QSignalBlocker
+from PySide6.QtCore import QProcess, QProcessEnvironment, QSignalBlocker
 from PySide6.QtWidgets import (
     QComboBox,
     QFormLayout,
@@ -40,11 +41,16 @@ from gui.common.collapsible_section import CollapsibleSection
 from gui.common.drag_spinbox import DragDoubleSpinBox, DragSpinBox
 from gui.common.form_rows import add_tooltip_row
 
+_APRILTAG_PROGRESS_RE = re.compile(r"^\[progress\]\s+(\d+)\s*/\s*(\d+)")
+
 
 class Step4AprilTagMixin:
     def _init_apriltag_state(self) -> None:
         self._apriltag_scale_ui_enabled = True
         self._apriltag_estimate_process: QProcess | None = None
+        self._apriltag_cancel_requested = False
+        self._apriltag_output_buffer = ""
+        self._apriltag_output_lines: list[str] = []
         self._apriltag_last_scale: float | None = None
         self._apriltag_scale_applied = False
 
@@ -287,8 +293,6 @@ class Step4AprilTagMixin:
             self._apriltag_current_family(),
             "--report-json",
             str(report_path),
-            "--equirect-temp-dir",
-            str(step4_meta_dir(Path(self.scene_dir)) / "apriltag_projection"),
         ]
         for tag_id in tag_ids:
             cmd.extend(["--tag-id", str(tag_id)])
@@ -314,13 +318,23 @@ class Step4AprilTagMixin:
 
         self._apriltag_last_scale = None
         self._apriltag_scale_applied = False
+        self._apriltag_cancel_requested = False
+        self._apriltag_output_buffer = ""
+        self._apriltag_output_lines = []
         self.apriltag_result_label.setText(i18n.t("APRILTAG_RUNNING"))
-        self._sync_apriltag_controls()
         process = QProcess(self)
         self._apriltag_estimate_process = process
+        self._sync_apriltag_controls()
+        self.background_task_started.emit(f"{i18n.STATUS_RUNNING}: {i18n.t('STEP4_TAB_APRILTAG_SCALE')}")
+        self.background_line_received.emit("$ " + " ".join(cmd))
         process.setProgram(cmd[0])
         process.setArguments(cmd[1:])
+        env = QProcessEnvironment.systemEnvironment()
+        env.insert("PYTHONUTF8", "1")
+        env.insert("PYTHONIOENCODING", "utf-8")
+        process.setProcessEnvironment(env)
         process.setProcessChannelMode(QProcess.MergedChannels)
+        process.readyReadStandardOutput.connect(self._on_apriltag_scale_output)
         process.finished.connect(
             lambda exit_code, status, path=report_path: self._on_apriltag_scale_finished(exit_code, status, path)
         )
@@ -328,8 +342,38 @@ class Step4AprilTagMixin:
         if not process.waitForStarted(3000):
             detail = process.errorString().strip() or "-"
             self._apriltag_estimate_process = None
+            process.deleteLater()
             self.apriltag_result_label.setText(i18n.t("APRILTAG_FAILED").format(detail=detail))
+            self.background_line_received.emit(f"[apriltag_scale] start failed: {detail}")
+            self.background_task_finished.emit(False, False)
             self._sync_apriltag_controls()
+
+    def _on_apriltag_scale_output(self) -> None:
+        process = self._apriltag_estimate_process
+        if process is None:
+            return
+        self._flush_apriltag_scale_output(process)
+
+    def _flush_apriltag_scale_output(self, process: QProcess) -> None:
+        data = bytes(process.readAllStandardOutput()).decode("utf-8", errors="replace")
+        if not data:
+            return
+        self._apriltag_output_buffer += data.replace("\r", "\n")
+        while "\n" in self._apriltag_output_buffer:
+            line, self._apriltag_output_buffer = self._apriltag_output_buffer.split("\n", 1)
+            self._handle_apriltag_output_line(line.rstrip("\r"))
+
+    def _handle_apriltag_output_line(self, line: str) -> None:
+        if not line:
+            return
+        self._apriltag_output_lines.append(line)
+        self.background_line_received.emit(line)
+        progress = _APRILTAG_PROGRESS_RE.match(line)
+        if progress:
+            self.background_progress_changed.emit(int(progress.group(1)), int(progress.group(2)))
+            return
+        if line.startswith("[apriltag] "):
+            self.background_status_changed.emit(line[len("[apriltag] ") :])
 
     def _on_apriltag_scale_finished(
         self,
@@ -338,11 +382,25 @@ class Step4AprilTagMixin:
         report_path: Path,
     ) -> None:
         process = self._apriltag_estimate_process
-        detail = self._qprocess_output_text(process) if process is not None else ""
+        if process is not None:
+            self._flush_apriltag_scale_output(process)
+        if self._apriltag_output_buffer.strip():
+            for line in self._apriltag_output_buffer.strip().splitlines():
+                self._handle_apriltag_output_line(line.rstrip("\r"))
+            self._apriltag_output_buffer = ""
+        detail = "\n".join(self._apriltag_output_lines)
         if process is not None:
             process.deleteLater()
         self._apriltag_estimate_process = None
+        canceled = self._apriltag_cancel_requested
+        self._apriltag_cancel_requested = False
+        self.background_line_received.emit(f"[apriltag_scale] exit_code={exit_code} canceled={int(canceled)}")
+        self.background_task_finished.emit(exit_code == 0 and not canceled, canceled)
 
+        if canceled:
+            self.apriltag_result_label.setText(i18n.STATUS_CANCELED)
+            self._sync_apriltag_controls()
+            return
         if exit_code != 0:
             self.apriltag_result_label.setText(
                 i18n.t("APRILTAG_FAILED").format(detail=self._message_detail_tail(detail))
@@ -370,6 +428,18 @@ class Step4AprilTagMixin:
             )
         )
         self._sync_apriltag_controls()
+
+    def has_background_task(self) -> bool:
+        return self._apriltag_estimate_process is not None
+
+    def cancel_background_task(self) -> None:
+        process = self._apriltag_estimate_process
+        if process is None or process.state() == QProcess.NotRunning:
+            return
+        self._apriltag_cancel_requested = True
+        self.background_status_changed.emit(i18n.STATUS_CANCELED)
+        self.background_line_received.emit("[apriltag_scale] cancel requested")
+        process.kill()
 
     def _apply_apriltag_scale(self) -> None:
         if self._apriltag_last_scale is None:
@@ -445,6 +515,7 @@ class Step4AprilTagMixin:
     def shutdown(self) -> None:
         process = self._apriltag_estimate_process
         if process is not None:
+            self._apriltag_cancel_requested = True
             process.kill()
             process.waitForFinished(3000)
             process.deleteLater()

@@ -1132,7 +1132,7 @@ TIPS: dict[str, str] = {
     "APRILTAG_FAMILY": "撮影に使ったAprilTagファミリです。まずはtag36h11を推奨します",
     "APRILTAG_TAG_ID": "特定IDだけを使う場合に入力します",
     "APRILTAG_TAG_IDS": "使うタグIDをカンマ区切りで入力します。最大16個まで使用し、同じIDを複数の実物タグに使わないでください",
-    "APRILTAG_ESTIMATE": "変換済みの output/transforms.json と出力画像からAprilTagを検出し、メートル換算のスケールを推定します",
+    "APRILTAG_ESTIMATE": "投影済みCubemapの output/transforms.json と出力画像からAprilTagを検出し、メートル換算のスケールを推定します。エクイレクタングラー出力の場合は先にCubemap画像を書き出してください",
     "APRILTAG_APPLY_SCALE": "推定した係数を output/transforms.json のカメラ位置と output/pointcloud.ply に掛けます。元ファイルはバックアップします",
     "APRILTAG_RESULT": "推定scale、採用観測数、inlier率、残差を表示します",
     "APRILTAG_PRINT_FAMILY": "PDFに出力するAprilTagファミリです。通常は推定に使うファミリと同じにします",

@@ -72,6 +72,16 @@ def test_validate_scale_output_dataset_checks_transforms_and_sample_images(tmp_p
     assert dataset.checked_image_count == 2
 
 
+def test_validate_scale_output_dataset_rejects_equirectangular_output(tmp_path: Path) -> None:
+    transforms = _write_dataset(tmp_path)
+    data = json.loads(transforms.read_text(encoding="utf-8"))
+    data["camera_model"] = "EQUIRECTANGULAR"
+    transforms.write_text(json.dumps(data), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="projected Cubemap output"):
+        validate_scale_output_dataset(tmp_path)
+
+
 def test_apply_scene_output_scale_updates_transforms_and_pointcloud_with_backups(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

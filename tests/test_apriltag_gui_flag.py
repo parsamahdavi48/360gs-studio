@@ -92,9 +92,92 @@ def test_apriltag_scale_command_targets_existing_cubemap_output(tmp_path: Path) 
         assert "scripts\\\\estimate_apriltag_scale.py" in cmd[2] or "scripts/estimate_apriltag_scale.py" in cmd[2]
         assert str(output / "transforms.json") in cmd
         assert cmd[cmd.index("--tag-size-m") + 1] == "0.2"
+        assert "--equirect-temp-dir" not in cmd
         assert cmd.count("--tag-id") == 2
         assert cmd[cmd.index("--tag-id") + 1] == "7"
         assert cmd[cmd.index("--tag-id", cmd.index("--tag-id") + 1) + 1] == "8"
+        """
+    )
+
+    env = os.environ.copy()
+    env["QT_QPA_PLATFORM"] = "offscreen"
+    result = subprocess.run([sys.executable, "-c", script], cwd=Path.cwd(), env=env, capture_output=True, text=True)
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_apriltag_scale_command_rejects_equirectangular_output(tmp_path: Path) -> None:
+    transforms = {
+        "camera_model": "EQUIRECTANGULAR",
+        "frames": [
+            {
+                "file_path": "images/a.png",
+                "transform_matrix": [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]],
+            }
+        ],
+    }
+    script = textwrap.dedent(
+        f"""
+        import json
+        import os
+        from pathlib import Path
+
+        os.environ["QT_QPA_PLATFORM"] = "offscreen"
+
+        from PySide6.QtWidgets import QApplication
+
+        from gui.theme import apply_theme
+        from gui.steps.step4_cubemap import CubemapStep
+
+        scene = Path({str(tmp_path)!r})
+        output = scene / "output"
+        (output / "images").mkdir(parents=True)
+        (output / "images" / "a.png").write_bytes(b"image")
+        (output / "transforms.json").write_text(json.dumps({transforms!r}), encoding="utf-8")
+
+        app = QApplication([])
+        apply_theme(app)
+        step = CubemapStep(Path.cwd())
+        step.set_scene_dir(str(scene))
+
+        try:
+            step._build_apriltag_scale_cmd(scene / "_stechdrive" / "step4" / "apriltag_scale_report.json")
+        except ValueError as exc:
+            assert "projected Cubemap output" in str(exc)
+        else:
+            raise AssertionError("EQUIRECTANGULAR output should be rejected")
+        """
+    )
+
+    env = os.environ.copy()
+    env["QT_QPA_PLATFORM"] = "offscreen"
+    result = subprocess.run([sys.executable, "-c", script], cwd=Path.cwd(), env=env, capture_output=True, text=True)
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_apriltag_background_progress_reaches_main_window() -> None:
+    script = textwrap.dedent(
+        """
+        import os
+
+        os.environ["QT_QPA_PLATFORM"] = "offscreen"
+
+        from PySide6.QtWidgets import QApplication
+
+        from gui.app import MainWindow
+        from gui.theme import apply_theme
+
+        app = QApplication([])
+        apply_theme(app)
+        window = MainWindow("")
+        window.step4.background_task_started.emit("Running scale")
+        window.step4.background_line_received.emit("[apriltag] detection start")
+        window.step4.background_progress_changed.emit(3, 10)
+        assert window.progress.status_label.text() == "Running scale"
+        assert window.progress.bar.value() == 3
+        assert window.progress.bar.maximum() == 10
+        assert "detection start" in window.log_panel.toPlainText()
+        window.step4.background_task_finished.emit(True, False)
+        window.shutdown()
         """
     )
 

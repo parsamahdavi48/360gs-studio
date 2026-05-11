@@ -377,6 +377,11 @@ class MainWindow(QWidget):
         self.runner.queue_finished.connect(self._on_queue_finished)
         for step in self.steps:
             step.primary_action_state_changed.connect(self._update_run_button)
+            step.background_task_started.connect(self._on_background_task_started)
+            step.background_line_received.connect(self._on_background_line)
+            step.background_progress_changed.connect(self._on_background_progress)
+            step.background_status_changed.connect(self._on_background_status)
+            step.background_task_finished.connect(self._on_background_task_finished)
         self.step4.primary_action_state_changed.connect(self._refresh_step4_subnav)
 
         self._on_scene_changed(self.scene_browse.text())
@@ -742,10 +747,18 @@ class MainWindow(QWidget):
         self.run_btn.setEnabled(not busy and scene_selected and action_enabled)
 
         self.cancel_btn.setVisible(True)
-        self.cancel_btn.setEnabled(runner_running or self._scene_import_running)
+        self.cancel_btn.setEnabled(
+            runner_running or self._scene_import_running or self._background_task_step() is not None
+        )
 
     def _workflow_busy(self) -> bool:
-        return self.runner.is_running() or self._scene_import_running
+        return self.runner.is_running() or self._scene_import_running or self._background_task_step() is not None
+
+    def _background_task_step(self) -> BaseStepWidget | None:
+        for step in self.steps:
+            if step.has_background_task():
+                return step
+        return None
 
     def _set_workflow_locked(self, locked: bool) -> None:
         unlocked = not locked
@@ -831,6 +844,11 @@ class MainWindow(QWidget):
                 self.progress.set_status(i18n.t("IMPORT_SCENE_CANCELING"))
             self._update_run_button()
             return
+        background_step = self._background_task_step()
+        if background_step is not None:
+            background_step.cancel_background_task()
+            self._update_run_button()
+            return
         self.runner.cancel()
         self.progress.finish_phase(complete=False)
         self.progress.set_status(i18n.STATUS_CANCELED)
@@ -878,6 +896,31 @@ class MainWindow(QWidget):
             status = self.progress.status_label.text()
             if i18n.STATUS_CANCELED not in status:
                 self.progress.set_status(i18n.STATUS_FAILED)
+        self._update_run_button()
+
+    def _on_background_task_started(self, status: str) -> None:
+        self.progress.reset()
+        self.progress.start_phase()
+        self.progress.set_status(status or i18n.STATUS_RUNNING)
+        self._update_run_button()
+
+    def _on_background_line(self, line: str) -> None:
+        self.log_panel.append_log(line)
+
+    def _on_background_progress(self, done: int, total: int) -> None:
+        self.progress.set_progress(done, total)
+
+    def _on_background_status(self, status: str) -> None:
+        self.progress.set_status(status)
+
+    def _on_background_task_finished(self, success: bool, canceled: bool) -> None:
+        self.progress.finish_phase(complete=success and not canceled)
+        if canceled:
+            self.progress.set_status(i18n.STATUS_CANCELED)
+        elif success:
+            self.progress.set_status(i18n.STATUS_DONE)
+        else:
+            self.progress.set_status(i18n.STATUS_FAILED)
         self._update_run_button()
 
     def shutdown(self) -> None:

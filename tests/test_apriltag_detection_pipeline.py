@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import json
 import math
+import subprocess
+import sys
 from pathlib import Path
 
 import cv2
@@ -274,6 +276,29 @@ def test_tagged_images_can_validate_scale_pipeline(tmp_path: Path) -> None:
     assert math.isclose(run.estimate.scale, 0.25, rel_tol=0.08)
 
 
+def test_scale_pipeline_reports_progress_and_supports_parallel_detection(tmp_path: Path) -> None:
+    transforms = _write_tagged_scale_dataset(tmp_path)
+    progress: list[tuple[int, int]] = []
+    logs: list[str] = []
+
+    run = run_apriltag_scale_estimation(
+        transforms,
+        tag_size_m=0.8,
+        family="tag36h11",
+        tag_ids={7},
+        workers=2,
+        progress_callback=lambda done, total: progress.append((done, total)),
+        log_callback=logs.append,
+    )
+
+    assert run.estimate.observation_count == 2
+    assert progress[0] == (0, 2)
+    assert progress[-1] == (2, 2)
+    assert any("detection start" in line for line in logs)
+    assert any("detection complete" in line for line in logs)
+    assert run.timings_sec["total"] >= 0.0
+
+
 def test_synthetic_injection_detects_metric_camera_vector(tmp_path: Path) -> None:
     transforms = _write_two_frame_dataset(tmp_path)
     marker = tmp_path / "tag.png"
@@ -481,3 +506,37 @@ def test_equirect_detection_projection_writes_temporary_pinhole_dataset(tmp_path
     assert data["camera_model"] == "SIMPLE_PINHOLE"
     assert len(data["frames"]) == 6
     assert (projected.parent / "images" / "a_px.png").is_file()
+
+
+def test_estimate_apriltag_scale_cli_rejects_equirectangular_input(tmp_path: Path) -> None:
+    transforms = tmp_path / "transforms.json"
+    transforms.write_text(
+        json.dumps(
+            {
+                "camera_model": "EQUIRECTANGULAR",
+                "frames": [
+                    {
+                        "file_path": "images/a.png",
+                        "transform_matrix": np.eye(4).tolist(),
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            "scripts/estimate_apriltag_scale.py",
+            str(transforms),
+            "--tag-size-m",
+            "0.16",
+        ],
+        cwd=Path.cwd(),
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 1
+    assert "requires projected Cubemap output images" in result.stdout
