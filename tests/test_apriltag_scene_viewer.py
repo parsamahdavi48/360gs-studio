@@ -433,25 +433,38 @@ def test_scene_viewer_keeps_world_face_rays_separate_from_generated_image_rays(t
     right, up, forward = window.point_view._fixed_view_basis
     assert np.linalg.det(np.column_stack([right, up, -forward])) > 0.999
     assert np.allclose(forward, directions["pz"], atol=1e-6)
-    assert "world rays=transforms.json face +Z" in window.case_label.text()
-    assert "image rays=Cube6 export yaw/pitch" in window.case_label.text()
-    assert "active basis=transforms.json face +Z" in window.case_label.text()
-    assert "active pz->image px" in window.case_label.text()
-    assert "reverse=nx" in window.case_label.text()
+    assert window.case is not None
+    assert window.case_label.text() == str(window.case.case_dir)
+    assert "world rays=transforms.json face +Z" in window._last_status_detail
+    assert "image rays=Cube6 export yaw/pitch" in window._last_status_detail
+    assert "active basis=transforms.json face +Z" in window._last_status_detail
+    assert "active pz->image px" in window._last_status_detail
+    assert "reverse=nx" in window._last_status_detail
 
     window.ray_basis_combo.setCurrentIndex(window.ray_basis_combo.findData("image"))
     assert window.selected_face_basis_group() is image_group
     assert window.point_view._fixed_view_basis is not None
     _right, _up, image_forward = window.point_view._fixed_view_basis
     assert np.allclose(image_forward, image_directions["pz"], atol=1e-6)
-    assert "active basis=Cube6 image ray" in window.case_label.text()
+    assert "active basis=Cube6 image ray" in window._last_status_detail
 
     window.ray_basis_combo.setCurrentIndex(window.ray_basis_combo.findData("world"))
     assert window.selected_face_basis_group() is world_group
     assert window.point_view._fixed_view_basis is not None
     _right, _up, world_forward = window.point_view._fixed_view_basis
     assert np.allclose(world_forward, directions["pz"], atol=1e-6)
-    assert "active basis=transforms.json face +Z" in window.case_label.text()
+    assert "active basis=transforms.json face +Z" in window._last_status_detail
+    window.deleteLater()
+
+
+def test_scene_viewer_starts_empty_without_explicit_case() -> None:
+    _app()
+
+    window = AprilTagSceneViewerWindow()
+
+    assert window.case is None
+    assert window.case_label.text() == "シーン未選択"
+    assert window.camera_combo.count() == 0
     window.deleteLater()
 
 
@@ -467,8 +480,10 @@ def test_scene_viewer_ui_defaults_target_scene_validation_workflow(tmp_path: Pat
     assert window.mode_combo.itemText(window.mode_combo.findData(RIGHT_VIEW_RECONSTRUCTED_CUBE6)) == "Cube6再構築"
     assert window.ray_basis_combo.currentData() == RAY_BASIS_WORLD
     assert window.tag_physical_size_spin.value() == pytest.approx(0.160)
+    assert window.run_validation_button.text() == "検出"
     assert window.copy_validation_scale_button.text() == "scaleコピー"
     assert not window.copy_validation_scale_button.isEnabled()
+    assert not window.validation_status_label.wordWrap()
     window.deleteLater()
 
 
@@ -642,11 +657,11 @@ def test_current_case_reports_world_to_image_ray_mapping() -> None:
     assert opposite[1] < 2.0
     assert image_basis_closest[0] == "pz"
     assert image_basis_closest[1] < 1e-4
-    assert "source equirect=frame_000001.jpg" in window.case_label.text()
+    assert "source equirect=frame_000001.jpg" in window._last_status_detail
     window.mode_combo.setCurrentIndex(window.mode_combo.findData(RIGHT_VIEW_SOURCE_EQUIRECT))
-    assert "image preview=source equirect direct" in window.case_label.text()
+    assert "image preview=source equirect direct" in window._last_status_detail
     window.ray_basis_combo.setCurrentIndex(window.ray_basis_combo.findData("image"))
-    assert "source equirect=frame_000001.jpg" in window.case_label.text()
+    assert "source equirect=frame_000001.jpg" in window._last_status_detail
     window.deleteLater()
 
 
@@ -1454,7 +1469,7 @@ def test_current_case_image_preview_can_use_generated_cube6_reconstruction() -> 
 
     assert "cube6-reconstruct" in window._displayed_image_key
     assert "source-equirect" not in window._displayed_image_key
-    assert "image preview=Cube6 reconstructed" in window.case_label.text()
+    assert "image preview=Cube6 reconstructed" in window._last_status_detail
     window.deleteLater()
 
 
@@ -1658,7 +1673,7 @@ def test_scene_viewer_synthetic_scale_validation_writes_result(tmp_path: Path) -
     assert window.copy_validation_scale_button.isEnabled()
     assert float(window._last_validation_scale_text) == pytest.approx(report["estimate"]["scale"])
     assert window.run_validation_button.isEnabled()
-    assert window.run_validation_button.text() == "合成→検出"
+    assert window.run_validation_button.text() == "検出"
     log_text = window.log.toPlainText()
     assert "実行中 1/6: 候補フレームを選別中" in log_text
     assert "実行中 3/6: Cube6画像へタグを合成中" in log_text
@@ -1694,6 +1709,34 @@ def test_scene_viewer_projects_tag_overlay_into_image_view_params(tmp_path: Path
     assert 437.0 < float(points[:, 0].max()) < 457.0
     assert 310.0 < float(points[:, 1].min()) < 330.0
     assert 437.0 < float(points[:, 1].max()) < 457.0
+    window.deleteLater()
+
+
+def test_scene_viewer_marks_small_tag_overlay_red(tmp_path: Path) -> None:
+    _app()
+    case_dir = _write_cube6_case(tmp_path)
+
+    window = AprilTagSceneViewerWindow(initial_case=case_dir)
+    window.set_active_face("pz")
+    window.set_tag_transform(
+        center=(0.0, 0.0, 3.0),
+        yaw_deg=0.0,
+        pitch_deg=0.0,
+        roll_deg=0.0,
+        size_sfm=0.2,
+    )
+    group = window.selected_world_group()
+    assert group is not None
+
+    window.validation_min_area_spin.setValue(1_000_000.0)
+    small = window._tag_image_overlays(group, window._params, output_size=768)
+    assert len(small) == 1
+    assert small[0].color_bgr == (0, 64, 255)
+
+    window.validation_min_area_spin.setValue(1.0)
+    visible = window._tag_image_overlays(group, window._params, output_size=768)
+    assert len(visible) == 1
+    assert visible[0].color_bgr == (0, 255, 180)
     window.deleteLater()
 
 

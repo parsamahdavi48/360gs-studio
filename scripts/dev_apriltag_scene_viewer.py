@@ -15,7 +15,6 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from devtools.apriltag.case import DEFAULT_CASE_ROOT
 from devtools.apriltag.scene_viewer import AprilTagSceneViewerWindow
 from gui.theme import apply_theme
 
@@ -25,8 +24,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--case",
         type=Path,
-        default=DEFAULT_CASE_ROOT / "current",
-        help="AprilTag dev case directory containing case.json",
+        default=None,
+        help="Scene folder containing output/transforms.json, or an AprilTag dev case directory containing case.json",
     )
     return parser.parse_args()
 

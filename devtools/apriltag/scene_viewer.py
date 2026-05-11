@@ -18,6 +18,7 @@ from PySide6.QtWidgets import (
     QComboBox,
     QFileDialog,
     QFormLayout,
+    QGridLayout,
     QGroupBox,
     QHBoxLayout,
     QLabel,
@@ -843,13 +844,14 @@ class AprilTagSceneViewerWindow(QWidget):
         self._tag_size_sfm = 0.64
         self._tag_physical_size_m = 0.160
         self._last_validation_scale_text = ""
+        self._last_status_detail = ""
         self._validation_running = False
         self._validation_thread: QThread | None = None
         self._validation_worker: SyntheticScaleValidationWorker | None = None
 
         self._build_ui()
         self._connect_signals()
-        case_dir = initial_case or DEFAULT_VIEWER_CASE
+        case_dir = initial_case
         if case_dir is not None and ((case_dir / "case.json").is_file() or (case_dir / "output" / "transforms.json").is_file()):
             self.load_case_dir(case_dir)
 
@@ -900,18 +902,30 @@ class AprilTagSceneViewerWindow(QWidget):
         root.addLayout(controls)
 
         face_box = QGroupBox("FOV 90° Face")
-        face_layout = QHBoxLayout(face_box)
+        face_layout = QGridLayout(face_box)
         face_layout.setContentsMargins(8, 8, 8, 8)
+        face_layout.setHorizontalSpacing(6)
+        face_layout.setVerticalSpacing(6)
         self.face_buttons: dict[str, QPushButton] = {}
-        for face in FACE_ORDER:
+        for index, face in enumerate(FACE_ORDER):
             button = QPushButton(face)
             button.setCheckable(True)
             self.face_buttons[face] = button
-            face_layout.addWidget(button)
-        face_layout.addStretch(1)
+            face_layout.addWidget(button, index // 4, index % 4)
         root.addWidget(face_box)
 
         root.addWidget(self._build_tag_controls())
+
+        result_row = QHBoxLayout()
+        result_row.setContentsMargins(0, 0, 0, 0)
+        result_row.setSpacing(6)
+        result_row.addWidget(QLabel("結果"))
+        self.validation_status_label = QLabel("検証未実行")
+        self.validation_status_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        self.validation_status_label.setWordWrap(False)
+        self.validation_status_label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        result_row.addWidget(self.validation_status_label, 1)
+        root.addLayout(result_row)
 
         splitter = QSplitter(Qt.Horizontal)
         self.world_view = AprilTagWorldDebugView()
@@ -986,7 +1000,7 @@ class AprilTagSceneViewerWindow(QWidget):
         self.validation_distance_spin.setToolTip("タグ中心からカメラまでの距離がこのSfM値以内の画像だけを合成対象にします。0では距離で除外しません。")
         self.validation_angle_spin.setToolTip("タグ正面とカメラ方向の角度がこの値以内の画像だけを合成対象にします。")
         self.validation_min_area_spin.setToolTip("画像上に投影されたタグ四角形の面積がこのpx^2未満の画像を合成対象から外します。")
-        self.run_validation_button = QPushButton("合成→検出")
+        self.run_validation_button = QPushButton("検出")
         self.copy_validation_scale_button = QPushButton("scaleコピー")
         self.copy_validation_scale_button.setEnabled(False)
         validation_actions = QHBoxLayout()
@@ -994,14 +1008,10 @@ class AprilTagSceneViewerWindow(QWidget):
         validation_actions.setSpacing(6)
         validation_actions.addWidget(self.run_validation_button)
         validation_actions.addWidget(self.copy_validation_scale_button)
-        self.validation_status_label = QLabel("検証未実行")
-        self.validation_status_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
-        self.validation_status_label.setWordWrap(True)
-        validation_form.addRow("認識範囲 SfM", self.validation_distance_spin)
+        validation_form.addRow("認識範囲", self.validation_distance_spin)
         validation_form.addRow("最大角度", self.validation_angle_spin)
-        validation_form.addRow("最小投影面積 px^2", self.validation_min_area_spin)
+        validation_form.addRow("最小投影面積", self.validation_min_area_spin)
         validation_form.addRow("", validation_actions)
-        validation_form.addRow("結果", self.validation_status_label)
         layout.addLayout(validation_form)
         layout.addStretch(1)
         return group
@@ -1334,17 +1344,24 @@ class AprilTagSceneViewerWindow(QWidget):
         if int(max(max_xy - min_xy)) > size * 3:
             return []
         origin_y = max(18, int(min_xy[1]) - 8)
+        color = self._tag_overlay_color(projected)
         return [
             PerspectiveLabelOverlay(
                 label="tag",
                 box=(int(min_xy[0]), int(min_xy[1]), int(max_xy[0]), int(max_xy[1])),
                 origin=(int(min_xy[0]), origin_y),
-                color_bgr=(0, 255, 180),
+                color_bgr=color,
                 highlighted=True,
                 polygon=tuple((float(x), float(y)) for x, y in projected),
                 fill_alpha=0.16,
             )
         ]
+
+    def _tag_overlay_color(self, points: np.ndarray) -> tuple[int, int, int]:
+        min_area = float(self.validation_min_area_spin.value()) if hasattr(self, "validation_min_area_spin") else 0.0
+        if min_area > 0.0 and _polygon_area_px(np.asarray(points, dtype=np.float64)) < min_area:
+            return (0, 64, 255)
+        return (0, 255, 180)
 
     def _tag_projected_overlay(
         self,
@@ -1367,12 +1384,13 @@ class AprilTagSceneViewerWindow(QWidget):
         if int(max(max_xy - min_xy)) > size * 3:
             return []
         origin_y = max(18, int(min_xy[1]) - 8)
+        color = self._tag_overlay_color(scaled)
         return [
             PerspectiveLabelOverlay(
                 label="tag",
                 box=(int(min_xy[0]), int(min_xy[1]), int(max_xy[0]), int(max_xy[1])),
                 origin=(int(min_xy[0]), origin_y),
-                color_bgr=(0, 255, 180),
+                color_bgr=color,
                 highlighted=True,
                 polygon=tuple((float(x), float(y)) for x, y in scaled),
                 fill_alpha=0.16,
@@ -1598,7 +1616,7 @@ class AprilTagSceneViewerWindow(QWidget):
     def _finish_validation_run(self) -> None:
         self._validation_running = False
         self._set_validation_controls_enabled(True)
-        self.run_validation_button.setText("合成→検出")
+        self.run_validation_button.setText("検出")
         app = QApplication.instance()
         if app is not None:
             app.processEvents()
@@ -2047,6 +2065,7 @@ class AprilTagSceneViewerWindow(QWidget):
     def _update_status(self) -> None:
         if self.case is None:
             self.case_label.setText("シーン未選択")
+            self._last_status_detail = ""
             return
         mode = str(self.mode_combo.currentData() or RIGHT_VIEW_POINTCLOUD)
         group = self.selected_world_group()
@@ -2089,8 +2108,10 @@ class AprilTagSceneViewerWindow(QWidget):
                 opposite_text = "" if opposite is None else f", reverse={opposite[0]} {opposite[1]:.1f}deg"
                 same = "" if not np.isfinite(same_label_angle) else f", same-label={same_label_angle:.1f}deg"
                 mapping = f" / active {self._active_face}->image {image_face} ({angle:.1f}deg{same}{opposite_text})"
-        self.case_label.setText(
-            f"シーン/ケース: {self.case.case_dir} / カメラ: {group_text} / "
+        display_path = self.case.image_root if self.case.input_mode == "scene" and self.case.image_root else self.case.case_dir
+        self.case_label.setText(str(display_path))
+        self._last_status_detail = (
+            f"カメラ: {group_text} / "
             f"点群: {point_count} sampled / 座標: {coordinate_profile_label(self.case.coordinate_profile)}"
             f"{alignment}{ray_source}{source_image_text}{mapping}"
         )
