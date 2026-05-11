@@ -1200,6 +1200,13 @@ def test_scene_viewer_synthetic_scale_validation_writes_result(tmp_path: Path) -
     assert report["observation_count"] >= 2
     assert report["estimate"]["scale"] == pytest.approx(0.25, rel=0.08)
     assert "scale=" in window.validation_status_label.text()
+    assert window.run_validation_button.isEnabled()
+    assert window.run_validation_button.text() == "合成→検出"
+    log_text = window.log.toPlainText()
+    assert "実行中 1/6: 候補フレームを選別中" in log_text
+    assert "実行中 3/6: Cube6画像へタグを合成中" in log_text
+    assert "実行中 4/6: AprilTagを検出中" in log_text
+    assert "実行中 6/6: レポートを書き出し中" in log_text
     window.deleteLater()
 
 

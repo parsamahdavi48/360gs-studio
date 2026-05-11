@@ -13,6 +13,7 @@ import numpy as np
 from PySide6.QtCore import QSize, Qt, Signal
 from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import (
+    QApplication,
     QComboBox,
     QFileDialog,
     QFormLayout,
@@ -638,6 +639,7 @@ class AprilTagSceneViewerWindow(QWidget):
         self._tag_pitch_deg = 0.0
         self._tag_roll_deg = 0.0
         self._tag_size_sfm = 0.64
+        self._validation_running = False
 
         self._build_ui()
         self._connect_signals()
@@ -1204,18 +1206,37 @@ class AprilTagSceneViewerWindow(QWidget):
             for candidate in candidates
         ]
 
+    def _set_validation_status(self, text: str, *, log: bool = False) -> None:
+        self.validation_status_label.setText(text)
+        if log:
+            self._append_log(f"[validation] {text}")
+        app = QApplication.instance()
+        if app is not None:
+            app.processEvents()
+
     def run_synthetic_scale_validation(self) -> None:
         if self.case is None:
             QMessageBox.warning(self, "AprilTag検証", "ケースを読み込んでください。")
             return
+        if self._validation_running:
+            self._set_validation_status("実行中: 前回の合成検出がまだ完了していません。")
+            return
+        self._validation_running = True
+        self.run_validation_button.setEnabled(False)
+        self.run_validation_button.setText("実行中...")
         try:
+            self._set_validation_status("実行中 1/6: 候補フレームを選別中...", log=True)
             center_sfm, normal_sfm, up_sfm, true_scale = self._synthetic_tag_placement_sfm()
             candidates, total_frames = self._synthetic_tag_candidates()
             if not candidates:
-                self.validation_status_label.setText("合成候補なし")
+                self._set_validation_status("合成候補なし")
                 self._append_log("[validation] 合成候補がありません。タグ表面、距離、投影面積を確認してください。")
                 return
 
+            self._set_validation_status(
+                f"実行中 2/6: タグ画像を生成中... 候補 {len(candidates)}/{total_frames}",
+                log=True,
+            )
             run_dir = self._next_validation_run_dir()
             target = create_printable_target(
                 run_dir / "assets",
@@ -1224,6 +1245,10 @@ class AprilTagSceneViewerWindow(QWidget):
                 tag_size_m=float(self.case.default_tag_size_m),
             )
             selected_paths = frozenset(candidate.frame.file_path for candidate in candidates)
+            self._set_validation_status(
+                f"実行中 3/6: Cube6画像へタグを合成中... 候補 {len(candidates)}/{total_frames}",
+                log=True,
+            )
             synthetic_report = inject_synthetic_apriltag(
                 SyntheticAprilTagConfig(
                     input_transforms=self.case.transforms_for_processing(),
@@ -1237,12 +1262,20 @@ class AprilTagSceneViewerWindow(QWidget):
                     frame_file_paths=selected_paths,
                 )
             )
+            self._set_validation_status(
+                f"実行中 4/6: AprilTagを検出中... 合成 {synthetic_report['frames_written']} frames",
+                log=True,
+            )
             frames, frame_detections, observations = collect_observations(
                 run_dir / "transforms.json",
                 image_root=None,
                 tag_size_m=float(self.case.default_tag_size_m),
                 family=self.case.tag_family,
                 tag_ids={int(self.case.tag_id)},
+            )
+            self._set_validation_status(
+                f"実行中 5/6: スケールを推定中... 観測 {len(observations)}",
+                log=True,
             )
             estimate = None
             estimate_error = ""
@@ -1311,16 +1344,24 @@ class AprilTagSceneViewerWindow(QWidget):
                     f"候補 {len(candidates)}/{total_frames}, 合成 {synthetic_report['frames_written']}, "
                     f"検出 {detection_count}, obs {len(observations)}"
                 )
+            self._set_validation_status("実行中 6/6: レポートを書き出し中...", log=True)
             (run_dir / "viewer_scale_validation_report.json").write_text(
                 json.dumps(result, indent=2),
                 encoding="utf-8",
             )
-            self.validation_status_label.setText(status)
+            self._set_validation_status(status)
             self._append_log(f"[validation] {status}")
             self._append_log(f"[validation] output={run_dir}")
         except Exception as e:
-            self.validation_status_label.setText(f"検証エラー: {e}")
+            self._set_validation_status(f"検証エラー: {e}")
             QMessageBox.critical(self, "AprilTag検証エラー", str(e))
+        finally:
+            self._validation_running = False
+            self.run_validation_button.setEnabled(True)
+            self.run_validation_button.setText("合成→検出")
+            app = QApplication.instance()
+            if app is not None:
+                app.processEvents()
 
     def selected_face_basis_group(self) -> CubemapFrameGroup | None:
         if self._ray_basis_mode() == RAY_BASIS_IMAGE:
