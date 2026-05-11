@@ -1260,10 +1260,13 @@ class AprilTagSceneViewerWindow(QWidget):
                     tag_normal_sfm=normal_sfm,
                     tag_up_sfm=up_sfm,
                     frame_file_paths=selected_paths,
+                    copy_unselected_frames=False,
+                    output_tagged_only=True,
                 )
             )
             self._set_validation_status(
-                f"実行中 4/6: AprilTagを検出中... 合成 {synthetic_report['frames_written']} frames",
+                f"実行中 4/6: AprilTagを検出中... 合成 {synthetic_report['frames_written']} / "
+                f"書き出し対象 {len(candidates)} frames",
                 log=True,
             )
             frames, frame_detections, observations = collect_observations(

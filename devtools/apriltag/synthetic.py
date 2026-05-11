@@ -25,6 +25,8 @@ class SyntheticAprilTagConfig:
     tag_normal_sfm: np.ndarray
     tag_up_sfm: np.ndarray
     frame_file_paths: frozenset[str] | None = None
+    copy_unselected_frames: bool = True
+    output_tagged_only: bool = False
 
 
 def _load_tag_rgba(path: Path) -> np.ndarray:
@@ -70,27 +72,50 @@ def inject_synthetic_apriltag(config: SyntheticAprilTagConfig) -> dict:
     )
 
     written = 0
+    copied = 0
     skipped = 0
+    written_paths: set[str] = set()
     for frame in frames:
         dst = config.output_dir / frame.file_path
+        if allowed_paths is not None and frame.file_path not in allowed_paths:
+            if config.copy_unselected_frames:
+                if frame.image_path.is_file():
+                    dst.parent.mkdir(parents=True, exist_ok=True)
+                    shutil.copy2(frame.image_path, dst)
+                    copied += 1
+                else:
+                    skipped += 1
+            else:
+                skipped += 1
+            continue
         dst.parent.mkdir(parents=True, exist_ok=True)
         image = imread_unicode(frame.image_path, cv2.IMREAD_UNCHANGED)
         if image is None:
             skipped += 1
             continue
-        if allowed_paths is not None and frame.file_path not in allowed_paths:
-            shutil.copy2(frame.image_path, dst)
-            skipped += 1
-            continue
         projected = project_sfm_points(frame, corners)
         if projected is None or not points_intersect_image(projected, image.shape[1], image.shape[0]):
-            shutil.copy2(frame.image_path, dst)
+            if config.copy_unselected_frames:
+                shutil.copy2(frame.image_path, dst)
+                copied += 1
+            else:
+                skipped += 1
+            continue
+        if not imwrite_unicode(dst, _warp_tag(image, tag_rgba, projected)):
             skipped += 1
             continue
-        imwrite_unicode(dst, _warp_tag(image, tag_rgba, projected))
         written += 1
+        written_paths.add(frame.file_path)
 
     data = json.loads(config.input_transforms.read_text(encoding="utf-8"))
+    if config.output_tagged_only:
+        frames_data = data.get("frames", [])
+        if isinstance(frames_data, list):
+            data["frames"] = [
+                frame
+                for frame in frames_data
+                if isinstance(frame, dict) and frame.get("file_path") in written_paths
+            ]
     (config.output_dir / "transforms.json").write_text(json.dumps(data, indent=2), encoding="utf-8")
     report = {
         "schema_version": 1,
@@ -102,8 +127,13 @@ def inject_synthetic_apriltag(config: SyntheticAprilTagConfig) -> dict:
         "tag_normal_sfm": config.tag_normal_sfm.tolist(),
         "tag_up_sfm": config.tag_up_sfm.tolist(),
         "frame_file_paths": None if config.frame_file_paths is None else sorted(config.frame_file_paths),
+        "copy_unselected_frames": config.copy_unselected_frames,
+        "output_tagged_only": config.output_tagged_only,
         "frames_written": written,
+        "frames_copied": copied,
         "frames_skipped": skipped,
+        "tagged_frame_file_paths": sorted(written_paths),
+        "transforms_frame_count": len(data.get("frames", [])) if isinstance(data.get("frames"), list) else 0,
     }
     (config.output_dir / "synthetic_apriltag_report.json").write_text(json.dumps(report, indent=2), encoding="utf-8")
     return report

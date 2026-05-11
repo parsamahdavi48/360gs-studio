@@ -1195,8 +1195,17 @@ def test_scene_viewer_synthetic_scale_validation_writes_result(tmp_path: Path) -
     report_paths = sorted((case_dir / "runs").glob("viewer_synthetic_*/viewer_scale_validation_report.json"))
     assert len(report_paths) == 1
     report = json.loads(report_paths[0].read_text(encoding="utf-8"))
+    output_dir = report_paths[0].parent
+    output_transforms = json.loads((output_dir / "transforms.json").read_text(encoding="utf-8"))
+    output_images = sorted((output_dir / "images").glob("*.png"))
+
     assert report["candidate_count"] == 2
     assert report["synthetic_report"]["frames_written"] == 2
+    assert report["synthetic_report"]["frames_copied"] == 0
+    assert report["synthetic_report"]["transforms_frame_count"] == 2
+    assert report["loaded_frame_count"] == 2
+    assert len(output_transforms["frames"]) == 2
+    assert len(output_images) == 2
     assert report["observation_count"] >= 2
     assert report["estimate"]["scale"] == pytest.approx(0.25, rel=0.08)
     assert "scale=" in window.validation_status_label.text()
