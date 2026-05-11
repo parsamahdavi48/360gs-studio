@@ -42,6 +42,7 @@ Metashapeを使わず、抽出済みの360°画像からCOLMAP Rig形式のキ�
 - Mask2Formerは、SAM3.1を使わずに空マスクを試したい場合の補助的な選択肢として利用できます。
 - 360°画像だけでなく、通常動画からのフレーム抽出や通常画像の連番画像にも使えます。人物・車両・空・白飛びなどを、SfMに渡す前のマスク前処理としてまとめて作成できます。
 - MetashapeでSfMした結果を読み込み、Postshot / Brush / LichtFeld Studio 向けのキューブマップ画像、マスク、`transforms.json` を書き出せます。LichtFeld Studio向けには、キューブマップ変換せず `3DGUT (LichtFeld)` 用の直接データセットも作れます。
+- AprilTagを撮影前に印刷・配置しておけば、Step 4の `スケール` タブで出力済みCubemapデータからメートル換算のスケールを推定できます。推定値を確認してから、`output/transforms.json` と `output/pointcloud.ply` に同じscaleを反映できます。
 - SphereSfM版の `colmap.exe` を指定すれば、Metashapeなしでエクイレクタングラー画像をSfMし、そのままLichtFeld 3DGUT用データまたはキューブマップデータへ変換できます。
 - Metashapeを使わない場合は、抽出済みの360°画像からCOLMAP Rig形式のキューブマップ画像とマスクを書き出せます。必要に応じてGUIからCOLMAPのSfM処理まで続けて実行できます。
 - Windows向けセットアップスクリプトで、Python環境、FFmpeg/FFprobe、主要Pythonパッケージの準備をまとめて行えます。通常利用は `run_gui.bat` から起動できます。
@@ -150,7 +151,8 @@ checkpointを手動で `models/sam3.1/sam3.1_multiplex.pt` に置くこともで
 6. 必要に応じてスティッチ境界マスク、白飛びマスク、カスタムマスクも有効にします。
 7. 生成された `masks/` フォルダをMetashapeにマスクとして読み込み、SfMを実行します。
 8. Step 4でMetashapeのXML/PLYを使い、3DGSトレーニング用のキューブマップデータ、または `3DGUT (LichtFeld)` 用の直接データセットを出力します。
-9. 必要ならStep 5でLichtFeld StudioやPostshot CLIを起動し、作成済みデータセットで結果を試します。
+9. AprilTagでスケール推定する場合は、撮影前にタグを印刷して配置しておきます。Cubemap出力後、`スケール` タブでタグ実寸とIDを入力して推定し、結果が妥当な場合だけ `Scaleへ反映` で `output/transforms.json` と `output/pointcloud.ply` を更新します。3DGUT向けのエクイレクタングラー出力のままでは推定できません。
+10. 必要ならStep 5でLichtFeld StudioやPostshot CLIを起動し、作成済みデータセットで結果を試します。
 
 ## COLMAPルート
 

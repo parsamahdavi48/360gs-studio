@@ -42,6 +42,7 @@ For video or image sequences from DSLR, mirrorless, smartphone, or other normal 
 - Mask2Former remains available as a helper option when you want to try sky masks without setting up SAM3.1.
 - Use the same mask-preparation workflow for normal-camera video after Step 1 extraction and for normal photo or image-sequence sets, not only 360° images. This is useful before sending images to SfM software.
 - Import Metashape SfM results and export cubemap images, masks, and `transforms.json` for Postshot, Brush, and LichtFeld Studio. For LichtFeld Studio, the GUI can also create a `3DGUT (LichtFeld)` direct dataset without cubemap conversion.
+- If you print and place AprilTags before capture, the Step 4 `Scale` tab can estimate metric scale from an existing Cubemap output. After reviewing the estimate, you can apply the same scale to `output/transforms.json` and `output/pointcloud.ply`.
 - Select SphereSfM's `colmap.exe` to run spherical SfM without Metashape, then convert the result into either LichtFeld 3DGUT data or cubemap data.
 - Skip Metashape when needed by exporting COLMAP Rig cubemap images and masks from extracted 360° frames. The GUI can optionally continue into COLMAP SfM processing.
 - Prepare the Windows environment with setup scripts that handle Python, FFmpeg/FFprobe, and the main Python packages. Normal use starts from `run_gui.bat`.
@@ -150,7 +151,8 @@ Detailed GUI docs:
 6. Enable stitch seam, overexposure, and custom masks when they match the source material.
 7. Import the generated `masks/` folder into Metashape as per-image masks, then run SfM.
 8. Use Step 4 with the Metashape XML/PLY result to export cubemap training data or a direct `3DGUT (LichtFeld)` dataset.
-9. When needed, use Step 5 to launch LichtFeld Studio or Postshot CLI with the dataset you just created.
+9. To estimate scale with AprilTags, print and place the tags before capture. After creating Cubemap output, open the `Scale` tab, enter the printed tag size and IDs, run estimation, and use `Apply to Scale` only when the result looks reasonable. This updates `output/transforms.json` and `output/pointcloud.ply`. Direct equirectangular output for 3DGUT cannot be estimated here.
+10. When needed, use Step 5 to launch LichtFeld Studio or Postshot CLI with the dataset you just created.
 
 ## COLMAP Route
 
