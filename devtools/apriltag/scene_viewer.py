@@ -51,7 +51,6 @@ from devtools.apriltag.coordinates import (
     COORDINATE_PROFILES,
     DEFAULT_COORDINATE_PROFILE,
     coordinate_profile_label,
-    coordinate_profile_note,
     normalize_coordinate_profile,
     pointcloud_display_matrix,
     world_display_matrix,
@@ -2143,7 +2142,6 @@ class AprilTagSceneViewerWindow(QWidget):
         self._append_log_once(
             "scene",
             f"Loaded {len(self._world_groups)} camera groups, point sample={point_count}. "
-            f"{coordinate_profile_note(self.case.coordinate_profile)}"
             f" World rays: {self._world_ray_source or 'transforms.json face +Z'}."
             f" Image rays: {self._image_ray_source or 'transforms.json'}."
             f" Source equirect images: {len(self._source_equirect_paths)}.",
