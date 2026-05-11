@@ -1131,15 +1131,25 @@ TIPS: dict[str, str] = {
     "SCALE_FACTOR": "カメラ位置と点群座標に掛けるスケール係数。通常は1.0のまま",
     "APRILTAG_SCALE_ENABLE": "既知サイズのAprilTag観測から、出力済みデータセットのスケール係数を求めます",
     "APRILTAG_TAG_SIZE": "印刷したAprilTagの黒枠外側1辺の実寸をメートルで入力します",
-    "APRILTAG_FAMILY": "撮影に使ったAprilTagファミリです。まずはtag36h11を推奨します",
+    "APRILTAG_FAMILY": (
+        "通常はtag36h11を選びます。誤検出に強くID数も多いため、"
+        "歩行撮影・ドローン撮影どちらも既定値を推奨します。\n"
+        "遠距離ではファミリではなくタグ実寸を大きくしてください"
+    ),
     "APRILTAG_TAG_ID": "特定IDだけを使う場合に入力します",
-    "APRILTAG_TAG_IDS": "使うタグIDをカンマ区切りで入力します。最大16個まで使用し、同じIDを複数の実物タグに使わないでください",
+    "APRILTAG_TAG_IDS": (
+        "撮影に使ったタグIDを指定します。複数指定できます（最大16個）。\n"
+        "同じIDのタグを複数の場所に置くと位置を区別できません。場所ごとに別IDにしてください"
+    ),
     "APRILTAG_ESTIMATE": "投影済みCubemapの output/transforms.json と出力画像からAprilTagを検出し、メートル換算のスケールを推定します。エクイレクタングラー出力の場合は先にCubemap画像を書き出してください",
     "APRILTAG_APPLY_SCALE": "推定した係数を output/transforms.json のカメラ位置と output/pointcloud.ply に掛けます。元ファイルはバックアップします",
     "APRILTAG_RESULT": "推定scale、採用観測数、inlier率、残差を表示します",
     "APRILTAG_PRINT_FAMILY": "PDFに出力するAprilTagファミリです。通常は推定に使うファミリと同じにします",
     "APRILTAG_PRINT_TAG_ID": "PDFに出力するタグIDです。マウスを重ねるとタグ形状を確認できます",
-    "APRILTAG_PRINT_PAGE": "印刷用紙サイズです。日本ではA4/A3、北米ではLetterが一般的です。印刷時は100%/実寸で出力してください",
+    "APRILTAG_PRINT_PAGE": (
+        "PDFの用紙サイズです。指定したタグ実寸が余白込みで収まらない場合は出力を止めます。\n"
+        "A3を選ぶか、タグ実寸を小さくしてください。印刷は100%/実寸で出力してください"
+    ),
     "APRILTAG_PRINT_EXPORT": "現在のタグ実寸、ファミリ、ID、用紙サイズで印刷用PDFを作成します",
     "APRILTAG_TAB_PRIMARY_ACTION": "スケール推定と反映はこのタブ内のボタンで実行します",
     "NO_FIX_ROTATION": "Metashapeデータ読み込み時の向き補正を無効化。通常はOFFのまま",

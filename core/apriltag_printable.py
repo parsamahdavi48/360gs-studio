@@ -122,7 +122,12 @@ def create_printable_target(
     text_block_px = round(34.0 / 25.4 * dpi)
     max_tag_px = min(page_w_px - margin_px * 2, page_h_px - margin_px * 2 - text_block_px)
     if tag_px <= 0 or tag_px > max_tag_px:
-        raise ValueError(f"tag_size_m is too large for a {page} target at the requested DPI")
+        max_tag_mm = max_tag_px / float(dpi) * 25.4
+        raise ValueError(
+            f"tag_size_m is too large for {page}. "
+            f"Maximum printable tag square is about {max_tag_mm:.1f} mm "
+            "with the current margins; choose a larger paper size or reduce tag_size_m."
+        )
 
     marker = marker_image_array(family, tag_id, int(tag_px))
     marker_image = Image.fromarray(marker).convert("RGB")

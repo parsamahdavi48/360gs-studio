@@ -1132,15 +1132,25 @@ TIPS: dict[str, str] = {
     "SCALE_FACTOR": "Scale factor applied to camera positions and point coordinates. Usually leave at 1.0",
     "APRILTAG_SCALE_ENABLE": "Estimate dataset scale from known-size AprilTag observations.",
     "APRILTAG_TAG_SIZE": "Physical side length of the printed AprilTag outer black square, in meters.",
-    "APRILTAG_FAMILY": "AprilTag family used for capture. tag36h11 is the recommended starting point.",
+    "APRILTAG_FAMILY": (
+        "Use tag36h11 unless your printed tag uses another family. It has strong error resistance "
+        "and enough IDs, so it is the default for both walking and drone captures.\n"
+        "For longer distance, increase tag size instead of changing family."
+    ),
     "APRILTAG_TAG_ID": "Use only this tag ID.",
-    "APRILTAG_TAG_IDS": "Comma-separated tag IDs to use. Up to 16 IDs are used. Do not reuse the same ID for multiple physical tags.",
+    "APRILTAG_TAG_IDS": (
+        "Tag IDs used in the capture. You can enter up to 16 IDs.\n"
+        "Do not place the same ID in multiple locations; use a different ID for each physical location."
+    ),
     "APRILTAG_ESTIMATE": "Detect AprilTags from projected Cubemap output/transforms.json and output images, then estimate meters per scene unit. For equirectangular output, create Cubemap images first.",
     "APRILTAG_APPLY_SCALE": "Multiply camera positions in output/transforms.json and output/pointcloud.ply by the estimated factor. Original files are backed up.",
     "APRILTAG_RESULT": "Shows estimated scale, accepted observations, inlier ratio, and residual.",
     "APRILTAG_PRINT_FAMILY": "AprilTag family to export to PDF. Usually keep this the same as the estimation family.",
     "APRILTAG_PRINT_TAG_ID": "Tag ID to export to PDF. Hover to preview the tag pattern.",
-    "APRILTAG_PRINT_PAGE": "Printable paper size. A4/A3 are common internationally; Letter is common in North America. Print at actual size / 100%.",
+    "APRILTAG_PRINT_PAGE": (
+        "PDF paper size. Export stops if the requested tag size does not fit with margins.\n"
+        "Choose A3 or reduce tag size. Print at actual size / 100%."
+    ),
     "APRILTAG_PRINT_EXPORT": "Create a printable PDF with the current tag size, family, ID, and paper size.",
     "APRILTAG_TAB_PRIMARY_ACTION": "Run scale estimation and apply scale from the buttons inside this tab.",
     "NO_FIX_ROTATION": "Disable orientation correction when importing Metashape data. Usually leave OFF",
