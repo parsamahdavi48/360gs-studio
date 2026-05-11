@@ -522,7 +522,7 @@ def test_lichtfeld_cube6_metadata_normalizes_to_saved_raster_pose(tmp_path: Path
 
     for group_index, prefix in enumerate(("frame_0001", "frame_0002")):
         yaw_offset = group_index * 30.0
-        for face, (yaw, pitch) in metadata.view_params.items():
+        for face, (_yaw, _pitch) in metadata.view_params.items():
             raster_face = vertical_face_map.get(face, face)
             raster_yaw, raster_pitch = metadata.view_params[raster_face]
             expected = (

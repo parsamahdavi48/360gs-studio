@@ -8,8 +8,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PySide6.QtWidgets import QApplication, QLabel, QRadioButton, QToolButton, QWidget
 
-from gui import i18n
-from gui import theme
+from gui import i18n, theme
 from gui.common.drag_spinbox import DragDoubleSpinBox, DragSpinBox
 from gui.steps.base_step import SETTINGS_PANE_MARGINS, SETTINGS_PANE_WIDTH
 from gui.steps.step1_extract import ExtractStep

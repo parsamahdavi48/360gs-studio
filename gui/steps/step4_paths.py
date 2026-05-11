@@ -13,8 +13,8 @@ from core.scene_layout import (
     scene_images_dir,
     scene_masks_dir,
     scene_output_dir,
-    step4_metashape_import_work_dir,
     step4_export_settings_path,
+    step4_metashape_import_work_dir,
     step4_views_config_path,
 )
 from gui import i18n

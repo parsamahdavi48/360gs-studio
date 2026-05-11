@@ -9,7 +9,7 @@ import re
 import sys
 from pathlib import Path
 
-from PySide6.QtCore import QProcess, QProcessEnvironment, QSize, QSignalBlocker, Qt
+from PySide6.QtCore import QProcess, QProcessEnvironment, QSignalBlocker, QSize, Qt
 from PySide6.QtWidgets import (
     QApplication,
     QComboBox,

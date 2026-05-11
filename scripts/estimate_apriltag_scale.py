@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# ruff: noqa: E402
 """Estimate scene scale from AprilTags detected in pinhole/cubemap images."""
 
 from __future__ import annotations
@@ -12,8 +13,8 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from core.apriltag_detection import available_families
 from core.apriltag_cubemap import CUBEMAP_POSE_PRESETS, cubemap_view_metadata_for_pose_preset
+from core.apriltag_detection import available_families
 from core.apriltag_pipeline import AprilTagScaleRun, run_apriltag_scale_estimation
 from core.apriltag_projection import camera_model
 

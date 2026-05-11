@@ -18,6 +18,7 @@ from core.apriltag_detection import detect_apriltags
 from core.apriltag_geometry import PinholeFrame, load_pinhole_frames
 from core.image_io import imread_unicode, imwrite_unicode
 from devtools.apriltag.case import AprilTagDevCase, load_case, save_case
+from devtools.apriltag.coordinates import world_display_matrix
 from devtools.apriltag.cubemap_preview import (
     CubemapFrameGroup,
     axis_face_view_params,
@@ -28,7 +29,6 @@ from devtools.apriltag.cubemap_preview import (
     source_equirect_base_rotation,
 )
 from devtools.apriltag.scene_viewer import (
-    AprilTagSceneViewerWindow,
     DEFAULT_EQUIRECT_PREVIEW_SIZE,
     RAY_BASIS_BOTH,
     RAY_BASIS_IMAGE,
@@ -36,11 +36,12 @@ from devtools.apriltag.scene_viewer import (
     RIGHT_VIEW_POINTCLOUD,
     RIGHT_VIEW_RECONSTRUCTED_CUBE6,
     RIGHT_VIEW_SOURCE_EQUIRECT,
+    AprilTagSceneViewerWindow,
     _case_source_equirect_metadata_size,
     _clamp_equirect_preview_size,
     _resolve_source_equirect_paths,
-    _source_equirect_size_from_payload,
     _source_equirect_preview_params,
+    _source_equirect_size_from_payload,
     _synthetic_output_face_rotation_face,
     camera_pose_from_perspective_params,
     case_cubemap_view_metadata,
@@ -51,12 +52,14 @@ from devtools.apriltag.scene_viewer import (
     rotation_from_perspective_params,
     transform_group_for_world_display,
 )
-from devtools.apriltag.coordinates import world_display_matrix
 from devtools.apriltag.synthetic import SyntheticAprilTagConfig, inject_synthetic_apriltag
 from gui.common.drag_spinbox import DragDoubleSpinBox
-from gui.common.perspective_preview import PerspectiveParams, equirect_to_perspective, params_from_drag
-from gui.common.perspective_preview import normalize_yaw_deg
-
+from gui.common.perspective_preview import (
+    PerspectiveParams,
+    equirect_to_perspective,
+    normalize_yaw_deg,
+    params_from_drag,
+)
 
 LOCAL_APRILTAG_CASE_DIR = Path("_compare/apriltag_test/cases/current")
 LOCAL_APRILTAG_CASE_SKIP_REASON = (

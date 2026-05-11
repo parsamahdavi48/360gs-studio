@@ -15,7 +15,6 @@ from PySide6.QtWidgets import QWidget
 from core.apriltag_geometry import tag_corners_sfm
 from devtools.apriltag.cubemap_preview import CubemapFrameGroup, axis_preview_frustum_rays
 
-
 GRID_X_AXIS_COLOR = QColor(255, 92, 92)
 GRID_Z_AXIS_COLOR = QColor(90, 175, 245)
 DEFAULT_POINT_COLOR_RGBA = (145.0 / 255.0, 155.0 / 255.0, 164.0 / 255.0, 130.0 / 255.0)

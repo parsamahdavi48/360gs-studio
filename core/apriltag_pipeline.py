@@ -4,11 +4,10 @@ from __future__ import annotations
 
 import os
 import time
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable
 
 from core.apriltag_cubemap import CubemapViewMetadata
 from core.apriltag_detection import AprilTagDetection, detect_apriltags, detection_to_observation

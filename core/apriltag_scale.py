@@ -6,10 +6,10 @@ tag detection into :class:`TagObservation`, then call :func:`estimate_scene_scal
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass
 from itertools import combinations
 from math import exp, isfinite
-from typing import Iterable
 
 import numpy as np
 
