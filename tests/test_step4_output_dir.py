@@ -350,8 +350,8 @@ def test_cubemap_step_uses_tab_path_summaries(tmp_path: Path) -> None:
     assert step.view_config.yaw_slot_count() == 4
     assert step.view_config.pitch_values() == [-90.0, 0.0, 90.0]
     assert len(cube6_views) == 12
-    assert {v["name"] for v in cube6_enabled} == {"px", "nx", "pz", "nz", "top", "bottom"}
-    assert {v["slot"] for v in cube6_enabled if v["name"] in {"top", "bottom"}} == {3}
+    assert {v["name"] for v in cube6_enabled} == {"px", "nx", "pz", "nz", "py", "ny"}
+    assert {v["slot"] for v in cube6_enabled if v["name"] in {"py", "ny"}} == {3}
     assert sum(1 for v in cube6_views if not v["enabled"]) == 6
     assert step._export_method() == "metashape"
     assert step.export_method_buttons["metashape"].isChecked()

@@ -36,8 +36,10 @@ _CUBE6_VIEW_CELLS = (
     ("nx", 1, 2),
     ("pz", 1, 3),
     ("nz", 1, 1),
-    ("top", 2, 3),
-    ("bottom", 0, 3),
+    # Use cubemap axis names for generated files. In the converter's pitch
+    # convention, -90 samples the upper pole and +90 samples the lower pole.
+    ("py", 0, 3),
+    ("ny", 2, 3),
 )
 _CUBE6_CELL_TO_NAME = {(row, slot): name for name, row, slot in _CUBE6_VIEW_CELLS}
 _PITCH_DELETE_BUTTON_SIZE = 24

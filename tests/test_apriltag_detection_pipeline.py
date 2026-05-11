@@ -9,7 +9,16 @@ from pathlib import Path
 import cv2
 import numpy as np
 
-from core.apriltag_cubemap import CubemapViewMetadata, discover_cubemap_view_metadata
+from core.apriltag_cubemap import (
+    CUBEMAP_POSE_PRESET_AUTO,
+    CUBEMAP_POSE_PRESET_BRUSH,
+    CUBEMAP_POSE_PRESET_LICHTFELD,
+    CUBEMAP_POSE_PRESET_POSTSHOT,
+    CUBEMAP_POSE_PRESET_STANDARD,
+    CubemapViewMetadata,
+    cubemap_view_metadata_for_pose_preset,
+    discover_cubemap_view_metadata,
+)
 from core.apriltag_detection import detect_apriltags
 from core.apriltag_geometry import load_pinhole_frames, project_sfm_points
 from core.apriltag_pipeline import run_apriltag_scale_estimation
@@ -203,12 +212,12 @@ def _write_generated_cube6_yaw_offset_dataset(root: Path) -> tuple[Path, Cubemap
     images = root / "images"
     images.mkdir(parents=True)
     views = {
-        "bottom": (-45.0, -90.0),
+        "py": (-45.0, -90.0),
         "px": (45.0, 0.0),
         "nz": (135.0, 0.0),
         "nx": (-135.0, 0.0),
         "pz": (-45.0, 0.0),
-        "top": (-45.0, 90.0),
+        "ny": (-45.0, 90.0),
     }
     frames = []
     frame_groups = (
@@ -509,7 +518,7 @@ def test_lichtfeld_cube6_metadata_normalizes_to_saved_raster_pose(tmp_path: Path
     frames = {frame.file_path: frame for frame in load_pinhole_frames(transforms)}
     source_local_from_lichtfeld = np.diag([1.0, -1.0, -1.0])
     raster_y_flip = np.diag([1.0, -1.0, 1.0])
-    vertical_face_map = {"top": "bottom", "bottom": "top"}
+    vertical_face_map = {"top": "bottom", "bottom": "top", "py": "ny", "ny": "py"}
 
     for group_index, prefix in enumerate(("frame_0001", "frame_0002")):
         yaw_offset = group_index * 30.0
@@ -523,6 +532,35 @@ def test_lichtfeld_cube6_metadata_normalizes_to_saved_raster_pose(tmp_path: Path
             )
             frame = frames[f"images/{prefix}_{face}.png"]
             assert np.allclose(frame.camera_to_world_rotation, expected, atol=1e-8)
+
+
+def test_conversion_pose_presets_provide_expected_cube6_fallbacks() -> None:
+    assert cubemap_view_metadata_for_pose_preset(CUBEMAP_POSE_PRESET_AUTO) is None
+
+    lichtfeld = cubemap_view_metadata_for_pose_preset(CUBEMAP_POSE_PRESET_LICHTFELD)
+    assert lichtfeld is not None
+    assert lichtfeld.view_params["px"] == (45.0, 0.0)
+    assert lichtfeld.view_params["pz"] == (-45.0, 0.0)
+    assert lichtfeld.view_params["py"] == (-45.0, -90.0)
+    assert lichtfeld.view_params["ny"] == (-45.0, 90.0)
+    assert lichtfeld.yaw_offset_per_frame == 30.0
+    assert lichtfeld.image_pose_profile == "lichtfeld_cube6"
+
+    for preset in (CUBEMAP_POSE_PRESET_POSTSHOT, CUBEMAP_POSE_PRESET_BRUSH):
+        postshot_or_brush = cubemap_view_metadata_for_pose_preset(preset)
+        assert postshot_or_brush is not None
+        assert postshot_or_brush.view_params == lichtfeld.view_params
+        assert postshot_or_brush.yaw_offset_per_frame == 30.0
+        assert postshot_or_brush.image_pose_profile == ""
+
+    standard = cubemap_view_metadata_for_pose_preset(CUBEMAP_POSE_PRESET_STANDARD)
+    assert standard is not None
+    assert standard.view_params["px"] == (90.0, 0.0)
+    assert standard.view_params["pz"] == (0.0, 0.0)
+    assert standard.view_params["py"] == (0.0, -90.0)
+    assert standard.view_params["ny"] == (0.0, 90.0)
+    assert standard.yaw_offset_per_frame == 0.0
+    assert standard.image_pose_profile == ""
 
 
 def test_equirect_detection_projection_writes_temporary_pinhole_dataset(tmp_path: Path) -> None:

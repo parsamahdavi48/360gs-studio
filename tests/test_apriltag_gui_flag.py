@@ -34,6 +34,7 @@ def test_apriltag_tab_is_visible_without_startup_flag() -> None:
         ]
         assert not hasattr(step, "apriltag_enable_cb")
         assert step.apriltag_id_edit.text() == "7"
+        assert step.apriltag_conversion_preset_combo.currentData() == "auto"
         assert step.apriltag_result_label.text() == i18n.t("APRILTAG_RESULT_EMPTY")
         """
     )
@@ -93,9 +94,64 @@ def test_apriltag_scale_command_targets_existing_cubemap_output(tmp_path: Path) 
         assert str(output / "transforms.json") in cmd
         assert cmd[cmd.index("--tag-size-m") + 1] == "0.2"
         assert "--equirect-temp-dir" not in cmd
+        assert "--cubemap-pose-preset" not in cmd
         assert cmd.count("--tag-id") == 2
         assert cmd[cmd.index("--tag-id") + 1] == "7"
         assert cmd[cmd.index("--tag-id", cmd.index("--tag-id") + 1) + 1] == "8"
+        """
+    )
+
+    env = os.environ.copy()
+    env["QT_QPA_PLATFORM"] = "offscreen"
+    result = subprocess.run([sys.executable, "-c", script], cwd=Path.cwd(), env=env, capture_output=True, text=True)
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_apriltag_scale_command_can_set_conversion_preset(tmp_path: Path) -> None:
+    transforms = {
+        "camera_model": "SIMPLE_PINHOLE",
+        "w": 10,
+        "h": 10,
+        "fl_x": 5.0,
+        "fl_y": 5.0,
+        "cx": 4.5,
+        "cy": 4.5,
+        "frames": [
+            {
+                "file_path": "images/a.png",
+                "transform_matrix": [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]],
+            }
+        ],
+    }
+    script = textwrap.dedent(
+        f"""
+        import json
+        import os
+        from pathlib import Path
+
+        os.environ["QT_QPA_PLATFORM"] = "offscreen"
+
+        from PySide6.QtWidgets import QApplication
+
+        from gui.theme import apply_theme
+        from gui.steps.step4_cubemap import CubemapStep
+
+        scene = Path({str(tmp_path)!r})
+        output = scene / "output"
+        (output / "images").mkdir(parents=True)
+        (output / "images" / "a.png").write_bytes(b"image")
+        (output / "transforms.json").write_text(json.dumps({transforms!r}), encoding="utf-8")
+
+        app = QApplication([])
+        apply_theme(app)
+        step = CubemapStep(Path.cwd())
+        step.set_scene_dir(str(scene))
+        preset_index = step.apriltag_conversion_preset_combo.findData("lichtfeld")
+        assert preset_index >= 0
+        step.apriltag_conversion_preset_combo.setCurrentIndex(preset_index)
+
+        cmd = step._build_apriltag_scale_cmd(scene / "_stechdrive" / "step4" / "apriltag_scale_report.json")
+        assert cmd[cmd.index("--cubemap-pose-preset") + 1] == "lichtfeld"
         """
     )
 
@@ -213,6 +269,11 @@ def test_apriltag_scale_tab_uses_internal_actions() -> None:
         assert step.apriltag_print_page_combo.findData("A4") >= 0
         assert step.apriltag_print_page_combo.findData("A3") >= 0
         assert step.apriltag_print_page_combo.findData("Letter") >= 0
+        assert step.apriltag_conversion_preset_combo.toolTip() == i18n.tip("APRILTAG_CONVERSION_PRESET")
+        assert step.apriltag_conversion_preset_combo.findData("lichtfeld") >= 0
+        assert step.apriltag_conversion_preset_combo.findData("postshot") >= 0
+        assert step.apriltag_conversion_preset_combo.findData("brush") >= 0
+        assert step.apriltag_conversion_preset_combo.findData("standard") >= 0
         result_tip = step.apriltag_result_label.toolTip()
         assert "観測" in result_tip or "observations" in result_tip
         assert "ペア" in result_tip or "pairs" in result_tip

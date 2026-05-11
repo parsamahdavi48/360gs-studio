@@ -25,6 +25,13 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from core.apriltag_cubemap import (
+    CUBEMAP_POSE_PRESET_AUTO,
+    CUBEMAP_POSE_PRESET_BRUSH,
+    CUBEMAP_POSE_PRESET_LICHTFELD,
+    CUBEMAP_POSE_PRESET_POSTSHOT,
+    CUBEMAP_POSE_PRESET_STANDARD,
+)
 from core.apriltag_markers import (
     DEFAULT_APRILTAG_FAMILY,
     DEFAULT_APRILTAG_ID,
@@ -95,6 +102,36 @@ class Step4AprilTagMixin:
         self.apriltag_id_edit.editingFinished.connect(self._normalize_apriltag_tag_ids)
         self.apriltag_id_edit.textChanged.connect(self._update_apriltag_marker_tooltips)
         add_tooltip_row(form, i18n.t("APRILTAG_TAG_IDS"), self.apriltag_id_edit, i18n.tip("APRILTAG_TAG_IDS"))
+
+        self.apriltag_conversion_preset_combo = QComboBox()
+        self.apriltag_conversion_preset_combo.setFixedWidth(150)
+        self.apriltag_conversion_preset_combo.setToolTip(i18n.tip("APRILTAG_CONVERSION_PRESET"))
+        self.apriltag_conversion_preset_combo.addItem(
+            i18n.t("APRILTAG_CONVERSION_PRESET_AUTO"),
+            CUBEMAP_POSE_PRESET_AUTO,
+        )
+        self.apriltag_conversion_preset_combo.addItem(
+            i18n.t("APRILTAG_CONVERSION_PRESET_LICHTFELD"),
+            CUBEMAP_POSE_PRESET_LICHTFELD,
+        )
+        self.apriltag_conversion_preset_combo.addItem(
+            i18n.t("APRILTAG_CONVERSION_PRESET_POSTSHOT"),
+            CUBEMAP_POSE_PRESET_POSTSHOT,
+        )
+        self.apriltag_conversion_preset_combo.addItem(
+            i18n.t("APRILTAG_CONVERSION_PRESET_BRUSH"),
+            CUBEMAP_POSE_PRESET_BRUSH,
+        )
+        self.apriltag_conversion_preset_combo.addItem(
+            i18n.t("APRILTAG_CONVERSION_PRESET_STANDARD"),
+            CUBEMAP_POSE_PRESET_STANDARD,
+        )
+        add_tooltip_row(
+            form,
+            i18n.t("APRILTAG_CONVERSION_PRESET"),
+            self.apriltag_conversion_preset_combo,
+            i18n.tip("APRILTAG_CONVERSION_PRESET"),
+        )
 
         action_row = QWidget()
         action_layout = QHBoxLayout(action_row)
@@ -305,6 +342,7 @@ class Step4AprilTagMixin:
             self.apriltag_tag_size_edit,
             self.apriltag_family_combo,
             self.apriltag_id_edit,
+            self.apriltag_conversion_preset_combo,
         ):
             widget.setEnabled(not running)
         if hasattr(self, "apriltag_copy_scale_btn"):
@@ -341,6 +379,9 @@ class Step4AprilTagMixin:
         ]
         for tag_id in tag_ids:
             cmd.extend(["--tag-id", str(tag_id)])
+        pose_preset = str(self.apriltag_conversion_preset_combo.currentData() or CUBEMAP_POSE_PRESET_AUTO)
+        if pose_preset != CUBEMAP_POSE_PRESET_AUTO:
+            cmd.extend(["--cubemap-pose-preset", pose_preset])
         return cmd
 
     def _warn_apriltag(self, message: str) -> None:

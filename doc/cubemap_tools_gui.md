@@ -109,7 +109,7 @@ This output uses the existing `<scene>/images/` and `<scene>/masks/`, then write
 
 ### Start With Cube6
 
-`Cube6` is the usual starting point. It writes the front, back, left, right, up, and down directions, which is a practical baseline for Postshot, Brush, and LichtFeld Studio.
+`Cube6` is the usual starting point. It writes the front, back, left, right, up, and down directions, which is a practical baseline for Postshot, Brush, and LichtFeld Studio. Generated face suffixes use the standard cubemap axis names: `px`, `nx`, `py`, `ny`, `pz`, and `nz`.
 
 The default 45° `Yaw Offset` is recommended. For unstabilized dual-fisheye 360° footage, stitch seams often sit around the 25% and 75% horizontal positions of the equirectangular image. A 45° offset keeps those seams away from the center of the cubemap faces.
 
@@ -158,7 +158,7 @@ After capture:
 
 1. Create the Step 4 Cubemap output normally. Scale estimation needs the projected `output/transforms.json` and images under `output/`. Direct equirectangular output for 3DGUT cannot be estimated here.
 2. Open `Scale`.
-3. Enter the printed tag size, family, and tag IDs used in the capture. Keep the default `tag36h11 / ID 7` unless you intentionally printed another tag.
+3. Enter the printed tag size, family, and tag IDs used in the capture. Keep the default `tag36h11 / ID 7` unless you intentionally printed another tag. Usually leave `Conversion preset` set to `Auto`. If Cube6 output was brought in from another location and estimation looks wrong, choose the preset used during conversion, such as `LichtFeld`, `Postshot`, or `Brush`.
 4. Click `Estimate`. The bottom log and progress bar show detection progress. The result shows the estimated scale and observation statistics without modifying files.
 5. Click `Apply to Scale` only when the result looks reasonable. Step 4 backs up the current files to `output/apriltag_scale_backup_TIMESTAMP/`, then scales camera positions in `output/transforms.json` and points in `output/pointcloud.ply` when that PLY exists.
 

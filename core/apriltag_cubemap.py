@@ -13,6 +13,20 @@ from core.apriltag_geometry import PinholeFrame
 
 CubemapViewParams = Mapping[str, tuple[float, float]]
 
+CUBEMAP_POSE_PRESET_AUTO = "auto"
+CUBEMAP_POSE_PRESET_LICHTFELD = "lichtfeld"
+CUBEMAP_POSE_PRESET_POSTSHOT = "postshot"
+CUBEMAP_POSE_PRESET_BRUSH = "brush"
+CUBEMAP_POSE_PRESET_STANDARD = "standard"
+CUBEMAP_POSE_PRESETS = (
+    CUBEMAP_POSE_PRESET_AUTO,
+    CUBEMAP_POSE_PRESET_LICHTFELD,
+    CUBEMAP_POSE_PRESET_POSTSHOT,
+    CUBEMAP_POSE_PRESET_BRUSH,
+    CUBEMAP_POSE_PRESET_STANDARD,
+)
+_GUI_CUBE6_DEFAULT_YAW_OFFSET = 45.0
+_GUI_CUBE6_DEFAULT_YAW_OFFSET_PER_FRAME = 30.0
 _FACE_NAMES = ("px", "nx", "pz", "nz", "top", "bottom", "py", "ny")
 _REFERENCE_FACE_ORDER = ("pz", "px", "nz", "nx", "top", "bottom", "py", "ny")
 _SIDE_FACES = frozenset({"px", "nx", "pz", "nz"})
@@ -29,7 +43,17 @@ _FACE_VIEW_PARAMS: dict[str, tuple[float, float]] = {
 }
 _GUI_CUBE6_VIEW_PARAMS: dict[str, tuple[float, float]] = {
     # Mirrors gui.cubemap.view_config._CUBE6_VIEW_CELLS with four yaw slots:
-    # px=slot0, nz=slot1, nx=slot2, pz=slot3, top/bottom=slot3.
+    # px=slot0, nz=slot1, nx=slot2, pz=slot3, py/ny=slot3.
+    "px": (0.0, 0.0),
+    "nz": (90.0, 0.0),
+    "nx": (180.0, 0.0),
+    "pz": (-90.0, 0.0),
+    "py": (-90.0, -90.0),
+    "ny": (-90.0, 90.0),
+}
+_LEGACY_GUI_CUBE6_VIEW_PARAMS: dict[str, tuple[float, float]] = {
+    # Older GUI Cube6 output used top/bottom filenames. Keep this only for
+    # reading existing scenes; new GUI output uses py/ny.
     "px": (0.0, 0.0),
     "nz": (90.0, 0.0),
     "nx": (180.0, 0.0),
@@ -65,7 +89,13 @@ class CubemapViewMetadata:
 
 _GENERATED_CUBEMAP_LAYOUTS = (
     _GeneratedCubemapLayout("standard", _FACE_VIEW_PARAMS, _FACE_VIEW_PARAMS, _REFERENCE_FACE_ORDER),
-    _GeneratedCubemapLayout("gui_cube6", _GUI_CUBE6_VIEW_PARAMS, _GUI_CUBE6_VIEW_PARAMS, ("bottom", "px", "nz", "nx", "pz", "top")),
+    _GeneratedCubemapLayout("gui_cube6", _GUI_CUBE6_VIEW_PARAMS, _GUI_CUBE6_VIEW_PARAMS, ("py", "px", "nz", "nx", "pz", "ny")),
+    _GeneratedCubemapLayout(
+        "gui_cube6_legacy_top_bottom",
+        _LEGACY_GUI_CUBE6_VIEW_PARAMS,
+        _LEGACY_GUI_CUBE6_VIEW_PARAMS,
+        ("bottom", "px", "nz", "nx", "pz", "top"),
+    ),
 )
 _IMAGE_POSE_PROFILE_LICHTFELD_CUBE6 = "lichtfeld_cube6"
 _SOURCE_EQUIRECT_LOCAL_FROM_LICHTFELD_LOCAL = np.diag([1.0, -1.0, -1.0])
@@ -73,6 +103,8 @@ _SAVED_RASTER_Y_FLIP = np.diag([1.0, -1.0, 1.0])
 _LICHTFELD_VERTICAL_FACE_MAP = {
     "top": "bottom",
     "bottom": "top",
+    "py": "ny",
+    "ny": "py",
 }
 
 
@@ -281,6 +313,17 @@ def _frame_yaw_offset(frame_index: int, step_deg: float) -> float:
     return (float(frame_index) * float(step_deg)) % 360.0
 
 
+def _normalize_angle(angle_deg: float) -> float:
+    return ((float(angle_deg) + 180.0) % 360.0) - 180.0
+
+
+def _view_params_with_yaw_offset(
+    params: dict[str, tuple[float, float]],
+    yaw_offset: float,
+) -> dict[str, tuple[float, float]]:
+    return {face: (_normalize_angle(yaw + yaw_offset), pitch) for face, (yaw, pitch) in params.items()}
+
+
 def _view_params_for_group(
     metadata: CubemapViewMetadata | None,
     group_index: int,
@@ -324,6 +367,27 @@ def cubemap_view_params_for_group(
     return _view_params_for_group(_coerce_view_metadata(metadata), group_index)
 
 
+def cubemap_view_metadata_for_pose_preset(preset: str | None) -> CubemapViewMetadata | None:
+    """Return fallback metadata for a user-selected conversion preset."""
+    value = str(preset or CUBEMAP_POSE_PRESET_AUTO).strip().lower()
+    if value in {"", CUBEMAP_POSE_PRESET_AUTO}:
+        return None
+    if value == CUBEMAP_POSE_PRESET_LICHTFELD:
+        return CubemapViewMetadata(
+            _view_params_with_yaw_offset(_GUI_CUBE6_VIEW_PARAMS, _GUI_CUBE6_DEFAULT_YAW_OFFSET),
+            yaw_offset_per_frame=_GUI_CUBE6_DEFAULT_YAW_OFFSET_PER_FRAME,
+            image_pose_profile=_IMAGE_POSE_PROFILE_LICHTFELD_CUBE6,
+        )
+    if value in {CUBEMAP_POSE_PRESET_POSTSHOT, CUBEMAP_POSE_PRESET_BRUSH}:
+        return CubemapViewMetadata(
+            _view_params_with_yaw_offset(_GUI_CUBE6_VIEW_PARAMS, _GUI_CUBE6_DEFAULT_YAW_OFFSET),
+            yaw_offset_per_frame=_GUI_CUBE6_DEFAULT_YAW_OFFSET_PER_FRAME,
+        )
+    if value == CUBEMAP_POSE_PRESET_STANDARD:
+        return CubemapViewMetadata(dict(_FACE_VIEW_PARAMS))
+    raise ValueError(f"unsupported cubemap pose preset: {preset}")
+
+
 def _metadata_layout(view_params: CubemapViewParams | None) -> _GeneratedCubemapLayout | None:
     params = _valid_view_params(view_params)
     if params is None:
@@ -355,9 +419,13 @@ def _match_generated_cubemap_layout(
 
     candidates: list[_GeneratedCubemapMatch] = []
     for layout in _candidate_generated_layouts(view_params):
+        layout_faces = set(layout.image_view_params)
+        layout_vertical_faces = next((pair for pair in _VERTICAL_FACE_SETS if pair.issubset(layout_faces)), None)
+        if layout_vertical_faces is None or not layout_vertical_faces.issubset(faces):
+            continue
         image_rotations = _layout_image_rotations(layout, faces)
         export_rotations = _layout_export_rotations(layout, faces)
-        if len(image_rotations) < 4 or set(image_rotations) != set(export_rotations):
+        if len(image_rotations) < 6 or set(image_rotations) != set(export_rotations):
             continue
         transform_mode = _match_layout_mode(face_frames, layout, export_rotations, mode="transform")
         if transform_mode is not None:

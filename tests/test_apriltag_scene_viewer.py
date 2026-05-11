@@ -41,6 +41,7 @@ from devtools.apriltag.scene_viewer import (
     _resolve_source_equirect_paths,
     _source_equirect_size_from_payload,
     _source_equirect_preview_params,
+    _synthetic_output_face_rotation_face,
     camera_pose_from_perspective_params,
     case_cubemap_view_metadata,
     closest_image_face_for_world_face,
@@ -1112,6 +1113,14 @@ def test_current_case_synthetic_floor_tag_uses_floor_pole_image() -> None:
     assert "images/frame_000012_top.jpg" in selected
     assert "images/frame_000012_bottom.jpg" not in selected
     window.deleteLater()
+
+
+def test_synthetic_output_projection_swaps_current_vertical_axis_faces() -> None:
+    assert _synthetic_output_face_rotation_face("top") == "bottom"
+    assert _synthetic_output_face_rotation_face("bottom") == "top"
+    assert _synthetic_output_face_rotation_face("py") == "ny"
+    assert _synthetic_output_face_rotation_face("ny") == "py"
+    assert _synthetic_output_face_rotation_face("px") == "px"
 
 
 def test_current_case_synthetic_output_tag_is_not_mirrored(tmp_path: Path) -> None:
