@@ -10,7 +10,7 @@ import cv2
 import numpy as np
 import pytest
 from PySide6.QtCore import QEventLoop, QTimer
-from PySide6.QtWidgets import QAbstractSpinBox, QApplication, QLabel
+from PySide6.QtWidgets import QAbstractSpinBox, QApplication, QLabel, QSizePolicy
 
 import devtools.apriltag.scene_viewer as scene_viewer_module
 from core.apriltag_cubemap import CubemapViewMetadata, cubemap_view_params_for_group
@@ -552,7 +552,9 @@ def test_scene_viewer_ui_defaults_target_scene_validation_workflow(tmp_path: Pat
     assert window.run_validation_button.text() == "検出"
     assert window.copy_validation_scale_button.text() == "scaleコピー"
     assert not window.copy_validation_scale_button.isEnabled()
-    assert not window.validation_status_label.wordWrap()
+    assert window.validation_status_label.wordWrap()
+    assert window.validation_status_label.minimumWidth() == 0
+    assert window.validation_status_label.sizePolicy().horizontalPolicy() == QSizePolicy.Policy.Ignored
     tag_labels = [label.text() for label in window.tag_controls_box.findChildren(QLabel)]
     assert "位置" in tag_labels
     assert "角度" in tag_labels
