@@ -16,9 +16,6 @@ EXCLUDED_PREFIXES = (
 
 EXCLUDED_PATHS = {
     "scripts/create_release_zip.py",
-    "scripts/dev_apriltag_placer_gui.py",
-    "scripts/dev_apriltag_preview.py",
-    "scripts/inject_synthetic_apriltag.py",
 }
 
 UNWANTED_PARTS = (
