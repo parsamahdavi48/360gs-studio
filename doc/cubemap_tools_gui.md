@@ -231,7 +231,7 @@ After the run, use `View Result in COLMAP GUI` to inspect registered camera pose
 
 Step 4 treats `<scene>/output/` as the active dataset: the folder you can copy to another machine or load directly in a 3DGS app. In most downstream apps, choose this `output/` folder.
 
-With the `LichtFeld Studio` profile, Step 4 writes `transforms.json` and `pointcloud.ply` in the same coordinate contract expected by current LichtFeld builds. It no longer applies a separate final orientation correction after export.
+With the `LichtFeld Studio` profile, Step 4 writes cubemap `transforms.json` as `PINHOLE` and keeps `transforms.json` camera poses and `pointcloud.ply` points in the same input-world contract expected by current LichtFeld builds. It no longer applies a separate final orientation correction after export.
 
 ## Common Decisions
 

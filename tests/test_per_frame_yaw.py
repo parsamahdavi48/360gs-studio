@@ -258,6 +258,60 @@ def test_transform_json_returns_yaw_offsets(tmp_path: Path):
     assert yaw_offsets == [0.0, 30.0, 60.0, 90.0, 120.0]
 
 
+def test_transform_json_uses_lichtfeld_explicit_pinhole_model(tmp_path: Path):
+    input_dir = tmp_path / "input"
+    input_dir.mkdir()
+    images_dir = input_dir / "images"
+    images_dir.mkdir()
+    _write_input_transforms(input_dir, num_frames=1)
+    cv2.imwrite(str(images_dir / "frame_0000.png"), np.zeros((128, 256, 3), dtype=np.uint8))
+
+    output_dir = tmp_path / "out"
+    transform_json(
+        input_dir=str(input_dir),
+        input_json="transforms.json",
+        image_dir=str(input_dir),
+        output_dir=str(output_dir),
+        views=[{"name": "front", "yaw": 0.0, "pitch": 0.0}],
+        fov=90.0,
+        output_scale=0.5,
+        no_transform=True,
+        allow_duplicate=False,
+        brush_mode=False,
+        yaw_offset_per_frame=0.0,
+    )
+
+    out_data = json.loads((output_dir / "transforms.json").read_text(encoding="utf-8"))
+    assert out_data["camera_model"] == "PINHOLE"
+
+
+def test_transform_json_keeps_simple_pinhole_for_axis_transformed_profiles(tmp_path: Path):
+    input_dir = tmp_path / "input"
+    input_dir.mkdir()
+    images_dir = input_dir / "images"
+    images_dir.mkdir()
+    _write_input_transforms(input_dir, num_frames=1)
+    cv2.imwrite(str(images_dir / "frame_0000.png"), np.zeros((128, 256, 3), dtype=np.uint8))
+
+    output_dir = tmp_path / "out"
+    transform_json(
+        input_dir=str(input_dir),
+        input_json="transforms.json",
+        image_dir=str(input_dir),
+        output_dir=str(output_dir),
+        views=[{"name": "front", "yaw": 0.0, "pitch": 0.0}],
+        fov=90.0,
+        output_scale=0.5,
+        no_transform=False,
+        allow_duplicate=False,
+        brush_mode=False,
+        yaw_offset_per_frame=0.0,
+    )
+
+    out_data = json.loads((output_dir / "transforms.json").read_text(encoding="utf-8"))
+    assert out_data["camera_model"] == "SIMPLE_PINHOLE"
+
+
 def test_transform_json_zero_offset_legacy(tmp_path: Path):
     """yaw_offset_per_frame=0 で frame_yaw_offsets は全て 0（旧動作互換）。"""
     input_dir = tmp_path / "input"

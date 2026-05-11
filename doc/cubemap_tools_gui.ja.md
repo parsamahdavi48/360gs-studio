@@ -231,7 +231,7 @@ SphereSfMの作業ファイルとログは `<scene>/output/spheresfm/` にまと
 
 Step 4では `<scene>/output/` を、他PCへコピーしたり3DGSアプリへ直接読み込ませたりする現在のデータセットとして扱います。3DGSアプリへ渡す場合は、基本的にこの `output/` を指定します。
 
-`LichtFeld Studio` プロファイルでは、現在のLichtFeldが読む座標規約に合わせて `transforms.json` と `pointcloud.ply` を同じ世界座標で書き出します。書き出し後に別の最終向き補正は行いません。
+`LichtFeld Studio` プロファイルでは、Cubemapの `transforms.json` を `PINHOLE` として出力し、現在のLichtFeldが読む座標規約に合わせて `transforms.json` のカメラ姿勢と `pointcloud.ply` の点群を同じ入力世界座標で書き出します。書き出し後に別の最終向き補正は行いません。
 
 ## よくある判断
 

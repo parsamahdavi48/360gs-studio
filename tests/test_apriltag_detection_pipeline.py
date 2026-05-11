@@ -586,7 +586,7 @@ def test_equirect_detection_projection_writes_temporary_pinhole_dataset(tmp_path
     )
 
     data = json.loads(projected.read_text(encoding="utf-8"))
-    assert data["camera_model"] == "SIMPLE_PINHOLE"
+    assert data["camera_model"] == "PINHOLE"
     assert len(data["frames"]) == 6
     assert (projected.parent / "images" / "a_px.png").is_file()
 

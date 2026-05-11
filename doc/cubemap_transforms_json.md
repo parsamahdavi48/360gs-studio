@@ -111,7 +111,10 @@ python cubemap_transforms_json.py . ./cubic --brush
 
 ### For LichtFeld Studio
 
-For LichtFeld Studio, specify `--no_transform`.
+For LichtFeld Studio, specify `--no_transform`. This writes cubemap
+`transforms.json` as `PINHOLE` and keeps `transforms.json` camera poses and
+`pointcloud.ply` points in the same input-world contract that current LichtFeld
+builds normalize internally.
 
 ```
 python metashape_360_lfs.py --images images --xml metashape.xml \
@@ -186,3 +189,6 @@ Import the following files in each software:
 - transforms.json (in the output directory)
 - images (in the output directory)
 - masks (in the output directory: optional)
+
+The `transforms.json` camera poses and `pointcloud.ply` points are a matched
+set. Do not apply an extra orientation correction to only one of them.
