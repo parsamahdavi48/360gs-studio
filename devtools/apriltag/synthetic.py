@@ -4,12 +4,14 @@ from __future__ import annotations
 
 import json
 import shutil
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
 import cv2
 import numpy as np
 
+from core.apriltag_cubemap import CubemapViewMetadata
 from core.apriltag_geometry import load_pinhole_frames, points_intersect_image, project_sfm_points, tag_corners_sfm
 from core.image_io import imread_unicode, imwrite_unicode
 
@@ -27,6 +29,8 @@ class SyntheticAprilTagConfig:
     frame_file_paths: frozenset[str] | None = None
     copy_unselected_frames: bool = True
     output_tagged_only: bool = False
+    cubemap_view_params: CubemapViewMetadata | Mapping[str, tuple[float, float]] | None = None
+    write_normalized_transforms: bool = False
 
 
 def _load_tag_rgba(path: Path) -> np.ndarray:
@@ -60,7 +64,11 @@ def _warp_tag(base: np.ndarray, tag_rgba: np.ndarray, dst_points: np.ndarray) ->
 
 def inject_synthetic_apriltag(config: SyntheticAprilTagConfig) -> dict:
     config.output_dir.mkdir(parents=True, exist_ok=True)
-    frames = load_pinhole_frames(config.input_transforms)
+    frames = load_pinhole_frames(
+        config.input_transforms,
+        cubemap_view_params=config.cubemap_view_params,
+    )
+    frames_by_path = {frame.file_path: frame for frame in frames}
     allowed_paths = None if config.frame_file_paths is None else set(config.frame_file_paths)
     tag_rgba = _load_tag_rgba(config.tag_image)
     corners = tag_corners_sfm(
@@ -108,8 +116,16 @@ def inject_synthetic_apriltag(config: SyntheticAprilTagConfig) -> dict:
         written_paths.add(frame.file_path)
 
     data = json.loads(config.input_transforms.read_text(encoding="utf-8"))
+    frames_data = data.get("frames", [])
+    if config.write_normalized_transforms and isinstance(frames_data, list):
+        for frame_data in frames_data:
+            if not isinstance(frame_data, dict):
+                continue
+            file_path = frame_data.get("file_path")
+            frame = frames_by_path.get(file_path) if isinstance(file_path, str) else None
+            if frame is not None:
+                frame_data["transform_matrix"] = frame.transform_matrix.tolist()
     if config.output_tagged_only:
-        frames_data = data.get("frames", [])
         if isinstance(frames_data, list):
             data["frames"] = [
                 frame
@@ -129,6 +145,7 @@ def inject_synthetic_apriltag(config: SyntheticAprilTagConfig) -> dict:
         "frame_file_paths": None if config.frame_file_paths is None else sorted(config.frame_file_paths),
         "copy_unselected_frames": config.copy_unselected_frames,
         "output_tagged_only": config.output_tagged_only,
+        "write_normalized_transforms": config.write_normalized_transforms,
         "frames_written": written,
         "frames_copied": copied,
         "frames_skipped": skipped,

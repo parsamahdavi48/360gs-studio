@@ -114,6 +114,7 @@ class SyntheticScaleValidationRequest:
     case_dir: Path
     transforms_json: Path
     run_dir: Path
+    cubemap_view_metadata: CubemapViewMetadata | None
     tag_family: str
     tag_id: int
     tag_size_m: float
@@ -169,6 +170,8 @@ class SyntheticScaleValidationWorker(QObject):
                     frame_file_paths=request.selected_paths,
                     copy_unselected_frames=False,
                     output_tagged_only=True,
+                    cubemap_view_params=request.cubemap_view_metadata,
+                    write_normalized_transforms=True,
                 )
             )
             self.progress.emit(
@@ -182,6 +185,7 @@ class SyntheticScaleValidationWorker(QObject):
                 tag_size_m=request.tag_size_m,
                 family=request.tag_family,
                 tag_ids={int(request.tag_id)},
+                normalize_cubemap=False,
             )
             self.progress.emit(
                 f"実行中 5/6: スケールを推定中... 観測 {len(observations)}",
@@ -201,6 +205,7 @@ class SyntheticScaleValidationWorker(QObject):
                 "case_dir": str(request.case_dir),
                 "run_dir": str(request.run_dir),
                 "input_transforms": str(request.transforms_json),
+                "cubemap_view_metadata": _cubemap_view_metadata_report(request.cubemap_view_metadata),
                 "expected_scale": request.expected_scale,
                 "tag_display": request.tag_display,
                 "tag_sfm": {
@@ -372,6 +377,15 @@ def case_cubemap_view_metadata(case: AprilTagDevCase) -> CubemapViewMetadata | N
         if metadata:
             return metadata
     return None
+
+
+def _cubemap_view_metadata_report(metadata: CubemapViewMetadata | None) -> dict[str, object] | None:
+    if metadata is None:
+        return None
+    return {
+        "view_params": {face: [float(yaw), float(pitch)] for face, (yaw, pitch) in metadata.view_params.items()},
+        "yaw_offset_per_frame": float(metadata.yaw_offset_per_frame),
+    }
 
 
 def _scene_root_candidates(case: AprilTagDevCase) -> tuple[Path, ...]:
@@ -1292,7 +1306,11 @@ class AprilTagSceneViewerWindow(QWidget):
         if self.case is None:
             return (), 0
         center_sfm, normal_sfm, up_sfm, true_scale = self._synthetic_tag_placement_sfm()
-        frames = load_pinhole_frames(self.case.transforms_for_processing())
+        metadata = case_cubemap_view_metadata(self.case)
+        frames = load_pinhole_frames(
+            self.case.transforms_for_processing(),
+            cubemap_view_params=metadata,
+        )
         corners = tag_corners_sfm(
             center_sfm,
             normal_sfm,
@@ -1417,10 +1435,12 @@ class AprilTagSceneViewerWindow(QWidget):
             run_dir = self._next_validation_run_dir()
             selected_paths = frozenset(candidate.frame.file_path for candidate in candidates)
             expected_scale = float(case.default_tag_size_m) / max(float(self._tag_size_sfm), 1e-12)
+            metadata = case_cubemap_view_metadata(case)
             request = SyntheticScaleValidationRequest(
                 case_dir=case.case_dir,
                 transforms_json=case.transforms_for_processing(),
                 run_dir=run_dir,
+                cubemap_view_metadata=metadata,
                 tag_family=case.tag_family,
                 tag_id=int(case.tag_id),
                 tag_size_m=float(case.default_tag_size_m),

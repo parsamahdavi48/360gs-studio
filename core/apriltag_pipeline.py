@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
+from core.apriltag_cubemap import CubemapViewMetadata
 from core.apriltag_detection import AprilTagDetection, detect_apriltags, detection_to_observation
 from core.apriltag_geometry import PinholeFrame, load_pinhole_frames
 from core.apriltag_scale import ScaleEstimate, TagObservation, estimate_scene_scale
@@ -33,8 +35,15 @@ def collect_observations(
     family: str,
     tag_ids: set[int] | None = None,
     min_score: float = 0.0,
+    normalize_cubemap: bool = True,
+    cubemap_view_params: CubemapViewMetadata | Mapping[str, tuple[float, float]] | None = None,
 ) -> tuple[tuple[PinholeFrame, ...], tuple[FrameDetection, ...], tuple[TagObservation, ...]]:
-    frames = load_pinhole_frames(transforms_json, image_root=image_root)
+    frames = load_pinhole_frames(
+        transforms_json,
+        image_root=image_root,
+        normalize_cubemap=normalize_cubemap,
+        cubemap_view_params=cubemap_view_params,
+    )
     frame_detections: list[FrameDetection] = []
     observations: list[TagObservation] = []
     for frame in frames:
@@ -58,6 +67,8 @@ def run_apriltag_scale_estimation(
     tag_ids: set[int] | None = None,
     min_score: float = 0.0,
     min_baseline_sfm: float = 1e-6,
+    normalize_cubemap: bool = True,
+    cubemap_view_params: CubemapViewMetadata | Mapping[str, tuple[float, float]] | None = None,
 ) -> AprilTagScaleRun:
     frames, frame_detections, observations = collect_observations(
         transforms_json,
@@ -66,6 +77,8 @@ def run_apriltag_scale_estimation(
         family=family,
         tag_ids=tag_ids,
         min_score=min_score,
+        normalize_cubemap=normalize_cubemap,
+        cubemap_view_params=cubemap_view_params,
     )
     estimate = estimate_scene_scale(observations, min_baseline_sfm=min_baseline_sfm)
     return AprilTagScaleRun(

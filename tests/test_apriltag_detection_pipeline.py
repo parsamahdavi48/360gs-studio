@@ -7,6 +7,7 @@ from pathlib import Path
 import cv2
 import numpy as np
 
+from core.apriltag_cubemap import CubemapViewMetadata
 from core.apriltag_detection import detect_apriltags
 from core.apriltag_geometry import load_pinhole_frames, project_sfm_points
 from core.apriltag_pipeline import run_apriltag_scale_estimation
@@ -100,6 +101,28 @@ def _rotation(yaw_deg: float, pitch_deg: float) -> np.ndarray:
     return ry @ rx
 
 
+def _export_rotation(yaw_deg: float, pitch_deg: float) -> np.ndarray:
+    yaw = np.deg2rad(yaw_deg)
+    pitch = np.deg2rad(pitch_deg)
+    ry = np.array(
+        [
+            [np.cos(yaw), 0.0, np.sin(yaw)],
+            [0.0, 1.0, 0.0],
+            [-np.sin(yaw), 0.0, np.cos(yaw)],
+        ],
+        dtype=float,
+    )
+    rx = np.array(
+        [
+            [1.0, 0.0, 0.0],
+            [0.0, np.cos(pitch), -np.sin(pitch)],
+            [0.0, np.sin(pitch), np.cos(pitch)],
+        ],
+        dtype=float,
+    )
+    return rx @ ry
+
+
 def _write_two_frame_dataset(root: Path) -> Path:
     images = root / "images"
     images.mkdir(parents=True)
@@ -172,6 +195,53 @@ def _write_generated_cube6_dataset(root: Path) -> Path:
         encoding="utf-8",
     )
     return transforms
+
+
+def _write_generated_cube6_yaw_offset_dataset(root: Path) -> tuple[Path, CubemapViewMetadata]:
+    images = root / "images"
+    images.mkdir(parents=True)
+    views = {
+        "bottom": (-45.0, -90.0),
+        "px": (45.0, 0.0),
+        "nz": (135.0, 0.0),
+        "nx": (-135.0, 0.0),
+        "pz": (-45.0, 0.0),
+        "top": (-45.0, 90.0),
+    }
+    frames = []
+    frame_groups = (
+        ("frame_0001", (0.0, 0.0, 0.0)),
+        ("frame_0002", (2.0, 0.0, 0.0)),
+    )
+    for group_index, (prefix, position) in enumerate(frame_groups):
+        yaw_offset = group_index * 30.0
+        for face, (yaw, pitch) in views.items():
+            assert imwrite_unicode(
+                images / f"{prefix}_{face}.png",
+                np.full((400, 400, 3), 255, dtype=np.uint8),
+            )
+            transform = np.eye(4)
+            transform[:3, :3] = _export_rotation(yaw + yaw_offset, pitch).T
+            transform[:3, 3] = position
+            frames.append({"file_path": f"images/{prefix}_{face}.png", "transform_matrix": transform.tolist()})
+
+    transforms = root / "transforms.json"
+    transforms.write_text(
+        json.dumps(
+            {
+                "camera_model": "SIMPLE_PINHOLE",
+                "w": 400,
+                "h": 400,
+                "fl_x": 240.0,
+                "fl_y": 240.0,
+                "cx": 199.5,
+                "cy": 199.5,
+                "frames": frames,
+            }
+        ),
+        encoding="utf-8",
+    )
+    return transforms, CubemapViewMetadata(views, yaw_offset_per_frame=30.0)
 
 
 def test_detect_apriltag_generated_marker_returns_metric_camera_vector(tmp_path: Path) -> None:
@@ -290,6 +360,56 @@ def test_synthetic_injection_uses_image_consistent_cube6_face_pose(tmp_path: Pat
     assert px is not None and nx is not None
     assert int(np.min(px)) < 64
     assert int(np.min(nx)) == 255
+
+
+def test_synthetic_injection_can_write_metadata_normalized_cube6_transforms(tmp_path: Path) -> None:
+    transforms, metadata = _write_generated_cube6_yaw_offset_dataset(tmp_path)
+    marker = tmp_path / "tag.png"
+    _write_marker(marker, size=80)
+    output = tmp_path / "tagged"
+
+    frames = {
+        frame.file_path: frame
+        for frame in load_pinhole_frames(transforms, cubemap_view_params=metadata)
+    }
+    selected_path = "images/frame_0002_px.png"
+    selected = frames[selected_path]
+    center = selected.camera_position_sfm + selected.camera_to_world_rotation[:, 2] * 8.0
+    up = selected.camera_to_world_rotation[:, 1]
+    normal = -selected.camera_to_world_rotation[:, 2]
+
+    report = inject_synthetic_apriltag(
+        SyntheticAprilTagConfig(
+            input_transforms=transforms,
+            output_dir=output,
+            tag_image=marker,
+            tag_size_m=0.8,
+            true_scale=0.25,
+            tag_center_sfm=center,
+            tag_normal_sfm=normal,
+            tag_up_sfm=up,
+            frame_file_paths=frozenset({selected_path}),
+            copy_unselected_frames=False,
+            output_tagged_only=True,
+            cubemap_view_params=metadata,
+            write_normalized_transforms=True,
+        )
+    )
+
+    assert report["frames_written"] == 1
+    assert report["transforms_frame_count"] == 1
+    assert report["tagged_frame_file_paths"] == [selected_path]
+
+    output_frames = load_pinhole_frames(output / "transforms.json", normalize_cubemap=False)
+    assert len(output_frames) == 1
+    assert output_frames[0].file_path == selected_path
+    assert np.allclose(output_frames[0].transform_matrix, selected.transform_matrix, atol=1e-8)
+
+    image = cv2.imread(str(output / selected_path), cv2.IMREAD_COLOR)
+    detections = detect_apriltags(image, output_frames[0], tag_size_m=0.8, family="tag36h11", tag_ids={7})
+    assert len(detections) == 1
+    assert detections[0].tag_id == 7
+    assert detections[0].score > 0.0
 
 
 def test_generated_cube6_transforms_are_normalized_for_projection(tmp_path: Path) -> None:
