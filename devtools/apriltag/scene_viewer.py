@@ -1021,7 +1021,7 @@ class AprilTagSceneViewerWindow(QWidget):
         layout.addWidget(
             self._compact_fields_row(
                 "サイズ",
-                (("タグサイズ", self.tag_size_sfm_spin), ("物理", self.tag_physical_size_spin)),
+                (("タグ", self.tag_size_sfm_spin), ("物理", self.tag_physical_size_spin)),
             )
         )
         layout.addWidget(self.reset_tag_button)
@@ -1361,6 +1361,7 @@ class AprilTagSceneViewerWindow(QWidget):
         params: PerspectiveParams,
         *,
         output_size: int = 768,
+        color_bgr: tuple[int, int, int] | None = None,
     ) -> list[PerspectiveLabelOverlay]:
         if group is None:
             return []
@@ -1383,7 +1384,7 @@ class AprilTagSceneViewerWindow(QWidget):
         if int(max(max_xy - min_xy)) > size * 3:
             return []
         origin_y = max(18, int(min_xy[1]) - 8)
-        color = self._tag_overlay_color(projected)
+        color = color_bgr if color_bgr is not None else self._tag_overlay_color(projected)
         return [
             PerspectiveLabelOverlay(
                 label="tag",
@@ -1476,9 +1477,8 @@ class AprilTagSceneViewerWindow(QWidget):
         *,
         output_size: int = 768,
     ) -> list[PerspectiveLabelOverlay]:
-        if not self._tag_front_faces_group(world_group):
-            return []
-        return self._tag_image_overlays(world_group, self._params, output_size=output_size)
+        color = None if self._tag_front_faces_group(world_group) else (0, 64, 255)
+        return self._tag_image_overlays(world_group, self._params, output_size=output_size, color_bgr=color)
 
     def _right_image_tag_overlays(
         self,

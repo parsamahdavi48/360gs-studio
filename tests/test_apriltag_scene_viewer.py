@@ -491,7 +491,8 @@ def test_scene_viewer_ui_defaults_target_scene_validation_workflow(tmp_path: Pat
     assert "Yw" in tag_labels
     assert "Pt" in tag_labels
     assert "Rl" in tag_labels
-    assert "タグサイズ" in tag_labels
+    assert "タグ" in tag_labels
+    assert "タグサイズ" not in tag_labels
     assert "タグサイズ SfM" not in tag_labels
     window.deleteLater()
 
@@ -1170,7 +1171,9 @@ def test_current_case_image_overlay_respects_synthetic_front_side() -> None:
         size_sfm=1.0,
     )
     assert window._tag_image_overlays(group, window._params, output_size=768)
-    assert window._right_image_tag_overlays(group, use_output_projection=True, output_size=768) == []
+    back_overlays = window._right_image_tag_overlays(group, use_output_projection=True, output_size=768)
+    assert len(back_overlays) == 1
+    assert back_overlays[0].color_bgr == (0, 64, 255)
     window.deleteLater()
 
 
