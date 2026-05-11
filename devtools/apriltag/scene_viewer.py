@@ -938,11 +938,6 @@ class AprilTagSceneViewerWindow(QWidget):
         result_row.addWidget(self.validation_status_label, 1)
         sidebar_layout.addLayout(result_row)
 
-        self.log = QTextEdit()
-        self.log.setReadOnly(True)
-        self.log.setMinimumHeight(100)
-        self.log.setMaximumHeight(170)
-        sidebar_layout.addWidget(self.log)
         sidebar_layout.addStretch(1)
         self.sidebar_scroll.setWidget(sidebar)
         content_splitter.addWidget(self.sidebar_scroll)
@@ -969,43 +964,67 @@ class AprilTagSceneViewerWindow(QWidget):
         self.content_splitter = content_splitter
         root.addWidget(content_splitter, 1)
 
+        self.log = QTextEdit()
+        self.log.setReadOnly(True)
+        self.log.setMinimumHeight(80)
+        self.log.setMaximumHeight(130)
+        root.addWidget(self.log)
+
+    @staticmethod
+    def _compact_fields_row(title: str, fields: tuple[tuple[str, QWidget], ...]) -> QWidget:
+        row_widget = QWidget()
+        row = QHBoxLayout(row_widget)
+        row.setContentsMargins(0, 0, 0, 0)
+        row.setSpacing(5)
+        title_label = QLabel(title)
+        title_label.setFixedWidth(44)
+        row.addWidget(title_label)
+        for label_text, widget in fields:
+            label = QLabel(label_text)
+            label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+            row.addWidget(label)
+            widget.setMinimumWidth(52)
+            row.addWidget(widget, 1)
+        return row_widget
+
     def _build_tag_controls(self) -> QGroupBox:
         group = QGroupBox("AprilTag検証")
         layout = QVBoxLayout(group)
         layout.setContentsMargins(8, 8, 8, 8)
         layout.setSpacing(8)
 
-        position_form = QFormLayout()
-        position_form.setLabelAlignment(Qt.AlignRight)
         self.tag_x_spin = self._double_spin(-1_000_000.0, 1_000_000.0, 0.0, decimals=3, step=0.05)
         self.tag_y_spin = self._double_spin(-1_000_000.0, 1_000_000.0, 0.0, decimals=3, step=0.05)
         self.tag_z_spin = self._double_spin(-1_000_000.0, 1_000_000.0, 0.0, decimals=3, step=0.05)
-        position_form.addRow("X", self.tag_x_spin)
-        position_form.addRow("Y", self.tag_y_spin)
-        position_form.addRow("Z", self.tag_z_spin)
-        layout.addLayout(position_form)
+        layout.addWidget(
+            self._compact_fields_row(
+                "位置",
+                (("X", self.tag_x_spin), ("Y", self.tag_y_spin), ("Z", self.tag_z_spin)),
+            )
+        )
 
-        rotation_form = QFormLayout()
-        rotation_form.setLabelAlignment(Qt.AlignRight)
         self.tag_yaw_spin = self._double_spin(-180.0, 180.0, 0.0, decimals=1, step=5.0)
         self.tag_pitch_spin = self._double_spin(-89.0, 89.0, 0.0, decimals=1, step=5.0)
         self.tag_roll_spin = self._double_spin(-180.0, 180.0, 0.0, decimals=1, step=5.0)
-        rotation_form.addRow("yaw", self.tag_yaw_spin)
-        rotation_form.addRow("pitch", self.tag_pitch_spin)
-        rotation_form.addRow("roll", self.tag_roll_spin)
-        layout.addLayout(rotation_form)
+        layout.addWidget(
+            self._compact_fields_row(
+                "角度",
+                (("Yw", self.tag_yaw_spin), ("Pt", self.tag_pitch_spin), ("Rl", self.tag_roll_spin)),
+            )
+        )
 
-        size_form = QFormLayout()
-        size_form.setLabelAlignment(Qt.AlignRight)
         self.tag_size_sfm_spin = self._double_spin(0.0001, 1_000_000.0, self._tag_size_sfm, decimals=4, step=0.05)
         self.tag_physical_size_spin = self._double_spin(0.001, 100.0, self._tag_physical_size_m, decimals=3, step=0.01, suffix=" m")
         self.tag_size_sfm_spin.setToolTip("左ビューのSfM空間に配置するAprilTag一辺の長さです。")
         self.tag_physical_size_spin.setToolTip("検出器へ渡す現実のAprilTag一辺の長さです。")
         self.reset_tag_button = QPushButton("原点へ戻す")
-        size_form.addRow("タグサイズ SfM", self.tag_size_sfm_spin)
-        size_form.addRow("物理サイズ", self.tag_physical_size_spin)
-        size_form.addRow("", self.reset_tag_button)
-        layout.addLayout(size_form)
+        layout.addWidget(
+            self._compact_fields_row(
+                "サイズ",
+                (("タグサイズ", self.tag_size_sfm_spin), ("物理", self.tag_physical_size_spin)),
+            )
+        )
+        layout.addWidget(self.reset_tag_button)
 
         validation_form = QFormLayout()
         validation_form.setLabelAlignment(Qt.AlignRight)

@@ -10,7 +10,7 @@ import cv2
 import numpy as np
 import pytest
 from PySide6.QtCore import QEventLoop, QTimer
-from PySide6.QtWidgets import QAbstractSpinBox, QApplication
+from PySide6.QtWidgets import QAbstractSpinBox, QApplication, QLabel
 
 from core.apriltag_cubemap import CubemapViewMetadata, cubemap_view_params_for_group
 from core.apriltag_detection import detect_apriltags
@@ -484,6 +484,15 @@ def test_scene_viewer_ui_defaults_target_scene_validation_workflow(tmp_path: Pat
     assert window.copy_validation_scale_button.text() == "scaleコピー"
     assert not window.copy_validation_scale_button.isEnabled()
     assert not window.validation_status_label.wordWrap()
+    tag_labels = [label.text() for label in window.tag_controls_box.findChildren(QLabel)]
+    assert "位置" in tag_labels
+    assert "角度" in tag_labels
+    assert "サイズ" in tag_labels
+    assert "Yw" in tag_labels
+    assert "Pt" in tag_labels
+    assert "Rl" in tag_labels
+    assert "タグサイズ" in tag_labels
+    assert "タグサイズ SfM" not in tag_labels
     window.deleteLater()
 
 
@@ -499,6 +508,7 @@ def test_scene_viewer_places_face_and_validation_controls_in_left_sidebar(tmp_pa
     assert window.sidebar_scroll.maximumWidth() == 420
     assert window.face_box.parentWidget() is window.sidebar_scroll.widget()
     assert window.tag_controls_box.parentWidget() is window.sidebar_scroll.widget()
+    assert window.log.parentWidget() is window
     window.deleteLater()
 
 
