@@ -32,7 +32,6 @@ from devtools.apriltag.scene_viewer import (
     RAY_BASIS_BOTH,
     RAY_BASIS_IMAGE,
     RAY_BASIS_WORLD,
-    RIGHT_VIEW_IMAGE_POINTCLOUD,
     RIGHT_VIEW_POINTCLOUD,
     RIGHT_VIEW_RECONSTRUCTED_CUBE6,
     RIGHT_VIEW_SOURCE_EQUIRECT,
@@ -509,8 +508,8 @@ def test_scene_viewer_ui_defaults_target_scene_validation_workflow(tmp_path: Pat
     window = AprilTagSceneViewerWindow(initial_case=case_dir)
 
     assert window.open_case_button.text() == "シーンを開く"
-    assert window.mode_combo.currentData() == RIGHT_VIEW_IMAGE_POINTCLOUD
-    assert window.mode_combo.itemText(window.mode_combo.findData(RIGHT_VIEW_IMAGE_POINTCLOUD)) == "画像+点群"
+    assert window.mode_combo.currentData() == RIGHT_VIEW_RECONSTRUCTED_CUBE6
+    assert window.mode_combo.findData("image_pointcloud") < 0
     assert window.mode_combo.itemText(window.mode_combo.findData(RIGHT_VIEW_POINTCLOUD)) == "点群"
     assert window.mode_combo.itemText(window.mode_combo.findData(RIGHT_VIEW_SOURCE_EQUIRECT)) == "元360画像"
     assert window.mode_combo.itemText(window.mode_combo.findData(RIGHT_VIEW_RECONSTRUCTED_CUBE6)) == "Cube6再構築"
@@ -1572,6 +1571,7 @@ def test_scene_viewer_loads_case_and_selects_camera(tmp_path: Path) -> None:
     assert window._world_pointcloud is not None
     assert len(window._world_pointcloud.points) == 4
     assert window.right_stack.currentWidget() is window.image_view
+    assert window.mode_combo.currentData() == RIGHT_VIEW_RECONSTRUCTED_CUBE6
     window.mode_combo.setCurrentIndex(window.mode_combo.findData("image"))
     assert window.right_stack.currentWidget() is window.image_view
     window.deleteLater()

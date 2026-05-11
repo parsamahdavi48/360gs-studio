@@ -891,6 +891,8 @@ class AprilTagSceneViewerWindow(QWidget):
         self._validation_running = False
         self._validation_thread: QThread | None = None
         self._validation_worker: SyntheticScaleValidationWorker | None = None
+        self._right_view_mode_user_selected = False
+        self._setting_default_right_view_mode = False
 
         self._build_ui()
         self._connect_signals()
@@ -919,7 +921,6 @@ class AprilTagSceneViewerWindow(QWidget):
         self.prev_button = QPushButton("前")
         self.next_button = QPushButton("次")
         self.mode_combo = QComboBox()
-        self.mode_combo.addItem("画像+点群", RIGHT_VIEW_IMAGE_POINTCLOUD)
         self.mode_combo.addItem("点群", RIGHT_VIEW_POINTCLOUD)
         self.mode_combo.addItem("元360画像", RIGHT_VIEW_SOURCE_EQUIRECT)
         self.mode_combo.addItem("Cube6再構築", RIGHT_VIEW_RECONSTRUCTED_CUBE6)
@@ -1128,7 +1129,7 @@ class AprilTagSceneViewerWindow(QWidget):
         self.camera_combo.currentIndexChanged.connect(self._on_camera_changed)
         self.prev_button.clicked.connect(lambda: self._step_camera(-1))
         self.next_button.clicked.connect(lambda: self._step_camera(1))
-        self.mode_combo.currentIndexChanged.connect(lambda _index: self._sync_views())
+        self.mode_combo.currentIndexChanged.connect(self._on_right_view_mode_changed)
         self.ray_basis_combo.currentIndexChanged.connect(self._on_ray_basis_changed)
         self.profile_combo.currentIndexChanged.connect(self._on_profile_changed)
         self.world_view.camera_clicked.connect(self.select_camera_by_name)
@@ -1164,9 +1165,15 @@ class AprilTagSceneViewerWindow(QWidget):
         except Exception as e:
             QMessageBox.critical(self, "シーン読み込みエラー", str(e))
             return
+        self._right_view_mode_user_selected = False
         self._set_profile_combo(self.case.coordinate_profile)
         self._set_tag_defaults_from_case(self.case)
         self.reload()
+
+    def _on_right_view_mode_changed(self, _index: int) -> None:
+        if not self._setting_default_right_view_mode:
+            self._right_view_mode_user_selected = True
+        self._sync_views()
 
     def reload(self) -> None:
         if self.case is None:
@@ -1229,8 +1236,26 @@ class AprilTagSceneViewerWindow(QWidget):
             QMessageBox.critical(self, "シーン読み込みエラー", str(e))
             return
         self._populate_camera_combo()
+        self._select_default_right_view_mode()
         self._sync_views()
         self.scene_loaded.emit()
+
+    def _select_default_right_view_mode(self) -> None:
+        if self._right_view_mode_user_selected:
+            return
+        preferred = (
+            RIGHT_VIEW_RECONSTRUCTED_CUBE6
+            if self._source_equirect_rotations
+            else RIGHT_VIEW_POINTCLOUD
+        )
+        index = self.mode_combo.findData(preferred)
+        if index < 0:
+            return
+        self._setting_default_right_view_mode = True
+        try:
+            self.mode_combo.setCurrentIndex(index)
+        finally:
+            self._setting_default_right_view_mode = False
 
     def select_camera_by_name(self, name: str) -> None:
         index = self.camera_combo.findData(str(name))
@@ -2284,7 +2309,7 @@ class AprilTagSceneViewerWindow(QWidget):
                 mapping = " / image preview=Cube6 reconstructed"
         elif mode == RIGHT_VIEW_SOURCE_EQUIRECT and source_equirect is not None:
             mapping = " / image preview=source equirect direct"
-        if (not mapping or mode == RIGHT_VIEW_IMAGE_POINTCLOUD) and basis_group is not None and image_group is not None:
+        if basis_group is not None and image_group is not None:
             closest = closest_image_face_for_world_face(
                 basis_group,
                 image_group,
