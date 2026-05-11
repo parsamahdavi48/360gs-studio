@@ -914,11 +914,13 @@ STRINGS: dict[str, str] = {
     "APRILTAG_TAG_SIZE_INVALID": "タグ実寸は正の数値で入力してください。",
     "APRILTAG_RUNNING": "推定中...",
     "APRILTAG_FAILED": "推定に失敗しました。\n{detail}",
-    "APRILTAG_RESULT_FORMAT": "scale={scale}\n観測={observations}, ペア={pairs}, inlier={inliers}, RMS={rms:.6g} m",
+    "APRILTAG_RESULT_FORMAT": "scale={scale}\n観測={observations}\nペア={pairs}, inlier={inliers}\nRMS={rms:.6g} m",
+    "APRILTAG_COPY_SCALE": "scaleをコピー",
+    "APRILTAG_SCALE_COPIED": "scaleをコピーしました",
     "APRILTAG_APPLIED": "推定scaleを出力データへ反映しました。",
     "APRILTAG_APPLIED_FORMAT": (
         "scale={scale} を output/transforms.json と pointcloud.ply に反映しました。\n"
-        "カメラ={frames}, 点={points}\nバックアップ: {backup}"
+        "カメラ={frames}, 点={points}\nバックアップ:\n{backup}"
     ),
     "APRILTAG_PRINT_SECTION": "タグPDF",
     "APRILTAG_PRINT_TAG_ID": "印刷ID",

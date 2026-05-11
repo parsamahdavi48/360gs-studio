@@ -9,8 +9,9 @@ import re
 import sys
 from pathlib import Path
 
-from PySide6.QtCore import QProcess, QProcessEnvironment, QSignalBlocker
+from PySide6.QtCore import QProcess, QProcessEnvironment, QSize, QSignalBlocker, Qt
 from PySide6.QtWidgets import (
+    QApplication,
     QComboBox,
     QFormLayout,
     QHBoxLayout,
@@ -18,6 +19,8 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QMessageBox,
     QPushButton,
+    QSizePolicy,
+    QToolButton,
     QVBoxLayout,
     QWidget,
 )
@@ -34,12 +37,13 @@ from core.apriltag_markers import (
     tag_id_range,
 )
 from core.apriltag_printable import available_pages, create_printable_target
-from core.apriltag_scale_apply import apply_scene_output_scale, validate_scale_output_dataset
+from core.apriltag_scale_apply import ScaleApplyResult, apply_scene_output_scale, validate_scale_output_dataset
 from core.scene_layout import scene_output_dir, step4_meta_dir
 from gui import i18n
 from gui.common.collapsible_section import CollapsibleSection
 from gui.common.drag_spinbox import DragDoubleSpinBox, DragSpinBox
 from gui.common.form_rows import add_tooltip_row
+from gui.common.icons import copy_icon
 
 _APRILTAG_PROGRESS_RE = re.compile(r"^\[progress\]\s+(\d+)\s*/\s*(\d+)")
 
@@ -52,6 +56,7 @@ class Step4AprilTagMixin:
         self._apriltag_output_buffer = ""
         self._apriltag_output_lines: list[str] = []
         self._apriltag_last_scale: float | None = None
+        self._apriltag_last_scale_text = ""
         self._apriltag_scale_applied = False
 
     def _build_apriltag_scale_tab(self) -> QWidget:
@@ -106,10 +111,31 @@ class Step4AprilTagMixin:
         action_layout.addStretch()
         form.addRow("", action_row)
 
+        result_row = QWidget()
+        result_layout = QHBoxLayout(result_row)
+        result_layout.setContentsMargins(0, 0, 0, 0)
+        result_layout.setSpacing(4)
+        result_row.setMinimumWidth(0)
+
         self.apriltag_result_label = QLabel(i18n.t("APRILTAG_RESULT_EMPTY"))
+        self.apriltag_result_label.setMinimumWidth(0)
+        self.apriltag_result_label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
         self.apriltag_result_label.setWordWrap(True)
         self.apriltag_result_label.setToolTip(i18n.tip("APRILTAG_RESULT"))
-        form.addRow(i18n.t("APRILTAG_RESULT"), self.apriltag_result_label)
+        self.apriltag_result_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        result_layout.addWidget(self.apriltag_result_label, stretch=1)
+
+        self.apriltag_copy_scale_btn = QToolButton()
+        self.apriltag_copy_scale_btn.setObjectName("iconToolButton")
+        self.apriltag_copy_scale_btn.setIcon(copy_icon())
+        self.apriltag_copy_scale_btn.setIconSize(QSize(16, 16))
+        self.apriltag_copy_scale_btn.setFixedSize(24, 24)
+        self.apriltag_copy_scale_btn.setToolTip(i18n.t("APRILTAG_COPY_SCALE"))
+        self.apriltag_copy_scale_btn.clicked.connect(self._copy_apriltag_scale)
+        self.apriltag_copy_scale_btn.setVisible(False)
+        result_layout.addWidget(self.apriltag_copy_scale_btn)
+
+        form.addRow(i18n.t("APRILTAG_RESULT"), result_row)
 
         layout.addLayout(form)
         layout.addWidget(self._build_apriltag_print_section())
@@ -267,6 +293,10 @@ class Step4AprilTagMixin:
             self.apriltag_id_edit,
         ):
             widget.setEnabled(not running)
+        if hasattr(self, "apriltag_copy_scale_btn"):
+            has_scale = self._apriltag_last_scale is not None
+            self.apriltag_copy_scale_btn.setVisible(has_scale)
+            self.apriltag_copy_scale_btn.setEnabled(has_scale and not running)
 
     def _apriltag_tag_size_m(self) -> float:
         value = float(self.apriltag_tag_size_edit.value())
@@ -299,8 +329,55 @@ class Step4AprilTagMixin:
         return cmd
 
     def _warn_apriltag(self, message: str) -> None:
-        self.apriltag_result_label.setText(message)
+        self._set_apriltag_result_text(message)
         QMessageBox.warning(self, i18n.t("STEP4_TAB_APRILTAG_SCALE"), message)
+
+    def _set_apriltag_result_text(self, text: str, *, tooltip: str | None = None) -> None:
+        self.apriltag_result_label.setText(text)
+        self.apriltag_result_label.setToolTip(tooltip or i18n.tip("APRILTAG_RESULT"))
+
+    def _copy_apriltag_scale(self) -> None:
+        text = self._apriltag_last_scale_text.strip()
+        if not text and self._apriltag_last_scale is not None:
+            text = f"{self._apriltag_last_scale:.9g}"
+        if not text:
+            return
+        clipboard = QApplication.clipboard()
+        clipboard.setText(text)
+        self.apriltag_copy_scale_btn.setToolTip(i18n.t("APRILTAG_SCALE_COPIED"))
+
+    def _show_apriltag_estimate_result(self, scale: float, estimate: dict[str, object]) -> None:
+        scale_text = f"{scale:.9g}"
+        self._apriltag_last_scale = scale
+        self._apriltag_last_scale_text = scale_text
+        self._apriltag_scale_applied = False
+        self.apriltag_copy_scale_btn.setToolTip(i18n.t("APRILTAG_COPY_SCALE"))
+        self._set_apriltag_result_text(
+            i18n.t("APRILTAG_RESULT_FORMAT").format(
+                scale=scale_text,
+                observations=int(estimate.get("observation_count", 0)),
+                pairs=int(estimate.get("pair_count", 0)),
+                inliers=int(estimate.get("inlier_count", 0)),
+                rms=float(estimate.get("rms_residual_m", 0.0)),
+            )
+        )
+
+    def _show_apriltag_applied_result(self, result: ScaleApplyResult) -> None:
+        backup_dir = result.transforms_backup.parent
+        scale_text = f"{result.scale:.9g}"
+        self._apriltag_last_scale = result.scale
+        self._apriltag_last_scale_text = scale_text
+        self._apriltag_scale_applied = True
+        self.apriltag_copy_scale_btn.setToolTip(i18n.t("APRILTAG_COPY_SCALE"))
+        self._set_apriltag_result_text(
+            i18n.t("APRILTAG_APPLIED_FORMAT").format(
+                scale=scale_text,
+                frames=result.frames_scaled,
+                points=result.points_scaled,
+                backup=self._wrapped_apriltag_path(backup_dir),
+            ),
+            tooltip=f"{i18n.tip('APRILTAG_RESULT')}\n{backup_dir}",
+        )
 
     def _run_apriltag_scale_estimate(self) -> None:
         if self._apriltag_estimate_process is not None:
@@ -317,11 +394,12 @@ class Step4AprilTagMixin:
             return
 
         self._apriltag_last_scale = None
+        self._apriltag_last_scale_text = ""
         self._apriltag_scale_applied = False
         self._apriltag_cancel_requested = False
         self._apriltag_output_buffer = ""
         self._apriltag_output_lines = []
-        self.apriltag_result_label.setText(i18n.t("APRILTAG_RUNNING"))
+        self._set_apriltag_result_text(i18n.t("APRILTAG_RUNNING"))
         process = QProcess(self)
         self._apriltag_estimate_process = process
         self._sync_apriltag_controls()
@@ -343,7 +421,7 @@ class Step4AprilTagMixin:
             detail = process.errorString().strip() or "-"
             self._apriltag_estimate_process = None
             process.deleteLater()
-            self.apriltag_result_label.setText(i18n.t("APRILTAG_FAILED").format(detail=detail))
+            self._set_apriltag_result_text(i18n.t("APRILTAG_FAILED").format(detail=detail))
             self.background_line_received.emit(f"[apriltag_scale] start failed: {detail}")
             self.background_task_finished.emit(False, False)
             self._sync_apriltag_controls()
@@ -398,11 +476,11 @@ class Step4AprilTagMixin:
         self.background_task_finished.emit(exit_code == 0 and not canceled, canceled)
 
         if canceled:
-            self.apriltag_result_label.setText(i18n.STATUS_CANCELED)
+            self._set_apriltag_result_text(i18n.STATUS_CANCELED)
             self._sync_apriltag_controls()
             return
         if exit_code != 0:
-            self.apriltag_result_label.setText(
+            self._set_apriltag_result_text(
                 i18n.t("APRILTAG_FAILED").format(detail=self._message_detail_tail(detail))
             )
             self._sync_apriltag_controls()
@@ -412,21 +490,11 @@ class Step4AprilTagMixin:
             estimate = report["estimate"]
             scale = float(estimate["scale"])
         except Exception as exc:
-            self.apriltag_result_label.setText(i18n.t("APRILTAG_FAILED").format(detail=str(exc)))
+            self._set_apriltag_result_text(i18n.t("APRILTAG_FAILED").format(detail=str(exc)))
             self._sync_apriltag_controls()
             return
 
-        self._apriltag_last_scale = scale
-        self._apriltag_scale_applied = False
-        self.apriltag_result_label.setText(
-            i18n.t("APRILTAG_RESULT_FORMAT").format(
-                scale=f"{scale:.9g}",
-                observations=int(estimate.get("observation_count", 0)),
-                pairs=int(estimate.get("pair_count", 0)),
-                inliers=int(estimate.get("inlier_count", 0)),
-                rms=float(estimate.get("rms_residual_m", 0.0)),
-            )
-        )
+        self._show_apriltag_estimate_result(scale, estimate)
         self._sync_apriltag_controls()
 
     def has_background_task(self) -> bool:
@@ -452,15 +520,7 @@ class Step4AprilTagMixin:
         except Exception as exc:
             self._warn_apriltag(str(exc))
             return
-        self._apriltag_scale_applied = True
-        self.apriltag_result_label.setText(
-            i18n.t("APRILTAG_APPLIED_FORMAT").format(
-                scale=f"{result.scale:.9g}",
-                frames=result.frames_scaled,
-                points=result.points_scaled,
-                backup=str(result.transforms_backup.parent),
-            )
-        )
+        self._show_apriltag_applied_result(result)
         self._sync_apriltag_controls()
 
     @staticmethod

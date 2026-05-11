@@ -911,11 +911,13 @@ STRINGS: dict[str, str] = {
     "APRILTAG_TAG_SIZE_INVALID": "Enter a positive number for the tag size.",
     "APRILTAG_RUNNING": "Estimating...",
     "APRILTAG_FAILED": "Estimation failed.\n{detail}",
-    "APRILTAG_RESULT_FORMAT": "scale={scale}\nobservations={observations}, pairs={pairs}, inliers={inliers}, RMS={rms:.6g} m",
+    "APRILTAG_RESULT_FORMAT": "scale={scale}\nobservations={observations}\npairs={pairs}, inliers={inliers}\nRMS={rms:.6g} m",
+    "APRILTAG_COPY_SCALE": "Copy scale",
+    "APRILTAG_SCALE_COPIED": "Copied scale",
     "APRILTAG_APPLIED": "Applied the estimated scale to the output dataset.",
     "APRILTAG_APPLIED_FORMAT": (
         "Applied scale={scale} to output/transforms.json and pointcloud.ply.\n"
-        "Cameras={frames}, points={points}\nBackup: {backup}"
+        "Cameras={frames}, points={points}\nBackup:\n{backup}"
     ),
     "APRILTAG_PRINT_SECTION": "Tag PDF",
     "APRILTAG_PRINT_TAG_ID": "Print ID",

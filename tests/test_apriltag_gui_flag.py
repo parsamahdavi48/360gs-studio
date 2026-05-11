@@ -208,12 +208,69 @@ def test_apriltag_scale_tab_uses_internal_actions() -> None:
         assert step.primary_action_enabled() is False
         assert step.primary_action_tooltip() == i18n.tip("APRILTAG_TAB_PRIMARY_ACTION")
         assert step.apriltag_apply_btn.isEnabled() is False
+        assert step.apriltag_copy_scale_btn.isHidden()
         assert step.apriltag_print_page_combo.findData("A4") >= 0
         assert step.apriltag_print_page_combo.findData("A3") >= 0
         assert step.apriltag_print_page_combo.findData("Letter") >= 0
         tooltip = step.apriltag_id_edit.toolTip()
         assert 'src="data:image/png;base64,' in tooltip
         assert 'width="72" height="72"' in tooltip
+        """
+    )
+
+    env = os.environ.copy()
+    env["QT_QPA_PLATFORM"] = "offscreen"
+    result = subprocess.run([sys.executable, "-c", script], cwd=Path.cwd(), env=env, capture_output=True, text=True)
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_apriltag_result_wraps_and_copy_button_copies_scale(tmp_path: Path) -> None:
+    long_scene = tmp_path / (
+        "scene_with_a_long_name_for_scale_backup_wrapping_"
+        "abcdefghijklmnopqrstuvwxyz"
+    )
+    script = textwrap.dedent(
+        f"""
+        import os
+        from pathlib import Path
+        from types import SimpleNamespace
+
+        os.environ["QT_QPA_PLATFORM"] = "offscreen"
+
+        from PySide6.QtWidgets import QApplication
+
+        from gui import i18n
+        from gui.theme import apply_theme
+        from gui.steps.step4_cubemap import CubemapStep
+
+        app = QApplication([])
+        apply_theme(app)
+        step = CubemapStep(Path.cwd())
+        step._show_apriltag_estimate_result(
+            1.23456789,
+            {{"observation_count": 12, "pair_count": 8, "inlier_count": 7, "rms_residual_m": 0.0123}},
+        )
+        step._sync_apriltag_controls()
+        assert not step.apriltag_copy_scale_btn.isHidden()
+        assert step.apriltag_copy_scale_btn.isEnabled()
+        assert step.apriltag_result_label.wordWrap()
+        assert step.apriltag_result_label.text().count("\\n") >= 3
+        step._copy_apriltag_scale()
+        assert QApplication.clipboard().text() == "1.23456789"
+        assert step.apriltag_copy_scale_btn.toolTip() == i18n.t("APRILTAG_SCALE_COPIED")
+
+        backup = Path({str(long_scene)!r}) / "_stechdrive" / "step4" / "apriltag_scale_backups" / "20260511_120000" / "transforms.json"
+        result = SimpleNamespace(
+            scale=1.23456789,
+            frames_scaled=123,
+            points_scaled=456,
+            transforms_backup=backup,
+        )
+        step._show_apriltag_applied_result(result)
+        assert "\\n" in step.apriltag_result_label.text()
+        assert "バックアップ:" in step.apriltag_result_label.text() or "Backup:" in step.apriltag_result_label.text()
+        assert str(backup.parent) in step.apriltag_result_label.toolTip()
+        assert step.apriltag_copy_scale_btn.toolTip() == i18n.t("APRILTAG_COPY_SCALE")
         """
     )
 
