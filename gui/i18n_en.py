@@ -921,7 +921,7 @@ STRINGS: dict[str, str] = {
     "APRILTAG_PRINT_TAG_ID": "Print ID",
     "APRILTAG_PRINT_PAGE": "Paper",
     "APRILTAG_PRINT_EXPORT": "Export PDF",
-    "APRILTAG_PRINT_SAVED": "Saved PDF: {path}",
+    "APRILTAG_PRINT_SAVED": "Saved PDF:\n{path}",
 }
 
 # ---------------------------------------------------------------------------

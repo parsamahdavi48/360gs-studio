@@ -924,7 +924,7 @@ STRINGS: dict[str, str] = {
     "APRILTAG_PRINT_TAG_ID": "印刷ID",
     "APRILTAG_PRINT_PAGE": "用紙",
     "APRILTAG_PRINT_EXPORT": "PDF出力",
-    "APRILTAG_PRINT_SAVED": "PDFを保存しました: {path}",
+    "APRILTAG_PRINT_SAVED": "PDFを保存しました:\n{path}",
 }
 
 TIPS: dict[str, str] = {

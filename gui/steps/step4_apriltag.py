@@ -34,7 +34,7 @@ from core.apriltag_markers import (
 )
 from core.apriltag_printable import available_pages, create_printable_target
 from core.apriltag_scale_apply import apply_scene_output_scale, validate_scale_output_dataset
-from core.scene_layout import step4_meta_dir
+from core.scene_layout import scene_output_dir, step4_meta_dir
 from gui import i18n
 from gui.common.collapsible_section import CollapsibleSection
 from gui.common.drag_spinbox import DragDoubleSpinBox, DragSpinBox
@@ -393,13 +393,34 @@ class Step4AprilTagMixin:
         )
         self._sync_apriltag_controls()
 
+    @staticmethod
+    def _wrapped_apriltag_path(path: Path, *, max_chars: int = 62) -> str:
+        text = str(path)
+        if len(text) <= max_chars:
+            return text
+        normalized = text.replace("\\", "/")
+        parts = normalized.split("/")
+        lines: list[str] = []
+        line = parts[0] if parts else ""
+        for part in parts[1:]:
+            piece = f"/{part}"
+            if line and len(line) + len(piece) > max_chars:
+                lines.append(line)
+                line = part
+            else:
+                line += piece
+        if line:
+            lines.append(line)
+        return "\n".join(lines)
+
     def _export_apriltag_pdf(self) -> None:
         if not self.scene_dir:
             self._warn_apriltag(i18n.t("APRILTAG_SCENE_REQUIRED"))
             return
+        output_dir = scene_output_dir(Path(self.scene_dir))
         try:
             target = create_printable_target(
-                step4_meta_dir(Path(self.scene_dir)) / "apriltag_targets",
+                output_dir,
                 family=self._apriltag_print_family(),
                 tag_id=int(self.apriltag_print_id_edit.value()),
                 tag_size_m=self._apriltag_tag_size_m(),
@@ -409,8 +430,9 @@ class Step4AprilTagMixin:
             self.apriltag_print_status_label.setText(str(exc))
             QMessageBox.warning(self, i18n.t("APRILTAG_PRINT_SECTION"), str(exc))
             return
+        self.apriltag_print_status_label.setToolTip(str(target.page_pdf))
         self.apriltag_print_status_label.setText(
-            i18n.t("APRILTAG_PRINT_SAVED").format(path=str(target.page_pdf))
+            i18n.t("APRILTAG_PRINT_SAVED").format(path=self._wrapped_apriltag_path(target.page_pdf))
         )
 
     def _apriltag_tab_selected(self) -> bool:

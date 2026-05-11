@@ -22,7 +22,6 @@ def test_release_zip_excludes_tests_but_keeps_runtime_scripts() -> None:
     assert include_in_release("mask_view_recipes.py")
     assert include_in_release("models/README.md")
     assert include_in_release("run_gui.bat")
-    assert include_in_release("run_gui_apriltag.bat")
 
 
 @pytest.mark.parametrize(

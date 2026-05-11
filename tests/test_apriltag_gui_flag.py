@@ -138,3 +138,46 @@ def test_apriltag_scale_tab_uses_internal_actions() -> None:
     env["QT_QPA_PLATFORM"] = "offscreen"
     result = subprocess.run([sys.executable, "-c", script], cwd=Path.cwd(), env=env, capture_output=True, text=True)
     assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_apriltag_pdf_exports_to_scene_output_and_wraps_status_path(tmp_path: Path) -> None:
+    long_scene = tmp_path / (
+        "scene_with_a_long_name_for_apriltag_pdf_status_wrapping_"
+        "abcdefghijklmnopqrstuvwxyz"
+    )
+    script = textwrap.dedent(
+        f"""
+        import os
+        from pathlib import Path
+
+        os.environ["QT_QPA_PLATFORM"] = "offscreen"
+
+        from PySide6.QtWidgets import QApplication
+
+        from gui.theme import apply_theme
+        from gui.steps.step4_cubemap import CubemapStep
+
+        scene = Path({str(long_scene)!r})
+        scene.mkdir(parents=True)
+
+        app = QApplication([])
+        apply_theme(app)
+        step = CubemapStep(Path.cwd())
+        step.set_scene_dir(str(scene))
+        step._export_apriltag_pdf()
+
+        output = scene / "output"
+        pdfs = sorted(output.glob("apriltag_*.pdf"))
+        assert len(pdfs) == 1
+        assert pdfs[0].parent == output
+        assert not (scene / "_stechdrive" / "step4" / "apriltag_targets").exists()
+        assert step.apriltag_print_status_label.toolTip() == str(pdfs[0])
+        assert "\\n" in step.apriltag_print_status_label.text()
+        assert "output" in step.apriltag_print_status_label.text()
+        """
+    )
+
+    env = os.environ.copy()
+    env["QT_QPA_PLATFORM"] = "offscreen"
+    result = subprocess.run([sys.executable, "-c", script], cwd=Path.cwd(), env=env, capture_output=True, text=True)
+    assert result.returncode == 0, result.stdout + result.stderr
