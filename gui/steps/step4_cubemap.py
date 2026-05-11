@@ -630,9 +630,9 @@ class CubemapStep(
         self.scale_combo.addItem("Full", 1.0)
         self.scale_combo.addItem("Normal", _NORMAL_OUTPUT_SCALE)
         self.scale_combo.addItem("Half", 0.5)
-        full_scale_index = self.scale_combo.findData(1.0)
-        if full_scale_index >= 0:
-            self.scale_combo.setCurrentIndex(full_scale_index)
+        normal_scale_index = self.scale_combo.findData(_NORMAL_OUTPUT_SCALE)
+        if normal_scale_index >= 0:
+            self.scale_combo.setCurrentIndex(normal_scale_index)
         self.scale_combo.setFixedWidth(90)
         self.output_scale_label = QLabel(i18n.OUTPUT_SCALE + ":")
         self.output_scale_label.setToolTip(i18n.tip("OUTPUT_SCALE"))

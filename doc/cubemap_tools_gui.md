@@ -130,10 +130,10 @@ More enabled views means more output files and longer processing. The GUI warns 
 | Setting | Use when |
 | --- | --- |
 | `Full` | Final-quality checks. Heavier, but preserves more detail |
-| `Normal` | Standard first pass. Matches the center angular resolution of a 90° view to the source image |
+| `Normal` | Default standard setting. Matches the center angular resolution of a 90° view to the source image |
 | `Half` | Lightweight tests. Faster, but training can look softer |
 
-If VRAM or processing time is tight, use `Normal` or `Half` to verify the workflow first, then use `Full` for final output.
+Usually start with the default `Normal` size. Choose `Half` when VRAM or processing time is tight, and use `Full` for final checks when preserving fine detail matters.
 
 ## Rebuilding Only Images Or Masks
 

@@ -364,7 +364,7 @@ def test_cubemap_step_uses_tab_path_summaries(tmp_path: Path) -> None:
     assert step.scale_combo.itemText(1) == "Normal"
     assert step.scale_combo.itemText(2) == "Half"
     assert float(step.scale_combo.itemData(1)) == pytest.approx(2.0 / math.pi)
-    assert float(step.scale_combo.currentData()) == 1.0
+    assert float(step.scale_combo.currentData()) == pytest.approx(2.0 / math.pi)
 
     cmd = step._build_cubemap_cmd()
 
@@ -383,7 +383,6 @@ def test_cubemap_step_uses_tab_path_summaries(tmp_path: Path) -> None:
     assert step.axis_transform_combo.currentData() == "none"
     assert step.ms_use_ply_cb.isChecked()
 
-    step.scale_combo.setCurrentIndex(1)
     normal_cmd = step._build_cubemap_cmd()
     normal_scale = float(normal_cmd[normal_cmd.index("--output_scale") + 1])
     assert normal_scale == pytest.approx(2.0 / math.pi, rel=1e-5)
@@ -1153,7 +1152,7 @@ def test_colmap_export_can_queue_colmap_sfm_with_custom_executable(tmp_path: Pat
     assert commands[1][1][0] == str(fake_colmap)
     assert commands[1][1][1] == "feature_extractor"
     assert "--ImageReader.single_camera_per_folder" in commands[1][1]
-    assert commands[1][1][commands[1][1].index("--ImageReader.camera_params") + 1] == "16,16,15.5,15.5"
+    assert commands[1][1][commands[1][1].index("--ImageReader.camera_params") + 1] == "10,10,9.5,9.5"
     assert commands[2][1][1] == "rig_configurator"
     assert commands[3][1][1] == "sequential_matcher"
     assert commands[4][1][1] == "global_mapper"
@@ -2704,7 +2703,7 @@ def test_cubemap_finalize_writes_export_settings(tmp_path: Path) -> None:
     assert settings["effective_profile"] == "lichtfeld"
     assert settings["axis_transform"] == "none"
     assert settings["fov"] == 90.0
-    assert settings["image_size"]["scale"] == 1.0
+    assert settings["image_size"]["scale"] == pytest.approx(2.0 / math.pi)
     assert settings["conversion"]["yaw_offset_per_frame"] == 30.0
     assert settings["conversion"]["output_format"] == "auto"
     assert settings["conversion"]["output_bit_depth"] == "8"

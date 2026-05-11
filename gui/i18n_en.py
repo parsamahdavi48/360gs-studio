@@ -1113,7 +1113,7 @@ TIPS: dict[str, str] = {
     "TARGET_PROFILE": "Coordinate transform and PLY preset for the target 3DGS software",
     "OUTPUT_SHAPE": "Choose whether Metashape XML/PLY is converted into cubemap images or kept as source equirectangular images for LichtFeld 3DGUT.",
     "AXIS_TRANSFORM": "Transform camera axes for the target app. Changing the preset value switches the output preset to Custom",
-    "OUTPUT_SCALE": "Cubemap face size. Full uses the input image height, Normal matches the center angular resolution of a 90-degree view to the source image, and Half is a lightweight output. Full is recommended for final quality",
+    "OUTPUT_SCALE": "Cubemap face size. The default Normal size matches the center angular resolution of a 90-degree view to the source image. Full uses the input image height, and Half is a lightweight output.",
     "EXPORT_TARGETS": "Choose whether to write view images, masks, or only camera metadata. Turn Images off and Masks on when you only rebuilt masks in Step 3.",
     "EXPORT_IMAGES": "Write viewpoint images to output/images/. Turn off to keep existing images and update masks or camera metadata only.",
     "EXPORT_MASKS": "Write masks to output/masks/. Turn off to keep existing masks and update images or camera metadata only.",
