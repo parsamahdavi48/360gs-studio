@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import shutil
 import xml.etree.ElementTree as ET
 from dataclasses import replace
 from pathlib import Path
@@ -434,7 +435,7 @@ def test_scene_viewer_keeps_world_face_rays_separate_from_generated_image_rays(t
     assert np.allclose(forward, directions["pz"], atol=1e-6)
     assert "world rays=transforms.json face +Z" in window.case_label.text()
     assert "image rays=Cube6 export yaw/pitch" in window.case_label.text()
-    assert "active basis=both (active=transforms.json face +Z)" in window.case_label.text()
+    assert "active basis=transforms.json face +Z" in window.case_label.text()
     assert "active pz->image px" in window.case_label.text()
     assert "reverse=nx" in window.case_label.text()
 
@@ -451,6 +452,58 @@ def test_scene_viewer_keeps_world_face_rays_separate_from_generated_image_rays(t
     _right, _up, world_forward = window.point_view._fixed_view_basis
     assert np.allclose(world_forward, directions["pz"], atol=1e-6)
     assert "active basis=transforms.json face +Z" in window.case_label.text()
+    window.deleteLater()
+
+
+def test_scene_viewer_ui_defaults_target_scene_validation_workflow(tmp_path: Path) -> None:
+    _app()
+    case_dir = _write_cube6_case(tmp_path)
+
+    window = AprilTagSceneViewerWindow(initial_case=case_dir)
+
+    assert window.open_case_button.text() == "シーンを開く"
+    assert window.mode_combo.itemText(window.mode_combo.findData(RIGHT_VIEW_POINTCLOUD)) == "点群"
+    assert window.mode_combo.itemText(window.mode_combo.findData(RIGHT_VIEW_SOURCE_EQUIRECT)) == "元360画像"
+    assert window.mode_combo.itemText(window.mode_combo.findData(RIGHT_VIEW_RECONSTRUCTED_CUBE6)) == "Cube6再構築"
+    assert window.ray_basis_combo.currentData() == RAY_BASIS_WORLD
+    assert window.tag_physical_size_spin.value() == pytest.approx(0.160)
+    assert window.copy_validation_scale_button.text() == "scaleコピー"
+    assert not window.copy_validation_scale_button.isEnabled()
+    window.deleteLater()
+
+
+def test_scene_viewer_loads_scene_folder_and_uses_output_validation_runs(tmp_path: Path) -> None:
+    _app()
+    case_dir = _write_cube6_case(tmp_path / "fixture")
+    source_case = load_case(case_dir)
+    scene = tmp_path / "scene"
+    output = scene / "output"
+    shutil.copytree(source_case.source_transforms.parent, output)
+    settings_dir = scene / "_stechdrive" / "step4"
+    settings_dir.mkdir(parents=True)
+    (settings_dir / "export_settings.json").write_text(
+        json.dumps(
+            {
+                "settings_version": 2,
+                "target_profile": "lichtfeld",
+                "effective_profile": "lichtfeld",
+                "axis_transform": "none",
+                "output_shape": "projected",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    window = AprilTagSceneViewerWindow(initial_case=scene)
+
+    assert window.case is not None
+    assert window.case.case_dir == scene / "_stechdrive" / "step4" / "apriltag_scene_viewer"
+    assert window.case.source_transforms == output / "transforms.json"
+    assert window.case.source_pointcloud == output / "pointcloud.ply"
+    assert window.case.image_root == scene
+    assert window.case.runs_dir == output / "apriltag_scale_validation"
+    assert window.camera_combo.count() == 2
+    assert (window.case.case_dir / "case.json").is_file()
     window.deleteLater()
 
 
@@ -1595,12 +1648,15 @@ def test_scene_viewer_synthetic_scale_validation_writes_result(tmp_path: Path) -
     assert report["synthetic_report"]["frames_written"] == 2
     assert report["synthetic_report"]["frames_copied"] == 0
     assert report["synthetic_report"]["transforms_frame_count"] == 2
+    assert report["tag_display"]["physical_size_m"] == pytest.approx(0.160)
     assert report["loaded_frame_count"] == 2
     assert len(output_transforms["frames"]) == 2
     assert len(output_images) == 2
     assert report["observation_count"] >= 2
     assert report["estimate"]["scale"] == pytest.approx(0.25, rel=0.08)
     assert "scale=" in window.validation_status_label.text()
+    assert window.copy_validation_scale_button.isEnabled()
+    assert float(window._last_validation_scale_text) == pytest.approx(report["estimate"]["scale"])
     assert window.run_validation_button.isEnabled()
     assert window.run_validation_button.text() == "合成→検出"
     log_text = window.log.toPlainText()

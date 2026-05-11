@@ -42,7 +42,7 @@ from core.apriltag_geometry import (
 from core.apriltag_pipeline import collect_observations
 from core.apriltag_scale import estimate_scene_scale
 from core.image_io import imread_unicode
-from devtools.apriltag.case import DEFAULT_CASE_ROOT, AprilTagDevCase, load_case, save_case
+from devtools.apriltag.case import DEFAULT_CASE_ROOT, AprilTagDevCase, load_case_or_scene, save_case
 from devtools.apriltag.coordinates import (
     COORDINATE_PROFILE_LICHTFELD_CUBE6,
     COORDINATE_PROFILE_LICHTFELD_CUBE6_PRE_FINAL_PLY,
@@ -841,6 +841,8 @@ class AprilTagSceneViewerWindow(QWidget):
         self._tag_pitch_deg = 0.0
         self._tag_roll_deg = 0.0
         self._tag_size_sfm = 0.64
+        self._tag_physical_size_m = 0.160
+        self._last_validation_scale_text = ""
         self._validation_running = False
         self._validation_thread: QThread | None = None
         self._validation_worker: SyntheticScaleValidationWorker | None = None
@@ -848,7 +850,7 @@ class AprilTagSceneViewerWindow(QWidget):
         self._build_ui()
         self._connect_signals()
         case_dir = initial_case or DEFAULT_VIEWER_CASE
-        if case_dir is not None and (case_dir / "case.json").is_file():
+        if case_dir is not None and ((case_dir / "case.json").is_file() or (case_dir / "output" / "transforms.json").is_file()):
             self.load_case_dir(case_dir)
 
     def _build_ui(self) -> None:
@@ -857,10 +859,10 @@ class AprilTagSceneViewerWindow(QWidget):
         root.setSpacing(8)
 
         header = QHBoxLayout()
-        self.case_label = QLabel("ケース未選択")
+        self.case_label = QLabel("シーン未選択")
         self.case_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
         self.case_label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
-        self.open_case_button = QPushButton("ケースを開く")
+        self.open_case_button = QPushButton("シーンを開く")
         self.reload_button = QPushButton("再読み込み")
         header.addWidget(self.case_label, 1)
         header.addWidget(self.open_case_button)
@@ -872,13 +874,13 @@ class AprilTagSceneViewerWindow(QWidget):
         self.prev_button = QPushButton("前")
         self.next_button = QPushButton("次")
         self.mode_combo = QComboBox()
-        self.mode_combo.addItem("点群モード", RIGHT_VIEW_POINTCLOUD)
-        self.mode_combo.addItem("Cubemap画像モード", RIGHT_VIEW_SOURCE_EQUIRECT)
-        self.mode_combo.addItem("Cube6再構築画像モード", RIGHT_VIEW_RECONSTRUCTED_CUBE6)
+        self.mode_combo.addItem("点群", RIGHT_VIEW_POINTCLOUD)
+        self.mode_combo.addItem("元360画像", RIGHT_VIEW_SOURCE_EQUIRECT)
+        self.mode_combo.addItem("Cube6再構築", RIGHT_VIEW_RECONSTRUCTED_CUBE6)
         self.ray_basis_combo = QComboBox()
-        self.ray_basis_combo.addItem("両方", RAY_BASIS_BOTH)
         self.ray_basis_combo.addItem("JSON Face", RAY_BASIS_WORLD)
-        self.ray_basis_combo.addItem("画像レイ", RAY_BASIS_IMAGE)
+        self.ray_basis_combo.addItem("両方(デバッグ)", RAY_BASIS_BOTH)
+        self.ray_basis_combo.addItem("画像レイ(デバッグ)", RAY_BASIS_IMAGE)
         self.profile_combo = QComboBox()
         for profile in COORDINATE_PROFILES:
             self.profile_combo.addItem(profile.label, profile.id)
@@ -897,7 +899,7 @@ class AprilTagSceneViewerWindow(QWidget):
         controls.addWidget(self.profile_combo)
         root.addLayout(controls)
 
-        face_box = QGroupBox("FOV 90° 面へ移動")
+        face_box = QGroupBox("FOV 90° Face")
         face_layout = QHBoxLayout(face_box)
         face_layout.setContentsMargins(8, 8, 8, 8)
         self.face_buttons: dict[str, QPushButton] = {}
@@ -929,11 +931,11 @@ class AprilTagSceneViewerWindow(QWidget):
 
         self.log = QTextEdit()
         self.log.setReadOnly(True)
-        self.log.setMaximumHeight(150)
+        self.log.setMaximumHeight(120)
         root.addWidget(self.log)
 
     def _build_tag_controls(self) -> QGroupBox:
-        group = QGroupBox("AprilTag配置")
+        group = QGroupBox("AprilTag検証")
         layout = QHBoxLayout(group)
         layout.setContentsMargins(8, 8, 8, 8)
         layout.setSpacing(12)
@@ -961,8 +963,12 @@ class AprilTagSceneViewerWindow(QWidget):
         size_form = QFormLayout()
         size_form.setLabelAlignment(Qt.AlignRight)
         self.tag_size_sfm_spin = self._double_spin(0.0001, 1_000_000.0, self._tag_size_sfm, decimals=4, step=0.05)
+        self.tag_physical_size_spin = self._double_spin(0.001, 100.0, self._tag_physical_size_m, decimals=3, step=0.01, suffix=" m")
+        self.tag_size_sfm_spin.setToolTip("左ビューのSfM空間に配置するAprilTag一辺の長さです。")
+        self.tag_physical_size_spin.setToolTip("検出器へ渡す現実のAprilTag一辺の長さです。")
         self.reset_tag_button = QPushButton("原点へ戻す")
-        size_form.addRow("一辺SfM", self.tag_size_sfm_spin)
+        size_form.addRow("タグサイズ SfM", self.tag_size_sfm_spin)
+        size_form.addRow("物理サイズ", self.tag_physical_size_spin)
         size_form.addRow("", self.reset_tag_button)
         layout.addLayout(size_form)
 
@@ -977,14 +983,24 @@ class AprilTagSceneViewerWindow(QWidget):
         )
         self.validation_angle_spin = self._double_spin(0.0, 180.0, 75.0, decimals=1, step=5.0)
         self.validation_min_area_spin = self._double_spin(0.0, 1_000_000.0, 64.0, decimals=0, step=64.0)
+        self.validation_distance_spin.setToolTip("タグ中心からカメラまでの距離がこのSfM値以内の画像だけを合成対象にします。0では距離で除外しません。")
+        self.validation_angle_spin.setToolTip("タグ正面とカメラ方向の角度がこの値以内の画像だけを合成対象にします。")
+        self.validation_min_area_spin.setToolTip("画像上に投影されたタグ四角形の面積がこのpx^2未満の画像を合成対象から外します。")
         self.run_validation_button = QPushButton("合成→検出")
+        self.copy_validation_scale_button = QPushButton("scaleコピー")
+        self.copy_validation_scale_button.setEnabled(False)
+        validation_actions = QHBoxLayout()
+        validation_actions.setContentsMargins(0, 0, 0, 0)
+        validation_actions.setSpacing(6)
+        validation_actions.addWidget(self.run_validation_button)
+        validation_actions.addWidget(self.copy_validation_scale_button)
         self.validation_status_label = QLabel("検証未実行")
         self.validation_status_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
         self.validation_status_label.setWordWrap(True)
-        validation_form.addRow("最大距離SfM", self.validation_distance_spin)
+        validation_form.addRow("認識範囲 SfM", self.validation_distance_spin)
         validation_form.addRow("最大角度", self.validation_angle_spin)
-        validation_form.addRow("最小面積px", self.validation_min_area_spin)
-        validation_form.addRow("", self.run_validation_button)
+        validation_form.addRow("最小投影面積 px^2", self.validation_min_area_spin)
+        validation_form.addRow("", validation_actions)
         validation_form.addRow("結果", self.validation_status_label)
         layout.addLayout(validation_form)
         layout.addStretch(1)
@@ -998,6 +1014,7 @@ class AprilTagSceneViewerWindow(QWidget):
         *,
         decimals: int,
         step: float,
+        suffix: str = "",
     ) -> DragDoubleSpinBox:
         spin = DragDoubleSpinBox(
             minimum=float(minimum),
@@ -1005,6 +1022,7 @@ class AprilTagSceneViewerWindow(QWidget):
             step=float(step),
             decimals=int(decimals),
             value=float(value),
+            suffix=suffix,
             drag_pixels_per_step=6.0,
         )
         spin.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
@@ -1032,17 +1050,19 @@ class AprilTagSceneViewerWindow(QWidget):
             self.tag_pitch_spin,
             self.tag_roll_spin,
             self.tag_size_sfm_spin,
+            self.tag_physical_size_spin,
         ):
             spin.valueChanged.connect(lambda _value: self._on_tag_transform_changed())
         self.validation_distance_spin.valueChanged.connect(lambda _value: self._sync_tag_views())
         self.reset_tag_button.clicked.connect(self.reset_tag_transform)
         self.run_validation_button.clicked.connect(self.run_synthetic_scale_validation)
+        self.copy_validation_scale_button.clicked.connect(self._copy_validation_scale)
 
     def load_case_dir(self, case_dir: Path) -> None:
         try:
-            self.case = load_case(case_dir)
+            self.case = load_case_or_scene(case_dir)
         except Exception as e:
-            QMessageBox.critical(self, "ケース読み込みエラー", str(e))
+            QMessageBox.critical(self, "シーン読み込みエラー", str(e))
             return
         self._set_profile_combo(self.case.coordinate_profile)
         self._set_tag_defaults_from_case(self.case)
@@ -1220,11 +1240,15 @@ class AprilTagSceneViewerWindow(QWidget):
         self._set_spin_value_blocked(self.tag_pitch_spin, 0.0)
         self._set_spin_value_blocked(self.tag_roll_spin, 0.0)
         self._set_spin_value_blocked(self.tag_size_sfm_spin, self._default_tag_size_sfm(case))
+        self._set_spin_value_blocked(self.tag_physical_size_spin, float(case.default_tag_size_m))
         self._read_tag_transform_from_controls()
         if hasattr(self, "validation_distance_spin"):
             self._set_spin_value_blocked(self.validation_distance_spin, self._default_validation_distance_sfm())
         if hasattr(self, "validation_status_label"):
             self.validation_status_label.setText("検証未実行")
+        if hasattr(self, "copy_validation_scale_button"):
+            self._last_validation_scale_text = ""
+            self.copy_validation_scale_button.setEnabled(False)
 
     def _on_tag_transform_changed(self) -> None:
         self._read_tag_transform_from_controls()
@@ -1243,6 +1267,7 @@ class AprilTagSceneViewerWindow(QWidget):
         self._tag_pitch_deg = float(self.tag_pitch_spin.value())
         self._tag_roll_deg = float(self.tag_roll_spin.value())
         self._tag_size_sfm = max(0.0001, float(self.tag_size_sfm_spin.value()))
+        self._tag_physical_size_m = max(0.001, float(self.tag_physical_size_spin.value()))
 
     def _tag_normal_up(self) -> tuple[np.ndarray, np.ndarray]:
         rotation = rotation_from_perspective_params(
@@ -1429,7 +1454,7 @@ class AprilTagSceneViewerWindow(QWidget):
         normal_sfm = _normalized_vector(vectors_sfm[0], (0.0, 0.0, -1.0))
         up_sfm = vectors_sfm[1] - normal_sfm * float(vectors_sfm[1] @ normal_sfm)
         up_sfm = _normalized_vector(up_sfm, (0.0, 1.0, 0.0))
-        true_scale = float(self.case.default_tag_size_m) / max(float(self._tag_size_sfm), 1e-12)
+        true_scale = float(self._tag_physical_size_m) / max(float(self._tag_size_sfm), 1e-12)
         return center_sfm, normal_sfm, up_sfm, true_scale
 
     def _synthetic_frame_transform_overrides(self) -> dict[str, np.ndarray]:
@@ -1479,7 +1504,7 @@ class AprilTagSceneViewerWindow(QWidget):
             center_sfm,
             normal_sfm,
             up_sfm,
-            float(self.case.default_tag_size_m),
+            float(self._tag_physical_size_m),
             true_scale,
         )
         max_distance = float(self.validation_distance_spin.value()) if hasattr(self, "validation_distance_spin") else 0.0
@@ -1561,10 +1586,14 @@ class AprilTagSceneViewerWindow(QWidget):
             self.validation_distance_spin,
             self.validation_angle_spin,
             self.validation_min_area_spin,
+            self.tag_physical_size_spin,
             self.reset_tag_button,
             self.run_validation_button,
+            self.copy_validation_scale_button,
         ):
             widget.setEnabled(bool(enabled))
+        if enabled and not self._last_validation_scale_text:
+            self.copy_validation_scale_button.setEnabled(False)
 
     def _finish_validation_run(self) -> None:
         self._validation_running = False
@@ -1583,6 +1612,8 @@ class AprilTagSceneViewerWindow(QWidget):
             return
         case = self.case
         self._validation_running = True
+        self._last_validation_scale_text = ""
+        self.copy_validation_scale_button.setEnabled(False)
         self._set_validation_controls_enabled(False)
         self.run_validation_button.setText("実行中...")
         try:
@@ -1598,7 +1629,7 @@ class AprilTagSceneViewerWindow(QWidget):
 
             run_dir = self._next_validation_run_dir()
             selected_paths = frozenset(candidate.frame.file_path for candidate in candidates)
-            expected_scale = float(case.default_tag_size_m) / max(float(self._tag_size_sfm), 1e-12)
+            expected_scale = float(self._tag_physical_size_m) / max(float(self._tag_size_sfm), 1e-12)
             metadata = case_cubemap_view_metadata(case)
             frame_transform_overrides = self._synthetic_frame_transform_overrides()
             request = SyntheticScaleValidationRequest(
@@ -1609,7 +1640,7 @@ class AprilTagSceneViewerWindow(QWidget):
                 frame_transform_overrides=frame_transform_overrides,
                 tag_family=case.tag_family,
                 tag_id=int(case.tag_id),
-                tag_size_m=float(case.default_tag_size_m),
+                tag_size_m=float(self._tag_physical_size_m),
                 true_scale=true_scale,
                 expected_scale=expected_scale,
                 tag_center_sfm=center_sfm,
@@ -1625,6 +1656,7 @@ class AprilTagSceneViewerWindow(QWidget):
                     "pitch_deg": self._tag_pitch_deg,
                     "roll_deg": self._tag_roll_deg,
                     "size_sfm": self._tag_size_sfm,
+                    "physical_size_m": self._tag_physical_size_m,
                 },
                 candidate_filters={
                     "max_distance_sfm": float(self.validation_distance_spin.value()),
@@ -1666,6 +1698,14 @@ class AprilTagSceneViewerWindow(QWidget):
             run_dir = str(payload.get("run_dir", ""))
             self._set_validation_status(status)
             self._append_log(f"[validation] {status}")
+            result = payload.get("result")
+            estimate = result.get("estimate") if isinstance(result, dict) else None
+            if isinstance(estimate, dict) and "scale" in estimate:
+                self._last_validation_scale_text = f"{float(estimate['scale']):.12g}"
+                self.copy_validation_scale_button.setEnabled(True)
+            else:
+                self._last_validation_scale_text = ""
+                self.copy_validation_scale_button.setEnabled(False)
             if run_dir:
                 self._append_log(f"[validation] output={run_dir}")
         else:
@@ -1677,6 +1717,13 @@ class AprilTagSceneViewerWindow(QWidget):
         self._validation_worker = None
         self._finish_validation_run()
         self.validation_finished.emit()
+
+    def _copy_validation_scale(self) -> None:
+        if not self._last_validation_scale_text:
+            return
+        clipboard = QApplication.clipboard()
+        clipboard.setText(self._last_validation_scale_text)
+        self._set_validation_status(f"scale={self._last_validation_scale_text} をコピーしました")
 
     def selected_face_basis_group(self) -> CubemapFrameGroup | None:
         if self._ray_basis_mode() == RAY_BASIS_IMAGE:
@@ -1702,8 +1749,11 @@ class AprilTagSceneViewerWindow(QWidget):
         return self._source_equirect_rotations.get(group.name)
 
     def _choose_case(self) -> None:
-        start = str((self.case.case_dir if self.case else DEFAULT_VIEWER_CASE).parent)
-        chosen = QFileDialog.getExistingDirectory(self, "AprilTagケースを選択", start)
+        start_path = self.case.case_dir if self.case else DEFAULT_VIEWER_CASE
+        if self.case is not None and self.case.validation_runs_dir is not None:
+            start_path = self.case.validation_runs_dir.parent.parent
+        start = str(start_path.parent if start_path else DEFAULT_CASE_ROOT)
+        chosen = QFileDialog.getExistingDirectory(self, "シーンまたはAprilTagケースを選択", start)
         if chosen:
             self.load_case_dir(Path(chosen))
 
@@ -1996,7 +2046,7 @@ class AprilTagSceneViewerWindow(QWidget):
 
     def _update_status(self) -> None:
         if self.case is None:
-            self.case_label.setText("ケース未選択")
+            self.case_label.setText("シーン未選択")
             return
         mode = str(self.mode_combo.currentData() or RIGHT_VIEW_POINTCLOUD)
         group = self.selected_world_group()
@@ -2040,7 +2090,7 @@ class AprilTagSceneViewerWindow(QWidget):
                 same = "" if not np.isfinite(same_label_angle) else f", same-label={same_label_angle:.1f}deg"
                 mapping = f" / active {self._active_face}->image {image_face} ({angle:.1f}deg{same}{opposite_text})"
         self.case_label.setText(
-            f"ケース: {self.case.case_dir} / カメラ: {group_text} / "
+            f"シーン/ケース: {self.case.case_dir} / カメラ: {group_text} / "
             f"点群: {point_count} sampled / 座標: {coordinate_profile_label(self.case.coordinate_profile)}"
             f"{alignment}{ray_source}{source_image_text}{mapping}"
         )

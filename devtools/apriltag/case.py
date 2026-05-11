@@ -10,10 +10,19 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from devtools.apriltag.coordinates import DEFAULT_COORDINATE_PROFILE, normalize_coordinate_profile
+from core.scene_layout import scene_output_dir, step4_export_settings_path, step4_meta_dir
+from devtools.apriltag.coordinates import (
+    COORDINATE_PROFILE_BRUSH_CUBE6,
+    COORDINATE_PROFILE_LICHTFELD_CUBE6,
+    COORDINATE_PROFILE_POSTSHOT_CUBE6,
+    DEFAULT_COORDINATE_PROFILE,
+    normalize_coordinate_profile,
+)
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_CASE_ROOT = REPO_ROOT / "_compare" / "apriltag_test" / "cases"
+VIEWER_SCENE_META_DIR_NAME = "apriltag_scene_viewer"
+VIEWER_SCENE_RUNS_DIR_NAME = "apriltag_scale_validation"
 
 
 @dataclass(frozen=True)
@@ -30,6 +39,7 @@ class AprilTagDevCase:
     default_tag_size_m: float = 0.160
     true_scale: float = 0.25
     coordinate_profile: str = DEFAULT_COORDINATE_PROFILE
+    validation_runs_dir: Path | None = None
 
     @property
     def case_json_path(self) -> Path:
@@ -49,6 +59,8 @@ class AprilTagDevCase:
 
     @property
     def runs_dir(self) -> Path:
+        if self.validation_runs_dir is not None:
+            return self.validation_runs_dir
         return self.case_dir / "runs"
 
     @property
@@ -220,6 +232,7 @@ def save_case(case: AprilTagDevCase) -> None:
         "default_tag_size_m": case.default_tag_size_m,
         "true_scale": case.true_scale,
         "coordinate_profile": normalize_coordinate_profile(case.coordinate_profile),
+        "validation_runs_dir": _path_text(case.validation_runs_dir),
     }
     case.case_dir.mkdir(parents=True, exist_ok=True)
     case.case_json_path.write_text(json.dumps(data, indent=2), encoding="utf-8")
@@ -241,7 +254,110 @@ def load_case(case_dir: Path) -> AprilTagDevCase:
         default_tag_size_m=float(data.get("default_tag_size_m", 0.160)),
         true_scale=float(data.get("true_scale", 0.25)),
         coordinate_profile=normalize_coordinate_profile(data.get("coordinate_profile")),
+        validation_runs_dir=_path_or_none(data.get("validation_runs_dir")),
     )
+
+
+def scene_viewer_case_dir(scene_dir: Path) -> Path:
+    return step4_meta_dir(scene_dir) / VIEWER_SCENE_META_DIR_NAME
+
+
+def scene_viewer_runs_dir(scene_dir: Path) -> Path:
+    return scene_output_dir(scene_dir) / VIEWER_SCENE_RUNS_DIR_NAME
+
+
+def _load_step4_settings(scene_dir: Path) -> dict[str, Any]:
+    path = step4_export_settings_path(scene_dir)
+    if not path.is_file():
+        return {}
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def _coordinate_profile_from_step4_settings(settings: dict[str, Any]) -> str:
+    axis_transform = str(settings.get("axis_transform") or "").strip().lower()
+    effective_profile = str(settings.get("effective_profile") or settings.get("target_profile") or "").strip().lower()
+    if axis_transform == "brush" or effective_profile == "brush":
+        return COORDINATE_PROFILE_BRUSH_CUBE6
+    if axis_transform == "postshot" or effective_profile == "postshot":
+        return COORDINATE_PROFILE_POSTSHOT_CUBE6
+    if effective_profile == "lichtfeld" or axis_transform == "none":
+        return COORDINATE_PROFILE_LICHTFELD_CUBE6
+    return DEFAULT_COORDINATE_PROFILE
+
+
+def _find_scene_pointcloud(scene_dir: Path) -> Path | None:
+    output_pointcloud = scene_output_dir(scene_dir) / "pointcloud.ply"
+    if output_pointcloud.is_file():
+        return output_pointcloud
+    scene_pointcloud = scene_dir / "pointcloud.ply"
+    return scene_pointcloud if scene_pointcloud.is_file() else None
+
+
+def _find_scene_metashape_xml(scene_dir: Path) -> Path | None:
+    for candidate in (
+        step4_meta_dir(scene_dir) / "work" / "metashape_import" / "metashape.xml",
+        scene_dir / "metashape.xml",
+        scene_dir / "cameras.xml",
+    ):
+        if candidate.is_file():
+            return candidate
+    return None
+
+
+def load_scene_case(scene_dir: Path) -> AprilTagDevCase:
+    scene_dir = scene_dir.resolve()
+    transforms = scene_output_dir(scene_dir) / "transforms.json"
+    if not transforms.is_file():
+        raise FileNotFoundError(f"Scene output transforms.json not found: {transforms}")
+
+    case_dir = scene_viewer_case_dir(scene_dir)
+    existing_case = case_dir / "case.json"
+    if existing_case.is_file():
+        loaded = load_case(case_dir)
+        return AprilTagDevCase(
+            name=loaded.name,
+            case_dir=loaded.case_dir,
+            input_mode=loaded.input_mode,
+            source_transforms=transforms,
+            source_pointcloud=_find_scene_pointcloud(scene_dir),
+            source_metashape_xml=_find_scene_metashape_xml(scene_dir),
+            image_root=scene_dir,
+            tag_family=loaded.tag_family,
+            tag_id=loaded.tag_id,
+            default_tag_size_m=loaded.default_tag_size_m,
+            true_scale=loaded.true_scale,
+            coordinate_profile=loaded.coordinate_profile,
+            validation_runs_dir=scene_viewer_runs_dir(scene_dir),
+        )
+
+    settings = _load_step4_settings(scene_dir)
+    case = AprilTagDevCase(
+        name=scene_dir.name,
+        case_dir=case_dir,
+        input_mode="scene",
+        source_transforms=transforms,
+        source_pointcloud=_find_scene_pointcloud(scene_dir),
+        source_metashape_xml=_find_scene_metashape_xml(scene_dir),
+        image_root=scene_dir,
+        coordinate_profile=normalize_coordinate_profile(_coordinate_profile_from_step4_settings(settings)),
+        validation_runs_dir=scene_viewer_runs_dir(scene_dir),
+    )
+    save_case(case)
+    case.assets_dir.mkdir(parents=True, exist_ok=True)
+    case.placements_dir.mkdir(parents=True, exist_ok=True)
+    case.runs_dir.mkdir(parents=True, exist_ok=True)
+    return case
+
+
+def load_case_or_scene(path: Path) -> AprilTagDevCase:
+    path = path.resolve()
+    if (path / "case.json").is_file():
+        return load_case(path)
+    return load_scene_case(path)
 
 
 def _vec3(value: Any, name: str) -> tuple[float, float, float]:
