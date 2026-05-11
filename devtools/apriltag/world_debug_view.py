@@ -257,6 +257,8 @@ class AprilTagWorldDebugView(QOpenGLWidget):
         uniform float u_focal_px;
         uniform float u_projection_mode;
         uniform float u_point_size;
+        uniform float u_screen_zoom;
+        uniform vec2 u_screen_pan_px;
 
         varying vec4 v_color;
 
@@ -280,6 +282,8 @@ class AprilTagWorldDebugView(QOpenGLWidget):
                 screen_x = view_x * u_pixels_per_unit;
                 screen_y = view_y * u_pixels_per_unit;
             }
+            screen_x = screen_x * u_screen_zoom + u_screen_pan_px.x;
+            screen_y = screen_y * u_screen_zoom + u_screen_pan_px.y;
             gl_Position = vec4(
                 screen_x / max(u_viewport_size.x * 0.5, 1.0),
                 screen_y / max(u_viewport_size.y * 0.5, 1.0),
@@ -333,6 +337,9 @@ class AprilTagWorldDebugView(QOpenGLWidget):
         self._fixed_view_basis: tuple[np.ndarray, np.ndarray, np.ndarray] | None = None
         self._fixed_projection = "orthographic"
         self._fixed_perspective_fov_deg = 90.0
+        self._fixed_screen_zoom_enabled = False
+        self._fixed_screen_zoom = 1.0
+        self._fixed_screen_pan = QPointF(0.0, 0.0)
         self._last_mouse: QPointF | None = None
         self._press_pos: QPointF | None = None
         self._press_button: Qt.MouseButton | None = None
@@ -363,6 +370,13 @@ class AprilTagWorldDebugView(QOpenGLWidget):
 
     def set_fixed_navigation_enabled(self, enabled: bool) -> None:
         self._fixed_navigation_enabled = bool(enabled)
+
+    def set_fixed_screen_zoom_enabled(self, enabled: bool) -> None:
+        self._fixed_screen_zoom_enabled = bool(enabled)
+        if not self._fixed_screen_zoom_enabled:
+            self._fixed_screen_zoom = 1.0
+            self._fixed_screen_pan = QPointF(0.0, 0.0)
+        self.update()
 
     def gpu_pointcloud_active(self) -> bool:
         return (
@@ -466,6 +480,8 @@ class AprilTagWorldDebugView(QOpenGLWidget):
     def clear_fixed_view(self) -> None:
         self._fixed_view_basis = None
         self._fixed_projection = "orthographic"
+        self._fixed_screen_zoom = 1.0
+        self._fixed_screen_pan = QPointF(0.0, 0.0)
         self.update()
 
     def set_tag(
@@ -533,6 +549,9 @@ class AprilTagWorldDebugView(QOpenGLWidget):
             self._gpu_initialized = False
             self.gpu_pointcloud_failed.emit()
 
+    def resizeGL(self, _width: int, _height: int) -> None:  # noqa: N802 - Qt API
+        self._clamp_fixed_screen_pan()
+
     def paintGL(self) -> None:  # noqa: N802 - Qt API
         gpu_drawn = self._draw_pointcloud_gpu()
         painter = QPainter(self)
@@ -591,6 +610,10 @@ class AprilTagWorldDebugView(QOpenGLWidget):
 
     def wheelEvent(self, event: QWheelEvent) -> None:
         if self._fixed_view_basis is not None and not self._fixed_navigation_enabled:
+            if self._fixed_screen_zoom_enabled:
+                delta = event.angleDelta().y()
+                if delta != 0:
+                    self._apply_fixed_screen_wheel_zoom(event.position(), delta)
             event.accept()
             return
         delta = event.angleDelta().y()
@@ -600,6 +623,54 @@ class AprilTagWorldDebugView(QOpenGLWidget):
         self._pixels_per_unit = max(0.01, min(10000.0, self._pixels_per_unit * factor))
         self._user_navigated = True
         self.update()
+
+    def _fixed_screen_zoom_active(self) -> bool:
+        return bool(self._fixed_view_basis is not None and self._fixed_screen_zoom_enabled)
+
+    def _screen_center(self) -> QPointF:
+        return QPointF(self.width() * 0.5, self.height() * 0.5)
+
+    def _apply_fixed_screen_wheel_zoom(self, cursor: QPointF, delta: int) -> None:
+        old_zoom = max(1e-12, float(self._fixed_screen_zoom))
+        center = self._screen_center()
+        anchored = (cursor - center - self._fixed_screen_pan) / old_zoom
+        factor = 1.15 if delta > 0 else 1.0 / 1.15
+        self._fixed_screen_zoom = max(1.0, min(12.0, old_zoom * factor))
+        self._fixed_screen_pan = cursor - center - anchored * self._fixed_screen_zoom
+        self._clamp_fixed_screen_pan()
+        self.update()
+
+    def _clamp_fixed_screen_pan(self) -> None:
+        if self._fixed_screen_zoom <= 1.0:
+            self._fixed_screen_zoom = 1.0
+            self._fixed_screen_pan = QPointF(0.0, 0.0)
+            return
+        max_x = max(0.0, self.width() * (self._fixed_screen_zoom - 1.0) * 0.5)
+        max_y = max(0.0, self.height() * (self._fixed_screen_zoom - 1.0) * 0.5)
+        self._fixed_screen_pan = QPointF(
+            max(-max_x, min(max_x, self._fixed_screen_pan.x())),
+            max(-max_y, min(max_y, self._fixed_screen_pan.y())),
+        )
+
+    def _apply_fixed_screen_transform(self, xy: np.ndarray) -> np.ndarray:
+        if not self._fixed_screen_zoom_active():
+            return xy
+        transformed = np.asarray(xy, dtype=np.float64).copy()
+        center_x = self.width() * 0.5
+        center_y = self.height() * 0.5
+        transformed[:, 0] = (transformed[:, 0] - center_x) * self._fixed_screen_zoom + center_x + self._fixed_screen_pan.x()
+        transformed[:, 1] = (transformed[:, 1] - center_y) * self._fixed_screen_zoom + center_y + self._fixed_screen_pan.y()
+        return transformed
+
+    def _base_screen_point(self, sx: float, sy: float) -> tuple[float, float]:
+        if not self._fixed_screen_zoom_active():
+            return float(sx), float(sy)
+        center_x = self.width() * 0.5
+        center_y = self.height() * 0.5
+        zoom = max(1e-12, float(self._fixed_screen_zoom))
+        base_x = ((float(sx) - center_x - self._fixed_screen_pan.x()) / zoom) + center_x
+        base_y = ((float(sy) - center_y - self._fixed_screen_pan.y()) / zoom) + center_y
+        return base_x, base_y
 
     def _fit_scene_if_needed(self, *, force: bool = False) -> None:
         if not force:
@@ -664,10 +735,10 @@ class AprilTagWorldDebugView(QOpenGLWidget):
             with np.errstate(divide="ignore", invalid="ignore"):
                 xy[valid, 0] = self.width() * 0.5 + focal * (view_x[valid] / depth[valid])
                 xy[valid, 1] = self.height() * 0.5 - focal * (view_y[valid] / depth[valid])
-            return xy, depth
+            return self._apply_fixed_screen_transform(xy), depth
         x = rel @ right * self._pixels_per_unit + self.width() * 0.5
         y = -(rel @ up) * self._pixels_per_unit + self.height() * 0.5
-        return np.column_stack([x, y]), depth
+        return self._apply_fixed_screen_transform(np.column_stack([x, y])), depth
 
     def _screen_ground_points(self, *, margin_px: float = 0.0) -> np.ndarray:
         width = float(max(1, self.width()))
@@ -686,6 +757,7 @@ class AprilTagWorldDebugView(QOpenGLWidget):
                 np.deg2rad(self._fixed_perspective_fov_deg) * 0.5
             )
             for sx, sy in screen_points:
+                sx, sy = self._base_screen_point(float(sx), float(sy))
                 ray = (
                     forward
                     + right * ((float(sx) - width * 0.5) / max(focal, 1e-12))
@@ -702,6 +774,7 @@ class AprilTagWorldDebugView(QOpenGLWidget):
         else:
             pixels_per_unit = max(self._pixels_per_unit, 1e-12)
             for sx, sy in screen_points:
+                sx, sy = self._base_screen_point(float(sx), float(sy))
                 offset_x = (float(sx) - width * 0.5) / pixels_per_unit
                 offset_y = -(float(sy) - height * 0.5) / pixels_per_unit
                 ray_origin = self._view_center + right * offset_x + up * offset_y
@@ -965,6 +1038,13 @@ class AprilTagWorldDebugView(QOpenGLWidget):
         self._gpu_program.setUniformValue1f(self._gpu_program.uniformLocation(b"u_pixels_per_unit"), float(pixels_per_unit))
         self._gpu_program.setUniformValue1f(self._gpu_program.uniformLocation(b"u_focal_px"), float(focal))
         self._gpu_program.setUniformValue1f(self._gpu_program.uniformLocation(b"u_projection_mode"), float(projection_mode))
+        screen_zoom = float(self._fixed_screen_zoom) if self._fixed_screen_zoom_active() else 1.0
+        self._gpu_program.setUniformValue1f(self._gpu_program.uniformLocation(b"u_screen_zoom"), screen_zoom)
+        self._gpu_program.setUniformValue(
+            self._gpu_program.uniformLocation(b"u_screen_pan_px"),
+            float(self._fixed_screen_pan.x() * dpr) if self._fixed_screen_zoom_active() else 0.0,
+            float(-self._fixed_screen_pan.y() * dpr) if self._fixed_screen_zoom_active() else 0.0,
+        )
         self._gpu_program.setUniformValue1f(self._gpu_program.uniformLocation(b"u_point_size"), max(1.0, 1.35 * dpr))
         self._gpu_vao.bind()
         self._gpu_functions.glDrawArrays(_GL_POINTS, 0, self._gpu_point_count)

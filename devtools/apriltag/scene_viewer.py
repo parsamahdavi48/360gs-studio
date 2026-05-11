@@ -1123,6 +1123,7 @@ class AprilTagSceneViewerWindow(QWidget):
         self.right_stack = QStackedWidget()
         self.point_view = AprilTagWorldDebugView()
         self.point_view.set_fixed_navigation_enabled(False)
+        self.point_view.set_fixed_screen_zoom_enabled(True)
         self.point_view.setMinimumSize(520, 420)
         self.image_view = PerspectiveImageView("Cubemap画像を読み込みます")
         self.image_view.setMinimumSize(520, 420)

@@ -799,6 +799,64 @@ def test_world_debug_view_can_disable_fixed_view_pan_and_wheel() -> None:
     view.deleteLater()
 
 
+def test_world_debug_view_fixed_screen_zoom_does_not_change_camera_projection() -> None:
+    _app()
+
+    class AngleDeltaStub:
+        def __init__(self, value: int) -> None:
+            self._value = value
+
+        def y(self) -> int:
+            return self._value
+
+    class WheelEventStub:
+        def __init__(self, value: int, position: QPointF) -> None:
+            self._value = value
+            self._position = position
+            self.accepted = False
+
+        def angleDelta(self) -> AngleDeltaStub:
+            return AngleDeltaStub(self._value)
+
+        def position(self) -> QPointF:
+            return self._position
+
+        def accept(self) -> None:
+            self.accepted = True
+
+    view = AprilTagWorldDebugView()
+    view.resize(400, 300)
+    view.set_fixed_perspective_view(
+        camera_position=np.array([0.0, 0.0, 0.0]),
+        right=np.array([-1.0, 0.0, 0.0]),
+        up=np.array([0.0, 1.0, 0.0]),
+        forward=np.array([0.0, 0.0, 1.0]),
+        fov_deg=90.0,
+    )
+    view.set_fixed_navigation_enabled(False)
+    view.set_fixed_screen_zoom_enabled(True)
+
+    point = np.array([[1.0, 0.0, 2.0]], dtype=float)
+    before, _depth = view._project(point)
+    start_center = view._view_center.copy()
+    start_fov = float(view._fixed_perspective_fov_deg)
+    start_pixels = float(view._pixels_per_unit)
+
+    event = WheelEventStub(120, QPointF(view.width() * 0.5, view.height() * 0.5))
+    view.wheelEvent(event)  # type: ignore[arg-type]
+
+    after, _depth = view._project(point)
+    screen_center = np.array([view.width() * 0.5, view.height() * 0.5], dtype=float)
+
+    assert event.accepted
+    assert view._fixed_screen_zoom > 1.0
+    assert np.allclose(view._view_center, start_center)
+    assert view._fixed_perspective_fov_deg == pytest.approx(start_fov)
+    assert view._pixels_per_unit == pytest.approx(start_pixels)
+    assert np.allclose(after[0] - screen_center, (before[0] - screen_center) * view._fixed_screen_zoom)
+    view.deleteLater()
+
+
 def test_world_debug_view_camera_point_click_emits_group_name() -> None:
     _app()
     group_a = CubemapFrameGroup(name="frame_a", frames_by_face={"pz": _frame_at("frame_a", (-2.0, 0.0, 0.0))})
