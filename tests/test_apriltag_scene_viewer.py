@@ -7,7 +7,7 @@ from pathlib import Path
 import cv2
 import numpy as np
 import pytest
-from PySide6.QtWidgets import QApplication
+from PySide6.QtWidgets import QAbstractSpinBox, QApplication
 
 from core.apriltag_cubemap import CubemapViewMetadata, cubemap_view_params_for_group
 from core.apriltag_geometry import PinholeFrame
@@ -41,6 +41,7 @@ from devtools.apriltag.scene_viewer import (
     transform_group_for_world_display,
 )
 from devtools.apriltag.coordinates import world_display_matrix
+from gui.common.drag_spinbox import DragDoubleSpinBox
 from gui.common.perspective_preview import PerspectiveParams, equirect_to_perspective, params_from_drag
 from gui.common.perspective_preview import normalize_yaw_deg
 
@@ -1029,6 +1030,17 @@ def test_scene_viewer_tag_transform_controls_sync_world_and_point_views(tmp_path
 
     window = AprilTagSceneViewerWindow(initial_case=case_dir)
     assert window.tag_size_sfm_spin.value() == pytest.approx(0.64)
+    for spin in (
+        window.tag_x_spin,
+        window.tag_y_spin,
+        window.tag_z_spin,
+        window.tag_yaw_spin,
+        window.tag_pitch_spin,
+        window.tag_roll_spin,
+        window.tag_size_sfm_spin,
+    ):
+        assert isinstance(spin, DragDoubleSpinBox)
+        assert spin.buttonSymbols() == QAbstractSpinBox.NoButtons
 
     window.set_tag_transform(
         center=(1.0, 2.0, 3.0),

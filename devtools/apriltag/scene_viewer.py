@@ -12,7 +12,6 @@ from PySide6.QtCore import QSize, Qt, Signal
 from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import (
     QComboBox,
-    QDoubleSpinBox,
     QFileDialog,
     QFormLayout,
     QGroupBox,
@@ -62,6 +61,7 @@ from devtools.apriltag.world_debug_view import (
     load_point_cloud_sample,
     transform_point_cloud_sample,
 )
+from gui.common.drag_spinbox import DragDoubleSpinBox
 from gui.common.perspective_image_view import PerspectiveImageView, PerspectiveLabelOverlay
 from gui.common.perspective_preview import (
     PerspectiveParams,
@@ -675,12 +675,15 @@ class AprilTagSceneViewerWindow(QWidget):
         *,
         decimals: int,
         step: float,
-    ) -> QDoubleSpinBox:
-        spin = QDoubleSpinBox()
-        spin.setRange(float(minimum), float(maximum))
-        spin.setDecimals(int(decimals))
-        spin.setSingleStep(float(step))
-        spin.setValue(float(value))
+    ) -> DragDoubleSpinBox:
+        spin = DragDoubleSpinBox(
+            minimum=float(minimum),
+            maximum=float(maximum),
+            step=float(step),
+            decimals=int(decimals),
+            value=float(value),
+            drag_pixels_per_step=6.0,
+        )
         spin.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         return spin
 
@@ -870,7 +873,7 @@ class AprilTagSceneViewerWindow(QWidget):
         )
 
     @staticmethod
-    def _set_spin_value_blocked(spin: QDoubleSpinBox, value: float) -> None:
+    def _set_spin_value_blocked(spin: DragDoubleSpinBox, value: float) -> None:
         spin.blockSignals(True)
         spin.setValue(float(value))
         spin.blockSignals(False)
