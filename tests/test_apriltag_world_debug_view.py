@@ -205,6 +205,34 @@ def test_world_debug_view_exposes_tag_front_direction_segment() -> None:
     view.deleteLater()
 
 
+def test_world_debug_view_exposes_tag_validation_distance_sphere() -> None:
+    _app()
+    view = AprilTagWorldDebugView()
+    center = np.array([1.0, 2.0, 3.0], dtype=float)
+    view.set_tag(
+        center=center,
+        normal=np.array([0.0, 0.0, -1.0]),
+        up=np.array([0.0, 1.0, 0.0]),
+        tag_size_m=0.16,
+        true_scale=0.25,
+    )
+    view.set_tag_validation_distance(4.0)
+
+    circles = dict(view._tag_validation_distance_circles(samples=32))
+
+    assert set(circles) == {"XZ", "XY", "YZ"}
+    for points in circles.values():
+        assert points.shape == (32, 3)
+        assert np.allclose(np.linalg.norm(points - center, axis=1), 4.0)
+    assert np.allclose(circles["XZ"][:, 1], center[1])
+    assert np.allclose(circles["XY"][:, 2], center[2])
+    assert np.allclose(circles["YZ"][:, 0], center[0])
+
+    view.set_tag_validation_distance(0.0)
+    assert view._tag_validation_distance_circles() == ()
+    view.deleteLater()
+
+
 def test_world_debug_frustum_converts_camera_preview_axes_to_world_axes() -> None:
     _app()
     view = AprilTagWorldDebugView()

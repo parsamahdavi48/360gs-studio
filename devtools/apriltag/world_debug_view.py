@@ -222,6 +222,7 @@ class AprilTagWorldDebugView(QWidget):
         self._tag_up = np.array([0.0, 1.0, 0.0], dtype=np.float64)
         self._tag_size_m = 0.16
         self._true_scale = 0.25
+        self._tag_validation_distance_sfm: float | None = None
         self._preview_yaw_deg = 0.0
         self._preview_pitch_deg = 0.0
         self._preview_roll_deg = 0.0
@@ -349,6 +350,14 @@ class AprilTagWorldDebugView(QWidget):
         self._tag_up = _normalized(np.asarray(up, dtype=np.float64).reshape(3), fallback=(0.0, 1.0, 0.0))
         self._tag_size_m = max(1e-9, float(tag_size_m))
         self._true_scale = max(1e-12, float(true_scale))
+        self.update()
+
+    def set_tag_validation_distance(self, distance_sfm: float | None) -> None:
+        if distance_sfm is None:
+            self._tag_validation_distance_sfm = None
+        else:
+            value = float(distance_sfm)
+            self._tag_validation_distance_sfm = value if np.isfinite(value) and value > 0.0 else None
         self.update()
 
     def paintEvent(self, _event) -> None:
@@ -891,6 +900,7 @@ class AprilTagWorldDebugView(QWidget):
             )
         except Exception:
             return
+        self._draw_tag_validation_distance(painter)
         xy, _depth = self._project(corners)
         if not np.all(np.isfinite(xy)):
             return
@@ -926,6 +936,54 @@ class AprilTagWorldDebugView(QWidget):
             ("up", center, center + up * arrow_len, QColor(125, 255, 125), False),
         )
 
+    def _tag_validation_distance_circles(self, *, samples: int = 96) -> tuple[tuple[str, np.ndarray], ...]:
+        radius = self._tag_validation_distance_sfm
+        if radius is None or radius <= 0.0:
+            return ()
+        count = max(16, int(samples))
+        angles = np.linspace(0.0, 2.0 * np.pi, count, endpoint=True, dtype=np.float64)
+        cos = np.cos(angles)
+        sin = np.sin(angles)
+        center = np.asarray(self._tag_center, dtype=np.float64)
+        xz = np.column_stack(
+            [
+                center[0] + radius * cos,
+                np.full_like(cos, center[1]),
+                center[2] + radius * sin,
+            ]
+        )
+        xy = np.column_stack(
+            [
+                center[0] + radius * cos,
+                center[1] + radius * sin,
+                np.full_like(cos, center[2]),
+            ]
+        )
+        yz = np.column_stack(
+            [
+                np.full_like(cos, center[0]),
+                center[1] + radius * cos,
+                center[2] + radius * sin,
+            ]
+        )
+        return (("XZ", xz), ("XY", xy), ("YZ", yz))
+
+    def _draw_tag_validation_distance(self, painter: QPainter) -> None:
+        circles = self._tag_validation_distance_circles()
+        if not circles:
+            return
+        color = QColor(255, 210, 90, 105)
+        for _label, points in circles:
+            self._draw_world_polyline(painter, points, color, 1, dashed=True)
+        radius = float(self._tag_validation_distance_sfm or 0.0)
+        self._draw_marker(
+            painter,
+            np.asarray(self._tag_center, dtype=np.float64) + np.array([radius, 0.0, 0.0], dtype=np.float64),
+            QColor(255, 210, 90, 150),
+            "max dist",
+            radius=3,
+        )
+
     def _selected_group(self) -> CubemapFrameGroup | None:
         if not self._selected_group_name:
             return None
@@ -955,6 +1013,29 @@ class AprilTagWorldDebugView(QWidget):
         painter.setPen(pen)
         painter.setBrush(Qt.NoBrush)
         painter.drawLine(QPointF(float(xy[0, 0]), float(xy[0, 1])), QPointF(float(xy[1, 0]), float(xy[1, 1])))
+
+    def _draw_world_polyline(
+        self,
+        painter: QPainter,
+        points: np.ndarray,
+        color: QColor,
+        width: int,
+        *,
+        dashed: bool = False,
+    ) -> None:
+        xy, _depth = self._project(points)
+        finite = np.isfinite(xy).all(axis=1)
+        if np.count_nonzero(finite) < 2:
+            return
+        pen = QPen(color, width)
+        if dashed:
+            pen.setStyle(Qt.DashLine)
+        painter.setPen(pen)
+        painter.setBrush(Qt.NoBrush)
+        for a, b, valid_a, valid_b in zip(xy[:-1], xy[1:], finite[:-1], finite[1:], strict=True):
+            if not (valid_a and valid_b):
+                continue
+            painter.drawLine(QPointF(float(a[0]), float(a[1])), QPointF(float(b[0]), float(b[1])))
 
     def _draw_world_arrow(
         self,

@@ -1154,6 +1154,8 @@ def test_scene_viewer_synthetic_candidates_use_tag_front_side(tmp_path: Path) ->
 
     candidates, total_frames = window._synthetic_tag_candidates()
 
+    assert window.world_view._tag_validation_distance_sfm == pytest.approx(10.0)
+    assert window.point_view._tag_validation_distance_sfm is None
     assert total_frames == 12
     paths = {candidate.frame.file_path for candidate in candidates}
     assert "images/cam_001_pz.jpg" in paths

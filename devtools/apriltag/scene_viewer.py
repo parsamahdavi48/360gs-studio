@@ -828,6 +828,7 @@ class AprilTagSceneViewerWindow(QWidget):
             self.tag_size_sfm_spin,
         ):
             spin.valueChanged.connect(lambda _value: self._on_tag_transform_changed())
+        self.validation_distance_spin.valueChanged.connect(lambda _value: self._sync_tag_views())
         self.reset_tag_button.clicked.connect(self.reset_tag_transform)
         self.run_validation_button.clicked.connect(self.run_synthetic_scale_validation)
 
@@ -1070,6 +1071,9 @@ class AprilTagSceneViewerWindow(QWidget):
                 tag_size_m=self._tag_size_sfm,
                 true_scale=1.0,
             )
+        distance = float(self.validation_distance_spin.value()) if hasattr(self, "validation_distance_spin") else 0.0
+        self.world_view.set_tag_validation_distance(distance)
+        self.point_view.set_tag_validation_distance(None)
 
     def _tag_image_overlays(
         self,
