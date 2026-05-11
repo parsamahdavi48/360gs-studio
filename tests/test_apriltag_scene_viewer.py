@@ -1087,3 +1087,31 @@ def test_scene_viewer_projects_tag_overlay_into_image_view_params(tmp_path: Path
     assert 310.0 < float(points[:, 1].min()) < 330.0
     assert 437.0 < float(points[:, 1].max()) < 457.0
     window.deleteLater()
+
+
+def test_scene_viewer_image_tag_overlay_matches_pointcloud_projection(tmp_path: Path) -> None:
+    _app()
+    case_dir = _write_cube6_case(tmp_path)
+
+    window = AprilTagSceneViewerWindow(initial_case=case_dir)
+    window.set_active_face("pz")
+    group = window.selected_world_group()
+    assert group is not None
+    camera, right, up, forward = camera_pose_from_perspective_params(group, window._params)
+    window.set_tag_transform(
+        center=tuple(camera + forward * 3.0 + right * 0.35 + up * 0.2),
+        yaw_deg=0.0,
+        pitch_deg=0.0,
+        roll_deg=0.0,
+        size_sfm=0.5,
+    )
+    window.point_view.resize(768, 768)
+    window.mode_combo.setCurrentIndex(window.mode_combo.findData(RIGHT_VIEW_POINTCLOUD))
+    window._sync_views()
+    point_projection, _depth = window.point_view._project(window._tag_corners_world_display())
+
+    overlays = window._tag_image_overlays(group, window._params, output_size=768)
+
+    assert len(overlays) == 1
+    assert np.allclose(np.asarray(overlays[0].polygon), point_projection, atol=1e-4)
+    window.deleteLater()

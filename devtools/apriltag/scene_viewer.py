@@ -49,7 +49,6 @@ from devtools.apriltag.cubemap_preview import (
     load_cubemap_frame_groups,
     load_metashape_camera_labels,
     order_groups_by_labels,
-    project_sfm_points_to_axis_preview_points,
     render_cubemap_axis_equirect,
     render_generated_cubemap_source_axis,
     render_source_equirect_axis,
@@ -431,6 +430,55 @@ def camera_pose_from_perspective_params(
     forward = forward - right * float(forward @ right) - up * float(forward @ up)
     forward /= max(float(np.linalg.norm(forward)), 1e-12)
     return np.asarray(group.camera_position_sfm, dtype=np.float64), right, up, forward
+
+
+def _normalized_vector(value: np.ndarray, fallback: tuple[float, float, float]) -> np.ndarray:
+    norm = float(np.linalg.norm(value))
+    if norm <= 1e-12 or not np.isfinite(norm):
+        return np.asarray(fallback, dtype=np.float64)
+    return value / norm
+
+
+def _right_view_screen_basis(
+    *,
+    right: np.ndarray,
+    up: np.ndarray,
+    forward: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Return the perspective screen basis used by AprilTagWorldDebugView."""
+    forward = _normalized_vector(np.asarray(forward, dtype=np.float64), (0.0, 0.0, 1.0))
+    back = -forward
+    right = np.asarray(right, dtype=np.float64) - back * float(np.asarray(right, dtype=np.float64) @ back)
+    if float(np.linalg.norm(right)) <= 1e-12:
+        right = np.cross(np.asarray(up, dtype=np.float64), back)
+    right = _normalized_vector(right, (1.0, 0.0, 0.0))
+    up_from_basis = _normalized_vector(np.cross(back, right), (0.0, 1.0, 0.0))
+    if float(up_from_basis @ np.asarray(up, dtype=np.float64)) < 0.0:
+        right = -right
+        up_from_basis = _normalized_vector(np.cross(back, right), (0.0, 1.0, 0.0))
+    return right, up_from_basis, forward
+
+
+def project_world_points_to_right_view(
+    group: CubemapFrameGroup,
+    params: PerspectiveParams,
+    points: np.ndarray,
+    *,
+    output_size: int,
+) -> np.ndarray | None:
+    points = np.asarray(points, dtype=np.float64).reshape(-1, 3)
+    camera, right, up, forward = camera_pose_from_perspective_params(group, params)
+    right, up, forward = _right_view_screen_basis(right=right, up=up, forward=forward)
+    rel = points - camera.reshape(1, 3)
+    depth = rel @ forward
+    if np.any(~np.isfinite(depth)) or np.any(depth <= 1e-8):
+        return None
+    size = max(1, int(output_size))
+    focal = 0.5 * float(size) / np.tan(np.deg2rad(float(params.fov_deg)) * 0.5)
+    center = float(size) * 0.5
+    x = center + focal * ((rel @ right) / depth)
+    y = center - focal * ((rel @ up) / depth)
+    return np.column_stack([x, y]).astype(np.float32)
 
 
 def face_forward_ray(group: CubemapFrameGroup, face: str) -> np.ndarray | None:
@@ -949,21 +997,18 @@ class AprilTagSceneViewerWindow(QWidget):
     def _tag_image_overlays(
         self,
         group: CubemapFrameGroup | None,
-        view_params: PerspectiveParams,
+        params: PerspectiveParams,
         *,
         output_size: int = 768,
     ) -> list[PerspectiveLabelOverlay]:
         if group is None:
             return []
         try:
-            projected = project_sfm_points_to_axis_preview_points(
+            projected = project_world_points_to_right_view(
                 group,
+                params,
                 self._tag_corners_world_display(),
                 output_size=output_size,
-                yaw_deg=view_params.yaw_deg,
-                pitch_deg=view_params.pitch_deg,
-                roll_deg=view_params.roll_deg,
-                fov_deg=view_params.fov_deg,
             )
         except Exception:
             return []
@@ -1233,7 +1278,7 @@ class AprilTagSceneViewerWindow(QWidget):
             f"{self._ray_basis_mode()}:{image_group.name}:"
             f"{source_path if use_source_equirect else ''}"
         )
-        overlays = self._tag_image_overlays(world_group, view_params, output_size=768)
+        overlays = self._tag_image_overlays(world_group, self._params, output_size=768)
         if self._displayed_image_key == key and self.image_view.set_perspective_params(view_params):
             self.image_view.set_drag_mode("look")
             self.image_view.set_perspective_label_overlays(overlays)
