@@ -1081,6 +1081,41 @@ def test_current_case_image_overlay_respects_synthetic_front_side() -> None:
     window.deleteLater()
 
 
+def test_current_case_image_overlay_uses_selected_camera_front_side_not_output_candidates() -> None:
+    case_dir = Path("_compare/apriltag_test/cases/current")
+    if not (case_dir / "case.json").is_file():
+        pytest.skip("local AprilTag comparison case is not available")
+    _app()
+    window = AprilTagSceneViewerWindow(initial_case=case_dir)
+    if "frame_000010" not in {group.name for group in window._raw_groups}:
+        pytest.skip("local AprilTag front-side regression frame is not available")
+    window.validation_distance_spin.setValue(4.7)
+    window.validation_angle_spin.setValue(75.0)
+    window.validation_min_area_spin.setValue(64.0)
+    window.mode_combo.setCurrentIndex(window.mode_combo.findData(RIGHT_VIEW_SOURCE_EQUIRECT))
+    window.select_camera_by_name("frame_000010")
+    window.set_tag_transform(
+        center=(0.0, -1.817, -0.9),
+        yaw_deg=-180.0,
+        pitch_deg=0.0,
+        roll_deg=0.0,
+        size_sfm=0.1733,
+    )
+    group = window.selected_world_group()
+    assert group is not None
+    selected_paths = {
+        candidate.frame.file_path
+        for candidate in window._synthetic_tag_candidates()[0]
+        if candidate.frame.file_path.startswith("images/frame_000010_")
+    }
+
+    assert selected_paths == set()
+    assert window._tag_front_faces_group(group)
+    assert len(window._tag_image_overlays(group, window._params, output_size=768)) == 1
+    assert len(window._right_image_tag_overlays(group, use_output_projection=True, output_size=768)) == 1
+    window.deleteLater()
+
+
 def test_current_case_generated_cube6_reconstruction_matches_expected_orientation() -> None:
     case_dir = Path("_compare/apriltag_test/cases/current")
     if not (case_dir / "case.json").is_file():
