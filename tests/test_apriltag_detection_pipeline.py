@@ -203,12 +203,12 @@ def _write_generated_cube6_yaw_offset_dataset(root: Path) -> tuple[Path, Cubemap
     images = root / "images"
     images.mkdir(parents=True)
     views = {
-        "bottom": (-45.0, -90.0),
+        "py": (-45.0, -90.0),
         "px": (45.0, 0.0),
         "nz": (135.0, 0.0),
         "nx": (-135.0, 0.0),
         "pz": (-45.0, 0.0),
-        "top": (-45.0, 90.0),
+        "ny": (-45.0, 90.0),
     }
     frames = []
     frame_groups = (
@@ -509,7 +509,7 @@ def test_lichtfeld_cube6_metadata_normalizes_to_saved_raster_pose(tmp_path: Path
     frames = {frame.file_path: frame for frame in load_pinhole_frames(transforms)}
     source_local_from_lichtfeld = np.diag([1.0, -1.0, -1.0])
     raster_y_flip = np.diag([1.0, -1.0, 1.0])
-    vertical_face_map = {"top": "bottom", "bottom": "top"}
+    vertical_face_map = {"top": "bottom", "bottom": "top", "py": "ny", "ny": "py"}
 
     for group_index, prefix in enumerate(("frame_0001", "frame_0002")):
         yaw_offset = group_index * 30.0

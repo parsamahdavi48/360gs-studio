@@ -112,6 +112,8 @@ SYNTHETIC_IMAGE_RASTER_Y_FLIP = np.diag([1.0, -1.0, 1.0])
 SYNTHETIC_OUTPUT_FACE_ROTATION_FACE = {
     "top": "bottom",
     "bottom": "top",
+    "py": "ny",
+    "ny": "py",
 }
 DEFAULT_EQUIRECT_PREVIEW_SIZE = (4096, 2048)
 
@@ -644,8 +646,9 @@ def _synthetic_output_face_rotation_face(face: str) -> str:
     ``SOURCE_EQUIRECT_LOCAL_FROM_LICHTFELD_LOCAL`` undoes the source panorama's
     local Y/Z flip for image lookup. That makes the pole directions opposite
     for projection into saved Cube6 JPG rasters: the file path stays unchanged,
-    but top/bottom need the opposite generated pitch when deciding which image
-    receives synthetic pixels.
+    but vertical faces need the opposite generated pitch when deciding which
+    image receives synthetic pixels. ``top/bottom`` are legacy names; new GUI
+    Cube6 output uses ``py/ny``.
     """
     return SYNTHETIC_OUTPUT_FACE_ROTATION_FACE.get(face, face)
 

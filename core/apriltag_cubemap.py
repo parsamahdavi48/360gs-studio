@@ -89,6 +89,8 @@ _SAVED_RASTER_Y_FLIP = np.diag([1.0, -1.0, 1.0])
 _LICHTFELD_VERTICAL_FACE_MAP = {
     "top": "bottom",
     "bottom": "top",
+    "py": "ny",
+    "ny": "py",
 }
 
 
