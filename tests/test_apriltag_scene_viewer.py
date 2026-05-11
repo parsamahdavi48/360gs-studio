@@ -1442,6 +1442,23 @@ def test_current_case_reconstructed_image_tag_overlay_tracks_view_drag() -> None
     expected = window._tag_image_overlays(group, window._params, output_size=768)
     assert len(expected) == 1
     assert np.allclose(np.asarray(after[0].polygon), np.asarray(expected[0].polygon), atol=1e-4)
+    basis_group = window.selected_face_basis_group() or group
+    params = axis_face_view_params(basis_group, "pz", fov_deg=window._params.fov_deg)
+    assert params is not None
+    yaw, pitch, roll, fov = params
+    display_params = _source_equirect_preview_params(
+        window._params,
+        "pz",
+        RAY_BASIS_WORLD,
+        PerspectiveParams(yaw_deg=yaw, pitch_deg=pitch, roll_deg=roll, fov_deg=fov),
+    )
+    wrong_display_projection = window._tag_image_overlays(group, display_params, output_size=768)
+    assert len(wrong_display_projection) == 1
+    assert not np.allclose(
+        np.asarray(after[0].polygon),
+        np.asarray(wrong_display_projection[0].polygon),
+        atol=1.0,
+    )
     assert not np.allclose(np.asarray(after[0].polygon), np.asarray(before[0].polygon), atol=1.0)
     window.deleteLater()
 

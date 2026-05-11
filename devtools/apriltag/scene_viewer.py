@@ -1392,31 +1392,27 @@ class AprilTagSceneViewerWindow(QWidget):
         self,
         world_group: CubemapFrameGroup,
         *,
-        params: PerspectiveParams,
         output_size: int = 768,
     ) -> list[PerspectiveLabelOverlay]:
         if not self._tag_front_faces_group(world_group):
             return []
-        return self._tag_image_overlays(world_group, params, output_size=output_size)
+        return self._tag_image_overlays(world_group, self._params, output_size=output_size)
 
     def _right_image_tag_overlays(
         self,
         world_group: CubemapFrameGroup,
         *,
         use_output_projection: bool,
-        params: PerspectiveParams | None = None,
         output_size: int = 768,
     ) -> list[PerspectiveLabelOverlay]:
-        projection_params = self._params if params is None else params
         if use_output_projection:
             overlays = self._tag_viewport_image_overlays(
                 world_group,
-                params=projection_params,
                 output_size=output_size,
             )
             if overlays or self._synthetic_frame_transform_overrides():
                 return overlays
-        return self._tag_image_overlays(world_group, projection_params, output_size=output_size)
+        return self._tag_image_overlays(world_group, self._params, output_size=output_size)
 
     def _synthetic_tag_placement_sfm(self) -> tuple[np.ndarray, np.ndarray, np.ndarray, float]:
         if self.case is None:
@@ -1929,7 +1925,6 @@ class AprilTagSceneViewerWindow(QWidget):
         overlays = self._right_image_tag_overlays(
             world_group,
             use_output_projection=use_source_equirect or use_reconstructed_cube6,
-            params=view_params,
             output_size=768,
         )
         if self._displayed_image_key == key and self.image_view.set_perspective_params(view_params):
