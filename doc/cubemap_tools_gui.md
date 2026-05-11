@@ -148,6 +148,20 @@ The `Output` checkboxes control whether images and/or masks are written.
 
 After adjusting masks, turning `Images` off avoids reconverting existing cubemap images. `3DGUT (LichtFeld)` references source images and masks directly, so these output toggles are not used in that mode.
 
+## Scale From AprilTags
+
+The `Scale` tab is a post-export tool. It is not part of the bottom `Run` button because scale estimation needs an existing `<scene>/output/transforms.json` and the images already written under `output/`.
+
+Use it when you placed printed AprilTags with a known outer black-square size in the scene.
+
+1. Create the Step 4 output first.
+2. Open `Scale`.
+3. Enter the printed tag size, family, and tag IDs used in the capture. Keep the default `tag36h11 / ID 7` unless you intentionally printed another tag.
+4. Click `Estimate`. The result shows the estimated scale and observation statistics without modifying files.
+5. Click `Apply to Scale` only when the result looks reasonable. Step 4 backs up the current files, then scales camera positions in `output/transforms.json` and points in `output/pointcloud.ply` when that PLY exists.
+
+The folded `Tag PDF` section can create printable A4, A3, or Letter PDFs for a selected tag. Print at actual size / 100%; printer scaling changes the physical tag size and invalidates the estimate.
+
 ## Continue To Step 5
 
 Step 4 creates the dataset that downstream 3DGS apps load. To use it with LichtFeld Studio or Postshot, create the dataset in Step 4, then open `Step 5: Training`.

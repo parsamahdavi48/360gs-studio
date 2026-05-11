@@ -44,6 +44,7 @@ from gui.steps.sfm_route_selector import SfmRouteSelector
 from gui.steps.sfm_route_specs import (
     normalize_sfm_route,
 )
+from gui.steps.step4_apriltag import Step4AprilTagMixin
 from gui.steps.step4_command_plan import Step4CommandPlanMixin
 from gui.steps.step4_contracts import (
     _AXIS_BRUSH,
@@ -82,7 +83,6 @@ from gui.steps.step4_contracts import (
     is_colmap_gui_unavailable_output,  # noqa: F401 - re-exported for existing tests/imports
     is_spheresfm_rtx50_cuda_error_line,  # noqa: F401 - re-exported for existing tests/imports
 )
-from gui.steps.step4_apriltag import Step4AprilTagMixin
 from gui.steps.step4_manifest import Step4ManifestMixin
 from gui.steps.step4_paths import Step4PathMixin
 from gui.steps.step4_pipeline import Step4PipelineMixin
@@ -756,8 +756,7 @@ class CubemapStep(
         details_layout.addStretch()
 
         self.apriltag_tab_index: int | None = None
-        if self._apriltag_scale_ui_enabled:
-            self.apriltag_tab = self._build_apriltag_scale_tab()
+        self.apriltag_tab = self._build_apriltag_scale_tab()
 
         self.input_tab_index = self.settings_tabs.addTab(
             self._make_tab_scroll_area(self.input_tab),
@@ -767,11 +766,10 @@ class CubemapStep(
             self._make_tab_scroll_area(self.output_tab),
             i18n.t("STEP4_TAB_OUTPUT"),
         )
-        if self._apriltag_scale_ui_enabled:
-            self.apriltag_tab_index = self.settings_tabs.addTab(
-                self._make_tab_scroll_area(self.apriltag_tab),
-                i18n.t("STEP4_TAB_APRILTAG_SCALE"),
-            )
+        self.apriltag_tab_index = self.settings_tabs.addTab(
+            self._make_tab_scroll_area(self.apriltag_tab),
+            i18n.t("STEP4_TAB_APRILTAG_SCALE"),
+        )
         self.details_tab_index = self.settings_tabs.addTab(
             self._make_tab_scroll_area(self.details_tab),
             i18n.t("STEP4_TAB_DETAILS"),
@@ -1154,9 +1152,13 @@ class CubemapStep(
         return i18n.t("RUN")
 
     def primary_action_tooltip(self) -> str:
+        if self._apriltag_tab_selected():
+            return i18n.tip("APRILTAG_TAB_PRIMARY_ACTION")
         return i18n.tip("RUN_CUBEMAP")
 
     def primary_action_enabled(self) -> bool:
+        if self._apriltag_tab_selected():
+            return False
         selected = False
         status_by_stage = {
             _PIPELINE_STAGE_SFM: self._pipeline_sfm_status(),
@@ -1359,12 +1361,8 @@ class CubemapStep(
         spheresfm_conversion_off = self._is_spheresfm_method() and not self._spheresfm_runs_conversion()
         conversion_enabled = not spheresfm_conversion_off
         self.settings_tabs.setTabEnabled(self.output_tab_index, conversion_enabled)
-        if self.apriltag_tab_index is not None:
-            self.settings_tabs.setTabEnabled(self.apriltag_tab_index, self._is_metashape_method())
         route_index = self.input_tab_index
         if spheresfm_conversion_off and current == self.output_tab_index:
-            self.settings_tabs.setCurrentIndex(route_index)
-        elif self.apriltag_tab_index is not None and current == self.apriltag_tab_index and not self._is_metashape_method():
             self.settings_tabs.setCurrentIndex(route_index)
         elif prefer_route_tab:
             self.settings_tabs.setCurrentIndex(route_index)

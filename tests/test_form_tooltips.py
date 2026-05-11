@@ -348,7 +348,7 @@ def test_step4_scrolls_tab_content_not_whole_settings_pane() -> None:
         assert step.findChildren(QScrollArea, "settingsScroll") == []
 
         tab_scrolls = [step.settings_tabs.widget(index) for index in range(step.settings_tabs.count())]
-        assert len(tab_scrolls) == 3
+        assert len(tab_scrolls) == 4
         assert all(isinstance(scroll, QScrollArea) for scroll in tab_scrolls)
         assert all(scroll.objectName() == "step4TabScroll" for scroll in tab_scrolls)
         assert all(scroll.horizontalScrollBarPolicy() == Qt.ScrollBarAlwaysOff for scroll in tab_scrolls)
