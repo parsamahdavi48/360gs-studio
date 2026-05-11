@@ -101,6 +101,63 @@ def test_load_point_cloud_sample_ascii_ply(tmp_path: Path) -> None:
     assert sample.colors.shape == (2, 3)
 
 
+def test_load_point_cloud_sample_can_load_all_points(tmp_path: Path) -> None:
+    ply = tmp_path / "points.ply"
+    ply.write_text(
+        "\n".join(
+            [
+                "ply",
+                "format ascii 1.0",
+                "element vertex 4",
+                "property float x",
+                "property float y",
+                "property float z",
+                "property uchar red",
+                "property uchar green",
+                "property uchar blue",
+                "end_header",
+                "0 0 0 255 0 0",
+                "1 0 0 0 255 0",
+                "0 1 0 0 0 255",
+                "0 0 1 255 255 255",
+            ]
+        ),
+        encoding="ascii",
+    )
+
+    sample = load_point_cloud_sample(ply, max_points=None)
+
+    assert sample.source_count == 4
+    assert sample.points.shape == (4, 3)
+    assert sample.colors is not None
+    assert sample.colors.tolist() == [[255, 0, 0], [0, 255, 0], [0, 0, 255], [255, 255, 255]]
+
+
+def test_world_debug_view_gpu_vertex_data_uses_point_colors() -> None:
+    _app()
+    view = AprilTagWorldDebugView()
+    view.set_pointcloud(
+        PointCloudSample(
+            points=np.array([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]], dtype=np.float32),
+            colors=np.array([[255, 0, 0], [0, 128, 255]], dtype=np.uint8),
+            source_count=2,
+        )
+    )
+
+    data = view._pointcloud_gl_vertex_data()
+
+    assert data.shape == (2, 7)
+    assert np.allclose(data[:, :3], [[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]])
+    assert np.allclose(data[:, 3:6], [[1.0, 0.0, 0.0], [0.0, 128.0 / 255.0, 1.0]])
+    assert np.allclose(data[:, 6], [0.9, 0.9])
+    assert view.pointcloud_renderer_label() == "GPU"
+    view._gpu_failed = True
+    assert view.pointcloud_renderer_label() == "CPU fallback"
+    view.set_gpu_pointcloud_enabled(False)
+    assert view.pointcloud_renderer_label() == "CPU"
+    view.deleteLater()
+
+
 def test_transform_point_cloud_sample_applies_lichtfeld_display_matrix() -> None:
     sample = PointCloudSample(
         points=np.array([[1.0, 2.0, 3.0]], dtype=np.float32),

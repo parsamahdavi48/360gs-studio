@@ -1088,6 +1088,8 @@ class AprilTagSceneViewerWindow(QWidget):
         self.profile_combo.currentIndexChanged.connect(self._on_profile_changed)
         self.world_view.camera_clicked.connect(self.select_camera_by_name)
         self.point_view.fixed_view_dragged.connect(self._on_right_view_dragged)
+        self.world_view.gpu_pointcloud_failed.connect(lambda: self._on_gpu_pointcloud_failed("左ビュー"))
+        self.point_view.gpu_pointcloud_failed.connect(lambda: self._on_gpu_pointcloud_failed("右点群ビュー"))
         self.image_view.look_dragged.connect(self._on_right_view_dragged)
         for face, button in self.face_buttons.items():
             button.clicked.connect(lambda _checked=False, value=face: self.set_active_face(value))
@@ -1106,6 +1108,10 @@ class AprilTagSceneViewerWindow(QWidget):
         self.reset_tag_button.clicked.connect(self.reset_tag_transform)
         self.run_validation_button.clicked.connect(self.run_synthetic_scale_validation)
         self.copy_validation_scale_button.clicked.connect(self._copy_validation_scale)
+
+    def _on_gpu_pointcloud_failed(self, label: str) -> None:
+        self._append_log_once(f"gpu-pointcloud-failed:{label}", f"{label}: GPU点群描画を初期化できないためCPU描画へ戻しました。")
+        self._update_status()
 
     def load_case_dir(self, case_dir: Path) -> None:
         try:
@@ -1910,7 +1916,7 @@ class AprilTagSceneViewerWindow(QWidget):
             self._world_matrix,
             pointcloud_display_matrix(self.case.coordinate_profile),
         )
-        sample = load_point_cloud_sample(pointcloud_path)
+        sample = load_point_cloud_sample(pointcloud_path, max_points=None)
         self._world_pointcloud = transform_point_cloud_sample(sample, matrix)
 
     def _set_params_from_active_face(self) -> None:
@@ -2111,6 +2117,12 @@ class AprilTagSceneViewerWindow(QWidget):
         basis_group = self.selected_face_basis_group()
         image_group = self.selected_image_render_group()
         point_count = 0 if self._world_pointcloud is None else len(self._world_pointcloud.points)
+        source_point_count = 0 if self._world_pointcloud is None else int(self._world_pointcloud.source_count)
+        point_text = (
+            str(point_count)
+            if source_point_count <= 0 or source_point_count == point_count
+            else f"{point_count}/{source_point_count}"
+        )
         alignment = ""
         if self._metashape_alignment is not None:
             rmse, count = self._metashape_alignment
@@ -2151,12 +2163,13 @@ class AprilTagSceneViewerWindow(QWidget):
         self.case_label.setText(str(display_path))
         self._last_status_detail = (
             f"カメラ: {group_text} / "
-            f"点群: {point_count} sampled / 座標: {coordinate_profile_label(self.case.coordinate_profile)}"
+            f"点群: {point_text} / 点群描画: {self.world_view.pointcloud_renderer_label()} / "
+            f"座標: {coordinate_profile_label(self.case.coordinate_profile)}"
             f"{alignment}{ray_source}{source_image_text}{mapping}"
         )
         self._append_log_once(
             "scene",
-            f"Loaded {len(self._world_groups)} camera groups, point sample={point_count}. "
+            f"Loaded {len(self._world_groups)} camera groups, points={point_text}. "
             f" World rays: {self._world_ray_source or 'transforms.json face +Z'}."
             f" Image rays: {self._image_ray_source or 'transforms.json'}."
             f" Source equirect images: {len(self._source_equirect_paths)}.",

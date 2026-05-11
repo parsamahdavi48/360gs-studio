@@ -7,7 +7,9 @@ from pathlib import Path
 
 import numpy as np
 from PySide6.QtCore import QPointF, QSize, Qt, Signal
-from PySide6.QtGui import QColor, QMouseEvent, QPainter, QPen, QPolygonF, QWheelEvent
+from PySide6.QtGui import QColor, QMouseEvent, QPainter, QPen, QPolygonF, QVector3D, QWheelEvent
+from PySide6.QtOpenGL import QOpenGLBuffer, QOpenGLShader, QOpenGLShaderProgram, QOpenGLVertexArrayObject
+from PySide6.QtOpenGLWidgets import QOpenGLWidget
 from PySide6.QtWidgets import QWidget
 
 from core.apriltag_geometry import tag_corners_sfm
@@ -16,6 +18,15 @@ from devtools.apriltag.cubemap_preview import CubemapFrameGroup, axis_preview_fr
 
 GRID_X_AXIS_COLOR = QColor(255, 92, 92)
 GRID_Z_AXIS_COLOR = QColor(90, 175, 245)
+DEFAULT_POINT_COLOR_RGBA = (145.0 / 255.0, 155.0 / 255.0, 164.0 / 255.0, 130.0 / 255.0)
+POINT_COLOR_ALPHA = 0.9
+
+_GL_COLOR_BUFFER_BIT = 0x00004000
+_GL_FLOAT = 0x1406
+_GL_POINTS = 0x0000
+_GL_BLEND = 0x0BE2
+_GL_SRC_ALPHA = 0x0302
+_GL_ONE_MINUS_SRC_ALPHA = 0x0303
 
 
 @dataclass(frozen=True)
@@ -58,8 +69,8 @@ _PLY_TYPES = {
 }
 
 
-def load_point_cloud_sample(path: Path, *, max_points: int = 80_000) -> PointCloudSample:
-    """Load a small deterministic sample of an ASCII or binary PLY point cloud."""
+def load_point_cloud_sample(path: Path, *, max_points: int | None = 80_000) -> PointCloudSample:
+    """Load a deterministic sample, or all points when ``max_points`` is unset."""
     with path.open("rb") as f:
         fmt, vertex_count, properties = _read_ply_header(f)
         if vertex_count <= 0:
@@ -187,7 +198,7 @@ def _sample_points(
     points: np.ndarray,
     colors: np.ndarray | None,
     *,
-    max_points: int,
+    max_points: int | None,
     source_count: int,
 ) -> PointCloudSample:
     points = np.asarray(points, dtype=np.float32)
@@ -197,7 +208,7 @@ def _sample_points(
     if not np.all(finite):
         points = points[finite]
         colors = colors[finite] if colors is not None else None
-    limit = max(0, int(max_points))
+    limit = 0 if max_points is None else max(0, int(max_points))
     if limit and len(points) > limit:
         indices = np.linspace(0, len(points) - 1, limit, dtype=np.int64)
         points = points[indices]
@@ -205,11 +216,92 @@ def _sample_points(
     return PointCloudSample(points, colors, source_count)
 
 
-class AprilTagWorldDebugView(QWidget):
+def _pointcloud_vertex_data(pointcloud: PointCloudSample | None) -> np.ndarray:
+    if pointcloud is None or len(pointcloud.points) == 0:
+        return np.empty((0, 7), dtype=np.float32)
+    points = np.asarray(pointcloud.points, dtype=np.float32).reshape(-1, 3)
+    data = np.empty((len(points), 7), dtype=np.float32)
+    data[:, :3] = points
+    if pointcloud.colors is None:
+        data[:, 3:] = np.asarray(DEFAULT_POINT_COLOR_RGBA, dtype=np.float32)
+    else:
+        colors = np.asarray(pointcloud.colors, dtype=np.float32).reshape(-1, 3)
+        if len(colors) != len(points):
+            raise ValueError("point cloud color count must match point count")
+        data[:, 3:6] = np.clip(colors, 0.0, 255.0) / 255.0
+        data[:, 6] = POINT_COLOR_ALPHA
+    return data
+
+
+class AprilTagWorldDebugView(QOpenGLWidget):
     """Orthographic world-space viewport synced with the AprilTag image preview."""
 
     camera_clicked = Signal(str)
     fixed_view_dragged = Signal(float, float)
+    gpu_pointcloud_failed = Signal()
+
+    _POINT_VERTEX_SHADER = """
+        #ifdef GL_ES
+        precision highp float;
+        #endif
+
+        attribute vec3 a_position;
+        attribute vec4 a_color;
+
+        uniform vec3 u_center;
+        uniform vec3 u_right;
+        uniform vec3 u_up;
+        uniform vec3 u_forward;
+        uniform vec2 u_viewport_size;
+        uniform float u_pixels_per_unit;
+        uniform float u_focal_px;
+        uniform float u_projection_mode;
+        uniform float u_point_size;
+
+        varying vec4 v_color;
+
+        void main() {
+            vec3 rel = a_position - u_center;
+            float view_x = dot(rel, u_right);
+            float view_y = dot(rel, u_up);
+            float depth = dot(rel, u_forward);
+            float screen_x = 0.0;
+            float screen_y = 0.0;
+            if (u_projection_mode > 0.5) {
+                if (depth <= 1.0e-8) {
+                    gl_Position = vec4(2.0, 2.0, 0.0, 1.0);
+                    gl_PointSize = 0.0;
+                    v_color = vec4(0.0, 0.0, 0.0, 0.0);
+                    return;
+                }
+                screen_x = u_focal_px * (view_x / depth);
+                screen_y = u_focal_px * (view_y / depth);
+            } else {
+                screen_x = view_x * u_pixels_per_unit;
+                screen_y = view_y * u_pixels_per_unit;
+            }
+            gl_Position = vec4(
+                screen_x / max(u_viewport_size.x * 0.5, 1.0),
+                screen_y / max(u_viewport_size.y * 0.5, 1.0),
+                0.0,
+                1.0
+            );
+            gl_PointSize = u_point_size;
+            v_color = a_color;
+        }
+    """
+
+    _POINT_FRAGMENT_SHADER = """
+        #ifdef GL_ES
+        precision mediump float;
+        #endif
+
+        varying vec4 v_color;
+
+        void main() {
+            gl_FragColor = v_color;
+        }
+    """
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -245,14 +337,46 @@ class AprilTagWorldDebugView(QWidget):
         self._press_pos: QPointF | None = None
         self._press_button: Qt.MouseButton | None = None
         self._user_navigated = False
+        self._gpu_pointcloud_enabled = True
+        self._gpu_failed = False
+        self._gpu_initialized = False
+        self._gpu_pointcloud_dirty = True
+        self._gpu_point_count = 0
+        self._gpu_functions = None
+        self._gpu_program: QOpenGLShaderProgram | None = None
+        self._gpu_vbo: QOpenGLBuffer | None = None
+        self._gpu_vao: QOpenGLVertexArrayObject | None = None
 
     def sizeHint(self) -> QSize:
         return QSize(520, 420)
 
     def set_pointcloud(self, pointcloud: PointCloudSample | None) -> None:
         self._pointcloud = pointcloud
+        self._gpu_pointcloud_dirty = True
         self._fit_scene_if_needed(force=not self._user_navigated)
         self.update()
+
+    def set_gpu_pointcloud_enabled(self, enabled: bool) -> None:
+        self._gpu_pointcloud_enabled = bool(enabled)
+        self.update()
+
+    def gpu_pointcloud_active(self) -> bool:
+        return (
+            self._gpu_pointcloud_enabled
+            and not self._gpu_failed
+            and self._gpu_initialized
+            and self._gpu_point_count > 0
+        )
+
+    def pointcloud_renderer_label(self) -> str:
+        if not self._gpu_pointcloud_enabled:
+            return "CPU"
+        if self._gpu_failed:
+            return "CPU fallback"
+        return "GPU"
+
+    def _pointcloud_gl_vertex_data(self) -> np.ndarray:
+        return _pointcloud_vertex_data(self._pointcloud)
 
     def set_groups(self, groups: tuple[CubemapFrameGroup, ...]) -> None:
         self._groups = groups
@@ -364,12 +488,56 @@ class AprilTagWorldDebugView(QWidget):
             self._tag_validation_distance_sfm = value if np.isfinite(value) and value > 0.0 else None
         self.update()
 
-    def paintEvent(self, _event) -> None:
+    def initializeGL(self) -> None:  # noqa: N802 - Qt API
+        try:
+            self._gpu_functions = self.context().functions()
+            self._gpu_functions.initializeOpenGLFunctions()
+            self._gpu_program = QOpenGLShaderProgram(self)
+            if not self._gpu_program.addShaderFromSourceCode(QOpenGLShader.ShaderTypeBit.Vertex, self._POINT_VERTEX_SHADER):
+                raise RuntimeError(self._gpu_program.log())
+            if not self._gpu_program.addShaderFromSourceCode(QOpenGLShader.ShaderTypeBit.Fragment, self._POINT_FRAGMENT_SHADER):
+                raise RuntimeError(self._gpu_program.log())
+            if not self._gpu_program.link():
+                raise RuntimeError(self._gpu_program.log())
+
+            self._gpu_vbo = QOpenGLBuffer(QOpenGLBuffer.Type.VertexBuffer)
+            if not self._gpu_vbo.create():
+                raise RuntimeError("Failed to create OpenGL point cloud vertex buffer")
+            self._gpu_vao = QOpenGLVertexArrayObject(self)
+            if not self._gpu_vao.create():
+                raise RuntimeError("Failed to create OpenGL point cloud vertex array")
+
+            self._gpu_vao.bind()
+            self._gpu_program.bind()
+            self._gpu_vbo.bind()
+            stride = 7 * 4
+            position_location = self._gpu_program.attributeLocation(b"a_position")
+            color_location = self._gpu_program.attributeLocation(b"a_color")
+            if position_location < 0 or color_location < 0:
+                raise RuntimeError("OpenGL point cloud shader attributes are missing")
+            self._gpu_program.enableAttributeArray(position_location)
+            self._gpu_program.setAttributeBuffer(position_location, _GL_FLOAT, 0, 3, stride)
+            self._gpu_program.enableAttributeArray(color_location)
+            self._gpu_program.setAttributeBuffer(color_location, _GL_FLOAT, 3 * 4, 4, stride)
+            self._gpu_vbo.release()
+            self._gpu_program.release()
+            self._gpu_vao.release()
+            self._gpu_initialized = True
+            self._gpu_pointcloud_dirty = True
+        except Exception:
+            self._gpu_failed = True
+            self._gpu_initialized = False
+            self.gpu_pointcloud_failed.emit()
+
+    def paintGL(self) -> None:  # noqa: N802 - Qt API
+        gpu_drawn = self._draw_pointcloud_gpu()
         painter = QPainter(self)
-        painter.fillRect(self.rect(), QColor(13, 17, 23))
+        if not gpu_drawn:
+            painter.fillRect(self.rect(), QColor(13, 17, 23))
         painter.setRenderHint(QPainter.Antialiasing, True)
         self._draw_grid(painter)
-        self._draw_pointcloud(painter)
+        if not gpu_drawn:
+            self._draw_pointcloud(painter)
         self._draw_cameras(painter)
         self._draw_tag(painter)
         self._draw_world_axes(painter)
@@ -710,10 +878,100 @@ class AprilTagWorldDebugView(QWidget):
             ("Z", np.array([0.0, 0.0, 1.0], dtype=np.float64), QColor(96, 170, 255)),
         )
 
+    def _upload_pointcloud_gl_data(self) -> None:
+        if self._gpu_failed or not self._gpu_initialized or self._gpu_vbo is None:
+            return
+        data = self._pointcloud_gl_vertex_data()
+        self._gpu_point_count = int(len(data))
+        self._gpu_vbo.bind()
+        if self._gpu_point_count:
+            self._gpu_vbo.allocate(data.tobytes(), int(data.nbytes))
+        else:
+            self._gpu_vbo.allocate(0)
+        self._gpu_vbo.release()
+        self._gpu_pointcloud_dirty = False
+
+    def _draw_pointcloud_gpu(self) -> bool:
+        if (
+            not self._gpu_pointcloud_enabled
+            or self._gpu_failed
+            or not self._gpu_initialized
+            or self._gpu_functions is None
+            or self._gpu_program is None
+            or self._gpu_vao is None
+            or self._gpu_vbo is None
+            or self._pointcloud is None
+            or len(self._pointcloud.points) == 0
+        ):
+            return False
+        if self._gpu_pointcloud_dirty:
+            try:
+                self._upload_pointcloud_gl_data()
+            except Exception:
+                self._gpu_failed = True
+                self.gpu_pointcloud_failed.emit()
+                return False
+        if self._gpu_point_count <= 0:
+            return False
+
+        dpr = max(1.0, float(self.devicePixelRatioF()))
+        full_w = max(1, int(round(self.width() * dpr)))
+        full_h = max(1, int(round(self.height() * dpr)))
+        self._gpu_functions.glViewport(0, 0, full_w, full_h)
+        self._gpu_functions.glClearColor(13.0 / 255.0, 17.0 / 255.0, 23.0 / 255.0, 1.0)
+        self._gpu_functions.glClear(_GL_COLOR_BUFFER_BIT)
+        self._gpu_functions.glEnable(_GL_BLEND)
+        self._gpu_functions.glBlendFunc(_GL_SRC_ALPHA, _GL_ONE_MINUS_SRC_ALPHA)
+
+        right, up, forward = self._view_basis()
+        if self._fixed_projection == "perspective":
+            size = float(max(1, min(full_w, full_h)))
+            focal = 0.5 * size / np.tan(np.deg2rad(self._fixed_perspective_fov_deg) * 0.5)
+            projection_mode = 1.0
+            pixels_per_unit = 1.0
+        else:
+            focal = 1.0
+            projection_mode = 0.0
+            pixels_per_unit = float(self._pixels_per_unit) * dpr
+
+        self._gpu_program.bind()
+        self._gpu_program.setUniformValue(
+            self._gpu_program.uniformLocation(b"u_center"),
+            QVector3D(float(self._view_center[0]), float(self._view_center[1]), float(self._view_center[2])),
+        )
+        self._gpu_program.setUniformValue(
+            self._gpu_program.uniformLocation(b"u_right"),
+            QVector3D(float(right[0]), float(right[1]), float(right[2])),
+        )
+        self._gpu_program.setUniformValue(
+            self._gpu_program.uniformLocation(b"u_up"),
+            QVector3D(float(up[0]), float(up[1]), float(up[2])),
+        )
+        self._gpu_program.setUniformValue(
+            self._gpu_program.uniformLocation(b"u_forward"),
+            QVector3D(float(forward[0]), float(forward[1]), float(forward[2])),
+        )
+        self._gpu_program.setUniformValue(self._gpu_program.uniformLocation(b"u_viewport_size"), float(full_w), float(full_h))
+        self._gpu_program.setUniformValue1f(self._gpu_program.uniformLocation(b"u_pixels_per_unit"), float(pixels_per_unit))
+        self._gpu_program.setUniformValue1f(self._gpu_program.uniformLocation(b"u_focal_px"), float(focal))
+        self._gpu_program.setUniformValue1f(self._gpu_program.uniformLocation(b"u_projection_mode"), float(projection_mode))
+        self._gpu_program.setUniformValue1f(self._gpu_program.uniformLocation(b"u_point_size"), max(1.0, 1.35 * dpr))
+        self._gpu_vao.bind()
+        self._gpu_functions.glDrawArrays(_GL_POINTS, 0, self._gpu_point_count)
+        self._gpu_vao.release()
+        self._gpu_program.release()
+        return True
+
     def _draw_pointcloud(self, painter: QPainter) -> None:
         if self._pointcloud is None or len(self._pointcloud.points) == 0:
             return
-        xy, depth = self._project(self._pointcloud.points)
+        points = self._pointcloud.points
+        colors = self._pointcloud.colors
+        if len(points) > 60_000:
+            indices = np.linspace(0, len(points) - 1, 60_000, dtype=np.int64)
+            points = points[indices]
+            colors = colors[indices] if colors is not None else None
+        xy, depth = self._project(points)
         margin = 8.0
         mask = (
             np.isfinite(xy).all(axis=1)
@@ -726,12 +984,27 @@ class AprilTagWorldDebugView(QWidget):
             return
         visible_xy = xy[mask]
         visible_depth = depth[mask]
+        visible_colors = colors[mask] if colors is not None else None
         if len(visible_xy) > 60_000:
             order = np.argsort(visible_depth)
             selected = order[np.linspace(0, len(order) - 1, 60_000, dtype=np.int64)]
             visible_xy = visible_xy[selected]
-        painter.setPen(QPen(QColor(145, 155, 164, 130), 1))
-        painter.drawPoints(QPolygonF([QPointF(float(x), float(y)) for x, y in visible_xy]))
+            visible_colors = visible_colors[selected] if visible_colors is not None else None
+        if visible_colors is None:
+            painter.setPen(QPen(QColor(145, 155, 164, 130), 1))
+            painter.drawPoints(QPolygonF([QPointF(float(x), float(y)) for x, y in visible_xy]))
+            return
+        quantized = (np.clip(visible_colors, 0, 255).astype(np.uint8) // 32) * 32 + 16
+        keys = (
+            quantized[:, 0].astype(np.uint32) << 16
+            | quantized[:, 1].astype(np.uint32) << 8
+            | quantized[:, 2].astype(np.uint32)
+        )
+        for key in np.unique(keys):
+            group_mask = keys == key
+            color = quantized[group_mask][0]
+            painter.setPen(QPen(QColor(int(color[0]), int(color[1]), int(color[2]), 190), 1))
+            painter.drawPoints(QPolygonF([QPointF(float(x), float(y)) for x, y in visible_xy[group_mask]]))
 
     def _draw_cameras(self, painter: QPainter) -> None:
         if not self._groups:
