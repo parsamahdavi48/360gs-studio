@@ -1839,6 +1839,12 @@ class CubemapStep(
             return _PROFILE_BRUSH
         return _PROFILE_POSTSHOT
 
+    def _uses_lichtfeld_final_correction(self) -> bool:
+        return self._is_metashape_method() and self._effective_profile() == _PROFILE_LICHTFELD
+
+    def _uses_spheresfm_lichtfeld_final_correction(self) -> bool:
+        return self._is_spheresfm_method() and self._spheresfm_effective_profile() == _PROFILE_LICHTFELD
+
     def _on_profile_changed(self, _index: int) -> None:
         p = self._profile_id()
         self._sync_profile_defaults(p)

@@ -18,13 +18,14 @@ generic Metashape export replacement.
 - Upstream file URL: https://raw.githubusercontent.com/tetraface/metashape_360_lfs/main/metashape_360_lfs.py
 - Pinned source revision at retrieval: `71434c86922a55c318d14b9d30ccdd2f4264898a` (`refs/heads/main`)
 - Retrieved on (UTC): `2026-02-08`
-- SHA256 (vendored file): `1506d9f55189d7710947eb104ed370ef6fca47f1b5ee7190f6d86e6b12ff0b71`
+- SHA256 (vendored file): `ed769f6a09504feb687eb092d86e22ec3dfa64cbb97ed6d7b8d2955c0a82ec61`
 
 Local divergence:
 
-- The old LichtFeld camera-only 180° Y pre-compensation was removed for the
-  current StechDrive/LichtFeld workflow. Current LichtFeld builds expect the
-  external `transforms.json` camera poses and `pointcloud.ply` points to arrive
-  in the same NeRF/Blender-style input world, then normalize camera axes and
-  point-cloud basis consistently during dataset import. Downstream Step 4 no
-  longer applies a separate LichtFeld final-orientation correction.
+- The LichtFeld camera-side 180° Y pre-compensation is retained because current
+  LichtFeld builds still apply an internal 180° Y rotation while importing
+  transform datasets. The source PLY path does not receive that same
+  camera-local rotation.
+- The vendored converter does not apply that 180° Y pre-compensation to PLY.
+  Downstream Step 4 applies its final orientation correction to `transforms.json`
+  and `pointcloud.ply` together so the final dataset remains a matched set.

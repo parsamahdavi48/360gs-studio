@@ -202,11 +202,25 @@ def transform_camera_matrix(transform: np.ndarray, fix_upside_down: bool = True)
         ], dtype=np.float64)
         transform = rot_x_pos90 @ transform
     
-    # Current LichtFeld expects this NeRF/Blender-style camera-to-world input
-    # and normalizes camera axes/world basis internally while applying the
-    # matching world-basis conversion to the point cloud. Older workflows needed
-    # a camera-only 180° Y pre-compensation here, but applying it now makes
-    # cameras disagree with the point cloud and generated cubemap image rays.
+    # Step 4's downstream LichtFeld output still needs this camera-side
+    # pre-compensation. Current LichtFeld builds convert transforms datasets by
+    # flipping OpenGL camera axes, then applying an internal 180° Y rotation to
+    # camera extrinsics. The source PLY import path does not receive this same
+    # camera-local rotation, so the JSON camera poses must be pre-compensated
+    # here and Step 4 applies its final orientation correction to JSON and PLY
+    # together.
+    cos_pi = -1.0
+    sin_pi = 0.0
+    y_rot_180 = np.array(
+        [
+            [cos_pi, 0, sin_pi, 0],
+            [0, 1, 0, 0],
+            [-sin_pi, 0, cos_pi, 0],
+            [0, 0, 0, 1],
+        ],
+        dtype=np.float64,
+    )
+    transform = y_rot_180 @ transform
     
     return transform
 
@@ -233,9 +247,8 @@ def get_applied_transform(fix_upside_down: bool = True) -> np.ndarray:
         ], dtype=np.float64)
         applied_transform[:3, :3] = rot_x_pos90 @ applied_transform[:3, :3]
     
-    # NOTE: No legacy Y-rotation here. The external contract is that JSON
-    # cameras and PLY points leave this converter in the same world frame;
-    # current LichtFeld normalizes both consistently during dataset import.
+    # NOTE: No Y-rotation here. The Y180 pre-compensation is camera-side only;
+    # applying it to the source PLY would double-compensate the point cloud.
     
     return applied_transform
 

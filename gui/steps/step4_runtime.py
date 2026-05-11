@@ -10,6 +10,7 @@ import sys
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
+import numpy as np
 from PySide6.QtCore import QProcess
 from PySide6.QtWidgets import QMessageBox
 
@@ -17,6 +18,7 @@ from core.scene_layout import scene_images_dir
 from gui import i18n
 from gui.steps.step4_contracts import (
     _GENERATED_POINTCLOUD_NAME,
+    _LICHTFELD_FINAL_CORRECTION,
     _PIPELINE_STAGE_CONVERSION,
     _PIPELINE_STAGE_SFM,
     _SUPPORTED_TRAINING_IMAGE_EXTS,
@@ -197,8 +199,12 @@ class Step4RuntimeMixin:
                         data = json.loads(transforms.read_text(encoding="utf-8"))
                         data["ply_file_path"] = dest_ply.name
                         transforms.write_text(json.dumps(data, indent=2), encoding="utf-8")
+                if self._uses_spheresfm_lichtfeld_final_correction():
+                    self._apply_lichtfeld_final_correction(self._spheresfm_cubemap_dir())
                 self._annotate_output_transforms(self._spheresfm_cubemap_dir())
             elif self._uses_spheresfm_3dgut_output():
+                if self._uses_spheresfm_lichtfeld_final_correction():
+                    self._apply_lichtfeld_final_correction(self._spheresfm_3dgut_dir())
                 self._annotate_output_transforms(self._spheresfm_3dgut_dir())
             self._write_export_settings()
             self._write_spheresfm_project_manifest()
@@ -218,6 +224,8 @@ class Step4RuntimeMixin:
             return
 
         if self._uses_direct_equirect_output():
+            if self._uses_lichtfeld_final_correction():
+                self._apply_lichtfeld_final_correction(self._direct_output_dir())
             self._annotate_output_transforms(self._direct_output_dir())
             self._write_export_settings()
             self._record_step4_runs(
@@ -241,6 +249,9 @@ class Step4RuntimeMixin:
                 data["ply_file_path"] = dest.name
                 transforms.write_text(json.dumps(data, indent=2), encoding="utf-8")
 
+        if self._uses_lichtfeld_final_correction():
+            self._apply_lichtfeld_final_correction(output)
+
         self._annotate_output_transforms(output)
 
         if self._writes_any_view_assets():
@@ -259,6 +270,110 @@ class Step4RuntimeMixin:
             return
         data["stechdrive_coordinate_contract"] = self._coordinate_contract_payload()
         transforms.write_text(json.dumps(data, indent=2), encoding="utf-8")
+
+    def _apply_lichtfeld_final_correction(self, output: Path) -> None:
+        transforms = output / "transforms.json"
+        if transforms.is_file():
+            self._transform_transforms_json(transforms, _LICHTFELD_FINAL_CORRECTION)
+
+        pointcloud = output / "pointcloud.ply"
+        if pointcloud.is_file():
+            self._transform_ply_points(pointcloud, _LICHTFELD_FINAL_CORRECTION)
+
+    @staticmethod
+    def _transform_transforms_json(path: Path, matrix: np.ndarray) -> None:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        frames = data.get("frames", [])
+        if not isinstance(frames, list):
+            return
+        for frame in frames:
+            if not isinstance(frame, dict) or "transform_matrix" not in frame:
+                continue
+            transform = np.array(frame["transform_matrix"], dtype=np.float64)
+            if transform.shape != (4, 4):
+                continue
+            frame["transform_matrix"] = (matrix @ transform).tolist()
+        path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+
+    @classmethod
+    def _transform_ply_points(cls, path: Path, matrix: np.ndarray) -> None:
+        if cls._transform_ply_with_open3d(path, matrix):
+            return
+        cls._transform_ascii_ply(path, matrix)
+
+    @staticmethod
+    def _transform_ply_with_open3d(path: Path, matrix: np.ndarray) -> bool:
+        try:
+            import open3d as o3d  # type: ignore
+        except Exception:
+            return False
+        try:
+            pc = o3d.io.read_point_cloud(str(path))
+            if pc.is_empty():
+                return False
+            pc.transform(matrix)
+            return bool(o3d.io.write_point_cloud(str(path), pc))
+        except Exception:
+            return False
+
+    @staticmethod
+    def _transform_ascii_ply(path: Path, matrix: np.ndarray) -> None:
+        text = path.read_text(encoding="ascii", errors="strict")
+        lines = text.splitlines(keepends=True)
+        try:
+            end_idx = next(i for i, line in enumerate(lines) if line.strip() == "end_header")
+        except StopIteration as e:
+            raise ValueError(f"PLY header is missing end_header: {path}") from e
+
+        header = lines[: end_idx + 1]
+        vertex_count: int | None = None
+        vertex_props: list[str] = []
+        in_vertex = False
+        for raw in header:
+            stripped = raw.strip()
+            parts = stripped.split()
+            if len(parts) >= 3 and parts[0] == "element":
+                in_vertex = parts[1] == "vertex"
+                if in_vertex:
+                    vertex_count = int(parts[2])
+                continue
+            if in_vertex and len(parts) >= 3 and parts[0] == "property":
+                vertex_props.append(parts[-1])
+
+        if vertex_count is None:
+            raise ValueError(f"PLY header is missing vertex element: {path}")
+
+        try:
+            x_idx = vertex_props.index("x")
+            y_idx = vertex_props.index("y")
+            z_idx = vertex_props.index("z")
+        except ValueError as e:
+            raise ValueError(f"PLY vertex element must contain x/y/z properties: {path}") from e
+
+        data_start = end_idx + 1
+        if len(lines) < data_start + vertex_count:
+            raise ValueError(f"PLY vertex data is truncated: {path}")
+
+        rot = matrix[:3, :3]
+        trans = matrix[:3, 3]
+        for i in range(vertex_count):
+            line_idx = data_start + i
+            line = lines[line_idx]
+            newline = "\n" if line.endswith("\n") else ""
+            tokens = line.split()
+            if len(tokens) < len(vertex_props):
+                raise ValueError(f"PLY vertex row is truncated at row {i}: {path}")
+            point = np.array(
+                [float(tokens[x_idx]), float(tokens[y_idx]), float(tokens[z_idx])],
+                dtype=np.float64,
+            )
+            transformed = rot @ point + trans
+            tokens[x_idx] = f"{transformed[0]:.9g}"
+            tokens[y_idx] = f"{transformed[1]:.9g}"
+            tokens[z_idx] = f"{transformed[2]:.9g}"
+            lines[line_idx] = " ".join(tokens) + newline
+
+        path.write_text("".join(lines), encoding="ascii")
 
     # -- プログレス --
 
