@@ -10,7 +10,7 @@ import cv2
 import numpy as np
 import pytest
 from PySide6.QtCore import QEventLoop, QTimer
-from PySide6.QtWidgets import QAbstractSpinBox, QApplication
+from PySide6.QtWidgets import QAbstractSpinBox, QApplication, QBoxLayout
 
 from core.apriltag_cubemap import CubemapViewMetadata, cubemap_view_params_for_group
 from core.apriltag_detection import detect_apriltags
@@ -484,6 +484,22 @@ def test_scene_viewer_ui_defaults_target_scene_validation_workflow(tmp_path: Pat
     assert window.copy_validation_scale_button.text() == "scaleコピー"
     assert not window.copy_validation_scale_button.isEnabled()
     assert not window.validation_status_label.wordWrap()
+    window.deleteLater()
+
+
+def test_scene_viewer_adapts_face_and_validation_controls_to_width(tmp_path: Path) -> None:
+    _app()
+    case_dir = _write_cube6_case(tmp_path)
+
+    window = AprilTagSceneViewerWindow(initial_case=case_dir)
+
+    window.resize(1500, 900)
+    window._sync_tools_layout_direction()
+    assert window.tools_layout.direction() == QBoxLayout.LeftToRight
+
+    window.resize(1000, 900)
+    window._sync_tools_layout_direction()
+    assert window.tools_layout.direction() == QBoxLayout.TopToBottom
     window.deleteLater()
 
 

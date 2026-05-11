@@ -15,6 +15,7 @@ from PySide6.QtCore import QObject, QSize, Qt, QThread, Signal, Slot
 from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import (
     QApplication,
+    QBoxLayout,
     QComboBox,
     QFileDialog,
     QFormLayout,
@@ -845,6 +846,7 @@ class AprilTagSceneViewerWindow(QWidget):
         self._tag_physical_size_m = 0.160
         self._last_validation_scale_text = ""
         self._last_status_detail = ""
+        self._tools_layout_is_horizontal = False
         self._validation_running = False
         self._validation_thread: QThread | None = None
         self._validation_worker: SyntheticScaleValidationWorker | None = None
@@ -901,8 +903,13 @@ class AprilTagSceneViewerWindow(QWidget):
         controls.addWidget(self.profile_combo)
         root.addLayout(controls)
 
-        face_box = QGroupBox("FOV 90° Face")
-        face_layout = QGridLayout(face_box)
+        self.tools_layout = QBoxLayout(QBoxLayout.LeftToRight)
+        self.tools_layout.setContentsMargins(0, 0, 0, 0)
+        self.tools_layout.setSpacing(8)
+        root.addLayout(self.tools_layout)
+
+        self.face_box = QGroupBox("FOV 90° Face")
+        face_layout = QGridLayout(self.face_box)
         face_layout.setContentsMargins(8, 8, 8, 8)
         face_layout.setHorizontalSpacing(6)
         face_layout.setVerticalSpacing(6)
@@ -912,9 +919,12 @@ class AprilTagSceneViewerWindow(QWidget):
             button.setCheckable(True)
             self.face_buttons[face] = button
             face_layout.addWidget(button, index // 4, index % 4)
-        root.addWidget(face_box)
+        self.tools_layout.addWidget(self.face_box)
 
-        root.addWidget(self._build_tag_controls())
+        self.tag_controls_box = self._build_tag_controls()
+        self.tools_layout.addWidget(self.tag_controls_box)
+        self.tools_layout.setStretch(0, 0)
+        self.tools_layout.setStretch(1, 1)
 
         result_row = QHBoxLayout()
         result_row.setContentsMargins(0, 0, 0, 0)
@@ -947,6 +957,21 @@ class AprilTagSceneViewerWindow(QWidget):
         self.log.setReadOnly(True)
         self.log.setMaximumHeight(120)
         root.addWidget(self.log)
+        self._sync_tools_layout_direction()
+
+    def resizeEvent(self, event) -> None:
+        super().resizeEvent(event)
+        if hasattr(self, "tools_layout"):
+            self._sync_tools_layout_direction()
+
+    def _sync_tools_layout_direction(self) -> None:
+        horizontal = self.width() >= 1280
+        if horizontal == self._tools_layout_is_horizontal:
+            return
+        self._tools_layout_is_horizontal = horizontal
+        self.tools_layout.setDirection(QBoxLayout.LeftToRight if horizontal else QBoxLayout.TopToBottom)
+        self.tools_layout.setStretch(0, 0)
+        self.tools_layout.setStretch(1, 1)
 
     def _build_tag_controls(self) -> QGroupBox:
         group = QGroupBox("AprilTag検証")
