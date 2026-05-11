@@ -109,7 +109,7 @@ This output uses the existing `<scene>/images/` and `<scene>/masks/`, then write
 
 ### Start With Cube6
 
-`Cube6` is the usual starting point. It writes the front, back, left, right, up, and down directions, which is a practical baseline for Postshot, Brush, and LichtFeld Studio.
+`Cube6` is the usual starting point. It writes the front, back, left, right, up, and down directions, which is a practical baseline for Postshot, Brush, and LichtFeld Studio. Generated face suffixes use the standard cubemap axis names: `px`, `nx`, `py`, `ny`, `pz`, and `nz`.
 
 The default 45° `Yaw Offset` is recommended. For unstabilized dual-fisheye 360° footage, stitch seams often sit around the 25% and 75% horizontal positions of the equirectangular image. A 45° offset keeps those seams away from the center of the cubemap faces.
 

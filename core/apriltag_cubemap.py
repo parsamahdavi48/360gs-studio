@@ -29,7 +29,17 @@ _FACE_VIEW_PARAMS: dict[str, tuple[float, float]] = {
 }
 _GUI_CUBE6_VIEW_PARAMS: dict[str, tuple[float, float]] = {
     # Mirrors gui.cubemap.view_config._CUBE6_VIEW_CELLS with four yaw slots:
-    # px=slot0, nz=slot1, nx=slot2, pz=slot3, top/bottom=slot3.
+    # px=slot0, nz=slot1, nx=slot2, pz=slot3, py/ny=slot3.
+    "px": (0.0, 0.0),
+    "nz": (90.0, 0.0),
+    "nx": (180.0, 0.0),
+    "pz": (-90.0, 0.0),
+    "py": (-90.0, -90.0),
+    "ny": (-90.0, 90.0),
+}
+_LEGACY_GUI_CUBE6_VIEW_PARAMS: dict[str, tuple[float, float]] = {
+    # Older GUI Cube6 output used top/bottom filenames. Keep this only for
+    # reading existing scenes; new GUI output uses py/ny.
     "px": (0.0, 0.0),
     "nz": (90.0, 0.0),
     "nx": (180.0, 0.0),
@@ -65,7 +75,13 @@ class CubemapViewMetadata:
 
 _GENERATED_CUBEMAP_LAYOUTS = (
     _GeneratedCubemapLayout("standard", _FACE_VIEW_PARAMS, _FACE_VIEW_PARAMS, _REFERENCE_FACE_ORDER),
-    _GeneratedCubemapLayout("gui_cube6", _GUI_CUBE6_VIEW_PARAMS, _GUI_CUBE6_VIEW_PARAMS, ("bottom", "px", "nz", "nx", "pz", "top")),
+    _GeneratedCubemapLayout("gui_cube6", _GUI_CUBE6_VIEW_PARAMS, _GUI_CUBE6_VIEW_PARAMS, ("py", "px", "nz", "nx", "pz", "ny")),
+    _GeneratedCubemapLayout(
+        "gui_cube6_legacy_top_bottom",
+        _LEGACY_GUI_CUBE6_VIEW_PARAMS,
+        _LEGACY_GUI_CUBE6_VIEW_PARAMS,
+        ("bottom", "px", "nz", "nx", "pz", "top"),
+    ),
 )
 _IMAGE_POSE_PROFILE_LICHTFELD_CUBE6 = "lichtfeld_cube6"
 _SOURCE_EQUIRECT_LOCAL_FROM_LICHTFELD_LOCAL = np.diag([1.0, -1.0, -1.0])
@@ -355,9 +371,13 @@ def _match_generated_cubemap_layout(
 
     candidates: list[_GeneratedCubemapMatch] = []
     for layout in _candidate_generated_layouts(view_params):
+        layout_faces = set(layout.image_view_params)
+        layout_vertical_faces = next((pair for pair in _VERTICAL_FACE_SETS if pair.issubset(layout_faces)), None)
+        if layout_vertical_faces is None or not layout_vertical_faces.issubset(faces):
+            continue
         image_rotations = _layout_image_rotations(layout, faces)
         export_rotations = _layout_export_rotations(layout, faces)
-        if len(image_rotations) < 4 or set(image_rotations) != set(export_rotations):
+        if len(image_rotations) < 6 or set(image_rotations) != set(export_rotations):
             continue
         transform_mode = _match_layout_mode(face_frames, layout, export_rotations, mode="transform")
         if transform_mode is not None:

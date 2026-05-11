@@ -28,11 +28,10 @@ _STANDARD_FACE_VIEW_PARAMS: dict[str, tuple[float, float]] = {
     "px": (90.0, 0.0),
     "nz": (180.0, 0.0),
     "nx": (-90.0, 0.0),
-    # GUI Cube6 output names currently follow the generated pitch rows:
-    # top is the +90 pitch face, bottom is the -90 pitch face.
+    # Legacy GUI Cube6 output used top/bottom names with generated pitch rows.
+    # Keep them for old scenes; new GUI output uses py/ny.
     "top": (0.0, 90.0),
     "bottom": (0.0, -90.0),
-    # Legacy/default converter names.
     "py": (0.0, -90.0),
     "ny": (0.0, 90.0),
 }

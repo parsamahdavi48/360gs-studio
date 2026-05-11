@@ -226,12 +226,12 @@ def _write_gui_cube6_generated_transforms(path: Path) -> Path:
     image_dir = path.parent / "images"
     image_dir.mkdir(parents=True, exist_ok=True)
     views = (
-        ("bottom", -90.0, -90.0),
+        ("py", -90.0, -90.0),
         ("px", 0.0, 0.0),
         ("nz", 90.0, 0.0),
         ("nx", 180.0, 0.0),
         ("pz", -90.0, 0.0),
-        ("top", -90.0, 90.0),
+        ("ny", -90.0, 90.0),
     )
     frames = []
     for name, yaw, pitch in views:
