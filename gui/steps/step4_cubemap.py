@@ -1024,10 +1024,15 @@ class CubemapStep(
             self.view_config.apply_settings_snapshot(view_config)
 
         conversion = settings.get("conversion") if isinstance(settings.get("conversion"), dict) else {}
-        if "write_images" in conversion:
-            self.export_images_cb.setChecked(bool(conversion.get("write_images")))
-        if "write_masks" in conversion:
-            self.export_masks_cb.setChecked(bool(conversion.get("write_masks")))
+        restore_view_export_targets = not self._settings_uses_direct_source_output(settings, conversion)
+        if restore_view_export_targets:
+            if "write_images" in conversion:
+                self.export_images_cb.setChecked(bool(conversion.get("write_images")))
+            if "write_masks" in conversion:
+                self.export_masks_cb.setChecked(bool(conversion.get("write_masks")))
+        else:
+            self.export_images_cb.setChecked(True)
+            self.export_masks_cb.setChecked(True)
         if "yaw_offset_per_frame" in conversion and not self._is_colmap_method():
             try:
                 self.yaw_per_frame_edit.setValue(float(conversion.get("yaw_offset_per_frame")))
@@ -1043,6 +1048,11 @@ class CubemapStep(
             self.jpg_quality_edit.setText(str(conversion.get("jpg_quality")))
         if "invert_masks" in conversion:
             self.invert_masks_cb.setChecked(bool(conversion.get("invert_masks")))
+
+    @staticmethod
+    def _settings_uses_direct_source_output(settings: dict, conversion: dict) -> bool:
+        output_shape = str(settings.get("output_shape", "")).strip()
+        return output_shape == _OUTPUT_SHAPE_EQUIRECT_3DGUT or conversion.get("uses_source_images") is True
 
     def _restore_route_settings(self, scene: Path, settings: dict) -> None:
         output_shape = str(settings.get("output_shape", "")).strip()

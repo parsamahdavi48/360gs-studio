@@ -1950,6 +1950,24 @@ def test_lichtfeld_3dgut_direct_mode_restores_projection_export_targets(tmp_path
     assert step.cubemap_path_summary_value.full_text() == "output/"
 
 
+def test_lichtfeld_3dgut_saved_settings_restore_default_projection_export_targets(tmp_path: Path) -> None:
+    step = _ready_step(tmp_path, metashape_inputs=True)
+
+    direct_idx = step.output_shape_combo.findData("equirect_3dgut")
+    assert direct_idx >= 0
+    step.output_shape_combo.setCurrentIndex(direct_idx)
+    step._write_export_settings()
+
+    restored = CubemapStep(Path.cwd())
+    restored.set_scene_dir(str(tmp_path))
+    projected_idx = restored.output_shape_combo.findData("projected")
+    assert projected_idx >= 0
+    restored.output_shape_combo.setCurrentIndex(projected_idx)
+
+    assert restored.export_images_cb.isChecked() is True
+    assert restored.export_masks_cb.isChecked() is True
+
+
 def test_switching_profile_away_from_lichtfeld_exits_3dgut_direct_mode(tmp_path: Path) -> None:
     step = _ready_step(tmp_path, metashape_inputs=True)
     direct_idx = step.output_shape_combo.findData("equirect_3dgut")
