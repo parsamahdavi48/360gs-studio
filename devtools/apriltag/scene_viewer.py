@@ -659,28 +659,19 @@ def _source_equirect_preview_params(
     ray_basis_mode: str,
     anchor_params: PerspectiveParams | None = None,
 ) -> PerspectiveParams:
-    """Return source-panorama view params for JSONFace/both preview modes.
+    """Return the camera params used by source-panorama image previews.
 
-    After LichtFeld's Y-180 pre-compensation and the final display correction,
-    side-face center rays line up but the JSONFace tangent frame is rolled 180
-    degrees from the source panorama image remap. Keep the image preview fix
-    separate from the world pose: the left frustum stays on ``params`` while the
-    source panorama view reflects vertical screen motion around the active face.
+    The right image view must show the same world rays as the left frustum and
+    right pointcloud view. Raster orientation can be unusual for some Cube6
+    faces; do not compensate by changing the camera direction here.
     """
-    if ray_basis_mode == RAY_BASIS_IMAGE or active_face not in SIDE_FACE_ORDER:
-        return params
-    pitch_deg = float(params.pitch_deg)
-    if anchor_params is not None:
-        pitch_deg = 2.0 * float(anchor_params.pitch_deg) - pitch_deg
-    return replace(
-        params,
-        pitch_deg=clamp_pitch_deg(pitch_deg),
-        roll_deg=normalize_yaw_deg(float(params.roll_deg) + 180.0),
-    )
+    _ = active_face, ray_basis_mode, anchor_params
+    return params
 
 
 def _uses_source_preview_screen_axis_adapter(active_face: str, ray_basis_mode: str) -> bool:
-    return ray_basis_mode != RAY_BASIS_IMAGE and active_face in SIDE_FACE_ORDER
+    _ = active_face, ray_basis_mode
+    return False
 
 
 def _params_from_grab_drag(
@@ -2374,14 +2365,7 @@ class AprilTagSceneViewerWindow(QWidget):
         self._update_status()
 
     def _world_view_preview_params(self, world_group: CubemapFrameGroup | None) -> PerspectiveParams:
-        if world_group is None:
-            return self._params
-        mode = str(self.mode_combo.currentData() or RIGHT_VIEW_POINTCLOUD)
-        if mode not in RIGHT_VIEW_IMAGE_MODES:
-            return self._params
-        use_source_equirect, use_reconstructed_cube6 = self._right_image_projection_modes(mode, world_group)
-        if use_source_equirect or use_reconstructed_cube6:
-            return self._source_projection_preview_params(world_group)
+        _ = world_group
         return self._params
 
     def _right_image_projection_modes(self, mode: str, world_group: CubemapFrameGroup | None) -> tuple[bool, bool]:
