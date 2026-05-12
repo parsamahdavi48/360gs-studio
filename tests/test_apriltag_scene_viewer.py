@@ -900,7 +900,15 @@ def test_lichtfeld_final_source_preview_matches_display_pointcloud_direction(tmp
     source_path, source_rotation = source_equirect
     display_matrix = world_display_matrix(window.case.coordinate_profile)
     preview_to_sfm = np.linalg.inv(display_matrix[:3, :3]).T
-    expected_mapping = {
+    expected_source_mapping = {
+        "pz": "pz",
+        "px": "px",
+        "nz": "nz",
+        "nx": "nx",
+        "py": "py",
+        "ny": "ny",
+    }
+    expected_image_mapping = {
         "pz": "pz",
         "px": "px",
         "nz": "nz",
@@ -909,7 +917,7 @@ def test_lichtfeld_final_source_preview_matches_display_pointcloud_direction(tmp
         "ny": "py",
     }
     actual_mapping: dict[str, str] = {}
-    for face, expected_face in expected_mapping.items():
+    for face, expected_face in expected_image_mapping.items():
         ray = face_forward_ray(world_group, face)
         assert ray is not None
         source_local = ray @ preview_to_sfm @ source_rotation
@@ -918,7 +926,7 @@ def test_lichtfeld_final_source_preview_matches_display_pointcloud_direction(tmp
         assert closest is not None
         assert closest[0] == expected_face
         assert closest[1] < 1e-4
-    assert actual_mapping == expected_mapping
+    assert actual_mapping == expected_source_mapping
 
     source = imread_unicode(source_path)
     assert source is not None
@@ -946,6 +954,43 @@ def test_lichtfeld_final_source_preview_matches_display_pointcloud_direction(tmp
     source_forward_color = np.array([127.5, 127.5, 255.0], dtype=np.float64)
     assert np.allclose(source_preview[64, 64].astype(np.float64), source_forward_color, atol=4.0)
     assert np.allclose(reconstructed_preview[64, 64], source_preview[64, 64], atol=4.0)
+    window.deleteLater()
+
+
+def test_lichtfeld_final_source_preview_keeps_saved_raster_orientation(tmp_path: Path) -> None:
+    case_dir = _write_lichtfeld_final_direction_case(tmp_path)
+    _app()
+    window = AprilTagSceneViewerWindow(initial_case=case_dir)
+    window.set_active_face("pz")
+    world_group = window.selected_world_group()
+    raw_group = window.selected_raw_group()
+    source_equirect = window._source_equirect_for_group(world_group)
+
+    assert world_group is not None
+    assert raw_group is not None
+    assert source_equirect is not None
+    source_path, source_rotation = source_equirect
+    source = imread_unicode(source_path)
+    target = imread_unicode(raw_group.frames_by_face["pz"].image_path)
+    assert source is not None
+    assert target is not None
+
+    params = window._source_projection_preview_params(world_group)
+    rendered = render_source_equirect_perspective(
+        source,
+        source_rotation,
+        yaw_deg=params.yaw_deg,
+        pitch_deg=params.pitch_deg,
+        roll_deg=params.roll_deg,
+        fov_deg=params.fov_deg,
+        output_size=target.shape[0],
+        sfm_to_preview_matrix=world_display_matrix(window.case.coordinate_profile),
+    )
+
+    direct_error = float(np.mean(np.abs(rendered.astype(np.int16) - target.astype(np.int16))))
+    mirrored_error = float(np.mean(np.abs(rendered.astype(np.int16) - target[:, ::-1].astype(np.int16))))
+    assert direct_error < 4.0
+    assert direct_error * 4.0 < mirrored_error
     window.deleteLater()
 
 
@@ -1058,7 +1103,7 @@ def test_current_case_source_equirect_rotation_maps_json_faces_to_source_centers
 
     code_chain_rotation = source_equirect_base_rotation(raw_group, cubemap_view_params=metadata)
     assert code_chain_rotation is not None
-    source_local_from_final_lichtfeld_raster = np.diag([-1.0, 1.0, 1.0])
+    source_local_from_final_lichtfeld_raster = np.diag([-1.0, -1.0, 1.0])
     assert np.allclose(source_rotation, code_chain_rotation @ source_local_from_final_lichtfeld_raster, atol=1e-6)
 
     display_matrix = world_display_matrix(case.coordinate_profile)
@@ -1077,8 +1122,8 @@ def test_current_case_source_equirect_rotation_maps_json_faces_to_source_centers
         "px": "px",
         "nx": "nx",
         "nz": "nz",
-        "top": "bottom",
-        "bottom": "top",
+        "top": "top",
+        "bottom": "bottom",
     }
     window.deleteLater()
 
@@ -1106,8 +1151,8 @@ def test_current_case_source_equirect_center_pixels_match_expected_faces() -> No
         "px": "px",
         "nx": "nx",
         "nz": "nz",
-        "top": "bottom",
-        "bottom": "top",
+        "top": "top",
+        "bottom": "bottom",
     }
     for face, expected_face in expected_mapping.items():
         target_frame = raw_group.frames_by_face.get(expected_face)
@@ -1156,8 +1201,8 @@ def test_current_case_source_equirect_faces_keep_frustum_direction() -> None:
         "px": "px",
         "nx": "nx",
         "nz": "nz",
-        "top": "bottom",
-        "bottom": "top",
+        "top": "top",
+        "bottom": "bottom",
     }
     for face, expected_face in expected_mapping.items():
         target_frame = raw_group.frames_by_face.get(expected_face)
@@ -1722,7 +1767,7 @@ def test_current_case_image_preview_uses_source_equirect_when_available() -> Non
     assert raw_group is not None
     expected_rotation = source_equirect_base_rotation(raw_group, cubemap_view_params=case_cubemap_view_metadata(case))
     assert expected_rotation is not None
-    source_local_from_final_lichtfeld_raster = np.diag([-1.0, 1.0, 1.0])
+    source_local_from_final_lichtfeld_raster = np.diag([-1.0, -1.0, 1.0])
     assert np.allclose(source_rotation, expected_rotation @ source_local_from_final_lichtfeld_raster, atol=1e-6)
 
     source = imread_unicode(source_path)

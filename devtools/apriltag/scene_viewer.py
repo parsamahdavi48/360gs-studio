@@ -109,7 +109,7 @@ LICHTFELD_IMAGE_RAY_DISPLAY_PROFILES = {
 }
 SOURCE_EQUIRECT_IMAGE_EXTS = (".jpg", ".jpeg", ".png", ".tif", ".tiff", ".webp", ".bmp")
 SOURCE_EQUIRECT_LOCAL_FROM_LICHTFELD_LOCAL = np.diag([1.0, -1.0, -1.0])
-SOURCE_EQUIRECT_LOCAL_FROM_LICHTFELD_FINAL_RASTER = np.diag([-1.0, 1.0, 1.0])
+SOURCE_EQUIRECT_LOCAL_FROM_LICHTFELD_FINAL_RASTER = np.diag([-1.0, -1.0, 1.0])
 SYNTHETIC_IMAGE_RASTER_Y_FLIP = np.diag([1.0, -1.0, 1.0])
 SYNTHETIC_OUTPUT_FACE_ROTATION_FACE = {
     "top": "bottom",
@@ -676,7 +676,7 @@ def _source_raster_frame_group(
     position = group.reference_frame.camera_position_sfm
     frames: dict[str, PinholeFrame] = {}
     for face, frame in group.frames_by_face.items():
-        face_rotation = face_rotations.get(face)
+        face_rotation = face_rotations.get(_synthetic_output_face_rotation_face(face))
         if face_rotation is None:
             continue
         transform = np.array(frame.transform_matrix, dtype=np.float64, copy=True)
@@ -2472,12 +2472,21 @@ class AprilTagSceneViewerWindow(QWidget):
         )
 
     def _source_projection_preview_params(self, world_group: CubemapFrameGroup) -> PerspectiveParams:
-        return _source_equirect_preview_params(
+        params = _source_equirect_preview_params(
             self._params,
             self._active_face,
             self._ray_basis_mode(),
             self._source_projection_anchor_params(world_group),
         )
+        if (
+            self.case is not None
+            and self._active_face in SIDE_FACE_ORDER
+            and _case_has_lichtfeld_final_orientation(self.case)
+            and normalize_coordinate_profile(self.case.coordinate_profile) in LICHTFELD_IMAGE_RAY_DISPLAY_PROFILES
+            and self._source_equirect_rotation_for_group(world_group) is not None
+        ):
+            return replace(params, roll_deg=float(params.roll_deg) + 180.0)
+        return params
 
     def _sync_point_view(self, group: CubemapFrameGroup) -> None:
         camera, right, up, forward = camera_pose_from_perspective_params(group, self._params)
