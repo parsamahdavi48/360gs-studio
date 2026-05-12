@@ -11,6 +11,7 @@ from PIL import Image
 from PySide6.QtCore import QPoint
 from PySide6.QtWidgets import QApplication, QMessageBox
 
+import core.orientation_correction as orientation_correction
 import gui.steps.step4_cubemap as step4_cubemap
 from core.scene_layout import (
     project_path,
@@ -380,6 +381,7 @@ def test_cubemap_step_uses_tab_path_summaries(tmp_path: Path) -> None:
     assert "--skip-masks" not in cmd
     assert "--duplicate" not in cmd
     assert "--no_transform" in cmd
+    assert cmd[cmd.index("--final-orientation") + 1] == "lichtfeld"
     assert step.axis_transform_combo.currentData() == "none"
     assert step.ms_use_ply_cb.isChecked()
 
@@ -1015,6 +1017,7 @@ def test_colmap_export_method_uses_image_only_conversion(tmp_path: Path) -> None
     assert cmd[cmd.index("--yaw-offset-per-frame") + 1] == "0"
     assert "--no_transform" not in cmd
     assert "--brush" not in cmd
+    assert "--final-orientation" not in cmd
     assert "--no_image" not in cmd
     assert "--skip-images" not in cmd
     assert "--skip-masks" not in cmd
@@ -1273,6 +1276,7 @@ def test_spheresfm_method_can_queue_projected_cubemap_export(tmp_path: Path) -> 
     assert cubemap_cmd[cubemap_cmd.index("--image-dir") + 1] == str(images)
     assert cubemap_cmd[cubemap_cmd.index("--mask_dir") + 1] == str(masks)
     assert "--no_transform" in cubemap_cmd
+    assert cubemap_cmd[cubemap_cmd.index("--final-orientation") + 1] == "lichtfeld"
 
 
 def test_spheresfm_method_can_queue_sfm_only(tmp_path: Path) -> None:
@@ -1782,6 +1786,7 @@ def test_manual_axis_change_switches_to_custom_profile(tmp_path: Path) -> None:
     cmd = step._build_cubemap_cmd()
     assert "--brush" in cmd
     assert "--no_transform" not in cmd
+    assert "--final-orientation" not in cmd
 
 
 def test_manual_metashape_ply_toggle_switches_to_custom_profile(tmp_path: Path) -> None:
@@ -2714,6 +2719,10 @@ def test_cubemap_finalize_writes_export_settings(tmp_path: Path) -> None:
     assert settings["view_config"]["cube6_drop_bottom"] is False
     assert settings["metashape_import"]["use_ply"] is True
     assert settings["output_files"]["settings"] == "_stechdrive/step4/export_settings.json"
+    assert settings["output_files"]["pointcloud"] == "pointcloud.ply"
+    assert settings["postprocess"]["final_orientation"] == "lichtfeld"
+    assert settings["postprocess"]["final_orientation_stage"] == "cubemap_cli"
+    assert settings["postprocess"]["lichtfeld_final_orientation_stage"] == "cubemap_cli"
     assert settings["view_config"]["views"]
     assert settings["views_config_path"] == "_stechdrive/step4/views_config.json"
     assert settings["views_config_snapshot"] == json.loads(
@@ -2729,7 +2738,7 @@ def test_lichtfeld_3dgut_finalize_writes_scene_dataset_settings_and_correction(
     direct_idx = step.output_shape_combo.findData("equirect_3dgut")
     assert direct_idx >= 0
     step.output_shape_combo.setCurrentIndex(direct_idx)
-    monkeypatch.setattr(CubemapStep, "_transform_ply_with_open3d", staticmethod(lambda _path, _matrix: False))
+    monkeypatch.setattr(orientation_correction, "transform_ply_with_open3d", lambda _path, _matrix: False)
     output = tmp_path / "output"
     output.mkdir()
     _write_ascii_ply(output / "pointcloud.ply", [(1.0, 2.0, 3.0)])
@@ -2757,8 +2766,11 @@ def test_lichtfeld_3dgut_finalize_writes_scene_dataset_settings_and_correction(
     assert settings["conversion"]["write_masks"] is False
     assert settings["conversion"]["uses_source_images"] is True
     assert settings["output_files"]["pointcloud"] == "pointcloud.ply"
+    assert settings["postprocess"]["final_orientation"] == "lichtfeld"
+    assert settings["postprocess"]["final_orientation_stage"] == "direct_finalize"
 
     data = json.loads((output / "transforms.json").read_text(encoding="utf-8"))
+    assert data["postprocess"]["final_orientation_stage"] == "direct_finalize"
     corrected = np.array(data["frames"][0]["transform_matrix"])
     expected = np.array(
         [
@@ -2773,22 +2785,39 @@ def test_lichtfeld_3dgut_finalize_writes_scene_dataset_settings_and_correction(
     assert np.allclose(points[0], [3.0, -2.0, 1.0])
 
 
-def test_lichtfeld_finalize_applies_final_orientation_correction(tmp_path: Path, monkeypatch) -> None:
+def test_lichtfeld_projected_finalize_keeps_cli_final_orientation_outputs(tmp_path: Path) -> None:
     _write_ascii_ply(tmp_path / "pointcloud.ply", [(9.0, 9.0, 9.0)])
     metashape_work = step4_meta_dir(tmp_path) / "work" / "metashape_import"
     metashape_work.mkdir(parents=True)
     _write_ascii_ply(metashape_work / "pointcloud.ply", [(1.0, 2.0, 3.0)])
     step = CubemapStep(Path.cwd())
     step.set_scene_dir(str(tmp_path))
-    monkeypatch.setattr(CubemapStep, "_transform_ply_with_open3d", staticmethod(lambda _path, _matrix: False))
 
     output = tmp_path / "output"
     output.mkdir()
+    _write_ascii_ply(output / "pointcloud.ply", [(3.0, -2.0, 1.0)])
     (output / "transforms.json").write_text(
         json.dumps(
             {
                 "camera_model": "SIMPLE_PINHOLE",
-                "frames": [{"file_path": "images/frame_front.jpg", "transform_matrix": np.eye(4).tolist()}],
+                "ply_file_path": "pointcloud.ply",
+                "frames": [
+                    {
+                        "file_path": "images/frame_front.jpg",
+                        "transform_matrix": [
+                            [0.0, 0.0, 1.0, 0.0],
+                            [0.0, -1.0, 0.0, 0.0],
+                            [1.0, 0.0, 0.0, 0.0],
+                            [0.0, 0.0, 0.0, 1.0],
+                        ],
+                    }
+                ],
+                "postprocess": {
+                    "final_orientation": "lichtfeld",
+                    "final_orientation_stage": "cubemap_cli",
+                    "lichtfeld_final_orientation_correction": True,
+                    "lichtfeld_final_orientation_stage": "cubemap_cli",
+                },
             }
         ),
         encoding="utf-8",
@@ -2807,9 +2836,13 @@ def test_lichtfeld_finalize_applies_final_orientation_correction(tmp_path: Path,
         ]
     )
     assert np.allclose(corrected, expected)
+    assert data["ply_file_path"] == "pointcloud.ply"
+    assert data["postprocess"]["final_orientation_stage"] == "cubemap_cli"
 
     points, _colors = read_ply_points(output / "pointcloud.ply")
     assert np.allclose(points[0], [3.0, -2.0, 1.0])
 
     settings = json.loads(step4_export_settings_path(tmp_path).read_text(encoding="utf-8"))
     assert settings["postprocess"]["lichtfeld_final_orientation_correction"] is True
+    assert settings["postprocess"]["final_orientation"] == "lichtfeld"
+    assert settings["postprocess"]["final_orientation_stage"] == "cubemap_cli"

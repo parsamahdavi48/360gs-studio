@@ -37,8 +37,10 @@ the GUI depends on.
   AND-style unless a tool explicitly documents a different operation.
 - Cubemap and COLMAP exports must preserve coordinate profile semantics:
   Postshot uses the default cubemap transform, Brush uses the Brush transform,
-  and LichtFeld direct 3DGUT uses equirectangular inputs without cubemap
-  conversion.
+  and LichtFeld cubemap export writes final-orientation-corrected
+  `transforms.json` plus `pointcloud.ply` from the Cubemap CLI. LichtFeld direct
+  3DGUT uses equirectangular inputs without cubemap conversion and applies the
+  same final orientation correction while creating the direct dataset.
 
 ## GUI Contracts
 

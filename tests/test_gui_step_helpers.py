@@ -106,6 +106,7 @@ def test_cubemap_command_builder_writes_views_and_flags(tmp_path: Path) -> None:
             output_format="jpg",
             output_bit_depth="8",
             jpg_quality=92,
+            final_orientation="lichtfeld",
             image_dir=tmp_path / "images",
             mask_dir=tmp_path / "masks",
         )
@@ -117,6 +118,7 @@ def test_cubemap_command_builder_writes_views_and_flags(tmp_path: Path) -> None:
     assert cmd[cmd.index("--mask_dir") + 1] == str(tmp_path / "masks")
     assert "--skip-images" in cmd
     assert "--skip-masks" not in cmd
+    assert cmd[cmd.index("--final-orientation") + 1] == "lichtfeld"
     assert cmd[cmd.index("--jpg-quality") + 1] == "92"
 
 

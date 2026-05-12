@@ -279,7 +279,11 @@ def write_external_step4_settings(scene: Path, import_id: str, output_info: dict
             "export_colmap": False,
         },
         "postprocess": {
+            "final_orientation": "none",
+            "final_orientation_stage": "none",
+            "final_orientation_matrix": None,
             "lichtfeld_final_orientation_correction": False,
+            "lichtfeld_final_orientation_stage": "none",
             "lichtfeld_final_orientation_matrix": None,
         },
         "metashape_import": {

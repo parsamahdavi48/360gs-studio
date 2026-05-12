@@ -6,6 +6,13 @@ import json
 from datetime import UTC, datetime
 from pathlib import Path
 
+from core.orientation_correction import (
+    FINAL_ORIENTATION_LICHTFELD,
+    FINAL_ORIENTATION_NONE,
+    FINAL_ORIENTATION_STAGE_CUBEMAP_CLI,
+    FINAL_ORIENTATION_STAGE_DIRECT_FINALIZE,
+    FINAL_ORIENTATION_STAGE_NONE,
+)
 from core.scene_layout import STEP4_META_DIR_NAME, STEP4_VIEWS_CONFIG_JSON, step4_export_settings_path, step4_meta_dir
 from core.scene_project import (
     append_step4_dataset_run,
@@ -79,6 +86,21 @@ class Step4ManifestMixin:
         writes_view_images = route_uses_view_export and self._writes_images()
         writes_view_masks = route_uses_view_export and self._writes_masks()
         portable_dataset_kind = "3dgut" if direct_source_output else "projection_views"
+        uses_lichtfeld_final_orientation = (
+            self._uses_lichtfeld_final_correction() or self._uses_spheresfm_lichtfeld_final_correction()
+        )
+        if not uses_lichtfeld_final_orientation:
+            final_orientation = FINAL_ORIENTATION_NONE
+            final_orientation_stage = FINAL_ORIENTATION_STAGE_NONE
+        elif direct_source_output:
+            final_orientation = FINAL_ORIENTATION_LICHTFELD
+            final_orientation_stage = FINAL_ORIENTATION_STAGE_DIRECT_FINALIZE
+        elif route_uses_view_export:
+            final_orientation = FINAL_ORIENTATION_LICHTFELD
+            final_orientation_stage = FINAL_ORIENTATION_STAGE_CUBEMAP_CLI
+        else:
+            final_orientation = FINAL_ORIENTATION_LICHTFELD
+            final_orientation_stage = FINAL_ORIENTATION_STAGE_NONE
         if direct_source_output:
             input_transforms_json = output / "transforms.json"
         elif self._is_metashape_method():
@@ -142,11 +164,17 @@ class Step4ManifestMixin:
                 "export_colmap": self._is_metashape_method() and self.export_colmap_cb.isChecked(),
             },
             "postprocess": {
-                "lichtfeld_final_orientation_correction": (
-                    self._uses_lichtfeld_final_correction() or self._uses_spheresfm_lichtfeld_final_correction()
-                ),
+                "final_orientation": final_orientation,
+                "final_orientation_stage": final_orientation_stage,
+                "final_orientation_matrix": _LICHTFELD_FINAL_CORRECTION.tolist()
+                if final_orientation == FINAL_ORIENTATION_LICHTFELD
+                else None,
+                "lichtfeld_final_orientation_correction": uses_lichtfeld_final_orientation,
+                "lichtfeld_final_orientation_stage": final_orientation_stage
+                if uses_lichtfeld_final_orientation
+                else FINAL_ORIENTATION_STAGE_NONE,
                 "lichtfeld_final_orientation_matrix": _LICHTFELD_FINAL_CORRECTION.tolist()
-                if self._uses_lichtfeld_final_correction() or self._uses_spheresfm_lichtfeld_final_correction()
+                if uses_lichtfeld_final_orientation
                 else None,
             },
             "metashape_import": {
@@ -219,7 +247,12 @@ class Step4ManifestMixin:
                 "transforms_json": "" if spheresfm and not spheresfm_runs_conversion else "transforms.json",
                 "images_dir": "images",
                 "masks_dir": "masks",
-                "pointcloud": "pointcloud.ply" if direct or spheresfm_3dgut or spheresfm_projected else "",
+                "pointcloud": "pointcloud.ply"
+                if direct
+                or spheresfm_3dgut
+                or spheresfm_projected
+                or (route_uses_view_export and final_orientation == FINAL_ORIENTATION_LICHTFELD)
+                else "",
                 "colmap_rig_dir": "colmap_rig",
                 "colmap_rig_config": "colmap_rig/rig_config.json",
                 "colmap_project_manifest": f"{STEP4_META_DIR_NAME}/sfm/{_COLMAP_PROJECT_MANIFEST_NAME}",

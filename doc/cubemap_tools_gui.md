@@ -222,7 +222,7 @@ After the run, use `View Result in COLMAP GUI` to inspect registered camera pose
 
 | Route | Main outputs |
 | --- | --- |
-| Metashape + cubemap conversion (`Convert to Projection Views`) | `<scene>/output/images/`, `<scene>/output/masks/`, `<scene>/output/transforms.json` |
+| Metashape + cubemap conversion (`Convert to Projection Views`) | `<scene>/output/images/`, `<scene>/output/masks/`, `<scene>/output/transforms.json`. The LichtFeld profile also writes `pointcloud.ply` |
 | Metashape + `3DGUT (LichtFeld)` | `<scene>/output/images/`, `<scene>/output/masks/`, `<scene>/output/transforms.json`, `<scene>/output/pointcloud.ply` |
 | COLMAP | `<scene>/output/colmap_rig/images/`, `<scene>/output/colmap_rig/masks/`, `<scene>/output/colmap_rig/rig_config.json` |
 | COLMAP with SfM enabled | The COLMAP SfM result in addition to the files above |
@@ -231,7 +231,7 @@ After the run, use `View Result in COLMAP GUI` to inspect registered camera pose
 
 Step 4 treats `<scene>/output/` as the active dataset: the folder you can copy to another machine or load directly in a 3DGS app. In most downstream apps, choose this `output/` folder.
 
-With the `LichtFeld Studio` profile, Step 4 applies the same final orientation correction to `transforms.json` and `pointcloud.ply` so +X / +Z / up directions match the Metashape scene in LichtFeld.
+With the `LichtFeld Studio` profile, Step 4 applies the same final orientation correction to `transforms.json` and `pointcloud.ply` during cubemap export so +X / +Z / up directions match the Metashape scene in LichtFeld. For `3DGUT (LichtFeld)`, the same correction is applied when the direct source-image dataset is created.
 
 ## Common Decisions
 

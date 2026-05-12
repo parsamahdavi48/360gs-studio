@@ -10,6 +10,7 @@ from pathlib import Path
 import numpy as np
 
 from core.apriltag_geometry import PinholeFrame
+from core.orientation_correction import FINAL_ORIENTATION_LICHTFELD
 
 CubemapViewParams = Mapping[str, tuple[float, float]]
 
@@ -512,9 +513,12 @@ def _image_pose_profile_from_payload(data: object) -> str:
     axis_transform = str(data.get("axis_transform") or "").strip().lower()
     output_shape = str(data.get("output_shape") or "").strip().lower()
     postprocess = data.get("postprocess")
-    has_lichtfeld_final_fix = isinstance(postprocess, dict) and bool(
-        postprocess.get("lichtfeld_final_orientation_correction")
-    )
+    has_lichtfeld_final_fix = False
+    if isinstance(postprocess, dict):
+        final_orientation = str(postprocess.get("final_orientation") or "").strip().lower().replace("_", "-")
+        has_lichtfeld_final_fix = final_orientation == FINAL_ORIENTATION_LICHTFELD or bool(
+            postprocess.get("lichtfeld_final_orientation_correction")
+        )
     if (
         profile == "lichtfeld"
         and axis_transform in {"none", ""}

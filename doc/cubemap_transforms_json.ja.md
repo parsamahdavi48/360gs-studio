@@ -111,12 +111,12 @@ python cubemap_transforms_json.py . ./cubic --brush
 
 ### LichtFeld Studio向け
 
-LichtFeld Studioの場合、 `--no_transform` を指定してください。
+LichtFeld Studioの場合、 `--no_transform --final-orientation lichtfeld` を指定してください。前者はエクイレクタングラー取り込み時のLichtFeld向けカメラ軸を維持し、後者は出力先のcubemapカメラ姿勢と `pointcloud.ply` に最終向き補正を適用します。
 
 ```
 python metashape_360_lfs.py --images images --xml metashape.xml \
   --ply metashape.ply --output .
-python cubemap_transforms_json.py . ./cubic --no_transform
+python cubemap_transforms_json.py . ./cubic --no_transform --final-orientation lichtfeld
 ```
 
 ### オプション一覧
@@ -143,6 +143,7 @@ python cubemap_transforms_json.py . ./cubic --no_transform
 |--colmap-rig-name|名前|COLMAP Rig名 (default=`rig1`)|
 |--no_transform|(no)|座標軸変換を行いません|
 |--brush|(no)|Brush向けの座標変換を行います|
+|--final-orientation|none/lichtfeld|出力カメラ姿勢と `pointcloud.ply` に最終向き補正を適用します (default=`none`)。LichtFeld向けcubemapデータでは `--no_transform` と一緒に `lichtfeld` を指定します。|
 |--duplicate|(no)|マージされたチャンク間で同名の画像を許可|
 |--yaw-offset-per-frame|角度°|フレームごとのキューブマップYaw回転ステップ (default=30.0)。各ユニーク入力画像に `yaw = frame_index * step (mod 360)` を適用し、cubemap 面境界アーティファクトの蓄積を防いで 3DGS 学習の安定性を向上させる。`0` 指定で旧動作に戻す。|
 |--output-format|auto/jpg/png/tiff/webp|出力画像フォーマット (default=auto、入力に合わせる)。|
@@ -182,7 +183,7 @@ JPEG と WebP は 8-bit のみで α 非対応のため、これらを指定し�
 
 ### LichtFeld Studio
 
-- pointcloud.ply (`metashape_360_lfs`で変換)
+- pointcloud.ply (`metashape_360_lfs`で変換後、このスクリプトで最終向き補正)
 - transforms.json (出力ディレクトリ内)
 - images (出力ディレクトリ内)
 - masks (出力ディレクトリ内: オプション)

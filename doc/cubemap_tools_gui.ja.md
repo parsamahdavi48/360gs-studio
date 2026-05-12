@@ -222,7 +222,7 @@ SphereSfMの作業ファイルとログは `<scene>/output/spheresfm/` にまと
 
 | ルート | 主な出力 |
 | --- | --- |
-| Metashape + キューブマップ変換 (`投影視点に変換`) | `<scene>/output/images/`, `<scene>/output/masks/`, `<scene>/output/transforms.json` |
+| Metashape + キューブマップ変換 (`投影視点に変換`) | `<scene>/output/images/`, `<scene>/output/masks/`, `<scene>/output/transforms.json`。LichtFeldプロファイルでは `pointcloud.ply` も作ります |
 | Metashape + `3DGUT (LichtFeld)` | `<scene>/output/images/`, `<scene>/output/masks/`, `<scene>/output/transforms.json`, `<scene>/output/pointcloud.ply` |
 | COLMAP | `<scene>/output/colmap_rig/images/`, `<scene>/output/colmap_rig/masks/`, `<scene>/output/colmap_rig/rig_config.json` |
 | COLMAP実行あり | 上記に加えて、COLMAPのSfM結果 |
@@ -231,7 +231,7 @@ SphereSfMの作業ファイルとログは `<scene>/output/spheresfm/` にまと
 
 Step 4では `<scene>/output/` を、他PCへコピーしたり3DGSアプリへ直接読み込ませたりする現在のデータセットとして扱います。3DGSアプリへ渡す場合は、基本的にこの `output/` を指定します。
 
-`LichtFeld Studio` プロファイルでは、最終出力の `transforms.json` と `pointcloud.ply` に同じ向き補正を適用し、LichtFeld上でMetashapeと同じ +X / +Z / 上下方向になるようにします。
+`LichtFeld Studio` プロファイルでは、Cubemap書き出し時点で最終出力の `transforms.json` と `pointcloud.ply` に同じ向き補正を適用し、LichtFeld上でMetashapeと同じ +X / +Z / 上下方向になるようにします。`3DGUT (LichtFeld)` では、元画像を使う直接データセットの作成時に同じ補正を適用します。
 
 ## よくある判断
 

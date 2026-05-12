@@ -8,6 +8,7 @@ import shutil
 import sys
 from pathlib import Path
 
+from core.orientation_correction import FINAL_ORIENTATION_LICHTFELD, FINAL_ORIENTATION_NONE
 from core.scene_layout import step4_meta_dir
 from gui import i18n
 from gui.cubemap.view_config import _BLOCK_ENABLED_VIEWS
@@ -208,6 +209,11 @@ class Step4CommandPlanMixin:
                 output_format=out_fmt,
                 output_bit_depth=out_depth,
                 jpg_quality=jpgq,
+                final_orientation=(
+                    FINAL_ORIENTATION_LICHTFELD
+                    if self._uses_lichtfeld_final_correction()
+                    else FINAL_ORIENTATION_NONE
+                ),
                 image_dir=image_dir,
                 mask_dir=mask_dir,
             )
@@ -425,6 +431,11 @@ class Step4CommandPlanMixin:
                 output_format=out_fmt,
                 output_bit_depth=out_depth,
                 jpg_quality=jpgq,
+                final_orientation=(
+                    FINAL_ORIENTATION_LICHTFELD
+                    if self._uses_spheresfm_lichtfeld_final_correction()
+                    else FINAL_ORIENTATION_NONE
+                ),
                 image_dir=self._metashape_images_dir(),
                 mask_dir=mask_dir,
             )

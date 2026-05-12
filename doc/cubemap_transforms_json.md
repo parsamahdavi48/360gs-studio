@@ -111,12 +111,12 @@ python cubemap_transforms_json.py . ./cubic --brush
 
 ### For LichtFeld Studio
 
-For LichtFeld Studio, specify `--no_transform`.
+For LichtFeld Studio, specify `--no_transform --final-orientation lichtfeld`. The first flag keeps the LichtFeld camera-axis convention from the equirectangular import, and the final-orientation flag writes corrected cubemap camera poses plus `pointcloud.ply` in the output folder.
 
 ```
 python metashape_360_lfs.py --images images --xml metashape.xml \
   --ply metashape.ply --output .
-python cubemap_transforms_json.py . ./cubic --no_transform
+python cubemap_transforms_json.py . ./cubic --no_transform --final-orientation lichtfeld
 ```
 
 ### Options
@@ -143,6 +143,7 @@ python cubemap_transforms_json.py . ./cubic --no_transform
 |--colmap-rig-name|name|COLMAP rig name (default=`rig1`).|
 |--no_transform|(no)|Disable coordinate axis conversion.|
 |--brush|(no)|Convert coordinates for Brush.|
+|--final-orientation|none/lichtfeld|Apply a final dataset orientation correction to output camera poses and `pointcloud.ply` (default=`none`). Use `lichtfeld` with `--no_transform` for LichtFeld cubemap datasets.|
 |--duplicate|(no)|Allow duplicated image files by merging chunks.|
 |--yaw-offset-per-frame|degrees|Per-frame cubemap yaw rotation step (default=30.0). Each unique input image gets `yaw = frame_index * step (mod 360)`. Diversifies sampling angles to reduce 3DGS face-boundary artifacts. Set to `0` to disable.|
 |--output-format|auto/jpg/png/tiff/webp|Output image format (default=auto, preserves input format).|
@@ -182,7 +183,7 @@ Import the following files in each software:
 
 ### LichtFeld Studio
 
-- pointcloud.ply (converted by `metashape_360_lfs`)
+- pointcloud.ply (converted by `metashape_360_lfs`, then final-orientation-corrected by this script)
 - transforms.json (in the output directory)
 - images (in the output directory)
 - masks (in the output directory: optional)

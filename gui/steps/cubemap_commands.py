@@ -37,6 +37,7 @@ class CubemapConversionCommand:
     output_format: str
     output_bit_depth: str
     jpg_quality: int
+    final_orientation: str = "none"
     image_dir: Path | None = None
     mask_dir: Path | None = None
 
@@ -139,6 +140,8 @@ def build_cubemap_conversion_cmd(options: CubemapConversionCommand) -> list[str]
             cmd.append("--no_transform")
         if options.axis_mode == "brush":
             cmd.append("--brush")
+        if options.final_orientation != "none":
+            cmd.extend(["--final-orientation", options.final_orientation])
     if options.invert_masks:
         cmd.append("--invert_masks")
     if options.image_dir is not None:

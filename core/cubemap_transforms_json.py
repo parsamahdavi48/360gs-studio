@@ -22,6 +22,17 @@ from core.colmap_rig_export import (
     write_rig_config_json,
 )
 from core.image_io import imread_unicode, imwrite_unicode
+from core.orientation_correction import (
+    FINAL_ORIENTATION_CHOICES,
+    FINAL_ORIENTATION_NONE,
+    FINAL_ORIENTATION_STAGE_CUBEMAP_CLI,
+    final_orientation_is_applied,
+    final_orientation_matrix,
+    mark_final_orientation,
+    normalize_final_orientation,
+    resolve_pointcloud_path,
+    write_final_orientation_pointcloud,
+)
 
 EXAMPLE_TEXT = """Example:
   python cubemap_transforms_json.py .
@@ -299,6 +310,17 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--no_transform", action="store_true", help="Disable axis transform (for LichtFeld Studio)")
     parser.add_argument("--duplicate", action="store_true", help="Allow duplicated image files")
     parser.add_argument("--brush", action="store_true", help="Transform axes for Brush")
+    parser.add_argument(
+        "--final-orientation",
+        "--final_orientation",
+        dest="final_orientation",
+        default=FINAL_ORIENTATION_NONE,
+        choices=FINAL_ORIENTATION_CHOICES,
+        help=(
+            "Apply a final dataset orientation correction to output camera poses and pointcloud.ply. "
+            "'lichtfeld' matches LichtFeld Studio Cube6/3DGUT coordinates; default is 'none'."
+        ),
+    )
     parser.add_argument(
         "--output-format",
         "--output_format",
@@ -685,6 +707,7 @@ def transform_json(
     allow_duplicate: bool,
     brush_mode: bool = False,
     yaw_offset_per_frame: float = 0.0,
+    final_orientation: str = FINAL_ORIENTATION_NONE,
 ) -> tuple[list[str], list[float], tuple[int, int], int]:
     json_path = os.path.join(input_dir, input_json)
     if not os.path.exists(json_path):
@@ -724,6 +747,11 @@ def transform_json(
         if brush_mode:
             brush_rot = rot4(np.array([[1, 0, 0], [0, 0, 1], [0, -1, 0]]))  # for Brush
             axis_transform = brush_rot @ axis_transform
+
+    final_orientation = normalize_final_orientation(final_orientation)
+    final_orientation_already_applied = final_orientation_is_applied(data, final_orientation)
+    if final_orientation != FINAL_ORIENTATION_NONE and not final_orientation_already_applied:
+        axis_transform = final_orientation_matrix(final_orientation) @ axis_transform
 
     new_frames: list[dict] = []
     image_files: list[str] = []
@@ -790,7 +818,21 @@ def transform_json(
         "cy": principal,
         "frames": new_frames,
     }
-    if data.get("ply_file_path"):
+    if final_orientation != FINAL_ORIENTATION_NONE:
+        mark_final_orientation(out, final_orientation, FINAL_ORIENTATION_STAGE_CUBEMAP_CLI)
+        ply_source = resolve_pointcloud_path(Path(input_dir), data.get("ply_file_path"))
+        if ply_source is None:
+            print("Warning: final orientation requested, but input ply_file_path was not found")
+        else:
+            ply_dest = Path(output_dir) / "pointcloud.ply"
+            write_final_orientation_pointcloud(
+                ply_source,
+                ply_dest,
+                final_orientation,
+                already_applied=final_orientation_already_applied,
+            )
+            out["ply_file_path"] = ply_dest.name
+    elif data.get("ply_file_path"):
         out["ply_file_path"] = data["ply_file_path"]
 
     os.makedirs(output_dir, exist_ok=True)
@@ -1495,6 +1537,9 @@ def main() -> None:
     args = parse_args()
     if args.colmap_rig:
         args.image_only = True
+    if args.image_only and args.final_orientation != FINAL_ORIENTATION_NONE:
+        print("Error: --final-orientation requires transforms.json conversion, not --image-only")
+        sys.exit(1)
 
     input_dir = args.input_dir
     output_dir = args.output_dir if args.output_dir else f"{input_dir}/output"
@@ -1609,6 +1654,7 @@ def main() -> None:
             allow_duplicate=args.duplicate,
             brush_mode=args.brush,
             yaw_offset_per_frame=args.yaw_offset_per_frame,
+            final_orientation=args.final_orientation,
         )
     if not image_files:
         sys.exit(1)
