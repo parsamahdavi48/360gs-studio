@@ -867,6 +867,27 @@ def project_world_points_to_right_view(
     return np.column_stack([x, y]).astype(np.float32)
 
 
+def project_world_points_to_image_view(
+    group: CubemapFrameGroup,
+    params: PerspectiveParams,
+    points: np.ndarray,
+    *,
+    output_size: int,
+) -> np.ndarray | None:
+    points = np.asarray(points, dtype=np.float64).reshape(-1, 3)
+    camera, right, up, forward = camera_pose_from_perspective_params(group, params)
+    rel = points - camera.reshape(1, 3)
+    depth = rel @ forward
+    if np.any(~np.isfinite(depth)) or np.any(depth <= 1e-8):
+        return None
+    size = max(1, int(output_size))
+    focal = 0.5 * float(size) / np.tan(np.deg2rad(float(params.fov_deg)) * 0.5)
+    center = float(size) * 0.5
+    x = center + focal * ((rel @ right) / depth)
+    y = center - focal * ((rel @ up) / depth)
+    return np.column_stack([x, y]).astype(np.float32)
+
+
 def project_world_points_to_right_view_visible(
     group: CubemapFrameGroup,
     params: PerspectiveParams,
@@ -883,6 +904,43 @@ def project_world_points_to_right_view_visible(
         )
     camera, right, up, forward = camera_pose_from_perspective_params(group, params)
     right, up, forward = _right_view_screen_basis(right=right, up=up, forward=forward)
+    rel = points - camera.reshape(1, 3)
+    depth = rel @ forward
+    valid = np.isfinite(depth) & (depth > 1e-8)
+    if not np.any(valid):
+        return (
+            np.empty((0, 2), dtype=np.float32),
+            np.empty((0,), dtype=np.float64),
+            np.empty((0,), dtype=np.int64),
+        )
+    valid_indices = np.nonzero(valid)[0]
+    size = max(1, int(output_size))
+    focal = 0.5 * float(size) / np.tan(np.deg2rad(float(params.fov_deg)) * 0.5)
+    center = float(size) * 0.5
+    rel = rel[valid]
+    depth = depth[valid]
+    x = center + focal * ((rel @ right) / depth)
+    y = center - focal * ((rel @ up) / depth)
+    xy = np.column_stack([x, y]).astype(np.float32)
+    finite = np.isfinite(xy).all(axis=1)
+    return xy[finite], depth[finite], valid_indices[finite]
+
+
+def project_world_points_to_image_view_visible(
+    group: CubemapFrameGroup,
+    params: PerspectiveParams,
+    points: np.ndarray,
+    *,
+    output_size: int,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    points = np.asarray(points, dtype=np.float64).reshape(-1, 3)
+    if len(points) == 0:
+        return (
+            np.empty((0, 2), dtype=np.float32),
+            np.empty((0,), dtype=np.float64),
+            np.empty((0,), dtype=np.int64),
+        )
+    camera, right, up, forward = camera_pose_from_perspective_params(group, params)
     rel = points - camera.reshape(1, 3)
     depth = rel @ forward
     valid = np.isfinite(depth) & (depth > 1e-8)
@@ -1578,11 +1636,17 @@ class AprilTagSceneViewerWindow(QWidget):
         *,
         output_size: int = 768,
         color_bgr: tuple[int, int, int] | None = None,
+        image_view_basis: bool = False,
     ) -> list[PerspectiveLabelOverlay]:
         if group is None:
             return []
         try:
-            projected = project_world_points_to_right_view(
+            projector = (
+                project_world_points_to_image_view
+                if image_view_basis
+                else project_world_points_to_right_view
+            )
+            projected = projector(
                 group,
                 params,
                 self._tag_corners_world_display(),
@@ -1620,6 +1684,7 @@ class AprilTagSceneViewerWindow(QWidget):
         *,
         output_size: int = 768,
         max_points: int = 30_000,
+        image_view_basis: bool = False,
     ) -> list[PerspectiveLabelOverlay]:
         if group is None or self._world_pointcloud is None or len(self._world_pointcloud.points) == 0:
             return []
@@ -1629,7 +1694,12 @@ class AprilTagSceneViewerWindow(QWidget):
             indices = np.linspace(0, len(points) - 1, max_points, dtype=np.int64)
             points = points[indices]
             colors = colors[indices] if colors is not None else None
-        projected, _depth, indices = project_world_points_to_right_view_visible(
+        visible_projector = (
+            project_world_points_to_image_view_visible
+            if image_view_basis
+            else project_world_points_to_right_view_visible
+        )
+        projected, _depth, indices = visible_projector(
             group,
             params,
             points,
@@ -1764,10 +1834,17 @@ class AprilTagSceneViewerWindow(QWidget):
         *,
         projection_params: PerspectiveParams | None = None,
         output_size: int = 768,
+        image_view_basis: bool = False,
     ) -> list[PerspectiveLabelOverlay]:
         color = None if self._tag_front_faces_group(world_group) else (0, 64, 255)
         params = self._params if projection_params is None else projection_params
-        return self._tag_image_overlays(world_group, params, output_size=output_size, color_bgr=color)
+        return self._tag_image_overlays(
+            world_group,
+            params,
+            output_size=output_size,
+            color_bgr=color,
+            image_view_basis=image_view_basis,
+        )
 
     def _right_image_tag_overlays(
         self,
@@ -1776,6 +1853,7 @@ class AprilTagSceneViewerWindow(QWidget):
         use_output_projection: bool,
         projection_params: PerspectiveParams | None = None,
         output_size: int = 768,
+        image_view_basis: bool = False,
     ) -> list[PerspectiveLabelOverlay]:
         params = self._params if projection_params is None else projection_params
         if use_output_projection:
@@ -1783,10 +1861,16 @@ class AprilTagSceneViewerWindow(QWidget):
                 world_group,
                 projection_params=params,
                 output_size=output_size,
+                image_view_basis=image_view_basis,
             )
             if overlays or self._synthetic_frame_transform_overrides():
                 return overlays
-        return self._tag_image_overlays(world_group, params, output_size=output_size)
+        return self._tag_image_overlays(
+            world_group,
+            params,
+            output_size=output_size,
+            image_view_basis=image_view_basis,
+        )
 
     def _synthetic_tag_placement_sfm(self) -> tuple[np.ndarray, np.ndarray, np.ndarray, float]:
         if self.case is None:
@@ -2379,13 +2463,21 @@ class AprilTagSceneViewerWindow(QWidget):
         )
         overlays = []
         if use_pointcloud_overlay:
-            overlays.extend(self._pointcloud_image_overlays(world_group, view_params, output_size=768))
+            overlays.extend(
+                self._pointcloud_image_overlays(
+                    world_group,
+                    view_params,
+                    output_size=768,
+                    image_view_basis=True,
+                )
+            )
         overlays.extend(
             self._right_image_tag_overlays(
                 world_group,
                 use_output_projection=use_source_equirect or use_reconstructed_cube6,
                 projection_params=view_params,
                 output_size=768,
+                image_view_basis=True,
             )
         )
         if self._displayed_image_key == key and self.image_view.set_perspective_params(view_params):

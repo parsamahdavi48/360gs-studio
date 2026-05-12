@@ -49,6 +49,8 @@ from devtools.apriltag.scene_viewer import (
     face_forward_ray,
     image_ray_display_matrix_for_profile,
     opposite_image_face_for_world_face,
+    project_world_points_to_image_view,
+    project_world_points_to_right_view,
     rotation_from_perspective_params,
     transform_group_for_world_display,
 )
@@ -1583,12 +1585,20 @@ def test_current_case_reconstructed_image_tag_overlay_tracks_view_drag() -> None
         group,
         use_output_projection=True,
         projection_params=before_display_params,
+        image_view_basis=True,
         output_size=768,
     )
     assert len(before) == 1
     assert np.allclose(
         np.asarray(before[0].polygon),
-        np.asarray(window._tag_image_overlays(group, before_display_params, output_size=768)[0].polygon),
+        np.asarray(
+            window._tag_image_overlays(
+                group,
+                before_display_params,
+                output_size=768,
+                image_view_basis=True,
+            )[0].polygon
+        ),
         atol=1e-4,
     )
 
@@ -1606,15 +1616,21 @@ def test_current_case_reconstructed_image_tag_overlay_tracks_view_drag() -> None
         group,
         use_output_projection=True,
         projection_params=display_params,
+        image_view_basis=True,
         output_size=768,
     )
     assert len(after) == 1
-    expected = window._tag_image_overlays(group, display_params, output_size=768)
+    expected = window._tag_image_overlays(
+        group,
+        display_params,
+        output_size=768,
+        image_view_basis=True,
+    )
     assert len(expected) == 1
     assert np.allclose(np.asarray(after[0].polygon), np.asarray(expected[0].polygon), atol=1e-4)
-    wrong_world_projection = window._tag_image_overlays(group, window._params, output_size=768)
-    assert len(wrong_world_projection) == 1
-    assert not np.allclose(np.asarray(after[0].polygon), np.asarray(wrong_world_projection[0].polygon), atol=1.0)
+    right_handed_projection = window._tag_image_overlays(group, display_params, output_size=768)
+    assert len(right_handed_projection) == 1
+    assert not np.allclose(np.asarray(after[0].polygon), np.asarray(right_handed_projection[0].polygon), atol=1.0)
     assert not np.allclose(np.asarray(after[0].polygon), np.asarray(before[0].polygon), atol=1.0)
     window.deleteLater()
 
@@ -1692,19 +1708,61 @@ def test_reconstructed_image_tag_overlay_uses_display_params_without_moving_frus
         group,
         use_output_projection=True,
         projection_params=display_params,
+        image_view_basis=True,
         output_size=768,
     )
-    display_expected = window._tag_image_overlays(group, display_params, output_size=768)
-    world_projection = window._tag_image_overlays(group, window._params, output_size=768)
+    display_expected = project_world_points_to_image_view(
+        group,
+        display_params,
+        window._tag_corners_world_display(),
+        output_size=768,
+    )
+    right_handed_projection = project_world_points_to_right_view(
+        group,
+        display_params,
+        window._tag_corners_world_display(),
+        output_size=768,
+    )
 
     assert display_params != window._params
     assert len(actual) == 1
-    assert len(display_expected) == 1
-    assert len(world_projection) == 1
-    assert np.allclose(np.asarray(actual[0].polygon), np.asarray(display_expected[0].polygon), atol=1e-4)
-    assert not np.allclose(np.asarray(actual[0].polygon), np.asarray(world_projection[0].polygon), atol=1.0)
+    assert display_expected is not None
+    assert right_handed_projection is not None
+    assert np.allclose(np.asarray(actual[0].polygon), display_expected, atol=1e-4)
+    assert not np.allclose(np.asarray(actual[0].polygon), right_handed_projection, atol=1.0)
     assert window.world_view._preview_yaw_deg == pytest.approx(window._params.yaw_deg)
     assert window.point_view._preview_yaw_deg == pytest.approx(window._params.yaw_deg)
+    window.deleteLater()
+
+
+def test_image_view_projection_uses_shader_screen_handedness(tmp_path: Path) -> None:
+    _app()
+    case_dir = _write_cube6_case(tmp_path)
+    window = AprilTagSceneViewerWindow(initial_case=case_dir)
+    window.set_active_face("pz")
+    group = window.selected_world_group()
+    assert group is not None
+    camera, right, up, forward = camera_pose_from_perspective_params(group, window._params)
+    points = np.asarray([camera + forward * 3.0 + right * 0.5 + up * 0.1], dtype=np.float64)
+
+    image_projection = project_world_points_to_image_view(
+        group,
+        window._params,
+        points,
+        output_size=768,
+    )
+    right_handed_projection = project_world_points_to_right_view(
+        group,
+        window._params,
+        points,
+        output_size=768,
+    )
+
+    assert image_projection is not None
+    assert right_handed_projection is not None
+    assert image_projection[0, 0] > 384.0
+    assert right_handed_projection[0, 0] < 384.0
+    assert image_projection[0, 1] == pytest.approx(right_handed_projection[0, 1])
     window.deleteLater()
 
 
