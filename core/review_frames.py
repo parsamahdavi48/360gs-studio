@@ -428,6 +428,7 @@ if QMainWindow is not None:
 
             self.info_label = QLabel()
             self.info_label.setWordWrap(True)
+            self.info_label.setToolTip(i18n.tip("REVIEW_INFO"))
             layout.addWidget(self.info_label)
 
             self.problem_summary_label = QLabel()
@@ -841,8 +842,10 @@ if QMainWindow is not None:
 
             if row.get("analysis_pipeline") == "pair":
                 info_text = self._pair_info_summary(row, ts_str)
+                self.info_label.setToolTip(i18n.tip("REVIEW_PAIR_INFO"))
             else:
                 info_text = i18n.t("REVIEW_INFO_FORMAT").format(ts=ts_str)
+                self.info_label.setToolTip(i18n.tip("REVIEW_INFO"))
             self.info_label.setText(info_text)
             self._sync_thumbnail_model()
             if sync_thumbnail:

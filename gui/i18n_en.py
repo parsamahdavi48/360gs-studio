@@ -1007,6 +1007,17 @@ TIPS: dict[str, str] = {
     "CUSTOM_MASK_BROWSE": "Select a PNG custom mask. Selecting a file also enables custom processing",
     "CUSTOM_MASK_CLEAR": "Clear the selected custom mask and disable custom processing",
     "REVIEW_SOURCE_FILTER": "When frames were extracted from multiple videos, limit the preview range by source video. Keep/drop changes still write to the same CSV",
+    "REVIEW_INFO": "Video position: Playback position of this frame in the source video",
+    "REVIEW_PAIR_INFO": (
+        "Video position: Playback position of this frame in the source video.\n"
+        "Gap: Seconds between the previous kept frame and the current frame.\n"
+        "Residual: Value for how much visible content changed since the previous kept frame. It is computed after correcting the horizontal heading. Closer to 0 means more similar.\n"
+        "Yaw adjust: Estimated horizontal heading correction used before computing the residual.\n"
+        "Tracks: Number of feature points tracked from the previous kept frame.\n"
+        "Confidence: Confidence from tracked point count and spread across the image. It ranges from 0 to 1, where larger is more stable.\n"
+        "Sharpness: Sharpness from fine image detail. Higher values usually mean sharper frames.\n"
+        "Ratio: Sharpness ratio compared with nearby kept frames. Around 1.0 means similar; lower values indicate possible blur."
+    ),
     "MASK_IMAGE_TYPE": "Detected from Step 1 or external image registration. Mixed inputs are processed by image type",
     "MASK_IMAGE_TYPE_EQUIRECT": "Processed as equirectangular 360° images",
     "MASK_IMAGE_TYPE_NORMAL": "Processed as normal video frames or still images",

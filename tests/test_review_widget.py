@@ -105,7 +105,43 @@ def test_review_widget_slider_changes_current_frame(tmp_path: Path) -> None:
     assert widget.frame_slider.value() == 1
     assert "2 / 2" in widget.frame_position_label.text()
     assert i18n.t("REVIEW_INFO_FORMAT").format(ts="2.00s") == widget.info_label.text()
+    assert widget.info_label.toolTip() == i18n.tip("REVIEW_INFO")
     assert widget.image_view._source_pixmap is not None
+
+
+def test_review_widget_pair_info_has_metric_tooltip(tmp_path: Path) -> None:
+    _app()
+    scene, csv_path = _write_scene(tmp_path)
+    _update_scene_rows(
+        csv_path,
+        [
+            {
+                "analysis_pipeline": "",
+                "gap_sec": "",
+                "residual_score": "",
+                "yaw_shift_deg": "",
+                "track_count": "",
+                "match_confidence": "",
+                "sharpness_ratio": "",
+            },
+            {
+                "analysis_pipeline": "pair",
+                "gap_sec": "1.5",
+                "residual_score": "0.0421",
+                "yaw_shift_deg": "3.2",
+                "track_count": "84",
+                "match_confidence": "0.62",
+                "blur_score_final": "128.4",
+                "sharpness_ratio": "0.91",
+            },
+        ],
+    )
+    widget = ReviewWidget(scene, csv_path)
+
+    widget.frame_slider.setValue(1)
+
+    assert "残差" in widget.info_label.text() or "Residual" in widget.info_label.text()
+    assert widget.info_label.toolTip() == i18n.tip("REVIEW_PAIR_INFO")
 
 
 def test_review_widget_projection_toggle_renders_square_perspective(tmp_path: Path) -> None:
