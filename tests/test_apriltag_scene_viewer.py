@@ -913,8 +913,8 @@ def test_lichtfeld_final_source_preview_matches_display_pointcloud_direction(tmp
         "px": "px",
         "nz": "nz",
         "nx": "nx",
-        "py": "ny",
-        "ny": "py",
+        "py": "py",
+        "ny": "ny",
     }
     actual_mapping: dict[str, str] = {}
     for face, expected_face in expected_image_mapping.items():

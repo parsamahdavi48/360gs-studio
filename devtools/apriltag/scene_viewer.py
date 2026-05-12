@@ -676,7 +676,7 @@ def _source_raster_frame_group(
     position = group.reference_frame.camera_position_sfm
     frames: dict[str, PinholeFrame] = {}
     for face, frame in group.frames_by_face.items():
-        face_rotation = face_rotations.get(_synthetic_output_face_rotation_face(face))
+        face_rotation = face_rotations.get(face)
         if face_rotation is None:
             continue
         transform = np.array(frame.transform_matrix, dtype=np.float64, copy=True)
@@ -1976,7 +1976,7 @@ class AprilTagSceneViewerWindow(QWidget):
                 continue
             position = group.reference_frame.camera_position_sfm
             for face, frame in group.frames_by_face.items():
-                face_rotation = face_rotations.get(_synthetic_output_face_rotation_face(face))
+                face_rotation = face_rotations.get(face)
                 if face_rotation is None:
                     continue
                 transform = np.array(frame.transform_matrix, dtype=np.float64, copy=True)
@@ -2480,7 +2480,6 @@ class AprilTagSceneViewerWindow(QWidget):
         )
         if (
             self.case is not None
-            and self._active_face in SIDE_FACE_ORDER
             and _case_has_lichtfeld_final_orientation(self.case)
             and normalize_coordinate_profile(self.case.coordinate_profile) in LICHTFELD_IMAGE_RAY_DISPLAY_PROFILES
             and self._source_equirect_rotation_for_group(world_group) is not None
