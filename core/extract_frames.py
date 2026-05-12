@@ -26,6 +26,7 @@ from core.frame_pair_analysis import (
     PAIR_MOTION_BLUR_RATIO,  # noqa: F401 - re-exported for script-module compatibility
     PAIR_MOTION_BLUR_REVIEW_RATIO,  # noqa: F401 - re-exported for script-module compatibility
     PAIR_SHARPNESS_HISTORY,  # noqa: F401 - re-exported for script-module compatibility
+    PAIR_THRESHOLD_PROFILE_CHOICES,  # noqa: F401 - re-exported for script-module compatibility
     PAIR_THRESHOLD_PROFILES,  # noqa: F401 - re-exported for script-module compatibility
     PairCandidateFrame,  # noqa: F401 - re-exported for script-module compatibility
     PairFrameRisk,  # noqa: F401 - re-exported for script-module compatibility
@@ -579,7 +580,7 @@ def write_report(
             "fixed_smart": args.fixed_smart,
             "quick_extract": getattr(args, "quick_extract", False),
             "fixed_smart_max_inserts_per_interval": args.fixed_smart_max_inserts_per_interval,
-            "pair_motion_profile": getattr(args, "pair_motion_profile", "walk"),
+            "pair_motion_profile": pair_thresholds.profile,
             "pair_threshold_mode": pair_thresholds.mode,
             "pair_drop_threshold": getattr(args, "pair_drop_threshold", -1.0),
             "pair_add_threshold": getattr(args, "pair_add_threshold", -1.0),
@@ -654,7 +655,7 @@ def build_summary_from_counts(
             "fixed_smart": args.fixed_smart,
             "quick_extract": getattr(args, "quick_extract", False),
             "fixed_smart_max_inserts_per_interval": args.fixed_smart_max_inserts_per_interval,
-            "pair_motion_profile": getattr(args, "pair_motion_profile", "walk"),
+            "pair_motion_profile": pair_thresholds.profile,
             "pair_threshold_mode": pair_thresholds.mode,
             "pair_drop_threshold": getattr(args, "pair_drop_threshold", -1.0),
             "pair_add_threshold": getattr(args, "pair_add_threshold", -1.0),
@@ -862,9 +863,13 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--pair-motion-profile",
-        choices=sorted(PAIR_THRESHOLD_PROFILES.keys()),
+        choices=PAIR_THRESHOLD_PROFILE_CHOICES,
         default="walk",
-        help="Auto threshold profile for pair analysis. walk is the GUI default; drone is for aerial 360 capture.",
+        help=(
+            "Auto threshold profile for pair analysis. GUI profiles: "
+            "walk_standard, walk_close, walk_wide, drone_distant. "
+            "Legacy walk and drone profiles remain accepted."
+        ),
     )
     parser.add_argument(
         "--pair-drop-threshold",

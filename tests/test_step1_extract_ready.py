@@ -685,7 +685,7 @@ def test_extract_single_video_shows_fast_fixed_interval_estimate() -> None:
         frames="300",
     )
     assert step.instant_estimate_text == (
-        i18n.t("FIXED_INTERVAL_ESTIMATE_FORMAT").format(interval="1", count="11")
+        i18n.t("FIXED_INTERVAL_ESTIMATE_FORMAT").format(interval="1.5", count="8")
         + f" ({i18n.t('FIXED_SMART_ESTIMATE')})"
     )
 
@@ -699,7 +699,7 @@ def test_extract_quick_mode_estimate_uses_quick_suffix() -> None:
     step._update_instant_estimate()
 
     assert step.instant_estimate_text == (
-        i18n.t("FIXED_INTERVAL_ESTIMATE_FORMAT").format(interval="1", count="11")
+        i18n.t("FIXED_INTERVAL_ESTIMATE_FORMAT").format(interval="1.5", count="8")
         + f" ({i18n.t('QUICK_EXTRACT_ESTIMATE')})"
     )
 
@@ -755,10 +755,10 @@ def test_extract_multi_video_auto_probes_and_shows_total_estimate(tmp_path: Path
     )
     assert step.instant_estimate_text == "\n".join(
         [
-            i18n.t("FIXED_INTERVAL_ESTIMATE_MULTI_HEADER_FORMAT").format(interval="1"),
-            i18n.t("FIXED_INTERVAL_ESTIMATE_MULTI_ITEM_FORMAT").format(name="a.mp4", count="11"),
-            i18n.t("FIXED_INTERVAL_ESTIMATE_MULTI_ITEM_FORMAT").format(name="b.mov", count="21"),
-            i18n.t("FIXED_INTERVAL_ESTIMATE_MULTI_TOTAL_FORMAT").format(count="32", videos=2)
+            i18n.t("FIXED_INTERVAL_ESTIMATE_MULTI_HEADER_FORMAT").format(interval="1.5"),
+            i18n.t("FIXED_INTERVAL_ESTIMATE_MULTI_ITEM_FORMAT").format(name="a.mp4", count="8"),
+            i18n.t("FIXED_INTERVAL_ESTIMATE_MULTI_ITEM_FORMAT").format(name="b.mov", count="15"),
+            i18n.t("FIXED_INTERVAL_ESTIMATE_MULTI_TOTAL_FORMAT").format(count="23", videos=2)
             + f" ({i18n.t('FIXED_SMART_ESTIMATE')})",
         ]
     )

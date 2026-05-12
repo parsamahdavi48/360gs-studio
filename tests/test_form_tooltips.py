@@ -567,6 +567,32 @@ def test_pair_motion_profile_combo_has_tooltip() -> None:
 
     assert _label(step, i18n.t("PAIR_MOTION_PROFILE")).toolTip() == i18n.tip("PAIR_MOTION_PROFILE")
     assert step.pair_motion_profile_combo.toolTip() == i18n.tip("PAIR_MOTION_PROFILE")
+    assert [step.pair_motion_profile_combo.itemData(i) for i in range(step.pair_motion_profile_combo.count())] == [
+        "walk_standard",
+        "walk_close",
+        "walk_wide",
+        "drone_distant",
+    ]
+
+
+def test_pair_motion_profile_combo_applies_interval_presets() -> None:
+    _app()
+    step = ExtractStep(Path.cwd())
+
+    step.pair_motion_profile_combo.setCurrentIndex(1)
+    assert step.interval_edit.value() == 1.0
+    assert step.min_gap_edit.value() == 0.5
+    assert step.max_gap_edit.value() == 2.5
+
+    step.pair_motion_profile_combo.setCurrentIndex(2)
+    assert step.interval_edit.value() == 3.0
+    assert step.min_gap_edit.value() == 1.5
+    assert step.max_gap_edit.value() == 7.0
+
+    step.pair_motion_profile_combo.setCurrentIndex(3)
+    assert step.interval_edit.value() == 3.0
+    assert step.min_gap_edit.value() == 1.5
+    assert step.max_gap_edit.value() == 8.0
 
 
 def test_extract_mode_block_preserves_right_padding_in_english() -> None:
@@ -619,7 +645,11 @@ def test_extract_mode_numbers_are_draggable_and_clamped() -> None:
     assert step.jpg_quality_edit.minimum() == 1
     assert step.jpg_quality_edit.maximum() == 31
     assert step.jpg_quality_edit.value() == 2
+    assert step.interval_edit.value() == 1.5
+    assert step.min_gap_edit.value() == 0.8
+    assert step.max_gap_edit.value() == 4.0
 
+    step.max_gap_edit.setValue(2.0)
     step.min_gap_edit.setValue(3.0)
     assert step.interval_edit.value() == 3.0
     assert step.max_gap_edit.value() == 3.0
@@ -658,13 +688,13 @@ def test_extract_command_uses_drag_spinbox_values(tmp_path: Path) -> None:
     step.min_gap_edit.setValue(0.5)
     step.max_gap_edit.setValue(3.0)
     smart_cmd = step._build_extract_cmd()
-    assert smart_cmd[smart_cmd.index("--pair-motion-profile") + 1] == "walk"
+    assert smart_cmd[smart_cmd.index("--pair-motion-profile") + 1] == "walk_standard"
     assert smart_cmd[smart_cmd.index("--min-gap-sec") + 1] == "0.5"
     assert smart_cmd[smart_cmd.index("--max-gap-sec") + 1] == "3"
 
     step.pair_motion_profile_combo.setCurrentIndex(1)
-    drone_cmd = step._build_extract_cmd()
-    assert drone_cmd[drone_cmd.index("--pair-motion-profile") + 1] == "drone"
+    close_cmd = step._build_extract_cmd()
+    assert close_cmd[close_cmd.index("--pair-motion-profile") + 1] == "walk_close"
 
     step.smart_fixed_cb.setChecked(False)
     plain_cmd = step._build_extract_cmd()

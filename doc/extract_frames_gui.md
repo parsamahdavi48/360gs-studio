@@ -16,16 +16,17 @@ Choosing only the sharpest nearby frame is not enough for SfM. A frame can be sh
 
 The design focuses expensive decisions where they matter. It does not run a high-resolution, high-cost search for the sharpest image everywhere. Instead, it starts from a fixed interval and pays extra attention to candidates that look too similar, lack viewpoint change, or may be blurred. This keeps candidate quality reviewable while helping reduce processing time, output count, and downstream SfM cost.
 
-The main capture assumptions are walking footage and drone footage. Walking footage often contains nearby structure, so the same camera movement creates stronger parallax. Drone and distant-view footage tends to produce weaker image change for the same movement. `Scene Distance` chooses whether the motion thresholds should assume near / walking footage or distant / aerial footage.
+The main capture assumptions are walking footage and drone footage. Even within walking footage, nearby indoor subjects and wider park or plaza scenes produce different parallax for the same movement. `Capture Profile` chooses the base interval, min/max gaps, and automatic motion thresholds together.
 
 ## First Choice
 
 | Goal | Recommended settings |
 | --- | --- |
-| Create normal SfM-ready frames | `Interval 1.0 sec`, `Motion ON` |
+| Create normal SfM-ready frames | `Capture Profile: Walk: Standard`, `Motion ON` |
 | Quickly cut frames without analysis | `Quick extract ON` |
-| Walking or indoor footage with nearby structure | `Scene Distance: Near / Walking` |
-| Aerial, plaza, coast, mountain, or distant scenes | `Scene Distance: Distant / Aerial` |
+| Nearby walls, exhibits, furniture, or narrow interiors | `Capture Profile: Walk: Close` |
+| Wide walking footage such as parks, plazas, or exteriors | `Capture Profile: Walk: Wide` |
+| Aerial or distant-view footage | `Capture Profile: Drone: Distant` |
 | Rebuild the same video with new settings | `Extraction Target: Re-extract Selected` |
 | Add multiple videos into one scene | `Extraction Target: Add Unextracted Videos` |
 
@@ -36,7 +37,7 @@ The GUI stops before running when the scene folder path contains non-ASCII chara
 1. First choose `Scene Folder`. Output images are written under `images/` inside it.
 2. Check `Video Queue` on the right. Videos inside the scene folder are registered automatically.
 3. If the video you want is not in the queue, press `Add Videos` and add it. Adding videos keeps the existing queue, so videos from other folders can be added later.
-4. Choose `Interval`. Start with `1.0` second when unsure.
+4. Choose `Capture Profile`. Start with `Walk: Standard` for normal walking footage.
 5. Keep `Motion` on for normal extraction. Turn `Quick extract` on only when you want a fast fixed-interval cut.
 6. Choose `Extraction Target`. `Add Unextracted Videos` is fine for the first run or for adding different videos.
 7. When the preflight status says the run is ready, press `Extract Frames`.
@@ -48,7 +49,7 @@ The video queue is where you confirm the videos that will be processed. It shows
 
 ### Fixed Interval
 
-`Interval` is the baseline spacing between extracted candidates. At 30fps, `1.0` second means roughly one candidate every 30 frames.
+`Base Interval` is the baseline spacing between extracted candidates. At 30fps, `1.5` seconds means roughly one candidate every 45 frames.
 
 Increasing the value reduces the frame count. Decreasing it increases the count. For SfM, a stable fixed cadence is easier to reason about than a fully variable extraction interval.
 
@@ -66,7 +67,7 @@ The fixed interval is not the only quality decision. It is the baseline that cov
 
 ### Quick Extract
 
-`Quick extract` skips analysis and cuts frames directly at the requested `Interval`. It is fast, but it does not create motion-adjustment decisions or Step 2 review labels.
+`Quick extract` skips analysis and cuts frames directly at the requested `Base Interval`. It is fast, but it does not create motion-adjustment decisions or Step 2 review labels.
 
 Use it for a fast content check or when you only need frames immediately. For production Metashape or SphereSfM input, normal extraction with `Motion` is usually safer.
 
@@ -74,20 +75,22 @@ Use it for a fast content check or when you only need frames immediately. For pr
 
 | Setting | Meaning | Starting point |
 | --- | --- | --- |
-| `Interval` | Baseline candidate spacing | `1.0` sec |
-| `Min` | Minimum spacing for inserted candidates | `0.5` sec |
-| `Max` | Safety spacing so low-motion sections do not become too sparse | `2.0` sec |
+| `Base Interval` | Baseline candidate spacing | `Walk: Standard`: `1.5` sec |
+| `Min` | Minimum spacing for inserted candidates | `Walk: Standard`: `0.8` sec |
+| `Max` | Safety spacing so low-motion sections do not become too sparse | `Walk: Standard`: `4.0` sec |
 
-If the output has too many frames, raise `Interval`. If camera motion is fast and useful viewpoints are missing, lower `Interval` or `Min`.
+If the output has too many frames, raise `Base Interval`. If camera motion is fast and useful viewpoints are missing, lower `Base Interval` or `Min`.
 
-## Scene Distance
+## Capture Profile
 
-`Scene Distance` chooses the assumption used by the automatic motion thresholds. It does not lock the workflow to a capture genre; it tells the analyzer how much useful image change to expect for the same camera movement.
+`Capture Profile` chooses the assumption used by the automatic motion thresholds and also sets the starting values for `Base Interval`, `Min`, and `Max`. It does not lock the workflow to a capture genre; it tells the analyzer how much useful image change to expect for the same camera movement.
 
-- `Near / Walking`: interiors, buildings, columns, vegetation, furniture, and other nearby structure.
-- `Distant / Aerial`: aerial footage, plazas, mountains, coastlines, and other distant-view scenes where the same movement creates weaker image change.
+- `Walk: Standard`: facilities, streets, and normal walking footage. Start here when unsure.
+- `Walk: Close`: nearby walls, exhibits, furniture, and narrow corridors.
+- `Walk: Wide`: parks, plazas, building exteriors, and other walking footage with more distant subjects.
+- `Drone: Distant`: aerial or distant-view footage.
 
-When unsure, use `Near / Walking` for walking or architectural footage and `Distant / Aerial` for drones or open outdoor scenes.
+You can still edit `Base Interval`, `Min`, and `Max` manually after choosing a profile.
 
 ## Analysis Width And JPEG Quality
 
@@ -104,13 +107,13 @@ When unsure, use `Near / Walking` for walking or architectural footage and `Dist
 | `_stechdrive/frames/extract_report.json` | Extraction settings and run summary |
 | `extract_cache.npz` | Cache used to speed up re-analysis |
 
-Step 2 turns `_stechdrive/frames/selected_frames.csv` decisions into visible review labels. If there are too many added, dropped, or review-target frames, adjust Step 1 interval or scene distance and extract again.
+Step 2 turns `_stechdrive/frames/selected_frames.csv` decisions into visible review labels. If there are too many added, dropped, or review-target frames, adjust Step 1 intervals or capture profile and extract again.
 
 ## Common Decisions
 
-- Start with `Interval 1.0 sec`, `Min 0.5 sec`, `Max 2.0 sec`, and `Motion ON`.
-- If there are too many frames, raise `Interval`.
-- If many frames are similar, review examples in Step 2, then consider raising `Interval` or trying `Distant / Aerial`.
+- Start with `Capture Profile: Walk: Standard` and `Motion ON`.
+- If there are too many frames, raise `Base Interval`.
+- If many frames are similar, review examples in Step 2, then consider raising `Base Interval` or trying `Walk: Wide`.
 - If many frames are dropped or flagged for blur, inspect the source footage first. Extraction searches nearby replacement candidates for clear blur, but footage that is blurred overall cannot be fundamentally rescued. Step 2 can still keep borderline frames that look acceptable.
 - Use `Reset and Overwrite` when rebuilding the same video with new settings.
 - `Quick extract` is convenient, but normal extraction is better for production selection because it creates Step 2 review labels.

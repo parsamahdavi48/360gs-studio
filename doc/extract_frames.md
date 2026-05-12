@@ -36,24 +36,24 @@ Quick extraction is the only non-analyzed path. It skips pair analysis and motio
 Basic pair-analyzed extraction:
 
 ```bash
-python extract_frames.py input.mp4 ./scene01 --interval-sec 1.0
+python extract_frames.py input.mp4 ./scene01 --interval-sec 1.5
 ```
 
 Pair analysis with motion adjustment:
 
 ```bash
 python extract_frames.py input.mp4 ./scene01 \
-  --interval-sec 1.0 \
+  --interval-sec 1.5 \
   --fixed-smart \
-  --min-gap-sec 0.5 \
-  --max-gap-sec 2.0
+  --min-gap-sec 0.8 \
+  --max-gap-sec 4.0
 ```
 
 Quick fixed-cadence extraction:
 
 ```bash
 python extract_frames.py input.mp4 ./scene01 \
-  --interval-sec 1.0 \
+  --interval-sec 1.5 \
   --quick-extract
 ```
 
@@ -73,13 +73,13 @@ python extract_frames.py input.mp4 ./scene01 --estimate-only --print-summary-jso
 
 | Option | Default | Description |
 |---|---:|---|
-| `--interval-sec` | `0.5` | Base fixed interval in seconds. GUI default is `1.0` |
+| `--interval-sec` | `0.5` | Base fixed interval in seconds. GUI default is `1.5` |
 | `--quick-extract` | off | Extract the fixed cadence without analysis or motion adjustment |
 | `--fixed-smart` | off | Enable pair-analysis motion adjustment. It can drop redundant fixed candidates, add novelty candidates, and keep max-gap safety frames |
 | `--min-gap-sec` | `0.25` | Minimum gap for pair-analysis additions |
 | `--max-gap-sec` | `2.0` | Maximum safety gap before a frame is kept |
 | `--fixed-smart-max-inserts-per-interval` | `2` | Maximum novelty anchors inserted inside one fixed interval |
-| `--pair-motion-profile` | `walk` | Auto threshold profile. See "Profiles and Automatic Thresholds" below |
+| `--pair-motion-profile` | `walk` | Auto threshold profile. GUI default is `walk_standard`. See "Profiles and Automatic Thresholds" below |
 | `--pair-drop-threshold` | `-1` | Pair residual below this drops fixed candidates. Negative means auto from interval/profile |
 | `--pair-add-threshold` | `-1` | Pair residual at or above this adds novelty candidates. Negative means auto from interval/profile |
 | `--pair-track-min-count` | `36` | Review threshold. Kept pairs below this tracked feature count are flagged `weak_match` |
@@ -94,10 +94,14 @@ python extract_frames.py input.mp4 ./scene01 --estimate-only --print-summary-jso
 
 `--pair-motion-profile` chooses the assumption behind the pair-analysis `drop` / `add` automatic thresholds. It is not a hard workflow category; it is a coarse hint for subject distance and how much residual parallax appears in the image for the same camera movement.
 
-- `walk`: near / walking capture. Use it for scenes with nearby structures such as buildings, interiors, columns, or vegetation. The `1.0s` reference thresholds are `drop=0.035` and `add=0.090`.
-- `drone`: distant / aerial capture. Use it for aerial, plaza, mountain, coast, or other distant-view scenes where residual parallax tends to be weaker. The `2.0s` reference thresholds are `drop=0.025` and `add=0.065`.
+- `walk_standard`: normal walking capture for facilities, streets, and common walking footage. The `1.5s` reference thresholds are `drop=0.035` and `add=0.095`.
+- `walk_close`: close walking capture for nearby walls, exhibits, furniture, or narrow corridors. The `1.0s` reference thresholds are `drop=0.035` and `add=0.090`.
+- `walk_wide`: wide walking capture for parks, plazas, exteriors, and more distant subjects. The `3.0s` reference thresholds are `drop=0.030` and `add=0.075`.
+- `drone_distant`: aerial or distant-view capture where residual parallax tends to be weaker. The `3.0s` reference thresholds are `drop=0.025` and `add=0.065`.
 
-When the interval changes, thresholds scale gently by `sqrt(interval_sec / reference_interval)`. `walk` is clamped over a practical interval range of about `0.35-2.5s`; `drone` is clamped over about `0.8-5.0s`. This keeps short intervals from becoming too sensitive and long intervals from becoming too insensitive.
+When the interval changes, thresholds scale gently by `sqrt(interval_sec / reference_interval)`. Each profile clamps over its practical interval range. This keeps short intervals from becoming too sensitive and long intervals from becoming too insensitive.
+
+`walk` and `drone` are compatibility profiles for existing CLI commands. `walk` keeps the previous near-walking thresholds, and `drone` keeps the previous aerial thresholds. The GUI uses the four profiles above.
 
 If `--pair-drop-threshold` or `--pair-add-threshold` is set to a non-negative value, that threshold overrides the profile-derived automatic value. If only one is set, that side is manual and the other side still comes from the profile.
 

@@ -94,14 +94,18 @@ STRINGS: dict[str, str] = {
     "MIN_GAP_SHORT": "最小",
     "MAX_GAP": "最大間隔 (秒)",
     "MAX_GAP_SHORT": "最大",
-    "INTERVAL": "間隔 (秒)",
-    "INTERVAL_SHORT": "間隔",
-    "EXTRACT_INTERVAL": "抽出間隔",
+    "INTERVAL": "基準間隔 (秒)",
+    "INTERVAL_SHORT": "基準",
+    "EXTRACT_INTERVAL": "基準間隔",
     "SECONDS_SUFFIX": "秒",
     "ANALYSIS_WIDTH": "解析幅 (px)",
-    "PAIR_MOTION_PROFILE": "シーン距離",
-    "PAIR_PROFILE_WALK": "近距離・歩行",
-    "PAIR_PROFILE_DRONE": "遠景・空撮",
+    "PAIR_MOTION_PROFILE": "撮影プロファイル",
+    "PAIR_PROFILE_WALK_STANDARD": "歩行・標準",
+    "PAIR_PROFILE_WALK_CLOSE": "歩行・近接",
+    "PAIR_PROFILE_WALK_WIDE": "歩行・広域",
+    "PAIR_PROFILE_DRONE_DISTANT": "ドローン・遠景",
+    "PAIR_PROFILE_WALK": "歩行・標準",
+    "PAIR_PROFILE_DRONE": "ドローン・遠景",
     "IMAGE_FORMAT": "画像形式",
     "JPEG_QUALITY": "JPEG品質",
     "FFMPEG_PATH": "ffmpeg パス",
@@ -154,8 +158,8 @@ STRINGS: dict[str, str] = {
     "VIDEO_PROJECTION_EQUIRECT": "360°",
     "VIDEO_PROJECTION_NORMAL": "通常",
     "VIDEO_PROJECTION_UNKNOWN": "不明",
-    "FIXED_INTERVAL_ESTIMATE_FORMAT": "固定間隔 {interval}秒: 約{count}枚",
-    "FIXED_INTERVAL_ESTIMATE_MULTI_HEADER_FORMAT": "固定間隔 {interval}秒",
+    "FIXED_INTERVAL_ESTIMATE_FORMAT": "基準間隔 {interval}秒: 約{count}枚",
+    "FIXED_INTERVAL_ESTIMATE_MULTI_HEADER_FORMAT": "基準間隔 {interval}秒",
     "FIXED_INTERVAL_ESTIMATE_MULTI_ITEM_FORMAT": "{name}: 約{count}枚",
     "FIXED_INTERVAL_ESTIMATE_MULTI_TOTAL_FORMAT": "合計: 約{count}枚 ({videos}件)",
     "ESTIMATE_MISSING_INFO_SUFFIX": "  |  未取得 {missing} 件",
@@ -956,28 +960,28 @@ TIPS: dict[str, str] = {
     "ADD_INPUT_VIDEO": "動画をキューに追加します。既存の動画は残ります",
     "REMOVE_INPUT_VIDEO": "選択した動画だけをキューから外します。動画ファイルは削除しません",
     "EXTRACT_OUTPUT_MODE": "未抽出動画を追加: 抽出履歴にない動画だけを追加します。選択動画を再抽出: 同じ動画の前回抽出結果を削除し、現在の設定で作り直します。他の動画は残します",
-    "MODE_FIXED": "指定した秒数ごとにフレームを抽出します。横ドラッグで調整可能。推奨は1.0秒前後、UI範囲は0.05〜60秒",
+    "MODE_FIXED": "指定した秒数ごとにフレームを抽出します。横ドラッグで調整可能。通常の歩行撮影は1.5秒前後から始めます。UI範囲は0.05〜60秒",
     "FIXED_SMART": (
         "固定間隔を基準に、変化が少ない候補をスキップし、変化が大きい区間には追加候補を入れます。\n"
         "輝度差だけでなく、疎な特徴点追跡によるモーションも使うため、SfMで意味のある視差を拾いやすくなります"
     ),
-    "QUICK_EXTRACT": "解析・変化補正をスキップし、指定した抽出間隔でそのまま切り出します。",
-    "MODE_CHANGE": "画像の変化量に応じて抽出間隔を自動調整します。最小/最大間隔で極端な枚数増減を防ぎます",
-    "INTERVAL": "固定間隔で使うフレーム間隔。単位は秒。横ドラッグで調整可能。推奨は1.0秒前後、UI範囲は0.05〜60秒。ペア解析の閾値はこの間隔に応じて自動調整されます",
+    "QUICK_EXTRACT": "解析・変化補正をスキップし、指定した基準間隔でそのまま切り出します。",
+    "MODE_CHANGE": "画像の変化量に応じて採用間隔を自動調整します。最小/最大間隔で極端な枚数増減を防ぎます",
+    "INTERVAL": "抽出候補を置く基準間隔です。単位は秒。通常の歩行撮影は1.5秒から始め、枚数が多すぎるときは長く、視点変化を取り逃がすときは短くします",
     "CHANGE_THRESHOLD": (
         "自動間隔で使う変化しきい値。単位は正規化スコアで、隣接解析フレームの平均輝度差 / 255 です。\n"
         "範囲は0.000〜1.000。小さいほど敏感に反応して抽出枚数が増え、大きいほど大きな変化だけを採用します。\n"
         "目安は0.010〜0.120、既定値は0.040です。横ドラッグで調整可能"
     ),
-    "MIN_GAP": "変化量で補正するときの最小間隔。単位は秒。追加候補はこの秒数より近くには入りません。UI範囲は0.05〜60秒",
-    "MAX_GAP": "変化量で補正するときの安全間隔。単位は秒。低変化スキップで採用フレームが空きすぎるのを防ぎます。UI範囲は0.05〜60秒",
+    "MIN_GAP": "変化補正で追加候補を入れる最小間隔です。小さいほど細かい視点変化を拾えますが、枚数も増えます。通常は撮影プロファイルの値から調整します",
+    "MAX_GAP": "似た候補をスキップしても採用フレームが空きすぎないための上限です。大きいほど冗長削除を許し、小さいほど保守的に残します",
     "IMAGE_FORMAT": "出力画像の形式。jpgはファイルサイズ小、pngは無劣化",
     "JPEG_QUALITY": "ffmpegの-q:v値。1=最高品質、31=最低品質。2-5推奨。横ドラッグで調整可能",
     "ANALYSIS_WIDTH": "ペア解析の追跡と候補限定ブレ確認に使うデコード幅。残差監視は内部で最大1280pxに抑えます",
     "PAIR_MOTION_PROFILE": (
-        "ペア解析の自動閾値に使う距離プロファイルです。\n"
-        "近距離・歩行: 建物、室内、柱、植栽など近い構造物が多い撮影向け。1.0秒基準でdrop=0.035/add=0.090。\n"
-        "遠景・空撮: 空撮、広場、山、海岸など遠景主体の撮影向け。残差パララックスが弱く出やすいため低めの閾値を使います。"
+        "撮影状況に合わせて、基準間隔・最小間隔・最大間隔とペア解析しきい値をまとめて設定します。\n"
+        "通常の歩行撮影は「歩行・標準」から始めます。近い壁、展示物、家具が多い場合は「歩行・近接」。公園、広場、外観など対象が遠めなら「歩行・広域」。空撮は「ドローン・遠景」を選びます。\n"
+        "秒数は選択後に手動調整できます。"
     ),
     "FFMPEG_PATH": "ffmpegの実行パス。PATHに通っていれば 'ffmpeg' でOK",
     "FFPROBE_PATH": "ffprobeの実行パス。動画情報の取得に使用",

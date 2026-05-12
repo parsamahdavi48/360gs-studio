@@ -94,14 +94,18 @@ STRINGS: dict[str, str] = {
     "MIN_GAP_SHORT": "Min",
     "MAX_GAP": "Max Gap (sec)",
     "MAX_GAP_SHORT": "Max",
-    "INTERVAL": "Interval (sec)",
-    "INTERVAL_SHORT": "Interval",
-    "EXTRACT_INTERVAL": "Extract Every",
+    "INTERVAL": "Base Interval (sec)",
+    "INTERVAL_SHORT": "Base",
+    "EXTRACT_INTERVAL": "Base Interval",
     "SECONDS_SUFFIX": "s",
     "ANALYSIS_WIDTH": "Analysis Width (px)",
-    "PAIR_MOTION_PROFILE": "Scene Distance",
-    "PAIR_PROFILE_WALK": "Near / Walking",
-    "PAIR_PROFILE_DRONE": "Distant / Aerial",
+    "PAIR_MOTION_PROFILE": "Capture Profile",
+    "PAIR_PROFILE_WALK_STANDARD": "Walk: Standard",
+    "PAIR_PROFILE_WALK_CLOSE": "Walk: Close",
+    "PAIR_PROFILE_WALK_WIDE": "Walk: Wide",
+    "PAIR_PROFILE_DRONE_DISTANT": "Drone: Distant",
+    "PAIR_PROFILE_WALK": "Walk: Standard",
+    "PAIR_PROFILE_DRONE": "Drone: Distant",
     "IMAGE_FORMAT": "Image Format",
     "JPEG_QUALITY": "JPEG Quality",
     "FFMPEG_PATH": "ffmpeg Path",
@@ -154,8 +158,8 @@ STRINGS: dict[str, str] = {
     "VIDEO_PROJECTION_EQUIRECT": "360°",
     "VIDEO_PROJECTION_NORMAL": "Normal",
     "VIDEO_PROJECTION_UNKNOWN": "Unknown",
-    "FIXED_INTERVAL_ESTIMATE_FORMAT": "Fixed {interval}s: approx. {count} images",
-    "FIXED_INTERVAL_ESTIMATE_MULTI_HEADER_FORMAT": "Fixed {interval}s",
+    "FIXED_INTERVAL_ESTIMATE_FORMAT": "Base {interval}s: approx. {count} images",
+    "FIXED_INTERVAL_ESTIMATE_MULTI_HEADER_FORMAT": "Base {interval}s",
     "FIXED_INTERVAL_ESTIMATE_MULTI_ITEM_FORMAT": "{name}: approx. {count} images",
     "FIXED_INTERVAL_ESTIMATE_MULTI_TOTAL_FORMAT": "Total: approx. {count} images ({videos} videos)",
     "ESTIMATE_MISSING_INFO_SUFFIX": "  |  {missing} not probed",
@@ -959,28 +963,28 @@ TIPS: dict[str, str] = {
     "ADD_INPUT_VIDEO": "Add videos to the queue. Existing videos stay in the queue",
     "REMOVE_INPUT_VIDEO": "Remove only the selected videos from the queue. Video files are not deleted",
     "EXTRACT_OUTPUT_MODE": "Add Unextracted Videos: add only videos that are not in the extraction history. Re-extract Selected: remove prior results for the same video and rebuild them with the current settings. Other videos are kept.",
-    "MODE_FIXED": "Extract frames every N seconds. Drag horizontally to adjust. Recommended: around 1.0 sec; UI range: 0.05-60 sec",
+    "MODE_FIXED": "Extract frames every N seconds. Drag horizontally to adjust. For normal walking footage, start around 1.5 sec. UI range: 0.05-60 sec",
     "FIXED_SMART": (
         "Keeps the fixed interval baseline, skips low-change candidates, and inserts extra candidates in high-motion ranges.\n"
         "Uses sparse feature tracking as well as luma difference, so motion that matters to SfM is easier to catch"
     ),
-    "QUICK_EXTRACT": "Skip analysis and motion adjustment, and extract frames only at the specified interval.",
+    "QUICK_EXTRACT": "Skip analysis and motion adjustment, and extract frames only at the specified base interval.",
     "MODE_CHANGE": "Automatically adjusts extraction interval from image change, with min/max gaps as safety limits",
-    "INTERVAL": "Fixed extraction interval in seconds. Drag horizontally to adjust. Recommended: around 1.0 sec; UI range: 0.05-60 sec. Pair-analysis thresholds are adjusted automatically from this interval",
+    "INTERVAL": "Base spacing for extraction candidates in seconds. Start at 1.5 sec for normal walking footage; increase it when there are too many frames, or decrease it when useful viewpoints are missing",
     "CHANGE_THRESHOLD": (
         "Change threshold used by auto interval mode. Unit: normalized score = mean absolute luma difference between adjacent analysis frames / 255.\n"
         "Range: 0.000-1.000. Lower values are more sensitive and produce more frames; higher values require larger changes.\n"
         "Typical: 0.010-0.120; default: 0.040. Drag horizontally to adjust"
     ),
-    "MIN_GAP": "Minimum spacing for motion adjustment in seconds. Extra candidates are not inserted closer than this. UI range: 0.05-60 sec",
-    "MAX_GAP": "Safety spacing for motion adjustment in seconds. Low-change skipping will not leave kept frames farther apart than this. UI range: 0.05-60 sec",
+    "MIN_GAP": "Minimum spacing for candidates inserted by motion adjustment. Lower values can catch finer viewpoint changes, but also increase frame count. Usually start from the capture profile value",
+    "MAX_GAP": "Upper spacing limit so kept frames do not become too sparse after similar candidates are skipped. Larger values allow more redundancy removal; smaller values keep the result more conservative",
     "IMAGE_FORMAT": "Output format. jpg = smaller files, png = lossless",
     "JPEG_QUALITY": "ffmpeg -q:v value. 1 = best quality, 31 = worst. Recommended: 2-5. Drag horizontally to adjust",
     "ANALYSIS_WIDTH": "Decode width for pair tracking and candidate-only blur checks. Residual monitoring is internally capped to 1280px",
     "PAIR_MOTION_PROFILE": (
-        "Distance profile for pair-analysis auto thresholds.\n"
-        "Near / Walking: for scenes with nearby structures such as buildings, interiors, columns, or vegetation. Uses 1.0s reference drop=0.035/add=0.090.\n"
-        "Distant / Aerial: for aerial, plaza, mountain, coast, or distant-view scenes. Uses lower thresholds because distant scenes produce weaker residual parallax."
+        "Sets the base interval, min/max gaps, and pair-analysis thresholds for the capture situation.\n"
+        "Start with Walk: Standard for normal walking footage. Use Walk: Close for nearby walls, exhibits, or furniture; Walk: Wide for parks, plazas, or exteriors with more distant subjects; and Drone: Distant for aerial footage.\n"
+        "You can still edit the interval values manually after choosing."
     ),
     "FFMPEG_PATH": "ffmpeg executable path. 'ffmpeg' works if it's on PATH",
     "FFPROBE_PATH": "ffprobe executable path. Used for video metadata probing",

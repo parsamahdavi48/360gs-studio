@@ -89,18 +89,50 @@ PAIR_MOTION_BLUR_REVIEW_RATIO = 0.80
 PAIR_GATE_WIDTH_DEFAULT = 1280
 
 
+_WALK_CLOSE_PROFILE = PairThresholdProfile(
+    reference_interval_sec=1.0,
+    min_interval_sec=0.35,
+    max_interval_sec=2.5,
+    base_drop_threshold=0.035,
+    base_add_threshold=0.090,
+)
+
+
 PAIR_THRESHOLD_PROFILES: dict[str, PairThresholdProfile] = {
-    # Slow handheld walking: 1 second is the reference cadence. The clamp range
-    # is derived from the practical walking interval domain, not fixed literals.
-    "walk": PairThresholdProfile(
-        reference_interval_sec=1.0,
-        min_interval_sec=0.35,
-        max_interval_sec=2.5,
+    # Walking footage with nearby subjects. This keeps the previous "walk"
+    # threshold behavior while exposing it as an explicit close-range profile.
+    "walk_close": _WALK_CLOSE_PROFILE,
+    # Default walking profile: wider cadence than close-range capture, with
+    # slightly conservative additions so ordinary facility footage does not
+    # explode into unnecessary near-duplicates.
+    "walk_standard": PairThresholdProfile(
+        reference_interval_sec=1.5,
+        min_interval_sec=0.8,
+        max_interval_sec=4.0,
         base_drop_threshold=0.035,
-        base_add_threshold=0.090,
+        base_add_threshold=0.095,
     ),
-    # Aerial 360 capture tends to have weaker residual parallax because most
-    # features are farther away, so the reference residual thresholds are lower.
+    # Broad walking scenes such as parks and plazas usually have weaker
+    # residual parallax for the same walking speed, so thresholds are lower.
+    "walk_wide": PairThresholdProfile(
+        reference_interval_sec=3.0,
+        min_interval_sec=1.5,
+        max_interval_sec=7.0,
+        base_drop_threshold=0.030,
+        base_add_threshold=0.075,
+    ),
+    # Aerial 360 capture tends to have the weakest residual parallax because
+    # most features are far away, so the reference residual thresholds are
+    # lower and the practical max interval is wider.
+    "drone_distant": PairThresholdProfile(
+        reference_interval_sec=3.0,
+        min_interval_sec=1.5,
+        max_interval_sec=8.0,
+        base_drop_threshold=0.025,
+        base_add_threshold=0.065,
+    ),
+    # Legacy CLI profiles kept for compatibility with existing commands.
+    "walk": _WALK_CLOSE_PROFILE,
     "drone": PairThresholdProfile(
         reference_interval_sec=2.0,
         min_interval_sec=0.8,
@@ -109,6 +141,8 @@ PAIR_THRESHOLD_PROFILES: dict[str, PairThresholdProfile] = {
         base_add_threshold=0.065,
     ),
 }
+
+PAIR_THRESHOLD_PROFILE_CHOICES = sorted(PAIR_THRESHOLD_PROFILES)
 
 
 def ensure_python_deps() -> None:

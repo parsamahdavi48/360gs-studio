@@ -44,12 +44,12 @@ def test_compute_pair_metrics_compensates_horizontal_yaw() -> None:
 
 
 def test_resolve_pair_thresholds_scales_and_clamps_walking_profile() -> None:
-    base = resolve_pair_thresholds(1.0, "walk")
-    shorter = resolve_pair_thresholds(0.8, "walk")
-    tiny = resolve_pair_thresholds(0.05, "walk")
-    huge = resolve_pair_thresholds(10.0, "walk")
+    base = resolve_pair_thresholds(1.0, "walk_close")
+    shorter = resolve_pair_thresholds(0.8, "walk_close")
+    tiny = resolve_pair_thresholds(0.05, "walk_close")
+    huge = resolve_pair_thresholds(10.0, "walk_close")
 
-    assert base.profile == "walk"
+    assert base.profile == "walk_close"
     assert base.mode == "auto"
     assert base.drop == pytest.approx(0.035)
     assert base.add == pytest.approx(0.090)
@@ -60,19 +60,31 @@ def test_resolve_pair_thresholds_scales_and_clamps_walking_profile() -> None:
 
 
 def test_resolve_pair_thresholds_drone_profile_uses_lower_aerial_residuals() -> None:
-    walking = resolve_pair_thresholds(2.0, "walk")
-    drone = resolve_pair_thresholds(2.0, "drone")
+    walking = resolve_pair_thresholds(3.0, "walk_wide")
+    drone = resolve_pair_thresholds(3.0, "drone_distant")
 
-    assert drone.profile == "drone"
+    assert drone.profile == "drone_distant"
     assert drone.drop == pytest.approx(0.025)
     assert drone.add == pytest.approx(0.065)
     assert drone.drop < walking.drop
     assert drone.add < walking.add
 
 
+def test_resolve_pair_thresholds_keeps_legacy_profiles() -> None:
+    walk = resolve_pair_thresholds(1.0, "walk")
+    drone = resolve_pair_thresholds(2.0, "drone")
+
+    assert walk.profile == "walk"
+    assert walk.drop == pytest.approx(0.035)
+    assert walk.add == pytest.approx(0.090)
+    assert drone.profile == "drone"
+    assert drone.drop == pytest.approx(0.025)
+    assert drone.add == pytest.approx(0.065)
+
+
 def test_resolve_pair_thresholds_rejects_add_not_greater_than_drop() -> None:
     with pytest.raises(ValueError):
-        resolve_pair_thresholds(1.0, "walk", drop_threshold=0.08, add_threshold=0.08)
+        resolve_pair_thresholds(1.0, "walk_close", drop_threshold=0.08, add_threshold=0.08)
 
 
 def test_assess_pair_frame_risk_drops_clear_ratio_blur_even_with_strong_tracking() -> None:

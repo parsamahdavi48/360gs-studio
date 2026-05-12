@@ -57,6 +57,13 @@ _FIXED_INTERVAL_MAX = 60.0
 _CHANGE_GAP_MIN = 0.05
 _CHANGE_GAP_MAX = 60.0
 _GAP_SPINBOX_WIDTH = 112
+_DEFAULT_CAPTURE_PROFILE = "walk_standard"
+_CAPTURE_PROFILE_PRESETS: dict[str, tuple[float, float, float]] = {
+    "walk_standard": (1.5, 0.8, 4.0),
+    "walk_close": (1.0, 0.5, 2.5),
+    "walk_wide": (3.0, 1.5, 7.0),
+    "drone_distant": (3.0, 1.5, 8.0),
+}
 _JPEG_QUALITY_MIN = 1
 _JPEG_QUALITY_MAX = 31
 _JPEG_QUALITY_DEFAULT = 2
@@ -153,14 +160,30 @@ class ExtractStep(BaseStepWidget):
         self.images_path_label.setWordWrap(True)
         self.images_path_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
         add_tooltip_row(basic, i18n.IMAGES_DIR, self.images_path_label, i18n.tip("IMAGES_DIR"))
+
+        self.pair_motion_profile_combo = QComboBox()
+        self.pair_motion_profile_combo.setToolTip(i18n.tip("PAIR_MOTION_PROFILE"))
+        self.pair_motion_profile_combo.addItem(i18n.t("PAIR_PROFILE_WALK_STANDARD"), "walk_standard")
+        self.pair_motion_profile_combo.addItem(i18n.t("PAIR_PROFILE_WALK_CLOSE"), "walk_close")
+        self.pair_motion_profile_combo.addItem(i18n.t("PAIR_PROFILE_WALK_WIDE"), "walk_wide")
+        self.pair_motion_profile_combo.addItem(i18n.t("PAIR_PROFILE_DRONE_DISTANT"), "drone_distant")
+        self.pair_motion_profile_combo.setFixedWidth(170)
+        add_tooltip_row(
+            basic,
+            i18n.t("PAIR_MOTION_PROFILE"),
+            self.pair_motion_profile_combo,
+            i18n.tip("PAIR_MOTION_PROFILE"),
+        )
+        self.pair_motion_profile_label = basic.labelForField(self.pair_motion_profile_combo)
         layout.addLayout(basic)
 
+        default_interval, default_min_gap, default_max_gap = _CAPTURE_PROFILE_PRESETS[_DEFAULT_CAPTURE_PROFILE]
         self.interval_edit = DragDoubleSpinBox(
             minimum=_FIXED_INTERVAL_MIN,
             maximum=_FIXED_INTERVAL_MAX,
             step=0.05,
             decimals=2,
-            value=1.0,
+            value=default_interval,
             suffix=f" {i18n.t('SECONDS_SUFFIX')}",
             drag_pixels_per_step=6.0,
         )
@@ -174,7 +197,7 @@ class ExtractStep(BaseStepWidget):
             maximum=_CHANGE_GAP_MAX,
             step=0.05,
             decimals=2,
-            value=0.5,
+            value=default_min_gap,
             suffix=f" {i18n.t('SECONDS_SUFFIX')}",
             drag_pixels_per_step=6.0,
         )
@@ -188,7 +211,7 @@ class ExtractStep(BaseStepWidget):
             maximum=_CHANGE_GAP_MAX,
             step=0.05,
             decimals=2,
-            value=2.0,
+            value=default_max_gap,
             suffix=f" {i18n.t('SECONDS_SUFFIX')}",
             drag_pixels_per_step=6.0,
         )
@@ -202,6 +225,7 @@ class ExtractStep(BaseStepWidget):
         self.smart_fixed_cb.setChecked(True)
         self.smart_fixed_cb.toggled.connect(self._update_mode_widgets)
         self.smart_fixed_cb.toggled.connect(self._mark_estimate_stale)
+        self.pair_motion_profile_combo.currentIndexChanged.connect(self._on_pair_motion_profile_changed)
 
         self.quick_extract_cb = QCheckBox(i18n.t("QUICK_EXTRACT"))
         self.quick_extract_cb.setToolTip(i18n.tip("QUICK_EXTRACT"))
@@ -362,20 +386,6 @@ class ExtractStep(BaseStepWidget):
         self.analysis_width_edit.textChanged.connect(self._mark_estimate_stale)
         add_tooltip_row(adv_form, i18n.ANALYSIS_WIDTH, self.analysis_width_edit, i18n.tip("ANALYSIS_WIDTH"))
         self.analysis_width_label = adv_form.labelForField(self.analysis_width_edit)
-
-        self.pair_motion_profile_combo = QComboBox()
-        self.pair_motion_profile_combo.setToolTip(i18n.tip("PAIR_MOTION_PROFILE"))
-        self.pair_motion_profile_combo.addItem(i18n.t("PAIR_PROFILE_WALK"), "walk")
-        self.pair_motion_profile_combo.addItem(i18n.t("PAIR_PROFILE_DRONE"), "drone")
-        self.pair_motion_profile_combo.setFixedWidth(120)
-        self.pair_motion_profile_combo.currentIndexChanged.connect(self._mark_estimate_stale)
-        add_tooltip_row(
-            adv_form,
-            i18n.t("PAIR_MOTION_PROFILE"),
-            self.pair_motion_profile_combo,
-            i18n.tip("PAIR_MOTION_PROFILE"),
-        )
-        self.pair_motion_profile_label = adv_form.labelForField(self.pair_motion_profile_combo)
         advanced.content_layout.addLayout(adv_form)
 
         path_form = QFormLayout()
@@ -458,6 +468,20 @@ class ExtractStep(BaseStepWidget):
             if self.smart_fixed_cb.isChecked() != restore_smart:
                 self.smart_fixed_cb.setChecked(restore_smart)
         self._update_mode_widgets()
+
+    def _on_pair_motion_profile_changed(self, *_args) -> None:
+        profile = str(self.pair_motion_profile_combo.currentData() or _DEFAULT_CAPTURE_PROFILE)
+        preset = _CAPTURE_PROFILE_PRESETS.get(profile)
+        if preset is not None:
+            interval_sec, min_gap_sec, max_gap_sec = preset
+            self._syncing_gap_fields = True
+            try:
+                self.interval_edit.setValue(interval_sec)
+                self.min_gap_edit.setValue(min_gap_sec)
+                self.max_gap_edit.setValue(max_gap_sec)
+            finally:
+                self._syncing_gap_fields = False
+        self._mark_estimate_stale()
 
     def _update_mode_widgets(self) -> None:
         quick_enabled = self.quick_extract_cb.isChecked()
@@ -990,7 +1014,7 @@ class ExtractStep(BaseStepWidget):
             cmd.extend(
                 [
                     "--pair-motion-profile",
-                    str(self.pair_motion_profile_combo.currentData() or "walk"),
+                    str(self.pair_motion_profile_combo.currentData() or _DEFAULT_CAPTURE_PROFILE),
                     "--analysis-width",
                     self.analysis_width_edit.text().strip(),
                 ]
