@@ -548,6 +548,17 @@ def test_extract_multi_select_replace_mode_queues_all_videos(tmp_path: Path) -> 
     assert [cmd[cmd.index("--output-mode") + 1] for _phase, cmd in commands] == ["replace-video", "replace-video"]
 
 
+def test_extract_phase_status_shows_video_queue_position() -> None:
+    _app()
+    step = ExtractStep(Path.cwd())
+
+    status = step.phase_status_text("extract: a.mp4", 2, 5)
+
+    assert "2/5" in status
+    assert i18n.t("EXTRACT_PHASE_VIDEO").format(video="a.mp4") in status
+    assert step.phase_status_text("extract", 1, 1) == f"{i18n.STATUS_RUNNING}: {i18n.t('EXTRACT_PHASE')}"
+
+
 def test_extract_output_mode_has_only_add_and_reextract() -> None:
     _app()
     step = ExtractStep(Path.cwd())

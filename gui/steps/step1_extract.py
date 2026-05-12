@@ -1016,6 +1016,24 @@ class ExtractStep(BaseStepWidget):
 
     # -- プログレス解析 --
 
+    def phase_display_name(self, phase: str) -> str:
+        if phase == "extract":
+            return i18n.t("EXTRACT_PHASE")
+        if phase.startswith("extract: "):
+            return i18n.t("EXTRACT_PHASE_VIDEO").format(video=phase.split(": ", 1)[1])
+        return phase
+
+    def phase_status_text(self, phase: str, queue_index: int, queue_total: int) -> str:
+        label = self.phase_display_name(phase)
+        if queue_total > 1:
+            return i18n.t("EXTRACT_PHASE_QUEUE_STATUS").format(
+                status=i18n.STATUS_RUNNING,
+                current=queue_index,
+                total=queue_total,
+                phase=label,
+            )
+        return f"{i18n.STATUS_RUNNING}: {label}"
+
     def on_line(self, line: str) -> tuple[int, int] | None:
         progress_prefix = "[progress] "
         if line.startswith(progress_prefix):

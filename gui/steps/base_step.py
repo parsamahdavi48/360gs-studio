@@ -69,6 +69,9 @@ class BaseStepWidget(QWidget):
     def phase_display_name(self, phase: str) -> str:
         return phase
 
+    def phase_status_text(self, phase: str, queue_index: int, queue_total: int) -> str:
+        return f"{i18n.STATUS_RUNNING}: {self.phase_display_name(phase)}"
+
     def on_line(self, line: str) -> tuple[int, int] | None:
         """出力行を解析し、(done, total) を返す。該当なしなら None。"""
         return None

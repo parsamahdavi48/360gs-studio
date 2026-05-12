@@ -42,6 +42,7 @@ class ProcessRunner(QObject):
         self._current_log_path: Path | None = None
         self._run_log_stamp = ""
         self._phase_index = 0
+        self._queue_total = 0
 
     # -- public API --
 
@@ -51,6 +52,14 @@ class ProcessRunner(QObject):
     @property
     def current_phase(self) -> str:
         return self._current_phase
+
+    @property
+    def phase_index(self) -> int:
+        return self._phase_index
+
+    @property
+    def queue_total(self) -> int:
+        return self._queue_total
 
     def start_single(self, cmd: list[str], phase: str = "run", log_dir: str | Path | None = None) -> None:
         self.start_queue([(phase, cmd)], log_dir=log_dir)
@@ -63,6 +72,7 @@ class ProcessRunner(QObject):
         self._pending = list(steps)
         self._running = bool(self._pending)
         self._phase_index = 0
+        self._queue_total = len(self._pending)
         self._run_log_stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
         self._log_dir = Path(log_dir) if log_dir is not None else None
         if self._log_dir is not None:

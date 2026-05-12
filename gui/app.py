@@ -865,9 +865,11 @@ class MainWindow(QWidget):
 
     def _on_phase_started(self, phase: str) -> None:
         step = self.steps[self._current_step] if 0 <= self._current_step < len(self.steps) else None
-        label = step.phase_display_name(phase) if step else phase
         self.progress.start_phase()
-        self.progress.set_status(f"{i18n.STATUS_RUNNING}: {label}")
+        if step:
+            self.progress.set_status(step.phase_status_text(phase, self.runner.phase_index, self.runner.queue_total))
+        else:
+            self.progress.set_status(f"{i18n.STATUS_RUNNING}: {phase}")
         if step:
             result = step.on_phase_started(phase)
             if result is not None:

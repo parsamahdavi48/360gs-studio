@@ -48,6 +48,34 @@ def test_process_runner_is_running_when_phase_started() -> None:
             _process_events_until(app, lambda: not runner.is_running())
 
 
+def test_process_runner_exposes_phase_queue_position() -> None:
+    app = _app()
+    runner = ProcessRunner()
+    positions: list[tuple[str, int, int]] = []
+    finished: list[bool] = []
+
+    runner.phase_started.connect(
+        lambda phase: positions.append((phase, runner.phase_index, runner.queue_total))
+    )
+    runner.queue_finished.connect(finished.append)
+
+    runner.start_queue(
+        [
+            ("first", [sys.executable, "-c", "print('one')"]),
+            ("second", [sys.executable, "-c", "print('two')"]),
+        ]
+    )
+
+    try:
+        assert _process_events_until(app, lambda: bool(finished))
+        assert finished == [True]
+        assert positions == [("first", 1, 2), ("second", 2, 2)]
+    finally:
+        if runner.is_running():
+            runner.cancel()
+            _process_events_until(app, lambda: not runner.is_running())
+
+
 def test_process_runner_writes_phase_logs(tmp_path: Path) -> None:
     app = _app()
     runner = ProcessRunner()
