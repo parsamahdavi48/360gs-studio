@@ -699,7 +699,7 @@ def test_scene_viewer_ui_defaults_target_scene_validation_workflow(tmp_path: Pat
     assert window.mode_combo.findData("image_pointcloud") < 0
     assert window.mode_combo.itemText(window.mode_combo.findData(RIGHT_VIEW_POINTCLOUD)) == "点群"
     assert window.mode_combo.itemText(window.mode_combo.findData(RIGHT_VIEW_SOURCE_EQUIRECT)) == "元360画像"
-    assert window.mode_combo.itemText(window.mode_combo.findData(RIGHT_VIEW_RECONSTRUCTED_CUBE6)) == "最終Cube6画像"
+    assert window.mode_combo.itemText(window.mode_combo.findData(RIGHT_VIEW_RECONSTRUCTED_CUBE6)) == "Cube6再構築"
     assert window.ray_basis_combo.currentData() == RAY_BASIS_WORLD
     assert window.tag_physical_size_spin.value() == pytest.approx(0.160)
     assert window.run_validation_button.text() == "検出"
@@ -1801,7 +1801,7 @@ def test_current_case_image_preview_uses_source_equirect_when_available() -> Non
     window.deleteLater()
 
 
-def test_current_case_image_preview_uses_final_cube6_direct() -> None:
+def test_current_case_image_preview_can_use_generated_cube6_reconstruction() -> None:
     case_dir = _local_apriltag_case_dir()
     _app()
     window = AprilTagSceneViewerWindow(initial_case=case_dir)
@@ -1812,9 +1812,9 @@ def test_current_case_image_preview_uses_final_cube6_direct() -> None:
     assert mode >= 0
     window.mode_combo.setCurrentIndex(mode)
 
-    assert "cube6-final-direct" in window._displayed_image_key
+    assert "cube6-reconstruct" in window._displayed_image_key
     assert "source-equirect" not in window._displayed_image_key
-    assert "image preview=final Cube6 direct" in window._last_status_detail
+    assert "image preview=Cube6 reconstructed" in window._last_status_detail
     window.deleteLater()
 
 

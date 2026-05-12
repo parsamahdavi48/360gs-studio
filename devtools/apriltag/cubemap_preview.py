@@ -1099,38 +1099,11 @@ def cubemap_preview_sampler_faces(
     return tuple(faces)
 
 
-def cubemap_world_sampler_faces(
-    group: CubemapFrameGroup,
-    *,
-    image_cache: dict[Path, np.ndarray] | None = None,
-) -> tuple[CubemapPreviewSamplerFace, ...]:
-    """Load face textures using each frame's world-space camera pose directly."""
-    faces: list[CubemapPreviewSamplerFace] = []
-    ordered = list(_STANDARD_FACE_ORDER) + sorted(set(group.frames_by_face) - set(_STANDARD_FACE_ORDER))
-    for face in ordered:
-        frame = group.frames_by_face.get(face)
-        if frame is None:
-            continue
-        image = _load_frame_image(frame, image_cache=image_cache)
-        if image is None:
-            continue
-        faces.append(
-            CubemapPreviewSamplerFace(
-                face=face,
-                frame=frame,
-                image_bgr=image,
-                preview_to_face_rotation=np.asarray(frame.camera_to_world_rotation, dtype=np.float64),
-            )
-        )
-    return tuple(faces)
-
-
 def render_cubemap_direct_preview(
     group: CubemapFrameGroup,
     *,
     yaw_deg: float,
     pitch_deg: float,
-    roll_deg: float = 0.0,
     fov_deg: float = 90.0,
     output_size: int = 768,
     image_cache: dict[Path, np.ndarray] | None = None,
@@ -1140,7 +1113,7 @@ def render_cubemap_direct_preview(
     if not faces:
         raise ValueError("Direct cubemap preview requires a standard Cube6 image group")
     size = max(1, int(output_size))
-    preview_rays = _view_rays(size, fov_deg) @ _rotation_matrix(yaw_deg, pitch_deg, roll_deg).T
+    preview_rays = _view_rays(size, fov_deg) @ _rotation_matrix(yaw_deg, pitch_deg).T
 
     output = np.full((size, size, 3), 16, dtype=np.uint8)
     best_score = np.full((size, size), -np.inf, dtype=np.float64)
@@ -1156,43 +1129,11 @@ def render_cubemap_direct_preview(
     return output
 
 
-def render_cubemap_world_perspective(
-    group: CubemapFrameGroup,
-    *,
-    yaw_deg: float,
-    pitch_deg: float,
-    roll_deg: float = 0.0,
-    fov_deg: float = 90.0,
-    output_size: int = 768,
-    image_cache: dict[Path, np.ndarray] | None = None,
-) -> np.ndarray:
-    """Render saved Cube6 images by projecting preview rays into final world poses."""
-    size = max(1, int(output_size))
-    preview_rays = _view_rays(size, fov_deg) @ _rotation_matrix(yaw_deg, pitch_deg, roll_deg).T
-
-    output = np.full((size, size, 3), 16, dtype=np.uint8)
-    best_score = np.full((size, size), -np.inf, dtype=np.float64)
-    for frame in group.frames:
-        image = _load_frame_image(frame, image_cache=image_cache)
-        if image is None:
-            continue
-        local = preview_rays @ frame.camera_to_world_rotation
-        _sample_frame_to_output(
-            frame=frame,
-            image=image,
-            local_rays=local,
-            output=output,
-            best_score=best_score,
-        )
-    return output
-
-
 def visible_cubemap_preview_face_indices(
     faces: tuple[CubemapPreviewSamplerFace, ...],
     *,
     yaw_deg: float,
     pitch_deg: float,
-    roll_deg: float = 0.0,
     fov_deg: float,
     sample_grid: int = 7,
 ) -> tuple[int, ...]:
@@ -1202,7 +1143,7 @@ def visible_cubemap_preview_face_indices(
     grid = max(3, int(sample_grid))
     if grid % 2 == 0:
         grid += 1
-    preview_rays = _view_rays(grid, fov_deg) @ _rotation_matrix(yaw_deg, pitch_deg, roll_deg).T
+    preview_rays = _view_rays(grid, fov_deg) @ _rotation_matrix(yaw_deg, pitch_deg).T
     visible: list[int] = []
     for index, face in enumerate(faces):
         frame = face.frame

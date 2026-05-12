@@ -71,7 +71,6 @@ from devtools.apriltag.cubemap_preview import (
     source_equirect_base_rotation,
     split_cubemap_face,
 )
-from devtools.apriltag.cubemap_gl_view import AprilTagCubemapPreviewView
 from devtools.apriltag.printable import create_printable_target
 from devtools.apriltag.synthetic import SyntheticAprilTagConfig, inject_synthetic_apriltag
 from devtools.apriltag.world_debug_view import (
@@ -81,7 +80,7 @@ from devtools.apriltag.world_debug_view import (
     transform_point_cloud_sample,
 )
 from gui.common.drag_spinbox import DragDoubleSpinBox
-from gui.common.perspective_image_view import PerspectiveLabelOverlay
+from gui.common.perspective_image_view import PerspectiveImageView, PerspectiveLabelOverlay
 from gui.common.perspective_preview import (
     PerspectiveParams,
     clamp_pitch_deg,
@@ -1154,7 +1153,7 @@ class AprilTagSceneViewerWindow(QWidget):
         self.mode_combo = QComboBox()
         self.mode_combo.addItem("点群", RIGHT_VIEW_POINTCLOUD)
         self.mode_combo.addItem("元360画像", RIGHT_VIEW_SOURCE_EQUIRECT)
-        self.mode_combo.addItem("最終Cube6画像", RIGHT_VIEW_RECONSTRUCTED_CUBE6)
+        self.mode_combo.addItem("Cube6再構築", RIGHT_VIEW_RECONSTRUCTED_CUBE6)
         self.ray_basis_combo = QComboBox()
         self.ray_basis_combo.addItem("JSON Face", RAY_BASIS_WORLD)
         self.ray_basis_combo.addItem("両方(デバッグ)", RAY_BASIS_BOTH)
@@ -1229,7 +1228,7 @@ class AprilTagSceneViewerWindow(QWidget):
         self.point_view.set_fixed_navigation_enabled(False)
         self.point_view.set_fixed_screen_zoom_enabled(True)
         self.point_view.setMinimumSize(520, 420)
-        self.image_view = AprilTagCubemapPreviewView("Cubemap画像を読み込みます")
+        self.image_view = PerspectiveImageView("Cubemap画像を読み込みます")
         self.image_view.setMinimumSize(520, 420)
         self.image_view.set_drag_mode("look")
         self.right_stack.addWidget(self.point_view)
@@ -2515,36 +2514,6 @@ class AprilTagSceneViewerWindow(QWidget):
         if world_group is None or raw_group is None or image_group is None:
             self.image_view.setText("Cubemap画像グループがありません")
             return
-        if mode == RIGHT_VIEW_RECONSTRUCTED_CUBE6:
-            view_params = self._params
-            key = (
-                f"{self.case.coordinate_profile if self.case else ''}:"
-                f"cube6-final-direct:{self._ray_basis_mode()}:{world_group.name}"
-            )
-            overlays = self._right_image_tag_overlays(
-                world_group,
-                use_output_projection=False,
-                projection_params=view_params,
-                output_size=768,
-                image_view_basis=True,
-            )
-            if self._displayed_image_key == key and self.image_view.set_perspective_params(view_params):
-                self.image_view.set_drag_mode("look")
-                self.image_view.set_perspective_label_overlays(overlays)
-                return
-            shown = self.image_view.set_cubemap_group(
-                world_group,
-                view_params,
-                overlays=overlays,
-                logical_size=QSize(768, 768),
-                image_cache=self._image_cache,
-                world_space=True,
-            )
-            self.image_view.set_drag_mode("look")
-            self._displayed_image_key = key if shown else ""
-            if not shown:
-                self.image_view.setText("最終Cube6画像プレビューを初期化できませんでした")
-            return
         source_equirect = self._source_equirect_for_group(world_group)
         source_rotation_for_group = self._source_equirect_rotation_for_group(world_group)
         use_pointcloud_overlay = mode == RIGHT_VIEW_IMAGE_POINTCLOUD
@@ -2704,23 +2673,20 @@ class AprilTagSceneViewerWindow(QWidget):
             source_image_text = f" / source equirect={source_equirect[0].name}"
         preview_size_text = ""
         if mode in RIGHT_VIEW_IMAGE_MODES and group is not None:
-            if mode == RIGHT_VIEW_RECONSTRUCTED_CUBE6:
-                preview_size_text = " / preview=final Cube6 direct"
-            else:
-                raw_group = self.selected_raw_group()
-                use_source = mode in {RIGHT_VIEW_SOURCE_EQUIRECT, RIGHT_VIEW_IMAGE_POINTCLOUD} and source_equirect is not None
-                use_reconstructed = (
-                    mode == RIGHT_VIEW_IMAGE_POINTCLOUD
-                    and source_equirect is None
-                    and self._source_equirect_rotation_for_group(group) is not None
-                )
-                equirect_group = raw_group if use_reconstructed else image_group
-                width, height = self._right_image_equirect_size(
-                    world_group=group,
-                    cubemap_group=equirect_group,
-                    use_source_equirect=use_source,
-                )
-                preview_size_text = f" / preview equirect={width}x{height}"
+            raw_group = self.selected_raw_group()
+            use_source = mode in {RIGHT_VIEW_SOURCE_EQUIRECT, RIGHT_VIEW_IMAGE_POINTCLOUD} and source_equirect is not None
+            use_reconstructed = mode == RIGHT_VIEW_RECONSTRUCTED_CUBE6 or (
+                mode == RIGHT_VIEW_IMAGE_POINTCLOUD
+                and source_equirect is None
+                and self._source_equirect_rotation_for_group(group) is not None
+            )
+            equirect_group = raw_group if use_reconstructed else image_group
+            width, height = self._right_image_equirect_size(
+                world_group=group,
+                cubemap_group=equirect_group,
+                use_source_equirect=use_source,
+            )
+            preview_size_text = f" / preview equirect={width}x{height}"
         mapping = ""
         if mode == RIGHT_VIEW_IMAGE_POINTCLOUD and group is not None:
             if source_equirect is not None:
@@ -2730,7 +2696,8 @@ class AprilTagSceneViewerWindow(QWidget):
             else:
                 mapping = " / image preview=Cube6 axis + pointcloud"
         elif mode == RIGHT_VIEW_RECONSTRUCTED_CUBE6 and group is not None:
-            mapping = " / image preview=final Cube6 direct"
+            if self._source_equirect_rotation_for_group(group) is not None:
+                mapping = " / image preview=Cube6 reconstructed"
         elif mode == RIGHT_VIEW_SOURCE_EQUIRECT and source_equirect is not None:
             mapping = " / image preview=source equirect direct"
         if basis_group is not None and image_group is not None:
@@ -2791,7 +2758,7 @@ class AprilTagSceneViewerWindow(QWidget):
                 or self._source_equirect_rotation_for_group(self.selected_world_group()) is not None
             )
         elif mode == RIGHT_VIEW_RECONSTRUCTED_CUBE6:
-            source_preview = False
+            source_preview = self._source_equirect_rotation_for_group(self.selected_world_group()) is not None
         elif mode == RIGHT_VIEW_SOURCE_EQUIRECT:
             source_preview = self._source_equirect_for_group(self.selected_world_group()) is not None
         else:

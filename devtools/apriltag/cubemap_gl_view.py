@@ -14,7 +14,6 @@ from devtools.apriltag.cubemap_preview import (
     CubemapFrameGroup,
     CubemapPreviewSamplerFace,
     cubemap_preview_sampler_faces,
-    cubemap_world_sampler_faces,
     visible_cubemap_preview_face_indices,
 )
 from gui.common.perspective_image_view import (
@@ -92,7 +91,6 @@ class AprilTagCubemapGLView(PerspectiveGLImageView):
 
         uniform float u_yaw_rad;
         uniform float u_pitch_rad;
-        uniform float u_roll_rad;
         uniform float u_fov_rad;
         uniform vec2 u_viewport_origin;
         uniform vec2 u_viewport_size;
@@ -162,20 +160,12 @@ class AprilTagCubemapGLView(PerspectiveGLImageView):
             float focal = 1.0 / tan(u_fov_rad * 0.5);
             vec3 ray = normalize(vec3(view_x, view_y, focal));
 
-            float cr = cos(u_roll_rad);
-            float sr = sin(u_roll_rad);
-            vec3 rolled = vec3(
-                cr * ray.x - sr * ray.y,
-                sr * ray.x + cr * ray.y,
-                ray.z
-            );
-
             float cp = cos(u_pitch_rad);
             float sp = sin(u_pitch_rad);
             vec3 pitched = vec3(
-                rolled.x,
-                cp * rolled.y - sp * rolled.z,
-                sp * rolled.y + cp * rolled.z
+                ray.x,
+                cp * ray.y - sp * ray.z,
+                sp * ray.y + cp * ray.z
             );
 
             float cy = cos(u_yaw_rad);
@@ -310,10 +300,6 @@ class AprilTagCubemapGLView(PerspectiveGLImageView):
             float(np.deg2rad(float(self._params.pitch_deg))),
         )
         self._program.setUniformValue1f(
-            self._program.uniformLocation(b"u_roll_rad"),
-            float(np.deg2rad(float(getattr(self._params, "roll_deg", 0.0)))),
-        )
-        self._program.setUniformValue1f(
             self._program.uniformLocation(b"u_fov_rad"),
             float(np.deg2rad(float(self._params.fov_deg))),
         )
@@ -362,7 +348,6 @@ class AprilTagCubemapGLView(PerspectiveGLImageView):
             self._all_sampler_faces,
             yaw_deg=self._params.yaw_deg,
             pitch_deg=self._params.pitch_deg,
-            roll_deg=getattr(self._params, "roll_deg", 0.0),
             fov_deg=self._params.fov_deg,
         )
         self._active_face_indices = indices
@@ -450,12 +435,10 @@ class AprilTagCubemapPreviewView(QWidget):
         overlays: list[PerspectiveLabelOverlay] | None = None,
         logical_size: QSize | None = None,
         image_cache: dict[Path, np.ndarray] | None = None,
-        world_space: bool = False,
     ) -> bool:
         if self._gpu_failed or self._direct_view.failed():
             return False
-        loader = cubemap_world_sampler_faces if world_space else cubemap_preview_sampler_faces
-        faces = loader(group, image_cache=image_cache)
+        faces = cubemap_preview_sampler_faces(group, image_cache=image_cache)
         if not faces:
             return False
         self._direct_view.set_drag_mode(self._drag_mode)
