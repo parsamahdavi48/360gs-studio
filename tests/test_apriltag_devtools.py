@@ -36,6 +36,7 @@ from devtools.apriltag.cubemap_preview import (
     render_cubemap_axis_equirect,
     render_cubemap_direct_preview,
     render_cubemap_equirect,
+    render_cubemap_world_perspective,
     split_cubemap_face,
     view_pixel_to_world_ray,
     view_pixel_to_world_ray_and_up,
@@ -713,6 +714,56 @@ def test_render_cubemap_direct_preview_samples_standard_side_faces(tmp_path: Pat
         )
 
         assert tuple(int(value) for value in rendered[16, 16]) == colors[face]
+
+
+def test_render_cubemap_direct_preview_applies_roll(tmp_path: Path) -> None:
+    group, _colors = _constant_color_cube_group(tmp_path)
+    pz_frame = group.frames_by_face["pz"]
+    gradient = np.zeros((pz_frame.height, pz_frame.width, 3), dtype=np.uint8)
+    gradient[:, :, 0] = np.linspace(0, 255, pz_frame.width, dtype=np.uint8)[None, :]
+    assert cv2.imwrite(str(pz_frame.image_path), gradient)
+
+    no_roll = render_cubemap_direct_preview(
+        group,
+        yaw_deg=0.0,
+        pitch_deg=0.0,
+        roll_deg=0.0,
+        output_size=33,
+    )
+    rolled = render_cubemap_direct_preview(
+        group,
+        yaw_deg=0.0,
+        pitch_deg=0.0,
+        roll_deg=180.0,
+        output_size=33,
+    )
+
+    assert int(no_roll[16, 24, 0]) > 170
+    assert int(rolled[16, 24, 0]) < 90
+
+
+def test_render_cubemap_world_perspective_uses_frame_world_pose(tmp_path: Path) -> None:
+    group, _colors = _constant_color_cube_group(tmp_path)
+    pz_frame = group.frames_by_face["pz"]
+    gradient = np.zeros((pz_frame.height, pz_frame.width, 3), dtype=np.uint8)
+    gradient[:, :, 0] = np.linspace(0, 255, pz_frame.width, dtype=np.uint8)[None, :]
+    gradient[:, :, 1] = np.linspace(0, 255, pz_frame.height, dtype=np.uint8)[:, None]
+    assert cv2.imwrite(str(pz_frame.image_path), gradient)
+
+    yaw, pitch, roll, fov = axis_face_view_params(group, "pz", fov_deg=90.0)
+    rendered = render_cubemap_world_perspective(
+        group,
+        yaw_deg=yaw,
+        pitch_deg=pitch,
+        roll_deg=roll,
+        fov_deg=fov,
+        output_size=pz_frame.width,
+    )
+
+    direct_error = float(np.mean(np.abs(rendered.astype(np.int16) - gradient.astype(np.int16))))
+    mirrored_error = float(np.mean(np.abs(rendered.astype(np.int16) - gradient[:, ::-1].astype(np.int16))))
+    assert direct_error < 2.0
+    assert direct_error * 8.0 < mirrored_error
 
 
 def test_render_cubemap_direct_preview_uses_transform_relative_face_layout(tmp_path: Path) -> None:
