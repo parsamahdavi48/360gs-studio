@@ -109,6 +109,7 @@ LICHTFELD_IMAGE_RAY_DISPLAY_PROFILES = {
 }
 SOURCE_EQUIRECT_IMAGE_EXTS = (".jpg", ".jpeg", ".png", ".tif", ".tiff", ".webp", ".bmp")
 SOURCE_EQUIRECT_LOCAL_FROM_LICHTFELD_LOCAL = np.diag([1.0, -1.0, -1.0])
+SOURCE_EQUIRECT_LOCAL_FROM_LICHTFELD_FINAL_RASTER = np.diag([-1.0, 1.0, 1.0])
 SYNTHETIC_IMAGE_RASTER_Y_FLIP = np.diag([1.0, -1.0, 1.0])
 SYNTHETIC_OUTPUT_FACE_ROTATION_FACE = {
     "top": "bottom",
@@ -627,22 +628,24 @@ def _source_equirect_rotations_from_groups(
     groups: tuple[CubemapFrameGroup, ...],
     metadata: CubemapViewMetadata | None,
     *,
+    lichtfeld_final_orientation_applied: bool = False,
     undo_legacy_lichtfeld_local_flip: bool = True,
 ) -> dict[str, np.ndarray]:
     rotations: dict[str, np.ndarray] = {}
     for group in groups:
         rotation = source_equirect_base_rotation(group, cubemap_view_params=metadata)
         if rotation is not None:
-            # Legacy LichtFeld Cube6 datasets pre-compensated camera local Y/Z
-            # before the final dataset orientation correction existed. Current
-            # CLI outputs already carry that final orientation in transforms.json,
-            # so applying this local flip again makes source-image lookup face the
-            # opposite panorama direction from the displayed JSON frustum.
-            rotations[group.name] = (
-                rotation @ SOURCE_EQUIRECT_LOCAL_FROM_LICHTFELD_LOCAL
-                if undo_legacy_lichtfeld_local_flip
-                else rotation
-            )
+            if lichtfeld_final_orientation_applied:
+                # The final dataset orientation is already in transforms.json,
+                # but Cube6 JPG pixels were generated from build_remap() image
+                # rays while JSON face poses use the export pose convention.
+                # This adapter maps final JSON face rays back to the saved
+                # raster/source panorama directions without changing world poses.
+                rotations[group.name] = rotation @ SOURCE_EQUIRECT_LOCAL_FROM_LICHTFELD_FINAL_RASTER
+            elif undo_legacy_lichtfeld_local_flip:
+                rotations[group.name] = rotation @ SOURCE_EQUIRECT_LOCAL_FROM_LICHTFELD_LOCAL
+            else:
+                rotations[group.name] = rotation
     return rotations
 
 
@@ -657,6 +660,32 @@ def _case_has_lichtfeld_final_orientation(case: AprilTagDevCase | None) -> bool:
         if final_orientation_is_applied(payload, FINAL_ORIENTATION_LICHTFELD):
             return True
     return False
+
+
+def _source_raster_frame_group(
+    group: CubemapFrameGroup,
+    source_world_to_image_rotation: np.ndarray,
+    metadata: CubemapViewMetadata | None,
+) -> CubemapFrameGroup | None:
+    face_rotations = cubemap_image_face_rotations(group, cubemap_view_params=metadata)
+    if face_rotations is None:
+        return None
+    rotation = np.asarray(source_world_to_image_rotation, dtype=np.float64)
+    if rotation.shape != (3, 3):
+        return None
+    position = group.reference_frame.camera_position_sfm
+    frames: dict[str, PinholeFrame] = {}
+    for face, frame in group.frames_by_face.items():
+        face_rotation = face_rotations.get(face)
+        if face_rotation is None:
+            continue
+        transform = np.array(frame.transform_matrix, dtype=np.float64, copy=True)
+        transform[:3, :3] = rotation @ face_rotation
+        transform[:3, 3] = position
+        frames[face] = replace(frame, transform_matrix=transform)
+    if len(frames) < 4:
+        return None
+    return CubemapFrameGroup(name=group.name, frames_by_face=frames, group_index=group.group_index)
 
 
 def _synthetic_output_face_rotation_face(face: str) -> str:
@@ -1408,7 +1437,7 @@ class AprilTagSceneViewerWindow(QWidget):
             self._source_equirect_rotations = _source_equirect_rotations_from_groups(
                 self._raw_groups,
                 metadata,
-                undo_legacy_lichtfeld_local_flip=not has_lichtfeld_final_orientation,
+                lichtfeld_final_orientation_applied=has_lichtfeld_final_orientation,
             )
             self._update_world_matrix()
             self._world_groups = tuple(
@@ -1419,18 +1448,42 @@ class AprilTagSceneViewerWindow(QWidget):
                 )
                 for group in self._raw_groups
             )
-            image_ray_display_matrix = image_ray_display_matrix_for_profile(
+            fallback_image_ray_display_matrix = image_ray_display_matrix_for_profile(
                 self.case.coordinate_profile,
                 self._world_matrix,
             )
-            self._image_ray_groups = tuple(
-                transform_group_for_world_display(
-                    image_space_cubemap_frame_group(group, cubemap_view_params=metadata),
-                    image_ray_display_matrix,
-                    cubemap_view_params=metadata,
-                )
-                for group in self._raw_groups
+            use_source_raster_image_rays = (
+                normalize_coordinate_profile(self.case.coordinate_profile) in LICHTFELD_IMAGE_RAY_DISPLAY_PROFILES
             )
+            image_ray_groups: list[CubemapFrameGroup] = []
+            for group in self._raw_groups:
+                source_rotation = (
+                    self._source_equirect_rotations.get(group.name)
+                    if use_source_raster_image_rays
+                    else None
+                )
+                source_raster_group = (
+                    _source_raster_frame_group(group, source_rotation, metadata)
+                    if source_rotation is not None
+                    else None
+                )
+                if source_raster_group is not None:
+                    image_ray_groups.append(
+                        transform_group_for_world_display(
+                            source_raster_group,
+                            self._world_matrix,
+                            cubemap_view_params=metadata,
+                        )
+                    )
+                else:
+                    image_ray_groups.append(
+                        transform_group_for_world_display(
+                            image_space_cubemap_frame_group(group, cubemap_view_params=metadata),
+                            fallback_image_ray_display_matrix,
+                            cubemap_view_params=metadata,
+                        )
+                    )
+            self._image_ray_groups = tuple(image_ray_groups)
             self._image_preview_groups = tuple(
                 image_preview_group_for_profile(
                     self.case.coordinate_profile,
@@ -1910,7 +1963,11 @@ class AprilTagSceneViewerWindow(QWidget):
         metadata = case_cubemap_view_metadata(self.case)
         if metadata is None or not self._raw_groups:
             return {}
-        source_rotations = _source_equirect_rotations_from_groups(self._raw_groups, metadata)
+        source_rotations = _source_equirect_rotations_from_groups(
+            self._raw_groups,
+            metadata,
+            lichtfeld_final_orientation_applied=_case_has_lichtfeld_final_orientation(self.case),
+        )
         overrides: dict[str, np.ndarray] = {}
         for group in self._raw_groups:
             source_rotation = source_rotations.get(group.name)
