@@ -2277,6 +2277,39 @@ class AprilTagSceneViewerWindow(QWidget):
         self._sync_face_buttons()
         self._update_status()
 
+    def _right_image_projection_modes(self, mode: str, world_group: CubemapFrameGroup | None) -> tuple[bool, bool]:
+        source_equirect = self._source_equirect_for_group(world_group)
+        source_rotation = self._source_equirect_rotation_for_group(world_group)
+        use_source_equirect = (
+            mode in {RIGHT_VIEW_SOURCE_EQUIRECT, RIGHT_VIEW_IMAGE_POINTCLOUD}
+            and source_equirect is not None
+        )
+        use_reconstructed_cube6 = mode == RIGHT_VIEW_RECONSTRUCTED_CUBE6 or (
+            mode == RIGHT_VIEW_IMAGE_POINTCLOUD and source_equirect is None and source_rotation is not None
+        )
+        return use_source_equirect, use_reconstructed_cube6
+
+    def _source_projection_anchor_params(self, world_group: CubemapFrameGroup) -> PerspectiveParams | None:
+        basis_group = self.selected_face_basis_group() or world_group
+        params = axis_face_view_params(basis_group, self._active_face, fov_deg=self._params.fov_deg)
+        if params is None:
+            return None
+        yaw, pitch, roll, fov = params
+        return PerspectiveParams(
+            yaw_deg=normalize_yaw_deg(yaw),
+            pitch_deg=clamp_pitch_deg(pitch),
+            roll_deg=roll,
+            fov_deg=float(fov),
+        )
+
+    def _source_projection_preview_params(self, world_group: CubemapFrameGroup) -> PerspectiveParams:
+        return _source_equirect_preview_params(
+            self._params,
+            self._active_face,
+            self._ray_basis_mode(),
+            self._source_projection_anchor_params(world_group),
+        )
+
     def _sync_point_view(self, group: CubemapFrameGroup) -> None:
         camera, right, up, forward = camera_pose_from_perspective_params(group, self._params)
         self.point_view.set_fixed_perspective_view(
@@ -2307,13 +2340,7 @@ class AprilTagSceneViewerWindow(QWidget):
         source_equirect = self._source_equirect_for_group(world_group)
         source_rotation_for_group = self._source_equirect_rotation_for_group(world_group)
         use_pointcloud_overlay = mode == RIGHT_VIEW_IMAGE_POINTCLOUD
-        use_source_equirect = (
-            mode in {RIGHT_VIEW_SOURCE_EQUIRECT, RIGHT_VIEW_IMAGE_POINTCLOUD}
-            and source_equirect is not None
-        )
-        use_reconstructed_cube6 = mode == RIGHT_VIEW_RECONSTRUCTED_CUBE6 or (
-            mode == RIGHT_VIEW_IMAGE_POINTCLOUD and source_equirect is None and source_rotation_for_group is not None
-        )
+        use_source_equirect, use_reconstructed_cube6 = self._right_image_projection_modes(mode, world_group)
         equirect_group = raw_group if use_reconstructed_cube6 else image_group
         equirect_width, equirect_height = self._right_image_equirect_size(
             world_group=world_group,
@@ -2326,25 +2353,8 @@ class AprilTagSceneViewerWindow(QWidget):
             if use_source_equirect
             else source_rotation_for_group
         )
-        anchor_params = None
-        if use_source_equirect or use_reconstructed_cube6:
-            basis_group = self.selected_face_basis_group() or world_group
-            params = axis_face_view_params(basis_group, self._active_face, fov_deg=self._params.fov_deg)
-            if params is not None:
-                yaw, pitch, roll, fov = params
-                anchor_params = PerspectiveParams(
-                    yaw_deg=normalize_yaw_deg(yaw),
-                    pitch_deg=clamp_pitch_deg(pitch),
-                    roll_deg=roll,
-                    fov_deg=float(fov),
-                )
         view_params = (
-            _source_equirect_preview_params(
-                self._params,
-                self._active_face,
-                self._ray_basis_mode(),
-                anchor_params,
-            )
+            self._source_projection_preview_params(world_group)
             if use_source_equirect or use_reconstructed_cube6
             else self._params
         )

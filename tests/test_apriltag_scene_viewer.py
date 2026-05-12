@@ -1604,6 +1604,41 @@ def test_current_case_reconstructed_image_tag_overlay_tracks_view_drag() -> None
     window.deleteLater()
 
 
+def test_reconstructed_image_view_frustum_keeps_world_params(tmp_path: Path) -> None:
+    case_dir = _write_generated_cube6_case(tmp_path)
+    case = load_case(case_dir)
+    save_case(replace(case, coordinate_profile="lichtfeld_cube6"))
+
+    _app()
+    window = AprilTagSceneViewerWindow(initial_case=case_dir)
+    window.select_camera_by_name("cam_001")
+    window.ray_basis_combo.setCurrentIndex(window.ray_basis_combo.findData(RAY_BASIS_WORLD))
+    window.mode_combo.setCurrentIndex(window.mode_combo.findData(RIGHT_VIEW_RECONSTRUCTED_CUBE6))
+    window.set_active_face("pz")
+    window._on_right_view_dragged(-24.0, 12.0)
+    group = window.selected_world_group()
+    assert group is not None
+    basis_group = window.selected_face_basis_group() or group
+    params = axis_face_view_params(basis_group, "pz", fov_deg=window._params.fov_deg)
+    assert params is not None
+    yaw, pitch, roll, fov = params
+    expected = _source_equirect_preview_params(
+        window._params,
+        "pz",
+        RAY_BASIS_WORLD,
+        PerspectiveParams(yaw_deg=yaw, pitch_deg=pitch, roll_deg=roll, fov_deg=fov),
+    )
+
+    assert expected != window._params
+    assert window.world_view._preview_yaw_deg == pytest.approx(window._params.yaw_deg)
+    assert window.world_view._preview_pitch_deg == pytest.approx(window._params.pitch_deg)
+    assert window.world_view._preview_roll_deg == pytest.approx(window._params.roll_deg)
+    assert window.world_view._preview_fov_deg == pytest.approx(window._params.fov_deg)
+    assert window.point_view._preview_yaw_deg == pytest.approx(window._params.yaw_deg)
+    assert window.point_view._preview_pitch_deg == pytest.approx(window._params.pitch_deg)
+    window.deleteLater()
+
+
 def test_scene_viewer_loads_case_and_selects_camera(tmp_path: Path) -> None:
     _app()
     case_dir = _write_cube6_case(tmp_path)
