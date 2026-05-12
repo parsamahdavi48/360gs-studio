@@ -1569,21 +1569,30 @@ def test_current_case_reconstructed_image_tag_overlay_tracks_view_drag() -> None
         size_sfm=1.0,
     )
 
-    before = window._right_image_tag_overlays(group, use_output_projection=True, output_size=768)
+    basis_group = window.selected_face_basis_group() or group
+    params = axis_face_view_params(basis_group, "pz", fov_deg=window._params.fov_deg)
+    assert params is not None
+    yaw, pitch, roll, fov = params
+    before_display_params = _source_equirect_preview_params(
+        window._params,
+        "pz",
+        RAY_BASIS_WORLD,
+        PerspectiveParams(yaw_deg=yaw, pitch_deg=pitch, roll_deg=roll, fov_deg=fov),
+    )
+    before = window._right_image_tag_overlays(
+        group,
+        use_output_projection=True,
+        projection_params=before_display_params,
+        output_size=768,
+    )
     assert len(before) == 1
     assert np.allclose(
         np.asarray(before[0].polygon),
-        np.asarray(window._tag_image_overlays(group, window._params, output_size=768)[0].polygon),
+        np.asarray(window._tag_image_overlays(group, before_display_params, output_size=768)[0].polygon),
         atol=1e-4,
     )
 
     window._on_right_view_dragged(-24.0, 12.0)
-    after = window._right_image_tag_overlays(group, use_output_projection=True, output_size=768)
-    assert len(after) == 1
-    expected = window._tag_image_overlays(group, window._params, output_size=768)
-    assert len(expected) == 1
-    assert np.allclose(np.asarray(after[0].polygon), np.asarray(expected[0].polygon), atol=1e-4)
-    basis_group = window.selected_face_basis_group() or group
     params = axis_face_view_params(basis_group, "pz", fov_deg=window._params.fov_deg)
     assert params is not None
     yaw, pitch, roll, fov = params
@@ -1593,13 +1602,19 @@ def test_current_case_reconstructed_image_tag_overlay_tracks_view_drag() -> None
         RAY_BASIS_WORLD,
         PerspectiveParams(yaw_deg=yaw, pitch_deg=pitch, roll_deg=roll, fov_deg=fov),
     )
-    wrong_display_projection = window._tag_image_overlays(group, display_params, output_size=768)
-    assert len(wrong_display_projection) == 1
-    assert not np.allclose(
-        np.asarray(after[0].polygon),
-        np.asarray(wrong_display_projection[0].polygon),
-        atol=1.0,
+    after = window._right_image_tag_overlays(
+        group,
+        use_output_projection=True,
+        projection_params=display_params,
+        output_size=768,
     )
+    assert len(after) == 1
+    expected = window._tag_image_overlays(group, display_params, output_size=768)
+    assert len(expected) == 1
+    assert np.allclose(np.asarray(after[0].polygon), np.asarray(expected[0].polygon), atol=1e-4)
+    wrong_world_projection = window._tag_image_overlays(group, window._params, output_size=768)
+    assert len(wrong_world_projection) == 1
+    assert not np.allclose(np.asarray(after[0].polygon), np.asarray(wrong_world_projection[0].polygon), atol=1.0)
     assert not np.allclose(np.asarray(after[0].polygon), np.asarray(before[0].polygon), atol=1.0)
     window.deleteLater()
 
@@ -1636,6 +1651,60 @@ def test_reconstructed_image_view_frustum_keeps_world_params(tmp_path: Path) -> 
     assert window.world_view._preview_fov_deg == pytest.approx(window._params.fov_deg)
     assert window.point_view._preview_yaw_deg == pytest.approx(window._params.yaw_deg)
     assert window.point_view._preview_pitch_deg == pytest.approx(window._params.pitch_deg)
+    window.deleteLater()
+
+
+def test_reconstructed_image_tag_overlay_uses_display_params_without_moving_frustum(tmp_path: Path) -> None:
+    case_dir = _write_generated_cube6_case(tmp_path)
+    case = load_case(case_dir)
+    save_case(replace(case, coordinate_profile="lichtfeld_cube6"))
+
+    _app()
+    window = AprilTagSceneViewerWindow(initial_case=case_dir)
+    window.select_camera_by_name("cam_001")
+    window.ray_basis_combo.setCurrentIndex(window.ray_basis_combo.findData(RAY_BASIS_WORLD))
+    window.mode_combo.setCurrentIndex(window.mode_combo.findData(RIGHT_VIEW_RECONSTRUCTED_CUBE6))
+    window.set_active_face("pz")
+    group = window.selected_world_group()
+    assert group is not None
+    camera, right, up, forward = camera_pose_from_perspective_params(group, window._params)
+    window.set_tag_transform(
+        center=tuple(camera + forward * 5.0 + right * 0.5 + up * 0.25),
+        yaw_deg=window._params.yaw_deg,
+        pitch_deg=window._params.pitch_deg,
+        roll_deg=window._params.roll_deg,
+        size_sfm=1.0,
+    )
+
+    window._on_right_view_dragged(-24.0, 12.0)
+    basis_group = window.selected_face_basis_group() or group
+    params = axis_face_view_params(basis_group, "pz", fov_deg=window._params.fov_deg)
+    assert params is not None
+    yaw, pitch, roll, fov = params
+    display_params = _source_equirect_preview_params(
+        window._params,
+        "pz",
+        RAY_BASIS_WORLD,
+        PerspectiveParams(yaw_deg=yaw, pitch_deg=pitch, roll_deg=roll, fov_deg=fov),
+    )
+
+    actual = window._right_image_tag_overlays(
+        group,
+        use_output_projection=True,
+        projection_params=display_params,
+        output_size=768,
+    )
+    display_expected = window._tag_image_overlays(group, display_params, output_size=768)
+    world_projection = window._tag_image_overlays(group, window._params, output_size=768)
+
+    assert display_params != window._params
+    assert len(actual) == 1
+    assert len(display_expected) == 1
+    assert len(world_projection) == 1
+    assert np.allclose(np.asarray(actual[0].polygon), np.asarray(display_expected[0].polygon), atol=1e-4)
+    assert not np.allclose(np.asarray(actual[0].polygon), np.asarray(world_projection[0].polygon), atol=1.0)
+    assert window.world_view._preview_yaw_deg == pytest.approx(window._params.yaw_deg)
+    assert window.point_view._preview_yaw_deg == pytest.approx(window._params.yaw_deg)
     window.deleteLater()
 
 

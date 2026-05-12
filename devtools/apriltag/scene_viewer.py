@@ -1762,26 +1762,31 @@ class AprilTagSceneViewerWindow(QWidget):
         self,
         world_group: CubemapFrameGroup,
         *,
+        projection_params: PerspectiveParams | None = None,
         output_size: int = 768,
     ) -> list[PerspectiveLabelOverlay]:
         color = None if self._tag_front_faces_group(world_group) else (0, 64, 255)
-        return self._tag_image_overlays(world_group, self._params, output_size=output_size, color_bgr=color)
+        params = self._params if projection_params is None else projection_params
+        return self._tag_image_overlays(world_group, params, output_size=output_size, color_bgr=color)
 
     def _right_image_tag_overlays(
         self,
         world_group: CubemapFrameGroup,
         *,
         use_output_projection: bool,
+        projection_params: PerspectiveParams | None = None,
         output_size: int = 768,
     ) -> list[PerspectiveLabelOverlay]:
+        params = self._params if projection_params is None else projection_params
         if use_output_projection:
             overlays = self._tag_viewport_image_overlays(
                 world_group,
+                projection_params=params,
                 output_size=output_size,
             )
             if overlays or self._synthetic_frame_transform_overrides():
                 return overlays
-        return self._tag_image_overlays(world_group, self._params, output_size=output_size)
+        return self._tag_image_overlays(world_group, params, output_size=output_size)
 
     def _synthetic_tag_placement_sfm(self) -> tuple[np.ndarray, np.ndarray, np.ndarray, float]:
         if self.case is None:
@@ -2374,11 +2379,12 @@ class AprilTagSceneViewerWindow(QWidget):
         )
         overlays = []
         if use_pointcloud_overlay:
-            overlays.extend(self._pointcloud_image_overlays(world_group, self._params, output_size=768))
+            overlays.extend(self._pointcloud_image_overlays(world_group, view_params, output_size=768))
         overlays.extend(
             self._right_image_tag_overlays(
                 world_group,
                 use_output_projection=use_source_equirect or use_reconstructed_cube6,
+                projection_params=view_params,
                 output_size=768,
             )
         )
