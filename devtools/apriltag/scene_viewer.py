@@ -42,6 +42,7 @@ from core.apriltag_geometry import (
     project_sfm_points,
     tag_corners_sfm,
 )
+from core.orientation_correction import FINAL_ORIENTATION_LICHTFELD, final_orientation_is_applied
 from core.apriltag_pipeline import collect_observations
 from core.apriltag_scale import estimate_scene_scale
 from core.image_io import imread_unicode
@@ -625,19 +626,37 @@ def _resolve_source_equirect_paths(case: AprilTagDevCase, group_names: tuple[str
 def _source_equirect_rotations_from_groups(
     groups: tuple[CubemapFrameGroup, ...],
     metadata: CubemapViewMetadata | None,
+    *,
+    undo_legacy_lichtfeld_local_flip: bool = True,
 ) -> dict[str, np.ndarray]:
     rotations: dict[str, np.ndarray] = {}
     for group in groups:
         rotation = source_equirect_base_rotation(group, cubemap_view_params=metadata)
         if rotation is not None:
-            # ``source_equirect_base_rotation`` recovers the source camera basis
-            # from final Cube6 poses. Those poses include
-            # metashape_360_lfs.py::transform_camera_matrix Step 2, which flips
-            # local Y/Z for LichtFeld/OpenGL. The source panorama pixels are
-            # sampled in the original equirectangular local basis, so undo that
-            # local flip only for image lookup.
-            rotations[group.name] = rotation @ SOURCE_EQUIRECT_LOCAL_FROM_LICHTFELD_LOCAL
+            # Legacy LichtFeld Cube6 datasets pre-compensated camera local Y/Z
+            # before the final dataset orientation correction existed. Current
+            # CLI outputs already carry that final orientation in transforms.json,
+            # so applying this local flip again makes source-image lookup face the
+            # opposite panorama direction from the displayed JSON frustum.
+            rotations[group.name] = (
+                rotation @ SOURCE_EQUIRECT_LOCAL_FROM_LICHTFELD_LOCAL
+                if undo_legacy_lichtfeld_local_flip
+                else rotation
+            )
     return rotations
+
+
+def _case_has_lichtfeld_final_orientation(case: AprilTagDevCase | None) -> bool:
+    if case is None:
+        return False
+    for path in (case.transforms_for_processing(), case.source_transforms):
+        try:
+            payload = json.loads(Path(path).read_text(encoding="utf-8"))
+        except Exception:
+            continue
+        if final_orientation_is_applied(payload, FINAL_ORIENTATION_LICHTFELD):
+            return True
+    return False
 
 
 def _synthetic_output_face_rotation_face(face: str) -> str:
@@ -1385,9 +1404,11 @@ class AprilTagSceneViewerWindow(QWidget):
                 self.case,
                 tuple(group.name for group in self._raw_groups),
             )
+            has_lichtfeld_final_orientation = _case_has_lichtfeld_final_orientation(self.case)
             self._source_equirect_rotations = _source_equirect_rotations_from_groups(
                 self._raw_groups,
                 metadata,
+                undo_legacy_lichtfeld_local_flip=not has_lichtfeld_final_orientation,
             )
             self._update_world_matrix()
             self._world_groups = tuple(

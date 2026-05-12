@@ -14,9 +14,11 @@ from PySide6.QtWidgets import QAbstractSpinBox, QApplication, QLabel, QSizePolic
 
 import devtools.apriltag.scene_viewer as scene_viewer_module
 from core.apriltag_cubemap import CubemapViewMetadata, cubemap_view_params_for_group
+from core.cubemap_transforms_json import build_remap
 from core.apriltag_detection import detect_apriltags
 from core.apriltag_geometry import PinholeFrame, load_pinhole_frames
 from core.image_io import imread_unicode, imwrite_unicode
+from core.orientation_correction import LICHTFELD_FINAL_ORIENTATION_MATRIX
 from devtools.apriltag.case import AprilTagDevCase, load_case, save_case
 from devtools.apriltag.coordinates import world_display_matrix
 from devtools.apriltag.cubemap_preview import (
@@ -139,6 +141,152 @@ def _closest_source_face(source_local_ray: np.ndarray, metadata: CubemapViewMeta
     ray = ray / max(float(np.linalg.norm(ray)), 1e-12)
     centers = _source_face_centers(metadata, group_index)
     return max(centers, key=lambda face: float(ray @ centers[face]))
+
+
+def _direction_equirect_image(width: int = 256, height: int = 128) -> np.ndarray:
+    xs = (np.arange(width, dtype=np.float64) + 0.5) / width
+    ys = (np.arange(height, dtype=np.float64) + 0.5) / height
+    lon = (xs * 2.0 - 1.0) * np.pi
+    lat = (0.5 - ys) * np.pi
+    cos_lat = np.cos(lat)
+    rays = np.stack(
+        [
+            cos_lat[:, None] * np.sin(lon)[None, :],
+            np.sin(lat)[:, None] * np.ones((1, width), dtype=np.float64),
+            cos_lat[:, None] * np.cos(lon)[None, :],
+        ],
+        axis=-1,
+    )
+    return np.clip((rays + 1.0) * 127.5, 0.0, 255.0).astype(np.uint8)
+
+
+def _write_lichtfeld_final_direction_case(root: Path) -> Path:
+    scene = root / "scene"
+    source_images = scene / "images"
+    output_images = scene / "output" / "images"
+    source_images.mkdir(parents=True)
+    output_images.mkdir(parents=True)
+
+    source = _direction_equirect_image()
+    assert imwrite_unicode(source_images / "frame_0001.png", source)
+    (scene / "pointcloud.ply").write_text(
+        "\n".join(
+            [
+                "ply",
+                "format ascii 1.0",
+                "element vertex 1",
+                "property float x",
+                "property float y",
+                "property float z",
+                "end_header",
+                "0 0 2",
+            ]
+        ),
+        encoding="ascii",
+    )
+    (scene / "transforms.json").write_text(
+        json.dumps(
+            {
+                "camera_model": "EQUIRECTANGULAR",
+                "ply_file_path": "pointcloud.ply",
+                "frames": [
+                    {
+                        "file_path": "images/frame_0001.png",
+                        "transform_matrix": np.eye(4, dtype=np.float64).tolist(),
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    views = {
+        "px": (45.0, 0.0),
+        "nx": (-135.0, 0.0),
+        "py": (-45.0, -90.0),
+        "ny": (-45.0, 90.0),
+        "pz": (-45.0, 0.0),
+        "nz": (135.0, 0.0),
+    }
+    output_size = 64
+    frames = []
+    final_orientation = LICHTFELD_FINAL_ORIENTATION_MATRIX[:3, :3]
+    for face, (yaw, pitch) in views.items():
+        map_x, map_y = build_remap((source.shape[1], source.shape[0]), 90.0, yaw, pitch, output_size)
+        image = cv2.remap(source, map_x, map_y, cv2.INTER_LINEAR, borderMode=cv2.BORDER_WRAP)
+        assert imwrite_unicode(output_images / f"frame_0001_{face}.png", image)
+        transform = np.eye(4, dtype=np.float64)
+        transform[:3, :3] = final_orientation @ _export_rotation(yaw, pitch).T
+        frames.append(
+            {
+                "file_path": f"images/frame_0001_{face}.png",
+                "transform_matrix": transform.tolist(),
+            }
+        )
+    (scene / "output" / "transforms.json").write_text(
+        json.dumps(
+            {
+                "camera_model": "SIMPLE_PINHOLE",
+                "w": output_size,
+                "h": output_size,
+                "fl_x": output_size / 2.0,
+                "fl_y": output_size / 2.0,
+                "cx": (output_size - 1) / 2.0,
+                "cy": (output_size - 1) / 2.0,
+                "ply_file_path": "pointcloud.ply",
+                "frames": frames,
+                "postprocess": {
+                    "final_orientation": "lichtfeld",
+                    "final_orientation_stage": "cubemap_cli",
+                    "lichtfeld_final_orientation_correction": True,
+                    "lichtfeld_final_orientation_stage": "cubemap_cli",
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    shutil.copy2(scene / "pointcloud.ply", scene / "output" / "pointcloud.ply")
+
+    settings = scene / "_stechdrive" / "step4" / "export_settings.json"
+    settings.parent.mkdir(parents=True)
+    settings.write_text(
+        json.dumps(
+            {
+                "effective_profile": "lichtfeld",
+                "target_profile": "lichtfeld",
+                "axis_transform": "none",
+                "output_shape": "projected",
+                "views_config_snapshot": {
+                    "views": [
+                        {"name": face, "yaw": yaw, "pitch": pitch, "enabled": True}
+                        for face, (yaw, pitch) in views.items()
+                    ]
+                },
+                "conversion": {"yaw_offset_per_frame": 0.0},
+                "postprocess": {
+                    "final_orientation": "lichtfeld",
+                    "final_orientation_stage": "cubemap_cli",
+                    "lichtfeld_final_orientation_correction": True,
+                    "lichtfeld_final_orientation_stage": "cubemap_cli",
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    case_dir = scene / "_stechdrive" / "step4" / "apriltag_scene_viewer"
+    save_case(
+        AprilTagDevCase(
+            name="apriltag_scene_viewer",
+            case_dir=case_dir,
+            input_mode="reference",
+            source_transforms=scene / "output" / "transforms.json",
+            source_pointcloud=scene / "output" / "pointcloud.ply",
+            image_root=scene,
+            coordinate_profile="lichtfeld_cube6",
+        )
+    )
+    return case_dir
 
 
 def _write_cube6_case(root: Path) -> Path:
@@ -720,6 +868,62 @@ def test_world_display_pz_image_preview_is_not_mirrored_by_image_ray_correction(
     mirrored_error = float(np.mean(np.abs(rendered.astype(np.int16) - pz_image[:, ::-1].astype(np.int16))))
     assert direct_error < 8.0
     assert direct_error * 4.0 < mirrored_error
+
+
+def test_lichtfeld_final_source_preview_matches_display_pointcloud_direction(tmp_path: Path) -> None:
+    case_dir = _write_lichtfeld_final_direction_case(tmp_path)
+    _app()
+    window = AprilTagSceneViewerWindow(initial_case=case_dir)
+    window.ray_basis_combo.setCurrentIndex(window.ray_basis_combo.findData(RAY_BASIS_WORLD))
+    window.select_camera_by_name("frame_0001")
+    window._params = PerspectiveParams(yaw_deg=-90.0, pitch_deg=0.0, roll_deg=0.0, fov_deg=90.0)
+    world_group = window.selected_world_group()
+    raw_group = window.selected_raw_group()
+    source_equirect = window._source_equirect_for_group(world_group)
+    metadata = case_cubemap_view_metadata(window.case)
+
+    assert world_group is not None
+    assert raw_group is not None
+    assert source_equirect is not None
+    assert metadata is not None
+    segments = {
+        label: (end - start) / max(float(np.linalg.norm(end - start)), 1e-12)
+        for label, start, end, _color in window.world_view._selected_face_ray_segments(world_group)
+    }
+    for face, direction in segments.items():
+        expected = face_forward_ray(world_group, face)
+        assert expected is not None
+        assert float(direction @ expected) > 0.999
+
+    source_path, source_rotation = source_equirect
+    source = imread_unicode(source_path)
+    assert source is not None
+    display_matrix = world_display_matrix(window.case.coordinate_profile)
+    source_preview = render_source_equirect_perspective(
+        source,
+        source_rotation,
+        yaw_deg=window._params.yaw_deg,
+        pitch_deg=window._params.pitch_deg,
+        roll_deg=window._params.roll_deg,
+        fov_deg=window._params.fov_deg,
+        output_size=129,
+        sfm_to_preview_matrix=display_matrix,
+    )
+    reconstructed = render_generated_cubemap_source_axis(
+        raw_group,
+        source_rotation,
+        cubemap_view_params=metadata,
+        output_width=256,
+        output_height=128,
+        image_cache=window._image_cache,
+        sfm_to_preview_matrix=display_matrix,
+    )
+    reconstructed_preview = equirect_to_perspective(reconstructed, window._params, output_size=129)
+
+    source_forward_color = np.array([127.5, 127.5, 255.0], dtype=np.float64)
+    assert np.allclose(source_preview[64, 64].astype(np.float64), source_forward_color, atol=4.0)
+    assert np.allclose(reconstructed_preview[64, 64], source_preview[64, 64], atol=4.0)
+    window.deleteLater()
 
 
 def test_lichtfeld_image_rays_are_not_world_display_transformed_twice() -> None:
