@@ -11,18 +11,18 @@ When you press `Apply`, Step 2 removes dropped frames from `images/`. Kept filen
 | Scan the extracted set quickly | `Thumbnail List` |
 | Inspect blur or fine detail | `Single Preview` |
 | View a 360° image like a normal camera | `90° Perspective Preview` |
-| Review only frames flagged by Step 1 | `Next Review Target` / `Previous Review Target` |
+| Review only planned drops and quality warnings | `Next Review Target` / `Previous Review Target` |
 | Change whether a frame is kept or dropped | Flag keep/drop button |
 | Rename kept images to a clean sequence before masks/Step 4 | `Renumber kept images` |
 | Apply decisions to the actual `images/` folder | `Apply` |
 
-The efficient workflow is to scan the thumbnail list first, then jump through only the review targets and dropped frames that need attention.
+The efficient workflow is to scan the thumbnail list first, then jump through only the dropped or quality-warning frames that need attention. Turn on `Include added frames` when you also want to audit frames added for viewpoint change, blur replacement, or spacing.
 
 ## Basic Flow
 
 1. Open Step 2 after Step 1 finishes.
 2. Use the thumbnail list to check overall density and obvious blur.
-3. Use `Next Review Target` to move through frames flagged by Step 1.
+3. Use `Next Review Target` to move through planned drops and quality-warning frames.
 4. Use single preview for detailed checks. For 360° images, switch to the 90° perspective preview when detail is easier to judge that way.
 5. Mark useful frames as Keep and unwanted frames as Drop.
 6. If needed, enable `Renumber kept images` before masks or Step 4 outputs exist.
@@ -111,6 +111,6 @@ Removed images can be restored manually from the review backup if needed.
 ## Shortcuts
 
 - `Left` / `Right`: previous / next frame in single-preview mode
-- `F` / `Shift+F`: next / previous review target
+- `F` / `Shift+F`: next / previous issue target. Turn on `Include added frames` to include added-frame labels too.
 - `Space`: toggle keep/drop
 - `0`: reset preview zoom

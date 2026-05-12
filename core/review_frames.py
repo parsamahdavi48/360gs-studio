@@ -13,6 +13,7 @@ try:
     from PySide6.QtWidgets import (
         QAbstractItemView,
         QApplication,
+        QCheckBox,
         QHBoxLayout,
         QLabel,
         QListView,
@@ -41,6 +42,7 @@ except Exception as e:  # pragma: no cover - environment-dependent import
     QShortcut = None
     QAbstractItemView = None
     QApplication = None
+    QCheckBox = None
     QHBoxLayout = None
     QLabel = None
     QListView = None
@@ -98,6 +100,9 @@ else:  # pragma: no cover - PySide6 missing
 
 _ICON_DIR = Path(__file__).resolve().parents[1] / "gui" / "assets" / "icons"
 _PIXMAP_CACHE_LIMIT = 3
+_ISSUE_REVIEW_TOKENS = frozenset(
+    {"redundant_drop", "motion_blur", "borderline_blur", "low_texture", "weak_match"}
+)
 
 
 def _review_icon(name: str) -> QIcon:
@@ -180,6 +185,7 @@ if QMainWindow is not None:
             self._source_filter_key = "all"
             self._visible_indices = list(range(len(self._all_rows)))
             self.rows = list(self._all_rows)
+            self._include_added_problem_frames = False
             self.problem_indices = self._collect_problem_indices()
 
             self.index = 0
@@ -288,12 +294,30 @@ if QMainWindow is not None:
                 row["decision"] = "drop" if decision == "drop" else "keep"
             return rows
 
-        def _is_problem_row(self, row: dict[str, str]) -> bool:
+        def _status_tokens(self, row: dict[str, str]) -> set[str]:
             status = row.get("status", "").strip().lower()
-            return status not in {"", "ok"}
+            if status in {"", "ok"}:
+                return set()
+            return {token.strip() for token in status.replace(",", "+").split("+") if token.strip()}
+
+        def _is_problem_row(self, row: dict[str, str]) -> bool:
+            tokens = self._status_tokens(row)
+            if not tokens:
+                return False
+            if self._include_added_problem_frames:
+                return True
+            return bool(tokens & _ISSUE_REVIEW_TOKENS)
 
         def _collect_problem_indices(self) -> list[int]:
             return [i for i, row in enumerate(self.rows) if self._is_problem_row(row)]
+
+        def set_problem_navigation_include_added(self, include_added: bool) -> None:
+            include_added = bool(include_added)
+            if include_added == self._include_added_problem_frames:
+                return
+            self._include_added_problem_frames = include_added
+            self.problem_indices = self._collect_problem_indices()
+            self._render_current()
 
         def _build_ui(self) -> None:
             layout = QVBoxLayout(self)
@@ -421,6 +445,12 @@ if QMainWindow is not None:
             self.next_problem_button.setToolTip(i18n.t("REVIEW_BTN_PROBLEM_TIP"))
             self.next_problem_button.clicked.connect(self.next_problem)
             btn_row.addWidget(self.next_problem_button)
+
+            self.include_added_problem_frames_checkbox = QCheckBox(i18n.t("REVIEW_INCLUDE_ADDED_PROBLEMS"))
+            self.include_added_problem_frames_checkbox.setToolTip(i18n.t("REVIEW_INCLUDE_ADDED_PROBLEMS_TIP"))
+            self.include_added_problem_frames_checkbox.setChecked(self._include_added_problem_frames)
+            self.include_added_problem_frames_checkbox.toggled.connect(self.set_problem_navigation_include_added)
+            btn_row.addWidget(self.include_added_problem_frames_checkbox)
 
             btn_row.addStretch(1)
             layout.addLayout(btn_row)

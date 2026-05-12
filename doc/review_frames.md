@@ -23,7 +23,7 @@ python review_frames.py ./scene01 --csv selected_frames.csv
 ## Keyboard shortcuts
 
 - `Left` / `Right`: previous / next frame in single-preview mode. In thumbnail-list mode, the thumbnail list keeps focus and arrow keys move the visible thumbnail selection.
-- `F` / `Shift+F`: next / previous problem frame (`status != ok`)
+- `F` / `Shift+F`: next / previous issue frame. By default this skips added-frame labels and visits planned drops or quality warnings; enable `Include added frames` to include all `status != ok` rows.
 - `Space`: toggle `keep` / `drop`
 - `Q`: quit
 

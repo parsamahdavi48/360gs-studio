@@ -205,7 +205,11 @@ STRINGS: dict[str, str] = {
     "REVIEW_BTN_NEXT_PROBLEM": "次の確認対象 (F)",
     "REVIEW_BTN_PROBLEM_TIP": (
         "フレーム抽出時に確認対象として記録されたフレーム\n"
-        "（追加・除外・ブレ確認・低テクスチャ・弱い追跡）を撮影順に巡回します。"
+        "（除外・ブレ確認・低テクスチャ・弱い追跡）を撮影順に巡回します。"
+    ),
+    "REVIEW_INCLUDE_ADDED_PROBLEMS": "追加フレームも巡回",
+    "REVIEW_INCLUDE_ADDED_PROBLEMS_TIP": (
+        "通常は除外予定や品質注意のフレームだけを巡回します。ONにすると、視点変化、ブレ置換、間隔維持で追加されたフレームも含めます。"
     ),
     "REVIEW_NO_PROBLEMS": "確認対象フレームはありません",
     "REVIEW_IMAGE_NOT_FOUND": "画像が見つかりません:\n{path}",

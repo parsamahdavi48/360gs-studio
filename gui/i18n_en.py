@@ -205,7 +205,11 @@ STRINGS: dict[str, str] = {
     "REVIEW_BTN_NEXT_PROBLEM": "extract problem → (F)",
     "REVIEW_BTN_PROBLEM_TIP": (
         "Cycle through frames extract_frames flagged automatically\n"
-        "(added / dropped / blur review / low texture / weak tracking), in CSV order."
+        "(dropped / blur review / low texture / weak tracking), in CSV order."
+    ),
+    "REVIEW_INCLUDE_ADDED_PROBLEMS": "Include added frames",
+    "REVIEW_INCLUDE_ADDED_PROBLEMS_TIP": (
+        "Normally cycles only planned drops and quality warnings. Turn this on to include frames added for viewpoint change, blur replacement, or spacing."
     ),
     "REVIEW_NO_PROBLEMS": "No problem frames found.",
     "REVIEW_IMAGE_NOT_FOUND": "Image not found:\n{path}",

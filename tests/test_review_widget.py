@@ -73,6 +73,17 @@ def _read_decisions(csv_path: Path) -> list[str]:
         return [row["decision"] for row in csv.DictReader(f)]
 
 
+def _update_scene_rows(csv_path: Path, updates: list[dict[str, str]]) -> None:
+    with csv_path.open("r", encoding="utf-8", newline="") as f:
+        rows = list(csv.DictReader(f))
+    for row, update in zip(rows, updates, strict=True):
+        row.update(update)
+    with csv_path.open("w", encoding="utf-8", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=list(rows[0].keys()))
+        writer.writeheader()
+        writer.writerows(rows)
+
+
 def _set_summary_statuses(widget: ReviewWidget) -> None:
     widget.rows[0]["analysis_pipeline"] = "pair"
     widget.rows[1]["analysis_pipeline"] = "pair"
@@ -200,18 +211,52 @@ def test_review_widget_advisory_labels_do_not_show_internal_pair_analysis(tmp_pa
 def test_review_widget_labels_blur_replacements(tmp_path: Path) -> None:
     _app()
     scene, csv_path = _write_scene(tmp_path)
-    with csv_path.open("r", encoding="utf-8", newline="") as f:
-        rows = list(csv.DictReader(f))
-    rows[0]["analysis_pipeline"] = "pair"
-    rows[0]["status"] = "blur_replacement"
-    with csv_path.open("w", encoding="utf-8", newline="") as f:
-        writer = csv.DictWriter(f, fieldnames=list(rows[0].keys()))
-        writer.writeheader()
-        writer.writerows(rows)
+    _update_scene_rows(csv_path, [{"analysis_pipeline": "pair", "status": "blur_replacement"}, {}])
 
     widget = ReviewWidget(scene, csv_path)
 
     assert widget.advisory_label.text() == i18n.t("REVIEW_ADVISORY_BLUR_REPLACEMENT")
+
+
+def test_review_problem_navigation_defaults_to_issue_rows(tmp_path: Path) -> None:
+    _app()
+    scene, csv_path = _write_scene(tmp_path)
+    _update_scene_rows(
+        csv_path,
+        [
+            {"analysis_pipeline": "pair", "status": "novelty_added"},
+            {"analysis_pipeline": "pair", "status": "borderline_blur"},
+        ],
+    )
+
+    widget = ReviewWidget(scene, csv_path)
+
+    assert not widget.include_added_problem_frames_checkbox.isChecked()
+    assert widget.problem_indices == [1]
+    assert i18n.t("REVIEW_INCLUDE_ADDED_PROBLEMS") == widget.include_added_problem_frames_checkbox.text()
+
+    widget.next_problem()
+
+    assert widget.index == 1
+
+
+def test_review_problem_navigation_can_include_added_rows(tmp_path: Path) -> None:
+    _app()
+    scene, csv_path = _write_scene(tmp_path)
+    _update_scene_rows(
+        csv_path,
+        [
+            {"analysis_pipeline": "pair", "status": "gap_forced"},
+            {"analysis_pipeline": "pair", "status": "gap_forced+weak_match"},
+        ],
+    )
+
+    widget = ReviewWidget(scene, csv_path)
+
+    assert widget.problem_indices == [1]
+    widget.include_added_problem_frames_checkbox.setChecked(True)
+
+    assert widget.problem_indices == [0, 1]
 
 
 def test_review_summary_label_is_readable_single_line(tmp_path: Path) -> None:
