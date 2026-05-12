@@ -63,7 +63,7 @@ The fixed interval is not the only quality decision. It is the baseline that cov
 - add candidates as `Added: viewpoint change` before the next fixed-cadence point
 - replace dropped blur candidates from the range up to `Max` and mark them as `Added: blur replacement`
 - keep safety candidates as `Added: preserved spacing` when the gap would become too large
-- split blur into planned drops and `Review: borderline blur`, then flag low texture or weak feature tracking for Step 2 review
+- split blur into `Drop: blur` and `Review: possible blur`, then flag low texture or weak feature tracking for Step 2 review
 
 ### Quick Extract
 

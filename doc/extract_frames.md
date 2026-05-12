@@ -14,7 +14,7 @@ This app starts from a fixed interval so the frame count and whole-video coverag
 
 In equirectangular 360° images, a change in camera heading can create a large image difference by itself. That does not necessarily mean the frame adds useful SfM parallax. Pair analysis therefore estimates the horizontal roll, or yaw shift, between the frames and measures the remaining residual change after alignment. This makes it easier to focus on real viewpoint or scene-appearance changes instead of pure heading changes.
 
-Automatic selection is not treated as the final decision. Frames that may cause SfM trouble, such as motion blur, borderline blur, low texture, or weak tracked features, are written to `_stechdrive/frames/selected_frames.csv` with review flags. Step 2 lets you inspect those frames visually and adjust keep/drop decisions.
+Automatic selection is not treated as the final decision. Frames that may cause SfM trouble, such as blur, possible blur, low texture, or weak tracked features, are written to `_stechdrive/frames/selected_frames.csv` with review flags. Step 2 lets you inspect those frames visually and adjust keep/drop decisions.
 
 Frames marked `drop` are still extracted as images. This is intentional: you can inspect them later and restore them if needed. The design favors a reviewable workflow over irreversible automatic deletion.
 
