@@ -1635,7 +1635,7 @@ def test_current_case_reconstructed_image_tag_overlay_tracks_view_drag() -> None
     window.deleteLater()
 
 
-def test_reconstructed_image_view_frustum_keeps_world_params(tmp_path: Path) -> None:
+def test_reconstructed_image_view_frustum_uses_display_params(tmp_path: Path) -> None:
     case_dir = _write_generated_cube6_case(tmp_path)
     case = load_case(case_dir)
     save_case(replace(case, coordinate_profile="lichtfeld_cube6"))
@@ -1661,16 +1661,16 @@ def test_reconstructed_image_view_frustum_keeps_world_params(tmp_path: Path) -> 
     )
 
     assert expected != window._params
-    assert window.world_view._preview_yaw_deg == pytest.approx(window._params.yaw_deg)
-    assert window.world_view._preview_pitch_deg == pytest.approx(window._params.pitch_deg)
-    assert window.world_view._preview_roll_deg == pytest.approx(window._params.roll_deg)
-    assert window.world_view._preview_fov_deg == pytest.approx(window._params.fov_deg)
+    assert window.world_view._preview_yaw_deg == pytest.approx(expected.yaw_deg)
+    assert window.world_view._preview_pitch_deg == pytest.approx(expected.pitch_deg)
+    assert window.world_view._preview_roll_deg == pytest.approx(expected.roll_deg)
+    assert window.world_view._preview_fov_deg == pytest.approx(expected.fov_deg)
     assert window.point_view._preview_yaw_deg == pytest.approx(window._params.yaw_deg)
     assert window.point_view._preview_pitch_deg == pytest.approx(window._params.pitch_deg)
     window.deleteLater()
 
 
-def test_reconstructed_image_tag_overlay_uses_display_params_without_moving_frustum(tmp_path: Path) -> None:
+def test_reconstructed_image_tag_overlay_and_frustum_use_display_params(tmp_path: Path) -> None:
     case_dir = _write_generated_cube6_case(tmp_path)
     case = load_case(case_dir)
     save_case(replace(case, coordinate_profile="lichtfeld_cube6"))
@@ -1730,7 +1730,9 @@ def test_reconstructed_image_tag_overlay_uses_display_params_without_moving_frus
     assert right_handed_projection is not None
     assert np.allclose(np.asarray(actual[0].polygon), display_expected, atol=1e-4)
     assert not np.allclose(np.asarray(actual[0].polygon), right_handed_projection, atol=1.0)
-    assert window.world_view._preview_yaw_deg == pytest.approx(window._params.yaw_deg)
+    assert window.world_view._preview_yaw_deg == pytest.approx(display_params.yaw_deg)
+    assert window.world_view._preview_pitch_deg == pytest.approx(display_params.pitch_deg)
+    assert window.world_view._preview_roll_deg == pytest.approx(display_params.roll_deg)
     assert window.point_view._preview_yaw_deg == pytest.approx(window._params.yaw_deg)
     window.deleteLater()
 

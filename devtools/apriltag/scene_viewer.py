@@ -2347,24 +2347,42 @@ class AprilTagSceneViewerWindow(QWidget):
         basis_group = self.selected_face_basis_group()
         selected_name = group.name if group is not None else ""
         ray_mode = self._ray_basis_mode()
+        world_preview_params = self._world_view_preview_params(group)
         for view in (self.world_view, self.point_view):
             view.set_groups(self._world_groups)
             view.set_image_ray_groups(self._image_ray_groups)
             view.set_face_ray_mode(ray_mode)
             view.set_selected_group(selected_name)
             view.set_pointcloud(self._world_pointcloud)
-            view.set_preview_params(
-                yaw_deg=self._params.yaw_deg,
-                pitch_deg=self._params.pitch_deg,
-                roll_deg=self._params.roll_deg,
-                fov_deg=self._params.fov_deg,
-            )
+        self.world_view.set_preview_params(
+            yaw_deg=world_preview_params.yaw_deg,
+            pitch_deg=world_preview_params.pitch_deg,
+            roll_deg=world_preview_params.roll_deg,
+            fov_deg=world_preview_params.fov_deg,
+        )
+        self.point_view.set_preview_params(
+            yaw_deg=self._params.yaw_deg,
+            pitch_deg=self._params.pitch_deg,
+            roll_deg=self._params.roll_deg,
+            fov_deg=self._params.fov_deg,
+        )
         self._sync_tag_views()
         if basis_group is not None:
             self._sync_point_view(basis_group)
         self._sync_mode_visibility()
         self._sync_face_buttons()
         self._update_status()
+
+    def _world_view_preview_params(self, world_group: CubemapFrameGroup | None) -> PerspectiveParams:
+        if world_group is None:
+            return self._params
+        mode = str(self.mode_combo.currentData() or RIGHT_VIEW_POINTCLOUD)
+        if mode not in RIGHT_VIEW_IMAGE_MODES:
+            return self._params
+        use_source_equirect, use_reconstructed_cube6 = self._right_image_projection_modes(mode, world_group)
+        if use_source_equirect or use_reconstructed_cube6:
+            return self._source_projection_preview_params(world_group)
+        return self._params
 
     def _right_image_projection_modes(self, mode: str, world_group: CubemapFrameGroup | None) -> tuple[bool, bool]:
         source_equirect = self._source_equirect_for_group(world_group)
