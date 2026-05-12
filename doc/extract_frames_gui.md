@@ -62,7 +62,7 @@ The fixed interval is not the only quality decision. It is the baseline that cov
 - add candidates as `Added: viewpoint change` before the next fixed-cadence point
 - replace dropped blur candidates from the range up to `Max` and mark them as `Added: blur replacement`
 - keep safety candidates as `Added: preserved spacing` when the gap would become too large
-- flag possible blur, low texture, or weak feature tracking for Step 2 review
+- split blur into planned drops and `Review: borderline blur`, then flag low texture or weak feature tracking for Step 2 review
 
 ### Quick Extract
 
@@ -111,6 +111,6 @@ Step 2 turns `_stechdrive/frames/selected_frames.csv` decisions into visible rev
 - Start with `Interval 1.0 sec`, `Min 0.5 sec`, `Max 2.0 sec`, and `Motion ON`.
 - If there are too many frames, raise `Interval`.
 - If many frames are similar, review examples in Step 2, then consider raising `Interval` or trying `Distant / Aerial`.
-- If many frames are flagged for blur, inspect the source footage first. Extraction searches nearby replacement candidates, but footage that is blurred overall cannot be fundamentally rescued. Step 2 can still keep frames that look acceptable.
+- If many frames are dropped or flagged for blur, inspect the source footage first. Extraction searches nearby replacement candidates for clear blur, but footage that is blurred overall cannot be fundamentally rescued. Step 2 can still keep borderline frames that look acceptable.
 - Use `Reset and Overwrite` when rebuilding the same video with new settings.
 - `Quick extract` is convenient, but normal extraction is better for production selection because it creates Step 2 review labels.

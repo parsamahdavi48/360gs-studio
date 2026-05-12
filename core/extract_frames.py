@@ -22,7 +22,9 @@ from core.extract_sessions import (
 from core.frame_pair_analysis import (
     PAIR_LOW_TEXTURE_SHARPNESS,  # noqa: F401 - re-exported for script-module compatibility
     PAIR_MOTION_BLUR_BASELINE_MIN,  # noqa: F401 - re-exported for script-module compatibility
+    PAIR_MOTION_BLUR_DROP_RATIO,  # noqa: F401 - re-exported for script-module compatibility
     PAIR_MOTION_BLUR_RATIO,  # noqa: F401 - re-exported for script-module compatibility
+    PAIR_MOTION_BLUR_REVIEW_RATIO,  # noqa: F401 - re-exported for script-module compatibility
     PAIR_SHARPNESS_HISTORY,  # noqa: F401 - re-exported for script-module compatibility
     PAIR_THRESHOLD_PROFILES,  # noqa: F401 - re-exported for script-module compatibility
     PairCandidateFrame,  # noqa: F401 - re-exported for script-module compatibility
@@ -598,6 +600,7 @@ def write_report(
             "redundant_drop_count": sum(1 for r in selected_rows if "redundant_drop" in r.get("status", "")),
             "gap_forced_count": sum(1 for r in selected_rows if "gap_forced" in r.get("status", "")),
             "motion_blur_count": sum(1 for r in selected_rows if "motion_blur" in r.get("status", "")),
+            "borderline_blur_count": sum(1 for r in selected_rows if "borderline_blur" in r.get("status", "")),
             "low_texture_count": sum(1 for r in selected_rows if "low_texture" in r.get("status", "")),
             "weak_match_count": sum(1 for r in selected_rows if "weak_match" in r.get("status", "")),
         },
@@ -689,6 +692,7 @@ def build_summary(
     redundant_drop_count = sum(1 for r in selected_rows if "redundant_drop" in r.get("status", ""))
     gap_forced_count = sum(1 for r in selected_rows if "gap_forced" in r.get("status", ""))
     motion_blur_count = sum(1 for r in selected_rows if "motion_blur" in r.get("status", ""))
+    borderline_blur_count = sum(1 for r in selected_rows if "borderline_blur" in r.get("status", ""))
     low_texture_count = sum(1 for r in selected_rows if "low_texture" in r.get("status", ""))
     weak_match_count = sum(1 for r in selected_rows if "weak_match" in r.get("status", ""))
     kept_count = sum(1 for r in selected_rows if r.get("decision", "keep") != "drop")
@@ -712,6 +716,7 @@ def build_summary(
     summary["result"]["redundant_drop_count"] = redundant_drop_count
     summary["result"]["gap_forced_count"] = gap_forced_count
     summary["result"]["motion_blur_count"] = motion_blur_count
+    summary["result"]["borderline_blur_count"] = borderline_blur_count
     summary["result"]["low_texture_count"] = low_texture_count
     summary["result"]["weak_match_count"] = weak_match_count
     return summary
@@ -1086,6 +1091,10 @@ def main() -> None:
             print(f"Estimated pair blur replacements: {summary['result'].get('blur_replacement_count', 0)}")
             print(f"Estimated pair redundant drops: {summary['result'].get('redundant_drop_count', 0)}")
             print(f"Estimated pair motion-blur review frames: {summary['result'].get('motion_blur_count', 0)}")
+            print(
+                "Estimated pair borderline-blur review frames: "
+                f"{summary['result'].get('borderline_blur_count', 0)}"
+            )
             print(f"Estimated pair low-texture review frames: {summary['result'].get('low_texture_count', 0)}")
             print(f"Estimated pair weak-match review frames: {summary['result'].get('weak_match_count', 0)}")
         if args.print_summary_json:
@@ -1246,6 +1255,7 @@ def main() -> None:
     redundant_drop_count = sum(1 for r in enriched_rows if "redundant_drop" in r.get("status", ""))
     gap_forced_count = sum(1 for r in enriched_rows if "gap_forced" in r.get("status", ""))
     motion_blur_count = sum(1 for r in enriched_rows if "motion_blur" in r.get("status", ""))
+    borderline_blur_count = sum(1 for r in enriched_rows if "borderline_blur" in r.get("status", ""))
     low_texture_count = sum(1 for r in enriched_rows if "low_texture" in r.get("status", ""))
     weak_match_count = sum(1 for r in enriched_rows if "weak_match" in r.get("status", ""))
     dropped_count = sum(1 for r in enriched_rows if r.get("decision", "keep") == "drop")
@@ -1263,6 +1273,8 @@ def main() -> None:
         print(f"Pair gap-forced keeps: {gap_forced_count}")
     if motion_blur_count > 0:
         print(f"Pair motion-blur review frames: {motion_blur_count}")
+    if borderline_blur_count > 0:
+        print(f"Pair borderline-blur review frames: {borderline_blur_count}")
     if low_texture_count > 0:
         print(f"Pair low-texture review frames: {low_texture_count}")
     if weak_match_count > 0:

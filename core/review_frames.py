@@ -652,6 +652,14 @@ if QMainWindow is not None:
                     warning_bg,
                 )
 
+            if "borderline_blur" in status:
+                return (
+                    i18n.t("REVIEW_ADVISORY_BORDERLINE_BLUR"),
+                    i18n.t("REVIEW_ADVISORY_SHORT_BORDERLINE_BLUR"),
+                    warning_fg,
+                    warning_bg,
+                )
+
             if "low_texture" in status:
                 return (
                     i18n.t("REVIEW_ADVISORY_LOW_TEXTURE"),
@@ -775,6 +783,9 @@ if QMainWindow is not None:
             redundant_count = sum(1 for r in self.rows if "redundant_drop" in r.get("status", "").strip().lower())
             gap_count = sum(1 for r in self.rows if "gap_forced" in r.get("status", "").strip().lower())
             blur_count = sum(1 for r in self.rows if "motion_blur" in r.get("status", "").strip().lower())
+            borderline_blur_count = sum(
+                1 for r in self.rows if "borderline_blur" in r.get("status", "").strip().lower()
+            )
             texture_count = sum(1 for r in self.rows if "low_texture" in r.get("status", "").strip().lower())
             weak_count = sum(1 for r in self.rows if "weak_match" in r.get("status", "").strip().lower())
             self.problem_summary_label.setText(
@@ -784,6 +795,7 @@ if QMainWindow is not None:
                     d=redundant_count,
                     g=gap_count,
                     b=blur_count,
+                    bb=borderline_blur_count,
                     l=texture_count,
                     w=weak_count,
                     cur=current_problem,

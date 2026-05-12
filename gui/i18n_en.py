@@ -205,7 +205,7 @@ STRINGS: dict[str, str] = {
     "REVIEW_BTN_NEXT_PROBLEM": "extract problem → (F)",
     "REVIEW_BTN_PROBLEM_TIP": (
         "Cycle through frames extract_frames flagged automatically\n"
-        "(added / dropped / blur / low texture / weak tracking), in CSV order."
+        "(added / dropped / blur review / low texture / weak tracking), in CSV order."
     ),
     "REVIEW_NO_PROBLEMS": "No problem frames found.",
     "REVIEW_IMAGE_NOT_FOUND": "Image not found:\n{path}",
@@ -218,6 +218,7 @@ STRINGS: dict[str, str] = {
     "REVIEW_ADVISORY_DROP_REDUNDANT": "Drop: similar frame",
     "REVIEW_ADVISORY_DROP_MANUAL": "Drop: manually excluded",
     "REVIEW_ADVISORY_MOTION_BLUR": "Review: possible blur",
+    "REVIEW_ADVISORY_BORDERLINE_BLUR": "Review: borderline blur",
     "REVIEW_ADVISORY_LOW_TEXTURE": "Review: low texture",
     "REVIEW_ADVISORY_WEAK_MATCH": "Review: weak feature tracking",
     "REVIEW_ADVISORY_NOVELTY_ADDED": "Added: viewpoint change",
@@ -230,6 +231,7 @@ STRINGS: dict[str, str] = {
     "REVIEW_ADVISORY_SHORT_DROP_REDUNDANT": "Drop: similar",
     "REVIEW_ADVISORY_SHORT_DROP_MANUAL": "Drop: manual",
     "REVIEW_ADVISORY_SHORT_MOTION_BLUR": "Review: blur",
+    "REVIEW_ADVISORY_SHORT_BORDERLINE_BLUR": "Review: borderline",
     "REVIEW_ADVISORY_SHORT_LOW_TEXTURE": "Review: texture",
     "REVIEW_ADVISORY_SHORT_WEAK_MATCH": "Review: weak",
     "REVIEW_ADVISORY_SHORT_NOVELTY_ADDED": "Added: view",
@@ -242,7 +244,9 @@ STRINGS: dict[str, str] = {
         "Video position: {ts}  |  Gap: {gap}s  |  Residual: {residual}  |  Yaw adjust: {yaw}°  |  "
         "Tracks: {tracks}  |  Confidence: {confidence}  |  Sharpness: {blur}  |  Ratio: {sharpness_ratio}"
     ),
-    "REVIEW_PAIR_PROBLEMS_FORMAT": ("Review {n} | +{a} / -{d} / gap {g} / blur {b} / tex {l} / weak {w} | {cur}"),
+    "REVIEW_PAIR_PROBLEMS_FORMAT": (
+        "Review {n} | +{a} -{d} gap {g} blur {b}/{bb} tex {l} weak {w} | {cur}"
+    ),
     "NEXT_STEP_MASK_NOTICE": "If there are drop-marked images or you changed keep/drop choices, press Apply at the bottom to write them into the image folder.\nIf there are no changes to write, no extra action is needed. You can continue to Step 3 (Mask Generation).",
     "METASHAPE_NOTICE": (
         "After mask generation, continue with the route that matches your dataset.\n"

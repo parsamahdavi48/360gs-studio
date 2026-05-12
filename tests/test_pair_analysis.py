@@ -8,8 +8,10 @@ import numpy as np
 import pytest
 
 from extract_frames import (
+    PairTrackMetrics,
     VideoInfo,
     analyze_pair_selection,
+    assess_pair_frame_risk,
     compute_pair_metrics,
     resolve_pair_thresholds,
 )
@@ -71,6 +73,36 @@ def test_resolve_pair_thresholds_drone_profile_uses_lower_aerial_residuals() -> 
 def test_resolve_pair_thresholds_rejects_add_not_greater_than_drop() -> None:
     with pytest.raises(ValueError):
         resolve_pair_thresholds(1.0, "walk", drop_threshold=0.08, add_threshold=0.08)
+
+
+def test_assess_pair_frame_risk_drops_clear_ratio_blur_even_with_strong_tracking() -> None:
+    risk = assess_pair_frame_risk(
+        blur_score=60.0,
+        sharpness_baseline=100.0,
+        track=PairTrackMetrics(track_count=240, coverage=1.0, confidence=0.95, median_residual_motion=0.0),
+        track_min_confidence=0.25,
+        track_min_count=36,
+    )
+
+    assert risk.sharpness_ratio == pytest.approx(0.60)
+    assert risk.motion_blur is True
+    assert risk.borderline_blur is False
+    assert risk.low_texture is False
+
+
+def test_assess_pair_frame_risk_keeps_borderline_blur_for_review() -> None:
+    risk = assess_pair_frame_risk(
+        blur_score=75.0,
+        sharpness_baseline=100.0,
+        track=PairTrackMetrics(track_count=240, coverage=1.0, confidence=0.95, median_residual_motion=0.0),
+        track_min_confidence=0.25,
+        track_min_count=36,
+    )
+
+    assert risk.sharpness_ratio == pytest.approx(0.75)
+    assert risk.motion_blur is False
+    assert risk.borderline_blur is True
+    assert risk.low_texture is False
 
 
 def test_analyze_pair_selection_marks_redundant_and_gap_forced(tmp_path: Path) -> None:

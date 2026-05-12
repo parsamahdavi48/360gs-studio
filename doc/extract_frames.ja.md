@@ -14,7 +14,7 @@
 
 360°のエクイレクタングラー画像では、カメラの向きが変わるだけでも画像上の差分が大きく見えます。しかし、向きの変化だけではSfMに有効な視差とは限りません。そのため、ペア解析では水平回転、つまりyaw方向のズレを推定して補正し、その後に残る差分を見ます。これにより、単なる向きの違いではなく、実際に視点や見え方が変わった区間を拾いやすくしています。
 
-自動判定は最終決定ではありません。ブレ、低テクスチャ、追跡できる特徴点の少なさなど、SfMで問題になりそうなフレームは `_stechdrive/frames/selected_frames.csv` に確認フラグとして残します。Step 2ではそれらを画像で確認し、採用/除外を調整できます。
+自動判定は最終決定ではありません。ブレ、ブレ境界、低テクスチャ、追跡できる特徴点の少なさなど、SfMで問題になりそうなフレームは `_stechdrive/frames/selected_frames.csv` に確認フラグとして残します。Step 2ではそれらを画像で確認し、採用/除外を調整できます。
 
 `drop` 判定のフレームも画像として出力します。これは、後から確認して必要なら採用へ戻せるようにするためです。自動処理で不可逆に捨てるのではなく、SfMに使う画像セットを人が確認して仕上げる、という設計です。
 
@@ -22,7 +22,7 @@
 
 現在の本線は、固定間隔を基準にしたペア解析です。ペア解析では、次に判断する候補フレームと直前の採用フレームを比較します。yaw補正後の残差変化で冗長除外や中間追加を判断し、候補地点だけで疎な特徴点追跡と鮮明度確認を行って、Step 2の確認フラグを作ります。
 
-固定間隔や中間追加の候補がブレ候補として除外された場合は、その時点から最大間隔までの有限範囲で代替候補を探します。代替候補は鮮明度だけで即採用せず、直前の採用フレームに対するyaw補正後の残差、特徴点追跡、低テクスチャ判定も再評価します。採用できる代替があれば `blur_replacement` として残し、元のブレ候補は `motion_blur` の `drop` 行として確認できるようにします。
+鮮明度低下は2段階に分けます。明確な低下は `motion_blur` として `drop` 予定にし、その時点から最大間隔までの有限範囲で代替候補を探します。やや弱い低下は採用のまま `borderline_blur` として残し、Step 2で目視確認できるようにします。代替候補は鮮明度だけで即採用せず、直前の採用フレームに対するyaw補正後の残差、特徴点追跡、低テクスチャ判定も再評価します。採用できる代替があれば `blur_replacement` として残し、元のブレ候補は `motion_blur` の `drop` 行として確認できるようにします。
 
 `--quick-extract` だけが解析を行わない経路です。ペア解析と変化補正をスキップし、指定した固定間隔で直接抽出します。解析処理を飛ばして、指定間隔で素早く動画を切り出したい場合に使います。
 
@@ -113,7 +113,7 @@ python extract_frames.py input.mp4 ./scene01 --estimate-only --print-summary-jso
 `_stechdrive/frames/selected_frames.csv` の主な列:
 
 - `original_index`, `final_index`, `timestamp_sec`
-- `status`: `ok`, `novelty_added`, `blur_replacement`, `redundant_drop`, `gap_forced`, `motion_blur`, `low_texture`, `weak_match`
+- `status`: `ok`, `novelty_added`, `blur_replacement`, `redundant_drop`, `gap_forced`, `motion_blur`, `borderline_blur`, `low_texture`, `weak_match`
 - `decision`: `keep` または `drop`。Step 2で編集する列
 - `analysis_pipeline`: `pair` または `quick`
 - `selection_reason`: `initial`, `fixed_interval`, `novelty_added`, `blur_replacement`, `redundant_drop`, `gap_forced`, `endpoint`, `quick_extract`
@@ -128,6 +128,7 @@ python extract_frames.py input.mp4 ./scene01 --estimate-only --print-summary-jso
 
 - `drop` 行も画像として抽出されます。Step 2で確認してから適用できるようにするためです。
 - `blur_replacement` は、ブレ候補の代わりに近傍から採用したフレームです。元のブレ候補も `drop` 行として残ります。
+- `borderline_blur` は採用のまま確認対象にする行です。後続のブレ判定が甘くならないよう、実行中の鮮明度基準からは除外します。
 - 既定のファイル名接頭辞は入力動画ファイルのstemです。`--filename-prefix` で変更できます。
 - 反復確認中は `--image-ext jpg` が高速です。
 - このスクリプトは既存のマスクファイルを変更しません。

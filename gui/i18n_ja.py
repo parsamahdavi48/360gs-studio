@@ -205,7 +205,7 @@ STRINGS: dict[str, str] = {
     "REVIEW_BTN_NEXT_PROBLEM": "次の確認対象 (F)",
     "REVIEW_BTN_PROBLEM_TIP": (
         "フレーム抽出時に確認対象として記録されたフレーム\n"
-        "（追加・除外・ブレ・低テクスチャ・弱い追跡）を撮影順に巡回します。"
+        "（追加・除外・ブレ確認・低テクスチャ・弱い追跡）を撮影順に巡回します。"
     ),
     "REVIEW_NO_PROBLEMS": "確認対象フレームはありません",
     "REVIEW_IMAGE_NOT_FOUND": "画像が見つかりません:\n{path}",
@@ -218,6 +218,7 @@ STRINGS: dict[str, str] = {
     "REVIEW_ADVISORY_DROP_REDUNDANT": "除外: 似たフレーム",
     "REVIEW_ADVISORY_DROP_MANUAL": "除外: 手動で除外",
     "REVIEW_ADVISORY_MOTION_BLUR": "要確認: ブレの可能性",
+    "REVIEW_ADVISORY_BORDERLINE_BLUR": "要確認: ブレ境界",
     "REVIEW_ADVISORY_LOW_TEXTURE": "要確認: 低テクスチャ",
     "REVIEW_ADVISORY_WEAK_MATCH": "要確認: 特徴点が弱い可能性",
     "REVIEW_ADVISORY_NOVELTY_ADDED": "追加: 視点変化を補完",
@@ -230,6 +231,7 @@ STRINGS: dict[str, str] = {
     "REVIEW_ADVISORY_SHORT_DROP_REDUNDANT": "除外: 類似",
     "REVIEW_ADVISORY_SHORT_DROP_MANUAL": "除外: 手動",
     "REVIEW_ADVISORY_SHORT_MOTION_BLUR": "要確認: ブレ",
+    "REVIEW_ADVISORY_SHORT_BORDERLINE_BLUR": "要確認: ブレ境界",
     "REVIEW_ADVISORY_SHORT_LOW_TEXTURE": "要確認: 低特徴",
     "REVIEW_ADVISORY_SHORT_WEAK_MATCH": "要確認: 弱追跡",
     "REVIEW_ADVISORY_SHORT_NOVELTY_ADDED": "追加: 視点変化",
@@ -243,7 +245,7 @@ STRINGS: dict[str, str] = {
         "追跡: {tracks}  |  信頼度: {confidence}  |  鮮明度: {blur}  |  比率: {sharpness_ratio}"
     ),
     "REVIEW_PAIR_PROBLEMS_FORMAT": (
-        "確認 {n} | 追加 {a} / 冗長 {d} / 上限 {g} / ブレ {b} / 低特徴 {l} / 弱追跡 {w} | 表示 {cur}"
+        "確認 {n} | 追加 {a} / 冗長 {d} / 上限 {g} / ブレ 除/確 {b}/{bb} / 低特徴 {l} / 弱追跡 {w} | 表示 {cur}"
     ),
     "NEXT_STEP_MASK_NOTICE": "除外予定の画像がある場合や、採用/除外を変更した場合は、\n下部の「適用」で画像フォルダへ反映します。\n反映する変更がない場合は、追加操作は不要です。そのまま Step 3 (マスク生成) へ進めます。",
     "METASHAPE_NOTICE": (

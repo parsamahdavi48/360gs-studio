@@ -391,6 +391,25 @@ def test_review_thumbnail_uses_single_preview_advisory_colors(tmp_path: Path) ->
     assert blur_thumb.pixelColor(sample_x, sample_y).name().lower() == "#fee2e2"
 
 
+def test_review_thumbnail_marks_borderline_blur_as_review(tmp_path: Path) -> None:
+    _app()
+    scene, csv_path = _write_scene(tmp_path)
+    widget = ReviewWidget(scene, csv_path)
+    widget.rows[1]["analysis_pipeline"] = "pair"
+    widget.rows[1]["status"] = "borderline_blur"
+    widget.rows[1]["decision"] = "keep"
+    widget._refresh_thumbnail_row(1)
+
+    item = widget.thumbnail_model.item_at(1)
+    assert item is not None
+    assert item.cache_key[5] == i18n.t("REVIEW_ADVISORY_SHORT_BORDERLINE_BLUR")
+
+    thumb = _review_thumbnail_image(item, widget.thumbnail_model.icon_size())
+    sample_x = widget.thumbnail_model.icon_size().width() - 8
+    sample_y = widget.thumbnail_model.icon_size().height() - 9
+    assert thumb.pixelColor(sample_x, sample_y).name().lower() == "#fef3c7"
+
+
 def test_review_widget_review_controls_are_left_of_mode_toolbar(tmp_path: Path) -> None:
     _app()
     scene, csv_path = _write_scene(tmp_path)

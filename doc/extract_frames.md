@@ -14,7 +14,7 @@ This app starts from a fixed interval so the frame count and whole-video coverag
 
 In equirectangular 360° images, a change in camera heading can create a large image difference by itself. That does not necessarily mean the frame adds useful SfM parallax. Pair analysis therefore estimates the horizontal roll, or yaw shift, between the frames and measures the remaining residual change after alignment. This makes it easier to focus on real viewpoint or scene-appearance changes instead of pure heading changes.
 
-Automatic selection is not treated as the final decision. Frames that may cause SfM trouble, such as motion blur, low texture, or weak tracked features, are written to `_stechdrive/frames/selected_frames.csv` with review flags. Step 2 lets you inspect those frames visually and adjust keep/drop decisions.
+Automatic selection is not treated as the final decision. Frames that may cause SfM trouble, such as motion blur, borderline blur, low texture, or weak tracked features, are written to `_stechdrive/frames/selected_frames.csv` with review flags. Step 2 lets you inspect those frames visually and adjust keep/drop decisions.
 
 Frames marked `drop` are still extracted as images. This is intentional: you can inspect them later and restore them if needed. The design favors a reviewable workflow over irreversible automatic deletion.
 
@@ -22,7 +22,7 @@ Frames marked `drop` are still extracted as images. This is intentional: you can
 
 The analyzed extraction path is fixed interval plus pair analysis. Pair analysis compares each decision candidate with the last kept frame: yaw-compensated residual change drives redundant drops and novelty additions, and sparse feature tracking plus candidate-only sharpness checks produce Step 2 review flags.
 
-When a fixed-interval or novelty candidate is dropped as possible motion blur, the analyzer searches the finite range from that point to the maximum allowed gap for a replacement. Replacement candidates are not accepted by sharpness alone: yaw-compensated residual change, sparse tracking, and low-texture checks are evaluated again against the last kept frame. Accepted replacements are marked `blur_replacement`, while the original blurred candidate remains as a `motion_blur` `drop` row for review.
+Sharpness drops are split into two tiers. Clear drops are marked `motion_blur`, planned as `drop`, and the analyzer searches the finite range from that point to the maximum allowed gap for a replacement. Milder drops are kept but marked `borderline_blur` so Step 2 can surface them for manual review. Replacement candidates are not accepted by sharpness alone: yaw-compensated residual change, sparse tracking, and low-texture checks are evaluated again against the last kept frame. Accepted replacements are marked `blur_replacement`, while the original blurred candidate remains as a `motion_blur` `drop` row for review.
 
 Quick extraction is the only non-analyzed path. It skips pair analysis and motion adjustment, then extracts the requested fixed cadence directly. Use it when you want to skip analysis and quickly cut the video at the specified interval.
 
@@ -113,7 +113,7 @@ Under `output_dir`:
 `_stechdrive/frames/selected_frames.csv` fields include:
 
 - `original_index`, `final_index`, `timestamp_sec`
-- `status`: `ok`, `novelty_added`, `blur_replacement`, `redundant_drop`, `gap_forced`, `motion_blur`, `low_texture`, `weak_match`
+- `status`: `ok`, `novelty_added`, `blur_replacement`, `redundant_drop`, `gap_forced`, `motion_blur`, `borderline_blur`, `low_texture`, `weak_match`
 - `decision`: `keep` or `drop`, editable in Step 2
 - `analysis_pipeline`: `pair` or `quick`
 - `selection_reason`: `initial`, `fixed_interval`, `novelty_added`, `blur_replacement`, `redundant_drop`, `gap_forced`, `endpoint`, or `quick_extract`
@@ -128,6 +128,7 @@ With `--quick-extract`, analysis score columns are blank because no pair analysi
 
 - Drop rows are still extracted so Step 2 can preview them before finalizing.
 - `blur_replacement` rows are frames selected near a dropped blur candidate. The original blur candidate remains as a `drop` row.
+- `borderline_blur` rows are kept but excluded from the running sharpness baseline so later blur checks do not become too permissive.
 - Default filename prefix is the input video filename stem; override with `--filename-prefix`.
 - `--image-ext jpg` is recommended for speed during iteration.
 - This script does not modify existing mask files.

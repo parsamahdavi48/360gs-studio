@@ -49,6 +49,7 @@ class PairFrameRisk:
     sharpness_baseline: float | None
     sharpness_ratio: float | None
     motion_blur: bool
+    borderline_blur: bool
     low_texture: bool
     weak_match: bool
 
@@ -83,6 +84,8 @@ PAIR_SHARPNESS_HISTORY = 7
 PAIR_LOW_TEXTURE_SHARPNESS = 8.0
 PAIR_MOTION_BLUR_BASELINE_MIN = 12.0
 PAIR_MOTION_BLUR_RATIO = 0.35
+PAIR_MOTION_BLUR_DROP_RATIO = 0.60
+PAIR_MOTION_BLUR_REVIEW_RATIO = 0.80
 PAIR_GATE_WIDTH_DEFAULT = 1280
 
 
@@ -345,16 +348,28 @@ def assess_pair_frame_risk(
             or track.confidence < max(0.12, min_confidence * 0.5)
         )
 
-    severe_sharpness_drop = sharpness_ratio is not None and sharpness_ratio <= min(0.12, PAIR_MOTION_BLUR_RATIO)
-    motion_blur = (
+    has_sharpness_baseline = (
         sharpness_baseline is not None
         and sharpness_baseline >= PAIR_MOTION_BLUR_BASELINE_MIN
         and sharpness_ratio is not None
+    )
+    severe_sharpness_drop = has_sharpness_baseline and sharpness_ratio <= min(0.12, PAIR_MOTION_BLUR_RATIO)
+    weak_track_blur = (
+        has_sharpness_baseline
         and sharpness_ratio <= PAIR_MOTION_BLUR_RATIO
         and (weak_for_blur or severe_sharpness_drop)
     )
+    motion_blur = bool(has_sharpness_baseline and sharpness_ratio <= PAIR_MOTION_BLUR_DROP_RATIO) or bool(
+        weak_track_blur
+    )
+    borderline_blur = bool(
+        has_sharpness_baseline
+        and not motion_blur
+        and sharpness_ratio <= PAIR_MOTION_BLUR_REVIEW_RATIO
+    )
     low_texture = (
         not motion_blur
+        and not borderline_blur
         and blur_score <= PAIR_LOW_TEXTURE_SHARPNESS
         and (sharpness_baseline is None or sharpness_baseline <= PAIR_MOTION_BLUR_BASELINE_MIN)
         and (track is None or low_texture_track)
@@ -365,6 +380,7 @@ def assess_pair_frame_risk(
         sharpness_baseline=sharpness_baseline,
         sharpness_ratio=sharpness_ratio,
         motion_blur=motion_blur,
+        borderline_blur=borderline_blur,
         low_texture=low_texture,
         weak_match=weak_match,
     )
@@ -431,7 +447,9 @@ def _pair_row(
     gap_frames = 0 if prev_kept_idx is None else max(0, idx - prev_kept_idx)
     yaw_deg = "" if metrics is None else metrics.yaw_shift_deg
     status = _pair_status(status_tokens)
-    risk_flags = [token for token in ("motion_blur", "low_texture", "weak_match") if token in status]
+    risk_flags = [
+        token for token in ("motion_blur", "borderline_blur", "low_texture", "weak_match") if token in status
+    ]
     if track is not None and track.track_count > 0 and track.confidence < 0.28 and "weak_match" not in risk_flags:
         risk_flags.append("weak_match")
     return {
@@ -604,7 +622,8 @@ def analyze_pair_selection(
         nonlocal last_keep_frame, last_keep_gate_frame, last_keep_idx, novelty_inserts_since_anchor
         if row.get("decision") == "drop":
             return
-        if "motion_blur" not in row.get("status", ""):
+        status = row.get("status", "")
+        if "motion_blur" not in status and "borderline_blur" not in status:
             row_blur = row.get("blur_score_final")
             if row_blur not in (None, ""):
                 kept_sharpness.append(float(row_blur))
@@ -644,6 +663,8 @@ def analyze_pair_selection(
             if allow_motion_blur_drop and decision != "drop":
                 decision = "drop"
                 reason = "motion_blur"
+        elif risk.borderline_blur:
+            tokens.append("borderline_blur")
         elif risk.low_texture:
             tokens.append("low_texture")
         if decision != "drop" and risk.weak_match:
@@ -688,7 +709,8 @@ def analyze_pair_selection(
                 allow_motion_blur_drop=True,
                 blur_score=candidate.blur_score,
             )
-            if row.get("decision") != "drop" and "motion_blur" not in row.get("status", ""):
+            status = row.get("status", "")
+            if row.get("decision") != "drop" and "motion_blur" not in status and "borderline_blur" not in status:
                 accepted = (row, candidate)
                 break
 

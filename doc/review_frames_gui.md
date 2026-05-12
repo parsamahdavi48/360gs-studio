@@ -59,6 +59,7 @@ Step 2 labels are not a separate quality score. They explain why a frame is kept
 | `Added: blur replacement` | Added as a more usable nearby candidate for a frame that may have been blurred |
 | `Added: preserved spacing` | Kept as a safety frame so the gap does not become too large |
 | `Review: possible blur` | Kept, but blur may be present |
+| `Review: borderline blur` | Kept, but sharpness dropped enough to deserve manual inspection |
 | `Review: low texture` | Kept, but SfM features may be weak |
 | `Review: weak feature tracking` | Kept, but pair tracking may be weak |
 | `Drop: similar frame` | Planned drop because it is too similar to the previous kept frame |
@@ -104,7 +105,7 @@ Removed images can be restored manually from the review backup if needed.
 
 - If there are no changes to write into the image folder, no extra action is needed. You can continue to Step 3.
 - If many frames are `Drop: similar frame`, you do not need to inspect every one when the remaining coverage is sufficient.
-- Always inspect `Review: possible blur`. If it looks acceptable, keep it.
+- Always inspect `Review: possible blur` and `Review: borderline blur`. If they look acceptable, keep them.
 - To rerun extraction, return to Step 1 and use `Reset and Overwrite`.
 
 ## Shortcuts
