@@ -905,6 +905,18 @@ def _right_view_screen_basis(
     return right, up_from_basis, forward
 
 
+def right_image_screen_x_sign(*, use_source_equirect: bool, use_reconstructed_cube6: bool) -> float:
+    """Screen X adapter for source-axis image previews.
+
+    The right pointcloud view follows AprilTagWorldDebugView's screen contract
+    where camera-local +X appears on monitor-left for the fixed frustum view.
+    Source equirect and reconstructed Cube6 previews are already rendered into
+    the correct camera rays, so only their final viewport X mapping needs this
+    display adapter.
+    """
+    return -1.0 if use_source_equirect or use_reconstructed_cube6 else 1.0
+
+
 def project_world_points_to_right_view(
     group: CubemapFrameGroup,
     params: PerspectiveParams,
@@ -2528,6 +2540,10 @@ class AprilTagSceneViewerWindow(QWidget):
         source_rotation_for_group = self._source_equirect_rotation_for_group(world_group)
         use_pointcloud_overlay = mode == RIGHT_VIEW_IMAGE_POINTCLOUD
         use_source_equirect, use_reconstructed_cube6 = self._right_image_projection_modes(mode, world_group)
+        screen_x_sign = right_image_screen_x_sign(
+            use_source_equirect=use_source_equirect,
+            use_reconstructed_cube6=use_reconstructed_cube6,
+        )
         equirect_group = raw_group if use_reconstructed_cube6 else image_group
         equirect_width, equirect_height = self._right_image_equirect_size(
             world_group=world_group,
@@ -2584,6 +2600,7 @@ class AprilTagSceneViewerWindow(QWidget):
             )
         )
         if self._displayed_image_key == key and self.image_view.set_perspective_params(view_params):
+            self.image_view.set_perspective_screen_x_sign(screen_x_sign)
             self.image_view.set_drag_mode("look")
             self.image_view.set_perspective_label_overlays(overlays)
             return
@@ -2641,6 +2658,7 @@ class AprilTagSceneViewerWindow(QWidget):
             view_params,
             overlays=overlays,
             logical_size=QSize(768, 768),
+            screen_x_sign=screen_x_sign,
         )
         self.image_view.set_drag_mode("look")
         self._displayed_image_key = key if shown else ""

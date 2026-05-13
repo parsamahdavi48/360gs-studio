@@ -85,6 +85,7 @@ def perspective_remap_maps(
     pitch_deg: float,
     roll_deg: float,
     fov_deg: float,
+    screen_x_sign: float = 1.0,
 ) -> tuple[np.ndarray, np.ndarray]:
     source_width = max(1, int(source_width))
     source_height = max(1, int(source_height))
@@ -92,7 +93,8 @@ def perspective_remap_maps(
     fov_deg = max(1.0, min(179.0, float(fov_deg)))
 
     coords = (np.arange(output_size, dtype=np.float64) + 0.5) / float(output_size)
-    u = coords * 2.0 - 1.0
+    x_sign = -1.0 if float(screen_x_sign) < 0.0 else 1.0
+    u = (coords * 2.0 - 1.0) * x_sign
     v = 1.0 - coords * 2.0
     uu, vv = np.meshgrid(u, v)
 
@@ -122,6 +124,7 @@ def equirect_to_perspective(
     *,
     output_size: int | None = None,
     interpolation: int = cv2.INTER_LINEAR,
+    screen_x_sign: float = 1.0,
 ) -> np.ndarray:
     params = params or PerspectiveParams()
     if image is None or image.size == 0:
@@ -136,6 +139,7 @@ def equirect_to_perspective(
         round(float(params.pitch_deg), 6),
         round(float(params.roll_deg), 6),
         round(float(params.fov_deg), 6),
+        -1.0 if float(screen_x_sign) < 0.0 else 1.0,
     )
     return cv2.remap(
         image,

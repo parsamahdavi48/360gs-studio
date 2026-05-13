@@ -54,6 +54,7 @@ from devtools.apriltag.scene_viewer import (
     opposite_image_face_for_world_face,
     project_world_points_to_image_view,
     project_world_points_to_right_view,
+    right_image_screen_x_sign,
     rotation_from_perspective_params,
     transform_group_for_world_display,
 )
@@ -2111,6 +2112,39 @@ def test_image_view_projection_uses_shader_screen_handedness(tmp_path: Path) -> 
     assert image_projection[0, 0] > 384.0
     assert right_handed_projection[0, 0] < 384.0
     assert image_projection[0, 1] == pytest.approx(right_handed_projection[0, 1])
+    window.deleteLater()
+
+
+def test_source_axis_image_modes_flip_screen_x_to_match_right_point_view(tmp_path: Path) -> None:
+    _app()
+    case_dir = _write_lichtfeld_final_direction_case(tmp_path)
+    window = AprilTagSceneViewerWindow(initial_case=case_dir)
+    window.mode_combo.setCurrentIndex(window.mode_combo.findData(RIGHT_VIEW_RECONSTRUCTED_CUBE6))
+
+    group = window.selected_world_group()
+    assert group is not None
+    camera, right, up, forward = camera_pose_from_perspective_params(group, window._params)
+    points = np.asarray([camera + forward * 3.0 + right * 0.5 + up * 0.1], dtype=np.float64)
+
+    image_projection = project_world_points_to_image_view(
+        group,
+        window._params,
+        points,
+        output_size=768,
+    )
+    right_projection = project_world_points_to_right_view(
+        group,
+        window._params,
+        points,
+        output_size=768,
+    )
+
+    assert image_projection is not None
+    assert right_projection is not None
+    assert right_image_screen_x_sign(use_source_equirect=False, use_reconstructed_cube6=True) == -1.0
+    assert 768.0 - float(image_projection[0, 0]) == pytest.approx(float(right_projection[0, 0]), abs=1e-4)
+    assert float(image_projection[0, 1]) == pytest.approx(float(right_projection[0, 1]), abs=1e-4)
+    assert window.image_view.perspective_screen_x_sign() == -1.0
     window.deleteLater()
 
 
