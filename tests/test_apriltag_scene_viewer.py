@@ -1704,8 +1704,7 @@ def test_current_case_pointcloud_drag_uses_grab_style_camera_motion() -> None:
     start_params = window._params
     start_rotation = rotation_from_perspective_params(start_params)
     start_forward = np.array([0.0, 0.0, 1.0]) @ start_rotation.T
-    start_right = np.array([1.0, 0.0, 0.0]) @ start_rotation.T
-    start_up = np.array([0.0, 1.0, 0.0]) @ start_rotation.T
+    screen_right, screen_up = window._right_view_drag_screen_basis()
 
     window._params = start_params
     window._on_right_view_dragged(-10.0, 0.0)
@@ -1713,9 +1712,7 @@ def test_current_case_pointcloud_drag_uses_grab_style_camera_motion() -> None:
     after_left_forward = np.array([0.0, 0.0, 1.0]) @ after_left_rotation.T
     left_movement = after_left_forward - start_forward
     left_movement /= max(float(np.linalg.norm(left_movement)), 1e-12)
-    assert window._params == params_from_drag(start_params, -10.0, 0.0)
-    assert window._params.yaw_deg > start_params.yaw_deg
-    assert float(left_movement @ start_right) > 0.99
+    assert float(left_movement @ (-screen_right)) > 0.99
 
     window._params = start_params
     window._on_right_view_dragged(0.0, 10.0)
@@ -1723,9 +1720,7 @@ def test_current_case_pointcloud_drag_uses_grab_style_camera_motion() -> None:
     after_down_forward = np.array([0.0, 0.0, 1.0]) @ after_down_rotation.T
     down_movement = after_down_forward - start_forward
     down_movement /= max(float(np.linalg.norm(down_movement)), 1e-12)
-    assert window._params == params_from_drag(start_params, 0.0, 10.0)
-    assert window._params.pitch_deg < start_params.pitch_deg
-    assert float(down_movement @ start_up) > 0.99
+    assert float(down_movement @ screen_up) > 0.99
     window.deleteLater()
 
 
@@ -1742,16 +1737,52 @@ def test_reconstructed_image_drag_uses_grab_style_frustum_motion(tmp_path: Path)
     window.mode_combo.setCurrentIndex(window.mode_combo.findData(RIGHT_VIEW_POINTCLOUD))
     window._params = start_params
     window._on_right_view_dragged(-10.0, 0.0)
-    assert window._params == params_from_drag(start_params, -10.0, 0.0)
+    assert window._params.yaw_deg == pytest.approx(start_params.yaw_deg - 1.8)
+    assert window._params.pitch_deg == pytest.approx(start_params.pitch_deg)
 
     window.mode_combo.setCurrentIndex(window.mode_combo.findData(RIGHT_VIEW_RECONSTRUCTED_CUBE6))
     window._params = start_params
     window._on_right_view_dragged(-10.0, 0.0)
-    assert window._params == params_from_drag(start_params, 10.0, 0.0)
+    assert window._params.yaw_deg == pytest.approx(start_params.yaw_deg + 1.8)
+    assert window._params.pitch_deg == pytest.approx(start_params.pitch_deg)
 
     window._params = start_params
     window._on_right_view_dragged(0.0, 10.0)
-    assert window._params == params_from_drag(start_params, 0.0, -10.0)
+    assert window._params.yaw_deg == pytest.approx(start_params.yaw_deg)
+    assert window._params.pitch_deg == pytest.approx(start_params.pitch_deg + 1.8)
+    window.deleteLater()
+
+
+def test_right_view_drag_uses_screen_axes_when_camera_is_rolled(tmp_path: Path) -> None:
+    case_dir = _write_generated_cube6_case(tmp_path)
+    case = load_case(case_dir)
+    save_case(replace(case, coordinate_profile="lichtfeld_cube6"))
+
+    _app()
+    window = AprilTagSceneViewerWindow(initial_case=case_dir)
+    rolled = PerspectiveParams(yaw_deg=0.0, pitch_deg=0.0, roll_deg=90.0, fov_deg=90.0)
+
+    window.mode_combo.setCurrentIndex(window.mode_combo.findData(RIGHT_VIEW_POINTCLOUD))
+    window._params = rolled
+    window._on_right_view_dragged(0.0, 10.0)
+    assert window._params.yaw_deg == pytest.approx(-1.8)
+    assert window._params.pitch_deg == pytest.approx(0.0)
+
+    window._params = rolled
+    window._on_right_view_dragged(-10.0, 0.0)
+    assert window._params.yaw_deg == pytest.approx(0.0)
+    assert window._params.pitch_deg == pytest.approx(-1.8)
+
+    window.mode_combo.setCurrentIndex(window.mode_combo.findData(RIGHT_VIEW_RECONSTRUCTED_CUBE6))
+    window._params = rolled
+    window._on_right_view_dragged(0.0, 10.0)
+    assert window._params.yaw_deg == pytest.approx(-1.8)
+    assert window._params.pitch_deg == pytest.approx(0.0)
+
+    window._params = rolled
+    window._on_right_view_dragged(-10.0, 0.0)
+    assert window._params.yaw_deg == pytest.approx(0.0)
+    assert window._params.pitch_deg == pytest.approx(1.8)
     window.deleteLater()
 
 
@@ -1780,26 +1811,32 @@ def test_current_case_source_equirect_drag_updates_camera_params() -> None:
         up /= max(float(np.linalg.norm(up)), 1e-12)
         return forward, right, up
 
-    start_forward, start_right, start_up = source_basis(start_params)
+    def source_vector(vector: np.ndarray) -> np.ndarray:
+        transformed = np.asarray(vector, dtype=np.float64) @ preview_to_sfm @ source_rotation
+        transformed /= max(float(np.linalg.norm(transformed)), 1e-12)
+        return transformed
+
+    start_forward, _start_right, _start_up = source_basis(start_params)
 
     for mode in (RIGHT_VIEW_SOURCE_EQUIRECT, RIGHT_VIEW_RECONSTRUCTED_CUBE6):
         window.mode_combo.setCurrentIndex(window.mode_combo.findData(mode))
+        screen_right, screen_up = window._right_view_drag_screen_basis()
+        screen_right_source = source_vector(screen_right)
+        screen_up_source = source_vector(screen_up)
 
         window._params = start_params
         window._on_right_view_dragged(-10.0, 0.0)
         after_left_forward, _right, _up = source_basis(window._params)
         left_movement = after_left_forward - start_forward
         left_movement /= max(float(np.linalg.norm(left_movement)), 1e-12)
-        assert window._params == params_from_drag(start_params, 10.0, 0.0)
-        assert float(left_movement @ start_right) < -0.99
+        assert float(left_movement @ screen_right_source) > 0.99
 
         window._params = start_params
         window._on_right_view_dragged(0.0, 10.0)
         after_down_forward, _right, _up = source_basis(window._params)
         down_movement = after_down_forward - start_forward
         down_movement /= max(float(np.linalg.norm(down_movement)), 1e-12)
-        assert window._params == params_from_drag(start_params, 0.0, -10.0)
-        assert float(down_movement @ start_up) < -0.99
+        assert float(down_movement @ screen_up_source) > 0.99
     window.deleteLater()
 
 

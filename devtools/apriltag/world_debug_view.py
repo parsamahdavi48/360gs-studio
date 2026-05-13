@@ -311,6 +311,7 @@ class AprilTagWorldDebugView(QOpenGLWidget):
         self.setMinimumSize(360, 320)
         self.setMouseTracking(True)
         self.setFocusPolicy(Qt.StrongFocus)
+        self.setCursor(Qt.OpenHandCursor)
         self._pointcloud: PointCloudSample | None = None
         self._groups: tuple[CubemapFrameGroup, ...] = ()
         self._image_ray_groups: tuple[CubemapFrameGroup, ...] = ()
@@ -570,6 +571,8 @@ class AprilTagWorldDebugView(QOpenGLWidget):
         self._last_mouse = event.position()
         self._press_pos = event.position()
         self._press_button = event.button()
+        if event.button() == Qt.LeftButton:
+            self.setCursor(Qt.ClosedHandCursor)
 
     def mouseMoveEvent(self, event: QMouseEvent) -> None:
         if self._last_mouse is None:
@@ -606,6 +609,7 @@ class AprilTagWorldDebugView(QOpenGLWidget):
         self._last_mouse = None
         self._press_pos = None
         self._press_button = None
+        self.setCursor(Qt.OpenHandCursor)
 
     def wheelEvent(self, event: QWheelEvent) -> None:
         if self._fixed_view_basis is not None and not self._fixed_navigation_enabled:
@@ -1534,4 +1538,3 @@ def _right_handed_view_basis(
         up_from_basis = np.cross(back, right)
         up_from_basis = _normalized(up_from_basis, fallback=(0.0, 1.0, 0.0))
     return right, up_from_basis, forward
-

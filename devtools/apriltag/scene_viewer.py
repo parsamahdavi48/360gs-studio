@@ -82,6 +82,7 @@ from devtools.apriltag.world_debug_view import (
 from gui.common.drag_spinbox import DragDoubleSpinBox
 from gui.common.perspective_image_view import PerspectiveImageView, PerspectiveLabelOverlay
 from gui.common.perspective_preview import (
+    PERSPECTIVE_LOOK_DEG_PER_PIXEL,
     PerspectiveParams,
     clamp_pitch_deg,
     normalize_yaw_deg,
@@ -748,17 +749,70 @@ def _params_from_grab_drag(
     delta_y: float,
     *,
     source_preview_screen_axis_adapter: bool,
+    screen_right: np.ndarray | None = None,
+    screen_up: np.ndarray | None = None,
 ) -> PerspectiveParams:
     """Apply viewport drags as grab/pan-style view movement.
 
-    The canonical pointcloud view uses the preview axes directly. Source-image
-    previews are manipulated as grabbed image textures, so both screen axes use
-    the opposite look update to keep the left frustum synchronized with the
-    newly revealed image content.
+    When the active camera has roll, screen up/right no longer match raw
+    yaw/pitch. If the current viewport basis is available, solve the yaw/pitch
+    delta from the visible screen axes so dragging stays touch-like in monitor
+    space without changing any world or image-ray transforms.
     """
+    if screen_right is not None and screen_up is not None:
+        return _params_from_screen_drag(
+            params,
+            delta_x,
+            delta_y,
+            screen_right=screen_right,
+            screen_up=screen_up,
+            horizontal_drag_sign=-1.0 if source_preview_screen_axis_adapter else 1.0,
+        )
     if source_preview_screen_axis_adapter:
-        return params_from_drag(params, -delta_x, -delta_y)
+        return params_from_drag(params, -delta_x, delta_y)
     return params_from_drag(params, delta_x, delta_y)
+
+
+def _params_from_screen_drag(
+    params: PerspectiveParams,
+    delta_x: float,
+    delta_y: float,
+    *,
+    screen_right: np.ndarray,
+    screen_up: np.ndarray,
+    horizontal_drag_sign: float = 1.0,
+    degrees_per_pixel: float = PERSPECTIVE_LOOK_DEG_PER_PIXEL,
+) -> PerspectiveParams:
+    yaw = np.deg2rad(float(params.yaw_deg))
+    pitch = np.deg2rad(float(params.pitch_deg))
+    screen_right = _normalized_vector(np.asarray(screen_right, dtype=np.float64), (1.0, 0.0, 0.0))
+    screen_up = _normalized_vector(np.asarray(screen_up, dtype=np.float64), (0.0, 1.0, 0.0))
+    desired = np.deg2rad(float(degrees_per_pixel)) * (
+        float(horizontal_drag_sign) * float(delta_x) * screen_right
+        + float(delta_y) * screen_up
+    )
+
+    d_forward_d_yaw = np.array(
+        [np.cos(yaw) * np.cos(pitch), 0.0, -np.sin(yaw) * np.cos(pitch)],
+        dtype=np.float64,
+    )
+    d_forward_d_pitch = np.array(
+        [-np.sin(yaw) * np.sin(pitch), -np.cos(pitch), -np.cos(yaw) * np.sin(pitch)],
+        dtype=np.float64,
+    )
+    jacobian = np.column_stack([d_forward_d_yaw, d_forward_d_pitch])
+    try:
+        delta, _residuals, _rank, _singular = np.linalg.lstsq(jacobian, desired, rcond=None)
+    except np.linalg.LinAlgError:
+        delta = np.array([0.0, 0.0], dtype=np.float64)
+    if not np.all(np.isfinite(delta)):
+        delta = np.array([0.0, 0.0], dtype=np.float64)
+    return PerspectiveParams(
+        yaw_deg=normalize_yaw_deg(float(params.yaw_deg) + float(np.rad2deg(delta[0]))),
+        pitch_deg=clamp_pitch_deg(float(params.pitch_deg) + float(np.rad2deg(delta[1]))),
+        fov_deg=params.fov_deg,
+        roll_deg=params.roll_deg,
+    )
 
 
 def _load_metashape_camera_transforms(xml_path: Path) -> dict[str, np.ndarray]:
@@ -2773,11 +2827,18 @@ class AprilTagSceneViewerWindow(QWidget):
     def _on_right_view_dragged(self, delta_x: float, delta_y: float) -> None:
         if not self._world_groups:
             return
+        screen_basis = self._right_view_drag_screen_basis()
+        screen_right: np.ndarray | None = None
+        screen_up: np.ndarray | None = None
+        if screen_basis is not None:
+            screen_right, screen_up = screen_basis
         self._params = _params_from_grab_drag(
             self._params,
             delta_x,
             delta_y,
             source_preview_screen_axis_adapter=self._right_view_uses_source_preview_screen_axis_adapter(),
+            screen_right=screen_right,
+            screen_up=screen_up,
         )
         self._sync_views()
 
@@ -2797,6 +2858,31 @@ class AprilTagSceneViewerWindow(QWidget):
         else:
             source_preview = False
         return bool(source_preview and _uses_source_preview_screen_axis_adapter(self._active_face, self._ray_basis_mode()))
+
+    def _right_view_drag_screen_basis(self) -> tuple[np.ndarray, np.ndarray] | None:
+        group = self.selected_world_group()
+        if group is None:
+            return None
+        _camera, right, up, forward = camera_pose_from_perspective_params(group, self._params)
+        if self.right_stack.currentWidget() is self.point_view:
+            screen_right, screen_up, _forward = _right_view_screen_basis(
+                right=right,
+                up=up,
+                forward=forward,
+            )
+            return screen_right, screen_up
+        if self.right_stack.currentWidget() is self.image_view:
+            mode = str(self.mode_combo.currentData() or RIGHT_VIEW_POINTCLOUD)
+            use_source_equirect, use_reconstructed_cube6 = self._right_image_projection_modes(mode, group)
+            screen_x_sign = right_image_screen_x_sign(
+                use_source_equirect=use_source_equirect,
+                use_reconstructed_cube6=use_reconstructed_cube6,
+            )
+            return (
+                _normalized_vector(right * screen_x_sign, (1.0, 0.0, 0.0)),
+                _normalized_vector(up, (0.0, 1.0, 0.0)),
+            )
+        return None
 
     def _append_log(self, text: str) -> None:
         self.log.append(text)

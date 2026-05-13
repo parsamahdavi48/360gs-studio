@@ -699,6 +699,7 @@ def test_world_debug_view_fixed_view_drag_emits_camera_delta() -> None:
     deltas: list[tuple[float, float]] = []
     view.fixed_view_dragged.connect(lambda dx, dy: deltas.append((dx, dy)))
 
+    assert view.cursor().shape() == Qt.CursorShape.OpenHandCursor
     view.mousePressEvent(
         MouseEventStub(
             QPointF(100.0, 100.0),
@@ -706,6 +707,7 @@ def test_world_debug_view_fixed_view_drag_emits_camera_delta() -> None:
             Qt.MouseButton.LeftButton,
         )
     )
+    assert view.cursor().shape() == Qt.CursorShape.ClosedHandCursor
     view.mouseMoveEvent(
         MouseEventStub(
             QPointF(112.0, 93.0),
@@ -713,8 +715,16 @@ def test_world_debug_view_fixed_view_drag_emits_camera_delta() -> None:
             Qt.MouseButton.LeftButton,
         )
     )
+    view.mouseReleaseEvent(
+        MouseEventStub(
+            QPointF(112.0, 93.0),
+            Qt.MouseButton.LeftButton,
+            Qt.MouseButton.NoButton,
+        )
+    )
 
     assert deltas == [(12.0, -7.0)]
+    assert view.cursor().shape() == Qt.CursorShape.OpenHandCursor
     view.deleteLater()
 
 
