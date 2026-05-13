@@ -42,10 +42,10 @@ from core.apriltag_geometry import (
     project_sfm_points,
     tag_corners_sfm,
 )
-from core.orientation_correction import FINAL_ORIENTATION_LICHTFELD, final_orientation_is_applied
 from core.apriltag_pipeline import collect_observations
 from core.apriltag_scale import estimate_scene_scale
 from core.image_io import imread_unicode
+from core.orientation_correction import FINAL_ORIENTATION_LICHTFELD, final_orientation_is_applied
 from devtools.apriltag.case import AprilTagDevCase, load_case_or_scene, save_case
 from devtools.apriltag.coordinates import (
     COORDINATE_PROFILE_LICHTFELD_CUBE6,

@@ -14,9 +14,9 @@ from PySide6.QtWidgets import QAbstractSpinBox, QApplication, QLabel, QSizePolic
 
 import devtools.apriltag.scene_viewer as scene_viewer_module
 from core.apriltag_cubemap import CubemapViewMetadata, cubemap_view_params_for_group
-from core.cubemap_transforms_json import build_remap
 from core.apriltag_detection import detect_apriltags
 from core.apriltag_geometry import PinholeFrame, load_pinhole_frames
+from core.cubemap_transforms_json import build_remap
 from core.image_io import imread_unicode, imwrite_unicode
 from core.orientation_correction import LICHTFELD_FINAL_ORIENTATION_MATRIX
 from devtools.apriltag.case import AprilTagDevCase, load_case, save_case
