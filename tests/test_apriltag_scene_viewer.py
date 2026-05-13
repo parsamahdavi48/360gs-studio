@@ -44,6 +44,7 @@ from devtools.apriltag.scene_viewer import (
     _resolve_source_equirect_paths,
     _source_equirect_preview_params,
     _source_equirect_size_from_payload,
+    _source_preview_render_rotation,
     _synthetic_output_face_rotation_face,
     camera_pose_from_perspective_params,
     case_cubemap_view_metadata,
@@ -631,17 +632,18 @@ def test_scene_viewer_keeps_world_face_rays_separate_from_generated_image_rays(t
     assert not np.allclose(directions["pz"], image_directions["pz"], atol=1e-6)
     assert closest_image_face_for_world_face(world_group, image_group, "pz")[:2] == ("px", 0.0)
     assert opposite_image_face_for_world_face(world_group, image_group, "pz") == ("nx", 0.0)
+    assert window.selected_face_basis_group() is image_group
     assert window.point_view._fixed_view_basis is not None
     right, up, forward = window.point_view._fixed_view_basis
     assert np.linalg.det(np.column_stack([right, up, -forward])) > 0.999
-    assert np.allclose(forward, directions["pz"], atol=1e-6)
+    assert np.allclose(forward, image_directions["pz"], atol=1e-6)
     assert window.case is not None
     assert window.case_label.text() == str(window.case.case_dir)
     assert "world rays=transforms.json face +Z" in window._last_status_detail
     assert "image rays=Cube6 export yaw/pitch" in window._last_status_detail
-    assert "active basis=transforms.json face +Z" in window._last_status_detail
-    assert "active pz->image px" in window._last_status_detail
-    assert "reverse=nx" in window._last_status_detail
+    assert "active basis=Cube6 image ray" in window._last_status_detail
+    assert "active pz->image pz" in window._last_status_detail
+    assert "reverse=nz" in window._last_status_detail
 
     window.ray_basis_combo.setCurrentIndex(window.ray_basis_combo.findData("image"))
     assert window.selected_face_basis_group() is image_group
@@ -700,7 +702,7 @@ def test_scene_viewer_ui_defaults_target_scene_validation_workflow(tmp_path: Pat
     assert window.mode_combo.itemText(window.mode_combo.findData(RIGHT_VIEW_POINTCLOUD)) == "点群"
     assert window.mode_combo.itemText(window.mode_combo.findData(RIGHT_VIEW_SOURCE_EQUIRECT)) == "元360画像"
     assert window.mode_combo.itemText(window.mode_combo.findData(RIGHT_VIEW_RECONSTRUCTED_CUBE6)) == "Cube6再構築"
-    assert window.ray_basis_combo.currentData() == RAY_BASIS_WORLD
+    assert window.ray_basis_combo.currentData() == RAY_BASIS_IMAGE
     assert window.tag_physical_size_spin.value() == pytest.approx(0.160)
     assert window.run_validation_button.text() == "検出"
     assert window.copy_validation_scale_button.text() == "scaleコピー"
@@ -901,20 +903,20 @@ def test_lichtfeld_final_source_preview_matches_display_pointcloud_direction(tmp
     display_matrix = world_display_matrix(window.case.coordinate_profile)
     preview_to_sfm = np.linalg.inv(display_matrix[:3, :3]).T
     expected_source_mapping = {
-        "pz": "pz",
-        "px": "px",
-        "nz": "nz",
-        "nx": "nx",
+        "pz": "nz",
+        "px": "nx",
+        "nz": "pz",
+        "nx": "px",
         "py": "py",
         "ny": "ny",
     }
     expected_image_mapping = {
-        "pz": "pz",
-        "px": "px",
-        "nz": "nz",
-        "nx": "nx",
-        "py": "py",
-        "ny": "ny",
+        "pz": "nz",
+        "px": "nx",
+        "nz": "pz",
+        "nx": "px",
+        "py": "ny",
+        "ny": "py",
     }
     actual_mapping: dict[str, str] = {}
     for face, expected_face in expected_image_mapping.items():
@@ -930,9 +932,10 @@ def test_lichtfeld_final_source_preview_matches_display_pointcloud_direction(tmp
 
     source = imread_unicode(source_path)
     assert source is not None
+    render_rotation = _source_preview_render_rotation(source_rotation, window.case.coordinate_profile)
     source_preview = render_source_equirect_perspective(
         source,
-        source_rotation,
+        render_rotation,
         yaw_deg=window._params.yaw_deg,
         pitch_deg=window._params.pitch_deg,
         roll_deg=window._params.roll_deg,
@@ -942,7 +945,7 @@ def test_lichtfeld_final_source_preview_matches_display_pointcloud_direction(tmp
     )
     reconstructed = render_generated_cubemap_source_axis(
         raw_group,
-        source_rotation,
+        render_rotation,
         cubemap_view_params=metadata,
         output_width=256,
         output_height=128,
@@ -951,13 +954,13 @@ def test_lichtfeld_final_source_preview_matches_display_pointcloud_direction(tmp
     )
     reconstructed_preview = equirect_to_perspective(reconstructed, window._params, output_size=129)
 
-    source_forward_color = np.array([127.5, 127.5, 255.0], dtype=np.float64)
+    source_forward_color = np.array([127.5, 127.5, 0.0], dtype=np.float64)
     assert np.allclose(source_preview[64, 64].astype(np.float64), source_forward_color, atol=4.0)
     assert np.allclose(reconstructed_preview[64, 64], source_preview[64, 64], atol=4.0)
     window.deleteLater()
 
 
-def test_lichtfeld_final_source_preview_keeps_saved_raster_orientation(tmp_path: Path) -> None:
+def test_lichtfeld_final_source_preview_keeps_display_up_direction(tmp_path: Path) -> None:
     case_dir = _write_lichtfeld_final_direction_case(tmp_path)
     _app()
     window = AprilTagSceneViewerWindow(initial_case=case_dir)
@@ -976,9 +979,14 @@ def test_lichtfeld_final_source_preview_keeps_saved_raster_orientation(tmp_path:
     assert target is not None
 
     params = window._source_projection_preview_params(world_group)
+    assert params.yaw_deg == pytest.approx(window._params.yaw_deg)
+    assert params.pitch_deg == pytest.approx(window._params.pitch_deg)
+    assert params.fov_deg == pytest.approx(window._params.fov_deg)
+    assert params.roll_deg == pytest.approx(window._params.roll_deg)
+    render_rotation = _source_preview_render_rotation(source_rotation, window.case.coordinate_profile)
     rendered = render_source_equirect_perspective(
         source,
-        source_rotation,
+        render_rotation,
         yaw_deg=params.yaw_deg,
         pitch_deg=params.pitch_deg,
         roll_deg=params.roll_deg,
@@ -987,10 +995,54 @@ def test_lichtfeld_final_source_preview_keeps_saved_raster_orientation(tmp_path:
         sfm_to_preview_matrix=world_display_matrix(window.case.coordinate_profile),
     )
 
-    direct_error = float(np.mean(np.abs(rendered.astype(np.int16) - target.astype(np.int16))))
-    mirrored_error = float(np.mean(np.abs(rendered.astype(np.int16) - target[:, ::-1].astype(np.int16))))
-    assert direct_error < 4.0
-    assert direct_error * 4.0 < mirrored_error
+    center = target.shape[0] // 2
+    center_error = float(np.mean(np.abs(rendered[center, center].astype(np.int16) - target[center, center].astype(np.int16))))
+    assert center_error < 6.0
+    assert int(rendered[0, center, 1]) > int(rendered[-1, center, 1])
+    window.deleteLater()
+
+
+def test_lichtfeld_final_reconstructed_preview_keeps_display_vertical_faces(tmp_path: Path) -> None:
+    case_dir = _write_lichtfeld_final_direction_case(tmp_path)
+    _app()
+    window = AprilTagSceneViewerWindow(initial_case=case_dir)
+    raw_group = window.selected_raw_group()
+    world_group = window.selected_world_group()
+    source_equirect = window._source_equirect_for_group(world_group)
+
+    assert raw_group is not None
+    assert world_group is not None
+    assert source_equirect is not None
+    _source_path, source_rotation = source_equirect
+
+    render_rotation = _source_preview_render_rotation(source_rotation, window.case.coordinate_profile)
+    reconstructed = render_generated_cubemap_source_axis(
+        raw_group,
+        render_rotation,
+        cubemap_view_params=case_cubemap_view_metadata(window.case),
+        output_width=256,
+        output_height=128,
+        image_cache=window._image_cache,
+        sfm_to_preview_matrix=world_display_matrix(window.case.coordinate_profile),
+    )
+
+    window.ray_basis_combo.setCurrentIndex(window.ray_basis_combo.findData(RAY_BASIS_IMAGE))
+    expected_mapping = {
+        "pz": "pz",
+        "px": "px",
+        "nx": "nx",
+        "nz": "nz",
+        "py": "py",
+        "ny": "ny",
+    }
+    for face, expected_face in expected_mapping.items():
+        window.set_active_face(face)
+        params = window._source_projection_preview_params(world_group)
+        rendered = equirect_to_perspective(reconstructed, params, output_size=65)
+        target = imread_unicode(raw_group.frames_by_face[expected_face].image_path)
+        assert target is not None
+        center_error = float(np.mean(np.abs(rendered[32, 32].astype(np.int16) - target[32, 32].astype(np.int16))))
+        assert center_error < 10.0
     window.deleteLater()
 
 
@@ -1103,8 +1155,8 @@ def test_current_case_source_equirect_rotation_maps_json_faces_to_source_centers
 
     code_chain_rotation = source_equirect_base_rotation(raw_group, cubemap_view_params=metadata)
     assert code_chain_rotation is not None
-    source_local_from_final_lichtfeld_raster = np.diag([-1.0, -1.0, 1.0])
-    assert np.allclose(source_rotation, code_chain_rotation @ source_local_from_final_lichtfeld_raster, atol=1e-6)
+    source_local_from_lichtfeld = np.diag([1.0, -1.0, -1.0])
+    assert np.allclose(source_rotation, code_chain_rotation @ source_local_from_lichtfeld, atol=1e-6)
 
     display_matrix = world_display_matrix(case.coordinate_profile)
     preview_to_sfm = np.linalg.inv(display_matrix[:3, :3]).T
@@ -1676,6 +1728,32 @@ def test_current_case_pointcloud_drag_uses_grab_style_camera_motion() -> None:
     window.deleteLater()
 
 
+def test_reconstructed_image_drag_uses_grab_style_frustum_motion(tmp_path: Path) -> None:
+    case_dir = _write_generated_cube6_case(tmp_path)
+    case = load_case(case_dir)
+    save_case(replace(case, coordinate_profile="lichtfeld_cube6"))
+
+    _app()
+    window = AprilTagSceneViewerWindow(initial_case=case_dir)
+    window.set_active_face("pz")
+    start_params = window._params
+
+    window.mode_combo.setCurrentIndex(window.mode_combo.findData(RIGHT_VIEW_POINTCLOUD))
+    window._params = start_params
+    window._on_right_view_dragged(-10.0, 0.0)
+    assert window._params == params_from_drag(start_params, -10.0, 0.0)
+
+    window.mode_combo.setCurrentIndex(window.mode_combo.findData(RIGHT_VIEW_RECONSTRUCTED_CUBE6))
+    window._params = start_params
+    window._on_right_view_dragged(-10.0, 0.0)
+    assert window._params == params_from_drag(start_params, 10.0, 0.0)
+
+    window._params = start_params
+    window._on_right_view_dragged(0.0, 10.0)
+    assert window._params == params_from_drag(start_params, 0.0, -10.0)
+    window.deleteLater()
+
+
 def test_current_case_source_equirect_drag_updates_camera_params() -> None:
     case_dir = _local_apriltag_case_dir()
     _app()
@@ -1711,16 +1789,16 @@ def test_current_case_source_equirect_drag_updates_camera_params() -> None:
         after_left_forward, _right, _up = source_basis(window._params)
         left_movement = after_left_forward - start_forward
         left_movement /= max(float(np.linalg.norm(left_movement)), 1e-12)
-        assert window._params == params_from_drag(start_params, -10.0, 0.0)
-        assert float(left_movement @ start_right) > 0.99
+        assert window._params == params_from_drag(start_params, 10.0, 0.0)
+        assert float(left_movement @ start_right) < -0.99
 
         window._params = start_params
         window._on_right_view_dragged(0.0, 10.0)
         after_down_forward, _right, _up = source_basis(window._params)
         down_movement = after_down_forward - start_forward
         down_movement /= max(float(np.linalg.norm(down_movement)), 1e-12)
-        assert window._params == params_from_drag(start_params, 0.0, 10.0)
-        assert float(down_movement @ start_up) > 0.99
+        assert window._params == params_from_drag(start_params, 0.0, -10.0)
+        assert float(down_movement @ start_up) < -0.99
     window.deleteLater()
 
 
@@ -1767,8 +1845,8 @@ def test_current_case_image_preview_uses_source_equirect_when_available() -> Non
     assert raw_group is not None
     expected_rotation = source_equirect_base_rotation(raw_group, cubemap_view_params=case_cubemap_view_metadata(case))
     assert expected_rotation is not None
-    source_local_from_final_lichtfeld_raster = np.diag([-1.0, -1.0, 1.0])
-    assert np.allclose(source_rotation, expected_rotation @ source_local_from_final_lichtfeld_raster, atol=1e-6)
+    source_local_from_lichtfeld = np.diag([1.0, -1.0, -1.0])
+    assert np.allclose(source_rotation, expected_rotation @ source_local_from_lichtfeld, atol=1e-6)
 
     source = imread_unicode(source_path)
     display_matrix = world_display_matrix(case.coordinate_profile)

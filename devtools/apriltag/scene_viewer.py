@@ -109,7 +109,7 @@ LICHTFELD_IMAGE_RAY_DISPLAY_PROFILES = {
 }
 SOURCE_EQUIRECT_IMAGE_EXTS = (".jpg", ".jpeg", ".png", ".tif", ".tiff", ".webp", ".bmp")
 SOURCE_EQUIRECT_LOCAL_FROM_LICHTFELD_LOCAL = np.diag([1.0, -1.0, -1.0])
-SOURCE_EQUIRECT_LOCAL_FROM_LICHTFELD_FINAL_RASTER = np.diag([-1.0, -1.0, 1.0])
+SOURCE_PREVIEW_LOCAL_Y_FLIP = np.diag([1.0, -1.0, 1.0])
 SYNTHETIC_IMAGE_RASTER_Y_FLIP = np.diag([1.0, -1.0, 1.0])
 SYNTHETIC_OUTPUT_FACE_ROTATION_FACE = {
     "top": "bottom",
@@ -628,21 +628,17 @@ def _source_equirect_rotations_from_groups(
     groups: tuple[CubemapFrameGroup, ...],
     metadata: CubemapViewMetadata | None,
     *,
-    lichtfeld_final_orientation_applied: bool = False,
     undo_legacy_lichtfeld_local_flip: bool = True,
 ) -> dict[str, np.ndarray]:
     rotations: dict[str, np.ndarray] = {}
     for group in groups:
         rotation = source_equirect_base_rotation(group, cubemap_view_params=metadata)
         if rotation is not None:
-            if lichtfeld_final_orientation_applied:
-                # The final dataset orientation is already in transforms.json,
-                # but Cube6 JPG pixels were generated from build_remap() image
-                # rays while JSON face poses use the export pose convention.
-                # This adapter maps final JSON face rays back to the saved
-                # raster/source panorama directions without changing world poses.
-                rotations[group.name] = rotation @ SOURCE_EQUIRECT_LOCAL_FROM_LICHTFELD_FINAL_RASTER
-            elif undo_legacy_lichtfeld_local_flip:
+            if undo_legacy_lichtfeld_local_flip:
+                # The source raster local-axis adapter is independent from the
+                # final dataset orientation. final_orientation is already
+                # folded into transforms.json/pointcloud.ply and therefore
+                # into source_equirect_base_rotation().
                 rotations[group.name] = rotation @ SOURCE_EQUIRECT_LOCAL_FROM_LICHTFELD_LOCAL
             else:
                 rotations[group.name] = rotation
@@ -676,7 +672,7 @@ def _source_raster_frame_group(
     position = group.reference_frame.camera_position_sfm
     frames: dict[str, PinholeFrame] = {}
     for face, frame in group.frames_by_face.items():
-        face_rotation = face_rotations.get(face)
+        face_rotation = _source_raster_face_rotation(face_rotations, face, metadata)
         if face_rotation is None:
             continue
         transform = np.array(frame.transform_matrix, dtype=np.float64, copy=True)
@@ -686,6 +682,30 @@ def _source_raster_frame_group(
     if len(frames) < 4:
         return None
     return CubemapFrameGroup(name=group.name, frames_by_face=frames, group_index=group.group_index)
+
+
+def _source_raster_face_rotation(
+    face_rotations: dict[str, np.ndarray],
+    face: str,
+    metadata: CubemapViewMetadata | None,
+) -> np.ndarray | None:
+    if metadata is not None and metadata.image_pose_profile == COORDINATE_PROFILE_LICHTFELD_CUBE6:
+        raster_face = _synthetic_output_face_rotation_face(face)
+        rotation = face_rotations.get(raster_face)
+        if rotation is None:
+            return None
+        return rotation @ SYNTHETIC_IMAGE_RASTER_Y_FLIP
+    return face_rotations.get(face)
+
+
+def _source_preview_render_rotation(rotation: np.ndarray, profile: str | None) -> np.ndarray:
+    if normalize_coordinate_profile(profile) in LICHTFELD_IMAGE_RAY_DISPLAY_PROFILES:
+        # This is a raster sampling adapter, not a world/camera-pose transform.
+        # The left view and pointcloud mode stay in the proper right-handed
+        # display world; only the source panorama latitude lookup is flipped so
+        # pitch motion samples the same physical direction as the frustum.
+        return np.asarray(rotation, dtype=np.float64) @ SOURCE_PREVIEW_LOCAL_Y_FLIP
+    return np.asarray(rotation, dtype=np.float64)
 
 
 def _synthetic_output_face_rotation_face(face: str) -> str:
@@ -719,7 +739,7 @@ def _source_equirect_preview_params(
 
 def _uses_source_preview_screen_axis_adapter(active_face: str, ray_basis_mode: str) -> bool:
     _ = active_face, ray_basis_mode
-    return False
+    return True
 
 
 def _params_from_grab_drag(
@@ -731,12 +751,13 @@ def _params_from_grab_drag(
 ) -> PerspectiveParams:
     """Apply viewport drags as grab/pan-style view movement.
 
-    The canonical pointcloud view uses the preview axes directly. JSONFace
-    source previews add image-only roll/pitch compensation, so their displayed
-    horizontal screen axis is reversed relative to the canonical yaw axis.
+    The canonical pointcloud view uses the preview axes directly. Source-image
+    previews are manipulated as grabbed image textures, so both screen axes use
+    the opposite look update to keep the left frustum synchronized with the
+    newly revealed image content.
     """
     if source_preview_screen_axis_adapter:
-        return params_from_drag(params, -delta_x, delta_y)
+        return params_from_drag(params, -delta_x, -delta_y)
     return params_from_drag(params, delta_x, delta_y)
 
 
@@ -1155,9 +1176,9 @@ class AprilTagSceneViewerWindow(QWidget):
         self.mode_combo.addItem("元360画像", RIGHT_VIEW_SOURCE_EQUIRECT)
         self.mode_combo.addItem("Cube6再構築", RIGHT_VIEW_RECONSTRUCTED_CUBE6)
         self.ray_basis_combo = QComboBox()
-        self.ray_basis_combo.addItem("JSON Face", RAY_BASIS_WORLD)
+        self.ray_basis_combo.addItem("画像レイ", RAY_BASIS_IMAGE)
+        self.ray_basis_combo.addItem("JSON Face(デバッグ)", RAY_BASIS_WORLD)
         self.ray_basis_combo.addItem("両方(デバッグ)", RAY_BASIS_BOTH)
-        self.ray_basis_combo.addItem("画像レイ(デバッグ)", RAY_BASIS_IMAGE)
         self.profile_combo = QComboBox()
         for profile in COORDINATE_PROFILES:
             self.profile_combo.addItem(profile.label, profile.id)
@@ -1433,11 +1454,9 @@ class AprilTagSceneViewerWindow(QWidget):
                 self.case,
                 tuple(group.name for group in self._raw_groups),
             )
-            has_lichtfeld_final_orientation = _case_has_lichtfeld_final_orientation(self.case)
             self._source_equirect_rotations = _source_equirect_rotations_from_groups(
                 self._raw_groups,
                 metadata,
-                lichtfeld_final_orientation_applied=has_lichtfeld_final_orientation,
             )
             self._update_world_matrix()
             self._world_groups = tuple(
@@ -1966,7 +1985,6 @@ class AprilTagSceneViewerWindow(QWidget):
         source_rotations = _source_equirect_rotations_from_groups(
             self._raw_groups,
             metadata,
-            lichtfeld_final_orientation_applied=_case_has_lichtfeld_final_orientation(self.case),
         )
         overrides: dict[str, np.ndarray] = {}
         for group in self._raw_groups:
@@ -1976,7 +1994,7 @@ class AprilTagSceneViewerWindow(QWidget):
                 continue
             position = group.reference_frame.camera_position_sfm
             for face, frame in group.frames_by_face.items():
-                face_rotation = face_rotations.get(face)
+                face_rotation = _source_raster_face_rotation(face_rotations, face, metadata)
                 if face_rotation is None:
                     continue
                 transform = np.array(frame.transform_matrix, dtype=np.float64, copy=True)
@@ -1987,7 +2005,7 @@ class AprilTagSceneViewerWindow(QWidget):
                 # adapter so written pixels land where the viewer displays
                 # them; the synthetic compositor preserves marker chirality
                 # when this adapter produces negative polygon winding.
-                transform[:3, :3] = source_rotation @ face_rotation @ SYNTHETIC_IMAGE_RASTER_Y_FLIP
+                transform[:3, :3] = source_rotation @ face_rotation
                 transform[:3, 3] = position
                 overrides[frame.file_path] = transform
         return overrides
@@ -2472,20 +2490,12 @@ class AprilTagSceneViewerWindow(QWidget):
         )
 
     def _source_projection_preview_params(self, world_group: CubemapFrameGroup) -> PerspectiveParams:
-        params = _source_equirect_preview_params(
+        return _source_equirect_preview_params(
             self._params,
             self._active_face,
             self._ray_basis_mode(),
             self._source_projection_anchor_params(world_group),
         )
-        if (
-            self.case is not None
-            and _case_has_lichtfeld_final_orientation(self.case)
-            and normalize_coordinate_profile(self.case.coordinate_profile) in LICHTFELD_IMAGE_RAY_DISPLAY_PROFILES
-            and self._source_equirect_rotation_for_group(world_group) is not None
-        ):
-            return replace(params, roll_deg=float(params.roll_deg) + 180.0)
-        return params
 
     def _sync_point_view(self, group: CubemapFrameGroup) -> None:
         camera, right, up, forward = camera_pose_from_perspective_params(group, self._params)
@@ -2529,6 +2539,11 @@ class AprilTagSceneViewerWindow(QWidget):
             source_equirect[1]
             if use_source_equirect
             else source_rotation_for_group
+        )
+        render_source_rotation = (
+            _source_preview_render_rotation(source_rotation, self.case.coordinate_profile if self.case else None)
+            if source_rotation is not None
+            else None
         )
         view_params = (
             self._source_projection_preview_params(world_group)
@@ -2577,7 +2592,7 @@ class AprilTagSceneViewerWindow(QWidget):
             try:
                 if use_source_equirect:
                     assert source_path is not None
-                    assert source_rotation is not None
+                    assert render_source_rotation is not None
                     source = self._image_cache.get(source_path)
                     if source is None:
                         source = imread_unicode(source_path)
@@ -2593,17 +2608,17 @@ class AprilTagSceneViewerWindow(QWidget):
                     )
                     image = render_source_equirect_axis(
                         source,
-                        source_rotation,
+                        render_source_rotation,
                         output_width=equirect_width,
                         output_height=equirect_height,
                         sfm_to_preview_matrix=self._world_matrix,
                     )
                 elif use_reconstructed_cube6:
-                    if source_rotation is None:
+                    if render_source_rotation is None:
                         raise ValueError("Cube6再構築には source camera rotation が必要です")
                     image = render_generated_cubemap_source_axis(
                         raw_group,
-                        source_rotation,
+                        render_source_rotation,
                         cubemap_view_params=case_cubemap_view_metadata(self.case) if self.case else None,
                         output_width=equirect_width,
                         output_height=equirect_height,

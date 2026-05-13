@@ -1534,3 +1534,4 @@ def _right_handed_view_basis(
         up_from_basis = np.cross(back, right)
         up_from_basis = _normalized(up_from_basis, fallback=(0.0, 1.0, 0.0))
     return right, up_from_basis, forward
+
