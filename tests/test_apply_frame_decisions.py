@@ -9,6 +9,7 @@ from pathlib import Path
 import pytest
 
 from apply_frame_decisions import (
+    apply_decisions,
     backup_images_dir,
     finalize_in_place,
     pending_drop_image_paths,
@@ -417,6 +418,76 @@ def test_finalize_in_place_raises_on_no_keep(tmp_path: Path):
 
     with pytest.raises(RuntimeError, match="No keep frames"):
         finalize_in_place(scene, "selected_frames.csv")
+
+
+def test_apply_decisions_copies_keep_frames_to_scene_output(tmp_path: Path) -> None:
+    scene = _make_scene(tmp_path, num_frames=3, drop_indices=[2])
+
+    apply_decisions(
+        scene_dir=scene,
+        csv_name="selected_frames.csv",
+        output_name="metashape_images",
+        clean_output=False,
+        finalize_inplace=False,
+    )
+
+    output = scene / "metashape_images"
+    assert sorted(path.name for path in output.glob("*.jpg")) == ["frame_000001.jpg", "frame_000003.jpg"]
+    assert _read_csv(output / "selected_frames_keep.csv")[0]["output_file"] == "images/frame_000001.jpg"
+
+
+def test_apply_decisions_refuses_absolute_output_file_path(tmp_path: Path) -> None:
+    scene = _make_scene(tmp_path, num_frames=1)
+    outside = tmp_path / "outside_secret.jpg"
+    outside.write_bytes(b"secret")
+    rows = _read_csv(selected_frames_path(scene))
+    rows[0]["output_file"] = str(outside)
+    _write_csv(selected_frames_path(scene), rows)
+
+    with pytest.raises(RuntimeError, match="relative to the scene images folder"):
+        apply_decisions(
+            scene_dir=scene,
+            csv_name="selected_frames.csv",
+            output_name="metashape_images",
+            clean_output=False,
+            finalize_inplace=False,
+        )
+
+    assert not (scene / "metashape_images" / outside.name).exists()
+
+
+def test_apply_decisions_refuses_parent_traversal_output_file_path(tmp_path: Path) -> None:
+    scene = _make_scene(tmp_path, num_frames=1)
+    outside = scene / "outside.jpg"
+    outside.write_bytes(b"outside")
+    rows = _read_csv(selected_frames_path(scene))
+    rows[0]["output_file"] = "images/../outside.jpg"
+    _write_csv(selected_frames_path(scene), rows)
+
+    with pytest.raises(RuntimeError, match="outside images"):
+        apply_decisions(
+            scene_dir=scene,
+            csv_name="selected_frames.csv",
+            output_name="metashape_images",
+            clean_output=False,
+            finalize_inplace=False,
+        )
+
+    assert not (scene / "metashape_images" / outside.name).exists()
+
+
+def test_finalize_in_place_refuses_drop_path_outside_images(tmp_path: Path) -> None:
+    scene = _make_scene(tmp_path, num_frames=2, drop_indices=[2])
+    outside = scene / "outside.jpg"
+    outside.write_bytes(b"outside")
+    rows = _read_csv(selected_frames_path(scene))
+    rows[1]["output_file"] = "images/../outside.jpg"
+    _write_csv(selected_frames_path(scene), rows)
+
+    with pytest.raises(RuntimeError, match="outside images"):
+        finalize_in_place(scene, "selected_frames.csv")
+
+    assert outside.read_bytes() == b"outside"
 
 
 def test_pending_drop_image_paths_reports_existing_drop_files(tmp_path: Path):

@@ -4,3 +4,5 @@ Pillow==12.2.0
 open3d==0.19.0
 tqdm==4.67.3
 PySide6==6.11.0
+setuptools==81.0.0
+urllib3==2.7.0

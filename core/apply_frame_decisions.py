@@ -76,6 +76,23 @@ def is_under(path: Path, root: Path) -> bool:
         return False
 
 
+def resolve_selected_image_path(scene_dir: Path, images_dir: Path, value: str) -> Path:
+    rel_path = str(value).strip()
+    if not rel_path:
+        raise RuntimeError("Frame path is empty")
+
+    raw_path = Path(rel_path)
+    if raw_path.is_absolute():
+        raise RuntimeError(f"Frame path must be relative to the scene images folder: {rel_path}")
+
+    src = scene_dir / raw_path
+    if not is_under(src, images_dir):
+        raise RuntimeError(f"Frame path is outside images/: {rel_path}")
+    if not is_image_file(src):
+        raise RuntimeError(f"Frame path is not an image file: {rel_path}")
+    return src
+
+
 def normalize_decision(row: dict) -> str:
     return row.get("decision", "keep").strip().lower()
 
@@ -161,7 +178,7 @@ def copy_keep_rows(
             skipped += 1
             continue
 
-        src = scene_dir / rel_path
+        src = resolve_selected_image_path(scene_dir, scene_images_dir(scene_dir), rel_path)
         if not src.exists():
             missing.append(str(src))
             continue
@@ -253,10 +270,10 @@ def finalize_in_place(
                 missing.append("<empty output_file>")
             continue
 
-        src = scene_dir / rel_path
+        src = resolve_selected_image_path(scene_dir, images_dir, rel_path)
         if normalize_decision(row) == "drop":
             dropped_rows += 1
-            if src.exists() and is_under(src, images_dir) and src.is_file():
+            if src.exists() and src.is_file():
                 dropped_paths.append(src)
             continue
 
@@ -264,8 +281,6 @@ def finalize_in_place(
             missing.append(str(src))
             continue
 
-        if not is_under(src, images_dir):
-            raise RuntimeError(f"Keep frame is outside images/: {src}")
         keep_entries.append((row, src))
 
     if not keep_entries:
