@@ -92,6 +92,7 @@ class AprilTagCubemapGLView(PerspectiveGLImageView):
         uniform float u_yaw_rad;
         uniform float u_pitch_rad;
         uniform float u_fov_rad;
+        uniform float u_screen_x_sign;
         uniform vec2 u_viewport_origin;
         uniform vec2 u_viewport_size;
 
@@ -155,7 +156,7 @@ class AprilTagCubemapGLView(PerspectiveGLImageView):
 
         void main() {
             vec2 view_coord = (gl_FragCoord.xy - u_viewport_origin) / u_viewport_size;
-            float view_x = view_coord.x * 2.0 - 1.0;
+            float view_x = (view_coord.x * 2.0 - 1.0) * u_screen_x_sign;
             float view_y = view_coord.y * 2.0 - 1.0;
             float focal = 1.0 / tan(u_fov_rad * 0.5);
             vec3 ray = normalize(vec3(view_x, view_y, focal));
@@ -303,6 +304,10 @@ class AprilTagCubemapGLView(PerspectiveGLImageView):
             self._program.uniformLocation(b"u_fov_rad"),
             float(np.deg2rad(float(self._params.fov_deg))),
         )
+        self._program.setUniformValue1f(
+            self._program.uniformLocation(b"u_screen_x_sign"),
+            float(self._screen_x_sign),
+        )
         self._program.setUniformValue(
             self._program.uniformLocation(b"u_viewport_origin"),
             float(viewport_x),
@@ -416,12 +421,14 @@ class AprilTagCubemapPreviewView(QWidget):
         *,
         overlays: list[PerspectiveLabelOverlay] | None = None,
         logical_size: QSize | None = None,
+        screen_x_sign: float = 1.0,
     ) -> bool:
         shown = self._fallback_view.set_perspective_image_bgr(
             image,
             params,
             overlays=overlays,
             logical_size=logical_size,
+            screen_x_sign=screen_x_sign,
         )
         if shown:
             self._stack.setCurrentWidget(self._fallback_view)
@@ -435,6 +442,7 @@ class AprilTagCubemapPreviewView(QWidget):
         overlays: list[PerspectiveLabelOverlay] | None = None,
         logical_size: QSize | None = None,
         image_cache: dict[Path, np.ndarray] | None = None,
+        screen_x_sign: float = 1.0,
     ) -> bool:
         if self._gpu_failed or self._direct_view.failed():
             return False
@@ -442,6 +450,7 @@ class AprilTagCubemapPreviewView(QWidget):
         if not faces:
             return False
         self._direct_view.set_drag_mode(self._drag_mode)
+        self._direct_view.set_screen_x_sign(screen_x_sign)
         self._direct_view.set_cubemap_faces(
             faces,
             params,

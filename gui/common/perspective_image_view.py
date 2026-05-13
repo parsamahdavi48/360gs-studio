@@ -42,6 +42,39 @@ class PerspectiveLabelOverlay:
     point_alpha: float = 1.0
 
 
+def mirror_perspective_overlay_x(item: PerspectiveLabelOverlay, logical_width: float) -> PerspectiveLabelOverlay:
+    width = max(1.0, float(logical_width))
+
+    def mirror_x(x: float) -> float:
+        return width - float(x)
+
+    x1, y1, x2, y2 = item.box
+    mirrored_box = (
+        int(round(mirror_x(x2))),
+        int(y1),
+        int(round(mirror_x(x1))),
+        int(y2),
+    )
+    if x2 != x1:
+        origin_x = int(round(mirrored_box[0] + (float(item.origin[0]) - float(x1))))
+    else:
+        origin_x = int(round(mirror_x(float(item.origin[0]))))
+    return PerspectiveLabelOverlay(
+        label=item.label,
+        box=mirrored_box,
+        origin=(origin_x, int(item.origin[1])),
+        color_bgr=item.color_bgr,
+        highlighted=item.highlighted,
+        polygon=tuple((mirror_x(x), float(y)) for x, y in item.polygon),
+        fill_alpha=item.fill_alpha,
+        polyline=tuple((mirror_x(x), float(y)) for x, y in item.polyline),
+        dashed=item.dashed,
+        point_radius=item.point_radius,
+        points=tuple((mirror_x(x), float(y)) for x, y in item.points),
+        point_alpha=item.point_alpha,
+    )
+
+
 def bgr_to_qimage(image: np.ndarray) -> QImage:
     if image.ndim == 2:
         rgb = cv2.cvtColor(image, cv2.COLOR_GRAY2RGB)
@@ -91,6 +124,7 @@ class PerspectiveGLImageView(QOpenGLWidget):
         uniform float u_pitch_rad;
         uniform float u_roll_rad;
         uniform float u_fov_rad;
+        uniform float u_screen_x_sign;
         uniform vec2 u_viewport_origin;
         uniform vec2 u_viewport_size;
 
@@ -98,7 +132,7 @@ class PerspectiveGLImageView(QOpenGLWidget):
 
         void main() {
             vec2 view_coord = (gl_FragCoord.xy - u_viewport_origin) / u_viewport_size;
-            float view_x = view_coord.x * 2.0 - 1.0;
+            float view_x = (view_coord.x * 2.0 - 1.0) * u_screen_x_sign;
             float view_y = view_coord.y * 2.0 - 1.0;
             float focal = 1.0 / tan(u_fov_rad * 0.5);
             vec3 ray = normalize(vec3(view_x, view_y, focal));
@@ -145,6 +179,7 @@ class PerspectiveGLImageView(QOpenGLWidget):
         self._initialized = False
         self._failed = False
         self._params = PerspectiveParams()
+        self._screen_x_sign = 1.0
         self._logical_size = QSize(1, 1)
         self._overlays: list[PerspectiveLabelOverlay] = []
         self._zoom = 1.0
@@ -188,6 +223,13 @@ class PerspectiveGLImageView(QOpenGLWidget):
     def set_perspective_params(self, params: PerspectiveParams) -> None:
         self._params = params
         self.update()
+
+    def set_screen_x_sign(self, screen_x_sign: float) -> None:
+        self._screen_x_sign = -1.0 if float(screen_x_sign) < 0.0 else 1.0
+        self.update()
+
+    def screen_x_sign(self) -> float:
+        return self._screen_x_sign
 
     def set_label_overlays(self, overlays: list[PerspectiveLabelOverlay]) -> None:
         self._overlays = list(overlays)
@@ -284,6 +326,10 @@ class PerspectiveGLImageView(QOpenGLWidget):
         self._program.setUniformValue1f(
             self._program.uniformLocation(b"u_fov_rad"),
             float(np.deg2rad(float(self._params.fov_deg))),
+        )
+        self._program.setUniformValue1f(
+            self._program.uniformLocation(b"u_screen_x_sign"),
+            float(self._screen_x_sign),
         )
         self._program.setUniformValue(
             self._program.uniformLocation(b"u_viewport_origin"),
@@ -452,6 +498,8 @@ class PerspectiveGLImageView(QOpenGLWidget):
         font.setPixelSize(13)
         painter.setFont(font)
         for item in self._overlays:
+            if self._screen_x_sign < 0.0:
+                item = mirror_perspective_overlay_x(item, logical_w)
             self._draw_overlay_label(painter, item)
         painter.end()
 
@@ -610,7 +658,10 @@ class PerspectiveImageView(QWidget):
         *,
         overlays: list[PerspectiveLabelOverlay] | None = None,
         logical_size: QSize | None = None,
+        screen_x_sign: float = 1.0,
     ) -> bool:
+        if self._gpu_view is not None:
+            self._gpu_view.set_screen_x_sign(screen_x_sign)
         if self._gpu_view is None or self._gpu_failed or self._gpu_view.failed():
             return False
         size = logical_size or QSize(perspective_output_size(image), perspective_output_size(image))
@@ -627,6 +678,18 @@ class PerspectiveImageView(QWidget):
         assert self._gpu_view is not None
         self._gpu_view.set_perspective_params(params)
         return True
+
+    def set_perspective_screen_x_sign(self, screen_x_sign: float) -> bool:
+        if not self.is_showing_gpu_perspective():
+            return False
+        assert self._gpu_view is not None
+        self._gpu_view.set_screen_x_sign(screen_x_sign)
+        return True
+
+    def perspective_screen_x_sign(self) -> float:
+        if self._gpu_view is None:
+            return 1.0
+        return self._gpu_view.screen_x_sign()
 
     def set_perspective_label_overlays(self, overlays: list[PerspectiveLabelOverlay]) -> bool:
         if not self.is_showing_gpu_perspective():

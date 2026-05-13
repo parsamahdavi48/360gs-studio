@@ -42,6 +42,7 @@ from core.apriltag_geometry import (
     project_sfm_points,
     tag_corners_sfm,
 )
+from core.orientation_correction import FINAL_ORIENTATION_LICHTFELD, final_orientation_is_applied
 from core.apriltag_pipeline import collect_observations
 from core.apriltag_scale import estimate_scene_scale
 from core.image_io import imread_unicode
@@ -81,6 +82,7 @@ from devtools.apriltag.world_debug_view import (
 from gui.common.drag_spinbox import DragDoubleSpinBox
 from gui.common.perspective_image_view import PerspectiveImageView, PerspectiveLabelOverlay
 from gui.common.perspective_preview import (
+    PERSPECTIVE_LOOK_DEG_PER_PIXEL,
     PerspectiveParams,
     clamp_pitch_deg,
     normalize_yaw_deg,
@@ -108,6 +110,7 @@ LICHTFELD_IMAGE_RAY_DISPLAY_PROFILES = {
 }
 SOURCE_EQUIRECT_IMAGE_EXTS = (".jpg", ".jpeg", ".png", ".tif", ".tiff", ".webp", ".bmp")
 SOURCE_EQUIRECT_LOCAL_FROM_LICHTFELD_LOCAL = np.diag([1.0, -1.0, -1.0])
+SOURCE_PREVIEW_LOCAL_Y_FLIP = np.diag([1.0, -1.0, 1.0])
 SYNTHETIC_IMAGE_RASTER_Y_FLIP = np.diag([1.0, -1.0, 1.0])
 SYNTHETIC_OUTPUT_FACE_ROTATION_FACE = {
     "top": "bottom",
@@ -625,19 +628,85 @@ def _resolve_source_equirect_paths(case: AprilTagDevCase, group_names: tuple[str
 def _source_equirect_rotations_from_groups(
     groups: tuple[CubemapFrameGroup, ...],
     metadata: CubemapViewMetadata | None,
+    *,
+    undo_legacy_lichtfeld_local_flip: bool = True,
 ) -> dict[str, np.ndarray]:
     rotations: dict[str, np.ndarray] = {}
     for group in groups:
         rotation = source_equirect_base_rotation(group, cubemap_view_params=metadata)
         if rotation is not None:
-            # ``source_equirect_base_rotation`` recovers the source camera basis
-            # from final Cube6 poses. Those poses include
-            # metashape_360_lfs.py::transform_camera_matrix Step 2, which flips
-            # local Y/Z for LichtFeld/OpenGL. The source panorama pixels are
-            # sampled in the original equirectangular local basis, so undo that
-            # local flip only for image lookup.
-            rotations[group.name] = rotation @ SOURCE_EQUIRECT_LOCAL_FROM_LICHTFELD_LOCAL
+            if undo_legacy_lichtfeld_local_flip:
+                # The source raster local-axis adapter is independent from the
+                # final dataset orientation. final_orientation is already
+                # folded into transforms.json/pointcloud.ply and therefore
+                # into source_equirect_base_rotation().
+                rotations[group.name] = rotation @ SOURCE_EQUIRECT_LOCAL_FROM_LICHTFELD_LOCAL
+            else:
+                rotations[group.name] = rotation
     return rotations
+
+
+def _case_has_lichtfeld_final_orientation(case: AprilTagDevCase | None) -> bool:
+    if case is None:
+        return False
+    for path in (case.transforms_for_processing(), case.source_transforms):
+        try:
+            payload = json.loads(Path(path).read_text(encoding="utf-8"))
+        except Exception:
+            continue
+        if final_orientation_is_applied(payload, FINAL_ORIENTATION_LICHTFELD):
+            return True
+    return False
+
+
+def _source_raster_frame_group(
+    group: CubemapFrameGroup,
+    source_world_to_image_rotation: np.ndarray,
+    metadata: CubemapViewMetadata | None,
+) -> CubemapFrameGroup | None:
+    face_rotations = cubemap_image_face_rotations(group, cubemap_view_params=metadata)
+    if face_rotations is None:
+        return None
+    rotation = np.asarray(source_world_to_image_rotation, dtype=np.float64)
+    if rotation.shape != (3, 3):
+        return None
+    position = group.reference_frame.camera_position_sfm
+    frames: dict[str, PinholeFrame] = {}
+    for face, frame in group.frames_by_face.items():
+        face_rotation = _source_raster_face_rotation(face_rotations, face, metadata)
+        if face_rotation is None:
+            continue
+        transform = np.array(frame.transform_matrix, dtype=np.float64, copy=True)
+        transform[:3, :3] = rotation @ face_rotation
+        transform[:3, 3] = position
+        frames[face] = replace(frame, transform_matrix=transform)
+    if len(frames) < 4:
+        return None
+    return CubemapFrameGroup(name=group.name, frames_by_face=frames, group_index=group.group_index)
+
+
+def _source_raster_face_rotation(
+    face_rotations: dict[str, np.ndarray],
+    face: str,
+    metadata: CubemapViewMetadata | None,
+) -> np.ndarray | None:
+    if metadata is not None and metadata.image_pose_profile == COORDINATE_PROFILE_LICHTFELD_CUBE6:
+        raster_face = _synthetic_output_face_rotation_face(face)
+        rotation = face_rotations.get(raster_face)
+        if rotation is None:
+            return None
+        return rotation @ SYNTHETIC_IMAGE_RASTER_Y_FLIP
+    return face_rotations.get(face)
+
+
+def _source_preview_render_rotation(rotation: np.ndarray, profile: str | None) -> np.ndarray:
+    if normalize_coordinate_profile(profile) in LICHTFELD_IMAGE_RAY_DISPLAY_PROFILES:
+        # This is a raster sampling adapter, not a world/camera-pose transform.
+        # The left view and pointcloud mode stay in the proper right-handed
+        # display world; only the source panorama latitude lookup is flipped so
+        # pitch motion samples the same physical direction as the frustum.
+        return np.asarray(rotation, dtype=np.float64) @ SOURCE_PREVIEW_LOCAL_Y_FLIP
+    return np.asarray(rotation, dtype=np.float64)
 
 
 def _synthetic_output_face_rotation_face(face: str) -> str:
@@ -659,28 +728,19 @@ def _source_equirect_preview_params(
     ray_basis_mode: str,
     anchor_params: PerspectiveParams | None = None,
 ) -> PerspectiveParams:
-    """Return source-panorama view params for JSONFace/both preview modes.
+    """Return the camera params used by source-panorama image previews.
 
-    After LichtFeld's Y-180 pre-compensation and the final display correction,
-    side-face center rays line up but the JSONFace tangent frame is rolled 180
-    degrees from the source panorama image remap. Keep the image preview fix
-    separate from the world pose: the left frustum stays on ``params`` while the
-    source panorama view reflects vertical screen motion around the active face.
+    The right image view must show the same world rays as the left frustum and
+    right pointcloud view. Raster orientation can be unusual for some Cube6
+    faces; do not compensate by changing the camera direction here.
     """
-    if ray_basis_mode == RAY_BASIS_IMAGE or active_face not in SIDE_FACE_ORDER:
-        return params
-    pitch_deg = float(params.pitch_deg)
-    if anchor_params is not None:
-        pitch_deg = 2.0 * float(anchor_params.pitch_deg) - pitch_deg
-    return replace(
-        params,
-        pitch_deg=clamp_pitch_deg(pitch_deg),
-        roll_deg=normalize_yaw_deg(float(params.roll_deg) + 180.0),
-    )
+    _ = active_face, ray_basis_mode, anchor_params
+    return params
 
 
 def _uses_source_preview_screen_axis_adapter(active_face: str, ray_basis_mode: str) -> bool:
-    return ray_basis_mode != RAY_BASIS_IMAGE and active_face in SIDE_FACE_ORDER
+    _ = active_face, ray_basis_mode
+    return True
 
 
 def _params_from_grab_drag(
@@ -689,16 +749,70 @@ def _params_from_grab_drag(
     delta_y: float,
     *,
     source_preview_screen_axis_adapter: bool,
+    screen_right: np.ndarray | None = None,
+    screen_up: np.ndarray | None = None,
 ) -> PerspectiveParams:
     """Apply viewport drags as grab/pan-style view movement.
 
-    The canonical pointcloud view uses the preview axes directly. JSONFace
-    source previews add image-only roll/pitch compensation, so their displayed
-    horizontal screen axis is reversed relative to the canonical yaw axis.
+    When the active camera has roll, screen up/right no longer match raw
+    yaw/pitch. If the current viewport basis is available, solve the yaw/pitch
+    delta from the visible screen axes so dragging stays touch-like in monitor
+    space without changing any world or image-ray transforms.
     """
+    if screen_right is not None and screen_up is not None:
+        return _params_from_screen_drag(
+            params,
+            delta_x,
+            delta_y,
+            screen_right=screen_right,
+            screen_up=screen_up,
+            horizontal_drag_sign=-1.0 if source_preview_screen_axis_adapter else 1.0,
+        )
     if source_preview_screen_axis_adapter:
         return params_from_drag(params, -delta_x, delta_y)
     return params_from_drag(params, delta_x, delta_y)
+
+
+def _params_from_screen_drag(
+    params: PerspectiveParams,
+    delta_x: float,
+    delta_y: float,
+    *,
+    screen_right: np.ndarray,
+    screen_up: np.ndarray,
+    horizontal_drag_sign: float = 1.0,
+    degrees_per_pixel: float = PERSPECTIVE_LOOK_DEG_PER_PIXEL,
+) -> PerspectiveParams:
+    yaw = np.deg2rad(float(params.yaw_deg))
+    pitch = np.deg2rad(float(params.pitch_deg))
+    screen_right = _normalized_vector(np.asarray(screen_right, dtype=np.float64), (1.0, 0.0, 0.0))
+    screen_up = _normalized_vector(np.asarray(screen_up, dtype=np.float64), (0.0, 1.0, 0.0))
+    desired = np.deg2rad(float(degrees_per_pixel)) * (
+        float(horizontal_drag_sign) * float(delta_x) * screen_right
+        + float(delta_y) * screen_up
+    )
+
+    d_forward_d_yaw = np.array(
+        [np.cos(yaw) * np.cos(pitch), 0.0, -np.sin(yaw) * np.cos(pitch)],
+        dtype=np.float64,
+    )
+    d_forward_d_pitch = np.array(
+        [-np.sin(yaw) * np.sin(pitch), -np.cos(pitch), -np.cos(yaw) * np.sin(pitch)],
+        dtype=np.float64,
+    )
+    jacobian = np.column_stack([d_forward_d_yaw, d_forward_d_pitch])
+    try:
+        delta, _residuals, _rank, _singular = np.linalg.lstsq(jacobian, desired, rcond=None)
+    except np.linalg.LinAlgError:
+        delta = np.array([0.0, 0.0], dtype=np.float64)
+    if not np.all(np.isfinite(delta)):
+        delta = np.array([0.0, 0.0], dtype=np.float64)
+    return PerspectiveParams(
+        yaw_deg=normalize_yaw_deg(float(params.yaw_deg) + float(np.rad2deg(delta[0]))),
+        pitch_deg=clamp_pitch_deg(float(params.pitch_deg) + float(np.rad2deg(delta[1]))),
+        fov_deg=params.fov_deg,
+        roll_deg=params.roll_deg,
+    )
 
 
 def _load_metashape_camera_transforms(xml_path: Path) -> dict[str, np.ndarray]:
@@ -845,6 +959,18 @@ def _right_view_screen_basis(
     return right, up_from_basis, forward
 
 
+def right_image_screen_x_sign(*, use_source_equirect: bool, use_reconstructed_cube6: bool) -> float:
+    """Screen X adapter for source-axis image previews.
+
+    The right pointcloud view follows AprilTagWorldDebugView's screen contract
+    where camera-local +X appears on monitor-left for the fixed frustum view.
+    Source equirect and reconstructed Cube6 previews are already rendered into
+    the correct camera rays, so only their final viewport X mapping needs this
+    display adapter.
+    """
+    return -1.0 if use_source_equirect or use_reconstructed_cube6 else 1.0
+
+
 def project_world_points_to_right_view(
     group: CubemapFrameGroup,
     params: PerspectiveParams,
@@ -855,6 +981,27 @@ def project_world_points_to_right_view(
     points = np.asarray(points, dtype=np.float64).reshape(-1, 3)
     camera, right, up, forward = camera_pose_from_perspective_params(group, params)
     right, up, forward = _right_view_screen_basis(right=right, up=up, forward=forward)
+    rel = points - camera.reshape(1, 3)
+    depth = rel @ forward
+    if np.any(~np.isfinite(depth)) or np.any(depth <= 1e-8):
+        return None
+    size = max(1, int(output_size))
+    focal = 0.5 * float(size) / np.tan(np.deg2rad(float(params.fov_deg)) * 0.5)
+    center = float(size) * 0.5
+    x = center + focal * ((rel @ right) / depth)
+    y = center - focal * ((rel @ up) / depth)
+    return np.column_stack([x, y]).astype(np.float32)
+
+
+def project_world_points_to_image_view(
+    group: CubemapFrameGroup,
+    params: PerspectiveParams,
+    points: np.ndarray,
+    *,
+    output_size: int,
+) -> np.ndarray | None:
+    points = np.asarray(points, dtype=np.float64).reshape(-1, 3)
+    camera, right, up, forward = camera_pose_from_perspective_params(group, params)
     rel = points - camera.reshape(1, 3)
     depth = rel @ forward
     if np.any(~np.isfinite(depth)) or np.any(depth <= 1e-8):
@@ -883,6 +1030,43 @@ def project_world_points_to_right_view_visible(
         )
     camera, right, up, forward = camera_pose_from_perspective_params(group, params)
     right, up, forward = _right_view_screen_basis(right=right, up=up, forward=forward)
+    rel = points - camera.reshape(1, 3)
+    depth = rel @ forward
+    valid = np.isfinite(depth) & (depth > 1e-8)
+    if not np.any(valid):
+        return (
+            np.empty((0, 2), dtype=np.float32),
+            np.empty((0,), dtype=np.float64),
+            np.empty((0,), dtype=np.int64),
+        )
+    valid_indices = np.nonzero(valid)[0]
+    size = max(1, int(output_size))
+    focal = 0.5 * float(size) / np.tan(np.deg2rad(float(params.fov_deg)) * 0.5)
+    center = float(size) * 0.5
+    rel = rel[valid]
+    depth = depth[valid]
+    x = center + focal * ((rel @ right) / depth)
+    y = center - focal * ((rel @ up) / depth)
+    xy = np.column_stack([x, y]).astype(np.float32)
+    finite = np.isfinite(xy).all(axis=1)
+    return xy[finite], depth[finite], valid_indices[finite]
+
+
+def project_world_points_to_image_view_visible(
+    group: CubemapFrameGroup,
+    params: PerspectiveParams,
+    points: np.ndarray,
+    *,
+    output_size: int,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    points = np.asarray(points, dtype=np.float64).reshape(-1, 3)
+    if len(points) == 0:
+        return (
+            np.empty((0, 2), dtype=np.float32),
+            np.empty((0,), dtype=np.float64),
+            np.empty((0,), dtype=np.int64),
+        )
+    camera, right, up, forward = camera_pose_from_perspective_params(group, params)
     rel = points - camera.reshape(1, 3)
     depth = rel @ forward
     valid = np.isfinite(depth) & (depth > 1e-8)
@@ -1058,9 +1242,9 @@ class AprilTagSceneViewerWindow(QWidget):
         self.mode_combo.addItem("元360画像", RIGHT_VIEW_SOURCE_EQUIRECT)
         self.mode_combo.addItem("Cube6再構築", RIGHT_VIEW_RECONSTRUCTED_CUBE6)
         self.ray_basis_combo = QComboBox()
-        self.ray_basis_combo.addItem("JSON Face", RAY_BASIS_WORLD)
+        self.ray_basis_combo.addItem("画像レイ", RAY_BASIS_IMAGE)
+        self.ray_basis_combo.addItem("JSON Face(デバッグ)", RAY_BASIS_WORLD)
         self.ray_basis_combo.addItem("両方(デバッグ)", RAY_BASIS_BOTH)
-        self.ray_basis_combo.addItem("画像レイ(デバッグ)", RAY_BASIS_IMAGE)
         self.profile_combo = QComboBox()
         for profile in COORDINATE_PROFILES:
             self.profile_combo.addItem(profile.label, profile.id)
@@ -1349,18 +1533,42 @@ class AprilTagSceneViewerWindow(QWidget):
                 )
                 for group in self._raw_groups
             )
-            image_ray_display_matrix = image_ray_display_matrix_for_profile(
+            fallback_image_ray_display_matrix = image_ray_display_matrix_for_profile(
                 self.case.coordinate_profile,
                 self._world_matrix,
             )
-            self._image_ray_groups = tuple(
-                transform_group_for_world_display(
-                    image_space_cubemap_frame_group(group, cubemap_view_params=metadata),
-                    image_ray_display_matrix,
-                    cubemap_view_params=metadata,
-                )
-                for group in self._raw_groups
+            use_source_raster_image_rays = (
+                normalize_coordinate_profile(self.case.coordinate_profile) in LICHTFELD_IMAGE_RAY_DISPLAY_PROFILES
             )
+            image_ray_groups: list[CubemapFrameGroup] = []
+            for group in self._raw_groups:
+                source_rotation = (
+                    self._source_equirect_rotations.get(group.name)
+                    if use_source_raster_image_rays
+                    else None
+                )
+                source_raster_group = (
+                    _source_raster_frame_group(group, source_rotation, metadata)
+                    if source_rotation is not None
+                    else None
+                )
+                if source_raster_group is not None:
+                    image_ray_groups.append(
+                        transform_group_for_world_display(
+                            source_raster_group,
+                            self._world_matrix,
+                            cubemap_view_params=metadata,
+                        )
+                    )
+                else:
+                    image_ray_groups.append(
+                        transform_group_for_world_display(
+                            image_space_cubemap_frame_group(group, cubemap_view_params=metadata),
+                            fallback_image_ray_display_matrix,
+                            cubemap_view_params=metadata,
+                        )
+                    )
+            self._image_ray_groups = tuple(image_ray_groups)
             self._image_preview_groups = tuple(
                 image_preview_group_for_profile(
                     self.case.coordinate_profile,
@@ -1578,11 +1786,17 @@ class AprilTagSceneViewerWindow(QWidget):
         *,
         output_size: int = 768,
         color_bgr: tuple[int, int, int] | None = None,
+        image_view_basis: bool = False,
     ) -> list[PerspectiveLabelOverlay]:
         if group is None:
             return []
         try:
-            projected = project_world_points_to_right_view(
+            projector = (
+                project_world_points_to_image_view
+                if image_view_basis
+                else project_world_points_to_right_view
+            )
+            projected = projector(
                 group,
                 params,
                 self._tag_corners_world_display(),
@@ -1620,6 +1834,7 @@ class AprilTagSceneViewerWindow(QWidget):
         *,
         output_size: int = 768,
         max_points: int = 30_000,
+        image_view_basis: bool = False,
     ) -> list[PerspectiveLabelOverlay]:
         if group is None or self._world_pointcloud is None or len(self._world_pointcloud.points) == 0:
             return []
@@ -1629,7 +1844,12 @@ class AprilTagSceneViewerWindow(QWidget):
             indices = np.linspace(0, len(points) - 1, max_points, dtype=np.int64)
             points = points[indices]
             colors = colors[indices] if colors is not None else None
-        projected, _depth, indices = project_world_points_to_right_view_visible(
+        visible_projector = (
+            project_world_points_to_image_view_visible
+            if image_view_basis
+            else project_world_points_to_right_view_visible
+        )
+        projected, _depth, indices = visible_projector(
             group,
             params,
             points,
@@ -1762,26 +1982,45 @@ class AprilTagSceneViewerWindow(QWidget):
         self,
         world_group: CubemapFrameGroup,
         *,
+        projection_params: PerspectiveParams | None = None,
         output_size: int = 768,
+        image_view_basis: bool = False,
     ) -> list[PerspectiveLabelOverlay]:
         color = None if self._tag_front_faces_group(world_group) else (0, 64, 255)
-        return self._tag_image_overlays(world_group, self._params, output_size=output_size, color_bgr=color)
+        params = self._params if projection_params is None else projection_params
+        return self._tag_image_overlays(
+            world_group,
+            params,
+            output_size=output_size,
+            color_bgr=color,
+            image_view_basis=image_view_basis,
+        )
 
     def _right_image_tag_overlays(
         self,
         world_group: CubemapFrameGroup,
         *,
         use_output_projection: bool,
+        projection_params: PerspectiveParams | None = None,
         output_size: int = 768,
+        image_view_basis: bool = False,
     ) -> list[PerspectiveLabelOverlay]:
+        params = self._params if projection_params is None else projection_params
         if use_output_projection:
             overlays = self._tag_viewport_image_overlays(
                 world_group,
+                projection_params=params,
                 output_size=output_size,
+                image_view_basis=image_view_basis,
             )
             if overlays or self._synthetic_frame_transform_overrides():
                 return overlays
-        return self._tag_image_overlays(world_group, self._params, output_size=output_size)
+        return self._tag_image_overlays(
+            world_group,
+            params,
+            output_size=output_size,
+            image_view_basis=image_view_basis,
+        )
 
     def _synthetic_tag_placement_sfm(self) -> tuple[np.ndarray, np.ndarray, np.ndarray, float]:
         if self.case is None:
@@ -1809,7 +2048,10 @@ class AprilTagSceneViewerWindow(QWidget):
         metadata = case_cubemap_view_metadata(self.case)
         if metadata is None or not self._raw_groups:
             return {}
-        source_rotations = _source_equirect_rotations_from_groups(self._raw_groups, metadata)
+        source_rotations = _source_equirect_rotations_from_groups(
+            self._raw_groups,
+            metadata,
+        )
         overrides: dict[str, np.ndarray] = {}
         for group in self._raw_groups:
             source_rotation = source_rotations.get(group.name)
@@ -1818,7 +2060,7 @@ class AprilTagSceneViewerWindow(QWidget):
                 continue
             position = group.reference_frame.camera_position_sfm
             for face, frame in group.frames_by_face.items():
-                face_rotation = face_rotations.get(_synthetic_output_face_rotation_face(face))
+                face_rotation = _source_raster_face_rotation(face_rotations, face, metadata)
                 if face_rotation is None:
                     continue
                 transform = np.array(frame.transform_matrix, dtype=np.float64, copy=True)
@@ -1829,7 +2071,7 @@ class AprilTagSceneViewerWindow(QWidget):
                 # adapter so written pixels land where the viewer displays
                 # them; the synthetic compositor preserves marker chirality
                 # when this adapter produces negative polygon winding.
-                transform[:3, :3] = source_rotation @ face_rotation @ SYNTHETIC_IMAGE_RASTER_Y_FLIP
+                transform[:3, :3] = source_rotation @ face_rotation
                 transform[:3, 3] = position
                 overrides[frame.file_path] = transform
         return overrides
@@ -2258,24 +2500,35 @@ class AprilTagSceneViewerWindow(QWidget):
         basis_group = self.selected_face_basis_group()
         selected_name = group.name if group is not None else ""
         ray_mode = self._ray_basis_mode()
+        world_preview_params = self._world_view_preview_params(group)
         for view in (self.world_view, self.point_view):
             view.set_groups(self._world_groups)
             view.set_image_ray_groups(self._image_ray_groups)
             view.set_face_ray_mode(ray_mode)
             view.set_selected_group(selected_name)
             view.set_pointcloud(self._world_pointcloud)
-            view.set_preview_params(
-                yaw_deg=self._params.yaw_deg,
-                pitch_deg=self._params.pitch_deg,
-                roll_deg=self._params.roll_deg,
-                fov_deg=self._params.fov_deg,
-            )
+        self.world_view.set_preview_params(
+            yaw_deg=world_preview_params.yaw_deg,
+            pitch_deg=world_preview_params.pitch_deg,
+            roll_deg=world_preview_params.roll_deg,
+            fov_deg=world_preview_params.fov_deg,
+        )
+        self.point_view.set_preview_params(
+            yaw_deg=self._params.yaw_deg,
+            pitch_deg=self._params.pitch_deg,
+            roll_deg=self._params.roll_deg,
+            fov_deg=self._params.fov_deg,
+        )
         self._sync_tag_views()
         if basis_group is not None:
             self._sync_point_view(basis_group)
         self._sync_mode_visibility()
         self._sync_face_buttons()
         self._update_status()
+
+    def _world_view_preview_params(self, world_group: CubemapFrameGroup | None) -> PerspectiveParams:
+        _ = world_group
+        return self._params
 
     def _right_image_projection_modes(self, mode: str, world_group: CubemapFrameGroup | None) -> tuple[bool, bool]:
         source_equirect = self._source_equirect_for_group(world_group)
@@ -2341,6 +2594,10 @@ class AprilTagSceneViewerWindow(QWidget):
         source_rotation_for_group = self._source_equirect_rotation_for_group(world_group)
         use_pointcloud_overlay = mode == RIGHT_VIEW_IMAGE_POINTCLOUD
         use_source_equirect, use_reconstructed_cube6 = self._right_image_projection_modes(mode, world_group)
+        screen_x_sign = right_image_screen_x_sign(
+            use_source_equirect=use_source_equirect,
+            use_reconstructed_cube6=use_reconstructed_cube6,
+        )
         equirect_group = raw_group if use_reconstructed_cube6 else image_group
         equirect_width, equirect_height = self._right_image_equirect_size(
             world_group=world_group,
@@ -2352,6 +2609,11 @@ class AprilTagSceneViewerWindow(QWidget):
             source_equirect[1]
             if use_source_equirect
             else source_rotation_for_group
+        )
+        render_source_rotation = (
+            _source_preview_render_rotation(source_rotation, self.case.coordinate_profile if self.case else None)
+            if source_rotation is not None
+            else None
         )
         view_params = (
             self._source_projection_preview_params(world_group)
@@ -2374,15 +2636,25 @@ class AprilTagSceneViewerWindow(QWidget):
         )
         overlays = []
         if use_pointcloud_overlay:
-            overlays.extend(self._pointcloud_image_overlays(world_group, self._params, output_size=768))
+            overlays.extend(
+                self._pointcloud_image_overlays(
+                    world_group,
+                    view_params,
+                    output_size=768,
+                    image_view_basis=True,
+                )
+            )
         overlays.extend(
             self._right_image_tag_overlays(
                 world_group,
                 use_output_projection=use_source_equirect or use_reconstructed_cube6,
+                projection_params=view_params,
                 output_size=768,
+                image_view_basis=True,
             )
         )
         if self._displayed_image_key == key and self.image_view.set_perspective_params(view_params):
+            self.image_view.set_perspective_screen_x_sign(screen_x_sign)
             self.image_view.set_drag_mode("look")
             self.image_view.set_perspective_label_overlays(overlays)
             return
@@ -2391,7 +2663,7 @@ class AprilTagSceneViewerWindow(QWidget):
             try:
                 if use_source_equirect:
                     assert source_path is not None
-                    assert source_rotation is not None
+                    assert render_source_rotation is not None
                     source = self._image_cache.get(source_path)
                     if source is None:
                         source = imread_unicode(source_path)
@@ -2407,17 +2679,17 @@ class AprilTagSceneViewerWindow(QWidget):
                     )
                     image = render_source_equirect_axis(
                         source,
-                        source_rotation,
+                        render_source_rotation,
                         output_width=equirect_width,
                         output_height=equirect_height,
                         sfm_to_preview_matrix=self._world_matrix,
                     )
                 elif use_reconstructed_cube6:
-                    if source_rotation is None:
+                    if render_source_rotation is None:
                         raise ValueError("Cube6再構築には source camera rotation が必要です")
                     image = render_generated_cubemap_source_axis(
                         raw_group,
-                        source_rotation,
+                        render_source_rotation,
                         cubemap_view_params=case_cubemap_view_metadata(self.case) if self.case else None,
                         output_width=equirect_width,
                         output_height=equirect_height,
@@ -2440,6 +2712,7 @@ class AprilTagSceneViewerWindow(QWidget):
             view_params,
             overlays=overlays,
             logical_size=QSize(768, 768),
+            screen_x_sign=screen_x_sign,
         )
         self.image_view.set_drag_mode("look")
         self._displayed_image_key = key if shown else ""
@@ -2554,11 +2827,18 @@ class AprilTagSceneViewerWindow(QWidget):
     def _on_right_view_dragged(self, delta_x: float, delta_y: float) -> None:
         if not self._world_groups:
             return
+        screen_basis = self._right_view_drag_screen_basis()
+        screen_right: np.ndarray | None = None
+        screen_up: np.ndarray | None = None
+        if screen_basis is not None:
+            screen_right, screen_up = screen_basis
         self._params = _params_from_grab_drag(
             self._params,
             delta_x,
             delta_y,
             source_preview_screen_axis_adapter=self._right_view_uses_source_preview_screen_axis_adapter(),
+            screen_right=screen_right,
+            screen_up=screen_up,
         )
         self._sync_views()
 
@@ -2578,6 +2858,31 @@ class AprilTagSceneViewerWindow(QWidget):
         else:
             source_preview = False
         return bool(source_preview and _uses_source_preview_screen_axis_adapter(self._active_face, self._ray_basis_mode()))
+
+    def _right_view_drag_screen_basis(self) -> tuple[np.ndarray, np.ndarray] | None:
+        group = self.selected_world_group()
+        if group is None:
+            return None
+        _camera, right, up, forward = camera_pose_from_perspective_params(group, self._params)
+        if self.right_stack.currentWidget() is self.point_view:
+            screen_right, screen_up, _forward = _right_view_screen_basis(
+                right=right,
+                up=up,
+                forward=forward,
+            )
+            return screen_right, screen_up
+        if self.right_stack.currentWidget() is self.image_view:
+            mode = str(self.mode_combo.currentData() or RIGHT_VIEW_POINTCLOUD)
+            use_source_equirect, use_reconstructed_cube6 = self._right_image_projection_modes(mode, group)
+            screen_x_sign = right_image_screen_x_sign(
+                use_source_equirect=use_source_equirect,
+                use_reconstructed_cube6=use_reconstructed_cube6,
+            )
+            return (
+                _normalized_vector(right * screen_x_sign, (1.0, 0.0, 0.0)),
+                _normalized_vector(up, (0.0, 1.0, 0.0)),
+            )
+        return None
 
     def _append_log(self, text: str) -> None:
         self.log.append(text)
