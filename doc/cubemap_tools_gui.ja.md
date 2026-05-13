@@ -65,7 +65,7 @@ Metashapeから書き出した元のXML/PLYは、Step 4の出力フォルダと�
 
 通常はこちらを使います。エクイレクタングラー画像をキューブマップ画像に変換し、`output/` に画像、マスク、`transforms.json` を作ります。Cube6が標準ですが、必要に応じて `Cubemap` タブで書き出す向きを調整できます。
 
-この出力はPostshot / Brush / LichtFeld Studioで扱いやすく、通常のピンホールカメラに近いデータになります。LichtFeldでこのデータをトレーニングするときは、基本的にGUTやUndistortは使いません。
+この出力はPostshot / Brush / LichtFeld Studioで扱いやすく、通常のピンホールカメラに近いデータになります。下流アプリとの互換性のため、`transforms.json` のカメラモデルは `PINHOLE` として書き出します。LichtFeldでこのデータをトレーニングするときは、基本的にGUTやUndistortは使いません。
 
 ### 3DGUT (LichtFeld)
 

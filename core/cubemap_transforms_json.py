@@ -809,7 +809,7 @@ def transform_json(
     focal = output_size / 2.0 / np.tan(np.deg2rad(fov) / 2.0)
     principal = (output_size - 1) / 2.0
     out = {
-        "camera_model": "SIMPLE_PINHOLE",
+        "camera_model": "PINHOLE",
         "w": output_size,
         "h": output_size,
         "fl_x": focal,
@@ -887,7 +887,7 @@ def write_image_only_metadata(
     """Write a small manifest for SfM-oriented image-only exports."""
     payload = {
         "export_type": "image_only",
-        "camera_model": "SIMPLE_PINHOLE",
+        "camera_model": "PINHOLE",
         "fov": float(fov),
         "input_size": {"w": int(input_size[0]), "h": int(input_size[1])},
         "output_size": {"w": int(output_size), "h": int(output_size)},

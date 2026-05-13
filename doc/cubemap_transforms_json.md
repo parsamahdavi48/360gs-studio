@@ -111,7 +111,7 @@ python cubemap_transforms_json.py . ./cubic --brush
 
 ### For LichtFeld Studio
 
-For LichtFeld Studio, specify `--no_transform --final-orientation lichtfeld`. The first flag keeps the LichtFeld camera-axis convention from the equirectangular import, and the final-orientation flag writes corrected cubemap camera poses plus `pointcloud.ply` in the output folder.
+For LichtFeld Studio, specify `--no_transform --final-orientation lichtfeld`. The first flag keeps the LichtFeld camera-axis convention from the equirectangular import, and the final-orientation flag writes corrected cubemap camera poses plus `pointcloud.ply` in the output folder. The cubemap `transforms.json` is written with the `PINHOLE` camera model.
 
 ```
 python metashape_360_lfs.py --images images --xml metashape.xml \

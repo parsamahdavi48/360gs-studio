@@ -63,7 +63,7 @@ def test_image_only_export_writes_view_images_without_transforms(tmp_path: Path)
 
     settings = json.loads((output / "view_export_settings.json").read_text(encoding="utf-8"))
     assert settings["export_type"] == "image_only"
-    assert settings["camera_model"] == "SIMPLE_PINHOLE"
+    assert settings["camera_model"] == "PINHOLE"
     assert settings["output_size"] == {"w": 16, "h": 16}
     assert settings["source_images"] == ["frame_0001.png"]
     assert settings["export_images"] is True
@@ -265,6 +265,7 @@ def test_lfs_final_orientation_writes_oriented_transforms_and_pointcloud(tmp_pat
 
     assert result.returncode == 0, result.stdout + result.stderr
     data = json.loads((output / "transforms.json").read_text(encoding="utf-8"))
+    assert data["camera_model"] == "PINHOLE"
     expected = np.array(
         [
             [0.0, 0.0, 1.0, 0.0],

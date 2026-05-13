@@ -111,7 +111,7 @@ python cubemap_transforms_json.py . ./cubic --brush
 
 ### LichtFeld Studio向け
 
-LichtFeld Studioの場合、 `--no_transform --final-orientation lichtfeld` を指定してください。前者はエクイレクタングラー取り込み時のLichtFeld向けカメラ軸を維持し、後者は出力先のcubemapカメラ姿勢と `pointcloud.ply` に最終向き補正を適用します。
+LichtFeld Studioの場合、 `--no_transform --final-orientation lichtfeld` を指定してください。前者はエクイレクタングラー取り込み時のLichtFeld向けカメラ軸を維持し、後者は出力先のcubemapカメラ姿勢と `pointcloud.ply` に最終向き補正を適用します。cubemap の `transforms.json` は `PINHOLE` カメラモデルとして書き出します。
 
 ```
 python metashape_360_lfs.py --images images --xml metashape.xml \
