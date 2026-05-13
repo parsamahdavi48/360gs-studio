@@ -149,6 +149,11 @@ python cubemap_transforms_json.py . ./cubic --no_transform --final-orientation l
 |--output-format|auto/jpg/png/tiff/webp|出力画像フォーマット (default=auto、入力に合わせる)。|
 |--output-bit-depth|8/source|出力画像のビット深度 (default=8)。`8` は互換性重視で8bitへ変換、`source` はPNG/TIFFで元ビット深度を保持。マスク出力は常に8bit PNG。|
 |--jpg-quality|1-100|JPEG / WebP 品質 (default=95)|
+|--realityscan-xmp|(no)|書き出したcubemap画像の隣にRealityScan XMPサイドカーを書き出します。通常のtransforms変換用で、`--image-only` とは併用できません。|
+|--realityscan-pose-prior|initial/exact/locked|XMPの `xcr:PosePrior` (default=`exact`)。`exact` はリグ向けで、カメラ間の相対位置を維持しつつRealityScan側でアラインできます。|
+|--realityscan-calibration-prior|initial/exact/locked|生成した仮想PINHOLEカメラ用の `xcr:CalibrationPrior` (default=`initial`)。|
+|--realityscan-rig-name|名前|RealityScan XMPのRig GUIDを安定生成するためのリグ名 (default=`stechdrive-cubemap`)。|
+|--no-realityscan-mask-layers|(no)|`image.jpg.mask.png` のようなRealityScanレイヤ命名へのマスクコピーを行いません。|
 |--workers|auto/N|画像変換のワーカープロセス数 (default=auto)。auto はCPU数と推定メモリ使用量から上限を決めます。|
 |--remap-cache-limit|auto/N|各ワーカー内のYaw remapテーブルキャッシュ上限 (default=auto)。auto は利用可能メモリに合わせて上限を抑えます。|
 
@@ -187,3 +192,11 @@ JPEG と WebP は 8-bit のみで α 非対応のため、これらを指定し�
 - transforms.json (出力ディレクトリ内)
 - images (出力ディレクトリ内)
 - masks (出力ディレクトリ内: オプション)
+
+### RealityScan
+
+- images (出力ディレクトリ内のcubemap画像)
+- 画像の隣に置かれる `*.xmp` サイドカー (`Image01.jpg` に対して `Image01.xmp`)
+- 必要に応じて画像の隣に置かれるRealityScanマスクレイヤ (`Image01.jpg.mask.png`)
+
+このワークフローでは、Metashapeのsparse PLYを通常のRealityScan入力として渡さないでください。RealityScanは特定のLiDAR/点群スキャンワークフローではPLY等を扱えますが、Metashapeのsparse PLYはRealityScanのtie pointの代替にはなりません。XMPのカメラpriorで読み込み、RealityScan内でアラインし直して点群を再生成します。

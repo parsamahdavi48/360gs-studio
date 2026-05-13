@@ -149,6 +149,11 @@ python cubemap_transforms_json.py . ./cubic --no_transform --final-orientation l
 |--output-format|auto/jpg/png/tiff/webp|Output image format (default=auto, preserves input format).|
 |--output-bit-depth|8/source|Output image bit depth (default=8). `8` down-converts images for compatibility; `source` preserves PNG/TIFF source bit depth. Mask outputs are always 8-bit PNG.|
 |--jpg-quality|1-100|JPEG / WebP quality (default=95).|
+|--realityscan-xmp|(no)|Write RealityScan XMP sidecars next to exported cubemap images. Requires normal transforms conversion, not `--image-only`.|
+|--realityscan-pose-prior|initial/exact/locked|XMP `xcr:PosePrior` (default=`exact`). `exact` is the rig-oriented choice: relative camera positions are preserved while global alignment can still be handled by RealityScan.|
+|--realityscan-calibration-prior|initial/exact/locked|XMP `xcr:CalibrationPrior` (default=`initial`) for the generated virtual PINHOLE cameras.|
+|--realityscan-rig-name|name|Stable rig name used to derive RealityScan XMP rig GUIDs (default=`stechdrive-cubemap`).|
+|--no-realityscan-mask-layers|(no)|Do not copy converted masks to RealityScan layer names such as `image.jpg.mask.png`.|
 |--workers|auto/N|Image conversion worker processes (default=auto). Auto caps workers by CPU count and estimated memory use.|
 |--remap-cache-limit|auto/N|Per-worker yaw remap table cache limit (default=auto). Auto keeps the cache bounded by available memory.|
 
@@ -187,3 +192,11 @@ Import the following files in each software:
 - transforms.json (in the output directory)
 - images (in the output directory)
 - masks (in the output directory: optional)
+
+### RealityScan
+
+- images (cubemap images in the output directory)
+- `*.xmp` sidecars next to the images, named like `Image01.xmp` for `Image01.jpg`
+- optional RealityScan mask layers next to the images, named like `Image01.jpg.mask.png`
+
+Do not pass the Metashape sparse PLY as the normal RealityScan input for this workflow. RealityScan can import LiDAR/point-cloud formats in specific scan workflows, but Metashape's sparse PLY is not a replacement for RealityScan tie points. Use the XMP camera priors, align in RealityScan, and regenerate the sparse/dense reconstruction there.

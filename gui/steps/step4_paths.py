@@ -24,6 +24,7 @@ from gui.steps.step4_contracts import (
     _AXIS_NONE,
     _GENERATED_POINTCLOUD_NAME,
     _PROFILE_LICHTFELD,
+    _PROFILE_REALITYSCAN,
     _SPHERESFM_RUN_CONVERT_ONLY,
     _SPHERESFM_RUN_FULL,
     _SPHERESFM_RUN_SFM_ONLY,
@@ -54,9 +55,14 @@ class Step4PathMixin:
             raise ValueError(i18n.t("SCENE_REQUIRED_ACTION_HINT"))
         return self._output_dir()
 
+    def _realityscan_output_dir(self) -> Path:
+        return self._output_dir() / "realityscan"
+
     def _display_output_dir(self) -> Path:
         if self._uses_direct_equirect_output():
             return self._direct_output_dir()
+        if self._is_metashape_method() and self._effective_profile() == _PROFILE_REALITYSCAN:
+            return self._realityscan_output_dir()
         if self._is_spheresfm_method() and self._spheresfm_runs_conversion():
             return self._spheresfm_3dgut_dir() if self._uses_spheresfm_3dgut_output() else self._spheresfm_cubemap_dir()
         if self._is_spheresfm_method():
@@ -272,11 +278,19 @@ class Step4PathMixin:
             resolved_output = output.resolve()
         except OSError:
             resolved_output = output.absolute()
+        root = self._output_dir().resolve()
+        if resolved_output == root:
+            return
+        try:
+            resolved_output.relative_to(root)
+            return
+        except ValueError:
+            pass
         if resolved_output.parent != scene:
             raise ValueError(f"出力フォルダがシーンフォルダ外です: {output}")
 
     def _3dgut_output_reset_targets(self) -> list[Path]:
-        output = self._output_dir()
+        output = self._display_output_dir()
         targets = [
             output / "images",
             output / "masks",
@@ -338,7 +352,7 @@ class Step4PathMixin:
     def _prepare_output_dir(self) -> bool:
         if not self.scene_dir:
             raise ValueError(i18n.t("SCENE_REQUIRED_ACTION_HINT"))
-        output = self._output_dir()
+        output = self._display_output_dir()
 
         self._validate_scene_output_dir(output)
 
@@ -586,6 +600,8 @@ class Step4PathMixin:
         profile = self._effective_profile()
         source = self._resolve_ply_source()
         if source is not None:
+            return
+        if profile == _PROFILE_REALITYSCAN:
             return
         if profile == _PROFILE_LICHTFELD and self._preprocess_uses_ply():
             return

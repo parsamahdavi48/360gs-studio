@@ -33,6 +33,12 @@ from core.orientation_correction import (
     resolve_pointcloud_path,
     write_final_orientation_pointcloud,
 )
+from core.realityscan_xmp import (
+    REALITYSCAN_CALIBRATION_PRIORS,
+    REALITYSCAN_POSE_PRIORS,
+    write_realityscan_mask_layers,
+    write_realityscan_xmp_sidecars,
+)
 
 EXAMPLE_TEXT = """Example:
   python cubemap_transforms_json.py .
@@ -40,6 +46,7 @@ EXAMPLE_TEXT = """Example:
   python cubemap_transforms_json.py . ./output --views-json views_config.json
   python cubemap_transforms_json.py . ./output --image-only --views-json views_config.json
   python cubemap_transforms_json.py . ./output --image-only --colmap-rig --views-json views_config.json
+  python cubemap_transforms_json.py . ./output/realityscan --views-json views_config.json --realityscan-xmp
 """
 
 SAFE_VIEW_NAME_RE = re.compile(r"^[A-Za-z0-9_-]+$")
@@ -373,6 +380,44 @@ def parse_args() -> argparse.Namespace:
             "Set to 0 to disable (matches legacy behavior)."
         ),
     )
+    parser.add_argument(
+        "--realityscan-xmp",
+        "--realityscan_xmp",
+        dest="realityscan_xmp",
+        action="store_true",
+        help="Write RealityScan XMP sidecars next to the exported cubemap images.",
+    )
+    parser.add_argument(
+        "--realityscan-pose-prior",
+        "--realityscan_pose_prior",
+        dest="realityscan_pose_prior",
+        choices=list(REALITYSCAN_POSE_PRIORS),
+        default="exact",
+        help="RealityScan xcr:PosePrior value for generated XMP sidecars (default=exact).",
+    )
+    parser.add_argument(
+        "--realityscan-calibration-prior",
+        "--realityscan_calibration_prior",
+        dest="realityscan_calibration_prior",
+        choices=list(REALITYSCAN_CALIBRATION_PRIORS),
+        default="initial",
+        help="RealityScan xcr:CalibrationPrior value for generated XMP sidecars (default=initial).",
+    )
+    parser.add_argument(
+        "--realityscan-rig-name",
+        "--realityscan_rig_name",
+        dest="realityscan_rig_name",
+        default="stechdrive-cubemap",
+        help="Stable rig name used to derive RealityScan XMP Rig GUIDs.",
+    )
+    parser.add_argument(
+        "--no-realityscan-mask-layers",
+        "--no_realityscan_mask_layers",
+        dest="realityscan_mask_layers",
+        action="store_false",
+        help="Do not copy converted masks to RealityScan image-layer names (*.jpg.mask.png).",
+    )
+    parser.set_defaults(realityscan_mask_layers=True)
     return parser.parse_args()
 
 
@@ -688,10 +733,11 @@ def rotation_angle_diff(r1: np.ndarray, r2: np.ndarray) -> float:
     return np.arccos(cos_theta)
 
 
-def make_output_file_path(file_path: str, view_name: str) -> str:
+def make_output_file_path(file_path: str, view_name: str, output_format: str | None = None) -> str:
     root, ext = os.path.splitext(file_path)
     if ext:
-        return f"{root}_{view_name}{ext}"
+        out_ext = resolve_output_ext(ext, output_format)
+        return f"{root}_{view_name}{out_ext}"
     return f"{file_path}_{view_name}"
 
 
@@ -708,6 +754,7 @@ def transform_json(
     brush_mode: bool = False,
     yaw_offset_per_frame: float = 0.0,
     final_orientation: str = FINAL_ORIENTATION_NONE,
+    output_format: str | None = None,
 ) -> tuple[list[str], list[float], tuple[int, int], int]:
     json_path = os.path.join(input_dir, input_json)
     if not os.path.exists(json_path):
@@ -793,12 +840,19 @@ def transform_json(
         image_files.append(file_path)
         frame_yaw_offsets.append(yaw_offset)
 
-        for view in views:
+        for view_index, view in enumerate(views):
             view_name = view["name"]
             yaw = float(view["yaw"]) + yaw_offset
             pitch = view["pitch"]
 
-            new_frame: dict = {"file_path": make_output_file_path(file_path, view_name)}
+            new_frame: dict = {
+                "file_path": make_output_file_path(file_path, view_name, output_format),
+                "source_file_path": file_path,
+                "source_image_index": frame_index,
+                "view_name": view_name,
+                "view_index": view_index,
+                "yaw_offset_deg": yaw_offset,
+            }
 
             r = rotation_matrix(yaw, pitch, True)
             t_face = t_world @ rot4(r.T)
@@ -1540,6 +1594,9 @@ def main() -> None:
     if args.image_only and args.final_orientation != FINAL_ORIENTATION_NONE:
         print("Error: --final-orientation requires transforms.json conversion, not --image-only")
         sys.exit(1)
+    if args.image_only and args.realityscan_xmp:
+        print("Error: --realityscan-xmp requires transforms.json conversion, not --image-only")
+        sys.exit(1)
 
     input_dir = args.input_dir
     output_dir = args.output_dir if args.output_dir else f"{input_dir}/output"
@@ -1655,9 +1712,24 @@ def main() -> None:
             brush_mode=args.brush,
             yaw_offset_per_frame=args.yaw_offset_per_frame,
             final_orientation=args.final_orientation,
+            output_format=args.output_format,
         )
     if not image_files:
         sys.exit(1)
+
+    realityscan_manifest = None
+    if args.realityscan_xmp:
+        try:
+            realityscan_manifest = write_realityscan_xmp_sidecars(
+                Path(output_dir),
+                pose_prior=args.realityscan_pose_prior,
+                calibration_prior=args.realityscan_calibration_prior,
+                rig_name=args.realityscan_rig_name,
+            )
+        except Exception as e:
+            print(f"Error: failed to write RealityScan XMP sidecars: {e}")
+            sys.exit(1)
+        print(f"RealityScan XMP sidecars: {realityscan_manifest['xmp_count']}")
 
     if args.yaw_offset_per_frame != 0.0 and not args.colmap_rig:
         unique_offsets = sorted({round(y, 3) for y in frame_yaw_offsets})
@@ -1710,6 +1782,16 @@ def main() -> None:
             workers=args.workers,
             remap_cache_limit=args.remap_cache_limit,
         )
+    if args.realityscan_xmp and args.realityscan_mask_layers and export_masks:
+        try:
+            realityscan_manifest = write_realityscan_mask_layers(
+                Path(output_dir),
+                manifest=realityscan_manifest,
+            )
+        except Exception as e:
+            print(f"Error: failed to write RealityScan mask layers: {e}")
+            sys.exit(1)
+        print(f"RealityScan mask layers: {realityscan_manifest['mask_layer_count']}")
 
 
 if __name__ == "__main__":

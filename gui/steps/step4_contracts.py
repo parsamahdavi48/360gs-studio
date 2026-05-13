@@ -29,6 +29,7 @@ _METHOD_SPHERESFM = _sfm_route_specs.SFM_ROUTE_SPHERESFM
 _PROFILE_POSTSHOT = "postshot"
 _PROFILE_BRUSH = "brush"
 _PROFILE_LICHTFELD = "lichtfeld"
+_PROFILE_REALITYSCAN = "realityscan"
 _PROFILE_CUSTOM = "custom"
 _PIPELINE_STAGE_SFM = "sfm"
 _PIPELINE_STAGE_CONVERSION = "conversion"

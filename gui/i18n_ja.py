@@ -486,8 +486,15 @@ STRINGS: dict[str, str] = {
     "PROFILE_POSTSHOT": "Postshot",
     "PROFILE_BRUSH": "Brush",
     "PROFILE_LICHTFELD": "LichtFeld",
+    "PROFILE_REALITYSCAN": "RealityScan",
     "PROFILE_CUSTOM": "カスタム",
     "PROFILE_CUSTOM_HINT": "カスタム: 手動設定",
+    "REALITYSCAN_XMP_OPTIONS": "RealityScan XMP",
+    "REALITYSCAN_POSE_PRIOR_COMPACT": "Pose:",
+    "REALITYSCAN_CALIBRATION_PRIOR_COMPACT": "Calib:",
+    "REALITYSCAN_PRIOR_INITIAL": "Initial",
+    "REALITYSCAN_PRIOR_EXACT": "Exact",
+    "REALITYSCAN_PRIOR_LOCKED": "Locked",
     "OUTPUT_SHAPE": "出力形状",
     "OUTPUT_SHAPE_PROJECTED": "投影視点に変換",
     "OUTPUT_SHAPE_EQUIRECT_3DGUT": "3DGUT (LichtFeld)",
@@ -897,6 +904,9 @@ STRINGS: dict[str, str] = {
     "YAW_OFFSET_PER_FRAME_COLMAP_HINT": (
         "COLMAPルートでは 0° 固定です。フレームごとに投影視点を回すと、同じカメラリグ内で外部姿勢がずれてSfMを壊すため無効化します"
     ),
+    "YAW_OFFSET_PER_FRAME_REALITYSCAN_HINT": (
+        "RealityScan XMPでは 0° 固定です。フレームごとに投影Yawを変えると、同じCubemapリグ内の相対姿勢がフレームごとに変わるため無効化します"
+    ),
     "OUTPUT_FORMAT": "出力フォーマット",
     "OUTPUT_FORMAT_COMPACT": "フォーマット:",
     "OUTPUT_FORMAT_AUTO": "自動",
@@ -1133,7 +1143,9 @@ TIPS: dict[str, str] = {
     "SPHERESFM_AXIS_TRANSFORM": "出力先アプリに合わせてカメラ座標の向きを変換します。LichtFeldの最終向き補正はCube/3DGUT書き出し時に自動で入ります",
     "COLMAP_MATCHER": "Matcher。Sequentialは高速で動画の連番フレーム向け。Exhaustiveは全ペアを照合するため精度が出る場合がありますが、枚数が増えると極端に遅く、数十時間規模になることがあります",
     "COLMAP_MAPPER": "Mapper。GlobalはCOLMAP 4.0以降に統合されたGLOMAP系のグローバルSfMで、高速なため既定推奨。Incrementalは従来のCOLMAP mapperで堅実ですが遅め。GLOMAPは外部glomap.exe用の互換選択肢です",
-    "TARGET_PROFILE": "出力先の3DGSソフトウェアに合わせた座標変換とPLY設定のプリセット",
+    "TARGET_PROFILE": "出力先に合わせた座標変換と追加メタデータのプリセット。RealityScanはMetashape XMLからCubemap画像とXMPサイドカーを作り、PLYは渡さずRealityScan側で点群を再生成します",
+    "REALITYSCAN_POSE_PRIOR": "XMPのxcr:PosePrior。ExactはCubemapリグ内の相対姿勢を維持しつつRealityScan側のアラインで扱えます。Initialはより自由に調整、Lockedは絶対姿勢も固定します",
+    "REALITYSCAN_CALIBRATION_PRIOR": "XMPのxcr:CalibrationPrior。Initialは焦点距離などを初期値として渡してRealityScan側で調整可能、Exact/Lockedは仮想PINHOLEをより強く固定したい場合に使います",
     "OUTPUT_SHAPE": "Metashape XML/PLYからキューブマップ画像を作るか、LichtFeld 3DGUT向けに元のエクイレクタングラー画像をそのまま使うかを選びます",
     "AXIS_TRANSFORM": "出力先に合わせてカメラ座標軸を変換します。LichtFeldの最終向き補正はCube/3DGUT書き出し時に自動で入ります。プリセット値から変更すると出力プリセットはカスタムになります",
     "OUTPUT_SCALE": "キューブマップ1面の画像サイズ。既定のNormalは90度画像中央部の角度解像度を元画像に近づける自動サイズです。Fullは入力画像の高さ、Halfは軽量出力です",

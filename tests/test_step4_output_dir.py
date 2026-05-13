@@ -1771,6 +1771,82 @@ def test_profile_presets_sync_manual_axis_controls(tmp_path: Path) -> None:
     assert not step.ms_no_fix_rot_cb.isChecked()
 
 
+def test_realityscan_profile_builds_xmp_export_command(tmp_path: Path) -> None:
+    step = _ready_step(tmp_path, metashape_inputs=True)
+
+    realityscan_idx = step.profile_combo.findData("realityscan")
+    assert realityscan_idx >= 0
+    step.profile_combo.setCurrentIndex(realityscan_idx)
+    step._set_combo_data(step.realityscan_pose_prior_combo, "locked")
+    step._set_combo_data(step.realityscan_calibration_prior_combo, "exact")
+
+    cmd = step._build_cubemap_cmd()
+
+    assert step._display_output_dir() == tmp_path / "output" / "realityscan"
+    assert str(tmp_path / "output" / "realityscan") in cmd
+    assert "--realityscan-xmp" in cmd
+    assert cmd[cmd.index("--realityscan-pose-prior") + 1] == "locked"
+    assert cmd[cmd.index("--realityscan-calibration-prior") + 1] == "exact"
+    assert "--no_transform" in cmd
+    assert cmd[cmd.index("--yaw-offset-per-frame") + 1] == "0"
+    assert not step.ms_use_ply_cb.isChecked()
+    assert not step.export_colmap_cb.isEnabled()
+    assert not step.ms_no_fix_rot_cb.isChecked()
+
+
+def test_realityscan_profile_preserves_existing_shared_output(tmp_path: Path, monkeypatch) -> None:
+    output = tmp_path / "output"
+    output.mkdir()
+    old_transforms = output / "transforms.json"
+    old_transforms.write_text("old lichtfeld", encoding="utf-8")
+    step = _ready_step(tmp_path, metashape_inputs=True)
+    realityscan_idx = step.profile_combo.findData("realityscan")
+    assert realityscan_idx >= 0
+    step.profile_combo.setCurrentIndex(realityscan_idx)
+    monkeypatch.setattr(
+        QMessageBox,
+        "question",
+        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("confirmation should not open")),
+    )
+
+    commands = step.build_commands()
+
+    assert [phase for phase, _cmd in commands] == ["metashape", "cubemap"]
+    assert old_transforms.read_text(encoding="utf-8") == "old lichtfeld"
+    assert (output / "realityscan").is_dir()
+    assert str(output / "realityscan") in commands[1][1]
+
+
+def test_realityscan_profile_resets_only_realityscan_output(tmp_path: Path, monkeypatch) -> None:
+    output = tmp_path / "output"
+    output.mkdir()
+    old_shared = output / "lichtfeld.txt"
+    old_shared.write_text("old lichtfeld", encoding="utf-8")
+    realityscan_output = output / "realityscan"
+    realityscan_output.mkdir()
+    old_realityscan = realityscan_output / "old.txt"
+    old_realityscan.write_text("old realityscan", encoding="utf-8")
+    questions: list[str] = []
+    step = _ready_step(tmp_path, metashape_inputs=True)
+    realityscan_idx = step.profile_combo.findData("realityscan")
+    assert realityscan_idx >= 0
+    step.profile_combo.setCurrentIndex(realityscan_idx)
+
+    def confirm(_parent, _title, text, *_args, **_kwargs):
+        questions.append(text)
+        return QMessageBox.Yes
+
+    monkeypatch.setattr(QMessageBox, "question", confirm)
+
+    commands = step.build_commands()
+
+    assert [phase for phase, _cmd in commands] == ["metashape", "cubemap"]
+    assert questions == [i18n.t("OUTPUT_RESET_MESSAGE").format(path=str(realityscan_output))]
+    assert old_shared.read_text(encoding="utf-8") == "old lichtfeld"
+    assert not old_realityscan.exists()
+    assert realityscan_output.is_dir()
+
+
 def test_manual_axis_change_switches_to_custom_profile(tmp_path: Path) -> None:
     step = _ready_step(tmp_path)
     (tmp_path / "metashape.ply").write_text("ply\n", encoding="utf-8")

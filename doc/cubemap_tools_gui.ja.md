@@ -2,7 +2,7 @@
 
 Step 4 は、Step 1-3で用意した360°画像とマスク、MetashapeでSfMした結果、またはSphereSfMで作るSfM結果を、3DGSアプリが読み込めるトレーニングデータに変換する画面です。
 
-多くの場合は、Metashapeから書き出したカメラXMLと、必要に応じて点群PLYを指定し、Postshot / Brush / LichtFeld Studio のどれに渡すかを選びます。Metashapeを使わない場合は、COLMAP Rig用のキューブマップ画像を書き出すか、SphereSfMでエクイレクタングラー画像を直接SfMしてから3DGS向けデータへ変換できます。学習アプリの起動はStep 5で、Step 4が作成済みのデータセットを読み込んで実行します。
+多くの場合は、Metashapeから書き出したカメラXMLと、必要に応じて点群PLYを指定し、Postshot / Brush / LichtFeld Studio / RealityScan のどれに渡すかを選びます。Metashapeを使わない場合は、COLMAP Rig用のキューブマップ画像を書き出すか、SphereSfMでエクイレクタングラー画像を直接SfMしてから3DGS向けデータへ変換できます。学習アプリの起動はStep 5で、Step 4が作成済みのデータセットを読み込んで実行します。
 
 ## まず決めること
 
@@ -13,6 +13,7 @@ SfMは、複数画像の見え方の差からカメラ位置と疎な点群を�
 | やりたいこと | ルート | 主に使う設定 |
 | --- | --- | --- |
 | MetashapeでSfM済みの結果をPostshot / Brush / LichtFeldへ渡したい | `Metashape` | `出力プリセット`, `出力形状`, `カメラXML`, `点群PLY` |
+| Metashapeのカメラ姿勢をRealityScanで継続したい | `Metashape` | `出力プリセット: RealityScan`, `カメラXML`, XMP prior設定 |
 | LichtFeldで3DGUT用データを作りたい | `Metashape` | `出力プリセット: LichtFeld Studio`, `出力形状`, `点群PLY` |
 | Metashapeを使わず、抽出済み360°画像からCOLMAPへ進みたい | `COLMAP` | `COLMAP実行設定`, `Cubemap` |
 | Metashapeを使わず、抽出済みエクイレクタングラー画像を直接SfMしたい | `SphereSfM` | `SphereSfM COLMAP実行ファイル`, `SfM入力`, `Matcher`, `SfM品質`, `出力形状` |
@@ -53,6 +54,7 @@ Metashapeから書き出した元のXML/PLYは、Step 4の出力フォルダと�
 | `Postshot` | Postshot向けにキューブマップデータを作る |
 | `Brush` | Brush向けにキューブマップデータを作る |
 | `LichtFeld Studio` | LichtFeld向けにキューブマップデータ、または3DGUTデータを作る |
+| `RealityScan` | cubemap画像とRealityScan XMPリグサイドカーを作る |
 | `カスタム` | 座標変換やPLY使用を手動で調整する |
 
 通常は渡し先のアプリ名をそのまま選びます。詳細設定で座標変換、PLY使用、Metashapeインポート設定をプリセット値から変えると、自動的に `カスタム` 扱いになります。
@@ -66,6 +68,8 @@ Metashapeから書き出した元のXML/PLYは、Step 4の出力フォルダと�
 通常はこちらを使います。エクイレクタングラー画像をキューブマップ画像に変換し、`output/` に画像、マスク、`transforms.json` を作ります。Cube6が標準ですが、必要に応じて `Cubemap` タブで書き出す向きを調整できます。
 
 この出力はPostshot / Brush / LichtFeld Studioで扱いやすく、通常のピンホールカメラに近いデータになります。下流アプリとの互換性のため、`transforms.json` のカメラモデルは `PINHOLE` として書き出します。LichtFeldでこのデータをトレーニングするときは、基本的にGUTやUndistortは使いません。
+
+RealityScanプリセットでは、出力先は `<scene>/output/realityscan/` です。cubemap画像、`Image01.xmp` のようなXMPサイドカー、マスクON時は `Image01.jpg.mask.png` のようなRealityScanマスクレイヤを書き出します。Metashape PLYはRealityScanへ渡しません。RealityScanでは画像とXMP priorからアラインし、RealityScan側で点群を再生成します。
 
 ### 3DGUT (LichtFeld)
 
@@ -223,6 +227,7 @@ SphereSfMの作業ファイルとログは `<scene>/output/spheresfm/` にまと
 | ルート | 主な出力 |
 | --- | --- |
 | Metashape + キューブマップ変換 (`投影視点に変換`) | `<scene>/output/images/`, `<scene>/output/masks/`, `<scene>/output/transforms.json`。LichtFeldプロファイルでは `pointcloud.ply` も作ります |
+| Metashape + RealityScanプリセット | `<scene>/output/realityscan/images/`, XMPサイドカー, 任意のRealityScanマスクレイヤ, `<scene>/output/realityscan/transforms.json` |
 | Metashape + `3DGUT (LichtFeld)` | `<scene>/output/images/`, `<scene>/output/masks/`, `<scene>/output/transforms.json`, `<scene>/output/pointcloud.ply` |
 | COLMAP | `<scene>/output/colmap_rig/images/`, `<scene>/output/colmap_rig/masks/`, `<scene>/output/colmap_rig/rig_config.json` |
 | COLMAP実行あり | 上記に加えて、COLMAPのSfM結果 |

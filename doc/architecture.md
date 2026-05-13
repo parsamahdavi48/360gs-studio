@@ -41,6 +41,10 @@ the GUI depends on.
   `transforms.json` plus `pointcloud.ply` from the Cubemap CLI. LichtFeld direct
   3DGUT uses equirectangular inputs without cubemap conversion and applies the
   same final orientation correction while creating the direct dataset.
+  RealityScan export is a Metashape-output preset that writes cubemap images and
+  XMP sidecars under `output/realityscan/`; it does not require or pass
+  Metashape PLY because RealityScan should regenerate its own point cloud after
+  alignment.
 
 ## GUI Contracts
 

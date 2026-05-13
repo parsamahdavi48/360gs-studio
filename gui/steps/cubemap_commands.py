@@ -40,6 +40,10 @@ class CubemapConversionCommand:
     final_orientation: str = "none"
     image_dir: Path | None = None
     mask_dir: Path | None = None
+    realityscan_xmp: bool = False
+    realityscan_pose_prior: str = "exact"
+    realityscan_calibration_prior: str = "initial"
+    realityscan_rig_name: str = "stechdrive-cubemap"
 
 
 @dataclass(frozen=True)
@@ -152,6 +156,11 @@ def build_cubemap_conversion_cmd(options: CubemapConversionCommand) -> list[str]
         cmd.append("--skip-images")
     if not options.writes_masks:
         cmd.append("--skip-masks")
+    if options.realityscan_xmp:
+        cmd.append("--realityscan-xmp")
+        cmd.extend(["--realityscan-pose-prior", options.realityscan_pose_prior])
+        cmd.extend(["--realityscan-calibration-prior", options.realityscan_calibration_prior])
+        cmd.extend(["--realityscan-rig-name", options.realityscan_rig_name])
 
     cmd.extend(["--yaw-offset-per-frame", f"{options.yaw_offset_per_frame:g}"])
     cmd.extend(["--output-format", options.output_format])

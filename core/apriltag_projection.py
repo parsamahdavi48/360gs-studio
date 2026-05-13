@@ -57,6 +57,7 @@ def prepare_equirect_detection_dataset(config: EquirectProjectionConfig) -> Path
         allow_duplicate=False,
         brush_mode=False,
         yaw_offset_per_frame=0.0,
+        output_format="png",
     )
     if not image_files:
         raise ValueError("No equirectangular frames were available for temporary projection")

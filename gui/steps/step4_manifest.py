@@ -32,6 +32,7 @@ from gui.steps.step4_contracts import (
     _LICHTFELD_FINAL_CORRECTION,
     _METHOD_COLMAP,
     _METHOD_SPHERESFM,
+    _PROFILE_REALITYSCAN,
     _SPHERESFM_PROJECT_MANIFEST_NAME,
 )
 from gui.steps.step4_settings import STEP4_SETTINGS_VERSION, load_step4_export_settings, write_step4_export_settings
@@ -65,11 +66,7 @@ class Step4ManifestMixin:
         spheresfm_3dgut = spheresfm_runs_conversion and self._uses_spheresfm_3dgut_output()
         spheresfm_projected = spheresfm_runs_conversion and self._uses_spheresfm_projected_output()
         direct_source_output = direct or spheresfm_3dgut
-        yaw_step = (
-            0.0
-            if self._export_method() == _METHOD_COLMAP or direct_source_output
-            else float(self.yaw_per_frame_edit.value())
-        )
+        yaw_step = 0.0 if self._export_method() == _METHOD_COLMAP or direct_source_output else float(self.yaw_per_frame_edit.value())
         jpg_quality = int(self.jpg_quality_edit.text().strip())
         if not self.scene_dir:
             raise ValueError(i18n.t("SCENE_REQUIRED_ACTION_HINT"))
@@ -77,6 +74,8 @@ class Step4ManifestMixin:
         output = self._display_output_dir()
         profile = self._spheresfm_profile_id() if spheresfm else self._profile_id()
         effective_profile = self._spheresfm_effective_profile() if spheresfm else self._effective_profile()
+        if effective_profile == _PROFILE_REALITYSCAN:
+            yaw_step = 0.0
         axis_transform = self._spheresfm_axis_transform_mode() if spheresfm else self._axis_transform_mode()
         route_uses_view_export = not direct_source_output and (not spheresfm or spheresfm_projected)
         views_config_snapshot = self._views_config_payload(views) if route_uses_view_export else None
@@ -116,7 +115,7 @@ class Step4ManifestMixin:
             "scene_dir": str(scene),
             "output_dir": str(output),
             "portable_output": {
-                "root": "output",
+                "root": scene_relative(scene, output),
                 "dataset_kind": portable_dataset_kind,
                 "active": True,
             },
@@ -186,6 +185,15 @@ class Step4ManifestMixin:
                 "ply_approved": self._metashape_ply_approved,
                 "scale": float(self.ms_scale_edit.text().strip()),
                 "no_fix_rotation": self.ms_no_fix_rot_cb.isChecked(),
+            },
+            "realityscan": {
+                "enabled": self._is_metashape_method() and effective_profile == _PROFILE_REALITYSCAN,
+                "output_dir": str(self._display_output_dir()) if effective_profile == _PROFILE_REALITYSCAN else "",
+                "xmp": effective_profile == _PROFILE_REALITYSCAN,
+                "pose_prior": self.realityscan_pose_prior_combo.currentData() or "exact",
+                "calibration_prior": self.realityscan_calibration_prior_combo.currentData() or "initial",
+                "rig": True,
+                "mask_layers": self._writes_masks(),
             },
             "colmap_rig": {
                 "enabled": self._export_method() == _METHOD_COLMAP,
@@ -385,7 +393,7 @@ class Step4ManifestMixin:
             return self._colmap_project_dir()
         if self._uses_direct_equirect_output():
             return self._direct_output_dir()
-        return self._output_dir()
+        return self._display_output_dir()
 
     def _record_step4_sfm_run(self, mode: str) -> None:
         if not self.scene_dir:

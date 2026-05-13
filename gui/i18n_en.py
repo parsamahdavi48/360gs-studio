@@ -485,8 +485,15 @@ STRINGS: dict[str, str] = {
     "PROFILE_POSTSHOT": "Postshot",
     "PROFILE_BRUSH": "Brush",
     "PROFILE_LICHTFELD": "LichtFeld",
+    "PROFILE_REALITYSCAN": "RealityScan",
     "PROFILE_CUSTOM": "Custom",
     "PROFILE_CUSTOM_HINT": "Custom: manual settings",
+    "REALITYSCAN_XMP_OPTIONS": "RealityScan XMP",
+    "REALITYSCAN_POSE_PRIOR_COMPACT": "Pose:",
+    "REALITYSCAN_CALIBRATION_PRIOR_COMPACT": "Calib:",
+    "REALITYSCAN_PRIOR_INITIAL": "Initial",
+    "REALITYSCAN_PRIOR_EXACT": "Exact",
+    "REALITYSCAN_PRIOR_LOCKED": "Locked",
     "OUTPUT_SHAPE": "Output Shape",
     "OUTPUT_SHAPE_PROJECTED": "Convert to Projection Views",
     "OUTPUT_SHAPE_EQUIRECT_3DGUT": "3DGUT (LichtFeld)",
@@ -896,6 +903,9 @@ STRINGS: dict[str, str] = {
     "YAW_OFFSET_PER_FRAME_COLMAP_HINT": (
         "Forced to 0° on the COLMAP route. Per-frame projection yaw would shift extrinsics within the same camera rig and break SfM."
     ),
+    "YAW_OFFSET_PER_FRAME_REALITYSCAN_HINT": (
+        "Forced to 0° for RealityScan XMP. Per-frame projection yaw would change the relative cubemap rig poses from frame to frame."
+    ),
     "OUTPUT_FORMAT": "Output Format",
     "OUTPUT_FORMAT_COMPACT": "Format:",
     "OUTPUT_FORMAT_AUTO": "Auto",
@@ -1136,7 +1146,9 @@ TIPS: dict[str, str] = {
     "SPHERESFM_AXIS_TRANSFORM": "Transforms camera axes for the target app. The LichtFeld final orientation fix is applied automatically during Cube/3DGUT export.",
     "COLMAP_MATCHER": "Matcher. Sequential is fast and suited to ordered video frames. Exhaustive can improve coverage but compares all pairs and can become extremely slow, even tens of hours on large sets.",
     "COLMAP_MAPPER": "Mapper. Global is the COLMAP 4.0+ integrated GLOMAP-style global SfM path and is the recommended default for speed. Incremental is the classic COLMAP mapper and is more conservative but slower. GLOMAP uses an external legacy glomap executable.",
-    "TARGET_PROFILE": "Coordinate transform and PLY preset for the target 3DGS software",
+    "TARGET_PROFILE": "Preset for coordinate transforms and extra metadata. RealityScan creates cubemap images and XMP sidecars from Metashape XML, then lets RealityScan regenerate its own point cloud instead of importing Metashape PLY.",
+    "REALITYSCAN_POSE_PRIOR": "XMP xcr:PosePrior. Exact preserves relative cubemap rig poses while RealityScan aligns the set; Initial allows freer adjustment; Locked fixes absolute poses too.",
+    "REALITYSCAN_CALIBRATION_PRIOR": "XMP xcr:CalibrationPrior. Initial passes focal length and principal point as adjustable starting values. Exact or Locked are for stronger virtual PINHOLE calibration constraints.",
     "OUTPUT_SHAPE": "Choose whether Metashape XML/PLY is converted into cubemap images or kept as source equirectangular images for LichtFeld 3DGUT.",
     "AXIS_TRANSFORM": "Transform camera axes for the target app. The LichtFeld final orientation fix is applied automatically during Cube/3DGUT export. Changing the preset value switches the output preset to Custom",
     "OUTPUT_SCALE": "Cubemap face size. The default Normal size matches the center angular resolution of a 90-degree view to the source image. Full uses the input image height, and Half is a lightweight output.",

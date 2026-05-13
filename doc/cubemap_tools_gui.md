@@ -2,7 +2,7 @@
 
 Step 4 converts the 360° images and masks prepared in Steps 1-3, Metashape SfM results, or SphereSfM results created by this step into training data that 3DGS applications can load.
 
-In the common workflow, you select the camera XML exported from Metashape, optionally select a point-cloud PLY, and choose whether the output is for Postshot, Brush, or LichtFeld Studio. If you are not using Metashape, you can export COLMAP Rig cubemap images or run SphereSfM directly on equirectangular images and convert the result into 3DGS-ready data. Training applications are launched from Step 5, using a dataset that Step 4 has already created.
+In the common workflow, you select the camera XML exported from Metashape, optionally select a point-cloud PLY, and choose whether the output is for Postshot, Brush, LichtFeld Studio, or RealityScan. If you are not using Metashape, you can export COLMAP Rig cubemap images or run SphereSfM directly on equirectangular images and convert the result into 3DGS-ready data. Training applications are launched from Step 5, using a dataset that Step 4 has already created.
 
 ## First Choice
 
@@ -13,6 +13,7 @@ SfM, or Structure from Motion, estimates camera positions and a sparse point clo
 | Goal | Route | Main settings |
 | --- | --- | --- |
 | Use Metashape SfM results in Postshot / Brush / LichtFeld | `Metashape` | `Output Preset`, `Output Shape`, `Camera XML`, `Point Cloud PLY` |
+| Continue Metashape camera poses in RealityScan | `Metashape` | `Output Preset: RealityScan`, `Camera XML`, XMP prior settings |
 | Create direct LichtFeld 3DGUT data | `Metashape` | `Output Preset: LichtFeld Studio`, `Output Shape`, `Point Cloud PLY` |
 | Skip Metashape and continue from extracted 360° images to COLMAP | `COLMAP` | `COLMAP Run Settings`, `Cubemap` |
 | Skip Metashape and run spherical SfM directly on extracted equirectangular images | `SphereSfM` | `SphereSfM COLMAP Executable`, `SfM Input`, `Matcher`, `SfM Quality`, `Output Shape` |
@@ -53,6 +54,7 @@ Keep the original Metashape XML/PLY inputs separate from the Step 4 output folde
 | `Postshot` | Creating cubemap data for Postshot |
 | `Brush` | Creating cubemap data for Brush |
 | `LichtFeld Studio` | Creating cubemap data or 3DGUT data for LichtFeld |
+| `RealityScan` | Creating cubemap images plus RealityScan XMP rig sidecars |
 | `Custom` | Manually adjusting coordinate transforms or PLY handling |
 
 Usually, choose the name of the app you will load the dataset into. If advanced settings change the coordinate transform, PLY usage, or Metashape import options away from the preset defaults, the preset switches to `Custom`.
@@ -66,6 +68,8 @@ Usually, choose the name of the app you will load the dataset into. If advanced 
 This is the normal path. Step 4 converts the equirectangular images into cubemap images, then writes images, masks, and `transforms.json` under `output/`. Cube6 is the standard preset, but you can adjust the exported directions in the `Cubemap` tab when needed.
 
 This output is easier to use in Postshot, Brush, and LichtFeld Studio because it behaves like a normal pinhole-camera dataset. Its `transforms.json` uses the `PINHOLE` camera model for downstream compatibility. When training this output in LichtFeld, you normally do not enable GUT or Undistort.
+
+With the RealityScan preset, Step 4 writes the dataset under `<scene>/output/realityscan/`. It creates cubemap images, XMP sidecars named like `Image01.xmp`, and mask layer files named like `Image01.jpg.mask.png` when masks are enabled. It does not pass Metashape PLY to RealityScan; align in RealityScan from the images and XMP priors, then regenerate RealityScan's own point cloud.
 
 ### 3DGUT (LichtFeld)
 
@@ -223,6 +227,7 @@ After the run, use `View Result in COLMAP GUI` to inspect registered camera pose
 | Route | Main outputs |
 | --- | --- |
 | Metashape + cubemap conversion (`Convert to Projection Views`) | `<scene>/output/images/`, `<scene>/output/masks/`, `<scene>/output/transforms.json`. The LichtFeld profile also writes `pointcloud.ply` |
+| Metashape + RealityScan preset | `<scene>/output/realityscan/images/`, XMP sidecars, optional RealityScan mask layers, `<scene>/output/realityscan/transforms.json` |
 | Metashape + `3DGUT (LichtFeld)` | `<scene>/output/images/`, `<scene>/output/masks/`, `<scene>/output/transforms.json`, `<scene>/output/pointcloud.ply` |
 | COLMAP | `<scene>/output/colmap_rig/images/`, `<scene>/output/colmap_rig/masks/`, `<scene>/output/colmap_rig/rig_config.json` |
 | COLMAP with SfM enabled | The COLMAP SfM result in addition to the files above |

@@ -32,6 +32,7 @@ from gui.steps.step4_contracts import (
     _COLMAP_MATCHER_SEQUENTIAL,
     _PIPELINE_STAGE_CONVERSION,
     _PIPELINE_STAGE_SFM,
+    _PROFILE_REALITYSCAN,
     _SPHERESFM_MATCHER_SPATIAL,
 )
 
@@ -157,7 +158,7 @@ class Step4CommandPlanMixin:
         if not scene.is_dir():
             raise ValueError(f"シーンフォルダが見つかりません: {scene}")
 
-        output = self._output_dir()
+        output = self._display_output_dir() if (not image_only and self._is_metashape_method()) else self._output_dir()
         input_dir = scene
         image_dir = None
         mask_dir = None
@@ -177,7 +178,7 @@ class Step4CommandPlanMixin:
 
         views_json = self._write_views_config(step4_meta_dir(scene), views)
 
-        if colmap_rig:
+        if colmap_rig or self._effective_profile() == _PROFILE_REALITYSCAN:
             yaw_step = 0.0
         else:
             yaw_step = float(self.yaw_per_frame_edit.value())
@@ -216,6 +217,9 @@ class Step4CommandPlanMixin:
                 ),
                 image_dir=image_dir,
                 mask_dir=mask_dir,
+                realityscan_xmp=self._is_metashape_method() and self._effective_profile() == _PROFILE_REALITYSCAN,
+                realityscan_pose_prior=self.realityscan_pose_prior_combo.currentData() or "exact",
+                realityscan_calibration_prior=self.realityscan_calibration_prior_combo.currentData() or "initial",
             )
         )
 
