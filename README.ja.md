@@ -129,7 +129,7 @@ checkpointを手動で `models/sam3.1/sam3.1_multiplex.pt` に置くこともで
       -> SphereSfMで360°画像をSfMし、3DGUTまたはキューブマップデータへ変換
       -> COLMAP Rigキューブマップ画像を書き出し、必要に応じてCOLMAPを実行
   -> Step 5: 学習
-      -> 作成済みデータセットでLichtFeld Studio / Postshot / 任意CLIを起動
+      -> 対応CLIがある場合は、作成済みデータセットでLichtFeld Studio / Postshot / 任意CLIを起動
 ```
 
 | Step | 内容 | 主なデフォルト |
@@ -138,7 +138,13 @@ checkpointを手動で `models/sam3.1/sam3.1_multiplex.pt` に置くこともで
 | 2. フレーム確認 | 抽出フレームを単一/サムネイル表示で確認し、採用/除外をCSVに反映 | 低品質候補や不要フレームの確認に対応 |
 | 3. マスク生成 | 人物、スティッチ境界、白飛び、空、カスタムマスクを生成 | YOLO/SAM2.1、高品質設定 |
 | 4. 変換 | SfM結果からの3DGSデータセット作成、SphereSfM実行、またはCOLMAP Rigキューブマップ画像を書き出し | Metashape / SphereSfM / LichtFeld / 3DGUT / Cube6 |
-| 5. 学習 | 作成済みデータセットを使って外部3DGSアプリを起動 | LichtFeld Studio / Postshot / Custom |
+| 5. 学習 | 作成済みデータセットで、対応CLIを持つ外部3DGSアプリを起動 | LichtFeld Studio / Postshot / Custom |
+
+### 学習アプリで使う
+
+このアプリの主な成果物は、Step 4で作成する3DGS用データセットです。Step 4の `output/` は、LichtFeld Studio、Postshot、Brushなどの3DGSアプリに直接読み込んで学習できます。学習アプリ側で画質、モデル、ステップ数、マスク、出力形式を確認しながら調整したい場合は、この使い方が基本です。
+
+Step 5は、対応するCLIを持つ学習アプリ向けの実行ショートカットです。LichtFeld Studio v0.5.2互換CLIやPostshot v1.0系Release BuildのCLIを使える環境では、GUIからコマンドを組み立てて、同じ設定の再実行やヘッドレス学習を開始できます。CLIを使わない場合は、Step 4の出力データセットを各アプリで直接読み込んでください。
 
 各ステップの詳しいGUI説明:
 
@@ -162,7 +168,7 @@ checkpointを手動で `models/sam3.1/sam3.1_multiplex.pt` に置くこともで
 7. 生成された `masks/` フォルダをMetashapeにマスクとして読み込み、SfMを実行します。
 8. Step 4でMetashapeのXML/PLYを使い、3DGSトレーニング用のキューブマップデータ、または `3DGUT (LichtFeld)` 用の直接データセットを出力します。
 9. AprilTagでスケール推定する場合は、撮影前にタグを印刷して配置しておきます。Cubemap出力後、`スケール` タブでタグ実寸とIDを入力して推定し、結果が妥当な場合だけ `Scaleへ反映` で `output/transforms.json` と `output/pointcloud.ply` を更新します。3DGUT向けのエクイレクタングラー出力のままでは推定できません。
-10. 必要ならStep 5でLichtFeld StudioやPostshot CLIを起動し、作成済みデータセットで結果を試します。
+10. Step 4の出力をLichtFeld Studio、Postshot、Brushなどに読み込んで学習します。対応CLIで再実行やヘッドレス学習を行いたい場合は、Step 5からLichtFeld StudioやPostshotを起動できます。
 
 ## COLMAPルート
 

@@ -129,7 +129,7 @@ If the scene folder path contains non-ASCII characters, an extremely long path, 
       -> run SphereSfM on 360° images and convert to 3DGUT or cubemap data
       -> export COLMAP Rig cubemap images and optionally run COLMAP
   -> Step 5: training
-      -> launch LichtFeld Studio / Postshot / custom CLI with an existing dataset
+      -> launch LichtFeld Studio / Postshot / custom CLI when a compatible CLI is available
 ```
 
 | Step | Purpose | Current Default |
@@ -138,7 +138,13 @@ If the scene folder path contains non-ASCII characters, an extremely long path, 
 | 2. Frame Review | Review extracted frames in single/thumbnail views and apply keep/drop decisions to CSV | Review low-quality candidates and unwanted frames |
 | 3. Mask Generation | Generate model-based masks plus optional stitch seam, overexposure, and custom masks | YOLO/SAM2.1, High quality |
 | 4. Convert | Create 3DGS datasets from SfM results, run SphereSfM, or export COLMAP Rig cubemap images | Metashape / SphereSfM / LichtFeld / 3DGUT / Cube6 |
-| 5. Training | Launch an external 3DGS application with an existing dataset | LichtFeld Studio / Postshot / Custom |
+| 5. Training | Launch a compatible CLI for an external 3DGS application with an existing dataset | LichtFeld Studio / Postshot / Custom |
+
+### Using the Dataset in Training Apps
+
+The main output of this app is the 3DGS dataset created in Step 4. The Step 4 `output/` folder can be opened directly in 3DGS applications such as LichtFeld Studio, Postshot, and Brush. This is the normal path when you want to inspect and tune image quality, model settings, step counts, masks, and export options inside the training app.
+
+Step 5 is a launch shortcut for training apps that provide a compatible CLI. With a LichtFeld Studio v0.5.2-compatible CLI or a Postshot v1.0-series Release Build CLI, the GUI can build the command for repeat runs or headless training. If you are not using CLI training, load the Step 4 output dataset directly in the training app.
 
 Detailed GUI docs:
 
@@ -162,7 +168,7 @@ Detailed GUI docs:
 7. Import the generated `masks/` folder into Metashape as per-image masks, then run SfM.
 8. Use Step 4 with the Metashape XML/PLY result to export cubemap training data or a direct `3DGUT (LichtFeld)` dataset.
 9. To estimate scale with AprilTags, print and place the tags before capture. After creating Cubemap output, open the `Scale` tab, enter the printed tag size and IDs, run estimation, and use `Apply to Scale` only when the result looks reasonable. This updates `output/transforms.json` and `output/pointcloud.ply`. Direct equirectangular output for 3DGUT cannot be estimated here.
-10. When needed, use Step 5 to launch LichtFeld Studio or Postshot CLI with the dataset you just created.
+10. Load the Step 4 output in LichtFeld Studio, Postshot, Brush, or another training app. When you want repeat runs or headless training through a compatible CLI, use Step 5 to launch LichtFeld Studio or Postshot with the dataset you just created.
 
 ## COLMAP Route
 

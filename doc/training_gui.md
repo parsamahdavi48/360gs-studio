@@ -1,6 +1,19 @@
 # Step 5 Training GUI
 
-Step 5 launches LichtFeld Studio, Postshot, or a custom CLI with a 3DGS dataset that Step 4 has already created. It does not run image conversion or SfM. Use `Step 4: Convert` to create the dataset, then use `Step 5: Training` to launch a training application with that dataset.
+Step 5 launches training apps that provide a compatible CLI with the 3DGS dataset created in Step 4. With a compatible LichtFeld Studio or Postshot version, you can start repeat runs or headless training from the GUI.
+
+When you want to inspect quality and tune model settings inside the training app, you can skip Step 5 and open the Step 4 output dataset directly in LichtFeld Studio, Postshot, Brush, or another 3DGS app. Step 5 does not run image conversion or SfM; dataset creation is handled by `Step 4: Convert`.
+
+## Using the Dataset in Training Apps
+
+The Step 4 output is the dataset intended for downstream 3DGS apps. Open `output/` directly in the training app when you want to inspect results and tune settings in that app's GUI. Use Step 5 when the settings are ready for repeat runs or when you want training to run headlessly through a CLI.
+
+| Path | Best for |
+| --- | --- |
+| Open the dataset in the training app | First checks, visual tuning, app-specific training settings |
+| Launch from Step 5 | Repeatable CLI runs and headless training |
+
+Step 5 CLI launch targets a LichtFeld Studio v0.5.2-compatible CLI and the Postshot v1.0-series Release Build CLI. If you are not using CLI training, the Step 4 output dataset remains ready to open directly in each training app.
 
 ## First Choice
 
@@ -18,12 +31,13 @@ Normally, leave `Dataset` on the automatic value. Metashape and SphereSfM conver
 ## Basic Flow
 
 1. Create the dataset in Step 4.
-2. Open `Step 5: Training`.
-3. Confirm that `Dataset` and `Training Output` point to the intended folders.
-4. Choose `LichtFeld Studio`, `Postshot`, or `Other... > Custom`.
-5. If the executable cannot be found automatically, select the installed exe.
-6. Review the app-specific settings on the right.
-7. Press `Launch`.
+2. If you want to tune settings in the training app GUI, open the Step 4 output dataset directly there.
+3. If you want repeatable CLI launch or headless training, open `Step 5: Training`.
+4. Confirm that `Dataset` and `Training Output` point to the intended folders.
+5. Choose `LichtFeld Studio`, `Postshot`, or `Other... > Custom`.
+6. If the executable cannot be found automatically, select the installed exe.
+7. Review the app-specific settings on the right.
+8. Press `Launch`.
 
 Before running, Step 5 checks that the selected training mode matches the dataset shape. For example, LichtFeld `GUT` expects 3DGUT data, while normal LichtFeld and Postshot expect projected cubemap data.
 
@@ -78,6 +92,8 @@ If the final LichtFeld PLY, Postshot `.psht`, or optional Postshot PLY/SPZ expor
 
 For LichtFeld Studio, Step 5 starts training with the selected dataset, output folder, and training settings.
 
+For CLI launch from Step 5, use a LichtFeld Studio v0.5.2-compatible CLI as the baseline. If you want to review training settings inside LichtFeld Studio, open the cubemap or 3DGUT dataset created in Step 4 directly in LichtFeld Studio.
+
 ### Main Settings
 
 | Setting | How to use it |
@@ -118,6 +134,8 @@ Less common Dataset, Optimizer, Refinement, Loss, Initialization, MRNF/IGS+, Spa
 ## Postshot
 
 For Postshot, Step 5 creates a `.psht` project from the selected images and camera poses.
+
+For CLI launch from Step 5, use a Postshot v1.0-series Release Build CLI as the baseline. If you want to review settings inside Postshot, open the Step 4 images, camera poses, and optional masks directly in Postshot.
 
 ### Main Settings
 
@@ -172,7 +190,7 @@ Example:
 
 ## When To Return To Step 4
 
-Step 5 does not create datasets. In these cases, go back to Step 4 and run conversion first.
+Step 5 does not create datasets. Whether you open the dataset manually or launch through CLI, go back to Step 4 and run conversion first in these cases.
 
 | Situation | What to do |
 | --- | --- |
@@ -189,11 +207,12 @@ Step 5 does not create datasets. In these cases, go back to Step 4 and run conve
 | Postshot | `.psht` project in `Training Output`. Optional PLY/SPZ export is also available. |
 | Custom | Whatever the specified CLI writes. |
 
-Step 5 launches external apps, so final quality depends on the Step 4 dataset shape, training-app settings, step count, and mask usage. When comparing settings with the same `output/` dataset, change the output name so each result remains available.
+Final quality depends on the Step 4 dataset shape, training-app settings, step count, and mask usage. When comparing settings with the same `output/` dataset, change the output name so each result remains available.
 
 ## Common Decisions
 
-- For a first run after Step 4, use LichtFeld with `GUT` off, or Postshot with `Camera Poses: Import`.
+- For the first check after Step 4, open the dataset directly in the training app when you want to inspect quality and settings.
+- For CLI runs, start with LichtFeld `GUT` off, or Postshot with `Camera Poses: Import`.
 - To test LichtFeld 3DGUT, create `3DGUT (LichtFeld)` data in Step 4, then turn on `GUT` in Step 5.
 - Use `Camera Poses: Estimate` only when you want Postshot to estimate poses.
 - COLMAP route data is projected cubemap data. Use the Metashape or SphereSfM route for 3DGUT comparisons.
