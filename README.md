@@ -18,7 +18,7 @@ Forked from [tetraface/tetraface-3dgs-utils](https://github.com/tetraface/tetraf
 
 Extract equirectangular still frames from Insta360 / Osmo 360 or similar 360° camera video, review which frames to keep, and generate masks for people, the camera operator, tripods, sky, stitch seams, and blown-out highlights before running SfM in Metashape.
 
-After Metashape SfM, export cubemap images, masks, and `transforms.json` for Postshot, Brush, and LichtFeld Studio. For LichtFeld Studio 3DGUT workflows, the app can also create a direct dataset that keeps the equirectangular images and masks in place while writing `transforms.json` and `pointcloud.ply`. This is the main workflow for preparing 360° video as a 3DGS training dataset.
+After Metashape SfM, export cubemap images, masks, and `transforms.json` for Postshot, Brush, and LichtFeld Studio. For RealityScan, the app can export cubemap images with XMP camera data under `output/realityscan/` so you can add them in RealityScan, run Align, and continue to point-cloud or model generation. For LichtFeld Studio 3DGUT workflows, the app can also create a direct dataset that keeps the equirectangular images and masks in place while writing `transforms.json` and `pointcloud.ply`. This is the main workflow for preparing 360° video as a 3DGS training dataset.
 
 ### 2. 360° Video to SphereSfM, LichtFeld 3DGUT, or Cubemap Data
 
@@ -41,7 +41,7 @@ For video or image sequences from DSLR, mirrorless, smartphone, or other normal 
 - With SAM3.1, add missed targets such as tripods or subtract false detections such as signs and logos from existing masks. This reduces the amount of manual mask painting needed after the first pass.
 - Mask2Former remains available as a helper option when you want to try sky masks without setting up SAM3.1.
 - Use the same mask-preparation workflow for normal-camera video after Step 1 extraction and for normal photo or image-sequence sets, not only 360° images. This is useful before sending images to SfM software.
-- Import Metashape SfM results and export cubemap images, masks, and `transforms.json` for Postshot, Brush, and LichtFeld Studio. For LichtFeld Studio, the GUI can also create a `3DGUT (LichtFeld)` direct dataset without cubemap conversion.
+- Import Metashape SfM results and export cubemap images, masks, and `transforms.json` for Postshot, Brush, and LichtFeld Studio. For RealityScan, create cubemap images with XMP camera data and continue with Align in RealityScan. For LichtFeld Studio, the GUI can also create a `3DGUT (LichtFeld)` direct dataset without cubemap conversion.
 - If you print and place AprilTags before capture, the Step 4 `Scale` tab can estimate metric scale from an existing Cubemap output. After reviewing the estimate, you can apply the same scale to `output/transforms.json` and `output/pointcloud.ply`.
 - Select SphereSfM's `colmap.exe` to run spherical SfM without Metashape, then convert the result into either LichtFeld 3DGUT data or cubemap data.
 - Skip Metashape when needed by exporting COLMAP Rig cubemap images and masks from extracted 360° frames. The GUI can optionally continue into COLMAP SfM processing.

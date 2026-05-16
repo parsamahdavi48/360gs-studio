@@ -18,7 +18,7 @@ Fork元: [tetraface/tetraface-3dgs-utils](https://github.com/tetraface/tetraface
 
 Insta360 / Osmo 360などの360°カメラで撮影した動画から、SfM向けのエクイレクタングラー静止画を抽出します。抽出後はフレームを確認し、人物、撮影者、三脚、空、スティッチ境界、白飛びをマスクしてからMetashapeに渡せます。
 
-MetashapeでSfMした結果は、Postshot / Brush / LichtFeld Studio向けのキューブマップ画像、マスク、`transforms.json` に変換できます。LichtFeld Studioでは、3DGUT用にエクイレクタングラー画像とマスクをそのまま使う `transforms.json` / `pointcloud.ply` も作成できます。360°動画を3DGSトレーニング用データセットにするためのメインワークフローです。
+MetashapeでSfMした結果は、Postshot / Brush / LichtFeld Studio向けのキューブマップ画像、マスク、`transforms.json` に変換できます。RealityScan向けには、カメラ姿勢付きcubemap画像とXMPを `output/realityscan/` に書き出し、RealityScanでAlignして点群やモデル作成へ進めます。LichtFeld Studioでは、3DGUT用にエクイレクタングラー画像とマスクをそのまま使う `transforms.json` / `pointcloud.ply` も作成できます。360°動画を3DGSトレーニング用データセットにするためのメインワークフローです。
 
 ### 2. 360°動画からSphereSfM、LichtFeld 3DGUT / キューブマップデータへ
 
@@ -41,7 +41,7 @@ Metashapeを使わず、抽出済みの360°画像からCOLMAP Rig形式のキ�
 - SAM3.1では、既存マスクに対して「三脚を追加する」「看板やロゴの誤検出を外す」といった加算/減算の補正ができます。手作業で塗り直す量を減らせます。
 - Mask2Formerは、SAM3.1を使わずに空マスクを試したい場合の補助的な選択肢として利用できます。
 - 360°画像だけでなく、通常動画からのフレーム抽出や通常画像の連番画像にも使えます。人物・車両・空・白飛びなどを、SfMに渡す前のマスク前処理としてまとめて作成できます。
-- MetashapeでSfMした結果を読み込み、Postshot / Brush / LichtFeld Studio 向けのキューブマップ画像、マスク、`transforms.json` を書き出せます。LichtFeld Studio向けには、キューブマップ変換せず `3DGUT (LichtFeld)` 用の直接データセットも作れます。
+- MetashapeでSfMした結果を読み込み、Postshot / Brush / LichtFeld Studio 向けのキューブマップ画像、マスク、`transforms.json` を書き出せます。RealityScan向けには、cubemap画像とXMPカメラ情報を作成し、RealityScanでAlignして点群やモデル作成へ進めます。LichtFeld Studio向けには、キューブマップ変換せず `3DGUT (LichtFeld)` 用の直接データセットも作れます。
 - AprilTagを撮影前に印刷・配置しておけば、Step 4の `スケール` タブで出力済みCubemapデータからメートル換算のスケールを推定できます。推定値を確認してから、`output/transforms.json` と `output/pointcloud.ply` に同じscaleを反映できます。
 - SphereSfM版の `colmap.exe` を指定すれば、Metashapeなしでエクイレクタングラー画像をSfMし、そのままLichtFeld 3DGUT用データまたはキューブマップデータへ変換できます。
 - Metashapeを使わない場合は、抽出済みの360°画像からCOLMAP Rig形式のキューブマップ画像とマスクを書き出せます。必要に応じてGUIからCOLMAPのSfM処理まで続けて実行できます。
