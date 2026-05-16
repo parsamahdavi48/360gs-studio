@@ -1,4 +1,5 @@
 """Command builders for Step 4 cubemap export."""
+
 from __future__ import annotations
 
 import json
@@ -42,8 +43,10 @@ class CubemapConversionCommand:
     mask_dir: Path | None = None
     realityscan_xmp: bool = False
     realityscan_pose_prior: str = "exact"
-    realityscan_calibration_prior: str = "initial"
+    realityscan_calibration_prior: str = "exact"
+    realityscan_coordinates: str = "auto"
     realityscan_rig_name: str = "stechdrive-cubemap"
+    realityscan_include_rig: bool = False
 
 
 @dataclass(frozen=True)
@@ -160,7 +163,10 @@ def build_cubemap_conversion_cmd(options: CubemapConversionCommand) -> list[str]
         cmd.append("--realityscan-xmp")
         cmd.extend(["--realityscan-pose-prior", options.realityscan_pose_prior])
         cmd.extend(["--realityscan-calibration-prior", options.realityscan_calibration_prior])
-        cmd.extend(["--realityscan-rig-name", options.realityscan_rig_name])
+        cmd.extend(["--realityscan-coordinates", options.realityscan_coordinates])
+        if options.realityscan_include_rig:
+            cmd.append("--realityscan-include-rig")
+            cmd.extend(["--realityscan-rig-name", options.realityscan_rig_name])
 
     cmd.extend(["--yaw-offset-per-frame", f"{options.yaw_offset_per_frame:g}"])
     cmd.extend(["--output-format", options.output_format])

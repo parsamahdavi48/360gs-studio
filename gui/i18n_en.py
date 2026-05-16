@@ -252,9 +252,7 @@ STRINGS: dict[str, str] = {
         "Video position: {ts}  |  Gap: {gap}s  |  Residual: {residual}  |  Yaw adjust: {yaw}°  |  "
         "Tracks: {tracks}  |  Confidence: {confidence}  |  Sharpness: {blur}  |  Ratio: {sharpness_ratio}"
     ),
-    "REVIEW_PAIR_PROBLEMS_FORMAT": (
-        "Review {n} | +{a} -{d} gap {g} blur {b}/{bb} tex {l} weak {w} | {cur}"
-    ),
+    "REVIEW_PAIR_PROBLEMS_FORMAT": ("Review {n} | +{a} -{d} gap {g} blur {b}/{bb} tex {l} weak {w} | {cur}"),
     "NEXT_STEP_MASK_NOTICE": "If there are drop-marked images or you changed keep/drop choices, press Apply at the bottom to write them into the image folder.\nIf there are no changes to write, no extra action is needed. You can continue to Step 3 (Mask Generation).",
     "METASHAPE_NOTICE": (
         "After mask generation, continue with the route that matches your dataset.\n"
@@ -488,18 +486,20 @@ STRINGS: dict[str, str] = {
     "PROFILE_REALITYSCAN": "RealityScan",
     "PROFILE_CUSTOM": "Custom",
     "PROFILE_CUSTOM_HINT": "Custom: manual settings",
-    "REALITYSCAN_XMP_OPTIONS": "RealityScan XMP",
+    "REALITYSCAN_XMP_OPTIONS": "XMP",
     "REALITYSCAN_POSE_PRIOR_COMPACT": "Pose:",
     "REALITYSCAN_CALIBRATION_PRIOR_COMPACT": "Calib:",
     "REALITYSCAN_PRIOR_INITIAL": "Initial",
     "REALITYSCAN_PRIOR_EXACT": "Exact",
     "REALITYSCAN_PRIOR_LOCKED": "Locked",
+    "REALITYSCAN_INCLUDE_RIG": "Rig",
     "OUTPUT_SHAPE": "Output Shape",
     "OUTPUT_SHAPE_PROJECTED": "Convert to Projection Views",
     "OUTPUT_SHAPE_EQUIRECT_3DGUT": "3DGUT (LichtFeld)",
     "AXIS_TRANSFORM": "Axis Transform",
     "AXIS_TRANSFORM_POSTSHOT": "Postshot",
     "AXIS_TRANSFORM_BRUSH": "Brush",
+    "AXIS_TRANSFORM_REALITYSCAN_AUTO": "RealityScan",
     "AXIS_TRANSFORM_NONE": "None",
     "VIEW_MODE": "View Mode",
     "VIEW_CUSTOM": "Custom Grid",
@@ -904,7 +904,7 @@ STRINGS: dict[str, str] = {
         "Forced to 0° on the COLMAP route. Per-frame projection yaw would shift extrinsics within the same camera rig and break SfM."
     ),
     "YAW_OFFSET_PER_FRAME_REALITYSCAN_HINT": (
-        "Forced to 0° for RealityScan XMP. Per-frame projection yaw would change the relative cubemap rig poses from frame to frame."
+        "Forced to 0° for RealityScan XMP. Per-frame projection yaw would change the relative cubemap face poses from frame to frame."
     ),
     "OUTPUT_FORMAT": "Output Format",
     "OUTPUT_FORMAT_COMPACT": "Format:",
@@ -1146,11 +1146,14 @@ TIPS: dict[str, str] = {
     "SPHERESFM_AXIS_TRANSFORM": "Transforms camera axes for the target app. The LichtFeld final orientation fix is applied automatically during Cube/3DGUT export.",
     "COLMAP_MATCHER": "Matcher. Sequential is fast and suited to ordered video frames. Exhaustive can improve coverage but compares all pairs and can become extremely slow, even tens of hours on large sets.",
     "COLMAP_MAPPER": "Mapper. Global is the COLMAP 4.0+ integrated GLOMAP-style global SfM path and is the recommended default for speed. Incremental is the classic COLMAP mapper and is more conservative but slower. GLOMAP uses an external legacy glomap executable.",
-    "TARGET_PROFILE": "Preset for coordinate transforms and extra metadata. RealityScan creates cubemap images and XMP sidecars from Metashape XML, then lets RealityScan regenerate its own point cloud instead of importing Metashape PLY.",
-    "REALITYSCAN_POSE_PRIOR": "XMP xcr:PosePrior. Exact preserves relative cubemap rig poses while RealityScan aligns the set; Initial allows freer adjustment; Locked fixes absolute poses too.",
-    "REALITYSCAN_CALIBRATION_PRIOR": "XMP xcr:CalibrationPrior. Initial passes focal length and principal point as adjustable starting values. Exact or Locked are for stronger virtual PINHOLE calibration constraints.",
+    "TARGET_PROFILE": "Choose the output preset for the target app. This changes the images, camera poses, and metadata written by Step 4.",
+    "TARGET_PROFILE_REALITYSCAN": "Creates RealityScan-ready cubemap images and XMP camera poses from a Metashape SfM result. Use them in RealityScan, run Align, and regenerate the sparse point cloud there.",
+    "REALITYSCAN_POSE_PRIOR": "Controls how RealityScan treats camera position and orientation. Use Exact for the normal workflow: keep the Metashape-derived poses while RealityScan Align regenerates sparse points. Use Initial only when RealityScan should be allowed to adjust the camera poses.",
+    "REALITYSCAN_CALIBRATION_PRIOR": "Controls how RealityScan treats focal length, principal point, and other intrinsics. Cubemap images are known virtual PINHOLE cameras, so use Exact for the normal workflow. Use Initial only when RealityScan should be allowed to adjust intrinsics.",
     "OUTPUT_SHAPE": "Choose whether Metashape XML/PLY is converted into cubemap images or kept as source equirectangular images for LichtFeld 3DGUT.",
     "AXIS_TRANSFORM": "Transform camera axes for the target app. The LichtFeld final orientation fix is applied automatically during Cube/3DGUT export. Changing the preset value switches the output preset to Custom",
+    "AXIS_TRANSFORM_REALITYSCAN_AUTO": "Exports in RealityScan coordinates. This is fixed automatically by the RealityScan preset.",
+    "REALITYSCAN_INCLUDE_RIG": "Experimental. Groups cubemap faces from the same frame with RealityScan Rig metadata. This is not the same as COLMAP rig optimization and is not for feature-based rig pose refinement. Keep it off for the normal RealityScan Align workflow that regenerates sparse points.",
     "OUTPUT_SCALE": "Cubemap face size. The default Normal size matches the center angular resolution of a 90-degree view to the source image. Full uses the input image height, and Half is a lightweight output.",
     "EXPORT_TARGETS": "Choose whether to write view images, masks, or only camera metadata. Turn Images off and Masks on when you only rebuilt masks in Step 3.",
     "EXPORT_IMAGES": "Write viewpoint images to output/images/. Turn off to keep existing images and update masks or camera metadata only.",

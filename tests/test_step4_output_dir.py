@@ -1777,8 +1777,12 @@ def test_realityscan_profile_builds_xmp_export_command(tmp_path: Path) -> None:
     realityscan_idx = step.profile_combo.findData("realityscan")
     assert realityscan_idx >= 0
     step.profile_combo.setCurrentIndex(realityscan_idx)
+    assert step.realityscan_pose_prior_combo.currentData() == "exact"
+    assert step.realityscan_calibration_prior_combo.currentData() == "exact"
+    assert not step.realityscan_include_rig_cb.isChecked()
+    assert not step.axis_transform_combo.isEnabled()
+    assert step.axis_transform_combo.currentText() == i18n.t("AXIS_TRANSFORM_REALITYSCAN_AUTO")
     step._set_combo_data(step.realityscan_pose_prior_combo, "locked")
-    step._set_combo_data(step.realityscan_calibration_prior_combo, "exact")
 
     cmd = step._build_cubemap_cmd()
 
@@ -1787,11 +1791,27 @@ def test_realityscan_profile_builds_xmp_export_command(tmp_path: Path) -> None:
     assert "--realityscan-xmp" in cmd
     assert cmd[cmd.index("--realityscan-pose-prior") + 1] == "locked"
     assert cmd[cmd.index("--realityscan-calibration-prior") + 1] == "exact"
-    assert "--no_transform" in cmd
+    assert cmd[cmd.index("--realityscan-coordinates") + 1] == "auto"
+    assert "--realityscan-include-rig" not in cmd
+    assert "--brush" in cmd
+    assert "--no_transform" not in cmd
+    assert cmd[cmd.index("--final-orientation") + 1] == "realityscan"
     assert cmd[cmd.index("--yaw-offset-per-frame") + 1] == "0"
+    assert step.axis_transform_combo.currentData() == "brush"
     assert not step.ms_use_ply_cb.isChecked()
     assert not step.export_colmap_cb.isEnabled()
     assert not step.ms_no_fix_rot_cb.isChecked()
+
+    settings = step._collect_export_settings()
+    assert settings["postprocess"]["final_orientation"] == "realityscan"
+    assert settings["postprocess"]["final_orientation_stage"] == "cubemap_cli"
+    assert settings["postprocess"]["realityscan_final_orientation_correction"] is True
+    assert settings["realityscan"]["include_rig"] is False
+
+    step.realityscan_include_rig_cb.setChecked(True)
+    rig_cmd = step._build_cubemap_cmd()
+    assert "--realityscan-include-rig" in rig_cmd
+    assert "--realityscan-rig-name" in rig_cmd
 
 
 def test_realityscan_profile_preserves_existing_shared_output(tmp_path: Path, monkeypatch) -> None:
@@ -1845,6 +1865,30 @@ def test_realityscan_profile_resets_only_realityscan_output(tmp_path: Path, monk
     assert old_shared.read_text(encoding="utf-8") == "old lichtfeld"
     assert not old_realityscan.exists()
     assert realityscan_output.is_dir()
+
+
+def test_realityscan_finalize_does_not_touch_shared_output_or_copy_ply(tmp_path: Path) -> None:
+    output = tmp_path / "output"
+    output.mkdir()
+    shared_transforms = output / "transforms.json"
+    shared_transforms.write_text(json.dumps({"existing": True}), encoding="utf-8")
+    step = _ready_step(tmp_path, metashape_inputs=True)
+    realityscan_idx = step.profile_combo.findData("realityscan")
+    assert realityscan_idx >= 0
+    step.profile_combo.setCurrentIndex(realityscan_idx)
+    assert step.ms_ply_browse.text()
+    assert step._resolve_ply_source() is None
+    realityscan_output = output / "realityscan"
+    realityscan_output.mkdir()
+    realityscan_transforms = realityscan_output / "transforms.json"
+    realityscan_transforms.write_text(json.dumps({"frames": []}), encoding="utf-8")
+
+    step._finalize_bundle()
+
+    assert not (output / "metashape.ply").exists()
+    assert json.loads(shared_transforms.read_text(encoding="utf-8")) == {"existing": True}
+    assert not (realityscan_output / "metashape.ply").exists()
+    assert "ply_file_path" not in json.loads(realityscan_transforms.read_text(encoding="utf-8"))
 
 
 def test_manual_axis_change_switches_to_custom_profile(tmp_path: Path) -> None:

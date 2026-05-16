@@ -617,6 +617,8 @@ class Step4PathMixin:
     def _resolve_ply_source(self) -> Path | None:
         if not self.scene_dir:
             return None
+        if self._is_metashape_method() and self._effective_profile() == _PROFILE_REALITYSCAN:
+            return None
         if self._axis_transform_mode() == _AXIS_NONE:
             pointcloud = self._metashape_import_work_dir() / _GENERATED_POINTCLOUD_NAME
             return pointcloud if pointcloud.is_file() else None

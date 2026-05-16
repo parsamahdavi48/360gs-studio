@@ -28,6 +28,7 @@ from core.orientation_correction import (
     FINAL_ORIENTATION_STAGE_CUBEMAP_CLI,
     final_orientation_is_applied,
     final_orientation_matrix,
+    final_orientation_writes_pointcloud,
     mark_final_orientation,
     normalize_final_orientation,
     resolve_pointcloud_path,
@@ -35,6 +36,7 @@ from core.orientation_correction import (
 )
 from core.realityscan_xmp import (
     REALITYSCAN_CALIBRATION_PRIORS,
+    REALITYSCAN_COORDINATE_MODES,
     REALITYSCAN_POSE_PRIORS,
     write_realityscan_mask_layers,
     write_realityscan_xmp_sidecars,
@@ -400,15 +402,36 @@ def parse_args() -> argparse.Namespace:
         "--realityscan_calibration_prior",
         dest="realityscan_calibration_prior",
         choices=list(REALITYSCAN_CALIBRATION_PRIORS),
-        default="initial",
-        help="RealityScan xcr:CalibrationPrior value for generated XMP sidecars (default=initial).",
+        default="exact",
+        help="RealityScan xcr:CalibrationPrior value for generated XMP sidecars (default=exact).",
+    )
+    parser.add_argument(
+        "--realityscan-coordinates",
+        "--realityscan_coordinates",
+        dest="realityscan_coordinates",
+        choices=list(REALITYSCAN_COORDINATE_MODES),
+        default="auto",
+        help=(
+            "RealityScan xcr:Coordinates mode for generated XMP sidecars. "
+            "auto writes relative coordinates for exact pose priors and absolute otherwise."
+        ),
     )
     parser.add_argument(
         "--realityscan-rig-name",
         "--realityscan_rig_name",
         dest="realityscan_rig_name",
         default="stechdrive-cubemap",
-        help="Stable rig name used to derive RealityScan XMP Rig GUIDs.",
+        help="Stable rig name used when --realityscan-include-rig writes RealityScan XMP Rig GUIDs.",
+    )
+    parser.add_argument(
+        "--realityscan-include-rig",
+        "--realityscan_include_rig",
+        dest="realityscan_include_rig",
+        action="store_true",
+        help=(
+            "Also write Rig/RigInstance/RigPoseIndex XMP metadata. "
+            "This is experimental because RealityScan 2.1.1 can skip sparse tie-point export for these image rigs."
+        ),
     )
     parser.add_argument(
         "--no-realityscan-mask-layers",
@@ -874,18 +897,19 @@ def transform_json(
     }
     if final_orientation != FINAL_ORIENTATION_NONE:
         mark_final_orientation(out, final_orientation, FINAL_ORIENTATION_STAGE_CUBEMAP_CLI)
-        ply_source = resolve_pointcloud_path(Path(input_dir), data.get("ply_file_path"))
-        if ply_source is None:
-            print("Warning: final orientation requested, but input ply_file_path was not found")
-        else:
-            ply_dest = Path(output_dir) / "pointcloud.ply"
-            write_final_orientation_pointcloud(
-                ply_source,
-                ply_dest,
-                final_orientation,
-                already_applied=final_orientation_already_applied,
-            )
-            out["ply_file_path"] = ply_dest.name
+        if final_orientation_writes_pointcloud(final_orientation):
+            ply_source = resolve_pointcloud_path(Path(input_dir), data.get("ply_file_path"))
+            if ply_source is None:
+                print("Warning: final orientation requested, but input ply_file_path was not found")
+            else:
+                ply_dest = Path(output_dir) / "pointcloud.ply"
+                write_final_orientation_pointcloud(
+                    ply_source,
+                    ply_dest,
+                    final_orientation,
+                    already_applied=final_orientation_already_applied,
+                )
+                out["ply_file_path"] = ply_dest.name
     elif data.get("ply_file_path"):
         out["ply_file_path"] = data["ply_file_path"]
 
@@ -1724,7 +1748,9 @@ def main() -> None:
                 Path(output_dir),
                 pose_prior=args.realityscan_pose_prior,
                 calibration_prior=args.realityscan_calibration_prior,
+                coordinates=args.realityscan_coordinates,
                 rig_name=args.realityscan_rig_name,
+                include_rig=args.realityscan_include_rig,
             )
         except Exception as e:
             print(f"Error: failed to write RealityScan XMP sidecars: {e}")

@@ -13,7 +13,7 @@ SfMは、複数画像の見え方の差からカメラ位置と疎な点群を�
 | やりたいこと | ルート | 主に使う設定 |
 | --- | --- | --- |
 | MetashapeでSfM済みの結果をPostshot / Brush / LichtFeldへ渡したい | `Metashape` | `出力プリセット`, `出力形状`, `カメラXML`, `点群PLY` |
-| Metashapeのカメラ姿勢をRealityScanで継続したい | `Metashape` | `出力プリセット: RealityScan`, `カメラXML`, XMP prior設定 |
+| Metashapeで合わせた360°画像をRealityScanで再アラインし、点群やモデル作成へ進みたい | `Metashape` | `出力プリセット: RealityScan`, `カメラXML`, XMP設定 |
 | LichtFeldで3DGUT用データを作りたい | `Metashape` | `出力プリセット: LichtFeld Studio`, `出力形状`, `点群PLY` |
 | Metashapeを使わず、抽出済み360°画像からCOLMAPへ進みたい | `COLMAP` | `COLMAP実行設定`, `Cubemap` |
 | Metashapeを使わず、抽出済みエクイレクタングラー画像を直接SfMしたい | `SphereSfM` | `SphereSfM COLMAP実行ファイル`, `SfM入力`, `Matcher`, `SfM品質`, `出力形状` |
@@ -54,7 +54,7 @@ Metashapeから書き出した元のXML/PLYは、Step 4の出力フォルダと�
 | `Postshot` | Postshot向けにキューブマップデータを作る |
 | `Brush` | Brush向けにキューブマップデータを作る |
 | `LichtFeld Studio` | LichtFeld向けにキューブマップデータ、または3DGUTデータを作る |
-| `RealityScan` | cubemap画像とRealityScan XMPリグサイドカーを作る |
+| `RealityScan` | Metashapeのカメラ姿勢付きcubemap画像をRealityScanへ渡し、RealityScanでAlignして点群を作りたい |
 | `カスタム` | 座標変換やPLY使用を手動で調整する |
 
 通常は渡し先のアプリ名をそのまま選びます。詳細設定で座標変換、PLY使用、Metashapeインポート設定をプリセット値から変えると、自動的に `カスタム` 扱いになります。
@@ -69,7 +69,28 @@ Metashapeから書き出した元のXML/PLYは、Step 4の出力フォルダと�
 
 この出力はPostshot / Brush / LichtFeld Studioで扱いやすく、通常のピンホールカメラに近いデータになります。下流アプリとの互換性のため、`transforms.json` のカメラモデルは `PINHOLE` として書き出します。LichtFeldでこのデータをトレーニングするときは、基本的にGUTやUndistortは使いません。
 
-RealityScanプリセットでは、出力先は `<scene>/output/realityscan/` です。cubemap画像、`Image01.xmp` のようなXMPサイドカー、マスクON時は `Image01.jpg.mask.png` のようなRealityScanマスクレイヤを書き出します。Metashape PLYはRealityScanへ渡しません。RealityScanでは画像とXMP priorからアラインし、RealityScan側で点群を再生成します。
+RealityScanへ渡す場合は `RealityScan` プリセットを使います。出力先は `<scene>/output/realityscan/` で、RealityScanに読み込ませるcubemap画像と、各画像に対応するXMPカメラ情報をまとめて作ります。Metashapeの点群PLYはこの出力では使いません。RealityScanで画像を読み込んで `Align` し、RealityScan側で点群やモデル作成へ進みます。
+
+### RealityScanで再アラインする
+
+Metashapeでカメラ位置は出ているが、RealityScanのアライン結果を使いたい、RealityScan上で追加素材を足したい、またはRealityScanからPLY/カメラCSVを書き出して後段の学習に使いたい場合は、この手順を使います。
+
+1. ルートを `Metashape` にします。
+2. `カメラXML` に、Metashapeから書き出したカメラXMLを指定します。
+3. `出力プリセット` を `RealityScan` にします。`出力形状` は投影視点の出力に固定されます。
+4. `Cubemap` タブで `Cube6` と画像サイズを確認します。通常は既定値のままで始めます。
+5. `XMP` は通常、`Pose: Exact`、`Calib: Exact`、`Rig: OFF` のまま使います。
+6. `実行` します。
+7. RealityScanで `WORKFLOW` > `Folder` から `<scene>/output/realityscan/images/` を追加します。
+8. `Align Images` を実行します。カメラとタイポイントが作られたら、RealityScan側でモデル作成や書き出しへ進みます。
+
+`XMP` の `Pose` は、RealityScanがカメラ位置と向きをどう扱うかです。通常は `Exact` で、Metashape由来の姿勢を保ったままRealityScanで点群を作ります。RealityScanにカメラ姿勢もより自由に調整させたい場合だけ `Initial` を試します。`Locked` はカメラを固定したい場合に使います。
+
+`Calib` は、RealityScanが焦点距離や主点などのカメラ内部パラメータをどう扱うかです。cubemap画像は既知の仮想カメラとして作るため、通常は `Exact` を使います。RealityScanに内部パラメータの調整も任せたい場合だけ `Initial` を使います。
+
+`Rig` は上級者向けです。通常の「RealityScanでAlignして点群を再生成する」用途ではOFFのままにしてください。RealityScan側のRigメタデータが必要だと分かっている場合だけONにします。
+
+マスクを書き出す設定なら、RealityScan用のマスクレイヤも画像の隣に作られます。白が使用、黒が除外です。RealityScanへは通常、`images/` フォルダを追加するだけで画像、XMP、マスクレイヤをまとめて使えます。
 
 ### 3DGUT (LichtFeld)
 
@@ -227,14 +248,14 @@ SphereSfMの作業ファイルとログは `<scene>/output/spheresfm/` にまと
 | ルート | 主な出力 |
 | --- | --- |
 | Metashape + キューブマップ変換 (`投影視点に変換`) | `<scene>/output/images/`, `<scene>/output/masks/`, `<scene>/output/transforms.json`。LichtFeldプロファイルでは `pointcloud.ply` も作ります |
-| Metashape + RealityScanプリセット | `<scene>/output/realityscan/images/`, XMPサイドカー, 任意のRealityScanマスクレイヤ, `<scene>/output/realityscan/transforms.json` |
+| Metashape + RealityScanプリセット | RealityScanで追加するのは `<scene>/output/realityscan/images/`。同じフォルダにXMPサイドカーと任意のRealityScanマスクレイヤを作ります |
 | Metashape + `3DGUT (LichtFeld)` | `<scene>/output/images/`, `<scene>/output/masks/`, `<scene>/output/transforms.json`, `<scene>/output/pointcloud.ply` |
 | COLMAP | `<scene>/output/colmap_rig/images/`, `<scene>/output/colmap_rig/masks/`, `<scene>/output/colmap_rig/rig_config.json` |
 | COLMAP実行あり | 上記に加えて、COLMAPのSfM結果 |
 | SphereSfM + `3DGUT (LichtFeld)` | `<scene>/output/images/`, `<scene>/output/masks/`, `<scene>/output/transforms.json`, `<scene>/output/pointcloud.ply` |
 | SphereSfM + キューブマップ変換 (`投影視点に変換`) | 下流アプリへ渡すのは `<scene>/output/`。`images/`, `masks/`, `transforms.json`, `pointcloud.ply` を作ります |
 
-Step 4では `<scene>/output/` を、他PCへコピーしたり3DGSアプリへ直接読み込ませたりする現在のデータセットとして扱います。3DGSアプリへ渡す場合は、基本的にこの `output/` を指定します。
+Step 4では通常、`<scene>/output/` を他PCへコピーしたり3DGSアプリへ直接読み込ませたりする現在のデータセットとして扱います。RealityScanプリセットだけは、RealityScanで `<scene>/output/realityscan/images/` を追加します。
 
 `LichtFeld Studio` プロファイルでは、Cubemap書き出し時点で最終出力の `transforms.json` と `pointcloud.ply` に同じ向き補正を適用し、LichtFeld上でMetashapeと同じ +X / +Z / 上下方向になるようにします。`3DGUT (LichtFeld)` では、元画像を使う直接データセットの作成時に同じ補正を適用します。
 
@@ -243,6 +264,7 @@ Step 4では `<scene>/output/` を、他PCへコピーしたり3DGSアプリへ�
 - Postshot / Brushへ渡すなら、まず `投影視点に変換` を使います。
 - LichtFeldで通常トレーニングするなら、まず `LichtFeld Studio` + `投影視点に変換` を使います。
 - LichtFeldでGUTを使うなら、`LichtFeld Studio` + `3DGUT (LichtFeld)` を使います。
+- Metashape結果をRealityScanで再アラインしたいなら、`RealityScan` プリセットを使い、RealityScanでは `<scene>/output/realityscan/images/` を `Folder` で追加してから `Align Images` します。
 - キューブマップデータをLichtFeldでトレーニングするときは、基本的にGUTもUndistortも不要です。
 - `3DGUT (LichtFeld)` でトレーニングするときは、LichtFeld側でGUTを有効にします。
 - スティッチが目立たない素材では、スティッチマスクはOFFまたは細めから試します。Yaw 45°は画素を捨てない対策なので、通常は維持して構いません。

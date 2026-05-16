@@ -11,7 +11,12 @@ import numpy as np
 
 FINAL_ORIENTATION_NONE = "none"
 FINAL_ORIENTATION_LICHTFELD = "lichtfeld"
-FINAL_ORIENTATION_CHOICES = (FINAL_ORIENTATION_NONE, FINAL_ORIENTATION_LICHTFELD)
+FINAL_ORIENTATION_REALITYSCAN = "realityscan"
+FINAL_ORIENTATION_CHOICES = (
+    FINAL_ORIENTATION_NONE,
+    FINAL_ORIENTATION_LICHTFELD,
+    FINAL_ORIENTATION_REALITYSCAN,
+)
 
 FINAL_ORIENTATION_STAGE_NONE = "none"
 FINAL_ORIENTATION_STAGE_CUBEMAP_CLI = "cubemap_cli"
@@ -27,6 +32,16 @@ LICHTFELD_FINAL_ORIENTATION_MATRIX = np.array(
     dtype=np.float64,
 )
 
+REALITYSCAN_FINAL_ORIENTATION_MATRIX = np.array(
+    [
+        [1.0, 0.0, 0.0, 0.0],
+        [0.0, 0.0, -1.0, 0.0],
+        [0.0, 1.0, 0.0, 0.0],
+        [0.0, 0.0, 0.0, 1.0],
+    ],
+    dtype=np.float64,
+)
+
 
 def normalize_final_orientation(value: object) -> str:
     raw = str(value or FINAL_ORIENTATION_NONE).strip().lower().replace("_", "-")
@@ -34,6 +49,15 @@ def normalize_final_orientation(value: object) -> str:
         return FINAL_ORIENTATION_NONE
     if raw in {"lichtfeld", "lichtfeld-studio", "lfs"}:
         return FINAL_ORIENTATION_LICHTFELD
+    if raw in {
+        "realityscan",
+        "reality-scan",
+        "rs",
+        "metashape-y-up-to-z-up",
+        "y-up-to-z-up",
+        "yup-to-zup",
+    }:
+        return FINAL_ORIENTATION_REALITYSCAN
     raise ValueError(f"Unsupported final orientation: {value}")
 
 
@@ -43,7 +67,13 @@ def final_orientation_matrix(value: object) -> np.ndarray:
         return np.eye(4, dtype=np.float64)
     if orientation == FINAL_ORIENTATION_LICHTFELD:
         return LICHTFELD_FINAL_ORIENTATION_MATRIX.copy()
+    if orientation == FINAL_ORIENTATION_REALITYSCAN:
+        return REALITYSCAN_FINAL_ORIENTATION_MATRIX.copy()
     raise ValueError(f"Unsupported final orientation: {value}")
+
+
+def final_orientation_writes_pointcloud(value: object) -> bool:
+    return normalize_final_orientation(value) == FINAL_ORIENTATION_LICHTFELD
 
 
 def final_orientation_is_applied(data: object, orientation: object) -> bool:
@@ -75,14 +105,27 @@ def mark_final_orientation(data: dict[str, Any], orientation: object, stage: str
         postprocess["lichtfeld_final_orientation_correction"] = False
         postprocess["lichtfeld_final_orientation_stage"] = FINAL_ORIENTATION_STAGE_NONE
         postprocess["lichtfeld_final_orientation_matrix"] = None
+        postprocess["realityscan_final_orientation_correction"] = False
+        postprocess["realityscan_final_orientation_stage"] = FINAL_ORIENTATION_STAGE_NONE
+        postprocess["realityscan_final_orientation_matrix"] = None
         return
 
     matrix = final_orientation_matrix(orientation_id).tolist()
     postprocess["final_orientation_matrix"] = matrix
+    postprocess["lichtfeld_final_orientation_correction"] = False
+    postprocess["lichtfeld_final_orientation_stage"] = FINAL_ORIENTATION_STAGE_NONE
+    postprocess["lichtfeld_final_orientation_matrix"] = None
+    postprocess["realityscan_final_orientation_correction"] = False
+    postprocess["realityscan_final_orientation_stage"] = FINAL_ORIENTATION_STAGE_NONE
+    postprocess["realityscan_final_orientation_matrix"] = None
     if orientation_id == FINAL_ORIENTATION_LICHTFELD:
         postprocess["lichtfeld_final_orientation_correction"] = True
         postprocess["lichtfeld_final_orientation_stage"] = stage
         postprocess["lichtfeld_final_orientation_matrix"] = matrix
+    elif orientation_id == FINAL_ORIENTATION_REALITYSCAN:
+        postprocess["realityscan_final_orientation_correction"] = True
+        postprocess["realityscan_final_orientation_stage"] = stage
+        postprocess["realityscan_final_orientation_matrix"] = matrix
 
 
 def apply_final_orientation_to_transforms_data(
@@ -245,5 +288,9 @@ def apply_final_orientation_to_dataset(
         transforms.write_text(json.dumps(data, indent=2), encoding="utf-8")
 
     pointcloud = output / "pointcloud.ply"
-    if pointcloud.is_file() and not already_applied and normalize_final_orientation(orientation) != FINAL_ORIENTATION_NONE:
+    if (
+        pointcloud.is_file()
+        and not already_applied
+        and normalize_final_orientation(orientation) != FINAL_ORIENTATION_NONE
+    ):
         transform_ply_points(pointcloud, final_orientation_matrix(orientation))

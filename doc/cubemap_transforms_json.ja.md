@@ -143,16 +143,18 @@ python cubemap_transforms_json.py . ./cubic --no_transform --final-orientation l
 |--colmap-rig-name|名前|COLMAP Rig名 (default=`rig1`)|
 |--no_transform|(no)|座標軸変換を行いません|
 |--brush|(no)|Brush向けの座標変換を行います|
-|--final-orientation|none/lichtfeld|出力カメラ姿勢と `pointcloud.ply` に最終向き補正を適用します (default=`none`)。LichtFeld向けcubemapデータでは `--no_transform` と一緒に `lichtfeld` を指定します。|
+|--final-orientation|none/lichtfeld/realityscan|出力カメラ姿勢に最終向き補正を適用します (default=`none`)。`lichtfeld` は補正済み `pointcloud.ply` も書き出します。`realityscan` はRealityScan XMPを書き出すCLI実行で使います。|
 |--duplicate|(no)|マージされたチャンク間で同名の画像を許可|
 |--yaw-offset-per-frame|角度°|フレームごとのキューブマップYaw回転ステップ (default=30.0)。各ユニーク入力画像に `yaw = frame_index * step (mod 360)` を適用し、cubemap 面境界アーティファクトの蓄積を防いで 3DGS 学習の安定性を向上させる。`0` 指定で旧動作に戻す。|
 |--output-format|auto/jpg/png/tiff/webp|出力画像フォーマット (default=auto、入力に合わせる)。|
 |--output-bit-depth|8/source|出力画像のビット深度 (default=8)。`8` は互換性重視で8bitへ変換、`source` はPNG/TIFFで元ビット深度を保持。マスク出力は常に8bit PNG。|
 |--jpg-quality|1-100|JPEG / WebP 品質 (default=95)|
-|--realityscan-xmp|(no)|書き出したcubemap画像の隣にRealityScan XMPサイドカーを書き出します。通常のtransforms変換用で、`--image-only` とは併用できません。|
-|--realityscan-pose-prior|initial/exact/locked|XMPの `xcr:PosePrior` (default=`exact`)。`exact` はリグ向けで、カメラ間の相対位置を維持しつつRealityScan側でアラインできます。|
-|--realityscan-calibration-prior|initial/exact/locked|生成した仮想PINHOLEカメラ用の `xcr:CalibrationPrior` (default=`initial`)。|
-|--realityscan-rig-name|名前|RealityScan XMPのRig GUIDを安定生成するためのリグ名 (default=`stechdrive-cubemap`)。|
+|--realityscan-xmp|(no)|書き出したcubemap画像の隣にRealityScan XMPサイドカーを書き出します。RealityScanで画像を追加してAlignしたい場合に使います。`--image-only` とは併用できません。|
+|--realityscan-pose-prior|initial/exact/locked|RealityScanでカメラ位置と向きをどう扱うか (default=`exact`)。通常は `exact`、RealityScanに姿勢調整をより任せたい場合は `initial`、固定したい場合は `locked` を使います。|
+|--realityscan-calibration-prior|initial/exact/locked|RealityScanで焦点距離や主点などをどう扱うか (default=`exact`)。cubemap画像では通常 `exact` を使います。|
+|--realityscan-coordinates|auto/absolute/relative|XMPの座標扱い (default=`auto`)。通常は `auto` のままにします。|
+|--realityscan-include-rig|(no)|RealityScan用のRigメタデータも書きます。通常の「RealityScanでAlignして点群を作る」用途ではOFFのままにしてください。|
+|--realityscan-rig-name|名前|`--realityscan-include-rig` を使う場合のRig名 (default=`stechdrive-cubemap`)。|
 |--no-realityscan-mask-layers|(no)|`image.jpg.mask.png` のようなRealityScanレイヤ命名へのマスクコピーを行いません。|
 |--workers|auto/N|画像変換のワーカープロセス数 (default=auto)。auto はCPU数と推定メモリ使用量から上限を決めます。|
 |--remap-cache-limit|auto/N|各ワーカー内のYaw remapテーブルキャッシュ上限 (default=auto)。auto は利用可能メモリに合わせて上限を抑えます。|
@@ -195,8 +197,18 @@ JPEG と WebP は 8-bit のみで α 非対応のため、これらを指定し�
 
 ### RealityScan
 
+Metashapeで作ったカメラ姿勢を使い、RealityScanで改めてAlignして点群やモデル作成へ進みたい場合に使います。GUIを使う場合は、Step 4のMetashapeルートで `出力プリセット: RealityScan` を選ぶのが通常です。
+
+RealityScanに読み込ませる主なファイルは次の通りです。
+
 - images (出力ディレクトリ内のcubemap画像)
 - 画像の隣に置かれる `*.xmp` サイドカー (`Image01.jpg` に対して `Image01.xmp`)
-- 必要に応じて画像の隣に置かれるRealityScanマスクレイヤ (`Image01.jpg.mask.png`)
+- マスクを出力した場合は、画像の隣に置かれるRealityScanマスクレイヤ (`Image01.jpg.mask.png`)
 
-このワークフローでは、Metashapeのsparse PLYを通常のRealityScan入力として渡さないでください。RealityScanは特定のLiDAR/点群スキャンワークフローではPLY等を扱えますが、Metashapeのsparse PLYはRealityScanのtie pointの代替にはなりません。XMPのカメラpriorで読み込み、RealityScan内でアラインし直して点群を再生成します。
+RealityScanでは `WORKFLOW` > `Folder` から出力先の `images/` フォルダを追加し、`Align Images` を実行します。XMPは画像と同じフォルダに置かれているため、通常は画像フォルダを追加するだけでカメラ情報も読み込まれます。マスクレイヤは白が使用、黒が除外です。
+
+通常は `PosePrior=exact`、`CalibrationPrior=exact`、Rigメタデータなしで書き出します。RealityScanにカメラ姿勢もより自由に調整させたい場合だけ `--realityscan-pose-prior initial` を試します。Rigメタデータは、RealityScan側でその用途が必要だと分かっている場合だけ `--realityscan-include-rig` で有効にします。
+
+CLIでMetashape XML由来の中間 `transforms.json` から手動でRealityScan向けに書き出す場合は、`--brush --final-orientation realityscan --realityscan-xmp --yaw-offset-per-frame 0` を組み合わせます。通常はGUIのRealityScanプリセットを使えば、この組み合わせを手で指定する必要はありません。
+
+Metashapeのsparse PLYは、このRealityScan向け出力では通常使いません。RealityScanで画像とXMPを読み込み、RealityScan側でAlignして点群を作り直します。

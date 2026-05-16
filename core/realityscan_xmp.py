@@ -17,6 +17,7 @@ import numpy as np
 
 REALITYSCAN_POSE_PRIORS = ("initial", "exact", "locked")
 REALITYSCAN_CALIBRATION_PRIORS = ("initial", "exact", "locked")
+REALITYSCAN_COORDINATE_MODES = ("auto", "absolute", "relative")
 REALITYSCAN_XMP_NAMESPACE = "http://www.capturingreality.com/ns/xcr/1.1#"
 _XMP_NAMESPACE = "adobe:ns:meta/"
 _RDF_NAMESPACE = "http://www.w3.org/1999/02/22-rdf-syntax-ns#"
@@ -30,9 +31,12 @@ class RealityScanFrameXmp:
     source_file_path: str
     view_name: str
     view_index: int
-    rig_guid: str
-    rig_instance_guid: str
-    rig_pose_index: int
+    rig_guid: str | None
+    rig_instance_guid: str | None
+    rig_pose_index: int | None
+
+
+_CUBEMAP_TO_REALITYSCAN_CAMERA = np.diag([1.0, -1.0, -1.0])
 
 
 def _xcr(name: str) -> str:
@@ -75,6 +79,17 @@ def standard_mask_path(output_dir: Path, image_path: Path) -> Path:
     return output_dir / "masks" / f"{image_path.stem}.png"
 
 
+def write_realityscan_mask_layer(source_mask: Path, layer_path: Path) -> None:
+    """Write a RealityScan mask layer from the repo's white=keep mask.
+
+    RealityScan/RealityCapture uses the same mask polarity as this repository:
+    white pixels are used in processing and black pixels are excluded.
+    """
+
+    layer_path.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(source_mask, layer_path)
+
+
 def c2w_to_xmp_rotation_position(transform: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     """Convert a camera-to-world matrix to RealityScan XMP R/C fields.
 
@@ -89,6 +104,22 @@ def c2w_to_xmp_rotation_position(transform: np.ndarray) -> tuple[np.ndarray, np.
     rotation = transform[:3, :3].T
     position = transform[:3, 3]
     return rotation, position
+
+
+def cubemap_c2w_to_xmp_rotation_position(transform: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """Convert this tool's cubemap camera-to-world matrix to RealityScan XMP.
+
+    Cubemap transforms in this repository are written in the NeRF/LichtFeld
+    camera basis after Metashape preprocessing. RealityScan XMP expects its own
+    camera basis, so flip the local Y/Z camera axes before converting to the
+    world-to-camera rotation stored in XMP.
+    """
+
+    if transform.shape != (4, 4):
+        raise ValueError(f"transform must be 4x4, got {transform.shape}")
+    adjusted = transform.copy()
+    adjusted[:3, :3] = adjusted[:3, :3] @ _CUBEMAP_TO_REALITYSCAN_CAMERA
+    return c2w_to_xmp_rotation_position(adjusted)
 
 
 def focal_length_35mm(fl_x: float, fl_y: float, width: int, height: int) -> float:
@@ -110,6 +141,15 @@ def _validate_prior(value: str, choices: tuple[str, ...], name: str) -> str:
     return value
 
 
+def realityscan_coordinates_for_pose_prior(pose_prior: str, coordinate_mode: str = "auto") -> str:
+    coordinate_mode = str(coordinate_mode or "auto").strip().lower()
+    if coordinate_mode not in REALITYSCAN_COORDINATE_MODES:
+        raise ValueError(f"--realityscan-coordinates must be one of {', '.join(REALITYSCAN_COORDINATE_MODES)}")
+    if coordinate_mode != "auto":
+        return coordinate_mode
+    return "relative" if pose_prior == "exact" else "absolute"
+
+
 def _write_xmp(
     path: Path,
     *,
@@ -120,11 +160,13 @@ def _write_xmp(
     principal_v: float,
     pose_prior: str,
     calibration_prior: str,
-    rig_guid: str,
-    rig_instance_guid: str,
-    rig_pose_index: int,
+    rig_guid: str | None,
+    rig_instance_guid: str | None,
+    rig_pose_index: int | None,
     calibration_group: int,
     distortion_group: int,
+    coordinates: str,
+    component_guid: str | None,
 ) -> None:
     ET.register_namespace("x", _XMP_NAMESPACE)
     ET.register_namespace("rdf", _RDF_NAMESPACE)
@@ -132,31 +174,31 @@ def _write_xmp(
 
     root = ET.Element(f"{{{_XMP_NAMESPACE}}}xmpmeta")
     rdf = ET.SubElement(root, f"{{{_RDF_NAMESPACE}}}RDF")
-    desc = ET.SubElement(
-        rdf,
-        f"{{{_RDF_NAMESPACE}}}Description",
-        {
-            _xcr("Version"): "3",
-            _xcr("PosePrior"): pose_prior,
-            _xcr("Rotation"): _fmt_vec(rotation),
-            _xcr("Coordinates"): "absolute",
-            _xcr("DistortionModel"): "division",
-            _xcr("DistortionCoeficients"): "0 0 0 0 0 0",
-            _xcr("FocalLength35mm"): _fmt_float(focal_35mm),
-            _xcr("Skew"): "0",
-            _xcr("AspectRatio"): "1",
-            _xcr("PrincipalPointU"): _fmt_float(principal_u),
-            _xcr("PrincipalPointV"): _fmt_float(principal_v),
-            _xcr("CalibrationPrior"): calibration_prior,
-            _xcr("CalibrationGroup"): str(int(calibration_group)),
-            _xcr("DistortionGroup"): str(int(distortion_group)),
-            _xcr("Rig"): rig_guid,
-            _xcr("RigInstance"): rig_instance_guid,
-            _xcr("RigPoseIndex"): str(int(rig_pose_index)),
-            _xcr("InTexturing"): "1",
-            _xcr("InMeshing"): "1",
-        },
-    )
+    attrs = {
+        _xcr("Version"): "3",
+        _xcr("PosePrior"): pose_prior,
+        _xcr("Rotation"): _fmt_vec(rotation),
+        _xcr("Coordinates"): coordinates,
+        _xcr("DistortionModel"): "division",
+        _xcr("DistortionCoeficients"): "0 0 0 0 0 0",
+        _xcr("FocalLength35mm"): _fmt_float(focal_35mm),
+        _xcr("Skew"): "0",
+        _xcr("AspectRatio"): "1",
+        _xcr("PrincipalPointU"): _fmt_float(principal_u),
+        _xcr("PrincipalPointV"): _fmt_float(principal_v),
+        _xcr("CalibrationPrior"): calibration_prior,
+        _xcr("CalibrationGroup"): str(int(calibration_group)),
+        _xcr("DistortionGroup"): str(int(distortion_group)),
+        _xcr("InTexturing"): "1",
+        _xcr("InMeshing"): "1",
+    }
+    if rig_guid is not None and rig_instance_guid is not None and rig_pose_index is not None:
+        attrs[_xcr("Rig")] = rig_guid
+        attrs[_xcr("RigInstance")] = rig_instance_guid
+        attrs[_xcr("RigPoseIndex")] = str(int(rig_pose_index))
+    if component_guid is not None:
+        attrs[_xcr("ComponentId")] = component_guid
+    desc = ET.SubElement(rdf, f"{{{_RDF_NAMESPACE}}}Description", attrs)
     pos = ET.SubElement(desc, _xcr("Position"))
     pos.text = _fmt_vec(position)
 
@@ -170,8 +212,10 @@ def write_realityscan_xmp_sidecars(
     *,
     transforms_name: str = "transforms.json",
     pose_prior: str = "exact",
-    calibration_prior: str = "initial",
+    calibration_prior: str = "exact",
+    coordinates: str = "auto",
     rig_name: str = "stechdrive-cubemap",
+    include_rig: bool = False,
 ) -> dict:
     pose_prior = _validate_prior(pose_prior, REALITYSCAN_POSE_PRIORS, "--realityscan-pose-prior")
     calibration_prior = _validate_prior(
@@ -179,6 +223,7 @@ def write_realityscan_xmp_sidecars(
         REALITYSCAN_CALIBRATION_PRIORS,
         "--realityscan-calibration-prior",
     )
+    coordinates = realityscan_coordinates_for_pose_prior(pose_prior, coordinates)
     transforms_path = output_dir / transforms_name
     data = json.loads(transforms_path.read_text(encoding="utf-8"))
     if str(data.get("camera_model")) != "PINHOLE":
@@ -197,7 +242,8 @@ def write_realityscan_xmp_sidecars(
     focal_35mm = focal_length_35mm(fl_x, fl_y, width, height)
     principal_u = principal_point_offset(cx, width, scale)
     principal_v = principal_point_offset(cy, height, scale)
-    rig_guid = _guid(f"rig:{rig_name}")
+    rig_guid = _guid(f"rig:{rig_name}") if include_rig else None
+    component_guid = None
 
     frames = data.get("frames")
     if not isinstance(frames, list) or not frames:
@@ -212,9 +258,10 @@ def write_realityscan_xmp_sidecars(
         view_name = str(frame.get("view_name") or image_path.stem.rsplit("_", 1)[-1])
         view_index = int(frame.get("view_index", index))
         source_index = int(frame.get("source_image_index", index))
-        rig_instance_guid = _guid(f"rig-instance:{rig_name}:{source_index}:{source_file_path}")
+        rig_instance_guid = _guid(f"rig-instance:{rig_name}:{source_index}:{source_file_path}") if include_rig else None
+        rig_pose_index = view_index if include_rig else None
         transform = np.asarray(frame.get("transform_matrix"), dtype=np.float64)
-        rotation, position = c2w_to_xmp_rotation_position(transform)
+        rotation, position = cubemap_c2w_to_xmp_rotation_position(transform)
         xmp_path = xmp_sidecar_path(image_path)
         _write_xmp(
             xmp_path,
@@ -227,9 +274,11 @@ def write_realityscan_xmp_sidecars(
             calibration_prior=calibration_prior,
             rig_guid=rig_guid,
             rig_instance_guid=rig_instance_guid,
-            rig_pose_index=view_index,
+            rig_pose_index=rig_pose_index,
             calibration_group=0,
             distortion_group=0,
+            coordinates=coordinates,
+            component_guid=component_guid,
         )
         written.append(
             RealityScanFrameXmp(
@@ -240,7 +289,7 @@ def write_realityscan_xmp_sidecars(
                 view_index=view_index,
                 rig_guid=rig_guid,
                 rig_instance_guid=rig_instance_guid,
-                rig_pose_index=view_index,
+                rig_pose_index=rig_pose_index,
             )
         )
 
@@ -250,9 +299,11 @@ def write_realityscan_xmp_sidecars(
         "images_dir": "images",
         "pose_prior": pose_prior,
         "calibration_prior": calibration_prior,
-        "coordinates": "absolute",
+        "coordinates": coordinates,
+        "rig_metadata": include_rig,
         "rig_name": rig_name,
         "rig_guid": rig_guid,
+        "component_guid": component_guid,
         "camera_model": "PINHOLE",
         "focal_length_35mm": focal_35mm,
         "principal_point_u": principal_u,
@@ -293,8 +344,7 @@ def write_realityscan_mask_layers(output_dir: Path, *, manifest: dict | None = N
         if not mask_path.is_file():
             continue
         layer_path = mask_layer_path(image_path)
-        layer_path.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(mask_path, layer_path)
+        write_realityscan_mask_layer(mask_path, layer_path)
         copied.append(str(layer_path.relative_to(output_dir).as_posix()))
 
     if manifest is None:
@@ -305,5 +355,8 @@ def write_realityscan_mask_layers(output_dir: Path, *, manifest: dict | None = N
             manifest = {"export_type": "realityscan_xmp"}
     manifest["mask_layer_count"] = len(copied)
     manifest["mask_layer_files"] = copied
+    manifest["mask_layer_polarity"] = "white_used_black_excluded"
+    manifest["source_mask_polarity"] = "white_keep_black_exclude"
+    manifest["mask_layers_inverted_for_realityscan"] = False
     write_realityscan_manifest(output_dir, manifest)
     return manifest

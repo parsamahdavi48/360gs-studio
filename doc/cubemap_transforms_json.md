@@ -143,16 +143,18 @@ python cubemap_transforms_json.py . ./cubic --no_transform --final-orientation l
 |--colmap-rig-name|name|COLMAP rig name (default=`rig1`).|
 |--no_transform|(no)|Disable coordinate axis conversion.|
 |--brush|(no)|Convert coordinates for Brush.|
-|--final-orientation|none/lichtfeld|Apply a final dataset orientation correction to output camera poses and `pointcloud.ply` (default=`none`). Use `lichtfeld` with `--no_transform` for LichtFeld cubemap datasets.|
+|--final-orientation|none/lichtfeld/realityscan|Apply a final dataset orientation correction to output camera poses (default=`none`). `lichtfeld` also writes a corrected `pointcloud.ply`; use `realityscan` when writing RealityScan XMP from the CLI.|
 |--duplicate|(no)|Allow duplicated image files by merging chunks.|
 |--yaw-offset-per-frame|degrees|Per-frame cubemap yaw rotation step (default=30.0). Each unique input image gets `yaw = frame_index * step (mod 360)`. Diversifies sampling angles to reduce 3DGS face-boundary artifacts. Set to `0` to disable.|
 |--output-format|auto/jpg/png/tiff/webp|Output image format (default=auto, preserves input format).|
 |--output-bit-depth|8/source|Output image bit depth (default=8). `8` down-converts images for compatibility; `source` preserves PNG/TIFF source bit depth. Mask outputs are always 8-bit PNG.|
 |--jpg-quality|1-100|JPEG / WebP quality (default=95).|
-|--realityscan-xmp|(no)|Write RealityScan XMP sidecars next to exported cubemap images. Requires normal transforms conversion, not `--image-only`.|
-|--realityscan-pose-prior|initial/exact/locked|XMP `xcr:PosePrior` (default=`exact`). `exact` is the rig-oriented choice: relative camera positions are preserved while global alignment can still be handled by RealityScan.|
-|--realityscan-calibration-prior|initial/exact/locked|XMP `xcr:CalibrationPrior` (default=`initial`) for the generated virtual PINHOLE cameras.|
-|--realityscan-rig-name|name|Stable rig name used to derive RealityScan XMP rig GUIDs (default=`stechdrive-cubemap`).|
+|--realityscan-xmp|(no)|Write RealityScan XMP sidecars next to exported cubemap images. Use this when you want to add the images to RealityScan and run Align there. Requires normal transforms conversion, not `--image-only`.|
+|--realityscan-pose-prior|initial/exact/locked|How RealityScan should treat camera position and orientation (default=`exact`). Use `exact` normally, `initial` when RealityScan should adjust poses more freely, and `locked` when cameras should stay fixed.|
+|--realityscan-calibration-prior|initial/exact/locked|How RealityScan should treat focal length, principal point, and other intrinsics (default=`exact`). Use `exact` normally for cubemap images.|
+|--realityscan-coordinates|auto/absolute/relative|XMP coordinate handling (default=`auto`). Usually leave this as `auto`.|
+|--realityscan-include-rig|(no)|Also write RealityScan Rig metadata. Keep this off for the normal workflow where RealityScan runs Align and creates points.|
+|--realityscan-rig-name|name|Rig name used when `--realityscan-include-rig` is enabled (default=`stechdrive-cubemap`).|
 |--no-realityscan-mask-layers|(no)|Do not copy converted masks to RealityScan layer names such as `image.jpg.mask.png`.|
 |--workers|auto/N|Image conversion worker processes (default=auto). Auto caps workers by CPU count and estimated memory use.|
 |--remap-cache-limit|auto/N|Per-worker yaw remap table cache limit (default=auto). Auto keeps the cache bounded by available memory.|
@@ -195,8 +197,18 @@ Import the following files in each software:
 
 ### RealityScan
 
+Use this when Metashape already produced camera poses and you want to run Align in RealityScan, add more sources there, or export RealityScan PLY/camera data for later training. In the GUI, the normal path is Step 4's Metashape route with `Output Preset: RealityScan`.
+
+Load these files in RealityScan:
+
 - images (cubemap images in the output directory)
 - `*.xmp` sidecars next to the images, named like `Image01.xmp` for `Image01.jpg`
 - optional RealityScan mask layers next to the images, named like `Image01.jpg.mask.png`
 
-Do not pass the Metashape sparse PLY as the normal RealityScan input for this workflow. RealityScan can import LiDAR/point-cloud formats in specific scan workflows, but Metashape's sparse PLY is not a replacement for RealityScan tie points. Use the XMP camera priors, align in RealityScan, and regenerate the sparse/dense reconstruction there.
+In RealityScan, use `WORKFLOW` > `Folder`, add the output `images/` folder, then run `Align Images`. Because the XMP sidecars are next to the images, adding the image folder is normally enough to load the camera information. Mask layers use white for used pixels and black for excluded pixels.
+
+The normal XMP settings are `PosePrior=exact`, `CalibrationPrior=exact`, and no Rig metadata. Try `--realityscan-pose-prior initial` only when RealityScan should adjust camera poses more freely. Enable `--realityscan-include-rig` only when you know you need RealityScan rig metadata.
+
+If you are writing RealityScan output manually from the CLI using an intermediate `transforms.json` created from Metashape XML, combine `--brush --final-orientation realityscan --realityscan-xmp --yaw-offset-per-frame 0`. The GUI RealityScan preset sets this up for you.
+
+The Metashape sparse PLY is usually not part of this RealityScan workflow. Load the images and XMP in RealityScan, run Align there, and let RealityScan create its own points.

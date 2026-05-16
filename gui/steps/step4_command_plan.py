@@ -8,7 +8,11 @@ import shutil
 import sys
 from pathlib import Path
 
-from core.orientation_correction import FINAL_ORIENTATION_LICHTFELD, FINAL_ORIENTATION_NONE
+from core.orientation_correction import (
+    FINAL_ORIENTATION_LICHTFELD,
+    FINAL_ORIENTATION_NONE,
+    FINAL_ORIENTATION_REALITYSCAN,
+)
 from core.scene_layout import step4_meta_dir
 from gui import i18n
 from gui.cubemap.view_config import _BLOCK_ENABLED_VIEWS
@@ -210,18 +214,23 @@ class Step4CommandPlanMixin:
                 output_format=out_fmt,
                 output_bit_depth=out_depth,
                 jpg_quality=jpgq,
-                final_orientation=(
-                    FINAL_ORIENTATION_LICHTFELD
-                    if self._uses_lichtfeld_final_correction()
-                    else FINAL_ORIENTATION_NONE
-                ),
+                final_orientation=self._cubemap_final_orientation(),
                 image_dir=image_dir,
                 mask_dir=mask_dir,
                 realityscan_xmp=self._is_metashape_method() and self._effective_profile() == _PROFILE_REALITYSCAN,
                 realityscan_pose_prior=self.realityscan_pose_prior_combo.currentData() or "exact",
-                realityscan_calibration_prior=self.realityscan_calibration_prior_combo.currentData() or "initial",
+                realityscan_calibration_prior=self.realityscan_calibration_prior_combo.currentData() or "exact",
+                realityscan_coordinates="auto",
+                realityscan_include_rig=self.realityscan_include_rig_cb.isChecked(),
             )
         )
+
+    def _cubemap_final_orientation(self) -> str:
+        if self._is_realityscan_profile():
+            return FINAL_ORIENTATION_REALITYSCAN
+        if self._uses_lichtfeld_final_correction():
+            return FINAL_ORIENTATION_LICHTFELD
+        return FINAL_ORIENTATION_NONE
 
     def _build_colmap_cmd(self) -> list[str]:
         script = self.base_dir / "transforms_to_colmap.py"

@@ -13,7 +13,7 @@ SfM, or Structure from Motion, estimates camera positions and a sparse point clo
 | Goal | Route | Main settings |
 | --- | --- | --- |
 | Use Metashape SfM results in Postshot / Brush / LichtFeld | `Metashape` | `Output Preset`, `Output Shape`, `Camera XML`, `Point Cloud PLY` |
-| Continue Metashape camera poses in RealityScan | `Metashape` | `Output Preset: RealityScan`, `Camera XML`, XMP prior settings |
+| Realign Metashape-aligned 360° images in RealityScan, then continue to points or models there | `Metashape` | `Output Preset: RealityScan`, `Camera XML`, XMP settings |
 | Create direct LichtFeld 3DGUT data | `Metashape` | `Output Preset: LichtFeld Studio`, `Output Shape`, `Point Cloud PLY` |
 | Skip Metashape and continue from extracted 360° images to COLMAP | `COLMAP` | `COLMAP Run Settings`, `Cubemap` |
 | Skip Metashape and run spherical SfM directly on extracted equirectangular images | `SphereSfM` | `SphereSfM COLMAP Executable`, `SfM Input`, `Matcher`, `SfM Quality`, `Output Shape` |
@@ -54,7 +54,7 @@ Keep the original Metashape XML/PLY inputs separate from the Step 4 output folde
 | `Postshot` | Creating cubemap data for Postshot |
 | `Brush` | Creating cubemap data for Brush |
 | `LichtFeld Studio` | Creating cubemap data or 3DGUT data for LichtFeld |
-| `RealityScan` | Creating cubemap images plus RealityScan XMP rig sidecars |
+| `RealityScan` | Sending cubemap images with Metashape camera poses to RealityScan, then running Align there |
 | `Custom` | Manually adjusting coordinate transforms or PLY handling |
 
 Usually, choose the name of the app you will load the dataset into. If advanced settings change the coordinate transform, PLY usage, or Metashape import options away from the preset defaults, the preset switches to `Custom`.
@@ -69,7 +69,28 @@ This is the normal path. Step 4 converts the equirectangular images into cubemap
 
 This output is easier to use in Postshot, Brush, and LichtFeld Studio because it behaves like a normal pinhole-camera dataset. Its `transforms.json` uses the `PINHOLE` camera model for downstream compatibility. When training this output in LichtFeld, you normally do not enable GUT or Undistort.
 
-With the RealityScan preset, Step 4 writes the dataset under `<scene>/output/realityscan/`. It creates cubemap images, XMP sidecars named like `Image01.xmp`, and mask layer files named like `Image01.jpg.mask.png` when masks are enabled. It does not pass Metashape PLY to RealityScan; align in RealityScan from the images and XMP priors, then regenerate RealityScan's own point cloud.
+Use the `RealityScan` preset when you want to continue the Metashape-aligned capture in RealityScan. Step 4 writes the output under `<scene>/output/realityscan/` and creates cubemap images plus matching XMP camera data for each image. The Metashape point-cloud PLY is not used for this output. Load the images in RealityScan, run `Align`, and continue to RealityScan point-cloud or model generation there.
+
+### Realigning In RealityScan
+
+Use this workflow when Metashape already produced camera poses, but you want RealityScan's alignment result, want to add more sources in RealityScan, or want to export RealityScan PLY/camera CSV for later training.
+
+1. Set the route to `Metashape`.
+2. Set `Camera XML` to the camera XML exported from Metashape.
+3. Set `Output Preset` to `RealityScan`. `Output Shape` is fixed to projection-view output.
+4. In `Cubemap`, check `Cube6` and image size. The defaults are the normal starting point.
+5. Keep `XMP` at `Pose: Exact`, `Calib: Exact`, and `Rig: OFF` for the normal workflow.
+6. Run the export.
+7. In RealityScan, use `WORKFLOW` > `Folder` and add `<scene>/output/realityscan/images/`.
+8. Run `Align Images`. After cameras and tie points are created, continue with model creation or export from RealityScan.
+
+`Pose` controls how RealityScan treats camera position and orientation. Use `Exact` for the normal workflow: keep the Metashape-derived poses while RealityScan builds its own points. Try `Initial` only when RealityScan should be allowed to adjust camera poses more freely. Use `Locked` only when you intentionally want fixed cameras.
+
+`Calib` controls focal length, principal point, and other intrinsics. Cubemap images are generated as known virtual cameras, so `Exact` is the normal choice. Use `Initial` only when RealityScan should refine intrinsics.
+
+`Rig` is for advanced use. Keep it OFF for the normal workflow where RealityScan runs Align and regenerates points. Turn it on only when you know you need RealityScan rig metadata.
+
+When masks are enabled, Step 4 also creates RealityScan mask layers next to the images. White is used and black is excluded. Usually you only need to add the `images/` folder in RealityScan; the matching images, XMP sidecars, and mask layers are kept together there.
 
 ### 3DGUT (LichtFeld)
 
@@ -227,14 +248,14 @@ After the run, use `View Result in COLMAP GUI` to inspect registered camera pose
 | Route | Main outputs |
 | --- | --- |
 | Metashape + cubemap conversion (`Convert to Projection Views`) | `<scene>/output/images/`, `<scene>/output/masks/`, `<scene>/output/transforms.json`. The LichtFeld profile also writes `pointcloud.ply` |
-| Metashape + RealityScan preset | `<scene>/output/realityscan/images/`, XMP sidecars, optional RealityScan mask layers, `<scene>/output/realityscan/transforms.json` |
+| Metashape + RealityScan preset | Add `<scene>/output/realityscan/images/` in RealityScan. The same folder contains XMP sidecars and optional RealityScan mask layers |
 | Metashape + `3DGUT (LichtFeld)` | `<scene>/output/images/`, `<scene>/output/masks/`, `<scene>/output/transforms.json`, `<scene>/output/pointcloud.ply` |
 | COLMAP | `<scene>/output/colmap_rig/images/`, `<scene>/output/colmap_rig/masks/`, `<scene>/output/colmap_rig/rig_config.json` |
 | COLMAP with SfM enabled | The COLMAP SfM result in addition to the files above |
 | SphereSfM + `3DGUT (LichtFeld)` | `<scene>/output/images/`, `<scene>/output/masks/`, `<scene>/output/transforms.json`, `<scene>/output/pointcloud.ply` |
 | SphereSfM + cubemap conversion (`Convert to Projection Views`) | Load `<scene>/output/` in the downstream app. It contains `images/`, `masks/`, `transforms.json`, and `pointcloud.ply` |
 
-Step 4 treats `<scene>/output/` as the active dataset: the folder you can copy to another machine or load directly in a 3DGS app. In most downstream apps, choose this `output/` folder.
+Step 4 usually treats `<scene>/output/` as the active dataset: the folder you can copy to another machine or load directly in a 3DGS app. The RealityScan preset is the exception: add `<scene>/output/realityscan/images/` in RealityScan.
 
 With the `LichtFeld Studio` profile, Step 4 applies the same final orientation correction to `transforms.json` and `pointcloud.ply` during cubemap export so +X / +Z / up directions match the Metashape scene in LichtFeld. For `3DGUT (LichtFeld)`, the same correction is applied when the direct source-image dataset is created.
 
@@ -243,6 +264,7 @@ With the `LichtFeld Studio` profile, Step 4 applies the same final orientation c
 - Use `Convert to Projection Views` for Postshot and Brush.
 - For normal LichtFeld training, start with `LichtFeld Studio` + `Convert to Projection Views`.
 - To use LichtFeld GUT, choose `LichtFeld Studio` + `3DGUT (LichtFeld)`.
+- To realign a Metashape result in RealityScan, choose the `RealityScan` preset, add `<scene>/output/realityscan/images/` with `Folder`, then run `Align Images`.
 - When training cubemap data in LichtFeld, GUT and Undistort are usually unnecessary.
 - When training `3DGUT (LichtFeld)` data, enable GUT in LichtFeld.
 - If stitch seams are not visible, keep stitch masks off or use a narrow seam mask first. Keeping yaw at 45° is usually fine because it does not discard pixels.

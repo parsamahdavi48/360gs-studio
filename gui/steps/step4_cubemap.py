@@ -467,6 +467,7 @@ class CubemapStep(
         self.profile_combo.addItem(i18n.PROFILE_CUSTOM, _PROFILE_CUSTOM)
         self.profile_combo.currentIndexChanged.connect(self._on_profile_changed)
         add_tooltip_row(profile_form, i18n.TARGET_PROFILE, self.profile_combo, i18n.tip("TARGET_PROFILE"))
+        self.profile_label = profile_form.labelForField(self.profile_combo)
 
         self.output_shape_combo = QComboBox()
         self.output_shape_combo.setToolTip(i18n.tip("OUTPUT_SHAPE"))
@@ -485,6 +486,7 @@ class CubemapStep(
         self.axis_transform_combo.addItem(i18n.t("AXIS_TRANSFORM_POSTSHOT"), _AXIS_POSTSHOT)
         self.axis_transform_combo.addItem(i18n.t("AXIS_TRANSFORM_BRUSH"), _AXIS_BRUSH)
         self.axis_transform_combo.addItem(i18n.t("AXIS_TRANSFORM_NONE"), _AXIS_NONE)
+        self._axis_brush_index = self.axis_transform_combo.findData(_AXIS_BRUSH)
         self.axis_transform_combo.setFixedWidth(180)
         self.axis_transform_combo.currentIndexChanged.connect(self._on_profile_option_changed)
         add_tooltip_row(profile_form, i18n.t("AXIS_TRANSFORM"), self.axis_transform_combo, i18n.tip("AXIS_TRANSFORM"))
@@ -496,29 +498,43 @@ class CubemapStep(
         self.realityscan_options_row = QWidget()
         realityscan_options_layout = QHBoxLayout(self.realityscan_options_row)
         realityscan_options_layout.setContentsMargins(0, 0, 0, 0)
-        realityscan_options_layout.setSpacing(8)
+        realityscan_options_layout.setSpacing(6)
+        realityscan_options_layout.setAlignment(Qt.AlignVCenter)
         self.realityscan_pose_prior_label = QLabel(i18n.t("REALITYSCAN_POSE_PRIOR_COMPACT"))
         self.realityscan_pose_prior_label.setToolTip(i18n.tip("REALITYSCAN_POSE_PRIOR"))
-        realityscan_options_layout.addWidget(self.realityscan_pose_prior_label)
+        self.realityscan_pose_prior_label.setAlignment(Qt.AlignVCenter)
+        realityscan_options_layout.addWidget(self.realityscan_pose_prior_label, 0, Qt.AlignVCenter)
         self.realityscan_pose_prior_combo = QComboBox()
         self.realityscan_pose_prior_combo.setToolTip(i18n.tip("REALITYSCAN_POSE_PRIOR"))
         self.realityscan_pose_prior_combo.addItem(i18n.t("REALITYSCAN_PRIOR_INITIAL"), "initial")
         self.realityscan_pose_prior_combo.addItem(i18n.t("REALITYSCAN_PRIOR_EXACT"), "exact")
         self.realityscan_pose_prior_combo.addItem(i18n.t("REALITYSCAN_PRIOR_LOCKED"), "locked")
         self.realityscan_pose_prior_combo.setCurrentIndex(self.realityscan_pose_prior_combo.findData("exact"))
-        realityscan_options_layout.addWidget(self.realityscan_pose_prior_combo)
+        self.realityscan_pose_prior_combo.setFixedWidth(82)
+        realityscan_options_layout.addWidget(self.realityscan_pose_prior_combo, 0, Qt.AlignVCenter)
         self.realityscan_calibration_prior_label = QLabel(i18n.t("REALITYSCAN_CALIBRATION_PRIOR_COMPACT"))
         self.realityscan_calibration_prior_label.setToolTip(i18n.tip("REALITYSCAN_CALIBRATION_PRIOR"))
-        realityscan_options_layout.addWidget(self.realityscan_calibration_prior_label)
+        self.realityscan_calibration_prior_label.setAlignment(Qt.AlignVCenter)
+        realityscan_options_layout.addWidget(self.realityscan_calibration_prior_label, 0, Qt.AlignVCenter)
         self.realityscan_calibration_prior_combo = QComboBox()
         self.realityscan_calibration_prior_combo.setToolTip(i18n.tip("REALITYSCAN_CALIBRATION_PRIOR"))
         self.realityscan_calibration_prior_combo.addItem(i18n.t("REALITYSCAN_PRIOR_INITIAL"), "initial")
         self.realityscan_calibration_prior_combo.addItem(i18n.t("REALITYSCAN_PRIOR_EXACT"), "exact")
         self.realityscan_calibration_prior_combo.addItem(i18n.t("REALITYSCAN_PRIOR_LOCKED"), "locked")
-        realityscan_options_layout.addWidget(self.realityscan_calibration_prior_combo)
+        self.realityscan_calibration_prior_combo.setCurrentIndex(
+            self.realityscan_calibration_prior_combo.findData("exact")
+        )
+        self.realityscan_calibration_prior_combo.setFixedWidth(82)
+        realityscan_options_layout.addWidget(self.realityscan_calibration_prior_combo, 0, Qt.AlignVCenter)
+        self.realityscan_include_rig_cb = QCheckBox(i18n.t("REALITYSCAN_INCLUDE_RIG"))
+        self.realityscan_include_rig_cb.setToolTip(i18n.tip("REALITYSCAN_INCLUDE_RIG"))
+        realityscan_options_layout.addWidget(self.realityscan_include_rig_cb, 0, Qt.AlignVCenter)
         realityscan_options_layout.addStretch()
         self.realityscan_options_row.setVisible(False)
         profile_form.addRow(i18n.t("REALITYSCAN_XMP_OPTIONS"), self.realityscan_options_row)
+        self.realityscan_options_label = profile_form.labelForField(self.realityscan_options_row)
+        if self.realityscan_options_label is not None:
+            self.realityscan_options_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
 
         self.metashape_output_section = QWidget()
         self.metashape_output_section.setLayout(profile_form)
@@ -1128,6 +1144,8 @@ class CubemapStep(
                 self.realityscan_calibration_prior_combo,
                 str(realityscan.get("calibration_prior", "")).strip(),
             )
+            if "include_rig" in realityscan:
+                self.realityscan_include_rig_cb.setChecked(bool(realityscan.get("include_rig")))
 
         colmap = settings.get("colmap_rig")
         if isinstance(colmap, dict):
@@ -1250,6 +1268,7 @@ class CubemapStep(
         self.spheresfm_axis_transform_combo.currentIndexChanged.connect(lambda _idx: self._save_user_preferences())
         self.realityscan_pose_prior_combo.currentIndexChanged.connect(lambda _idx: self._save_user_preferences())
         self.realityscan_calibration_prior_combo.currentIndexChanged.connect(lambda _idx: self._save_user_preferences())
+        self.realityscan_include_rig_cb.toggled.connect(lambda _checked: self._save_user_preferences())
         self.training_executable_browse.path_changed.connect(lambda _path: self._save_user_preferences())
 
     def _load_user_preferences(self) -> None:
@@ -1279,6 +1298,7 @@ class CubemapStep(
             spheresfm_axis = str(settings.get("spheresfm_axis_transform", "")).strip()
             realityscan_pose_prior = str(settings.get("realityscan_pose_prior", "")).strip()
             realityscan_calibration_prior = str(settings.get("realityscan_calibration_prior", "")).strip()
+            realityscan_include_rig = settings.get("realityscan_include_rig")
             if spheresfm_matcher:
                 self._set_combo_data(self.spheresfm_matcher_combo, spheresfm_matcher)
             if spheresfm_quality:
@@ -1296,6 +1316,8 @@ class CubemapStep(
                 self._set_combo_data(self.realityscan_pose_prior_combo, realityscan_pose_prior)
             if realityscan_calibration_prior:
                 self._set_combo_data(self.realityscan_calibration_prior_combo, realityscan_calibration_prior)
+            if realityscan_include_rig is not None:
+                self.realityscan_include_rig_cb.setChecked(bool(realityscan_include_rig))
 
             training_backend = str(settings.get("training_backend", "")).strip()
             if training_backend:
@@ -1328,7 +1350,8 @@ class CubemapStep(
                 "spheresfm_profile": self.spheresfm_profile_combo.currentData() or _PROFILE_LICHTFELD,
                 "spheresfm_axis_transform": self.spheresfm_axis_transform_combo.currentData() or _AXIS_NONE,
                 "realityscan_pose_prior": self.realityscan_pose_prior_combo.currentData() or "exact",
-                "realityscan_calibration_prior": self.realityscan_calibration_prior_combo.currentData() or "initial",
+                "realityscan_calibration_prior": self.realityscan_calibration_prior_combo.currentData() or "exact",
+                "realityscan_include_rig": self.realityscan_include_rig_cb.isChecked(),
                 "training_backend": self._training_backend(),
                 "training_executable": self.training_executable_browse.text(),
                 "training_output": self.training_output_browse.text(),
@@ -1850,7 +1873,7 @@ class CubemapStep(
     @staticmethod
     def _profile_axis_default(profile: str) -> str:
         if profile == _PROFILE_REALITYSCAN:
-            return _AXIS_NONE
+            return _AXIS_BRUSH
         if profile == _PROFILE_LICHTFELD:
             return _AXIS_NONE
         if profile == _PROFILE_BRUSH:
@@ -1885,6 +1908,9 @@ class CubemapStep(
             self.ms_no_fix_rot_cb.setChecked(self._profile_no_fix_rotation_default(profile))
             if profile == _PROFILE_REALITYSCAN:
                 self.export_colmap_cb.setChecked(False)
+                self._set_combo_data(self.realityscan_pose_prior_combo, "exact")
+                self._set_combo_data(self.realityscan_calibration_prior_combo, "exact")
+                self.realityscan_include_rig_cb.setChecked(False)
         finally:
             self._syncing_profile_controls = False
 
@@ -1894,6 +1920,25 @@ class CubemapStep(
     def _axis_transform_mode(self) -> str:
         data = self.axis_transform_combo.currentData()
         return data if data in {_AXIS_POSTSHOT, _AXIS_BRUSH, _AXIS_NONE} else _AXIS_POSTSHOT
+
+    def _sync_realityscan_axis_display(self) -> None:
+        if self._axis_brush_index < 0:
+            return
+        realityscan = self._profile_id() == _PROFILE_REALITYSCAN
+        self.axis_transform_combo.setItemText(
+            self._axis_brush_index,
+            i18n.t("AXIS_TRANSFORM_REALITYSCAN_AUTO") if realityscan else i18n.t("AXIS_TRANSFORM_BRUSH"),
+        )
+        self.axis_transform_combo.setToolTip(
+            i18n.tip("AXIS_TRANSFORM_REALITYSCAN_AUTO") if realityscan else i18n.tip("AXIS_TRANSFORM")
+        )
+
+    def _sync_profile_tooltip(self) -> None:
+        tooltip_key = "TARGET_PROFILE_REALITYSCAN" if self._profile_id() == _PROFILE_REALITYSCAN else "TARGET_PROFILE"
+        tooltip = i18n.tip(tooltip_key)
+        self.profile_combo.setToolTip(tooltip)
+        if self.profile_label is not None:
+            self.profile_label.setToolTip(tooltip)
 
     def _spheresfm_profile_id(self) -> str:
         return self.spheresfm_profile_combo.currentData() or _PROFILE_LICHTFELD
@@ -1933,6 +1978,8 @@ class CubemapStep(
             self._axis_transform_mode() != _AXIS_NONE or not self._preprocess_uses_ply()
         ):
             self._set_combo_data(self.output_shape_combo, _OUTPUT_SHAPE_PROJECTED)
+        self._sync_profile_tooltip()
+        self._sync_realityscan_axis_display()
         self.realityscan_options_row.setVisible(p == _PROFILE_REALITYSCAN)
         self._sync_ply_browse_enabled()
         self._sync_output_shape_controls()
@@ -2086,11 +2133,15 @@ class CubemapStep(
         self.spheresfm_use_masks_cb.setEnabled(spheresfm_runs_sfm)
         self.spheresfm_pipeline_row.setEnabled(spheresfm_runs_sfm)
         self.spheresfm_pose_browse.setEnabled(spheresfm_runs_sfm)
-        self.axis_transform_combo.setEnabled(self._is_metashape_method() and not direct)
+        self.axis_transform_combo.setEnabled(
+            self._is_metashape_method() and not direct and not self._is_realityscan_profile()
+        )
         self.spheresfm_profile_combo.setEnabled(spheresfm_projected)
         self.spheresfm_axis_transform_combo.setEnabled(spheresfm_projected)
         self.ms_use_ply_cb.setEnabled(self._is_metashape_method() and not direct)
-        self.export_colmap_cb.setEnabled(self._is_metashape_method() and not direct and not self._is_realityscan_profile())
+        self.export_colmap_cb.setEnabled(
+            self._is_metashape_method() and not direct and not self._is_realityscan_profile()
+        )
         self.settings_tabs.setTabEnabled(self.output_tab_index, (not spheresfm) or spheresfm_runs_conversion)
 
     def _preprocess_uses_ply(self) -> bool:

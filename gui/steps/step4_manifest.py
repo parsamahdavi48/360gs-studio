@@ -9,9 +9,11 @@ from pathlib import Path
 from core.orientation_correction import (
     FINAL_ORIENTATION_LICHTFELD,
     FINAL_ORIENTATION_NONE,
+    FINAL_ORIENTATION_REALITYSCAN,
     FINAL_ORIENTATION_STAGE_CUBEMAP_CLI,
     FINAL_ORIENTATION_STAGE_DIRECT_FINALIZE,
     FINAL_ORIENTATION_STAGE_NONE,
+    REALITYSCAN_FINAL_ORIENTATION_MATRIX,
 )
 from core.scene_layout import STEP4_META_DIR_NAME, STEP4_VIEWS_CONFIG_JSON, step4_export_settings_path, step4_meta_dir
 from core.scene_project import (
@@ -66,7 +68,11 @@ class Step4ManifestMixin:
         spheresfm_3dgut = spheresfm_runs_conversion and self._uses_spheresfm_3dgut_output()
         spheresfm_projected = spheresfm_runs_conversion and self._uses_spheresfm_projected_output()
         direct_source_output = direct or spheresfm_3dgut
-        yaw_step = 0.0 if self._export_method() == _METHOD_COLMAP or direct_source_output else float(self.yaw_per_frame_edit.value())
+        yaw_step = (
+            0.0
+            if self._export_method() == _METHOD_COLMAP or direct_source_output
+            else float(self.yaw_per_frame_edit.value())
+        )
         jpg_quality = int(self.jpg_quality_edit.text().strip())
         if not self.scene_dir:
             raise ValueError(i18n.t("SCENE_REQUIRED_ACTION_HINT"))
@@ -88,18 +94,29 @@ class Step4ManifestMixin:
         uses_lichtfeld_final_orientation = (
             self._uses_lichtfeld_final_correction() or self._uses_spheresfm_lichtfeld_final_correction()
         )
-        if not uses_lichtfeld_final_orientation:
+        uses_realityscan_final_orientation = (
+            self._is_metashape_method() and effective_profile == _PROFILE_REALITYSCAN and route_uses_view_export
+        )
+        final_orientation_matrix = None
+        if uses_realityscan_final_orientation:
+            final_orientation = FINAL_ORIENTATION_REALITYSCAN
+            final_orientation_stage = FINAL_ORIENTATION_STAGE_CUBEMAP_CLI
+            final_orientation_matrix = REALITYSCAN_FINAL_ORIENTATION_MATRIX.tolist()
+        elif not uses_lichtfeld_final_orientation:
             final_orientation = FINAL_ORIENTATION_NONE
             final_orientation_stage = FINAL_ORIENTATION_STAGE_NONE
         elif direct_source_output:
             final_orientation = FINAL_ORIENTATION_LICHTFELD
             final_orientation_stage = FINAL_ORIENTATION_STAGE_DIRECT_FINALIZE
+            final_orientation_matrix = _LICHTFELD_FINAL_CORRECTION.tolist()
         elif route_uses_view_export:
             final_orientation = FINAL_ORIENTATION_LICHTFELD
             final_orientation_stage = FINAL_ORIENTATION_STAGE_CUBEMAP_CLI
+            final_orientation_matrix = _LICHTFELD_FINAL_CORRECTION.tolist()
         else:
             final_orientation = FINAL_ORIENTATION_LICHTFELD
             final_orientation_stage = FINAL_ORIENTATION_STAGE_NONE
+            final_orientation_matrix = _LICHTFELD_FINAL_CORRECTION.tolist()
         if direct_source_output:
             input_transforms_json = output / "transforms.json"
         elif self._is_metashape_method():
@@ -165,15 +182,20 @@ class Step4ManifestMixin:
             "postprocess": {
                 "final_orientation": final_orientation,
                 "final_orientation_stage": final_orientation_stage,
-                "final_orientation_matrix": _LICHTFELD_FINAL_CORRECTION.tolist()
-                if final_orientation == FINAL_ORIENTATION_LICHTFELD
-                else None,
+                "final_orientation_matrix": final_orientation_matrix,
                 "lichtfeld_final_orientation_correction": uses_lichtfeld_final_orientation,
                 "lichtfeld_final_orientation_stage": final_orientation_stage
                 if uses_lichtfeld_final_orientation
                 else FINAL_ORIENTATION_STAGE_NONE,
                 "lichtfeld_final_orientation_matrix": _LICHTFELD_FINAL_CORRECTION.tolist()
                 if uses_lichtfeld_final_orientation
+                else None,
+                "realityscan_final_orientation_correction": uses_realityscan_final_orientation,
+                "realityscan_final_orientation_stage": final_orientation_stage
+                if uses_realityscan_final_orientation
+                else FINAL_ORIENTATION_STAGE_NONE,
+                "realityscan_final_orientation_matrix": REALITYSCAN_FINAL_ORIENTATION_MATRIX.tolist()
+                if uses_realityscan_final_orientation
                 else None,
             },
             "metashape_import": {
@@ -191,8 +213,11 @@ class Step4ManifestMixin:
                 "output_dir": str(self._display_output_dir()) if effective_profile == _PROFILE_REALITYSCAN else "",
                 "xmp": effective_profile == _PROFILE_REALITYSCAN,
                 "pose_prior": self.realityscan_pose_prior_combo.currentData() or "exact",
-                "calibration_prior": self.realityscan_calibration_prior_combo.currentData() or "initial",
-                "rig": True,
+                "calibration_prior": self.realityscan_calibration_prior_combo.currentData() or "exact",
+                "coordinates": "relative"
+                if (self.realityscan_pose_prior_combo.currentData() or "exact") == "exact"
+                else "absolute",
+                "include_rig": self.realityscan_include_rig_cb.isChecked(),
                 "mask_layers": self._writes_masks(),
             },
             "colmap_rig": {

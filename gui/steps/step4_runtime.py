@@ -232,10 +232,10 @@ class Step4RuntimeMixin:
             )
             return
 
-        output = self._output_dir()
+        output = self._display_output_dir()
         output.mkdir(parents=True, exist_ok=True)
 
-        if not self._uses_lichtfeld_final_correction():
+        if not self._uses_lichtfeld_final_correction() and not self._is_realityscan_profile():
             source = self._resolve_ply_source()
             if source is not None:
                 dest = output / source.name
