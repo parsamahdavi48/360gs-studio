@@ -6,6 +6,14 @@
 
 `setup_windows.bat` がPython 3.12とFFmpeg/FFprobeの検出、必要に応じたwinget経由のインストール、仮想環境の作成、依存パッケージ導入まで行います。起動も `run_gui.bat` から行えるため、普段の作業ではPythonコマンドを直接打たずに使えます。
 
+## ダウンロード
+
+通常利用は、最新リリースZIPをダウンロードしてください。
+
+[stechdrive-3dgs-utils-v1.17.0.zip をダウンロード](https://github.com/stechdrive/stechdrive-3dgs-utils/releases/download/v1.17.0/stechdrive-3dgs-utils-v1.17.0.zip)
+
+ZIPを展開したら、`setup_windows.bat`、続いて `run_gui.bat` を実行します。
+
 [EN English](README.md)
 
 Fork元: [tetraface/tetraface-3dgs-utils](https://github.com/tetraface/tetraface-3dgs-utils)

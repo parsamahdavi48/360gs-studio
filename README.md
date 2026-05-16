@@ -6,6 +6,14 @@ A Windows-first integrated GUI tool for turning 360° camera video into images, 
 
 `setup_windows.bat` detects Python 3.12 and FFmpeg/FFprobe, installs missing system dependencies through winget when needed, creates a virtual environment, and installs the required runtime packages. Day-to-day launch is handled by `run_gui.bat`, so users do not need to run Python commands manually for the normal GUI workflow.
 
+## Download
+
+For normal use, download the latest release ZIP:
+
+[Download stechdrive-3dgs-utils-v1.17.0.zip](https://github.com/stechdrive/stechdrive-3dgs-utils/releases/download/v1.17.0/stechdrive-3dgs-utils-v1.17.0.zip)
+
+After extracting the ZIP, run `setup_windows.bat`, then `run_gui.bat`.
+
 [JP 日本語の説明](README.ja.md)
 
 Forked from [tetraface/tetraface-3dgs-utils](https://github.com/tetraface/tetraface-3dgs-utils).
