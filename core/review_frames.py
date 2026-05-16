@@ -9,7 +9,16 @@ from pathlib import Path
 
 try:
     from PySide6.QtCore import QItemSelectionModel, QSize, Qt, QTimer, Signal
-    from PySide6.QtGui import QColor, QIcon, QImage, QKeySequence, QPainter, QPen, QPixmap, QShortcut
+    from PySide6.QtGui import (
+        QColor,
+        QIcon,
+        QImage,
+        QKeySequence,
+        QPainter,
+        QPen,
+        QPixmap,
+        QShortcut,
+    )
     from PySide6.QtWidgets import (
         QAbstractItemView,
         QApplication,
@@ -60,6 +69,17 @@ else:
 
 # i18n は PySide6 に依存しないので無条件 import
 from core.apply_frame_decisions import pending_drop_image_paths as find_pending_drop_image_paths
+from core.review_frame_filters import (
+    REVIEW_THUMBNAIL_FILTER_ACTIONABLE,
+    REVIEW_THUMBNAIL_FILTER_ALL,
+    REVIEW_THUMBNAIL_FILTER_DROPS,
+    REVIEW_THUMBNAIL_FILTER_KEYS,
+    REVIEW_THUMBNAIL_FILTER_WARNINGS,
+    is_problem_navigation_row,
+    review_status_tokens,
+    thumbnail_filter_counts,
+    thumbnail_filter_indices,
+)
 from core.scene_layout import selected_frames_path
 from gui import i18n
 
@@ -84,6 +104,7 @@ if _PYSIDE_IMPORT_ERROR is None:
     )
     from gui.common.thumbnail_delegate import ThumbnailSelectionDelegate
     from gui.common.thumbnail_list_model import AsyncThumbnailModel, ThumbnailItem, visible_rows_for_view
+    from gui.review_thumbnail_filter import ReviewThumbnailFilterButton
 else:  # pragma: no cover - PySide6 missing
     PREVIEW_MODE_PERSPECTIVE = "perspective"
     PREVIEW_MODE_SINGLE = "single"
@@ -96,13 +117,11 @@ else:  # pragma: no cover - PySide6 missing
     ThumbnailItem = None
     visible_rows_for_view = None
     PerspectiveImageView = None
+    ReviewThumbnailFilterButton = None
 
 
 _ICON_DIR = Path(__file__).resolve().parents[1] / "gui" / "assets" / "icons"
 _PIXMAP_CACHE_LIMIT = 3
-_ISSUE_REVIEW_TOKENS = frozenset(
-    {"redundant_drop", "motion_blur", "borderline_blur", "low_texture", "weak_match"}
-)
 
 
 def _review_icon(name: str) -> QIcon:
@@ -183,6 +202,7 @@ if QMainWindow is not None:
                 raise RuntimeError(f"No rows found in {csv_path}")
             self._initial_decisions = [row["decision"] for row in self._all_rows]
             self._source_filter_key = "all"
+            self._thumbnail_filter_key = REVIEW_THUMBNAIL_FILTER_ALL
             self._visible_indices = list(range(len(self._all_rows)))
             self.rows = list(self._all_rows)
             self._include_added_problem_frames = False
@@ -245,39 +265,116 @@ if QMainWindow is not None:
             if key == self._source_filter_key:
                 return
             self._source_filter_key = key
+            self._apply_row_filters(force_thumbnails=True)
+
+        def thumbnail_filter_options(self) -> list[dict[str, str]]:
+            counts = thumbnail_filter_counts(self._source_rows())
+            return [
+                {
+                    "key": REVIEW_THUMBNAIL_FILTER_ALL,
+                    "label": i18n.t("REVIEW_THUMBNAIL_FILTER_ALL").format(
+                        n=counts[REVIEW_THUMBNAIL_FILTER_ALL]
+                    ),
+                },
+                {
+                    "key": REVIEW_THUMBNAIL_FILTER_DROPS,
+                    "label": i18n.t("REVIEW_THUMBNAIL_FILTER_DROPS").format(
+                        n=counts[REVIEW_THUMBNAIL_FILTER_DROPS]
+                    ),
+                },
+                {
+                    "key": REVIEW_THUMBNAIL_FILTER_WARNINGS,
+                    "label": i18n.t("REVIEW_THUMBNAIL_FILTER_WARNINGS").format(
+                        n=counts[REVIEW_THUMBNAIL_FILTER_WARNINGS]
+                    ),
+                },
+                {
+                    "key": REVIEW_THUMBNAIL_FILTER_ACTIONABLE,
+                    "label": i18n.t("REVIEW_THUMBNAIL_FILTER_ACTIONABLE").format(
+                        n=counts[REVIEW_THUMBNAIL_FILTER_ACTIONABLE]
+                    ),
+                },
+            ]
+
+        def set_thumbnail_filter(self, key: str) -> None:
+            key = key if key in REVIEW_THUMBNAIL_FILTER_KEYS else REVIEW_THUMBNAIL_FILTER_ALL
+            if key == self._thumbnail_filter_key:
+                self._update_thumbnail_filter_button()
+                return
+            self._thumbnail_filter_key = key
+            self._apply_row_filters(force_thumbnails=True)
+
+        def thumbnail_filter_key(self) -> str:
+            return self._thumbnail_filter_key
+
+        def _source_indices(self) -> list[int]:
+            key = self._source_filter_key or "all"
             if key == "all":
-                self._visible_indices = list(range(len(self._all_rows)))
-            elif key == "unassigned":
-                self._visible_indices = [
+                return list(range(len(self._all_rows)))
+            if key == "unassigned":
+                return [
                     idx
                     for idx, row in enumerate(self._all_rows)
                     if not row.get("source_session", "").strip() and not row.get("source_video", "").strip()
                 ]
-            elif key.startswith("session:"):
+            if key.startswith("session:"):
                 session = key.split(":", 1)[1]
-                self._visible_indices = [
+                return [
                     idx for idx, row in enumerate(self._all_rows) if row.get("source_session", "").strip() == session
                 ]
-            elif key.startswith("video:"):
+            if key.startswith("video:"):
                 video = key.split(":", 1)[1]
-                self._visible_indices = [
+                return [
                     idx for idx, row in enumerate(self._all_rows) if row.get("source_video", "").strip() == video
                 ]
-            else:
-                self._visible_indices = list(range(len(self._all_rows)))
-            if not self._visible_indices:
-                self._visible_indices = list(range(len(self._all_rows)))
+            return list(range(len(self._all_rows)))
+
+        def _source_rows(self) -> list[dict[str, str]]:
+            return [self._all_rows[idx] for idx in self._source_indices()]
+
+        def _filtered_indices(self) -> list[int]:
+            source_indices = self._source_indices()
+            if not source_indices:
+                source_indices = list(range(len(self._all_rows)))
+            source_rows = [self._all_rows[idx] for idx in source_indices]
+            local_indices = thumbnail_filter_indices(source_rows, self._thumbnail_filter_key)
+            return [source_indices[idx] for idx in local_indices]
+
+        def _apply_row_filters(
+            self,
+            *,
+            preferred_all_index: int | None = None,
+            force_thumbnails: bool = False,
+        ) -> None:
+            if preferred_all_index is None and self.rows and 0 <= self.index < len(self.rows):
+                preferred_all_index = self._all_index(self.index)
+            self._visible_indices = self._filtered_indices()
             self.rows = [self._all_rows[idx] for idx in self._visible_indices]
             self.problem_indices = self._collect_problem_indices()
-            self.index = 0
+            self.index = self._nearest_visible_index(preferred_all_index)
             self._pixmap_cache.clear()
             self._slider_sync = True
             self.frame_slider.setRange(0, max(0, len(self.rows) - 1))
             self.frame_slider.setEnabled(len(self.rows) > 1)
-            self.frame_slider.setValue(0)
+            self.frame_slider.setValue(self.index)
             self._slider_sync = False
-            self._sync_thumbnail_model(force=True)
+            self._sync_thumbnail_model(force=force_thumbnails)
+            self._update_thumbnail_filter_button()
             self._render_current()
+
+        def _nearest_visible_index(self, preferred_all_index: int | None) -> int:
+            if not self._visible_indices:
+                return 0
+            if preferred_all_index is None:
+                return 0
+            try:
+                return self._visible_indices.index(preferred_all_index)
+            except ValueError:
+                pass
+            for idx, all_index in enumerate(self._visible_indices):
+                if all_index > preferred_all_index:
+                    return idx
+            return len(self._visible_indices) - 1
 
         def _all_index(self, visible_index: int) -> int:
             if not (0 <= visible_index < len(self._visible_indices)):
@@ -295,18 +392,10 @@ if QMainWindow is not None:
             return rows
 
         def _status_tokens(self, row: dict[str, str]) -> set[str]:
-            status = row.get("status", "").strip().lower()
-            if status in {"", "ok"}:
-                return set()
-            return {token.strip() for token in status.replace(",", "+").split("+") if token.strip()}
+            return review_status_tokens(row)
 
         def _is_problem_row(self, row: dict[str, str]) -> bool:
-            tokens = self._status_tokens(row)
-            if not tokens:
-                return False
-            if self._include_added_problem_frames:
-                return True
-            return bool(tokens & _ISSUE_REVIEW_TOKENS)
+            return is_problem_navigation_row(row, include_added=self._include_added_problem_frames)
 
         def _collect_problem_indices(self) -> list[int]:
             return [i for i, row in enumerate(self.rows) if self._is_problem_row(row)]
@@ -318,6 +407,27 @@ if QMainWindow is not None:
             self._include_added_problem_frames = include_added
             self.problem_indices = self._collect_problem_indices()
             self._render_current()
+
+        def _build_thumbnail_filter_button(self) -> QToolButton:
+            button = ReviewThumbnailFilterButton(REVIEW_THUMBNAIL_FILTER_KEYS, self)
+            button.filter_changed.connect(self.set_thumbnail_filter)
+            button.setAccessibleName(i18n.t("REVIEW_THUMBNAIL_FILTER"))
+            return button
+
+        def _update_thumbnail_filter_button(self) -> None:
+            if not hasattr(self, "thumbnail_filter_button"):
+                return
+            options = self.thumbnail_filter_options()
+            option_by_key = {option["key"]: option for option in options}
+            current_label = str(
+                option_by_key.get(self._thumbnail_filter_key, option_by_key[REVIEW_THUMBNAIL_FILTER_ALL])["label"]
+            )
+            self.thumbnail_filter_button.setChecked(self._thumbnail_filter_key != REVIEW_THUMBNAIL_FILTER_ALL)
+            self.thumbnail_filter_button.set_filter_options(
+                options,
+                self._thumbnail_filter_key,
+                i18n.t("REVIEW_THUMBNAIL_FILTER_TIP").format(filter=current_label),
+            )
 
         def _build_ui(self) -> None:
             layout = QVBoxLayout(self)
@@ -350,6 +460,9 @@ if QMainWindow is not None:
             self.reset_decision_button.setFixedSize(36, 32)
             self.reset_decision_button.clicked.connect(lambda _checked=False: self.reset_decision())
             top_row.addWidget(self.reset_decision_button)
+
+            self.thumbnail_filter_button = self._build_thumbnail_filter_button()
+            top_row.addWidget(self.thumbnail_filter_button)
 
             self.mode_toolbar = PreviewModeToolbar(
                 single_text_key="REVIEW_PREVIEW_MODE_SINGLE",
@@ -545,6 +658,9 @@ if QMainWindow is not None:
         def _on_thumbnail_selection_changed(self) -> None:
             if self._thumbnail_sync:
                 return
+            if not self.rows:
+                self._update_decision_buttons("keep")
+                return
             self._update_decision_buttons(self._current_row().get("decision", "keep"))
 
         def _on_thumbnail_double_clicked(self, index) -> None:  # noqa: ANN001
@@ -618,6 +734,8 @@ if QMainWindow is not None:
             return sorted(rows)
 
         def _decision_action_indices(self) -> list[int]:
+            if not self.rows:
+                return []
             if self._preview_mode == PREVIEW_MODE_THUMBNAILS:
                 selected_rows = self._selected_thumbnail_rows()
                 if selected_rows:
@@ -775,7 +893,37 @@ if QMainWindow is not None:
                 sharpness_ratio=self._format_metric_value(row.get("sharpness_ratio"), 2),
             )
 
+        def _render_empty_filter(self) -> None:
+            self.current_pixmap = None
+            self.title_label.setText(i18n.t("REVIEW_FILTER_EMPTY_TITLE"))
+            self.decision_label.setText("")
+            self.flag_button.setEnabled(False)
+            self.flag_button.setChecked(True)
+            self.flag_button.setIcon(_review_icon("flag-keep"))
+            self.reset_decision_button.setEnabled(False)
+            self._slider_sync = True
+            self.frame_slider.setRange(0, 0)
+            self.frame_slider.setValue(0)
+            self.frame_slider.setEnabled(False)
+            self._slider_sync = False
+            self.frame_position_label.setText(i18n.t("REVIEW_FILTER_EMPTY_POSITION"))
+            self.advisory_label.setText(i18n.t("REVIEW_FILTER_EMPTY_ADVISORY"))
+            self.advisory_label.setStyleSheet(
+                "padding: 6px 10px; border-radius: 4px; font-weight: 600; font-size: 10pt; "
+                "color: #92400e; background-color: #fef3c7;"
+            )
+            self.info_label.setText(i18n.t("REVIEW_FILTER_EMPTY_INFO"))
+            self.problem_summary_label.setText("")
+            self._sync_thumbnail_model()
+            self._update_thumbnail_filter_button()
+            if self._preview_mode != PREVIEW_MODE_THUMBNAILS:
+                self.image_view.setText(i18n.t("REVIEW_FILTER_EMPTY_INFO"))
+
         def _render_current(self, *, sync_thumbnail: bool = True, scroll_thumbnail: bool = False) -> None:
+            if not self.rows:
+                self._render_empty_filter()
+                return
+
             row = self._current_row()
             seq = int(row.get("seq", self.index + 1))
             total = len(self.rows)
@@ -798,7 +946,9 @@ if QMainWindow is not None:
             decision = row.get("decision", "keep")
             self.decision_label.setText(f"{i18n.t('REVIEW_DECISION_PREFIX')}{self._decision_text(decision)}")
             self.decision_label.setStyleSheet(f"font-weight: 700; color: {self._decision_color(decision)};")
+            self.flag_button.setEnabled(True)
             self._update_decision_buttons(decision)
+            self._update_thumbnail_filter_button()
 
             # アドバイザリー (このフレームが要注意な理由)
             adv_text, _adv_short, adv_fg, adv_bg = self._advisory_for_row(row, self.index)
@@ -996,6 +1146,7 @@ if QMainWindow is not None:
                 self._render_current()
                 return
 
+            current_all_index = self._all_index(self.index) if self.rows else None
             old_decisions = {idx: self.rows[idx].get("decision", "keep") for idx in changes}
             for idx, decision in changes.items():
                 self.rows[idx]["decision"] = decision
@@ -1011,9 +1162,12 @@ if QMainWindow is not None:
                 )
                 self._render_current()
                 return
-            for idx in changes:
-                self._refresh_thumbnail_row(idx)
-            self._render_current()
+            if self._thumbnail_filter_key == REVIEW_THUMBNAIL_FILTER_ALL:
+                for idx in changes:
+                    self._refresh_thumbnail_row(idx)
+                self._render_current()
+            else:
+                self._apply_row_filters(preferred_all_index=current_all_index, force_thumbnails=True)
             self.decisions_changed.emit()
 
         def _set_current_decision(self, decision: str) -> None:

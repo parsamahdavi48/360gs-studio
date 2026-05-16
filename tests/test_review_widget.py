@@ -12,6 +12,12 @@ from PySide6.QtGui import QPixmap
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QAbstractItemView, QApplication, QToolButton
 
+from core.review_frame_filters import (
+    REVIEW_THUMBNAIL_FILTER_ACTIONABLE,
+    REVIEW_THUMBNAIL_FILTER_ALL,
+    REVIEW_THUMBNAIL_FILTER_DROPS,
+    REVIEW_THUMBNAIL_FILTER_WARNINGS,
+)
 from core.scene_layout import selected_frames_path
 from gui import i18n
 from gui.common.perspective_preview import PREVIEW_PROJECTION_EQUIRECT, PREVIEW_PROJECTION_PERSPECTIVE
@@ -39,6 +45,45 @@ def _write_scene(tmp_path: Path) -> tuple[Path, Path]:
                 "output_file": image_rel,
                 "decision": "keep",
                 "status": "ok",
+                "timestamp_sec": str(seq),
+                "blur_score_final": "100",
+                "change_score_final": "0.1",
+            }
+        )
+
+    csv_path = selected_frames_path(scene)
+    csv_path.parent.mkdir(parents=True, exist_ok=True)
+    with csv_path.open("w", encoding="utf-8", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=list(rows[0].keys()))
+        writer.writeheader()
+        writer.writerows(rows)
+    return scene, csv_path
+
+
+def _write_filter_scene(tmp_path: Path) -> tuple[Path, Path]:
+    scene = tmp_path
+    images = scene / "images"
+    images.mkdir()
+    specs = [
+        ("drop", "ok"),
+        ("keep", "borderline_blur"),
+        ("drop", "motion_blur"),
+        ("keep", "novelty_added"),
+        ("keep", "ok"),
+    ]
+    rows = []
+    colors = [Qt.red, Qt.blue, Qt.green, Qt.yellow, Qt.magenta]
+    for seq, ((decision, status), color) in enumerate(zip(specs, colors, strict=True), start=1):
+        pixmap = QPixmap(64, 32)
+        pixmap.fill(color)
+        image_rel = f"images/frame_{seq:06d}.png"
+        assert pixmap.save(str(scene / image_rel))
+        rows.append(
+            {
+                "seq": str(seq),
+                "output_file": image_rel,
+                "decision": decision,
+                "status": status,
                 "timestamp_sec": str(seq),
                 "blur_score_final": "100",
                 "change_score_final": "0.1",
@@ -499,8 +544,103 @@ def test_review_widget_review_controls_are_left_of_mode_toolbar(tmp_path: Path) 
 
     assert top_row.itemAt(top_row.count() - 1).widget() == widget.mode_toolbar
     assert widget.mode_toolbar.isAncestorOf(widget.projection_toggle_btn)
-    assert top_row.itemAt(top_row.count() - 2).widget() == widget.reset_decision_button
-    assert top_row.itemAt(top_row.count() - 3).widget() == widget.flag_button
+    assert top_row.itemAt(top_row.count() - 2).widget() == widget.thumbnail_filter_button
+    assert top_row.itemAt(top_row.count() - 3).widget() == widget.reset_decision_button
+    assert top_row.itemAt(top_row.count() - 4).widget() == widget.flag_button
+    assert widget.thumbnail_filter_button.accessibleName() == i18n.t("REVIEW_THUMBNAIL_FILTER")
+    assert not widget.thumbnail_filter_button.icon().isNull()
+    assert widget.thumbnail_filter_button.property("hideMenuIndicator") == "true"
+    assert widget.thumbnail_filter_button.menu() is not None
+    assert "CSV" not in widget.thumbnail_filter_button.toolTip()
+    assert "保存先" not in widget.thumbnail_filter_button.toolTip()
+
+
+def test_review_widget_thumbnail_filter_modes_show_expected_rows(tmp_path: Path) -> None:
+    _app()
+    scene, csv_path = _write_filter_scene(tmp_path)
+    widget = ReviewWidget(scene, csv_path)
+    widget.set_preview_mode(PREVIEW_MODE_THUMBNAILS)
+
+    assert widget.thumbnail_filter_key() == REVIEW_THUMBNAIL_FILTER_ALL
+    assert widget.thumbnail_model.rowCount() == 5
+
+    widget.set_thumbnail_filter(REVIEW_THUMBNAIL_FILTER_DROPS)
+    assert [Path(row["output_file"]).name for row in widget.rows] == [
+        "frame_000001.png",
+        "frame_000003.png",
+    ]
+    assert widget.thumbnail_model.rowCount() == 2
+    assert widget.thumbnail_filter_button.isChecked()
+    assert "2" in widget.thumbnail_filter_button.toolTip()
+
+    widget.set_thumbnail_filter(REVIEW_THUMBNAIL_FILTER_WARNINGS)
+    assert [Path(row["output_file"]).name for row in widget.rows] == ["frame_000002.png"]
+    assert widget.thumbnail_model.rowCount() == 1
+
+    widget.set_thumbnail_filter(REVIEW_THUMBNAIL_FILTER_ACTIONABLE)
+    assert [Path(row["output_file"]).name for row in widget.rows] == [
+        "frame_000001.png",
+        "frame_000002.png",
+        "frame_000003.png",
+    ]
+    assert widget.thumbnail_model.rowCount() == 3
+
+
+def test_review_widget_thumbnail_filter_updates_original_csv_rows(tmp_path: Path) -> None:
+    _app()
+    scene, csv_path = _write_filter_scene(tmp_path)
+    widget = ReviewWidget(scene, csv_path)
+    widget.set_preview_mode(PREVIEW_MODE_THUMBNAILS)
+    widget.set_thumbnail_filter(REVIEW_THUMBNAIL_FILTER_DROPS)
+
+    widget.thumbnail_view.setCurrentIndex(widget.thumbnail_model.index(1, 0))
+    widget.toggle_decision()
+
+    assert _read_decisions(csv_path) == ["drop", "keep", "keep", "keep", "keep"]
+    assert [Path(row["output_file"]).name for row in widget.rows] == ["frame_000001.png"]
+    assert widget.thumbnail_model.rowCount() == 1
+    assert widget.thumbnail_filter_key() == REVIEW_THUMBNAIL_FILTER_DROPS
+
+
+def test_review_widget_thumbnail_filter_composes_with_source_filter(tmp_path: Path) -> None:
+    _app()
+    scene, csv_path = _write_filter_scene(tmp_path)
+    _update_scene_rows(
+        csv_path,
+        [
+            {"source_video": "a.mp4"},
+            {"source_video": "b.mp4"},
+            {"source_video": "b.mp4"},
+            {"source_video": "a.mp4"},
+            {"source_video": "b.mp4"},
+        ],
+    )
+    widget = ReviewWidget(scene, csv_path)
+    widget.set_preview_mode(PREVIEW_MODE_THUMBNAILS)
+
+    widget.set_source_filter("video:b.mp4")
+    widget.set_thumbnail_filter(REVIEW_THUMBNAIL_FILTER_ACTIONABLE)
+
+    assert [Path(row["output_file"]).name for row in widget.rows] == [
+        "frame_000002.png",
+        "frame_000003.png",
+    ]
+    assert "2" in widget.thumbnail_filter_button.toolTip()
+
+
+def test_review_widget_thumbnail_filter_handles_empty_matches(tmp_path: Path) -> None:
+    _app()
+    scene, csv_path = _write_scene(tmp_path)
+    widget = ReviewWidget(scene, csv_path)
+    widget.set_preview_mode(PREVIEW_MODE_THUMBNAILS)
+
+    widget.set_thumbnail_filter(REVIEW_THUMBNAIL_FILTER_DROPS)
+
+    assert widget.rows == []
+    assert widget.thumbnail_model.rowCount() == 0
+    assert not widget.flag_button.isEnabled()
+    assert not widget.reset_decision_button.isEnabled()
+    assert widget.frame_position_label.text() == i18n.t("REVIEW_FILTER_EMPTY_POSITION")
 
 
 def test_review_widget_thumbnail_selection_changes_current_frame(tmp_path: Path) -> None:

@@ -11,18 +11,18 @@ When you press `Apply`, Step 2 removes dropped frames from `images/`. Kept filen
 | Scan the extracted set quickly | `Thumbnail List` |
 | Inspect blur or fine detail | `Single Preview` |
 | View a 360° image like a normal camera | `90° Perspective Preview` |
-| Review only planned drops and quality warnings | `Next Review Target` / `Previous Review Target` |
+| Review only planned drops and quality warnings | Thumbnail filter / `Next Review Target` / `Previous Review Target` |
 | Change whether a frame is kept or dropped | Flag keep/drop button |
 | Rename kept images to a clean sequence before masks/Step 4 | `Renumber kept images` |
 | Apply decisions to the actual `images/` folder | `Apply` |
 
-The efficient workflow is to scan the thumbnail list first, then jump through only the dropped or quality-warning frames that need attention. Turn on `Include added frames` when you also want to audit frames added for viewpoint change, blur replacement, or spacing.
+The efficient workflow is to scan the thumbnail list first, then use the thumbnail filter for `Drops Only`, `Review Only`, or `Drops + Review`. Turn on `Include added frames` when you also want the review-target buttons to audit frames added for viewpoint change, blur replacement, or spacing.
 
 ## Basic Flow
 
 1. Open Step 2 after Step 1 finishes.
 2. Use the thumbnail list to check overall density and obvious blur.
-3. Use `Next Review Target` to move through planned drops and quality-warning frames.
+3. Use the thumbnail filter or `Next Review Target` to move through planned drops and quality-warning frames.
 4. Use single preview for detailed checks. For 360° images, switch to the 90° perspective preview when detail is easier to judge that way.
 5. Mark useful frames as Keep and unwanted frames as Drop.
 6. If needed, enable `Renumber kept images` before masks or Step 4 outputs exist.
@@ -38,6 +38,8 @@ Keep/drop decisions are kept as you work. Dropped image files are not removed fr
 Use this to scan many frames, check capture density, and find repeated or blurry runs. Selection follows Windows Explorer behavior: click, Shift-click, and Ctrl-click.
 
 When multiple thumbnails are selected, keep/drop and reset actions apply to the selection. If nothing is selected, they apply to the current frame.
+
+The header thumbnail filter can show only dropped frames, only review warnings, or both. Keep/drop changes still write to the same CSV while filtered; choose `All Frames` to return to the full list.
 
 ### Single Preview
 

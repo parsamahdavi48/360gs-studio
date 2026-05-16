@@ -158,6 +158,15 @@ _PERSPECTIVE_PREVIEW_SVG = """
 </svg>
 """.strip()
 
+_FILTER_SVG = """
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none">
+  <path d="M4.4 6.2h15.2l-5.9 6.7v4.6l-3.4 1.8v-6.4Z" stroke="#e5e7eb"
+        stroke-width="1.8" stroke-linejoin="round"/>
+  <path d="M8.4 6.2h7.2" stroke="#2dd4bf" stroke-width="1.8" stroke-linecap="round"/>
+  <path d="M10.4 12.9h3.2" stroke="#2dd4bf" stroke-width="1.6" stroke-linecap="round"/>
+</svg>
+""".strip()
+
 _MASK_OVERLAY_ON_SVG = """
 <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none">
   <path d="M3.8 12s3-5.2 8.2-5.2 8.2 5.2 8.2 5.2-3 5.2-8.2 5.2S3.8 12 3.8 12Z"
@@ -274,6 +283,10 @@ def thumbnail_preview_icon(size: int = 18) -> QIcon:
 
 def perspective_preview_icon(size: int = 18) -> QIcon:
     return svg_icon(_PERSPECTIVE_PREVIEW_SVG, size)
+
+
+def filter_icon(size: int = 18) -> QIcon:
+    return svg_icon(_FILTER_SVG, size)
 
 
 def mask_overlay_on_icon(size: int = 18) -> QIcon:
