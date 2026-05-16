@@ -10,6 +10,8 @@
 
 Fork元: [tetraface/tetraface-3dgs-utils](https://github.com/tetraface/tetraface-3dgs-utils)
 
+![STechDrive 3DGS Utils ワークフロー](images/stechdrive-3dgs-workflow-ja.png)
+
 ![STechDrive 3DGS Utils GUI](images/stechdrive-3dgs-utils-gui.jpg)
 
 ## このアプリでできること

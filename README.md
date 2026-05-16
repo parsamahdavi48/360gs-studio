@@ -10,6 +10,8 @@ A Windows-first integrated GUI tool for turning 360° camera video into images, 
 
 Forked from [tetraface/tetraface-3dgs-utils](https://github.com/tetraface/tetraface-3dgs-utils).
 
+![STechDrive 3DGS Utils workflow](images/stechdrive-3dgs-workflow-en.png)
+
 ![STechDrive 3DGS Utils GUI](images/stechdrive-3dgs-utils-gui.jpg)
 
 ## What You Can Do
