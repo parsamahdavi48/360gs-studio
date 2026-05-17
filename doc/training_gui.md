@@ -13,7 +13,7 @@ The Step 4 output is the dataset intended for downstream 3DGS apps. Open `output
 | Open the dataset in the training app | First checks, visual tuning, app-specific training settings |
 | Launch from Step 5 | Repeatable CLI runs and headless training |
 
-Step 5 CLI launch targets a LichtFeld Studio v0.5.2-compatible CLI and the Postshot v1.0-series Release Build CLI. If you are not using CLI training, the Step 4 output dataset remains ready to open directly in each training app.
+Step 5 CLI launch targets a LichtFeld Studio v0.5.2-compatible CLI and the Postshot v1.0/v1.1 Release Build CLI. If you are not using CLI training, the Step 4 output dataset remains ready to open directly in each training app.
 
 ## First Choice
 
@@ -135,7 +135,7 @@ Less common Dataset, Optimizer, Refinement, Loss, Initialization, MRNF/IGS+, Spa
 
 For Postshot, Step 5 creates a `.psht` project from the selected images and camera poses.
 
-For CLI launch from Step 5, use a Postshot v1.0-series Release Build CLI as the baseline. If you want to review settings inside Postshot, open the Step 4 images, camera poses, and optional masks directly in Postshot.
+For CLI launch from Step 5, use a Postshot v1.0/v1.1 Release Build CLI as the baseline. If you want to review settings inside Postshot, open the Step 4 images, camera poses, and optional masks directly in Postshot.
 
 ### Main Settings
 
@@ -167,6 +167,8 @@ This app's masks are white=used and black=excluded. Use `Exclude black / use whi
 ### Advanced Parameters
 
 GPU, profile-specific model limits, anti-aliasing, sky model, training-context storage, Crop/ROI, and optional PLY/SPZ export are under `Postshot Advanced Parameters`. Start with defaults and change only the settings you are deliberately comparing.
+
+Postshot v1.1.0 adds Photometric Compensation in the Postshot GUI for exposure, white balance, and vignetting variation across images. As of Postshot v1.1.0, the `postshot-cli.exe train --help` output does not expose a matching CLI option, so enable that setting inside Postshot when you need it.
 
 ## Custom
 

@@ -144,7 +144,7 @@ If the scene folder path contains non-ASCII characters, an extremely long path, 
 
 The main output of this app is the 3DGS dataset created in Step 4. The Step 4 `output/` folder can be opened directly in 3DGS applications such as LichtFeld Studio, Postshot, and Brush. This is the normal path when you want to inspect and tune image quality, model settings, step counts, masks, and export options inside the training app.
 
-Step 5 is a launch shortcut for training apps that provide a compatible CLI. With a LichtFeld Studio v0.5.2-compatible CLI or a Postshot v1.0-series Release Build CLI, the GUI can build the command for repeat runs or headless training. If you are not using CLI training, load the Step 4 output dataset directly in the training app.
+Step 5 is a launch shortcut for training apps that provide a compatible CLI. With a LichtFeld Studio v0.5.2-compatible CLI or a Postshot v1.0/v1.1 Release Build CLI, the GUI can build the command for repeat runs or headless training. If you are not using CLI training, load the Step 4 output dataset directly in the training app.
 
 Detailed GUI docs:
 

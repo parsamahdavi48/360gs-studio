@@ -13,7 +13,7 @@ Step 4の出力は、下流の3DGSアプリに渡すためのデータセット�
 | 学習アプリで直接読み込む | 初回確認、見た目を確認しながらの調整、学習アプリ固有の設定を細かく使う場合 |
 | Step 5からCLI起動する | 対応CLIで同じ条件を再実行したい場合、ヘッドレスで学習を走らせたい場合 |
 
-Step 5のCLI実行は、LichtFeld Studio v0.5.2互換CLIとPostshot v1.0系Release BuildのCLIを目安にしています。CLIを使わない場合でも、Step 4の出力データセットは各学習アプリで直接使えます。
+Step 5のCLI実行は、LichtFeld Studio v0.5.2互換CLIとPostshot v1.0/v1.1 Release BuildのCLIを目安にしています。CLIを使わない場合でも、Step 4の出力データセットは各学習アプリで直接使えます。
 
 ## まず決めること
 
@@ -135,7 +135,7 @@ Step 4で `3DGUT (LichtFeld)` を使ったデータです。`入力データ` �
 
 Postshotでは、画像とカメラポーズから `.psht` プロジェクトを作成します。
 
-Step 5からCLI起動する場合は、v1.0系Release BuildのPostshot CLIを目安にします。Postshot側で設定を確認しながら進めたい場合は、Step 4の画像、カメラポーズ、必要なマスクをPostshotで直接読み込んでください。
+Step 5からCLI起動する場合は、v1.0/v1.1 Release BuildのPostshot CLIを目安にします。Postshot側で設定を確認しながら進めたい場合は、Step 4の画像、カメラポーズ、必要なマスクをPostshotで直接読み込んでください。
 
 ### まず確認する項目
 
@@ -167,6 +167,8 @@ Step 5からCLI起動する場合は、v1.0系Release BuildのPostshot CLIを目
 ### 詳細パラメーター
 
 GPU、プロファイル依存のモデル上限、Anti-Aliasing、Sky Model、継続学習データ、Crop/ROI、PLY/SPZ書き出しは `Postshot詳細パラメーター` にあります。まずは既定値で実行し、比較や再実行の目的がある項目だけ変更します。
+
+Postshot v1.1.0では、露出、ホワイトバランス、周辺減光のばらつきを補正するPhotometric CompensationがPostshot GUIに追加されています。ただしPostshot v1.1.0時点の `postshot-cli.exe train --help` には対応するCLIオプションが出ていないため、この設定が必要な場合はPostshot側のGUIで有効にしてください。
 
 ## Custom
 
