@@ -435,6 +435,11 @@ class Step4AprilTagMixin:
     def _show_apriltag_applied_result(self, result: ScaleApplyResult) -> None:
         backup_dir = result.transforms_backup.parent
         scale_text = f"{result.scale:.9g}"
+        pointcloud_text = (
+            self._wrapped_apriltag_path(result.pointcloud_ply)
+            if result.pointcloud_ply is not None
+            else i18n.t("APRILTAG_APPLY_CONFIRM_NO_POINTCLOUD")
+        )
         self._apriltag_last_scale = result.scale
         self._apriltag_last_scale_text = scale_text
         self._apriltag_scale_applied = True
@@ -444,6 +449,8 @@ class Step4AprilTagMixin:
             self._without_first_result_line(
                 i18n.t("APRILTAG_APPLIED_FORMAT").format(
                     scale=scale_text,
+                    transforms=self._wrapped_apriltag_path(result.transforms_json),
+                    pointcloud=pointcloud_text,
                     frames=result.frames_scaled,
                     points=result.points_scaled,
                     backup=self._wrapped_apriltag_path(backup_dir),
@@ -587,6 +594,30 @@ class Step4AprilTagMixin:
             return
         if not self.scene_dir:
             self._warn_apriltag(i18n.t("APRILTAG_SCENE_REQUIRED"))
+            return
+        try:
+            dataset = validate_scale_output_dataset(Path(self.scene_dir))
+        except Exception as exc:
+            self._warn_apriltag(str(exc))
+            return
+        pointcloud_text = (
+            self._wrapped_apriltag_path(dataset.pointcloud_ply)
+            if dataset.pointcloud_ply is not None
+            else i18n.t("APRILTAG_APPLY_CONFIRM_NO_POINTCLOUD")
+        )
+        message = i18n.t("APRILTAG_APPLY_CONFIRM").format(
+            scale=f"{self._apriltag_last_scale:.9g}",
+            transforms=self._wrapped_apriltag_path(dataset.transforms_json),
+            pointcloud=pointcloud_text,
+        )
+        response = QMessageBox.question(
+            self,
+            i18n.t("APRILTAG_APPLY_CONFIRM_TITLE"),
+            message,
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No,
+        )
+        if response != QMessageBox.Yes:
             return
         try:
             result = apply_scene_output_scale(Path(self.scene_dir), self._apriltag_last_scale)

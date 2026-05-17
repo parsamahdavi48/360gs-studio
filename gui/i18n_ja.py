@@ -946,7 +946,7 @@ STRINGS: dict[str, str] = {
     "APRILTAG_CONVERSION_PRESET_BRUSH": "Brush",
     "APRILTAG_CONVERSION_PRESET_STANDARD": "標準Cubemap",
     "APRILTAG_ESTIMATE": "推定",
-    "APRILTAG_APPLY_SCALE": "Scaleへ反映",
+    "APRILTAG_APPLY_SCALE": "Scaleを反映",
     "APRILTAG_RESULT": "結果",
     "APRILTAG_RESULT_EMPTY": "未推定",
     "APRILTAG_DEV_STATUS": "実験機能です。現在は既存のCubemap出力画像とtransforms.jsonから推定します。",
@@ -960,9 +960,19 @@ STRINGS: dict[str, str] = {
     "APRILTAG_SCALE_COPIED": "scaleをコピーしました",
     "APRILTAG_APPLIED": "推定scaleを出力データへ反映しました。",
     "APRILTAG_APPLIED_FORMAT": (
-        "scale={scale} を output/transforms.json と pointcloud.ply に反映しました。\n"
+        "scale={scale} を以下の出力ファイルへ反映しました。\n"
+        "transforms.json:\n{transforms}\n"
+        "pointcloud:\n{pointcloud}\n"
         "カメラ={frames}, 点={points}\nバックアップ:\n{backup}"
     ),
+    "APRILTAG_APPLY_CONFIRM_TITLE": "Scaleを反映",
+    "APRILTAG_APPLY_CONFIRM": (
+        "推定scale={scale}を既存の出力ファイルに掛けて書き換えます。\n\n"
+        "transforms.json:\n{transforms}\n\n"
+        "pointcloud:\n{pointcloud}\n\n"
+        "書き換え前にバックアップを作成します。続行しますか？"
+    ),
+    "APRILTAG_APPLY_CONFIRM_NO_POINTCLOUD": "見つかりません（transforms.jsonのみ更新します）",
     "APRILTAG_PRINT_SECTION": "タグPDF",
     "APRILTAG_PRINT_TAG_ID": "印刷ID",
     "APRILTAG_PRINT_PAGE": "用紙",
@@ -1204,7 +1214,7 @@ TIPS: dict[str, str] = {
         "カスタムビューで出した場合は、自動のまま元のシーンフォルダで実行してください"
     ),
     "APRILTAG_ESTIMATE": "投影済みCubemapの output/transforms.json と出力画像からAprilTagを検出し、メートル換算のスケールを推定します。エクイレクタングラー出力の場合は先にCubemap画像を書き出してください",
-    "APRILTAG_APPLY_SCALE": "推定した係数を output/transforms.json のカメラ位置と output/pointcloud.ply に掛けます。元ファイルはバックアップします",
+    "APRILTAG_APPLY_SCALE": "推定した係数を既存の output/transforms.json のカメラ位置と output/pointcloud.ply に掛けます。押すと対象ファイルを確認してから書き換えます。元ファイルはバックアップします",
     "APRILTAG_RESULT": (
         "結果の読み方:\n"
         "観測=採用されたタグ検出数。多いほど安定しやすいです。\n"
@@ -1213,7 +1223,7 @@ TIPS: dict[str, str] = {
         "同じIDの複数配置、タグ実寸、印刷倍率、誤検出を確認してください。\n"
         "RMS=scale計算に使った比較同士のズレの目安です。単位はメートルで、0が理想です。"
         "16cm前後のタグなら、0.02m未満は良好、0.02-0.05mは要確認、"
-        "0.05m超は注意、0.10m超は通常そのままScaleへ反映しないでください。"
+        "0.05m超は注意、0.10m超は通常そのままScaleを反映しないでください。"
         "目安はタグ実寸、距離、ブレで変わります"
     ),
     "APRILTAG_PRINT_FAMILY": "PDFに出力するAprilTagファミリです。通常は推定に使うファミリと同じにします",

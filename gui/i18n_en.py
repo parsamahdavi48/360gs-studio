@@ -943,7 +943,7 @@ STRINGS: dict[str, str] = {
     "APRILTAG_CONVERSION_PRESET_BRUSH": "Brush",
     "APRILTAG_CONVERSION_PRESET_STANDARD": "Standard Cubemap",
     "APRILTAG_ESTIMATE": "Estimate",
-    "APRILTAG_APPLY_SCALE": "Apply to Scale",
+    "APRILTAG_APPLY_SCALE": "Apply Scale",
     "APRILTAG_RESULT": "Result",
     "APRILTAG_RESULT_EMPTY": "Not estimated",
     "APRILTAG_DEV_STATUS": "Experimental. Estimation currently uses existing Cubemap output images and transforms.json.",
@@ -957,9 +957,19 @@ STRINGS: dict[str, str] = {
     "APRILTAG_SCALE_COPIED": "Copied scale",
     "APRILTAG_APPLIED": "Applied the estimated scale to the output dataset.",
     "APRILTAG_APPLIED_FORMAT": (
-        "Applied scale={scale} to output/transforms.json and pointcloud.ply.\n"
+        "Applied scale={scale} to these output files.\n"
+        "transforms.json:\n{transforms}\n"
+        "pointcloud:\n{pointcloud}\n"
         "Cameras={frames}, points={points}\nBackup:\n{backup}"
     ),
+    "APRILTAG_APPLY_CONFIRM_TITLE": "Apply Scale",
+    "APRILTAG_APPLY_CONFIRM": (
+        "This will multiply existing output files by estimated scale={scale}.\n\n"
+        "transforms.json:\n{transforms}\n\n"
+        "pointcloud:\n{pointcloud}\n\n"
+        "Backups will be created before writing. Continue?"
+    ),
+    "APRILTAG_APPLY_CONFIRM_NO_POINTCLOUD": "Not found (only transforms.json will be updated)",
     "APRILTAG_PRINT_SECTION": "Tag PDF",
     "APRILTAG_PRINT_TAG_ID": "Print ID",
     "APRILTAG_PRINT_PAGE": "Paper",
@@ -1205,7 +1215,7 @@ TIPS: dict[str, str] = {
         "choose the target used during conversion. For custom views, keep Auto and run from the original scene folder."
     ),
     "APRILTAG_ESTIMATE": "Detect AprilTags from projected Cubemap output/transforms.json and output images, then estimate meters per scene unit. For equirectangular output, create Cubemap images first.",
-    "APRILTAG_APPLY_SCALE": "Multiply camera positions in output/transforms.json and output/pointcloud.ply by the estimated factor. Original files are backed up.",
+    "APRILTAG_APPLY_SCALE": "Multiply camera positions in the existing output/transforms.json and output/pointcloud.ply by the estimated factor. The target files are shown for confirmation before writing. Original files are backed up.",
     "APRILTAG_RESULT": (
         "How to read the result:\n"
         "observations = accepted tag detections. More observations usually make the estimate more stable.\n"
