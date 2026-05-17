@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass
-from typing import Iterable
 
 from core.frame_pair_analysis import (
     PAIR_MOTION_BLUR_BASELINE_MIN,

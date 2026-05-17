@@ -69,6 +69,7 @@ else:
 
 # i18n は PySide6 に依存しないので無条件 import
 from core.apply_frame_decisions import pending_drop_image_paths as find_pending_drop_image_paths
+from core.review_blur_sensitivity import REVIEW_DECISION_OVERRIDE_FIELD
 from core.review_frame_filters import (
     REVIEW_THUMBNAIL_FILTER_ACTIONABLE,
     REVIEW_THUMBNAIL_FILTER_ALL,
@@ -80,7 +81,6 @@ from core.review_frame_filters import (
     thumbnail_filter_counts,
     thumbnail_filter_indices,
 )
-from core.review_blur_sensitivity import REVIEW_DECISION_OVERRIDE_FIELD
 from core.scene_layout import selected_frames_path
 from gui import i18n
 
