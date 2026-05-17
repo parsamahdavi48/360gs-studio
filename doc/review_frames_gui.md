@@ -12,6 +12,7 @@ When you press `Apply`, Step 2 removes dropped frames from `images/`. Kept filen
 | Inspect blur or fine detail | `Single Preview` |
 | View a 360° image like a normal camera | `90° Perspective Preview` |
 | Review only planned drops and quality warnings | Thumbnail filter / `Next Review Target` / `Previous Review Target` |
+| Usable-looking images are marked as blur | `Blur Detection`: `Standard` / `Low sensitivity` |
 | Change whether a frame is kept or dropped | Flag keep/drop button |
 | Rename kept images to a clean sequence before masks/Step 4 | `Renumber kept images` |
 | Apply decisions to the actual `images/` folder | `Apply` |
@@ -23,11 +24,12 @@ The efficient workflow is to scan the thumbnail list first, then use the thumbna
 1. Open Step 2 after Step 1 finishes.
 2. Use the thumbnail list to check overall density and obvious blur.
 3. Use the thumbnail filter or `Next Review Target` to move through planned drops and quality-warning frames.
-4. Use single preview for detailed checks. For 360° images, switch to the 90° perspective preview when detail is easier to judge that way.
-5. Mark useful frames as Keep and unwanted frames as Drop.
-6. If needed, enable `Renumber kept images` before masks or Step 4 outputs exist.
-7. Press `Apply` when the decisions are ready.
-8. Continue to Step 3.
+4. If images that look usable are marked as blur, set `Blur Detection` to `Low sensitivity`. You can switch back to `Standard` while reviewing.
+5. Use single preview for detailed checks. For 360° images, switch to the 90° perspective preview when detail is easier to judge that way.
+6. Mark useful frames as Keep and unwanted frames as Drop.
+7. If needed, enable `Renumber kept images` before masks or Step 4 outputs exist.
+8. Press `Apply` when the decisions are ready.
+9. Continue to Step 3.
 
 Keep/drop decisions are kept as you work. Dropped image files are not removed from `images/` until you press `Apply`.
 
@@ -69,6 +71,12 @@ Step 2 labels are not a separate quality score. They explain why a frame is kept
 | `External: imported image` | Image registered through scene import or external image add |
 
 Thumbnail view shows a short label and category color in the bottom ribbon of each image. Dropped, review, added, quick-extract, external-import, and normal kept images can be distinguished by color.
+
+## Blur Detection
+
+Use `Low sensitivity` when images that look usable are being marked as blur. Keep `Standard` when the blur labels match what you see in the frames.
+
+The setting can be switched while reviewing. Manual keep/drop changes you already made are preserved.
 
 ## Keep/Drop Decisions
 

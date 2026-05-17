@@ -9,8 +9,14 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 import pytest
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QPixmap
-from PySide6.QtWidgets import QApplication, QComboBox, QLabel, QLineEdit, QPushButton
+from PySide6.QtWidgets import QApplication, QComboBox, QLabel, QLineEdit, QPushButton, QSizePolicy
 
+from core.review_blur_sensitivity import (
+    BLUR_REVIEW_MODE_FIELD,
+    BLUR_REVIEW_MODE_LOW,
+    BLUR_REVIEW_MODE_STANDARD,
+    REVIEW_DECISION_OVERRIDE_FIELD,
+)
 from core.scene_layout import selected_frames_path
 from gui import i18n
 from gui.app import MainWindow
@@ -40,6 +46,47 @@ def _write_scene(scene: Path, count: int = 2, drop_indices: set[int] | None = No
                 "status": "ok",
                 "timestamp_sec": str(seq),
                 "blur_score_final": "100",
+                "change_score_final": "0.1",
+            }
+        )
+
+    csv_path = selected_frames_path(scene)
+    csv_path.parent.mkdir(parents=True, exist_ok=True)
+    with csv_path.open("w", encoding="utf-8", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=list(rows[0].keys()))
+        writer.writeheader()
+        writer.writerows(rows)
+    return csv_path
+
+
+def _write_blur_scene(scene: Path) -> Path:
+    images = scene / "images"
+    images.mkdir(exist_ok=True)
+    rows = []
+    specs = [
+        ("0.55", "motion_blur", "drop", "motion_blur"),
+        ("0.75", "borderline_blur", "keep", "fixed_interval"),
+        ("0.90", "ok", "keep", "fixed_interval"),
+    ]
+    for seq, (ratio, status, decision, reason) in enumerate(specs, start=1):
+        pixmap = QPixmap(64, 32)
+        pixmap.fill(Qt.red if seq % 2 else Qt.blue)
+        image_rel = f"images/frame_{seq:06d}.png"
+        assert pixmap.save(str(scene / image_rel))
+        rows.append(
+            {
+                "seq": str(seq),
+                "output_file": image_rel,
+                "decision": decision,
+                "status": status,
+                "analysis_pipeline": "pair",
+                "selection_reason": reason,
+                "review_required": "1" if status != "ok" else "0",
+                "risk_flags": status if "blur" in status else "",
+                "timestamp_sec": str(seq),
+                "blur_score_final": "55",
+                "sharpness_baseline": "100",
+                "sharpness_ratio": ratio,
                 "change_score_final": "0.1",
             }
         )
@@ -104,6 +151,12 @@ def test_review_step_left_pane_guides_apply_before_mask_step() -> None:
     assert "無効" not in i18n.NEXT_STEP_MASK_NOTICE
     assert i18n.t("ACTION_FINALIZE_REVIEW") in i18n.NEXT_STEP_MASK_NOTICE
     assert "Step 3" in i18n.NEXT_STEP_MASK_NOTICE
+    assert i18n.t("REVIEW_BLUR_DETECTION") in labels
+    assert i18n.tip("REVIEW_BLUR_DETECTION").splitlines()[0] not in labels
+    assert i18n.t("REVIEW_BLUR_DETECTION_STANDARD") in buttons
+    assert i18n.t("REVIEW_BLUR_DETECTION_LOW") in buttons
+    assert step.blur_mode_label.toolTip() == i18n.tip("REVIEW_BLUR_DETECTION")
+    assert step.blur_mode_control.sizePolicy().horizontalPolicy() == QSizePolicy.Fixed
 
 
 def test_review_step_uses_fixed_selected_frames_csv(tmp_path: Path) -> None:
@@ -139,6 +192,56 @@ def test_review_step_apply_enabled_only_after_decision_change(tmp_path: Path) ->
 
     assert step._review_widget is not None
     assert not step.primary_action_enabled()
+
+
+def test_review_step_blur_detection_mode_can_switch_back_and_forth(tmp_path: Path) -> None:
+    _app()
+    csv_path = _write_blur_scene(tmp_path)
+    step = ReviewStep(Path.cwd())
+    step.set_scene_dir(str(tmp_path))
+    step.on_activated()
+
+    assert step.blur_mode_buttons[BLUR_REVIEW_MODE_STANDARD].isChecked()
+    assert step.blur_mode_buttons[BLUR_REVIEW_MODE_LOW].isEnabled()
+
+    step._on_blur_review_mode_clicked(BLUR_REVIEW_MODE_LOW)
+    rows = _read_rows(csv_path)
+
+    assert step.blur_mode_buttons[BLUR_REVIEW_MODE_LOW].isChecked()
+    assert [row["status"] for row in rows] == ["borderline_blur", "ok", "ok"]
+    assert [row["decision"] for row in rows] == ["keep", "keep", "keep"]
+    assert {row[BLUR_REVIEW_MODE_FIELD] for row in rows} == {BLUR_REVIEW_MODE_LOW}
+
+    step._on_blur_review_mode_clicked(BLUR_REVIEW_MODE_STANDARD)
+    rows = _read_rows(csv_path)
+
+    assert step.blur_mode_buttons[BLUR_REVIEW_MODE_STANDARD].isChecked()
+    assert [row["status"] for row in rows] == ["motion_blur", "borderline_blur", "ok"]
+    assert [row["decision"] for row in rows] == ["drop", "keep", "keep"]
+    assert {row[BLUR_REVIEW_MODE_FIELD] for row in rows} == {BLUR_REVIEW_MODE_STANDARD}
+
+
+def test_review_step_blur_detection_does_not_overwrite_manual_decisions(tmp_path: Path) -> None:
+    _app()
+    csv_path = _write_blur_scene(tmp_path)
+    step = ReviewStep(Path.cwd())
+    step.set_scene_dir(str(tmp_path))
+    step.on_activated()
+    widget = step._review_widget
+    assert widget is not None
+
+    widget.toggle_decision()
+    rows = _read_rows(csv_path)
+    assert rows[0]["decision"] == "keep"
+    assert rows[0][REVIEW_DECISION_OVERRIDE_FIELD] == "1"
+
+    step._on_blur_review_mode_clicked(BLUR_REVIEW_MODE_LOW)
+    step._on_blur_review_mode_clicked(BLUR_REVIEW_MODE_STANDARD)
+    rows = _read_rows(csv_path)
+
+    assert rows[0]["status"] == "motion_blur"
+    assert rows[0]["decision"] == "keep"
+    assert rows[0][REVIEW_DECISION_OVERRIDE_FIELD] == "1"
 
     step._review_widget.toggle_decision()
 

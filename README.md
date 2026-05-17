@@ -1,6 +1,6 @@
 # stechdrive-3dgs-utils
 
-**v1.18.1**
+**v1.19.0**
 
 A Windows-first integrated GUI tool for turning 360° camera video into images, masks, and camera data that are practical for 3D Gaussian Splatting (3DGS) training.
 
@@ -10,7 +10,7 @@ A Windows-first integrated GUI tool for turning 360° camera video into images, 
 
 For normal use, download the latest release ZIP:
 
-[Download stechdrive-3dgs-utils-v1.18.1.zip](https://github.com/stechdrive/stechdrive-3dgs-utils/releases/download/v1.18.1/stechdrive-3dgs-utils-v1.18.1.zip)
+[Download stechdrive-3dgs-utils-v1.19.0.zip](https://github.com/stechdrive/stechdrive-3dgs-utils/releases/download/v1.19.0/stechdrive-3dgs-utils-v1.19.0.zip)
 
 After extracting the ZIP, run `setup_windows.bat`, then `run_gui.bat`.
 
@@ -45,7 +45,7 @@ For video or image sequences from DSLR, mirrorless, smartphone, or other normal 
 ## Highlights
 
 - Extract 360° video into still frames that are practical for SfM and 3DGS training. The GUI can thin footage for walking shots or aerial/distant scenes, and it marks frames that may need review because they are blurry, too similar, or contain a large viewpoint change.
-- Review extracted frames in a large single-image view or a thumbnail list, then mark unwanted frames as keep/drop decisions. For 360° images, the 90° FOV perspective view lets you inspect details in a normal-camera-like view.
+- Review extracted frames in a large single-image view or a thumbnail list, then mark unwanted frames as keep/drop decisions. If usable-looking images are marked as blur, Step 2 can switch blur detection between Standard and Low sensitivity. For 360° images, the 90° FOV perspective view lets you inspect details in a normal-camera-like view.
 - Generate masks for people, the camera operator, tripods, hands, vehicles, sky, blown-out highlights, and stitch seams. Use YOLO/SAM2.1 when you want fast person-focused masks, or SAM3.1 when you want higher-accuracy people and sky masks plus prompt-based cleanup after generation.
 - Preview mask results before saving and inspect them in the thumbnail list. When only a few frames have misses or false detections, regenerate just those frames instead of rerunning the whole image set.
 - With SAM3.1, add missed targets such as tripods or subtract false detections such as signs and logos from existing masks. This reduces the amount of manual mask painting needed after the first pass.

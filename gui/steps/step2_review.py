@@ -8,18 +8,31 @@ from pathlib import Path
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
+    QButtonGroup,
     QCheckBox,
     QComboBox,
+    QHBoxLayout,
     QLabel,
     QMessageBox,
+    QPushButton,
     QScrollArea,
+    QSizePolicy,
     QSplitter,
     QVBoxLayout,
     QWidget,
 )
 
 from core.apply_frame_decisions import load_rows, normalize_decision, pending_drop_image_paths
+from core.extract_frames import read_selected_csv, write_selected_csv_rows
 from core.frame_renumbering import build_renumber_plan, find_renumber_blockers, rename_records
+from core.review_blur_sensitivity import (
+    BLUR_REVIEW_MODE_LOW,
+    BLUR_REVIEW_MODE_STANDARD,
+    apply_blur_review_mode,
+    detect_blur_review_mode,
+    normalize_blur_review_mode,
+    row_supports_blur_review,
+)
 from core.scene_layout import review_dir, selected_frames_path
 from core.scene_project import append_review_run, file_identity, scene_relative, utc_now_iso
 from gui import i18n
@@ -37,6 +50,7 @@ class ReviewStep(BaseStepWidget):
         self._review_widget: QWidget | None = None
         self._loaded_csv_signature: tuple[Path, int, int] | None = None
         self._pending_review_run: dict | None = None
+        self._blur_review_mode = BLUR_REVIEW_MODE_STANDARD
         self._build_ui()
 
     def _build_ui(self) -> None:
@@ -64,6 +78,33 @@ class ReviewStep(BaseStepWidget):
         self.source_filter_combo.currentIndexChanged.connect(self._on_source_filter_changed)
         settings_layout.addWidget(self.source_filter_combo)
 
+        self.blur_mode_label = QLabel(i18n.t("REVIEW_BLUR_DETECTION"))
+        self.blur_mode_label.setToolTip(i18n.tip("REVIEW_BLUR_DETECTION"))
+        settings_layout.addWidget(self.blur_mode_label)
+
+        self.blur_mode_control = QWidget()
+        self.blur_mode_control.setObjectName("segmentedControl")
+        self.blur_mode_control.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
+        blur_mode_layout = QHBoxLayout(self.blur_mode_control)
+        blur_mode_layout.setContentsMargins(2, 2, 2, 2)
+        blur_mode_layout.setSpacing(2)
+        self.blur_mode_group = QButtonGroup(self)
+        self.blur_mode_group.setExclusive(True)
+        self.blur_mode_buttons: dict[str, QPushButton] = {}
+        for mode, label_key in (
+            (BLUR_REVIEW_MODE_STANDARD, "REVIEW_BLUR_DETECTION_STANDARD"),
+            (BLUR_REVIEW_MODE_LOW, "REVIEW_BLUR_DETECTION_LOW"),
+        ):
+            btn = QPushButton(i18n.t(label_key))
+            btn.setObjectName("segmentedOption")
+            btn.setCheckable(True)
+            btn.setToolTip(i18n.tip("REVIEW_BLUR_DETECTION"))
+            btn.clicked.connect(lambda _checked=False, m=mode: self._on_blur_review_mode_clicked(m))
+            self.blur_mode_group.addButton(btn)
+            self.blur_mode_buttons[mode] = btn
+            blur_mode_layout.addWidget(btn)
+        settings_layout.addWidget(self.blur_mode_control, alignment=Qt.AlignLeft)
+
         self.renumber_kept_images_cb = QCheckBox(i18n.t("REVIEW_RENUMBER_KEPT_IMAGES"))
         self.renumber_kept_images_cb.setToolTip(i18n.tip("REVIEW_RENUMBER_KEPT_IMAGES"))
         self.renumber_kept_images_cb.toggled.connect(lambda _checked: self.primary_action_state_changed.emit())
@@ -90,6 +131,7 @@ class ReviewStep(BaseStepWidget):
         splitter.setStretchFactor(1, 1)
         splitter.setSizes([SETTINGS_PANE_WIDTH, 860])
         root_layout.addWidget(splitter)
+        self._sync_blur_review_mode_controls()
 
     def _csv_path(self) -> Path:
         return selected_frames_path(Path(self.scene_dir))
@@ -114,6 +156,7 @@ class ReviewStep(BaseStepWidget):
         super().set_scene_dir(path)
         if changed:
             self._loaded_csv_signature = None
+            self._sync_blur_review_mode_controls()
             self._update_renumber_option_state()
             if path:
                 self._set_review_placeholder(i18n.t("REVIEW_EMBED_EMPTY"))
@@ -123,6 +166,7 @@ class ReviewStep(BaseStepWidget):
     def on_activated(self) -> None:
         self._update_renumber_option_state()
         self._refresh_embedded_review(force=False, show_error=False)
+        self._sync_blur_review_mode_controls()
 
     def primary_action_text(self) -> str:
         return i18n.t("ACTION_FINALIZE_REVIEW")
@@ -204,6 +248,7 @@ class ReviewStep(BaseStepWidget):
         if callable(source_filter_options):
             options = source_filter_options()
         self._sync_source_filter_combo(options)
+        self._sync_blur_review_mode_controls()
         self.primary_action_state_changed.emit()
 
     def _sync_source_filter_combo(self, options: list[dict]) -> None:
@@ -227,6 +272,58 @@ class ReviewStep(BaseStepWidget):
         if not callable(set_source_filter):
             return
         set_source_filter(str(self.source_filter_combo.currentData() or "all"))
+
+    def _sync_blur_review_mode_controls(self) -> None:
+        mode = BLUR_REVIEW_MODE_STANDARD
+        enabled = False
+        if self.scene_dir:
+            csv_path = self._csv_path()
+            if csv_path.exists():
+                try:
+                    _fieldnames, rows = read_selected_csv(csv_path)
+                except Exception:
+                    rows = []
+                mode = detect_blur_review_mode(rows)
+                enabled = any(row_supports_blur_review(row) for row in rows)
+
+        self._blur_review_mode = mode
+        for button_mode, button in self.blur_mode_buttons.items():
+            button.setEnabled(enabled)
+            button.setChecked(button_mode == mode)
+        self.blur_mode_label.setEnabled(enabled)
+
+    def _on_blur_review_mode_clicked(self, mode: str) -> None:
+        normalized = normalize_blur_review_mode(mode)
+        if normalized == self._blur_review_mode:
+            self._sync_blur_review_mode_controls()
+            return
+        try:
+            self._apply_blur_review_mode(normalized)
+        except Exception as exc:
+            QMessageBox.critical(
+                self,
+                i18n.t("REVIEW_BLUR_DETECTION_FAILED_HEADER"),
+                i18n.t("REVIEW_BLUR_DETECTION_FAILED_BODY").format(error=exc),
+            )
+            self._sync_blur_review_mode_controls()
+
+    def _apply_blur_review_mode(self, mode: str) -> None:
+        if not self.scene_dir:
+            return
+        csv_path = self._csv_path()
+        if not csv_path.exists():
+            return
+        fieldnames, rows = read_selected_csv(csv_path)
+        result = apply_blur_review_mode(rows, mode)
+        if result.changed_rows <= 0:
+            self._sync_blur_review_mode_controls()
+            return
+        write_selected_csv_rows(csv_path, fieldnames, rows)
+        self._loaded_csv_signature = None
+        self._blur_review_mode = result.mode
+        self._refresh_embedded_review(force=True, show_error=True)
+        self._sync_blur_review_mode_controls()
+        self.primary_action_state_changed.emit()
 
     def _renumber_kept_images(self) -> bool:
         return self.renumber_kept_images_cb.isEnabled() and self.renumber_kept_images_cb.isChecked()

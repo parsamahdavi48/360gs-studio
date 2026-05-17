@@ -80,6 +80,7 @@ from core.review_frame_filters import (
     thumbnail_filter_counts,
     thumbnail_filter_indices,
 )
+from core.review_blur_sensitivity import REVIEW_DECISION_OVERRIDE_FIELD
 from core.scene_layout import selected_frames_path
 from gui import i18n
 
@@ -201,6 +202,9 @@ if QMainWindow is not None:
             if not self._all_rows:
                 raise RuntimeError(f"No rows found in {csv_path}")
             self._initial_decisions = [row["decision"] for row in self._all_rows]
+            self._initial_decision_overrides = [
+                row.get(REVIEW_DECISION_OVERRIDE_FIELD, "") for row in self._all_rows
+            ]
             self._source_filter_key = "all"
             self._thumbnail_filter_key = REVIEW_THUMBNAIL_FILTER_ALL
             self._visible_indices = list(range(len(self._all_rows)))
@@ -1127,34 +1131,65 @@ if QMainWindow is not None:
             return self.has_decision_changes() or bool(self.pending_drop_image_paths())
 
         def _write_rows(self) -> None:
-            fieldnames = list(self._all_rows[0].keys())
+            fieldnames: list[str] = []
+            for row in self._all_rows:
+                for key in row.keys():
+                    if key not in fieldnames:
+                        fieldnames.append(key)
             with self.csv_path.open("w", encoding="utf-8", newline="") as f:
                 writer = csv.DictWriter(f, fieldnames=fieldnames)
                 writer.writeheader()
                 writer.writerows(self._all_rows)
 
-        def _set_decisions(self, decisions_by_index: dict[int, str]) -> None:
+        def _set_decisions(
+            self,
+            decisions_by_index: dict[int, str],
+            *,
+            mark_manual: bool = True,
+            overrides_by_index: dict[int, str] | None = None,
+        ) -> None:
             changes: dict[int, str] = {}
+            override_changes: dict[int, str] = {}
             for idx, decision in decisions_by_index.items():
                 if not (0 <= idx < len(self.rows)):
                     continue
                 normalized = "drop" if decision == "drop" else "keep"
                 if self.rows[idx].get("decision", "keep") != normalized:
                     changes[idx] = normalized
+                if overrides_by_index is not None:
+                    override_value = overrides_by_index.get(idx, "")
+                    if self.rows[idx].get(REVIEW_DECISION_OVERRIDE_FIELD, "") != override_value:
+                        override_changes[idx] = override_value
+                elif mark_manual:
+                    all_idx = self._all_index(idx)
+                    override_value = (
+                        "1"
+                        if normalized != self._initial_decisions[all_idx]
+                        else self._initial_decision_overrides[all_idx]
+                    )
+                    if self.rows[idx].get(REVIEW_DECISION_OVERRIDE_FIELD, "") != override_value:
+                        override_changes[idx] = override_value
 
-            if not changes:
+            if not changes and not override_changes:
                 self._render_current()
                 return
 
             current_all_index = self._all_index(self.index) if self.rows else None
             old_decisions = {idx: self.rows[idx].get("decision", "keep") for idx in changes}
+            old_overrides = {
+                idx: self.rows[idx].get(REVIEW_DECISION_OVERRIDE_FIELD, "") for idx in override_changes
+            }
             for idx, decision in changes.items():
                 self.rows[idx]["decision"] = decision
+            for idx, override_value in override_changes.items():
+                self.rows[idx][REVIEW_DECISION_OVERRIDE_FIELD] = override_value
             try:
                 self._write_rows()
             except Exception as e:
                 for idx, old_decision in old_decisions.items():
                     self.rows[idx]["decision"] = old_decision
+                for idx, old_override in old_overrides.items():
+                    self.rows[idx][REVIEW_DECISION_OVERRIDE_FIELD] = old_override
                 QMessageBox.critical(
                     self,
                     i18n.t("REVIEW_SAVE_FAILED_HEADER"),
@@ -1214,8 +1249,13 @@ if QMainWindow is not None:
             self._focus_thumbnail_view_if_active()
 
         def reset_decision(self) -> None:
+            indices = self._decision_action_indices()
             self._set_decisions(
-                {idx: self._initial_decisions[self._all_index(idx)] for idx in self._decision_action_indices()}
+                {idx: self._initial_decisions[self._all_index(idx)] for idx in indices},
+                mark_manual=False,
+                overrides_by_index={
+                    idx: self._initial_decision_overrides[self._all_index(idx)] for idx in indices
+                },
             )
             self._focus_thumbnail_view_if_active()
 
