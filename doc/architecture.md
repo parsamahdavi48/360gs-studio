@@ -98,6 +98,17 @@ Run the full test suite before committing broad refactors:
 .\.venv\Scripts\python.exe -m pytest -q
 ```
 
+Before publishing a release, run the full release gate:
+
+```powershell
+.\.venv\Scripts\python.exe -m ruff check .
+.\.venv\Scripts\python.exe -m pytest -q
+.\.venv\Scripts\python.exe scripts\create_release_zip.py
+```
+
+The release ZIP command must keep its setup preflight verification enabled
+unless the owner explicitly asks to skip it.
+
 When checking the PySide GUI offscreen in Codex or CI-like environments, set
 `QT_QPA_PLATFORM=offscreen` and call `apply_theme(app)` before constructing
 `MainWindow`. The theme applies a Windows Japanese-capable font such as Meiryo

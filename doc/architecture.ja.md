@@ -57,4 +57,14 @@ Python コードを変更したら Ruff を使います。
 .\.venv\Scripts\python.exe -m pytest -q
 ```
 
+リリース公開前には、次のリリースゲートをすべて通します。
+
+```powershell
+.\.venv\Scripts\python.exe -m ruff check .
+.\.venv\Scripts\python.exe -m pytest -q
+.\.venv\Scripts\python.exe scripts\create_release_zip.py
+```
+
+リリースZIP作成コマンドに含まれるsetup preflight検証は、オーナーから明示的に指示されない限り無効化しません。
+
 Codex や CI 風の offscreen 環境で PySide GUI を確認する場合は、`QT_QPA_PLATFORM=offscreen` を設定し、`MainWindow` を作る前に `apply_theme(app)` を呼びます。テーマ適用で Meiryo UI など日本語表示可能な Windows フォントが設定され、日本語ラベルが四角表示になる問題を避けられます。
