@@ -278,7 +278,7 @@ After the run, use `View Result in COLMAP GUI` to inspect registered camera pose
 | SphereSfM + `3DGUT (LichtFeld)` | `<scene>/output/spheresfm_3dgut/images/`, `<scene>/output/spheresfm_3dgut/masks/`, `<scene>/output/spheresfm_3dgut/transforms.json`, `<scene>/output/spheresfm_3dgut/pointcloud.ply` |
 | SphereSfM + cubemap conversion (`Convert to Projection Views`) | Load `<scene>/output/spheresfm_cubemap/` in the downstream app. It contains `images/`, `masks/`, `transforms.json`, and `pointcloud.ply` |
 
-Step 4 treats the route-specific dataset folder as the active dataset: the folder you can copy to another machine or load directly in a 3DGS app. The RealityScan preset is the exception: add `<scene>/output/realityscan/images/` in RealityScan.
+Step 4 treats the selected output folder as the active dataset: the folder you can copy to another machine or load directly in a 3DGS app. The RealityScan preset is the exception: add `<scene>/output/realityscan/images/` in RealityScan.
 
 With the `LichtFeld Studio` profile, Step 4 applies the same final orientation correction to `transforms.json` and `pointcloud.ply` during cubemap export so +X / +Z / up directions match the Metashape scene in LichtFeld. For `3DGUT (LichtFeld)`, the same correction is applied when the direct source-image dataset is created.
 

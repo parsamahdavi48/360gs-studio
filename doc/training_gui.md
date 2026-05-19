@@ -6,7 +6,7 @@ When you want to inspect quality and tune model settings inside the training app
 
 ## Using the Dataset in Training Apps
 
-The Step 4 output is the dataset intended for downstream 3DGS apps. Open the route-specific dataset folder directly in the training app when you want to inspect results and tune settings in that app's GUI. Use Step 5 when the settings are ready for repeat runs or when you want training to run headlessly through a CLI.
+The Step 4 output is the dataset intended for downstream 3DGS apps. Open the matching dataset folder directly in the training app when you want to inspect results and tune settings in that app's GUI. Use Step 5 when the settings are ready for repeat runs or when you want training to run headlessly through a CLI.
 
 | Path | Best for |
 | --- | --- |
@@ -26,7 +26,7 @@ When you open Step 5, first decide which app you want to run and which dataset y
 | Create a Postshot project | `Postshot` | `Dataset`, `Camera Poses`, project name, `Profile` |
 | Run any training CLI | `Other... > Custom` | `Executable`, `Argument Template`, `Dataset`, `Training Output` |
 
-Normally, leave `Dataset` on the automatic value. Metashape and SphereSfM conversion results use route-specific folders under `<scene>/output/`; the COLMAP route uses `<scene>/output/colmap_rig/`. `Training Output` defaults to `<scene>/output/`. Keeping datasets and training results under `output/` makes the scene easier to move later.
+Normally, leave `Dataset` on the automatic value. Metashape and SphereSfM conversion results use their Step 4 dataset folders under `<scene>/output/`; the COLMAP route uses `<scene>/output/colmap_rig/`. `Training Output` defaults to `<scene>/output/`. Keeping datasets and training results under `output/` makes the scene easier to move later.
 
 ## Basic Flow
 

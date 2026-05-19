@@ -278,7 +278,7 @@ SphereSfMの作業ファイルとログは `<scene>/output/spheresfm/` にまと
 | SphereSfM + `3DGUT (LichtFeld)` | `<scene>/output/spheresfm_3dgut/images/`, `<scene>/output/spheresfm_3dgut/masks/`, `<scene>/output/spheresfm_3dgut/transforms.json`, `<scene>/output/spheresfm_3dgut/pointcloud.ply` |
 | SphereSfM + キューブマップ変換 (`投影視点に変換`) | 下流アプリへ渡すのは `<scene>/output/spheresfm_cubemap/`。`images/`, `masks/`, `transforms.json`, `pointcloud.ply` を作ります |
 
-Step 4では通常、ルートごとのデータセットフォルダを他PCへコピーしたり3DGSアプリへ直接読み込ませたりする現在のデータセットとして扱います。RealityScanプリセットだけは、RealityScanで `<scene>/output/realityscan/images/` を追加します。
+Step 4では通常、選択中の出力フォルダを他PCへコピーしたり3DGSアプリへ直接読み込ませたりする現在のデータセットとして扱います。RealityScanプリセットだけは、RealityScanで `<scene>/output/realityscan/images/` を追加します。
 
 `LichtFeld Studio` プロファイルでは、Cubemap書き出し時点で最終出力の `transforms.json` と `pointcloud.ply` に同じ向き補正を適用し、LichtFeld上でMetashapeと同じ +X / +Z / 上下方向になるようにします。`3DGUT (LichtFeld)` では、元画像を使う直接データセットの作成時に同じ補正を適用します。
 

@@ -29,7 +29,7 @@ The previous management files are backed up under `_stechdrive/imports/backups/`
 
 Import checks mask pairing, image sizes, the active output dataset's `transforms.json` references, 4x4 transform matrices, and `pointcloud.ply` presence when relevant. Warnings do not block import; they are written to `_stechdrive/imports/scene_imports.json` and the bottom log panel.
 
-To keep large cubemap datasets responsive, image-size validation under the output dataset's `images/` folder uses sampled validation by default. `transforms.json` image references are checked against the image paths already found during folder scanning. The importer recognizes current route-specific folders such as `output/metashape_cubemap/`, `output/metashape_3dgut/`, `output/spheresfm_cubemap/`, and `output/spheresfm_3dgut/`, while still accepting legacy `output/` datasets.
+To keep large cubemap datasets responsive, image-size validation under the output dataset's `images/` folder uses sampled validation by default. `transforms.json` image references are checked against the image paths already found during folder scanning. Current Step 4 datasets are expected under `output/metashape_cubemap/`, `output/metashape_3dgut/`, `output/spheresfm_cubemap/`, or `output/spheresfm_3dgut/`.
 
 ## Cancellation
 
