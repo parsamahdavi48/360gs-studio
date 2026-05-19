@@ -1,11 +1,24 @@
 from __future__ import annotations
 
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
 
 from scripts import spheresfm_gpu_preflight as preflight
+
+
+def test_spheresfm_scripts_can_run_help_from_other_working_directory(tmp_path: Path) -> None:
+    repo = Path.cwd()
+    for script in ("spheresfm_gpu_preflight.py", "prepare_spheresfm_project.py"):
+        result = subprocess.run(
+            [sys.executable, str(repo / "scripts" / script), "--help"],
+            cwd=tmp_path,
+            capture_output=True,
+            text=True,
+        )
+        assert result.returncode == 0, result.stdout + result.stderr
 
 
 def test_preflight_copies_one_image_and_runs_gpu_sift(
