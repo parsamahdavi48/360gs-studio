@@ -18,6 +18,7 @@ def test_release_zip_excludes_tests_but_keeps_runtime_scripts() -> None:
     assert include_in_release("scripts/estimate_apriltag_scale.py")
     assert include_in_release("core/apriltag_scale_apply.py")
     assert include_in_release("core/apriltag_printable.py")
+    assert include_in_release("core/scene_preview_cubemap.py")
     assert include_in_release("sky_mask.py")
     assert include_in_release("mask_view_recipes.py")
     assert include_in_release("models/README.md")

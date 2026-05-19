@@ -33,6 +33,7 @@ from core.scene_preview import (
     load_transforms_preview_dataset,
     transform_preview_dataset,
 )
+from core.scene_preview_cubemap import face_view_params, load_cubemap_frame_groups, render_cubemap_equirect
 from core.scene_preview_sources import ScenePreviewCandidate, discover_scene_preview_candidates
 from gui import i18n
 from gui.common.perspective_preview import PerspectiveParams
@@ -291,8 +292,6 @@ class ScenePreviewWindow(QWidget):
         if dataset.source_kind != "transforms":
             return
         try:
-            from devtools.apriltag.cubemap_preview import load_cubemap_frame_groups
-
             groups = load_cubemap_frame_groups(dataset.source_path)
         except Exception:
             return
@@ -339,8 +338,6 @@ class ScenePreviewWindow(QWidget):
             return None
         group, face = match
         try:
-            from devtools.apriltag.cubemap_preview import face_view_params, render_cubemap_equirect
-
             cache_key = str(getattr(group, "name", "")) or camera.camera_id
             image = self._cubemap_equirect_cache.get(cache_key)
             if image is None:
@@ -372,10 +369,6 @@ class ScenePreviewWindow(QWidget):
         cached = self._cubemap_mask_cache.get(cache_key)
         if cached is not None:
             return cached
-        try:
-            from devtools.apriltag.cubemap_preview import render_cubemap_equirect
-        except Exception:
-            return None
         face_cache: dict[Path, np.ndarray] = {}
         found_mask = False
         for frame in getattr(group, "frames", ()):

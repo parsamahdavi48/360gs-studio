@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import builtins
 import json
 import os
 from pathlib import Path
@@ -143,6 +144,27 @@ def test_scene_preview_rebuilds_cubemap_camera_as_spherical_preview(tmp_path: Pa
     assert image.shape == (1024, 2048, 3)
     assert params.fov_deg == 90.0
     assert mask is None
+
+
+def test_scene_preview_rebuilds_cubemap_without_devtools_import(tmp_path: Path, monkeypatch) -> None:
+    _app()
+    transforms = _write_cubemap_scene(tmp_path)
+    dataset = load_transforms_preview_dataset(transforms, image_root=tmp_path)
+    window = ScenePreviewWindow()
+    original_import = builtins.__import__
+
+    def blocked_import(name: str, globals_: object = None, locals_: object = None, fromlist: object = (), level: int = 0) -> object:
+        if name == "devtools" or name.startswith("devtools."):
+            raise ModuleNotFoundError("devtools is not available in release builds")
+        return original_import(name, globals_, locals_, fromlist, level)
+
+    monkeypatch.setattr(builtins, "__import__", blocked_import)
+
+    window._dataset = dataset
+    window._build_cubemap_lookup(dataset)
+    result = window._reconstructed_cubemap_preview(dataset.cameras[0])
+
+    assert result is not None
 
 
 def test_scene_preview_rebuilds_cubemap_masks_as_spherical_preview(tmp_path: Path) -> None:
