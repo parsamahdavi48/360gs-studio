@@ -22,6 +22,29 @@ When resuming work, first load the target scene folder in the header. Then choos
 
 In the left navigation, `SfM` prepares camera poses and `Cube` writes the dataset for 3DGS apps. When converting Metashape results, you normally run `Cube`. When estimating camera poses with COLMAP or SphereSfM, run `SfM` as well. To rebuild outputs from an existing SfM result, turn `SfM` off and keep `Cube` on. If a warning icon is shown, use that row to jump to the missing setting.
 
+## Scene Preview
+
+Click the scene preview icon in the right-side preview header of Step 4 to open a read-only scene preview in a separate window. If a scene folder is already selected, the viewer opens that folder. To launch only the viewer, run this from the app folder:
+
+```bat
+run_scene_preview.bat D:\work\scene01
+```
+
+The viewer lists available sources under `Load Candidates`. Step 4 `output/`, Metashape XML/PLY, SphereSfM results, and COLMAP results are shown when they are found in the scene folder. Use `Select Scene...` to inspect another folder, or `Refresh` after rebuilding results in the same folder.
+
+The left view shows the point cloud, camera positions, and world axes together. Selecting a camera highlights its dot and draws the current right-view direction as a yellow ray. You can select cameras by clicking camera dots or by using the camera list above the views.
+
+The right view shows the image linked to the selected camera. Equirectangular images and cubemap outputs are shown as a perspective view from that camera. When you select a cubemap face, the viewer rebuilds a spherical view from the cubemap faces for the same source camera and starts from the front view. If matching masks are available, excluded areas are shown as a red overlay.
+
+Basic controls:
+
+| Area | Action |
+| --- | --- |
+| Left view | Left-drag to rotate, right-drag or middle-drag to pan, mouse wheel to zoom |
+| Left view | Click a camera dot to select it, double-click to fit the full scene |
+| Right view | In perspective view, left-drag to look around, mouse wheel for 2D zoom, double-click to reset the view |
+| Right view | For normal pinhole images, left-drag pans the image and the mouse wheel zooms |
+
 ## Metashape Route
 
 If Metashape has already aligned the 360° images, use this flow.

@@ -52,6 +52,7 @@ Metashapeを使わず、抽出済みの360°画像からCOLMAP Rig形式のキ�
 - Mask2Formerは、SAM3.1を使わずに空マスクを試したい場合の補助的な選択肢として利用できます。
 - 360°画像だけでなく、通常動画からのフレーム抽出や通常画像の連番画像にも使えます。人物・車両・空・白飛びなどを、SfMに渡す前のマスク前処理としてまとめて作成できます。
 - MetashapeでSfMした結果を読み込み、Postshot / Brush / LichtFeld Studio 向けのキューブマップ画像、マスク、`transforms.json` を書き出せます。RealityScan向けには、cubemap画像とXMPカメラ情報を作成し、RealityScanでAlignして点群やモデル作成へ進めます。LichtFeld Studio向けには、キューブマップ変換せず `3DGUT (LichtFeld)` 用の直接データセットも作れます。
+- シーンプレビューで、Step 4出力やSfM結果の点群、カメラ位置、選択カメラの画像、対応マスクを同じ画面で確認できます。Step 4のプレビュー欄から開くほか、`run_scene_preview.bat` でビューワーだけ起動できます。
 - AprilTagを撮影前に印刷・配置しておけば、Step 4の `スケール` タブで出力済みCubemapデータからメートル換算のスケールを推定できます。推定値を確認してから、`output/transforms.json` と `output/pointcloud.ply` に同じscaleを反映できます。
 - SphereSfM版の `colmap.exe` を指定すれば、Metashapeなしでエクイレクタングラー画像をSfMし、そのままLichtFeld 3DGUT用データまたはキューブマップデータへ変換できます。
 - Metashapeを使わない場合は、抽出済みの360°画像からCOLMAP Rig形式のキューブマップ画像とマスクを書き出せます。必要に応じてGUIからCOLMAPのSfM処理まで続けて実行できます。
