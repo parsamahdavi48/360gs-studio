@@ -99,6 +99,10 @@ def bgr_to_qimage(image: np.ndarray) -> QImage:
     ).copy()
 
 
+def _pixelated_texture_filter_for_zoom(zoom: float) -> bool:
+    return float(zoom) > 1.0001
+
+
 class PerspectiveGLImageView(QOpenGLWidget):
     """OpenGL-backed FOV perspective view over an equirectangular texture."""
 
@@ -238,6 +242,7 @@ class PerspectiveGLImageView(QOpenGLWidget):
     def reset_view(self) -> None:
         self._zoom = 1.0
         self._pan = QPointF(0.0, 0.0)
+        self._update_texture_filters()
         self.update()
 
     def initializeGL(self) -> None:  # noqa: N802 - Qt API
@@ -373,6 +378,7 @@ class PerspectiveGLImageView(QOpenGLWidget):
         new_scale = self._display_scale()
         self._pan = cursor - center - image_point * new_scale
         self._clamp_pan()
+        self._update_texture_filters()
         self.update()
         event.accept()
 
@@ -429,8 +435,7 @@ class PerspectiveGLImageView(QOpenGLWidget):
             self._texture.destroy()
             self._texture = None
         self._texture = QOpenGLTexture(self._source_image, QOpenGLTexture.MipMapGeneration.DontGenerateMipMaps)
-        self._texture.setMinificationFilter(QOpenGLTexture.Filter.Linear)
-        self._texture.setMagnificationFilter(QOpenGLTexture.Filter.Linear)
+        self._update_texture_filters()
         self._texture.setWrapMode(
             QOpenGLTexture.CoordinateDirection.DirectionS,
             QOpenGLTexture.WrapMode.Repeat,
@@ -438,6 +443,14 @@ class PerspectiveGLImageView(QOpenGLWidget):
         self._texture.setWrapMode(
             QOpenGLTexture.CoordinateDirection.DirectionT,
             QOpenGLTexture.WrapMode.ClampToEdge,
+        )
+
+    def _update_texture_filters(self) -> None:
+        if self._texture is None:
+            return
+        self._texture.setMinificationFilter(QOpenGLTexture.Filter.Linear)
+        self._texture.setMagnificationFilter(
+            QOpenGLTexture.Filter.Nearest if _pixelated_texture_filter_for_zoom(self._zoom) else QOpenGLTexture.Filter.Linear
         )
 
     def _fit_scale(self) -> float:

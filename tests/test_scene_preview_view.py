@@ -21,6 +21,7 @@ from core.scene_preview import (
 from core.scene_preview_profiles import step4_output_display_transform
 from core.scene_preview_sources import ScenePreviewCandidate
 from gui import i18n
+from gui.common.perspective_image_view import _pixelated_texture_filter_for_zoom
 from gui.common.perspective_preview import PerspectiveParams
 from gui.scene_preview.camera_image_view import SceneCameraImageView, apply_mask_overlay
 from gui.scene_preview.pointcloud_view import ScenePointCloudView
@@ -120,6 +121,11 @@ def test_scene_camera_image_view_applies_existing_mask_overlay() -> None:
     assert overlaid[1, 1].tolist() == [55, 55, 169]
     assert overlaid[0, 1].tolist() == [100, 100, 100]
     assert image[0, 0].tolist() == [100, 100, 100]
+
+
+def test_perspective_view_uses_crisp_texture_filter_when_zoomed() -> None:
+    assert not _pixelated_texture_filter_for_zoom(1.0)
+    assert _pixelated_texture_filter_for_zoom(1.2)
 
 
 def test_scene_preview_rebuilds_cubemap_camera_as_spherical_preview(tmp_path: Path) -> None:

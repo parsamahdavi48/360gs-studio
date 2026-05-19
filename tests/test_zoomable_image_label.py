@@ -7,7 +7,7 @@ from PySide6.QtGui import QPixmap
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication
 
-from gui.common.zoomable_image_label import ZoomableImageLabel
+from gui.common.zoomable_image_label import ZoomableImageLabel, _smooth_pixmap_transform_for_scale
 
 
 def _app():
@@ -52,3 +52,9 @@ def test_zoomable_image_label_look_drag_emits_delta_without_panning() -> None:
     assert deltas
     assert label._pan.x() == 0.0
     assert label._pan.y() == 0.0
+
+
+def test_zoomable_image_label_uses_crisp_scaling_when_magnified() -> None:
+    assert _smooth_pixmap_transform_for_scale(0.5)
+    assert not _smooth_pixmap_transform_for_scale(1.0)
+    assert not _smooth_pixmap_transform_for_scale(2.0)

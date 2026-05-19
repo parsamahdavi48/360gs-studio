@@ -61,7 +61,7 @@ class ZoomableImageLabel(QLabel):
             return
 
         painter = QPainter(self)
-        painter.setRenderHint(QPainter.SmoothPixmapTransform, True)
+        painter.setRenderHint(QPainter.SmoothPixmapTransform, _smooth_pixmap_transform_for_scale(self._display_scale()))
         target = self._target_rect()
         painter.drawPixmap(target, self._source_pixmap, QRectF(self._source_pixmap.rect()))
 
@@ -184,3 +184,7 @@ class ZoomableImageLabel(QLabel):
             max(-max_x, min(max_x, self._pan.x())),
             max(-max_y, min(max_y, self._pan.y())),
         )
+
+
+def _smooth_pixmap_transform_for_scale(scale: float) -> bool:
+    return float(scale) < 1.0
