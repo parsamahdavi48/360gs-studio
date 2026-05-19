@@ -263,6 +263,17 @@ def test_step4_route_and_training_selectors_use_radio_buttons() -> None:
     assert step.training_backend_other_button.isChecked()
 
 
+def test_step4_scene_preview_launch_uses_icon_button() -> None:
+    _app()
+    step = CubemapStep(Path.cwd())
+
+    assert isinstance(step.scene_preview_btn, QToolButton)
+    assert step.scene_preview_btn.objectName() == "iconToolButton"
+    assert step.scene_preview_btn.text() == ""
+    assert step.scene_preview_btn.accessibleName() == i18n.t("SCENE_PREVIEW_OPEN")
+    assert not step.scene_preview_btn.icon().isNull()
+
+
 def test_step5_japanese_training_copy_uses_learning_step_wording() -> None:
     script = textwrap.dedent(
         """

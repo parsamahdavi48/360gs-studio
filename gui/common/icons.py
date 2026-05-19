@@ -158,6 +158,17 @@ _PERSPECTIVE_PREVIEW_SVG = """
 </svg>
 """.strip()
 
+_SCENE_PREVIEW_SVG = """
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none">
+  <path d="M4.5 16.8 12 20.5l7.5-3.7M4.5 12.1 12 15.8l7.5-3.7M12 3.5 4.5 7.2 12 10.9l7.5-3.7Z"
+        stroke="#e5e7eb" stroke-width="1.55" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="12" cy="10.9" r="1.4" fill="#2dd4bf"/>
+  <circle cx="7.2" cy="8.5" r="1.1" fill="#9ca3af"/>
+  <circle cx="16.8" cy="8.5" r="1.1" fill="#9ca3af"/>
+  <path d="M12 10.9v4.9" stroke="#2dd4bf" stroke-width="1.55" stroke-linecap="round"/>
+</svg>
+""".strip()
+
 _FILTER_SVG = """
 <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none">
   <path d="M4.4 6.2h15.2l-5.9 6.7v4.6l-3.4 1.8v-6.4Z" stroke="#e5e7eb"
@@ -283,6 +294,10 @@ def thumbnail_preview_icon(size: int = 18) -> QIcon:
 
 def perspective_preview_icon(size: int = 18) -> QIcon:
     return svg_icon(_PERSPECTIVE_PREVIEW_SVG, size)
+
+
+def scene_preview_icon(size: int = 18) -> QIcon:
+    return svg_icon(_SCENE_PREVIEW_SVG, size)
 
 
 def filter_icon(size: int = 18) -> QIcon:

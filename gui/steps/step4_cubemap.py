@@ -7,7 +7,7 @@ import os
 import re
 from pathlib import Path
 
-from PySide6.QtCore import QProcess, Qt, QTimer
+from PySide6.QtCore import QProcess, QSize, Qt, QTimer
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -19,6 +19,7 @@ from PySide6.QtWidgets import (
     QScrollArea,
     QSplitter,
     QTabWidget,
+    QToolButton,
     QVBoxLayout,
     QWidget,
 )
@@ -32,6 +33,7 @@ from gui.common.browse_widget import BrowseWidget
 from gui.common.collapsible_section import CollapsibleSection
 from gui.common.drag_spinbox import DragDoubleSpinBox
 from gui.common.form_rows import add_tooltip_row
+from gui.common.icons import scene_preview_icon
 from gui.cubemap.preview_renderer import PreviewWidget
 from gui.cubemap.view_config import _BLOCK_ENABLED_VIEWS, _WARN_ENABLED_VIEWS, ViewConfigWidget
 from gui.steps.base_step import (
@@ -859,7 +861,12 @@ class CubemapStep(
         preview_header.setSpacing(8)
         preview_header.addWidget(preview_title)
         preview_header.addStretch()
-        self.scene_preview_btn = QPushButton(i18n.t("SCENE_PREVIEW_OPEN"))
+        self.scene_preview_btn = QToolButton()
+        self.scene_preview_btn.setObjectName("iconToolButton")
+        self.scene_preview_btn.setIcon(scene_preview_icon())
+        self.scene_preview_btn.setIconSize(QSize(18, 18))
+        self.scene_preview_btn.setFixedSize(28, 28)
+        self.scene_preview_btn.setAccessibleName(i18n.t("SCENE_PREVIEW_OPEN"))
         self.scene_preview_btn.setToolTip(i18n.tip("SCENE_PREVIEW_OPEN"))
         self.scene_preview_btn.clicked.connect(self._open_scene_preview)
         preview_header.addWidget(self.preview.projection_toggle_btn)
