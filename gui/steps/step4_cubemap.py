@@ -177,6 +177,7 @@ class CubemapStep(
         self._colmap_sparse_user_edited = False
         self._spheresfm_sparse_user_edited = False
         self._syncing_sfm_input_paths = False
+        self._scene_preview_window = None
         self._preview_render_timer = QTimer(self)
         self._preview_render_timer.setSingleShot(True)
         self._preview_render_timer.setInterval(50)
@@ -858,7 +859,11 @@ class CubemapStep(
         preview_header.setSpacing(8)
         preview_header.addWidget(preview_title)
         preview_header.addStretch()
+        self.scene_preview_btn = QPushButton(i18n.t("SCENE_PREVIEW_OPEN"))
+        self.scene_preview_btn.setToolTip(i18n.tip("SCENE_PREVIEW_OPEN"))
+        self.scene_preview_btn.clicked.connect(self._open_scene_preview)
         preview_header.addWidget(self.preview.projection_toggle_btn)
+        preview_header.addWidget(self.scene_preview_btn)
         preview_layout.addLayout(preview_header)
         preview_layout.addWidget(self.preview, stretch=1)
 
@@ -933,6 +938,8 @@ class CubemapStep(
 
     def set_scene_dir(self, path: str) -> None:
         super().set_scene_dir(path)
+        if self._scene_preview_window is not None:
+            self._scene_preview_window.set_scene_dir(Path(path) if path else None)
         if not path:
             self.ms_images_path_label.setToolTip(i18n.tip("MS_IMAGES"))
             self.ms_images_path_label.set_full_text("-")
@@ -980,6 +987,18 @@ class CubemapStep(
         self._update_lfs_auto_steps_scaler()
         self._update_output_count()
         self._update_metashape_input_hint()
+
+    def _open_scene_preview(self) -> None:
+        from gui.scene_preview.window import ScenePreviewWindow
+
+        scene = Path(self.scene_dir) if self.scene_dir else None
+        if self._scene_preview_window is None:
+            self._scene_preview_window = ScenePreviewWindow(scene_dir=scene, parent=self)
+        else:
+            self._scene_preview_window.set_scene_dir(scene)
+        self._scene_preview_window.show()
+        self._scene_preview_window.raise_()
+        self._scene_preview_window.activateWindow()
 
     def _restore_project_settings(self, scene: Path) -> bool:
         settings = load_step4_export_settings(scene)
