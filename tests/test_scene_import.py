@@ -109,6 +109,62 @@ def test_scene_import_registers_existing_scene_assets(tmp_path: Path) -> None:
     assert dataset_runs[0]["route"] == "external_import"
 
 
+def test_scene_import_registers_route_specific_output_dataset(tmp_path: Path) -> None:
+    scene = tmp_path
+    output = scene / "output" / "metashape_cubemap"
+    _write_image(scene / "images" / "frame_0001.jpg")
+    _write_image(output / "images" / "frame_0001_px.jpg", size=(64, 64))
+    _write_transforms(output / "transforms.json")
+
+    result = import_scene(scene)
+
+    assert result.status == "ok"
+    assert result.output_shape == "projected"
+    assert result.output_image_count == 1
+
+    settings = json.loads(step4_export_settings_path(scene).read_text(encoding="utf-8"))
+    assert settings["output_dir"] == str(output)
+    assert settings["portable_output"] == {
+        "root": "output/metashape_cubemap",
+        "dataset_kind": "projection_views",
+        "active": True,
+    }
+    assert settings["registered_assets"]["images_dir"] == "output/metashape_cubemap/images"
+    assert settings["registered_assets"]["transforms_json"] == "output/metashape_cubemap/transforms.json"
+
+    dataset_runs = json.loads(step4_dataset_runs_path(scene).read_text(encoding="utf-8"))["runs"]
+    assert dataset_runs[0]["dataset_root"] == "output/metashape_cubemap"
+    assert dataset_runs[0]["artifacts"]["root"] == "output/metashape_cubemap"
+
+
+def test_scene_import_prefers_existing_settings_output_root(tmp_path: Path) -> None:
+    scene = tmp_path
+    metashape_output = scene / "output" / "metashape_cubemap"
+    spheresfm_output = scene / "output" / "spheresfm_cubemap"
+    _write_image(scene / "images" / "frame_0001.jpg")
+    _write_image(metashape_output / "images" / "frame_0001_px.jpg", size=(64, 64))
+    _write_transforms(metashape_output / "transforms.json")
+    _write_image(spheresfm_output / "images" / "frame_0001_px.jpg", size=(64, 64), color=(10, 0, 0))
+    _write_transforms(spheresfm_output / "transforms.json")
+    step4_export_settings_path(scene).parent.mkdir(parents=True, exist_ok=True)
+    step4_export_settings_path(scene).write_text(
+        json.dumps(
+            {
+                "output_dir": str(spheresfm_output),
+                "portable_output": {"root": "output/spheresfm_cubemap"},
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    result = import_scene(scene)
+
+    assert result.status == "ok"
+    settings = json.loads(step4_export_settings_path(scene).read_text(encoding="utf-8"))
+    assert settings["output_dir"] == str(spheresfm_output)
+    assert settings["portable_output"]["root"] == "output/spheresfm_cubemap"
+
+
 def test_scene_import_rescan_replaces_previous_external_metadata(tmp_path: Path) -> None:
     scene = tmp_path
     _write_image(scene / "images" / "frame_0001.jpg")

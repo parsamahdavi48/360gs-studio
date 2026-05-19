@@ -436,7 +436,7 @@ class Step4RuntimeMixin:
         if not self.scene_dir:
             return None
         try:
-            output = self._display_output_dir()
+            output = self._output_dir()
         except ValueError:
             return None
         if self._path_is_same_or_descendant(path, output):

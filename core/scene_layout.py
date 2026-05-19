@@ -32,6 +32,10 @@ STEP4_SETTINGS_VERSION = 2
 SCENE_IMAGES_DIR_NAME = "images"
 SCENE_MASKS_DIR_NAME = "masks"
 SCENE_OUTPUT_DIR_NAME = "output"
+METASHAPE_CUBEMAP_OUTPUT_DIR_NAME = "metashape_cubemap"
+METASHAPE_3DGUT_OUTPUT_DIR_NAME = "metashape_3dgut"
+SPHERESFM_CUBEMAP_OUTPUT_DIR_NAME = "spheresfm_cubemap"
+SPHERESFM_3DGUT_OUTPUT_DIR_NAME = "spheresfm_3dgut"
 
 
 def app_dir(scene_dir: Path) -> Path:
@@ -48,6 +52,22 @@ def scene_masks_dir(scene_dir: Path) -> Path:
 
 def scene_output_dir(scene_dir: Path) -> Path:
     return scene_dir / SCENE_OUTPUT_DIR_NAME
+
+
+def scene_metashape_cubemap_dir(scene_dir: Path) -> Path:
+    return scene_output_dir(scene_dir) / METASHAPE_CUBEMAP_OUTPUT_DIR_NAME
+
+
+def scene_metashape_3dgut_dir(scene_dir: Path) -> Path:
+    return scene_output_dir(scene_dir) / METASHAPE_3DGUT_OUTPUT_DIR_NAME
+
+
+def scene_spheresfm_cubemap_dir(scene_dir: Path) -> Path:
+    return scene_output_dir(scene_dir) / SPHERESFM_CUBEMAP_OUTPUT_DIR_NAME
+
+
+def scene_spheresfm_3dgut_dir(scene_dir: Path) -> Path:
+    return scene_output_dir(scene_dir) / SPHERESFM_3DGUT_OUTPUT_DIR_NAME
 
 
 def project_path(scene_dir: Path) -> Path:

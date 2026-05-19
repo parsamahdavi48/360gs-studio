@@ -12,7 +12,11 @@ from core.colmap_rig_export import pinhole_camera_params
 from core.scene_layout import (
     scene_images_dir,
     scene_masks_dir,
+    scene_metashape_3dgut_dir,
+    scene_metashape_cubemap_dir,
     scene_output_dir,
+    scene_spheresfm_3dgut_dir,
+    scene_spheresfm_cubemap_dir,
     step4_export_settings_path,
     step4_metashape_import_work_dir,
     step4_views_config_path,
@@ -53,7 +57,12 @@ class Step4PathMixin:
     def _direct_output_dir(self) -> Path:
         if not self.scene_dir:
             raise ValueError(i18n.t("SCENE_REQUIRED_ACTION_HINT"))
-        return self._output_dir()
+        return scene_metashape_3dgut_dir(Path(self.scene_dir))
+
+    def _metashape_cubemap_dir(self) -> Path:
+        if not self.scene_dir:
+            raise ValueError(i18n.t("SCENE_REQUIRED_ACTION_HINT"))
+        return scene_metashape_cubemap_dir(Path(self.scene_dir))
 
     def _realityscan_output_dir(self) -> Path:
         return self._output_dir() / "realityscan"
@@ -67,7 +76,7 @@ class Step4PathMixin:
             return self._spheresfm_3dgut_dir() if self._uses_spheresfm_3dgut_output() else self._spheresfm_cubemap_dir()
         if self._is_spheresfm_method():
             return self._spheresfm_project_dir()
-        return self._output_dir() if self._is_metashape_method() else self._colmap_rig_dir()
+        return self._metashape_cubemap_dir() if self._is_metashape_method() else self._colmap_rig_dir()
 
     def _mask_dir(self) -> Path:
         if not self.scene_dir:
@@ -111,10 +120,14 @@ class Step4PathMixin:
         return self._spheresfm_project_dir() / "equirect"
 
     def _spheresfm_cubemap_dir(self) -> Path:
-        return self._output_dir()
+        if not self.scene_dir:
+            raise ValueError(i18n.t("SCENE_REQUIRED_ACTION_HINT"))
+        return scene_spheresfm_cubemap_dir(Path(self.scene_dir))
 
     def _spheresfm_3dgut_dir(self) -> Path:
-        return self._output_dir()
+        if not self.scene_dir:
+            raise ValueError(i18n.t("SCENE_REQUIRED_ACTION_HINT"))
+        return scene_spheresfm_3dgut_dir(Path(self.scene_dir))
 
     def _selected_colmap_sparse_model(self) -> Path | None:
         if not hasattr(self, "colmap_sparse_browse"):
@@ -300,7 +313,7 @@ class Step4PathMixin:
         return targets
 
     def _prepare_3dgut_output_dir(self) -> bool:
-        output = self._output_dir()
+        output = self._direct_output_dir()
         self._validate_scene_output_dir(output)
         existing_targets = self._dedupe_nested_paths(
             [path for path in self._3dgut_output_reset_targets() if self._path_has_contents(path)]

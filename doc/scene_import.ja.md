@@ -27,9 +27,9 @@
 
 ## 検証
 
-取り込み時には、マスクの対応、画像サイズ、`output/transforms.json` の参照、4x4行列、`pointcloud.ply` の有無などを確認します。警告は処理を止めず、`_stechdrive/imports/scene_imports.json` と画面下部ログに記録されます。
+取り込み時には、マスクの対応、画像サイズ、現在の出力データセット内の `transforms.json` 参照、4x4行列、`pointcloud.ply` の有無などを確認します。警告は処理を止めず、`_stechdrive/imports/scene_imports.json` と画面下部ログに記録されます。
 
-大量のキューブマップ画像がある場合でも通常の取り込みが長時間になりすぎないように、`output/images/` の画像サイズ確認はサンプル検証です。`transforms.json` の画像参照は、フォルダ走査済みのパス一覧と照合します。
+大量のキューブマップ画像がある場合でも通常の取り込みが長時間になりすぎないように、出力データセット内の `images/` の画像サイズ確認はサンプル検証です。`transforms.json` の画像参照は、フォルダ走査済みのパス一覧と照合します。現在のルート別フォルダである `output/metashape_cubemap/`、`output/metashape_3dgut/`、`output/spheresfm_cubemap/`、`output/spheresfm_3dgut/` を認識しつつ、旧来の `output/` データセットも取り込めます。
 
 ## キャンセル
 

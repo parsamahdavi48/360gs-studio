@@ -488,9 +488,9 @@ STRINGS: dict[str, str] = {
     "TRAINING_REQUIRES_DATASET_OUTPUT": "No training dataset was found. Run Step 4 conversion first, or select an input dataset.",
     "TRAINING_DATASET_NEEDS_3DGUT_OUTPUT": "3DGUT training needs Cubemap Output Shape set to 3DGUT.",
     "TRAINING_DATASET_NEEDS_PROJECTED_OUTPUT": "Standard training needs projected Cubemap data. Turn on GUT in Training if you want to use 3DGUT.",
-    "TRAINING_DATASET_EXISTING_NOT_3DGUT": "Training is set to 3DGUT, but the existing output is not 3DGUT data. Turn on Cube and create 3DGUT data.",
-    "TRAINING_DATASET_EXISTING_NOT_PROJECTED": "Standard training is selected, but the existing output is 3DGUT data. Turn on GUT in Training or provide projected Cubemap data.",
-    "TRAINING_DATASET_3DGUT_NEEDS_PLY": "3DGUT training needs output/pointcloud.ply. Turn on Cube and create 3DGUT data.",
+    "TRAINING_DATASET_EXISTING_NOT_3DGUT": "Training is set to 3DGUT, but the input dataset is not 3DGUT data. Turn on Cube and create 3DGUT data.",
+    "TRAINING_DATASET_EXISTING_NOT_PROJECTED": "Standard training is selected, but the input dataset is 3DGUT data. Turn on GUT in Training or provide projected Cubemap data.",
+    "TRAINING_DATASET_3DGUT_NEEDS_PLY": "3DGUT training needs pointcloud.ply inside the input dataset. Turn on Cube and create 3DGUT data.",
     "POSTSHOT_IMPORT_POSES_NOT_FOUND": "No camera poses are available for Postshot import. Run SfM first, or set Camera Poses to Estimate.",
     "TRAINING_OUTPUT_EXISTS": "Training output already exists: {path}\nChange the output name or output folder to avoid overwriting it.",
     "TRAINING_OUTPUT_NAME_PATH_ERROR": "{label} must be a file name only. Choose folders with Training Output instead.",
@@ -964,8 +964,8 @@ STRINGS: dict[str, str] = {
     "JPG_QUALITY_COMPACT": "JPG/WebP:",
     "EXPORT_COLMAP": "Add COLMAP Text Model",
     "EXPORT_COLMAP_HINT": (
-        "Create cameras.txt / images.txt / points3D.txt in output/colmap/\n"
-        "from output/transforms.json and PLY.\n"
+        "Create cameras.txt / images.txt / points3D.txt in colmap/\n"
+        "from transforms.json and PLY in the current output folder.\n"
         "This is not a COLMAP SfM image export."
     ),
     "APRILTAG_SCALE_ENABLE": "Estimate scale with AprilTag",
@@ -1123,10 +1123,10 @@ TIPS: dict[str, str] = {
     "SKY_MIN_SCORE": "Mask2Former only. Class-confidence threshold from 0.00 to 1.00. 0 disables it. Higher values reject ambiguous pixels but can increase misses",
     "SKY_MIN_AREA": "Applies only to the sky mask. Removes sky candidates smaller than this image-area ratio. 0% disables it. Use 0% when you want to keep thin sky gaps",
     "SKY_TOP_CONNECTED": "Applies only to the sky mask. Keeps only sky components touching the top image edge. This is a strong filter and is never applied to people or other targets",
-    "OUTPUT_DIR_CUBEMAP": "Automatically uses output/ inside the scene folder. The output transforms.json is fixed to this folder.",
-    "OUTPUT_DIR_LICHTFELD_DIRECT": "For LichtFeld 3DGUT, places the existing images/ and masks/ under output/ with space-saving links, and writes transforms.json plus pointcloud.ply there.",
+    "OUTPUT_DIR_CUBEMAP": "Metashape cubemap output is written to output/metashape_cubemap/. The output transforms.json is fixed to that folder.",
+    "OUTPUT_DIR_LICHTFELD_DIRECT": "For LichtFeld 3DGUT, places the existing images/ and masks/ under output/metashape_3dgut/ with space-saving links, and writes transforms.json plus pointcloud.ply there.",
     "OUTPUT_DIR_COLMAP_PROJECT": "output/colmap_rig/ inside the scene folder is the finished COLMAP project. After COLMAP finishes, pass this folder to 3DGS apps.",
-    "OUTPUT_DIR_SPHERESFM_PROJECT": "Keeps SphereSfM working files under output/spheresfm/. Final data is written under output/ for both 3DGUT and cubemap output.",
+    "OUTPUT_DIR_SPHERESFM_PROJECT": "Keeps SphereSfM working files under output/spheresfm/. Final data is written to output/spheresfm_cubemap/ or output/spheresfm_3dgut/.",
     "RUN_CUBEMAP": "Export images, masks, and required metadata with the current export method and view settings",
     "EXPORT_METHOD": "Choose the Step 4 route: convert Metashape results, export COLMAP-view images, or run SphereSfM and convert its result.",
     "METHOD_METASHAPE_IMPORT": "Read Metashape SfM camera XML and point cloud PLY, then export viewpoint images, masks, and transforms.json for 3DGS apps.",
@@ -1217,15 +1217,15 @@ TIPS: dict[str, str] = {
     "REALITYSCAN_INCLUDE_RIG": "Experimental. Groups cubemap faces from the same frame with RealityScan Rig metadata. This is not the same as COLMAP rig optimization and is not for feature-based rig pose refinement. Keep it off for the normal RealityScan Align workflow that regenerates sparse points.",
     "OUTPUT_SCALE": "Cubemap face size. The default Normal size matches the center angular resolution of a 90-degree view to the source image. Full uses the input image height, and Half is a lightweight output.",
     "EXPORT_TARGETS": "Choose whether to write view images, masks, or only camera metadata. Turn Images off and Masks on when you only rebuilt masks in Step 3.",
-    "EXPORT_IMAGES": "Write viewpoint images to output/images/. Turn off to keep existing images and update masks or camera metadata only.",
-    "EXPORT_MASKS": "Write masks to output/masks/. Turn off to keep existing masks and update images or camera metadata only.",
+    "EXPORT_IMAGES": "Write viewpoint images to images/ inside the current output folder. Turn off to keep existing images and update masks or camera metadata only.",
+    "EXPORT_MASKS": "Write masks to masks/ inside the current output folder. Turn off to keep existing masks and update images or camera metadata only.",
     "JSON_NAME": "Output camera parameter JSON filename",
     "MASK_DIR_CUBEMAP": "Input mask folder. Masks are converted alongside cubemap images",
     "INVERT_MASKS": "Invert output mask polarity. Usually keep OFF; enable only when the target app expects the opposite polarity",
     "OUTPUT_FORMAT": "Viewpoint image format. Auto preserves the source image format. JPG/WebP use the quality value.",
     "OUTPUT_BIT_DEPTH": "Output image bit depth. 8-bit is broadly compatible; Source preserves PNG/TIFF source bit depth.",
     "JPG_QUALITY": "JPG/WebP compression quality. 1 is lowest, 100 is highest. PNG/TIFF are not affected.",
-    "NO_IMAGE": "Update transforms.json without reconverting images or masks. Existing images and masks inside output/ are preserved",
+    "NO_IMAGE": "Update transforms.json without reconverting images or masks. Existing images/ and masks/ inside the current output folder are preserved",
     "REVIEW_PREVIEW_MODE_SINGLE": "Show the selected frame large while checking or toggling its keep/drop flag",
     "REVIEW_PREVIEW_MODE_THUMBNAILS": "Show extracted frames as a thumbnail list. Click or use arrow keys to choose the current image",
     "REVIEW_THUMBNAIL_FILTER": "Limit which frames are shown in the thumbnail list. Keep/drop changes still write to the same CSV. Current: {filter}",
@@ -1255,8 +1255,8 @@ TIPS: dict[str, str] = {
         "Usually keep Auto. If Cube6 output was brought in from another location and estimation looks wrong, "
         "choose the target used during conversion. For custom views, keep Auto and run from the original scene folder."
     ),
-    "APRILTAG_ESTIMATE": "Detect AprilTags from projected Cubemap output/transforms.json and output images, then estimate meters per scene unit. For equirectangular output, create Cubemap images first.",
-    "APRILTAG_APPLY_SCALE": "Multiply camera positions in the existing output/transforms.json and output/pointcloud.ply by the estimated factor. The target files are shown for confirmation before writing. Original files are backed up.",
+    "APRILTAG_ESTIMATE": "Detect AprilTags from the currently selected projected Cubemap transforms.json and output images, then estimate meters per scene unit. For equirectangular output, create Cubemap images first.",
+    "APRILTAG_APPLY_SCALE": "Multiply camera positions in the currently selected Cubemap transforms.json and pointcloud.ply by the estimated factor. The target files are shown for confirmation before writing. Original files are backed up.",
     "APRILTAG_RESULT": (
         "How to read the result:\n"
         "observations = accepted tag detections. More observations usually make the estimate more stable.\n"

@@ -557,6 +557,8 @@ def discover_cubemap_view_metadata(transforms_json: Path) -> CubemapViewMetadata
     roots = [transforms_json.parent]
     if transforms_json.parent.name.lower() in {"output", "metashape_import"}:
         roots.append(transforms_json.parent.parent)
+    if transforms_json.parent.parent.name.lower() == "output":
+        roots.append(transforms_json.parent.parent.parent)
     roots.append(transforms_json.parent.parent)
 
     candidates: list[Path] = []

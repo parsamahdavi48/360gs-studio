@@ -28,11 +28,11 @@ Fork元: [tetraface/tetraface-3dgs-utils](https://github.com/tetraface/tetraface
 
 Insta360 / Osmo 360などの360°カメラで撮影した動画から、SfM向けのエクイレクタングラー静止画を抽出します。抽出後はフレームを確認し、人物、撮影者、三脚、空、スティッチ境界、白飛びをマスクしてからMetashapeに渡せます。
 
-MetashapeでSfMした結果は、Postshot / Brush / LichtFeld Studio向けのキューブマップ画像、マスク、`transforms.json` に変換できます。RealityScan向けには、カメラ姿勢付きcubemap画像とXMPを `output/realityscan/` に書き出し、RealityScanでAlignして点群やモデル作成へ進めます。LichtFeld Studioでは、3DGUT用にエクイレクタングラー画像とマスクをそのまま使う `transforms.json` / `pointcloud.ply` も作成できます。360°動画を3DGSトレーニング用データセットにするためのメインワークフローです。
+MetashapeでSfMした結果は、Postshot / Brush / LichtFeld Studio向けのキューブマップ画像、マスク、`transforms.json` として `output/metashape_cubemap/` に変換できます。RealityScan向けには、カメラ姿勢付きcubemap画像とXMPを `output/realityscan/` に書き出し、RealityScanでAlignして点群やモデル作成へ進めます。LichtFeld Studioでは、3DGUT用にエクイレクタングラー画像とマスクをそのまま使うデータセットを `output/metashape_3dgut/` に作成できます。360°動画を3DGSトレーニング用データセットにするためのメインワークフローです。
 
 ### 2. 360°動画からSphereSfM、LichtFeld 3DGUT / キューブマップデータへ
 
-Metashapeを使わず、抽出済みのエクイレクタングラー画像をSphereSfM版COLMAPで球面カメラとしてSfMできます。SfM結果から、LichtFeld 3DGUT用データまたはPostshot / Brush / LichtFeld向けキューブマップデータを `output/` に作成できます。
+Metashapeを使わず、抽出済みのエクイレクタングラー画像をSphereSfM版COLMAPで球面カメラとしてSfMできます。SphereSfMの作業ファイルは `output/spheresfm/` に閉じ込め、完成データは `output/spheresfm_3dgut/` または `output/spheresfm_cubemap/` に作成できます。
 
 ### 3. 360°動画からCOLMAP Rigデータセットへ
 
@@ -53,7 +53,7 @@ Metashapeを使わず、抽出済みの360°画像からCOLMAP Rig形式のキ�
 - 360°画像だけでなく、通常動画からのフレーム抽出や通常画像の連番画像にも使えます。人物・車両・空・白飛びなどを、SfMに渡す前のマスク前処理としてまとめて作成できます。
 - MetashapeでSfMした結果を読み込み、Postshot / Brush / LichtFeld Studio 向けのキューブマップ画像、マスク、`transforms.json` を書き出せます。RealityScan向けには、cubemap画像とXMPカメラ情報を作成し、RealityScanでAlignして点群やモデル作成へ進めます。LichtFeld Studio向けには、キューブマップ変換せず `3DGUT (LichtFeld)` 用の直接データセットも作れます。
 - シーンプレビューで、Step 4出力やSfM結果の点群、カメラ位置、選択カメラの画像、対応マスクを同じ画面で確認できます。Step 4のプレビュー欄から開くほか、`run_scene_preview.bat` でビューワーだけ起動できます。
-- AprilTagを撮影前に印刷・配置しておけば、Step 4の `スケール` タブで出力済みCubemapデータからメートル換算のスケールを推定できます。推定値を確認してから、`output/transforms.json` と `output/pointcloud.ply` に同じscaleを反映できます。
+- AprilTagを撮影前に印刷・配置しておけば、Step 4の `スケール` タブで出力済みCubemapデータからメートル換算のスケールを推定できます。推定値を確認してから、選択中Cubemapデータセットの `transforms.json` と `pointcloud.ply` に同じscaleを反映できます。
 - SphereSfM版の `colmap.exe` を指定すれば、Metashapeなしでエクイレクタングラー画像をSfMし、そのままLichtFeld 3DGUT用データまたはキューブマップデータへ変換できます。
 - Metashapeを使わない場合は、抽出済みの360°画像からCOLMAP Rig形式のキューブマップ画像とマスクを書き出せます。必要に応じてGUIからCOLMAPのSfM処理まで続けて実行できます。
 - Windows向けセットアップスクリプトで、Python環境、FFmpeg/FFprobe、主要Pythonパッケージの準備をまとめて行えます。通常利用は `run_gui.bat` から起動できます。
@@ -143,7 +143,15 @@ checkpointを手動で `models/sam3.1/sam3.1_multiplex.pt` に置くこともで
 
 ### 学習アプリで使う
 
-このアプリの主な成果物は、Step 4で作成する3DGS用データセットです。Step 4の `output/` は、LichtFeld Studio、Postshot、Brushなどの3DGSアプリに直接読み込んで学習できます。学習アプリ側で画質、モデル、ステップ数、マスク、出力形式を確認しながら調整したい場合は、この使い方が基本です。
+このアプリの主な成果物は、Step 4で作成する3DGS用データセットです。Step 4で作成したデータセットフォルダは、LichtFeld Studio、Postshot、Brushなどの3DGSアプリに直接読み込んで学習できます。学習アプリ側で画質、モデル、ステップ数、マスク、出力形式を確認しながら調整したい場合は、この使い方が基本です。
+
+| Step 4ルート | データセットフォルダ |
+| --- | --- |
+| Metashape + キューブマップ | `output/metashape_cubemap/` |
+| Metashape + 3DGUT | `output/metashape_3dgut/` |
+| SphereSfM + キューブマップ | `output/spheresfm_cubemap/` |
+| SphereSfM + 3DGUT | `output/spheresfm_3dgut/` |
+| COLMAP Rig | `output/colmap_rig/` |
 
 Step 5は、対応するCLIを持つ学習アプリ向けの実行ショートカットです。LichtFeld Studio v0.5.2互換CLIやPostshot v1.0/v1.1 Release BuildのCLIを使える環境では、GUIからコマンドを組み立てて、同じ設定の再実行やヘッドレス学習を開始できます。CLIを使わない場合は、Step 4の出力データセットを各アプリで直接読み込んでください。
 
@@ -168,7 +176,7 @@ Step 5は、対応するCLIを持つ学習アプリ向けの実行ショート�
 6. 必要に応じてスティッチ境界マスク、白飛びマスク、カスタムマスクも有効にします。
 7. 生成された `masks/` フォルダをMetashapeにマスクとして読み込み、SfMを実行します。
 8. Step 4でMetashapeのXML/PLYを使い、3DGSトレーニング用のキューブマップデータ、または `3DGUT (LichtFeld)` 用の直接データセットを出力します。
-9. AprilTagでスケール推定する場合は、撮影前にタグを印刷して配置しておきます。Cubemap出力後、`スケール` タブでタグ実寸とIDを入力して推定し、結果が妥当な場合だけ `Scaleへ反映` で `output/transforms.json` と `output/pointcloud.ply` を更新します。3DGUT向けのエクイレクタングラー出力のままでは推定できません。
+9. AprilTagでスケール推定する場合は、撮影前にタグを印刷して配置しておきます。Cubemap出力後、`スケール` タブでタグ実寸とIDを入力して推定し、結果が妥当な場合だけ `Scaleへ反映` で選択中Cubemapデータセットの `transforms.json` と `pointcloud.ply` を更新します。3DGUT向けのエクイレクタングラー出力のままでは推定できません。
 10. Step 4の出力をLichtFeld Studio、Postshot、Brushなどに読み込んで学習します。対応CLIで再実行やヘッドレス学習を行いたい場合は、Step 5からLichtFeld StudioやPostshotを起動できます。
 
 ## COLMAPルート
@@ -185,7 +193,7 @@ Step 5は、対応するCLIを持つ学習アプリ向けの実行ショート�
 3. RTX 50系GPUでは、GitHub配布版バイナリはCUDA SIFTで停止することがあります。RTX 50系で使う場合は、SphereSfMを `CMAKE_CUDA_ARCHITECTURES=120` 付きで自前ビルドした `colmap.exe` を指定してください。
 4. まずは左サブ工程の `SfM` と `Cube` をONにし、`Matcher: Sequential`, `SfM品質: 標準` から始めます。
 5. `出力形状` で、LichtFeld 3DGUT用データにするか、Postshot / Brush / LichtFeld向けキューブマップデータにするかを選びます。
-6. 完了後、3DGUTでもキューブマップでも下流アプリへ渡すデータセットは `output/` です。SphereSfMの作業ファイルとログは `output/spheresfm/` にまとまります。
+6. 完了後は、`output/spheresfm_3dgut/` または `output/spheresfm_cubemap/` を下流アプリへ渡します。SphereSfMの作業ファイルとログは `output/spheresfm/` にまとまります。
 
 ## 通常画像・通常動画のマスク前処理
 

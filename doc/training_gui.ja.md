@@ -6,7 +6,7 @@ Step 5は、Step 4で作成した3DGS用データセットを使って、対応C
 
 ## 学習アプリで使う
 
-Step 4の出力は、下流の3DGSアプリに渡すためのデータセットです。まず学習アプリのGUIで結果を見ながら調整したい場合は、`output/` を直接読み込みます。設定を固めたあとに同じ条件で回したい場合や、画面を開かずに学習だけ走らせたい場合は、Step 5のCLI起動を使います。
+Step 4の出力は、下流の3DGSアプリに渡すためのデータセットです。まず学習アプリのGUIで結果を見ながら調整したい場合は、ルートごとのデータセットフォルダを直接読み込みます。設定を固めたあとに同じ条件で回したい場合や、画面を開かずに学習だけ走らせたい場合は、Step 5のCLI起動を使います。
 
 | 進め方 | 向いている場面 |
 | --- | --- |
@@ -26,7 +26,7 @@ Step 5を開いたら、最初に「どのアプリで、どのデータを試�
 | Postshotでプロジェクトを作りたい | `Postshot` | `入力データ`, `Camera Poses`, `プロジェクト名`, `Profile` |
 | 任意の学習CLIを起動したい | `その他... > Custom` | `実行ファイル`, `引数テンプレート`, `入力データ`, `出力先` |
 
-`入力データ` は通常、自動設定のままで使います。Metashape / SphereSfMの変換結果は `<scene>/output/`、COLMAPルートは `<scene>/output/colmap_rig/` が基準になります。`出力先` は既定で `<scene>/output/` です。データセットと学習結果を同じ `output/` 配下に置くことで、後から持ち出しやすくしています。
+`入力データ` は通常、自動設定のままで使います。Metashape / SphereSfMの変換結果は `<scene>/output/` 配下のルート別フォルダ、COLMAPルートは `<scene>/output/colmap_rig/` が基準になります。`出力先` は既定で `<scene>/output/` です。データセットと学習結果を同じ `output/` 配下に置くことで、後から持ち出しやすくしています。
 
 ## 基本操作
 
@@ -74,10 +74,10 @@ Step 5では中央パネルを広く使うため、左右2カラムに整理し�
 
 | Step 4の結果 | Step 5の入力データ |
 | --- | --- |
-| Metashape + 投影Cubemap | `<scene>/output/` |
-| Metashape + 3DGUT | `<scene>/output/` |
-| SphereSfM + 投影Cubemap | `<scene>/output/` |
-| SphereSfM + 3DGUT | `<scene>/output/` |
+| Metashape + 投影Cubemap | `<scene>/output/metashape_cubemap/` |
+| Metashape + 3DGUT | `<scene>/output/metashape_3dgut/` |
+| SphereSfM + 投影Cubemap | `<scene>/output/spheresfm_cubemap/` |
+| SphereSfM + 3DGUT | `<scene>/output/spheresfm_3dgut/` |
 | COLMAP Rig | `<scene>/output/colmap_rig/` |
 
 手動で別フォルダを指定することもできます。その場合は、`images/`、必要なら `masks/`、カメラポーズ、点群など、選んだ学習アプリが必要とするファイルがそのフォルダにあることを確認します。
@@ -109,7 +109,7 @@ Step 5からCLI起動する場合は、v0.5.2互換のLichtFeld Studio CLIを目
 
 ### Cubemapデータを学習する場合
 
-Step 4で `投影視点に変換` を使ったデータです。`入力データ` は通常 `<scene>/output/` です。
+Step 4で `投影視点に変換` を使ったデータです。`入力データ` は通常、Metashapeルートでは `<scene>/output/metashape_cubemap/`、SphereSfMルートでは `<scene>/output/spheresfm_cubemap/` です。
 
 - `GUT` はOFFにします。
 - `Undistort` も通常はOFFです。
@@ -117,10 +117,10 @@ Step 4で `投影視点に変換` を使ったデータです。`入力データ
 
 ### 3DGUTデータを学習する場合
 
-Step 4で `3DGUT (LichtFeld)` を使ったデータです。`入力データ` は通常 `<scene>/output/` です。
+Step 4で `3DGUT (LichtFeld)` を使ったデータです。`入力データ` は通常、Metashapeルートでは `<scene>/output/metashape_3dgut/`、SphereSfMルートでは `<scene>/output/spheresfm_3dgut/` です。
 
 - `GUT` をONにします。
-- `<scene>/output/pointcloud.ply` が必要です。
+- 選択中の入力データ内に `pointcloud.ply` が必要です。
 - Step 4でMetashapeまたはSphereSfMから3DGUT用データを作成しておきます。
 
 ### Steps Scaler
@@ -209,7 +209,7 @@ Step 5はデータセットを作りません。直接読み込みでもCLI起�
 | Postshot | `出力先` に `.psht` プロジェクト。任意でPLY/SPZも書き出せます。 |
 | Custom | 指定したCLIの出力。 |
 
-最終品質の差はStep 4で作ったデータ形状、学習アプリ側の設定、学習ステップ数、マスクの使い方に左右されます。同じ `output/` データセットから設定だけ変えて試す場合は、出力名を変えて結果を残しておくと比較しやすくなります。
+最終品質の差はStep 4で作ったデータ形状、学習アプリ側の設定、学習ステップ数、マスクの使い方に左右されます。同じデータセットから設定だけ変えて試す場合は、出力名を変えて結果を残しておくと比較しやすくなります。
 
 ## よくある判断
 

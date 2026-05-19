@@ -28,11 +28,11 @@ Forked from [tetraface/tetraface-3dgs-utils](https://github.com/tetraface/tetraf
 
 Extract equirectangular still frames from Insta360 / Osmo 360 or similar 360° camera video, review which frames to keep, and generate masks for people, the camera operator, tripods, sky, stitch seams, and blown-out highlights before running SfM in Metashape.
 
-After Metashape SfM, export cubemap images, masks, and `transforms.json` for Postshot, Brush, and LichtFeld Studio. For RealityScan, the app can export cubemap images with XMP camera data under `output/realityscan/` so you can add them in RealityScan, run Align, and continue to point-cloud or model generation. For LichtFeld Studio 3DGUT workflows, the app can also create a direct dataset that keeps the equirectangular images and masks in place while writing `transforms.json` and `pointcloud.ply`. This is the main workflow for preparing 360° video as a 3DGS training dataset.
+After Metashape SfM, export cubemap images, masks, and `transforms.json` for Postshot, Brush, and LichtFeld Studio under `output/metashape_cubemap/`. For RealityScan, the app can export cubemap images with XMP camera data under `output/realityscan/` so you can add them in RealityScan, run Align, and continue to point-cloud or model generation. For LichtFeld Studio 3DGUT workflows, the app can also create a direct dataset under `output/metashape_3dgut/` that keeps the equirectangular images and masks in place while writing `transforms.json` and `pointcloud.ply`. This is the main workflow for preparing 360° video as a 3DGS training dataset.
 
 ### 2. 360° Video to SphereSfM, LichtFeld 3DGUT, or Cubemap Data
 
-You can skip Metashape and run spherical SfM directly on the extracted equirectangular images with SphereSfM's COLMAP build. From that result, the GUI can write either LichtFeld 3DGUT data or cubemap data under `output/` for Postshot, Brush, or LichtFeld.
+You can skip Metashape and run spherical SfM directly on the extracted equirectangular images with SphereSfM's COLMAP build. SphereSfM working files stay under `output/spheresfm/`, and the GUI writes the finished dataset to `output/spheresfm_3dgut/` or `output/spheresfm_cubemap/` for LichtFeld, Postshot, or Brush.
 
 ### 3. 360° Video to COLMAP Rig Dataset
 
@@ -53,7 +53,7 @@ For video or image sequences from DSLR, mirrorless, smartphone, or other normal 
 - Use the same mask-preparation workflow for normal-camera video after Step 1 extraction and for normal photo or image-sequence sets, not only 360° images. This is useful before sending images to SfM software.
 - Import Metashape SfM results and export cubemap images, masks, and `transforms.json` for Postshot, Brush, and LichtFeld Studio. For RealityScan, create cubemap images with XMP camera data and continue with Align in RealityScan. For LichtFeld Studio, the GUI can also create a `3DGUT (LichtFeld)` direct dataset without cubemap conversion.
 - Inspect Step 4 outputs and SfM results in Scene Preview, with the point cloud, camera positions, selected camera image, and matching masks in one view. Open it from Step 4's preview pane or launch only the viewer with `run_scene_preview.bat`.
-- If you print and place AprilTags before capture, the Step 4 `Scale` tab can estimate metric scale from an existing Cubemap output. After reviewing the estimate, you can apply the same scale to `output/transforms.json` and `output/pointcloud.ply`.
+- If you print and place AprilTags before capture, the Step 4 `Scale` tab can estimate metric scale from an existing Cubemap output. After reviewing the estimate, you can apply the same scale to the selected cubemap dataset's `transforms.json` and `pointcloud.ply`.
 - Select SphereSfM's `colmap.exe` to run spherical SfM without Metashape, then convert the result into either LichtFeld 3DGUT data or cubemap data.
 - Skip Metashape when needed by exporting COLMAP Rig cubemap images and masks from extracted 360° frames. The GUI can optionally continue into COLMAP SfM processing.
 - Prepare the Windows environment with setup scripts that handle Python, FFmpeg/FFprobe, and the main Python packages. Normal use starts from `run_gui.bat`.
@@ -143,7 +143,15 @@ If the scene folder path contains non-ASCII characters, an extremely long path, 
 
 ### Using the Dataset in Training Apps
 
-The main output of this app is the 3DGS dataset created in Step 4. The Step 4 `output/` folder can be opened directly in 3DGS applications such as LichtFeld Studio, Postshot, and Brush. This is the normal path when you want to inspect and tune image quality, model settings, step counts, masks, and export options inside the training app.
+The main output of this app is the 3DGS dataset created in Step 4. Open the Step 4 dataset folder directly in 3DGS applications such as LichtFeld Studio, Postshot, and Brush. This is the normal path when you want to inspect and tune image quality, model settings, step counts, masks, and export options inside the training app.
+
+| Step 4 route | Dataset folder |
+| --- | --- |
+| Metashape + cubemap | `output/metashape_cubemap/` |
+| Metashape + 3DGUT | `output/metashape_3dgut/` |
+| SphereSfM + cubemap | `output/spheresfm_cubemap/` |
+| SphereSfM + 3DGUT | `output/spheresfm_3dgut/` |
+| COLMAP Rig | `output/colmap_rig/` |
 
 Step 5 is a launch shortcut for training apps that provide a compatible CLI. With a LichtFeld Studio v0.5.2-compatible CLI or a Postshot v1.0/v1.1 Release Build CLI, the GUI can build the command for repeat runs or headless training. If you are not using CLI training, load the Step 4 output dataset directly in the training app.
 
@@ -168,7 +176,7 @@ Detailed GUI docs:
 6. Enable stitch seam, overexposure, and custom masks when they match the source material.
 7. Import the generated `masks/` folder into Metashape as per-image masks, then run SfM.
 8. Use Step 4 with the Metashape XML/PLY result to export cubemap training data or a direct `3DGUT (LichtFeld)` dataset.
-9. To estimate scale with AprilTags, print and place the tags before capture. After creating Cubemap output, open the `Scale` tab, enter the printed tag size and IDs, run estimation, and use `Apply to Scale` only when the result looks reasonable. This updates `output/transforms.json` and `output/pointcloud.ply`. Direct equirectangular output for 3DGUT cannot be estimated here.
+9. To estimate scale with AprilTags, print and place the tags before capture. After creating Cubemap output, open the `Scale` tab, enter the printed tag size and IDs, run estimation, and use `Apply to Scale` only when the result looks reasonable. This updates the selected cubemap dataset's `transforms.json` and `pointcloud.ply`. Direct equirectangular output for 3DGUT cannot be estimated here.
 10. Load the Step 4 output in LichtFeld Studio, Postshot, Brush, or another training app. When you want repeat runs or headless training through a compatible CLI, use Step 5 to launch LichtFeld Studio or Postshot with the dataset you just created.
 
 ## COLMAP Route
@@ -185,7 +193,7 @@ Detailed GUI docs:
 3. On RTX 50-series GPUs, the GitHub-distributed binary can stop during CUDA SIFT. For RTX 50-series systems, build SphereSfM locally with `CMAKE_CUDA_ARCHITECTURES=120` and select that `colmap.exe`.
 4. Start with both left sub-stages, `SfM` and `Cube`, turned on, plus `Matcher: Sequential` and `SfM Quality: Standard`.
 5. In `Output Shape`, choose whether to create LichtFeld 3DGUT data or cubemap data for Postshot, Brush, or LichtFeld.
-6. After completion, `output/` is the dataset passed to downstream apps for both 3DGUT and cubemap output. SphereSfM working files and logs stay under `output/spheresfm/`.
+6. After completion, pass `output/spheresfm_3dgut/` or `output/spheresfm_cubemap/` to downstream apps. SphereSfM working files and logs stay under `output/spheresfm/`.
 
 ## Mask Preprocessing for Normal Images
 

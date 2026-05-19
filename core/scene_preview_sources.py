@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
@@ -10,7 +11,11 @@ from typing import Literal
 from core.scene_layout import (
     scene_images_dir,
     scene_masks_dir,
+    scene_metashape_3dgut_dir,
+    scene_metashape_cubemap_dir,
     scene_output_dir,
+    scene_spheresfm_3dgut_dir,
+    scene_spheresfm_cubemap_dir,
     step4_export_settings_path,
     step4_metashape_import_work_dir,
 )
@@ -34,18 +39,27 @@ def discover_scene_preview_candidates(scene_dir: Path) -> tuple[ScenePreviewCand
     scene = Path(scene_dir)
     candidates: list[ScenePreviewCandidate] = []
     output = scene_output_dir(scene)
-    output_transforms = output / "transforms.json"
     settings = _load_step4_settings(scene)
-    if output_transforms.is_file():
+    current_output = _current_step4_output_root(scene, settings)
+    for dataset_root in _step4_dataset_roots(scene, settings):
+        output_transforms = dataset_root / "transforms.json"
+        if not output_transforms.is_file():
+            continue
         candidates.append(
             ScenePreviewCandidate(
                 kind="output",
-                label="Step 4 output",
+                label=(
+                    "Step 4 output"
+                    if _same_path(dataset_root, current_output)
+                    else f"Step 4 output ({dataset_root.name})"
+                ),
                 path=output_transforms,
-                image_root=output,
-                mask_root=_existing_dir(output / "masks"),
-                pointcloud_path=_existing_file(output / "pointcloud.ply"),
-                display_transform=step4_output_display_transform(settings),
+                image_root=dataset_root,
+                mask_root=_existing_dir(dataset_root / "masks"),
+                pointcloud_path=_existing_file(dataset_root / "pointcloud.ply"),
+                display_transform=step4_output_display_transform(settings)
+                if _same_path(dataset_root, current_output)
+                else None,
             )
         )
 
@@ -138,6 +152,53 @@ def _settings_path_or_none(scene: Path, value: object) -> Path | None:
 def _settings_dict(settings: dict, key: str) -> dict:
     value = settings.get(key)
     return value if isinstance(value, dict) else {}
+
+
+def _current_step4_output_root(scene: Path, settings: dict) -> Path | None:
+    output_dir = _settings_path_or_none(scene, settings.get("output_dir"))
+    if output_dir is not None:
+        return output_dir
+    portable = _settings_dict(settings, "portable_output")
+    portable_root = _settings_path_or_none(scene, portable.get("root"))
+    return portable_root if portable_root is not None else scene_output_dir(scene)
+
+
+def _step4_dataset_roots(scene: Path, settings: dict) -> tuple[Path, ...]:
+    roots = [
+        _current_step4_output_root(scene, settings),
+        scene_metashape_cubemap_dir(scene),
+        scene_metashape_3dgut_dir(scene),
+        scene_spheresfm_cubemap_dir(scene),
+        scene_spheresfm_3dgut_dir(scene),
+        scene_output_dir(scene),
+    ]
+    return tuple(_dedupe_paths(path for path in roots if path is not None))
+
+
+def _dedupe_paths(paths: Iterable[Path]) -> list[Path]:
+    result: list[Path] = []
+    seen: set[str] = set()
+    for path in paths:
+        if not isinstance(path, Path):
+            continue
+        try:
+            key = str(path.resolve())
+        except OSError:
+            key = str(path.absolute())
+        if key in seen:
+            continue
+        seen.add(key)
+        result.append(path)
+    return result
+
+
+def _same_path(a: Path | None, b: Path | None) -> bool:
+    if a is None or b is None:
+        return False
+    try:
+        return a.resolve() == b.resolve()
+    except OSError:
+        return a.absolute() == b.absolute()
 
 
 def _existing_file(path: Path | None) -> Path | None:

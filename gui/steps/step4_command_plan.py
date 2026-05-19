@@ -237,7 +237,7 @@ class Step4CommandPlanMixin:
         if not script.exists():
             raise FileNotFoundError(f"transforms_to_colmap.py が見つかりません: {script}")
 
-        output = self._output_dir()
+        output = self._display_output_dir()
         colmap_dir = output / "colmap"
 
         ply_path: Path | None = None

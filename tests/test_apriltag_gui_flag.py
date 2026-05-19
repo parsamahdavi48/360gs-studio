@@ -76,7 +76,7 @@ def test_apriltag_scale_command_targets_existing_cubemap_output(tmp_path: Path) 
         from gui.steps.step4_cubemap import CubemapStep
 
         scene = Path({str(tmp_path)!r})
-        output = scene / "output"
+        output = scene / "output" / "metashape_cubemap"
         (output / "images").mkdir(parents=True)
         (output / "images" / "a.png").write_bytes(b"image")
         (output / "transforms.json").write_text(json.dumps({transforms!r}), encoding="utf-8")
@@ -137,7 +137,7 @@ def test_apriltag_scale_command_can_set_conversion_preset(tmp_path: Path) -> Non
         from gui.steps.step4_cubemap import CubemapStep
 
         scene = Path({str(tmp_path)!r})
-        output = scene / "output"
+        output = scene / "output" / "metashape_cubemap"
         (output / "images").mkdir(parents=True)
         (output / "images" / "a.png").write_bytes(b"image")
         (output / "transforms.json").write_text(json.dumps({transforms!r}), encoding="utf-8")
@@ -185,7 +185,7 @@ def test_apriltag_scale_command_rejects_equirectangular_output(tmp_path: Path) -
         from gui.steps.step4_cubemap import CubemapStep
 
         scene = Path({str(tmp_path)!r})
-        output = scene / "output"
+        output = scene / "output" / "metashape_cubemap"
         (output / "images").mkdir(parents=True)
         (output / "images" / "a.png").write_bytes(b"image")
         (output / "transforms.json").write_text(json.dumps({transforms!r}), encoding="utf-8")
@@ -243,7 +243,7 @@ def test_apriltag_apply_scale_confirms_target_files(tmp_path: Path) -> None:
         from gui.steps.step4_cubemap import CubemapStep
 
         scene = Path({str(tmp_path)!r})
-        output = scene / "output"
+        output = scene / "output" / "metashape_cubemap"
         (output / "images").mkdir(parents=True)
         (output / "images" / "a.png").write_bytes(b"image")
         (output / "custom_points.ply").write_text("ply\\n", encoding="ascii")

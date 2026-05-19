@@ -11,7 +11,7 @@ from pathlib import Path
 
 import numpy as np
 
-from core.scene_layout import scene_output_dir
+from core.scene_layout import scene_output_dir, step4_export_settings_path
 
 
 @dataclass(frozen=True)
@@ -73,11 +73,38 @@ def _iter_frame_image_paths(transforms_json: Path, data: dict) -> tuple[Path, ..
     return tuple(paths)
 
 
-def validate_scale_output_dataset(scene_dir: Path, *, max_image_checks: int = 12) -> ScaleOutputDataset:
+def _configured_output_dir(scene: Path) -> Path:
+    settings_path = step4_export_settings_path(scene)
+    if not settings_path.is_file():
+        return scene_output_dir(scene)
+    try:
+        settings = json.loads(settings_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return scene_output_dir(scene)
+    if not isinstance(settings, dict):
+        return scene_output_dir(scene)
+    output_dir = str(settings.get("output_dir") or "").strip()
+    if output_dir:
+        path = Path(output_dir)
+        return path if path.is_absolute() else scene / path
+    portable = settings.get("portable_output")
+    if isinstance(portable, dict):
+        portable_root = str(portable.get("root") or "").strip()
+        if portable_root:
+            return scene / portable_root
+    return scene_output_dir(scene)
+
+
+def validate_scale_output_dataset(
+    scene_dir: Path,
+    *,
+    output_dir: Path | None = None,
+    max_image_checks: int = 12,
+) -> ScaleOutputDataset:
     scene = Path(scene_dir)
     if not scene.is_dir():
         raise ValueError(f"Scene folder was not found: {scene}")
-    output = scene_output_dir(scene)
+    output = Path(output_dir) if output_dir is not None else _configured_output_dir(scene)
     if not output.is_dir():
         raise ValueError(f"Output folder was not found: {output}")
     transforms_json = output / "transforms.json"
@@ -274,6 +301,11 @@ def apply_scale_to_transforms_and_pointcloud(
     )
 
 
-def apply_scene_output_scale(scene_dir: Path, scale: float) -> ScaleApplyResult:
-    dataset = validate_scale_output_dataset(scene_dir)
+def apply_scene_output_scale(
+    scene_dir: Path,
+    scale: float,
+    *,
+    output_dir: Path | None = None,
+) -> ScaleApplyResult:
+    dataset = validate_scale_output_dataset(scene_dir, output_dir=output_dir)
     return apply_scale_to_transforms_and_pointcloud(dataset.transforms_json, scale)

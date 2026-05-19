@@ -111,16 +111,36 @@ class Step4TrainingMixin:
     def _training_dataset_export_shape(self, dataset_root: Path) -> str:
         if not self.scene_dir:
             return ""
-        try:
-            if dataset_root.resolve() != self._output_dir().resolve():
-                return ""
-        except OSError:
-            return ""
         settings = load_step4_export_settings(Path(self.scene_dir))
-        if not settings:
-            return ""
         shape = str(settings.get("output_shape", "")).strip()
-        return shape if shape in {_OUTPUT_SHAPE_PROJECTED, _OUTPUT_SHAPE_EQUIRECT_3DGUT} else ""
+        if shape in {_OUTPUT_SHAPE_PROJECTED, _OUTPUT_SHAPE_EQUIRECT_3DGUT}:
+            roots: list[Path] = []
+            output_dir = str(settings.get("output_dir", "")).strip()
+            if output_dir:
+                output_path = Path(output_dir)
+                roots.append(output_path if output_path.is_absolute() else Path(self.scene_dir) / output_path)
+            portable = settings.get("portable_output")
+            if isinstance(portable, dict):
+                portable_root = str(portable.get("root", "")).strip()
+                if portable_root:
+                    roots.append(Path(self.scene_dir) / portable_root)
+            if not roots:
+                roots.append(self._output_dir())
+            for root in roots:
+                try:
+                    if dataset_root.resolve() == root.resolve():
+                        return shape
+                except OSError:
+                    continue
+
+        transforms = dataset_root / "transforms.json"
+        if not transforms.is_file():
+            return ""
+        data = load_json(transforms, {})
+        camera_model = str(data.get("camera_model") or "").strip().upper()
+        if camera_model == "EQUIRECTANGULAR":
+            return _OUTPUT_SHAPE_EQUIRECT_3DGUT
+        return _OUTPUT_SHAPE_PROJECTED
 
     def _build_training_section(self, exe_filter: str) -> QWidget:
         section = QWidget()
@@ -1618,7 +1638,27 @@ class Step4TrainingMixin:
     def _default_training_dataset_dir(self) -> Path:
         if not self.scene_dir:
             raise ValueError(i18n.t("SCENE_REQUIRED_ACTION_HINT"))
+        if not self.pipeline_stage_intent("conversion"):
+            settings_output = self._settings_training_dataset_dir()
+            if settings_output is not None:
+                return settings_output
         return self._display_output_dir()
+
+    def _settings_training_dataset_dir(self) -> Path | None:
+        if not self.scene_dir:
+            return None
+        scene = Path(self.scene_dir)
+        settings = load_step4_export_settings(scene)
+        output_dir = str(settings.get("output_dir", "")).strip()
+        if output_dir:
+            path = Path(output_dir)
+            return path if path.is_absolute() else scene / path
+        portable = settings.get("portable_output")
+        if isinstance(portable, dict):
+            portable_root = str(portable.get("root", "")).strip()
+            if portable_root:
+                return scene / portable_root
+        return None
 
     def _default_lfs_output_name(self) -> str:
         return Path(self.scene_dir).name if self.scene_dir else ""
@@ -1743,13 +1783,20 @@ class Step4TrainingMixin:
             target = images_dir.resolve()
             output_images = (scene_output_dir(scene) / "images").resolve()
             source_images = scene_images_dir(scene).resolve()
+            display_output_images = (self._display_output_dir() / "images").resolve()
+            settings_output = self._settings_training_dataset_dir()
+            settings_output_images = (settings_output / "images").resolve() if settings_output is not None else None
         except OSError:
             return None
 
         project = load_json(project_path(scene), {})
         assets = project.get("assets") if isinstance(project.get("assets"), dict) else {}
         key = ""
-        if target == output_images:
+        if (
+            target == output_images
+            or target == display_output_images
+            or (settings_output_images is not None and target == settings_output_images)
+        ):
             key = "output_image_count"
         elif target == source_images:
             key = "source_image_count"

@@ -6,7 +6,7 @@ When you want to inspect quality and tune model settings inside the training app
 
 ## Using the Dataset in Training Apps
 
-The Step 4 output is the dataset intended for downstream 3DGS apps. Open `output/` directly in the training app when you want to inspect results and tune settings in that app's GUI. Use Step 5 when the settings are ready for repeat runs or when you want training to run headlessly through a CLI.
+The Step 4 output is the dataset intended for downstream 3DGS apps. Open the route-specific dataset folder directly in the training app when you want to inspect results and tune settings in that app's GUI. Use Step 5 when the settings are ready for repeat runs or when you want training to run headlessly through a CLI.
 
 | Path | Best for |
 | --- | --- |
@@ -26,7 +26,7 @@ When you open Step 5, first decide which app you want to run and which dataset y
 | Create a Postshot project | `Postshot` | `Dataset`, `Camera Poses`, project name, `Profile` |
 | Run any training CLI | `Other... > Custom` | `Executable`, `Argument Template`, `Dataset`, `Training Output` |
 
-Normally, leave `Dataset` on the automatic value. Metashape and SphereSfM conversion results use `<scene>/output/`; the COLMAP route uses `<scene>/output/colmap_rig/`. `Training Output` defaults to `<scene>/output/`. Keeping the dataset and training result under `output/` makes the scene easier to move later.
+Normally, leave `Dataset` on the automatic value. Metashape and SphereSfM conversion results use route-specific folders under `<scene>/output/`; the COLMAP route uses `<scene>/output/colmap_rig/`. `Training Output` defaults to `<scene>/output/`. Keeping datasets and training results under `output/` makes the scene easier to move later.
 
 ## Basic Flow
 
@@ -74,10 +74,10 @@ This is the dataset folder passed to the training app. It is normally set from t
 
 | Step 4 result | Step 5 dataset |
 | --- | --- |
-| Metashape + projected cubemap | `<scene>/output/` |
-| Metashape + 3DGUT | `<scene>/output/` |
-| SphereSfM + projected cubemap | `<scene>/output/` |
-| SphereSfM + 3DGUT | `<scene>/output/` |
+| Metashape + projected cubemap | `<scene>/output/metashape_cubemap/` |
+| Metashape + 3DGUT | `<scene>/output/metashape_3dgut/` |
+| SphereSfM + projected cubemap | `<scene>/output/spheresfm_cubemap/` |
+| SphereSfM + 3DGUT | `<scene>/output/spheresfm_3dgut/` |
 | COLMAP Rig | `<scene>/output/colmap_rig/` |
 
 You can choose another folder manually. If you do, make sure it contains the files required by the selected training app: `images/`, optional `masks/`, camera poses, and point cloud data when needed.
@@ -109,7 +109,7 @@ For CLI launch from Step 5, use a LichtFeld Studio v0.5.2-compatible CLI as the 
 
 ### Training Cubemap Data
 
-This is data created in Step 4 with `Convert to Projection Views`. `Dataset` is normally `<scene>/output/`.
+This is data created in Step 4 with `Convert to Projection Views`. `Dataset` is normally `<scene>/output/metashape_cubemap/` for the Metashape route or `<scene>/output/spheresfm_cubemap/` for the SphereSfM route.
 
 - Keep `GUT` off.
 - Usually keep `Undistort` off too.
@@ -117,10 +117,10 @@ This is data created in Step 4 with `Convert to Projection Views`. `Dataset` is 
 
 ### Training 3DGUT Data
 
-This is data created in Step 4 with `3DGUT (LichtFeld)`. `Dataset` is normally `<scene>/output/`.
+This is data created in Step 4 with `3DGUT (LichtFeld)`. `Dataset` is normally `<scene>/output/metashape_3dgut/` for the Metashape route or `<scene>/output/spheresfm_3dgut/` for the SphereSfM route.
 
 - Turn `GUT` on.
-- `<scene>/output/pointcloud.ply` is required.
+- `pointcloud.ply` inside the selected dataset is required.
 - Create the 3DGUT dataset from the Metashape or SphereSfM route in Step 4 before launching Step 5.
 
 ### Steps Scaler
@@ -209,7 +209,7 @@ Step 5 does not create datasets. Whether you open the dataset manually or launch
 | Postshot | `.psht` project in `Training Output`. Optional PLY/SPZ export is also available. |
 | Custom | Whatever the specified CLI writes. |
 
-Final quality depends on the Step 4 dataset shape, training-app settings, step count, and mask usage. When comparing settings with the same `output/` dataset, change the output name so each result remains available.
+Final quality depends on the Step 4 dataset shape, training-app settings, step count, and mask usage. When comparing settings with the same dataset, change the output name so each result remains available.
 
 ## Common Decisions
 

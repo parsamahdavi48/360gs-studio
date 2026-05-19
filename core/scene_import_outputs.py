@@ -18,7 +18,11 @@ from core.scene_layout import (
     STEP4_SETTINGS_VERSION,
     scene_images_dir,
     scene_masks_dir,
+    scene_metashape_3dgut_dir,
+    scene_metashape_cubemap_dir,
     scene_output_dir,
+    scene_spheresfm_3dgut_dir,
+    scene_spheresfm_cubemap_dir,
     step4_dataset_runs_path,
     step4_export_settings_path,
 )
@@ -33,7 +37,8 @@ def inspect_output_dataset(
     cancel_token: SceneImportCancelToken | None = None,
 ) -> dict[str, Any]:
     options = options or SceneImportOptions()
-    output = scene_output_dir(scene)
+    output = _active_output_dataset_root(scene)
+    root_label = scene_relative(scene, output)
     images = iter_scene_images(output / "images", cancel_token)
     masks = iter_scene_images(output / "masks", cancel_token)
     transforms = output / "transforms.json"
@@ -45,7 +50,7 @@ def inspect_output_dataset(
         try:
             data = json.loads(transforms.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError) as exc:
-            warnings.append(f"output/transforms.json could not be read: {exc}")
+            warnings.append(f"{root_label}/transforms.json could not be read: {exc}")
         if isinstance(data, dict):
             camera_model = str(data.get("camera_model") or "")
             raw_frames = data.get("frames")
@@ -53,20 +58,33 @@ def inspect_output_dataset(
     if cancel_token is not None:
         cancel_token.check_cancelled()
     if not transforms.is_file() and output.exists() and (images or masks):
-        warnings.append("output/ exists but output/transforms.json was not found.")
+        warnings.append(f"{root_label}/ exists but {root_label}/transforms.json was not found.")
 
     output_shape = infer_output_shape(camera_model, images)
     dataset_kind = "3dgut" if output_shape == "equirect_3dgut" else ("projection_views" if output_shape else "")
     image_sample = sample_paths(images, options.output_validation_sample_limit)
 
     if images and output_shape == "projected":
-        validate_projected_output_images(images, warnings, sample_paths=image_sample, cancel_token=cancel_token)
+        validate_projected_output_images(
+            images,
+            warnings,
+            images_label=f"{root_label}/images",
+            sample_paths=image_sample,
+            cancel_token=cancel_token,
+        )
     if frames:
         validate_transform_frames(output, frames, warnings, image_paths=images, cancel_token=cancel_token)
     if images and masks:
-        validate_output_masks(output, images, warnings, sample_paths=image_sample, cancel_token=cancel_token)
+        validate_output_masks(
+            output,
+            images,
+            warnings,
+            masks_label=f"{root_label}/masks",
+            sample_paths=image_sample,
+            cancel_token=cancel_token,
+        )
     if output_shape == "equirect_3dgut" and not pointcloud.is_file():
-        warnings.append("3DGUT-style output was detected, but output/pointcloud.ply was not found.")
+        warnings.append(f"3DGUT-style output was detected, but {root_label}/pointcloud.ply was not found.")
 
     return {
         "root": output,
@@ -95,6 +113,45 @@ def infer_output_shape(camera_model: str, images: list[Path]) -> str:
     return ""
 
 
+def _active_output_dataset_root(scene: Path) -> Path:
+    legacy = scene_output_dir(scene)
+    configured = _configured_output_dataset_root(scene)
+    candidates = [
+        configured,
+        scene_metashape_cubemap_dir(scene),
+        scene_metashape_3dgut_dir(scene),
+        scene_spheresfm_cubemap_dir(scene),
+        scene_spheresfm_3dgut_dir(scene),
+        legacy,
+    ]
+    for candidate in (path for path in candidates if path is not None):
+        if (candidate / "transforms.json").is_file():
+            return candidate
+    for candidate in (path for path in candidates if path is not None):
+        if (candidate / "images").is_dir():
+            return candidate
+    return legacy
+
+
+def _configured_output_dataset_root(scene: Path) -> Path | None:
+    settings_path = step4_export_settings_path(scene)
+    if not settings_path.is_file():
+        return None
+    settings = load_json(settings_path, {})
+    if not isinstance(settings, dict):
+        return None
+    output_dir = str(settings.get("output_dir") or "").strip()
+    if output_dir:
+        path = Path(output_dir)
+        return path if path.is_absolute() else scene / path
+    portable = settings.get("portable_output")
+    if isinstance(portable, dict):
+        portable_root = str(portable.get("root") or "").strip()
+        if portable_root:
+            return scene / portable_root
+    return None
+
+
 def all_square(paths: list[Path]) -> bool:
     if not paths:
         return False
@@ -118,13 +175,14 @@ def validate_projected_output_images(
     images: list[Path],
     warnings: list[str],
     *,
+    images_label: str = "output/images",
     sample_paths: list[Path] | None = None,
     cancel_token: SceneImportCancelToken | None = None,
 ) -> None:
     targets = sample_paths if sample_paths is not None else images
     sizes: set[tuple[int, int]] = set()
-    non_square = IssueSummary("output/images non-square projected images")
-    unreadable = IssueSummary("output/images unreadable images")
+    non_square = IssueSummary(f"{images_label} non-square projected images")
+    unreadable = IssueSummary(f"{images_label} unreadable images")
     for index, path in enumerate(targets, start=1):
         if cancel_token is not None and index % 64 == 0:
             cancel_token.check_cancelled()
@@ -137,7 +195,7 @@ def validate_projected_output_images(
             non_square.add(path.name)
     if len(sizes) > 1:
         examples = ", ".join(f"{w}x{h}" for w, h in sorted(sizes)[:6])
-        warnings.append(f"output/images has mixed image sizes: {examples}")
+        warnings.append(f"{images_label} has mixed image sizes: {examples}")
     for issue in (non_square, unreadable):
         message = issue.message()
         if message:
@@ -204,14 +262,15 @@ def validate_output_masks(
     images: list[Path],
     warnings: list[str],
     *,
+    masks_label: str = "output/masks",
     sample_paths: list[Path] | None = None,
     cancel_token: SceneImportCancelToken | None = None,
 ) -> None:
     masks_root = output / "masks"
     images_root = output / "images"
     targets = sample_paths if sample_paths is not None else images
-    missing = IssueSummary("output/masks missing matching files")
-    mismatch = IssueSummary("output/masks size mismatch")
+    missing = IssueSummary(f"{masks_label} missing matching files")
+    mismatch = IssueSummary(f"{masks_label} size mismatch")
     for index, image_path in enumerate(targets, start=1):
         if cancel_token is not None and index % 64 == 0:
             cancel_token.check_cancelled()
@@ -230,7 +289,8 @@ def validate_output_masks(
 
 
 def write_external_step4_settings(scene: Path, import_id: str, output_info: dict[str, Any]) -> None:
-    output = scene_output_dir(scene)
+    output = Path(output_info.get("root") or scene_output_dir(scene))
+    root_rel = scene_relative(scene, output)
     output_shape = str(output_info.get("output_shape") or "")
     dataset_kind = str(output_info.get("dataset_kind") or "")
     active = bool(output_info.get("active"))
@@ -242,7 +302,7 @@ def write_external_step4_settings(scene: Path, import_id: str, output_info: dict
         "output_dir": str(output),
         "origin": import_origin(import_id),
         "portable_output": {
-            "root": "output",
+            "root": root_rel,
             "dataset_kind": dataset_kind,
             "active": active,
         },
@@ -315,10 +375,10 @@ def write_external_step4_settings(scene: Path, import_id: str, output_info: dict
             "ply_source": str(output / "pointcloud.ply") if (output / "pointcloud.ply").is_file() else "",
         },
         "registered_assets": {
-            "images_dir": "output/images" if (output / "images").is_dir() else "",
-            "masks_dir": "output/masks" if (output / "masks").is_dir() else "",
-            "transforms_json": "output/transforms.json" if (output / "transforms.json").is_file() else "",
-            "pointcloud": "output/pointcloud.ply" if (output / "pointcloud.ply").is_file() else "",
+            "images_dir": f"{root_rel}/images" if (output / "images").is_dir() else "",
+            "masks_dir": f"{root_rel}/masks" if (output / "masks").is_dir() else "",
+            "transforms_json": f"{root_rel}/transforms.json" if (output / "transforms.json").is_file() else "",
+            "pointcloud": f"{root_rel}/pointcloud.ply" if (output / "pointcloud.ply").is_file() else "",
         },
         "output_files": {
             "settings": "_stechdrive/step4/export_settings.json",
@@ -342,7 +402,8 @@ def replace_external_dataset_run(scene: Path, import_id: str, output_info: dict[
     kept = [run for run in runs if not is_external_import_record(run)]
     if output_info.get("active"):
         run_id = f"dataset_{import_id}"
-        root = scene_output_dir(scene)
+        root = Path(output_info.get("root") or scene_output_dir(scene))
+        root_rel = scene_relative(scene, root)
         output_shape = str(output_info.get("output_shape") or "")
         kept.append(
             {
@@ -351,10 +412,10 @@ def replace_external_dataset_run(scene: Path, import_id: str, output_info: dict[
                 "route": EXTERNAL_IMPORT_KIND,
                 "output_shape": output_shape,
                 "target_profile": "lichtfeld" if output_shape == "equirect_3dgut" else "custom",
-                "dataset_root": "output",
+                "dataset_root": root_rel,
                 "origin": import_origin(import_id),
                 "artifacts": {
-                    "root": "output",
+                    "root": root_rel,
                     "transforms_json": file_identity(root / "transforms.json"),
                     "pointcloud": file_identity(root / "pointcloud.ply"),
                     "images_dir": file_identity(root / "images"),

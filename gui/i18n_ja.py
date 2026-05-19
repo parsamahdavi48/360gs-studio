@@ -491,9 +491,9 @@ STRINGS: dict[str, str] = {
     "TRAINING_REQUIRES_DATASET_OUTPUT": "学習に使うデータセットが見つかりません。先にStep 4で変換を実行するか、入力データを指定してください。",
     "TRAINING_DATASET_NEEDS_3DGUT_OUTPUT": "3DGUTでトレーニングするには、Cubemapの出力形状を3DGUTにしてください。",
     "TRAINING_DATASET_NEEDS_PROJECTED_OUTPUT": "通常トレーニングには投影Cubemapデータが必要です。3DGUTで進める場合はTraining側のGUTをONにしてください。",
-    "TRAINING_DATASET_EXISTING_NOT_3DGUT": "Trainingは3DGUTですが、既存outputは3DGUT形式ではありません。CubeをONにして3DGUT用データを作成してください。",
-    "TRAINING_DATASET_EXISTING_NOT_PROJECTED": "通常トレーニングですが、既存outputは3DGUT形式です。Training側のGUTをONにするか、投影Cubemapデータを用意してください。",
-    "TRAINING_DATASET_3DGUT_NEEDS_PLY": "3DGUTトレーニングにはoutput/pointcloud.plyが必要です。CubeをONにして3DGUT用データを作成してください。",
+    "TRAINING_DATASET_EXISTING_NOT_3DGUT": "Trainingは3DGUTですが、入力データは3DGUT形式ではありません。CubeをONにして3DGUT用データを作成してください。",
+    "TRAINING_DATASET_EXISTING_NOT_PROJECTED": "通常トレーニングですが、入力データは3DGUT形式です。Training側のGUTをONにするか、投影Cubemapデータを用意してください。",
+    "TRAINING_DATASET_3DGUT_NEEDS_PLY": "3DGUTトレーニングには入力データ内のpointcloud.plyが必要です。CubeをONにして3DGUT用データを作成してください。",
     "POSTSHOT_IMPORT_POSES_NOT_FOUND": "Postshotへ渡すカメラポーズが見つかりません。先にSfMを実行するか、Camera PosesをEstimateにしてください。",
     "TRAINING_OUTPUT_EXISTS": "トレーニング結果の出力先に既存ファイルがあります: {path}\n上書きを避けるため、出力名または出力先を変更してください。",
     "TRAINING_OUTPUT_NAME_PATH_ERROR": "{label} はファイル名だけを指定してください。フォルダやパスは出力先で指定します。",
@@ -967,8 +967,8 @@ STRINGS: dict[str, str] = {
     "JPG_QUALITY_COMPACT": "JPG/WebP:",
     "EXPORT_COLMAP": "COLMAP形式モデルを追加出力",
     "EXPORT_COLMAP_HINT": (
-        "output/transforms.json とPLYから\n"
-        "cameras.txt / images.txt / points3D.txt を output/colmap/ に作成します。\n"
+        "現在の出力フォルダの transforms.json とPLYから\n"
+        "cameras.txt / images.txt / points3D.txt を colmap/ に作成します。\n"
         "COLMAPで再SfMするための画像書き出しではありません。"
     ),
     "APRILTAG_SCALE_ENABLE": "AprilTagでスケールを推定",
@@ -1122,10 +1122,10 @@ TIPS: dict[str, str] = {
     "SKY_MIN_SCORE": "Mask2Former専用。0.00〜1.00のクラス信頼度しきい値です。0で無効。上げるほど曖昧な画素を捨て、誤検出は減りますが漏れも増えます",
     "SKY_MIN_AREA": "空マスクだけに適用します。画像面積に対してこの割合未満の小さな空候補を除去します。0%で無効。木の隙間など細い空を残したい場合は0%推奨",
     "SKY_TOP_CONNECTED": "空マスクだけに適用します。画像上端に接している空の連結成分だけ残す強いフィルタです。人物や他の対象には適用しません",
-    "OUTPUT_DIR_CUBEMAP": "シーンフォルダ内の output/ を自動使用します。出力 transforms.json もこのフォルダに固定されます",
-    "OUTPUT_DIR_LICHTFELD_DIRECT": "LichtFeld 3DGUT用に、既存の images/ と masks/ を output/ へ省スペース配置し、transforms.json と pointcloud.ply も output/ に作成します",
+    "OUTPUT_DIR_CUBEMAP": "MetashapeのCubemap出力は output/metashape_cubemap/ に作成します。transforms.json もこのフォルダに固定されます",
+    "OUTPUT_DIR_LICHTFELD_DIRECT": "LichtFeld 3DGUT用に、既存の images/ と masks/ を output/metashape_3dgut/ へ省スペース配置し、transforms.json と pointcloud.ply もそこに作成します",
     "OUTPUT_DIR_COLMAP_PROJECT": "シーンフォルダ内の output/colmap_rig/ が完成COLMAPプロジェクトです。COLMAP実行後はこのフォルダを3DGSアプリへ渡します",
-    "OUTPUT_DIR_SPHERESFM_PROJECT": "SphereSfMの作業用ファイルは output/spheresfm/ にまとめます。完成データは3DGUTでもキューブマップでも output/ に作成します",
+    "OUTPUT_DIR_SPHERESFM_PROJECT": "SphereSfMの作業用ファイルは output/spheresfm/ にまとめます。完成データは output/spheresfm_cubemap/ または output/spheresfm_3dgut/ に作成します",
     "RUN_CUBEMAP": "現在の書き出し方式と視点設定で画像、マスク、必要なメタデータを書き出します",
     "EXPORT_METHOD": "Step 4で行うルートを選びます。Metashape結果の変換、COLMAP用視点画像の書き出し、SphereSfMによるSfMと変換を切り替えます",
     "METHOD_METASHAPE_IMPORT": "MetashapeでSfM済みのカメラXMLと点群PLYを読み込み、3DGSアプリ向けの視点画像・マスク・transforms.jsonを書き出します",
@@ -1216,15 +1216,15 @@ TIPS: dict[str, str] = {
     "REALITYSCAN_INCLUDE_RIG": "実験用です。同一フレームのCubemap faceを\nRealityScanのRig属性でまとめます。\nただしCOLMAPのrig最適化とは異なり、Rig単位で特徴点抽出して\nカメラ姿勢を再調整する用途ではありません。\n点群を再生成する通常ワークフローではOFFにしてください。",
     "OUTPUT_SCALE": "キューブマップ1面の画像サイズ。既定のNormalは90度画像中央部の角度解像度を元画像に近づける自動サイズです。Fullは入力画像の高さ、Halfは軽量出力です",
     "EXPORT_TARGETS": "視点画像とマスクのどちらを書き出すかを選びます。マスクだけ作り直した場合は画像をOFF、マスクをONにします。両方OFFではカメラ情報だけ更新します",
-    "EXPORT_IMAGES": "視点画像を output/images/ に書き出します。OFFにすると既存の画像を残したまま、マスクやカメラ情報だけ更新できます",
-    "EXPORT_MASKS": "マスクを output/masks/ に書き出します。OFFにすると既存のマスクを残したまま、画像やカメラ情報だけ更新できます",
+    "EXPORT_IMAGES": "視点画像を現在の出力フォルダの images/ に書き出します。OFFにすると既存の画像を残したまま、マスクやカメラ情報だけ更新できます",
+    "EXPORT_MASKS": "マスクを現在の出力フォルダの masks/ に書き出します。OFFにすると既存のマスクを残したまま、画像やカメラ情報だけ更新できます",
     "JSON_NAME": "出力するカメラパラメータJSONのファイル名",
     "MASK_DIR_CUBEMAP": "入力マスク画像のフォルダ。キューブマップ変換時にマスクも一緒に変換",
     "INVERT_MASKS": "出力マスクの白黒を反転。通常はOFF。出力先で逆極性が必要な場合のみON",
     "OUTPUT_FORMAT": "書き出す視点画像の形式。自動は元画像の形式を維持します。JPG/WebPでは品質設定が使われます",
     "OUTPUT_BIT_DEPTH": "出力画像のビット深度。8bitは対応アプリが多く安定、元画像はPNG/TIFFのビット深度を維持します",
     "JPG_QUALITY": "JPG/WebPの圧縮品質。1が低品質、100が高品質です。PNG/TIFFには影響しません",
-    "NO_IMAGE": "画像とマスクを再変換せず、transforms.jsonだけを更新します。既存の output/ 内の画像と masks/ は削除しません",
+    "NO_IMAGE": "画像とマスクを再変換せず、transforms.jsonだけを更新します。現在の出力フォルダ内の images/ と masks/ は削除しません",
     "REVIEW_PREVIEW_MODE_SINGLE": "選択中の1枚を大きく表示し、採用/除外フラグを細部確認しながら切り替えます",
     "REVIEW_PREVIEW_MODE_THUMBNAILS": "抽出済みフレームを一覧で表示します。クリックまたは矢印キーで表示中の画像を選択できます",
     "REVIEW_THUMBNAIL_FILTER": "サムネイル一覧の表示対象を絞り込みます。採用/除外の保存先CSVは同じです。現在: {filter}",
@@ -1254,8 +1254,8 @@ TIPS: dict[str, str] = {
         "別の場所から持ち込んだCube6で推定が崩れる時だけ、変換時に選んだ出力先を選びます。\n"
         "カスタムビューで出した場合は、自動のまま元のシーンフォルダで実行してください"
     ),
-    "APRILTAG_ESTIMATE": "投影済みCubemapの output/transforms.json と出力画像からAprilTagを検出し、メートル換算のスケールを推定します。エクイレクタングラー出力の場合は先にCubemap画像を書き出してください",
-    "APRILTAG_APPLY_SCALE": "推定した係数を既存の output/transforms.json のカメラ位置と output/pointcloud.ply に掛けます。押すと対象ファイルを確認してから書き換えます。元ファイルはバックアップします",
+    "APRILTAG_ESTIMATE": "現在選択中の投影済みCubemap出力の transforms.json と画像からAprilTagを検出し、メートル換算のスケールを推定します。エクイレクタングラー出力の場合は先にCubemap画像を書き出してください",
+    "APRILTAG_APPLY_SCALE": "推定した係数を現在選択中のCubemap出力の transforms.json と pointcloud.ply に掛けます。押すと対象ファイルを確認してから書き換えます。元ファイルはバックアップします",
     "APRILTAG_RESULT": (
         "結果の読み方:\n"
         "観測=採用されたタグ検出数。多いほど安定しやすいです。\n"

@@ -361,7 +361,7 @@ class Step4AprilTagMixin:
         script = self.base_dir / "scripts" / "estimate_apriltag_scale.py"
         if not script.is_file():
             raise ValueError(f"estimate_apriltag_scale.py not found: {script}")
-        dataset = validate_scale_output_dataset(Path(self.scene_dir))
+        dataset = validate_scale_output_dataset(Path(self.scene_dir), output_dir=self._display_output_dir())
         tag_size = self._apriltag_tag_size_m()
         tag_ids = self._selected_apriltag_ids()
 
@@ -596,7 +596,7 @@ class Step4AprilTagMixin:
             self._warn_apriltag(i18n.t("APRILTAG_SCENE_REQUIRED"))
             return
         try:
-            dataset = validate_scale_output_dataset(Path(self.scene_dir))
+            dataset = validate_scale_output_dataset(Path(self.scene_dir), output_dir=self._display_output_dir())
         except Exception as exc:
             self._warn_apriltag(str(exc))
             return
@@ -620,7 +620,11 @@ class Step4AprilTagMixin:
         if response != QMessageBox.Yes:
             return
         try:
-            result = apply_scene_output_scale(Path(self.scene_dir), self._apriltag_last_scale)
+            result = apply_scene_output_scale(
+                Path(self.scene_dir),
+                self._apriltag_last_scale,
+                output_dir=self._display_output_dir(),
+            )
         except Exception as exc:
             self._warn_apriltag(str(exc))
             return
