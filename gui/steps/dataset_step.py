@@ -16,6 +16,7 @@ from gui.steps.sfm_route_specs import SFM_ROUTE_COLMAP, SFM_ROUTE_METASHAPE, SFM
 from gui.steps.step4_contracts import (
     _PIPELINE_STAGE_CONVERSION,
     _PIPELINE_STAGE_SFM,
+    _PROFILE_CUSTOM,
     _PROFILE_LICHTFELD,
     _PROFILE_REALITYSCAN,
 )
@@ -210,6 +211,7 @@ class DatasetStep(BaseStepWidget):
         self.stack.setCurrentIndex(self._page_indices[page])
         if page not in {_PAGE_MENU, _PAGE_COLMAP_READY}:
             self._active_step().on_activated()
+        self._focus_default_detail_tab(page)
         self.tool_changed.emit(page)
         self.primary_action_state_changed.emit()
 
@@ -249,11 +251,29 @@ class DatasetStep(BaseStepWidget):
         self.cubemap_step.profile_combo.setVisible(True)
         if self.cubemap_step.profile_label is not None:
             self.cubemap_step.profile_label.setVisible(True)
-        index = self.cubemap_step.profile_combo.findData(_PROFILE_REALITYSCAN)
-        if index >= 0:
+        for profile in (_PROFILE_REALITYSCAN, _PROFILE_CUSTOM):
+            index = self.cubemap_step.profile_combo.findData(profile)
+            if index < 0:
+                continue
             if self.cubemap_step.profile_combo.currentData() == _PROFILE_REALITYSCAN:
                 self.cubemap_step._set_combo_data(self.cubemap_step.profile_combo, _PROFILE_LICHTFELD)
+            if self.cubemap_step.profile_combo.currentData() == _PROFILE_CUSTOM:
+                self.cubemap_step._set_combo_data(self.cubemap_step.profile_combo, _PROFILE_LICHTFELD)
             self.cubemap_step.profile_combo.view().setRowHidden(index, True)
+
+        spheresfm_custom_index = self.cubemap_step.spheresfm_profile_combo.findData(_PROFILE_CUSTOM)
+        if spheresfm_custom_index >= 0:
+            if self.cubemap_step.spheresfm_profile_combo.currentData() == _PROFILE_CUSTOM:
+                self.cubemap_step._set_combo_data(self.cubemap_step.spheresfm_profile_combo, _PROFILE_LICHTFELD)
+            self.cubemap_step.spheresfm_profile_combo.view().setRowHidden(spheresfm_custom_index, True)
+
+    def _focus_default_detail_tab(self, page: str) -> None:
+        if page in _CUBEMAP_PAGES:
+            if self.cubemap_step.settings_tabs.isTabEnabled(self.cubemap_step.output_tab_index):
+                self.cubemap_step.settings_tabs.setCurrentIndex(self.cubemap_step.output_tab_index)
+            return
+        if page == _PAGE_COLMAP_TEXT:
+            self.colmap_text_tool.focus_output_tab()
 
     def current_tool(self) -> str:
         return self._page

@@ -384,7 +384,7 @@ def test_step4_scrolls_tab_content_not_whole_settings_pane() -> None:
 
         assert step.pipeline_stage_intent("sfm") is True
         assert step.pipeline_stage_intent("conversion") is True
-        assert step.settings_tabs.currentIndex() == step.input_tab_index
+        assert step.settings_tabs.currentIndex() == step.output_tab_index
         assert window.run_btn.text().strip() == i18n.t("DATASET_RUN_METASHAPE")
 
         window.dataset_step.show_tool("spheresfm_dataset")

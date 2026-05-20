@@ -154,6 +154,9 @@ def test_sfm_cards_open_in_step_sfm_pages_and_external_route_goes_to_dataset(tmp
         assert window.step4.export_colmap_cb.isHidden()
         realityscan_profile_index = window.step4.profile_combo.findData("realityscan")
         assert window.step4.profile_combo.view().isRowHidden(realityscan_profile_index)
+        custom_profile_index = window.step4.profile_combo.findData("custom")
+        assert window.step4.profile_combo.view().isRowHidden(custom_profile_index)
+        assert window.step4.settings_tabs.currentIndex() == window.step4.output_tab_index
         assert window.run_btn.text().strip() == i18n.t("DATASET_RUN_METASHAPE")
 
         window.dataset_step.show_tool("spheresfm_dataset")
@@ -163,10 +166,14 @@ def test_sfm_cards_open_in_step_sfm_pages_and_external_route_goes_to_dataset(tmp
         assert window.step4.pipeline_stage_intent("conversion") is True
         assert window.run_btn.text().strip() == i18n.t("DATASET_RUN_SPHERESFM")
         assert not window.step4.spheresfm_section.isVisible()
+        spheresfm_custom_profile_index = window.step4.spheresfm_profile_combo.findData("custom")
+        assert window.step4.spheresfm_profile_combo.view().isRowHidden(spheresfm_custom_profile_index)
+        assert window.step4.settings_tabs.currentIndex() == window.step4.output_tab_index
 
         window.dataset_step.show_tool("colmap_text_model")
         assert window.dataset_step.current_tool() == "colmap_text_model"
         assert window.run_btn.text().strip() == i18n.t("DATASET_RUN_COLMAP_TEXT")
+        assert window.dataset_step.colmap_text_tool.settings_tabs.currentIndex() == 1
 
         window._open_dataset_route("colmap")
         assert window.dataset_step.current_tool() == "colmap_ready"
@@ -217,6 +224,19 @@ def test_realityscan_lfs_tool_defaults_and_builds_cli_command(tmp_path: Path) ->
     assert "--pre-undistort-distorted-images" in undistort_cmd
     assert "--undistort-alpha" in undistort_cmd
     assert undistort_cmd[undistort_cmd.index("--undistort-alpha") + 1] == "1"
+
+
+def test_colmap_text_model_tool_ignores_cwd_images_without_scene(tmp_path: Path, monkeypatch) -> None:
+    (tmp_path / "orphan.jpg").write_bytes(b"not a real image")
+    monkeypatch.chdir(tmp_path)
+
+    _app()
+    tool = ColmapTextModelTool(Path.cwd())
+    tool.on_activated()
+
+    assert tool.scene_dir == ""
+    assert tool.preview.preview_images == []
+    assert tool.preview.current_image_path() is None
 
 
 def test_colmap_text_model_tool_defaults_and_builds_cli_command(tmp_path: Path) -> None:

@@ -308,6 +308,9 @@ class ColmapTextModelTool(BaseStepWidget):
         self._sync_preview_inputs()
         self.primary_action_state_changed.emit()
 
+    def focus_output_tab(self) -> None:
+        self.settings_tabs.setCurrentIndex(1)
+
     def primary_action_text(self) -> str:
         return i18n.t("DATASET_RUN_COLMAP_TEXT")
 
@@ -591,8 +594,14 @@ class ColmapTextModelTool(BaseStepWidget):
         self.primary_action_state_changed.emit()
 
     def _sync_preview_inputs(self) -> None:
-        if self.scene_dir:
-            self.preview.set_scene_dir(str(self.scene_dir), refresh=False)
+        if not self.scene_dir:
+            self.preview.set_scene_dir("", refresh=False)
+            self.preview.set_image_dir("", refresh=True)
+            self._update_output_count()
+            self._render_preview()
+            return
+
+        self.preview.set_scene_dir(str(self.scene_dir), refresh=False)
         images = self._images_dir()
         self.preview.set_image_dir(str(images) if images.is_dir() else "", refresh=True)
         self._update_output_count()
