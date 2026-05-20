@@ -1,29 +1,82 @@
-"""SfM route selection step."""
+"""SfM route selection and in-app SfM execution step."""
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from PySide6.QtCore import Signal
-from PySide6.QtWidgets import QLabel, QVBoxLayout, QWidget
+from PySide6.QtWidgets import (
+    QCheckBox,
+    QComboBox,
+    QFormLayout,
+    QHBoxLayout,
+    QLabel,
+    QPushButton,
+    QStackedWidget,
+    QVBoxLayout,
+    QWidget,
+)
 
 from gui import i18n
+from gui.common.browse_widget import BrowseWidget
+from gui.common.form_rows import add_tooltip_row
 from gui.steps.base_step import BaseStepWidget
-from gui.steps.sfm_route_specs import SFM_ROUTE_COLMAP, SFM_ROUTE_METASHAPE, SFM_ROUTE_SPHERESFM
+from gui.steps.sfm_route_specs import SFM_ROUTE_COLMAP, SFM_ROUTE_METASHAPE, SFM_ROUTE_SPHERESFM, normalize_sfm_route
+from gui.steps.step4_contracts import _COLMAP_MAPPER_GLOMAP, _PIPELINE_STAGE_CONVERSION, _PIPELINE_STAGE_SFM
 from gui.steps.workflow_cards import WorkflowCardGrid, WorkflowCardSpec
+
+if TYPE_CHECKING:
+    from gui.steps.step4_cubemap import CubemapStep
+
+_PAGE_MENU = "menu"
+_PAGE_COLMAP = SFM_ROUTE_COLMAP
+_PAGE_SPHERESFM = SFM_ROUTE_SPHERESFM
+_CARD_VIEWER = "viewer"
+_DATASET_MENU_ROUTE = "dataset_menu"
 
 
 class SfmStep(BaseStepWidget):
-    """Explains the available camera-alignment routes and forwards selection."""
+    """Lets Step 4 either run in-app SfM or hand off external SfM results."""
 
     route_requested = Signal(str)
 
-    def __init__(self, base_dir: Path, parent: QWidget | None = None) -> None:
+    def __init__(self, base_dir: Path, cubemap_step: CubemapStep, parent: QWidget | None = None) -> None:
         super().__init__(base_dir, parent)
+        self.cubemap_step = cubemap_step
+        self._page = _PAGE_MENU
+        self._page_indices: dict[str, int] = {}
+        self._syncing_controls = False
         self._build_ui()
+        self._connect_child_signals()
 
     def _build_ui(self) -> None:
-        layout = QVBoxLayout(self)
+        root = QVBoxLayout(self)
+        root.setContentsMargins(0, 0, 0, 0)
+        root.setSpacing(0)
+
+        self.stack = QStackedWidget()
+        self._page_indices[_PAGE_MENU] = self.stack.addWidget(self._build_menu_page())
+        self._page_indices[_PAGE_COLMAP] = self.stack.addWidget(
+            self._wrap_detail_page(
+                i18n.t("SFM_COLMAP_DETAIL_TITLE"),
+                i18n.t("SFM_COLMAP_DETAIL_DESC"),
+                self._build_colmap_detail(),
+            )
+        )
+        self._page_indices[_PAGE_SPHERESFM] = self.stack.addWidget(
+            self._wrap_detail_page(
+                i18n.t("SFM_SPHERESFM_DETAIL_TITLE"),
+                i18n.t("SFM_SPHERESFM_DETAIL_DESC"),
+                self._build_spheresfm_detail(),
+            )
+        )
+        root.addWidget(self.stack)
+
+    def _build_menu_page(self) -> QWidget:
+        page = QWidget()
+        layout = QVBoxLayout(page)
         layout.setContentsMargins(8, 8, 8, 8)
         layout.setSpacing(12)
 
@@ -58,21 +111,393 @@ class SfmStep(BaseStepWidget):
                 i18n.t("SFM_ROUTE_SPHERESFM_FOOTER"),
                 i18n.tip("SFM_ROUTE_SPHERESFM"),
             ),
+            WorkflowCardSpec(
+                _CARD_VIEWER,
+                i18n.t("SFM_ROUTE_VIEWER_TITLE"),
+                i18n.t("SFM_ROUTE_VIEWER_BODY"),
+                i18n.t("SFM_ROUTE_VIEWER_FOOTER"),
+                i18n.tip("SFM_ROUTE_VIEWER"),
+            ),
         )
         self.card_grid = WorkflowCardGrid(specs)
-        for route_id, button in self.card_grid.buttons.items():
-            button.clicked.connect(lambda _checked=False, r=route_id: self.route_requested.emit(r))
+        self.card_grid.buttons[SFM_ROUTE_METASHAPE].clicked.connect(
+            lambda _checked=False: self.route_requested.emit(_DATASET_MENU_ROUTE)
+        )
+        self.card_grid.buttons[SFM_ROUTE_COLMAP].clicked.connect(
+            lambda _checked=False: self.show_route(SFM_ROUTE_COLMAP)
+        )
+        self.card_grid.buttons[SFM_ROUTE_SPHERESFM].clicked.connect(
+            lambda _checked=False: self.show_route(SFM_ROUTE_SPHERESFM)
+        )
+        self.card_grid.buttons[_CARD_VIEWER].clicked.connect(lambda _checked=False: self.open_scene_preview())
         layout.addWidget(self.card_grid)
         layout.addStretch()
+        return page
+
+    def _wrap_detail_page(self, title: str, description: str, body: QWidget) -> QWidget:
+        page = QWidget()
+        layout = QVBoxLayout(page)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(8)
+
+        header = QWidget()
+        header.setObjectName("toolDetailHeader")
+        header_layout = QHBoxLayout(header)
+        header_layout.setContentsMargins(8, 8, 8, 0)
+        header_layout.setSpacing(8)
+        back_btn = QPushButton(i18n.t("SFM_BACK_TO_ROUTES"))
+        back_btn.setObjectName("secondary")
+        back_btn.setToolTip(i18n.tip("SFM_BACK_TO_ROUTES"))
+        back_btn.clicked.connect(lambda _checked=False: self.show_menu())
+        header_layout.addWidget(back_btn)
+        label = QLabel(title)
+        label.setObjectName("paneTitle")
+        header_layout.addWidget(label)
+        header_layout.addStretch()
+        layout.addWidget(header)
+
+        note = QLabel(description)
+        note.setObjectName("workflowNote")
+        note.setWordWrap(True)
+        note.setContentsMargins(8, 0, 8, 0)
+        layout.addWidget(note)
+        layout.addWidget(body, stretch=1)
+        return page
+
+    def _build_colmap_detail(self) -> QWidget:
+        page = QWidget()
+        layout = QVBoxLayout(page)
+        layout.setContentsMargins(8, 0, 8, 8)
+        layout.setSpacing(10)
+        form = QFormLayout()
+        form.setSpacing(6)
+
+        self.colmap_scale_combo = self._clone_combo(self.cubemap_step.scale_combo)
+        self.colmap_scale_combo.setFixedWidth(120)
+        add_tooltip_row(form, i18n.t("OUTPUT_SCALE"), self.colmap_scale_combo, i18n.tip("OUTPUT_SCALE"))
+
+        exe_filter = "Executable (*.exe);;All (*.*)" if os.name == "nt" else "All (*)"
+        self.colmap_exec_browse = BrowseWidget(
+            mode="file",
+            filter_str=exe_filter,
+            placeholder="colmap.exe" if os.name == "nt" else "colmap",
+        )
+        self.colmap_exec_browse.setToolTip(i18n.tip("COLMAP_EXECUTABLE"))
+        add_tooltip_row(
+            form,
+            i18n.t("COLMAP_EXECUTABLE"),
+            self.colmap_exec_browse,
+            i18n.tip("COLMAP_EXECUTABLE"),
+        )
+
+        self.colmap_matcher_combo = self._clone_combo(self.cubemap_step.colmap_matcher_combo)
+        self.colmap_mapper_combo = self._clone_combo(self.cubemap_step.colmap_mapper_combo)
+        pipeline_row = QWidget()
+        pipeline_layout = QHBoxLayout(pipeline_row)
+        pipeline_layout.setContentsMargins(0, 0, 0, 0)
+        pipeline_layout.setSpacing(8)
+        pipeline_layout.addWidget(QLabel(i18n.t("COLMAP_MATCHER_COMPACT")))
+        pipeline_layout.addWidget(self.colmap_matcher_combo)
+        pipeline_layout.addWidget(QLabel(i18n.t("COLMAP_MAPPER_COMPACT")))
+        pipeline_layout.addWidget(self.colmap_mapper_combo)
+        pipeline_layout.addStretch()
+        form.addRow(pipeline_row)
+
+        self.glomap_exec_browse = BrowseWidget(
+            mode="file",
+            filter_str=exe_filter,
+            placeholder="glomap.exe" if os.name == "nt" else "glomap",
+        )
+        self.glomap_exec_browse.setToolTip(i18n.tip("GLOMAP_EXECUTABLE"))
+        self.glomap_exec_row_label = QLabel(i18n.t("GLOMAP_EXECUTABLE"))
+        self.glomap_exec_row_label.setToolTip(i18n.tip("GLOMAP_EXECUTABLE"))
+        form.addRow(self.glomap_exec_row_label, self.glomap_exec_browse)
+
+        viewer_btn = QPushButton(i18n.t("SFM_OPEN_VIEWER"))
+        viewer_btn.setObjectName("secondary")
+        viewer_btn.setToolTip(i18n.tip("SFM_OPEN_VIEWER"))
+        viewer_btn.clicked.connect(lambda _checked=False: self.open_scene_preview())
+        form.addRow("", viewer_btn)
+
+        layout.addLayout(form)
+        layout.addStretch()
+        return page
+
+    def _build_spheresfm_detail(self) -> QWidget:
+        page = QWidget()
+        layout = QVBoxLayout(page)
+        layout.setContentsMargins(8, 0, 8, 8)
+        layout.setSpacing(10)
+        form = QFormLayout()
+        form.setSpacing(6)
+
+        exe_filter = "Executable (*.exe);;All (*.*)" if os.name == "nt" else "All (*)"
+        self.spheresfm_exec_browse = BrowseWidget(
+            mode="file",
+            filter_str=exe_filter,
+            placeholder="colmap.exe" if os.name == "nt" else "colmap",
+        )
+        self.spheresfm_exec_browse.setToolTip(i18n.tip("SPHERESFM_EXECUTABLE"))
+        add_tooltip_row(
+            form,
+            i18n.t("SPHERESFM_EXECUTABLE"),
+            self.spheresfm_exec_browse,
+            i18n.tip("SPHERESFM_EXECUTABLE"),
+        )
+
+        self.spheresfm_use_masks_cb = QCheckBox(i18n.t("SPHERESFM_USE_MASKS"))
+        self.spheresfm_use_masks_cb.setToolTip(i18n.tip("SPHERESFM_USE_MASKS"))
+        form.addRow("", self.spheresfm_use_masks_cb)
+
+        self.spheresfm_matcher_combo = self._clone_combo(self.cubemap_step.spheresfm_matcher_combo)
+        self.spheresfm_quality_combo = self._clone_combo(self.cubemap_step.spheresfm_quality_combo)
+        pipeline_row = QWidget()
+        pipeline_layout = QHBoxLayout(pipeline_row)
+        pipeline_layout.setContentsMargins(0, 0, 0, 0)
+        pipeline_layout.setSpacing(8)
+        pipeline_layout.addWidget(QLabel(i18n.t("COLMAP_MATCHER_COMPACT")))
+        pipeline_layout.addWidget(self.spheresfm_matcher_combo)
+        pipeline_layout.addWidget(QLabel(i18n.t("SPHERESFM_QUALITY_COMPACT")))
+        pipeline_layout.addWidget(self.spheresfm_quality_combo)
+        pipeline_layout.addStretch()
+        form.addRow(pipeline_row)
+
+        self.spheresfm_pose_browse = BrowseWidget(
+            mode="file",
+            filter_str="Text (*.txt *.csv);;All (*.*)",
+            placeholder="POS.txt",
+        )
+        self.spheresfm_pose_browse.setToolTip(i18n.tip("SPHERESFM_POSE_FILE"))
+        add_tooltip_row(
+            form,
+            i18n.t("SPHERESFM_POSE_FILE"),
+            self.spheresfm_pose_browse,
+            i18n.tip("SPHERESFM_POSE_FILE"),
+        )
+
+        gui_btn = QPushButton(i18n.t("SPHERESFM_OPEN_GUI"))
+        gui_btn.setObjectName("secondary")
+        gui_btn.setToolTip(i18n.tip("SPHERESFM_OPEN_GUI"))
+        gui_btn.clicked.connect(lambda _checked=False: self.open_spheresfm_result())
+        form.addRow("", gui_btn)
+
+        viewer_btn = QPushButton(i18n.t("SFM_OPEN_VIEWER"))
+        viewer_btn.setObjectName("secondary")
+        viewer_btn.setToolTip(i18n.tip("SFM_OPEN_VIEWER"))
+        viewer_btn.clicked.connect(lambda _checked=False: self.open_scene_preview())
+        form.addRow("", viewer_btn)
+
+        layout.addLayout(form)
+        layout.addStretch()
+        return page
+
+    def _connect_child_signals(self) -> None:
+        self.cubemap_step.primary_action_state_changed.connect(self.primary_action_state_changed)
+        for widget in (
+            self.colmap_exec_browse,
+            self.glomap_exec_browse,
+            self.spheresfm_exec_browse,
+            self.spheresfm_pose_browse,
+        ):
+            widget.path_changed.connect(self._on_detail_control_changed)
+        for combo in (
+            self.colmap_scale_combo,
+            self.colmap_matcher_combo,
+            self.colmap_mapper_combo,
+            self.spheresfm_matcher_combo,
+            self.spheresfm_quality_combo,
+        ):
+            combo.currentIndexChanged.connect(self._on_detail_control_changed)
+        self.colmap_mapper_combo.currentIndexChanged.connect(self._sync_colmap_glomap_visibility)
+        self.spheresfm_use_masks_cb.toggled.connect(self._on_detail_control_changed)
+
+    @staticmethod
+    def _clone_combo(source: QComboBox) -> QComboBox:
+        combo = QComboBox()
+        for index in range(source.count()):
+            combo.addItem(source.itemText(index), source.itemData(index))
+        combo.setCurrentIndex(source.currentIndex())
+        combo.setToolTip(source.toolTip())
+        combo.setFixedWidth(max(120, source.width() or source.sizeHint().width()))
+        return combo
+
+    @staticmethod
+    def _set_combo_data(combo: QComboBox, value: object) -> None:
+        index = combo.findData(value)
+        if index >= 0:
+            combo.setCurrentIndex(index)
+
+    def _sync_from_cubemap(self) -> None:
+        self._syncing_controls = True
+        try:
+            self.colmap_exec_browse.set_text(self.cubemap_step.colmap_exec_browse.text())
+            self.glomap_exec_browse.set_text(self.cubemap_step.glomap_exec_browse.text())
+            self._set_combo_data(self.colmap_scale_combo, self.cubemap_step.scale_combo.currentData())
+            self._set_combo_data(self.colmap_matcher_combo, self.cubemap_step.colmap_matcher_combo.currentData())
+            self._set_combo_data(self.colmap_mapper_combo, self.cubemap_step.colmap_mapper_combo.currentData())
+
+            self.spheresfm_exec_browse.set_text(self.cubemap_step.spheresfm_exec_browse.text())
+            self.spheresfm_use_masks_cb.setChecked(self.cubemap_step.spheresfm_use_masks_cb.isChecked())
+            self._set_combo_data(self.spheresfm_matcher_combo, self.cubemap_step.spheresfm_matcher_combo.currentData())
+            self._set_combo_data(self.spheresfm_quality_combo, self.cubemap_step.spheresfm_quality_combo.currentData())
+            self.spheresfm_pose_browse.set_text(self.cubemap_step.spheresfm_pose_browse.text())
+        finally:
+            self._syncing_controls = False
+        self._sync_colmap_glomap_visibility()
+
+    def _apply_to_cubemap(self) -> None:
+        self.cubemap_step.colmap_exec_browse.set_text(self.colmap_exec_browse.text())
+        self.cubemap_step.glomap_exec_browse.set_text(self.glomap_exec_browse.text())
+        self.cubemap_step._set_combo_data(self.cubemap_step.scale_combo, self.colmap_scale_combo.currentData())
+        self.cubemap_step._set_combo_data(
+            self.cubemap_step.colmap_matcher_combo,
+            self.colmap_matcher_combo.currentData(),
+        )
+        self.cubemap_step._set_combo_data(
+            self.cubemap_step.colmap_mapper_combo,
+            self.colmap_mapper_combo.currentData(),
+        )
+
+        self.cubemap_step.spheresfm_exec_browse.set_text(self.spheresfm_exec_browse.text())
+        self.cubemap_step.spheresfm_use_masks_cb.setChecked(self.spheresfm_use_masks_cb.isChecked())
+        self.cubemap_step._set_combo_data(
+            self.cubemap_step.spheresfm_matcher_combo,
+            self.spheresfm_matcher_combo.currentData(),
+        )
+        self.cubemap_step._set_combo_data(
+            self.cubemap_step.spheresfm_quality_combo,
+            self.spheresfm_quality_combo.currentData(),
+        )
+        self.cubemap_step.spheresfm_pose_browse.set_text(self.spheresfm_pose_browse.text())
+
+    def _on_detail_control_changed(self, *_args) -> None:
+        if self._syncing_controls:
+            return
+        if self._page in {_PAGE_COLMAP, _PAGE_SPHERESFM}:
+            self._apply_to_cubemap()
+            self._prepare_current_route()
+        self.primary_action_state_changed.emit()
+
+    def _prepare_current_route(self) -> None:
+        if self._page == _PAGE_COLMAP:
+            self._prepare_colmap_route()
+        elif self._page == _PAGE_SPHERESFM:
+            self._prepare_spheresfm_route()
+
+    def _prepare_colmap_route(self) -> None:
+        self.cubemap_step._set_export_method(SFM_ROUTE_COLMAP)
+        self.cubemap_step.export_images_cb.setChecked(True)
+        self.cubemap_step.set_pipeline_stage_intent(_PIPELINE_STAGE_SFM, True)
+        self.cubemap_step.set_pipeline_stage_intent(_PIPELINE_STAGE_CONVERSION, True)
+        self.cubemap_step.activate_pipeline_stage(_PIPELINE_STAGE_SFM)
+
+    def _prepare_spheresfm_route(self) -> None:
+        self.cubemap_step._set_export_method(SFM_ROUTE_SPHERESFM)
+        self.cubemap_step.set_pipeline_stage_intent(_PIPELINE_STAGE_SFM, True)
+        self.cubemap_step.set_pipeline_stage_intent(_PIPELINE_STAGE_CONVERSION, False)
+        self.cubemap_step.activate_pipeline_stage(_PIPELINE_STAGE_SFM)
+
+    def _sync_colmap_glomap_visibility(self, *_args) -> None:
+        visible = self.colmap_mapper_combo.currentData() == _COLMAP_MAPPER_GLOMAP
+        self.glomap_exec_row_label.setVisible(visible)
+        self.glomap_exec_browse.setVisible(visible)
+
+    def set_scene_dir(self, path: str) -> None:
+        super().set_scene_dir(path)
+        self.cubemap_step.set_scene_dir(path)
+
+    def on_activated(self) -> None:
+        if self._page != _PAGE_MENU:
+            self._sync_from_cubemap()
+            self._prepare_current_route()
+            self.cubemap_step.on_activated()
+        self.primary_action_state_changed.emit()
+
+    def show_menu(self) -> None:
+        self._page = _PAGE_MENU
+        self.stack.setCurrentIndex(self._page_indices[_PAGE_MENU])
+        self.primary_action_state_changed.emit()
+
+    def show_route(self, route_id: str) -> None:
+        route = normalize_sfm_route(route_id)
+        if route not in {_PAGE_COLMAP, _PAGE_SPHERESFM}:
+            self.route_requested.emit(route)
+            return
+        self._page = route
+        self.stack.setCurrentIndex(self._page_indices[route])
+        self._sync_from_cubemap()
+        self._prepare_current_route()
+        self.cubemap_step.on_activated()
+        self.primary_action_state_changed.emit()
+
+    def current_route(self) -> str:
+        return self._page if self._page in {_PAGE_COLMAP, _PAGE_SPHERESFM} else ""
+
+    def open_scene_preview(self) -> None:
+        if self._page in {_PAGE_COLMAP, _PAGE_SPHERESFM}:
+            self._apply_to_cubemap()
+            self._prepare_current_route()
+        self.cubemap_step.open_scene_preview()
+
+    def open_spheresfm_result(self) -> None:
+        self._apply_to_cubemap()
+        self._prepare_spheresfm_route()
+        self.cubemap_step._open_spheresfm_result()
 
     def primary_action_text(self) -> str:
+        if self._page == _PAGE_COLMAP:
+            return i18n.t("SFM_RUN_COLMAP")
+        if self._page == _PAGE_SPHERESFM:
+            return i18n.t("SFM_RUN_SPHERESFM")
         return i18n.t("SFM_SELECT_ROUTE")
 
     def primary_action_tooltip(self) -> str:
+        if self._page == _PAGE_COLMAP:
+            return i18n.tip("SFM_RUN_COLMAP")
+        if self._page == _PAGE_SPHERESFM:
+            return i18n.tip("SFM_RUN_SPHERESFM")
         return i18n.tip("SFM_SELECT_ROUTE")
 
     def primary_action_enabled(self) -> bool:
-        return False
+        if self._page == _PAGE_MENU:
+            return False
+        return self.cubemap_step.primary_action_enabled()
 
     def build_commands(self) -> list[tuple[str, list[str]]]:
-        return []
+        if self._page == _PAGE_MENU:
+            return []
+        self._apply_to_cubemap()
+        self._prepare_current_route()
+        return self.cubemap_step.build_commands()
+
+    def confirm_commands(self, commands: list[tuple[str, list[str]]]) -> bool:
+        return self.cubemap_step.confirm_commands(commands)
+
+    def process_log_dir(self) -> Path | None:
+        return self.cubemap_step.process_log_dir() if self._page != _PAGE_MENU else None
+
+    def phase_display_name(self, phase: str) -> str:
+        return self.cubemap_step.phase_display_name(phase) if self._page != _PAGE_MENU else phase
+
+    def phase_status_text(self, phase: str, queue_index: int, queue_total: int) -> str:
+        if self._page == _PAGE_MENU:
+            return super().phase_status_text(phase, queue_index, queue_total)
+        return self.cubemap_step.phase_status_text(phase, queue_index, queue_total)
+
+    def on_line(self, line: str) -> tuple[int, int] | None:
+        return self.cubemap_step.on_line(line) if self._page != _PAGE_MENU else None
+
+    def on_phase_started(self, phase: str) -> tuple[int, int] | None:
+        return self.cubemap_step.on_phase_started(phase) if self._page != _PAGE_MENU else None
+
+    def on_phase_log_started(self, phase: str, path: str) -> None:
+        if self._page != _PAGE_MENU:
+            self.cubemap_step.on_phase_log_started(phase, path)
+
+    def on_phase_finished(self, phase: str, exit_code: int, canceled: bool) -> None:
+        if self._page != _PAGE_MENU:
+            self.cubemap_step.on_phase_finished(phase, exit_code, canceled)
+
+    def on_queue_finished(self, success: bool) -> None:
+        if self._page != _PAGE_MENU:
+            self.cubemap_step.on_queue_finished(success)

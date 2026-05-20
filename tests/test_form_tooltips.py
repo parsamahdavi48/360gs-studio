@@ -339,8 +339,7 @@ def test_step4_scrolls_tab_content_not_whole_settings_pane() -> None:
 
         os.environ["QT_QPA_PLATFORM"] = "offscreen"
 
-        from PySide6.QtCore import QPoint, Qt
-        from PySide6.QtTest import QTest
+        from PySide6.QtCore import Qt
         from PySide6.QtWidgets import QApplication, QScrollArea
 
         from gui import i18n
@@ -353,10 +352,19 @@ def test_step4_scrolls_tab_content_not_whole_settings_pane() -> None:
         window.resize(1280, 920)
         window.show()
         window._set_current_step(4)
-        window.dataset_step.show_tool("cubemap")
+        window.dataset_step.show_tool("metashape_dataset")
         app.processEvents()
 
         step = window.step4
+        assert set(window.dataset_step.card_grid.buttons) == {
+            "metashape_dataset",
+            "spheresfm_dataset",
+            "realityscan_lfs",
+            "scale",
+        }
+        assert window.dataset_step.cubemap_detail_title.text() == i18n.t("DATASET_TOOL_METASHAPE_TITLE")
+        assert step._export_method() == "metashape"
+        assert not step.export_method_row.isVisible()
         assert step.findChildren(QScrollArea, "settingsScroll") == []
 
         tab_scrolls = [step.settings_tabs.widget(index) for index in range(step.settings_tabs.count())]
@@ -373,45 +381,24 @@ def test_step4_scrolls_tab_content_not_whole_settings_pane() -> None:
             parent = parent.parentWidget()
         assert found_route_scroll
 
-        assert [button.width() for button in window.step4_sub_buttons.values()] == [63, 63]
-        assert [button.width() for button in window.step4_sub_intent_buttons.values()] == [13, 13]
-        assert [label.width() for label in window.step4_sub_status_labels.values()] == [13, 13]
-        assert window.step4_subnav_rail.width() == 2
-        assert window.step4_sub_text_labels["sfm"].text() == "SfM"
-        assert window.step4_sub_text_labels["conversion"].text() == "Cube"
-        rail_x = window.step4_subnav_rail.mapTo(window, QPoint(0, 0)).x()
-        intent_x = [
-            button.mapTo(window, QPoint(0, 0)).x()
-            for button in window.step4_sub_intent_buttons.values()
-        ]
-        status_x = [
-            label.mapTo(window, QPoint(0, 0)).x()
-            for label in window.step4_sub_status_labels.values()
-        ]
-        text_x = [
-            label.mapTo(window, QPoint(0, 0)).x()
-            for label in window.step4_sub_text_labels.values()
-        ]
-        assert rail_x < intent_x[0] < text_x[0] < status_x[0]
-        assert len(set(intent_x)) == 1
-        assert len(set(text_x)) == 1
-        assert len(set(status_x)) == 1
-        assert window.step4_sub_intent_buttons["conversion"].toolTip()
-        assert window.step4_sub_status_labels["conversion"].toolTip()
-        assert "ON/OFF" in window.step4_sub_buttons["conversion"].toolTip()
-        assert window.step4_sub_intent_buttons["sfm"].text() == "●"
-        QTest.mouseClick(window.step4_sub_buttons["sfm"], Qt.LeftButton)
         assert step.pipeline_stage_intent("sfm") is True
+        assert step.pipeline_stage_intent("conversion") is True
         assert step.settings_tabs.currentIndex() == step.input_tab_index
-        assert window.step4_sub_intent_buttons["sfm"].text() == "●"
+        assert window.run_btn.text().strip() == i18n.t("DATASET_RUN_METASHAPE")
+
+        window.dataset_step.show_tool("spheresfm_dataset")
         app.processEvents()
-        QTest.mouseClick(window.step4_sub_status_labels["conversion"], Qt.LeftButton)
-        assert step.settings_tabs.currentIndex() == step.output_tab_index
-        assert window.step4_sub_buttons["conversion"].property("active") == "false"
-        assert window.run_btn.text().strip() == i18n.t("RUN")
-        QTest.mouseClick(window.step4_sub_buttons["conversion"], Qt.LeftButton)
+        assert window.dataset_step.cubemap_detail_title.text() == i18n.t("DATASET_TOOL_SPHERESFM_TITLE")
+        assert step._export_method() == "spheresfm"
+        assert step.pipeline_stage_intent("sfm") is False
+        assert step.pipeline_stage_intent("conversion") is True
+        assert not step.spheresfm_section.isVisible()
+        assert window.run_btn.text().strip() == i18n.t("DATASET_RUN_SPHERESFM")
+
+        step.set_pipeline_stage_intent("conversion", False)
         assert step.pipeline_stage_intent("conversion") is False
-        QTest.mouseClick(window.step4_sub_buttons["conversion"], Qt.LeftButton)
+        window.dataset_step.show_tool("metashape_dataset")
+        app.processEvents()
         assert step.pipeline_stage_intent("conversion") is True
 
         window._set_current_step(5)
@@ -439,65 +426,6 @@ def test_step4_scrolls_tab_content_not_whole_settings_pane() -> None:
             found_training_options_scroll = found_training_options_scroll or parent is step.training_settings_scroll
             parent = parent.parentWidget()
         assert found_training_options_scroll
-
-        step._set_export_method("metashape")
-        window._refresh_step4_subnav()
-        QTest.mouseClick(window.step4_sub_buttons["sfm"], Qt.LeftButton)
-        app.processEvents()
-        assert step.pipeline_stage_intent("sfm") is True
-        assert window.step4_sub_intent_buttons["sfm"].property("toggleEnabled") == "false"
-        assert window.step4_subnotice_label.text() == i18n.t("STEP4_PIPELINE_NOTICE_METASHAPE_INPUT_LOCKED_ON")
-        assert 1 <= window.step4_subnotice_label.text().count("\\n") <= 2
-        QTest.mouseClick(window.step4_sub_intent_buttons["conversion"], Qt.LeftButton)
-        app.processEvents()
-        assert step.pipeline_stage_intent("sfm") is False
-        assert window.step4_subnotice_label.text() == i18n.t("STEP4_PIPELINE_NOTICE_METASHAPE_DISABLED_INPUT")
-        assert 1 <= window.step4_subnotice_label.text().count("\\n") <= 2
-        notice_width = window.step4_subnotice_label.contentsRect().width()
-        metrics = window.step4_subnotice_label.fontMetrics()
-        for line in window.step4_subnotice_label.text().splitlines():
-            assert metrics.horizontalAdvance(line) <= notice_width
-        QTest.mouseClick(window.step4_sub_buttons["sfm"], Qt.LeftButton)
-        app.processEvents()
-        assert step.pipeline_stage_intent("sfm") is False
-        assert window.step4_subnotice_label.text() == i18n.t("STEP4_PIPELINE_NOTICE_METASHAPE_INPUT_LOCKED_OFF")
-        assert 1 <= window.step4_subnotice_label.text().count("\\n") <= 2
-        QTest.mouseClick(window.step4_sub_intent_buttons["conversion"], Qt.LeftButton)
-        app.processEvents()
-        assert step.pipeline_stage_intent("sfm") is True
-        assert window.step4_subnotice_label.text() == i18n.t("STEP4_PIPELINE_NOTICE_METASHAPE_ENABLED_INPUT")
-        assert 1 <= window.step4_subnotice_label.text().count("\\n") <= 2
-        notice_width = window.step4_subnotice_label.contentsRect().width()
-        for line in window.step4_subnotice_label.text().splitlines():
-            assert metrics.horizontalAdvance(line) <= notice_width
-
-        step._set_export_method("colmap")
-        step.set_pipeline_stage_intent("conversion", False)
-        window._refresh_step4_subnav()
-        QTest.mouseClick(window.step4_sub_intent_buttons["sfm"], Qt.LeftButton)
-        app.processEvents()
-        assert step.pipeline_stage_intent("sfm") is True
-        assert step.pipeline_stage_intent("conversion") is True
-        assert window.step4_subnotice_label.isVisible()
-        assert window.step4_subnotice_label.text() == i18n.t("STEP4_PIPELINE_NOTICE_COLMAP_ENABLED_CUBE")
-        assert 1 <= window.step4_subnotice_label.text().count("\\n") <= 2
-        assert not window.step4_subnotice_label.wordWrap()
-        notice_width = window.step4_subnotice_label.contentsRect().width()
-        metrics = window.step4_subnotice_label.fontMetrics()
-        for line in window.step4_subnotice_label.text().splitlines():
-            assert metrics.horizontalAdvance(line) <= notice_width
-
-        QTest.mouseClick(window.step4_sub_intent_buttons["conversion"], Qt.LeftButton)
-        app.processEvents()
-        assert step.pipeline_stage_intent("sfm") is False
-        assert step.pipeline_stage_intent("conversion") is False
-        assert window.step4_subnotice_label.text() == i18n.t("STEP4_PIPELINE_NOTICE_COLMAP_DISABLED_SFM")
-        assert 1 <= window.step4_subnotice_label.text().count("\\n") <= 2
-        assert window.step4_subnotice_timer.interval() == 1800
-        QTest.mouseClick(window.step_header, Qt.LeftButton)
-        app.processEvents()
-        assert not window.step4_subnotice_label.isVisible()
-        assert window.step4_subnotice_label.text() == ""
         """
     )
 

@@ -991,6 +991,9 @@ class CubemapStep(
         self._update_output_count()
         self._update_metashape_input_hint()
 
+    def open_scene_preview(self) -> None:
+        self._open_scene_preview()
+
     def _open_scene_preview(self) -> None:
         from gui.scene_preview.window import ScenePreviewWindow
 
@@ -1465,8 +1468,8 @@ class CubemapStep(
         self.colmap_sfm_input_widget.setVisible(self._is_colmap_method())
         self.spheresfm_sfm_input_widget.setVisible(self._is_spheresfm_method())
         self.metashape_output_section.setVisible(self._is_metashape_method())
-        self.colmap_section.setVisible(self._is_colmap_method())
-        self.spheresfm_section.setVisible(self._is_spheresfm_method())
+        self.colmap_section.setVisible(self._is_colmap_method() and self.pipeline_stage_intent(_PIPELINE_STAGE_SFM))
+        self.spheresfm_section.setVisible(self._is_spheresfm_method() and self._spheresfm_runs_sfm())
         self.spheresfm_convert_section.setVisible(self._is_spheresfm_method() and self._spheresfm_runs_conversion())
         spheresfm_conversion_off = self._is_spheresfm_method() and not self._spheresfm_runs_conversion()
         conversion_enabled = not spheresfm_conversion_off

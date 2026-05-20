@@ -36,7 +36,6 @@ def test_main_window_locks_workflow_controls_while_process_runs(tmp_path: Path) 
         assert window.clear_scene_btn.isEnabled()
         assert window.stack.isEnabled()
         assert all(btn.isEnabled() for btn in window.step_buttons)
-        assert all(btn.isEnabled() for btn in window.step4_sub_buttons.values())
 
         window.runner.start_queue([("sleep", [sys.executable, "-c", "import time; time.sleep(0.2)"])])
         app.processEvents()
@@ -51,7 +50,6 @@ def test_main_window_locks_workflow_controls_while_process_runs(tmp_path: Path) 
         assert not window.import_scene_action.isEnabled()
         assert not window.stack.isEnabled()
         assert all(not btn.isEnabled() for btn in window.step_buttons)
-        assert all(not btn.isEnabled() for btn in window.step4_sub_buttons.values())
 
         assert _process_events_until(app, lambda: not window.runner.is_running())
 
@@ -63,7 +61,6 @@ def test_main_window_locks_workflow_controls_while_process_runs(tmp_path: Path) 
         assert window.import_scene_action.isEnabled()
         assert window.stack.isEnabled()
         assert all(btn.isEnabled() for btn in window.step_buttons)
-        assert all(btn.isEnabled() for btn in window.step4_sub_buttons.values())
     finally:
         window.shutdown()
         if window.runner.is_running():

@@ -11,14 +11,19 @@ from gui import i18n
 from gui.steps.apriltag_scale_tool import AprilTagScaleTool
 from gui.steps.base_step import BaseStepWidget
 from gui.steps.realityscan_lfs_tool import RealityScanLfsTool
-from gui.steps.sfm_route_specs import normalize_sfm_route
+from gui.steps.sfm_route_specs import SFM_ROUTE_COLMAP, SFM_ROUTE_METASHAPE, SFM_ROUTE_SPHERESFM, normalize_sfm_route
+from gui.steps.step4_contracts import _PIPELINE_STAGE_CONVERSION, _PIPELINE_STAGE_SFM
 from gui.steps.step4_cubemap import CubemapStep
 from gui.steps.workflow_cards import WorkflowCardGrid, WorkflowCardSpec
 
 _PAGE_MENU = "menu"
-_PAGE_CUBEMAP = "cubemap"
+_PAGE_METASHAPE = "metashape_dataset"
+_PAGE_SPHERESFM = "spheresfm_dataset"
+_PAGE_COLMAP_READY = "colmap_ready"
+_PAGE_CUBEMAP_LEGACY = "cubemap"
 _PAGE_REALITYSCAN = "realityscan_lfs"
 _PAGE_SCALE = "scale"
+_CUBEMAP_PAGES = {_PAGE_METASHAPE, _PAGE_SPHERESFM}
 
 
 class DatasetStep(BaseStepWidget):
@@ -43,9 +48,13 @@ class DatasetStep(BaseStepWidget):
 
         self.stack = QStackedWidget()
         self._page_indices[_PAGE_MENU] = self.stack.addWidget(self._build_menu_page())
-        self._page_indices[_PAGE_CUBEMAP] = self.stack.addWidget(
-            self._wrap_detail_page(i18n.t("DATASET_TOOL_CUBEMAP_TITLE"), self.cubemap_step)
+        cubemap_page_index = self.stack.addWidget(
+            self._wrap_cubemap_detail_page(i18n.t("DATASET_TOOL_METASHAPE_TITLE"), i18n.t("DATASET_TOOL_METASHAPE_DESC"))
         )
+        self._page_indices[_PAGE_METASHAPE] = cubemap_page_index
+        self._page_indices[_PAGE_SPHERESFM] = cubemap_page_index
+        self._page_indices[_PAGE_CUBEMAP_LEGACY] = cubemap_page_index
+        self._page_indices[_PAGE_COLMAP_READY] = self.stack.addWidget(self._build_colmap_ready_page())
         self._page_indices[_PAGE_REALITYSCAN] = self.stack.addWidget(
             self._wrap_detail_page(i18n.t("DATASET_TOOL_RS_LFS_TITLE"), self.realityscan_tool)
         )
@@ -71,11 +80,18 @@ class DatasetStep(BaseStepWidget):
 
         specs = (
             WorkflowCardSpec(
-                _PAGE_CUBEMAP,
-                i18n.t("DATASET_TOOL_CUBEMAP_TITLE"),
-                i18n.t("DATASET_TOOL_CUBEMAP_CARD_BODY"),
-                i18n.t("DATASET_TOOL_CUBEMAP_CARD_FOOTER"),
-                i18n.tip("DATASET_TOOL_CUBEMAP"),
+                _PAGE_METASHAPE,
+                i18n.t("DATASET_TOOL_METASHAPE_TITLE"),
+                i18n.t("DATASET_TOOL_METASHAPE_CARD_BODY"),
+                i18n.t("DATASET_TOOL_METASHAPE_CARD_FOOTER"),
+                i18n.tip("DATASET_TOOL_METASHAPE"),
+            ),
+            WorkflowCardSpec(
+                _PAGE_SPHERESFM,
+                i18n.t("DATASET_TOOL_SPHERESFM_TITLE"),
+                i18n.t("DATASET_TOOL_SPHERESFM_CARD_BODY"),
+                i18n.t("DATASET_TOOL_SPHERESFM_CARD_FOOTER"),
+                i18n.tip("DATASET_TOOL_SPHERESFM"),
             ),
             WorkflowCardSpec(
                 _PAGE_REALITYSCAN,
@@ -99,7 +115,36 @@ class DatasetStep(BaseStepWidget):
         layout.addStretch()
         return page
 
-    def _wrap_detail_page(self, title: str, child: QWidget) -> QWidget:
+    def _wrap_cubemap_detail_page(self, title: str, description: str) -> QWidget:
+        page = QWidget()
+        layout = QVBoxLayout(page)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(8)
+
+        header = QWidget()
+        header.setObjectName("toolDetailHeader")
+        header_layout = QHBoxLayout(header)
+        header_layout.setContentsMargins(8, 8, 8, 0)
+        header_layout.setSpacing(8)
+        back_btn = QPushButton(i18n.t("DATASET_BACK_TO_MENU"))
+        back_btn.setObjectName("secondary")
+        back_btn.clicked.connect(lambda _checked=False: self.show_tool(_PAGE_MENU))
+        header_layout.addWidget(back_btn)
+        self.cubemap_detail_title = QLabel(title)
+        self.cubemap_detail_title.setObjectName("paneTitle")
+        header_layout.addWidget(self.cubemap_detail_title)
+        header_layout.addStretch()
+        layout.addWidget(header)
+
+        self.cubemap_detail_note = QLabel(description)
+        self.cubemap_detail_note.setObjectName("workflowNote")
+        self.cubemap_detail_note.setWordWrap(True)
+        self.cubemap_detail_note.setContentsMargins(8, 0, 8, 0)
+        layout.addWidget(self.cubemap_detail_note)
+        layout.addWidget(self.cubemap_step, stretch=1)
+        return page
+
+    def _wrap_detail_page(self, title: str, child: QWidget, *, header_extra: QWidget | None = None) -> QWidget:
         page = QWidget()
         layout = QVBoxLayout(page)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -119,7 +164,43 @@ class DatasetStep(BaseStepWidget):
         header_layout.addWidget(label)
         header_layout.addStretch()
         layout.addWidget(header)
+        if header_extra is not None:
+            layout.addWidget(header_extra)
         layout.addWidget(child, stretch=1)
+        return page
+
+    def _build_colmap_ready_page(self) -> QWidget:
+        page = QWidget()
+        layout = QVBoxLayout(page)
+        layout.setContentsMargins(8, 8, 8, 8)
+        layout.setSpacing(12)
+
+        header = QWidget()
+        header.setObjectName("toolDetailHeader")
+        header_layout = QHBoxLayout(header)
+        header_layout.setContentsMargins(0, 0, 0, 0)
+        header_layout.setSpacing(8)
+        back_btn = QPushButton(i18n.t("DATASET_BACK_TO_MENU"))
+        back_btn.setObjectName("secondary")
+        back_btn.clicked.connect(lambda _checked=False: self.show_tool(_PAGE_MENU))
+        header_layout.addWidget(back_btn)
+        title = QLabel(i18n.t("DATASET_TOOL_COLMAP_READY_TITLE"))
+        title.setObjectName("paneTitle")
+        header_layout.addWidget(title)
+        header_layout.addStretch()
+        layout.addWidget(header)
+
+        description = QLabel(i18n.t("DATASET_TOOL_COLMAP_READY_DESC"))
+        description.setObjectName("workflowNote")
+        description.setWordWrap(True)
+        layout.addWidget(description)
+
+        viewer_btn = QPushButton(i18n.t("SFM_OPEN_VIEWER"))
+        viewer_btn.setObjectName("secondary")
+        viewer_btn.setToolTip(i18n.tip("SFM_OPEN_VIEWER"))
+        viewer_btn.clicked.connect(lambda _checked=False: self.cubemap_step.open_scene_preview())
+        layout.addWidget(viewer_btn)
+        layout.addStretch()
         return page
 
     def _connect_child_signals(self) -> None:
@@ -138,29 +219,58 @@ class DatasetStep(BaseStepWidget):
         self.scale_tool.set_scene_dir(path)
 
     def on_activated(self) -> None:
-        if self._page != _PAGE_MENU:
+        if self._page in _CUBEMAP_PAGES:
+            self._configure_cubemap_tool(self._page)
+        if self._page not in {_PAGE_MENU, _PAGE_COLMAP_READY}:
             self._active_step().on_activated()
         self.primary_action_state_changed.emit()
 
     def show_tool(self, page: str) -> None:
+        if page == _PAGE_CUBEMAP_LEGACY:
+            page = _PAGE_METASHAPE
         if page not in self._page_indices:
             page = _PAGE_MENU
         self._page = page
+        if page in _CUBEMAP_PAGES:
+            self._configure_cubemap_tool(page)
         self.stack.setCurrentIndex(self._page_indices[page])
-        if page != _PAGE_MENU:
+        if page not in {_PAGE_MENU, _PAGE_COLMAP_READY}:
             self._active_step().on_activated()
         self.tool_changed.emit(page)
         self.primary_action_state_changed.emit()
 
     def show_cubemap_route(self, route_id: str) -> None:
-        self.cubemap_step._set_export_method(normalize_sfm_route(route_id))
-        self.show_tool(_PAGE_CUBEMAP)
+        route = normalize_sfm_route(route_id)
+        if route == SFM_ROUTE_SPHERESFM:
+            self.show_tool(_PAGE_SPHERESFM)
+        elif route == SFM_ROUTE_COLMAP:
+            self.cubemap_step._set_export_method(SFM_ROUTE_COLMAP)
+            self.show_tool(_PAGE_COLMAP_READY)
+        else:
+            self.show_tool(_PAGE_METASHAPE)
+
+    def _configure_cubemap_tool(self, page: str) -> None:
+        self.cubemap_step.export_method_row.setVisible(False)
+        if page == _PAGE_SPHERESFM:
+            self.cubemap_step._set_export_method(SFM_ROUTE_SPHERESFM)
+            self.cubemap_step.set_pipeline_stage_intent(_PIPELINE_STAGE_SFM, False)
+            self.cubemap_step.set_pipeline_stage_intent(_PIPELINE_STAGE_CONVERSION, True)
+            self.cubemap_step.activate_pipeline_stage(_PIPELINE_STAGE_SFM)
+            self.cubemap_detail_title.setText(i18n.t("DATASET_TOOL_SPHERESFM_TITLE"))
+            self.cubemap_detail_note.setText(i18n.t("DATASET_TOOL_SPHERESFM_DESC"))
+            return
+
+        self.cubemap_step._set_export_method(SFM_ROUTE_METASHAPE)
+        self.cubemap_step.set_pipeline_stage_intent(_PIPELINE_STAGE_CONVERSION, True)
+        self.cubemap_step.activate_pipeline_stage(_PIPELINE_STAGE_SFM)
+        self.cubemap_detail_title.setText(i18n.t("DATASET_TOOL_METASHAPE_TITLE"))
+        self.cubemap_detail_note.setText(i18n.t("DATASET_TOOL_METASHAPE_DESC"))
 
     def current_tool(self) -> str:
         return self._page
 
     def _active_step(self) -> BaseStepWidget:
-        if self._page == _PAGE_CUBEMAP:
+        if self._page in _CUBEMAP_PAGES:
             return self.cubemap_step
         if self._page == _PAGE_REALITYSCAN:
             return self.realityscan_tool
@@ -171,25 +281,44 @@ class DatasetStep(BaseStepWidget):
     def primary_action_text(self) -> str:
         if self._page == _PAGE_MENU:
             return i18n.t("DATASET_SELECT_TOOL")
+        if self._page == _PAGE_COLMAP_READY:
+            return i18n.t("DATASET_COLMAP_READY_ACTION")
+        if self._page == _PAGE_METASHAPE:
+            return i18n.t("DATASET_RUN_METASHAPE")
+        if self._page == _PAGE_SPHERESFM:
+            return i18n.t("DATASET_RUN_SPHERESFM")
         return self._active_step().primary_action_text()
 
     def primary_action_tooltip(self) -> str:
         if self._page == _PAGE_MENU:
             return i18n.tip("DATASET_SELECT_TOOL")
+        if self._page == _PAGE_COLMAP_READY:
+            return i18n.tip("DATASET_COLMAP_READY_ACTION")
+        if self._page == _PAGE_METASHAPE:
+            return i18n.tip("DATASET_RUN_METASHAPE")
+        if self._page == _PAGE_SPHERESFM:
+            return i18n.tip("DATASET_RUN_SPHERESFM")
         return self._active_step().primary_action_tooltip()
 
     def primary_action_enabled(self) -> bool:
-        if self._page == _PAGE_MENU:
+        if self._page in {_PAGE_MENU, _PAGE_COLMAP_READY}:
             return False
         return self._active_step().primary_action_enabled()
 
     def build_commands(self) -> list[tuple[str, list[str]]]:
-        if self._page == _PAGE_MENU:
+        if self._page in {_PAGE_MENU, _PAGE_COLMAP_READY}:
             return []
+        if self._page in _CUBEMAP_PAGES:
+            self._configure_cubemap_tool(self._page)
         return self._active_step().build_commands()
 
+    def confirm_commands(self, commands: list[tuple[str, list[str]]]) -> bool:
+        if self._page in {_PAGE_MENU, _PAGE_COLMAP_READY}:
+            return True
+        return self._active_step().confirm_commands(commands)
+
     def process_log_dir(self) -> Path | None:
-        if self._page == _PAGE_MENU:
+        if self._page in {_PAGE_MENU, _PAGE_COLMAP_READY}:
             return None
         return self._active_step().process_log_dir()
 

@@ -16,7 +16,7 @@ def _app() -> QApplication:
     return QApplication.instance() or QApplication([])
 
 
-def test_sfm_card_routes_into_dataset_cubemap_tool(tmp_path: Path) -> None:
+def test_sfm_cards_open_in_step_sfm_pages_and_external_route_goes_to_dataset(tmp_path: Path) -> None:
     _app()
     window = MainWindow(str(tmp_path))
     try:
@@ -35,13 +35,64 @@ def test_sfm_card_routes_into_dataset_cubemap_tool(tmp_path: Path) -> None:
         assert window.run_btn.text().strip() == i18n.t("SFM_SELECT_ROUTE")
         assert not window.run_btn.isEnabled()
 
-        window.sfm_step.route_requested.emit("colmap")
+        window.sfm_step.card_grid.buttons["colmap"].click()
+
+        assert window.stack.currentIndex() == window._sfm_step_index
+        assert window.stack.currentWidget() is window.sfm_step
+        assert window.sfm_step.current_route() == "colmap"
+        assert window.step4._export_method() == "colmap"
+        assert window.step4.pipeline_stage_intent("sfm") is True
+        assert window.step4.pipeline_stage_intent("conversion") is True
+        assert window.run_btn.text().strip() == i18n.t("SFM_RUN_COLMAP")
+
+        window.sfm_step.show_menu()
+        assert window.run_btn.text().strip() == i18n.t("SFM_SELECT_ROUTE")
+
+        window.sfm_step.card_grid.buttons["spheresfm"].click()
+        assert window.stack.currentIndex() == window._sfm_step_index
+        assert window.sfm_step.current_route() == "spheresfm"
+        assert window.step4._export_method() == "spheresfm"
+        assert window.step4.pipeline_stage_intent("sfm") is True
+        assert window.step4.pipeline_stage_intent("conversion") is False
+        assert window.run_btn.text().strip() == i18n.t("SFM_RUN_SPHERESFM")
+
+        window.sfm_step.show_menu()
+        assert window.run_btn.text().strip() == i18n.t("SFM_SELECT_ROUTE")
+
+        opened: list[bool] = []
+        window.step4.open_scene_preview = lambda: opened.append(True)  # type: ignore[method-assign]
+        window.sfm_step.card_grid.buttons["viewer"].click()
+        assert opened == [True]
+        assert window.stack.currentIndex() == window._sfm_step_index
+
+        window.sfm_step.card_grid.buttons["metashape"].click()
 
         assert window.stack.currentIndex() == window._dataset_step_index
         assert window.stack.currentWidget() is window.dataset_step
-        assert window.dataset_step.current_tool() == "cubemap"
+        assert window.dataset_step.current_tool() == "menu"
+        assert window.run_btn.text().strip() == i18n.t("DATASET_SELECT_TOOL")
+        assert not window.run_btn.isEnabled()
+        assert not hasattr(window, "step4_sub_buttons")
+
+        window.dataset_step.card_grid.buttons["metashape_dataset"].click()
+        assert window.dataset_step.current_tool() == "metashape_dataset"
+        assert window.step4._export_method() == "metashape"
+        assert window.step4.pipeline_stage_intent("conversion") is True
+        assert window.run_btn.text().strip() == i18n.t("DATASET_RUN_METASHAPE")
+
+        window.dataset_step.show_tool("spheresfm_dataset")
+        assert window.dataset_step.current_tool() == "spheresfm_dataset"
+        assert window.step4._export_method() == "spheresfm"
+        assert window.step4.pipeline_stage_intent("sfm") is False
+        assert window.step4.pipeline_stage_intent("conversion") is True
+        assert window.run_btn.text().strip() == i18n.t("DATASET_RUN_SPHERESFM")
+        assert not window.step4.spheresfm_section.isVisible()
+
+        window._open_dataset_route("colmap")
+        assert window.dataset_step.current_tool() == "colmap_ready"
         assert window.step4._export_method() == "colmap"
-        assert window.run_btn.text().strip() == i18n.t("RUN")
+        assert window.run_btn.text().strip() == i18n.t("DATASET_COLMAP_READY_ACTION")
+        assert not window.run_btn.isEnabled()
     finally:
         window.shutdown()
 

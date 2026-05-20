@@ -6,7 +6,7 @@ import argparse
 import sys
 from pathlib import Path
 
-from PySide6.QtCore import QEvent, QObject, QPoint, QSignalBlocker, QSize, Qt, QThread, QTimer, QUrl
+from PySide6.QtCore import QSignalBlocker, QSize, Qt, QThread, QUrl
 from PySide6.QtGui import QAction, QCloseEvent, QDesktopServices, QIcon
 from PySide6.QtWidgets import (
     QApplication,
@@ -53,9 +53,6 @@ _STEP_HELP_DOC_STEMS = (
     "cubemap_tools_gui",
     "training_gui",
 )
-_STEP4_PIPELINE_NOTICE_MS = 1800
-
-
 def app_icon() -> QIcon:
     icon_path = Path(__file__).resolve().parent / "assets" / "app_icon.ico"
     if not icon_path.exists():
@@ -89,14 +86,9 @@ class MainWindow(QWidget):
         self._scene_import_worker: SceneImportWorker | None = None
         self._deferred_scene_sync_path: str | None = None
         self._deferred_scene_sync_step_ids: set[int] = set()
-        self._app_event_filter_installed = False
 
         self._build_ui(initial_scene_dir)
         self._connect_signals()
-        app = QApplication.instance()
-        if app is not None:
-            app.installEventFilter(self)
-            self._app_event_filter_installed = True
 
     def _build_ui(self, initial_scene_dir: str) -> None:
         root = QVBoxLayout(self)
@@ -177,7 +169,7 @@ class MainWindow(QWidget):
         self.step2 = ReviewStep(self.base_dir)
         self.step3 = MaskStep(self.base_dir)
         self.step4 = CubemapStep(self.base_dir)
-        self.sfm_step = SfmStep(self.base_dir)
+        self.sfm_step = SfmStep(self.base_dir, self.step4)
         self.dataset_step = DatasetStep(self.base_dir, self.step4)
         self.step5 = TrainingStep(self.base_dir, self.step4)
         self.step4.enable_user_preferences()
@@ -217,19 +209,6 @@ class MainWindow(QWidget):
         sidebar_layout.setContentsMargins(6, 8, 6, 8)
         sidebar_layout.setSpacing(6)
         self.step_buttons: list[QPushButton] = []
-        self.step4_sub_buttons: dict[str, QWidget] = {}
-        self.step4_sub_intent_buttons: dict[str, QToolButton] = {}
-        self.step4_sub_status_labels: dict[str, QLabel] = {}
-        self.step4_sub_text_labels: dict[str, QLabel] = {}
-        self.step4_subnav_rail: QWidget | None = None
-        self.step4_subnotice_label = QLabel("", self)
-        self.step4_subnotice_label.setObjectName("navSubNotice")
-        self.step4_subnotice_label.setWordWrap(False)
-        self.step4_subnotice_label.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.step4_subnotice_label.hide()
-        self.step4_subnotice_timer = QTimer(self)
-        self.step4_subnotice_timer.setSingleShot(True)
-        self.step4_subnotice_timer.timeout.connect(self._hide_step4_pipeline_notice)
         for index, title_text in enumerate(self.step_nav_titles):
             btn = QPushButton(title_text)
             btn.setObjectName("navStep")
@@ -239,59 +218,6 @@ class MainWindow(QWidget):
             btn.clicked.connect(lambda _checked=False, i=index: self._set_current_step(i))
             sidebar_layout.addWidget(btn)
             self.step_buttons.append(btn)
-            if index == self._dataset_step_index:
-                subnav = QWidget()
-                subnav.setObjectName("navSubSteps")
-                subnav_layout = QHBoxLayout(subnav)
-                subnav_layout.setContentsMargins(4, 0, 0, 2)
-                subnav_layout.setSpacing(3)
-                rail = QWidget()
-                rail.setObjectName("navSubRail")
-                rail.setFixedWidth(2)
-                subnav_layout.addWidget(rail)
-                self.step4_subnav_rail = rail
-                subnav_rows = QWidget()
-                subnav_rows.setObjectName("navSubRows")
-                subnav_rows_layout = QVBoxLayout(subnav_rows)
-                subnav_rows_layout.setContentsMargins(0, 0, 0, 0)
-                subnav_rows_layout.setSpacing(2)
-                for stage in ("sfm", "conversion"):
-                    sub_btn = QWidget()
-                    sub_btn.setObjectName("navSubStep")
-                    sub_btn.setFixedSize(63, 22)
-                    sub_btn.setProperty("stage", stage)
-                    sub_btn.installEventFilter(self)
-                    sub_btn_layout = QHBoxLayout(sub_btn)
-                    sub_btn_layout.setContentsMargins(2, 0, 1, 0)
-                    sub_btn_layout.setSpacing(1)
-                    intent_btn = QToolButton()
-                    intent_btn.setObjectName("navSubStepIntent")
-                    intent_btn.setCheckable(True)
-                    intent_btn.setAutoRaise(True)
-                    intent_btn.setFixedSize(13, 18)
-                    intent_btn.clicked.connect(
-                        lambda _checked=False, s=stage: self._toggle_step4_pipeline_stage_intent(s)
-                    )
-                    status_label = QLabel("")
-                    status_label.setObjectName("navSubStepStatus")
-                    status_label.setFixedSize(13, 18)
-                    status_label.setAlignment(Qt.AlignCenter)
-                    status_label.setProperty("stage", stage)
-                    status_label.installEventFilter(self)
-                    text_label = QLabel("")
-                    text_label.setObjectName("navSubStepText")
-                    text_label.setWordWrap(False)
-                    text_label.setAttribute(Qt.WA_TransparentForMouseEvents, True)
-                    sub_btn_layout.addWidget(intent_btn)
-                    sub_btn_layout.addWidget(text_label, stretch=1)
-                    sub_btn_layout.addWidget(status_label)
-                    subnav_rows_layout.addWidget(sub_btn)
-                    self.step4_sub_buttons[stage] = sub_btn
-                    self.step4_sub_intent_buttons[stage] = intent_btn
-                    self.step4_sub_status_labels[stage] = status_label
-                    self.step4_sub_text_labels[stage] = text_label
-                subnav_layout.addWidget(subnav_rows)
-                sidebar_layout.addWidget(subnav)
         sidebar_layout.addStretch()
         workspace_layout.addWidget(sidebar)
 
@@ -393,8 +319,6 @@ class MainWindow(QWidget):
             step.background_progress_changed.connect(self._on_background_progress)
             step.background_status_changed.connect(self._on_background_status)
             step.background_task_finished.connect(self._on_background_task_finished)
-        self.step4.primary_action_state_changed.connect(self._refresh_step4_subnav)
-        self.dataset_step.tool_changed.connect(lambda _tool: self._refresh_step4_subnav())
 
         self._on_scene_changed(self.scene_browse.text())
 
@@ -427,8 +351,6 @@ class MainWindow(QWidget):
                 self._sync_step_scene_if_deferred(step)
                 step.on_activated()
         self._update_step_header()
-        if not self._step_scene_sync_deferred(self.dataset_step):
-            self._refresh_step4_subnav()
 
     def _set_scene_browse_text_silently(self, path: str) -> None:
         blocker = QSignalBlocker(self.scene_browse.line_edit)
@@ -583,34 +505,17 @@ class MainWindow(QWidget):
         if step is not None:
             self._sync_step_scene_if_deferred(step)
             step.on_activated()
-        if index != self._dataset_step_index:
-            self._hide_step4_pipeline_notice()
         self._update_run_button()
-        self._refresh_step4_subnav()
 
     def _open_dataset_route(self, route_id: str) -> None:
         if self._workflow_busy():
             return
         self._set_current_step(self._dataset_step_index)
-        self.dataset_step.show_cubemap_route(route_id)
-        self._refresh_step4_subnav()
+        if route_id == "dataset_menu":
+            self.dataset_step.show_tool("menu")
+        else:
+            self.dataset_step.show_cubemap_route(route_id)
         self._update_run_button()
-
-    def eventFilter(self, watched: QObject, event: QEvent) -> bool:
-        if event.type() == QEvent.Type.MouseButtonPress and self.step4_subnotice_label.isVisible():
-            self._hide_step4_pipeline_notice()
-        if event.type() == QEvent.Type.MouseButtonRelease:
-            for stage, widget in self.step4_sub_buttons.items():
-                if watched is widget:
-                    if widget.isEnabled():
-                        self._toggle_step4_pipeline_stage_intent(stage)
-                        return True
-                    return False
-            for stage, widget in self.step4_sub_status_labels.items():
-                if watched is widget and widget.property("status") == "warning":
-                    self._open_step4_pipeline_stage(stage)
-                    return True
-        return super().eventFilter(watched, event)
 
     def _update_step_header(self) -> None:
         index = self.stack.currentIndex()
@@ -637,103 +542,6 @@ class MainWindow(QWidget):
             return str(scene_output_dir(scene))
         return str(scene_output_dir(scene))
 
-    def _toggle_step4_pipeline_stage_intent(self, stage: str) -> None:
-        if not self.step4.pipeline_stage_intent_toggle_enabled(stage):
-            self._set_current_step(self._dataset_step_index)
-            self.dataset_step.show_tool("cubemap")
-            self._show_step4_pipeline_notice(self.step4.pipeline_stage_toggle_blocked_notice(stage))
-            self._refresh_step4_subnav()
-            self._update_run_button()
-            return
-        self._set_current_step(self._dataset_step_index)
-        self.dataset_step.show_tool("cubemap")
-        self.step4.toggle_pipeline_stage_intent(stage)
-        self._show_step4_pipeline_notice(self.step4.take_pipeline_notice())
-        self._refresh_step4_subnav()
-        self._update_run_button()
-
-    def _open_step4_pipeline_stage(self, stage: str) -> None:
-        if self._workflow_busy():
-            return
-        self._set_current_step(self._dataset_step_index)
-        self.dataset_step.show_tool("cubemap")
-        self.step4.activate_pipeline_stage(stage)
-        self._update_run_button()
-        self._refresh_step4_subnav()
-
-    def _show_step4_pipeline_notice(self, text: str) -> None:
-        if not text:
-            return
-        self.step4_subnotice_label.setText(text)
-        self.step4_subnotice_label.adjustSize()
-        self._position_step4_pipeline_notice()
-        self.step4_subnotice_label.show()
-        self.step4_subnotice_label.raise_()
-        self.step4_subnotice_timer.start(_STEP4_PIPELINE_NOTICE_MS)
-
-    def _hide_step4_pipeline_notice(self) -> None:
-        self.step4_subnotice_timer.stop()
-        self.step4_subnotice_label.hide()
-        self.step4_subnotice_label.setText("")
-
-    def _position_step4_pipeline_notice(self) -> None:
-        if not self.step4_subnotice_label.isVisible() and not self.step4_subnotice_label.text():
-            return
-        anchor = self.step4_sub_buttons.get("sfm")
-        if anchor is None:
-            return
-        top_right = anchor.mapTo(self, QPoint(anchor.width() + 8, 0))
-        self.step4_subnotice_label.move(top_right)
-
-    def _refresh_step4_subnav(self) -> None:
-        if not self.step4_sub_buttons:
-            return
-        if self._step_scene_sync_deferred(self.dataset_step):
-            return
-        if self.step4_subnav_rail is not None:
-            self.step4_subnav_rail.setProperty("active", "false")
-            self.step4_subnav_rail.style().unpolish(self.step4_subnav_rail)
-            self.step4_subnav_rail.style().polish(self.step4_subnav_rail)
-        for item in self.step4.pipeline_nav_items():
-            button = self.step4_sub_buttons.get(item["stage"])
-            if button is None:
-                continue
-            status_label = self.step4_sub_status_labels.get(item["stage"])
-            text_label = self.step4_sub_text_labels.get(item["stage"])
-            intent_btn = self.step4_sub_intent_buttons.get(item["stage"])
-            if intent_btn is not None:
-                intent_btn.setText(str(item["intent_symbol"]))
-                intent_btn.setChecked(bool(item["intent_checked"]))
-                intent_btn.setEnabled(bool(item["intent_enabled"]))
-                intent_btn.setProperty("toggleEnabled", "true" if item["intent_toggle_enabled"] else "false")
-                intent_btn.setToolTip(str(item["intent_tooltip"]))
-            if status_label is not None:
-                status_label.setText(str(item["status_symbol"]))
-                status_label.setProperty("status", item["status"])
-                status_label.setToolTip(str(item["status_tooltip"]))
-                status_label.setCursor(
-                    Qt.CursorShape.PointingHandCursor
-                    if item["status"] == "warning"
-                    else Qt.CursorShape.ArrowCursor
-                )
-            if text_label is not None:
-                text_label.setText(str(item["label"]))
-                text_label.setProperty("active", "false")
-                text_label.setToolTip("")
-            button.setToolTip(str(item["row_tooltip"]))
-            button.setCursor(
-                Qt.CursorShape.PointingHandCursor
-                if item["intent_toggle_enabled"] or item["toggle_blocked_notice"]
-                else Qt.CursorShape.ArrowCursor
-            )
-            button.setProperty("active", "false")
-            button.setProperty("status", item["status"])
-            for widget in (button, intent_btn, status_label, text_label):
-                if widget is not None:
-                    widget.style().unpolish(widget)
-                    widget.style().polish(widget)
-        if self.step4_subnotice_label.isVisible():
-            self._position_step4_pipeline_notice()
 
     def _open_step_help(self) -> None:
         url = step_help_url(self.stack.currentIndex())
@@ -795,12 +603,6 @@ class MainWindow(QWidget):
         self.import_scene_action.setEnabled(unlocked)
         self.stack.setEnabled(unlocked)
         for btn in self.step_buttons:
-            btn.setEnabled(unlocked)
-        for btn in self.step4_sub_buttons.values():
-            btn.setEnabled(unlocked)
-        for btn in self.step4_sub_intent_buttons.values():
-            btn.setEnabled(unlocked)
-        for btn in self.step4_sub_status_labels.values():
             btn.setEnabled(unlocked)
 
     def _on_run(self) -> None:
@@ -954,10 +756,6 @@ class MainWindow(QWidget):
         if self._shutdown:
             return
         self._shutdown = True
-        app = QApplication.instance()
-        if app is not None and self._app_event_filter_installed:
-            app.removeEventFilter(self)
-            self._app_event_filter_installed = False
         if self.runner.is_running():
             self.runner.cancel()
         if self._scene_import_thread is not None and self._scene_import_thread.isRunning():

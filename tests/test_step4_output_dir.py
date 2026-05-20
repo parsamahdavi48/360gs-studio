@@ -568,6 +568,9 @@ def test_export_method_switch_keeps_fixed_tabs_and_swaps_route_sections() -> Non
     assert step.metashape_section.isHidden()
     assert step.metashape_sfm_input_widget.isHidden()
     assert step.metashape_output_section.isHidden()
+    assert step.colmap_section.isHidden()
+    assert not step.colmap_sfm_input_widget.isHidden()
+    step.set_pipeline_stage_intent("sfm", True)
     assert not step.colmap_section.isHidden()
     assert not step.colmap_sfm_input_widget.isHidden()
     assert step.settings_tabs.currentIndex() == step.input_tab_index
