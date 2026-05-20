@@ -2,7 +2,7 @@
 
 Step 2 is where you review the frames extracted in Step 1 and keep only the images that should continue to Step 3 mask generation and then Metashape or SphereSfM. It shows labels such as `Added`, `Drop`, and `Review` from Step 1 analysis, plus `External` for images registered through scene import, and lets you manually change keep/drop decisions.
 
-When you press `Apply`, Step 2 removes dropped frames from `images/`. Kept filenames are preserved by default; before masks or Step 4 outputs exist, you can also enable `Renumber kept images` to rename the kept files into a clean sequence. The resulting `images/` folder becomes the input for Step 3 and for Metashape or SphereSfM SfM.
+When you press `Apply`, Step 2 removes dropped frames from `images/`. Kept filenames are preserved by default; before masks or Step 5 dataset outputs exist, you can also enable `Renumber kept images` to rename the kept files into a clean sequence. The resulting `images/` folder becomes the input for Step 3 and for Metashape or SphereSfM SfM.
 
 ## First Things To Check
 
@@ -14,7 +14,7 @@ When you press `Apply`, Step 2 removes dropped frames from `images/`. Kept filen
 | Review only planned drops and quality warnings | Thumbnail filter / `Next Review Target` / `Previous Review Target` |
 | Usable-looking images are marked as blur | `Blur Detection`: `Standard` / `Low sensitivity` |
 | Change whether a frame is kept or dropped | Flag keep/drop button |
-| Rename kept images to a clean sequence before masks/Step 4 | `Renumber kept images` |
+| Rename kept images to a clean sequence before masks/Step 5 dataset output | `Renumber kept images` |
 | Apply decisions to the actual `images/` folder | `Apply` |
 
 The efficient workflow is to scan the thumbnail list first, then use the thumbnail filter for `Drops Only`, `Review Only`, or `Drops + Review`. Turn on `Include added frames` when you also want the review-target buttons to audit frames added for viewpoint change, blur replacement, or spacing.
@@ -27,7 +27,7 @@ The efficient workflow is to scan the thumbnail list first, then use the thumbna
 4. If images that look usable are marked as blur, set `Blur Detection` to `Low sensitivity`. You can switch back to `Standard` while reviewing.
 5. Use single preview for detailed checks. For 360° images, switch to the 90° perspective preview when detail is easier to judge that way.
 6. Mark useful frames as Keep and unwanted frames as Drop.
-7. If needed, enable `Renumber kept images` before masks or Step 4 outputs exist.
+7. If needed, enable `Renumber kept images` before masks or Step 5 dataset outputs exist.
 8. Press `Apply` when the decisions are ready.
 9. Continue to Step 3.
 
@@ -104,9 +104,9 @@ Apply does the following:
 
 ### Renumber Kept Images
 
-Use this only as a cleanup step before Step 3 mask generation and before Step 4 export. It renames kept files in the current order and preserves the image format.
+Use this only as a cleanup step before Step 3 mask generation and before Step 5 dataset export. It renames kept files in the current order and preserves the image format.
 
-This option is unavailable once masks or Step 4 conversion outputs already exist. That prevents existing masks or converted datasets from breaking because they still refer to the old image names.
+This option is unavailable once masks or Step 5 conversion outputs already exist. That prevents existing masks or converted datasets from breaking because they still refer to the old image names.
 
 Removed images can be restored manually from the review backup if needed.
 

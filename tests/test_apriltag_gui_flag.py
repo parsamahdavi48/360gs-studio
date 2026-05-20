@@ -7,7 +7,7 @@ import textwrap
 from pathlib import Path
 
 
-def test_apriltag_tab_is_visible_without_startup_flag() -> None:
+def test_apriltag_scale_tool_is_visible_without_startup_flag() -> None:
     script = textwrap.dedent(
         """
         import os
@@ -20,18 +20,13 @@ def test_apriltag_tab_is_visible_without_startup_flag() -> None:
 
         from gui import i18n
         from gui.theme import apply_theme
-        from gui.steps.step4_cubemap import CubemapStep
+        from gui.steps.apriltag_scale_tool import AprilTagScaleTool
 
         app = QApplication([])
         apply_theme(app)
-        step = CubemapStep(Path.cwd())
-        labels = [step.settings_tabs.tabText(i) for i in range(step.settings_tabs.count())]
-        assert labels == [
-            i18n.t("STEP4_TAB_INPUT"),
-            i18n.t("STEP4_TAB_OUTPUT"),
-            i18n.t("STEP4_TAB_APRILTAG_SCALE"),
-            i18n.t("STEP4_TAB_DETAILS"),
-        ]
+        step = AprilTagScaleTool(Path.cwd())
+        assert step.primary_action_enabled() is False
+        assert step.primary_action_tooltip() == i18n.tip("APRILTAG_TAB_PRIMARY_ACTION")
         assert not hasattr(step, "apriltag_enable_cb")
         assert step.apriltag_id_edit.text() == "7"
         assert step.apriltag_conversion_preset_combo.currentData() == "auto"
@@ -297,14 +292,15 @@ def test_apriltag_background_progress_reaches_main_window() -> None:
         app = QApplication([])
         apply_theme(app)
         window = MainWindow("")
-        window.step4.background_task_started.emit("Running scale")
-        window.step4.background_line_received.emit("[apriltag] detection start")
-        window.step4.background_progress_changed.emit(3, 10)
+        window.dataset_step.show_tool("scale")
+        window.dataset_step.scale_tool.background_task_started.emit("Running scale")
+        window.dataset_step.scale_tool.background_line_received.emit("[apriltag] detection start")
+        window.dataset_step.scale_tool.background_progress_changed.emit(3, 10)
         assert window.progress.status_label.text() == "Running scale"
         assert window.progress.bar.value() == 3
         assert window.progress.bar.maximum() == 10
         assert "detection start" in window.log_panel.toPlainText()
-        window.step4.background_task_finished.emit(True, False)
+        window.dataset_step.scale_tool.background_task_finished.emit(True, False)
         window.shutdown()
         """
     )
@@ -315,7 +311,7 @@ def test_apriltag_background_progress_reaches_main_window() -> None:
     assert result.returncode == 0, result.stdout + result.stderr
 
 
-def test_apriltag_scale_tab_uses_internal_actions() -> None:
+def test_apriltag_scale_tool_uses_internal_actions() -> None:
     script = textwrap.dedent(
         """
         import os
@@ -327,12 +323,11 @@ def test_apriltag_scale_tab_uses_internal_actions() -> None:
 
         from gui import i18n
         from gui.theme import apply_theme
-        from gui.steps.step4_cubemap import CubemapStep
+        from gui.steps.apriltag_scale_tool import AprilTagScaleTool
 
         app = QApplication([])
         apply_theme(app)
-        step = CubemapStep(Path.cwd())
-        step.settings_tabs.setCurrentIndex(step.apriltag_tab_index)
+        step = AprilTagScaleTool(Path.cwd())
         assert step.primary_action_enabled() is False
         assert step.primary_action_tooltip() == i18n.tip("APRILTAG_TAB_PRIMARY_ACTION")
         assert step.apriltag_apply_btn.isEnabled() is False

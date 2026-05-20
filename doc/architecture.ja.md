@@ -29,8 +29,10 @@ Step 3 のマスク生成は責務別に分割します。
 - `gui/mask/mask_commands.py` はコマンド構築を担当します。
 - `gui/mask/mask_postprocess.py` は保存済みマスクの後処理を担当します。
 
-Step 4 の変換/学習は責務別に分割します。
+SfMルート選択、データセット変換、学習起動は責務別に分割します。
 
+- `gui/steps/sfm_step.py` は Step 4 のルートカードを担当します。
+- `gui/steps/dataset_step.py` は Step 5 のデータセットツール一覧と、選択中ツールへの実行契約の委譲を担当します。
 - `gui/steps/step4_contracts.py` は安定したルート/プロファイル/出力定数と診断判定を担当します。
 - `gui/steps/step4_command_plan.py` は実行ファイル解決とコマンド計画を担当します。
 - `gui/steps/step4_pipeline.py` はルート準備状態とサブ工程遷移を担当します。
@@ -39,7 +41,7 @@ Step 4 の変換/学習は責務別に分割します。
 - `gui/steps/step4_runtime.py` は実行完了処理、進捗解析、Metashape 入力検出、後続アクションを担当します。
 - `gui/steps/step4_training.py` は学習バックエンド UI、設定、起動コマンドを担当します。
 - `gui/steps/step4_widgets.py` は Step 4 で使う小さな再利用ウィジェットを担当します。
-- `gui/steps/step4_cubemap.py` はこれらの mixin を合成する orchestration クラスです。新しいワークフロー実装は、明確に該当する責務モジュールがある場合はそこへ追加してください。
+- `gui/steps/step4_cubemap.py` は `SfM結果 → データセット` ツールで使う mixin を合成する orchestration クラスです。新しいワークフロー実装は、明確に該当する責務モジュールがある場合はそこへ追加してください。
 
 ## 検証ルール
 

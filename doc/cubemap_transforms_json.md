@@ -197,7 +197,7 @@ Import the following files in each software:
 
 ### RealityScan
 
-Use this when Metashape already produced camera poses and you want to run Align in RealityScan, add more sources there, or export RealityScan PLY/camera data for later training. In the GUI, the normal path is Step 4's Metashape route with `Output Preset: RealityScan`.
+Use this when Metashape already produced camera poses and you want to run Align in RealityScan, add more sources there, or export RealityScan PLY/camera data for later training. In the GUI, the normal path is selecting the external SfM result route in Step 4, then choosing `Output Preset: RealityScan` in Step 5's `SfM Result → Dataset` tool.
 
 Load these files in RealityScan:
 

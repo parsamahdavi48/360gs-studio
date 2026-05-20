@@ -309,8 +309,9 @@ def test_step5_japanese_training_copy_uses_learning_step_wording() -> None:
             "POSTSHOT_KSTEPS",
         ]
 
-        assert i18n.t("STEP4_TITLE") == "4. 変換"
-        assert i18n.t("STEP5_TITLE") == "5. 学習"
+        assert i18n.t("STEP4_TITLE") == "4. SfM"
+        assert i18n.t("STEP5_TITLE") == "5. データセット"
+        assert i18n.t("STEP6_TITLE") == "6. 学習"
         assert i18n.t("LAUNCH") == "起動"
         assert i18n.t("TRAINING_OUTPUT") == "出力先"
         assert all("書き出し後" not in i18n.t(key) for key in visible_keys)
@@ -351,14 +352,15 @@ def test_step4_scrolls_tab_content_not_whole_settings_pane() -> None:
         window = MainWindow()
         window.resize(1280, 920)
         window.show()
-        window._set_current_step(3)
+        window._set_current_step(4)
+        window.dataset_step.show_tool("cubemap")
         app.processEvents()
 
         step = window.step4
         assert step.findChildren(QScrollArea, "settingsScroll") == []
 
         tab_scrolls = [step.settings_tabs.widget(index) for index in range(step.settings_tabs.count())]
-        assert len(tab_scrolls) == 4
+        assert len(tab_scrolls) == 3
         assert all(isinstance(scroll, QScrollArea) for scroll in tab_scrolls)
         assert all(scroll.objectName() == "step4TabScroll" for scroll in tab_scrolls)
         assert all(scroll.horizontalScrollBarPolicy() == Qt.ScrollBarAlwaysOff for scroll in tab_scrolls)
@@ -412,7 +414,7 @@ def test_step4_scrolls_tab_content_not_whole_settings_pane() -> None:
         QTest.mouseClick(window.step4_sub_buttons["conversion"], Qt.LeftButton)
         assert step.pipeline_stage_intent("conversion") is True
 
-        window._set_current_step(4)
+        window._set_current_step(5)
         app.processEvents()
         assert window.run_btn.text().strip() == i18n.t("LAUNCH")
         assert window.step5.dataset_step is step

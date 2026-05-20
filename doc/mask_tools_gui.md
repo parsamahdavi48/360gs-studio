@@ -111,7 +111,7 @@ It is usually faster to generate the full set at Standard/High quality, then reg
 | Temporary preview | Visual check only; not a saved mask |
 | Run log | Shown in the integrated log panel |
 
-Generated `masks/` can be imported into Metashape, or used by the SphereSfM route in Step 4 as excluded regions during SfM. When you export cubemap data, Step 4 converts the masks to match the cubemap images. Polarity remains white = use, black = exclude.
+Generated `masks/` can be imported into Metashape, or used by the SphereSfM route in Step 5 as excluded regions during SfM. When you export cubemap data, Step 5 converts the masks to match the cubemap images. Polarity remains white = use, black = exclude.
 
 ## Common Decisions
 

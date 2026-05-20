@@ -262,6 +262,28 @@ QLabel#emptyPaneMessage {{
     color: {TEXT_DIM};
     font-size: 10pt;
 }}
+QWidget#workflowCardGrid {{
+    background-color: transparent;
+}}
+QPushButton#workflowCard {{
+    background-color: {BG_PANEL};
+    border: 1px solid {BORDER};
+    border-radius: 6px;
+    color: {TEXT};
+    padding: 14px 16px;
+    text-align: left;
+    font-weight: 500;
+}}
+QPushButton#workflowCard:hover {{
+    background-color: {BORDER};
+    border-color: {BORDER_FOCUS};
+}}
+QPushButton#workflowCard:pressed {{
+    background-color: {BG_MID};
+}}
+QWidget#toolDetailHeader {{
+    background-color: transparent;
+}}
 
 /* ========== QLineEdit / QComboBox / QSpinBox ========== */
 QLineEdit, QComboBox, QSpinBox, QDoubleSpinBox {{

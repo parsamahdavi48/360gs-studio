@@ -34,6 +34,8 @@ from gui.common.process_runner import ProcessRunner
 from gui.common.progress_widget import ProgressWidget
 from gui.common.scene_import_worker import SceneImportWorker
 from gui.steps.base_step import BaseStepWidget
+from gui.steps.dataset_step import DatasetStep
+from gui.steps.sfm_step import SfmStep
 from gui.steps.step1_extract import ExtractStep
 from gui.steps.step2_review import ReviewStep
 from gui.steps.step3_mask import MaskStep
@@ -47,6 +49,7 @@ _STEP_HELP_DOC_STEMS = (
     "extract_frames_gui",
     "review_frames_gui",
     "mask_tools_gui",
+    "cubemap_tools_gui",
     "cubemap_tools_gui",
     "training_gui",
 )
@@ -174,15 +177,21 @@ class MainWindow(QWidget):
         self.step2 = ReviewStep(self.base_dir)
         self.step3 = MaskStep(self.base_dir)
         self.step4 = CubemapStep(self.base_dir)
+        self.sfm_step = SfmStep(self.base_dir)
+        self.dataset_step = DatasetStep(self.base_dir, self.step4)
         self.step5 = TrainingStep(self.base_dir, self.step4)
         self.step4.enable_user_preferences()
-        self.steps = [self.step1, self.step2, self.step3, self.step4, self.step5]
+        self.steps = [self.step1, self.step2, self.step3, self.sfm_step, self.dataset_step, self.step5]
+        self._sfm_step_index = 3
+        self._dataset_step_index = 4
+        self._training_step_index = 5
         self.step_titles = [
             i18n.STEP1_TITLE,
             i18n.STEP2_TITLE,
             i18n.STEP3_TITLE,
             i18n.STEP4_TITLE,
             i18n.STEP5_TITLE,
+            i18n.t("STEP6_TITLE"),
         ]
         self.step_nav_titles = [
             i18n.t("STEP1_NAV"),
@@ -190,6 +199,7 @@ class MainWindow(QWidget):
             i18n.t("STEP3_NAV"),
             i18n.t("STEP4_NAV"),
             i18n.t("STEP5_NAV"),
+            i18n.t("STEP6_NAV"),
         ]
         # --- メイン分割: 作業領域 / 実行状態 ---
         splitter = QSplitter(Qt.Vertical)
@@ -229,7 +239,7 @@ class MainWindow(QWidget):
             btn.clicked.connect(lambda _checked=False, i=index: self._set_current_step(i))
             sidebar_layout.addWidget(btn)
             self.step_buttons.append(btn)
-            if index == 3:
+            if index == self._dataset_step_index:
                 subnav = QWidget()
                 subnav.setObjectName("navSubSteps")
                 subnav_layout = QHBoxLayout(subnav)
@@ -367,6 +377,7 @@ class MainWindow(QWidget):
         self.step1.scene_dir_suggested.connect(self._on_scene_suggested)
         self.step1.input_videos_cleared.connect(self._on_input_videos_cleared)
         self.step3.scene_dir_suggested.connect(self._on_scene_suggested)
+        self.sfm_step.route_requested.connect(self._open_dataset_route)
         self.run_btn.clicked.connect(self._on_run)
         self.cancel_btn.clicked.connect(self._on_cancel)
 
@@ -383,6 +394,7 @@ class MainWindow(QWidget):
             step.background_status_changed.connect(self._on_background_status)
             step.background_task_finished.connect(self._on_background_task_finished)
         self.step4.primary_action_state_changed.connect(self._refresh_step4_subnav)
+        self.dataset_step.tool_changed.connect(lambda _tool: self._refresh_step4_subnav())
 
         self._on_scene_changed(self.scene_browse.text())
 
@@ -415,7 +427,7 @@ class MainWindow(QWidget):
                 self._sync_step_scene_if_deferred(step)
                 step.on_activated()
         self._update_step_header()
-        if not self._step_scene_sync_deferred(self.step4):
+        if not self._step_scene_sync_deferred(self.dataset_step):
             self._refresh_step4_subnav()
 
     def _set_scene_browse_text_silently(self, path: str) -> None:
@@ -442,9 +454,9 @@ class MainWindow(QWidget):
         path = self._deferred_scene_sync_path
         if not path or self.scene_browse.text() != path or id(step) not in self._deferred_scene_sync_step_ids:
             return
-        if step is self.step5 and id(self.step4) in self._deferred_scene_sync_step_ids:
-            self.step4.set_scene_dir(path)
-            self._deferred_scene_sync_step_ids.discard(id(self.step4))
+        if step is self.step5 and id(self.dataset_step) in self._deferred_scene_sync_step_ids:
+            self.dataset_step.set_scene_dir(path)
+            self._deferred_scene_sync_step_ids.discard(id(self.dataset_step))
         step.set_scene_dir(path)
         self._deferred_scene_sync_step_ids.discard(id(step))
         if not self._deferred_scene_sync_step_ids:
@@ -571,10 +583,18 @@ class MainWindow(QWidget):
         if step is not None:
             self._sync_step_scene_if_deferred(step)
             step.on_activated()
-        if index != 3:
+        if index != self._dataset_step_index:
             self._hide_step4_pipeline_notice()
         self._update_run_button()
         self._refresh_step4_subnav()
+
+    def _open_dataset_route(self, route_id: str) -> None:
+        if self._workflow_busy():
+            return
+        self._set_current_step(self._dataset_step_index)
+        self.dataset_step.show_cubemap_route(route_id)
+        self._refresh_step4_subnav()
+        self._update_run_button()
 
     def eventFilter(self, watched: QObject, event: QEvent) -> bool:
         if event.type() == QEvent.Type.MouseButtonPress and self.step4_subnotice_label.isVisible():
@@ -611,18 +631,22 @@ class MainWindow(QWidget):
             return str(scene_images_dir(scene))
         if index == 2:
             return str(scene_masks_dir(scene))
-        if index == 3:
+        if index == self._sfm_step_index:
+            return str(scene_output_dir(scene))
+        if index == self._dataset_step_index:
             return str(scene_output_dir(scene))
         return str(scene_output_dir(scene))
 
     def _toggle_step4_pipeline_stage_intent(self, stage: str) -> None:
         if not self.step4.pipeline_stage_intent_toggle_enabled(stage):
-            self._set_current_step(3)
+            self._set_current_step(self._dataset_step_index)
+            self.dataset_step.show_tool("cubemap")
             self._show_step4_pipeline_notice(self.step4.pipeline_stage_toggle_blocked_notice(stage))
             self._refresh_step4_subnav()
             self._update_run_button()
             return
-        self._set_current_step(3)
+        self._set_current_step(self._dataset_step_index)
+        self.dataset_step.show_tool("cubemap")
         self.step4.toggle_pipeline_stage_intent(stage)
         self._show_step4_pipeline_notice(self.step4.take_pipeline_notice())
         self._refresh_step4_subnav()
@@ -631,7 +655,8 @@ class MainWindow(QWidget):
     def _open_step4_pipeline_stage(self, stage: str) -> None:
         if self._workflow_busy():
             return
-        self._set_current_step(3)
+        self._set_current_step(self._dataset_step_index)
+        self.dataset_step.show_tool("cubemap")
         self.step4.activate_pipeline_stage(stage)
         self._update_run_button()
         self._refresh_step4_subnav()
@@ -663,7 +688,7 @@ class MainWindow(QWidget):
     def _refresh_step4_subnav(self) -> None:
         if not self.step4_sub_buttons:
             return
-        if self._step_scene_sync_deferred(self.step4):
+        if self._step_scene_sync_deferred(self.dataset_step):
             return
         if self.step4_subnav_rail is not None:
             self.step4_subnav_rail.setProperty("active", "false")

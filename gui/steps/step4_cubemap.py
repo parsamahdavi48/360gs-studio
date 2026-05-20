@@ -814,10 +814,6 @@ class CubemapStep(
             self._make_tab_scroll_area(self.output_tab),
             i18n.t("STEP4_TAB_OUTPUT"),
         )
-        self.apriltag_tab_index = self.settings_tabs.addTab(
-            self._make_tab_scroll_area(self.apriltag_tab),
-            i18n.t("STEP4_TAB_APRILTAG_SCALE"),
-        )
         self.details_tab_index = self.settings_tabs.addTab(
             self._make_tab_scroll_area(self.details_tab),
             i18n.t("STEP4_TAB_DETAILS"),

@@ -318,8 +318,8 @@ def test_cubemap_step_uses_tab_path_summaries(tmp_path: Path) -> None:
     assert step.input_tab_index == 0
     assert step.output_tab_index == 1
     assert step.view_export_tab_index == step.output_tab_index
-    assert step.apriltag_tab_index == 2
-    assert step.details_tab_index == 3
+    assert step.apriltag_tab_index is None
+    assert step.details_tab_index == 2
     assert step.metashape_tab_index == step.input_tab_index
     assert step.colmap_tab_index == step.input_tab_index
     assert step.spheresfm_tab_index == step.input_tab_index
@@ -327,7 +327,6 @@ def test_cubemap_step_uses_tab_path_summaries(tmp_path: Path) -> None:
     assert [step.settings_tabs.tabText(i) for i in range(step.settings_tabs.count())] == [
         i18n.t("STEP4_TAB_INPUT"),
         i18n.t("STEP4_TAB_OUTPUT"),
-        i18n.t("STEP4_TAB_APRILTAG_SCALE"),
         i18n.t("STEP4_TAB_DETAILS"),
     ]
     assert step.export_method_label.isHidden()
@@ -637,7 +636,6 @@ def test_spheresfm_visible_tabs_follow_projection_conversion_sfm_order() -> None
     assert [step.settings_tabs.tabText(i) for i in range(step.settings_tabs.count())] == [
         i18n.t("STEP4_TAB_INPUT"),
         i18n.t("STEP4_TAB_OUTPUT"),
-        i18n.t("STEP4_TAB_APRILTAG_SCALE"),
         i18n.t("STEP4_TAB_DETAILS"),
     ]
     assert step.metashape_section.isHidden()

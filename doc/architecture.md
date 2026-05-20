@@ -61,8 +61,11 @@ Step 3 mask generation is split by responsibility:
 - `gui/mask/mask_commands.py` owns command construction.
 - `gui/mask/mask_postprocess.py` owns saved-mask postprocessing.
 
-Step 4 conversion/training is split by responsibility:
+SfM route selection, dataset conversion, and training launch are split by responsibility:
 
+- `gui/steps/sfm_step.py` owns the Step 4 route cards.
+- `gui/steps/dataset_step.py` owns the Step 5 dataset tool menu and delegates
+  execution contracts to the selected tool.
 - `gui/steps/step4_contracts.py` owns stable route/profile/output constants and
   diagnostic classifiers.
 - `gui/steps/step4_command_plan.py` owns executable resolution and command
@@ -78,8 +81,8 @@ Step 4 conversion/training is split by responsibility:
   commands.
 - `gui/steps/step4_widgets.py` owns small reusable widgets used by the step.
 - `gui/steps/step4_cubemap.py` is the orchestration class that composes those
-  mixins. Avoid adding new workflow logic there when it clearly belongs to one
-  of the focused modules above.
+  mixins for the `SfM Result → Dataset` tool. Avoid adding new workflow logic
+  there when it clearly belongs to one of the focused modules above.
 
 ## Verification Rules
 

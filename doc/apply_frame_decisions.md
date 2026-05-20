@@ -27,7 +27,7 @@ Finalize with safety backup (snapshot images/ first):
 python apply_frame_decisions.py ./scene01 --finalize-in-place --backup-dir _stechdrive/frames/backups/images
 ```
 
-Finalize and renumber kept images before mask generation or Step 4 export:
+Finalize and renumber kept images before mask generation or Step 5 dataset export:
 
 ```bash
 python apply_frame_decisions.py ./scene01 --finalize-in-place --renumber-kept-images
@@ -45,7 +45,7 @@ Options:
 - `--csv`: CSV filename under `_stechdrive/frames/`, or an absolute CSV path (default: `selected_frames.csv`)
 - `--finalize-in-place`: apply decisions directly in `images/` and rewrite CSV
 - `--backup-dir`: with `--finalize-in-place`, snapshot `images/` to this directory before modification. Existing targets are replaced only when the path is clearly a backup path such as `backups` or `images_backup`. Default empty = no backup
-- `--renumber-kept-images`: with `--finalize-in-place`, rename kept images in CSV order to `images/frame_000001.ext`, update frame/source metadata, and refuse to run after downstream masks, `output/`, or Step 4 metadata already exist
+- `--renumber-kept-images`: with `--finalize-in-place`, rename kept images in CSV order to `images/frame_000001.ext`, update frame/source metadata, and refuse to run after downstream masks, `output/`, or legacy Step 4 metadata already exist
 - `--output`: copy-mode destination folder under scene directory (default: `metashape_images`)
 - `--clean-output`: copy-mode only; remove existing image files in output folder before export
 
@@ -69,4 +69,4 @@ Copy mode:
 ## Notes
 
 - `--renumber-kept-images` is only valid with `--finalize-in-place`.
-- Renumbering is intended before Step 3 and Step 4. It stops if `masks/`, mask metadata, `output/`, or `_stechdrive/step4/` already contains downstream results, because those assets may refer to the old filenames.
+- Renumbering is intended before Step 3 and Step 5 dataset creation. It stops if `masks/`, mask metadata, `output/`, or `_stechdrive/step4/` already contains downstream results, because those assets may refer to the old filenames.
