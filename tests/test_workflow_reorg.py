@@ -174,6 +174,8 @@ def test_sfm_cards_open_in_step_sfm_pages_and_external_route_goes_to_dataset(tmp
         assert window.dataset_step.current_tool() == "colmap_text_model"
         assert window.run_btn.text().strip() == i18n.t("DATASET_RUN_COLMAP_TEXT")
         assert window.dataset_step.colmap_text_tool.settings_tabs.currentIndex() == 1
+        colmap_text_labels = window.dataset_step.stack.currentWidget().findChildren(QLabel)
+        assert any(label.text() == i18n.t("DATASET_TOOL_COLMAP_TEXT_DESC") for label in colmap_text_labels)
 
         window._open_dataset_route("colmap")
         assert window.dataset_step.current_tool() == "colmap_ready"
@@ -261,7 +263,7 @@ def test_colmap_text_model_tool_defaults_and_builds_cli_command(tmp_path: Path) 
     assert Path(tool.xml_browse.text()) == xml
     assert Path(tool.ply_browse.text()) == ply
     output = scene / "output" / "metashape_colmap"
-    assert Path(tool.output_browse.text()) == output
+    assert not hasattr(tool, "output_browse")
     assert tool.primary_action_enabled()
     assert tool.settings_tabs.count() == 3
     assert tool.profile_combo.currentData() == "lichtfeld"

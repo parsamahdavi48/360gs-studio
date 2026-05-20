@@ -71,7 +71,11 @@ class DatasetStep(BaseStepWidget):
             self._wrap_detail_page(i18n.t("DATASET_TOOL_SCALE_TITLE"), self.scale_tool)
         )
         self._page_indices[_PAGE_COLMAP_TEXT] = self.stack.addWidget(
-            self._wrap_detail_page(i18n.t("DATASET_TOOL_COLMAP_TEXT_TITLE"), self.colmap_text_tool)
+            self._wrap_detail_page(
+                i18n.t("DATASET_TOOL_COLMAP_TEXT_TITLE"),
+                self.colmap_text_tool,
+                header_extra=self._make_detail_note(i18n.t("DATASET_TOOL_COLMAP_TEXT_DESC")),
+            )
         )
         root.addWidget(self.stack)
 
@@ -144,6 +148,13 @@ class DatasetStep(BaseStepWidget):
         self.cubemap_detail_layout = layout
         layout.addWidget(self.cubemap_step, stretch=1)
         return page
+
+    def _make_detail_note(self, text: str) -> QLabel:
+        note = QLabel(text)
+        note.setObjectName("workflowNote")
+        note.setWordWrap(True)
+        note.setContentsMargins(8, 8, 8, 0)
+        return note
 
     def _wrap_detail_page(self, title: str, child: QWidget, *, header_extra: QWidget | None = None) -> QWidget:
         page = QWidget()

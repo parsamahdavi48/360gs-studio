@@ -59,7 +59,6 @@ class ColmapTextModelTool(BaseStepWidget):
         self._masks_user_edited = False
         self._xml_user_edited = False
         self._ply_user_edited = False
-        self._output_user_edited = False
         self._build_ui()
 
     def _build_ui(self) -> None:
@@ -160,11 +159,6 @@ class ColmapTextModelTool(BaseStepWidget):
         layout.setSpacing(6)
         form = QFormLayout()
         form.setSpacing(6)
-
-        self.output_browse = BrowseWidget(mode="dir", placeholder=i18n.t("COLMAP_TEXT_OUTPUT_PLACEHOLDER"))
-        self.output_browse.setToolTip(i18n.tip("COLMAP_TEXT_OUTPUT"))
-        self.output_browse.line_edit.setToolTip(i18n.tip("COLMAP_TEXT_OUTPUT"))
-        add_tooltip_row(form, i18n.t("COLMAP_TEXT_OUTPUT"), self.output_browse, i18n.tip("COLMAP_TEXT_OUTPUT"))
 
         self.profile_combo = QComboBox()
         self.profile_combo.setToolTip(i18n.tip("TARGET_PROFILE"))
@@ -278,7 +272,6 @@ class ColmapTextModelTool(BaseStepWidget):
         self.masks_browse.path_changed.connect(lambda _path: self._on_path_changed("masks"))
         self.xml_browse.path_changed.connect(lambda _path: self._on_path_changed("xml"))
         self.ply_browse.path_changed.connect(lambda _path: self._on_path_changed("ply"))
-        self.output_browse.path_changed.connect(lambda _path: self._on_path_changed("output"))
 
         self.profile_combo.currentIndexChanged.connect(self._on_output_option_changed)
         self.view_config.views_changed.connect(self._on_views_changed)
@@ -298,7 +291,6 @@ class ColmapTextModelTool(BaseStepWidget):
         self._masks_user_edited = False
         self._xml_user_edited = False
         self._ply_user_edited = False
-        self._output_user_edited = False
         self.preview.set_scene_dir(path, refresh=False)
         self._refresh_default_paths()
         self._sync_preview_inputs()
@@ -493,8 +485,7 @@ class ColmapTextModelTool(BaseStepWidget):
         return Path(text) if text else Path()
 
     def _output_dir(self) -> Path:
-        text = self.output_browse.text()
-        return Path(text) if text else self._default_output_dir()
+        return self._default_output_dir()
 
     def _default_output_dir(self) -> Path:
         if not self.scene_dir:
@@ -543,7 +534,6 @@ class ColmapTextModelTool(BaseStepWidget):
                 self.masks_browse.set_text("")
                 self.xml_browse.set_text("")
                 self.ply_browse.set_text("")
-                self.output_browse.set_text("")
             finally:
                 self._syncing_paths = False
             return
@@ -562,8 +552,6 @@ class ColmapTextModelTool(BaseStepWidget):
             if not self._ply_user_edited:
                 ply = _guess_single_file(scene, "*.ply", exclude_names={"pointcloud.ply"})
                 self.ply_browse.set_text(str(ply) if ply else "")
-            if not self._output_user_edited:
-                self.output_browse.set_text(str(self._default_output_dir()))
         finally:
             self._syncing_paths = False
 
@@ -577,8 +565,6 @@ class ColmapTextModelTool(BaseStepWidget):
                 self._xml_user_edited = True
             elif field == "ply":
                 self._ply_user_edited = True
-            elif field == "output":
-                self._output_user_edited = True
         if field in {"images", "masks"}:
             self._sync_preview_inputs()
         self.primary_action_state_changed.emit()
