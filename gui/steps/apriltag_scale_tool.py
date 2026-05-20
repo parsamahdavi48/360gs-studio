@@ -40,10 +40,6 @@ class AprilTagScaleTool(Step4AprilTagMixin, BaseStepWidget):
         layout.setContentsMargins(8, 8, 8, 8)
         layout.setSpacing(10)
 
-        title = QLabel(i18n.t("DATASET_TOOL_SCALE_TITLE"))
-        title.setObjectName("paneTitle")
-        layout.addWidget(title)
-
         description = QLabel(i18n.t("DATASET_TOOL_SCALE_DESC"))
         description.setObjectName("workflowNote")
         description.setWordWrap(True)
@@ -63,6 +59,7 @@ class AprilTagScaleTool(Step4AprilTagMixin, BaseStepWidget):
         layout.addLayout(form)
 
         layout.addWidget(self._build_apriltag_scale_tab(), stretch=1)
+        self.apriltag_apply_btn.setVisible(False)
         scroll.setWidget(content)
         root.addWidget(scroll)
 
@@ -75,13 +72,21 @@ class AprilTagScaleTool(Step4AprilTagMixin, BaseStepWidget):
         self._sync_apriltag_controls()
 
     def primary_action_text(self) -> str:
-        return i18n.t("SCALE_TOOL_INTERNAL_ACTION")
+        return i18n.t("APRILTAG_APPLY_SCALE")
 
     def primary_action_tooltip(self) -> str:
-        return i18n.tip("APRILTAG_TAB_PRIMARY_ACTION")
+        return i18n.tip("APRILTAG_APPLY_SCALE")
 
     def primary_action_enabled(self) -> bool:
-        return False
+        return (
+            self._apriltag_estimate_process is None
+            and self._apriltag_last_scale is not None
+            and not self._apriltag_scale_applied
+        )
+
+    def run_primary_action(self) -> bool:
+        self._apply_apriltag_scale()
+        return True
 
     def _display_output_dir(self) -> Path:
         text = self.scale_output_browse.text().strip()

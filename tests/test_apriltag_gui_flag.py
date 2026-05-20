@@ -26,7 +26,8 @@ def test_apriltag_scale_tool_is_visible_without_startup_flag() -> None:
         apply_theme(app)
         step = AprilTagScaleTool(Path.cwd())
         assert step.primary_action_enabled() is False
-        assert step.primary_action_tooltip() == i18n.tip("APRILTAG_TAB_PRIMARY_ACTION")
+        assert step.primary_action_text() == i18n.t("APRILTAG_APPLY_SCALE")
+        assert step.primary_action_tooltip() == i18n.tip("APRILTAG_APPLY_SCALE")
         assert not hasattr(step, "apriltag_enable_cb")
         assert step.apriltag_id_edit.text() == "7"
         assert step.apriltag_conversion_preset_combo.currentData() == "auto"
@@ -311,7 +312,7 @@ def test_apriltag_background_progress_reaches_main_window() -> None:
     assert result.returncode == 0, result.stdout + result.stderr
 
 
-def test_apriltag_scale_tool_uses_internal_actions() -> None:
+def test_apriltag_scale_tool_uses_shared_apply_action() -> None:
     script = textwrap.dedent(
         """
         import os
@@ -329,8 +330,9 @@ def test_apriltag_scale_tool_uses_internal_actions() -> None:
         apply_theme(app)
         step = AprilTagScaleTool(Path.cwd())
         assert step.primary_action_enabled() is False
-        assert step.primary_action_tooltip() == i18n.tip("APRILTAG_TAB_PRIMARY_ACTION")
-        assert step.apriltag_apply_btn.isEnabled() is False
+        assert step.primary_action_text() == i18n.t("APRILTAG_APPLY_SCALE")
+        assert step.primary_action_tooltip() == i18n.tip("APRILTAG_APPLY_SCALE")
+        assert step.apriltag_apply_btn.isHidden()
         assert step.apriltag_scale_row.isHidden()
         assert step.apriltag_copy_scale_btn.isHidden()
         assert step.apriltag_print_page_combo.findData("A4") >= 0
@@ -350,6 +352,61 @@ def test_apriltag_scale_tool_uses_internal_actions() -> None:
         tooltip = step.apriltag_id_edit.toolTip()
         assert 'src="data:image/png;base64,' in tooltip
         assert 'width="72" height="72"' in tooltip
+
+        step._show_apriltag_estimate_result(
+            1.25,
+            {"observation_count": 2, "pair_count": 1, "inlier_count": 1, "rms_residual_m": 0.01},
+        )
+        step._sync_apriltag_controls()
+        assert step.primary_action_enabled() is True
+        """
+    )
+
+    env = os.environ.copy()
+    env["QT_QPA_PLATFORM"] = "offscreen"
+    result = subprocess.run([sys.executable, "-c", script], cwd=Path.cwd(), env=env, capture_output=True, text=True)
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_apriltag_scale_apply_uses_main_window_primary_button(tmp_path: Path) -> None:
+    script = textwrap.dedent(
+        f"""
+        import os
+        from pathlib import Path
+
+        os.environ["QT_QPA_PLATFORM"] = "offscreen"
+
+        from PySide6.QtWidgets import QApplication
+
+        from gui import i18n
+        from gui.app import MainWindow
+        from gui.theme import apply_theme
+
+        scene = Path({str(tmp_path)!r})
+        scene.mkdir(parents=True, exist_ok=True)
+
+        app = QApplication([])
+        apply_theme(app)
+        window = MainWindow(str(scene))
+        window._set_current_step(window._dataset_step_index)
+        window.dataset_step.show_tool("scale")
+        tool = window.dataset_step.scale_tool
+        tool._apriltag_last_scale = 1.25
+        tool._apriltag_scale_applied = False
+        tool._sync_apriltag_controls()
+        window._update_run_button()
+
+        assert window.run_btn.text().strip() == i18n.t("APRILTAG_APPLY_SCALE")
+        assert window.run_btn.isEnabled()
+
+        called = []
+        def fake_apply():
+            called.append(True)
+
+        tool._apply_apriltag_scale = fake_apply
+        window.run_btn.click()
+        assert called == [True]
+        window.shutdown()
         """
     )
 

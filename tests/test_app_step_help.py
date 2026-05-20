@@ -65,21 +65,46 @@ def test_main_window_step_help_button_opens_current_step_doc(tmp_path: Path, mon
     window.close()
 
 
-def test_step_header_shows_full_work_path(tmp_path: Path) -> None:
+def test_step_header_uses_context_title_without_duplicate_scene_path(tmp_path: Path) -> None:
     _app()
     window = MainWindow(str(tmp_path))
 
-    expected = [
-        str(tmp_path / "images"),
-        str(tmp_path / "images"),
-        str(tmp_path / "masks"),
-        str(tmp_path / "output"),
-        str(tmp_path / "output"),
-        str(tmp_path / "output"),
-    ]
-    for index, text in enumerate(expected):
+    for index in range(len(window.steps)):
         window._set_current_step(index)
-        assert window.step_subheader.text() == text
-        assert window.step_subheader.toolTip() == text
+        assert window.step_subheader.text() == ""
+        assert window.step_subheader.toolTip() == ""
+        assert window.step_subheader.isHidden()
+
+    window._set_current_step(3)
+    assert window.step_header.text() == i18n.t("SFM_MENU_TITLE")
+    assert window.step_back_btn.isHidden()
+
+    window.sfm_step.card_grid.buttons["colmap"].click()
+    assert window.step_header.text() == i18n.t("SFM_COLMAP_DETAIL_TITLE")
+    assert not window.step_back_btn.isHidden()
+    assert window.step_back_btn.text() == ""
+    assert not window.step_back_btn.icon().isNull()
+    assert window.step_back_btn.toolTip() == i18n.tip("SFM_BACK_TO_ROUTES")
+
+    window.step_back_btn.click()
+    assert window.sfm_step.current_route() == ""
+    assert window.step_header.text() == i18n.t("SFM_MENU_TITLE")
+    assert window.step_back_btn.isHidden()
+
+    window._set_current_step(4)
+    assert window.step_header.text() == i18n.t("DATASET_MENU_TITLE")
+    assert window.step_back_btn.isHidden()
+
+    window.dataset_step.card_grid.buttons["realityscan_lfs"].click()
+    assert window.step_header.text() == i18n.t("DATASET_TOOL_RS_LFS_TITLE")
+    assert not window.step_back_btn.isHidden()
+    assert window.step_back_btn.text() == ""
+    assert not window.step_back_btn.icon().isNull()
+    assert window.step_back_btn.toolTip() == i18n.t("DATASET_BACK_TO_MENU")
+
+    window.step_back_btn.click()
+    assert window.dataset_step.current_tool() == "menu"
+    assert window.step_header.text() == i18n.t("DATASET_MENU_TITLE")
+    assert window.step_back_btn.isHidden()
 
     window.close()

@@ -33,6 +33,12 @@ output/realityscan/
 LichtFeldでは `output/realityscan/lfs_colmap/` をデータセットフォルダとして読み込みます。
 `images.txt` は元画像名と元拡張子を保持するため、JPG/PNG混在のまま扱えます。
 
+## 入力
+
+CSVはRealityScanのRegistrationからInternal/External形式で書き出したカメラCSVを使います。
+PLYは同じアライン結果・同じ座標状態で書き出した点群PLYを指定してください。
+PLYはASCIIとバイナリのどちらでも扱えますが、点群の頂点に `x/y/z` が含まれている必要があります。
+
 ## 例
 
 ```powershell

@@ -361,8 +361,9 @@ def test_step4_scrolls_tab_content_not_whole_settings_pane() -> None:
             "spheresfm_dataset",
             "realityscan_lfs",
             "scale",
+            "colmap_text_model",
         }
-        assert window.dataset_step.cubemap_detail_title.text() == i18n.t("DATASET_TOOL_METASHAPE_TITLE")
+        assert window.step_header.text() == i18n.t("DATASET_TOOL_METASHAPE_TITLE")
         assert step._export_method() == "metashape"
         assert not step.export_method_row.isVisible()
         assert step.findChildren(QScrollArea, "settingsScroll") == []
@@ -388,7 +389,7 @@ def test_step4_scrolls_tab_content_not_whole_settings_pane() -> None:
 
         window.dataset_step.show_tool("spheresfm_dataset")
         app.processEvents()
-        assert window.dataset_step.cubemap_detail_title.text() == i18n.t("DATASET_TOOL_SPHERESFM_TITLE")
+        assert window.step_header.text() == i18n.t("DATASET_TOOL_SPHERESFM_TITLE")
         assert step._export_method() == "spheresfm"
         assert step.pipeline_stage_intent("sfm") is False
         assert step.pipeline_stage_intent("conversion") is True
@@ -803,11 +804,14 @@ def test_cubemap_labels_share_field_tooltips() -> None:
     assert step.spheresfm_repo_link.toolTip() == i18n.tip("SPHERESFM_REPOSITORY_LINK")
     assert i18n.t("SPHERESFM_REPOSITORY_LINK") in step.spheresfm_repo_link.text()
     assert not hasattr(step, "spheresfm_run_scope_combo")
-    axis_label_tips = [
-        child.toolTip() for child in step.findChildren(QLabel) if child.text() == i18n.t("AXIS_TRANSFORM")
-    ]
-    assert i18n.tip("AXIS_TRANSFORM") in axis_label_tips
-    assert i18n.tip("SPHERESFM_AXIS_TRANSFORM") in axis_label_tips
+    assert step.axis_transform_combo.toolTip() == i18n.tip("AXIS_TRANSFORM")
+    assert step.axis_transform_combo.isHidden()
+    assert step.axis_transform_label is not None
+    assert step.axis_transform_label.isHidden()
+    assert step.spheresfm_axis_transform_combo.toolTip() == i18n.tip("SPHERESFM_AXIS_TRANSFORM")
+    assert step.spheresfm_axis_transform_combo.isHidden()
+    assert step.spheresfm_axis_transform_label is not None
+    assert step.spheresfm_axis_transform_label.isHidden()
     assert _label(step, i18n.t("YAW_OFFSET_PER_FRAME")).toolTip() == i18n.t("YAW_OFFSET_PER_FRAME_HINT")
     assert _label(step, i18n.OUTPUT_SCALE + ":").toolTip() == i18n.tip("OUTPUT_SCALE")
     assert _label(step, i18n.METASHAPE_XML).toolTip() == i18n.tip("MS_XML")
@@ -856,6 +860,9 @@ def test_cubemap_profile_option_rows_preserve_width_in_english_and_japanese() ->
         grid_available_width = content_width - 12
         assert step.export_method_row.sizeHint().width() <= content_width
         assert step.metashape_import_options_row.sizeHint().width() <= content_width
+        assert step.view_config.angle_row.indexOf(step.yaw_per_frame_edit) >= 0
+        assert step.view_config.angle_row.indexOf(step.scale_combo) < 0
+        assert step.output_scale_row.layout().indexOf(step.scale_combo) >= 0
         assert step.view_config.angle_row.sizeHint().width() <= content_width
         assert step.view_config.grid_controls_widget.sizeHint().width() <= content_width
         assert step.view_config.grid_widget.sizeHint().width() <= grid_available_width

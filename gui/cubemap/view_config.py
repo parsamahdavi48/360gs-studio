@@ -3,11 +3,12 @@ from __future__ import annotations
 
 from PySide6.QtCore import QSize, Qt, Signal
 from PySide6.QtWidgets import (
+    QButtonGroup,
     QCheckBox,
-    QComboBox,
     QGridLayout,
     QHBoxLayout,
     QLabel,
+    QRadioButton,
     QSizePolicy,
     QToolButton,
     QVBoxLayout,
@@ -83,6 +84,75 @@ def _clamp_pitch(value: float) -> float:
     return max(_MIN_PITCH_DEG, min(_MAX_PITCH_DEG, round(float(value), 1)))
 
 
+class _ViewModeSelector(QWidget):
+    """Radio selector with the small combo-like API used by the view grid."""
+
+    currentIndexChanged = Signal(int)
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.setObjectName("radioOptionRow")
+        self._items: list[tuple[str, object]] = []
+        self._buttons: list[QRadioButton] = []
+        self._current_index = -1
+        self._group = QButtonGroup(self)
+        self._group.setExclusive(True)
+
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(10)
+        layout.addStretch()
+        self._layout = layout
+
+    def addItem(self, text: str, data: object) -> None:
+        index = len(self._items)
+        button = QRadioButton(text)
+        button.setObjectName("optionRadio")
+        button.setToolTip(self.toolTip())
+        button.clicked.connect(lambda _checked=False, idx=index: self.setCurrentIndex(idx))
+        self._group.addButton(button)
+        self._items.append((text, data))
+        self._buttons.append(button)
+        self._layout.insertWidget(index, button)
+        if self._current_index < 0:
+            self.setCurrentIndex(index)
+
+    def currentData(self) -> object | None:
+        if 0 <= self._current_index < len(self._items):
+            return self._items[self._current_index][1]
+        return None
+
+    def currentText(self) -> str:
+        return self.itemText(self._current_index)
+
+    def findData(self, data: object) -> int:
+        for index, (_text, item_data) in enumerate(self._items):
+            if item_data == data:
+                return index
+        return -1
+
+    def itemText(self, index: int) -> str:
+        if 0 <= index < len(self._items):
+            return self._items[index][0]
+        return ""
+
+    def setCurrentIndex(self, index: int) -> None:
+        if not 0 <= index < len(self._items):
+            return
+        changed = index != self._current_index
+        self._current_index = index
+        button = self._buttons[index]
+        if not button.isChecked():
+            button.setChecked(True)
+        if changed:
+            self.currentIndexChanged.emit(index)
+
+    def setToolTip(self, tooltip: str) -> None:  # noqa: N802 - Qt API
+        super().setToolTip(tooltip)
+        for button in self._buttons:
+            button.setToolTip(tooltip)
+
+
 class ViewConfigWidget(QWidget):
     """ビュー選択グリッドウィジェット。views_changed シグナルで変更を通知。"""
 
@@ -125,7 +195,7 @@ class ViewConfigWidget(QWidget):
 
         mode_row = QHBoxLayout()
         mode_row.setSpacing(8)
-        self.view_mode_combo = QComboBox()
+        self.view_mode_combo = _ViewModeSelector()
         self.view_mode_combo.setToolTip(i18n.tip("VIEW_MODE"))
         self.view_mode_combo.addItem(i18n.t("CUBE6_LABEL"), VIEW_MODE_CUBE6)
         self.view_mode_combo.addItem(i18n.t("CUSTOM_GRID"), VIEW_MODE_CUSTOM)

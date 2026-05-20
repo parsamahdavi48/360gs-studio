@@ -530,7 +530,7 @@ def test_training_status_checks_existing_output_shape_when_cube_is_skipped(tmp_p
     step.lfs_gut_cb.setChecked(True)
 
     assert step.training_primary_action_enabled() is False
-    with pytest.raises(ValueError, match="3DGUT"):
+    with pytest.raises(ValueError, match="GUT"):
         step.build_training_launch_commands()
 
     _write_output_dataset(tmp_path, output_shape="equirect_3dgut")
@@ -652,7 +652,7 @@ def test_spheresfm_visible_tabs_follow_projection_conversion_sfm_order() -> None
     assert step.settings_tabs.isTabEnabled(step.output_tab_index)
 
 
-def test_spheresfm_conversion_rows_follow_preset_shape_axis_order() -> None:
+def test_spheresfm_conversion_rows_keep_axis_transform_internal_only() -> None:
     _app()
     step = CubemapStep(Path.cwd())
     form = step.spheresfm_convert_section.layout().itemAt(0).layout()
@@ -664,8 +664,10 @@ def test_spheresfm_conversion_rows_follow_preset_shape_axis_order() -> None:
 
     assert profile_row < shape_row < axis_row
     assert step.spheresfm_axis_transform_combo.toolTip() == i18n.tip("SPHERESFM_AXIS_TRANSFORM")
+    assert step.spheresfm_axis_transform_combo.isHidden()
     assert axis_label is not None
     assert axis_label.toolTip() == i18n.tip("SPHERESFM_AXIS_TRANSFORM")
+    assert axis_label.isHidden()
 
 
 def test_cubemap_step_does_not_count_repo_images_without_scene_dir() -> None:
@@ -1813,6 +1815,9 @@ def test_realityscan_profile_builds_xmp_export_command(tmp_path: Path) -> None:
     assert step.realityscan_pose_prior_combo.currentData() == "exact"
     assert step.realityscan_calibration_prior_combo.currentData() == "exact"
     assert not step.realityscan_include_rig_cb.isChecked()
+    assert not step.realityscan_options_row.isHidden()
+    assert step.realityscan_options_label is not None
+    assert not step.realityscan_options_label.isHidden()
     assert not step.axis_transform_combo.isEnabled()
     assert step.axis_transform_combo.currentText() == i18n.t("AXIS_TRANSFORM_REALITYSCAN_AUTO")
     step._set_combo_data(step.realityscan_pose_prior_combo, "locked")
@@ -1833,6 +1838,7 @@ def test_realityscan_profile_builds_xmp_export_command(tmp_path: Path) -> None:
     assert step.axis_transform_combo.currentData() == "brush"
     assert not step.ms_use_ply_cb.isChecked()
     assert not step.export_colmap_cb.isEnabled()
+    assert step.export_colmap_cb.isHidden()
     assert not step.ms_no_fix_rot_cb.isChecked()
 
     settings = step._collect_export_settings()

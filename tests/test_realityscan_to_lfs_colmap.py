@@ -219,3 +219,66 @@ def test_convert_can_pre_undistort_distorted_rows_as_pinhole_assets(tmp_path: Pa
     assert result["asset_stats"]["undistorted_images"] == 1
     assert result["asset_stats"]["undistorted_masks"] == 1
     assert result["asset_stats"]["linked_images"] == 1
+    assert result["undistort_alpha"] == 1.0
+
+
+def test_pre_undistort_alpha_generates_valid_masks_without_source_masks(tmp_path: Path) -> None:
+    source = tmp_path / "realityscan"
+    images = source / "images"
+    write_image(images / "distorted.png", (80, 60))
+    write_image(images / "cube_px.jpg", (64, 64))
+    write_csv(
+        source / "rs.csv",
+        [
+            {"#name": "distorted.png", "f_35mm": 18, "k1": 0.08, "k2": -0.01, "t1": 0.001},
+            {"#name": "cube_px.jpg", "f_35mm": 18},
+        ],
+    )
+
+    output = source / "lfs_colmap_undistorted"
+    result = convert(
+        source / "rs.csv",
+        output,
+        pre_undistort_distorted_images=True,
+        undistort_alpha=1.0,
+    )
+
+    distorted_mask = cv2.imread(str(output / "masks" / "distorted.png"), cv2.IMREAD_GRAYSCALE)
+    linked_mask = cv2.imread(str(output / "masks" / "cube_px.png"), cv2.IMREAD_GRAYSCALE)
+    assert distorted_mask is not None
+    assert linked_mask is not None
+    assert distorted_mask.shape == (60, 80)
+    assert linked_mask.shape == (64, 64)
+    assert np.any(distorted_mask == 0)
+    assert np.any(distorted_mask == 255)
+    assert np.all(linked_mask == 255)
+    assert result["asset_stats"]["generated_valid_masks"] == 2
+    assert result["masks_dir"] == str(output / "masks")
+
+
+def test_pre_undistort_alpha_remaps_source_mask_and_excludes_outside_pixels(tmp_path: Path) -> None:
+    source = tmp_path / "realityscan"
+    images = source / "images"
+    masks = source / "masks"
+    write_image(images / "distorted.png", (80, 60))
+    masks.mkdir(parents=True)
+    assert cv2.imwrite(str(masks / "distorted.png"), np.full((60, 80), 255, dtype=np.uint8))
+    write_csv(
+        source / "rs.csv",
+        [{"#name": "distorted.png", "f_35mm": 18, "k1": 0.08, "k2": -0.01, "t1": 0.001}],
+    )
+
+    output = source / "lfs_colmap_undistorted"
+    result = convert(
+        source / "rs.csv",
+        output,
+        pre_undistort_distorted_images=True,
+        undistort_alpha=1.0,
+    )
+
+    remapped_mask = cv2.imread(str(output / "masks" / "distorted.png"), cv2.IMREAD_GRAYSCALE)
+    assert remapped_mask is not None
+    assert np.any(remapped_mask == 0)
+    assert np.any(remapped_mask == 255)
+    assert result["asset_stats"]["undistorted_masks"] == 1
+    assert result["asset_stats"]["generated_valid_masks"] == 0

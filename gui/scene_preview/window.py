@@ -41,12 +41,19 @@ from gui.scene_preview.camera_image_view import SceneCameraImageView
 from gui.scene_preview.pointcloud_view import ScenePointCloudView
 
 
-class ScenePreviewWindow(QWidget):
-    """Small shell for loading SfM/Step 4 preview datasets."""
+class ScenePreviewWidget(QWidget):
+    """Embeddable read-only preview for SfM/Step 4 datasets."""
 
-    def __init__(self, scene_dir: Path | None = None, parent: QWidget | None = None) -> None:
+    def __init__(
+        self,
+        scene_dir: Path | None = None,
+        parent: QWidget | None = None,
+        *,
+        show_scene_controls: bool = True,
+    ) -> None:
         super().__init__(parent)
         self._scene_dir: Path | None = None
+        self._show_scene_controls = bool(show_scene_controls)
         self._candidates: tuple[ScenePreviewCandidate, ...] = ()
         self._dataset: ScenePreviewDataset | None = None
         self._selected_camera_id = ""
@@ -57,9 +64,6 @@ class ScenePreviewWindow(QWidget):
         self._cubemap_mask_cache: dict[str, Any] = {}
         self._cubemap_image_cache: dict[Path, Any] = {}
         self._mask_image_cache: dict[Path, Any] = {}
-        self.setWindowFlag(Qt.Window, True)
-        self.setWindowTitle(i18n.t("SCENE_PREVIEW_WINDOW_TITLE"))
-        self.resize(1280, 720)
         self._build_ui()
         self.set_scene_dir(scene_dir)
 
@@ -67,14 +71,14 @@ class ScenePreviewWindow(QWidget):
         self._scene_dir = Path(scene_dir) if scene_dir else None
         self._refresh_candidates()
 
+    def refresh(self) -> None:
+        self._refresh_candidates()
+
     def _build_ui(self) -> None:
         root = QVBoxLayout(self)
         root.setContentsMargins(12, 12, 12, 12)
         root.setSpacing(8)
 
-        header = QHBoxLayout()
-        header.setContentsMargins(0, 0, 0, 0)
-        header.setSpacing(8)
         self.scene_label = QLabel()
         self.scene_label.setObjectName("pathSummaryValue")
         self.scene_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
@@ -84,10 +88,18 @@ class ScenePreviewWindow(QWidget):
         self.refresh_btn = QPushButton(i18n.t("SCENE_PREVIEW_REFRESH"))
         self.refresh_btn.setToolTip(i18n.tip("SCENE_PREVIEW_REFRESH"))
         self.refresh_btn.clicked.connect(self._refresh_candidates)
-        header.addWidget(self.scene_label, stretch=1)
-        header.addWidget(self.refresh_btn)
-        header.addWidget(self.open_scene_btn)
-        root.addLayout(header)
+        if self._show_scene_controls:
+            header = QHBoxLayout()
+            header.setContentsMargins(0, 0, 0, 0)
+            header.setSpacing(8)
+            header.addWidget(self.scene_label, stretch=1)
+            header.addWidget(self.refresh_btn)
+            header.addWidget(self.open_scene_btn)
+            root.addLayout(header)
+        else:
+            self.scene_label.hide()
+            self.open_scene_btn.hide()
+            self.refresh_btn.hide()
 
         camera_row = QHBoxLayout()
         camera_row.setContentsMargins(0, 0, 0, 0)
@@ -651,3 +663,13 @@ def _front_camera_for_cubemap_group(cameras_by_face: dict[str, ScenePreviewCamer
 def _lookup_key(value: object) -> str:
     text = str(value or "").replace("\\", "/").strip().lower()
     return text
+
+
+class ScenePreviewWindow(ScenePreviewWidget):
+    """Standalone shell for loading SfM/Step 4 preview datasets."""
+
+    def __init__(self, scene_dir: Path | None = None, parent: QWidget | None = None) -> None:
+        super().__init__(scene_dir=scene_dir, parent=parent, show_scene_controls=True)
+        self.setWindowFlag(Qt.Window, True)
+        self.setWindowTitle(i18n.t("SCENE_PREVIEW_WINDOW_TITLE"))
+        self.resize(1280, 720)

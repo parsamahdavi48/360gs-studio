@@ -25,10 +25,9 @@ from PySide6.QtWidgets import (
 
 from core.path_safety import PathSafetyIssue, check_path_safety, normalized_path_text
 from core.scene_import import SceneImportResult, import_scene
-from core.scene_layout import scene_images_dir, scene_masks_dir, scene_output_dir
 from gui import i18n
 from gui.common.browse_widget import BrowseWidget
-from gui.common.icons import folder_icon, help_icon, import_scene_icon, menu_icon, reset_icon
+from gui.common.icons import back_icon, folder_icon, help_icon, import_scene_icon, menu_icon, reset_icon
 from gui.common.log_panel import LogPanel
 from gui.common.process_runner import ProcessRunner
 from gui.common.progress_widget import ProgressWidget
@@ -230,6 +229,14 @@ class MainWindow(QWidget):
         step_header_row = QHBoxLayout()
         step_header_row.setContentsMargins(0, 0, 0, 0)
         step_header_row.setSpacing(8)
+        self.step_back_btn = QToolButton()
+        self.step_back_btn.setObjectName("iconToolButton")
+        self.step_back_btn.setIcon(back_icon())
+        self.step_back_btn.setIconSize(QSize(18, 18))
+        self.step_back_btn.setFixedSize(28, 28)
+        self.step_back_btn.setVisible(False)
+        self.step_back_btn.clicked.connect(self._on_step_header_back)
+        step_header_row.addWidget(self.step_back_btn)
         self.step_header = QLabel("")
         self.step_header.setObjectName("stepHeader")
         step_header_row.addWidget(self.step_header)
@@ -237,7 +244,9 @@ class MainWindow(QWidget):
         self.step_subheader.setObjectName("stepSubheader")
         self.step_subheader.setWordWrap(False)
         self.step_subheader.setTextInteractionFlags(Qt.TextSelectableByMouse)
-        step_header_row.addWidget(self.step_subheader, stretch=1)
+        self.step_subheader.setVisible(False)
+        step_header_row.addWidget(self.step_subheader)
+        step_header_row.addStretch(1)
         self.step_help_btn = QToolButton()
         self.step_help_btn.setObjectName("iconToolButton")
         self.step_help_btn.setIcon(help_icon())
@@ -521,26 +530,26 @@ class MainWindow(QWidget):
         index = self.stack.currentIndex()
         if not 0 <= index < len(self.step_titles):
             return
-        self.step_header.setText(self.step_titles[index])
-        path = self._step_header_path(index)
-        self.step_subheader.setText(path)
-        self.step_subheader.setToolTip(path)
+        step = self._current_step_widget()
+        title = step.header_title() if step is not None else ""
+        self.step_header.setText(title or self.step_titles[index])
+        back_enabled = bool(step and step.header_back_enabled())
+        self.step_back_btn.setVisible(back_enabled)
+        self.step_back_btn.setEnabled(back_enabled)
+        tooltip = step.header_back_tooltip() if step is not None else ""
+        self.step_back_btn.setToolTip(tooltip)
+        self.step_back_btn.setAccessibleName(tooltip)
+        self.step_subheader.setText("")
+        self.step_subheader.setToolTip("")
+        self.step_subheader.setVisible(False)
 
-    def _step_header_path(self, index: int) -> str:
-        if not self.scene_browse.text():
-            return "-"
-        scene = Path(self.scene_browse.text())
-        if index == 0:
-            return str(scene_images_dir(scene))
-        if index == 1:
-            return str(scene_images_dir(scene))
-        if index == 2:
-            return str(scene_masks_dir(scene))
-        if index == self._sfm_step_index:
-            return str(scene_output_dir(scene))
-        if index == self._dataset_step_index:
-            return str(scene_output_dir(scene))
-        return str(scene_output_dir(scene))
+    def _on_step_header_back(self) -> None:
+        step = self._current_step_widget()
+        if step is None or not step.header_back_enabled():
+            return
+        step.header_back()
+        self._update_step_header()
+        self._update_run_button()
 
 
     def _open_step_help(self) -> None:
@@ -613,6 +622,9 @@ class MainWindow(QWidget):
             QMessageBox.warning(self, i18n.APP_TITLE, i18n.BUSY_MSG)
             return
         if not self._confirm_scene_path_is_safe():
+            return
+        if step.run_primary_action():
+            self._update_run_button()
             return
         try:
             commands = step.build_commands()

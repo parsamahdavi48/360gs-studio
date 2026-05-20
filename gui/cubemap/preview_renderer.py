@@ -490,6 +490,7 @@ class PreviewWidget(QWidget):
         self._slider_sync = False
         self._current_image_path = ""
         self._scene_dir = ""
+        self._image_dir_override = ""
         self._mask_overlay_visible = True
         self._preview_projection = PREVIEW_PROJECTION_EQUIRECT
         self._perspective_params = PerspectiveParams()
@@ -551,6 +552,11 @@ class PreviewWidget(QWidget):
 
     def set_scene_dir(self, scene_dir: str, *, refresh: bool = True) -> None:
         self._scene_dir = scene_dir
+        if refresh:
+            self.refresh_image_list(prefer_current=False)
+
+    def set_image_dir(self, image_dir: str, *, refresh: bool = True) -> None:
+        self._image_dir_override = image_dir
         if refresh:
             self.refresh_image_list(prefer_current=False)
 
@@ -832,11 +838,16 @@ class PreviewWidget(QWidget):
         return None
 
     def _iter_images(self) -> list[Path]:
-        if not self._scene_dir:
-            return []
-        scene_dir = Path(self._scene_dir)
-        images_dir = scene_dir / "images"
-        roots = [images_dir] if images_dir.is_dir() else [scene_dir]
+        if self._image_dir_override:
+            root = Path(self._image_dir_override)
+            roots = [root] if root.is_dir() else []
+        else:
+            if not self._scene_dir:
+                return []
+            scene_dir = Path(self._scene_dir)
+            images_dir = scene_dir / "images"
+            roots = [images_dir] if images_dir.is_dir() else [scene_dir]
+
         exts = {".jpg", ".jpeg", ".png"}
         result, seen = [], set()
         for root in roots:

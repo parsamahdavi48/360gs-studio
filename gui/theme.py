@@ -182,10 +182,10 @@ QPushButton#workflowCard {{
     background-color: {BG_PANEL};
     border: 1px solid {BORDER};
     border-radius: 6px;
-    color: {TEXT};
-    padding: 14px 16px;
+    padding: 0px;
     text-align: left;
-    font-weight: 500;
+    min-height: 184px;
+    max-height: 184px;
 }}
 QPushButton#workflowCard:hover {{
     background-color: {BORDER};
@@ -194,7 +194,24 @@ QPushButton#workflowCard:hover {{
 QPushButton#workflowCard:pressed {{
     background-color: {BG_MID};
 }}
+QLabel#workflowCardTitle {{
+    color: {TEXT_BRIGHT};
+    font-size: 12pt;
+    font-weight: 700;
+}}
+QLabel#workflowCardBody {{
+    color: {TEXT};
+    font-size: 9pt;
+}}
+QLabel#workflowCardFooter {{
+    color: {ACCENT_HOVER};
+    font-size: 8pt;
+    font-weight: 600;
+}}
 QWidget#toolDetailHeader {{
+    background-color: transparent;
+}}
+QWidget#detailActionRow {{
     background-color: transparent;
 }}
 

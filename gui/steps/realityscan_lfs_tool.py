@@ -5,20 +5,17 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-from PySide6.QtCore import QSignalBlocker, Qt, QUrl
-from PySide6.QtGui import QDesktopServices
+from PySide6.QtCore import QSignalBlocker, Qt
 from PySide6.QtWidgets import (
     QCheckBox,
-    QDoubleSpinBox,
     QFormLayout,
-    QHBoxLayout,
     QLabel,
-    QPushButton,
     QScrollArea,
     QVBoxLayout,
     QWidget,
 )
 
+from core.realityscan_to_lfs_colmap import DEFAULT_UNDISTORT_ALPHA
 from core.scene_layout import scene_images_dir, scene_masks_dir, scene_output_dir
 from gui import i18n
 from gui.common.browse_widget import BrowseWidget
@@ -49,10 +46,6 @@ class RealityScanLfsTool(BaseStepWidget):
         layout = QVBoxLayout(content)
         layout.setContentsMargins(8, 8, 8, 8)
         layout.setSpacing(10)
-
-        title = QLabel(i18n.t("DATASET_TOOL_RS_LFS_TITLE"))
-        title.setObjectName("paneTitle")
-        layout.addWidget(title)
 
         description = QLabel(i18n.t("DATASET_TOOL_RS_LFS_DESC"))
         description.setObjectName("workflowNote")
@@ -90,24 +83,9 @@ class RealityScanLfsTool(BaseStepWidget):
         self.pre_undistort_cb.toggled.connect(self._on_pre_undistort_toggled)
         add_tooltip_row(
             form,
-            i18n.t("RS_LFS_DISTORTION_MODE"),
+            "",
             self.pre_undistort_cb,
             i18n.tip("RS_LFS_PRE_UNDISTORT"),
-        )
-
-        self.undistort_alpha_edit = QDoubleSpinBox()
-        self.undistort_alpha_edit.setRange(0.0, 1.0)
-        self.undistort_alpha_edit.setDecimals(2)
-        self.undistort_alpha_edit.setSingleStep(0.05)
-        self.undistort_alpha_edit.setValue(0.0)
-        self.undistort_alpha_edit.setFixedWidth(82)
-        self.undistort_alpha_edit.setEnabled(False)
-        self.undistort_alpha_edit.setToolTip(i18n.tip("RS_LFS_UNDISTORT_ALPHA"))
-        add_tooltip_row(
-            form,
-            i18n.t("RS_LFS_UNDISTORT_ALPHA"),
-            self.undistort_alpha_edit,
-            i18n.tip("RS_LFS_UNDISTORT_ALPHA"),
         )
 
         self.skip_missing_cb = QCheckBox(i18n.t("RS_LFS_SKIP_MISSING"))
@@ -115,20 +93,6 @@ class RealityScanLfsTool(BaseStepWidget):
         add_tooltip_row(form, "", self.skip_missing_cb, i18n.tip("RS_LFS_SKIP_MISSING"))
 
         layout.addLayout(form)
-
-        actions = QHBoxLayout()
-        actions.setContentsMargins(0, 0, 0, 0)
-        actions.setSpacing(8)
-        self.open_output_btn = QPushButton(i18n.t("OPEN_OUTPUT_DIR"))
-        self.open_output_btn.clicked.connect(self._open_output_dir)
-        actions.addWidget(self.open_output_btn)
-        actions.addStretch()
-        layout.addLayout(actions)
-
-        self.status_label = QLabel(i18n.t("RS_LFS_STATUS_READY"))
-        self.status_label.setWordWrap(True)
-        self.status_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
-        layout.addWidget(self.status_label)
         layout.addStretch()
 
         scroll.setWidget(content)
@@ -146,7 +110,6 @@ class RealityScanLfsTool(BaseStepWidget):
 
     def on_activated(self) -> None:
         self._apply_scene_defaults()
-        self._update_status()
 
     def primary_action_text(self) -> str:
         return i18n.t("RS_LFS_CREATE")
@@ -188,15 +151,8 @@ class RealityScanLfsTool(BaseStepWidget):
             cmd.append("--skip-missing-images")
         if self.pre_undistort_cb.isChecked():
             cmd.append("--pre-undistort-distorted-images")
-            cmd.extend(["--undistort-alpha", f"{float(self.undistort_alpha_edit.value()):.3g}"])
+            cmd.extend(["--undistort-alpha", f"{DEFAULT_UNDISTORT_ALPHA:g}"])
         return [("realityscan_lfs_colmap", cmd)]
-
-    def on_queue_finished(self, success: bool) -> None:
-        self.status_label.setText(
-            i18n.t("RS_LFS_STATUS_DONE").format(path=self.output_browse.text())
-            if success
-            else i18n.t("RS_LFS_STATUS_FAILED")
-        )
 
     def _validate_inputs(self) -> None:
         csv = Path(self.csv_browse.text())
@@ -218,13 +174,10 @@ class RealityScanLfsTool(BaseStepWidget):
     def _on_output_path_changed(self, _path: str) -> None:
         if not self._syncing_defaults:
             self._output_user_edited = True
-        self._update_status()
 
-    def _on_pre_undistort_toggled(self, checked: bool) -> None:
-        self.undistort_alpha_edit.setEnabled(checked)
+    def _on_pre_undistort_toggled(self, _checked: bool) -> None:
         if not self._output_user_edited:
             self._set_browse_text(self.output_browse, str(self._default_output_dir()))
-        self._update_status()
 
     def _apply_scene_defaults(self) -> None:
         if not self.scene_dir:
@@ -249,7 +202,6 @@ class RealityScanLfsTool(BaseStepWidget):
                 self.output_browse.set_text(str(self._default_output_dir()))
         finally:
             self._syncing_defaults = False
-        self._update_status()
 
     def _realityscan_dir(self) -> Path:
         scene = Path(self.scene_dir)
@@ -276,17 +228,3 @@ class RealityScanLfsTool(BaseStepWidget):
             browse.set_text(text)
         finally:
             del blocker
-
-    def _open_output_dir(self) -> None:
-        text = self.output_browse.text()
-        if not text:
-            return
-        QDesktopServices.openUrl(QUrl.fromLocalFile(text))
-
-    def _update_status(self) -> None:
-        try:
-            self._validate_inputs()
-        except ValueError as exc:
-            self.status_label.setText(str(exc))
-            return
-        self.status_label.setText(i18n.t("RS_LFS_STATUS_READY"))

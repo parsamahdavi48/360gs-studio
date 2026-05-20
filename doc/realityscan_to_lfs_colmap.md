@@ -35,6 +35,13 @@ Load `output/realityscan/lfs_colmap/` as the dataset folder in LichtFeld.
 `images.txt` keeps the original image names and extensions, so JPG/PNG mixtures
 are preserved.
 
+## Inputs
+
+Use the camera CSV exported from RealityScan Registration in Internal/External
+format. The PLY should be the point cloud exported from the same aligned result
+and the same coordinate state as the CSV. ASCII and binary PLY are supported as
+long as the vertex data contains `x/y/z` properties.
+
 ## Example
 
 ```powershell

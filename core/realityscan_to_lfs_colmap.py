@@ -29,6 +29,7 @@ from core.realityscan_to_transforms import (
 SPARSE_RELATIVE_DIR = Path("sparse") / "0"
 DEFAULT_DATASET_DIR_NAME = "lfs_colmap"
 DEFAULT_UNDISTORTED_DATASET_DIR_NAME = "lfs_colmap_undistorted"
+DEFAULT_UNDISTORT_ALPHA = 1.0
 LICHTFELD_TRANSFORMS_MARKERS = ("transforms.json", "transforms_train.json")
 MASK_SEARCH_EXTENSIONS = (".png", ".jpg", ".jpeg", ".mask.png")
 IMAGE_WRITE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".bmp", ".tif", ".tiff", ".webp"}
@@ -271,6 +272,16 @@ def _write_image(path: Path, image: np.ndarray) -> None:
         raise RuntimeError(f"Failed to write image: {path}")
 
 
+def _write_white_mask_for_image(image_path: Path, output_mask_path: Path) -> None:
+    if cv2 is None:
+        raise RuntimeError("OpenCV is required to generate masks")
+    image = imread_unicode(image_path, cv2.IMREAD_UNCHANGED)
+    if image is None:
+        raise RuntimeError(f"Failed to read image for mask generation: {image_path}")
+    height, width = image.shape[:2]
+    _write_image(output_mask_path, np.full((height, width), 255, dtype=np.uint8))
+
+
 def undistort_image_and_optional_mask(
     row: RealityScanCameraRow,
     image_path: Path,
@@ -314,10 +325,13 @@ def undistort_image_and_optional_mask(
     )
     _write_image(output_image_path, undistorted)
 
-    if source_mask_path is not None and output_mask_path is not None:
-        mask = imread_unicode(source_mask_path, cv2.IMREAD_GRAYSCALE)
-        if mask is None:
-            raise RuntimeError(f"Failed to read mask: {source_mask_path}")
+    if output_mask_path is not None:
+        if source_mask_path is not None:
+            mask = imread_unicode(source_mask_path, cv2.IMREAD_GRAYSCALE)
+            if mask is None:
+                raise RuntimeError(f"Failed to read mask: {source_mask_path}")
+        else:
+            mask = np.full((height, width), 255, dtype=np.uint8)
         undistorted_mask = cv2.remap(
             mask,
             map_x,
@@ -341,8 +355,13 @@ def prepare_undistorted_asset_dataset(
     skip_missing_images: bool,
     alpha: float,
 ) -> tuple[Path, Path, dict[str, tuple[str, int, int, tuple[float, ...]]], dict[str, int]]:
+    alpha = float(alpha)
+    if not 0.0 <= alpha <= 1.0:
+        raise ValueError(f"Undistort alpha must be between 0 and 1: {alpha}")
+
     output_images_dir = output_dir / "images"
     output_masks_dir = output_dir / "masks"
+    generate_valid_masks = alpha > 0.0
 
     if _paths_equivalent(output_images_dir, source_images_dir):
         raise ValueError(f"Refusing to pre-undistort into source images directory: {output_images_dir}")
@@ -350,7 +369,7 @@ def prepare_undistorted_asset_dataset(
         raise ValueError(f"Refusing to pre-undistort into source masks directory: {output_masks_dir}")
 
     output_images_dir.mkdir(parents=True, exist_ok=True)
-    if source_masks_dir.is_dir():
+    if source_masks_dir.is_dir() or generate_valid_masks:
         output_masks_dir.mkdir(parents=True, exist_ok=True)
 
     camera_payloads: dict[str, tuple[str, int, int, tuple[float, ...]]] = {}
@@ -361,6 +380,7 @@ def prepare_undistorted_asset_dataset(
         "undistorted_masks": 0,
         "linked_masks": 0,
         "copied_masks": 0,
+        "generated_valid_masks": 0,
         "missing_images": 0,
     }
 
@@ -382,13 +402,15 @@ def prepare_undistorted_asset_dataset(
                 source_image,
                 output_image,
                 source_mask_path=source_mask,
-                output_mask_path=output_mask if source_mask is not None else None,
+                output_mask_path=output_mask if source_mask is not None or generate_valid_masks else None,
                 alpha=alpha,
             )
             camera_payloads[row.name] = pinhole_camera_payload_from_matrix(width, height, new_camera_matrix)
             stats["undistorted_images"] += 1
             if source_mask is not None:
                 stats["undistorted_masks"] += 1
+            elif generate_valid_masks:
+                stats["generated_valid_masks"] += 1
         else:
             link_kind = _safe_replace_file_link_or_copy(source_image, output_image)
             if link_kind == "hardlink":
@@ -402,6 +424,9 @@ def prepare_undistorted_asset_dataset(
                     stats["linked_masks"] += 1
                 elif mask_link_kind == "copy":
                     stats["copied_masks"] += 1
+            elif generate_valid_masks:
+                _write_white_mask_for_image(source_image, output_mask)
+                stats["generated_valid_masks"] += 1
 
     return output_images_dir, output_masks_dir, camera_payloads, stats
 
@@ -546,7 +571,7 @@ def convert(
     skip_missing_images: bool = False,
     allow_mixed_loader_root: bool = False,
     pre_undistort_distorted_images: bool = False,
-    undistort_alpha: float = 0.0,
+    undistort_alpha: float = DEFAULT_UNDISTORT_ALPHA,
 ) -> dict[str, Any]:
     csv_path = Path(csv_path)
     output_dir = Path(output_dir)
@@ -670,8 +695,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--undistort-alpha",
         type=float,
-        default=0.0,
-        help="OpenCV undistort alpha for pre-undistorted images: 0 crops black borders, 1 keeps full FOV (default: 0)",
+        default=DEFAULT_UNDISTORT_ALPHA,
+        help="OpenCV undistort alpha for pre-undistorted images: 0 crops black borders, 1 keeps full FOV (default: 1)",
     )
     return parser.parse_args(argv)
 
@@ -707,7 +732,8 @@ def main(argv: list[str] | None = None) -> int:
         print(
             "Pre-undistorted assets: "
             f"{stats.get('undistorted_images', 0)} images, {stats.get('undistorted_masks', 0)} masks; "
-            f"linked {stats.get('linked_images', 0)} images, {stats.get('linked_masks', 0)} masks"
+            f"linked {stats.get('linked_images', 0)} images, {stats.get('linked_masks', 0)} masks; "
+            f"generated {stats.get('generated_valid_masks', 0)} valid masks"
         )
     if result["pointcloud"]:
         print(f"Saved LichtFeld points3D.ply: {result['pointcloud']}")

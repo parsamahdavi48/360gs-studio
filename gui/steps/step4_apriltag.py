@@ -350,6 +350,8 @@ class Step4AprilTagMixin:
             self.apriltag_scale_row.setVisible(has_scale)
             self.apriltag_copy_scale_btn.setVisible(has_scale)
             self.apriltag_copy_scale_btn.setEnabled(has_scale and not running)
+        if hasattr(self, "primary_action_state_changed"):
+            self.primary_action_state_changed.emit()
 
     def _apriltag_tag_size_m(self) -> float:
         value = float(self.apriltag_tag_size_edit.value())

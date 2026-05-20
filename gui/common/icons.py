@@ -105,6 +105,13 @@ _MENU_SVG = """
 </svg>
 """.strip()
 
+_BACK_SVG = """
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none">
+  <path d="M15 6 9 12l6 6" stroke="#e5e7eb" stroke-width="2.2"
+        stroke-linecap="round" stroke-linejoin="round"/>
+</svg>
+""".strip()
+
 _HELP_SVG = """
 <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none">
   <circle cx="12" cy="12" r="9" stroke="#e5e7eb" stroke-width="1.8"/>
@@ -270,6 +277,10 @@ def import_scene_icon(size: int = 18) -> QIcon:
 
 def menu_icon(size: int = 18) -> QIcon:
     return svg_icon(_MENU_SVG, size)
+
+
+def back_icon(size: int = 18) -> QIcon:
+    return svg_icon(_BACK_SVG, size)
 
 
 def help_icon(size: int = 18) -> QIcon:

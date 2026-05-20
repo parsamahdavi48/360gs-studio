@@ -66,6 +66,29 @@ class BaseStepWidget(QWidget):
     def primary_action_enabled(self) -> bool:
         return True
 
+    def run_primary_action(self) -> bool:
+        """Handle the shared primary action button without queueing commands.
+
+        Return True when the action was handled internally. Command-based steps
+        leave this as False so MainWindow can build and queue CLI commands.
+        """
+        return False
+
+    def header_title(self) -> str:
+        """Optional title override for the shared central pane header."""
+        return ""
+
+    def header_back_enabled(self) -> bool:
+        """Return whether the shared header should show an in-step back button."""
+        return False
+
+    def header_back_tooltip(self) -> str:
+        return ""
+
+    def header_back(self) -> None:
+        """Handle the shared header back button for multi-page steps."""
+        pass
+
     def phase_display_name(self, phase: str) -> str:
         return phase
 

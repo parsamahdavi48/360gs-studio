@@ -7,15 +7,16 @@ import os
 import re
 from pathlib import Path
 
-from PySide6.QtCore import QProcess, QSize, Qt, QTimer
+from PySide6.QtCore import QProcess, QSize, Qt, QTimer, Signal
 from PySide6.QtWidgets import (
+    QButtonGroup,
     QCheckBox,
     QComboBox,
     QFormLayout,
     QHBoxLayout,
     QLabel,
     QLineEdit,
-    QPushButton,
+    QRadioButton,
     QScrollArea,
     QSplitter,
     QTabWidget,
@@ -121,6 +122,77 @@ def _make_external_link(text: str, url: str, tooltip: str, object_name: str) -> 
     link.setTextInteractionFlags(Qt.TextBrowserInteraction)
     link.setToolTip(tooltip)
     return link
+
+
+class OutputShapeSelector(QWidget):
+    """Two-choice selector with the small API surface CubemapStep already uses."""
+
+    currentIndexChanged = Signal(int)
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.setObjectName("radioOptionRow")
+        self._items: list[tuple[str, object]] = []
+        self._buttons: list[QRadioButton] = []
+        self._current_index = -1
+        self._group = QButtonGroup(self)
+        self._group.setExclusive(True)
+
+        self._layout = QHBoxLayout(self)
+        self._layout.setContentsMargins(0, 0, 0, 0)
+        self._layout.setSpacing(10)
+        self._layout.addStretch()
+
+    def addItem(self, text: str, data: object) -> None:
+        index = len(self._items)
+        button = QRadioButton(text)
+        button.setObjectName("optionRadio")
+        button.setToolTip(self.toolTip())
+        button.clicked.connect(lambda _checked=False, idx=index: self.setCurrentIndex(idx))
+        self._group.addButton(button)
+        self._items.append((text, data))
+        self._buttons.append(button)
+        self._layout.insertWidget(index, button)
+        if self._current_index < 0:
+            self.setCurrentIndex(index)
+
+    def count(self) -> int:
+        return len(self._items)
+
+    def currentData(self) -> object | None:
+        if 0 <= self._current_index < len(self._items):
+            return self._items[self._current_index][1]
+        return None
+
+    def currentIndex(self) -> int:
+        return self._current_index
+
+    def findData(self, data: object) -> int:
+        for index, (_text, item_data) in enumerate(self._items):
+            if item_data == data:
+                return index
+        return -1
+
+    def itemText(self, index: int) -> str:
+        if 0 <= index < len(self._items):
+            return self._items[index][0]
+        return ""
+
+    def setCurrentIndex(self, index: int) -> None:
+        if not 0 <= index < len(self._items):
+            return
+        changed = index != self._current_index
+        self._current_index = index
+        button = self._buttons[index]
+        if not button.isChecked():
+            button.setChecked(True)
+        if changed:
+            self.currentIndexChanged.emit(index)
+
+    def setToolTip(self, tooltip: str) -> None:  # noqa: N802 - Qt API
+        super().setToolTip(tooltip)
+        for button in self._buttons:
+            button.setToolTip(tooltip)
 
 
 class CubemapStep(
@@ -379,11 +451,6 @@ class CubemapStep(
             i18n.tip("SPHERESFM_POSE_FILE"),
         )
 
-        self.spheresfm_open_gui_btn = QPushButton(i18n.t("SPHERESFM_OPEN_GUI"))
-        self.spheresfm_open_gui_btn.setToolTip(i18n.tip("SPHERESFM_OPEN_GUI"))
-        self.spheresfm_open_gui_btn.clicked.connect(self._open_spheresfm_result)
-        spheresfm_form.addRow("", self.spheresfm_open_gui_btn)
-
         spheresfm_layout.addLayout(spheresfm_form)
         spheresfm_layout.addStretch()
         self.spheresfm_repo_link = _make_external_link(
@@ -402,7 +469,7 @@ class CubemapStep(
         spheresfm_convert_form = QFormLayout()
         spheresfm_convert_form.setSpacing(6)
 
-        self.spheresfm_output_shape_combo = QComboBox()
+        self.spheresfm_output_shape_combo = OutputShapeSelector()
         self.spheresfm_output_shape_combo.setToolTip(i18n.tip("SPHERESFM_OUTPUT_SHAPE"))
         self.spheresfm_output_shape_combo.addItem(i18n.t("OUTPUT_SHAPE_PROJECTED"), _OUTPUT_SHAPE_PROJECTED)
         self.spheresfm_output_shape_combo.addItem(i18n.t("OUTPUT_SHAPE_EQUIRECT_3DGUT"), _OUTPUT_SHAPE_EQUIRECT_3DGUT)
@@ -441,6 +508,12 @@ class CubemapStep(
             self.spheresfm_axis_transform_combo,
             i18n.tip("SPHERESFM_AXIS_TRANSFORM"),
         )
+        self.spheresfm_axis_transform_label = spheresfm_convert_form.labelForField(
+            self.spheresfm_axis_transform_combo
+        )
+        self.spheresfm_axis_transform_combo.setVisible(False)
+        if self.spheresfm_axis_transform_label is not None:
+            self.spheresfm_axis_transform_label.setVisible(False)
 
         self.spheresfm_profile_hint = QLabel("")
         self.spheresfm_profile_hint.setStyleSheet("color: #8888aa; font-size: 9pt;")
@@ -472,7 +545,7 @@ class CubemapStep(
         add_tooltip_row(profile_form, i18n.TARGET_PROFILE, self.profile_combo, i18n.tip("TARGET_PROFILE"))
         self.profile_label = profile_form.labelForField(self.profile_combo)
 
-        self.output_shape_combo = QComboBox()
+        self.output_shape_combo = OutputShapeSelector()
         self.output_shape_combo.setToolTip(i18n.tip("OUTPUT_SHAPE"))
         self.output_shape_combo.addItem(i18n.t("OUTPUT_SHAPE_PROJECTED"), _OUTPUT_SHAPE_PROJECTED)
         self.output_shape_combo.addItem(i18n.t("OUTPUT_SHAPE_EQUIRECT_3DGUT"), _OUTPUT_SHAPE_EQUIRECT_3DGUT)
@@ -493,10 +566,14 @@ class CubemapStep(
         self.axis_transform_combo.setFixedWidth(180)
         self.axis_transform_combo.currentIndexChanged.connect(self._on_profile_option_changed)
         add_tooltip_row(profile_form, i18n.t("AXIS_TRANSFORM"), self.axis_transform_combo, i18n.tip("AXIS_TRANSFORM"))
+        self.axis_transform_label = profile_form.labelForField(self.axis_transform_combo)
+        self.axis_transform_combo.setVisible(False)
+        if self.axis_transform_label is not None:
+            self.axis_transform_label.setVisible(False)
 
         self.export_colmap_cb = QCheckBox(i18n.t("EXPORT_COLMAP"))
         self.export_colmap_cb.setToolTip(i18n.t("EXPORT_COLMAP_HINT"))
-        profile_form.addRow("", self.export_colmap_cb)
+        self.export_colmap_cb.setVisible(False)
 
         self.realityscan_options_row = QWidget()
         realityscan_options_layout = QHBoxLayout(self.realityscan_options_row)
@@ -538,6 +615,7 @@ class CubemapStep(
         self.realityscan_options_label = profile_form.labelForField(self.realityscan_options_row)
         if self.realityscan_options_label is not None:
             self.realityscan_options_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+            self.realityscan_options_label.setVisible(False)
 
         self.metashape_output_section = QWidget()
         self.metashape_output_section.setLayout(profile_form)
@@ -682,11 +760,6 @@ class CubemapStep(
         if normal_scale_index >= 0:
             self.scale_combo.setCurrentIndex(normal_scale_index)
         self.scale_combo.setFixedWidth(90)
-        self.output_scale_label = QLabel(i18n.OUTPUT_SCALE + ":")
-        self.output_scale_label.setToolTip(i18n.tip("OUTPUT_SCALE"))
-        self.view_config.angle_row.addWidget(self.output_scale_label)
-        self.view_config.angle_row.addWidget(self.scale_combo)
-        self.view_config.angle_row.addStretch()
 
         self.yaw_per_frame_edit = DragDoubleSpinBox(
             minimum=-180.0,
@@ -704,10 +777,20 @@ class CubemapStep(
         yaw_per_frame_layout.setSpacing(8)
         self.yaw_per_frame_label = QLabel(i18n.t("YAW_OFFSET_PER_FRAME"))
         self.yaw_per_frame_label.setToolTip(i18n.t("YAW_OFFSET_PER_FRAME_HINT"))
-        yaw_per_frame_layout.addWidget(self.yaw_per_frame_label)
-        yaw_per_frame_layout.addWidget(self.yaw_per_frame_edit)
-        yaw_per_frame_layout.addStretch()
-        self.view_config.extra_controls_layout.addWidget(self.yaw_per_frame_row)
+        self.view_config.angle_row.addWidget(self.yaw_per_frame_label)
+        self.view_config.angle_row.addWidget(self.yaw_per_frame_edit)
+        self.view_config.angle_row.addStretch()
+
+        self.output_scale_row = QWidget()
+        output_scale_layout = QHBoxLayout(self.output_scale_row)
+        output_scale_layout.setContentsMargins(0, 0, 0, 0)
+        output_scale_layout.setSpacing(8)
+        self.output_scale_label = QLabel(i18n.OUTPUT_SCALE + ":")
+        self.output_scale_label.setToolTip(i18n.tip("OUTPUT_SCALE"))
+        output_scale_layout.addWidget(self.output_scale_label)
+        output_scale_layout.addWidget(self.scale_combo)
+        output_scale_layout.addStretch()
+        self.view_config.extra_controls_layout.addWidget(self.output_scale_row)
 
         adv_form.addRow(self.view_config.settings_widget)
 
@@ -1958,6 +2041,12 @@ class CubemapStep(
             i18n.tip("AXIS_TRANSFORM_REALITYSCAN_AUTO") if realityscan else i18n.tip("AXIS_TRANSFORM")
         )
 
+    def _sync_realityscan_options_visibility(self) -> None:
+        visible = self._is_realityscan_profile()
+        self.realityscan_options_row.setVisible(visible)
+        if self.realityscan_options_label is not None:
+            self.realityscan_options_label.setVisible(visible)
+
     def _sync_profile_tooltip(self) -> None:
         tooltip_key = "TARGET_PROFILE_REALITYSCAN" if self._profile_id() == _PROFILE_REALITYSCAN else "TARGET_PROFILE"
         tooltip = i18n.tip(tooltip_key)
@@ -2005,7 +2094,7 @@ class CubemapStep(
             self._set_combo_data(self.output_shape_combo, _OUTPUT_SHAPE_PROJECTED)
         self._sync_profile_tooltip()
         self._sync_realityscan_axis_display()
-        self.realityscan_options_row.setVisible(p == _PROFILE_REALITYSCAN)
+        self._sync_realityscan_options_visibility()
         self._sync_ply_browse_enabled()
         self._sync_output_shape_controls()
         self._sync_yaw_per_frame_control()
@@ -2161,12 +2250,20 @@ class CubemapStep(
         self.axis_transform_combo.setEnabled(
             self._is_metashape_method() and not direct and not self._is_realityscan_profile()
         )
+        self.axis_transform_combo.setVisible(False)
+        if self.axis_transform_label is not None:
+            self.axis_transform_label.setVisible(False)
         self.spheresfm_profile_combo.setEnabled(spheresfm_projected)
         self.spheresfm_axis_transform_combo.setEnabled(spheresfm_projected)
+        self.spheresfm_axis_transform_combo.setVisible(False)
+        if self.spheresfm_axis_transform_label is not None:
+            self.spheresfm_axis_transform_label.setVisible(False)
+        self._sync_realityscan_options_visibility()
         self.ms_use_ply_cb.setEnabled(self._is_metashape_method() and not direct)
         self.export_colmap_cb.setEnabled(
             self._is_metashape_method() and not direct and not self._is_realityscan_profile()
         )
+        self.export_colmap_cb.setVisible(False)
         self.settings_tabs.setTabEnabled(self.output_tab_index, (not spheresfm) or spheresfm_runs_conversion)
 
     def _preprocess_uses_ply(self) -> bool:

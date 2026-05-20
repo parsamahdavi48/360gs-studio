@@ -14,6 +14,7 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QPushButton,
+    QSizePolicy,
     QStackedWidget,
     QVBoxLayout,
     QWidget,
@@ -22,9 +23,16 @@ from PySide6.QtWidgets import (
 from gui import i18n
 from gui.common.browse_widget import BrowseWidget
 from gui.common.form_rows import add_tooltip_row
+from gui.scene_preview.window import ScenePreviewWidget
 from gui.steps.base_step import BaseStepWidget
 from gui.steps.sfm_route_specs import SFM_ROUTE_COLMAP, SFM_ROUTE_METASHAPE, SFM_ROUTE_SPHERESFM, normalize_sfm_route
-from gui.steps.step4_contracts import _COLMAP_MAPPER_GLOMAP, _PIPELINE_STAGE_CONVERSION, _PIPELINE_STAGE_SFM
+from gui.steps.step4_contracts import (
+    _COLMAP_MAPPER_GLOMAP,
+    _OUTPUT_SHAPE_PROJECTED,
+    _PIPELINE_STAGE_CONVERSION,
+    _PIPELINE_STAGE_SFM,
+    _PROFILE_REALITYSCAN,
+)
 from gui.steps.workflow_cards import WorkflowCardGrid, WorkflowCardSpec
 
 if TYPE_CHECKING:
@@ -33,8 +41,11 @@ if TYPE_CHECKING:
 _PAGE_MENU = "menu"
 _PAGE_COLMAP = SFM_ROUTE_COLMAP
 _PAGE_SPHERESFM = SFM_ROUTE_SPHERESFM
+_PAGE_REALITYSCAN = "realityscan_realign"
+_PAGE_VIEWER = "viewer"
 _CARD_VIEWER = "viewer"
 _DATASET_MENU_ROUTE = "dataset_menu"
+_RUNNABLE_PAGES = {_PAGE_COLMAP, _PAGE_SPHERESFM, _PAGE_REALITYSCAN}
 
 
 class SfmStep(BaseStepWidget):
@@ -72,6 +83,9 @@ class SfmStep(BaseStepWidget):
                 self._build_spheresfm_detail(),
             )
         )
+        self._page_indices[_PAGE_REALITYSCAN] = self.stack.addWidget(self._build_realityscan_detail_page())
+        self.scene_preview = ScenePreviewWidget(parent=self, show_scene_controls=False)
+        self._page_indices[_PAGE_VIEWER] = self.stack.addWidget(self.scene_preview)
         root.addWidget(self.stack)
 
     def _build_menu_page(self) -> QWidget:
@@ -79,10 +93,6 @@ class SfmStep(BaseStepWidget):
         layout = QVBoxLayout(page)
         layout.setContentsMargins(8, 8, 8, 8)
         layout.setSpacing(12)
-
-        title = QLabel(i18n.t("SFM_MENU_TITLE"))
-        title.setObjectName("paneTitle")
-        layout.addWidget(title)
 
         description = QLabel(i18n.t("SFM_MENU_DESC"))
         description.setObjectName("workflowNote")
@@ -96,6 +106,13 @@ class SfmStep(BaseStepWidget):
                 i18n.t("SFM_ROUTE_EXTERNAL_BODY"),
                 i18n.t("SFM_ROUTE_EXTERNAL_FOOTER"),
                 i18n.tip("SFM_ROUTE_EXTERNAL"),
+            ),
+            WorkflowCardSpec(
+                _PAGE_REALITYSCAN,
+                i18n.t("SFM_ROUTE_REALITYSCAN_TITLE"),
+                i18n.t("SFM_ROUTE_REALITYSCAN_BODY"),
+                i18n.t("SFM_ROUTE_REALITYSCAN_FOOTER"),
+                i18n.tip("SFM_ROUTE_REALITYSCAN"),
             ),
             WorkflowCardSpec(
                 SFM_ROUTE_COLMAP,
@@ -123,51 +140,53 @@ class SfmStep(BaseStepWidget):
         self.card_grid.buttons[SFM_ROUTE_METASHAPE].clicked.connect(
             lambda _checked=False: self.route_requested.emit(_DATASET_MENU_ROUTE)
         )
+        self.card_grid.buttons[_PAGE_REALITYSCAN].clicked.connect(
+            lambda _checked=False: self.show_realityscan_realign()
+        )
         self.card_grid.buttons[SFM_ROUTE_COLMAP].clicked.connect(
             lambda _checked=False: self.show_route(SFM_ROUTE_COLMAP)
         )
         self.card_grid.buttons[SFM_ROUTE_SPHERESFM].clicked.connect(
             lambda _checked=False: self.show_route(SFM_ROUTE_SPHERESFM)
         )
-        self.card_grid.buttons[_CARD_VIEWER].clicked.connect(lambda _checked=False: self.open_scene_preview())
+        self.card_grid.buttons[_CARD_VIEWER].clicked.connect(lambda _checked=False: self.show_viewer())
         layout.addWidget(self.card_grid)
         layout.addStretch()
         return page
 
     def _wrap_detail_page(self, title: str, description: str, body: QWidget) -> QWidget:
         page = QWidget()
+        page.setAccessibleName(title)
         layout = QVBoxLayout(page)
-        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setContentsMargins(8, 8, 8, 8)
         layout.setSpacing(8)
-
-        header = QWidget()
-        header.setObjectName("toolDetailHeader")
-        header_layout = QHBoxLayout(header)
-        header_layout.setContentsMargins(8, 8, 8, 0)
-        header_layout.setSpacing(8)
-        back_btn = QPushButton(i18n.t("SFM_BACK_TO_ROUTES"))
-        back_btn.setObjectName("secondary")
-        back_btn.setToolTip(i18n.tip("SFM_BACK_TO_ROUTES"))
-        back_btn.clicked.connect(lambda _checked=False: self.show_menu())
-        header_layout.addWidget(back_btn)
-        label = QLabel(title)
-        label.setObjectName("paneTitle")
-        header_layout.addWidget(label)
-        header_layout.addStretch()
-        layout.addWidget(header)
 
         note = QLabel(description)
         note.setObjectName("workflowNote")
         note.setWordWrap(True)
-        note.setContentsMargins(8, 0, 8, 0)
         layout.addWidget(note)
         layout.addWidget(body, stretch=1)
+        return page
+
+    def _build_realityscan_detail_page(self) -> QWidget:
+        page = QWidget()
+        page.setAccessibleName(i18n.t("SFM_REALITYSCAN_DETAIL_TITLE"))
+        layout = QVBoxLayout(page)
+        layout.setContentsMargins(8, 8, 8, 8)
+        layout.setSpacing(8)
+
+        note = QLabel(i18n.t("SFM_REALITYSCAN_DETAIL_DESC"))
+        note.setObjectName("workflowNote")
+        note.setWordWrap(True)
+        layout.addWidget(note)
+        self.realityscan_cubemap_layout = layout
+        layout.addStretch()
         return page
 
     def _build_colmap_detail(self) -> QWidget:
         page = QWidget()
         layout = QVBoxLayout(page)
-        layout.setContentsMargins(8, 0, 8, 8)
+        layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(10)
         form = QFormLayout()
         form.setSpacing(6)
@@ -213,20 +232,19 @@ class SfmStep(BaseStepWidget):
         self.glomap_exec_row_label.setToolTip(i18n.tip("GLOMAP_EXECUTABLE"))
         form.addRow(self.glomap_exec_row_label, self.glomap_exec_browse)
 
+        layout.addLayout(form)
         viewer_btn = QPushButton(i18n.t("SFM_OPEN_VIEWER"))
         viewer_btn.setObjectName("secondary")
         viewer_btn.setToolTip(i18n.tip("SFM_OPEN_VIEWER"))
         viewer_btn.clicked.connect(lambda _checked=False: self.open_scene_preview())
-        form.addRow("", viewer_btn)
-
-        layout.addLayout(form)
+        layout.addWidget(self._build_action_row(viewer_btn))
         layout.addStretch()
         return page
 
     def _build_spheresfm_detail(self) -> QWidget:
         page = QWidget()
         layout = QVBoxLayout(page)
-        layout.setContentsMargins(8, 0, 8, 8)
+        layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(10)
         form = QFormLayout()
         form.setSpacing(6)
@@ -275,21 +293,27 @@ class SfmStep(BaseStepWidget):
             i18n.tip("SPHERESFM_POSE_FILE"),
         )
 
-        gui_btn = QPushButton(i18n.t("SPHERESFM_OPEN_GUI"))
-        gui_btn.setObjectName("secondary")
-        gui_btn.setToolTip(i18n.tip("SPHERESFM_OPEN_GUI"))
-        gui_btn.clicked.connect(lambda _checked=False: self.open_spheresfm_result())
-        form.addRow("", gui_btn)
-
+        layout.addLayout(form)
         viewer_btn = QPushButton(i18n.t("SFM_OPEN_VIEWER"))
         viewer_btn.setObjectName("secondary")
         viewer_btn.setToolTip(i18n.tip("SFM_OPEN_VIEWER"))
         viewer_btn.clicked.connect(lambda _checked=False: self.open_scene_preview())
-        form.addRow("", viewer_btn)
-
-        layout.addLayout(form)
+        layout.addWidget(self._build_action_row(viewer_btn))
         layout.addStretch()
         return page
+
+    @staticmethod
+    def _build_action_row(*buttons: QPushButton) -> QWidget:
+        row = QWidget()
+        row.setObjectName("detailActionRow")
+        row_layout = QHBoxLayout(row)
+        row_layout.setContentsMargins(0, 0, 0, 0)
+        row_layout.setSpacing(8)
+        for button in buttons:
+            button.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
+            row_layout.addWidget(button)
+        row_layout.addStretch()
+        return row
 
     def _connect_child_signals(self) -> None:
         self.cubemap_step.primary_action_state_changed.connect(self.primary_action_state_changed)
@@ -383,6 +407,8 @@ class SfmStep(BaseStepWidget):
             self._prepare_colmap_route()
         elif self._page == _PAGE_SPHERESFM:
             self._prepare_spheresfm_route()
+        elif self._page == _PAGE_REALITYSCAN:
+            self._prepare_realityscan_route()
 
     def _prepare_colmap_route(self) -> None:
         self.cubemap_step._set_export_method(SFM_ROUTE_COLMAP)
@@ -397,6 +423,38 @@ class SfmStep(BaseStepWidget):
         self.cubemap_step.set_pipeline_stage_intent(_PIPELINE_STAGE_CONVERSION, False)
         self.cubemap_step.activate_pipeline_stage(_PIPELINE_STAGE_SFM)
 
+    def _prepare_realityscan_route(self) -> None:
+        self._attach_realityscan_cubemap_step()
+        self.cubemap_step.export_method_row.setVisible(False)
+        self._set_realityscan_profile_visible(True)
+        self.cubemap_step._set_export_method(SFM_ROUTE_METASHAPE)
+        self.cubemap_step._set_combo_data(self.cubemap_step.profile_combo, _PROFILE_REALITYSCAN)
+        self.cubemap_step._set_combo_data(self.cubemap_step.output_shape_combo, _OUTPUT_SHAPE_PROJECTED)
+        self.cubemap_step.export_colmap_cb.setChecked(False)
+        self.cubemap_step.set_pipeline_stage_intent(_PIPELINE_STAGE_SFM, False)
+        self.cubemap_step.set_pipeline_stage_intent(_PIPELINE_STAGE_CONVERSION, True)
+        self.cubemap_step.activate_pipeline_stage(_PIPELINE_STAGE_SFM)
+        self._set_realityscan_profile_controls_visible(False)
+
+    def _attach_realityscan_cubemap_step(self) -> None:
+        if self.realityscan_cubemap_layout.indexOf(self.cubemap_step) >= 0:
+            return
+        self.realityscan_cubemap_layout.insertWidget(
+            max(1, self.realityscan_cubemap_layout.count() - 1),
+            self.cubemap_step,
+            stretch=1,
+        )
+
+    def _set_realityscan_profile_visible(self, visible: bool) -> None:
+        index = self.cubemap_step.profile_combo.findData(_PROFILE_REALITYSCAN)
+        if index >= 0:
+            self.cubemap_step.profile_combo.view().setRowHidden(index, not visible)
+
+    def _set_realityscan_profile_controls_visible(self, visible: bool) -> None:
+        self.cubemap_step.profile_combo.setVisible(visible)
+        if self.cubemap_step.profile_label is not None:
+            self.cubemap_step.profile_label.setVisible(visible)
+
     def _sync_colmap_glomap_visibility(self, *_args) -> None:
         visible = self.colmap_mapper_combo.currentData() == _COLMAP_MAPPER_GLOMAP
         self.glomap_exec_row_label.setVisible(visible)
@@ -405,12 +463,15 @@ class SfmStep(BaseStepWidget):
     def set_scene_dir(self, path: str) -> None:
         super().set_scene_dir(path)
         self.cubemap_step.set_scene_dir(path)
+        self.scene_preview.set_scene_dir(Path(path) if path else None)
 
     def on_activated(self) -> None:
-        if self._page != _PAGE_MENU:
+        if self._page in _RUNNABLE_PAGES:
             self._sync_from_cubemap()
             self._prepare_current_route()
             self.cubemap_step.on_activated()
+        elif self._page == _PAGE_VIEWER:
+            self.scene_preview.refresh()
         self.primary_action_state_changed.emit()
 
     def show_menu(self) -> None:
@@ -419,6 +480,9 @@ class SfmStep(BaseStepWidget):
         self.primary_action_state_changed.emit()
 
     def show_route(self, route_id: str) -> None:
+        if route_id == _PAGE_REALITYSCAN:
+            self.show_realityscan_realign()
+            return
         route = normalize_sfm_route(route_id)
         if route not in {_PAGE_COLMAP, _PAGE_SPHERESFM}:
             self.route_requested.emit(route)
@@ -431,24 +495,57 @@ class SfmStep(BaseStepWidget):
         self.primary_action_state_changed.emit()
 
     def current_route(self) -> str:
-        return self._page if self._page in {_PAGE_COLMAP, _PAGE_SPHERESFM} else ""
+        return self._page if self._page in _RUNNABLE_PAGES else ""
+
+    def show_realityscan_realign(self) -> None:
+        self._page = _PAGE_REALITYSCAN
+        self.stack.setCurrentIndex(self._page_indices[_PAGE_REALITYSCAN])
+        self._prepare_realityscan_route()
+        self.cubemap_step.on_activated()
+        self.primary_action_state_changed.emit()
+
+    def show_viewer(self) -> None:
+        self.scene_preview.set_scene_dir(Path(self.scene_dir) if self.scene_dir else None)
+        self.scene_preview.refresh()
+        self._page = _PAGE_VIEWER
+        self.stack.setCurrentIndex(self._page_indices[_PAGE_VIEWER])
+        self.primary_action_state_changed.emit()
+
+    def header_title(self) -> str:
+        if self._page == _PAGE_COLMAP:
+            return i18n.t("SFM_COLMAP_DETAIL_TITLE")
+        if self._page == _PAGE_SPHERESFM:
+            return i18n.t("SFM_SPHERESFM_DETAIL_TITLE")
+        if self._page == _PAGE_REALITYSCAN:
+            return i18n.t("SFM_REALITYSCAN_DETAIL_TITLE")
+        if self._page == _PAGE_VIEWER:
+            return i18n.t("SFM_ROUTE_VIEWER_TITLE")
+        return i18n.t("SFM_MENU_TITLE")
+
+    def header_back_enabled(self) -> bool:
+        return self._page != _PAGE_MENU
+
+    def header_back_tooltip(self) -> str:
+        return i18n.tip("SFM_BACK_TO_ROUTES")
+
+    def header_back(self) -> None:
+        self.show_menu()
 
     def open_scene_preview(self) -> None:
         if self._page in {_PAGE_COLMAP, _PAGE_SPHERESFM}:
             self._apply_to_cubemap()
             self._prepare_current_route()
-        self.cubemap_step.open_scene_preview()
-
-    def open_spheresfm_result(self) -> None:
-        self._apply_to_cubemap()
-        self._prepare_spheresfm_route()
-        self.cubemap_step._open_spheresfm_result()
+        self.show_viewer()
 
     def primary_action_text(self) -> str:
         if self._page == _PAGE_COLMAP:
             return i18n.t("SFM_RUN_COLMAP")
         if self._page == _PAGE_SPHERESFM:
             return i18n.t("SFM_RUN_SPHERESFM")
+        if self._page == _PAGE_REALITYSCAN:
+            return i18n.t("SFM_RUN_REALITYSCAN")
+        if self._page == _PAGE_VIEWER:
+            return i18n.t("SFM_OPEN_VIEWER")
         return i18n.t("SFM_SELECT_ROUTE")
 
     def primary_action_tooltip(self) -> str:
@@ -456,17 +553,22 @@ class SfmStep(BaseStepWidget):
             return i18n.tip("SFM_RUN_COLMAP")
         if self._page == _PAGE_SPHERESFM:
             return i18n.tip("SFM_RUN_SPHERESFM")
+        if self._page == _PAGE_REALITYSCAN:
+            return i18n.tip("SFM_RUN_REALITYSCAN")
+        if self._page == _PAGE_VIEWER:
+            return i18n.tip("SFM_OPEN_VIEWER")
         return i18n.tip("SFM_SELECT_ROUTE")
 
     def primary_action_enabled(self) -> bool:
-        if self._page == _PAGE_MENU:
+        if self._page in {_PAGE_MENU, _PAGE_VIEWER}:
             return False
         return self.cubemap_step.primary_action_enabled()
 
     def build_commands(self) -> list[tuple[str, list[str]]]:
-        if self._page == _PAGE_MENU:
+        if self._page in {_PAGE_MENU, _PAGE_VIEWER}:
             return []
-        self._apply_to_cubemap()
+        if self._page in {_PAGE_COLMAP, _PAGE_SPHERESFM}:
+            self._apply_to_cubemap()
         self._prepare_current_route()
         return self.cubemap_step.build_commands()
 
@@ -474,30 +576,30 @@ class SfmStep(BaseStepWidget):
         return self.cubemap_step.confirm_commands(commands)
 
     def process_log_dir(self) -> Path | None:
-        return self.cubemap_step.process_log_dir() if self._page != _PAGE_MENU else None
+        return self.cubemap_step.process_log_dir() if self._page in _RUNNABLE_PAGES else None
 
     def phase_display_name(self, phase: str) -> str:
-        return self.cubemap_step.phase_display_name(phase) if self._page != _PAGE_MENU else phase
+        return self.cubemap_step.phase_display_name(phase) if self._page in _RUNNABLE_PAGES else phase
 
     def phase_status_text(self, phase: str, queue_index: int, queue_total: int) -> str:
-        if self._page == _PAGE_MENU:
+        if self._page not in _RUNNABLE_PAGES:
             return super().phase_status_text(phase, queue_index, queue_total)
         return self.cubemap_step.phase_status_text(phase, queue_index, queue_total)
 
     def on_line(self, line: str) -> tuple[int, int] | None:
-        return self.cubemap_step.on_line(line) if self._page != _PAGE_MENU else None
+        return self.cubemap_step.on_line(line) if self._page in _RUNNABLE_PAGES else None
 
     def on_phase_started(self, phase: str) -> tuple[int, int] | None:
-        return self.cubemap_step.on_phase_started(phase) if self._page != _PAGE_MENU else None
+        return self.cubemap_step.on_phase_started(phase) if self._page in _RUNNABLE_PAGES else None
 
     def on_phase_log_started(self, phase: str, path: str) -> None:
-        if self._page != _PAGE_MENU:
+        if self._page in _RUNNABLE_PAGES:
             self.cubemap_step.on_phase_log_started(phase, path)
 
     def on_phase_finished(self, phase: str, exit_code: int, canceled: bool) -> None:
-        if self._page != _PAGE_MENU:
+        if self._page in _RUNNABLE_PAGES:
             self.cubemap_step.on_phase_finished(phase, exit_code, canceled)
 
     def on_queue_finished(self, success: bool) -> None:
-        if self._page != _PAGE_MENU:
+        if self._page in _RUNNABLE_PAGES:
             self.cubemap_step.on_queue_finished(success)
