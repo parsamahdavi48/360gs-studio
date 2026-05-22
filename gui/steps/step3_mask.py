@@ -30,12 +30,16 @@ from PySide6.QtWidgets import (
 
 from core.apply_frame_decisions import pending_drop_image_paths, untracked_image_paths
 from core.mask_view_recipes import QUALITY_CHOICES
+from core.scene_inventory import (
+    PROJECTION_EQUIRECTANGULAR,
+    PROJECTION_NORMAL,
+    PROJECTION_UNKNOWN,
+    build_scene_inventory,
+)
 from core.scene_layout import scene_images_dir, scene_masks_dir, selected_frames_path
 from core.scene_project import (
     append_mask_run,
     append_source_image_set,
-    resolve_scene_image_projection,
-    scene_image_projection_map,
     scene_relative,
     source_image_set_record,
     utc_now_iso,
@@ -1076,11 +1080,15 @@ class MaskStep(Step3MaskActionsMixin, BaseStepWidget):
             self._image_projection_map = {}
             self._set_projection(_PROJECTION_EQUIRECT)
             return
-        resolved = resolve_scene_image_projection(Path(self.scene_dir))
-        self._projection_mixed = bool(resolved.get("mixed"))
-        self._projection_source = str(resolved.get("source") or "default")
-        self._refresh_image_projection_map()
-        self._set_projection(str(resolved.get("mask_projection") or _PROJECTION_EQUIRECT))
+        inventory = build_scene_inventory(Path(self.scene_dir))
+        self._image_projection_map = {image.rel_path: image.projection for image in inventory.images}
+        projections = {image.projection for image in inventory.images if image.projection != PROJECTION_UNKNOWN}
+        self._projection_mixed = len(projections) > 1
+        self._projection_source = "project" if inventory.images else "default"
+        if self._projection_mixed or PROJECTION_EQUIRECTANGULAR in projections or not projections:
+            self._set_projection(_PROJECTION_EQUIRECT)
+        else:
+            self._set_projection(_PROJECTION_NORMAL)
 
     def _update_projection_label(self) -> None:
         if self._projection_mixed:
@@ -1107,7 +1115,8 @@ class MaskStep(Step3MaskActionsMixin, BaseStepWidget):
             self._image_projection_map = {}
             return
         scene = Path(self.scene_dir)
-        self._image_projection_map = scene_image_projection_map(scene, self._scene_image_paths())
+        inventory = build_scene_inventory(scene)
+        self._image_projection_map = {image.rel_path: image.projection for image in inventory.images}
 
     def _scene_image_paths(self) -> list[Path]:
         images = Path(self._images_dir_text())
@@ -1124,15 +1133,15 @@ class MaskStep(Step3MaskActionsMixin, BaseStepWidget):
         if image_path is None:
             return self._projection()
         projection = self._image_projection_map.get(self._projection_key_for_image(image_path), "")
-        if projection == "equirectangular":
+        if projection == PROJECTION_EQUIRECTANGULAR:
             return _PROJECTION_EQUIRECT
-        if projection == "normal":
+        if projection == PROJECTION_NORMAL:
             return _PROJECTION_NORMAL
         return self._projection()
 
     def _has_equirect_images(self) -> bool:
         if self._projection_mixed:
-            return any(value == "equirectangular" for value in self._image_projection_map.values())
+            return any(value == PROJECTION_EQUIRECTANGULAR for value in self._image_projection_map.values())
         return self._projection() == _PROJECTION_EQUIRECT
 
     def _update_preview_projection_enabled(self) -> None:

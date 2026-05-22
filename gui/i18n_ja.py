@@ -542,6 +542,7 @@ STRINGS: dict[str, str] = {
     ),
     "SPHERESFM_EXEC_NOT_FOUND": "SphereSfM COLMAP実行ファイルが見つかりません。SphereSfM版の colmap.exe を指定してください: {path}",
     "SPHERESFM_MASKS_NOT_FOUND": "masks/ を使用する設定ですが、マスクフォルダが見つかりません: {path}",
+    "SPHERESFM_PREFLIGHT_FAILED": "SphereSfMは同一解像度のエクイレクタングラー360°画像だけを入力にできます。\n{details}",
     "SPHERESFM_CONVERT_ONLY_NO_SPARSE": "SphereSfMのsparseモデルが見つかりません: {path}\n左サブ工程でSfMをONにして、先にsparseモデルを作成してください。",
     "SPHERESFM_POSE_REQUIRED": "Spatial matcherにはPOSファイルが必要です。",
     "SPHERESFM_POSE_NOT_FOUND": "POSファイルが見つかりません: {path}",

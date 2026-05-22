@@ -21,6 +21,7 @@ from core.scene_layout import (
     step4_metashape_import_work_dir,
     step4_views_config_path,
 )
+from core.sfm_preflight import preflight_spheresfm
 from gui import i18n
 from gui.cubemap.view_config import _BLOCK_ENABLED_VIEWS
 from gui.steps.output_reset import clear_output_dir, clear_path, dedupe_nested_paths, path_has_contents
@@ -568,6 +569,10 @@ class Step4PathMixin:
 
     def _validate_spheresfm_export(self) -> None:
         self._validate_image_only_export()
+        if self._spheresfm_runs_sfm():
+            result = preflight_spheresfm(Path(self.scene_dir))
+            if not result.ok:
+                raise ValueError(i18n.t("SPHERESFM_PREFLIGHT_FAILED").format(details=result.error_message()))
         if self._spheresfm_runs_sfm() and self._spheresfm_uses_masks() and not self._mask_dir().is_dir():
             raise ValueError(i18n.t("SPHERESFM_MASKS_NOT_FOUND").format(path=str(self._mask_dir())))
 
