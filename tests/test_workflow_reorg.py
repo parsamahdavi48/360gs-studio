@@ -6,9 +6,11 @@ from pathlib import Path
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
+from PIL import Image
 from PySide6.QtWidgets import QApplication, QLabel, QPushButton, QSizePolicy
 
 from core.artifact_registry import load_artifacts
+from core.normal_camera_metadata import load_normal_camera_default
 from gui import i18n
 from gui.app import MainWindow
 from gui.cubemap.view_config import VIEW_MODE_CUSTOM
@@ -25,6 +27,11 @@ def _write_colmap_sparse(root: Path) -> None:
     sparse.mkdir(parents=True, exist_ok=True)
     for name in ("cameras.txt", "images.txt", "points3D.txt"):
         (sparse / name).write_text("", encoding="utf-8")
+
+
+def _write_image(path: Path, size: tuple[int, int] = (40, 30)) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    Image.new("RGB", size, color=(110, 120, 130)).save(path)
 
 
 def _write_mixed_metashape_xml(path: Path) -> None:
@@ -211,6 +218,32 @@ def test_sfm_cards_open_in_step_sfm_pages_and_external_route_goes_to_dataset(tmp
         assert window.step4._export_method() == "colmap"
         assert window.run_btn.text().strip() == i18n.t("DATASET_COLMAP_READY_ACTION")
         assert not window.run_btn.isEnabled()
+    finally:
+        window.shutdown()
+
+
+def test_colmap_sfm_route_saves_normal_camera_default(tmp_path: Path) -> None:
+    _app()
+    _write_image(tmp_path / "images" / "normal_0001.jpg", (40, 30))
+    fake_colmap = tmp_path / "colmap.exe"
+    fake_colmap.write_text("", encoding="utf-8")
+    window = MainWindow(str(tmp_path))
+    try:
+        window.sfm_step.show_route("colmap")
+        window.sfm_step.colmap_exec_browse.set_text(str(fake_colmap))
+        model_index = window.sfm_step.colmap_normal_camera_model_combo.findData("PINHOLE")
+        assert model_index >= 0
+        window.sfm_step.colmap_normal_camera_model_combo.setCurrentIndex(model_index)
+        window.sfm_step.colmap_normal_camera_params_edit.setText("20,21,19.5,14.5")
+
+        commands = window.sfm_step.build_commands()
+
+        camera = load_normal_camera_default(tmp_path)
+        assert camera.camera_model == "PINHOLE"
+        assert camera.camera_params == (20.0, 21.0, 19.5, 14.5)
+        normal_feature = commands[1][1]
+        assert normal_feature[normal_feature.index("--ImageReader.camera_model") + 1] == "PINHOLE"
+        assert normal_feature[normal_feature.index("--ImageReader.camera_params") + 1] == "20,21,19.5,14.5"
     finally:
         window.shutdown()
 

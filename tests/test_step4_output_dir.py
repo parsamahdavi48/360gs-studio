@@ -13,6 +13,7 @@ from PySide6.QtWidgets import QApplication, QMessageBox
 
 import core.orientation_correction as orientation_correction
 import gui.steps.step4_cubemap as step4_cubemap
+from core.normal_camera_metadata import save_normal_camera_default
 from core.scene_layout import (
     project_path,
     source_image_sets_path,
@@ -1171,6 +1172,32 @@ def test_colmap_export_uses_normal_camera_metadata_for_feature_group(tmp_path: P
             }
         ),
         encoding="utf-8",
+    )
+    fake_colmap = tmp_path / "colmap.exe"
+    fake_colmap.write_text("", encoding="utf-8")
+    step = CubemapStep(Path.cwd())
+    step.set_scene_dir(str(tmp_path))
+    step._set_export_method("colmap")
+    step.set_pipeline_stage_intent("sfm", True)
+    step.colmap_exec_browse.set_text(str(fake_colmap))
+
+    commands = step.build_commands()
+
+    normal_feature = commands[1][1]
+    assert normal_feature[normal_feature.index("--ImageReader.camera_model") + 1] == "PINHOLE"
+    assert normal_feature[normal_feature.index("--ImageReader.camera_params") + 1] == "20,21,19.5,14.5"
+
+
+def test_colmap_export_uses_normal_camera_default_for_feature_group(tmp_path: Path) -> None:
+    _app()
+    images = tmp_path / "images"
+    images.mkdir()
+    _write_test_image(images / "perspective_0001.jpg", size=(40, 30))
+    save_normal_camera_default(
+        tmp_path,
+        camera_model="PINHOLE",
+        camera_params=(20.0, 21.0, 19.5, 14.5),
+        camera_source="test_default",
     )
     fake_colmap = tmp_path / "colmap.exe"
     fake_colmap.write_text("", encoding="utf-8")

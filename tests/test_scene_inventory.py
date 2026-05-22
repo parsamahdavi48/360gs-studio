@@ -5,6 +5,7 @@ from pathlib import Path
 
 from PIL import Image
 
+from core.normal_camera_metadata import save_normal_camera_default
 from core.scene_inventory import (
     PROJECTION_EQUIRECTANGULAR,
     PROJECTION_NORMAL,
@@ -145,3 +146,23 @@ def test_scene_inventory_reads_source_image_camera_metadata(tmp_path: Path) -> N
     assert inventory.images[0].camera_model == "PINHOLE"
     assert inventory.images[0].camera_params == (20.0, 21.0, 19.5, 14.5)
     assert inventory.images[0].camera_source == "manual"
+
+
+def test_scene_inventory_applies_normal_camera_default_to_unannotated_normal_images(tmp_path: Path) -> None:
+    scene = tmp_path
+    _write_image(scene / "images" / "normal.jpg", (40, 30))
+    _write_image(scene / "images" / "pano.jpg", (64, 32))
+    save_normal_camera_default(
+        scene,
+        camera_model="PINHOLE",
+        camera_params=(20.0, 21.0, 19.5, 14.5),
+        camera_source="test_default",
+    )
+
+    inventory = build_scene_inventory(scene)
+    images = {image.path.name: image for image in inventory.images}
+
+    assert images["normal.jpg"].camera_model == "PINHOLE"
+    assert images["normal.jpg"].camera_params == (20.0, 21.0, 19.5, 14.5)
+    assert images["normal.jpg"].camera_source == "test_default"
+    assert images["pano.jpg"].camera_model == ""

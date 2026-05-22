@@ -22,6 +22,7 @@ from core.scene_import_contracts import (
 from core.scene_layout import (
     mask_items_dir,
     mask_runs_path,
+    normal_camera_defaults_path,
     scene_images_dir,
     scene_import_backups_dir,
     scene_imports_path,
@@ -88,6 +89,7 @@ def backup_existing_import_metadata(scene: Path, import_id: str) -> Path | None:
     targets = [
         (selected_frames_path(scene), "frames/selected_frames.csv"),
         (source_image_sets_path(scene), "sources/image_sets.json"),
+        (normal_camera_defaults_path(scene), "sources/normal_camera_defaults.json"),
         (mask_runs_path(scene), "masks/mask_runs.json"),
         (mask_items_dir(scene), "masks/items"),
         (step4_export_settings_path(scene), "step4/export_settings.json"),

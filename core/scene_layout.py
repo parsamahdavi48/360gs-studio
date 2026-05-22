@@ -7,6 +7,7 @@ PROJECT_JSON = "project.json"
 SOURCES_DIR_NAME = "sources"
 SOURCE_VIDEOS_JSON = "videos.json"
 SOURCE_IMAGE_SETS_JSON = "image_sets.json"
+NORMAL_CAMERA_DEFAULTS_JSON = "normal_camera_defaults.json"
 FRAMES_DIR_NAME = "frames"
 FRAME_BACKUPS_DIR_NAME = "backups"
 FRAME_CACHE_DIR_NAME = "cache"
@@ -88,6 +89,10 @@ def source_videos_path(scene_dir: Path) -> Path:
 
 def source_image_sets_path(scene_dir: Path) -> Path:
     return sources_dir(scene_dir) / SOURCE_IMAGE_SETS_JSON
+
+
+def normal_camera_defaults_path(scene_dir: Path) -> Path:
+    return sources_dir(scene_dir) / NORMAL_CAMERA_DEFAULTS_JSON
 
 
 def frames_dir(scene_dir: Path) -> Path:

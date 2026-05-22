@@ -9,6 +9,7 @@ from typing import Any
 from PIL import Image
 
 from core.mask_metadata import mask_file_summary, summary_size
+from core.normal_camera_metadata import load_normal_camera_default
 from core.projection_contract import (
     PROJECTION_EQUIRECTANGULAR,
     PROJECTION_NORMAL,
@@ -123,6 +124,7 @@ def build_scene_inventory(
     projection_map = scene_image_projection_map(scene, image_paths) if image_paths else {}
     selected_map = _selected_frame_metadata(scene)
     image_set_map = _image_set_metadata(scene)
+    normal_camera_default = load_normal_camera_default(scene)
 
     images: list[SceneImage] = []
     for path in image_paths:
@@ -139,6 +141,15 @@ def build_scene_inventory(
         camera_model = str(metadata.get("camera_model") or "").strip().upper()
         camera_params = _float_tuple(metadata.get("camera_params"))
         camera_source = str(metadata.get("camera_source") or "").strip()
+        if (
+            projection == PROJECTION_NORMAL
+            and normal_camera_default.enabled
+            and not camera_model
+            and not camera_params
+        ):
+            camera_model = normal_camera_default.camera_model
+            camera_params = normal_camera_default.camera_params
+            camera_source = normal_camera_default.camera_source
         mask = _mask_artifact(scene, images_root, masks_root, path, image_size=(width, height))
         images.append(
             SceneImage(
