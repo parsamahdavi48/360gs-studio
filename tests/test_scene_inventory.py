@@ -11,7 +11,7 @@ from core.scene_inventory import (
     PROJECTION_UNKNOWN,
     build_scene_inventory,
 )
-from core.scene_layout import selected_frames_path
+from core.scene_layout import selected_frames_path, source_image_sets_path
 from core.scene_project import scene_image_projection_map
 
 
@@ -107,3 +107,41 @@ def test_scene_inventory_accepts_explicit_external_image_root(tmp_path: Path) ->
     assert inventory.images[0].rel_path == "normal.jpg"
     assert inventory.images[0].projection == PROJECTION_NORMAL
     assert inventory.images[0].mask is not None
+
+
+def test_scene_inventory_reads_source_image_camera_metadata(tmp_path: Path) -> None:
+    scene = tmp_path
+    _write_image(scene / "images" / "normal.jpg", (40, 30))
+    path = source_image_sets_path(scene)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        """
+        {
+          "version": 1,
+          "image_sets": [
+            {
+              "id": "cam_a",
+              "source_type": "image_sequence",
+              "projection": "normal",
+              "files": [
+                {
+                  "scene_path": "images/normal.jpg",
+                  "camera": {
+                    "model": "PINHOLE",
+                    "params": [20.0, 21.0, 19.5, 14.5],
+                    "source": "manual"
+                  }
+                }
+              ]
+            }
+          ]
+        }
+        """,
+        encoding="utf-8",
+    )
+
+    inventory = build_scene_inventory(scene)
+
+    assert inventory.images[0].camera_model == "PINHOLE"
+    assert inventory.images[0].camera_params == (20.0, 21.0, 19.5, 14.5)
+    assert inventory.images[0].camera_source == "manual"

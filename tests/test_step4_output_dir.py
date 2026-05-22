@@ -15,6 +15,7 @@ import core.orientation_correction as orientation_correction
 import gui.steps.step4_cubemap as step4_cubemap
 from core.scene_layout import (
     project_path,
+    source_image_sets_path,
     step4_export_settings_path,
     step4_meta_dir,
     step4_training_runs_path,
@@ -1108,7 +1109,7 @@ def test_colmap_export_can_queue_mixed_erp_and_normal_sfm(tmp_path: Path) -> Non
     assert normal_feature[1] == "feature_extractor"
     assert normal_feature[normal_feature.index("--ImageReader.camera_model") + 1] == "SIMPLE_RADIAL"
     assert normal_feature[normal_feature.index("--image_list_path") + 1] == str(
-        tmp_path / "output" / "colmap_rig" / "normal_image_list.txt"
+        tmp_path / "output" / "colmap_rig" / "normal_image_list_unknown_40x30_simple_radial.txt"
     )
 
 
@@ -1137,6 +1138,53 @@ def test_colmap_export_can_queue_normal_only_sfm_without_rig_config(tmp_path: Pa
     normal_feature = commands[1][1]
     assert normal_feature[normal_feature.index("--ImageReader.camera_model") + 1] == "SIMPLE_RADIAL"
     assert "--Mapper.ba_refine_sensor_from_rig" not in commands[-1][1]
+
+
+def test_colmap_export_uses_normal_camera_metadata_for_feature_group(tmp_path: Path) -> None:
+    _app()
+    images = tmp_path / "images"
+    images.mkdir()
+    _write_test_image(images / "perspective_0001.jpg", size=(40, 30))
+    source_sets = source_image_sets_path(tmp_path)
+    source_sets.parent.mkdir(parents=True, exist_ok=True)
+    source_sets.write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "image_sets": [
+                    {
+                        "id": "cam_a",
+                        "source_type": "image_sequence",
+                        "projection": "normal",
+                        "files": [
+                            {
+                                "scene_path": "images/perspective_0001.jpg",
+                                "camera": {
+                                    "model": "PINHOLE",
+                                    "params": [20.0, 21.0, 19.5, 14.5],
+                                    "source": "manual",
+                                },
+                            }
+                        ],
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    fake_colmap = tmp_path / "colmap.exe"
+    fake_colmap.write_text("", encoding="utf-8")
+    step = CubemapStep(Path.cwd())
+    step.set_scene_dir(str(tmp_path))
+    step._set_export_method("colmap")
+    step.set_pipeline_stage_intent("sfm", True)
+    step.colmap_exec_browse.set_text(str(fake_colmap))
+
+    commands = step.build_commands()
+
+    normal_feature = commands[1][1]
+    assert normal_feature[normal_feature.index("--ImageReader.camera_model") + 1] == "PINHOLE"
+    assert normal_feature[normal_feature.index("--ImageReader.camera_params") + 1] == "20,21,19.5,14.5"
 
 
 def test_colmap_export_method_restores_yaw_step_when_leaving_route(tmp_path: Path) -> None:

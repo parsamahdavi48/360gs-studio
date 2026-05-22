@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+import json
 import math
 import os
 import shutil
 import sys
 from pathlib import Path
 
+from core.colmap_mixed_project import COLMAP_MIXED_MANIFEST
+from core.colmap_normal_camera_contract import normal_camera_groups_for_images
 from core.orientation_correction import (
     FINAL_ORIENTATION_LICHTFELD,
     FINAL_ORIENTATION_NONE,
@@ -27,6 +30,7 @@ from gui.cubemap.view_config import _BLOCK_ENABLED_VIEWS
 from gui.steps.cubemap_commands import (
     ColmapExportCommand,
     ColmapMixedPrepareCommand,
+    ColmapNormalFeatureGroup,
     ColmapSfmCommand,
     CubemapConversionCommand,
     MetashapePreprocessCommand,
@@ -415,6 +419,7 @@ class Step4CommandPlanMixin:
         if has_normal and not prepared_this_run and not self._image_list_has_entries(normal_list):
             raise ValueError(i18n.t("STEP4_PIPELINE_DETAIL_COLMAP_NEEDS_RIG"))
         use_split_lists = has_normal and (prepared_this_run or self._image_list_has_entries(normal_list))
+        normal_feature_groups = self._colmap_normal_feature_groups(plan=plan, prepared_this_run=prepared_this_run)
         return build_colmap_sfm_commands(
             ColmapSfmCommand(
                 colmap=colmap,
@@ -434,6 +439,7 @@ class Step4CommandPlanMixin:
                 run_normal_feature=has_normal,
                 rig_image_list=rig_list if use_split_lists and has_erp else None,
                 normal_image_list=normal_list if has_normal else None,
+                normal_feature_groups=normal_feature_groups,
             )
         )
 
@@ -451,6 +457,63 @@ class Step4CommandPlanMixin:
             return any(line.strip() for line in path.read_text(encoding="utf-8").splitlines())
         except OSError:
             return False
+
+    def _colmap_normal_feature_groups(
+        self,
+        *,
+        plan: SfmInputPlan | None,
+        prepared_this_run: bool,
+    ) -> tuple[ColmapNormalFeatureGroup, ...]:
+        if prepared_this_run and self._colmap_plan_has_normal_images(plan):
+            inventory = build_scene_inventory(Path(self.scene_dir))
+            groups = normal_camera_groups_for_images(list(inventory.normal_images()))
+            return tuple(
+                ColmapNormalFeatureGroup(
+                    image_list=self._colmap_rig_dir() / f"normal_image_list_{group.group_id}.txt",
+                    camera_model=group.camera_model,
+                    camera_params=self._colmap_camera_params_text(group.camera_params),
+                )
+                for group in groups
+            )
+        return self._colmap_normal_feature_groups_from_manifest()
+
+    def _colmap_normal_feature_groups_from_manifest(self) -> tuple[ColmapNormalFeatureGroup, ...]:
+        path = self._colmap_rig_dir() / COLMAP_MIXED_MANIFEST
+        if not path.is_file():
+            return ()
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            return ()
+        raw_groups = data.get("normal_camera_groups")
+        if not isinstance(raw_groups, list):
+            return ()
+        groups: list[ColmapNormalFeatureGroup] = []
+        for item in raw_groups:
+            if not isinstance(item, dict):
+                continue
+            image_list = str(item.get("image_list") or "").strip()
+            camera_model = str(item.get("camera_model") or "").strip().upper()
+            if not image_list or not camera_model:
+                continue
+            groups.append(
+                ColmapNormalFeatureGroup(
+                    image_list=self._colmap_rig_dir() / image_list,
+                    camera_model=camera_model,
+                    camera_params=self._colmap_camera_params_text(item.get("camera_params")),
+                )
+            )
+        return tuple(groups)
+
+    @staticmethod
+    def _colmap_camera_params_text(value: object) -> str:
+        if not isinstance(value, (list, tuple)):
+            return ""
+        try:
+            params = [float(item) for item in value]
+        except (TypeError, ValueError):
+            return ""
+        return ",".join(f"{param:.12g}" for param in params)
 
     def _build_spheresfm_sfm_commands(self) -> list[tuple[str, list[str]]]:
         preflight_script = self.base_dir / "scripts" / "spheresfm_gpu_preflight.py"

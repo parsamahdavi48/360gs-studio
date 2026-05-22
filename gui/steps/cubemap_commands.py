@@ -76,6 +76,14 @@ class ColmapMixedPrepareCommand:
 
 
 @dataclass(frozen=True)
+class ColmapNormalFeatureGroup:
+    image_list: Path
+    camera_model: str
+    camera_params: str = ""
+    phase: str = ""
+
+
+@dataclass(frozen=True)
 class ColmapSfmCommand:
     colmap: str
     glomap: str
@@ -95,6 +103,7 @@ class ColmapSfmCommand:
     rig_image_list: Path | None = None
     normal_image_list: Path | None = None
     normal_camera_model: str = "SIMPLE_RADIAL"
+    normal_feature_groups: tuple[ColmapNormalFeatureGroup, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -303,23 +312,15 @@ def build_colmap_sfm_commands(options: ColmapSfmCommand) -> list[tuple[str, list
         ]
         steps.append(("colmap_rig_config", rig_cmd))
 
-    if options.run_normal_feature:
-        normal_cmd = [
-            options.colmap,
-            "feature_extractor",
-            "--database_path",
-            str(options.database),
-            "--image_path",
-            str(options.images_dir),
-            "--ImageReader.single_camera_per_folder",
-            "1",
-            "--ImageReader.camera_model",
-            options.normal_camera_model,
-        ]
-        if options.normal_image_list is not None:
-            normal_cmd.extend(["--image_list_path", str(options.normal_image_list)])
-        if options.writes_masks or options.masks_dir.is_dir():
-            normal_cmd.extend(["--ImageReader.mask_path", str(options.masks_dir)])
+    if options.run_normal_feature and options.normal_feature_groups:
+        for index, group in enumerate(options.normal_feature_groups, start=1):
+            normal_cmd = _normal_feature_cmd(options, group.camera_model, image_list=group.image_list)
+            if group.camera_params:
+                normal_cmd.extend(["--ImageReader.camera_params", group.camera_params])
+            phase = group.phase or ("colmap_feature_normal" if len(options.normal_feature_groups) == 1 else f"colmap_feature_normal_{index}")
+            steps.append((phase, normal_cmd))
+    elif options.run_normal_feature:
+        normal_cmd = _normal_feature_cmd(options, options.normal_camera_model, image_list=options.normal_image_list)
         steps.append(("colmap_feature_normal", normal_cmd))
 
     matcher_name = "exhaustive_matcher" if options.matcher == "exhaustive" else "sequential_matcher"
@@ -373,6 +374,31 @@ def build_colmap_sfm_commands(options: ColmapSfmCommand) -> list[tuple[str, list
         ]
     )
     return steps
+
+
+def _normal_feature_cmd(
+    options: ColmapSfmCommand,
+    camera_model: str,
+    *,
+    image_list: Path | None,
+) -> list[str]:
+    cmd = [
+        options.colmap,
+        "feature_extractor",
+        "--database_path",
+        str(options.database),
+        "--image_path",
+        str(options.images_dir),
+        "--ImageReader.single_camera_per_folder",
+        "1",
+        "--ImageReader.camera_model",
+        camera_model,
+    ]
+    if image_list is not None:
+        cmd.extend(["--image_list_path", str(image_list)])
+    if options.writes_masks or options.masks_dir.is_dir():
+        cmd.extend(["--ImageReader.mask_path", str(options.masks_dir)])
+    return cmd
 
 
 def _spheresfm_feature_options(preset: str) -> list[str]:

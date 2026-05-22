@@ -52,6 +52,9 @@ class SceneImage:
     source_kind: str
     source_id: str
     sequence_index: int | None
+    camera_model: str
+    camera_params: tuple[float, ...]
+    camera_source: str
     mask: MaskArtifact | None
 
     @property
@@ -133,6 +136,9 @@ def build_scene_inventory(
         source_kind = str(metadata.get("source_kind") or "unknown")
         source_id = str(metadata.get("source_id") or "")
         sequence_index = _optional_int(metadata.get("sequence_index"))
+        camera_model = str(metadata.get("camera_model") or "").strip().upper()
+        camera_params = _float_tuple(metadata.get("camera_params"))
+        camera_source = str(metadata.get("camera_source") or "").strip()
         mask = _mask_artifact(scene, images_root, masks_root, path, image_size=(width, height))
         images.append(
             SceneImage(
@@ -146,6 +152,9 @@ def build_scene_inventory(
                 source_kind=source_kind,
                 source_id=source_id,
                 sequence_index=sequence_index,
+                camera_model=camera_model,
+                camera_params=camera_params,
+                camera_source=camera_source,
                 mask=mask,
             )
         )
@@ -284,6 +293,7 @@ def _image_set_metadata(scene: Path) -> dict[str, dict[str, Any]]:
                 "projection": item.get("projection") or item.get("detected_projection") or image_set.get("projection"),
                 "projection_source": item.get("projection_source") or image_set.get("projection_source") or "image_header",
             }
+            result[rel].update(_camera_metadata(item, image_set))
     return result
 
 
@@ -304,3 +314,35 @@ def _optional_int(value: object) -> int | None:
     except (TypeError, ValueError):
         return None
     return parsed if parsed > 0 else None
+
+
+def _camera_metadata(item: dict[str, Any], image_set: dict[str, Any]) -> dict[str, Any]:
+    camera = item.get("camera")
+    if not isinstance(camera, dict):
+        camera = image_set.get("camera")
+    if not isinstance(camera, dict):
+        camera = {}
+    model = item.get("camera_model") or camera.get("model") or image_set.get("camera_model") or ""
+    params = item.get("camera_params") or camera.get("params") or image_set.get("camera_params") or ()
+    source = item.get("camera_source") or camera.get("source") or image_set.get("camera_source") or ""
+    return {
+        "camera_model": model,
+        "camera_params": _float_tuple(params),
+        "camera_source": source,
+    }
+
+
+def _float_tuple(value: object) -> tuple[float, ...]:
+    if isinstance(value, str):
+        raw_values = [part.strip() for part in value.replace(",", " ").split()]
+    elif isinstance(value, (list, tuple)):
+        raw_values = list(value)
+    else:
+        return ()
+    parsed: list[float] = []
+    for raw in raw_values:
+        try:
+            parsed.append(float(raw))
+        except (TypeError, ValueError):
+            return ()
+    return tuple(parsed)

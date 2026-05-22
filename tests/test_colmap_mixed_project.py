@@ -75,9 +75,12 @@ def test_prepare_colmap_mixed_project_writes_rig_and_normal_lists(tmp_path: Path
     assert manifest["normal_camera_model"] == "SIMPLE_RADIAL"
     assert manifest["normal_camera_groups"] == [
         {
-            "id": "unknown_40x30",
-            "image_dir": "normal/unknown_40x30",
+            "id": "unknown_40x30_simple_radial",
+            "image_dir": "normal/unknown_40x30_simple_radial",
+            "image_list": "normal_image_list_unknown_40x30_simple_radial.txt",
             "camera_model": "SIMPLE_RADIAL",
+            "camera_params": [],
+            "camera_source": "estimated",
             "width": 40,
             "height": 30,
             "source_kind": "unknown",

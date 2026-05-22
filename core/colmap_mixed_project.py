@@ -130,7 +130,7 @@ def prepare_colmap_mixed_project(
         rig_image_names = _rig_image_names(erp_files, prepared_views, output_format, rig_name)
         print(f"COLMAP rig images prepared: {len(rig_image_names)} ({rig_path})", flush=True)
 
-    normal_image_names = _link_normal_images(
+    normal_image_names, normal_group_image_names = _link_normal_images(
         normal_images,
         project_images_dir,
         project_masks_dir,
@@ -143,6 +143,8 @@ def prepare_colmap_mixed_project(
     normal_list = project_dir / COLMAP_NORMAL_IMAGE_LIST
     _write_image_list(rig_list, rig_image_names)
     _write_image_list(normal_list, normal_image_names)
+    for group_id, image_names in sorted(normal_group_image_names.items()):
+        _write_image_list(project_dir / _normal_group_image_list_name(group_id), image_names)
 
     manifest_path = project_dir / COLMAP_MIXED_MANIFEST
     manifest = _manifest(
@@ -152,6 +154,7 @@ def prepare_colmap_mixed_project(
         normal_images=normal_images,
         rig_image_names=rig_image_names,
         normal_image_names=normal_image_names,
+        normal_group_image_names=normal_group_image_names,
         warnings=warnings,
         rig_name=rig_name,
     )
@@ -252,8 +255,9 @@ def _link_normal_images(
     write_images: bool,
     write_masks: bool,
     warnings: list[str],
-) -> list[str]:
+) -> tuple[list[str], dict[str, list[str]]]:
     names: list[str] = []
+    group_names: dict[str, list[str]] = {}
     total = len(images)
     for index, image in enumerate(images, start=1):
         group = normal_camera_group_for_image(image)
@@ -264,7 +268,9 @@ def _link_normal_images(
         elif not image_dest.is_file():
             warnings.append(f"Normal image is not present in project output: {rel.as_posix()}")
             continue
-        names.append(rel.as_posix())
+        rel_text = rel.as_posix()
+        names.append(rel_text)
+        group_names.setdefault(group.group_id, []).append(rel_text)
 
         if not write_masks:
             continue
@@ -278,7 +284,7 @@ def _link_normal_images(
             continue
         mask_dest = project_masks_dir / Path(f"{rel.as_posix()}.png")
         replace_file_with_link_or_copy(image.mask.path, mask_dest)
-    return names
+    return names, group_names
 
 
 def _normal_filename(image: SceneImage, index: int, total: int) -> str:
@@ -307,6 +313,7 @@ def _manifest(
     normal_images: list[SceneImage],
     rig_image_names: list[str],
     normal_image_names: list[str],
+    normal_group_image_names: dict[str, list[str]],
     warnings: list[str],
     rig_name: str,
 ) -> dict[str, Any]:
@@ -327,12 +334,15 @@ def _manifest(
             {
                 "id": group.group_id,
                 "image_dir": group.image_dir,
+                "image_list": _normal_group_image_list_name(group.group_id),
                 "camera_model": group.camera_model,
+                "camera_params": list(group.camera_params),
+                "camera_source": group.camera_source,
                 "width": group.width,
                 "height": group.height,
                 "source_kind": group.source_kind,
                 "source_id": group.source_id,
-                "image_count": group.image_count,
+                "image_count": len(normal_group_image_names.get(group.group_id, ())),
             }
             for group in normal_camera_groups_for_images(normal_images)
         ],
@@ -349,3 +359,7 @@ def _manifest(
 def _safe_path_name(value: str, *, fallback: str) -> str:
     safe = "".join(ch if ch.isalnum() or ch in "._-" else "_" for ch in value.strip()).strip("._-")
     return safe or fallback
+
+
+def _normal_group_image_list_name(group_id: str) -> str:
+    return f"normal_image_list_{_safe_path_name(group_id, fallback='group')}.txt"
