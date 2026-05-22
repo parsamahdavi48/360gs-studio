@@ -1053,7 +1053,7 @@ def test_colmap_export_method_uses_image_only_conversion(tmp_path: Path) -> None
     assert "--skip-masks" not in cmd
 
 
-def test_colmap_export_method_blocks_normal_images_until_mixed_route_is_implemented(tmp_path: Path) -> None:
+def test_colmap_export_method_prepares_normal_only_project(tmp_path: Path) -> None:
     _app()
     images = tmp_path / "images"
     images.mkdir()
@@ -1062,8 +1062,78 @@ def test_colmap_export_method_blocks_normal_images_until_mixed_route_is_implemen
     step.set_scene_dir(str(tmp_path))
     step._set_export_method("colmap")
 
-    with pytest.raises(ValueError, match="COLMAP SfM"):
-        step.build_commands()
+    commands = step.build_commands()
+
+    assert [phase for phase, _cmd in commands] == ["colmap_mixed_prepare"]
+    cmd = commands[0][1]
+    assert cmd[2].endswith("prepare_colmap_mixed_project.py")
+    assert str(tmp_path) in cmd
+    assert str(tmp_path / "output") in cmd
+
+
+def test_colmap_export_can_queue_mixed_erp_and_normal_sfm(tmp_path: Path) -> None:
+    _app()
+    images = tmp_path / "images"
+    images.mkdir()
+    _write_test_image(images / "pano_0001.jpg", size=(64, 32))
+    _write_test_image(images / "perspective_0001.jpg", size=(40, 30))
+    fake_colmap = tmp_path / "colmap.exe"
+    fake_colmap.write_text("", encoding="utf-8")
+    step = CubemapStep(Path.cwd())
+    step.set_scene_dir(str(tmp_path))
+    step._set_export_method("colmap")
+    step.set_pipeline_stage_intent("sfm", True)
+    step.colmap_exec_browse.set_text(str(fake_colmap))
+
+    commands = step.build_commands()
+
+    assert [phase for phase, _cmd in commands] == [
+        "colmap_mixed_prepare",
+        "colmap_feature_rig",
+        "colmap_rig_config",
+        "colmap_feature_normal",
+        "colmap_match",
+        "colmap_mapper",
+    ]
+    rig_feature = commands[1][1]
+    normal_feature = commands[3][1]
+    assert rig_feature[1] == "feature_extractor"
+    assert rig_feature[rig_feature.index("--ImageReader.camera_model") + 1] == "PINHOLE"
+    assert rig_feature[rig_feature.index("--image_list_path") + 1] == str(
+        tmp_path / "output" / "colmap_rig" / "rig_image_list.txt"
+    )
+    assert normal_feature[1] == "feature_extractor"
+    assert normal_feature[normal_feature.index("--ImageReader.camera_model") + 1] == "SIMPLE_RADIAL"
+    assert normal_feature[normal_feature.index("--image_list_path") + 1] == str(
+        tmp_path / "output" / "colmap_rig" / "normal_image_list.txt"
+    )
+
+
+def test_colmap_export_can_queue_normal_only_sfm_without_rig_config(tmp_path: Path) -> None:
+    _app()
+    images = tmp_path / "images"
+    images.mkdir()
+    _write_test_image(images / "perspective_0001.jpg", size=(40, 30))
+    fake_colmap = tmp_path / "colmap.exe"
+    fake_colmap.write_text("", encoding="utf-8")
+    step = CubemapStep(Path.cwd())
+    step.set_scene_dir(str(tmp_path))
+    step._set_export_method("colmap")
+    step.set_pipeline_stage_intent("sfm", True)
+    step.colmap_exec_browse.set_text(str(fake_colmap))
+
+    commands = step.build_commands()
+
+    assert [phase for phase, _cmd in commands] == [
+        "colmap_mixed_prepare",
+        "colmap_feature_normal",
+        "colmap_match",
+        "colmap_mapper",
+    ]
+    assert all(phase != "colmap_rig_config" for phase, _cmd in commands)
+    normal_feature = commands[1][1]
+    assert normal_feature[normal_feature.index("--ImageReader.camera_model") + 1] == "SIMPLE_RADIAL"
+    assert "--Mapper.ba_refine_sensor_from_rig" not in commands[-1][1]
 
 
 def test_colmap_export_method_restores_yaw_step_when_leaving_route(tmp_path: Path) -> None:

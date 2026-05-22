@@ -6,6 +6,7 @@ import json
 from datetime import UTC, datetime
 from pathlib import Path
 
+from core.colmap_mixed_project import COLMAP_MIXED_MANIFEST
 from core.orientation_correction import (
     FINAL_ORIENTATION_LICHTFELD,
     FINAL_ORIENTATION_NONE,
@@ -578,6 +579,7 @@ class Step4ManifestMixin:
         project = self._colmap_project_dir()
         sparse_model = self._find_colmap_sparse_model()
         manifest_path = step4_meta_dir(Path(self.scene_dir)) / "sfm" / _COLMAP_PROJECT_MANIFEST_NAME
+        mixed_manifest = self._load_colmap_mixed_project_manifest(project)
         payload = {
             "app": "stechdrive-3dgs-utils",
             "app_version": APP_VERSION,
@@ -597,12 +599,33 @@ class Step4ManifestMixin:
             "camera_model": "PINHOLE",
             "camera_params": self._colmap_camera_params_arg(),
         }
+        if mixed_manifest:
+            payload["input_project"] = {
+                "export_type": mixed_manifest.get("export_type", ""),
+                "erp_source_count": mixed_manifest.get("erp_source_count", 0),
+                "normal_source_count": mixed_manifest.get("normal_source_count", 0),
+                "rig_image_count": mixed_manifest.get("rig_image_count", 0),
+                "normal_image_count": mixed_manifest.get("normal_image_count", 0),
+                "normal_camera_model": mixed_manifest.get("normal_camera_model", ""),
+                "warnings": mixed_manifest.get("warnings", []),
+            }
         project.mkdir(parents=True, exist_ok=True)
         manifest_path.parent.mkdir(parents=True, exist_ok=True)
         manifest_path.write_text(
             json.dumps(payload, indent=2, ensure_ascii=False),
             encoding="utf-8",
         )
+
+    @staticmethod
+    def _load_colmap_mixed_project_manifest(project: Path) -> dict[str, object]:
+        path = project / COLMAP_MIXED_MANIFEST
+        if not path.is_file():
+            return {}
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            return {}
+        return data if isinstance(data, dict) else {}
 
     def _write_spheresfm_project_manifest(self) -> None:
         project = self._spheresfm_project_dir()

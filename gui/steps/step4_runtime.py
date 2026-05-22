@@ -268,7 +268,10 @@ class Step4RuntimeMixin:
         labels = {
             "metashape": "PHASE_METASHAPE_IMPORT",
             "colmap_rig_export": "PHASE_COLMAP_RIG_EXPORT",
+            "colmap_mixed_prepare": "PHASE_COLMAP_MIXED_PREPARE",
             "colmap_feature": "PHASE_COLMAP_FEATURE",
+            "colmap_feature_rig": "PHASE_COLMAP_FEATURE_RIG",
+            "colmap_feature_normal": "PHASE_COLMAP_FEATURE_NORMAL",
             "colmap_rig_config": "PHASE_COLMAP_RIG_CONFIG",
             "colmap_match": "PHASE_COLMAP_MATCH",
             "colmap_mapper": "PHASE_COLMAP_MAPPER",
@@ -294,6 +297,11 @@ class Step4RuntimeMixin:
             self._processed = 0
             self._explicit_progress = False
             return None
+        if phase == "colmap_mixed_prepare":
+            self._converted_total = 0
+            self._processed = 0
+            self._explicit_progress = False
+            return None
         if phase == "spheresfm_cubemap":
             self._converted_total = 0
             self._processed = 0
@@ -301,6 +309,12 @@ class Step4RuntimeMixin:
             return None
         if phase == "colmap_feature":
             total = self._count_colmap_rig_images()
+            return 0, total if total > 0 else 0
+        if phase == "colmap_feature_rig":
+            total = self._count_colmap_image_list(self._colmap_rig_dir() / "rig_image_list.txt")
+            return 0, total if total > 0 else 0
+        if phase == "colmap_feature_normal":
+            total = self._count_colmap_image_list(self._colmap_rig_dir() / "normal_image_list.txt")
             return 0, total if total > 0 else 0
         if phase == "spheresfm_prepare":
             total = self._count_source_images()
@@ -406,6 +420,15 @@ class Step4RuntimeMixin:
     def _count_colmap_rig_images(self) -> int:
         images_dir = self._colmap_rig_images_dir()
         return self._count_images_in_dir(images_dir)
+
+    @staticmethod
+    def _count_colmap_image_list(path: Path) -> int:
+        if not path.is_file():
+            return 0
+        try:
+            return sum(1 for line in path.read_text(encoding="utf-8").splitlines() if line.strip())
+        except OSError:
+            return 0
 
     def _count_source_images(self) -> int:
         if not self.scene_dir:

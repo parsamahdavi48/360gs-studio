@@ -15,17 +15,24 @@ from core.orientation_correction import (
 )
 from core.scene_inventory import build_scene_inventory
 from core.scene_layout import step4_meta_dir
-from core.sfm_input_plan import SFM_ACTION_LINK_OR_COPY_NORMAL_IMAGE, build_colmap_mixed_sfm_input_plan
+from core.sfm_input_plan import (
+    SFM_ACTION_EXPAND_ERP_TO_RIG_VIEWS,
+    SFM_ACTION_LINK_OR_COPY_NORMAL_IMAGE,
+    SfmInputPlan,
+    build_colmap_mixed_sfm_input_plan,
+)
 from gui import i18n
 from gui.cubemap.view_config import _BLOCK_ENABLED_VIEWS
 from gui.steps.cubemap_commands import (
     ColmapExportCommand,
+    ColmapMixedPrepareCommand,
     ColmapSfmCommand,
     CubemapConversionCommand,
     MetashapePreprocessCommand,
     SphereSfmCommand,
     SphereSfmTransformsCommand,
     build_colmap_export_cmd,
+    build_colmap_mixed_prepare_cmd,
     build_colmap_sfm_commands,
     build_cubemap_conversion_cmd,
     build_metashape_preprocess_cmd,
@@ -74,19 +81,22 @@ class Step4CommandPlanMixin:
         if self._is_colmap_method():
             run_conversion = self.pipeline_stage_intent(_PIPELINE_STAGE_CONVERSION)
             run_sfm = self.pipeline_stage_intent(_PIPELINE_STAGE_SFM)
+            plan: SfmInputPlan | None = None
             if run_conversion or run_sfm:
                 self._validate_image_only_export()
-            if run_conversion:
-                self._validate_colmap_rig_source_plan()
+                plan = self._validate_colmap_source_plan()
             if run_conversion and not self._prepare_colmap_rig_dir():
                 return []
             steps: list[tuple[str, list[str]]] = []
             if run_conversion:
-                steps.append(("colmap_rig_export", self._build_cubemap_cmd(image_only=True, colmap_rig=True)))
+                if self._colmap_plan_has_normal_images(plan):
+                    steps.append(("colmap_mixed_prepare", self._build_colmap_mixed_prepare_cmd()))
+                else:
+                    steps.append(("colmap_rig_export", self._build_cubemap_cmd(image_only=True, colmap_rig=True)))
             if run_sfm:
                 if not run_conversion and not self._colmap_rig_images_dir().is_dir():
                     raise ValueError(i18n.t("STEP4_PIPELINE_DETAIL_COLMAP_NEEDS_RIG"))
-                steps.extend(self._build_colmap_sfm_commands())
+                steps.extend(self._build_colmap_sfm_commands(plan=plan, prepared_this_run=run_conversion))
             return steps
 
         run_conversion = self.pipeline_stage_intent(_PIPELINE_STAGE_CONVERSION)
@@ -112,26 +122,21 @@ class Step4CommandPlanMixin:
             steps.append(("colmap", self._build_colmap_cmd()))
         return steps
 
-    def _validate_colmap_rig_source_plan(self) -> None:
+    def _validate_colmap_source_plan(self) -> SfmInputPlan:
         inventory = build_scene_inventory(Path(self.scene_dir))
         plan = build_colmap_mixed_sfm_input_plan(inventory)
         if plan.issues:
             details = "\n".join(f"- {issue.message}" for issue in plan.issues)
             raise ValueError(i18n.t("COLMAP_MIXED_PREFLIGHT_FAILED").format(details=details))
+        return plan
 
-        normal_items = plan.items_for_action(SFM_ACTION_LINK_OR_COPY_NORMAL_IMAGE)
-        if not normal_items:
-            return
+    @staticmethod
+    def _colmap_plan_has_normal_images(plan: SfmInputPlan | None) -> bool:
+        return bool(plan and plan.items_for_action(SFM_ACTION_LINK_OR_COPY_NORMAL_IMAGE))
 
-        preview = ", ".join(item.image_rel_path for item in normal_items[:3])
-        if len(normal_items) > 3:
-            preview = f"{preview}, ..."
-        raise ValueError(
-            i18n.t("COLMAP_MIXED_NORMAL_NOT_IMPLEMENTED").format(
-                count=len(normal_items),
-                preview=preview,
-            )
-        )
+    @staticmethod
+    def _colmap_plan_has_erp_images(plan: SfmInputPlan | None) -> bool:
+        return bool(plan and plan.items_for_action(SFM_ACTION_EXPAND_ERP_TO_RIG_VIEWS))
 
     def _build_preprocess_cmd(self) -> list[str]:
         self._refresh_metashape_auto_inputs_if_empty()
@@ -250,6 +255,37 @@ class Step4CommandPlanMixin:
             )
         )
 
+    def _build_colmap_mixed_prepare_cmd(self) -> list[str]:
+        script = self.base_dir / "scripts" / "prepare_colmap_mixed_project.py"
+        if not script.exists():
+            raise FileNotFoundError(f"prepare_colmap_mixed_project.py が見つかりません: {script}")
+        scene = Path(self.scene_dir)
+        if not scene.is_dir():
+            raise ValueError(f"シーンフォルダが見つかりません: {scene}")
+        views = self.view_config.collect_views(include_disabled=True)
+        enabled = sum(1 for v in views if v["enabled"])
+        if enabled <= 0:
+            raise ValueError("少なくとも1つのビューを有効にしてください")
+        if enabled > _BLOCK_ENABLED_VIEWS:
+            raise ValueError(f"ビュー数が多すぎます ({enabled})。{_BLOCK_ENABLED_VIEWS} 以下にしてください。")
+        views_json = self._write_views_config(step4_meta_dir(scene), views)
+        return build_colmap_mixed_prepare_cmd(
+            ColmapMixedPrepareCommand(
+                python_executable=sys.executable,
+                script=script,
+                scene=scene,
+                output=self._output_dir(),
+                views_json=views_json,
+                scale=float(self.scale_combo.currentData()),
+                invert_masks=self.invert_masks_cb.isChecked(),
+                writes_images=self._writes_images(),
+                writes_masks=self._writes_masks(),
+                output_format=self.output_format_combo.currentData() or "auto",
+                output_bit_depth=self.output_bit_depth_combo.currentData() or "8",
+                jpg_quality=int(self.jpg_quality_edit.text().strip()),
+            )
+        )
+
     def _cubemap_final_orientation(self) -> str:
         if self._is_realityscan_profile():
             return FINAL_ORIENTATION_REALITYSCAN
@@ -330,7 +366,12 @@ class Step4CommandPlanMixin:
             "GLOMAP_EXEC_NOT_FOUND",
         )
 
-    def _build_colmap_sfm_commands(self) -> list[tuple[str, list[str]]]:
+    def _build_colmap_sfm_commands(
+        self,
+        *,
+        plan: SfmInputPlan | None = None,
+        prepared_this_run: bool = False,
+    ) -> list[tuple[str, list[str]]]:
         colmap = self._resolve_colmap_executable()
         rig_dir = self._colmap_rig_dir()
         images_dir = self._colmap_rig_images_dir()
@@ -343,6 +384,16 @@ class Step4CommandPlanMixin:
         glomap = (
             self._resolve_glomap_executable() if mapper == _COLMAP_MAPPER_GLOMAP else self._default_glomap_executable()
         )
+        normal_list = self._colmap_normal_image_list_path()
+        rig_list = self._colmap_rig_image_list_path()
+        has_normal = self._colmap_plan_has_normal_images(plan) or self._image_list_has_entries(normal_list)
+        has_erp = self._colmap_plan_has_erp_images(plan) or self._image_list_has_entries(rig_list)
+        if prepared_this_run and self._colmap_plan_has_normal_images(plan):
+            has_erp = self._colmap_plan_has_erp_images(plan)
+            has_normal = True
+        if has_normal and not prepared_this_run and not self._image_list_has_entries(normal_list):
+            raise ValueError(i18n.t("STEP4_PIPELINE_DETAIL_COLMAP_NEEDS_RIG"))
+        use_split_lists = has_normal and (prepared_this_run or self._image_list_has_entries(normal_list))
         return build_colmap_sfm_commands(
             ColmapSfmCommand(
                 colmap=colmap,
@@ -357,8 +408,28 @@ class Step4CommandPlanMixin:
                 writes_masks=self._writes_masks(),
                 matcher=matcher,
                 mapper=mapper,
+                run_rig_feature=not use_split_lists or has_erp,
+                run_rig_config=not use_split_lists or has_erp,
+                run_normal_feature=has_normal,
+                rig_image_list=rig_list if use_split_lists and has_erp else None,
+                normal_image_list=normal_list if has_normal else None,
             )
         )
+
+    def _colmap_rig_image_list_path(self) -> Path:
+        return self._colmap_rig_dir() / "rig_image_list.txt"
+
+    def _colmap_normal_image_list_path(self) -> Path:
+        return self._colmap_rig_dir() / "normal_image_list.txt"
+
+    @staticmethod
+    def _image_list_has_entries(path: Path) -> bool:
+        if not path.is_file():
+            return False
+        try:
+            return any(line.strip() for line in path.read_text(encoding="utf-8").splitlines())
+        except OSError:
+            return False
 
     def _build_spheresfm_sfm_commands(self) -> list[tuple[str, list[str]]]:
         preflight_script = self.base_dir / "scripts" / "spheresfm_gpu_preflight.py"

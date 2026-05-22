@@ -59,6 +59,22 @@ class ColmapExportCommand:
 
 
 @dataclass(frozen=True)
+class ColmapMixedPrepareCommand:
+    python_executable: str
+    script: Path
+    scene: Path
+    output: Path
+    views_json: Path
+    scale: float
+    invert_masks: bool
+    writes_images: bool
+    writes_masks: bool
+    output_format: str
+    output_bit_depth: str
+    jpg_quality: int
+
+
+@dataclass(frozen=True)
 class ColmapSfmCommand:
     colmap: str
     glomap: str
@@ -72,6 +88,12 @@ class ColmapSfmCommand:
     writes_masks: bool
     matcher: str
     mapper: str
+    run_rig_feature: bool = True
+    run_rig_config: bool = True
+    run_normal_feature: bool = False
+    rig_image_list: Path | None = None
+    normal_image_list: Path | None = None
+    normal_camera_model: str = "SIMPLE_RADIAL"
 
 
 @dataclass(frozen=True)
@@ -202,6 +224,33 @@ def build_colmap_export_cmd(options: ColmapExportCommand) -> list[str]:
     return cmd
 
 
+def build_colmap_mixed_prepare_cmd(options: ColmapMixedPrepareCommand) -> list[str]:
+    cmd = [
+        options.python_executable,
+        "-u",
+        str(options.script),
+        str(options.scene),
+        str(options.output),
+        "--views-json",
+        str(options.views_json),
+        "--output-scale",
+        f"{options.scale:g}",
+        "--output-format",
+        options.output_format,
+        "--output-bit-depth",
+        options.output_bit_depth,
+        "--jpg-quality",
+        str(options.jpg_quality),
+    ]
+    if options.invert_masks:
+        cmd.append("--invert-masks")
+    if not options.writes_images:
+        cmd.append("--skip-images")
+    if not options.writes_masks:
+        cmd.append("--skip-masks")
+    return cmd
+
+
 def build_colmap_sfm_commands(options: ColmapSfmCommand) -> list[tuple[str, list[str]]]:
     if not options.writes_images and not options.images_dir.is_dir():
         raise ValueError(f"COLMAP Rig画像フォルダが見つかりません: {options.images_dir}")
@@ -209,31 +258,60 @@ def build_colmap_sfm_commands(options: ColmapSfmCommand) -> list[tuple[str, list
     options.sparse.mkdir(parents=True, exist_ok=True)
     rig_config = options.rig_dir / "rig_config.json"
 
-    feature_cmd = [
-        options.colmap,
-        "feature_extractor",
-        "--database_path",
-        str(options.database),
-        "--image_path",
-        str(options.images_dir),
-        "--ImageReader.single_camera_per_folder",
-        "1",
-        "--ImageReader.camera_model",
-        "PINHOLE",
-        "--ImageReader.camera_params",
-        options.camera_params,
-    ]
-    if options.writes_masks or options.masks_dir.is_dir():
-        feature_cmd.extend(["--ImageReader.mask_path", str(options.masks_dir)])
+    steps: list[tuple[str, list[str]]] = []
+    has_mixed_feature_split = options.run_rig_feature and options.run_normal_feature
 
-    rig_cmd = [
-        options.colmap,
-        "rig_configurator",
-        "--database_path",
-        str(options.database),
-        "--rig_config_path",
-        str(rig_config),
-    ]
+    if options.run_rig_feature:
+        feature_cmd = [
+            options.colmap,
+            "feature_extractor",
+            "--database_path",
+            str(options.database),
+            "--image_path",
+            str(options.images_dir),
+            "--ImageReader.single_camera_per_folder",
+            "1",
+            "--ImageReader.camera_model",
+            "PINHOLE",
+            "--ImageReader.camera_params",
+            options.camera_params,
+        ]
+        if options.rig_image_list is not None:
+            feature_cmd.extend(["--image_list_path", str(options.rig_image_list)])
+        if options.writes_masks or options.masks_dir.is_dir():
+            feature_cmd.extend(["--ImageReader.mask_path", str(options.masks_dir)])
+        phase = "colmap_feature_rig" if has_mixed_feature_split else "colmap_feature"
+        steps.append((phase, feature_cmd))
+
+    if options.run_rig_config:
+        rig_cmd = [
+            options.colmap,
+            "rig_configurator",
+            "--database_path",
+            str(options.database),
+            "--rig_config_path",
+            str(rig_config),
+        ]
+        steps.append(("colmap_rig_config", rig_cmd))
+
+    if options.run_normal_feature:
+        normal_cmd = [
+            options.colmap,
+            "feature_extractor",
+            "--database_path",
+            str(options.database),
+            "--image_path",
+            str(options.images_dir),
+            "--ImageReader.single_camera_per_folder",
+            "1",
+            "--ImageReader.camera_model",
+            options.normal_camera_model,
+        ]
+        if options.normal_image_list is not None:
+            normal_cmd.extend(["--image_list_path", str(options.normal_image_list)])
+        if options.writes_masks or options.masks_dir.is_dir():
+            normal_cmd.extend(["--ImageReader.mask_path", str(options.masks_dir)])
+        steps.append(("colmap_feature_normal", normal_cmd))
 
     matcher_name = "exhaustive_matcher" if options.matcher == "exhaustive" else "sequential_matcher"
     matcher_cmd = [
@@ -275,16 +353,17 @@ def build_colmap_sfm_commands(options: ColmapSfmCommand) -> list[tuple[str, list
             str(options.images_dir),
             "--output_path",
             str(options.sparse),
-            "--Mapper.ba_refine_sensor_from_rig",
-            "1",
         ]
+        if options.run_rig_config:
+            mapper_cmd.extend(["--Mapper.ba_refine_sensor_from_rig", "1"])
 
-    return [
-        ("colmap_feature", feature_cmd),
-        ("colmap_rig_config", rig_cmd),
-        ("colmap_match", matcher_cmd),
-        ("colmap_mapper", mapper_cmd),
-    ]
+    steps.extend(
+        [
+            ("colmap_match", matcher_cmd),
+            ("colmap_mapper", mapper_cmd),
+        ]
+    )
+    return steps
 
 
 def _spheresfm_feature_options(preset: str) -> list[str]:

@@ -570,11 +570,6 @@ STRINGS: dict[str, str] = {
     "SPHERESFM_MASKS_NOT_FOUND": "masks/ を使用する設定ですが、マスクフォルダが見つかりません: {path}",
     "SPHERESFM_PREFLIGHT_FAILED": "SphereSfMは同一解像度のエクイレクタングラー360°画像だけを入力にできます。\n{details}",
     "COLMAP_MIXED_PREFLIGHT_FAILED": "COLMAP SfMの入力を確認できません。\n{details}",
-    "COLMAP_MIXED_NORMAL_NOT_IMPLEMENTED": (
-        "現在のCOLMAP SfMルートは、360°画像をCubemap Rigへ展開する入力に対応しています。"
-        "通常画像を含む混在入力はまだこの経路では実行できません。"
-        "\n対象: {count}件 ({preview})"
-    ),
     "SPHERESFM_CONVERT_ONLY_NO_SPARSE": "SphereSfMのsparseモデルが見つかりません: {path}\n左サブ工程でSfMをONにして、先にsparseモデルを作成してください。",
     "SPHERESFM_POSE_REQUIRED": "Spatial matcherにはPOSファイルが必要です。",
     "SPHERESFM_POSE_NOT_FOUND": "POSファイルが見つかりません: {path}",
@@ -594,10 +589,13 @@ STRINGS: dict[str, str] = {
     "COLMAP_MAPPER_GLOBAL": "Global",
     "COLMAP_MAPPER_GLOMAP": "GLOMAP",
     "PHASE_COLMAP_RIG_EXPORT": "COLMAP用視点画像を書き出し",
+    "PHASE_COLMAP_MIXED_PREPARE": "COLMAP混在プロジェクト準備",
     "PHASE_METASHAPE_IMPORT": "Metashapeインポート",
     "PHASE_CUBEMAP": "Cubemap視点変換",
     "PHASE_COLMAP_TEXT_MODEL": "COLMAPデータセット作成",
     "PHASE_COLMAP_FEATURE": "COLMAP Feature",
+    "PHASE_COLMAP_FEATURE_RIG": "COLMAP Feature (Rig)",
+    "PHASE_COLMAP_FEATURE_NORMAL": "COLMAP Feature (通常画像)",
     "PHASE_COLMAP_RIG_CONFIG": "COLMAP Rig設定",
     "PHASE_COLMAP_MATCH": "COLMAP Matcher",
     "PHASE_COLMAP_MAPPER": "COLMAP Mapper",

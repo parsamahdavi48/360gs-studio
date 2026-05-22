@@ -568,11 +568,6 @@ STRINGS: dict[str, str] = {
     "SPHERESFM_MASKS_NOT_FOUND": "Use masks/ is enabled, but the mask folder was not found: {path}",
     "SPHERESFM_PREFLIGHT_FAILED": "SphereSfM can only use same-resolution equirectangular 360° images.\n{details}",
     "COLMAP_MIXED_PREFLIGHT_FAILED": "COLMAP SfM input could not be validated.\n{details}",
-    "COLMAP_MIXED_NORMAL_NOT_IMPLEMENTED": (
-        "The current COLMAP SfM route supports 360° images expanded into a Cubemap Rig. "
-        "Mixed input that includes normal perspective images cannot be run on this route yet."
-        "\nAffected: {count} image(s) ({preview})"
-    ),
     "SPHERESFM_CONVERT_ONLY_NO_SPARSE": "SphereSfM sparse model was not found: {path}\nTurn on the SfM sub-stage first to create a sparse model.",
     "SPHERESFM_POSE_REQUIRED": "Spatial matcher requires a POS file.",
     "SPHERESFM_POSE_NOT_FOUND": "POS file was not found: {path}",
@@ -591,10 +586,13 @@ STRINGS: dict[str, str] = {
     "COLMAP_MAPPER_GLOBAL": "Global",
     "COLMAP_MAPPER_GLOMAP": "GLOMAP",
     "PHASE_COLMAP_RIG_EXPORT": "Export COLMAP View Images",
+    "PHASE_COLMAP_MIXED_PREPARE": "Prepare COLMAP Mixed Project",
     "PHASE_METASHAPE_IMPORT": "Metashape Import",
     "PHASE_CUBEMAP": "Cubemap Projection Export",
     "PHASE_COLMAP_TEXT_MODEL": "Create COLMAP Dataset",
     "PHASE_COLMAP_FEATURE": "COLMAP Feature",
+    "PHASE_COLMAP_FEATURE_RIG": "COLMAP Feature (Rig)",
+    "PHASE_COLMAP_FEATURE_NORMAL": "COLMAP Feature (Normal Images)",
     "PHASE_COLMAP_RIG_CONFIG": "COLMAP Rig Setup",
     "PHASE_COLMAP_MATCH": "COLMAP Matcher",
     "PHASE_COLMAP_MAPPER": "COLMAP Mapper",
