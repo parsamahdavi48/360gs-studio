@@ -1420,6 +1420,7 @@ TIPS: dict[str, str] = {
     "REVIEW_THUMBNAIL_FILTER": "サムネイル一覧の表示対象を絞り込みます。採用/除外の保存先CSVは同じです。現在: {filter}",
     "PREVIEW_PROJECTION_EQUIRECT": "エクイレクタングラー画像をそのまま表示します",
     "PREVIEW_PROJECTION_TOGGLE": "FOV 90°の正方形パース表示。オンにするとドラッグで視線方向を回し、ホイールで表示中画像を2Dズームします",
+    "PREVIEW_PROJECTION_TOGGLE_DISABLED": "通常画像ではFOV 90°パース表示は使いません。360°画像の行で有効になります",
     "MS_IMAGES": "カメラXML内の画像名に対応する画像フォルダ。シーンフォルダ内の images/ を自動使用します",
     "MS_XML": "カメラポーズXML。シーン直下のXMLを読み取り、Metashapeのカメラ情報と画像名が合うものを自動入力します",
     "MS_PLY": "点群PLY。シーン直下に pointcloud.ply 以外のPLYが1つだけある場合は自動で使います。複数ある場合は手動で選択します",

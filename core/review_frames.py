@@ -82,6 +82,7 @@ from core.review_frame_filters import (
     thumbnail_filter_indices,
 )
 from core.scene_layout import selected_frames_path
+from core.scene_project import scene_image_projection_map
 from gui import i18n
 
 if _PYSIDE_IMPORT_ERROR is None:
@@ -123,6 +124,7 @@ else:  # pragma: no cover - PySide6 missing
 
 _ICON_DIR = Path(__file__).resolve().parents[1] / "gui" / "assets" / "icons"
 _PIXMAP_CACHE_LIMIT = 3
+_PROJECTION_EQUIRECTANGULAR = "equirectangular"
 
 
 def _review_icon(name: str) -> QIcon:
@@ -209,6 +211,7 @@ if QMainWindow is not None:
             self._thumbnail_filter_key = REVIEW_THUMBNAIL_FILTER_ALL
             self._visible_indices = list(range(len(self._all_rows)))
             self.rows = list(self._all_rows)
+            self._projection_by_rel = self._load_projection_map()
             self._include_added_problem_frames = False
             self.problem_indices = self._collect_problem_indices()
 
@@ -394,6 +397,32 @@ if QMainWindow is not None:
                 decision = row.get("decision", "keep").strip().lower()
                 row["decision"] = "drop" if decision == "drop" else "keep"
             return rows
+
+        def _load_projection_map(self) -> dict[str, str]:
+            image_paths = []
+            for row in self._all_rows:
+                rel = row.get("output_file", "").strip()
+                if rel:
+                    image_paths.append(self.scene_dir / rel)
+            if not image_paths:
+                return {}
+            try:
+                return scene_image_projection_map(self.scene_dir, image_paths)
+            except Exception:
+                return {}
+
+        @staticmethod
+        def _row_output_key(row: dict[str, str]) -> str:
+            return row.get("output_file", "").strip().replace("\\", "/")
+
+        def _row_projection(self, row: dict[str, str]) -> str:
+            return self._projection_by_rel.get(self._row_output_key(row), _PROJECTION_EQUIRECTANGULAR)
+
+        def _row_supports_perspective(self, row: dict[str, str]) -> bool:
+            return self._row_projection(row) == _PROJECTION_EQUIRECTANGULAR
+
+        def _current_row_supports_perspective(self) -> bool:
+            return bool(self.rows) and self._row_supports_perspective(self._current_row())
 
         def _status_tokens(self, row: dict[str, str]) -> set[str]:
             return review_status_tokens(row)
@@ -590,6 +619,9 @@ if QMainWindow is not None:
         def set_preview_mode(self, mode: str) -> None:
             if mode not in {PREVIEW_MODE_PERSPECTIVE, PREVIEW_MODE_SINGLE, PREVIEW_MODE_THUMBNAILS}:
                 return
+            if mode == PREVIEW_MODE_PERSPECTIVE and not self._current_row_supports_perspective():
+                self._update_projection_button()
+                return
             if mode == self._preview_mode:
                 return
             self._preview_mode = mode
@@ -625,12 +657,24 @@ if QMainWindow is not None:
 
         def _update_projection_button(self) -> None:
             perspective = self._preview_projection == PREVIEW_PROJECTION_PERSPECTIVE
+            enabled = self._current_row_supports_perspective()
             self.projection_toggle_btn.blockSignals(True)
             try:
                 self.projection_toggle_btn.setChecked(perspective)
+                self.projection_toggle_btn.setEnabled(enabled)
             finally:
                 self.projection_toggle_btn.blockSignals(False)
-            self.projection_toggle_btn.setToolTip(i18n.tip("PREVIEW_PROJECTION_TOGGLE"))
+            tip_key = "PREVIEW_PROJECTION_TOGGLE" if enabled else "PREVIEW_PROJECTION_TOGGLE_DISABLED"
+            self.projection_toggle_btn.setToolTip(i18n.tip(tip_key))
+
+        def _sync_perspective_availability(self) -> None:
+            enabled = self._current_row_supports_perspective()
+            if self._preview_mode == PREVIEW_MODE_PERSPECTIVE and not enabled:
+                self._preview_mode = PREVIEW_MODE_SINGLE
+                self._set_preview_projection(PREVIEW_PROJECTION_EQUIRECT)
+                self.preview_stack.setCurrentIndex(0)
+                self.mode_toolbar.set_mode(PREVIEW_MODE_SINGLE)
+            self._update_projection_button()
 
         def _on_perspective_dragged(self, delta_x: float, delta_y: float) -> None:
             if self._preview_projection != PREVIEW_PROJECTION_PERSPECTIVE:
@@ -929,6 +973,7 @@ if QMainWindow is not None:
                 return
 
             row = self._current_row()
+            self._sync_perspective_availability()
             seq = int(row.get("seq", self.index + 1))
             total = len(self.rows)
 

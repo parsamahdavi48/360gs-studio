@@ -1421,6 +1421,7 @@ TIPS: dict[str, str] = {
     "REVIEW_THUMBNAIL_FILTER": "Limit which frames are shown in the thumbnail list. Keep/drop changes still write to the same CSV. Current: {filter}",
     "PREVIEW_PROJECTION_EQUIRECT": "Show the equirectangular image directly",
     "PREVIEW_PROJECTION_TOGGLE": "Square 90° FOV perspective view. When enabled, drag to look around and use the wheel for 2D zoom on the displayed image",
+    "PREVIEW_PROJECTION_TOGGLE_DISABLED": "90° FOV perspective view is not used for normal images. It is enabled on 360° image rows.",
     "MS_IMAGES": "Image folder matching the filenames in the camera XML. The GUI automatically uses images/ inside the scene folder",
     "MS_XML": "Camera pose XML. XML files at the scene root are parsed, and Metashape camera data matching image names is auto-filled.",
     "MS_PLY": "Point-cloud PLY. If the scene root has exactly one PLY other than pointcloud.ply, it is used automatically. If there are multiple PLY files, select one manually.",

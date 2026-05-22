@@ -20,7 +20,7 @@ from core.review_blur_sensitivity import (
 from core.scene_layout import selected_frames_path
 from gui import i18n
 from gui.app import MainWindow
-from gui.common.preview_mode_toolbar import PREVIEW_MODE_SINGLE, PREVIEW_MODE_THUMBNAILS
+from gui.common.preview_mode_toolbar import PREVIEW_MODE_PERSPECTIVE, PREVIEW_MODE_SINGLE, PREVIEW_MODE_THUMBNAILS
 from gui.steps.step2_review import ReviewStep
 
 
@@ -87,6 +87,37 @@ def _write_blur_scene(scene: Path) -> Path:
                 "blur_score_final": "55",
                 "sharpness_baseline": "100",
                 "sharpness_ratio": ratio,
+                "change_score_final": "0.1",
+            }
+        )
+
+    csv_path = selected_frames_path(scene)
+    csv_path.parent.mkdir(parents=True, exist_ok=True)
+    with csv_path.open("w", encoding="utf-8", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=list(rows[0].keys()))
+        writer.writeheader()
+        writer.writerows(rows)
+    return csv_path
+
+
+def _write_mixed_projection_scene(scene: Path) -> Path:
+    images = scene / "images"
+    images.mkdir(exist_ok=True)
+    specs = [("equirect.png", 128, 64), ("normal.png", 64, 48)]
+    rows = []
+    for seq, (name, width, height) in enumerate(specs, start=1):
+        pixmap = QPixmap(width, height)
+        pixmap.fill(Qt.red if seq == 1 else Qt.blue)
+        image_rel = f"images/{name}"
+        assert pixmap.save(str(scene / image_rel))
+        rows.append(
+            {
+                "seq": str(seq),
+                "output_file": image_rel,
+                "decision": "keep",
+                "status": "ok",
+                "timestamp_sec": str(seq),
+                "blur_score_final": "100",
                 "change_score_final": "0.1",
             }
         )
@@ -311,6 +342,36 @@ def test_review_step_apply_uses_flag_changed_across_preview_modes(
         "images/frame_000003.png",
     ]
     assert [row["decision"] for row in rows] == ["keep", "keep"]
+
+
+def test_review_perspective_mode_is_disabled_for_normal_images(tmp_path: Path) -> None:
+    _app()
+    _write_mixed_projection_scene(tmp_path)
+    step = ReviewStep(Path.cwd())
+    step.set_scene_dir(str(tmp_path))
+    step.on_activated()
+    widget = step._review_widget
+    assert widget is not None
+
+    assert widget.projection_toggle_btn.isEnabled()
+    widget.set_preview_mode(PREVIEW_MODE_PERSPECTIVE)
+    assert widget.preview_mode() == PREVIEW_MODE_PERSPECTIVE
+
+    widget._set_index(1)
+
+    assert widget.preview_mode() == PREVIEW_MODE_SINGLE
+    assert not widget.projection_toggle_btn.isEnabled()
+    assert widget.projection_toggle_btn.toolTip() == i18n.tip("PREVIEW_PROJECTION_TOGGLE_DISABLED")
+
+    widget.set_preview_mode(PREVIEW_MODE_PERSPECTIVE)
+
+    assert widget.preview_mode() == PREVIEW_MODE_SINGLE
+
+    widget._set_index(0)
+
+    assert widget.projection_toggle_btn.isEnabled()
+    widget.set_preview_mode(PREVIEW_MODE_PERSPECTIVE)
+    assert widget.preview_mode() == PREVIEW_MODE_PERSPECTIVE
 
 
 def test_review_step_can_renumber_kept_images_on_finalize(tmp_path: Path, monkeypatch) -> None:

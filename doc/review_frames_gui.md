@@ -51,6 +51,8 @@ Use this for detail checks such as blur, unwanted people, stitch seams, and thin
 
 For 360° equirectangular images, this switches the preview to a square 90° FOV perspective view. Drag to look around and use the mouse wheel for 2D zoom on the displayed image.
 
+For normal images or normal video frames, this button is disabled. If you move from a 360° image in perspective preview to a normal image, Step 2 automatically returns to single preview.
+
 ## Advisory Labels
 
 Step 2 labels are not a separate quality score. They explain why a frame is kept, dropped, added, or marked for review.
