@@ -71,3 +71,15 @@ def test_prepare_colmap_mixed_project_writes_rig_and_normal_lists(tmp_path: Path
     assert manifest["normal_source_count"] == 1
     assert manifest["rig_image_count"] == 2
     assert manifest["normal_camera_model"] == "SIMPLE_RADIAL"
+    assert manifest["normal_camera_groups"] == [
+        {
+            "id": "unknown_40x30",
+            "image_dir": "normal/unknown_40x30",
+            "camera_model": "SIMPLE_RADIAL",
+            "width": 40,
+            "height": 30,
+            "source_kind": "unknown",
+            "source_id": "unknown",
+            "image_count": 1,
+        }
+    ]

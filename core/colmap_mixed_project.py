@@ -1,11 +1,15 @@
 from __future__ import annotations
 
 import json
-import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from core.colmap_normal_camera_contract import (
+    COLMAP_NORMAL_CAMERA_MODEL,
+    normal_camera_group_for_image,
+    normal_camera_groups_for_images,
+)
 from core.colmap_rig_export import (
     DEFAULT_RIG_NAME,
     colmap_rig_root,
@@ -30,7 +34,6 @@ from core.sfm_input_plan import (
 COLMAP_MIXED_MANIFEST = "stechdrive_colmap_mixed_project.json"
 COLMAP_RIG_IMAGE_LIST = "rig_image_list.txt"
 COLMAP_NORMAL_IMAGE_LIST = "normal_image_list.txt"
-COLMAP_NORMAL_CAMERA_MODEL = "SIMPLE_RADIAL"
 
 
 @dataclass(frozen=True, slots=True)
@@ -218,7 +221,8 @@ def _link_normal_images(
     names: list[str] = []
     total = len(images)
     for index, image in enumerate(images, start=1):
-        rel = Path("normal") / _normal_group_name(image) / _normal_filename(image, index, total)
+        group = normal_camera_group_for_image(image)
+        rel = Path(group.image_dir) / _normal_filename(image, index, total)
         image_dest = project_images_dir / rel
         if write_images:
             replace_file_with_link_or_copy(image.path, image_dest)
@@ -242,28 +246,12 @@ def _link_normal_images(
     return names
 
 
-_SAFE_NAME_RE = re.compile(r"[^A-Za-z0-9._-]+")
-
-
-def _safe_name(value: str, *, fallback: str) -> str:
-    text = _SAFE_NAME_RE.sub("_", value.strip()).strip("._-")
-    return text or fallback
-
-
-def _normal_group_name(image: SceneImage) -> str:
-    source = image.source_id or image.source_kind or "normal"
-    source = _safe_name(source, fallback="source")
-    width = image.width if image.width > 0 else 0
-    height = image.height if image.height > 0 else 0
-    return f"{source}_{width}x{height}"
-
-
 def _normal_filename(image: SceneImage, index: int, total: int) -> str:
     parts = Path(image.rel_path).parts
     if parts and parts[0].lower() == "images" and len(parts) > 1:
         parts = parts[1:]
     raw = "__".join(parts) if parts else image.path.name
-    name = _safe_name(raw, fallback=f"image{image.path.suffix.lower() or '.jpg'}")
+    name = _safe_path_name(raw, fallback=f"image{image.path.suffix.lower() or '.jpg'}")
     digits = max(5, len(str(max(1, total))))
     return f"normal_{index:0{digits}d}_{name}"
 
@@ -300,6 +288,19 @@ def _manifest(
         "rig_image_list": COLMAP_RIG_IMAGE_LIST,
         "normal_image_list": COLMAP_NORMAL_IMAGE_LIST,
         "normal_camera_model": COLMAP_NORMAL_CAMERA_MODEL,
+        "normal_camera_groups": [
+            {
+                "id": group.group_id,
+                "image_dir": group.image_dir,
+                "camera_model": group.camera_model,
+                "width": group.width,
+                "height": group.height,
+                "source_kind": group.source_kind,
+                "source_id": group.source_id,
+                "image_count": group.image_count,
+            }
+            for group in normal_camera_groups_for_images(normal_images)
+        ],
         "source_images_dir": str(inventory.images_dir),
         "source_masks_dir": str(inventory.masks_dir),
         "erp_source_count": len(erp_images),
@@ -308,3 +309,8 @@ def _manifest(
         "normal_image_count": len(normal_image_names),
         "warnings": warnings,
     }
+
+
+def _safe_path_name(value: str, *, fallback: str) -> str:
+    safe = "".join(ch if ch.isalnum() or ch in "._-" else "_" for ch in value.strip()).strip("._-")
+    return safe or fallback

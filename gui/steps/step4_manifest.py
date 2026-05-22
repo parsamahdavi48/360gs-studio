@@ -607,6 +607,7 @@ class Step4ManifestMixin:
                 "rig_image_count": mixed_manifest.get("rig_image_count", 0),
                 "normal_image_count": mixed_manifest.get("normal_image_count", 0),
                 "normal_camera_model": mixed_manifest.get("normal_camera_model", ""),
+                "normal_camera_groups": mixed_manifest.get("normal_camera_groups", []),
                 "warnings": mixed_manifest.get("warnings", []),
             }
         project.mkdir(parents=True, exist_ok=True)
