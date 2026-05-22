@@ -95,6 +95,8 @@ def _dataset_files(root: Path) -> dict[str, Path]:
 def _existing_files(files: dict[str, str | Path]) -> dict[str, str | Path]:
     result: dict[str, str | Path] = {}
     for key, value in files.items():
+        if not str(value).strip():
+            continue
         path = Path(value)
         if path.exists():
             result[key] = value
