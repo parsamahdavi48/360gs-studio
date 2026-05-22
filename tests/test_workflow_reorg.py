@@ -11,6 +11,7 @@ from PySide6.QtWidgets import QApplication, QLabel, QPushButton, QSizePolicy
 
 from core.artifact_registry import load_artifacts
 from core.normal_camera_metadata import load_normal_camera_default
+from core.scene_layout import source_image_sets_path
 from gui import i18n
 from gui.app import MainWindow
 from gui.cubemap.view_config import VIEW_MODE_CUSTOM
@@ -244,6 +245,64 @@ def test_colmap_sfm_route_saves_normal_camera_default(tmp_path: Path) -> None:
         normal_feature = commands[1][1]
         assert normal_feature[normal_feature.index("--ImageReader.camera_model") + 1] == "PINHOLE"
         assert normal_feature[normal_feature.index("--ImageReader.camera_params") + 1] == "20,21,19.5,14.5"
+    finally:
+        window.shutdown()
+
+
+def test_colmap_sfm_route_saves_source_resolution_normal_camera_default(tmp_path: Path) -> None:
+    _app()
+    _write_image(tmp_path / "images" / "a.jpg", (40, 30))
+    _write_image(tmp_path / "images" / "b.jpg", (80, 60))
+    source_sets = source_image_sets_path(tmp_path)
+    source_sets.parent.mkdir(parents=True, exist_ok=True)
+    source_sets.write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "image_sets": [
+                    {
+                        "id": "cam_a",
+                        "source_type": "image_sequence",
+                        "projection": "normal",
+                        "files": [{"scene_path": "images/a.jpg"}],
+                    },
+                    {
+                        "id": "cam_b",
+                        "source_type": "image_sequence",
+                        "projection": "normal",
+                        "files": [{"scene_path": "images/b.jpg"}],
+                    },
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    fake_colmap = tmp_path / "colmap.exe"
+    fake_colmap.write_text("", encoding="utf-8")
+    window = MainWindow(str(tmp_path))
+    try:
+        window.sfm_step.show_route("colmap")
+        window.sfm_step.colmap_exec_browse.set_text(str(fake_colmap))
+        target_scope = ("group", "image_sequence", "cam_a", 40, 30)
+        scope_index = window.sfm_step._find_combo_data(window.sfm_step.colmap_normal_camera_scope_combo, target_scope)
+        assert scope_index >= 0
+        window.sfm_step.colmap_normal_camera_scope_combo.setCurrentIndex(scope_index)
+        model_index = window.sfm_step.colmap_normal_camera_model_combo.findData("PINHOLE")
+        assert model_index >= 0
+        window.sfm_step.colmap_normal_camera_model_combo.setCurrentIndex(model_index)
+        window.sfm_step.colmap_normal_camera_params_edit.setText("20,21,19.5,14.5")
+        window.sfm_step.colmap_normal_camera_apply_btn.click()
+
+        commands = window.sfm_step.build_commands()
+
+        normal_features = [cmd for phase, cmd in commands if phase.startswith("colmap_feature_normal")]
+        assert len(normal_features) == 2
+        camera_models = [cmd[cmd.index("--ImageReader.camera_model") + 1] for cmd in normal_features]
+        assert "PINHOLE" in camera_models
+        assert "SIMPLE_RADIAL" in camera_models
+        pinhole_cmd = next(cmd for cmd in normal_features if cmd[cmd.index("--ImageReader.camera_model") + 1] == "PINHOLE")
+        assert pinhole_cmd[pinhole_cmd.index("--ImageReader.camera_params") + 1] == "20,21,19.5,14.5"
+        assert any("normal_image_list_cam_a_40x30_pinhole_20_21_19p5_14p5.txt" in part for part in pinhole_cmd)
     finally:
         window.shutdown()
 

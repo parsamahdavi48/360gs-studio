@@ -9,7 +9,7 @@ from typing import Any
 from PIL import Image
 
 from core.mask_metadata import mask_file_summary, summary_size
-from core.normal_camera_metadata import load_normal_camera_default
+from core.normal_camera_metadata import load_normal_camera_defaults, normal_camera_default_for_group
 from core.projection_contract import (
     PROJECTION_EQUIRECTANGULAR,
     PROJECTION_NORMAL,
@@ -124,7 +124,7 @@ def build_scene_inventory(
     projection_map = scene_image_projection_map(scene, image_paths) if image_paths else {}
     selected_map = _selected_frame_metadata(scene)
     image_set_map = _image_set_metadata(scene)
-    normal_camera_default = load_normal_camera_default(scene)
+    normal_camera_defaults = load_normal_camera_defaults(scene)
 
     images: list[SceneImage] = []
     for path in image_paths:
@@ -143,13 +143,20 @@ def build_scene_inventory(
         camera_source = str(metadata.get("camera_source") or "").strip()
         if (
             projection == PROJECTION_NORMAL
-            and normal_camera_default.enabled
             and not camera_model
             and not camera_params
         ):
-            camera_model = normal_camera_default.camera_model
-            camera_params = normal_camera_default.camera_params
-            camera_source = normal_camera_default.camera_source
+            normal_camera_default = normal_camera_default_for_group(
+                normal_camera_defaults,
+                source_kind=source_kind,
+                source_id=source_id,
+                width=width,
+                height=height,
+            )
+            if normal_camera_default.enabled:
+                camera_model = normal_camera_default.camera_model
+                camera_params = normal_camera_default.camera_params
+                camera_source = normal_camera_default.camera_source
         mask = _mask_artifact(scene, images_root, masks_root, path, image_size=(width, height))
         images.append(
             SceneImage(

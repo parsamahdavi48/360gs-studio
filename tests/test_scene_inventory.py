@@ -5,7 +5,11 @@ from pathlib import Path
 
 from PIL import Image
 
-from core.normal_camera_metadata import save_normal_camera_default
+from core.normal_camera_metadata import (
+    load_normal_camera_default,
+    save_normal_camera_default,
+    save_normal_camera_group_default,
+)
 from core.scene_inventory import (
     PROJECTION_EQUIRECTANGULAR,
     PROJECTION_NORMAL,
@@ -166,3 +170,61 @@ def test_scene_inventory_applies_normal_camera_default_to_unannotated_normal_ima
     assert images["normal.jpg"].camera_params == (20.0, 21.0, 19.5, 14.5)
     assert images["normal.jpg"].camera_source == "test_default"
     assert images["pano.jpg"].camera_model == ""
+
+
+def test_scene_inventory_applies_normal_camera_group_default_before_scene_default(tmp_path: Path) -> None:
+    scene = tmp_path
+    _write_image(scene / "images" / "a.jpg", (40, 30))
+    _write_image(scene / "images" / "b.jpg", (80, 60))
+    save_normal_camera_default(
+        scene,
+        camera_model="SIMPLE_RADIAL",
+        camera_params=(70.0, 39.5, 29.5, 0.01),
+        camera_source="scene_default",
+    )
+    save_normal_camera_group_default(
+        scene,
+        source_kind="unknown",
+        source_id="",
+        width=40,
+        height=30,
+        camera_model="PINHOLE",
+        camera_params=(20.0, 21.0, 19.5, 14.5),
+        camera_source="group_default",
+    )
+
+    inventory = build_scene_inventory(scene)
+    images = {image.path.name: image for image in inventory.images}
+
+    assert images["a.jpg"].camera_model == "PINHOLE"
+    assert images["a.jpg"].camera_params == (20.0, 21.0, 19.5, 14.5)
+    assert images["a.jpg"].camera_source == "group_default"
+    assert images["b.jpg"].camera_model == "SIMPLE_RADIAL"
+    assert images["b.jpg"].camera_source == "scene_default"
+
+
+def test_clearing_scene_normal_camera_default_keeps_group_defaults(tmp_path: Path) -> None:
+    scene = tmp_path
+    save_normal_camera_default(
+        scene,
+        camera_model="SIMPLE_RADIAL",
+        camera_params=(70.0, 39.5, 29.5, 0.01),
+        camera_source="scene_default",
+    )
+    save_normal_camera_group_default(
+        scene,
+        source_kind="unknown",
+        source_id="",
+        width=40,
+        height=30,
+        camera_model="PINHOLE",
+        camera_params=(20.0, 21.0, 19.5, 14.5),
+        camera_source="group_default",
+    )
+
+    save_normal_camera_default(scene, camera_model="")
+
+    assert not load_normal_camera_default(scene).enabled
+    _write_image(scene / "images" / "a.jpg", (40, 30))
+    inventory = build_scene_inventory(scene)
+    assert inventory.images[0].camera_model == "PINHOLE"
