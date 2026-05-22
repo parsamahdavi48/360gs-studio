@@ -18,7 +18,6 @@ from core.metashape_model import (
 )
 from core.scene_inventory import build_scene_inventory
 
-
 _IDENTITY = "1 0 0 0 0 1 0 0 0 0 1 0 0 0 0 1"
 
 

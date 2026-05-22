@@ -5,8 +5,8 @@ from dataclasses import dataclass
 from core.scene_inventory import (
     PROJECTION_EQUIRECTANGULAR,
     PROJECTION_NORMAL,
-    SceneInventory,
     SceneImage,
+    SceneInventory,
 )
 from core.sfm_preflight import PreflightIssue, preflight_spheresfm
 
