@@ -31,6 +31,7 @@ from PySide6.QtWidgets import (
 )
 
 from core.extract_sessions import load_manifest, matching_video_sessions, sanitize_filename_prefix
+from core.scene_import_contracts import IMAGE_EXTS as _IMAGE_SEQUENCE_EXTS
 from core.scene_layout import APP_DIR_NAME, scene_images_dir, source_videos_path
 from core.scene_project import (
     infer_video_projection,
@@ -67,6 +68,8 @@ _CAPTURE_PROFILE_PRESETS: dict[str, tuple[float, float, float]] = {
 _JPEG_QUALITY_MIN = 1
 _JPEG_QUALITY_MAX = 31
 _JPEG_QUALITY_DEFAULT = 2
+_SOURCE_MODE_VIDEO = "video"
+_SOURCE_MODE_IMAGE_SEQUENCE = "image_sequence"
 _VIDEO_EXTENSIONS = {".mp4", ".mov", ".mkv", ".avi", ".m4v"}
 _VIDEO_SCAN_EXCLUDED_DIRS = {
     APP_DIR_NAME.casefold(),
@@ -137,6 +140,14 @@ class ExtractStep(BaseStepWidget):
         basic = QFormLayout()
         basic.setSpacing(6)
 
+        self.source_mode_combo = QComboBox()
+        self.source_mode_combo.setToolTip(i18n.tip("INPUT_SOURCE_MODE"))
+        self.source_mode_combo.addItem(i18n.t("INPUT_SOURCE_VIDEO"), _SOURCE_MODE_VIDEO)
+        self.source_mode_combo.addItem(i18n.t("INPUT_SOURCE_IMAGE_SEQUENCE"), _SOURCE_MODE_IMAGE_SEQUENCE)
+        self.source_mode_combo.setFixedWidth(180)
+        self.source_mode_combo.currentIndexChanged.connect(lambda _: self._on_source_mode_changed())
+        add_tooltip_row(basic, i18n.t("INPUT_SOURCE_MODE"), self.source_mode_combo, i18n.tip("INPUT_SOURCE_MODE"))
+
         self.video_browse = BrowseWidget(
             self,
             mode="files",
@@ -146,6 +157,21 @@ class ExtractStep(BaseStepWidget):
         self.video_browse.setToolTip(i18n.tip("INPUT_VIDEO"))
         self.video_browse.path_changed.connect(self._on_video_changed)
         self.video_browse.hide()
+
+        self.image_sequence_browse = BrowseWidget(
+            self,
+            mode="dir",
+            placeholder=i18n.t("INPUT_IMAGE_SEQUENCE_PLACEHOLDER"),
+        )
+        self.image_sequence_browse.setToolTip(i18n.tip("INPUT_IMAGE_SEQUENCE"))
+        self.image_sequence_browse.path_changed.connect(self._on_image_sequence_changed)
+        add_tooltip_row(
+            basic,
+            i18n.t("INPUT_IMAGE_SEQUENCE"),
+            self.image_sequence_browse,
+            i18n.tip("INPUT_IMAGE_SEQUENCE"),
+        )
+        self.image_sequence_label = basic.labelForField(self.image_sequence_browse)
 
         self.output_mode_combo = QComboBox()
         self.output_mode_combo.setToolTip(i18n.tip("EXTRACT_OUTPUT_MODE"))
@@ -315,7 +341,8 @@ class ExtractStep(BaseStepWidget):
         self.extract_action_row = info_row_widget
         layout.addWidget(info_row_widget)
 
-        queue_header = QHBoxLayout()
+        self.video_queue_header_widget = QWidget()
+        queue_header = QHBoxLayout(self.video_queue_header_widget)
         queue_header.setContentsMargins(0, 0, 0, 0)
         queue_header.setSpacing(6)
         queue_header.addWidget(QLabel(i18n.t("VIDEO_QUEUE_SECTION")))
@@ -349,7 +376,7 @@ class ExtractStep(BaseStepWidget):
         self.clear_video_btn.setFixedSize(32, 32)
         self.clear_video_btn.clicked.connect(self._clear_input_videos)
         queue_header.addWidget(self.clear_video_btn)
-        work_layout.addLayout(queue_header)
+        work_layout.addWidget(self.video_queue_header_widget)
 
         self.video_queue_list = QListWidget()
         self.video_queue_list.setSelectionMode(QAbstractItemView.ExtendedSelection)
@@ -426,6 +453,7 @@ class ExtractStep(BaseStepWidget):
         splitter.setSizes([SETTINGS_PANE_WIDTH, 760])
         root_layout.addWidget(splitter)
         self._update_mode_widgets()
+        self._update_source_mode_widgets()
         self._refresh_video_queue_list()
         self._update_ready_status()
 
@@ -468,6 +496,41 @@ class ExtractStep(BaseStepWidget):
             if self.smart_fixed_cb.isChecked() != restore_smart:
                 self.smart_fixed_cb.setChecked(restore_smart)
         self._update_mode_widgets()
+
+    def _source_mode(self) -> str:
+        return str(self.source_mode_combo.currentData() or _SOURCE_MODE_VIDEO)
+
+    def _is_image_sequence_mode(self) -> bool:
+        return self._source_mode() == _SOURCE_MODE_IMAGE_SEQUENCE
+
+    def _on_source_mode_changed(self) -> None:
+        self.video_info = None
+        self.video_infos.clear()
+        self.video_info_failures.clear()
+        self._update_source_mode_widgets()
+        self._update_video_info_label()
+        self._update_instant_estimate()
+        self._update_ready_status()
+
+    def _update_source_mode_widgets(self) -> None:
+        image_mode = self._is_image_sequence_mode()
+        self.image_sequence_browse.setVisible(image_mode)
+        if self.image_sequence_label is not None:
+            self.image_sequence_label.setVisible(image_mode)
+        self.video_queue_header_widget.setVisible(not image_mode)
+        self.video_queue_list.setVisible(not image_mode)
+        self.output_mode_combo.setEnabled(not image_mode)
+        self.mode_panel.setEnabled(not image_mode)
+        for widget in (self.image_ext_combo, self.jpg_quality_edit):
+            widget.setEnabled(not image_mode)
+        self.ffmpeg_browse.setEnabled(not image_mode)
+        self.ffprobe_browse.setEnabled(not image_mode)
+
+    def _on_image_sequence_changed(self, _path: str) -> None:
+        self._suggest_scene_dir_from_image_sequence()
+        self._update_video_info_label()
+        self._update_instant_estimate()
+        self._update_ready_status()
 
     def _on_pair_motion_profile_changed(self, *_args) -> None:
         profile = str(self.pair_motion_profile_combo.currentData() or _DEFAULT_CAPTURE_PROFILE)
@@ -898,6 +961,19 @@ class ExtractStep(BaseStepWidget):
         return self._unique_prefix(base, used_prefixes)
 
     def _readiness(self) -> tuple[bool, str]:
+        if self._is_image_sequence_mode():
+            folder = self._image_sequence_dir()
+            if not folder:
+                return False, i18n.t("EXTRACT_READY_NO_IMAGE_SEQUENCE")
+            if not folder.is_dir():
+                return False, i18n.t("EXTRACT_READY_IMAGE_SEQUENCE_NOT_FOUND")
+            if not self.scene_dir:
+                return False, i18n.t("EXTRACT_READY_NO_SCENE")
+            count = len(self._image_sequence_files(folder))
+            if count <= 0:
+                return False, i18n.t("EXTRACT_READY_IMAGE_SEQUENCE_EMPTY")
+            return True, i18n.t("EXTRACT_READY_IMAGE_SEQUENCE_OK").format(n=count)
+
         videos = self._selected_video_paths()
         if len(videos) > 1:
             missing = [video for video in videos if not video.is_file()]
@@ -952,6 +1028,9 @@ class ExtractStep(BaseStepWidget):
     # -- コマンド構築 --
 
     def build_commands(self) -> list[tuple[str, list[str]]]:
+        if self._is_image_sequence_mode():
+            return [("image_sequence_import", self._build_image_sequence_import_cmd())]
+
         videos = self._selected_video_paths()
         missing = [video for video in videos if not video.is_file()]
         if missing:
@@ -966,6 +1045,27 @@ class ExtractStep(BaseStepWidget):
 
         used_prefixes: set[str] = set()
         return [(f"extract: {video.name}", self._build_extract_cmd_for_video(video, used_prefixes)) for video in videos]
+
+    def _build_image_sequence_import_cmd(self) -> list[str]:
+        source = self._image_sequence_dir()
+        if source is None or not source.is_dir():
+            raise ValueError(i18n.t("EXTRACT_READY_IMAGE_SEQUENCE_NOT_FOUND"))
+        if not self.scene_dir:
+            raise ValueError(i18n.t("EXTRACT_READY_NO_SCENE"))
+        script = self.base_dir / "scripts" / "import_image_sequence.py"
+        if not script.exists():
+            raise FileNotFoundError(f"import_image_sequence.py が見つかりません: {script}")
+        cmd = [
+            sys.executable,
+            "-u",
+            str(script),
+            str(source),
+            self.scene_dir,
+        ]
+        prefix = sanitize_filename_prefix(self.prefix_edit.text())
+        if prefix:
+            cmd.extend(["--prefix", prefix])
+        return cmd
 
     def _build_extract_cmd(self) -> list[str]:
         videos = self._selected_video_paths()
@@ -1041,6 +1141,8 @@ class ExtractStep(BaseStepWidget):
     # -- プログレス解析 --
 
     def phase_display_name(self, phase: str) -> str:
+        if phase == "image_sequence_import":
+            return i18n.t("EXTRACT_PHASE_IMAGE_SEQUENCE")
         if phase == "extract":
             return i18n.t("EXTRACT_PHASE")
         if phase.startswith("extract: "):
@@ -1077,6 +1179,9 @@ class ExtractStep(BaseStepWidget):
         return None
 
     def on_queue_finished(self, success: bool) -> None:
+        if self._is_image_sequence_mode():
+            self._refresh_finished_run_state(revalidate_video_info=False)
+            return
         if success:
             self._save_source_video_registry()
             self._refresh_finished_run_state(revalidate_video_info=False)
@@ -1129,6 +1234,29 @@ class ExtractStep(BaseStepWidget):
             self._update_video_info_label()
             self._update_instant_estimate()
             self._update_ready_status()
+
+    def _image_sequence_dir(self) -> Path | None:
+        text = self.image_sequence_browse.text().strip()
+        return Path(text) if text else None
+
+    def _image_sequence_files(self, folder: Path | None = None) -> list[Path]:
+        root = folder or self._image_sequence_dir()
+        if root is None or not root.is_dir():
+            return []
+        try:
+            return sorted(
+                (path for path in root.iterdir() if path.is_file() and path.suffix.lower() in _IMAGE_SEQUENCE_EXTS),
+                key=lambda path: path.name.lower(),
+            )
+        except OSError:
+            return []
+
+    def _suggest_scene_dir_from_image_sequence(self) -> None:
+        if self.scene_dir:
+            return
+        folder = self._image_sequence_dir()
+        if folder is not None and folder.is_dir():
+            self.scene_dir_suggested.emit(str(folder))
 
     def _suggest_scene_dir_from_videos(self, videos: list[Path]) -> None:
         if self.scene_dir or not videos:
@@ -1335,6 +1463,19 @@ class ExtractStep(BaseStepWidget):
             upsert_source_videos(Path(self.scene_dir), records)
 
     def _update_video_info_label(self) -> None:
+        if self._is_image_sequence_mode():
+            folder = self._image_sequence_dir()
+            if folder is None:
+                self.video_info_label.setText(i18n.t("IMAGE_SEQUENCE_LABEL_DEFAULT"))
+                return
+            count = len(self._image_sequence_files(folder))
+            self.video_info_label.setText(
+                i18n.t("IMAGE_SEQUENCE_INFO_FORMAT").format(
+                    folder=str(folder),
+                    count=self._format_number(count),
+                )
+            )
+            return
         self._refresh_video_queue_list()
         if self._is_multi_video_input():
             videos = self._selected_video_paths()
@@ -1409,6 +1550,13 @@ class ExtractStep(BaseStepWidget):
         self._update_ready_status()
 
     def _update_instant_estimate(self) -> None:
+        if self._is_image_sequence_mode():
+            count = len(self._image_sequence_files())
+            self.instant_estimate_text = (
+                i18n.t("IMAGE_SEQUENCE_ESTIMATE_FORMAT").format(count=self._format_number(count)) if count else "-"
+            )
+            self._refresh_estimate_label()
+            return
         if self._is_multi_video_input():
             queued, skipped = self._queued_selected_videos()
             info_rows = [

@@ -76,6 +76,26 @@ def test_extract_run_disabled_until_video_is_selected() -> None:
     assert step.primary_action_tooltip() == i18n.t("EXTRACT_READY_NO_VIDEO")
 
 
+def test_extract_step_accepts_image_sequence_folder(tmp_path: Path) -> None:
+    _app()
+    scene = tmp_path / "scene"
+    source = tmp_path / "sequence"
+    source.mkdir()
+    (source / "img_0001.jpg").write_bytes(b"image")
+    (source / "img_0002.png").write_bytes(b"image")
+    step = ExtractStep(Path.cwd())
+    step.set_scene_dir(str(scene))
+
+    step.source_mode_combo.setCurrentIndex(1)
+    step.image_sequence_browse.set_text(str(source))
+
+    assert step.primary_action_enabled()
+    assert step.ready_status_label.text() == i18n.t("EXTRACT_READY_IMAGE_SEQUENCE_OK").format(n=2)
+    commands = step.build_commands()
+    assert commands[0][0] == "image_sequence_import"
+    assert commands[0][1][3:5] == [str(source), str(scene)]
+
+
 def test_extract_run_enabled_when_required_inputs_are_ready(tmp_path: Path) -> None:
     _app()
     video = tmp_path / "input.mp4"
