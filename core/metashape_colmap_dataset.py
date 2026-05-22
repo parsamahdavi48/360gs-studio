@@ -1,8 +1,6 @@
 from __future__ import annotations
 
 import json
-import os
-import shutil
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -25,20 +23,19 @@ from core.dataset_export_plan import (
     EXPORT_ACTION_UNDISTORT_FRAME_TO_PINHOLE,
     build_metashape_dataset_export_plan,
 )
-from core.metashape_model import MetashapeCamera, MetashapeModel, MetashapeSensor, parse_metashape_model
-from core.realityscan_to_lfs_colmap import (
+from core.dataset_writer_colmap import (
+    SPARSE_RELATIVE_DIR,
     ColmapCamera,
     ColmapImage,
     camera_signature,
     quaternion_from_matrix,
-    write_cameras_txt,
-    write_empty_points3d_txt,
-    write_images_txt,
+    replace_file_with_link_or_copy,
+    write_colmap_text_dataset,
 )
+from core.metashape_model import MetashapeCamera, MetashapeModel, MetashapeSensor, parse_metashape_model
 from core.realityscan_to_transforms import write_transformed_ply
 from core.scene_inventory import build_scene_inventory
 
-SPARSE_RELATIVE_DIR = Path("sparse") / "0"
 DEFAULT_FOV_DEG = 90.0
 DEFAULT_UNDISTORT_ALPHA = 1.0
 
@@ -69,7 +66,7 @@ def export_metashape_colmap_dataset(
 ) -> MetashapeColmapExportResult:
     scene = Path(scene_dir)
     images_root = Path(images_dir)
-    masks_root = Path(masks_dir) if masks_dir else Path()
+    masks_root = Path(masks_dir) if masks_dir else scene / "masks"
     output = Path(output_dir)
     output_images = output / "images"
     output_masks = output / "masks"
@@ -78,7 +75,7 @@ def export_metashape_colmap_dataset(
     sparse_dir.mkdir(parents=True, exist_ok=True)
 
     model = parse_metashape_model(xml_path)
-    inventory = build_scene_inventory(scene)
+    inventory = build_scene_inventory(scene, images_dir=images_root, masks_dir=masks_root)
     plan = build_metashape_dataset_export_plan(model, inventory)
 
     cameras: list[ColmapCamera] = []
@@ -93,8 +90,12 @@ def export_metashape_colmap_dataset(
         if camera is None or not item.image_rel_path:
             continue
         sensor = model.sensor_for_camera(camera)
-        source_image = scene / item.image_rel_path
-        source_mask = scene / item.mask_rel_path if item.mask_rel_path else None
+        source_image = _resolve_inventory_path(scene, images_root, item.image_rel_path, standard_root_name="images")
+        source_mask = (
+            _resolve_inventory_path(scene, masks_root, item.mask_rel_path, standard_root_name="masks")
+            if item.mask_rel_path
+            else None
+        )
         c2w = metashape_camera_to_world(model, camera)
         if item.action == EXPORT_ACTION_EXPAND_ERP_TO_VIEWS:
             _append_expanded_erp_records(
@@ -155,9 +156,7 @@ def export_metashape_colmap_dataset(
                 camera_ids,
             )
 
-    write_cameras_txt(sparse_dir / "cameras.txt", cameras)
-    write_images_txt(sparse_dir / "images.txt", images)
-    write_empty_points3d_txt(sparse_dir / "points3D.txt")
+    write_colmap_text_dataset(output, cameras, images)
     if ply_path:
         ply = Path(ply_path)
         if ply.is_file():
@@ -202,6 +201,22 @@ def metashape_pointcloud_matrix() -> np.ndarray:
         dtype=np.float64,
     )
     return rot_x_pos90 @ matrix
+
+
+def _resolve_inventory_path(scene: Path, root: Path, rel_path: str, *, standard_root_name: str) -> Path:
+    raw = Path(rel_path)
+    if raw.is_absolute():
+        return raw
+    candidates: list[Path] = []
+    parts = raw.parts
+    if parts and parts[0].casefold() == standard_root_name.casefold():
+        candidates.append(root / Path(*parts[1:]) if len(parts) > 1 else root)
+    candidates.append(scene / raw)
+    candidates.append(root / raw)
+    for candidate in candidates:
+        if candidate.exists():
+            return candidate
+    return candidates[0] if candidates else root / raw
 
 
 def _append_expanded_erp_records(
@@ -362,10 +377,7 @@ def _linked_or_copied_output(source: Path, images_root: Path, output_images: Pat
     destination.parent.mkdir(parents=True, exist_ok=True)
     if destination.exists():
         destination.unlink()
-    try:
-        os.link(source, destination)
-    except OSError:
-        shutil.copy2(source, destination)
+    replace_file_with_link_or_copy(source, destination)
     return destination
 
 
@@ -375,7 +387,7 @@ def _copy_mask_if_available(source_mask: Path | None, masks_root: Path, output_m
     rel = _relative_image_path(source_mask, masks_root) if masks_root else Path(source_mask.name)
     destination = output_masks / rel.with_suffix(".png")
     destination.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copy2(source_mask, destination)
+    replace_file_with_link_or_copy(source_mask, destination)
     return destination
 
 

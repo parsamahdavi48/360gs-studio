@@ -3,7 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-from core.scene_inventory import PROJECTION_EQUIRECTANGULAR, SceneInventory, build_scene_inventory
+from core.projection_contract import PROJECTION_EQUIRECTANGULAR
+from core.scene_inventory import SceneInventory, build_scene_inventory
 
 
 @dataclass(frozen=True, slots=True)

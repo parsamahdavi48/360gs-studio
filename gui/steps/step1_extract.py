@@ -8,7 +8,6 @@ import re
 import shutil
 import subprocess
 import sys
-from dataclasses import dataclass
 from pathlib import Path
 
 from PySide6.QtCore import Qt, Signal
@@ -32,6 +31,16 @@ from PySide6.QtWidgets import (
 )
 
 from core.extract_sessions import load_manifest, matching_video_sessions, sanitize_filename_prefix
+from core.input_sources import (
+    SOURCE_KIND_IMAGE_SEQUENCE,
+    SOURCE_KIND_VIDEO,
+    InputSource,
+    normalize_input_sources,
+    parse_path_list,
+    replace_video_sources,
+    source_key,
+    sources_from_legacy_text,
+)
 from core.scene_import_contracts import IMAGE_EXTS as _IMAGE_SEQUENCE_EXTS
 from core.scene_layout import APP_DIR_NAME, scene_images_dir, source_videos_path
 from core.scene_project import (
@@ -71,8 +80,8 @@ _JPEG_QUALITY_MAX = 31
 _JPEG_QUALITY_DEFAULT = 2
 _SOURCE_MODE_VIDEO = "video"
 _SOURCE_MODE_IMAGE_SEQUENCE = "image_sequence"
-_SOURCE_KIND_VIDEO = "video"
-_SOURCE_KIND_IMAGE_SEQUENCE = "image_sequence"
+_SOURCE_KIND_VIDEO = SOURCE_KIND_VIDEO
+_SOURCE_KIND_IMAGE_SEQUENCE = SOURCE_KIND_IMAGE_SEQUENCE
 _VIDEO_EXTENSIONS = {".mp4", ".mov", ".mkv", ".avi", ".m4v"}
 _VIDEO_SCAN_EXCLUDED_DIRS = {
     APP_DIR_NAME.casefold(),
@@ -84,12 +93,6 @@ _VIDEO_SCAN_EXCLUDED_DIRS = {
     "output",
     "outputs",
 }
-
-
-@dataclass(frozen=True, slots=True)
-class _InputSource:
-    kind: str
-    path: Path
 
 
 def _detect_binary(name: str) -> str:
@@ -119,7 +122,7 @@ class ExtractStep(BaseStepWidget):
         self.instant_estimate_text = "-"
         self._syncing_gap_fields = False
         self._smart_before_quick: bool | None = None
-        self._input_sources: list[_InputSource] = []
+        self._input_sources: list[InputSource] = []
         self._syncing_input_source_widgets = False
 
         self._build_ui()
@@ -526,12 +529,12 @@ class ExtractStep(BaseStepWidget):
         if self._is_image_sequence_mode():
             folders = self._image_sequence_dirs_from_text()
             if folders:
-                self._set_input_sources([_InputSource(_SOURCE_KIND_IMAGE_SEQUENCE, folder) for folder in folders])
+                self._set_input_sources([InputSource(_SOURCE_KIND_IMAGE_SEQUENCE, folder) for folder in folders])
                 return
         else:
             videos = self._video_paths_from_text()
             if videos:
-                self._set_input_sources([_InputSource(_SOURCE_KIND_VIDEO, video) for video in videos])
+                self._set_input_sources([InputSource(_SOURCE_KIND_VIDEO, video) for video in videos])
                 return
         self._update_source_mode_widgets()
         self._update_video_info_label()
@@ -555,7 +558,7 @@ class ExtractStep(BaseStepWidget):
         if self._syncing_input_source_widgets:
             return
         folders = self._image_sequence_dirs_from_text()
-        self._set_input_sources([_InputSource(_SOURCE_KIND_IMAGE_SEQUENCE, folder) for folder in folders])
+        self._set_input_sources([InputSource(_SOURCE_KIND_IMAGE_SEQUENCE, folder) for folder in folders])
 
     def _on_pair_motion_profile_changed(self, *_args) -> None:
         profile = str(self.pair_motion_profile_combo.currentData() or _DEFAULT_CAPTURE_PROFILE)
@@ -630,30 +633,19 @@ class ExtractStep(BaseStepWidget):
             return False
 
     @staticmethod
-    def _source_key(source: _InputSource) -> str:
-        normalized = str(source.path).replace("\\", "/").casefold()
-        return f"{source.kind}:{normalized}"
+    def _source_key(source: InputSource) -> str:
+        return source_key(source)
 
     def _video_paths_from_text(self) -> list[Path]:
-        text = self.video_browse.text()
-        if not text:
-            return []
-        raw_paths = [part.strip().strip('"') for part in text.split(";")]
-        return [Path(part) for part in raw_paths if part]
+        return parse_path_list(self.video_browse.text())
 
     def _image_sequence_dirs_from_text(self) -> list[Path]:
-        text = self.image_sequence_browse.text()
-        if not text:
-            return []
-        raw_paths = [part.strip().strip('"') for part in text.split(";")]
-        return [Path(part) for part in raw_paths if part]
+        return parse_path_list(self.image_sequence_browse.text())
 
-    def _selected_input_sources(self) -> list[_InputSource]:
+    def _selected_input_sources(self) -> list[InputSource]:
         if self._input_sources:
             return list(self._input_sources)
-        sources = [_InputSource(_SOURCE_KIND_VIDEO, video) for video in self._video_paths_from_text()]
-        sources.extend(_InputSource(_SOURCE_KIND_IMAGE_SEQUENCE, folder) for folder in self._image_sequence_dirs_from_text())
-        return sources
+        return sources_from_legacy_text(self.video_browse.text(), self.image_sequence_browse.text())
 
     def _selected_video_paths(self) -> list[Path]:
         return [source.path for source in self._selected_input_sources() if source.kind == _SOURCE_KIND_VIDEO]
@@ -663,17 +655,8 @@ class ExtractStep(BaseStepWidget):
             source.path for source in self._selected_input_sources() if source.kind == _SOURCE_KIND_IMAGE_SEQUENCE
         ]
 
-    def _set_input_sources(self, sources: list[_InputSource]) -> None:
-        unique: list[_InputSource] = []
-        seen: set[str] = set()
-        for source in sources:
-            if source.kind not in {_SOURCE_KIND_VIDEO, _SOURCE_KIND_IMAGE_SEQUENCE}:
-                continue
-            key = self._source_key(source)
-            if key in seen:
-                continue
-            seen.add(key)
-            unique.append(source)
+    def _set_input_sources(self, sources: list[InputSource]) -> None:
+        unique = normalize_input_sources(sources)
 
         self._input_sources = unique
         self._syncing_input_source_widgets = True
@@ -702,10 +685,10 @@ class ExtractStep(BaseStepWidget):
     def _append_input_sources(self, kind: str, paths: list[Path]) -> None:
         if not paths:
             return
-        self._set_input_sources([*self._selected_input_sources(), *(_InputSource(kind, path) for path in paths)])
+        self._set_input_sources([*self._selected_input_sources(), *(InputSource(kind, path) for path in paths)])
 
     def _set_video_queue_paths(self, videos: list[Path]) -> None:
-        self._set_input_sources([_InputSource(_SOURCE_KIND_VIDEO, video) for video in videos])
+        self._set_input_sources(replace_video_sources(self._selected_input_sources(), videos))
 
     def _queue_dialog_start_path(self) -> str:
         for source in reversed(self._selected_input_sources()):
@@ -797,7 +780,7 @@ class ExtractStep(BaseStepWidget):
             folder=str(folder),
         )
 
-    def _input_source_item_text(self, source: _InputSource) -> str:
+    def _input_source_item_text(self, source: InputSource) -> str:
         if source.kind == _SOURCE_KIND_IMAGE_SEQUENCE:
             return self._image_sequence_queue_item_text(source.path)
         return self._video_queue_item_text(source.path)
@@ -900,7 +883,7 @@ class ExtractStep(BaseStepWidget):
         if not videos:
             videos = self._scan_video_paths_under_scene(scene)
         if videos:
-            self._set_input_sources([_InputSource(_SOURCE_KIND_VIDEO, video) for video in videos])
+            self._set_input_sources([InputSource(_SOURCE_KIND_VIDEO, video) for video in videos])
 
     def _prune_missing_selected_videos(self) -> bool:
         videos = self._selected_video_paths()
@@ -1384,7 +1367,7 @@ class ExtractStep(BaseStepWidget):
     def _on_video_changed(self, _path: str) -> None:
         if self._syncing_input_source_widgets:
             return
-        self._set_input_sources([_InputSource(_SOURCE_KIND_VIDEO, video) for video in self._video_paths_from_text()])
+        self._set_input_sources([InputSource(_SOURCE_KIND_VIDEO, video) for video in self._video_paths_from_text()])
 
     def _image_sequence_dir(self) -> Path | None:
         folders = self._selected_image_sequence_dirs()
@@ -1402,7 +1385,7 @@ class ExtractStep(BaseStepWidget):
         except OSError:
             return []
 
-    def _suggest_scene_dir_from_sources(self, sources: list[_InputSource]) -> None:
+    def _suggest_scene_dir_from_sources(self, sources: list[InputSource]) -> None:
         if self.scene_dir or not sources:
             return
         roots: set[Path] = set()

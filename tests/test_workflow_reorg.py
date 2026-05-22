@@ -243,18 +243,21 @@ def test_realityscan_lfs_tool_defaults_and_builds_cli_command(tmp_path: Path) ->
     phase, cmd = tool.build_commands()[0]
     assert phase == "realityscan_lfs_colmap"
     assert cmd[2].endswith("realityscan_to_lfs_colmap.py")
-    assert cmd[3] == str(csv)
-    assert cmd[4] == str(rs / "lfs_colmap")
-    assert cmd[cmd.index("--images-dir") + 1] == str(rs / "images")
-    assert cmd[cmd.index("--masks-dir") + 1] == str(rs / "masks")
-    assert cmd[cmd.index("--ply") + 1] == str(ply)
+    assert cmd[3] == "--job"
+    job_path = Path(cmd[4])
+    job = json.loads(job_path.read_text(encoding="utf-8"))
+    assert job["csv_path"] == str(csv)
+    assert job["output_dir"] == str(rs / "lfs_colmap")
+    assert job["images_dir"] == str(rs / "images")
+    assert job["masks_dir"] == str(rs / "masks")
+    assert job["ply_path"] == str(ply)
 
     tool.pre_undistort_cb.setChecked(True)
     assert Path(tool.output_browse.text()) == rs / "lfs_colmap_undistorted"
     _, undistort_cmd = tool.build_commands()[0]
-    assert "--pre-undistort-distorted-images" in undistort_cmd
-    assert "--undistort-alpha" in undistort_cmd
-    assert undistort_cmd[undistort_cmd.index("--undistort-alpha") + 1] == "1"
+    undistort_job = json.loads(Path(undistort_cmd[4]).read_text(encoding="utf-8"))
+    assert undistort_job["pre_undistort_distorted_images"] is True
+    assert undistort_job["undistort_alpha"] == 1.0
 
     _write_colmap_sparse(rs / "lfs_colmap_undistorted")
     tool.on_queue_finished(True)
@@ -402,8 +405,10 @@ def test_colmap_text_model_tool_uses_mixed_writer_for_mixed_metashape_xml(tmp_pa
     assert [phase for phase, _cmd in commands] == ["metashape_colmap_mixed"]
     cmd = commands[0][1]
     assert cmd[2].endswith("export_metashape_colmap_dataset.py")
-    assert cmd[cmd.index("--scene") + 1] == str(scene)
-    assert cmd[cmd.index("--output") + 1] == str(scene / "output" / "metashape_colmap")
+    assert cmd[3] == "--job"
+    job = json.loads(Path(cmd[4]).read_text(encoding="utf-8"))
+    assert job["scene_dir"] == str(scene)
+    assert job["output_dir"] == str(scene / "output" / "metashape_colmap")
 
 
 def test_realityscan_realign_profile_is_step4_only(tmp_path: Path) -> None:

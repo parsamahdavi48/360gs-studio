@@ -11,10 +11,8 @@ from core.scene_import_contracts import IMAGE_EXTS, SELECTED_CSV_FIELDNAMES, new
 from core.scene_layout import scene_images_dir, selected_frames_path
 from core.scene_project import (
     append_source_image_set,
-    file_identity,
-    image_header_info,
     scene_relative,
-    utc_now_iso,
+    source_image_set_record,
 )
 
 IMAGE_SEQUENCE_SOURCE_TYPE = "image_sequence"
@@ -60,11 +58,12 @@ def import_image_sequence_folder(
         imported.append((src, dst))
         print(f"[progress] {index}/{len(image_paths)}", flush=True)
 
-    record = image_sequence_source_record(
+    record = source_image_set_record(
         source_dir=source,
         scene_dir=scene,
         imported=imported,
         import_id=import_id,
+        source_type=IMAGE_SEQUENCE_SOURCE_TYPE,
     )
     append_source_image_set(scene, record)
     _append_selected_frames(scene, import_id, source.name, [dst for _src, dst in imported])
@@ -77,55 +76,6 @@ def import_image_sequence_folder(
         output_files=tuple(scene_relative(scene, dst).replace("\\", "/") for _src, dst in imported),
         source_record=record,
     )
-
-
-def image_sequence_source_record(
-    *,
-    source_dir: Path,
-    scene_dir: Path,
-    imported: list[tuple[Path, Path]],
-    import_id: str,
-) -> dict[str, Any]:
-    projections: list[str] = []
-    files: list[dict[str, Any]] = []
-    for index, (source_path, scene_path) in enumerate(imported, start=1):
-        header = image_header_info(scene_path)
-        projection = str(header.get("detected_projection") or "unknown")
-        if projection != "unknown":
-            projections.append(projection)
-        files.append(
-            {
-                "source_path": str(source_path),
-                "scene_path": scene_relative(scene_dir, scene_path).replace("\\", "/"),
-                "sequence_index": index,
-                "file": file_identity(scene_path),
-                "source_file": file_identity(source_path),
-                "image": {
-                    "width": int(header.get("width") or 0),
-                    "height": int(header.get("height") or 0),
-                    "mode": str(header.get("mode") or ""),
-                },
-                "detected_projection": projection,
-                "projection_confidence": header.get("projection_confidence", "low"),
-                "projection_reason": header.get("projection_reason", ""),
-            }
-        )
-    unique = sorted(set(projections))
-    projection = unique[0] if len(unique) == 1 else ("mixed" if unique else "unknown")
-    return {
-        "id": f"imageset_{import_id}",
-        "source_type": IMAGE_SEQUENCE_SOURCE_TYPE,
-        "imported_at": utc_now_iso(),
-        "updated_at": utc_now_iso(),
-        "source_dir": str(source_dir),
-        "scene_images_dir": "images",
-        "projection": projection,
-        "projection_source": "image_header",
-        "projection_override": None,
-        "file_count": len(files),
-        "files": files,
-    }
-
 
 def _append_selected_frames(scene: Path, import_id: str, source_label: str, image_paths: list[Path]) -> None:
     csv_path = selected_frames_path(scene)

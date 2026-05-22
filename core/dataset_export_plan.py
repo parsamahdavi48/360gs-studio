@@ -45,9 +45,9 @@ def build_metashape_dataset_export_plan(
     model: MetashapeModel,
     inventory: SceneInventory,
 ) -> DatasetExportPlan:
-    image_lookup = _build_image_lookup(inventory)
+    image_lookup, lookup_warnings = _build_image_lookup(inventory)
     items: list[DatasetExportPlanItem] = []
-    warnings: list[str] = []
+    warnings: list[str] = list(lookup_warnings)
     for camera in model.cameras:
         sensor = model.sensor_for_camera(camera)
         image = _resolve_camera_image(camera, image_lookup)
@@ -55,16 +55,16 @@ def build_metashape_dataset_export_plan(
             warnings.append(f"Camera image not found in scene images: {camera.label or camera.camera_id}")
             items.append(_plan_item(camera, sensor, EXPORT_ACTION_SKIP, reason="missing_image"))
             continue
-        mask_rel = image.mask.rel_path if image.mask is not None and image.mask.exists else ""
-        items.append(
-            _plan_item(
-                camera,
-                sensor,
-                _action_for_sensor(sensor),
-                image_rel_path=image.rel_path,
-                mask_rel_path=mask_rel,
-            )
-        )
+        mask_rel = ""
+        if image.mask is not None and image.mask.exists:
+            if image.mask.readable and image.mask.matches_image_size:
+                mask_rel = image.mask.rel_path
+            else:
+                warnings.append(f"Mask ignored because it does not match image dimensions: {image.mask.rel_path}")
+        action = _action_for_sensor(sensor)
+        if action == EXPORT_ACTION_SKIP:
+            warnings.append(f"Unsupported Metashape camera model skipped: {sensor.camera_model} ({camera.label or camera.camera_id})")
+        items.append(_plan_item(camera, sensor, action, image_rel_path=image.rel_path, mask_rel_path=mask_rel))
     return DatasetExportPlan(source_kind="metashape_xml_ply", items=tuple(items), warnings=tuple(warnings))
 
 
@@ -99,8 +99,8 @@ def _plan_item(
     )
 
 
-def _build_image_lookup(inventory: SceneInventory) -> dict[str, SceneImage]:
-    lookup: dict[str, SceneImage] = {}
+def _build_image_lookup(inventory: SceneInventory) -> tuple[dict[str, SceneImage], tuple[str, ...]]:
+    grouped: dict[str, list[SceneImage]] = {}
     for image in inventory.images:
         path = Path(image.rel_path)
         keys = {
@@ -109,8 +109,16 @@ def _build_image_lookup(inventory: SceneInventory) -> dict[str, SceneImage]:
             path.stem.casefold(),
         }
         for key in keys:
-            lookup.setdefault(key, image)
-    return lookup
+            grouped.setdefault(key, []).append(image)
+    lookup: dict[str, SceneImage] = {}
+    warnings: list[str] = []
+    for key, images in grouped.items():
+        unique = {image.rel_path: image for image in images}
+        if len(unique) == 1:
+            lookup[key] = next(iter(unique.values()))
+        else:
+            warnings.append(f"Ambiguous image reference ignored: {key}")
+    return lookup, tuple(warnings)
 
 
 def _resolve_camera_image(camera: MetashapeCamera, lookup: dict[str, SceneImage]) -> SceneImage | None:

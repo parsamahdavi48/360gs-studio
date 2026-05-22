@@ -9,13 +9,16 @@ from typing import Any
 from PIL import Image
 
 from core.mask_metadata import mask_file_summary, summary_size
+from core.projection_contract import (
+    PROJECTION_EQUIRECTANGULAR,
+    PROJECTION_NORMAL,
+    PROJECTION_UNKNOWN,
+    normalize_projection,
+)
 from core.scene_import_contracts import IMAGE_EXTS
 from core.scene_layout import scene_images_dir, scene_masks_dir, selected_frames_path, source_image_sets_path
-from core.scene_project import load_json, scene_image_projection_map, scene_relative
+from core.scene_project import image_header_info, load_json, scene_image_projection_map
 
-PROJECTION_EQUIRECTANGULAR = "equirectangular"
-PROJECTION_NORMAL = "normal"
-PROJECTION_UNKNOWN = "unknown"
 MASK_POLARITY_WHITE_KEEP = "white_keep"
 
 
@@ -104,26 +107,33 @@ class SceneInventory:
         return tuple(image for image in self.images if image.projection == PROJECTION_NORMAL)
 
 
-def build_scene_inventory(scene_dir: str | Path) -> SceneInventory:
+def build_scene_inventory(
+    scene_dir: str | Path,
+    *,
+    images_dir: str | Path | None = None,
+    masks_dir: str | Path | None = None,
+) -> SceneInventory:
     scene = Path(scene_dir)
-    images_dir = scene_images_dir(scene)
-    masks_dir = scene_masks_dir(scene)
-    image_paths = _iter_image_files(images_dir)
+    images_root = Path(images_dir) if images_dir is not None else scene_images_dir(scene)
+    masks_root = Path(masks_dir) if masks_dir is not None else scene_masks_dir(scene)
+    image_paths = _iter_image_files(images_root)
     projection_map = scene_image_projection_map(scene, image_paths) if image_paths else {}
     selected_map = _selected_frame_metadata(scene)
     image_set_map = _image_set_metadata(scene)
 
     images: list[SceneImage] = []
     for path in image_paths:
-        rel_path = scene_relative(scene, path).replace("\\", "/")
+        rel_path = _inventory_rel_path(scene, images_root, path)
         width, height = _image_size(path)
         metadata = _metadata_for(rel_path, selected_map, image_set_map)
-        projection = _normalize_projection(projection_map.get(rel_path) or metadata.get("projection") or "")
+        projection = normalize_projection(projection_map.get(rel_path) or metadata.get("projection") or "")
+        if projection == PROJECTION_UNKNOWN:
+            projection = normalize_projection(image_header_info(path).get("detected_projection"))
         projection_source = str(metadata.get("projection_source") or "project")
         source_kind = str(metadata.get("source_kind") or "unknown")
         source_id = str(metadata.get("source_id") or "")
         sequence_index = _optional_int(metadata.get("sequence_index"))
-        mask = _mask_artifact(scene, path, image_size=(width, height))
+        mask = _mask_artifact(scene, images_root, masks_root, path, image_size=(width, height))
         images.append(
             SceneImage(
                 path=path,
@@ -140,7 +150,7 @@ def build_scene_inventory(scene_dir: str | Path) -> SceneInventory:
             )
         )
 
-    return SceneInventory(scene_dir=scene, images_dir=images_dir, masks_dir=masks_dir, images=tuple(images))
+    return SceneInventory(scene_dir=scene, images_dir=images_root, masks_dir=masks_root, images=tuple(images))
 
 
 def _iter_image_files(root: Path) -> list[Path]:
@@ -160,11 +170,30 @@ def _image_size(path: Path) -> tuple[int, int]:
         return 0, 0
 
 
-def _mask_artifact(scene: Path, image_path: Path, *, image_size: tuple[int, int]) -> MaskArtifact | None:
-    masks_root = scene_masks_dir(scene)
+def _inventory_rel_path(scene: Path, images_root: Path, image_path: Path) -> str:
+    try:
+        resolved = image_path.resolve()
+        scene_root = scene.resolve()
+        return resolved.relative_to(scene_root).as_posix()
+    except Exception:
+        pass
+    try:
+        return image_path.resolve().relative_to(images_root.resolve()).as_posix()
+    except Exception:
+        return image_path.name
+
+
+def _mask_artifact(
+    scene: Path,
+    images_root: Path,
+    masks_root: Path,
+    image_path: Path,
+    *,
+    image_size: tuple[int, int],
+) -> MaskArtifact | None:
     if not masks_root.is_dir():
         return None
-    for candidate in _mask_candidates(scene, image_path):
+    for candidate in _mask_candidates(images_root, masks_root, image_path):
         if not candidate.is_file():
             continue
         summary = mask_file_summary(candidate)
@@ -172,7 +201,7 @@ def _mask_artifact(scene: Path, image_path: Path, *, image_size: tuple[int, int]
         width, height = size if size is not None else (0, 0)
         return MaskArtifact(
             path=candidate,
-            rel_path=scene_relative(scene, candidate).replace("\\", "/"),
+            rel_path=_mask_rel_path(scene, masks_root, candidate),
             exists=True,
             readable=bool(summary.get("readable")),
             width=width,
@@ -182,9 +211,7 @@ def _mask_artifact(scene: Path, image_path: Path, *, image_size: tuple[int, int]
     return None
 
 
-def _mask_candidates(scene: Path, image_path: Path) -> list[Path]:
-    images_root = scene_images_dir(scene)
-    masks_root = scene_masks_dir(scene)
+def _mask_candidates(images_root: Path, masks_root: Path, image_path: Path) -> list[Path]:
     try:
         rel = image_path.resolve().relative_to(images_root.resolve())
     except Exception:
@@ -195,6 +222,17 @@ def _mask_candidates(scene: Path, image_path: Path) -> list[Path]:
         masks_root / parent / f"{rel.name}.png",
         masks_root / rel,
     ]
+
+
+def _mask_rel_path(scene: Path, masks_root: Path, mask_path: Path) -> str:
+    try:
+        return mask_path.resolve().relative_to(scene.resolve()).as_posix()
+    except Exception:
+        pass
+    try:
+        return mask_path.resolve().relative_to(masks_root.resolve()).as_posix()
+    except Exception:
+        return mask_path.name
 
 
 def _selected_frame_metadata(scene: Path) -> dict[str, dict[str, Any]]:
@@ -258,15 +296,6 @@ def _metadata_for(
     data.update(image_set_map.get(rel_path, {}))
     data.update(selected_map.get(rel_path, {}))
     return data
-
-
-def _normalize_projection(value: object) -> str:
-    text = str(value or "").strip().lower()
-    if text in {"equirect", "equirectangular", "360", "360deg", "360°"}:
-        return PROJECTION_EQUIRECTANGULAR
-    if text in {"normal", "perspective", "flat", "frame", "pinhole"}:
-        return PROJECTION_NORMAL
-    return PROJECTION_UNKNOWN
 
 
 def _optional_int(value: object) -> int | None:

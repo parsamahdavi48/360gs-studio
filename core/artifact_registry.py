@@ -17,8 +17,11 @@ class ArtifactRecord:
     kind: str
     root: str
     created_at: str
+    status: str = "ready"
+    producer: str = ""
     files: dict[str, str] = field(default_factory=dict)
     source_artifact_id: str = ""
+    source_inputs: tuple[str, ...] = ()
     settings: dict[str, Any] = field(default_factory=dict)
     warnings: tuple[str, ...] = ()
 
@@ -28,9 +31,12 @@ class ArtifactRecord:
             "id": self.id,
             "kind": self.kind,
             "created_at": self.created_at,
+            "status": self.status,
+            "producer": self.producer,
             "root": self.root,
             "files": dict(self.files),
             "source_artifact_id": self.source_artifact_id,
+            "source_inputs": list(self.source_inputs),
             "settings": dict(self.settings),
             "warnings": list(self.warnings),
         }
@@ -38,15 +44,19 @@ class ArtifactRecord:
     @classmethod
     def from_json(cls, payload: dict[str, Any]) -> ArtifactRecord:
         files = payload.get("files")
+        source_inputs = payload.get("source_inputs")
         settings = payload.get("settings")
         warnings = payload.get("warnings")
         return cls(
             id=str(payload.get("id") or ""),
             kind=str(payload.get("kind") or ""),
             created_at=str(payload.get("created_at") or ""),
+            status=str(payload.get("status") or "ready"),
+            producer=str(payload.get("producer") or ""),
             root=str(payload.get("root") or ""),
             files={str(k): str(v) for k, v in files.items()} if isinstance(files, dict) else {},
             source_artifact_id=str(payload.get("source_artifact_id") or ""),
+            source_inputs=tuple(str(item) for item in source_inputs) if isinstance(source_inputs, list) else (),
             settings=dict(settings) if isinstance(settings, dict) else {},
             warnings=tuple(str(item) for item in warnings) if isinstance(warnings, list) else (),
         )
@@ -98,6 +108,9 @@ def make_artifact_record(
     root: str | Path,
     files: dict[str, str | Path] | None = None,
     source_artifact_id: str = "",
+    source_inputs: list[str | Path] | tuple[str | Path, ...] | None = None,
+    status: str = "ready",
+    producer: str = "",
     settings: dict[str, Any] | None = None,
     warnings: list[str] | tuple[str, ...] | None = None,
 ) -> ArtifactRecord:
@@ -111,9 +124,12 @@ def make_artifact_record(
         id=artifact_id,
         kind=kind,
         created_at=utc_now_iso(),
+        status=status,
+        producer=producer,
         root=root_text,
         files=file_payload,
         source_artifact_id=source_artifact_id,
+        source_inputs=tuple(_portable_path(scene, value) for value in (source_inputs or ())),
         settings=dict(settings or {}),
         warnings=tuple(warnings or ()),
     )

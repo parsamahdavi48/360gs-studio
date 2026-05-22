@@ -15,6 +15,19 @@ DATASET_KIND_COLMAP_DATASET = "colmap_dataset"
 DATASET_KIND_LICHTFELD_COLMAP = "lichtfeld_colmap"
 DATASET_KIND_REALITYSCAN_REALIGN_INPUT = "realityscan_realign_input"
 
+SFM_ARTIFACT_KINDS = {
+    SFM_KIND_METASHAPE_XML_PLY,
+    SFM_KIND_COLMAP_SPARSE,
+    SFM_KIND_SPHERESFM_SPARSE,
+    SFM_KIND_REALITYSCAN_CSV_PLY,
+}
+DATASET_ARTIFACT_KINDS = {
+    DATASET_KIND_NERF_JSON_PLY,
+    DATASET_KIND_COLMAP_DATASET,
+    DATASET_KIND_LICHTFELD_COLMAP,
+    DATASET_KIND_REALITYSCAN_REALIGN_INPUT,
+}
+
 
 def detect_dataset_kind(root: str | Path, *, preferred_kind: str = "") -> str:
     dataset_root = Path(root)
@@ -34,12 +47,14 @@ def register_dataset_artifact(
     root: str | Path,
     kind: str = "",
     source_artifact_id: str = "",
+    source_inputs: list[str | Path] | tuple[str | Path, ...] | None = None,
     settings: dict[str, Any] | None = None,
     warnings: list[str] | tuple[str, ...] | None = None,
 ) -> ArtifactRecord | None:
     detected_kind = detect_dataset_kind(root, preferred_kind=kind)
     if not detected_kind:
         return None
+    _require_known_kind(detected_kind, DATASET_ARTIFACT_KINDS, group="dataset")
     record = make_artifact_record(
         scene_dir,
         artifact_id=artifact_id,
@@ -47,6 +62,8 @@ def register_dataset_artifact(
         root=root,
         files=_dataset_files(Path(root)),
         source_artifact_id=source_artifact_id,
+        source_inputs=source_inputs,
+        producer=detected_kind,
         settings=settings,
         warnings=warnings,
     )
@@ -60,15 +77,19 @@ def register_sfm_artifact(
     kind: str,
     root: str | Path,
     files: dict[str, str | Path] | None = None,
+    source_inputs: list[str | Path] | tuple[str | Path, ...] | None = None,
     settings: dict[str, Any] | None = None,
     warnings: list[str] | tuple[str, ...] | None = None,
 ) -> ArtifactRecord:
+    _require_known_kind(kind, SFM_ARTIFACT_KINDS, group="sfm")
     record = make_artifact_record(
         scene_dir,
         artifact_id=artifact_id,
         kind=kind,
         root=root,
         files=_existing_files(files or {}),
+        source_inputs=source_inputs,
+        producer=kind,
         settings=settings,
         warnings=warnings,
     )
@@ -118,6 +139,11 @@ def _dataset_files(root: Path) -> dict[str, Path]:
         if candidate.exists():
             files[key] = candidate
     return files
+
+
+def _require_known_kind(kind: str, accepted: set[str], *, group: str) -> None:
+    if kind not in accepted:
+        raise ValueError(f"Unknown {group} artifact kind: {kind}")
 
 
 def _existing_files(files: dict[str, str | Path]) -> dict[str, str | Path]:

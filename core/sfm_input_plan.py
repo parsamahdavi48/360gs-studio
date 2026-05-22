@@ -2,9 +2,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from core.projection_contract import PROJECTION_EQUIRECTANGULAR, PROJECTION_NORMAL
 from core.scene_inventory import (
-    PROJECTION_EQUIRECTANGULAR,
-    PROJECTION_NORMAL,
     SceneImage,
     SceneInventory,
 )

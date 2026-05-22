@@ -34,6 +34,8 @@ def test_register_dataset_artifact_detects_nerf_and_files(tmp_path: Path) -> Non
 
     assert record is not None
     assert record.kind == DATASET_KIND_NERF_JSON_PLY
+    assert record.status == "ready"
+    assert record.producer == DATASET_KIND_NERF_JSON_PLY
     assert record.files["transforms_json"] == "output/metashape_cubemap/transforms.json"
     assert record.files["images_dir"] == "output/metashape_cubemap/images"
     assert load_artifacts(scene, "dataset")[0].id == "dataset_a"
@@ -63,6 +65,7 @@ def test_register_sfm_artifact_keeps_existing_files_only(tmp_path: Path) -> None
     )
 
     assert record.files == {"xml": "cameras.xml"}
+    assert record.producer == SFM_KIND_METASHAPE_XML_PLY
 
 
 def test_latest_dataset_root_uses_registered_artifacts(tmp_path: Path) -> None:

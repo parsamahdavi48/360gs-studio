@@ -8,9 +8,11 @@ from PIL import Image
 from core.scene_inventory import (
     PROJECTION_EQUIRECTANGULAR,
     PROJECTION_NORMAL,
+    PROJECTION_UNKNOWN,
     build_scene_inventory,
 )
 from core.scene_layout import selected_frames_path
+from core.scene_project import scene_image_projection_map
 
 
 def _write_image(path: Path, size: tuple[int, int]) -> None:
@@ -79,3 +81,29 @@ def test_scene_inventory_reads_selected_frame_source_metadata(tmp_path: Path) ->
     assert inventory.images[0].source_kind == "image_sequence"
     assert inventory.images[0].source_id == "import_a"
     assert inventory.images[0].sequence_index == 7
+
+
+def test_scene_projection_map_keeps_unreadable_images_unknown(tmp_path: Path) -> None:
+    scene = tmp_path
+    image = scene / "images" / "broken.jpg"
+    image.parent.mkdir(parents=True)
+    image.write_bytes(b"not an image")
+
+    projection_map = scene_image_projection_map(scene, [image])
+
+    assert projection_map["images/broken.jpg"] == PROJECTION_UNKNOWN
+
+
+def test_scene_inventory_accepts_explicit_external_image_root(tmp_path: Path) -> None:
+    scene = tmp_path / "scene"
+    source_images = tmp_path / "source_images"
+    source_masks = tmp_path / "source_masks"
+    _write_image(source_images / "normal.jpg", (40, 30))
+    _write_mask(source_masks / "normal.png", (40, 30))
+
+    inventory = build_scene_inventory(scene, images_dir=source_images, masks_dir=source_masks)
+
+    assert inventory.images_dir == source_images
+    assert inventory.images[0].rel_path == "normal.jpg"
+    assert inventory.images[0].projection == PROJECTION_NORMAL
+    assert inventory.images[0].mask is not None

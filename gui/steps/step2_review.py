@@ -227,7 +227,7 @@ class ReviewStep(BaseStepWidget):
             return
 
         try:
-            from core.review_frames import ReviewWidget
+            from gui.review_frames import ReviewWidget
 
             widget = ReviewWidget(Path(self.scene_dir), self._csv_path())
         except Exception as e:

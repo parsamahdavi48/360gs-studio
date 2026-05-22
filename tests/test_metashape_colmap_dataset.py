@@ -69,6 +69,27 @@ def _write_mixed_xml(path: Path) -> None:
     )
 
 
+def _write_single_pinhole_xml(path: Path) -> None:
+    path.write_text(
+        f"""<?xml version="1.0" encoding="UTF-8"?>
+<document>
+  <chunk>
+    <sensors>
+      <sensor id="0" type="frame">
+        <resolution width="40" height="30" />
+        <calibration><f>35</f><cx>0</cx><cy>0</cy></calibration>
+      </sensor>
+    </sensors>
+    <cameras>
+      <camera id="0" label="frame.jpg" sensor_id="0"><transform>{_IDENTITY}</transform></camera>
+    </cameras>
+  </chunk>
+</document>
+""",
+        encoding="utf-8",
+    )
+
+
 def test_export_metashape_colmap_dataset_expands_only_erp_and_undistorts_distorted(tmp_path: Path) -> None:
     scene = tmp_path / "scene"
     _write_image(scene / "images" / "pano.jpg", (64, 32), (80, 120, 160))
@@ -104,6 +125,34 @@ def test_export_metashape_colmap_dataset_expands_only_erp_and_undistorts_distort
     assert (output / "sparse" / "0" / "cameras.txt").is_file()
     assert (output / "sparse" / "0" / "images.txt").read_text(encoding="utf-8").count("\n\n") == 4
     assert (output / "sparse" / "0" / "points3D.ply").is_file()
+
+
+def test_export_metashape_colmap_dataset_uses_explicit_image_root(tmp_path: Path) -> None:
+    scene = tmp_path / "scene"
+    source_images = tmp_path / "source_images"
+    source_masks = tmp_path / "source_masks"
+    _write_image(source_images / "frame.jpg", (40, 30), (10, 20, 30))
+    _write_mask(source_masks / "frame.png", (40, 30))
+    xml = scene / "metashape.xml"
+    scene.mkdir()
+    _write_single_pinhole_xml(xml)
+
+    result = export_metashape_colmap_dataset(
+        scene_dir=scene,
+        images_dir=source_images,
+        masks_dir=source_masks,
+        xml_path=xml,
+        ply_path=None,
+        output_dir=scene / "output" / "metashape_colmap",
+        views=[{"name": "pz", "yaw": 0.0, "pitch": 0.0}],
+        output_scale=1.0,
+        output_format="jpg",
+    )
+
+    output = scene / "output" / "metashape_colmap"
+    assert result.image_count == 1
+    assert (output / "images" / "frame.jpg").is_file()
+    assert (output / "masks" / "frame.png").is_file()
 
 
 def test_metashape_model_requires_mixed_writer_for_distortion(tmp_path: Path) -> None:

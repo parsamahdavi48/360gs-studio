@@ -15,8 +15,9 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from core.dataset_job_spec import realityscan_lfs_colmap_job, write_dataset_job
 from core.realityscan_to_lfs_colmap import DEFAULT_UNDISTORT_ALPHA
-from core.scene_layout import scene_images_dir, scene_masks_dir, scene_output_dir
+from core.scene_layout import jobs_dir, scene_images_dir, scene_masks_dir, scene_output_dir
 from core.workflow_artifacts import (
     DATASET_KIND_LICHTFELD_COLMAP,
     SFM_KIND_REALITYSCAN_CSV_PLY,
@@ -151,26 +152,28 @@ class RealityScanLfsTool(BaseStepWidget):
         script = self.base_dir / "realityscan_to_lfs_colmap.py"
         if not script.is_file():
             raise FileNotFoundError(f"realityscan_to_lfs_colmap.py not found: {script}")
+        job_path = jobs_dir(Path(self.scene_dir)) / "realityscan_lfs_colmap_job.json"
+        write_dataset_job(
+            job_path,
+            realityscan_lfs_colmap_job(
+                csv_path=self.csv_browse.text(),
+                output_dir=self.output_browse.text(),
+                images_dir=self.images_browse.text(),
+                masks_dir=self.masks_browse.text() or None,
+                ply_path=self.ply_browse.text(),
+                skip_missing_images=self.skip_missing_cb.isChecked(),
+                pre_undistort_distorted_images=self.pre_undistort_cb.isChecked(),
+                undistort_alpha=DEFAULT_UNDISTORT_ALPHA,
+            ),
+        )
 
         cmd = [
             sys.executable,
             "-u",
             str(script),
-            self.csv_browse.text(),
-            self.output_browse.text(),
-            "--images-dir",
-            self.images_browse.text(),
-            "--ply",
-            self.ply_browse.text(),
+            "--job",
+            str(job_path),
         ]
-        masks = self.masks_browse.text()
-        if masks:
-            cmd.extend(["--masks-dir", masks])
-        if self.skip_missing_cb.isChecked():
-            cmd.append("--skip-missing-images")
-        if self.pre_undistort_cb.isChecked():
-            cmd.append("--pre-undistort-distorted-images")
-            cmd.extend(["--undistort-alpha", f"{DEFAULT_UNDISTORT_ALPHA:g}"])
         return [("realityscan_lfs_colmap", cmd)]
 
     def on_queue_finished(self, success: bool) -> None:
@@ -192,6 +195,12 @@ class RealityScanLfsTool(BaseStepWidget):
                 "images_dir": self.images_browse.text(),
                 "masks_dir": self.masks_browse.text(),
             },
+            source_inputs=[
+                self.csv_browse.text(),
+                self.ply_browse.text(),
+                self.images_browse.text(),
+                self.masks_browse.text(),
+            ],
             settings=settings,
         )
         register_dataset_artifact(
@@ -200,10 +209,13 @@ class RealityScanLfsTool(BaseStepWidget):
             root=self.output_browse.text(),
             kind=DATASET_KIND_LICHTFELD_COLMAP,
             source_artifact_id=sfm_record.id,
+            source_inputs=[self.output_browse.text()],
             settings=settings,
         )
 
     def _validate_inputs(self) -> None:
+        if not self.scene_dir:
+            raise ValueError(i18n.t("SCENE_REQUIRED_ACTION_HINT"))
         csv = Path(self.csv_browse.text())
         if not csv.is_file():
             raise ValueError(i18n.t("RS_LFS_CSV_NOT_FOUND").format(path=self.csv_browse.text() or "-"))

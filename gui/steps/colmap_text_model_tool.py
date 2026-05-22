@@ -19,9 +19,17 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from core.dataset_job_spec import metashape_colmap_job, write_dataset_job
 from core.metashape_colmap_dataset import metashape_model_requires_mixed_colmap_writer
 from core.orientation_correction import FINAL_ORIENTATION_LICHTFELD, FINAL_ORIENTATION_NONE
-from core.scene_layout import scene_images_dir, scene_masks_dir, scene_output_dir, step4_meta_dir, step4_work_dir
+from core.scene_layout import (
+    jobs_dir,
+    scene_images_dir,
+    scene_masks_dir,
+    scene_output_dir,
+    step4_meta_dir,
+    step4_work_dir,
+)
 from core.workflow_artifacts import (
     DATASET_KIND_COLMAP_DATASET,
     SFM_KIND_METASHAPE_XML_PLY,
@@ -351,29 +359,29 @@ class ColmapTextModelTool(BaseStepWidget):
         views_json = write_views_config(self._views_config_dir(), views)
         mask_dir = masks if masks.is_dir() else None
         if use_mixed_writer:
+            job_path = jobs_dir(Path(self.scene_dir)) / "metashape_colmap_job.json"
+            write_dataset_job(
+                job_path,
+                metashape_colmap_job(
+                    scene_dir=Path(self.scene_dir),
+                    images_dir=images,
+                    masks_dir=mask_dir,
+                    xml_path=xml,
+                    ply_path=ply,
+                    output_dir=output,
+                    views=views,
+                    output_scale=float(self.scale_combo.currentData()),
+                    output_format=str(self.output_format_combo.currentData() or "jpg"),
+                    undistort_alpha=1.0,
+                ),
+            )
             cmd = [
                 sys.executable,
                 "-u",
                 str(mixed_colmap_script),
-                "--scene",
-                str(Path(self.scene_dir)),
-                "--images",
-                str(images),
-                "--xml",
-                str(xml),
-                "--ply",
-                str(ply),
-                "--output",
-                str(output),
-                "--views-json",
-                str(views_json),
-                "--scale",
-                f"{float(self.scale_combo.currentData()):g}",
-                "--output-format",
-                str(self.output_format_combo.currentData() or "jpg"),
+                "--job",
+                str(job_path),
             ]
-            if mask_dir is not None:
-                cmd.extend(["--masks", str(mask_dir)])
             return [("metashape_colmap_mixed", cmd)]
         return [
             (
@@ -526,6 +534,7 @@ class ColmapTextModelTool(BaseStepWidget):
                 "xml": self._xml_path(),
                 "ply": self._ply_path(),
             },
+            source_inputs=[self._images_dir(), self._masks_dir(), self._xml_path(), self._ply_path()],
             settings=settings,
         )
         register_dataset_artifact(
@@ -534,6 +543,7 @@ class ColmapTextModelTool(BaseStepWidget):
             root=self._output_dir(),
             kind=DATASET_KIND_COLMAP_DATASET,
             source_artifact_id=sfm_record.id,
+            source_inputs=[self._output_dir()],
             settings=settings,
         )
 
