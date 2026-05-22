@@ -204,6 +204,19 @@ LichtFeldで「キューブマップデータ」と「3DGUTでエクイレクタ
 
 マスクだけ調整したあとに再出力する場合は、`画像` をOFFにすると既存のキューブマップ画像を再変換せずに済みます。`3DGUT (LichtFeld)` では元画像と元マスクをそのまま使うため、この出力ON/OFFは使いません。
 
+## MetashapeからCOLMAPデータセットを作る
+
+Step 5の `Metashape → COLMAPデータセット` カードは、COLMAP入力に対応した学習アプリ向けに `<scene>/output/metashape_colmap/` を作ります。
+
+Metashape XMLが球面カメラだけの場合は、既存のCubemap変換ルートを使います。Metashape XMLに球面カメラと通常フレームカメラが混在している場合、または通常フレーム側に歪み係数がある場合は、混在対応の書き出しに切り替わります。
+
+- 球面 / ERP カメラだけ、選択した視点セットへ展開します
+- PINHOLEの通常フレーム画像はCubemap化せずリンクまたはコピーします
+- 歪み係数を持つ通常フレーム画像はPINHOLEへUndistortし、マスクも同じ変換をかけます
+- 出力先に `sparse/0/cameras.txt`, `images.txt`, `points3D.txt` を作ります
+
+これは、Metashapeで混在SfMした結果から、必要なERP画像だけCubemap展開したい場合のルートです。
+
 ## RealityScanからLichtFeld用COLMAPを作る
 
 RealityScanで再アラインしたあと、PostshotではCSV/PLYを直接使えても、LichtFeldではCOLMAP形式のデータセットが必要になる場合があります。Step 5 の `RealityScan → LichtFeld` は、RealityScanのRegistrationから書き出したInternal/External CSVと、同じ座標状態で書き出したPLYから、LichtFeldで `Dataset` として開けるフォルダを作ります。

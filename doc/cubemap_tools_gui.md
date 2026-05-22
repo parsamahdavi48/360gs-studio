@@ -204,6 +204,19 @@ The `Output` checkboxes control whether images and/or masks are written.
 
 After adjusting masks, turning `Images` off avoids reconverting existing cubemap images. `3DGUT (LichtFeld)` references source images and masks directly, so these output toggles are not used in that mode.
 
+## Metashape To COLMAP Dataset
+
+Step 5's `Metashape → COLMAP Dataset` card creates a COLMAP text dataset under `<scene>/output/metashape_colmap/` for training apps that accept COLMAP input.
+
+For spherical-only Metashape XML, the app keeps the existing cubemap conversion path. If the Metashape XML contains mixed spherical and normal frame sensors, or frame sensors with distortion coefficients, the app uses the mixed exporter instead:
+
+- spherical / ERP cameras are expanded to the selected view set
+- PINHOLE frame cameras are linked or copied without cubemap expansion
+- distorted frame cameras are undistorted to PINHOLE, with masks transformed the same way
+- `sparse/0/cameras.txt`, `images.txt`, and `points3D.txt` are written in the output dataset
+
+This path is intended for mixed Metashape SfM results where only the ERP cameras should be cubemap-expanded.
+
 ## RealityScan To LichtFeld COLMAP
 
 After realigning in RealityScan, Postshot can use the CSV/PLY exports directly, but LichtFeld may require a COLMAP dataset root. Step 5's `RealityScan → LichtFeld` tool creates a folder that LichtFeld can open as a `Dataset` from the Internal/External CSV exported from RealityScan Registration and the PLY exported in the same coordinate state.
