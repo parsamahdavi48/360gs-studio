@@ -197,7 +197,7 @@ Detailed GUI docs:
 
 ## Mask Preprocessing for Normal Images
 
-For normal-camera video from DSLR, mirrorless, smartphone, or similar cameras, extract frames in Step 1. For existing image sequences, place them in `images/` or use the `+` icon on the Step 3 `Images Folder` row to copy them into the scene. Step 3 detects the image type from Step 1 records, external image registration, or image headers. Normal images keep model-based masking and overexposure masking available while disabling stitch seam masking and 360° pole projection assist.
+For normal-camera video from DSLR, mirrorless, smartphone, or similar cameras, extract frames in Step 1. For existing image sequences, add a still-image folder to Step 1 `Input Sources`; the images are copied into the scene and registered for later steps. Step 3 detects the image type from Step 1 records, external image registration, or image headers. Normal images keep model-based masking and overexposure masking available while disabling stitch seam masking and 360° pole projection assist.
 
 Use this when you want to exclude people, vehicles, blown-out regions, or similar areas before importing images into SfM software.
 

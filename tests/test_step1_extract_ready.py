@@ -72,8 +72,8 @@ def test_extract_run_disabled_until_video_is_selected() -> None:
     step = ExtractStep(Path.cwd())
 
     assert not step.primary_action_enabled()
-    assert step.ready_status_label.text() == i18n.t("EXTRACT_READY_NO_VIDEO")
-    assert step.primary_action_tooltip() == i18n.t("EXTRACT_READY_NO_VIDEO")
+    assert step.ready_status_label.text() == i18n.t("EXTRACT_READY_NO_INPUT_SOURCE")
+    assert step.primary_action_tooltip() == i18n.t("EXTRACT_READY_NO_INPUT_SOURCE")
 
 
 def test_extract_step_accepts_image_sequence_folder(tmp_path: Path) -> None:
@@ -219,6 +219,43 @@ def test_extract_video_queue_adds_and_removes_videos_from_right_pane(tmp_path: P
     assert step.video_queue_list.count() == 1
     assert video_b.name in step.video_queue_list.item(0).text()
 
+
+def test_extract_source_queue_mixes_video_and_still_folder(tmp_path: Path, monkeypatch) -> None:
+    _app()
+    scene = tmp_path / "scene"
+    source_video_dir = tmp_path / "video"
+    still_dir = tmp_path / "stills"
+    scene.mkdir()
+    source_video_dir.mkdir()
+    still_dir.mkdir()
+    video = source_video_dir / "walk.mp4"
+    video.write_bytes(b"video")
+    (still_dir / "still_0001.jpg").write_bytes(b"image")
+    (still_dir / "still_0002.png").write_bytes(b"image")
+    step = ExtractStep(Path.cwd())
+    step.set_scene_dir(str(scene))
+    monkeypatch.setattr(step, "_probe_video_info_for_path", lambda _path: _video_info())
+
+    monkeypatch.setattr(
+        "gui.steps.step1_extract.QFileDialog.getOpenFileNames",
+        lambda *_args, **_kwargs: ([str(video)], ""),
+    )
+    step.add_video_btn.click()
+    monkeypatch.setattr(
+        "gui.steps.step1_extract.QFileDialog.getExistingDirectory",
+        lambda *_args, **_kwargs: str(still_dir),
+    )
+    step.add_image_sequence_btn.click()
+
+    assert step.primary_action_enabled()
+    assert step.video_queue_list.count() == 2
+    assert video.name in step.video_queue_list.item(0).text()
+    assert still_dir.name in step.video_queue_list.item(1).text()
+    assert "2" in step.video_queue_list.item(1).text()
+    commands = step.build_commands()
+    assert [phase for phase, _cmd in commands] == [f"extract: {video.name}", f"image_sequence_import: {still_dir.name}"]
+    assert commands[0][1][3] == str(video)
+    assert commands[1][1][3:5] == [str(still_dir), str(scene)]
 
 def test_extract_video_info_label_is_integrated_into_queue() -> None:
     _app()
@@ -399,8 +436,8 @@ def test_extract_clear_input_videos_clears_auto_scene(tmp_path: Path, monkeypatc
     assert window.step1.scene_dir == ""
     assert isinstance(window.step1.clear_video_btn, QToolButton)
     assert window.step1.clear_video_btn.text() == ""
-    assert window.step1.clear_video_btn.accessibleName() == i18n.t("CLEAR_INPUT_VIDEO")
-    assert window.step1.clear_video_btn.toolTip() == i18n.t("CLEAR_INPUT_VIDEO_HINT")
+    assert window.step1.clear_video_btn.accessibleName() == i18n.t("CLEAR_INPUT_SOURCES")
+    assert window.step1.clear_video_btn.toolTip() == i18n.t("CLEAR_INPUT_SOURCES_HINT")
     window.close()
 
 
@@ -639,7 +676,7 @@ def test_extract_queue_finish_revalidates_missing_video_after_failure(tmp_path: 
     assert step.video_info is None
     assert step.video_browse.text() == ""
     assert not step.primary_action_enabled()
-    assert step.ready_status_label.text() == i18n.t("EXTRACT_READY_NO_VIDEO")
+    assert step.ready_status_label.text() == i18n.t("EXTRACT_READY_NO_INPUT_SOURCE")
 
 
 def test_extract_queue_finish_prunes_missing_video_and_keeps_remaining_queue(tmp_path: Path, monkeypatch) -> None:
