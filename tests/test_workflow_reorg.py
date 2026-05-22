@@ -27,6 +27,27 @@ def _write_colmap_sparse(root: Path) -> None:
         (sparse / name).write_text("", encoding="utf-8")
 
 
+def _write_mixed_metashape_xml(path: Path) -> None:
+    identity = "1 0 0 0 0 1 0 0 0 0 1 0 0 0 0 1"
+    path.write_text(
+        f"""<?xml version="1.0" encoding="UTF-8"?>
+<document>
+  <chunk>
+    <sensors>
+      <sensor id="0" type="spherical"><resolution width="64" height="32" /></sensor>
+      <sensor id="1" type="frame"><resolution width="40" height="30" /><calibration><f>35</f><k1>0.1</k1></calibration></sensor>
+    </sensors>
+    <cameras>
+      <camera id="0" label="pano.jpg" sensor_id="0"><transform>{identity}</transform></camera>
+      <camera id="1" label="normal.jpg" sensor_id="1"><transform>{identity}</transform></camera>
+    </cameras>
+  </chunk>
+</document>
+""",
+        encoding="utf-8",
+    )
+
+
 def test_sfm_cards_open_in_step_sfm_pages_and_external_route_goes_to_dataset(tmp_path: Path) -> None:
     _app()
     window = MainWindow(str(tmp_path))
@@ -357,6 +378,32 @@ def test_colmap_text_model_tool_defaults_and_builds_cli_command(tmp_path: Path) 
     tool.on_queue_finished(True)
     assert load_artifacts(scene, "sfm")[-1].kind == "metashape_xml_ply"
     assert load_artifacts(scene, "dataset")[-1].kind == "colmap_dataset"
+
+
+def test_colmap_text_model_tool_uses_mixed_writer_for_mixed_metashape_xml(tmp_path: Path) -> None:
+    scene = tmp_path / "scene"
+    images = scene / "images"
+    masks = scene / "masks"
+    images.mkdir(parents=True)
+    masks.mkdir()
+    (images / "pano.jpg").write_bytes(b"image")
+    (images / "normal.jpg").write_bytes(b"image")
+    xml = scene / "metashape.xml"
+    _write_mixed_metashape_xml(xml)
+    ply = scene / "metashape.ply"
+    ply.write_text("ply\n", encoding="ascii")
+
+    _app()
+    tool = ColmapTextModelTool(Path.cwd())
+    tool.set_scene_dir(str(scene))
+
+    commands = tool.build_commands()
+
+    assert [phase for phase, _cmd in commands] == ["metashape_colmap_mixed"]
+    cmd = commands[0][1]
+    assert cmd[2].endswith("export_metashape_colmap_dataset.py")
+    assert cmd[cmd.index("--scene") + 1] == str(scene)
+    assert cmd[cmd.index("--output") + 1] == str(scene / "output" / "metashape_colmap")
 
 
 def test_realityscan_realign_profile_is_step4_only(tmp_path: Path) -> None:

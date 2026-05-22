@@ -19,6 +19,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from core.metashape_colmap_dataset import metashape_model_requires_mixed_colmap_writer
 from core.orientation_correction import FINAL_ORIENTATION_LICHTFELD, FINAL_ORIENTATION_NONE
 from core.scene_layout import scene_images_dir, scene_masks_dir, scene_output_dir, step4_meta_dir, step4_work_dir
 from core.workflow_artifacts import (
@@ -327,7 +328,10 @@ class ColmapTextModelTool(BaseStepWidget):
         metashape_script = self.base_dir / "vendor" / "metashape_360_lfs" / "metashape_360_lfs.py"
         cubemap_script = self.base_dir / "cubemap_transforms_json.py"
         colmap_script = self.base_dir / "transforms_to_colmap.py"
-        for script in (metashape_script, cubemap_script, colmap_script):
+        mixed_colmap_script = self.base_dir / "scripts" / "export_metashape_colmap_dataset.py"
+        use_mixed_writer = self._uses_mixed_colmap_writer()
+        required_scripts = (mixed_colmap_script,) if use_mixed_writer else (metashape_script, cubemap_script, colmap_script)
+        for script in required_scripts:
             if not script.exists():
                 raise FileNotFoundError(f"{script.name} が見つかりません: {script}")
 
@@ -346,6 +350,31 @@ class ColmapTextModelTool(BaseStepWidget):
         views = self.view_config.collect_views(include_disabled=True)
         views_json = write_views_config(self._views_config_dir(), views)
         mask_dir = masks if masks.is_dir() else None
+        if use_mixed_writer:
+            cmd = [
+                sys.executable,
+                "-u",
+                str(mixed_colmap_script),
+                "--scene",
+                str(Path(self.scene_dir)),
+                "--images",
+                str(images),
+                "--xml",
+                str(xml),
+                "--ply",
+                str(ply),
+                "--output",
+                str(output),
+                "--views-json",
+                str(views_json),
+                "--scale",
+                f"{float(self.scale_combo.currentData()):g}",
+                "--output-format",
+                str(self.output_format_combo.currentData() or "jpg"),
+            ]
+            if mask_dir is not None:
+                cmd.extend(["--masks", str(mask_dir)])
+            return [("metashape_colmap_mixed", cmd)]
         return [
             (
                 "metashape",
@@ -435,6 +464,15 @@ class ColmapTextModelTool(BaseStepWidget):
             raise ValueError(f"ビュー数が多すぎます ({enabled})。{_BLOCK_ENABLED_VIEWS} 以下にしてください。")
         self._jpg_quality()
 
+    def _uses_mixed_colmap_writer(self) -> bool:
+        xml = self._xml_path()
+        if not xml.is_file():
+            return False
+        try:
+            return metashape_model_requires_mixed_colmap_writer(xml)
+        except Exception:
+            return False
+
     def _prepare_run_dirs(self, work: Path, output: Path) -> bool:
         if self.scene_dir is None:
             return False
@@ -460,6 +498,8 @@ class ColmapTextModelTool(BaseStepWidget):
     def phase_display_name(self, phase: str) -> str:
         if phase == "metashape":
             return i18n.t("PHASE_METASHAPE_IMPORT")
+        if phase == "metashape_colmap_mixed":
+            return i18n.t("PHASE_COLMAP_TEXT_MODEL")
         if phase == "cubemap":
             return i18n.t("PHASE_CUBEMAP")
         if phase == "colmap_text":
