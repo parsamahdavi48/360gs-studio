@@ -310,7 +310,8 @@ def test_cubemap_step_uses_tab_path_summaries(tmp_path: Path) -> None:
     assert step.export_method_selector.current_route() == SFM_ROUTE_METASHAPE
     assert set(step.training_backend_buttons) == {"lichtfeld", "postshot"}
     assert set(step.training_backend_selector.primary_backend_buttons) == {"lichtfeld", "postshot"}
-    assert set(step.training_backend_selector.other_backend_actions) == {"custom"}
+    assert set(step.training_backend_selector.other_backend_actions) == set()
+    assert step.training_backend_selector.other_picker.isHidden()
     assert not hasattr(step, "training_backend_other_row")
     assert step.export_images_cb.isChecked()
     assert step.export_masks_cb.isChecked()
@@ -1725,7 +1726,11 @@ def test_step4_scene_settings_restore_export_and_training_choices(tmp_path: Path
     step.view_config.yaw_offset_edit.setValue(12.0)
     step.view_config.pitch_rows[0]["checks"][0].setChecked(False)
     step.run_training_cb.setChecked(True)
+    lfs_executable = str(tmp_path / "LichtFeld-Studio.exe")
+    postshot_executable = str(tmp_path / "postshot-cli.exe")
+    step.training_executable_browse.set_text(lfs_executable)
     step._set_training_backend("postshot")
+    step.training_executable_browse.set_text(postshot_executable)
     step.postshot_project_name_edit.setText("compare.psht")
     step._write_export_settings()
 
@@ -1748,6 +1753,9 @@ def test_step4_scene_settings_restore_export_and_training_choices(tmp_path: Path
     assert restored.view_config.collect_views(include_disabled=True)[0]["enabled"] is False
     assert restored.run_training_cb.isChecked() is True
     assert restored._training_backend() == "postshot"
+    assert restored.training_executable_browse.text() == postshot_executable
+    restored._set_training_backend("lichtfeld")
+    assert restored.training_executable_browse.text() == lfs_executable
     assert restored.postshot_project_name_edit.text() == "compare.psht"
 
 
@@ -2191,6 +2199,9 @@ def test_step5_launch_builds_lichtfeld_command_and_writes_config(tmp_path: Path)
     fake_lfs.write_text("", encoding="utf-8")
     training = TrainingStep(Path.cwd(), step)
     training.set_scene_dir(str(tmp_path))
+    assert training.primary_action_text() == i18n.t("TRAINING_SELECT_APP")
+    assert training.primary_action_enabled() is False
+    training.show_backend("lichtfeld")
 
     assert step.lfs_output_name_edit.text() == tmp_path.name
     step.training_executable_browse.set_text(str(fake_lfs))
@@ -2355,8 +2366,8 @@ def test_training_headless_option_stays_in_run_options_row(tmp_path: Path) -> No
     assert not _is_descendant(step.run_training_cb, step.training_run_options_row)
     assert _is_descendant(step.training_headless_cb, step.training_run_options_row)
     assert _is_descendant(step.training_backend_buttons["lichtfeld"], step.training_backend_row)
-    assert _is_descendant(step.training_backend_other_button, step.training_backend_row)
-    assert _is_descendant(step.training_backend_other_menu_button, step.training_backend_row)
+    assert _is_descendant(step.training_backend_selector.other_picker, step.training_backend_row)
+    assert step.training_backend_selector.other_picker.isHidden()
     assert not _is_descendant(step.training_backend_buttons["lichtfeld"], step.training_run_options_row)
     assert not step.training_headless_cb.isHidden()
 
@@ -2365,12 +2376,8 @@ def test_training_headless_option_stays_in_run_options_row(tmp_path: Path) -> No
     assert not step.training_backend_other_button.isChecked()
 
     step._set_training_backend("custom")
-    assert step.training_backend_other_button.isChecked()
-    assert step.training_backend_selector.other_backend_actions["custom"].isChecked()
-    assert (
-        step.training_backend_other_button.geometry().center().y()
-        == step.training_backend_buttons["postshot"].geometry().center().y()
-    )
+    assert step._training_backend() == "lichtfeld"
+    assert step.training_backend_buttons["lichtfeld"].isChecked()
 
 
 def test_lichtfeld_training_refuses_existing_output_ply(tmp_path: Path, monkeypatch) -> None:
@@ -2699,16 +2706,31 @@ def test_training_executable_placeholders_are_file_names_only() -> None:
 
     expected_lichtfeld = "LichtFeld-Studio.exe" if os.name == "nt" else "LichtFeld-Studio"
     expected_postshot = "postshot-cli.exe" if os.name == "nt" else "postshot-cli"
+    lfs_path = str(Path("D:/Tools/LichtFeld-Studio.exe"))
+    postshot_path = str(Path("D:/Tools/postshot-cli.exe"))
 
     assert step.training_executable_browse.line_edit.placeholderText() == expected_lichtfeld
     assert not Path(step._default_training_executable("lichtfeld")).is_absolute()
+    step.training_executable_browse.set_text(lfs_path)
 
     step._set_training_backend("postshot")
     assert step.training_executable_browse.line_edit.placeholderText() == expected_postshot
     assert not Path(step._default_training_executable("postshot")).is_absolute()
+    assert step.training_executable_browse.text() == ""
+    step.training_executable_browse.set_text(postshot_path)
+
+    step._set_training_backend("lichtfeld")
+    assert step.training_executable_browse.line_edit.placeholderText() == expected_lichtfeld
+    assert step.training_executable_browse.text() == lfs_path
+
+    step._set_training_backend("postshot")
+    assert step.training_executable_browse.line_edit.placeholderText() == expected_postshot
+    assert step.training_executable_browse.text() == postshot_path
 
     step._set_training_backend("custom")
-    assert step.training_executable_browse.line_edit.placeholderText() == ""
+    assert step._training_backend() == "lichtfeld"
+    assert step.training_executable_browse.text() == lfs_path
+    assert step.training_executable_browse.line_edit.placeholderText() == expected_lichtfeld
 
 
 def test_colmap_route_splits_conversion_and_step5_postshot_training(tmp_path: Path) -> None:

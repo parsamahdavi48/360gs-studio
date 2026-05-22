@@ -56,6 +56,7 @@ from gui.steps.training_backend_specs import (
     normalize_training_backend,
     training_backend_default_executable,
     training_backend_phase_name,
+    training_backend_visible_in_selector,
 )
 from gui.steps.training_backends import (
     CustomTrainingOptions,
@@ -148,6 +149,8 @@ class Step4TrainingMixin:
         layout = QVBoxLayout(section)
         layout.setContentsMargins(8, 8, 8, 8)
         layout.setSpacing(6)
+        self._training_executable_by_backend: dict[str, str] = {}
+        self._syncing_training_executable = False
 
         (
             self.training_path_summary_row,
@@ -206,6 +209,7 @@ class Step4TrainingMixin:
             placeholder=self._default_training_executable(_TRAINING_BACKEND_LICHTFELD),
         )
         self.training_executable_browse.setToolTip(i18n.tip("TRAINING_EXECUTABLE"))
+        self.training_executable_browse.path_changed.connect(self._on_training_executable_changed)
         add_tooltip_row(
             form,
             i18n.t("TRAINING_EXECUTABLE"),
@@ -994,11 +998,13 @@ class Step4TrainingMixin:
             return
         self.run_training_cb.setChecked(bool(training.get("enabled", False)))
         backend = str(training.get("backend", "")).strip()
+        self._restore_training_executables(training.get("executables"))
         if backend:
             self._set_training_backend(backend)
         executable = self._settings_text(training.get("executable"))
         if executable:
-            self.training_executable_browse.set_text(executable)
+            self._training_executable_by_backend[self._training_backend()] = executable
+            self._apply_training_executable_for_backend(self._training_backend())
         dataset_root = self._settings_path_text(scene, training.get("dataset_root"))
         if dataset_root:
             self.training_dataset_browse.set_text(dataset_root)
@@ -1109,6 +1115,18 @@ class Step4TrainingMixin:
 
     def _set_training_backend(self, backend: str) -> None:
         backend = normalize_training_backend(backend)
+        if not training_backend_visible_in_selector(backend):
+            backend = _TRAINING_BACKEND_LICHTFELD
+        previous_backend = getattr(self, "_training_backend_value", "")
+        if (
+            previous_backend
+            and previous_backend != backend
+            and hasattr(self, "training_executable_browse")
+            and not getattr(self, "_syncing_training_executable", False)
+        ):
+            current_executable = self.training_executable_browse.text()
+            if current_executable or previous_backend not in self._training_executable_by_backend:
+                self._training_executable_by_backend[previous_backend] = current_executable
         spec = get_training_backend_spec(backend)
         self._training_backend_value = backend
         if hasattr(self, "training_backend_selector"):
@@ -1117,6 +1135,7 @@ class Step4TrainingMixin:
         stack_index = self.training_options_stack_indices[backend]
         self.training_options_stack.setCurrentIndex(stack_index)
         self.training_executable_browse.line_edit.setPlaceholderText(self._default_training_executable(backend))
+        self._apply_training_executable_for_backend(backend)
         self.training_headless_cb.setVisible(spec.supports_headless)
         self._refresh_training_settings_layout()
         self._update_training_paths()
@@ -1126,6 +1145,40 @@ class Step4TrainingMixin:
             self._update_lfs_auto_steps_scaler()
         if getattr(self, "_user_preferences_enabled", False):
             self._save_user_preferences()
+
+    def _restore_training_executables(self, payload: object) -> None:
+        if not isinstance(payload, dict):
+            return
+        for backend, executable in payload.items():
+            normalized = normalize_training_backend(str(backend))
+            if not training_backend_visible_in_selector(normalized):
+                continue
+            text = self._settings_text(executable)
+            if text:
+                self._training_executable_by_backend[normalized] = text
+
+    def _training_executables_for_settings(self) -> dict[str, str]:
+        executables = dict(getattr(self, "_training_executable_by_backend", {}))
+        if hasattr(self, "training_executable_browse"):
+            executables[self._training_backend()] = self.training_executable_browse.text()
+        return {backend: path for backend, path in executables.items() if path}
+
+    def _apply_training_executable_for_backend(self, backend: str) -> None:
+        if not hasattr(self, "training_executable_browse"):
+            return
+        executable = self._training_executable_by_backend.get(backend, "")
+        self._syncing_training_executable = True
+        try:
+            if self.training_executable_browse.text() != executable:
+                self.training_executable_browse.set_text(executable)
+        finally:
+            self._syncing_training_executable = False
+
+    def _on_training_executable_changed(self, path: str) -> None:
+        if getattr(self, "_syncing_training_executable", False):
+            return
+        self._training_executable_by_backend[self._training_backend()] = path.strip()
+        self._save_user_preferences()
 
     def _on_training_dataset_edited(self, _path: str) -> None:
         if self._syncing_training_paths:

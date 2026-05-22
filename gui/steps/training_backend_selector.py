@@ -16,7 +16,6 @@ from PySide6.QtWidgets import (
 from gui import i18n
 from gui.steps.training_backend_specs import (
     DEFAULT_TRAINING_BACKEND,
-    OTHER_TRAINING_BACKEND_IDS,
     TrainingBackendSpec,
     get_training_backend_spec,
     normalize_training_backend,
@@ -32,9 +31,8 @@ class TrainingBackendSelector(QWidget):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._backend = DEFAULT_TRAINING_BACKEND
-        self._last_other_backend = (
-            OTHER_TRAINING_BACKEND_IDS[0] if OTHER_TRAINING_BACKEND_IDS else DEFAULT_TRAINING_BACKEND
-        )
+        visible_other_specs = training_backend_specs(category="other", visible_only=True)
+        self._last_other_backend = visible_other_specs[0].backend_id if visible_other_specs else DEFAULT_TRAINING_BACKEND
 
         self.backend_buttons: dict[str, QRadioButton] = {}
         self.primary_backend_buttons: dict[str, QRadioButton] = {}
@@ -55,7 +53,7 @@ class TrainingBackendSelector(QWidget):
 
         self.primary_group = QButtonGroup(self)
         self.primary_group.setExclusive(True)
-        for spec in training_backend_specs(category="primary"):
+        for spec in training_backend_specs(category="primary", visible_only=True):
             btn = self._make_backend_button(spec)
             btn.clicked.connect(
                 lambda _checked=False, backend_id=spec.backend_id: self.set_backend(backend_id, emit=True)
@@ -85,7 +83,7 @@ class TrainingBackendSelector(QWidget):
         self.other_menu_button.setToolTip(i18n.tip("TRAINING_BACKEND_OTHER"))
         self.other_menu_button.setPopupMode(QToolButton.InstantPopup)
         self.other_menu = QMenu(self.other_button)
-        for spec in training_backend_specs(category="other"):
+        for spec in visible_other_specs:
             action = QAction(i18n.t(spec.short_label_key), self.other_menu)
             action.setCheckable(True)
             action.setToolTip(i18n.tip(spec.tooltip_key))
@@ -99,6 +97,7 @@ class TrainingBackendSelector(QWidget):
 
         self.primary_group.addButton(self.other_button)
         primary_layout.addWidget(self.other_picker)
+        self.other_picker.setVisible(bool(visible_other_specs))
         primary_layout.addStretch()
         layout.addWidget(self.primary_row)
 

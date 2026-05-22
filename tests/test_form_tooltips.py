@@ -246,21 +246,19 @@ def test_step4_route_and_training_selectors_use_radio_buttons() -> None:
     assert step.training_backend_other_menu_button.objectName() == "optionMenuArrow"
     assert set(step.training_backend_buttons) == {"lichtfeld", "postshot"}
     assert set(step.training_backend_selector.primary_backend_buttons) == {"lichtfeld", "postshot"}
-    assert set(step.training_backend_selector.other_backend_actions) == {"custom"}
+    assert set(step.training_backend_selector.other_backend_actions) == set()
+    assert step.training_backend_selector.other_picker.isHidden()
     assert step.training_backend_buttons["lichtfeld"].isChecked()
     assert step.training_backend_other_button.text() == i18n.t("TRAINING_BACKEND_OTHER")
     assert not hasattr(step, "training_backend_other_row")
     assert not step.training_backend_other_button.isChecked()
 
     step._set_training_backend("custom")
-    assert step.training_backend_other_button.isChecked()
-    assert step.training_backend_other_button.text() == i18n.t("TRAINING_BACKEND_CUSTOM_SHORT")
-    assert step.training_backend_selector.other_backend_actions["custom"].isChecked()
+    assert step._training_backend() == "lichtfeld"
+    assert step.training_backend_buttons["lichtfeld"].isChecked()
 
     step._set_training_backend("lichtfeld")
-    step.training_backend_selector.other_backend_actions["custom"].trigger()
-    assert step._training_backend() == "custom"
-    assert step.training_backend_other_button.isChecked()
+    assert step.training_backend_buttons["lichtfeld"].isChecked()
 
 
 def test_step4_scene_preview_launch_uses_icon_button() -> None:
@@ -403,6 +401,9 @@ def test_step4_scrolls_tab_content_not_whole_settings_pane() -> None:
         assert step.pipeline_stage_intent("conversion") is True
 
         window._set_current_step(5)
+        app.processEvents()
+        assert window.run_btn.text().strip() == i18n.t("TRAINING_SELECT_APP")
+        window.step5.training_card_grid.buttons["lichtfeld"].click()
         app.processEvents()
         assert window.run_btn.text().strip() == i18n.t("LAUNCH")
         assert window.step5.dataset_step is step
@@ -738,11 +739,10 @@ def test_cubemap_labels_share_field_tooltips() -> None:
     assert step.training_backend_label.toolTip() == i18n.tip("TRAINING_BACKEND_POSTSHOT")
     assert step.training_backend_buttons["postshot"].isChecked()
     step._set_training_backend("custom")
-    assert step.training_backend_label.toolTip() == i18n.tip("TRAINING_BACKEND_CUSTOM")
-    assert step.training_backend_other_button.isChecked()
-    assert step.training_backend_other_button.text() == i18n.t("TRAINING_BACKEND_CUSTOM_SHORT")
-    assert step.training_backend_selector.other_backend_actions["custom"].isChecked()
-    assert step.training_backend_other_button.toolTip() == i18n.tip("TRAINING_BACKEND_CUSTOM")
+    assert step.training_backend_label.toolTip() == i18n.tip("TRAINING_BACKEND_LICHTFELD")
+    assert not step.training_backend_other_button.isChecked()
+    assert step.training_backend_selector.other_picker.isHidden()
+    assert step.training_backend_other_button.toolTip() == i18n.tip("TRAINING_BACKEND_OTHER")
     assert step.training_backend_other_menu_button.toolTip() == i18n.tip("TRAINING_BACKEND_OTHER")
     training_widget = step.training_section
     assert _label(training_widget, i18n.t("TRAINING_EXECUTABLE")).toolTip() == i18n.tip("TRAINING_EXECUTABLE")
@@ -795,7 +795,6 @@ def test_cubemap_labels_share_field_tooltips() -> None:
         assert field.toolTip() == i18n.tip(tip_key)
         assert _label(training_widget, i18n.t(tip_key)).toolTip() == i18n.tip(tip_key)
     assert _label(training_widget, i18n.t("POSTSHOT_PROJECT_NAME")).toolTip() == i18n.tip("POSTSHOT_PROJECT_NAME")
-    assert _label(training_widget, i18n.t("CUSTOM_TRAINING_ARGS")).toolTip() == i18n.tip("CUSTOM_TRAINING_ARGS")
     assert step.colmap_repo_link.openExternalLinks()
     assert step.colmap_repo_link.toolTip() == i18n.tip("COLMAP_REPOSITORY_LINK")
     assert i18n.t("COLMAP_REPOSITORY_LINK") in step.colmap_repo_link.text()

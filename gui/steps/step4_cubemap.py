@@ -1377,8 +1377,6 @@ class CubemapStep(
         self.realityscan_pose_prior_combo.currentIndexChanged.connect(lambda _idx: self._save_user_preferences())
         self.realityscan_calibration_prior_combo.currentIndexChanged.connect(lambda _idx: self._save_user_preferences())
         self.realityscan_include_rig_cb.toggled.connect(lambda _checked: self._save_user_preferences())
-        self.training_executable_browse.path_changed.connect(lambda _path: self._save_user_preferences())
-
     def _load_user_preferences(self) -> None:
         settings = load_user_settings_section(_USER_SETTINGS_SECTION)
         self._syncing_user_preferences = True
@@ -1428,12 +1426,14 @@ class CubemapStep(
                 self.realityscan_include_rig_cb.setChecked(bool(realityscan_include_rig))
 
             training_backend = str(settings.get("training_backend", "")).strip()
+            self._restore_training_executables(settings.get("training_executables"))
             if training_backend:
                 self._set_training_backend(training_backend)
             training_executable = str(settings.get("training_executable", "")).strip()
             training_output = str(settings.get("training_output", "")).strip()
             if training_executable:
-                self.training_executable_browse.set_text(training_executable)
+                self._training_executable_by_backend[self._training_backend()] = training_executable
+                self._apply_training_executable_for_backend(self._training_backend())
             if training_output:
                 self.training_output_browse.set_text(training_output)
                 self._training_output_user_edited = True
@@ -1462,6 +1462,7 @@ class CubemapStep(
                 "realityscan_include_rig": self.realityscan_include_rig_cb.isChecked(),
                 "training_backend": self._training_backend(),
                 "training_executable": self.training_executable_browse.text(),
+                "training_executables": self._training_executables_for_settings(),
                 "training_output": self.training_output_browse.text(),
             },
         )

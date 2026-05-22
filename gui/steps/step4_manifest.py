@@ -302,6 +302,7 @@ class Step4ManifestMixin:
             "enabled": self.run_training_cb.isChecked(),
             "backend": self._training_backend(),
             "executable": self.training_executable_browse.text(),
+            "executables": self._training_executables_for_settings(),
             "dataset_root": str(dataset.dataset_root),
             "images_dir": str(dataset.images_dir or ""),
             "masks_dir": str(dataset.masks_dir or ""),

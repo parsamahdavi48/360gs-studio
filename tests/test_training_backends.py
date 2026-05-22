@@ -33,10 +33,14 @@ from gui.steps.training_backends import (
 def test_training_backend_specs_define_ui_order_and_command_metadata() -> None:
     primary_ids = tuple(spec.backend_id for spec in training_backend_specs(category="primary"))
     other_ids = tuple(spec.backend_id for spec in training_backend_specs(category="other"))
+    visible_primary_ids = tuple(spec.backend_id for spec in training_backend_specs(category="primary", visible_only=True))
+    visible_other_ids = tuple(spec.backend_id for spec in training_backend_specs(category="other", visible_only=True))
 
     assert DEFAULT_TRAINING_BACKEND == TRAINING_BACKEND_LICHTFELD
     assert primary_ids == (TRAINING_BACKEND_LICHTFELD, TRAINING_BACKEND_POSTSHOT)
     assert other_ids == (TRAINING_BACKEND_CUSTOM,)
+    assert visible_primary_ids == primary_ids
+    assert visible_other_ids == ()
     assert PRIMARY_TRAINING_BACKEND_IDS == primary_ids
     assert OTHER_TRAINING_BACKEND_IDS == other_ids
 

@@ -24,6 +24,7 @@ class TrainingBackendSpec:
     default_executable_windows: str
     default_executable_posix: str
     supports_headless: bool = False
+    show_in_selector: bool = True
 
     def default_executable(self, *, windows: bool) -> str:
         return self.default_executable_windows if windows else self.default_executable_posix
@@ -63,6 +64,7 @@ _SPECS: tuple[TrainingBackendSpec, ...] = (
         phase_name="training_custom",
         default_executable_windows="",
         default_executable_posix="",
+        show_in_selector=False,
     ),
 )
 
@@ -76,10 +78,23 @@ OTHER_TRAINING_BACKEND_IDS: tuple[str, ...] = tuple(
 )
 
 
-def training_backend_specs(*, category: TrainingBackendCategory | None = None) -> tuple[TrainingBackendSpec, ...]:
-    if category is None:
-        return _SPECS
-    return tuple(spec for spec in _SPECS if spec.category == category)
+def training_backend_specs(
+    *,
+    category: TrainingBackendCategory | None = None,
+    visible_only: bool = False,
+) -> tuple[TrainingBackendSpec, ...]:
+    specs = _SPECS
+    if category is not None:
+        specs = tuple(spec for spec in specs if spec.category == category)
+    if visible_only:
+        specs = tuple(spec for spec in specs if spec.show_in_selector)
+    return specs
+
+
+def training_backend_visible_in_selector(backend_id: str | None) -> bool:
+    normalized = (backend_id or "").strip().lower()
+    spec = TRAINING_BACKEND_SPECS.get(normalized)
+    return bool(spec and spec.show_in_selector)
 
 
 def get_training_backend_spec(backend_id: str) -> TrainingBackendSpec:
