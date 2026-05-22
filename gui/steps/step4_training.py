@@ -998,11 +998,12 @@ class Step4TrainingMixin:
             return
         self.run_training_cb.setChecked(bool(training.get("enabled", False)))
         backend = str(training.get("backend", "")).strip()
+        legacy_backend = normalize_training_backend(backend) if backend else ""
         self._restore_training_executables(training.get("executables"))
         if backend:
             self._set_training_backend(backend)
         executable = self._settings_text(training.get("executable"))
-        if executable:
+        if executable and (not legacy_backend or training_backend_visible_in_selector(legacy_backend)):
             self._training_executable_by_backend[self._training_backend()] = executable
             self._apply_training_executable_for_backend(self._training_backend())
         dataset_root = self._settings_path_text(scene, training.get("dataset_root"))

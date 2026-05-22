@@ -2733,6 +2733,32 @@ def test_training_executable_placeholders_are_file_names_only() -> None:
     assert step.training_executable_browse.line_edit.placeholderText() == expected_lichtfeld
 
 
+def test_hidden_custom_training_legacy_executable_is_not_restored_as_lichtfeld(tmp_path: Path) -> None:
+    settings_path = step4_export_settings_path(tmp_path)
+    settings_path.parent.mkdir(parents=True, exist_ok=True)
+    custom_executable = str(tmp_path / "custom-trainer.exe")
+    settings_path.write_text(
+        json.dumps(
+            {
+                "settings_version": STEP4_SETTINGS_VERSION,
+                "training": {
+                    "enabled": True,
+                    "backend": "custom",
+                    "executable": custom_executable,
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    _app()
+    step = CubemapStep(Path.cwd())
+    step.set_scene_dir(str(tmp_path))
+
+    assert step._training_backend() == "lichtfeld"
+    assert step.training_executable_browse.text() == ""
+
+
 def test_colmap_route_splits_conversion_and_step5_postshot_training(tmp_path: Path) -> None:
     images = tmp_path / "images"
     masks = tmp_path / "masks"

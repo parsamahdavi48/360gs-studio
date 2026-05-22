@@ -228,6 +228,37 @@ def test_realityscan_lfs_tool_defaults_and_builds_cli_command(tmp_path: Path) ->
     assert undistort_cmd[undistort_cmd.index("--undistort-alpha") + 1] == "1"
 
 
+def test_realityscan_lfs_tool_refreshes_defaults_when_scene_changes(tmp_path: Path) -> None:
+    scenes: list[Path] = []
+    for name in ("scene_a", "scene_b"):
+        scene = tmp_path / name
+        rs = scene / "output" / "realityscan"
+        (rs / "images").mkdir(parents=True)
+        (rs / "masks").mkdir()
+        (rs / f"rs_{name}.csv").write_text("header\n", encoding="utf-8")
+        (rs / f"rs_{name}.ply").write_text("ply\n", encoding="ascii")
+        scenes.append(scene)
+
+    _app()
+    tool = RealityScanLfsTool(Path.cwd())
+    tool.set_scene_dir(str(scenes[0]))
+    tool.set_scene_dir(str(scenes[1]))
+
+    rs_b = scenes[1] / "output" / "realityscan"
+    assert Path(tool.csv_browse.text()) == rs_b / "rs_scene_b.csv"
+    assert Path(tool.ply_browse.text()) == rs_b / "rs_scene_b.ply"
+    assert Path(tool.images_browse.text()) == rs_b / "images"
+    assert Path(tool.masks_browse.text()) == rs_b / "masks"
+    assert Path(tool.output_browse.text()) == rs_b / "lfs_colmap"
+
+    manual_csv = scenes[1] / "manual.csv"
+    manual_csv.write_text("manual\n", encoding="utf-8")
+    tool.csv_browse.set_text(str(manual_csv))
+    tool.on_activated()
+
+    assert Path(tool.csv_browse.text()) == manual_csv
+
+
 def test_colmap_text_model_tool_ignores_cwd_images_without_scene(tmp_path: Path, monkeypatch) -> None:
     (tmp_path / "orphan.jpg").write_bytes(b"not a real image")
     monkeypatch.chdir(tmp_path)

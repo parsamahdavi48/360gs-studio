@@ -29,6 +29,10 @@ class RealityScanLfsTool(BaseStepWidget):
     def __init__(self, base_dir: Path, parent: QWidget | None = None) -> None:
         super().__init__(base_dir, parent)
         self._syncing_defaults = False
+        self._csv_user_edited = False
+        self._ply_user_edited = False
+        self._images_user_edited = False
+        self._masks_user_edited = False
         self._output_user_edited = False
         self._build_ui()
 
@@ -98,14 +102,23 @@ class RealityScanLfsTool(BaseStepWidget):
         scroll.setWidget(content)
         root.addWidget(scroll)
 
-        for browse in (self.csv_browse, self.ply_browse, self.images_browse, self.masks_browse):
-            browse.path_changed.connect(lambda _path: self.primary_action_state_changed.emit())
+        self.csv_browse.path_changed.connect(lambda _path: self._on_input_path_changed("csv"))
+        self.ply_browse.path_changed.connect(lambda _path: self._on_input_path_changed("ply"))
+        self.images_browse.path_changed.connect(lambda _path: self._on_input_path_changed("images"))
+        self.masks_browse.path_changed.connect(lambda _path: self._on_input_path_changed("masks"))
         self.output_browse.path_changed.connect(lambda _path: self.primary_action_state_changed.emit())
         self.pre_undistort_cb.toggled.connect(lambda _checked: self.primary_action_state_changed.emit())
         self.skip_missing_cb.toggled.connect(lambda _checked: self.primary_action_state_changed.emit())
 
     def set_scene_dir(self, path: str) -> None:
+        previous_scene = self.scene_dir
         super().set_scene_dir(path)
+        if path != previous_scene:
+            self._csv_user_edited = False
+            self._ply_user_edited = False
+            self._images_user_edited = False
+            self._masks_user_edited = False
+            self._output_user_edited = False
         self._apply_scene_defaults()
 
     def on_activated(self) -> None:
@@ -175,26 +188,47 @@ class RealityScanLfsTool(BaseStepWidget):
         if not self._syncing_defaults:
             self._output_user_edited = True
 
+    def _on_input_path_changed(self, field: str) -> None:
+        if not self._syncing_defaults:
+            if field == "csv":
+                self._csv_user_edited = True
+            elif field == "ply":
+                self._ply_user_edited = True
+            elif field == "images":
+                self._images_user_edited = True
+            elif field == "masks":
+                self._masks_user_edited = True
+        self.primary_action_state_changed.emit()
+
     def _on_pre_undistort_toggled(self, _checked: bool) -> None:
         if not self._output_user_edited:
             self._set_browse_text(self.output_browse, str(self._default_output_dir()))
 
     def _apply_scene_defaults(self) -> None:
         if not self.scene_dir:
+            self._syncing_defaults = True
+            try:
+                self.csv_browse.set_text("")
+                self.ply_browse.set_text("")
+                self.images_browse.set_text("")
+                self.masks_browse.set_text("")
+                self.output_browse.set_text("")
+            finally:
+                self._syncing_defaults = False
             return
         root = self._realityscan_dir()
         self._syncing_defaults = True
         try:
-            if not self.csv_browse.text():
+            if not self._csv_user_edited:
                 csv = self._first_existing(root, ("rs_*.csv", "*.csv"))
                 self.csv_browse.set_text(str(csv) if csv else "")
-            if not self.ply_browse.text():
+            if not self._ply_user_edited:
                 ply = self._first_existing(root, ("rs_*.ply", "*.ply"))
                 self.ply_browse.set_text(str(ply) if ply else "")
-            if not self.images_browse.text():
+            if not self._images_user_edited:
                 images = root / "images"
                 self.images_browse.set_text(str(images if images.is_dir() else scene_images_dir(Path(self.scene_dir))))
-            if not self.masks_browse.text():
+            if not self._masks_user_edited:
                 masks = root / "masks"
                 fallback = scene_masks_dir(Path(self.scene_dir))
                 self.masks_browse.set_text(str(masks if masks.is_dir() else fallback if fallback.is_dir() else ""))
