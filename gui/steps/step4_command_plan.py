@@ -13,7 +13,9 @@ from core.orientation_correction import (
     FINAL_ORIENTATION_NONE,
     FINAL_ORIENTATION_REALITYSCAN,
 )
+from core.scene_inventory import build_scene_inventory
 from core.scene_layout import step4_meta_dir
+from core.sfm_input_plan import SFM_ACTION_LINK_OR_COPY_NORMAL_IMAGE, build_colmap_mixed_sfm_input_plan
 from gui import i18n
 from gui.cubemap.view_config import _BLOCK_ENABLED_VIEWS
 from gui.steps.cubemap_commands import (
@@ -74,6 +76,8 @@ class Step4CommandPlanMixin:
             run_sfm = self.pipeline_stage_intent(_PIPELINE_STAGE_SFM)
             if run_conversion or run_sfm:
                 self._validate_image_only_export()
+            if run_conversion:
+                self._validate_colmap_rig_source_plan()
             if run_conversion and not self._prepare_colmap_rig_dir():
                 return []
             steps: list[tuple[str, list[str]]] = []
@@ -107,6 +111,27 @@ class Step4CommandPlanMixin:
         if self.export_colmap_cb.isChecked():
             steps.append(("colmap", self._build_colmap_cmd()))
         return steps
+
+    def _validate_colmap_rig_source_plan(self) -> None:
+        inventory = build_scene_inventory(Path(self.scene_dir))
+        plan = build_colmap_mixed_sfm_input_plan(inventory)
+        if plan.issues:
+            details = "\n".join(f"- {issue.message}" for issue in plan.issues)
+            raise ValueError(i18n.t("COLMAP_MIXED_PREFLIGHT_FAILED").format(details=details))
+
+        normal_items = plan.items_for_action(SFM_ACTION_LINK_OR_COPY_NORMAL_IMAGE)
+        if not normal_items:
+            return
+
+        preview = ", ".join(item.image_rel_path for item in normal_items[:3])
+        if len(normal_items) > 3:
+            preview = f"{preview}, ..."
+        raise ValueError(
+            i18n.t("COLMAP_MIXED_NORMAL_NOT_IMPLEMENTED").format(
+                count=len(normal_items),
+                preview=preview,
+            )
+        )
 
     def _build_preprocess_cmd(self) -> list[str]:
         self._refresh_metashape_auto_inputs_if_empty()

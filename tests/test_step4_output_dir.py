@@ -1053,6 +1053,19 @@ def test_colmap_export_method_uses_image_only_conversion(tmp_path: Path) -> None
     assert "--skip-masks" not in cmd
 
 
+def test_colmap_export_method_blocks_normal_images_until_mixed_route_is_implemented(tmp_path: Path) -> None:
+    _app()
+    images = tmp_path / "images"
+    images.mkdir()
+    _write_test_image(images / "perspective_0001.jpg", size=(40, 30))
+    step = CubemapStep(Path.cwd())
+    step.set_scene_dir(str(tmp_path))
+    step._set_export_method("colmap")
+
+    with pytest.raises(ValueError, match="COLMAP SfM"):
+        step.build_commands()
+
+
 def test_colmap_export_method_restores_yaw_step_when_leaving_route(tmp_path: Path) -> None:
     step = _ready_step(tmp_path)
     step.yaw_per_frame_edit.setValue(45.0)
