@@ -26,7 +26,7 @@ Step 6を開いたら、最初に「どのアプリで、どのデータを試�
 | Postshotでプロジェクトを作りたい | `Postshot` | `入力データ`, `Camera Poses`, `プロジェクト名`, `Profile` |
 | 任意の学習CLIを起動したい | `その他... > Custom` | `実行ファイル`, `引数テンプレート`, `入力データ`, `出力先` |
 
-`入力データ` は通常、自動設定のままで使います。Metashape / SphereSfMの変換結果は `<scene>/output/` 配下のStep 5データセットフォルダ、COLMAPルートは `<scene>/output/colmap_rig/` が基準になります。`出力先` は既定で `<scene>/output/` です。データセットと学習結果を同じ `output/` 配下に置くことで、後から持ち出しやすくしています。
+`入力データ` は通常、自動設定のままで使います。登録済みのデータセット成果物があれば、Metashape、RealityScan、SphereSfM、COLMAPなどの最新データセットを `<scene>/output/` 配下から使います。`出力先` は既定で `<scene>/output/` です。データセットと学習結果を同じ `output/` 配下に置くことで、後から持ち出しやすくしています。
 
 ## 基本操作
 
@@ -70,7 +70,7 @@ Step 6では中央パネルを広く使うため、左右2カラムに整理し�
 
 ### 入力データ
 
-学習アプリに渡すデータセットフォルダです。通常はStep 5の現在ルートと出力形状から自動設定されます。
+学習アプリに渡すデータセットフォルダです。通常はStep 5で登録された最新データセットを使い、まだ成果物記録がない場合は現在のStep 5ルートと出力形状から自動設定されます。
 
 | Step 5の結果 | Step 6の入力データ |
 | --- | --- |
@@ -79,6 +79,8 @@ Step 6では中央パネルを広く使うため、左右2カラムに整理し�
 | SphereSfM + 投影Cubemap | `<scene>/output/spheresfm_cubemap/` |
 | SphereSfM + 3DGUT | `<scene>/output/spheresfm_3dgut/` |
 | COLMAP Rig | `<scene>/output/colmap_rig/` |
+| RealityScan -> COLMAPデータセット | `<scene>/output/realityscan/lfs_colmap/` |
+| Metashape -> COLMAPデータセット | `<scene>/output/metashape_colmap/` |
 
 手動で別フォルダを指定することもできます。その場合は、`images/`、必要なら `masks/`、カメラポーズ、点群など、選んだ学習アプリが必要とするファイルがそのフォルダにあることを確認します。
 

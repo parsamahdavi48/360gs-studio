@@ -1,6 +1,6 @@
 # Step 1 Frame Extraction GUI
 
-Step 1 turns 360° video into equirectangular still images for SfM and 3DGS. The `images/` folder and `_stechdrive/frames/selected_frames.csv` created here become the input for Step 2 review, Step 3 mask generation, and either Metashape or SphereSfM.
+Step 1 turns 360° video or an existing still-image folder into scene images for SfM and 3DGS. The `images/` folder and `_stechdrive/frames/selected_frames.csv` created here become the input for Step 2 review, Step 3 mask generation, and either Metashape or SphereSfM.
 
 Choose a scene folder, choose a video, and extract frames at the specified interval. `Motion` is on by default; it reduces redundant near-duplicate candidates and adds candidates where viewpoint change is useful. Turn `Motion` off when you want faster extraction.
 
@@ -29,21 +29,25 @@ The main capture assumptions are walking footage and drone footage. Even within 
 | Aerial or distant-view footage | `Capture Profile: Drone: Distant` |
 | Rebuild the same video with new settings | `Extraction Target: Re-extract Selected` |
 | Add multiple videos into one scene | `Extraction Target: Add Unextracted Videos` |
+| Start from numbered still images you already have | `Input Source: Image Folder` |
 
 The GUI stops before running when the scene folder path contains non-ASCII characters, an extremely long path, control characters, or `"`. Use a short ASCII working path because external tools often fail on problematic paths.
 
 ## Basic Flow
 
 1. First choose `Scene Folder`. Output images are written under `images/` inside it.
-2. Check `Video Queue` on the right. Videos inside the scene folder are registered automatically.
-3. If the video you want is not in the queue, press `Add Videos` and add it. Adding videos keeps the existing queue, so videos from other folders can be added later.
-4. Choose `Capture Profile`. Start with `Walk: Standard` for normal walking footage.
-5. Keep `Motion` on for normal extraction. Turn `Quick extract` on only when you want a fast fixed-interval cut.
-6. Choose `Extraction Target`. `Add Unextracted Videos` is fine for the first run or for adding different videos.
-7. When the preflight status says the run is ready, press `Extract Frames`.
-8. After extraction finishes, continue to Step 2.
+2. Choose `Input Source`. Use `Video` for extraction from footage, or `Image Folder` when still images are already prepared.
+3. In video mode, check `Video Queue` on the right. Videos inside the scene folder are registered automatically.
+4. If the video you want is not in the queue, press `Add Videos` and add it. Adding videos keeps the existing queue, so videos from other folders can be added later.
+5. Choose `Capture Profile`. Start with `Walk: Standard` for normal walking footage.
+6. Keep `Motion` on for normal extraction. Turn `Quick extract` on only when you want a fast fixed-interval cut.
+7. Choose `Extraction Target`. `Add Unextracted Videos` is fine for the first run or for adding different videos.
+8. When the preflight status says the run is ready, press `Extract Frames`.
+9. After extraction finishes, continue to Step 2.
 
 The video queue is where you confirm the videos that will be processed. It shows each video's extraction status, 360°/normal detection, resolution, fps, duration, and estimated frame count. If a video was added by mistake, select its row in the queue and remove it. The video file itself is not deleted.
+
+When `Input Source` is `Image Folder`, Step 1 imports supported still images into the scene `images/` folder and writes the same review metadata used by video extraction. This lets Step 2 and Step 3 handle pre-existing frame sequences without a manual workaround.
 
 ## Fixed Interval And Motion
 
@@ -103,7 +107,7 @@ You can still edit `Base Interval`, `Min`, and `Max` manually after choosing a p
 | Output | Meaning |
 | --- | --- |
 | `images/` | Extracted equirectangular still images |
-| `_stechdrive/frames/selected_frames.csv` | Keep/drop candidates and analysis metadata for Step 2 |
+| `_stechdrive/frames/selected_frames.csv` | Keep/drop candidates and source metadata for Step 2 |
 | `_stechdrive/frames/extract_report.json` | Extraction settings and run summary |
 | `extract_cache.npz` | Cache used to speed up re-analysis |
 

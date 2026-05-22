@@ -26,7 +26,7 @@ When you open Step 6, first decide which app you want to run and which dataset y
 | Create a Postshot project | `Postshot` | `Dataset`, `Camera Poses`, project name, `Profile` |
 | Run any training CLI | `Other... > Custom` | `Executable`, `Argument Template`, `Dataset`, `Training Output` |
 
-Normally, leave `Dataset` on the automatic value. Metashape and SphereSfM conversion results use their Step 5 dataset folders under `<scene>/output/`; the COLMAP route uses `<scene>/output/colmap_rig/`. `Training Output` defaults to `<scene>/output/`. Keeping datasets and training results under `output/` makes the scene easier to move later.
+Normally, leave `Dataset` on the automatic value. The app uses the latest registered dataset artifact when one exists, such as a Metashape, RealityScan, SphereSfM, or COLMAP dataset under `<scene>/output/`. `Training Output` defaults to `<scene>/output/`. Keeping datasets and training results under `output/` makes the scene easier to move later.
 
 ## Basic Flow
 
@@ -70,7 +70,7 @@ When this field is empty, the GUI tries the default executable name or a known i
 
 ### Dataset
 
-This is the dataset folder passed to the training app. It is normally set from the current Step 5 route and output shape.
+This is the dataset folder passed to the training app. It is normally set from the latest registered Step 5 dataset, or from the current Step 5 route and output shape when no artifact record exists yet.
 
 | Step 5 result | Step 6 dataset |
 | --- | --- |
@@ -79,6 +79,8 @@ This is the dataset folder passed to the training app. It is normally set from t
 | SphereSfM + projected cubemap | `<scene>/output/spheresfm_cubemap/` |
 | SphereSfM + 3DGUT | `<scene>/output/spheresfm_3dgut/` |
 | COLMAP Rig | `<scene>/output/colmap_rig/` |
+| RealityScan -> COLMAP Dataset | `<scene>/output/realityscan/lfs_colmap/` |
+| Metashape -> COLMAP Dataset | `<scene>/output/metashape_colmap/` |
 
 You can choose another folder manually. If you do, make sure it contains the files required by the selected training app: `images/`, optional `masks/`, camera poses, and point cloud data when needed.
 
