@@ -20,6 +20,7 @@ from core.scene_layout import (
     step4_training_runs_path,
     step4_views_config_path,
 )
+from core.workflow_artifacts import register_dataset_artifact
 from gui import i18n
 from gui.common.collapsible_section import CollapsibleSection
 from gui.steps.sfm_route_backends import get_sfm_route_backend
@@ -2686,6 +2687,32 @@ def test_training_tab_auto_scales_lichtfeld_from_projected_image_count(tmp_path:
     assert config["iterations"] == 30000
     assert config["stop_refine"] == 25000
     assert config["max_cap"] == 1_000_000
+
+
+def test_training_default_dataset_prefers_registered_artifact(tmp_path: Path) -> None:
+    step = _ready_step(tmp_path, metashape_inputs=True)
+    settings_output = tmp_path / "output" / "old_dataset"
+    artifact_output = tmp_path / "output" / "registered_dataset"
+    settings_output.mkdir(parents=True)
+    artifact_output.mkdir(parents=True)
+    (artifact_output / "transforms.json").write_text("{}", encoding="utf-8")
+    settings_path = step4_export_settings_path(tmp_path)
+    settings_path.parent.mkdir(parents=True, exist_ok=True)
+    settings_path.write_text(
+        json.dumps(
+            {
+                "settings_version": STEP4_SETTINGS_VERSION,
+                "output_shape": "projected",
+                "output_dir": str(settings_output),
+            }
+        ),
+        encoding="utf-8",
+    )
+    register_dataset_artifact(tmp_path, artifact_id="dataset_registered", root=artifact_output)
+
+    step.set_pipeline_stage_intent("conversion", False)
+
+    assert step._default_training_dataset_dir() == artifact_output
 
 
 def test_training_image_count_uses_import_project_metadata(tmp_path: Path) -> None:

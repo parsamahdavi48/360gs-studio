@@ -23,6 +23,12 @@ from PySide6.QtWidgets import (
 
 from core.scene_layout import project_path, scene_images_dir, scene_output_dir, step4_meta_dir
 from core.scene_project import load_json
+from core.workflow_artifacts import (
+    DATASET_KIND_COLMAP_DATASET,
+    DATASET_KIND_LICHTFELD_COLMAP,
+    DATASET_KIND_NERF_JSON_PLY,
+    latest_dataset_root,
+)
 from gui import i18n
 from gui.common.browse_widget import BrowseWidget
 from gui.common.collapsible_section import CollapsibleSection
@@ -1702,6 +1708,16 @@ class Step4TrainingMixin:
         if not self.scene_dir:
             return None
         scene = Path(self.scene_dir)
+        artifact_root = latest_dataset_root(
+            scene,
+            accepted_kinds={
+                DATASET_KIND_NERF_JSON_PLY,
+                DATASET_KIND_COLMAP_DATASET,
+                DATASET_KIND_LICHTFELD_COLMAP,
+            },
+        )
+        if artifact_root is not None:
+            return artifact_root
         settings = load_step4_export_settings(scene)
         output_dir = str(settings.get("output_dir", "")).strip()
         if output_dir:

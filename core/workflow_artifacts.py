@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from core.artifact_registry import ArtifactRecord, make_artifact_record, upsert_artifact
+from core.artifact_registry import ArtifactRecord, load_artifacts, make_artifact_record, upsert_artifact
 
 SFM_KIND_METASHAPE_XML_PLY = "metashape_xml_ply"
 SFM_KIND_COLMAP_SPARSE = "colmap_sparse"
@@ -73,6 +73,34 @@ def register_sfm_artifact(
         warnings=warnings,
     )
     return upsert_artifact(scene_dir, "sfm", record)
+
+
+def artifact_root_path(scene_dir: str | Path, record: ArtifactRecord) -> Path:
+    root = Path(record.root)
+    return root if root.is_absolute() else Path(scene_dir) / root
+
+
+def latest_dataset_artifact(
+    scene_dir: str | Path,
+    *,
+    accepted_kinds: set[str] | None = None,
+) -> ArtifactRecord | None:
+    records = load_artifacts(scene_dir, "dataset")
+    if accepted_kinds:
+        records = [record for record in records if record.kind in accepted_kinds]
+    records = [record for record in records if artifact_root_path(scene_dir, record).exists()]
+    if not records:
+        return None
+    return sorted(records, key=lambda record: record.created_at or record.id)[-1]
+
+
+def latest_dataset_root(
+    scene_dir: str | Path,
+    *,
+    accepted_kinds: set[str] | None = None,
+) -> Path | None:
+    record = latest_dataset_artifact(scene_dir, accepted_kinds=accepted_kinds)
+    return artifact_root_path(scene_dir, record) if record is not None else None
 
 
 def _dataset_files(root: Path) -> dict[str, Path]:

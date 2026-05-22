@@ -9,6 +9,7 @@ from core.workflow_artifacts import (
     DATASET_KIND_NERF_JSON_PLY,
     SFM_KIND_METASHAPE_XML_PLY,
     detect_dataset_kind,
+    latest_dataset_root,
     register_dataset_artifact,
     register_sfm_artifact,
 )
@@ -62,3 +63,16 @@ def test_register_sfm_artifact_keeps_existing_files_only(tmp_path: Path) -> None
     )
 
     assert record.files == {"xml": "cameras.xml"}
+
+
+def test_latest_dataset_root_uses_registered_artifacts(tmp_path: Path) -> None:
+    first = tmp_path / "output" / "first"
+    second = tmp_path / "output" / "second"
+    (first / "transforms.json").parent.mkdir(parents=True, exist_ok=True)
+    (first / "transforms.json").write_text("{}", encoding="utf-8")
+    (second / "transforms.json").parent.mkdir(parents=True, exist_ok=True)
+    (second / "transforms.json").write_text("{}", encoding="utf-8")
+    register_dataset_artifact(tmp_path, artifact_id="a", root=first)
+    register_dataset_artifact(tmp_path, artifact_id="b", root=second)
+
+    assert latest_dataset_root(tmp_path) == second
