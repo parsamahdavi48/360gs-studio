@@ -53,7 +53,8 @@ def prepare_colmap_mixed_project(
     scene_dir: str | Path,
     output_dir: str | Path,
     *,
-    views_json: str | Path,
+    views_json: str | Path | None = None,
+    views: list[dict[str, Any]] | None = None,
     output_scale: float,
     output_format: str = "auto",
     output_bit_depth: str = "8",
@@ -82,7 +83,7 @@ def prepare_colmap_mixed_project(
     project_masks_dir = project_dir / "masks"
     project_dir.mkdir(parents=True, exist_ok=True)
 
-    views = load_custom_views(str(views_json))
+    views = _load_or_normalize_views(views_json=views_json, views=views)
     rig_image_names: list[str] = []
     warnings: list[str] = []
 
@@ -183,6 +184,40 @@ def _images_for_action(
         if image is not None:
             images.append(image)
     return images
+
+
+def _load_or_normalize_views(
+    *,
+    views_json: str | Path | None,
+    views: list[dict[str, Any]] | None,
+) -> list[dict[str, Any]]:
+    if views is None:
+        if views_json is None:
+            raise ValueError("views_json or views is required")
+        return load_custom_views(str(views_json))
+
+    normalized: list[dict[str, Any]] = []
+    used_names: set[str] = set()
+    for index, item in enumerate(views):
+        if not isinstance(item, dict):
+            raise ValueError(f"views[{index}] must be an object")
+        if not bool(item.get("enabled", True)):
+            continue
+        name = str(item.get("name") or "").strip()
+        if not name:
+            raise ValueError(f"views[{index}].name is required")
+        if name in used_names:
+            raise ValueError(f"views has duplicated name: {name}")
+        try:
+            yaw = float(item["yaw"])
+            pitch = float(item["pitch"])
+        except KeyError as exc:
+            raise ValueError(f"views[{index}] missing field: {exc}") from exc
+        normalized.append({"name": name, "yaw": yaw, "pitch": pitch})
+        used_names.add(name)
+    if not normalized:
+        raise ValueError("views has no enabled views")
+    return normalized
 
 
 def _image_rel_to_images_root(inventory: SceneInventory, image: SceneImage) -> str:

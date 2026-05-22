@@ -7,6 +7,8 @@ from pathlib import Path
 
 from PIL import Image
 
+from core.sfm_job_spec import colmap_mixed_project_job, write_sfm_job
+
 
 def _write_image(path: Path, size: tuple[int, int]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -83,3 +85,43 @@ def test_prepare_colmap_mixed_project_writes_rig_and_normal_lists(tmp_path: Path
             "image_count": 1,
         }
     ]
+
+
+def test_prepare_colmap_mixed_project_accepts_job_json(tmp_path: Path) -> None:
+    scene = tmp_path / "scene"
+    _write_image(scene / "images" / "normal.jpg", (40, 30))
+    output = tmp_path / "output"
+    job_path = write_sfm_job(
+        tmp_path / "job.json",
+        colmap_mixed_project_job(
+            scene_dir=scene,
+            output_dir=output,
+            views=[{"name": "front", "yaw": 0.0, "pitch": 0.0, "enabled": True}],
+            output_scale=0.5,
+            output_format="jpg",
+            output_bit_depth="8",
+            jpg_quality=95,
+            write_images=True,
+            write_masks=True,
+            invert_masks=False,
+            workers="1",
+            remap_cache_limit="auto",
+        ),
+    )
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            "scripts/prepare_colmap_mixed_project.py",
+            "--job",
+            str(job_path),
+        ],
+        cwd=Path.cwd(),
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    manifest = json.loads((output / "colmap_rig" / "stechdrive_colmap_mixed_project.json").read_text(encoding="utf-8"))
+    assert manifest["normal_source_count"] == 1
+    assert (output / "colmap_rig" / "normal_image_list.txt").read_text(encoding="utf-8").strip()

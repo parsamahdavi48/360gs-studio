@@ -14,13 +14,14 @@ from core.orientation_correction import (
     FINAL_ORIENTATION_REALITYSCAN,
 )
 from core.scene_inventory import build_scene_inventory
-from core.scene_layout import step4_meta_dir
+from core.scene_layout import jobs_dir, step4_meta_dir
 from core.sfm_input_plan import (
     SFM_ACTION_EXPAND_ERP_TO_RIG_VIEWS,
     SFM_ACTION_LINK_OR_COPY_NORMAL_IMAGE,
     SfmInputPlan,
     build_colmap_mixed_sfm_input_plan,
 )
+from core.sfm_job_spec import colmap_mixed_project_job, write_sfm_job
 from gui import i18n
 from gui.cubemap.view_config import _BLOCK_ENABLED_VIEWS
 from gui.steps.cubemap_commands import (
@@ -269,6 +270,25 @@ class Step4CommandPlanMixin:
         if enabled > _BLOCK_ENABLED_VIEWS:
             raise ValueError(f"ビュー数が多すぎます ({enabled})。{_BLOCK_ENABLED_VIEWS} 以下にしてください。")
         views_json = self._write_views_config(step4_meta_dir(scene), views)
+        job_path = jobs_dir(scene) / "colmap_mixed_project_job.json"
+        write_sfm_job(
+            job_path,
+            colmap_mixed_project_job(
+                scene_dir=scene,
+                output_dir=self._output_dir(),
+                views=views,
+                output_scale=float(self.scale_combo.currentData()),
+                output_format=self.output_format_combo.currentData() or "auto",
+                output_bit_depth=self.output_bit_depth_combo.currentData() or "8",
+                jpg_quality=int(self.jpg_quality_edit.text().strip()),
+                write_images=self._writes_images(),
+                write_masks=self._writes_masks(),
+                invert_masks=self.invert_masks_cb.isChecked(),
+                workers="auto",
+                remap_cache_limit="auto",
+                rig_name="rig1",
+            ),
+        )
         return build_colmap_mixed_prepare_cmd(
             ColmapMixedPrepareCommand(
                 python_executable=sys.executable,
@@ -283,6 +303,7 @@ class Step4CommandPlanMixin:
                 output_format=self.output_format_combo.currentData() or "auto",
                 output_bit_depth=self.output_bit_depth_combo.currentData() or "8",
                 jpg_quality=int(self.jpg_quality_edit.text().strip()),
+                job=job_path,
             )
         )
 

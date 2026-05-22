@@ -1067,8 +1067,11 @@ def test_colmap_export_method_prepares_normal_only_project(tmp_path: Path) -> No
     assert [phase for phase, _cmd in commands] == ["colmap_mixed_prepare"]
     cmd = commands[0][1]
     assert cmd[2].endswith("prepare_colmap_mixed_project.py")
-    assert str(tmp_path) in cmd
-    assert str(tmp_path / "output") in cmd
+    assert cmd[3] == "--job"
+    job = json.loads(Path(cmd[4]).read_text(encoding="utf-8"))
+    assert job["scene_dir"] == str(tmp_path)
+    assert job["output_dir"] == str(tmp_path / "output")
+    assert job["views"]
 
 
 def test_colmap_export_can_queue_mixed_erp_and_normal_sfm(tmp_path: Path) -> None:

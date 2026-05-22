@@ -72,6 +72,7 @@ class ColmapMixedPrepareCommand:
     output_format: str
     output_bit_depth: str
     jpg_quality: int
+    job: Path | None = None
 
 
 @dataclass(frozen=True)
@@ -225,6 +226,14 @@ def build_colmap_export_cmd(options: ColmapExportCommand) -> list[str]:
 
 
 def build_colmap_mixed_prepare_cmd(options: ColmapMixedPrepareCommand) -> list[str]:
+    if options.job is not None:
+        return [
+            options.python_executable,
+            "-u",
+            str(options.script),
+            "--job",
+            str(options.job),
+        ]
     cmd = [
         options.python_executable,
         "-u",
