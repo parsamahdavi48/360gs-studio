@@ -21,6 +21,12 @@ from PySide6.QtWidgets import (
 
 from core.orientation_correction import FINAL_ORIENTATION_LICHTFELD, FINAL_ORIENTATION_NONE
 from core.scene_layout import scene_images_dir, scene_masks_dir, scene_output_dir, step4_meta_dir, step4_work_dir
+from core.workflow_artifacts import (
+    DATASET_KIND_COLMAP_DATASET,
+    SFM_KIND_METASHAPE_XML_PLY,
+    register_dataset_artifact,
+    register_sfm_artifact,
+)
 from gui import i18n
 from gui.common.browse_widget import BrowseWidget
 from gui.common.drag_spinbox import DragDoubleSpinBox
@@ -460,6 +466,37 @@ class ColmapTextModelTool(BaseStepWidget):
             return i18n.t("PHASE_COLMAP_TEXT_MODEL")
         return super().phase_display_name(phase)
 
+    def on_queue_finished(self, success: bool) -> None:
+        if not success or not self.scene_dir:
+            return
+        scene = Path(self.scene_dir)
+        settings = {
+            "profile": self._profile_id(),
+            "view_mode": self.view_config.view_mode(),
+            "output_scale": float(self.scale_combo.currentData()),
+        }
+        sfm_record = register_sfm_artifact(
+            scene,
+            artifact_id=_artifact_id("metashape_sfm"),
+            kind=SFM_KIND_METASHAPE_XML_PLY,
+            root=scene,
+            files={
+                "images_dir": self._images_dir(),
+                "masks_dir": self._masks_dir(),
+                "xml": self._xml_path(),
+                "ply": self._ply_path(),
+            },
+            settings=settings,
+        )
+        register_dataset_artifact(
+            scene,
+            artifact_id=_artifact_id("metashape_colmap"),
+            root=self._output_dir(),
+            kind=DATASET_KIND_COLMAP_DATASET,
+            source_artifact_id=sfm_record.id,
+            settings=settings,
+        )
+
     def _images_dir(self) -> Path:
         text = self.images_browse.text()
         if text:
@@ -632,3 +669,9 @@ def _guess_single_file(scene: Path, pattern: str, *, exclude_names: set[str]) ->
         )
     )
     return candidates[0] if len(candidates) == 1 else None
+
+
+def _artifact_id(prefix: str) -> str:
+    from core.scene_project import utc_now_iso
+
+    return f"{prefix}_{utc_now_iso().replace(':', '').replace('-', '')}"

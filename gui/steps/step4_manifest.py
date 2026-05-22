@@ -24,6 +24,13 @@ from core.scene_project import (
     scene_relative,
     utc_now_iso,
 )
+from core.workflow_artifacts import (
+    SFM_KIND_COLMAP_SPARSE,
+    SFM_KIND_METASHAPE_XML_PLY,
+    SFM_KIND_SPHERESFM_SPARSE,
+    register_dataset_artifact,
+    register_sfm_artifact,
+)
 from gui import i18n
 from gui.steps.cubemap_commands import views_config_payload, write_views_config
 from gui.steps.step4_contracts import (
@@ -435,38 +442,104 @@ class Step4ManifestMixin:
         else:
             project_dir = scene
             sparse_model = self._resolve_ply_source()
+        run_id = self._step4_run_id("sfm")
+        settings = self._current_export_settings_snapshot()
         append_step4_sfm_run(
             scene,
             {
-                "id": self._step4_run_id("sfm"),
+                "id": run_id,
                 "created_at": self._utc_now_iso(),
                 "route": route,
                 "mode": mode,
                 "project_dir": scene_relative(scene, project_dir),
                 "sparse_model_dir": scene_relative(scene, sparse_model) if sparse_model else "",
                 "ready_for_conversion": sparse_model is not None,
-                "settings": self._current_export_settings_snapshot(),
+                "settings": settings,
             },
         )
+        self._register_step4_sfm_artifact(run_id, route, project_dir, sparse_model, settings)
 
     def _record_step4_dataset_run(self) -> None:
         if not self.scene_dir:
             return
         scene = Path(self.scene_dir)
         root = self._current_dataset_root_for_manifest()
+        run_id = self._step4_run_id("dataset")
+        settings = self._current_export_settings_snapshot()
         append_step4_dataset_run(
             scene,
             {
-                "id": self._step4_run_id("dataset"),
+                "id": run_id,
                 "created_at": self._utc_now_iso(),
                 "route": self._export_method(),
                 "output_shape": self._output_shape(),
                 "target_profile": self._spheresfm_profile_id() if self._is_spheresfm_method() else self._profile_id(),
                 "dataset_root": scene_relative(scene, root),
                 "artifacts": self._step4_artifact_snapshot(root),
-                "settings": self._current_export_settings_snapshot(),
+                "settings": settings,
             },
         )
+        register_dataset_artifact(scene, artifact_id=run_id, root=root, settings=settings)
+
+    def _register_step4_sfm_artifact(
+        self,
+        artifact_id: str,
+        route: str,
+        project_dir: Path,
+        sparse_model: Path | None,
+        settings: dict,
+    ) -> None:
+        scene = Path(self.scene_dir)
+        if route == _METHOD_COLMAP:
+            files = {
+                "images_dir": self._colmap_rig_images_dir(),
+                "masks_dir": self._colmap_rig_masks_dir(),
+                "database": self._colmap_database_path(),
+                "sparse_dir": self._colmap_sparse_dir(),
+                "rig_config": self._colmap_rig_dir() / "rig_config.json",
+            }
+            if sparse_model is not None:
+                files["sparse_model_dir"] = sparse_model
+            register_sfm_artifact(
+                scene,
+                artifact_id=artifact_id,
+                kind=SFM_KIND_COLMAP_SPARSE,
+                root=project_dir,
+                files=files,
+                settings=settings,
+            )
+        elif route == _METHOD_SPHERESFM:
+            files = {
+                "images_dir": self._metashape_images_dir(),
+                "source_masks_dir": self._mask_dir(),
+                "prepared_masks_dir": self._spheresfm_masks_dir(),
+                "database": self._spheresfm_database_path(),
+                "sparse_dir": self._spheresfm_sparse_dir(),
+            }
+            if sparse_model is not None:
+                files["sparse_model_dir"] = sparse_model
+            register_sfm_artifact(
+                scene,
+                artifact_id=artifact_id,
+                kind=SFM_KIND_SPHERESFM_SPARSE,
+                root=project_dir,
+                files=files,
+                settings=settings,
+            )
+        else:
+            register_sfm_artifact(
+                scene,
+                artifact_id=artifact_id,
+                kind=SFM_KIND_METASHAPE_XML_PLY,
+                root=scene,
+                files={
+                    "images_dir": self._metashape_images_dir(),
+                    "masks_dir": self._mask_dir(),
+                    "xml": self.ms_xml_browse.text(),
+                    "ply": self.ms_ply_browse.text(),
+                },
+                settings=settings,
+            )
 
     def _record_step4_training_run(self) -> None:
         if not self.scene_dir or not self.run_training_cb.isChecked():

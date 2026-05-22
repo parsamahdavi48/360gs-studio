@@ -8,6 +8,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PySide6.QtWidgets import QApplication, QLabel, QPushButton, QSizePolicy
 
+from core.artifact_registry import load_artifacts
 from gui import i18n
 from gui.app import MainWindow
 from gui.cubemap.view_config import VIEW_MODE_CUSTOM
@@ -17,6 +18,13 @@ from gui.steps.realityscan_lfs_tool import RealityScanLfsTool
 
 def _app() -> QApplication:
     return QApplication.instance() or QApplication([])
+
+
+def _write_colmap_sparse(root: Path) -> None:
+    sparse = root / "sparse" / "0"
+    sparse.mkdir(parents=True, exist_ok=True)
+    for name in ("cameras.txt", "images.txt", "points3D.txt"):
+        (sparse / name).write_text("", encoding="utf-8")
 
 
 def test_sfm_cards_open_in_step_sfm_pages_and_external_route_goes_to_dataset(tmp_path: Path) -> None:
@@ -227,6 +235,11 @@ def test_realityscan_lfs_tool_defaults_and_builds_cli_command(tmp_path: Path) ->
     assert "--undistort-alpha" in undistort_cmd
     assert undistort_cmd[undistort_cmd.index("--undistort-alpha") + 1] == "1"
 
+    _write_colmap_sparse(rs / "lfs_colmap_undistorted")
+    tool.on_queue_finished(True)
+    assert load_artifacts(scene, "sfm")[-1].kind == "realityscan_csv_ply"
+    assert load_artifacts(scene, "dataset")[-1].kind == "lichtfeld_colmap"
+
 
 def test_realityscan_lfs_tool_refreshes_defaults_when_scene_changes(tmp_path: Path) -> None:
     scenes: list[Path] = []
@@ -339,6 +352,11 @@ def test_colmap_text_model_tool_defaults_and_builds_cli_command(tmp_path: Path) 
     views_path = Path(custom_grid_cmd[custom_grid_cmd.index("--views-json") + 1])
     views_payload = json.loads(views_path.read_text(encoding="utf-8"))
     assert len(views_payload["views"]) == 10
+
+    _write_colmap_sparse(output)
+    tool.on_queue_finished(True)
+    assert load_artifacts(scene, "sfm")[-1].kind == "metashape_xml_ply"
+    assert load_artifacts(scene, "dataset")[-1].kind == "colmap_dataset"
 
 
 def test_realityscan_realign_profile_is_step4_only(tmp_path: Path) -> None:

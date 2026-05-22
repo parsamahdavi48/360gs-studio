@@ -1,0 +1,106 @@
+from __future__ import annotations
+
+from pathlib import Path
+from typing import Any
+
+from core.artifact_registry import ArtifactRecord, make_artifact_record, upsert_artifact
+
+SFM_KIND_METASHAPE_XML_PLY = "metashape_xml_ply"
+SFM_KIND_COLMAP_SPARSE = "colmap_sparse"
+SFM_KIND_SPHERESFM_SPARSE = "spheresfm_sparse"
+SFM_KIND_REALITYSCAN_CSV_PLY = "realityscan_csv_ply"
+
+DATASET_KIND_NERF_JSON_PLY = "nerf_json_ply"
+DATASET_KIND_COLMAP_DATASET = "colmap_dataset"
+DATASET_KIND_LICHTFELD_COLMAP = "lichtfeld_colmap"
+DATASET_KIND_REALITYSCAN_REALIGN_INPUT = "realityscan_realign_input"
+
+
+def detect_dataset_kind(root: str | Path, *, preferred_kind: str = "") -> str:
+    dataset_root = Path(root)
+    if preferred_kind:
+        return preferred_kind
+    if _has_colmap_sparse(dataset_root):
+        return DATASET_KIND_LICHTFELD_COLMAP if "lfs_colmap" in dataset_root.name.lower() else DATASET_KIND_COLMAP_DATASET
+    if (dataset_root / "transforms.json").is_file():
+        return DATASET_KIND_NERF_JSON_PLY
+    return ""
+
+
+def register_dataset_artifact(
+    scene_dir: str | Path,
+    *,
+    artifact_id: str,
+    root: str | Path,
+    kind: str = "",
+    source_artifact_id: str = "",
+    settings: dict[str, Any] | None = None,
+    warnings: list[str] | tuple[str, ...] | None = None,
+) -> ArtifactRecord | None:
+    detected_kind = detect_dataset_kind(root, preferred_kind=kind)
+    if not detected_kind:
+        return None
+    record = make_artifact_record(
+        scene_dir,
+        artifact_id=artifact_id,
+        kind=detected_kind,
+        root=root,
+        files=_dataset_files(Path(root)),
+        source_artifact_id=source_artifact_id,
+        settings=settings,
+        warnings=warnings,
+    )
+    return upsert_artifact(scene_dir, "dataset", record)
+
+
+def register_sfm_artifact(
+    scene_dir: str | Path,
+    *,
+    artifact_id: str,
+    kind: str,
+    root: str | Path,
+    files: dict[str, str | Path] | None = None,
+    settings: dict[str, Any] | None = None,
+    warnings: list[str] | tuple[str, ...] | None = None,
+) -> ArtifactRecord:
+    record = make_artifact_record(
+        scene_dir,
+        artifact_id=artifact_id,
+        kind=kind,
+        root=root,
+        files=_existing_files(files or {}),
+        settings=settings,
+        warnings=warnings,
+    )
+    return upsert_artifact(scene_dir, "sfm", record)
+
+
+def _dataset_files(root: Path) -> dict[str, Path]:
+    files: dict[str, Path] = {}
+    for key, rel in (
+        ("transforms_json", "transforms.json"),
+        ("pointcloud_file", "pointcloud.ply"),
+        ("images_dir", "images"),
+        ("masks_dir", "masks"),
+        ("colmap_sparse_dir", "sparse/0"),
+        ("colmap_sparse_root", "sparse"),
+        ("colmap_points_ply", "sparse/0/points3D.ply"),
+    ):
+        candidate = root / rel
+        if candidate.exists():
+            files[key] = candidate
+    return files
+
+
+def _existing_files(files: dict[str, str | Path]) -> dict[str, str | Path]:
+    result: dict[str, str | Path] = {}
+    for key, value in files.items():
+        path = Path(value)
+        if path.exists():
+            result[key] = value
+    return result
+
+
+def _has_colmap_sparse(root: Path) -> bool:
+    sparse = root / "sparse" / "0"
+    return all((sparse / name).is_file() for name in ("cameras.txt", "images.txt", "points3D.txt"))

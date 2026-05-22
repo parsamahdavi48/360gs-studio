@@ -17,6 +17,12 @@ from PySide6.QtWidgets import (
 
 from core.realityscan_to_lfs_colmap import DEFAULT_UNDISTORT_ALPHA
 from core.scene_layout import scene_images_dir, scene_masks_dir, scene_output_dir
+from core.workflow_artifacts import (
+    DATASET_KIND_LICHTFELD_COLMAP,
+    SFM_KIND_REALITYSCAN_CSV_PLY,
+    register_dataset_artifact,
+    register_sfm_artifact,
+)
 from gui import i18n
 from gui.common.browse_widget import BrowseWidget
 from gui.common.form_rows import add_tooltip_row
@@ -167,6 +173,36 @@ class RealityScanLfsTool(BaseStepWidget):
             cmd.extend(["--undistort-alpha", f"{DEFAULT_UNDISTORT_ALPHA:g}"])
         return [("realityscan_lfs_colmap", cmd)]
 
+    def on_queue_finished(self, success: bool) -> None:
+        if not success or not self.scene_dir:
+            return
+        scene = Path(self.scene_dir)
+        settings = {
+            "pre_undistort_distorted_images": self.pre_undistort_cb.isChecked(),
+            "skip_missing_images": self.skip_missing_cb.isChecked(),
+        }
+        sfm_record = register_sfm_artifact(
+            scene,
+            artifact_id=self._artifact_id("rs_sfm"),
+            kind=SFM_KIND_REALITYSCAN_CSV_PLY,
+            root=Path(self.csv_browse.text()).parent,
+            files={
+                "csv": self.csv_browse.text(),
+                "ply": self.ply_browse.text(),
+                "images_dir": self.images_browse.text(),
+                "masks_dir": self.masks_browse.text(),
+            },
+            settings=settings,
+        )
+        register_dataset_artifact(
+            scene,
+            artifact_id=self._artifact_id("rs_lfs_colmap"),
+            root=self.output_browse.text(),
+            kind=DATASET_KIND_LICHTFELD_COLMAP,
+            source_artifact_id=sfm_record.id,
+            settings=settings,
+        )
+
     def _validate_inputs(self) -> None:
         csv = Path(self.csv_browse.text())
         if not csv.is_file():
@@ -262,3 +298,9 @@ class RealityScanLfsTool(BaseStepWidget):
             browse.set_text(text)
         finally:
             del blocker
+
+    @staticmethod
+    def _artifact_id(prefix: str) -> str:
+        from core.scene_project import utc_now_iso
+
+        return f"{prefix}_{utc_now_iso().replace(':', '').replace('-', '')}"
