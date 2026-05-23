@@ -32,7 +32,13 @@ from core.dataset_writer_colmap import (
     replace_file_with_link_or_copy,
     write_colmap_text_dataset,
 )
-from core.metashape_model import MetashapeCamera, MetashapeModel, MetashapeSensor, parse_metashape_model
+from core.metashape_model import (
+    CAMERA_MODEL_EQUIRECTANGULAR,
+    MetashapeCamera,
+    MetashapeModel,
+    MetashapeSensor,
+    parse_metashape_model,
+)
 from core.realityscan_to_transforms import write_transformed_ply
 from core.scene_inventory import build_scene_inventory
 
@@ -434,4 +440,9 @@ def _write_manifest(output: Path, source_kind: str, action_counts: dict[str, int
 def metashape_model_requires_mixed_colmap_writer(xml_path: str | Path) -> bool:
     model = parse_metashape_model(xml_path)
     camera_models = {sensor.camera_model for sensor in model.sensors.values()}
-    return len(camera_models) > 1 or any(sensor.has_distortion for sensor in model.sensors.values())
+    sensor_sizes = {(sensor.width, sensor.height) for sensor in model.sensors.values()}
+    return (
+        camera_models != {CAMERA_MODEL_EQUIRECTANGULAR}
+        or len(sensor_sizes) > 1
+        or any(sensor.has_distortion for sensor in model.sensors.values())
+    )

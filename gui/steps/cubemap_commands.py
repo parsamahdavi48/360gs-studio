@@ -21,6 +21,13 @@ class MetashapePreprocessCommand:
 
 
 @dataclass(frozen=True)
+class MetashapeNerfCommand:
+    python_executable: str
+    script: Path
+    job: Path
+
+
+@dataclass(frozen=True)
 class CubemapConversionCommand:
     python_executable: str
     script: Path
@@ -154,6 +161,16 @@ def build_metashape_preprocess_cmd(options: MetashapePreprocessCommand) -> list[
     if options.no_fix_rotation:
         cmd.append("--no-fix-rotation")
     return cmd
+
+
+def build_metashape_nerf_cmd(options: MetashapeNerfCommand) -> list[str]:
+    return [
+        options.python_executable,
+        "-u",
+        str(options.script),
+        "--job",
+        str(options.job),
+    ]
 
 
 def build_cubemap_conversion_cmd(options: CubemapConversionCommand) -> list[str]:

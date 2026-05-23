@@ -6,6 +6,7 @@ from typing import Any
 
 DATASET_JOB_SCHEMA_VERSION = 1
 JOB_KIND_METASHAPE_COLMAP = "metashape_colmap_dataset"
+JOB_KIND_METASHAPE_NERF = "metashape_nerf_dataset"
 JOB_KIND_REALITYSCAN_LFS_COLMAP = "realityscan_lfs_colmap"
 
 
@@ -35,6 +36,43 @@ def metashape_colmap_job(
         "output_scale": float(output_scale),
         "output_format": str(output_format),
         "undistort_alpha": float(undistort_alpha),
+    }
+
+
+def metashape_nerf_job(
+    *,
+    scene_dir: str | Path,
+    images_dir: str | Path,
+    masks_dir: str | Path | None,
+    xml_path: str | Path,
+    ply_path: str | Path | None,
+    output_dir: str | Path,
+    views: list[dict[str, Any]],
+    output_scale: float,
+    output_format: str,
+    output_bit_depth: str,
+    jpg_quality: int,
+    undistort_alpha: float,
+    axis_transform: str,
+    final_orientation: str,
+) -> dict[str, Any]:
+    return {
+        "schema_version": DATASET_JOB_SCHEMA_VERSION,
+        "kind": JOB_KIND_METASHAPE_NERF,
+        "scene_dir": str(scene_dir),
+        "images_dir": str(images_dir),
+        "masks_dir": str(masks_dir) if masks_dir else "",
+        "xml_path": str(xml_path),
+        "ply_path": str(ply_path) if ply_path else "",
+        "output_dir": str(output_dir),
+        "views": [dict(view) for view in views],
+        "output_scale": float(output_scale),
+        "output_format": str(output_format),
+        "output_bit_depth": str(output_bit_depth),
+        "jpg_quality": int(jpg_quality),
+        "undistort_alpha": float(undistort_alpha),
+        "axis_transform": str(axis_transform),
+        "final_orientation": str(final_orientation),
     }
 
 
@@ -90,5 +128,5 @@ def _validate_payload(payload: dict[str, Any]) -> None:
     if version != DATASET_JOB_SCHEMA_VERSION:
         raise ValueError(f"Unsupported dataset job schema version: {version}")
     kind = str(payload.get("kind") or "")
-    if kind not in {JOB_KIND_METASHAPE_COLMAP, JOB_KIND_REALITYSCAN_LFS_COLMAP}:
+    if kind not in {JOB_KIND_METASHAPE_COLMAP, JOB_KIND_METASHAPE_NERF, JOB_KIND_REALITYSCAN_LFS_COLMAP}:
         raise ValueError(f"Unsupported dataset job kind: {kind}")

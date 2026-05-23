@@ -235,7 +235,11 @@ class Step4RuntimeMixin:
         output = self._display_output_dir()
         output.mkdir(parents=True, exist_ok=True)
 
-        if not self._uses_lichtfeld_final_correction() and not self._is_realityscan_profile():
+        if (
+            not self._uses_lichtfeld_final_correction()
+            and not self._is_realityscan_profile()
+            and not self._uses_mixed_metashape_nerf_writer()
+        ):
             source = self._resolve_ply_source()
             if source is not None:
                 dest = output / source.name
@@ -267,6 +271,7 @@ class Step4RuntimeMixin:
     def phase_display_name(self, phase: str) -> str:
         labels = {
             "metashape": "PHASE_METASHAPE_IMPORT",
+            "metashape_nerf": "PHASE_METASHAPE_NERF",
             "colmap_rig_export": "PHASE_COLMAP_RIG_EXPORT",
             "colmap_mixed_prepare": "PHASE_COLMAP_MIXED_PREPARE",
             "colmap_feature": "PHASE_COLMAP_FEATURE",
@@ -298,6 +303,11 @@ class Step4RuntimeMixin:
             self._explicit_progress = False
             return None
         if phase == "colmap_mixed_prepare":
+            self._converted_total = 0
+            self._processed = 0
+            self._explicit_progress = False
+            return None
+        if phase == "metashape_nerf":
             self._converted_total = 0
             self._processed = 0
             self._explicit_progress = False

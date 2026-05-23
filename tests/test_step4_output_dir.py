@@ -42,6 +42,8 @@ from gui.steps.step5_training import TrainingStep
 from gui.steps.training_backends import lichtfeld_defaults
 from transforms_to_colmap import read_ply_points
 
+_IDENTITY_MATRIX_TEXT = "1 0 0 0 0 1 0 0 0 0 1 0 0 0 0 1"
+
 
 def _app():
     return QApplication.instance() or QApplication([])
@@ -81,6 +83,30 @@ def _write_metashape_xml(path: Path, labels: list[str] | None = None) -> None:
         "    </sensors>\n"
         "    <cameras>\n"
         f"{cameras}\n"
+        "    </cameras>\n"
+        "  </chunk>\n"
+        "</document>\n",
+        encoding="utf-8",
+    )
+
+
+def _write_mixed_metashape_xml(path: Path) -> None:
+    path.write_text(
+        '<?xml version="1.0" encoding="UTF-8"?>\n'
+        "<document>\n"
+        "  <chunk>\n"
+        "    <sensors>\n"
+        '      <sensor id="0" type="spherical">\n'
+        '        <resolution width="64" height="32" />\n'
+        "      </sensor>\n"
+        '      <sensor id="1" type="frame">\n'
+        '        <resolution width="40" height="30" />\n'
+        "        <calibration><f>35</f><cx>0</cx><cy>0</cy></calibration>\n"
+        "      </sensor>\n"
+        "    </sensors>\n"
+        "    <cameras>\n"
+        f'      <camera id="0" label="pano.jpg" sensor_id="0"><transform>{_IDENTITY_MATRIX_TEXT}</transform></camera>\n'
+        f'      <camera id="1" label="frame.jpg" sensor_id="1"><transform>{_IDENTITY_MATRIX_TEXT}</transform></camera>\n'
         "    </cameras>\n"
         "  </chunk>\n"
         "</document>\n",
@@ -436,6 +462,41 @@ def test_metashape_projected_uses_step4_work_dir_for_intermediate_outputs(tmp_pa
     assert cubemap_cmd[cubemap_cmd.index("--mask_dir") + 1] == str(tmp_path / "masks")
     assert not stale.exists()
     assert not (tmp_path / "transforms.json").exists()
+
+
+def test_mixed_metashape_projected_uses_nerf_job_writer(tmp_path: Path) -> None:
+    step = _ready_step(tmp_path, metashape_inputs=True)
+    _write_test_image(tmp_path / "images" / "pano.jpg", size=(64, 32))
+    _write_test_image(tmp_path / "images" / "frame.jpg", size=(40, 30))
+    _write_mixed_metashape_xml(tmp_path / "metashape.xml")
+    step.ms_xml_browse.set_text(str(tmp_path / "metashape.xml"))
+    step.ms_ply_browse.set_text(str(tmp_path / "metashape.ply"))
+
+    commands = step.build_commands()
+
+    assert [phase for phase, _cmd in commands] == ["metashape_nerf"]
+    cmd = commands[0][1]
+    assert cmd[2].endswith("export_metashape_nerf_dataset.py")
+    job_path = Path(cmd[cmd.index("--job") + 1])
+    job = json.loads(job_path.read_text(encoding="utf-8"))
+    assert job["kind"] == "metashape_nerf_dataset"
+    assert job["xml_path"] == str(tmp_path / "metashape.xml")
+    assert job["ply_path"] == str(tmp_path / "metashape.ply")
+    assert job["output_dir"] == str(tmp_path / "output" / "metashape_cubemap")
+
+
+def test_mixed_metashape_direct_erp_output_is_blocked(tmp_path: Path) -> None:
+    step = _ready_step(tmp_path, metashape_inputs=True)
+    _write_test_image(tmp_path / "images" / "pano.jpg", size=(64, 32))
+    _write_test_image(tmp_path / "images" / "frame.jpg", size=(40, 30))
+    _write_mixed_metashape_xml(tmp_path / "metashape.xml")
+    step.ms_xml_browse.set_text(str(tmp_path / "metashape.xml"))
+    direct_idx = step.output_shape_combo.findData("equirect_3dgut")
+    assert direct_idx >= 0
+    step.output_shape_combo.setCurrentIndex(direct_idx)
+
+    with pytest.raises(ValueError, match="PINHOLE"):
+        step.build_commands()
 
 
 def test_step4_pipeline_intent_controls_execution_plan(tmp_path: Path) -> None:

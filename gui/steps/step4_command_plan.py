@@ -11,6 +11,8 @@ from pathlib import Path
 
 from core.colmap_mixed_project import COLMAP_MIXED_MANIFEST
 from core.colmap_normal_camera_contract import normal_camera_groups_for_images
+from core.dataset_job_spec import metashape_nerf_job, write_dataset_job
+from core.metashape_nerf_dataset import metashape_model_requires_mixed_nerf_writer
 from core.orientation_correction import (
     FINAL_ORIENTATION_LICHTFELD,
     FINAL_ORIENTATION_NONE,
@@ -33,6 +35,7 @@ from gui.steps.cubemap_commands import (
     ColmapNormalFeatureGroup,
     ColmapSfmCommand,
     CubemapConversionCommand,
+    MetashapeNerfCommand,
     MetashapePreprocessCommand,
     SphereSfmCommand,
     SphereSfmTransformsCommand,
@@ -40,6 +43,7 @@ from gui.steps.cubemap_commands import (
     build_colmap_mixed_prepare_cmd,
     build_colmap_sfm_commands,
     build_cubemap_conversion_cmd,
+    build_metashape_nerf_cmd,
     build_metashape_preprocess_cmd,
     build_spheresfm_commands,
     build_spheresfm_transforms_cmd,
@@ -107,6 +111,14 @@ class Step4CommandPlanMixin:
         run_conversion = self.pipeline_stage_intent(_PIPELINE_STAGE_CONVERSION)
         if run_conversion:
             self._validate_bundle()
+            if self._uses_mixed_metashape_nerf_writer():
+                if self._uses_direct_equirect_output():
+                    raise ValueError(i18n.t("METASHAPE_MIXED_NERF_DIRECT_OUTPUT_UNSUPPORTED"))
+                if self.export_colmap_cb.isChecked():
+                    raise ValueError(i18n.t("METASHAPE_MIXED_NERF_COLMAP_OPTION_UNSUPPORTED"))
+                if not self._prepare_output_dir():
+                    return []
+                return [("metashape_nerf", self._build_metashape_nerf_cmd())]
             preprocess_cmd = self._build_preprocess_cmd()
 
         if not run_conversion:
@@ -126,6 +138,18 @@ class Step4CommandPlanMixin:
         if self.export_colmap_cb.isChecked():
             steps.append(("colmap", self._build_colmap_cmd()))
         return steps
+
+    def _uses_mixed_metashape_nerf_writer(self) -> bool:
+        if not self._is_metashape_method() or self._effective_profile() == _PROFILE_REALITYSCAN:
+            return False
+        self._refresh_metashape_auto_inputs_if_empty()
+        xml = self.ms_xml_browse.text().strip()
+        if not xml or not Path(xml).is_file():
+            return False
+        try:
+            return metashape_model_requires_mixed_nerf_writer(xml)
+        except Exception:
+            return False
 
     def _validate_colmap_source_plan(self) -> SfmInputPlan:
         inventory = build_scene_inventory(Path(self.scene_dir))
@@ -257,6 +281,72 @@ class Step4CommandPlanMixin:
                 realityscan_calibration_prior=self.realityscan_calibration_prior_combo.currentData() or "exact",
                 realityscan_coordinates="auto",
                 realityscan_include_rig=self.realityscan_include_rig_cb.isChecked(),
+            )
+        )
+
+    def _build_metashape_nerf_cmd(self) -> list[str]:
+        script = self.base_dir / "scripts" / "export_metashape_nerf_dataset.py"
+        if not script.exists():
+            raise FileNotFoundError(f"export_metashape_nerf_dataset.py が見つかりません: {script}")
+
+        scene = Path(self.scene_dir)
+        if not scene.is_dir():
+            raise ValueError(f"シーンフォルダが見つかりません: {scene}")
+        images = self._metashape_images_dir()
+        if not images.is_dir():
+            raise ValueError(f"Metashape画像フォルダが見つかりません: {images}")
+        xml = self.ms_xml_browse.text().strip()
+        if not xml or not Path(xml).is_file():
+            raise ValueError(f"Metashape XMLが見つかりません: {xml}")
+        if self._metashape_input_output_path_issue(Path(xml)):
+            raise ValueError(i18n.t("METASHAPE_INPUT_IN_OUTPUT_ERROR").format(path=xml))
+
+        ply = self.ms_ply_browse.text().strip()
+        if ply and not Path(ply).is_file():
+            raise ValueError(f"PLYファイルが見つかりません: {ply}")
+        if ply and self._metashape_input_output_path_issue(Path(ply)):
+            raise ValueError(i18n.t("METASHAPE_INPUT_IN_OUTPUT_ERROR").format(path=ply))
+
+        views = self.view_config.collect_views(include_disabled=True)
+        enabled = sum(1 for v in views if v["enabled"])
+        if enabled <= 0:
+            raise ValueError("少なくとも1つのビューを有効にしてください")
+        if enabled > _BLOCK_ENABLED_VIEWS:
+            raise ValueError(f"ビュー数が多すぎます ({enabled})。{_BLOCK_ENABLED_VIEWS} 以下にしてください。")
+
+        try:
+            jpgq = int(self.jpg_quality_edit.text().strip())
+        except ValueError as exc:
+            raise ValueError("JPG/WebP 品質は整数で指定してください") from exc
+        if not 1 <= jpgq <= 100:
+            raise ValueError("JPG/WebP 品質は 1-100 の範囲で指定してください")
+
+        masks = self._mask_dir()
+        job_path = jobs_dir(scene) / "metashape_nerf_job.json"
+        write_dataset_job(
+            job_path,
+            metashape_nerf_job(
+                scene_dir=scene,
+                images_dir=images,
+                masks_dir=masks if masks.is_dir() else None,
+                xml_path=Path(xml),
+                ply_path=Path(ply) if ply else None,
+                output_dir=self._display_output_dir(),
+                views=views,
+                output_scale=float(self.scale_combo.currentData()),
+                output_format=self.output_format_combo.currentData() or "auto",
+                output_bit_depth=self.output_bit_depth_combo.currentData() or "8",
+                jpg_quality=jpgq,
+                undistort_alpha=1.0,
+                axis_transform=self._axis_transform_mode(),
+                final_orientation=self._cubemap_final_orientation(),
+            ),
+        )
+        return build_metashape_nerf_cmd(
+            MetashapeNerfCommand(
+                python_executable=sys.executable,
+                script=script,
+                job=job_path,
             )
         )
 
