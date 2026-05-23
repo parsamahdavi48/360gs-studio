@@ -27,26 +27,27 @@ from core.sfm_input_plan import (
     build_colmap_mixed_sfm_input_plan,
 )
 from core.sfm_job_spec import colmap_mixed_project_job, write_sfm_job
+from core.workflow_job_spec import (
+    cubemap_conversion_job,
+    metashape_preprocess_job,
+    spheresfm_preflight_job,
+    spheresfm_prepare_job,
+    spheresfm_transforms_job,
+    transforms_to_colmap_job,
+    write_workflow_job,
+)
 from gui import i18n
 from gui.cubemap.view_config import _BLOCK_ENABLED_VIEWS
 from gui.steps.cubemap_commands import (
-    ColmapExportCommand,
     ColmapMixedPrepareCommand,
     ColmapNormalFeatureGroup,
     ColmapSfmCommand,
-    CubemapConversionCommand,
     MetashapeNerfCommand,
-    MetashapePreprocessCommand,
     SphereSfmCommand,
-    SphereSfmTransformsCommand,
-    build_colmap_export_cmd,
     build_colmap_mixed_prepare_cmd,
     build_colmap_sfm_commands,
-    build_cubemap_conversion_cmd,
     build_metashape_nerf_cmd,
-    build_metashape_preprocess_cmd,
     build_spheresfm_commands,
-    build_spheresfm_transforms_cmd,
 )
 from gui.steps.step4_contracts import (
     _COLMAP_MAPPER_GLOMAP,
@@ -57,6 +58,7 @@ from gui.steps.step4_contracts import (
     _PROFILE_REALITYSCAN,
     _SPHERESFM_MATCHER_SPATIAL,
 )
+from gui.steps.workflow_job_commands import build_workflow_job_cmd
 
 
 class Step4CommandPlanMixin:
@@ -169,9 +171,6 @@ class Step4CommandPlanMixin:
 
     def _build_preprocess_cmd(self) -> list[str]:
         self._refresh_metashape_auto_inputs_if_empty()
-        script = self.base_dir / "vendor" / "metashape_360_lfs" / "metashape_360_lfs.py"
-        if not script.exists():
-            raise FileNotFoundError(f"metashape_360_lfs.py が見つかりません: {script}")
         scene = Path(self.scene_dir)
         if not scene.is_dir():
             raise ValueError(f"シーンフォルダが見つかりません: {scene}")
@@ -196,27 +195,26 @@ class Step4CommandPlanMixin:
                 raise ValueError(f"PLYファイルが見つかりません: {ply}")
             if self._metashape_input_output_path_issue(Path(ply)):
                 raise ValueError(i18n.t("METASHAPE_INPUT_IN_OUTPUT_ERROR").format(path=ply))
-        return build_metashape_preprocess_cmd(
-            MetashapePreprocessCommand(
-                python_executable=sys.executable,
-                script=script,
-                images=Path(images),
-                xml=xml,
-                output=self._display_output_dir()
-                if self._uses_direct_equirect_output()
-                else self._metashape_import_work_dir(),
+        job_path = jobs_dir(scene) / "metashape_preprocess_job.json"
+        write_workflow_job(
+            job_path,
+            metashape_preprocess_job(
+                images_dir=Path(images),
+                xml_path=xml,
+                output_dir=(
+                    self._display_output_dir()
+                    if self._uses_direct_equirect_output()
+                    else self._metashape_import_work_dir()
+                ),
                 scale=scale,
                 use_ply=self._preprocess_uses_ply(),
-                ply=ply,
+                ply_path=ply if ply else None,
                 no_fix_rotation=self.ms_no_fix_rot_cb.isChecked(),
-            )
+            ),
         )
+        return build_workflow_job_cmd(self.base_dir, job_path)
 
     def _build_cubemap_cmd(self, image_only: bool = False, colmap_rig: bool = False) -> list[str]:
-        script = self.base_dir / "cubemap_transforms_json.py"
-        if not script.exists():
-            raise FileNotFoundError(f"cubemap_transforms_json.py が見つかりません: {script}")
-
         scene = Path(self.scene_dir)
         if not scene.is_dir():
             raise ValueError(f"シーンフォルダが見つかりません: {scene}")
@@ -255,34 +253,39 @@ class Step4CommandPlanMixin:
             raise ValueError("JPG/WebP 品質は整数で指定してください") from exc
         if not 1 <= jpgq <= 100:
             raise ValueError("JPG/WebP 品質は 1-100 の範囲で指定してください")
-        return build_cubemap_conversion_cmd(
-            CubemapConversionCommand(
-                python_executable=sys.executable,
-                script=script,
-                scene=input_dir,
-                output=output,
-                views_json=views_json,
-                scale=float(self.scale_combo.currentData()),
+        suffix = "colmap_rig" if colmap_rig else ("image_only" if image_only else "cubemap")
+        job_path = jobs_dir(scene) / f"{suffix}_conversion_job.json"
+        write_workflow_job(
+            job_path,
+            cubemap_conversion_job(
+                input_dir=input_dir,
+                output_dir=output,
+                views=views,
+                fov=90.0,
+                output_scale=float(self.scale_combo.currentData()),
                 axis_mode=self._axis_transform_mode(),
                 image_only=image_only,
                 colmap_rig=colmap_rig,
                 invert_masks=self.invert_masks_cb.isChecked(),
-                writes_images=self._writes_images(),
-                writes_masks=self._writes_masks(),
+                write_images=self._writes_images(),
+                write_masks=self._writes_masks(),
                 yaw_offset_per_frame=yaw_step,
                 output_format=out_fmt,
                 output_bit_depth=out_depth,
                 jpg_quality=jpgq,
-                final_orientation=self._cubemap_final_orientation(),
+                input_json="transforms.json",
                 image_dir=image_dir,
                 mask_dir=mask_dir,
+                final_orientation=self._cubemap_final_orientation(),
                 realityscan_xmp=self._is_metashape_method() and self._effective_profile() == _PROFILE_REALITYSCAN,
                 realityscan_pose_prior=self.realityscan_pose_prior_combo.currentData() or "exact",
                 realityscan_calibration_prior=self.realityscan_calibration_prior_combo.currentData() or "exact",
                 realityscan_coordinates="auto",
                 realityscan_include_rig=self.realityscan_include_rig_cb.isChecked(),
-            )
+            ),
         )
+        _ = views_json
+        return build_workflow_job_cmd(self.base_dir, job_path)
 
     def _build_metashape_nerf_cmd(self) -> list[str]:
         script = self.base_dir / "scripts" / "export_metashape_nerf_dataset.py"
@@ -409,10 +412,6 @@ class Step4CommandPlanMixin:
         return FINAL_ORIENTATION_NONE
 
     def _build_colmap_cmd(self) -> list[str]:
-        script = self.base_dir / "transforms_to_colmap.py"
-        if not script.exists():
-            raise FileNotFoundError(f"transforms_to_colmap.py が見つかりません: {script}")
-
         output = self._display_output_dir()
         colmap_dir = output / "colmap"
 
@@ -425,15 +424,18 @@ class Step4CommandPlanMixin:
             plys = sorted([p for p in output.glob("*.ply") if p.is_file()])
             if plys:
                 ply_path = plys[0]
-        return build_colmap_export_cmd(
-            ColmapExportCommand(
-                python_executable=sys.executable,
-                script=script,
-                output=output,
-                colmap_dir=colmap_dir,
-                ply=ply_path,
-            )
+        job_path = jobs_dir(Path(self.scene_dir)) / "transforms_to_colmap_job.json"
+        write_workflow_job(
+            job_path,
+            transforms_to_colmap_job(
+                input_dir=output,
+                output_dir=colmap_dir,
+                ply_path=ply_path,
+                json_name="transforms.json",
+                image_prefix="images",
+            ),
         )
+        return build_workflow_job_cmd(self.base_dir, job_path)
 
     def _default_colmap_executable(self) -> str:
         return "colmap.exe" if os.name == "nt" else "colmap"
@@ -606,14 +608,6 @@ class Step4CommandPlanMixin:
         return ",".join(f"{param:.12g}" for param in params)
 
     def _build_spheresfm_sfm_commands(self) -> list[tuple[str, list[str]]]:
-        preflight_script = self.base_dir / "scripts" / "spheresfm_gpu_preflight.py"
-        if not preflight_script.exists():
-            raise FileNotFoundError(f"spheresfm_gpu_preflight.py が見つかりません: {preflight_script}")
-
-        prepare_script = self.base_dir / "scripts" / "prepare_spheresfm_project.py"
-        if not prepare_script.exists():
-            raise FileNotFoundError(f"prepare_spheresfm_project.py が見つかりません: {prepare_script}")
-
         matcher = self.spheresfm_matcher_combo.currentData() or _COLMAP_MATCHER_SEQUENTIAL
         pose_path = self.spheresfm_pose_browse.text().strip()
         if matcher == _SPHERESFM_MATCHER_SPATIAL and not pose_path:
@@ -621,12 +615,35 @@ class Step4CommandPlanMixin:
         if pose_path and not Path(pose_path).is_file():
             raise ValueError(i18n.t("SPHERESFM_POSE_NOT_FOUND").format(path=pose_path))
 
+        colmap = self._resolve_spheresfm_executable()
+        scene = Path(self.scene_dir)
+        preflight_job_path = jobs_dir(scene) / "spheresfm_preflight_job.json"
+        prepare_job_path = jobs_dir(scene) / "spheresfm_prepare_job.json"
+        write_workflow_job(
+            preflight_job_path,
+            spheresfm_preflight_job(
+                colmap=colmap,
+                images_dir=self._metashape_images_dir(),
+                work_dir=self._spheresfm_preflight_dir(),
+                camera_params=self._spheresfm_camera_params_arg(),
+            ),
+        )
+        write_workflow_job(
+            prepare_job_path,
+            spheresfm_prepare_job(
+                colmap=colmap,
+                images_dir=self._metashape_images_dir(),
+                source_masks_dir=self._mask_dir(),
+                output_masks_dir=self._spheresfm_masks_dir(),
+                use_masks=self._spheresfm_uses_masks(),
+            ),
+        )
         steps = build_spheresfm_commands(
             SphereSfmCommand(
                 python_executable=sys.executable,
-                preflight_script=preflight_script,
-                prepare_script=prepare_script,
-                colmap=self._resolve_spheresfm_executable(),
+                preflight_script=self.base_dir / "scripts" / "run_workflow_job.py",
+                prepare_script=self.base_dir / "scripts" / "run_workflow_job.py",
+                colmap=colmap,
                 images_dir=self._metashape_images_dir(),
                 source_masks_dir=self._mask_dir(),
                 prepared_masks_dir=self._spheresfm_masks_dir(),
@@ -640,31 +657,32 @@ class Step4CommandPlanMixin:
                 pose_path=pose_path,
             )
         )
-        return steps
+        return [
+            ("spheresfm_preflight", build_workflow_job_cmd(self.base_dir, preflight_job_path)),
+            ("spheresfm_prepare", build_workflow_job_cmd(self.base_dir, prepare_job_path)),
+            *steps[2:],
+        ]
 
     def _build_spheresfm_conversion_commands(self) -> list[tuple[str, list[str]]]:
-        transforms_script = self.base_dir / "scripts" / "spheresfm_to_transforms.py"
-        if not transforms_script.exists():
-            raise FileNotFoundError(f"spheresfm_to_transforms.py が見つかりません: {transforms_script}")
-
         steps: list[tuple[str, list[str]]] = []
         transforms_output = (
             self._spheresfm_3dgut_dir() if self._uses_spheresfm_3dgut_output() else self._spheresfm_equirect_dir()
         )
         image_path_mode = "images-prefix" if self._uses_spheresfm_3dgut_output() else "relative"
+        job_path = jobs_dir(Path(self.scene_dir)) / "spheresfm_transforms_job.json"
+        write_workflow_job(
+            job_path,
+            spheresfm_transforms_job(
+                sparse_dir=self._spheresfm_sparse_model_for_conversion(),
+                output_dir=transforms_output,
+                images_dir=self._metashape_images_dir(),
+                image_path_mode=image_path_mode,
+            ),
+        )
         steps.append(
             (
                 "spheresfm_transforms",
-                build_spheresfm_transforms_cmd(
-                    SphereSfmTransformsCommand(
-                        python_executable=sys.executable,
-                        script=transforms_script,
-                        sparse=self._spheresfm_sparse_model_for_conversion(),
-                        output=transforms_output,
-                        images_dir=self._metashape_images_dir(),
-                        image_path_mode=image_path_mode,
-                    )
-                ),
+                build_workflow_job_cmd(self.base_dir, job_path),
             )
         )
         if self._uses_spheresfm_projected_output():
@@ -672,10 +690,6 @@ class Step4CommandPlanMixin:
         return steps
 
     def _build_spheresfm_cubemap_cmd(self) -> list[str]:
-        script = self.base_dir / "cubemap_transforms_json.py"
-        if not script.exists():
-            raise FileNotFoundError(f"cubemap_transforms_json.py が見つかりません: {script}")
-
         views = self.view_config.collect_views(include_disabled=True)
         enabled = sum(1 for v in views if v["enabled"])
         if enabled <= 0:
@@ -684,7 +698,7 @@ class Step4CommandPlanMixin:
             raise ValueError(f"ビュー数が多すぎます ({enabled})。{_BLOCK_ENABLED_VIEWS} 以下にしてください。")
 
         output = self._spheresfm_cubemap_dir()
-        views_json = self._write_views_config(step4_meta_dir(Path(self.scene_dir)), views)
+        _views_json = self._write_views_config(step4_meta_dir(Path(self.scene_dir)), views)
         out_fmt = self.output_format_combo.currentData() or "auto"
         out_depth = self.output_bit_depth_combo.currentData() or "8"
 
@@ -696,20 +710,21 @@ class Step4CommandPlanMixin:
             raise ValueError("JPG/WebP 品質は 1-100 の範囲で指定してください")
 
         mask_dir = self._mask_dir() if self._mask_dir().is_dir() else None
-        return build_cubemap_conversion_cmd(
-            CubemapConversionCommand(
-                python_executable=sys.executable,
-                script=script,
-                scene=self._spheresfm_equirect_dir(),
-                output=output,
-                views_json=views_json,
-                scale=float(self.scale_combo.currentData()),
+        job_path = jobs_dir(Path(self.scene_dir)) / "spheresfm_cubemap_conversion_job.json"
+        write_workflow_job(
+            job_path,
+            cubemap_conversion_job(
+                input_dir=self._spheresfm_equirect_dir(),
+                output_dir=output,
+                views=views,
+                fov=90.0,
+                output_scale=float(self.scale_combo.currentData()),
                 axis_mode=self._spheresfm_axis_transform_mode(),
                 image_only=False,
                 colmap_rig=False,
                 invert_masks=self.invert_masks_cb.isChecked(),
-                writes_images=self._writes_images(),
-                writes_masks=self._writes_masks(),
+                write_images=self._writes_images(),
+                write_masks=self._writes_masks(),
                 yaw_offset_per_frame=float(self.yaw_per_frame_edit.value()),
                 output_format=out_fmt,
                 output_bit_depth=out_depth,
@@ -721,5 +736,6 @@ class Step4CommandPlanMixin:
                 ),
                 image_dir=self._metashape_images_dir(),
                 mask_dir=mask_dir,
-            )
+            ),
         )
+        return build_workflow_job_cmd(self.base_dir, job_path)

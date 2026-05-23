@@ -23,6 +23,12 @@ def _app() -> QApplication:
     return QApplication.instance() or QApplication([])
 
 
+def _workflow_job(cmd: list[str]) -> dict:
+    assert cmd[2].endswith("run_workflow_job.py")
+    job_path = Path(cmd[cmd.index("--job") + 1])
+    return json.loads(job_path.read_text(encoding="utf-8"))
+
+
 def _write_colmap_sparse(root: Path) -> None:
     sparse = root / "sparse" / "0"
     sparse.mkdir(parents=True, exist_ok=True)
@@ -149,8 +155,9 @@ def test_sfm_cards_open_in_step_sfm_pages_and_external_route_goes_to_dataset(tmp
         window.step4.ms_xml_browse.set_text(str(metashape_xml))
         commands = window.sfm_step.build_commands()
         assert [phase for phase, _cmd in commands] == ["metashape", "cubemap"]
-        assert "--realityscan-xmp" in commands[1][1]
-        assert str(tmp_path / "output" / "realityscan") in commands[1][1]
+        job = _workflow_job(commands[1][1])
+        assert job["realityscan_xmp"] is True
+        assert job["output_dir"] == str(tmp_path / "output" / "realityscan")
 
         window.step_back_btn.click()
         assert window.sfm_step.current_route() == ""
@@ -433,41 +440,43 @@ def test_colmap_text_model_tool_defaults_and_builds_cli_command(tmp_path: Path) 
 
     preprocess_cmd = commands[0][1]
     work = scene / "_stechdrive" / "step4" / "work" / "metashape_colmap_import"
-    assert preprocess_cmd[2].endswith("metashape_360_lfs.py")
-    assert preprocess_cmd[preprocess_cmd.index("--images") + 1] == str(images)
-    assert preprocess_cmd[preprocess_cmd.index("--xml") + 1] == str(xml)
-    assert preprocess_cmd[preprocess_cmd.index("--output") + 1] == str(work)
-    assert preprocess_cmd[preprocess_cmd.index("--ply") + 1] == str(ply)
+    preprocess_job = _workflow_job(preprocess_cmd)
+    assert preprocess_job["kind"] == "metashape_preprocess"
+    assert preprocess_job["images_dir"] == str(images)
+    assert preprocess_job["xml_path"] == str(xml)
+    assert preprocess_job["output_dir"] == str(work)
+    assert preprocess_job["ply_path"] == str(ply)
 
     cubemap_cmd = commands[1][1]
-    assert cubemap_cmd[2].endswith("cubemap_transforms_json.py")
-    assert cubemap_cmd[3] == str(work)
-    assert cubemap_cmd[4] == str(output)
-    assert "--no_transform" in cubemap_cmd
-    assert cubemap_cmd[cubemap_cmd.index("--final-orientation") + 1] == "lichtfeld"
-    assert cubemap_cmd[cubemap_cmd.index("--image-dir") + 1] == str(images)
-    assert cubemap_cmd[cubemap_cmd.index("--mask_dir") + 1] == str(masks)
+    cubemap_job = _workflow_job(cubemap_cmd)
+    assert cubemap_job["kind"] == "cubemap_conversion"
+    assert cubemap_job["input_dir"] == str(work)
+    assert cubemap_job["output_dir"] == str(output)
+    assert cubemap_job["axis_mode"] == "none"
+    assert cubemap_job["final_orientation"] == "lichtfeld"
+    assert cubemap_job["image_dir"] == str(images)
+    assert cubemap_job["mask_dir"] == str(masks)
 
     colmap_cmd = commands[2][1]
-    assert colmap_cmd[2].endswith("transforms_to_colmap.py")
-    assert colmap_cmd[3] == str(output)
-    assert colmap_cmd[4] == str(output / "sparse" / "0")
-    assert colmap_cmd[colmap_cmd.index("--ply") + 1] == str(output / "pointcloud.ply")
+    colmap_job = _workflow_job(colmap_cmd)
+    assert colmap_job["kind"] == "transforms_to_colmap"
+    assert colmap_job["input_dir"] == str(output)
+    assert colmap_job["output_dir"] == str(output / "sparse" / "0")
+    assert colmap_job["ply_path"] == str(output / "pointcloud.ply")
 
     brush_idx = tool.profile_combo.findData("brush")
     tool.profile_combo.setCurrentIndex(brush_idx)
     _, brush_cubemap_cmd = tool.build_commands()[1]
-    assert "--brush" in brush_cubemap_cmd
-    assert "--final-orientation" not in brush_cubemap_cmd
+    brush_job = _workflow_job(brush_cubemap_cmd)
+    assert brush_job["axis_mode"] == "brush"
+    assert brush_job["final_orientation"] == "none"
 
     custom_idx = tool.view_config.view_mode_combo.findData(VIEW_MODE_CUSTOM)
     tool.view_config.view_mode_combo.setCurrentIndex(custom_idx)
     tool.view_config.set_yaw_slot_count(5)
     tool.view_config.set_pitch_row_count(2)
     _, custom_grid_cmd = tool.build_commands()[1]
-    views_path = Path(custom_grid_cmd[custom_grid_cmd.index("--views-json") + 1])
-    views_payload = json.loads(views_path.read_text(encoding="utf-8"))
-    assert len(views_payload["views"]) == 10
+    assert len(_workflow_job(custom_grid_cmd)["views"]) == 10
 
     _write_colmap_sparse(output)
     tool.on_queue_finished(True)

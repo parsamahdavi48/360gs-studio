@@ -36,6 +36,12 @@ from core.workflow_artifacts import (
     register_dataset_artifact,
     register_sfm_artifact,
 )
+from core.workflow_job_spec import (
+    cubemap_conversion_job,
+    metashape_preprocess_job,
+    transforms_to_colmap_job,
+    write_workflow_job,
+)
 from gui import i18n
 from gui.common.browse_widget import BrowseWidget
 from gui.common.drag_spinbox import DragDoubleSpinBox
@@ -43,15 +49,7 @@ from gui.common.form_rows import add_tooltip_row
 from gui.cubemap.preview_renderer import PreviewWidget
 from gui.cubemap.view_config import _BLOCK_ENABLED_VIEWS, _WARN_ENABLED_VIEWS, ViewConfigWidget
 from gui.steps.base_step import SETTINGS_PANE_MARGINS, SETTINGS_PANE_WIDTH, BaseStepWidget
-from gui.steps.cubemap_commands import (
-    ColmapExportCommand,
-    CubemapConversionCommand,
-    MetashapePreprocessCommand,
-    build_colmap_export_cmd,
-    build_cubemap_conversion_cmd,
-    build_metashape_preprocess_cmd,
-    write_views_config,
-)
+from gui.steps.cubemap_commands import write_views_config
 from gui.steps.output_reset import clear_path, path_has_contents
 from gui.steps.step4_contracts import (
     _AXIS_BRUSH,
@@ -62,6 +60,7 @@ from gui.steps.step4_contracts import (
     _PROFILE_LICHTFELD,
     _PROFILE_POSTSHOT,
 )
+from gui.steps.workflow_job_commands import build_workflow_job_cmd
 
 
 class ColmapTextModelTool(BaseStepWidget):
@@ -333,12 +332,9 @@ class ColmapTextModelTool(BaseStepWidget):
         )
 
     def build_commands(self) -> list[tuple[str, list[str]]]:
-        metashape_script = self.base_dir / "vendor" / "metashape_360_lfs" / "metashape_360_lfs.py"
-        cubemap_script = self.base_dir / "cubemap_transforms_json.py"
-        colmap_script = self.base_dir / "transforms_to_colmap.py"
         mixed_colmap_script = self.base_dir / "scripts" / "export_metashape_colmap_dataset.py"
         use_mixed_writer = self._uses_mixed_colmap_writer()
-        required_scripts = (mixed_colmap_script,) if use_mixed_writer else (metashape_script, cubemap_script, colmap_script)
+        required_scripts = (mixed_colmap_script,) if use_mixed_writer else (self.base_dir / "scripts" / "run_workflow_job.py",)
         for script in required_scripts:
             if not script.exists():
                 raise FileNotFoundError(f"{script.name} が見つかりません: {script}")
@@ -383,60 +379,59 @@ class ColmapTextModelTool(BaseStepWidget):
                 str(job_path),
             ]
             return [("metashape_colmap_mixed", cmd)]
+        metashape_job = jobs_dir(Path(self.scene_dir)) / "colmap_text_metashape_preprocess_job.json"
+        cubemap_job = jobs_dir(Path(self.scene_dir)) / "colmap_text_cubemap_conversion_job.json"
+        colmap_job = jobs_dir(Path(self.scene_dir)) / "colmap_text_transforms_to_colmap_job.json"
+        write_workflow_job(
+            metashape_job,
+            metashape_preprocess_job(
+                images_dir=images,
+                xml_path=xml,
+                output_dir=work,
+                scale=1.0,
+                use_ply=True,
+                ply_path=ply,
+                no_fix_rotation=False,
+            ),
+        )
+        write_workflow_job(
+            cubemap_job,
+            cubemap_conversion_job(
+                input_dir=work,
+                output_dir=output,
+                views=views,
+                fov=90.0,
+                output_scale=float(self.scale_combo.currentData()),
+                axis_mode=self._axis_transform_mode(),
+                image_only=False,
+                colmap_rig=False,
+                invert_masks=self.invert_masks_cb.isChecked(),
+                write_images=True,
+                write_masks=mask_dir is not None,
+                yaw_offset_per_frame=float(self.yaw_per_frame_edit.value()),
+                output_format=str(self.output_format_combo.currentData() or "auto"),
+                output_bit_depth=str(self.output_bit_depth_combo.currentData() or "8"),
+                jpg_quality=self._jpg_quality(),
+                image_dir=images,
+                mask_dir=mask_dir,
+                final_orientation=self._final_orientation(),
+            ),
+        )
+        write_workflow_job(
+            colmap_job,
+            transforms_to_colmap_job(
+                input_dir=output,
+                output_dir=output / "sparse" / "0",
+                ply_path=output / "pointcloud.ply",
+                json_name="transforms.json",
+                image_prefix="images",
+            ),
+        )
+        _ = views_json
         return [
-            (
-                "metashape",
-                build_metashape_preprocess_cmd(
-                    MetashapePreprocessCommand(
-                        python_executable=sys.executable,
-                        script=metashape_script,
-                        images=images,
-                        xml=str(xml),
-                        output=work,
-                        scale=1.0,
-                        use_ply=True,
-                        ply=str(ply),
-                    )
-                ),
-            ),
-            (
-                "cubemap",
-                build_cubemap_conversion_cmd(
-                    CubemapConversionCommand(
-                        python_executable=sys.executable,
-                        script=cubemap_script,
-                        scene=work,
-                        output=output,
-                        views_json=views_json,
-                        scale=float(self.scale_combo.currentData()),
-                        axis_mode=self._axis_transform_mode(),
-                        image_only=False,
-                        colmap_rig=False,
-                        invert_masks=self.invert_masks_cb.isChecked(),
-                        writes_images=True,
-                        writes_masks=mask_dir is not None,
-                        yaw_offset_per_frame=float(self.yaw_per_frame_edit.value()),
-                        output_format=str(self.output_format_combo.currentData() or "auto"),
-                        output_bit_depth=str(self.output_bit_depth_combo.currentData() or "8"),
-                        jpg_quality=self._jpg_quality(),
-                        final_orientation=self._final_orientation(),
-                        image_dir=images,
-                        mask_dir=mask_dir,
-                    )
-                ),
-            ),
-            (
-                "colmap_text",
-                build_colmap_export_cmd(
-                    ColmapExportCommand(
-                        python_executable=sys.executable,
-                        script=colmap_script,
-                        output=output,
-                        colmap_dir=output / "sparse" / "0",
-                        ply=output / "pointcloud.ply",
-                    )
-                ),
-            ),
+            ("metashape", build_workflow_job_cmd(self.base_dir, metashape_job)),
+            ("cubemap", build_workflow_job_cmd(self.base_dir, cubemap_job)),
+            ("colmap_text", build_workflow_job_cmd(self.base_dir, colmap_job)),
         ]
 
     def _validate_inputs(self, images: Path, masks: Path, xml: Path, ply: Path, output: Path) -> None:
