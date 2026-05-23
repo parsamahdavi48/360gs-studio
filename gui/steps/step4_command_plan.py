@@ -12,7 +12,10 @@ from pathlib import Path
 from core.colmap_mixed_project import COLMAP_MIXED_MANIFEST
 from core.colmap_normal_camera_contract import normal_camera_groups_for_images
 from core.dataset_job_spec import metashape_nerf_job, write_dataset_job
-from core.metashape_nerf_dataset import metashape_model_requires_mixed_nerf_writer
+from core.metashape_nerf_dataset import (
+    analyze_metashape_nerf_compatibility,
+    metashape_model_requires_mixed_nerf_writer,
+)
 from core.orientation_correction import (
     FINAL_ORIENTATION_LICHTFELD,
     FINAL_ORIENTATION_NONE,
@@ -55,6 +58,7 @@ from gui.steps.step4_contracts import (
     _COLMAP_MATCHER_SEQUENTIAL,
     _PIPELINE_STAGE_CONVERSION,
     _PIPELINE_STAGE_SFM,
+    _PROFILE_LICHTFELD,
     _PROFILE_REALITYSCAN,
     _SPHERESFM_MATCHER_SPATIAL,
 )
@@ -325,6 +329,23 @@ class Step4CommandPlanMixin:
             raise ValueError("JPG/WebP 品質は 1-100 の範囲で指定してください")
 
         masks = self._mask_dir()
+        if self._effective_profile() == _PROFILE_LICHTFELD:
+            compatibility = analyze_metashape_nerf_compatibility(
+                scene_dir=scene,
+                images_dir=images,
+                masks_dir=masks if masks.is_dir() else None,
+                xml_path=Path(xml),
+                views=views,
+                output_scale=float(self.scale_combo.currentData()),
+                undistort_alpha=1.0,
+            )
+            if not compatibility.lichtfeld_nerf_supported:
+                raise ValueError(
+                    i18n.t("METASHAPE_LICHTFELD_NERF_MULTICAMERA_UNSUPPORTED").format(
+                        groups=compatibility.camera_group_count,
+                        frames=compatibility.frame_count,
+                    )
+                )
         job_path = jobs_dir(scene) / "metashape_nerf_job.json"
         write_dataset_job(
             job_path,

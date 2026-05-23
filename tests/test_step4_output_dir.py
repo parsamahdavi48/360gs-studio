@@ -474,6 +474,9 @@ def test_metashape_projected_uses_step4_work_dir_for_intermediate_outputs(tmp_pa
 
 def test_mixed_metashape_projected_uses_nerf_job_writer(tmp_path: Path) -> None:
     step = _ready_step(tmp_path, metashape_inputs=True)
+    postshot_index = step.profile_combo.findData("postshot")
+    assert postshot_index >= 0
+    step.profile_combo.setCurrentIndex(postshot_index)
     _write_test_image(tmp_path / "images" / "pano.jpg", size=(64, 32))
     _write_test_image(tmp_path / "images" / "frame.jpg", size=(40, 30))
     _write_mixed_metashape_xml(tmp_path / "metashape.xml")
@@ -491,6 +494,17 @@ def test_mixed_metashape_projected_uses_nerf_job_writer(tmp_path: Path) -> None:
     assert job["xml_path"] == str(tmp_path / "metashape.xml")
     assert job["ply_path"] == str(tmp_path / "metashape.ply")
     assert job["output_dir"] == str(tmp_path / "output" / "metashape_cubemap")
+
+
+def test_mixed_metashape_projected_blocks_lichtfeld_nerf_multicamera(tmp_path: Path) -> None:
+    step = _ready_step(tmp_path, metashape_inputs=True)
+    _write_test_image(tmp_path / "images" / "pano.jpg", size=(64, 32))
+    _write_test_image(tmp_path / "images" / "frame.jpg", size=(40, 30))
+    _write_mixed_metashape_xml(tmp_path / "metashape.xml")
+    step.ms_xml_browse.set_text(str(tmp_path / "metashape.xml"))
+
+    with pytest.raises(ValueError, match="LichtFeld"):
+        step.build_commands()
 
 
 def test_mixed_metashape_direct_erp_output_is_blocked(tmp_path: Path) -> None:

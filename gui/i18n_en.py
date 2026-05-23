@@ -507,6 +507,7 @@ STRINGS: dict[str, str] = {
     "DATASET_RUN_SPHERESFM": "Run SphereSfM Conversion",
     "METASHAPE_MIXED_NERF_DIRECT_OUTPUT_UNSUPPORTED": "Metashape results containing normal images or multiple resolutions cannot be exported safely as direct ERP 360°. Choose PINHOLE in the Output tab.",
     "METASHAPE_MIXED_NERF_COLMAP_OPTION_UNSUPPORTED": "Mixed Metashape results cannot create NeRF JSON/PLY and the extra COLMAP output in the same run. Use the Metashape → COLMAP Dataset card when COLMAP format is needed.",
+    "METASHAPE_LICHTFELD_NERF_MULTICAMERA_UNSUPPORTED": "LichtFeld's NeRF JSON/PLY importer does not handle per-frame camera intrinsics, so this Metashape result cannot be exported safely with multiple camera settings. Detected: {groups} groups / {frames} frames. Use the Metashape → COLMAP Dataset route for LichtFeld.",
     "DATASET_TOOL_RS_LFS_TITLE": "RealityScan → COLMAP Dataset",
     "DATASET_TOOL_RS_LFS_DESC": "Create a COLMAP-format Dataset for LichtFeld from RealityScan CSV/PLY exports. Cubemap PINHOLE images are referenced with Windows hard links to avoid duplicate files, and only distorted normal images are converted to PINHOLE when needed.",
     "DATASET_TOOL_RS_LFS_CARD_BODY": "Create a LichtFeld COLMAP dataset from RealityScan camera CSV and point-cloud PLY exports.",

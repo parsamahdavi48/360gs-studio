@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
 from PIL import Image
 
 from core.metashape_nerf_dataset import export_metashape_nerf_dataset, metashape_model_requires_mixed_nerf_writer
@@ -137,6 +138,31 @@ def test_export_metashape_nerf_dataset_expands_links_and_undistorts(tmp_path: Pa
         "images/frame.jpg",
         "images/distorted_undistorted.jpg",
     }
+
+
+def test_export_metashape_nerf_dataset_blocks_multicamera_lichtfeld_target(tmp_path: Path) -> None:
+    scene = tmp_path / "scene"
+    _write_image(scene / "images" / "pano.jpg", (64, 32), (80, 120, 160))
+    _write_image(scene / "images" / "frame.jpg", (40, 30), (10, 20, 30))
+    xml = scene / "metashape.xml"
+    _write_mixed_xml(xml)
+
+    with pytest.raises(ValueError, match="LichtFeld"):
+        export_metashape_nerf_dataset(
+            scene_dir=scene,
+            images_dir=scene / "images",
+            masks_dir=None,
+            xml_path=xml,
+            ply_path=None,
+            output_dir=scene / "output" / "metashape_cubemap",
+            views=[{"name": "pz", "yaw": 0.0, "pitch": 0.0}],
+            output_scale=0.5,
+            output_format="jpg",
+            axis_transform="none",
+            final_orientation="lichtfeld",
+        )
+
+    assert not (scene / "output" / "metashape_cubemap" / "transforms.json").exists()
 
 
 def test_metashape_nerf_writer_detection_keeps_legacy_erp_route_for_simple_spherical(tmp_path: Path) -> None:

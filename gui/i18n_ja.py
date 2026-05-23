@@ -509,6 +509,7 @@ STRINGS: dict[str, str] = {
     "DATASET_RUN_SPHERESFM": "SphereSfM変換を実行",
     "METASHAPE_MIXED_NERF_DIRECT_OUTPUT_UNSUPPORTED": "通常画像や複数解像度を含むMetashape結果は、ERP 360°のままでは安全に出力できません。出力タブでPINHOLEを選んでください。",
     "METASHAPE_MIXED_NERF_COLMAP_OPTION_UNSUPPORTED": "混在Metashape結果では、NeRF JSON/PLY作成とCOLMAP追加出力を同時には実行できません。COLMAP形式が必要な場合は、Metashape → COLMAPデータセットのカードを使ってください。",
+    "METASHAPE_LICHTFELD_NERF_MULTICAMERA_UNSUPPORTED": "LichtFeldのNeRF JSON/PLY読み込みはフレームごとのカメラ内部パラメータを扱えないため、複数カメラ設定のMetashape結果は安全に出力できません。検出: {groups}種類 / {frames}フレーム。LichtFeldではMetashape → COLMAPデータセットを使ってください。",
     "DATASET_TOOL_RS_LFS_TITLE": "RealityScan → COLMAPデータセット",
     "DATASET_TOOL_RS_LFS_DESC": "RealityScanのCSV/PLYから、LichtFeldでデータセットとして開けるCOLMAPデータセットを作成します。Cubemap由来のPINHOLE画像はWindowsのハードリンクで参照し、歪み係数つきの通常画像だけ必要に応じてPINHOLE化します。",
     "DATASET_TOOL_RS_LFS_CARD_BODY": "RealityScanからエクスポートしたカメラCSVと点群PLYから、LichtFeld用COLMAPデータセットを作成します。",
