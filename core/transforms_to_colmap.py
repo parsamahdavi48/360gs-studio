@@ -113,8 +113,12 @@ def strip_prefix(path: str, prefix: str) -> str:
     if not prefix:
         return path
     p = path.replace("\\", "/")
-    if p.startswith(prefix):
-        return p[len(prefix):]
+    normalized = prefix.replace("\\", "/").strip("/")
+    if not normalized:
+        return p
+    directory_prefix = f"{normalized}/"
+    if p.startswith(directory_prefix):
+        return p[len(directory_prefix):]
     return p
 
 

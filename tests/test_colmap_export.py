@@ -153,11 +153,13 @@ def test_c2w_to_w2c_invalid_shape():
 
 def test_strip_prefix_basic():
     assert strip_prefix("images/foo.jpg", "images/") == "foo.jpg"
+    assert strip_prefix("images/foo.jpg", "images") == "foo.jpg"
     assert strip_prefix("images/sub/foo.jpg", "images/") == "sub/foo.jpg"
 
 
 def test_strip_prefix_no_match():
     assert strip_prefix("foo.jpg", "images/") == "foo.jpg"
+    assert strip_prefix("images_extra/foo.jpg", "images") == "images_extra/foo.jpg"
 
 
 def test_strip_prefix_empty():

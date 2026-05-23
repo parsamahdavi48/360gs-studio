@@ -26,6 +26,7 @@ from core.cubemap_transforms_json import (
     write_realityscan_xmp_sidecars,
     write_rig_config_json,
 )
+from core.dataset_writer_colmap import replace_file_with_link_or_copy
 from core.transforms_to_colmap import convert as convert_transforms_to_colmap
 from core.workflow_job_spec import (
     JOB_KIND_CUBEMAP_CONVERSION,
@@ -273,10 +274,35 @@ def _run_transforms_to_colmap(job: dict) -> None:
         ply_path=Path(str(job["ply_path"])) if str(job.get("ply_path") or "") else None,
         image_prefix=str(job.get("image_prefix") or "images"),
     )
+    dataset_root_text = str(job.get("dataset_root") or "").strip()
+    if dataset_root_text:
+        dataset_root = Path(dataset_root_text)
+        asset_input_dir = Path(str(job.get("asset_input_dir") or job["input_dir"]))
+        if bool(job.get("copy_images")):
+            count = _link_or_copy_tree(asset_input_dir / "images", dataset_root / "images")
+            print(f"Dataset images: {count}", flush=True)
+        if bool(job.get("copy_masks")):
+            count = _link_or_copy_tree(asset_input_dir / "masks", dataset_root / "masks")
+            print(f"Dataset masks: {count}", flush=True)
     print(f"Wrote cameras.txt, images.txt, points3D.txt to {result['output_dir']}", flush=True)
     print(f"  Camera model: {result['camera_model']}", flush=True)
     print(f"  Images: {result['num_images']}", flush=True)
     print(f"  3D points: {result['num_points']}", flush=True)
+
+
+def _link_or_copy_tree(source_dir: Path, destination_dir: Path) -> int:
+    source = Path(source_dir)
+    if not source.is_dir():
+        return 0
+    destination = Path(destination_dir)
+    copied = 0
+    for source_file in sorted(source.rglob("*"), key=lambda path: str(path).lower()):
+        if not source_file.is_file():
+            continue
+        rel = source_file.relative_to(source)
+        replace_file_with_link_or_copy(source_file, destination / rel)
+        copied += 1
+    return copied
 
 
 def _run_spheresfm_preflight(job: dict) -> None:

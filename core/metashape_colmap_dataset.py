@@ -39,8 +39,9 @@ from core.metashape_model import (
     MetashapeSensor,
     parse_metashape_model,
 )
-from core.realityscan_to_transforms import write_transformed_ply
+from core.realityscan_to_transforms import transform_points, write_transformed_ply
 from core.scene_inventory import build_scene_inventory
+from core.transforms_to_colmap import read_ply_points, write_points3d_txt
 
 DEFAULT_FOV_DEG = 90.0
 DEFAULT_UNDISTORT_ALPHA = 1.0
@@ -162,11 +163,16 @@ def export_metashape_colmap_dataset(
                 camera_ids,
             )
 
+    if not images:
+        warning_text = "; ".join(plan.warnings)
+        detail = f": {warning_text}" if warning_text else ""
+        raise ValueError(f"No Metashape cameras were converted to COLMAP images{detail}")
+
     write_colmap_text_dataset(output, cameras, images)
     if ply_path:
         ply = Path(ply_path)
         if ply.is_file():
-            write_transformed_ply(ply, sparse_dir / "points3D.ply", metashape_pointcloud_matrix())
+            _write_colmap_pointcloud_files(ply, sparse_dir)
     _write_manifest(output, plan.source_kind, action_counts, plan.warnings)
     return MetashapeColmapExportResult(
         output_dir=output,
@@ -435,6 +441,15 @@ def _write_manifest(output: Path, source_kind: str, action_counts: dict[str, int
         json.dumps(payload, indent=2, ensure_ascii=False),
         encoding="utf-8",
     )
+
+
+def _write_colmap_pointcloud_files(source_ply: Path, sparse_dir: Path) -> int:
+    matrix = metashape_pointcloud_matrix()
+    points, colors = read_ply_points(source_ply)
+    transformed = transform_points(points, matrix)
+    count = write_points3d_txt(sparse_dir / "points3D.txt", transformed, colors)
+    write_transformed_ply(source_ply, sparse_dir / "points3D.ply", matrix)
+    return count
 
 
 def metashape_model_requires_mixed_colmap_writer(xml_path: str | Path) -> bool:

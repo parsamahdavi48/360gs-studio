@@ -449,9 +449,10 @@ def test_colmap_text_model_tool_defaults_and_builds_cli_command(tmp_path: Path) 
 
     cubemap_cmd = commands[1][1]
     cubemap_job = _workflow_job(cubemap_cmd)
+    projected_work = work / "projected"
     assert cubemap_job["kind"] == "cubemap_conversion"
     assert cubemap_job["input_dir"] == str(work)
-    assert cubemap_job["output_dir"] == str(output)
+    assert cubemap_job["output_dir"] == str(projected_work)
     assert cubemap_job["axis_mode"] == "none"
     assert cubemap_job["final_orientation"] == "lichtfeld"
     assert cubemap_job["image_dir"] == str(images)
@@ -460,9 +461,13 @@ def test_colmap_text_model_tool_defaults_and_builds_cli_command(tmp_path: Path) 
     colmap_cmd = commands[2][1]
     colmap_job = _workflow_job(colmap_cmd)
     assert colmap_job["kind"] == "transforms_to_colmap"
-    assert colmap_job["input_dir"] == str(output)
+    assert colmap_job["input_dir"] == str(projected_work)
     assert colmap_job["output_dir"] == str(output / "sparse" / "0")
-    assert colmap_job["ply_path"] == str(output / "pointcloud.ply")
+    assert colmap_job["ply_path"] == str(projected_work / "pointcloud.ply")
+    assert colmap_job["dataset_root"] == str(output)
+    assert colmap_job["asset_input_dir"] == str(projected_work)
+    assert colmap_job["copy_images"] is True
+    assert colmap_job["copy_masks"] is True
 
     brush_idx = tool.profile_combo.findData("brush")
     tool.profile_combo.setCurrentIndex(brush_idx)

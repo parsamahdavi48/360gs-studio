@@ -153,7 +153,7 @@ def main() -> int:
         cubemap_view_params = cubemap_view_metadata_for_pose_preset(args.cubemap_pose_preset)
         run = run_apriltag_scale_estimation(
             estimation_transforms,
-            image_root=None,
+            image_root=args.image_root,
             tag_size_m=args.tag_size_m,
             family=args.family,
             tag_ids=args.tag_ids,

@@ -17,6 +17,7 @@ from core.workflow_job_spec import (
     write_workflow_job,
 )
 from gui.steps.workflow_job_commands import build_workflow_job_cmd
+from scripts.run_workflow_job import _run_transforms_to_colmap
 
 
 def test_workflow_job_builders_round_trip_core_conversion_jobs(tmp_path: Path) -> None:
@@ -95,3 +96,54 @@ def test_workflow_job_command_targets_generic_worker(tmp_path: Path) -> None:
     assert cmd[0] == "python.exe"
     assert cmd[2].endswith("scripts\\run_workflow_job.py")
     assert cmd[3:] == ["--job", str(job)]
+
+
+def test_transforms_to_colmap_job_can_assemble_dataset_assets(tmp_path: Path) -> None:
+    work = tmp_path / "work" / "projected"
+    dataset = tmp_path / "output" / "metashape_colmap"
+    (work / "images").mkdir(parents=True)
+    (work / "masks").mkdir()
+    (work / "images" / "a.png").write_bytes(b"image")
+    (work / "masks" / "a.png").write_bytes(b"mask")
+    (work / "transforms.json").write_text(
+        """
+{
+  "camera_model": "PINHOLE",
+  "w": 8,
+  "h": 8,
+  "fl_x": 4.0,
+  "fl_y": 4.0,
+  "cx": 3.5,
+  "cy": 3.5,
+  "frames": [
+    {
+      "file_path": "images/a.png",
+      "transform_matrix": [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+    }
+  ]
+}
+""",
+        encoding="utf-8",
+    )
+    job = transforms_to_colmap_job(
+        input_dir=work,
+        output_dir=dataset / "sparse" / "0",
+        ply_path=None,
+        image_prefix="images/",
+        dataset_root=dataset,
+        asset_input_dir=work,
+        copy_images=True,
+        copy_masks=True,
+    )
+
+    _run_transforms_to_colmap(job)
+
+    assert (dataset / "images" / "a.png").is_file()
+    assert (dataset / "masks" / "a.png").is_file()
+    assert not (dataset / "transforms.json").exists()
+    image_lines = [
+        line
+        for line in (dataset / "sparse" / "0" / "images.txt").read_text(encoding="utf-8").splitlines()
+        if line.strip() and not line.startswith("#")
+    ]
+    assert image_lines[0].endswith(" 1 a.png")

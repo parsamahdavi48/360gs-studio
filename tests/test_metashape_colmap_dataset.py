@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import numpy as np
+import pytest
 from PIL import Image
 
 from core.metashape_colmap_dataset import (
@@ -124,6 +125,7 @@ def test_export_metashape_colmap_dataset_expands_only_erp_and_undistorts_distort
     assert (output / "masks" / "distorted_undistorted.png").is_file()
     assert (output / "sparse" / "0" / "cameras.txt").is_file()
     assert (output / "sparse" / "0" / "images.txt").read_text(encoding="utf-8").count("\n\n") == 4
+    assert "# Number of points: 1" in (output / "sparse" / "0" / "points3D.txt").read_text(encoding="utf-8")
     assert (output / "sparse" / "0" / "points3D.ply").is_file()
 
 
@@ -169,3 +171,24 @@ def test_metashape_camera_transform_uses_pointcloud_basis_once() -> None:
     actual = metashape_camera_matrix_to_output_world(np.eye(4))
 
     assert np.allclose(actual, expected)
+
+
+def test_export_metashape_colmap_dataset_rejects_empty_conversion(tmp_path: Path) -> None:
+    scene = tmp_path / "scene"
+    images = scene / "images"
+    images.mkdir(parents=True)
+    xml = scene / "metashape.xml"
+    _write_single_pinhole_xml(xml)
+
+    with pytest.raises(ValueError, match="No Metashape cameras were converted"):
+        export_metashape_colmap_dataset(
+            scene_dir=scene,
+            images_dir=images,
+            masks_dir=None,
+            xml_path=xml,
+            ply_path=None,
+            output_dir=scene / "output" / "metashape_colmap",
+            views=[{"name": "pz", "yaw": 0.0, "pitch": 0.0}],
+            output_scale=1.0,
+            output_format="jpg",
+        )

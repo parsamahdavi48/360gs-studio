@@ -124,6 +124,10 @@ def transforms_to_colmap_job(
     ply_path: str | Path | None,
     json_name: str = "transforms.json",
     image_prefix: str = "images",
+    dataset_root: str | Path | None = None,
+    asset_input_dir: str | Path | None = None,
+    copy_images: bool = False,
+    copy_masks: bool = False,
 ) -> dict[str, Any]:
     return {
         "schema_version": WORKFLOW_JOB_SCHEMA_VERSION,
@@ -133,6 +137,10 @@ def transforms_to_colmap_job(
         "ply_path": str(ply_path) if ply_path else "",
         "json_name": str(json_name),
         "image_prefix": str(image_prefix),
+        "dataset_root": str(dataset_root) if dataset_root else "",
+        "asset_input_dir": str(asset_input_dir) if asset_input_dir else "",
+        "copy_images": bool(copy_images),
+        "copy_masks": bool(copy_masks),
     }
 
 

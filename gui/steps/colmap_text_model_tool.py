@@ -382,6 +382,7 @@ class ColmapTextModelTool(BaseStepWidget):
         metashape_job = jobs_dir(Path(self.scene_dir)) / "colmap_text_metashape_preprocess_job.json"
         cubemap_job = jobs_dir(Path(self.scene_dir)) / "colmap_text_cubemap_conversion_job.json"
         colmap_job = jobs_dir(Path(self.scene_dir)) / "colmap_text_transforms_to_colmap_job.json"
+        projected_work = work / "projected"
         write_workflow_job(
             metashape_job,
             metashape_preprocess_job(
@@ -398,7 +399,7 @@ class ColmapTextModelTool(BaseStepWidget):
             cubemap_job,
             cubemap_conversion_job(
                 input_dir=work,
-                output_dir=output,
+                output_dir=projected_work,
                 views=views,
                 fov=90.0,
                 output_scale=float(self.scale_combo.currentData()),
@@ -420,11 +421,15 @@ class ColmapTextModelTool(BaseStepWidget):
         write_workflow_job(
             colmap_job,
             transforms_to_colmap_job(
-                input_dir=output,
+                input_dir=projected_work,
                 output_dir=output / "sparse" / "0",
-                ply_path=output / "pointcloud.ply",
+                ply_path=projected_work / "pointcloud.ply",
                 json_name="transforms.json",
-                image_prefix="images",
+                image_prefix="images/",
+                dataset_root=output,
+                asset_input_dir=projected_work,
+                copy_images=True,
+                copy_masks=mask_dir is not None,
             ),
         )
         _ = views_json

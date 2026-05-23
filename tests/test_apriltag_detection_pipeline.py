@@ -5,6 +5,7 @@ import math
 import subprocess
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 import cv2
 import numpy as np
@@ -686,3 +687,58 @@ def test_estimate_apriltag_scale_cli_rejects_equirectangular_input(tmp_path: Pat
 
     assert result.returncode == 1
     assert "requires projected Cubemap output images" in result.stdout
+
+
+def test_estimate_apriltag_scale_cli_passes_colmap_image_root(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    import scripts.estimate_apriltag_scale as cli
+
+    dataset = tmp_path / "colmap_dataset"
+    image_root = tmp_path / "external_images"
+    image_root.mkdir()
+    (image_root / "a.png").write_bytes(b"image")
+    write_colmap_text_dataset(
+        dataset,
+        [ColmapCamera(1, "PINHOLE", 8, 8, (4.0, 4.0, 3.5, 3.5))],
+        [ColmapImage(1, quaternion_from_matrix(np.eye(3)), np.zeros(3), 1, "a.png")],
+    )
+
+    captured: dict[str, Path | None] = {}
+
+    def fake_run(dataset_input: Path, **kwargs):
+        captured["dataset_input"] = dataset_input
+        captured["image_root"] = kwargs.get("image_root")
+        return SimpleNamespace(
+            estimate=SimpleNamespace(
+                scale=1.0,
+                observation_count=0,
+                pair_count=0,
+                inlier_count=0,
+                rms_residual_m=0.0,
+                median_pair_scale=0.0,
+                mad_pair_scale=0.0,
+            ),
+            observations=(),
+            frame_detections=(),
+            timings_sec={},
+        )
+
+    monkeypatch.setattr(cli, "run_apriltag_scale_estimation", fake_run)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "estimate_apriltag_scale.py",
+            str(dataset),
+            "--image-root",
+            str(image_root),
+            "--tag-size-m",
+            "0.16",
+        ],
+    )
+
+    assert cli.main() == 0
+    assert captured["dataset_input"] == dataset
+    assert captured["image_root"] == image_root
