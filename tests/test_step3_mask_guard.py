@@ -16,6 +16,7 @@ from PySide6.QtCore import QItemSelectionModel
 from PySide6.QtWidgets import QApplication, QLabel, QPushButton, QToolButton
 
 import gui.steps.step3_mask as step3_mask_module
+from core.mask_source_scope import source_scope_key
 from core.scene_layout import selected_frames_path
 from core.scene_project import write_mask_item
 from gui import i18n
@@ -86,6 +87,8 @@ def test_mask_step_uses_standard_scene_folders_without_browse_inputs(tmp_path: P
     assert str(scene / "masks") in labels
     assert step.primary_action_enabled()
     assert step.primary_action_tooltip() == i18n.tip("RUN_MASKS")
+    assert step.mask_source_combo.currentData() == "all"
+    assert step.mask_source_combo.itemText(0) == i18n.t("MASK_SOURCE_ALL")
     assert step.mask_scope_combo.currentData() == "missing"
     assert step.mask_scope_combo.itemText(0) == i18n.t("MASK_SCOPE_MISSING")
     assert step.mask_scope_combo.itemText(1) == i18n.t("MASK_SCOPE_STALE")
@@ -110,6 +113,104 @@ def test_mask_step_missing_scope_processes_only_unmasked_images(tmp_path: Path) 
     assert [phase for phase, _cmd in commands] == ["yolo"]
     assert _manifest_images(commands[0][1]) == ["images/frame_0002.jpg"]
     assert step._mask_batch_targets == [images / "frame_0002.jpg"]
+
+
+def test_mask_step_source_filter_limits_missing_scope_to_selected_source(tmp_path: Path) -> None:
+    _app()
+    scene = tmp_path
+    images = scene / "images"
+    masks = scene / "masks"
+    images.mkdir()
+    masks.mkdir()
+    (images / "video_a_0001.jpg").write_bytes(b"a")
+    (images / "video_b_0001.jpg").write_bytes(b"b")
+    (masks / "video_a_0001.png").write_bytes(b"existing")
+    csv_path = selected_frames_path(scene)
+    csv_path.parent.mkdir(parents=True, exist_ok=True)
+    with csv_path.open("w", encoding="utf-8", newline="") as f:
+        writer = csv.DictWriter(
+            f,
+            fieldnames=["output_file", "source_session", "source_video", "decision", "status"],
+        )
+        writer.writeheader()
+        writer.writerow(
+            {
+                "output_file": "images/video_a_0001.jpg",
+                "source_session": "video_a",
+                "source_video": "D:/source/video_a.mp4",
+                "decision": "keep",
+                "status": "ok",
+            }
+        )
+        writer.writerow(
+            {
+                "output_file": "images/video_b_0001.jpg",
+                "source_session": "video_b",
+                "source_video": "D:/source/video_b.mp4",
+                "decision": "keep",
+                "status": "ok",
+            }
+        )
+    step = MaskStep(Path.cwd())
+    step.set_scene_dir(str(scene))
+    source_index = step.mask_source_combo.findData(source_scope_key("video_extract", "video_b"))
+    assert source_index >= 0
+    step.mask_source_combo.setCurrentIndex(source_index)
+
+    commands = step.build_commands()
+
+    assert [phase for phase, _cmd in commands] == ["yolo"]
+    assert _manifest_images(commands[0][1]) == ["images/video_b_0001.jpg"]
+    assert step._mask_batch_targets == [images / "video_b_0001.jpg"]
+
+
+def test_mask_step_source_filter_writes_manifest_even_when_selected_source_all_targets(tmp_path: Path) -> None:
+    _app()
+    scene = tmp_path
+    images = scene / "images"
+    masks = scene / "masks"
+    images.mkdir()
+    masks.mkdir()
+    (images / "video_a_0001.jpg").write_bytes(b"a")
+    (images / "video_b_0001.jpg").write_bytes(b"b")
+    (masks / "video_a_0001.png").write_bytes(b"existing a")
+    (masks / "video_b_0001.png").write_bytes(b"existing b")
+    csv_path = selected_frames_path(scene)
+    csv_path.parent.mkdir(parents=True, exist_ok=True)
+    with csv_path.open("w", encoding="utf-8", newline="") as f:
+        writer = csv.DictWriter(
+            f,
+            fieldnames=["output_file", "source_session", "source_video", "decision", "status"],
+        )
+        writer.writeheader()
+        writer.writerow(
+            {
+                "output_file": "images/video_a_0001.jpg",
+                "source_session": "video_a",
+                "source_video": "D:/source/video_a.mp4",
+                "decision": "keep",
+                "status": "ok",
+            }
+        )
+        writer.writerow(
+            {
+                "output_file": "images/video_b_0001.jpg",
+                "source_session": "video_b",
+                "source_video": "D:/source/video_b.mp4",
+                "decision": "keep",
+                "status": "ok",
+            }
+        )
+    step = MaskStep(Path.cwd())
+    step.set_scene_dir(str(scene))
+    source_index = step.mask_source_combo.findData(source_scope_key("video_extract", "video_a"))
+    assert source_index >= 0
+    step.mask_source_combo.setCurrentIndex(source_index)
+    step.mask_scope_combo.setCurrentIndex(2)
+
+    commands = step.build_commands()
+
+    assert _manifest_images(commands[0][1]) == ["images/video_a_0001.jpg"]
 
 
 def test_mask_step_missing_scope_reports_no_targets_when_all_masks_exist(tmp_path: Path) -> None:
