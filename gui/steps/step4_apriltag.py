@@ -371,7 +371,7 @@ class Step4AprilTagMixin:
             sys.executable,
             "-u",
             str(script),
-            str(dataset.transforms_json),
+            str(dataset.estimation_input),
             "--tag-size-m",
             f"{tag_size:.9g}",
             "--family",
@@ -451,7 +451,9 @@ class Step4AprilTagMixin:
             self._without_first_result_line(
                 i18n.t("APRILTAG_APPLIED_FORMAT").format(
                     scale=scale_text,
+                    geometry_label=getattr(result, "geometry_label", "transforms.json"),
                     transforms=self._wrapped_apriltag_path(result.transforms_json),
+                    pointcloud_label=getattr(result, "pointcloud_label", "pointcloud"),
                     pointcloud=pointcloud_text,
                     frames=result.frames_scaled,
                     points=result.points_scaled,
@@ -602,6 +604,9 @@ class Step4AprilTagMixin:
         except Exception as exc:
             self._warn_apriltag(str(exc))
             return
+        if not dataset.can_apply_scale:
+            self._warn_apriltag(i18n.t("APRILTAG_COLMAP_TEXT_REQUIRED"))
+            return
         pointcloud_text = (
             self._wrapped_apriltag_path(dataset.pointcloud_ply)
             if dataset.pointcloud_ply is not None
@@ -609,7 +614,9 @@ class Step4AprilTagMixin:
         )
         message = i18n.t("APRILTAG_APPLY_CONFIRM").format(
             scale=f"{self._apriltag_last_scale:.9g}",
+            geometry_label=dataset.geometry_label,
             transforms=self._wrapped_apriltag_path(dataset.transforms_json),
+            pointcloud_label=dataset.pointcloud_label,
             pointcloud=pointcloud_text,
         )
         response = QMessageBox.question(

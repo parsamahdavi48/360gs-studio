@@ -1214,7 +1214,7 @@ class AprilTagSceneViewerWindow(QWidget):
         self._build_ui()
         self._connect_signals()
         case_dir = initial_case
-        if case_dir is not None and ((case_dir / "case.json").is_file() or (case_dir / "output" / "transforms.json").is_file()):
+        if case_dir is not None and case_dir.exists():
             self.load_case_dir(case_dir)
 
     def _build_ui(self) -> None:
@@ -2369,6 +2369,9 @@ class AprilTagSceneViewerWindow(QWidget):
     def _case_dialog_start_dir(self) -> Path:
         if self.case is None:
             return Path.home()
+        if self.case.input_mode == "scene" and self.case.image_root is not None:
+            scene_dir = self.case.image_root
+            return scene_dir.parent if scene_dir.parent != scene_dir else scene_dir
         if self.case.validation_runs_dir is not None:
             scene_dir = self.case.validation_runs_dir.parent.parent
             return scene_dir.parent if scene_dir.parent != scene_dir else scene_dir

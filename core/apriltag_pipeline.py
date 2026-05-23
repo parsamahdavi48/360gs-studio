@@ -9,6 +9,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from pathlib import Path
 
+from core.apriltag_colmap_dataset import load_colmap_pinhole_frames
 from core.apriltag_cubemap import CubemapViewMetadata
 from core.apriltag_detection import AprilTagDetection, detect_apriltags, detection_to_observation
 from core.apriltag_geometry import PinholeFrame, load_pinhole_frames
@@ -66,7 +67,7 @@ def _detect_frame(
 
 
 def collect_observations(
-    transforms_json: Path,
+    dataset_input: Path,
     *,
     image_root: Path | None,
     tag_size_m: float,
@@ -80,12 +81,16 @@ def collect_observations(
     log_callback: LogCallback | None = None,
 ) -> tuple[tuple[PinholeFrame, ...], tuple[FrameDetection, ...], tuple[TagObservation, ...]]:
     load_started = time.perf_counter()
-    frames = load_pinhole_frames(
-        transforms_json,
-        image_root=image_root,
-        normalize_cubemap=normalize_cubemap,
-        cubemap_view_params=cubemap_view_params,
-    )
+    dataset_path = Path(dataset_input)
+    if dataset_path.is_dir():
+        frames = load_colmap_pinhole_frames(dataset_path, images_dir=image_root)
+    else:
+        frames = load_pinhole_frames(
+            dataset_path,
+            image_root=image_root,
+            normalize_cubemap=normalize_cubemap,
+            cubemap_view_params=cubemap_view_params,
+        )
     if log_callback is not None:
         log_callback(f"loaded {len(frames)} pinhole frames in {time.perf_counter() - load_started:.2f}s")
 
@@ -169,7 +174,7 @@ def collect_observations(
 
 
 def run_apriltag_scale_estimation(
-    transforms_json: Path,
+    dataset_input: Path,
     *,
     image_root: Path | None = None,
     tag_size_m: float,
@@ -186,7 +191,7 @@ def run_apriltag_scale_estimation(
     total_started = time.perf_counter()
     detection_started = time.perf_counter()
     frames, frame_detections, observations = collect_observations(
-        transforms_json,
+        dataset_input,
         image_root=image_root,
         tag_size_m=tag_size_m,
         family=family,

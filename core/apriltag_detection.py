@@ -54,8 +54,9 @@ def _reprojection_error(
     rvec: np.ndarray,
     tvec: np.ndarray,
     camera_matrix: np.ndarray,
+    distortion_coeffs: np.ndarray | None,
 ) -> float:
-    projected, _ = cv2.projectPoints(object_points, rvec, tvec, camera_matrix, None)
+    projected, _ = cv2.projectPoints(object_points, rvec, tvec, camera_matrix, distortion_coeffs)
     projected = projected.reshape(-1, 2)
     return float(np.mean(np.linalg.norm(projected - corners_px, axis=1)))
 
@@ -84,14 +85,28 @@ def detect_apriltags(
         if tag_ids is not None and tag_id not in tag_ids:
             continue
         corners_px = np.asarray(corners, dtype=np.float32).reshape(4, 2)
-        ok, rvec, tvec = cv2.solvePnP(object_points, corners_px, frame.camera_matrix, None, flags=cv2.SOLVEPNP_IPPE_SQUARE)
+        distortion_coeffs = frame.distortion_coeffs
+        ok, rvec, tvec = cv2.solvePnP(
+            object_points,
+            corners_px,
+            frame.camera_matrix,
+            distortion_coeffs,
+            flags=cv2.SOLVEPNP_IPPE_SQUARE,
+        )
         if not ok:
-            ok, rvec, tvec = cv2.solvePnP(object_points, corners_px, frame.camera_matrix, None)
+            ok, rvec, tvec = cv2.solvePnP(object_points, corners_px, frame.camera_matrix, distortion_coeffs)
         if not ok:
             continue
         tvec = np.asarray(tvec, dtype=float).reshape(3)
         camera_to_tag_m = np.array([tvec[0], -tvec[1], tvec[2]], dtype=float)
-        reprojection_error = _reprojection_error(object_points, corners_px, rvec, tvec.reshape(3, 1), frame.camera_matrix)
+        reprojection_error = _reprojection_error(
+            object_points,
+            corners_px,
+            rvec,
+            tvec.reshape(3, 1),
+            frame.camera_matrix,
+            distortion_coeffs,
+        )
         area = float(abs(cv2.contourArea(corners_px)))
         center = tuple(float(v) for v in np.mean(corners_px, axis=0))
         score = score_tag_observation(

@@ -1167,18 +1167,22 @@ STRINGS: dict[str, str] = {
     "APRILTAG_APPLIED": "Applied the estimated scale to the output dataset.",
     "APRILTAG_APPLIED_FORMAT": (
         "Applied scale={scale} to these output files.\n"
-        "transforms.json:\n{transforms}\n"
-        "pointcloud:\n{pointcloud}\n"
+        "{geometry_label}:\n{transforms}\n"
+        "{pointcloud_label}:\n{pointcloud}\n"
         "Cameras={frames}, points={points}\nBackup:\n{backup}"
     ),
     "APRILTAG_APPLY_CONFIRM_TITLE": "Apply Scale",
     "APRILTAG_APPLY_CONFIRM": (
         "This will multiply existing output files by estimated scale={scale}.\n\n"
-        "transforms.json:\n{transforms}\n\n"
-        "pointcloud:\n{pointcloud}\n\n"
+        "{geometry_label}:\n{transforms}\n\n"
+        "{pointcloud_label}:\n{pointcloud}\n\n"
         "Backups will be created before writing. Continue?"
     ),
-    "APRILTAG_APPLY_CONFIRM_NO_POINTCLOUD": "Not found (only transforms.json will be updated)",
+    "APRILTAG_APPLY_CONFIRM_NO_POINTCLOUD": "Not found (only camera poses will be updated)",
+    "APRILTAG_COLMAP_TEXT_REQUIRED": (
+        "Applying scale to a COLMAP dataset requires cameras.txt, images.txt, and points3D.txt under sparse/0. "
+        "Convert the COLMAP binary model to text before applying scale."
+    ),
     "APRILTAG_PRINT_SECTION": "Tag PDF",
     "APRILTAG_PRINT_TAG_ID": "Print ID",
     "APRILTAG_PRINT_PAGE": "Paper",

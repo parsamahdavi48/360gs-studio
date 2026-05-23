@@ -10,7 +10,15 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from core.scene_layout import scene_output_dir, step4_export_settings_path, step4_meta_dir
+from core.scene_layout import (
+    scene_metashape_3dgut_dir,
+    scene_metashape_cubemap_dir,
+    scene_output_dir,
+    scene_spheresfm_3dgut_dir,
+    scene_spheresfm_cubemap_dir,
+    step4_export_settings_path,
+    step4_meta_dir,
+)
 from devtools.apriltag.coordinates import (
     COORDINATE_PROFILE_BRUSH_CUBE6,
     COORDINATE_PROFILE_LICHTFELD_CUBE6,
@@ -262,8 +270,9 @@ def scene_viewer_case_dir(scene_dir: Path) -> Path:
     return step4_meta_dir(scene_dir) / VIEWER_SCENE_META_DIR_NAME
 
 
-def scene_viewer_runs_dir(scene_dir: Path) -> Path:
-    return scene_output_dir(scene_dir) / VIEWER_SCENE_RUNS_DIR_NAME
+def scene_viewer_runs_dir(scene_dir: Path, output_root: Path | None = None) -> Path:
+    root = output_root if output_root is not None else _current_step4_output_root(scene_dir, _load_step4_settings(scene_dir))
+    return root / VIEWER_SCENE_RUNS_DIR_NAME
 
 
 def _load_step4_settings(scene_dir: Path) -> dict[str, Any]:
@@ -275,6 +284,58 @@ def _load_step4_settings(scene_dir: Path) -> dict[str, Any]:
     except (OSError, json.JSONDecodeError):
         return {}
     return data if isinstance(data, dict) else {}
+
+
+def _settings_path_or_none(scene_dir: Path, value: object) -> Path | None:
+    text = str(value or "").strip()
+    if not text:
+        return None
+    path = Path(text)
+    return path if path.is_absolute() else scene_dir / path
+
+
+def _settings_dict(settings: dict[str, Any], key: str) -> dict[str, Any]:
+    value = settings.get(key)
+    return value if isinstance(value, dict) else {}
+
+
+def _current_step4_output_root(scene_dir: Path, settings: dict[str, Any]) -> Path:
+    output_dir = _settings_path_or_none(scene_dir, settings.get("output_dir"))
+    if output_dir is not None:
+        return output_dir
+    portable_root = _settings_path_or_none(scene_dir, _settings_dict(settings, "portable_output").get("root"))
+    return portable_root if portable_root is not None else scene_output_dir(scene_dir)
+
+
+def _scene_output_root_candidates(scene_dir: Path, settings: dict[str, Any]) -> tuple[Path, ...]:
+    roots = (
+        _current_step4_output_root(scene_dir, settings),
+        scene_metashape_cubemap_dir(scene_dir),
+        scene_metashape_3dgut_dir(scene_dir),
+        scene_spheresfm_cubemap_dir(scene_dir),
+        scene_spheresfm_3dgut_dir(scene_dir),
+        scene_output_dir(scene_dir),
+    )
+    result: list[Path] = []
+    seen: set[str] = set()
+    for root in roots:
+        try:
+            key = str(root.resolve()).lower()
+        except OSError:
+            key = str(root.absolute()).lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        result.append(root)
+    return tuple(result)
+
+
+def _resolve_scene_output_root(scene_dir: Path, settings: dict[str, Any]) -> Path:
+    for root in _scene_output_root_candidates(scene_dir, settings):
+        if (root / "transforms.json").is_file():
+            return root
+    current = _current_step4_output_root(scene_dir, settings)
+    raise FileNotFoundError(f"Scene output transforms.json not found: {current / 'transforms.json'}")
 
 
 def _coordinate_profile_from_step4_settings(settings: dict[str, Any]) -> str:
@@ -289,7 +350,11 @@ def _coordinate_profile_from_step4_settings(settings: dict[str, Any]) -> str:
     return DEFAULT_COORDINATE_PROFILE
 
 
-def _find_scene_pointcloud(scene_dir: Path) -> Path | None:
+def _find_scene_pointcloud(scene_dir: Path, output_root: Path | None = None) -> Path | None:
+    if output_root is not None:
+        output_pointcloud = output_root / "pointcloud.ply"
+        if output_pointcloud.is_file():
+            return output_pointcloud
     output_pointcloud = scene_output_dir(scene_dir) / "pointcloud.ply"
     if output_pointcloud.is_file():
         return output_pointcloud
@@ -310,9 +375,11 @@ def _find_scene_metashape_xml(scene_dir: Path) -> Path | None:
 
 def load_scene_case(scene_dir: Path) -> AprilTagDevCase:
     scene_dir = scene_dir.resolve()
-    transforms = scene_output_dir(scene_dir) / "transforms.json"
-    if not transforms.is_file():
-        raise FileNotFoundError(f"Scene output transforms.json not found: {transforms}")
+    settings = _load_step4_settings(scene_dir)
+    output_root = _resolve_scene_output_root(scene_dir, settings)
+    transforms = output_root / "transforms.json"
+    pointcloud = _find_scene_pointcloud(scene_dir, output_root)
+    validation_runs = scene_viewer_runs_dir(scene_dir, output_root)
 
     case_dir = scene_viewer_case_dir(scene_dir)
     existing_case = case_dir / "case.json"
@@ -323,7 +390,7 @@ def load_scene_case(scene_dir: Path) -> AprilTagDevCase:
             case_dir=loaded.case_dir,
             input_mode=loaded.input_mode,
             source_transforms=transforms,
-            source_pointcloud=_find_scene_pointcloud(scene_dir),
+            source_pointcloud=pointcloud,
             source_metashape_xml=_find_scene_metashape_xml(scene_dir),
             image_root=scene_dir,
             tag_family=loaded.tag_family,
@@ -331,20 +398,19 @@ def load_scene_case(scene_dir: Path) -> AprilTagDevCase:
             default_tag_size_m=loaded.default_tag_size_m,
             true_scale=loaded.true_scale,
             coordinate_profile=loaded.coordinate_profile,
-            validation_runs_dir=scene_viewer_runs_dir(scene_dir),
+            validation_runs_dir=validation_runs,
         )
 
-    settings = _load_step4_settings(scene_dir)
     case = AprilTagDevCase(
         name=scene_dir.name,
         case_dir=case_dir,
         input_mode="scene",
         source_transforms=transforms,
-        source_pointcloud=_find_scene_pointcloud(scene_dir),
+        source_pointcloud=pointcloud,
         source_metashape_xml=_find_scene_metashape_xml(scene_dir),
         image_root=scene_dir,
         coordinate_profile=normalize_coordinate_profile(_coordinate_profile_from_step4_settings(settings)),
-        validation_runs_dir=scene_viewer_runs_dir(scene_dir),
+        validation_runs_dir=validation_runs,
     )
     save_case(case)
     case.assets_dir.mkdir(parents=True, exist_ok=True)

@@ -1170,18 +1170,22 @@ STRINGS: dict[str, str] = {
     "APRILTAG_APPLIED": "推定scaleを出力データへ反映しました。",
     "APRILTAG_APPLIED_FORMAT": (
         "scale={scale} を以下の出力ファイルへ反映しました。\n"
-        "transforms.json:\n{transforms}\n"
-        "pointcloud:\n{pointcloud}\n"
+        "{geometry_label}:\n{transforms}\n"
+        "{pointcloud_label}:\n{pointcloud}\n"
         "カメラ={frames}, 点={points}\nバックアップ:\n{backup}"
     ),
     "APRILTAG_APPLY_CONFIRM_TITLE": "Scaleを反映",
     "APRILTAG_APPLY_CONFIRM": (
         "推定scale={scale}を既存の出力ファイルに掛けて書き換えます。\n\n"
-        "transforms.json:\n{transforms}\n\n"
-        "pointcloud:\n{pointcloud}\n\n"
+        "{geometry_label}:\n{transforms}\n\n"
+        "{pointcloud_label}:\n{pointcloud}\n\n"
         "書き換え前にバックアップを作成します。続行しますか？"
     ),
-    "APRILTAG_APPLY_CONFIRM_NO_POINTCLOUD": "見つかりません（transforms.jsonのみ更新します）",
+    "APRILTAG_APPLY_CONFIRM_NO_POINTCLOUD": "見つかりません（カメラ姿勢のみ更新します）",
+    "APRILTAG_COLMAP_TEXT_REQUIRED": (
+        "COLMAPデータセットへScaleを反映するには、sparse/0 に cameras.txt, images.txt, points3D.txt "
+        "が必要です。COLMAPのバイナリモデルはテキスト形式へ変換してから実行してください。"
+    ),
     "APRILTAG_PRINT_SECTION": "タグPDF",
     "APRILTAG_PRINT_TAG_ID": "印刷ID",
     "APRILTAG_PRINT_PAGE": "用紙",

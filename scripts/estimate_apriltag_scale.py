@@ -13,6 +13,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
+from core.apriltag_colmap_dataset import validate_colmap_apriltag_dataset
 from core.apriltag_cubemap import CUBEMAP_POSE_PRESETS, cubemap_view_metadata_for_pose_preset
 from core.apriltag_detection import available_families
 from core.apriltag_pipeline import AprilTagScaleRun, run_apriltag_scale_estimation
@@ -60,7 +61,8 @@ def _report(run: AprilTagScaleRun, args: argparse.Namespace) -> dict:
     ]
     return {
         "schema_version": 1,
-        "transforms_json": str(args.transforms_json),
+        "input_dataset": str(args.dataset),
+        "transforms_json": str(args.dataset) if args.dataset.is_file() else None,
         "image_root": str(args.image_root) if args.image_root else None,
         "family": args.family,
         "tag_size_m": args.tag_size_m,
@@ -85,7 +87,11 @@ def _report(run: AprilTagScaleRun, args: argparse.Namespace) -> dict:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Estimate meters-per-SfM-unit scale from AprilTags.")
-    parser.add_argument("transforms_json", type=Path, help="PINHOLE/SIMPLE_PINHOLE Cubemap output transforms.json")
+    parser.add_argument(
+        "dataset",
+        type=Path,
+        help="PINHOLE/SIMPLE_PINHOLE Cubemap transforms.json or COLMAP dataset root",
+    )
     parser.add_argument("--image-root", type=Path, default=None, help="Image root for relative file_path entries")
     parser.add_argument("--tag-size-m", type=float, required=True, help="Physical AprilTag side length in meters")
     parser.add_argument("--family", default="tag36h11", choices=available_families(), help="AprilTag family")
@@ -101,8 +107,8 @@ def parse_args() -> argparse.Namespace:
         help="Conversion preset used to create the Cube6 output. Usually keep auto.",
     )
     args = parser.parse_args()
-    if not args.transforms_json.is_file():
-        parser.error(f"transforms_json not found: {args.transforms_json}")
+    if not args.dataset.exists():
+        parser.error(f"dataset not found: {args.dataset}")
     if args.tag_size_m <= 0.0:
         parser.error("--tag-size-m must be positive")
     if args.min_score < 0.0:
@@ -117,13 +123,16 @@ def parse_args() -> argparse.Namespace:
 
 
 def _resolve_estimation_input(args: argparse.Namespace) -> Path:
-    model = camera_model(args.transforms_json)
+    if args.dataset.is_dir():
+        validate_colmap_apriltag_dataset(args.dataset, images_dir=args.image_root)
+        return args.dataset
+    model = camera_model(args.dataset)
     if model in {"PINHOLE", "SIMPLE_PINHOLE"}:
-        return args.transforms_json
+        return args.dataset
     if model == "EQUIRECTANGULAR":
         raise ValueError(
             "AprilTag scale estimation requires projected Cubemap output images. "
-            "Run Step 4 with Cubemap image output first, then use output/transforms.json."
+            "Run Step 4 with Cubemap image output first, then use output/metashape_cubemap/transforms.json."
         )
     raise ValueError(f"Unsupported camera_model for AprilTag scale estimation: {model or '-'}")
 

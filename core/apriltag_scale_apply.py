@@ -11,6 +11,11 @@ from pathlib import Path
 
 import numpy as np
 
+from core.apriltag_colmap_dataset import (
+    scale_colmap_images_txt,
+    scale_colmap_points3d_txt,
+    validate_colmap_apriltag_dataset,
+)
 from core.scene_layout import scene_output_dir, step4_export_settings_path
 
 
@@ -20,6 +25,19 @@ class ScaleOutputDataset:
     pointcloud_ply: Path | None
     frame_count: int
     checked_image_count: int
+    kind: str = "transforms"
+    root: Path | None = None
+    sparse_dir: Path | None = None
+    images_dir: Path | None = None
+    geometry_label: str = "transforms.json"
+    pointcloud_label: str = "pointcloud"
+    can_apply_scale: bool = True
+
+    @property
+    def estimation_input(self) -> Path:
+        if self.kind == "colmap":
+            return self.root or self.transforms_json.parent
+        return self.transforms_json
 
 
 @dataclass(frozen=True)
@@ -31,6 +49,9 @@ class ScaleApplyResult:
     scale: float
     frames_scaled: int
     points_scaled: int
+    kind: str = "transforms"
+    geometry_label: str = "transforms.json"
+    pointcloud_label: str = "pointcloud"
 
 
 def _load_transforms(transforms_json: Path) -> dict:
@@ -109,7 +130,25 @@ def validate_scale_output_dataset(
         raise ValueError(f"Output folder was not found: {output}")
     transforms_json = output / "transforms.json"
     if not transforms_json.is_file():
-        raise ValueError(f"Cubemap output transforms.json was not found: {transforms_json}")
+        try:
+            colmap = validate_colmap_apriltag_dataset(output, max_image_checks=max_image_checks)
+        except Exception as exc:
+            raise ValueError(
+                f"Output folder must contain a projected NeRF transforms.json or COLMAP images/sparse dataset: {output}"
+            ) from exc
+        return ScaleOutputDataset(
+            transforms_json=colmap.sparse_dir / "images.txt",
+            pointcloud_ply=colmap.sparse_dir / "points3D.txt",
+            frame_count=colmap.frame_count,
+            checked_image_count=colmap.checked_image_count,
+            kind="colmap",
+            root=colmap.root,
+            sparse_dir=colmap.sparse_dir,
+            images_dir=colmap.images_dir,
+            geometry_label="COLMAP images.txt",
+            pointcloud_label="COLMAP points3D.txt",
+            can_apply_scale=colmap.text_model,
+        )
     data = _load_transforms(transforms_json)
     camera_model = str(data.get("camera_model") or "")
     if camera_model not in {"PINHOLE", "SIMPLE_PINHOLE"}:
@@ -130,6 +169,7 @@ def validate_scale_output_dataset(
         pointcloud_ply=pointcloud,
         frame_count=len(data.get("frames", [])),
         checked_image_count=min(len(image_paths), max(1, int(max_image_checks))),
+        root=output,
     )
 
 
@@ -298,6 +338,52 @@ def apply_scale_to_transforms_and_pointcloud(
         scale=value,
         frames_scaled=frames_scaled,
         points_scaled=points_scaled,
+        kind="transforms",
+        geometry_label="transforms.json",
+        pointcloud_label="pointcloud",
+    )
+
+
+def apply_scale_to_colmap_dataset(dataset_root: Path, scale: float) -> ScaleApplyResult:
+    value = _validate_scale(scale)
+    dataset = validate_colmap_apriltag_dataset(Path(dataset_root))
+    sparse_dir = dataset.sparse_dir
+    images_txt = sparse_dir / "images.txt"
+    points_txt = sparse_dir / "points3D.txt"
+    if not images_txt.is_file() or not points_txt.is_file():
+        raise ValueError(
+            "AprilTag scale application for COLMAP currently requires text sparse files "
+            "(cameras.txt, images.txt, points3D.txt). Export or convert the sparse model to COLMAP text first."
+        )
+    backup_dir = _default_backup_dir(images_txt)
+    images_backup = _copy_backup(images_txt, backup_dir)
+    points_backup = _copy_backup(points_txt, backup_dir)
+    ply = sparse_dir / "points3D.ply"
+    ply_backup = _copy_backup(ply, backup_dir) if ply.is_file() else None
+
+    try:
+        frames_scaled = scale_colmap_images_txt(images_txt, value)
+        points_scaled = scale_colmap_points3d_txt(points_txt, value)
+        if ply.is_file():
+            _scale_pointcloud(ply, value)
+    except Exception:
+        shutil.copy2(images_backup, images_txt)
+        shutil.copy2(points_backup, points_txt)
+        if ply_backup is not None:
+            shutil.copy2(ply_backup, ply)
+        raise
+
+    return ScaleApplyResult(
+        transforms_json=images_txt,
+        transforms_backup=images_backup,
+        pointcloud_ply=points_txt,
+        pointcloud_backup=points_backup,
+        scale=value,
+        frames_scaled=frames_scaled,
+        points_scaled=points_scaled,
+        kind="colmap",
+        geometry_label="COLMAP images.txt",
+        pointcloud_label="COLMAP points3D.txt",
     )
 
 
@@ -308,4 +394,6 @@ def apply_scene_output_scale(
     output_dir: Path | None = None,
 ) -> ScaleApplyResult:
     dataset = validate_scale_output_dataset(scene_dir, output_dir=output_dir)
+    if dataset.kind == "colmap":
+        return apply_scale_to_colmap_dataset(dataset.root or dataset.transforms_json.parent, scale)
     return apply_scale_to_transforms_and_pointcloud(dataset.transforms_json, scale)
