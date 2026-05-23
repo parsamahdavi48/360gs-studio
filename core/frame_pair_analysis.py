@@ -48,6 +48,10 @@ class PairFrameRisk:
     blur_score: float
     sharpness_baseline: float | None
     sharpness_ratio: float | None
+    local_sharpness_baseline: float | None
+    local_sharpness_ratio: float | None
+    local_sharpness_count: int
+    strong_track: bool
     motion_blur: bool
     borderline_blur: bool
     low_texture: bool
@@ -59,6 +63,18 @@ class PairCandidateFrame:
     idx: int
     frame: np.ndarray
     gate_frame: np.ndarray
+    blur_score: float
+
+
+@dataclass
+class PairPendingBlurCandidate:
+    idx: int
+    frame: np.ndarray
+    gate_frame: np.ndarray
+    status_tokens: tuple[str, ...]
+    decision: str
+    reason: str
+    metrics: PairMetrics
     blur_score: float
 
 
@@ -86,6 +102,10 @@ PAIR_MOTION_BLUR_BASELINE_MIN = 12.0
 PAIR_MOTION_BLUR_RATIO = 0.35
 PAIR_MOTION_BLUR_DROP_RATIO = 0.60
 PAIR_MOTION_BLUR_REVIEW_RATIO = 0.80
+PAIR_LOCAL_SHARPNESS_MIN_SAMPLES = 2
+PAIR_STRONG_TRACK_MIN_COUNT = 80
+PAIR_STRONG_TRACK_MIN_CONFIDENCE = 0.80
+PAIR_STRONG_TRACK_MIN_COVERAGE = 0.50
 PAIR_GATE_WIDTH_DEFAULT = 1280
 
 
@@ -353,6 +373,39 @@ def _median_or_none(values: Sequence[float]) -> float | None:
     return float(np.median(np.asarray(values, dtype=np.float64)))
 
 
+def _local_sharpness_baseline(values: Sequence[float]) -> tuple[float | None, int]:
+    filtered: list[float] = []
+    for value in values:
+        try:
+            score = float(value)
+        except (TypeError, ValueError):
+            continue
+        if math.isfinite(score) and score > 0.0:
+            filtered.append(score)
+    count = len(filtered)
+    if count < PAIR_LOCAL_SHARPNESS_MIN_SAMPLES:
+        return None, count
+    arr = np.asarray(filtered, dtype=np.float64)
+    if count < 4:
+        return float(np.max(arr)), count
+    return float(np.percentile(arr, 75)), count
+
+
+def _is_strong_pair_track(
+    track: PairTrackMetrics | None,
+    *,
+    track_min_confidence: float,
+    track_min_count: int,
+) -> bool:
+    if track is None:
+        return False
+    return (
+        track.track_count >= max(PAIR_STRONG_TRACK_MIN_COUNT, int(track_min_count) * 2)
+        and track.confidence >= max(PAIR_STRONG_TRACK_MIN_CONFIDENCE, float(track_min_confidence))
+        and track.coverage >= PAIR_STRONG_TRACK_MIN_COVERAGE
+    )
+
+
 def assess_pair_frame_risk(
     *,
     blur_score: float,
@@ -360,15 +413,25 @@ def assess_pair_frame_risk(
     track: PairTrackMetrics | None,
     track_min_confidence: float,
     track_min_count: int,
+    local_sharpness_baseline: float | None = None,
+    local_sharpness_count: int = 0,
 ) -> PairFrameRisk:
     """Classify candidate-only SfM risks from pair metrics."""
     sharpness_ratio = None
     if sharpness_baseline is not None and sharpness_baseline > 1e-6:
         sharpness_ratio = blur_score / sharpness_baseline
+    local_sharpness_ratio = None
+    if local_sharpness_baseline is not None and local_sharpness_baseline > 1e-6:
+        local_sharpness_ratio = blur_score / local_sharpness_baseline
 
     weak_match = False
     weak_for_blur = False
     low_texture_track = False
+    strong_track = _is_strong_pair_track(
+        track,
+        track_min_confidence=track_min_confidence,
+        track_min_count=track_min_count,
+    )
     if track is not None:
         min_count = max(0, int(track_min_count))
         min_confidence = max(0.0, float(track_min_confidence))
@@ -387,20 +450,42 @@ def assess_pair_frame_risk(
         and sharpness_baseline >= PAIR_MOTION_BLUR_BASELINE_MIN
         and sharpness_ratio is not None
     )
+    has_local_baseline = (
+        local_sharpness_baseline is not None
+        and local_sharpness_baseline >= PAIR_MOTION_BLUR_BASELINE_MIN
+        and local_sharpness_ratio is not None
+        and local_sharpness_count >= PAIR_LOCAL_SHARPNESS_MIN_SAMPLES
+    )
+    blur_ratio = local_sharpness_ratio if has_local_baseline else sharpness_ratio
+    has_blur_baseline = (has_local_baseline or has_sharpness_baseline) and blur_ratio is not None
     severe_sharpness_drop = has_sharpness_baseline and sharpness_ratio <= min(0.12, PAIR_MOTION_BLUR_RATIO)
     weak_track_blur = (
         has_sharpness_baseline
         and sharpness_ratio <= PAIR_MOTION_BLUR_RATIO
+        and (not has_local_baseline or local_sharpness_ratio <= PAIR_MOTION_BLUR_REVIEW_RATIO)
         and (weak_for_blur or severe_sharpness_drop)
     )
-    motion_blur = bool(has_sharpness_baseline and sharpness_ratio <= PAIR_MOTION_BLUR_DROP_RATIO) or bool(
-        weak_track_blur
-    )
-    borderline_blur = bool(
+    motion_blur = bool(has_blur_baseline and blur_ratio <= PAIR_MOTION_BLUR_DROP_RATIO) or bool(weak_track_blur)
+    severe_blur = bool(
         has_sharpness_baseline
-        and not motion_blur
-        and sharpness_ratio <= PAIR_MOTION_BLUR_REVIEW_RATIO
+        and sharpness_ratio <= PAIR_MOTION_BLUR_RATIO
+        and (not has_local_baseline or local_sharpness_ratio <= PAIR_MOTION_BLUR_DROP_RATIO)
     )
+    if strong_track and motion_blur and not severe_blur:
+        motion_blur = False
+    borderline_blur = bool(
+        has_blur_baseline
+        and not motion_blur
+        and blur_ratio <= PAIR_MOTION_BLUR_REVIEW_RATIO
+    )
+    if (
+        strong_track
+        and not motion_blur
+        and has_sharpness_baseline
+        and sharpness_ratio <= PAIR_MOTION_BLUR_DROP_RATIO
+        and (not has_local_baseline or local_sharpness_ratio <= PAIR_MOTION_BLUR_REVIEW_RATIO)
+    ):
+        borderline_blur = True
     low_texture = (
         not motion_blur
         and not borderline_blur
@@ -413,6 +498,10 @@ def assess_pair_frame_risk(
         blur_score=blur_score,
         sharpness_baseline=sharpness_baseline,
         sharpness_ratio=sharpness_ratio,
+        local_sharpness_baseline=local_sharpness_baseline,
+        local_sharpness_ratio=local_sharpness_ratio,
+        local_sharpness_count=local_sharpness_count,
+        strong_track=strong_track,
         motion_blur=motion_blur,
         borderline_blur=borderline_blur,
         low_texture=low_texture,
@@ -495,6 +584,13 @@ def _pair_row(
         "blur_score_final": None if risk is None else risk.blur_score,
         "sharpness_baseline": "" if risk is None or risk.sharpness_baseline is None else risk.sharpness_baseline,
         "sharpness_ratio": "" if risk is None or risk.sharpness_ratio is None else risk.sharpness_ratio,
+        "local_sharpness_baseline": ""
+        if risk is None or risk.local_sharpness_baseline is None
+        else risk.local_sharpness_baseline,
+        "local_sharpness_ratio": ""
+        if risk is None or risk.local_sharpness_ratio is None
+        else risk.local_sharpness_ratio,
+        "local_sharpness_count": "" if risk is None else risk.local_sharpness_count,
         "status": status,
         "decision": decision,
         "analysis_pipeline": "pair",
@@ -607,7 +703,7 @@ def analyze_pair_selection(
     last_frame: np.ndarray | None = None
     last_frame_idx = -1
     last_progress_report = 0
-    replacement_origin_row: dict | None = None
+    replacement_origin: PairPendingBlurCandidate | None = None
     replacement_candidates: list[PairCandidateFrame] = []
 
     def emit_progress(processed_frames: int, force: bool = False) -> None:
@@ -652,6 +748,18 @@ def analyze_pair_selection(
             )
         )
 
+    def should_defer_blur_confirmation(row: dict) -> bool:
+        status = str(row.get("status", ""))
+        if row.get("decision") == "drop":
+            return "motion_blur" in status
+        if "borderline_blur" not in status:
+            return False
+        try:
+            ratio = float(row.get("sharpness_ratio", ""))
+        except (TypeError, ValueError):
+            return False
+        return ratio <= PAIR_MOTION_BLUR_DROP_RATIO
+
     def adopt_keep(row: dict, frame: np.ndarray, gate_frame: np.ndarray, *, reset_novelty: bool) -> None:
         nonlocal last_keep_frame, last_keep_gate_frame, last_keep_idx, novelty_inserts_since_anchor
         if row.get("decision") == "drop":
@@ -679,18 +787,22 @@ def analyze_pair_selection(
         metrics: PairMetrics,
         allow_motion_blur_drop: bool,
         blur_score: float | None = None,
+        local_blur_scores: Sequence[float] | None = None,
     ) -> dict:
         track_shift_px = int(round(metrics.yaw_shift_px * (frame.shape[1] / float(max(1, gate_w)))))
         track = (
             compute_pair_track_metrics(last_keep_frame, frame, track_shift_px) if last_keep_frame is not None else None
         )
         tokens = list(status_tokens)
+        local_baseline, local_count = _local_sharpness_baseline(local_blur_scores or ())
         risk = assess_pair_frame_risk(
             blur_score=compute_pair_blur_score(frame) if blur_score is None else float(blur_score),
             sharpness_baseline=_median_or_none(kept_sharpness),
             track=track,
             track_min_confidence=track_min_confidence,
             track_min_count=track_min_count,
+            local_sharpness_baseline=local_baseline,
+            local_sharpness_count=local_count,
         )
         if risk.motion_blur:
             tokens.append("motion_blur")
@@ -719,11 +831,31 @@ def analyze_pair_selection(
         )
 
     def finalize_replacement_search() -> None:
-        nonlocal replacement_origin_row, replacement_candidates
-        if replacement_origin_row is None:
+        nonlocal replacement_origin, replacement_candidates
+        if replacement_origin is None:
             return
 
-        append_row(replacement_origin_row)
+        origin = replacement_origin
+        local_blur_scores = [candidate.blur_score for candidate in replacement_candidates]
+        origin_row = evaluate_row(
+            idx=origin.idx,
+            frame=origin.frame,
+            status_tokens=origin.status_tokens,
+            decision=origin.decision,
+            reason=origin.reason,
+            metrics=origin.metrics,
+            allow_motion_blur_drop=True,
+            blur_score=origin.blur_score,
+            local_blur_scores=local_blur_scores,
+        )
+        append_row(origin_row)
+        if "motion_blur" not in str(origin_row.get("status", "")):
+            if origin_row.get("decision") != "drop":
+                adopt_keep(origin_row, origin.frame, origin.gate_frame, reset_novelty=True)
+            replacement_origin = None
+            replacement_candidates = []
+            return
+
         accepted: tuple[dict, PairCandidateFrame] | None = None
         assert last_keep_idx is not None
         assert last_keep_gate_frame is not None
@@ -768,7 +900,7 @@ def analyze_pair_selection(
             append_row(row)
             adopt_keep(row, candidate.frame, candidate.gate_frame, reset_novelty=True)
 
-        replacement_origin_row = None
+        replacement_origin = None
         replacement_candidates = []
 
     try:
@@ -821,7 +953,7 @@ def analyze_pair_selection(
             assert last_keep_idx is not None
             gap = idx - last_keep_idx
 
-            if replacement_origin_row is not None:
+            if replacement_origin is not None:
                 gate_frame = pair_gate_frame(frame, gate_w, gate_h)
                 remember_replacement_candidate(idx, frame, gate_frame)
                 if gap >= max_gap_frames:
@@ -880,11 +1012,20 @@ def analyze_pair_selection(
                 )
                 if (
                     fixed_smart
-                    and row.get("decision") == "drop"
-                    and "motion_blur" in row.get("status", "")
+                    and should_defer_blur_confirmation(row)
                     and not max_due
                 ):
-                    replacement_origin_row = row
+                    blur_score = row.get("blur_score_final")
+                    replacement_origin = PairPendingBlurCandidate(
+                        idx=idx,
+                        frame=frame.copy(),
+                        gate_frame=gate_frame.copy(),
+                        status_tokens=tuple(status_tokens),
+                        decision=decision,
+                        reason=reason,
+                        metrics=metrics,
+                        blur_score=float(blur_score) if blur_score not in (None, "") else compute_pair_blur_score(frame),
+                    )
                     replacement_candidates = []
                     schedule_next_due(idx)
                     emit_progress(idx + 1)
@@ -912,7 +1053,7 @@ def analyze_pair_selection(
     if last_frame_idx < 0 or last_frame is None:
         raise RuntimeError("No frames decoded during pair analysis")
 
-    if replacement_origin_row is not None:
+    if replacement_origin is not None:
         finalize_replacement_search()
 
     if last_keep_idx is not None and last_frame_idx != last_keep_idx and last_frame_idx not in seen_rows:

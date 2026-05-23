@@ -6,9 +6,14 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 
 from core.frame_pair_analysis import (
+    PAIR_LOCAL_SHARPNESS_MIN_SAMPLES,
     PAIR_MOTION_BLUR_BASELINE_MIN,
     PAIR_MOTION_BLUR_DROP_RATIO,
+    PAIR_MOTION_BLUR_RATIO,
     PAIR_MOTION_BLUR_REVIEW_RATIO,
+    PAIR_STRONG_TRACK_MIN_CONFIDENCE,
+    PAIR_STRONG_TRACK_MIN_COUNT,
+    PAIR_STRONG_TRACK_MIN_COVERAGE,
 )
 
 BLUR_REVIEW_MODE_STANDARD = "standard"
@@ -139,12 +144,47 @@ def _row_blur_classification(row: dict[str, str], mode: str | None) -> str | Non
     if ratio is None or baseline is None or baseline < PAIR_MOTION_BLUR_BASELINE_MIN:
         return None
 
+    local_ratio = _parse_float(row.get("local_sharpness_ratio"))
+    local_count = _parse_int(row.get("local_sharpness_count"))
+    effective_ratio = ratio
+    has_local_ratio = local_ratio is not None and local_count >= PAIR_LOCAL_SHARPNESS_MIN_SAMPLES
+    if has_local_ratio:
+        effective_ratio = local_ratio
+
     thresholds = blur_review_thresholds(mode)
-    if ratio <= thresholds.drop_ratio:
-        return "motion_blur"
-    if ratio <= thresholds.review_ratio:
+    classification = ""
+    if effective_ratio <= thresholds.drop_ratio:
+        classification = "motion_blur"
+    elif effective_ratio <= thresholds.review_ratio:
+        classification = "borderline_blur"
+
+    if (
+        classification == "motion_blur"
+        and _has_strong_track(row)
+        and not _is_severe_blur_ratio(ratio, local_ratio if has_local_ratio else None)
+    ):
         return "borderline_blur"
-    return ""
+    return classification
+
+
+def _has_strong_track(row: dict[str, str]) -> bool:
+    track_count = _parse_int(row.get("track_count"))
+    confidence = _parse_float(row.get("match_confidence"))
+    coverage = _parse_float(row.get("track_coverage"))
+    return (
+        track_count is not None
+        and track_count >= PAIR_STRONG_TRACK_MIN_COUNT
+        and confidence is not None
+        and confidence >= PAIR_STRONG_TRACK_MIN_CONFIDENCE
+        and coverage is not None
+        and coverage >= PAIR_STRONG_TRACK_MIN_COVERAGE
+    )
+
+
+def _is_severe_blur_ratio(ratio: float, local_ratio: float | None) -> bool:
+    if ratio > PAIR_MOTION_BLUR_RATIO:
+        return False
+    return local_ratio is None or local_ratio <= PAIR_MOTION_BLUR_DROP_RATIO
 
 
 def _automatic_decision_for_row(
@@ -200,5 +240,12 @@ def _is_decision_override(row: dict[str, str]) -> bool:
 def _parse_float(value: str | None) -> float | None:
     try:
         return float(str(value or "").strip())
+    except ValueError:
+        return None
+
+
+def _parse_int(value: str | None) -> int | None:
+    try:
+        return int(float(str(value or "").strip()))
     except ValueError:
         return None

@@ -87,7 +87,7 @@ def test_resolve_pair_thresholds_rejects_add_not_greater_than_drop() -> None:
         resolve_pair_thresholds(1.0, "walk_close", drop_threshold=0.08, add_threshold=0.08)
 
 
-def test_assess_pair_frame_risk_drops_clear_ratio_blur_even_with_strong_tracking() -> None:
+def test_assess_pair_frame_risk_downgrades_ratio_blur_with_strong_tracking() -> None:
     risk = assess_pair_frame_risk(
         blur_score=60.0,
         sharpness_baseline=100.0,
@@ -97,6 +97,39 @@ def test_assess_pair_frame_risk_drops_clear_ratio_blur_even_with_strong_tracking
     )
 
     assert risk.sharpness_ratio == pytest.approx(0.60)
+    assert risk.motion_blur is False
+    assert risk.borderline_blur is True
+    assert risk.low_texture is False
+
+
+def test_assess_pair_frame_risk_uses_local_sharpness_to_clear_scene_texture_drop() -> None:
+    risk = assess_pair_frame_risk(
+        blur_score=55.0,
+        sharpness_baseline=100.0,
+        local_sharpness_baseline=58.0,
+        local_sharpness_count=4,
+        track=PairTrackMetrics(track_count=240, coverage=1.0, confidence=0.95, median_residual_motion=0.0),
+        track_min_confidence=0.25,
+        track_min_count=36,
+    )
+
+    assert risk.sharpness_ratio == pytest.approx(0.55)
+    assert risk.local_sharpness_ratio == pytest.approx(55.0 / 58.0)
+    assert risk.motion_blur is False
+    assert risk.borderline_blur is False
+    assert risk.low_texture is False
+
+
+def test_assess_pair_frame_risk_keeps_severe_blur_as_drop_even_with_strong_tracking() -> None:
+    risk = assess_pair_frame_risk(
+        blur_score=25.0,
+        sharpness_baseline=100.0,
+        track=PairTrackMetrics(track_count=240, coverage=1.0, confidence=0.95, median_residual_motion=0.0),
+        track_min_confidence=0.25,
+        track_min_count=36,
+    )
+
+    assert risk.sharpness_ratio == pytest.approx(0.25)
     assert risk.motion_blur is True
     assert risk.borderline_blur is False
     assert risk.low_texture is False
@@ -195,6 +228,51 @@ def test_analyze_pair_selection_marks_motion_blur_candidate_for_review(tmp_path:
     assert blur_rows[0]["decision"] == "drop"
     assert blur_rows[0]["review_required"] == "1"
     assert float(blur_rows[0]["sharpness_ratio"]) <= 0.35
+
+
+def test_analyze_pair_selection_clears_low_detail_candidate_with_local_neighbors(tmp_path: Path) -> None:
+    wrapper = _fake_ffmpeg_wrapper(
+        tmp_path,
+        "fake_ffmpeg_local_blur_context.py",
+        [
+            "import sys",
+            "w, h = 64, 32",
+            "sharp = bytes((255 if ((x // 2 + y // 2) % 2) else 0) for y in range(h) for x in range(w))",
+            "soft = bytes((165 if ((x // 2 + y // 2) % 2) else 90) for y in range(h) for x in range(w))",
+            "for frame in [sharp, soft, soft, soft, sharp]:",
+            "    sys.stdout.buffer.write(frame)",
+            "    sys.stdout.flush()",
+        ],
+    )
+
+    rows, *_ = analyze_pair_selection(
+        video_path=tmp_path / "dummy.mp4",
+        ffmpeg_bin=str(wrapper),
+        video_info=VideoInfo(width=64, height=32, fps=1.0, duration=5.0, total_frames=5),
+        analysis_width=64,
+        interval_sec=1.0,
+        fixed_smart=True,
+        min_gap_sec=1.0,
+        max_gap_sec=3.0,
+        drop_threshold=0.03,
+        add_threshold=0.08,
+        threshold_profile="walk",
+        threshold_mode="manual",
+        max_inserts_per_interval=2,
+        track_min_confidence=0.25,
+        track_min_count=36,
+        progress_phase="",
+    )
+
+    local_rows = [row for row in rows if row["final_index"] == 1]
+    assert local_rows
+    row = local_rows[0]
+    assert row["decision"] == "keep"
+    assert "motion_blur" not in row["status"]
+    assert "borderline_blur" not in row["status"]
+    assert float(row["sharpness_ratio"]) <= 0.35
+    assert float(row["local_sharpness_ratio"]) == pytest.approx(1.0)
+    assert row["local_sharpness_count"] == 2
 
 
 def test_analyze_pair_selection_replaces_blur_with_sharp_candidate(tmp_path: Path) -> None:

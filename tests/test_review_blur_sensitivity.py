@@ -15,8 +15,9 @@ def _pair_row(
     decision: str,
     selection_reason: str = "fixed_interval",
     override: str = "",
+    extra: dict[str, str] | None = None,
 ) -> dict[str, str]:
-    return {
+    row = {
         "analysis_pipeline": "pair",
         "blur_score_final": "55",
         "sharpness_baseline": "100",
@@ -28,6 +29,9 @@ def _pair_row(
         "risk_flags": status if "blur" in status else "",
         REVIEW_DECISION_OVERRIDE_FIELD: override,
     }
+    if extra:
+        row.update(extra)
+    return row
 
 
 def test_apply_blur_review_mode_switches_between_standard_and_low() -> None:
@@ -89,3 +93,39 @@ def test_apply_blur_review_mode_keeps_redundant_drop_when_blur_is_cleared() -> N
     assert rows[0]["status"] == "redundant_drop"
     assert rows[0]["decision"] == "drop"
     assert rows[0]["risk_flags"] == ""
+
+
+def test_apply_blur_review_mode_uses_local_ratio_and_tracking_for_new_rows() -> None:
+    rows = [
+        _pair_row(
+            "0.55",
+            status="motion_blur",
+            decision="drop",
+            selection_reason="motion_blur",
+            extra={
+                "local_sharpness_ratio": "0.95",
+                "local_sharpness_count": "4",
+                "track_count": "240",
+                "track_coverage": "0.85",
+                "match_confidence": "0.94",
+            },
+        ),
+        _pair_row(
+            "0.55",
+            status="motion_blur",
+            decision="drop",
+            selection_reason="motion_blur",
+            extra={
+                "track_count": "240",
+                "track_coverage": "0.85",
+                "match_confidence": "0.94",
+            },
+        ),
+    ]
+
+    result = apply_blur_review_mode(rows, BLUR_REVIEW_MODE_STANDARD)
+
+    assert result.motion_blur_count == 0
+    assert result.borderline_blur_count == 1
+    assert [row["status"] for row in rows] == ["ok", "borderline_blur"]
+    assert [row["decision"] for row in rows] == ["keep", "keep"]
