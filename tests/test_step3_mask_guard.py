@@ -1108,6 +1108,31 @@ def test_mask_step_mixed_image_type_splits_commands_by_manifest(tmp_path: Path) 
     assert "images/pano.jpg" not in normal_manifest.read_text(encoding="utf-8")
 
 
+def test_mask_step_mixed_custom_mask_uses_all_target_manifest(tmp_path: Path) -> None:
+    _app()
+    scene = tmp_path
+    images = scene / "images"
+    images.mkdir()
+    equirect = images / "pano.jpg"
+    normal = images / "normal.jpg"
+    custom = scene / "custom.png"
+    cv2.imwrite(str(equirect), np.full((32, 64, 3), 180, dtype=np.uint8))
+    cv2.imwrite(str(normal), np.full((32, 32, 3), 120, dtype=np.uint8))
+    cv2.imwrite(str(custom), np.full((32, 64), 255, dtype=np.uint8))
+    step = MaskStep(Path.cwd())
+    step.set_scene_dir(str(scene))
+
+    step._set_custom_mask_path(custom)
+    commands = step.build_commands()
+
+    assert [phase for phase, _cmd in commands] == ["yolo_equirect", "yolo_normal", "custom"]
+    custom_cmd = commands[2][1]
+    custom_manifest = Path(custom_cmd[custom_cmd.index("--image-list") + 1])
+    text = custom_manifest.read_text(encoding="utf-8")
+    assert "images/pano.jpg" in text
+    assert "images/normal.jpg" in text
+
+
 def test_mask_step_quality_best_is_forwarded_to_primary_command(tmp_path: Path) -> None:
     _app()
     scene = _write_scene(tmp_path, drop_exists=False)
