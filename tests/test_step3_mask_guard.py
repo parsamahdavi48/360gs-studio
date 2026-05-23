@@ -313,7 +313,7 @@ def test_mask_step_yolo_level_and_expand_share_compact_row() -> None:
     assert step.yolo_expand_label.toolTip() == i18n.tip("YOLO_EXPAND")
     assert step.yolo_expand_edit.value() == 0
     assert step.yolo_bottom_settings_row.isHidden()
-    assert step.projection_label.text() == i18n.t("MASK_IMAGE_TYPE_EQUIRECT")
+    assert not hasattr(step, "projection_label")
 
 
 def test_mask_step_sam31_apply_mode_shares_compact_settings_row(tmp_path: Path, monkeypatch) -> None:
@@ -1091,7 +1091,7 @@ def test_mask_step_mixed_image_type_splits_commands_by_manifest(tmp_path: Path) 
     step.run_stitch_cb.setChecked(True)
     commands = step.build_commands()
 
-    assert step.projection_label.text() == i18n.t("MASK_IMAGE_TYPE_MIXED")
+    assert step._projection_mixed
     assert [phase for phase, _cmd in commands] == ["yolo_equirect", "yolo_normal", "stitch_equirect"]
     yolo_equirect = commands[0][1]
     yolo_normal = commands[1][1]
@@ -1163,47 +1163,13 @@ def test_mask_step_quality_is_shared_by_mask2former(tmp_path: Path) -> None:
     assert yolo_cmd[yolo_cmd.index("--quality") + 1] == "standard"
 
 
-def test_mask_step_image_folder_controls_stay_available_for_all_image_types() -> None:
+def test_mask_step_image_folder_row_has_no_registration_controls() -> None:
     _app()
     step = MaskStep(Path.cwd())
 
-    assert isinstance(step.add_external_images_btn, QToolButton)
-    assert not step.add_external_images_btn.isHidden()
-    assert step.add_external_images_btn.toolTip() == i18n.tip("EXTERNAL_IMAGES_ADD")
+    assert not hasattr(step, "projection_label")
+    assert not hasattr(step, "add_external_images_btn")
     assert not hasattr(step, "open_images_dir_btn")
-
-    step._set_projection("normal")
-    assert not step.add_external_images_btn.isHidden()
-
-    step._set_projection("equirect")
-    assert not step.add_external_images_btn.isHidden()
-
-
-def test_mask_step_imports_external_images_into_scene_images(tmp_path: Path) -> None:
-    _app()
-    source = tmp_path / "source"
-    source.mkdir()
-    cv2.imwrite(str(source / "a.JPG"), np.full((8, 8, 3), 64, dtype=np.uint8))
-    cv2.imwrite(str(source / "b.png"), np.full((8, 8, 3), 128, dtype=np.uint8))
-    (source / "ignore.txt").write_text("not an image", encoding="utf-8")
-    scene = tmp_path / "scene"
-    scene.mkdir()
-    step = MaskStep(Path.cwd())
-    step.set_scene_dir(str(scene))
-
-    added, skipped = step._import_external_images_from_dir(source)
-
-    assert added == 2
-    assert skipped == 0
-    assert (scene / "images" / "a.JPG").is_file()
-    assert (scene / "images" / "b.png").is_file()
-    assert not (scene / "images" / "ignore.txt").exists()
-    assert step.primary_action_enabled()
-
-    added_again, skipped_again = step._import_external_images_from_dir(source)
-
-    assert added_again == 0
-    assert skipped_again == 2
 
 
 def test_mask_step_equirect_image_type_can_use_stitch(tmp_path: Path) -> None:

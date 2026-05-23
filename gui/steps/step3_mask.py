@@ -9,7 +9,7 @@ import sys
 import tempfile
 from pathlib import Path
 
-from PySide6.QtCore import QProcess, QSize, Qt, QTimer, Signal
+from PySide6.QtCore import QProcess, QSize, Qt, QTimer
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -47,9 +47,7 @@ from core.scene_inventory import (
 from core.scene_layout import scene_images_dir, scene_masks_dir, selected_frames_path
 from core.scene_project import (
     append_mask_run,
-    append_source_image_set,
     scene_relative,
-    source_image_set_record,
     utc_now_iso,
     write_mask_item,
 )
@@ -71,7 +69,6 @@ from gui.steps.mask_commands import (
     MaskCommandContext,
 )
 from gui.steps.mask_image_import import IMAGE_EXTENSIONS as _IMAGE_EXTS
-from gui.steps.mask_image_import import import_external_images_with_records
 from gui.steps.mask_postprocess import mask_stats
 from gui.steps.sam31_setup import ensure_sam31_checkpoint_available
 from gui.steps.step3_mask_actions import Step3MaskActionsMixin
@@ -369,6 +366,15 @@ _YOLO_SAM_NOTICE_VERSION = 3
 _YOLO_SAM_NOTICE_KEY = "yolo_sam_models_ack_version"
 _SKY_NOTICE_VERSION = 2
 _SKY_NOTICE_KEY = "sky_models_ack_version"
+_MASK_SCOPE_COMBO_MIN_WIDTH = 180
+_MASK_SCOPE_COMBO_MAX_WIDTH = 260
+_COMBO_TEXT_PADDING = 48
+
+
+def _fit_combo_width_to_items(combo: QComboBox, *, min_width: int, max_width: int) -> None:
+    metrics = combo.fontMetrics()
+    widest = max((metrics.horizontalAdvance(combo.itemText(index)) for index in range(combo.count())), default=0)
+    combo.setFixedWidth(min(max_width, max(min_width, widest + _COMBO_TEXT_PADDING)))
 
 
 def _ade20k_class_names(base_dir: Path) -> tuple[str, ...]:
@@ -385,8 +391,6 @@ def _ade20k_class_names(base_dir: Path) -> tuple[str, ...]:
 
 
 class MaskStep(Step3MaskActionsMixin, BaseStepWidget):
-    scene_dir_suggested = Signal(str)
-
     def __init__(self, base_dir: Path, parent: QWidget | None = None) -> None:
         super().__init__(base_dir, parent)
         self._phase_total = 0
@@ -459,21 +463,6 @@ class MaskStep(Step3MaskActionsMixin, BaseStepWidget):
         self.images_path_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
         images_path_row.addWidget(self.images_path_label, stretch=1)
 
-        self.projection_label = QLabel()
-        self.projection_label.setObjectName("imageTypeChip")
-        self.projection_label.setToolTip(i18n.tip("MASK_IMAGE_TYPE"))
-        self.projection_label.setAlignment(Qt.AlignCenter)
-        self.projection_label.setMinimumWidth(48)
-        images_path_row.addWidget(self.projection_label)
-
-        self.add_external_images_btn = QToolButton()
-        self.add_external_images_btn.setObjectName("iconToolButton")
-        self.add_external_images_btn.setIcon(plus_icon())
-        self.add_external_images_btn.setToolTip(i18n.tip("EXTERNAL_IMAGES_ADD"))
-        self.add_external_images_btn.setAccessibleName(i18n.t("EXTERNAL_IMAGES_ADD"))
-        self.add_external_images_btn.setFixedSize(32, 32)
-        images_path_row.addWidget(self.add_external_images_btn)
-
         add_tooltip_row(path_form, i18n.IMAGES_DIR, self.images_path_row, i18n.tip("IMAGES_DIR"))
         self.masks_path_label = QLabel("-")
         self.masks_path_label.setToolTip(i18n.tip("MASKS_DIR"))
@@ -495,7 +484,11 @@ class MaskStep(Step3MaskActionsMixin, BaseStepWidget):
         self.mask_scope_combo.setItemData(0, i18n.tip("MASK_SCOPE_MISSING"), Qt.ToolTipRole)
         self.mask_scope_combo.setItemData(1, i18n.tip("MASK_SCOPE_STALE"), Qt.ToolTipRole)
         self.mask_scope_combo.setItemData(2, i18n.tip("MASK_SCOPE_ALL"), Qt.ToolTipRole)
-        self.mask_scope_combo.setFixedWidth(180)
+        _fit_combo_width_to_items(
+            self.mask_scope_combo,
+            min_width=_MASK_SCOPE_COMBO_MIN_WIDTH,
+            max_width=_MASK_SCOPE_COMBO_MAX_WIDTH,
+        )
         self.mask_scope_combo.currentIndexChanged.connect(lambda _: self._update_ready_status())
         add_tooltip_row(path_form, i18n.t("MASK_SCOPE"), self.mask_scope_combo, i18n.tip("MASK_SCOPE"))
         layout.addLayout(path_form)
@@ -1032,7 +1025,6 @@ class MaskStep(Step3MaskActionsMixin, BaseStepWidget):
         self.mask_preview.current_image_changed.connect(self._on_preview_current_image_changed)
         self.mask_preview.mask_preview_requested.connect(self._run_mask_preview)
         self.mask_preview.current_reprocess_requested.connect(self._run_current_image_reprocess)
-        self.add_external_images_btn.clicked.connect(self._add_external_images_from_folder)
         self._set_projection(_PROJECTION_EQUIRECT)
         self._refresh_mask_source_options()
         self._update_task_controls()
@@ -1111,7 +1103,6 @@ class MaskStep(Step3MaskActionsMixin, BaseStepWidget):
             projection = _PROJECTION_EQUIRECT
         self._project_projection = projection
         self.yolo_level_combo.setCurrentIndex(0 if projection == _PROJECTION_NORMAL else 1)
-        self._update_projection_label()
         if hasattr(self, "mask_preview"):
             self._update_preview_projection_enabled()
         self._update_task_controls()
@@ -1148,26 +1139,6 @@ class MaskStep(Step3MaskActionsMixin, BaseStepWidget):
             self.mask_source_combo.setCurrentIndex(index if index >= 0 else 0)
         finally:
             self._syncing_mask_source_combo = False
-
-    def _update_projection_label(self) -> None:
-        if self._projection_mixed:
-            label_key = "MASK_IMAGE_TYPE_MIXED"
-        else:
-            label_key = (
-                "MASK_IMAGE_TYPE_EQUIRECT" if self._projection() == _PROJECTION_EQUIRECT else "MASK_IMAGE_TYPE_NORMAL"
-            )
-        source_text = i18n.t("MASK_IMAGE_TYPE_SOURCE_PROJECT")
-        if self._projection_source == "image_header_sample":
-            source_text = i18n.t("MASK_IMAGE_TYPE_SOURCE_HEADER")
-        elif self._projection_source == "default":
-            source_text = i18n.t("MASK_IMAGE_TYPE_SOURCE_DEFAULT")
-        self.projection_label.setText(i18n.t(label_key))
-        self.projection_label.setToolTip(
-            i18n.t("MASK_IMAGE_TYPE_STATUS").format(
-                image_type=i18n.t(label_key),
-                source=source_text,
-            )
-        )
 
     def _refresh_image_projection_map(self) -> None:
         if not self.scene_dir:
@@ -1491,86 +1462,6 @@ class MaskStep(Step3MaskActionsMixin, BaseStepWidget):
         self._refresh_image_projection_map()
         self._update_preview_projection_enabled()
         self._render_mask_preview()
-
-    def _ensure_scene_for_external_images(self) -> bool:
-        if self.scene_dir:
-            return True
-
-        result = QMessageBox.question(
-            self,
-            i18n.t("EXTERNAL_IMAGES_SCENE_REQUIRED_TITLE"),
-            i18n.t("EXTERNAL_IMAGES_SCENE_REQUIRED_MESSAGE"),
-            QMessageBox.Yes | QMessageBox.No,
-            QMessageBox.Yes,
-        )
-        if result != QMessageBox.Yes:
-            return False
-
-        scene = QFileDialog.getExistingDirectory(self, i18n.t("EXTERNAL_IMAGES_SELECT_SCENE"))
-        if not scene:
-            return False
-        self.scene_dir_suggested.emit(scene)
-        if not self.scene_dir:
-            self.set_scene_dir(scene)
-        return bool(self.scene_dir)
-
-    def _add_external_images_from_folder(self) -> None:
-        if not self._ensure_scene_for_external_images():
-            return
-        source = QFileDialog.getExistingDirectory(
-            self,
-            i18n.t("EXTERNAL_IMAGES_SELECT_FOLDER"),
-            self.scene_dir,
-        )
-        if not source:
-            return
-
-        source_dir = Path(source)
-        images_dir = Path(self._images_dir_text())
-        try:
-            if source_dir.resolve() == images_dir.resolve():
-                QMessageBox.information(
-                    self,
-                    i18n.t("EXTERNAL_IMAGES_RESULT_TITLE"),
-                    i18n.t("EXTERNAL_IMAGES_SOURCE_IS_TARGET"),
-                )
-                return
-        except OSError:
-            pass
-
-        added, skipped = self._import_external_images_from_dir(source_dir)
-        QMessageBox.information(
-            self,
-            i18n.t("EXTERNAL_IMAGES_RESULT_TITLE"),
-            i18n.t("EXTERNAL_IMAGES_RESULT").format(added=added, skipped=skipped),
-        )
-
-    def _import_external_images_from_dir(self, source_dir: Path) -> tuple[int, int]:
-        if not self.scene_dir:
-            raise ValueError(i18n.t("SCENE_REQUIRED_ACTION_HINT"))
-        if not source_dir.is_dir():
-            raise ValueError(i18n.t("EXTERNAL_IMAGES_SOURCE_NOT_FOUND").format(path=source_dir))
-
-        images_dir = Path(self._images_dir_text())
-        added, skipped, imported = import_external_images_with_records(source_dir, images_dir)
-        if imported:
-            append_source_image_set(
-                Path(self.scene_dir),
-                source_image_set_record(
-                    source_dir=source_dir,
-                    scene_dir=Path(self.scene_dir),
-                    imported=imported,
-                ),
-            )
-
-        self.images_path_label.setText(str(images_dir))
-        self._on_images_dir_changed(str(images_dir))
-        self.mask_preview.refresh_image_list(prefer_current=True)
-        self._sync_projection_from_project()
-        self._refresh_mask_source_options()
-        self._render_mask_preview()
-        self._update_ready_status()
-        return added, skipped
 
     def phase_display_name(self, phase: str) -> str:
         labels = {

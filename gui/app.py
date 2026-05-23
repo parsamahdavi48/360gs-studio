@@ -311,7 +311,6 @@ class MainWindow(QWidget):
         self.scene_browse.path_changed.connect(self._on_scene_changed)
         self.step1.scene_dir_suggested.connect(self._on_scene_suggested)
         self.step1.input_videos_cleared.connect(self._on_input_videos_cleared)
-        self.step3.scene_dir_suggested.connect(self._on_scene_suggested)
         self.sfm_step.route_requested.connect(self._open_dataset_route)
         self.run_btn.clicked.connect(self._on_run)
         self.cancel_btn.clicked.connect(self._on_cancel)

@@ -55,7 +55,7 @@ from gui.common.browse_widget import BrowseWidget
 from gui.common.collapsible_section import CollapsibleSection
 from gui.common.drag_spinbox import DragDoubleSpinBox, DragSpinBox
 from gui.common.form_rows import add_tooltip_row
-from gui.common.icons import delete_icon, file_picker_icon, folder_icon, reset_icon
+from gui.common.icons import delete_icon, image_folder_source_icon, reset_icon, video_source_icon
 from gui.steps.base_step import (
     SETTINGS_PANE_MARGINS,
     SETTINGS_PANE_WIDTH,
@@ -363,7 +363,7 @@ class ExtractStep(BaseStepWidget):
         queue_header.addStretch()
         self.add_video_btn = QToolButton()
         self.add_video_btn.setObjectName("iconToolButton")
-        self.add_video_btn.setIcon(file_picker_icon())
+        self.add_video_btn.setIcon(video_source_icon())
         self.add_video_btn.setToolTip(i18n.tip("ADD_INPUT_VIDEO"))
         self.add_video_btn.setAccessibleName(i18n.t("ADD_INPUT_VIDEO"))
         self.add_video_btn.setFixedSize(32, 32)
@@ -371,7 +371,7 @@ class ExtractStep(BaseStepWidget):
         queue_header.addWidget(self.add_video_btn)
         self.add_image_sequence_btn = QToolButton()
         self.add_image_sequence_btn.setObjectName("iconToolButton")
-        self.add_image_sequence_btn.setIcon(folder_icon())
+        self.add_image_sequence_btn.setIcon(image_folder_source_icon())
         self.add_image_sequence_btn.setToolTip(i18n.tip("ADD_INPUT_IMAGE_SEQUENCE"))
         self.add_image_sequence_btn.setAccessibleName(i18n.t("ADD_INPUT_IMAGE_SEQUENCE"))
         self.add_image_sequence_btn.setFixedSize(32, 32)
@@ -829,6 +829,10 @@ class ExtractStep(BaseStepWidget):
             for source in self._selected_input_sources():
                 key = self._source_key(source)
                 item = QListWidgetItem(self._input_source_item_text(source))
+                if source.kind == _SOURCE_KIND_IMAGE_SEQUENCE:
+                    item.setIcon(image_folder_source_icon())
+                else:
+                    item.setIcon(video_source_icon())
                 item.setData(Qt.UserRole, key)
                 item.setToolTip(str(source.path))
                 self.video_queue_list.addItem(item)
