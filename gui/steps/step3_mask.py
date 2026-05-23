@@ -29,6 +29,13 @@ from PySide6.QtWidgets import (
 )
 
 from core.apply_frame_decisions import pending_drop_image_paths, untracked_image_paths
+from core.mask_refresh_plan import (
+    MASK_SCOPE_ALL,
+    MASK_SCOPE_MISSING,
+    MASK_SCOPE_STALE,
+    build_mask_refresh_plan,
+    normalize_mask_scope,
+)
 from core.mask_view_recipes import QUALITY_CHOICES
 from core.scene_inventory import (
     PROJECTION_EQUIRECTANGULAR,
@@ -409,6 +416,7 @@ class MaskStep(Step3MaskActionsMixin, BaseStepWidget):
         self._current_reprocess_settings: dict | None = None
         self._mask_batch_settings: dict | None = None
         self._mask_batch_phases: list[str] = []
+        self._mask_batch_targets: list[Path] = []
         self._project_projection = _PROJECTION_EQUIRECT
         self._projection_mixed = False
         self._projection_source = "default"
@@ -470,6 +478,18 @@ class MaskStep(Step3MaskActionsMixin, BaseStepWidget):
         self.masks_path_label.setWordWrap(True)
         self.masks_path_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
         add_tooltip_row(path_form, i18n.MASKS_DIR, self.masks_path_label, i18n.tip("MASKS_DIR"))
+
+        self.mask_scope_combo = QComboBox()
+        self.mask_scope_combo.setToolTip(i18n.tip("MASK_SCOPE"))
+        self.mask_scope_combo.addItem(i18n.t("MASK_SCOPE_MISSING"), MASK_SCOPE_MISSING)
+        self.mask_scope_combo.addItem(i18n.t("MASK_SCOPE_STALE"), MASK_SCOPE_STALE)
+        self.mask_scope_combo.addItem(i18n.t("MASK_SCOPE_ALL"), MASK_SCOPE_ALL)
+        self.mask_scope_combo.setItemData(0, i18n.tip("MASK_SCOPE_MISSING"), Qt.ToolTipRole)
+        self.mask_scope_combo.setItemData(1, i18n.tip("MASK_SCOPE_STALE"), Qt.ToolTipRole)
+        self.mask_scope_combo.setItemData(2, i18n.tip("MASK_SCOPE_ALL"), Qt.ToolTipRole)
+        self.mask_scope_combo.setFixedWidth(180)
+        self.mask_scope_combo.currentIndexChanged.connect(lambda _: self._update_ready_status())
+        add_tooltip_row(path_form, i18n.t("MASK_SCOPE"), self.mask_scope_combo, i18n.tip("MASK_SCOPE"))
         layout.addLayout(path_form)
 
         # --- 追加マスク ---
@@ -1060,6 +1080,9 @@ class MaskStep(Step3MaskActionsMixin, BaseStepWidget):
             requested_steps.append("custom")
         return requested_steps
 
+    def _mask_scope(self) -> str:
+        return normalize_mask_scope(str(self.mask_scope_combo.currentData() or MASK_SCOPE_MISSING))
+
     def _projection(self) -> str:
         return self._project_projection
 
@@ -1537,34 +1560,53 @@ class MaskStep(Step3MaskActionsMixin, BaseStepWidget):
         self._ensure_no_pending_drop_images()
         self._ensure_no_untracked_images()
 
+        settings = self._mask_settings_snapshot()
+        image_paths = self._scene_image_paths()
+        target_paths = self._mask_target_paths(image_paths, settings=settings)
+        if not target_paths:
+            raise ValueError(i18n.t("MASK_TARGETS_EMPTY"))
+
         steps: list[tuple[str, list[str]]] = []
         if self._projection_mixed:
-            steps = self._build_mixed_batch_commands(requested_steps)
-            self._mask_batch_settings = self._mask_settings_snapshot()
+            steps = self._build_mixed_batch_commands(requested_steps, image_paths=target_paths)
+            self._mask_batch_settings = settings
             self._mask_batch_phases = [phase for phase, _cmd in steps]
+            self._mask_batch_targets = target_paths
             return steps
 
+        target_manifest = self._write_mask_target_manifest(target_paths) if len(target_paths) != len(image_paths) else None
         fresh_base_needed = True
         if "yolo" in requested_steps:
-            steps.append(("yolo", self._build_yolo_cmd()))
+            steps.append(("yolo", self._build_yolo_cmd(image_list=target_manifest)))
             fresh_base_needed = False
         if "stitch" in requested_steps:
             if fresh_base_needed:
-                steps.append(("init_masks", self._build_init_masks_cmd()))
+                steps.append(("init_masks", self._build_init_masks_cmd(image_list=target_manifest)))
                 fresh_base_needed = False
-            steps.append(("stitch", self._build_stitch_cmd()))
+            steps.append(("stitch", self._build_stitch_cmd(image_list=target_manifest)))
         if "overexposure" in requested_steps:
-            steps.append(("overexposure", self._build_overexposure_cmd(replace=fresh_base_needed)))
+            steps.append(
+                (
+                    "overexposure",
+                    self._build_overexposure_cmd(replace=fresh_base_needed, image_list=target_manifest),
+                )
+            )
             fresh_base_needed = False
         if "custom" in requested_steps:
-            steps.append(("custom", self._build_custom_cmd(replace=fresh_base_needed)))
+            steps.append(("custom", self._build_custom_cmd(replace=fresh_base_needed, image_list=target_manifest)))
             fresh_base_needed = False
-        self._mask_batch_settings = self._mask_settings_snapshot()
+        self._mask_batch_settings = settings
         self._mask_batch_phases = [phase for phase, _cmd in steps]
+        self._mask_batch_targets = target_paths
         return steps
 
-    def _build_mixed_batch_commands(self, requested_steps: list[str]) -> list[tuple[str, list[str]]]:
-        manifests = self._write_projection_manifests()
+    def _build_mixed_batch_commands(
+        self,
+        requested_steps: list[str],
+        *,
+        image_paths: list[Path] | None = None,
+    ) -> list[tuple[str, list[str]]]:
+        manifests = self._write_projection_manifests(image_paths=image_paths)
         steps: list[tuple[str, list[str]]] = []
         if "yolo" in requested_steps:
             equirect_manifest = manifests.get(_PROJECTION_EQUIRECT)
@@ -1599,11 +1641,11 @@ class MaskStep(Step3MaskActionsMixin, BaseStepWidget):
             steps.append(("custom", self._build_custom_cmd(image_list=all_manifest)))
         return steps
 
-    def _write_projection_manifests(self) -> dict[str, Path]:
+    def _write_projection_manifests(self, *, image_paths: list[Path] | None = None) -> dict[str, Path]:
         if not self.scene_dir:
             raise ValueError(i18n.t("SCENE_REQUIRED_ACTION_HINT"))
         scene = Path(self.scene_dir)
-        image_paths = self._scene_image_paths()
+        image_paths = image_paths or self._scene_image_paths()
         if not image_paths:
             return {}
         manifest_dir = scene / "_stechdrive" / "masks" / "work" / self._new_mask_run_id("mask_list")
@@ -1636,6 +1678,35 @@ class MaskStep(Step3MaskActionsMixin, BaseStepWidget):
                     f.write(json.dumps(record, ensure_ascii=False) + "\n")
             manifests[key] = path
         return manifests
+
+    def _mask_target_paths(self, image_paths: list[Path], *, settings: dict) -> list[Path]:
+        if not self.scene_dir:
+            return []
+        plan = build_mask_refresh_plan(
+            scene_dir=Path(self.scene_dir),
+            image_paths=image_paths,
+            mask_path_for_image=self._mask_output_path_for_image,
+            settings=settings,
+            scope=self._mask_scope(),
+        )
+        return list(plan.targets)
+
+    def _write_mask_target_manifest(self, image_paths: list[Path]) -> Path:
+        if not self.scene_dir:
+            raise ValueError(i18n.t("SCENE_REQUIRED_ACTION_HINT"))
+        scene = Path(self.scene_dir)
+        manifest_dir = scene / "_stechdrive" / "masks" / "work" / self._new_mask_run_id("mask_targets")
+        manifest_dir.mkdir(parents=True, exist_ok=True)
+        path = manifest_dir / "targets.jsonl"
+        with path.open("w", encoding="utf-8", newline="\n") as f:
+            for image_path in image_paths:
+                record = {
+                    "image": scene_relative(scene, image_path),
+                    "mask": scene_relative(scene, self._mask_output_path_for_image(image_path)),
+                    "projection": self._projection_for_image(image_path),
+                }
+                f.write(json.dumps(record, ensure_ascii=False) + "\n")
+        return path
 
     def confirm_commands(self, commands: list[tuple[str, list[str]]]) -> bool:
         if any(phase.startswith("yolo") for phase, _cmd in commands):
@@ -1960,19 +2031,21 @@ class MaskStep(Step3MaskActionsMixin, BaseStepWidget):
         if not success:
             self._mask_batch_settings = None
             self._mask_batch_phases = []
+            self._mask_batch_targets = []
             return
         self.mask_preview.clear_yolo_preview_mask()
         self.mask_preview.refresh_image_list(prefer_current=True, force_thumbnails=True)
         self._render_mask_preview()
         self._update_ready_status()
         self._record_mask_outputs(
-            iter_image_files(self._images_dir_text()),
+            self._mask_batch_targets or iter_image_files(self._images_dir_text()),
             mode="batch",
             settings=self._mask_batch_settings,
             phases=list(self._mask_batch_phases),
         )
         self._mask_batch_settings = None
         self._mask_batch_phases = []
+        self._mask_batch_targets = []
 
     def shutdown(self) -> None:
         self.mask_preview.shutdown()

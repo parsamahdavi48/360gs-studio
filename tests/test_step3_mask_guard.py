@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import csv
+import json
 import os
 import sys
 import time
@@ -16,6 +17,7 @@ from PySide6.QtWidgets import QApplication, QLabel, QPushButton, QToolButton
 
 import gui.steps.step3_mask as step3_mask_module
 from core.scene_layout import selected_frames_path
+from core.scene_project import write_mask_item
 from gui import i18n
 from gui.common.browse_widget import BrowseWidget
 from gui.steps.base_step import SETTINGS_PANE_MARGINS, SETTINGS_PANE_WIDTH
@@ -56,6 +58,11 @@ def _write_scene(tmp_path: Path, drop_exists: bool = True) -> Path:
     return scene
 
 
+def _manifest_images(command: list[str]) -> list[str]:
+    manifest = Path(command[command.index("--image-list") + 1])
+    return [json.loads(line)["image"] for line in manifest.read_text(encoding="utf-8").splitlines() if line.strip()]
+
+
 def test_mask_step_rejects_generation_when_drop_images_remain(tmp_path: Path) -> None:
     _app()
     scene = _write_scene(tmp_path, drop_exists=True)
@@ -79,6 +86,86 @@ def test_mask_step_uses_standard_scene_folders_without_browse_inputs(tmp_path: P
     assert str(scene / "masks") in labels
     assert step.primary_action_enabled()
     assert step.primary_action_tooltip() == i18n.tip("RUN_MASKS")
+    assert step.mask_scope_combo.currentData() == "missing"
+    assert step.mask_scope_combo.itemText(0) == i18n.t("MASK_SCOPE_MISSING")
+    assert step.mask_scope_combo.itemText(1) == i18n.t("MASK_SCOPE_STALE")
+    assert step.mask_scope_combo.itemText(2) == i18n.t("MASK_SCOPE_ALL")
+
+
+def test_mask_step_missing_scope_processes_only_unmasked_images(tmp_path: Path) -> None:
+    _app()
+    scene = tmp_path
+    images = scene / "images"
+    masks = scene / "masks"
+    images.mkdir()
+    masks.mkdir()
+    (images / "frame_0001.jpg").write_bytes(b"one")
+    (images / "frame_0002.jpg").write_bytes(b"two")
+    (masks / "frame_0001.png").write_bytes(b"existing")
+    step = MaskStep(Path.cwd())
+    step.set_scene_dir(str(scene))
+
+    commands = step.build_commands()
+
+    assert [phase for phase, _cmd in commands] == ["yolo"]
+    assert _manifest_images(commands[0][1]) == ["images/frame_0002.jpg"]
+    assert step._mask_batch_targets == [images / "frame_0002.jpg"]
+
+
+def test_mask_step_missing_scope_reports_no_targets_when_all_masks_exist(tmp_path: Path) -> None:
+    _app()
+    scene = tmp_path
+    images = scene / "images"
+    masks = scene / "masks"
+    images.mkdir()
+    masks.mkdir()
+    (images / "frame_0001.jpg").write_bytes(b"one")
+    (masks / "frame_0001.png").write_bytes(b"existing")
+    step = MaskStep(Path.cwd())
+    step.set_scene_dir(str(scene))
+
+    with pytest.raises(ValueError, match=i18n.t("MASK_TARGETS_EMPTY")):
+        step.build_commands()
+
+
+def test_mask_step_stale_scope_updates_old_generated_masks_but_protects_unknown_masks(tmp_path: Path) -> None:
+    _app()
+    scene = tmp_path
+    images = scene / "images"
+    masks = scene / "masks"
+    images.mkdir()
+    masks.mkdir()
+    image_old = images / "frame_0001.jpg"
+    image_unknown = images / "frame_0002.jpg"
+    image_current = images / "frame_0003.jpg"
+    for image in (image_old, image_unknown, image_current):
+        image.write_bytes(b"image")
+        (masks / f"{image.stem}.png").write_bytes(b"mask")
+    step = MaskStep(Path.cwd())
+    step.set_scene_dir(str(scene))
+    current_settings = step._mask_settings_snapshot()
+    write_mask_item(
+        scene,
+        image_path=image_old,
+        mask_path=masks / "frame_0001.png",
+        settings={**current_settings, "quality": "old"},
+        run_id="old",
+        stats={},
+    )
+    write_mask_item(
+        scene,
+        image_path=image_current,
+        mask_path=masks / "frame_0003.png",
+        settings=current_settings,
+        run_id="current",
+        stats={},
+    )
+    step.mask_scope_combo.setCurrentIndex(1)
+
+    commands = step.build_commands()
+
+    assert _manifest_images(commands[0][1]) == ["images/frame_0001.jpg"]
+    assert step._mask_batch_targets == [image_old]
 
 
 def test_mask_step_yolo_class_presets_and_class_label_are_removed() -> None:
