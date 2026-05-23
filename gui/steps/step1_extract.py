@@ -1107,6 +1107,8 @@ class ExtractStep(BaseStepWidget):
             missing = [video for video in videos if not video.is_file()]
             if missing:
                 return False, i18n.t("EXTRACT_READY_VIDEO_NOT_FOUND")
+            if any(self._video_key(video) in self.video_info_failures for video in videos):
+                return False, i18n.t("EXTRACT_READY_NO_VIDEO_INFO")
             if not self.quick_extract_cb.isChecked() and not self._analysis_width_valid():
                 return False, i18n.t("EXTRACT_READY_BAD_ANALYSIS_WIDTH")
             queued, skipped = self._queued_selected_videos()
@@ -1130,6 +1132,8 @@ class ExtractStep(BaseStepWidget):
 
         if not videos[0].is_file():
             return False, i18n.t("EXTRACT_READY_VIDEO_NOT_FOUND")
+        if self._video_key(videos[0]) in self.video_info_failures:
+            return False, i18n.t("EXTRACT_READY_NO_VIDEO_INFO")
         if not self.quick_extract_cb.isChecked() and not self._analysis_width_valid():
             return False, i18n.t("EXTRACT_READY_BAD_ANALYSIS_WIDTH")
         if len(sources) == 1 and not self.video_info:

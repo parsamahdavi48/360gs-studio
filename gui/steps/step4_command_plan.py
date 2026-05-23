@@ -9,7 +9,7 @@ import shutil
 import sys
 from pathlib import Path
 
-from core.colmap_mixed_project import COLMAP_MIXED_MANIFEST
+from core.colmap_mixed_project import COLMAP_MIXED_MANIFEST, colmap_erp_rig_groups_for_images
 from core.colmap_normal_camera_contract import normal_camera_groups_for_images
 from core.dataset_job_spec import metashape_nerf_job, write_dataset_job
 from core.metashape_nerf_dataset import (
@@ -44,6 +44,7 @@ from gui.cubemap.view_config import _BLOCK_ENABLED_VIEWS
 from gui.steps.cubemap_commands import (
     ColmapMixedPrepareCommand,
     ColmapNormalFeatureGroup,
+    ColmapRigFeatureGroup,
     ColmapSfmCommand,
     MetashapeNerfCommand,
     SphereSfmCommand,
@@ -532,6 +533,7 @@ class Step4CommandPlanMixin:
         if has_normal and not prepared_this_run and not self._image_list_has_entries(normal_list):
             raise ValueError(i18n.t("STEP4_PIPELINE_DETAIL_COLMAP_NEEDS_RIG"))
         use_split_lists = has_normal and (prepared_this_run or self._image_list_has_entries(normal_list))
+        rig_feature_groups = self._colmap_rig_feature_groups(plan=plan, prepared_this_run=prepared_this_run)
         normal_feature_groups = self._colmap_normal_feature_groups(plan=plan, prepared_this_run=prepared_this_run)
         return build_colmap_sfm_commands(
             ColmapSfmCommand(
@@ -552,6 +554,7 @@ class Step4CommandPlanMixin:
                 run_normal_feature=has_normal,
                 rig_image_list=rig_list if use_split_lists and has_erp else None,
                 normal_image_list=normal_list if has_normal else None,
+                rig_feature_groups=rig_feature_groups,
                 normal_feature_groups=normal_feature_groups,
             )
         )
@@ -589,6 +592,58 @@ class Step4CommandPlanMixin:
                 for group in groups
             )
         return self._colmap_normal_feature_groups_from_manifest()
+
+    def _colmap_rig_feature_groups(
+        self,
+        *,
+        plan: SfmInputPlan | None,
+        prepared_this_run: bool,
+    ) -> tuple[ColmapRigFeatureGroup, ...]:
+        if prepared_this_run and self._colmap_plan_has_erp_images(plan):
+            inventory = build_scene_inventory(Path(self.scene_dir))
+            erp_images = list(inventory.equirectangular_images())
+            views = [dict(view) for view in self.view_config.collect_views(include_disabled=True) if view.get("enabled", True)]
+            groups = colmap_erp_rig_groups_for_images(
+                inventory,
+                erp_images,
+                views=views,
+                output_scale=float(self.scale_combo.currentData()),
+                output_format=str(self.output_format_combo.currentData() or "auto"),
+            )
+            return tuple(
+                ColmapRigFeatureGroup(
+                    image_list=self._colmap_rig_dir() / group.image_list_name,
+                    camera_params=self._colmap_camera_params_text(group.camera_params),
+                )
+                for group in groups
+            )
+        return self._colmap_rig_feature_groups_from_manifest()
+
+    def _colmap_rig_feature_groups_from_manifest(self) -> tuple[ColmapRigFeatureGroup, ...]:
+        path = self._colmap_rig_dir() / COLMAP_MIXED_MANIFEST
+        if not path.is_file():
+            return ()
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            return ()
+        raw_groups = data.get("rig_camera_groups")
+        if not isinstance(raw_groups, list):
+            return ()
+        groups: list[ColmapRigFeatureGroup] = []
+        for item in raw_groups:
+            if not isinstance(item, dict):
+                continue
+            image_list = str(item.get("image_list") or "").strip()
+            if not image_list:
+                continue
+            groups.append(
+                ColmapRigFeatureGroup(
+                    image_list=self._colmap_rig_dir() / image_list,
+                    camera_params=self._colmap_camera_params_text(item.get("camera_params")),
+                )
+            )
+        return tuple(groups)
 
     def _colmap_normal_feature_groups_from_manifest(self) -> tuple[ColmapNormalFeatureGroup, ...]:
         path = self._colmap_rig_dir() / COLMAP_MIXED_MANIFEST

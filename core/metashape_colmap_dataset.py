@@ -68,6 +68,8 @@ def export_metashape_colmap_dataset(
     views: list[dict[str, Any]],
     output_scale: float,
     output_format: str = "jpg",
+    output_bit_depth: str = "8",
+    jpg_quality: int = 95,
     fov_deg: float = DEFAULT_FOV_DEG,
     undistort_alpha: float = DEFAULT_UNDISTORT_ALPHA,
 ) -> MetashapeColmapExportResult:
@@ -113,6 +115,8 @@ def export_metashape_colmap_dataset(
                 views,
                 output_scale,
                 output_format,
+                output_bit_depth,
+                jpg_quality,
                 fov_deg,
                 c2w,
                 cameras,
@@ -143,6 +147,8 @@ def export_metashape_colmap_dataset(
                 output_images,
                 output_masks,
                 output_format,
+                output_bit_depth,
+                jpg_quality,
                 undistort_alpha,
             )
             _append_colmap_image_record(
@@ -239,6 +245,8 @@ def _append_expanded_erp_records(
     views: list[dict[str, Any]],
     output_scale: float,
     output_format: str,
+    output_bit_depth: str,
+    jpg_quality: int,
     fov_deg: float,
     c2w: np.ndarray,
     cameras: list[ColmapCamera],
@@ -259,7 +267,12 @@ def _append_expanded_erp_records(
         if source_image.parent.name == "images":
             output_image = output_images / f"{source_image.stem}_{name}{out_ext}"
         output_image.parent.mkdir(parents=True, exist_ok=True)
-        save_image(remap_with_channels(source, map_x, map_y), str(output_image), jpg_quality=95)
+        save_image(
+            remap_with_channels(source, map_x, map_y),
+            str(output_image),
+            jpg_quality=jpg_quality,
+            force_8bit=output_bit_depth == "8",
+        )
         if mask is not None:
             output_mask = output_masks / output_image.relative_to(output_images).with_suffix(".png")
             output_mask.parent.mkdir(parents=True, exist_ok=True)
@@ -342,6 +355,8 @@ def _undistort_frame_and_mask(
     output_images: Path,
     output_masks: Path,
     output_format: str,
+    output_bit_depth: str,
+    jpg_quality: int,
     alpha: float,
 ) -> tuple[Path, int, int, np.ndarray]:
     image = cv2.imread(str(source_image), cv2.IMREAD_UNCHANGED)
@@ -369,7 +384,12 @@ def _undistort_frame_and_mask(
     output_ext = resolve_output_ext(source_image.suffix, output_format)
     output_image = output_images / rel.with_name(f"{rel.stem}_undistorted{output_ext}")
     output_image.parent.mkdir(parents=True, exist_ok=True)
-    save_image(undistorted, str(output_image), jpg_quality=95)
+    save_image(
+        undistorted,
+        str(output_image),
+        jpg_quality=jpg_quality,
+        force_8bit=output_bit_depth == "8",
+    )
 
     mask = load_equirect(str(source_mask)) if source_mask is not None and source_mask.is_file() else None
     if mask is None and alpha > 0.0:

@@ -33,6 +33,8 @@ def _make_ready(step: ExtractStep, video: Path, scene: Path) -> None:
     step.video_browse.line_edit.blockSignals(False)
     step.set_scene_dir(str(scene))
     step.video_info = _video_info()
+    step.video_infos[step._video_key(video)] = _video_info()
+    step.video_info_failures.clear()
     step._update_ready_status()
 
 
@@ -64,6 +66,8 @@ def _write_session(scene: Path, video: Path, prefix: str = "input") -> None:
 def _select_videos(step: ExtractStep, videos: list[Path], scene: Path) -> None:
     step.set_scene_dir(str(scene))
     step.video_browse.set_text("; ".join(str(video) for video in videos))
+    step.video_infos.update({step._video_key(video): _video_info() for video in videos})
+    step.video_info_failures.clear()
     step._update_ready_status()
 
 
@@ -256,6 +260,37 @@ def test_extract_source_queue_mixes_video_and_still_folder(tmp_path: Path, monke
     assert [phase for phase, _cmd in commands] == [f"extract: {video.name}", f"image_sequence_import: {still_dir.name}"]
     assert commands[0][1][3] == str(video)
     assert commands[1][1][3:5] == [str(still_dir), str(scene)]
+
+
+def test_extract_source_queue_blocks_failed_video_probe_even_with_still_folder(tmp_path: Path, monkeypatch) -> None:
+    _app()
+    scene = tmp_path / "scene"
+    source_video_dir = tmp_path / "video"
+    still_dir = tmp_path / "stills"
+    scene.mkdir()
+    source_video_dir.mkdir()
+    still_dir.mkdir()
+    video = source_video_dir / "broken.mp4"
+    video.write_bytes(b"video")
+    (still_dir / "still_0001.jpg").write_bytes(b"image")
+    step = ExtractStep(Path.cwd())
+    step.set_scene_dir(str(scene))
+    monkeypatch.setattr(step, "_probe_video_info_for_path", lambda _path: (_ for _ in ()).throw(RuntimeError("probe failed")))
+
+    monkeypatch.setattr(
+        "gui.steps.step1_extract.QFileDialog.getOpenFileNames",
+        lambda *_args, **_kwargs: ([str(video)], ""),
+    )
+    step.add_video_btn.click()
+    monkeypatch.setattr(
+        "gui.steps.step1_extract.QFileDialog.getExistingDirectory",
+        lambda *_args, **_kwargs: str(still_dir),
+    )
+    step.add_image_sequence_btn.click()
+
+    assert not step.primary_action_enabled()
+    assert step.ready_status_label.text() == i18n.t("EXTRACT_READY_NO_VIDEO_INFO")
+
 
 def test_extract_video_info_label_is_integrated_into_queue() -> None:
     _app()

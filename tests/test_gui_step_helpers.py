@@ -2,6 +2,7 @@ import json
 from pathlib import Path
 
 from gui.steps.cubemap_commands import (
+    ColmapRigFeatureGroup,
     ColmapSfmCommand,
     CubemapConversionCommand,
     SphereSfmCommand,
@@ -154,6 +155,50 @@ def test_colmap_sfm_builder_keeps_mapper_contract(tmp_path: Path) -> None:
     assert commands[2][1][1] == "exhaustive_matcher"
     assert commands[3][1][0:2] == ["colmap.exe", "mapper"]
     assert sparse.is_dir()
+
+
+def test_colmap_sfm_builder_runs_rig_feature_groups_with_group_camera_params(tmp_path: Path) -> None:
+    images = tmp_path / "rig" / "images"
+    masks = tmp_path / "rig" / "masks"
+    sparse = tmp_path / "rig" / "sparse"
+    images.mkdir(parents=True)
+    list_a = tmp_path / "rig" / "rig_image_list_rig1.txt"
+    list_b = tmp_path / "rig" / "rig_image_list_rig2.txt"
+    list_a.write_text("rig1/cam01/frame_00001.jpg\n", encoding="utf-8")
+    list_b.write_text("rig2/cam01/frame_00001.jpg\n", encoding="utf-8")
+
+    commands = build_colmap_sfm_commands(
+        ColmapSfmCommand(
+            colmap="colmap.exe",
+            glomap="glomap.exe",
+            rig_dir=tmp_path / "rig",
+            images_dir=images,
+            masks_dir=masks,
+            database=tmp_path / "rig" / "database.db",
+            sparse=sparse,
+            camera_params="fallback",
+            writes_images=True,
+            writes_masks=False,
+            matcher="sequential",
+            mapper="incremental",
+            rig_feature_groups=(
+                ColmapRigFeatureGroup(image_list=list_a, camera_params="8,8,7.5,7.5"),
+                ColmapRigFeatureGroup(image_list=list_b, camera_params="10,10,9.5,9.5"),
+            ),
+        )
+    )
+
+    assert [phase for phase, _cmd in commands][:3] == [
+        "colmap_feature_rig_1",
+        "colmap_feature_rig_2",
+        "colmap_rig_config",
+    ]
+    first = commands[0][1]
+    second = commands[1][1]
+    assert first[first.index("--image_list_path") + 1] == str(list_a)
+    assert first[first.index("--ImageReader.camera_params") + 1] == "8,8,7.5,7.5"
+    assert second[second.index("--image_list_path") + 1] == str(list_b)
+    assert second[second.index("--ImageReader.camera_params") + 1] == "10,10,9.5,9.5"
 
 
 def test_spheresfm_builder_uses_spherical_camera_and_mask_path(tmp_path: Path) -> None:

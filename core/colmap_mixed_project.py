@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from collections import OrderedDict
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -12,16 +13,16 @@ from core.colmap_normal_camera_contract import (
 )
 from core.colmap_rig_export import (
     DEFAULT_RIG_NAME,
+    build_rig_config,
     colmap_rig_root,
+    pinhole_camera_params,
     prepare_views_for_colmap,
-    write_rig_config_json,
+    write_rig_config_payload_json,
 )
 from core.cubemap_transforms_json import (
     convert_images_colmap_rig,
-    infer_image_only_sizes,
     load_custom_views,
     make_colmap_rig_jobs,
-    write_colmap_rig_metadata,
 )
 from core.dataset_writer_colmap import replace_file_with_link_or_copy
 from core.scene_inventory import SceneImage, SceneInventory, build_scene_inventory
@@ -34,6 +35,18 @@ from core.sfm_input_plan import (
 COLMAP_MIXED_MANIFEST = "stechdrive_colmap_mixed_project.json"
 COLMAP_RIG_IMAGE_LIST = "rig_image_list.txt"
 COLMAP_NORMAL_IMAGE_LIST = "normal_image_list.txt"
+
+
+@dataclass(frozen=True, slots=True)
+class ColmapErpRigGroup:
+    rig_name: str
+    image_list_name: str
+    input_size: tuple[int, int]
+    output_size: int
+    image_files: tuple[str, ...]
+    image_names: tuple[str, ...]
+    prepared_views: tuple[dict[str, Any], ...]
+    camera_params: tuple[float, ...]
 
 
 @dataclass(frozen=True, slots=True)
@@ -85,38 +98,53 @@ def prepare_colmap_mixed_project(
 
     views = _load_or_normalize_views(views_json=views_json, views=views)
     rig_image_names: list[str] = []
+    rig_groups: list[ColmapErpRigGroup] = []
     warnings: list[str] = []
 
     if erp_images:
-        erp_files = [_image_rel_to_images_root(inventory, image) for image in erp_images]
-        input_size, output_size = infer_image_only_sizes(str(inventory.images_dir), erp_files, output_scale)
-        prepared_views = prepare_views_for_colmap([{**view, "fov": 90.0} for view in views])
-        rig_path = write_rig_config_json(output, prepared_views, (output_size, output_size), rig_name=rig_name)
-        write_colmap_rig_metadata(
-            output_dir=str(output),
-            image_dir=str(inventory.images_dir),
-            mask_dir=str(inventory.masks_dir),
-            image_files=erp_files,
-            prepared_views=prepared_views,
+        rig_groups = colmap_erp_rig_groups_for_images(
+            inventory,
+            erp_images,
+            views=views,
+            output_scale=output_scale,
+            output_format=output_format,
+            rig_name=rig_name,
+        )
+        rig_payload: list[dict] = []
+        for group in rig_groups:
+            prepared_views = [dict(view) for view in group.prepared_views]
+            rig_payload.extend(
+                build_rig_config(
+                    prepared_views,
+                    (group.output_size, group.output_size),
+                    rig_name=group.rig_name,
+                )
+            )
+        rig_path = write_rig_config_payload_json(output, rig_payload)
+        _write_colmap_multi_rig_metadata(
+            output_dir=output,
+            image_dir=inventory.images_dir,
+            mask_dir=inventory.masks_dir,
+            groups=rig_groups,
             fov=90.0,
             output_scale=float(output_scale),
-            input_size=input_size,
-            output_size=output_size,
-            rig_name=rig_name,
             export_images=write_images,
             export_masks=write_masks,
         )
-        if write_images or write_masks:
+        for group in rig_groups:
+            rig_image_names.extend(group.image_names)
+            if not (write_images or write_masks):
+                continue
             convert_images_colmap_rig(
-                image_files=erp_files,
-                input_size=input_size,
-                output_size=output_size,
-                views=prepared_views,
+                image_files=list(group.image_files),
+                input_size=group.input_size,
+                output_size=group.output_size,
+                views=[dict(view) for view in group.prepared_views],
                 fov=90.0,
                 image_dir=str(inventory.images_dir),
                 mask_dir=str(inventory.masks_dir),
                 output_dir=str(output),
-                rig_name=rig_name,
+                rig_name=group.rig_name,
                 mask_from_alpha=False,
                 invert_masks=invert_masks,
                 output_format=output_format,
@@ -127,7 +155,6 @@ def prepare_colmap_mixed_project(
                 workers=workers,
                 remap_cache_limit=remap_cache_limit,
             )
-        rig_image_names = _rig_image_names(erp_files, prepared_views, output_format, rig_name)
         print(f"COLMAP rig images prepared: {len(rig_image_names)} ({rig_path})", flush=True)
 
     normal_image_names, normal_group_image_names = _link_normal_images(
@@ -143,6 +170,10 @@ def prepare_colmap_mixed_project(
     normal_list = project_dir / COLMAP_NORMAL_IMAGE_LIST
     _write_image_list(rig_list, rig_image_names)
     _write_image_list(normal_list, normal_image_names)
+    for group in rig_groups:
+        if group.image_list_name == COLMAP_RIG_IMAGE_LIST:
+            continue
+        _write_image_list(project_dir / group.image_list_name, list(group.image_names))
     for group_id, image_names in sorted(normal_group_image_names.items()):
         _write_image_list(project_dir / _normal_group_image_list_name(group_id), image_names)
 
@@ -153,6 +184,7 @@ def prepare_colmap_mixed_project(
         erp_images=erp_images,
         normal_images=normal_images,
         rig_image_names=rig_image_names,
+        rig_groups=rig_groups,
         normal_image_names=normal_image_names,
         normal_group_image_names=normal_group_image_names,
         warnings=warnings,
@@ -221,6 +253,46 @@ def _load_or_normalize_views(
     if not normalized:
         raise ValueError("views has no enabled views")
     return normalized
+
+
+def colmap_erp_rig_groups_for_images(
+    inventory: SceneInventory,
+    erp_images: list[SceneImage],
+    *,
+    views: list[dict[str, Any]],
+    output_scale: float,
+    output_format: str | None,
+    rig_name: str = DEFAULT_RIG_NAME,
+) -> list[ColmapErpRigGroup]:
+    if output_scale <= 0.0:
+        raise ValueError("output_scale must be positive")
+    prepared_views = prepare_views_for_colmap([{**view, "fov": 90.0} for view in views])
+    grouped: OrderedDict[tuple[int, int], list[SceneImage]] = OrderedDict()
+    for image in erp_images:
+        if image.width <= 0 or image.height <= 0:
+            raise ValueError(f"ERP image size is unknown: {image.rel_path}")
+        grouped.setdefault((int(image.width), int(image.height)), []).append(image)
+
+    total_groups = len(grouped)
+    groups: list[ColmapErpRigGroup] = []
+    for index, (input_size, images) in enumerate(grouped.items(), start=1):
+        group_rig_name = _rig_name_for_group(rig_name, index, total_groups)
+        image_files = [_image_rel_to_images_root(inventory, image) for image in images]
+        output_size = max(1, int(round(input_size[1] * float(output_scale))))
+        image_names = _rig_image_names(image_files, prepared_views, output_format, group_rig_name)
+        groups.append(
+            ColmapErpRigGroup(
+                rig_name=group_rig_name,
+                image_list_name=_rig_group_image_list_name(group_rig_name, total_groups),
+                input_size=input_size,
+                output_size=output_size,
+                image_files=tuple(image_files),
+                image_names=tuple(image_names),
+                prepared_views=tuple(dict(view) for view in prepared_views),
+                camera_params=tuple(pinhole_camera_params(output_size, output_size, 90.0)),
+            )
+        )
+    return groups
 
 
 def _image_rel_to_images_root(inventory: SceneInventory, image: SceneImage) -> str:
@@ -312,6 +384,7 @@ def _manifest(
     erp_images: list[SceneImage],
     normal_images: list[SceneImage],
     rig_image_names: list[str],
+    rig_groups: list[ColmapErpRigGroup],
     normal_image_names: list[str],
     normal_group_image_names: dict[str, list[str]],
     warnings: list[str],
@@ -328,6 +401,22 @@ def _manifest(
         "rig_config": "rig_config.json" if erp_images else "",
         "rig_name": rig_name if erp_images else "",
         "rig_image_list": COLMAP_RIG_IMAGE_LIST,
+        "rig_camera_groups": [
+            {
+                "id": group.rig_name,
+                "rig_name": group.rig_name,
+                "image_list": group.image_list_name,
+                "camera_model": "PINHOLE",
+                "camera_params": list(group.camera_params),
+                "width": group.output_size,
+                "height": group.output_size,
+                "input_width": group.input_size[0],
+                "input_height": group.input_size[1],
+                "source_count": len(group.image_files),
+                "image_count": len(group.image_names),
+            }
+            for group in rig_groups
+        ],
         "normal_image_list": COLMAP_NORMAL_IMAGE_LIST,
         "normal_camera_model": COLMAP_NORMAL_CAMERA_MODEL,
         "normal_camera_groups": [
@@ -363,3 +452,79 @@ def _safe_path_name(value: str, *, fallback: str) -> str:
 
 def _normal_group_image_list_name(group_id: str) -> str:
     return f"normal_image_list_{_safe_path_name(group_id, fallback='group')}.txt"
+
+
+def _rig_group_image_list_name(rig_name: str, total_groups: int) -> str:
+    if total_groups <= 1:
+        return COLMAP_RIG_IMAGE_LIST
+    return f"rig_image_list_{_safe_path_name(rig_name, fallback='rig')}.txt"
+
+
+def _rig_name_for_group(base_name: str, index: int, total_groups: int) -> str:
+    if total_groups <= 1:
+        return base_name
+    stripped = base_name.rstrip("0123456789")
+    prefix = stripped or base_name
+    return f"{prefix}{index}"
+
+
+def _write_colmap_multi_rig_metadata(
+    *,
+    output_dir: Path,
+    image_dir: Path,
+    mask_dir: Path,
+    groups: list[ColmapErpRigGroup],
+    fov: float,
+    output_scale: float,
+    export_images: bool,
+    export_masks: bool,
+) -> None:
+    root = colmap_rig_root(output_dir)
+    payload = {
+        "export_type": "colmap_rig",
+        "camera_model": "PINHOLE",
+        "fov": float(fov),
+        "output_scale": float(output_scale),
+        "image_dir": str(image_dir),
+        "mask_dir": str(mask_dir),
+        "export_images": bool(export_images),
+        "export_masks": bool(export_masks),
+        "yaw_offset_per_frame": 0.0,
+        "rig_config": "rig_config.json",
+        "images_dir": "images",
+        "masks_dir": "masks",
+        "rig_groups": [
+            {
+                "rig_name": group.rig_name,
+                "image_list": group.image_list_name,
+                "input_size": {"w": group.input_size[0], "h": group.input_size[1]},
+                "output_size": {"w": group.output_size, "h": group.output_size},
+                "camera_params": list(group.camera_params),
+                "source_images": list(group.image_files),
+                "views": [
+                    {
+                        "name": view["name"],
+                        "camera_name": view["camera_name"],
+                        "yaw": float(view["yaw"]),
+                        "pitch": float(view["pitch"]),
+                    }
+                    for view in group.prepared_views
+                ],
+            }
+            for group in groups
+        ],
+    }
+    if len(groups) == 1:
+        group = groups[0]
+        payload.update(
+            {
+                "rig_name": group.rig_name,
+                "camera_params": list(group.camera_params),
+                "input_size": {"w": group.input_size[0], "h": group.input_size[1]},
+                "output_size": {"w": group.output_size, "h": group.output_size},
+                "views": payload["rig_groups"][0]["views"],
+                "source_images": list(group.image_files),
+            }
+        )
+    root.mkdir(parents=True, exist_ok=True)
+    (root / "view_export_settings.json").write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")

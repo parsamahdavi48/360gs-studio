@@ -91,6 +91,13 @@ class ColmapNormalFeatureGroup:
 
 
 @dataclass(frozen=True)
+class ColmapRigFeatureGroup:
+    image_list: Path
+    camera_params: str
+    phase: str = ""
+
+
+@dataclass(frozen=True)
 class ColmapSfmCommand:
     colmap: str
     glomap: str
@@ -110,6 +117,7 @@ class ColmapSfmCommand:
     rig_image_list: Path | None = None
     normal_image_list: Path | None = None
     normal_camera_model: str = "SIMPLE_RADIAL"
+    rig_feature_groups: tuple[ColmapRigFeatureGroup, ...] = ()
     normal_feature_groups: tuple[ColmapNormalFeatureGroup, ...] = ()
 
 
@@ -296,25 +304,22 @@ def build_colmap_sfm_commands(options: ColmapSfmCommand) -> list[tuple[str, list
     steps: list[tuple[str, list[str]]] = []
     has_mixed_feature_split = options.run_rig_feature and options.run_normal_feature
 
-    if options.run_rig_feature:
-        feature_cmd = [
-            options.colmap,
-            "feature_extractor",
-            "--database_path",
-            str(options.database),
-            "--image_path",
-            str(options.images_dir),
-            "--ImageReader.single_camera_per_folder",
-            "1",
-            "--ImageReader.camera_model",
-            "PINHOLE",
-            "--ImageReader.camera_params",
-            options.camera_params,
-        ]
-        if options.rig_image_list is not None:
-            feature_cmd.extend(["--image_list_path", str(options.rig_image_list)])
-        if options.writes_masks or options.masks_dir.is_dir():
-            feature_cmd.extend(["--ImageReader.mask_path", str(options.masks_dir)])
+    if options.run_rig_feature and options.rig_feature_groups:
+        for index, group in enumerate(options.rig_feature_groups, start=1):
+            feature_cmd = _rig_feature_cmd(
+                options,
+                camera_params=group.camera_params or options.camera_params,
+                image_list=group.image_list,
+            )
+            if group.phase:
+                phase = group.phase
+            elif len(options.rig_feature_groups) == 1:
+                phase = "colmap_feature_rig" if has_mixed_feature_split else "colmap_feature"
+            else:
+                phase = f"colmap_feature_rig_{index}"
+            steps.append((phase, feature_cmd))
+    elif options.run_rig_feature:
+        feature_cmd = _rig_feature_cmd(options, camera_params=options.camera_params, image_list=options.rig_image_list)
         phase = "colmap_feature_rig" if has_mixed_feature_split else "colmap_feature"
         steps.append((phase, feature_cmd))
 
@@ -391,6 +396,33 @@ def build_colmap_sfm_commands(options: ColmapSfmCommand) -> list[tuple[str, list
         ]
     )
     return steps
+
+
+def _rig_feature_cmd(
+    options: ColmapSfmCommand,
+    *,
+    camera_params: str,
+    image_list: Path | None,
+) -> list[str]:
+    cmd = [
+        options.colmap,
+        "feature_extractor",
+        "--database_path",
+        str(options.database),
+        "--image_path",
+        str(options.images_dir),
+        "--ImageReader.single_camera_per_folder",
+        "1",
+        "--ImageReader.camera_model",
+        "PINHOLE",
+        "--ImageReader.camera_params",
+        camera_params,
+    ]
+    if image_list is not None:
+        cmd.extend(["--image_list_path", str(image_list)])
+    if options.writes_masks or options.masks_dir.is_dir():
+        cmd.extend(["--ImageReader.mask_path", str(options.masks_dir)])
+    return cmd
 
 
 def _normal_feature_cmd(

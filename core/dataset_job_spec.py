@@ -21,6 +21,8 @@ def metashape_colmap_job(
     views: list[dict[str, Any]],
     output_scale: float,
     output_format: str,
+    output_bit_depth: str,
+    jpg_quality: int,
     undistort_alpha: float,
 ) -> dict[str, Any]:
     return {
@@ -35,6 +37,8 @@ def metashape_colmap_job(
         "views": [dict(view) for view in views],
         "output_scale": float(output_scale),
         "output_format": str(output_format),
+        "output_bit_depth": str(output_bit_depth),
+        "jpg_quality": int(jpg_quality),
         "undistort_alpha": float(undistort_alpha),
     }
 

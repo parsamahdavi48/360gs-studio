@@ -29,6 +29,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--views-json", default="", help="View configuration JSON")
     parser.add_argument("--scale", type=float, default=1.0, help="ERP output view scale relative to source height")
     parser.add_argument("--output-format", default="jpg", help="Output image format for generated views")
+    parser.add_argument("--output-bit-depth", default="8", choices=("8", "source"), help="Generated image bit depth")
+    parser.add_argument("--jpg-quality", type=int, default=95, help="JPG/WebP output quality")
     parser.add_argument("--undistort-alpha", type=float, default=1.0, help="OpenCV undistort alpha for frame cameras")
     return parser.parse_args(argv)
 
@@ -49,6 +51,8 @@ def main(argv: list[str] | None = None) -> int:
                 views=views,
                 output_scale=float(job.get("output_scale", 1.0)),
                 output_format=str(job.get("output_format") or "jpg"),
+                output_bit_depth=str(job.get("output_bit_depth") or "8"),
+                jpg_quality=int(job.get("jpg_quality", 95)),
                 undistort_alpha=float(job.get("undistort_alpha", 1.0)),
             )
         else:
@@ -64,6 +68,8 @@ def main(argv: list[str] | None = None) -> int:
                 views=_load_views(Path(args.views_json)),
                 output_scale=args.scale,
                 output_format=args.output_format,
+                output_bit_depth=args.output_bit_depth,
+                jpg_quality=args.jpg_quality,
                 undistort_alpha=args.undistort_alpha,
             )
     except Exception as exc:

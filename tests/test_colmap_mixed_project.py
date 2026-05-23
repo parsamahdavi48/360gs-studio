@@ -90,6 +90,62 @@ def test_prepare_colmap_mixed_project_writes_rig_and_normal_lists(tmp_path: Path
     ]
 
 
+def test_prepare_colmap_mixed_project_splits_multi_resolution_erp_into_rigs(tmp_path: Path) -> None:
+    scene = tmp_path / "scene"
+    _write_image(scene / "images" / "pano_a_small.jpg", (64, 32))
+    _write_image(scene / "images" / "pano_b_large.jpg", (80, 40))
+    views = tmp_path / "views.json"
+    views.write_text(json.dumps({"views": [{"name": "front", "yaw": 0.0, "pitch": 0.0}]}), encoding="utf-8")
+    output = tmp_path / "output"
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            "scripts/prepare_colmap_mixed_project.py",
+            str(scene),
+            str(output),
+            "--views-json",
+            str(views),
+            "--output-scale",
+            "0.5",
+            "--workers",
+            "1",
+        ],
+        cwd=Path.cwd(),
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    project = output / "colmap_rig"
+    rig_names = (project / "rig_image_list.txt").read_text(encoding="utf-8").splitlines()
+    assert rig_names == ["rig1/cam01/frame_00001.jpg", "rig2/cam01/frame_00001.jpg"]
+    with Image.open(project / "images" / rig_names[0]) as small:
+        assert small.size == (16, 16)
+    with Image.open(project / "images" / rig_names[1]) as large:
+        assert large.size == (20, 20)
+
+    rig_config = json.loads((project / "rig_config.json").read_text(encoding="utf-8"))
+    assert len(rig_config) == 2
+    assert rig_config[0]["cameras"][0]["image_prefix"] == "rig1/cam01/"
+    assert [round(value, 6) for value in rig_config[0]["cameras"][0]["camera_params"]] == [8.0, 8.0, 7.5, 7.5]
+    assert rig_config[1]["cameras"][0]["image_prefix"] == "rig2/cam01/"
+    assert [round(value, 6) for value in rig_config[1]["cameras"][0]["camera_params"]] == [
+        10.0,
+        10.0,
+        9.5,
+        9.5,
+    ]
+
+    manifest = json.loads((project / "stechdrive_colmap_mixed_project.json").read_text(encoding="utf-8"))
+    assert [group["image_list"] for group in manifest["rig_camera_groups"]] == [
+        "rig_image_list_rig1.txt",
+        "rig_image_list_rig2.txt",
+    ]
+    assert (project / "rig_image_list_rig1.txt").read_text(encoding="utf-8").splitlines() == [rig_names[0]]
+    assert (project / "rig_image_list_rig2.txt").read_text(encoding="utf-8").splitlines() == [rig_names[1]]
+
+
 def test_prepare_colmap_mixed_project_accepts_job_json(tmp_path: Path) -> None:
     scene = tmp_path / "scene"
     _write_image(scene / "images" / "normal.jpg", (40, 30))

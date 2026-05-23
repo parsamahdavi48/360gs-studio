@@ -27,6 +27,8 @@ def test_metashape_dataset_job_round_trips(tmp_path: Path) -> None:
         views=[{"name": "pz", "enabled": True}],
         output_scale=0.5,
         output_format="jpg",
+        output_bit_depth="source",
+        jpg_quality=88,
         undistort_alpha=1.0,
     )
 
@@ -35,6 +37,8 @@ def test_metashape_dataset_job_round_trips(tmp_path: Path) -> None:
 
     assert loaded["kind"] == JOB_KIND_METASHAPE_COLMAP
     assert loaded["views"] == [{"name": "pz", "enabled": True}]
+    assert loaded["output_bit_depth"] == "source"
+    assert loaded["jpg_quality"] == 88
 
 
 def test_realityscan_dataset_job_rejects_wrong_kind(tmp_path: Path) -> None:

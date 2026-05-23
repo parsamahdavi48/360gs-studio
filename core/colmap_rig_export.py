@@ -172,3 +172,14 @@ def write_rig_config_json(
     payload = build_rig_config(prepared_views, output_size, rig_name=rig_name)
     path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
     return path
+
+
+def write_rig_config_payload_json(
+    output_dir: str | Path,
+    payload: list[dict],
+) -> Path:
+    root = colmap_rig_root(output_dir)
+    root.mkdir(parents=True, exist_ok=True)
+    path = rig_config_path(output_dir)
+    path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    return path
