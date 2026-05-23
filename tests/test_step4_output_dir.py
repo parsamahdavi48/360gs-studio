@@ -717,6 +717,35 @@ def test_spheresfm_output_shape_change_keeps_conversion_tab_focused() -> None:
     assert step.settings_tabs.currentIndex() == step.spheresfm_convert_tab_index
 
 
+def test_spheresfm_erp_output_is_disabled_outside_lichtfeld_profile(tmp_path: Path) -> None:
+    step = _ready_step(tmp_path)
+    step._set_export_method("spheresfm")
+    direct_idx = step.spheresfm_output_shape_combo.findData("equirect_3dgut")
+    postshot_idx = step.spheresfm_profile_combo.findData("postshot")
+    lichtfeld_idx = step.spheresfm_profile_combo.findData("lichtfeld")
+    assert direct_idx >= 0
+    assert postshot_idx >= 0
+    assert lichtfeld_idx >= 0
+
+    assert step.spheresfm_output_shape_combo.isItemEnabled(direct_idx)
+    step.spheresfm_profile_combo.setCurrentIndex(postshot_idx)
+
+    assert step.spheresfm_output_shape_combo.currentData() == "projected"
+    assert step.spheresfm_profile_combo.currentData() == "postshot"
+    assert not step.spheresfm_output_shape_combo.isItemEnabled(direct_idx)
+    assert step.spheresfm_output_shape_combo.itemToolTip(direct_idx) == i18n.tip(
+        "OUTPUT_SHAPE_EQUIRECT_3DGUT_DISABLED"
+    )
+
+    step.spheresfm_output_shape_combo.setCurrentIndex(direct_idx)
+    assert step.spheresfm_output_shape_combo.currentData() == "projected"
+    assert step.spheresfm_profile_combo.currentData() == "postshot"
+
+    step.spheresfm_profile_combo.setCurrentIndex(lichtfeld_idx)
+    assert step.spheresfm_output_shape_combo.isItemEnabled(direct_idx)
+    assert step.spheresfm_output_shape_combo.itemToolTip(direct_idx) == i18n.tip("OUTPUT_SHAPE_EQUIRECT_3DGUT")
+
+
 def test_spheresfm_visible_tabs_follow_projection_conversion_sfm_order() -> None:
     _app()
     step = CubemapStep(Path.cwd())
@@ -2340,6 +2369,36 @@ def test_lichtfeld_3dgut_direct_mode_runs_metashape_only_and_disables_view_expor
     assert not step4_views_config_path(tmp_path).exists()
 
 
+def test_metashape_erp_output_is_disabled_outside_lichtfeld_profile(tmp_path: Path) -> None:
+    step = _ready_step(tmp_path, metashape_inputs=True)
+    direct_idx = step.output_shape_combo.findData("equirect_3dgut")
+    postshot_idx = step.profile_combo.findData("postshot")
+    lichtfeld_idx = step.profile_combo.findData("lichtfeld")
+    assert direct_idx >= 0
+    assert postshot_idx >= 0
+    assert lichtfeld_idx >= 0
+
+    assert step.output_shape_combo.isItemEnabled(direct_idx)
+    step.profile_combo.setCurrentIndex(postshot_idx)
+
+    assert step.output_shape_combo.currentData() == "projected"
+    assert step.profile_combo.currentData() == "postshot"
+    assert not step.output_shape_combo.isItemEnabled(direct_idx)
+    assert step.output_shape_combo.itemToolTip(direct_idx) == i18n.tip("OUTPUT_SHAPE_EQUIRECT_3DGUT_DISABLED")
+
+    step.output_shape_combo.setCurrentIndex(direct_idx)
+    assert step.output_shape_combo.currentData() == "projected"
+    assert step.profile_combo.currentData() == "postshot"
+
+    step.profile_combo.setCurrentIndex(lichtfeld_idx)
+    assert step.output_shape_combo.isItemEnabled(direct_idx)
+    assert step.output_shape_combo.itemToolTip(direct_idx) == i18n.tip("OUTPUT_SHAPE_EQUIRECT_3DGUT")
+    step.output_shape_combo.setCurrentIndex(direct_idx)
+
+    assert step.output_shape_combo.currentData() == "equirect_3dgut"
+    assert step.profile_combo.currentData() == "lichtfeld"
+
+
 def test_lichtfeld_3dgut_asset_links_fallback_to_copy(tmp_path: Path, monkeypatch) -> None:
     step = _ready_step(tmp_path, metashape_inputs=True)
     image = tmp_path / "images" / "frame_0001.jpg"
@@ -2404,6 +2463,7 @@ def test_switching_profile_away_from_lichtfeld_exits_3dgut_direct_mode(tmp_path:
     step.profile_combo.setCurrentIndex(postshot_idx)
 
     assert step.output_shape_combo.currentData() == "projected"
+    assert not step.output_shape_combo.isItemEnabled(direct_idx)
     assert step._uses_direct_equirect_output() is False
     assert step.settings_tabs.isTabEnabled(step.view_export_tab_index)
 

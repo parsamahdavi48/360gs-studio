@@ -147,6 +147,7 @@ class OutputShapeSelector(QWidget):
         index = len(self._items)
         button = QRadioButton(text)
         button.setObjectName("optionRadio")
+        button.setAttribute(Qt.WA_AlwaysShowToolTips, True)
         button.setToolTip(self.toolTip())
         button.clicked.connect(lambda _checked=False, idx=index: self.setCurrentIndex(idx))
         self._group.addButton(button)
@@ -177,6 +178,24 @@ class OutputShapeSelector(QWidget):
         if 0 <= index < len(self._items):
             return self._items[index][0]
         return ""
+
+    def isItemEnabled(self, index: int) -> bool:  # noqa: N802 - Qt-style API
+        if 0 <= index < len(self._buttons):
+            return self._buttons[index].isEnabled()
+        return False
+
+    def itemToolTip(self, index: int) -> str:  # noqa: N802 - Qt-style API
+        if 0 <= index < len(self._buttons):
+            return self._buttons[index].toolTip()
+        return ""
+
+    def setItemEnabled(self, index: int, enabled: bool) -> None:  # noqa: N802 - Qt-style API
+        if 0 <= index < len(self._buttons):
+            self._buttons[index].setEnabled(enabled)
+
+    def setItemToolTip(self, index: int, tooltip: str) -> None:  # noqa: N802 - Qt-style API
+        if 0 <= index < len(self._buttons):
+            self._buttons[index].setToolTip(tooltip)
 
     def setCurrentIndex(self, index: int) -> None:
         if not 0 <= index < len(self._items):
@@ -1208,11 +1227,6 @@ class CubemapStep(
         return output_shape == _OUTPUT_SHAPE_EQUIRECT_3DGUT or conversion.get("uses_source_images") is True
 
     def _restore_route_settings(self, scene: Path, settings: dict) -> None:
-        output_shape = str(settings.get("output_shape", "")).strip()
-        if output_shape:
-            combo = self.spheresfm_output_shape_combo if self._is_spheresfm_method() else self.output_shape_combo
-            self._set_combo_data(combo, output_shape)
-
         target_profile = str(settings.get("target_profile", "")).strip()
         axis_transform = str(settings.get("axis_transform", "")).strip()
         if self._is_spheresfm_method():
@@ -1225,6 +1239,11 @@ class CubemapStep(
                 self._set_combo_data(self.profile_combo, target_profile)
             if axis_transform:
                 self._set_combo_data(self.axis_transform_combo, axis_transform)
+
+        output_shape = str(settings.get("output_shape", "")).strip()
+        if output_shape:
+            combo = self.spheresfm_output_shape_combo if self._is_spheresfm_method() else self.output_shape_combo
+            self._set_combo_data(combo, output_shape)
 
         metashape = settings.get("metashape_import")
         if isinstance(metashape, dict):
@@ -2087,9 +2106,12 @@ class CubemapStep(
         self._sync_profile_defaults(p)
         self.profile_hint.setText(i18n.t("PROFILE_CUSTOM_HINT") if p == _PROFILE_CUSTOM else "")
         self.profile_hint.setVisible(p == _PROFILE_CUSTOM)
-        if p == _PROFILE_REALITYSCAN and self._output_shape() != _OUTPUT_SHAPE_PROJECTED:
+        if (
+            self.output_shape_combo.currentData() == _OUTPUT_SHAPE_EQUIRECT_3DGUT
+            and not self._metashape_profile_allows_equirect_output()
+        ):
             self._set_combo_data(self.output_shape_combo, _OUTPUT_SHAPE_PROJECTED)
-        if self._output_shape() == _OUTPUT_SHAPE_EQUIRECT_3DGUT and (
+        elif self.output_shape_combo.currentData() == _OUTPUT_SHAPE_EQUIRECT_3DGUT and (
             self._axis_transform_mode() != _AXIS_NONE or not self._preprocess_uses_ply()
         ):
             self._set_combo_data(self.output_shape_combo, _OUTPUT_SHAPE_PROJECTED)
@@ -2136,6 +2158,11 @@ class CubemapStep(
                 self._syncing_profile_controls = False
         self.spheresfm_profile_hint.setText(i18n.t("PROFILE_CUSTOM_HINT") if p == _PROFILE_CUSTOM else "")
         self.spheresfm_profile_hint.setVisible(p == _PROFILE_CUSTOM)
+        if (
+            self.spheresfm_output_shape_combo.currentData() == _OUTPUT_SHAPE_EQUIRECT_3DGUT
+            and not self._spheresfm_profile_allows_equirect_output()
+        ):
+            self._set_combo_data(self.spheresfm_output_shape_combo, _OUTPUT_SHAPE_PROJECTED)
         self._sync_output_shape_controls()
         self._update_path_labels()
         self._update_output_count()
@@ -2163,11 +2190,16 @@ class CubemapStep(
         return (
             self._is_metashape_method()
             and self._output_shape() == _OUTPUT_SHAPE_EQUIRECT_3DGUT
+            and self._metashape_profile_allows_equirect_output()
             and not self._is_realityscan_profile()
         )
 
     def _uses_spheresfm_3dgut_output(self) -> bool:
-        return self._is_spheresfm_method() and self._output_shape() == _OUTPUT_SHAPE_EQUIRECT_3DGUT
+        return (
+            self._is_spheresfm_method()
+            and self._output_shape() == _OUTPUT_SHAPE_EQUIRECT_3DGUT
+            and self._spheresfm_profile_allows_equirect_output()
+        )
 
     def _uses_spheresfm_projected_output(self) -> bool:
         return self._is_spheresfm_method() and self._output_shape() == _OUTPUT_SHAPE_PROJECTED
@@ -2175,8 +2207,19 @@ class CubemapStep(
     def _on_output_shape_changed(self, *_args) -> None:
         if self._syncing_output_shape_controls:
             return
-        if self._is_realityscan_profile() and self._output_shape() != _OUTPUT_SHAPE_PROJECTED:
+        if (
+            self._is_metashape_method()
+            and self._output_shape() == _OUTPUT_SHAPE_EQUIRECT_3DGUT
+            and not self._metashape_profile_allows_equirect_output()
+        ):
             self._set_combo_data(self.output_shape_combo, _OUTPUT_SHAPE_PROJECTED)
+            return
+        if (
+            self._is_spheresfm_method()
+            and self._output_shape() == _OUTPUT_SHAPE_EQUIRECT_3DGUT
+            and not self._spheresfm_profile_allows_equirect_output()
+        ):
+            self._set_combo_data(self.spheresfm_output_shape_combo, _OUTPUT_SHAPE_PROJECTED)
             return
         if self._uses_direct_equirect_output():
             self._ensure_direct_equirect_defaults()
@@ -2198,9 +2241,6 @@ class CubemapStep(
         finally:
             self._syncing_profile_controls = False
 
-        if self._profile_id() not in {_PROFILE_LICHTFELD, _PROFILE_CUSTOM}:
-            self._set_combo_data(self.profile_combo, _PROFILE_LICHTFELD)
-
     def _ensure_spheresfm_3dgut_defaults(self) -> None:
         self._syncing_profile_controls = True
         try:
@@ -2208,10 +2248,42 @@ class CubemapStep(
         finally:
             self._syncing_profile_controls = False
 
-        if self._spheresfm_profile_id() not in {_PROFILE_LICHTFELD, _PROFILE_CUSTOM}:
-            self._set_combo_data(self.spheresfm_profile_combo, _PROFILE_LICHTFELD)
+    def _metashape_profile_allows_equirect_output(self) -> bool:
+        return self._profile_id() == _PROFILE_LICHTFELD
+
+    def _spheresfm_profile_allows_equirect_output(self) -> bool:
+        return self._spheresfm_profile_id() == _PROFILE_LICHTFELD
+
+    def _sync_output_shape_option_state(
+        self,
+        selector: OutputShapeSelector,
+        *,
+        equirect_enabled: bool,
+    ) -> None:
+        projected_idx = selector.findData(_OUTPUT_SHAPE_PROJECTED)
+        if projected_idx >= 0:
+            selector.setItemEnabled(projected_idx, True)
+            selector.setItemToolTip(projected_idx, i18n.tip("OUTPUT_SHAPE_PROJECTED"))
+
+        equirect_idx = selector.findData(_OUTPUT_SHAPE_EQUIRECT_3DGUT)
+        if equirect_idx >= 0:
+            selector.setItemEnabled(equirect_idx, equirect_enabled)
+            tooltip_key = (
+                "OUTPUT_SHAPE_EQUIRECT_3DGUT"
+                if equirect_enabled
+                else "OUTPUT_SHAPE_EQUIRECT_3DGUT_DISABLED"
+            )
+            selector.setItemToolTip(equirect_idx, i18n.tip(tooltip_key))
 
     def _sync_output_shape_controls(self) -> None:
+        self._sync_output_shape_option_state(
+            self.output_shape_combo,
+            equirect_enabled=self._metashape_profile_allows_equirect_output(),
+        )
+        self._sync_output_shape_option_state(
+            self.spheresfm_output_shape_combo,
+            equirect_enabled=self._spheresfm_profile_allows_equirect_output(),
+        )
         direct = self._uses_direct_equirect_output()
         spheresfm = self._is_spheresfm_method()
         spheresfm_runs_conversion = self._spheresfm_runs_conversion()
