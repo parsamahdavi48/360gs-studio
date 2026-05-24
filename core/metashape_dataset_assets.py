@@ -61,7 +61,16 @@ def metashape_camera_to_world(model: MetashapeModel, camera: MetashapeCamera) ->
 def metashape_camera_matrix_to_output_world(transform: np.ndarray) -> np.ndarray:
     converted = metashape_pointcloud_matrix() @ transform
     converted[:, 1:3] *= -1.0
-    return converted
+    y_rot_180 = np.array(
+        [
+            [-1.0, 0.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0, 0.0],
+            [0.0, 0.0, -1.0, 0.0],
+            [0.0, 0.0, 0.0, 1.0],
+        ],
+        dtype=np.float64,
+    )
+    return y_rot_180 @ converted
 
 
 def metashape_pointcloud_matrix() -> np.ndarray:

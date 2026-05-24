@@ -1,9 +1,14 @@
 from __future__ import annotations
 
+# ruff: noqa: E402
 import argparse
 import json
 import sys
 from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
 from core.dataset_job_spec import JOB_KIND_METASHAPE_COLMAP, load_dataset_job
 from core.metashape_colmap_dataset import export_metashape_colmap_dataset
