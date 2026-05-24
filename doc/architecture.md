@@ -94,6 +94,11 @@ GUI workflow unless a release note explicitly promises a specific wrapper.
   `core/cubemap_view_spec.py`. Default Cube6 views, custom view JSON parsing,
   and input-size/FOV/output-size checks should go through this module rather
   than adding ad hoc view parsing in image conversion code.
+- Cubemap command-line parsing lives in `core/cubemap_transforms_json_cli.py`.
+  `core/cubemap_transforms_json.py` remains the conversion implementation and a
+  compatibility module entry point; new orchestration should import the
+  implementation functions or use workflow/dataset job payloads instead of
+  duplicating CLI argument logic.
 - Cubemap and COLMAP exports must preserve coordinate profile semantics:
   Postshot uses the default cubemap transform, Brush uses the Brush transform,
   and LichtFeld cubemap export writes final-orientation-corrected
