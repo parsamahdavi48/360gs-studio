@@ -16,13 +16,15 @@ Last updated: 2026-05-25
 
 Latest checkpoint:
 
-- Large GUI split continued into Step 1. Input source queue/autoload handling,
-  extraction readiness/job construction/progress parsing, and video probe/source
-  registry/estimate helpers now live in dedicated modules. `step1_extract.py`
-  is now mostly widget layout plus mode-control glue.
-- Validation at the latest checkpoint: Step 1 targeted `ruff` and
-  `tests/test_step1_extract_ready.py tests/test_form_tooltips.py` pass locally;
-  full `ruff check .` and `pytest -q` also pass locally.
+- Large GUI split continued into Step 4. `Step4TrainingMixin` is now a thin
+  composition class; training UI construction, settings restore, backend state,
+  dataset/path resolution, LichtFeld UI state, and launch command construction
+  each live in focused modules. Cubemap project settings/user preferences and
+  the output-shape selector widget were also split out of `step4_cubemap.py`.
+- Validation at the latest checkpoint: Step 4 targeted `ruff` and
+  `tests/test_training_backends.py tests/test_form_tooltips.py
+  tests/test_step4_output_dir.py` pass locally; full `ruff check .` and
+  `pytest -q` also pass locally.
 
 ### 1. Mask Job Contract
 
@@ -89,10 +91,10 @@ Status: mostly complete; main Step 3/Step 4/preview routes audited.
 
 ### 5. Large GUI Step Split
 
-Status: in progress; Step 3 first slices complete and Step 1 first slices complete.
+Status: in progress; Step 3, Step 1, and Step 4 training slices complete.
 
-- Step 4 has several mixins, but `gui/steps/step4_cubemap.py` and
-  `gui/steps/step4_training.py` remain large.
+- Step 4 has several mixins, but remaining `gui/steps/step4_cubemap.py`
+  orchestration is still large.
 - `gui/steps/step1_input_sources.py` owns Step 1 input-source queue state,
   file/folder add/remove actions, scene autoload, source-video registry lookup,
   prefix allocation, and queue labels.
@@ -104,6 +106,24 @@ Status: in progress; Step 3 first slices complete and Step 1 first slices comple
 - `gui/steps/step1_extract.py` now focuses on widget construction, scene label
   display, source-mode controls, extraction-mode controls, and interval/profile
   field synchronization.
+- `gui/steps/step4_training.py` now only composes focused training mixins.
+- `gui/steps/step4_training_ui.py` owns Step 4/5 training widget construction
+  and training layout behavior.
+- `gui/steps/step4_training_settings_restore.py` owns persisted training
+  settings restore for LichtFeld, Postshot, and custom training.
+- `gui/steps/step4_training_backend_state.py` owns training backend selection,
+  backend-scoped executable state, and backend-dependent visibility hooks.
+- `gui/steps/step4_training_dataset.py` owns training dataset requirements,
+  default paths, sparse model selection, image counting, and auto step scaling.
+- `gui/steps/step4_training_lfs_state.py` owns LichtFeld strategy/default state,
+  advanced-row visibility, scaler application, and color preview state.
+- `gui/steps/step4_training_commands.py` owns training option validation,
+  output collision guards, and LichtFeld/Postshot/custom command construction.
+- `gui/steps/step4_project_settings.py` owns Step 4 project settings restore,
+  external-import defaults, settings path/text normalization, and persisted
+  user preferences.
+- `gui/steps/step4_output_shape_selector.py` owns the two-choice output-shape
+  radio selector widget used by Metashape and SphereSfM output settings.
 - `gui/steps/step3_mask_progress.py` owns Step 3 worker-output progress
   parsing.
 - `gui/steps/step3_mask_records.py` owns Step 3 mask metadata recording.
@@ -136,8 +156,8 @@ Status: in progress; Step 3 first slices complete and Step 1 first slices comple
   1. Review the new Step 1 source modules for any reusable source contracts
      that should move to `core/`; keep GUI-only queue/display behavior in
      `gui/steps/`.
-  2. Split `step4_training.py`.
-  3. Split remaining `step4_cubemap.py` orchestration.
+  2. Split remaining `step4_cubemap.py` orchestration.
+  3. Run pre-merge audit once Step 4 cubemap risk is reduced.
 
 ### 6. Pre-Merge Audit
 
