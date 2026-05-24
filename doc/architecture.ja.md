@@ -20,6 +20,7 @@ root直下の互換 `*.py` ラッパーは、アプリ構造に含めません�
 - `core/*_job_spec.py` は、バージョン付きjob payloadの生成と検証を担当します。必須フィールド、値の範囲、視点セットの構造は、jobファイルを書き出す前または実行前に検証します。これはフレーム抽出とレビュー確定にも、workflow/SfM/dataset jobsにも適用します。共通の検証ヘルパーは `core/job_payload_validation.py` に置きます。
 - `core/mask_job_spec.py` は Step 3 のマスクコマンドpayloadを担当します。GPU負荷の大きいマスク処理は引き続き `python -m core.<module>` の別プロセスで実行しますが、GUIのコマンド構築はまず検証済みmask payloadを作り、それをコマンドへ変換します。
 - `core/yolo_mask.py` のYOLO/SAM実行設定は `YoloMaskRuntimeSettings` で正規化し、グローバル状態の更新は `apply_runtime_settings()` に集約します。既存の処理関数が参照する互換グローバルは残しますが、新しい設定追加はこの入口を通します。
+- AprilTagスケール推定は `core/apriltag_scale_estimate.py` が実行実装、`core/apriltag_scale_job_spec.py` がGUIからのpayload検証とコマンド生成を担当します。推定はキャンセル可能な長時間処理なので別プロセスで実行してよいものとしますが、GUIから `scripts/` 配下を直接起動しません。
 - SphereSfMのプロジェクト準備、GPU preflight、sparse model変換は `core/spheresfm_project.py`、`core/spheresfm_gpu_preflight.py`、`core/spheresfm_to_transforms.py` が担当します。対応する `scripts/` 配下のファイルは開発/CLI用の薄い入口であり、runtime実装を持たせません。
 - マスク系モジュールでは、リポジトリ全体のマスク極性を守ります。白は使用可能ピクセル、黒は除外ピクセルです。マスク合成は、明示的に別操作として文書化しない限り AND 型を維持します。
 - Metashape の座標変換は `core/metashape_coordinates.py` に集約します。Metashape XML のカメラ姿勢や PLY 点群を変換するルートでは、軸変換行列を個別実装せずこのモジュールを使います。Step 4 の Metashape 前処理ジョブは `core/metashape_preprocess.py` で中間のエクイレクタングラー `transforms.json` を作成します。GUI ルートは旧 upstream の Metashape converter に依存しません。

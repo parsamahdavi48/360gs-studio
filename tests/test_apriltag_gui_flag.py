@@ -86,7 +86,7 @@ def test_apriltag_scale_command_targets_existing_cubemap_output(tmp_path: Path) 
 
         cmd = step._build_apriltag_scale_cmd(scene / "_stechdrive" / "step4" / "apriltag_scale_report.json")
         assert cmd[0].endswith("python.exe") or cmd[0].endswith("python")
-        assert "scripts\\\\estimate_apriltag_scale.py" in cmd[2] or "scripts/estimate_apriltag_scale.py" in cmd[2]
+        assert cmd[2:4] == ["-m", "core.apriltag_scale_estimate"]
         assert str(output / "transforms.json") in cmd
         assert cmd[cmd.index("--tag-size-m") + 1] == "0.2"
         assert "--equirect-temp-dir" not in cmd

@@ -45,6 +45,7 @@ from core.apriltag_markers import (
 )
 from core.apriltag_printable import available_pages, create_printable_target
 from core.apriltag_scale_apply import ScaleApplyResult, apply_scene_output_scale, validate_scale_output_dataset
+from core.apriltag_scale_job_spec import apriltag_scale_estimate_job, apriltag_scale_job_to_command
 from core.scene_layout import scene_output_dir, step4_meta_dir
 from gui import i18n
 from gui.common.collapsible_section import CollapsibleSection
@@ -360,31 +361,20 @@ class Step4AprilTagMixin:
         return value
 
     def _build_apriltag_scale_cmd(self, report_path: Path) -> list[str]:
-        script = self.base_dir / "scripts" / "estimate_apriltag_scale.py"
-        if not script.is_file():
-            raise ValueError(f"estimate_apriltag_scale.py not found: {script}")
         dataset = validate_scale_output_dataset(Path(self.scene_dir), output_dir=self._display_output_dir())
         tag_size = self._apriltag_tag_size_m()
         tag_ids = self._selected_apriltag_ids()
-
-        cmd = [
-            sys.executable,
-            "-u",
-            str(script),
-            str(dataset.estimation_input),
-            "--tag-size-m",
-            f"{tag_size:.9g}",
-            "--family",
-            self._apriltag_current_family(),
-            "--report-json",
-            str(report_path),
-        ]
-        for tag_id in tag_ids:
-            cmd.extend(["--tag-id", str(tag_id)])
         pose_preset = str(self.apriltag_conversion_preset_combo.currentData() or CUBEMAP_POSE_PRESET_AUTO)
-        if pose_preset != CUBEMAP_POSE_PRESET_AUTO:
-            cmd.extend(["--cubemap-pose-preset", pose_preset])
-        return cmd
+        payload = apriltag_scale_estimate_job(
+            dataset=dataset.estimation_input,
+            image_root=dataset.images_dir if dataset.kind == "colmap" else None,
+            report_json=report_path,
+            tag_size_m=tag_size,
+            family=self._apriltag_current_family(),
+            tag_ids=tag_ids,
+            cubemap_pose_preset=pose_preset,
+        )
+        return apriltag_scale_job_to_command(sys.executable, payload)
 
     def _warn_apriltag(self, message: str) -> None:
         self._set_apriltag_result_text(message)

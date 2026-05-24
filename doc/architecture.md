@@ -57,6 +57,11 @@ GUI workflow unless a release note explicitly promises a specific wrapper.
   `YoloMaskRuntimeSettings`; global runtime state updates are centralized in
   `apply_runtime_settings()`. Existing processing functions may still read the
   compatibility globals, but new settings must enter through this path.
+- AprilTag scale estimation is implemented in
+  `core/apriltag_scale_estimate.py`; `core/apriltag_scale_job_spec.py` owns GUI
+  payload validation and command rendering. Estimation may run in a separate
+  process because it is long-running and cancelable, but GUI code must not
+  launch files under `scripts/` directly.
 - SphereSfM project preparation, GPU preflight, and sparse-model conversion live
   in `core/spheresfm_project.py`, `core/spheresfm_gpu_preflight.py`, and
   `core/spheresfm_to_transforms.py`. Matching files under `scripts/` are thin
