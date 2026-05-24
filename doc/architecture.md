@@ -27,6 +27,9 @@ GUI workflow unless a release note explicitly promises a specific wrapper.
 - `core/extract_frames.py` owns FFmpeg/FFprobe frame extraction, cache handling,
   stationary thinning, and decision CSV writing. Step 1 invokes it through the
   frame job runner.
+- Still-image sequence import uses the same frame job contract:
+  `core/image_sequence_import_cli.py` builds an import payload and delegates to
+  `core/frame_job_runner.py`; the matching `scripts/` entry is a thin wrapper.
 - `core/frame_renumbering.py` owns the Step 2 kept-image renumbering contract:
   downstream-output blockers, collision-safe rename planning/application, and
   updates to frame/source image metadata when paths change.
@@ -49,6 +52,9 @@ GUI workflow unless a release note explicitly promises a specific wrapper.
   before a job file is written or executed. This applies to frame extraction and
   review finalization as well as workflow, SfM, and dataset jobs. Shared
   validation helpers live in `core/job_payload_validation.py`.
+- `core/workflow_job_cli.py` is the developer CLI adapter for versioned
+  workflow jobs. It must remain a thin parser around
+  `core/workflow_job_runner.py`.
 - `core/mask_job_spec.py` owns Step 3 mask command payloads. GPU-heavy mask
   workers still run in separate `python -m core.<module>` processes, but GUI
   command builders should create validated mask payloads first and then render
