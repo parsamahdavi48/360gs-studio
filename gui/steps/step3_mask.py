@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 import os
-import re
 import sys
 import tempfile
 from pathlib import Path
@@ -82,6 +81,11 @@ from gui.steps.step3_mask_plan import (
 )
 from gui.steps.step3_mask_progress import MaskProgressParser
 from gui.steps.step3_mask_records import record_mask_outputs
+from gui.steps.step3_mask_settings import (
+    Step3MaskSettingsState,
+    normalize_sam31_merge_mode,
+    split_sam_prompt_text,
+)
 from gui.user_settings import load_user_settings_section, update_user_settings_section
 
 _COCO_CLASS_NAMES = [
@@ -1230,22 +1234,18 @@ class MaskStep(Step3MaskActionsMixin, BaseStepWidget):
         ]
         return [label for label in labels if label] or ["person", "sky"]
 
-    @staticmethod
-    def _split_sam_prompt_text(text: str) -> list[str]:
-        return [part.strip() for part in re.split(r"[,;\n]", text) if part.strip()]
+    _split_sam_prompt_text = staticmethod(split_sam_prompt_text)
 
     def _selected_sam_prompts(self) -> list[str]:
         prompts = [prompt for prompt, cb in self.sam_prompt_cbs if cb.isChecked()]
-        prompts.extend(self._split_sam_prompt_text(self.sam_custom_prompt_edit.text()))
+        prompts.extend(split_sam_prompt_text(self.sam_custom_prompt_edit.text()))
         return list(dict.fromkeys(prompts)) or [_PERSON_SAM31_PROMPT]
 
     def _selected_sam_subtract_prompts(self) -> list[str]:
-        return list(dict.fromkeys(self._split_sam_prompt_text(self.sam_subtract_prompt_edit.text())))
+        return list(dict.fromkeys(split_sam_prompt_text(self.sam_subtract_prompt_edit.text())))
 
     def _sam31_merge_mode_arg(self) -> str:
-        data = self.sam_apply_mode_combo.currentData()
-        mode = str(data or _SAM31_MERGE_REPLACE)
-        return mode if mode in _SAM31_MERGE_MODES else _SAM31_MERGE_REPLACE
+        return normalize_sam31_merge_mode(self.sam_apply_mode_combo.currentData())
 
     def _person_backend_arg(self) -> str:
         idx = self.person_backend_combo.currentIndex()
@@ -1732,77 +1732,48 @@ class MaskStep(Step3MaskActionsMixin, BaseStepWidget):
             preview += f"\n- ... +{len(untracked) - 5}"
         raise ValueError(i18n.t("MASK_UNTRACKED_IMAGES_ERROR").format(n=len(untracked), files=preview))
 
-    def _mask_command_context(self, *, projection: str | None = None) -> MaskCommandContext:
-        return MaskCommandContext(
-            python_executable=sys.executable,
-            base_dir=self.base_dir,
-            projection=projection or self._projection(),
+    def _mask_settings_state(self) -> Step3MaskSettingsState:
+        return Step3MaskSettingsState(
+            projection=self._projection(),
+            projection_mixed=self._projection_mixed,
+            tasks=tuple(self._selected_mask_tasks()),
+            primary_backend=self._person_backend_arg(),
             quality=self._quality_arg(),
+            yolo_level_index=self.yolo_level_combo.currentIndex(),
+            yolo_level_label=self.yolo_level_combo.currentText(),
             yolo_expand=self._yolo_expand_arg(),
-            sky_inference_size=self._sky_inference_size_arg(),
-            sky_min_score=f"{float(self.sky_min_score_edit.value()):g}",
-            sky_min_area_ratio=self._sky_min_area_ratio_arg(),
-            sky_top_connected=self.sky_top_connected_cb.isChecked(),
-            stitch_boundary_width=self._stitch_boundary_width(),
-            stitch_workers=str(self.stitch_workers_edit.value()),
-            overexposure_threshold=str(self.overexp_threshold_edit.value()),
-            overexposure_dilate=str(self.overexp_dilate_edit.value()),
-            custom_mask=self._custom_mask_path_text(),
             yolo_classes=tuple(self._selected_classes()),
             yolo_extra_args=tuple(self._bottom_enhance_args()),
             ade_labels=tuple(self._selected_ade_labels()),
             sam_prompts=tuple(self._selected_sam_prompts()),
             sam_subtract_prompts=tuple(self._selected_sam_subtract_prompts()),
             sam31_merge_mode=self._sam31_merge_mode_arg(),
+            sky_backend=self._sky_backend_arg(),
+            sky_inference_size=self._sky_inference_size_arg(),
+            sky_min_score=f"{float(self.sky_min_score_edit.value()):g}",
+            sky_min_area_ratio=self._sky_min_area_ratio_arg(),
+            sky_top_connected=self.sky_top_connected_cb.isChecked(),
+            stitch_enabled=self._has_equirect_images() and self.run_stitch_cb.isChecked(),
+            stitch_boundary_width=self._stitch_boundary_width(),
+            stitch_workers=str(self.stitch_workers_edit.value()),
+            overexposure_enabled=self.run_overexp_cb.isChecked(),
+            overexposure_threshold=str(self.overexp_threshold_edit.value()),
+            overexposure_dilate=str(self.overexp_dilate_edit.value()),
+            custom_enabled=self.run_custom_cb.isChecked(),
+            custom_mask=self._custom_mask_path_text(),
+            images_dir=self._images_dir_text(),
+            masks_dir=self._masks_dir_text(),
+        )
+
+    def _mask_command_context(self, *, projection: str | None = None) -> MaskCommandContext:
+        return self._mask_settings_state().command_context(
+            python_executable=sys.executable,
+            base_dir=self.base_dir,
+            projection=projection,
         )
 
     def _mask_settings_snapshot(self) -> dict:
-        context = self._mask_command_context()
-        return {
-            "projection": "mixed" if self._projection_mixed else context.projection,
-            "mask_projection": context.projection,
-            "tasks": self._selected_mask_tasks(),
-            "primary_backend": self._person_backend_arg(),
-            "quality": context.quality,
-            "yolo": {
-                "level_index": self.yolo_level_combo.currentIndex(),
-                "level_label": self.yolo_level_combo.currentText(),
-                "expand": context.yolo_expand,
-                "classes": list(context.yolo_classes),
-                "extra_args": list(context.yolo_extra_args),
-            },
-            "mask2former": {
-                "ade_labels": list(context.ade_labels),
-            },
-            "sam31": {
-                "prompts": list(context.sam_prompts),
-                "subtract_prompts": list(context.sam_subtract_prompts),
-                "merge_mode": context.sam31_merge_mode,
-            },
-            "sky": {
-                "backend": self._sky_backend_arg(),
-                "inference_size": context.sky_inference_size,
-                "min_score": context.sky_min_score,
-                "min_area_ratio": context.sky_min_area_ratio,
-                "top_connected": context.sky_top_connected,
-            },
-            "stitch": {
-                "enabled": self._has_equirect_images() and self.run_stitch_cb.isChecked(),
-                "boundary_width": context.stitch_boundary_width,
-                "workers": context.stitch_workers,
-            },
-            "overexposure": {
-                "enabled": self.run_overexp_cb.isChecked(),
-                "threshold": context.overexposure_threshold,
-                "dilate": context.overexposure_dilate,
-            },
-            "custom_mask": {
-                "enabled": self.run_custom_cb.isChecked(),
-                "path": context.custom_mask,
-            },
-            "images_dir": self._images_dir_text(),
-            "masks_dir": self._masks_dir_text(),
-        }
+        return self._mask_settings_state().snapshot()
 
     @staticmethod
     def _new_mask_run_id(prefix: str) -> str:
