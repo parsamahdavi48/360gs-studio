@@ -117,14 +117,21 @@ class Step4CommandPlanMixin:
         run_conversion = self.pipeline_stage_intent(_PIPELINE_STAGE_CONVERSION)
         if run_conversion:
             self._validate_bundle()
-            if self._uses_mixed_metashape_nerf_writer():
-                if self._uses_direct_equirect_output():
-                    raise ValueError(i18n.t("METASHAPE_MIXED_NERF_DIRECT_OUTPUT_UNSUPPORTED"))
+            if self._uses_metashape_nerf_dataset_writer():
                 if self.export_colmap_cb.isChecked():
                     raise ValueError(i18n.t("METASHAPE_MIXED_NERF_COLMAP_OPTION_UNSUPPORTED"))
+                nerf_cmd = self._build_metashape_nerf_cmd()
+                self.export_images_cb.setChecked(True)
+                self.export_masks_cb.setChecked(True)
                 if not self._prepare_output_dir():
                     return []
-                return [("metashape_nerf", self._build_metashape_nerf_cmd())]
+                self._write_views_config(
+                    step4_meta_dir(Path(self.scene_dir)),
+                    self.view_config.collect_views(include_disabled=True),
+                )
+                return [("metashape_nerf", nerf_cmd)]
+            if self._uses_direct_equirect_output() and self._metashape_model_requires_projected_writer():
+                raise ValueError(i18n.t("METASHAPE_MIXED_NERF_DIRECT_OUTPUT_UNSUPPORTED"))
             preprocess_cmd = self._build_preprocess_cmd()
 
         if not run_conversion:
@@ -145,7 +152,14 @@ class Step4CommandPlanMixin:
             steps.append(("colmap", self._build_colmap_cmd()))
         return steps
 
-    def _uses_mixed_metashape_nerf_writer(self) -> bool:
+    def _uses_metashape_nerf_dataset_writer(self) -> bool:
+        return (
+            self._is_metashape_method()
+            and self._effective_profile() != _PROFILE_REALITYSCAN
+            and not self._uses_direct_equirect_output()
+        )
+
+    def _metashape_model_requires_projected_writer(self) -> bool:
         if not self._is_metashape_method() or self._effective_profile() == _PROFILE_REALITYSCAN:
             return False
         self._refresh_metashape_auto_inputs_if_empty()
@@ -307,6 +321,8 @@ class Step4CommandPlanMixin:
             raise ValueError(i18n.t("METASHAPE_INPUT_IN_OUTPUT_ERROR").format(path=xml))
 
         ply = self.ms_ply_browse.text().strip()
+        if self._preprocess_uses_ply() and not ply:
+            raise ValueError("PLYファイルが見つかりません")
         if ply and not Path(ply).is_file():
             raise ValueError(f"PLYファイルが見つかりません: {ply}")
         if ply and self._metashape_input_output_path_issue(Path(ply)):

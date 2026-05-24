@@ -87,10 +87,12 @@ GUI workflow unless a release note explicitly promises a specific wrapper.
   AND-style unless a tool explicitly documents a different operation.
 - Metashape coordinate handling is centralized in `core/metashape_coordinates.py`.
   Any route that converts Metashape XML camera poses or PLY points must use this
-  module instead of duplicating axis matrices. The Step 4 Metashape preprocess
-  job uses `core/metashape_preprocess.py` to create the intermediate
-  equirectangular `transforms.json`; no GUI route should depend on the old
-  upstream Metashape converter.
+  module instead of duplicating axis matrices. Projected Metashape NeRF/COLMAP
+  dataset creation should go through dataset jobs directly. The Step 4
+  Metashape preprocess job is reserved for RealityScan realignment output and
+  direct ERP 360° output that still need an intermediate equirectangular
+  `transforms.json`; no GUI route should depend on the old upstream Metashape
+  converter.
 - Metashape-derived NeRF and COLMAP dataset exports use versioned dataset job
   payloads. `core/metashape_dataset_cli.py` is the developer CLI adapter, and
   it must delegate execution to `core/dataset_job_runner.py` so direct CLI and

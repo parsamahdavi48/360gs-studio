@@ -2308,7 +2308,8 @@ class CubemapStep(
         spheresfm_runs_sfm = self._spheresfm_runs_sfm()
         spheresfm_3dgut = spheresfm_runs_conversion and self._uses_spheresfm_3dgut_output()
         spheresfm_projected = spheresfm_runs_conversion and self._uses_spheresfm_projected_output()
-        if direct or spheresfm_3dgut:
+        metashape_dataset_writer = self._uses_metashape_nerf_dataset_writer()
+        if direct or spheresfm_3dgut or metashape_dataset_writer:
             if self._saved_projected_export_targets is None:
                 self._saved_projected_export_targets = (
                     self.export_images_cb.isChecked(),
@@ -2329,7 +2330,7 @@ class CubemapStep(
             self.export_colmap_cb.setChecked(False)
 
         route_uses_view_export = not direct and (not spheresfm or spheresfm_projected)
-        self.export_targets_row.setEnabled(route_uses_view_export)
+        self.export_targets_row.setEnabled(route_uses_view_export and not metashape_dataset_writer)
         self.view_config.settings_widget.setEnabled(route_uses_view_export)
         self.output_details_section.setEnabled(route_uses_view_export)
         self.output_shape_combo.setEnabled(self._is_metashape_method() and not self._is_realityscan_profile())

@@ -190,7 +190,7 @@ def test_export_metashape_nerf_dataset_blocks_multicamera_lichtfeld_target(tmp_p
     assert not (scene / "output" / "metashape_cubemap" / "transforms.json").exists()
 
 
-def test_metashape_nerf_writer_detection_keeps_legacy_erp_route_for_simple_spherical(tmp_path: Path) -> None:
+def test_metashape_nerf_writer_detection_flags_models_requiring_projected_output(tmp_path: Path) -> None:
     simple = tmp_path / "simple.xml"
     mixed = tmp_path / "mixed.xml"
     _write_single_spherical_xml(simple)

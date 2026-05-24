@@ -238,7 +238,7 @@ class Step4RuntimeMixin:
         if (
             not self._uses_lichtfeld_final_correction()
             and not self._is_realityscan_profile()
-            and not self._uses_mixed_metashape_nerf_writer()
+            and not self._uses_metashape_nerf_dataset_writer()
         ):
             source = self._resolve_ply_source()
             if source is not None:

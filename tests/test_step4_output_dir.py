@@ -63,6 +63,7 @@ def _ready_step(scene: Path, *, metashape_inputs: bool = False) -> CubemapStep:
     _write_ascii_ply(scene / "pointcloud.ply", [(0.0, 0.0, 0.0)])
     if metashape_inputs:
         (scene / "images").mkdir(exist_ok=True)
+        _write_test_image(scene / "images" / "frame_0001.jpg", size=(64, 32))
         _write_metashape_xml(scene / "metashape.xml")
         _write_ascii_ply(scene / "metashape.ply", [(1.0, 2.0, 3.0)])
     _app()
@@ -75,7 +76,7 @@ def _ready_step(scene: Path, *, metashape_inputs: bool = False) -> CubemapStep:
 
 
 def _write_metashape_xml(path: Path, labels: list[str] | None = None) -> None:
-    labels = labels or ["frame_0001"]
+    labels = labels or ["frame_0001.jpg"]
     cameras = "\n".join(
         f'        <camera id="{idx}" sensor_id="0" label="{label}">\n'
         "          <transform>1 0 0 0 0 1 0 0 0 0 1 0 0 0 0 1</transform>\n"
@@ -87,7 +88,9 @@ def _write_metashape_xml(path: Path, labels: list[str] | None = None) -> None:
         '<document version="1.2.0">\n'
         "  <chunk>\n"
         "    <sensors>\n"
-        '      <sensor id="0" label="camera" type="spherical" />\n'
+        '      <sensor id="0" label="camera" type="spherical">\n'
+        '        <resolution width="64" height="32" />\n'
+        "      </sensor>\n"
         "    </sensors>\n"
         "    <cameras>\n"
         f"{cameras}\n"
@@ -450,7 +453,7 @@ def test_cubemap_step_uses_tab_path_summaries(tmp_path: Path) -> None:
     assert normal_scale == pytest.approx(2.0 / math.pi, rel=1e-5)
 
 
-def test_metashape_projected_uses_step4_work_dir_for_intermediate_outputs(tmp_path: Path) -> None:
+def test_metashape_projected_uses_dataset_job_writer(tmp_path: Path) -> None:
     step = _ready_step(tmp_path, metashape_inputs=True)
     (tmp_path / "masks").mkdir()
     metashape_work = step4_meta_dir(tmp_path) / "work" / "metashape_import"
@@ -460,17 +463,17 @@ def test_metashape_projected_uses_step4_work_dir_for_intermediate_outputs(tmp_pa
 
     commands = step.build_commands()
 
-    assert [phase for phase, _cmd in commands] == ["metashape", "cubemap"]
-    preprocess_cmd = commands[0][1]
-    cubemap_cmd = commands[1][1]
-    preprocess_job = _workflow_job(preprocess_cmd)
-    cubemap_job = _workflow_job(cubemap_cmd)
-    assert preprocess_job["output_dir"] == str(metashape_work)
-    assert cubemap_job["input_dir"] == str(metashape_work)
-    assert cubemap_job["output_dir"] == str(tmp_path / "output" / "metashape_cubemap")
-    assert cubemap_job["image_dir"] == str(tmp_path)
-    assert cubemap_job["mask_dir"] == str(tmp_path / "masks")
-    assert not stale.exists()
+    assert [phase for phase, _cmd in commands] == ["metashape_nerf"]
+    cmd = commands[0][1]
+    assert isinstance(cmd, AppJob)
+    job = cmd.payload
+    assert job["kind"] == "metashape_nerf_dataset"
+    assert job["images_dir"] == str(tmp_path / "images")
+    assert job["masks_dir"] == str(tmp_path / "masks")
+    assert job["xml_path"] == str(tmp_path / "metashape.xml")
+    assert job["ply_path"] == str(tmp_path / "metashape.ply")
+    assert job["output_dir"] == str(tmp_path / "output" / "metashape_cubemap")
+    assert stale.exists()
     assert not (tmp_path / "transforms.json").exists()
 
 
@@ -2046,7 +2049,7 @@ def test_step4_scene_settings_restore_export_and_training_choices(tmp_path: Path
 
     assert restored.profile_combo.currentData() == "postshot"
     assert restored.axis_transform_combo.currentData() == "postshot"
-    assert restored.export_images_cb.isChecked() is False
+    assert restored.export_images_cb.isChecked() is True
     assert restored.export_masks_cb.isChecked() is True
     assert restored.scale_combo.currentData() == 0.5
     assert restored.output_format_combo.currentData() == "png"
@@ -2458,7 +2461,7 @@ def test_lichtfeld_3dgut_direct_mode_restores_projection_export_targets(tmp_path
     step.output_shape_combo.setCurrentIndex(direct_idx)
     step.output_shape_combo.setCurrentIndex(projected_idx)
 
-    assert step.export_images_cb.isChecked() is False
+    assert step.export_images_cb.isChecked() is True
     assert step.export_masks_cb.isChecked() is True
     assert step.settings_tabs.isTabEnabled(step.view_export_tab_index)
     assert step.cubemap_path_summary_value.full_text() == "output/metashape_cubemap/"
@@ -3239,13 +3242,15 @@ def test_cubemap_build_resets_existing_output_when_confirmed(tmp_path: Path, mon
 
     commands = step.build_commands()
 
-    assert [phase for phase, _cmd in commands] == ["metashape", "cubemap"]
+    assert [phase for phase, _cmd in commands] == ["metashape_nerf"]
+    assert _workflow_job(commands[0][1])["kind"] == "metashape_nerf_dataset"
     assert not old_file.exists()
     assert not nested.exists()
-    assert step4_views_config_path(tmp_path).is_file()
 
 
-def test_cubemap_mask_only_preserves_existing_images(tmp_path: Path, monkeypatch) -> None:
+def test_metashape_dataset_writer_resets_existing_output_even_if_images_toggle_is_off(
+    tmp_path: Path, monkeypatch
+) -> None:
     output = tmp_path / "output" / "metashape_cubemap"
     output.mkdir(parents=True)
     old_image_dir = output / "images"
@@ -3265,14 +3270,12 @@ def test_cubemap_mask_only_preserves_existing_images(tmp_path: Path, monkeypatch
 
     commands = step.build_commands()
 
-    assert [phase for phase, _cmd in commands] == ["metashape", "cubemap"]
-    job = _workflow_job(commands[1][1])
-    assert job["write_images"] is False
-    assert job["write_masks"] is True
-    assert old_file.is_file()
+    assert [phase for phase, _cmd in commands] == ["metashape_nerf"]
+    job = _workflow_job(commands[0][1])
+    assert job["kind"] == "metashape_nerf_dataset"
+    assert not old_file.exists()
     assert not old_mask.exists()
     assert old_settings.read_text(encoding="utf-8") == '{"old": true}\n'
-    assert step4_views_config_path(tmp_path).is_file()
 
 
 def test_cubemap_build_validates_before_resetting_output(tmp_path: Path, monkeypatch) -> None:
@@ -3297,7 +3300,7 @@ def test_cubemap_build_validates_before_resetting_output(tmp_path: Path, monkeyp
 def test_cubemap_finalize_writes_export_settings(tmp_path: Path) -> None:
     step = _ready_step(tmp_path, metashape_inputs=True)
     commands = step.build_commands()
-    assert [phase for phase, _cmd in commands] == ["metashape", "cubemap"]
+    assert [phase for phase, _cmd in commands] == ["metashape_nerf"]
     step._finalize_bundle()
 
     settings_path = step4_export_settings_path(tmp_path)
