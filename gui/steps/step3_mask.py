@@ -56,7 +56,6 @@ from gui.common.collapsible_section import CollapsibleSection
 from gui.common.drag_spinbox import DragDoubleSpinBox, DragSpinBox
 from gui.common.form_rows import add_tooltip_row
 from gui.common.icons import delete_icon, file_picker_icon, minus_icon, plus_icon
-from gui.mask.mask_files import iter_image_files
 from gui.mask.mask_preview import MaskPreviewConfig, MaskPreviewWidget
 from gui.steps import mask_commands as mask_command_defs
 from gui.steps.base_step import (
@@ -68,7 +67,6 @@ from gui.steps.base_step import (
 from gui.steps.mask_commands import (
     MaskCommandContext,
 )
-from gui.steps.mask_image_import import IMAGE_EXTENSIONS as _IMAGE_EXTS
 from gui.steps.mask_postprocess import mask_stats
 from gui.steps.sam31_setup import ensure_sam31_checkpoint_available
 from gui.steps.step3_mask_actions import Step3MaskActionsMixin
@@ -1149,10 +1147,11 @@ class MaskStep(Step3MaskActionsMixin, BaseStepWidget):
         self._image_projection_map = {image.rel_path: image.projection for image in inventory.images}
 
     def _scene_image_paths(self) -> list[Path]:
-        images = Path(self._images_dir_text())
-        if not images.is_dir():
+        if not self.scene_dir:
             return []
-        return iter_image_files(images)
+        images = Path(self._images_dir_text())
+        inventory = build_scene_inventory(Path(self.scene_dir), images_dir=images)
+        return [image.path for image in inventory.images]
 
     def _projection_key_for_image(self, image_path: Path) -> str:
         if not self.scene_dir:
@@ -1183,10 +1182,12 @@ class MaskStep(Step3MaskActionsMixin, BaseStepWidget):
         return selected_frames_path(Path(self.scene_dir))
 
     def _has_image_files(self) -> bool:
+        if not self.scene_dir:
+            return False
         images = Path(self._images_dir_text())
         if not images.is_dir():
             return False
-        return any(path.is_file() and path.suffix.lower() in _IMAGE_EXTS for path in images.rglob("*"))
+        return build_scene_inventory(Path(self.scene_dir), images_dir=images).image_count > 0
 
     def _readiness(self) -> tuple[bool, str]:
         if not self.scene_dir:
@@ -1979,7 +1980,7 @@ class MaskStep(Step3MaskActionsMixin, BaseStepWidget):
         self._render_mask_preview()
         self._update_ready_status()
         self._record_mask_outputs(
-            self._mask_batch_targets or iter_image_files(self._images_dir_text()),
+            self._mask_batch_targets or self._scene_image_paths(),
             mode="batch",
             settings=self._mask_batch_settings,
             phases=list(self._mask_batch_phases),

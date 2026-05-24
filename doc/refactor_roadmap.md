@@ -16,9 +16,9 @@ Last updated: 2026-05-24
 
 Latest checkpoint:
 
-- Cubemap conversion split continued: remap math, image IO, image conversion
-  workers, `transforms.json` export, export metadata, and worker planning now
-  live in dedicated `core` modules.
+- Scene asset contract audit continued: Metashape image label resolution,
+  scene preview image lookup, and Step 3 mask target fallback now use scene
+  inventory contracts instead of local image-folder scans.
 - Validation at the latest checkpoint: `ruff check .` and `pytest -q` pass
   locally.
 
@@ -71,13 +71,18 @@ Status: mostly complete; legacy facade remains for CLI compatibility.
 
 ### 4. Scene Asset Contract
 
-Status: mostly complete, needs application audit.
+Status: mostly complete; main Step 3/Step 4/preview routes audited.
 
 - `core/scene_inventory.py` normalizes projection, source kind/id, image size,
   normal-camera defaults, mask presence, mask polarity, and mask size matching.
+- `core.scene_inventory.build_scene_image_label_path_lookup()` and
+  `resolve_scene_image_label()` own case-insensitive external camera label to
+  scene image resolution for Metashape-style labels.
 - Step 3 source scoping and mixed SfM/dataset routes use inventory for the main
   workflows.
-- Remaining follow-up: audit preview and helper routes for direct filename
+- Step 3 mask fallback image lists, Step 4 Metashape XML image matching, and
+  scene preview Metashape image lookup now use inventory.
+- Remaining follow-up: audit lower-priority helper routes for direct filename
   inference or ad hoc scene scans that should use inventory.
 
 ### 5. Large GUI Step Split
@@ -95,7 +100,7 @@ Status: not complete.
 
 ### 6. Pre-Merge Audit
 
-Status: not ready until Scene Asset audit and large GUI split risks are reduced.
+Status: not ready until large GUI split risks are reduced.
 
 Audit gates:
 

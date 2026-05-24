@@ -18,13 +18,12 @@ from core.orientation_correction import (
     FINAL_ORIENTATION_STAGE_DIRECT_FINALIZE,
     apply_final_orientation_to_dataset,
 )
-from core.scene_layout import scene_images_dir
+from core.scene_inventory import build_scene_image_label_path_lookup, resolve_scene_image_label
 from gui import i18n
 from gui.steps.step4_contracts import (
     _GENERATED_POINTCLOUD_NAME,
     _PIPELINE_STAGE_CONVERSION,
     _PIPELINE_STAGE_SFM,
-    _SUPPORTED_TRAINING_IMAGE_EXTS,
     is_colmap_gui_unavailable_output,
     is_spheresfm_rtx50_cuda_error_line,
 )
@@ -519,7 +518,7 @@ class Step4RuntimeMixin:
             return None
         if self._xml_tag_name(root.tag) != "document":
             return None
-        image_names, image_stems = self._metashape_image_name_sets(scene_dir)
+        image_lookup = self._metashape_image_label_lookup(scene_dir)
         total_cameras = 0
         transformed_cameras = 0
         image_matches = 0
@@ -541,7 +540,7 @@ class Step4RuntimeMixin:
                 transform = self._xml_child(camera, "transform")
                 if self._xml_transform_has_16_numbers(transform):
                     transformed_cameras += 1
-                if self._metashape_label_matches_image(label, image_names, image_stems):
+                if self._metashape_label_matches_image(label, image_lookup):
                     image_matches += 1
         if total_cameras <= 0 or transformed_cameras <= 0:
             return None
@@ -590,23 +589,9 @@ class Step4RuntimeMixin:
         return all(math.isfinite(value) for value in values)
 
     @staticmethod
-    def _metashape_image_name_sets(scene_dir: Path) -> tuple[set[str], set[str]]:
-        images_dir = scene_images_dir(scene_dir)
-        if not images_dir.is_dir():
-            return set(), set()
-        names: set[str] = set()
-        stems: set[str] = set()
-        for image in images_dir.iterdir():
-            if not image.is_file() or image.suffix.lower() not in _SUPPORTED_TRAINING_IMAGE_EXTS:
-                continue
-            names.add(image.name)
-            stems.add(image.stem)
-        return names, stems
+    def _metashape_image_label_lookup(scene_dir: Path) -> dict[str, Path]:
+        return build_scene_image_label_path_lookup(scene_dir)
 
     @staticmethod
-    def _metashape_label_matches_image(label: str, image_names: set[str], image_stems: set[str]) -> bool:
-        if not image_names and not image_stems:
-            return False
-        name = label.replace("\\", "/").rsplit("/", 1)[-1]
-        stem = Path(name).stem
-        return name in image_names or stem in image_stems or label in image_names or label in image_stems
+    def _metashape_label_matches_image(label: str, image_lookup: dict[str, Path]) -> bool:
+        return resolve_scene_image_label(label, image_lookup) is not None

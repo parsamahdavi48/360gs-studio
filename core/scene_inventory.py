@@ -223,6 +223,61 @@ def build_scene_inventory(
     return SceneInventory(scene_dir=scene, images_dir=images_root, masks_dir=masks_root, images=tuple(images))
 
 
+def build_scene_image_label_path_lookup(
+    scene_dir: str | Path,
+    *,
+    images_dir: str | Path | None = None,
+    masks_dir: str | Path | None = None,
+) -> dict[str, Path]:
+    """Build case-insensitive Metashape/COLMAP-style image label lookup from scene inventory."""
+    inventory = build_scene_inventory(scene_dir, images_dir=images_dir, masks_dir=masks_dir)
+    lookup: dict[str, Path] = {}
+    for image in inventory.images:
+        for key in _image_label_keys(image):
+            lookup.setdefault(key.casefold(), image.path)
+    return lookup
+
+
+def resolve_scene_image_label(label: str, lookup: dict[str, Path]) -> Path | None:
+    """Resolve an external camera label to an inventory image path."""
+    if not lookup:
+        return None
+    text = str(label or "").replace("\\", "/").strip("/")
+    if not text:
+        return None
+    name = text.rsplit("/", 1)[-1]
+    candidates = [
+        text,
+        name,
+        Path(name).stem,
+        Path(text).stem,
+    ]
+    for candidate in candidates:
+        path = lookup.get(candidate.casefold())
+        if path is not None:
+            return path
+    return None
+
+
+def _image_label_keys(image: SceneImage) -> set[str]:
+    rel = image.rel_path.replace("\\", "/").strip("/")
+    path = image.path
+    keys = {
+        rel,
+        path.name,
+        path.stem,
+        Path(rel).name,
+        Path(rel).stem,
+    }
+    parts = Path(rel).parts
+    if parts and parts[0].casefold() == "images" and len(parts) > 1:
+        without_images = Path(*parts[1:]).as_posix()
+        keys.add(without_images)
+        keys.add(Path(without_images).name)
+        keys.add(Path(without_images).stem)
+    return {key for key in keys if key}
+
+
 def _iter_image_files(root: Path) -> list[Path]:
     if not root.is_dir():
         return []

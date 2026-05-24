@@ -14,7 +14,9 @@ from core.scene_inventory import (
     PROJECTION_EQUIRECTANGULAR,
     PROJECTION_NORMAL,
     PROJECTION_UNKNOWN,
+    build_scene_image_label_path_lookup,
     build_scene_inventory,
+    resolve_scene_image_label,
 )
 from core.scene_layout import selected_frames_path, source_image_sets_path
 from core.scene_project import scene_image_projection_map
@@ -155,6 +157,20 @@ def test_scene_inventory_accepts_explicit_external_image_root(tmp_path: Path) ->
     assert inventory.images[0].rel_path == "normal.jpg"
     assert inventory.images[0].projection == PROJECTION_NORMAL
     assert inventory.images[0].mask is not None
+
+
+def test_scene_image_label_lookup_resolves_nested_and_extensionless_labels(tmp_path: Path) -> None:
+    scene = tmp_path
+    image = scene / "images" / "cam_a" / "Frame_0001.webp"
+    _write_image(image, (40, 30))
+
+    lookup = build_scene_image_label_path_lookup(scene)
+
+    assert resolve_scene_image_label("Frame_0001.webp", lookup) == image
+    assert resolve_scene_image_label("frame_0001", lookup) == image
+    assert resolve_scene_image_label("cam_a/Frame_0001.webp", lookup) == image
+    assert resolve_scene_image_label("images/cam_a/Frame_0001.webp", lookup) == image
+    assert resolve_scene_image_label("missing", lookup) is None
 
 
 def test_scene_inventory_reads_source_image_camera_metadata(tmp_path: Path) -> None:
