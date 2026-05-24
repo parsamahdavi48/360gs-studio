@@ -37,8 +37,8 @@ from core.scene_preview import (
 from core.scene_preview_cubemap import (
     cubemap_frame_groups_from_preview_cameras,
     face_view_params,
-    load_cubemap_frame_groups,
     render_cubemap_equirect,
+    virtual_camera_direction,
 )
 from core.scene_preview_sources import ScenePreviewCandidate, discover_scene_preview_candidates
 from gui import i18n
@@ -284,7 +284,7 @@ class ScenePreviewWidget(QWidget):
 
     def _select_camera_from_pointcloud(self, camera_id: str) -> None:
         camera_id = str(camera_id or "")
-        self._select_camera_id(self._cubemap_front_camera_id_by_camera_id.get(camera_id, camera_id))
+        self._select_camera_id(camera_id)
 
     def _initial_camera_id(self, dataset: ScenePreviewDataset) -> str:
         if not dataset.cameras:
@@ -300,13 +300,7 @@ class ScenePreviewWidget(QWidget):
         if camera is None:
             self.pointcloud_view.set_selected_view_ray(None)
             return
-        self.pointcloud_view.set_selected_view_ray(
-            _camera_view_direction(
-                camera,
-                self.camera_image_view.perspective_params(),
-                basis_camera=self._view_ray_basis_camera(camera),
-            )
-        )
+        self.pointcloud_view.set_selected_view_ray(self._selected_view_direction_for_camera(camera))
 
     def _view_ray_basis_camera(self, camera: ScenePreviewCamera) -> ScenePreviewCamera:
         front_id = self._cubemap_front_camera_id_by_camera_id.get(camera.camera_id, "")
@@ -321,13 +315,7 @@ class ScenePreviewWidget(QWidget):
         if self._dataset is None:
             return
         camera = self._camera_by_id(self._selected_camera_id)
-        view_direction = None
-        if camera is not None:
-            view_direction = _camera_view_direction(
-                camera,
-                self.camera_image_view.perspective_params(),
-                basis_camera=self._view_ray_basis_camera(camera),
-            )
+        view_direction = self._selected_view_direction_for_camera(camera)
         self.summary_text.setPlainText(
             _format_dataset_summary(
                 self._current_candidate,
@@ -340,15 +328,38 @@ class ScenePreviewWidget(QWidget):
             )
         )
 
+    def _selected_view_direction_for_camera(self, camera: ScenePreviewCamera | None) -> np.ndarray | None:
+        if camera is None:
+            return None
+        params = self.camera_image_view.perspective_params()
+        match = self._cubemap_match_for_camera(camera)
+        if match is not None and params is not None:
+            group, _face = match
+            return virtual_camera_direction(
+                group,
+                yaw_deg=params.yaw_deg,
+                pitch_deg=params.pitch_deg,
+                roll_deg=params.roll_deg,
+            )
+        return _camera_view_direction(camera, params, basis_camera=self._view_ray_basis_camera(camera))
+
     def _camera_index(self, camera: ScenePreviewCamera | None) -> int:
         if self._dataset is None or camera is None:
             return -1
         return next((index for index, item in enumerate(self._dataset.cameras) if item.camera_id == camera.camera_id), -1)
 
     def _cubemap_face_for_camera(self, camera: ScenePreviewCamera | None) -> str | None:
+        match = self._cubemap_match_for_camera(camera)
+        if match is not None:
+            return str(match[1])
         if camera is None:
             return None
-        match = next(
+        return _cubemap_face_for_camera(camera)
+
+    def _cubemap_match_for_camera(self, camera: ScenePreviewCamera | None) -> tuple[Any, str] | None:
+        if camera is None:
+            return None
+        return next(
             (
                 self._cubemap_faces_by_camera_key[key]
                 for key in _camera_lookup_keys(camera)
@@ -356,9 +367,6 @@ class ScenePreviewWidget(QWidget):
             ),
             None,
         )
-        if match is not None:
-            return str(match[1])
-        return _cubemap_face_for_camera(camera)
 
     def _mask_available_for_camera(self, camera: ScenePreviewCamera | None) -> bool | None:
         if self._dataset is None or camera is None or camera.image_path is None:
@@ -375,14 +383,7 @@ class ScenePreviewWidget(QWidget):
         self._cubemap_mask_cache = {}
         self._cubemap_image_cache = {}
         self._mask_image_cache = {}
-        groups: tuple[Any, ...] = ()
-        if dataset.source_kind == "transforms":
-            try:
-                groups = load_cubemap_frame_groups(dataset.source_path)
-            except Exception:
-                groups = ()
-        if not groups:
-            groups = cubemap_frame_groups_from_preview_cameras(dataset.cameras)
+        groups = cubemap_frame_groups_from_preview_cameras(dataset.cameras)
         frame_lookup: dict[str, tuple[Any, str]] = {}
         for group in groups:
             for face, frame in group.frames_by_face.items():
@@ -421,7 +422,7 @@ class ScenePreviewWidget(QWidget):
     ) -> tuple[Any, PerspectiveParams, np.ndarray | None] | None:
         if camera is None:
             return None
-        match = next((self._cubemap_faces_by_camera_key[key] for key in _camera_lookup_keys(camera) if key in self._cubemap_faces_by_camera_key), None)
+        match = self._cubemap_match_for_camera(camera)
         if match is None:
             return None
         group, face = match

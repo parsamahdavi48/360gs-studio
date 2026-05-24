@@ -310,6 +310,7 @@ def load_metashape_preview_dataset(
                 image_path=image_path,
                 projection=projection,
                 matrix=matrix,
+                image_y_axis="down",
                 source={"format": "metashape", "camera_index": index, "enabled": camera_el.get("enabled") != "false"},
                 **intrinsics,
             )
@@ -331,6 +332,7 @@ def _camera_from_transform(
     image_path: Path | None,
     projection: str,
     matrix: np.ndarray,
+    image_y_axis: str = "up",
     width: int,
     height: int,
     fl_x: float | None,
@@ -339,6 +341,8 @@ def _camera_from_transform(
     cy: float | None,
     source: dict[str, Any],
 ) -> ScenePreviewCamera:
+    y_axis = _normalized(matrix[:3, 1], f"{label} image y")
+    up = -y_axis if str(image_y_axis).strip().lower() == "down" else y_axis
     return ScenePreviewCamera(
         camera_id=camera_id,
         label=label,
@@ -352,7 +356,7 @@ def _camera_from_transform(
         cy=cy,
         position=matrix[:3, 3].astype(np.float64),
         right=_normalized(matrix[:3, 0], f"{label} right"),
-        up=_normalized(matrix[:3, 1], f"{label} up"),
+        up=up,
         forward=_normalized(matrix[:3, 2], f"{label} forward"),
         source=source,
     )

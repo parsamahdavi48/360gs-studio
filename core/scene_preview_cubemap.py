@@ -14,6 +14,7 @@ from core.apriltag_cubemap import (
     cubemap_face_from_path,
     cubemap_face_rotation,
     infer_generated_cubemap_face_rotations,
+    normalize_standard_cubemap_frames,
 )
 from core.apriltag_geometry import PinholeFrame, load_pinhole_frames
 from core.image_io import imread_unicode
@@ -93,7 +94,7 @@ def load_cubemap_frame_groups(
 
 def cubemap_frame_groups_from_preview_cameras(cameras: Iterable[object]) -> tuple[CubemapFrameGroup, ...]:
     """Build preview cubemap groups from already-loaded scene preview cameras."""
-    groups: dict[str, dict[str, PinholeFrame]] = {}
+    frames: list[PinholeFrame] = []
     for camera in cameras:
         if str(getattr(camera, "projection", "") or "").lower() != "pinhole":
             continue
@@ -104,6 +105,14 @@ def cubemap_frame_groups_from_preview_cameras(cameras: Iterable[object]) -> tupl
         frame = _preview_camera_to_pinhole_frame(camera)
         if frame is None:
             continue
+        frames.append(frame)
+    normalized = normalize_standard_cubemap_frames(tuple(frames))
+    groups: dict[str, dict[str, PinholeFrame]] = {}
+    for frame in normalized:
+        parsed = split_cubemap_face(frame.file_path)
+        if parsed is None:
+            continue
+        prefix, face = parsed
         groups.setdefault(prefix, {})[face] = frame
     group_indices = {name: index for index, name in enumerate(groups)}
     return tuple(
@@ -134,6 +143,88 @@ def face_view_params(group: CubemapFrameGroup, face: str, *, fov_deg: float = 90
     yaw = float(np.rad2deg(np.arctan2(local[0], local[2])))
     pitch = float(-np.rad2deg(np.arcsin(np.clip(local[1], -1.0, 1.0))))
     return yaw, pitch, float(fov_deg)
+
+
+def virtual_camera_rotation(
+    group: CubemapFrameGroup,
+    *,
+    yaw_deg: float,
+    pitch_deg: float,
+    roll_deg: float = 0.0,
+) -> np.ndarray:
+    """Return the camera-to-world rotation represented by a reconstructed preview view."""
+    local_rotation = _rotation_matrix(yaw_deg, pitch_deg, roll_deg)
+    base_rotation = _preview_base_rotation(group)
+    if base_rotation is not None:
+        return base_rotation @ local_rotation
+    return group.reference_frame.camera_to_world_rotation @ local_rotation
+
+
+def virtual_camera_direction(
+    group: CubemapFrameGroup,
+    *,
+    yaw_deg: float,
+    pitch_deg: float,
+    roll_deg: float = 0.0,
+) -> np.ndarray:
+    rotation = virtual_camera_rotation(group, yaw_deg=yaw_deg, pitch_deg=pitch_deg, roll_deg=roll_deg)
+    direction = np.array([0.0, 0.0, 1.0], dtype=np.float64) @ rotation.T
+    return direction / max(float(np.linalg.norm(direction)), 1e-12)
+
+
+def _preview_base_rotation(group: CubemapFrameGroup) -> np.ndarray | None:
+    rotations = _standard_cube6_face_rotations(group)
+    if rotations is None:
+        return None
+    bases: list[np.ndarray] = []
+    for face, rotation in rotations.items():
+        frame = group.frames_by_face.get(face)
+        if frame is None:
+            continue
+        bases.append(frame.camera_to_world_rotation @ rotation.T)
+    if not bases:
+        return None
+    matrix = np.mean(np.stack(bases, axis=0), axis=0)
+    try:
+        u, _s, vt = np.linalg.svd(matrix)
+    except np.linalg.LinAlgError:
+        return bases[0]
+    base = u @ vt
+    if float(np.linalg.det(base)) < 0.0:
+        u[:, -1] *= -1.0
+        base = u @ vt
+    return base
+
+
+def _rotation_matrix(yaw_deg: float, pitch_deg: float, roll_deg: float = 0.0) -> np.ndarray:
+    yaw = np.deg2rad(float(yaw_deg))
+    pitch = np.deg2rad(float(pitch_deg))
+    roll = np.deg2rad(float(roll_deg))
+    ry = np.array(
+        [
+            [np.cos(yaw), 0.0, np.sin(yaw)],
+            [0.0, 1.0, 0.0],
+            [-np.sin(yaw), 0.0, np.cos(yaw)],
+        ],
+        dtype=np.float64,
+    )
+    rx = np.array(
+        [
+            [1.0, 0.0, 0.0],
+            [0.0, np.cos(pitch), -np.sin(pitch)],
+            [0.0, np.sin(pitch), np.cos(pitch)],
+        ],
+        dtype=np.float64,
+    )
+    rz = np.array(
+        [
+            [np.cos(roll), -np.sin(roll), 0.0],
+            [np.sin(roll), np.cos(roll), 0.0],
+            [0.0, 0.0, 1.0],
+        ],
+        dtype=np.float64,
+    )
+    return ry @ rx @ rz
 
 
 def render_cubemap_equirect(

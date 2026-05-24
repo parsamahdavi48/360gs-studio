@@ -13,6 +13,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from PySide6.QtCore import QPointF
 from PySide6.QtWidgets import QApplication
 
+from core.apriltag_cubemap import cubemap_face_rotation
 from core.scene_preview import (
     ScenePreviewCamera,
     ScenePreviewDataset,
@@ -331,7 +332,7 @@ def test_scene_preview_does_not_show_single_cubemap_face_when_rebuild_fails(tmp_
     assert window.camera_image_view._view._cpu_view.text() == i18n.t("SCENE_PREVIEW_CUBEMAP_REBUILD_FAILED")
 
 
-def test_scene_preview_pointcloud_selection_defaults_cubemap_group_to_front(tmp_path: Path) -> None:
+def test_scene_preview_pointcloud_selection_keeps_clicked_cubemap_face(tmp_path: Path) -> None:
     _app()
     transforms = _write_cubemap_scene(tmp_path, face_order=("top", "px", "pz", "nx", "nz", "bottom"))
     dataset = load_transforms_preview_dataset(transforms, image_root=tmp_path)
@@ -348,12 +349,14 @@ def test_scene_preview_pointcloud_selection_defaults_cubemap_group_to_front(tmp_
 
     window._select_camera_from_pointcloud(top_camera.camera_id)
 
-    assert window._selected_camera_id == front_camera.camera_id
-    assert window.camera_combo.currentData() == front_camera.camera_id
-    assert window.pointcloud_view._selected_camera_id == front_camera.camera_id
+    assert window._selected_camera_id == top_camera.camera_id
+    assert window.camera_combo.currentData() == top_camera.camera_id
+    assert window.pointcloud_view._selected_camera_id == top_camera.camera_id
     assert window.camera_image_view._perspective_params is not None
     assert window.camera_image_view._perspective_params.yaw_deg == 0.0
-    assert window.camera_image_view._perspective_params.pitch_deg == 0.0
+    assert window.camera_image_view._perspective_params.pitch_deg == 90.0
+    assert window.pointcloud_view._selected_view_ray_direction is not None
+    assert np.allclose(window.pointcloud_view._selected_view_ray_direction, [0.0, -1.0, 0.0])
 
 
 def test_scene_preview_updates_left_view_ray_when_right_view_rotates(tmp_path: Path) -> None:
@@ -369,6 +372,56 @@ def test_scene_preview_updates_left_view_ray_when_right_view_rotates(tmp_path: P
     expected = np.array([np.sin(expected_yaw), 0.0, np.cos(expected_yaw)], dtype=np.float64)
     assert window.pointcloud_view._selected_view_ray_direction is not None
     assert np.allclose(window.pointcloud_view._selected_view_ray_direction, expected)
+
+
+def test_scene_preview_selected_cubemap_face_ray_matches_camera_forward_after_display_transform(
+    tmp_path: Path,
+) -> None:
+    _app()
+    transforms = _write_cubemap_scene(tmp_path, use_face_rotations=True, base_rotation=_yaw_rotation_matrix(35.0))
+    display_transform = ScenePreviewDisplayTransform(
+        profile="test",
+        note="test display transform",
+        camera_matrix=np.diag([1.0, -1.0, -1.0, 1.0]),
+        pointcloud_matrix=np.diag([1.0, -1.0, -1.0, 1.0]),
+    )
+    candidate = ScenePreviewCandidate(
+        kind="output",
+        label="Transforms",
+        path=transforms,
+        image_root=tmp_path,
+        display_transform=display_transform,
+    )
+    dataset = _load_candidate(candidate)
+    window = ScenePreviewWindow()
+    window._set_dataset(dataset)
+    top_camera = next(camera for camera in dataset.cameras if camera.label.endswith("_top.png"))
+
+    window._select_camera_from_pointcloud(top_camera.camera_id)
+
+    assert window.pointcloud_view._selected_view_ray_direction is not None
+    assert np.allclose(window.pointcloud_view._selected_view_ray_direction, top_camera.forward, atol=1e-8)
+
+
+def test_scene_preview_cubemap_view_ray_uses_normalized_image_pose(tmp_path: Path) -> None:
+    _app()
+    transforms = _write_gui_cube6_export_scene(tmp_path, base_rotation=_yaw_rotation_matrix(35.0))
+    dataset = load_transforms_preview_dataset(transforms, image_root=tmp_path)
+    window = ScenePreviewWindow()
+    window._set_dataset(dataset)
+    pz_camera = next(camera for camera in dataset.cameras if camera.label.endswith("_pz.png"))
+    raw_forward = pz_camera.forward.copy()
+
+    window._select_camera_from_pointcloud(pz_camera.camera_id)
+
+    match = window._cubemap_match_for_camera(pz_camera)
+    assert match is not None
+    group, face = match
+    expected = group.frames_by_face[face].camera_to_world_rotation[:, 2]
+    ray = window.pointcloud_view._selected_view_ray_direction
+    assert ray is not None
+    assert float(ray @ expected) > 0.999
+    assert float(ray @ raw_forward) < -0.999
 
 
 def test_load_step4_output_candidate_applies_display_transform(tmp_path: Path) -> None:
@@ -479,6 +532,8 @@ def _write_cubemap_scene(
     root: Path,
     *,
     face_order: tuple[str, ...] = ("px", "nx", "pz", "nz", "top", "bottom"),
+    use_face_rotations: bool = False,
+    base_rotation: np.ndarray | None = None,
 ) -> Path:
     images = root / "images"
     images.mkdir()
@@ -491,15 +546,21 @@ def _write_cubemap_scene(
         "top": (255, 0, 255),
         "bottom": (0, 255, 255),
     }
+    base = np.eye(3, dtype=np.float64) if base_rotation is None else np.asarray(base_rotation, dtype=np.float64)
     for face in face_order:
         color = colors[face]
         image = np.zeros((32, 32, 3), dtype=np.uint8)
         image[:, :] = color
         assert cv2.imwrite(str(images / f"frame_0001_{face}.png"), image)
+        transform = np.eye(4, dtype=np.float64)
+        if use_face_rotations:
+            face_rotation = cubemap_face_rotation(face)
+            assert face_rotation is not None
+            transform[:3, :3] = base @ face_rotation
         frames.append(
             {
                 "file_path": f"images/frame_0001_{face}.png",
-                "transform_matrix": np.eye(4, dtype=np.float64).tolist(),
+                "transform_matrix": transform.tolist(),
             }
         )
     transforms = root / "transforms.json"
@@ -519,3 +580,80 @@ def _write_cubemap_scene(
         encoding="utf-8",
     )
     return transforms
+
+
+def _write_gui_cube6_export_scene(root: Path, *, base_rotation: np.ndarray | None = None) -> Path:
+    images = root / "images"
+    images.mkdir()
+    base = np.eye(3, dtype=np.float64) if base_rotation is None else np.asarray(base_rotation, dtype=np.float64)
+    views = {
+        "py": (-90.0, -90.0),
+        "px": (0.0, 0.0),
+        "nz": (90.0, 0.0),
+        "nx": (180.0, 0.0),
+        "pz": (-90.0, 0.0),
+        "ny": (-90.0, 90.0),
+    }
+    frames = []
+    for face, (yaw, pitch) in views.items():
+        image = np.full((32, 32, 3), 120, dtype=np.uint8)
+        assert cv2.imwrite(str(images / f"frame_0001_{face}.png"), image)
+        transform = np.eye(4, dtype=np.float64)
+        transform[:3, :3] = base @ _export_rotation_matrix(yaw, pitch).T
+        frames.append(
+            {
+                "file_path": f"images/frame_0001_{face}.png",
+                "transform_matrix": transform.tolist(),
+            }
+        )
+    transforms = root / "transforms.json"
+    transforms.write_text(
+        json.dumps(
+            {
+                "camera_model": "SIMPLE_PINHOLE",
+                "w": 32,
+                "h": 32,
+                "fl_x": 16.0,
+                "fl_y": 16.0,
+                "cx": 15.5,
+                "cy": 15.5,
+                "frames": frames,
+            }
+        ),
+        encoding="utf-8",
+    )
+    return transforms
+
+
+def _yaw_rotation_matrix(yaw_deg: float) -> np.ndarray:
+    yaw = np.deg2rad(float(yaw_deg))
+    return np.array(
+        [
+            [np.cos(yaw), 0.0, np.sin(yaw)],
+            [0.0, 1.0, 0.0],
+            [-np.sin(yaw), 0.0, np.cos(yaw)],
+        ],
+        dtype=np.float64,
+    )
+
+
+def _export_rotation_matrix(yaw_deg: float, pitch_deg: float) -> np.ndarray:
+    yaw = np.deg2rad(float(yaw_deg))
+    pitch = np.deg2rad(float(pitch_deg))
+    ry = np.array(
+        [
+            [np.cos(yaw), 0.0, np.sin(yaw)],
+            [0.0, 1.0, 0.0],
+            [-np.sin(yaw), 0.0, np.cos(yaw)],
+        ],
+        dtype=np.float64,
+    )
+    rx = np.array(
+        [
+            [1.0, 0.0, 0.0],
+            [0.0, np.cos(pitch), -np.sin(pitch)],
+            [0.0, np.sin(pitch), np.cos(pitch)],
+        ],
+        dtype=np.float64,
+    )
+    return rx @ ry

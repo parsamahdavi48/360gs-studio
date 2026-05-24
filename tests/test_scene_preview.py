@@ -148,6 +148,12 @@ def test_metashape_preview_applies_component_transform_and_resolves_image(tmp_pa
     assert camera.width == 100
     assert camera.fl_x == 45.0
     assert np.allclose(camera.position, np.array([12.0, 4.0, 6.0]))
+    assert np.allclose(camera.up, np.array([0.0, -1.0, 0.0]))
+
+    projected = camera.project_world_points(np.array([[12.0, 3.0, 10.0]], dtype=np.float64))
+
+    assert projected is not None
+    assert projected[0, 1] < 40.0
 
 
 def test_colmap_preview_uses_image_up_for_screen_up_and_loads_points(tmp_path: Path) -> None:
