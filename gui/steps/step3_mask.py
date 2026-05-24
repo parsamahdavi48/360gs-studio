@@ -64,6 +64,22 @@ from gui.steps.mask_commands import (
 )
 from gui.steps.sam31_setup import ensure_sam31_checkpoint_available
 from gui.steps.step3_mask_actions import Step3MaskActionsMixin
+from gui.steps.step3_mask_manifests import write_mask_target_manifest, write_projection_manifests
+from gui.steps.step3_mask_plan import (
+    MASK_COMMAND_CUSTOM,
+    MASK_COMMAND_INIT,
+    MASK_COMMAND_OVEREXPOSURE,
+    MASK_COMMAND_STITCH,
+    MASK_COMMAND_YOLO,
+    MASK_TASK_CUSTOM,
+    MASK_TASK_OVEREXPOSURE,
+    MASK_TASK_STITCH,
+    MASK_TASK_YOLO,
+    MaskCommandSpec,
+    build_mixed_mask_command_specs,
+    build_uniform_mask_command_specs,
+    needs_target_manifest,
+)
 from gui.steps.step3_mask_progress import MaskProgressParser
 from gui.steps.step3_mask_records import record_mask_outputs
 from gui.user_settings import load_user_settings_section, update_user_settings_section
@@ -1060,13 +1076,13 @@ class MaskStep(Step3MaskActionsMixin, BaseStepWidget):
         return str(scene_masks_dir(Path(self.scene_dir)))
 
     def _selected_mask_tasks(self) -> list[str]:
-        requested_steps = ["yolo"]
+        requested_steps = [MASK_TASK_YOLO]
         if self._has_equirect_images() and self.run_stitch_cb.isChecked():
-            requested_steps.append("stitch")
+            requested_steps.append(MASK_TASK_STITCH)
         if self.run_overexp_cb.isChecked():
-            requested_steps.append("overexposure")
+            requested_steps.append(MASK_TASK_OVEREXPOSURE)
         if self.run_custom_cb.isChecked():
-            requested_steps.append("custom")
+            requested_steps.append(MASK_TASK_CUSTOM)
         return requested_steps
 
     def _mask_scope(self) -> str:
@@ -1486,121 +1502,53 @@ class MaskStep(Step3MaskActionsMixin, BaseStepWidget):
         if not target_paths:
             raise ValueError(i18n.t("MASK_TARGETS_EMPTY"))
 
-        steps: list[tuple[str, list[str]]] = []
         if self._projection_mixed:
-            steps = self._build_mixed_batch_commands(requested_steps, image_paths=target_paths)
-            self._mask_batch_settings = settings
-            self._mask_batch_phases = [phase for phase, _cmd in steps]
-            self._mask_batch_targets = target_paths
-            return steps
-
-        needs_target_manifest = self._selected_mask_source_key() != MASK_SOURCE_ALL or len(target_paths) != len(
-            all_image_paths
-        )
-        target_manifest = self._write_mask_target_manifest(target_paths) if needs_target_manifest else None
-        fresh_base_needed = True
-        if "yolo" in requested_steps:
-            steps.append(("yolo", self._build_yolo_cmd(image_list=target_manifest)))
-            fresh_base_needed = False
-        if "stitch" in requested_steps:
-            if fresh_base_needed:
-                steps.append(("init_masks", self._build_init_masks_cmd(image_list=target_manifest)))
-                fresh_base_needed = False
-            steps.append(("stitch", self._build_stitch_cmd(image_list=target_manifest)))
-        if "overexposure" in requested_steps:
-            steps.append(
-                (
-                    "overexposure",
-                    self._build_overexposure_cmd(replace=fresh_base_needed, image_list=target_manifest),
+            manifests = self._write_projection_manifests(image_paths=target_paths)
+            specs = build_mixed_mask_command_specs(requested_steps, manifests=manifests)
+        else:
+            target_manifest = (
+                self._write_mask_target_manifest(target_paths)
+                if needs_target_manifest(
+                    source_is_all=self._selected_mask_source_key() == MASK_SOURCE_ALL,
+                    target_count=len(target_paths),
+                    all_image_count=len(all_image_paths),
                 )
+                else None
             )
-            fresh_base_needed = False
-        if "custom" in requested_steps:
-            steps.append(("custom", self._build_custom_cmd(replace=fresh_base_needed, image_list=target_manifest)))
-            fresh_base_needed = False
+            specs = build_uniform_mask_command_specs(requested_steps, target_manifest=target_manifest)
+
+        steps = [(spec.phase, self._command_from_mask_spec(spec)) for spec in specs]
         self._mask_batch_settings = settings
         self._mask_batch_phases = [phase for phase, _cmd in steps]
         self._mask_batch_targets = target_paths
         return steps
 
-    def _build_mixed_batch_commands(
-        self,
-        requested_steps: list[str],
-        *,
-        image_paths: list[Path] | None = None,
-    ) -> list[tuple[str, list[str]]]:
-        manifests = self._write_projection_manifests(image_paths=image_paths)
-        steps: list[tuple[str, list[str]]] = []
-        if "yolo" in requested_steps:
-            equirect_manifest = manifests.get(_PROJECTION_EQUIRECT)
-            normal_manifest = manifests.get(_PROJECTION_NORMAL)
-            if equirect_manifest is not None:
-                steps.append(
-                    (
-                        "yolo_equirect",
-                        self._build_yolo_cmd(
-                            projection=_PROJECTION_EQUIRECT,
-                            image_list=equirect_manifest,
-                        ),
-                    )
-                )
-            if normal_manifest is not None:
-                steps.append(
-                    (
-                        "yolo_normal",
-                        self._build_yolo_cmd(
-                            projection=_PROJECTION_NORMAL,
-                            image_list=normal_manifest,
-                        ),
-                    )
-                )
-        all_manifest = manifests.get("all")
-        equirect_manifest = manifests.get(_PROJECTION_EQUIRECT)
-        if "stitch" in requested_steps and equirect_manifest is not None:
-            steps.append(("stitch_equirect", self._build_stitch_cmd(image_list=equirect_manifest)))
-        if "overexposure" in requested_steps and all_manifest is not None:
-            steps.append(("overexposure", self._build_overexposure_cmd(image_list=all_manifest)))
-        if "custom" in requested_steps and all_manifest is not None:
-            steps.append(("custom", self._build_custom_cmd(image_list=all_manifest)))
-        return steps
+    def _command_from_mask_spec(self, spec: MaskCommandSpec) -> list[str]:
+        if spec.command == MASK_COMMAND_YOLO:
+            return self._build_yolo_cmd(projection=spec.projection, image_list=spec.image_list)
+        if spec.command == MASK_COMMAND_INIT:
+            return self._build_init_masks_cmd(image_list=spec.image_list)
+        if spec.command == MASK_COMMAND_STITCH:
+            return self._build_stitch_cmd(image_list=spec.image_list)
+        if spec.command == MASK_COMMAND_OVEREXPOSURE:
+            return self._build_overexposure_cmd(replace=spec.replace, image_list=spec.image_list)
+        if spec.command == MASK_COMMAND_CUSTOM:
+            return self._build_custom_cmd(replace=spec.replace, image_list=spec.image_list)
+        raise ValueError(f"Unknown mask command spec: {spec.command}")
 
     def _write_projection_manifests(self, *, image_paths: list[Path] | None = None) -> dict[str, Path]:
         if not self.scene_dir:
             raise ValueError(i18n.t("SCENE_REQUIRED_ACTION_HINT"))
-        scene = Path(self.scene_dir)
         image_paths = image_paths or self._scene_image_paths()
         if not image_paths:
             return {}
-        manifest_dir = scene / "_stechdrive" / "masks" / "work" / self._new_mask_run_id("mask_list")
-        manifest_dir.mkdir(parents=True, exist_ok=True)
-        groups: dict[str, list[Path]] = {
-            _PROJECTION_EQUIRECT: [],
-            _PROJECTION_NORMAL: [],
-            "all": [],
-        }
-        for image_path in image_paths:
-            projection = self._projection_for_image(image_path)
-            if projection not in {_PROJECTION_EQUIRECT, _PROJECTION_NORMAL}:
-                projection = _PROJECTION_EQUIRECT
-            groups[projection].append(image_path)
-            groups["all"].append(image_path)
-
-        manifests: dict[str, Path] = {}
-        for key, paths in groups.items():
-            if not paths:
-                continue
-            path = manifest_dir / f"{key}.jsonl"
-            with path.open("w", encoding="utf-8", newline="\n") as f:
-                for image_path in paths:
-                    projection = self._projection_for_image(image_path)
-                    record = {
-                        "image": scene_relative(scene, image_path),
-                        "mask": scene_relative(scene, self._mask_output_path_for_image(image_path)),
-                        "projection": projection,
-                    }
-                    f.write(json.dumps(record, ensure_ascii=False) + "\n")
-            manifests[key] = path
-        return manifests
+        return write_projection_manifests(
+            scene_dir=self.scene_dir,
+            image_paths=image_paths,
+            projection_for_image=self._projection_for_image,
+            mask_path_for_image=self._mask_output_path_for_image,
+            run_id_factory=self._new_mask_run_id,
+        )
 
     def _source_filtered_image_paths(self) -> list[Path]:
         if not self.scene_dir:
@@ -1624,19 +1572,13 @@ class MaskStep(Step3MaskActionsMixin, BaseStepWidget):
     def _write_mask_target_manifest(self, image_paths: list[Path]) -> Path:
         if not self.scene_dir:
             raise ValueError(i18n.t("SCENE_REQUIRED_ACTION_HINT"))
-        scene = Path(self.scene_dir)
-        manifest_dir = scene / "_stechdrive" / "masks" / "work" / self._new_mask_run_id("mask_targets")
-        manifest_dir.mkdir(parents=True, exist_ok=True)
-        path = manifest_dir / "targets.jsonl"
-        with path.open("w", encoding="utf-8", newline="\n") as f:
-            for image_path in image_paths:
-                record = {
-                    "image": scene_relative(scene, image_path),
-                    "mask": scene_relative(scene, self._mask_output_path_for_image(image_path)),
-                    "projection": self._projection_for_image(image_path),
-                }
-                f.write(json.dumps(record, ensure_ascii=False) + "\n")
-        return path
+        return write_mask_target_manifest(
+            scene_dir=self.scene_dir,
+            image_paths=image_paths,
+            projection_for_image=self._projection_for_image,
+            mask_path_for_image=self._mask_output_path_for_image,
+            run_id_factory=self._new_mask_run_id,
+        )
 
     def confirm_commands(self, commands: list[tuple[str, list[str]]]) -> bool:
         if any(phase.startswith("yolo") for phase, _cmd in commands):

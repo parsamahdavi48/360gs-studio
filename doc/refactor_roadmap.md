@@ -16,8 +16,8 @@ Last updated: 2026-05-24
 
 Latest checkpoint:
 
-- Large GUI split started for Step 3: mask progress parsing and mask output
-  metadata recording now live in dedicated modules with focused tests.
+- Large GUI split continued for Step 3: mask command planning and JSONL target
+  manifest writing now live in dedicated modules with focused tests.
 - Validation at the latest checkpoint: `ruff check .` and `pytest -q` pass
   locally.
 
@@ -93,11 +93,15 @@ Status: in progress; Step 3 first slices complete.
 - `gui/steps/step3_mask_progress.py` owns Step 3 worker-output progress
   parsing.
 - `gui/steps/step3_mask_records.py` owns Step 3 mask metadata recording.
+- `gui/steps/step3_mask_plan.py` owns batch command ordering, phase names,
+  target manifest decisions, and mixed-projection planning.
+- `gui/steps/step3_mask_manifests.py` owns Step 3 JSONL target/projection
+  manifest writing.
 - `gui/steps/step3_mask.py` and `gui/steps/step1_extract.py` still remain
   large.
 - Split order after core contracts settle:
-  1. Continue `step3_mask.py`: separate command/job planning and manifest
-     writing from widget layout.
+  1. Continue `step3_mask.py`: separate settings/state helpers from widget
+     layout, then move preview action orchestration if useful.
   2. `step1_extract.py`
   3. `step4_training.py`
   4. remaining `step4_cubemap.py` orchestration
