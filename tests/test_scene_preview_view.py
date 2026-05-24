@@ -33,6 +33,26 @@ def _app() -> QApplication:
     return QApplication.instance() or QApplication([])
 
 
+def _preview_camera(camera_id: str, label: str, position: tuple[float, float, float]) -> ScenePreviewCamera:
+    return ScenePreviewCamera(
+        camera_id=camera_id,
+        label=label,
+        image_path=Path(label),
+        projection="pinhole",
+        width=100,
+        height=80,
+        fl_x=50.0,
+        fl_y=48.0,
+        cx=49.5,
+        cy=39.5,
+        position=np.array(position, dtype=np.float64),
+        right=np.array([1.0, 0.0, 0.0], dtype=np.float64),
+        up=np.array([0.0, 1.0, 0.0], dtype=np.float64),
+        forward=np.array([0.0, 0.0, 1.0], dtype=np.float64),
+        source={},
+    )
+
+
 def test_scene_pointcloud_view_upload_data_uses_all_points() -> None:
     _app()
     dataset = ScenePreviewDataset(
@@ -206,6 +226,35 @@ def test_scene_preview_mixed_colmap_keeps_normal_camera_as_static_image(tmp_path
 
     assert window._selected_camera_id == "normal"
     assert window.camera_image_view._perspective_params is None
+
+
+def test_scene_preview_summary_tracks_selected_camera(tmp_path: Path) -> None:
+    _app()
+    front = _preview_camera("front", "front.jpg", (1.0, 2.0, 3.0))
+    side = _preview_camera("side", "side.jpg", (4.0, 5.0, 6.0))
+    dataset = ScenePreviewDataset(
+        source_kind="test",
+        source_path=tmp_path / "dataset",
+        cameras=(front, side),
+        image_root=tmp_path,
+    )
+    window = ScenePreviewWindow()
+
+    window._set_dataset(dataset)
+
+    text = window.summary_text.toPlainText()
+    assert i18n.t("SCENE_PREVIEW_SELECTED_CAMERA_SUMMARY") in text
+    assert "front.jpg" in text
+    assert "side.jpg" not in text
+    assert f"{i18n.t('SCENE_PREVIEW_CAMERA_INDEX')}: 1 / 2" in text
+
+    window._select_camera_id("side")
+
+    text = window.summary_text.toPlainText()
+    assert "side.jpg" in text
+    assert "front.jpg" not in text
+    assert f"{i18n.t('SCENE_PREVIEW_CAMERA_INDEX')}: 2 / 2" in text
+    assert f"{i18n.t('SCENE_PREVIEW_POSITION')}: (4.0000, 5.0000, 6.0000)" in text
 
 
 def test_scene_preview_rebuilds_cubemap_without_devtools_import(tmp_path: Path, monkeypatch) -> None:

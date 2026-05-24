@@ -61,6 +61,7 @@ class ScenePreviewWidget(QWidget):
         self._scene_dir: Path | None = None
         self._show_scene_controls = bool(show_scene_controls)
         self._candidates: tuple[ScenePreviewCandidate, ...] = ()
+        self._current_candidate: ScenePreviewCandidate | None = None
         self._dataset: ScenePreviewDataset | None = None
         self._selected_camera_id = ""
         self._cubemap_faces_by_camera_key: dict[str, tuple[Any, str]] = {}
@@ -208,6 +209,7 @@ class ScenePreviewWidget(QWidget):
         try:
             dataset = _load_candidate(candidate)
         except Exception as exc:
+            self._current_candidate = None
             self._clear_dataset()
             self.summary_text.setPlainText(
                 "\n".join(
@@ -221,10 +223,11 @@ class ScenePreviewWidget(QWidget):
                 )
             )
             return
+        self._current_candidate = candidate
         self._set_dataset(dataset)
-        self.summary_text.setPlainText(_format_dataset_summary(candidate, dataset))
 
     def _clear_dataset(self) -> None:
+        self._current_candidate = None
         self._dataset = None
         self._selected_camera_id = ""
         self._cubemap_faces_by_camera_key = {}
@@ -277,6 +280,7 @@ class ScenePreviewWidget(QWidget):
             self.camera_combo.blockSignals(True)
             self.camera_combo.setCurrentIndex(combo_index)
             self.camera_combo.blockSignals(False)
+        self._update_summary_text()
 
     def _select_camera_from_pointcloud(self, camera_id: str) -> None:
         camera_id = str(camera_id or "")
@@ -290,6 +294,7 @@ class ScenePreviewWidget(QWidget):
 
     def _on_camera_image_view_params_changed(self, _params: object) -> None:
         self._sync_selected_view_ray(self._camera_by_id(self._selected_camera_id))
+        self._update_summary_text()
 
     def _sync_selected_view_ray(self, camera: ScenePreviewCamera | None) -> None:
         if camera is None:
@@ -311,6 +316,56 @@ class ScenePreviewWidget(QWidget):
         if self._dataset is None or not camera_id:
             return None
         return next((camera for camera in self._dataset.cameras if camera.camera_id == camera_id), None)
+
+    def _update_summary_text(self) -> None:
+        if self._dataset is None:
+            return
+        camera = self._camera_by_id(self._selected_camera_id)
+        view_direction = None
+        if camera is not None:
+            view_direction = _camera_view_direction(
+                camera,
+                self.camera_image_view.perspective_params(),
+                basis_camera=self._view_ray_basis_camera(camera),
+            )
+        self.summary_text.setPlainText(
+            _format_dataset_summary(
+                self._current_candidate,
+                self._dataset,
+                selected_camera=camera,
+                selected_camera_index=self._camera_index(camera),
+                selected_view_direction=view_direction,
+                cubemap_face=self._cubemap_face_for_camera(camera),
+                mask_available=self._mask_available_for_camera(camera),
+            )
+        )
+
+    def _camera_index(self, camera: ScenePreviewCamera | None) -> int:
+        if self._dataset is None or camera is None:
+            return -1
+        return next((index for index, item in enumerate(self._dataset.cameras) if item.camera_id == camera.camera_id), -1)
+
+    def _cubemap_face_for_camera(self, camera: ScenePreviewCamera | None) -> str | None:
+        if camera is None:
+            return None
+        match = next(
+            (
+                self._cubemap_faces_by_camera_key[key]
+                for key in _camera_lookup_keys(camera)
+                if key in self._cubemap_faces_by_camera_key
+            ),
+            None,
+        )
+        if match is not None:
+            return str(match[1])
+        return _cubemap_face_for_camera(camera)
+
+    def _mask_available_for_camera(self, camera: ScenePreviewCamera | None) -> bool | None:
+        if self._dataset is None or camera is None or camera.image_path is None:
+            return None
+        if self._dataset.mask_root is None:
+            return None
+        return _resolve_preview_mask_path(camera.image_path, self._dataset.mask_root, self._dataset.image_root) is not None
 
     def _build_cubemap_lookup(self, dataset: ScenePreviewDataset) -> None:
         self._cubemap_faces_by_camera_key = {}
@@ -563,31 +618,52 @@ def _relative_image_path(image_path: Path, image_root: Path | None) -> Path | No
     return None
 
 
-def _format_dataset_summary(candidate: ScenePreviewCandidate, dataset: ScenePreviewDataset) -> str:
+def _format_dataset_summary(
+    candidate: ScenePreviewCandidate | None,
+    dataset: ScenePreviewDataset,
+    *,
+    selected_camera: ScenePreviewCamera | None = None,
+    selected_camera_index: int = -1,
+    selected_view_direction: np.ndarray | None = None,
+    cubemap_face: str | None = None,
+    mask_available: bool | None = None,
+) -> str:
+    source_label = candidate.label if candidate is not None else dataset.source_kind
+    source_path = candidate.path if candidate is not None else dataset.source_path
     lines = [
-        f"{i18n.t('SCENE_PREVIEW_SOURCE')}: {candidate.label}",
-        f"{i18n.t('SCENE_PREVIEW_PATH')}: {dataset.source_path}",
+        i18n.t("SCENE_PREVIEW_DATASET_SUMMARY"),
+        f"{i18n.t('SCENE_PREVIEW_SOURCE')}: {source_label}",
+        f"{i18n.t('SCENE_PREVIEW_PATH')}: {source_path}",
         f"{i18n.t('SCENE_PREVIEW_IMAGE_ROOT')}: {dataset.image_root or '-'}",
         f"{i18n.t('SCENE_PREVIEW_CAMERAS')}: {len(dataset.cameras)}",
         f"{i18n.t('SCENE_PREVIEW_POINTS')}: {_point_count(dataset)}",
         f"{i18n.t('SCENE_PREVIEW_COORDINATE')}: {dataset.coordinate_note}",
     ]
-    if dataset.cameras:
-        camera = dataset.cameras[0]
-        lines.extend(
-            [
-                "",
-                i18n.t("SCENE_PREVIEW_FIRST_CAMERA"),
-                f"{i18n.t('SCENE_PREVIEW_LABEL')}: {camera.label}",
-                f"{i18n.t('SCENE_PREVIEW_PROJECTION')}: {camera.projection}",
-                f"{i18n.t('SCENE_PREVIEW_IMAGE')}: {camera.image_path or '-'}",
-                f"{i18n.t('SCENE_PREVIEW_POSITION')}: {_format_vector(camera.position)}",
-                f"{i18n.t('SCENE_PREVIEW_RIGHT')}: {_format_vector(camera.right)}",
-                f"{i18n.t('SCENE_PREVIEW_UP')}: {_format_vector(camera.up)}",
-                f"{i18n.t('SCENE_PREVIEW_FORWARD')}: {_format_vector(camera.forward)}",
-                f"{i18n.t('SCENE_PREVIEW_WORLD_UP_ROLL')}: {_format_roll(camera.world_up_roll_radians())}",
-            ]
-        )
+    lines.extend(["", i18n.t("SCENE_PREVIEW_SELECTED_CAMERA_SUMMARY")])
+    if selected_camera is None:
+        lines.append(i18n.t("SCENE_PREVIEW_NO_CAMERA"))
+        return "\n".join(lines)
+
+    camera_index_text = "-"
+    if selected_camera_index >= 0:
+        camera_index_text = f"{selected_camera_index + 1} / {len(dataset.cameras)}"
+    lines.extend(
+        [
+            f"{i18n.t('SCENE_PREVIEW_CAMERA_INDEX')}: {camera_index_text}",
+            f"{i18n.t('SCENE_PREVIEW_LABEL')}: {selected_camera.label}",
+            f"{i18n.t('SCENE_PREVIEW_PROJECTION')}: {selected_camera.projection}",
+            f"{i18n.t('SCENE_PREVIEW_IMAGE_SIZE')}: {_format_image_size(selected_camera)}",
+            f"{i18n.t('SCENE_PREVIEW_INTRINSICS')}: {_format_intrinsics(selected_camera)}",
+            f"{i18n.t('SCENE_PREVIEW_IMAGE')}: {selected_camera.image_path or '-'}",
+            f"{i18n.t('SCENE_PREVIEW_MASK')}: {_format_presence(mask_available)}",
+            f"{i18n.t('SCENE_PREVIEW_CUBEMAP_FACE')}: {cubemap_face or '-'}",
+            f"{i18n.t('SCENE_PREVIEW_POSITION')}: {_format_vector(selected_camera.position)}",
+            f"{i18n.t('SCENE_PREVIEW_FORWARD')}: {_format_vector(selected_camera.forward)}",
+            f"{i18n.t('SCENE_PREVIEW_VIEW_DIRECTION')}: {_format_optional_vector(selected_view_direction)}",
+            f"{i18n.t('SCENE_PREVIEW_UP')}: {_format_vector(selected_camera.up)}",
+            f"{i18n.t('SCENE_PREVIEW_WORLD_UP_ROLL')}: {_format_roll(selected_camera.world_up_roll_radians())}",
+        ]
+    )
     return "\n".join(lines)
 
 
@@ -600,6 +676,30 @@ def _point_count(dataset: ScenePreviewDataset) -> str:
 def _format_vector(vector: object) -> str:
     values = [float(value) for value in vector]  # type: ignore[operator]
     return f"({values[0]:.4f}, {values[1]:.4f}, {values[2]:.4f})"
+
+
+def _format_optional_vector(vector: object) -> str:
+    if vector is None:
+        return "-"
+    return _format_vector(vector)
+
+
+def _format_image_size(camera: ScenePreviewCamera) -> str:
+    if camera.width <= 0 or camera.height <= 0:
+        return "-"
+    return f"{camera.width} x {camera.height}"
+
+
+def _format_intrinsics(camera: ScenePreviewCamera) -> str:
+    if camera.fl_x is None or camera.fl_y is None or camera.cx is None or camera.cy is None:
+        return "-"
+    return f"fx={camera.fl_x:.3g}, fy={camera.fl_y:.3g}, cx={camera.cx:.3g}, cy={camera.cy:.3g}"
+
+
+def _format_presence(value: bool | None) -> str:
+    if value is None:
+        return "-"
+    return i18n.t("SCENE_PREVIEW_PRESENT") if value else i18n.t("SCENE_PREVIEW_MISSING")
 
 
 def _format_roll(roll_radians: float | None) -> str:
