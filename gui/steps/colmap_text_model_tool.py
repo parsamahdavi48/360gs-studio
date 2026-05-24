@@ -22,6 +22,8 @@ from PySide6.QtWidgets import (
 from core.dataset_job_spec import metashape_colmap_job, write_dataset_job
 from core.metashape_colmap_dataset import metashape_model_requires_mixed_colmap_writer
 from core.orientation_correction import FINAL_ORIENTATION_LICHTFELD, FINAL_ORIENTATION_NONE
+from core.projection_contract import PROJECTION_EQUIRECTANGULAR
+from core.scene_inventory import build_scene_inventory
 from core.scene_layout import (
     jobs_dir,
     scene_images_dir,
@@ -673,6 +675,7 @@ class ColmapTextModelTool(BaseStepWidget):
     def _sync_preview_inputs(self) -> None:
         if not self.scene_dir:
             self.preview.set_scene_dir("", refresh=False)
+            self.preview.set_perspective_supported_paths(())
             self.preview.set_image_dir("", refresh=True)
             self._update_output_count()
             self._render_preview()
@@ -680,9 +683,23 @@ class ColmapTextModelTool(BaseStepWidget):
 
         self.preview.set_scene_dir(str(self.scene_dir), refresh=False)
         images = self._images_dir()
+        self._sync_preview_perspective_paths(images)
         self.preview.set_image_dir(str(images) if images.is_dir() else "", refresh=True)
         self._update_output_count()
         self._render_preview()
+
+    def _sync_preview_perspective_paths(self, images: Path) -> None:
+        if not self.scene_dir or not images.is_dir():
+            self.preview.set_perspective_supported_paths(())
+            return
+        try:
+            inventory = build_scene_inventory(self.scene_dir, images_dir=images)
+        except Exception:
+            self.preview.set_perspective_supported_paths(())
+            return
+        self.preview.set_perspective_supported_paths(
+            image.path for image in inventory.images if image.projection == PROJECTION_EQUIRECTANGULAR
+        )
 
     def _render_preview(self) -> None:
         try:

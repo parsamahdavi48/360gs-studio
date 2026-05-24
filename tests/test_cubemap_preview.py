@@ -119,6 +119,58 @@ def test_cubemap_preview_projection_follows_highlight_until_drag() -> None:
     assert widget._perspective_params.yaw_deg == adjusted_yaw
 
 
+def test_cubemap_preview_projection_toggle_requires_supported_image(tmp_path: Path) -> None:
+    _app()
+    images = tmp_path / "images"
+    images.mkdir()
+    erp = images / "erp.png"
+    normal = images / "normal.png"
+    cv2.imwrite(str(erp), np.full((32, 64, 3), 180, dtype=np.uint8))
+    cv2.imwrite(str(normal), np.full((30, 40, 3), 180, dtype=np.uint8))
+    widget = PreviewWidget()
+    widget.set_scene_dir(str(tmp_path), refresh=False)
+    widget.set_perspective_supported_paths([erp])
+
+    widget.refresh_image_list(prefer_current=False)
+
+    assert widget.current_image_path() == erp
+    assert widget.projection_toggle_btn.isEnabled()
+    widget.projection_toggle_btn.click()
+    assert widget.preview_projection() == PREVIEW_PROJECTION_PERSPECTIVE
+
+    widget._set_index(1)
+
+    assert widget.current_image_path() == normal
+    assert widget.preview_projection() == PREVIEW_PROJECTION_EQUIRECT
+    assert not widget.projection_toggle_btn.isEnabled()
+    assert widget.projection_toggle_btn.toolTip() == i18n.tip("PREVIEW_PROJECTION_TOGGLE_DISABLED")
+
+
+def test_cubemap_preview_hides_view_guides_for_unsupported_image(tmp_path: Path) -> None:
+    _app()
+    images = tmp_path / "images"
+    images.mkdir()
+    erp = images / "erp.png"
+    normal = images / "normal.png"
+    cv2.imwrite(str(erp), np.full((32, 64, 3), 180, dtype=np.uint8))
+    cv2.imwrite(str(normal), np.full((30, 40, 3), 180, dtype=np.uint8))
+    widget = PreviewWidget()
+    widget.set_scene_dir(str(tmp_path), refresh=False)
+    widget.set_perspective_supported_paths([erp])
+
+    widget.refresh_image_list(prefer_current=False)
+    widget._set_index(1)
+    widget.render([{"yaw": 0.0, "pitch": 0.0, "enabled": True, "highlighted": True, "label": "front"}])
+
+    pixmap = widget.image_label._source_pixmap
+    assert pixmap is not None
+    image = pixmap.toImage()
+    for y in range(image.height()):
+        for x in range(image.width()):
+            pixel = image.pixelColor(x, y)
+            assert pixel.red() == pixel.green() == pixel.blue() == 180
+
+
 def test_cubemap_preview_draws_disabled_view_boxes_first() -> None:
     views = [
         {"name": "enabled_a", "enabled": True},

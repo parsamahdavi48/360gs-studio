@@ -25,6 +25,8 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from core.projection_contract import PROJECTION_EQUIRECTANGULAR
+from core.scene_inventory import build_scene_inventory
 from core.scene_layout import (
     scene_images_dir,
     step4_meta_dir,
@@ -1058,6 +1060,7 @@ class CubemapStep(
             self._sync_sfm_input_paths(force=True)
             self._update_metashape_input_hint()
             self.preview.set_scene_dir("")
+            self.preview.set_perspective_supported_paths(())
             self._refresh_input_image_count()
             self._training_dataset_user_edited = False
             self._training_output_user_edited = False
@@ -1090,6 +1093,7 @@ class CubemapStep(
         self._update_lfs_output_name(force=not restored)
         self._update_postshot_project_name(force=not restored)
         self._update_lfs_auto_steps_scaler()
+        self._sync_preview_perspective_paths()
         self._update_output_count()
         self._update_metashape_input_hint()
 
@@ -1370,11 +1374,25 @@ class CubemapStep(
     def on_activated(self) -> None:
         self._refresh_metashape_auto_inputs_if_empty()
         self._sync_sfm_input_paths()
+        self._sync_preview_perspective_paths()
         self.preview.refresh_image_list(prefer_current=True)
         self._refresh_input_image_count()
         self._update_path_labels()
         self._update_output_count()
         self._render_preview()
+
+    def _sync_preview_perspective_paths(self) -> None:
+        if not self.scene_dir:
+            self.preview.set_perspective_supported_paths(())
+            return
+        try:
+            inventory = build_scene_inventory(Path(self.scene_dir))
+        except Exception:
+            self.preview.set_perspective_supported_paths(())
+            return
+        self.preview.set_perspective_supported_paths(
+            image.path for image in inventory.images if image.projection == PROJECTION_EQUIRECTANGULAR
+        )
 
     # -- ユーザー設定 --
 

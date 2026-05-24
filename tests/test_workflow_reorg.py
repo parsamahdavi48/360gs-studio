@@ -14,6 +14,7 @@ from core.normal_camera_metadata import load_normal_camera_default
 from core.scene_layout import source_image_sets_path
 from gui import i18n
 from gui.app import MainWindow
+from gui.common.perspective_preview import PREVIEW_PROJECTION_EQUIRECT, PREVIEW_PROJECTION_PERSPECTIVE
 from gui.cubemap.view_config import VIEW_MODE_CUSTOM
 from gui.steps.colmap_text_model_tool import ColmapTextModelTool
 from gui.steps.realityscan_lfs_tool import RealityScanLfsTool
@@ -516,6 +517,33 @@ def test_colmap_text_model_tool_defaults_and_builds_cli_command(tmp_path: Path) 
     tool.on_queue_finished(True)
     assert load_artifacts(scene, "sfm")[-1].kind == "metashape_xml_ply"
     assert load_artifacts(scene, "dataset")[-1].kind == "colmap_dataset"
+
+
+def test_colmap_text_model_preview_projection_toggle_is_enabled_only_for_erp_images(tmp_path: Path) -> None:
+    scene = tmp_path / "scene"
+    images = scene / "images"
+    masks = scene / "masks"
+    images.mkdir(parents=True)
+    masks.mkdir()
+    _write_image(images / "a_pano.jpg", size=(64, 32))
+    _write_image(images / "z_normal.jpg", size=(40, 30))
+    (scene / "metashape.xml").write_text("<document/>", encoding="utf-8")
+    (scene / "metashape.ply").write_text("ply\n", encoding="ascii")
+
+    _app()
+    tool = ColmapTextModelTool(Path.cwd())
+    tool.set_scene_dir(str(scene))
+
+    assert tool.preview.current_image_path() == images / "a_pano.jpg"
+    assert tool.preview.projection_toggle_btn.isEnabled()
+    tool.preview.projection_toggle_btn.click()
+    assert tool.preview.preview_projection() == PREVIEW_PROJECTION_PERSPECTIVE
+
+    tool.preview._set_index(1)
+
+    assert tool.preview.current_image_path() == images / "z_normal.jpg"
+    assert tool.preview.preview_projection() == PREVIEW_PROJECTION_EQUIRECT
+    assert not tool.preview.projection_toggle_btn.isEnabled()
 
 
 def test_colmap_text_model_tool_uses_mixed_writer_for_mixed_metashape_xml(tmp_path: Path) -> None:

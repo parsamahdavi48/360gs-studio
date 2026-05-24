@@ -25,6 +25,7 @@ from core.scene_layout import (
 from core.workflow_artifacts import register_dataset_artifact
 from gui import i18n
 from gui.common.collapsible_section import CollapsibleSection
+from gui.common.perspective_preview import PREVIEW_PROJECTION_EQUIRECT, PREVIEW_PROJECTION_PERSPECTIVE
 from gui.steps.sfm_route_backends import get_sfm_route_backend
 from gui.steps.sfm_route_specs import (
     OUTPUT_SHAPE_EQUIRECT_3DGUT,
@@ -848,6 +849,29 @@ def test_cubemap_step_projection_toggle_is_in_preview_header() -> None:
 
     assert not step.preview.isAncestorOf(step.preview.projection_toggle_btn)
     assert step.preview.projection_toggle_btn.parentWidget().objectName() == "workPane"
+
+
+def test_cubemap_step_projection_toggle_is_enabled_only_for_erp_images(tmp_path: Path) -> None:
+    _app()
+    images = tmp_path / "images"
+    images.mkdir()
+    _write_test_image(images / "a_pano.jpg", size=(64, 32))
+    _write_test_image(images / "z_normal.jpg", size=(40, 30))
+
+    step = CubemapStep(Path.cwd())
+    step.set_scene_dir(str(tmp_path))
+    step.on_activated()
+
+    assert step.preview.current_image_path() == images / "a_pano.jpg"
+    assert step.preview.projection_toggle_btn.isEnabled()
+    step.preview.projection_toggle_btn.click()
+    assert step.preview.preview_projection() == PREVIEW_PROJECTION_PERSPECTIVE
+
+    step.preview._set_index(1)
+
+    assert step.preview.current_image_path() == images / "z_normal.jpg"
+    assert step.preview.preview_projection() == PREVIEW_PROJECTION_EQUIRECT
+    assert not step.preview.projection_toggle_btn.isEnabled()
 
 
 def test_custom_grid_defaults_to_three_pitch_rows_all_enabled() -> None:

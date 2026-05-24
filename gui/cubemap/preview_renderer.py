@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections import OrderedDict
+from collections.abc import Iterable
 from functools import lru_cache
 from pathlib import Path
 
@@ -493,6 +494,7 @@ class PreviewWidget(QWidget):
         self._image_dir_override = ""
         self._mask_overlay_visible = True
         self._preview_projection = PREVIEW_PROJECTION_EQUIRECT
+        self._perspective_supported_paths: set[str] | None = None
         self._perspective_params = PerspectiveParams()
         self._perspective_user_adjusted = False
         self._last_views: list[dict] = []
@@ -560,6 +562,10 @@ class PreviewWidget(QWidget):
         if refresh:
             self.refresh_image_list(prefer_current=False)
 
+    def set_perspective_supported_paths(self, paths: Iterable[Path] | None) -> None:
+        self._perspective_supported_paths = None if paths is None else {_path_key(Path(path)) for path in paths}
+        self._sync_projection_availability()
+
     def render(self, views: list[dict], mask_dir: str = "") -> None:
         self._last_views = list(views)
         self._last_mask_dir = mask_dir
@@ -598,39 +604,41 @@ class PreviewWidget(QWidget):
 
         # ビュー境界描画
         h, w = img.shape[:2]
-        pitch_colors = _pitch_color_map(views)
-        draw_order = _overlay_draw_order(views)
-        for view in draw_order:
-            if not view.get("highlighted", False):
-                continue
-            pitch_key = round(float(view.get("pitch", 0.0)), 6)
-            color = pitch_colors.get(pitch_key, (90, 240, 120))
-            mask = _view_fill_mask(w, h, float(view["yaw"]), float(view["pitch"]), 90.0)
-            _apply_view_fill(img, mask, color)
-
-        for view in draw_order:
-            pitch_key = round(float(view.get("pitch", 0.0)), 6)
-            color = pitch_colors.get(pitch_key, (90, 240, 120))
-            enabled = bool(view["enabled"])
-            highlighted = bool(view.get("highlighted", False))
-            segments = _view_boundary_segments(w, h, view["yaw"], view["pitch"], 90.0)
-            for seg in segments:
-                if len(seg) < 2:
+        show_view_guides = self._current_image_supports_perspective()
+        pitch_colors = _pitch_color_map(views) if show_view_guides else {}
+        draw_order = _overlay_draw_order(views) if show_view_guides else []
+        if show_view_guides:
+            for view in draw_order:
+                if not view.get("highlighted", False):
                     continue
-                pts = np.round(seg).astype(np.int32).reshape((-1, 1, 2))
-                _draw_view_polyline(img, pts, color, enabled=enabled, highlighted=highlighted)
+                pitch_key = round(float(view.get("pitch", 0.0)), 6)
+                color = pitch_colors.get(pitch_key, (90, 240, 120))
+                mask = _view_fill_mask(w, h, float(view["yaw"]), float(view["pitch"]), 90.0)
+                _apply_view_fill(img, mask, color)
 
-        if self._preview_projection == PREVIEW_PROJECTION_EQUIRECT:
-            for item in _layout_view_labels(draw_order, w, h, pitch_colors):
-                _draw_view_label_box(
-                    img,
-                    item["label"],
-                    item["box"],
-                    item["origin"],
-                    item["color"],
-                    highlighted=bool(item.get("highlighted", False)),
-                )
-        if self._preview_projection == PREVIEW_PROJECTION_PERSPECTIVE:
+            for view in draw_order:
+                pitch_key = round(float(view.get("pitch", 0.0)), 6)
+                color = pitch_colors.get(pitch_key, (90, 240, 120))
+                enabled = bool(view["enabled"])
+                highlighted = bool(view.get("highlighted", False))
+                segments = _view_boundary_segments(w, h, view["yaw"], view["pitch"], 90.0)
+                for seg in segments:
+                    if len(seg) < 2:
+                        continue
+                    pts = np.round(seg).astype(np.int32).reshape((-1, 1, 2))
+                    _draw_view_polyline(img, pts, color, enabled=enabled, highlighted=highlighted)
+
+            if self._preview_projection == PREVIEW_PROJECTION_EQUIRECT:
+                for item in _layout_view_labels(draw_order, w, h, pitch_colors):
+                    _draw_view_label_box(
+                        img,
+                        item["label"],
+                        item["box"],
+                        item["origin"],
+                        item["color"],
+                        highlighted=bool(item.get("highlighted", False)),
+                    )
+        if self._preview_projection == PREVIEW_PROJECTION_PERSPECTIVE and show_view_guides:
             if self._show_gpu_perspective(img, draw_order, pitch_colors):
                 self._pixmap = None
                 return
@@ -669,6 +677,9 @@ class PreviewWidget(QWidget):
 
     def _on_projection_toggled(self, checked: bool) -> None:
         projection = PREVIEW_PROJECTION_PERSPECTIVE if checked else PREVIEW_PROJECTION_EQUIRECT
+        if projection == PREVIEW_PROJECTION_PERSPECTIVE and not self._current_image_supports_perspective():
+            self._update_projection_button()
+            return
         if projection == self._preview_projection:
             self._update_projection_button()
             return
@@ -683,13 +694,34 @@ class PreviewWidget(QWidget):
 
     def _update_projection_button(self) -> None:
         perspective = self._preview_projection == PREVIEW_PROJECTION_PERSPECTIVE
+        enabled = self._current_image_supports_perspective()
         self.projection_toggle_btn.blockSignals(True)
         try:
             self.projection_toggle_btn.setChecked(perspective)
+            self.projection_toggle_btn.setEnabled(enabled)
         finally:
             self.projection_toggle_btn.blockSignals(False)
         self.projection_toggle_btn.setIcon(perspective_preview_icon())
-        self.projection_toggle_btn.setToolTip(i18n.tip("PREVIEW_PROJECTION_TOGGLE"))
+        self.projection_toggle_btn.setToolTip(
+            i18n.tip("PREVIEW_PROJECTION_TOGGLE") if enabled else i18n.tip("PREVIEW_PROJECTION_TOGGLE_DISABLED")
+        )
+
+    def _current_image_supports_perspective(self) -> bool:
+        if self._perspective_supported_paths is None:
+            return True
+        path = self.current_image_path()
+        return path is not None and _path_key(path) in self._perspective_supported_paths
+
+    def _sync_projection_availability(self) -> None:
+        if (
+            self._preview_projection == PREVIEW_PROJECTION_PERSPECTIVE
+            and not self._current_image_supports_perspective()
+        ):
+            self._preview_projection = PREVIEW_PROJECTION_EQUIRECT
+            self._perspective_user_adjusted = False
+            self.image_label.set_drag_mode("pan")
+            self.image_label.reset_view()
+        self._update_projection_button()
 
     def _on_perspective_dragged(self, delta_x: float, delta_y: float) -> None:
         if self._preview_projection != PREVIEW_PROJECTION_PERSPECTIVE:
@@ -917,8 +949,10 @@ class PreviewWidget(QWidget):
 
     def _set_current_image_path(self, image_path: str, emit: bool) -> None:
         if image_path == self._current_image_path:
+            self._sync_projection_availability()
             return
         self._current_image_path = image_path
+        self._sync_projection_availability()
         if emit:
             self.current_image_changed.emit()
 
@@ -927,3 +961,10 @@ class PreviewWidget(QWidget):
             return
         if 0 <= idx < len(self.preview_images):
             self._set_index(idx)
+
+
+def _path_key(path: Path) -> str:
+    try:
+        return str(path.resolve(strict=False)).replace("\\", "/").casefold()
+    except OSError:
+        return str(path).replace("\\", "/").casefold()
