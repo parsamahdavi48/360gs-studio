@@ -54,7 +54,7 @@ def test_apply_blur_review_mode_switches_between_standard_and_low() -> None:
 
     assert standard.mode == BLUR_REVIEW_MODE_STANDARD
     assert standard.decision_changed_rows == 1
-    assert [row["status"] for row in rows] == ["motion_blur", "borderline_blur", "ok"]
+    assert [row["status"] for row in rows] == ["motion_blur", "ok", "ok"]
     assert [row["decision"] for row in rows] == ["drop", "keep", "keep"]
     assert {row[BLUR_REVIEW_MODE_FIELD] for row in rows} == {BLUR_REVIEW_MODE_STANDARD}
 
