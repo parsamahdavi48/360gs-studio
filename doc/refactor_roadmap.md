@@ -17,8 +17,8 @@ Last updated: 2026-05-25
 Latest checkpoint:
 
 - Large GUI split continued for Step 3: mask command planning, JSONL target
-  manifest writing, and mask settings/control-state formatting now live in
-  dedicated modules with focused tests.
+  manifest writing, mask settings/control-state formatting, and temporary
+  preview orchestration now live in dedicated modules with focused tests.
 - Validation at the latest checkpoint: `ruff check .` and `pytest -q` pass
   locally.
 
@@ -101,11 +101,16 @@ Status: in progress; Step 3 first slices complete.
 - `gui/steps/step3_mask_settings.py` owns Step 3 SAM prompt parsing,
   SAM3.1 merge-mode normalization, and the control-state conversion to
   `MaskCommandContext` / refresh-plan settings snapshots.
+- `gui/steps/step3_mask_preview_actions.py` owns Step 3 temporary preview
+  rendering, preview worker `QProcess` sequencing, and preview temp-directory
+  cleanup.
+- `gui/steps/step3_mask_actions.py` now focuses on command-builder adapters,
+  selected-image mask reprocessing, and per-image mask postprocessing.
 - `gui/steps/step3_mask.py` and `gui/steps/step1_extract.py` still remain
   large.
 - Split order after core contracts settle:
-  1. Continue `step3_mask.py`: move preview action orchestration if useful,
-     then reduce remaining widget-only glue.
+  1. Continue `step3_mask.py`: reduce remaining widget-only glue, then decide
+     whether Step 3 is small enough to pause.
   2. `step1_extract.py`
   3. `step4_training.py`
   4. remaining `step4_cubemap.py` orchestration
