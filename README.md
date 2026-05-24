@@ -16,6 +16,10 @@ After extracting the ZIP, run `setup_windows.bat`, then `run_gui.bat`.
 
 [JP 日本語の説明](README.ja.md)
 
+![STechDrive 3DGS Utils workflow](images/stechdrive-3dgs-workflow-en.png)
+
+![STechDrive 3DGS Utils GUI](images/stechdrive-3dgs-utils-gui.jpg)
+
 ## What You Can Do
 
 ### 1. SfM Preprocessing for 360° and Normal Images

@@ -16,6 +16,10 @@ ZIPを展開したら、`setup_windows.bat`、続いて `run_gui.bat` を実行�
 
 [EN English](README.md)
 
+![STechDrive 3DGS Utils ワークフロー](images/stechdrive-3dgs-workflow-ja.png)
+
+![STechDrive 3DGS Utils GUI](images/stechdrive-3dgs-utils-gui.jpg)
+
 ## このアプリでできること
 
 ### 1. 360°/通常画像を混在させたSfM前処理
