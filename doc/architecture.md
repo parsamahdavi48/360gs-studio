@@ -33,6 +33,9 @@ GUI workflow unless a release note explicitly promises a specific wrapper.
 - `core/frame_renumbering.py` owns the Step 2 kept-image renumbering contract:
   downstream-output blockers, collision-safe rename planning/application, and
   updates to frame/source image metadata when paths change.
+- `core/apply_frame_decisions.py` owns the Step 2 keep/drop application
+  implementation. `core/apply_frame_decisions_cli.py` is only the CLI adapter;
+  GUI/frame jobs should call `apply_decisions()` through `core/frame_job_runner.py`.
 - `core/scene_inventory.py` owns the shared read contract for scene images,
   masks, projection type, source IDs, and normal-camera defaults. Features that
   scope work to specific input sources should use `SceneInventory.source_groups()`

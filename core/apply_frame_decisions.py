@@ -1,10 +1,8 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
-import argparse
 import csv
 import shutil
-import sys
 from collections.abc import Sequence
 from pathlib import Path
 
@@ -384,78 +382,16 @@ def apply_decisions(
     print(f"Keep CSV: {keep_csv}")
 
 
-def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(
-        description="Apply keep/drop decisions: either finalize in images/ or copy keeps to another folder."
-    )
-    parser.add_argument(
-        "scene_dir",
-        nargs="?",
-        default=".",
-        help="Scene directory containing _stechdrive/frames/selected_frames.csv and images/",
-    )
-    parser.add_argument(
-        "--csv",
-        default="selected_frames.csv",
-        help="CSV filename under scene_dir/_stechdrive/frames, or an absolute path (default=selected_frames.csv)",
-    )
-    parser.add_argument(
-        "--output",
-        default="metashape_images",
-        help="Output directory name under scene_dir (default=metashape_images)",
-    )
-    parser.add_argument(
-        "--clean-output",
-        action="store_true",
-        help="Remove existing image files in output directory before exporting",
-    )
-    parser.add_argument(
-        "--finalize-in-place",
-        action="store_true",
-        help="Drop=remove inside scene_dir/images, preserve kept filenames, then update _stechdrive/frames/selected_frames.csv",
-    )
-    parser.add_argument(
-        "--backup-dir",
-        default="",
-        help=(
-            "If set together with --finalize-in-place, snapshot images/ to this directory before "
-            "modification (full copy; existing target is replaced). Provide a path relative to scene_dir "
-            "or an absolute path. Default empty = no backup."
-        ),
-    )
-    parser.add_argument(
-        "--renumber-kept-images",
-        action="store_true",
-        help=(
-            "With --finalize-in-place, rename kept files in images/ to frame_000001.ext order "
-            "and update frame metadata paths. Refuses to run after masks/output/Step 4 metadata exist."
-        ),
-    )
-    return parser.parse_args()
+def parse_args():
+    from core.apply_frame_decisions_cli import parse_args as _parse_args
+
+    return _parse_args()
 
 
 def main() -> None:
-    args = parse_args()
-    scene_dir = Path(args.scene_dir).resolve()
+    from core.apply_frame_decisions_cli import main as _main
 
-    backup_dir: Path | None = None
-    if args.backup_dir:
-        bp = Path(args.backup_dir)
-        backup_dir = bp if bp.is_absolute() else (scene_dir / bp)
-
-    try:
-        apply_decisions(
-            scene_dir=scene_dir,
-            csv_name=args.csv,
-            output_name=args.output,
-            clean_output=args.clean_output,
-            finalize_inplace=args.finalize_in_place,
-            backup_dir=backup_dir,
-            renumber_kept_images=args.renumber_kept_images,
-        )
-    except Exception as e:
-        print(f"Error: {e}")
-        sys.exit(1)
+    _main()
 
 
 if __name__ == "__main__":

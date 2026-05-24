@@ -15,6 +15,7 @@ root直下の互換 `*.py` ラッパーは、アプリ構造に含めません�
 - `core/extract_frames.py` は、FFmpeg/FFprobe による抽出、キャッシュ、静止/類似フレーム間引き、判定 CSV を担当します。Step 1 からは frame job runner 経由で呼び出します。
 - 静止画連番フォルダの取り込みも同じ frame job 契約を使います。`core/image_sequence_import_cli.py` は取り込み payload を作り、`core/frame_job_runner.py` に実行を委譲します。対応する `scripts/` 入口は薄いラッパーだけにします。
 - `core/frame_renumbering.py` は、Step 2 の採用画像連番化契約を担当します。下流成果物によるブロック判定、衝突を避けるリネーム計画/適用、パス変更時のフレーム/ソース画像台帳更新をここに集約します。
+- `core/apply_frame_decisions.py` は Step 2 の採用/除外適用実装を担当します。`core/apply_frame_decisions_cli.py` はCLI用アダプタだけにし、GUI/frame job からは `core/frame_job_runner.py` 経由で `apply_decisions()` を呼びます。
 - `core/scene_inventory.py` は、シーン内画像、マスク、投影タイプ、ソースID、通常カメラ既定値を読み取る共有契約です。ソース単位で処理対象を限定する機能は、ファイル名推測ではなく `SceneInventory.source_groups()` を使って判断します。
 - `core/scene_import*.py` は、外部シーンの再登録を担当します。取り込みはアプリ定義のシーンフォルダだけを走査し、外部取り込み由来メタデータを全量再登録として置き換え、実際の画像/マスク/出力アセットは削除しません。
 - `core/app_job.py`、`core/workflow_job_runner.py`、`core/sfm_job_runner.py`、`core/frame_job_runner.py`、`core/dataset_job_runner.py` はGUI内部ジョブ実行を担当します。GUIステップは、アプリ内部のPython処理には `AppJob` を返し、raw command list は COLMAP、FFmpeg、SphereSfMバイナリ、学習アプリCLIなど外部実行ファイルに限定します。GPU負荷の大きいマスク生成は、モデルメモリやクラッシュをGUIプロセスから隔離するため `python -m core.<module>` で実行してよいものとします。
