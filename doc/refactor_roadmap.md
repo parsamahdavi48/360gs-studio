@@ -16,15 +16,18 @@ Last updated: 2026-05-25
 
 Latest checkpoint:
 
-- Large GUI split continued into Step 4. `Step4TrainingMixin` is now a thin
-  composition class; training UI construction, settings restore, backend state,
-  dataset/path resolution, LichtFeld UI state, and launch command construction
-  each live in focused modules. Cubemap project settings/user preferences and
-  the output-shape selector widget were also split out of `step4_cubemap.py`.
+- Large GUI split continued through the remaining Step 4 orchestration. Route
+  state/path summaries, target profile/output-shape state, activation/scene
+  preview behavior, and preview image-count updates now live in focused mixins.
+  `step4_cubemap.py` is mostly widget construction plus scene setup.
+- The cubemap legacy facade dependency audit was also tightened: non-CLI core
+  imports now use the split cubemap modules directly; the facade is retained for
+  CLI entry and compatibility tests.
 - Validation at the latest checkpoint: Step 4 targeted `ruff` and
-  `tests/test_training_backends.py tests/test_form_tooltips.py
-  tests/test_step4_output_dir.py` pass locally; full `ruff check .` and
-  `pytest -q` also pass locally.
+  `tests/test_colmap_mixed_project.py tests/test_apriltag_detection_pipeline.py
+  tests/test_cubemap_view_spec.py tests/test_step4_output_dir.py
+  tests/test_form_tooltips.py tests/test_scene_preview.py` pass locally; full
+  `ruff check .` and `pytest -q` also pass locally.
 
 ### 1. Mask Job Contract
 
@@ -91,10 +94,11 @@ Status: mostly complete; main Step 3/Step 4/preview routes audited.
 
 ### 5. Large GUI Step Split
 
-Status: in progress; Step 3, Step 1, and Step 4 training slices complete.
+Status: in progress; Step 3, Step 1, and Step 4 GUI slices complete.
 
-- Step 4 has several mixins, but remaining `gui/steps/step4_cubemap.py`
-  orchestration is still large.
+- Step 4 still has a large widget-construction method in
+  `gui/steps/step4_cubemap.py`, but the main behavior/state orchestration now
+  lives in focused mixins.
 - `gui/steps/step1_input_sources.py` owns Step 1 input-source queue state,
   file/folder add/remove actions, scene autoload, source-video registry lookup,
   prefix allocation, and queue labels.
@@ -124,6 +128,16 @@ Status: in progress; Step 3, Step 1, and Step 4 training slices complete.
   user preferences.
 - `gui/steps/step4_output_shape_selector.py` owns the two-choice output-shape
   radio selector widget used by Metashape and SphereSfM output settings.
+- `gui/steps/step4_activation.py` owns Step 4 activation refresh,
+  primary-action state, and the scene preview launcher.
+- `gui/steps/step4_route_state.py` owns SfM route state, settings-tab
+  availability, path summaries, sparse-model input sync, Metashape input hints,
+  and COLMAP/SphereSfM route controls.
+- `gui/steps/step4_profile_output.py` owns target profile defaults,
+  RealityScan option visibility, output-shape eligibility, and view-export
+  enablement.
+- `gui/steps/step4_preview_counts.py` owns Step 4 preview rendering debounce,
+  source image counting, and output image count display.
 - `gui/steps/step3_mask_progress.py` owns Step 3 worker-output progress
   parsing.
 - `gui/steps/step3_mask_records.py` owns Step 3 mask metadata recording.
@@ -156,12 +170,20 @@ Status: in progress; Step 3, Step 1, and Step 4 training slices complete.
   1. Review the new Step 1 source modules for any reusable source contracts
      that should move to `core/`; keep GUI-only queue/display behavior in
      `gui/steps/`.
-  2. Split remaining `step4_cubemap.py` orchestration.
-  3. Run pre-merge audit once Step 4 cubemap risk is reduced.
+  2. Run pre-merge audit and fix any remaining blockers.
+  3. If the audit is clean, merge the refactor branch.
 
 ### 6. Pre-Merge Audit
 
-Status: not ready until large GUI split risks are reduced.
+Status: ready to run; initial spot checks are clean.
+
+Initial spot checks:
+
+- No root-level Python compatibility wrappers were found.
+- No root-level upstream `images/` or `masks/` asset folders were found.
+- GUI/core source does not import `scripts/` implementations.
+- `core.cubemap_transforms_json` imports remain limited to the CLI/facade pair;
+  non-CLI core users now import split cubemap modules directly.
 
 Audit gates:
 
