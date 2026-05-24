@@ -80,6 +80,10 @@ GUI workflow unless a release note explicitly promises a specific wrapper.
   job uses `core/metashape_preprocess.py` to create the intermediate
   equirectangular `transforms.json`; no GUI route should depend on the old
   upstream Metashape converter.
+- Metashape-derived NeRF and COLMAP dataset exports use versioned dataset job
+  payloads. `core/metashape_dataset_cli.py` is the developer CLI adapter, and
+  it must delegate execution to `core/dataset_job_runner.py` so direct CLI and
+  GUI job execution share the same contract.
 - Cubemap view sets and remap request validation live in
   `core/cubemap_view_spec.py`. Default Cube6 views, custom view JSON parsing,
   and input-size/FOV/output-size checks should go through this module rather
