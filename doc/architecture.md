@@ -42,8 +42,9 @@ GUI workflow unless a release note explicitly promises a specific wrapper.
   from the GUI process.
 - `core/*_job_spec.py` modules own versioned job payload builders and
   validation. Keep required fields, value ranges, and view-set structure checked
-  before a job file is written or executed. Shared validation helpers live in
-  `core/job_payload_validation.py`.
+  before a job file is written or executed. This applies to frame extraction and
+  review finalization as well as workflow, SfM, and dataset jobs. Shared
+  validation helpers live in `core/job_payload_validation.py`.
 - SphereSfM project preparation, GPU preflight, and sparse-model conversion live
   in `core/spheresfm_project.py`, `core/spheresfm_gpu_preflight.py`, and
   `core/spheresfm_to_transforms.py`. Matching files under `scripts/` are thin

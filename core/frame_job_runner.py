@@ -5,14 +5,22 @@ from pathlib import Path
 from typing import Any
 
 from core.apply_frame_decisions import apply_decisions
+from core.frame_job_spec import (
+    JOB_KIND_APPLY_FRAME_DECISIONS,
+    JOB_KIND_EXTRACT_VIDEO,
+    JOB_KIND_IMPORT_IMAGE_SEQUENCE,
+    load_frame_job,
+    validate_frame_job_payload,
+)
 from core.image_sequence_import import import_image_sequence_folder
 
-JOB_KIND_APPLY_FRAME_DECISIONS = "apply_frame_decisions"
-JOB_KIND_EXTRACT_VIDEO = "extract_video"
-JOB_KIND_IMPORT_IMAGE_SEQUENCE = "import_image_sequence"
+
+def run_frame_job_file(path: str | Path) -> None:
+    run_frame_job_payload(load_frame_job(path))
 
 
 def run_frame_job_payload(job: dict[str, Any]) -> None:
+    validate_frame_job_payload(job)
     kind = str(job["kind"])
     if kind == JOB_KIND_EXTRACT_VIDEO:
         _run_extract_video(job)

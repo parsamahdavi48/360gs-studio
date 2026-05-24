@@ -24,7 +24,7 @@ from PySide6.QtWidgets import (
 from core.app_job import frame_app_job
 from core.apply_frame_decisions import load_rows, normalize_decision, pending_drop_image_paths
 from core.extract_frames import read_selected_csv, write_selected_csv_rows
-from core.frame_job_runner import JOB_KIND_APPLY_FRAME_DECISIONS
+from core.frame_job_spec import apply_frame_decisions_job
 from core.frame_renumbering import build_renumber_plan, find_renumber_blockers, rename_records
 from core.review_blur_sensitivity import (
     BLUR_REVIEW_MODE_LOW,
@@ -357,15 +357,14 @@ class ReviewStep(BaseStepWidget):
 
     def _build_apply_cmd(self, *, finalize_in_place: bool, renumber_kept_images: bool) -> object:
         return frame_app_job(
-            {
-                "kind": JOB_KIND_APPLY_FRAME_DECISIONS,
-                "scene_dir": self.scene_dir,
-                "csv": "selected_frames.csv",
-                "output": "metashape_images",
-                "clean_output": False,
-                "finalize_in_place": finalize_in_place,
-                "renumber_kept_images": renumber_kept_images,
-            }
+            apply_frame_decisions_job(
+                scene_dir=self.scene_dir,
+                csv="selected_frames.csv",
+                output="metashape_images",
+                clean_output=False,
+                finalize_in_place=finalize_in_place,
+                renumber_kept_images=renumber_kept_images,
+            )
         )
 
     def build_commands(self) -> list[tuple[str, object]]:
