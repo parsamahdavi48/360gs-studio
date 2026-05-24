@@ -234,7 +234,7 @@ numpy, opencv-python, Pillow, open3d, ultralytics, transformers, safetensors, tq
 
 ## Developer Notes
 
-The normal workflow is GUI-first. Runtime implementation lives under `core/`, and the GUI runs app-internal work through typed jobs instead of root-level compatibility scripts. Developer and release utilities remain under `scripts/`.
+The normal workflow is GUI-first. Runtime implementation lives under `core/`, and the GUI runs app-internal work through typed jobs instead of root-level compatibility scripts. Files under `scripts/` are developer, release, or thin CLI entry points.
 
 ## License
 

@@ -234,7 +234,7 @@ numpy, opencv-python, Pillow, open3d, ultralytics, transformers, safetensors, tq
 
 ## 開発メモ
 
-通常ワークフローはGUI前提です。実行時の実装は `core/` に置き、GUIはroot直下の互換CLIスクリプトではなく、型付きジョブ経由でアプリ内部処理を呼び出します。開発・リリース用ユーティリティは `scripts/` に集約します。
+通常ワークフローはGUI前提です。実行時の実装は `core/` に置き、GUIはroot直下の互換CLIスクリプトではなく、型付きジョブ経由でアプリ内部処理を呼び出します。`scripts/` 配下は開発・リリース用、または薄いCLI入口として扱います。
 
 ## ライセンス
 

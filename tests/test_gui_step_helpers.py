@@ -1,6 +1,7 @@
 import json
 from pathlib import Path
 
+from core.spheresfm_project import prepare_masks
 from gui.steps.cubemap_commands import (
     ColmapRigFeatureGroup,
     ColmapSfmCommand,
@@ -15,7 +16,6 @@ from gui.steps.cubemap_commands import (
 )
 from gui.steps.mask_commands import MaskCommandContext, build_sam31_prompt_cmd
 from gui.steps.mask_image_import import import_external_images
-from scripts.prepare_spheresfm_project import prepare_masks
 
 
 def _mask_context(base_dir: Path) -> MaskCommandContext:

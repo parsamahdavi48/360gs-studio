@@ -3,7 +3,7 @@ from pathlib import Path
 
 import numpy as np
 
-from scripts.spheresfm_to_transforms import convert, read_model
+from core.spheresfm_to_transforms import convert, read_model
 
 
 def _write_sparse_text_model(path: Path) -> None:

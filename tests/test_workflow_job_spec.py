@@ -90,6 +90,54 @@ def test_workflow_job_rejects_wrong_kind(tmp_path: Path) -> None:
         load_workflow_job(path, expected_kind=JOB_KIND_CUBEMAP_CONVERSION)
 
 
+def test_workflow_job_rejects_disabled_or_malformed_views(tmp_path: Path) -> None:
+    payload = cubemap_conversion_job(
+        input_dir=tmp_path / "work",
+        output_dir=tmp_path / "output",
+        views=[{"name": "pz", "yaw": 0.0, "pitch": 0.0, "enabled": False}],
+        fov=90.0,
+        output_scale=0.5,
+        axis_mode="none",
+        image_only=False,
+        colmap_rig=False,
+        invert_masks=False,
+        write_images=True,
+        write_masks=True,
+        yaw_offset_per_frame=0.0,
+        output_format="jpg",
+        output_bit_depth="8",
+        jpg_quality=95,
+    )
+    with pytest.raises(ValueError, match="enabled view"):
+        write_workflow_job(tmp_path / "disabled_views.json", payload)
+
+    payload["views"] = [{"name": "pz", "yaw": 0.0, "enabled": True}]
+    with pytest.raises(ValueError, match=r"views\[0\]\.pitch"):
+        write_workflow_job(tmp_path / "missing_pitch.json", payload)
+
+
+def test_workflow_job_rejects_invalid_fov(tmp_path: Path) -> None:
+    payload = cubemap_conversion_job(
+        input_dir=tmp_path / "work",
+        output_dir=tmp_path / "output",
+        views=[{"name": "pz", "yaw": 0.0, "pitch": 0.0, "enabled": True}],
+        fov=180.0,
+        output_scale=0.5,
+        axis_mode="none",
+        image_only=False,
+        colmap_rig=False,
+        invert_masks=False,
+        write_images=True,
+        write_masks=True,
+        yaw_offset_per_frame=0.0,
+        output_format="jpg",
+        output_bit_depth="8",
+        jpg_quality=95,
+    )
+    with pytest.raises(ValueError, match="fov"):
+        write_workflow_job(tmp_path / "bad_fov.json", payload)
+
+
 def test_workflow_job_command_targets_generic_worker(tmp_path: Path) -> None:
     job = tmp_path / "job.json"
     payload = metashape_preprocess_job(

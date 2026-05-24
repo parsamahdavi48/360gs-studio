@@ -1,8 +1,20 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
+
+from core.job_payload_validation import (
+    require_bool,
+    require_finite_float,
+    require_int_range,
+    require_kind,
+    require_mapping,
+    require_schema_version,
+    require_str,
+    require_views,
+)
 
 WORKFLOW_JOB_SCHEMA_VERSION = 1
 
@@ -207,7 +219,7 @@ def spheresfm_transforms_job(
 
 def write_workflow_job(path: str | Path, payload: dict[str, Any]) -> Path:
     job_path = Path(path)
-    _validate_payload(payload)
+    validate_workflow_job_payload(payload)
     job_path.parent.mkdir(parents=True, exist_ok=True)
     job_path.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
     return job_path
@@ -217,16 +229,104 @@ def load_workflow_job(path: str | Path, *, expected_kind: str = "") -> dict[str,
     payload = json.loads(Path(path).read_text(encoding="utf-8"))
     if not isinstance(payload, dict):
         raise ValueError(f"Workflow job must be a JSON object: {path}")
-    _validate_payload(payload)
+    validate_workflow_job_payload(payload)
     if expected_kind and payload["kind"] != expected_kind:
         raise ValueError(f"Workflow job kind must be {expected_kind}: {payload['kind']}")
     return payload
 
 
-def _validate_payload(payload: dict[str, Any]) -> None:
-    version = int(payload.get("schema_version") or 0)
-    if version != WORKFLOW_JOB_SCHEMA_VERSION:
-        raise ValueError(f"Unsupported workflow job schema version: {version}")
-    kind = str(payload.get("kind") or "")
-    if kind not in WORKFLOW_JOB_KINDS:
-        raise ValueError(f"Unsupported workflow job kind: {kind}")
+def validate_workflow_job_payload(payload: dict[str, Any]) -> None:
+    data = require_mapping(payload, label="workflow")
+    require_schema_version(data, expected=WORKFLOW_JOB_SCHEMA_VERSION, label="workflow")
+    kind = require_kind(data, allowed=WORKFLOW_JOB_KINDS, label="workflow")
+    if kind == JOB_KIND_METASHAPE_PREPROCESS:
+        _validate_metashape_preprocess_job(data)
+    elif kind == JOB_KIND_CUBEMAP_CONVERSION:
+        _validate_cubemap_conversion_job(data)
+    elif kind == JOB_KIND_TRANSFORMS_TO_COLMAP:
+        _validate_transforms_to_colmap_job(data)
+    elif kind == JOB_KIND_SPHERESFM_PREFLIGHT:
+        _validate_spheresfm_preflight_job(data)
+    elif kind == JOB_KIND_SPHERESFM_PREPARE:
+        _validate_spheresfm_prepare_job(data)
+    elif kind == JOB_KIND_SPHERESFM_TRANSFORMS:
+        _validate_spheresfm_transforms_job(data)
+
+
+def _validate_metashape_preprocess_job(payload: Mapping[str, Any]) -> None:
+    for key in ("images_dir", "xml_path", "output_dir"):
+        require_str(payload, key, label="workflow")
+    require_bool(payload, "use_ply", label="workflow")
+    require_str(payload, "ply_path", label="workflow", allow_empty=not bool(payload.get("use_ply")))
+    require_bool(payload, "no_fix_rotation", label="workflow")
+    require_finite_float(payload, "scale", label="workflow", min_value=0.0, min_inclusive=False)
+
+
+def _validate_cubemap_conversion_job(payload: Mapping[str, Any]) -> None:
+    for key in (
+        "input_dir",
+        "output_dir",
+        "input_json",
+        "axis_mode",
+        "output_format",
+        "output_bit_depth",
+        "workers",
+        "remap_cache_limit",
+        "final_orientation",
+        "realityscan_pose_prior",
+        "realityscan_calibration_prior",
+        "realityscan_coordinates",
+        "realityscan_rig_name",
+    ):
+        require_str(payload, key, label="workflow")
+    require_str(payload, "image_dir", label="workflow", allow_empty=True)
+    require_str(payload, "mask_dir", label="workflow", allow_empty=True)
+    require_str(payload, "colmap_rig_name", label="workflow", allow_empty=False)
+    require_str(payload, "realityscan_unposed_scene_dir", label="workflow", allow_empty=True)
+    require_views(payload, label="workflow")
+    require_finite_float(payload, "fov", label="workflow", min_value=0.0, max_value=180.0, min_inclusive=False, max_inclusive=False)
+    require_finite_float(payload, "output_scale", label="workflow", min_value=0.0, max_value=1.0, min_inclusive=False)
+    require_finite_float(payload, "yaw_offset_per_frame", label="workflow")
+    require_int_range(payload, "jpg_quality", label="workflow", min_value=1, max_value=100)
+    for key in (
+        "image_only",
+        "colmap_rig",
+        "allow_duplicate",
+        "mask_from_alpha",
+        "invert_masks",
+        "write_images",
+        "write_masks",
+        "realityscan_xmp",
+        "realityscan_include_rig",
+        "realityscan_mask_layers",
+        "realityscan_unposed_images",
+    ):
+        require_bool(payload, key, label="workflow")
+
+
+def _validate_transforms_to_colmap_job(payload: Mapping[str, Any]) -> None:
+    for key in ("input_dir", "output_dir", "json_name", "image_prefix"):
+        require_str(payload, key, label="workflow", allow_empty=key == "image_prefix")
+    require_str(payload, "ply_path", label="workflow", allow_empty=True)
+    require_str(payload, "dataset_root", label="workflow", allow_empty=True)
+    require_str(payload, "asset_input_dir", label="workflow", allow_empty=True)
+    require_bool(payload, "copy_images", label="workflow")
+    require_bool(payload, "copy_masks", label="workflow")
+
+
+def _validate_spheresfm_preflight_job(payload: Mapping[str, Any]) -> None:
+    for key in ("colmap", "images_dir", "work_dir", "camera_params"):
+        require_str(payload, key, label="workflow")
+
+
+def _validate_spheresfm_prepare_job(payload: Mapping[str, Any]) -> None:
+    for key in ("colmap", "images_dir", "source_masks_dir", "output_masks_dir"):
+        require_str(payload, key, label="workflow")
+    require_bool(payload, "use_masks", label="workflow")
+
+
+def _validate_spheresfm_transforms_job(payload: Mapping[str, Any]) -> None:
+    for key in ("sparse_dir", "output_dir", "images_dir", "image_path_mode"):
+        require_str(payload, key, label="workflow")
+    require_bool(payload, "opengl_camera", label="workflow")
+    require_bool(payload, "write_pointcloud", label="workflow")

@@ -22,6 +22,25 @@ from core.cubemap_transforms_json import (
 from core.dataset_writer_colmap import replace_file_with_link_or_copy
 from core.metashape_preprocess import export_metashape_equirectangular_dataset
 from core.realityscan_xmp import append_realityscan_unposed_scene_images
+from core.spheresfm_gpu_preflight import (
+    build_feature_command as build_spheresfm_preflight_feature_command,
+)
+from core.spheresfm_gpu_preflight import (
+    reset_preflight_workspace,
+)
+from core.spheresfm_gpu_preflight import (
+    run_colmap_command as run_spheresfm_preflight_colmap_command,
+)
+from core.spheresfm_project import (
+    iter_images as iter_spheresfm_images,
+)
+from core.spheresfm_project import (
+    prepare_masks as prepare_spheresfm_masks,
+)
+from core.spheresfm_project import (
+    validate_spheresfm_colmap,
+)
+from core.spheresfm_to_transforms import convert as convert_spheresfm_to_transforms
 from core.transforms_to_colmap import convert as convert_transforms_to_colmap
 from core.workflow_job_spec import (
     JOB_KIND_CUBEMAP_CONVERSION,
@@ -31,26 +50,8 @@ from core.workflow_job_spec import (
     JOB_KIND_SPHERESFM_TRANSFORMS,
     JOB_KIND_TRANSFORMS_TO_COLMAP,
     load_workflow_job,
+    validate_workflow_job_payload,
 )
-from scripts.prepare_spheresfm_project import (
-    iter_images as iter_spheresfm_images,
-)
-from scripts.prepare_spheresfm_project import (
-    prepare_masks as prepare_spheresfm_masks,
-)
-from scripts.prepare_spheresfm_project import (
-    validate_spheresfm_colmap,
-)
-from scripts.spheresfm_gpu_preflight import (
-    build_feature_command as build_spheresfm_preflight_feature_command,
-)
-from scripts.spheresfm_gpu_preflight import (
-    reset_preflight_workspace,
-)
-from scripts.spheresfm_gpu_preflight import (
-    run_colmap_command as run_spheresfm_preflight_colmap_command,
-)
-from scripts.spheresfm_to_transforms import convert as convert_spheresfm_to_transforms
 
 
 def run_workflow_job_file(path: str | Path) -> None:
@@ -58,6 +59,7 @@ def run_workflow_job_file(path: str | Path) -> None:
 
 
 def run_workflow_job_payload(job: dict) -> None:
+    validate_workflow_job_payload(job)
     kind = str(job["kind"])
     if kind == JOB_KIND_METASHAPE_PREPROCESS:
         _run_metashape_preprocess(job)

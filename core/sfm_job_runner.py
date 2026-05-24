@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from core.colmap_mixed_project import prepare_colmap_mixed_project
-from core.sfm_job_spec import JOB_KIND_COLMAP_MIXED_PROJECT, load_sfm_job
+from core.sfm_job_spec import JOB_KIND_COLMAP_MIXED_PROJECT, load_sfm_job, validate_sfm_job_payload
 
 
 def run_sfm_job_file(path: str | Path) -> None:
@@ -11,6 +11,7 @@ def run_sfm_job_file(path: str | Path) -> None:
 
 
 def run_sfm_job_payload(job: dict) -> None:
+    validate_sfm_job_payload(job)
     kind = str(job["kind"])
     if kind == JOB_KIND_COLMAP_MIXED_PROJECT:
         _run_colmap_mixed_project(job)

@@ -178,7 +178,7 @@ def load_colmap_preview_dataset(
     opengl_camera: bool = False,
     sphere_as_equirectangular: bool = True,
 ) -> ScenePreviewDataset:
-    from scripts.spheresfm_to_transforms import colmap_pose_to_c2w, read_model
+    from core.spheresfm_to_transforms import colmap_pose_to_c2w, read_model
 
     cameras_by_id, images_by_id, points_by_id, resolved_model_dir = read_model(Path(model_dir))
     root = Path(images_dir) if images_dir is not None else resolved_model_dir

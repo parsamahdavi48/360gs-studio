@@ -8,6 +8,7 @@ from core.dataset_job_spec import (
     JOB_KIND_METASHAPE_NERF,
     JOB_KIND_REALITYSCAN_LFS_COLMAP,
     load_dataset_job,
+    validate_dataset_job_payload,
 )
 from core.metashape_colmap_dataset import export_metashape_colmap_dataset
 from core.metashape_nerf_dataset import export_metashape_nerf_dataset
@@ -19,6 +20,7 @@ def run_dataset_job_file(path: str | Path) -> None:
 
 
 def run_dataset_job_payload(job: dict) -> None:
+    validate_dataset_job_payload(job)
     kind = str(job["kind"])
     if kind == JOB_KIND_METASHAPE_COLMAP:
         _run_metashape_colmap(job)

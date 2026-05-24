@@ -1,8 +1,20 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
+
+from core.job_payload_validation import (
+    require_bool,
+    require_finite_float,
+    require_int_range,
+    require_kind,
+    require_mapping,
+    require_schema_version,
+    require_str,
+    require_views,
+)
 
 DATASET_JOB_SCHEMA_VERSION = 1
 JOB_KIND_METASHAPE_COLMAP = "metashape_colmap_dataset"
@@ -115,7 +127,7 @@ def realityscan_lfs_colmap_job(
 
 def write_dataset_job(path: str | Path, payload: dict[str, Any]) -> Path:
     job_path = Path(path)
-    _validate_payload(payload)
+    validate_dataset_job_payload(payload)
     job_path.parent.mkdir(parents=True, exist_ok=True)
     job_path.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
     return job_path
@@ -125,16 +137,46 @@ def load_dataset_job(path: str | Path, *, expected_kind: str = "") -> dict[str, 
     payload = json.loads(Path(path).read_text(encoding="utf-8"))
     if not isinstance(payload, dict):
         raise ValueError(f"Dataset job must be a JSON object: {path}")
-    _validate_payload(payload)
+    validate_dataset_job_payload(payload)
     if expected_kind and payload["kind"] != expected_kind:
         raise ValueError(f"Dataset job kind must be {expected_kind}: {payload['kind']}")
     return payload
 
 
-def _validate_payload(payload: dict[str, Any]) -> None:
-    version = int(payload.get("schema_version") or 0)
-    if version != DATASET_JOB_SCHEMA_VERSION:
-        raise ValueError(f"Unsupported dataset job schema version: {version}")
-    kind = str(payload.get("kind") or "")
-    if kind not in {JOB_KIND_METASHAPE_COLMAP, JOB_KIND_METASHAPE_NERF, JOB_KIND_REALITYSCAN_LFS_COLMAP}:
-        raise ValueError(f"Unsupported dataset job kind: {kind}")
+def validate_dataset_job_payload(payload: dict[str, Any]) -> None:
+    data = require_mapping(payload, label="dataset")
+    require_schema_version(data, expected=DATASET_JOB_SCHEMA_VERSION, label="dataset")
+    kind = require_kind(
+        data,
+        allowed={JOB_KIND_METASHAPE_COLMAP, JOB_KIND_METASHAPE_NERF, JOB_KIND_REALITYSCAN_LFS_COLMAP},
+        label="dataset",
+    )
+    if kind in {JOB_KIND_METASHAPE_COLMAP, JOB_KIND_METASHAPE_NERF}:
+        _validate_metashape_dataset_job(data)
+    elif kind == JOB_KIND_REALITYSCAN_LFS_COLMAP:
+        _validate_realityscan_lfs_colmap_job(data)
+
+
+def _validate_metashape_dataset_job(payload: Mapping[str, Any]) -> None:
+    for key in ("scene_dir", "images_dir", "xml_path", "output_dir", "output_format", "output_bit_depth"):
+        require_str(payload, key, label="dataset")
+    require_str(payload, "masks_dir", label="dataset", allow_empty=True)
+    require_str(payload, "ply_path", label="dataset", allow_empty=True)
+    require_str(payload, "axis_transform", label="dataset")
+    require_str(payload, "final_orientation", label="dataset")
+    require_views(payload, label="dataset")
+    require_finite_float(payload, "output_scale", label="dataset", min_value=0.0, max_value=1.0, min_inclusive=False)
+    require_finite_float(payload, "undistort_alpha", label="dataset", min_value=0.0, max_value=1.0)
+    require_int_range(payload, "jpg_quality", label="dataset", min_value=1, max_value=100)
+
+
+def _validate_realityscan_lfs_colmap_job(payload: Mapping[str, Any]) -> None:
+    for key in ("csv_path", "output_dir", "images_dir"):
+        require_str(payload, key, label="dataset")
+    require_str(payload, "masks_dir", label="dataset", allow_empty=True)
+    require_str(payload, "ply_path", label="dataset", allow_empty=True)
+    require_bool(payload, "skip_missing_images", label="dataset")
+    require_bool(payload, "pre_undistort_distorted_images", label="dataset")
+    require_finite_float(payload, "undistort_alpha", label="dataset", min_value=0.0, max_value=1.0)
+    require_finite_float(payload, "camera_rotation_x_deg", label="dataset")
+    require_finite_float(payload, "pointcloud_rotation_x_deg", label="dataset")
