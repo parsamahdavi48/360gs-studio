@@ -16,13 +16,13 @@ Last updated: 2026-05-25
 
 Latest checkpoint:
 
-- Large GUI split continued for Step 3: mask command planning, JSONL target
-  manifest writing, mask settings/control-state formatting, and temporary
-  preview orchestration now live in dedicated modules. Scene/source state,
-  batch orchestration, model license/checkpoint checks, and model-control
-  state glue were also split into focused modules.
-- Validation at the latest checkpoint: `ruff check .` and `pytest -q` pass
-  locally.
+- Large GUI split continued into Step 1. Input source queue/autoload handling,
+  extraction readiness/job construction/progress parsing, and video probe/source
+  registry/estimate helpers now live in dedicated modules. `step1_extract.py`
+  is now mostly widget layout plus mode-control glue.
+- Validation at the latest checkpoint: Step 1 targeted `ruff` and
+  `tests/test_step1_extract_ready.py tests/test_form_tooltips.py` pass locally;
+  full `ruff check .` and `pytest -q` also pass locally.
 
 ### 1. Mask Job Contract
 
@@ -89,10 +89,21 @@ Status: mostly complete; main Step 3/Step 4/preview routes audited.
 
 ### 5. Large GUI Step Split
 
-Status: in progress; Step 3 first slices complete.
+Status: in progress; Step 3 first slices complete and Step 1 first slices complete.
 
 - Step 4 has several mixins, but `gui/steps/step4_cubemap.py` and
   `gui/steps/step4_training.py` remain large.
+- `gui/steps/step1_input_sources.py` owns Step 1 input-source queue state,
+  file/folder add/remove actions, scene autoload, source-video registry lookup,
+  prefix allocation, and queue labels.
+- `gui/steps/step1_execution.py` owns Step 1 readiness checks, extraction/import
+  `AppJob` construction, phase labels, progress parsing, and completion refresh.
+- `gui/steps/step1_video_info.py` owns Step 1 FFprobe metadata loading, source
+  video registry writes, video/image-sequence info labels, and instant estimate
+  formatting.
+- `gui/steps/step1_extract.py` now focuses on widget construction, scene label
+  display, source-mode controls, extraction-mode controls, and interval/profile
+  field synchronization.
 - `gui/steps/step3_mask_progress.py` owns Step 3 worker-output progress
   parsing.
 - `gui/steps/step3_mask_records.py` owns Step 3 mask metadata recording.
@@ -119,15 +130,14 @@ Status: in progress; Step 3 first slices complete.
 - `gui/steps/step3_mask_controls.py` owns selected model/class/prompt state,
   model option visibility, custom-mask picker state, image-dir preview sync,
   and `MaskCommandContext` creation.
-- `gui/steps/step3_mask.py` and `gui/steps/step1_extract.py` still remain
-  large; Step 3 is now mostly widget construction.
+- `gui/steps/step3_mask.py` and `gui/steps/step1_extract.py` are now mostly
+  widget construction/control glue.
 - Split order after core contracts settle:
-  1. Move to `step1_extract.py`; start with input source queue / scene-source
-     autoload helpers.
-  2. If Step 1 split exposes shared source contracts, move them to `core/`
-     before continuing UI-only slicing.
-  3. `step4_training.py`
-  4. remaining `step4_cubemap.py` orchestration
+  1. Review the new Step 1 source modules for any reusable source contracts
+     that should move to `core/`; keep GUI-only queue/display behavior in
+     `gui/steps/`.
+  2. Split `step4_training.py`.
+  3. Split remaining `step4_cubemap.py` orchestration.
 
 ### 6. Pre-Merge Audit
 
