@@ -18,7 +18,6 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QLineEdit,
-    QMessageBox,
     QScrollArea,
     QSplitter,
     QTabWidget,
@@ -27,24 +26,12 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from core.apply_frame_decisions import pending_drop_image_paths, untracked_image_paths
 from core.mask_refresh_plan import (
     MASK_SCOPE_ALL,
     MASK_SCOPE_MISSING,
     MASK_SCOPE_STALE,
-    build_mask_refresh_plan,
-    normalize_mask_scope,
 )
-from core.mask_source_scope import MASK_SOURCE_ALL, build_mask_source_options, filter_images_by_source
 from core.mask_view_recipes import QUALITY_CHOICES
-from core.scene_inventory import (
-    PROJECTION_EQUIRECTANGULAR,
-    PROJECTION_NORMAL,
-    PROJECTION_UNKNOWN,
-    build_scene_inventory,
-)
-from core.scene_layout import scene_images_dir, scene_masks_dir, selected_frames_path
-from core.scene_project import scene_relative, utc_now_iso
 from gui import i18n
 from gui.common.collapsible_section import CollapsibleSection
 from gui.common.drag_spinbox import DragDoubleSpinBox, DragSpinBox
@@ -61,32 +48,16 @@ from gui.steps.base_step import (
 from gui.steps.mask_commands import (
     MaskCommandContext,
 )
-from gui.steps.sam31_setup import ensure_sam31_checkpoint_available
 from gui.steps.step3_mask_actions import Step3MaskActionsMixin
-from gui.steps.step3_mask_manifests import write_mask_target_manifest, write_projection_manifests
-from gui.steps.step3_mask_plan import (
-    MASK_COMMAND_CUSTOM,
-    MASK_COMMAND_INIT,
-    MASK_COMMAND_OVEREXPOSURE,
-    MASK_COMMAND_STITCH,
-    MASK_COMMAND_YOLO,
-    MASK_TASK_CUSTOM,
-    MASK_TASK_OVEREXPOSURE,
-    MASK_TASK_STITCH,
-    MASK_TASK_YOLO,
-    MaskCommandSpec,
-    build_mixed_mask_command_specs,
-    build_uniform_mask_command_specs,
-    needs_target_manifest,
-)
+from gui.steps.step3_mask_batch import Step3MaskBatchMixin
+from gui.steps.step3_mask_license import Step3MaskLicenseMixin
 from gui.steps.step3_mask_progress import MaskProgressParser
-from gui.steps.step3_mask_records import record_mask_outputs
+from gui.steps.step3_mask_scene import Step3MaskSceneMixin
 from gui.steps.step3_mask_settings import (
     Step3MaskSettingsState,
     normalize_sam31_merge_mode,
     split_sam_prompt_text,
 )
-from gui.user_settings import load_user_settings_section, update_user_settings_section
 
 _COCO_CLASS_NAMES = [
     "person",
@@ -371,11 +342,6 @@ _SKY_BACKENDS = ("mask2former", "sam31")
 _SKY_SAM31_CHECKPOINT = Path("models") / "sam3.1" / "sam3.1_multiplex.pt"
 _PROJECTION_EQUIRECT = "equirect"
 _PROJECTION_NORMAL = "normal"
-_LICENSE_NOTICE_SECTION = "license_notices"
-_YOLO_SAM_NOTICE_VERSION = 3
-_YOLO_SAM_NOTICE_KEY = "yolo_sam_models_ack_version"
-_SKY_NOTICE_VERSION = 2
-_SKY_NOTICE_KEY = "sky_models_ack_version"
 _MASK_SCOPE_COMBO_MIN_WIDTH = 180
 _MASK_SCOPE_COMBO_MAX_WIDTH = 260
 _COMBO_TEXT_PADDING = 48
@@ -400,7 +366,13 @@ def _ade20k_class_names(base_dir: Path) -> tuple[str, ...]:
     return _ADE20K_FALLBACK_CLASSES
 
 
-class MaskStep(Step3MaskActionsMixin, BaseStepWidget):
+class MaskStep(
+    Step3MaskActionsMixin,
+    Step3MaskSceneMixin,
+    Step3MaskBatchMixin,
+    Step3MaskLicenseMixin,
+    BaseStepWidget,
+):
     def __init__(self, base_dir: Path, parent: QWidget | None = None) -> None:
         super().__init__(base_dir, parent)
         self._progress_parser = MaskProgressParser()
@@ -1037,194 +1009,6 @@ class MaskStep(Step3MaskActionsMixin, BaseStepWidget):
         self._on_images_dir_changed(self._images_dir_text())
         self._update_ready_status()
 
-    def set_scene_dir(self, path: str) -> None:
-        super().set_scene_dir(path)
-        if path:
-            p = Path(path)
-            self.images_path_label.setText(str(scene_images_dir(p)))
-            self.masks_path_label.setText(str(scene_masks_dir(p)))
-        else:
-            self.images_path_label.setText("-")
-            self.masks_path_label.setText("-")
-        self._sync_projection_from_project()
-        self._refresh_mask_source_options()
-        self._on_images_dir_changed(self._images_dir_text())
-        self._render_mask_preview()
-        self._update_ready_status()
-
-    def primary_action_text(self) -> str:
-        return i18n.t("GENERATE")
-
-    def primary_action_tooltip(self) -> str:
-        ready, reason = self._readiness()
-        return i18n.tip("RUN_MASKS") if ready else reason
-
-    def primary_action_enabled(self) -> bool:
-        ready, _reason = self._readiness()
-        return ready
-
-    def on_activated(self) -> None:
-        self._refresh_mask_source_options()
-        self.mask_preview.refresh_image_list(prefer_current=True)
-        self._render_mask_preview()
-        self._update_ready_status()
-
-    def _images_dir_text(self) -> str:
-        if not self.scene_dir:
-            return ""
-        return str(scene_images_dir(Path(self.scene_dir)))
-
-    def _masks_dir_text(self) -> str:
-        if not self.scene_dir:
-            return ""
-        return str(scene_masks_dir(Path(self.scene_dir)))
-
-    def _selected_mask_tasks(self) -> list[str]:
-        requested_steps = [MASK_TASK_YOLO]
-        if self._has_equirect_images() and self.run_stitch_cb.isChecked():
-            requested_steps.append(MASK_TASK_STITCH)
-        if self.run_overexp_cb.isChecked():
-            requested_steps.append(MASK_TASK_OVEREXPOSURE)
-        if self.run_custom_cb.isChecked():
-            requested_steps.append(MASK_TASK_CUSTOM)
-        return requested_steps
-
-    def _mask_scope(self) -> str:
-        return normalize_mask_scope(str(self.mask_scope_combo.currentData() or MASK_SCOPE_MISSING))
-
-    def _selected_mask_source_key(self) -> str:
-        return str(self.mask_source_combo.currentData() or MASK_SOURCE_ALL)
-
-    def _on_mask_source_changed(self) -> None:
-        if self._syncing_mask_source_combo:
-            return
-        self._render_mask_preview()
-        self._update_ready_status()
-
-    def _projection(self) -> str:
-        return self._project_projection
-
-    def _set_projection(self, projection: str) -> None:
-        if projection not in {_PROJECTION_EQUIRECT, _PROJECTION_NORMAL}:
-            projection = _PROJECTION_EQUIRECT
-        self._project_projection = projection
-        self.yolo_level_combo.setCurrentIndex(0 if projection == _PROJECTION_NORMAL else 1)
-        if hasattr(self, "mask_preview"):
-            self._update_preview_projection_enabled()
-        self._update_task_controls()
-
-    def _sync_projection_from_project(self) -> None:
-        if not self.scene_dir:
-            self._projection_mixed = False
-            self._projection_source = "default"
-            self._image_projection_map = {}
-            self._set_projection(_PROJECTION_EQUIRECT)
-            return
-        inventory = build_scene_inventory(Path(self.scene_dir))
-        self._image_projection_map = {image.rel_path: image.projection for image in inventory.images}
-        projections = {image.projection for image in inventory.images if image.projection != PROJECTION_UNKNOWN}
-        self._projection_mixed = len(projections) > 1
-        self._projection_source = "project" if inventory.images else "default"
-        if self._projection_mixed or PROJECTION_EQUIRECTANGULAR in projections or not projections:
-            self._set_projection(_PROJECTION_EQUIRECT)
-        else:
-            self._set_projection(_PROJECTION_NORMAL)
-
-    def _refresh_mask_source_options(self) -> None:
-        current = self._selected_mask_source_key() if hasattr(self, "mask_source_combo") else MASK_SOURCE_ALL
-        self._syncing_mask_source_combo = True
-        try:
-            self.mask_source_combo.clear()
-            self.mask_source_combo.addItem(i18n.t("MASK_SOURCE_ALL"), MASK_SOURCE_ALL)
-            if self.scene_dir and Path(self.scene_dir).is_dir():
-                inventory = build_scene_inventory(Path(self.scene_dir))
-                for option in build_mask_source_options(Path(self.scene_dir), inventory.images):
-                    label = i18n.t("MASK_SOURCE_ITEM").format(label=option.label, count=option.image_count)
-                    self.mask_source_combo.addItem(label, option.key)
-            index = self.mask_source_combo.findData(current)
-            self.mask_source_combo.setCurrentIndex(index if index >= 0 else 0)
-        finally:
-            self._syncing_mask_source_combo = False
-
-    def _refresh_image_projection_map(self) -> None:
-        if not self.scene_dir:
-            self._image_projection_map = {}
-            return
-        scene = Path(self.scene_dir)
-        inventory = build_scene_inventory(scene)
-        self._image_projection_map = {image.rel_path: image.projection for image in inventory.images}
-
-    def _scene_image_paths(self) -> list[Path]:
-        if not self.scene_dir:
-            return []
-        images = Path(self._images_dir_text())
-        inventory = build_scene_inventory(Path(self.scene_dir), images_dir=images)
-        return [image.path for image in inventory.images]
-
-    def _projection_key_for_image(self, image_path: Path) -> str:
-        if not self.scene_dir:
-            return image_path.name
-        return scene_relative(Path(self.scene_dir), image_path).replace("\\", "/")
-
-    def _projection_for_image(self, image_path: Path | None) -> str:
-        if image_path is None:
-            return self._projection()
-        projection = self._image_projection_map.get(self._projection_key_for_image(image_path), "")
-        if projection == PROJECTION_EQUIRECTANGULAR:
-            return _PROJECTION_EQUIRECT
-        if projection == PROJECTION_NORMAL:
-            return _PROJECTION_NORMAL
-        return self._projection()
-
-    def _has_equirect_images(self) -> bool:
-        if self._projection_mixed:
-            return any(value == PROJECTION_EQUIRECTANGULAR for value in self._image_projection_map.values())
-        return self._projection() == _PROJECTION_EQUIRECT
-
-    def _update_preview_projection_enabled(self) -> None:
-        image_path = self.mask_preview.current_image_path() if hasattr(self, "mask_preview") else None
-        projection = self._projection_for_image(image_path)
-        self.mask_preview.set_perspective_enabled(projection == _PROJECTION_EQUIRECT)
-
-    def _scene_csv_path(self) -> Path:
-        return selected_frames_path(Path(self.scene_dir))
-
-    def _has_image_files(self) -> bool:
-        if not self.scene_dir:
-            return False
-        images = Path(self._images_dir_text())
-        if not images.is_dir():
-            return False
-        return build_scene_inventory(Path(self.scene_dir), images_dir=images).image_count > 0
-
-    def _readiness(self) -> tuple[bool, str]:
-        if not self.scene_dir:
-            return False, i18n.t("SCENE_REQUIRED_ACTION_HINT")
-        if not Path(self.scene_dir).is_dir():
-            return False, i18n.t("MASK_READY_SCENE_NOT_FOUND")
-        images = Path(self._images_dir_text())
-        if not images.is_dir():
-            return False, i18n.t("MASK_READY_NO_IMAGES_DIR")
-        if not self._has_image_files():
-            return False, i18n.t("MASK_READY_NO_IMAGES")
-        if self.run_custom_cb.isChecked():
-            custom_mask = self._custom_mask_path_text()
-            if not custom_mask:
-                return False, i18n.t("CUSTOM_MASK_REQUIRED")
-            if not Path(custom_mask).is_file():
-                return False, i18n.t("CUSTOM_MASK_NOT_FOUND").format(path=custom_mask)
-        if not self._selected_mask_tasks():
-            return False, i18n.t("MASK_TASK_REQUIRED")
-        if self._projection_mixed:
-            return True, i18n.t("MASK_READY_MIXED_IMAGE_TYPES")
-        if not self._scene_csv_path().is_file():
-            return True, i18n.t("MASK_READY_EXTERNAL_IMAGES")
-        return True, i18n.t("MASK_READY_OK")
-
-    def _update_ready_status(self) -> None:
-        self._readiness()
-        self.primary_action_state_changed.emit()
-
     def _selected_classes(self) -> list[int]:
         return [i for i, cb in enumerate(self.class_cbs) if cb.isChecked()]
 
@@ -1468,270 +1252,6 @@ class MaskStep(Step3MaskActionsMixin, BaseStepWidget):
         self._update_preview_projection_enabled()
         self._render_mask_preview()
 
-    def phase_display_name(self, phase: str) -> str:
-        labels = {
-            "yolo": "MASK_PHASE_PRIMARY",
-            "yolo_equirect": "MASK_PHASE_PRIMARY",
-            "yolo_normal": "MASK_PHASE_PRIMARY",
-            "stitch": "MASK_PHASE_STITCH",
-            "stitch_equirect": "MASK_PHASE_STITCH",
-            "overexposure": "MASK_PHASE_OVEREXPOSURE",
-            "custom": "MASK_PHASE_CUSTOM",
-            "init_masks": "MASK_PHASE_INIT",
-        }
-        key = labels.get(phase)
-        return i18n.t(key) if key else phase
-
-    def build_commands(self) -> list[tuple[str, list[str]]]:
-        ready, reason = self._readiness()
-        if not ready:
-            raise ValueError(reason)
-        requested_steps = self._selected_mask_tasks()
-        if not requested_steps:
-            raise ValueError(i18n.t("MASK_TASK_REQUIRED"))
-
-        self._ensure_no_pending_drop_images()
-        self._ensure_no_untracked_images()
-
-        all_image_paths = self._scene_image_paths()
-        settings = self._mask_settings_snapshot()
-        image_paths = self._source_filtered_image_paths()
-        if not image_paths:
-            raise ValueError(i18n.t("MASK_SOURCE_EMPTY"))
-        target_paths = self._mask_target_paths(image_paths, settings=settings)
-        if not target_paths:
-            raise ValueError(i18n.t("MASK_TARGETS_EMPTY"))
-
-        if self._projection_mixed:
-            manifests = self._write_projection_manifests(image_paths=target_paths)
-            specs = build_mixed_mask_command_specs(requested_steps, manifests=manifests)
-        else:
-            target_manifest = (
-                self._write_mask_target_manifest(target_paths)
-                if needs_target_manifest(
-                    source_is_all=self._selected_mask_source_key() == MASK_SOURCE_ALL,
-                    target_count=len(target_paths),
-                    all_image_count=len(all_image_paths),
-                )
-                else None
-            )
-            specs = build_uniform_mask_command_specs(requested_steps, target_manifest=target_manifest)
-
-        steps = [(spec.phase, self._command_from_mask_spec(spec)) for spec in specs]
-        self._mask_batch_settings = settings
-        self._mask_batch_phases = [phase for phase, _cmd in steps]
-        self._mask_batch_targets = target_paths
-        return steps
-
-    def _command_from_mask_spec(self, spec: MaskCommandSpec) -> list[str]:
-        if spec.command == MASK_COMMAND_YOLO:
-            return self._build_yolo_cmd(projection=spec.projection, image_list=spec.image_list)
-        if spec.command == MASK_COMMAND_INIT:
-            return self._build_init_masks_cmd(image_list=spec.image_list)
-        if spec.command == MASK_COMMAND_STITCH:
-            return self._build_stitch_cmd(image_list=spec.image_list)
-        if spec.command == MASK_COMMAND_OVEREXPOSURE:
-            return self._build_overexposure_cmd(replace=spec.replace, image_list=spec.image_list)
-        if spec.command == MASK_COMMAND_CUSTOM:
-            return self._build_custom_cmd(replace=spec.replace, image_list=spec.image_list)
-        raise ValueError(f"Unknown mask command spec: {spec.command}")
-
-    def _write_projection_manifests(self, *, image_paths: list[Path] | None = None) -> dict[str, Path]:
-        if not self.scene_dir:
-            raise ValueError(i18n.t("SCENE_REQUIRED_ACTION_HINT"))
-        image_paths = image_paths or self._scene_image_paths()
-        if not image_paths:
-            return {}
-        return write_projection_manifests(
-            scene_dir=self.scene_dir,
-            image_paths=image_paths,
-            projection_for_image=self._projection_for_image,
-            mask_path_for_image=self._mask_output_path_for_image,
-            run_id_factory=self._new_mask_run_id,
-        )
-
-    def _source_filtered_image_paths(self) -> list[Path]:
-        if not self.scene_dir:
-            return []
-        inventory = build_scene_inventory(Path(self.scene_dir))
-        images = filter_images_by_source(inventory.images, self._selected_mask_source_key())
-        return [image.path for image in images]
-
-    def _mask_target_paths(self, image_paths: list[Path], *, settings: dict) -> list[Path]:
-        if not self.scene_dir:
-            return []
-        plan = build_mask_refresh_plan(
-            scene_dir=Path(self.scene_dir),
-            image_paths=image_paths,
-            mask_path_for_image=self._mask_output_path_for_image,
-            settings=settings,
-            scope=self._mask_scope(),
-        )
-        return list(plan.targets)
-
-    def _write_mask_target_manifest(self, image_paths: list[Path]) -> Path:
-        if not self.scene_dir:
-            raise ValueError(i18n.t("SCENE_REQUIRED_ACTION_HINT"))
-        return write_mask_target_manifest(
-            scene_dir=self.scene_dir,
-            image_paths=image_paths,
-            projection_for_image=self._projection_for_image,
-            mask_path_for_image=self._mask_output_path_for_image,
-            run_id_factory=self._new_mask_run_id,
-        )
-
-    def confirm_commands(self, commands: list[tuple[str, list[str]]]) -> bool:
-        if any(phase.startswith("yolo") for phase, _cmd in commands):
-            if self._person_backend_arg() == "yolo_sam":
-                if not self._confirm_yolo_sam_license_notice():
-                    return False
-            else:
-                if not self._confirm_sky_license_notice():
-                    return False
-                if self._uses_sam31_for_primary_mask() and not self._ensure_sam31_checkpoint_available():
-                    return False
-        return True
-
-    def _uses_sam31_for_primary_mask(self) -> bool:
-        return self._person_uses_sam31() or self._sky_backend_arg() == "sam31"
-
-    def _ensure_sam31_checkpoint_available(self) -> bool:
-        return ensure_sam31_checkpoint_available(
-            self,
-            self._sam31_checkpoint_path(),
-            on_available=self._refresh_sam31_backend_availability,
-        )
-
-    def _refresh_sam31_backend_availability(self) -> None:
-        self._update_person_backend_availability()
-        self._update_sky_backend_availability()
-
-    def _confirm_yolo_sam_license_notice(self) -> bool:
-        if self._yolo_sam_notice_acknowledged():
-            return True
-
-        box = QMessageBox(self)
-        box.setIcon(QMessageBox.Warning)
-        box.setWindowTitle(i18n.t("YOLO_SAM_LICENSE_NOTICE_TITLE"))
-        box.setText(i18n.t("YOLO_SAM_LICENSE_NOTICE_BODY"))
-        box.setTextInteractionFlags(Qt.TextSelectableByMouse)
-
-        remember_cb = QCheckBox(i18n.t("YOLO_SAM_LICENSE_NOTICE_DONT_SHOW_AGAIN"))
-        remember_cb.setChecked(True)
-        box.setCheckBox(remember_cb)
-
-        continue_btn = box.addButton(
-            i18n.t("YOLO_SAM_LICENSE_NOTICE_CONTINUE"),
-            QMessageBox.AcceptRole,
-        )
-        box.addButton(i18n.CANCEL, QMessageBox.RejectRole)
-        box.setDefaultButton(continue_btn)
-
-        box.exec()
-        if box.clickedButton() != continue_btn:
-            return False
-        if remember_cb.isChecked():
-            self._set_yolo_sam_notice_acknowledged()
-        return True
-
-    def _yolo_sam_notice_acknowledged(self) -> bool:
-        settings = load_user_settings_section(_LICENSE_NOTICE_SECTION)
-        try:
-            version = int(settings.get(_YOLO_SAM_NOTICE_KEY, 0))
-        except (TypeError, ValueError):
-            version = 0
-        return version >= _YOLO_SAM_NOTICE_VERSION
-
-    @staticmethod
-    def _set_yolo_sam_notice_acknowledged() -> None:
-        update_user_settings_section(
-            _LICENSE_NOTICE_SECTION,
-            {_YOLO_SAM_NOTICE_KEY: _YOLO_SAM_NOTICE_VERSION},
-        )
-
-    def _confirm_sky_license_notice(self) -> bool:
-        if self._sky_notice_acknowledged():
-            return True
-
-        box = QMessageBox(self)
-        box.setIcon(QMessageBox.Warning)
-        box.setWindowTitle(i18n.t("SKY_LICENSE_NOTICE_TITLE"))
-        box.setText(i18n.t("SKY_LICENSE_NOTICE_BODY"))
-        box.setTextInteractionFlags(Qt.TextSelectableByMouse)
-
-        remember_cb = QCheckBox(i18n.t("YOLO_SAM_LICENSE_NOTICE_DONT_SHOW_AGAIN"))
-        remember_cb.setChecked(True)
-        box.setCheckBox(remember_cb)
-
-        continue_btn = box.addButton(
-            i18n.t("YOLO_SAM_LICENSE_NOTICE_CONTINUE"),
-            QMessageBox.AcceptRole,
-        )
-        box.addButton(i18n.CANCEL, QMessageBox.RejectRole)
-        box.setDefaultButton(continue_btn)
-
-        box.exec()
-        if box.clickedButton() != continue_btn:
-            return False
-        if remember_cb.isChecked():
-            self._set_sky_notice_acknowledged()
-        return True
-
-    def _sky_notice_acknowledged(self) -> bool:
-        settings = load_user_settings_section(_LICENSE_NOTICE_SECTION)
-        try:
-            version = int(settings.get(_SKY_NOTICE_KEY, 0))
-        except (TypeError, ValueError):
-            version = 0
-        return version >= _SKY_NOTICE_VERSION
-
-    @staticmethod
-    def _set_sky_notice_acknowledged() -> None:
-        update_user_settings_section(
-            _LICENSE_NOTICE_SECTION,
-            {_SKY_NOTICE_KEY: _SKY_NOTICE_VERSION},
-        )
-
-    def _ensure_no_pending_drop_images(self) -> None:
-        if not self.scene_dir:
-            return
-        images = self._images_dir_text()
-        if not images:
-            return
-        scene_dir = Path(self.scene_dir)
-        csv_path = selected_frames_path(scene_dir)
-        if not csv_path.exists():
-            return
-
-        pending = pending_drop_image_paths(scene_dir, images_dir=Path(images))
-        if not pending:
-            return
-
-        preview = "\n".join(f"- {p.name}" for p in pending[:5])
-        if len(pending) > 5:
-            preview += f"\n- ... +{len(pending) - 5}"
-        raise ValueError(i18n.t("MASK_PENDING_DROPS_ERROR").format(n=len(pending), files=preview))
-
-    def _ensure_no_untracked_images(self) -> None:
-        if not self.scene_dir:
-            return
-        images = self._images_dir_text()
-        if not images:
-            return
-        scene_dir = Path(self.scene_dir)
-        csv_path = selected_frames_path(scene_dir)
-        if not csv_path.exists():
-            return
-
-        untracked = untracked_image_paths(scene_dir, images_dir=Path(images))
-        if not untracked:
-            return
-
-        preview = "\n".join(f"- {p.name}" for p in untracked[:5])
-        if len(untracked) > 5:
-            preview += f"\n- ... +{len(untracked) - 5}"
-        raise ValueError(i18n.t("MASK_UNTRACKED_IMAGES_ERROR").format(n=len(untracked), files=preview))
-
     def _mask_settings_state(self) -> Step3MaskSettingsState:
         return Step3MaskSettingsState(
             projection=self._projection(),
@@ -1774,58 +1294,6 @@ class MaskStep(Step3MaskActionsMixin, BaseStepWidget):
 
     def _mask_settings_snapshot(self) -> dict:
         return self._mask_settings_state().snapshot()
-
-    @staticmethod
-    def _new_mask_run_id(prefix: str) -> str:
-        return f"{prefix}_{utc_now_iso().replace(':', '').replace('-', '')}"
-
-    def _record_mask_outputs(
-        self,
-        image_paths: list[Path],
-        *,
-        mode: str,
-        settings: dict | None,
-        phases: list[str],
-        run_id: str | None = None,
-    ) -> None:
-        if not self.scene_dir or not image_paths:
-            return
-        record_mask_outputs(
-            self.scene_dir,
-            image_paths,
-            mode=mode,
-            settings=settings or self._mask_settings_snapshot(),
-            phases=phases,
-            mask_path_for_image=self._mask_output_path_for_image,
-            run_id=run_id,
-            run_id_factory=self._new_mask_run_id,
-        )
-
-    def on_line(self, line: str) -> tuple[int, int] | None:
-        return self._progress_parser.on_line(line)
-
-    def on_phase_finished(self, phase: str, exit_code: int, canceled: bool) -> None:
-        self._progress_parser.on_phase_finished(phase, exit_code)
-
-    def on_queue_finished(self, success: bool) -> None:
-        if not success:
-            self._mask_batch_settings = None
-            self._mask_batch_phases = []
-            self._mask_batch_targets = []
-            return
-        self.mask_preview.clear_yolo_preview_mask()
-        self.mask_preview.refresh_image_list(prefer_current=True, force_thumbnails=True)
-        self._render_mask_preview()
-        self._update_ready_status()
-        self._record_mask_outputs(
-            self._mask_batch_targets or self._scene_image_paths(),
-            mode="batch",
-            settings=self._mask_batch_settings,
-            phases=list(self._mask_batch_phases),
-        )
-        self._mask_batch_settings = None
-        self._mask_batch_phases = []
-        self._mask_batch_targets = []
 
     def shutdown(self) -> None:
         self.mask_preview.shutdown()
