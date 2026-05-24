@@ -5,7 +5,8 @@ from pathlib import Path
 
 import pytest
 
-from core.cubemap_transforms_json import build_remap, load_custom_views, make_default_views
+from core.cubemap_remap import build_remap
+from core.cubemap_transforms_json import load_custom_views, make_default_views
 from core.cubemap_view_spec import build_remap_spec, load_views_json, make_default_cube6_views, normalize_views
 
 

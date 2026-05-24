@@ -19,10 +19,12 @@ from core.colmap_rig_export import (
     prepare_views_for_colmap,
     write_rig_config_payload_json,
 )
-from core.cubemap_transforms_json import (
+from core.cubemap_image_conversion import (
     convert_images_colmap_rig,
-    load_custom_views,
     make_colmap_rig_jobs,
+)
+from core.cubemap_transforms_json import (
+    load_custom_views,
 )
 from core.dataset_writer_colmap import replace_file_with_link_or_copy
 from core.scene_inventory import SceneImage, SceneInventory, build_scene_inventory

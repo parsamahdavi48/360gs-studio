@@ -8,7 +8,7 @@ import cv2
 import numpy as np
 from PySide6.QtWidgets import QApplication
 
-from core.cubemap_transforms_json import _run_bounded_conversion_jobs, count_planned_outputs
+from core.cubemap_image_conversion import _run_bounded_conversion_jobs, count_planned_outputs
 from gui.steps.step4_cubemap import CubemapStep
 
 

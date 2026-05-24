@@ -16,9 +16,11 @@ Last updated: 2026-05-24
 
 Latest checkpoint:
 
-- Cubemap conversion split continued: remap math, image IO, `transforms.json`
-  export, and worker planning now live in dedicated `core` modules.
-- Validation: `ruff check .` and `pytest -q` pass locally.
+- Cubemap conversion split continued: remap math, image IO, image conversion
+  workers, `transforms.json` export, export metadata, and worker planning now
+  live in dedicated `core` modules.
+- Validation at the latest checkpoint: `ruff check .` and `pytest -q` pass
+  locally.
 
 ### 1. Mask Job Contract
 
@@ -45,21 +47,25 @@ Status: first stage complete, not finished.
 
 ### 3. Cubemap Conversion Engine
 
-Status: in progress; remap, image IO, transforms export, and worker planning slices complete.
+Status: mostly complete; legacy facade remains for CLI compatibility.
 
 - `core/cubemap_view_spec.py` owns view/remap request validation.
 - `core/cubemap_remap.py` owns rotation matrices and remap table generation.
 - `core/cubemap_image_io.py` owns load/save, output format selection, dtype
   conversion, and channel-safe remapping for image and mask assets.
+- `core/cubemap_image_conversion.py` owns image/mask conversion worker state,
+  remap table caches, progress-counting, and bounded process-pool execution.
 - `core/cubemap_transform_export.py` owns `transforms.json` camera/output logic
   and final-orientation point-cloud handling.
+- `core/cubemap_export_metadata.py` owns image-only and COLMAP-rig export
+  manifests plus image-only input size discovery.
 - `core/cubemap_worker_plan.py` owns worker count, remap cache sizing, and
   memory-budget decisions.
-- `core/cubemap_transforms_json.py` is still too broad and owns worker
-  orchestration plus image-only/COLMAP-rig metadata.
-- Next slices:
-  - Split image conversion worker orchestration away from the legacy
-    `cubemap_transforms_json` facade.
+- `core/cubemap_transforms_json.py` is now a thin legacy facade for CLI entry
+  and compatibility imports.
+- Remaining follow-up:
+  - Audit internal imports and remove any remaining low-level dependency on the
+    legacy facade when it is not providing the CLI entry point or view helpers.
   - Keep RealityScan sidecars in `core/realityscan_xmp.py` and audit job-runner
     boundaries instead of creating another sidecar module.
 
@@ -89,7 +95,7 @@ Status: not complete.
 
 ### 6. Pre-Merge Audit
 
-Status: not ready until Cubemap engine and large GUI split risks are reduced.
+Status: not ready until Scene Asset audit and large GUI split risks are reduced.
 
 Audit gates:
 
