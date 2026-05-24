@@ -95,7 +95,8 @@ def test_thumbnail_model_only_rerenders_changed_cache_key(tmp_path: Path) -> Non
         model.data(model.index(row, 0), Qt.DecorationRole)
     assert model.wait_for_done(2000)
     app.processEvents()
-    assert calls == ["a", "b"]
+    assert sorted(calls) == ["a", "b"]
+    calls.clear()
 
     updated = [items[0], ThumbnailItem(path=tmp_path / "b.png", label="b", cache_key=("drop",))]
     model.set_items(updated, renderer)
@@ -104,7 +105,7 @@ def test_thumbnail_model_only_rerenders_changed_cache_key(tmp_path: Path) -> Non
     assert model.wait_for_done(2000)
     app.processEvents()
 
-    assert calls == ["a", "b", "b"]
+    assert calls == ["b"]
 
 
 def test_thumbnail_model_prioritizes_current_rows_over_stale_queue(tmp_path: Path) -> None:

@@ -282,3 +282,62 @@ def test_pre_undistort_alpha_remaps_source_mask_and_excludes_outside_pixels(tmp_
     assert np.any(remapped_mask == 255)
     assert result["asset_stats"]["undistorted_masks"] == 1
     assert result["asset_stats"]["generated_valid_masks"] == 0
+
+
+def test_pre_undistort_handles_multiple_distorted_image_sizes(tmp_path: Path) -> None:
+    source = tmp_path / "realityscan"
+    images = source / "images"
+    write_image(images / "normal_a.png", (80, 60))
+    write_image(images / "normal_b.png", (120, 90))
+    write_csv(
+        source / "rs.csv",
+        [
+            {"#name": "normal_a.png", "f_35mm": 18, "k1": 0.08, "k2": -0.01},
+            {"#name": "normal_b.png", "f_35mm": 18, "k1": -0.03, "t1": 0.001},
+        ],
+    )
+
+    output = source / "lfs_colmap_undistorted"
+    result = convert(
+        source / "rs.csv",
+        output,
+        pre_undistort_distorted_images=True,
+        undistort_alpha=1.0,
+    )
+
+    image_a = cv2.imread(str(output / "images" / "normal_a.png"), cv2.IMREAD_UNCHANGED)
+    image_b = cv2.imread(str(output / "images" / "normal_b.png"), cv2.IMREAD_UNCHANGED)
+    mask_a = cv2.imread(str(output / "masks" / "normal_a.png"), cv2.IMREAD_GRAYSCALE)
+    mask_b = cv2.imread(str(output / "masks" / "normal_b.png"), cv2.IMREAD_GRAYSCALE)
+    assert image_a is not None and image_a.shape[:2] == (60, 80)
+    assert image_b is not None and image_b.shape[:2] == (90, 120)
+    assert mask_a is not None and mask_a.shape == (60, 80)
+    assert mask_b is not None and mask_b.shape == (90, 120)
+
+    cameras_text = (output / "sparse" / "0" / "cameras.txt").read_text(encoding="utf-8")
+    assert " PINHOLE 80 60 " in cameras_text
+    assert " PINHOLE 120 90 " in cameras_text
+    assert result["num_cameras"] == 2
+    assert result["asset_stats"]["undistorted_images"] == 2
+    assert result["asset_stats"]["generated_valid_masks"] == 2
+
+
+def test_pre_undistort_rejects_mask_size_mismatch(tmp_path: Path) -> None:
+    source = tmp_path / "realityscan"
+    images = source / "images"
+    masks = source / "masks"
+    write_image(images / "normal.png", (80, 60))
+    masks.mkdir(parents=True)
+    assert cv2.imwrite(str(masks / "normal.png"), np.full((32, 32), 255, dtype=np.uint8))
+    write_csv(
+        source / "rs.csv",
+        [{"#name": "normal.png", "f_35mm": 18, "k1": 0.08}],
+    )
+
+    with pytest.raises(ValueError, match="Mask size must match"):
+        convert(
+            source / "rs.csv",
+            source / "lfs_colmap_undistorted",
+            pre_undistort_distorted_images=True,
+            undistort_alpha=1.0,
+        )

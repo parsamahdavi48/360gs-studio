@@ -125,8 +125,11 @@ def pinhole_camera_payload_from_matrix(width: int, height: int, camera_matrix: n
     )
 
 
-def opencv_camera_matrix_and_distortion(row: RealityScanCameraRow, image_path: Path) -> tuple[np.ndarray, np.ndarray, int, int]:
-    width, height = image_size(image_path)
+def opencv_camera_matrix_and_distortion_for_size(
+    row: RealityScanCameraRow,
+    width: int,
+    height: int,
+) -> tuple[np.ndarray, np.ndarray]:
     camera = camera_from_csv_row(row, width, height)
     matrix = np.array(
         [
@@ -140,6 +143,12 @@ def opencv_camera_matrix_and_distortion(row: RealityScanCameraRow, image_path: P
         [row.k1, row.k2, row.t1, row.t2, row.k3, row.k4, 0.0, 0.0],
         dtype=np.float64,
     )
+    return matrix, distortion
+
+
+def opencv_camera_matrix_and_distortion(row: RealityScanCameraRow, image_path: Path) -> tuple[np.ndarray, np.ndarray, int, int]:
+    width, height = image_size(image_path)
+    matrix, distortion = opencv_camera_matrix_and_distortion_for_size(row, width, height)
     return matrix, distortion, width, height
 
 
@@ -229,7 +238,8 @@ def undistort_image_and_optional_mask(
     if image is None:
         raise RuntimeError(f"Failed to read image: {image_path}")
 
-    camera_matrix, distortion, width, height = opencv_camera_matrix_and_distortion(row, image_path)
+    height, width = image.shape[:2]
+    camera_matrix, distortion = opencv_camera_matrix_and_distortion_for_size(row, width, height)
     new_camera_matrix, _roi = cv2.getOptimalNewCameraMatrix(
         camera_matrix,
         distortion,
@@ -261,6 +271,12 @@ def undistort_image_and_optional_mask(
             mask = imread_unicode(source_mask_path, cv2.IMREAD_GRAYSCALE)
             if mask is None:
                 raise RuntimeError(f"Failed to read mask: {source_mask_path}")
+            if mask.shape[:2] != (height, width):
+                raise ValueError(
+                    "Mask size must match its image before undistortion: "
+                    f"{source_mask_path} is {mask.shape[1]}x{mask.shape[0]}, "
+                    f"{image_path} is {width}x{height}"
+                )
         else:
             mask = np.full((height, width), 255, dtype=np.uint8)
         undistorted_mask = cv2.remap(
