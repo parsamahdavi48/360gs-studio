@@ -27,6 +27,7 @@ from core.cubemap_transforms_json import (
     write_rig_config_json,
 )
 from core.dataset_writer_colmap import replace_file_with_link_or_copy
+from core.realityscan_xmp import append_realityscan_unposed_scene_images
 from core.transforms_to_colmap import convert as convert_transforms_to_colmap
 from core.workflow_job_spec import (
     JOB_KIND_CUBEMAP_CONVERSION,
@@ -264,6 +265,18 @@ def _run_cubemap_conversion(job: dict) -> None:
     if bool(job.get("realityscan_xmp")) and bool(job.get("realityscan_mask_layers", True)) and export_masks:
         realityscan_manifest = write_realityscan_mask_layers(output_dir, manifest=realityscan_manifest)
         print(f"RealityScan mask layers: {realityscan_manifest['mask_layer_count']}", flush=True)
+
+    unposed_scene = str(job.get("realityscan_unposed_scene_dir") or "").strip()
+    if bool(job.get("realityscan_xmp")) and bool(job.get("realityscan_unposed_images")) and unposed_scene:
+        realityscan_manifest = append_realityscan_unposed_scene_images(
+            output_dir,
+            scene_dir=Path(unposed_scene),
+            exclude_source_files=image_files,
+            exclude_root=image_dir,
+            include_masks=export_masks,
+            manifest=realityscan_manifest,
+        )
+        print(f"RealityScan unposed images: {realityscan_manifest['unposed_image_count']}", flush=True)
 
 
 def _run_transforms_to_colmap(job: dict) -> None:

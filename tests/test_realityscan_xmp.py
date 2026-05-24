@@ -12,6 +12,7 @@ from core.orientation_correction import (
 )
 from core.realityscan_xmp import (
     REALITYSCAN_XMP_NAMESPACE,
+    append_realityscan_unposed_scene_images,
     c2w_to_xmp_rotation_position,
     cubemap_c2w_to_xmp_rotation_position,
     write_realityscan_mask_layers,
@@ -142,6 +143,42 @@ def test_write_realityscan_mask_layers(tmp_path: Path) -> None:
     assert manifest["mask_layer_polarity"] == "white_used_black_excluded"
     assert manifest["source_mask_polarity"] == "white_keep_black_exclude"
     assert manifest["mask_layers_inverted_for_realityscan"] is False
+
+
+def test_append_realityscan_unposed_scene_images_excludes_metashape_sources(tmp_path: Path) -> None:
+    scene = tmp_path / "scene"
+    scene_images = scene / "images"
+    scene_masks = scene / "masks"
+    output = scene / "output" / "realityscan"
+    scene_images.mkdir(parents=True)
+    scene_masks.mkdir()
+    output.mkdir(parents=True)
+
+    Image.new("RGB", (16, 8), color=(10, 20, 30)).save(scene_images / "pano.jpg")
+    Image.new("RGB", (12, 10), color=(80, 90, 100)).save(scene_images / "normal.jpg")
+    Image.fromarray(np.full((10, 12), 255, dtype=np.uint8)).save(scene_masks / "normal.png")
+    _write_transforms(output)
+    write_realityscan_xmp_sidecars(output)
+    manifest = write_realityscan_mask_layers(output)
+
+    manifest = append_realityscan_unposed_scene_images(
+        output,
+        scene_dir=scene,
+        exclude_source_files=["images/pano.jpg"],
+        exclude_root=scene,
+        manifest=manifest,
+    )
+
+    extra = output / "images" / "extra_normal.jpg"
+    assert extra.is_file()
+    assert (output / "masks" / "extra_normal.png").is_file()
+    assert (output / "images" / "extra_normal.jpg.mask.png").is_file()
+    assert not (output / "images" / "extra_pano.jpg").exists()
+    assert manifest["unposed_image_count"] == 1
+    assert manifest["unposed_mask_layer_count"] == 1
+    assert manifest["unposed_pose"] == "none"
+    assert manifest["mask_layer_count"] == 2
+    assert "images/extra_normal.jpg.mask.png" in manifest["mask_layer_files"]
 
 
 def test_c2w_to_xmp_rotation_position_uses_world_to_camera_rotation() -> None:

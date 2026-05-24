@@ -6,6 +6,7 @@ The exporter writes one sidecar per cubemap image.  RealityScan associates
 
 from __future__ import annotations
 
+import hashlib
 import json
 import shutil
 import uuid
@@ -14,6 +15,10 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
+
+from core.dataset_writer_colmap import replace_file_with_link_or_copy
+from core.scene_import_contracts import IMAGE_EXTS
+from core.scene_inventory import SceneImage, build_scene_inventory
 
 REALITYSCAN_POSE_PRIORS = ("initial", "exact", "locked")
 REALITYSCAN_CALIBRATION_PRIORS = ("initial", "exact", "locked")
@@ -360,3 +365,165 @@ def write_realityscan_mask_layers(output_dir: Path, *, manifest: dict | None = N
     manifest["mask_layers_inverted_for_realityscan"] = False
     write_realityscan_manifest(output_dir, manifest)
     return manifest
+
+
+def append_realityscan_unposed_scene_images(
+    output_dir: Path,
+    *,
+    scene_dir: Path,
+    exclude_source_files: list[str],
+    exclude_root: Path,
+    include_masks: bool = True,
+    manifest: dict | None = None,
+) -> dict:
+    """Append scene images not present in the Metashape XML as unposed RealityScan inputs."""
+
+    output_dir = Path(output_dir)
+    scene_dir = Path(scene_dir)
+    exclude_root = Path(exclude_root)
+    inventory = build_scene_inventory(scene_dir)
+    excluded = {
+        _path_key(_resolve_source_reference(exclude_root, rel))
+        for rel in exclude_source_files
+        if str(rel or "").strip()
+    }
+    output_images_dir = output_dir / "images"
+    output_masks_dir = output_dir / "masks"
+    output_images_dir.mkdir(parents=True, exist_ok=True)
+    if include_masks and inventory.masks_dir.is_dir():
+        output_masks_dir.mkdir(parents=True, exist_ok=True)
+
+    used_names = _existing_output_names(output_images_dir)
+    copied_images: list[dict[str, str]] = []
+    mask_layers: list[str] = []
+    standard_masks: list[str] = []
+    link_counts = {"hardlink": 0, "copy": 0, "same": 0}
+    skipped_masks = 0
+
+    for image in inventory.images:
+        if _path_key(image.path) in excluded or _is_realityscan_layer_file(image.path):
+            continue
+        output_name = _unique_unposed_image_name(image, used_names)
+        destination = output_images_dir / output_name
+        link_kind = replace_file_with_link_or_copy(image.path, destination) or "same"
+        link_counts[link_kind] = link_counts.get(link_kind, 0) + 1
+        copied_images.append(
+            {
+                "source": image.rel_path,
+                "image": str(destination.relative_to(output_dir).as_posix()),
+                "link": link_kind,
+                "projection": image.projection,
+            }
+        )
+        if not include_masks or image.mask is None or not image.mask.exists:
+            continue
+        if not image.mask.readable or not image.mask.matches_image_size:
+            skipped_masks += 1
+            continue
+        standard_mask = output_masks_dir / destination.with_suffix(".png").name
+        mask_link_kind = replace_file_with_link_or_copy(image.mask.path, standard_mask) or "same"
+        link_counts[mask_link_kind] = link_counts.get(mask_link_kind, 0) + 1
+        standard_masks.append(str(standard_mask.relative_to(output_dir).as_posix()))
+
+        layer = mask_layer_path(destination)
+        write_realityscan_mask_layer(image.mask.path, layer)
+        mask_layers.append(str(layer.relative_to(output_dir).as_posix()))
+
+    if manifest is None:
+        manifest_path = output_dir / "realityscan_export.json"
+        if manifest_path.is_file():
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        else:
+            manifest = {"export_type": "realityscan_xmp"}
+
+    existing_mask_layers = [str(path) for path in manifest.get("mask_layer_files") or []]
+    if "cubemap_mask_layer_count" not in manifest:
+        manifest["cubemap_mask_layer_count"] = len(existing_mask_layers)
+    combined_mask_layers = _dedupe_text(existing_mask_layers + mask_layers)
+    manifest["mask_layer_files"] = combined_mask_layers
+    manifest["mask_layer_count"] = len(combined_mask_layers)
+    manifest["unposed_image_count"] = len(copied_images)
+    manifest["unposed_mask_layer_count"] = len(mask_layers)
+    manifest["unposed_standard_mask_count"] = len(standard_masks)
+    manifest["unposed_mask_skipped_count"] = skipped_masks
+    manifest["unposed_images"] = copied_images
+    manifest["unposed_mask_layer_files"] = mask_layers
+    manifest["unposed_standard_mask_files"] = standard_masks
+    manifest["unposed_asset_links"] = link_counts
+    manifest["unposed_pose"] = "none"
+    manifest["unposed_source"] = "scene_images_not_in_metashape_xml"
+    write_realityscan_manifest(output_dir, manifest)
+    return manifest
+
+
+def _resolve_source_reference(root: Path, value: str) -> Path:
+    raw = Path(str(value))
+    if raw.is_absolute():
+        return raw
+    return root / raw
+
+
+def _path_key(path: Path) -> str:
+    try:
+        return str(path.resolve(strict=False)).replace("\\", "/").casefold()
+    except OSError:
+        return str(path).replace("\\", "/").casefold()
+
+
+def _existing_output_names(root: Path) -> set[str]:
+    if not root.is_dir():
+        return set()
+    return {path.name.casefold() for path in root.iterdir() if path.is_file() or path.is_symlink()}
+
+
+def _is_realityscan_layer_file(path: Path) -> bool:
+    name = path.name.casefold()
+    return ".mask." in name or ".geometry." in name or ".texture" in name
+
+
+def _unique_unposed_image_name(image: SceneImage, used_names: set[str]) -> str:
+    suffix = image.path.suffix.lower()
+    if suffix not in IMAGE_EXTS:
+        suffix = image.suffix.lower() or ".jpg"
+    rel = Path(str(image.rel_path).replace("\\", "/"))
+    if rel.parts and rel.parts[0].casefold() == "images":
+        rel = Path(*rel.parts[1:]) if len(rel.parts) > 1 else Path(image.path.name)
+    stem = _safe_name(rel.with_suffix("").as_posix().replace("/", "__"))
+    if not stem:
+        stem = _safe_name(image.path.stem) or "image"
+    candidate = f"extra_{stem}{suffix}"
+    if len(candidate) > 180:
+        digest = hashlib.sha1(rel.as_posix().encode("utf-8")).hexdigest()[:10]
+        candidate = f"extra_{stem[:140]}_{digest}{suffix}"
+    base = candidate[: -len(suffix)]
+    index = 2
+    while candidate.casefold() in used_names:
+        candidate = f"{base}_{index}{suffix}"
+        index += 1
+    used_names.add(candidate.casefold())
+    return candidate
+
+
+def _safe_name(value: str) -> str:
+    chars: list[str] = []
+    last_was_sep = False
+    for char in value:
+        if char.isascii() and (char.isalnum() or char in {"-", "_", "."}):
+            chars.append(char)
+            last_was_sep = False
+        elif not last_was_sep:
+            chars.append("_")
+            last_was_sep = True
+    return "".join(chars).strip("._-")
+
+
+def _dedupe_text(values: list[str]) -> list[str]:
+    result: list[str] = []
+    seen: set[str] = set()
+    for value in values:
+        key = value.replace("\\", "/").casefold()
+        if key in seen:
+            continue
+        seen.add(key)
+        result.append(value)
+    return result

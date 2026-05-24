@@ -287,6 +287,9 @@ class Step4CommandPlanMixin:
                 realityscan_calibration_prior=self.realityscan_calibration_prior_combo.currentData() or "exact",
                 realityscan_coordinates="auto",
                 realityscan_include_rig=self.realityscan_include_rig_cb.isChecked(),
+                realityscan_unposed_scene_dir=scene if self._effective_profile() == _PROFILE_REALITYSCAN else None,
+                realityscan_unposed_images=self._is_metashape_method()
+                and self._effective_profile() == _PROFILE_REALITYSCAN,
             ),
         )
         _ = views_json

@@ -47,9 +47,9 @@ The SfM working folder is `output/spheresfm/`. Create JSON/PLY or cubemap datase
 
 ### Metashape -> RealityScan Data
 
-Choose this when you have a Metashape camera XML and want to import cubemap images plus XMP camera data into RealityScan. This is useful when you want RealityScan to realign the scene, add additional image sources in RealityScan, or export RealityScan CSV/PLY for downstream tools.
+Choose this when you have a Metashape camera XML and want to import cubemap images plus XMP camera data into RealityScan. This is useful when you want RealityScan to realign the scene, include extra image sources already registered in Steps 1-3, or export RealityScan CSV/PLY for downstream tools.
 
-The output is `output/realityscan/`. In RealityScan, add the `images/` folder and run Align. After exporting CSV and PLY from RealityScan, use Step 5 `RealityScan -> COLMAP Dataset` when LichtFeld needs a COLMAP-format Dataset.
+The output is `output/realityscan/`. Images present in the Metashape XML are written as cubemap images with XMP sidecars. Registered scene images missing from the XML are copied or hard-linked into the same `images/` folder as unposed extra inputs. When a matching mask exists, it is also written as a RealityScan layer such as `image.jpg.mask.png`. In RealityScan, add the `images/` folder and run Align. After exporting CSV and PLY from RealityScan, use Step 5 `RealityScan -> COLMAP Dataset` when LichtFeld needs a COLMAP-format Dataset.
 
 ### Inspect SfM Result
 

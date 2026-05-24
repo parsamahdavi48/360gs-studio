@@ -2121,6 +2121,8 @@ def test_realityscan_profile_builds_xmp_export_command(tmp_path: Path) -> None:
     assert job["realityscan_calibration_prior"] == "exact"
     assert job["realityscan_coordinates"] == "auto"
     assert job["realityscan_include_rig"] is False
+    assert job["realityscan_unposed_images"] is True
+    assert job["realityscan_unposed_scene_dir"] == str(tmp_path)
     assert job["axis_mode"] == "brush"
     assert job["final_orientation"] == "realityscan"
     assert job["yaw_offset_per_frame"] == 0.0

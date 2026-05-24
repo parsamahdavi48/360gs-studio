@@ -67,6 +67,8 @@ def test_workflow_job_builders_round_trip_core_conversion_jobs(tmp_path: Path) -
     assert loaded_cubemap["invert_masks"] is True
     assert loaded_cubemap["write_masks"] is False
     assert loaded_cubemap["final_orientation"] == "lichtfeld"
+    assert loaded_cubemap["realityscan_unposed_images"] is False
+    assert loaded_cubemap["realityscan_unposed_scene_dir"] == ""
     assert load_workflow_job(write_workflow_job(tmp_path / "colmap.json", colmap))["kind"] == (
         JOB_KIND_TRANSFORMS_TO_COLMAP
     )

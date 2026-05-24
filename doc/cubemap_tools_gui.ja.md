@@ -47,9 +47,9 @@ Metashapeを使わず、このアプリからCOLMAPまたはGLOMAPでSfMした�
 
 ### Metashape → RealityScan用データ作成
 
-Metashapeで作ったカメラXMLから、RealityScanへ読み込ませるCubemap画像とXMPを作ります。RealityScanで再アラインしたい、RealityScan上で別ソースの画像を追加したい、RealityScanのCSV/PLYを書き出して後段へ渡したい場合に使います。
+Metashapeで作ったカメラXMLから、RealityScanへ読み込ませるCubemap画像とXMPを作ります。RealityScanで再アラインしたい、ステップ1から3で登録済みの別ソース画像も一緒に投入したい、RealityScanのCSV/PLYを書き出して後段へ渡したい場合に使います。
 
-出力は `output/realityscan/` です。RealityScanでは `images/` フォルダを追加し、Align後にCSVとPLYを書き出します。その後、LichtFeld用COLMAPデータセットが必要な場合はStep 5の `RealityScan → COLMAPデータセット` を使います。
+出力は `output/realityscan/` です。Metashape XMLにある画像はCubemap画像とXMPとして書き出され、XMLにない登録済み画像は姿勢なしの追加画像として同じ `images/` フォルダへコピーまたはハードリンクされます。対応マスクがある場合はRealityScan用の `image.jpg.mask.png` 形式にも変換されます。RealityScanでは `images/` フォルダを追加し、Align後にCSVとPLYを書き出します。その後、LichtFeld用COLMAPデータセットが必要な場合はStep 5の `RealityScan → COLMAPデータセット` を使います。
 
 ### SfM結果を確認
 

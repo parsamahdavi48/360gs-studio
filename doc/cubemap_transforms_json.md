@@ -201,7 +201,7 @@ Use this when Metashape already produced camera poses and you want to run Align 
 
 Load these files in RealityScan:
 
-- images (cubemap images in the output directory)
+- images (cubemap images in the output directory; in the GUI, registered images missing from the Metashape XML are also placed here as unposed extra inputs)
 - `*.xmp` sidecars next to the images, named like `Image01.xmp` for `Image01.jpg`
 - optional RealityScan mask layers next to the images, named like `Image01.jpg.mask.png`
 

@@ -79,6 +79,8 @@ def cubemap_conversion_job(
     realityscan_rig_name: str = "stechdrive-cubemap",
     realityscan_include_rig: bool = False,
     realityscan_mask_layers: bool = True,
+    realityscan_unposed_scene_dir: str | Path | None = None,
+    realityscan_unposed_images: bool = False,
 ) -> dict[str, Any]:
     return {
         "schema_version": WORKFLOW_JOB_SCHEMA_VERSION,
@@ -114,6 +116,8 @@ def cubemap_conversion_job(
         "realityscan_rig_name": str(realityscan_rig_name),
         "realityscan_include_rig": bool(realityscan_include_rig),
         "realityscan_mask_layers": bool(realityscan_mask_layers),
+        "realityscan_unposed_scene_dir": str(realityscan_unposed_scene_dir) if realityscan_unposed_scene_dir else "",
+        "realityscan_unposed_images": bool(realityscan_unposed_images),
     }
 
 

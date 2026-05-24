@@ -201,7 +201,7 @@ Metashapeで作ったカメラ姿勢を使い、RealityScanで改めてAlignし�
 
 RealityScanに読み込ませる主なファイルは次の通りです。
 
-- images (出力ディレクトリ内のcubemap画像)
+- images (出力ディレクトリ内のcubemap画像。GUIではMetashape XMLにない登録済み画像も姿勢なしの追加画像として同じフォルダに入ります)
 - 画像の隣に置かれる `*.xmp` サイドカー (`Image01.jpg` に対して `Image01.xmp`)
 - マスクを出力した場合は、画像の隣に置かれるRealityScanマスクレイヤ (`Image01.jpg.mask.png`)
 
