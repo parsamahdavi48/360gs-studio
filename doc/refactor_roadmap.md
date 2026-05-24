@@ -18,8 +18,9 @@ Latest checkpoint:
 
 - Large GUI split continued for Step 3: mask command planning, JSONL target
   manifest writing, mask settings/control-state formatting, and temporary
-  preview orchestration, scene/source state, batch orchestration, and model
-  license/checkpoint checks now live in dedicated modules with focused tests.
+  preview orchestration now live in dedicated modules. Scene/source state,
+  batch orchestration, model license/checkpoint checks, and model-control
+  state glue were also split into focused modules.
 - Validation at the latest checkpoint: `ruff check .` and `pytest -q` pass
   locally.
 
@@ -115,12 +116,16 @@ Status: in progress; Step 3 first slices complete.
   metadata recording.
 - `gui/steps/step3_mask_license.py` owns model license notices and SAM3.1
   checkpoint availability checks.
+- `gui/steps/step3_mask_controls.py` owns selected model/class/prompt state,
+  model option visibility, custom-mask picker state, image-dir preview sync,
+  and `MaskCommandContext` creation.
 - `gui/steps/step3_mask.py` and `gui/steps/step1_extract.py` still remain
-  large; Step 3 is now mostly widget construction plus model-control glue.
+  large; Step 3 is now mostly widget construction.
 - Split order after core contracts settle:
-  1. Decide whether to split Step 3 model-control glue or pause Step 3 and move
-     to `step1_extract.py`.
-  2. `step1_extract.py`
+  1. Move to `step1_extract.py`; start with input source queue / scene-source
+     autoload helpers.
+  2. If Step 1 split exposes shared source contracts, move them to `core/`
+     before continuing UI-only slicing.
   3. `step4_training.py`
   4. remaining `step4_cubemap.py` orchestration
 
