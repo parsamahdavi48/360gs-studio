@@ -54,10 +54,7 @@ def _app():
 def _workflow_job(cmd: object) -> dict:
     if isinstance(cmd, AppJob):
         return cmd.payload
-    assert isinstance(cmd, list)
-    assert cmd[2].endswith("run_workflow_job.py")
-    job_path = Path(cmd[cmd.index("--job") + 1])
-    return json.loads(job_path.read_text(encoding="utf-8"))
+    raise AssertionError(f"Expected workflow AppJob, got {cmd!r}")
 
 
 def _ready_step(scene: Path, *, metashape_inputs: bool = False) -> CubemapStep:
