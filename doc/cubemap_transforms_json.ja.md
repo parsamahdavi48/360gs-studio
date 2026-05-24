@@ -1,6 +1,6 @@
 # cubemap_transforms_json.py : 全球(360°パノラマ)画像用transforms.jsonのキューブマップ変換
 
-このスクリプトは [metashape_360_lfs](https://github.com/tetraface/metashape_360_lfs) が変換した **360度画像用** `transforms.json` ファイルをさらにキューブマップ用に変換します。
+この開発者向けラッパーは、**360度エクイレクタングラー画像用** `transforms.json` データセットをキューブマップ用に変換します。
 
 つまり、以下の変換が可能です:
 
@@ -31,8 +31,8 @@ Metashape (Standard/Professional) > xml/pointcloud > transforms.json > キュー
 |------|-------------|
 |metashape.ply| Metashape [ファイル > エクスポート > ポイントクラウドをエクスポート] で出力|
 |metashape.xml| Metashape [ファイル > エクスポート > カメラをエクスポート] で出力|
-|transforms.json| metashape_360_lfsで変換|
-|pointcloud.ply| metashape_360_lfsで変換 (オプション)|
+|transforms.json| GUIのMetashapeルート、または互換ツールで作成したエクイレクタングラー用カメラデータ |
+|pointcloud.ply| `transforms.json` と同じ座標状態の点群 (オプション)|
 
 ### 出力ディレクトリ例
 
@@ -60,7 +60,7 @@ Metashape (Standard/Professional) > xml/pointcloud > transforms.json > キュー
 
 カレントディレクトリにある transforms.json とimagesディレクトリ内の画像を変換: (masksディレクトリがあればそれも変換)
 ```
-python metashape_360_lfs.py --images images --xml metashape.xml --output .
+# GUIのMetashapeルートで transforms.json を用意してから実行:
 python cubemap_transforms_json.py .
 ```
 
@@ -105,7 +105,7 @@ python cubemap_transforms_json.py . ./cubic --views-json views_config.json --fov
 デフォルトでは、Postshot に適した座標軸変換が行われます。Brushの場合、 `--brush` を指定してください。
 
 ```
-python metashape_360_lfs.py --images images --xml metashape.xml --output .
+# GUIのMetashapeルートで transforms.json を用意してから実行:
 python cubemap_transforms_json.py . ./cubic --brush
 ```
 
@@ -114,8 +114,7 @@ python cubemap_transforms_json.py . ./cubic --brush
 LichtFeld Studioの場合、 `--no_transform --final-orientation lichtfeld` を指定してください。前者はエクイレクタングラー取り込み時のLichtFeld向けカメラ軸を維持し、後者は出力先のcubemapカメラ姿勢と `pointcloud.ply` に最終向き補正を適用します。cubemap の `transforms.json` は `PINHOLE` カメラモデルとして書き出します。
 
 ```
-python metashape_360_lfs.py --images images --xml metashape.xml \
-  --ply metashape.ply --output .
+# GUIのMetashapeルートで transforms.json と pointcloud.ply を用意してから実行:
 python cubemap_transforms_json.py . ./cubic --no_transform --final-orientation lichtfeld
 ```
 
@@ -190,7 +189,7 @@ JPEG と WebP は 8-bit のみで α 非対応のため、これらを指定し�
 
 ### LichtFeld Studio
 
-- pointcloud.ply (`metashape_360_lfs`で変換後、このスクリプトで最終向き補正)
+- pointcloud.ply (Metashape前処理ルートで作成後、このスクリプトで最終向き補正)
 - transforms.json (出力ディレクトリ内)
 - images (出力ディレクトリ内)
 - masks (出力ディレクトリ内: オプション)

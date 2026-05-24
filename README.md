@@ -16,8 +16,6 @@ After extracting the ZIP, run `setup_windows.bat`, then `run_gui.bat`.
 
 [JP 日本語の説明](README.ja.md)
 
-Forked from [tetraface/tetraface-3dgs-utils](https://github.com/tetraface/tetraface-3dgs-utils).
-
 ![STechDrive 3DGS Utils workflow](images/stechdrive-3dgs-workflow-en.png)
 
 ![STechDrive 3DGS Utils GUI](images/stechdrive-3dgs-utils-gui.jpg)
@@ -234,9 +232,9 @@ numpy, opencv-python, Pillow, open3d, ultralytics, transformers, safetensors, tq
 
 `setup_windows.bat` uses the pinned verified package set under `requirements/` for reproducible first-time setup. `update_venv.bat` resolves the latest compatible packages by default; pass `--locked` when you want to rebuild from the pinned set instead.
 
-## CLI Tools
+## Developer CLI Wrappers
 
-The GUI wraps these CLI engines, which can also be used directly. The root-level scripts are stable public entry points; shared implementation code lives under `core/`.
+The normal workflow is GUI-first. Some root-level scripts remain as developer/debug wrappers around the `core/` implementation, but the GUI no longer depends on shelling out to every public CLI script.
 
 | Script | Purpose | Docs |
 | --- | --- | --- |
@@ -257,5 +255,4 @@ MIT License. See [LICENSE](LICENSE).
 
 Mask generation features use third-party libraries and model weights with separate license terms. See [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md).
 
-Original code by [tetraface Inc.](https://github.com/tetraface)
-Fork extensions by [stechdrive](https://github.com/stechdrive)
+Originally derived from [tetraface/tetraface-3dgs-utils](https://github.com/tetraface/tetraface-3dgs-utils). Current releases are maintained as a standalone STechDrive GUI workflow.

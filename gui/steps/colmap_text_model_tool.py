@@ -1,7 +1,6 @@
 """Metashape XML/PLY to portable COLMAP text dataset tool."""
 from __future__ import annotations
 
-import sys
 from pathlib import Path
 
 from PySide6.QtCore import Qt
@@ -19,6 +18,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from core.app_job import dataset_app_job
 from core.dataset_job_spec import metashape_colmap_job, write_dataset_job
 from core.metashape_colmap_dataset import metashape_model_requires_mixed_colmap_writer
 from core.orientation_correction import FINAL_ORIENTATION_LICHTFELD, FINAL_ORIENTATION_NONE
@@ -333,13 +333,8 @@ class ColmapTextModelTool(BaseStepWidget):
             and self._ply_path().is_file()
         )
 
-    def build_commands(self) -> list[tuple[str, list[str]]]:
-        mixed_colmap_script = self.base_dir / "scripts" / "export_metashape_colmap_dataset.py"
+    def build_commands(self) -> list[tuple[str, object]]:
         use_mixed_writer = self._uses_mixed_colmap_writer()
-        required_scripts = (mixed_colmap_script,) if use_mixed_writer else (self.base_dir / "scripts" / "run_workflow_job.py",)
-        for script in required_scripts:
-            if not script.exists():
-                raise FileNotFoundError(f"{script.name} が見つかりません: {script}")
 
         images = self._images_dir()
         masks = self._masks_dir()
@@ -358,33 +353,24 @@ class ColmapTextModelTool(BaseStepWidget):
         mask_dir = masks if masks.is_dir() else None
         if use_mixed_writer:
             job_path = jobs_dir(Path(self.scene_dir)) / "metashape_colmap_job.json"
-            write_dataset_job(
-                job_path,
-                metashape_colmap_job(
-                    scene_dir=Path(self.scene_dir),
-                    images_dir=images,
-                    masks_dir=mask_dir,
-                    xml_path=xml,
-                    ply_path=ply,
-                    output_dir=output,
-                    views=views,
-                    output_scale=float(self.scale_combo.currentData()),
-                    output_format=str(self.output_format_combo.currentData() or "jpg"),
-                    output_bit_depth=str(self.output_bit_depth_combo.currentData() or "8"),
-                    jpg_quality=self._jpg_quality(),
-                    undistort_alpha=1.0,
-                    axis_transform=self._axis_transform_mode(),
-                    final_orientation=self._final_orientation(),
-                ),
+            payload = metashape_colmap_job(
+                scene_dir=Path(self.scene_dir),
+                images_dir=images,
+                masks_dir=mask_dir,
+                xml_path=xml,
+                ply_path=ply,
+                output_dir=output,
+                views=views,
+                output_scale=float(self.scale_combo.currentData()),
+                output_format=str(self.output_format_combo.currentData() or "jpg"),
+                output_bit_depth=str(self.output_bit_depth_combo.currentData() or "8"),
+                jpg_quality=self._jpg_quality(),
+                undistort_alpha=1.0,
+                axis_transform=self._axis_transform_mode(),
+                final_orientation=self._final_orientation(),
             )
-            cmd = [
-                sys.executable,
-                "-u",
-                str(mixed_colmap_script),
-                "--job",
-                str(job_path),
-            ]
-            return [("metashape_colmap_mixed", cmd)]
+            write_dataset_job(job_path, payload)
+            return [("metashape_colmap_mixed", dataset_app_job(payload, job_path))]
         metashape_job = jobs_dir(Path(self.scene_dir)) / "colmap_text_metashape_preprocess_job.json"
         cubemap_job = jobs_dir(Path(self.scene_dir)) / "colmap_text_cubemap_conversion_job.json"
         colmap_job = jobs_dir(Path(self.scene_dir)) / "colmap_text_transforms_to_colmap_job.json"

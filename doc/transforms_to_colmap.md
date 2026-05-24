@@ -14,7 +14,7 @@ Converts the cubemap `transforms.json` produced by [cubemap_transforms_json.py](
 
 ```
 Metashape SfM
-  → metashape_360_lfs.py
+  → GUI Metashape preprocessing route
     → transforms.json (EQUIRECTANGULAR)
       → cubemap_transforms_json.py
         → transforms.json (SIMPLE_PINHOLE / cubemap views)
@@ -88,9 +88,7 @@ pip install plyfile
 ## Example: full pipeline for PostShot
 
 ```bash
-# 1. Equirectangular SfM result -> NeRF-style JSON
-python metashape_360_lfs.py \
-    --images images --xml metashape.xml --output .
+# 1. Prepare an equirectangular transforms.json with the GUI Metashape route.
 
 # 2. Cubemap conversion (Postshot profile = default)
 python cubemap_transforms_json.py . ./cubic

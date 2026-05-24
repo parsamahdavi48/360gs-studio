@@ -12,6 +12,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from core.colmap_mixed_project import prepare_colmap_mixed_project
+from core.sfm_job_runner import run_sfm_job_payload
 from core.sfm_job_spec import JOB_KIND_COLMAP_MIXED_PROJECT, load_sfm_job
 
 
@@ -74,27 +75,10 @@ def main() -> int:
 
 def _run_job(job: dict) -> int:
     try:
-        result = prepare_colmap_mixed_project(
-            job["scene_dir"],
-            job["output_dir"],
-            views=job["views"],
-            output_scale=float(job["output_scale"]),
-            output_format=str(job["output_format"]),
-            output_bit_depth=str(job["output_bit_depth"]),
-            jpg_quality=int(job["jpg_quality"]),
-            write_images=bool(job["write_images"]),
-            write_masks=bool(job["write_masks"]),
-            invert_masks=bool(job["invert_masks"]),
-            workers=str(job["workers"]),
-            remap_cache_limit=str(job["remap_cache_limit"]),
-            rig_name=str(job["rig_name"]),
-        )
+        run_sfm_job_payload(job)
     except Exception as exc:
         print(f"Error: {exc}", file=sys.stderr)
         return 1
-    for warning in result.warnings:
-        print(f"Warning: {warning}", flush=True)
-    print(f"Saved COLMAP mixed project manifest: {result.manifest_path}", flush=True)
     return 0
 
 

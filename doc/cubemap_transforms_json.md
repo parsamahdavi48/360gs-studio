@@ -1,6 +1,6 @@
 # cubemap_transforms_json.py : transforms.json converter from equirectangular to cubemap
 
-This script converts `transforms.json` for **360° equirectangular image** by [metashape_360_lfs](https://github.com/tetraface/metashape_360_lfs) into **cubemap-based images**.
+This developer wrapper converts a **360° equirectangular** `transforms.json` dataset into **cubemap-based images**.
 
 That is, the following conversions are possible:
 
@@ -32,8 +32,8 @@ input_dir/
 |------|-------------|
 |metashape.ply|Expoted in Metashape [File > Export > Export Point Cloud]|
 |metashape.xml|Expoted in Metashape [File > Export > Export Cameras]|
-|transforms.json|Converted by metashape_360_lfs|
-|pointcloud.ply|Converted by metashape_360_lfs (optional)|
+|transforms.json|Equirectangular camera dataset created by the GUI Metashape route or another compatible tool|
+|pointcloud.ply|Point cloud in the same coordinate state as `transforms.json` (optional)|
 
 ### Output directory example
 
@@ -61,7 +61,7 @@ output_dir/
 
 Convert transforms.json and images in the current directory: (also convert if masks directory exists)
 ```
-python metashape_360_lfs.py --images images --xml metashape.xml --output .
+# Prepare transforms.json with the GUI Metashape route, then run:
 python cubemap_transforms_json.py .
 ```
 
@@ -105,7 +105,7 @@ The following images illustrate how each face of the cubemap and the boundary be
 By default, coordinate axis transformation suitable for Postshot is performed. For Brush, specify `--brush`.
 
 ```
-python metashape_360_lfs.py --images images --xml metashape.xml --output .
+# Prepare transforms.json with the GUI Metashape route, then run:
 python cubemap_transforms_json.py . ./cubic --brush
 ```
 
@@ -114,8 +114,7 @@ python cubemap_transforms_json.py . ./cubic --brush
 For LichtFeld Studio, specify `--no_transform --final-orientation lichtfeld`. The first flag keeps the LichtFeld camera-axis convention from the equirectangular import, and the final-orientation flag writes corrected cubemap camera poses plus `pointcloud.ply` in the output folder. The cubemap `transforms.json` is written with the `PINHOLE` camera model.
 
 ```
-python metashape_360_lfs.py --images images --xml metashape.xml \
-  --ply metashape.ply --output .
+# Prepare transforms.json and pointcloud.ply with the GUI Metashape route, then run:
 python cubemap_transforms_json.py . ./cubic --no_transform --final-orientation lichtfeld
 ```
 
@@ -190,7 +189,7 @@ Import the following files in each software:
 
 ### LichtFeld Studio
 
-- pointcloud.ply (converted by `metashape_360_lfs`, then final-orientation-corrected by this script)
+- pointcloud.ply (created by the Metashape preprocessing route, then final-orientation-corrected by this script)
 - transforms.json (in the output directory)
 - images (in the output directory)
 - masks (in the output directory: optional)

@@ -7,6 +7,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PySide6.QtWidgets import QApplication
 
+from core.app_job import AppJob
 from gui.common.process_runner import ProcessRunner
 
 
@@ -102,6 +103,33 @@ def test_process_runner_writes_phase_logs(tmp_path: Path) -> None:
         assert "alpha" in text
         assert "beta" in text
         assert "exit_code=0" in text
+    finally:
+        if runner.is_running():
+            runner.cancel()
+            _process_events_until(app, lambda: not runner.is_running())
+
+
+def test_process_runner_runs_internal_app_job(monkeypatch, tmp_path: Path) -> None:
+    app = _app()
+    runner = ProcessRunner()
+    lines: list[str] = []
+    finished: list[bool] = []
+
+    def fake_run_app_job(job: AppJob) -> None:
+        print(f"internal {job.job_type}:{job.kind}")
+
+    monkeypatch.setattr("gui.common.process_runner.run_app_job", fake_run_app_job)
+    runner.line_received.connect(lines.append)
+    runner.queue_finished.connect(finished.append)
+
+    job = AppJob("workflow", {"kind": "unit_test"}, tmp_path / "job.json")
+    runner.start_queue([("internal", job)], log_dir=tmp_path)
+
+    try:
+        assert _process_events_until(app, lambda: bool(finished))
+        assert finished == [True]
+        assert any("app-job workflow unit_test" in line for line in lines)
+        assert any("internal workflow:unit_test" in line for line in lines)
     finally:
         if runner.is_running():
             runner.cancel()

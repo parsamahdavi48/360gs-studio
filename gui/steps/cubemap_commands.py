@@ -6,6 +6,10 @@ import json
 from dataclasses import dataclass
 from pathlib import Path
 
+from core.app_job import AppJob, dataset_app_job, sfm_app_job
+from core.dataset_job_spec import load_dataset_job
+from core.sfm_job_spec import load_sfm_job
+
 
 @dataclass(frozen=True)
 class MetashapePreprocessCommand:
@@ -22,8 +26,6 @@ class MetashapePreprocessCommand:
 
 @dataclass(frozen=True)
 class MetashapeNerfCommand:
-    python_executable: str
-    script: Path
     job: Path
 
 
@@ -67,19 +69,7 @@ class ColmapExportCommand:
 
 @dataclass(frozen=True)
 class ColmapMixedPrepareCommand:
-    python_executable: str
-    script: Path
-    scene: Path
-    output: Path
-    views_json: Path
-    scale: float
-    invert_masks: bool
-    writes_images: bool
-    writes_masks: bool
-    output_format: str
-    output_bit_depth: str
-    jpg_quality: int
-    job: Path | None = None
+    job: Path
 
 
 @dataclass(frozen=True)
@@ -123,14 +113,9 @@ class ColmapSfmCommand:
 
 @dataclass(frozen=True)
 class SphereSfmCommand:
-    python_executable: str
-    preflight_script: Path
-    prepare_script: Path
     colmap: str
     images_dir: Path
-    source_masks_dir: Path
     prepared_masks_dir: Path
-    preflight_dir: Path
     database: Path
     sparse: Path
     camera_params: str
@@ -171,14 +156,8 @@ def build_metashape_preprocess_cmd(options: MetashapePreprocessCommand) -> list[
     return cmd
 
 
-def build_metashape_nerf_cmd(options: MetashapeNerfCommand) -> list[str]:
-    return [
-        options.python_executable,
-        "-u",
-        str(options.script),
-        "--job",
-        str(options.job),
-    ]
+def build_metashape_nerf_cmd(options: MetashapeNerfCommand) -> AppJob:
+    return dataset_app_job(load_dataset_job(options.job), options.job)
 
 
 def build_cubemap_conversion_cmd(options: CubemapConversionCommand) -> list[str]:
@@ -259,39 +238,8 @@ def build_colmap_export_cmd(options: ColmapExportCommand) -> list[str]:
     return cmd
 
 
-def build_colmap_mixed_prepare_cmd(options: ColmapMixedPrepareCommand) -> list[str]:
-    if options.job is not None:
-        return [
-            options.python_executable,
-            "-u",
-            str(options.script),
-            "--job",
-            str(options.job),
-        ]
-    cmd = [
-        options.python_executable,
-        "-u",
-        str(options.script),
-        str(options.scene),
-        str(options.output),
-        "--views-json",
-        str(options.views_json),
-        "--output-scale",
-        f"{options.scale:g}",
-        "--output-format",
-        options.output_format,
-        "--output-bit-depth",
-        options.output_bit_depth,
-        "--jpg-quality",
-        str(options.jpg_quality),
-    ]
-    if options.invert_masks:
-        cmd.append("--invert-masks")
-    if not options.writes_images:
-        cmd.append("--skip-images")
-    if not options.writes_masks:
-        cmd.append("--skip-masks")
-    return cmd
+def build_colmap_mixed_prepare_cmd(options: ColmapMixedPrepareCommand) -> AppJob:
+    return sfm_app_job(load_sfm_job(options.job), options.job)
 
 
 def build_colmap_sfm_commands(options: ColmapSfmCommand) -> list[tuple[str, list[str]]]:
@@ -560,40 +508,6 @@ def build_spheresfm_commands(options: SphereSfmCommand) -> list[tuple[str, list[
     options.sparse.mkdir(parents=True, exist_ok=True)
     options.database.parent.mkdir(parents=True, exist_ok=True)
 
-    preflight_cmd = [
-        options.python_executable,
-        "-u",
-        str(options.preflight_script),
-        "--colmap",
-        options.colmap,
-        "--images-dir",
-        str(options.images_dir),
-        "--work-dir",
-        str(options.preflight_dir),
-        "--camera-params",
-        options.camera_params,
-    ]
-
-    prepare_cmd = [
-        options.python_executable,
-        "-u",
-        str(options.prepare_script),
-        "--colmap",
-        options.colmap,
-        "--images-dir",
-        str(options.images_dir),
-    ]
-    if options.use_masks:
-        prepare_cmd.extend(
-            [
-                "--use-masks",
-                "--source-masks-dir",
-                str(options.source_masks_dir),
-                "--output-masks-dir",
-                str(options.prepared_masks_dir),
-            ]
-        )
-
     database_cmd = [
         options.colmap,
         "database_creator",
@@ -658,8 +572,6 @@ def build_spheresfm_commands(options: SphereSfmCommand) -> list[tuple[str, list[
     mapper_cmd.extend(_spheresfm_mapper_options(options.quality_preset))
 
     return [
-        ("spheresfm_preflight", preflight_cmd),
-        ("spheresfm_prepare", prepare_cmd),
         ("spheresfm_database", database_cmd),
         ("spheresfm_feature", feature_cmd),
         ("spheresfm_match", matcher_cmd),

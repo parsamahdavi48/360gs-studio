@@ -4,6 +4,7 @@ from pathlib import Path
 
 import pytest
 
+from core.workflow_job_runner import _run_transforms_to_colmap
 from core.workflow_job_spec import (
     JOB_KIND_CUBEMAP_CONVERSION,
     JOB_KIND_METASHAPE_PREPROCESS,
@@ -17,7 +18,6 @@ from core.workflow_job_spec import (
     write_workflow_job,
 )
 from gui.steps.workflow_job_commands import build_workflow_job_cmd
-from scripts.run_workflow_job import _run_transforms_to_colmap
 
 
 def test_workflow_job_builders_round_trip_core_conversion_jobs(tmp_path: Path) -> None:
@@ -92,12 +92,23 @@ def test_workflow_job_rejects_wrong_kind(tmp_path: Path) -> None:
 
 def test_workflow_job_command_targets_generic_worker(tmp_path: Path) -> None:
     job = tmp_path / "job.json"
+    payload = metashape_preprocess_job(
+        images_dir=tmp_path / "images",
+        xml_path=tmp_path / "cameras.xml",
+        output_dir=tmp_path / "work",
+        scale=1.0,
+        use_ply=False,
+        ply_path=None,
+        no_fix_rotation=False,
+    )
+    write_workflow_job(job, payload)
 
     cmd = build_workflow_job_cmd(Path.cwd(), job, python_executable="python.exe")
 
-    assert cmd[0] == "python.exe"
-    assert cmd[2].endswith("scripts\\run_workflow_job.py")
-    assert cmd[3:] == ["--job", str(job)]
+    assert cmd.job_type == "workflow"
+    assert cmd.job_path == job
+    assert cmd.payload == payload
+    assert cmd.display_command() == ["app-job", "workflow", "metashape_preprocess", "--job", str(job)]
 
 
 def test_transforms_to_colmap_job_can_assemble_dataset_assets(tmp_path: Path) -> None:

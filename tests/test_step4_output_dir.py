@@ -13,6 +13,7 @@ from PySide6.QtWidgets import QApplication, QMessageBox
 
 import core.orientation_correction as orientation_correction
 import gui.steps.step4_cubemap as step4_cubemap
+from core.app_job import AppJob
 from core.normal_camera_metadata import save_normal_camera_default
 from core.scene_layout import (
     project_path,
@@ -50,7 +51,10 @@ def _app():
     return QApplication.instance() or QApplication([])
 
 
-def _workflow_job(cmd: list[str]) -> dict:
+def _workflow_job(cmd: object) -> dict:
+    if isinstance(cmd, AppJob):
+        return cmd.payload
+    assert isinstance(cmd, list)
     assert cmd[2].endswith("run_workflow_job.py")
     job_path = Path(cmd[cmd.index("--job") + 1])
     return json.loads(job_path.read_text(encoding="utf-8"))
@@ -488,9 +492,8 @@ def test_mixed_metashape_projected_uses_nerf_job_writer(tmp_path: Path) -> None:
 
     assert [phase for phase, _cmd in commands] == ["metashape_nerf"]
     cmd = commands[0][1]
-    assert cmd[2].endswith("export_metashape_nerf_dataset.py")
-    job_path = Path(cmd[cmd.index("--job") + 1])
-    job = json.loads(job_path.read_text(encoding="utf-8"))
+    assert isinstance(cmd, AppJob)
+    job = cmd.payload
     assert job["kind"] == "metashape_nerf_dataset"
     assert job["xml_path"] == str(tmp_path / "metashape.xml")
     assert job["ply_path"] == str(tmp_path / "metashape.ply")
@@ -1202,9 +1205,9 @@ def test_colmap_export_method_prepares_normal_only_project(tmp_path: Path) -> No
 
     assert [phase for phase, _cmd in commands] == ["colmap_mixed_prepare"]
     cmd = commands[0][1]
-    assert cmd[2].endswith("prepare_colmap_mixed_project.py")
-    assert cmd[3] == "--job"
-    job = json.loads(Path(cmd[4]).read_text(encoding="utf-8"))
+    assert isinstance(cmd, AppJob)
+    assert cmd.job_type == "sfm"
+    job = cmd.payload
     assert job["scene_dir"] == str(tmp_path)
     assert job["output_dir"] == str(tmp_path / "output")
     assert job["views"]
@@ -1234,6 +1237,8 @@ def test_colmap_export_can_queue_mixed_erp_and_normal_sfm(tmp_path: Path) -> Non
         "colmap_match",
         "colmap_mapper",
     ]
+    assert isinstance(commands[0][1], AppJob)
+    assert commands[0][1].job_type == "sfm"
     rig_feature = commands[1][1]
     normal_feature = commands[3][1]
     assert rig_feature[1] == "feature_extractor"
@@ -1269,6 +1274,8 @@ def test_colmap_export_can_queue_normal_only_sfm_without_rig_config(tmp_path: Pa
         "colmap_match",
         "colmap_mapper",
     ]
+    assert isinstance(commands[0][1], AppJob)
+    assert commands[0][1].job_type == "sfm"
     assert all(phase != "colmap_rig_config" for phase, _cmd in commands)
     normal_feature = commands[1][1]
     assert normal_feature[normal_feature.index("--ImageReader.camera_model") + 1] == "SIMPLE_RADIAL"

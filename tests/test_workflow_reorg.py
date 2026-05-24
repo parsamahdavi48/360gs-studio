@@ -9,6 +9,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from PIL import Image
 from PySide6.QtWidgets import QApplication, QLabel, QPushButton, QSizePolicy
 
+from core.app_job import AppJob
 from core.artifact_registry import load_artifacts
 from core.normal_camera_metadata import load_normal_camera_default
 from core.scene_layout import source_image_sets_path
@@ -24,7 +25,10 @@ def _app() -> QApplication:
     return QApplication.instance() or QApplication([])
 
 
-def _workflow_job(cmd: list[str]) -> dict:
+def _workflow_job(cmd: object) -> dict:
+    if isinstance(cmd, AppJob):
+        return cmd.payload
+    assert isinstance(cmd, list)
     assert cmd[2].endswith("run_workflow_job.py")
     job_path = Path(cmd[cmd.index("--job") + 1])
     return json.loads(job_path.read_text(encoding="utf-8"))
@@ -371,10 +375,9 @@ def test_realityscan_lfs_tool_defaults_and_builds_cli_command(tmp_path: Path) ->
 
     phase, cmd = tool.build_commands()[0]
     assert phase == "realityscan_lfs_colmap"
-    assert cmd[2].endswith("realityscan_to_lfs_colmap.py")
-    assert cmd[3] == "--job"
-    job_path = Path(cmd[4])
-    job = json.loads(job_path.read_text(encoding="utf-8"))
+    assert isinstance(cmd, AppJob)
+    assert cmd.job_path is not None
+    job = cmd.payload
     assert job["csv_path"] == str(csv)
     assert job["output_dir"] == str(rs / "lfs_colmap")
     assert job["images_dir"] == str(rs / "images")
@@ -384,7 +387,8 @@ def test_realityscan_lfs_tool_defaults_and_builds_cli_command(tmp_path: Path) ->
     tool.pre_undistort_cb.setChecked(True)
     assert Path(tool.output_browse.text()) == rs / "lfs_colmap_undistorted"
     _, undistort_cmd = tool.build_commands()[0]
-    undistort_job = json.loads(Path(undistort_cmd[4]).read_text(encoding="utf-8"))
+    assert isinstance(undistort_cmd, AppJob)
+    undistort_job = undistort_cmd.payload
     assert undistort_job["pre_undistort_distorted_images"] is True
     assert undistort_job["undistort_alpha"] == 1.0
 
@@ -567,9 +571,8 @@ def test_colmap_text_model_tool_uses_mixed_writer_for_mixed_metashape_xml(tmp_pa
 
     assert [phase for phase, _cmd in commands] == ["metashape_colmap_mixed"]
     cmd = commands[0][1]
-    assert cmd[2].endswith("export_metashape_colmap_dataset.py")
-    assert cmd[3] == "--job"
-    job = json.loads(Path(cmd[4]).read_text(encoding="utf-8"))
+    assert isinstance(cmd, AppJob)
+    job = cmd.payload
     assert job["scene_dir"] == str(scene)
     assert job["output_dir"] == str(scene / "output" / "metashape_colmap")
     assert job["output_bit_depth"] == "8"

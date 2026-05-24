@@ -9,9 +9,7 @@ from PIL import Image
 
 from core.metashape_coordinates import metashape_pointcloud_file_matrix
 from core.metashape_preprocess import export_metashape_equirectangular_dataset
-from metashape_360_lfs import convert_metashape_to_lichtfeld
-from scripts.run_workflow_job import _run_metashape_preprocess
-from vendor.metashape_360_lfs.metashape_360_lfs import transform_camera_matrix as legacy_transform_camera_matrix
+from core.workflow_job_runner import _run_metashape_preprocess
 
 _IDENTITY = "1 0 0 0 0 1 0 0 0 0 1 0 0 0 0 1"
 _ROTATED = "0.36 -0.48 0.80 1.25 0.80 0.60 0.00 -2.5 -0.48 0.64 0.60 3.75 0 0 0 1"
@@ -108,7 +106,7 @@ def test_export_metashape_preprocess_supports_multiple_spherical_resolutions(tmp
     assert "10 20 30" in pointcloud_text
 
 
-def test_metashape_preprocess_camera_transform_matches_vendor_reference(tmp_path: Path) -> None:
+def test_metashape_preprocess_camera_transform_matches_coordinate_contract(tmp_path: Path) -> None:
     scene = tmp_path / "scene"
     images = scene / "images"
     output = scene / "output"
@@ -121,9 +119,14 @@ def test_metashape_preprocess_camera_transform_matches_vendor_reference(tmp_path
 
     data = json.loads((output / "transforms.json").read_text(encoding="utf-8"))
     first = next(frame for frame in data["frames"] if frame["file_path"] == "images/wide/pano64.jpg")
-    expected = legacy_transform_camera_matrix(
-        np.array([float(value) for value in _ROTATED.split()], dtype=np.float64).reshape((4, 4)),
-        fix_upside_down=True,
+    expected = np.array(
+        [
+            [0.48, 0.64, 0.60, -3.75],
+            [-0.80, 0.60, 0.00, 2.50],
+            [-0.36, -0.48, 0.80, -1.25],
+            [0.0, 0.0, 0.0, 1.0],
+        ],
+        dtype=np.float64,
     )
     assert np.allclose(np.array(first["transform_matrix"], dtype=np.float64), expected)
 
@@ -154,23 +157,6 @@ def test_workflow_job_metashape_preprocess_uses_core_writer(tmp_path: Path) -> N
     assert manifest["source_kind"] == "metashape_xml_ply"
     assert manifest["frames"] == 2
     assert manifest["camera_model"] == "EQUIRECTANGULAR"
-
-
-def test_metashape_360_lfs_compat_wrapper_uses_core_writer(tmp_path: Path) -> None:
-    scene = tmp_path / "scene"
-    images = scene / "images"
-    output = scene / "output"
-    _write_image(images / "wide" / "pano64.jpg", (64, 32), (80, 120, 160))
-    _write_image(images / "pano80.jpg", (80, 40), (10, 20, 30))
-    xml = scene / "cameras.xml"
-    _write_spherical_xml(xml)
-
-    result = convert_metashape_to_lichtfeld(images_dir=images, xml_path=xml, output_dir=output, verbose=False)
-
-    assert result["num_frames"] == 2
-    assert result["camera_model"] == "EQUIRECTANGULAR"
-    manifest = json.loads((output / "stechdrive_metashape_preprocess.json").read_text(encoding="utf-8"))
-    assert manifest["frames"] == 2
 
 
 def test_metashape_preprocess_rejects_mixed_camera_models(tmp_path: Path) -> None:

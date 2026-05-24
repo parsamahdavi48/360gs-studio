@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import sys
 from pathlib import Path
 
 from PySide6.QtCore import QSignalBlocker, Qt
@@ -15,6 +14,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from core.app_job import dataset_app_job
 from core.dataset_job_spec import realityscan_lfs_colmap_job, write_dataset_job
 from core.realityscan_to_lfs_colmap import DEFAULT_UNDISTORT_ALPHA
 from core.realityscan_to_transforms import read_realityscan_csv
@@ -156,34 +156,22 @@ class RealityScanLfsTool(BaseStepWidget):
     def phase_display_name(self, phase: str) -> str:
         return i18n.t("PHASE_RS_LFS_COLMAP") if phase == "realityscan_lfs_colmap" else phase
 
-    def build_commands(self) -> list[tuple[str, list[str]]]:
+    def build_commands(self) -> list[tuple[str, object]]:
         self._validate_inputs()
-        script = self.base_dir / "realityscan_to_lfs_colmap.py"
-        if not script.is_file():
-            raise FileNotFoundError(f"realityscan_to_lfs_colmap.py not found: {script}")
         job_path = jobs_dir(Path(self.scene_dir)) / "realityscan_lfs_colmap_job.json"
-        write_dataset_job(
-            job_path,
-            realityscan_lfs_colmap_job(
-                csv_path=self.csv_browse.text(),
-                output_dir=self.output_browse.text(),
-                images_dir=self.images_browse.text(),
-                masks_dir=self.masks_browse.text() or None,
-                ply_path=self.ply_browse.text(),
-                skip_missing_images=self.skip_missing_cb.isChecked(),
-                pre_undistort_distorted_images=self.pre_undistort_cb.isChecked(),
-                undistort_alpha=DEFAULT_UNDISTORT_ALPHA,
-            ),
+        payload = realityscan_lfs_colmap_job(
+            csv_path=self.csv_browse.text(),
+            output_dir=self.output_browse.text(),
+            images_dir=self.images_browse.text(),
+            masks_dir=self.masks_browse.text() or None,
+            ply_path=self.ply_browse.text(),
+            skip_missing_images=self.skip_missing_cb.isChecked(),
+            pre_undistort_distorted_images=self.pre_undistort_cb.isChecked(),
+            undistort_alpha=DEFAULT_UNDISTORT_ALPHA,
         )
+        write_dataset_job(job_path, payload)
 
-        cmd = [
-            sys.executable,
-            "-u",
-            str(script),
-            "--job",
-            str(job_path),
-        ]
-        return [("realityscan_lfs_colmap", cmd)]
+        return [("realityscan_lfs_colmap", dataset_app_job(payload, job_path))]
 
     def on_queue_finished(self, success: bool) -> None:
         if not success or not self.scene_dir:

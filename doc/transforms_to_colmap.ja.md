@@ -14,7 +14,7 @@
 
 ```
 Metashape SfM
-  → metashape_360_lfs.py
+  → GUIのMetashape前処理ルート
     → transforms.json (EQUIRECTANGULAR)
       → cubemap_transforms_json.py
         → transforms.json (SIMPLE_PINHOLE / cubemap views)
@@ -88,9 +88,7 @@ pip install plyfile
 ## 例: PostShot 向けフルパイプライン
 
 ```bash
-# 1. Equirectangular SfM 結果 → NeRF系 JSON
-python metashape_360_lfs.py \
-    --images images --xml metashape.xml --output .
+# 1. GUIのMetashapeルートでエクイレクタングラー用 transforms.json を用意
 
 # 2. Cubemap 変換 (Postshot profile = デフォルト)
 python cubemap_transforms_json.py . ./cubic

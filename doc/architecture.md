@@ -1,20 +1,19 @@
 # Maintenance Architecture
 
-This project keeps stable script-style CLI entry points while moving reusable
-implementation code into focused modules. The GUI in `gui/` builds commands for
-the same public scripts, so CLI behavior must remain compatible when GUI code is
-changed.
+This project is maintained as a Windows-first GUI application. Reusable
+implementation code lives in focused `core/` modules, and the GUI should call
+typed core jobs directly whenever the work is internal to this app.
 
 ## Entry Points
 
-Root-level `*.py` files are public compatibility wrappers. Keep their names,
-flags, exit behavior, and importable helper symbols stable unless a breaking
-change is intentional and documented.
+Root-level `*.py` files are developer/debug wrappers, not the architectural
+center of the application. Do not add new GUI behavior by building shell command
+strings for Python scripts. Add typed payloads and core runners first, then keep
+or add a wrapper only when it is useful for tests or manual diagnostics.
 
-Shared implementation lives in `core/`. New CLI behavior should normally be
-implemented in `core/` first, then exposed through the root wrapper. Tests should
-cover both the implementation contract and any public command-line behavior that
-the GUI depends on.
+Shared implementation lives in `core/`. Tests should cover the implementation
+contract and the GUI job payloads. Public CLI compatibility is secondary to the
+GUI workflow unless a release note explicitly promises a specific wrapper.
 
 ## Core Contracts
 
@@ -32,6 +31,11 @@ the GUI depends on.
 - `core/scene_import*.py` owns external scene re-registration. Import should
   scan only the app-defined scene folders, replace external-import metadata as a
   full reimport, and avoid deleting real image/mask/output assets.
+- `core/app_job.py`, `core/workflow_job_runner.py`, `core/sfm_job_runner.py`,
+  and `core/dataset_job_runner.py` own internal GUI job execution. GUI steps
+  should return `AppJob` for app-internal Python work and reserve raw command
+  lists for external executables such as COLMAP, FFmpeg, SphereSfM binaries, or
+  training application CLIs.
 - Mask modules preserve the repository-wide mask polarity contract:
   white pixels are usable, black pixels are excluded. Mask merges should remain
   AND-style unless a tool explicitly documents a different operation.
@@ -39,8 +43,8 @@ the GUI depends on.
   Any route that converts Metashape XML camera poses or PLY points must use this
   module instead of duplicating axis matrices. The Step 4 Metashape preprocess
   job uses `core/metashape_preprocess.py` to create the intermediate
-  equirectangular `transforms.json`; the vendored Metashape converter is kept
-  only as provenance/reference code, not as the GUI workflow implementation.
+  equirectangular `transforms.json`; no GUI route should depend on the old
+  upstream Metashape converter.
 - Cubemap and COLMAP exports must preserve coordinate profile semantics:
   Postshot uses the default cubemap transform, Brush uses the Brush transform,
   and LichtFeld cubemap export writes final-orientation-corrected
