@@ -45,7 +45,7 @@ Options:
 - `--csv`: CSV filename under `_stechdrive/frames/`, or an absolute CSV path (default: `selected_frames.csv`)
 - `--finalize-in-place`: apply decisions directly in `images/` and rewrite CSV
 - `--backup-dir`: with `--finalize-in-place`, snapshot `images/` to this directory before modification. Existing targets are replaced only when the path is clearly a backup path such as `backups` or `images_backup`. Default empty = no backup
-- `--renumber-kept-images`: with `--finalize-in-place`, rename kept images in CSV order to `images/frame_000001.ext`, update frame/source metadata, and refuse to run after downstream masks, `output/`, or legacy Step 4 metadata already exist
+- `--renumber-kept-images`: with `--finalize-in-place`, rename kept images in CSV order to `images/frame_000001.ext`, update frame/source metadata, and refuse to run after downstream masks, `output/`, or SfM/dataset metadata already exist
 - `--output`: copy-mode destination folder under scene directory (default: `metashape_images`)
 - `--clean-output`: copy-mode only; remove existing image files in output folder before export
 

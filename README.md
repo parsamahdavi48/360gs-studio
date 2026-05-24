@@ -2,7 +2,7 @@
 
 **v1.21.0**
 
-A Windows-first integrated GUI tool for turning 360° camera video into images, masks, and camera data that are practical for 3D Gaussian Splatting (3DGS) training.
+A Windows-first integrated GUI tool for turning 360° video, normal video, and still-image sequences into images, masks, and camera data that are practical for 3D Gaussian Splatting (3DGS) training.
 
 `setup_windows.bat` detects Python 3.12 and FFmpeg/FFprobe, installs missing system dependencies through winget when needed, creates a virtual environment, and installs the required runtime packages. Day-to-day launch is handled by `run_gui.bat`, so users do not need to run Python commands manually for the normal GUI workflow.
 
@@ -24,38 +24,37 @@ Forked from [tetraface/tetraface-3dgs-utils](https://github.com/tetraface/tetraf
 
 ## What You Can Do
 
-### 1. 360° Video to Metashape SfM and 3DGS Training
+### 1. SfM Preprocessing for 360° and Normal Images
 
-Extract equirectangular still frames from Insta360 / Osmo 360 or similar 360° camera video, review which frames to keep, and generate masks for people, the camera operator, tripods, sky, stitch seams, and blown-out highlights before running SfM in Metashape.
+Register 360° video from Insta360 / Osmo 360 or similar cameras, normal video from smartphones or mirrorless cameras, and still-image folders in the same scene. Review keep/drop decisions in Step 2, then mask people, the camera operator, tripods, sky, stitch seams, blown-out highlights, and similar areas in Step 3 before sending the images to Metashape, COLMAP, SphereSfM, or RealityScan.
 
-After Metashape SfM, export cubemap images, masks, and `transforms.json` for Postshot, Brush, and LichtFeld Studio under `output/metashape_cubemap/`. For RealityScan, the app can export cubemap images with XMP camera data under `output/realityscan/` so you can add them in RealityScan, run Align, and continue to point-cloud or model generation. For LichtFeld Studio 3DGUT workflows, the app can also create a direct dataset under `output/metashape_3dgut/` that keeps the equirectangular images and masks in place while writing `transforms.json` and `pointcloud.ply`. This is the main workflow for preparing 360° video as a 3DGS training dataset.
+After Metashape SfM, create a NeRF-style `transforms.json` / `pointcloud.ply` dataset, a COLMAP-format dataset, or cubemap/XMP data for RealityScan realignment. In Step 5, choose the output format based on the training app you plan to use, such as LichtFeld Studio, Postshot, or Brush.
 
-### 2. 360° Video to SphereSfM, LichtFeld 3DGUT, or Cubemap Data
+### 2. Run SfM Inside the App
 
-You can skip Metashape and run spherical SfM directly on the extracted equirectangular images with SphereSfM's COLMAP build. SphereSfM working files stay under `output/spheresfm/`, and the GUI writes the finished dataset to `output/spheresfm_3dgut/` or `output/spheresfm_cubemap/` for LichtFeld, Postshot, or Brush.
+If you are not using Metashape, Step 4 can run COLMAP or SphereSfM. COLMAP expands 360° images into cubemap rigs while keeping normal images as normal cameras, so it is the better route for mixed sources. SphereSfM is for same-resolution equirectangular 360° images only.
 
-### 3. 360° Video to COLMAP Rig Dataset
+### 3. RealityScan to LichtFeld
 
-You can also skip Metashape and export a COLMAP Rig cubemap dataset from extracted 360° frames. The GUI can optionally run COLMAP so the result is ready to pass to COLMAP-compatible 3DGS tools.
+After RealityScan realignment, convert RealityScan CSV/PLY exports into a COLMAP-format dataset that LichtFeld can open as a Dataset. Cubemap-derived PINHOLE images are referenced with links, and only normal-camera images that still have lens distortion are undistorted when needed.
 
 ### 4. Mask Preprocessing for Normal Photos or Video Frames
 
-For video or image sequences from DSLR, mirrorless, smartphone, or other normal cameras, Step 3 can generate fast YOLO/SAM2.1 masks for people, vehicles, and other selectable object types, higher-accuracy SAM3.1 prompt masks for people and sky, optional Mask2Former sky masks, plus overexposure masks. This is useful as a mask-preparation stage before sending images to SfM software.
+For video or image sequences from DSLR, mirrorless, smartphone, or other normal cameras, Step 3 can generate fast YOLO/SAM2.1 masks for people, vehicles, and other selectable object types, higher-accuracy SAM3.1 prompt masks for people and sky, optional Mask2Former sky masks, plus overexposure masks. Mixed 360° and normal sources are processed according to their image type.
 
 ## Highlights
 
-- Extract 360° video into still frames that are practical for SfM and 3DGS training. The GUI can thin footage for walking shots or aerial/distant scenes, and it marks frames that may need review because they are blurry, too similar, or contain a large viewpoint change.
-- Review extracted frames in a large single-image view or a thumbnail list, then mark unwanted frames as keep/drop decisions. If usable-looking images are marked as blur, Step 2 can switch blur detection between Standard and Low sensitivity. For 360° images, the 90° FOV perspective view lets you inspect details in a normal-camera-like view.
+- Register 360° video, normal video, and still-image sequences as input sources in the same scene. Videos are extracted into frames, and still-image folders are copied into `images/` so later review, masking, and SfM steps treat them consistently.
+- Review extracted frames in a large single-image view or a thumbnail list, then mark unwanted frames as keep/drop decisions. Blur candidates are split into automatic drops and review-only warnings. If usable-looking images are marked as blur, Step 2 can switch blur detection between Standard and Low sensitivity. For 360° images, the 90° FOV perspective view lets you inspect details in a normal-camera-like view.
 - Generate masks for people, the camera operator, tripods, hands, vehicles, sky, blown-out highlights, and stitch seams. Use YOLO/SAM2.1 when you want fast person-focused masks, or SAM3.1 when you want higher-accuracy people and sky masks plus prompt-based cleanup after generation.
 - Preview mask results before saving and inspect them in the thumbnail list. When only a few frames have misses or false detections, regenerate just those frames instead of rerunning the whole image set.
 - With SAM3.1, add missed targets such as tripods or subtract false detections such as signs and logos from existing masks. This reduces the amount of manual mask painting needed after the first pass.
 - Mask2Former remains available as a helper option when you want to try sky masks without setting up SAM3.1.
 - Use the same mask-preparation workflow for normal-camera video after Step 1 extraction and for normal photo or image-sequence sets, not only 360° images. This is useful before sending images to SfM software.
-- Import Metashape SfM results and export cubemap images, masks, and `transforms.json` for Postshot, Brush, and LichtFeld Studio. For RealityScan, create cubemap images with XMP camera data and continue with Align in RealityScan. For LichtFeld Studio, the GUI can also create a `3DGUT (LichtFeld)` direct dataset without cubemap conversion.
-- Inspect Step 4 outputs and SfM results in Scene Preview, with the point cloud, camera positions, selected camera image, and matching masks in one view. Open it from Step 4's preview pane or launch only the viewer with `run_scene_preview.bat`.
-- If you print and place AprilTags before capture, the Step 4 `Scale` tab can estimate metric scale from an existing Cubemap output. After reviewing the estimate, you can apply the same scale to the selected cubemap dataset's `transforms.json` and `pointcloud.ply`.
-- Select SphereSfM's `colmap.exe` to run spherical SfM without Metashape, then convert the result into either LichtFeld 3DGUT data or cubemap data.
-- Skip Metashape when needed by exporting COLMAP Rig cubemap images and masks from extracted 360° frames. The GUI can optionally continue into COLMAP SfM processing.
+- In Step 4, choose how camera poses and sparse points will be prepared: use an existing SfM result, run COLMAP or SphereSfM from this app, or create RealityScan realignment data from a Metashape result.
+- In Step 5, convert Metashape, SphereSfM, RealityScan, or COLMAP results into NeRF-style JSON/PLY datasets, COLMAP-format datasets, LichtFeld-ready RealityScan conversions, or AprilTag scale-adjusted outputs.
+- Inspect SfM results and datasets in Scene Preview, with the point cloud, camera positions, selected camera image, and matching masks in one view. Open it from Step 4's card or launch only the viewer with `run_scene_preview.bat`.
+- If you print and place AprilTags before capture, Step 5 `Scale Adjustment` can estimate metric scale from an existing dataset. After reviewing the estimate, you can apply the same scale to the target dataset camera positions and point cloud.
 - Prepare the Windows environment with setup scripts that handle Python, FFmpeg/FFprobe, and the main Python packages. Normal use starts from `run_gui.bat`.
 
 ## Easy Setup
@@ -121,39 +120,46 @@ You can also place the checkpoint manually at `models/sam3.1/sam3.1_multiplex.pt
 If the scene folder path contains non-ASCII characters, an extremely long path, control characters, or `"`, the GUI stops before running. These paths are likely to fail in OpenCV or external 3DGS/SfM tools. Spaces and OneDrive paths are not blocked by themselves. Use a short ASCII working path, for example `D:\work\scene01`.
 
 ```text
-360° video or images
+360° video / normal video / still-image sequences
   -> Step 1: frame extraction
   -> Step 2: frame review and keep/drop decisions
   -> Step 3: mask generation
-  -> Step 4: convert
-      -> build 3DGS-ready outputs from Metashape SfM results
-      -> run SphereSfM on 360° images and convert to 3DGUT or cubemap data
-      -> export COLMAP Rig cubemap images and optionally run COLMAP
-  -> Step 5: training
-      -> launch LichtFeld Studio / Postshot / custom CLI when a compatible CLI is available
+  -> Step 4: SfM
+      -> use an existing Metashape / RealityScan / COLMAP / SphereSfM result
+      -> run COLMAP or SphereSfM from this app
+      -> create RealityScan realignment data from a Metashape result
+  -> Step 5: dataset
+      -> create JSON/PLY or COLMAP-format datasets for training apps
+      -> convert RealityScan CSV/PLY to LichtFeld COLMAP format
+      -> apply AprilTag scale to a dataset
+  -> Step 6: training
+      -> launch LichtFeld Studio / Postshot when a compatible CLI is available
 ```
 
 | Step | Purpose | Current Default |
 | --- | --- | --- |
-| 1. Frame Extraction | Extract equirectangular still frames from 360° video | Fixed interval + motion adjustment |
+| 1. Frame Extraction | Extract video frames or register a still-image folder into the scene | Fixed interval + motion adjustment |
 | 2. Frame Review | Review extracted frames in single/thumbnail views and apply keep/drop decisions to CSV | Review low-quality candidates and unwanted frames |
 | 3. Mask Generation | Generate model-based masks plus optional stitch seam, overexposure, and custom masks | YOLO/SAM2.1, High quality |
-| 4. Convert | Create 3DGS datasets from SfM results, run SphereSfM, or export COLMAP Rig cubemap images | Metashape / SphereSfM / LichtFeld / 3DGUT / Cube6 |
-| 5. Training | Launch a compatible CLI for an external 3DGS application with an existing dataset | LichtFeld Studio / Postshot / Custom |
+| 4. SfM | Choose how camera poses and sparse points are prepared | Existing SfM result / COLMAP / SphereSfM |
+| 5. Dataset | Create a training-app dataset from SfM results | Metashape / RealityScan / SphereSfM / COLMAP / Scale |
+| 6. Training | Launch a compatible CLI for an external 3DGS application with an existing dataset | LichtFeld Studio / Postshot |
 
 ### Using the Dataset in Training Apps
 
-The main output of this app is the 3DGS dataset created in Step 4. Open the Step 4 dataset folder directly in 3DGS applications such as LichtFeld Studio, Postshot, and Brush. This is the normal path when you want to inspect and tune image quality, model settings, step counts, masks, and export options inside the training app.
+The main output of this app is the 3DGS dataset created in Step 5. Open the Step 5 dataset folder directly in 3DGS applications such as LichtFeld Studio, Postshot, and Brush. This is the normal path when you want to inspect and tune image quality, model settings, step counts, masks, and export options inside the training app.
 
-| Step 4 route | Dataset folder |
+| Step 5 route | Dataset folder |
 | --- | --- |
 | Metashape + cubemap | `output/metashape_cubemap/` |
-| Metashape + 3DGUT | `output/metashape_3dgut/` |
+| Metashape + ERP 360° / GUT | `output/metashape_3dgut/` |
 | SphereSfM + cubemap | `output/spheresfm_cubemap/` |
-| SphereSfM + 3DGUT | `output/spheresfm_3dgut/` |
+| SphereSfM + ERP 360° / GUT | `output/spheresfm_3dgut/` |
 | COLMAP Rig | `output/colmap_rig/` |
+| Metashape + COLMAP | `output/metashape_colmap/` |
+| RealityScan + LichtFeld COLMAP | `output/realityscan/lfs_colmap/` |
 
-Step 5 is a launch shortcut for training apps that provide a compatible CLI. With a LichtFeld Studio v0.5.2-compatible CLI or a Postshot v1.0/v1.1 Release Build CLI, the GUI can build the command for repeat runs or headless training. If you are not using CLI training, load the Step 4 output dataset directly in the training app.
+Step 6 is a launch shortcut for training apps that provide a compatible CLI. With a LichtFeld Studio v0.5.2-compatible CLI or a Postshot v1.0/v1.1 Release Build CLI, the GUI can build the command for repeat runs or headless training. If you are not using CLI training, load the Step 5 output dataset directly in the training app.
 
 Detailed GUI docs:
 
@@ -162,37 +168,38 @@ Detailed GUI docs:
 | Step 1 Frame Extraction | [EN](doc/extract_frames_gui.md) / [JP](doc/extract_frames_gui.ja.md) |
 | Step 2 Frame Review | [EN](doc/review_frames_gui.md) / [JP](doc/review_frames_gui.ja.md) |
 | Step 3 Mask Generation | [EN](doc/mask_tools_gui.md) / [JP](doc/mask_tools_gui.ja.md) |
-| Step 4 Convert | [EN](doc/cubemap_tools_gui.md) / [JP](doc/cubemap_tools_gui.ja.md) |
-| Step 5 Training | [EN](doc/training_gui.md) / [JP](doc/training_gui.ja.md) |
+| Step 4 SfM / Step 5 Dataset | [EN](doc/cubemap_tools_gui.md) / [JP](doc/cubemap_tools_gui.ja.md) |
+| Step 6 Training | [EN](doc/training_gui.md) / [JP](doc/training_gui.ja.md) |
 | Scene Import | [EN](doc/scene_import.md) / [JP](doc/scene_import.ja.md) |
 
 ## Recommended Workflow: Metashape Route
 
-1. Prepare 360° video from an Insta360 / Osmo 360 or similar camera.
-2. Extract SfM-friendly frames in Step 1.
+1. Prepare 360° video from an Insta360 / Osmo 360 or similar camera. Add normal video or still-image folders to the same scene when needed.
+2. Extract SfM-friendly frames or register still-image folders in Step 1.
 3. Review low-quality or unnecessary frames in Step 2.
 4. Generate masks for people, camera operators, tripods, sky, or similar SfM-unfriendly regions in Step 3. `Quality: High` is the recommended starting point.
 5. If masks still leak through, switch only the affected images to `Quality: Best` or regenerate them with SAM3.1. Mask2Former is also available when you want to try sky masks without setting up SAM3.1.
 6. Enable stitch seam, overexposure, and custom masks when they match the source material.
-7. Import the generated `masks/` folder into Metashape as per-image masks, then run SfM.
-8. Use Step 4 with the Metashape XML/PLY result to export cubemap training data or a direct `3DGUT (LichtFeld)` dataset.
-9. To estimate scale with AprilTags, print and place the tags before capture. After creating Cubemap output, open the `Scale` tab, enter the printed tag size and IDs, run estimation, and use `Apply to Scale` only when the result looks reasonable. This updates the selected cubemap dataset's `transforms.json` and `pointcloud.ply`. Direct equirectangular output for 3DGUT cannot be estimated here.
-10. Load the Step 4 output in LichtFeld Studio, Postshot, Brush, or another training app. When you want repeat runs or headless training through a compatible CLI, use Step 5 to launch LichtFeld Studio or Postshot with the dataset you just created.
+7. Import the generated `masks/` folder into Metashape as per-image masks, then run SfM. Mixed sources can be aligned in Metashape as usual.
+8. In Step 4, choose `Use Existing SfM Result`. If Metashape already produced camera poses and sparse points, there is usually nothing else to run in this step.
+9. In Step 5, use the Metashape XML/PLY result to create the dataset format your training app expects: NeRF-style JSON/PLY, a COLMAP-format dataset, or RealityScan realignment data.
+10. To estimate scale with AprilTags, print and place the tags before capture. After creating a cubemap or COLMAP-style dataset, use Step 5 `Scale Adjustment`, enter the printed tag size and IDs, and apply the scale only when the estimate looks reasonable.
+11. Load the Step 5 output in LichtFeld Studio, Postshot, Brush, or another training app. When you want repeat runs or headless training through a compatible CLI, use Step 6 to launch LichtFeld Studio or Postshot with the dataset you just created.
 
 ## COLMAP Route
 
 1. Use Steps 1-3 in the same way as the Metashape route.
-2. In Step 4, choose `COLMAP` to write cubemap images and masks to `output/colmap_rig/`.
-3. Turn on the left `SfM` sub-stage when you want COLMAP to estimate camera positions and a sparse point cloud. COLMAP SfM needs cubemap images, so turning on `SfM` also turns on `Cube`.
-4. After completion, pass `output/colmap_rig/` as the COLMAP project folder to COLMAP-compatible 3DGS tools.
+2. In Step 4, choose `Run COLMAP SfM`. 360° images are expanded into cubemap rigs, while normal images remain normal cameras.
+3. Confirm the COLMAP or GLOMAP executable, matcher, and mapper, then run it.
+4. After completion, pass `output/colmap_rig/` as a COLMAP dataset to COLMAP-compatible 3DGS tools. When no extra conversion is needed, you can skip Step 5 and continue to training.
 
 ## SphereSfM Route
 
-1. Use Steps 1-3 in the same way as the Metashape route. Prepare `images/` and, when used, `masks/`.
-2. In Step 4, choose `SphereSfM` and select SphereSfM's `colmap.exe` from a [json87/SphereSfM](https://github.com/json87/spheresfm) release or local build. Standard COLMAP cannot be used because it lacks the spherical-image SfM features.
+1. Use Steps 1-3 in the same way as the Metashape route. For SphereSfM, use same-resolution equirectangular 360° images only.
+2. In Step 4, choose `Run SphereSfM` and select SphereSfM's `colmap.exe` from a [json87/SphereSfM](https://github.com/json87/spheresfm) release or local build. Standard COLMAP cannot be used because it lacks the spherical-image SfM features.
 3. On RTX 50-series GPUs, the GitHub-distributed binary can stop during CUDA SIFT. For RTX 50-series systems, build SphereSfM locally with `CMAKE_CUDA_ARCHITECTURES=120` and select that `colmap.exe`.
-4. Start with both left sub-stages, `SfM` and `Cube`, turned on, plus `Matcher: Sequential` and `SfM Quality: Standard`.
-5. In `Output Shape`, choose whether to create LichtFeld 3DGUT data or cubemap data for Postshot, Brush, or LichtFeld.
+4. Start with `Matcher: Sequential` and `SfM Quality: Standard`.
+5. In Step 5, choose `SphereSfM -> NeRF Dataset (JSON/PLY)`, then choose PINHOLE cubemap output or ERP 360° data for LichtFeld.
 6. After completion, pass `output/spheresfm_3dgut/` or `output/spheresfm_cubemap/` to downstream apps. SphereSfM working files and logs stay under `output/spheresfm/`.
 
 ## Mask Preprocessing for Normal Images
@@ -233,7 +240,7 @@ The GUI wraps these CLI engines, which can also be used directly. The root-level
 
 | Script | Purpose | Docs |
 | --- | --- | --- |
-| `extract_frames.py` | Extract frames from 360° video | [EN](doc/extract_frames.md) |
+| `extract_frames.py` | Extract video frames and register still-image sources | [EN](doc/extract_frames.md) |
 | `apply_frame_decisions.py` | Apply keep/drop decisions from CSV | [EN](doc/apply_frame_decisions.md) |
 | `review_frames.py` | Frame review GUI | [EN](doc/review_frames.md) |
 | `yolo_mask.py` | YOLO+SAM2.1 mask generation | [EN](doc/yolo_mask.md) |

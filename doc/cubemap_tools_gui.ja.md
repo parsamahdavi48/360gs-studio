@@ -1,329 +1,156 @@
-# Step 4 SfM / Step 5 データセット作成GUI
+# Step 4 SfM / Step 5 データセットGUI
 
-Step 4 は、カメラ位置をどう用意するかを選ぶ SfM ルート選択画面です。Step 5 は、Step 1-3で用意した360°画像とマスク、MetashapeでSfMした結果、SphereSfM/COLMAPで作るSfM結果、またはRealityScanから書き出したCSV/PLYを、3DGSアプリが読み込めるデータセットに変換する画面です。
+Step 4は、学習データセットの元になるカメラポーズと疎点群をどう用意するかを選ぶ画面です。すでにMetashape、RealityScan、COLMAP、SphereSfMなどでSfM済みなら、ここで追加作業をする必要はありません。これからこのアプリでCOLMAPやSphereSfMを実行したい場合、またはMetashape結果からRealityScan再アライン用データを作りたい場合だけ、対応するカードを開きます。
 
-多くの場合は、Step 4で `外部SfM結果`、`COLMAP`、`SphereSfM` のルートを選び、Step 5 の `SfM結果 → データセット` で詳細を指定して実行します。Metashape結果を使う場合はカメラXMLと、必要に応じて点群PLYを指定し、Postshot / Brush / LichtFeld Studio / RealityScan のどれに渡すかを選びます。Metashapeを使わない場合は、COLMAP Rig用のキューブマップ画像を書き出すか、SphereSfMでエクイレクタングラー画像を直接SfMしてから3DGS向けデータへ変換できます。学習アプリの起動はStep 6で、Step 5が作成済みのデータセットを読み込んで実行します。
+Step 5は、SfM結果を学習アプリで読み込めるデータセットへ変換する画面です。MetashapeやSphereSfMの結果からNeRF系JSON/PLYを作る、MetashapeやRealityScanの結果からCOLMAP形式データセットを作る、AprilTagでスケールを反映する、といった作業をここで行います。
 
 ## まず決めること
 
-Step 4を開いたら、最初に「自分はどのルートか」を決めます。カードを選ぶと、Step 5の `SfM結果 → データセット` へ移動し、そのルートの設定画面が開きます。
+最初に決めるのは、「カメラポーズはもうあるか」です。
 
-SfMは、複数画像の見え方の差からカメラ位置と疎な点群を推定する処理です。3DGSでは、このカメラ位置を使ってトレーニングデータを読み込みます。MetashapeルートはMetashapeで作ったSfM結果を変換し、SphereSfMルートとCOLMAP実行ありのCOLMAPルートはこのアプリからSfM処理まで進めます。
-
-| やりたいこと | ルート | 主に使う設定 |
-| --- | --- | --- |
-| MetashapeでSfM済みの結果をPostshot / Brush / LichtFeldへ渡したい | `Metashape` | `出力プリセット`, `出力形状`, `カメラXML`, `点群PLY` |
-| Metashapeで合わせた360°画像をRealityScanで再アラインし、点群やモデル作成へ進みたい | `Metashape` | `出力プリセット: RealityScan`, `カメラXML`, XMP設定 |
-| LichtFeldで3DGUT用データを作りたい | `Metashape` | `出力プリセット: LichtFeld Studio`, `出力形状`, `点群PLY` |
-| Metashapeを使わず、抽出済み360°画像からCOLMAPへ進みたい | `COLMAP` | `COLMAP実行設定`, `Cubemap` |
-| Metashapeを使わず、抽出済みエクイレクタングラー画像を直接SfMしたい | `SphereSfM` | `SphereSfM COLMAP実行ファイル`, `SfM入力`, `Matcher`, `SfM品質`, `出力形状` |
-
-作業を再開する場合は、先にヘッダーで対象のシーンフォルダを読み込みます。そのうえで、使うルートと出力形状を選びます。
-
-Step 5の左ナビゲーション下にある `SfM` はカメラ位置を用意する工程、`Cube` は3DGSアプリへ渡すデータセットを書き出す工程です。Metashape結果を変換するだけなら、通常は `Cube` を実行します。COLMAPやSphereSfMでカメラ位置の推定から行う場合は `SfM` も実行します。既存のSfM結果から出力だけ作り直す場合は `SfM` をOFF、`Cube` をONにします。警告アイコンが出ている場合は、その行から不足している設定へ移動して確認します。
-
-Step 5のデータセット画面には、次のツールカードがあります。
-
-| ツール | 用途 |
+| 状態 | 進み方 |
 | --- | --- |
-| `SfM結果 → データセット` | Metashape / COLMAP / SphereSfM の結果からPostshot、Brush、LichtFeld、RealityScan向けデータセットを作る |
-| `RealityScan → LichtFeld` | RealityScanから書き出したCSV/PLYを、LichtFeldがDatasetとして読めるCOLMAP形式へ変換する |
-| `スケール調整` | AprilTag観測から既存の投影Cubemapデータセットへスケールを反映する |
+| MetashapeでSfM済み | Step 4は `既存のSfM結果を使う`。Step 5でMetashape系カードを選ぶ |
+| RealityScanで再アライン済み | Step 4は `既存のSfM結果を使う`。Step 5で `RealityScan → COLMAPデータセット` を選ぶ |
+| COLMAPのimages/masks/sparseがすでにある | Step 4は `既存のSfM結果を使う`。COLMAP対応アプリならそのまま学習へ進む |
+| このアプリからCOLMAPでSfMしたい | Step 4で `COLMAPでSfMを実行` |
+| このアプリからSphereSfMでSfMしたい | Step 4で `SphereSfMでSfMを実行` |
+| Metashape結果をRealityScanで再アラインしたい | Step 4で `Metashape → RealityScan用データ作成` |
+| 作成済み結果を確認したい | Step 4で `SfM結果を確認` |
+
+## Step 4: SfMカードの選び方
+
+### 既存のSfM結果を使う
+
+Metashape、RealityScan、COLMAP、SphereSfMなどで、すでにカメラポーズと疎点群を作ってある場合に選びます。このカードは「何もしないで次へ進む」ための選択肢です。次のStep 5で、その結果をどのデータセット形式へ変換するかを選びます。
+
+### COLMAPでSfMを実行
+
+Metashapeを使わず、このアプリからCOLMAPまたはGLOMAPでSfMしたい場合に選びます。
+
+- 360°画像はCubemap Rigへ展開します
+- 通常画像や通常動画フレームは通常カメラとして扱います
+- 混在ソースを一つのCOLMAPデータセットとして処理できます
+- 出力は `output/colmap_rig/` です
+
+通常は、動画順に撮った素材なら `Sequential` から始めます。写真枚数が少なく、順序より全体照合を優先したい場合は `Exhaustive` を検討します。
+
+通常画像のカメラモデルは基本的に自動推定から始めます。焦点距離や歪みモデルを明示したい場合だけ、通常画像カメラ設定で対象グループを選んで調整します。
+
+### SphereSfMでSfMを実行
+
+エクイレクタングラー360°画像を球面カメラとしてSfMしたい場合に選びます。SphereSfMは同一解像度のERP 360°画像だけを入力にするのが安全です。通常画像や複数解像度ERPを混ぜたい場合はCOLMAPまたはMetashapeを使ってください。
+
+通常のCOLMAPではなく、SphereSfM版の `colmap.exe` が必要です。RTX 50系GPUでは配布バイナリがCUDA SIFTで止まる場合があるため、その場合はRTX 50系に対応したビルドを指定します。
+
+出力されるSfM作業フォルダは `output/spheresfm/` です。学習アプリへ渡すJSON/PLYやCubemapデータは、Step 5で `SphereSfM → NeRFデータセット(JSON/PLY)` を実行して作ります。
+
+### Metashape → RealityScan用データ作成
+
+Metashapeで作ったカメラXMLから、RealityScanへ読み込ませるCubemap画像とXMPを作ります。RealityScanで再アラインしたい、RealityScan上で別ソースの画像を追加したい、RealityScanのCSV/PLYを書き出して後段へ渡したい場合に使います。
+
+出力は `output/realityscan/` です。RealityScanでは `images/` フォルダを追加し、Align後にCSVとPLYを書き出します。その後、LichtFeld用COLMAPデータセットが必要な場合はStep 5の `RealityScan → COLMAPデータセット` を使います。
+
+### SfM結果を確認
+
+点群、カメラ位置、選択カメラ画像、対応マスクを読み取り専用ビューで確認します。SfM結果が意図した位置関係になっているか、画像とマスクの対応が壊れていないかを見るためのカードです。
+
+## Step 5: データセットカードの選び方
+
+### Metashape → NeRFデータセット(JSON/PLY)
+
+MetashapeのカメラXMLと点群PLYから、`transforms.json` と `pointcloud.ply` を使うNeRF/3DGS系データセットを作ります。
+
+| 選択 | 使う場面 |
+| --- | --- |
+| `PINHOLE` | 360°画像をCubemapへ展開して、Postshot / Brush / LichtFeldなどで扱いやすいデータにする |
+| `ERP 360°` | LichtFeldでGUTを使い、エクイレクタングラー画像を直接使う |
+
+通常は `PINHOLE` から始めます。通常画像や複数解像度ERPが混在するMetashape結果では、ERP 360°のまま安全に出力できないため、`PINHOLE` を使ってください。LichtFeldのJSON/PLY読み込みはフレームごとのカメラ内部パラメータを扱えないため、複数カメラ設定の混在結果では `Metashape → COLMAPデータセット` のほうが安全です。
+
+出力先は主に次の通りです。
+
+| 出力 | フォルダ |
+| --- | --- |
+| PINHOLE Cubemap | `output/metashape_cubemap/` |
+| ERP 360° / GUT | `output/metashape_3dgut/` |
+
+### Metashape → COLMAPデータセット
+
+MetashapeのカメラXMLと点群PLYから、`images/`, `masks/`, `sparse/0/` を持つCOLMAP形式データセットを作ります。COLMAP入力に対応した学習ソフトへ渡したい場合、またはMetashapeで360°画像と通常画像を混在SfMした結果を安全に使いたい場合に選びます。
+
+- ERP 360°カメラは選択した視点セットへ展開します
+- PINHOLEの通常画像はCubemap化せず参照します
+- 歪み係数を持つ通常画像はPINHOLEへ補正し、対応マスクも同じ変換をかけます
+- 出力は `output/metashape_colmap/` です
+
+LichtFeldでMetashape混在結果を使う場合は、このルートが安全です。
+
+### RealityScan → COLMAPデータセット
+
+RealityScanのRegistrationから書き出したInternal/External CSVと、同じ座標状態で書き出したPLYから、LichtFeldでDatasetとして開けるCOLMAPデータセットを作ります。
+
+通常は `output/realityscan/` 配下にCSV、PLY、`images/`、`masks/` がある状態で使います。出力先は `output/realityscan/lfs_colmap/` です。
+
+`レンズ補正してPINHOLE化` は、RealityScanで通常画像も混ぜてアラインし、LichtFeldが歪みつきカメラを受け付けず止まる場合に使います。Cubemap由来のPINHOLE画像はリンクで参照し、歪み係数を持つ通常画像だけを補正します。補正で生じる無効領域はマスクにも反映されます。
+
+### SphereSfM → NeRFデータセット(JSON/PLY)
+
+Step 4で作ったSphereSfM sparse、または別途指定したSphereSfM sparseから、JSON/PLYデータセットを作ります。
+
+SphereSfM入力は同一解像度のERP 360°画像に限定するのが安全です。出力は、LichtFeldでGUTを使うERP 360°データ、またはPostshot / Brush / LichtFeldで扱いやすいPINHOLE Cubemapデータから選びます。
+
+### スケール調整
+
+AprilTagの実寸から、作成済みデータセットのスケールを補正します。撮影前にタグを印刷し、現場に固定しておく必要があります。
+
+1. Step 5でCubemapまたはCOLMAP系データセットを作ります。
+2. `スケール調整` を開き、対象データセット、タグファミリ、タグID、実寸を確認します。
+3. `推定` を実行し、検出数や推定値を確認します。
+4. 結果が妥当な場合だけ反映します。
+
+スケール反映は対象データセットのカメラ位置と点群に同じ倍率をかけます。反映前にはバックアップを作ります。
+
+## 出力設定の選び方
+
+### 画像タイプ
+
+`PINHOLE` は、ERP 360°画像をCubemapなどの通常視点画像へ展開する出力です。Postshot、Brush、LichtFeldの通常学習ではまずこれを使います。
+
+`ERP 360°` は、LichtFeldでGUTを使ってエクイレクタングラー画像を直接学習する場合だけ選びます。LichtFeld以外のプリセットでは選べません。
+
+### 視点セット
+
+`Cubemap` は前後左右上下の6方向を出力する標準設定です。迷ったらこれを使います。
+
+`Custom Grid` は、6方向では足りない場合に視点方向を増やす設定です。視点数を増やすほど出力枚数、処理時間、学習時の画像数が増えます。
+
+### 画像サイズ
+
+通常は既定値から始めます。軽く試す場合は小さめ、最終品質を見たい場合は大きめを選びます。元画像の情報量や学習アプリのVRAM消費も合わせて判断します。
 
 ## シーンプレビュー
 
-Step 5 の `SfM結果 → データセット` 右側にあるシーンプレビューアイコンを押すと、読み取り専用のシーンプレビューを別ウィンドウで開けます。シーンフォルダが選択済みなら、そのフォルダを引き継いで開きます。ビューワーだけを起動したい場合は、アプリのフォルダで次のように実行できます。
+Step 4の `SfM結果を確認` から、点群、カメラ位置、画像、マスクを同じ画面で確認できます。別ウィンドウだけ起動したい場合は次のように実行できます。
 
 ```bat
 run_scene_preview.bat D:\work\scene01
 ```
 
-シーンプレビューは、シーンフォルダ内に見つかった候補を `読み込み候補` に表示します。`output/` 配下のデータセット、MetashapeのXML/PLY、SphereSfMの結果、COLMAPの結果がある場合は、それぞれ候補として選べます。別のシーンを確認したい場合は `シーン選択...`、フォルダ内の結果を作り直した後は `再読み込み` を使います。
-
-左ビューでは、点群、カメラ位置、ワールド軸を一緒に確認できます。カメラを選ぶと、そのカメラの点が強調表示され、右ビューで見ている方向が黄色いレイとして表示されます。カメラ点をクリックして選択するほか、上部のカメラ一覧からも選べます。
-
-右ビューでは、選択中カメラに対応する画像を表示します。エクイレクタングラー画像やCubemap出力では、カメラから見た透視表示として確認できます。Cubemapの面を選んだ場合は、同じ元カメラのCubemap面からスフェリカル表示を再構築し、前方ビューから表示します。対応するマスクがある場合は、除外される領域を赤く重ねて表示します。
-
-基本操作:
-
-| 場所 | 操作 |
-| --- | --- |
-| 左ビュー | 左ドラッグで回転、右ドラッグまたは中ボタンドラッグで移動、ホイールでズーム |
-| 左ビュー | カメラ点をクリックして選択、ダブルクリックで全体表示に戻す |
-| 右ビュー | 透視表示では左ドラッグで見る方向を変更、ホイールで2Dズーム、ダブルクリックで表示をリセット |
-| 右ビュー | 通常のピンホール画像では左ドラッグでパン、ホイールでズーム |
-
-## Metashapeルートの基本操作
-
-Metashapeで360°画像をアライメント済みなら、基本はこの流れです。
-
-1. ルートを `Metashape` にします。
-2. `カメラXML` を確認します。候補が自動入力されていない場合や別のXMLを使いたい場合は、Metashapeから書き出したカメラXMLを手動で指定します。
-3. LichtFeld Studio向け、または点群も同梱したい場合は `点群PLY` を確認します。候補が1つだけなら自動入力されます。候補が複数ある場合は、使うPLYを手動で選びます。
-4. `出力プリセット` で渡し先を選びます。
-5. `出力形状` で、キューブマップ画像へ変換するか、`3DGUT (LichtFeld)` にするかを選びます。
-6. キューブマップ画像を作る場合は、`Cubemap` タブでCube6、Yaw、画像サイズを確認します。
-7. `実行` します。
-
-Metashapeルートでは、Metashapeのカメラ情報を3DGS用のカメラデータに変換します。`出力形状` が `投影視点に変換` の場合は、あわせてキューブマップ画像とマスクを書き出します。
-
-### カメラXMLと点群PLYの選び方
-
-Metashapeルートでは、Metashapeから書き出したカメラXMLを指定します。シーンフォルダに使えそうなXMLが1つだけ見つかった場合は自動入力されますが、候補が複数ある場合や想定と違う場合は手動で選びます。
-
-- `カメラXML`: Metashapeでアライメントしたカメラを書き出したXMLを指定します。
-- `点群PLY`: LichtFeld向けや点群同梱が必要な場合に、Metashapeから書き出したPLYを指定します。候補が複数ある場合は、使いたい点群を手動で選びます。
-
-Metashapeから書き出した元のXML/PLYは、Step 5の出力フォルダとは別の場所に置いておくと選びやすくなります。
-
-## 出力プリセットの選び方
-
-`出力プリセット` は、書き出したデータをどの3DGSアプリに渡すかの選択です。
-
-| プリセット | 使う場面 |
-| --- | --- |
-| `Postshot` | Postshot向けにキューブマップデータを作る |
-| `Brush` | Brush向けにキューブマップデータを作る |
-| `LichtFeld Studio` | LichtFeld向けにキューブマップデータ、または3DGUTデータを作る |
-| `RealityScan` | Metashapeのカメラ姿勢付きcubemap画像をRealityScanへ渡し、RealityScanでAlignして点群を作りたい |
-| `カスタム` | 座標変換やPLY使用を手動で調整する |
-
-通常は渡し先のアプリ名をそのまま選びます。詳細設定で座標変換、PLY使用、Metashapeインポート設定をプリセット値から変えると、自動的に `カスタム` 扱いになります。
-
-## 出力形状の選び方
-
-`出力形状` は、エクイレクタングラー画像をどうトレーニングデータにするかの選択です。MetashapeルートとSphereSfMルートのどちらでも使います。
-
-### 投影視点に変換
-
-通常はこちらを使います。エクイレクタングラー画像をキューブマップ画像に変換し、現在のキューブマップ用データセットフォルダに画像、マスク、`transforms.json` を作ります。Metashape出力は `<scene>/output/metashape_cubemap/`、SphereSfMの変換出力は `<scene>/output/spheresfm_cubemap/` です。Cube6が標準ですが、必要に応じて `Cubemap` タブで書き出す向きを調整できます。
-
-この出力はPostshot / Brush / LichtFeld Studioで扱いやすく、通常のピンホールカメラに近いデータになります。下流アプリとの互換性のため、`transforms.json` のカメラモデルは `PINHOLE` として書き出します。LichtFeldでこのデータをトレーニングするときは、基本的にGUTやUndistortは使いません。
-
-RealityScanへ渡す場合は `RealityScan` プリセットを使います。出力先は `<scene>/output/realityscan/` で、RealityScanに読み込ませるcubemap画像と、各画像に対応するXMPカメラ情報をまとめて作ります。Metashapeの点群PLYはこの出力では使いません。RealityScanで画像を読み込んで `Align` し、RealityScan側で点群やモデル作成へ進みます。
-
-### RealityScanで再アラインする
-
-Metashapeでカメラ位置は出ているが、RealityScanのアライン結果を使いたい、RealityScan上で追加素材を足したい、またはRealityScanからPLY/カメラCSVを書き出して後段の学習に使いたい場合は、この手順を使います。
-
-1. ルートを `Metashape` にします。
-2. `カメラXML` に、Metashapeから書き出したカメラXMLを指定します。
-3. `出力プリセット` を `RealityScan` にします。`出力形状` は投影視点の出力に固定されます。
-4. `Cubemap` タブで `Cube6` と画像サイズを確認します。通常は既定値のままで始めます。
-5. `XMP` は通常、`Pose: Exact`、`Calib: Exact`、`Rig: OFF` のまま使います。
-6. `実行` します。
-7. RealityScanで `WORKFLOW` > `Folder` から `<scene>/output/realityscan/images/` を追加します。
-8. `Align Images` を実行します。カメラとタイポイントが作られたら、RealityScan側でモデル作成や書き出しへ進みます。
-
-`XMP` の `Pose` は、RealityScanがカメラ位置と向きをどう扱うかです。通常は `Exact` で、Metashape由来の姿勢を保ったままRealityScanで点群を作ります。RealityScanにカメラ姿勢もより自由に調整させたい場合だけ `Initial` を試します。`Locked` はカメラを固定したい場合に使います。
-
-`Calib` は、RealityScanが焦点距離や主点などのカメラ内部パラメータをどう扱うかです。cubemap画像は既知の仮想カメラとして作るため、通常は `Exact` を使います。RealityScanに内部パラメータの調整も任せたい場合だけ `Initial` を使います。
-
-`Rig` は上級者向けです。通常の「RealityScanでAlignして点群を再生成する」用途ではOFFのままにしてください。RealityScan側のRigメタデータが必要だと分かっている場合だけONにします。
-
-マスクを書き出す設定なら、RealityScan用のマスクレイヤも画像の隣に作られます。白が使用、黒が除外です。RealityScanへは通常、`images/` フォルダを追加するだけで画像、XMP、マスクレイヤをまとめて使えます。
-
-### 3DGUT (LichtFeld)
-
-LichtFeld Studioで3DGUTトレーニングに使うデータを作るモードです。SfMに使ったエクイレクタングラーの `images/` と `masks/` を現在の3DGUT用データセットフォルダに配置し、キューブマップ画像や変換マスクは作りません。
-
-このモードでは、LichtFeldへ読み込ませるために現在の3DGUT用データセットフォルダへ次のファイルを作ります。
-
-- `transforms.json`
-- `pointcloud.ply`
-
-Metashapeルートでは `出力プリセット: LichtFeld Studio` と点群PLYの指定が必要で、完成データセットは `<scene>/output/metashape_3dgut/` です。SphereSfMルートではSfM結果から `pointcloud.ply` を作り、完成データセットは `<scene>/output/spheresfm_3dgut/` です。`3DGUT (LichtFeld)` の選択中は投影視点の調整、画像/マスク出力のON/OFF、COLMAP形式モデル追加出力は無効になります。
-
-## LichtFeldでキューブマップ版と3DGUT版を使い分ける場合
-
-LichtFeldで「キューブマップデータ」と「3DGUTでエクイレクタングラーを直接読むデータ」の両方を用意したい場合は、同じMetashape結果から2回書き出します。
-
-### キューブマップ版
-
-1. ルートを `Metashape` にします。
-2. `出力プリセット` を `LichtFeld Studio` にします。
-3. `出力形状` を `投影視点に変換` にします。
-4. `点群PLY` を確認します。1つだけの候補が自動入力されていればそのまま使われます。空欄、または候補が違う場合は手動で指定します。
-5. `Cubemap` で `Cube6`、Yaw 45°、必要な `画像サイズ` を選びます。
-6. 実行します。
-
-出力先は `<scene>/output/metashape_cubemap/` です。LichtFeldにはこのフォルダを読み込ませます。
-
-### 3DGUT版
-
-1. ルートを `Metashape` にします。
-2. `出力プリセット` を `LichtFeld Studio` にします。
-3. `出力形状` を `3DGUT (LichtFeld)` にします。
-4. `点群PLY` を確認します。1つだけの候補が自動入力されていればそのまま使われます。空欄、または候補が違う場合は手動で指定します。
-5. 実行します。
-
-この出力では、既存の `<scene>/images/` と `<scene>/masks/` を使い、`<scene>/output/metashape_3dgut/transforms.json` と `<scene>/output/metashape_3dgut/pointcloud.ply` を新しく作ります。LichtFeldでは `<scene>/output/metashape_3dgut/` をデータセットとして指定し、トレーニング時にGUTを有効にします。
-
-## 投影視点の調整
-
-`投影視点に変換` は、360度画像からキューブマップ画像を書き出す出力です。標準の `Cube6` では前後左右上下の6方向を作ります。`Cubemap` タブでは、必要に応じて方向数や上下方向の行、書き出す視点のON/OFFを調整できます。
-
-### まずはCube6
-
-通常は `Cube6` から始めます。前後左右上下の6方向を書き出す設定で、Postshot / Brush / LichtFeld Studio向けの標準的な出力として使いやすいです。生成ファイル名の面サフィックスは、通常のCubemap軸名に合わせて `px` / `nx` / `py` / `ny` / `pz` / `nz` を使います。
-
-`Yaw Offset` は既定の45°が推奨です。補正なしで書き出した2眼360°カメラでは、スティッチ境界がエクイレクタングラー画像の横25%/75%付近に来ることが多く、45°ずらすと境界がキューブ面の中心を横切りにくくなります。
-
-### Custom Grid
-
-6方向では足りない向きを追加したい、上下方向を減らしたい、斜め上/斜め下の視点を足したい場合は `Custom Grid` を使います。
-
-- `Yaw Slots`: 水平方向の分割数です。4から8まで増減できます。
-- `Pitch Rows`: 上下方向の行です。`-90..90` の範囲で最大5行まで使えます。
-- 各チェックボックス: その視点を書き出すかどうかです。
-
-有効視点数が増えるほど出力枚数と処理時間が増えます。24視点を超えると警告、40視点を超えると実行不可になります。
-
-### 画像サイズ
-
-`画像サイズ` はキューブマップ画像1枚の解像度です。
-
-| 設定 | 使いどころ |
-| --- | --- |
-| `Full` | 最終品質確認。重いが細部が残りやすい |
-| `Normal` | 既定の標準設定。90°視点中央部の角度解像度を元画像に近づける |
-| `Half` | 軽量テスト。速い代わりに細部の解像感が落ちる |
-
-通常は既定の `Normal` から始め、VRAMや処理時間が厳しい場合は `Half`、細部を優先したい最終確認では `Full` を選びます。
-
-## 画像やマスクだけ作り直したい場合
-
-`出力` の `画像` / `マスク` チェックで、どちらを書き出すかを選べます。
-
-| やりたいこと | 設定 |
-| --- | --- |
-| 画像とマスクを両方作り直す | `画像` ON, `マスク` ON |
-| マスクだけ作り直す | `画像` OFF, `マスク` ON |
-| 画像だけ作り直す | `画像` ON, `マスク` OFF |
-| カメラ情報だけ更新する | `画像` OFF, `マスク` OFF |
-
-マスクだけ調整したあとに再出力する場合は、`画像` をOFFにすると既存のキューブマップ画像を再変換せずに済みます。`3DGUT (LichtFeld)` では元画像と元マスクをそのまま使うため、この出力ON/OFFは使いません。
-
-## MetashapeからCOLMAPデータセットを作る
-
-Step 5の `Metashape → COLMAPデータセット` カードは、COLMAP入力に対応した学習アプリ向けに `<scene>/output/metashape_colmap/` を作ります。
-
-Metashape XMLが球面カメラだけの場合は、既存のCubemap変換ルートを使います。Metashape XMLに球面カメラと通常フレームカメラが混在している場合、または通常フレーム側に歪み係数がある場合は、混在対応の書き出しに切り替わります。
-
-- 球面 / ERP カメラだけ、選択した視点セットへ展開します
-- PINHOLEの通常フレーム画像はCubemap化せずリンクまたはコピーします
-- 歪み係数を持つ通常フレーム画像はPINHOLEへUndistortし、マスクも同じ変換をかけます
-- 出力先に `sparse/0/cameras.txt`, `images.txt`, `points3D.txt` を作ります
-
-これは、Metashapeで混在SfMした結果から、必要なERP画像だけCubemap展開したい場合のルートです。
-
-## RealityScanからLichtFeld用COLMAPを作る
-
-RealityScanで再アラインしたあと、PostshotではCSV/PLYを直接使えても、LichtFeldではCOLMAP形式のデータセットが必要になる場合があります。Step 5 の `RealityScan → LichtFeld` は、RealityScanのRegistrationから書き出したInternal/External CSVと、同じ座標状態で書き出したPLYから、LichtFeldで `Dataset` として開けるフォルダを作ります。
-
-通常は `<scene>/output/realityscan/` 配下にCSV、PLY、`images/`、`masks/` がある状態で使います。出力先は既定で `<scene>/output/realityscan/lfs_colmap/` です。
-
-1. Step 5で `RealityScan → LichtFeld` を開きます。
-2. `RealityScan CSV` と `RealityScan PLY` を確認します。`rs_*.csv` / `rs_*.ply` があれば自動入力されます。
-3. `画像フォルダ` と `マスクフォルダ` を確認します。通常はRealityScan用に作った `images/` と `masks/` を使います。
-4. 通常画像に歪み係数が残っていてLichtFeldが停止する場合だけ、`歪み画像を事前Undistort` をONにします。Cubemap由来のPINHOLE画像はリンクのまま使い、歪み係数を持つ画像だけ変換してPINHOLEとして書き出します。
-5. `COLMAPデータセット作成` を押します。
-
-このツールは、出力先に `images/`、`masks/`、`sparse/0/` を作ります。元画像や元マスクは可能な場合リンクで参照し、Undistortが必要な画像だけを書き出します。
-
-## AprilTagでスケールを推定する
-
-AprilTagを使う場合は、撮影前にタグを印刷して現場へ配置しておきます。Step 5 の `スケール調整` にある折りたたみ `タグPDF` から、タグファミリ、タグID、実寸、用紙サイズを指定して印刷用PDFを作成できます。印刷時は100%/実寸で出力してください。プリンタ側で拡大縮小されると、推定に使うタグ実寸が変わります。
-
-複数地点にタグを置く場合は、場所ごとに別のタグIDを使います。同じIDを複数の場所に置くと、どのタグを見たのか区別できず、推定が壊れます。タグは撮影中に動かない場所へ固定し、できるだけ複数のフレームから見えるように配置してください。
-
-撮影後の手順は次の通りです。
-
-1. 通常どおりStep 5の `SfM結果 → データセット` でCubemap出力を作成します。スケール推定には、通常 `<scene>/output/metashape_cubemap/` または `<scene>/output/spheresfm_cubemap/` にある投影済みの `transforms.json` と画像が必要です。3DGUT向けのエクイレクタングラー出力のままでは推定できません。
-2. Step 5のツール一覧へ戻り、`スケール調整` を開きます。
-3. 印刷したタグの実寸、タグファミリ、撮影に使ったタグIDを入力します。別のタグを印刷していない限り、既定の `tag36h11 / ID 7` を使います。`変換プリセット` は通常 `自動` のままにします。別の場所から持ち込んだCube6で推定が崩れる時だけ、変換時に選んだ `LichtFeld`、`Postshot`、`Brush` などを選びます。
-4. `推定` を押します。処理中は下部ログと進捗バーに検出状況が表示されます。この時点ではファイルを書き換えず、推定scaleと観測数などの統計だけを表示します。
-5. 結果が妥当な場合だけ `Scaleへ反映` を押します。選択中のCubemapデータセット内に `apriltag_scale_backup_日時/` を作って現在のファイルをバックアップし、そのデータセットの `transforms.json` のカメラ位置と、存在する場合は `pointcloud.ply` の点群座標へ同じscaleを掛けます。
-
-## Step 6へ進む
-
-Step 5は、3DGSアプリへ渡すデータセットを作る工程です。LichtFeld StudioやPostshotで使う場合は、Step 5でデータセットを作成してから `Step 6: 学習` を開きます。
-
-Step 6の操作は [Step 6 学習GUI](training_gui.ja.md) を参照してください。
-
-## COLMAPルート
-
-Metashapeを使わず、抽出済みの360°画像からCOLMAPへ進みたい場合はルートを `COLMAP` にします。
-
-1. `シーンフォルダ` に `images/` と必要なら `masks/` があることを確認します。
-2. ルートを `COLMAP` にします。
-3. `Cubemap` で視点数、Yaw、画像サイズを決めます。
-4. COLMAPでカメラ位置と疎な点群まで推定したい場合は、左サブ工程の `SfM` をONにします。COLMAP SfMには視点画像が必要なため、`SfM` をONにすると `Cube` もONになります。`Cube` をOFFにすると `SfM` もOFFになります。
-5. `Matcher` と `Mapper` を選びます。通常は `Sequential` と `Global` から始めます。
-6. 実行します。
-
-COLMAPルートでは、Step 5 の `SfM結果 → データセット` が `output/colmap_rig/` にCOLMAP Rig形式のキューブマップ画像、マスク、`rig_config.json` を作ります。左サブ工程の `SfM` がONの場合は、続けてCOLMAPでカメラ位置と疎な点群も推定します。`Cube` ON / `SfM` OFF は、COLMAP Rig形式の視点画像だけを書き出します。
-
-COLMAPルートは投影視点のCOLMAP Rigデータ専用です。3DGUT用のエクイレクタングラー出力はMetashapeルートまたはSphereSfMルートで作成します。既存のCOLMAP結果をトレーニングに渡したい場合は、`SfM` タブの `SfM入力` で選択できます。
-
-フレーム別Yaw回転は、固定リグの前提を崩すためCOLMAP Rig書き出しでは常に0度です。
-
-## SphereSfMルート
-
-SphereSfMルートは、Metashapeを使わずに、抽出済みエクイレクタングラー画像をそのまま球面カメラとしてSfMするルートです。目的は2つあります。
-
-- LichtFeld 3DGUTで使う直接データセットを作る
-- Postshot / Brush / LichtFeldで扱いやすいキューブマップデータを作る
-
-通常のCOLMAPではなく、SphereSfM版の `colmap.exe` が必要です。アプリにはSphereSfM本体やバイナリは含まれないため、[json87/SphereSfM](https://github.com/json87/spheresfm) のリリースまたはローカルビルドで用意した実行ファイルを指定します。
-
-RTX 50系GPUでは、GitHubで配布されているSphereSfMのWindowsバイナリはCUDA SIFTで停止することがあります。RTX 50系は新しいCUDAアーキテクチャ `sm_120` 向けの実行コードが必要ですが、配布版バイナリがそれを含まずにビルドされていると、`no kernel image is available for execution on the device` で失敗します。RTX 50系で使う場合は、SphereSfMをRTX 50系対応のCUDA/CMake環境で `CMAKE_CUDA_ARCHITECTURES=120` を指定して自前ビルドし、その `colmap.exe` を指定してください。
-
-1. `シーンフォルダ` に `images/` と、使用する場合は `masks/` があることを確認します。
-2. ルートを `SphereSfM` にします。
-3. `SphereSfM COLMAP実行ファイル` に、SphereSfM配布版またはビルド済みの `colmap.exe` を指定します。
-4. `masks/ を使用` は通常ONにします。Step 3で作った白=使用、黒=除外のマスクを、SphereSfMで使える形にしてSfMへ渡します。
-5. 左サブ工程で今回実行する範囲を選びます。通常は `SfM` と `Cube` をON、SfMだけ作り直す場合は `Cube` をOFF、既存のSfM結果から変換だけやり直す場合は `SfM` をOFFにします。使うSfM結果を明示したい場合は `SfM` タブの `SfM入力` で選びます。
-6. `Matcher` は動画フレームなら `Sequential` から始めます。POSファイルがある場合だけ `Spatial` を使います。
-7. `SfM品質` はまず `標準`、試行や大量フレームでは `軽量`、登録が弱い場合は `クオリティ` を試します。
-8. `Cubemap` タブで `出力形状` を選びます。
-9. 実行します。
-
-`SfM` ON / `Cube` OFF は、カメラ位置推定だけを実行します。3DGSアプリへ渡すデータセットはまだ作られません。`SfM` OFF / `Cube` ON は、`SfM入力` で選んだ既存結果を再利用して、3DGUT/キューブマップの出力だけを作り直すときに使います。
-
-SphereSfM実行の開始時には、本処理の前に小さなGPU SIFT確認を行います。選択したSphereSfMが現在のGPUでCUDA SIFTを実行できない場合はそこで停止し、ログへのリンクと原因の候補を表示します。
-
-`出力形状` が `3DGUT (LichtFeld)` の場合は、既存の `<scene>/images/` と `<scene>/masks/` を使い、`<scene>/output/spheresfm_3dgut/transforms.json` と `<scene>/output/spheresfm_3dgut/pointcloud.ply` を作ります。LichtFeldで使う3DGUTデータセットは `<scene>/output/spheresfm_3dgut/` です。そこに既存の3DGUTデータセットファイルがある場合は、上書き前に確認します。
-
-`出力形状` が `投影視点に変換` の場合は、`<scene>/output/spheresfm_cubemap/` が下流アプリへ渡すキューブマップデータセットになります。`Cubemap` タブの投影視点設定と画像/マスク出力のON/OFFを使い、`<scene>/output/spheresfm_cubemap/images/`、`<scene>/output/spheresfm_cubemap/masks/`、`<scene>/output/spheresfm_cubemap/transforms.json`、`<scene>/output/spheresfm_cubemap/pointcloud.ply` を作ります。
-
-SphereSfMの作業ファイルとログは `<scene>/output/spheresfm/` にまとまります。完成データセットは、その作業フォルダとは別に作られます。
-
-実行後は `結果をCOLMAP GUIで表示` で、登録されたカメラ位置と疎点群を確認できます。GUIなしでビルドされたSphereSfM版COLMAPではこの表示だけ使えませんが、SfMや変換結果の出力自体とは別です。
-
-## 実行後にできるもの
-
-| ルート | 主な出力 |
-| --- | --- |
-| Metashape + キューブマップ変換 (`投影視点に変換`) | `<scene>/output/metashape_cubemap/images/`, `<scene>/output/metashape_cubemap/masks/`, `<scene>/output/metashape_cubemap/transforms.json`。LichtFeldプロファイルでは `pointcloud.ply` も作ります |
-| Metashape + RealityScanプリセット | RealityScanで追加するのは `<scene>/output/realityscan/images/`。同じフォルダにXMPサイドカーと任意のRealityScanマスクレイヤを作ります |
-| Metashape + `3DGUT (LichtFeld)` | `<scene>/output/metashape_3dgut/images/`, `<scene>/output/metashape_3dgut/masks/`, `<scene>/output/metashape_3dgut/transforms.json`, `<scene>/output/metashape_3dgut/pointcloud.ply` |
-| COLMAP | `<scene>/output/colmap_rig/images/`, `<scene>/output/colmap_rig/masks/`, `<scene>/output/colmap_rig/rig_config.json` |
-| COLMAP実行あり | 上記に加えて、COLMAPのSfM結果 |
-| SphereSfM + `3DGUT (LichtFeld)` | `<scene>/output/spheresfm_3dgut/images/`, `<scene>/output/spheresfm_3dgut/masks/`, `<scene>/output/spheresfm_3dgut/transforms.json`, `<scene>/output/spheresfm_3dgut/pointcloud.ply` |
-| SphereSfM + キューブマップ変換 (`投影視点に変換`) | 下流アプリへ渡すのは `<scene>/output/spheresfm_cubemap/`。`images/`, `masks/`, `transforms.json`, `pointcloud.ply` を作ります |
-
-Step 5では通常、選択中の出力フォルダを他PCへコピーしたり3DGSアプリへ直接読み込ませたりする現在のデータセットとして扱います。RealityScanプリセットだけは、RealityScanで `<scene>/output/realityscan/images/` を追加します。
-
-`LichtFeld Studio` プロファイルでは、Cubemap書き出し時点で最終出力の `transforms.json` と `pointcloud.ply` に同じ向き補正を適用し、LichtFeld上でMetashapeと同じ +X / +Z / 上下方向になるようにします。`3DGUT (LichtFeld)` では、元画像を使う直接データセットの作成時に同じ補正を適用します。
+プレビューでは、出力済みデータセット、Metashape XML/PLY、COLMAP sparse、SphereSfM sparseなどを候補として選べます。カメラをクリックすると、そのカメラ画像と対応マスクを確認できます。
 
 ## よくある判断
 
-- Postshot / Brushへ渡すなら、まず `投影視点に変換` を使います。
-- LichtFeldで通常トレーニングするなら、まず `LichtFeld Studio` + `投影視点に変換` を使います。
-- LichtFeldでGUTを使うなら、`LichtFeld Studio` + `3DGUT (LichtFeld)` を使います。
-- Metashape結果をRealityScanで再アラインしたいなら、`RealityScan` プリセットを使い、RealityScanでは `<scene>/output/realityscan/images/` を `Folder` で追加してから `Align Images` します。
-- キューブマップデータをLichtFeldでトレーニングするときは、基本的にGUTもUndistortも不要です。
-- `3DGUT (LichtFeld)` でトレーニングするときは、LichtFeld側でGUTを有効にします。
-- スティッチが目立たない素材では、スティッチマスクはOFFまたは細めから試します。Yaw 45°は画素を捨てない対策なので、通常は維持して構いません。
-- Metashapeルートで `点群PLY` が必要なプロファイルなのに使用可能なPLYが選択されていない場合は、実行前にエラーで止まります。
+- MetashapeでSfM済みなら、Step 4は `既存のSfM結果を使う` で十分です。
+- Postshot / Brush / LichtFeldの通常学習へ渡すなら、まず `PINHOLE` + `Cubemap` を使います。
+- LichtFeldでGUTを試すなら、`ERP 360°` を選び、学習時にGUTをONにします。
+- Metashape結果に通常画像や複数解像度ERPが混ざるなら、LichtFeld向けには `Metashape → COLMAPデータセット` が安全です。
+- RealityScanからPostshotへ渡すだけならCSV/PLYで足りる場合があります。LichtFeldでDatasetとして読みたい場合は `RealityScan → COLMAPデータセット` を使います。
+- SphereSfMは同一解像度ERP 360°専用と考えてください。混在ソースはCOLMAPまたはMetashapeを使います。
+- 画像やマスクだけを作り直したい場合は、同じカードを開き、出力設定を確認して再実行します。
+
+## Step 6へ進む
+
+Step 5でデータセットを作ったら、LichtFeld Studio、Postshot、Brushなどの学習アプリへ直接読み込ませます。対応CLIで再実行やヘッドレス学習をしたい場合だけ、Step 6を使います。
+
+Step 6の操作は [Step 6 学習GUI](training_gui.ja.md) を参照してください。

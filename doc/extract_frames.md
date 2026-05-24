@@ -2,13 +2,13 @@
 
 ## Overview
 
-`extract_frames.py` extracts SfM/3DGS-oriented still images from an equirectangular 360° video and writes a reviewable `_stechdrive/frames/selected_frames.csv`.
+`extract_frames.py` extracts SfM/3DGS-oriented still images from 360° video or normal video and writes a reviewable `_stechdrive/frames/selected_frames.csv`.
 
 The goal is not to cut every video frame mechanically. The goal is to keep enough viewpoint change for SfM, reduce frames that are too similar, and surface blurry, low-texture, or weak-feature frames so the final image set is easier to review before training or reconstruction.
 
 ## Extraction Strategy
 
-360° video can contain a large number of frames even in a short clip. Sending every frame to SfM makes processing heavier, and too many near-duplicate images can make matching and reconstruction less stable. On the other hand, thinning too aggressively can remove the parallax and coverage that SfM needs.
+Video can contain a large number of frames even in a short clip. Sending every frame to SfM makes processing heavier, and too many near-duplicate images can make matching and reconstruction less stable. On the other hand, thinning too aggressively can remove the parallax and coverage that SfM needs.
 
 This app starts from a fixed interval so the frame count and whole-video coverage stay predictable. It then compares each decision candidate with the last kept frame and, when useful, drops redundant candidates or inserts intermediate frames.
 

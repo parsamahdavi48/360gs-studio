@@ -45,7 +45,7 @@ python apply_frame_decisions.py ./scene01 --output metashape_images --clean-outp
 - `--csv`: `_stechdrive/frames/` 内のCSVファイル名、または絶対パス。既定値は `selected_frames.csv`
 - `--finalize-in-place`: `images/` 内で直接確定し、`_stechdrive/frames/selected_frames.csv` を採用行だけに書き換える
 - `--backup-dir`: `--finalize-in-place` と同時に指定すると、変更前の `images/` をこのフォルダへフルコピーする。既存フォルダを置き換えるのは、`backups` や `images_backup` などバックアップ用と分かるパスの場合だけ。空なら画像バックアップなし
-- `--renumber-kept-images`: `--finalize-in-place` と同時に指定すると、採用画像をCSV順で `images/frame_000001.ext` からの連番にリネームし、フレーム/ソース台帳も更新する。マスク、`output/`、旧Step 4メタデータが既にある場合は停止する
+- `--renumber-kept-images`: `--finalize-in-place` と同時に指定すると、採用画像をCSV順で `images/frame_000001.ext` からの連番にリネームし、フレーム/ソース台帳も更新する。マスク、`output/`、SfM/データセット作成の管理情報が既にある場合は停止する
 - `--output`: コピー先フォルダ名。既定値は `metashape_images`
 - `--clean-output`: コピー先にある既存画像を削除してからコピーする。コピー先モード専用
 

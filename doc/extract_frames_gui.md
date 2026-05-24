@@ -1,12 +1,12 @@
 # Step 1 Frame Extraction GUI
 
-Step 1 turns 360° video or an existing still-image folder into scene images for SfM and 3DGS. The `images/` folder and `_stechdrive/frames/selected_frames.csv` created here become the input for Step 2 review, Step 3 mask generation, and either Metashape or SphereSfM.
+Step 1 turns 360° video, normal video, or an existing still-image folder into scene images for SfM and 3DGS. The `images/` folder and `_stechdrive/frames/selected_frames.csv` created here become the input for Step 2 review, Step 3 mask generation, and downstream SfM in Metashape, COLMAP, SphereSfM, or another tool.
 
 Choose a scene folder, then add videos or still-image folders to `Input Sources` on the right. Videos are extracted at the specified interval. Still-image folders are copied into the scene `images/` folder and registered. `Motion` is on by default; it reduces redundant near-duplicate candidates and adds candidates where viewpoint change is useful. Turn `Motion` off when you want faster extraction.
 
 ## Extraction Approach
 
-This step is not meant to create as many still images as possible from a 360° video. It is a preprocessing step for creating an equirectangular image set with enough frames, but not excessive frames, for Metashape or SphereSfM.
+This step is not meant to create as many still images as possible from video. It is a preprocessing step for creating an SfM-friendly image set with enough frames, but not excessive frames.
 
 The source footage quality matters most. If the video is strongly blurred during capture, badly exposed, low in usable features, or filmed along a poor path, frame extraction cannot fundamentally fix it. This step can only select SfM-friendly candidates from good footage and make suspicious frames easier to review.
 
@@ -73,7 +73,7 @@ The fixed interval is not the only quality decision. It is the baseline that cov
 
 `Quick extract` skips analysis and cuts frames directly at the requested `Base Interval`. It is fast, but it does not create motion-adjustment decisions or Step 2 review labels.
 
-Use it for a fast content check or when you only need frames immediately. For production Metashape or SphereSfM input, normal extraction with `Motion` is usually safer.
+Use it for a fast content check or when you only need frames immediately. For production SfM input, normal extraction with `Motion` is usually safer.
 
 ## Interval Settings
 
@@ -106,7 +106,7 @@ You can still edit `Base Interval`, `Min`, and `Max` manually after choosing a p
 
 | Output | Meaning |
 | --- | --- |
-| `images/` | Extracted equirectangular still images |
+| `images/` | Extracted or imported scene images |
 | `_stechdrive/frames/selected_frames.csv` | Keep/drop candidates and source metadata for Step 2 |
 | `_stechdrive/frames/extract_report.json` | Extraction settings and run summary |
 | `extract_cache.npz` | Cache used to speed up re-analysis |

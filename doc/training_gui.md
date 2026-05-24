@@ -22,9 +22,8 @@ When you open Step 6, first decide which app you want to run and which dataset y
 | Goal | Training app | Main settings to check |
 | --- | --- | --- |
 | Train normal cubemap data in LichtFeld | `LichtFeld Studio` | `Dataset`, `GUT` off, output PLY name, `Strategy`, `Iterations` |
-| Try 3DGUT data in LichtFeld | `LichtFeld Studio` | `Dataset`, `GUT` on, confirm `pointcloud.ply` exists |
+| Try ERP 360° / GUT data in LichtFeld | `LichtFeld Studio` | `Dataset`, `GUT` on, confirm `pointcloud.ply` exists |
 | Create a Postshot project | `Postshot` | `Dataset`, `Camera Poses`, project name, `Profile` |
-| Run any training CLI | `Other... > Custom` | `Executable`, `Argument Template`, `Dataset`, `Training Output` |
 
 Normally, leave `Dataset` on the automatic value. The app uses the latest registered dataset artifact when one exists, such as a Metashape, RealityScan, SphereSfM, or COLMAP dataset under `<scene>/output/`. `Training Output` defaults to `<scene>/output/`. Keeping datasets and training results under `output/` makes the scene easier to move later.
 
@@ -34,12 +33,12 @@ Normally, leave `Dataset` on the automatic value. The app uses the latest regist
 2. If you want to tune settings in the training app GUI, open the Step 5 output dataset directly there.
 3. If you want repeatable CLI launch or headless training, open `Step 6: Training`.
 4. Confirm that `Dataset` and `Training Output` point to the intended folders.
-5. Choose `LichtFeld Studio`, `Postshot`, or `Other... > Custom`.
+5. Choose `LichtFeld Studio` or `Postshot`.
 6. If the executable cannot be found automatically, select the installed exe.
 7. Review the app-specific settings on the right.
 8. Press `Launch`.
 
-Before running, Step 6 checks that the selected training mode matches the dataset shape. For example, LichtFeld `GUT` expects 3DGUT data, while normal LichtFeld and Postshot expect projected cubemap data.
+Before running, Step 6 checks that the selected training mode matches the dataset shape. For example, LichtFeld `GUT` expects ERP 360° GUT data, while normal LichtFeld and Postshot expect PINHOLE cubemap data.
 
 ## Layout
 
@@ -48,7 +47,7 @@ Step 6 uses a wider center panel and is arranged as two columns.
 | Area | Contents |
 | --- | --- |
 | Left | Training app, Headless, executable, dataset, training output |
-| Right | LichtFeld / Postshot / Custom settings |
+| Right | LichtFeld / Postshot settings |
 
 The right side separates common settings from advanced parameters. Start with the visible settings, run once, then open the advanced sections only when you have a reason to compare a specific option.
 
@@ -56,7 +55,7 @@ The right side separates common settings from advanced parameters. Start with th
 
 ### Training App
 
-`LichtFeld Studio` and `Postshot` are available as primary choices. `Other...` opens secondary choices; currently it contains `Custom`.
+`LichtFeld Studio` and `Postshot` are available. If you want to build an arbitrary CLI command, run that CLI directly instead of using this screen.
 
 ### Executable
 
@@ -66,7 +65,6 @@ When this field is empty, the GUI tries the default executable name or a known i
 | --- | --- |
 | LichtFeld Studio | `LichtFeld-Studio.exe` |
 | Postshot | `postshot-cli.exe` |
-| Custom | The CLI executable you want to run |
 
 ### Dataset
 
@@ -74,10 +72,10 @@ This is the dataset folder passed to the training app. It is normally set from t
 
 | Step 5 result | Step 6 dataset |
 | --- | --- |
-| Metashape + projected cubemap | `<scene>/output/metashape_cubemap/` |
-| Metashape + 3DGUT | `<scene>/output/metashape_3dgut/` |
-| SphereSfM + projected cubemap | `<scene>/output/spheresfm_cubemap/` |
-| SphereSfM + 3DGUT | `<scene>/output/spheresfm_3dgut/` |
+| Metashape + PINHOLE cubemap | `<scene>/output/metashape_cubemap/` |
+| Metashape + ERP 360° / GUT | `<scene>/output/metashape_3dgut/` |
+| SphereSfM + PINHOLE cubemap | `<scene>/output/spheresfm_cubemap/` |
+| SphereSfM + ERP 360° / GUT | `<scene>/output/spheresfm_3dgut/` |
 | COLMAP Rig | `<scene>/output/colmap_rig/` |
 | RealityScan -> COLMAP Dataset | `<scene>/output/realityscan/lfs_colmap/` |
 | Metashape -> COLMAP Dataset | `<scene>/output/metashape_colmap/` |
@@ -94,7 +92,7 @@ If the final LichtFeld PLY, Postshot `.psht`, or optional Postshot PLY/SPZ expor
 
 For LichtFeld Studio, Step 6 starts training with the selected dataset, output folder, and training settings.
 
-For CLI launch from Step 6, use a LichtFeld Studio v0.5.2-compatible CLI as the baseline. If you want to review training settings inside LichtFeld Studio, open the cubemap or 3DGUT dataset created in Step 5 directly in LichtFeld Studio.
+For CLI launch from Step 6, use a LichtFeld Studio v0.5.2-compatible CLI as the baseline. If you want to review training settings inside LichtFeld Studio, open the cubemap or ERP 360° / GUT dataset created in Step 5 directly in LichtFeld Studio.
 
 ### Main Settings
 
@@ -107,23 +105,23 @@ For CLI launch from Step 6, use a LichtFeld Studio v0.5.2-compatible CLI as the 
 | `SH Degree` | Usually 3. Lower it only for lighter tests. |
 | `Tile Mode` | Adjust for VRAM and speed. |
 | `Steps Scaler` | `Auto` computes the multiplier from the dataset image count. |
-| `GUT` | Turn this on only for 3DGUT datasets. |
+| `GUT` | Turn this on only for GUT datasets that use ERP 360° images directly. |
 
 ### Training Cubemap Data
 
-This is data created in Step 5 with `Convert to Projection Views`. `Dataset` is normally `<scene>/output/metashape_cubemap/` for the Metashape route or `<scene>/output/spheresfm_cubemap/` for the SphereSfM route.
+This is data created in Step 5 with image type `PINHOLE`. `Dataset` is normally `<scene>/output/metashape_cubemap/` for the Metashape route or `<scene>/output/spheresfm_cubemap/` for the SphereSfM route.
 
 - Keep `GUT` off.
 - Usually keep `Undistort` off too.
 - If using masks, choose the LichtFeld mask mode that matches the result you want.
 
-### Training 3DGUT Data
+### Training ERP 360° / GUT Data
 
-This is data created in Step 5 with `3DGUT (LichtFeld)`. `Dataset` is normally `<scene>/output/metashape_3dgut/` for the Metashape route or `<scene>/output/spheresfm_3dgut/` for the SphereSfM route.
+This is data created in Step 5 with image type `ERP 360°`. `Dataset` is normally `<scene>/output/metashape_3dgut/` for the Metashape route or `<scene>/output/spheresfm_3dgut/` for the SphereSfM route.
 
 - Turn `GUT` on.
 - `pointcloud.ply` inside the selected dataset is required.
-- Create the 3DGUT dataset from the Metashape or SphereSfM route in Step 5 before launching Step 6.
+- Create the ERP 360° / GUT dataset from the Metashape or SphereSfM route in Step 5 before launching Step 6.
 
 ### Steps Scaler
 
@@ -172,35 +170,15 @@ GPU, profile-specific model limits, anti-aliasing, sky model, training-context s
 
 Postshot v1.1.0 adds Photometric Compensation in the Postshot GUI for exposure, white balance, and vignetting variation across images. As of Postshot v1.1.0, the `postshot-cli.exe train --help` output does not expose a matching CLI option, so enable that setting inside Postshot when you need it.
 
-## Custom
-
-`Other... > Custom` runs any CLI. Select the executable, then build the command arguments with `Argument Template`.
-
-Available placeholders:
-
-| Placeholder | Value |
-| --- | --- |
-| `{dataset}` | Dataset folder |
-| `{images}` | Image folder inside the dataset |
-| `{masks}` | Mask folder inside the dataset, or an empty string if missing |
-| `{sparse}` | Detected COLMAP/SphereSfM sparse model, or an empty string if missing |
-| `{output}` | Training output folder |
-
-Example:
-
-```text
---data {dataset} --out {output}
-```
-
 ## When To Return To Step 5
 
 Step 6 does not create datasets. Whether you open the dataset manually or launch through CLI, go back to Step 5 and run conversion first in these cases.
 
 | Situation | What to do |
 | --- | --- |
-| `Dataset` has no `images/` or `transforms.json` | Turn on `Cube` in Step 5 and run conversion. |
-| SphereSfM was run with `SfM` on and `Cube` off | Use `SfM` off / `Cube` on in Step 5 to convert from the existing sparse model. |
-| LichtFeld `GUT` is on but `pointcloud.ply` is missing | Create 3DGUT data in Step 5. |
+| `Dataset` has no images or camera data | Choose the matching card in Step 5 and create a dataset for the training app. |
+| You only have a SphereSfM SfM result, not a training dataset | Choose `SphereSfM -> NeRF Dataset (JSON/PLY)` in Step 5 and export PINHOLE or ERP 360° data. |
+| LichtFeld `GUT` is on but `pointcloud.ply` is missing | Create ERP 360° / GUT data in Step 5. |
 | Postshot `Camera Poses: Import` has no poses | Run SfM/conversion in Step 5, or switch to `Estimate`. |
 
 ## Outputs
@@ -209,7 +187,6 @@ Step 6 does not create datasets. Whether you open the dataset manually or launch
 | --- | --- |
 | LichtFeld Studio | Final PLY in `Training Output`. PPISP can add related files. |
 | Postshot | `.psht` project in `Training Output`. Optional PLY/SPZ export is also available. |
-| Custom | Whatever the specified CLI writes. |
 
 Final quality depends on the Step 5 dataset shape, training-app settings, step count, and mask usage. When comparing settings with the same dataset, change the output name so each result remains available.
 
@@ -217,7 +194,7 @@ Final quality depends on the Step 5 dataset shape, training-app settings, step c
 
 - For the first check after Step 5, open the dataset directly in the training app when you want to inspect quality and settings.
 - For CLI runs, start with LichtFeld `GUT` off, or Postshot with `Camera Poses: Import`.
-- To test LichtFeld 3DGUT, create `3DGUT (LichtFeld)` data in Step 5, then turn on `GUT` in Step 6.
+- To test LichtFeld GUT, choose image type `ERP 360°` in Step 5, then turn on `GUT` in Step 6.
 - Use `Camera Poses: Estimate` only when you want Postshot to estimate poses.
-- COLMAP route data is projected cubemap data. Use the Metashape or SphereSfM route for 3DGUT comparisons.
+- COLMAP route data is PINHOLE cubemap data. Use the Metashape or SphereSfM route for ERP 360° / GUT comparisons.
 - To keep existing results, change the LichtFeld output PLY name, Postshot project name, or `Training Output`.

@@ -197,7 +197,7 @@ JPEG と WebP は 8-bit のみで α 非対応のため、これらを指定し�
 
 ### RealityScan
 
-Metashapeで作ったカメラ姿勢を使い、RealityScanで改めてAlignして点群やモデル作成へ進みたい場合に使います。GUIを使う場合は、Step 4で外部SfM結果を選び、Step 5の `SfM結果 → データセット` で `出力プリセット: RealityScan` を選ぶのが通常です。
+Metashapeで作ったカメラ姿勢を使い、RealityScanで改めてAlignして点群やモデル作成へ進みたい場合に使います。GUIを使う場合は、Step 4で `Metashape → RealityScan用データ作成` を選ぶのが通常です。
 
 RealityScanに読み込ませる主なファイルは次の通りです。
 

@@ -1,8 +1,8 @@
 # Step 2 Frame Review GUI
 
-Step 2 is where you review the frames extracted in Step 1 and keep only the images that should continue to Step 3 mask generation and then Metashape or SphereSfM. It shows labels such as `Added`, `Drop`, and `Review` from Step 1 analysis, plus `External` for images registered through scene import, and lets you manually change keep/drop decisions.
+Step 2 is where you review images extracted or registered in Step 1 and keep only the images that should continue to Step 3 mask generation and downstream SfM. It shows labels such as `Added`, `Drop`, and `Review` from Step 1 analysis, plus `External` for images registered through scene import, and lets you manually change keep/drop decisions.
 
-When you press `Apply`, Step 2 removes dropped frames from `images/`. Kept filenames are preserved by default; before masks or Step 5 dataset outputs exist, you can also enable `Renumber kept images` to rename the kept files into a clean sequence. The resulting `images/` folder becomes the input for Step 3 and for Metashape or SphereSfM SfM.
+When you press `Apply`, Step 2 removes dropped frames from `images/`. Kept filenames are preserved by default; before masks or Step 5 dataset outputs exist, you can also enable `Renumber kept images` to rename the kept files into a clean sequence. The resulting `images/` folder becomes the input for Step 3 and for Metashape, COLMAP, SphereSfM, or another SfM route.
 
 ## First Things To Check
 
@@ -76,7 +76,11 @@ Thumbnail view shows a short label and category color in the bottom ribbon of ea
 
 ## Blur Detection
 
-Use `Low sensitivity` when images that look usable are being marked as blur. Keep `Standard` when the blur labels match what you see in the frames.
+`Standard` marks frames that may be visually blurred as review targets. Borderline frames stay kept, so you can decide whether they are still useful for SfM.
+
+Use `Low sensitivity` when outdoor footage, white walls, or low-detail regions create too many blur warnings even though the images look usable. It still catches obvious blur, but reduces warnings caused by low texture or exposure changes.
+
+`Drop: blur` means the app plans to remove the frame automatically. `Review: possible blur` means the frame is still kept and needs a human decision. Keep review frames when they still help SfM coverage. Switch them to Drop only when the visible blur is strong or a nearby frame is clearly better.
 
 The setting can be switched while reviewing. Manual keep/drop changes you already made are preserved.
 
