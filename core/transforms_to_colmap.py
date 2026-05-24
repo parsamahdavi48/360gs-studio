@@ -10,7 +10,6 @@ PostShot / Brush / 公式 gaussian-splatting / nerfstudio など COLMAP テキ�
 """
 from __future__ import annotations
 
-import argparse
 import json
 import sys
 from pathlib import Path
@@ -18,45 +17,10 @@ from pathlib import Path
 import numpy as np
 
 
-def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(
-        description="Convert nerfstudio-style transforms.json to COLMAP text format.",
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog=(
-            "Example:\n"
-            "  python transforms_to_colmap.py ./output\n"
-            "  python transforms_to_colmap.py ./output ./output/colmap --ply ./output/pointcloud.ply\n"
-        ),
-    )
-    parser.add_argument(
-        "input_dir",
-        help="Directory containing transforms.json (output from cubemap_transforms_json.py)",
-    )
-    parser.add_argument(
-        "output_dir",
-        nargs="?",
-        help="Output directory for COLMAP text files (default=<input_dir>/colmap)",
-    )
-    parser.add_argument(
-        "--json",
-        default="transforms.json",
-        help="Input transforms.json filename (default=transforms.json)",
-    )
-    parser.add_argument(
-        "--ply",
-        help="Optional PLY file for points3D.txt and points3D.ply output",
-    )
-    parser.add_argument(
-        "--image-prefix",
-        "--image_prefix",
-        dest="image_prefix",
-        default="images/",
-        help=(
-            "Prefix in transforms.json file_path entries to strip when writing image names "
-            "(default='images/'). Set to '' to keep paths as-is."
-        ),
-    )
-    return parser.parse_args()
+def parse_args():
+    from core.transforms_to_colmap_cli import parse_args as _parse_args
+
+    return _parse_args()
 
 
 def quaternion_from_matrix(r: np.ndarray) -> np.ndarray:
@@ -372,31 +336,9 @@ def convert(
 
 
 def main() -> None:
-    args = parse_args()
-    input_dir = Path(args.input_dir)
-    if not input_dir.is_dir():
-        print(f"Error: input_dir '{input_dir}' not found", file=sys.stderr)
-        sys.exit(1)
+    from core.transforms_to_colmap_cli import main as _main
 
-    output_dir = Path(args.output_dir) if args.output_dir else input_dir / "colmap"
-    ply_path = Path(args.ply) if args.ply else None
-
-    try:
-        result = convert(
-            input_dir=input_dir,
-            json_name=args.json,
-            output_dir=output_dir,
-            ply_path=ply_path,
-            image_prefix=args.image_prefix,
-        )
-    except (FileNotFoundError, ValueError) as e:
-        print(f"Error: {e}", file=sys.stderr)
-        sys.exit(1)
-
-    print(f"Wrote cameras.txt, images.txt, points3D.txt to {result['output_dir']}")
-    print(f"  Camera model: {result['camera_model']}")
-    print(f"  Images: {result['num_images']}")
-    print(f"  3D points: {result['num_points']}")
+    _main()
 
 
 if __name__ == "__main__":

@@ -99,6 +99,8 @@ GUI workflow unless a release note explicitly promises a specific wrapper.
   compatibility module entry point; new orchestration should import the
   implementation functions or use workflow/dataset job payloads instead of
   duplicating CLI argument logic.
+- COLMAP text conversion CLI parsing lives in `core/transforms_to_colmap_cli.py`;
+  `core/transforms_to_colmap.py` owns the conversion implementation.
 - Cubemap and COLMAP exports must preserve coordinate profile semantics:
   Postshot uses the default cubemap transform, Brush uses the Brush transform,
   and LichtFeld cubemap export writes final-orientation-corrected
