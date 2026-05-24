@@ -110,22 +110,28 @@ def _setup_worker(tmp_path: Path):
     )
 
 
+def _cache_key(offset: float, size: tuple[int, int] = (256, 128)) -> tuple[int, int, float]:
+    return cube._remap_cache_key(size, offset)
+
+
 def test_table_cache_offset_zero_prebuilt(tmp_path):
     """worker_init 後、offset=0 のテーブルが既にキャッシュされていること。"""
     _setup_worker(tmp_path)
-    assert 0.0 in cube._WORKER_REMAP_CACHE
-    assert "front" in cube._WORKER_REMAP_CACHE[0.0]
-    assert "right" in cube._WORKER_REMAP_CACHE[0.0]
+    key = _cache_key(0.0)
+    assert key in cube._WORKER_REMAP_CACHE
+    assert "front" in cube._WORKER_REMAP_CACHE[key]
+    assert "right" in cube._WORKER_REMAP_CACHE[key]
 
 
 def test_table_cache_lazy_build(tmp_path):
     """offset=30° 等は lazy に生成され、再度同じ key を要求するとキャッシュヒット。"""
     _setup_worker(tmp_path)
-    assert 30.0 not in cube._WORKER_REMAP_CACHE
+    key = _cache_key(30.0)
+    assert key not in cube._WORKER_REMAP_CACHE
 
     tables_30 = get_remap_tables_for_offset(30.0)
-    assert 30.0 in cube._WORKER_REMAP_CACHE
-    assert tables_30 is cube._WORKER_REMAP_CACHE[30.0]
+    assert key in cube._WORKER_REMAP_CACHE
+    assert tables_30 is cube._WORKER_REMAP_CACHE[key]
 
     # 2 回目: 同じ dict object が返る
     tables_30_again = get_remap_tables_for_offset(30.0)
@@ -150,15 +156,15 @@ def test_table_cache_respects_lru_limit(tmp_path):
     get_remap_tables_for_offset(60.0)
 
     assert len(cube._WORKER_REMAP_CACHE) == 2
-    assert 0.0 not in cube._WORKER_REMAP_CACHE
-    assert 30.0 in cube._WORKER_REMAP_CACHE
-    assert 60.0 in cube._WORKER_REMAP_CACHE
+    assert _cache_key(0.0) not in cube._WORKER_REMAP_CACHE
+    assert _cache_key(30.0) in cube._WORKER_REMAP_CACHE
+    assert _cache_key(60.0) in cube._WORKER_REMAP_CACHE
 
 
 def test_table_cache_offset_yields_different_tables(tmp_path):
     """offset≠0 のテーブルは offset=0 と異なる内容（実際に yaw 回転が反映される）。"""
     _setup_worker(tmp_path)
-    t0 = cube._WORKER_REMAP_CACHE[0.0]["front"]
+    t0 = cube._WORKER_REMAP_CACHE[_cache_key(0.0)]["front"]
     t30 = get_remap_tables_for_offset(30.0)["front"]
     # map_x が異なるはず
     assert not np.allclose(t0[0], t30[0])

@@ -13,10 +13,12 @@ import pytest
 from cubemap_transforms_json import (
     build_remap,
     load_equirect,
+    proc_convert_images,
     remap_image,
     remap_with_channels,
     resolve_output_ext,
     save_image,
+    worker_init,
 )
 
 # =============================================================================
@@ -383,3 +385,57 @@ def test_grayscale_mask_output_can_invert_for_postshot_occluders(tmp_path: Path)
     mask = cv2.imread(str(out_files[0]), cv2.IMREAD_UNCHANGED)
     assert mask.dtype == np.uint8
     assert set(np.unique(mask).tolist()) == {255}
+
+
+def _gradient_equirect(width: int, height: int) -> np.ndarray:
+    xs, ys = np.meshgrid(np.arange(width, dtype=np.float32), np.arange(height, dtype=np.float32))
+    red = np.rint(xs * 255.0 / max(1, width - 1)).astype(np.uint8)
+    green = np.rint(ys * 255.0 / max(1, height - 1)).astype(np.uint8)
+    blue = np.rint((xs + ys) * 255.0 / max(1, width + height - 2)).astype(np.uint8)
+    return np.dstack([blue, green, red])
+
+
+def test_worker_remap_uses_each_source_image_size(tmp_path: Path):
+    image_dir = tmp_path / "images"
+    out_dir = tmp_path / "out"
+    mask_dir = tmp_path / "masks"
+    image_dir.mkdir()
+    out_dir.mkdir()
+    mask_dir.mkdir()
+
+    large = _gradient_equirect(12, 6)
+    small = _gradient_equirect(8, 4)
+    save_image(large, str(image_dir / "large.png"))
+    save_image(small, str(image_dir / "small.png"))
+
+    views = [{"name": "front", "yaw": 0.0, "pitch": 0.0}]
+    worker_init(
+        (12, 6),
+        90.0,
+        4,
+        views,
+        str(image_dir),
+        str(mask_dir),
+        str(out_dir),
+        str(mask_dir),
+        False,
+        False,
+        "png",
+        "8",
+        95,
+        True,
+        False,
+        4,
+    )
+
+    proc_convert_images("large.png", 0.0)
+    proc_convert_images("small.png", 0.0)
+
+    actual = load_equirect(str(out_dir / "small_front.png"))
+    map_x, map_y = build_remap((8, 4), 90.0, 0.0, 0.0, 4)
+    expected = remap_with_channels(small, map_x, map_y)
+    assert np.array_equal(actual, expected)
+
+    wrong_map_x, wrong_map_y = build_remap((12, 6), 90.0, 0.0, 0.0, 4)
+    wrong = remap_with_channels(small, wrong_map_x, wrong_map_y)
+    assert not np.array_equal(actual, wrong)

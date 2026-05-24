@@ -17,6 +17,7 @@ from core.scene_preview import (
     load_transforms_preview_dataset,
     transform_preview_dataset,
 )
+from core.scene_preview_diagnostics import analyze_named_camera_images, analyze_scene_preview_dataset
 from core.scene_preview_profiles import (
     COORDINATE_PROFILE_LICHTFELD_CUBE6,
     COORDINATE_PROFILE_POSTSHOT_CUBE6,
@@ -101,6 +102,68 @@ def test_transforms_preview_loads_equirectangular_without_pinhole_intrinsics(tmp
     assert camera.width == 4000
     assert camera.fl_x is None
     assert camera.project_world_points(np.array([[0.0, 0.0, 4.0]], dtype=np.float64)) is None
+
+
+def test_scene_preview_diagnostics_reports_images_without_camera_and_cubemap_gaps(tmp_path: Path) -> None:
+    images = tmp_path / "images"
+    images.mkdir()
+    for name in (
+        "frame_0001_px.jpg",
+        "frame_0001_nx.jpg",
+        "frame_0001_pz.jpg",
+        "frame_0001_nz.jpg",
+        "frame_0001_py.jpg",
+        "frame_0001_ny.jpg",
+        "extra.jpg",
+        "frame_0001_px.jpg.mask.png",
+    ):
+        (images / name).write_bytes(b"placeholder")
+    transforms = tmp_path / "transforms.json"
+    frames = [
+        {
+            "file_path": f"images/frame_0001_{face}.jpg",
+            "transform_matrix": np.eye(4, dtype=np.float64).tolist(),
+        }
+        for face in ("px", "nx", "pz", "nz", "ny")
+    ]
+    transforms.write_text(
+        json.dumps(
+            {
+                "camera_model": "SIMPLE_PINHOLE",
+                "w": 100,
+                "h": 100,
+                "fl_x": 50.0,
+                "fl_y": 50.0,
+                "cx": 49.5,
+                "cy": 49.5,
+                "frames": frames,
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    diagnostics = analyze_scene_preview_dataset(load_transforms_preview_dataset(transforms, image_root=tmp_path))
+
+    assert diagnostics.image_count == 7
+    assert len(diagnostics.images_without_camera) == 2
+    assert {path.name for path in diagnostics.images_without_camera} == {"extra.jpg", "frame_0001_py.jpg"}
+    assert len(diagnostics.incomplete_cubemap_groups) == 1
+    assert diagnostics.incomplete_cubemap_groups[0].missing_faces == ("py",)
+
+
+def test_named_camera_diagnostics_matches_realityscan_csv_names(tmp_path: Path) -> None:
+    images = tmp_path / "images"
+    images.mkdir()
+    for name in ("cube_px.jpg", "cube_nx.jpg", "cube_pz.jpg", "cube_nz.jpg", "cube_py.jpg", "cube_ny.jpg"):
+        (images / name).write_bytes(b"placeholder")
+    diagnostics = analyze_named_camera_images(
+        ("cube_px.jpg", "cube_nx.jpg", "cube_pz.jpg", "cube_nz.jpg", "cube_ny.jpg"),
+        images,
+    )
+
+    assert len(diagnostics.images_without_camera) == 1
+    assert diagnostics.images_without_camera[0].name == "cube_py.jpg"
+    assert diagnostics.incomplete_cubemap_groups[0].missing_faces == ("py",)
 
 
 def test_metashape_preview_applies_component_transform_and_resolves_image(tmp_path: Path) -> None:
@@ -211,10 +274,23 @@ def test_colmap_preview_can_read_app_opengl_camera_axes(tmp_path: Path) -> None:
     dataset = load_colmap_preview_dataset(sparse, opengl_camera=True)
     camera = dataset.cameras[0]
 
-    projected = camera.project_world_points(np.array([[0.0, -1.0, -4.0]], dtype=np.float64))
+    projected = camera.project_world_points(np.array([[0.0, -1.0, 4.0]], dtype=np.float64))
 
     assert projected is not None
     assert projected[0, 1] < 49.5
+
+
+def test_colmap_preview_opengl_camera_axes_do_not_depend_on_cubemap_filename(tmp_path: Path) -> None:
+    sparse = tmp_path / "sparse"
+    sparse.mkdir()
+    (sparse / "cameras.txt").write_text("1 PINHOLE 100 100 50 50 49.5 49.5\n", encoding="utf-8")
+    (sparse / "images.txt").write_text("1 1 0 0 0 0 0 0 1 frame_0001_pz.jpg\n\n", encoding="utf-8")
+    (sparse / "points3D.txt").write_text("# Number of points: 0\n", encoding="utf-8")
+
+    dataset = load_colmap_preview_dataset(sparse, opengl_camera=True)
+    camera = dataset.cameras[0]
+
+    assert np.allclose(camera.forward, [0.0, 0.0, 1.0])
 
 
 def test_colmap_preview_uses_points3d_ply_when_points_txt_is_empty(tmp_path: Path) -> None:
@@ -250,10 +326,12 @@ def test_realityscan_preview_loads_csv_and_ply(tmp_path: Path) -> None:
     images = tmp_path / "images"
     images.mkdir()
     _write_png(images / "a.jpg", size=(100, 80))
+    _write_png(images / "cube_pz.jpg", size=(100, 100))
     csv = tmp_path / "rs.csv"
     csv.write_text(
         "#name,x,y,alt,yaw,pitch,roll,f_35mm,px_norm,py_norm,k1,k2,k3,k4,t1,t2\n"
-        "a.jpg,1,2,3,0,0,0,18,0,0,0,0,0,0,0,0\n",
+        "a.jpg,1,2,3,0,0,0,18,0,0,0,0,0,0,0,0\n"
+        "cube_pz.jpg,4,5,6,0,0,0,18,0,0,0,0,0,0,0,0\n",
         encoding="utf-8",
     )
     ply = tmp_path / "rs.ply"
@@ -266,9 +344,13 @@ def test_realityscan_preview_loads_csv_and_ply(tmp_path: Path) -> None:
     )
 
     assert dataset.source_kind == "realityscan"
-    assert len(dataset.cameras) == 1
+    assert len(dataset.cameras) == 2
     assert dataset.cameras[0].image_path == images / "a.jpg"
     assert np.allclose(dataset.cameras[0].position, [1.0, 2.0, 3.0])
+    assert np.allclose(dataset.cameras[0].forward, [0.0, 0.0, -1.0])
+    assert dataset.cameras[1].image_path == images / "cube_pz.jpg"
+    assert np.allclose(dataset.cameras[1].position, [4.0, 5.0, 6.0])
+    assert np.allclose(dataset.cameras[1].forward, [0.0, 0.0, -1.0])
     assert dataset.pointcloud is not None
 
 
@@ -516,11 +598,11 @@ def test_discover_scene_preview_candidates_marks_realityscan_colmap_profiles(tmp
     assert direct.display_transform is not None
     assert np.allclose(direct.display_transform.camera_matrix, REALITYSCAN_Z_UP_TO_PREVIEW_Y_UP)
     assert np.allclose(direct.display_transform.pointcloud_matrix, REALITYSCAN_LFS_FILE_TO_PREVIEW_Y_UP)
-    assert direct.colmap_opengl_camera is True
+    assert direct.colmap_opengl_camera is False
     assert lfs.display_transform is not None
     assert np.allclose(lfs.display_transform.camera_matrix, REALITYSCAN_LFS_FILE_TO_PREVIEW_Y_UP)
     assert np.allclose(lfs.display_transform.pointcloud_matrix, REALITYSCAN_LFS_FILE_TO_PREVIEW_Y_UP)
-    assert lfs.colmap_opengl_camera is True
+    assert lfs.colmap_opengl_camera is False
 
 
 def test_realityscan_colmap_export_uses_raw_point_transform_without_points_ply(tmp_path: Path) -> None:

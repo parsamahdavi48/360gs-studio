@@ -502,10 +502,9 @@ def _colmap_uses_app_camera_axes(
     manifest: dict,
     record: ArtifactRecord | None,
 ) -> bool:
-    return _is_realityscan_lfs_colmap(scene, root, manifest, record) or _same_path(
-        root,
-        scene_output_dir(scene) / "realityscan",
-    )
+    # Scene preview reads every COLMAP candidate with COLMAP/OpenCV camera axes.
+    # Dataset-specific display transforms below handle world-axis differences.
+    return False
 
 
 def _is_realityscan_lfs_colmap(

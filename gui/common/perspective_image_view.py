@@ -210,6 +210,8 @@ class PerspectiveGLImageView(QOpenGLWidget):
 
     def set_source_image(self, image: QImage, *, logical_size: QSize | None = None) -> None:
         self._source_image = image.convertToFormat(QImage.Format_RGBA8888)
+        self._zoom = 1.0
+        self._pan = QPointF(0.0, 0.0)
         size = logical_size or QSize(
             max(1, min(self._source_image.width(), self._source_image.height())),
             max(1, min(self._source_image.width(), self._source_image.height())),

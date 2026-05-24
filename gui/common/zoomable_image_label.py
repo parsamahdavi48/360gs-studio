@@ -47,6 +47,8 @@ class ZoomableImageLabel(QLabel):
             self._pan = QPointF(0.0, 0.0)
         else:
             super().setText("")
+            self._zoom = 1.0
+            self._pan = QPointF(0.0, 0.0)
             self._clamp_pan()
         self.update()
 

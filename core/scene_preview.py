@@ -190,9 +190,13 @@ def load_colmap_preview_dataset(
             continue
         c2w = colmap_pose_to_c2w(image, opengl_camera=opengl_camera)
         right = _normalized(c2w[:3, 0], f"COLMAP image {image_id} right")
+        # COLMAP stores OpenCV camera axes (+X right, +Y image down, +Z forward).
+        # If a caller explicitly provides an OpenGL-style c2w, its optical axis
+        # is -Z. This is a format contract, not something inferred from names.
         up_axis = c2w[:3, 1] if opengl_camera else -c2w[:3, 1]
         up = _normalized(up_axis, f"COLMAP image {image_id} up")
-        forward = _normalized(c2w[:3, 2], f"COLMAP image {image_id} forward")
+        forward_axis = -c2w[:3, 2] if opengl_camera else c2w[:3, 2]
+        forward = _normalized(forward_axis, f"COLMAP image {image_id} forward")
         intrinsics = _colmap_intrinsics(camera)
         projection = "equirectangular" if sphere_as_equirectangular and camera.model == "SPHERE" else "pinhole"
         if projection == "equirectangular":
@@ -248,6 +252,11 @@ def load_realityscan_preview_dataset(
                 image_path=image_path,
                 projection="pinhole",
                 matrix=row_to_transform(row),
+                # RealityScan CSV rows use the same camera basis that the
+                # RS->COLMAP writer converts to OpenCV by flipping local Y/Z.
+                # Therefore the photo optical axis is -Z for all rows,
+                # including this app's Cubemap faces imported through XMP.
+                image_z_axis="backward",
                 source={"format": "realityscan_csv", "row_index": index},
                 **intrinsics,
             )
@@ -333,6 +342,7 @@ def _camera_from_transform(
     projection: str,
     matrix: np.ndarray,
     image_y_axis: str = "up",
+    image_z_axis: str = "forward",
     width: int,
     height: int,
     fl_x: float | None,
@@ -343,6 +353,8 @@ def _camera_from_transform(
 ) -> ScenePreviewCamera:
     y_axis = _normalized(matrix[:3, 1], f"{label} image y")
     up = -y_axis if str(image_y_axis).strip().lower() == "down" else y_axis
+    z_axis = _normalized(matrix[:3, 2], f"{label} image z")
+    forward = -z_axis if str(image_z_axis).strip().lower() == "backward" else z_axis
     return ScenePreviewCamera(
         camera_id=camera_id,
         label=label,
@@ -357,7 +369,7 @@ def _camera_from_transform(
         position=matrix[:3, 3].astype(np.float64),
         right=_normalized(matrix[:3, 0], f"{label} right"),
         up=up,
-        forward=_normalized(matrix[:3, 2], f"{label} forward"),
+        forward=forward,
         source=source,
     )
 

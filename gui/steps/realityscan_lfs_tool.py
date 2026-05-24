@@ -17,7 +17,9 @@ from PySide6.QtWidgets import (
 
 from core.dataset_job_spec import realityscan_lfs_colmap_job, write_dataset_job
 from core.realityscan_to_lfs_colmap import DEFAULT_UNDISTORT_ALPHA
+from core.realityscan_to_transforms import read_realityscan_csv
 from core.scene_layout import jobs_dir, scene_images_dir, scene_masks_dir, scene_output_dir
+from core.scene_preview_diagnostics import analyze_named_camera_images
 from core.workflow_artifacts import (
     DATASET_KIND_LICHTFELD_COLMAP,
     SFM_KIND_REALITYSCAN_CSV_PLY,
@@ -62,6 +64,12 @@ class RealityScanLfsTool(BaseStepWidget):
         description.setObjectName("workflowNote")
         description.setWordWrap(True)
         layout.addWidget(description)
+
+        self.data_quality_note = QLabel()
+        self.data_quality_note.setObjectName("workflowNote")
+        self.data_quality_note.setWordWrap(True)
+        self.data_quality_note.hide()
+        layout.addWidget(self.data_quality_note)
 
         form = QFormLayout()
         form.setSpacing(7)
@@ -116,6 +124,7 @@ class RealityScanLfsTool(BaseStepWidget):
         self.output_browse.path_changed.connect(lambda _path: self.primary_action_state_changed.emit())
         self.pre_undistort_cb.toggled.connect(lambda _checked: self.primary_action_state_changed.emit())
         self.skip_missing_cb.toggled.connect(lambda _checked: self.primary_action_state_changed.emit())
+        self._update_data_quality_note()
 
     def set_scene_dir(self, path: str) -> None:
         previous_scene = self.scene_dir
@@ -247,6 +256,7 @@ class RealityScanLfsTool(BaseStepWidget):
             elif field == "masks":
                 self._masks_user_edited = True
         self.primary_action_state_changed.emit()
+        self._update_data_quality_note()
 
     def _on_pre_undistort_toggled(self, _checked: bool) -> None:
         if not self._output_user_edited:
@@ -263,6 +273,7 @@ class RealityScanLfsTool(BaseStepWidget):
                 self.output_browse.set_text("")
             finally:
                 self._syncing_defaults = False
+            self._update_data_quality_note()
             return
         root = self._realityscan_dir()
         self._syncing_defaults = True
@@ -284,6 +295,7 @@ class RealityScanLfsTool(BaseStepWidget):
                 self.output_browse.set_text(str(self._default_output_dir()))
         finally:
             self._syncing_defaults = False
+        self._update_data_quality_note()
 
     def _realityscan_dir(self) -> Path:
         scene = Path(self.scene_dir)
@@ -293,6 +305,46 @@ class RealityScanLfsTool(BaseStepWidget):
     def _default_output_dir(self) -> Path:
         name = "lfs_colmap_undistorted" if self.pre_undistort_cb.isChecked() else "lfs_colmap"
         return self._realityscan_dir() / name
+
+    def _update_data_quality_note(self) -> None:
+        csv_text = self.csv_browse.text()
+        images_text = self.images_browse.text()
+        csv_path = Path(csv_text) if csv_text else None
+        images_dir = Path(images_text) if images_text else None
+        if csv_path is None or not csv_path.is_file() or images_dir is None or not images_dir.is_dir():
+            self.data_quality_note.hide()
+            self.data_quality_note.setText("")
+            return
+        try:
+            camera_names = [row.name for row in read_realityscan_csv(csv_path)]
+            diagnostics = analyze_named_camera_images(camera_names, images_dir)
+        except Exception:
+            self.data_quality_note.hide()
+            self.data_quality_note.setText("")
+            return
+        if not diagnostics.has_issues:
+            self.data_quality_note.hide()
+            self.data_quality_note.setText("")
+            return
+
+        parts = [i18n.t("RS_LFS_DATA_QUALITY_HEADER")]
+        if diagnostics.images_without_camera:
+            parts.append(
+                i18n.t("RS_LFS_DATA_QUALITY_IMAGES_WITHOUT_CAMERA").format(
+                    count=len(diagnostics.images_without_camera)
+                )
+            )
+        if diagnostics.camera_images_missing_on_disk:
+            parts.append(
+                i18n.t("RS_LFS_DATA_QUALITY_CAMERA_IMAGES_MISSING").format(
+                    count=len(diagnostics.camera_images_missing_on_disk)
+                )
+            )
+        incomplete = diagnostics.incomplete_cubemap_groups
+        if incomplete:
+            parts.append(i18n.t("RS_LFS_DATA_QUALITY_INCOMPLETE_CUBEMAPS").format(count=len(incomplete)))
+        self.data_quality_note.setText("\n".join(parts))
+        self.data_quality_note.show()
 
     @staticmethod
     def _first_existing(root: Path, patterns: tuple[str, ...]) -> Path | None:

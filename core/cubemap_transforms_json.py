@@ -68,8 +68,8 @@ _WORKER_EXPORT_IMAGES = True
 _WORKER_EXPORT_MASKS = True
 _WORKER_COLMAP_RIG_IMAGE_DIRS: dict[str, str] = {}
 _WORKER_COLMAP_RIG_MASK_DIRS: dict[str, str] = {}
-# yaw オフセット別キャッシュ: key = round(yaw_offset, 3), value = view_name -> (map_x, map_y)
-_WORKER_REMAP_CACHE: OrderedDict[float, dict[str, tuple[np.ndarray, np.ndarray]]] = OrderedDict()
+# 入力解像度 + yaw オフセット別キャッシュ: key = (W, H, round(yaw_offset, 3))
+_WORKER_REMAP_CACHE: OrderedDict[tuple[int, int, float], dict[str, tuple[np.ndarray, np.ndarray]]] = OrderedDict()
 _WORKER_REMAP_CACHE_LIMIT = 12
 _WORKER_INPUT_SIZE: tuple[int, int] = (0, 0)
 _WORKER_FOV: float = 90.0
@@ -81,10 +81,21 @@ def _quantize_yaw_offset(yaw_offset: float) -> float:
     return round(yaw_offset % 360.0, 3)
 
 
+def _remap_cache_key(input_size: tuple[int, int], yaw_offset: float) -> tuple[int, int, float]:
+    return int(input_size[0]), int(input_size[1]), _quantize_yaw_offset(yaw_offset)
+
+
 def get_remap_tables_for_offset(yaw_offset: float) -> dict[str, tuple[np.ndarray, np.ndarray]]:
     """ワーカー側で yaw_offset に対応するリマップテーブル群を取得（無ければ生成してキャッシュ）。"""
+    return get_remap_tables_for_input_size(_WORKER_INPUT_SIZE, yaw_offset)
+
+
+def get_remap_tables_for_input_size(
+    input_size: tuple[int, int], yaw_offset: float
+) -> dict[str, tuple[np.ndarray, np.ndarray]]:
+    """Get remap tables for the actual source image size and yaw offset."""
     global _WORKER_REMAP_CACHE
-    key = _quantize_yaw_offset(yaw_offset)
+    key = _remap_cache_key(input_size, yaw_offset)
 
     cached = _WORKER_REMAP_CACHE.get(key)
     if cached is not None:
@@ -92,11 +103,12 @@ def get_remap_tables_for_offset(yaw_offset: float) -> dict[str, tuple[np.ndarray
         return cached
 
     assert _WORKER_VIEWS is not None
+    input_size = (int(input_size[0]), int(input_size[1]))
     tables: dict[str, tuple[np.ndarray, np.ndarray]] = {}
     for view in _WORKER_VIEWS:
-        eff_yaw = float(view["yaw"]) + key
+        eff_yaw = float(view["yaw"]) + key[2]
         tables[view["name"]] = build_remap(
-            _WORKER_INPUT_SIZE,
+            input_size,
             _WORKER_FOV,
             eff_yaw,
             float(view["pitch"]),
@@ -108,6 +120,20 @@ def get_remap_tables_for_offset(yaw_offset: float) -> dict[str, tuple[np.ndarray
     while len(_WORKER_REMAP_CACHE) > limit:
         _WORKER_REMAP_CACHE.popitem(last=False)
     return tables
+
+
+def remap_input_size(path: str) -> tuple[int, int]:
+    """Read image dimensions for remap table selection without assuming all sources match."""
+    try:
+        with Image.open(path) as image:
+            return int(image.size[0]), int(image.size[1])
+    except Exception:
+        arr = load_equirect(path)
+        return int(arr.shape[1]), int(arr.shape[0])
+
+
+def get_remap_tables_for_file(path: str, yaw_offset: float) -> dict[str, tuple[np.ndarray, np.ndarray]]:
+    return get_remap_tables_for_input_size(remap_input_size(path), yaw_offset)
 
 
 def frame_yaw_offset(frame_index: int, step_deg: float) -> float:
@@ -1205,11 +1231,11 @@ def proc_convert_images(frame_file: str, yaw_offset: float = 0.0) -> int:
     if _WORKER_VIEWS is None:
         raise RuntimeError("worker views are not initialized")
 
-    tables = get_remap_tables_for_offset(yaw_offset)
     written = 0
 
     image = os.path.join(_WORKER_IMAGE_DIR, frame_file)
     if os.path.exists(image) and (_WORKER_EXPORT_IMAGES or (_WORKER_EXPORT_MASKS and _WORKER_MASK_FROM_ALPHA)):
+        tables = get_remap_tables_for_file(image, yaw_offset)
         written += remap_image(
             image,
             _WORKER_OUTPUT_IMAGE_DIR,
@@ -1235,6 +1261,7 @@ def proc_convert_images(frame_file: str, yaw_offset: float = 0.0) -> int:
 
     for mask in mask_candidates(_WORKER_MASK_DIR, frame_file):
         if os.path.exists(mask):
+            tables = get_remap_tables_for_file(mask, yaw_offset)
             # マスクは PNG 出力固定（α 不要、ロスレス必須）
             written += remap_image(
                 mask,
@@ -1273,13 +1300,13 @@ def proc_convert_images_colmap_rig(job: tuple[str, str]) -> int:
         raise RuntimeError("worker views are not initialized")
 
     frame_file, output_filename = job
-    tables = get_remap_tables_for_offset(0.0)
     written = 0
 
     image = os.path.join(_WORKER_IMAGE_DIR, frame_file)
     if os.path.exists(image) and (_WORKER_EXPORT_IMAGES or (_WORKER_EXPORT_MASKS and _WORKER_MASK_FROM_ALPHA)):
         print(f"Processing: {image}", flush=True)
         equi = load_equirect(image)
+        tables = get_remap_tables_for_input_size((int(equi.shape[1]), int(equi.shape[0])), 0.0)
         has_alpha = equi.ndim == 3 and equi.shape[2] == 4
         max_val = _max_value_for_dtype(equi.dtype)
 
@@ -1331,6 +1358,7 @@ def proc_convert_images_colmap_rig(job: tuple[str, str]) -> int:
 
         print(f"Processing: {mask_path}", flush=True)
         equi_mask = load_equirect(mask_path)
+        tables = get_remap_tables_for_input_size((int(equi_mask.shape[1]), int(equi_mask.shape[0])), 0.0)
         for view in _WORKER_VIEWS:
             view_name = view["name"]
             map_x, map_y = tables[view_name]

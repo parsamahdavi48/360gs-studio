@@ -92,7 +92,11 @@ def load_cubemap_frame_groups(
     )
 
 
-def cubemap_frame_groups_from_preview_cameras(cameras: Iterable[object]) -> tuple[CubemapFrameGroup, ...]:
+def cubemap_frame_groups_from_preview_cameras(
+    cameras: Iterable[object],
+    *,
+    normalize_cubemap: bool = True,
+) -> tuple[CubemapFrameGroup, ...]:
     """Build preview cubemap groups from already-loaded scene preview cameras."""
     frames: list[PinholeFrame] = []
     for camera in cameras:
@@ -106,7 +110,7 @@ def cubemap_frame_groups_from_preview_cameras(cameras: Iterable[object]) -> tupl
         if frame is None:
             continue
         frames.append(frame)
-    normalized = normalize_standard_cubemap_frames(tuple(frames))
+    normalized = normalize_standard_cubemap_frames(tuple(frames)) if normalize_cubemap else tuple(frames)
     groups: dict[str, dict[str, PinholeFrame]] = {}
     for frame in normalized:
         parsed = split_cubemap_face(frame.file_path)
@@ -128,15 +132,14 @@ def face_view_params(group: CubemapFrameGroup, face: str, *, fov_deg: float = 90
         return None
     standard_rotations = _standard_cube6_face_rotations(group)
     if standard_rotations is not None and face in standard_rotations:
-        if face in _STANDARD_SIDE_FACES:
-            center_ray = np.array([0.0, 0.0, 1.0], dtype=np.float64) @ standard_rotations[face].T
-            center_ray /= max(float(np.linalg.norm(center_ray)), 1e-12)
-            yaw = float(np.rad2deg(np.arctan2(center_ray[0], center_ray[2])))
-            pitch = float(-np.rad2deg(np.arcsin(np.clip(center_ray[1], -1.0, 1.0))))
-            return yaw, pitch, float(fov_deg)
-        if face in _STANDARD_FACE_LOOK_PARAMS:
+        if face not in _STANDARD_SIDE_FACES and face in _STANDARD_FACE_LOOK_PARAMS:
             yaw, pitch = _STANDARD_FACE_LOOK_PARAMS[face]
             return float(yaw), float(pitch), float(fov_deg)
+        center_ray = np.array([0.0, 0.0, 1.0], dtype=np.float64) @ standard_rotations[face].T
+        center_ray /= max(float(np.linalg.norm(center_ray)), 1e-12)
+        yaw = float(np.rad2deg(np.arctan2(center_ray[0], center_ray[2])))
+        pitch = float(-np.rad2deg(np.arcsin(np.clip(center_ray[1], -1.0, 1.0))))
+        return yaw, pitch, float(fov_deg)
     forward_world = np.array([0.0, 0.0, 1.0], dtype=np.float64) @ frame.camera_to_world_rotation.T
     local = forward_world @ group.reference_frame.camera_to_world_rotation
     local /= max(float(np.linalg.norm(local)), 1e-12)
@@ -167,8 +170,56 @@ def virtual_camera_direction(
     pitch_deg: float,
     roll_deg: float = 0.0,
 ) -> np.ndarray:
-    rotation = virtual_camera_rotation(group, yaw_deg=yaw_deg, pitch_deg=pitch_deg, roll_deg=roll_deg)
-    direction = np.array([0.0, 0.0, 1.0], dtype=np.float64) @ rotation.T
+    local_ray = _perspective_center_ray(yaw_deg, pitch_deg, roll_deg)
+    base_rotation = _preview_base_rotation(group)
+    rotation = base_rotation if base_rotation is not None else group.reference_frame.camera_to_world_rotation
+    direction = local_ray @ rotation.T
+    return direction / max(float(np.linalg.norm(direction)), 1e-12)
+
+
+def virtual_camera_direction_for_face(
+    group: CubemapFrameGroup,
+    face: str,
+    *,
+    yaw_deg: float,
+    pitch_deg: float,
+    roll_deg: float = 0.0,
+) -> np.ndarray:
+    """Return the world ray shown in the reconstructed preview for one face camera."""
+    local_ray = _perspective_center_ray(yaw_deg, pitch_deg, roll_deg)
+    standard_rotations = _standard_cube6_face_rotations(group)
+    face_rotation = standard_rotations.get(face) if standard_rotations is not None else None
+    frame = group.frames_by_face.get(face)
+    if face_rotation is not None and frame is not None:
+        direction = _frame_relative_virtual_direction(group, frame, face_rotation, local_ray)
+        if direction is not None:
+            return direction
+    return _group_relative_virtual_direction(group, local_ray)
+
+
+def _frame_relative_virtual_direction(
+    group: CubemapFrameGroup,
+    frame: PinholeFrame,
+    face_rotation: np.ndarray,
+    local_ray: np.ndarray,
+) -> np.ndarray | None:
+    group_center = _group_relative_virtual_direction(
+        group,
+        np.array([0.0, 0.0, 1.0], dtype=np.float64) @ face_rotation.T,
+    )
+    frame_center = np.array([0.0, 0.0, 1.0], dtype=np.float64) @ frame.camera_to_world_rotation.T
+    frame_center /= max(float(np.linalg.norm(frame_center)), 1e-12)
+    if float(group_center @ frame_center) < 0.5:
+        return None
+    face_local_ray = local_ray @ face_rotation
+    direction = face_local_ray @ frame.camera_to_world_rotation.T
+    return direction / max(float(np.linalg.norm(direction)), 1e-12)
+
+
+def _group_relative_virtual_direction(group: CubemapFrameGroup, local_ray: np.ndarray) -> np.ndarray:
+    base_rotation = _preview_base_rotation(group)
+    rotation = base_rotation if base_rotation is not None else group.reference_frame.camera_to_world_rotation
+    direction = local_ray @ rotation.T
     return direction / max(float(np.linalg.norm(direction)), 1e-12)
 
 
@@ -227,6 +278,11 @@ def _rotation_matrix(yaw_deg: float, pitch_deg: float, roll_deg: float = 0.0) ->
     return ry @ rx @ rz
 
 
+def _perspective_center_ray(yaw_deg: float, pitch_deg: float, roll_deg: float = 0.0) -> np.ndarray:
+    ray = np.array([0.0, 0.0, 1.0], dtype=np.float64) @ _rotation_matrix(yaw_deg, pitch_deg, roll_deg).T
+    return ray / max(float(np.linalg.norm(ray)), 1e-12)
+
+
 def render_cubemap_equirect(
     group: CubemapFrameGroup,
     *,
@@ -250,7 +306,7 @@ def render_cubemap_equirect(
             raise ValueError("ray_transform must be a 4x4 matrix")
         rays = rays @ transform[:3, :3]
 
-    output = np.full((height, width, 3), 16, dtype=np.uint8)
+    output = np.zeros((height, width, 3), dtype=np.uint8)
     best_score = np.full((height, width), -np.inf, dtype=np.float64)
     for face, frame in group.frames_by_face.items():
         face_rotation = standard_rotations.get(face) if standard_rotations is not None else None
@@ -347,14 +403,15 @@ def _fixed_standard_cube6_face_rotations(group: CubemapFrameGroup) -> dict[str, 
 
 
 def _standard_cube6_face_rotations(group: CubemapFrameGroup) -> dict[str, np.ndarray] | None:
+    fixed = _fixed_standard_cube6_face_rotations(group)
+    if fixed is not None:
+        derived = _transform_relative_face_rotations(group, fixed)
+        if derived is not None:
+            return derived
     generated = infer_generated_cubemap_face_rotations(group.frames_by_face)
     if generated is not None:
         return generated
-    fixed = _fixed_standard_cube6_face_rotations(group)
-    if fixed is None:
-        return None
-    derived = _transform_relative_face_rotations(group, fixed)
-    return derived if derived is not None else fixed
+    return fixed
 
 
 def _transform_relative_face_rotations(
@@ -466,7 +523,7 @@ def _sample_frame_to_output(
         map_y.astype(np.float32),
         cv2.INTER_LINEAR,
         borderMode=cv2.BORDER_CONSTANT,
-        borderValue=(16, 16, 16),
+        borderValue=(0, 0, 0),
     )
     output[better] = sampled[better]
     best_score[better] = z[better]

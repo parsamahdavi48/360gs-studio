@@ -20,10 +20,11 @@ from core.scene_preview import (
     ScenePreviewPointCloud,
     load_transforms_preview_dataset,
 )
+from core.scene_preview_cubemap import cubemap_frame_groups_from_preview_cameras, face_view_params
 from core.scene_preview_profiles import ScenePreviewDisplayTransform, step4_output_display_transform
 from core.scene_preview_sources import ScenePreviewCandidate
 from gui import i18n
-from gui.common.perspective_image_view import _pixelated_texture_filter_for_zoom
+from gui.common.perspective_image_view import PerspectiveImageView, _pixelated_texture_filter_for_zoom
 from gui.common.perspective_preview import PerspectiveParams
 from gui.scene_preview.camera_image_view import SceneCameraImageView, apply_mask_overlay
 from gui.scene_preview.pointcloud_view import ScenePointCloudView
@@ -148,6 +149,23 @@ def test_scene_camera_image_view_applies_existing_mask_overlay() -> None:
 def test_perspective_view_uses_crisp_texture_filter_when_zoomed() -> None:
     assert not _pixelated_texture_filter_for_zoom(1.0)
     assert _pixelated_texture_filter_for_zoom(1.2)
+
+
+def test_perspective_view_resets_pan_zoom_when_source_changes() -> None:
+    _app()
+    view = PerspectiveImageView()
+    assert view._gpu_view is not None
+    view._gpu_view._zoom = 4.0
+    view._gpu_view._pan = QPointF(50.0, -25.0)
+
+    shown = view.set_perspective_image_bgr(
+        np.full((32, 64, 3), 128, dtype=np.uint8),
+        PerspectiveParams(),
+    )
+
+    assert shown
+    assert view._gpu_view._zoom == 1.0
+    assert view._gpu_view._pan == QPointF(0.0, 0.0)
 
 
 def test_scene_preview_rebuilds_cubemap_camera_as_spherical_preview(tmp_path: Path) -> None:
@@ -373,6 +391,21 @@ def test_scene_preview_updates_left_view_ray_when_right_view_rotates(tmp_path: P
     assert window.pointcloud_view._selected_view_ray_direction is not None
     assert np.allclose(window.pointcloud_view._selected_view_ray_direction, expected)
 
+    window.camera_image_view._on_look_dragged(0.0, -10.0)
+
+    expected_yaw = np.deg2rad(-1.8)
+    expected_pitch = np.deg2rad(1.8)
+    expected = np.array(
+        [
+            np.sin(expected_yaw) * np.cos(expected_pitch),
+            -np.sin(expected_pitch),
+            np.cos(expected_yaw) * np.cos(expected_pitch),
+        ],
+        dtype=np.float64,
+    )
+    assert window.pointcloud_view._selected_view_ray_direction is not None
+    assert np.allclose(window.pointcloud_view._selected_view_ray_direction, expected)
+
 
 def test_scene_preview_selected_cubemap_face_ray_matches_camera_forward_after_display_transform(
     tmp_path: Path,
@@ -422,6 +455,124 @@ def test_scene_preview_cubemap_view_ray_uses_normalized_image_pose(tmp_path: Pat
     assert ray is not None
     assert float(ray @ expected) > 0.999
     assert float(ray @ raw_forward) < -0.999
+
+
+def test_scene_preview_cubemap_vertical_faces_use_stable_look_params(tmp_path: Path) -> None:
+    transforms = _write_gui_cube6_export_scene(tmp_path)
+    dataset = load_transforms_preview_dataset(transforms, image_root=tmp_path)
+    group = cubemap_frame_groups_from_preview_cameras(dataset.cameras)[0]
+
+    assert face_view_params(group, "py") == (0.0, -90.0, 90.0)
+    assert face_view_params(group, "ny") == (0.0, 90.0, 90.0)
+
+
+def test_scene_preview_cubemap_view_ray_uses_selected_face_pose_when_aligned(tmp_path: Path) -> None:
+    _app()
+    images = tmp_path / "images"
+    images.mkdir()
+    cameras = []
+    for face in ("px", "nx", "pz", "nz", "py", "ny"):
+        image_path = images / f"rs_0001_{face}.png"
+        assert cv2.imwrite(str(image_path), np.full((32, 32, 3), 96, dtype=np.uint8))
+        rotation = cubemap_face_rotation(face)
+        assert rotation is not None
+        if face == "pz":
+            rotation = _yaw_rotation_matrix(25.0) @ rotation
+        cameras.append(
+            ScenePreviewCamera(
+                camera_id=face,
+                label=image_path.name,
+                image_path=image_path,
+                projection="pinhole",
+                width=32,
+                height=32,
+                fl_x=16.0,
+                fl_y=16.0,
+                cx=15.5,
+                cy=15.5,
+                position=np.zeros(3, dtype=np.float64),
+                right=rotation[:, 0],
+                up=rotation[:, 1],
+                forward=rotation[:, 2],
+                source={},
+            )
+        )
+    dataset = ScenePreviewDataset(
+        source_kind="realityscan",
+        source_path=tmp_path / "rs.csv",
+        cameras=tuple(cameras),
+        image_root=images,
+    )
+    window = ScenePreviewWindow()
+    window._set_dataset(dataset)
+
+    window._select_camera_from_pointcloud("pz")
+
+    pz_camera = next(camera for camera in cameras if camera.camera_id == "pz")
+    ray = window.pointcloud_view._selected_view_ray_direction
+    assert ray is not None
+    assert float(ray @ pz_camera.forward) > 0.999
+
+
+def test_scene_preview_realityscan_normal_camera_view_ray_uses_photo_optical_axis(tmp_path: Path) -> None:
+    _app()
+    image_path = tmp_path / "extra_IMG_0316_00000.jpg"
+    assert cv2.imwrite(str(image_path), np.full((24, 32, 3), 96, dtype=np.uint8))
+    camera = ScenePreviewCamera(
+        camera_id="normal",
+        label=image_path.name,
+        image_path=image_path,
+        projection="pinhole",
+        width=32,
+        height=24,
+        fl_x=20.0,
+        fl_y=20.0,
+        cx=15.5,
+        cy=11.5,
+        position=np.zeros(3, dtype=np.float64),
+        right=np.array([1.0, 0.0, 0.0], dtype=np.float64),
+        up=np.array([0.0, 1.0, 0.0], dtype=np.float64),
+        forward=np.array([0.2, -0.1, 0.97], dtype=np.float64),
+        source={"format": "realityscan_csv"},
+    )
+    dataset = ScenePreviewDataset(
+        source_kind="realityscan",
+        source_path=tmp_path / "rs.csv",
+        cameras=(camera,),
+        image_root=tmp_path,
+        coordinate_note="realityscan_csv / realityscan",
+    )
+    window = ScenePreviewWindow()
+    window._set_dataset(dataset)
+
+    ray = window.pointcloud_view._selected_view_ray_direction
+
+    expected = np.array([0.2, -0.1, 0.97], dtype=np.float64)
+    expected /= np.linalg.norm(expected)
+    assert ray is not None
+    assert np.allclose(ray, expected)
+
+
+def test_scene_preview_realityscan_cubemap_camera_view_ray_keeps_face_pose(tmp_path: Path) -> None:
+    _app()
+    transforms = _write_cubemap_scene(tmp_path, use_face_rotations=True)
+    source = load_transforms_preview_dataset(transforms, image_root=tmp_path)
+    dataset = ScenePreviewDataset(
+        source_kind="realityscan",
+        source_path=tmp_path / "rs.csv",
+        cameras=source.cameras,
+        image_root=source.image_root,
+        coordinate_note="realityscan_csv / realityscan",
+    )
+    window = ScenePreviewWindow()
+    window._set_dataset(dataset)
+    pz_camera = next(camera for camera in dataset.cameras if camera.label.endswith("_pz.png"))
+
+    window._select_camera_id(pz_camera.camera_id)
+
+    ray = window.pointcloud_view._selected_view_ray_direction
+    assert ray is not None
+    assert float(ray @ pz_camera.forward) > 0.999
 
 
 def test_load_step4_output_candidate_applies_display_transform(tmp_path: Path) -> None:

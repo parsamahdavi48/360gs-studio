@@ -38,8 +38,9 @@ from core.scene_preview_cubemap import (
     cubemap_frame_groups_from_preview_cameras,
     face_view_params,
     render_cubemap_equirect,
-    virtual_camera_direction,
+    virtual_camera_direction_for_face,
 )
+from core.scene_preview_diagnostics import ScenePreviewDiagnostics, analyze_scene_preview_dataset
 from core.scene_preview_sources import ScenePreviewCandidate, discover_scene_preview_candidates
 from gui import i18n
 from gui.common.perspective_preview import PerspectiveParams
@@ -63,6 +64,7 @@ class ScenePreviewWidget(QWidget):
         self._candidates: tuple[ScenePreviewCandidate, ...] = ()
         self._current_candidate: ScenePreviewCandidate | None = None
         self._dataset: ScenePreviewDataset | None = None
+        self._diagnostics: ScenePreviewDiagnostics | None = None
         self._selected_camera_id = ""
         self._cubemap_faces_by_camera_key: dict[str, tuple[Any, str]] = {}
         self._cubemap_face_camera_keys: set[str] = set()
@@ -229,6 +231,7 @@ class ScenePreviewWidget(QWidget):
     def _clear_dataset(self) -> None:
         self._current_candidate = None
         self._dataset = None
+        self._diagnostics = None
         self._selected_camera_id = ""
         self._cubemap_faces_by_camera_key = {}
         self._cubemap_face_camera_keys = set()
@@ -247,6 +250,7 @@ class ScenePreviewWidget(QWidget):
 
     def _set_dataset(self, dataset: ScenePreviewDataset) -> None:
         self._dataset = dataset
+        self._diagnostics = analyze_scene_preview_dataset(dataset)
         self._build_cubemap_lookup(dataset)
         self.pointcloud_view.set_dataset(dataset)
         self.camera_combo.blockSignals(True)
@@ -325,6 +329,7 @@ class ScenePreviewWidget(QWidget):
                 selected_view_direction=view_direction,
                 cubemap_face=self._cubemap_face_for_camera(camera),
                 mask_available=self._mask_available_for_camera(camera),
+                diagnostics=self._diagnostics,
             )
         )
 
@@ -334,9 +339,10 @@ class ScenePreviewWidget(QWidget):
         params = self.camera_image_view.perspective_params()
         match = self._cubemap_match_for_camera(camera)
         if match is not None and params is not None:
-            group, _face = match
-            return virtual_camera_direction(
+            group, face = match
+            return virtual_camera_direction_for_face(
                 group,
+                face,
                 yaw_deg=params.yaw_deg,
                 pitch_deg=params.pitch_deg,
                 roll_deg=params.roll_deg,
@@ -383,7 +389,10 @@ class ScenePreviewWidget(QWidget):
         self._cubemap_mask_cache = {}
         self._cubemap_image_cache = {}
         self._mask_image_cache = {}
-        groups = cubemap_frame_groups_from_preview_cameras(dataset.cameras)
+        groups = cubemap_frame_groups_from_preview_cameras(
+            dataset.cameras,
+            normalize_cubemap=_should_normalize_preview_cubemap(dataset),
+        )
         frame_lookup: dict[str, tuple[Any, str]] = {}
         for group in groups:
             for face, frame in group.frames_by_face.items():
@@ -536,6 +545,10 @@ def _load_candidate(candidate: ScenePreviewCandidate) -> ScenePreviewDataset:
     )
 
 
+def _should_normalize_preview_cubemap(dataset: ScenePreviewDataset) -> bool:
+    return dataset.source_kind == "transforms"
+
+
 def _load_preview_mask(
     image_path: Path,
     mask_root: Path | None,
@@ -628,6 +641,7 @@ def _format_dataset_summary(
     selected_view_direction: np.ndarray | None = None,
     cubemap_face: str | None = None,
     mask_available: bool | None = None,
+    diagnostics: ScenePreviewDiagnostics | None = None,
 ) -> str:
     source_label = candidate.label if candidate is not None else dataset.source_kind
     source_path = candidate.path if candidate is not None else dataset.source_path
@@ -640,6 +654,7 @@ def _format_dataset_summary(
         f"{i18n.t('SCENE_PREVIEW_POINTS')}: {_point_count(dataset)}",
         f"{i18n.t('SCENE_PREVIEW_COORDINATE')}: {dataset.coordinate_note}",
     ]
+    lines.extend(_format_diagnostics_summary(diagnostics))
     lines.extend(["", i18n.t("SCENE_PREVIEW_SELECTED_CAMERA_SUMMARY")])
     if selected_camera is None:
         lines.append(i18n.t("SCENE_PREVIEW_NO_CAMERA"))
@@ -658,6 +673,7 @@ def _format_dataset_summary(
             f"{i18n.t('SCENE_PREVIEW_IMAGE')}: {selected_camera.image_path or '-'}",
             f"{i18n.t('SCENE_PREVIEW_MASK')}: {_format_presence(mask_available)}",
             f"{i18n.t('SCENE_PREVIEW_CUBEMAP_FACE')}: {cubemap_face or '-'}",
+            f"{i18n.t('SCENE_PREVIEW_CUBEMAP_GROUP')}: {_format_cubemap_group(diagnostics, selected_camera)}",
             f"{i18n.t('SCENE_PREVIEW_POSITION')}: {_format_vector(selected_camera.position)}",
             f"{i18n.t('SCENE_PREVIEW_FORWARD')}: {_format_vector(selected_camera.forward)}",
             f"{i18n.t('SCENE_PREVIEW_VIEW_DIRECTION')}: {_format_optional_vector(selected_view_direction)}",
@@ -666,6 +682,45 @@ def _format_dataset_summary(
         ]
     )
     return "\n".join(lines)
+
+
+def _format_diagnostics_summary(diagnostics: ScenePreviewDiagnostics | None) -> list[str]:
+    if diagnostics is None or not diagnostics.has_issues:
+        return []
+    lines = ["", i18n.t("SCENE_PREVIEW_DATA_QUALITY")]
+    if diagnostics.images_without_camera:
+        lines.append(
+            f"{i18n.t('SCENE_PREVIEW_IMAGES_WITHOUT_CAMERA')}: {len(diagnostics.images_without_camera)}"
+        )
+    if diagnostics.camera_images_missing_on_disk:
+        lines.append(
+            f"{i18n.t('SCENE_PREVIEW_CAMERA_IMAGES_MISSING')}: {len(diagnostics.camera_images_missing_on_disk)}"
+        )
+    incomplete = diagnostics.incomplete_cubemap_groups
+    if incomplete:
+        lines.append(f"{i18n.t('SCENE_PREVIEW_CUBEMAP_INCOMPLETE_GROUPS')}: {len(incomplete)}")
+    return lines
+
+
+def _format_cubemap_group(
+    diagnostics: ScenePreviewDiagnostics | None,
+    camera: ScenePreviewCamera | None,
+) -> str:
+    if diagnostics is None or camera is None:
+        return "-"
+    group = diagnostics.cubemap_group_for_camera(camera)
+    if group is None:
+        return "-"
+    present = len(group.present_faces)
+    expected = len(group.expected_faces)
+    missing = group.missing_faces
+    if missing:
+        return i18n.t("SCENE_PREVIEW_CUBEMAP_GROUP_STATUS_MISSING").format(
+            present=present,
+            expected=expected,
+            missing=", ".join(missing),
+        )
+    return i18n.t("SCENE_PREVIEW_CUBEMAP_GROUP_STATUS").format(present=present, expected=expected)
 
 
 def _point_count(dataset: ScenePreviewDataset) -> str:
