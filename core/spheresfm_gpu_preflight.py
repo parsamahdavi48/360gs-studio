@@ -2,14 +2,12 @@
 
 from __future__ import annotations
 
-import argparse
-import shutil
 import subprocess
 import sys
 from pathlib import Path
 
 from core.path_safety import safe_clear_path
-from core.spheresfm_project import iter_images, validate_spheresfm_colmap
+from core.spheresfm_project import iter_images, validate_spheresfm_colmap  # noqa: F401
 
 PREFLIGHT_MAX_IMAGE_SIZE = "1024"
 PREFLIGHT_MAX_NUM_FEATURES = "2048"
@@ -65,43 +63,9 @@ def build_feature_command(colmap: str, database: Path, images_dir: Path, camera_
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Check whether SphereSfM GPU SIFT can run on one image.")
-    parser.add_argument("--colmap", required=True, help="SphereSfM colmap executable")
-    parser.add_argument("--images-dir", required=True, type=Path)
-    parser.add_argument("--work-dir", required=True, type=Path)
-    parser.add_argument("--camera-params", required=True)
-    args = parser.parse_args(argv)
+    from core.spheresfm_gpu_preflight_cli import main as _main
 
-    if not args.images_dir.is_dir():
-        raise FileNotFoundError(f"Images folder not found: {args.images_dir}")
-    images = iter_images(args.images_dir)
-    if not images:
-        raise FileNotFoundError(f"No supported images found: {args.images_dir}")
-
-    validate_spheresfm_colmap(args.colmap)
-
-    preflight_images = reset_preflight_workspace(args.work_dir)
-    source = images[0]
-    target = preflight_images / f"preflight_000001{source.suffix.lower()}"
-    shutil.copy2(source, target)
-    print(f"SphereSfM GPU preflight image: {source}", flush=True)
-
-    database = args.work_dir / "database.db"
-    run_colmap_command(
-        [
-            args.colmap,
-            "database_creator",
-            "--database_path",
-            str(database),
-        ],
-        "SphereSfM preflight database_creator",
-    )
-    run_colmap_command(
-        build_feature_command(args.colmap, database, preflight_images, args.camera_params),
-        "SphereSfM preflight feature_extractor",
-    )
-    print("SphereSfM GPU preflight passed.", flush=True)
-    return 0
+    return _main(argv)
 
 
 if __name__ == "__main__":

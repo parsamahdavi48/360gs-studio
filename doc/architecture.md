@@ -70,7 +70,8 @@ GUI workflow unless a release note explicitly promises a specific wrapper.
   launch files under `scripts/` directly.
 - SphereSfM project preparation, GPU preflight, and sparse-model conversion live
   in `core/spheresfm_project.py`, `core/spheresfm_gpu_preflight.py`, and
-  `core/spheresfm_to_transforms.py`. Matching files under `scripts/` are thin
+  `core/spheresfm_to_transforms.py`. Their command-line adapters live in the
+  matching `core/*_cli.py` modules. Matching files under `scripts/` are thin
   developer/CLI entry points and must not become the runtime implementation.
 - COLMAP mixed-project preparation lives in
   `core/colmap_mixed_project.py`, and its developer CLI lives in
@@ -94,6 +95,9 @@ GUI workflow unless a release note explicitly promises a specific wrapper.
   `core/realityscan_to_lfs_colmap.py`; command-line parsing lives in
   `core/realityscan_to_lfs_colmap_cli.py`, while GUI execution goes through
   versioned dataset job payloads and `core/dataset_job_runner.py`.
+- RealityScan CSV/PLY to NeRF-style `transforms.json` conversion is
+  implemented in `core/realityscan_to_transforms.py`; command-line parsing
+  lives in `core/realityscan_to_transforms_cli.py`.
 - Cubemap view sets and remap request validation live in
   `core/cubemap_view_spec.py`. Default Cube6 views, custom view JSON parsing,
   and input-size/FOV/output-size checks should go through this module rather

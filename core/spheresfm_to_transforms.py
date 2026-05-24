@@ -7,11 +7,9 @@ SphereSfM checkout.
 """
 from __future__ import annotations
 
-import argparse
 import json
 import os
 import struct
-import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import BinaryIO
@@ -416,56 +414,16 @@ def convert(
     }
 
 
-def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(
-        description="Convert a SphereSfM sparse model to equirectangular transforms.json.",
-    )
-    parser.add_argument("model_dir", help="SphereSfM sparse model directory, or sparse root containing 0/")
-    parser.add_argument("output_dir", help="Output directory for transforms.json and pointcloud.ply")
-    parser.add_argument("--images-dir", required=True, help="Source equirectangular images directory")
-    parser.add_argument(
-        "--image-path-mode",
-        choices=("relative", "images-prefix", "relative-to-output", "absolute"),
-        default="relative",
-        help="How frame file_path values are written (default: relative to --images-dir)",
-    )
-    parser.add_argument(
-        "--keep-colmap-camera-convention",
-        action="store_true",
-        help="Do not flip camera Y/Z axes from COLMAP/OpenCV to OpenGL-style transforms.",
-    )
-    parser.add_argument("--no-pointcloud", action="store_true", help="Do not write pointcloud.ply")
-    return parser.parse_args()
+def parse_args():
+    from core.spheresfm_to_transforms_cli import parse_args as _parse_args
+
+    return _parse_args()
 
 
 def main() -> None:
-    args = parse_args()
-    model_dir = Path(args.model_dir)
-    output_dir = Path(args.output_dir)
-    images_dir = Path(args.images_dir)
-    if not images_dir.is_dir():
-        print(f"Error: images directory not found: {images_dir}", file=sys.stderr)
-        sys.exit(1)
+    from core.spheresfm_to_transforms_cli import main as _main
 
-    try:
-        result = convert(
-            model_dir,
-            output_dir,
-            images_dir,
-            image_path_mode=args.image_path_mode,
-            opengl_camera=not args.keep_colmap_camera_convention,
-            write_pointcloud=not args.no_pointcloud,
-        )
-    except Exception as exc:
-        print(f"Error: {exc}", file=sys.stderr)
-        sys.exit(1)
-
-    print(f"Using sparse model: {result['model_dir']}")
-    print(f"Saved transforms.json: {result['transforms']}")
-    if result["pointcloud"]:
-        print(f"Saved pointcloud.ply: {result['pointcloud']}")
-    print(f"Images: {result['num_images']}")
-    print(f"Points: {result['num_points']}")
+    _main()
 
 
 if __name__ == "__main__":
