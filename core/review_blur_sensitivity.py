@@ -6,6 +6,8 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 
 from core.frame_pair_analysis import (
+    PAIR_BORDERLINE_BLUR_SCORE_MAX,
+    PAIR_BORDERLINE_BLUR_STRONG_RATIO,
     PAIR_LOCAL_SHARPNESS_MIN_SAMPLES,
     PAIR_MOTION_BLUR_BASELINE_MIN,
     PAIR_MOTION_BLUR_DROP_RATIO,
@@ -163,8 +165,26 @@ def _row_blur_classification(row: dict[str, str], mode: str | None) -> str | Non
         and _has_strong_track(row)
         and not _is_severe_blur_ratio(ratio, local_ratio if has_local_ratio else None)
     ):
-        return "borderline_blur"
+        return "borderline_blur" if _is_borderline_blur_candidate(row, effective_ratio, thresholds.review_ratio) else ""
+    if classification == "borderline_blur" and not _is_borderline_blur_candidate(
+        row,
+        effective_ratio,
+        thresholds.review_ratio,
+    ):
+        return ""
     return classification
+
+
+def _is_borderline_blur_candidate(row: dict[str, str], effective_ratio: float, review_ratio: float) -> bool:
+    blur_score = _parse_float(row.get("blur_score_final"))
+    return (
+        blur_score is not None
+        and effective_ratio <= review_ratio
+        and (
+            blur_score <= PAIR_BORDERLINE_BLUR_SCORE_MAX
+            or effective_ratio <= PAIR_BORDERLINE_BLUR_STRONG_RATIO
+        )
+    )
 
 
 def _has_strong_track(row: dict[str, str]) -> bool:

@@ -129,3 +129,25 @@ def test_apply_blur_review_mode_uses_local_ratio_and_tracking_for_new_rows() -> 
     assert result.borderline_blur_count == 1
     assert [row["status"] for row in rows] == ["ok", "borderline_blur"]
     assert [row["decision"] for row in rows] == ["keep", "keep"]
+
+
+def test_apply_blur_review_mode_clears_high_score_mild_ratio_drop() -> None:
+    rows = [
+        _pair_row(
+            "0.63",
+            status="borderline_blur",
+            decision="keep",
+            extra={
+                "blur_score_final": "630",
+                "track_count": "240",
+                "track_coverage": "0.85",
+                "match_confidence": "0.94",
+            },
+        )
+    ]
+
+    result = apply_blur_review_mode(rows, BLUR_REVIEW_MODE_STANDARD)
+
+    assert result.borderline_blur_count == 0
+    assert rows[0]["status"] == "ok"
+    assert rows[0]["decision"] == "keep"

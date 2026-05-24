@@ -102,6 +102,8 @@ PAIR_MOTION_BLUR_BASELINE_MIN = 12.0
 PAIR_MOTION_BLUR_RATIO = 0.35
 PAIR_MOTION_BLUR_DROP_RATIO = 0.60
 PAIR_MOTION_BLUR_REVIEW_RATIO = 0.65
+PAIR_BORDERLINE_BLUR_SCORE_MAX = 200.0
+PAIR_BORDERLINE_BLUR_STRONG_RATIO = 0.55
 PAIR_LOCAL_SHARPNESS_MIN_SAMPLES = 2
 PAIR_STRONG_TRACK_MIN_COUNT = 80
 PAIR_STRONG_TRACK_MIN_CONFIDENCE = 0.80
@@ -406,6 +408,12 @@ def _is_strong_pair_track(
     )
 
 
+def _is_borderline_blur_candidate(blur_score: float, blur_ratio: float | None) -> bool:
+    if blur_ratio is None or blur_ratio > PAIR_MOTION_BLUR_REVIEW_RATIO:
+        return False
+    return blur_score <= PAIR_BORDERLINE_BLUR_SCORE_MAX or blur_ratio <= PAIR_BORDERLINE_BLUR_STRONG_RATIO
+
+
 def assess_pair_frame_risk(
     *,
     blur_score: float,
@@ -476,7 +484,7 @@ def assess_pair_frame_risk(
     borderline_blur = bool(
         has_blur_baseline
         and not motion_blur
-        and blur_ratio <= PAIR_MOTION_BLUR_REVIEW_RATIO
+        and _is_borderline_blur_candidate(blur_score, blur_ratio)
     )
     if (
         strong_track
@@ -484,6 +492,7 @@ def assess_pair_frame_risk(
         and has_sharpness_baseline
         and sharpness_ratio <= PAIR_MOTION_BLUR_DROP_RATIO
         and (not has_local_baseline or local_sharpness_ratio <= PAIR_MOTION_BLUR_REVIEW_RATIO)
+        and _is_borderline_blur_candidate(blur_score, blur_ratio)
     ):
         borderline_blur = True
     low_texture = (

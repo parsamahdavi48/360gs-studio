@@ -247,7 +247,7 @@ def test_review_step_blur_detection_mode_can_switch_back_and_forth(tmp_path: Pat
     rows = _read_rows(csv_path)
 
     assert step.blur_mode_buttons[BLUR_REVIEW_MODE_STANDARD].isChecked()
-    assert [row["status"] for row in rows] == ["motion_blur", "borderline_blur", "ok"]
+    assert [row["status"] for row in rows] == ["motion_blur", "ok", "ok"]
     assert [row["decision"] for row in rows] == ["drop", "keep", "keep"]
     assert {row[BLUR_REVIEW_MODE_FIELD] for row in rows} == {BLUR_REVIEW_MODE_STANDARD}
 

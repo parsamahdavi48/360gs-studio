@@ -150,6 +150,21 @@ def test_assess_pair_frame_risk_keeps_borderline_blur_for_review() -> None:
     assert risk.low_texture is False
 
 
+def test_assess_pair_frame_risk_clears_high_score_mild_ratio_drop() -> None:
+    risk = assess_pair_frame_risk(
+        blur_score=630.0,
+        sharpness_baseline=1000.0,
+        track=PairTrackMetrics(track_count=240, coverage=1.0, confidence=0.95, median_residual_motion=0.0),
+        track_min_confidence=0.25,
+        track_min_count=36,
+    )
+
+    assert risk.sharpness_ratio == pytest.approx(0.63)
+    assert risk.motion_blur is False
+    assert risk.borderline_blur is False
+    assert risk.low_texture is False
+
+
 def test_analyze_pair_selection_marks_redundant_and_gap_forced(tmp_path: Path) -> None:
     wrapper = _fake_ffmpeg_wrapper(
         tmp_path,
