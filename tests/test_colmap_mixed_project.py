@@ -42,7 +42,8 @@ def test_prepare_colmap_mixed_project_writes_rig_and_normal_lists(tmp_path: Path
     result = subprocess.run(
         [
             sys.executable,
-            "scripts/prepare_colmap_mixed_project.py",
+            "-m",
+            "core.colmap_mixed_project_cli",
             str(scene),
             str(output),
             "--views-json",
@@ -101,7 +102,8 @@ def test_prepare_colmap_mixed_project_splits_multi_resolution_erp_into_rigs(tmp_
     result = subprocess.run(
         [
             sys.executable,
-            "scripts/prepare_colmap_mixed_project.py",
+            "-m",
+            "core.colmap_mixed_project_cli",
             str(scene),
             str(output),
             "--views-json",
@@ -171,7 +173,8 @@ def test_prepare_colmap_mixed_project_accepts_job_json(tmp_path: Path) -> None:
     result = subprocess.run(
         [
             sys.executable,
-            "scripts/prepare_colmap_mixed_project.py",
+            "-m",
+            "core.colmap_mixed_project_cli",
             "--job",
             str(job_path),
         ],

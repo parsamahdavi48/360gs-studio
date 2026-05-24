@@ -22,6 +22,7 @@ root直下の互換 `*.py` ラッパーは、アプリ構造に含めません�
 - `core/yolo_mask.py` のYOLO/SAM実行設定は `YoloMaskRuntimeSettings` で正規化し、グローバル状態の更新は `apply_runtime_settings()` に集約します。既存の処理関数が参照する互換グローバルは残しますが、新しい設定追加はこの入口を通します。
 - AprilTagスケール推定は `core/apriltag_scale_estimate.py` が実行実装、`core/apriltag_scale_job_spec.py` がGUIからのpayload検証とコマンド生成を担当します。推定はキャンセル可能な長時間処理なので別プロセスで実行してよいものとしますが、GUIから `scripts/` 配下を直接起動しません。
 - SphereSfMのプロジェクト準備、GPU preflight、sparse model変換は `core/spheresfm_project.py`、`core/spheresfm_gpu_preflight.py`、`core/spheresfm_to_transforms.py` が担当します。対応する `scripts/` 配下のファイルは開発/CLI用の薄い入口であり、runtime実装を持たせません。
+- COLMAP mixed project の作成は `core/colmap_mixed_project.py` が担当し、開発/CLI入口は `core/colmap_mixed_project_cli.py` に置きます。対応する `scripts/` 配下のファイルは薄いラッパーだけにし、GUIルートではバージョン付きSfM job payloadと `core/sfm_job_runner.py` を使います。
 - マスク系モジュールでは、リポジトリ全体のマスク極性を守ります。白は使用可能ピクセル、黒は除外ピクセルです。マスク合成は、明示的に別操作として文書化しない限り AND 型を維持します。
 - Metashape の座標変換は `core/metashape_coordinates.py` に集約します。Metashape XML のカメラ姿勢や PLY 点群を変換するルートでは、軸変換行列を個別実装せずこのモジュールを使います。Step 4 の Metashape 前処理ジョブは `core/metashape_preprocess.py` で中間のエクイレクタングラー `transforms.json` を作成します。GUI ルートは旧 upstream の Metashape converter に依存しません。
 - Cubemapの視点セットとRemap仕様は `core/cubemap_view_spec.py` に集約します。デフォルトCube6、カスタム視点JSON、入力サイズ/FOV/出力サイズの検証はここを通し、画像変換実装側に個別の視点パースを増やしません。

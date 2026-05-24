@@ -66,6 +66,11 @@ GUI workflow unless a release note explicitly promises a specific wrapper.
   in `core/spheresfm_project.py`, `core/spheresfm_gpu_preflight.py`, and
   `core/spheresfm_to_transforms.py`. Matching files under `scripts/` are thin
   developer/CLI entry points and must not become the runtime implementation.
+- COLMAP mixed-project preparation lives in
+  `core/colmap_mixed_project.py`, and its developer CLI lives in
+  `core/colmap_mixed_project_cli.py`. The matching file under `scripts/` is a
+  thin wrapper only; GUI routes should use versioned SfM job payloads and
+  `core/sfm_job_runner.py`.
 - Mask modules preserve the repository-wide mask polarity contract:
   white pixels are usable, black pixels are excluded. Mask merges should remain
   AND-style unless a tool explicitly documents a different operation.
