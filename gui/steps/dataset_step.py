@@ -199,7 +199,8 @@ class DatasetStep(BaseStepWidget):
 
     def set_scene_dir(self, path: str) -> None:
         super().set_scene_dir(path)
-        self.cubemap_step.set_scene_dir(path)
+        if self.cubemap_step.scene_dir != path:
+            self.cubemap_step.set_scene_dir(path)
         self.realityscan_tool.set_scene_dir(path)
         self.scale_tool.set_scene_dir(path)
         self.colmap_text_tool.set_scene_dir(path)

@@ -87,6 +87,28 @@ _FILE_PICKER_SVG = """
 </svg>
 """.strip()
 
+_VIDEO_SOURCE_SVG = """
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none">
+  <rect x="4.2" y="5.2" width="15.6" height="13.6" rx="1.8" stroke="#e5e7eb" stroke-width="1.7"/>
+  <path d="M7.6 5.5v13M16.4 5.5v13" stroke="#9ca3af" stroke-width="1.3"/>
+  <path d="M5.6 8.1h1.2M5.6 12h1.2M5.6 15.9h1.2M17.2 8.1h1.2M17.2 12h1.2M17.2 15.9h1.2"
+        stroke="#e5e7eb" stroke-width="1.2" stroke-linecap="round"/>
+  <path d="M10.1 9.1v5.8l4.8-2.9Z" fill="#2dd4bf"/>
+</svg>
+""".strip()
+
+_IMAGE_FOLDER_SOURCE_SVG = """
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none">
+  <path d="M3.8 7.3h5.8l1.7 2.1h8.9v8.1a2.1 2.1 0 0 1-2.1 2.1H5.9a2.1 2.1 0 0 1-2.1-2.1V7.3Z"
+        stroke="#e5e7eb" stroke-width="1.7" stroke-linejoin="round"/>
+  <path d="M3.9 9.5h16.2" stroke="#2dd4bf" stroke-width="1.7" stroke-linecap="round"/>
+  <rect x="8.2" y="11.6" width="8.8" height="5.2" rx="1" stroke="#e5e7eb" stroke-width="1.2"/>
+  <path d="M9.6 15.6 11.4 14l1.3 1.2 1.4-1.7 1.7 2.1" stroke="#2dd4bf"
+        stroke-width="1.1" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="10.5" cy="13" r=".65" fill="#2dd4bf"/>
+</svg>
+""".strip()
+
 _IMPORT_SCENE_SVG = """
 <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none">
   <path d="M3.8 7.4h5.8l1.8 2.1h8.8v7.7a2.1 2.1 0 0 1-2.1 2.1H5.9a2.1 2.1 0 0 1-2.1-2.1V7.4Z"
@@ -269,6 +291,14 @@ def folder_icon(size: int = 18) -> QIcon:
 
 def file_picker_icon(size: int = 18) -> QIcon:
     return svg_icon(_FILE_PICKER_SVG, size)
+
+
+def video_source_icon(size: int = 18) -> QIcon:
+    return svg_icon(_VIDEO_SOURCE_SVG, size)
+
+
+def image_folder_source_icon(size: int = 18) -> QIcon:
+    return svg_icon(_IMAGE_FOLDER_SOURCE_SVG, size)
 
 
 def import_scene_icon(size: int = 18) -> QIcon:

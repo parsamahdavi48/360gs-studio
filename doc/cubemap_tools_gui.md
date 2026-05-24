@@ -1,316 +1,156 @@
-# Step 4 SfM / Step 5 Dataset Creation GUI
+# Step 4 SfM / Step 5 Dataset GUI
 
-Step 4 chooses how camera poses will be prepared. Step 5 converts the 360° images and masks prepared in Steps 1-3, Metashape SfM results, SphereSfM/COLMAP results, or RealityScan CSV/PLY exports into datasets that 3DGS applications can load.
+Step 4 is where you choose how camera poses and sparse points will be prepared for the training dataset. If you already ran SfM in Metashape, RealityScan, COLMAP, or SphereSfM, there is usually nothing else to run in this step. Open a route card only when you want this app to run COLMAP/SphereSfM or when you want to create RealityScan realignment data from a Metashape result.
 
-In the common workflow, choose `External SfM Result`, `COLMAP`, or `SphereSfM` in Step 4, then open Step 5's `SfM Result → Dataset` tool for the detailed settings and execution. For Metashape results, select the camera XML exported from Metashape, optionally select a point-cloud PLY, and choose whether the output is for Postshot, Brush, LichtFeld Studio, or RealityScan. If you are not using Metashape, you can export COLMAP Rig cubemap images or run SphereSfM directly on equirectangular images and convert the result into 3DGS-ready data. Training applications are launched from Step 6, using a dataset that Step 5 has already created.
+Step 5 converts SfM results into datasets that training apps can read. Use it to create NeRF-style JSON/PLY datasets from Metashape or SphereSfM, COLMAP-format datasets from Metashape or RealityScan, or to apply AprilTag scale to an existing dataset.
 
-## First Choice
+## First Decision
 
-When you open Step 4, first decide which route you are on. Selecting a card opens Step 5's `SfM Result → Dataset` tool with that route selected.
+Start by deciding whether camera poses already exist.
 
-SfM, or Structure from Motion, estimates camera positions and a sparse point cloud from differences between multiple images. 3DGS tools use those camera positions to read the training data. The Metashape route converts an SfM result created in Metashape; the SphereSfM route and the COLMAP route with COLMAP enabled can run SfM from this app.
-
-| Goal | Route | Main settings |
-| --- | --- | --- |
-| Use Metashape SfM results in Postshot / Brush / LichtFeld | `Metashape` | `Output Preset`, `Output Shape`, `Camera XML`, `Point Cloud PLY` |
-| Realign Metashape-aligned 360° images in RealityScan, then continue to points or models there | `Metashape` | `Output Preset: RealityScan`, `Camera XML`, XMP settings |
-| Create direct LichtFeld 3DGUT data | `Metashape` | `Output Preset: LichtFeld Studio`, `Output Shape`, `Point Cloud PLY` |
-| Skip Metashape and continue from extracted 360° images to COLMAP | `COLMAP` | `COLMAP Run Settings`, `Cubemap` |
-| Skip Metashape and run spherical SfM directly on extracted equirectangular images | `SphereSfM` | `SphereSfM COLMAP Executable`, `SfM Input`, `Matcher`, `SfM Quality`, `Output Shape` |
-
-When resuming work, first load the target scene folder in the header. Then choose the route and output shape for this run.
-
-Under Step 5 in the left navigation, `SfM` prepares camera poses and `Cube` writes the dataset for 3DGS apps. When converting Metashape results, you normally run `Cube`. When estimating camera poses with COLMAP or SphereSfM, run `SfM` as well. To rebuild outputs from an existing SfM result, turn `SfM` off and keep `Cube` on. If a warning icon is shown, use that row to jump to the missing setting.
-
-Step 5 has these dataset tool cards:
-
-| Tool | Use |
+| Situation | What to do |
 | --- | --- |
-| `SfM Result → Dataset` | Create Postshot, Brush, LichtFeld, or RealityScan datasets from Metashape / COLMAP / SphereSfM results |
-| `RealityScan → LichtFeld` | Convert RealityScan CSV/PLY exports into a COLMAP dataset root that LichtFeld can open as a Dataset |
-| `Scale Adjustment` | Apply AprilTag-estimated scale to an existing projected cubemap dataset |
+| Metashape SfM is already done | In Step 4, choose `Use Existing SfM Result`. In Step 5, choose a Metashape dataset card |
+| RealityScan realignment is already done | In Step 4, choose `Use Existing SfM Result`. In Step 5, choose `RealityScan -> COLMAP Dataset` |
+| You already have a COLMAP images/masks/sparse dataset | In Step 4, choose `Use Existing SfM Result`. For COLMAP-compatible training apps, continue directly to training |
+| You want this app to run COLMAP | In Step 4, choose `Run COLMAP SfM` |
+| You want this app to run SphereSfM | In Step 4, choose `Run SphereSfM` |
+| You want to realign a Metashape result in RealityScan | In Step 4, choose `Metashape -> RealityScan Data` |
+| You want to inspect an existing result | In Step 4, choose `Inspect SfM Result` |
+
+## Step 4: SfM Route Cards
+
+### Use Existing SfM Result
+
+Choose this when Metashape, RealityScan, COLMAP, SphereSfM, or another tool has already produced camera poses and sparse points. This route means "nothing to run here"; continue to Step 5 and choose the dataset format you need.
+
+### Run COLMAP SfM
+
+Choose this when you want this app to run COLMAP or GLOMAP without using Metashape.
+
+- 360° images are expanded into cubemap rigs
+- normal images and normal video frames remain normal cameras
+- mixed sources can be processed in one COLMAP dataset
+- output goes to `output/colmap_rig/`
+
+For video-like input, start with `Sequential` matching. For a smaller unordered photo set, consider `Exhaustive`.
+
+For normal images, start with automatic camera estimation. Only edit normal-camera settings when you need to explicitly control focal length or distortion model.
+
+### Run SphereSfM
+
+Choose this when you want to run SfM on equirectangular 360° images as spherical cameras. Treat SphereSfM as a route for same-resolution ERP 360° images only. Use COLMAP or Metashape when you need mixed normal images or multiple ERP resolutions.
+
+SphereSfM requires SphereSfM's own `colmap.exe`, not standard COLMAP. On RTX 50-series GPUs, some distributed binaries can fail during CUDA SIFT; in that case, select a build made for the RTX 50-series CUDA architecture.
+
+The SfM working folder is `output/spheresfm/`. Create JSON/PLY or cubemap datasets from that result in Step 5 with `SphereSfM -> NeRF Dataset (JSON/PLY)`.
+
+### Metashape -> RealityScan Data
+
+Choose this when you have a Metashape camera XML and want to import cubemap images plus XMP camera data into RealityScan. This is useful when you want RealityScan to realign the scene, add additional image sources in RealityScan, or export RealityScan CSV/PLY for downstream tools.
+
+The output is `output/realityscan/`. In RealityScan, add the `images/` folder and run Align. After exporting CSV and PLY from RealityScan, use Step 5 `RealityScan -> COLMAP Dataset` when LichtFeld needs a COLMAP-format Dataset.
+
+### Inspect SfM Result
+
+Open a read-only viewer for point clouds, camera positions, selected camera images, and matching masks. Use it to confirm that camera poses, point clouds, image links, and masks line up before training.
+
+## Step 5: Dataset Cards
+
+### Metashape -> NeRF Dataset (JSON/PLY)
+
+Create a NeRF/3DGS-style dataset using `transforms.json` and `pointcloud.ply` from a Metashape camera XML and point-cloud PLY.
+
+| Choice | Use when |
+| --- | --- |
+| `PINHOLE` | You want cubemap-style perspective images for Postshot, Brush, LichtFeld, or similar tools |
+| `ERP 360°` | You want LichtFeld GUT to train directly on equirectangular images |
+
+Start with `PINHOLE` unless you specifically need LichtFeld GUT. If the Metashape result contains normal images or multiple ERP resolutions, direct ERP 360° output is not safe; use `PINHOLE`. For LichtFeld, mixed Metashape results with multiple camera settings are safer through `Metashape -> COLMAP Dataset` because LichtFeld's JSON/PLY import does not handle per-frame camera intrinsics.
+
+Typical outputs:
+
+| Output | Folder |
+| --- | --- |
+| PINHOLE cubemap | `output/metashape_cubemap/` |
+| ERP 360° / GUT | `output/metashape_3dgut/` |
+
+### Metashape -> COLMAP Dataset
+
+Create a COLMAP-format dataset with `images/`, `masks/`, and `sparse/0/` from Metashape camera XML and point-cloud PLY. Choose this for COLMAP-input training apps or when Metashape aligned mixed 360° and normal-camera sources.
+
+- ERP 360° cameras are expanded to the selected view set
+- PINHOLE normal images are referenced without cubemap conversion
+- distorted normal images are undistorted to PINHOLE, and matching masks are transformed the same way
+- output goes to `output/metashape_colmap/`
+
+For LichtFeld with mixed Metashape sources, this is the safer route.
+
+### RealityScan -> COLMAP Dataset
+
+Create a LichtFeld-readable COLMAP dataset from RealityScan Internal/External CSV and a PLY exported in the same coordinate state.
+
+Normally, use it when CSV, PLY, `images/`, and `masks/` are already under `output/realityscan/`. Output goes to `output/realityscan/lfs_colmap/`.
+
+Turn on `Undistort to PINHOLE` only when RealityScan includes normal-camera images with distortion and LichtFeld refuses to train on them. Cubemap-derived PINHOLE images are linked, while only distorted normal images are converted. Invalid image regions introduced by undistortion are also reflected in the masks.
+
+### SphereSfM -> NeRF Dataset (JSON/PLY)
+
+Create a JSON/PLY dataset from the SphereSfM sparse model created in Step 4, or from another selected SphereSfM sparse model.
+
+Use same-resolution ERP 360° input for SphereSfM. The output can be ERP 360° data for LichtFeld GUT or PINHOLE cubemap data for Postshot, Brush, or LichtFeld.
+
+### Scale Adjustment
+
+Use printed AprilTags to correct the metric scale of an existing dataset. Tags must be printed and fixed in the scene before capture.
+
+1. Create a cubemap or COLMAP-style dataset in Step 5.
+2. Open `Scale Adjustment`, then confirm the target dataset, tag family, tag IDs, and printed tag size.
+3. Run estimation and review the detected observations and scale value.
+4. Apply the scale only when the result looks reasonable.
+
+Scale application multiplies the target dataset's camera positions and point cloud by the same factor. A backup is created before files are changed.
+
+## Output Choices
+
+### Image Type
+
+`PINHOLE` expands ERP 360° images into normal perspective views. Use it first for normal Postshot, Brush, and LichtFeld training.
+
+`ERP 360°` keeps equirectangular images for LichtFeld GUT. It is available only for the LichtFeld preset.
+
+### View Set
+
+`Cubemap` exports the standard six front/back/left/right/up/down views. Use it when unsure.
+
+`Custom Grid` adds or removes view directions. More views mean more output images, longer conversion time, and more training images.
+
+### Image Size
+
+Start with the default. Use a smaller size for fast tests and a larger size when you need final-detail output. Also consider source resolution and training-app VRAM use.
 
 ## Scene Preview
 
-Click the scene preview icon in the right-side preview header of Step 5's `SfM Result → Dataset` tool to open a read-only scene preview in a separate window. If a scene folder is already selected, the viewer opens that folder. To launch only the viewer, run this from the app folder:
+Open `Inspect SfM Result` from Step 4 to inspect point clouds, camera positions, images, and masks together. To launch only the viewer:
 
 ```bat
 run_scene_preview.bat D:\work\scene01
 ```
 
-The viewer lists available sources under `Load Candidates`. Dataset folders under `output/`, Metashape XML/PLY, SphereSfM results, and COLMAP results are shown when they are found in the scene folder. Use `Select Scene...` to inspect another folder, or `Refresh` after rebuilding results in the same folder.
-
-The left view shows the point cloud, camera positions, and world axes together. Selecting a camera highlights its dot and draws the current right-view direction as a yellow ray. You can select cameras by clicking camera dots or by using the camera list above the views.
-
-The right view shows the image linked to the selected camera. Equirectangular images and cubemap outputs are shown as a perspective view from that camera. When you select a cubemap face, the viewer rebuilds a spherical view from the cubemap faces for the same source camera and starts from the front view. If matching masks are available, excluded areas are shown as a red overlay.
-
-Basic controls:
-
-| Area | Action |
-| --- | --- |
-| Left view | Left-drag to rotate, right-drag or middle-drag to pan, mouse wheel to zoom |
-| Left view | Click a camera dot to select it, double-click to fit the full scene |
-| Right view | In perspective view, left-drag to look around, mouse wheel for 2D zoom, double-click to reset the view |
-| Right view | For normal pinhole images, left-drag pans the image and the mouse wheel zooms |
-
-## Metashape Route
-
-If Metashape has already aligned the 360° images, use this flow.
-
-1. Set the route to `Metashape`.
-2. Check `Camera XML`. If no candidate was filled in, or if you want to use another XML, manually select the camera XML exported from Metashape.
-3. Check `Point Cloud PLY` when exporting for LichtFeld Studio or when you want to package a point cloud. If exactly one PLY candidate is found, it is filled in automatically. If multiple candidates exist, choose the intended PLY manually.
-4. Choose the downstream app in `Output Preset`.
-5. Choose whether to convert to cubemap images or create `3DGUT (LichtFeld)` in `Output Shape`.
-6. If creating cubemap images, review Cube6, yaw, and image size in the `Cubemap` tab.
-7. Run the export.
-
-In the Metashape route, Step 5 converts Metashape camera data into 3DGS camera data. When `Output Shape` is `Convert to Projection Views`, it also writes cubemap images and masks.
-
-### Choosing Camera XML And Point Cloud PLY
-
-In the Metashape route, choose the camera XML exported from Metashape. If one likely XML is found in the scene folder, Step 5 fills it in automatically. If there are multiple candidates or the selected file is not the one you want, choose the file manually.
-
-- `Camera XML`: choose the XML containing the aligned Metashape cameras.
-- `Point Cloud PLY`: choose the PLY exported from Metashape when the target profile needs a point cloud. If multiple candidates exist, select the intended one manually.
-
-Keep the original Metashape XML/PLY inputs separate from the Step 5 output folder so they are easy to identify.
-
-## Output Preset
-
-`Output Preset` chooses the downstream 3DGS application.
-
-| Preset | Use when |
-| --- | --- |
-| `Postshot` | Creating cubemap data for Postshot |
-| `Brush` | Creating cubemap data for Brush |
-| `LichtFeld Studio` | Creating cubemap data or 3DGUT data for LichtFeld |
-| `RealityScan` | Sending cubemap images with Metashape camera poses to RealityScan, then running Align there |
-| `Custom` | Manually adjusting coordinate transforms or PLY handling |
-
-Usually, choose the name of the app you will load the dataset into. If advanced settings change the coordinate transform, PLY usage, or Metashape import options away from the preset defaults, the preset switches to `Custom`.
-
-## Output Shape
-
-`Output Shape` controls how equirectangular images become training data. It is used by both the Metashape route and the SphereSfM route.
-
-### Convert to Projection Views
-
-This is the normal path. Step 5 converts the equirectangular images into cubemap images, then writes images, masks, and `transforms.json` under the active cubemap dataset folder. Metashape output goes to `<scene>/output/metashape_cubemap/`; SphereSfM conversion output goes to `<scene>/output/spheresfm_cubemap/`. Cube6 is the standard preset, but you can adjust the exported directions in the `Cubemap` tab when needed.
-
-This output is easier to use in Postshot, Brush, and LichtFeld Studio because it behaves like a normal pinhole-camera dataset. Its `transforms.json` uses the `PINHOLE` camera model for downstream compatibility. When training this output in LichtFeld, you normally do not enable GUT or Undistort.
-
-Use the `RealityScan` preset when you want to continue the Metashape-aligned capture in RealityScan. Step 5 writes the output under `<scene>/output/realityscan/` and creates cubemap images plus matching XMP camera data for each image. The Metashape point-cloud PLY is not used for this output. Load the images in RealityScan, run `Align`, and continue to RealityScan point-cloud or model generation there.
-
-### Realigning In RealityScan
-
-Use this workflow when Metashape already produced camera poses, but you want RealityScan's alignment result, want to add more sources in RealityScan, or want to export RealityScan PLY/camera CSV for later training.
-
-1. Set the route to `Metashape`.
-2. Set `Camera XML` to the camera XML exported from Metashape.
-3. Set `Output Preset` to `RealityScan`. `Output Shape` is fixed to projection-view output.
-4. In `Cubemap`, check `Cube6` and image size. The defaults are the normal starting point.
-5. Keep `XMP` at `Pose: Exact`, `Calib: Exact`, and `Rig: OFF` for the normal workflow.
-6. Run the export.
-7. In RealityScan, use `WORKFLOW` > `Folder` and add `<scene>/output/realityscan/images/`.
-8. Run `Align Images`. After cameras and tie points are created, continue with model creation or export from RealityScan.
-
-`Pose` controls how RealityScan treats camera position and orientation. Use `Exact` for the normal workflow: keep the Metashape-derived poses while RealityScan builds its own points. Try `Initial` only when RealityScan should be allowed to adjust camera poses more freely. Use `Locked` only when you intentionally want fixed cameras.
-
-`Calib` controls focal length, principal point, and other intrinsics. Cubemap images are generated as known virtual cameras, so `Exact` is the normal choice. Use `Initial` only when RealityScan should refine intrinsics.
-
-`Rig` is for advanced use. Keep it OFF for the normal workflow where RealityScan runs Align and regenerates points. Turn it on only when you know you need RealityScan rig metadata.
-
-When masks are enabled, Step 5 also creates RealityScan mask layers next to the images. White is used and black is excluded. Usually you only need to add the `images/` folder in RealityScan; the matching images, XMP sidecars, and mask layers are kept together there.
-
-### 3DGUT (LichtFeld)
-
-This mode creates data for LichtFeld Studio's 3DGUT training path. It places the source equirectangular `images/` and `masks/` under the active 3DGUT dataset folder, and does not create converted cubemap images or converted masks.
-
-This mode writes these files in the active 3DGUT dataset folder:
-
-- `transforms.json`
-- `pointcloud.ply`
-
-In the Metashape route, `Output Preset: LichtFeld Studio` and a point-cloud PLY are required, and the finished dataset is `<scene>/output/metashape_3dgut/`. In the SphereSfM route, Step 5 creates `pointcloud.ply` from the SfM result and writes the finished dataset to `<scene>/output/spheresfm_3dgut/`. While `3DGUT (LichtFeld)` is active, projection-view controls, image/mask output toggles, and COLMAP text-model export are disabled.
-
-## Using Cubemap Data And 3DGUT In LichtFeld
-
-To prepare both cubemap data and direct 3DGUT data for LichtFeld, export twice from the same Metashape result.
-
-### Cubemap Version
-
-1. Set the route to `Metashape`.
-2. Set `Output Preset` to `LichtFeld Studio`.
-3. Set `Output Shape` to `Convert to Projection Views`.
-4. Check `Point Cloud PLY`. If a single candidate was auto-filled, it is already accepted. If the field is empty or the candidate is wrong, select the right file manually.
-5. In `Cubemap`, start with `Cube6`, yaw 45°, and the image size you want to test.
-6. Run the export.
-
-The output is `<scene>/output/metashape_cubemap/`. Load that folder in LichtFeld.
-
-### 3DGUT Version
-
-1. Set the route to `Metashape`.
-2. Set `Output Preset` to `LichtFeld Studio`.
-3. Set `Output Shape` to `3DGUT (LichtFeld)`.
-4. Check `Point Cloud PLY`. If a single candidate was auto-filled, it is already accepted. If the field is empty or the candidate is wrong, select the right file manually.
-5. Run the export.
-
-This output uses the existing `<scene>/images/` and `<scene>/masks/`, then writes `<scene>/output/metashape_3dgut/transforms.json` and `<scene>/output/metashape_3dgut/pointcloud.ply`. In LichtFeld, use `<scene>/output/metashape_3dgut/` as the dataset and enable GUT during training.
-
-## Projection View Settings
-
-`Convert to Projection Views` exports cubemap images from the 360-degree source. The standard `Cube6` preset creates front, back, left, right, up, and down views. In the `Cubemap` tab, adjust direction count, vertical rows, and which views are written when needed.
-
-### Start With Cube6
-
-`Cube6` is the usual starting point. It writes the front, back, left, right, up, and down directions, which is a practical baseline for Postshot, Brush, and LichtFeld Studio. Generated face suffixes use the standard cubemap axis names: `px`, `nx`, `py`, `ny`, `pz`, and `nz`.
-
-The default 45° `Yaw Offset` is recommended. For unstabilized dual-fisheye 360° footage, stitch seams often sit around the 25% and 75% horizontal positions of the equirectangular image. A 45° offset keeps those seams away from the center of the cubemap faces.
-
-### Custom Grid
-
-Use `Custom Grid` when six directions are not enough, when you want fewer top/bottom views, or when you want upward/downward oblique views.
-
-- `Yaw Slots`: horizontal slot count, from 4 to 8.
-- `Pitch Rows`: vertical rows, from `-90..90`, up to 5 rows.
-- Each checkbox: whether that view is exported.
-
-More enabled views means more output files and longer processing. The GUI warns above 24 enabled views and blocks execution above 40.
-
-### Image Size
-
-`Image Size` controls the resolution of each projection view.
-
-| Setting | Use when |
-| --- | --- |
-| `Full` | Final-quality checks. Heavier, but preserves more detail |
-| `Normal` | Default standard setting. Matches the center angular resolution of a 90° view to the source image |
-| `Half` | Lightweight tests. Faster, but training can look softer |
-
-Usually start with the default `Normal` size. Choose `Half` when VRAM or processing time is tight, and use `Full` for final checks when preserving fine detail matters.
-
-## Rebuilding Only Images Or Masks
-
-The `Output` checkboxes control whether images and/or masks are written.
-
-| Goal | Setting |
-| --- | --- |
-| Rebuild both images and masks | `Images` ON, `Masks` ON |
-| Rebuild masks only | `Images` OFF, `Masks` ON |
-| Rebuild images only | `Images` ON, `Masks` OFF |
-| Update camera metadata only | `Images` OFF, `Masks` OFF |
-
-After adjusting masks, turning `Images` off avoids reconverting existing cubemap images. `3DGUT (LichtFeld)` references source images and masks directly, so these output toggles are not used in that mode.
-
-## RealityScan To LichtFeld COLMAP
-
-After realigning in RealityScan, Postshot can use the CSV/PLY exports directly, but LichtFeld may require a COLMAP dataset root. Step 5's `RealityScan → LichtFeld` tool creates a folder that LichtFeld can open as a `Dataset` from the Internal/External CSV exported from RealityScan Registration and the PLY exported in the same coordinate state.
-
-The normal layout is CSV, PLY, `images/`, and `masks/` under `<scene>/output/realityscan/`. The default output is `<scene>/output/realityscan/lfs_colmap/`.
-
-1. Open `RealityScan → LichtFeld` in Step 5.
-2. Check `RealityScan CSV` and `RealityScan PLY`. `rs_*.csv` / `rs_*.ply` files are filled in automatically when found.
-3. Check `Images Folder` and `Masks Folder`. Usually these are the `images/` and `masks/` prepared for RealityScan.
-4. Turn on `Pre-undistort distorted images` only when normal camera images still have distortion coefficients and LichtFeld refuses to train. Cubemap-origin PINHOLE images stay linked, and only distorted rows are converted and written as PINHOLE.
-5. Press `Create COLMAP Dataset`.
-
-The tool creates `images/`, `masks/`, and `sparse/0/` under the output folder. Existing images and masks are linked when possible; only images that need pre-undistortion are rewritten.
-
-## Scale From AprilTags
-
-If you want to estimate scale with AprilTags, print and place the tags before capture. The folded `Tag PDF` section in Step 5's `Scale Adjustment` tool can create a printable PDF for the selected tag family, ID, physical size, and paper size. Print at actual size / 100%; printer scaling changes the physical tag size and invalidates the estimate.
-
-When placing tags in multiple locations, use a different tag ID for each location. Reusing the same ID in multiple places makes the observations ambiguous and breaks the estimate. Keep tags fixed during capture, and place them so they are visible from multiple frames when possible.
-
-After capture:
-
-1. Create the cubemap output normally from Step 5's `SfM Result → Dataset` tool. Scale estimation needs projected `transforms.json` and images in the active cubemap dataset, typically `<scene>/output/metashape_cubemap/` or `<scene>/output/spheresfm_cubemap/`. Direct equirectangular output for 3DGUT cannot be estimated here.
-2. Return to the Step 5 tool list and open `Scale Adjustment`.
-3. Enter the printed tag size, family, and tag IDs used in the capture. Keep the default `tag36h11 / ID 7` unless you intentionally printed another tag. Usually leave `Conversion preset` set to `Auto`. If Cube6 output was brought in from another location and estimation looks wrong, choose the preset used during conversion, such as `LichtFeld`, `Postshot`, or `Brush`.
-4. Click `Estimate`. The bottom log and progress bar show detection progress. The result shows the estimated scale and observation statistics without modifying files.
-5. Click `Apply to Scale` only when the result looks reasonable. The tool backs up the current files to `apriltag_scale_backup_TIMESTAMP/` inside the selected cubemap dataset, then scales camera positions in that dataset's `transforms.json` and points in its `pointcloud.ply` when that PLY exists.
-
-## Continue To Step 6
-
-Step 5 creates the dataset that downstream 3DGS apps load. To use it with LichtFeld Studio or Postshot, create the dataset in Step 5, then open `Step 6: Training`.
-
-See [Step 6 Training GUI](training_gui.md) for Step 6 usage.
-
-## COLMAP Route
-
-If you want to skip Metashape and continue from extracted 360° images to COLMAP, set the route to `COLMAP`.
-
-1. Confirm that `Scene Directory` contains `images/` and, when needed, `masks/`.
-2. Set the route to `COLMAP`.
-3. Choose view count, yaw, and image size in `Cubemap`.
-4. Turn on the left `SfM` sub-stage when you want COLMAP to estimate camera positions and a sparse point cloud. COLMAP SfM needs view images, so turning on `SfM` also turns on `Cube`. Turning off `Cube` also turns off `SfM`.
-5. Choose `Matcher` and `Mapper`. Start with `Sequential` and `Global` in most video workflows.
-6. Run the export.
-
-The COLMAP route in Step 5's `SfM Result → Dataset` tool writes a COLMAP Rig dataset under `output/colmap_rig/`, including cubemap images, masks, and `rig_config.json`. If the left `SfM` sub-stage is on, COLMAP also estimates camera positions and a sparse point cloud. `Cube` on / `SfM` off only writes the COLMAP Rig view images.
-
-The COLMAP route is projected COLMAP Rig data only. Create 3DGUT equirectangular output with the Metashape or SphereSfM route instead. If you want to pass an existing COLMAP result into training, select it in `SfM Input` on the `SfM` tab.
-
-Per-frame yaw rotation is always forced to 0 for COLMAP Rig export because changing yaw per frame breaks the fixed-rig assumption.
-
-## SphereSfM Route
-
-The SphereSfM route runs SfM directly on extracted equirectangular images as spherical cameras, without using Metashape. It has two goals:
-
-- create a direct LichtFeld 3DGUT dataset
-- create cubemap data that is easier to use in Postshot, Brush, or LichtFeld
-
-This route requires SphereSfM's `colmap.exe`, not standard COLMAP. The app does not bundle SphereSfM itself, so select the executable you prepared from a [json87/SphereSfM](https://github.com/json87/spheresfm) release or local build.
-
-On RTX 50-series GPUs, the Windows binary distributed on GitHub can stop during CUDA SIFT. RTX 50-series GPUs need CUDA code built for the newer `sm_120` architecture; if the distributed binary was built without that target, CUDA fails with `no kernel image is available for execution on the device`. For RTX 50-series systems, build SphereSfM locally with a CUDA/CMake environment that supports RTX 50-series GPUs and set `CMAKE_CUDA_ARCHITECTURES=120`, then select that `colmap.exe`.
-
-1. Confirm that `Scene Directory` contains `images/` and, when used, `masks/`.
-2. Set the route to `SphereSfM`.
-3. Set `SphereSfM COLMAP Executable` to the `colmap.exe` from a SphereSfM release or build.
-4. Usually keep `Use masks/` enabled. Step 3 masks use white=keep and black=exclude; Step 5 prepares them for SphereSfM and passes them into SfM.
-5. Use the left sub-stage controls to choose what this run should execute. Normally keep both `SfM` and `Cube` on; turn `Cube` off to rebuild only SfM, or turn `SfM` off to reconvert from an existing SfM result. To choose a specific existing SfM result, use `SfM Input` on the `SfM` tab.
-6. Use `Sequential` matcher for video frames. Use `Spatial` only when you provide a POS file.
-7. Start with `SfM Quality: Standard`; use `Fast` for trials or large frame sets and `Quality` when registration coverage is weak.
-8. In the `Cubemap` tab, choose `Output Shape`.
-9. Run the export.
-
-`SfM` on / `Cube` off runs only camera-pose estimation. It does not yet create a dataset for a 3DGS app. `SfM` off / `Cube` on reuses the existing result selected in `SfM Input` when you only want to rebuild the 3DGUT/cubemap output.
-
-At the start of a SphereSfM run, Step 5 runs a small GPU SIFT check before the full process begins. If the selected SphereSfM executable cannot run CUDA SIFT on the current GPU, the run stops there and shows the phase log and likely cause.
-
-When `Output Shape` is `3DGUT (LichtFeld)`, Step 5 uses the existing `<scene>/images/` and `<scene>/masks/`, then writes `<scene>/output/spheresfm_3dgut/transforms.json` and `<scene>/output/spheresfm_3dgut/pointcloud.ply`. The LichtFeld 3DGUT dataset is `<scene>/output/spheresfm_3dgut/`. If existing 3DGUT dataset files are present there, the GUI asks before replacing them.
-
-When `Output Shape` is `Convert to Projection Views`, `<scene>/output/spheresfm_cubemap/` is the cubemap dataset to load in the downstream app. The `Cubemap` tab's projection controls and image/mask output toggles are active, and Step 5 writes `<scene>/output/spheresfm_cubemap/images/`, `<scene>/output/spheresfm_cubemap/masks/`, `<scene>/output/spheresfm_cubemap/transforms.json`, and `<scene>/output/spheresfm_cubemap/pointcloud.ply`.
-
-SphereSfM working files and logs are kept under `<scene>/output/spheresfm/`. The finished datasets are separate from those working files.
-
-After the run, use `View Result in COLMAP GUI` to inspect registered camera poses and sparse points. If your SphereSfM build has no Qt GUI support, only this viewer button is unavailable; SfM and conversion output are separate from that viewer.
-
-## Outputs
-
-| Route | Main outputs |
-| --- | --- |
-| Metashape + cubemap conversion (`Convert to Projection Views`) | `<scene>/output/metashape_cubemap/images/`, `<scene>/output/metashape_cubemap/masks/`, `<scene>/output/metashape_cubemap/transforms.json`. The LichtFeld profile also writes `pointcloud.ply` |
-| Metashape + RealityScan preset | Add `<scene>/output/realityscan/images/` in RealityScan. The same folder contains XMP sidecars and optional RealityScan mask layers |
-| Metashape + `3DGUT (LichtFeld)` | `<scene>/output/metashape_3dgut/images/`, `<scene>/output/metashape_3dgut/masks/`, `<scene>/output/metashape_3dgut/transforms.json`, `<scene>/output/metashape_3dgut/pointcloud.ply` |
-| COLMAP | `<scene>/output/colmap_rig/images/`, `<scene>/output/colmap_rig/masks/`, `<scene>/output/colmap_rig/rig_config.json` |
-| COLMAP with SfM enabled | The COLMAP SfM result in addition to the files above |
-| SphereSfM + `3DGUT (LichtFeld)` | `<scene>/output/spheresfm_3dgut/images/`, `<scene>/output/spheresfm_3dgut/masks/`, `<scene>/output/spheresfm_3dgut/transforms.json`, `<scene>/output/spheresfm_3dgut/pointcloud.ply` |
-| SphereSfM + cubemap conversion (`Convert to Projection Views`) | Load `<scene>/output/spheresfm_cubemap/` in the downstream app. It contains `images/`, `masks/`, `transforms.json`, and `pointcloud.ply` |
-
-Step 5 treats the selected output folder as the active dataset: the folder you can copy to another machine or load directly in a 3DGS app. The RealityScan preset is the exception: add `<scene>/output/realityscan/images/` in RealityScan.
-
-With the `LichtFeld Studio` profile, Step 5 applies the same final orientation correction to `transforms.json` and `pointcloud.ply` during cubemap export so +X / +Z / up directions match the Metashape scene in LichtFeld. For `3DGUT (LichtFeld)`, the same correction is applied when the direct source-image dataset is created.
+The viewer can load output datasets, Metashape XML/PLY, COLMAP sparse models, and SphereSfM sparse models found in the scene. Selecting a camera shows its image and matching mask.
 
 ## Common Decisions
 
-- Use `Convert to Projection Views` for Postshot and Brush.
-- For normal LichtFeld training, start with `LichtFeld Studio` + `Convert to Projection Views`.
-- To use LichtFeld GUT, choose `LichtFeld Studio` + `3DGUT (LichtFeld)`.
-- To realign a Metashape result in RealityScan, choose the `RealityScan` preset, add `<scene>/output/realityscan/images/` with `Folder`, then run `Align Images`.
-- When training cubemap data in LichtFeld, GUT and Undistort are usually unnecessary.
-- When training `3DGUT (LichtFeld)` data, enable GUT in LichtFeld.
-- If stitch seams are not visible, keep stitch masks off or use a narrow seam mask first. Keeping yaw at 45° is usually fine because it does not discard pixels.
-- In the Metashape route, if the selected profile requires a `Point Cloud PLY` and no usable PLY is selected, Step 5 stops before running.
+- If Metashape SfM is already done, choose `Use Existing SfM Result` in Step 4.
+- For normal Postshot / Brush / LichtFeld training, start with `PINHOLE` + `Cubemap`.
+- For LichtFeld GUT, choose `ERP 360°` and enable GUT in the training app.
+- If a Metashape result mixes normal images or multiple ERP resolutions, use `Metashape -> COLMAP Dataset` for LichtFeld.
+- If RealityScan output is going to Postshot, CSV/PLY may be enough. If LichtFeld needs a Dataset folder, use `RealityScan -> COLMAP Dataset`.
+- Treat SphereSfM as same-resolution ERP 360° only. Use COLMAP or Metashape for mixed sources.
+- To rebuild only images or masks, reopen the same dataset card, check the output settings, and run it again.
+
+## Continue to Step 6
+
+After Step 5 creates a dataset, load it directly in LichtFeld Studio, Postshot, Brush, or another training app. Use Step 6 only when you want to launch a compatible CLI for repeat runs or headless training.
+
+See [Step 6 Training GUI](training_gui.md) for Step 6 details.

@@ -628,6 +628,33 @@ def test_review_widget_thumbnail_filter_composes_with_source_filter(tmp_path: Pa
     assert "2" in widget.thumbnail_filter_button.toolTip()
 
 
+def test_review_widget_source_filter_uses_image_sequence_label(tmp_path: Path) -> None:
+    _app()
+    scene, csv_path = _write_scene(tmp_path)
+    _update_scene_rows(
+        csv_path,
+        [
+            {
+                "source_session": "import_1",
+                "source_video": "",
+                "source_type": "image_sequence",
+                "source_label": "still_take",
+            },
+            {
+                "source_session": "import_1",
+                "source_video": "",
+                "source_type": "image_sequence",
+                "source_label": "still_take",
+            },
+        ],
+    )
+
+    widget = ReviewWidget(scene, csv_path)
+
+    labels = [option["label"] for option in widget.source_filter_options()]
+    assert any("still_take" in label for label in labels)
+
+
 def test_review_widget_thumbnail_filter_handles_empty_matches(tmp_path: Path) -> None:
     _app()
     scene, csv_path = _write_scene(tmp_path)

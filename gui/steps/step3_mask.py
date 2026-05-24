@@ -9,7 +9,7 @@ import sys
 import tempfile
 from pathlib import Path
 
-from PySide6.QtCore import QProcess, QSize, Qt, QTimer, Signal
+from PySide6.QtCore import QProcess, QSize, Qt, QTimer
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -29,15 +29,25 @@ from PySide6.QtWidgets import (
 )
 
 from core.apply_frame_decisions import pending_drop_image_paths, untracked_image_paths
+from core.mask_refresh_plan import (
+    MASK_SCOPE_ALL,
+    MASK_SCOPE_MISSING,
+    MASK_SCOPE_STALE,
+    build_mask_refresh_plan,
+    normalize_mask_scope,
+)
+from core.mask_source_scope import MASK_SOURCE_ALL, build_mask_source_options, filter_images_by_source
 from core.mask_view_recipes import QUALITY_CHOICES
+from core.scene_inventory import (
+    PROJECTION_EQUIRECTANGULAR,
+    PROJECTION_NORMAL,
+    PROJECTION_UNKNOWN,
+    build_scene_inventory,
+)
 from core.scene_layout import scene_images_dir, scene_masks_dir, selected_frames_path
 from core.scene_project import (
     append_mask_run,
-    append_source_image_set,
-    resolve_scene_image_projection,
-    scene_image_projection_map,
     scene_relative,
-    source_image_set_record,
     utc_now_iso,
     write_mask_item,
 )
@@ -59,7 +69,6 @@ from gui.steps.mask_commands import (
     MaskCommandContext,
 )
 from gui.steps.mask_image_import import IMAGE_EXTENSIONS as _IMAGE_EXTS
-from gui.steps.mask_image_import import import_external_images_with_records
 from gui.steps.mask_postprocess import mask_stats
 from gui.steps.sam31_setup import ensure_sam31_checkpoint_available
 from gui.steps.step3_mask_actions import Step3MaskActionsMixin
@@ -357,6 +366,15 @@ _YOLO_SAM_NOTICE_VERSION = 3
 _YOLO_SAM_NOTICE_KEY = "yolo_sam_models_ack_version"
 _SKY_NOTICE_VERSION = 2
 _SKY_NOTICE_KEY = "sky_models_ack_version"
+_MASK_SCOPE_COMBO_MIN_WIDTH = 180
+_MASK_SCOPE_COMBO_MAX_WIDTH = 260
+_COMBO_TEXT_PADDING = 48
+
+
+def _fit_combo_width_to_items(combo: QComboBox, *, min_width: int, max_width: int) -> None:
+    metrics = combo.fontMetrics()
+    widest = max((metrics.horizontalAdvance(combo.itemText(index)) for index in range(combo.count())), default=0)
+    combo.setFixedWidth(min(max_width, max(min_width, widest + _COMBO_TEXT_PADDING)))
 
 
 def _ade20k_class_names(base_dir: Path) -> tuple[str, ...]:
@@ -373,8 +391,6 @@ def _ade20k_class_names(base_dir: Path) -> tuple[str, ...]:
 
 
 class MaskStep(Step3MaskActionsMixin, BaseStepWidget):
-    scene_dir_suggested = Signal(str)
-
     def __init__(self, base_dir: Path, parent: QWidget | None = None) -> None:
         super().__init__(base_dir, parent)
         self._phase_total = 0
@@ -405,6 +421,8 @@ class MaskStep(Step3MaskActionsMixin, BaseStepWidget):
         self._current_reprocess_settings: dict | None = None
         self._mask_batch_settings: dict | None = None
         self._mask_batch_phases: list[str] = []
+        self._mask_batch_targets: list[Path] = []
+        self._syncing_mask_source_combo = False
         self._project_projection = _PROJECTION_EQUIRECT
         self._projection_mixed = False
         self._projection_source = "default"
@@ -445,27 +463,34 @@ class MaskStep(Step3MaskActionsMixin, BaseStepWidget):
         self.images_path_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
         images_path_row.addWidget(self.images_path_label, stretch=1)
 
-        self.projection_label = QLabel()
-        self.projection_label.setObjectName("imageTypeChip")
-        self.projection_label.setToolTip(i18n.tip("MASK_IMAGE_TYPE"))
-        self.projection_label.setAlignment(Qt.AlignCenter)
-        self.projection_label.setMinimumWidth(48)
-        images_path_row.addWidget(self.projection_label)
-
-        self.add_external_images_btn = QToolButton()
-        self.add_external_images_btn.setObjectName("iconToolButton")
-        self.add_external_images_btn.setIcon(plus_icon())
-        self.add_external_images_btn.setToolTip(i18n.tip("EXTERNAL_IMAGES_ADD"))
-        self.add_external_images_btn.setAccessibleName(i18n.t("EXTERNAL_IMAGES_ADD"))
-        self.add_external_images_btn.setFixedSize(32, 32)
-        images_path_row.addWidget(self.add_external_images_btn)
-
         add_tooltip_row(path_form, i18n.IMAGES_DIR, self.images_path_row, i18n.tip("IMAGES_DIR"))
         self.masks_path_label = QLabel("-")
         self.masks_path_label.setToolTip(i18n.tip("MASKS_DIR"))
         self.masks_path_label.setWordWrap(True)
         self.masks_path_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
         add_tooltip_row(path_form, i18n.MASKS_DIR, self.masks_path_label, i18n.tip("MASKS_DIR"))
+
+        self.mask_source_combo = QComboBox()
+        self.mask_source_combo.setToolTip(i18n.tip("MASK_SOURCE"))
+        self.mask_source_combo.setFixedWidth(180)
+        self.mask_source_combo.currentIndexChanged.connect(lambda _: self._on_mask_source_changed())
+        add_tooltip_row(path_form, i18n.t("MASK_SOURCE"), self.mask_source_combo, i18n.tip("MASK_SOURCE"))
+
+        self.mask_scope_combo = QComboBox()
+        self.mask_scope_combo.setToolTip(i18n.tip("MASK_SCOPE"))
+        self.mask_scope_combo.addItem(i18n.t("MASK_SCOPE_MISSING"), MASK_SCOPE_MISSING)
+        self.mask_scope_combo.addItem(i18n.t("MASK_SCOPE_STALE"), MASK_SCOPE_STALE)
+        self.mask_scope_combo.addItem(i18n.t("MASK_SCOPE_ALL"), MASK_SCOPE_ALL)
+        self.mask_scope_combo.setItemData(0, i18n.tip("MASK_SCOPE_MISSING"), Qt.ToolTipRole)
+        self.mask_scope_combo.setItemData(1, i18n.tip("MASK_SCOPE_STALE"), Qt.ToolTipRole)
+        self.mask_scope_combo.setItemData(2, i18n.tip("MASK_SCOPE_ALL"), Qt.ToolTipRole)
+        _fit_combo_width_to_items(
+            self.mask_scope_combo,
+            min_width=_MASK_SCOPE_COMBO_MIN_WIDTH,
+            max_width=_MASK_SCOPE_COMBO_MAX_WIDTH,
+        )
+        self.mask_scope_combo.currentIndexChanged.connect(lambda _: self._update_ready_status())
+        add_tooltip_row(path_form, i18n.t("MASK_SCOPE"), self.mask_scope_combo, i18n.tip("MASK_SCOPE"))
         layout.addLayout(path_form)
 
         # --- 追加マスク ---
@@ -1000,8 +1025,8 @@ class MaskStep(Step3MaskActionsMixin, BaseStepWidget):
         self.mask_preview.current_image_changed.connect(self._on_preview_current_image_changed)
         self.mask_preview.mask_preview_requested.connect(self._run_mask_preview)
         self.mask_preview.current_reprocess_requested.connect(self._run_current_image_reprocess)
-        self.add_external_images_btn.clicked.connect(self._add_external_images_from_folder)
         self._set_projection(_PROJECTION_EQUIRECT)
+        self._refresh_mask_source_options()
         self._update_task_controls()
         self._on_images_dir_changed(self._images_dir_text())
         self._update_ready_status()
@@ -1016,6 +1041,7 @@ class MaskStep(Step3MaskActionsMixin, BaseStepWidget):
             self.images_path_label.setText("-")
             self.masks_path_label.setText("-")
         self._sync_projection_from_project()
+        self._refresh_mask_source_options()
         self._on_images_dir_changed(self._images_dir_text())
         self._render_mask_preview()
         self._update_ready_status()
@@ -1032,6 +1058,7 @@ class MaskStep(Step3MaskActionsMixin, BaseStepWidget):
         return ready
 
     def on_activated(self) -> None:
+        self._refresh_mask_source_options()
         self.mask_preview.refresh_image_list(prefer_current=True)
         self._render_mask_preview()
         self._update_ready_status()
@@ -1056,6 +1083,18 @@ class MaskStep(Step3MaskActionsMixin, BaseStepWidget):
             requested_steps.append("custom")
         return requested_steps
 
+    def _mask_scope(self) -> str:
+        return normalize_mask_scope(str(self.mask_scope_combo.currentData() or MASK_SCOPE_MISSING))
+
+    def _selected_mask_source_key(self) -> str:
+        return str(self.mask_source_combo.currentData() or MASK_SOURCE_ALL)
+
+    def _on_mask_source_changed(self) -> None:
+        if self._syncing_mask_source_combo:
+            return
+        self._render_mask_preview()
+        self._update_ready_status()
+
     def _projection(self) -> str:
         return self._project_projection
 
@@ -1064,7 +1103,6 @@ class MaskStep(Step3MaskActionsMixin, BaseStepWidget):
             projection = _PROJECTION_EQUIRECT
         self._project_projection = projection
         self.yolo_level_combo.setCurrentIndex(0 if projection == _PROJECTION_NORMAL else 1)
-        self._update_projection_label()
         if hasattr(self, "mask_preview"):
             self._update_preview_projection_enabled()
         self._update_task_controls()
@@ -1076,38 +1114,39 @@ class MaskStep(Step3MaskActionsMixin, BaseStepWidget):
             self._image_projection_map = {}
             self._set_projection(_PROJECTION_EQUIRECT)
             return
-        resolved = resolve_scene_image_projection(Path(self.scene_dir))
-        self._projection_mixed = bool(resolved.get("mixed"))
-        self._projection_source = str(resolved.get("source") or "default")
-        self._refresh_image_projection_map()
-        self._set_projection(str(resolved.get("mask_projection") or _PROJECTION_EQUIRECT))
-
-    def _update_projection_label(self) -> None:
-        if self._projection_mixed:
-            label_key = "MASK_IMAGE_TYPE_MIXED"
+        inventory = build_scene_inventory(Path(self.scene_dir))
+        self._image_projection_map = {image.rel_path: image.projection for image in inventory.images}
+        projections = {image.projection for image in inventory.images if image.projection != PROJECTION_UNKNOWN}
+        self._projection_mixed = len(projections) > 1
+        self._projection_source = "project" if inventory.images else "default"
+        if self._projection_mixed or PROJECTION_EQUIRECTANGULAR in projections or not projections:
+            self._set_projection(_PROJECTION_EQUIRECT)
         else:
-            label_key = (
-                "MASK_IMAGE_TYPE_EQUIRECT" if self._projection() == _PROJECTION_EQUIRECT else "MASK_IMAGE_TYPE_NORMAL"
-            )
-        source_text = i18n.t("MASK_IMAGE_TYPE_SOURCE_PROJECT")
-        if self._projection_source == "image_header_sample":
-            source_text = i18n.t("MASK_IMAGE_TYPE_SOURCE_HEADER")
-        elif self._projection_source == "default":
-            source_text = i18n.t("MASK_IMAGE_TYPE_SOURCE_DEFAULT")
-        self.projection_label.setText(i18n.t(label_key))
-        self.projection_label.setToolTip(
-            i18n.t("MASK_IMAGE_TYPE_STATUS").format(
-                image_type=i18n.t(label_key),
-                source=source_text,
-            )
-        )
+            self._set_projection(_PROJECTION_NORMAL)
+
+    def _refresh_mask_source_options(self) -> None:
+        current = self._selected_mask_source_key() if hasattr(self, "mask_source_combo") else MASK_SOURCE_ALL
+        self._syncing_mask_source_combo = True
+        try:
+            self.mask_source_combo.clear()
+            self.mask_source_combo.addItem(i18n.t("MASK_SOURCE_ALL"), MASK_SOURCE_ALL)
+            if self.scene_dir and Path(self.scene_dir).is_dir():
+                inventory = build_scene_inventory(Path(self.scene_dir))
+                for option in build_mask_source_options(Path(self.scene_dir), inventory.images):
+                    label = i18n.t("MASK_SOURCE_ITEM").format(label=option.label, count=option.image_count)
+                    self.mask_source_combo.addItem(label, option.key)
+            index = self.mask_source_combo.findData(current)
+            self.mask_source_combo.setCurrentIndex(index if index >= 0 else 0)
+        finally:
+            self._syncing_mask_source_combo = False
 
     def _refresh_image_projection_map(self) -> None:
         if not self.scene_dir:
             self._image_projection_map = {}
             return
         scene = Path(self.scene_dir)
-        self._image_projection_map = scene_image_projection_map(scene, self._scene_image_paths())
+        inventory = build_scene_inventory(scene)
+        self._image_projection_map = {image.rel_path: image.projection for image in inventory.images}
 
     def _scene_image_paths(self) -> list[Path]:
         images = Path(self._images_dir_text())
@@ -1124,15 +1163,15 @@ class MaskStep(Step3MaskActionsMixin, BaseStepWidget):
         if image_path is None:
             return self._projection()
         projection = self._image_projection_map.get(self._projection_key_for_image(image_path), "")
-        if projection == "equirectangular":
+        if projection == PROJECTION_EQUIRECTANGULAR:
             return _PROJECTION_EQUIRECT
-        if projection == "normal":
+        if projection == PROJECTION_NORMAL:
             return _PROJECTION_NORMAL
         return self._projection()
 
     def _has_equirect_images(self) -> bool:
         if self._projection_mixed:
-            return any(value == "equirectangular" for value in self._image_projection_map.values())
+            return any(value == PROJECTION_EQUIRECTANGULAR for value in self._image_projection_map.values())
         return self._projection() == _PROJECTION_EQUIRECT
 
     def _update_preview_projection_enabled(self) -> None:
@@ -1424,85 +1463,6 @@ class MaskStep(Step3MaskActionsMixin, BaseStepWidget):
         self._update_preview_projection_enabled()
         self._render_mask_preview()
 
-    def _ensure_scene_for_external_images(self) -> bool:
-        if self.scene_dir:
-            return True
-
-        result = QMessageBox.question(
-            self,
-            i18n.t("EXTERNAL_IMAGES_SCENE_REQUIRED_TITLE"),
-            i18n.t("EXTERNAL_IMAGES_SCENE_REQUIRED_MESSAGE"),
-            QMessageBox.Yes | QMessageBox.No,
-            QMessageBox.Yes,
-        )
-        if result != QMessageBox.Yes:
-            return False
-
-        scene = QFileDialog.getExistingDirectory(self, i18n.t("EXTERNAL_IMAGES_SELECT_SCENE"))
-        if not scene:
-            return False
-        self.scene_dir_suggested.emit(scene)
-        if not self.scene_dir:
-            self.set_scene_dir(scene)
-        return bool(self.scene_dir)
-
-    def _add_external_images_from_folder(self) -> None:
-        if not self._ensure_scene_for_external_images():
-            return
-        source = QFileDialog.getExistingDirectory(
-            self,
-            i18n.t("EXTERNAL_IMAGES_SELECT_FOLDER"),
-            self.scene_dir,
-        )
-        if not source:
-            return
-
-        source_dir = Path(source)
-        images_dir = Path(self._images_dir_text())
-        try:
-            if source_dir.resolve() == images_dir.resolve():
-                QMessageBox.information(
-                    self,
-                    i18n.t("EXTERNAL_IMAGES_RESULT_TITLE"),
-                    i18n.t("EXTERNAL_IMAGES_SOURCE_IS_TARGET"),
-                )
-                return
-        except OSError:
-            pass
-
-        added, skipped = self._import_external_images_from_dir(source_dir)
-        QMessageBox.information(
-            self,
-            i18n.t("EXTERNAL_IMAGES_RESULT_TITLE"),
-            i18n.t("EXTERNAL_IMAGES_RESULT").format(added=added, skipped=skipped),
-        )
-
-    def _import_external_images_from_dir(self, source_dir: Path) -> tuple[int, int]:
-        if not self.scene_dir:
-            raise ValueError(i18n.t("SCENE_REQUIRED_ACTION_HINT"))
-        if not source_dir.is_dir():
-            raise ValueError(i18n.t("EXTERNAL_IMAGES_SOURCE_NOT_FOUND").format(path=source_dir))
-
-        images_dir = Path(self._images_dir_text())
-        added, skipped, imported = import_external_images_with_records(source_dir, images_dir)
-        if imported:
-            append_source_image_set(
-                Path(self.scene_dir),
-                source_image_set_record(
-                    source_dir=source_dir,
-                    scene_dir=Path(self.scene_dir),
-                    imported=imported,
-                ),
-            )
-
-        self.images_path_label.setText(str(images_dir))
-        self._on_images_dir_changed(str(images_dir))
-        self.mask_preview.refresh_image_list(prefer_current=True)
-        self._sync_projection_from_project()
-        self._render_mask_preview()
-        self._update_ready_status()
-        return added, skipped
-
     def phase_display_name(self, phase: str) -> str:
         labels = {
             "yolo": "MASK_PHASE_PRIMARY",
@@ -1528,34 +1488,59 @@ class MaskStep(Step3MaskActionsMixin, BaseStepWidget):
         self._ensure_no_pending_drop_images()
         self._ensure_no_untracked_images()
 
+        all_image_paths = self._scene_image_paths()
+        settings = self._mask_settings_snapshot()
+        image_paths = self._source_filtered_image_paths()
+        if not image_paths:
+            raise ValueError(i18n.t("MASK_SOURCE_EMPTY"))
+        target_paths = self._mask_target_paths(image_paths, settings=settings)
+        if not target_paths:
+            raise ValueError(i18n.t("MASK_TARGETS_EMPTY"))
+
         steps: list[tuple[str, list[str]]] = []
         if self._projection_mixed:
-            steps = self._build_mixed_batch_commands(requested_steps)
-            self._mask_batch_settings = self._mask_settings_snapshot()
+            steps = self._build_mixed_batch_commands(requested_steps, image_paths=target_paths)
+            self._mask_batch_settings = settings
             self._mask_batch_phases = [phase for phase, _cmd in steps]
+            self._mask_batch_targets = target_paths
             return steps
 
+        needs_target_manifest = self._selected_mask_source_key() != MASK_SOURCE_ALL or len(target_paths) != len(
+            all_image_paths
+        )
+        target_manifest = self._write_mask_target_manifest(target_paths) if needs_target_manifest else None
         fresh_base_needed = True
         if "yolo" in requested_steps:
-            steps.append(("yolo", self._build_yolo_cmd()))
+            steps.append(("yolo", self._build_yolo_cmd(image_list=target_manifest)))
             fresh_base_needed = False
         if "stitch" in requested_steps:
             if fresh_base_needed:
-                steps.append(("init_masks", self._build_init_masks_cmd()))
+                steps.append(("init_masks", self._build_init_masks_cmd(image_list=target_manifest)))
                 fresh_base_needed = False
-            steps.append(("stitch", self._build_stitch_cmd()))
+            steps.append(("stitch", self._build_stitch_cmd(image_list=target_manifest)))
         if "overexposure" in requested_steps:
-            steps.append(("overexposure", self._build_overexposure_cmd(replace=fresh_base_needed)))
+            steps.append(
+                (
+                    "overexposure",
+                    self._build_overexposure_cmd(replace=fresh_base_needed, image_list=target_manifest),
+                )
+            )
             fresh_base_needed = False
         if "custom" in requested_steps:
-            steps.append(("custom", self._build_custom_cmd(replace=fresh_base_needed)))
+            steps.append(("custom", self._build_custom_cmd(replace=fresh_base_needed, image_list=target_manifest)))
             fresh_base_needed = False
-        self._mask_batch_settings = self._mask_settings_snapshot()
+        self._mask_batch_settings = settings
         self._mask_batch_phases = [phase for phase, _cmd in steps]
+        self._mask_batch_targets = target_paths
         return steps
 
-    def _build_mixed_batch_commands(self, requested_steps: list[str]) -> list[tuple[str, list[str]]]:
-        manifests = self._write_projection_manifests()
+    def _build_mixed_batch_commands(
+        self,
+        requested_steps: list[str],
+        *,
+        image_paths: list[Path] | None = None,
+    ) -> list[tuple[str, list[str]]]:
+        manifests = self._write_projection_manifests(image_paths=image_paths)
         steps: list[tuple[str, list[str]]] = []
         if "yolo" in requested_steps:
             equirect_manifest = manifests.get(_PROJECTION_EQUIRECT)
@@ -1590,11 +1575,11 @@ class MaskStep(Step3MaskActionsMixin, BaseStepWidget):
             steps.append(("custom", self._build_custom_cmd(image_list=all_manifest)))
         return steps
 
-    def _write_projection_manifests(self) -> dict[str, Path]:
+    def _write_projection_manifests(self, *, image_paths: list[Path] | None = None) -> dict[str, Path]:
         if not self.scene_dir:
             raise ValueError(i18n.t("SCENE_REQUIRED_ACTION_HINT"))
         scene = Path(self.scene_dir)
-        image_paths = self._scene_image_paths()
+        image_paths = image_paths or self._scene_image_paths()
         if not image_paths:
             return {}
         manifest_dir = scene / "_stechdrive" / "masks" / "work" / self._new_mask_run_id("mask_list")
@@ -1627,6 +1612,42 @@ class MaskStep(Step3MaskActionsMixin, BaseStepWidget):
                     f.write(json.dumps(record, ensure_ascii=False) + "\n")
             manifests[key] = path
         return manifests
+
+    def _source_filtered_image_paths(self) -> list[Path]:
+        if not self.scene_dir:
+            return []
+        inventory = build_scene_inventory(Path(self.scene_dir))
+        images = filter_images_by_source(inventory.images, self._selected_mask_source_key())
+        return [image.path for image in images]
+
+    def _mask_target_paths(self, image_paths: list[Path], *, settings: dict) -> list[Path]:
+        if not self.scene_dir:
+            return []
+        plan = build_mask_refresh_plan(
+            scene_dir=Path(self.scene_dir),
+            image_paths=image_paths,
+            mask_path_for_image=self._mask_output_path_for_image,
+            settings=settings,
+            scope=self._mask_scope(),
+        )
+        return list(plan.targets)
+
+    def _write_mask_target_manifest(self, image_paths: list[Path]) -> Path:
+        if not self.scene_dir:
+            raise ValueError(i18n.t("SCENE_REQUIRED_ACTION_HINT"))
+        scene = Path(self.scene_dir)
+        manifest_dir = scene / "_stechdrive" / "masks" / "work" / self._new_mask_run_id("mask_targets")
+        manifest_dir.mkdir(parents=True, exist_ok=True)
+        path = manifest_dir / "targets.jsonl"
+        with path.open("w", encoding="utf-8", newline="\n") as f:
+            for image_path in image_paths:
+                record = {
+                    "image": scene_relative(scene, image_path),
+                    "mask": scene_relative(scene, self._mask_output_path_for_image(image_path)),
+                    "projection": self._projection_for_image(image_path),
+                }
+                f.write(json.dumps(record, ensure_ascii=False) + "\n")
+        return path
 
     def confirm_commands(self, commands: list[tuple[str, list[str]]]) -> bool:
         if any(phase.startswith("yolo") for phase, _cmd in commands):
@@ -1951,19 +1972,21 @@ class MaskStep(Step3MaskActionsMixin, BaseStepWidget):
         if not success:
             self._mask_batch_settings = None
             self._mask_batch_phases = []
+            self._mask_batch_targets = []
             return
         self.mask_preview.clear_yolo_preview_mask()
         self.mask_preview.refresh_image_list(prefer_current=True, force_thumbnails=True)
         self._render_mask_preview()
         self._update_ready_status()
         self._record_mask_outputs(
-            iter_image_files(self._images_dir_text()),
+            self._mask_batch_targets or iter_image_files(self._images_dir_text()),
             mode="batch",
             settings=self._mask_batch_settings,
             phases=list(self._mask_batch_phases),
         )
         self._mask_batch_settings = None
         self._mask_batch_phases = []
+        self._mask_batch_targets = []
 
     def shutdown(self) -> None:
         self.mask_preview.shutdown()

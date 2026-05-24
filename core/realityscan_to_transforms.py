@@ -14,6 +14,8 @@ from typing import Any, BinaryIO
 
 import numpy as np
 
+from core.dataset_writer_nerf import write_nerf_json_ply_dataset
+
 try:
     from PIL import Image
 except Exception:  # pragma: no cover - import error is reported when image sizes are needed
@@ -452,12 +454,22 @@ def convert(
         data["ply_file_path"] = pointcloud_dest.name
         pointcloud_output = str(pointcloud_dest)
 
-    json_path = output_dir / json_name
-    json_path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+    write_result = write_nerf_json_ply_dataset(
+        output_dir,
+        data,
+        transforms_name=json_name,
+        pointcloud_name=pointcloud_name,
+        manifest={
+            "source_kind": "realityscan_csv_ply",
+            "target_profile": target_profile,
+            "num_opencv_frames": opencv_frames,
+            "num_mask_paths": mask_paths,
+        },
+    )
     return {
         "csv_path": str(csv_path),
         "output_dir": str(output_dir),
-        "transforms": str(json_path),
+        "transforms": str(write_result.transforms_json),
         "pointcloud": pointcloud_output,
         "num_csv_rows": len(rows),
         "num_frames": len(frames),

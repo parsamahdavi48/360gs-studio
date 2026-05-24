@@ -2,7 +2,7 @@
 
 **v1.21.0**
 
-360°カメラの動画から、3D Gaussian Splatting (3DGS) のトレーニングに使いやすい画像・マスク・カメラデータを作るためのWindows向け統合GUIツールです。
+360°動画、通常動画、連番静止画から、3D Gaussian Splatting (3DGS) のトレーニングに使いやすい画像・マスク・カメラデータを作るためのWindows向け統合GUIツールです。
 
 `setup_windows.bat` がPython 3.12とFFmpeg/FFprobeの検出、必要に応じたwinget経由のインストール、仮想環境の作成、依存パッケージ導入まで行います。起動も `run_gui.bat` から行えるため、普段の作業ではPythonコマンドを直接打たずに使えます。
 
@@ -24,38 +24,37 @@ Fork元: [tetraface/tetraface-3dgs-utils](https://github.com/tetraface/tetraface
 
 ## このアプリでできること
 
-### 1. 360°動画からMetashape SfM、3DGSトレーニングへ
+### 1. 360°/通常画像を混在させたSfM前処理
 
-Insta360 / Osmo 360などの360°カメラで撮影した動画から、SfM向けのエクイレクタングラー静止画を抽出します。抽出後はフレームを確認し、人物、撮影者、三脚、空、スティッチ境界、白飛びをマスクしてからMetashapeに渡せます。
+Insta360 / Osmo 360などの360°動画、スマホやデジタル一眼の通常動画、既に切り出した連番静止画を同じシーンに登録できます。Step 2で採用/除外を確認し、Step 3で人物、撮影者、三脚、空、スティッチ境界、白飛びなどをマスクしてから、Metashape、COLMAP、SphereSfM、RealityScanなどへ渡せます。
 
-MetashapeでSfMした結果は、Postshot / Brush / LichtFeld Studio向けのキューブマップ画像、マスク、`transforms.json` として `output/metashape_cubemap/` に変換できます。RealityScan向けには、カメラ姿勢付きcubemap画像とXMPを `output/realityscan/` に書き出し、RealityScanでAlignして点群やモデル作成へ進めます。LichtFeld Studioでは、3DGUT用にエクイレクタングラー画像とマスクをそのまま使うデータセットを `output/metashape_3dgut/` に作成できます。360°動画を3DGSトレーニング用データセットにするためのメインワークフローです。
+MetashapeでSfMした結果は、NeRF系の `transforms.json` / `pointcloud.ply`、COLMAP形式データセット、またはRealityScan再アライン用のCubemap/XMPへ変換できます。LichtFeld Studio、Postshot、Brushなど、読み込ませる学習アプリに合わせてStep 5で出力形式を選びます。
 
-### 2. 360°動画からSphereSfM、LichtFeld 3DGUT / キューブマップデータへ
+### 2. アプリ内でSfMする
 
-Metashapeを使わず、抽出済みのエクイレクタングラー画像をSphereSfM版COLMAPで球面カメラとしてSfMできます。SphereSfMの作業ファイルは `output/spheresfm/` に閉じ込め、完成データは `output/spheresfm_3dgut/` または `output/spheresfm_cubemap/` に作成できます。
+Metashapeを使わない場合は、Step 4でCOLMAPまたはSphereSfMを実行できます。COLMAPは360°画像をCubemap Rigへ展開し、通常画像は通常カメラとして扱うため、混在ソースを使いたい場合に向いています。SphereSfMは同一解像度のエクイレクタングラー360°画像だけを入力にするルートです。
 
-### 3. 360°動画からCOLMAP Rigデータセットへ
+### 3. RealityScanからLichtFeldへ
 
-Metashapeを使わず、抽出済みの360°画像からCOLMAP Rig形式のキューブマップ画像セットを書き出すこともできます。必要に応じてGUIからCOLMAPまで実行し、3DGSソフトに渡せるSfM済みデータを作成できます。
+RealityScanで再アラインしたCSV/PLYを、LichtFeldでDatasetとして開けるCOLMAP形式へ変換できます。RealityScanでCubemapと通常画像を混在アラインした場合でも、Cubemap由来のPINHOLE画像はリンクで参照し、必要な通常画像だけレンズ補正してPINHOLE化できます。
 
 ### 4. 通常の静止画・動画向けのマスク前処理
 
-デジタル一眼・スマホなどで撮影した通常動画、または通常画像の連番画像に対しても、YOLO/SAM2.1による高速な人物・車両などのマスク、SAM3.1による人物・空などの高精度マスク、補助的なMask2Former空マスク、白飛びマスクを作成できます。SfMソフトに読み込む前のマスク生成ツールとして使えます。
+デジタル一眼・スマホなどで撮影した通常動画、または通常画像の連番画像に対しても、YOLO/SAM2.1による高速な人物・車両などのマスク、SAM3.1による人物・空などの高精度マスク、補助的なMask2Former空マスク、白飛びマスクを作成できます。360°画像と通常画像が混在していても、画像タイプに合わせて処理します。
 
 ## 主な特徴
 
-- 360°動画から、SfM/3DGSに使いやすい静止画をGUIで抽出できます。歩行撮影や空撮など素材に合わせてフレームを間引き、ブレ・似すぎ・変化が大きい箇所など、あとで確認すべきフレームも自動で見つけます。
-- 抽出したフレームは、1枚表示またはサムネイル一覧で確認できます。不要なフレームを採用/除外として整理でき、問題ないように見える画像までブレ判定される場合は、Step 2でブレ判定を標準/低感度から選べます。360°画像はFOV90°の透視投影表示で、通常カメラのような見え方に切り替えて細部を確認できます。
+- 360°動画、通常動画、連番静止画を同じシーンの入力ソースとして登録できます。動画はフレーム抽出し、静止画フォルダは `images/` にコピーして、以降の確認・マスク・SfM工程で同じように扱えます。
+- 抽出したフレームは、1枚表示またはサムネイル一覧で確認できます。不要なフレームを採用/除外として整理でき、ブレ候補は自動除外と要確認に分かれます。問題ないように見える画像までブレ候補になる場合は、Step 2でブレ判定を標準/低感度から選べます。360°画像はFOV90°の透視投影表示で細部を確認できます。
 - 人物、撮影者、三脚、手元、車両、空、白飛び、スティッチ境界など、SfMや3DGSで邪魔になりやすい領域をマスクできます。人物だけを高速に処理したい場合はYOLO/SAM2.1、人物と空を高精度に処理し、後から漏れや誤検出も直したい場合はSAM3.1を使えます。
 - マスク結果は保存前にプレビューでき、サムネイル一覧でも確認できます。漏れや誤検出がある画像だけを選んで再生成できるため、全画像を最初からやり直す必要がありません。
 - SAM3.1では、既存マスクに対して「三脚を追加する」「看板やロゴの誤検出を外す」といった加算/減算の補正ができます。手作業で塗り直す量を減らせます。
 - Mask2Formerは、SAM3.1を使わずに空マスクを試したい場合の補助的な選択肢として利用できます。
 - 360°画像だけでなく、通常動画からのフレーム抽出や通常画像の連番画像にも使えます。人物・車両・空・白飛びなどを、SfMに渡す前のマスク前処理としてまとめて作成できます。
-- MetashapeでSfMした結果を読み込み、Postshot / Brush / LichtFeld Studio 向けのキューブマップ画像、マスク、`transforms.json` を書き出せます。RealityScan向けには、cubemap画像とXMPカメラ情報を作成し、RealityScanでAlignして点群やモデル作成へ進めます。LichtFeld Studio向けには、キューブマップ変換せず `3DGUT (LichtFeld)` 用の直接データセットも作れます。
-- シーンプレビューで、Step 4出力やSfM結果の点群、カメラ位置、選択カメラの画像、対応マスクを同じ画面で確認できます。Step 4のプレビュー欄から開くほか、`run_scene_preview.bat` でビューワーだけ起動できます。
-- AprilTagを撮影前に印刷・配置しておけば、Step 4の `スケール` タブで出力済みCubemapデータからメートル換算のスケールを推定できます。推定値を確認してから、選択中Cubemapデータセットの `transforms.json` と `pointcloud.ply` に同じscaleを反映できます。
-- SphereSfM版の `colmap.exe` を指定すれば、Metashapeなしでエクイレクタングラー画像をSfMし、そのままLichtFeld 3DGUT用データまたはキューブマップデータへ変換できます。
-- Metashapeを使わない場合は、抽出済みの360°画像からCOLMAP Rig形式のキューブマップ画像とマスクを書き出せます。必要に応じてGUIからCOLMAPのSfM処理まで続けて実行できます。
+- Step 4では、外部SfM結果を使うか、COLMAP/SphereSfMをこのアプリから実行するかを選びます。COLMAPは360°画像のCubemap Rigと通常画像カメラの混在に対応し、SphereSfMは同一解像度のエクイレクタングラー360°画像だけを扱うルートです。
+- Step 5では、Metashape / SphereSfM / RealityScan / COLMAPの結果から、NeRF系JSON/PLY、COLMAP形式データセット、LichtFeld向けRealityScan変換、AprilTagスケール補正などを選んで実行できます。
+- シーンプレビューで、SfM結果やデータセットの点群、カメラ位置、選択カメラの画像、対応マスクを同じ画面で確認できます。Step 4のカードから開くほか、`run_scene_preview.bat` でビューワーだけ起動できます。
+- AprilTagを撮影前に印刷・配置しておけば、Step 5の `スケール調整` で出力済みデータセットからメートル換算のスケールを推定できます。推定値を確認してから、対象データセットのカメラ位置と点群へ同じscaleを反映できます。
 - Windows向けセットアップスクリプトで、Python環境、FFmpeg/FFprobe、主要Pythonパッケージの準備をまとめて行えます。通常利用は `run_gui.bat` から起動できます。
 
 ## かんたん導入
@@ -121,39 +120,46 @@ checkpointを手動で `models/sam3.1/sam3.1_multiplex.pt` に置くこともで
 シーンフォルダのパスに日本語などの非ASCII文字、極端に長いパス、制御文字や `"` が含まれる場合、GUIは実行前に停止します。OpenCVや外部3DGS/SfMツールで失敗しやすいためです。空白やOneDrive配下であることだけでは停止しません。英数字だけの短い作業パス（例: `D:\work\scene01`）を使ってください。
 
 ```text
-360°動画または画像
+360°動画 / 通常動画 / 連番静止画
   -> Step 1: フレーム抽出
   -> Step 2: フレーム確認・採用/除外
   -> Step 3: マスク生成
-  -> Step 4: 変換
-      -> Metashape SfM結果から3DGS向けデータを作成
-      -> SphereSfMで360°画像をSfMし、3DGUTまたはキューブマップデータへ変換
-      -> COLMAP Rigキューブマップ画像を書き出し、必要に応じてCOLMAPを実行
-  -> Step 5: 学習
-      -> 対応CLIがある場合は、作成済みデータセットでLichtFeld Studio / Postshot / 任意CLIを起動
+  -> Step 4: SfM
+      -> 既存のMetashape / RealityScan / COLMAP / SphereSfM結果を使う
+      -> COLMAPまたはSphereSfMをこのアプリから実行する
+      -> Metashape結果からRealityScan再アライン用データを作る
+  -> Step 5: データセット
+      -> 学習アプリへ渡すJSON/PLYまたはCOLMAP形式データセットを作る
+      -> RealityScan CSV/PLYをLichtFeld用COLMAPへ変換する
+      -> AprilTagでスケールを反映する
+  -> Step 6: 学習
+      -> 対応CLIがある場合は、作成済みデータセットでLichtFeld Studio / Postshotを起動
 ```
 
 | Step | 内容 | 主なデフォルト |
 | --- | --- | --- |
-| 1. フレーム抽出 | 360°動画からエクイレクタングラー静止画を抽出 | 固定間隔 + 変化補正 |
+| 1. フレーム抽出 | 動画からフレーム抽出、または静止画フォルダをシーンへ登録 | 固定間隔 + 変化補正 |
 | 2. フレーム確認 | 抽出フレームを単一/サムネイル表示で確認し、採用/除外をCSVに反映 | 低品質候補や不要フレームの確認に対応 |
 | 3. マスク生成 | 人物、スティッチ境界、白飛び、空、カスタムマスクを生成 | YOLO/SAM2.1、高品質設定 |
-| 4. 変換 | SfM結果からの3DGSデータセット作成、SphereSfM実行、またはCOLMAP Rigキューブマップ画像を書き出し | Metashape / SphereSfM / LichtFeld / 3DGUT / Cube6 |
-| 5. 学習 | 作成済みデータセットで、対応CLIを持つ外部3DGSアプリを起動 | LichtFeld Studio / Postshot / Custom |
+| 4. SfM | カメラポーズと疎点群をどう用意するかを選択 | 既存SfM結果 / COLMAP / SphereSfM |
+| 5. データセット | SfM結果から学習アプリ向けデータセットを作成 | Metashape / RealityScan / SphereSfM / COLMAP / スケール調整 |
+| 6. 学習 | 作成済みデータセットで、対応CLIを持つ外部3DGSアプリを起動 | LichtFeld Studio / Postshot |
 
 ### 学習アプリで使う
 
-このアプリの主な成果物は、Step 4で作成する3DGS用データセットです。Step 4で作成したデータセットフォルダは、LichtFeld Studio、Postshot、Brushなどの3DGSアプリに直接読み込んで学習できます。学習アプリ側で画質、モデル、ステップ数、マスク、出力形式を確認しながら調整したい場合は、この使い方が基本です。
+このアプリの主な成果物は、Step 5で作成する3DGS用データセットです。Step 5で作成したデータセットフォルダは、LichtFeld Studio、Postshot、Brushなどの3DGSアプリに直接読み込んで学習できます。学習アプリ側で画質、モデル、ステップ数、マスク、出力形式を確認しながら調整したい場合は、この使い方が基本です。
 
-| Step 4ルート | データセットフォルダ |
+| Step 5ルート | データセットフォルダ |
 | --- | --- |
 | Metashape + キューブマップ | `output/metashape_cubemap/` |
-| Metashape + 3DGUT | `output/metashape_3dgut/` |
+| Metashape + ERP 360° / GUT | `output/metashape_3dgut/` |
 | SphereSfM + キューブマップ | `output/spheresfm_cubemap/` |
-| SphereSfM + 3DGUT | `output/spheresfm_3dgut/` |
+| SphereSfM + ERP 360° / GUT | `output/spheresfm_3dgut/` |
 | COLMAP Rig | `output/colmap_rig/` |
+| Metashape + COLMAP | `output/metashape_colmap/` |
+| RealityScan + LichtFeld COLMAP | `output/realityscan/lfs_colmap/` |
 
-Step 5は、対応するCLIを持つ学習アプリ向けの実行ショートカットです。LichtFeld Studio v0.5.2互換CLIやPostshot v1.0/v1.1 Release BuildのCLIを使える環境では、GUIからコマンドを組み立てて、同じ設定の再実行やヘッドレス学習を開始できます。CLIを使わない場合は、Step 4の出力データセットを各アプリで直接読み込んでください。
+Step 6は、対応するCLIを持つ学習アプリ向けの実行ショートカットです。LichtFeld Studio v0.5.2互換CLIやPostshot v1.0/v1.1 Release BuildのCLIを使える環境では、GUIからコマンドを組み立てて、同じ設定の再実行やヘッドレス学習を開始できます。CLIを使わない場合は、Step 5の出力データセットを各アプリで直接読み込んでください。
 
 各ステップの詳しいGUI説明:
 
@@ -162,42 +168,43 @@ Step 5は、対応するCLIを持つ学習アプリ向けの実行ショート�
 | Step 1 フレーム抽出 | [JP](doc/extract_frames_gui.ja.md) / [EN](doc/extract_frames_gui.md) |
 | Step 2 フレーム確認 | [JP](doc/review_frames_gui.ja.md) / [EN](doc/review_frames_gui.md) |
 | Step 3 マスク生成 | [JP](doc/mask_tools_gui.ja.md) / [EN](doc/mask_tools_gui.md) |
-| Step 4 変換 | [JP](doc/cubemap_tools_gui.ja.md) / [EN](doc/cubemap_tools_gui.md) |
-| Step 5 学習 | [JP](doc/training_gui.ja.md) / [EN](doc/training_gui.md) |
+| Step 4 SfM / Step 5 データセット | [JP](doc/cubemap_tools_gui.ja.md) / [EN](doc/cubemap_tools_gui.md) |
+| Step 6 学習 | [JP](doc/training_gui.ja.md) / [EN](doc/training_gui.md) |
 | シーン取り込み | [JP](doc/scene_import.ja.md) / [EN](doc/scene_import.md) |
 
 ## 推奨ワークフロー: Metashapeルート
 
-1. Insta360 / Osmo 360などの360°動画を用意します。
-2. Step 1でSfM向けフレームを抽出します。
+1. Insta360 / Osmo 360などの360°動画を用意します。必要なら通常動画や連番静止画も同じシーンへ追加します。
+2. Step 1でSfM向けフレームを抽出、または静止画フォルダを登録します。
 3. Step 2で低品質候補や不要フレームを確認して除外します。
 4. Step 3で人物・撮影者・三脚・空など、SfMに使いたくない領域のマスクを生成します。`品質: 高品質` が推奨開始点です。
 5. マスク漏れが残る場合は、該当画像だけ `品質: 最高` に上げるか、SAM3.1に切り替えて再生成します。SAM3.1を使わずに空だけ試したい場合はMask2Formerも選べます。
 6. 必要に応じてスティッチ境界マスク、白飛びマスク、カスタムマスクも有効にします。
-7. 生成された `masks/` フォルダをMetashapeにマスクとして読み込み、SfMを実行します。
-8. Step 4でMetashapeのXML/PLYを使い、3DGSトレーニング用のキューブマップデータ、または `3DGUT (LichtFeld)` 用の直接データセットを出力します。
-9. AprilTagでスケール推定する場合は、撮影前にタグを印刷して配置しておきます。Cubemap出力後、`スケール` タブでタグ実寸とIDを入力して推定し、結果が妥当な場合だけ `Scaleへ反映` で選択中Cubemapデータセットの `transforms.json` と `pointcloud.ply` を更新します。3DGUT向けのエクイレクタングラー出力のままでは推定できません。
-10. Step 4の出力をLichtFeld Studio、Postshot、Brushなどに読み込んで学習します。対応CLIで再実行やヘッドレス学習を行いたい場合は、Step 5からLichtFeld StudioやPostshotを起動できます。
+7. 生成された `masks/` フォルダをMetashapeにマスクとして読み込み、SfMを実行します。混在ソースを使う場合も、Metashape側で通常どおりアラインします。
+8. Step 4では `既存のSfM結果を使う` を選びます。Metashapeでカメラポーズと疎点群を作成済みなら、この工程で追加処理は不要です。
+9. Step 5でMetashapeのXML/PLYを使い、学習アプリに合わせてNeRF系JSON/PLY、COLMAP形式データセット、またはRealityScan再アライン用データを作成します。
+10. AprilTagでスケール推定する場合は、撮影前にタグを印刷して配置しておきます。CubemapまたはCOLMAP系データセット作成後、Step 5の `スケール調整` でタグ実寸とIDを入力し、結果が妥当な場合だけ反映します。
+11. Step 5の出力をLichtFeld Studio、Postshot、Brushなどに読み込んで学習します。対応CLIで再実行やヘッドレス学習を行いたい場合は、Step 6からLichtFeld StudioやPostshotを起動できます。
 
 ## COLMAPルート
 
 1. Step 1からStep 3まではMetashapeルートと同じです。
-2. Step 4で `COLMAP` を選び、キューブマップ画像とマスクを `output/colmap_rig/` に書き出します。
-3. COLMAPでカメラ位置と疎な点群まで推定したい場合は、左サブ工程の `SfM` をONにします。COLMAP SfMにはキューブマップ画像が必要なため、`SfM` をONにすると `Cube` もONになります。
-4. 完了後は `output/colmap_rig/` をCOLMAPプロジェクトとして、COLMAP対応の3DGSアプリに渡します。
+2. Step 4で `COLMAPでSfMを実行` を選びます。360°画像はCubemap Rigへ展開し、通常画像は通常カメラとして扱います。
+3. COLMAPまたはGLOMAPの実行ファイル、Matcher、Mapperを確認して実行します。
+4. 完了後は `output/colmap_rig/` をCOLMAPデータセットとして、COLMAP対応の3DGSアプリに渡します。追加変換が不要な場合はStep 5をスキップして学習へ進めます。
 
 ## SphereSfMルート
 
-1. Step 1からStep 3まではMetashapeルートと同じです。`images/` と、使う場合は `masks/` を用意します。
-2. Step 4で `SphereSfM` を選び、[json87/SphereSfM](https://github.com/json87/spheresfm) のリリースまたはローカルビルドで用意したSphereSfM版 `colmap.exe` を指定します。通常のCOLMAPでは球面画像用の機能が足りないため使えません。
+1. Step 1からStep 3まではMetashapeルートと同じです。SphereSfMでは、同一解像度のエクイレクタングラー360°画像だけを入力にするのが安全です。
+2. Step 4で `SphereSfMでSfMを実行` を選び、[json87/SphereSfM](https://github.com/json87/spheresfm) のリリースまたはローカルビルドで用意したSphereSfM版 `colmap.exe` を指定します。通常のCOLMAPでは球面画像用の機能が足りないため使えません。
 3. RTX 50系GPUでは、GitHub配布版バイナリはCUDA SIFTで停止することがあります。RTX 50系で使う場合は、SphereSfMを `CMAKE_CUDA_ARCHITECTURES=120` 付きで自前ビルドした `colmap.exe` を指定してください。
-4. まずは左サブ工程の `SfM` と `Cube` をONにし、`Matcher: Sequential`, `SfM品質: 標準` から始めます。
-5. `出力形状` で、LichtFeld 3DGUT用データにするか、Postshot / Brush / LichtFeld向けキューブマップデータにするかを選びます。
+4. `Matcher: Sequential`, `SfM品質: 標準` から始めます。
+5. Step 5で `SphereSfM → NeRFデータセット(JSON/PLY)` を選び、PINHOLEのCubemapデータにするか、LichtFeld向けのERP 360°データにするかを選びます。
 6. 完了後は、`output/spheresfm_3dgut/` または `output/spheresfm_cubemap/` を下流アプリへ渡します。SphereSfMの作業ファイルとログは `output/spheresfm/` にまとまります。
 
 ## 通常画像・通常動画のマスク前処理
 
-デジタル一眼・スマホなどで撮影した通常動画は、Step 1でフレーム抽出できます。すでにある連番画像は `images/` に直接置くか、Step 3 の `画像フォルダ` 行にある `+` アイコンからシーンへコピーします。画像タイプはStep 1の記録、外部画像登録、画像ヘッダー推定から自動判定されます。通常画像ではスティッチ境界と360°専用の極投影補助を使わず、モデルによるマスク生成や白飛びマスクを使えます。
+デジタル一眼・スマホなどで撮影した通常動画は、Step 1でフレーム抽出できます。すでにある連番画像はStep 1の `静止画フォルダを追加` でシーンへ登録します。画像タイプはStep 1の記録、外部画像登録、画像ヘッダー推定から自動判定されます。通常画像ではスティッチ境界と360°専用の極投影補助を使わず、モデルによるマスク生成や白飛びマスクを使えます。
 
 人物、車両、白飛びなどをSfM前に除外したい場合の前処理として使えます。
 
@@ -233,7 +240,7 @@ GUIは以下のCLIエンジンを呼び出しています。必要なら単体�
 
 | スクリプト | 内容 | ドキュメント |
 | --- | --- | --- |
-| `extract_frames.py` | 360°動画からフレーム抽出 | [JP](doc/extract_frames.ja.md) / [EN](doc/extract_frames.md) |
+| `extract_frames.py` | 動画フレーム抽出と静止画ソース登録 | [JP](doc/extract_frames.ja.md) / [EN](doc/extract_frames.md) |
 | `apply_frame_decisions.py` | CSVの採用/除外判定を反映 | [JP](doc/apply_frame_decisions.ja.md) / [EN](doc/apply_frame_decisions.md) |
 | `review_frames.py` | フレーム確認GUI | [JP](doc/review_frames.ja.md) / [EN](doc/review_frames.md) |
 | `yolo_mask.py` | YOLO+SAM2.1 マスク生成 | [JP](doc/yolo_mask.ja.md) / [EN](doc/yolo_mask.md) |

@@ -22,6 +22,7 @@ from core.scene_import_contracts import (
 from core.scene_layout import (
     mask_items_dir,
     mask_runs_path,
+    normal_camera_defaults_path,
     scene_images_dir,
     scene_import_backups_dir,
     scene_imports_path,
@@ -32,10 +33,9 @@ from core.scene_layout import (
     step4_export_settings_path,
 )
 from core.scene_project import (
-    file_identity,
-    image_header_info,
     load_json,
     scene_relative,
+    source_image_set_record,
     update_project,
     utc_now_iso,
     write_json,
@@ -89,6 +89,7 @@ def backup_existing_import_metadata(scene: Path, import_id: str) -> Path | None:
     targets = [
         (selected_frames_path(scene), "frames/selected_frames.csv"),
         (source_image_sets_path(scene), "sources/image_sets.json"),
+        (normal_camera_defaults_path(scene), "sources/normal_camera_defaults.json"),
         (mask_runs_path(scene), "masks/mask_runs.json"),
         (mask_items_dir(scene), "masks/items"),
         (step4_export_settings_path(scene), "step4/export_settings.json"),
@@ -114,54 +115,20 @@ def build_source_image_set_record(
     image_paths: list[Path],
     cancel_token: SceneImportCancelToken | None = None,
 ) -> dict[str, Any]:
-    projections: list[str] = []
-    files: list[dict[str, Any]] = []
-    for index, path in enumerate(image_paths, start=1):
+    for index, _path in enumerate(image_paths, start=1):
         if cancel_token is not None and index % 128 == 0:
             cancel_token.check_cancelled()
-        header = image_header_info(path)
-        identity = file_identity(path)
-        projection = str(header.get("detected_projection") or "unknown")
-        if projection != "unknown":
-            projections.append(projection)
-        files.append(
-            {
-                "source_path": str(path),
-                "scene_path": scene_relative(scene, path),
-                "sequence_index": index,
-                "file": identity,
-                "source_file": identity,
-                "image": {
-                    "width": int(header.get("width") or 0),
-                    "height": int(header.get("height") or 0),
-                    "mode": str(header.get("mode") or ""),
-                },
-                "detected_projection": projection,
-                "projection_confidence": header.get("projection_confidence", "low"),
-                "projection_reason": header.get("projection_reason", ""),
-                "origin": import_origin(import_id),
-            }
-        )
     if cancel_token is not None:
         cancel_token.check_cancelled()
-
-    unique = sorted(set(projections))
-    projection = unique[0] if len(unique) == 1 else ("mixed" if unique else "unknown")
-    return {
-        "id": f"imageset_{import_id}",
-        "source_type": "external_images",
-        "origin": import_origin(import_id),
-        "registration_mode": "in_place",
-        "imported_at": utc_now_iso(),
-        "updated_at": utc_now_iso(),
-        "source_dir": str(scene_images_dir(scene)),
-        "scene_images_dir": "images",
-        "projection": projection,
-        "projection_source": "image_header",
-        "projection_override": None,
-        "file_count": len(files),
-        "files": files,
-    }
+    return source_image_set_record(
+        source_dir=scene_images_dir(scene),
+        scene_dir=scene,
+        imported=[(path, path) for path in image_paths],
+        import_id=import_id,
+        source_type="external_images",
+        registration_mode="in_place",
+        origin=import_origin(import_id),
+    )
 
 
 def source_image_size_lookup(source_record: dict[str, Any] | None) -> dict[str, tuple[int, int]]:

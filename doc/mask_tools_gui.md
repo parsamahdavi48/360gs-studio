@@ -2,7 +2,7 @@
 
 Step 3 creates `masks/` from the `images/` kept in Step 2. These masks exclude regions you do not want SfM or 3DGS to use, such as people, the camera operator, tripods, hands, vehicles, sky, stitch seams, and blown-out highlights.
 
-Mask polarity is **white = use, black = exclude**. Creating masks before Metashape or SphereSfM helps avoid unwanted features from people, sky, or other unstable regions.
+Mask polarity is **white = use, black = exclude**. Creating masks before Metashape, COLMAP, SphereSfM, or another SfM route helps avoid unwanted features from people, sky, or other unstable regions.
 
 ## First Choice
 
@@ -12,6 +12,9 @@ Mask polarity is **white = use, black = exclude**. Creating masks before Metasha
 | Get higher-accuracy person or sky masks | `Model: SAM3.1` |
 | Try sky masks without SAM3.1 | `Model: Mask2Former`, target `sky` |
 | Process normal photos or normal video frames | Add or copy them into the scene and confirm `Image Type: Normal` |
+| Process only the source you just added | Choose that video or still folder in `Source` |
+| Keep existing masks untouched | Choose `Scope: Images without masks only` |
+| Rebuild only masks affected by changed settings | Choose `Scope: Missing + changed settings` |
 | Exclude visible nearby stitch seams | `Stitch` ON |
 | Exclude blown-out windows or lights | `Overexp` ON |
 | Apply your own fixed mask to every image | `Custom` ON |
@@ -21,13 +24,15 @@ When unsure, start with `YOLO/SAM2.1` + `High` + `person` for 360° images, then
 ## Basic Flow
 
 1. Confirm that `Images Folder` points to the scene `images/`.
-2. Confirm the `Image Type` status. Step 3 detects it from Step 1 records, external image registration, or image headers, and splits mixed inputs by image type automatically.
-3. Choose the mask `Model` and detection targets.
-4. Enable `Stitch`, `Overexp`, or `Custom` only when needed.
-5. Run `Mask Preview` on one image and confirm that the regions to be masked are shown with a red overlay.
-6. If the preview looks reasonable, press `Generate` for the full set.
-7. Scan the thumbnail list for missed regions or false positives.
-8. Select only problem images, adjust settings, and run `Regenerate Mask`.
+2. Check `Source`. Leave it on `All` for normal runs. Choose a specific video or still folder when you only want to process newly added material.
+3. Choose `Scope`. Use `Images without masks only` to preserve existing masks, `Missing + changed settings` to update only images affected by setting changes, and `Regenerate all images` only when you intentionally want a full rebuild.
+4. Confirm the `Image Type` status. Step 3 detects it from Step 1 records, external image registration, or image headers, and splits mixed inputs by image type automatically.
+5. Choose the mask `Model` and detection targets.
+6. Enable `Stitch`, `Overexp`, or `Custom` only when needed.
+7. Run `Mask Preview` on one image and confirm that the regions to be masked are shown with a red overlay.
+8. If the preview looks reasonable, press `Generate` for the selected range.
+9. Scan the thumbnail list for missed regions or false positives.
+10. Select only problem images, adjust settings, and run `Regenerate Mask`.
 
 Step 3 stops before running if images marked for removal still remain, or if unrelated images are mixed into the scene. Apply Step 2 decisions first, or clean up `images/` so it contains only the images you want to mask.
 
@@ -111,7 +116,7 @@ It is usually faster to generate the full set at Standard/High quality, then reg
 | Temporary preview | Visual check only; not a saved mask |
 | Run log | Shown in the integrated log panel |
 
-Generated `masks/` can be imported into Metashape, or used by the SphereSfM route in Step 5 as excluded regions during SfM. When you export cubemap data, Step 5 converts the masks to match the cubemap images. Polarity remains white = use, black = exclude.
+Generated `masks/` can be imported into Metashape, COLMAP, or SphereSfM, and Step 5 converts them to match training images when creating datasets. Polarity remains white = use, black = exclude.
 
 ## Common Decisions
 
@@ -121,6 +126,9 @@ Generated `masks/` can be imported into Metashape, or used by the SphereSfM rout
 - If the camera operator or tripod remains near the bottom of a 360° image, raise quality or use SAM3.1 prompts such as `tripod`, `hand`, or `selfie stick` to add those areas to the mask.
 - Turn `Overexp` on only for footage where blown-out areas are actually harmful; it can remove too much in some interiors.
 - Normal images do not use stitch seam masks or 360° pole projection assist.
+- Use `Images without masks only` when you want to keep masks you already reviewed.
+- Use `Missing + changed settings` after changing mask settings and updating only affected images.
+- After adding a new source, choose that source in `Source` to keep the run and review focused.
 - If SAM3.1 stops due to GPU memory, completed masks remain saved. Rerun with the same settings to continue from unfinished images.
 
 ## Notes

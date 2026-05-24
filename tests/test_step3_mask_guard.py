@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import csv
+import json
 import os
 import sys
 import time
@@ -15,7 +16,9 @@ from PySide6.QtCore import QItemSelectionModel
 from PySide6.QtWidgets import QApplication, QLabel, QPushButton, QToolButton
 
 import gui.steps.step3_mask as step3_mask_module
+from core.mask_source_scope import source_scope_key
 from core.scene_layout import selected_frames_path
+from core.scene_project import write_mask_item
 from gui import i18n
 from gui.common.browse_widget import BrowseWidget
 from gui.steps.base_step import SETTINGS_PANE_MARGINS, SETTINGS_PANE_WIDTH
@@ -56,6 +59,11 @@ def _write_scene(tmp_path: Path, drop_exists: bool = True) -> Path:
     return scene
 
 
+def _manifest_images(command: list[str]) -> list[str]:
+    manifest = Path(command[command.index("--image-list") + 1])
+    return [json.loads(line)["image"] for line in manifest.read_text(encoding="utf-8").splitlines() if line.strip()]
+
+
 def test_mask_step_rejects_generation_when_drop_images_remain(tmp_path: Path) -> None:
     _app()
     scene = _write_scene(tmp_path, drop_exists=True)
@@ -79,6 +87,186 @@ def test_mask_step_uses_standard_scene_folders_without_browse_inputs(tmp_path: P
     assert str(scene / "masks") in labels
     assert step.primary_action_enabled()
     assert step.primary_action_tooltip() == i18n.tip("RUN_MASKS")
+    assert step.mask_source_combo.currentData() == "all"
+    assert step.mask_source_combo.itemText(0) == i18n.t("MASK_SOURCE_ALL")
+    assert step.mask_scope_combo.currentData() == "missing"
+    assert step.mask_scope_combo.itemText(0) == i18n.t("MASK_SCOPE_MISSING")
+    assert step.mask_scope_combo.itemText(1) == i18n.t("MASK_SCOPE_STALE")
+    assert step.mask_scope_combo.itemText(2) == i18n.t("MASK_SCOPE_ALL")
+
+
+def test_mask_step_missing_scope_processes_only_unmasked_images(tmp_path: Path) -> None:
+    _app()
+    scene = tmp_path
+    images = scene / "images"
+    masks = scene / "masks"
+    images.mkdir()
+    masks.mkdir()
+    (images / "frame_0001.jpg").write_bytes(b"one")
+    (images / "frame_0002.jpg").write_bytes(b"two")
+    (masks / "frame_0001.png").write_bytes(b"existing")
+    step = MaskStep(Path.cwd())
+    step.set_scene_dir(str(scene))
+
+    commands = step.build_commands()
+
+    assert [phase for phase, _cmd in commands] == ["yolo"]
+    assert _manifest_images(commands[0][1]) == ["images/frame_0002.jpg"]
+    assert step._mask_batch_targets == [images / "frame_0002.jpg"]
+
+
+def test_mask_step_source_filter_limits_missing_scope_to_selected_source(tmp_path: Path) -> None:
+    _app()
+    scene = tmp_path
+    images = scene / "images"
+    masks = scene / "masks"
+    images.mkdir()
+    masks.mkdir()
+    (images / "video_a_0001.jpg").write_bytes(b"a")
+    (images / "video_b_0001.jpg").write_bytes(b"b")
+    (masks / "video_a_0001.png").write_bytes(b"existing")
+    csv_path = selected_frames_path(scene)
+    csv_path.parent.mkdir(parents=True, exist_ok=True)
+    with csv_path.open("w", encoding="utf-8", newline="") as f:
+        writer = csv.DictWriter(
+            f,
+            fieldnames=["output_file", "source_session", "source_video", "decision", "status"],
+        )
+        writer.writeheader()
+        writer.writerow(
+            {
+                "output_file": "images/video_a_0001.jpg",
+                "source_session": "video_a",
+                "source_video": "D:/source/video_a.mp4",
+                "decision": "keep",
+                "status": "ok",
+            }
+        )
+        writer.writerow(
+            {
+                "output_file": "images/video_b_0001.jpg",
+                "source_session": "video_b",
+                "source_video": "D:/source/video_b.mp4",
+                "decision": "keep",
+                "status": "ok",
+            }
+        )
+    step = MaskStep(Path.cwd())
+    step.set_scene_dir(str(scene))
+    source_index = step.mask_source_combo.findData(source_scope_key("video_extract", "video_b"))
+    assert source_index >= 0
+    step.mask_source_combo.setCurrentIndex(source_index)
+
+    commands = step.build_commands()
+
+    assert [phase for phase, _cmd in commands] == ["yolo"]
+    assert _manifest_images(commands[0][1]) == ["images/video_b_0001.jpg"]
+    assert step._mask_batch_targets == [images / "video_b_0001.jpg"]
+
+
+def test_mask_step_source_filter_writes_manifest_even_when_selected_source_all_targets(tmp_path: Path) -> None:
+    _app()
+    scene = tmp_path
+    images = scene / "images"
+    masks = scene / "masks"
+    images.mkdir()
+    masks.mkdir()
+    (images / "video_a_0001.jpg").write_bytes(b"a")
+    (images / "video_b_0001.jpg").write_bytes(b"b")
+    (masks / "video_a_0001.png").write_bytes(b"existing a")
+    (masks / "video_b_0001.png").write_bytes(b"existing b")
+    csv_path = selected_frames_path(scene)
+    csv_path.parent.mkdir(parents=True, exist_ok=True)
+    with csv_path.open("w", encoding="utf-8", newline="") as f:
+        writer = csv.DictWriter(
+            f,
+            fieldnames=["output_file", "source_session", "source_video", "decision", "status"],
+        )
+        writer.writeheader()
+        writer.writerow(
+            {
+                "output_file": "images/video_a_0001.jpg",
+                "source_session": "video_a",
+                "source_video": "D:/source/video_a.mp4",
+                "decision": "keep",
+                "status": "ok",
+            }
+        )
+        writer.writerow(
+            {
+                "output_file": "images/video_b_0001.jpg",
+                "source_session": "video_b",
+                "source_video": "D:/source/video_b.mp4",
+                "decision": "keep",
+                "status": "ok",
+            }
+        )
+    step = MaskStep(Path.cwd())
+    step.set_scene_dir(str(scene))
+    source_index = step.mask_source_combo.findData(source_scope_key("video_extract", "video_a"))
+    assert source_index >= 0
+    step.mask_source_combo.setCurrentIndex(source_index)
+    step.mask_scope_combo.setCurrentIndex(2)
+
+    commands = step.build_commands()
+
+    assert _manifest_images(commands[0][1]) == ["images/video_a_0001.jpg"]
+
+
+def test_mask_step_missing_scope_reports_no_targets_when_all_masks_exist(tmp_path: Path) -> None:
+    _app()
+    scene = tmp_path
+    images = scene / "images"
+    masks = scene / "masks"
+    images.mkdir()
+    masks.mkdir()
+    (images / "frame_0001.jpg").write_bytes(b"one")
+    (masks / "frame_0001.png").write_bytes(b"existing")
+    step = MaskStep(Path.cwd())
+    step.set_scene_dir(str(scene))
+
+    with pytest.raises(ValueError, match=i18n.t("MASK_TARGETS_EMPTY")):
+        step.build_commands()
+
+
+def test_mask_step_stale_scope_updates_old_generated_masks_but_protects_unknown_masks(tmp_path: Path) -> None:
+    _app()
+    scene = tmp_path
+    images = scene / "images"
+    masks = scene / "masks"
+    images.mkdir()
+    masks.mkdir()
+    image_old = images / "frame_0001.jpg"
+    image_unknown = images / "frame_0002.jpg"
+    image_current = images / "frame_0003.jpg"
+    for image in (image_old, image_unknown, image_current):
+        image.write_bytes(b"image")
+        (masks / f"{image.stem}.png").write_bytes(b"mask")
+    step = MaskStep(Path.cwd())
+    step.set_scene_dir(str(scene))
+    current_settings = step._mask_settings_snapshot()
+    write_mask_item(
+        scene,
+        image_path=image_old,
+        mask_path=masks / "frame_0001.png",
+        settings={**current_settings, "quality": "old"},
+        run_id="old",
+        stats={},
+    )
+    write_mask_item(
+        scene,
+        image_path=image_current,
+        mask_path=masks / "frame_0003.png",
+        settings=current_settings,
+        run_id="current",
+        stats={},
+    )
+    step.mask_scope_combo.setCurrentIndex(1)
+
+    commands = step.build_commands()
+
+    assert _manifest_images(commands[0][1]) == ["images/frame_0001.jpg"]
+    assert step._mask_batch_targets == [image_old]
 
 
 def test_mask_step_yolo_class_presets_and_class_label_are_removed() -> None:
@@ -125,7 +313,7 @@ def test_mask_step_yolo_level_and_expand_share_compact_row() -> None:
     assert step.yolo_expand_label.toolTip() == i18n.tip("YOLO_EXPAND")
     assert step.yolo_expand_edit.value() == 0
     assert step.yolo_bottom_settings_row.isHidden()
-    assert step.projection_label.text() == i18n.t("MASK_IMAGE_TYPE_EQUIRECT")
+    assert not hasattr(step, "projection_label")
 
 
 def test_mask_step_sam31_apply_mode_shares_compact_settings_row(tmp_path: Path, monkeypatch) -> None:
@@ -903,7 +1091,7 @@ def test_mask_step_mixed_image_type_splits_commands_by_manifest(tmp_path: Path) 
     step.run_stitch_cb.setChecked(True)
     commands = step.build_commands()
 
-    assert step.projection_label.text() == i18n.t("MASK_IMAGE_TYPE_MIXED")
+    assert step._projection_mixed
     assert [phase for phase, _cmd in commands] == ["yolo_equirect", "yolo_normal", "stitch_equirect"]
     yolo_equirect = commands[0][1]
     yolo_normal = commands[1][1]
@@ -918,6 +1106,31 @@ def test_mask_step_mixed_image_type_splits_commands_by_manifest(tmp_path: Path) 
     assert "images/normal.jpg" not in equirect_manifest.read_text(encoding="utf-8")
     assert "images/normal.jpg" in normal_manifest.read_text(encoding="utf-8")
     assert "images/pano.jpg" not in normal_manifest.read_text(encoding="utf-8")
+
+
+def test_mask_step_mixed_custom_mask_uses_all_target_manifest(tmp_path: Path) -> None:
+    _app()
+    scene = tmp_path
+    images = scene / "images"
+    images.mkdir()
+    equirect = images / "pano.jpg"
+    normal = images / "normal.jpg"
+    custom = scene / "custom.png"
+    cv2.imwrite(str(equirect), np.full((32, 64, 3), 180, dtype=np.uint8))
+    cv2.imwrite(str(normal), np.full((32, 32, 3), 120, dtype=np.uint8))
+    cv2.imwrite(str(custom), np.full((32, 64), 255, dtype=np.uint8))
+    step = MaskStep(Path.cwd())
+    step.set_scene_dir(str(scene))
+
+    step._set_custom_mask_path(custom)
+    commands = step.build_commands()
+
+    assert [phase for phase, _cmd in commands] == ["yolo_equirect", "yolo_normal", "custom"]
+    custom_cmd = commands[2][1]
+    custom_manifest = Path(custom_cmd[custom_cmd.index("--image-list") + 1])
+    text = custom_manifest.read_text(encoding="utf-8")
+    assert "images/pano.jpg" in text
+    assert "images/normal.jpg" in text
 
 
 def test_mask_step_quality_best_is_forwarded_to_primary_command(tmp_path: Path) -> None:
@@ -950,47 +1163,13 @@ def test_mask_step_quality_is_shared_by_mask2former(tmp_path: Path) -> None:
     assert yolo_cmd[yolo_cmd.index("--quality") + 1] == "standard"
 
 
-def test_mask_step_image_folder_controls_stay_available_for_all_image_types() -> None:
+def test_mask_step_image_folder_row_has_no_registration_controls() -> None:
     _app()
     step = MaskStep(Path.cwd())
 
-    assert isinstance(step.add_external_images_btn, QToolButton)
-    assert not step.add_external_images_btn.isHidden()
-    assert step.add_external_images_btn.toolTip() == i18n.tip("EXTERNAL_IMAGES_ADD")
+    assert not hasattr(step, "projection_label")
+    assert not hasattr(step, "add_external_images_btn")
     assert not hasattr(step, "open_images_dir_btn")
-
-    step._set_projection("normal")
-    assert not step.add_external_images_btn.isHidden()
-
-    step._set_projection("equirect")
-    assert not step.add_external_images_btn.isHidden()
-
-
-def test_mask_step_imports_external_images_into_scene_images(tmp_path: Path) -> None:
-    _app()
-    source = tmp_path / "source"
-    source.mkdir()
-    cv2.imwrite(str(source / "a.JPG"), np.full((8, 8, 3), 64, dtype=np.uint8))
-    cv2.imwrite(str(source / "b.png"), np.full((8, 8, 3), 128, dtype=np.uint8))
-    (source / "ignore.txt").write_text("not an image", encoding="utf-8")
-    scene = tmp_path / "scene"
-    scene.mkdir()
-    step = MaskStep(Path.cwd())
-    step.set_scene_dir(str(scene))
-
-    added, skipped = step._import_external_images_from_dir(source)
-
-    assert added == 2
-    assert skipped == 0
-    assert (scene / "images" / "a.JPG").is_file()
-    assert (scene / "images" / "b.png").is_file()
-    assert not (scene / "images" / "ignore.txt").exists()
-    assert step.primary_action_enabled()
-
-    added_again, skipped_again = step._import_external_images_from_dir(source)
-
-    assert added_again == 0
-    assert skipped_again == 2
 
 
 def test_mask_step_equirect_image_type_can_use_stitch(tmp_path: Path) -> None:

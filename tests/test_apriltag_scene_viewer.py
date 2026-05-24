@@ -723,7 +723,7 @@ def test_scene_viewer_loads_scene_folder_and_uses_output_validation_runs(tmp_pat
     case_dir = _write_cube6_case(tmp_path / "fixture")
     source_case = load_case(case_dir)
     scene = tmp_path / "scene"
-    output = scene / "output"
+    output = scene / "output" / "metashape_cubemap"
     shutil.copytree(source_case.source_transforms.parent, output)
     settings_dir = scene / "_stechdrive" / "step4"
     settings_dir.mkdir(parents=True)
@@ -735,6 +735,11 @@ def test_scene_viewer_loads_scene_folder_and_uses_output_validation_runs(tmp_pat
                 "effective_profile": "lichtfeld",
                 "axis_transform": "none",
                 "output_shape": "projected",
+                "portable_output": {
+                    "root": "output/metashape_cubemap",
+                    "dataset_kind": "nerf",
+                    "active": True,
+                },
             }
         ),
         encoding="utf-8",
@@ -748,6 +753,7 @@ def test_scene_viewer_loads_scene_folder_and_uses_output_validation_runs(tmp_pat
     assert window.case.source_pointcloud == output / "pointcloud.ply"
     assert window.case.image_root == scene
     assert window.case.runs_dir == output / "apriltag_scale_validation"
+    assert window._case_dialog_start_dir() == scene.parent
     assert window.camera_combo.count() == 2
     assert (window.case.case_dir / "case.json").is_file()
     window.deleteLater()

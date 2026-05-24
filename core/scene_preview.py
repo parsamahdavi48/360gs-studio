@@ -174,6 +174,8 @@ def load_colmap_preview_dataset(
     *,
     images_dir: Path | None = None,
     masks_dir: Path | None = None,
+    pointcloud: ScenePreviewPointCloud | None = None,
+    opengl_camera: bool = False,
     sphere_as_equirectangular: bool = True,
 ) -> ScenePreviewDataset:
     from scripts.spheresfm_to_transforms import colmap_pose_to_c2w, read_model
@@ -186,9 +188,10 @@ def load_colmap_preview_dataset(
         camera = cameras_by_id.get(image.camera_id)
         if camera is None:
             continue
-        c2w = colmap_pose_to_c2w(image, opengl_camera=False)
+        c2w = colmap_pose_to_c2w(image, opengl_camera=opengl_camera)
         right = _normalized(c2w[:3, 0], f"COLMAP image {image_id} right")
-        up = _normalized(-c2w[:3, 1], f"COLMAP image {image_id} up")
+        up_axis = c2w[:3, 1] if opengl_camera else -c2w[:3, 1]
+        up = _normalized(up_axis, f"COLMAP image {image_id} up")
         forward = _normalized(c2w[:3, 2], f"COLMAP image {image_id} forward")
         intrinsics = _colmap_intrinsics(camera)
         projection = "equirectangular" if sphere_as_equirectangular and camera.model == "SPHERE" else "pinhole"
@@ -208,7 +211,11 @@ def load_colmap_preview_dataset(
                 **intrinsics,
             )
         )
-    pointcloud = _pointcloud_from_colmap_points(points_by_id)
+    pointcloud = pointcloud or _pointcloud_from_colmap_points(points_by_id)
+    if pointcloud is None:
+        ply = Path(resolved_model_dir) / "points3D.ply"
+        if ply.is_file():
+            pointcloud = load_ply_preview_pointcloud(ply)
     return ScenePreviewDataset(
         source_kind="colmap",
         source_path=resolved_model_dir,
@@ -216,6 +223,43 @@ def load_colmap_preview_dataset(
         pointcloud=pointcloud,
         image_root=root,
         mask_root=Path(masks_dir) if masks_dir is not None else None,
+    )
+
+
+def load_realityscan_preview_dataset(
+    csv_path: Path,
+    *,
+    images_dir: Path | None = None,
+    masks_dir: Path | None = None,
+    pointcloud: ScenePreviewPointCloud | None = None,
+) -> ScenePreviewDataset:
+    from core.realityscan_to_transforms import read_realityscan_csv, resolve_image_path, row_to_transform
+
+    csv_path = Path(csv_path)
+    image_root = Path(images_dir) if images_dir is not None else csv_path.parent / "images"
+    cameras: list[ScenePreviewCamera] = []
+    for index, row in enumerate(read_realityscan_csv(csv_path)):
+        image_path = resolve_image_path(image_root, row.name)
+        intrinsics = _realityscan_intrinsics(row, image_path)
+        cameras.append(
+            _camera_from_transform(
+                camera_id=str(index + 1),
+                label=row.name,
+                image_path=image_path,
+                projection="pinhole",
+                matrix=row_to_transform(row),
+                source={"format": "realityscan_csv", "row_index": index},
+                **intrinsics,
+            )
+        )
+    return ScenePreviewDataset(
+        source_kind="realityscan",
+        source_path=csv_path,
+        cameras=tuple(cameras),
+        pointcloud=pointcloud,
+        image_root=image_root,
+        mask_root=Path(masks_dir) if masks_dir is not None else None,
+        coordinate_note="realityscan_csv",
     )
 
 
@@ -382,6 +426,26 @@ def _colmap_intrinsics(camera: Any) -> dict[str, Any]:
         cx = params[1] if len(params) > 1 else (width - 1) / 2.0
         cy = params[2] if len(params) > 2 else (height - 1) / 2.0
     return {"width": width, "height": height, "fl_x": fl_x, "fl_y": fl_y, "cx": cx, "cy": cy}
+
+
+def _realityscan_intrinsics(row: Any, image_path: Path) -> dict[str, Any]:
+    from core.realityscan_to_transforms import camera_from_csv_row, image_size
+
+    if image_path.is_file():
+        try:
+            width, height = image_size(image_path)
+            camera = camera_from_csv_row(row, width, height)
+            return {
+                "width": int(camera["w"]),
+                "height": int(camera["h"]),
+                "fl_x": float(camera["fl_x"]),
+                "fl_y": float(camera["fl_y"]),
+                "cx": float(camera["cx"]),
+                "cy": float(camera["cy"]),
+            }
+        except Exception:
+            pass
+    return {"width": 0, "height": 0, "fl_x": None, "fl_y": None, "cx": None, "cy": None}
 
 
 def _pointcloud_from_colmap_points(points_by_id: dict[int, Any]) -> ScenePreviewPointCloud | None:

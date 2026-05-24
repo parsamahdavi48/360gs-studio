@@ -28,6 +28,7 @@ class PinholeFrame:
     cx: float
     cy: float
     transform_matrix: np.ndarray
+    distortion_coeffs: np.ndarray | None = None
 
     @property
     def camera_position_sfm(self) -> np.ndarray:
@@ -103,6 +104,7 @@ def load_pinhole_frames(
                 cx=cx,
                 cy=cy,
                 transform_matrix=transform,
+                distortion_coeffs=None,
             )
         )
     loaded = tuple(frames)

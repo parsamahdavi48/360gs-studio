@@ -38,12 +38,13 @@ the GUI depends on.
 - Cubemap and COLMAP exports must preserve coordinate profile semantics:
   Postshot uses the default cubemap transform, Brush uses the Brush transform,
   and LichtFeld cubemap export writes final-orientation-corrected
-  `transforms.json` plus `pointcloud.ply` from the Cubemap CLI. LichtFeld direct
-  3DGUT uses equirectangular inputs without cubemap conversion and applies the
-  same final orientation correction while creating the direct dataset.
-  RealityScan export is a Metashape-output preset that cancels the Metashape
-  import coordinate conversion, maps Metashape Y-up poses into RealityScan Z-up
-  local Euclidean axes, then writes cubemap images and XMP sidecars under
+  `transforms.json` plus `pointcloud.ply` from the Cubemap CLI. LichtFeld GUT
+  ERP 360° output uses equirectangular inputs without cubemap conversion and
+  applies the same final orientation correction while creating the direct
+  dataset. RealityScan realignment output is handled by the Step 4 Metashape
+  route: it cancels the Metashape import coordinate conversion, maps Metashape
+  Y-up poses into RealityScan Z-up local Euclidean axes, then writes cubemap
+  images and XMP sidecars under
   `output/realityscan/`; it does not require or pass Metashape PLY because
   RealityScan should regenerate its own point cloud after alignment.
 
@@ -81,7 +82,7 @@ SfM route selection, dataset conversion, and training launch are split by respon
   commands.
 - `gui/steps/step4_widgets.py` owns small reusable widgets used by the step.
 - `gui/steps/step4_cubemap.py` is the orchestration class that composes those
-  mixins for the `SfM Result → Dataset` tool. Avoid adding new workflow logic
+  mixins for Step 5 dataset creation tools. Avoid adding new workflow logic
   there when it clearly belongs to one of the focused modules above.
 
 ## Verification Rules

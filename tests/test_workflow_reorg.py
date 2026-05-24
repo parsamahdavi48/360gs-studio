@@ -6,8 +6,12 @@ from pathlib import Path
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
+from PIL import Image
 from PySide6.QtWidgets import QApplication, QLabel, QPushButton, QSizePolicy
 
+from core.artifact_registry import load_artifacts
+from core.normal_camera_metadata import load_normal_camera_default
+from core.scene_layout import source_image_sets_path
 from gui import i18n
 from gui.app import MainWindow
 from gui.cubemap.view_config import VIEW_MODE_CUSTOM
@@ -17,6 +21,74 @@ from gui.steps.realityscan_lfs_tool import RealityScanLfsTool
 
 def _app() -> QApplication:
     return QApplication.instance() or QApplication([])
+
+
+def _workflow_job(cmd: list[str]) -> dict:
+    assert cmd[2].endswith("run_workflow_job.py")
+    job_path = Path(cmd[cmd.index("--job") + 1])
+    return json.loads(job_path.read_text(encoding="utf-8"))
+
+
+def _write_colmap_sparse(root: Path) -> None:
+    sparse = root / "sparse" / "0"
+    sparse.mkdir(parents=True, exist_ok=True)
+    for name in ("cameras.txt", "images.txt", "points3D.txt"):
+        (sparse / name).write_text("", encoding="utf-8")
+
+
+def _write_image(path: Path, size: tuple[int, int] = (40, 30)) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    Image.new("RGB", size, color=(110, 120, 130)).save(path)
+
+
+def _write_mixed_metashape_xml(path: Path) -> None:
+    identity = "1 0 0 0 0 1 0 0 0 0 1 0 0 0 0 1"
+    path.write_text(
+        f"""<?xml version="1.0" encoding="UTF-8"?>
+<document>
+  <chunk>
+    <sensors>
+      <sensor id="0" type="spherical"><resolution width="64" height="32" /></sensor>
+      <sensor id="1" type="frame"><resolution width="40" height="30" /><calibration><f>35</f><k1>0.1</k1></calibration></sensor>
+    </sensors>
+    <cameras>
+      <camera id="0" label="pano.jpg" sensor_id="0"><transform>{identity}</transform></camera>
+      <camera id="1" label="normal.jpg" sensor_id="1"><transform>{identity}</transform></camera>
+    </cameras>
+  </chunk>
+</document>
+""",
+        encoding="utf-8",
+    )
+
+
+def test_sfm_embedded_viewer_defers_scene_scan_until_viewer_is_opened(tmp_path: Path, monkeypatch) -> None:
+    _app()
+    calls = {"discover": 0}
+
+    def fake_discover(_scene: Path) -> tuple:
+        calls["discover"] += 1
+        return ()
+
+    monkeypatch.setattr("gui.scene_preview.window.discover_scene_preview_candidates", fake_discover)
+    window = MainWindow("")
+    try:
+        window._set_current_step(window._sfm_step_index)
+
+        window.sfm_step.set_scene_dir(str(tmp_path))
+
+        assert calls == {"discover": 0}
+
+        window.sfm_step.show_viewer()
+
+        assert calls == {"discover": 1}
+
+        window.sfm_step.show_menu()
+        window.sfm_step.set_scene_dir(str(tmp_path))
+
+        assert calls == {"discover": 1}
+    finally:
+        window.shutdown()
 
 
 def test_sfm_cards_open_in_step_sfm_pages_and_external_route_goes_to_dataset(tmp_path: Path) -> None:
@@ -112,8 +184,9 @@ def test_sfm_cards_open_in_step_sfm_pages_and_external_route_goes_to_dataset(tmp
         window.step4.ms_xml_browse.set_text(str(metashape_xml))
         commands = window.sfm_step.build_commands()
         assert [phase for phase, _cmd in commands] == ["metashape", "cubemap"]
-        assert "--realityscan-xmp" in commands[1][1]
-        assert str(tmp_path / "output" / "realityscan") in commands[1][1]
+        job = _workflow_job(commands[1][1])
+        assert job["realityscan_xmp"] is True
+        assert job["output_dir"] == str(tmp_path / "output" / "realityscan")
 
         window.step_back_btn.click()
         assert window.sfm_step.current_route() == ""
@@ -186,6 +259,90 @@ def test_sfm_cards_open_in_step_sfm_pages_and_external_route_goes_to_dataset(tmp
         window.shutdown()
 
 
+def test_colmap_sfm_route_saves_normal_camera_default(tmp_path: Path) -> None:
+    _app()
+    _write_image(tmp_path / "images" / "normal_0001.jpg", (40, 30))
+    fake_colmap = tmp_path / "colmap.exe"
+    fake_colmap.write_text("", encoding="utf-8")
+    window = MainWindow(str(tmp_path))
+    try:
+        window.sfm_step.show_route("colmap")
+        window.sfm_step.colmap_exec_browse.set_text(str(fake_colmap))
+        model_index = window.sfm_step.colmap_normal_camera_model_combo.findData("PINHOLE")
+        assert model_index >= 0
+        window.sfm_step.colmap_normal_camera_model_combo.setCurrentIndex(model_index)
+        window.sfm_step.colmap_normal_camera_params_edit.setText("20,21,19.5,14.5")
+
+        commands = window.sfm_step.build_commands()
+
+        camera = load_normal_camera_default(tmp_path)
+        assert camera.camera_model == "PINHOLE"
+        assert camera.camera_params == (20.0, 21.0, 19.5, 14.5)
+        normal_feature = commands[1][1]
+        assert normal_feature[normal_feature.index("--ImageReader.camera_model") + 1] == "PINHOLE"
+        assert normal_feature[normal_feature.index("--ImageReader.camera_params") + 1] == "20,21,19.5,14.5"
+    finally:
+        window.shutdown()
+
+
+def test_colmap_sfm_route_saves_source_resolution_normal_camera_default(tmp_path: Path) -> None:
+    _app()
+    _write_image(tmp_path / "images" / "a.jpg", (40, 30))
+    _write_image(tmp_path / "images" / "b.jpg", (80, 60))
+    source_sets = source_image_sets_path(tmp_path)
+    source_sets.parent.mkdir(parents=True, exist_ok=True)
+    source_sets.write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "image_sets": [
+                    {
+                        "id": "cam_a",
+                        "source_type": "image_sequence",
+                        "projection": "normal",
+                        "files": [{"scene_path": "images/a.jpg"}],
+                    },
+                    {
+                        "id": "cam_b",
+                        "source_type": "image_sequence",
+                        "projection": "normal",
+                        "files": [{"scene_path": "images/b.jpg"}],
+                    },
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    fake_colmap = tmp_path / "colmap.exe"
+    fake_colmap.write_text("", encoding="utf-8")
+    window = MainWindow(str(tmp_path))
+    try:
+        window.sfm_step.show_route("colmap")
+        window.sfm_step.colmap_exec_browse.set_text(str(fake_colmap))
+        target_scope = ("group", "image_sequence", "cam_a", 40, 30)
+        scope_index = window.sfm_step._find_combo_data(window.sfm_step.colmap_normal_camera_scope_combo, target_scope)
+        assert scope_index >= 0
+        window.sfm_step.colmap_normal_camera_scope_combo.setCurrentIndex(scope_index)
+        model_index = window.sfm_step.colmap_normal_camera_model_combo.findData("PINHOLE")
+        assert model_index >= 0
+        window.sfm_step.colmap_normal_camera_model_combo.setCurrentIndex(model_index)
+        window.sfm_step.colmap_normal_camera_params_edit.setText("20,21,19.5,14.5")
+        window.sfm_step.colmap_normal_camera_apply_btn.click()
+
+        commands = window.sfm_step.build_commands()
+
+        normal_features = [cmd for phase, cmd in commands if phase.startswith("colmap_feature_normal")]
+        assert len(normal_features) == 2
+        camera_models = [cmd[cmd.index("--ImageReader.camera_model") + 1] for cmd in normal_features]
+        assert "PINHOLE" in camera_models
+        assert "SIMPLE_RADIAL" in camera_models
+        pinhole_cmd = next(cmd for cmd in normal_features if cmd[cmd.index("--ImageReader.camera_model") + 1] == "PINHOLE")
+        assert pinhole_cmd[pinhole_cmd.index("--ImageReader.camera_params") + 1] == "20,21,19.5,14.5"
+        assert any("normal_image_list_cam_a_40x30_pinhole_20_21_19p5_14p5.txt" in part for part in pinhole_cmd)
+    finally:
+        window.shutdown()
+
+
 def test_realityscan_lfs_tool_defaults_and_builds_cli_command(tmp_path: Path) -> None:
     scene = tmp_path / "scene"
     rs = scene / "output" / "realityscan"
@@ -214,18 +371,26 @@ def test_realityscan_lfs_tool_defaults_and_builds_cli_command(tmp_path: Path) ->
     phase, cmd = tool.build_commands()[0]
     assert phase == "realityscan_lfs_colmap"
     assert cmd[2].endswith("realityscan_to_lfs_colmap.py")
-    assert cmd[3] == str(csv)
-    assert cmd[4] == str(rs / "lfs_colmap")
-    assert cmd[cmd.index("--images-dir") + 1] == str(rs / "images")
-    assert cmd[cmd.index("--masks-dir") + 1] == str(rs / "masks")
-    assert cmd[cmd.index("--ply") + 1] == str(ply)
+    assert cmd[3] == "--job"
+    job_path = Path(cmd[4])
+    job = json.loads(job_path.read_text(encoding="utf-8"))
+    assert job["csv_path"] == str(csv)
+    assert job["output_dir"] == str(rs / "lfs_colmap")
+    assert job["images_dir"] == str(rs / "images")
+    assert job["masks_dir"] == str(rs / "masks")
+    assert job["ply_path"] == str(ply)
 
     tool.pre_undistort_cb.setChecked(True)
     assert Path(tool.output_browse.text()) == rs / "lfs_colmap_undistorted"
     _, undistort_cmd = tool.build_commands()[0]
-    assert "--pre-undistort-distorted-images" in undistort_cmd
-    assert "--undistort-alpha" in undistort_cmd
-    assert undistort_cmd[undistort_cmd.index("--undistort-alpha") + 1] == "1"
+    undistort_job = json.loads(Path(undistort_cmd[4]).read_text(encoding="utf-8"))
+    assert undistort_job["pre_undistort_distorted_images"] is True
+    assert undistort_job["undistort_alpha"] == 1.0
+
+    _write_colmap_sparse(rs / "lfs_colmap_undistorted")
+    tool.on_queue_finished(True)
+    assert load_artifacts(scene, "sfm")[-1].kind == "realityscan_csv_ply"
+    assert load_artifacts(scene, "dataset")[-1].kind == "lichtfeld_colmap"
 
 
 def test_realityscan_lfs_tool_refreshes_defaults_when_scene_changes(tmp_path: Path) -> None:
@@ -304,41 +469,85 @@ def test_colmap_text_model_tool_defaults_and_builds_cli_command(tmp_path: Path) 
 
     preprocess_cmd = commands[0][1]
     work = scene / "_stechdrive" / "step4" / "work" / "metashape_colmap_import"
-    assert preprocess_cmd[2].endswith("metashape_360_lfs.py")
-    assert preprocess_cmd[preprocess_cmd.index("--images") + 1] == str(images)
-    assert preprocess_cmd[preprocess_cmd.index("--xml") + 1] == str(xml)
-    assert preprocess_cmd[preprocess_cmd.index("--output") + 1] == str(work)
-    assert preprocess_cmd[preprocess_cmd.index("--ply") + 1] == str(ply)
+    preprocess_job = _workflow_job(preprocess_cmd)
+    assert preprocess_job["kind"] == "metashape_preprocess"
+    assert preprocess_job["images_dir"] == str(images)
+    assert preprocess_job["xml_path"] == str(xml)
+    assert preprocess_job["output_dir"] == str(work)
+    assert preprocess_job["ply_path"] == str(ply)
 
     cubemap_cmd = commands[1][1]
-    assert cubemap_cmd[2].endswith("cubemap_transforms_json.py")
-    assert cubemap_cmd[3] == str(work)
-    assert cubemap_cmd[4] == str(output)
-    assert "--no_transform" in cubemap_cmd
-    assert cubemap_cmd[cubemap_cmd.index("--final-orientation") + 1] == "lichtfeld"
-    assert cubemap_cmd[cubemap_cmd.index("--image-dir") + 1] == str(images)
-    assert cubemap_cmd[cubemap_cmd.index("--mask_dir") + 1] == str(masks)
+    cubemap_job = _workflow_job(cubemap_cmd)
+    projected_work = work / "projected"
+    assert cubemap_job["kind"] == "cubemap_conversion"
+    assert cubemap_job["input_dir"] == str(work)
+    assert cubemap_job["output_dir"] == str(projected_work)
+    assert cubemap_job["axis_mode"] == "none"
+    assert cubemap_job["final_orientation"] == "lichtfeld"
+    assert cubemap_job["image_dir"] == str(images)
+    assert cubemap_job["mask_dir"] == str(masks)
 
     colmap_cmd = commands[2][1]
-    assert colmap_cmd[2].endswith("transforms_to_colmap.py")
-    assert colmap_cmd[3] == str(output)
-    assert colmap_cmd[4] == str(output / "sparse" / "0")
-    assert colmap_cmd[colmap_cmd.index("--ply") + 1] == str(output / "pointcloud.ply")
+    colmap_job = _workflow_job(colmap_cmd)
+    assert colmap_job["kind"] == "transforms_to_colmap"
+    assert colmap_job["input_dir"] == str(projected_work)
+    assert colmap_job["output_dir"] == str(output / "sparse" / "0")
+    assert colmap_job["ply_path"] == str(projected_work / "pointcloud.ply")
+    assert colmap_job["dataset_root"] == str(output)
+    assert colmap_job["asset_input_dir"] == str(projected_work)
+    assert colmap_job["copy_images"] is True
+    assert colmap_job["copy_masks"] is True
 
     brush_idx = tool.profile_combo.findData("brush")
     tool.profile_combo.setCurrentIndex(brush_idx)
     _, brush_cubemap_cmd = tool.build_commands()[1]
-    assert "--brush" in brush_cubemap_cmd
-    assert "--final-orientation" not in brush_cubemap_cmd
+    brush_job = _workflow_job(brush_cubemap_cmd)
+    assert brush_job["axis_mode"] == "brush"
+    assert brush_job["final_orientation"] == "none"
 
     custom_idx = tool.view_config.view_mode_combo.findData(VIEW_MODE_CUSTOM)
     tool.view_config.view_mode_combo.setCurrentIndex(custom_idx)
     tool.view_config.set_yaw_slot_count(5)
     tool.view_config.set_pitch_row_count(2)
     _, custom_grid_cmd = tool.build_commands()[1]
-    views_path = Path(custom_grid_cmd[custom_grid_cmd.index("--views-json") + 1])
-    views_payload = json.loads(views_path.read_text(encoding="utf-8"))
-    assert len(views_payload["views"]) == 10
+    assert len(_workflow_job(custom_grid_cmd)["views"]) == 10
+
+    _write_colmap_sparse(output)
+    tool.on_queue_finished(True)
+    assert load_artifacts(scene, "sfm")[-1].kind == "metashape_xml_ply"
+    assert load_artifacts(scene, "dataset")[-1].kind == "colmap_dataset"
+
+
+def test_colmap_text_model_tool_uses_mixed_writer_for_mixed_metashape_xml(tmp_path: Path) -> None:
+    scene = tmp_path / "scene"
+    images = scene / "images"
+    masks = scene / "masks"
+    images.mkdir(parents=True)
+    masks.mkdir()
+    (images / "pano.jpg").write_bytes(b"image")
+    (images / "normal.jpg").write_bytes(b"image")
+    xml = scene / "metashape.xml"
+    _write_mixed_metashape_xml(xml)
+    ply = scene / "metashape.ply"
+    ply.write_text("ply\n", encoding="ascii")
+
+    _app()
+    tool = ColmapTextModelTool(Path.cwd())
+    tool.set_scene_dir(str(scene))
+
+    commands = tool.build_commands()
+
+    assert [phase for phase, _cmd in commands] == ["metashape_colmap_mixed"]
+    cmd = commands[0][1]
+    assert cmd[2].endswith("export_metashape_colmap_dataset.py")
+    assert cmd[3] == "--job"
+    job = json.loads(Path(cmd[4]).read_text(encoding="utf-8"))
+    assert job["scene_dir"] == str(scene)
+    assert job["output_dir"] == str(scene / "output" / "metashape_colmap")
+    assert job["output_bit_depth"] == "8"
+    assert job["jpg_quality"] == 95
+    assert job["axis_transform"] == "none"
+    assert job["final_orientation"] == "lichtfeld"
 
 
 def test_realityscan_realign_profile_is_step4_only(tmp_path: Path) -> None:

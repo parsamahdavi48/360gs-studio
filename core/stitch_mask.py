@@ -7,7 +7,7 @@ from pathlib import Path
 import cv2
 import numpy as np
 
-from core.image_io import imread_unicode, imwrite_unicode
+from core.image_io import image_size_unicode, imread_unicode, imwrite_unicode
 from core.mask_targets import load_mask_paths_from_image_list
 
 # 進捗バー表示用 (インストールされていない場合はエラー回避)
@@ -44,6 +44,7 @@ parser.add_argument("--image-list", default=None, help="JSON or JSONL list of im
 
 # --- グローバル変数（ワーカープロセス内でのマスク共有用） ---
 shared_base_mask = None
+shared_limit_angle_deg = None
 
 
 def boundary_width_to_fov(boundary_width_deg):
@@ -67,13 +68,14 @@ def resolve_limit_angle(fov_deg, boundary_width_deg):
     return boundary_width_to_limit_angle(boundary_width_deg)
 
 
-def init_worker(mask):
+def init_worker(mask, limit_angle_deg=None):
     """
     各ワーカープロセスの初期化時にベースマスクをグローバル変数にセットする。
     これにより、タスクごとに巨大な配列をPickle転送するコストを防ぐ。
     """
-    global shared_base_mask
+    global shared_base_mask, shared_limit_angle_deg
     shared_base_mask = mask
+    shared_limit_angle_deg = limit_angle_deg
 
 
 def create_angular_stitched_mask(width, height, limit_angle_deg):
@@ -117,20 +119,17 @@ def process_single_image(file_info):
     if shared_base_mask is None:
         return "Error: Base mask not initialized"
 
-    # サイズ不一致チェック（念のため）
+    base_mask = shared_base_mask
     if img.shape != shared_base_mask.shape:
-        # リサイズするかスキップするかですが、ここではAND処理のため安全にスキップまたはリサイズ
-        # 今回はベースマスクに合わせてリサイズして処理する例
-        img = cv2.resize(
-            img,
-            (shared_base_mask.shape[1], shared_base_mask.shape[0]),
-            interpolation=cv2.INTER_NEAREST,
-        )
+        if shared_limit_angle_deg is None:
+            return f"Skipped (Size mismatch): {os.path.basename(input_path)}"
+        base_mask = create_angular_stitched_mask(img.shape[1], img.shape[0], shared_limit_angle_deg)
 
     # 合成
-    final_mask = cv2.bitwise_and(img, shared_base_mask)
+    final_mask = cv2.bitwise_and(img, base_mask)
 
     # 書き出し
+    Path(output_path).parent.mkdir(parents=True, exist_ok=True)
     if not imwrite_unicode(output_path, final_mask):
         return f"Skipped (Write Error): {os.path.basename(output_path)}"
     return None  # 成功時はNoneを返す
@@ -140,30 +139,35 @@ def process_mask_tasks_parallel(tasks, limit_angle_deg, max_workers, *, sample_l
     if not tasks:
         return
 
-    # 最初の1枚からサイズを取得してベースマスクを作成
-    first_img_path = tasks[0][0]
-    sample = imread_unicode(first_img_path, cv2.IMREAD_GRAYSCALE)
-    if sample is None:
-        print(f"Error reading sample image: {first_img_path}")
+    shape_groups: dict[tuple[int, int], list[tuple[str, str]]] = {}
+    for input_path, output_path in tasks:
+        size = image_size_unicode(input_path)
+        if size is None:
+            print(f"Skipped (Read Error): {os.path.basename(input_path)}")
+            continue
+        shape_groups.setdefault(size, []).append((input_path, output_path))
+
+    total = sum(len(group) for group in shape_groups.values())
+    if total <= 0:
         return
 
-    h, w = sample.shape
-    print(f"Generating base mask ({w}x{h}) for: {sample_label} ...")
-    base_mask = create_angular_stitched_mask(w, h, limit_angle_deg)
+    print(f"Processing {total} images with {max_workers} workers...")
+    print(f"[progress] 0/{total}", flush=True)
 
-    print(f"Processing {len(tasks)} images with {max_workers} workers...")
-    print(f"[progress] 0/{len(tasks)}", flush=True)
-
-    # 並列処理の実行
-    # initializerを使うことで、base_maskを各プロセスに一度だけ渡す
-    with ProcessPoolExecutor(max_workers=max_workers, initializer=init_worker, initargs=(base_mask,)) as executor:
-        # tqdmでプログレスバーを表示
-        results = []
-        for done, res in enumerate(
-            tqdm(executor.map(process_single_image, tasks), total=len(tasks), unit="img"), start=1
-        ):
-            results.append(res)
-            print(f"[progress] {done}/{len(tasks)}", flush=True)
+    results = []
+    done_total = 0
+    for (w, h), group_tasks in sorted(shape_groups.items()):
+        print(f"Generating base mask ({w}x{h}) for: {sample_label} ...")
+        base_mask = create_angular_stitched_mask(w, h, limit_angle_deg)
+        with ProcessPoolExecutor(
+            max_workers=max_workers,
+            initializer=init_worker,
+            initargs=(base_mask, limit_angle_deg),
+        ) as executor:
+            for res in tqdm(executor.map(process_single_image, group_tasks), total=len(group_tasks), unit="img"):
+                results.append(res)
+                done_total += 1
+                print(f"[progress] {done_total}/{total}", flush=True)
 
     # エラーがあった場合のみ表示
     for res in results:

@@ -3,10 +3,12 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import numpy as np
 import pytest
 
 import core.apriltag_scale_apply as scale_apply
 from core.apriltag_scale_apply import apply_scene_output_scale, validate_scale_output_dataset
+from core.dataset_writer_colmap import ColmapCamera, ColmapImage, quaternion_from_matrix, write_colmap_text_dataset
 
 
 def _write_dataset(scene: Path, *, with_ply_file_path: bool = True) -> Path:
@@ -59,6 +61,53 @@ def _write_dataset(scene: Path, *, with_ply_file_path: bool = True) -> Path:
         encoding="ascii",
     )
     return transforms
+
+
+def _write_colmap_dataset(scene: Path) -> Path:
+    output = scene / "output" / "metashape_colmap"
+    images = output / "images"
+    images.mkdir(parents=True)
+    (images / "a.png").write_bytes(b"image-a")
+    (images / "b.png").write_bytes(b"image-b")
+    cameras = [
+        ColmapCamera(1, "PINHOLE", 10, 10, (5.0, 5.0, 4.5, 4.5)),
+        ColmapCamera(2, "PINHOLE", 20, 10, (8.0, 8.0, 9.5, 4.5)),
+    ]
+    r_cw = np.eye(3)
+    images_txt = [
+        ColmapImage(1, quaternion_from_matrix(r_cw), np.array([0.0, 0.0, 0.0]), 1, "a.png"),
+        ColmapImage(2, quaternion_from_matrix(r_cw), np.array([-2.0, 0.0, 0.0]), 2, "b.png"),
+    ]
+    write_colmap_text_dataset(output, cameras, images_txt)
+    points = output / "sparse" / "0" / "points3D.txt"
+    points.write_text(
+        "\n".join(
+            [
+                "# points",
+                "1 1 2 3 10 20 30 0.1",
+                "2 -1 -2 -3 40 50 60 0.2",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    (output / "sparse" / "0" / "points3D.ply").write_text(
+        "\n".join(
+            [
+                "ply",
+                "format ascii 1.0",
+                "element vertex 1",
+                "property float x",
+                "property float y",
+                "property float z",
+                "end_header",
+                "2 4 6",
+                "",
+            ]
+        ),
+        encoding="ascii",
+    )
+    return output
 
 
 def test_validate_scale_output_dataset_checks_transforms_and_sample_images(tmp_path: Path) -> None:
@@ -117,3 +166,48 @@ def test_apply_scene_output_scale_fails_if_declared_pointcloud_is_missing(tmp_pa
 
     with pytest.raises(ValueError, match="Point cloud"):
         apply_scene_output_scale(tmp_path, 0.5)
+
+
+def test_validate_scale_output_dataset_accepts_colmap_dataset(tmp_path: Path) -> None:
+    output = _write_colmap_dataset(tmp_path)
+
+    dataset = validate_scale_output_dataset(tmp_path, output_dir=output)
+
+    assert dataset.kind == "colmap"
+    assert dataset.root == output
+    assert dataset.sparse_dir == output / "sparse" / "0"
+    assert dataset.images_dir == output / "images"
+    assert dataset.estimation_input == output
+    assert dataset.frame_count == 2
+    assert dataset.checked_image_count == 2
+
+
+def test_apply_scene_output_scale_updates_colmap_text_dataset_with_backups(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    output = _write_colmap_dataset(tmp_path)
+    sparse = output / "sparse" / "0"
+    monkeypatch.setattr(scale_apply, "_scale_pointcloud_with_open3d", lambda _path, _scale: None)
+
+    result = apply_scene_output_scale(tmp_path, 0.5, output_dir=output)
+
+    images_lines = [
+        line
+        for line in (sparse / "images.txt").read_text(encoding="utf-8").splitlines()
+        if line.strip() and not line.startswith("#")
+    ]
+    second = images_lines[1].split()
+    assert float(second[5]) == pytest.approx(-1.0)
+    assert result.kind == "colmap"
+    assert result.geometry_label == "COLMAP images.txt"
+    assert result.transforms_backup.is_file()
+    assert result.pointcloud_backup is not None
+    assert result.pointcloud_backup.is_file()
+    assert result.frames_scaled == 2
+    assert result.points_scaled == 2
+    points_text = (sparse / "points3D.txt").read_text(encoding="utf-8")
+    assert "1 0.5 1 1.5 10 20 30 0.1" in points_text
+    assert "2 -0.5 -1 -1.5 40 50 60 0.2" in points_text
+    ply_text = (sparse / "points3D.ply").read_text(encoding="ascii")
+    assert "1 2 3" in ply_text

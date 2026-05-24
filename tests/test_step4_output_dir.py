@@ -13,13 +13,16 @@ from PySide6.QtWidgets import QApplication, QMessageBox
 
 import core.orientation_correction as orientation_correction
 import gui.steps.step4_cubemap as step4_cubemap
+from core.normal_camera_metadata import save_normal_camera_default
 from core.scene_layout import (
     project_path,
+    source_image_sets_path,
     step4_export_settings_path,
     step4_meta_dir,
     step4_training_runs_path,
     step4_views_config_path,
 )
+from core.workflow_artifacts import register_dataset_artifact
 from gui import i18n
 from gui.common.collapsible_section import CollapsibleSection
 from gui.steps.sfm_route_backends import get_sfm_route_backend
@@ -39,9 +42,17 @@ from gui.steps.step5_training import TrainingStep
 from gui.steps.training_backends import lichtfeld_defaults
 from transforms_to_colmap import read_ply_points
 
+_IDENTITY_MATRIX_TEXT = "1 0 0 0 0 1 0 0 0 0 1 0 0 0 0 1"
+
 
 def _app():
     return QApplication.instance() or QApplication([])
+
+
+def _workflow_job(cmd: list[str]) -> dict:
+    assert cmd[2].endswith("run_workflow_job.py")
+    job_path = Path(cmd[cmd.index("--job") + 1])
+    return json.loads(job_path.read_text(encoding="utf-8"))
 
 
 def _ready_step(scene: Path, *, metashape_inputs: bool = False) -> CubemapStep:
@@ -78,6 +89,30 @@ def _write_metashape_xml(path: Path, labels: list[str] | None = None) -> None:
         "    </sensors>\n"
         "    <cameras>\n"
         f"{cameras}\n"
+        "    </cameras>\n"
+        "  </chunk>\n"
+        "</document>\n",
+        encoding="utf-8",
+    )
+
+
+def _write_mixed_metashape_xml(path: Path) -> None:
+    path.write_text(
+        '<?xml version="1.0" encoding="UTF-8"?>\n'
+        "<document>\n"
+        "  <chunk>\n"
+        "    <sensors>\n"
+        '      <sensor id="0" type="spherical">\n'
+        '        <resolution width="64" height="32" />\n'
+        "      </sensor>\n"
+        '      <sensor id="1" type="frame">\n'
+        '        <resolution width="40" height="30" />\n'
+        "        <calibration><f>35</f><cx>0</cx><cy>0</cy></calibration>\n"
+        "      </sensor>\n"
+        "    </sensors>\n"
+        "    <cameras>\n"
+        f'      <camera id="0" label="pano.jpg" sensor_id="0"><transform>{_IDENTITY_MATRIX_TEXT}</transform></camera>\n'
+        f'      <camera id="1" label="frame.jpg" sensor_id="1"><transform>{_IDENTITY_MATRIX_TEXT}</transform></camera>\n'
         "    </cameras>\n"
         "  </chunk>\n"
         "</document>\n",
@@ -393,23 +428,23 @@ def test_cubemap_step_uses_tab_path_summaries(tmp_path: Path) -> None:
     cmd = step._build_cubemap_cmd()
 
     metashape_work = step4_meta_dir(tmp_path) / "work" / "metashape_import"
-    assert cmd[3] == str(metashape_work)
-    assert cmd[4] == str(tmp_path / "output" / "metashape_cubemap")
-    assert cmd[cmd.index("--image-dir") + 1] == str(tmp_path)
-    assert "--json" not in cmd
-    assert "--mask_dir" not in cmd
-    assert "--mask_from_alpha" not in cmd
-    assert "--no_image" not in cmd
-    assert "--skip-images" not in cmd
-    assert "--skip-masks" not in cmd
-    assert "--duplicate" not in cmd
-    assert "--no_transform" in cmd
-    assert cmd[cmd.index("--final-orientation") + 1] == "lichtfeld"
+    job = _workflow_job(cmd)
+    assert job["kind"] == "cubemap_conversion"
+    assert job["input_dir"] == str(metashape_work)
+    assert job["output_dir"] == str(tmp_path / "output" / "metashape_cubemap")
+    assert job["image_dir"] == str(tmp_path)
+    assert job["mask_dir"] == ""
+    assert job["mask_from_alpha"] is False
+    assert job["write_images"] is True
+    assert job["write_masks"] is True
+    assert job["allow_duplicate"] is False
+    assert job["axis_mode"] == "none"
+    assert job["final_orientation"] == "lichtfeld"
     assert step.axis_transform_combo.currentData() == "none"
     assert step.ms_use_ply_cb.isChecked()
 
     normal_cmd = step._build_cubemap_cmd()
-    normal_scale = float(normal_cmd[normal_cmd.index("--output_scale") + 1])
+    normal_scale = float(_workflow_job(normal_cmd)["output_scale"])
     assert normal_scale == pytest.approx(2.0 / math.pi, rel=1e-5)
 
 
@@ -426,13 +461,64 @@ def test_metashape_projected_uses_step4_work_dir_for_intermediate_outputs(tmp_pa
     assert [phase for phase, _cmd in commands] == ["metashape", "cubemap"]
     preprocess_cmd = commands[0][1]
     cubemap_cmd = commands[1][1]
-    assert preprocess_cmd[preprocess_cmd.index("--output") + 1] == str(metashape_work)
-    assert cubemap_cmd[3] == str(metashape_work)
-    assert cubemap_cmd[4] == str(tmp_path / "output" / "metashape_cubemap")
-    assert cubemap_cmd[cubemap_cmd.index("--image-dir") + 1] == str(tmp_path)
-    assert cubemap_cmd[cubemap_cmd.index("--mask_dir") + 1] == str(tmp_path / "masks")
+    preprocess_job = _workflow_job(preprocess_cmd)
+    cubemap_job = _workflow_job(cubemap_cmd)
+    assert preprocess_job["output_dir"] == str(metashape_work)
+    assert cubemap_job["input_dir"] == str(metashape_work)
+    assert cubemap_job["output_dir"] == str(tmp_path / "output" / "metashape_cubemap")
+    assert cubemap_job["image_dir"] == str(tmp_path)
+    assert cubemap_job["mask_dir"] == str(tmp_path / "masks")
     assert not stale.exists()
     assert not (tmp_path / "transforms.json").exists()
+
+
+def test_mixed_metashape_projected_uses_nerf_job_writer(tmp_path: Path) -> None:
+    step = _ready_step(tmp_path, metashape_inputs=True)
+    postshot_index = step.profile_combo.findData("postshot")
+    assert postshot_index >= 0
+    step.profile_combo.setCurrentIndex(postshot_index)
+    _write_test_image(tmp_path / "images" / "pano.jpg", size=(64, 32))
+    _write_test_image(tmp_path / "images" / "frame.jpg", size=(40, 30))
+    _write_mixed_metashape_xml(tmp_path / "metashape.xml")
+    step.ms_xml_browse.set_text(str(tmp_path / "metashape.xml"))
+    step.ms_ply_browse.set_text(str(tmp_path / "metashape.ply"))
+
+    commands = step.build_commands()
+
+    assert [phase for phase, _cmd in commands] == ["metashape_nerf"]
+    cmd = commands[0][1]
+    assert cmd[2].endswith("export_metashape_nerf_dataset.py")
+    job_path = Path(cmd[cmd.index("--job") + 1])
+    job = json.loads(job_path.read_text(encoding="utf-8"))
+    assert job["kind"] == "metashape_nerf_dataset"
+    assert job["xml_path"] == str(tmp_path / "metashape.xml")
+    assert job["ply_path"] == str(tmp_path / "metashape.ply")
+    assert job["output_dir"] == str(tmp_path / "output" / "metashape_cubemap")
+
+
+def test_mixed_metashape_projected_blocks_lichtfeld_nerf_multicamera(tmp_path: Path) -> None:
+    step = _ready_step(tmp_path, metashape_inputs=True)
+    _write_test_image(tmp_path / "images" / "pano.jpg", size=(64, 32))
+    _write_test_image(tmp_path / "images" / "frame.jpg", size=(40, 30))
+    _write_mixed_metashape_xml(tmp_path / "metashape.xml")
+    step.ms_xml_browse.set_text(str(tmp_path / "metashape.xml"))
+
+    with pytest.raises(ValueError, match="LichtFeld"):
+        step.build_commands()
+
+
+def test_mixed_metashape_direct_erp_output_is_blocked(tmp_path: Path) -> None:
+    step = _ready_step(tmp_path, metashape_inputs=True)
+    _write_test_image(tmp_path / "images" / "pano.jpg", size=(64, 32))
+    _write_test_image(tmp_path / "images" / "frame.jpg", size=(40, 30))
+    _write_mixed_metashape_xml(tmp_path / "metashape.xml")
+    step.ms_xml_browse.set_text(str(tmp_path / "metashape.xml"))
+    direct_idx = step.output_shape_combo.findData("equirect_3dgut")
+    assert direct_idx >= 0
+    step.output_shape_combo.setCurrentIndex(direct_idx)
+
+    with pytest.raises(ValueError, match="PINHOLE"):
+        step.build_commands()
 
 
 def test_step4_pipeline_intent_controls_execution_plan(tmp_path: Path) -> None:
@@ -629,6 +715,35 @@ def test_spheresfm_output_shape_change_keeps_conversion_tab_focused() -> None:
 
     step.spheresfm_output_shape_combo.setCurrentIndex(projected_idx)
     assert step.settings_tabs.currentIndex() == step.spheresfm_convert_tab_index
+
+
+def test_spheresfm_erp_output_is_disabled_outside_lichtfeld_profile(tmp_path: Path) -> None:
+    step = _ready_step(tmp_path)
+    step._set_export_method("spheresfm")
+    direct_idx = step.spheresfm_output_shape_combo.findData("equirect_3dgut")
+    postshot_idx = step.spheresfm_profile_combo.findData("postshot")
+    lichtfeld_idx = step.spheresfm_profile_combo.findData("lichtfeld")
+    assert direct_idx >= 0
+    assert postshot_idx >= 0
+    assert lichtfeld_idx >= 0
+
+    assert step.spheresfm_output_shape_combo.isItemEnabled(direct_idx)
+    step.spheresfm_profile_combo.setCurrentIndex(postshot_idx)
+
+    assert step.spheresfm_output_shape_combo.currentData() == "projected"
+    assert step.spheresfm_profile_combo.currentData() == "postshot"
+    assert not step.spheresfm_output_shape_combo.isItemEnabled(direct_idx)
+    assert step.spheresfm_output_shape_combo.itemToolTip(direct_idx) == i18n.tip(
+        "OUTPUT_SHAPE_EQUIRECT_3DGUT_DISABLED"
+    )
+
+    step.spheresfm_output_shape_combo.setCurrentIndex(direct_idx)
+    assert step.spheresfm_output_shape_combo.currentData() == "projected"
+    assert step.spheresfm_profile_combo.currentData() == "postshot"
+
+    step.spheresfm_profile_combo.setCurrentIndex(lichtfeld_idx)
+    assert step.spheresfm_output_shape_combo.isItemEnabled(direct_idx)
+    assert step.spheresfm_output_shape_combo.itemToolTip(direct_idx) == i18n.tip("OUTPUT_SHAPE_EQUIRECT_3DGUT")
 
 
 def test_spheresfm_visible_tabs_follow_projection_conversion_sfm_order() -> None:
@@ -1018,7 +1133,7 @@ def test_cubemap_yaw_numeric_fields_are_clamped_and_used(tmp_path: Path) -> None
 
     cmd = step._build_cubemap_cmd()
 
-    assert cmd[cmd.index("--yaw-offset-per-frame") + 1] == "-180"
+    assert _workflow_job(cmd)["yaw_offset_per_frame"] == -180.0
     views = json.loads(step4_views_config_path(tmp_path).read_text(encoding="utf-8"))["views"]
     assert any(view["yaw"] == -90.0 for view in views)
 
@@ -1041,15 +1156,172 @@ def test_colmap_export_method_uses_image_only_conversion(tmp_path: Path) -> None
     commands = step.build_commands()
     assert [phase for phase, _cmd in commands] == ["colmap_rig_export"]
     cmd = commands[0][1]
-    assert "--image-only" in cmd
-    assert "--colmap-rig" in cmd
-    assert cmd[cmd.index("--yaw-offset-per-frame") + 1] == "0"
-    assert "--no_transform" not in cmd
-    assert "--brush" not in cmd
-    assert "--final-orientation" not in cmd
-    assert "--no_image" not in cmd
-    assert "--skip-images" not in cmd
-    assert "--skip-masks" not in cmd
+    job = _workflow_job(cmd)
+    assert job["image_only"] is True
+    assert job["colmap_rig"] is True
+    assert job["yaw_offset_per_frame"] == 0.0
+    assert job["final_orientation"] == "none"
+    assert job["write_images"] is True
+    assert job["write_masks"] is True
+
+
+def test_colmap_export_method_prepares_normal_only_project(tmp_path: Path) -> None:
+    _app()
+    images = tmp_path / "images"
+    images.mkdir()
+    _write_test_image(images / "perspective_0001.jpg", size=(40, 30))
+    step = CubemapStep(Path.cwd())
+    step.set_scene_dir(str(tmp_path))
+    step._set_export_method("colmap")
+
+    commands = step.build_commands()
+
+    assert [phase for phase, _cmd in commands] == ["colmap_mixed_prepare"]
+    cmd = commands[0][1]
+    assert cmd[2].endswith("prepare_colmap_mixed_project.py")
+    assert cmd[3] == "--job"
+    job = json.loads(Path(cmd[4]).read_text(encoding="utf-8"))
+    assert job["scene_dir"] == str(tmp_path)
+    assert job["output_dir"] == str(tmp_path / "output")
+    assert job["views"]
+
+
+def test_colmap_export_can_queue_mixed_erp_and_normal_sfm(tmp_path: Path) -> None:
+    _app()
+    images = tmp_path / "images"
+    images.mkdir()
+    _write_test_image(images / "pano_0001.jpg", size=(64, 32))
+    _write_test_image(images / "perspective_0001.jpg", size=(40, 30))
+    fake_colmap = tmp_path / "colmap.exe"
+    fake_colmap.write_text("", encoding="utf-8")
+    step = CubemapStep(Path.cwd())
+    step.set_scene_dir(str(tmp_path))
+    step._set_export_method("colmap")
+    step.set_pipeline_stage_intent("sfm", True)
+    step.colmap_exec_browse.set_text(str(fake_colmap))
+
+    commands = step.build_commands()
+
+    assert [phase for phase, _cmd in commands] == [
+        "colmap_mixed_prepare",
+        "colmap_feature_rig",
+        "colmap_rig_config",
+        "colmap_feature_normal",
+        "colmap_match",
+        "colmap_mapper",
+    ]
+    rig_feature = commands[1][1]
+    normal_feature = commands[3][1]
+    assert rig_feature[1] == "feature_extractor"
+    assert rig_feature[rig_feature.index("--ImageReader.camera_model") + 1] == "PINHOLE"
+    assert rig_feature[rig_feature.index("--image_list_path") + 1] == str(
+        tmp_path / "output" / "colmap_rig" / "rig_image_list.txt"
+    )
+    assert normal_feature[1] == "feature_extractor"
+    assert normal_feature[normal_feature.index("--ImageReader.camera_model") + 1] == "SIMPLE_RADIAL"
+    assert normal_feature[normal_feature.index("--image_list_path") + 1] == str(
+        tmp_path / "output" / "colmap_rig" / "normal_image_list_unknown_40x30_simple_radial.txt"
+    )
+
+
+def test_colmap_export_can_queue_normal_only_sfm_without_rig_config(tmp_path: Path) -> None:
+    _app()
+    images = tmp_path / "images"
+    images.mkdir()
+    _write_test_image(images / "perspective_0001.jpg", size=(40, 30))
+    fake_colmap = tmp_path / "colmap.exe"
+    fake_colmap.write_text("", encoding="utf-8")
+    step = CubemapStep(Path.cwd())
+    step.set_scene_dir(str(tmp_path))
+    step._set_export_method("colmap")
+    step.set_pipeline_stage_intent("sfm", True)
+    step.colmap_exec_browse.set_text(str(fake_colmap))
+
+    commands = step.build_commands()
+
+    assert [phase for phase, _cmd in commands] == [
+        "colmap_mixed_prepare",
+        "colmap_feature_normal",
+        "colmap_match",
+        "colmap_mapper",
+    ]
+    assert all(phase != "colmap_rig_config" for phase, _cmd in commands)
+    normal_feature = commands[1][1]
+    assert normal_feature[normal_feature.index("--ImageReader.camera_model") + 1] == "SIMPLE_RADIAL"
+    assert "--Mapper.ba_refine_sensor_from_rig" not in commands[-1][1]
+
+
+def test_colmap_export_uses_normal_camera_metadata_for_feature_group(tmp_path: Path) -> None:
+    _app()
+    images = tmp_path / "images"
+    images.mkdir()
+    _write_test_image(images / "perspective_0001.jpg", size=(40, 30))
+    source_sets = source_image_sets_path(tmp_path)
+    source_sets.parent.mkdir(parents=True, exist_ok=True)
+    source_sets.write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "image_sets": [
+                    {
+                        "id": "cam_a",
+                        "source_type": "image_sequence",
+                        "projection": "normal",
+                        "files": [
+                            {
+                                "scene_path": "images/perspective_0001.jpg",
+                                "camera": {
+                                    "model": "PINHOLE",
+                                    "params": [20.0, 21.0, 19.5, 14.5],
+                                    "source": "manual",
+                                },
+                            }
+                        ],
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    fake_colmap = tmp_path / "colmap.exe"
+    fake_colmap.write_text("", encoding="utf-8")
+    step = CubemapStep(Path.cwd())
+    step.set_scene_dir(str(tmp_path))
+    step._set_export_method("colmap")
+    step.set_pipeline_stage_intent("sfm", True)
+    step.colmap_exec_browse.set_text(str(fake_colmap))
+
+    commands = step.build_commands()
+
+    normal_feature = commands[1][1]
+    assert normal_feature[normal_feature.index("--ImageReader.camera_model") + 1] == "PINHOLE"
+    assert normal_feature[normal_feature.index("--ImageReader.camera_params") + 1] == "20,21,19.5,14.5"
+
+
+def test_colmap_export_uses_normal_camera_default_for_feature_group(tmp_path: Path) -> None:
+    _app()
+    images = tmp_path / "images"
+    images.mkdir()
+    _write_test_image(images / "perspective_0001.jpg", size=(40, 30))
+    save_normal_camera_default(
+        tmp_path,
+        camera_model="PINHOLE",
+        camera_params=(20.0, 21.0, 19.5, 14.5),
+        camera_source="test_default",
+    )
+    fake_colmap = tmp_path / "colmap.exe"
+    fake_colmap.write_text("", encoding="utf-8")
+    step = CubemapStep(Path.cwd())
+    step.set_scene_dir(str(tmp_path))
+    step._set_export_method("colmap")
+    step.set_pipeline_stage_intent("sfm", True)
+    step.colmap_exec_browse.set_text(str(fake_colmap))
+
+    commands = step.build_commands()
+
+    normal_feature = commands[1][1]
+    assert normal_feature[normal_feature.index("--ImageReader.camera_model") + 1] == "PINHOLE"
+    assert normal_feature[normal_feature.index("--ImageReader.camera_params") + 1] == "20,21,19.5,14.5"
 
 
 def test_colmap_export_method_restores_yaw_step_when_leaving_route(tmp_path: Path) -> None:
@@ -1245,7 +1517,11 @@ def test_spheresfm_method_can_queue_3dgut_export_without_projection_views(tmp_pa
         "spheresfm_mapper",
         "spheresfm_transforms",
     ]
-    assert commands[0][1][commands[0][1].index("--colmap") + 1] == str(fake_colmap)
+    preflight_job = _workflow_job(commands[0][1])
+    prepare_job = _workflow_job(commands[1][1])
+    transforms_job = _workflow_job(commands[6][1])
+    assert preflight_job["colmap"] == str(fake_colmap)
+    assert prepare_job["use_masks"] is True
     assert commands[3][1][commands[3][1].index("--ImageReader.camera_model") + 1] == "SPHERE"
     assert commands[3][1][commands[3][1].index("--ImageReader.camera_params") + 1] == "1,32,16"
     assert commands[3][1][commands[3][1].index("--ImageReader.mask_path") + 1] == str(
@@ -1255,9 +1531,9 @@ def test_spheresfm_method_can_queue_3dgut_export_without_projection_views(tmp_pa
     assert commands[5][1][commands[5][1].index("--Mapper.sphere_camera") + 1] == "1"
     assert commands[5][1][commands[5][1].index("--Mapper.multiple_models") + 1] == "0"
     assert commands[5][1][commands[5][1].index("--Mapper.ba_global_max_num_iterations") + 1] == "33"
-    assert commands[6][1][3] == str(tmp_path / "output" / "spheresfm" / "sparse")
-    assert commands[6][1][4] == str(tmp_path / "output" / "spheresfm_3dgut")
-    assert commands[6][1][commands[6][1].index("--image-path-mode") + 1] == "images-prefix"
+    assert transforms_job["sparse_dir"] == str(tmp_path / "output" / "spheresfm" / "sparse")
+    assert transforms_job["output_dir"] == str(tmp_path / "output" / "spheresfm_3dgut")
+    assert transforms_job["image_path_mode"] == "images-prefix"
     assert os.path.samefile(
         images / "frame_0001.jpg",
         tmp_path / "output" / "spheresfm_3dgut" / "images" / "frame_0001.jpg",
@@ -1303,15 +1579,17 @@ def test_spheresfm_method_can_queue_projected_cubemap_export(tmp_path: Path) -> 
     ]
     transform_cmd = commands[6][1]
     cubemap_cmd = commands[7][1]
-    assert transform_cmd[4] == str(tmp_path / "output" / "spheresfm" / "equirect")
-    assert transform_cmd[transform_cmd.index("--image-path-mode") + 1] == "relative"
-    assert cubemap_cmd[3] == str(tmp_path / "output" / "spheresfm" / "equirect")
-    assert cubemap_cmd[4] == str(tmp_path / "output" / "spheresfm_cubemap")
-    assert cubemap_cmd[cubemap_cmd.index("--views-json") + 1] == str(step4_views_config_path(tmp_path))
-    assert cubemap_cmd[cubemap_cmd.index("--image-dir") + 1] == str(images)
-    assert cubemap_cmd[cubemap_cmd.index("--mask_dir") + 1] == str(masks)
-    assert "--no_transform" in cubemap_cmd
-    assert cubemap_cmd[cubemap_cmd.index("--final-orientation") + 1] == "lichtfeld"
+    transform_job = _workflow_job(transform_cmd)
+    cubemap_job = _workflow_job(cubemap_cmd)
+    assert transform_job["output_dir"] == str(tmp_path / "output" / "spheresfm" / "equirect")
+    assert transform_job["image_path_mode"] == "relative"
+    assert cubemap_job["input_dir"] == str(tmp_path / "output" / "spheresfm" / "equirect")
+    assert cubemap_job["output_dir"] == str(tmp_path / "output" / "spheresfm_cubemap")
+    assert step4_views_config_path(tmp_path).is_file()
+    assert cubemap_job["image_dir"] == str(images)
+    assert cubemap_job["mask_dir"] == str(masks)
+    assert cubemap_job["axis_mode"] == "none"
+    assert cubemap_job["final_orientation"] == "lichtfeld"
 
 
 def test_spheresfm_method_can_queue_sfm_only(tmp_path: Path) -> None:
@@ -1375,9 +1653,10 @@ def test_spheresfm_convert_only_queues_3dgut_without_colmap_binary(tmp_path: Pat
     commands = step.build_commands()
 
     assert [phase for phase, _cmd in commands] == ["spheresfm_transforms"]
-    assert commands[0][1][3] == str(sparse_model)
-    assert commands[0][1][4] == str(tmp_path / "output" / "spheresfm_3dgut")
-    assert commands[0][1][commands[0][1].index("--image-path-mode") + 1] == "images-prefix"
+    job = _workflow_job(commands[0][1])
+    assert job["sparse_dir"] == str(sparse_model)
+    assert job["output_dir"] == str(tmp_path / "output" / "spheresfm_3dgut")
+    assert job["image_path_mode"] == "images-prefix"
     assert sparse_model.is_dir()
 
 
@@ -1769,9 +2048,11 @@ def test_metashape_import_uses_scene_images_and_lf_ply(tmp_path: Path) -> None:
 
     cmd = step._build_preprocess_cmd()
 
-    assert cmd[cmd.index("--images") + 1] == str(tmp_path / "images")
-    assert cmd[cmd.index("--xml") + 1] == str(tmp_path / "metashape.xml")
-    assert cmd[cmd.index("--ply") + 1] == str(tmp_path / "metashape.ply")
+    job = _workflow_job(cmd)
+    assert job["kind"] == "metashape_preprocess"
+    assert job["images_dir"] == str(tmp_path / "images")
+    assert job["xml_path"] == str(tmp_path / "metashape.xml")
+    assert job["ply_path"] == str(tmp_path / "metashape.ply")
 
 
 def test_postshot_does_not_use_lichtfeld_pointcloud(tmp_path: Path) -> None:
@@ -1833,16 +2114,16 @@ def test_realityscan_profile_builds_xmp_export_command(tmp_path: Path) -> None:
     cmd = step._build_cubemap_cmd()
 
     assert step._display_output_dir() == tmp_path / "output" / "realityscan"
-    assert str(tmp_path / "output" / "realityscan") in cmd
-    assert "--realityscan-xmp" in cmd
-    assert cmd[cmd.index("--realityscan-pose-prior") + 1] == "locked"
-    assert cmd[cmd.index("--realityscan-calibration-prior") + 1] == "exact"
-    assert cmd[cmd.index("--realityscan-coordinates") + 1] == "auto"
-    assert "--realityscan-include-rig" not in cmd
-    assert "--brush" in cmd
-    assert "--no_transform" not in cmd
-    assert cmd[cmd.index("--final-orientation") + 1] == "realityscan"
-    assert cmd[cmd.index("--yaw-offset-per-frame") + 1] == "0"
+    job = _workflow_job(cmd)
+    assert job["output_dir"] == str(tmp_path / "output" / "realityscan")
+    assert job["realityscan_xmp"] is True
+    assert job["realityscan_pose_prior"] == "locked"
+    assert job["realityscan_calibration_prior"] == "exact"
+    assert job["realityscan_coordinates"] == "auto"
+    assert job["realityscan_include_rig"] is False
+    assert job["axis_mode"] == "brush"
+    assert job["final_orientation"] == "realityscan"
+    assert job["yaw_offset_per_frame"] == 0.0
     assert step.axis_transform_combo.currentData() == "brush"
     assert not step.ms_use_ply_cb.isChecked()
     assert not step.export_colmap_cb.isEnabled()
@@ -1857,8 +2138,9 @@ def test_realityscan_profile_builds_xmp_export_command(tmp_path: Path) -> None:
 
     step.realityscan_include_rig_cb.setChecked(True)
     rig_cmd = step._build_cubemap_cmd()
-    assert "--realityscan-include-rig" in rig_cmd
-    assert "--realityscan-rig-name" in rig_cmd
+    rig_job = _workflow_job(rig_cmd)
+    assert rig_job["realityscan_include_rig"] is True
+    assert rig_job["realityscan_rig_name"] == "stechdrive-cubemap"
 
 
 def test_realityscan_profile_preserves_existing_shared_output(tmp_path: Path, monkeypatch) -> None:
@@ -1881,7 +2163,7 @@ def test_realityscan_profile_preserves_existing_shared_output(tmp_path: Path, mo
     assert [phase for phase, _cmd in commands] == ["metashape", "cubemap"]
     assert old_transforms.read_text(encoding="utf-8") == "old lichtfeld"
     assert (output / "realityscan").is_dir()
-    assert str(output / "realityscan") in commands[1][1]
+    assert _workflow_job(commands[1][1])["output_dir"] == str(output / "realityscan")
 
 
 def test_realityscan_profile_resets_only_realityscan_output(tmp_path: Path, monkeypatch) -> None:
@@ -1951,9 +2233,9 @@ def test_manual_axis_change_switches_to_custom_profile(tmp_path: Path) -> None:
 
     assert step.profile_combo.currentData() == "custom"
     cmd = step._build_cubemap_cmd()
-    assert "--brush" in cmd
-    assert "--no_transform" not in cmd
-    assert "--final-orientation" not in cmd
+    job = _workflow_job(cmd)
+    assert job["axis_mode"] == "brush"
+    assert job["final_orientation"] == "none"
 
 
 def test_manual_metashape_ply_toggle_switches_to_custom_profile(tmp_path: Path) -> None:
@@ -1971,7 +2253,7 @@ def test_manual_metashape_ply_toggle_switches_to_custom_profile(tmp_path: Path) 
 
     assert step.profile_combo.currentData() == "custom"
     cmd = step._build_preprocess_cmd()
-    assert cmd[cmd.index("--ply") + 1] == str(tmp_path / "metashape.ply")
+    assert _workflow_job(cmd)["ply_path"] == str(tmp_path / "metashape.ply")
 
 
 def test_manual_metashape_import_detail_change_switches_to_custom_profile(tmp_path: Path) -> None:
@@ -2022,7 +2304,7 @@ def test_cubemap_step_keeps_mask_inversion_as_advanced_option(tmp_path: Path) ->
 
     cmd = step._build_cubemap_cmd()
 
-    assert "--invert_masks" in cmd
+    assert _workflow_job(cmd)["invert_masks"] is True
 
 
 def test_cubemap_step_can_skip_image_and_mask_conversion(tmp_path: Path) -> None:
@@ -2032,8 +2314,9 @@ def test_cubemap_step_can_skip_image_and_mask_conversion(tmp_path: Path) -> None
 
     cmd = step._build_cubemap_cmd()
 
-    assert "--skip-images" in cmd
-    assert "--skip-masks" in cmd
+    job = _workflow_job(cmd)
+    assert job["write_images"] is False
+    assert job["write_masks"] is False
 
 
 def test_lichtfeld_3dgut_direct_mode_runs_metashape_only_and_disables_view_export(
@@ -2075,16 +2358,45 @@ def test_lichtfeld_3dgut_direct_mode_runs_metashape_only_and_disables_view_expor
     commands = step.build_commands()
 
     assert [phase for phase, _cmd in commands] == ["metashape"]
-    assert "--ply" in commands[0][1]
-    assert commands[0][1][commands[0][1].index("--output") + 1] == str(
-        tmp_path / "output" / "metashape_3dgut"
-    )
+    job = _workflow_job(commands[0][1])
+    assert job["use_ply"] is True
+    assert job["output_dir"] == str(tmp_path / "output" / "metashape_3dgut")
     assert os.path.samefile(
         tmp_path / "images" / "frame_0001.jpg",
         tmp_path / "output" / "metashape_3dgut" / "images" / "frame_0001.jpg",
     )
     assert old_file.is_file()
     assert not step4_views_config_path(tmp_path).exists()
+
+
+def test_metashape_erp_output_is_disabled_outside_lichtfeld_profile(tmp_path: Path) -> None:
+    step = _ready_step(tmp_path, metashape_inputs=True)
+    direct_idx = step.output_shape_combo.findData("equirect_3dgut")
+    postshot_idx = step.profile_combo.findData("postshot")
+    lichtfeld_idx = step.profile_combo.findData("lichtfeld")
+    assert direct_idx >= 0
+    assert postshot_idx >= 0
+    assert lichtfeld_idx >= 0
+
+    assert step.output_shape_combo.isItemEnabled(direct_idx)
+    step.profile_combo.setCurrentIndex(postshot_idx)
+
+    assert step.output_shape_combo.currentData() == "projected"
+    assert step.profile_combo.currentData() == "postshot"
+    assert not step.output_shape_combo.isItemEnabled(direct_idx)
+    assert step.output_shape_combo.itemToolTip(direct_idx) == i18n.tip("OUTPUT_SHAPE_EQUIRECT_3DGUT_DISABLED")
+
+    step.output_shape_combo.setCurrentIndex(direct_idx)
+    assert step.output_shape_combo.currentData() == "projected"
+    assert step.profile_combo.currentData() == "postshot"
+
+    step.profile_combo.setCurrentIndex(lichtfeld_idx)
+    assert step.output_shape_combo.isItemEnabled(direct_idx)
+    assert step.output_shape_combo.itemToolTip(direct_idx) == i18n.tip("OUTPUT_SHAPE_EQUIRECT_3DGUT")
+    step.output_shape_combo.setCurrentIndex(direct_idx)
+
+    assert step.output_shape_combo.currentData() == "equirect_3dgut"
+    assert step.profile_combo.currentData() == "lichtfeld"
 
 
 def test_lichtfeld_3dgut_asset_links_fallback_to_copy(tmp_path: Path, monkeypatch) -> None:
@@ -2151,6 +2463,7 @@ def test_switching_profile_away_from_lichtfeld_exits_3dgut_direct_mode(tmp_path:
     step.profile_combo.setCurrentIndex(postshot_idx)
 
     assert step.output_shape_combo.currentData() == "projected"
+    assert not step.output_shape_combo.isItemEnabled(direct_idx)
     assert step._uses_direct_equirect_output() is False
     assert step.settings_tabs.isTabEnabled(step.view_export_tab_index)
 
@@ -2688,6 +3001,32 @@ def test_training_tab_auto_scales_lichtfeld_from_projected_image_count(tmp_path:
     assert config["max_cap"] == 1_000_000
 
 
+def test_training_default_dataset_prefers_registered_artifact(tmp_path: Path) -> None:
+    step = _ready_step(tmp_path, metashape_inputs=True)
+    settings_output = tmp_path / "output" / "old_dataset"
+    artifact_output = tmp_path / "output" / "registered_dataset"
+    settings_output.mkdir(parents=True)
+    artifact_output.mkdir(parents=True)
+    (artifact_output / "transforms.json").write_text("{}", encoding="utf-8")
+    settings_path = step4_export_settings_path(tmp_path)
+    settings_path.parent.mkdir(parents=True, exist_ok=True)
+    settings_path.write_text(
+        json.dumps(
+            {
+                "settings_version": STEP4_SETTINGS_VERSION,
+                "output_shape": "projected",
+                "output_dir": str(settings_output),
+            }
+        ),
+        encoding="utf-8",
+    )
+    register_dataset_artifact(tmp_path, artifact_id="dataset_registered", root=artifact_output)
+
+    step.set_pipeline_stage_intent("conversion", False)
+
+    assert step._default_training_dataset_dir() == artifact_output
+
+
 def test_training_image_count_uses_import_project_metadata(tmp_path: Path) -> None:
     step = _ready_step(tmp_path, metashape_inputs=True)
     output_images = tmp_path / "output" / "metashape_cubemap" / "images"
@@ -2897,8 +3236,9 @@ def test_cubemap_mask_only_preserves_existing_images(tmp_path: Path, monkeypatch
     commands = step.build_commands()
 
     assert [phase for phase, _cmd in commands] == ["metashape", "cubemap"]
-    assert "--skip-images" in commands[1][1]
-    assert "--skip-masks" not in commands[1][1]
+    job = _workflow_job(commands[1][1])
+    assert job["write_images"] is False
+    assert job["write_masks"] is True
     assert old_file.is_file()
     assert not old_mask.exists()
     assert old_settings.read_text(encoding="utf-8") == '{"old": true}\n'

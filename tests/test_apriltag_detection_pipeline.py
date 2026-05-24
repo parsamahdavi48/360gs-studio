@@ -5,6 +5,7 @@ import math
 import subprocess
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 import cv2
 import numpy as np
@@ -23,6 +24,7 @@ from core.apriltag_detection import detect_apriltags
 from core.apriltag_geometry import load_pinhole_frames, project_sfm_points
 from core.apriltag_pipeline import run_apriltag_scale_estimation
 from core.apriltag_projection import EquirectProjectionConfig, prepare_equirect_detection_dataset
+from core.dataset_writer_colmap import ColmapCamera, ColmapImage, quaternion_from_matrix, write_colmap_text_dataset
 from core.image_io import imwrite_unicode
 from devtools.apriltag.synthetic import SyntheticAprilTagConfig, _warp_tag, inject_synthetic_apriltag
 
@@ -88,6 +90,43 @@ def _write_tagged_scale_dataset(root: Path) -> Path:
         encoding="utf-8",
     )
     return transforms
+
+
+def _opengl_c2w_to_colmap_image(image_id: int, camera_id: int, name: str, c2w: np.ndarray) -> ColmapImage:
+    converted = c2w.copy()
+    converted[:3, 1:3] *= -1.0
+    r_wc = converted[:3, :3]
+    t_wc = converted[:3, 3]
+    r_cw = r_wc.T
+    t_cw = -r_cw @ t_wc
+    return ColmapImage(
+        image_id=image_id,
+        qvec=quaternion_from_matrix(r_cw),
+        tvec=t_cw,
+        camera_id=camera_id,
+        name=name,
+    )
+
+
+def _write_tagged_colmap_dataset(root: Path) -> Path:
+    transforms = _write_tagged_scale_dataset(root)
+    output = root / "colmap_dataset"
+    images = output / "images"
+    images.mkdir(parents=True)
+    source_images = root / "images"
+    for name in ("a.png", "b.png"):
+        (images / name).write_bytes((source_images / name).read_bytes())
+    data = json.loads(transforms.read_text(encoding="utf-8"))
+    cameras = [
+        ColmapCamera(1, "PINHOLE", 400, 400, (240.0, 240.0, 199.5, 199.5)),
+        ColmapCamera(2, "OPENCV", 400, 400, (240.0, 240.0, 199.5, 199.5, 0.0, 0.0, 0.0, 0.0)),
+    ]
+    colmap_images = [
+        _opengl_c2w_to_colmap_image(1, 1, "a.png", np.asarray(data["frames"][0]["transform_matrix"], dtype=float)),
+        _opengl_c2w_to_colmap_image(2, 2, "b.png", np.asarray(data["frames"][1]["transform_matrix"], dtype=float)),
+    ]
+    write_colmap_text_dataset(output, cameras, colmap_images)
+    return output
 
 
 def _rotation(yaw_deg: float, pitch_deg: float) -> np.ndarray:
@@ -304,6 +343,23 @@ def test_tagged_images_can_validate_scale_pipeline(tmp_path: Path) -> None:
         tag_ids={7},
     )
 
+    assert run.estimate.observation_count == 2
+    assert run.estimate.pair_count == 1
+    assert math.isclose(run.estimate.scale, 0.25, rel_tol=0.08)
+
+
+def test_tagged_colmap_dataset_can_validate_scale_pipeline_with_mixed_cameras(tmp_path: Path) -> None:
+    dataset = _write_tagged_colmap_dataset(tmp_path)
+
+    run = run_apriltag_scale_estimation(
+        dataset,
+        tag_size_m=0.8,
+        family="tag36h11",
+        tag_ids={7},
+    )
+
+    assert run.frames[0].width == 400
+    assert run.frames[1].distortion_coeffs is not None
     assert run.estimate.observation_count == 2
     assert run.estimate.pair_count == 1
     assert math.isclose(run.estimate.scale, 0.25, rel_tol=0.08)
@@ -631,3 +687,58 @@ def test_estimate_apriltag_scale_cli_rejects_equirectangular_input(tmp_path: Pat
 
     assert result.returncode == 1
     assert "requires projected Cubemap output images" in result.stdout
+
+
+def test_estimate_apriltag_scale_cli_passes_colmap_image_root(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    import scripts.estimate_apriltag_scale as cli
+
+    dataset = tmp_path / "colmap_dataset"
+    image_root = tmp_path / "external_images"
+    image_root.mkdir()
+    (image_root / "a.png").write_bytes(b"image")
+    write_colmap_text_dataset(
+        dataset,
+        [ColmapCamera(1, "PINHOLE", 8, 8, (4.0, 4.0, 3.5, 3.5))],
+        [ColmapImage(1, quaternion_from_matrix(np.eye(3)), np.zeros(3), 1, "a.png")],
+    )
+
+    captured: dict[str, Path | None] = {}
+
+    def fake_run(dataset_input: Path, **kwargs):
+        captured["dataset_input"] = dataset_input
+        captured["image_root"] = kwargs.get("image_root")
+        return SimpleNamespace(
+            estimate=SimpleNamespace(
+                scale=1.0,
+                observation_count=0,
+                pair_count=0,
+                inlier_count=0,
+                rms_residual_m=0.0,
+                median_pair_scale=0.0,
+                mad_pair_scale=0.0,
+            ),
+            observations=(),
+            frame_detections=(),
+            timings_sec={},
+        )
+
+    monkeypatch.setattr(cli, "run_apriltag_scale_estimation", fake_run)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "estimate_apriltag_scale.py",
+            str(dataset),
+            "--image-root",
+            str(image_root),
+            "--tag-size-m",
+            "0.16",
+        ],
+    )
+
+    assert cli.main() == 0
+    assert captured["dataset_input"] == dataset
+    assert captured["image_root"] == image_root

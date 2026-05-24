@@ -7,6 +7,7 @@ PROJECT_JSON = "project.json"
 SOURCES_DIR_NAME = "sources"
 SOURCE_VIDEOS_JSON = "videos.json"
 SOURCE_IMAGE_SETS_JSON = "image_sets.json"
+NORMAL_CAMERA_DEFAULTS_JSON = "normal_camera_defaults.json"
 FRAMES_DIR_NAME = "frames"
 FRAME_BACKUPS_DIR_NAME = "backups"
 FRAME_CACHE_DIR_NAME = "cache"
@@ -21,6 +22,10 @@ STEP4_DIR_NAME = "step4"
 STEP4_META_DIR_NAME = f"{APP_DIR_NAME}/{STEP4_DIR_NAME}"
 STEP4_WORK_DIR_NAME = "work"
 STEP4_METASHAPE_IMPORT_WORK_DIR_NAME = "metashape_import"
+ARTIFACTS_DIR_NAME = "artifacts"
+SFM_ARTIFACTS_JSON = "sfm_artifacts.json"
+DATASET_ARTIFACTS_JSON = "dataset_artifacts.json"
+JOBS_DIR_NAME = "jobs"
 
 SELECTED_FRAMES_CSV = "selected_frames.csv"
 SELECTED_FRAMES_KEEP_CSV = "selected_frames_keep.csv"
@@ -86,6 +91,10 @@ def source_image_sets_path(scene_dir: Path) -> Path:
     return sources_dir(scene_dir) / SOURCE_IMAGE_SETS_JSON
 
 
+def normal_camera_defaults_path(scene_dir: Path) -> Path:
+    return sources_dir(scene_dir) / NORMAL_CAMERA_DEFAULTS_JSON
+
+
 def frames_dir(scene_dir: Path) -> Path:
     return app_dir(scene_dir) / FRAMES_DIR_NAME
 
@@ -143,6 +152,22 @@ def scene_imports_dir(scene_dir: Path) -> Path:
 
 def scene_imports_path(scene_dir: Path) -> Path:
     return scene_imports_dir(scene_dir) / SCENE_IMPORTS_JSON
+
+
+def artifacts_dir(scene_dir: Path) -> Path:
+    return app_dir(scene_dir) / ARTIFACTS_DIR_NAME
+
+
+def sfm_artifacts_path(scene_dir: Path) -> Path:
+    return artifacts_dir(scene_dir) / SFM_ARTIFACTS_JSON
+
+
+def dataset_artifacts_path(scene_dir: Path) -> Path:
+    return artifacts_dir(scene_dir) / DATASET_ARTIFACTS_JSON
+
+
+def jobs_dir(scene_dir: Path) -> Path:
+    return app_dir(scene_dir) / JOBS_DIR_NAME
 
 
 def scene_import_backups_dir(scene_dir: Path) -> Path:

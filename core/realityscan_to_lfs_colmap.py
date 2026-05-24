@@ -3,18 +3,32 @@
 from __future__ import annotations
 
 import argparse
+import json
 import math
-import os
-import shutil
-import subprocess
 import sys
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 import numpy as np
 
+from core.dataset_job_spec import JOB_KIND_REALITYSCAN_LFS_COLMAP, load_dataset_job
+from core.dataset_writer_colmap import (
+    SPARSE_RELATIVE_DIR,
+    ColmapCamera,
+    ColmapImage,
+    camera_signature,
+    ensure_dataset_asset_link,
+    quaternion_from_matrix,
+    write_colmap_text_dataset,
+)
+from core.dataset_writer_colmap import (
+    paths_equivalent as _paths_equivalent,
+)
+from core.dataset_writer_colmap import (
+    replace_file_with_link_or_copy as _safe_replace_file_link_or_copy,
+)
 from core.image_io import imread_unicode, imwrite_unicode
+from core.realityscan_dataset_plan import build_realityscan_lfs_dataset_plan
 from core.realityscan_to_transforms import (
     RealityScanCameraRow,
     camera_from_csv_row,
@@ -26,7 +40,6 @@ from core.realityscan_to_transforms import (
     write_transformed_ply,
 )
 
-SPARSE_RELATIVE_DIR = Path("sparse") / "0"
 DEFAULT_DATASET_DIR_NAME = "lfs_colmap"
 DEFAULT_UNDISTORTED_DATASET_DIR_NAME = "lfs_colmap_undistorted"
 DEFAULT_UNDISTORT_ALPHA = 1.0
@@ -38,24 +51,6 @@ try:
     import cv2
 except Exception:  # pragma: no cover - reported only when undistortion is requested
     cv2 = None  # type: ignore[assignment]
-
-
-@dataclass(frozen=True)
-class ColmapCamera:
-    camera_id: int
-    model: str
-    width: int
-    height: int
-    params: tuple[float, ...]
-
-
-@dataclass(frozen=True)
-class ColmapImage:
-    image_id: int
-    qvec: np.ndarray
-    tvec: np.ndarray
-    camera_id: int
-    name: str
 
 
 def x_axis_rotation_matrix(rotation_x_deg: float) -> np.ndarray:
@@ -76,44 +71,6 @@ def x_axis_rotation_matrix(rotation_x_deg: float) -> np.ndarray:
 
 def lichtfeld_colmap_pointcloud_matrix(rotation_x_deg: float = 90.0) -> np.ndarray:
     return x_axis_rotation_matrix(rotation_x_deg)
-
-
-def quaternion_from_matrix(r: np.ndarray) -> np.ndarray:
-    trace = float(np.trace(r))
-    if trace > 0:
-        s = 0.5 / math.sqrt(trace + 1.0)
-        qw = 0.25 / s
-        qx = (r[2, 1] - r[1, 2]) * s
-        qy = (r[0, 2] - r[2, 0]) * s
-        qz = (r[1, 0] - r[0, 1]) * s
-    elif r[0, 0] > r[1, 1] and r[0, 0] > r[2, 2]:
-        s = 2.0 * math.sqrt(1.0 + r[0, 0] - r[1, 1] - r[2, 2])
-        qw = (r[2, 1] - r[1, 2]) / s
-        qx = 0.25 * s
-        qy = (r[0, 1] + r[1, 0]) / s
-        qz = (r[0, 2] + r[2, 0]) / s
-    elif r[1, 1] > r[2, 2]:
-        s = 2.0 * math.sqrt(1.0 + r[1, 1] - r[0, 0] - r[2, 2])
-        qw = (r[0, 2] - r[2, 0]) / s
-        qx = (r[0, 1] + r[1, 0]) / s
-        qy = 0.25 * s
-        qz = (r[1, 2] + r[2, 1]) / s
-    else:
-        s = 2.0 * math.sqrt(1.0 + r[2, 2] - r[0, 0] - r[1, 1])
-        qw = (r[1, 0] - r[0, 1]) / s
-        qx = (r[0, 2] + r[2, 0]) / s
-        qy = (r[1, 2] + r[2, 1]) / s
-        qz = 0.25 * s
-
-    qvec = np.array([qw, qx, qy, qz], dtype=np.float64)
-    norm = float(np.linalg.norm(qvec))
-    if not np.isfinite(norm) or norm < 1e-12:
-        raise ValueError("Invalid near-zero quaternion")
-    qvec /= norm
-    if qvec[0] < 0.0:
-        qvec = -qvec
-    return qvec
-
 
 def realityscan_row_to_colmap_w2c(
     row: RealityScanCameraRow,
@@ -186,38 +143,12 @@ def opencv_camera_matrix_and_distortion(row: RealityScanCameraRow, image_path: P
     return matrix, distortion, width, height
 
 
-def camera_signature(model: str, width: int, height: int, params: tuple[float, ...]) -> tuple[Any, ...]:
-    return (model, int(width), int(height), *(round(float(value), 10) for value in params))
-
-
 def image_name_for_colmap(image_path: Path, images_dir: Path) -> str:
     try:
         rel = image_path.resolve().relative_to(images_dir.resolve())
     except ValueError:
         rel = Path(image_path.name)
     return rel.as_posix()
-
-
-def _paths_equivalent(left: Path, right: Path) -> bool:
-    try:
-        return left.resolve() == right.resolve()
-    except OSError:
-        return False
-
-
-def _safe_replace_file_link_or_copy(source: Path, destination: Path) -> str:
-    destination.parent.mkdir(parents=True, exist_ok=True)
-    if _paths_equivalent(source, destination):
-        return ""
-    if destination.exists() or destination.is_symlink():
-        destination.unlink()
-    try:
-        os.link(source, destination)
-        return "hardlink"
-    except OSError:
-        shutil.copy2(source, destination)
-        return "copy"
-
 
 def _mask_lookup_candidates(image_name: str) -> list[Path]:
     image_path = Path(image_name)
@@ -431,49 +362,6 @@ def prepare_undistorted_asset_dataset(
     return output_images_dir, output_masks_dir, camera_payloads, stats
 
 
-def _create_directory_link(link_path: Path, target_dir: Path) -> None:
-    link_path.parent.mkdir(parents=True, exist_ok=True)
-    target_dir = target_dir.resolve()
-
-    if os.name == "nt":
-        completed = subprocess.run(
-            ["cmd", "/c", "mklink", "/J", str(link_path), str(target_dir)],
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-        if completed.returncode == 0:
-            return
-        message = (completed.stderr or completed.stdout).strip()
-        raise RuntimeError(
-            "Failed to create a Windows directory junction. "
-            f"Run manually: mklink /J {link_path} {target_dir}"
-            + (f"\n{message}" if message else "")
-        )
-
-    try:
-        os.symlink(target_dir, link_path, target_is_directory=True)
-    except OSError as exc:
-        raise RuntimeError(f"Failed to create directory symlink: {link_path} -> {target_dir}") from exc
-
-
-def ensure_dataset_asset_link(dataset_root: Path, name: str, source_dir: Path) -> str:
-    source_dir = Path(source_dir)
-    if not source_dir.is_dir():
-        return ""
-
-    link_path = dataset_root / name
-    if _paths_equivalent(link_path, source_dir):
-        return ""
-    if link_path.exists() or link_path.is_symlink():
-        raise FileExistsError(
-            f"Cannot link {name}: {link_path} already exists and does not point to {source_dir}"
-        )
-
-    _create_directory_link(link_path, source_dir)
-    return str(link_path)
-
-
 def find_lfs_loader_conflict_markers(dataset_root: Path) -> list[Path]:
     return [dataset_root / name for name in LICHTFELD_TRANSFORMS_MARKERS if (dataset_root / name).is_file()]
 
@@ -527,38 +415,6 @@ def build_colmap_records(
     return cameras, images, missing
 
 
-def write_cameras_txt(path: Path, cameras: list[ColmapCamera]) -> None:
-    with path.open("w", encoding="utf-8", newline="\n") as f:
-        f.write("# Camera list with one line of data per camera:\n")
-        f.write("#   CAMERA_ID, MODEL, WIDTH, HEIGHT, PARAMS[]\n")
-        f.write(f"# Number of cameras: {len(cameras)}\n")
-        for camera in cameras:
-            params = " ".join(f"{value:.12g}" for value in camera.params)
-            f.write(f"{camera.camera_id} {camera.model} {camera.width} {camera.height} {params}\n")
-
-
-def write_images_txt(path: Path, images: list[ColmapImage]) -> None:
-    with path.open("w", encoding="utf-8", newline="\n") as f:
-        f.write("# Image list with two lines of data per image:\n")
-        f.write("#   IMAGE_ID, QW, QX, QY, QZ, TX, TY, TZ, CAMERA_ID, NAME\n")
-        f.write("#   POINTS2D[] as (X, Y, POINT3D_ID)\n")
-        f.write(f"# Number of images: {len(images)}\n")
-        for image in images:
-            qw, qx, qy, qz = image.qvec
-            tx, ty, tz = image.tvec
-            f.write(
-                f"{image.image_id} {qw:.12g} {qx:.12g} {qy:.12g} {qz:.12g} "
-                f"{tx:.12g} {ty:.12g} {tz:.12g} {image.camera_id} {image.name}\n\n"
-            )
-
-
-def write_empty_points3d_txt(path: Path) -> None:
-    with path.open("w", encoding="utf-8", newline="\n") as f:
-        f.write("# 3D point list with one line of data per point:\n")
-        f.write("#   POINT3D_ID, X, Y, Z, R, G, B, ERROR, TRACK[] as (IMAGE_ID, POINT2D_IDX)\n")
-        f.write("# Number of points: 0\n")
-
-
 def convert(
     csv_path: Path,
     output_dir: Path,
@@ -590,6 +446,15 @@ def convert(
         )
 
     rows = read_realityscan_csv(csv_path)
+    plan = build_realityscan_lfs_dataset_plan(
+        rows,
+        images_dir,
+        masks_dir,
+        pre_undistort_distorted_images=pre_undistort_distorted_images,
+        skip_missing_images=skip_missing_images,
+    )
+    if plan.issues:
+        raise FileNotFoundError("\n".join(plan.issues))
     asset_stats: dict[str, int] = {}
     camera_payloads_by_name: dict[str, tuple[str, int, int, tuple[float, ...]]] | None = None
     effective_images_dir = images_dir
@@ -621,11 +486,7 @@ def convert(
         if mask_link:
             linked_assets.append(mask_link)
 
-    sparse_dir = output_dir / SPARSE_RELATIVE_DIR
-    sparse_dir.mkdir(parents=True, exist_ok=True)
-    write_cameras_txt(sparse_dir / "cameras.txt", cameras)
-    write_images_txt(sparse_dir / "images.txt", images)
-    write_empty_points3d_txt(sparse_dir / "points3D.txt")
+    sparse_dir = write_colmap_text_dataset(output_dir, cameras, images).sparse_dir
 
     pointcloud_output = ""
     if ply_path is not None:
@@ -636,6 +497,21 @@ def convert(
         write_transformed_ply(ply_path, pointcloud_dest, lichtfeld_colmap_pointcloud_matrix(pointcloud_rotation_x_deg))
         pointcloud_output = str(pointcloud_dest)
 
+    _write_manifest(
+        output_dir,
+        {
+            "schema_version": 1,
+            "kind": "lichtfeld_colmap",
+            "source_kind": "realityscan_csv_ply",
+            "images_dir": "images" if (output_dir / "images").exists() else str(effective_images_dir),
+            "masks_dir": "masks" if (output_dir / "masks").exists() else str(effective_masks_dir) if effective_masks_dir.is_dir() else "",
+            "sparse_dir": SPARSE_RELATIVE_DIR.as_posix(),
+            "plan_action_counts": plan.action_counts,
+            "asset_stats": asset_stats,
+            "pre_undistort_distorted_images": bool(pre_undistort_distorted_images),
+        },
+    )
+
     return {
         "csv_path": str(csv_path),
         "output_dir": str(output_dir),
@@ -643,6 +519,7 @@ def convert(
         "masks_dir": str(effective_masks_dir) if effective_masks_dir.is_dir() else "",
         "linked_assets": linked_assets,
         "asset_stats": asset_stats,
+        "plan_action_counts": plan.action_counts,
         "sparse_dir": str(sparse_dir),
         "pointcloud": pointcloud_output,
         "num_csv_rows": len(rows),
@@ -656,16 +533,24 @@ def convert(
     }
 
 
+def _write_manifest(output_dir: Path, payload: dict[str, Any]) -> None:
+    (output_dir / "stechdrive_dataset_manifest.json").write_text(
+        json.dumps(payload, indent=2, ensure_ascii=False),
+        encoding="utf-8",
+    )
+
+
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Create a LichtFeld-compatible COLMAP text dataset from RealityScan CSV + PLY exports.",
     )
-    parser.add_argument("csv_path", help="RealityScan registration CSV exported for Postshot")
+    parser.add_argument("csv_path", nargs="?", help="RealityScan registration CSV exported for Postshot")
     parser.add_argument(
         "output_dir",
         nargs="?",
         help="Dataset root. Defaults to <csv folder>/lfs_colmap",
     )
+    parser.add_argument("--job", default="", help="Versioned dataset job JSON")
     parser.add_argument("--images-dir", help="Existing images directory. Defaults to <csv folder>/images")
     parser.add_argument("--masks-dir", help="Existing masks directory. Defaults to <csv folder>/masks when present")
     parser.add_argument("--ply", help="RealityScan PLY to rotate for LichtFeld COLMAP loading")
@@ -703,23 +588,40 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
-    csv_path = Path(args.csv_path)
-    default_name = DEFAULT_UNDISTORTED_DATASET_DIR_NAME if args.pre_undistort_distorted_images else DEFAULT_DATASET_DIR_NAME
-    output_dir = Path(args.output_dir) if args.output_dir else csv_path.parent / default_name
     try:
-        result = convert(
-            csv_path,
-            output_dir,
-            images_dir=Path(args.images_dir) if args.images_dir else None,
-            masks_dir=Path(args.masks_dir) if args.masks_dir else None,
-            ply_path=Path(args.ply) if args.ply else None,
-            camera_rotation_x_deg=args.camera_rotation_x_deg,
-            pointcloud_rotation_x_deg=args.pointcloud_rotation_x_deg,
-            skip_missing_images=args.skip_missing_images,
-            allow_mixed_loader_root=args.allow_mixed_loader_root,
-            pre_undistort_distorted_images=args.pre_undistort_distorted_images,
-            undistort_alpha=args.undistort_alpha,
-        )
+        if args.job:
+            job = load_dataset_job(args.job, expected_kind=JOB_KIND_REALITYSCAN_LFS_COLMAP)
+            result = convert(
+                Path(str(job["csv_path"])),
+                Path(str(job["output_dir"])),
+                images_dir=Path(str(job["images_dir"])) if str(job.get("images_dir") or "") else None,
+                masks_dir=Path(str(job["masks_dir"])) if str(job.get("masks_dir") or "") else None,
+                ply_path=Path(str(job["ply_path"])) if str(job.get("ply_path") or "") else None,
+                camera_rotation_x_deg=float(job.get("camera_rotation_x_deg", 90.0)),
+                pointcloud_rotation_x_deg=float(job.get("pointcloud_rotation_x_deg", 90.0)),
+                skip_missing_images=bool(job.get("skip_missing_images")),
+                pre_undistort_distorted_images=bool(job.get("pre_undistort_distorted_images")),
+                undistort_alpha=float(job.get("undistort_alpha", DEFAULT_UNDISTORT_ALPHA)),
+            )
+        else:
+            if not args.csv_path:
+                raise ValueError("csv_path is required unless --job is used")
+            csv_path = Path(args.csv_path)
+            default_name = DEFAULT_UNDISTORTED_DATASET_DIR_NAME if args.pre_undistort_distorted_images else DEFAULT_DATASET_DIR_NAME
+            output_dir = Path(args.output_dir) if args.output_dir else csv_path.parent / default_name
+            result = convert(
+                csv_path,
+                output_dir,
+                images_dir=Path(args.images_dir) if args.images_dir else None,
+                masks_dir=Path(args.masks_dir) if args.masks_dir else None,
+                ply_path=Path(args.ply) if args.ply else None,
+                camera_rotation_x_deg=args.camera_rotation_x_deg,
+                pointcloud_rotation_x_deg=args.pointcloud_rotation_x_deg,
+                skip_missing_images=args.skip_missing_images,
+                allow_mixed_loader_root=args.allow_mixed_loader_root,
+                pre_undistort_distorted_images=args.pre_undistort_distorted_images,
+                undistort_alpha=args.undistort_alpha,
+            )
     except Exception as exc:
         print(f"Error: {exc}", file=sys.stderr)
         return 1
