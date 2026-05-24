@@ -39,6 +39,8 @@ def test_metashape_dataset_job_round_trips(tmp_path: Path) -> None:
     assert loaded["views"] == [{"name": "pz", "enabled": True}]
     assert loaded["output_bit_depth"] == "source"
     assert loaded["jpg_quality"] == 88
+    assert loaded["axis_transform"] == "none"
+    assert loaded["final_orientation"] == "none"
 
 
 def test_realityscan_dataset_job_rejects_wrong_kind(tmp_path: Path) -> None:

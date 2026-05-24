@@ -517,6 +517,8 @@ def test_colmap_text_model_tool_uses_mixed_writer_for_mixed_metashape_xml(tmp_pa
     assert job["output_dir"] == str(scene / "output" / "metashape_colmap")
     assert job["output_bit_depth"] == "8"
     assert job["jpg_quality"] == 95
+    assert job["axis_transform"] == "none"
+    assert job["final_orientation"] == "lichtfeld"
 
 
 def test_realityscan_realign_profile_is_step4_only(tmp_path: Path) -> None:

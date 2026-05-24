@@ -24,6 +24,8 @@ def metashape_colmap_job(
     output_bit_depth: str,
     jpg_quality: int,
     undistort_alpha: float,
+    axis_transform: str = "none",
+    final_orientation: str = "none",
 ) -> dict[str, Any]:
     return {
         "schema_version": DATASET_JOB_SCHEMA_VERSION,
@@ -40,6 +42,8 @@ def metashape_colmap_job(
         "output_bit_depth": str(output_bit_depth),
         "jpg_quality": int(jpg_quality),
         "undistort_alpha": float(undistort_alpha),
+        "axis_transform": str(axis_transform),
+        "final_orientation": str(final_orientation),
     }
 
 

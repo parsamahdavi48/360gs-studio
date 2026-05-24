@@ -37,6 +37,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--output-bit-depth", default="8", choices=("8", "source"), help="Generated image bit depth")
     parser.add_argument("--jpg-quality", type=int, default=95, help="JPG/WebP output quality")
     parser.add_argument("--undistort-alpha", type=float, default=1.0, help="OpenCV undistort alpha for frame cameras")
+    parser.add_argument("--axis-transform", default="none", choices=("none", "postshot", "brush"), help="World axis transform")
+    parser.add_argument("--final-orientation", default="none", choices=("none", "lichtfeld", "realityscan"), help="Final world orientation")
     return parser.parse_args(argv)
 
 
@@ -59,6 +61,8 @@ def main(argv: list[str] | None = None) -> int:
                 output_bit_depth=str(job.get("output_bit_depth") or "8"),
                 jpg_quality=int(job.get("jpg_quality", 95)),
                 undistort_alpha=float(job.get("undistort_alpha", 1.0)),
+                axis_transform=str(job.get("axis_transform") or "none"),
+                final_orientation=str(job.get("final_orientation") or "none"),
             )
         else:
             if not all((args.scene, args.images, args.xml, args.output, args.views_json)):
@@ -76,6 +80,8 @@ def main(argv: list[str] | None = None) -> int:
                 output_bit_depth=args.output_bit_depth,
                 jpg_quality=args.jpg_quality,
                 undistort_alpha=args.undistort_alpha,
+                axis_transform=args.axis_transform,
+                final_orientation=args.final_orientation,
             )
     except Exception as exc:
         print(f"Error: {exc}", file=sys.stderr)

@@ -7,11 +7,14 @@ import pytest
 from PIL import Image
 
 from core.metashape_colmap_dataset import (
+    dataset_world_transform,
     export_metashape_colmap_dataset,
     metashape_camera_matrix_to_output_world,
     metashape_model_requires_mixed_colmap_writer,
     metashape_pointcloud_matrix,
 )
+from core.transforms_to_colmap import c2w_to_w2c
+from vendor.metashape_360_lfs.metashape_360_lfs import transform_camera_matrix as legacy_transform_camera_matrix
 
 _IDENTITY = "1 0 0 0 0 1 0 0 0 0 1 0 0 0 0 1"
 
@@ -167,10 +170,76 @@ def test_metashape_model_requires_mixed_writer_for_distortion(tmp_path: Path) ->
 def test_metashape_camera_transform_uses_pointcloud_basis_once() -> None:
     expected = metashape_pointcloud_matrix()
     expected[:, 1:3] *= -1.0
+    expected = np.diag([-1.0, 1.0, -1.0, 1.0]) @ expected
 
     actual = metashape_camera_matrix_to_output_world(np.eye(4))
 
     assert np.allclose(actual, expected)
+
+
+def test_metashape_colmap_camera_transform_matches_legacy_vendor() -> None:
+    transform = np.array(
+        [
+            [0.96, -0.02, 0.28, 1.25],
+            [0.10, 0.97, -0.21, -2.5],
+            [-0.26, 0.23, 0.94, 3.75],
+            [0.0, 0.0, 0.0, 1.0],
+        ],
+        dtype=np.float64,
+    )
+
+    assert np.allclose(
+        metashape_camera_matrix_to_output_world(transform),
+        legacy_transform_camera_matrix(transform, fix_upside_down=True),
+    )
+
+
+def test_metashape_colmap_w2c_matches_transforms_to_colmap(tmp_path: Path) -> None:
+    scene = tmp_path / "scene"
+    _write_image(scene / "images" / "pano.jpg", (64, 32), (80, 120, 160))
+    xml = scene / "metashape.xml"
+    _write_mixed_xml(xml)
+
+    result = export_metashape_colmap_dataset(
+        scene_dir=scene,
+        images_dir=scene / "images",
+        masks_dir=None,
+        xml_path=xml,
+        ply_path=None,
+        output_dir=scene / "output" / "metashape_colmap",
+        views=[{"name": "pz", "yaw": 0.0, "pitch": 0.0}],
+        output_scale=0.5,
+        output_format="jpg",
+    )
+    _ = result
+    line = next(
+        row
+        for row in (scene / "output" / "metashape_colmap" / "sparse" / "0" / "images.txt").read_text().splitlines()
+        if row and not row.startswith("#")
+    )
+    parts = line.split()
+    qvec = np.array([float(value) for value in parts[1:5]])
+    tvec = np.array([float(value) for value in parts[5:8]])
+    c2w = metashape_camera_matrix_to_output_world(np.eye(4))
+    expected_r, expected_t = c2w_to_w2c(c2w)
+
+    # Compare translation directly and rotation via quaternion-generated matrix.
+    assert np.allclose(tvec, expected_t)
+    assert np.allclose(_rotation_from_quaternion(qvec), expected_r)
+
+
+def test_metashape_colmap_dataset_world_transform_matches_nerf_route() -> None:
+    expected = np.array(
+        [
+            [0.0, 0.0, 1.0, 0.0],
+            [0.0, -1.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0, 0.0],
+            [0.0, 0.0, 0.0, 1.0],
+        ],
+        dtype=np.float64,
+    )
+
+    assert np.allclose(dataset_world_transform("none", "lichtfeld"), expected)
 
 
 def test_export_metashape_colmap_dataset_rejects_empty_conversion(tmp_path: Path) -> None:
@@ -192,3 +261,15 @@ def test_export_metashape_colmap_dataset_rejects_empty_conversion(tmp_path: Path
             output_scale=1.0,
             output_format="jpg",
         )
+
+
+def _rotation_from_quaternion(qvec: np.ndarray) -> np.ndarray:
+    qw, qx, qy, qz = qvec
+    return np.array(
+        [
+            [1 - 2 * qy * qy - 2 * qz * qz, 2 * qx * qy - 2 * qz * qw, 2 * qx * qz + 2 * qy * qw],
+            [2 * qx * qy + 2 * qz * qw, 1 - 2 * qx * qx - 2 * qz * qz, 2 * qy * qz - 2 * qx * qw],
+            [2 * qx * qz - 2 * qy * qw, 2 * qy * qz + 2 * qx * qw, 1 - 2 * qx * qx - 2 * qy * qy],
+        ],
+        dtype=np.float64,
+    )

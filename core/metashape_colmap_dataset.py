@@ -39,6 +39,8 @@ from core.metashape_model import (
     MetashapeSensor,
     parse_metashape_model,
 )
+from core.metashape_nerf_dataset import AXIS_TRANSFORM_NONE, axis_transform_matrix, normalize_axis_transform
+from core.orientation_correction import FINAL_ORIENTATION_NONE, final_orientation_matrix, normalize_final_orientation
 from core.realityscan_to_transforms import transform_points, write_transformed_ply
 from core.scene_inventory import build_scene_inventory
 from core.transforms_to_colmap import read_ply_points, write_points3d_txt
@@ -72,6 +74,8 @@ def export_metashape_colmap_dataset(
     jpg_quality: int = 95,
     fov_deg: float = DEFAULT_FOV_DEG,
     undistort_alpha: float = DEFAULT_UNDISTORT_ALPHA,
+    axis_transform: str = AXIS_TRANSFORM_NONE,
+    final_orientation: str = FINAL_ORIENTATION_NONE,
 ) -> MetashapeColmapExportResult:
     scene = Path(scene_dir)
     images_root = Path(images_dir)
@@ -91,6 +95,7 @@ def export_metashape_colmap_dataset(
     images: list[ColmapImage] = []
     camera_ids: dict[tuple[Any, ...], int] = {}
     action_counts: dict[str, int] = {}
+    world_transform = dataset_world_transform(axis_transform, final_orientation)
 
     camera_by_id = {camera.camera_id: camera for camera in model.cameras}
     for item in plan.items:
@@ -105,7 +110,7 @@ def export_metashape_colmap_dataset(
             if item.mask_rel_path
             else None
         )
-        c2w = metashape_camera_to_world(model, camera)
+        c2w = world_transform @ metashape_camera_to_world(model, camera)
         if item.action == EXPORT_ACTION_EXPAND_ERP_TO_VIEWS:
             _append_expanded_erp_records(
                 source_image,
@@ -178,7 +183,7 @@ def export_metashape_colmap_dataset(
     if ply_path:
         ply = Path(ply_path)
         if ply.is_file():
-            _write_colmap_pointcloud_files(ply, sparse_dir)
+            _write_colmap_pointcloud_files(ply, sparse_dir, world_transform)
     _write_manifest(output, plan.source_kind, action_counts, plan.warnings)
     return MetashapeColmapExportResult(
         output_dir=output,
@@ -203,7 +208,16 @@ def metashape_camera_to_world(model: MetashapeModel, camera: MetashapeCamera) ->
 def metashape_camera_matrix_to_output_world(transform: np.ndarray) -> np.ndarray:
     converted = metashape_pointcloud_matrix() @ transform
     converted[:, 1:3] *= -1.0
-    return converted
+    y_rot_180 = np.array(
+        [
+            [-1.0, 0.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0, 0.0],
+            [0.0, 0.0, -1.0, 0.0],
+            [0.0, 0.0, 0.0, 1.0],
+        ],
+        dtype=np.float64,
+    )
+    return y_rot_180 @ converted
 
 
 def metashape_pointcloud_matrix() -> np.ndarray:
@@ -314,7 +328,7 @@ def _append_colmap_image_record(
         camera_id = len(cameras) + 1
         camera_ids[signature] = camera_id
         cameras.append(ColmapCamera(camera_id, model, int(width), int(height), params))
-    r_cw, t_cw = _opengl_c2w_to_colmap_w2c(c2w)
+    r_cw, t_cw = _c2w_to_colmap_w2c(c2w)
     images.append(
         ColmapImage(
             image_id=len(images) + 1,
@@ -326,11 +340,9 @@ def _append_colmap_image_record(
     )
 
 
-def _opengl_c2w_to_colmap_w2c(c2w: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
-    converted = c2w.copy()
-    converted[:3, 1:3] *= -1.0
-    r_wc = converted[:3, :3]
-    t_wc = converted[:3, 3]
+def _c2w_to_colmap_w2c(c2w: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    r_wc = c2w[:3, :3]
+    t_wc = c2w[:3, 3]
     r_cw = r_wc.T
     t_cw = -r_cw @ t_wc
     return r_cw, t_cw
@@ -463,13 +475,21 @@ def _write_manifest(output: Path, source_kind: str, action_counts: dict[str, int
     )
 
 
-def _write_colmap_pointcloud_files(source_ply: Path, sparse_dir: Path) -> int:
-    matrix = metashape_pointcloud_matrix()
+def _write_colmap_pointcloud_files(source_ply: Path, sparse_dir: Path, world_transform: np.ndarray | None = None) -> int:
+    matrix = (np.eye(4, dtype=np.float64) if world_transform is None else world_transform) @ metashape_pointcloud_matrix()
     points, colors = read_ply_points(source_ply)
     transformed = transform_points(points, matrix)
     count = write_points3d_txt(sparse_dir / "points3D.txt", transformed, colors)
     write_transformed_ply(source_ply, sparse_dir / "points3D.ply", matrix)
     return count
+
+
+def dataset_world_transform(axis_transform: object, final_orientation: object) -> np.ndarray:
+    matrix = axis_transform_matrix(normalize_axis_transform(axis_transform))
+    orientation = normalize_final_orientation(final_orientation)
+    if orientation != FINAL_ORIENTATION_NONE:
+        matrix = final_orientation_matrix(orientation) @ matrix
+    return matrix
 
 
 def metashape_model_requires_mixed_colmap_writer(xml_path: str | Path) -> bool:

@@ -371,6 +371,8 @@ class ColmapTextModelTool(BaseStepWidget):
                     output_bit_depth=str(self.output_bit_depth_combo.currentData() or "8"),
                     jpg_quality=self._jpg_quality(),
                     undistort_alpha=1.0,
+                    axis_transform=self._axis_transform_mode(),
+                    final_orientation=self._final_orientation(),
                 ),
             )
             cmd = [
