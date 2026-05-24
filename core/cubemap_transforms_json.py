@@ -15,24 +15,36 @@ from core.colmap_rig_export import (
     frame_filename,
     pinhole_camera_params,
 )
+from core.cubemap_image_io import (
+    RAW_IMAGE_EXTS as _RAW_IMAGE_EXTS,
+)
+from core.cubemap_image_io import (
+    load_equirect,
+    remap_with_channels,
+    resolve_output_ext,
+    save_image,
+    split_filename_for_output,
+)
+from core.cubemap_image_io import (
+    max_value_for_dtype as _max_value_for_dtype,
+)
+from core.cubemap_remap import (
+    build_remap,
+)
+from core.cubemap_remap import (
+    remap_cache_key as _remap_cache_key,
+)
 from core.cubemap_view_spec import (
-    build_remap_spec,
     load_views_json,
     make_default_cube6_views,
     views_to_dicts,
 )
-from core.image_io import imread_unicode, imwrite_unicode
-from core.orientation_correction import (
-    FINAL_ORIENTATION_NONE,
-    FINAL_ORIENTATION_STAGE_CUBEMAP_CLI,
-    final_orientation_is_applied,
-    final_orientation_matrix,
-    final_orientation_writes_pointcloud,
-    mark_final_orientation,
-    normalize_final_orientation,
-    resolve_pointcloud_path,
-    write_final_orientation_pointcloud,
+from core.cubemap_worker_plan import (
+    parse_positive_int_or_auto,
+    resolve_remap_cache_limit,
+    resolve_worker_count,
 )
+from core.image_io import imread_unicode
 
 _WORKER_REMAP_TABLES: dict[str, tuple[np.ndarray, np.ndarray]] | None = None
 _WORKER_VIEWS: list[dict] | None = None
@@ -55,15 +67,6 @@ _WORKER_REMAP_CACHE_LIMIT = 12
 _WORKER_INPUT_SIZE: tuple[int, int] = (0, 0)
 _WORKER_FOV: float = 90.0
 _WORKER_OUTPUT_SIZE: int = 0
-
-
-def _quantize_yaw_offset(yaw_offset: float) -> float:
-    """yaw オフセットをキャッシュキーに丸める（mod 360°、小数 3 桁）。"""
-    return round(yaw_offset % 360.0, 3)
-
-
-def _remap_cache_key(input_size: tuple[int, int], yaw_offset: float) -> tuple[int, int, float]:
-    return int(input_size[0]), int(input_size[1]), _quantize_yaw_offset(yaw_offset)
 
 
 def get_remap_tables_for_offset(yaw_offset: float) -> dict[str, tuple[np.ndarray, np.ndarray]]:
@@ -117,219 +120,10 @@ def get_remap_tables_for_file(path: str, yaw_offset: float) -> dict[str, tuple[n
     return get_remap_tables_for_input_size(remap_input_size(path), yaw_offset)
 
 
-def frame_yaw_offset(frame_index: int, step_deg: float) -> float:
-    """フレーム index と step から yaw オフセットを mod 360 で返す。
-
-    Step = 0 なら常に 0（旧動作）。Step > 0 ならフレームごとに step ずつ増える。
-    """
-    if step_deg == 0.0:
-        return 0.0
-    return (float(frame_index) * float(step_deg)) % 360.0
-
-
-def _parse_positive_int_or_auto(value: str | int | None, name: str) -> int | None:
-    if value is None:
-        return None
-    text = str(value).strip().lower()
-    if text in {"", "auto"}:
-        return None
-    try:
-        parsed = int(text)
-    except ValueError as e:
-        raise ValueError(f"{name} must be 'auto' or a positive integer") from e
-    if parsed <= 0:
-        raise ValueError(f"{name} must be 'auto' or a positive integer")
-    return parsed
-
-
-def _available_memory_bytes() -> int | None:
-    if os.name == "nt":
-        try:
-            import ctypes
-
-            class MEMORYSTATUSEX(ctypes.Structure):
-                _fields_ = [
-                    ("dwLength", ctypes.c_ulong),
-                    ("dwMemoryLoad", ctypes.c_ulong),
-                    ("ullTotalPhys", ctypes.c_ulonglong),
-                    ("ullAvailPhys", ctypes.c_ulonglong),
-                    ("ullTotalPageFile", ctypes.c_ulonglong),
-                    ("ullAvailPageFile", ctypes.c_ulonglong),
-                    ("ullTotalVirtual", ctypes.c_ulonglong),
-                    ("ullAvailVirtual", ctypes.c_ulonglong),
-                    ("ullAvailExtendedVirtual", ctypes.c_ulonglong),
-                ]
-
-            stat = MEMORYSTATUSEX()
-            stat.dwLength = ctypes.sizeof(MEMORYSTATUSEX)
-            if ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(stat)):
-                return int(stat.ullAvailPhys)
-        except Exception:
-            return None
-    try:
-        page_size = int(os.sysconf("SC_PAGE_SIZE"))
-        avail_pages = int(os.sysconf("SC_AVPHYS_PAGES"))
-        return page_size * avail_pages
-    except (AttributeError, ValueError, OSError):
-        return None
-
-
-def _estimate_remap_offset_bytes(output_size: int, view_count: int) -> int:
-    output_pixels = max(1, int(output_size)) ** 2
-    # map_x + map_y, both float32.
-    return output_pixels * max(1, int(view_count)) * 2 * 4
-
-
-def _estimate_worker_memory_bytes(
-    input_size: tuple[int, int],
-    output_size: int,
-    view_count: int,
-    remap_cache_limit: int,
-) -> int:
-    src_w, src_h = input_size
-    input_bytes = max(1, int(src_w)) * max(1, int(src_h)) * 8
-    remap_bytes = _estimate_remap_offset_bytes(output_size, view_count) * max(1, int(remap_cache_limit))
-    scratch_bytes = max(1, int(output_size)) ** 2 * 16
-    return (256 * 1024 * 1024) + input_bytes + remap_bytes + scratch_bytes
-
-
-def resolve_worker_count(
-    value: str | int | None,
-    input_size: tuple[int, int],
-    output_size: int,
-    view_count: int,
-    remap_cache_limit: int,
-) -> int:
-    requested = _parse_positive_int_or_auto(value, "--workers")
-    if requested is not None:
-        return requested
-
-    cpu_cap = min(16, os.cpu_count() or 1)
-    available = _available_memory_bytes()
-    if not available:
-        return cpu_cap
-
-    per_worker = _estimate_worker_memory_bytes(input_size, output_size, view_count, remap_cache_limit)
-    if per_worker <= 0:
-        return cpu_cap
-    memory_cap = int((available * 0.55) // per_worker)
-    return max(1, min(cpu_cap, memory_cap))
-
-
-def resolve_remap_cache_limit(
-    value: str | int | None,
-    frame_yaw_offsets: list[float] | None,
-    output_size: int,
-    view_count: int,
-    worker_count: int,
-) -> int:
-    requested = _parse_positive_int_or_auto(value, "--remap-cache-limit")
-    if requested is not None:
-        return requested
-
-    if frame_yaw_offsets:
-        desired = len({_quantize_yaw_offset(offset) for offset in frame_yaw_offsets})
-    else:
-        desired = 1
-    desired = max(1, min(desired, 12))
-
-    available = _available_memory_bytes()
-    if not available:
-        return desired
-
-    per_offset = _estimate_remap_offset_bytes(output_size, view_count)
-    if per_offset <= 0:
-        return desired
-    per_worker_budget = int((available * 0.35) // max(1, int(worker_count)))
-    memory_limit = max(1, per_worker_budget // per_offset)
-    return max(1, min(desired, memory_limit))
-
-
 def parse_args():
     from core.cubemap_transforms_json_cli import parse_args as _parse_args
 
     return _parse_args()
-
-
-def rot4(r3: np.ndarray) -> np.ndarray:
-    r4 = np.eye(4)
-    r4[:3, :3] = r3
-    return r4
-
-
-def rotation_matrix(yaw_deg: float, pitch_deg: float, forward: bool) -> np.ndarray:
-    yaw = np.deg2rad(yaw_deg)
-    pitch = np.deg2rad(pitch_deg)
-
-    ry = np.array(
-        [
-            [np.cos(yaw), 0, np.sin(yaw)],
-            [0, 1, 0],
-            [-np.sin(yaw), 0, np.cos(yaw)],
-        ]
-    )
-
-    rx = np.array(
-        [
-            [1, 0, 0],
-            [0, np.cos(pitch), -np.sin(pitch)],
-            [0, np.sin(pitch), np.cos(pitch)],
-        ]
-    )
-
-    r = rx @ ry if forward else ry @ rx
-    r[np.abs(r) < 1e-10] = 0.0
-    return r
-
-
-def build_remap(
-    input_size: tuple[int, int],
-    fov_deg: float,
-    yaw_deg: float,
-    pitch_deg: float,
-    output_size: int,
-) -> tuple[np.ndarray, np.ndarray]:
-    spec = build_remap_spec(
-        input_size=input_size,
-        output_size=output_size,
-        fov_deg=fov_deg,
-        yaw_deg=yaw_deg,
-        pitch_deg=pitch_deg,
-    )
-    input_size = spec.input_size
-    output_size = spec.output_size
-    fov_deg = spec.fov_deg
-    yaw_deg = spec.yaw_deg
-    pitch_deg = spec.pitch_deg
-    # ピクセル中心規約: 主点を (W-1)/2 に置く（画像の幾何中心 = ピクセル中心グリッドの中央）。
-    # cv2.remap は map_x[i,j], map_y[i,j] を「出力ピクセル中心 (j,i) のサンプリング座標」と解釈するため、
-    # ここでも整数グリッド arange に対して (W-1)/2 を引く必要がある。
-    xs, ys = np.meshgrid(
-        np.arange(output_size, dtype=np.float64),
-        np.arange(output_size, dtype=np.float64),
-    )
-    cx = xs - (output_size - 1) / 2.0
-    cy = ys - (output_size - 1) / 2.0
-
-    focal = 0.5 * output_size / np.tan(np.deg2rad(fov_deg) / 2.0)
-
-    rays = np.stack([cx, -cy, np.full_like(cx, focal)], axis=-1)
-    rays /= np.linalg.norm(rays, axis=-1, keepdims=True)
-
-    r = rotation_matrix(yaw_deg, pitch_deg, False)
-    rays = rays @ r.T
-
-    dx, dy, dz = rays[..., 0], rays[..., 1], rays[..., 2]
-
-    # 緯度は arctan2 で計算: 単位ベクトルでなくても安定、極近傍で勾配が爆発しない。
-    lon = np.arctan2(dx, dz)
-    lat = np.arctan2(dy, np.sqrt(dx * dx + dz * dz))
-
-    # 連続経度・緯度の equirect サンプリング座標。end-point は input_size に丸まらないが BORDER_WRAP で補正。
-    map_x = (lon / np.pi + 1.0) * 0.5 * input_size[0]
-    map_y = (0.5 - lat / np.pi) * input_size[1]
-
-    return map_x.astype(np.float32), map_y.astype(np.float32)
 
 
 def make_default_views(yaw: float, stitch: float, no_top: bool, no_bottom: bool) -> list[dict]:
@@ -338,113 +132,6 @@ def make_default_views(yaw: float, stitch: float, no_top: bool, no_bottom: bool)
 
 def load_custom_views(path: str) -> list[dict]:
     return views_to_dicts(load_views_json(path))
-
-
-_RAW_IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".tif", ".tiff", ".webp", ".bmp"}
-_ALPHA_CAPABLE_EXTS = {".png", ".tif", ".tiff", ".webp"}
-_HIGH_BIT_EXTS = {".png", ".tif", ".tiff"}
-
-
-def split_filename_for_output(input_file: str) -> tuple[str, str, str]:
-    basename, ext = os.path.splitext(os.path.basename(input_file))
-    ext2 = ""
-    lower = basename.lower()
-    if lower.endswith(tuple(_RAW_IMAGE_EXTS)):
-        basename, ext2 = os.path.splitext(basename)
-    return basename, ext2, ext
-
-
-def resolve_output_ext(input_ext: str, output_format: str | None) -> str:
-    """`output_format` (None/auto/jpg/png/tiff/webp) と入力拡張子から出力拡張子を決定。"""
-    if not output_format or output_format.lower() == "auto":
-        ext = input_ext.lower()
-        if ext == ".jpeg":
-            return ".jpg"
-        if ext in _RAW_IMAGE_EXTS:
-            return ext
-        return ".jpg"
-    fmt = output_format.lower().lstrip(".")
-    if fmt in {"jpg", "jpeg"}:
-        return ".jpg"
-    if fmt in {"png", "tif", "tiff", "webp", "bmp"}:
-        return f".{fmt}"
-    raise ValueError(f"Unsupported output format: {output_format}")
-
-
-def load_equirect(path: str) -> np.ndarray:
-    """ビット深度・チャネル数・α を保持したまま equirect 画像を読み込む（cv2、BGR/BGRA）。"""
-    img = imread_unicode(path, cv2.IMREAD_UNCHANGED)
-    if img is None:
-        raise OSError(f"Cannot read image: {path}")
-    return img
-
-
-def _max_value_for_dtype(dtype: np.dtype) -> int:
-    if dtype == np.uint16:
-        return 65535
-    return 255
-
-
-def to_uint8_image(arr: np.ndarray) -> np.ndarray:
-    """画像・マスク配列を8bitへ変換する。uint8はそのまま返す。"""
-    if arr.dtype == np.uint8:
-        return arr
-    if np.issubdtype(arr.dtype, np.integer):
-        max_value = np.iinfo(arr.dtype).max
-        if max_value <= 0:
-            return arr.astype(np.uint8)
-        return np.clip(np.rint(arr.astype(np.float64) * 255.0 / max_value), 0, 255).astype(np.uint8)
-    if np.issubdtype(arr.dtype, np.floating):
-        finite = np.nan_to_num(arr, nan=0.0, posinf=255.0, neginf=0.0)
-        if finite.size and float(np.nanmax(finite)) <= 1.0:
-            finite = finite * 255.0
-        return np.clip(np.rint(finite), 0, 255).astype(np.uint8)
-    return arr.astype(np.uint8)
-
-
-def remap_with_channels(arr: np.ndarray, map_x: np.ndarray, map_y: np.ndarray) -> np.ndarray:
-    """α チャネル含む任意チャネル数の equirect 配列をリマップ。
-
-    α 込みの場合はカラーと α を別々に補間して再結合（境界での色滲みを抑える）。
-    cv2.remap は uint8 / uint16 / float32 を直接サポートする。
-    """
-    if arr.ndim == 3 and arr.shape[2] == 4:
-        color = np.ascontiguousarray(arr[..., :3])
-        alpha = np.ascontiguousarray(arr[..., 3])
-        remapped_color = cv2.remap(color, map_x, map_y, interpolation=cv2.INTER_LINEAR, borderMode=cv2.BORDER_WRAP)
-        remapped_alpha = cv2.remap(alpha, map_x, map_y, interpolation=cv2.INTER_LINEAR, borderMode=cv2.BORDER_WRAP)
-        return np.dstack([remapped_color, remapped_alpha])
-    return cv2.remap(arr, map_x, map_y, interpolation=cv2.INTER_LINEAR, borderMode=cv2.BORDER_WRAP)
-
-
-def save_image(arr: np.ndarray, path: str, jpg_quality: int = 95, force_8bit: bool = False) -> None:
-    """画像を出力。出力フォーマットがビット深度・α 非対応なら自動 down-convert。"""
-    ext = os.path.splitext(path)[1].lower()
-    out = arr
-
-    if force_8bit:
-        out = to_uint8_image(out)
-
-    # JPG / WebP / BMP は α 非対応 → 落とす
-    if ext not in _ALPHA_CAPABLE_EXTS and out.ndim == 3 and out.shape[2] == 4:
-        out = out[..., :3]
-
-    # JPG / WebP / BMP は 8-bit のみ → high-bit を down-convert
-    if ext not in _HIGH_BIT_EXTS and out.dtype != np.uint8:
-        out = to_uint8_image(out)
-
-    if ext in (".jpg", ".jpeg"):
-        params = [int(cv2.IMWRITE_JPEG_QUALITY), int(jpg_quality)]
-    elif ext == ".png":
-        params = [int(cv2.IMWRITE_PNG_COMPRESSION), 3]
-    elif ext == ".webp":
-        params = [int(cv2.IMWRITE_WEBP_QUALITY), int(jpg_quality)]
-    else:
-        params = []
-
-    ok = imwrite_unicode(path, out, params)
-    if not ok:
-        raise OSError(f"Failed to write image: {path}")
 
 
 def remap_image(
@@ -512,178 +199,6 @@ def remap_image(
                 written += 1
 
     return written
-
-
-def rotation_angle_diff(r1: np.ndarray, r2: np.ndarray) -> float:
-    r = r1.T @ r2
-    cos_theta = (np.trace(r) - 1) / 2
-    cos_theta = np.clip(cos_theta, -1.0, 1.0)
-    return np.arccos(cos_theta)
-
-
-def make_output_file_path(file_path: str, view_name: str, output_format: str | None = None) -> str:
-    root, ext = os.path.splitext(file_path)
-    if ext:
-        out_ext = resolve_output_ext(ext, output_format)
-        return f"{root}_{view_name}{out_ext}"
-    return f"{file_path}_{view_name}"
-
-
-def transform_json(
-    input_dir: str,
-    input_json: str,
-    image_dir: str,
-    output_dir: str,
-    views: list[dict],
-    fov: float,
-    output_scale: float,
-    no_transform: bool,
-    allow_duplicate: bool,
-    brush_mode: bool = False,
-    yaw_offset_per_frame: float = 0.0,
-    final_orientation: str = FINAL_ORIENTATION_NONE,
-    output_format: str | None = None,
-) -> tuple[list[str], list[float], tuple[int, int], int]:
-    json_path = os.path.join(input_dir, input_json)
-    if not os.path.exists(json_path):
-        print(f"Error: {json_path} not found")
-        return [], [], (0, 0), 0
-
-    with open(json_path, encoding="utf-8") as f:
-        data = json.load(f)
-
-    if data.get("camera_model") != "EQUIRECTANGULAR":
-        print("Error: camera_model is not EQUIRECTANGULAR")
-        return [], [], (0, 0), 0
-
-    frames = data.get("frames")
-    if not isinstance(frames, list) or not frames:
-        print("Error: frames in transforms.json is empty")
-        return [], [], (0, 0), 0
-
-    input_size = (7840, 3920)
-    output_size = max(1, int(round(input_size[1] * output_scale)))
-
-    for frame in frames:
-        file_path = frame.get("file_path")
-        if not isinstance(file_path, str) or not file_path:
-            continue
-        probe = os.path.join(image_dir, file_path)
-        if os.path.exists(probe):
-            with Image.open(probe) as first_img:
-                input_size = first_img.size
-            output_size = max(1, int(round(input_size[1] * output_scale)))
-            break
-
-    if no_transform:
-        axis_transform = np.eye(4)
-    else:
-        axis_transform = rot4(np.array([[0, 0, -1], [1, 0, 0], [0, -1, 0]]))  # for Postshot/Brush
-        if brush_mode:
-            brush_rot = rot4(np.array([[1, 0, 0], [0, 0, 1], [0, -1, 0]]))  # for Brush
-            axis_transform = brush_rot @ axis_transform
-
-    final_orientation = normalize_final_orientation(final_orientation)
-    final_orientation_already_applied = final_orientation_is_applied(data, final_orientation)
-    if final_orientation != FINAL_ORIENTATION_NONE and not final_orientation_already_applied:
-        axis_transform = final_orientation_matrix(final_orientation) @ axis_transform
-
-    new_frames: list[dict] = []
-    image_files: list[str] = []
-    frame_yaw_offsets: list[float] = []
-    image_map: dict[str, np.ndarray] = {}
-
-    for frame in frames:
-        file_path = frame.get("file_path")
-        if not isinstance(file_path, str) or not file_path:
-            print("Skipped frame without file_path")
-            continue
-
-        try:
-            t = np.array(frame["transform_matrix"], dtype=float)
-        except Exception:
-            print(f"Skipped frame with invalid transform_matrix: {file_path}")
-            continue
-
-        if t.shape != (4, 4):
-            print(f"Skipped frame with non 4x4 transform_matrix: {file_path}")
-            continue
-
-        if not allow_duplicate and file_path in image_map:
-            r_diff = rotation_angle_diff(image_map[file_path][:3, :3], t[:3, :3])
-            t_diff = image_map[file_path][:3, 3] - t[:3, 3]
-            print(
-                "Skipped duplicated image: "
-                f"{file_path} (diff={np.rad2deg(r_diff):.3f} deg, {np.linalg.norm(t_diff):.4f} dist.)"
-            )
-            continue
-
-        t_world = axis_transform @ t
-
-        # ユニーク画像順の index を per-frame yaw offset の基準に使う
-        frame_index = len(image_files)
-        yaw_offset = frame_yaw_offset(frame_index, yaw_offset_per_frame)
-
-        image_map[file_path] = t
-        image_files.append(file_path)
-        frame_yaw_offsets.append(yaw_offset)
-
-        for view_index, view in enumerate(views):
-            view_name = view["name"]
-            yaw = float(view["yaw"]) + yaw_offset
-            pitch = view["pitch"]
-
-            new_frame: dict = {
-                "file_path": make_output_file_path(file_path, view_name, output_format),
-                "source_file_path": file_path,
-                "source_image_index": frame_index,
-                "view_name": view_name,
-                "view_index": view_index,
-                "yaw_offset_deg": yaw_offset,
-            }
-
-            r = rotation_matrix(yaw, pitch, True)
-            t_face = t_world @ rot4(r.T)
-            new_frame["transform_matrix"] = t_face.tolist()
-
-            new_frames.append(new_frame)
-
-    focal = output_size / 2.0 / np.tan(np.deg2rad(fov) / 2.0)
-    principal = (output_size - 1) / 2.0
-    out = {
-        "camera_model": "PINHOLE",
-        "w": output_size,
-        "h": output_size,
-        "fl_x": focal,
-        "fl_y": focal,
-        "cx": principal,
-        "cy": principal,
-        "frames": new_frames,
-    }
-    if final_orientation != FINAL_ORIENTATION_NONE:
-        mark_final_orientation(out, final_orientation, FINAL_ORIENTATION_STAGE_CUBEMAP_CLI)
-        if final_orientation_writes_pointcloud(final_orientation):
-            ply_source = resolve_pointcloud_path(Path(input_dir), data.get("ply_file_path"))
-            if ply_source is None:
-                print("Warning: final orientation requested, but input ply_file_path was not found")
-            else:
-                ply_dest = Path(output_dir) / "pointcloud.ply"
-                write_final_orientation_pointcloud(
-                    ply_source,
-                    ply_dest,
-                    final_orientation,
-                    already_applied=final_orientation_already_applied,
-                )
-                out["ply_file_path"] = ply_dest.name
-    elif data.get("ply_file_path"):
-        out["ply_file_path"] = data["ply_file_path"]
-
-    os.makedirs(output_dir, exist_ok=True)
-    with open(os.path.join(output_dir, "transforms.json"), "w", encoding="utf-8") as f:
-        json.dump(out, f, indent=2)
-    print(f"Saved transforms.json in {output_dir}")
-
-    return image_files, frame_yaw_offsets, input_size, output_size
 
 
 def collect_image_files(image_dir: str) -> list[str]:
@@ -1197,7 +712,7 @@ def convert_images(
             f"frame_yaw_offsets length ({len(frame_yaw_offsets)}) must match image_files length ({len(image_files)})"
         )
 
-    tentative_workers = _parse_positive_int_or_auto(workers, "--workers")
+    tentative_workers = parse_positive_int_or_auto(workers, "--workers")
     if tentative_workers is None:
         tentative_workers = min(16, os.cpu_count() or 1)
     resolved_cache_limit = resolve_remap_cache_limit(
@@ -1323,7 +838,7 @@ def convert_images_colmap_rig(
         export_masks=export_masks,
     )
     print(f"Converting {total_outputs} files...")
-    tentative_workers = _parse_positive_int_or_auto(workers, "--workers")
+    tentative_workers = parse_positive_int_or_auto(workers, "--workers")
     if tentative_workers is None:
         tentative_workers = min(16, os.cpu_count() or 1)
     resolved_cache_limit = resolve_remap_cache_limit(

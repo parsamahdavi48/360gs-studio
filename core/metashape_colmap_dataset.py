@@ -8,14 +8,16 @@ from typing import Any
 import cv2
 import numpy as np
 
-from core.cubemap_transforms_json import (
-    build_remap,
+from core.cubemap_image_io import (
     load_equirect,
     remap_with_channels,
     resolve_output_ext,
+    save_image,
+)
+from core.cubemap_remap import (
+    build_remap,
     rot4,
     rotation_matrix,
-    save_image,
 )
 from core.dataset_export_plan import (
     EXPORT_ACTION_EXPAND_ERP_TO_VIEWS,

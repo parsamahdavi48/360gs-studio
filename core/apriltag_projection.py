@@ -7,7 +7,8 @@ import shutil
 from dataclasses import dataclass
 from pathlib import Path
 
-from core.cubemap_transforms_json import convert_images, make_default_views, transform_json
+from core.cubemap_transform_export import transform_json
+from core.cubemap_transforms_json import convert_images, make_default_views
 
 
 @dataclass(frozen=True)

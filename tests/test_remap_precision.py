@@ -7,7 +7,7 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from core.cubemap_transforms_json import build_remap, rotation_matrix
+from core.cubemap_remap import build_remap, rotation_matrix
 
 
 def _equirect_to_xyz(map_x: float, map_y: float, w: int, h: int) -> tuple[float, float, float]:

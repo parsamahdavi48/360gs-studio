@@ -9,21 +9,19 @@ from collections.abc import Sequence
 from pathlib import Path
 
 from core.colmap_rig_export import DEFAULT_RIG_NAME, prepare_views_for_colmap, write_rig_config_json
+from core.cubemap_transform_export import frame_yaw_offset, transform_json
 from core.cubemap_transforms_json import (
-    FINAL_ORIENTATION_NONE,
-    _parse_positive_int_or_auto,
     collect_image_files,
     convert_images,
     convert_images_colmap_rig,
-    frame_yaw_offset,
     infer_image_only_sizes,
     load_custom_views,
     make_default_views,
-    transform_json,
     write_colmap_rig_metadata,
     write_image_only_metadata,
 )
-from core.orientation_correction import FINAL_ORIENTATION_CHOICES
+from core.cubemap_worker_plan import parse_positive_int_or_auto
+from core.orientation_correction import FINAL_ORIENTATION_CHOICES, FINAL_ORIENTATION_NONE
 from core.realityscan_xmp import (
     REALITYSCAN_CALIBRATION_PRIORS,
     REALITYSCAN_COORDINATE_MODES,
@@ -280,8 +278,8 @@ def main(argv: Sequence[str] | None = None) -> None:
     if args.output_scale <= 0 or args.output_scale > 1.0:
         _exit_error("output_scale must be in (0, 1.0]")
     try:
-        _parse_positive_int_or_auto(args.workers, "--workers")
-        _parse_positive_int_or_auto(args.remap_cache_limit, "--remap-cache-limit")
+        parse_positive_int_or_auto(args.workers, "--workers")
+        parse_positive_int_or_auto(args.remap_cache_limit, "--remap-cache-limit")
     except ValueError as exc:
         _exit_error(str(exc))
 
