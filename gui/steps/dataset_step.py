@@ -7,6 +7,7 @@ from pathlib import Path
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import QLabel, QPushButton, QStackedWidget, QVBoxLayout, QWidget
 
+from core.app_job import AppJob
 from gui import i18n
 from gui.steps.apriltag_scale_tool import AprilTagScaleTool
 from gui.steps.base_step import BaseStepWidget
@@ -359,14 +360,14 @@ class DatasetStep(BaseStepWidget):
             self._configure_cubemap_tool(self._page)
         return self._active_step().run_primary_action()
 
-    def build_commands(self) -> list[tuple[str, list[str]]]:
+    def build_commands(self) -> list[tuple[str, list[str] | AppJob]]:
         if self._page in {_PAGE_MENU, _PAGE_COLMAP_READY}:
             return []
         if self._page in _CUBEMAP_PAGES:
             self._configure_cubemap_tool(self._page)
         return self._active_step().build_commands()
 
-    def confirm_commands(self, commands: list[tuple[str, list[str]]]) -> bool:
+    def confirm_commands(self, commands: list[tuple[str, list[str] | AppJob]]) -> bool:
         if self._page in {_PAGE_MENU, _PAGE_COLMAP_READY}:
             return True
         return self._active_step().confirm_commands(commands)

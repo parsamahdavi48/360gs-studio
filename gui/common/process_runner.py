@@ -64,7 +64,7 @@ class _InternalJobWorker(QObject):
 
 
 class ProcessRunner(QObject):
-    """複数ステップのCLIコマンドを順番に実行する共通ランナー。
+    """複数ステップの外部コマンドまたは内部AppJobを順番に実行する共通ランナー。
 
     シグナル:
         line_received(str)  -- stdout の1行

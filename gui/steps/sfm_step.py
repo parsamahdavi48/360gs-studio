@@ -22,6 +22,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from core.app_job import AppJob
 from core.normal_camera_metadata import (
     COLMAP_NORMAL_CAMERA_MODELS,
     NormalCameraDefault,
@@ -781,7 +782,7 @@ class SfmStep(BaseStepWidget):
             return False
         return self.cubemap_step.primary_action_enabled()
 
-    def build_commands(self) -> list[tuple[str, list[str]]]:
+    def build_commands(self) -> list[tuple[str, list[str] | AppJob]]:
         if self._page in {_PAGE_MENU, _PAGE_VIEWER}:
             return []
         if self._page in {_PAGE_COLMAP, _PAGE_SPHERESFM}:
@@ -791,7 +792,7 @@ class SfmStep(BaseStepWidget):
         self._prepare_current_route()
         return self.cubemap_step.build_commands()
 
-    def confirm_commands(self, commands: list[tuple[str, list[str]]]) -> bool:
+    def confirm_commands(self, commands: list[tuple[str, list[str] | AppJob]]) -> bool:
         return self.cubemap_step.confirm_commands(commands)
 
     def process_log_dir(self) -> Path | None:

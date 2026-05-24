@@ -5,6 +5,7 @@ from __future__ import annotations
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QCheckBox, QMessageBox
 
+from core.app_job import AppJob
 from gui import i18n
 from gui.steps.sam31_setup import ensure_sam31_checkpoint_available
 from gui.user_settings import load_user_settings_section, update_user_settings_section
@@ -17,7 +18,7 @@ _SKY_NOTICE_KEY = "sky_models_ack_version"
 
 
 class Step3MaskLicenseMixin:
-    def confirm_commands(self, commands: list[tuple[str, list[str]]]) -> bool:
+    def confirm_commands(self, commands: list[tuple[str, list[str] | AppJob]]) -> bool:
         if any(phase.startswith("yolo") for phase, _cmd in commands):
             if self._person_backend_arg() == "yolo_sam":
                 if not self._confirm_yolo_sam_license_notice():

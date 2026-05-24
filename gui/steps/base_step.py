@@ -6,6 +6,7 @@ from pathlib import Path
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import QScrollArea, QWidget
 
+from core.app_job import AppJob
 from gui import i18n
 
 SETTINGS_PANE_WIDTH = 480
@@ -28,7 +29,7 @@ class BaseStepWidget(QWidget):
     サブクラスは以下を実装する:
         build_ui()  -- ステップ固有のUI構築
         set_scene_dir(path)  -- シーンディレクトリ変更への対応
-        build_commands()  -- [(phase, [cmd...])] を返す。失敗時は ValueError
+        build_commands()  -- [(phase, [cmd...] | AppJob)] を返す。失敗時は ValueError
         on_line(line)  -- 出力行のパース（プログレス更新など）
     """
 
@@ -47,10 +48,10 @@ class BaseStepWidget(QWidget):
     def set_scene_dir(self, path: str) -> None:
         self.scene_dir = path
 
-    def build_commands(self) -> list[tuple[str, list[str]]]:
+    def build_commands(self) -> list[tuple[str, list[str] | AppJob]]:
         raise NotImplementedError
 
-    def confirm_commands(self, commands: list[tuple[str, list[str]]]) -> bool:
+    def confirm_commands(self, commands: list[tuple[str, list[str] | AppJob]]) -> bool:
         return True
 
     def process_log_dir(self) -> Path | None:
@@ -69,8 +70,9 @@ class BaseStepWidget(QWidget):
     def run_primary_action(self) -> bool:
         """Handle the shared primary action button without queueing commands.
 
-        Return True when the action was handled internally. Command-based steps
-        leave this as False so MainWindow can build and queue CLI commands.
+        Return True when the action was handled internally. Queue-based steps
+        leave this as False so MainWindow can build and queue external commands
+        or typed internal AppJob phases.
         """
         return False
 

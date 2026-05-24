@@ -1,1 +1,1 @@
-"""Implementation package for the public command-line wrappers."""
+"""Shared implementation package for the GUI-first workflow."""

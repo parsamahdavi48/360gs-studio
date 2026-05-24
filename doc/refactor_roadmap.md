@@ -16,18 +16,16 @@ Last updated: 2026-05-25
 
 Latest checkpoint:
 
-- Large GUI split continued through the remaining Step 4 orchestration. Route
-  state/path summaries, target profile/output-shape state, activation/scene
-  preview behavior, and preview image-count updates now live in focused mixins.
-  `step4_cubemap.py` is mostly widget construction plus scene setup.
-- The cubemap legacy facade dependency audit was also tightened: non-CLI core
-  imports now use the split cubemap modules directly; the facade is retained for
-  CLI entry and compatibility tests.
-- Validation at the latest checkpoint: Step 4 targeted `ruff` and
-  `tests/test_colmap_mixed_project.py tests/test_apriltag_detection_pipeline.py
-  tests/test_cubemap_view_spec.py tests/test_step4_output_dir.py
-  tests/test_form_tooltips.py tests/test_scene_preview.py` pass locally; full
-  `ruff check .` and `pytest -q` also pass locally.
+- Pre-merge audit cleanup removed the unused `core.review_frames`
+  compatibility wrapper so `core/` no longer imports back into the GUI for that
+  obsolete entry point.
+- The shared step and process-runner contracts now describe the actual queue
+  model: external commands or typed internal `AppJob` phases.
+- The cubemap legacy facade dependency audit remains clean: non-CLI core
+  imports use the split cubemap modules directly; the facade is retained for CLI
+  entry and compatibility tests.
+- Validation at the latest checkpoint: targeted `ruff`, targeted review/release
+  workflow tests, full `ruff check .`, and full `pytest -q` pass locally.
 
 ### 1. Mask Job Contract
 
@@ -175,22 +173,32 @@ Status: in progress; Step 3, Step 1, and Step 4 GUI slices complete.
 
 ### 6. Pre-Merge Audit
 
-Status: ready to run; initial spot checks are clean.
+Status: complete; branch is ready for final merge review.
 
 Initial spot checks:
 
 - No root-level Python compatibility wrappers were found.
-- No root-level upstream `images/` or `masks/` asset folders were found.
+- No root-level upstream sample asset folders were found; tracked root
+  `images/` content is limited to README/documentation images, and no tracked
+  root `masks/` content remains.
 - GUI/core source does not import `scripts/` implementations.
 - `core.cubemap_transforms_json` imports remain limited to the CLI/facade pair;
   non-CLI core users now import split cubemap modules directly.
+- Removed unused `core.review_frames`; the review UI is imported from
+  `gui.review_frames` by GUI/tests instead of through a core compatibility
+  wrapper.
+- `BaseStepWidget` and `ProcessRunner` now document and type the queue as
+  external command phases or internal `AppJob` phases.
+- Full local validation: `ruff check .` and `pytest -q` passed (`976 passed`).
 
 Audit gates:
 
-- GUI runtime does not depend on root wrappers or `scripts/` implementations.
-- Internal app work uses typed frame/workflow/SfM/dataset jobs or explicit
+- [x] GUI runtime does not depend on root wrappers or `scripts/`
+  implementations.
+- [x] Internal app work uses typed frame/workflow/SfM/dataset jobs or explicit
   worker payload contracts.
-- Mixed source tests cover ERP multiple resolutions, normal video/stills, mask
-  size mismatch, source-scoped mask regeneration, Metashape NeRF/COLMAP export,
-  and RealityScan COLMAP export.
-- Docs describe GUI-first behavior and release ZIP excludes old upstream assets.
+- [x] Mixed source tests cover ERP multiple resolutions, normal video/stills,
+  mask size mismatch, source-scoped mask regeneration, Metashape NeRF/COLMAP
+  export, and RealityScan COLMAP export.
+- [x] Docs describe GUI-first behavior and release ZIP excludes old upstream
+  assets.
