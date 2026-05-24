@@ -10,6 +10,75 @@ import pytest
 import core.yolo_mask as yolo_mask
 
 
+def test_build_runtime_settings_normalizes_cli_values() -> None:
+    args = yolo_mask.build_arg_parser().parse_args(
+        [
+            "images",
+            "masks",
+            "--quality",
+            "high",
+            "--projection",
+            "normal",
+            "--expand",
+            "999",
+            "--classes",
+            "2,1,2",
+            "--bottom-conf",
+            "2",
+            "--bottom-tta-rotations",
+            "4",
+            "--bottom-model",
+            "x",
+            "--bottom-filter",
+            "--profile-json",
+            "profile.json",
+        ]
+    )
+
+    runtime = yolo_mask.build_runtime_settings(args)
+
+    assert runtime.expand_was_clamped is True
+    assert runtime.settings.class_ids == (1, 2)
+    assert runtime.settings.expand == yolo_mask.EXPAND_MAX
+    assert runtime.settings.bottom_conf == 1.0
+    assert runtime.settings.bottom_tta_rotations == 4
+    assert runtime.settings.bottom_model == "x"
+    assert runtime.settings.bottom_filter is True
+    assert runtime.settings.profile_json == "profile.json"
+
+
+def test_apply_runtime_settings_updates_global_runtime_state(monkeypatch: pytest.MonkeyPatch) -> None:
+    args = yolo_mask.build_arg_parser().parse_args(
+        [
+            "images",
+            "masks",
+            "--quality",
+            "standard",
+            "--projection",
+            "normal",
+            "--classes",
+            "5",
+        ]
+    )
+    runtime = yolo_mask.build_runtime_settings(args)
+    monkeypatch.setattr(yolo_mask, "proc_count", 12)
+    monkeypatch.setattr(yolo_mask, "PROFILE", object())
+
+    yolo_mask.apply_runtime_settings(runtime.settings)
+
+    assert yolo_mask.CLASS_IDS == [5]
+    assert yolo_mask.LEVEL == runtime.settings.level
+    assert yolo_mask.QUALITY == "standard"
+    assert yolo_mask.PROJECTION == "normal"
+    assert yolo_mask.EXPAND == runtime.settings.expand
+    assert yolo_mask.BOTTOM_CONF == runtime.settings.bottom_conf
+    assert yolo_mask.BOTTOM_TTA_ROTATIONS == runtime.settings.bottom_tta_rotations
+    assert yolo_mask.BOTTOM_MODEL == runtime.settings.bottom_model
+    assert yolo_mask.BOTTOM_FILTER == runtime.settings.bottom_filter
+    assert yolo_mask.proc_count == 0
+    assert yolo_mask.PROFILE is None
+
+
 def test_profile_json_records_timing_without_changing_normal_masks(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,

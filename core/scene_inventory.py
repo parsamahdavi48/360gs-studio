@@ -66,6 +66,33 @@ class SceneImage:
 
 
 @dataclass(frozen=True, slots=True)
+class SceneSourceGroup:
+    source_kind: str
+    source_id: str
+    images: tuple[SceneImage, ...]
+
+    @property
+    def image_count(self) -> int:
+        return len(self.images)
+
+    @property
+    def projections(self) -> set[str]:
+        return {image.projection for image in self.images}
+
+    @property
+    def image_sizes(self) -> set[tuple[int, int]]:
+        return {image.size for image in self.images if image.size is not None}
+
+    @property
+    def projection_counts(self) -> Counter[str]:
+        return Counter(image.projection for image in self.images)
+
+    @property
+    def size_counts(self) -> Counter[tuple[int, int]]:
+        return Counter(image.size for image in self.images if image.size is not None)
+
+
+@dataclass(frozen=True, slots=True)
 class SceneInventory:
     scene_dir: Path
     images_dir: Path
@@ -109,6 +136,22 @@ class SceneInventory:
 
     def normal_images(self) -> tuple[SceneImage, ...]:
         return tuple(image for image in self.images if image.projection == PROJECTION_NORMAL)
+
+    def source_groups(self) -> tuple[SceneSourceGroup, ...]:
+        grouped: dict[tuple[str, str], list[SceneImage]] = {}
+        for image in self.images:
+            key = (image.source_kind, image.source_id)
+            grouped.setdefault(key, []).append(image)
+        return tuple(
+            SceneSourceGroup(source_kind=key[0], source_id=key[1], images=tuple(images))
+            for key, images in grouped.items()
+        )
+
+    def source_group(self, source_kind: str, source_id: str) -> SceneSourceGroup | None:
+        for group in self.source_groups():
+            if group.source_kind == source_kind and group.source_id == source_id:
+                return group
+        return None
 
 
 def build_scene_inventory(

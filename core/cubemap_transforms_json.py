@@ -1,7 +1,6 @@
 import argparse
 import json
 import os
-import re
 import sys
 from collections import OrderedDict
 from concurrent.futures import ProcessPoolExecutor, as_completed
@@ -20,6 +19,12 @@ from core.colmap_rig_export import (
     pinhole_camera_params,
     prepare_views_for_colmap,
     write_rig_config_json,
+)
+from core.cubemap_view_spec import (
+    build_remap_spec,
+    load_views_json,
+    make_default_cube6_views,
+    views_to_dicts,
 )
 from core.image_io import imread_unicode, imwrite_unicode
 from core.orientation_correction import (
@@ -50,8 +55,6 @@ EXAMPLE_TEXT = """Example:
   python cubemap_transforms_json.py . ./output --image-only --colmap-rig --views-json views_config.json
   python cubemap_transforms_json.py . ./output/realityscan --views-json views_config.json --realityscan-xmp
 """
-
-SAFE_VIEW_NAME_RE = re.compile(r"^[A-Za-z0-9_-]+$")
 
 _WORKER_REMAP_TABLES: dict[str, tuple[np.ndarray, np.ndarray]] | None = None
 _WORKER_VIEWS: list[dict] | None = None
@@ -508,6 +511,18 @@ def build_remap(
     pitch_deg: float,
     output_size: int,
 ) -> tuple[np.ndarray, np.ndarray]:
+    spec = build_remap_spec(
+        input_size=input_size,
+        output_size=output_size,
+        fov_deg=fov_deg,
+        yaw_deg=yaw_deg,
+        pitch_deg=pitch_deg,
+    )
+    input_size = spec.input_size
+    output_size = spec.output_size
+    fov_deg = spec.fov_deg
+    yaw_deg = spec.yaw_deg
+    pitch_deg = spec.pitch_deg
     # ピクセル中心規約: 主点を (W-1)/2 に置く（画像の幾何中心 = ピクセル中心グリッドの中央）。
     # cv2.remap は map_x[i,j], map_y[i,j] を「出力ピクセル中心 (j,i) のサンプリング座標」と解釈するため、
     # ここでも整数グリッド arange に対して (W-1)/2 を引く必要がある。
@@ -540,65 +555,11 @@ def build_remap(
 
 
 def make_default_views(yaw: float, stitch: float, no_top: bool, no_bottom: bool) -> list[dict]:
-    views = [
-        {"name": "px", "yaw": 90.0 - yaw - stitch, "pitch": 0.0},
-        {"name": "nx", "yaw": -90.0 - yaw - stitch, "pitch": 0.0},
-        {"name": "py", "yaw": 0.0 - yaw, "pitch": -90.0},
-        {"name": "ny", "yaw": 0.0 - yaw, "pitch": 90.0},
-        {"name": "pz", "yaw": 0.0 - yaw + stitch, "pitch": 0.0},
-        {"name": "nz", "yaw": 180.0 - yaw + stitch, "pitch": 0.0},
-    ]
-    if no_top:
-        views = [v for v in views if v["name"] != "py"]
-    if no_bottom:
-        views = [v for v in views if v["name"] != "ny"]
-    return views
+    return views_to_dicts(make_default_cube6_views(yaw, stitch, no_top=no_top, no_bottom=no_bottom))
 
 
 def load_custom_views(path: str) -> list[dict]:
-    with open(path, encoding="utf-8") as f:
-        data = json.load(f)
-
-    if isinstance(data, dict):
-        raw_views = data.get("views")
-    else:
-        raw_views = data
-
-    if not isinstance(raw_views, list):
-        raise ValueError("views-json must be a list or an object with 'views' list")
-
-    views: list[dict] = []
-    used_names: set[str] = set()
-
-    for idx, item in enumerate(raw_views):
-        if not isinstance(item, dict):
-            raise ValueError(f"views[{idx}] must be an object")
-
-        if not bool(item.get("enabled", True)):
-            continue
-
-        name = str(item.get("name", "")).strip()
-        if not name:
-            raise ValueError(f"views[{idx}].name is required")
-        if not SAFE_VIEW_NAME_RE.match(name):
-            raise ValueError(f"views[{idx}].name '{name}' is invalid; use letters/numbers/_/- only")
-        if name in used_names:
-            raise ValueError(f"views has duplicated name: {name}")
-
-        try:
-            yaw = float(item["yaw"])
-            pitch = float(item["pitch"])
-        except KeyError as e:
-            raise ValueError(f"views[{idx}] missing field: {e}") from e
-        except Exception as e:
-            raise ValueError(f"views[{idx}] yaw/pitch parse error: {e}") from e
-
-        views.append({"name": name, "yaw": yaw, "pitch": pitch})
-        used_names.add(name)
-
-    if not views:
-        raise ValueError("views-json has no enabled views")
-    return views
+    return views_to_dicts(load_views_json(path))
 
 
 _RAW_IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".tif", ".tiff", ".webp", ".bmp"}

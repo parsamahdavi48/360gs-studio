@@ -30,6 +30,10 @@ GUI workflow unless a release note explicitly promises a specific wrapper.
 - `core/frame_renumbering.py` owns the Step 2 kept-image renumbering contract:
   downstream-output blockers, collision-safe rename planning/application, and
   updates to frame/source image metadata when paths change.
+- `core/scene_inventory.py` owns the shared read contract for scene images,
+  masks, projection type, source IDs, and normal-camera defaults. Features that
+  scope work to specific input sources should use `SceneInventory.source_groups()`
+  instead of inferring source ownership from filenames.
 - `core/scene_import*.py` owns external scene re-registration. Import should
   scan only the app-defined scene folders, replace external-import metadata as a
   full reimport, and avoid deleting real image/mask/output assets.
@@ -45,6 +49,14 @@ GUI workflow unless a release note explicitly promises a specific wrapper.
   before a job file is written or executed. This applies to frame extraction and
   review finalization as well as workflow, SfM, and dataset jobs. Shared
   validation helpers live in `core/job_payload_validation.py`.
+- `core/mask_job_spec.py` owns Step 3 mask command payloads. GPU-heavy mask
+  workers still run in separate `python -m core.<module>` processes, but GUI
+  command builders should create validated mask payloads first and then render
+  those payloads to commands.
+- `core/yolo_mask.py` normalizes YOLO/SAM runtime settings with
+  `YoloMaskRuntimeSettings`; global runtime state updates are centralized in
+  `apply_runtime_settings()`. Existing processing functions may still read the
+  compatibility globals, but new settings must enter through this path.
 - SphereSfM project preparation, GPU preflight, and sparse-model conversion live
   in `core/spheresfm_project.py`, `core/spheresfm_gpu_preflight.py`, and
   `core/spheresfm_to_transforms.py`. Matching files under `scripts/` are thin
@@ -58,6 +70,10 @@ GUI workflow unless a release note explicitly promises a specific wrapper.
   job uses `core/metashape_preprocess.py` to create the intermediate
   equirectangular `transforms.json`; no GUI route should depend on the old
   upstream Metashape converter.
+- Cubemap view sets and remap request validation live in
+  `core/cubemap_view_spec.py`. Default Cube6 views, custom view JSON parsing,
+  and input-size/FOV/output-size checks should go through this module rather
+  than adding ad hoc view parsing in image conversion code.
 - Cubemap and COLMAP exports must preserve coordinate profile semantics:
   Postshot uses the default cubemap transform, Brush uses the Brush transform,
   and LichtFeld cubemap export writes final-orientation-corrected
@@ -82,8 +98,8 @@ Step 3 mask generation is split by responsibility:
 - `gui/steps/step3_mask.py` owns the page layout, controls, and state wiring.
 - `gui/steps/step3_mask_actions.py` owns preview/regeneration actions and
   selected-image processing.
-- `gui/mask/mask_commands.py` owns command construction.
-- `gui/mask/mask_postprocess.py` owns saved-mask postprocessing.
+- `gui/steps/mask_commands.py` owns command construction.
+- `gui/steps/mask_postprocess.py` owns saved-mask postprocessing.
 
 SfM route selection, dataset conversion, and training launch are split by responsibility:
 

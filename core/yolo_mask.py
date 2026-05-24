@@ -55,6 +55,27 @@ class ProcessResult:
     group_key: str
 
 
+@dataclass(frozen=True)
+class YoloMaskRuntimeSettings:
+    class_ids: tuple[int, ...]
+    level: int
+    quality: str
+    projection: str
+    expand: int
+    bottom_conf: float
+    bottom_tta_rotations: int
+    bottom_model: str
+    bottom_filter: bool
+    recipe: MaskViewRecipe
+    profile_json: str | None
+
+
+@dataclass(frozen=True)
+class YoloMaskRuntimeBuild:
+    settings: YoloMaskRuntimeSettings
+    expand_was_clamped: bool
+
+
 class ProfileRecorder:
     def __init__(self, output_path: str | Path):
         self.output_path = Path(output_path)
@@ -274,6 +295,60 @@ def parse_classes(text):
             raise ValueError(f"Class id must be >= 0: {cls_id}")
         ids.append(cls_id)
     return sorted(set(ids))
+
+
+def build_runtime_settings(args: argparse.Namespace) -> YoloMaskRuntimeBuild:
+    quality = normalize_quality(args.quality, legacy_level=args.level)
+    projection = args.projection
+    expand = clamp_expand_px(args.expand)
+    recipe = recipe_for(quality, projection)
+    bottom_conf = recipe.bottom_conf if args.bottom_conf is None else max(0.001, min(1.0, float(args.bottom_conf)))
+    bottom_tta_rotations = (
+        len(recipe.bottom_rotations) if args.bottom_tta_rotations is None else int(args.bottom_tta_rotations)
+    )
+    bottom_model = recipe.bottom_model if args.bottom_model is None else str(args.bottom_model)
+    bottom_filter = bool(recipe.bottom_filter or args.bottom_filter)
+    class_ids = tuple(parse_classes(args.classes))
+    settings = YoloMaskRuntimeSettings(
+        class_ids=class_ids,
+        level=int(recipe.yolo_level),
+        quality=quality,
+        projection=projection,
+        expand=expand,
+        bottom_conf=bottom_conf,
+        bottom_tta_rotations=bottom_tta_rotations,
+        bottom_model=bottom_model,
+        bottom_filter=bottom_filter,
+        recipe=recipe,
+        profile_json=args.profile_json,
+    )
+    return YoloMaskRuntimeBuild(settings=settings, expand_was_clamped=expand != args.expand)
+
+
+def apply_runtime_settings(settings: YoloMaskRuntimeSettings) -> None:
+    global \
+        CLASS_IDS, \
+        LEVEL, \
+        QUALITY, \
+        PROJECTION, \
+        EXPAND, \
+        BOTTOM_CONF, \
+        BOTTOM_TTA_ROTATIONS, \
+        BOTTOM_MODEL, \
+        BOTTOM_FILTER, \
+        PROFILE
+    global proc_count
+    CLASS_IDS = list(settings.class_ids)
+    LEVEL = int(settings.level)
+    QUALITY = settings.quality
+    PROJECTION = settings.projection
+    EXPAND = int(settings.expand)
+    BOTTOM_CONF = float(settings.bottom_conf)
+    BOTTOM_TTA_ROTATIONS = int(settings.bottom_tta_rotations)
+    BOTTOM_MODEL = settings.bottom_model
+    BOTTOM_FILTER = bool(settings.bottom_filter)
+    proc_count = 0
+    PROFILE = ProfileRecorder(settings.profile_json) if settings.profile_json else None
 
 
 def current_recipe() -> MaskViewRecipe:
@@ -678,40 +753,13 @@ def process_file(input_dir, output_dir, fname, add_ext=True) -> ProcessResult:
 
 
 def main(argv: list[str] | None = None) -> int:
-    global \
-        CLASS_IDS, \
-        LEVEL, \
-        QUALITY, \
-        PROJECTION, \
-        EXPAND, \
-        BOTTOM_CONF, \
-        BOTTOM_TTA_ROTATIONS, \
-        BOTTOM_MODEL, \
-        BOTTOM_FILTER, \
-        PROFILE
-    global proc_count
+    global PROFILE
     parser = build_arg_parser()
     args = parser.parse_args(argv)
 
     input_dir = args.images_dir if args.images_dir else "images"
     output_dir = args.output_dir if args.output_dir else "masks"
     add_ext = args.add_ext
-    LEVEL = int(args.level) if args.level is not None else 2
-    QUALITY = normalize_quality(args.quality, legacy_level=args.level)
-    PROJECTION = args.projection
-    EXPAND = clamp_expand_px(args.expand)
-    recipe = current_recipe()
-    BOTTOM_CONF = recipe.bottom_conf if args.bottom_conf is None else max(0.001, min(1.0, float(args.bottom_conf)))
-    BOTTOM_TTA_ROTATIONS = (
-        len(recipe.bottom_rotations) if args.bottom_tta_rotations is None else args.bottom_tta_rotations
-    )
-    BOTTOM_MODEL = recipe.bottom_model if args.bottom_model is None else args.bottom_model
-    BOTTOM_FILTER = bool(recipe.bottom_filter or args.bottom_filter)
-    LEVEL = int(recipe.yolo_level)
-    proc_count = 0
-    PROFILE = ProfileRecorder(args.profile_json) if args.profile_json else None
-    if EXPAND != args.expand:
-        print(f"Clamped --expand from {args.expand} to {EXPAND}", flush=True)
 
     if not os.path.isdir(input_dir) and not os.path.isfile(input_dir):
         print("python yolo_mask.py {images_dir} {masks_dir}", flush=True)
@@ -720,11 +768,16 @@ def main(argv: list[str] | None = None) -> int:
         return 1
 
     try:
-        CLASS_IDS = parse_classes(args.classes)
+        runtime = build_runtime_settings(args)
     except Exception as e:
         print(f"Invalid --classes value: {e}", flush=True)
         PROFILE = None
         return 1
+    settings = runtime.settings
+    recipe = settings.recipe
+    apply_runtime_settings(settings)
+    if runtime.expand_was_clamped:
+        print(f"Clamped --expand from {args.expand} to {EXPAND}", flush=True)
 
     print("YOLO classes:", ",".join(str(x) for x in CLASS_IDS), flush=True)
     print(f"Projection: {PROJECTION}", flush=True)

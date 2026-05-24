@@ -88,6 +88,49 @@ def test_scene_inventory_reads_selected_frame_source_metadata(tmp_path: Path) ->
     assert inventory.images[0].sequence_index == 7
 
 
+def test_scene_inventory_groups_images_by_registered_source(tmp_path: Path) -> None:
+    scene = tmp_path
+    _write_image(scene / "images" / "a" / "erp.jpg", (64, 32))
+    _write_image(scene / "images" / "a" / "normal.jpg", (40, 30))
+    _write_image(scene / "images" / "b" / "normal.jpg", (80, 60))
+    path = source_image_sets_path(scene)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        """
+        {
+          "version": 1,
+          "image_sets": [
+            {
+              "id": "set_a",
+              "source_type": "image_sequence",
+              "files": [
+                {"scene_path": "images/a/erp.jpg", "projection": "equirectangular"},
+                {"scene_path": "images/a/normal.jpg", "projection": "normal"}
+              ]
+            },
+            {
+              "id": "set_b",
+              "source_type": "video",
+              "files": [
+                {"scene_path": "images/b/normal.jpg", "projection": "normal"}
+              ]
+            }
+          ]
+        }
+        """,
+        encoding="utf-8",
+    )
+
+    inventory = build_scene_inventory(scene)
+    groups = {(group.source_kind, group.source_id): group for group in inventory.source_groups()}
+
+    assert groups[("image_sequence", "set_a")].image_count == 2
+    assert groups[("image_sequence", "set_a")].projection_counts[PROJECTION_EQUIRECTANGULAR] == 1
+    assert groups[("image_sequence", "set_a")].projection_counts[PROJECTION_NORMAL] == 1
+    assert groups[("video", "set_b")].image_sizes == {(80, 60)}
+    assert inventory.source_group("missing", "x") is None
+
+
 def test_scene_projection_map_keeps_unreadable_images_unknown(tmp_path: Path) -> None:
     scene = tmp_path
     image = scene / "images" / "broken.jpg"
