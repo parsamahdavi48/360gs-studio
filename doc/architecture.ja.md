@@ -28,6 +28,7 @@ root直下の互換 `*.py` ラッパーは、アプリ構造に含めません�
 - マスク系モジュールでは、リポジトリ全体のマスク極性を守ります。白は使用可能ピクセル、黒は除外ピクセルです。マスク合成は、明示的に別操作として文書化しない限り AND 型を維持します。
 - Metashape の座標変換は `core/metashape_coordinates.py` に集約します。Metashape XML のカメラ姿勢や PLY 点群を変換するルートでは、軸変換行列を個別実装せずこのモジュールを使います。Step 4 の Metashape 前処理ジョブは `core/metashape_preprocess.py` で中間のエクイレクタングラー `transforms.json` を作成します。GUI ルートは旧 upstream の Metashape converter に依存しません。
 - Metashape 由来の NeRF/COLMAP データセット出力は、バージョン付き dataset job payload を使います。`core/metashape_dataset_cli.py` は開発/CLI用アダプタであり、直接CLI実行とGUIジョブ実行が同じ契約になるよう `core/dataset_job_runner.py` に実行を委譲します。
+- RealityScan から LichtFeld 用 COLMAP への変換実装は `core/realityscan_to_lfs_colmap.py` に置きます。コマンドライン解析は `core/realityscan_to_lfs_colmap_cli.py` が担当し、GUI実行ではバージョン付き dataset job payload と `core/dataset_job_runner.py` を使います。
 - Cubemapの視点セットとRemap仕様は `core/cubemap_view_spec.py` に集約します。デフォルトCube6、カスタム視点JSON、入力サイズ/FOV/出力サイズの検証はここを通し、画像変換実装側に個別の視点パースを増やしません。
 - Cubemap のコマンドライン解析は `core/cubemap_transforms_json_cli.py` に置きます。`core/cubemap_transforms_json.py` は変換実装と互換モジュール入口として残します。新しい orchestration では CLI 引数処理を複製せず、実装関数を直接 import するか workflow/dataset job payload を使います。
 - COLMAP text 変換のコマンドライン解析は `core/transforms_to_colmap_cli.py` に置き、`core/transforms_to_colmap.py` は変換実装を担当します。

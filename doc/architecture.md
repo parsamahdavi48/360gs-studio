@@ -90,6 +90,10 @@ GUI workflow unless a release note explicitly promises a specific wrapper.
   payloads. `core/metashape_dataset_cli.py` is the developer CLI adapter, and
   it must delegate execution to `core/dataset_job_runner.py` so direct CLI and
   GUI job execution share the same contract.
+- RealityScan-to-LichtFeld COLMAP conversion is implemented in
+  `core/realityscan_to_lfs_colmap.py`; command-line parsing lives in
+  `core/realityscan_to_lfs_colmap_cli.py`, while GUI execution goes through
+  versioned dataset job payloads and `core/dataset_job_runner.py`.
 - Cubemap view sets and remap request validation live in
   `core/cubemap_view_spec.py`. Default Cube6 views, custom view JSON parsing,
   and input-size/FOV/output-size checks should go through this module rather
