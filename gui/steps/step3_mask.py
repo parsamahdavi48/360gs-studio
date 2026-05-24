@@ -45,12 +45,7 @@ from core.scene_inventory import (
     build_scene_inventory,
 )
 from core.scene_layout import scene_images_dir, scene_masks_dir, selected_frames_path
-from core.scene_project import (
-    append_mask_run,
-    scene_relative,
-    utc_now_iso,
-    write_mask_item,
-)
+from core.scene_project import scene_relative, utc_now_iso
 from gui import i18n
 from gui.common.collapsible_section import CollapsibleSection
 from gui.common.drag_spinbox import DragDoubleSpinBox, DragSpinBox
@@ -67,9 +62,10 @@ from gui.steps.base_step import (
 from gui.steps.mask_commands import (
     MaskCommandContext,
 )
-from gui.steps.mask_postprocess import mask_stats
 from gui.steps.sam31_setup import ensure_sam31_checkpoint_available
 from gui.steps.step3_mask_actions import Step3MaskActionsMixin
+from gui.steps.step3_mask_progress import MaskProgressParser
+from gui.steps.step3_mask_records import record_mask_outputs
 from gui.user_settings import load_user_settings_section, update_user_settings_section
 
 _COCO_CLASS_NAMES = [
@@ -155,10 +151,6 @@ _COCO_CLASS_NAMES = [
     "toothbrush",
 ]
 
-_MASK_PROGRESS_RE = re.compile(r"\[progress\]\s+(\d+)\s*/\s*(\d+)")
-_YOLO_PROCESSED_RE = re.compile(r"^Processed:\s+")
-_STITCH_TASK_RE = re.compile(r"^Processing\s+(\d+)\s+images\s+with\s+\d+\s+workers\.\.\.$")
-_STITCH_TQDM_RE = re.compile(r"\|\s*(\d+)/(\d+)\s*\[")
 _STITCH_BOUNDARY_MIN = 0.0
 _STITCH_BOUNDARY_MAX = 30.0
 _STITCH_BOUNDARY_DEFAULT = 5.0
@@ -391,11 +383,7 @@ def _ade20k_class_names(base_dir: Path) -> tuple[str, ...]:
 class MaskStep(Step3MaskActionsMixin, BaseStepWidget):
     def __init__(self, base_dir: Path, parent: QWidget | None = None) -> None:
         super().__init__(base_dir, parent)
-        self._phase_total = 0
-        self._phase_done = 0
-        self._stitch_chunk_total = 0
-        self._stitch_chunk_done = 0
-        self._stitch_done_before = 0
+        self._progress_parser = MaskProgressParser()
         self._mask_preview_proc: QProcess | None = None
         self._mask_preview_temp: tempfile.TemporaryDirectory[str] | None = None
         self._mask_preview_image: Path | None = None
@@ -1878,10 +1866,6 @@ class MaskStep(Step3MaskActionsMixin, BaseStepWidget):
     def _new_mask_run_id(prefix: str) -> str:
         return f"{prefix}_{utc_now_iso().replace(':', '').replace('-', '')}"
 
-    @staticmethod
-    def _mask_stats(mask_path: Path) -> dict:
-        return mask_stats(mask_path)
-
     def _record_mask_outputs(
         self,
         image_paths: list[Path],
@@ -1893,81 +1877,22 @@ class MaskStep(Step3MaskActionsMixin, BaseStepWidget):
     ) -> None:
         if not self.scene_dir or not image_paths:
             return
-        scene = Path(self.scene_dir)
-        settings = settings or self._mask_settings_snapshot()
-        run_id = run_id or self._new_mask_run_id("mask")
-        generated: list[dict] = []
-        for image_path in image_paths:
-            mask_path = self._mask_output_path_for_image(image_path)
-            if not mask_path.is_file():
-                continue
-            stats = self._mask_stats(mask_path)
-            write_mask_item(
-                scene,
-                image_path=image_path,
-                mask_path=mask_path,
-                settings=settings,
-                run_id=run_id,
-                stats=stats,
-            )
-            generated.append(
-                {
-                    "image": scene_relative(scene, image_path),
-                    "mask": scene_relative(scene, mask_path),
-                    "stats": stats,
-                }
-            )
-        if not generated:
-            return
-        append_mask_run(
-            scene,
-            {
-                "id": run_id,
-                "created_at": utc_now_iso(),
-                "mode": mode,
-                "phases": phases,
-                "settings": settings,
-                "image_count": len(image_paths),
-                "mask_count": len(generated),
-                "generated": generated,
-            },
+        record_mask_outputs(
+            self.scene_dir,
+            image_paths,
+            mode=mode,
+            settings=settings or self._mask_settings_snapshot(),
+            phases=phases,
+            mask_path_for_image=self._mask_output_path_for_image,
+            run_id=run_id,
+            run_id_factory=self._new_mask_run_id,
         )
 
     def on_line(self, line: str) -> tuple[int, int] | None:
-        m = _MASK_PROGRESS_RE.search(line)
-        if m:
-            self._phase_done = int(m.group(1))
-            self._phase_total = int(m.group(2))
-            return self._phase_done, self._phase_total
-
-        if _YOLO_PROCESSED_RE.match(line):
-            self._phase_done += 1
-            return self._phase_done, self._phase_total
-
-        m = _STITCH_TASK_RE.match(line)
-        if m:
-            self._phase_total = int(m.group(1))
-            self._phase_done = 0
-            self._stitch_chunk_total = 0
-            self._stitch_chunk_done = 0
-            self._stitch_done_before = 0
-            return 0, self._phase_total
-
-        m = _STITCH_TQDM_RE.search(line)
-        if m:
-            done = int(m.group(1))
-            total = int(m.group(2))
-            self._stitch_chunk_done = done
-            self._stitch_chunk_total = total
-            overall = self._stitch_done_before + done
-            return overall, self._phase_total if self._phase_total > 0 else total
-
-        return None
+        return self._progress_parser.on_line(line)
 
     def on_phase_finished(self, phase: str, exit_code: int, canceled: bool) -> None:
-        if phase.startswith("yolo") and exit_code == 0:
-            self._phase_total = 0
-            self._phase_done = 0
+        self._progress_parser.on_phase_finished(phase, exit_code)
 
     def on_queue_finished(self, success: bool) -> None:
         if not success:

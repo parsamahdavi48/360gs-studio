@@ -16,9 +16,8 @@ Last updated: 2026-05-24
 
 Latest checkpoint:
 
-- Scene asset contract audit continued: Metashape image label resolution,
-  scene preview image lookup, and Step 3 mask target fallback now use scene
-  inventory contracts instead of local image-folder scans.
+- Large GUI split started for Step 3: mask progress parsing and mask output
+  metadata recording now live in dedicated modules with focused tests.
 - Validation at the latest checkpoint: `ruff check .` and `pytest -q` pass
   locally.
 
@@ -87,13 +86,18 @@ Status: mostly complete; main Step 3/Step 4/preview routes audited.
 
 ### 5. Large GUI Step Split
 
-Status: not complete.
+Status: in progress; Step 3 first slices complete.
 
 - Step 4 has several mixins, but `gui/steps/step4_cubemap.py` and
   `gui/steps/step4_training.py` remain large.
-- `gui/steps/step3_mask.py` and `gui/steps/step1_extract.py` also remain large.
+- `gui/steps/step3_mask_progress.py` owns Step 3 worker-output progress
+  parsing.
+- `gui/steps/step3_mask_records.py` owns Step 3 mask metadata recording.
+- `gui/steps/step3_mask.py` and `gui/steps/step1_extract.py` still remain
+  large.
 - Split order after core contracts settle:
-  1. `step3_mask.py`
+  1. Continue `step3_mask.py`: separate command/job planning and manifest
+     writing from widget layout.
   2. `step1_extract.py`
   3. `step4_training.py`
   4. remaining `step4_cubemap.py` orchestration
