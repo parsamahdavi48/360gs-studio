@@ -678,8 +678,9 @@ class SfmStep(BaseStepWidget):
 
     def set_scene_dir(self, path: str) -> None:
         super().set_scene_dir(path)
-        self.cubemap_step.set_scene_dir(path)
-        self.scene_preview.set_scene_dir(Path(path) if path else None)
+        if self.cubemap_step.scene_dir != path:
+            self.cubemap_step.set_scene_dir(path)
+        self.scene_preview.set_scene_dir(Path(path) if path else None, refresh=self._page == _PAGE_VIEWER)
         self._load_normal_camera_default()
 
     def on_activated(self) -> None:
@@ -722,8 +723,7 @@ class SfmStep(BaseStepWidget):
         self.primary_action_state_changed.emit()
 
     def show_viewer(self) -> None:
-        self.scene_preview.set_scene_dir(Path(self.scene_dir) if self.scene_dir else None)
-        self.scene_preview.refresh()
+        self.scene_preview.set_scene_dir(Path(self.scene_dir) if self.scene_dir else None, refresh=True)
         self._page = _PAGE_VIEWER
         self.stack.setCurrentIndex(self._page_indices[_PAGE_VIEWER])
         self.primary_action_state_changed.emit()

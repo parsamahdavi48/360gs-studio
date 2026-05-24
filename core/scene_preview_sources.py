@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
+from core.artifact_registry import ArtifactRecord, load_artifacts
 from core.scene_layout import (
     scene_images_dir,
     scene_masks_dir,
@@ -19,9 +20,25 @@ from core.scene_layout import (
     step4_export_settings_path,
     step4_metashape_import_work_dir,
 )
-from core.scene_preview_profiles import ScenePreviewDisplayTransform, step4_output_display_transform
+from core.scene_preview_profiles import (
+    ScenePreviewDisplayTransform,
+    realityscan_colmap_export_display_transform,
+    realityscan_csv_display_transform,
+    realityscan_lfs_colmap_display_transform,
+    transforms_dataset_display_transform,
+)
+from core.workflow_artifacts import (
+    DATASET_KIND_COLMAP_DATASET,
+    DATASET_KIND_LICHTFELD_COLMAP,
+    DATASET_KIND_NERF_JSON_PLY,
+    SFM_KIND_COLMAP_SPARSE,
+    SFM_KIND_METASHAPE_XML_PLY,
+    SFM_KIND_REALITYSCAN_CSV_PLY,
+    SFM_KIND_SPHERESFM_SPARSE,
+    artifact_root_path,
+)
 
-ScenePreviewCandidateKind = Literal["output", "metashape", "colmap", "spheresfm"]
+ScenePreviewCandidateKind = Literal["output", "metashape", "colmap", "spheresfm", "realityscan"]
 
 
 @dataclass(frozen=True)
@@ -33,85 +50,116 @@ class ScenePreviewCandidate:
     mask_root: Path | None = None
     pointcloud_path: Path | None = None
     display_transform: ScenePreviewDisplayTransform | None = None
+    colmap_opengl_camera: bool = False
 
 
 def discover_scene_preview_candidates(scene_dir: Path) -> tuple[ScenePreviewCandidate, ...]:
     scene = Path(scene_dir)
     candidates: list[ScenePreviewCandidate] = []
-    output = scene_output_dir(scene)
     settings = _load_step4_settings(scene)
     current_output = _current_step4_output_root(scene, settings)
-    for dataset_root in _step4_dataset_roots(scene, settings):
+    dataset_records = load_artifacts(scene, "dataset")
+    sfm_records = load_artifacts(scene, "sfm")
+    for dataset_root, record in _transforms_dataset_roots(scene, settings, dataset_records):
         output_transforms = dataset_root / "transforms.json"
         if not output_transforms.is_file():
             continue
         candidates.append(
             ScenePreviewCandidate(
                 kind="output",
-                label=(
-                    "Step 4 output"
-                    if _same_path(dataset_root, current_output)
-                    else f"Step 4 output ({dataset_root.name})"
-                ),
+                label=_dataset_label(dataset_root, current_output, record),
                 path=output_transforms,
                 image_root=dataset_root,
                 mask_root=_existing_dir(dataset_root / "masks"),
                 pointcloud_path=_existing_file(dataset_root / "pointcloud.ply"),
-                display_transform=step4_output_display_transform(settings)
-                if _same_path(dataset_root, current_output)
-                else None,
+                display_transform=transforms_dataset_display_transform(
+                    output_transforms,
+                    fallback_settings=settings if _same_path(dataset_root, current_output) else None,
+                ),
             )
         )
 
-    metashape_xml, metashape_ply = _metashape_inputs(scene)
-    if metashape_xml is not None:
+    for metashape_xml, metashape_ply, image_root, mask_root, label in _metashape_inputs(scene, settings, sfm_records):
         candidates.append(
             ScenePreviewCandidate(
                 kind="metashape",
-                label="Metashape SfM",
+                label=label,
                 path=metashape_xml,
-                image_root=scene_images_dir(scene),
-                mask_root=_step4_input_masks_dir(scene, settings),
+                image_root=image_root,
+                mask_root=mask_root,
                 pointcloud_path=metashape_ply,
             )
         )
 
-    colmap_sparse = _resolve_colmap_model(output / "colmap_rig" / "sparse")
-    if colmap_sparse is not None:
+    for colmap_root, sparse, label, record in _colmap_dataset_roots(scene, settings, dataset_records, sfm_records):
+        manifest = _load_dataset_manifest(colmap_root)
         candidates.append(
             ScenePreviewCandidate(
                 kind="colmap",
-                label="COLMAP SfM",
-                path=colmap_sparse,
-                image_root=output / "colmap_rig" / "images",
-                mask_root=_first_existing_dir(
-                    _settings_path_or_none(scene, _settings_dict(settings, "colmap_rig").get("masks_dir")),
-                    output / "colmap_rig" / "masks",
-                ),
+                label=label,
+                path=sparse,
+                image_root=_colmap_images_dir(scene, colmap_root, sparse, manifest),
+                mask_root=_colmap_masks_dir(scene, colmap_root, sparse, manifest, settings, record),
+                pointcloud_path=_existing_file(sparse / "points3D.ply"),
+                display_transform=_colmap_display_transform(scene, colmap_root, sparse, manifest, record),
+                colmap_opengl_camera=_colmap_uses_app_camera_axes(scene, colmap_root, manifest, record),
             )
         )
 
-    spheresfm_sparse = _resolve_colmap_model(output / "spheresfm" / "sparse")
-    if spheresfm_sparse is not None:
-        image_root = output / "spheresfm" / "equirect"
+    for sparse, record in _spheresfm_sparse_models(scene, sfm_records):
+        root = _dataset_root_from_sparse(sparse)
+        image_root = root / "equirect"
         candidates.append(
             ScenePreviewCandidate(
                 kind="spheresfm",
-                label="SphereSfM SfM",
-                path=spheresfm_sparse,
+                label=_sfm_label("SphereSfM SfM", record),
+                path=sparse,
                 image_root=image_root if image_root.is_dir() else scene_images_dir(scene),
                 mask_root=_first_existing_dir(
                     _settings_path_or_none(scene, _settings_dict(settings, "spheresfm").get("prepared_masks_dir")),
-                    output / "spheresfm" / "masks_colmap",
+                    root / "masks_colmap",
                     scene_masks_dir(scene),
                 ),
+                pointcloud_path=_existing_file(sparse / "points3D.ply"),
             )
         )
-    return tuple(candidates)
+    for csv_path, ply_path, image_root, mask_root, label in _realityscan_inputs(scene, sfm_records):
+        candidates.append(
+            ScenePreviewCandidate(
+                kind="realityscan",
+                label=label,
+                path=csv_path,
+                image_root=image_root,
+                mask_root=mask_root,
+                pointcloud_path=ply_path,
+                display_transform=realityscan_csv_display_transform(),
+            )
+        )
+    return tuple(_dedupe_candidates(candidates))
 
 
-def _metashape_inputs(scene: Path) -> tuple[Path | None, Path | None]:
-    settings = _load_step4_settings(scene)
+def _metashape_inputs(
+    scene: Path,
+    settings: dict,
+    records: list[ArtifactRecord],
+) -> tuple[tuple[Path, Path | None, Path, Path | None, str], ...]:
+    result: list[tuple[Path, Path | None, Path, Path | None, str]] = []
+    for record in records:
+        if record.kind != SFM_KIND_METASHAPE_XML_PLY or record.status != "ready":
+            continue
+        xml = _existing_file(_artifact_file_path(scene, record, "xml"))
+        if xml is None:
+            continue
+        result.append(
+            (
+                xml,
+                _existing_file(_artifact_file_path(scene, record, "ply")),
+                _existing_dir(_artifact_file_path(scene, record, "images_dir")) or scene_images_dir(scene),
+                _existing_dir(_artifact_file_path(scene, record, "masks_dir")) or _step4_input_masks_dir(scene, settings),
+                _sfm_label("Metashape SfM", record),
+            )
+        )
+
     metashape = settings.get("metashape_import") if isinstance(settings.get("metashape_import"), dict) else {}
     xml = _existing_file(_path_or_none(metashape.get("xml")))
     ply = _existing_file(_path_or_none(metashape.get("ply")))
@@ -123,7 +171,9 @@ def _metashape_inputs(scene: Path) -> tuple[Path | None, Path | None]:
         )
     if ply is None:
         ply = _first_existing(scene / "pointcloud.ply", scene_output_dir(scene) / "pointcloud.ply")
-    return xml, ply
+    if xml is not None:
+        result.append((xml, ply, scene_images_dir(scene), _step4_input_masks_dir(scene, settings), "Metashape SfM"))
+    return tuple(result)
 
 
 def _load_step4_settings(scene: Path) -> dict:
@@ -175,6 +225,114 @@ def _step4_dataset_roots(scene: Path, settings: dict) -> tuple[Path, ...]:
     return tuple(_dedupe_paths(path for path in roots if path is not None))
 
 
+def _transforms_dataset_roots(
+    scene: Path,
+    settings: dict,
+    records: list[ArtifactRecord],
+) -> tuple[tuple[Path, ArtifactRecord | None], ...]:
+    roots: list[tuple[Path, ArtifactRecord | None]] = []
+    for record in records:
+        if record.kind != DATASET_KIND_NERF_JSON_PLY or record.status != "ready":
+            continue
+        root = artifact_root_path(scene, record)
+        if (root / "transforms.json").is_file():
+            roots.append((root, record))
+    for root in _step4_dataset_roots(scene, settings):
+        if (root / "transforms.json").is_file():
+            roots.append((root, None))
+    for root in _shallow_dataset_dirs(scene_output_dir(scene), marker="transforms.json"):
+        roots.append((root, None))
+    return tuple(_dedupe_root_records(roots))
+
+
+def _colmap_dataset_roots(
+    scene: Path,
+    settings: dict,
+    dataset_records: list[ArtifactRecord],
+    sfm_records: list[ArtifactRecord],
+) -> tuple[tuple[Path, Path, str, ArtifactRecord | None], ...]:
+    roots: list[tuple[Path, ArtifactRecord | None, str]] = []
+    for record in dataset_records:
+        if record.kind not in {DATASET_KIND_COLMAP_DATASET, DATASET_KIND_LICHTFELD_COLMAP} or record.status != "ready":
+            continue
+        roots.append((artifact_root_path(scene, record), record, _dataset_label(artifact_root_path(scene, record), None, record)))
+    for record in sfm_records:
+        if record.kind != SFM_KIND_COLMAP_SPARSE or record.status != "ready":
+            continue
+        root = artifact_root_path(scene, record)
+        roots.append((_dataset_root_from_sparse(root), record, _sfm_label("COLMAP SfM", record)))
+
+    output = scene_output_dir(scene)
+    roots.extend(
+        [
+            (output / "colmap_rig", None, "COLMAP SfM"),
+            (output / "metashape_colmap", None, "Metashape COLMAP Dataset"),
+            (output / "realityscan" / "lfs_colmap", None, "RealityScan LichtFeld COLMAP"),
+            (output / "realityscan" / "lfs_colmap_undistorted", None, "RealityScan LichtFeld COLMAP"),
+        ]
+    )
+    for root in _shallow_colmap_dataset_dirs(output):
+        roots.append((root, None, _shallow_colmap_label(output, root)))
+
+    result: list[tuple[Path, Path, str, ArtifactRecord | None]] = []
+    seen: set[str] = set()
+    for root, record, label in roots:
+        sparse = _resolve_colmap_model(root / "sparse") or _resolve_colmap_model(root)
+        if sparse is None:
+            continue
+        key = _path_key(sparse)
+        if key in seen:
+            continue
+        seen.add(key)
+        result.append((_dataset_root_from_sparse(sparse), sparse, label, record))
+    return tuple(result)
+
+
+def _spheresfm_sparse_models(scene: Path, records: list[ArtifactRecord]) -> tuple[tuple[Path, ArtifactRecord | None], ...]:
+    sparse_models: list[tuple[Path, ArtifactRecord | None]] = []
+    for record in records:
+        if record.kind != SFM_KIND_SPHERESFM_SPARSE or record.status != "ready":
+            continue
+        sparse = _resolve_colmap_model(artifact_root_path(scene, record))
+        if sparse is not None:
+            sparse_models.append((sparse, record))
+    fallback = _resolve_colmap_model(scene_output_dir(scene) / "spheresfm" / "sparse")
+    if fallback is not None:
+        sparse_models.append((fallback, None))
+    result: list[tuple[Path, ArtifactRecord | None]] = []
+    seen: set[str] = set()
+    for sparse, record in sparse_models:
+        key = _path_key(sparse)
+        if key in seen:
+            continue
+        seen.add(key)
+        result.append((sparse, record))
+    return tuple(result)
+
+
+def _realityscan_inputs(
+    scene: Path,
+    records: list[ArtifactRecord],
+) -> tuple[tuple[Path, Path | None, Path | None, Path | None, str], ...]:
+    result: list[tuple[Path, Path | None, Path | None, Path | None, str]] = []
+    for record in records:
+        if record.kind != SFM_KIND_REALITYSCAN_CSV_PLY or record.status != "ready":
+            continue
+        csv = _existing_file(_artifact_file_path(scene, record, "csv"))
+        if csv is None:
+            continue
+        result.append(
+            (
+                csv,
+                _existing_file(_artifact_file_path(scene, record, "ply")),
+                _existing_dir(_artifact_file_path(scene, record, "images_dir")),
+                _existing_dir(_artifact_file_path(scene, record, "masks_dir")),
+                _sfm_label("RealityScan CSV/PLY", record),
+            )
+        )
+    return tuple(result)
+
+
 def _dedupe_paths(paths: Iterable[Path]) -> list[Path]:
     result: list[Path] = []
     seen: set[str] = set()
@@ -190,6 +348,37 @@ def _dedupe_paths(paths: Iterable[Path]) -> list[Path]:
         seen.add(key)
         result.append(path)
     return result
+
+
+def _dedupe_root_records(items: Iterable[tuple[Path, ArtifactRecord | None]]) -> list[tuple[Path, ArtifactRecord | None]]:
+    result: list[tuple[Path, ArtifactRecord | None]] = []
+    seen: set[str] = set()
+    for path, record in items:
+        key = _path_key(path)
+        if key in seen:
+            continue
+        seen.add(key)
+        result.append((path, record))
+    return result
+
+
+def _dedupe_candidates(candidates: Iterable[ScenePreviewCandidate]) -> list[ScenePreviewCandidate]:
+    result: list[ScenePreviewCandidate] = []
+    seen: set[tuple[str, str]] = set()
+    for candidate in candidates:
+        key = (candidate.kind, _path_key(candidate.path))
+        if key in seen:
+            continue
+        seen.add(key)
+        result.append(candidate)
+    return result
+
+
+def _path_key(path: Path) -> str:
+    try:
+        return str(path.resolve()).casefold()
+    except OSError:
+        return str(path.absolute()).casefold()
 
 
 def _same_path(a: Path | None, b: Path | None) -> bool:
@@ -215,6 +404,187 @@ def _first_existing(*paths: Path) -> Path | None:
 
 def _first_existing_dir(*paths: Path | None) -> Path | None:
     return next((path for path in paths if path is not None and path.is_dir()), None)
+
+
+def _artifact_file_path(scene: Path, record: ArtifactRecord, key: str) -> Path | None:
+    raw = str(record.files.get(key) or "").strip()
+    if not raw:
+        return None
+    path = Path(raw)
+    return path if path.is_absolute() else scene / path
+
+
+def _dataset_label(root: Path, current_output: Path | None, record: ArtifactRecord | None) -> str:
+    if record is not None:
+        if record.kind == DATASET_KIND_NERF_JSON_PLY:
+            return f"Dataset: NeRF JSON/PLY ({record.id})"
+        if record.kind == DATASET_KIND_LICHTFELD_COLMAP:
+            return f"Dataset: LichtFeld COLMAP ({record.id})"
+        if record.kind == DATASET_KIND_COLMAP_DATASET:
+            return f"Dataset: COLMAP ({record.id})"
+        return f"Dataset: {record.kind} ({record.id})"
+    return "Step 4 output" if _same_path(root, current_output) else f"Step 4 output ({root.name})"
+
+
+def _sfm_label(fallback: str, record: ArtifactRecord | None) -> str:
+    return fallback if record is None else f"{fallback} ({record.id})"
+
+
+def _load_dataset_manifest(root: Path) -> dict:
+    path = root / "stechdrive_dataset_manifest.json"
+    if not path.is_file():
+        return {}
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def _manifest_dir(scene: Path, dataset_root: Path, value: object) -> Path | None:
+    text = str(value or "").strip()
+    if not text:
+        return None
+    path = Path(text)
+    if path.is_absolute():
+        return path
+    candidate = dataset_root / path
+    if candidate.exists():
+        return candidate
+    return scene / path
+
+
+def _colmap_images_dir(scene: Path, root: Path, sparse: Path, manifest: dict) -> Path | None:
+    return _first_existing_dir(
+        _manifest_dir(scene, root, manifest.get("images_dir")),
+        root / "images",
+        sparse.parent.parent / "images" if sparse.name == "0" else sparse.parent / "images",
+    )
+
+
+def _colmap_masks_dir(
+    scene: Path,
+    root: Path,
+    sparse: Path,
+    manifest: dict,
+    settings: dict,
+    record: ArtifactRecord | None,
+) -> Path | None:
+    record_mask = _artifact_file_path(scene, record, "masks_dir") if record is not None else None
+    return _first_existing_dir(
+        _manifest_dir(scene, root, manifest.get("masks_dir")),
+        record_mask,
+        _settings_path_or_none(scene, _settings_dict(settings, "colmap_rig").get("masks_dir")),
+        root / "masks",
+        sparse.parent.parent / "masks" if sparse.name == "0" else sparse.parent / "masks",
+    )
+
+
+def _colmap_display_transform(
+    scene: Path,
+    root: Path,
+    sparse: Path,
+    manifest: dict,
+    record: ArtifactRecord | None,
+) -> ScenePreviewDisplayTransform | None:
+    if _is_realityscan_lfs_colmap(scene, root, manifest, record):
+        return realityscan_lfs_colmap_display_transform()
+    if _same_path(root, scene_output_dir(scene) / "realityscan"):
+        return realityscan_colmap_export_display_transform(
+            pointcloud_is_lichtfeld_file=(sparse / "points3D.ply").is_file()
+        )
+    return None
+
+
+def _colmap_uses_app_camera_axes(
+    scene: Path,
+    root: Path,
+    manifest: dict,
+    record: ArtifactRecord | None,
+) -> bool:
+    return _is_realityscan_lfs_colmap(scene, root, manifest, record) or _same_path(
+        root,
+        scene_output_dir(scene) / "realityscan",
+    )
+
+
+def _is_realityscan_lfs_colmap(
+    scene: Path,
+    root: Path,
+    manifest: dict,
+    record: ArtifactRecord | None,
+) -> bool:
+    if record is not None and record.kind == DATASET_KIND_LICHTFELD_COLMAP:
+        return True
+    manifest_kind = str(manifest.get("kind") or "").strip().lower()
+    manifest_source = str(manifest.get("source_kind") or "").strip().lower()
+    if manifest_kind == "lichtfeld_colmap" and manifest_source == "realityscan_csv_ply":
+        return True
+
+    output = scene_output_dir(scene)
+    return _same_path(root, output / "realityscan" / "lfs_colmap") or _same_path(
+        root,
+        output / "realityscan" / "lfs_colmap_undistorted",
+    )
+
+
+def _dataset_root_from_sparse(sparse: Path) -> Path:
+    if sparse.name == "0" and sparse.parent.name.lower() == "sparse":
+        return sparse.parent.parent
+    if sparse.name.lower() == "sparse":
+        return sparse.parent
+    return sparse
+
+
+def _shallow_dataset_dirs(output: Path, *, marker: str) -> tuple[Path, ...]:
+    if not output.is_dir():
+        return ()
+    roots: list[Path] = []
+    for child in output.iterdir():
+        if _is_preview_scan_excluded(child):
+            continue
+        if child.is_dir() and (child / marker).is_file():
+            roots.append(child)
+        if child.is_dir():
+            for grandchild in child.iterdir():
+                if _is_preview_scan_excluded(grandchild):
+                    continue
+                if grandchild.is_dir() and (grandchild / marker).is_file():
+                    roots.append(grandchild)
+    return tuple(_dedupe_paths(roots))
+
+
+def _shallow_colmap_dataset_dirs(output: Path) -> tuple[Path, ...]:
+    if not output.is_dir():
+        return ()
+    roots: list[Path] = []
+    for child in output.iterdir():
+        if not child.is_dir():
+            continue
+        if child.name.lower() == "spheresfm" or _is_preview_scan_excluded(child):
+            continue
+        if _resolve_colmap_model(child / "sparse") is not None or _resolve_colmap_model(child) is not None:
+            roots.append(child)
+        for grandchild in child.iterdir():
+            if _is_preview_scan_excluded(grandchild):
+                continue
+            if grandchild.is_dir() and (
+                _resolve_colmap_model(grandchild / "sparse") is not None
+                or _resolve_colmap_model(grandchild) is not None
+            ):
+                roots.append(grandchild)
+    return tuple(_dedupe_paths(roots))
+
+
+def _shallow_colmap_label(output: Path, root: Path) -> str:
+    if _same_path(root, output / "realityscan"):
+        return "RealityScan COLMAP Export"
+    return f"COLMAP Dataset ({root.name})"
+
+
+def _is_preview_scan_excluded(path: Path) -> bool:
+    name = path.name.lower()
+    return name.startswith("apriltag_scale_backup_") or name.startswith("backup")
 
 
 def _step4_input_masks_dir(scene: Path, settings: dict) -> Path | None:

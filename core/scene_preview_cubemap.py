@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -91,6 +91,28 @@ def load_cubemap_frame_groups(
     )
 
 
+def cubemap_frame_groups_from_preview_cameras(cameras: Iterable[object]) -> tuple[CubemapFrameGroup, ...]:
+    """Build preview cubemap groups from already-loaded scene preview cameras."""
+    groups: dict[str, dict[str, PinholeFrame]] = {}
+    for camera in cameras:
+        if str(getattr(camera, "projection", "") or "").lower() != "pinhole":
+            continue
+        parsed = _preview_camera_cubemap_face(camera)
+        if parsed is None:
+            continue
+        prefix, face = parsed
+        frame = _preview_camera_to_pinhole_frame(camera)
+        if frame is None:
+            continue
+        groups.setdefault(prefix, {})[face] = frame
+    group_indices = {name: index for index, name in enumerate(groups)}
+    return tuple(
+        CubemapFrameGroup(name=name, frames_by_face=frames, group_index=group_indices[name])
+        for name, frames in sorted(groups.items())
+        if len(frames) >= 4
+    )
+
+
 def face_view_params(group: CubemapFrameGroup, face: str, *, fov_deg: float = 90.0) -> tuple[float, float, float] | None:
     frame = group.frames_by_face.get(face)
     if frame is None:
@@ -159,6 +181,59 @@ def render_cubemap_equirect(
             best_score=best_score,
         )
     return output
+
+
+def _preview_camera_cubemap_face(camera: object) -> tuple[str, str] | None:
+    values = [
+        getattr(camera, "label", ""),
+        getattr(camera, "camera_id", ""),
+    ]
+    image_path = getattr(camera, "image_path", None)
+    if image_path is not None:
+        path = Path(image_path)
+        values.extend([path.name, str(path)])
+    for value in values:
+        parsed = split_cubemap_face(str(value or ""))
+        if parsed is not None:
+            return parsed
+    return None
+
+
+def _preview_camera_to_pinhole_frame(camera: object) -> PinholeFrame | None:
+    image_path = getattr(camera, "image_path", None)
+    if image_path is None:
+        return None
+    width = int(getattr(camera, "width", 0) or 0)
+    height = int(getattr(camera, "height", 0) or 0)
+    fl_x = float(getattr(camera, "fl_x", 0.0) or 0.0)
+    fl_y = float(getattr(camera, "fl_y", 0.0) or 0.0)
+    if width <= 0 or height <= 0 or fl_x <= 0.0 or fl_y <= 0.0:
+        return None
+    matrix = np.eye(4, dtype=np.float64)
+    matrix[:3, 0] = np.asarray(camera.right, dtype=np.float64).reshape(3)
+    matrix[:3, 1] = np.asarray(camera.up, dtype=np.float64).reshape(3)
+    matrix[:3, 2] = np.asarray(camera.forward, dtype=np.float64).reshape(3)
+    matrix[:3, 3] = np.asarray(camera.position, dtype=np.float64).reshape(3)
+    return PinholeFrame(
+        frame_id=str(getattr(camera, "camera_id", "") or getattr(camera, "label", "")),
+        file_path=_preview_camera_file_path(camera),
+        image_path=Path(image_path),
+        width=width,
+        height=height,
+        fl_x=fl_x,
+        fl_y=fl_y,
+        cx=float(getattr(camera, "cx", 0.0) or 0.0),
+        cy=float(getattr(camera, "cy", 0.0) or 0.0),
+        transform_matrix=matrix,
+        distortion_coeffs=None,
+    )
+
+
+def _preview_camera_file_path(camera: object) -> str:
+    image_path = getattr(camera, "image_path", None)
+    if image_path is not None:
+        return Path(image_path).as_posix()
+    return str(getattr(camera, "label", "") or getattr(camera, "camera_id", ""))
 
 
 def _fixed_standard_cube6_face_rotations(group: CubemapFrameGroup) -> dict[str, np.ndarray] | None:

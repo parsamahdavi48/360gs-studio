@@ -19,7 +19,7 @@ from core.scene_preview import (
     ScenePreviewPointCloud,
     load_transforms_preview_dataset,
 )
-from core.scene_preview_profiles import step4_output_display_transform
+from core.scene_preview_profiles import ScenePreviewDisplayTransform, step4_output_display_transform
 from core.scene_preview_sources import ScenePreviewCandidate
 from gui import i18n
 from gui.common.perspective_image_view import _pixelated_texture_filter_for_zoom
@@ -144,6 +144,68 @@ def test_scene_preview_rebuilds_cubemap_camera_as_spherical_preview(tmp_path: Pa
     assert image.shape == (1024, 2048, 3)
     assert params.fov_deg == 90.0
     assert mask is None
+
+
+def test_scene_preview_rebuilds_cubemap_from_colmap_like_preview_cameras(tmp_path: Path) -> None:
+    _app()
+    transforms = _write_cubemap_scene(tmp_path)
+    source = load_transforms_preview_dataset(transforms, image_root=tmp_path)
+    dataset = ScenePreviewDataset(
+        source_kind="colmap",
+        source_path=tmp_path / "sparse" / "0",
+        cameras=source.cameras,
+        image_root=source.image_root,
+        mask_root=source.mask_root,
+    )
+    window = ScenePreviewWindow()
+    window._set_dataset(dataset)
+
+    result = window._reconstructed_cubemap_preview(dataset.cameras[0])
+
+    assert result is not None
+    image, params, mask = result
+    assert image.shape == (1024, 2048, 3)
+    assert params.fov_deg == 90.0
+    assert mask is None
+
+
+def test_scene_preview_mixed_colmap_keeps_normal_camera_as_static_image(tmp_path: Path) -> None:
+    _app()
+    transforms = _write_cubemap_scene(tmp_path)
+    source = load_transforms_preview_dataset(transforms, image_root=tmp_path)
+    normal_path = tmp_path / "images" / "normal.jpg"
+    assert cv2.imwrite(str(normal_path), np.full((24, 32, 3), 120, dtype=np.uint8))
+    normal = ScenePreviewCamera(
+        camera_id="normal",
+        label="normal.jpg",
+        image_path=normal_path,
+        projection="pinhole",
+        width=32,
+        height=24,
+        fl_x=20.0,
+        fl_y=20.0,
+        cx=15.5,
+        cy=11.5,
+        position=np.array([0.0, 0.0, 0.0], dtype=np.float64),
+        right=np.array([1.0, 0.0, 0.0], dtype=np.float64),
+        up=np.array([0.0, 1.0, 0.0], dtype=np.float64),
+        forward=np.array([0.0, 0.0, 1.0], dtype=np.float64),
+        source={},
+    )
+    dataset = ScenePreviewDataset(
+        source_kind="colmap",
+        source_path=tmp_path / "sparse" / "0",
+        cameras=(*source.cameras, normal),
+        image_root=source.image_root,
+        mask_root=source.mask_root,
+    )
+    window = ScenePreviewWindow()
+    window._set_dataset(dataset)
+
+    window._select_camera_id("normal")
+
+    assert window._selected_camera_id == "normal"
+    assert window.camera_image_view._perspective_params is None
 
 
 def test_scene_preview_rebuilds_cubemap_without_devtools_import(tmp_path: Path, monkeypatch) -> None:
@@ -319,6 +381,49 @@ def test_load_step4_output_candidate_applies_display_transform(tmp_path: Path) -
     assert dataset.mask_root == output / "masks"
     assert dataset.pointcloud is not None
     assert np.allclose(dataset.pointcloud.points[0], [1.0, 2.0, 3.0])
+
+
+def test_load_colmap_candidate_applies_display_transform(tmp_path: Path) -> None:
+    sparse = tmp_path / "sparse" / "0"
+    sparse.mkdir(parents=True)
+    (sparse / "cameras.txt").write_text("1 PINHOLE 32 32 16 16 15.5 15.5\n", encoding="utf-8")
+    (sparse / "images.txt").write_text("1 1 0 0 0 0 0 0 1 frame.png\n\n", encoding="utf-8")
+    (sparse / "points3D.txt").write_text("# Number of points: 0\n", encoding="utf-8")
+    (sparse / "points3D.ply").write_text(
+        "\n".join(
+            [
+                "ply",
+                "format ascii 1.0",
+                "element vertex 1",
+                "property float x",
+                "property float y",
+                "property float z",
+                "end_header",
+                "1 2 3",
+            ]
+        ),
+        encoding="ascii",
+    )
+    display_transform = ScenePreviewDisplayTransform(
+        profile="test",
+        note="colmap test",
+        camera_matrix=np.diag([1.0, -1.0, -1.0, 1.0]),
+        pointcloud_matrix=np.diag([1.0, -1.0, -1.0, 1.0]),
+    )
+    candidate = ScenePreviewCandidate(
+        kind="colmap",
+        label="COLMAP",
+        path=sparse,
+        pointcloud_path=sparse / "points3D.ply",
+        display_transform=display_transform,
+    )
+
+    dataset = _load_candidate(candidate)
+
+    assert dataset.coordinate_note == "colmap test"
+    assert np.allclose(dataset.cameras[0].position, [0.0, 0.0, 0.0])
+    assert dataset.pointcloud is not None
+    assert np.allclose(dataset.pointcloud.points[0], [1.0, -2.0, -3.0])
 
 
 def _write_cubemap_scene(

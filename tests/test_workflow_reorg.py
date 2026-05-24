@@ -62,6 +62,35 @@ def _write_mixed_metashape_xml(path: Path) -> None:
     )
 
 
+def test_sfm_embedded_viewer_defers_scene_scan_until_viewer_is_opened(tmp_path: Path, monkeypatch) -> None:
+    _app()
+    calls = {"discover": 0}
+
+    def fake_discover(_scene: Path) -> tuple:
+        calls["discover"] += 1
+        return ()
+
+    monkeypatch.setattr("gui.scene_preview.window.discover_scene_preview_candidates", fake_discover)
+    window = MainWindow("")
+    try:
+        window._set_current_step(window._sfm_step_index)
+
+        window.sfm_step.set_scene_dir(str(tmp_path))
+
+        assert calls == {"discover": 0}
+
+        window.sfm_step.show_viewer()
+
+        assert calls == {"discover": 1}
+
+        window.sfm_step.show_menu()
+        window.sfm_step.set_scene_dir(str(tmp_path))
+
+        assert calls == {"discover": 1}
+    finally:
+        window.shutdown()
+
+
 def test_sfm_cards_open_in_step_sfm_pages_and_external_route_goes_to_dataset(tmp_path: Path) -> None:
     _app()
     window = MainWindow(str(tmp_path))

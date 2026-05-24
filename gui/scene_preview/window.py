@@ -30,10 +30,16 @@ from core.scene_preview import (
     load_colmap_preview_dataset,
     load_metashape_preview_dataset,
     load_ply_preview_pointcloud,
+    load_realityscan_preview_dataset,
     load_transforms_preview_dataset,
     transform_preview_dataset,
 )
-from core.scene_preview_cubemap import face_view_params, load_cubemap_frame_groups, render_cubemap_equirect
+from core.scene_preview_cubemap import (
+    cubemap_frame_groups_from_preview_cameras,
+    face_view_params,
+    load_cubemap_frame_groups,
+    render_cubemap_equirect,
+)
 from core.scene_preview_sources import ScenePreviewCandidate, discover_scene_preview_candidates
 from gui import i18n
 from gui.common.perspective_preview import PerspectiveParams
@@ -67,9 +73,22 @@ class ScenePreviewWidget(QWidget):
         self._build_ui()
         self.set_scene_dir(scene_dir)
 
-    def set_scene_dir(self, scene_dir: Path | None) -> None:
+    def set_scene_dir(self, scene_dir: Path | None, *, refresh: bool = True) -> None:
         self._scene_dir = Path(scene_dir) if scene_dir else None
-        self._refresh_candidates()
+        if refresh:
+            self._refresh_candidates()
+        else:
+            self._clear_dataset()
+            self.candidate_list.clear()
+            if self._scene_dir is None:
+                self.scene_label.setText(i18n.t("SCENE_PREVIEW_NO_SCENE"))
+                self.scene_label.setToolTip("")
+                self.summary_text.setPlainText(i18n.t("SCENE_PREVIEW_NO_SCENE"))
+            else:
+                self.scene_label.setText(str(self._scene_dir))
+                self.scene_label.setToolTip(str(self._scene_dir))
+                self.summary_text.setPlainText(i18n.t("SCENE_PREVIEW_NO_CANDIDATES"))
+            self._candidates = ()
 
     def refresh(self) -> None:
         self._refresh_candidates()
@@ -301,12 +320,14 @@ class ScenePreviewWidget(QWidget):
         self._cubemap_mask_cache = {}
         self._cubemap_image_cache = {}
         self._mask_image_cache = {}
-        if dataset.source_kind != "transforms":
-            return
-        try:
-            groups = load_cubemap_frame_groups(dataset.source_path)
-        except Exception:
-            return
+        groups: tuple[Any, ...] = ()
+        if dataset.source_kind == "transforms":
+            try:
+                groups = load_cubemap_frame_groups(dataset.source_path)
+            except Exception:
+                groups = ()
+        if not groups:
+            groups = cubemap_frame_groups_from_preview_cameras(dataset.cameras)
         frame_lookup: dict[str, tuple[Any, str]] = {}
         for group in groups:
             for face, frame in group.frames_by_face.items():
@@ -427,22 +448,36 @@ def _load_candidate(candidate: ScenePreviewCandidate) -> ScenePreviewDataset:
             mask_root=candidate.mask_root,
             pointcloud=pointcloud,
         )
-        if candidate.display_transform is None:
-            return dataset
-        return transform_preview_dataset(
-            dataset,
-            camera_matrix=candidate.display_transform.camera_matrix,
-            pointcloud_matrix=candidate.display_transform.pointcloud_matrix,
-            coordinate_note=candidate.display_transform.note,
-        )
-    if candidate.kind == "metashape":
-        return load_metashape_preview_dataset(
+    elif candidate.kind == "metashape":
+        dataset = load_metashape_preview_dataset(
             candidate.path,
             images_dir=candidate.image_root,
             masks_dir=candidate.mask_root,
             pointcloud=pointcloud,
         )
-    return load_colmap_preview_dataset(candidate.path, images_dir=candidate.image_root, masks_dir=candidate.mask_root)
+    elif candidate.kind == "realityscan":
+        dataset = load_realityscan_preview_dataset(
+            candidate.path,
+            images_dir=candidate.image_root,
+            masks_dir=candidate.mask_root,
+            pointcloud=pointcloud,
+        )
+    else:
+        dataset = load_colmap_preview_dataset(
+            candidate.path,
+            images_dir=candidate.image_root,
+            masks_dir=candidate.mask_root,
+            pointcloud=pointcloud,
+            opengl_camera=candidate.colmap_opengl_camera,
+        )
+    if candidate.display_transform is None:
+        return dataset
+    return transform_preview_dataset(
+        dataset,
+        camera_matrix=candidate.display_transform.camera_matrix,
+        pointcloud_matrix=candidate.display_transform.pointcloud_matrix,
+        coordinate_note=candidate.display_transform.note,
+    )
 
 
 def _load_preview_mask(
