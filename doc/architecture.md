@@ -35,6 +35,12 @@ the GUI depends on.
 - Mask modules preserve the repository-wide mask polarity contract:
   white pixels are usable, black pixels are excluded. Mask merges should remain
   AND-style unless a tool explicitly documents a different operation.
+- Metashape coordinate handling is centralized in `core/metashape_coordinates.py`.
+  Any route that converts Metashape XML camera poses or PLY points must use this
+  module instead of duplicating axis matrices. The Step 4 Metashape preprocess
+  job uses `core/metashape_preprocess.py` to create the intermediate
+  equirectangular `transforms.json`; the vendored Metashape converter is kept
+  only as provenance/reference code, not as the GUI workflow implementation.
 - Cubemap and COLMAP exports must preserve coordinate profile semantics:
   Postshot uses the default cubemap transform, Brush uses the Brush transform,
   and LichtFeld cubemap export writes final-orientation-corrected

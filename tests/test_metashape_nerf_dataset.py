@@ -7,7 +7,7 @@ import numpy as np
 import pytest
 from PIL import Image
 
-from core.metashape_dataset_assets import metashape_camera_matrix_to_output_world
+from core.metashape_coordinates import metashape_camera_matrix_to_output_world
 from core.metashape_nerf_dataset import export_metashape_nerf_dataset, metashape_model_requires_mixed_nerf_writer
 from vendor.metashape_360_lfs.metashape_360_lfs import transform_camera_matrix
 

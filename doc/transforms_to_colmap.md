@@ -88,8 +88,8 @@ pip install plyfile
 ## Example: full pipeline for PostShot
 
 ```bash
-# 1. Equirectangular SfM result → nerfstudio-style JSON
-python vendor/metashape_360_lfs/metashape_360_lfs.py \
+# 1. Equirectangular SfM result -> NeRF-style JSON
+python metashape_360_lfs.py \
     --images images --xml metashape.xml --output .
 
 # 2. Cubemap conversion (Postshot profile = default)

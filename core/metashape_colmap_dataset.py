@@ -32,10 +32,12 @@ from core.dataset_writer_colmap import (
     replace_file_with_link_or_copy,
     write_colmap_text_dataset,
 )
+from core.metashape_coordinates import (
+    metashape_camera_to_world,
+    metashape_pointcloud_matrix,
+)
 from core.metashape_model import (
     CAMERA_MODEL_EQUIRECTANGULAR,
-    MetashapeCamera,
-    MetashapeModel,
     MetashapeSensor,
     parse_metashape_model,
 )
@@ -193,46 +195,6 @@ def export_metashape_colmap_dataset(
         action_counts=action_counts,
         warnings=plan.warnings,
     )
-
-
-def metashape_camera_to_world(model: MetashapeModel, camera: MetashapeCamera) -> np.ndarray:
-    transform = camera.transform.copy()
-    component = model.components.get(camera.component_id)
-    if component is not None:
-        matrix, scale = component
-        transform[:3, 3] *= float(scale)
-        transform = matrix @ transform
-    return metashape_camera_matrix_to_output_world(transform)
-
-
-def metashape_camera_matrix_to_output_world(transform: np.ndarray) -> np.ndarray:
-    converted = metashape_pointcloud_matrix() @ transform
-    converted[:, 1:3] *= -1.0
-    y_rot_180 = np.array(
-        [
-            [-1.0, 0.0, 0.0, 0.0],
-            [0.0, 1.0, 0.0, 0.0],
-            [0.0, 0.0, -1.0, 0.0],
-            [0.0, 0.0, 0.0, 1.0],
-        ],
-        dtype=np.float64,
-    )
-    return y_rot_180 @ converted
-
-
-def metashape_pointcloud_matrix() -> np.ndarray:
-    matrix = np.eye(4, dtype=np.float64)
-    matrix = matrix[[2, 0, 1, 3], :]
-    rot_x_pos90 = np.array(
-        [
-            [1.0, 0.0, 0.0, 0.0],
-            [0.0, 0.0, -1.0, 0.0],
-            [0.0, 1.0, 0.0, 0.0],
-            [0.0, 0.0, 0.0, 1.0],
-        ],
-        dtype=np.float64,
-    )
-    return rot_x_pos90 @ matrix
 
 
 def _resolve_inventory_path(scene: Path, root: Path, rel_path: str, *, standard_root_name: str) -> Path:

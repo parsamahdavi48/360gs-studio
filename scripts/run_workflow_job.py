@@ -27,6 +27,7 @@ from core.cubemap_transforms_json import (
     write_rig_config_json,
 )
 from core.dataset_writer_colmap import replace_file_with_link_or_copy
+from core.metashape_preprocess import export_metashape_equirectangular_dataset
 from core.realityscan_xmp import append_realityscan_unposed_scene_images
 from core.transforms_to_colmap import convert as convert_transforms_to_colmap
 from core.workflow_job_spec import (
@@ -57,7 +58,6 @@ from scripts.spheresfm_gpu_preflight import (
     run_colmap_command as run_spheresfm_preflight_colmap_command,
 )
 from scripts.spheresfm_to_transforms import convert as convert_spheresfm_to_transforms
-from vendor.metashape_360_lfs.metashape_360_lfs import convert_metashape_to_lichtfeld
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -92,7 +92,7 @@ def main(argv: list[str] | None = None) -> int:
 
 
 def _run_metashape_preprocess(job: dict) -> None:
-    result = convert_metashape_to_lichtfeld(
+    result = export_metashape_equirectangular_dataset(
         images_dir=Path(str(job["images_dir"])),
         xml_path=Path(str(job["xml_path"])),
         output_dir=Path(str(job["output_dir"])),
@@ -101,9 +101,9 @@ def _run_metashape_preprocess(job: dict) -> None:
         scale=float(job.get("scale", 1.0)),
         verbose=True,
     )
-    print(f"Metashape frames: {result['num_frames']}", flush=True)
-    print(f"Metashape skipped: {result['num_skipped']}", flush=True)
-    print(f"Metashape camera model: {result['camera_model']}", flush=True)
+    print(f"Metashape frames: {result.num_frames}", flush=True)
+    print(f"Metashape skipped: {result.num_skipped}", flush=True)
+    print(f"Metashape camera model: {result.camera_model}", flush=True)
 
 
 def _run_cubemap_conversion(job: dict) -> None:

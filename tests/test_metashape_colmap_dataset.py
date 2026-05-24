@@ -9,10 +9,9 @@ from PIL import Image
 from core.metashape_colmap_dataset import (
     dataset_world_transform,
     export_metashape_colmap_dataset,
-    metashape_camera_matrix_to_output_world,
     metashape_model_requires_mixed_colmap_writer,
-    metashape_pointcloud_matrix,
 )
+from core.metashape_coordinates import metashape_camera_matrix_to_output_world, metashape_pointcloud_matrix
 from core.transforms_to_colmap import c2w_to_w2c
 from vendor.metashape_360_lfs.metashape_360_lfs import transform_camera_matrix as legacy_transform_camera_matrix
 

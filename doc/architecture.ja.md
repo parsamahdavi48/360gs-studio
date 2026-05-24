@@ -16,6 +16,7 @@ root 直下の `*.py` は公開互換ラッパーです。意図した破壊的�
 - `core/frame_renumbering.py` は、Step 2 の採用画像連番化契約を担当します。下流成果物によるブロック判定、衝突を避けるリネーム計画/適用、パス変更時のフレーム/ソース画像台帳更新をここに集約します。
 - `core/scene_import*.py` は、外部シーンの再登録を担当します。取り込みはアプリ定義のシーンフォルダだけを走査し、外部取り込み由来メタデータを全量再登録として置き換え、実際の画像/マスク/出力アセットは削除しません。
 - マスク系モジュールでは、リポジトリ全体のマスク極性を守ります。白は使用可能ピクセル、黒は除外ピクセルです。マスク合成は、明示的に別操作として文書化しない限り AND 型を維持します。
+- Metashape の座標変換は `core/metashape_coordinates.py` に集約します。Metashape XML のカメラ姿勢や PLY 点群を変換するルートでは、軸変換行列を個別実装せずこのモジュールを使います。Step 4 の Metashape 前処理ジョブは `core/metashape_preprocess.py` で中間のエクイレクタングラー `transforms.json` を作成します。vendored Metashape converter は出典/参照コードとして残し、GUI ワークフローの実装経路には使いません。
 - キューブマップと COLMAP 出力では、座標プロファイルの意味を維持します。Postshot は標準キューブマップ変換、Brush は Brush 変換、LichtFeld のキューブマップ出力は Cubemap CLI で最終向き補正済みの `transforms.json` と `pointcloud.ply` を作ります。LichtFeld GUT向けERP 360°出力はキューブマップ化せずエクイレクタングラー入力を使い、直接データセット作成時に同じ最終向き補正を適用します。RealityScan再アライン用出力はStep 4のMetashapeルートで扱い、Metashapeインポート時の座標変換を相殺し、MetashapeのY-up姿勢をRealityScanのZ-up local Euclidean軸へ写してから `output/realityscan/` に cubemap 画像とXMPサイドカーを書き出します。RealityScan 側でアライン後に点群を再生成する前提なので、Metashape PLY は必須にせず渡しません。
 
 ## GUI の契約
