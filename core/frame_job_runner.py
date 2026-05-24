@@ -35,57 +35,30 @@ def run_frame_job_payload(job: dict[str, Any]) -> None:
 
 
 def _run_extract_video(job: dict[str, Any]) -> None:
-    from core.extract_frames import main as extract_main
+    from core.extract_frames import ExtractFramesOptions, run_extract_frames
 
-    argv = [
-        str(job["input_video"]),
-        str(job["scene_dir"]),
-        "--image-ext",
-        str(job.get("image_ext") or "jpg"),
-        "--jpg-quality",
-        str(job.get("jpg_quality", 2)),
-        "--ffmpeg",
-        str(job.get("ffmpeg") or "ffmpeg"),
-        "--ffprobe",
-        str(job.get("ffprobe") or "ffprobe"),
-        "--output-mode",
-        str(job.get("output_mode") or "overwrite"),
-        "--interval-sec",
-        f"{float(job.get('interval_sec', 0.5)):g}",
-    ]
-    prefix = str(job.get("filename_prefix") or "").strip()
-    if prefix:
-        argv.extend(["--filename-prefix", prefix])
+    options = ExtractFramesOptions(
+        input_video=Path(str(job["input_video"])),
+        output_dir=Path(str(job["scene_dir"])),
+        image_ext=str(job["image_ext"]),
+        jpg_quality=int(job["jpg_quality"]),
+        ffmpeg=str(job["ffmpeg"]),
+        ffprobe=str(job["ffprobe"]),
+        output_mode=str(job["output_mode"]),
+        filename_prefix=str(job["filename_prefix"]).strip(),
+        interval_sec=float(job["interval_sec"]),
+        quick_extract=bool(job["quick_extract"]),
+        pair_motion_profile=str(job["pair_motion_profile"]),
+        analysis_width=int(job["analysis_width"]),
+        fixed_smart=bool(job["fixed_smart"]),
+        min_gap_sec=float(job["min_gap_sec"]),
+        max_gap_sec=float(job["max_gap_sec"]),
+        allow_duplicate_video=bool(job["allow_duplicate_video"]),
+        estimate_only=bool(job["estimate_only"]),
+        print_summary_json=bool(job["print_summary_json"]),
+    )
 
-    if bool(job.get("quick_extract")):
-        argv.append("--quick-extract")
-    else:
-        argv.extend(
-            [
-                "--pair-motion-profile",
-                str(job.get("pair_motion_profile") or "walk_standard"),
-                "--analysis-width",
-                str(job.get("analysis_width") or 1920),
-            ]
-        )
-        if bool(job.get("fixed_smart")):
-            argv.extend(
-                [
-                    "--fixed-smart",
-                    "--min-gap-sec",
-                    f"{float(job.get('min_gap_sec', 0.25)):g}",
-                    "--max-gap-sec",
-                    f"{float(job.get('max_gap_sec', 2.0)):g}",
-                ]
-            )
-    if bool(job.get("allow_duplicate_video")):
-        argv.append("--allow-duplicate-video")
-    if bool(job.get("estimate_only")):
-        argv.append("--estimate-only")
-    if bool(job.get("print_summary_json")):
-        argv.append("--print-summary-json")
-
-    exit_code = int(extract_main(argv) or 0)
+    exit_code = int(run_extract_frames(options) or 0)
     if exit_code != 0:
         raise RuntimeError(f"Frame extraction failed with exit code {exit_code}")
 

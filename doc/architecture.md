@@ -25,8 +25,9 @@ GUI workflow unless a release note explicitly promises a specific wrapper.
   imports guarded so command help and unrelated tests do not require optional
   runtime dependencies.
 - `core/extract_frames.py` owns FFmpeg/FFprobe frame extraction, cache handling,
-  stationary thinning, and decision CSV writing. Step 1 invokes it through the
-  frame job runner.
+  stationary thinning, and decision CSV writing. Step 1 invokes
+  `run_extract_frames()` through the frame job runner with typed
+  `ExtractFramesOptions`; `main()` is only the CLI adapter.
 - Still-image sequence import uses the same frame job contract:
   `core/image_sequence_import_cli.py` builds an import payload and delegates to
   `core/frame_job_runner.py`; the matching `scripts/` entry is a thin wrapper.

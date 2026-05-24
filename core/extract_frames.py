@@ -7,6 +7,7 @@ import json
 import subprocess
 import tempfile
 from collections.abc import Sequence
+from dataclasses import dataclass
 from pathlib import Path
 
 from core.extract_sessions import (
@@ -45,6 +46,63 @@ from core.frame_pair_analysis import (
 from core.path_safety import safe_clear_path
 from core.scene_layout import extract_report_path, frame_cache_dir, scene_images_dir, selected_frames_path
 from core.video_info import VideoInfo
+
+
+@dataclass(frozen=True, slots=True)
+class ExtractFramesOptions:
+    input_video: Path
+    output_dir: Path = Path(".")
+    mode: str = "fixed"
+    interval_sec: float = 0.5
+    min_gap_sec: float = 0.25
+    max_gap_sec: float = 2.0
+    fixed_smart: bool = False
+    quick_extract: bool = False
+    fixed_smart_max_inserts_per_interval: int = 2
+    pair_track_min_count: int = 36
+    pair_motion_profile: str = "walk"
+    pair_drop_threshold: float = -1.0
+    pair_add_threshold: float = -1.0
+    pair_track_min_confidence: float = 0.25
+    analysis_width: int = 1920
+    image_ext: str = "jpg"
+    jpg_quality: int = 2
+    filename_prefix: str = ""
+    output_mode: str = "overwrite"
+    allow_duplicate_video: bool = False
+    ffmpeg: str = "ffmpeg"
+    ffprobe: str = "ffprobe"
+    estimate_only: bool = False
+    print_summary_json: bool = False
+
+
+def options_from_args(args: argparse.Namespace) -> ExtractFramesOptions:
+    return ExtractFramesOptions(
+        input_video=Path(str(args.input_video)),
+        output_dir=Path(str(args.output_dir)),
+        mode=str(args.mode),
+        interval_sec=float(args.interval_sec),
+        min_gap_sec=float(args.min_gap_sec),
+        max_gap_sec=float(args.max_gap_sec),
+        fixed_smart=bool(args.fixed_smart),
+        quick_extract=bool(args.quick_extract),
+        fixed_smart_max_inserts_per_interval=int(args.fixed_smart_max_inserts_per_interval),
+        pair_track_min_count=int(args.pair_track_min_count),
+        pair_motion_profile=str(args.pair_motion_profile),
+        pair_drop_threshold=float(args.pair_drop_threshold),
+        pair_add_threshold=float(args.pair_add_threshold),
+        pair_track_min_confidence=float(args.pair_track_min_confidence),
+        analysis_width=int(args.analysis_width),
+        image_ext=str(args.image_ext),
+        jpg_quality=int(args.jpg_quality),
+        filename_prefix=str(args.filename_prefix),
+        output_mode=str(args.output_mode),
+        allow_duplicate_video=bool(args.allow_duplicate_video),
+        ffmpeg=str(args.ffmpeg),
+        ffprobe=str(args.ffprobe),
+        estimate_only=bool(args.estimate_only),
+        print_summary_json=bool(args.print_summary_json),
+    )
 
 
 def parse_fraction(value: str) -> float:
@@ -945,8 +1003,7 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     return parser.parse_args(argv)
 
 
-def main(argv: Sequence[str] | None = None) -> int:
-    args = parse_args(argv)
+def run_extract_frames(args: ExtractFramesOptions) -> int:
     if args.interval_sec <= 0:
         print("Error: --interval-sec must be > 0")
         return 1
@@ -1295,6 +1352,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.print_summary_json:
         print("SUMMARY_JSON:" + json.dumps(summary, ensure_ascii=False))
     return 0
+
+
+def main(argv: Sequence[str] | None = None) -> int:
+    return run_extract_frames(options_from_args(parse_args(argv)))
 
 
 if __name__ == "__main__":

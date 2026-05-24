@@ -12,7 +12,7 @@ root直下の互換 `*.py` ラッパーは、アプリ構造に含めません�
 
 - `core/video_info.py` は、フレーム抽出と後続処理で共有する動画メタデータ dataclass を担当します。
 - `core/frame_pair_analysis.py` は、ペアフレームのメトリクス、ブレ/追跡リスク閾値、依存チェック、選択解析を担当します。コマンドヘルプや無関係なテストで任意依存が必須にならないよう、OpenCV/numpy import はガードしてください。
-- `core/extract_frames.py` は、FFmpeg/FFprobe による抽出、キャッシュ、静止/類似フレーム間引き、判定 CSV を担当します。Step 1 からは frame job runner 経由で呼び出します。
+- `core/extract_frames.py` は、FFmpeg/FFprobe による抽出、キャッシュ、静止/類似フレーム間引き、判定 CSV を担当します。Step 1 からは frame job runner 経由で typed `ExtractFramesOptions` を渡し、`run_extract_frames()` を呼び出します。`main()` は CLI 用アダプタに限定します。
 - 静止画連番フォルダの取り込みも同じ frame job 契約を使います。`core/image_sequence_import_cli.py` は取り込み payload を作り、`core/frame_job_runner.py` に実行を委譲します。対応する `scripts/` 入口は薄いラッパーだけにします。
 - `core/frame_renumbering.py` は、Step 2 の採用画像連番化契約を担当します。下流成果物によるブロック判定、衝突を避けるリネーム計画/適用、パス変更時のフレーム/ソース画像台帳更新をここに集約します。
 - `core/apply_frame_decisions.py` は Step 2 の採用/除外適用実装を担当します。`core/apply_frame_decisions_cli.py` はCLI用アダプタだけにし、GUI/frame job からは `core/frame_job_runner.py` 経由で `apply_decisions()` を呼びます。

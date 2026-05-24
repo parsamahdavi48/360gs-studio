@@ -4,6 +4,8 @@ from pathlib import Path
 
 import pytest
 
+from core.extract_frames import ExtractFramesOptions
+from core.frame_job_runner import _run_extract_video
 from core.frame_job_spec import (
     JOB_KIND_APPLY_FRAME_DECISIONS,
     JOB_KIND_EXTRACT_VIDEO,
@@ -43,6 +45,57 @@ def test_extract_video_frame_job_round_trips(tmp_path: Path) -> None:
     assert loaded["schema_version"] == 1
     assert loaded["analysis_width"] == 1920
     assert loaded["fixed_smart"] is True
+
+
+def test_extract_video_frame_job_runner_passes_typed_options(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    payload = extract_video_job(
+        input_video=tmp_path / "clip.mp4",
+        scene_dir=tmp_path / "scene",
+        image_ext="png",
+        jpg_quality=2,
+        ffmpeg="custom-ffmpeg",
+        ffprobe="custom-ffprobe",
+        output_mode="append",
+        filename_prefix="clip",
+        interval_sec=1.5,
+        quick_extract=False,
+        pair_motion_profile="walk_standard",
+        analysis_width=0,
+        fixed_smart=True,
+        min_gap_sec=0.5,
+        max_gap_sec=3.0,
+        allow_duplicate_video=True,
+        estimate_only=True,
+        print_summary_json=True,
+    )
+    captured: dict[str, ExtractFramesOptions] = {}
+
+    def fake_run_extract_frames(options: ExtractFramesOptions) -> int:
+        captured["options"] = options
+        return 0
+
+    monkeypatch.setattr("core.extract_frames.run_extract_frames", fake_run_extract_frames)
+
+    _run_extract_video(payload)
+
+    options = captured["options"]
+    assert isinstance(options, ExtractFramesOptions)
+    assert options.input_video == tmp_path / "clip.mp4"
+    assert options.output_dir == tmp_path / "scene"
+    assert options.image_ext == "png"
+    assert options.ffmpeg == "custom-ffmpeg"
+    assert options.ffprobe == "custom-ffprobe"
+    assert options.output_mode == "append"
+    assert options.filename_prefix == "clip"
+    assert options.interval_sec == 1.5
+    assert options.pair_motion_profile == "walk_standard"
+    assert options.analysis_width == 0
+    assert options.fixed_smart is True
+    assert options.min_gap_sec == 0.5
+    assert options.max_gap_sec == 3.0
+    assert options.allow_duplicate_video is True
+    assert options.estimate_only is True
+    assert options.print_summary_json is True
 
 
 def test_import_image_sequence_frame_job_round_trips(tmp_path: Path) -> None:
