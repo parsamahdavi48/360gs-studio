@@ -16,10 +16,6 @@ After extracting the ZIP, run `setup_windows.bat`, then `run_gui.bat`.
 
 [JP 日本語の説明](README.ja.md)
 
-![STechDrive 3DGS Utils workflow](images/stechdrive-3dgs-workflow-en.png)
-
-![STechDrive 3DGS Utils GUI](images/stechdrive-3dgs-utils-gui.jpg)
-
 ## What You Can Do
 
 ### 1. SfM Preprocessing for 360° and Normal Images
@@ -51,7 +47,7 @@ For video or image sequences from DSLR, mirrorless, smartphone, or other normal 
 - Use the same mask-preparation workflow for normal-camera video after Step 1 extraction and for normal photo or image-sequence sets, not only 360° images. This is useful before sending images to SfM software.
 - In Step 4, choose how camera poses and sparse points will be prepared: use an existing SfM result, run COLMAP or SphereSfM from this app, or create RealityScan realignment data from a Metashape result.
 - In Step 5, convert Metashape, SphereSfM, RealityScan, or COLMAP results into NeRF-style JSON/PLY datasets, COLMAP-format datasets, LichtFeld-ready RealityScan conversions, or AprilTag scale-adjusted outputs.
-- Inspect SfM results and datasets in Scene Preview, with the point cloud, camera positions, selected camera image, and matching masks in one view. Open it from Step 4's card or launch only the viewer with `run_scene_preview.bat`.
+- Inspect SfM results and datasets in Scene Preview, with the point cloud, camera positions, selected camera image, and matching masks in one view. Open it from Step 4's viewer card.
 - If you print and place AprilTags before capture, Step 5 `Scale Adjustment` can estimate metric scale from an existing dataset. After reviewing the estimate, you can apply the same scale to the target dataset camera positions and point cloud.
 - Prepare the Windows environment with setup scripts that handle Python, FFmpeg/FFprobe, and the main Python packages. Normal use starts from `run_gui.bat`.
 

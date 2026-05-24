@@ -131,11 +131,7 @@ Start with the default. Use a smaller size for fast tests and a larger size when
 
 ## Scene Preview
 
-Open `Inspect SfM Result` from Step 4 to inspect point clouds, camera positions, images, and masks together. To launch only the viewer:
-
-```bat
-run_scene_preview.bat D:\work\scene01
-```
+Open `Inspect SfM Result` from Step 4 to inspect point clouds, camera positions, images, and masks together.
 
 The viewer can load output datasets, Metashape XML/PLY, COLMAP sparse models, and SphereSfM sparse models found in the scene. Selecting a camera shows its image and matching mask.
 

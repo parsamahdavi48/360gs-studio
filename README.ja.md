@@ -16,10 +16,6 @@ ZIPを展開したら、`setup_windows.bat`、続いて `run_gui.bat` を実行�
 
 [EN English](README.md)
 
-![STechDrive 3DGS Utils ワークフロー](images/stechdrive-3dgs-workflow-ja.png)
-
-![STechDrive 3DGS Utils GUI](images/stechdrive-3dgs-utils-gui.jpg)
-
 ## このアプリでできること
 
 ### 1. 360°/通常画像を混在させたSfM前処理
@@ -51,7 +47,7 @@ RealityScanで再アラインしたCSV/PLYを、LichtFeldでDatasetとして開�
 - 360°画像だけでなく、通常動画からのフレーム抽出や通常画像の連番画像にも使えます。人物・車両・空・白飛びなどを、SfMに渡す前のマスク前処理としてまとめて作成できます。
 - Step 4では、外部SfM結果を使うか、COLMAP/SphereSfMをこのアプリから実行するかを選びます。COLMAPは360°画像のCubemap Rigと通常画像カメラの混在に対応し、SphereSfMは同一解像度のエクイレクタングラー360°画像だけを扱うルートです。
 - Step 5では、Metashape / SphereSfM / RealityScan / COLMAPの結果から、NeRF系JSON/PLY、COLMAP形式データセット、LichtFeld向けRealityScan変換、AprilTagスケール補正などを選んで実行できます。
-- シーンプレビューで、SfM結果やデータセットの点群、カメラ位置、選択カメラの画像、対応マスクを同じ画面で確認できます。Step 4のカードから開くほか、`run_scene_preview.bat` でビューワーだけ起動できます。
+- シーンプレビューで、SfM結果やデータセットの点群、カメラ位置、選択カメラの画像、対応マスクを同じ画面で確認できます。Step 4のビューワーカードから開けます。
 - AprilTagを撮影前に印刷・配置しておけば、Step 5の `スケール調整` で出力済みデータセットからメートル換算のスケールを推定できます。推定値を確認してから、対象データセットのカメラ位置と点群へ同じscaleを反映できます。
 - Windows向けセットアップスクリプトで、Python環境、FFmpeg/FFprobe、主要Pythonパッケージの準備をまとめて行えます。通常利用は `run_gui.bat` から起動できます。
 
