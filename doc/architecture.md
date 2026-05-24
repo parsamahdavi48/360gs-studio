@@ -6,10 +6,11 @@ typed core jobs directly whenever the work is internal to this app.
 
 ## Entry Points
 
-Root-level `*.py` files are developer/debug wrappers, not the architectural
-center of the application. Do not add new GUI behavior by building shell command
-strings for Python scripts. Add typed payloads and core runners first, then keep
-or add a wrapper only when it is useful for tests or manual diagnostics.
+Root-level compatibility `*.py` wrappers are intentionally not part of the
+application structure. Do not add new GUI behavior by building shell command
+strings for repository Python scripts. Add typed payloads and core runners
+first. If a process boundary is needed for robustness, use a `core` module entry
+point rather than reintroducing root wrappers.
 
 Shared implementation lives in `core/`. Tests should cover the implementation
 contract and the GUI job payloads. Public CLI compatibility is secondary to the
@@ -24,7 +25,8 @@ GUI workflow unless a release note explicitly promises a specific wrapper.
   imports guarded so command help and unrelated tests do not require optional
   runtime dependencies.
 - `core/extract_frames.py` owns FFmpeg/FFprobe frame extraction, cache handling,
-  stationary thinning, decision CSV writing, and CLI argument handling.
+  stationary thinning, and decision CSV writing. Step 1 invokes it through the
+  frame job runner.
 - `core/frame_renumbering.py` owns the Step 2 kept-image renumbering contract:
   downstream-output blockers, collision-safe rename planning/application, and
   updates to frame/source image metadata when paths change.
@@ -32,10 +34,12 @@ GUI workflow unless a release note explicitly promises a specific wrapper.
   scan only the app-defined scene folders, replace external-import metadata as a
   full reimport, and avoid deleting real image/mask/output assets.
 - `core/app_job.py`, `core/workflow_job_runner.py`, `core/sfm_job_runner.py`,
-  and `core/dataset_job_runner.py` own internal GUI job execution. GUI steps
-  should return `AppJob` for app-internal Python work and reserve raw command
-  lists for external executables such as COLMAP, FFmpeg, SphereSfM binaries, or
-  training application CLIs.
+  `core/frame_job_runner.py`, and `core/dataset_job_runner.py` own internal GUI
+  job execution. GUI steps should return `AppJob` for app-internal Python work
+  and reserve raw command lists for external executables such as COLMAP, FFmpeg,
+  SphereSfM binaries, or training application CLIs. GPU-heavy mask generation
+  may run as `python -m core.<module>` to keep model memory and crashes isolated
+  from the GUI process.
 - Mask modules preserve the repository-wide mask polarity contract:
   white pixels are usable, black pixels are excluded. Mask merges should remain
   AND-style unless a tool explicitly documents a different operation.

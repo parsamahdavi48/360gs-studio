@@ -7,7 +7,7 @@ import cv2
 import numpy as np
 import pytest
 
-from transforms_to_colmap import read_ply_points
+from core.transforms_to_colmap import read_ply_points
 
 
 def _write_ascii_ply(path: Path, points: list[tuple[float, float, float]]) -> None:
@@ -41,7 +41,8 @@ def test_image_only_export_writes_view_images_without_transforms(tmp_path: Path)
     result = subprocess.run(
         [
             sys.executable,
-            "cubemap_transforms_json.py",
+            "-m",
+            "core.cubemap_transforms_json",
             str(scene),
             str(output),
             "--image-only",
@@ -89,7 +90,8 @@ def test_image_only_export_can_write_masks_without_images(tmp_path: Path) -> Non
     result = subprocess.run(
         [
             sys.executable,
-            "cubemap_transforms_json.py",
+            "-m",
+            "core.cubemap_transforms_json",
             str(scene),
             str(output),
             "--image-only",
@@ -132,7 +134,8 @@ def test_image_only_export_fails_when_mask_worker_fails(tmp_path: Path) -> None:
     result = subprocess.run(
         [
             sys.executable,
-            "cubemap_transforms_json.py",
+            "-m",
+            "core.cubemap_transforms_json",
             str(scene),
             str(tmp_path / "out"),
             "--image-only",
@@ -179,7 +182,8 @@ def test_colmap_rig_export_writes_camera_folders_masks_and_rig_config(tmp_path: 
     result = subprocess.run(
         [
             sys.executable,
-            "cubemap_transforms_json.py",
+            "-m",
+            "core.cubemap_transforms_json",
             str(scene),
             str(output),
             "--image-only",
@@ -243,7 +247,8 @@ def test_lfs_final_orientation_writes_oriented_transforms_and_pointcloud(tmp_pat
     result = subprocess.run(
         [
             sys.executable,
-            "cubemap_transforms_json.py",
+            "-m",
+            "core.cubemap_transforms_json",
             str(scene),
             str(output),
             "--views-json",
@@ -300,7 +305,8 @@ def test_colmap_rig_export_fails_when_mask_worker_fails(tmp_path: Path) -> None:
     result = subprocess.run(
         [
             sys.executable,
-            "cubemap_transforms_json.py",
+            "-m",
+            "core.cubemap_transforms_json",
             str(scene),
             str(tmp_path / "out"),
             "--image-only",

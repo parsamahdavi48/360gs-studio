@@ -535,7 +535,7 @@ def test_mask_step_allows_external_images_without_selected_frames_csv(tmp_path: 
     assert step.primary_action_enabled()
     commands = step.build_commands()
     assert commands[0][0] == "yolo"
-    assert commands[0][1][3] == str(images)
+    assert commands[0][1][4] == str(images)
 
 
 def test_mask_step_confirms_yolo_commands(monkeypatch) -> None:
@@ -657,7 +657,8 @@ def test_mask_step_custom_mask_builds_final_command(tmp_path: Path) -> None:
         [
             sys.executable,
             "-u",
-            str(Path.cwd() / "custom_mask.py"),
+            "-m",
+            "core.custom_mask",
             str(scene / "images"),
             str(scene / "masks"),
             str(custom_path),
@@ -678,10 +679,11 @@ def test_mask_step_mask2former_primary_builds_final_command(tmp_path: Path) -> N
 
     assert commands[0][0] == "yolo"
     cmd = commands[0][1]
-    assert cmd[:5] == [
+    assert cmd[:6] == [
         sys.executable,
         "-u",
-        str(Path.cwd() / "sky_mask.py"),
+        "-m",
+        "core.sky_mask",
         str(scene / "images"),
         str(scene / "masks"),
     ]
@@ -808,10 +810,11 @@ def test_mask_step_person_mask_can_select_sam31_backend(tmp_path: Path, monkeypa
 
     assert [phase for phase, _cmd in commands] == ["yolo"]
     cmd = commands[0][1]
-    assert cmd[:5] == [
+    assert cmd[:6] == [
         sys.executable,
         "-u",
-        str(Path.cwd() / "sky_mask.py"),
+        "-m",
+        "core.sky_mask",
         str(scene / "images"),
         str(scene / "masks"),
     ]
@@ -865,10 +868,11 @@ def test_mask_step_stitch_runs_after_primary_mask(tmp_path: Path) -> None:
     commands = step.build_commands()
 
     assert [phase for phase, _cmd in commands] == ["yolo", "stitch"]
-    assert commands[1][1][:4] == [
+    assert commands[1][1][:5] == [
         sys.executable,
         "-u",
-        str(Path.cwd() / "stitch_mask.py"),
+        "-m",
+        "core.stitch_mask",
         str(scene / "masks"),
     ]
 
@@ -897,8 +901,8 @@ def test_mask_step_allows_generation_when_drop_images_are_removed(tmp_path: Path
 
     assert commands
     assert commands[0][0] == "yolo"
-    assert commands[0][1][3] == str(scene / "images")
-    assert commands[0][1][4] == str(scene / "masks")
+    assert commands[0][1][4] == str(scene / "images")
+    assert commands[0][1][5] == str(scene / "masks")
     assert commands[0][1][commands[0][1].index("--quality") + 1] == "high"
     assert commands[0][1][commands[0][1].index("--projection") + 1] == "equirect"
     assert "--add-ext" not in commands[0][1]
@@ -916,8 +920,8 @@ def test_mask_step_current_reprocess_command_targets_preview_image_subfolder(tmp
 
     cmd = step._build_yolo_current_cmd(image_path)
 
-    assert cmd[3] == str(image_path)
-    assert cmd[4] == str(scene / "masks" / "extra")
+    assert cmd[4] == str(image_path)
+    assert cmd[5] == str(scene / "masks" / "extra")
     assert step._mask_output_path_for_image(image_path) == scene / "masks" / "extra" / "frame_0001.png"
     assert "--add-ext" not in cmd
 
@@ -935,8 +939,8 @@ def test_mask_step_current_reprocess_external_commands_target_preview_image_subf
     commands = step._build_current_reprocess_external_commands(image_path)
 
     assert [phase for phase, _cmd in commands] == ["yolo"]
-    assert commands[0][1][3] == str(image_path)
-    assert commands[0][1][4] == str(scene / "masks" / "extra")
+    assert commands[0][1][4] == str(image_path)
+    assert commands[0][1][5] == str(scene / "masks" / "extra")
 
 
 def test_mask_step_current_reprocess_mask2former_uses_primary_replace(tmp_path: Path) -> None:

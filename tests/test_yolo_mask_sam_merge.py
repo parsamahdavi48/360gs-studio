@@ -3,7 +3,7 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-import yolo_mask
+import core.yolo_mask as yolo_mask
 
 
 class FakeMaskData:

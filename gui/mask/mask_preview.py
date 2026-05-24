@@ -24,8 +24,10 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from core.custom_mask import load_custom_mask
 from core.image_io import imread_unicode
-from custom_mask import load_custom_mask
+from core.overexposure_mask import detect_overexposure, read_image_preserve_depth
+from core.stitch_mask import boundary_width_to_limit_angle, create_angular_stitched_mask
 from gui import i18n
 from gui.common.icons import (
     mask_overlay_off_icon,
@@ -52,8 +54,6 @@ from gui.common.thumbnail_list_model import visible_rows_for_view
 from gui.mask.mask_files import iter_image_files, mask_candidates_for_image, path_key
 from gui.mask.thumbnail_delegate import MaskThumbnailDelegate
 from gui.mask.thumbnail_model import MaskThumbnailModel
-from overexposure_mask import detect_overexposure, read_image_preserve_depth
-from stitch_mask import boundary_width_to_limit_angle, create_angular_stitched_mask
 
 _IMAGE_CACHE_LIMIT = 2
 _LAYER_CACHE_LIMIT = 4

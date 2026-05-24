@@ -10,7 +10,7 @@
 ## Usage
 
 ```
-python yolo_mask.py [images_dir] [output_dir] [--add_ext] [--quality standard|high|best] [--expand M] [--classes IDS] [--projection equirect|normal] [--bottom-conf C] [--bottom-tta-rotations 1|2|4] [--bottom-model same|m|l|x] [--bottom-filter] [--profile-json PATH]
+python -m core.yolo_mask [images_dir] [output_dir] [--add_ext] [--quality standard|high|best] [--expand M] [--classes IDS] [--projection equirect|normal] [--bottom-conf C] [--bottom-tta-rotations 1|2|4] [--bottom-model same|m|l|x] [--bottom-filter] [--profile-json PATH]
 ```
 
 - `images_dir`: input image directory (default: `images`)
@@ -36,25 +36,25 @@ python yolo_mask.py [images_dir] [output_dir] [--add_ext] [--quality standard|hi
 Example:
 
 ```bash
-python yolo_mask.py .\images .\masks --quality high --expand 5 --classes 0,2,3
+python -m core.yolo_mask .\images .\masks --quality high --expand 5 --classes 0,2,3
 ```
 
 Normal images:
 
 ```bash
-python yolo_mask.py .\images .\masks --projection normal --quality standard
+python -m core.yolo_mask .\images .\masks --projection normal --quality standard
 ```
 
 Harder bottom-view photographer masking:
 
 ```bash
-python yolo_mask.py .\images .\masks --quality best
+python -m core.yolo_mask .\images .\masks --quality best
 ```
 
 Maximum bottom-only YOLO strength:
 
 ```bash
-python yolo_mask.py .\images .\masks --quality best --bottom-model x
+python -m core.yolo_mask .\images .\masks --quality best --bottom-model x
 ```
 
 Benchmark a fixed dataset:
@@ -84,4 +84,4 @@ python scripts/benchmark_yolo_mask.py --dataset D:\3DGS\test --output-root D:\3D
 
 ## Reference
 
-See the implementation: [yolo_mask.py](../yolo_mask.py)
+See the implementation: [core/yolo_mask.py](../core/yolo_mask.py)

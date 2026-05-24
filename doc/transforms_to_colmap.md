@@ -27,14 +27,14 @@ The script does **not** perform any additional coordinate transform. The input `
 ## Usage
 
 ```bash
-python transforms_to_colmap.py ./cubic
+python -m core.transforms_to_colmap ./cubic
 # Output: ./cubic/colmap/{cameras.txt, images.txt, points3D.txt}
 ```
 
 With explicit output directory and PLY:
 
 ```bash
-python transforms_to_colmap.py ./cubic ./cubic/colmap \
+python -m core.transforms_to_colmap ./cubic ./cubic/colmap \
     --json transforms.json \
     --ply ./cubic/pointcloud.ply
 ```
@@ -91,10 +91,10 @@ pip install plyfile
 # 1. Prepare an equirectangular transforms.json with the GUI Metashape route.
 
 # 2. Cubemap conversion (Postshot profile = default)
-python cubemap_transforms_json.py . ./cubic
+python -m core.cubemap_transforms_json . ./cubic
 
 # 3. COLMAP text export
-python transforms_to_colmap.py ./cubic
+python -m core.transforms_to_colmap ./cubic
 
 # Result: ./cubic/colmap/ ready for PostShot/Brush/gaussian-splatting
 ```

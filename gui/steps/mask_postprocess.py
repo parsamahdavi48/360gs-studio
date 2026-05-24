@@ -8,11 +8,11 @@ from pathlib import Path
 import cv2
 import numpy as np
 
+from core.custom_mask import load_custom_mask
 from core.image_io import imread_unicode, imwrite_unicode
 from core.mask_metadata import PIXEL_STATS_SKIPPED
-from custom_mask import load_custom_mask
-from overexposure_mask import detect_overexposure, read_image_preserve_depth
-from stitch_mask import boundary_width_to_limit_angle, create_angular_stitched_mask
+from core.overexposure_mask import detect_overexposure, read_image_preserve_depth
+from core.stitch_mask import boundary_width_to_limit_angle, create_angular_stitched_mask
 
 
 @dataclass(frozen=True)

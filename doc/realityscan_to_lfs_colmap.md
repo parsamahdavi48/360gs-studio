@@ -45,7 +45,7 @@ long as the vertex data contains `x/y/z` properties.
 ## Example
 
 ```powershell
-python realityscan_to_lfs_colmap.py `
+python -m core.realityscan_to_lfs_colmap `
   D:\3DGS\sakume\output\realityscan\rs_sakume.csv `
   --ply D:\3DGS\sakume\output\realityscan\rs_sakume.ply
 ```
@@ -54,7 +54,7 @@ To create a dataset that does not require LichtFeld's runtime `Undistort`
 option, pre-undistort only the distorted RealityScan rows:
 
 ```powershell
-python realityscan_to_lfs_colmap.py `
+python -m core.realityscan_to_lfs_colmap `
   D:\3DGS\sakume\output\realityscan\rs_sakume.csv `
   --ply D:\3DGS\sakume\output\realityscan\rs_sakume.ply `
   --pre-undistort-distorted-images

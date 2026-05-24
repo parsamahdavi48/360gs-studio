@@ -12,7 +12,7 @@ Applying the stitching mask is useful when seams become noticeable (for example 
 ## Usage
 
 ```
-python stitch_mask.py [-h] [--single w h] [--boundary-width DEG] [--fov FOV] [--workers WORKERS] [input_dir] [output_dir]
+python -m core.stitch_mask [-h] [--single w h] [--boundary-width DEG] [--fov FOV] [--workers WORKERS] [input_dir] [output_dir]
 ```
 
 - **`input_dir`**: directory containing input mask PNGs (if omitted the script searches for `masks`)
@@ -27,31 +27,31 @@ python stitch_mask.py [-h] [--single w h] [--boundary-width DEG] [--fov FOV] [--
 If masks produced by `yolo_mask.py` are already in `masks/` (use default):
 
 ```bash
-python stitch_mask.py
+python -m core.stitch_mask
 ```
 
 Specify only the input folder:
 
 ```bash
-python stitch_mask.py input_masks
+python -m core.stitch_mask input_masks
 ```
 
 Specify both input and output folders:
 
 ```bash
-python stitch_mask.py input_masks output_masks
+python -m core.stitch_mask input_masks output_masks
 ```
 
 Create a single base mask at 7680×3840 and save it into the current directory:
 
 ```bash
-python stitch_mask.py . --single 7680 3840
+python -m core.stitch_mask . --single 7680 3840
 ```
 
 Use a 10° seam band and 8 workers:
 
 ```bash
-python stitch_mask.py input_masks output_masks --boundary-width 10 --workers 8
+python -m core.stitch_mask input_masks output_masks --boundary-width 10 --workers 8
 ```
 
 ## Notes
@@ -61,4 +61,4 @@ python stitch_mask.py input_masks output_masks --boundary-width 10 --workers 8
 
 ## Reference
 
-See the implementation: [stitch_mask.py](../stitch_mask.py)
+See the implementation: [core/stitch_mask.py](../core/stitch_mask.py)

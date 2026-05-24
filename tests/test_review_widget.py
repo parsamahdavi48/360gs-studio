@@ -22,7 +22,7 @@ from core.scene_layout import selected_frames_path
 from gui import i18n
 from gui.common.perspective_preview import PREVIEW_PROJECTION_EQUIRECT, PREVIEW_PROJECTION_PERSPECTIVE
 from gui.common.preview_mode_toolbar import PREVIEW_MODE_PERSPECTIVE, PREVIEW_MODE_SINGLE, PREVIEW_MODE_THUMBNAILS
-from review_frames import ReviewWidget, _review_thumbnail_image
+from gui.review_frames import ReviewWidget, _review_thumbnail_image
 
 
 def _app():
@@ -365,7 +365,7 @@ def test_review_summary_label_is_single_line_in_english(tmp_path: Path) -> None:
         os.environ["STUDIO_LANG"] = "en"
         from pathlib import Path
         from PySide6.QtWidgets import QApplication
-        from review_frames import ReviewWidget
+        from gui.review_frames import ReviewWidget
         from tests.test_review_widget import _write_scene, _set_summary_statuses
 
         app = QApplication.instance() or QApplication([])

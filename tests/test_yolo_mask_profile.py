@@ -7,7 +7,7 @@ import cv2
 import numpy as np
 import pytest
 
-import yolo_mask
+import core.yolo_mask as yolo_mask
 
 
 def test_profile_json_records_timing_without_changing_normal_masks(

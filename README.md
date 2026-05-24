@@ -232,22 +232,9 @@ numpy, opencv-python, Pillow, open3d, ultralytics, transformers, safetensors, tq
 
 `setup_windows.bat` uses the pinned verified package set under `requirements/` for reproducible first-time setup. `update_venv.bat` resolves the latest compatible packages by default; pass `--locked` when you want to rebuild from the pinned set instead.
 
-## Developer CLI Wrappers
+## Developer Notes
 
-The normal workflow is GUI-first. Some root-level scripts remain as developer/debug wrappers around the `core/` implementation, but the GUI no longer depends on shelling out to every public CLI script.
-
-| Script | Purpose | Docs |
-| --- | --- | --- |
-| `extract_frames.py` | Extract video frames and register still-image sources | [EN](doc/extract_frames.md) |
-| `apply_frame_decisions.py` | Apply keep/drop decisions from CSV | [EN](doc/apply_frame_decisions.md) |
-| `review_frames.py` | Frame review GUI | [EN](doc/review_frames.md) |
-| `yolo_mask.py` | YOLO+SAM2.1 mask generation | [EN](doc/yolo_mask.md) |
-| `sky_mask.py` | Semantic mask generation with Mask2Former ADE20K labels or SAM3.1 prompts | [EN](doc/sky_mask.md) |
-| `stitch_mask.py` | Stitch seam mask generation | [EN](doc/stitch_mask.md) |
-| `overexposure_mask.py` | Overexposure mask generation | [EN](doc/overexposure_mask.md) |
-| `custom_mask.py` | AND-merge a user-provided PNG mask | [EN](doc/custom_mask.md) |
-| `cubemap_transforms_json.py` | Convert equirectangular images to cubemap views | [EN](doc/cubemap_transforms_json.md) |
-| `transforms_to_colmap.py` | Export COLMAP files from `transforms.json` | [EN](doc/transforms_to_colmap.md) |
+The normal workflow is GUI-first. Runtime implementation lives under `core/`, and the GUI runs app-internal work through typed jobs instead of root-level compatibility scripts. Developer and release utilities remain under `scripts/`.
 
 ## License
 

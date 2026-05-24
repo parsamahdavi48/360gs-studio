@@ -38,7 +38,6 @@ def _mask_context(base_dir: Path) -> MaskCommandContext:
 
 
 def test_mask_command_builder_keeps_sam31_safe_batch_directory_only(tmp_path: Path) -> None:
-    (tmp_path / "sky_mask.py").write_text("", encoding="utf-8")
     images = tmp_path / "images"
     images.mkdir()
     image_file = images / "frame_0001.jpg"
@@ -58,7 +57,7 @@ def test_mask_command_builder_keeps_sam31_safe_batch_directory_only(tmp_path: Pa
         prompts=["person"],
     )
 
-    assert dir_cmd[0:3] == ["python.exe", "-u", str(tmp_path / "sky_mask.py")]
+    assert dir_cmd[0:4] == ["python.exe", "-u", "-m", "core.sky_mask"]
     assert dir_cmd[dir_cmd.index("--backend") + 1] == "sam31"
     assert "--replace" in dir_cmd
     assert "--safe-batch" in dir_cmd

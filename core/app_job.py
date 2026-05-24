@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any
 
 APP_JOB_DATASET = "dataset"
+APP_JOB_FRAME = "frame"
 APP_JOB_SFM = "sfm"
 APP_JOB_WORKFLOW = "workflow"
 
@@ -36,6 +37,10 @@ def dataset_app_job(payload: dict[str, Any], job_path: str | Path | None = None)
     return AppJob(APP_JOB_DATASET, dict(payload), Path(job_path) if job_path else None)
 
 
+def frame_app_job(payload: dict[str, Any], job_path: str | Path | None = None) -> AppJob:
+    return AppJob(APP_JOB_FRAME, dict(payload), Path(job_path) if job_path else None)
+
+
 def sfm_app_job(payload: dict[str, Any], job_path: str | Path | None = None) -> AppJob:
     return AppJob(APP_JOB_SFM, dict(payload), Path(job_path) if job_path else None)
 
@@ -50,6 +55,11 @@ def run_app_job(job: AppJob) -> None:
         from core.dataset_job_runner import run_dataset_job_payload
 
         run_dataset_job_payload(job.payload)
+        return
+    if job.job_type == APP_JOB_FRAME:
+        from core.frame_job_runner import run_frame_job_payload
+
+        run_frame_job_payload(job.payload)
         return
     if job.job_type == APP_JOB_SFM:
         from core.sfm_job_runner import run_sfm_job_payload

@@ -11,7 +11,7 @@ Mask convention is the same as the rest of this project:
 ## Usage
 
 ```bash
-python custom_mask.py ./scene01/images ./scene01/masks ./custom_mask.png
+python -m core.custom_mask ./scene01/images ./scene01/masks ./custom_mask.png
 ```
 
 Arguments:

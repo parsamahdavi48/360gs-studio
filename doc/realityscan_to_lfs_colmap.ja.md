@@ -42,7 +42,7 @@ PLYはASCIIとバイナリのどちらでも扱えますが、点群の頂点に
 ## 例
 
 ```powershell
-python realityscan_to_lfs_colmap.py `
+python -m core.realityscan_to_lfs_colmap `
   D:\3DGS\sakume\output\realityscan\rs_sakume.csv `
   --ply D:\3DGS\sakume\output\realityscan\rs_sakume.ply
 ```
@@ -51,7 +51,7 @@ LichtFeldの学習時 `Undistort` を使わずに済ませたい場合は、Real
 歪み係数を持つ行だけを事前undistortして書き出せます。
 
 ```powershell
-python realityscan_to_lfs_colmap.py `
+python -m core.realityscan_to_lfs_colmap `
   D:\3DGS\sakume\output\realityscan\rs_sakume.csv `
   --ply D:\3DGS\sakume\output\realityscan\rs_sakume.ply `
   --pre-undistort-distorted-images

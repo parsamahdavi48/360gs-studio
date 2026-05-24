@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import shutil
-import sys
 from pathlib import Path
 
 from PySide6.QtCore import Qt
@@ -22,8 +21,10 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from core.app_job import frame_app_job
 from core.apply_frame_decisions import load_rows, normalize_decision, pending_drop_image_paths
 from core.extract_frames import read_selected_csv, write_selected_csv_rows
+from core.frame_job_runner import JOB_KIND_APPLY_FRAME_DECISIONS
 from core.frame_renumbering import build_renumber_plan, find_renumber_blockers, rename_records
 from core.review_blur_sensitivity import (
     BLUR_REVIEW_MODE_LOW,
@@ -354,28 +355,30 @@ class ReviewStep(BaseStepWidget):
         )
         return result == QMessageBox.Yes
 
-    def _build_apply_cmd(self, extra_args: list[str] | None = None) -> list[str]:
-        script = self.base_dir / "apply_frame_decisions.py"
-        if not script.exists():
-            raise FileNotFoundError(f"apply_frame_decisions.py が見つかりません: {script}")
-        cmd = [sys.executable, "-u", str(script), self.scene_dir]
-        if extra_args:
-            cmd.extend(extra_args)
-        return cmd
+    def _build_apply_cmd(self, *, finalize_in_place: bool, renumber_kept_images: bool) -> object:
+        return frame_app_job(
+            {
+                "kind": JOB_KIND_APPLY_FRAME_DECISIONS,
+                "scene_dir": self.scene_dir,
+                "csv": "selected_frames.csv",
+                "output": "metashape_images",
+                "clean_output": False,
+                "finalize_in_place": finalize_in_place,
+                "renumber_kept_images": renumber_kept_images,
+            }
+        )
 
-    def build_commands(self) -> list[tuple[str, list[str]]]:
+    def build_commands(self) -> list[tuple[str, object]]:
         if not self.scene_dir:
             raise ValueError(i18n.t("SCENE_REQUIRED_ACTION_HINT"))
         if not self._has_csv():
             raise ValueError(f"CSVが見つかりません: {self._csv_path()}")
         if not self._confirm_finalize():
             return []
-        extra = ["--finalize-in-place"]
-        if self._renumber_kept_images():
-            extra.append("--renumber-kept-images")
+        renumber = self._renumber_kept_images()
         self._pending_review_run = self._review_run_snapshot()
         self._prepare_review_backup(self._pending_review_run)
-        return [("finalize", self._build_apply_cmd(extra))]
+        return [("finalize", self._build_apply_cmd(finalize_in_place=True, renumber_kept_images=renumber))]
 
     def on_queue_finished(self, success: bool) -> None:
         if success:

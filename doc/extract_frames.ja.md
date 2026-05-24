@@ -36,13 +36,13 @@
 基本のペア解析抽出:
 
 ```bash
-python extract_frames.py input.mp4 ./scene01 --interval-sec 1.5
+python -m core.extract_frames input.mp4 ./scene01 --interval-sec 1.5
 ```
 
 変化補正つきペア解析:
 
 ```bash
-python extract_frames.py input.mp4 ./scene01 \
+python -m core.extract_frames input.mp4 ./scene01 \
   --interval-sec 1.5 \
   --fixed-smart \
   --min-gap-sec 0.8 \
@@ -52,7 +52,7 @@ python extract_frames.py input.mp4 ./scene01 \
 指定間隔で素早く切り出すクイック抽出:
 
 ```bash
-python extract_frames.py input.mp4 ./scene01 \
+python -m core.extract_frames input.mp4 ./scene01 \
   --interval-sec 1.5 \
   --quick-extract
 ```
@@ -60,13 +60,13 @@ python extract_frames.py input.mp4 ./scene01 \
 ファイル名の接頭辞を指定:
 
 ```bash
-python extract_frames.py input.mp4 ./scene01 --filename-prefix walk01
+python -m core.extract_frames input.mp4 ./scene01 --filename-prefix walk01
 ```
 
 枚数推定だけを実行:
 
 ```bash
-python extract_frames.py input.mp4 ./scene01 --estimate-only --print-summary-json
+python -m core.extract_frames input.mp4 ./scene01 --estimate-only --print-summary-json
 ```
 
 ## 主なオプション

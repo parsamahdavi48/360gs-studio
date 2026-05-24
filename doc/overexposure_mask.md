@@ -16,19 +16,19 @@ Pixels whose RGB channels are all above the threshold are treated as overexposed
 Merge overexposure into existing masks:
 
 ```bash
-python overexposure_mask.py ./scene01/images ./scene01/masks
+python -m core.overexposure_mask ./scene01/images ./scene01/masks
 ```
 
 Use a slightly lower threshold and wider dilation:
 
 ```bash
-python overexposure_mask.py ./scene01/images ./scene01/masks --threshold 250 --dilate 2
+python -m core.overexposure_mask ./scene01/images ./scene01/masks --threshold 250 --dilate 2
 ```
 
 Write overexposure-only masks, ignoring existing masks:
 
 ```bash
-python overexposure_mask.py ./scene01/images ./scene01/masks --replace
+python -m core.overexposure_mask ./scene01/images ./scene01/masks --replace
 ```
 
 ## Options

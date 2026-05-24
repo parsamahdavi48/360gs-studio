@@ -10,7 +10,7 @@ import cv2
 import numpy as np
 import pytest
 
-from cubemap_transforms_json import (
+from core.cubemap_transforms_json import (
     build_remap,
     load_equirect,
     proc_convert_images,

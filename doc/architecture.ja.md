@@ -4,7 +4,7 @@
 
 ## エントリポイント
 
-root 直下の `*.py` は開発・検証用ラッパーであり、アプリ設計の中心ではありません。新しいGUI処理をPythonスクリプトのコマンド文字列として追加しないでください。まず型付きpayloadとcore runnerを作り、手動確認やテストに必要な場合だけラッパーを残します。
+root直下の互換 `*.py` ラッパーは、アプリ構造に含めません。新しいGUI処理をリポジトリ内Pythonスクリプトのコマンド文字列として追加しないでください。まず型付きpayloadとcore runnerを作ります。堅牢性のためにプロセス境界が必要な場合も、rootラッパーではなく `core` モジュールのエントリポイントを使います。
 
 共通実装は `core/` に置きます。テストでは実装契約とGUIが作るジョブpayloadを確認します。公開CLI互換は、リリースノートで明示したラッパーを除き、GUIワークフローより優先しません。
 
@@ -12,10 +12,10 @@ root 直下の `*.py` は開発・検証用ラッパーであり、アプリ設�
 
 - `core/video_info.py` は、フレーム抽出と後続処理で共有する動画メタデータ dataclass を担当します。
 - `core/frame_pair_analysis.py` は、ペアフレームのメトリクス、ブレ/追跡リスク閾値、依存チェック、選択解析を担当します。コマンドヘルプや無関係なテストで任意依存が必須にならないよう、OpenCV/numpy import はガードしてください。
-- `core/extract_frames.py` は、FFmpeg/FFprobe による抽出、キャッシュ、静止/類似フレーム間引き、判定 CSV、CLI 引数処理を担当します。
+- `core/extract_frames.py` は、FFmpeg/FFprobe による抽出、キャッシュ、静止/類似フレーム間引き、判定 CSV を担当します。Step 1 からは frame job runner 経由で呼び出します。
 - `core/frame_renumbering.py` は、Step 2 の採用画像連番化契約を担当します。下流成果物によるブロック判定、衝突を避けるリネーム計画/適用、パス変更時のフレーム/ソース画像台帳更新をここに集約します。
 - `core/scene_import*.py` は、外部シーンの再登録を担当します。取り込みはアプリ定義のシーンフォルダだけを走査し、外部取り込み由来メタデータを全量再登録として置き換え、実際の画像/マスク/出力アセットは削除しません。
-- `core/app_job.py`、`core/workflow_job_runner.py`、`core/sfm_job_runner.py`、`core/dataset_job_runner.py` はGUI内部ジョブ実行を担当します。GUIステップは、アプリ内部のPython処理には `AppJob` を返し、raw command list は COLMAP、FFmpeg、SphereSfMバイナリ、学習アプリCLIなど外部実行ファイルに限定します。
+- `core/app_job.py`、`core/workflow_job_runner.py`、`core/sfm_job_runner.py`、`core/frame_job_runner.py`、`core/dataset_job_runner.py` はGUI内部ジョブ実行を担当します。GUIステップは、アプリ内部のPython処理には `AppJob` を返し、raw command list は COLMAP、FFmpeg、SphereSfMバイナリ、学習アプリCLIなど外部実行ファイルに限定します。GPU負荷の大きいマスク生成は、モデルメモリやクラッシュをGUIプロセスから隔離するため `python -m core.<module>` で実行してよいものとします。
 - マスク系モジュールでは、リポジトリ全体のマスク極性を守ります。白は使用可能ピクセル、黒は除外ピクセルです。マスク合成は、明示的に別操作として文書化しない限り AND 型を維持します。
 - Metashape の座標変換は `core/metashape_coordinates.py` に集約します。Metashape XML のカメラ姿勢や PLY 点群を変換するルートでは、軸変換行列を個別実装せずこのモジュールを使います。Step 4 の Metashape 前処理ジョブは `core/metashape_preprocess.py` で中間のエクイレクタングラー `transforms.json` を作成します。GUI ルートは旧 upstream の Metashape converter に依存しません。
 - キューブマップと COLMAP 出力では、座標プロファイルの意味を維持します。Postshot は標準キューブマップ変換、Brush は Brush 変換、LichtFeld のキューブマップ出力は Cubemap CLI で最終向き補正済みの `transforms.json` と `pointcloud.ply` を作ります。LichtFeld GUT向けERP 360°出力はキューブマップ化せずエクイレクタングラー入力を使い、直接データセット作成時に同じ最終向き補正を適用します。RealityScan再アライン用出力はStep 4のMetashapeルートで扱い、Metashapeインポート時の座標変換を相殺し、MetashapeのY-up姿勢をRealityScanのZ-up local Euclidean軸へ写してから `output/realityscan/` に cubemap 画像とXMPサイドカーを書き出します。RealityScan 側でアライン後に点群を再生成する前提なので、Metashape PLY は必須にせず渡しません。

@@ -14,7 +14,7 @@
 ## 使い方
 
 ```bash
-python sky_mask.py [images_dir_or_file] [masks_dir] [--backend mask2former|sam31] [--projection equirect|normal] [--quality standard|high|best] [--labels LABELS] [--sam-prompt TEXT] [--subtract-sam-prompt TEXT] [--merge-mode replace|add|subtract] [--inference-size N] [--expand PX] [--min-score S] [--min-area-ratio R] [--top-connected] [--replace] [--safe-batch]
+python -m core.sky_mask [images_dir_or_file] [masks_dir] [--backend mask2former|sam31] [--projection equirect|normal] [--quality standard|high|best] [--labels LABELS] [--sam-prompt TEXT] [--subtract-sam-prompt TEXT] [--merge-mode replace|add|subtract] [--inference-size N] [--expand PX] [--min-score S] [--min-area-ratio R] [--top-connected] [--replace] [--safe-batch]
 ```
 
 - `images_dir_or_file`: 入力画像フォルダ、または1枚の入力画像。
@@ -43,25 +43,25 @@ python sky_mask.py [images_dir_or_file] [masks_dir] [--backend mask2former|sam31
 例:
 
 ```bash
-python sky_mask.py .\images .\masks --projection equirect --quality high --labels sky,person --inference-size 768
+python -m core.sky_mask .\images .\masks --projection equirect --quality high --labels sky,person --inference-size 768
 ```
 
 SAM3.1で空と人物を指定する場合:
 
 ```bash
-python sky_mask.py .\images .\masks --backend sam31 --quality high --inference-size 1008 --sam-prompt sky --sam-prompt person --replace
+python -m core.sky_mask .\images .\masks --backend sam31 --quality high --inference-size 1008 --sam-prompt sky --sam-prompt person --replace
 ```
 
 SAM3.1で既存マスクへ足す補正:
 
 ```bash
-python sky_mask.py .\images .\masks --backend sam31 --quality best --inference-size 1008 --sam-prompt tripod --merge-mode add
+python -m core.sky_mask .\images .\masks --backend sam31 --quality best --inference-size 1008 --sam-prompt tripod --merge-mode add
 ```
 
 SAM3.1で既存マスクから引く補正:
 
 ```bash
-python sky_mask.py .\images .\masks --backend sam31 --quality best --inference-size 1008 --sam-prompt "male icon" --sam-prompt "female icon" --merge-mode subtract
+python -m core.sky_mask .\images .\masks --backend sam31 --quality best --inference-size 1008 --sam-prompt "male icon" --sam-prompt "female icon" --merge-mode subtract
 ```
 
 ## モデルファイル

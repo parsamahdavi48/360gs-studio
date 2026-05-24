@@ -22,7 +22,7 @@ Write a LichtFeld-oriented JSON and PLY next to the RealityScan export without
 copying `images/` or `masks/`:
 
 ```powershell
-python realityscan_to_transforms.py `
+python -m core.realityscan_to_transforms `
   D:\3DGS\sakume\output\realityscan\rs_sakume.csv `
   D:\3DGS\sakume\output\realityscan `
   --ply D:\3DGS\sakume\output\realityscan\rs_sakume.ply `

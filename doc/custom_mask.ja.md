@@ -11,7 +11,7 @@
 ## 使い方
 
 ```bash
-python custom_mask.py ./scene01/images ./scene01/masks ./custom_mask.png
+python -m core.custom_mask ./scene01/images ./scene01/masks ./custom_mask.png
 ```
 
 引数:

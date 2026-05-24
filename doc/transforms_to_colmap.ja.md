@@ -27,14 +27,14 @@ Metashape SfM
 ## 使い方
 
 ```bash
-python transforms_to_colmap.py ./cubic
+python -m core.transforms_to_colmap ./cubic
 # 出力: ./cubic/colmap/{cameras.txt, images.txt, points3D.txt}
 ```
 
 出力先と PLY を明示する場合：
 
 ```bash
-python transforms_to_colmap.py ./cubic ./cubic/colmap \
+python -m core.transforms_to_colmap ./cubic ./cubic/colmap \
     --json transforms.json \
     --ply ./cubic/pointcloud.ply
 ```
@@ -91,10 +91,10 @@ pip install plyfile
 # 1. GUIのMetashapeルートでエクイレクタングラー用 transforms.json を用意
 
 # 2. Cubemap 変換 (Postshot profile = デフォルト)
-python cubemap_transforms_json.py . ./cubic
+python -m core.cubemap_transforms_json . ./cubic
 
 # 3. COLMAP テキスト出力
-python transforms_to_colmap.py ./cubic
+python -m core.transforms_to_colmap ./cubic
 
 # 結果: ./cubic/colmap/ が PostShot/Brush/gaussian-splatting 向けに用意された状態
 ```

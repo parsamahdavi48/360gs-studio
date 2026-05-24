@@ -6,8 +6,8 @@ from types import SimpleNamespace
 import cv2
 import numpy as np
 
-import sky_mask
-from sky_mask import (
+import core.sky_mask as sky_mask
+from core.sky_mask import (
     BACKEND_SAM31,
     DEFAULT_SAM31_CHECKPOINT_NAME,
     DetectedRegionMasks,

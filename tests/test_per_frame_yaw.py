@@ -10,8 +10,8 @@ from pathlib import Path
 import cv2
 import numpy as np
 
-import cubemap_transforms_json as cube
-from cubemap_transforms_json import (
+import core.cubemap_transforms_json as cube
+from core.cubemap_transforms_json import (
     _quantize_yaw_offset,
     build_remap,
     frame_yaw_offset,

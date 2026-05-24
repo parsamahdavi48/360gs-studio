@@ -36,13 +36,13 @@ Quick extraction is the only non-analyzed path. It skips pair analysis and motio
 Basic pair-analyzed extraction:
 
 ```bash
-python extract_frames.py input.mp4 ./scene01 --interval-sec 1.5
+python -m core.extract_frames input.mp4 ./scene01 --interval-sec 1.5
 ```
 
 Pair analysis with motion adjustment:
 
 ```bash
-python extract_frames.py input.mp4 ./scene01 \
+python -m core.extract_frames input.mp4 ./scene01 \
   --interval-sec 1.5 \
   --fixed-smart \
   --min-gap-sec 0.8 \
@@ -52,7 +52,7 @@ python extract_frames.py input.mp4 ./scene01 \
 Quick fixed-cadence extraction:
 
 ```bash
-python extract_frames.py input.mp4 ./scene01 \
+python -m core.extract_frames input.mp4 ./scene01 \
   --interval-sec 1.5 \
   --quick-extract
 ```
@@ -60,13 +60,13 @@ python extract_frames.py input.mp4 ./scene01 \
 Specify a custom filename prefix:
 
 ```bash
-python extract_frames.py input.mp4 ./scene01 --filename-prefix walk01
+python -m core.extract_frames input.mp4 ./scene01 --filename-prefix walk01
 ```
 
 Estimate only:
 
 ```bash
-python extract_frames.py input.mp4 ./scene01 --estimate-only --print-summary-json
+python -m core.extract_frames input.mp4 ./scene01 --estimate-only --print-summary-json
 ```
 
 ## Key Options

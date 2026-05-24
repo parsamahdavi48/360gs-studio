@@ -18,25 +18,25 @@ GUIのStep 2で使う本線は `--finalize-in-place` です。
 画像フォルダ内で確定する基本形:
 
 ```bash
-python apply_frame_decisions.py ./scene01 --finalize-in-place
+python -m core.apply_frame_decisions ./scene01 --finalize-in-place
 ```
 
 適用前に `images/` をバックアップしてから確定:
 
 ```bash
-python apply_frame_decisions.py ./scene01 --finalize-in-place --backup-dir _stechdrive/frames/backups/images
+python -m core.apply_frame_decisions ./scene01 --finalize-in-place --backup-dir _stechdrive/frames/backups/images
 ```
 
 マスク生成やStep 5データセット出力の前に、採用画像を連番化して確定:
 
 ```bash
-python apply_frame_decisions.py ./scene01 --finalize-in-place --renumber-kept-images
+python -m core.apply_frame_decisions ./scene01 --finalize-in-place --renumber-kept-images
 ```
 
 別フォルダへ採用フレームだけをコピーするモード:
 
 ```bash
-python apply_frame_decisions.py ./scene01 --output metashape_images --clean-output
+python -m core.apply_frame_decisions ./scene01 --output metashape_images --clean-output
 ```
 
 ## オプション

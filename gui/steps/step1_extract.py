@@ -30,7 +30,9 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from core.app_job import frame_app_job
 from core.extract_sessions import load_manifest, matching_video_sessions, sanitize_filename_prefix
+from core.frame_job_runner import JOB_KIND_EXTRACT_VIDEO, JOB_KIND_IMPORT_IMAGE_SEQUENCE
 from core.input_sources import (
     SOURCE_KIND_IMAGE_SEQUENCE,
     SOURCE_KIND_VIDEO,
@@ -1170,7 +1172,7 @@ class ExtractStep(BaseStepWidget):
 
     # -- コマンド構築 --
 
-    def build_commands(self) -> list[tuple[str, list[str]]]:
+    def build_commands(self) -> list[tuple[str, object]]:
         sources = self._selected_input_sources()
         videos = self._selected_video_paths()
         missing = [video for video in videos if not video.is_file()]
@@ -1178,7 +1180,7 @@ class ExtractStep(BaseStepWidget):
             preview = ", ".join(str(video) for video in missing[:3])
             raise ValueError(f"{i18n.t('EXTRACT_READY_VIDEO_NOT_FOUND')}\n{preview}")
 
-        commands: list[tuple[str, list[str]]] = []
+        commands: list[tuple[str, object]] = []
         runnable_videos, _skipped = self._queued_selected_videos()
         runnable_video_keys = {self._video_key(video) for video in runnable_videos}
         used_prefixes: set[str] = set()
@@ -1198,28 +1200,24 @@ class ExtractStep(BaseStepWidget):
             raise ValueError(i18n.t("EXTRACT_READY_QUEUE_ALL_DUPLICATE").format(n=len(self._selected_video_paths())))
         return commands
 
-    def _build_image_sequence_import_cmd(self, source: Path | None = None) -> list[str]:
+    def _build_image_sequence_import_cmd(self, source: Path | None = None) -> object:
         source = source or self._image_sequence_dir()
         if source is None or not source.is_dir():
             raise ValueError(i18n.t("EXTRACT_READY_IMAGE_SEQUENCE_NOT_FOUND"))
         if not self.scene_dir:
             raise ValueError(i18n.t("EXTRACT_READY_NO_SCENE"))
-        script = self.base_dir / "scripts" / "import_image_sequence.py"
-        if not script.exists():
-            raise FileNotFoundError(f"import_image_sequence.py が見つかりません: {script}")
-        cmd = [
-            sys.executable,
-            "-u",
-            str(script),
-            str(source),
-            self.scene_dir,
-        ]
         prefix = sanitize_filename_prefix(self.prefix_edit.text())
-        if prefix:
-            cmd.extend(["--prefix", prefix])
-        return cmd
+        return frame_app_job(
+            {
+                "kind": JOB_KIND_IMPORT_IMAGE_SEQUENCE,
+                "source_dir": str(source),
+                "scene_dir": self.scene_dir,
+                "prefix": prefix,
+                "recursive": False,
+            }
+        )
 
-    def _build_extract_cmd(self) -> list[str]:
+    def _build_extract_cmd(self) -> object:
         videos = self._selected_video_paths()
         if not videos:
             raise ValueError("入力動画が指定されていません")
@@ -1231,64 +1229,36 @@ class ExtractStep(BaseStepWidget):
 
         return self._build_extract_cmd_for_video(video, set())
 
-    def _build_extract_cmd_for_video(self, video_path: Path, used_prefixes: set[str]) -> list[str]:
+    def _build_extract_cmd_for_video(self, video_path: Path, used_prefixes: set[str]) -> object:
         if not video_path.is_file():
             raise ValueError(f"入力動画が見つかりません: {video_path}")
         if not self.scene_dir:
             raise ValueError("シーンフォルダが指定されていません")
 
-        script = self.base_dir / "extract_frames.py"
-        if not script.exists():
-            raise FileNotFoundError(f"extract_frames.py が見つかりません: {script}")
-
         output_mode = self._extract_output_mode()
         prefix = self._prefix_for_video(video_path, used_prefixes)
         quick_extract = self.quick_extract_cb.isChecked()
 
-        cmd = [
-            sys.executable,
-            "-u",
-            str(script),
-            str(video_path),
-            self.scene_dir,
-            "--image-ext",
-            self.image_ext_combo.currentText(),
-            "--jpg-quality",
-            str(self.jpg_quality_edit.value()),
-            "--ffmpeg",
-            self.ffmpeg_browse.text() or "ffmpeg",
-            "--ffprobe",
-            self.ffprobe_browse.text() or "ffprobe",
-            "--output-mode",
-            output_mode,
-        ]
-        if not quick_extract:
-            cmd.extend(
-                [
-                    "--pair-motion-profile",
-                    str(self.pair_motion_profile_combo.currentData() or _DEFAULT_CAPTURE_PROFILE),
-                    "--analysis-width",
-                    self.analysis_width_edit.text().strip(),
-                ]
-            )
-        if prefix:
-            cmd.extend(["--filename-prefix", prefix])
-
-        cmd.extend(["--interval-sec", f"{self.interval_edit.value():g}"])
-        if quick_extract:
-            cmd.append("--quick-extract")
-        elif self.smart_fixed_cb.isChecked():
-            cmd.extend(
-                [
-                    "--fixed-smart",
-                    "--min-gap-sec",
-                    f"{self.min_gap_edit.value():g}",
-                    "--max-gap-sec",
-                    f"{self.max_gap_edit.value():g}",
-                ]
-            )
-
-        return cmd
+        return frame_app_job(
+            {
+                "kind": JOB_KIND_EXTRACT_VIDEO,
+                "input_video": str(video_path),
+                "scene_dir": self.scene_dir,
+                "image_ext": self.image_ext_combo.currentText(),
+                "jpg_quality": int(self.jpg_quality_edit.value()),
+                "ffmpeg": self.ffmpeg_browse.text() or "ffmpeg",
+                "ffprobe": self.ffprobe_browse.text() or "ffprobe",
+                "output_mode": output_mode,
+                "filename_prefix": prefix,
+                "interval_sec": float(self.interval_edit.value()),
+                "quick_extract": quick_extract,
+                "pair_motion_profile": str(self.pair_motion_profile_combo.currentData() or _DEFAULT_CAPTURE_PROFILE),
+                "analysis_width": self.analysis_width_edit.text().strip(),
+                "fixed_smart": bool((not quick_extract) and self.smart_fixed_cb.isChecked()),
+                "min_gap_sec": float(self.min_gap_edit.value()),
+                "max_gap_sec": float(self.max_gap_edit.value()),
+            }
+        )
 
     # -- プログレス解析 --
 

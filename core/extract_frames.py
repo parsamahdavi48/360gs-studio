@@ -5,7 +5,6 @@ import argparse
 import csv
 import json
 import subprocess
-import sys
 import tempfile
 from collections.abc import Sequence
 from pathlib import Path
@@ -826,7 +825,7 @@ def total_frames_for_fixed_selection(video_info: VideoInfo) -> int:
     return max(total_frames, 1)
 
 
-def parse_args() -> argparse.Namespace:
+def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Extract equirectangular frames via FFmpeg with SfM-oriented pair analysis."
     )
@@ -943,26 +942,26 @@ def parse_args() -> argparse.Namespace:
         help="Print one-line JSON summary prefixed with SUMMARY_JSON:",
     )
 
-    return parser.parse_args()
+    return parser.parse_args(argv)
 
 
-def main() -> None:
-    args = parse_args()
+def main(argv: Sequence[str] | None = None) -> int:
+    args = parse_args(argv)
     if args.interval_sec <= 0:
         print("Error: --interval-sec must be > 0")
-        sys.exit(1)
+        return 1
     if args.min_gap_sec <= 0 or args.max_gap_sec <= 0:
         print("Error: --min-gap-sec and --max-gap-sec must be > 0")
-        sys.exit(1)
+        return 1
     if args.max_gap_sec < args.min_gap_sec:
         print("Error: --max-gap-sec must be >= --min-gap-sec")
-        sys.exit(1)
+        return 1
     if args.fixed_smart_max_inserts_per_interval < 0:
         print("Error: --fixed-smart-max-inserts-per-interval must be >= 0")
-        sys.exit(1)
+        return 1
     if args.pair_track_min_count < 0:
         print("Error: --pair-track-min-count must be >= 0")
-        sys.exit(1)
+        return 1
     try:
         resolve_pair_thresholds(
             args.interval_sec,
@@ -972,18 +971,18 @@ def main() -> None:
         )
     except ValueError as e:
         print(f"Error: {e}")
-        sys.exit(1)
+        return 1
     if args.pair_track_min_confidence < 0.0 or args.pair_track_min_confidence > 1.0:
         print("Error: --pair-track-min-confidence must be between 0 and 1")
-        sys.exit(1)
+        return 1
     if args.quick_extract and args.fixed_smart:
         print("Error: --quick-extract cannot be combined with --fixed-smart")
-        sys.exit(1)
+        return 1
 
     input_video = Path(args.input_video)
     if not input_video.exists():
         print(f"Error: input video not found: {input_video}")
-        sys.exit(1)
+        return 1
 
     output_root = Path(args.output_dir)
     scene_dir = output_root.resolve()
@@ -997,7 +996,7 @@ def main() -> None:
         video_info = probe_video(input_video, args.ffprobe)
     except Exception as e:
         print(f"Error: {e}")
-        sys.exit(1)
+        return 1
 
     print(f"Input video: {input_video}")
     print(f"Video: {video_info.width}x{video_info.height} @ {video_info.fps:.3f} fps")
@@ -1020,7 +1019,7 @@ def main() -> None:
             "Use --output-mode replace-video to re-extract it, or --allow-duplicate-video "
             "with a unique --filename-prefix to add it as a separate session."
         )
-        sys.exit(1)
+        return 1
 
     if args.quick_extract:
         total_frames = total_frames_for_fixed_selection(video_info)
@@ -1028,7 +1027,7 @@ def main() -> None:
             selected, min_gap_frames = select_fixed(total_frames, video_info.fps, args.interval_sec)
         except Exception as e:
             print(f"Error while selecting frames: {e}")
-            sys.exit(1)
+            return 1
         enriched_rows = build_quick_extract_rows(selected)
         analysis_w, analysis_h = 0, 0
         print("Quick extract: skipping analysis and motion adjustment")
@@ -1073,13 +1072,13 @@ def main() -> None:
             )
         except Exception as e:
             print(f"Error during pair analysis: {e}")
-            sys.exit(1)
+            return 1
         print(f"Pair-analyzed frames: {total_frames} ({analysis_w}x{analysis_h})")
 
     kept_rows = [r for r in enriched_rows if r.get("decision", "keep") != "drop"]
     if not kept_rows:
         print("Error: no frames selected")
-        sys.exit(1)
+        return 1
 
     final_indices = [int(r["final_index"]) for r in enriched_rows]
     frame_digits = frame_index_digits(video_info.total_frames, final_indices)
@@ -1110,11 +1109,11 @@ def main() -> None:
             print(f"Estimated pair weak-match review frames: {summary['result'].get('weak_match_count', 0)}")
         if args.print_summary_json:
             print("SUMMARY_JSON:" + json.dumps(summary, ensure_ascii=False))
-        return
+        return 0
 
     if not final_indices:
         print("Error: no frames selected; skipping extraction")
-        sys.exit(1)
+        return 1
 
     session_id = new_session_id()
     output_files = output_files_for_indices(
@@ -1160,7 +1159,7 @@ def main() -> None:
                 f"Error: output files already exist ({len(collisions)}). "
                 f"Use a unique --filename-prefix. Example: {preview}"
             )
-            sys.exit(1)
+            return 1
 
     staging_dir: Path | None = None
     extraction_output_dir = images_dir
@@ -1187,7 +1186,7 @@ def main() -> None:
             if staging_dir.exists():
                 safe_clear_path(staging_dir, allowed_roots=[frame_cache_dir(scene_dir)])
         print(f"Error during extraction: {e}")
-        sys.exit(1)
+        return 1
 
     if extracted_indices != final_indices:
         extracted_set = set(extracted_indices)
@@ -1216,7 +1215,7 @@ def main() -> None:
             removed = commit_staged_frame_outputs(scene_dir, staging_dir, output_files, replaced_output_files)
         except Exception as e:
             print(f"Error while committing replacement frames: {e}")
-            sys.exit(1)
+            return 1
         print(
             f"Replaced prior sessions for this video: {len(matching_sessions)} session(s), {removed} file(s) replaced/removed"
         )
@@ -1295,7 +1294,8 @@ def main() -> None:
     print(f"Report: {report_path}")
     if args.print_summary_json:
         print("SUMMARY_JSON:" + json.dumps(summary, ensure_ascii=False))
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

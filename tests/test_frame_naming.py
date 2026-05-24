@@ -3,7 +3,7 @@ from __future__ import annotations
 import csv
 from pathlib import Path
 
-from extract_frames import frame_filename, frame_index_digits, write_selected_csv
+from core.extract_frames import frame_filename, frame_index_digits, write_selected_csv
 
 
 def test_frame_index_digits_uses_total_frame_count() -> None:

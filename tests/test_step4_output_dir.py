@@ -23,6 +23,7 @@ from core.scene_layout import (
     step4_training_runs_path,
     step4_views_config_path,
 )
+from core.transforms_to_colmap import read_ply_points
 from core.workflow_artifacts import register_dataset_artifact
 from gui import i18n
 from gui.common.collapsible_section import CollapsibleSection
@@ -42,7 +43,6 @@ from gui.steps.step4_cubemap import CubemapStep
 from gui.steps.step4_settings import STEP4_SETTINGS_VERSION
 from gui.steps.step5_training import TrainingStep
 from gui.steps.training_backends import lichtfeld_defaults
-from transforms_to_colmap import read_ply_points
 
 _IDENTITY_MATRIX_TEXT = "1 0 0 0 0 1 0 0 0 0 1 0 0 0 0 1"
 

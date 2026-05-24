@@ -61,20 +61,20 @@ Metashape (Standard/Professional) > xml/pointcloud > transforms.json > キュー
 カレントディレクトリにある transforms.json とimagesディレクトリ内の画像を変換: (masksディレクトリがあればそれも変換)
 ```
 # GUIのMetashapeルートで transforms.json を用意してから実行:
-python cubemap_transforms_json.py .
+python -m core.cubemap_transforms_json .
 ```
 
 ### 詳細
 
 出力ディレクトリを指定:
 ```
-python cubemap_transforms_json.py . ./cubic
+python -m core.cubemap_transforms_json . ./cubic
 ```
 
 各オプション:
 
 ```
-python cubemap_transforms_json.py . ./cubic \
+python -m core.cubemap_transforms_json . ./cubic \
   --yaw 45 \
   --stitch 2.5 \
   --fov 90
@@ -83,7 +83,7 @@ python cubemap_transforms_json.py . ./cubic \
 カスタム視点リスト（name/yaw/pitch）を使う場合:
 
 ```bash
-python cubemap_transforms_json.py . ./cubic --views-json views_config.json --fov 90
+python -m core.cubemap_transforms_json . ./cubic --views-json views_config.json --fov 90
 ```
 
  `--yaw 45 --stitch DEGREE` を指定することで、2つの魚眼画像間の縫い目部分がキューブマップ画像の中心を横切るのを防ぎます。これらのオプションは、カメラの傾きやステッチングなどの**補正なし**で出力されたInsta360やOSMO 360の画像に効果的です。
@@ -106,7 +106,7 @@ python cubemap_transforms_json.py . ./cubic --views-json views_config.json --fov
 
 ```
 # GUIのMetashapeルートで transforms.json を用意してから実行:
-python cubemap_transforms_json.py . ./cubic --brush
+python -m core.cubemap_transforms_json . ./cubic --brush
 ```
 
 ### LichtFeld Studio向け
@@ -115,7 +115,7 @@ LichtFeld Studioの場合、 `--no_transform --final-orientation lichtfeld` を�
 
 ```
 # GUIのMetashapeルートで transforms.json と pointcloud.ply を用意してから実行:
-python cubemap_transforms_json.py . ./cubic --no_transform --final-orientation lichtfeld
+python -m core.cubemap_transforms_json . ./cubic --no_transform --final-orientation lichtfeld
 ```
 
 ### オプション一覧

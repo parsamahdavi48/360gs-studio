@@ -5,10 +5,10 @@ from pathlib import Path
 import cv2
 import numpy as np
 
-import cubemap_transforms_json as cubemap
-import overexposure_mask
-import stitch_mask
-import yolo_mask
+import core.cubemap_transforms_json as cubemap
+import core.overexposure_mask as overexposure_mask
+import core.stitch_mask as stitch_mask
+import core.yolo_mask as yolo_mask
 from core.image_io import image_size_unicode, imread_unicode, imwrite_unicode
 from core.path_safety import check_path_safety
 

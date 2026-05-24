@@ -39,11 +39,9 @@ class MaskCommandContext:
     sam31_merge_mode: str = SAM31_MERGE_REPLACE
 
 
-def _script_path(context: MaskCommandContext, script_name: str) -> Path:
-    script = context.base_dir / script_name
-    if not script.exists():
-        raise FileNotFoundError(f"{script_name} が見つかりません: {script}")
-    return script
+def _module_cmd(context: MaskCommandContext, module_name: str) -> list[str]:
+    _ = context.base_dir
+    return [context.python_executable, "-u", "-m", module_name]
 
 
 def _require_images_masks(images: str | Path, masks: str | Path) -> tuple[str, str]:
@@ -94,11 +92,8 @@ def build_yolo_sam_cmd(
     image_list: str | Path | None = None,
 ) -> list[str]:
     images_text, masks_text = _require_images_masks(images, masks)
-    script = _script_path(context, "yolo_mask.py")
     cmd = [
-        context.python_executable,
-        "-u",
-        str(script),
+        *_module_cmd(context, "core.yolo_mask"),
         images_text,
         masks_text,
         "--quality",
@@ -128,15 +123,12 @@ def build_sam31_prompt_cmd(
     image_list: str | Path | None = None,
 ) -> list[str]:
     images_text, masks_text = _require_images_masks(images, masks)
-    script = _script_path(context, "sky_mask.py")
     effective_merge_mode = SAM31_MERGE_REPLACE if replace else (merge_mode or context.sam31_merge_mode)
     if effective_merge_mode not in SAM31_MERGE_MODES:
         effective_merge_mode = SAM31_MERGE_REPLACE
 
     cmd = [
-        context.python_executable,
-        "-u",
-        str(script),
+        *_module_cmd(context, "core.sky_mask"),
         images_text,
         masks_text,
         "--backend",
@@ -180,11 +172,8 @@ def build_mask2former_cmd(
     image_list: str | Path | None = None,
 ) -> list[str]:
     images_text, masks_text = _require_images_masks(images, masks)
-    script = _script_path(context, "sky_mask.py")
     cmd = [
-        context.python_executable,
-        "-u",
-        str(script),
+        *_module_cmd(context, "core.sky_mask"),
         images_text,
         masks_text,
         "--backend",
@@ -218,8 +207,7 @@ def build_init_masks_cmd(
     image_list: str | Path | None = None,
 ) -> list[str]:
     images_text, masks_text = _require_images_masks(images, masks)
-    script = _script_path(context, "init_masks.py")
-    cmd = [context.python_executable, "-u", str(script), images_text, masks_text]
+    cmd = [*_module_cmd(context, "core.init_masks"), images_text, masks_text]
     if image_list:
         cmd.extend(["--image-list", str(image_list)])
     return cmd
@@ -234,11 +222,8 @@ def build_stitch_cmd(
     masks_text = str(masks)
     if not masks_text:
         raise ValueError("マスクフォルダが指定されていません")
-    script = _script_path(context, "stitch_mask.py")
     cmd = [
-        context.python_executable,
-        "-u",
-        str(script),
+        *_module_cmd(context, "core.stitch_mask"),
         masks_text,
         masks_text,
         "--boundary-width",
@@ -260,11 +245,8 @@ def build_overexposure_cmd(
     image_list: str | Path | None = None,
 ) -> list[str]:
     images_text, masks_text = _require_images_masks(images, masks)
-    script = _script_path(context, "overexposure_mask.py")
     cmd = [
-        context.python_executable,
-        "-u",
-        str(script),
+        *_module_cmd(context, "core.overexposure_mask"),
         images_text,
         masks_text,
         "--threshold",
@@ -292,11 +274,8 @@ def build_custom_cmd(
     images_text, masks_text = _require_images_masks(images, masks)
     if not context.custom_mask:
         raise ValueError("CUSTOM_MASK_REQUIRED")
-    script = _script_path(context, "custom_mask.py")
     cmd = [
-        context.python_executable,
-        "-u",
-        str(script),
+        *_module_cmd(context, "core.custom_mask"),
         images_text,
         masks_text,
         context.custom_mask,

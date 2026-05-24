@@ -58,7 +58,6 @@ DEFAULT_BACKEND = BACKEND_MASK2FORMER
 DEFAULT_MODEL_ID = "facebook/mask2former-swin-large-ade-semantic"
 DEFAULT_MASK2FORMER_MODEL_ID = DEFAULT_MODEL_ID
 REPO_ROOT = Path(__file__).resolve().parents[1]
-PUBLIC_CLI_PATH = REPO_ROOT / "sky_mask.py"
 DEFAULT_LOCAL_MODEL_DIR = REPO_ROOT / "models" / "mask2former-swin-large-ade-semantic"
 DEFAULT_MASK2FORMER_LOCAL_MODEL_DIR = DEFAULT_LOCAL_MODEL_DIR
 DEFAULT_SAM31_LOCAL_MODEL_DIR = REPO_ROOT / "models" / "sam3.1"
@@ -1215,7 +1214,8 @@ def _build_child_args(
     cmd = [
         sys.executable,
         "-u",
-        str(PUBLIC_CLI_PATH),
+        "-m",
+        "core.sky_mask",
         str(args.images),
         str(args.masks_dir),
         "--backend",

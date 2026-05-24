@@ -18,7 +18,7 @@ bottom pole.
 ## Usage
 
 ```bash
-python sky_mask.py [images_dir_or_file] [masks_dir] [--backend mask2former|sam31] [--projection equirect|normal] [--quality standard|high|best] [--labels LABELS] [--sam-prompt TEXT] [--subtract-sam-prompt TEXT] [--merge-mode replace|add|subtract] [--inference-size N] [--expand PX] [--min-score S] [--min-area-ratio R] [--top-connected] [--replace] [--safe-batch]
+python -m core.sky_mask [images_dir_or_file] [masks_dir] [--backend mask2former|sam31] [--projection equirect|normal] [--quality standard|high|best] [--labels LABELS] [--sam-prompt TEXT] [--subtract-sam-prompt TEXT] [--merge-mode replace|add|subtract] [--inference-size N] [--expand PX] [--min-score S] [--min-area-ratio R] [--top-connected] [--replace] [--safe-batch]
 ```
 
 - `images_dir_or_file`: source image directory or one source image.
@@ -47,25 +47,25 @@ python sky_mask.py [images_dir_or_file] [masks_dir] [--backend mask2former|sam31
 Examples:
 
 ```bash
-python sky_mask.py .\images .\masks --projection equirect --quality high --labels sky,person --inference-size 768
+python -m core.sky_mask .\images .\masks --projection equirect --quality high --labels sky,person --inference-size 768
 ```
 
 SAM3.1 sky/person prompts:
 
 ```bash
-python sky_mask.py .\images .\masks --backend sam31 --quality high --inference-size 1008 --sam-prompt sky --sam-prompt person --replace
+python -m core.sky_mask .\images .\masks --backend sam31 --quality high --inference-size 1008 --sam-prompt sky --sam-prompt person --replace
 ```
 
 SAM3.1 add-only correction on existing masks:
 
 ```bash
-python sky_mask.py .\images .\masks --backend sam31 --quality best --inference-size 1008 --sam-prompt tripod --merge-mode add
+python -m core.sky_mask .\images .\masks --backend sam31 --quality best --inference-size 1008 --sam-prompt tripod --merge-mode add
 ```
 
 SAM3.1 subtract correction on existing masks:
 
 ```bash
-python sky_mask.py .\images .\masks --backend sam31 --quality best --inference-size 1008 --sam-prompt "male icon" --sam-prompt "female icon" --merge-mode subtract
+python -m core.sky_mask .\images .\masks --backend sam31 --quality best --inference-size 1008 --sam-prompt "male icon" --sam-prompt "female icon" --merge-mode subtract
 ```
 
 ## Model Files

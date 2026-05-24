@@ -21,7 +21,7 @@ RealityScan出力フォルダの `images/` と `masks/` をコピーせず、同
 LichtFeld向きのJSONとPLYを書きます。
 
 ```powershell
-python realityscan_to_transforms.py `
+python -m core.realityscan_to_transforms `
   D:\3DGS\sakume\output\realityscan\rs_sakume.csv `
   D:\3DGS\sakume\output\realityscan `
   --ply D:\3DGS\sakume\output\realityscan\rs_sakume.ply `

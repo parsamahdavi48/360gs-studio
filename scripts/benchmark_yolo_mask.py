@@ -69,8 +69,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--yolo-script",
         type=Path,
-        default=Path(__file__).resolve().parents[1] / "yolo_mask.py",
-        help="Path to yolo_mask.py.",
+        default=Path(__file__).resolve().parents[1] / "core" / "yolo_mask.py",
+        help="Path to the YOLO mask module script.",
     )
     return parser.parse_args(argv)
 

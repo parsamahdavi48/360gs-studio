@@ -6,7 +6,7 @@ import cv2
 import numpy as np
 import pytest
 
-import yolo_mask
+import core.yolo_mask as yolo_mask
 
 
 @pytest.mark.parametrize(

@@ -16,19 +16,19 @@ RGB全チャンネルがしきい値を超えた画素を白飛びとして扱�
 既存マスクへ白飛び領域を合成:
 
 ```bash
-python overexposure_mask.py ./scene01/images ./scene01/masks
+python -m core.overexposure_mask ./scene01/images ./scene01/masks
 ```
 
 しきい値を少し下げ、膨張幅を広げる:
 
 ```bash
-python overexposure_mask.py ./scene01/images ./scene01/masks --threshold 250 --dilate 2
+python -m core.overexposure_mask ./scene01/images ./scene01/masks --threshold 250 --dilate 2
 ```
 
 既存マスクを無視し、白飛びだけのマスクを書き出す:
 
 ```bash
-python overexposure_mask.py ./scene01/images ./scene01/masks --replace
+python -m core.overexposure_mask ./scene01/images ./scene01/masks --replace
 ```
 
 ## オプション

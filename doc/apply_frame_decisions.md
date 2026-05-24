@@ -18,25 +18,25 @@ Primary mode:
 Finalize in place (recommended):
 
 ```bash
-python apply_frame_decisions.py ./scene01 --finalize-in-place
+python -m core.apply_frame_decisions ./scene01 --finalize-in-place
 ```
 
 Finalize with safety backup (snapshot images/ first):
 
 ```bash
-python apply_frame_decisions.py ./scene01 --finalize-in-place --backup-dir _stechdrive/frames/backups/images
+python -m core.apply_frame_decisions ./scene01 --finalize-in-place --backup-dir _stechdrive/frames/backups/images
 ```
 
 Finalize and renumber kept images before mask generation or Step 5 dataset export:
 
 ```bash
-python apply_frame_decisions.py ./scene01 --finalize-in-place --renumber-kept-images
+python -m core.apply_frame_decisions ./scene01 --finalize-in-place --renumber-kept-images
 ```
 
 Legacy copy mode (separate output folder, originals untouched):
 
 ```bash
-python apply_frame_decisions.py ./scene01 --output metashape_images --clean-output
+python -m core.apply_frame_decisions ./scene01 --output metashape_images --clean-output
 ```
 
 Options:

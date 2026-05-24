@@ -2,7 +2,7 @@
 
 ## 概要
 
-[`stitch_mask.py`](../stitch_mask.py) は、360度パノラマ向けマスクからスティッチング領域（前後レンズ辺縁にあたり、２つのレンズ間のつなぎ目となる部分）を除去します。
+[`core/stitch_mask.py`](../core/stitch_mask.py) は、360度パノラマ向けマスクからスティッチング領域（前後レンズ辺縁にあたり、２つのレンズ間のつなぎ目となる部分）を除去します。
 
 ![マスク例](../images/stitch_mask.png)<br>
 
@@ -13,7 +13,7 @@
 
 ## 使い方
 ```
-python stitch_mask.py [-h] [--single w h] [--boundary-width DEG] [--fov FOV] [--workers WORKERS] [input_dir] [output_dir]
+python -m core.stitch_mask [-h] [--single w h] [--boundary-width DEG] [--fov FOV] [--workers WORKERS] [input_dir] [output_dir]
 ```
 
 - **`input_dir`**: 入力マスクが入ったディレクトリ（省略時は `masks` を探す）
@@ -28,31 +28,31 @@ python stitch_mask.py [-h] [--single w h] [--boundary-width DEG] [--fov FOV] [--
 yolo_mask.pyなどで生成されたマスク画像が既に `masks` フォルダにある場合（引数を省略して `masks` を使用）:
 
 ```
-python stitch_mask.py
+python -m core.stitch_mask
 ```
 
 マスク用フォルダを指定する場合：
 
 ```
-python stitch_mask.py input_masks
+python -m core.stitch_mask input_masks
 ```
 
 入力フォルダと出力フォルダを指定する例:
 
 ```
-python stitch_mask.py input_masks output_masks
+python -m core.stitch_mask input_masks output_masks
 ```
 
 指定解像度の単一マスクを作る例（幅7680, 高さ3840）:
 
 ```
-python stitch_mask.py . --single 7680 3840
+python -m core.stitch_mask . --single 7680 3840
 ```
 
 境界マスク幅を10度に広げて処理し、ワーカー数も指定:
 
 ```
-python stitch_mask.py input_masks output_masks --boundary-width 10 --workers 8
+python -m core.stitch_mask input_masks output_masks --boundary-width 10 --workers 8
 ```
 
 

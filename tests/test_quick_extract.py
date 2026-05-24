@@ -4,7 +4,7 @@ import argparse
 import subprocess
 from pathlib import Path
 
-from extract_frames import (
+from core.extract_frames import (
     VideoInfo,
     build_quick_extract_rows,
     build_selected_csv_rows,
@@ -93,7 +93,7 @@ def test_quick_extract_allows_missing_trailing_frame_outputs(tmp_path: Path, mon
         return subprocess.CompletedProcess(cmd, 0, "", "")
 
     monkeypatch.setattr(
-        "extract_frames.run_cmd_with_ffmpeg_progress",
+        "core.extract_frames.run_cmd_with_ffmpeg_progress",
         fake_run_cmd_with_ffmpeg_progress,
     )
 
@@ -125,7 +125,7 @@ def test_staged_replace_keeps_existing_frames_until_commit(tmp_path: Path, monke
         return subprocess.CompletedProcess(cmd, 0, "", "")
 
     monkeypatch.setattr(
-        "extract_frames.run_cmd_with_ffmpeg_progress",
+        "core.extract_frames.run_cmd_with_ffmpeg_progress",
         fake_run_cmd_with_ffmpeg_progress,
     )
     scene = tmp_path / "scene"

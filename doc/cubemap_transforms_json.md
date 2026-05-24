@@ -62,20 +62,20 @@ output_dir/
 Convert transforms.json and images in the current directory: (also convert if masks directory exists)
 ```
 # Prepare transforms.json with the GUI Metashape route, then run:
-python cubemap_transforms_json.py .
+python -m core.cubemap_transforms_json .
 ```
 
 ### Detailed
 
 With specifying output directory:
 ```
-python cubemap_transforms_json.py . ./cubic
+python -m core.cubemap_transforms_json . ./cubic
 ```
 
 With options:
 
 ```
-python cubemap_transforms_json.py . ./cubic \
+python -m core.cubemap_transforms_json . ./cubic \
   --yaw 45 \
   --stitch 2.5 \
   --fov 90
@@ -84,7 +84,7 @@ python cubemap_transforms_json.py . ./cubic \
 With custom view list (name/yaw/pitch):
 
 ```bash
-python cubemap_transforms_json.py . ./cubic --views-json views_config.json --fov 90
+python -m core.cubemap_transforms_json . ./cubic --views-json views_config.json --fov 90
 ```
 
 Specifying `--yaw 45 --stitch DEGREE` will prevent the stitching area between two fisheye images from crossing the center of the cubemap image. These options are effective for Insta360 and OSMO 360 images **without any image correction** like camera tilt and stitching.
@@ -106,7 +106,7 @@ By default, coordinate axis transformation suitable for Postshot is performed. F
 
 ```
 # Prepare transforms.json with the GUI Metashape route, then run:
-python cubemap_transforms_json.py . ./cubic --brush
+python -m core.cubemap_transforms_json . ./cubic --brush
 ```
 
 ### For LichtFeld Studio
@@ -115,7 +115,7 @@ For LichtFeld Studio, specify `--no_transform --final-orientation lichtfeld`. Th
 
 ```
 # Prepare transforms.json and pointcloud.ply with the GUI Metashape route, then run:
-python cubemap_transforms_json.py . ./cubic --no_transform --final-orientation lichtfeld
+python -m core.cubemap_transforms_json . ./cubic --no_transform --final-orientation lichtfeld
 ```
 
 ### Options

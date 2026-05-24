@@ -1,7 +1,7 @@
 import cv2
 import numpy as np
 
-from stitch_mask import (
+from core.stitch_mask import (
     boundary_width_to_fov,
     boundary_width_to_limit_angle,
     create_angular_stitched_mask,

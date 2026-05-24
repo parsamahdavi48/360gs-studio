@@ -7,7 +7,7 @@
 
 ## 使い方
 ```
-python yolo_mask.py [images_dir] [output_dir] [--add_ext] [--quality standard|high|best] [--expand M] [--classes IDS] [--projection equirect|normal] [--bottom-conf C] [--bottom-tta-rotations 1|2|4] [--bottom-model same|m|l|x] [--bottom-filter] [--profile-json PATH]
+python -m core.yolo_mask [images_dir] [output_dir] [--add_ext] [--quality standard|high|best] [--expand M] [--classes IDS] [--projection equirect|normal] [--bottom-conf C] [--bottom-tta-rotations 1|2|4] [--bottom-model same|m|l|x] [--bottom-filter] [--profile-json PATH]
 ```
 
 - `images_dir`: 入力画像ディレクトリ（省略時: `images`）
@@ -33,25 +33,25 @@ python yolo_mask.py [images_dir] [output_dir] [--add_ext] [--quality standard|hi
 例:
 
 ```
-python yolo_mask.py .\images .\masks --quality high --expand 5 --classes 0,2,3
+python -m core.yolo_mask .\images .\masks --quality high --expand 5 --classes 0,2,3
 ```
 
 通常画像:
 
 ```
-python yolo_mask.py .\images .\masks --projection normal --quality standard
+python -m core.yolo_mask .\images .\masks --projection normal --quality standard
 ```
 
 真上から見た撮影者など、底面検出が難しい場合:
 
 ```
-python yolo_mask.py .\images .\masks --quality best
+python -m core.yolo_mask .\images .\masks --quality best
 ```
 
 底面だけYOLO Xまで使う最大設定:
 
 ```
-python yolo_mask.py .\images .\masks --quality best --bottom-model x
+python -m core.yolo_mask .\images .\masks --quality best --bottom-model x
 ```
 
 固定データセットでベンチマーク:
