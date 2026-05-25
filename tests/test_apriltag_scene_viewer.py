@@ -11,7 +11,6 @@ import pytest
 from PySide6.QtCore import QEventLoop, QTimer
 from PySide6.QtWidgets import QAbstractSpinBox, QApplication, QLabel, QSizePolicy
 
-import devtools.apriltag.scene_viewer as scene_viewer_module
 from core.apriltag_cubemap import CubemapViewMetadata, cubemap_view_params_for_group
 from core.apriltag_geometry import PinholeFrame
 from core.cubemap_remap import build_remap
@@ -51,6 +50,7 @@ from devtools.apriltag.scene_viewer import (
     right_image_screen_x_sign,
     transform_group_for_world_display,
 )
+from gui.common import dialogs
 from gui.common.drag_spinbox import DragDoubleSpinBox
 from gui.common.perspective_preview import (
     PerspectiveParams,
@@ -659,7 +659,7 @@ def test_scene_viewer_open_dialog_does_not_default_to_compare(monkeypatch) -> No
         starts.append(start)
         return ""
 
-    monkeypatch.setattr(scene_viewer_module.QFileDialog, "getExistingDirectory", fake_get_existing_directory)
+    monkeypatch.setattr(dialogs, "get_existing_directory", fake_get_existing_directory)
     window = AprilTagSceneViewerWindow()
 
     window._choose_case()

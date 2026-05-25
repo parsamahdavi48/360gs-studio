@@ -23,6 +23,7 @@ from core.scene_import_contracts import IMAGE_EXTS as _IMAGE_SEQUENCE_EXTS
 from core.scene_layout import APP_DIR_NAME, scene_images_dir, source_videos_path
 from core.scene_project import infer_video_projection, load_json, remove_source_videos
 from gui import i18n
+from gui.common import dialogs
 from gui.common.icons import image_folder_source_icon, video_source_icon
 
 _SOURCE_KIND_VIDEO = SOURCE_KIND_VIDEO
@@ -38,13 +39,6 @@ _VIDEO_SCAN_EXCLUDED_DIRS = {
     "output",
     "outputs",
 }
-
-
-def _step1_file_dialog():
-    """Return step1_extract.QFileDialog so existing tests can monkeypatch it."""
-    from gui.steps import step1_extract
-
-    return step1_extract.QFileDialog
 
 
 class Step1InputSourcesMixin:
@@ -117,7 +111,7 @@ class Step1InputSourcesMixin:
         return ""
 
     def _add_input_videos(self) -> None:
-        paths, _selected_filter = _step1_file_dialog().getOpenFileNames(
+        paths, _selected_filter = dialogs.get_open_file_names(
             self,
             i18n.t("ADD_INPUT_VIDEO"),
             self._queue_dialog_start_path(),
@@ -128,7 +122,7 @@ class Step1InputSourcesMixin:
         self._append_input_sources(_SOURCE_KIND_VIDEO, [Path(path) for path in paths])
 
     def _add_input_image_sequence(self) -> None:
-        folder = _step1_file_dialog().getExistingDirectory(
+        folder = dialogs.get_existing_directory(
             self,
             i18n.t("ADD_INPUT_IMAGE_SEQUENCE"),
             self._queue_dialog_start_path(),

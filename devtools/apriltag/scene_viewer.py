@@ -17,7 +17,6 @@ from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import (
     QApplication,
     QComboBox,
-    QFileDialog,
     QFormLayout,
     QGridLayout,
     QGroupBox,
@@ -79,6 +78,7 @@ from devtools.apriltag.world_debug_view import (
     load_point_cloud_sample,
     transform_point_cloud_sample,
 )
+from gui.common import dialogs
 from gui.common.drag_spinbox import DragDoubleSpinBox
 from gui.common.perspective_image_view import PerspectiveImageView, PerspectiveLabelOverlay
 from gui.common.perspective_preview import (
@@ -2362,7 +2362,7 @@ class AprilTagSceneViewerWindow(QWidget):
 
     def _choose_case(self) -> None:
         start = str(self._case_dialog_start_dir())
-        chosen = QFileDialog.getExistingDirectory(self, "シーンまたはAprilTagケースを選択", start)
+        chosen = dialogs.get_existing_directory(self, "シーンまたはAprilTagケースを選択", start)
         if chosen:
             self.load_case_dir(Path(chosen))
 

@@ -11,7 +11,6 @@ from PySide6.QtCore import QProcess, QSize, Qt, QTimer
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
-    QFileDialog,
     QFormLayout,
     QGridLayout,
     QHBoxLayout,
@@ -55,7 +54,7 @@ from gui.steps.step3_mask_license import Step3MaskLicenseMixin
 from gui.steps.step3_mask_progress import MaskProgressParser
 from gui.steps.step3_mask_scene import Step3MaskSceneMixin
 
-__all__ = ["MaskStep", "QFileDialog", "_yolo_preview_output_name"]
+__all__ = ["MaskStep", "_yolo_preview_output_name"]
 
 _COCO_CLASS_NAMES = [
     "person",

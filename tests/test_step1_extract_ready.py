@@ -11,6 +11,7 @@ from core.scene_layout import source_videos_path
 from core.scene_project import load_json, source_video_record, upsert_source_videos
 from gui import i18n
 from gui.app import MainWindow
+from gui.common import dialogs
 from gui.steps.step1_extract import ExtractStep
 
 
@@ -200,15 +201,9 @@ def test_extract_video_queue_adds_and_removes_videos_from_right_pane(tmp_path: P
     step.set_scene_dir(str(scene))
     monkeypatch.setattr(step, "_probe_video_info_for_path", lambda _path: _video_info())
 
-    monkeypatch.setattr(
-        "gui.steps.step1_extract.QFileDialog.getOpenFileNames",
-        lambda *_args, **_kwargs: ([str(video_a)], ""),
-    )
+    monkeypatch.setattr(dialogs, "get_open_file_names", lambda *_args, **_kwargs: ([str(video_a)], ""))
     step.add_video_btn.click()
-    monkeypatch.setattr(
-        "gui.steps.step1_extract.QFileDialog.getOpenFileNames",
-        lambda *_args, **_kwargs: ([str(video_b)], ""),
-    )
+    monkeypatch.setattr(dialogs, "get_open_file_names", lambda *_args, **_kwargs: ([str(video_b)], ""))
     step.add_video_btn.click()
 
     assert step._selected_video_paths() == [video_a, video_b]
@@ -244,15 +239,9 @@ def test_extract_source_queue_mixes_video_and_still_folder(tmp_path: Path, monke
     step.set_scene_dir(str(scene))
     monkeypatch.setattr(step, "_probe_video_info_for_path", lambda _path: _video_info())
 
-    monkeypatch.setattr(
-        "gui.steps.step1_extract.QFileDialog.getOpenFileNames",
-        lambda *_args, **_kwargs: ([str(video)], ""),
-    )
+    monkeypatch.setattr(dialogs, "get_open_file_names", lambda *_args, **_kwargs: ([str(video)], ""))
     step.add_video_btn.click()
-    monkeypatch.setattr(
-        "gui.steps.step1_extract.QFileDialog.getExistingDirectory",
-        lambda *_args, **_kwargs: str(still_dir),
-    )
+    monkeypatch.setattr(dialogs, "get_existing_directory", lambda *_args, **_kwargs: str(still_dir))
     step.add_image_sequence_btn.click()
 
     assert step.primary_action_enabled()
@@ -286,15 +275,9 @@ def test_extract_source_queue_blocks_failed_video_probe_even_with_still_folder(t
     step.set_scene_dir(str(scene))
     monkeypatch.setattr(step, "_probe_video_info_for_path", lambda _path: (_ for _ in ()).throw(RuntimeError("probe failed")))
 
-    monkeypatch.setattr(
-        "gui.steps.step1_extract.QFileDialog.getOpenFileNames",
-        lambda *_args, **_kwargs: ([str(video)], ""),
-    )
+    monkeypatch.setattr(dialogs, "get_open_file_names", lambda *_args, **_kwargs: ([str(video)], ""))
     step.add_video_btn.click()
-    monkeypatch.setattr(
-        "gui.steps.step1_extract.QFileDialog.getExistingDirectory",
-        lambda *_args, **_kwargs: str(still_dir),
-    )
+    monkeypatch.setattr(dialogs, "get_existing_directory", lambda *_args, **_kwargs: str(still_dir))
     step.add_image_sequence_btn.click()
 
     assert not step.primary_action_enabled()

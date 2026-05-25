@@ -11,7 +11,6 @@ import numpy as np
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QComboBox,
-    QFileDialog,
     QHBoxLayout,
     QLabel,
     QListWidget,
@@ -43,6 +42,7 @@ from core.scene_preview_cubemap import (
 from core.scene_preview_diagnostics import ScenePreviewDiagnostics, analyze_scene_preview_dataset
 from core.scene_preview_sources import ScenePreviewCandidate, discover_scene_preview_candidates
 from gui import i18n
+from gui.common import dialogs
 from gui.common.perspective_preview import PerspectiveParams
 from gui.scene_preview.camera_image_view import SceneCameraImageView
 from gui.scene_preview.pointcloud_view import ScenePointCloudView
@@ -177,7 +177,7 @@ class ScenePreviewWidget(QWidget):
 
     def _select_scene_dir(self) -> None:
         start = str(self._scene_dir or Path.cwd())
-        selected = QFileDialog.getExistingDirectory(self, i18n.t("SCENE_PREVIEW_SELECT_SCENE"), start)
+        selected = dialogs.get_existing_directory(self, i18n.t("SCENE_PREVIEW_SELECT_SCENE"), start)
         if selected:
             self.set_scene_dir(Path(selected))
 

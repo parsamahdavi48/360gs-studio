@@ -6,7 +6,6 @@ import json
 import math
 import re
 import shutil
-import sys
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
@@ -68,8 +67,7 @@ class Step4RuntimeMixin:
             "--import_path",
             str(model),
         ]
-        process_cls = getattr(sys.modules.get("gui.steps.step4_cubemap"), "QProcess", QProcess)
-        process = process_cls(self)
+        process = self._create_spheresfm_gui_process()
         process.setProgram(colmap)
         process.setArguments(args)
         process.setProcessChannelMode(QProcess.MergedChannels)
@@ -119,6 +117,9 @@ class Step4RuntimeMixin:
         )
         if process.state() == QProcess.NotRunning:
             self._on_spheresfm_gui_process_finished(process, colmap, str(model))
+
+    def _create_spheresfm_gui_process(self) -> QProcess:
+        return QProcess(self)
 
     @staticmethod
     def _qprocess_output_text(process: QProcess) -> str:

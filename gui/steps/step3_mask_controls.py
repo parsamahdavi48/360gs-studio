@@ -6,10 +6,10 @@ import sys
 from pathlib import Path
 
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QFileDialog
 
 from core.mask_view_recipes import QUALITY_CHOICES
 from gui import i18n
+from gui.common import dialogs
 from gui.steps import mask_commands as mask_command_defs
 from gui.steps.mask_commands import MaskCommandContext
 from gui.steps.step3_mask_settings import (
@@ -248,7 +248,7 @@ class Step3MaskControlsMixin:
 
     def _browse_custom_mask(self, *, activate: bool = True) -> bool:
         start_dir = self.scene_dir or str(Path.home())
-        selected, _filter = QFileDialog.getOpenFileName(
+        selected, _filter = dialogs.get_open_file_name(
             self,
             i18n.t("CUSTOM_MASK_SELECT_FILE"),
             start_dir,

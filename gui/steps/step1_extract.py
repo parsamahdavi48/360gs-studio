@@ -11,7 +11,6 @@ from PySide6.QtWidgets import (
     QAbstractItemView,
     QCheckBox,
     QComboBox,
-    QFileDialog,
     QFormLayout,
     QHBoxLayout,
     QLabel,
@@ -46,7 +45,7 @@ from gui.steps.step1_execution import Step1ExecutionMixin
 from gui.steps.step1_input_sources import Step1InputSourcesMixin
 from gui.steps.step1_video_info import Step1VideoInfoMixin
 
-__all__ = ["ExtractStep", "QFileDialog"]
+__all__ = ["ExtractStep"]
 
 _FIXED_INTERVAL_MIN = 0.05
 _FIXED_INTERVAL_MAX = 60.0

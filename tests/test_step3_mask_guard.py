@@ -15,11 +15,11 @@ import pytest
 from PySide6.QtCore import QItemSelectionModel
 from PySide6.QtWidgets import QApplication, QLabel, QPushButton, QToolButton
 
-import gui.steps.step3_mask as step3_mask_module
 from core.mask_source_scope import source_scope_key
 from core.scene_layout import selected_frames_path
 from core.scene_project import write_mask_item
 from gui import i18n
+from gui.common import dialogs
 from gui.common.browse_widget import BrowseWidget
 from gui.steps.base_step import SETTINGS_PANE_MARGINS, SETTINGS_PANE_WIDTH
 from gui.steps.step3_mask import MaskStep
@@ -629,7 +629,7 @@ def test_mask_step_custom_checkbox_opens_picker_and_cancels_cleanly(tmp_path: Pa
     scene = _write_scene(tmp_path, drop_exists=False)
     step = MaskStep(Path.cwd())
     step.set_scene_dir(str(scene))
-    monkeypatch.setattr(step3_mask_module.QFileDialog, "getOpenFileName", lambda *_args, **_kwargs: ("", ""))
+    monkeypatch.setattr(dialogs, "get_open_file_name", lambda *_args, **_kwargs: ("", ""))
 
     step.run_custom_cb.setChecked(True)
 

@@ -1746,7 +1746,11 @@ def test_spheresfm_open_gui_warns_when_selected_binary_has_no_gui_support(
         def exitCode(self) -> int:
             return 1
 
-    monkeypatch.setattr(step4_cubemap, "QProcess", FakeGuiLessQProcess)
+    monkeypatch.setattr(
+        CubemapStep,
+        "_create_spheresfm_gui_process",
+        lambda self: FakeGuiLessQProcess(self),
+    )
     monkeypatch.setattr(QMessageBox, "warning", lambda _parent, title, text: warnings.append((title, text)))
 
     step = CubemapStep(Path.cwd())
