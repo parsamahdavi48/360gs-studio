@@ -9,7 +9,7 @@ from PySide6.QtWidgets import QApplication
 
 from core.app_job import AppJob
 from core.cancellation import AppJobCancelled
-from gui.common.process_runner import ProcessRunner
+from gui.common.process_runner import ProcessRunner, _external_command_for_app_job
 
 
 def _app():
@@ -136,6 +136,49 @@ def test_process_runner_runs_internal_app_job(monkeypatch, tmp_path: Path) -> No
         if runner.is_running():
             runner.cancel()
             _process_events_until(app, lambda: not runner.is_running())
+
+
+def test_process_runner_offloads_cubemap_workflow_app_job(monkeypatch, tmp_path: Path) -> None:
+    app = _app()
+    runner = ProcessRunner()
+    lines: list[str] = []
+    finished: list[bool] = []
+
+    def fail_internal_job(_job: AppJob, *, cancel_event=None) -> None:
+        raise AssertionError("cubemap conversion should run out of process")
+
+    monkeypatch.setattr("gui.common.process_runner.run_app_job", fail_internal_job)
+    monkeypatch.setattr(
+        "gui.common.process_runner._external_command_for_app_job",
+        lambda _job: [sys.executable, "-c", "print('external cubemap ok')"],
+    )
+    runner.line_received.connect(lines.append)
+    runner.queue_finished.connect(finished.append)
+
+    job = AppJob("workflow", {"kind": "cubemap_conversion"}, tmp_path / "job.json")
+    runner.start_queue([("cubemap", job)], log_dir=tmp_path)
+
+    try:
+        assert _process_events_until(app, lambda: bool(finished))
+        assert finished == [True]
+        assert any("app-job workflow cubemap_conversion" in line for line in lines)
+        assert any("external cubemap ok" in line for line in lines)
+    finally:
+        if runner.is_running():
+            runner.cancel()
+            _process_events_until(app, lambda: not runner.is_running())
+
+
+def test_external_command_for_app_job_uses_workflow_job_script(tmp_path: Path) -> None:
+    job_path = tmp_path / "cubemap.json"
+    job = AppJob("workflow", {"kind": "cubemap_conversion"}, job_path)
+
+    cmd = _external_command_for_app_job(job)
+
+    assert cmd is not None
+    assert cmd[0] == sys.executable
+    assert cmd[1].endswith("scripts\\run_workflow_job.py") or cmd[1].endswith("scripts/run_workflow_job.py")
+    assert cmd[2:] == ["--job", str(job_path)]
 
 
 def test_process_runner_cancels_internal_app_job(monkeypatch, tmp_path: Path) -> None:

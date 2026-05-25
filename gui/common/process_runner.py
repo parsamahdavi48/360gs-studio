@@ -4,6 +4,7 @@ from __future__ import annotations
 import os
 import re
 import subprocess
+import sys
 import traceback
 from collections.abc import Callable
 from contextlib import redirect_stderr, redirect_stdout
@@ -14,9 +15,13 @@ from typing import TextIO
 
 from PySide6.QtCore import QObject, QProcess, QProcessEnvironment, QThread, QTimer, Signal, Slot
 
-from core.app_job import AppJob, run_app_job
+from core.app_job import APP_JOB_WORKFLOW, AppJob, run_app_job
 from core.cancellation import AppJobCancelled
+from core.workflow_job_spec import JOB_KIND_CUBEMAP_CONVERSION
 from gui.common.runner_types import StepCommand, StepCommandPhase, StepCommandQueue
+
+_REPO_ROOT = Path(__file__).resolve().parents[2]
+_RUN_WORKFLOW_JOB_SCRIPT = _REPO_ROOT / "scripts" / "run_workflow_job.py"
 
 
 class _SignalWriter:
@@ -68,6 +73,12 @@ class _InternalJobWorker(QObject):
             self.finished.emit(1)
             return
         self.finished.emit(0)
+
+
+def _external_command_for_app_job(job: AppJob) -> list[str] | None:
+    if job.job_type == APP_JOB_WORKFLOW and job.kind == JOB_KIND_CUBEMAP_CONVERSION and job.job_path is not None:
+        return [sys.executable, str(_RUN_WORKFLOW_JOB_SCRIPT), "--job", str(job.job_path)]
+    return None
 
 
 class ProcessRunner(QObject):
@@ -180,9 +191,16 @@ class ProcessRunner(QObject):
         self.phase_started.emit(phase)
 
         if isinstance(cmd, AppJob):
+            external_cmd = _external_command_for_app_job(cmd)
+            if external_cmd is not None:
+                self._run_process(external_cmd)
+                return
             self._run_internal_job(cmd)
             return
 
+        self._run_process(cmd)
+
+    def _run_process(self, cmd: list[str]) -> None:
         proc = QProcess(self)
         proc.setProgram(cmd[0])
         proc.setArguments(cmd[1:])

@@ -449,7 +449,7 @@ STRINGS: dict[str, str] = {
     "SFM_RUN_REALITYSCAN": "Create RealityScan Data",
     "SFM_OPEN_VIEWER": "Inspect SfM Result",
     "SFM_ROUTE_EXTERNAL_TITLE": "Use Existing SfM Result",
-    "SFM_ROUTE_EXTERNAL_BODY": "Use an existing Metashape, RealityScan, COLMAP, or SphereSfM result in the next dataset step.",
+    "SFM_ROUTE_EXTERNAL_BODY": "Use an existing Metashape, RealityScan, COLMAP, or SphereSfM result in the next dataset step. After running SfM in Metashape, export camera data as XML (Agisoft XML) and the point cloud as PLY (Stanford PLY), then save them in the scene folder.",
     "SFM_ROUTE_EXTERNAL_FOOTER": "Next: choose the input source in Dataset",
     "SFM_ROUTE_REALITYSCAN_TITLE": "Metashape → RealityScan Data",
     "SFM_ROUTE_REALITYSCAN_BODY": "Create Cubemap images and XMP files from a Metashape SfM result, and bundle registered images missing from the XML as extra inputs.",

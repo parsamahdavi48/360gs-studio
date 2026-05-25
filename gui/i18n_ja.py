@@ -451,7 +451,7 @@ STRINGS: dict[str, str] = {
     "SFM_RUN_REALITYSCAN": "RealityScan用データを作成",
     "SFM_OPEN_VIEWER": "SfM結果を確認",
     "SFM_ROUTE_EXTERNAL_TITLE": "既存のSfM結果を使う",
-    "SFM_ROUTE_EXTERNAL_BODY": "Metashape / RealityScan / COLMAP / SphereSfMなどで作成済みのSfM結果を、次のデータセット工程で使います。",
+    "SFM_ROUTE_EXTERNAL_BODY": "Metashape / RealityScan / COLMAP / SphereSfMなどで作成済みのSfM結果を、次のデータセット工程で使います。MetashapeでSfMしたら、カメラ情報をXML（Agisoft XML）、点群をPLY（Stanford PLY）でエクスポートして、シーンフォルダに保存してください。",
     "SFM_ROUTE_EXTERNAL_FOOTER": "次: データセット工程で入力元を選択",
     "SFM_ROUTE_REALITYSCAN_TITLE": "Metashape → RealityScan用データ作成",
     "SFM_ROUTE_REALITYSCAN_BODY": "MetashapeのSfM結果からCubemap画像とXMPを作り、XMLにない登録済み画像も追加投入用にまとめます。",

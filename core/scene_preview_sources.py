@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import xml.etree.ElementTree as ET
 from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
@@ -169,11 +170,63 @@ def _metashape_inputs(
             scene / "metashape.xml",
             scene / "cameras.xml",
         )
+    if xml is None:
+        xml = _single_scene_metashape_xml(scene)
+    if ply is None:
+        ply = _single_scene_raw_ply(scene)
     if ply is None:
         ply = _first_existing(scene / "pointcloud.ply", scene_output_dir(scene) / "pointcloud.ply")
     if xml is not None:
         result.append((xml, ply, scene_images_dir(scene), _step4_input_masks_dir(scene, settings), "Metashape SfM"))
     return tuple(result)
+
+
+def _single_scene_metashape_xml(scene: Path) -> Path | None:
+    candidates = [path for path in _scene_xml_candidates(scene) if _looks_like_metashape_xml(path)]
+    return candidates[0] if len(candidates) == 1 else None
+
+
+def _scene_xml_candidates(scene: Path) -> tuple[Path, ...]:
+    return tuple(sorted((path for path in scene.glob("*.xml") if path.is_file()), key=lambda path: path.name.lower()))
+
+
+def _looks_like_metashape_xml(path: Path) -> bool:
+    try:
+        root = ET.parse(path).getroot()
+    except (ET.ParseError, OSError):
+        return False
+    if _xml_tag_name(root.tag) != "document":
+        return False
+    for chunk in root.iter():
+        if _xml_tag_name(chunk.tag) != "chunk":
+            continue
+        has_sensor = any(_xml_tag_name(child.tag) == "sensor" for child in chunk.iter())
+        has_camera = any(_xml_tag_name(child.tag) == "camera" for child in chunk.iter())
+        if has_sensor and has_camera:
+            return True
+    return False
+
+
+def _single_scene_raw_ply(scene: Path) -> Path | None:
+    candidates = _scene_raw_ply_candidates(scene)
+    return candidates[0] if len(candidates) == 1 else None
+
+
+def _scene_raw_ply_candidates(scene: Path) -> tuple[Path, ...]:
+    return tuple(
+        sorted(
+            (
+                path
+                for path in scene.glob("*.ply")
+                if path.is_file() and path.name.casefold() != "pointcloud.ply"
+            ),
+            key=lambda path: path.name.lower(),
+        )
+    )
+
+
+def _xml_tag_name(tag: str) -> str:
+    return tag.rsplit("}", 1)[-1]
 
 
 def _load_step4_settings(scene: Path) -> dict:

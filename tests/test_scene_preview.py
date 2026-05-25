@@ -523,6 +523,51 @@ def test_discover_scene_preview_candidates_finds_step4_sources(tmp_path: Path) -
     assert by_kind["spheresfm"].mask_root == output / "spheresfm" / "masks_colmap"
 
 
+def test_discover_scene_preview_candidates_uses_single_scene_metashape_ply(tmp_path: Path) -> None:
+    (tmp_path / "images").mkdir()
+    xml = tmp_path / "exported_pose.xml"
+    ply = tmp_path / "raw_scan.ply"
+    _write_preview_metashape_xml(xml)
+    _write_empty_ply(ply)
+
+    candidates = discover_scene_preview_candidates(tmp_path)
+
+    metashape = next(candidate for candidate in candidates if candidate.kind == "metashape")
+    assert metashape.path == xml
+    assert metashape.pointcloud_path == ply
+
+
+def test_discover_scene_preview_candidates_prefers_single_raw_metashape_ply(tmp_path: Path) -> None:
+    output = tmp_path / "output"
+    output.mkdir()
+    (tmp_path / "images").mkdir()
+    xml = tmp_path / "metashape_export.xml"
+    raw_ply = tmp_path / "metashape_export.ply"
+    _write_preview_metashape_xml(xml)
+    _write_empty_ply(raw_ply)
+    _write_empty_ply(output / "pointcloud.ply")
+
+    candidates = discover_scene_preview_candidates(tmp_path)
+
+    metashape = next(candidate for candidate in candidates if candidate.kind == "metashape")
+    assert metashape.path == xml
+    assert metashape.pointcloud_path == raw_ply
+
+
+def test_discover_scene_preview_candidates_keeps_ambiguous_scene_ply_unselected(tmp_path: Path) -> None:
+    (tmp_path / "images").mkdir()
+    xml = tmp_path / "exported_pose.xml"
+    _write_preview_metashape_xml(xml)
+    _write_empty_ply(tmp_path / "scan_a.ply")
+    _write_empty_ply(tmp_path / "scan_b.ply")
+
+    candidates = discover_scene_preview_candidates(tmp_path)
+
+    metashape = next(candidate for candidate in candidates if candidate.kind == "metashape")
+    assert metashape.path == xml
+    assert metashape.pointcloud_path is None
+
+
 def test_discover_scene_preview_candidates_finds_registered_refactor_artifacts(tmp_path: Path) -> None:
     output = tmp_path / "output"
     metashape_colmap = output / "metashape_colmap"
@@ -654,4 +699,25 @@ def _write_empty_ply(path: Path) -> None:
             ]
         ),
         encoding="ascii",
+    )
+
+
+def _write_preview_metashape_xml(path: Path) -> None:
+    path.write_text(
+        '<?xml version="1.0" encoding="UTF-8"?>\n'
+        '<document version="1.2.0">\n'
+        "  <chunk>\n"
+        "    <sensors>\n"
+        '      <sensor id="0" type="spherical">\n'
+        '        <resolution width="64" height="32" />\n'
+        "      </sensor>\n"
+        "    </sensors>\n"
+        "    <cameras>\n"
+        '      <camera id="0" sensor_id="0" label="frame_0001.jpg">\n'
+        "        <transform>1 0 0 0 0 1 0 0 0 0 1 0 0 0 0 1</transform>\n"
+        "      </camera>\n"
+        "    </cameras>\n"
+        "  </chunk>\n"
+        "</document>\n",
+        encoding="utf-8",
     )
