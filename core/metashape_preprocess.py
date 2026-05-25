@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -9,6 +10,8 @@ from core.metashape_coordinates import metashape_camera_to_world, metashape_poin
 from core.metashape_model import CAMERA_MODEL_EQUIRECTANGULAR, MetashapeSensor, parse_metashape_model
 from core.realityscan_to_transforms import write_transformed_ply
 from core.scene_inventory import build_scene_image_label_path_lookup_with_warnings, resolve_scene_image_label
+
+ProgressCallback = Callable[[int, int], None]
 
 
 @dataclass(frozen=True, slots=True)
@@ -30,6 +33,11 @@ class MetashapePreprocessResult:
         }
 
 
+def _notify_progress(callback: ProgressCallback | None, done: int, total: int) -> None:
+    if callback is not None:
+        callback(max(0, int(done)), max(0, int(total)))
+
+
 def export_metashape_equirectangular_dataset(
     *,
     images_dir: str | Path,
@@ -39,6 +47,7 @@ def export_metashape_equirectangular_dataset(
     fix_upside_down: bool = True,
     scale: float = 1.0,
     verbose: bool = False,
+    progress_callback: ProgressCallback | None = None,
 ) -> MetashapePreprocessResult:
     """Create the intermediate ERP transforms dataset used before cubemap export."""
     images_root = Path(images_dir)
@@ -47,6 +56,9 @@ def export_metashape_equirectangular_dataset(
     output.mkdir(parents=True, exist_ok=True)
 
     model = parse_metashape_model(xml)
+    camera_count = len(model.cameras)
+    progress_total = max(1, camera_count + 1 + (1 if ply_path else 0))
+    _notify_progress(progress_callback, 0, progress_total)
     used_sensors = {camera.sensor_id: model.sensor_for_camera(camera) for camera in model.cameras}
     unsupported = sorted(
         {
@@ -66,7 +78,7 @@ def export_metashape_equirectangular_dataset(
     frames: list[dict[str, Any]] = []
     skipped = 0
 
-    for camera in model.cameras:
+    for camera_index, camera in enumerate(model.cameras, start=1):
         sensor = model.sensor_for_camera(camera)
         image_path = resolve_camera_image(camera.label, image_lookup)
         if image_path is None:
@@ -74,6 +86,7 @@ def export_metashape_equirectangular_dataset(
             warnings.append(f"Camera image not found: {camera.label or camera.camera_id}")
             if verbose:
                 print(f"  Skipping {camera.label or camera.camera_id}: no matching image", flush=True)
+            _notify_progress(progress_callback, camera_index, progress_total)
             continue
 
         transform = metashape_camera_to_world(model, camera, fix_upside_down=fix_upside_down)
@@ -84,6 +97,7 @@ def export_metashape_equirectangular_dataset(
         }
         frame.update(sensor_payload(sensor))
         frames.append(frame)
+        _notify_progress(progress_callback, camera_index, progress_total)
 
     if not frames:
         detail = f": {'; '.join(warnings)}" if warnings else ""
@@ -115,6 +129,8 @@ def export_metashape_equirectangular_dataset(
             metashape_pointcloud_file_matrix(fix_upside_down=fix_upside_down, scale=scale),
         )
         payload["ply_file_path"] = pointcloud_output.name
+    if ply is not None:
+        _notify_progress(progress_callback, camera_count + 1, progress_total)
 
     transforms_path = output / "transforms.json"
     transforms_path.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
@@ -135,6 +151,7 @@ def export_metashape_equirectangular_dataset(
         ),
         encoding="utf-8",
     )
+    _notify_progress(progress_callback, progress_total, progress_total)
 
     if verbose:
         print(f"Processed {len(frames)} camera frames", flush=True)

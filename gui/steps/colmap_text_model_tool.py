@@ -1,6 +1,7 @@
 """Metashape XML/PLY to portable COLMAP text dataset tool."""
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 from PySide6.QtCore import Qt
@@ -52,6 +53,8 @@ from gui.steps.step4_contracts import (
     _PROFILE_POSTSHOT,
 )
 from gui.steps.step4_widgets import make_output_image_controls
+
+_PROGRESS_RE = re.compile(r"^\[progress\]\s+(\d+)\s*/\s*(\d+)")
 
 
 class ColmapTextModelTool(BaseStepWidget):
@@ -373,6 +376,12 @@ class ColmapTextModelTool(BaseStepWidget):
         if phase == "metashape_colmap":
             return i18n.t("PHASE_COLMAP_TEXT_MODEL")
         return super().phase_display_name(phase)
+
+    def on_line(self, line: str) -> tuple[int, int] | None:
+        progress = _PROGRESS_RE.match(line)
+        if progress:
+            return int(progress.group(1)), int(progress.group(2))
+        return None
 
     def on_queue_finished(self, success: bool) -> None:
         if not success or not self.scene_dir:

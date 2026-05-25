@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import shutil
+from collections.abc import Callable
 from pathlib import Path
 
 from core.cancellation import CancellationToken, raise_if_cancelled
@@ -55,6 +56,29 @@ from core.workflow_job_spec import (
 )
 
 
+def _progress_log_callback(cancel_event: CancellationToken | None = None) -> Callable[[int, int], None]:
+    last_bucket = -1
+    last_pair: tuple[int, int] | None = None
+
+    def callback(done: int, total: int) -> None:
+        nonlocal last_bucket, last_pair
+        raise_if_cancelled(cancel_event)
+        done = max(0, int(done))
+        total = max(0, int(total))
+        if total <= 0:
+            return
+        pair = (min(done, total), total)
+        if pair == last_pair:
+            return
+        bucket = int((pair[0] / float(total)) * 100.0)
+        if pair[0] == 0 or pair[0] >= total or bucket != last_bucket:
+            print(f"[progress] {pair[0]}/{total}", flush=True)
+            last_bucket = bucket
+            last_pair = pair
+
+    return callback
+
+
 def run_workflow_job_file(path: str | Path, *, cancel_event: CancellationToken | None = None) -> None:
     run_workflow_job_payload(load_workflow_job(path), cancel_event=cancel_event)
 
@@ -89,6 +113,7 @@ def _run_metashape_preprocess(job: dict, *, cancel_event: CancellationToken | No
         fix_upside_down=not bool(job.get("no_fix_rotation")),
         scale=float(job.get("scale", 1.0)),
         verbose=True,
+        progress_callback=_progress_log_callback(cancel_event),
     )
     print(f"Metashape frames: {result.num_frames}", flush=True)
     print(f"Metashape skipped: {result.num_skipped}", flush=True)
@@ -293,16 +318,27 @@ def _run_transforms_to_colmap(job: dict, *, cancel_event: CancellationToken | No
         output_dir=Path(str(job["output_dir"])),
         ply_path=Path(str(job["ply_path"])) if str(job.get("ply_path") or "") else None,
         image_prefix=str(job.get("image_prefix") or "images"),
+        progress_callback=_progress_log_callback(cancel_event),
     )
     dataset_root_text = str(job.get("dataset_root") or "").strip()
     if dataset_root_text:
         dataset_root = Path(dataset_root_text)
         asset_input_dir = Path(str(job.get("asset_input_dir") or job["input_dir"]))
         if bool(job.get("copy_images")):
-            count = _link_or_copy_tree(asset_input_dir / "images", dataset_root / "images", cancel_event=cancel_event)
+            count = _link_or_copy_tree(
+                asset_input_dir / "images",
+                dataset_root / "images",
+                cancel_event=cancel_event,
+                progress_callback=_progress_log_callback(cancel_event),
+            )
             print(f"Dataset images: {count}", flush=True)
         if bool(job.get("copy_masks")):
-            count = _link_or_copy_tree(asset_input_dir / "masks", dataset_root / "masks", cancel_event=cancel_event)
+            count = _link_or_copy_tree(
+                asset_input_dir / "masks",
+                dataset_root / "masks",
+                cancel_event=cancel_event,
+                progress_callback=_progress_log_callback(cancel_event),
+            )
             print(f"Dataset masks: {count}", flush=True)
     print(f"Wrote cameras.txt, images.txt, points3D.txt to {result['output_dir']}", flush=True)
     print(f"  Camera model: {result['camera_model']}", flush=True)
@@ -316,19 +352,29 @@ def _link_or_copy_tree(
     destination_dir: Path,
     *,
     cancel_event: CancellationToken | None = None,
+    progress_callback: Callable[[int, int], None] | None = None,
 ) -> int:
     source = Path(source_dir)
     if not source.is_dir():
         return 0
     destination = Path(destination_dir)
+    source_files = sorted(
+        (source_file for source_file in source.rglob("*") if source_file.is_file()),
+        key=lambda path: str(path).lower(),
+    )
+    total = len(source_files)
+    if total <= 0:
+        return 0
+    if progress_callback is not None:
+        progress_callback(0, total)
     copied = 0
-    for source_file in sorted(source.rglob("*"), key=lambda path: str(path).lower()):
+    for source_file in source_files:
         raise_if_cancelled(cancel_event)
-        if not source_file.is_file():
-            continue
         rel = source_file.relative_to(source)
         replace_file_with_link_or_copy(source_file, destination / rel)
         copied += 1
+        if progress_callback is not None:
+            progress_callback(copied, total)
     return copied
 
 
@@ -363,6 +409,7 @@ def _run_spheresfm_preflight(job: dict, *, cancel_event: CancellationToken | Non
         cancel_event=cancel_event,
     )
     print("SphereSfM GPU preflight passed.", flush=True)
+    print("[progress] 1/1", flush=True)
     raise_if_cancelled(cancel_event)
 
 
@@ -389,6 +436,7 @@ def _run_spheresfm_prepare(job: dict, *, cancel_event: CancellationToken | None 
         print(f"Prepared SphereSfM masks: copied={copied}, missing={missing}", flush=True)
     else:
         print("SphereSfM masks disabled.", flush=True)
+        print(f"[progress] {len(images)}/{len(images)}", flush=True)
     raise_if_cancelled(cancel_event)
 
 

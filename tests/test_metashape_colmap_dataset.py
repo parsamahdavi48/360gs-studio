@@ -103,6 +103,7 @@ def test_export_metashape_colmap_dataset_expands_only_erp_and_undistorts_distort
     ply = scene / "metashape.ply"
     _write_mixed_xml(xml)
     _write_ply(ply)
+    progress: list[tuple[int, int]] = []
 
     result = export_metashape_colmap_dataset(
         scene_dir=scene,
@@ -114,9 +115,11 @@ def test_export_metashape_colmap_dataset_expands_only_erp_and_undistorts_distort
         views=[{"name": "pz", "yaw": 0.0, "pitch": 0.0}, {"name": "px", "yaw": 90.0, "pitch": 0.0}],
         output_scale=0.5,
         output_format="jpg",
+        progress_callback=lambda done, total: progress.append((done, total)),
     )
 
     output = scene / "output" / "metashape_colmap"
+    assert progress == [(0, 5), (1, 5), (2, 5), (3, 5), (4, 5), (5, 5)]
     assert result.image_count == 4
     assert (output / "images" / "pano_pz.jpg").is_file()
     assert (output / "images" / "pano_px.jpg").is_file()

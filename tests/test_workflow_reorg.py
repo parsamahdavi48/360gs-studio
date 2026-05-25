@@ -477,6 +477,8 @@ def test_colmap_text_model_tool_defaults_and_builds_dataset_job(tmp_path: Path) 
 
     commands = tool.build_commands()
     assert [phase for phase, _cmd in commands] == ["metashape_colmap"]
+    assert tool.on_line("[progress] 4/12") == (4, 12)
+    assert tool.on_line("Images: 4") is None
 
     colmap_job = _workflow_job(commands[0][1])
     assert colmap_job["kind"] == "metashape_colmap_dataset"

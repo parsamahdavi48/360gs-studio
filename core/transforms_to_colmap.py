@@ -12,9 +12,17 @@ from __future__ import annotations
 
 import json
 import sys
+from collections.abc import Callable
 from pathlib import Path
 
 import numpy as np
+
+ProgressCallback = Callable[[int, int], None]
+
+
+def _notify_progress(callback: ProgressCallback | None, done: int, total: int) -> None:
+    if callback is not None:
+        callback(max(0, int(done)), max(0, int(total)))
 
 
 def parse_args():
@@ -132,6 +140,7 @@ def write_images_txt(
     frames: list[dict],
     image_prefix: str,
     camera_ids: list[int] | None = None,
+    progress_callback: ProgressCallback | None = None,
 ) -> int:
     """images.txt 出力。POINTS2D は空。
 
@@ -146,19 +155,23 @@ def write_images_txt(
         f.write("#   IMAGE_ID, QW, QX, QY, QZ, TX, TY, TZ, CAMERA_ID, NAME\n")
         f.write("#   POINTS2D[] as (X, Y, POINT3D_ID)\n")
         f.write(f"# Number of images: {len(frames)}\n")
+        total = len(frames)
         for idx, frame in enumerate(frames, start=1):
             file_path = frame.get("file_path", "")
             if not isinstance(file_path, str) or not file_path:
+                _notify_progress(progress_callback, idx, total)
                 continue
             try:
                 t = np.array(frame["transform_matrix"], dtype=np.float64)
             except Exception:
+                _notify_progress(progress_callback, idx, total)
                 continue
 
             r_w2c, t_w2c = c2w_to_w2c(t)
             try:
                 qw, qx, qy, qz = quaternion_from_matrix(r_w2c)
             except ValueError:
+                _notify_progress(progress_callback, idx, total)
                 continue
 
             name = strip_prefix(file_path, image_prefix)
@@ -169,6 +182,7 @@ def write_images_txt(
             )
             f.write("\n")  # POINTS2D 空行
             written += 1
+            _notify_progress(progress_callback, idx, total)
     return written
 
 
@@ -338,6 +352,7 @@ def convert(
     output_dir: Path,
     ply_path: Path | None,
     image_prefix: str,
+    progress_callback: ProgressCallback | None = None,
 ) -> dict:
     json_path = input_dir / json_name
     if not json_path.is_file():
@@ -358,6 +373,8 @@ def convert(
     frames = [frame for frame in frames if isinstance(frame, dict)]
     if not frames:
         raise ValueError("frames in transforms.json is empty")
+    progress_total = max(1, len(frames) + 1 + (1 if ply_path is not None else 0))
+    _notify_progress(progress_callback, 0, progress_total)
     cameras, frame_camera_ids = _build_camera_records(data, frames)
 
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -367,7 +384,13 @@ def convert(
     points_path = output_dir / "points3D.txt"
 
     write_camera_records_txt(cameras_path, cameras)
-    num_images = write_images_txt(images_path, frames, image_prefix, frame_camera_ids)
+    num_images = write_images_txt(
+        images_path,
+        frames,
+        image_prefix,
+        frame_camera_ids,
+        progress_callback=lambda done, _total: _notify_progress(progress_callback, done, progress_total),
+    )
 
     num_points = 0
     if ply_path is not None and ply_path.is_file():
@@ -381,13 +404,16 @@ def convert(
             # PLY をそのまま COLMAP 慣例の points3D.ply としてもコピー出力
             try:
                 import shutil
+
                 shutil.copy2(ply_path, output_dir / "points3D.ply")
             except Exception:
                 pass
+        _notify_progress(progress_callback, progress_total, progress_total)
     else:
         if ply_path is not None:
             print(f"Warning: PLY not found: {ply_path}; writing empty points3D.txt", file=sys.stderr)
         write_empty_points3d_txt(points_path)
+        _notify_progress(progress_callback, progress_total, progress_total)
 
     first_camera_model = cameras[0][1] if cameras else "PINHOLE"
     return {

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -43,6 +44,7 @@ DEFAULT_UNDISTORT_ALPHA = 1.0
 AXIS_TRANSFORM_POSTSHOT = "postshot"
 AXIS_TRANSFORM_BRUSH = "brush"
 AXIS_TRANSFORM_NONE = "none"
+ProgressCallback = Callable[[int, int], None]
 
 
 @dataclass(frozen=True, slots=True)
@@ -68,6 +70,11 @@ class MetashapeNerfCompatibility:
         return self.camera_group_count <= 1
 
 
+def _notify_progress(callback: ProgressCallback | None, done: int, total: int) -> None:
+    if callback is not None:
+        callback(max(0, int(done)), max(0, int(total)))
+
+
 def export_metashape_nerf_dataset(
     *,
     scene_dir: str | Path,
@@ -85,6 +92,7 @@ def export_metashape_nerf_dataset(
     undistort_alpha: float = DEFAULT_UNDISTORT_ALPHA,
     axis_transform: str = AXIS_TRANSFORM_NONE,
     final_orientation: str = FINAL_ORIENTATION_NONE,
+    progress_callback: ProgressCallback | None = None,
 ) -> MetashapeNerfExportResult:
     scene = Path(scene_dir)
     images_root = Path(images_dir)
@@ -118,14 +126,18 @@ def export_metashape_nerf_dataset(
 
     output_images.mkdir(parents=True, exist_ok=True)
     world_transform = dataset_world_transform(axis_transform, final_orientation)
+    item_count = len(plan.items)
+    progress_total = max(1, item_count + 1 + (1 if ply_path else 0))
+    _notify_progress(progress_callback, 0, progress_total)
 
     frames: list[dict[str, Any]] = []
     action_counts: dict[str, int] = {}
 
-    for item in plan.items:
+    for item_index, item in enumerate(plan.items, start=1):
         action_counts[item.action] = action_counts.get(item.action, 0) + 1
         camera = camera_by_id.get(item.camera_id)
         if camera is None or not item.image_rel_path:
+            _notify_progress(progress_callback, item_index, progress_total)
             continue
         sensor = model.sensor_for_camera(camera)
         source_image = resolve_inventory_path(scene, images_root, item.image_rel_path, standard_root_name="images")
@@ -190,8 +202,10 @@ def export_metashape_nerf_dataset(
                 ),
             )
         else:
+            _notify_progress(progress_callback, item_index, progress_total)
             continue
         frames.extend(_asset_to_frame(asset, output) for asset in assets)
+        _notify_progress(progress_callback, item_index, progress_total)
 
     if not frames:
         raise ValueError("No Metashape cameras were converted to NeRF frames")
@@ -230,6 +244,7 @@ def export_metashape_nerf_dataset(
             pointcloud_output = output / "pointcloud.ply"
             write_transformed_ply(ply, pointcloud_output, world_transform @ metashape_pointcloud_matrix())
             payload["ply_file_path"] = pointcloud_output.name
+        _notify_progress(progress_callback, item_count + 1, progress_total)
 
     write_result = write_nerf_json_ply_dataset(
         output,
@@ -244,6 +259,7 @@ def export_metashape_nerf_dataset(
             "masks_dir": "masks",
         },
     )
+    _notify_progress(progress_callback, progress_total, progress_total)
     return MetashapeNerfExportResult(
         output_dir=output,
         transforms_json=write_result.transforms_json,

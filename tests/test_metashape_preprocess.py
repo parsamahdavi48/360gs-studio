@@ -81,6 +81,7 @@ def test_export_metashape_preprocess_supports_multiple_spherical_resolutions(tmp
     ply = scene / "points.ply"
     _write_spherical_xml(xml)
     _write_ply(ply)
+    progress: list[tuple[int, int]] = []
 
     result = export_metashape_equirectangular_dataset(
         images_dir=images,
@@ -88,9 +89,11 @@ def test_export_metashape_preprocess_supports_multiple_spherical_resolutions(tmp
         output_dir=output,
         ply_path=ply,
         scale=2.0,
+        progress_callback=lambda done, total: progress.append((done, total)),
     )
 
     data = json.loads((output / "transforms.json").read_text(encoding="utf-8"))
+    assert progress == [(0, 4), (1, 4), (2, 4), (3, 4), (4, 4)]
     assert result.num_frames == 2
     assert result.num_skipped == 0
     assert data["camera_model"] == "EQUIRECTANGULAR"

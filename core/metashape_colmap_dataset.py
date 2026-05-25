@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -51,6 +52,7 @@ from core.transforms_to_colmap import read_ply_points, write_points3d_txt
 
 DEFAULT_FOV_DEG = 90.0
 DEFAULT_UNDISTORT_ALPHA = 1.0
+ProgressCallback = Callable[[int, int], None]
 
 
 @dataclass(frozen=True, slots=True)
@@ -61,6 +63,11 @@ class MetashapeColmapExportResult:
     camera_count: int
     action_counts: dict[str, int] = field(default_factory=dict)
     warnings: tuple[str, ...] = ()
+
+
+def _notify_progress(callback: ProgressCallback | None, done: int, total: int) -> None:
+    if callback is not None:
+        callback(max(0, int(done)), max(0, int(total)))
 
 
 def export_metashape_colmap_dataset(
@@ -80,6 +87,7 @@ def export_metashape_colmap_dataset(
     undistort_alpha: float = DEFAULT_UNDISTORT_ALPHA,
     axis_transform: str = AXIS_TRANSFORM_NONE,
     final_orientation: str = FINAL_ORIENTATION_NONE,
+    progress_callback: ProgressCallback | None = None,
 ) -> MetashapeColmapExportResult:
     scene = Path(scene_dir)
     images_root = Path(images_dir)
@@ -94,6 +102,9 @@ def export_metashape_colmap_dataset(
     model = parse_metashape_model(xml_path)
     inventory = build_scene_inventory(scene, images_dir=images_root, masks_dir=masks_root)
     plan = build_metashape_dataset_export_plan(model, inventory)
+    item_count = len(plan.items)
+    progress_total = max(1, item_count + 1 + (1 if ply_path else 0))
+    _notify_progress(progress_callback, 0, progress_total)
 
     cameras: list[ColmapCamera] = []
     images: list[ColmapImage] = []
@@ -102,10 +113,11 @@ def export_metashape_colmap_dataset(
     world_transform = dataset_world_transform(axis_transform, final_orientation)
 
     camera_by_id = {camera.camera_id: camera for camera in model.cameras}
-    for item in plan.items:
+    for item_index, item in enumerate(plan.items, start=1):
         action_counts[item.action] = action_counts.get(item.action, 0) + 1
         camera = camera_by_id.get(item.camera_id)
         if camera is None or not item.image_rel_path:
+            _notify_progress(progress_callback, item_index, progress_total)
             continue
         sensor = model.sensor_for_camera(camera)
         source_image = _resolve_inventory_path(scene, images_root, item.image_rel_path, standard_root_name="images")
@@ -178,16 +190,20 @@ def export_metashape_colmap_dataset(
                 camera_ids,
             )
 
+        _notify_progress(progress_callback, item_index, progress_total)
+
     if not images:
         warning_text = "; ".join(plan.warnings)
         detail = f": {warning_text}" if warning_text else ""
         raise ValueError(f"No Metashape cameras were converted to COLMAP images{detail}")
 
     write_colmap_text_dataset(output, cameras, images)
+    _notify_progress(progress_callback, item_count + 1, progress_total)
     if ply_path:
         ply = Path(ply_path)
         if ply.is_file():
             _write_colmap_pointcloud_files(ply, sparse_dir, world_transform)
+        _notify_progress(progress_callback, progress_total, progress_total)
     _write_manifest(output, plan.source_kind, action_counts, plan.warnings)
     return MetashapeColmapExportResult(
         output_dir=output,

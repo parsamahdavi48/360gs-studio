@@ -1,10 +1,34 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from pathlib import Path
 
 from core.cancellation import CancellationToken, raise_if_cancelled
 from core.colmap_mixed_project import prepare_colmap_mixed_project
 from core.sfm_job_spec import JOB_KIND_COLMAP_MIXED_PROJECT, load_sfm_job, validate_sfm_job_payload
+
+
+def _progress_log_callback(cancel_event: CancellationToken | None = None) -> Callable[[int, int], None]:
+    last_bucket = -1
+    last_pair: tuple[int, int] | None = None
+
+    def callback(done: int, total: int) -> None:
+        nonlocal last_bucket, last_pair
+        raise_if_cancelled(cancel_event)
+        done = max(0, int(done))
+        total = max(0, int(total))
+        if total <= 0:
+            return
+        pair = (min(done, total), total)
+        if pair == last_pair:
+            return
+        bucket = int((pair[0] / float(total)) * 100.0)
+        if pair[0] == 0 or pair[0] >= total or bucket != last_bucket:
+            print(f"[progress] {pair[0]}/{total}", flush=True)
+            last_bucket = bucket
+            last_pair = pair
+
+    return callback
 
 
 def run_sfm_job_file(path: str | Path, *, cancel_event: CancellationToken | None = None) -> None:
@@ -38,6 +62,7 @@ def _run_colmap_mixed_project(job: dict, *, cancel_event: CancellationToken | No
         remap_cache_limit=str(job["remap_cache_limit"]),
         rig_name=str(job["rig_name"]),
         cancel_event=cancel_event,
+        progress_callback=_progress_log_callback(cancel_event),
     )
     for warning in result.warnings:
         print(f"Warning: {warning}", flush=True)

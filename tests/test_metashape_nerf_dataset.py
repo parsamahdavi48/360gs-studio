@@ -100,6 +100,7 @@ def test_export_metashape_nerf_dataset_expands_links_and_undistorts(tmp_path: Pa
     _write_ply(ply)
 
     output = scene / "output" / "metashape_cubemap"
+    progress: list[tuple[int, int]] = []
     result = export_metashape_nerf_dataset(
         scene_dir=scene,
         images_dir=scene / "images",
@@ -112,10 +113,12 @@ def test_export_metashape_nerf_dataset_expands_links_and_undistorts(tmp_path: Pa
         output_format="jpg",
         axis_transform="none",
         final_orientation="none",
+        progress_callback=lambda done, total: progress.append((done, total)),
     )
 
     data = json.loads((output / "transforms.json").read_text(encoding="utf-8"))
     frames = data["frames"]
+    assert progress == [(0, 5), (1, 5), (2, 5), (3, 5), (4, 5), (5, 5)]
     assert result.frame_count == 4
     assert len(frames) == 4
     assert data["source"]["per_frame_intrinsics"] is True

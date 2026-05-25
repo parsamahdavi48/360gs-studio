@@ -67,18 +67,22 @@ def prepare_masks(images_dir: Path, source_masks_dir: Path, output_masks_dir: Pa
     missing = 0
     images = iter_images(images_dir)
     total = len(images)
+    if total > 0:
+        print(f"[progress] 0/{total}", flush=True)
     for index, image in enumerate(images, start=1):
         rel_image = image.relative_to(images_dir)
         source = next((p for p in source_mask_candidates(source_masks_dir, rel_image) if p.is_file()), None)
         if source is None:
             missing += 1
+            if index == 1 or index % 50 == 0 or index == total:
+                print(f"[progress] {index}/{total}", flush=True)
             continue
         target = output_masks_dir / rel_image.parent / f"{rel_image.name}.png"
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(source, target)
         copied += 1
-        if copied == 1 or copied % 50 == 0 or index == total:
-            print(f"[progress] {index} / {total}", flush=True)
+        if index == 1 or index % 50 == 0 or index == total:
+            print(f"[progress] {index}/{total}", flush=True)
     return copied, missing
 
 

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from collections import OrderedDict
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -36,6 +37,12 @@ from core.sfm_input_plan import (
 COLMAP_MIXED_MANIFEST = "stechdrive_colmap_mixed_project.json"
 COLMAP_RIG_IMAGE_LIST = "rig_image_list.txt"
 COLMAP_NORMAL_IMAGE_LIST = "normal_image_list.txt"
+ProgressCallback = Callable[[int, int], None]
+
+
+def _notify_progress(callback: ProgressCallback | None, done: int, total: int) -> None:
+    if callback is not None:
+        callback(max(0, int(done)), max(0, int(total)))
 
 
 @dataclass(frozen=True, slots=True)
@@ -80,6 +87,7 @@ def prepare_colmap_mixed_project(
     remap_cache_limit: str | int = "auto",
     rig_name: str = DEFAULT_RIG_NAME,
     cancel_event: CancellationToken | None = None,
+    progress_callback: ProgressCallback | None = None,
 ) -> ColmapMixedProjectResult:
     raise_if_cancelled(cancel_event)
     scene = Path(scene_dir)
@@ -173,6 +181,7 @@ def prepare_colmap_mixed_project(
         write_masks=write_masks,
         warnings=warnings,
         cancel_event=cancel_event,
+        progress_callback=progress_callback,
     )
     raise_if_cancelled(cancel_event)
 
@@ -338,10 +347,13 @@ def _link_normal_images(
     write_masks: bool,
     warnings: list[str],
     cancel_event: CancellationToken | None = None,
+    progress_callback: ProgressCallback | None = None,
 ) -> tuple[list[str], dict[str, list[str]]]:
     names: list[str] = []
     group_names: dict[str, list[str]] = {}
     total = len(images)
+    if total > 0:
+        _notify_progress(progress_callback, 0, total)
     for index, image in enumerate(images, start=1):
         raise_if_cancelled(cancel_event)
         group = normal_camera_group_for_image(image)
@@ -351,23 +363,29 @@ def _link_normal_images(
             replace_file_with_link_or_copy(image.path, image_dest)
         elif not image_dest.is_file():
             warnings.append(f"Normal image is not present in project output: {rel.as_posix()}")
+            _notify_progress(progress_callback, index, total)
             continue
         rel_text = rel.as_posix()
         names.append(rel_text)
         group_names.setdefault(group.group_id, []).append(rel_text)
 
         if not write_masks:
+            _notify_progress(progress_callback, index, total)
             continue
         if image.mask is None or not image.mask.exists:
+            _notify_progress(progress_callback, index, total)
             continue
         if not image.mask.readable:
             warnings.append(f"Skipped unreadable normal mask: {image.mask.rel_path}")
+            _notify_progress(progress_callback, index, total)
             continue
         if not image.mask.matches_image_size:
             warnings.append(f"Skipped size-mismatched normal mask: {image.mask.rel_path}")
+            _notify_progress(progress_callback, index, total)
             continue
         mask_dest = project_masks_dir / Path(f"{rel.as_posix()}.png")
         replace_file_with_link_or_copy(image.mask.path, mask_dest)
+        _notify_progress(progress_callback, index, total)
     return names, group_names
 
 
