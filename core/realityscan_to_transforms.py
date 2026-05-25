@@ -23,6 +23,8 @@ except Exception:  # pragma: no cover - import error is reported when image size
 TARGET_PROFILE_REALITYSCAN = "realityscan"
 TARGET_PROFILE_LICHTFELD = "lichtfeld"
 TARGET_PROFILE_CHOICES = (TARGET_PROFILE_REALITYSCAN, TARGET_PROFILE_LICHTFELD)
+REALITYSCAN_IMAGE_DIR_NAMES = ("images", "extra_images")
+REALITYSCAN_MASK_DIR_NAMES = ("masks", "extra_masks")
 
 # The repository's RealityScan preset writes XMP poses in the coordinate frame
 # RealityScan exports back to CSV.  This maps that frame to the same LichtFeld
@@ -194,25 +196,74 @@ def output_file_path(path: Path, root_dir: Path, output_dir: Path, mode: str) ->
     if mode == "relative":
         return rel_to_root.as_posix()
     if mode == "images-prefix":
+        asset_rel = realityscan_image_asset_relative_path(path, root_dir)
+        if asset_rel is not None:
+            return asset_rel.as_posix()
         return (Path("images") / rel_to_root).as_posix()
     if mode == "relative-to-output":
         return os.path.relpath(path.resolve(), output_dir.resolve()).replace(os.sep, "/")
     raise ValueError(f"Unsupported image path mode: {mode}")
 
 
+def related_realityscan_asset_roots(asset_dir: Path, dir_names: tuple[str, ...]) -> tuple[Path, ...]:
+    asset_dir = Path(asset_dir)
+    names = {name.casefold() for name in dir_names}
+    roots: list[Path] = [asset_dir]
+    if asset_dir.name.casefold() in names:
+        roots.extend(asset_dir.parent / name for name in dir_names)
+    else:
+        roots.extend(asset_dir / name for name in dir_names)
+    return _dedupe_paths(roots)
+
+
+def strip_leading_realityscan_asset_dir(path: Path, dir_names: tuple[str, ...]) -> Path:
+    parts = path.parts
+    if parts and parts[0].casefold() in {name.casefold() for name in dir_names} and len(parts) > 1:
+        return Path(*parts[1:])
+    return path
+
+
 def resolve_image_path(images_dir: Path, name: str) -> Path:
     raw = Path(name)
     if raw.is_absolute():
         return raw
-    candidate = images_dir / raw
-    if candidate.exists():
-        return candidate
-    parts = raw.parts
-    if parts and parts[0].lower() == "images" and len(parts) > 1:
-        nested = images_dir / Path(*parts[1:])
-        if nested.exists():
-            return nested
-    return candidate
+    stripped = strip_leading_realityscan_asset_dir(raw, REALITYSCAN_IMAGE_DIR_NAMES)
+    seen: set[str] = set()
+    for root in related_realityscan_asset_roots(images_dir, REALITYSCAN_IMAGE_DIR_NAMES):
+        for rel in (raw, stripped):
+            key = (root / rel).as_posix().casefold()
+            if key in seen:
+                continue
+            seen.add(key)
+            candidate = root / rel
+            if candidate.exists():
+                return candidate
+    return Path(images_dir) / raw
+
+
+def realityscan_image_asset_relative_path(path: Path, images_dir: Path) -> Path | None:
+    path = Path(path)
+    for root in related_realityscan_asset_roots(images_dir, REALITYSCAN_IMAGE_DIR_NAMES):
+        try:
+            rel = path.resolve().relative_to(root.resolve())
+        except ValueError:
+            continue
+        if root.name.casefold() in {name.casefold() for name in REALITYSCAN_IMAGE_DIR_NAMES}:
+            return Path(root.name) / rel
+        return rel
+    return None
+
+
+def _dedupe_paths(paths: list[Path]) -> tuple[Path, ...]:
+    deduped: list[Path] = []
+    seen: set[str] = set()
+    for path in paths:
+        key = path.resolve(strict=False).as_posix().casefold()
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append(path)
+    return tuple(deduped)
 
 
 def image_size(path: Path) -> tuple[int, int]:

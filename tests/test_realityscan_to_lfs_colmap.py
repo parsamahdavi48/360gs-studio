@@ -178,8 +178,76 @@ def test_convert_dedicated_root_links_existing_images_and_masks(tmp_path: Path) 
     assert result["output_dir"] == str(output)
     assert (output / "images" / "a.jpg").is_file()
     assert (output / "masks" / "a.png").is_file()
-    assert sorted(Path(path).name for path in result["linked_assets"]) == ["images", "masks"]
+    assert result["linked_assets"] == []
+    assert result["asset_stats"]["linked_images"] == 1
+    assert result["asset_stats"]["linked_masks"] == 1
     assert (output / "sparse" / "0" / "images.txt").read_text(encoding="utf-8").splitlines()[4].endswith(" 1 a.jpg")
+
+
+def test_convert_merges_realityscan_images_and_extra_images_into_dataset_images(tmp_path: Path) -> None:
+    source = tmp_path / "realityscan"
+    write_image(source / "images" / "cube_px.jpg", (64, 64))
+    write_image(source / "extra_images" / "extra_normal.jpg", (80, 60))
+    write_image(source / "masks" / "cube_px.png", (64, 64))
+    write_image(source / "extra_masks" / "extra_normal.png", (80, 60))
+    write_csv(
+        source / "rs.csv",
+        [
+            {"#name": "cube_px.jpg", "f_35mm": 18},
+            {"#name": "extra_normal.jpg", "f_35mm": 24},
+        ],
+    )
+
+    output = source / "lfs_colmap"
+    result = convert(source / "rs.csv", output)
+
+    assert result["num_images"] == 2
+    assert (output / "images" / "cube_px.jpg").is_file()
+    assert (output / "images" / "extra_normal.jpg").is_file()
+    assert (output / "masks" / "cube_px.png").is_file()
+    assert (output / "masks" / "extra_normal.png").is_file()
+    image_lines = (output / "sparse" / "0" / "images.txt").read_text(encoding="utf-8").splitlines()
+    assert image_lines[4].endswith(" 1 cube_px.jpg")
+    assert image_lines[6].endswith(" 2 extra_normal.jpg")
+    assert result["asset_stats"]["linked_images"] == 2
+    assert result["asset_stats"]["linked_masks"] == 2
+
+
+def test_convert_accepts_prefixed_extra_image_csv_names(tmp_path: Path) -> None:
+    source = tmp_path / "realityscan"
+    write_image(source / "images" / "cube_px.jpg", (64, 64))
+    write_image(source / "extra_images" / "normal.jpg", (80, 60))
+    write_csv(
+        source / "rs.csv",
+        [
+            {"#name": "images/cube_px.jpg", "f_35mm": 18},
+            {"#name": "extra_images/normal.jpg", "f_35mm": 24},
+        ],
+    )
+
+    output = source / "lfs_colmap"
+    result = convert(source / "rs.csv", output)
+
+    assert result["num_images"] == 2
+    assert (output / "images" / "cube_px.jpg").is_file()
+    assert (output / "images" / "normal.jpg").is_file()
+
+
+def test_convert_replaces_stale_materialized_dataset_assets(tmp_path: Path) -> None:
+    source = tmp_path / "realityscan"
+    write_image(source / "images" / "current.jpg", (64, 64))
+    write_image(source / "masks" / "current.png", (64, 64))
+    write_csv(source / "rs.csv", [{"#name": "current.jpg", "f_35mm": 18}])
+    output = source / "lfs_colmap"
+    write_image(output / "images" / "stale.jpg", (32, 32))
+    write_image(output / "masks" / "stale.png", (32, 32))
+
+    convert(source / "rs.csv", output)
+
+    assert (output / "images" / "current.jpg").is_file()
+    assert (output / "masks" / "current.png").is_file()
+    assert not (output / "images" / "stale.jpg").exists()
+    assert not (output / "masks" / "stale.png").exists()
 
 
 def test_convert_can_pre_undistort_distorted_rows_as_pinhole_assets(tmp_path: Path) -> None:

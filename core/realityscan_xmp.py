@@ -387,8 +387,8 @@ def append_realityscan_unposed_scene_images(
         for rel in exclude_source_files
         if str(rel or "").strip()
     }
-    output_images_dir = output_dir / "images"
-    output_masks_dir = output_dir / "masks"
+    output_images_dir = output_dir / "extra_images"
+    output_masks_dir = output_dir / "extra_masks"
     output_images_dir.mkdir(parents=True, exist_ok=True)
     if include_masks and inventory.masks_dir.is_dir():
         output_masks_dir.mkdir(parents=True, exist_ok=True)
@@ -443,6 +443,8 @@ def append_realityscan_unposed_scene_images(
     manifest["mask_layer_files"] = combined_mask_layers
     manifest["mask_layer_count"] = len(combined_mask_layers)
     manifest["unposed_image_count"] = len(copied_images)
+    manifest["unposed_images_dir"] = "extra_images"
+    manifest["unposed_masks_dir"] = "extra_masks"
     manifest["unposed_mask_layer_count"] = len(mask_layers)
     manifest["unposed_standard_mask_count"] = len(standard_masks)
     manifest["unposed_mask_skipped_count"] = skipped_masks

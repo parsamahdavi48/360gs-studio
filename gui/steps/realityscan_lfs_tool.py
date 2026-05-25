@@ -306,7 +306,12 @@ class RealityScanLfsTool(BaseStepWidget):
             return
         try:
             camera_names = [row.name for row in read_realityscan_csv(csv_path)]
-            diagnostics = analyze_named_camera_images(camera_names, images_dir)
+            extra_images_dir = images_dir.parent / "extra_images" if images_dir.name.casefold() == "images" else images_dir / "extra_images"
+            diagnostics = analyze_named_camera_images(
+                camera_names,
+                images_dir,
+                additional_image_roots=(extra_images_dir,),
+            )
         except Exception:
             self.data_quality_note.hide()
             self.data_quality_note.setText("")

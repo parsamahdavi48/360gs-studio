@@ -170,16 +170,18 @@ def test_append_realityscan_unposed_scene_images_excludes_metashape_sources(tmp_
         manifest=manifest,
     )
 
-    extra = output / "images" / "extra_normal.jpg"
+    extra = output / "extra_images" / "extra_normal.jpg"
     assert extra.is_file()
-    assert (output / "masks" / "extra_normal.png").is_file()
-    assert (output / "images" / "extra_normal.jpg.mask.png").is_file()
+    assert (output / "extra_masks" / "extra_normal.png").is_file()
+    assert (output / "extra_images" / "extra_normal.jpg.mask.png").is_file()
     assert not (output / "images" / "extra_pano.jpg").exists()
+    assert manifest["unposed_images_dir"] == "extra_images"
+    assert manifest["unposed_masks_dir"] == "extra_masks"
     assert manifest["unposed_image_count"] == 1
     assert manifest["unposed_mask_layer_count"] == 1
     assert manifest["unposed_pose"] == "none"
     assert manifest["mask_layer_count"] == 2
-    assert "images/extra_normal.jpg.mask.png" in manifest["mask_layer_files"]
+    assert "extra_images/extra_normal.jpg.mask.png" in manifest["mask_layer_files"]
 
 
 def test_c2w_to_xmp_rotation_position_uses_world_to_camera_rotation() -> None:

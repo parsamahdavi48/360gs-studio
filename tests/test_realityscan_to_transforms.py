@@ -149,6 +149,33 @@ def test_convert_keeps_mixed_cubemap_and_normal_images(tmp_path: Path) -> None:
     assert np.allclose(np.array(normal["transform_matrix"])[:3, 3], [-4.0, 6.0, 5.0])
 
 
+def test_convert_resolves_sibling_extra_images_without_rewriting_path_to_images(tmp_path: Path) -> None:
+    images_dir = tmp_path / "images"
+    extra_images_dir = tmp_path / "extra_images"
+    write_image(images_dir / "cube_px.jpg", (100, 100))
+    write_image(extra_images_dir / "normal.jpg", (200, 100))
+    write_csv(
+        tmp_path / "rs.csv",
+        [
+            {"#name": "cube_px.jpg", "f_35mm": 18},
+            {"#name": "normal.jpg", "f_35mm": 36},
+        ],
+    )
+
+    convert(
+        tmp_path / "rs.csv",
+        tmp_path / "out",
+        images_dir=images_dir,
+        target_profile=TARGET_PROFILE_REALITYSCAN,
+    )
+
+    data = json.loads((tmp_path / "out" / "transforms.json").read_text(encoding="utf-8"))
+    assert [frame["file_path"] for frame in data["frames"]] == [
+        "images/cube_px.jpg",
+        "extra_images/normal.jpg",
+    ]
+
+
 def test_convert_writes_relative_paths_to_external_output(tmp_path: Path) -> None:
     scene = tmp_path / "scene"
     images_dir = scene / "images"

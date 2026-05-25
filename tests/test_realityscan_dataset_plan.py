@@ -56,3 +56,26 @@ def test_realityscan_dataset_plan_classifies_distorted_rows(tmp_path: Path) -> N
     assert plan.issues == ()
     assert plan.action_counts == {ACTION_LINK_OR_COPY_PINHOLE: 1, ACTION_UNDISTORT_TO_PINHOLE: 1}
     assert plan.items[0].mask_path == masks / "plain.png"
+
+
+def test_realityscan_dataset_plan_finds_sibling_extra_images_and_masks(tmp_path: Path) -> None:
+    root = tmp_path / "realityscan"
+    images = root / "images"
+    masks = root / "masks"
+    extra_images = root / "extra_images"
+    extra_masks = root / "extra_masks"
+    _image(images / "cube_px.jpg")
+    _image(extra_images / "normal.jpg")
+    _image(extra_masks / "normal.png")
+
+    plan = build_realityscan_lfs_dataset_plan(
+        [_row("cube_px.jpg"), _row("normal.jpg")],
+        images,
+        masks,
+        pre_undistort_distorted_images=False,
+        skip_missing_images=False,
+    )
+
+    assert plan.issues == ()
+    assert [item.image_path for item in plan.items] == [images / "cube_px.jpg", extra_images / "normal.jpg"]
+    assert plan.items[1].mask_path == extra_masks / "normal.png"

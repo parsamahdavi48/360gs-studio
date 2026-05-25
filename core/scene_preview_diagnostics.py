@@ -90,24 +90,31 @@ def analyze_named_camera_images(
     camera_names: Iterable[str],
     image_root: Path | None,
     *,
+    additional_image_roots: Iterable[Path] = (),
     camera_images_missing_on_disk: tuple[str, ...] = (),
     camera_image_count: int | None = None,
 ) -> ScenePreviewDiagnostics:
     names = tuple(str(name or "") for name in camera_names if str(name or "").strip())
+    image_roots = _existing_roots(image_root, additional_image_roots)
     camera_keys: set[str] = set()
     for name in names:
-        camera_keys.update(_image_keys(Path(name), image_root))
+        camera_keys.update(_image_keys_for_roots(Path(name), image_roots))
 
-    image_files = _image_files(image_root)
+    image_files = tuple(
+        sorted(
+            (path for root in image_roots for path in _image_files(root)),
+            key=lambda item: str(item).casefold(),
+        )
+    )
     image_keys: set[str] = set()
     for path in image_files:
-        image_keys.update(_image_keys(path, image_root))
-    if image_root is not None and not camera_images_missing_on_disk:
+        image_keys.update(_image_keys_for_roots(path, image_roots))
+    if image_roots and not camera_images_missing_on_disk:
         camera_images_missing_on_disk = tuple(
-            name for name in names if not image_keys.intersection(_image_keys(Path(name), image_root))
+            name for name in names if not image_keys.intersection(_image_keys_for_roots(Path(name), image_roots))
         )
     images_without_camera = tuple(
-        path for path in image_files if not camera_keys.intersection(_image_keys(path, image_root))
+        path for path in image_files if not camera_keys.intersection(_image_keys_for_roots(path, image_roots))
     )
     return ScenePreviewDiagnostics(
         image_count=len(image_files),
@@ -116,6 +123,24 @@ def analyze_named_camera_images(
         camera_images_missing_on_disk=tuple(camera_images_missing_on_disk),
         cubemap_groups=_cubemap_groups_from_names(names),
     )
+
+
+def _existing_roots(image_root: Path | None, additional_image_roots: Iterable[Path]) -> tuple[Path, ...]:
+    roots: list[Path] = []
+    if image_root is not None:
+        roots.append(Path(image_root))
+    roots.extend(Path(root) for root in additional_image_roots)
+    deduped: list[Path] = []
+    seen: set[str] = set()
+    for root in roots:
+        if not root.is_dir():
+            continue
+        key = root.resolve(strict=False).as_posix().casefold()
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append(root)
+    return tuple(deduped)
 
 
 def _image_files(root: Path | None) -> tuple[Path, ...]:
@@ -151,6 +176,15 @@ def _image_keys(path: Path, image_root: Path | None) -> set[str]:
         except Exception:
             pass
     return {key for key in keys if key}
+
+
+def _image_keys_for_roots(path: Path, image_roots: tuple[Path, ...]) -> set[str]:
+    keys: set[str] = set()
+    if not image_roots:
+        keys.update(_image_keys(path, None))
+    for root in image_roots:
+        keys.update(_image_keys(path, root))
+    return keys
 
 
 def _normalize_key(value: str) -> str:

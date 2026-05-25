@@ -166,6 +166,24 @@ def test_named_camera_diagnostics_matches_realityscan_csv_names(tmp_path: Path) 
     assert diagnostics.incomplete_cubemap_groups[0].missing_faces == ("py",)
 
 
+def test_named_camera_diagnostics_can_include_realityscan_extra_images(tmp_path: Path) -> None:
+    images = tmp_path / "images"
+    extra_images = tmp_path / "extra_images"
+    images.mkdir()
+    extra_images.mkdir()
+    (images / "cube_px.jpg").write_bytes(b"placeholder")
+    (extra_images / "normal.jpg").write_bytes(b"placeholder")
+
+    diagnostics = analyze_named_camera_images(
+        ("cube_px.jpg", "normal.jpg"),
+        images,
+        additional_image_roots=(extra_images,),
+    )
+
+    assert diagnostics.camera_images_missing_on_disk == ()
+    assert diagnostics.images_without_camera == ()
+
+
 def test_metashape_preview_applies_component_transform_and_resolves_image(tmp_path: Path) -> None:
     images = tmp_path / "images"
     images.mkdir()

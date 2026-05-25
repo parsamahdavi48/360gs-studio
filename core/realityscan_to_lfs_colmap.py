@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import json
 import math
+import shutil
+from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
@@ -14,7 +16,6 @@ from core.dataset_writer_colmap import (
     ColmapCamera,
     ColmapImage,
     camera_signature,
-    ensure_dataset_asset_link,
     quaternion_from_matrix,
     write_colmap_text_dataset,
 )
@@ -27,13 +28,17 @@ from core.dataset_writer_colmap import (
 from core.image_io import imread_unicode, imwrite_unicode
 from core.realityscan_dataset_plan import build_realityscan_lfs_dataset_plan
 from core.realityscan_to_transforms import (
+    REALITYSCAN_IMAGE_DIR_NAMES,
+    REALITYSCAN_MASK_DIR_NAMES,
     RealityScanCameraRow,
     camera_from_csv_row,
     image_size,
     read_realityscan_csv,
+    related_realityscan_asset_roots,
     resolve_image_path,
     row_has_distortion,
     row_to_transform,
+    strip_leading_realityscan_asset_dir,
     write_transformed_ply,
 )
 
@@ -43,6 +48,7 @@ DEFAULT_UNDISTORT_ALPHA = 1.0
 LICHTFELD_TRANSFORMS_MARKERS = ("transforms.json", "transforms_train.json")
 MASK_SEARCH_EXTENSIONS = (".png", ".jpg", ".jpeg", ".mask.png")
 IMAGE_WRITE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".bmp", ".tif", ".tiff", ".webp"}
+CameraPayload = tuple[str, int, int, tuple[float, ...]]
 
 try:
     import cv2
@@ -156,14 +162,22 @@ def image_name_for_colmap(image_path: Path, images_dir: Path) -> str:
         rel = Path(image_path.name)
     return rel.as_posix()
 
+
 def _mask_lookup_candidates(image_name: str) -> list[Path]:
-    image_path = Path(image_name)
-    stem_path = image_path.parent / image_path.stem
-    candidates: list[Path] = [image_path]
-    for ext in MASK_SEARCH_EXTENSIONS:
-        candidates.append(stem_path.with_suffix(ext))
-    for ext in MASK_SEARCH_EXTENSIONS:
-        candidates.append(Path(f"{image_name}{ext}"))
+    raw = Path(image_name)
+    bases = [
+        raw,
+        strip_leading_realityscan_asset_dir(raw, REALITYSCAN_IMAGE_DIR_NAMES),
+        strip_leading_realityscan_asset_dir(raw, REALITYSCAN_MASK_DIR_NAMES),
+    ]
+    candidates: list[Path] = []
+    for image_path in bases:
+        stem_path = image_path.parent / image_path.stem
+        candidates.append(image_path)
+        for ext in MASK_SEARCH_EXTENSIONS:
+            candidates.append(stem_path.with_suffix(ext))
+        for ext in MASK_SEARCH_EXTENSIONS:
+            candidates.append(Path(f"{image_path.as_posix()}{ext}"))
 
     deduped: list[Path] = []
     seen: set[str] = set()
@@ -176,12 +190,14 @@ def _mask_lookup_candidates(image_name: str) -> list[Path]:
 
 
 def find_matching_mask(masks_dir: Path, image_name: str) -> Path | None:
-    if not masks_dir.is_dir():
+    roots = tuple(root for root in related_realityscan_asset_roots(masks_dir, REALITYSCAN_MASK_DIR_NAMES) if root.is_dir())
+    if not roots:
         return None
     for rel in _mask_lookup_candidates(image_name):
-        candidate = masks_dir / rel
-        if candidate.is_file():
-            return candidate
+        for root in roots:
+            candidate = root / rel
+            if candidate.is_file():
+                return candidate
     return None
 
 
@@ -290,6 +306,120 @@ def undistort_image_and_optional_mask(
     return width, height, new_camera_matrix
 
 
+def _remove_directory_link(path: Path) -> None:
+    if path.is_symlink():
+        path.unlink()
+        return
+    is_junction = getattr(path, "is_junction", None)
+    if callable(is_junction) and is_junction():
+        path.rmdir()
+
+
+def _clear_directory_contents(path: Path) -> None:
+    if not path.is_dir():
+        return
+    for child in path.iterdir():
+        is_junction = getattr(child, "is_junction", None)
+        if callable(is_junction) and is_junction():
+            child.rmdir()
+        elif child.is_dir() and not child.is_symlink():
+            shutil.rmtree(child)
+        else:
+            child.unlink()
+
+
+def _remove_empty_directory(path: Path) -> None:
+    if path.is_dir() and not any(path.iterdir()):
+        path.rmdir()
+
+
+def _prepare_output_asset_dir(path: Path, source_dir: Path, *, create: bool) -> bool:
+    _remove_directory_link(path)
+    protect_existing = _paths_equivalent(path, source_dir)
+    if not protect_existing:
+        if path.exists() and not path.is_dir():
+            path.unlink()
+        _clear_directory_contents(path)
+    if create:
+        path.mkdir(parents=True, exist_ok=True)
+    return protect_existing
+
+
+def _dataset_image_base_name(row_name: str, source_image: Path) -> str:
+    raw = Path(row_name)
+    stripped = strip_leading_realityscan_asset_dir(raw, REALITYSCAN_IMAGE_DIR_NAMES)
+    name = stripped.name or source_image.name
+    suffix = Path(name).suffix or source_image.suffix or ".jpg"
+    stem = Path(name).stem or source_image.stem or "image"
+    return f"{stem}{suffix.lower()}"
+
+
+def _unique_dataset_image_name(
+    row_name: str,
+    source_image: Path,
+    used_names: set[str],
+    *,
+    output_images_dir: Path,
+    protect_existing: bool,
+) -> str:
+    candidate = _dataset_image_base_name(row_name, source_image)
+    suffix = Path(candidate).suffix
+    base = candidate[: -len(suffix)] if suffix else candidate
+    index = 2
+    while _dataset_name_is_used(
+        candidate,
+        used_names,
+        output_images_dir=output_images_dir,
+        source_image=source_image,
+        protect_existing=protect_existing,
+    ):
+        candidate = f"{base}_{index}{suffix}"
+        index += 1
+    used_names.add(candidate.casefold())
+    return candidate
+
+
+def _dataset_name_is_used(
+    candidate: str,
+    used_names: set[str],
+    *,
+    output_images_dir: Path,
+    source_image: Path,
+    protect_existing: bool,
+) -> bool:
+    if candidate.casefold() in used_names:
+        return True
+    destination = output_images_dir / candidate
+    return protect_existing and destination.exists() and not _paths_equivalent(destination, source_image)
+
+
+def _copy_or_link_source_mask(
+    source_mask: Path | None,
+    output_mask: Path,
+    stats: dict[str, int],
+) -> None:
+    if source_mask is None:
+        return
+    mask_link_kind = _safe_replace_file_link_or_copy(source_mask, output_mask)
+    if mask_link_kind == "hardlink":
+        stats["linked_masks"] += 1
+    elif mask_link_kind == "copy":
+        stats["copied_masks"] += 1
+
+
+def _empty_asset_stats() -> dict[str, int]:
+    return {
+        "undistorted_images": 0,
+        "linked_images": 0,
+        "copied_images": 0,
+        "undistorted_masks": 0,
+        "linked_masks": 0,
+        "copied_masks": 0,
+        "generated_valid_masks": 0,
+        "missing_images": 0,
+    }
+
+
 def prepare_undistorted_asset_dataset(
     rows: list[RealityScanCameraRow],
     source_images_dir: Path,
@@ -298,7 +428,7 @@ def prepare_undistorted_asset_dataset(
     *,
     skip_missing_images: bool,
     alpha: float,
-) -> tuple[Path, Path, dict[str, tuple[str, int, int, tuple[float, ...]]], dict[str, int]]:
+) -> tuple[Path, Path, list[CameraPayload | None], list[str | None], dict[str, int]]:
     alpha = float(alpha)
     if not 0.0 <= alpha <= 1.0:
         raise ValueError(f"Undistort alpha must be between 0 and 1: {alpha}")
@@ -312,33 +442,42 @@ def prepare_undistorted_asset_dataset(
     if source_masks_dir.is_dir() and _paths_equivalent(output_masks_dir, source_masks_dir):
         raise ValueError(f"Refusing to pre-undistort into source masks directory: {output_masks_dir}")
 
-    output_images_dir.mkdir(parents=True, exist_ok=True)
-    if source_masks_dir.is_dir() or generate_valid_masks:
-        output_masks_dir.mkdir(parents=True, exist_ok=True)
+    protect_existing_images = _prepare_output_asset_dir(output_images_dir, source_images_dir, create=True)
+    has_source_masks = any(
+        root.is_dir() for root in related_realityscan_asset_roots(source_masks_dir, REALITYSCAN_MASK_DIR_NAMES)
+    )
+    protect_existing_masks = _prepare_output_asset_dir(
+        output_masks_dir,
+        source_masks_dir,
+        create=has_source_masks or generate_valid_masks,
+    )
 
-    camera_payloads: dict[str, tuple[str, int, int, tuple[float, ...]]] = {}
-    stats = {
-        "undistorted_images": 0,
-        "linked_images": 0,
-        "copied_images": 0,
-        "undistorted_masks": 0,
-        "linked_masks": 0,
-        "copied_masks": 0,
-        "generated_valid_masks": 0,
-        "missing_images": 0,
-    }
+    camera_payloads: list[CameraPayload | None] = []
+    output_names: list[str | None] = []
+    stats = _empty_asset_stats()
+    used_names: set[str] = set()
 
     for row in rows:
         source_image = resolve_image_path(source_images_dir, row.name)
         if not source_image.is_file():
             if skip_missing_images:
                 stats["missing_images"] += 1
+                camera_payloads.append(None)
+                output_names.append(None)
                 continue
             raise FileNotFoundError(f"Image referenced by RealityScan CSV was not found: {source_image}")
 
-        output_image = output_images_dir / image_name_for_colmap(source_image, source_images_dir)
+        output_name = _unique_dataset_image_name(
+            row.name,
+            source_image,
+            used_names,
+            output_images_dir=output_images_dir,
+            protect_existing=protect_existing_images,
+        )
+        output_names.append(output_name)
+        output_image = output_images_dir / output_name
         source_mask = find_matching_mask(source_masks_dir, image_name_for_colmap(source_image, source_images_dir))
-        output_mask = output_masks_dir / mask_output_name(image_name_for_colmap(source_image, source_images_dir), source_mask)
+        output_mask = output_masks_dir / mask_output_name(output_name, source_mask)
 
         if row_has_distortion(row):
             width, height, new_camera_matrix = undistort_image_and_optional_mask(
@@ -349,13 +488,14 @@ def prepare_undistorted_asset_dataset(
                 output_mask_path=output_mask if source_mask is not None or generate_valid_masks else None,
                 alpha=alpha,
             )
-            camera_payloads[row.name] = pinhole_camera_payload_from_matrix(width, height, new_camera_matrix)
+            camera_payloads.append(pinhole_camera_payload_from_matrix(width, height, new_camera_matrix))
             stats["undistorted_images"] += 1
             if source_mask is not None:
                 stats["undistorted_masks"] += 1
             elif generate_valid_masks:
                 stats["generated_valid_masks"] += 1
         else:
+            camera_payloads.append(None)
             link_kind = _safe_replace_file_link_or_copy(source_image, output_image)
             if link_kind == "hardlink":
                 stats["linked_images"] += 1
@@ -363,16 +503,68 @@ def prepare_undistorted_asset_dataset(
                 stats["copied_images"] += 1
 
             if source_mask is not None:
-                mask_link_kind = _safe_replace_file_link_or_copy(source_mask, output_mask)
-                if mask_link_kind == "hardlink":
-                    stats["linked_masks"] += 1
-                elif mask_link_kind == "copy":
-                    stats["copied_masks"] += 1
+                _copy_or_link_source_mask(source_mask, output_mask, stats)
             elif generate_valid_masks:
                 _write_white_mask_for_image(source_image, output_mask)
                 stats["generated_valid_masks"] += 1
 
-    return output_images_dir, output_masks_dir, camera_payloads, stats
+    if not protect_existing_masks:
+        _remove_empty_directory(output_masks_dir)
+    return output_images_dir, output_masks_dir, camera_payloads, output_names, stats
+
+
+def prepare_linked_asset_dataset(
+    rows: list[RealityScanCameraRow],
+    source_images_dir: Path,
+    source_masks_dir: Path,
+    output_dir: Path,
+    *,
+    skip_missing_images: bool,
+) -> tuple[Path, Path, list[str | None], dict[str, int]]:
+    output_images_dir = output_dir / "images"
+    output_masks_dir = output_dir / "masks"
+    protect_existing_images = _prepare_output_asset_dir(output_images_dir, source_images_dir, create=True)
+    protect_existing_masks = _prepare_output_asset_dir(output_masks_dir, source_masks_dir, create=False)
+
+    stats = _empty_asset_stats()
+    output_names: list[str | None] = []
+    used_names: set[str] = set()
+
+    for row in rows:
+        source_image = resolve_image_path(source_images_dir, row.name)
+        if not source_image.is_file():
+            if skip_missing_images:
+                stats["missing_images"] += 1
+                output_names.append(None)
+                continue
+            raise FileNotFoundError(f"Image referenced by RealityScan CSV was not found: {source_image}")
+
+        output_name = _unique_dataset_image_name(
+            row.name,
+            source_image,
+            used_names,
+            output_images_dir=output_images_dir,
+            protect_existing=protect_existing_images,
+        )
+        output_names.append(output_name)
+        output_image = output_images_dir / output_name
+        link_kind = _safe_replace_file_link_or_copy(source_image, output_image)
+        if link_kind == "hardlink":
+            stats["linked_images"] += 1
+        elif link_kind == "copy":
+            stats["copied_images"] += 1
+
+        source_image_name = image_name_for_colmap(source_image, source_images_dir)
+        source_mask = find_matching_mask(source_masks_dir, source_image_name)
+        if source_mask is None:
+            continue
+        output_masks_dir.mkdir(parents=True, exist_ok=True)
+        output_mask = output_masks_dir / mask_output_name(output_name, source_mask)
+        _copy_or_link_source_mask(source_mask, output_mask, stats)
+
+    if not protect_existing_masks:
+        _remove_empty_directory(output_masks_dir)
+    return output_images_dir, output_masks_dir, output_names, stats
 
 
 def find_lfs_loader_conflict_markers(dataset_root: Path) -> list[Path]:
@@ -385,26 +577,35 @@ def build_colmap_records(
     *,
     skip_missing_images: bool = False,
     camera_rotation_x_deg: float = 90.0,
-    camera_payloads_by_name: dict[str, tuple[str, int, int, tuple[float, ...]]] | None = None,
+    camera_payloads_by_name: dict[str, CameraPayload] | None = None,
+    camera_payloads_by_row_index: Sequence[CameraPayload | None] | None = None,
+    image_names_by_row_index: Sequence[str | None] | None = None,
 ) -> tuple[list[ColmapCamera], list[ColmapImage], int]:
     cameras: list[ColmapCamera] = []
     images: list[ColmapImage] = []
     camera_ids: dict[tuple[Any, ...], int] = {}
     missing = 0
 
-    for row in rows:
-        image_path = resolve_image_path(images_dir, row.name)
+    for row_index, row in enumerate(rows):
+        image_name = image_names_by_row_index[row_index] if image_names_by_row_index is not None else None
+        image_path = images_dir / image_name if image_name is not None else resolve_image_path(images_dir, row.name)
         if not image_path.is_file():
             if skip_missing_images:
                 missing += 1
                 continue
             raise FileNotFoundError(f"Image referenced by RealityScan CSV was not found: {image_path}")
 
-        model, width, height, params = (
-            camera_payloads_by_name[row.name]
-            if camera_payloads_by_name is not None and row.name in camera_payloads_by_name
-            else colmap_camera_payload(row, image_path)
+        indexed_payload = (
+            camera_payloads_by_row_index[row_index]
+            if camera_payloads_by_row_index is not None and row_index < len(camera_payloads_by_row_index)
+            else None
         )
+        if indexed_payload is not None:
+            model, width, height, params = indexed_payload
+        elif camera_payloads_by_name is not None and row.name in camera_payloads_by_name:
+            model, width, height, params = camera_payloads_by_name[row.name]
+        else:
+            model, width, height, params = colmap_camera_payload(row, image_path)
         signature = camera_signature(model, width, height, params)
         camera_id = camera_ids.get(signature)
         if camera_id is None:
@@ -419,7 +620,7 @@ def build_colmap_records(
                 qvec=quaternion_from_matrix(r_cw),
                 tvec=t_cw,
                 camera_id=camera_id,
-                name=image_name_for_colmap(image_path, images_dir),
+                name=image_name if image_name is not None else image_name_for_colmap(image_path, images_dir),
             )
         )
 
@@ -469,11 +670,18 @@ def convert(
     if plan.issues:
         raise FileNotFoundError("\n".join(plan.issues))
     asset_stats: dict[str, int] = {}
-    camera_payloads_by_name: dict[str, tuple[str, int, int, tuple[float, ...]]] | None = None
+    camera_payloads_by_row_index: list[CameraPayload | None] | None = None
+    image_names_by_row_index: list[str | None] | None = None
     effective_images_dir = images_dir
     effective_masks_dir = masks_dir
     if pre_undistort_distorted_images:
-        effective_images_dir, effective_masks_dir, camera_payloads_by_name, asset_stats = prepare_undistorted_asset_dataset(
+        (
+            effective_images_dir,
+            effective_masks_dir,
+            camera_payloads_by_row_index,
+            image_names_by_row_index,
+            asset_stats,
+        ) = prepare_undistorted_asset_dataset(
             rows,
             images_dir,
             masks_dir,
@@ -481,23 +689,25 @@ def convert(
             skip_missing_images=skip_missing_images,
             alpha=undistort_alpha,
         )
+    else:
+        effective_images_dir, effective_masks_dir, image_names_by_row_index, asset_stats = prepare_linked_asset_dataset(
+            rows,
+            images_dir,
+            masks_dir,
+            output_dir,
+            skip_missing_images=skip_missing_images,
+        )
 
     cameras, images, missing = build_colmap_records(
         rows,
         effective_images_dir,
         skip_missing_images=skip_missing_images,
         camera_rotation_x_deg=camera_rotation_x_deg,
-        camera_payloads_by_name=camera_payloads_by_name,
+        camera_payloads_by_row_index=camera_payloads_by_row_index,
+        image_names_by_row_index=image_names_by_row_index,
     )
 
     linked_assets: list[str] = []
-    if not pre_undistort_distorted_images:
-        image_link = ensure_dataset_asset_link(output_dir, "images", images_dir)
-        if image_link:
-            linked_assets.append(image_link)
-        mask_link = ensure_dataset_asset_link(output_dir, "masks", masks_dir)
-        if mask_link:
-            linked_assets.append(mask_link)
 
     sparse_dir = write_colmap_text_dataset(output_dir, cameras, images).sparse_dir
 
@@ -516,8 +726,8 @@ def convert(
             "schema_version": 1,
             "kind": "lichtfeld_colmap",
             "source_kind": "realityscan_csv_ply",
-            "images_dir": "images" if (output_dir / "images").exists() else str(effective_images_dir),
-            "masks_dir": "masks" if (output_dir / "masks").exists() else str(effective_masks_dir) if effective_masks_dir.is_dir() else "",
+            "images_dir": "images",
+            "masks_dir": "masks" if effective_masks_dir.is_dir() else "",
             "sparse_dir": SPARSE_RELATIVE_DIR.as_posix(),
             "plan_action_counts": plan.action_counts,
             "asset_stats": asset_stats,

@@ -49,7 +49,7 @@ The SfM working folder is `output/spheresfm/`. Create JSON/PLY or cubemap datase
 
 Choose this when you have a Metashape camera XML and want to import cubemap images plus XMP camera data into RealityScan. This is useful when you want RealityScan to realign the scene, include extra image sources already registered in Steps 1-3, or export RealityScan CSV/PLY for downstream tools.
 
-The output is `output/realityscan/`. Images present in the Metashape XML are written as cubemap images with XMP sidecars. Registered scene images missing from the XML are copied or hard-linked into the same `images/` folder as unposed extra inputs. When a matching mask exists, it is also written as a RealityScan layer such as `image.jpg.mask.png`. In RealityScan, add the `images/` folder and run Align. After exporting CSV and PLY from RealityScan, use Step 5 `RealityScan -> COLMAP Dataset` when LichtFeld needs a COLMAP-format Dataset.
+The output is `output/realityscan/`. Images present in the Metashape XML are written to `images/` as cubemap images with XMP sidecars. Registered scene images missing from the XML are copied or hard-linked to `extra_images/` as unposed extra inputs. When a matching mask exists, it is also written as a RealityScan layer such as `image.jpg.mask.png`. In RealityScan, add `images/` first and run Align until sparse points are generated, then add `extra_images/` and run Align again. After exporting CSV and PLY from RealityScan, use Step 5 `RealityScan -> COLMAP Dataset` when LichtFeld needs a COLMAP-format Dataset.
 
 ### Inspect SfM Result
 
@@ -90,9 +90,9 @@ For LichtFeld with mixed Metashape sources, this is the safer route.
 
 Create a LichtFeld-readable COLMAP dataset from RealityScan Internal/External CSV and a PLY exported in the same coordinate state.
 
-Normally, use it when CSV, PLY, `images/`, and `masks/` are already under `output/realityscan/`. Output goes to `output/realityscan/lfs_colmap/`.
+Normally, use it when CSV, PLY, `images/`, and `masks/` are already under `output/realityscan/`. If `extra_images/` and `extra_masks/` exist, additional images listed in the CSV are also gathered into the output `images/` and `masks/` folders. Output goes to `output/realityscan/lfs_colmap/`.
 
-Turn on `Undistort to PINHOLE` only when RealityScan includes normal-camera images with distortion and LichtFeld refuses to train on them. Cubemap-derived PINHOLE images are linked, while only distorted normal images are converted. Invalid image regions introduced by undistortion are also reflected in the masks.
+Turn on `Undistort to PINHOLE` only when RealityScan includes normal-camera images with distortion and LichtFeld refuses to train on them. Cubemap-derived PINHOLE images are linked or copied into the output, while only distorted normal images are converted. Invalid image regions introduced by undistortion are also reflected in the masks.
 
 ### SphereSfM -> NeRF Dataset (JSON/PLY)
 

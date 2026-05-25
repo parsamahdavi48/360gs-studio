@@ -49,7 +49,7 @@ Metashapeを使わず、このアプリからCOLMAPまたはGLOMAPでSfMした�
 
 Metashapeで作ったカメラXMLから、RealityScanへ読み込ませるCubemap画像とXMPを作ります。RealityScanで再アラインしたい、ステップ1から3で登録済みの別ソース画像も一緒に投入したい、RealityScanのCSV/PLYを書き出して後段へ渡したい場合に使います。
 
-出力は `output/realityscan/` です。Metashape XMLにある画像はCubemap画像とXMPとして書き出され、XMLにない登録済み画像は姿勢なしの追加画像として同じ `images/` フォルダへコピーまたはハードリンクされます。対応マスクがある場合はRealityScan用の `image.jpg.mask.png` 形式にも変換されます。RealityScanでは `images/` フォルダを追加し、Align後にCSVとPLYを書き出します。その後、LichtFeld用COLMAPデータセットが必要な場合はStep 5の `RealityScan → COLMAPデータセット` を使います。
+出力は `output/realityscan/` です。Metashape XMLにある画像はCubemap画像とXMPとして `images/` に書き出され、XMLにない登録済み画像は姿勢なしの追加画像として `extra_images/` へコピーまたはハードリンクされます。対応マスクがある場合はRealityScan用の `image.jpg.mask.png` 形式にも変換されます。RealityScanでは先に `images/` を追加してAlignし、点群まで生成してから `extra_images/` を追加して再度Alignします。その後、CSVとPLYを書き出し、LichtFeld用COLMAPデータセットが必要な場合はStep 5の `RealityScan → COLMAPデータセット` を使います。
 
 ### SfM結果を確認
 
@@ -90,9 +90,9 @@ LichtFeldでMetashape混在結果を使う場合は、このルートが安全�
 
 RealityScanのRegistrationから書き出したInternal/External CSVと、同じ座標状態で書き出したPLYから、LichtFeldでDatasetとして開けるCOLMAPデータセットを作ります。
 
-通常は `output/realityscan/` 配下にCSV、PLY、`images/`、`masks/` がある状態で使います。出力先は `output/realityscan/lfs_colmap/` です。
+通常は `output/realityscan/` 配下にCSV、PLY、`images/`、`masks/` がある状態で使います。`extra_images/` と `extra_masks/` がある場合は、CSVに載っている追加画像も出力先の `images/` と `masks/` に統合されます。出力先は `output/realityscan/lfs_colmap/` です。
 
-`レンズ補正してPINHOLE化` は、RealityScanで通常画像も混ぜてアラインし、LichtFeldが歪みつきカメラを受け付けず止まる場合に使います。Cubemap由来のPINHOLE画像はリンクで参照し、歪み係数を持つ通常画像だけを補正します。補正で生じる無効領域はマスクにも反映されます。
+`レンズ補正してPINHOLE化` は、RealityScanで通常画像も混ぜてアラインし、LichtFeldが歪みつきカメラを受け付けず止まる場合に使います。Cubemap由来のPINHOLE画像は出力先へリンクまたはコピーし、歪み係数を持つ通常画像だけを補正します。補正で生じる無効領域はマスクにも反映されます。
 
 ### SphereSfM → NeRFデータセット(JSON/PLY)
 
