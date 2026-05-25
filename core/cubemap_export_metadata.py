@@ -35,6 +35,28 @@ def infer_image_only_sizes(
     return (7840, 3920), max(1, int(round(3920 * output_scale)))
 
 
+def infer_image_only_frame_output_sizes(
+    image_dir: str,
+    image_files: list[str],
+    output_scale: float,
+) -> list[int]:
+    """Infer one output face size per source image for mixed-resolution image-only export."""
+    fallback_input_size, fallback_output_size = infer_image_only_sizes(image_dir, image_files, output_scale)
+    fallback_height = int(fallback_input_size[1])
+    sizes: list[int] = []
+    for rel in image_files:
+        path = Path(image_dir) / rel
+        height = fallback_height
+        if path.is_file():
+            try:
+                with Image.open(path) as img:
+                    height = int(img.height)
+            except Exception:
+                height = fallback_height
+        sizes.append(max(1, int(round(height * output_scale))) if height > 0 else fallback_output_size)
+    return sizes
+
+
 def write_image_only_metadata(
     output_dir: str,
     image_dir: str,
@@ -48,6 +70,7 @@ def write_image_only_metadata(
     yaw_offset_per_frame: float,
     export_images: bool = True,
     export_masks: bool = True,
+    frame_output_sizes: list[int] | None = None,
 ) -> None:
     """Write a small manifest for SfM-oriented image-only exports."""
     payload = {
@@ -65,6 +88,12 @@ def write_image_only_metadata(
         "views": [{"name": v["name"], "yaw": float(v["yaw"]), "pitch": float(v["pitch"])} for v in views],
         "source_images": image_files,
     }
+    if frame_output_sizes is not None and len(frame_output_sizes) == len(image_files):
+        payload["source_output_sizes"] = [
+            {"file": file_path, "w": int(size), "h": int(size)}
+            for file_path, size in zip(image_files, frame_output_sizes, strict=True)
+        ]
+        payload["mixed_camera_intrinsics"] = len({int(size) for size in frame_output_sizes}) > 1
     os.makedirs(output_dir, exist_ok=True)
     with open(os.path.join(output_dir, "view_export_settings.json"), "w", encoding="utf-8") as f:
         json.dump(payload, f, indent=2, ensure_ascii=False)

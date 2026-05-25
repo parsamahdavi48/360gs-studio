@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from core.cubemap_image_conversion import convert_images
-from core.cubemap_transform_export import transform_json
+from core.cubemap_transform_export import frame_output_sizes_from_transforms, transform_json
 from core.cubemap_view_spec import make_default_cube6_views, views_to_dicts
 
 
@@ -63,6 +63,9 @@ def prepare_equirect_detection_dataset(config: EquirectProjectionConfig) -> Path
     )
     if not image_files:
         raise ValueError("No equirectangular frames were available for temporary projection")
+    frame_output_sizes = frame_output_sizes_from_transforms(output_dir / "transforms.json", image_files)
+    if not frame_output_sizes:
+        frame_output_sizes = [output_size for _ in image_files]
 
     convert_images(
         image_files=image_files,
@@ -80,6 +83,7 @@ def prepare_equirect_detection_dataset(config: EquirectProjectionConfig) -> Path
         output_bit_depth="8",
         jpg_quality=95,
         frame_yaw_offsets=frame_yaw_offsets,
+        frame_output_sizes=frame_output_sizes,
         export_images=True,
         export_masks=False,
         workers=config.workers,

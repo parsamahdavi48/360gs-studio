@@ -86,15 +86,26 @@ def strip_prefix(path: str, prefix: str) -> str:
     return p
 
 
-def write_cameras_txt(out_path: Path, w: int, h: int, fl_x: float, fl_y: float,
-                      cx: float, cy: float) -> None:
-    """SIMPLE_PINHOLE / PINHOLE モデルで cameras.txt を出力（カメラ ID = 1 で全画像共有）。"""
+def _camera_model_params(
+    w: int,
+    h: int,
+    fl_x: float,
+    fl_y: float,
+    cx: float,
+    cy: float,
+) -> tuple[str, tuple[float, ...]]:
     use_simple = abs(fl_x - fl_y) < 1e-6
     model = "SIMPLE_PINHOLE" if use_simple else "PINHOLE"
     if use_simple:
-        params = f"{fl_x} {cx} {cy}"
-    else:
-        params = f"{fl_x} {fl_y} {cx} {cy}"
+        return model, (float(fl_x), float(cx), float(cy))
+    return model, (float(fl_x), float(fl_y), float(cx), float(cy))
+
+
+def write_cameras_txt(out_path: Path, w: int, h: int, fl_x: float, fl_y: float,
+                      cx: float, cy: float) -> None:
+    """SIMPLE_PINHOLE / PINHOLE モデルで cameras.txt を出力（カメラ ID = 1 で全画像共有）。"""
+    model, values = _camera_model_params(w, h, fl_x, fl_y, cx, cy)
+    params = " ".join(str(value) for value in values)
 
     with out_path.open("w", encoding="utf-8") as f:
         f.write("# Camera list with one line of data per camera:\n")
@@ -103,12 +114,32 @@ def write_cameras_txt(out_path: Path, w: int, h: int, fl_x: float, fl_y: float,
         f.write(f"1 {model} {w} {h} {params}\n")
 
 
-def write_images_txt(out_path: Path, frames: list[dict], image_prefix: str) -> int:
-    """images.txt 出力。各画像は CAMERA_ID=1 を共有。POINTS2D は空。
+def write_camera_records_txt(
+    out_path: Path,
+    cameras: list[tuple[int, str, int, int, tuple[float, ...]]],
+) -> None:
+    with out_path.open("w", encoding="utf-8") as f:
+        f.write("# Camera list with one line of data per camera:\n")
+        f.write("#   CAMERA_ID, MODEL, WIDTH, HEIGHT, PARAMS[]\n")
+        f.write(f"# Number of cameras: {len(cameras)}\n")
+        for camera_id, model, width, height, params in cameras:
+            params_text = " ".join(str(value) for value in params)
+            f.write(f"{camera_id} {model} {width} {height} {params_text}\n")
+
+
+def write_images_txt(
+    out_path: Path,
+    frames: list[dict],
+    image_prefix: str,
+    camera_ids: list[int] | None = None,
+) -> int:
+    """images.txt 出力。POINTS2D は空。
 
     Returns:
         書き出された画像数。
     """
+    if camera_ids is None:
+        camera_ids = [1 for _frame in frames]
     written = 0
     with out_path.open("w", encoding="utf-8") as f:
         f.write("# Image list with two lines of data per image:\n")
@@ -131,13 +162,50 @@ def write_images_txt(out_path: Path, frames: list[dict], image_prefix: str) -> i
                 continue
 
             name = strip_prefix(file_path, image_prefix)
+            camera_id = int(camera_ids[idx - 1]) if idx - 1 < len(camera_ids) else 1
             f.write(
                 f"{idx} {qw:.10f} {qx:.10f} {qy:.10f} {qz:.10f} "
-                f"{t_w2c[0]:.10f} {t_w2c[1]:.10f} {t_w2c[2]:.10f} 1 {name}\n"
+                f"{t_w2c[0]:.10f} {t_w2c[1]:.10f} {t_w2c[2]:.10f} {camera_id} {name}\n"
             )
             f.write("\n")  # POINTS2D 空行
             written += 1
     return written
+
+
+def _frame_intrinsics(data: dict, frame: dict) -> tuple[int, int, float, float, float, float]:
+    width = int(frame.get("w") or data.get("w") or 0)
+    height = int(frame.get("h") or data.get("h") or 0)
+    if width <= 0 or height <= 0:
+        raise ValueError(f"Invalid w/h in transforms.json: w={width}, h={height}")
+    fl_x = float(frame.get("fl_x") or data.get("fl_x") or 0.0)
+    fl_y = float(frame.get("fl_y") or data.get("fl_y") or fl_x)
+    cx = float(frame.get("cx") if frame.get("cx") is not None else data.get("cx", (width - 1) / 2.0))
+    cy = float(frame.get("cy") if frame.get("cy") is not None else data.get("cy", (height - 1) / 2.0))
+    if fl_x <= 0.0 or fl_y <= 0.0:
+        raise ValueError("Invalid fl_x/fl_y in transforms.json")
+    return width, height, fl_x, fl_y, cx, cy
+
+
+def _build_camera_records(data: dict, frames: list[dict]) -> tuple[list[tuple[int, str, int, int, tuple[float, ...]]], list[int]]:
+    camera_ids_by_key: dict[tuple[object, ...], int] = {}
+    cameras: list[tuple[int, str, int, int, tuple[float, ...]]] = []
+    frame_camera_ids: list[int] = []
+    for frame in frames:
+        width, height, fl_x, fl_y, cx, cy = _frame_intrinsics(data, frame)
+        model, params = _camera_model_params(width, height, fl_x, fl_y, cx, cy)
+        key = (
+            model,
+            int(width),
+            int(height),
+            tuple(round(float(value), 9) for value in params),
+        )
+        camera_id = camera_ids_by_key.get(key)
+        if camera_id is None:
+            camera_id = len(cameras) + 1
+            camera_ids_by_key[key] = camera_id
+            cameras.append((camera_id, model, width, height, params))
+        frame_camera_ids.append(camera_id)
+    return cameras, frame_camera_ids
 
 
 def read_ply_points(ply_path: Path) -> tuple[np.ndarray, np.ndarray | None]:
@@ -284,19 +352,13 @@ def convert(
             "run cubemap_transforms_json.py first to convert from EQUIRECTANGULAR)"
         )
 
-    w = int(data.get("w", 0))
-    h = int(data.get("h", 0))
-    if w <= 0 or h <= 0:
-        raise ValueError(f"Invalid w/h in transforms.json: w={w}, h={h}")
-
-    fl_x = float(data["fl_x"])
-    fl_y = float(data.get("fl_y", fl_x))
-    cx = float(data.get("cx", (w - 1) / 2.0))
-    cy = float(data.get("cy", (h - 1) / 2.0))
-
     frames = data.get("frames", [])
     if not isinstance(frames, list) or not frames:
         raise ValueError("frames in transforms.json is empty")
+    frames = [frame for frame in frames if isinstance(frame, dict)]
+    if not frames:
+        raise ValueError("frames in transforms.json is empty")
+    cameras, frame_camera_ids = _build_camera_records(data, frames)
 
     output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -304,8 +366,8 @@ def convert(
     images_path = output_dir / "images.txt"
     points_path = output_dir / "points3D.txt"
 
-    write_cameras_txt(cameras_path, w, h, fl_x, fl_y, cx, cy)
-    num_images = write_images_txt(images_path, frames, image_prefix)
+    write_camera_records_txt(cameras_path, cameras)
+    num_images = write_images_txt(images_path, frames, image_prefix, frame_camera_ids)
 
     num_points = 0
     if ply_path is not None and ply_path.is_file():
@@ -327,10 +389,12 @@ def convert(
             print(f"Warning: PLY not found: {ply_path}; writing empty points3D.txt", file=sys.stderr)
         write_empty_points3d_txt(points_path)
 
+    first_camera_model = cameras[0][1] if cameras else "PINHOLE"
     return {
         "num_images": num_images,
         "num_points": num_points,
-        "camera_model": "SIMPLE_PINHOLE" if abs(fl_x - fl_y) < 1e-6 else "PINHOLE",
+        "camera_model": first_camera_model if len(cameras) == 1 else "mixed",
+        "num_cameras": len(cameras),
         "output_dir": str(output_dir),
     }
 

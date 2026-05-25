@@ -105,7 +105,7 @@ class Step4CommandPlanMixin:
                 return []
             steps: StepCommandQueue = []
             if run_conversion:
-                if self._colmap_plan_has_normal_images(plan):
+                if self._colmap_plan_has_normal_images(plan) or self._colmap_plan_has_multi_resolution_erp(plan):
                     steps.append(("colmap_mixed_prepare", self._build_colmap_mixed_prepare_cmd()))
                 else:
                     steps.append(("colmap_rig_export", self._build_cubemap_cmd(image_only=True, colmap_rig=True)))
@@ -187,6 +187,13 @@ class Step4CommandPlanMixin:
     @staticmethod
     def _colmap_plan_has_erp_images(plan: SfmInputPlan | None) -> bool:
         return bool(plan and plan.items_for_action(SFM_ACTION_EXPAND_ERP_TO_RIG_VIEWS))
+
+    def _colmap_plan_has_multi_resolution_erp(self, plan: SfmInputPlan | None) -> bool:
+        if not self._colmap_plan_has_erp_images(plan) or not self.scene_dir:
+            return False
+        inventory = build_scene_inventory(Path(self.scene_dir))
+        sizes = {image.size for image in inventory.equirectangular_images() if image.size is not None}
+        return len(sizes) > 1
 
     def _build_preprocess_cmd(self) -> StepCommand:
         self._refresh_metashape_auto_inputs_if_empty()

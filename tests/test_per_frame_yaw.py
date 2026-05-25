@@ -105,8 +105,12 @@ def _setup_worker(tmp_path: Path):
     )
 
 
-def _cache_key(offset: float, size: tuple[int, int] = (256, 128)) -> tuple[int, int, float]:
-    return cube._remap_cache_key(size, offset)
+def _cache_key(
+    offset: float,
+    size: tuple[int, int] = (256, 128),
+    output_size: int = 64,
+) -> tuple[int, int, int, float]:
+    return cube._worker_remap_cache_key(size, offset, output_size)
 
 
 def test_table_cache_offset_zero_prebuilt(tmp_path):

@@ -21,6 +21,8 @@ from core.orientation_correction import (
     write_final_orientation_pointcloud,
 )
 
+_DEFAULT_INPUT_SIZE = (7840, 3920)
+
 
 def rotation_angle_diff(r1: np.ndarray, r2: np.ndarray) -> float:
     r = r1.T @ r2
@@ -41,6 +43,77 @@ def frame_yaw_offset(frame_index: int, step_deg: float) -> float:
     if step_deg == 0.0:
         return 0.0
     return (float(frame_index) * float(step_deg)) % 360.0
+
+
+def _positive_int(value: object) -> int | None:
+    try:
+        parsed = int(value)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return None
+    return parsed if parsed > 0 else None
+
+
+def _frame_input_size(frame: dict, image_dir: str, fallback: tuple[int, int]) -> tuple[int, int]:
+    width = _positive_int(frame.get("w"))
+    height = _positive_int(frame.get("h"))
+    if width is not None and height is not None:
+        return width, height
+
+    file_path = frame.get("file_path")
+    if isinstance(file_path, str) and file_path:
+        probe = os.path.join(image_dir, file_path)
+        if os.path.exists(probe):
+            try:
+                with Image.open(probe) as image:
+                    return int(image.width), int(image.height)
+            except Exception:
+                pass
+    return fallback
+
+
+def _output_size_for_input(input_size: tuple[int, int], output_scale: float) -> int:
+    return max(1, int(round(int(input_size[1]) * float(output_scale))))
+
+
+def _pinhole_intrinsics(output_size: int, fov: float) -> dict[str, float | int]:
+    focal = output_size / 2.0 / np.tan(np.deg2rad(fov) / 2.0)
+    principal = (output_size - 1) / 2.0
+    return {
+        "w": int(output_size),
+        "h": int(output_size),
+        "fl_x": float(focal),
+        "fl_y": float(focal),
+        "cx": float(principal),
+        "cy": float(principal),
+    }
+
+
+def frame_output_sizes_from_transforms(transforms_path: str | Path, image_files: list[str]) -> list[int]:
+    data = json.loads(Path(transforms_path).read_text(encoding="utf-8"))
+    frames = data.get("frames")
+    if not isinstance(frames, list):
+        return []
+
+    by_source: dict[str, int] = {}
+    fallback = _positive_int(data.get("w")) or 0
+    for frame in frames:
+        if not isinstance(frame, dict):
+            continue
+        source = str(frame.get("source_file_path") or "").replace("\\", "/")
+        if not source:
+            continue
+        size = _positive_int(frame.get("w")) or fallback
+        if size > 0:
+            by_source.setdefault(source, size)
+
+    result: list[int] = []
+    for file_path in image_files:
+        key = str(file_path).replace("\\", "/")
+        size = by_source.get(key, fallback)
+        if size <= 0:
+            return []
+        result.append(size)
+    return result
 
 
 def transform_json(
@@ -75,20 +148,6 @@ def transform_json(
         print("Error: frames in transforms.json is empty")
         return [], [], (0, 0), 0
 
-    input_size = (7840, 3920)
-    output_size = max(1, int(round(input_size[1] * output_scale)))
-
-    for frame in frames:
-        file_path = frame.get("file_path")
-        if not isinstance(file_path, str) or not file_path:
-            continue
-        probe = os.path.join(image_dir, file_path)
-        if os.path.exists(probe):
-            with Image.open(probe) as first_img:
-                input_size = first_img.size
-            output_size = max(1, int(round(input_size[1] * output_scale)))
-            break
-
     if no_transform:
         axis_transform = np.eye(4)
     else:
@@ -105,9 +164,14 @@ def transform_json(
     new_frames: list[dict] = []
     image_files: list[str] = []
     frame_yaw_offsets: list[float] = []
+    frame_output_sizes: list[int] = []
+    frame_input_sizes: list[tuple[int, int]] = []
     image_map: dict[str, np.ndarray] = {}
+    fallback_input_size = _DEFAULT_INPUT_SIZE
 
     for frame in frames:
+        if not isinstance(frame, dict):
+            continue
         file_path = frame.get("file_path")
         if not isinstance(file_path, str) or not file_path:
             print("Skipped frame without file_path")
@@ -140,6 +204,12 @@ def transform_json(
         image_map[file_path] = t
         image_files.append(file_path)
         frame_yaw_offsets.append(yaw_offset)
+        input_size = _frame_input_size(frame, image_dir, fallback_input_size)
+        fallback_input_size = input_size
+        output_size = _output_size_for_input(input_size, output_scale)
+        frame_input_sizes.append(input_size)
+        frame_output_sizes.append(output_size)
+        intrinsics = _pinhole_intrinsics(output_size, fov)
 
         for view_index, view in enumerate(views):
             view_name = view["name"]
@@ -153,6 +223,7 @@ def transform_json(
                 "view_name": view_name,
                 "view_index": view_index,
                 "yaw_offset_deg": yaw_offset,
+                **intrinsics,
             }
 
             r = rotation_matrix(yaw, pitch, True)
@@ -161,18 +232,22 @@ def transform_json(
 
             new_frames.append(new_frame)
 
-    focal = output_size / 2.0 / np.tan(np.deg2rad(fov) / 2.0)
-    principal = (output_size - 1) / 2.0
+    if frame_output_sizes:
+        output_size = frame_output_sizes[0]
+    else:
+        output_size = _output_size_for_input(_DEFAULT_INPUT_SIZE, output_scale)
+    top_intrinsics = _pinhole_intrinsics(output_size, fov)
     out = {
         "camera_model": "PINHOLE",
-        "w": output_size,
-        "h": output_size,
-        "fl_x": focal,
-        "fl_y": focal,
-        "cx": principal,
-        "cy": principal,
+        **top_intrinsics,
         "frames": new_frames,
     }
+    if len(set(frame_output_sizes)) > 1:
+        out["mixed_camera_intrinsics"] = True
+    if frame_input_sizes:
+        input_size = max(frame_input_sizes, key=lambda size: int(size[0]) * int(size[1]))
+    else:
+        input_size = _DEFAULT_INPUT_SIZE
     if final_orientation != FINAL_ORIENTATION_NONE:
         mark_final_orientation(out, final_orientation, FINAL_ORIENTATION_STAGE_CUBEMAP_CLI)
         if final_orientation_writes_pointcloud(final_orientation):

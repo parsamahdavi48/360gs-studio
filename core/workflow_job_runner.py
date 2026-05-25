@@ -8,12 +8,13 @@ from core.cancellation import CancellationToken, raise_if_cancelled
 from core.colmap_rig_export import prepare_views_for_colmap, write_rig_config_json
 from core.cubemap_export_metadata import (
     collect_image_files,
+    infer_image_only_frame_output_sizes,
     infer_image_only_sizes,
     write_colmap_rig_metadata,
     write_image_only_metadata,
 )
 from core.cubemap_image_conversion import convert_images, convert_images_colmap_rig
-from core.cubemap_transform_export import frame_yaw_offset, transform_json
+from core.cubemap_transform_export import frame_output_sizes_from_transforms, frame_yaw_offset, transform_json
 from core.dataset_writer_colmap import replace_file_with_link_or_copy
 from core.metashape_preprocess import export_metashape_equirectangular_dataset
 from core.orientation_correction import FINAL_ORIENTATION_NONE
@@ -131,7 +132,10 @@ def _run_cubemap_conversion(job: dict, *, cancel_event: CancellationToken | None
         if not image_files:
             raise FileNotFoundError(f"no images found in {source_image_dir}")
         input_size, output_size = infer_image_only_sizes(str(source_image_dir), image_files, output_scale)
+        frame_output_sizes = infer_image_only_frame_output_sizes(str(source_image_dir), image_files, output_scale)
         if colmap_rig:
+            if len(set(frame_output_sizes)) > 1:
+                raise ValueError("COLMAP rig image-only export requires one ERP resolution; use the mixed COLMAP route")
             frame_yaw_offsets = [0.0 for _ in image_files]
             prepared_views = prepare_views_for_colmap([{**view, "fov": fov} for view in views])
             rig_path = write_rig_config_json(
@@ -174,6 +178,7 @@ def _run_cubemap_conversion(job: dict, *, cancel_event: CancellationToken | None
                 yaw_offset_per_frame=float(job.get("yaw_offset_per_frame", 0.0)),
                 export_images=bool(job.get("write_images", True)),
                 export_masks=bool(job.get("write_masks", True)),
+                frame_output_sizes=frame_output_sizes,
             )
             print(f"Image-only export: {len(image_files)} source images", flush=True)
         image_dir = source_image_dir
@@ -197,6 +202,9 @@ def _run_cubemap_conversion(job: dict, *, cancel_event: CancellationToken | None
         )
         if not image_files:
             raise ValueError("No frames were converted from transforms.json")
+        frame_output_sizes = frame_output_sizes_from_transforms(output_dir / "transforms.json", image_files)
+        if not frame_output_sizes:
+            frame_output_sizes = [output_size for _ in image_files]
 
     raise_if_cancelled(cancel_event)
     realityscan_manifest = None
@@ -254,6 +262,7 @@ def _run_cubemap_conversion(job: dict, *, cancel_event: CancellationToken | None
             output_image_dir=str(output_dir / "images"),
             output_mask_dir=str(output_dir / "masks"),
             frame_yaw_offsets=frame_yaw_offsets,
+            frame_output_sizes=frame_output_sizes,
             cancel_event=cancel_event,
         )
 

@@ -68,6 +68,24 @@ def test_colmap_export_method_prepares_normal_only_project(tmp_path: Path) -> No
     assert job["views"]
 
 
+def test_colmap_export_method_prepares_multi_resolution_erp_project(tmp_path: Path) -> None:
+    _app()
+    images = tmp_path / "images"
+    images.mkdir()
+    _write_test_image(images / "pano_large.jpg", size=(64, 32))
+    _write_test_image(images / "pano_small.jpg", size=(32, 16))
+    step = CubemapStep(Path.cwd())
+    step.set_scene_dir(str(tmp_path))
+    step._set_export_method("colmap")
+
+    commands = step.build_commands()
+
+    assert [phase for phase, _cmd in commands] == ["colmap_mixed_prepare"]
+    cmd = commands[0][1]
+    assert isinstance(cmd, AppJob)
+    assert cmd.job_type == "sfm"
+
+
 def test_colmap_export_can_queue_mixed_erp_and_normal_sfm(tmp_path: Path) -> None:
     _app()
     images = tmp_path / "images"

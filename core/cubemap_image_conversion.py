@@ -53,25 +53,46 @@ _WORKER_EXPORT_IMAGES = True
 _WORKER_EXPORT_MASKS = True
 _WORKER_COLMAP_RIG_IMAGE_DIRS: dict[str, str] = {}
 _WORKER_COLMAP_RIG_MASK_DIRS: dict[str, str] = {}
-# 入力解像度 + yaw オフセット別キャッシュ: key = (W, H, round(yaw_offset, 3))
-_WORKER_REMAP_CACHE: OrderedDict[tuple[int, int, float], dict[str, tuple[np.ndarray, np.ndarray]]] = OrderedDict()
+# 入力解像度 + 出力サイズ + yaw オフセット別キャッシュ: key = (W, H, output_size, round(yaw_offset, 3))
+_WORKER_REMAP_CACHE: OrderedDict[tuple[int, int, int, float], dict[str, tuple[np.ndarray, np.ndarray]]] = OrderedDict()
 _WORKER_REMAP_CACHE_LIMIT = 12
 _WORKER_INPUT_SIZE: tuple[int, int] = (0, 0)
 _WORKER_FOV: float = 90.0
 _WORKER_OUTPUT_SIZE: int = 0
+_WORKER_OUTPUT_SIZE_BY_FRAME: dict[str, int] = {}
+
+
+def _frame_key(frame_file: str) -> str:
+    return str(frame_file).replace("\\", "/").casefold()
+
+
+def _output_size_for_frame(frame_file: str) -> int:
+    return int(_WORKER_OUTPUT_SIZE_BY_FRAME.get(_frame_key(frame_file), _WORKER_OUTPUT_SIZE))
+
+
+def _worker_remap_cache_key(
+    input_size: tuple[int, int],
+    yaw_offset: float,
+    output_size: int,
+) -> tuple[int, int, int, float]:
+    width, height, offset = _remap_cache_key(input_size, yaw_offset)
+    return width, height, int(output_size), offset
 
 
 def get_remap_tables_for_offset(yaw_offset: float) -> dict[str, tuple[np.ndarray, np.ndarray]]:
     """ワーカー側で yaw_offset に対応するリマップテーブル群を取得（無ければ生成してキャッシュ）。"""
-    return get_remap_tables_for_input_size(_WORKER_INPUT_SIZE, yaw_offset)
+    return get_remap_tables_for_input_size(_WORKER_INPUT_SIZE, yaw_offset, _WORKER_OUTPUT_SIZE)
 
 
 def get_remap_tables_for_input_size(
-    input_size: tuple[int, int], yaw_offset: float
+    input_size: tuple[int, int],
+    yaw_offset: float,
+    output_size: int | None = None,
 ) -> dict[str, tuple[np.ndarray, np.ndarray]]:
     """Get remap tables for the actual source image size and yaw offset."""
     global _WORKER_REMAP_CACHE
-    key = _remap_cache_key(input_size, yaw_offset)
+    resolved_output_size = int(output_size if output_size is not None else _WORKER_OUTPUT_SIZE)
+    key = _worker_remap_cache_key(input_size, yaw_offset, resolved_output_size)
 
     cached = _WORKER_REMAP_CACHE.get(key)
     if cached is not None:
@@ -82,13 +103,13 @@ def get_remap_tables_for_input_size(
     input_size = (int(input_size[0]), int(input_size[1]))
     tables: dict[str, tuple[np.ndarray, np.ndarray]] = {}
     for view in _WORKER_VIEWS:
-        eff_yaw = float(view["yaw"]) + key[2]
+        eff_yaw = float(view["yaw"]) + key[3]
         tables[view["name"]] = build_remap(
             input_size,
             _WORKER_FOV,
             eff_yaw,
             float(view["pitch"]),
-            _WORKER_OUTPUT_SIZE,
+            resolved_output_size,
         )
     _WORKER_REMAP_CACHE[key] = tables
     _WORKER_REMAP_CACHE.move_to_end(key)
@@ -108,8 +129,12 @@ def remap_input_size(path: str) -> tuple[int, int]:
         return int(arr.shape[1]), int(arr.shape[0])
 
 
-def get_remap_tables_for_file(path: str, yaw_offset: float) -> dict[str, tuple[np.ndarray, np.ndarray]]:
-    return get_remap_tables_for_input_size(remap_input_size(path), yaw_offset)
+def get_remap_tables_for_file(
+    path: str,
+    yaw_offset: float,
+    output_size: int | None = None,
+) -> dict[str, tuple[np.ndarray, np.ndarray]]:
+    return get_remap_tables_for_input_size(remap_input_size(path), yaw_offset, output_size)
 
 
 def remap_image(
@@ -220,6 +245,7 @@ def worker_init(
     export_images: bool = True,
     export_masks: bool = True,
     remap_cache_limit: int = 12,
+    output_sizes_by_frame: dict[str, int] | None = None,
 ) -> None:
     global _WORKER_REMAP_TABLES
     global _WORKER_VIEWS
@@ -239,6 +265,7 @@ def worker_init(
     global _WORKER_INPUT_SIZE
     global _WORKER_FOV
     global _WORKER_OUTPUT_SIZE
+    global _WORKER_OUTPUT_SIZE_BY_FRAME
 
     _WORKER_VIEWS = views
     _WORKER_INPUT_SIZE = input_size
@@ -256,6 +283,11 @@ def worker_init(
     _WORKER_EXPORT_IMAGES = export_images
     _WORKER_EXPORT_MASKS = export_masks
     _WORKER_REMAP_CACHE_LIMIT = max(1, int(remap_cache_limit))
+    _WORKER_OUTPUT_SIZE_BY_FRAME = {
+        _frame_key(frame_file): int(size)
+        for frame_file, size in (output_sizes_by_frame or {}).items()
+        if int(size) > 0
+    }
 
     # offset=0 のテーブルを事前構築（per-frame yaw を使わない場合の通常パス）
     _WORKER_REMAP_CACHE = OrderedDict()
@@ -300,6 +332,7 @@ def worker_init_colmap_rig(
         export_images,
         export_masks,
         remap_cache_limit,
+        None,
     )
     _WORKER_COLMAP_RIG_IMAGE_DIRS = image_dirs_by_view
     _WORKER_COLMAP_RIG_MASK_DIRS = mask_dirs_by_view
@@ -356,8 +389,9 @@ def proc_convert_images(frame_file: str, yaw_offset: float = 0.0) -> int:
     written = 0
 
     image = os.path.join(_WORKER_IMAGE_DIR, frame_file)
+    output_size = _output_size_for_frame(frame_file)
     if os.path.exists(image) and (_WORKER_EXPORT_IMAGES or (_WORKER_EXPORT_MASKS and _WORKER_MASK_FROM_ALPHA)):
-        tables = get_remap_tables_for_file(image, yaw_offset)
+        tables = get_remap_tables_for_file(image, yaw_offset, output_size)
         written += remap_image(
             image,
             _WORKER_OUTPUT_IMAGE_DIR,
@@ -383,7 +417,7 @@ def proc_convert_images(frame_file: str, yaw_offset: float = 0.0) -> int:
 
     for mask in mask_candidates(_WORKER_MASK_DIR, frame_file):
         if os.path.exists(mask):
-            tables = get_remap_tables_for_file(mask, yaw_offset)
+            tables = get_remap_tables_for_file(mask, yaw_offset, output_size)
             # マスクは PNG 出力固定（α 不要、ロスレス必須）
             written += remap_image(
                 mask,
@@ -579,6 +613,7 @@ def convert_images(
     output_bit_depth: str = "8",
     jpg_quality: int = 95,
     frame_yaw_offsets: list[float] | None = None,
+    frame_output_sizes: list[int] | None = None,
     export_images: bool = True,
     export_masks: bool = True,
     workers: str | int | None = "auto",
@@ -592,6 +627,18 @@ def convert_images(
         raise ValueError(
             f"frame_yaw_offsets length ({len(frame_yaw_offsets)}) must match image_files length ({len(image_files)})"
         )
+    if frame_output_sizes is None:
+        frame_output_sizes = [int(output_size)] * len(image_files)
+    if len(frame_output_sizes) != len(image_files):
+        raise ValueError(
+            f"frame_output_sizes length ({len(frame_output_sizes)}) must match image_files length ({len(image_files)})"
+        )
+    frame_output_sizes = [max(1, int(size)) for size in frame_output_sizes]
+    output_sizes_by_frame = {
+        _frame_key(frame_file): int(size)
+        for frame_file, size in zip(image_files, frame_output_sizes, strict=True)
+    }
+    max_output_size = max(frame_output_sizes, default=int(output_size))
 
     tentative_workers = parse_positive_int_or_auto(workers, "--workers")
     if tentative_workers is None:
@@ -599,14 +646,14 @@ def convert_images(
     resolved_cache_limit = resolve_remap_cache_limit(
         remap_cache_limit,
         frame_yaw_offsets,
-        output_size,
+        max_output_size,
         len(views),
         tentative_workers,
     )
     max_workers = resolve_worker_count(
         workers,
         input_size,
-        output_size,
+        max_output_size,
         len(views),
         resolved_cache_limit,
     )
@@ -652,6 +699,7 @@ def convert_images(
             export_images,
             export_masks,
             resolved_cache_limit,
+            output_sizes_by_frame,
         ),
     ) as executor:
         _run_bounded_conversion_jobs(

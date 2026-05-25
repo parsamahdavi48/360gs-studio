@@ -11,12 +11,13 @@ from pathlib import Path
 from core.colmap_rig_export import DEFAULT_RIG_NAME, prepare_views_for_colmap, write_rig_config_json
 from core.cubemap_export_metadata import (
     collect_image_files,
+    infer_image_only_frame_output_sizes,
     infer_image_only_sizes,
     write_colmap_rig_metadata,
     write_image_only_metadata,
 )
 from core.cubemap_image_conversion import convert_images, convert_images_colmap_rig
-from core.cubemap_transform_export import frame_yaw_offset, transform_json
+from core.cubemap_transform_export import frame_output_sizes_from_transforms, frame_yaw_offset, transform_json
 from core.cubemap_transforms_json import (
     load_custom_views,
     make_default_views,
@@ -306,7 +307,10 @@ def main(argv: Sequence[str] | None = None) -> None:
         if not image_files:
             _exit_error(f"no images found in {image_dir}")
         input_size, output_size = infer_image_only_sizes(image_dir, image_files, args.output_scale)
+        frame_output_sizes = infer_image_only_frame_output_sizes(image_dir, image_files, args.output_scale)
         if args.colmap_rig:
+            if len(set(frame_output_sizes)) > 1:
+                _exit_error("COLMAP rig image-only export requires one ERP resolution; use the mixed COLMAP route")
             if args.yaw_offset_per_frame != 0.0:
                 print("COLMAP rig export fixes per-frame yaw rotation to 0 degrees.")
             frame_yaw_offsets = [0.0 for _ in image_files]
@@ -349,6 +353,7 @@ def main(argv: Sequence[str] | None = None) -> None:
                 yaw_offset_per_frame=args.yaw_offset_per_frame,
                 export_images=not args.no_image and not args.skip_images,
                 export_masks=not args.no_image and not args.skip_masks,
+                frame_output_sizes=frame_output_sizes,
             )
             print(f"Image-only export: {len(image_files)} source images")
     else:
@@ -367,6 +372,9 @@ def main(argv: Sequence[str] | None = None) -> None:
             final_orientation=args.final_orientation,
             output_format=args.output_format,
         )
+        frame_output_sizes = frame_output_sizes_from_transforms(Path(output_dir) / "transforms.json", image_files)
+        if not frame_output_sizes:
+            frame_output_sizes = [output_size for _ in image_files]
     if not image_files:
         raise SystemExit(1)
 
@@ -431,6 +439,7 @@ def main(argv: Sequence[str] | None = None) -> None:
             output_bit_depth=args.output_bit_depth,
             jpg_quality=args.jpg_quality,
             frame_yaw_offsets=frame_yaw_offsets,
+            frame_output_sizes=frame_output_sizes,
             export_images=export_images,
             export_masks=export_masks,
             workers=args.workers,

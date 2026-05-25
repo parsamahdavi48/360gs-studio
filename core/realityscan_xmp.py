@@ -139,6 +139,30 @@ def principal_point_offset(value: float, size: int, scale: int) -> float:
     return (float(value) - ((int(size) - 1) / 2.0)) / float(max(1, int(scale)))
 
 
+def _frame_intrinsics(data: dict, frame: dict) -> tuple[int, int, float, float, float, float]:
+    width = int(frame.get("w") or data.get("w") or 0)
+    height = int(frame.get("h") or data.get("h") or 0)
+    fl_x = float(frame.get("fl_x") or data.get("fl_x") or 0.0)
+    fl_y = float(frame.get("fl_y") or data.get("fl_y") or fl_x)
+    cx = float(frame.get("cx") if frame.get("cx") is not None else data.get("cx", (width - 1) / 2.0))
+    cy = float(frame.get("cy") if frame.get("cy") is not None else data.get("cy", (height - 1) / 2.0))
+    if width <= 0 or height <= 0 or fl_x <= 0.0 or fl_y <= 0.0:
+        raise ValueError("RealityScan XMP export requires valid PINHOLE intrinsics")
+    return width, height, fl_x, fl_y, cx, cy
+
+
+def _calibration_key(intrinsics: tuple[int, int, float, float, float, float]) -> tuple[int, int, float, float, float, float]:
+    width, height, fl_x, fl_y, cx, cy = intrinsics
+    return (
+        int(width),
+        int(height),
+        round(float(fl_x), 9),
+        round(float(fl_y), 9),
+        round(float(cx), 9),
+        round(float(cy), 9),
+    )
+
+
 def _validate_prior(value: str, choices: tuple[str, ...], name: str) -> str:
     value = str(value).strip().lower()
     if value not in choices:
@@ -234,19 +258,6 @@ def write_realityscan_xmp_sidecars(
     if str(data.get("camera_model")) != "PINHOLE":
         raise ValueError("RealityScan XMP export expects a PINHOLE transforms.json")
 
-    width = int(data.get("w", 0))
-    height = int(data.get("h", 0))
-    fl_x = float(data.get("fl_x", 0.0))
-    fl_y = float(data.get("fl_y", fl_x))
-    cx = float(data.get("cx", (width - 1) / 2.0))
-    cy = float(data.get("cy", (height - 1) / 2.0))
-    if width <= 0 or height <= 0 or fl_x <= 0.0 or fl_y <= 0.0:
-        raise ValueError("RealityScan XMP export requires valid PINHOLE intrinsics")
-
-    scale = min(width, height)
-    focal_35mm = focal_length_35mm(fl_x, fl_y, width, height)
-    principal_u = principal_point_offset(cx, width, scale)
-    principal_v = principal_point_offset(cy, height, scale)
     rig_guid = _guid(f"rig:{rig_name}") if include_rig else None
     component_guid = None
 
@@ -255,10 +266,28 @@ def write_realityscan_xmp_sidecars(
         raise ValueError("RealityScan XMP export requires at least one frame")
 
     written: list[RealityScanFrameXmp] = []
+    calibration_groups: dict[tuple[int, int, float, float, float, float], int] = {}
+    first_focal_35mm = 0.0
+    first_principal_u = 0.0
+    first_principal_v = 0.0
     for index, frame in enumerate(frames):
         if not isinstance(frame, dict):
             continue
         image_path = image_path_from_frame(output_dir, frame)
+        intrinsics = _frame_intrinsics(data, frame)
+        width, height, fl_x, fl_y, cx, cy = intrinsics
+        scale = min(width, height)
+        focal_35mm = focal_length_35mm(fl_x, fl_y, width, height)
+        principal_u = principal_point_offset(cx, width, scale)
+        principal_v = principal_point_offset(cy, height, scale)
+        if not written:
+            first_focal_35mm = focal_35mm
+            first_principal_u = principal_u
+            first_principal_v = principal_v
+        key = _calibration_key(intrinsics)
+        if key not in calibration_groups:
+            calibration_groups[key] = len(calibration_groups)
+        calibration_group = calibration_groups[key]
         source_file_path = str(frame.get("source_file_path") or frame.get("file_path") or "")
         view_name = str(frame.get("view_name") or image_path.stem.rsplit("_", 1)[-1])
         view_index = int(frame.get("view_index", index))
@@ -280,8 +309,8 @@ def write_realityscan_xmp_sidecars(
             rig_guid=rig_guid,
             rig_instance_guid=rig_instance_guid,
             rig_pose_index=rig_pose_index,
-            calibration_group=0,
-            distortion_group=0,
+            calibration_group=calibration_group,
+            distortion_group=calibration_group,
             coordinates=coordinates,
             component_guid=component_guid,
         )
@@ -310,11 +339,24 @@ def write_realityscan_xmp_sidecars(
         "rig_guid": rig_guid,
         "component_guid": component_guid,
         "camera_model": "PINHOLE",
-        "focal_length_35mm": focal_35mm,
-        "principal_point_u": principal_u,
-        "principal_point_v": principal_v,
+        "focal_length_35mm": first_focal_35mm,
+        "principal_point_u": first_principal_u,
+        "principal_point_v": first_principal_v,
         "calibration_group": 0,
         "distortion_group": 0,
+        "calibration_group_count": len(calibration_groups),
+        "calibration_groups": [
+            {
+                "id": group_id,
+                "width": key[0],
+                "height": key[1],
+                "fl_x": key[2],
+                "fl_y": key[3],
+                "cx": key[4],
+                "cy": key[5],
+            }
+            for key, group_id in calibration_groups.items()
+        ],
         "xmp_count": len(written),
         "mask_layer_count": 0,
         "xmp_files": [str(item.xmp_path.relative_to(output_dir).as_posix()) for item in written],
