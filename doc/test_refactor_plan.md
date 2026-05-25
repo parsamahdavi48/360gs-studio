@@ -39,7 +39,7 @@ Code checks performed:
 | Area | Status | Merge Blocker |
 | --- | --- | --- |
 | Explicit process and dialog seams | Complete | No |
-| Step 4 test responsibility split | Pending | No |
+| Step 4 test responsibility split | Complete | No |
 | YOLO/SAM runtime-context tests | Pending | No |
 | Developer-only scripts test surface | Pending | No |
 | Shared GUI test fixtures | Pending | No |
@@ -54,7 +54,7 @@ to this document.
 | ID | Task | Primary Files | Done When |
 | --- | --- | --- | --- |
 | T1 | Replace test-only process/dialog monkeypatch seams with explicit seams | `gui/steps/step4_runtime.py`, `gui/steps/step1_input_sources.py`, Step 1/3/scene-viewer tests | Complete: runtime code has no `sys.modules` test lookup and tests patch named seams/providers |
-| T2 | Split Step 4 omnibus tests by responsibility | `tests/test_step4_output_dir.py`, new Step 4 focused tests, optional `tests/helpers/step4.py` | Step 4 tests are grouped by contract without reducing assertions |
+| T2 | Split Step 4 omnibus tests by responsibility | Step 4 focused tests and `tests/helpers/step4.py` | Complete: Step 4 tests are grouped by contract without reducing assertions |
 | T3 | Move YOLO/SAM behavior tests onto explicit runtime contexts | `tests/test_yolo_mask_profile.py`, `tests/test_yolo_mask_bottom.py`, `core/yolo_mask.py` tests | Main tests build `YoloMaskRuntimeContext`; global mutation is limited to compatibility tests |
 | T4 | Normalize developer-only script tests | `tests/test_benchmark_yolo_mask.py`, benchmark/devtool modules | Tests no longer import dev-only benchmark code through `scripts.*` |
 | T5 | Add shared GUI test fixtures where they reduce duplication | GUI-heavy tests, `tests/helpers/` | New/touched GUI tests use common app/theme/dialog/message helpers |
@@ -161,12 +161,12 @@ old monolithic modules were hard to test:
 
 ## 2. Step 4 Test Responsibility Split
 
-Status: pending
+Status: complete at T2 checkpoint
 
 ### Code Evidence
 
-`tests/test_step4_output_dir.py` is currently about 140 KB and covers multiple
-independent responsibilities:
+Before this task, `tests/test_step4_output_dir.py` was about 140 KB and covered
+multiple independent responsibilities:
 
 - output directory and reset behavior
 - Metashape preprocessing and dataset job command planning
@@ -176,9 +176,20 @@ independent responsibilities:
 - preview behavior
 - AprilTag scale interactions
 
-This mirrors the old large Step 4 implementation rather than the current split
+This mirrored the old large Step 4 implementation rather than the current split
 across `step4_command_plan.py`, `step4_paths.py`, `step4_training_*`,
 `step4_runtime.py`, and related focused modules.
+
+The omnibus file has been removed. The tests now live in:
+
+- `tests/test_step4_colmap_route.py`
+- `tests/test_step4_dataset_jobs.py`
+- `tests/test_step4_output_paths.py`
+- `tests/test_step4_preview_behavior.py`
+- `tests/test_step4_realityscan_route.py`
+- `tests/test_step4_spheresfm_route.py`
+- `tests/test_step4_training_paths.py`
+- shared setup helpers in `tests/helpers/step4.py`
 
 ### Refactor Plan
 
@@ -202,16 +213,35 @@ Move tests incrementally without changing assertions:
 
 ### Completion Criteria
 
-- `tests/test_step4_output_dir.py` no longer acts as the catch-all Step 4 suite.
-- Each new file maps to one responsibility boundary.
-- Shared helpers do not contain hidden assertions.
-- Full Step 4 targeted tests pass after each split.
+- Complete. `tests/test_step4_output_dir.py` was removed.
+- Complete. Each new file maps to one Step 4 responsibility boundary.
+- Complete. Shared helpers contain setup/writer utilities only; assertions stay
+  in focused test files.
+- Complete. Full Step 4 targeted tests pass after the split.
 
 ### Suggested Tests
 
-- `.\.venv\Scripts\python.exe -m pytest tests\test_step4_output_dir.py tests\test_workflow_reorg.py -q`
-- After split, run the new Step 4 focused files together.
-- `.\.venv\Scripts\python.exe -m pytest tests\test_form_tooltips.py -q`
+- `.\.venv\Scripts\python.exe -m pytest tests\test_step4_colmap_route.py tests\test_step4_dataset_jobs.py tests\test_step4_output_paths.py tests\test_step4_preview_behavior.py tests\test_step4_realityscan_route.py tests\test_step4_spheresfm_route.py tests\test_step4_training_paths.py tests\test_step4_widgets.py -q`
+- `.\.venv\Scripts\python.exe -m pytest tests\test_workflow_reorg.py tests\test_form_tooltips.py -q`
+
+### Implementation Notes
+
+- Split the 112-test Step 4 omnibus suite into focused files for COLMAP route,
+  dataset jobs, output paths/settings, preview behavior, RealityScan route,
+  SphereSfM route, and training paths.
+- Moved shared Step 4 test setup into `tests/helpers/step4.py`.
+- Removed `tests/test_step4_output_dir.py` so future tests must choose a
+  responsibility-specific home.
+
+### Verification
+
+- `.\.venv\Scripts\python.exe -m ruff check tests\helpers\step4.py tests\test_step4_colmap_route.py tests\test_step4_dataset_jobs.py tests\test_step4_output_paths.py tests\test_step4_preview_behavior.py tests\test_step4_realityscan_route.py tests\test_step4_spheresfm_route.py tests\test_step4_training_paths.py` -> passed
+- `.\.venv\Scripts\python.exe -m pytest tests\test_step4_colmap_route.py tests\test_step4_dataset_jobs.py tests\test_step4_output_paths.py tests\test_step4_preview_behavior.py tests\test_step4_realityscan_route.py tests\test_step4_spheresfm_route.py tests\test_step4_training_paths.py tests\test_step4_widgets.py -q` -> `113 passed`
+- `.\.venv\Scripts\python.exe -m pytest tests\test_workflow_reorg.py tests\test_form_tooltips.py -q` -> `34 passed`
+
+### Deferred
+
+- None.
 
 ## 3. YOLO/SAM Runtime-Context Tests
 
