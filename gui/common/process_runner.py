@@ -17,7 +17,6 @@ from PySide6.QtCore import QObject, QProcess, QProcessEnvironment, QThread, QTim
 
 from core.app_job import APP_JOB_WORKFLOW, AppJob, run_app_job
 from core.cancellation import AppJobCancelled
-from core.workflow_job_spec import JOB_KIND_CUBEMAP_CONVERSION
 from gui.common.runner_types import StepCommand, StepCommandPhase, StepCommandQueue
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -76,7 +75,7 @@ class _InternalJobWorker(QObject):
 
 
 def _external_command_for_app_job(job: AppJob) -> list[str] | None:
-    if job.job_type == APP_JOB_WORKFLOW and job.kind == JOB_KIND_CUBEMAP_CONVERSION and job.job_path is not None:
+    if job.job_type == APP_JOB_WORKFLOW and job.job_path is not None:
         return [sys.executable, str(_RUN_WORKFLOW_JOB_SCRIPT), "--job", str(job.job_path)]
     return None
 
@@ -116,6 +115,7 @@ class ProcessRunner(QObject):
         self._internal_thread: QThread | None = None
         self._internal_worker: _InternalJobWorker | None = None
         self._internal_cancel_event: Event | None = None
+        self._internal_exit_code: int | None = None
 
     # -- public API --
 
@@ -224,17 +224,25 @@ class ProcessRunner(QObject):
         worker.finished.connect(self._on_internal_finished)
         worker.finished.connect(thread.quit)
         worker.finished.connect(worker.deleteLater)
+        thread.finished.connect(self._on_internal_thread_finished)
         thread.finished.connect(thread.deleteLater)
         thread.started.connect(worker.run)
         self._internal_thread = thread
         self._internal_worker = worker
         self._internal_cancel_event = cancel_event
+        self._internal_exit_code = None
         thread.start()
 
     def _on_internal_finished(self, exit_code: int) -> None:
+        self._internal_exit_code = exit_code
+        self._internal_cancel_event = None
+
+    def _on_internal_thread_finished(self) -> None:
+        exit_code = self._internal_exit_code if self._internal_exit_code is not None else 1
         self._internal_thread = None
         self._internal_worker = None
         self._internal_cancel_event = None
+        self._internal_exit_code = None
         self._finish_phase(exit_code)
 
     def _on_output(self) -> None:
