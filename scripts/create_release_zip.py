@@ -31,6 +31,8 @@ RELEASE_REQUIREMENT_PATHS = frozenset(
 )
 
 EXCLUDED_PATHS = {
+    "doc/architecture.ja.md",
+    "doc/architecture.md",
     "scripts/create_release_zip.py",
     "requirements/test.txt",
 }
@@ -99,6 +101,8 @@ def validate_release_member(path: str) -> None:
     normalized = path.replace("\\", "/")
     name = Path(normalized).name
     parts = set(normalized.split("/"))
+    if normalized in EXCLUDED_PATHS:
+        raise ValueError(f"excluded release member would be included: {path}")
     if normalized.startswith("scripts/") and normalized not in RELEASE_SCRIPT_PATHS:
         raise ValueError(f"developer-only script would be included: {path}")
     if normalized.startswith("requirements/") and normalized not in RELEASE_REQUIREMENT_PATHS:

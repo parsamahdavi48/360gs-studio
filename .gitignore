@@ -20,6 +20,9 @@ extract_cache.npz
 AGENTS.md
 .pytest_cache/
 
+# Local-only maintainer/Codex architecture notes.
+doc/architecture*.md
+
 # Local-only comparison fixtures for optional visual/integration checks.
 # Keep this empty in normal development; tests that need it must skip cleanly.
 _compare/

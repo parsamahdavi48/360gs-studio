@@ -12,6 +12,8 @@ from scripts.create_release_zip import include_in_release, release_setup_preflig
 def test_release_zip_excludes_tests_but_keeps_setup_scripts() -> None:
     assert not include_in_release("tests/test_smoke.py")
     assert not include_in_release("devtools/apriltag/synthetic.py")
+    assert not include_in_release("doc/architecture.md")
+    assert not include_in_release("doc/architecture.ja.md")
     assert not include_in_release("scripts/create_release_zip.py")
     assert include_in_release("scripts/update_venv.py")
     assert include_in_release("scripts/check_venv.py")
@@ -55,6 +57,8 @@ def test_release_zip_script_surface_is_explicit() -> None:
         "export_settings_3dgut.json",
         "views_config.json",
         ".cache/update_venv.log",
+        "doc/architecture.md",
+        "doc/architecture.ja.md",
         "requirements/test.txt",
         "requirements/dev.txt",
         "scene/_stechdrive/frames/selected_frames.csv",
