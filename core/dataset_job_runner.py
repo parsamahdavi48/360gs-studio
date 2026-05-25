@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
 from pathlib import Path
 
 from core.cancellation import CancellationToken, raise_if_cancelled
@@ -14,6 +15,29 @@ from core.dataset_job_spec import (
 from core.metashape_colmap_dataset import export_metashape_colmap_dataset
 from core.metashape_nerf_dataset import export_metashape_nerf_dataset
 from core.realityscan_to_lfs_colmap import convert as convert_realityscan_to_lfs_colmap
+
+
+def _progress_log_callback(cancel_event: CancellationToken | None = None) -> Callable[[int, int], None]:
+    last_bucket = -1
+    last_pair: tuple[int, int] | None = None
+
+    def callback(done: int, total: int) -> None:
+        nonlocal last_bucket, last_pair
+        raise_if_cancelled(cancel_event)
+        done = max(0, int(done))
+        total = max(0, int(total))
+        if total <= 0:
+            return
+        pair = (min(done, total), total)
+        if pair == last_pair:
+            return
+        bucket = int((pair[0] / float(total)) * 100.0)
+        if pair[0] == 0 or pair[0] >= total or bucket != last_bucket:
+            print(f"[progress] {pair[0]}/{total}", flush=True)
+            last_bucket = bucket
+            last_pair = pair
+
+    return callback
 
 
 def run_dataset_job_file(path: str | Path, *, cancel_event: CancellationToken | None = None) -> None:
@@ -103,6 +127,7 @@ def _run_realityscan_lfs_colmap(job: dict, *, cancel_event: CancellationToken | 
         undistort_alpha=float(job.get("undistort_alpha", 1.0)),
         camera_rotation_x_deg=float(job.get("camera_rotation_x_deg", 90.0)),
         pointcloud_rotation_x_deg=float(job.get("pointcloud_rotation_x_deg", 90.0)),
+        progress_callback=_progress_log_callback(cancel_event),
     )
     print(f"Wrote RealityScan LichtFeld COLMAP dataset: {result['output_dir']}", flush=True)
     print(f"Images: {result['num_images']}", flush=True)

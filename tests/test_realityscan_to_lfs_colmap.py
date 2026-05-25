@@ -213,6 +213,28 @@ def test_convert_merges_realityscan_images_and_extra_images_into_dataset_images(
     assert result["asset_stats"]["linked_masks"] == 2
 
 
+def test_convert_reports_row_based_progress(tmp_path: Path) -> None:
+    source = tmp_path / "realityscan"
+    write_image(source / "images" / "a.jpg", (64, 64))
+    write_image(source / "images" / "b.jpg", (80, 60))
+    write_csv(
+        source / "rs.csv",
+        [
+            {"#name": "a.jpg", "f_35mm": 18},
+            {"#name": "b.jpg", "f_35mm": 24},
+        ],
+    )
+    progress: list[tuple[int, int]] = []
+
+    convert(
+        source / "rs.csv",
+        source / "lfs_colmap",
+        progress_callback=lambda done, total: progress.append((done, total)),
+    )
+
+    assert progress == [(0, 5), (1, 5), (2, 5), (3, 5), (4, 5), (5, 5)]
+
+
 def test_convert_accepts_prefixed_extra_image_csv_names(tmp_path: Path) -> None:
     source = tmp_path / "realityscan"
     write_image(source / "images" / "cube_px.jpg", (64, 64))

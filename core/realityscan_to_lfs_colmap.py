@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import math
 import shutil
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import Any
 
@@ -49,6 +49,7 @@ LICHTFELD_TRANSFORMS_MARKERS = ("transforms.json", "transforms_train.json")
 MASK_SEARCH_EXTENSIONS = (".png", ".jpg", ".jpeg", ".mask.png")
 IMAGE_WRITE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".bmp", ".tif", ".tiff", ".webp"}
 CameraPayload = tuple[str, int, int, tuple[float, ...]]
+ProgressCallback = Callable[[int, int], None]
 
 try:
     import cv2
@@ -420,6 +421,11 @@ def _empty_asset_stats() -> dict[str, int]:
     }
 
 
+def _notify_progress(callback: ProgressCallback | None, done: int, total: int) -> None:
+    if callback is not None:
+        callback(max(0, int(done)), max(0, int(total)))
+
+
 def prepare_undistorted_asset_dataset(
     rows: list[RealityScanCameraRow],
     source_images_dir: Path,
@@ -428,6 +434,7 @@ def prepare_undistorted_asset_dataset(
     *,
     skip_missing_images: bool,
     alpha: float,
+    progress_callback: ProgressCallback | None = None,
 ) -> tuple[Path, Path, list[CameraPayload | None], list[str | None], dict[str, int]]:
     alpha = float(alpha)
     if not 0.0 <= alpha <= 1.0:
@@ -457,13 +464,15 @@ def prepare_undistorted_asset_dataset(
     stats = _empty_asset_stats()
     used_names: set[str] = set()
 
-    for row in rows:
+    row_total = len(rows)
+    for row_index, row in enumerate(rows, start=1):
         source_image = resolve_image_path(source_images_dir, row.name)
         if not source_image.is_file():
             if skip_missing_images:
                 stats["missing_images"] += 1
                 camera_payloads.append(None)
                 output_names.append(None)
+                _notify_progress(progress_callback, row_index, row_total)
                 continue
             raise FileNotFoundError(f"Image referenced by RealityScan CSV was not found: {source_image}")
 
@@ -508,6 +517,8 @@ def prepare_undistorted_asset_dataset(
                 _write_white_mask_for_image(source_image, output_mask)
                 stats["generated_valid_masks"] += 1
 
+        _notify_progress(progress_callback, row_index, row_total)
+
     if not protect_existing_masks:
         _remove_empty_directory(output_masks_dir)
     return output_images_dir, output_masks_dir, camera_payloads, output_names, stats
@@ -520,6 +531,7 @@ def prepare_linked_asset_dataset(
     output_dir: Path,
     *,
     skip_missing_images: bool,
+    progress_callback: ProgressCallback | None = None,
 ) -> tuple[Path, Path, list[str | None], dict[str, int]]:
     output_images_dir = output_dir / "images"
     output_masks_dir = output_dir / "masks"
@@ -530,12 +542,14 @@ def prepare_linked_asset_dataset(
     output_names: list[str | None] = []
     used_names: set[str] = set()
 
-    for row in rows:
+    row_total = len(rows)
+    for row_index, row in enumerate(rows, start=1):
         source_image = resolve_image_path(source_images_dir, row.name)
         if not source_image.is_file():
             if skip_missing_images:
                 stats["missing_images"] += 1
                 output_names.append(None)
+                _notify_progress(progress_callback, row_index, row_total)
                 continue
             raise FileNotFoundError(f"Image referenced by RealityScan CSV was not found: {source_image}")
 
@@ -557,10 +571,12 @@ def prepare_linked_asset_dataset(
         source_image_name = image_name_for_colmap(source_image, source_images_dir)
         source_mask = find_matching_mask(source_masks_dir, source_image_name)
         if source_mask is None:
+            _notify_progress(progress_callback, row_index, row_total)
             continue
         output_masks_dir.mkdir(parents=True, exist_ok=True)
         output_mask = output_masks_dir / mask_output_name(output_name, source_mask)
         _copy_or_link_source_mask(source_mask, output_mask, stats)
+        _notify_progress(progress_callback, row_index, row_total)
 
     if not protect_existing_masks:
         _remove_empty_directory(output_masks_dir)
@@ -580,18 +596,21 @@ def build_colmap_records(
     camera_payloads_by_name: dict[str, CameraPayload] | None = None,
     camera_payloads_by_row_index: Sequence[CameraPayload | None] | None = None,
     image_names_by_row_index: Sequence[str | None] | None = None,
+    progress_callback: ProgressCallback | None = None,
 ) -> tuple[list[ColmapCamera], list[ColmapImage], int]:
     cameras: list[ColmapCamera] = []
     images: list[ColmapImage] = []
     camera_ids: dict[tuple[Any, ...], int] = {}
     missing = 0
 
+    row_total = len(rows)
     for row_index, row in enumerate(rows):
         image_name = image_names_by_row_index[row_index] if image_names_by_row_index is not None else None
         image_path = images_dir / image_name if image_name is not None else resolve_image_path(images_dir, row.name)
         if not image_path.is_file():
             if skip_missing_images:
                 missing += 1
+                _notify_progress(progress_callback, row_index + 1, row_total)
                 continue
             raise FileNotFoundError(f"Image referenced by RealityScan CSV was not found: {image_path}")
 
@@ -623,6 +642,7 @@ def build_colmap_records(
                 name=image_name if image_name is not None else image_name_for_colmap(image_path, images_dir),
             )
         )
+        _notify_progress(progress_callback, row_index + 1, row_total)
 
     if not images:
         raise ValueError("No images were converted")
@@ -642,6 +662,7 @@ def convert(
     allow_mixed_loader_root: bool = False,
     pre_undistort_distorted_images: bool = False,
     undistort_alpha: float = DEFAULT_UNDISTORT_ALPHA,
+    progress_callback: ProgressCallback | None = None,
 ) -> dict[str, Any]:
     csv_path = Path(csv_path)
     output_dir = Path(output_dir)
@@ -660,6 +681,13 @@ def convert(
         )
 
     rows = read_realityscan_csv(csv_path)
+    row_total = len(rows)
+    progress_total = max(1, row_total * 2 + 1 + (1 if ply_path is not None else 0))
+
+    def emit_progress(done: int) -> None:
+        _notify_progress(progress_callback, min(done, progress_total), progress_total)
+
+    emit_progress(0)
     plan = build_realityscan_lfs_dataset_plan(
         rows,
         images_dir,
@@ -688,6 +716,7 @@ def convert(
             output_dir,
             skip_missing_images=skip_missing_images,
             alpha=undistort_alpha,
+            progress_callback=lambda done, _total: emit_progress(done),
         )
     else:
         effective_images_dir, effective_masks_dir, image_names_by_row_index, asset_stats = prepare_linked_asset_dataset(
@@ -696,6 +725,7 @@ def convert(
             masks_dir,
             output_dir,
             skip_missing_images=skip_missing_images,
+            progress_callback=lambda done, _total: emit_progress(done),
         )
 
     cameras, images, missing = build_colmap_records(
@@ -705,11 +735,13 @@ def convert(
         camera_rotation_x_deg=camera_rotation_x_deg,
         camera_payloads_by_row_index=camera_payloads_by_row_index,
         image_names_by_row_index=image_names_by_row_index,
+        progress_callback=lambda done, _total: emit_progress(row_total + done),
     )
 
     linked_assets: list[str] = []
 
     sparse_dir = write_colmap_text_dataset(output_dir, cameras, images).sparse_dir
+    emit_progress(row_total * 2 + 1)
 
     pointcloud_output = ""
     if ply_path is not None:
@@ -719,6 +751,7 @@ def convert(
         pointcloud_dest = sparse_dir / "points3D.ply"
         write_transformed_ply(ply_path, pointcloud_dest, lichtfeld_colmap_pointcloud_matrix(pointcloud_rotation_x_deg))
         pointcloud_output = str(pointcloud_dest)
+        emit_progress(progress_total)
 
     _write_manifest(
         output_dir,

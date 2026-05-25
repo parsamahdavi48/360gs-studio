@@ -381,6 +381,8 @@ def test_realityscan_lfs_tool_defaults_and_builds_cli_command(tmp_path: Path) ->
     assert phase == "realityscan_lfs_colmap"
     assert isinstance(cmd, AppJob)
     assert cmd.job_path is not None
+    assert tool.on_line("[progress] 3/10") == (3, 10)
+    assert tool.on_line("Images: 3") is None
     job = cmd.payload
     assert job["csv_path"] == str(csv)
     assert job["output_dir"] == str(rs / "lfs_colmap")

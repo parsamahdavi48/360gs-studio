@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 from PySide6.QtCore import QSignalBlocker, Qt
@@ -36,6 +37,8 @@ from gui.common.browse_widget import BrowseWidget
 from gui.common.form_rows import add_tooltip_row
 from gui.common.runner_types import StepCommandQueue
 from gui.steps.base_step import BaseStepWidget
+
+_PROGRESS_RE = re.compile(r"^\[progress\]\s+(\d+)\s*/\s*(\d+)")
 
 
 class RealityScanLfsTool(BaseStepWidget):
@@ -160,6 +163,12 @@ class RealityScanLfsTool(BaseStepWidget):
 
     def phase_display_name(self, phase: str) -> str:
         return i18n.t("PHASE_RS_LFS_COLMAP") if phase == "realityscan_lfs_colmap" else phase
+
+    def on_line(self, line: str) -> tuple[int, int] | None:
+        progress = _PROGRESS_RE.match(line)
+        if progress:
+            return int(progress.group(1)), int(progress.group(2))
+        return None
 
     def build_commands(self) -> StepCommandQueue:
         self._validate_inputs()
