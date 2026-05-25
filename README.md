@@ -241,5 +241,3 @@ The normal workflow is GUI-first. Runtime implementation lives under `core/`, an
 MIT License. See [LICENSE](LICENSE).
 
 Mask generation features use third-party libraries and model weights with separate license terms. See [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md).
-
-Originally derived from [tetraface/tetraface-3dgs-utils](https://github.com/tetraface/tetraface-3dgs-utils). Current releases are maintained as a standalone STechDrive GUI workflow.

@@ -18,7 +18,6 @@ exclude = [
     ".venv",
     ".venv-*",
     "models",
-    "vendor",
 ]
 
 [tool.ruff.lint]

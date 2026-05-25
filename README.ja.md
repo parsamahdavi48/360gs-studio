@@ -241,5 +241,3 @@ numpy, opencv-python, Pillow, open3d, ultralytics, transformers, safetensors, tq
 MIT License。詳細は [LICENSE](LICENSE) を参照してください。
 
 マスク生成機能では、別ライセンスの第三者ライブラリおよびモデル重みを使用します。詳細は [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md) を参照してください。
-
-[tetraface/tetraface-3dgs-utils](https://github.com/tetraface/tetraface-3dgs-utils) を初期実装の出発点とし、現在のリリースはSTechDrive向けの統合GUIワークフローとして独立保守しています。

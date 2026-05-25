@@ -106,7 +106,7 @@ from `scripts/`.
   dataset creation should go through dataset jobs directly. The Step 4
   Metashape preprocess job is reserved for RealityScan realignment output and
   direct ERP 360° output that still need an intermediate equirectangular
-  `transforms.json`; no GUI route should depend on the old upstream Metashape
+  `transforms.json`; no GUI route should depend on the old Metashape
   converter.
 - Metashape-derived NeRF and COLMAP dataset exports use versioned dataset job
   payloads. `core/metashape_dataset_cli.py` is the developer CLI adapter, and
