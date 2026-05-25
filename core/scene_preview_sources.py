@@ -384,19 +384,6 @@ def _realityscan_inputs(
                 _sfm_label("RealityScan CSV/PLY", record),
             )
         )
-    for root in (scene_output_dir(scene) / "realityscan", scene):
-        csv = _first_matching_file(root, ("realityscan.csv", "rs_*.csv", "*.csv"))
-        if csv is None:
-            continue
-        result.append(
-            (
-                csv,
-                _first_matching_file(root, ("realityscan.ply", "rs_*.ply", "*.ply")),
-                _existing_dir(root / "images") or _existing_dir(scene_images_dir(scene)),
-                _existing_dir(root / "masks") or _existing_dir(scene_masks_dir(scene)),
-                "RealityScan CSV/PLY",
-            )
-        )
     return tuple(result)
 
 
@@ -467,21 +454,6 @@ def _existing_dir(path: Path | None) -> Path | None:
 
 def _first_existing(*paths: Path) -> Path | None:
     return next((path for path in paths if path.is_file()), None)
-
-
-def _first_matching_file(root: Path, patterns: tuple[str, ...]) -> Path | None:
-    if not root.is_dir():
-        return None
-    for pattern in patterns:
-        if "*" not in pattern and "?" not in pattern and "[" not in pattern:
-            candidate = root / pattern
-            if candidate.is_file():
-                return candidate
-            continue
-        for candidate in sorted(root.glob(pattern), key=lambda path: path.name.lower()):
-            if candidate.is_file():
-                return candidate
-    return None
 
 
 def _first_existing_dir(*paths: Path | None) -> Path | None:

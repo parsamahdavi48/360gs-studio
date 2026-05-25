@@ -663,31 +663,6 @@ def test_discover_scene_preview_candidates_finds_registered_refactor_artifacts(t
     assert np.allclose(realityscan.display_transform.camera_matrix, REALITYSCAN_Z_UP_TO_PREVIEW_Y_UP)
 
 
-def test_discover_scene_preview_candidates_finds_standard_realityscan_exports(tmp_path: Path) -> None:
-    root = tmp_path / "output" / "realityscan"
-    images = root / "images"
-    masks = root / "masks"
-    images.mkdir(parents=True)
-    masks.mkdir()
-    csv = root / "realityscan.csv"
-    csv.write_text(
-        "#name,x,y,alt,yaw,pitch,roll,f_35mm,px_norm,py_norm,k1,k2,k3,k4,t1,t2\n"
-        "a.jpg,1,2,3,0,0,0,18,0,0,0,0,0,0,0,0\n",
-        encoding="utf-8",
-    )
-    ply = root / "realityscan.ply"
-    _write_empty_ply(ply)
-
-    candidates = discover_scene_preview_candidates(tmp_path)
-
-    realityscan = next(candidate for candidate in candidates if candidate.kind == "realityscan")
-    assert realityscan.label == "RealityScan CSV/PLY"
-    assert realityscan.path == csv
-    assert realityscan.image_root == images
-    assert realityscan.mask_root == masks
-    assert realityscan.pointcloud_path == ply
-
-
 def test_discover_scene_preview_candidates_labels_realityscan_realign_inputs(tmp_path: Path) -> None:
     root = tmp_path / "output" / "realityscan"
     root.mkdir(parents=True)
