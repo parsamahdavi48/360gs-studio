@@ -40,7 +40,7 @@ Code checks performed:
 | --- | --- | --- |
 | Explicit process and dialog seams | Complete | No |
 | Step 4 test responsibility split | Complete | No |
-| YOLO/SAM runtime-context tests | Pending | No |
+| YOLO/SAM runtime-context tests | Complete | No |
 | Developer-only scripts test surface | Pending | No |
 | Shared GUI test fixtures | Pending | No |
 | Final verification pass | Pending | Yes, before merging this test refactor |
@@ -55,7 +55,7 @@ to this document.
 | --- | --- | --- | --- |
 | T1 | Replace test-only process/dialog monkeypatch seams with explicit seams | `gui/steps/step4_runtime.py`, `gui/steps/step1_input_sources.py`, Step 1/3/scene-viewer tests | Complete: runtime code has no `sys.modules` test lookup and tests patch named seams/providers |
 | T2 | Split Step 4 omnibus tests by responsibility | Step 4 focused tests and `tests/helpers/step4.py` | Complete: Step 4 tests are grouped by contract without reducing assertions |
-| T3 | Move YOLO/SAM behavior tests onto explicit runtime contexts | `tests/test_yolo_mask_profile.py`, `tests/test_yolo_mask_bottom.py`, `core/yolo_mask.py` tests | Main tests build `YoloMaskRuntimeContext`; global mutation is limited to compatibility tests |
+| T3 | Move YOLO/SAM behavior tests onto explicit runtime contexts | `tests/test_yolo_mask_profile.py`, `tests/test_yolo_mask_bottom.py`, `core/yolo_mask.py` tests | Complete: main tests build `YoloMaskRuntimeContext`; global mutation is limited to compatibility tests |
 | T4 | Normalize developer-only script tests | `tests/test_benchmark_yolo_mask.py`, benchmark/devtool modules | Tests no longer import dev-only benchmark code through `scripts.*` |
 | T5 | Add shared GUI test fixtures where they reduce duplication | GUI-heavy tests, `tests/helpers/` | New/touched GUI tests use common app/theme/dialog/message helpers |
 | T6 | Run final audit and full verification | whole repo | Audit searches, ruff, and full pytest pass; this document records the final checkpoint |
@@ -245,7 +245,7 @@ Move tests incrementally without changing assertions:
 
 ## 3. YOLO/SAM Runtime-Context Tests
 
-Status: pending
+Status: complete at T3 checkpoint
 
 ### Code Evidence
 
@@ -275,16 +275,36 @@ still patch old module globals:
 
 ### Completion Criteria
 
-- Most YOLO/SAM tests build explicit runtime contexts.
-- Global monkeypatching remains only in tests with `compat` or `legacy` in the
-  name.
-- Tests still verify bottom redetection, SAM merge behavior, profile recording,
-  and preview/saved-mask consistency.
+- Complete. YOLO/SAM behavior tests build explicit runtime contexts.
+- Complete. Global compatibility-state mutation is limited to the compatibility
+  test that verifies `apply_runtime_settings()` updates the legacy globals.
+- Complete. Tests still verify bottom redetection, SAM merge behavior, profile
+  recording, and preview/saved-mask consistency.
 
 ### Suggested Tests
 
 - `.\.venv\Scripts\python.exe -m pytest tests\test_yolo_mask_profile.py tests\test_yolo_mask_bottom.py tests\test_yolo_mask_sam_merge.py -q`
 - `.\.venv\Scripts\python.exe -m pytest tests\test_mask_preview.py tests\test_step3_mask_guard.py -q`
+
+### Implementation Notes
+
+- Added explicit runtime-context builders in the YOLO/SAM tests.
+- `process_file()`, `detect_bottom_mask()`, and `add_sam_mask()` tests now pass
+  context objects directly instead of patching `LEVEL`, `QUALITY`,
+  `PROJECTION`, `EXPAND`, `BOTTOM_*`, or `PROFILE`.
+- Renamed the remaining global-state assertion to make its compatibility role
+  explicit.
+
+### Verification
+
+- `rg -n "monkeypatch\.setattr\(yolo_mask, \"(LEVEL|QUALITY|PROJECTION|EXPAND|BOTTOM_|PROFILE)" tests\test_yolo_mask_profile.py tests\test_yolo_mask_bottom.py tests\test_yolo_mask_sam_merge.py` -> no matches
+- `.\.venv\Scripts\python.exe -m ruff check tests\test_yolo_mask_profile.py tests\test_yolo_mask_bottom.py tests\test_yolo_mask_sam_merge.py` -> passed
+- `.\.venv\Scripts\python.exe -m pytest tests\test_yolo_mask_profile.py tests\test_yolo_mask_bottom.py tests\test_yolo_mask_sam_merge.py -q` -> `15 passed`
+- `.\.venv\Scripts\python.exe -m pytest tests\test_mask_preview.py tests\test_step3_mask_guard.py -q` -> `82 passed`
+
+### Deferred
+
+- None.
 
 ## 4. Developer-Only Scripts Test Surface
 

@@ -47,7 +47,7 @@ def test_build_runtime_settings_normalizes_cli_values() -> None:
     assert runtime.settings.profile_json == "profile.json"
 
 
-def test_apply_runtime_settings_updates_global_runtime_state(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_apply_runtime_settings_updates_compat_global_runtime_state(monkeypatch: pytest.MonkeyPatch) -> None:
     args = yolo_mask.build_arg_parser().parse_args(
         [
             "images",
@@ -97,9 +97,6 @@ def test_process_file_uses_explicit_runtime_context(monkeypatch: pytest.MonkeyPa
     runtime = yolo_mask.build_runtime_settings(args)
     context = yolo_mask.create_runtime_context(runtime.settings)
 
-    monkeypatch.setattr(yolo_mask, "PROJECTION", "equirect")
-    monkeypatch.setattr(yolo_mask, "LEVEL", 1)
-    monkeypatch.setattr(yolo_mask, "QUALITY", "standard")
     monkeypatch.setattr(yolo_mask, "add_yolo_mask", lambda img, mask, *args, **kwargs: (mask, 0))
     monkeypatch.setattr(
         yolo_mask,
