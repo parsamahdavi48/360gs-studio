@@ -112,7 +112,9 @@ Status: in progress; Step 3, Step 1, and Step 4 GUI slices complete.
 - `gui/steps/step4_training_ui.py` owns Step 4/5 training widget construction
   and training layout behavior.
 - `gui/steps/step4_training_settings_restore.py` owns persisted training
-  settings restore for LichtFeld, Postshot, and custom training.
+  settings restore for supported application backends. Legacy unknown/custom
+  training settings fall back to the default supported backend without carrying
+  their executable path forward.
 - `gui/steps/step4_training_backend_state.py` owns training backend selection,
   backend-scoped executable state, and backend-dependent visibility hooks.
 - `gui/steps/step4_training_dataset.py` owns training dataset requirements,
@@ -120,7 +122,9 @@ Status: in progress; Step 3, Step 1, and Step 4 GUI slices complete.
 - `gui/steps/step4_training_lfs_state.py` owns LichtFeld strategy/default state,
   advanced-row visibility, scaler application, and color preview state.
 - `gui/steps/step4_training_commands.py` owns training option validation,
-  output collision guards, and LichtFeld/Postshot/custom command construction.
+  output collision guards, and LichtFeld/Postshot command construction. New
+  training applications should be added as explicit backend contracts rather
+  than arbitrary command templates.
 - `gui/steps/step4_project_settings.py` owns Step 4 project settings restore,
   external-import defaults, settings path/text normalization, and persisted
   user preferences.

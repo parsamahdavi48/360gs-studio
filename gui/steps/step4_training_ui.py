@@ -25,9 +25,6 @@ from gui.steps.step4_contracts import _LFS_ADVANCED_FIELD_WIDTHS, _LFS_STRATEGIE
 from gui.steps.step4_widgets import CurrentPageStack
 from gui.steps.training_backend_selector import TrainingBackendSelector
 from gui.steps.training_backend_specs import (
-    TRAINING_BACKEND_CUSTOM as _TRAINING_BACKEND_CUSTOM,
-)
-from gui.steps.training_backend_specs import (
     TRAINING_BACKEND_LICHTFELD as _TRAINING_BACKEND_LICHTFELD,
 )
 from gui.steps.training_backend_specs import (
@@ -139,11 +136,9 @@ class Step4TrainingUiMixin:
         self.training_options_stack = CurrentPageStack()
         self.lichtfeld_training_options = self._build_lichtfeld_training_options()
         self.postshot_training_options = self._build_postshot_training_options()
-        self.custom_training_options = self._build_custom_training_options()
         self.training_option_widgets = {
             _TRAINING_BACKEND_LICHTFELD: self.lichtfeld_training_options,
             _TRAINING_BACKEND_POSTSHOT: self.postshot_training_options,
-            _TRAINING_BACKEND_CUSTOM: self.custom_training_options,
         }
         self.training_options_stack_indices: dict[str, int] = {}
         for backend, widget in sorted(
@@ -871,18 +866,3 @@ class Step4TrainingUiMixin:
         )
         self._update_postshot_conditional_visibility()
         return widget
-
-    def _build_custom_training_options(self) -> QWidget:
-        widget = QWidget()
-        form = QFormLayout(widget)
-        form.setSpacing(6)
-        self.custom_training_args_edit = QLineEdit("{dataset} {output}")
-        self.custom_training_args_edit.setToolTip(i18n.tip("CUSTOM_TRAINING_ARGS"))
-        add_tooltip_row(
-            form,
-            i18n.t("CUSTOM_TRAINING_ARGS"),
-            self.custom_training_args_edit,
-            i18n.tip("CUSTOM_TRAINING_ARGS"),
-        )
-        return widget
-

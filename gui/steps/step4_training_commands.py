@@ -11,19 +11,14 @@ from gui import i18n
 from gui.common.runner_types import ExternalCommandQueue
 from gui.steps.step4_contracts import _LFS_ADVANCED_INT_KEYS, _LFS_ADVANCED_LIST_KEYS
 from gui.steps.training_backend_specs import (
-    TRAINING_BACKEND_CUSTOM as _TRAINING_BACKEND_CUSTOM,
-)
-from gui.steps.training_backend_specs import (
     TRAINING_BACKEND_POSTSHOT as _TRAINING_BACKEND_POSTSHOT,
 )
 from gui.steps.training_backend_specs import (
     training_backend_phase_name,
 )
 from gui.steps.training_backends import (
-    CustomTrainingOptions,
     LichtFeldTrainingOptions,
     PostshotTrainingOptions,
-    build_custom_training_cmd,
     build_lichtfeld_training_cmd,
     build_postshot_training_cmd,
     lichtfeld_output_name_stem,
@@ -251,8 +246,6 @@ class Step4TrainingCommandsMixin:
             )
             self._guard_training_output_target(output_dir / project_name)
             return
-        if backend == _TRAINING_BACKEND_CUSTOM:
-            return
 
         lfs_output_name = self._filename_only(
             self.lfs_output_name_edit.text().strip(),
@@ -361,17 +354,6 @@ class Step4TrainingCommandsMixin:
                     roi_box_min=roi_min,
                     roi_box_max=roi_max,
                     export_splat_path=export_splat_path,
-                )
-            )
-            return [(training_backend_phase_name(backend), cmd)]
-
-        if backend == _TRAINING_BACKEND_CUSTOM:
-            cmd = build_custom_training_cmd(
-                CustomTrainingOptions(
-                    executable=executable,
-                    dataset=dataset,
-                    output_dir=output_dir,
-                    arguments_template=self.custom_training_args_edit.text(),
                 )
             )
             return [(training_backend_phase_name(backend), cmd)]

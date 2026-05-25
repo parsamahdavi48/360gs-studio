@@ -290,7 +290,6 @@ class Step4RuntimeMixin:
             "spheresfm_cubemap": "PHASE_SPHERESFM_CUBEMAP",
             "training_lichtfeld": "PHASE_TRAINING_LICHTFELD",
             "training_postshot": "PHASE_TRAINING_POSTSHOT",
-            "training_custom": "PHASE_TRAINING_CUSTOM",
         }
         key = labels.get(phase)
         return i18n.t(key) if key else phase

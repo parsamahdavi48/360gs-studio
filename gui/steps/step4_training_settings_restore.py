@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from gui.steps.step4_contracts import _LFS_STRATEGIES
-from gui.steps.training_backend_specs import normalize_training_backend, training_backend_visible_in_selector
+from gui.steps.training_backend_specs import training_backend_visible_in_selector
 
 
 class Step4TrainingSettingsRestoreMixin:
@@ -17,12 +17,12 @@ class Step4TrainingSettingsRestoreMixin:
             return
         self.run_training_cb.setChecked(bool(training.get("enabled", False)))
         backend = str(training.get("backend", "")).strip()
-        legacy_backend = normalize_training_backend(backend) if backend else ""
+        backend_is_visible = training_backend_visible_in_selector(backend) if backend else False
         self._restore_training_executables(training.get("executables"))
         if backend:
             self._set_training_backend(backend)
         executable = self._settings_text(training.get("executable"))
-        if executable and (not legacy_backend or training_backend_visible_in_selector(legacy_backend)):
+        if executable and (not backend or backend_is_visible):
             self._training_executable_by_backend[self._training_backend()] = executable
             self._apply_training_executable_for_backend(self._training_backend())
         dataset_root = self._settings_path_text(scene, training.get("dataset_root"))
@@ -36,9 +36,6 @@ class Step4TrainingSettingsRestoreMixin:
 
         self._restore_lfs_settings(training.get("lichtfeld"))
         self._restore_postshot_settings(training.get("postshot"))
-        custom = training.get("custom") if isinstance(training.get("custom"), dict) else {}
-        if "arguments_template" in custom:
-            self.custom_training_args_edit.setText(str(custom.get("arguments_template", "")))
 
     def _restore_lfs_settings(self, payload: object) -> None:
         if not isinstance(payload, dict):

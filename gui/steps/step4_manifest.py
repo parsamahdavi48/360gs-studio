@@ -387,9 +387,6 @@ class Step4ManifestMixin:
                 "roi_box_max": self.postshot_roi_box_max_edit.text().strip(),
                 "export_splat": self.postshot_export_splat_edit.text().strip(),
             },
-            "custom": {
-                "arguments_template": self.custom_training_args_edit.text(),
-            },
         }
 
     def _write_export_settings(self) -> None:

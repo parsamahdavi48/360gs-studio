@@ -288,7 +288,6 @@ def test_step5_japanese_training_copy_uses_learning_step_wording() -> None:
             "LAUNCH",
             "PHASE_TRAINING_LICHTFELD",
             "PHASE_TRAINING_POSTSHOT",
-            "PHASE_TRAINING_CUSTOM",
             "TRAINING_EXEC_NOT_FOUND",
             "TRAINING_REQUIRES_DATASET_OUTPUT",
             "TRAINING_OUTPUT",

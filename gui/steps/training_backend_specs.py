@@ -8,7 +8,6 @@ TrainingBackendCategory = Literal["primary", "other"]
 
 TRAINING_BACKEND_LICHTFELD = "lichtfeld"
 TRAINING_BACKEND_POSTSHOT = "postshot"
-TRAINING_BACKEND_CUSTOM = "custom"
 DEFAULT_TRAINING_BACKEND = TRAINING_BACKEND_LICHTFELD
 
 
@@ -53,18 +52,6 @@ _SPECS: tuple[TrainingBackendSpec, ...] = (
         phase_name="training_postshot",
         default_executable_windows="postshot-cli.exe",
         default_executable_posix="postshot-cli",
-    ),
-    TrainingBackendSpec(
-        backend_id=TRAINING_BACKEND_CUSTOM,
-        label_key="TRAINING_BACKEND_CUSTOM",
-        short_label_key="TRAINING_BACKEND_CUSTOM_SHORT",
-        tooltip_key="TRAINING_BACKEND_CUSTOM",
-        category="other",
-        stack_order=2,
-        phase_name="training_custom",
-        default_executable_windows="",
-        default_executable_posix="",
-        show_in_selector=False,
     ),
 )
 

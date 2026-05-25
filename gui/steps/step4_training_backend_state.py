@@ -62,9 +62,10 @@ class Step4TrainingBackendStateMixin:
         if not isinstance(payload, dict):
             return
         for backend, executable in payload.items():
-            normalized = normalize_training_backend(str(backend))
-            if not training_backend_visible_in_selector(normalized):
+            backend_text = str(backend)
+            if not training_backend_visible_in_selector(backend_text):
                 continue
+            normalized = normalize_training_backend(backend_text)
             text = self._settings_text(executable)
             if text:
                 self._training_executable_by_backend[normalized] = text
@@ -138,4 +139,3 @@ class Step4TrainingBackendStateMixin:
     def _on_lfs_gut_changed(self, _checked: bool) -> None:
         self._update_lfs_conditional_visibility()
         self._on_training_settings_changed()
-
