@@ -30,7 +30,8 @@ Code checks performed:
 - Remaining `python -m core...` worker commands are intentional internal worker
   boundaries for mask generation and AprilTag scale estimation.
 - `scripts/*.py` still exists for setup, release, diagnostics, and developer
-  CLI entry points; release inclusion policy still needs a dedicated pass.
+  CLI entry points; release packaging now includes only setup/check support
+  scripts.
 
 ## Status Summary
 
@@ -40,8 +41,8 @@ Code checks performed:
 | YOLO/SAM mask runtime state | Complete | No |
 | Scene inventory helper audit | Complete | No |
 | Script/release surface cleanup | Complete | No |
-| Large GUI construction files | Deferred | No |
-| Final verification pass | Passed for current checkpoint | Yes, rerun before next merge |
+| Large GUI construction files | Complete | No |
+| Final verification pass | Passed for current checkpoint | No, unless new changes are made |
 
 ## 1. Runner And Build Command Type Contract
 
@@ -258,7 +259,7 @@ they are not part of the end-user release surface.
 
 ## 5. Large GUI Construction Files
 
-Status: deferred
+Status: complete at this checkpoint
 
 ### Code Evidence
 
@@ -271,26 +272,48 @@ they still construct complex UI:
 - `gui/steps/sfm_step.py`
 - `gui/steps/colmap_text_model_tool.py`
 
-Large size alone is not a bug. These should only be split further when a split
-creates a clearer ownership boundary, not just to reduce line count.
+Large size alone is not a bug. This checkpoint extracted a repeated, stable UI
+contract instead of splitting files only by line count.
+
+Implemented changes:
+
+- `gui/steps/step4_widgets.py` now owns `OutputImageControls` and
+  `make_output_image_controls()`, the shared output image format/bit-depth,
+  mask inversion, and JPG quality controls used by cubemap-style dataset
+  exporters.
+- `gui/steps/step4_cubemap.py` and
+  `gui/steps/colmap_text_model_tool.py` now reuse this widget contract while
+  preserving the existing attribute names consumed by command planning and
+  tests.
+- The remaining large GUI files keep route/page orchestration and complex
+  layout construction locally. Further extraction should be triggered by a new
+  stable state contract, repeated validation group, or reusable preview panel,
+  not by file length alone.
 
 ### Plan
 
-- Do not split purely by line count.
-- Extract reusable UI widgets only when they have a stable state contract.
-- Keep route/page orchestration in the step class; move repeated controls,
-  validation groups, and preview panels into focused helper modules.
+- Complete. No broad split was made purely by line count.
+- Complete. The repeated output-image controls were extracted into
+  `step4_widgets.py` with a tested state contract.
+- Complete. Route/page orchestration remains in the step classes; only the
+  repeated control group moved.
 
 ### Completion Criteria
 
-- New feature work does not add domain logic back into widget construction
-  files.
-- Any new split has tests that exercise the extracted contract rather than only
-  the previous monolithic step.
+- Complete. The extraction does not move domain logic into widget construction;
+  it centralizes a reusable UI control contract.
+- Complete. `tests/test_step4_widgets.py` exercises the extracted contract
+  directly, while Step 4/5 workflow tests verify the previous attributes remain
+  usable.
+
+### Suggested Tests
+
+- Passed: `.\.venv\Scripts\python.exe -m ruff check gui\steps\step4_widgets.py gui\steps\step4_cubemap.py gui\steps\colmap_text_model_tool.py tests\test_step4_widgets.py`
+- Passed: `.\.venv\Scripts\python.exe -m pytest tests\test_step4_widgets.py tests\test_workflow_reorg.py tests\test_step4_output_dir.py -q` (`124 passed`)
 
 ## 6. Final Verification Before Next Merge
 
-Status: passed for current checkpoint; rerun before the next merge
+Status: passed for current checkpoint; rerun if new changes are made
 
 Run this after implementing any of the above areas:
 
@@ -302,7 +325,7 @@ Run this after implementing any of the above areas:
 Latest checkpoint result:
 
 - Passed: `.\.venv\Scripts\python.exe -m ruff check .`
-- Passed: `.\.venv\Scripts\python.exe -m pytest -q` (`984 passed`)
+- Passed: `.\.venv\Scripts\python.exe -m pytest -q` (`985 passed`)
 
 Before release packaging changes, also run:
 

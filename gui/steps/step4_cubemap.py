@@ -79,7 +79,7 @@ from gui.steps.step4_project_settings import Step4ProjectSettingsMixin
 from gui.steps.step4_route_state import Step4RouteStateMixin
 from gui.steps.step4_runtime import Step4RuntimeMixin
 from gui.steps.step4_training import Step4TrainingMixin
-from gui.steps.step4_widgets import ElidedPathLabel
+from gui.steps.step4_widgets import ElidedPathLabel, make_output_image_controls
 from gui.steps.training_backend_specs import (
     TRAINING_BACKEND_LICHTFELD as _TRAINING_BACKEND_LICHTFELD,
 )
@@ -717,53 +717,15 @@ class CubemapStep(
         output_details_layout.setContentsMargins(0, 0, 0, 0)
         output_details_layout.setSpacing(8)
 
-        self.output_format_combo = QComboBox()
-        self.output_format_combo.setToolTip(i18n.tip("OUTPUT_FORMAT"))
-        self.output_format_combo.addItem(i18n.t("OUTPUT_FORMAT_AUTO"), "auto")
-        for fmt in ("jpg", "png", "tiff", "webp"):
-            self.output_format_combo.addItem(fmt, fmt)
-        self.output_format_combo.setFixedWidth(96)
-
-        self.output_bit_depth_combo = QComboBox()
-        self.output_bit_depth_combo.setToolTip(i18n.tip("OUTPUT_BIT_DEPTH"))
-        self.output_bit_depth_combo.addItem(i18n.t("OUTPUT_BIT_DEPTH_8"), "8")
-        self.output_bit_depth_combo.addItem(i18n.t("OUTPUT_BIT_DEPTH_SOURCE"), "source")
-        self.output_bit_depth_combo.setFixedWidth(86)
-
-        format_row = QWidget()
-        format_layout = QHBoxLayout(format_row)
-        format_layout.setContentsMargins(0, 0, 0, 0)
-        format_layout.setSpacing(8)
-        self.output_format_label = QLabel(i18n.t("OUTPUT_FORMAT_COMPACT"))
-        self.output_format_label.setToolTip(i18n.tip("OUTPUT_FORMAT"))
-        format_layout.addWidget(self.output_format_label)
-        format_layout.addWidget(self.output_format_combo)
-        self.output_bit_depth_label = QLabel(i18n.t("OUTPUT_BIT_DEPTH_COMPACT"))
-        self.output_bit_depth_label.setToolTip(i18n.tip("OUTPUT_BIT_DEPTH"))
-        format_layout.addWidget(self.output_bit_depth_label)
-        format_layout.addWidget(self.output_bit_depth_combo)
-        format_layout.addStretch()
-        output_details_layout.addWidget(format_row)
-
-        self.invert_masks_cb = QCheckBox(i18n.INVERT_MASKS)
-        self.invert_masks_cb.setToolTip(i18n.tip("INVERT_MASKS"))
-
-        self.jpg_quality_edit = QLineEdit("95")
-        self.jpg_quality_edit.setToolTip(i18n.tip("JPG_QUALITY"))
-        self.jpg_quality_edit.setFixedWidth(64)
-
-        quality_row = QWidget()
-        quality_layout = QHBoxLayout(quality_row)
-        quality_layout.setContentsMargins(0, 0, 0, 0)
-        quality_layout.setSpacing(8)
-        quality_layout.addWidget(self.invert_masks_cb)
-        quality_layout.addSpacing(8)
-        self.jpg_quality_label = QLabel(i18n.t("JPG_QUALITY_COMPACT"))
-        self.jpg_quality_label.setToolTip(i18n.tip("JPG_QUALITY"))
-        quality_layout.addWidget(self.jpg_quality_label)
-        quality_layout.addWidget(self.jpg_quality_edit)
-        quality_layout.addStretch()
-        output_details_layout.addWidget(quality_row)
+        self.output_image_controls = make_output_image_controls(output_details)
+        self.output_format_combo = self.output_image_controls.output_format_combo
+        self.output_bit_depth_combo = self.output_image_controls.output_bit_depth_combo
+        self.output_format_label = self.output_image_controls.output_format_label
+        self.output_bit_depth_label = self.output_image_controls.output_bit_depth_label
+        self.invert_masks_cb = self.output_image_controls.invert_masks_cb
+        self.jpg_quality_edit = self.output_image_controls.jpg_quality_edit
+        self.jpg_quality_label = self.output_image_controls.jpg_quality_label
+        output_details_layout.addWidget(self.output_image_controls.widget)
         output_details_layout.addStretch()
 
         adv_output_layout.addLayout(adv_form)

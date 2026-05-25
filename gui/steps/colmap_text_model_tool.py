@@ -5,12 +5,10 @@ from pathlib import Path
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
-    QCheckBox,
     QComboBox,
     QFormLayout,
     QHBoxLayout,
     QLabel,
-    QLineEdit,
     QMessageBox,
     QSplitter,
     QTabWidget,
@@ -53,6 +51,7 @@ from gui.steps.step4_contracts import (
     _PROFILE_LICHTFELD,
     _PROFILE_POSTSHOT,
 )
+from gui.steps.step4_widgets import make_output_image_controls
 
 
 class ColmapTextModelTool(BaseStepWidget):
@@ -224,52 +223,13 @@ class ColmapTextModelTool(BaseStepWidget):
         layout.setContentsMargins(8, 8, 8, 8)
         layout.setSpacing(8)
 
-        format_row = QWidget()
-        format_layout = QHBoxLayout(format_row)
-        format_layout.setContentsMargins(0, 0, 0, 0)
-        format_layout.setSpacing(8)
-
-        self.output_format_combo = QComboBox()
-        self.output_format_combo.setToolTip(i18n.tip("OUTPUT_FORMAT"))
-        self.output_format_combo.addItem(i18n.t("OUTPUT_FORMAT_AUTO"), "auto")
-        for fmt in ("jpg", "png", "tiff", "webp"):
-            self.output_format_combo.addItem(fmt, fmt)
-        self.output_format_combo.setFixedWidth(96)
-
-        self.output_bit_depth_combo = QComboBox()
-        self.output_bit_depth_combo.setToolTip(i18n.tip("OUTPUT_BIT_DEPTH"))
-        self.output_bit_depth_combo.addItem(i18n.t("OUTPUT_BIT_DEPTH_8"), "8")
-        self.output_bit_depth_combo.addItem(i18n.t("OUTPUT_BIT_DEPTH_SOURCE"), "source")
-        self.output_bit_depth_combo.setFixedWidth(86)
-
-        output_format_label = QLabel(i18n.t("OUTPUT_FORMAT_COMPACT"))
-        output_format_label.setToolTip(i18n.tip("OUTPUT_FORMAT"))
-        format_layout.addWidget(output_format_label)
-        format_layout.addWidget(self.output_format_combo)
-        output_bit_depth_label = QLabel(i18n.t("OUTPUT_BIT_DEPTH_COMPACT"))
-        output_bit_depth_label.setToolTip(i18n.tip("OUTPUT_BIT_DEPTH"))
-        format_layout.addWidget(output_bit_depth_label)
-        format_layout.addWidget(self.output_bit_depth_combo)
-        format_layout.addStretch()
-        layout.addWidget(format_row)
-
-        quality_row = QWidget()
-        quality_layout = QHBoxLayout(quality_row)
-        quality_layout.setContentsMargins(0, 0, 0, 0)
-        quality_layout.setSpacing(8)
-        self.invert_masks_cb = QCheckBox(i18n.INVERT_MASKS)
-        self.invert_masks_cb.setToolTip(i18n.tip("INVERT_MASKS"))
-        quality_layout.addWidget(self.invert_masks_cb)
-        quality_layout.addSpacing(8)
-        self.jpg_quality_label = QLabel(i18n.t("JPG_QUALITY_COMPACT"))
-        self.jpg_quality_label.setToolTip(i18n.tip("JPG_QUALITY"))
-        quality_layout.addWidget(self.jpg_quality_label)
-        self.jpg_quality_edit = QLineEdit("95")
-        self.jpg_quality_edit.setToolTip(i18n.tip("JPG_QUALITY"))
-        self.jpg_quality_edit.setFixedWidth(64)
-        quality_layout.addWidget(self.jpg_quality_edit)
-        quality_layout.addStretch()
-        layout.addWidget(quality_row)
+        self.output_image_controls = make_output_image_controls(tab)
+        self.output_format_combo = self.output_image_controls.output_format_combo
+        self.output_bit_depth_combo = self.output_image_controls.output_bit_depth_combo
+        self.invert_masks_cb = self.output_image_controls.invert_masks_cb
+        self.jpg_quality_label = self.output_image_controls.jpg_quality_label
+        self.jpg_quality_edit = self.output_image_controls.jpg_quality_edit
+        layout.addWidget(self.output_image_controls.widget)
         layout.addStretch()
         return tab
 
