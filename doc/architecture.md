@@ -16,6 +16,19 @@ Shared implementation lives in `core/`. Tests should cover the implementation
 contract and the GUI job payloads. Public CLI compatibility is secondary to the
 GUI workflow unless a release note explicitly promises a specific wrapper.
 
+## Release Surface
+
+Release ZIPs include the GUI runtime, `core/`, `gui/`, docs, requirements,
+models metadata, and setup/check support. Under `scripts/`, only
+`scripts/update_venv.py` and `scripts/check_venv.py` are part of the end-user
+release surface because `setup_windows.bat` and `update_venv.bat` need them.
+
+Other `scripts/*.py` files are developer-only diagnostics or thin CLI adapters.
+They may stay in the repository for tests and local maintenance, but release
+packaging must exclude them. GUI runtime code must continue to call typed core
+jobs or `python -m core.<module>` worker boundaries rather than launching files
+from `scripts/`.
+
 ## Core Contracts
 
 - `core/video_info.py` owns the shared video metadata dataclass used by frame
@@ -30,7 +43,8 @@ GUI workflow unless a release note explicitly promises a specific wrapper.
   `ExtractFramesOptions`; `main()` is only the CLI adapter.
 - Still-image sequence import uses the same frame job contract:
   `core/image_sequence_import_cli.py` builds an import payload and delegates to
-  `core/frame_job_runner.py`; the matching `scripts/` entry is a thin wrapper.
+  `core/frame_job_runner.py`; the matching `scripts/` entry is a developer-only
+  thin wrapper and is excluded from release ZIPs.
 - `core/frame_renumbering.py` owns the Step 2 kept-image renumbering contract:
   downstream-output blockers, collision-safe rename planning/application, and
   updates to frame/source image metadata when paths change.
@@ -76,12 +90,13 @@ GUI workflow unless a release note explicitly promises a specific wrapper.
   in `core/spheresfm_project.py`, `core/spheresfm_gpu_preflight.py`, and
   `core/spheresfm_to_transforms.py`. Their command-line adapters live in the
   matching `core/*_cli.py` modules. Matching files under `scripts/` are thin
-  developer/CLI entry points and must not become the runtime implementation.
+  developer/CLI entry points, are excluded from release ZIPs, and must not
+  become the runtime implementation.
 - COLMAP mixed-project preparation lives in
   `core/colmap_mixed_project.py`, and its developer CLI lives in
   `core/colmap_mixed_project_cli.py`. The matching file under `scripts/` is a
-  thin wrapper only; GUI routes should use versioned SfM job payloads and
-  `core/sfm_job_runner.py`.
+  developer-only thin wrapper; GUI routes should use versioned SfM job payloads
+  and `core/sfm_job_runner.py`.
 - Mask modules preserve the repository-wide mask polarity contract:
   white pixels are usable, black pixels are excluded. Mask merges should remain
   AND-style unless a tool explicitly documents a different operation.

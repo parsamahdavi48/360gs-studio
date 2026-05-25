@@ -39,7 +39,7 @@ Code checks performed:
 | Runner/build command type contract | Complete | No |
 | YOLO/SAM mask runtime state | Complete | No |
 | Scene inventory helper audit | Complete | No |
-| Script/release surface cleanup | Pending | No |
+| Script/release surface cleanup | Complete | No |
 | Large GUI construction files | Deferred | No |
 | Final verification pass | Passed for current checkpoint | Yes, rerun before next merge |
 
@@ -192,56 +192,69 @@ Implemented changes:
 
 ## 4. Script And Release Surface Cleanup
 
-Status: pending
+Status: complete at this checkpoint
 
 ### Code Evidence
 
-GUI runtime no longer depends on `scripts/*.py`, but these tracked files remain:
+GUI runtime no longer depends on `scripts/*.py`. Release packaging now has an
+explicit supported script surface:
 
-- `scripts/update_venv.py`
-- `scripts/check_venv.py`
-- `scripts/create_release_zip.py`
-- `scripts/estimate_apriltag_scale.py`
-- `scripts/benchmark_yolo_mask.py`
-- `scripts/dev_apriltag_scene_viewer.py`
-- `scripts/dev_scene_preview_viewer.py`
-- `scripts/export_metashape_colmap_dataset.py`
-- `scripts/export_metashape_nerf_dataset.py`
-- `scripts/import_image_sequence.py`
-- `scripts/prepare_colmap_mixed_project.py`
-- `scripts/prepare_spheresfm_project.py`
-- `scripts/run_workflow_job.py`
-- `scripts/spheresfm_gpu_preflight.py`
-- `scripts/spheresfm_to_transforms.py`
+- Included in release ZIPs:
+  - `scripts/update_venv.py`
+  - `scripts/check_venv.py`
+- Excluded from release ZIPs:
+  - `scripts/create_release_zip.py`
+  - `scripts/estimate_apriltag_scale.py`
+  - `scripts/benchmark_yolo_mask.py`
+  - `scripts/dev_apriltag_scene_viewer.py`
+  - `scripts/dev_scene_preview_viewer.py`
+  - `scripts/export_metashape_colmap_dataset.py`
+  - `scripts/export_metashape_nerf_dataset.py`
+  - `scripts/import_image_sequence.py`
+  - `scripts/prepare_colmap_mixed_project.py`
+  - `scripts/prepare_spheresfm_project.py`
+  - `scripts/run_workflow_job.py`
+  - `scripts/spheresfm_gpu_preflight.py`
+  - `scripts/spheresfm_to_transforms.py`
 
-`scripts/create_release_zip.py` currently excludes tests/devtools and itself,
-but it does not yet classify developer-only scripts separately.
+`scripts/create_release_zip.py` owns `RELEASE_SCRIPT_PATHS`, and
+`include_in_release()` now excludes every `scripts/*.py` path except
+`scripts/update_venv.py` and `scripts/check_venv.py`. `validate_release_member()`
+also rejects developer-only script paths so accidental ZIP inclusion fails
+early.
+
+`doc/architecture.md` and `doc/architecture.ja.md` now document that developer
+script wrappers may remain in the repository for local maintenance/tests, but
+they are not part of the end-user release surface.
 
 ### Plan
 
-- Decide which scripts are part of the end-user release surface:
-  likely `update_venv.py`, `check_venv.py`, and setup/release support only.
-- Move developer-only helpers under `devtools/` or exclude them from release
-  ZIPs while keeping tests for the supported setup scripts.
-- Remove or keep thin CLI wrappers based on whether they are still useful for
-  local diagnostics. They must not become GUI runtime dependencies.
-- Update `tests/test_release_zip.py` to assert the intended release surface.
-- Update architecture docs if the policy changes from "thin wrappers may be
-  included" to "developer wrappers are excluded from release".
+- Complete. The end-user release script surface is limited to setup/check
+  support: `scripts/update_venv.py` and `scripts/check_venv.py`.
+- Complete. Developer-only helpers remain in the repository for tests and
+  maintenance, but are excluded by `include_in_release()`.
+- Complete. `tests/test_release_zip.py` asserts the complete `scripts/*.py`
+  release policy, so newly added script wrappers require an explicit release
+  decision.
+- Complete. Architecture docs now state that developer wrappers are excluded
+  from release ZIPs.
 
 ### Completion Criteria
 
-- Release ZIP contains only runtime GUI files, setup/check support, docs, and
-  intentionally supported assets.
-- Developer-only CLI wrappers are either moved under `devtools/` or excluded by
-  `include_in_release()`.
-- `rg "scripts[\\\\/]" gui core` still shows no GUI/core runtime dependency on
-  script implementations.
+- Complete. Release ZIPs contain only runtime GUI files, setup/check support,
+  docs, and intentionally supported assets from this audit surface.
+- Complete. Developer-only CLI wrappers are excluded by `include_in_release()`
+  and rejected by `validate_release_member()`.
+- Complete. `rg "scripts[\\\\/]" gui core` shows no GUI/core runtime dependency
+  on script implementations.
 
 ### Suggested Tests
 
-- `.\.venv\Scripts\python.exe -m pytest tests\test_release_zip.py tests\test_update_venv_script.py tests\test_check_venv.py -q`
-- `.\.venv\Scripts\python.exe scripts\create_release_zip.py --skip-setup-verify`
+- Passed: `.\.venv\Scripts\python.exe -m ruff check scripts\create_release_zip.py tests\test_release_zip.py`
+- Passed: `.\.venv\Scripts\python.exe -m pytest tests\test_release_zip.py tests\test_update_venv_script.py tests\test_check_venv.py -q` (`34 passed`)
+- Passed: `rg "scripts[\\\\/]" gui core` (no matches)
+- Passed: `.\.venv\Scripts\python.exe scripts\create_release_zip.py --skip-setup-verify`
+  - ZIP script members: `scripts/check_venv.py`, `scripts/update_venv.py`
 
 ## 5. Large GUI Construction Files
 
@@ -289,7 +302,7 @@ Run this after implementing any of the above areas:
 Latest checkpoint result:
 
 - Passed: `.\.venv\Scripts\python.exe -m ruff check .`
-- Passed: `.\.venv\Scripts\python.exe -m pytest -q` (`981 passed`)
+- Passed: `.\.venv\Scripts\python.exe -m pytest -q` (`984 passed`)
 
 Before release packaging changes, also run:
 

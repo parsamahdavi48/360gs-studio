@@ -9,13 +9,13 @@ from scripts import create_release_zip as release_zip
 from scripts.create_release_zip import include_in_release, release_setup_preflight_command, validate_release_member
 
 
-def test_release_zip_excludes_tests_but_keeps_runtime_scripts() -> None:
+def test_release_zip_excludes_tests_but_keeps_setup_scripts() -> None:
     assert not include_in_release("tests/test_smoke.py")
     assert not include_in_release("devtools/apriltag/synthetic.py")
     assert not include_in_release("scripts/create_release_zip.py")
     assert include_in_release("scripts/update_venv.py")
     assert include_in_release("scripts/check_venv.py")
-    assert include_in_release("scripts/estimate_apriltag_scale.py")
+    assert not include_in_release("scripts/estimate_apriltag_scale.py")
     assert include_in_release("core/apriltag_scale_apply.py")
     assert include_in_release("core/apriltag_printable.py")
     assert include_in_release("core/scene_preview_cubemap.py")
@@ -23,6 +23,14 @@ def test_release_zip_excludes_tests_but_keeps_runtime_scripts() -> None:
     assert include_in_release("core/mask_view_recipes.py")
     assert include_in_release("models/README.md")
     assert include_in_release("run_gui.bat")
+
+
+def test_release_zip_script_surface_is_explicit() -> None:
+    tracked_scripts = {path.as_posix() for path in Path("scripts").glob("*.py")}
+
+    assert release_zip.RELEASE_SCRIPT_PATHS <= tracked_scripts
+    for path in sorted(tracked_scripts):
+        assert include_in_release(path) == (path in release_zip.RELEASE_SCRIPT_PATHS)
 
 
 @pytest.mark.parametrize(
@@ -43,6 +51,8 @@ def test_release_zip_excludes_tests_but_keeps_runtime_scripts() -> None:
         ".cache/update_venv.log",
         "scene/_stechdrive/frames/selected_frames.csv",
         "pkg/__pycache__/mod.pyc",
+        "scripts/estimate_apriltag_scale.py",
+        "scripts/prepare_spheresfm_project.py",
     ],
 )
 def test_release_zip_rejects_unwanted_members(path: str) -> None:

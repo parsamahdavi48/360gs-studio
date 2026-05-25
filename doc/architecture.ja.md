@@ -8,12 +8,18 @@ root直下の互換 `*.py` ラッパーは、アプリ構造に含めません�
 
 共通実装は `core/` に置きます。テストでは実装契約とGUIが作るジョブpayloadを確認します。公開CLI互換は、リリースノートで明示したラッパーを除き、GUIワークフローより優先しません。
 
+## リリースに含める範囲
+
+リリースZIPには、GUIランタイム、`core/`、`gui/`、ドキュメント、requirements、modelsメタデータ、セットアップ/検証用ファイルを含めます。`scripts/` 配下でエンドユーザー向けリリースに含めるのは、`setup_windows.bat` と `update_venv.bat` が使う `scripts/update_venv.py` と `scripts/check_venv.py` だけです。
+
+その他の `scripts/*.py` は、開発者向けの診断ツールまたは薄いCLIアダプタとしてリポジトリには残してよいものとします。ただし、リリースZIPからは除外します。GUIランタイムは引き続き、`scripts/` のファイルを起動せず、型付きcore jobまたは `python -m core.<module>` のworker境界を使います。
+
 ## Core の契約
 
 - `core/video_info.py` は、フレーム抽出と後続処理で共有する動画メタデータ dataclass を担当します。
 - `core/frame_pair_analysis.py` は、ペアフレームのメトリクス、ブレ/追跡リスク閾値、依存チェック、選択解析を担当します。コマンドヘルプや無関係なテストで任意依存が必須にならないよう、OpenCV/numpy import はガードしてください。
 - `core/extract_frames.py` は、FFmpeg/FFprobe による抽出、キャッシュ、静止/類似フレーム間引き、判定 CSV を担当します。Step 1 からは frame job runner 経由で typed `ExtractFramesOptions` を渡し、`run_extract_frames()` を呼び出します。`main()` は CLI 用アダプタに限定します。
-- 静止画連番フォルダの取り込みも同じ frame job 契約を使います。`core/image_sequence_import_cli.py` は取り込み payload を作り、`core/frame_job_runner.py` に実行を委譲します。対応する `scripts/` 入口は薄いラッパーだけにします。
+- 静止画連番フォルダの取り込みも同じ frame job 契約を使います。`core/image_sequence_import_cli.py` は取り込み payload を作り、`core/frame_job_runner.py` に実行を委譲します。対応する `scripts/` 入口は開発者向けの薄いラッパーだけにし、リリースZIPからは除外します。
 - `core/frame_renumbering.py` は、Step 2 の採用画像連番化契約を担当します。下流成果物によるブロック判定、衝突を避けるリネーム計画/適用、パス変更時のフレーム/ソース画像台帳更新をここに集約します。
 - `core/apply_frame_decisions.py` は Step 2 の採用/除外適用実装を担当します。`core/apply_frame_decisions_cli.py` はCLI用アダプタだけにし、GUI/frame job からは `core/frame_job_runner.py` 経由で `apply_decisions()` を呼びます。
 - `core/scene_inventory.py` は、シーン内画像、マスク、投影タイプ、ソースID、通常カメラ既定値を読み取る共有契約です。ソース単位で処理対象を限定する機能は、ファイル名推測ではなく `SceneInventory.source_groups()` を使って判断します。
@@ -24,8 +30,8 @@ root直下の互換 `*.py` ラッパーは、アプリ構造に含めません�
 - `core/mask_job_spec.py` は Step 3 のマスクコマンドpayloadを担当します。GPU負荷の大きいマスク処理は引き続き `python -m core.<module>` の別プロセスで実行しますが、GUIのコマンド構築はまず検証済みmask payloadを作り、それをコマンドへ変換します。
 - `core/yolo_mask.py` のYOLO/SAM実行設定は `YoloMaskRuntimeSettings` で正規化し、グローバル状態の更新は `apply_runtime_settings()` に集約します。既存の処理関数が参照する互換グローバルは残しますが、新しい設定追加はこの入口を通します。
 - AprilTagスケール推定は `core/apriltag_scale_estimate.py` が実行実装、`core/apriltag_scale_job_spec.py` がGUIからのpayload検証とコマンド生成を担当します。推定はキャンセル可能な長時間処理なので別プロセスで実行してよいものとしますが、GUIから `scripts/` 配下を直接起動しません。
-- SphereSfMのプロジェクト準備、GPU preflight、sparse model変換は `core/spheresfm_project.py`、`core/spheresfm_gpu_preflight.py`、`core/spheresfm_to_transforms.py` が担当します。コマンドライン用アダプタは対応する `core/*_cli.py` に置きます。対応する `scripts/` 配下のファイルは開発/CLI用の薄い入口であり、runtime実装を持たせません。
-- COLMAP mixed project の作成は `core/colmap_mixed_project.py` が担当し、開発/CLI入口は `core/colmap_mixed_project_cli.py` に置きます。対応する `scripts/` 配下のファイルは薄いラッパーだけにし、GUIルートではバージョン付きSfM job payloadと `core/sfm_job_runner.py` を使います。
+- SphereSfMのプロジェクト準備、GPU preflight、sparse model変換は `core/spheresfm_project.py`、`core/spheresfm_gpu_preflight.py`、`core/spheresfm_to_transforms.py` が担当します。コマンドライン用アダプタは対応する `core/*_cli.py` に置きます。対応する `scripts/` 配下のファイルは開発/CLI用の薄い入口であり、リリースZIPからは除外し、runtime実装を持たせません。
+- COLMAP mixed project の作成は `core/colmap_mixed_project.py` が担当し、開発/CLI入口は `core/colmap_mixed_project_cli.py` に置きます。対応する `scripts/` 配下のファイルは開発者向けの薄いラッパーだけにし、GUIルートではバージョン付きSfM job payloadと `core/sfm_job_runner.py` を使います。
 - マスク系モジュールでは、リポジトリ全体のマスク極性を守ります。白は使用可能ピクセル、黒は除外ピクセルです。マスク合成は、明示的に別操作として文書化しない限り AND 型を維持します。
 - Metashape の座標変換は `core/metashape_coordinates.py` に集約します。Metashape XML のカメラ姿勢や PLY 点群を変換するルートでは、軸変換行列を個別実装せずこのモジュールを使います。投影/PINHOLEのMetashape NeRF/COLMAPデータセット作成は dataset job で直接実行します。Step 4 の Metashape 前処理ジョブは、RealityScan再アライン用出力とERP 360°直接出力のように中間のエクイレクタングラー `transforms.json` が必要なルートに限定します。GUI ルートは旧 upstream の Metashape converter に依存しません。
 - Metashape 由来の NeRF/COLMAP データセット出力は、バージョン付き dataset job payload を使います。`core/metashape_dataset_cli.py` は開発/CLI用アダプタであり、直接CLI実行とGUIジョブ実行が同じ契約になるよう `core/dataset_job_runner.py` に実行を委譲します。

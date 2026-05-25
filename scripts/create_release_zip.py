@@ -14,6 +14,13 @@ EXCLUDED_PREFIXES = (
     "tests/",
 )
 
+RELEASE_SCRIPT_PATHS = frozenset(
+    {
+        "scripts/check_venv.py",
+        "scripts/update_venv.py",
+    }
+)
+
 EXCLUDED_PATHS = {
     "scripts/create_release_zip.py",
 }
@@ -69,6 +76,8 @@ def git_tracked_files(repo_root: Path) -> list[str]:
 
 def include_in_release(path: str) -> bool:
     normalized = path.replace("\\", "/")
+    if normalized.startswith("scripts/"):
+        return normalized in RELEASE_SCRIPT_PATHS
     if normalized in EXCLUDED_PATHS:
         return False
     return not any(normalized.startswith(prefix) for prefix in EXCLUDED_PREFIXES)
@@ -78,6 +87,8 @@ def validate_release_member(path: str) -> None:
     normalized = path.replace("\\", "/")
     name = Path(normalized).name
     parts = set(normalized.split("/"))
+    if normalized.startswith("scripts/") and normalized not in RELEASE_SCRIPT_PATHS:
+        raise ValueError(f"developer-only script would be included: {path}")
     if normalized.startswith("models/") and normalized != "models/README.md":
         raise ValueError(f"unwanted local model file would be included: {path}")
     if normalized in UNWANTED_NAMES or name in UNWANTED_NAMES:
