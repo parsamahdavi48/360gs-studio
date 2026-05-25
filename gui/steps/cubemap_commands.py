@@ -9,6 +9,7 @@ from pathlib import Path
 from core.app_job import AppJob, dataset_app_job, sfm_app_job
 from core.dataset_job_spec import load_dataset_job
 from core.sfm_job_spec import load_sfm_job
+from gui.common.runner_types import ExternalCommandQueue
 
 
 @dataclass(frozen=True)
@@ -82,14 +83,14 @@ def build_colmap_mixed_prepare_cmd(options: ColmapMixedPrepareCommand) -> AppJob
     return sfm_app_job(load_sfm_job(options.job), options.job)
 
 
-def build_colmap_sfm_commands(options: ColmapSfmCommand) -> list[tuple[str, list[str]]]:
+def build_colmap_sfm_commands(options: ColmapSfmCommand) -> ExternalCommandQueue:
     if not options.writes_images and not options.images_dir.is_dir():
         raise ValueError(f"COLMAP Rig画像フォルダが見つかりません: {options.images_dir}")
 
     options.sparse.mkdir(parents=True, exist_ok=True)
     rig_config = options.rig_dir / "rig_config.json"
 
-    steps: list[tuple[str, list[str]]] = []
+    steps: ExternalCommandQueue = []
     has_mixed_feature_split = options.run_rig_feature and options.run_normal_feature
 
     if options.run_rig_feature and options.rig_feature_groups:
@@ -344,7 +345,7 @@ def _spheresfm_mapper_options(preset: str) -> list[str]:
     return options
 
 
-def build_spheresfm_commands(options: SphereSfmCommand) -> list[tuple[str, list[str]]]:
+def build_spheresfm_commands(options: SphereSfmCommand) -> ExternalCommandQueue:
     options.sparse.mkdir(parents=True, exist_ok=True)
     options.database.parent.mkdir(parents=True, exist_ok=True)
 

@@ -6,6 +6,7 @@ from pathlib import Path
 from PySide6.QtWidgets import QLabel, QStackedWidget, QVBoxLayout, QWidget
 
 from gui import i18n
+from gui.common.runner_types import StepCommandQueue
 from gui.steps.base_step import BaseStepWidget
 from gui.steps.step4_cubemap import CubemapStep
 from gui.steps.training_backend_specs import (
@@ -131,7 +132,7 @@ class TrainingStep(BaseStepWidget):
             return False
         return self.dataset_step.training_primary_action_enabled()
 
-    def build_commands(self) -> list[tuple[str, list[str]]]:
+    def build_commands(self) -> StepCommandQueue:
         if self._page != _PAGE_DETAIL:
             return []
         return self.dataset_step.build_training_launch_commands()

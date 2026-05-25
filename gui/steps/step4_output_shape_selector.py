@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import QButtonGroup, QHBoxLayout, QRadioButton, QWidget
 
@@ -14,7 +16,7 @@ class OutputShapeSelector(QWidget):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.setObjectName("radioOptionRow")
-        self._items: list[tuple[str, object]] = []
+        self._items: list[tuple[str, Any]] = []
         self._buttons: list[QRadioButton] = []
         self._current_index = -1
         self._group = QButtonGroup(self)

@@ -35,6 +35,7 @@ from gui.common.collapsible_section import CollapsibleSection
 from gui.common.drag_spinbox import DragDoubleSpinBox, DragSpinBox
 from gui.common.form_rows import add_tooltip_row
 from gui.common.icons import delete_icon, file_picker_icon, minus_icon, plus_icon
+from gui.common.runner_types import ExternalCommandQueue
 from gui.mask.mask_preview import MaskPreviewConfig, MaskPreviewWidget
 from gui.steps import mask_commands as mask_command_defs
 from gui.steps.base_step import (
@@ -367,12 +368,12 @@ class MaskStep(
         self._mask_preview_image: Path | None = None
         self._mask_preview_output: Path | None = None
         self._mask_preview_config: MaskPreviewConfig | None = None
-        self._mask_preview_commands: list[tuple[str, list[str]]] = []
+        self._mask_preview_commands: ExternalCommandQueue = []
         self._custom_mask_path = ""
         self._current_reprocess_proc: QProcess | None = None
         self._current_reprocess_image: Path | None = None
         self._current_reprocess_mask: Path | None = None
-        self._current_reprocess_commands: list[tuple[str, list[str]]] = []
+        self._current_reprocess_commands: ExternalCommandQueue = []
         self._current_reprocess_phase = ""
         self._current_reprocess_active = False
         self._current_reprocess_queue: list[Path] = []

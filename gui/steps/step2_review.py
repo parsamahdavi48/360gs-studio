@@ -37,6 +37,7 @@ from core.review_blur_sensitivity import (
 from core.scene_layout import review_dir, selected_frames_path
 from core.scene_project import append_review_run, file_identity, scene_relative, utc_now_iso
 from gui import i18n
+from gui.common.runner_types import StepCommand, StepCommandQueue
 from gui.steps.base_step import (
     SETTINGS_PANE_MARGINS,
     SETTINGS_PANE_WIDTH,
@@ -355,7 +356,7 @@ class ReviewStep(BaseStepWidget):
         )
         return result == QMessageBox.Yes
 
-    def _build_apply_cmd(self, *, finalize_in_place: bool, renumber_kept_images: bool) -> object:
+    def _build_apply_cmd(self, *, finalize_in_place: bool, renumber_kept_images: bool) -> StepCommand:
         return frame_app_job(
             apply_frame_decisions_job(
                 scene_dir=self.scene_dir,
@@ -367,7 +368,7 @@ class ReviewStep(BaseStepWidget):
             )
         )
 
-    def build_commands(self) -> list[tuple[str, object]]:
+    def build_commands(self) -> StepCommandQueue:
         if not self.scene_dir:
             raise ValueError(i18n.t("SCENE_REQUIRED_ACTION_HINT"))
         if not self._has_csv():

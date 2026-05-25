@@ -11,6 +11,7 @@ from core.extract_sessions import sanitize_filename_prefix
 from core.frame_job_spec import extract_video_job, import_image_sequence_job
 from core.input_sources import SOURCE_KIND_IMAGE_SEQUENCE
 from gui import i18n
+from gui.common.runner_types import StepCommand, StepCommandQueue
 
 _DEFAULT_CAPTURE_PROFILE = "walk_standard"
 _SOURCE_KIND_IMAGE_SEQUENCE = SOURCE_KIND_IMAGE_SEQUENCE
@@ -99,7 +100,7 @@ class Step1ExecutionMixin:
             )
         self.primary_action_state_changed.emit()
 
-    def build_commands(self) -> list[tuple[str, object]]:
+    def build_commands(self) -> StepCommandQueue:
         sources = self._selected_input_sources()
         videos = self._selected_video_paths()
         missing = [video for video in videos if not video.is_file()]
@@ -107,7 +108,7 @@ class Step1ExecutionMixin:
             preview = ", ".join(str(video) for video in missing[:3])
             raise ValueError(f"{i18n.t('EXTRACT_READY_VIDEO_NOT_FOUND')}\n{preview}")
 
-        commands: list[tuple[str, object]] = []
+        commands: StepCommandQueue = []
         runnable_videos, _skipped = self._queued_selected_videos()
         runnable_video_keys = {self._video_key(video) for video in runnable_videos}
         used_prefixes: set[str] = set()
@@ -127,7 +128,7 @@ class Step1ExecutionMixin:
             raise ValueError(i18n.t("EXTRACT_READY_QUEUE_ALL_DUPLICATE").format(n=len(self._selected_video_paths())))
         return commands
 
-    def _build_image_sequence_import_cmd(self, source: Path | None = None) -> object:
+    def _build_image_sequence_import_cmd(self, source: Path | None = None) -> StepCommand:
         source = source or self._image_sequence_dir()
         if source is None or not source.is_dir():
             raise ValueError(i18n.t("EXTRACT_READY_IMAGE_SEQUENCE_NOT_FOUND"))
@@ -143,7 +144,7 @@ class Step1ExecutionMixin:
             )
         )
 
-    def _build_extract_cmd(self) -> object:
+    def _build_extract_cmd(self) -> StepCommand:
         videos = self._selected_video_paths()
         if not videos:
             raise ValueError("入力動画が指定されていません")
@@ -155,7 +156,7 @@ class Step1ExecutionMixin:
 
         return self._build_extract_cmd_for_video(video, set())
 
-    def _build_extract_cmd_for_video(self, video_path: Path, used_prefixes: set[str]) -> object:
+    def _build_extract_cmd_for_video(self, video_path: Path, used_prefixes: set[str]) -> StepCommand:
         if not video_path.is_file():
             raise ValueError(f"入力動画が見つかりません: {video_path}")
         if not self.scene_dir:

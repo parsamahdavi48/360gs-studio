@@ -6,8 +6,8 @@ from pathlib import Path
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import QScrollArea, QWidget
 
-from core.app_job import AppJob
 from gui import i18n
+from gui.common.runner_types import StepCommandQueue
 
 SETTINGS_PANE_WIDTH = 480
 SETTINGS_PANE_MARGINS = (0, 0, 14, 4)
@@ -29,7 +29,7 @@ class BaseStepWidget(QWidget):
     サブクラスは以下を実装する:
         build_ui()  -- ステップ固有のUI構築
         set_scene_dir(path)  -- シーンディレクトリ変更への対応
-        build_commands()  -- [(phase, [cmd...] | AppJob)] を返す。失敗時は ValueError
+        build_commands()  -- StepCommandQueue を返す。失敗時は ValueError
         on_line(line)  -- 出力行のパース（プログレス更新など）
     """
 
@@ -48,10 +48,10 @@ class BaseStepWidget(QWidget):
     def set_scene_dir(self, path: str) -> None:
         self.scene_dir = path
 
-    def build_commands(self) -> list[tuple[str, list[str] | AppJob]]:
+    def build_commands(self) -> StepCommandQueue:
         raise NotImplementedError
 
-    def confirm_commands(self, commands: list[tuple[str, list[str] | AppJob]]) -> bool:
+    def confirm_commands(self, commands: StepCommandQueue) -> bool:
         return True
 
     def process_log_dir(self) -> Path | None:

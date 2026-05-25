@@ -14,9 +14,7 @@ from typing import TextIO
 from PySide6.QtCore import QObject, QProcess, QProcessEnvironment, QThread, QTimer, Signal, Slot
 
 from core.app_job import AppJob, run_app_job
-
-RunnerCommand = list[str] | AppJob
-RunnerStep = tuple[str, RunnerCommand]
+from gui.common.runner_types import StepCommand, StepCommandPhase, StepCommandQueue
 
 
 class _SignalWriter:
@@ -85,7 +83,7 @@ class ProcessRunner(QObject):
         self._proc: QProcess | None = None
         self._current_phase = ""
         self._buffer = ""
-        self._pending: list[RunnerStep] = []
+        self._pending: list[StepCommandPhase] = []
         self._cancel_requested = False
         self._all_ok = True
         self._running = False
@@ -115,10 +113,10 @@ class ProcessRunner(QObject):
     def queue_total(self) -> int:
         return self._queue_total
 
-    def start_single(self, cmd: RunnerCommand, phase: str = "run", log_dir: str | Path | None = None) -> None:
+    def start_single(self, cmd: StepCommand, phase: str = "run", log_dir: str | Path | None = None) -> None:
         self.start_queue([(phase, cmd)], log_dir=log_dir)
 
-    def start_queue(self, steps: list[RunnerStep], log_dir: str | Path | None = None) -> None:
+    def start_queue(self, steps: StepCommandQueue, log_dir: str | Path | None = None) -> None:
         if self.is_running():
             return
         self._cancel_requested = False

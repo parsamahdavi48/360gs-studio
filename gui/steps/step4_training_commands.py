@@ -8,6 +8,7 @@ from pathlib import Path
 from PySide6.QtWidgets import QComboBox, QLineEdit
 
 from gui import i18n
+from gui.common.runner_types import ExternalCommandQueue
 from gui.steps.step4_contracts import _LFS_ADVANCED_INT_KEYS, _LFS_ADVANCED_LIST_KEYS
 from gui.steps.training_backend_specs import (
     TRAINING_BACKEND_CUSTOM as _TRAINING_BACKEND_CUSTOM,
@@ -264,7 +265,7 @@ class Step4TrainingCommandsMixin:
         if self.lfs_ppisp_cb.isChecked():
             self._guard_training_output_target(output_dir / f"{lfs_output_stem}.ppisp")
 
-    def _build_training_commands(self) -> list[tuple[str, list[str]]]:
+    def _build_training_commands(self) -> ExternalCommandQueue:
         if not self.run_training_cb.isChecked():
             return []
         issue = self._training_dataset_issue()
@@ -444,7 +445,7 @@ class Step4TrainingCommandsMixin:
             return False
         return self._training_dataset_issue() is None
 
-    def build_training_launch_commands(self) -> list[tuple[str, list[str]]]:
+    def build_training_launch_commands(self) -> ExternalCommandQueue:
         self._training_phase_logs.clear()
         self.prepare_training_step()
         return self._build_training_commands()

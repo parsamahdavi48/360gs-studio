@@ -202,3 +202,5 @@ Audit gates:
   export, and RealityScan COLMAP export.
 - [x] Docs describe GUI-first behavior and release ZIP excludes old upstream
   assets.
+
+Next-stage refactor tracking has moved to `doc/refactor_next_plan.md`.

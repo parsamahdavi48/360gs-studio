@@ -7,6 +7,7 @@ from pathlib import Path
 from core.mask_source_scope import MASK_SOURCE_ALL
 from core.scene_project import utc_now_iso
 from gui import i18n
+from gui.common.runner_types import StepCommandQueue
 from gui.steps.step3_mask_manifests import write_mask_target_manifest, write_projection_manifests
 from gui.steps.step3_mask_plan import (
     MASK_COMMAND_CUSTOM,
@@ -37,7 +38,7 @@ class Step3MaskBatchMixin:
         key = labels.get(phase)
         return i18n.t(key) if key else phase
 
-    def build_commands(self) -> list[tuple[str, list[str]]]:
+    def build_commands(self) -> StepCommandQueue:
         ready, reason = self._readiness()
         if not ready:
             raise ValueError(reason)

@@ -8,6 +8,7 @@ from pathlib import Path
 from PySide6.QtCore import QProcess, QTimer
 
 from gui import i18n
+from gui.common.runner_types import ExternalCommandQueue
 from gui.steps.mask_commands import (
     build_custom_cmd,
     build_init_masks_cmd,
@@ -219,7 +220,7 @@ class Step3MaskActionsMixin(Step3MaskPreviewActionsMixin):
         self._current_reprocess_commands = commands
         self._start_next_current_reprocess_external_command()
 
-    def _build_current_reprocess_external_commands(self, image_path: Path) -> list[tuple[str, list[str]]]:
+    def _build_current_reprocess_external_commands(self, image_path: Path) -> ExternalCommandQueue:
         return self._build_image_external_commands(image_path, masks_root=None)
 
     def _build_image_external_commands(
@@ -227,8 +228,8 @@ class Step3MaskActionsMixin(Step3MaskPreviewActionsMixin):
         image_path: Path,
         *,
         masks_root: Path | None,
-    ) -> list[tuple[str, list[str]]]:
-        commands: list[tuple[str, list[str]]] = []
+    ) -> ExternalCommandQueue:
+        commands: ExternalCommandQueue = []
         commands.append(("yolo", self._build_yolo_current_cmd(image_path, masks_root=masks_root)))
         return commands
 

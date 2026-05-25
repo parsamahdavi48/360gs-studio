@@ -29,6 +29,7 @@ from core.workflow_artifacts import (
 from gui import i18n
 from gui.common.browse_widget import BrowseWidget
 from gui.common.form_rows import add_tooltip_row
+from gui.common.runner_types import StepCommandQueue
 from gui.steps.base_step import BaseStepWidget
 
 
@@ -156,7 +157,7 @@ class RealityScanLfsTool(BaseStepWidget):
     def phase_display_name(self, phase: str) -> str:
         return i18n.t("PHASE_RS_LFS_COLMAP") if phase == "realityscan_lfs_colmap" else phase
 
-    def build_commands(self) -> list[tuple[str, object]]:
+    def build_commands(self) -> StepCommandQueue:
         self._validate_inputs()
         job_path = jobs_dir(Path(self.scene_dir)) / "realityscan_lfs_colmap_job.json"
         payload = realityscan_lfs_colmap_job(

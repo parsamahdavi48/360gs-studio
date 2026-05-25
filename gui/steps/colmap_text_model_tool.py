@@ -39,6 +39,7 @@ from gui import i18n
 from gui.common.browse_widget import BrowseWidget
 from gui.common.drag_spinbox import DragDoubleSpinBox
 from gui.common.form_rows import add_tooltip_row
+from gui.common.runner_types import StepCommandQueue
 from gui.cubemap.preview_renderer import PreviewWidget
 from gui.cubemap.view_config import _BLOCK_ENABLED_VIEWS, _WARN_ENABLED_VIEWS, ViewConfigWidget
 from gui.steps.base_step import SETTINGS_PANE_MARGINS, SETTINGS_PANE_WIDTH, BaseStepWidget
@@ -322,7 +323,7 @@ class ColmapTextModelTool(BaseStepWidget):
             and self._ply_path().is_file()
         )
 
-    def build_commands(self) -> list[tuple[str, object]]:
+    def build_commands(self) -> StepCommandQueue:
         images = self._images_dir()
         masks = self._masks_dir()
         xml = self._xml_path()
