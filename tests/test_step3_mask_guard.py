@@ -13,7 +13,7 @@ import cv2
 import numpy as np
 import pytest
 from PySide6.QtCore import QItemSelectionModel
-from PySide6.QtWidgets import QApplication, QLabel, QPushButton, QToolButton
+from PySide6.QtWidgets import QLabel, QPushButton, QToolButton
 
 from core.mask_source_scope import source_scope_key
 from core.scene_layout import selected_frames_path
@@ -23,10 +23,11 @@ from gui.common import dialogs
 from gui.common.browse_widget import BrowseWidget
 from gui.steps.base_step import SETTINGS_PANE_MARGINS, SETTINGS_PANE_WIDTH
 from gui.steps.step3_mask import MaskStep
+from tests.helpers.gui import qt_app
 
 
 def _app():
-    return QApplication.instance() or QApplication([])
+    return qt_app()
 
 
 def _process_events_until(predicate, timeout_s: float = 2.0) -> None:

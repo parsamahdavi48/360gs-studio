@@ -3,7 +3,7 @@ from pathlib import Path
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PySide6.QtWidgets import QApplication, QLabel, QPushButton, QToolButton
+from PySide6.QtWidgets import QLabel, QPushButton, QToolButton
 
 from core.app_job import AppJob
 from core.extract_sessions import build_session_record, load_manifest, save_manifest
@@ -13,10 +13,11 @@ from gui import i18n
 from gui.app import MainWindow
 from gui.common import dialogs
 from gui.steps.step1_extract import ExtractStep
+from tests.helpers.gui import qt_app
 
 
 def _app():
-    return QApplication.instance() or QApplication([])
+    return qt_app()
 
 
 def _video_info() -> dict:

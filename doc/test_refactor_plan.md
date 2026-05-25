@@ -42,7 +42,7 @@ Code checks performed:
 | Step 4 test responsibility split | Complete | No |
 | YOLO/SAM runtime-context tests | Complete | No |
 | Developer-only scripts test surface | Complete | No |
-| Shared GUI test fixtures | Pending | No |
+| Shared GUI test fixtures | Complete | No |
 | Final verification pass | Pending | Yes, before merging this test refactor |
 
 ## Implementation Queue
@@ -57,7 +57,7 @@ to this document.
 | T2 | Split Step 4 omnibus tests by responsibility | Step 4 focused tests and `tests/helpers/step4.py` | Complete: Step 4 tests are grouped by contract without reducing assertions |
 | T3 | Move YOLO/SAM behavior tests onto explicit runtime contexts | `tests/test_yolo_mask_profile.py`, `tests/test_yolo_mask_bottom.py`, `core/yolo_mask.py` tests | Complete: main tests build `YoloMaskRuntimeContext`; global mutation is limited to compatibility tests |
 | T4 | Normalize developer-only script tests | `tests/test_benchmark_yolo_mask.py`, benchmark/devtool modules | Complete: tests no longer import dev-only benchmark code through `scripts.*` |
-| T5 | Add shared GUI test fixtures where they reduce duplication | GUI-heavy tests, `tests/helpers/` | New/touched GUI tests use common app/theme/dialog/message helpers |
+| T5 | Add shared GUI test fixtures where they reduce duplication | GUI-heavy tests, `tests/helpers/` | Complete: new/touched GUI tests use common app/theme/dialog/message helpers |
 | T6 | Run final audit and full verification | whole repo | Audit searches, ruff, and full pytest pass; this document records the final checkpoint |
 
 ### Per-Task Update Template
@@ -369,7 +369,7 @@ Tests still import developer-only scripts directly:
 
 ## 5. Shared GUI Test Fixtures
 
-Status: pending
+Status: complete at T5 checkpoint
 
 ### Code Evidence
 
@@ -398,16 +398,35 @@ contracts evolve.
 
 ### Completion Criteria
 
-- New GUI tests use shared helpers instead of reimplementing application setup.
-- Existing tests touched by this refactor use the helper where it improves
-  clarity.
-- Offscreen theme behavior remains covered by
+- Complete. New/touched GUI tests use shared helpers instead of reimplementing
+  application setup.
+- Complete. Existing tests touched by this refactor use the helper where it
+  improves clarity.
+- Complete. Offscreen theme behavior remains covered by
   `tests/test_form_tooltips.py::test_offscreen_theme_loads_windows_japanese_fonts`.
 
 ### Suggested Tests
 
 - `.\.venv\Scripts\python.exe -m pytest tests\test_form_tooltips.py tests\test_workflow_reorg.py -q`
 - Focused GUI tests touched by each implementation step.
+
+### Implementation Notes
+
+- Added `tests/helpers/gui.py` with `qt_app()`, `themed_qt_app()`, and small
+  message-box patch helpers.
+- Step 1, Step 3, and shared Step 4 test setup now use `qt_app()`.
+- Kept conversion incremental: broader GUI suites can adopt the helper as they
+  are touched by future behavior changes.
+
+### Verification
+
+- `.\.venv\Scripts\python.exe -m ruff check tests\helpers\gui.py tests\helpers\step4.py tests\test_step1_extract_ready.py tests\test_step3_mask_guard.py` -> passed
+- `.\.venv\Scripts\python.exe -m pytest tests\test_step1_extract_ready.py tests\test_step3_mask_guard.py tests\test_step4_colmap_route.py tests\test_step4_dataset_jobs.py tests\test_step4_output_paths.py tests\test_step4_preview_behavior.py tests\test_step4_realityscan_route.py tests\test_step4_spheresfm_route.py tests\test_step4_training_paths.py -q` -> `205 passed`
+- `.\.venv\Scripts\python.exe -m pytest tests\test_form_tooltips.py tests\test_workflow_reorg.py -q` -> `34 passed`
+
+### Deferred
+
+- None.
 
 ## 6. Final Verification
 

@@ -9,7 +9,7 @@ import numpy as np
 import pytest
 from PIL import Image
 from PySide6.QtCore import QPoint
-from PySide6.QtWidgets import QApplication, QMessageBox
+from PySide6.QtWidgets import QMessageBox
 import core.orientation_correction as orientation_correction
 import gui.steps.step4_cubemap as step4_cubemap
 from core.app_job import AppJob
@@ -42,12 +42,13 @@ from gui.steps.step4_cubemap import CubemapStep
 from gui.steps.step4_settings import STEP4_SETTINGS_VERSION
 from gui.steps.step5_training import TrainingStep
 from gui.steps.training_backends import lichtfeld_defaults
+from tests.helpers.gui import qt_app
 
 _IDENTITY_MATRIX_TEXT = "1 0 0 0 0 1 0 0 0 0 1 0 0 0 0 1"
 
 
 def _app():
-    return QApplication.instance() or QApplication([])
+    return qt_app()
 
 
 def _workflow_job(cmd: object) -> dict:
@@ -221,7 +222,6 @@ __all__ = [
     "PREVIEW_PROJECTION_EQUIRECT",
     "PREVIEW_PROJECTION_PERSPECTIVE",
     "Path",
-    "QApplication",
     "QMessageBox",
     "QPoint",
     "SFM_ROUTE_COLMAP",
