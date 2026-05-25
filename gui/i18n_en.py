@@ -497,9 +497,9 @@ STRINGS: dict[str, str] = {
     "DATASET_TOOL_RS_LFS_CARD_BODY": "Create a LichtFeld COLMAP dataset from RealityScan camera CSV and point-cloud PLY exports.",
     "DATASET_TOOL_RS_LFS_CARD_FOOTER": "Output: output/realityscan/lfs_colmap/",
     "DATASET_TOOL_SCALE_TITLE": "Scale Adjustment",
-    "DATASET_TOOL_SCALE_DESC": "Estimate scale from AprilTag observations and apply it to camera positions and point cloud in an existing projected Cubemap dataset.",
+    "DATASET_TOOL_SCALE_DESC": "Estimate scale from AprilTag observations and apply it to camera positions and point cloud in an existing dataset. JSON/PLY and COLMAP-format datasets are supported.",
     "DATASET_TOOL_SCALE_CARD_BODY": "Correct an existing dataset scale from the physical AprilTag size.",
-    "DATASET_TOOL_SCALE_CARD_FOOTER": "Target: transforms.json / pointcloud.ply",
+    "DATASET_TOOL_SCALE_CARD_FOOTER": "Target: JSON/PLY / COLMAP format",
     "DATASET_TOOL_COLMAP_TEXT_TITLE": "Metashape → COLMAP Dataset",
     "DATASET_TOOL_COLMAP_TEXT_DESC": "Create a COLMAP-format dataset with images / masks / sparse/0 from a camera XML and point-cloud PLY exported from Metashape. This prepares data for training apps that accept COLMAP input.",
     "DATASET_TOOL_COLMAP_TEXT_CARD_BODY": "Create a dataset for COLMAP-input training apps from Metashape camera XML and point-cloud PLY.",
@@ -1156,9 +1156,9 @@ STRINGS: dict[str, str] = {
     "APRILTAG_APPLY_SCALE": "Apply Scale",
     "APRILTAG_RESULT": "Result",
     "APRILTAG_RESULT_EMPTY": "Not estimated",
-    "APRILTAG_DEV_STATUS": "Experimental. Estimation currently uses existing Cubemap output images and transforms.json.",
+    "APRILTAG_DEV_STATUS": "Detect AprilTags and estimate scale from an existing JSON/PLY or COLMAP-format dataset.",
     "APRILTAG_SCENE_REQUIRED": "Select a scene folder.",
-    "APRILTAG_TRANSFORMS_MISSING": "Cubemap output transforms.json was not found: {path}",
+    "APRILTAG_TRANSFORMS_MISSING": "Target dataset was not found: {path}",
     "APRILTAG_TAG_SIZE_INVALID": "Enter a positive number for the tag size.",
     "APRILTAG_RUNNING": "Estimating...",
     "APRILTAG_FAILED": "Estimation failed.\n{detail}",
@@ -1223,7 +1223,7 @@ TIPS: dict[str, str] = {
     "DATASET_TOOL_COLMAP_TEXT": "Create an images / masks / sparse/0 dataset for COLMAP-input training apps from Metashape XML/PLY plus source images. This does not run COLMAP SfM.",
     "DATASET_RUN_COLMAP_TEXT": "Create output/metashape_colmap/ from Metashape XML and PLY.",
     "DATASET_TOOL_RS_LFS": "Convert RealityScan CSV/PLY exports prepared for Postshot into a COLMAP dataset root that LichtFeld can load.",
-    "DATASET_TOOL_SCALE": "Apply an estimated metric scale to an existing Cubemap dataset photographed with AprilTags. This does not generate new images.",
+    "DATASET_TOOL_SCALE": "Apply an estimated metric scale to an existing dataset photographed with AprilTags. JSON/PLY and COLMAP-format datasets are supported. This does not generate new images.",
     "COLMAP_TEXT_IMAGES": "Source image folder used for Metashape SfM. Usually the scene images/ folder.",
     "COLMAP_TEXT_MASKS": "Optional matching mask folder. When present, converted masks are written to the Dataset masks/ folder.",
     "COLMAP_TEXT_XML": "Camera XML exported from Metashape. Camera labels must match image names in the source image folder.",
@@ -1239,7 +1239,7 @@ TIPS: dict[str, str] = {
     "RS_LFS_UNDISTORT_ALPHA": "Field of view after Undistort. 1 preserves as much of the RealityScan-visible area as possible. Black/outside pixels are excluded by masks. Use 0 only when you intentionally want to crop edges.",
     "RS_LFS_SKIP_MISSING": "Skip CSV rows whose images cannot be found instead of failing. Leave this off to catch missing files.",
     "RS_LFS_CREATE": "Create a LichtFeld COLMAP dataset from the current CSV/PLY/images/masks inputs.",
-    "APRILTAG_OUTPUT_DATASET": "Existing projected Cubemap dataset to estimate and apply scale to. Defaults to the latest dataset output when available.",
+    "APRILTAG_OUTPUT_DATASET": "Existing dataset to estimate and apply scale to. Choose a JSON/PLY or COLMAP-format dataset. Defaults to the latest dataset output when available.",
     "INPUT_SOURCE_MODE": "Choose whether Step 1 extracts frames from videos or registers an existing numbered still-image folder as scene images",
     "INPUT_VIDEO": "Select 360-degree or normal video files. The browse dialog supports multiple selection",
     "INPUT_IMAGE_SEQUENCE": "Select a folder of still images that already exist. Images are registered under the scene images/ folder so later review and mask steps can use them",
@@ -1478,11 +1478,11 @@ TIPS: dict[str, str] = {
         "Do not place the same ID in multiple locations; use a different ID for each physical location."
     ),
     "APRILTAG_CONVERSION_PRESET": (
-        "Usually keep Auto. If Cube6 output was brought in from another location and estimation looks wrong, "
-        "choose the target used during conversion. For custom views, keep Auto and run from the original scene folder."
+        "Usually keep Auto. If JSON/PLY Cube6 output estimates incorrectly, choose the target used during conversion. "
+        "This normally has no effect for COLMAP-format datasets."
     ),
-    "APRILTAG_ESTIMATE": "Detect AprilTags from the currently selected projected Cubemap transforms.json and output images, then estimate meters per scene unit. For equirectangular output, create Cubemap images first.",
-    "APRILTAG_APPLY_SCALE": "Multiply camera positions in the currently selected Cubemap transforms.json and pointcloud.ply by the estimated factor. The target files are shown for confirmation before writing. Original files are backed up.",
+    "APRILTAG_ESTIMATE": "Detect AprilTags from the currently selected JSON/PLY or COLMAP-format dataset, then estimate meters per scene unit. Convert ERP 360° output to a PINHOLE Cubemap dataset first.",
+    "APRILTAG_APPLY_SCALE": "Multiply camera positions and point cloud in the currently selected dataset by the estimated factor. The target files are shown for confirmation before writing. Original files are backed up.",
     "APRILTAG_RESULT": (
         "How to read the result:\n"
         "observations = accepted tag detections. More observations usually make the estimate more stable.\n"

@@ -499,9 +499,9 @@ STRINGS: dict[str, str] = {
     "DATASET_TOOL_RS_LFS_CARD_BODY": "RealityScanからエクスポートしたカメラCSVと点群PLYから、LichtFeld用COLMAPデータセットを作成します。",
     "DATASET_TOOL_RS_LFS_CARD_FOOTER": "出力: output/realityscan/lfs_colmap/",
     "DATASET_TOOL_SCALE_TITLE": "スケール調整",
-    "DATASET_TOOL_SCALE_DESC": "AprilTag検出結果から、作成済みの投影Cubemapデータセットのカメラ位置と点群へスケールを反映します。",
+    "DATASET_TOOL_SCALE_DESC": "AprilTag検出結果から、作成済みデータセットのカメラ位置と点群へスケールを反映します。JSON/PLYとCOLMAP形式に対応します。",
     "DATASET_TOOL_SCALE_CARD_BODY": "AprilTagの実寸から既存データセットのスケールを補正します。",
-    "DATASET_TOOL_SCALE_CARD_FOOTER": "対象: transforms.json / pointcloud.ply",
+    "DATASET_TOOL_SCALE_CARD_FOOTER": "対象: JSON/PLY / COLMAP形式",
     "DATASET_TOOL_COLMAP_TEXT_TITLE": "Metashape → COLMAPデータセット",
     "DATASET_TOOL_COLMAP_TEXT_DESC": "MetashapeからエクスポートしたカメラXMLと点群PLYから、images / masks / sparse/0 を持つCOLMAP形式のデータセットを作成します。COLMAP入力に対応した学習ソフトへ渡すための変換です。",
     "DATASET_TOOL_COLMAP_TEXT_CARD_BODY": "MetashapeのカメラXML/点群PLYから、COLMAP入力対応の学習ソフト向けデータセットを作成します。",
@@ -1159,9 +1159,9 @@ STRINGS: dict[str, str] = {
     "APRILTAG_APPLY_SCALE": "Scaleを反映",
     "APRILTAG_RESULT": "結果",
     "APRILTAG_RESULT_EMPTY": "未推定",
-    "APRILTAG_DEV_STATUS": "実験機能です。現在は既存のCubemap出力画像とtransforms.jsonから推定します。",
+    "APRILTAG_DEV_STATUS": "作成済みのJSON/PLYまたはCOLMAP形式データセットからAprilTagを検出してスケールを推定します。",
     "APRILTAG_SCENE_REQUIRED": "シーンフォルダを選択してください。",
-    "APRILTAG_TRANSFORMS_MISSING": "Cubemap出力の transforms.json が見つかりません: {path}",
+    "APRILTAG_TRANSFORMS_MISSING": "対象データセットが見つかりません: {path}",
     "APRILTAG_TAG_SIZE_INVALID": "タグ実寸は正の数値で入力してください。",
     "APRILTAG_RUNNING": "推定中...",
     "APRILTAG_FAILED": "推定に失敗しました。\n{detail}",
@@ -1222,7 +1222,7 @@ TIPS: dict[str, str] = {
     "DATASET_TOOL_COLMAP_TEXT": "Metashape XML/PLYと元画像から、COLMAP入力対応の学習ソフトへ渡すための images / masks / sparse/0 を持つデータセットを作成します。COLMAPでSfMは行いません",
     "DATASET_RUN_COLMAP_TEXT": "Metashape XML/PLYから output/metashape_colmap/ を作成します",
     "DATASET_TOOL_RS_LFS": "RealityScanからPostshot用に書き出したCSV/PLYを、LichtFeldのデータセット読み込み用COLMAPデータセットへ変換します",
-    "DATASET_TOOL_SCALE": "AprilTagを撮影した既存Cubemapデータセットへ、推定scaleを反映します。画像生成そのものは行いません",
+    "DATASET_TOOL_SCALE": "AprilTagを撮影した作成済みデータセットへ、推定スケールを反映します。JSON/PLYとCOLMAP形式に対応し、画像生成そのものは行いません",
     "COLMAP_TEXT_IMAGES": "MetashapeでSfMに使った元画像フォルダです。通常はシーンの images/ を使います",
     "COLMAP_TEXT_MASKS": "対応するマスクフォルダです。存在する場合だけCOLMAPデータセットの masks/ に変換出力します",
     "COLMAP_TEXT_XML": "MetashapeからカメラとしてエクスポートしたXMLです。各カメラのラベルがimages内の画像名に対応している必要があります",
@@ -1238,7 +1238,7 @@ TIPS: dict[str, str] = {
     "RS_LFS_UNDISTORT_ALPHA": "Undistort後の視野です。1はRealityScanで見えていた範囲をできるだけ残します。黒縁や範囲外はマスクで除外します。0は周辺を切り落としたい場合だけ使います",
     "RS_LFS_SKIP_MISSING": "CSVにある画像が見つからない場合に、その行をエラーではなくスキップします。通常はOFFで欠落を検出します",
     "RS_LFS_CREATE": "現在のCSV/PLY/images/masksからLichtFeld用COLMAPデータセットを作成します",
-    "APRILTAG_OUTPUT_DATASET": "スケールを推定・反映する既存の投影Cubemapデータセットです。通常は直近のデータセット作成結果を自動使用します",
+    "APRILTAG_OUTPUT_DATASET": "スケールを推定・反映する作成済みデータセットです。JSON/PLYまたはCOLMAP形式を選べます。通常は直近のデータセット作成結果を自動使用します",
     "INPUT_SOURCE_MODE": "動画からフレームを抽出するか、既存の連番静止画フォルダをシーン画像として登録するかを選びます",
     "INPUT_VIDEO": "360°動画または通常動画を選択。参照ダイアログでは複数ファイルを選択できます",
     "INPUT_IMAGE_SEQUENCE": "すでに静止画として用意済みの画像フォルダを選択します。画像はシーンの images/ に登録され、以降のレビューとマスク工程で扱えます",
@@ -1477,11 +1477,11 @@ TIPS: dict[str, str] = {
     ),
     "APRILTAG_CONVERSION_PRESET": (
         "通常は自動のまま使います。\n"
-        "別の場所から持ち込んだCube6で推定が崩れる時だけ、変換時に選んだ出力先を選びます。\n"
-        "カスタムビューで出した場合は、自動のまま元のシーンフォルダで実行してください"
+        "JSON/PLYのCube6出力で推定が崩れる時だけ、変換時に選んだ出力先を選びます。\n"
+        "COLMAP形式データセットでは通常影響しません"
     ),
-    "APRILTAG_ESTIMATE": "現在選択中の投影済みCubemap出力の transforms.json と画像からAprilTagを検出し、メートル換算のスケールを推定します。エクイレクタングラー出力の場合は先にCubemap画像を書き出してください",
-    "APRILTAG_APPLY_SCALE": "推定した係数を現在選択中のCubemap出力の transforms.json と pointcloud.ply に掛けます。押すと対象ファイルを確認してから書き換えます。元ファイルはバックアップします",
+    "APRILTAG_ESTIMATE": "現在選択中のJSON/PLYまたはCOLMAP形式データセットからAprilTagを検出し、メートル換算のスケールを推定します。ERP 360°出力は先にPINHOLEのCubemapデータセットへ変換してください",
+    "APRILTAG_APPLY_SCALE": "推定した係数を現在選択中のデータセットのカメラ位置と点群に掛けます。押すと対象ファイルを確認してから書き換えます。元ファイルはバックアップします",
     "APRILTAG_RESULT": (
         "結果の読み方:\n"
         "観測=採用されたタグ検出数。多いほど安定しやすいです。\n"

@@ -124,10 +124,10 @@ from `scripts/`.
   and input-size/FOV/output-size checks should go through this module rather
   than adding ad hoc view parsing in image conversion code.
 - Cubemap command-line parsing lives in `core/cubemap_transforms_json_cli.py`.
-  `core/cubemap_transforms_json.py` remains the conversion implementation and a
-  compatibility module entry point; new orchestration should import the
-  implementation functions or use workflow/dataset job payloads instead of
-  duplicating CLI argument logic.
+  `core/cubemap_transforms_json.py` is a thin compatibility facade for CLI
+  entry and legacy imports. New orchestration should import the split
+  implementation modules directly or use workflow/dataset job payloads instead
+  of duplicating CLI argument logic.
 - COLMAP text conversion CLI parsing lives in `core/transforms_to_colmap_cli.py`;
   `core/transforms_to_colmap.py` owns the conversion implementation.
 - Cubemap and COLMAP exports must preserve coordinate profile semantics:

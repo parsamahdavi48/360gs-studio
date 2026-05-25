@@ -38,7 +38,7 @@ root直下の互換 `*.py` ラッパーは、アプリ構造に含めません�
 - RealityScan から LichtFeld 用 COLMAP への変換実装は `core/realityscan_to_lfs_colmap.py` に置きます。コマンドライン解析は `core/realityscan_to_lfs_colmap_cli.py` が担当し、GUI実行ではバージョン付き dataset job payload と `core/dataset_job_runner.py` を使います。
 - RealityScan CSV/PLY から NeRF 系 `transforms.json` への変換実装は `core/realityscan_to_transforms.py` に置き、コマンドライン解析は `core/realityscan_to_transforms_cli.py` が担当します。
 - Cubemapの視点セットとRemap仕様は `core/cubemap_view_spec.py` に集約します。デフォルトCube6、カスタム視点JSON、入力サイズ/FOV/出力サイズの検証はここを通し、画像変換実装側に個別の視点パースを増やしません。
-- Cubemap のコマンドライン解析は `core/cubemap_transforms_json_cli.py` に置きます。`core/cubemap_transforms_json.py` は変換実装と互換モジュール入口として残します。新しい orchestration では CLI 引数処理を複製せず、実装関数を直接 import するか workflow/dataset job payload を使います。
+- Cubemap のコマンドライン解析は `core/cubemap_transforms_json_cli.py` に置きます。`core/cubemap_transforms_json.py` はCLI入口と旧import向けの薄い互換facadeです。新しい orchestration では CLI 引数処理を複製せず、分割済み実装モジュールを直接 import するか workflow/dataset job payload を使います。
 - COLMAP text 変換のコマンドライン解析は `core/transforms_to_colmap_cli.py` に置き、`core/transforms_to_colmap.py` は変換実装を担当します。
 - キューブマップと COLMAP 出力では、座標プロファイルの意味を維持します。Postshot は標準キューブマップ変換、Brush は Brush 変換、LichtFeld のキューブマップ出力は Cubemap CLI で最終向き補正済みの `transforms.json` と `pointcloud.ply` を作ります。LichtFeld GUT向けERP 360°出力はキューブマップ化せずエクイレクタングラー入力を使い、直接データセット作成時に同じ最終向き補正を適用します。RealityScan再アライン用出力はStep 4のMetashapeルートで扱い、Metashapeインポート時の座標変換を相殺し、MetashapeのY-up姿勢をRealityScanのZ-up local Euclidean軸へ写してから `output/realityscan/` に cubemap 画像とXMPサイドカーを書き出します。RealityScan 側でアライン後に点群を再生成する前提なので、Metashape PLY は必須にせず渡しません。
 
