@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from core.cancellation import CancellationToken, raise_if_cancelled
 from core.dataset_job_spec import (
     JOB_KIND_METASHAPE_COLMAP,
     JOB_KIND_METASHAPE_NERF,
@@ -15,19 +16,20 @@ from core.metashape_nerf_dataset import export_metashape_nerf_dataset
 from core.realityscan_to_lfs_colmap import convert as convert_realityscan_to_lfs_colmap
 
 
-def run_dataset_job_file(path: str | Path) -> None:
-    run_dataset_job_payload(load_dataset_job(path))
+def run_dataset_job_file(path: str | Path, *, cancel_event: CancellationToken | None = None) -> None:
+    run_dataset_job_payload(load_dataset_job(path), cancel_event=cancel_event)
 
 
-def run_dataset_job_payload(job: dict) -> None:
+def run_dataset_job_payload(job: dict, *, cancel_event: CancellationToken | None = None) -> None:
     validate_dataset_job_payload(job)
+    raise_if_cancelled(cancel_event)
     kind = str(job["kind"])
     if kind == JOB_KIND_METASHAPE_COLMAP:
-        _run_metashape_colmap(job)
+        _run_metashape_colmap(job, cancel_event=cancel_event)
     elif kind == JOB_KIND_METASHAPE_NERF:
-        _run_metashape_nerf(job)
+        _run_metashape_nerf(job, cancel_event=cancel_event)
     elif kind == JOB_KIND_REALITYSCAN_LFS_COLMAP:
-        _run_realityscan_lfs_colmap(job)
+        _run_realityscan_lfs_colmap(job, cancel_event=cancel_event)
     else:
         raise ValueError(f"Unsupported dataset job kind: {kind}")
 
@@ -36,7 +38,8 @@ def _enabled_views(job: dict) -> list[dict]:
     return [dict(item) for item in job.get("views", []) if isinstance(item, dict) and bool(item.get("enabled", True))]
 
 
-def _run_metashape_colmap(job: dict) -> None:
+def _run_metashape_colmap(job: dict, *, cancel_event: CancellationToken | None = None) -> None:
+    raise_if_cancelled(cancel_event)
     result = export_metashape_colmap_dataset(
         scene_dir=Path(str(job["scene_dir"])),
         images_dir=Path(str(job["images_dir"])),
@@ -57,9 +60,11 @@ def _run_metashape_colmap(job: dict) -> None:
     print(f"Images: {result.image_count}", flush=True)
     print(f"Cameras: {result.camera_count}", flush=True)
     print(f"Actions: {json.dumps(result.action_counts, sort_keys=True)}", flush=True)
+    raise_if_cancelled(cancel_event)
 
 
-def _run_metashape_nerf(job: dict) -> None:
+def _run_metashape_nerf(job: dict, *, cancel_event: CancellationToken | None = None) -> None:
+    raise_if_cancelled(cancel_event)
     result = export_metashape_nerf_dataset(
         scene_dir=Path(str(job["scene_dir"])),
         images_dir=Path(str(job["images_dir"])),
@@ -82,9 +87,11 @@ def _run_metashape_nerf(job: dict) -> None:
         print(f"pointcloud.ply: {result.pointcloud}", flush=True)
     print(f"Frames: {result.frame_count}", flush=True)
     print(f"Actions: {json.dumps(result.action_counts, sort_keys=True)}", flush=True)
+    raise_if_cancelled(cancel_event)
 
 
-def _run_realityscan_lfs_colmap(job: dict) -> None:
+def _run_realityscan_lfs_colmap(job: dict, *, cancel_event: CancellationToken | None = None) -> None:
+    raise_if_cancelled(cancel_event)
     result = convert_realityscan_to_lfs_colmap(
         csv_path=Path(str(job["csv_path"])),
         output_dir=Path(str(job["output_dir"])),
@@ -101,3 +108,4 @@ def _run_realityscan_lfs_colmap(job: dict) -> None:
     print(f"Images: {result['num_images']}", flush=True)
     print(f"Cameras: {result['num_cameras']}", flush=True)
     print(f"Skipped missing images: {result['num_missing_images']}", flush=True)
+    raise_if_cancelled(cancel_event)

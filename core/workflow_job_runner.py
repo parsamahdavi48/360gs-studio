@@ -4,6 +4,7 @@ import json
 import shutil
 from pathlib import Path
 
+from core.cancellation import CancellationToken, raise_if_cancelled
 from core.colmap_rig_export import prepare_views_for_colmap, write_rig_config_json
 from core.cubemap_export_metadata import (
     collect_image_files,
@@ -53,30 +54,32 @@ from core.workflow_job_spec import (
 )
 
 
-def run_workflow_job_file(path: str | Path) -> None:
-    run_workflow_job_payload(load_workflow_job(path))
+def run_workflow_job_file(path: str | Path, *, cancel_event: CancellationToken | None = None) -> None:
+    run_workflow_job_payload(load_workflow_job(path), cancel_event=cancel_event)
 
 
-def run_workflow_job_payload(job: dict) -> None:
+def run_workflow_job_payload(job: dict, *, cancel_event: CancellationToken | None = None) -> None:
     validate_workflow_job_payload(job)
+    raise_if_cancelled(cancel_event)
     kind = str(job["kind"])
     if kind == JOB_KIND_METASHAPE_PREPROCESS:
-        _run_metashape_preprocess(job)
+        _run_metashape_preprocess(job, cancel_event=cancel_event)
     elif kind == JOB_KIND_CUBEMAP_CONVERSION:
-        _run_cubemap_conversion(job)
+        _run_cubemap_conversion(job, cancel_event=cancel_event)
     elif kind == JOB_KIND_TRANSFORMS_TO_COLMAP:
-        _run_transforms_to_colmap(job)
+        _run_transforms_to_colmap(job, cancel_event=cancel_event)
     elif kind == JOB_KIND_SPHERESFM_PREFLIGHT:
-        _run_spheresfm_preflight(job)
+        _run_spheresfm_preflight(job, cancel_event=cancel_event)
     elif kind == JOB_KIND_SPHERESFM_PREPARE:
-        _run_spheresfm_prepare(job)
+        _run_spheresfm_prepare(job, cancel_event=cancel_event)
     elif kind == JOB_KIND_SPHERESFM_TRANSFORMS:
-        _run_spheresfm_transforms(job)
+        _run_spheresfm_transforms(job, cancel_event=cancel_event)
     else:
         raise ValueError(f"Unsupported workflow job kind: {kind}")
 
 
-def _run_metashape_preprocess(job: dict) -> None:
+def _run_metashape_preprocess(job: dict, *, cancel_event: CancellationToken | None = None) -> None:
+    raise_if_cancelled(cancel_event)
     result = export_metashape_equirectangular_dataset(
         images_dir=Path(str(job["images_dir"])),
         xml_path=Path(str(job["xml_path"])),
@@ -89,9 +92,11 @@ def _run_metashape_preprocess(job: dict) -> None:
     print(f"Metashape frames: {result.num_frames}", flush=True)
     print(f"Metashape skipped: {result.num_skipped}", flush=True)
     print(f"Metashape camera model: {result.camera_model}", flush=True)
+    raise_if_cancelled(cancel_event)
 
 
-def _run_cubemap_conversion(job: dict) -> None:
+def _run_cubemap_conversion(job: dict, *, cancel_event: CancellationToken | None = None) -> None:
+    raise_if_cancelled(cancel_event)
     input_dir = Path(str(job["input_dir"]))
     output_dir = Path(str(job["output_dir"]))
     image_dir = Path(str(job.get("image_dir") or input_dir))
@@ -173,6 +178,7 @@ def _run_cubemap_conversion(job: dict) -> None:
             print(f"Image-only export: {len(image_files)} source images", flush=True)
         image_dir = source_image_dir
     else:
+        raise_if_cancelled(cancel_event)
         axis_mode = str(job.get("axis_mode") or "postshot")
         image_files, frame_yaw_offsets, input_size, output_size = transform_json(
             input_dir=str(input_dir),
@@ -192,6 +198,7 @@ def _run_cubemap_conversion(job: dict) -> None:
         if not image_files:
             raise ValueError("No frames were converted from transforms.json")
 
+    raise_if_cancelled(cancel_event)
     realityscan_manifest = None
     if bool(job.get("realityscan_xmp")):
         realityscan_manifest = write_realityscan_xmp_sidecars(
@@ -204,6 +211,7 @@ def _run_cubemap_conversion(job: dict) -> None:
         )
         print(f"RealityScan XMP sidecars: {realityscan_manifest['xmp_count']}", flush=True)
 
+    raise_if_cancelled(cancel_event)
     if float(job.get("yaw_offset_per_frame", 0.0)) != 0.0 and not colmap_rig:
         unique_offsets = sorted({round(y, 3) for y in frame_yaw_offsets})
         print(
@@ -238,6 +246,7 @@ def _run_cubemap_conversion(job: dict) -> None:
                 **common,
                 output_dir=str(output_dir),
                 rig_name=str(job.get("colmap_rig_name") or "rig1"),
+                cancel_event=cancel_event,
             )
             return
         convert_images(
@@ -245,12 +254,15 @@ def _run_cubemap_conversion(job: dict) -> None:
             output_image_dir=str(output_dir / "images"),
             output_mask_dir=str(output_dir / "masks"),
             frame_yaw_offsets=frame_yaw_offsets,
+            cancel_event=cancel_event,
         )
 
+    raise_if_cancelled(cancel_event)
     if bool(job.get("realityscan_xmp")) and bool(job.get("realityscan_mask_layers", True)) and export_masks:
         realityscan_manifest = write_realityscan_mask_layers(output_dir, manifest=realityscan_manifest)
         print(f"RealityScan mask layers: {realityscan_manifest['mask_layer_count']}", flush=True)
 
+    raise_if_cancelled(cancel_event)
     unposed_scene = str(job.get("realityscan_unposed_scene_dir") or "").strip()
     if bool(job.get("realityscan_xmp")) and bool(job.get("realityscan_unposed_images")) and unposed_scene:
         realityscan_manifest = append_realityscan_unposed_scene_images(
@@ -264,7 +276,8 @@ def _run_cubemap_conversion(job: dict) -> None:
         print(f"RealityScan unposed images: {realityscan_manifest['unposed_image_count']}", flush=True)
 
 
-def _run_transforms_to_colmap(job: dict) -> None:
+def _run_transforms_to_colmap(job: dict, *, cancel_event: CancellationToken | None = None) -> None:
+    raise_if_cancelled(cancel_event)
     result = convert_transforms_to_colmap(
         input_dir=Path(str(job["input_dir"])),
         json_name=str(job.get("json_name") or "transforms.json"),
@@ -277,24 +290,31 @@ def _run_transforms_to_colmap(job: dict) -> None:
         dataset_root = Path(dataset_root_text)
         asset_input_dir = Path(str(job.get("asset_input_dir") or job["input_dir"]))
         if bool(job.get("copy_images")):
-            count = _link_or_copy_tree(asset_input_dir / "images", dataset_root / "images")
+            count = _link_or_copy_tree(asset_input_dir / "images", dataset_root / "images", cancel_event=cancel_event)
             print(f"Dataset images: {count}", flush=True)
         if bool(job.get("copy_masks")):
-            count = _link_or_copy_tree(asset_input_dir / "masks", dataset_root / "masks")
+            count = _link_or_copy_tree(asset_input_dir / "masks", dataset_root / "masks", cancel_event=cancel_event)
             print(f"Dataset masks: {count}", flush=True)
     print(f"Wrote cameras.txt, images.txt, points3D.txt to {result['output_dir']}", flush=True)
     print(f"  Camera model: {result['camera_model']}", flush=True)
     print(f"  Images: {result['num_images']}", flush=True)
     print(f"  3D points: {result['num_points']}", flush=True)
+    raise_if_cancelled(cancel_event)
 
 
-def _link_or_copy_tree(source_dir: Path, destination_dir: Path) -> int:
+def _link_or_copy_tree(
+    source_dir: Path,
+    destination_dir: Path,
+    *,
+    cancel_event: CancellationToken | None = None,
+) -> int:
     source = Path(source_dir)
     if not source.is_dir():
         return 0
     destination = Path(destination_dir)
     copied = 0
     for source_file in sorted(source.rglob("*"), key=lambda path: str(path).lower()):
+        raise_if_cancelled(cancel_event)
         if not source_file.is_file():
             continue
         rel = source_file.relative_to(source)
@@ -303,7 +323,8 @@ def _link_or_copy_tree(source_dir: Path, destination_dir: Path) -> int:
     return copied
 
 
-def _run_spheresfm_preflight(job: dict) -> None:
+def _run_spheresfm_preflight(job: dict, *, cancel_event: CancellationToken | None = None) -> None:
+    raise_if_cancelled(cancel_event)
     colmap = str(job["colmap"])
     images_dir = Path(str(job["images_dir"]))
     work_dir = Path(str(job["work_dir"]))
@@ -320,19 +341,24 @@ def _run_spheresfm_preflight(job: dict) -> None:
     shutil.copy2(source, target)
     print(f"SphereSfM GPU preflight image: {source}", flush=True)
 
+    raise_if_cancelled(cancel_event)
     database = work_dir / "database.db"
     run_spheresfm_preflight_colmap_command(
         [colmap, "database_creator", "--database_path", str(database)],
         "SphereSfM preflight database_creator",
+        cancel_event=cancel_event,
     )
     run_spheresfm_preflight_colmap_command(
         build_spheresfm_preflight_feature_command(colmap, database, preflight_images, str(job["camera_params"])),
         "SphereSfM preflight feature_extractor",
+        cancel_event=cancel_event,
     )
     print("SphereSfM GPU preflight passed.", flush=True)
+    raise_if_cancelled(cancel_event)
 
 
-def _run_spheresfm_prepare(job: dict) -> None:
+def _run_spheresfm_prepare(job: dict, *, cancel_event: CancellationToken | None = None) -> None:
+    raise_if_cancelled(cancel_event)
     colmap = str(job["colmap"])
     images_dir = Path(str(job["images_dir"]))
     if not images_dir.is_dir():
@@ -354,9 +380,11 @@ def _run_spheresfm_prepare(job: dict) -> None:
         print(f"Prepared SphereSfM masks: copied={copied}, missing={missing}", flush=True)
     else:
         print("SphereSfM masks disabled.", flush=True)
+    raise_if_cancelled(cancel_event)
 
 
-def _run_spheresfm_transforms(job: dict) -> None:
+def _run_spheresfm_transforms(job: dict, *, cancel_event: CancellationToken | None = None) -> None:
+    raise_if_cancelled(cancel_event)
     result = convert_spheresfm_to_transforms(
         Path(str(job["sparse_dir"])),
         Path(str(job["output_dir"])),
@@ -372,3 +400,4 @@ def _run_spheresfm_transforms(job: dict) -> None:
     print(f"Images: {result['num_images']}", flush=True)
     print(f"Points: {result['num_points']}", flush=True)
     print(f"Result: {json.dumps(result, ensure_ascii=False, sort_keys=True)}", flush=True)
+    raise_if_cancelled(cancel_event)

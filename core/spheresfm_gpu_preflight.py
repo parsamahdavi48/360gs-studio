@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import subprocess
 import sys
+import time
 from pathlib import Path
 
+from core.cancellation import CancellationToken, raise_if_cancelled, terminate_process
 from core.path_safety import safe_clear_path
 from core.spheresfm_project import iter_images, validate_spheresfm_colmap  # noqa: F401
 
@@ -28,15 +30,32 @@ def reset_preflight_workspace(work_dir: Path) -> Path:
     return images_dir
 
 
-def run_colmap_command(cmd: list[str], label: str) -> None:
+def run_colmap_command(cmd: list[str], label: str, *, cancel_event: CancellationToken | None = None) -> None:
+    raise_if_cancelled(cancel_event)
     print("$ " + subprocess.list2cmdline(cmd), flush=True)
+    if cancel_event is None:
+        try:
+            result = subprocess.run(cmd, check=False)
+        except OSError as exc:
+            raise RuntimeError(f"{label} could not start: {exc}") from exc
+        if result.returncode != 0:
+            raise RuntimeError(f"{label} failed with exit code {result.returncode}")
+        return
+
     try:
-        result = subprocess.run(cmd, check=False)
+        proc = subprocess.Popen(cmd)
     except OSError as exc:
         raise RuntimeError(f"{label} could not start: {exc}") from exc
 
-    if result.returncode != 0:
-        raise RuntimeError(f"{label} failed with exit code {result.returncode}")
+    while proc.poll() is None:
+        if cancel_event is not None and cancel_event.is_set():
+            terminate_process(proc)
+            raise_if_cancelled(cancel_event)
+        time.sleep(0.05)
+
+    raise_if_cancelled(cancel_event)
+    if proc.returncode != 0:
+        raise RuntimeError(f"{label} failed with exit code {proc.returncode}")
 
 
 def build_feature_command(colmap: str, database: Path, images_dir: Path, camera_params: str) -> list[str]:

@@ -4,12 +4,15 @@ from __future__ import annotations
 import argparse
 import csv
 import json
+import queue
 import subprocess
 import tempfile
+import threading
 from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
+from core.cancellation import AppJobCancelled, CancellationToken, is_cancelled, raise_if_cancelled, terminate_process
 from core.extract_sessions import (
     build_session_record,
     load_manifest,
@@ -74,6 +77,7 @@ class ExtractFramesOptions:
     ffprobe: str = "ffprobe"
     estimate_only: bool = False
     print_summary_json: bool = False
+    cancel_event: CancellationToken | None = None
 
 
 def options_from_args(args: argparse.Namespace) -> ExtractFramesOptions:
@@ -141,9 +145,18 @@ def run_cmd(cmd: list[str], capture: bool = False) -> subprocess.CompletedProces
     )
 
 
-def run_cmd_with_ffmpeg_progress(cmd: list[str], phase: str, total_items: int) -> subprocess.CompletedProcess:
+def run_cmd_with_ffmpeg_progress(
+    cmd: list[str],
+    phase: str,
+    total_items: int,
+    *,
+    cancel_event: CancellationToken | None = None,
+) -> subprocess.CompletedProcess:
+    raise_if_cancelled(cancel_event)
     if total_items <= 0:
-        return run_cmd(cmd, capture=True)
+        proc = run_cmd(cmd, capture=True)
+        raise_if_cancelled(cancel_event)
+        return proc
 
     proc = subprocess.Popen(
         cmd,
@@ -155,20 +168,31 @@ def run_cmd_with_ffmpeg_progress(cmd: list[str], phase: str, total_items: int) -
         bufsize=1,
     )
     assert proc.stderr is not None
+    stderr_queue: queue.Queue[str | None] = queue.Queue()
+
+    def read_stderr() -> None:
+        try:
+            for raw_line in proc.stderr:
+                stderr_queue.put(raw_line)
+        finally:
+            stderr_queue.put(None)
+
+    stderr_thread = threading.Thread(target=read_stderr, daemon=True)
+    stderr_thread.start()
 
     progress_step = max(1, total_items // 100)
     last_reported = -1
     observed_frame = 0
     stderr_lines: list[str] = []
 
-    print(f"[progress] {phase} 0/{total_items} frames (0.0%)", flush=True)
-    for raw in proc.stderr:
+    def handle_progress_line(raw: str) -> None:
+        nonlocal last_reported, observed_frame
         line = raw.strip()
         if not line:
-            continue
+            return
         if "=" not in line:
             stderr_lines.append(line)
-            continue
+            return
         key, value = line.split("=", 1)
         key = key.strip()
         value = value.strip()
@@ -188,23 +212,47 @@ def run_cmd_with_ffmpeg_progress(cmd: list[str], phase: str, total_items: int) -
         }:
             stderr_lines.append(line)
         if key != "frame":
-            continue
+            return
         try:
             frame_count = int(value)
         except ValueError:
-            continue
+            return
 
         if frame_count < observed_frame:
-            continue
+            return
         observed_frame = frame_count
         if observed_frame == 0:
-            continue
+            return
 
         if observed_frame - last_reported >= progress_step or observed_frame >= total_items:
             shown = min(total_items, observed_frame)
             pct = min(100.0, (shown / float(total_items)) * 100.0)
             print(f"[progress] {phase} {shown}/{total_items} frames ({pct:.1f}%)", flush=True)
             last_reported = observed_frame
+
+    print(f"[progress] {phase} 0/{total_items} frames (0.0%)", flush=True)
+    stderr_done = False
+    try:
+        while True:
+            if is_cancelled(cancel_event):
+                terminate_process(proc)
+                raise AppJobCancelled()
+            try:
+                raw = stderr_queue.get(timeout=0.05)
+            except queue.Empty:
+                if proc.poll() is not None and stderr_done:
+                    break
+                if proc.poll() is not None and not stderr_thread.is_alive() and stderr_queue.empty():
+                    break
+                continue
+            if raw is None:
+                stderr_done = True
+                if proc.poll() is not None:
+                    break
+                continue
+            handle_progress_line(raw)
+    finally:
+        stderr_thread.join(timeout=1.0)
 
     proc.wait()
     if proc.returncode == 0 and last_reported < total_items:
@@ -297,7 +345,9 @@ def extract_selected_frames(
     filename_prefix: str,
     frame_digits: int,
     allow_partial_tail: bool = False,
+    cancel_event: CancellationToken | None = None,
 ) -> list[int]:
+    raise_if_cancelled(cancel_event)
     output_dir.mkdir(parents=True, exist_ok=True)
     tmp_dir = output_dir / "_tmp_extract"
     if tmp_dir.exists():
@@ -337,9 +387,15 @@ def extract_selected_frames(
             *quality_args,
             out_pattern,
         ]
-        proc = run_cmd_with_ffmpeg_progress(cmd, phase="extract", total_items=len(frame_indices))
+        proc = run_cmd_with_ffmpeg_progress(
+            cmd,
+            phase="extract",
+            total_items=len(frame_indices),
+            cancel_event=cancel_event,
+        )
 
         if proc.returncode != 0:
+            raise_if_cancelled(cancel_event)
             # Fallback when filter_script:v is unsupported by ffmpeg build.
             cmd = [
                 ffmpeg_bin,
@@ -359,9 +415,15 @@ def extract_selected_frames(
                 *quality_args,
                 out_pattern,
             ]
-            proc = run_cmd_with_ffmpeg_progress(cmd, phase="extract", total_items=len(frame_indices))
+            proc = run_cmd_with_ffmpeg_progress(
+                cmd,
+                phase="extract",
+                total_items=len(frame_indices),
+                cancel_event=cancel_event,
+            )
             stderr_text = (proc.stderr or "").lower()
             if proc.returncode != 0 and "unrecognized option" in stderr_text and "progress" in stderr_text:
+                raise_if_cancelled(cancel_event)
                 cmd = [
                     ffmpeg_bin,
                     "-hide_banner",
@@ -378,6 +440,7 @@ def extract_selected_frames(
                     out_pattern,
                 ]
                 proc = run_cmd(cmd, capture=True)
+                raise_if_cancelled(cancel_event)
             if proc.returncode != 0:
                 raise RuntimeError(f"ffmpeg extraction failed: {proc.stderr.strip()}")
     finally:
@@ -403,6 +466,7 @@ def extract_selected_frames(
     last_rename_report = 0
     print(f"[progress] finalize 0/{rename_total} files (0.0%)", flush=True)
     for seq, (src, frame_idx) in enumerate(zip(extracted_files, frame_indices, strict=True), start=1):
+        raise_if_cancelled(cancel_event)
         dst_name = frame_filename(filename_prefix, frame_idx, image_ext, frame_digits)
         dst_path = output_dir / dst_name
         if dst_path.exists():
@@ -1004,6 +1068,7 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
 
 
 def run_extract_frames(args: ExtractFramesOptions) -> int:
+    raise_if_cancelled(args.cancel_event)
     if args.interval_sec <= 0:
         print("Error: --interval-sec must be > 0")
         return 1
@@ -1041,6 +1106,7 @@ def run_extract_frames(args: ExtractFramesOptions) -> int:
         print(f"Error: input video not found: {input_video}")
         return 1
 
+    raise_if_cancelled(args.cancel_event)
     output_root = Path(args.output_dir)
     scene_dir = output_root.resolve()
     images_dir = scene_images_dir(scene_dir)
@@ -1049,8 +1115,13 @@ def run_extract_frames(args: ExtractFramesOptions) -> int:
 
     try:
         ensure_binary(args.ffmpeg, "ffmpeg")
+        raise_if_cancelled(args.cancel_event)
         ensure_binary(args.ffprobe, "ffprobe")
+        raise_if_cancelled(args.cancel_event)
         video_info = probe_video(input_video, args.ffprobe)
+        raise_if_cancelled(args.cancel_event)
+    except AppJobCancelled:
+        raise
     except Exception as e:
         print(f"Error: {e}")
         return 1
@@ -1079,6 +1150,7 @@ def run_extract_frames(args: ExtractFramesOptions) -> int:
         return 1
 
     if args.quick_extract:
+        raise_if_cancelled(args.cancel_event)
         total_frames = total_frames_for_fixed_selection(video_info)
         try:
             selected, min_gap_frames = select_fixed(total_frames, video_info.fps, args.interval_sec)
@@ -1090,6 +1162,7 @@ def run_extract_frames(args: ExtractFramesOptions) -> int:
         print("Quick extract: skipping analysis and motion adjustment")
     else:
         try:
+            raise_if_cancelled(args.cancel_event)
             ensure_python_deps()
             pair_thresholds = resolve_pair_thresholds(
                 args.interval_sec,
@@ -1126,7 +1199,10 @@ def run_extract_frames(args: ExtractFramesOptions) -> int:
                 track_min_confidence=args.pair_track_min_confidence,
                 track_min_count=args.pair_track_min_count,
                 progress_phase="analyze",
+                cancel_event=args.cancel_event,
             )
+        except AppJobCancelled:
+            raise
         except Exception as e:
             print(f"Error during pair analysis: {e}")
             return 1
@@ -1152,6 +1228,7 @@ def run_extract_frames(args: ExtractFramesOptions) -> int:
     )
 
     if args.estimate_only:
+        raise_if_cancelled(args.cancel_event)
         print(f"Estimated selected frames: {summary['result']['selected_count']}")
         if not args.quick_extract:
             print(f"Estimated pair novelty additions: {summary['result'].get('novelty_added_count', 0)}")
@@ -1237,7 +1314,15 @@ def run_extract_frames(args: ExtractFramesOptions) -> int:
             resolved_prefix,
             summary["params"]["frame_number_digits"],
             allow_partial_tail=args.quick_extract,
+            cancel_event=args.cancel_event,
         )
+    except AppJobCancelled:
+        tmp_extract_dir = extraction_output_dir / "_tmp_extract"
+        if tmp_extract_dir.exists():
+            safe_clear_path(tmp_extract_dir, allowed_roots=[extraction_output_dir])
+        if staging_dir is not None and staging_dir.exists():
+            safe_clear_path(staging_dir, allowed_roots=[frame_cache_dir(scene_dir)])
+        raise
     except Exception as e:
         if staging_dir is not None:
             if staging_dir.exists():
@@ -1245,6 +1330,7 @@ def run_extract_frames(args: ExtractFramesOptions) -> int:
         print(f"Error during extraction: {e}")
         return 1
 
+    raise_if_cancelled(args.cancel_event)
     if extracted_indices != final_indices:
         extracted_set = set(extracted_indices)
         enriched_rows = [r for r in enriched_rows if int(r["final_index"]) in extracted_set]
@@ -1269,7 +1355,10 @@ def run_extract_frames(args: ExtractFramesOptions) -> int:
 
     if staging_dir is not None:
         try:
+            raise_if_cancelled(args.cancel_event)
             removed = commit_staged_frame_outputs(scene_dir, staging_dir, output_files, replaced_output_files)
+        except AppJobCancelled:
+            raise
         except Exception as e:
             print(f"Error while committing replacement frames: {e}")
             return 1
@@ -1277,6 +1366,7 @@ def run_extract_frames(args: ExtractFramesOptions) -> int:
             f"Replaced prior sessions for this video: {len(matching_sessions)} session(s), {removed} file(s) replaced/removed"
         )
 
+    raise_if_cancelled(args.cancel_event)
     write_selected_csv(
         enriched_rows,
         csv_path,
@@ -1305,6 +1395,7 @@ def run_extract_frames(args: ExtractFramesOptions) -> int:
     else:
         manifest["sessions"] = [*active_manifest_sessions, session_record]
     save_manifest(scene_dir, manifest)
+    raise_if_cancelled(args.cancel_event)
     write_report(
         report_path,
         args,
@@ -1351,6 +1442,7 @@ def run_extract_frames(args: ExtractFramesOptions) -> int:
     print(f"Report: {report_path}")
     if args.print_summary_json:
         print("SUMMARY_JSON:" + json.dumps(summary, ensure_ascii=False))
+    raise_if_cancelled(args.cancel_event)
     return 0
 
 

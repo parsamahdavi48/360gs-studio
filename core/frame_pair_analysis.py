@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import BinaryIO
 
+from core.cancellation import CancellationToken, is_cancelled, raise_if_cancelled, terminate_process
 from core.video_info import VideoInfo
 
 try:
@@ -641,6 +642,7 @@ def analyze_pair_selection(
     track_min_confidence: float,
     track_min_count: int,
     progress_phase: str = "analyze",
+    cancel_event: CancellationToken | None = None,
 ) -> tuple[list[dict], int, int, int, int, int]:
     """Streaming pair analysis for GUI extraction.
 
@@ -657,6 +659,7 @@ def analyze_pair_selection(
     if max_gap_sec < min_gap_sec:
         raise ValueError("--max-gap-sec must be >= --min-gap-sec")
 
+    raise_if_cancelled(cancel_event)
     out_w, out_h = scaled_dimensions(video_info.width, video_info.height, analysis_width)
     vf = f"scale={out_w}:{out_h}:flags=bilinear,format=gray"
     cmd = [
@@ -684,6 +687,18 @@ def analyze_pair_selection(
         daemon=True,
     )
     stderr_thread.start()
+    cancel_watch_stop = threading.Event()
+
+    def cancel_watch() -> None:
+        while not cancel_watch_stop.wait(0.05):
+            if is_cancelled(cancel_event):
+                terminate_process(proc)
+                return
+
+    cancel_watch_thread: threading.Thread | None = None
+    if cancel_event is not None:
+        cancel_watch_thread = threading.Thread(target=cancel_watch, daemon=True)
+        cancel_watch_thread.start()
 
     frame_size = out_w * out_h
     gate_w, gate_h = pair_gate_dimensions(out_w, out_h)
@@ -914,11 +929,13 @@ def analyze_pair_selection(
 
     try:
         while True:
+            raise_if_cancelled(cancel_event)
             raw = proc.stdout.read(frame_size)
             if not raw:
                 break
             if len(raw) < frame_size:
                 break
+            raise_if_cancelled(cancel_event)
 
             frame = np.frombuffer(raw, dtype=np.uint8).reshape((out_h, out_w))
             idx = last_frame_idx + 1
@@ -1053,10 +1070,16 @@ def analyze_pair_selection(
 
             emit_progress(idx + 1)
     finally:
+        cancel_watch_stop.set()
+        if is_cancelled(cancel_event):
+            terminate_process(proc)
         ret = proc.wait()
         stderr_thread.join()
+        if cancel_watch_thread is not None:
+            cancel_watch_thread.join(timeout=1.0)
         stderr_text = b"".join(stderr_chunks).decode("utf-8", errors="replace")
 
+    raise_if_cancelled(cancel_event)
     if ret != 0:
         raise RuntimeError(f"ffmpeg pair analysis failed: {stderr_text.strip()}")
     if last_frame_idx < 0 or last_frame is None:

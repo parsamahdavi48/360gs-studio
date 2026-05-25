@@ -2,24 +2,27 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from core.cancellation import CancellationToken, raise_if_cancelled
 from core.colmap_mixed_project import prepare_colmap_mixed_project
 from core.sfm_job_spec import JOB_KIND_COLMAP_MIXED_PROJECT, load_sfm_job, validate_sfm_job_payload
 
 
-def run_sfm_job_file(path: str | Path) -> None:
-    run_sfm_job_payload(load_sfm_job(path))
+def run_sfm_job_file(path: str | Path, *, cancel_event: CancellationToken | None = None) -> None:
+    run_sfm_job_payload(load_sfm_job(path), cancel_event=cancel_event)
 
 
-def run_sfm_job_payload(job: dict) -> None:
+def run_sfm_job_payload(job: dict, *, cancel_event: CancellationToken | None = None) -> None:
     validate_sfm_job_payload(job)
+    raise_if_cancelled(cancel_event)
     kind = str(job["kind"])
     if kind == JOB_KIND_COLMAP_MIXED_PROJECT:
-        _run_colmap_mixed_project(job)
+        _run_colmap_mixed_project(job, cancel_event=cancel_event)
         return
     raise ValueError(f"Unsupported SfM job kind: {kind}")
 
 
-def _run_colmap_mixed_project(job: dict) -> None:
+def _run_colmap_mixed_project(job: dict, *, cancel_event: CancellationToken | None = None) -> None:
+    raise_if_cancelled(cancel_event)
     result = prepare_colmap_mixed_project(
         job["scene_dir"],
         job["output_dir"],
@@ -34,7 +37,9 @@ def _run_colmap_mixed_project(job: dict) -> None:
         workers=str(job["workers"]),
         remap_cache_limit=str(job["remap_cache_limit"]),
         rig_name=str(job["rig_name"]),
+        cancel_event=cancel_event,
     )
     for warning in result.warnings:
         print(f"Warning: {warning}", flush=True)
     print(f"Saved COLMAP mixed project manifest: {result.manifest_path}", flush=True)
+    raise_if_cancelled(cancel_event)

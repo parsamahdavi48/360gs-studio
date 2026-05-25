@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from threading import Event
 
 import pytest
 
@@ -69,6 +70,7 @@ def test_extract_video_frame_job_runner_passes_typed_options(tmp_path: Path, mon
         print_summary_json=True,
     )
     captured: dict[str, ExtractFramesOptions] = {}
+    cancel_marker = Event()
 
     def fake_run_extract_frames(options: ExtractFramesOptions) -> int:
         captured["options"] = options
@@ -76,7 +78,7 @@ def test_extract_video_frame_job_runner_passes_typed_options(tmp_path: Path, mon
 
     monkeypatch.setattr("core.extract_frames.run_extract_frames", fake_run_extract_frames)
 
-    _run_extract_video(payload)
+    _run_extract_video(payload, cancel_event=cancel_marker)
 
     options = captured["options"]
     assert isinstance(options, ExtractFramesOptions)
@@ -96,6 +98,7 @@ def test_extract_video_frame_job_runner_passes_typed_options(tmp_path: Path, mon
     assert options.allow_duplicate_video is True
     assert options.estimate_only is True
     assert options.print_summary_json is True
+    assert options.cancel_event is cancel_marker
 
 
 def test_import_image_sequence_frame_job_round_trips(tmp_path: Path) -> None:

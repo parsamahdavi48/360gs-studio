@@ -882,7 +882,7 @@ def main(argv: list[str] | None = None) -> int:
     add_ext = args.add_ext
 
     if not os.path.isdir(input_dir) and not os.path.isfile(input_dir):
-        print("python yolo_mask.py {images_dir} {masks_dir}", flush=True)
+        print("python -m core.yolo_mask {images_dir} {masks_dir}", flush=True)
         print(os.getcwd(), flush=True)
         clear_runtime_context()
         return 1

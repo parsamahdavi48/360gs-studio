@@ -688,8 +688,6 @@ class MainWindow(QWidget):
             self._update_run_button()
             return
         self.runner.cancel()
-        self.progress.finish_phase(complete=False)
-        self.progress.set_status(i18n.STATUS_CANCELED)
         self._update_run_button()
 
     def _on_line(self, line: str) -> None:
@@ -722,6 +720,8 @@ class MainWindow(QWidget):
 
     def _on_phase_finished(self, phase: str, exit_code: int, canceled: bool) -> None:
         self.progress.finish_phase(complete=exit_code == 0 and not canceled)
+        if canceled:
+            self.progress.set_status(i18n.STATUS_CANCELED)
         step = self.steps[self._current_step] if 0 <= self._current_step < len(self.steps) else None
         if step:
             step.on_phase_finished(phase, exit_code, canceled)

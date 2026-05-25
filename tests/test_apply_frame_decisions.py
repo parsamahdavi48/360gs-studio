@@ -511,3 +511,13 @@ def test_untracked_image_paths_reports_images_not_in_selected_csv(tmp_path: Path
     stale.write_bytes(b"old")
 
     assert untracked_image_paths(scene) == [stale]
+
+
+def test_untracked_image_paths_reports_nested_images_not_in_selected_csv(tmp_path: Path):
+    scene = _make_scene(tmp_path, num_frames=2)
+    nested = scene / "images" / "nested"
+    nested.mkdir()
+    stale = nested / "stale.jpg"
+    stale.write_bytes(b"old")
+
+    assert untracked_image_paths(scene) == [stale]

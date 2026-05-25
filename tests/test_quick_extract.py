@@ -2,8 +2,13 @@ from __future__ import annotations
 
 import argparse
 import subprocess
+import sys
 from pathlib import Path
+from threading import Event, Timer
 
+import pytest
+
+from core.cancellation import AppJobCancelled
 from core.extract_frames import (
     VideoInfo,
     build_quick_extract_rows,
@@ -11,6 +16,7 @@ from core.extract_frames import (
     build_summary_from_counts,
     commit_staged_frame_outputs,
     extract_selected_frames,
+    run_cmd_with_ffmpeg_progress,
 )
 
 
@@ -113,6 +119,32 @@ def test_quick_extract_allows_missing_trailing_frame_outputs(tmp_path: Path, mon
     assert (tmp_path / "images" / "clip_00.jpg").read_bytes() == b"a"
     assert (tmp_path / "images" / "clip_10.jpg").read_bytes() == b"b"
     assert not (tmp_path / "images" / "clip_20.jpg").exists()
+
+
+def test_ffmpeg_progress_command_terminates_on_cancel() -> None:
+    cancel_event = Event()
+    timer = Timer(0.15, cancel_event.set)
+    timer.start()
+    try:
+        with pytest.raises(AppJobCancelled):
+            run_cmd_with_ffmpeg_progress(
+                [
+                    sys.executable,
+                    "-c",
+                    (
+                        "import sys,time\n"
+                        "for i in range(100):\n"
+                        "    sys.stderr.write(f'frame={i}\\n')\n"
+                        "    sys.stderr.flush()\n"
+                        "    time.sleep(0.05)\n"
+                    ),
+                ],
+                phase="extract",
+                total_items=100,
+                cancel_event=cancel_event,
+            )
+    finally:
+        timer.cancel()
 
 
 def test_staged_replace_keeps_existing_frames_until_commit(tmp_path: Path, monkeypatch) -> None:

@@ -141,7 +141,7 @@ def untracked_image_paths(
         if row.get("output_file", "").strip()
     }
     pending: list[Path] = []
-    for path in sorted(root.iterdir(), key=lambda p: p.name.lower()):
+    for path in sorted(root.rglob("*"), key=lambda p: str(p.relative_to(root)).lower()):
         if not path.is_file() or not is_image_file(path):
             continue
         if str(path.resolve()) not in tracked:

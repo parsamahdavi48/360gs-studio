@@ -150,3 +150,10 @@ def test_profile_json_records_timing_without_changing_normal_masks(
     assert profile["images"][0]["file"] == "frame_0001.jpg"
     assert profile["images"][0]["shape"] == {"height": 8, "width": 16}
     assert profile["images"][0]["timings_sec"]["image.total"] >= profile["images"][0]["timings_sec"]["image.read"]
+
+
+def test_missing_input_usage_mentions_module_entrypoint(capsys: pytest.CaptureFixture[str], tmp_path: Path) -> None:
+    exit_code = yolo_mask.main([str(tmp_path / "missing"), str(tmp_path / "masks")])
+
+    assert exit_code == 1
+    assert "python -m core.yolo_mask {images_dir} {masks_dir}" in capsys.readouterr().out

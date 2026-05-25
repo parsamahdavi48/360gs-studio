@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any
 
 from core.apply_frame_decisions import apply_decisions
+from core.cancellation import CancellationToken, raise_if_cancelled
 from core.frame_job_spec import (
     JOB_KIND_APPLY_FRAME_DECISIONS,
     JOB_KIND_EXTRACT_VIDEO,
@@ -15,28 +16,30 @@ from core.frame_job_spec import (
 from core.image_sequence_import import import_image_sequence_folder
 
 
-def run_frame_job_file(path: str | Path) -> None:
-    run_frame_job_payload(load_frame_job(path))
+def run_frame_job_file(path: str | Path, *, cancel_event: CancellationToken | None = None) -> None:
+    run_frame_job_payload(load_frame_job(path), cancel_event=cancel_event)
 
 
-def run_frame_job_payload(job: dict[str, Any]) -> None:
+def run_frame_job_payload(job: dict[str, Any], *, cancel_event: CancellationToken | None = None) -> None:
     validate_frame_job_payload(job)
+    raise_if_cancelled(cancel_event)
     kind = str(job["kind"])
     if kind == JOB_KIND_EXTRACT_VIDEO:
-        _run_extract_video(job)
+        _run_extract_video(job, cancel_event=cancel_event)
         return
     if kind == JOB_KIND_IMPORT_IMAGE_SEQUENCE:
-        _run_import_image_sequence(job)
+        _run_import_image_sequence(job, cancel_event=cancel_event)
         return
     if kind == JOB_KIND_APPLY_FRAME_DECISIONS:
-        _run_apply_frame_decisions(job)
+        _run_apply_frame_decisions(job, cancel_event=cancel_event)
         return
     raise ValueError(f"Unsupported frame job kind: {kind}")
 
 
-def _run_extract_video(job: dict[str, Any]) -> None:
+def _run_extract_video(job: dict[str, Any], *, cancel_event: CancellationToken | None = None) -> None:
     from core.extract_frames import ExtractFramesOptions, run_extract_frames
 
+    raise_if_cancelled(cancel_event)
     options = ExtractFramesOptions(
         input_video=Path(str(job["input_video"])),
         output_dir=Path(str(job["scene_dir"])),
@@ -56,6 +59,7 @@ def _run_extract_video(job: dict[str, Any]) -> None:
         allow_duplicate_video=bool(job["allow_duplicate_video"]),
         estimate_only=bool(job["estimate_only"]),
         print_summary_json=bool(job["print_summary_json"]),
+        cancel_event=cancel_event,
     )
 
     exit_code = int(run_extract_frames(options) or 0)
@@ -63,7 +67,8 @@ def _run_extract_video(job: dict[str, Any]) -> None:
         raise RuntimeError(f"Frame extraction failed with exit code {exit_code}")
 
 
-def _run_import_image_sequence(job: dict[str, Any]) -> None:
+def _run_import_image_sequence(job: dict[str, Any], *, cancel_event: CancellationToken | None = None) -> None:
+    raise_if_cancelled(cancel_event)
     result = import_image_sequence_folder(
         Path(str(job["source_dir"])),
         Path(str(job["scene_dir"])),
@@ -84,9 +89,11 @@ def _run_import_image_sequence(job: dict[str, Any]) -> None:
         ),
         flush=True,
     )
+    raise_if_cancelled(cancel_event)
 
 
-def _run_apply_frame_decisions(job: dict[str, Any]) -> None:
+def _run_apply_frame_decisions(job: dict[str, Any], *, cancel_event: CancellationToken | None = None) -> None:
+    raise_if_cancelled(cancel_event)
     scene_dir = Path(str(job["scene_dir"])).resolve()
     backup_dir: Path | None = None
     if str(job.get("backup_dir") or ""):
@@ -101,3 +108,4 @@ def _run_apply_frame_decisions(job: dict[str, Any]) -> None:
         backup_dir=backup_dir,
         renumber_kept_images=bool(job.get("renumber_kept_images")),
     )
+    raise_if_cancelled(cancel_event)

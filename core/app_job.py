@@ -4,6 +4,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from core.cancellation import CancellationToken
+
 APP_JOB_DATASET = "dataset"
 APP_JOB_FRAME = "frame"
 APP_JOB_SFM = "sfm"
@@ -45,25 +47,25 @@ def sfm_app_job(payload: dict[str, Any], job_path: str | Path | None = None) -> 
     return AppJob(APP_JOB_SFM, dict(payload), Path(job_path) if job_path else None)
 
 
-def run_app_job(job: AppJob) -> None:
+def run_app_job(job: AppJob, *, cancel_event: CancellationToken | None = None) -> None:
     if job.job_type == APP_JOB_WORKFLOW:
         from core.workflow_job_runner import run_workflow_job_payload
 
-        run_workflow_job_payload(job.payload)
+        run_workflow_job_payload(job.payload, cancel_event=cancel_event)
         return
     if job.job_type == APP_JOB_DATASET:
         from core.dataset_job_runner import run_dataset_job_payload
 
-        run_dataset_job_payload(job.payload)
+        run_dataset_job_payload(job.payload, cancel_event=cancel_event)
         return
     if job.job_type == APP_JOB_FRAME:
         from core.frame_job_runner import run_frame_job_payload
 
-        run_frame_job_payload(job.payload)
+        run_frame_job_payload(job.payload, cancel_event=cancel_event)
         return
     if job.job_type == APP_JOB_SFM:
         from core.sfm_job_runner import run_sfm_job_payload
 
-        run_sfm_job_payload(job.payload)
+        run_sfm_job_payload(job.payload, cancel_event=cancel_event)
         return
     raise ValueError(f"Unsupported app job type: {job.job_type}")

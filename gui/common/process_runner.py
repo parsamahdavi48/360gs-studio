@@ -9,11 +9,13 @@ from collections.abc import Callable
 from contextlib import redirect_stderr, redirect_stdout
 from datetime import datetime
 from pathlib import Path
+from threading import Event
 from typing import TextIO
 
 from PySide6.QtCore import QObject, QProcess, QProcessEnvironment, QThread, QTimer, Signal, Slot
 
 from core.app_job import AppJob, run_app_job
+from core.cancellation import AppJobCancelled
 from gui.common.runner_types import StepCommand, StepCommandPhase, StepCommandQueue
 
 
@@ -41,17 +43,24 @@ class _InternalJobWorker(QObject):
     line_received = Signal(str)
     finished = Signal(int)
 
-    def __init__(self, job: AppJob) -> None:
+    def __init__(self, job: AppJob, cancel_event: Event) -> None:
         super().__init__()
         self._job = job
+        self._cancel_event = cancel_event
 
     @Slot()
     def run(self) -> None:
         writer = _SignalWriter(self.line_received.emit)
         try:
             with redirect_stdout(writer), redirect_stderr(writer):
-                run_app_job(self._job)
+                run_app_job(self._job, cancel_event=self._cancel_event)
             writer.flush()
+        except AppJobCancelled as exc:
+            writer.flush()
+            message = str(exc).strip() or "Canceled."
+            self.line_received.emit(message)
+            self.finished.emit(1)
+            return
         except Exception:
             writer.flush()
             for line in traceback.format_exc().splitlines():
@@ -95,11 +104,15 @@ class ProcessRunner(QObject):
         self._queue_total = 0
         self._internal_thread: QThread | None = None
         self._internal_worker: _InternalJobWorker | None = None
+        self._internal_cancel_event: Event | None = None
 
     # -- public API --
 
     def is_running(self) -> bool:
         return self._running
+
+    def is_internal_job_running(self) -> bool:
+        return self._internal_thread is not None
 
     @property
     def current_phase(self) -> str:
@@ -143,7 +156,9 @@ class ProcessRunner(QObject):
         if self._proc is not None:
             self._terminate_gracefully(self._proc, self._current_phase)
         elif self._internal_thread is not None:
-            self._emit_line(f"[{self._current_phase}] キャンセル要求を受け付けました。現在の内部処理完了後に停止します。")
+            if self._internal_cancel_event is not None:
+                self._internal_cancel_event.set()
+            self._emit_line(f"[{self._current_phase}] キャンセル中...")
 
     # -- internal --
 
@@ -184,7 +199,8 @@ class ProcessRunner(QObject):
 
     def _run_internal_job(self, job: AppJob) -> None:
         thread = QThread(self)
-        worker = _InternalJobWorker(job)
+        cancel_event = Event()
+        worker = _InternalJobWorker(job, cancel_event)
         worker.moveToThread(thread)
         worker.line_received.connect(self._emit_line)
         worker.finished.connect(self._on_internal_finished)
@@ -194,11 +210,13 @@ class ProcessRunner(QObject):
         thread.started.connect(worker.run)
         self._internal_thread = thread
         self._internal_worker = worker
+        self._internal_cancel_event = cancel_event
         thread.start()
 
     def _on_internal_finished(self, exit_code: int) -> None:
         self._internal_thread = None
         self._internal_worker = None
+        self._internal_cancel_event = None
         self._finish_phase(exit_code)
 
     def _on_output(self) -> None:

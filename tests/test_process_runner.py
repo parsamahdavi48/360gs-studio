@@ -8,6 +8,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from PySide6.QtWidgets import QApplication
 
 from core.app_job import AppJob
+from core.cancellation import AppJobCancelled
 from gui.common.process_runner import ProcessRunner
 
 
@@ -115,7 +116,8 @@ def test_process_runner_runs_internal_app_job(monkeypatch, tmp_path: Path) -> No
     lines: list[str] = []
     finished: list[bool] = []
 
-    def fake_run_app_job(job: AppJob) -> None:
+    def fake_run_app_job(job: AppJob, *, cancel_event=None) -> None:
+        assert cancel_event is not None
         print(f"internal {job.job_type}:{job.kind}")
 
     monkeypatch.setattr("gui.common.process_runner.run_app_job", fake_run_app_job)
@@ -130,6 +132,42 @@ def test_process_runner_runs_internal_app_job(monkeypatch, tmp_path: Path) -> No
         assert finished == [True]
         assert any("app-job workflow unit_test" in line for line in lines)
         assert any("internal workflow:unit_test" in line for line in lines)
+    finally:
+        if runner.is_running():
+            runner.cancel()
+            _process_events_until(app, lambda: not runner.is_running())
+
+
+def test_process_runner_cancels_internal_app_job(monkeypatch, tmp_path: Path) -> None:
+    app = _app()
+    runner = ProcessRunner()
+    lines: list[str] = []
+    finished: list[bool] = []
+    cancel_events: list[object] = []
+
+    def fake_run_app_job(job: AppJob, *, cancel_event=None) -> None:
+        assert job.kind == "unit_test"
+        assert cancel_event is not None
+        cancel_events.append(cancel_event)
+        while not cancel_event.is_set():
+            time.sleep(0.01)
+        raise AppJobCancelled()
+
+    monkeypatch.setattr("gui.common.process_runner.run_app_job", fake_run_app_job)
+    runner.line_received.connect(lines.append)
+    runner.queue_finished.connect(finished.append)
+
+    job = AppJob("workflow", {"kind": "unit_test"}, tmp_path / "job.json")
+    runner.start_queue([("internal", job)], log_dir=tmp_path)
+
+    try:
+        assert _process_events_until(app, lambda: bool(cancel_events))
+        runner.cancel()
+        assert _process_events_until(app, lambda: bool(finished))
+        assert finished == [False]
+        assert not runner.is_running()
+        assert any("キャンセル中" in line for line in lines)
+        assert any("Operation canceled" in line for line in lines)
     finally:
         if runner.is_running():
             runner.cancel()

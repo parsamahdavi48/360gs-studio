@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from core.cancellation import CancellationToken, raise_if_cancelled
 from core.colmap_normal_camera_contract import (
     COLMAP_NORMAL_CAMERA_MODEL,
     normal_camera_group_for_image,
@@ -78,10 +79,13 @@ def prepare_colmap_mixed_project(
     workers: str | int = "auto",
     remap_cache_limit: str | int = "auto",
     rig_name: str = DEFAULT_RIG_NAME,
+    cancel_event: CancellationToken | None = None,
 ) -> ColmapMixedProjectResult:
+    raise_if_cancelled(cancel_event)
     scene = Path(scene_dir)
     output = Path(output_dir)
     inventory = build_scene_inventory(scene)
+    raise_if_cancelled(cancel_event)
     plan = build_colmap_mixed_sfm_input_plan(inventory)
     if plan.issues:
         details = "; ".join(issue.message for issue in plan.issues)
@@ -97,6 +101,7 @@ def prepare_colmap_mixed_project(
     project_dir.mkdir(parents=True, exist_ok=True)
 
     views = _load_or_normalize_views(views_json=views_json, views=views)
+    raise_if_cancelled(cancel_event)
     rig_image_names: list[str] = []
     rig_groups: list[ColmapErpRigGroup] = []
     warnings: list[str] = []
@@ -132,6 +137,7 @@ def prepare_colmap_mixed_project(
             export_masks=write_masks,
         )
         for group in rig_groups:
+            raise_if_cancelled(cancel_event)
             rig_image_names.extend(group.image_names)
             if not (write_images or write_masks):
                 continue
@@ -154,9 +160,11 @@ def prepare_colmap_mixed_project(
                 export_masks=write_masks,
                 workers=workers,
                 remap_cache_limit=remap_cache_limit,
+                cancel_event=cancel_event,
             )
         print(f"COLMAP rig images prepared: {len(rig_image_names)} ({rig_path})", flush=True)
 
+    raise_if_cancelled(cancel_event)
     normal_image_names, normal_group_image_names = _link_normal_images(
         normal_images,
         project_images_dir,
@@ -164,7 +172,9 @@ def prepare_colmap_mixed_project(
         write_images=write_images,
         write_masks=write_masks,
         warnings=warnings,
+        cancel_event=cancel_event,
     )
+    raise_if_cancelled(cancel_event)
 
     rig_list = project_dir / COLMAP_RIG_IMAGE_LIST
     normal_list = project_dir / COLMAP_NORMAL_IMAGE_LIST
@@ -327,11 +337,13 @@ def _link_normal_images(
     write_images: bool,
     write_masks: bool,
     warnings: list[str],
+    cancel_event: CancellationToken | None = None,
 ) -> tuple[list[str], dict[str, list[str]]]:
     names: list[str] = []
     group_names: dict[str, list[str]] = {}
     total = len(images)
     for index, image in enumerate(images, start=1):
+        raise_if_cancelled(cancel_event)
         group = normal_camera_group_for_image(image)
         rel = Path(group.image_dir) / _normal_filename(image, index, total)
         image_dest = project_images_dir / rel

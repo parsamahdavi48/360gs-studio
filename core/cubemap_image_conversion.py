@@ -2,13 +2,14 @@ from __future__ import annotations
 
 import os
 from collections import OrderedDict
-from concurrent.futures import ProcessPoolExecutor, as_completed
+from concurrent.futures import FIRST_COMPLETED, ProcessPoolExecutor, wait
 from pathlib import Path
 
 import cv2
 import numpy as np
 from PIL import Image
 
+from core.cancellation import CancellationToken, raise_if_cancelled
 from core.colmap_rig_export import (
     colmap_camera_image_dir,
     colmap_camera_mask_dir,
@@ -515,6 +516,7 @@ def _run_bounded_conversion_jobs(
     total_outputs: int,
     max_workers: int,
     failure_context: str,
+    cancel_event: CancellationToken | None = None,
 ) -> None:
     """Run conversion jobs without materializing a Future for every input frame."""
     pending_limit = max(1, int(max_workers) * 2)
@@ -524,6 +526,7 @@ def _run_bounded_conversion_jobs(
 
     def submit_until_limit() -> None:
         while len(pending) < pending_limit:
+            raise_if_cancelled(cancel_event)
             try:
                 job = next(job_iter)
             except StopIteration:
@@ -534,10 +537,16 @@ def _run_bounded_conversion_jobs(
             except Exception as e:
                 failures.append((label, e))
 
+    raise_if_cancelled(cancel_event)
     submit_until_limit()
     done = 0
-    while pending:
-        for future in as_completed(tuple(pending)):
+    try:
+        while pending:
+            raise_if_cancelled(cancel_event)
+            finished, _not_done = wait(tuple(pending), timeout=0.1, return_when=FIRST_COMPLETED)
+            if not finished:
+                continue
+            future = next(iter(finished))
             frame_file = pending.pop(future)
             try:
                 done += future.result()
@@ -546,7 +555,10 @@ def _run_bounded_conversion_jobs(
                 failures.append((frame_file, e))
                 print(f"Worker failed: {frame_file}: {e}", flush=True)
             submit_until_limit()
-            break
+    except Exception:
+        for future in pending:
+            future.cancel()
+        raise
 
     _raise_worker_failures(failures, failure_context)
 
@@ -571,7 +583,9 @@ def convert_images(
     export_masks: bool = True,
     workers: str | int | None = "auto",
     remap_cache_limit: str | int | None = "auto",
+    cancel_event: CancellationToken | None = None,
 ) -> None:
+    raise_if_cancelled(cancel_event)
     if frame_yaw_offsets is None:
         frame_yaw_offsets = [0.0] * len(image_files)
     if len(frame_yaw_offsets) != len(image_files):
@@ -612,6 +626,7 @@ def convert_images(
     if total_outputs <= 0:
         return
 
+    raise_if_cancelled(cancel_event)
     if export_images:
         os.makedirs(output_image_dir, exist_ok=True)
     if export_masks and (mask_from_alpha or os.path.isdir(mask_dir)):
@@ -646,6 +661,7 @@ def convert_images(
             total_outputs=total_outputs,
             max_workers=max_workers,
             failure_context="Cubemap conversion failed",
+            cancel_event=cancel_event,
         )
 
 
@@ -681,7 +697,9 @@ def convert_images_colmap_rig(
     export_masks: bool = True,
     workers: str | int | None = "auto",
     remap_cache_limit: str | int | None = "auto",
+    cancel_event: CancellationToken | None = None,
 ) -> None:
+    raise_if_cancelled(cancel_event)
     image_dirs_by_view = {
         view["name"]: str(colmap_camera_image_dir(output_dir, rig_name, view["camera_name"])) for view in views
     }
@@ -727,6 +745,7 @@ def convert_images_colmap_rig(
     if total_outputs <= 0:
         return
 
+    raise_if_cancelled(cancel_event)
     jobs = make_colmap_rig_jobs(image_files, output_format)
     with ProcessPoolExecutor(
         max_workers=max_workers,
@@ -757,4 +776,5 @@ def convert_images_colmap_rig(
             total_outputs=total_outputs,
             max_workers=max_workers,
             failure_context="COLMAP rig image conversion failed",
+            cancel_event=cancel_event,
         )
