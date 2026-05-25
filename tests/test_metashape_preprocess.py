@@ -8,7 +8,7 @@ import pytest
 from PIL import Image
 
 from core.metashape_coordinates import metashape_pointcloud_file_matrix
-from core.metashape_preprocess import export_metashape_equirectangular_dataset
+from core.metashape_preprocess import build_image_lookup, export_metashape_equirectangular_dataset, resolve_camera_image
 from core.workflow_job_runner import _run_metashape_preprocess
 
 _IDENTITY = "1 0 0 0 0 1 0 0 0 0 1 0 0 0 0 1"
@@ -104,6 +104,46 @@ def test_export_metashape_preprocess_supports_multiple_spherical_resolutions(tmp
     pointcloud_text = (output / "pointcloud.ply").read_text(encoding="ascii")
     assert "property uchar red" in pointcloud_text
     assert "10 20 30" in pointcloud_text
+
+
+def test_metashape_preprocess_resolves_external_image_root_relative_labels(tmp_path: Path) -> None:
+    scene = tmp_path / "scene"
+    images = tmp_path / "source_images"
+    output = scene / "output" / "metashape_work"
+    _write_image(images / "wide" / "pano64.jpg", (64, 32), (80, 120, 160))
+    _write_image(images / "pano80.jpg", (80, 40), (10, 20, 30))
+    scene.mkdir(parents=True)
+    xml = scene / "cameras.xml"
+    _write_spherical_xml(xml)
+
+    result = export_metashape_equirectangular_dataset(
+        images_dir=images,
+        xml_path=xml,
+        output_dir=output,
+    )
+
+    data = json.loads((output / "transforms.json").read_text(encoding="utf-8"))
+    assert result.num_frames == 2
+    assert {frame["file_path"] for frame in data["frames"]} == {
+        (images / "wide" / "pano64.jpg").resolve().as_posix(),
+        (images / "pano80.jpg").resolve().as_posix(),
+    }
+
+
+def test_metashape_preprocess_image_lookup_ignores_ambiguous_basenames(tmp_path: Path) -> None:
+    images = tmp_path / "source_images"
+    image_a = images / "wide" / "pano.jpg"
+    image_b = images / "tele" / "pano.jpg"
+    _write_image(image_a, (64, 32), (80, 120, 160))
+    _write_image(image_b, (80, 40), (10, 20, 30))
+
+    lookup, warnings = build_image_lookup(images)
+
+    assert resolve_camera_image("pano.jpg", lookup) is None
+    assert resolve_camera_image("pano", lookup) is None
+    assert resolve_camera_image("wide/pano.jpg", lookup) == image_a
+    assert resolve_camera_image("source_images/tele/pano.jpg", lookup) == image_b
+    assert any("pano.jpg" in warning for warning in warnings)
 
 
 def test_metashape_preprocess_camera_transform_matches_coordinate_contract(tmp_path: Path) -> None:

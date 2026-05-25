@@ -15,6 +15,7 @@ from core.scene_inventory import (
     PROJECTION_NORMAL,
     PROJECTION_UNKNOWN,
     build_scene_image_label_path_lookup,
+    build_scene_image_label_path_lookup_with_warnings,
     build_scene_inventory,
     resolve_scene_image_label,
 )
@@ -157,6 +158,36 @@ def test_scene_inventory_accepts_explicit_external_image_root(tmp_path: Path) ->
     assert inventory.images[0].rel_path == "normal.jpg"
     assert inventory.images[0].projection == PROJECTION_NORMAL
     assert inventory.images[0].mask is not None
+
+
+def test_scene_image_label_lookup_accepts_external_root_relative_labels(tmp_path: Path) -> None:
+    scene = tmp_path / "scene"
+    source_images = tmp_path / "source_images"
+    image = source_images / "cam_a" / "Frame_0001.webp"
+    _write_image(image, (40, 30))
+
+    lookup = build_scene_image_label_path_lookup(scene, images_dir=source_images)
+
+    assert resolve_scene_image_label("cam_a/Frame_0001.webp", lookup) == image
+    assert resolve_scene_image_label("source_images/cam_a/Frame_0001.webp", lookup) == image
+    assert resolve_scene_image_label("Frame_0001", lookup) == image
+
+
+def test_scene_image_label_lookup_ignores_ambiguous_external_basenames(tmp_path: Path) -> None:
+    scene = tmp_path / "scene"
+    source_images = tmp_path / "source_images"
+    image_a = source_images / "cam_a" / "Frame_0001.webp"
+    image_b = source_images / "cam_b" / "Frame_0001.webp"
+    _write_image(image_a, (40, 30))
+    _write_image(image_b, (40, 30))
+
+    lookup, warnings = build_scene_image_label_path_lookup_with_warnings(scene, images_dir=source_images)
+
+    assert resolve_scene_image_label("Frame_0001.webp", lookup) is None
+    assert resolve_scene_image_label("Frame_0001", lookup) is None
+    assert resolve_scene_image_label("cam_a/Frame_0001.webp", lookup) == image_a
+    assert resolve_scene_image_label("source_images/cam_b/Frame_0001.webp", lookup) == image_b
+    assert any("frame_0001.webp" in warning for warning in warnings)
 
 
 def test_scene_image_label_lookup_resolves_nested_and_extensionless_labels(tmp_path: Path) -> None:

@@ -13,6 +13,8 @@ IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".tif", ".tiff", ".webp", ".bmp"}
 
 
 def iter_images(images_dir: Path) -> list[Path]:
+    # SphereSfM project preparation intentionally scans the prepared image root:
+    # GUI preflight already constrains this route to same-resolution ERP input.
     return sorted(p for p in images_dir.rglob("*") if p.is_file() and p.suffix.lower() in IMAGE_EXTS)
 
 

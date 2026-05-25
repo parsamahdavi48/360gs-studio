@@ -230,12 +230,36 @@ def build_scene_image_label_path_lookup(
     masks_dir: str | Path | None = None,
 ) -> dict[str, Path]:
     """Build case-insensitive Metashape/COLMAP-style image label lookup from scene inventory."""
-    inventory = build_scene_inventory(scene_dir, images_dir=images_dir, masks_dir=masks_dir)
-    lookup: dict[str, Path] = {}
-    for image in inventory.images:
-        for key in _image_label_keys(image):
-            lookup.setdefault(key.casefold(), image.path)
+    lookup, _warnings = build_scene_image_label_path_lookup_with_warnings(
+        scene_dir,
+        images_dir=images_dir,
+        masks_dir=masks_dir,
+    )
     return lookup
+
+
+def build_scene_image_label_path_lookup_with_warnings(
+    scene_dir: str | Path,
+    *,
+    images_dir: str | Path | None = None,
+    masks_dir: str | Path | None = None,
+) -> tuple[dict[str, Path], tuple[str, ...]]:
+    """Build image label lookup and report ambiguous labels that were intentionally ignored."""
+    inventory = build_scene_inventory(scene_dir, images_dir=images_dir, masks_dir=masks_dir)
+    grouped: dict[str, list[Path]] = {}
+    for image in inventory.images:
+        for key in _image_label_keys(image, images_dir=inventory.images_dir):
+            grouped.setdefault(key.casefold(), []).append(image.path)
+
+    lookup: dict[str, Path] = {}
+    warnings: list[str] = []
+    for key, paths in grouped.items():
+        unique = {path.resolve(): path for path in paths}
+        if len(unique) == 1:
+            lookup[key] = next(iter(unique.values()))
+        else:
+            warnings.append(f"Ambiguous image reference ignored: {key}")
+    return lookup, tuple(warnings)
 
 
 def resolve_scene_image_label(label: str, lookup: dict[str, Path]) -> Path | None:
@@ -259,7 +283,7 @@ def resolve_scene_image_label(label: str, lookup: dict[str, Path]) -> Path | Non
     return None
 
 
-def _image_label_keys(image: SceneImage) -> set[str]:
+def _image_label_keys(image: SceneImage, *, images_dir: Path | None = None) -> set[str]:
     rel = image.rel_path.replace("\\", "/").strip("/")
     path = image.path
     keys = {
@@ -275,6 +299,20 @@ def _image_label_keys(image: SceneImage) -> set[str]:
         keys.add(without_images)
         keys.add(Path(without_images).name)
         keys.add(Path(without_images).stem)
+    if images_dir is not None:
+        try:
+            rel_to_images = path.resolve().relative_to(images_dir.resolve()).as_posix()
+        except ValueError:
+            rel_to_images = ""
+        if rel_to_images:
+            keys.add(rel_to_images)
+            keys.add(Path(rel_to_images).name)
+            keys.add(Path(rel_to_images).stem)
+            if images_dir.name:
+                root_rel = (Path(images_dir.name) / rel_to_images).as_posix()
+                keys.add(root_rel)
+                keys.add(Path(root_rel).name)
+                keys.add(Path(root_rel).stem)
     return {key for key in keys if key}
 
 

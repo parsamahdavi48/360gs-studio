@@ -38,7 +38,7 @@ Code checks performed:
 | --- | --- | --- |
 | Runner/build command type contract | Complete | No |
 | YOLO/SAM mask runtime state | Complete | No |
-| Scene inventory helper audit | Pending | No |
+| Scene inventory helper audit | Complete | No |
 | Script/release surface cleanup | Pending | No |
 | Large GUI construction files | Deferred | No |
 | Final verification pass | Passed for current checkpoint | Yes, rerun before next merge |
@@ -134,55 +134,61 @@ processing path uses `context.settings` and `context.profile`.
 
 ## 3. Scene Inventory Helper Audit
 
-Status: pending
+Status: complete at this checkpoint
 
 ### Code Evidence
 
-The main mixed-source workflows use `core/scene_inventory.py`, but there are
-still helper-level direct file scans. Some are appropriate because they scan
-outputs, sparse model folders, or cleanup targets. Others may still infer image
-semantics directly and should be audited before future mixed-source work.
+The main mixed-source workflows use `core/scene_inventory.py`. This checkpoint
+removed the remaining Metashape preprocess image-label semantic scan and
+classified the retained direct scans.
 
-Observed candidates:
+Implemented changes:
 
-- `gui/steps/colmap_text_model_tool.py`: `_guess_single_file()` uses scene-level
-  globbing for XML/PLY default discovery. This is probably acceptable because it
-  does not infer image projection/source ownership.
-- `gui/steps/realityscan_lfs_tool.py`: `_first_existing()` uses output-folder
-  globbing for RealityScan CSV/PLY defaults. This is probably acceptable.
-- `core/metashape_preprocess.py`: scans `images_dir.rglob("*")`; verify whether
-  it still needs inventory-style image metadata for mixed sources.
-- `core/spheresfm_project.py`: scans image files directly; SphereSfM remains
-  constrained to same-resolution ERP-only input, so keep this paired with
-  `core/sfm_preflight.py`.
-- `core/mask_targets.py`, `core/custom_mask.py`, `core/sky_mask.py`: scan target
-  images inside worker processes; these should remain driven by manifest/image
-  list when source scoping is required.
+- `core/metashape_preprocess.py` now delegates camera-label lookup to
+  `build_scene_image_label_path_lookup()` and `resolve_scene_image_label()`
+  instead of maintaining a separate `images_dir.rglob("*")` lookup.
+- `core/scene_inventory.py` now includes labels relative to explicit external
+  image roots, so labels such as `wide/pano64.jpg` resolve even when the image
+  root is not named `images`.
+- `core/scene_inventory.py` now rejects ambiguous basename/stem labels and
+  reports warnings to Metashape preprocess callers instead of silently choosing
+  one matching image.
+- `core/spheresfm_project.py` keeps a direct prepared-image-root scan with a
+  comment documenting the SphereSfM same-resolution ERP preflight contract.
+- `core/mask_targets.py` keeps its worker fallback scan with a comment
+  documenting that source-scoped GUI runs pass an `image_list` manifest before
+  the worker starts.
+- `gui/steps/colmap_text_model_tool.py` and
+  `gui/steps/realityscan_lfs_tool.py` still use globbing for XML/PLY/CSV default
+  discovery only; these scans do not infer image projection or source ownership.
 
 ### Plan
 
-- Classify each direct scan as one of:
-  `asset discovery`, `output cleanup`, `external sparse discovery`,
-  `worker target scan`, or `image semantic inference`.
-- Replace only `image semantic inference` scans with `SceneInventory`.
-- Add comments for intentionally retained scans where a future audit would
-  otherwise misread them.
-- Ensure SphereSfM keeps the documented constraint: same-resolution ERP-only
-  input.
+- Complete. Direct scans were classified as asset discovery, output cleanup,
+  external sparse discovery, worker target scan, or image semantic inference.
+- Complete. The Metashape preprocess image semantic inference scan now uses
+  `SceneInventory` label lookup.
+- Complete. Intentionally retained SphereSfM and mask worker scans have
+  comments documenting their contract.
+- Complete. SphereSfM remains paired with the same-resolution ERP-only preflight
+  contract.
 
 ### Completion Criteria
 
-- No route derives projection/source ownership from filenames when
-  `SceneInventory` can provide it.
-- Direct scans that remain have a narrow reason and tests.
-- Mixed ERP resolution, normal video, and still sequence workflows still pass
-  through Step 3/4/5 tests.
+- Complete. No audited route derives projection/source ownership from filenames
+  when `SceneInventory` can provide it.
+- Complete. Retained direct scans have a narrow reason: asset discovery, output
+  cleanup, sparse discovery, prepared SphereSfM input scanning, or worker
+  fallback target scanning.
+- Complete. Mixed ERP resolution, normal video, and still sequence workflows
+  still pass through the targeted Step 3/4/5 tests listed below.
 
 ### Suggested Tests
 
-- `.\.venv\Scripts\python.exe -m pytest tests\test_scene_inventory.py tests\test_sfm_preflight.py tests\test_sfm_input_plan.py -q`
-- `.\.venv\Scripts\python.exe -m pytest tests\test_metashape_preprocess.py tests\test_metashape_nerf_dataset.py tests\test_metashape_colmap_dataset.py -q`
-- `.\.venv\Scripts\python.exe -m pytest tests\test_step3_mask_plan.py tests\test_step3_mask_guard.py -q`
+- Passed: `.\.venv\Scripts\python.exe -m ruff check core\scene_inventory.py core\metashape_preprocess.py core\spheresfm_project.py core\mask_targets.py tests\test_scene_inventory.py tests\test_metashape_preprocess.py`
+- Passed: `.\.venv\Scripts\python.exe -m pytest tests\test_scene_inventory.py tests\test_sfm_preflight.py tests\test_sfm_input_plan.py -q` (`18 passed`)
+- Passed: `.\.venv\Scripts\python.exe -m pytest tests\test_metashape_preprocess.py tests\test_metashape_nerf_dataset.py tests\test_metashape_colmap_dataset.py -q` (`18 passed`)
+- Passed: `.\.venv\Scripts\python.exe -m pytest tests\test_step3_mask_plan.py tests\test_step3_mask_guard.py -q` (`56 passed`)
 
 ## 4. Script And Release Surface Cleanup
 
@@ -283,7 +289,7 @@ Run this after implementing any of the above areas:
 Latest checkpoint result:
 
 - Passed: `.\.venv\Scripts\python.exe -m ruff check .`
-- Passed: `.\.venv\Scripts\python.exe -m pytest -q` (`977 passed`)
+- Passed: `.\.venv\Scripts\python.exe -m pytest -q` (`981 passed`)
 
 Before release packaging changes, also run:
 
