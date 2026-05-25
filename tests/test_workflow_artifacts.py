@@ -7,6 +7,7 @@ from core.workflow_artifacts import (
     DATASET_KIND_COLMAP_DATASET,
     DATASET_KIND_LICHTFELD_COLMAP,
     DATASET_KIND_NERF_JSON_PLY,
+    DATASET_KIND_REALITYSCAN_REALIGN_INPUT,
     SFM_KIND_METASHAPE_XML_PLY,
     detect_dataset_kind,
     latest_dataset_root,
@@ -39,6 +40,34 @@ def test_register_dataset_artifact_detects_nerf_and_files(tmp_path: Path) -> Non
     assert record.files["transforms_json"] == "output/metashape_cubemap/transforms.json"
     assert record.files["images_dir"] == "output/metashape_cubemap/images"
     assert load_artifacts(scene, "dataset")[0].id == "dataset_a"
+
+
+def test_register_dataset_artifact_uses_declared_pointcloud_file(tmp_path: Path) -> None:
+    root = tmp_path / "output" / "custom_dataset"
+    root.mkdir(parents=True)
+    (root / "custom_points.ply").write_text("ply\n", encoding="ascii")
+    (root / "transforms.json").write_text('{"ply_file_path": "custom_points.ply"}', encoding="utf-8")
+
+    record = register_dataset_artifact(tmp_path, artifact_id="dataset_custom_ply", root=root)
+
+    assert record is not None
+    assert record.files["pointcloud_file"] == "output/custom_dataset/custom_points.ply"
+
+
+def test_register_dataset_artifact_can_mark_realityscan_realign_input(tmp_path: Path) -> None:
+    root = tmp_path / "output" / "realityscan"
+    root.mkdir(parents=True)
+    (root / "transforms.json").write_text("{}", encoding="utf-8")
+
+    record = register_dataset_artifact(
+        tmp_path,
+        artifact_id="rs_input",
+        root=root,
+        kind=DATASET_KIND_REALITYSCAN_REALIGN_INPUT,
+    )
+
+    assert record is not None
+    assert record.kind == DATASET_KIND_REALITYSCAN_REALIGN_INPUT
 
 
 def test_register_dataset_artifact_detects_colmap_and_lfs_colmap(tmp_path: Path) -> None:

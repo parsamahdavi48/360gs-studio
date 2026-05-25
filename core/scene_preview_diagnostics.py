@@ -78,9 +78,11 @@ def analyze_scene_preview_dataset(dataset: ScenePreviewDataset) -> ScenePreviewD
         elif camera.label:
             camera_names.append(camera.label)
 
+    additional_roots = _additional_image_roots_for_dataset(dataset)
     return analyze_named_camera_images(
         camera_names,
         dataset.image_root,
+        additional_image_roots=additional_roots,
         camera_images_missing_on_disk=tuple(missing_on_disk),
         camera_image_count=len({name.casefold() for name in camera_names if name}),
     )
@@ -91,7 +93,7 @@ def analyze_named_camera_images(
     image_root: Path | None,
     *,
     additional_image_roots: Iterable[Path] = (),
-    camera_images_missing_on_disk: tuple[str, ...] = (),
+    camera_images_missing_on_disk: tuple[str, ...] | None = None,
     camera_image_count: int | None = None,
 ) -> ScenePreviewDiagnostics:
     names = tuple(str(name or "") for name in camera_names if str(name or "").strip())
@@ -109,7 +111,7 @@ def analyze_named_camera_images(
     image_keys: set[str] = set()
     for path in image_files:
         image_keys.update(_image_keys_for_roots(path, image_roots))
-    if image_roots and not camera_images_missing_on_disk:
+    if image_roots and camera_images_missing_on_disk is None:
         camera_images_missing_on_disk = tuple(
             name for name in names if not image_keys.intersection(_image_keys_for_roots(Path(name), image_roots))
         )
@@ -120,8 +122,21 @@ def analyze_named_camera_images(
         image_count=len(image_files),
         camera_image_count=len({name.casefold() for name in names}) if camera_image_count is None else int(camera_image_count),
         images_without_camera=images_without_camera,
-        camera_images_missing_on_disk=tuple(camera_images_missing_on_disk),
+        camera_images_missing_on_disk=tuple(camera_images_missing_on_disk or ()),
         cubemap_groups=_cubemap_groups_from_names(names),
+    )
+
+
+def _additional_image_roots_for_dataset(dataset: ScenePreviewDataset) -> tuple[Path, ...]:
+    if dataset.source_kind != "realityscan" or dataset.image_root is None:
+        return ()
+    from core.realityscan_to_transforms import REALITYSCAN_IMAGE_DIR_NAMES, related_realityscan_asset_roots
+
+    primary = Path(dataset.image_root).resolve(strict=False).as_posix().casefold()
+    return tuple(
+        root
+        for root in related_realityscan_asset_roots(Path(dataset.image_root), REALITYSCAN_IMAGE_DIR_NAMES)
+        if root.resolve(strict=False).as_posix().casefold() != primary
     )
 
 

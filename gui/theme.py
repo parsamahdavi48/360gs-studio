@@ -163,6 +163,11 @@ QLabel#workflowNote {{
     padding: 12px;
     font-size: 9pt;
 }}
+QLabel#assetFolderHint {{
+    color: {TEXT_DIM};
+    font-size: 8pt;
+    padding-left: 2px;
+}}
 QLabel#emptyPaneMessage {{
     color: {TEXT_DIM};
     font-size: 10pt;

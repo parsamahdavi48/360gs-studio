@@ -350,6 +350,8 @@ def test_realityscan_lfs_tool_defaults_and_builds_cli_command(tmp_path: Path) ->
     rs = scene / "output" / "realityscan"
     (rs / "images").mkdir(parents=True)
     (rs / "masks").mkdir()
+    (rs / "extra_images").mkdir()
+    (rs / "extra_masks").mkdir()
     csv = rs / "rs_scene.csv"
     ply = rs / "rs_scene.ply"
     csv.write_text("header\n", encoding="utf-8")
@@ -364,6 +366,11 @@ def test_realityscan_lfs_tool_defaults_and_builds_cli_command(tmp_path: Path) ->
     assert Path(tool.images_browse.text()) == rs / "images"
     assert Path(tool.masks_browse.text()) == rs / "masks"
     assert Path(tool.output_browse.text()) == rs / "lfs_colmap"
+    assert tool.images_extra_hint.text() == i18n.t("RS_LFS_ADDITIONAL_IMAGES_USED").format(
+        folders="extra_images"
+    )
+    assert tool.masks_extra_hint.text() == i18n.t("RS_LFS_ADDITIONAL_MASKS_USED").format(folders="extra_masks")
+    assert len([label for label in tool.findChildren(QLabel) if label.objectName() == "workflowNote"]) == 1
     assert tool.primary_action_enabled()
     assert not hasattr(tool, "undistort_alpha_edit")
     assert tool.pre_undistort_cb.text() == i18n.t("RS_LFS_PRE_UNDISTORT")

@@ -26,6 +26,7 @@ from core.scene_project import (
     utc_now_iso,
 )
 from core.workflow_artifacts import (
+    DATASET_KIND_REALITYSCAN_REALIGN_INPUT,
     SFM_KIND_COLMAP_SPARSE,
     SFM_KIND_METASHAPE_XML_PLY,
     SFM_KIND_SPHERESFM_SPARSE,
@@ -477,7 +478,12 @@ class Step4ManifestMixin:
                 "settings": settings,
             },
         )
-        register_dataset_artifact(scene, artifact_id=run_id, root=root, settings=settings)
+        dataset_kind = (
+            DATASET_KIND_REALITYSCAN_REALIGN_INPUT
+            if self._is_metashape_method() and self._effective_profile() == _PROFILE_REALITYSCAN
+            else ""
+        )
+        register_dataset_artifact(scene, artifact_id=run_id, root=root, kind=dataset_kind, settings=settings)
 
     def _register_step4_sfm_artifact(
         self,

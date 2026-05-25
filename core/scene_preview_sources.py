@@ -32,6 +32,7 @@ from core.workflow_artifacts import (
     DATASET_KIND_COLMAP_DATASET,
     DATASET_KIND_LICHTFELD_COLMAP,
     DATASET_KIND_NERF_JSON_PLY,
+    DATASET_KIND_REALITYSCAN_REALIGN_INPUT,
     SFM_KIND_COLMAP_SPARSE,
     SFM_KIND_METASHAPE_XML_PLY,
     SFM_KIND_REALITYSCAN_CSV_PLY,
@@ -68,11 +69,11 @@ def discover_scene_preview_candidates(scene_dir: Path) -> tuple[ScenePreviewCand
         candidates.append(
             ScenePreviewCandidate(
                 kind="output",
-                label=_dataset_label(dataset_root, current_output, record),
+                label=_dataset_label(dataset_root, current_output, record, transforms_json=output_transforms),
                 path=output_transforms,
                 image_root=dataset_root,
                 mask_root=_existing_dir(dataset_root / "masks"),
-                pointcloud_path=_existing_file(dataset_root / "pointcloud.ply"),
+                pointcloud_path=_transforms_pointcloud_path(dataset_root, output_transforms),
                 display_transform=transforms_dataset_display_transform(
                     output_transforms,
                     fallback_settings=settings if _same_path(dataset_root, current_output) else None,
@@ -285,7 +286,7 @@ def _transforms_dataset_roots(
 ) -> tuple[tuple[Path, ArtifactRecord | None], ...]:
     roots: list[tuple[Path, ArtifactRecord | None]] = []
     for record in records:
-        if record.kind != DATASET_KIND_NERF_JSON_PLY or record.status != "ready":
+        if record.kind not in {DATASET_KIND_NERF_JSON_PLY, DATASET_KIND_REALITYSCAN_REALIGN_INPUT} or record.status != "ready":
             continue
         root = artifact_root_path(scene, record)
         if (root / "transforms.json").is_file():
@@ -383,6 +384,19 @@ def _realityscan_inputs(
                 _sfm_label("RealityScan CSV/PLY", record),
             )
         )
+    for root in (scene_output_dir(scene) / "realityscan", scene):
+        csv = _first_matching_file(root, ("realityscan.csv", "rs_*.csv", "*.csv"))
+        if csv is None:
+            continue
+        result.append(
+            (
+                csv,
+                _first_matching_file(root, ("realityscan.ply", "rs_*.ply", "*.ply")),
+                _existing_dir(root / "images") or _existing_dir(scene_images_dir(scene)),
+                _existing_dir(root / "masks") or _existing_dir(scene_masks_dir(scene)),
+                "RealityScan CSV/PLY",
+            )
+        )
     return tuple(result)
 
 
@@ -455,6 +469,21 @@ def _first_existing(*paths: Path) -> Path | None:
     return next((path for path in paths if path.is_file()), None)
 
 
+def _first_matching_file(root: Path, patterns: tuple[str, ...]) -> Path | None:
+    if not root.is_dir():
+        return None
+    for pattern in patterns:
+        if "*" not in pattern and "?" not in pattern and "[" not in pattern:
+            candidate = root / pattern
+            if candidate.is_file():
+                return candidate
+            continue
+        for candidate in sorted(root.glob(pattern), key=lambda path: path.name.lower()):
+            if candidate.is_file():
+                return candidate
+    return None
+
+
 def _first_existing_dir(*paths: Path | None) -> Path | None:
     return next((path for path in paths if path is not None and path.is_dir()), None)
 
@@ -467,10 +496,19 @@ def _artifact_file_path(scene: Path, record: ArtifactRecord, key: str) -> Path |
     return path if path.is_absolute() else scene / path
 
 
-def _dataset_label(root: Path, current_output: Path | None, record: ArtifactRecord | None) -> str:
+def _dataset_label(
+    root: Path,
+    current_output: Path | None,
+    record: ArtifactRecord | None,
+    *,
+    transforms_json: Path | None = None,
+) -> str:
     if record is not None:
+        if record.kind == DATASET_KIND_REALITYSCAN_REALIGN_INPUT or _is_realityscan_realign_record(record):
+            return f"RealityScan realign input ({record.id})"
         if record.kind == DATASET_KIND_NERF_JSON_PLY:
-            return f"Dataset: NeRF JSON/PLY ({record.id})"
+            suffix = "JSON/PLY" if _transforms_pointcloud_path(root, transforms_json) is not None else "JSON"
+            return f"Dataset: NeRF {suffix} ({record.id})"
         if record.kind == DATASET_KIND_LICHTFELD_COLMAP:
             return f"Dataset: LichtFeld COLMAP ({record.id})"
         if record.kind == DATASET_KIND_COLMAP_DATASET:
@@ -481,6 +519,40 @@ def _dataset_label(root: Path, current_output: Path | None, record: ArtifactReco
 
 def _sfm_label(fallback: str, record: ArtifactRecord | None) -> str:
     return fallback if record is None else f"{fallback} ({record.id})"
+
+
+def _is_realityscan_realign_record(record: ArtifactRecord) -> bool:
+    settings = record.settings if isinstance(record.settings, dict) else {}
+    realityscan = settings.get("realityscan") if isinstance(settings.get("realityscan"), dict) else {}
+    if realityscan.get("enabled") is True:
+        return True
+    output_files = settings.get("output_files") if isinstance(settings.get("output_files"), dict) else {}
+    return str(settings.get("effective_profile") or "").strip().lower() == "realityscan" and not str(
+        output_files.get("pointcloud") or ""
+    ).strip()
+
+
+def _transforms_pointcloud_path(root: Path, transforms_json: Path | None = None) -> Path | None:
+    transforms = transforms_json or root / "transforms.json"
+    declared = _declared_transforms_pointcloud(root, transforms)
+    return declared or _existing_file(root / "pointcloud.ply")
+
+
+def _declared_transforms_pointcloud(root: Path, transforms_json: Path) -> Path | None:
+    if not transforms_json.is_file():
+        return None
+    try:
+        data = json.loads(transforms_json.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    if not isinstance(data, dict):
+        return None
+    raw = str(data.get("ply_file_path") or "").strip()
+    if not raw:
+        return None
+    path = Path(raw)
+    candidate = path if path.is_absolute() else root / path
+    return _existing_file(candidate)
 
 
 def _load_dataset_manifest(root: Path) -> dict:

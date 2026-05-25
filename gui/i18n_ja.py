@@ -493,7 +493,15 @@ STRINGS: dict[str, str] = {
     "DATASET_RUN_SPHERESFM": "SphereSfM変換を実行",
     "METASHAPE_MIXED_NERF_DIRECT_OUTPUT_UNSUPPORTED": "通常画像や複数解像度を含むMetashape結果は、ERP 360°のままでは安全に出力できません。出力タブでPINHOLEを選んでください。",
     "METASHAPE_MIXED_NERF_COLMAP_OPTION_UNSUPPORTED": "混在Metashape結果では、NeRF JSON/PLY作成とCOLMAP追加出力を同時には実行できません。COLMAP形式が必要な場合は、Metashape → COLMAPデータセットのカードを使ってください。",
-    "METASHAPE_LICHTFELD_NERF_MULTICAMERA_UNSUPPORTED": "LichtFeldのNeRF JSON/PLY読み込みはフレームごとのカメラ内部パラメータを扱えないため、複数カメラ設定のMetashape結果は安全に出力できません。検出: {groups}種類 / {frames}フレーム。LichtFeldではMetashape → COLMAPデータセットを使ってください。",
+    "METASHAPE_LICHTFELD_NERF_MULTICAMERA_UNSUPPORTED": (
+        "このMetashape結果は、LichtFeld Studio向けの\n"
+        "NeRF JSON/PLYでは出力できません。\n\n"
+        "解像度やカメラ設定が異なる画像が含まれており、"
+        "LichtFeld StudioのNeRF JSON/PLY読み込みがこの形式に対応していません。\n\n"
+        "このSfM結果をLichtFeld Studioで使う場合は、"
+        "「Metashape → COLMAPデータセット」を選んでください。\n\n"
+        "検出: {groups}種類 / {frames}フレーム"
+    ),
     "DATASET_TOOL_RS_LFS_TITLE": "RealityScan → COLMAPデータセット",
     "DATASET_TOOL_RS_LFS_DESC": "RealityScanのCSV/PLYから、LichtFeldでデータセットとして開けるCOLMAPデータセットを作成します。CSVに載っているimages/とextra_images/の画像を、出力先のimages/へ統合します。",
     "DATASET_TOOL_RS_LFS_CARD_BODY": "RealityScanからエクスポートしたカメラCSVと点群PLYから、LichtFeld用COLMAPデータセットを作成します。",
@@ -517,9 +525,12 @@ STRINGS: dict[str, str] = {
     "RS_LFS_UNDISTORT_ALPHA": "視野の残し方",
     "RS_LFS_SKIP_MISSING": "見つからない画像をスキップ",
     "RS_LFS_CREATE": "COLMAPデータセット作成",
-    "RS_LFS_DATA_QUALITY_HEADER": "RealityScan CSVにない画像はCOLMAPへ出力されません。",
-    "RS_LFS_DATA_QUALITY_IMAGES_WITHOUT_CAMERA": "画像はあるがカメラ姿勢なし: {count}",
-    "RS_LFS_DATA_QUALITY_CAMERA_IMAGES_MISSING": "カメラに対応する画像ファイルなし: {count}",
+    "RS_LFS_ADDITIONAL_IMAGES_USED": "+ {folders} も読み込みます",
+    "RS_LFS_ADDITIONAL_MASKS_USED": "+ {folders} も読み込みます",
+    "RS_LFS_INPUT_SUMMARY": "CSVカメラ: {camera_count} / 画像候補: {image_count}。COLMAPにはCSV内のカメラだけを出力します。",
+    "RS_LFS_DATA_QUALITY_HEADER": "CSVに含まれるカメラだけをCOLMAPへ出力します。",
+    "RS_LFS_DATA_QUALITY_IMAGES_WITHOUT_CAMERA": "CSVに含まれない画像: {count}",
+    "RS_LFS_DATA_QUALITY_CAMERA_IMAGES_MISSING": "CSVの画像ファイルが見つかりません: {count}",
     "RS_LFS_DATA_QUALITY_INCOMPLETE_CUBEMAPS": "Cubemap欠損グループ: {count}",
     "RS_LFS_STATUS_READY": "入力が揃っています。実行するとLichtFeld用COLMAPデータセットを作成します。",
     "RS_LFS_STATUS_DONE": "作成完了: {path}",
@@ -991,8 +1002,8 @@ STRINGS: dict[str, str] = {
     "SCENE_PREVIEW_POINTS": "点数",
     "SCENE_PREVIEW_COORDINATE": "座標系",
     "SCENE_PREVIEW_DATA_QUALITY": "データ診断",
-    "SCENE_PREVIEW_IMAGES_WITHOUT_CAMERA": "画像はあるがカメラ姿勢なし",
-    "SCENE_PREVIEW_CAMERA_IMAGES_MISSING": "カメラに対応する画像ファイルなし",
+    "SCENE_PREVIEW_IMAGES_WITHOUT_CAMERA": "カメラ姿勢に紐づかない画像",
+    "SCENE_PREVIEW_CAMERA_IMAGES_MISSING": "カメラの画像ファイルなし",
     "SCENE_PREVIEW_CUBEMAP_INCOMPLETE_GROUPS": "Cubemap欠損グループ",
     "SCENE_PREVIEW_FIRST_CAMERA": "先頭カメラ",
     "SCENE_PREVIEW_SELECTED_CAMERA_SUMMARY": "選択中カメラ",

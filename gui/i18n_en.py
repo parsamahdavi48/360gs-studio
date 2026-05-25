@@ -491,7 +491,14 @@ STRINGS: dict[str, str] = {
     "DATASET_RUN_SPHERESFM": "Run SphereSfM Conversion",
     "METASHAPE_MIXED_NERF_DIRECT_OUTPUT_UNSUPPORTED": "Metashape results containing normal images or multiple resolutions cannot be exported safely as direct ERP 360°. Choose PINHOLE in the Output tab.",
     "METASHAPE_MIXED_NERF_COLMAP_OPTION_UNSUPPORTED": "Mixed Metashape results cannot create NeRF JSON/PLY and the extra COLMAP output in the same run. Use the Metashape → COLMAP Dataset card when COLMAP format is needed.",
-    "METASHAPE_LICHTFELD_NERF_MULTICAMERA_UNSUPPORTED": "LichtFeld's NeRF JSON/PLY importer does not handle per-frame camera intrinsics, so this Metashape result cannot be exported safely with multiple camera settings. Detected: {groups} groups / {frames} frames. Use the Metashape → COLMAP Dataset route for LichtFeld.",
+    "METASHAPE_LICHTFELD_NERF_MULTICAMERA_UNSUPPORTED": (
+        "This Metashape result cannot be exported as a\n"
+        "LichtFeld Studio NeRF JSON/PLY dataset.\n\n"
+        "It contains images with different resolutions or camera settings, and "
+        "LichtFeld Studio's NeRF JSON/PLY importer does not support that format.\n\n"
+        'To use this SfM result in LichtFeld Studio, choose "Metashape → COLMAP Dataset" instead.\n\n'
+        "Detected: {groups} groups / {frames} frames"
+    ),
     "DATASET_TOOL_RS_LFS_TITLE": "RealityScan → COLMAP Dataset",
     "DATASET_TOOL_RS_LFS_DESC": "Create a COLMAP-format Dataset for LichtFeld from RealityScan CSV/PLY exports. Images referenced by the CSV are gathered from images/ and extra_images/ into the output images/ folder.",
     "DATASET_TOOL_RS_LFS_CARD_BODY": "Create a LichtFeld COLMAP dataset from RealityScan camera CSV and point-cloud PLY exports.",
@@ -515,9 +522,12 @@ STRINGS: dict[str, str] = {
     "RS_LFS_UNDISTORT_ALPHA": "Field of View",
     "RS_LFS_SKIP_MISSING": "Skip missing images",
     "RS_LFS_CREATE": "Create COLMAP Dataset",
-    "RS_LFS_DATA_QUALITY_HEADER": "Images not listed in the RealityScan CSV are not written to COLMAP.",
-    "RS_LFS_DATA_QUALITY_IMAGES_WITHOUT_CAMERA": "Images without camera poses: {count}",
-    "RS_LFS_DATA_QUALITY_CAMERA_IMAGES_MISSING": "Camera image files missing: {count}",
+    "RS_LFS_ADDITIONAL_IMAGES_USED": "+ {folders} will also be used",
+    "RS_LFS_ADDITIONAL_MASKS_USED": "+ {folders} will also be used",
+    "RS_LFS_INPUT_SUMMARY": "CSV cameras: {camera_count} / image candidates: {image_count}. Only cameras in the CSV are written to COLMAP.",
+    "RS_LFS_DATA_QUALITY_HEADER": "Only cameras listed in the CSV are written to COLMAP.",
+    "RS_LFS_DATA_QUALITY_IMAGES_WITHOUT_CAMERA": "Images not in CSV: {count}",
+    "RS_LFS_DATA_QUALITY_CAMERA_IMAGES_MISSING": "CSV image files missing: {count}",
     "RS_LFS_DATA_QUALITY_INCOMPLETE_CUBEMAPS": "Incomplete cubemap groups: {count}",
     "RS_LFS_STATUS_READY": "Inputs are ready. Run to create a LichtFeld COLMAP dataset.",
     "RS_LFS_STATUS_DONE": "Created: {path}",
@@ -988,7 +998,7 @@ STRINGS: dict[str, str] = {
     "SCENE_PREVIEW_POINTS": "Points",
     "SCENE_PREVIEW_COORDINATE": "Coordinate",
     "SCENE_PREVIEW_DATA_QUALITY": "Data Check",
-    "SCENE_PREVIEW_IMAGES_WITHOUT_CAMERA": "Images without camera poses",
+    "SCENE_PREVIEW_IMAGES_WITHOUT_CAMERA": "Images not referenced by cameras",
     "SCENE_PREVIEW_CAMERA_IMAGES_MISSING": "Camera image files missing",
     "SCENE_PREVIEW_CUBEMAP_INCOMPLETE_GROUPS": "Incomplete cubemap groups",
     "SCENE_PREVIEW_FIRST_CAMERA": "First Camera",

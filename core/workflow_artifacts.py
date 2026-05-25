@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from typing import Any
 
@@ -138,7 +139,28 @@ def _dataset_files(root: Path) -> dict[str, Path]:
         candidate = root / rel
         if candidate.exists():
             files[key] = candidate
+    declared_pointcloud = _declared_transforms_pointcloud(root)
+    if declared_pointcloud is not None:
+        files["pointcloud_file"] = declared_pointcloud
     return files
+
+
+def _declared_transforms_pointcloud(root: Path) -> Path | None:
+    transforms = root / "transforms.json"
+    if not transforms.is_file():
+        return None
+    try:
+        data = json.loads(transforms.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    if not isinstance(data, dict):
+        return None
+    raw = str(data.get("ply_file_path") or "").strip()
+    if not raw:
+        return None
+    path = Path(raw)
+    candidate = path if path.is_absolute() else root / path
+    return candidate if candidate.is_file() else None
 
 
 def _require_known_kind(kind: str, accepted: set[str], *, group: str) -> None:

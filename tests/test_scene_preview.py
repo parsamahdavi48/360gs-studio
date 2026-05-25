@@ -31,6 +31,7 @@ from core.scene_preview_profiles import (
 from core.scene_preview_sources import discover_scene_preview_candidates
 from core.workflow_artifacts import (
     DATASET_KIND_COLMAP_DATASET,
+    DATASET_KIND_REALITYSCAN_REALIGN_INPUT,
     SFM_KIND_REALITYSCAN_CSV_PLY,
     register_dataset_artifact,
     register_sfm_artifact,
@@ -372,6 +373,28 @@ def test_realityscan_preview_loads_csv_and_ply(tmp_path: Path) -> None:
     assert dataset.pointcloud is not None
 
 
+def test_realityscan_preview_diagnostics_include_extra_images(tmp_path: Path) -> None:
+    images = tmp_path / "images"
+    extra_images = tmp_path / "extra_images"
+    images.mkdir()
+    extra_images.mkdir()
+    _write_png(images / "cube_px.jpg", size=(100, 100))
+    _write_png(extra_images / "normal.jpg", size=(80, 60))
+    csv = tmp_path / "rs.csv"
+    csv.write_text(
+        "#name,x,y,alt,yaw,pitch,roll,f_35mm,px_norm,py_norm,k1,k2,k3,k4,t1,t2\n"
+        "cube_px.jpg,1,2,3,0,0,0,18,0,0,0,0,0,0,0,0\n"
+        "normal.jpg,4,5,6,0,0,0,18,0,0,0,0,0,0,0,0\n",
+        encoding="utf-8",
+    )
+
+    diagnostics = analyze_scene_preview_dataset(load_realityscan_preview_dataset(csv, images_dir=images))
+
+    assert diagnostics.image_count == 2
+    assert diagnostics.images_without_camera == ()
+    assert diagnostics.camera_images_missing_on_disk == ()
+
+
 def test_ply_preview_pointcloud_loads_ascii_colors(tmp_path: Path) -> None:
     ply = tmp_path / "pointcloud.ply"
     ply.write_text(
@@ -638,6 +661,49 @@ def test_discover_scene_preview_candidates_finds_registered_refactor_artifacts(t
     assert realityscan.pointcloud_path == ply
     assert realityscan.display_transform is not None
     assert np.allclose(realityscan.display_transform.camera_matrix, REALITYSCAN_Z_UP_TO_PREVIEW_Y_UP)
+
+
+def test_discover_scene_preview_candidates_finds_standard_realityscan_exports(tmp_path: Path) -> None:
+    root = tmp_path / "output" / "realityscan"
+    images = root / "images"
+    masks = root / "masks"
+    images.mkdir(parents=True)
+    masks.mkdir()
+    csv = root / "realityscan.csv"
+    csv.write_text(
+        "#name,x,y,alt,yaw,pitch,roll,f_35mm,px_norm,py_norm,k1,k2,k3,k4,t1,t2\n"
+        "a.jpg,1,2,3,0,0,0,18,0,0,0,0,0,0,0,0\n",
+        encoding="utf-8",
+    )
+    ply = root / "realityscan.ply"
+    _write_empty_ply(ply)
+
+    candidates = discover_scene_preview_candidates(tmp_path)
+
+    realityscan = next(candidate for candidate in candidates if candidate.kind == "realityscan")
+    assert realityscan.label == "RealityScan CSV/PLY"
+    assert realityscan.path == csv
+    assert realityscan.image_root == images
+    assert realityscan.mask_root == masks
+    assert realityscan.pointcloud_path == ply
+
+
+def test_discover_scene_preview_candidates_labels_realityscan_realign_inputs(tmp_path: Path) -> None:
+    root = tmp_path / "output" / "realityscan"
+    root.mkdir(parents=True)
+    (root / "transforms.json").write_text("{}", encoding="utf-8")
+    register_dataset_artifact(
+        tmp_path,
+        artifact_id="rs_input",
+        root=root,
+        kind=DATASET_KIND_REALITYSCAN_REALIGN_INPUT,
+    )
+
+    candidates = discover_scene_preview_candidates(tmp_path)
+
+    candidate = next(item for item in candidates if item.path == root / "transforms.json")
+    assert candidate.label == "RealityScan realign input (rs_input)"
+    assert candidate.pointcloud_path is None
 
 
 def test_discover_scene_preview_candidates_marks_realityscan_colmap_profiles(tmp_path: Path) -> None:

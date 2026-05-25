@@ -17,7 +17,12 @@ from PySide6.QtWidgets import (
 from core.app_job import dataset_app_job
 from core.dataset_job_spec import realityscan_lfs_colmap_job, write_dataset_job
 from core.realityscan_to_lfs_colmap import DEFAULT_UNDISTORT_ALPHA
-from core.realityscan_to_transforms import read_realityscan_csv
+from core.realityscan_to_transforms import (
+    REALITYSCAN_IMAGE_DIR_NAMES,
+    REALITYSCAN_MASK_DIR_NAMES,
+    read_realityscan_csv,
+    related_realityscan_asset_roots,
+)
 from core.scene_layout import jobs_dir, scene_images_dir, scene_masks_dir, scene_output_dir
 from core.scene_preview_diagnostics import analyze_named_camera_images
 from core.workflow_artifacts import (
@@ -61,16 +66,10 @@ class RealityScanLfsTool(BaseStepWidget):
         layout.setContentsMargins(8, 8, 8, 8)
         layout.setSpacing(10)
 
-        description = QLabel(i18n.t("DATASET_TOOL_RS_LFS_DESC"))
-        description.setObjectName("workflowNote")
-        description.setWordWrap(True)
-        layout.addWidget(description)
-
-        self.data_quality_note = QLabel()
-        self.data_quality_note.setObjectName("workflowNote")
-        self.data_quality_note.setWordWrap(True)
-        self.data_quality_note.hide()
-        layout.addWidget(self.data_quality_note)
+        self.summary_note = QLabel()
+        self.summary_note.setObjectName("workflowNote")
+        self.summary_note.setWordWrap(True)
+        layout.addWidget(self.summary_note)
 
         form = QFormLayout()
         form.setSpacing(7)
@@ -87,11 +86,15 @@ class RealityScanLfsTool(BaseStepWidget):
 
         self.images_browse = BrowseWidget(mode="dir")
         self.images_browse.setToolTip(i18n.tip("RS_LFS_IMAGES"))
-        add_tooltip_row(form, i18n.t("RS_LFS_IMAGES"), self.images_browse, i18n.tip("RS_LFS_IMAGES"))
+        self.images_extra_hint = self._build_extra_folder_hint()
+        self.images_field = self._build_asset_field(self.images_browse, self.images_extra_hint)
+        add_tooltip_row(form, i18n.t("RS_LFS_IMAGES"), self.images_field, i18n.tip("RS_LFS_IMAGES"))
 
         self.masks_browse = BrowseWidget(mode="dir")
         self.masks_browse.setToolTip(i18n.tip("RS_LFS_MASKS"))
-        add_tooltip_row(form, i18n.t("RS_LFS_MASKS"), self.masks_browse, i18n.tip("RS_LFS_MASKS"))
+        self.masks_extra_hint = self._build_extra_folder_hint()
+        self.masks_field = self._build_asset_field(self.masks_browse, self.masks_extra_hint)
+        add_tooltip_row(form, i18n.t("RS_LFS_MASKS"), self.masks_field, i18n.tip("RS_LFS_MASKS"))
 
         self.output_browse = BrowseWidget(mode="dir")
         self.output_browse.setToolTip(i18n.tip("RS_LFS_OUTPUT"))
@@ -125,6 +128,7 @@ class RealityScanLfsTool(BaseStepWidget):
         self.output_browse.path_changed.connect(lambda _path: self.primary_action_state_changed.emit())
         self.pre_undistort_cb.toggled.connect(lambda _checked: self.primary_action_state_changed.emit())
         self.skip_missing_cb.toggled.connect(lambda _checked: self.primary_action_state_changed.emit())
+        self._update_extra_folder_hints()
         self._update_data_quality_note()
 
     def set_scene_dir(self, path: str) -> None:
@@ -245,6 +249,7 @@ class RealityScanLfsTool(BaseStepWidget):
             elif field == "masks":
                 self._masks_user_edited = True
         self.primary_action_state_changed.emit()
+        self._update_extra_folder_hints()
         self._update_data_quality_note()
 
     def _on_pre_undistort_toggled(self, _checked: bool) -> None:
@@ -262,6 +267,7 @@ class RealityScanLfsTool(BaseStepWidget):
                 self.output_browse.set_text("")
             finally:
                 self._syncing_defaults = False
+            self._update_extra_folder_hints()
             self._update_data_quality_note()
             return
         root = self._realityscan_dir()
@@ -284,6 +290,7 @@ class RealityScanLfsTool(BaseStepWidget):
                 self.output_browse.set_text(str(self._default_output_dir()))
         finally:
             self._syncing_defaults = False
+        self._update_extra_folder_hints()
         self._update_data_quality_note()
 
     def _realityscan_dir(self) -> Path:
@@ -296,13 +303,13 @@ class RealityScanLfsTool(BaseStepWidget):
         return self._realityscan_dir() / name
 
     def _update_data_quality_note(self) -> None:
+        description = i18n.t("DATASET_TOOL_RS_LFS_DESC")
         csv_text = self.csv_browse.text()
         images_text = self.images_browse.text()
         csv_path = Path(csv_text) if csv_text else None
         images_dir = Path(images_text) if images_text else None
         if csv_path is None or not csv_path.is_file() or images_dir is None or not images_dir.is_dir():
-            self.data_quality_note.hide()
-            self.data_quality_note.setText("")
+            self.summary_note.setText(description)
             return
         try:
             camera_names = [row.name for row in read_realityscan_csv(csv_path)]
@@ -313,32 +320,82 @@ class RealityScanLfsTool(BaseStepWidget):
                 additional_image_roots=(extra_images_dir,),
             )
         except Exception:
-            self.data_quality_note.hide()
-            self.data_quality_note.setText("")
-            return
-        if not diagnostics.has_issues:
-            self.data_quality_note.hide()
-            self.data_quality_note.setText("")
+            self.summary_note.setText(description)
             return
 
-        parts = [i18n.t("RS_LFS_DATA_QUALITY_HEADER")]
-        if diagnostics.images_without_camera:
-            parts.append(
-                i18n.t("RS_LFS_DATA_QUALITY_IMAGES_WITHOUT_CAMERA").format(
-                    count=len(diagnostics.images_without_camera)
-                )
+        parts = [
+            i18n.t("RS_LFS_INPUT_SUMMARY").format(
+                camera_count=diagnostics.camera_image_count,
+                image_count=diagnostics.image_count,
             )
+        ]
         if diagnostics.camera_images_missing_on_disk:
             parts.append(
                 i18n.t("RS_LFS_DATA_QUALITY_CAMERA_IMAGES_MISSING").format(
                     count=len(diagnostics.camera_images_missing_on_disk)
                 )
             )
-        incomplete = diagnostics.incomplete_cubemap_groups
-        if incomplete:
-            parts.append(i18n.t("RS_LFS_DATA_QUALITY_INCOMPLETE_CUBEMAPS").format(count=len(incomplete)))
-        self.data_quality_note.setText("\n".join(parts))
-        self.data_quality_note.show()
+        self.summary_note.setText(f"{description}\n\n" + "\n".join(parts))
+
+    def _update_extra_folder_hints(self) -> None:
+        self._update_extra_folder_hint(
+            self.images_browse.text(),
+            self.images_extra_hint,
+            REALITYSCAN_IMAGE_DIR_NAMES,
+            i18n.t("RS_LFS_ADDITIONAL_IMAGES_USED"),
+        )
+        self._update_extra_folder_hint(
+            self.masks_browse.text(),
+            self.masks_extra_hint,
+            REALITYSCAN_MASK_DIR_NAMES,
+            i18n.t("RS_LFS_ADDITIONAL_MASKS_USED"),
+        )
+
+    @staticmethod
+    def _build_asset_field(browse: BrowseWidget, hint: QLabel) -> QWidget:
+        field = QWidget()
+        layout = QVBoxLayout(field)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(3)
+        layout.addWidget(browse)
+        layout.addWidget(hint)
+        return field
+
+    @staticmethod
+    def _build_extra_folder_hint() -> QLabel:
+        hint = QLabel()
+        hint.setObjectName("assetFolderHint")
+        hint.setWordWrap(True)
+        hint.hide()
+        return hint
+
+    @staticmethod
+    def _update_extra_folder_hint(
+        text: str,
+        label: QLabel,
+        dir_names: tuple[str, ...],
+        message_template: str,
+    ) -> None:
+        base = Path(text) if text else None
+        if base is None or not base.is_dir():
+            label.hide()
+            label.setText("")
+            label.setToolTip("")
+            return
+        roots = [
+            root
+            for root in related_realityscan_asset_roots(base, dir_names)
+            if root.is_dir() and not RealityScanLfsTool._paths_equivalent(root, base)
+        ]
+        if not roots:
+            label.hide()
+            label.setText("")
+            label.setToolTip("")
+            return
+        folders = " / ".join(root.name for root in roots)
+        label.setText(message_template.format(folders=folders))
+        label.setToolTip("\n".join(str(root) for root in roots))
+        label.show()
 
     @staticmethod
     def _first_existing(root: Path, patterns: tuple[str, ...]) -> Path | None:
@@ -362,3 +419,10 @@ class RealityScanLfsTool(BaseStepWidget):
         from core.scene_project import utc_now_iso
 
         return f"{prefix}_{utc_now_iso().replace(':', '').replace('-', '')}"
+
+    @staticmethod
+    def _paths_equivalent(a: Path, b: Path) -> bool:
+        try:
+            return a.resolve() == b.resolve()
+        except OSError:
+            return a.absolute() == b.absolute()
