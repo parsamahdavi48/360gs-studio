@@ -4,6 +4,18 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
+from core.mask_job_spec import (
+    BACKEND_MASK2FORMER,
+    BACKEND_SAM31,
+    custom_mask_job,
+    init_masks_job,
+    mask_job_to_command,
+    overexposure_mask_job,
+    sky_mask_job,
+    stitch_mask_job,
+    yolo_sam_mask_job,
+)
+
 PERSON_BACKEND_YOLO_SAM = "yolo_sam"
 PERSON_BACKEND_MASK2FORMER = "mask2former"
 PERSON_BACKEND_SAM31 = "sam31"
@@ -39,13 +51,6 @@ class MaskCommandContext:
     sam31_merge_mode: str = SAM31_MERGE_REPLACE
 
 
-def _script_path(context: MaskCommandContext, script_name: str) -> Path:
-    script = context.base_dir / script_name
-    if not script.exists():
-        raise FileNotFoundError(f"{script_name} が見つかりません: {script}")
-    return script
-
-
 def _require_images_masks(images: str | Path, masks: str | Path) -> tuple[str, str]:
     images_text = str(images)
     masks_text = str(masks)
@@ -54,13 +59,6 @@ def _require_images_masks(images: str | Path, masks: str | Path) -> tuple[str, s
     if not masks_text:
         raise ValueError("マスクフォルダが指定されていません")
     return images_text, masks_text
-
-
-def _sky_postprocess_args(context: MaskCommandContext) -> list[str]:
-    args = ["--min-area-ratio", context.sky_min_area_ratio]
-    if context.sky_top_connected:
-        args.append("--top-connected")
-    return args
 
 
 def build_primary_mask_cmd(
@@ -94,26 +92,19 @@ def build_yolo_sam_cmd(
     image_list: str | Path | None = None,
 ) -> list[str]:
     images_text, masks_text = _require_images_masks(images, masks)
-    script = _script_path(context, "yolo_mask.py")
-    cmd = [
+    return mask_job_to_command(
         context.python_executable,
-        "-u",
-        str(script),
-        images_text,
-        masks_text,
-        "--quality",
-        context.quality,
-        "--expand",
-        context.yolo_expand,
-        "--projection",
-        context.projection,
-    ]
-    if context.yolo_classes:
-        cmd.extend(["--classes", ",".join(str(c) for c in context.yolo_classes)])
-    if image_list:
-        cmd.extend(["--image-list", str(image_list)])
-    cmd.extend(context.yolo_extra_args)
-    return cmd
+        yolo_sam_mask_job(
+            images=images_text,
+            masks=masks_text,
+            quality=context.quality,
+            expand=int(context.yolo_expand),
+            projection=context.projection,
+            classes=context.yolo_classes or (0,),
+            extra_args=context.yolo_extra_args,
+            image_list=image_list,
+        ),
+    )
 
 
 def build_sam31_prompt_cmd(
@@ -128,47 +119,37 @@ def build_sam31_prompt_cmd(
     image_list: str | Path | None = None,
 ) -> list[str]:
     images_text, masks_text = _require_images_masks(images, masks)
-    script = _script_path(context, "sky_mask.py")
     effective_merge_mode = SAM31_MERGE_REPLACE if replace else (merge_mode or context.sam31_merge_mode)
     if effective_merge_mode not in SAM31_MERGE_MODES:
         effective_merge_mode = SAM31_MERGE_REPLACE
 
-    cmd = [
-        context.python_executable,
-        "-u",
-        str(script),
-        images_text,
-        masks_text,
-        "--backend",
-        "sam31",
-        "--projection",
-        context.projection,
-        "--quality",
-        context.quality,
-        "--inference-size",
-        PERSON_SAM31_INFERENCE_SIZE,
-        "--expand",
-        context.yolo_expand,
-        "--min-score",
-        PERSON_SAM31_MIN_SCORE,
-        "--merge-mode",
-        effective_merge_mode,
-    ]
-    cmd.extend(_sky_postprocess_args(context))
-    for prompt in prompts:
-        cmd.extend(["--sam-prompt", prompt])
-    for prompt in subtract_prompts or []:
-        cmd.extend(["--subtract-sam-prompt", prompt])
-    if effective_merge_mode == SAM31_MERGE_REPLACE:
-        cmd.append("--replace")
-    if image_list:
-        cmd.extend(["--image-list", str(image_list)])
+    safe_batch = False
     try:
         if Path(images_text).is_dir():
-            cmd.append("--safe-batch")
+            safe_batch = True
     except OSError:
         pass
-    return cmd
+    return mask_job_to_command(
+        context.python_executable,
+        sky_mask_job(
+            images=images_text,
+            masks=masks_text,
+            backend=BACKEND_SAM31,
+            projection=context.projection,
+            quality=context.quality,
+            inference_size=int(PERSON_SAM31_INFERENCE_SIZE),
+            expand=int(context.yolo_expand),
+            min_score=float(PERSON_SAM31_MIN_SCORE),
+            min_area_ratio=float(context.sky_min_area_ratio),
+            top_connected=context.sky_top_connected,
+            sam_prompts=prompts,
+            sam_subtract_prompts=subtract_prompts or (),
+            merge_mode=effective_merge_mode,
+            replace=effective_merge_mode == SAM31_MERGE_REPLACE,
+            safe_batch=safe_batch,
+            image_list=image_list,
+        ),
+    )
 
 
 def build_mask2former_cmd(
@@ -180,34 +161,25 @@ def build_mask2former_cmd(
     image_list: str | Path | None = None,
 ) -> list[str]:
     images_text, masks_text = _require_images_masks(images, masks)
-    script = _script_path(context, "sky_mask.py")
-    cmd = [
+    return mask_job_to_command(
         context.python_executable,
-        "-u",
-        str(script),
-        images_text,
-        masks_text,
-        "--backend",
-        "mask2former",
-        "--projection",
-        context.projection,
-        "--quality",
-        context.quality,
-        "--inference-size",
-        context.sky_inference_size,
-        "--expand",
-        context.yolo_expand,
-        "--min-score",
-        context.sky_min_score,
-        "--labels",
-        ",".join(context.ade_labels),
-    ]
-    cmd.extend(_sky_postprocess_args(context))
-    if replace:
-        cmd.append("--replace")
-    if image_list:
-        cmd.extend(["--image-list", str(image_list)])
-    return cmd
+        sky_mask_job(
+            images=images_text,
+            masks=masks_text,
+            backend=BACKEND_MASK2FORMER,
+            projection=context.projection,
+            quality=context.quality,
+            inference_size=int(context.sky_inference_size),
+            expand=int(context.yolo_expand),
+            min_score=float(context.sky_min_score),
+            min_area_ratio=float(context.sky_min_area_ratio),
+            top_connected=context.sky_top_connected,
+            labels=context.ade_labels,
+            merge_mode=SAM31_MERGE_ADD,
+            replace=replace,
+            image_list=image_list,
+        ),
+    )
 
 
 def build_init_masks_cmd(
@@ -218,11 +190,10 @@ def build_init_masks_cmd(
     image_list: str | Path | None = None,
 ) -> list[str]:
     images_text, masks_text = _require_images_masks(images, masks)
-    script = _script_path(context, "init_masks.py")
-    cmd = [context.python_executable, "-u", str(script), images_text, masks_text]
-    if image_list:
-        cmd.extend(["--image-list", str(image_list)])
-    return cmd
+    return mask_job_to_command(
+        context.python_executable,
+        init_masks_job(images=images_text, masks=masks_text, image_list=image_list),
+    )
 
 
 def build_stitch_cmd(
@@ -234,21 +205,15 @@ def build_stitch_cmd(
     masks_text = str(masks)
     if not masks_text:
         raise ValueError("マスクフォルダが指定されていません")
-    script = _script_path(context, "stitch_mask.py")
-    cmd = [
+    return mask_job_to_command(
         context.python_executable,
-        "-u",
-        str(script),
-        masks_text,
-        masks_text,
-        "--boundary-width",
-        f"{context.stitch_boundary_width:g}",
-        "--workers",
-        context.stitch_workers,
-    ]
-    if image_list:
-        cmd.extend(["--image-list", str(image_list)])
-    return cmd
+        stitch_mask_job(
+            masks=masks_text,
+            boundary_width=context.stitch_boundary_width,
+            workers=int(context.stitch_workers),
+            image_list=image_list,
+        ),
+    )
 
 
 def build_overexposure_cmd(
@@ -260,25 +225,18 @@ def build_overexposure_cmd(
     image_list: str | Path | None = None,
 ) -> list[str]:
     images_text, masks_text = _require_images_masks(images, masks)
-    script = _script_path(context, "overexposure_mask.py")
-    cmd = [
+    return mask_job_to_command(
         context.python_executable,
-        "-u",
-        str(script),
-        images_text,
-        masks_text,
-        "--threshold",
-        context.overexposure_threshold,
-        "--dilate",
-        context.overexposure_dilate,
-        "--workers",
-        context.stitch_workers,
-    ]
-    if replace:
-        cmd.append("--replace")
-    if image_list:
-        cmd.extend(["--image-list", str(image_list)])
-    return cmd
+        overexposure_mask_job(
+            images=images_text,
+            masks=masks_text,
+            threshold=int(context.overexposure_threshold),
+            dilate=int(context.overexposure_dilate),
+            workers=int(context.stitch_workers),
+            replace=replace,
+            image_list=image_list,
+        ),
+    )
 
 
 def build_custom_cmd(
@@ -292,17 +250,13 @@ def build_custom_cmd(
     images_text, masks_text = _require_images_masks(images, masks)
     if not context.custom_mask:
         raise ValueError("CUSTOM_MASK_REQUIRED")
-    script = _script_path(context, "custom_mask.py")
-    cmd = [
+    return mask_job_to_command(
         context.python_executable,
-        "-u",
-        str(script),
-        images_text,
-        masks_text,
-        context.custom_mask,
-    ]
-    if replace:
-        cmd.append("--replace")
-    if image_list:
-        cmd.extend(["--image-list", str(image_list)])
-    return cmd
+        custom_mask_job(
+            images=images_text,
+            masks=masks_text,
+            custom_mask=context.custom_mask,
+            replace=replace,
+            image_list=image_list,
+        ),
+    )

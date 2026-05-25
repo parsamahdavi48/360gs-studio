@@ -13,7 +13,6 @@ from core.metashape_colmap_dataset import (
 )
 from core.metashape_coordinates import metashape_camera_matrix_to_output_world, metashape_pointcloud_matrix
 from core.transforms_to_colmap import c2w_to_w2c
-from vendor.metashape_360_lfs.metashape_360_lfs import transform_camera_matrix as legacy_transform_camera_matrix
 
 _IDENTITY = "1 0 0 0 0 1 0 0 0 0 1 0 0 0 0 1"
 
@@ -176,7 +175,7 @@ def test_metashape_camera_transform_uses_pointcloud_basis_once() -> None:
     assert np.allclose(actual, expected)
 
 
-def test_metashape_colmap_camera_transform_matches_legacy_vendor() -> None:
+def test_metashape_colmap_camera_transform_matches_coordinate_contract() -> None:
     transform = np.array(
         [
             [0.96, -0.02, 0.28, 1.25],
@@ -187,10 +186,16 @@ def test_metashape_colmap_camera_transform_matches_legacy_vendor() -> None:
         dtype=np.float64,
     )
 
-    assert np.allclose(
-        metashape_camera_matrix_to_output_world(transform),
-        legacy_transform_camera_matrix(transform, fix_upside_down=True),
+    expected = np.array(
+        [
+            [0.26, 0.23, 0.94, -3.75],
+            [-0.10, 0.97, -0.21, 2.50],
+            [-0.96, -0.02, 0.28, -1.25],
+            [0.0, 0.0, 0.0, 1.0],
+        ],
+        dtype=np.float64,
     )
+    assert np.allclose(metashape_camera_matrix_to_output_world(transform), expected)
 
 
 def test_metashape_colmap_w2c_matches_transforms_to_colmap(tmp_path: Path) -> None:

@@ -5,7 +5,6 @@ from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import (
     QAbstractButton,
-    QFileDialog,
     QHBoxLayout,
     QLineEdit,
     QSizePolicy,
@@ -14,6 +13,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from gui.common import dialogs
 from gui.common.icons import folder_icon
 from gui.i18n import BROWSE
 
@@ -100,12 +100,12 @@ class BrowseWidget(QWidget):
 
     def _browse(self) -> None:
         if self._mode == "dir":
-            path = QFileDialog.getExistingDirectory(self, "", self.text())
+            path = dialogs.get_existing_directory(self, "", self.text())
         elif self._mode == "files":
-            paths, _ = QFileDialog.getOpenFileNames(self, "", self._dialog_start_path(), self._filter)
+            paths, _ = dialogs.get_open_file_names(self, "", self._dialog_start_path(), self._filter)
             path = "; ".join(paths)
         else:
-            path, _ = QFileDialog.getOpenFileName(self, "", self._dialog_start_path(), self._filter)
+            path, _ = dialogs.get_open_file_name(self, "", self._dialog_start_path(), self._filter)
         if path:
             self.set_text(path)
 

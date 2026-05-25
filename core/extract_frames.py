@@ -5,9 +5,9 @@ import argparse
 import csv
 import json
 import subprocess
-import sys
 import tempfile
 from collections.abc import Sequence
+from dataclasses import dataclass
 from pathlib import Path
 
 from core.extract_sessions import (
@@ -46,6 +46,63 @@ from core.frame_pair_analysis import (
 from core.path_safety import safe_clear_path
 from core.scene_layout import extract_report_path, frame_cache_dir, scene_images_dir, selected_frames_path
 from core.video_info import VideoInfo
+
+
+@dataclass(frozen=True, slots=True)
+class ExtractFramesOptions:
+    input_video: Path
+    output_dir: Path = Path(".")
+    mode: str = "fixed"
+    interval_sec: float = 0.5
+    min_gap_sec: float = 0.25
+    max_gap_sec: float = 2.0
+    fixed_smart: bool = False
+    quick_extract: bool = False
+    fixed_smart_max_inserts_per_interval: int = 2
+    pair_track_min_count: int = 36
+    pair_motion_profile: str = "walk"
+    pair_drop_threshold: float = -1.0
+    pair_add_threshold: float = -1.0
+    pair_track_min_confidence: float = 0.25
+    analysis_width: int = 1920
+    image_ext: str = "jpg"
+    jpg_quality: int = 2
+    filename_prefix: str = ""
+    output_mode: str = "overwrite"
+    allow_duplicate_video: bool = False
+    ffmpeg: str = "ffmpeg"
+    ffprobe: str = "ffprobe"
+    estimate_only: bool = False
+    print_summary_json: bool = False
+
+
+def options_from_args(args: argparse.Namespace) -> ExtractFramesOptions:
+    return ExtractFramesOptions(
+        input_video=Path(str(args.input_video)),
+        output_dir=Path(str(args.output_dir)),
+        mode=str(args.mode),
+        interval_sec=float(args.interval_sec),
+        min_gap_sec=float(args.min_gap_sec),
+        max_gap_sec=float(args.max_gap_sec),
+        fixed_smart=bool(args.fixed_smart),
+        quick_extract=bool(args.quick_extract),
+        fixed_smart_max_inserts_per_interval=int(args.fixed_smart_max_inserts_per_interval),
+        pair_track_min_count=int(args.pair_track_min_count),
+        pair_motion_profile=str(args.pair_motion_profile),
+        pair_drop_threshold=float(args.pair_drop_threshold),
+        pair_add_threshold=float(args.pair_add_threshold),
+        pair_track_min_confidence=float(args.pair_track_min_confidence),
+        analysis_width=int(args.analysis_width),
+        image_ext=str(args.image_ext),
+        jpg_quality=int(args.jpg_quality),
+        filename_prefix=str(args.filename_prefix),
+        output_mode=str(args.output_mode),
+        allow_duplicate_video=bool(args.allow_duplicate_video),
+        ffmpeg=str(args.ffmpeg),
+        ffprobe=str(args.ffprobe),
+        estimate_only=bool(args.estimate_only),
+        print_summary_json=bool(args.print_summary_json),
+    )
 
 
 def parse_fraction(value: str) -> float:
@@ -826,7 +883,7 @@ def total_frames_for_fixed_selection(video_info: VideoInfo) -> int:
     return max(total_frames, 1)
 
 
-def parse_args() -> argparse.Namespace:
+def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Extract equirectangular frames via FFmpeg with SfM-oriented pair analysis."
     )
@@ -943,26 +1000,25 @@ def parse_args() -> argparse.Namespace:
         help="Print one-line JSON summary prefixed with SUMMARY_JSON:",
     )
 
-    return parser.parse_args()
+    return parser.parse_args(argv)
 
 
-def main() -> None:
-    args = parse_args()
+def run_extract_frames(args: ExtractFramesOptions) -> int:
     if args.interval_sec <= 0:
         print("Error: --interval-sec must be > 0")
-        sys.exit(1)
+        return 1
     if args.min_gap_sec <= 0 or args.max_gap_sec <= 0:
         print("Error: --min-gap-sec and --max-gap-sec must be > 0")
-        sys.exit(1)
+        return 1
     if args.max_gap_sec < args.min_gap_sec:
         print("Error: --max-gap-sec must be >= --min-gap-sec")
-        sys.exit(1)
+        return 1
     if args.fixed_smart_max_inserts_per_interval < 0:
         print("Error: --fixed-smart-max-inserts-per-interval must be >= 0")
-        sys.exit(1)
+        return 1
     if args.pair_track_min_count < 0:
         print("Error: --pair-track-min-count must be >= 0")
-        sys.exit(1)
+        return 1
     try:
         resolve_pair_thresholds(
             args.interval_sec,
@@ -972,18 +1028,18 @@ def main() -> None:
         )
     except ValueError as e:
         print(f"Error: {e}")
-        sys.exit(1)
+        return 1
     if args.pair_track_min_confidence < 0.0 or args.pair_track_min_confidence > 1.0:
         print("Error: --pair-track-min-confidence must be between 0 and 1")
-        sys.exit(1)
+        return 1
     if args.quick_extract and args.fixed_smart:
         print("Error: --quick-extract cannot be combined with --fixed-smart")
-        sys.exit(1)
+        return 1
 
     input_video = Path(args.input_video)
     if not input_video.exists():
         print(f"Error: input video not found: {input_video}")
-        sys.exit(1)
+        return 1
 
     output_root = Path(args.output_dir)
     scene_dir = output_root.resolve()
@@ -997,7 +1053,7 @@ def main() -> None:
         video_info = probe_video(input_video, args.ffprobe)
     except Exception as e:
         print(f"Error: {e}")
-        sys.exit(1)
+        return 1
 
     print(f"Input video: {input_video}")
     print(f"Video: {video_info.width}x{video_info.height} @ {video_info.fps:.3f} fps")
@@ -1020,7 +1076,7 @@ def main() -> None:
             "Use --output-mode replace-video to re-extract it, or --allow-duplicate-video "
             "with a unique --filename-prefix to add it as a separate session."
         )
-        sys.exit(1)
+        return 1
 
     if args.quick_extract:
         total_frames = total_frames_for_fixed_selection(video_info)
@@ -1028,7 +1084,7 @@ def main() -> None:
             selected, min_gap_frames = select_fixed(total_frames, video_info.fps, args.interval_sec)
         except Exception as e:
             print(f"Error while selecting frames: {e}")
-            sys.exit(1)
+            return 1
         enriched_rows = build_quick_extract_rows(selected)
         analysis_w, analysis_h = 0, 0
         print("Quick extract: skipping analysis and motion adjustment")
@@ -1073,13 +1129,13 @@ def main() -> None:
             )
         except Exception as e:
             print(f"Error during pair analysis: {e}")
-            sys.exit(1)
+            return 1
         print(f"Pair-analyzed frames: {total_frames} ({analysis_w}x{analysis_h})")
 
     kept_rows = [r for r in enriched_rows if r.get("decision", "keep") != "drop"]
     if not kept_rows:
         print("Error: no frames selected")
-        sys.exit(1)
+        return 1
 
     final_indices = [int(r["final_index"]) for r in enriched_rows]
     frame_digits = frame_index_digits(video_info.total_frames, final_indices)
@@ -1110,11 +1166,11 @@ def main() -> None:
             print(f"Estimated pair weak-match review frames: {summary['result'].get('weak_match_count', 0)}")
         if args.print_summary_json:
             print("SUMMARY_JSON:" + json.dumps(summary, ensure_ascii=False))
-        return
+        return 0
 
     if not final_indices:
         print("Error: no frames selected; skipping extraction")
-        sys.exit(1)
+        return 1
 
     session_id = new_session_id()
     output_files = output_files_for_indices(
@@ -1160,7 +1216,7 @@ def main() -> None:
                 f"Error: output files already exist ({len(collisions)}). "
                 f"Use a unique --filename-prefix. Example: {preview}"
             )
-            sys.exit(1)
+            return 1
 
     staging_dir: Path | None = None
     extraction_output_dir = images_dir
@@ -1187,7 +1243,7 @@ def main() -> None:
             if staging_dir.exists():
                 safe_clear_path(staging_dir, allowed_roots=[frame_cache_dir(scene_dir)])
         print(f"Error during extraction: {e}")
-        sys.exit(1)
+        return 1
 
     if extracted_indices != final_indices:
         extracted_set = set(extracted_indices)
@@ -1216,7 +1272,7 @@ def main() -> None:
             removed = commit_staged_frame_outputs(scene_dir, staging_dir, output_files, replaced_output_files)
         except Exception as e:
             print(f"Error while committing replacement frames: {e}")
-            sys.exit(1)
+            return 1
         print(
             f"Replaced prior sessions for this video: {len(matching_sessions)} session(s), {removed} file(s) replaced/removed"
         )
@@ -1295,7 +1351,12 @@ def main() -> None:
     print(f"Report: {report_path}")
     if args.print_summary_json:
         print("SUMMARY_JSON:" + json.dumps(summary, ensure_ascii=False))
+    return 0
+
+
+def main(argv: Sequence[str] | None = None) -> int:
+    return run_extract_frames(options_from_args(parse_args(argv)))
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

@@ -1,7 +1,5 @@
 import csv
 import os
-import subprocess
-import sys
 from pathlib import Path
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
@@ -11,6 +9,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtGui import QPixmap
 from PySide6.QtWidgets import QApplication, QComboBox, QLabel, QLineEdit, QPushButton, QSizePolicy
 
+from core.app_job import AppJob, run_app_job
 from core.review_blur_sensitivity import (
     BLUR_REVIEW_MODE_FIELD,
     BLUR_REVIEW_MODE_LOW,
@@ -326,12 +325,11 @@ def test_review_step_apply_uses_flag_changed_across_preview_modes(
     assert len(commands) == 1
     label, cmd = commands[0]
     assert label == "finalize"
-    assert cmd[:3] == [sys.executable, "-u", str(Path.cwd() / "apply_frame_decisions.py")]
-    assert cmd[-2:] == [str(tmp_path), "--finalize-in-place"]
+    assert isinstance(cmd, AppJob)
+    assert cmd.payload["scene_dir"] == str(tmp_path)
+    assert cmd.payload["finalize_in_place"] is True
 
-    result = subprocess.run(cmd, cwd=Path.cwd(), capture_output=True, text=True)
-
-    assert result.returncode == 0, result.stdout + result.stderr
+    run_app_job(cmd)
     assert sorted(path.name for path in (tmp_path / "images").glob("*.png")) == [
         "frame_000001.png",
         "frame_000003.png",
@@ -387,16 +385,17 @@ def test_review_step_can_renumber_kept_images_on_finalize(tmp_path: Path, monkey
 
     assert len(commands) == 1
     _label, cmd = commands[0]
-    assert cmd[-3:] == [str(tmp_path), "--finalize-in-place", "--renumber-kept-images"]
+    assert isinstance(cmd, AppJob)
+    assert cmd.payload["scene_dir"] == str(tmp_path)
+    assert cmd.payload["finalize_in_place"] is True
+    assert cmd.payload["renumber_kept_images"] is True
     assert step._pending_review_run is not None
     assert step._pending_review_run["renumber_kept_images"] is True
     assert step._pending_review_run["renamed_images"] == [
         {"from": "images/frame_000003.png", "to": "images/frame_000002.png"}
     ]
 
-    result = subprocess.run(cmd, cwd=Path.cwd(), capture_output=True, text=True)
-
-    assert result.returncode == 0, result.stdout + result.stderr
+    run_app_job(cmd)
     assert sorted(path.name for path in (tmp_path / "images").glob("*.png")) == [
         "frame_000001.png",
         "frame_000002.png",

@@ -5,7 +5,7 @@ from pathlib import Path
 import cv2
 import numpy as np
 
-from init_masks import run
+from core.init_masks import run
 
 
 def test_init_masks_writes_white_masks_and_preserves_subfolders(tmp_path: Path) -> None:

@@ -11,6 +11,7 @@ from PySide6.QtCore import QObject, QSize, Qt
 from PySide6.QtGui import QColor, QImage, QPainter, QPen
 
 from core.image_io import imread_unicode
+from core.overexposure_mask import read_image_preserve_depth
 from gui import theme
 from gui.common.thumbnail_list_model import (
     DEFAULT_GRID_SIZE,
@@ -19,7 +20,6 @@ from gui.common.thumbnail_list_model import (
     ThumbnailItem,
 )
 from gui.mask.mask_files import mask_candidates_for_image
-from overexposure_mask import read_image_preserve_depth
 
 
 @dataclass(frozen=True)

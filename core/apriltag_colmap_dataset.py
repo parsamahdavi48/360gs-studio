@@ -24,19 +24,19 @@ class ColmapAprilTagDataset:
 
 
 def _read_model(path: Path):
-    from scripts.spheresfm_to_transforms import read_model
+    from core.spheresfm_to_transforms import read_model
 
     return read_model(path)
 
 
 def _colmap_pose_to_c2w(image: object, *, opengl_camera: bool) -> np.ndarray:
-    from scripts.spheresfm_to_transforms import colmap_pose_to_c2w
+    from core.spheresfm_to_transforms import colmap_pose_to_c2w
 
     return colmap_pose_to_c2w(image, opengl_camera=opengl_camera)
 
 
 def _resolve_colmap_image_path(images_dir: Path, image_name: str) -> Path:
-    from scripts.spheresfm_to_transforms import resolve_image_path
+    from core.spheresfm_to_transforms import resolve_image_path
 
     return resolve_image_path(images_dir, image_name)
 
@@ -193,7 +193,7 @@ def validate_colmap_apriltag_dataset(
 
 
 def _qvec_to_rotmat(qvec: np.ndarray) -> np.ndarray:
-    from scripts.spheresfm_to_transforms import qvec_to_rotmat
+    from core.spheresfm_to_transforms import qvec_to_rotmat
 
     return qvec_to_rotmat(qvec)
 

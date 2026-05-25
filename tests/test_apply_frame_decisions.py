@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from apply_frame_decisions import (
+from core.apply_frame_decisions import (
     apply_decisions,
     backup_images_dir,
     finalize_in_place,

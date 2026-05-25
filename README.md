@@ -16,8 +16,6 @@ After extracting the ZIP, run `setup_windows.bat`, then `run_gui.bat`.
 
 [JP 日本語の説明](README.ja.md)
 
-Forked from [tetraface/tetraface-3dgs-utils](https://github.com/tetraface/tetraface-3dgs-utils).
-
 ![STechDrive 3DGS Utils workflow](images/stechdrive-3dgs-workflow-en.png)
 
 ![STechDrive 3DGS Utils GUI](images/stechdrive-3dgs-utils-gui.jpg)
@@ -53,7 +51,7 @@ For video or image sequences from DSLR, mirrorless, smartphone, or other normal 
 - Use the same mask-preparation workflow for normal-camera video after Step 1 extraction and for normal photo or image-sequence sets, not only 360° images. This is useful before sending images to SfM software.
 - In Step 4, choose how camera poses and sparse points will be prepared: use an existing SfM result, run COLMAP or SphereSfM from this app, or create RealityScan realignment data from a Metashape result.
 - In Step 5, convert Metashape, SphereSfM, RealityScan, or COLMAP results into NeRF-style JSON/PLY datasets, COLMAP-format datasets, LichtFeld-ready RealityScan conversions, or AprilTag scale-adjusted outputs.
-- Inspect SfM results and datasets in Scene Preview, with the point cloud, camera positions, selected camera image, and matching masks in one view. Open it from Step 4's card or launch only the viewer with `run_scene_preview.bat`.
+- Inspect SfM results and datasets in Scene Preview, with the point cloud, camera positions, selected camera image, and matching masks in one view. Open it from Step 4's viewer card.
 - If you print and place AprilTags before capture, Step 5 `Scale Adjustment` can estimate metric scale from an existing dataset. After reviewing the estimate, you can apply the same scale to the target dataset camera positions and point cloud.
 - Prepare the Windows environment with setup scripts that handle Python, FFmpeg/FFprobe, and the main Python packages. Normal use starts from `run_gui.bat`.
 
@@ -234,22 +232,9 @@ numpy, opencv-python, Pillow, open3d, ultralytics, transformers, safetensors, tq
 
 `setup_windows.bat` uses the pinned verified package set under `requirements/` for reproducible first-time setup. `update_venv.bat` resolves the latest compatible packages by default; pass `--locked` when you want to rebuild from the pinned set instead.
 
-## CLI Tools
+## Developer Notes
 
-The GUI wraps these CLI engines, which can also be used directly. The root-level scripts are stable public entry points; shared implementation code lives under `core/`.
-
-| Script | Purpose | Docs |
-| --- | --- | --- |
-| `extract_frames.py` | Extract video frames and register still-image sources | [EN](doc/extract_frames.md) |
-| `apply_frame_decisions.py` | Apply keep/drop decisions from CSV | [EN](doc/apply_frame_decisions.md) |
-| `review_frames.py` | Frame review GUI | [EN](doc/review_frames.md) |
-| `yolo_mask.py` | YOLO+SAM2.1 mask generation | [EN](doc/yolo_mask.md) |
-| `sky_mask.py` | Semantic mask generation with Mask2Former ADE20K labels or SAM3.1 prompts | [EN](doc/sky_mask.md) |
-| `stitch_mask.py` | Stitch seam mask generation | [EN](doc/stitch_mask.md) |
-| `overexposure_mask.py` | Overexposure mask generation | [EN](doc/overexposure_mask.md) |
-| `custom_mask.py` | AND-merge a user-provided PNG mask | [EN](doc/custom_mask.md) |
-| `cubemap_transforms_json.py` | Convert equirectangular images to cubemap views | [EN](doc/cubemap_transforms_json.md) |
-| `transforms_to_colmap.py` | Export COLMAP files from `transforms.json` | [EN](doc/transforms_to_colmap.md) |
+The normal workflow is GUI-first. Runtime implementation lives under `core/`, and the GUI runs app-internal work through typed jobs instead of root-level compatibility scripts. Files under `scripts/` are developer, release, or thin CLI entry points.
 
 ## License
 
@@ -257,5 +242,4 @@ MIT License. See [LICENSE](LICENSE).
 
 Mask generation features use third-party libraries and model weights with separate license terms. See [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md).
 
-Original code by [tetraface Inc.](https://github.com/tetraface)
-Fork extensions by [stechdrive](https://github.com/stechdrive)
+Originally derived from [tetraface/tetraface-3dgs-utils](https://github.com/tetraface/tetraface-3dgs-utils). Current releases are maintained as a standalone STechDrive GUI workflow.

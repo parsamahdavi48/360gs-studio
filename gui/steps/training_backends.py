@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import json
 import math
-import shlex
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -284,14 +283,6 @@ class PostshotTrainingOptions:
     export_splat_path: Path | None = None
 
 
-@dataclass(frozen=True)
-class CustomTrainingOptions:
-    executable: str
-    dataset: TrainingDataset
-    output_dir: Path
-    arguments_template: str
-
-
 def build_lichtfeld_config(options: LichtFeldTrainingOptions) -> dict:
     strategy = options.strategy.lower().strip()
     if strategy not in _LICHTFELD_REQUIRED_STRATEGIES:
@@ -512,26 +503,3 @@ def build_postshot_training_cmd(options: PostshotTrainingOptions) -> list[str]:
     add_box("crop-box", options.crop_box_default, options.crop_box_min, options.crop_box_max)
     add_box("roi-box", options.roi_box_default, options.roi_box_min, options.roi_box_max)
     return cmd
-
-
-def build_custom_training_cmd(options: CustomTrainingOptions) -> list[str]:
-    if not options.arguments_template.strip():
-        return [options.executable]
-    values = {
-        "dataset": str(options.dataset.dataset_root),
-        "images": str(options.dataset.images_dir or ""),
-        "masks": str(options.dataset.masks_dir or ""),
-        "sparse": str(options.dataset.colmap_sparse_dir or ""),
-        "output": str(options.output_dir),
-    }
-    try:
-        rendered = options.arguments_template.format(**values)
-    except KeyError as exc:
-        raise ValueError(f"Unknown custom training placeholder: {exc}") from exc
-    args = [
-        arg[1:-1]
-        if len(arg) >= 2 and arg[0] == arg[-1] and arg[0] in {"'", '"'}
-        else arg
-        for arg in shlex.split(rendered, posix=False)
-    ]
-    return [options.executable, *args]

@@ -10,7 +10,6 @@ from PySide6.QtCore import QSignalBlocker, QSize, Qt, QThread, QUrl
 from PySide6.QtGui import QAction, QCloseEvent, QDesktopServices, QIcon
 from PySide6.QtWidgets import (
     QApplication,
-    QFileDialog,
     QHBoxLayout,
     QLabel,
     QMenu,
@@ -26,6 +25,7 @@ from PySide6.QtWidgets import (
 from core.path_safety import PathSafetyIssue, check_path_safety, normalized_path_text
 from core.scene_import import SceneImportResult, import_scene
 from gui import i18n
+from gui.common import dialogs
 from gui.common.browse_widget import BrowseWidget
 from gui.common.icons import back_icon, folder_icon, help_icon, import_scene_icon, menu_icon, reset_icon
 from gui.common.log_panel import LogPanel
@@ -420,7 +420,7 @@ class MainWindow(QWidget):
             self.log_panel.append_log(i18n.BUSY_MSG)
             return
         start_dir = self.scene_browse.text().strip() or str(Path.cwd())
-        scene = QFileDialog.getExistingDirectory(self, i18n.t("IMPORT_SCENE_SELECT_FOLDER"), start_dir)
+        scene = dialogs.get_existing_directory(self, i18n.t("IMPORT_SCENE_SELECT_FOLDER"), start_dir)
         if not scene:
             return
 

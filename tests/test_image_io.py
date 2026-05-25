@@ -10,16 +10,18 @@ import cv2
 import numpy as np
 import pytest
 
-from cubemap_transforms_json import (
-    build_remap,
-    load_equirect,
+from core.cubemap_image_conversion import (
     proc_convert_images,
     remap_image,
+    worker_init,
+)
+from core.cubemap_image_io import (
+    load_equirect,
     remap_with_channels,
     resolve_output_ext,
     save_image,
-    worker_init,
 )
+from core.cubemap_remap import build_remap
 
 # =============================================================================
 # resolve_output_ext

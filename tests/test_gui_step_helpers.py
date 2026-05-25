@@ -1,21 +1,17 @@
 import json
 from pathlib import Path
 
+from core.spheresfm_project import prepare_masks
 from gui.steps.cubemap_commands import (
     ColmapRigFeatureGroup,
     ColmapSfmCommand,
-    CubemapConversionCommand,
     SphereSfmCommand,
-    SphereSfmTransformsCommand,
     build_colmap_sfm_commands,
-    build_cubemap_conversion_cmd,
     build_spheresfm_commands,
-    build_spheresfm_transforms_cmd,
     write_views_config,
 )
 from gui.steps.mask_commands import MaskCommandContext, build_sam31_prompt_cmd
 from gui.steps.mask_image_import import import_external_images
-from scripts.prepare_spheresfm_project import prepare_masks
 
 
 def _mask_context(base_dir: Path) -> MaskCommandContext:
@@ -38,7 +34,6 @@ def _mask_context(base_dir: Path) -> MaskCommandContext:
 
 
 def test_mask_command_builder_keeps_sam31_safe_batch_directory_only(tmp_path: Path) -> None:
-    (tmp_path / "sky_mask.py").write_text("", encoding="utf-8")
     images = tmp_path / "images"
     images.mkdir()
     image_file = images / "frame_0001.jpg"
@@ -58,7 +53,7 @@ def test_mask_command_builder_keeps_sam31_safe_batch_directory_only(tmp_path: Pa
         prompts=["person"],
     )
 
-    assert dir_cmd[0:3] == ["python.exe", "-u", str(tmp_path / "sky_mask.py")]
+    assert dir_cmd[0:4] == ["python.exe", "-u", "-m", "core.sky_mask"]
     assert dir_cmd[dir_cmd.index("--backend") + 1] == "sam31"
     assert "--replace" in dir_cmd
     assert "--safe-batch" in dir_cmd
@@ -78,9 +73,7 @@ def test_external_image_import_helper_skips_existing_names(tmp_path: Path) -> No
     assert sorted(path.name for path in target.iterdir()) == ["a.JPG", "b.png"]
 
 
-def test_cubemap_command_builder_writes_views_and_flags(tmp_path: Path) -> None:
-    script = tmp_path / "cubemap_transforms_json.py"
-    script.write_text("", encoding="utf-8")
+def test_cubemap_views_config_writes_normalized_payload(tmp_path: Path) -> None:
     views_json = write_views_config(
         tmp_path / "output",
         [{"name": "px", "yaw": 0, "pitch": 0, "enabled": True}],
@@ -88,39 +81,6 @@ def test_cubemap_command_builder_writes_views_and_flags(tmp_path: Path) -> None:
 
     payload = json.loads(views_json.read_text(encoding="utf-8"))
     assert payload["views"][0] == {"name": "px", "yaw": 0.0, "pitch": 0.0, "enabled": True}
-
-    cmd = build_cubemap_conversion_cmd(
-        CubemapConversionCommand(
-            python_executable="python.exe",
-            script=script,
-            scene=tmp_path,
-            output=tmp_path / "output",
-            views_json=views_json,
-            scale=1.0,
-            axis_mode="brush",
-            image_only=False,
-            colmap_rig=False,
-            invert_masks=True,
-            writes_images=False,
-            writes_masks=True,
-            yaw_offset_per_frame=30.0,
-            output_format="jpg",
-            output_bit_depth="8",
-            jpg_quality=92,
-            final_orientation="lichtfeld",
-            image_dir=tmp_path / "images",
-            mask_dir=tmp_path / "masks",
-        )
-    )
-
-    assert "--brush" in cmd
-    assert "--invert_masks" in cmd
-    assert cmd[cmd.index("--image-dir") + 1] == str(tmp_path / "images")
-    assert cmd[cmd.index("--mask_dir") + 1] == str(tmp_path / "masks")
-    assert "--skip-images" in cmd
-    assert "--skip-masks" not in cmd
-    assert cmd[cmd.index("--final-orientation") + 1] == "lichtfeld"
-    assert cmd[cmd.index("--jpg-quality") + 1] == "92"
 
 
 def test_colmap_sfm_builder_keeps_mapper_contract(tmp_path: Path) -> None:
@@ -208,21 +168,12 @@ def test_spheresfm_builder_uses_spherical_camera_and_mask_path(tmp_path: Path) -
     sparse = tmp_path / "project" / "sparse"
     images.mkdir()
     masks.mkdir()
-    preflight_script = tmp_path / "spheresfm_gpu_preflight.py"
-    preflight_script.write_text("", encoding="utf-8")
-    script = tmp_path / "prepare_spheresfm_project.py"
-    script.write_text("", encoding="utf-8")
 
     commands = build_spheresfm_commands(
         SphereSfmCommand(
-            python_executable="python.exe",
-            preflight_script=preflight_script,
-            prepare_script=script,
             colmap="spheresfm_colmap.exe",
             images_dir=images,
-            source_masks_dir=masks,
             prepared_masks_dir=prepared_masks,
-            preflight_dir=tmp_path / "project" / "preflight",
             database=tmp_path / "project" / "database.db",
             sparse=sparse,
             camera_params="1,32,16",
@@ -234,51 +185,23 @@ def test_spheresfm_builder_uses_spherical_camera_and_mask_path(tmp_path: Path) -
     )
 
     assert [phase for phase, _cmd in commands] == [
-        "spheresfm_preflight",
-        "spheresfm_prepare",
         "spheresfm_database",
         "spheresfm_feature",
         "spheresfm_match",
         "spheresfm_mapper",
     ]
-    preflight_cmd = commands[0][1]
-    assert preflight_cmd[0:3] == ["python.exe", "-u", str(preflight_script)]
-    assert preflight_cmd[preflight_cmd.index("--work-dir") + 1] == str(tmp_path / "project" / "preflight")
-    feature_cmd = commands[3][1]
+    feature_cmd = commands[1][1]
     assert feature_cmd[0:2] == ["spheresfm_colmap.exe", "feature_extractor"]
     assert feature_cmd[feature_cmd.index("--ImageReader.camera_model") + 1] == "SPHERE"
     assert feature_cmd[feature_cmd.index("--ImageReader.camera_params") + 1] == "1,32,16"
     assert feature_cmd[feature_cmd.index("--ImageReader.mask_path") + 1] == str(prepared_masks)
     assert feature_cmd[feature_cmd.index("--SiftExtraction.max_num_features") + 1] == "32768"
-    assert commands[4][1][commands[4][1].index("--SiftMatching.guided_matching") + 1] == "1"
-    assert commands[4][1][1] == "spatial_matcher"
-    assert commands[5][1][commands[5][1].index("--Mapper.sphere_camera") + 1] == "1"
-    assert commands[5][1][commands[5][1].index("--Mapper.multiple_models") + 1] == "0"
-    assert commands[5][1][commands[5][1].index("--Mapper.ba_global_max_num_iterations") + 1] == "75"
+    assert commands[2][1][commands[2][1].index("--SiftMatching.guided_matching") + 1] == "1"
+    assert commands[2][1][1] == "spatial_matcher"
+    assert commands[3][1][commands[3][1].index("--Mapper.sphere_camera") + 1] == "1"
+    assert commands[3][1][commands[3][1].index("--Mapper.multiple_models") + 1] == "0"
+    assert commands[3][1][commands[3][1].index("--Mapper.ba_global_max_num_iterations") + 1] == "75"
     assert sparse.is_dir()
-
-
-def test_spheresfm_transforms_builder_points_at_sparse_and_images(tmp_path: Path) -> None:
-    script = tmp_path / "spheresfm_to_transforms.py"
-    sparse = tmp_path / "sparse"
-    output = tmp_path / "project" / "3dgut"
-    images = tmp_path / "images"
-
-    cmd = build_spheresfm_transforms_cmd(
-        SphereSfmTransformsCommand(
-            python_executable="python.exe",
-            script=script,
-            sparse=sparse,
-            output=output,
-            images_dir=images,
-            image_path_mode="relative-to-output",
-        )
-    )
-
-    assert cmd[0:3] == ["python.exe", "-u", str(script)]
-    assert cmd[3:5] == [str(sparse), str(output)]
-    assert cmd[cmd.index("--images-dir") + 1] == str(images)
-    assert cmd[cmd.index("--image-path-mode") + 1] == "relative-to-output"
 
 
 def test_prepare_spheresfm_masks_converts_to_colmap_extension_names(tmp_path: Path) -> None:

@@ -9,6 +9,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from PIL import Image
 from PySide6.QtWidgets import QApplication, QLabel, QPushButton, QSizePolicy
 
+from core.app_job import AppJob
 from core.artifact_registry import load_artifacts
 from core.normal_camera_metadata import load_normal_camera_default
 from core.scene_layout import source_image_sets_path
@@ -24,10 +25,10 @@ def _app() -> QApplication:
     return QApplication.instance() or QApplication([])
 
 
-def _workflow_job(cmd: list[str]) -> dict:
-    assert cmd[2].endswith("run_workflow_job.py")
-    job_path = Path(cmd[cmd.index("--job") + 1])
-    return json.loads(job_path.read_text(encoding="utf-8"))
+def _workflow_job(cmd: object) -> dict:
+    if isinstance(cmd, AppJob):
+        return cmd.payload
+    raise AssertionError(f"Expected workflow AppJob, got {cmd!r}")
 
 
 def _write_colmap_sparse(root: Path) -> None:
@@ -371,10 +372,9 @@ def test_realityscan_lfs_tool_defaults_and_builds_cli_command(tmp_path: Path) ->
 
     phase, cmd = tool.build_commands()[0]
     assert phase == "realityscan_lfs_colmap"
-    assert cmd[2].endswith("realityscan_to_lfs_colmap.py")
-    assert cmd[3] == "--job"
-    job_path = Path(cmd[4])
-    job = json.loads(job_path.read_text(encoding="utf-8"))
+    assert isinstance(cmd, AppJob)
+    assert cmd.job_path is not None
+    job = cmd.payload
     assert job["csv_path"] == str(csv)
     assert job["output_dir"] == str(rs / "lfs_colmap")
     assert job["images_dir"] == str(rs / "images")
@@ -384,7 +384,8 @@ def test_realityscan_lfs_tool_defaults_and_builds_cli_command(tmp_path: Path) ->
     tool.pre_undistort_cb.setChecked(True)
     assert Path(tool.output_browse.text()) == rs / "lfs_colmap_undistorted"
     _, undistort_cmd = tool.build_commands()[0]
-    undistort_job = json.loads(Path(undistort_cmd[4]).read_text(encoding="utf-8"))
+    assert isinstance(undistort_cmd, AppJob)
+    undistort_job = undistort_cmd.payload
     assert undistort_job["pre_undistort_distorted_images"] is True
     assert undistort_job["undistort_alpha"] == 1.0
 
@@ -438,7 +439,7 @@ def test_colmap_text_model_tool_ignores_cwd_images_without_scene(tmp_path: Path,
     assert tool.preview.current_image_path() is None
 
 
-def test_colmap_text_model_tool_defaults_and_builds_cli_command(tmp_path: Path) -> None:
+def test_colmap_text_model_tool_defaults_and_builds_dataset_job(tmp_path: Path) -> None:
     scene = tmp_path / "scene"
     images = scene / "images"
     masks = scene / "masks"
@@ -466,52 +467,33 @@ def test_colmap_text_model_tool_defaults_and_builds_cli_command(tmp_path: Path) 
     assert tool.profile_combo.currentData() == "lichtfeld"
 
     commands = tool.build_commands()
-    assert [phase for phase, _cmd in commands] == ["metashape", "cubemap", "colmap_text"]
+    assert [phase for phase, _cmd in commands] == ["metashape_colmap"]
 
-    preprocess_cmd = commands[0][1]
-    work = scene / "_stechdrive" / "step4" / "work" / "metashape_colmap_import"
-    preprocess_job = _workflow_job(preprocess_cmd)
-    assert preprocess_job["kind"] == "metashape_preprocess"
-    assert preprocess_job["images_dir"] == str(images)
-    assert preprocess_job["xml_path"] == str(xml)
-    assert preprocess_job["output_dir"] == str(work)
-    assert preprocess_job["ply_path"] == str(ply)
-
-    cubemap_cmd = commands[1][1]
-    cubemap_job = _workflow_job(cubemap_cmd)
-    projected_work = work / "projected"
-    assert cubemap_job["kind"] == "cubemap_conversion"
-    assert cubemap_job["input_dir"] == str(work)
-    assert cubemap_job["output_dir"] == str(projected_work)
-    assert cubemap_job["axis_mode"] == "none"
-    assert cubemap_job["final_orientation"] == "lichtfeld"
-    assert cubemap_job["image_dir"] == str(images)
-    assert cubemap_job["mask_dir"] == str(masks)
-
-    colmap_cmd = commands[2][1]
-    colmap_job = _workflow_job(colmap_cmd)
-    assert colmap_job["kind"] == "transforms_to_colmap"
-    assert colmap_job["input_dir"] == str(projected_work)
-    assert colmap_job["output_dir"] == str(output / "sparse" / "0")
-    assert colmap_job["ply_path"] == str(projected_work / "pointcloud.ply")
-    assert colmap_job["dataset_root"] == str(output)
-    assert colmap_job["asset_input_dir"] == str(projected_work)
-    assert colmap_job["copy_images"] is True
-    assert colmap_job["copy_masks"] is True
+    colmap_job = _workflow_job(commands[0][1])
+    assert colmap_job["kind"] == "metashape_colmap_dataset"
+    assert colmap_job["scene_dir"] == str(scene)
+    assert colmap_job["images_dir"] == str(images)
+    assert colmap_job["masks_dir"] == str(masks)
+    assert colmap_job["xml_path"] == str(xml)
+    assert colmap_job["ply_path"] == str(ply)
+    assert colmap_job["output_dir"] == str(output)
+    assert colmap_job["axis_transform"] == "none"
+    assert colmap_job["final_orientation"] == "lichtfeld"
+    assert colmap_job["output_bit_depth"] == "8"
+    assert colmap_job["jpg_quality"] == 95
 
     brush_idx = tool.profile_combo.findData("brush")
     tool.profile_combo.setCurrentIndex(brush_idx)
-    _, brush_cubemap_cmd = tool.build_commands()[1]
-    brush_job = _workflow_job(brush_cubemap_cmd)
-    assert brush_job["axis_mode"] == "brush"
+    brush_job = _workflow_job(tool.build_commands()[0][1])
+    assert brush_job["axis_transform"] == "brush"
     assert brush_job["final_orientation"] == "none"
 
     custom_idx = tool.view_config.view_mode_combo.findData(VIEW_MODE_CUSTOM)
     tool.view_config.view_mode_combo.setCurrentIndex(custom_idx)
     tool.view_config.set_yaw_slot_count(5)
     tool.view_config.set_pitch_row_count(2)
-    _, custom_grid_cmd = tool.build_commands()[1]
-    assert len(_workflow_job(custom_grid_cmd)["views"]) == 10
+    custom_grid_job = _workflow_job(tool.build_commands()[0][1])
+    assert len(custom_grid_job["views"]) == 10
 
     _write_colmap_sparse(output)
     tool.on_queue_finished(True)
@@ -546,7 +528,7 @@ def test_colmap_text_model_preview_projection_toggle_is_enabled_only_for_erp_ima
     assert not tool.preview.projection_toggle_btn.isEnabled()
 
 
-def test_colmap_text_model_tool_uses_mixed_writer_for_mixed_metashape_xml(tmp_path: Path) -> None:
+def test_colmap_text_model_tool_uses_dataset_job_for_mixed_metashape_xml(tmp_path: Path) -> None:
     scene = tmp_path / "scene"
     images = scene / "images"
     masks = scene / "masks"
@@ -565,11 +547,11 @@ def test_colmap_text_model_tool_uses_mixed_writer_for_mixed_metashape_xml(tmp_pa
 
     commands = tool.build_commands()
 
-    assert [phase for phase, _cmd in commands] == ["metashape_colmap_mixed"]
+    assert [phase for phase, _cmd in commands] == ["metashape_colmap"]
     cmd = commands[0][1]
-    assert cmd[2].endswith("export_metashape_colmap_dataset.py")
-    assert cmd[3] == "--job"
-    job = json.loads(Path(cmd[4]).read_text(encoding="utf-8"))
+    assert isinstance(cmd, AppJob)
+    job = cmd.payload
+    assert job["kind"] == "metashape_colmap_dataset"
     assert job["scene_dir"] == str(scene)
     assert job["output_dir"] == str(scene / "output" / "metashape_colmap")
     assert job["output_bit_depth"] == "8"

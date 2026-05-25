@@ -5,10 +5,11 @@ from pathlib import Path
 import cv2
 import numpy as np
 
-import cubemap_transforms_json as cubemap
-import overexposure_mask
-import stitch_mask
-import yolo_mask
+import core.overexposure_mask as overexposure_mask
+import core.stitch_mask as stitch_mask
+import core.yolo_mask as yolo_mask
+from core.cubemap_image_conversion import remap_image
+from core.cubemap_remap import build_remap
 from core.image_io import image_size_unicode, imread_unicode, imwrite_unicode
 from core.path_safety import check_path_safety
 
@@ -47,8 +48,8 @@ def test_cubemap_remap_image_accepts_unicode_paths(tmp_path: Path) -> None:
     assert imwrite_unicode(src, image)
 
     views = [{"name": "front", "yaw": 0.0, "pitch": 0.0}]
-    map_x, map_y = cubemap.build_remap((64, 32), 90.0, 0.0, 0.0, 16)
-    written = cubemap.remap_image(
+    map_x, map_y = build_remap((64, 32), 90.0, 0.0, 0.0, 16)
+    written = remap_image(
         str(src),
         str(out_dir),
         {"front": (map_x, map_y)},

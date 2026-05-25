@@ -8,8 +8,7 @@ from typing import Any
 from core.metashape_coordinates import metashape_camera_to_world, metashape_pointcloud_file_matrix
 from core.metashape_model import CAMERA_MODEL_EQUIRECTANGULAR, MetashapeSensor, parse_metashape_model
 from core.realityscan_to_transforms import write_transformed_ply
-
-IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".tif", ".tiff", ".webp", ".bmp"}
+from core.scene_inventory import build_scene_image_label_path_lookup_with_warnings, resolve_scene_image_label
 
 
 @dataclass(frozen=True, slots=True)
@@ -168,46 +167,13 @@ def sensor_payload(sensor: MetashapeSensor) -> dict[str, Any]:
 
 
 def build_image_lookup(images_dir: Path) -> tuple[dict[str, Path], tuple[str, ...]]:
-    grouped: dict[str, list[Path]] = {}
-    for path in sorted(images_dir.rglob("*"), key=lambda item: item.as_posix().casefold()):
-        if not path.is_file() or path.suffix.lower() not in IMAGE_EXTENSIONS:
-            continue
-        rel = path.relative_to(images_dir).as_posix()
-        keys = {
-            rel.casefold(),
-            path.name.casefold(),
-            path.stem.casefold(),
-        }
-        for key in keys:
-            grouped.setdefault(key, []).append(path)
-
-    lookup: dict[str, Path] = {}
-    warnings: list[str] = []
-    for key, paths in grouped.items():
-        unique = {path.resolve(): path for path in paths}
-        if len(unique) == 1:
-            lookup[key] = next(iter(unique.values()))
-        else:
-            warnings.append(f"Ambiguous image reference ignored: {key}")
-    return lookup, tuple(warnings)
+    # Image label semantics are owned by SceneInventory so Metashape routes and
+    # mixed-source dataset routes resolve labels the same way.
+    return build_scene_image_label_path_lookup_with_warnings(images_dir.parent, images_dir=images_dir)
 
 
 def resolve_camera_image(label: str, image_lookup: dict[str, Path]) -> Path | None:
-    normalized = str(label or "").replace("\\", "/").strip()
-    if not normalized:
-        return None
-    path = Path(normalized)
-    candidates = [
-        normalized.casefold(),
-        path.as_posix().casefold(),
-        path.name.casefold(),
-        path.stem.casefold(),
-    ]
-    for key in candidates:
-        image = image_lookup.get(key)
-        if image is not None:
-            return image
-    return None
+    return resolve_scene_image_label(label, image_lookup)
 
 
 def output_file_path(image_path: Path, images_dir: Path, output_dir: Path) -> str:

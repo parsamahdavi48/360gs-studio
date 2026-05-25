@@ -16,8 +16,6 @@ ZIPを展開したら、`setup_windows.bat`、続いて `run_gui.bat` を実行�
 
 [EN English](README.md)
 
-Fork元: [tetraface/tetraface-3dgs-utils](https://github.com/tetraface/tetraface-3dgs-utils)
-
 ![STechDrive 3DGS Utils ワークフロー](images/stechdrive-3dgs-workflow-ja.png)
 
 ![STechDrive 3DGS Utils GUI](images/stechdrive-3dgs-utils-gui.jpg)
@@ -53,7 +51,7 @@ RealityScanで再アラインしたCSV/PLYを、LichtFeldでDatasetとして開�
 - 360°画像だけでなく、通常動画からのフレーム抽出や通常画像の連番画像にも使えます。人物・車両・空・白飛びなどを、SfMに渡す前のマスク前処理としてまとめて作成できます。
 - Step 4では、外部SfM結果を使うか、COLMAP/SphereSfMをこのアプリから実行するかを選びます。COLMAPは360°画像のCubemap Rigと通常画像カメラの混在に対応し、SphereSfMは同一解像度のエクイレクタングラー360°画像だけを扱うルートです。
 - Step 5では、Metashape / SphereSfM / RealityScan / COLMAPの結果から、NeRF系JSON/PLY、COLMAP形式データセット、LichtFeld向けRealityScan変換、AprilTagスケール補正などを選んで実行できます。
-- シーンプレビューで、SfM結果やデータセットの点群、カメラ位置、選択カメラの画像、対応マスクを同じ画面で確認できます。Step 4のカードから開くほか、`run_scene_preview.bat` でビューワーだけ起動できます。
+- シーンプレビューで、SfM結果やデータセットの点群、カメラ位置、選択カメラの画像、対応マスクを同じ画面で確認できます。Step 4のビューワーカードから開けます。
 - AprilTagを撮影前に印刷・配置しておけば、Step 5の `スケール調整` で出力済みデータセットからメートル換算のスケールを推定できます。推定値を確認してから、対象データセットのカメラ位置と点群へ同じscaleを反映できます。
 - Windows向けセットアップスクリプトで、Python環境、FFmpeg/FFprobe、主要Pythonパッケージの準備をまとめて行えます。通常利用は `run_gui.bat` から起動できます。
 
@@ -234,22 +232,9 @@ numpy, opencv-python, Pillow, open3d, ultralytics, transformers, safetensors, tq
 
 `setup_windows.bat` は `requirements/` 以下の検証済み固定セットを使い、初回セットアップの再現性を優先します。`update_venv.bat` はデフォルトで互換する最新パッケージを解決し、固定セットで作り直したい場合だけ `--locked` を渡します。
 
-## CLIツール
+## 開発メモ
 
-GUIは以下のCLIエンジンを呼び出しています。必要なら単体でも実行できます。root直下のスクリプトは互換性のための公開エントリポイントで、共通の実装コードは `core/` 以下にあります。
-
-| スクリプト | 内容 | ドキュメント |
-| --- | --- | --- |
-| `extract_frames.py` | 動画フレーム抽出と静止画ソース登録 | [JP](doc/extract_frames.ja.md) / [EN](doc/extract_frames.md) |
-| `apply_frame_decisions.py` | CSVの採用/除外判定を反映 | [JP](doc/apply_frame_decisions.ja.md) / [EN](doc/apply_frame_decisions.md) |
-| `review_frames.py` | フレーム確認GUI | [JP](doc/review_frames.ja.md) / [EN](doc/review_frames.md) |
-| `yolo_mask.py` | YOLO+SAM2.1 マスク生成 | [JP](doc/yolo_mask.ja.md) / [EN](doc/yolo_mask.md) |
-| `sky_mask.py` | Mask2Former ADE20KラベルまたはSAM3.1プロンプトによるセマンティックマスク生成 | [JP](doc/sky_mask.ja.md) / [EN](doc/sky_mask.md) |
-| `stitch_mask.py` | スティッチ境界マスク生成 | [JP](doc/stitch_mask.ja.md) / [EN](doc/stitch_mask.md) |
-| `overexposure_mask.py` | 白飛びマスク生成 | [JP](doc/overexposure_mask.ja.md) / [EN](doc/overexposure_mask.md) |
-| `custom_mask.py` | ユーザー指定PNGマスクをAND合成 | [JP](doc/custom_mask.ja.md) / [EN](doc/custom_mask.md) |
-| `cubemap_transforms_json.py` | エクイレクタングラーからキューブマップへ変換 | [JP](doc/cubemap_transforms_json.ja.md) / [EN](doc/cubemap_transforms_json.md) |
-| `transforms_to_colmap.py` | `transforms.json` からCOLMAP形式を書き出し | [JP](doc/transforms_to_colmap.ja.md) / [EN](doc/transforms_to_colmap.md) |
+通常ワークフローはGUI前提です。実行時の実装は `core/` に置き、GUIはroot直下の互換CLIスクリプトではなく、型付きジョブ経由でアプリ内部処理を呼び出します。`scripts/` 配下は開発・リリース用、または薄いCLI入口として扱います。
 
 ## ライセンス
 
@@ -257,5 +242,4 @@ MIT License。詳細は [LICENSE](LICENSE) を参照してください。
 
 マスク生成機能では、別ライセンスの第三者ライブラリおよびモデル重みを使用します。詳細は [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md) を参照してください。
 
-Original code by [tetraface Inc.](https://github.com/tetraface)
-Fork extensions by [stechdrive](https://github.com/stechdrive)
+[tetraface/tetraface-3dgs-utils](https://github.com/tetraface/tetraface-3dgs-utils) を初期実装の出発点とし、現在のリリースはSTechDrive向けの統合GUIワークフローとして独立保守しています。

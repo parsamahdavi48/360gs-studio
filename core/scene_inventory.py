@@ -66,6 +66,33 @@ class SceneImage:
 
 
 @dataclass(frozen=True, slots=True)
+class SceneSourceGroup:
+    source_kind: str
+    source_id: str
+    images: tuple[SceneImage, ...]
+
+    @property
+    def image_count(self) -> int:
+        return len(self.images)
+
+    @property
+    def projections(self) -> set[str]:
+        return {image.projection for image in self.images}
+
+    @property
+    def image_sizes(self) -> set[tuple[int, int]]:
+        return {image.size for image in self.images if image.size is not None}
+
+    @property
+    def projection_counts(self) -> Counter[str]:
+        return Counter(image.projection for image in self.images)
+
+    @property
+    def size_counts(self) -> Counter[tuple[int, int]]:
+        return Counter(image.size for image in self.images if image.size is not None)
+
+
+@dataclass(frozen=True, slots=True)
 class SceneInventory:
     scene_dir: Path
     images_dir: Path
@@ -109,6 +136,22 @@ class SceneInventory:
 
     def normal_images(self) -> tuple[SceneImage, ...]:
         return tuple(image for image in self.images if image.projection == PROJECTION_NORMAL)
+
+    def source_groups(self) -> tuple[SceneSourceGroup, ...]:
+        grouped: dict[tuple[str, str], list[SceneImage]] = {}
+        for image in self.images:
+            key = (image.source_kind, image.source_id)
+            grouped.setdefault(key, []).append(image)
+        return tuple(
+            SceneSourceGroup(source_kind=key[0], source_id=key[1], images=tuple(images))
+            for key, images in grouped.items()
+        )
+
+    def source_group(self, source_kind: str, source_id: str) -> SceneSourceGroup | None:
+        for group in self.source_groups():
+            if group.source_kind == source_kind and group.source_id == source_id:
+                return group
+        return None
 
 
 def build_scene_inventory(
@@ -178,6 +221,99 @@ def build_scene_inventory(
         )
 
     return SceneInventory(scene_dir=scene, images_dir=images_root, masks_dir=masks_root, images=tuple(images))
+
+
+def build_scene_image_label_path_lookup(
+    scene_dir: str | Path,
+    *,
+    images_dir: str | Path | None = None,
+    masks_dir: str | Path | None = None,
+) -> dict[str, Path]:
+    """Build case-insensitive Metashape/COLMAP-style image label lookup from scene inventory."""
+    lookup, _warnings = build_scene_image_label_path_lookup_with_warnings(
+        scene_dir,
+        images_dir=images_dir,
+        masks_dir=masks_dir,
+    )
+    return lookup
+
+
+def build_scene_image_label_path_lookup_with_warnings(
+    scene_dir: str | Path,
+    *,
+    images_dir: str | Path | None = None,
+    masks_dir: str | Path | None = None,
+) -> tuple[dict[str, Path], tuple[str, ...]]:
+    """Build image label lookup and report ambiguous labels that were intentionally ignored."""
+    inventory = build_scene_inventory(scene_dir, images_dir=images_dir, masks_dir=masks_dir)
+    grouped: dict[str, list[Path]] = {}
+    for image in inventory.images:
+        for key in _image_label_keys(image, images_dir=inventory.images_dir):
+            grouped.setdefault(key.casefold(), []).append(image.path)
+
+    lookup: dict[str, Path] = {}
+    warnings: list[str] = []
+    for key, paths in grouped.items():
+        unique = {path.resolve(): path for path in paths}
+        if len(unique) == 1:
+            lookup[key] = next(iter(unique.values()))
+        else:
+            warnings.append(f"Ambiguous image reference ignored: {key}")
+    return lookup, tuple(warnings)
+
+
+def resolve_scene_image_label(label: str, lookup: dict[str, Path]) -> Path | None:
+    """Resolve an external camera label to an inventory image path."""
+    if not lookup:
+        return None
+    text = str(label or "").replace("\\", "/").strip("/")
+    if not text:
+        return None
+    name = text.rsplit("/", 1)[-1]
+    candidates = [
+        text,
+        name,
+        Path(name).stem,
+        Path(text).stem,
+    ]
+    for candidate in candidates:
+        path = lookup.get(candidate.casefold())
+        if path is not None:
+            return path
+    return None
+
+
+def _image_label_keys(image: SceneImage, *, images_dir: Path | None = None) -> set[str]:
+    rel = image.rel_path.replace("\\", "/").strip("/")
+    path = image.path
+    keys = {
+        rel,
+        path.name,
+        path.stem,
+        Path(rel).name,
+        Path(rel).stem,
+    }
+    parts = Path(rel).parts
+    if parts and parts[0].casefold() == "images" and len(parts) > 1:
+        without_images = Path(*parts[1:]).as_posix()
+        keys.add(without_images)
+        keys.add(Path(without_images).name)
+        keys.add(Path(without_images).stem)
+    if images_dir is not None:
+        try:
+            rel_to_images = path.resolve().relative_to(images_dir.resolve()).as_posix()
+        except ValueError:
+            rel_to_images = ""
+        if rel_to_images:
+            keys.add(rel_to_images)
+            keys.add(Path(rel_to_images).name)
+            keys.add(Path(rel_to_images).stem)
+            if images_dir.name:
+                root_rel = (Path(images_dir.name) / rel_to_images).as_posix()
+                keys.add(root_rel)
+                keys.add(Path(root_rel).name)
+                keys.add(Path(root_rel).stem)
+    return {key for key in keys if key}
 
 
 def _iter_image_files(root: Path) -> list[Path]:

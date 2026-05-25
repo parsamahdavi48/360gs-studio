@@ -6,80 +6,20 @@ import json
 from dataclasses import dataclass
 from pathlib import Path
 
-
-@dataclass(frozen=True)
-class MetashapePreprocessCommand:
-    python_executable: str
-    script: Path
-    images: Path
-    xml: str
-    output: Path
-    scale: float
-    use_ply: bool
-    ply: str = ""
-    no_fix_rotation: bool = False
+from core.app_job import AppJob, dataset_app_job, sfm_app_job
+from core.dataset_job_spec import load_dataset_job
+from core.sfm_job_spec import load_sfm_job
+from gui.common.runner_types import ExternalCommandQueue
 
 
 @dataclass(frozen=True)
 class MetashapeNerfCommand:
-    python_executable: str
-    script: Path
     job: Path
 
 
 @dataclass(frozen=True)
-class CubemapConversionCommand:
-    python_executable: str
-    script: Path
-    scene: Path
-    output: Path
-    views_json: Path
-    scale: float
-    axis_mode: str
-    image_only: bool
-    colmap_rig: bool
-    invert_masks: bool
-    writes_images: bool
-    writes_masks: bool
-    yaw_offset_per_frame: float
-    output_format: str
-    output_bit_depth: str
-    jpg_quality: int
-    final_orientation: str = "none"
-    image_dir: Path | None = None
-    mask_dir: Path | None = None
-    realityscan_xmp: bool = False
-    realityscan_pose_prior: str = "exact"
-    realityscan_calibration_prior: str = "exact"
-    realityscan_coordinates: str = "auto"
-    realityscan_rig_name: str = "stechdrive-cubemap"
-    realityscan_include_rig: bool = False
-
-
-@dataclass(frozen=True)
-class ColmapExportCommand:
-    python_executable: str
-    script: Path
-    output: Path
-    colmap_dir: Path
-    ply: Path | None = None
-
-
-@dataclass(frozen=True)
 class ColmapMixedPrepareCommand:
-    python_executable: str
-    script: Path
-    scene: Path
-    output: Path
-    views_json: Path
-    scale: float
-    invert_masks: bool
-    writes_images: bool
-    writes_masks: bool
-    output_format: str
-    output_bit_depth: str
-    jpg_quality: int
-    job: Path | None = None
+    job: Path
 
 
 @dataclass(frozen=True)
@@ -123,14 +63,9 @@ class ColmapSfmCommand:
 
 @dataclass(frozen=True)
 class SphereSfmCommand:
-    python_executable: str
-    preflight_script: Path
-    prepare_script: Path
     colmap: str
     images_dir: Path
-    source_masks_dir: Path
     prepared_masks_dir: Path
-    preflight_dir: Path
     database: Path
     sparse: Path
     camera_params: str
@@ -140,168 +75,22 @@ class SphereSfmCommand:
     pose_path: str = ""
 
 
-@dataclass(frozen=True)
-class SphereSfmTransformsCommand:
-    python_executable: str
-    script: Path
-    sparse: Path
-    output: Path
-    images_dir: Path
-    image_path_mode: str
+def build_metashape_nerf_cmd(options: MetashapeNerfCommand) -> AppJob:
+    return dataset_app_job(load_dataset_job(options.job), options.job)
 
 
-def build_metashape_preprocess_cmd(options: MetashapePreprocessCommand) -> list[str]:
-    cmd = [
-        options.python_executable,
-        "-u",
-        str(options.script),
-        "--images",
-        str(options.images),
-        "--xml",
-        options.xml,
-        "--output",
-        str(options.output),
-        "--scale",
-        f"{options.scale:g}",
-    ]
-    if options.use_ply:
-        cmd.extend(["--ply", options.ply])
-    if options.no_fix_rotation:
-        cmd.append("--no-fix-rotation")
-    return cmd
+def build_colmap_mixed_prepare_cmd(options: ColmapMixedPrepareCommand) -> AppJob:
+    return sfm_app_job(load_sfm_job(options.job), options.job)
 
 
-def build_metashape_nerf_cmd(options: MetashapeNerfCommand) -> list[str]:
-    return [
-        options.python_executable,
-        "-u",
-        str(options.script),
-        "--job",
-        str(options.job),
-    ]
-
-
-def build_cubemap_conversion_cmd(options: CubemapConversionCommand) -> list[str]:
-    cmd = [
-        options.python_executable,
-        "-u",
-        str(options.script),
-        str(options.scene),
-        str(options.output),
-        "--fov",
-        "90",
-        "--output_scale",
-        f"{options.scale:g}",
-        "--views-json",
-        str(options.views_json),
-    ]
-    if options.image_only:
-        cmd.append("--image-only")
-        if options.colmap_rig:
-            cmd.extend(["--colmap-rig", "--colmap-rig-name", "rig1"])
-    else:
-        if options.axis_mode == "none":
-            cmd.append("--no_transform")
-        if options.axis_mode == "brush":
-            cmd.append("--brush")
-        if options.final_orientation != "none":
-            cmd.extend(["--final-orientation", options.final_orientation])
-    if options.invert_masks:
-        cmd.append("--invert_masks")
-    if options.image_dir is not None:
-        cmd.extend(["--image-dir", str(options.image_dir)])
-    if options.mask_dir is not None:
-        cmd.extend(["--mask_dir", str(options.mask_dir)])
-    if not options.writes_images:
-        cmd.append("--skip-images")
-    if not options.writes_masks:
-        cmd.append("--skip-masks")
-    if options.realityscan_xmp:
-        cmd.append("--realityscan-xmp")
-        cmd.extend(["--realityscan-pose-prior", options.realityscan_pose_prior])
-        cmd.extend(["--realityscan-calibration-prior", options.realityscan_calibration_prior])
-        cmd.extend(["--realityscan-coordinates", options.realityscan_coordinates])
-        if options.realityscan_include_rig:
-            cmd.append("--realityscan-include-rig")
-            cmd.extend(["--realityscan-rig-name", options.realityscan_rig_name])
-
-    cmd.extend(["--yaw-offset-per-frame", f"{options.yaw_offset_per_frame:g}"])
-    cmd.extend(["--output-format", options.output_format])
-    cmd.extend(["--output-bit-depth", options.output_bit_depth])
-    cmd.extend(["--jpg-quality", str(options.jpg_quality)])
-    return cmd
-
-
-def build_spheresfm_transforms_cmd(options: SphereSfmTransformsCommand) -> list[str]:
-    return [
-        options.python_executable,
-        "-u",
-        str(options.script),
-        str(options.sparse),
-        str(options.output),
-        "--images-dir",
-        str(options.images_dir),
-        "--image-path-mode",
-        options.image_path_mode,
-    ]
-
-
-def build_colmap_export_cmd(options: ColmapExportCommand) -> list[str]:
-    cmd = [
-        options.python_executable,
-        "-u",
-        str(options.script),
-        str(options.output),
-        str(options.colmap_dir),
-    ]
-    if options.ply is not None:
-        cmd.extend(["--ply", str(options.ply)])
-    return cmd
-
-
-def build_colmap_mixed_prepare_cmd(options: ColmapMixedPrepareCommand) -> list[str]:
-    if options.job is not None:
-        return [
-            options.python_executable,
-            "-u",
-            str(options.script),
-            "--job",
-            str(options.job),
-        ]
-    cmd = [
-        options.python_executable,
-        "-u",
-        str(options.script),
-        str(options.scene),
-        str(options.output),
-        "--views-json",
-        str(options.views_json),
-        "--output-scale",
-        f"{options.scale:g}",
-        "--output-format",
-        options.output_format,
-        "--output-bit-depth",
-        options.output_bit_depth,
-        "--jpg-quality",
-        str(options.jpg_quality),
-    ]
-    if options.invert_masks:
-        cmd.append("--invert-masks")
-    if not options.writes_images:
-        cmd.append("--skip-images")
-    if not options.writes_masks:
-        cmd.append("--skip-masks")
-    return cmd
-
-
-def build_colmap_sfm_commands(options: ColmapSfmCommand) -> list[tuple[str, list[str]]]:
+def build_colmap_sfm_commands(options: ColmapSfmCommand) -> ExternalCommandQueue:
     if not options.writes_images and not options.images_dir.is_dir():
         raise ValueError(f"COLMAP Rig画像フォルダが見つかりません: {options.images_dir}")
 
     options.sparse.mkdir(parents=True, exist_ok=True)
     rig_config = options.rig_dir / "rig_config.json"
 
-    steps: list[tuple[str, list[str]]] = []
+    steps: ExternalCommandQueue = []
     has_mixed_feature_split = options.run_rig_feature and options.run_normal_feature
 
     if options.run_rig_feature and options.rig_feature_groups:
@@ -556,43 +345,9 @@ def _spheresfm_mapper_options(preset: str) -> list[str]:
     return options
 
 
-def build_spheresfm_commands(options: SphereSfmCommand) -> list[tuple[str, list[str]]]:
+def build_spheresfm_commands(options: SphereSfmCommand) -> ExternalCommandQueue:
     options.sparse.mkdir(parents=True, exist_ok=True)
     options.database.parent.mkdir(parents=True, exist_ok=True)
-
-    preflight_cmd = [
-        options.python_executable,
-        "-u",
-        str(options.preflight_script),
-        "--colmap",
-        options.colmap,
-        "--images-dir",
-        str(options.images_dir),
-        "--work-dir",
-        str(options.preflight_dir),
-        "--camera-params",
-        options.camera_params,
-    ]
-
-    prepare_cmd = [
-        options.python_executable,
-        "-u",
-        str(options.prepare_script),
-        "--colmap",
-        options.colmap,
-        "--images-dir",
-        str(options.images_dir),
-    ]
-    if options.use_masks:
-        prepare_cmd.extend(
-            [
-                "--use-masks",
-                "--source-masks-dir",
-                str(options.source_masks_dir),
-                "--output-masks-dir",
-                str(options.prepared_masks_dir),
-            ]
-        )
 
     database_cmd = [
         options.colmap,
@@ -658,8 +413,6 @@ def build_spheresfm_commands(options: SphereSfmCommand) -> list[tuple[str, list[
     mapper_cmd.extend(_spheresfm_mapper_options(options.quality_preset))
 
     return [
-        ("spheresfm_preflight", preflight_cmd),
-        ("spheresfm_prepare", prepare_cmd),
         ("spheresfm_database", database_cmd),
         ("spheresfm_feature", feature_cmd),
         ("spheresfm_match", matcher_cmd),

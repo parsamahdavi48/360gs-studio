@@ -5,7 +5,7 @@ from pathlib import Path
 import cv2
 import numpy as np
 
-from custom_mask import run
+from core.custom_mask import run
 
 
 def test_custom_mask_merges_with_existing_masks_and_preserves_subfolders(tmp_path: Path) -> None:
@@ -221,7 +221,7 @@ def test_custom_mask_cli_succeeds_for_partial_size_mismatch(tmp_path: Path) -> N
     cv2.imwrite(str(custom_path), np.full((4, 6), 255, dtype=np.uint8))
 
     result = subprocess.run(
-        [sys.executable, "-u", str(Path.cwd() / "custom_mask.py"), str(images), str(masks), str(custom_path)],
+        [sys.executable, "-u", "-m", "core.custom_mask", str(images), str(masks), str(custom_path)],
         cwd=Path.cwd(),
         capture_output=True,
         text=True,
@@ -240,7 +240,7 @@ def test_custom_mask_cli_fails_when_all_images_are_size_mismatched(tmp_path: Pat
     cv2.imwrite(str(custom_path), np.full((4, 6), 255, dtype=np.uint8))
 
     result = subprocess.run(
-        [sys.executable, "-u", str(Path.cwd() / "custom_mask.py"), str(images), str(masks), str(custom_path)],
+        [sys.executable, "-u", "-m", "core.custom_mask", str(images), str(masks), str(custom_path)],
         cwd=Path.cwd(),
         capture_output=True,
         text=True,

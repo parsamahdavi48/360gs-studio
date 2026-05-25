@@ -55,3 +55,43 @@ def test_sfm_job_rejects_wrong_kind(tmp_path: Path) -> None:
 
     with pytest.raises(ValueError, match="Unsupported SfM job kind"):
         write_sfm_job(tmp_path / "job.json", payload)
+
+
+def test_sfm_job_rejects_no_enabled_views(tmp_path: Path) -> None:
+    payload = colmap_mixed_project_job(
+        scene_dir=tmp_path / "scene",
+        output_dir=tmp_path / "scene" / "output",
+        views=[{"name": "front", "yaw": 0.0, "pitch": 0.0, "enabled": False}],
+        output_scale=0.5,
+        output_format="jpg",
+        output_bit_depth="8",
+        jpg_quality=95,
+        write_images=True,
+        write_masks=True,
+        invert_masks=False,
+        workers="auto",
+        remap_cache_limit="auto",
+    )
+
+    with pytest.raises(ValueError, match="enabled view"):
+        write_sfm_job(tmp_path / "job.json", payload)
+
+
+def test_sfm_job_rejects_invalid_quality(tmp_path: Path) -> None:
+    payload = colmap_mixed_project_job(
+        scene_dir=tmp_path / "scene",
+        output_dir=tmp_path / "scene" / "output",
+        views=[{"name": "front", "yaw": 0.0, "pitch": 0.0, "enabled": True}],
+        output_scale=0.5,
+        output_format="jpg",
+        output_bit_depth="8",
+        jpg_quality=0,
+        write_images=True,
+        write_masks=True,
+        invert_masks=False,
+        workers="auto",
+        remap_cache_limit="auto",
+    )
+
+    with pytest.raises(ValueError, match="jpg_quality"):
+        write_sfm_job(tmp_path / "job.json", payload)

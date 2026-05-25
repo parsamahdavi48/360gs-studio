@@ -32,6 +32,8 @@ def iter_image_files(images: Path) -> tuple[Path, list[Path]]:
         return images.parent, [images]
     if not images.is_dir():
         return images, []
+    # Worker fallback only. Source-scoped GUI runs pass an image_list manifest
+    # so projection/source ownership is resolved before the worker starts.
     files = sorted(
         (path for path in images.rglob("*") if path.is_file() and path.suffix.lower() in IMAGE_EXTS),
         key=lambda path: str(path).lower(),

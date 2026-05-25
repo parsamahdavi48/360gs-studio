@@ -7,7 +7,9 @@ import shutil
 from dataclasses import dataclass
 from pathlib import Path
 
-from core.cubemap_transforms_json import convert_images, make_default_views, transform_json
+from core.cubemap_image_conversion import convert_images
+from core.cubemap_transform_export import transform_json
+from core.cubemap_view_spec import make_default_cube6_views, views_to_dicts
 
 
 @dataclass(frozen=True)
@@ -44,7 +46,7 @@ def prepare_equirect_detection_dataset(config: EquirectProjectionConfig) -> Path
         shutil.rmtree(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    views = make_default_views(config.yaw, 0.0, no_top=False, no_bottom=False)
+    views = views_to_dicts(make_default_cube6_views(config.yaw, 0.0, no_top=False, no_bottom=False))
     image_files, frame_yaw_offsets, input_size, output_size = transform_json(
         input_dir=str(input_dir),
         input_json=input_json,

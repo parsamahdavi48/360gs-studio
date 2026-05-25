@@ -4,15 +4,65 @@ from __future__ import annotations
 import os
 import re
 import subprocess
+import traceback
+from collections.abc import Callable
+from contextlib import redirect_stderr, redirect_stdout
 from datetime import datetime
 from pathlib import Path
 from typing import TextIO
 
-from PySide6.QtCore import QObject, QProcess, QProcessEnvironment, QTimer, Signal
+from PySide6.QtCore import QObject, QProcess, QProcessEnvironment, QThread, QTimer, Signal, Slot
+
+from core.app_job import AppJob, run_app_job
+from gui.common.runner_types import StepCommand, StepCommandPhase, StepCommandQueue
+
+
+class _SignalWriter:
+    def __init__(self, emit_line: Callable[[str], None]) -> None:
+        self._emit_line = emit_line
+        self._buffer = ""
+
+    def write(self, text: str) -> int:
+        self._buffer += str(text).replace("\r", "\n")
+        while "\n" in self._buffer:
+            line, self._buffer = self._buffer.split("\n", 1)
+            if line:
+                self._emit_line(line)
+        return len(text)
+
+    def flush(self) -> None:
+        tail = self._buffer.strip()
+        if tail:
+            self._emit_line(tail)
+        self._buffer = ""
+
+
+class _InternalJobWorker(QObject):
+    line_received = Signal(str)
+    finished = Signal(int)
+
+    def __init__(self, job: AppJob) -> None:
+        super().__init__()
+        self._job = job
+
+    @Slot()
+    def run(self) -> None:
+        writer = _SignalWriter(self.line_received.emit)
+        try:
+            with redirect_stdout(writer), redirect_stderr(writer):
+                run_app_job(self._job)
+            writer.flush()
+        except Exception:
+            writer.flush()
+            for line in traceback.format_exc().splitlines():
+                self.line_received.emit(line)
+            self.finished.emit(1)
+            return
+        self.finished.emit(0)
 
 
 class ProcessRunner(QObject):
-    """複数ステップのCLIコマンドを順番に実行する共通ランナー。
+    """複数ステップの外部コマンドまたは内部AppJobを順番に実行する共通ランナー。
 
     シグナル:
         line_received(str)  -- stdout の1行
@@ -33,7 +83,7 @@ class ProcessRunner(QObject):
         self._proc: QProcess | None = None
         self._current_phase = ""
         self._buffer = ""
-        self._pending: list[tuple[str, list[str]]] = []
+        self._pending: list[StepCommandPhase] = []
         self._cancel_requested = False
         self._all_ok = True
         self._running = False
@@ -43,6 +93,8 @@ class ProcessRunner(QObject):
         self._run_log_stamp = ""
         self._phase_index = 0
         self._queue_total = 0
+        self._internal_thread: QThread | None = None
+        self._internal_worker: _InternalJobWorker | None = None
 
     # -- public API --
 
@@ -61,10 +113,10 @@ class ProcessRunner(QObject):
     def queue_total(self) -> int:
         return self._queue_total
 
-    def start_single(self, cmd: list[str], phase: str = "run", log_dir: str | Path | None = None) -> None:
+    def start_single(self, cmd: StepCommand, phase: str = "run", log_dir: str | Path | None = None) -> None:
         self.start_queue([(phase, cmd)], log_dir=log_dir)
 
-    def start_queue(self, steps: list[tuple[str, list[str]]], log_dir: str | Path | None = None) -> None:
+    def start_queue(self, steps: StepCommandQueue, log_dir: str | Path | None = None) -> None:
         if self.is_running():
             return
         self._cancel_requested = False
@@ -90,6 +142,8 @@ class ProcessRunner(QObject):
         self._pending.clear()
         if self._proc is not None:
             self._terminate_gracefully(self._proc, self._current_phase)
+        elif self._internal_thread is not None:
+            self._emit_line(f"[{self._current_phase}] キャンセル要求を受け付けました。現在の内部処理完了後に停止します。")
 
     # -- internal --
 
@@ -104,10 +158,15 @@ class ProcessRunner(QObject):
         self._buffer = ""
         self._phase_index += 1
         self._open_phase_log(phase)
-        self._emit_line("$ " + " ".join(cmd))
+        display_cmd = cmd.display_command() if isinstance(cmd, AppJob) else cmd
+        self._emit_line("$ " + " ".join(display_cmd))
         if self._current_log_path is not None:
             self._emit_line(f"[{phase}] log: {self._current_log_path}")
         self.phase_started.emit(phase)
+
+        if isinstance(cmd, AppJob):
+            self._run_internal_job(cmd)
+            return
 
         proc = QProcess(self)
         proc.setProgram(cmd[0])
@@ -122,6 +181,25 @@ class ProcessRunner(QObject):
         proc.finished.connect(self._on_finished)
         self._proc = proc
         proc.start()
+
+    def _run_internal_job(self, job: AppJob) -> None:
+        thread = QThread(self)
+        worker = _InternalJobWorker(job)
+        worker.moveToThread(thread)
+        worker.line_received.connect(self._emit_line)
+        worker.finished.connect(self._on_internal_finished)
+        worker.finished.connect(thread.quit)
+        worker.finished.connect(worker.deleteLater)
+        thread.finished.connect(thread.deleteLater)
+        thread.started.connect(worker.run)
+        self._internal_thread = thread
+        self._internal_worker = worker
+        thread.start()
+
+    def _on_internal_finished(self, exit_code: int) -> None:
+        self._internal_thread = None
+        self._internal_worker = None
+        self._finish_phase(exit_code)
 
     def _on_output(self) -> None:
         if self._proc is None:
@@ -147,10 +225,13 @@ class ProcessRunner(QObject):
                 self._emit_line(line)
             self._buffer = ""
 
+        self._proc = None
+        self._finish_phase(exit_code)
+
+    def _finish_phase(self, exit_code: int) -> None:
         phase = self._current_phase
         was_canceled = self._cancel_requested
         self._cancel_requested = False
-        self._proc = None
         self._emit_line(f"[{phase}] exit_code={exit_code} canceled={int(was_canceled)}")
         self._close_phase_log()
 

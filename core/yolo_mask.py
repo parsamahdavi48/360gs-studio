@@ -55,6 +55,27 @@ class ProcessResult:
     group_key: str
 
 
+@dataclass(frozen=True)
+class YoloMaskRuntimeSettings:
+    class_ids: tuple[int, ...]
+    level: int
+    quality: str
+    projection: str
+    expand: int
+    bottom_conf: float
+    bottom_tta_rotations: int
+    bottom_model: str
+    bottom_filter: bool
+    recipe: MaskViewRecipe
+    profile_json: str | None
+
+
+@dataclass(frozen=True)
+class YoloMaskRuntimeBuild:
+    settings: YoloMaskRuntimeSettings
+    expand_was_clamped: bool
+
+
 class ProfileRecorder:
     def __init__(self, output_path: str | Path):
         self.output_path = Path(output_path)
@@ -155,16 +176,79 @@ class ProfileRecorder:
         self.output_path.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
 
 
+@dataclass(slots=True)
+class YoloMaskRuntimeContext:
+    """Per-run YOLO/SAM settings and mutable worker state."""
+
+    settings: YoloMaskRuntimeSettings
+    profile: ProfileRecorder | None = None
+    proc_count: int = 0
+
+    @property
+    def recipe(self) -> MaskViewRecipe:
+        return self.settings.recipe
+
+
+_runtime_context: YoloMaskRuntimeContext | None = None
+
+
+def create_runtime_context(settings: YoloMaskRuntimeSettings) -> YoloMaskRuntimeContext:
+    profile = ProfileRecorder(settings.profile_json) if settings.profile_json else None
+    return YoloMaskRuntimeContext(settings=settings, profile=profile)
+
+
+def _compat_runtime_settings() -> YoloMaskRuntimeSettings:
+    recipe = recipe_for(QUALITY, PROJECTION)
+    return YoloMaskRuntimeSettings(
+        class_ids=tuple(int(item) for item in CLASS_IDS),
+        level=int(LEVEL),
+        quality=QUALITY,
+        projection=PROJECTION,
+        expand=int(EXPAND),
+        bottom_conf=float(BOTTOM_CONF),
+        bottom_tta_rotations=int(BOTTOM_TTA_ROTATIONS),
+        bottom_model=str(BOTTOM_MODEL),
+        bottom_filter=bool(BOTTOM_FILTER),
+        recipe=recipe,
+        profile_json=None,
+    )
+
+
+def active_runtime_context() -> YoloMaskRuntimeContext:
+    if _runtime_context is None:
+        context = create_runtime_context(_compat_runtime_settings())
+        if PROFILE is not None:
+            context.profile = PROFILE
+        context.proc_count = int(proc_count)
+        return context
+    return _runtime_context
+
+
+def clear_runtime_context() -> None:
+    global _runtime_context, PROFILE
+    _runtime_context = None
+    PROFILE = None
+
+
+def _profile_for(context: YoloMaskRuntimeContext | None = None) -> ProfileRecorder | None:
+    if context is not None:
+        return context.profile
+    if _runtime_context is not None:
+        return _runtime_context.profile
+    return PROFILE
+
+
 @contextmanager
-def profile_timer(key: str):
-    if PROFILE is None:
+def profile_timer(key: str, context: YoloMaskRuntimeContext | None = None):
+    profile = _profile_for(context)
+    if profile is None:
         yield
         return
     started = perf_counter()
     try:
         yield
     finally:
-        PROFILE.add_timing(key, perf_counter() - started)
+        profile.add_timing(key, perf_counter() - started)
 
 
 def profile_record_inference(
@@ -175,9 +259,11 @@ def profile_record_inference(
     shape: tuple[int, int],
     box_count: int,
     sam_mask_count: int,
+    context: YoloMaskRuntimeContext | None = None,
 ) -> None:
-    if PROFILE is not None:
-        PROFILE.record_inference(
+    profile = _profile_for(context)
+    if profile is not None:
+        profile.record_inference(
             stage=stage,
             model_key=model_key,
             conf=conf,
@@ -276,22 +362,89 @@ def parse_classes(text):
     return sorted(set(ids))
 
 
-def current_recipe() -> MaskViewRecipe:
-    return recipe_for(QUALITY, PROJECTION)
+def build_runtime_settings(args: argparse.Namespace) -> YoloMaskRuntimeBuild:
+    quality = normalize_quality(args.quality, legacy_level=args.level)
+    projection = args.projection
+    expand = clamp_expand_px(args.expand)
+    recipe = recipe_for(quality, projection)
+    bottom_conf = recipe.bottom_conf if args.bottom_conf is None else max(0.001, min(1.0, float(args.bottom_conf)))
+    bottom_tta_rotations = (
+        len(recipe.bottom_rotations) if args.bottom_tta_rotations is None else int(args.bottom_tta_rotations)
+    )
+    bottom_model = recipe.bottom_model if args.bottom_model is None else str(args.bottom_model)
+    bottom_filter = bool(recipe.bottom_filter or args.bottom_filter)
+    class_ids = tuple(parse_classes(args.classes))
+    settings = YoloMaskRuntimeSettings(
+        class_ids=class_ids,
+        level=int(recipe.yolo_level),
+        quality=quality,
+        projection=projection,
+        expand=expand,
+        bottom_conf=bottom_conf,
+        bottom_tta_rotations=bottom_tta_rotations,
+        bottom_model=bottom_model,
+        bottom_filter=bottom_filter,
+        recipe=recipe,
+        profile_json=args.profile_json,
+    )
+    return YoloMaskRuntimeBuild(settings=settings, expand_was_clamped=expand != args.expand)
 
 
-def should_run_bottom_redetection(level: int | str | None = None, projection: str | None = None) -> bool:
+def apply_runtime_settings(settings: YoloMaskRuntimeSettings) -> YoloMaskRuntimeContext:
+    global \
+        CLASS_IDS, \
+        LEVEL, \
+        QUALITY, \
+        PROJECTION, \
+        EXPAND, \
+        BOTTOM_CONF, \
+        BOTTOM_TTA_ROTATIONS, \
+        BOTTOM_MODEL, \
+        BOTTOM_FILTER, \
+        PROFILE
+    global proc_count, _runtime_context
+    CLASS_IDS = list(settings.class_ids)
+    LEVEL = int(settings.level)
+    QUALITY = settings.quality
+    PROJECTION = settings.projection
+    EXPAND = int(settings.expand)
+    BOTTOM_CONF = float(settings.bottom_conf)
+    BOTTOM_TTA_ROTATIONS = int(settings.bottom_tta_rotations)
+    BOTTOM_MODEL = settings.bottom_model
+    BOTTOM_FILTER = bool(settings.bottom_filter)
+    proc_count = 0
+    _runtime_context = create_runtime_context(settings)
+    PROFILE = _runtime_context.profile
+    return _runtime_context
+
+
+def current_recipe(context: YoloMaskRuntimeContext | None = None) -> MaskViewRecipe:
+    runtime = context or active_runtime_context()
+    return runtime.recipe
+
+
+def should_run_bottom_redetection(
+    level: int | str | None = None,
+    projection: str | None = None,
+    *,
+    context: YoloMaskRuntimeContext | None = None,
+) -> bool:
     if level is not None:
         try:
             if int(level) <= 0:
                 return False
         except (TypeError, ValueError):
             pass
-    recipe = (
-        recipe_for(None, projection or PROJECTION, legacy_level=level)
-        if level is not None
-        else recipe_for(QUALITY, projection or PROJECTION)
-    )
+    if level is None:
+        runtime = context or active_runtime_context()
+        if projection is None or projection == runtime.settings.projection:
+            recipe = runtime.recipe
+        else:
+            recipe = recipe_for(runtime.settings.quality, projection)
+    else:
+        runtime = context
+        projection_value = projection or (runtime.settings.projection if runtime is not None else PROJECTION)
+        recipe = recipe_for(None, projection_value, legacy_level=level)
     return recipe.bottom_view
 
 
@@ -342,6 +495,7 @@ def add_yolo_mask(
     model_key: str = YOLO_MODEL_PRIMARY,
     conf: float = YOLO_CONF_DEFAULT,
     profile_stage: str = "full",
+    context: YoloMaskRuntimeContext | None = None,
 ):
     global yolo, sam
     detector = yolo_models.get(model_key) or yolo
@@ -349,7 +503,14 @@ def add_yolo_mask(
         raise RuntimeError("YOLO/SAM models are not loaded")
 
     # ---------- YOLO: 指定クラス検出 ----------
-    bboxes = detect_yolo_bboxes(img, model_key=model_key, conf=conf, profile_stage=profile_stage)
+    runtime = context or active_runtime_context()
+    bboxes = detect_yolo_bboxes(
+        img,
+        model_key=model_key,
+        conf=conf,
+        profile_stage=profile_stage,
+        context=runtime,
+    )
     return add_sam_mask(
         img,
         mask,
@@ -358,6 +519,7 @@ def add_yolo_mask(
         model_key=model_key,
         conf=conf,
         profile_stage=profile_stage,
+        context=runtime,
     )
 
 
@@ -367,8 +529,11 @@ def detect_yolo_bboxes(
     model_key: str = YOLO_MODEL_PRIMARY,
     conf: float = YOLO_CONF_DEFAULT,
     profile_stage: str = "full",
+    context: YoloMaskRuntimeContext | None = None,
 ) -> list[list[float]]:
-    return detect_yolo_bboxes_batch([img], model_key=model_key, conf=conf, profile_stage=profile_stage)[0]
+    return detect_yolo_bboxes_batch([img], model_key=model_key, conf=conf, profile_stage=profile_stage, context=context)[
+        0
+    ]
 
 
 def detect_yolo_bboxes_batch(
@@ -377,6 +542,7 @@ def detect_yolo_bboxes_batch(
     model_key: str = YOLO_MODEL_PRIMARY,
     conf: float = YOLO_CONF_DEFAULT,
     profile_stage: str = "full",
+    context: YoloMaskRuntimeContext | None = None,
 ) -> list[list[list[float]]]:
     global yolo
     if len(images) == 0:
@@ -385,9 +551,10 @@ def detect_yolo_bboxes_batch(
     if detector is None:
         raise RuntimeError("YOLO model is not loaded")
 
+    runtime = context or active_runtime_context()
     source = images[0] if len(images) == 1 else images
-    with profile_timer(f"{profile_stage}.yolo"):
-        results = detector(source, conf=conf, classes=CLASS_IDS, verbose=False)
+    with profile_timer(f"{profile_stage}.yolo", context=runtime):
+        results = detector(source, conf=conf, classes=list(runtime.settings.class_ids), verbose=False)
     return [extract_yolo_bboxes(result) for result in results]
 
 
@@ -400,6 +567,7 @@ def add_sam_mask(
     model_key: str = YOLO_MODEL_PRIMARY,
     conf: float = YOLO_CONF_DEFAULT,
     profile_stage: str = "full",
+    context: YoloMaskRuntimeContext | None = None,
 ):
     global sam
     if sam is None:
@@ -413,11 +581,13 @@ def add_sam_mask(
             shape=img.shape[:2],
             box_count=0,
             sam_mask_count=0,
+            context=context,
         )
         return mask, has_mask
 
     # ---------- SAM2: マスク生成 ----------
-    with profile_timer(f"{profile_stage}.sam"):
+    runtime = context or active_runtime_context()
+    with profile_timer(f"{profile_stage}.sam", context=runtime):
         sam_results = sam(
             img,
             bboxes=bboxes,
@@ -432,6 +602,7 @@ def add_sam_mask(
             shape=img.shape[:2],
             box_count=len(bboxes),
             sam_mask_count=0,
+            context=runtime,
         )
         return mask, has_mask
 
@@ -443,8 +614,9 @@ def add_sam_mask(
         shape=img.shape[:2],
         box_count=len(bboxes),
         sam_mask_count=sam_mask_count,
+        context=runtime,
     )
-    with profile_timer(f"{profile_stage}.mask_merge"):
+    with profile_timer(f"{profile_stage}.mask_merge", context=runtime):
         mask_data = sam_results[0].masks.data
         if sam_mask_count == 1:
             first_mask = next(iter(mask_data))
@@ -528,25 +700,33 @@ def back_to_pano_from_bottom(bottom_img, pano_width, pano_height):
     return back_project_bottom_mask(bottom_img, int(pano_width), int(pano_height))
 
 
-def detect_bottom_mask(img, pano_width: int, pano_height: int) -> tuple[np.ndarray | None, int]:
+def detect_bottom_mask(
+    img,
+    pano_width: int,
+    pano_height: int,
+    *,
+    context: YoloMaskRuntimeContext | None = None,
+) -> tuple[np.ndarray | None, int]:
+    runtime = context or active_runtime_context()
     bsize = int(pano_width / 4)
     if bsize <= 0:
         return None, 0
 
-    with profile_timer("bottom.extract"):
+    with profile_timer("bottom.extract", context=runtime):
         bottom = get_bottom_from_pano(img, size=bsize)
     merged_bottom_mask = np.zeros((bsize, bsize), dtype=np.uint8)
     total_has_bottom = 0
 
     bottom_bboxes = []
-    for angle in bottom_rotation_angles(BOTTOM_TTA_ROTATIONS):
-        with profile_timer("bottom.rotate"):
+    for angle in bottom_rotation_angles(runtime.settings.bottom_tta_rotations):
+        with profile_timer("bottom.rotate", context=runtime):
             rotated_bottom = rotate_quarter_turn(bottom, angle)
         rotated_bboxes = detect_yolo_bboxes(
             rotated_bottom,
             model_key=YOLO_MODEL_BOTTOM,
-            conf=BOTTOM_CONF,
+            conf=runtime.settings.bottom_conf,
             profile_stage="bottom",
+            context=runtime,
         )
         for bbox in rotated_bboxes:
             original_bbox = transform_bbox_from_rotated_bottom(bbox, angle, width=bsize, height=bsize)
@@ -561,19 +741,20 @@ def detect_bottom_mask(img, pano_width: int, pano_height: int) -> tuple[np.ndarr
         merged_bottom_mask,
         bottom_bboxes,
         model_key=YOLO_MODEL_BOTTOM,
-        conf=BOTTOM_CONF,
+        conf=runtime.settings.bottom_conf,
         profile_stage="bottom",
+        context=runtime,
     )
     if total_has_bottom == 0:
         return None, 0
 
-    if BOTTOM_FILTER:
-        with profile_timer("bottom.filter"):
+    if runtime.settings.bottom_filter:
+        with profile_timer("bottom.filter", context=runtime):
             merged_bottom_mask = filter_bottom_mask_components(merged_bottom_mask)
         if not np.any(merged_bottom_mask):
             return None, 0
 
-    with profile_timer("bottom.back_project"):
+    with profile_timer("bottom.back_project", context=runtime):
         pano_mask = back_to_pano_from_bottom(merged_bottom_mask, pano_width, pano_height)
     return pano_mask, total_has_bottom
 
@@ -581,180 +762,172 @@ def detect_bottom_mask(img, pano_width: int, pano_height: int) -> tuple[np.ndarr
 # =========================
 # メイン処理
 # =========================
-def process_image_path(image_path: str | Path, output_path: str | Path, display_name: str) -> ProcessResult:
+def process_image_path(
+    image_path: str | Path,
+    output_path: str | Path,
+    display_name: str,
+    *,
+    context: YoloMaskRuntimeContext | None = None,
+) -> ProcessResult:
     print(f"Processing: {display_name}", flush=True)
+    runtime = context or active_runtime_context()
+    settings = runtime.settings
+    profile = runtime.profile
 
     # 画像読み込み
     img_path = Path(image_path)
-    if PROFILE is not None:
-        PROFILE.begin_image(display_name, img_path)
-    image_started = perf_counter() if PROFILE is not None else None
-    with profile_timer("image.read"):
+    if profile is not None:
+        profile.begin_image(display_name, img_path)
+    image_started = perf_counter() if profile is not None else None
+    with profile_timer("image.read", context=runtime):
         img = imread_unicode(img_path)
     if img is None:
         raise OSError(f"Cannot read image: {img_path}")
     h, w = img.shape[:2]
-    if PROFILE is not None:
-        PROFILE.set_image_shape((h, w))
+    if profile is not None:
+        profile.set_image_shape((h, w))
 
     # マスク初期化
     mask = np.zeros((h, w), dtype=np.uint8)
-    recipe = current_recipe()
+    recipe = runtime.recipe
 
     # 全体で人物検出
     has_mask = 0
     if recipe.direct:
-        with profile_timer("full.total"):
-            mask, has_mask = add_yolo_mask(img, mask, profile_stage="full")
+        with profile_timer("full.total", context=runtime):
+            mask, has_mask = add_yolo_mask(img, mask, profile_stage="full", context=runtime)
 
     # 品質レシピに応じたタイル抽出
     tile_regions = iter_tile_regions(w, h, recipe.tile_spec)
     if tile_regions:
-        global proc_count
-        with profile_timer("tile.total"):
+        with profile_timer("tile.total", context=runtime):
             for region in tile_regions:
                 print(f"  Processing region {region.index}/{region.total} ...", flush=True)
-                if proc_count == 0:
+                if runtime.proc_count == 0:
                     print(
                         f"  HQ extraction: region [{region.y1}:{region.y2}, {region.x1}:{region.x2}]",
                         flush=True,
                     )
                 subimg = img[region.y1 : region.y2, region.x1 : region.x2]
                 submask = np.zeros((region.y2 - region.y1, region.x2 - region.x1), dtype=np.uint8)
-                submask, has_submask = add_yolo_mask(subimg, submask, profile_stage="tile")
+                submask, has_submask = add_yolo_mask(subimg, submask, profile_stage="tile", context=runtime)
 
                 if has_submask > 0:
-                    with profile_timer("tile.merge"):
+                    with profile_timer("tile.merge", context=runtime):
                         mask[region.y1 : region.y2, region.x1 : region.x2] = np.maximum(
                             mask[region.y1 : region.y2, region.x1 : region.x2],
                             submask,
                         )
                     has_mask += has_submask
-        proc_count += 1
+        runtime.proc_count += 1
 
     # 下方向のみ展開画像で再検出（エクイレクタングラー360画像専用）
-    if should_run_bottom_redetection(LEVEL, PROJECTION):
-        with profile_timer("bottom.total"):
-            bottom_mask, has_bottom = detect_bottom_mask(img, w, h)
+    if should_run_bottom_redetection(settings.level, settings.projection):
+        with profile_timer("bottom.total", context=runtime):
+            bottom_mask, has_bottom = detect_bottom_mask(img, w, h, context=runtime)
         if has_bottom > 0:
             mask = np.maximum(mask, bottom_mask)
             has_mask += has_bottom
 
-    with profile_timer("mask.expand"):
-        if has_mask > 0 and EXPAND > 0:
+    with profile_timer("mask.expand", context=runtime):
+        if has_mask > 0 and settings.expand > 0:
             # 検出領域を指定pxぶん膨張
             kernel = np.ones((3, 3), np.uint8)
-            mask = cv2.dilate(mask, kernel, iterations=EXPAND)
-        elif has_mask > 0 and EXPAND < 0:
+            mask = cv2.dilate(mask, kernel, iterations=settings.expand)
+        elif has_mask > 0 and settings.expand < 0:
             # 負値は検出領域を収縮
             kernel = np.ones((3, 3), np.uint8)
-            mask = cv2.erode(mask, kernel, iterations=-EXPAND)
+            mask = cv2.erode(mask, kernel, iterations=-settings.expand)
 
     # ここで反転（背景=白 / 人物=黒）
-    with profile_timer("mask.invert"):
+    with profile_timer("mask.invert", context=runtime):
         mask = 255 - mask
 
     # ---------- 保存 ----------
     out_path = Path(output_path)
     out_path.parent.mkdir(parents=True, exist_ok=True)
-    with profile_timer("image.write"):
+    with profile_timer("image.write", context=runtime):
         if not imwrite_unicode(out_path, mask):
             raise OSError(f"Failed to write mask: {out_path}")
     result = ProcessResult(
         output_path=Path(out_path),
         group_key=str(Path(out_path).parent.resolve()),
     )
-    if PROFILE is not None:
+    if profile is not None:
         if image_started is not None:
-            PROFILE.add_timing("image.total", perf_counter() - image_started)
-        PROFILE.finish_image(result.output_path)
+            profile.add_timing("image.total", perf_counter() - image_started)
+        profile.finish_image(result.output_path)
     return result
 
 
-def process_file(input_dir, output_dir, fname, add_ext=True) -> ProcessResult:
+def process_file(
+    input_dir,
+    output_dir,
+    fname,
+    add_ext=True,
+    *,
+    context: YoloMaskRuntimeContext | None = None,
+) -> ProcessResult:
     img_path = Path(input_dir) / fname
     outname = fname + ".png" if add_ext else os.path.splitext(fname)[0] + ".png"
-    return process_image_path(img_path, Path(output_dir) / outname, fname)
+    return process_image_path(img_path, Path(output_dir) / outname, fname, context=context)
 
 
 def main(argv: list[str] | None = None) -> int:
-    global \
-        CLASS_IDS, \
-        LEVEL, \
-        QUALITY, \
-        PROJECTION, \
-        EXPAND, \
-        BOTTOM_CONF, \
-        BOTTOM_TTA_ROTATIONS, \
-        BOTTOM_MODEL, \
-        BOTTOM_FILTER, \
-        PROFILE
-    global proc_count
     parser = build_arg_parser()
     args = parser.parse_args(argv)
 
     input_dir = args.images_dir if args.images_dir else "images"
     output_dir = args.output_dir if args.output_dir else "masks"
     add_ext = args.add_ext
-    LEVEL = int(args.level) if args.level is not None else 2
-    QUALITY = normalize_quality(args.quality, legacy_level=args.level)
-    PROJECTION = args.projection
-    EXPAND = clamp_expand_px(args.expand)
-    recipe = current_recipe()
-    BOTTOM_CONF = recipe.bottom_conf if args.bottom_conf is None else max(0.001, min(1.0, float(args.bottom_conf)))
-    BOTTOM_TTA_ROTATIONS = (
-        len(recipe.bottom_rotations) if args.bottom_tta_rotations is None else args.bottom_tta_rotations
-    )
-    BOTTOM_MODEL = recipe.bottom_model if args.bottom_model is None else args.bottom_model
-    BOTTOM_FILTER = bool(recipe.bottom_filter or args.bottom_filter)
-    LEVEL = int(recipe.yolo_level)
-    proc_count = 0
-    PROFILE = ProfileRecorder(args.profile_json) if args.profile_json else None
-    if EXPAND != args.expand:
-        print(f"Clamped --expand from {args.expand} to {EXPAND}", flush=True)
 
     if not os.path.isdir(input_dir) and not os.path.isfile(input_dir):
         print("python yolo_mask.py {images_dir} {masks_dir}", flush=True)
         print(os.getcwd(), flush=True)
-        PROFILE = None
+        clear_runtime_context()
         return 1
 
     try:
-        CLASS_IDS = parse_classes(args.classes)
+        runtime = build_runtime_settings(args)
     except Exception as e:
         print(f"Invalid --classes value: {e}", flush=True)
-        PROFILE = None
+        clear_runtime_context()
         return 1
+    settings = runtime.settings
+    recipe = settings.recipe
+    context = apply_runtime_settings(settings)
+    if runtime.expand_was_clamped:
+        print(f"Clamped --expand from {args.expand} to {settings.expand}", flush=True)
 
-    print("YOLO classes:", ",".join(str(x) for x in CLASS_IDS), flush=True)
-    print(f"Projection: {PROJECTION}", flush=True)
-    print(f"Quality: {QUALITY}", flush=True)
+    print("YOLO classes:", ",".join(str(x) for x in settings.class_ids), flush=True)
+    print(f"Projection: {settings.projection}", flush=True)
+    print(f"Quality: {settings.quality}", flush=True)
     print(
         "Bottom detection:",
-        f"conf={BOTTOM_CONF:g}",
-        f"rotations={BOTTOM_TTA_ROTATIONS}",
-        f"model={BOTTOM_MODEL}",
-        f"filter={BOTTOM_FILTER}",
+        f"conf={settings.bottom_conf:g}",
+        f"rotations={settings.bottom_tta_rotations}",
+        f"model={settings.bottom_model}",
+        f"filter={settings.bottom_filter}",
         flush=True,
     )
 
-    effective_bottom_model = BOTTOM_MODEL if should_run_bottom_redetection() else "same"
-    if PROFILE is not None:
-        PROFILE.set_settings(
+    effective_bottom_model = settings.bottom_model if should_run_bottom_redetection(settings.level, settings.projection) else "same"
+    if context.profile is not None:
+        context.profile.set_settings(
             {
                 "input_dir": str(input_dir),
                 "output_dir": str(output_dir),
                 "add_ext": bool(add_ext),
-                "level": int(LEVEL),
-                "quality": QUALITY,
-                "projection": PROJECTION,
-                "expand": int(EXPAND),
-                "classes": CLASS_IDS,
-                "bottom_conf": float(BOTTOM_CONF),
-                "bottom_tta_rotations": int(BOTTOM_TTA_ROTATIONS),
-                "bottom_model": BOTTOM_MODEL,
+                "level": int(settings.level),
+                "quality": settings.quality,
+                "projection": settings.projection,
+                "expand": int(settings.expand),
+                "classes": list(settings.class_ids),
+                "bottom_conf": float(settings.bottom_conf),
+                "bottom_tta_rotations": int(settings.bottom_tta_rotations),
+                "bottom_model": settings.bottom_model,
                 "effective_bottom_model": effective_bottom_model,
-                "bottom_filter": bool(BOTTOM_FILTER),
+                "bottom_filter": bool(settings.bottom_filter),
                 "view_recipe": {
                     "direct": recipe.direct,
                     "tile_spec": recipe.tile_spec.__dict__ if recipe.tile_spec is not None else None,
@@ -764,7 +937,7 @@ def main(argv: list[str] | None = None) -> int:
                 },
             }
         )
-    with profile_timer("model.load"):
+    with profile_timer("model.load", context=context):
         load_models(recipe.yolo_level, bottom_model=effective_bottom_model)
 
     # =========================
@@ -780,15 +953,15 @@ def main(argv: list[str] | None = None) -> int:
     print(f"[progress] 0/{total}", flush=True)
     for done, target in enumerate(targets, start=1):
         display_name = target.rel_path or target.image_path.name
-        process_image_path(target.image_path, target.mask_path, display_name)
+        process_image_path(target.image_path, target.mask_path, display_name, context=context)
         print(f"Processed: {display_name}", flush=True)
         print(f"[progress] {done}/{total}", flush=True)
 
-    if PROFILE is not None:
-        profile = PROFILE
+    if context.profile is not None:
+        profile = context.profile
         profile.write()
         print(f"[profile] wrote {profile.output_path}", flush=True)
-        PROFILE = None
+    clear_runtime_context()
 
     return 0
 

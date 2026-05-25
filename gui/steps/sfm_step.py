@@ -39,6 +39,7 @@ from core.scene_inventory import build_scene_inventory
 from gui import i18n
 from gui.common.browse_widget import BrowseWidget
 from gui.common.form_rows import add_tooltip_row
+from gui.common.runner_types import StepCommandQueue
 from gui.scene_preview.window import ScenePreviewWidget
 from gui.steps.base_step import BaseStepWidget
 from gui.steps.sfm_route_specs import SFM_ROUTE_COLMAP, SFM_ROUTE_METASHAPE, SFM_ROUTE_SPHERESFM, normalize_sfm_route
@@ -781,7 +782,7 @@ class SfmStep(BaseStepWidget):
             return False
         return self.cubemap_step.primary_action_enabled()
 
-    def build_commands(self) -> list[tuple[str, list[str]]]:
+    def build_commands(self) -> StepCommandQueue:
         if self._page in {_PAGE_MENU, _PAGE_VIEWER}:
             return []
         if self._page in {_PAGE_COLMAP, _PAGE_SPHERESFM}:
@@ -791,7 +792,7 @@ class SfmStep(BaseStepWidget):
         self._prepare_current_route()
         return self.cubemap_step.build_commands()
 
-    def confirm_commands(self, commands: list[tuple[str, list[str]]]) -> bool:
+    def confirm_commands(self, commands: StepCommandQueue) -> bool:
         return self.cubemap_step.confirm_commands(commands)
 
     def process_log_dir(self) -> Path | None:

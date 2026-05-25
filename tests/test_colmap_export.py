@@ -11,7 +11,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from transforms_to_colmap import (
+from core.transforms_to_colmap import (
     c2w_to_w2c,
     convert,
     quaternion_from_matrix,

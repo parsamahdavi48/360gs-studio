@@ -6,12 +6,12 @@ from pathlib import Path
 
 import pytest
 
-from scripts import spheresfm_gpu_preflight as preflight
+from core import spheresfm_gpu_preflight as preflight
 
 
 def test_spheresfm_scripts_can_run_help_from_other_working_directory(tmp_path: Path) -> None:
     repo = Path.cwd()
-    for script in ("spheresfm_gpu_preflight.py", "prepare_spheresfm_project.py"):
+    for script in ("spheresfm_gpu_preflight.py", "prepare_spheresfm_project.py", "spheresfm_to_transforms.py"):
         result = subprocess.run(
             [sys.executable, str(repo / "scripts" / script), "--help"],
             cwd=tmp_path,

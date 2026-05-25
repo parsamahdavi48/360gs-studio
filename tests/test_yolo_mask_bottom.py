@@ -6,7 +6,34 @@ import cv2
 import numpy as np
 import pytest
 
-import yolo_mask
+import core.yolo_mask as yolo_mask
+
+
+def _runtime_context(
+    *,
+    quality: str = "standard",
+    projection: str = "equirect",
+    level: int | None = None,
+    expand: int = 0,
+    bottom_tta_rotations: int | None = None,
+) -> yolo_mask.YoloMaskRuntimeContext:
+    recipe = yolo_mask.recipe_for(quality, projection)
+    settings = yolo_mask.YoloMaskRuntimeSettings(
+        class_ids=(0,),
+        level=int(recipe.yolo_level if level is None else level),
+        quality=quality,
+        projection=projection,
+        expand=expand,
+        bottom_conf=recipe.bottom_conf,
+        bottom_tta_rotations=(
+            len(recipe.bottom_rotations) if bottom_tta_rotations is None else int(bottom_tta_rotations)
+        ),
+        bottom_model=recipe.bottom_model,
+        bottom_filter=recipe.bottom_filter,
+        recipe=recipe,
+        profile_json=None,
+    )
+    return yolo_mask.create_runtime_context(settings)
 
 
 @pytest.mark.parametrize(
@@ -59,13 +86,9 @@ def test_equirect_standard_level_runs_bottom_redetection(monkeypatch: pytest.Mon
     monkeypatch.setattr(yolo_mask, "add_sam_mask", fake_add_sam_mask)
     monkeypatch.setattr(yolo_mask, "get_bottom_from_pano", fake_get_bottom_from_pano)
     monkeypatch.setattr(yolo_mask, "back_to_pano_from_bottom", fake_back_to_pano_from_bottom)
-    monkeypatch.setattr(yolo_mask, "LEVEL", 1)
-    monkeypatch.setattr(yolo_mask, "QUALITY", "standard")
-    monkeypatch.setattr(yolo_mask, "PROJECTION", "equirect")
-    monkeypatch.setattr(yolo_mask, "EXPAND", 0)
-    monkeypatch.setattr(yolo_mask, "BOTTOM_TTA_ROTATIONS", 1)
+    context = _runtime_context(projection="equirect", level=1, expand=0, bottom_tta_rotations=1)
 
-    yolo_mask.process_file(str(source), str(output), image_path.name, add_ext=False)
+    yolo_mask.process_file(str(source), str(output), image_path.name, add_ext=False, context=context)
 
     assert add_calls == [(8, 16), (4, 4)]
     assert bottom_sizes == [4]
@@ -106,12 +129,9 @@ def test_bottom_redetection_is_skipped_when_disabled(
         "get_bottom_from_pano",
         lambda *_args, **_kwargs: pytest.fail("bottom redetection must be skipped"),
     )
-    monkeypatch.setattr(yolo_mask, "LEVEL", level)
-    monkeypatch.setattr(yolo_mask, "QUALITY", "standard")
-    monkeypatch.setattr(yolo_mask, "PROJECTION", projection)
-    monkeypatch.setattr(yolo_mask, "EXPAND", 0)
+    context = _runtime_context(projection=projection, level=level, expand=0)
 
-    yolo_mask.process_file(str(source), str(output), image_path.name, add_ext=False)
+    yolo_mask.process_file(str(source), str(output), image_path.name, add_ext=False, context=context)
 
     assert add_calls == [(8, 16)]
 
@@ -146,9 +166,9 @@ def test_bottom_tta_runs_all_rotations_and_merges(monkeypatch: pytest.MonkeyPatc
     monkeypatch.setattr(yolo_mask, "detect_yolo_bboxes", fake_detect_yolo_bboxes)
     monkeypatch.setattr(yolo_mask, "add_sam_mask", fake_add_sam_mask)
     monkeypatch.setattr(yolo_mask, "back_to_pano_from_bottom", fake_back_to_pano_from_bottom)
-    monkeypatch.setattr(yolo_mask, "BOTTOM_TTA_ROTATIONS", 4)
+    context = _runtime_context(bottom_tta_rotations=4)
 
-    bottom_mask, has_bottom = yolo_mask.detect_bottom_mask(image, pano_width=16, pano_height=8)
+    bottom_mask, has_bottom = yolo_mask.detect_bottom_mask(image, pano_width=16, pano_height=8, context=context)
 
     assert yolo_shapes == [(4, 4), (4, 4), (4, 4), (4, 4)]
     assert sam_calls == [(4, 4)]

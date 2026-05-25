@@ -7,21 +7,17 @@ from gui.steps.training_backend_specs import (
     DEFAULT_TRAINING_BACKEND,
     OTHER_TRAINING_BACKEND_IDS,
     PRIMARY_TRAINING_BACKEND_IDS,
-    TRAINING_BACKEND_CUSTOM,
     TRAINING_BACKEND_LICHTFELD,
     TRAINING_BACKEND_POSTSHOT,
     get_training_backend_spec,
     normalize_training_backend,
     training_backend_default_executable,
-    training_backend_phase_name,
     training_backend_specs,
 )
 from gui.steps.training_backends import (
-    CustomTrainingOptions,
     LichtFeldTrainingOptions,
     PostshotTrainingOptions,
     TrainingDataset,
-    build_custom_training_cmd,
     build_lichtfeld_config,
     build_lichtfeld_training_cmd,
     build_postshot_training_cmd,
@@ -38,17 +34,16 @@ def test_training_backend_specs_define_ui_order_and_command_metadata() -> None:
 
     assert DEFAULT_TRAINING_BACKEND == TRAINING_BACKEND_LICHTFELD
     assert primary_ids == (TRAINING_BACKEND_LICHTFELD, TRAINING_BACKEND_POSTSHOT)
-    assert other_ids == (TRAINING_BACKEND_CUSTOM,)
+    assert other_ids == ()
     assert visible_primary_ids == primary_ids
     assert visible_other_ids == ()
     assert PRIMARY_TRAINING_BACKEND_IDS == primary_ids
     assert OTHER_TRAINING_BACKEND_IDS == other_ids
 
     ordered_specs = training_backend_specs()
-    assert [spec.stack_order for spec in ordered_specs] == [0, 1, 2]
+    assert [spec.stack_order for spec in ordered_specs] == [0, 1]
     assert get_training_backend_spec(TRAINING_BACKEND_LICHTFELD).supports_headless is True
     assert get_training_backend_spec(TRAINING_BACKEND_POSTSHOT).supports_headless is False
-    assert training_backend_phase_name(TRAINING_BACKEND_CUSTOM) == "training_custom"
     assert (
         training_backend_default_executable(
             TRAINING_BACKEND_LICHTFELD,
@@ -63,8 +58,8 @@ def test_training_backend_specs_define_ui_order_and_command_metadata() -> None:
         )
         == "postshot-cli"
     )
-    assert training_backend_default_executable(TRAINING_BACKEND_CUSTOM, windows=True) == ""
     assert normalize_training_backend("POSTSHOT") == TRAINING_BACKEND_POSTSHOT
+    assert normalize_training_backend("custom") == DEFAULT_TRAINING_BACKEND
     assert normalize_training_backend("missing") == DEFAULT_TRAINING_BACKEND
 
 
@@ -427,33 +422,3 @@ def test_postshot_command_imports_transforms_and_pointcloud_for_imported_poses(t
         "--output",
     ]
     assert "--pose-quality" not in cmd
-
-
-def test_custom_training_command_renders_dataset_placeholders(tmp_path: Path) -> None:
-    dataset = TrainingDataset(
-        dataset_root=tmp_path / "dataset",
-        images_dir=tmp_path / "dataset" / "images",
-        masks_dir=tmp_path / "dataset" / "masks",
-        colmap_sparse_dir=tmp_path / "dataset" / "sparse" / "0",
-    )
-
-    cmd = build_custom_training_cmd(
-        CustomTrainingOptions(
-            executable="trainer.exe",
-            dataset=dataset,
-            output_dir=tmp_path / "training",
-            arguments_template='--data "{dataset}" --images "{images}" --sparse "{sparse}" --out "{output}"',
-        )
-    )
-
-    assert cmd == [
-        "trainer.exe",
-        "--data",
-        str(dataset.dataset_root),
-        "--images",
-        str(dataset.images_dir),
-        "--sparse",
-        str(dataset.colmap_sparse_dir),
-        "--out",
-        str(tmp_path / "training"),
-    ]

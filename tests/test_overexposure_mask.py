@@ -1,7 +1,7 @@
 import cv2
 import numpy as np
 
-from overexposure_mask import _init_worker, _process_one, detect_overexposure, run
+from core.overexposure_mask import _init_worker, _process_one, detect_overexposure, run
 
 
 def test_overexposure_default_only_masks_pure_white_without_dilate() -> None:

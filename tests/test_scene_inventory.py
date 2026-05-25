@@ -14,7 +14,10 @@ from core.scene_inventory import (
     PROJECTION_EQUIRECTANGULAR,
     PROJECTION_NORMAL,
     PROJECTION_UNKNOWN,
+    build_scene_image_label_path_lookup,
+    build_scene_image_label_path_lookup_with_warnings,
     build_scene_inventory,
+    resolve_scene_image_label,
 )
 from core.scene_layout import selected_frames_path, source_image_sets_path
 from core.scene_project import scene_image_projection_map
@@ -88,6 +91,49 @@ def test_scene_inventory_reads_selected_frame_source_metadata(tmp_path: Path) ->
     assert inventory.images[0].sequence_index == 7
 
 
+def test_scene_inventory_groups_images_by_registered_source(tmp_path: Path) -> None:
+    scene = tmp_path
+    _write_image(scene / "images" / "a" / "erp.jpg", (64, 32))
+    _write_image(scene / "images" / "a" / "normal.jpg", (40, 30))
+    _write_image(scene / "images" / "b" / "normal.jpg", (80, 60))
+    path = source_image_sets_path(scene)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        """
+        {
+          "version": 1,
+          "image_sets": [
+            {
+              "id": "set_a",
+              "source_type": "image_sequence",
+              "files": [
+                {"scene_path": "images/a/erp.jpg", "projection": "equirectangular"},
+                {"scene_path": "images/a/normal.jpg", "projection": "normal"}
+              ]
+            },
+            {
+              "id": "set_b",
+              "source_type": "video",
+              "files": [
+                {"scene_path": "images/b/normal.jpg", "projection": "normal"}
+              ]
+            }
+          ]
+        }
+        """,
+        encoding="utf-8",
+    )
+
+    inventory = build_scene_inventory(scene)
+    groups = {(group.source_kind, group.source_id): group for group in inventory.source_groups()}
+
+    assert groups[("image_sequence", "set_a")].image_count == 2
+    assert groups[("image_sequence", "set_a")].projection_counts[PROJECTION_EQUIRECTANGULAR] == 1
+    assert groups[("image_sequence", "set_a")].projection_counts[PROJECTION_NORMAL] == 1
+    assert groups[("video", "set_b")].image_sizes == {(80, 60)}
+    assert inventory.source_group("missing", "x") is None
+
+
 def test_scene_projection_map_keeps_unreadable_images_unknown(tmp_path: Path) -> None:
     scene = tmp_path
     image = scene / "images" / "broken.jpg"
@@ -112,6 +158,50 @@ def test_scene_inventory_accepts_explicit_external_image_root(tmp_path: Path) ->
     assert inventory.images[0].rel_path == "normal.jpg"
     assert inventory.images[0].projection == PROJECTION_NORMAL
     assert inventory.images[0].mask is not None
+
+
+def test_scene_image_label_lookup_accepts_external_root_relative_labels(tmp_path: Path) -> None:
+    scene = tmp_path / "scene"
+    source_images = tmp_path / "source_images"
+    image = source_images / "cam_a" / "Frame_0001.webp"
+    _write_image(image, (40, 30))
+
+    lookup = build_scene_image_label_path_lookup(scene, images_dir=source_images)
+
+    assert resolve_scene_image_label("cam_a/Frame_0001.webp", lookup) == image
+    assert resolve_scene_image_label("source_images/cam_a/Frame_0001.webp", lookup) == image
+    assert resolve_scene_image_label("Frame_0001", lookup) == image
+
+
+def test_scene_image_label_lookup_ignores_ambiguous_external_basenames(tmp_path: Path) -> None:
+    scene = tmp_path / "scene"
+    source_images = tmp_path / "source_images"
+    image_a = source_images / "cam_a" / "Frame_0001.webp"
+    image_b = source_images / "cam_b" / "Frame_0001.webp"
+    _write_image(image_a, (40, 30))
+    _write_image(image_b, (40, 30))
+
+    lookup, warnings = build_scene_image_label_path_lookup_with_warnings(scene, images_dir=source_images)
+
+    assert resolve_scene_image_label("Frame_0001.webp", lookup) is None
+    assert resolve_scene_image_label("Frame_0001", lookup) is None
+    assert resolve_scene_image_label("cam_a/Frame_0001.webp", lookup) == image_a
+    assert resolve_scene_image_label("source_images/cam_b/Frame_0001.webp", lookup) == image_b
+    assert any("frame_0001.webp" in warning for warning in warnings)
+
+
+def test_scene_image_label_lookup_resolves_nested_and_extensionless_labels(tmp_path: Path) -> None:
+    scene = tmp_path
+    image = scene / "images" / "cam_a" / "Frame_0001.webp"
+    _write_image(image, (40, 30))
+
+    lookup = build_scene_image_label_path_lookup(scene)
+
+    assert resolve_scene_image_label("Frame_0001.webp", lookup) == image
+    assert resolve_scene_image_label("frame_0001", lookup) == image
+    assert resolve_scene_image_label("cam_a/Frame_0001.webp", lookup) == image
+    assert resolve_scene_image_label("images/cam_a/Frame_0001.webp", lookup) == image
+    assert resolve_scene_image_label("missing", lookup) is None
 
 
 def test_scene_inventory_reads_source_image_camera_metadata(tmp_path: Path) -> None:

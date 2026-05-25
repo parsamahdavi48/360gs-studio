@@ -1,17 +1,14 @@
 """Metashape XML/PLY to portable COLMAP text dataset tool."""
 from __future__ import annotations
 
-import sys
 from pathlib import Path
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
-    QCheckBox,
     QComboBox,
     QFormLayout,
     QHBoxLayout,
     QLabel,
-    QLineEdit,
     QMessageBox,
     QSplitter,
     QTabWidget,
@@ -19,8 +16,8 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from core.app_job import dataset_app_job
 from core.dataset_job_spec import metashape_colmap_job, write_dataset_job
-from core.metashape_colmap_dataset import metashape_model_requires_mixed_colmap_writer
 from core.orientation_correction import FINAL_ORIENTATION_LICHTFELD, FINAL_ORIENTATION_NONE
 from core.projection_contract import PROJECTION_EQUIRECTANGULAR
 from core.scene_inventory import build_scene_inventory
@@ -29,8 +26,6 @@ from core.scene_layout import (
     scene_images_dir,
     scene_masks_dir,
     scene_output_dir,
-    step4_meta_dir,
-    step4_work_dir,
 )
 from core.workflow_artifacts import (
     DATASET_KIND_COLMAP_DATASET,
@@ -38,20 +33,14 @@ from core.workflow_artifacts import (
     register_dataset_artifact,
     register_sfm_artifact,
 )
-from core.workflow_job_spec import (
-    cubemap_conversion_job,
-    metashape_preprocess_job,
-    transforms_to_colmap_job,
-    write_workflow_job,
-)
 from gui import i18n
 from gui.common.browse_widget import BrowseWidget
 from gui.common.drag_spinbox import DragDoubleSpinBox
 from gui.common.form_rows import add_tooltip_row
+from gui.common.runner_types import StepCommandQueue
 from gui.cubemap.preview_renderer import PreviewWidget
 from gui.cubemap.view_config import _BLOCK_ENABLED_VIEWS, _WARN_ENABLED_VIEWS, ViewConfigWidget
 from gui.steps.base_step import SETTINGS_PANE_MARGINS, SETTINGS_PANE_WIDTH, BaseStepWidget
-from gui.steps.cubemap_commands import write_views_config
 from gui.steps.output_reset import clear_path, path_has_contents
 from gui.steps.step4_contracts import (
     _AXIS_BRUSH,
@@ -62,7 +51,7 @@ from gui.steps.step4_contracts import (
     _PROFILE_LICHTFELD,
     _PROFILE_POSTSHOT,
 )
-from gui.steps.workflow_job_commands import build_workflow_job_cmd
+from gui.steps.step4_widgets import make_output_image_controls
 
 
 class ColmapTextModelTool(BaseStepWidget):
@@ -234,52 +223,13 @@ class ColmapTextModelTool(BaseStepWidget):
         layout.setContentsMargins(8, 8, 8, 8)
         layout.setSpacing(8)
 
-        format_row = QWidget()
-        format_layout = QHBoxLayout(format_row)
-        format_layout.setContentsMargins(0, 0, 0, 0)
-        format_layout.setSpacing(8)
-
-        self.output_format_combo = QComboBox()
-        self.output_format_combo.setToolTip(i18n.tip("OUTPUT_FORMAT"))
-        self.output_format_combo.addItem(i18n.t("OUTPUT_FORMAT_AUTO"), "auto")
-        for fmt in ("jpg", "png", "tiff", "webp"):
-            self.output_format_combo.addItem(fmt, fmt)
-        self.output_format_combo.setFixedWidth(96)
-
-        self.output_bit_depth_combo = QComboBox()
-        self.output_bit_depth_combo.setToolTip(i18n.tip("OUTPUT_BIT_DEPTH"))
-        self.output_bit_depth_combo.addItem(i18n.t("OUTPUT_BIT_DEPTH_8"), "8")
-        self.output_bit_depth_combo.addItem(i18n.t("OUTPUT_BIT_DEPTH_SOURCE"), "source")
-        self.output_bit_depth_combo.setFixedWidth(86)
-
-        output_format_label = QLabel(i18n.t("OUTPUT_FORMAT_COMPACT"))
-        output_format_label.setToolTip(i18n.tip("OUTPUT_FORMAT"))
-        format_layout.addWidget(output_format_label)
-        format_layout.addWidget(self.output_format_combo)
-        output_bit_depth_label = QLabel(i18n.t("OUTPUT_BIT_DEPTH_COMPACT"))
-        output_bit_depth_label.setToolTip(i18n.tip("OUTPUT_BIT_DEPTH"))
-        format_layout.addWidget(output_bit_depth_label)
-        format_layout.addWidget(self.output_bit_depth_combo)
-        format_layout.addStretch()
-        layout.addWidget(format_row)
-
-        quality_row = QWidget()
-        quality_layout = QHBoxLayout(quality_row)
-        quality_layout.setContentsMargins(0, 0, 0, 0)
-        quality_layout.setSpacing(8)
-        self.invert_masks_cb = QCheckBox(i18n.INVERT_MASKS)
-        self.invert_masks_cb.setToolTip(i18n.tip("INVERT_MASKS"))
-        quality_layout.addWidget(self.invert_masks_cb)
-        quality_layout.addSpacing(8)
-        self.jpg_quality_label = QLabel(i18n.t("JPG_QUALITY_COMPACT"))
-        self.jpg_quality_label.setToolTip(i18n.tip("JPG_QUALITY"))
-        quality_layout.addWidget(self.jpg_quality_label)
-        self.jpg_quality_edit = QLineEdit("95")
-        self.jpg_quality_edit.setToolTip(i18n.tip("JPG_QUALITY"))
-        self.jpg_quality_edit.setFixedWidth(64)
-        quality_layout.addWidget(self.jpg_quality_edit)
-        quality_layout.addStretch()
-        layout.addWidget(quality_row)
+        self.output_image_controls = make_output_image_controls(tab)
+        self.output_format_combo = self.output_image_controls.output_format_combo
+        self.output_bit_depth_combo = self.output_image_controls.output_bit_depth_combo
+        self.invert_masks_cb = self.output_image_controls.invert_masks_cb
+        self.jpg_quality_label = self.output_image_controls.jpg_quality_label
+        self.jpg_quality_edit = self.output_image_controls.jpg_quality_edit
+        layout.addWidget(self.output_image_controls.widget)
         layout.addStretch()
         return tab
 
@@ -333,14 +283,7 @@ class ColmapTextModelTool(BaseStepWidget):
             and self._ply_path().is_file()
         )
 
-    def build_commands(self) -> list[tuple[str, list[str]]]:
-        mixed_colmap_script = self.base_dir / "scripts" / "export_metashape_colmap_dataset.py"
-        use_mixed_writer = self._uses_mixed_colmap_writer()
-        required_scripts = (mixed_colmap_script,) if use_mixed_writer else (self.base_dir / "scripts" / "run_workflow_job.py",)
-        for script in required_scripts:
-            if not script.exists():
-                raise FileNotFoundError(f"{script.name} が見つかりません: {script}")
-
+    def build_commands(self) -> StepCommandQueue:
         images = self._images_dir()
         masks = self._masks_dir()
         xml = self._xml_path()
@@ -349,101 +292,30 @@ class ColmapTextModelTool(BaseStepWidget):
         self._validate_inputs(images, masks, xml, ply, output)
         self._validate_output_options()
 
-        work = self._work_dir()
-        if not self._prepare_run_dirs(work, output):
+        if not self._prepare_output_dir(output):
             return []
 
         views = self.view_config.collect_views(include_disabled=True)
-        views_json = write_views_config(self._views_config_dir(), views)
         mask_dir = masks if masks.is_dir() else None
-        if use_mixed_writer:
-            job_path = jobs_dir(Path(self.scene_dir)) / "metashape_colmap_job.json"
-            write_dataset_job(
-                job_path,
-                metashape_colmap_job(
-                    scene_dir=Path(self.scene_dir),
-                    images_dir=images,
-                    masks_dir=mask_dir,
-                    xml_path=xml,
-                    ply_path=ply,
-                    output_dir=output,
-                    views=views,
-                    output_scale=float(self.scale_combo.currentData()),
-                    output_format=str(self.output_format_combo.currentData() or "jpg"),
-                    output_bit_depth=str(self.output_bit_depth_combo.currentData() or "8"),
-                    jpg_quality=self._jpg_quality(),
-                    undistort_alpha=1.0,
-                    axis_transform=self._axis_transform_mode(),
-                    final_orientation=self._final_orientation(),
-                ),
-            )
-            cmd = [
-                sys.executable,
-                "-u",
-                str(mixed_colmap_script),
-                "--job",
-                str(job_path),
-            ]
-            return [("metashape_colmap_mixed", cmd)]
-        metashape_job = jobs_dir(Path(self.scene_dir)) / "colmap_text_metashape_preprocess_job.json"
-        cubemap_job = jobs_dir(Path(self.scene_dir)) / "colmap_text_cubemap_conversion_job.json"
-        colmap_job = jobs_dir(Path(self.scene_dir)) / "colmap_text_transforms_to_colmap_job.json"
-        projected_work = work / "projected"
-        write_workflow_job(
-            metashape_job,
-            metashape_preprocess_job(
-                images_dir=images,
-                xml_path=xml,
-                output_dir=work,
-                scale=1.0,
-                use_ply=True,
-                ply_path=ply,
-                no_fix_rotation=False,
-            ),
+        job_path = jobs_dir(Path(self.scene_dir)) / "metashape_colmap_job.json"
+        payload = metashape_colmap_job(
+            scene_dir=Path(self.scene_dir),
+            images_dir=images,
+            masks_dir=mask_dir,
+            xml_path=xml,
+            ply_path=ply,
+            output_dir=output,
+            views=views,
+            output_scale=float(self.scale_combo.currentData()),
+            output_format=str(self.output_format_combo.currentData() or "jpg"),
+            output_bit_depth=str(self.output_bit_depth_combo.currentData() or "8"),
+            jpg_quality=self._jpg_quality(),
+            undistort_alpha=1.0,
+            axis_transform=self._axis_transform_mode(),
+            final_orientation=self._final_orientation(),
         )
-        write_workflow_job(
-            cubemap_job,
-            cubemap_conversion_job(
-                input_dir=work,
-                output_dir=projected_work,
-                views=views,
-                fov=90.0,
-                output_scale=float(self.scale_combo.currentData()),
-                axis_mode=self._axis_transform_mode(),
-                image_only=False,
-                colmap_rig=False,
-                invert_masks=self.invert_masks_cb.isChecked(),
-                write_images=True,
-                write_masks=mask_dir is not None,
-                yaw_offset_per_frame=float(self.yaw_per_frame_edit.value()),
-                output_format=str(self.output_format_combo.currentData() or "auto"),
-                output_bit_depth=str(self.output_bit_depth_combo.currentData() or "8"),
-                jpg_quality=self._jpg_quality(),
-                image_dir=images,
-                mask_dir=mask_dir,
-                final_orientation=self._final_orientation(),
-            ),
-        )
-        write_workflow_job(
-            colmap_job,
-            transforms_to_colmap_job(
-                input_dir=projected_work,
-                output_dir=output / "sparse" / "0",
-                ply_path=projected_work / "pointcloud.ply",
-                json_name="transforms.json",
-                image_prefix="images/",
-                dataset_root=output,
-                asset_input_dir=projected_work,
-                copy_images=True,
-                copy_masks=mask_dir is not None,
-            ),
-        )
-        _ = views_json
-        return [
-            ("metashape", build_workflow_job_cmd(self.base_dir, metashape_job)),
-            ("cubemap", build_workflow_job_cmd(self.base_dir, cubemap_job)),
-            ("colmap_text", build_workflow_job_cmd(self.base_dir, colmap_job)),
-        ]
+        write_dataset_job(job_path, payload)
+        return [("metashape_colmap", dataset_app_job(payload, job_path))]
 
     def _validate_inputs(self, images: Path, masks: Path, xml: Path, ply: Path, output: Path) -> None:
         if not self.scene_dir:
@@ -478,16 +350,7 @@ class ColmapTextModelTool(BaseStepWidget):
             raise ValueError(f"ビュー数が多すぎます ({enabled})。{_BLOCK_ENABLED_VIEWS} 以下にしてください。")
         self._jpg_quality()
 
-    def _uses_mixed_colmap_writer(self) -> bool:
-        xml = self._xml_path()
-        if not xml.is_file():
-            return False
-        try:
-            return metashape_model_requires_mixed_colmap_writer(xml)
-        except Exception:
-            return False
-
-    def _prepare_run_dirs(self, work: Path, output: Path) -> bool:
+    def _prepare_output_dir(self, output: Path) -> bool:
         if self.scene_dir is None:
             return False
         scene = Path(self.scene_dir)
@@ -503,20 +366,11 @@ class ColmapTextModelTool(BaseStepWidget):
             if result != QMessageBox.Yes:
                 return False
             clear_path(output, allowed_roots=[output_root])
-        if path_has_contents(work):
-            clear_path(work, allowed_roots=[step4_work_dir(scene)])
-        work.mkdir(parents=True, exist_ok=True)
         output.mkdir(parents=True, exist_ok=True)
         return True
 
     def phase_display_name(self, phase: str) -> str:
-        if phase == "metashape":
-            return i18n.t("PHASE_METASHAPE_IMPORT")
-        if phase == "metashape_colmap_mixed":
-            return i18n.t("PHASE_COLMAP_TEXT_MODEL")
-        if phase == "cubemap":
-            return i18n.t("PHASE_CUBEMAP")
-        if phase == "colmap_text":
+        if phase == "metashape_colmap":
             return i18n.t("PHASE_COLMAP_TEXT_MODEL")
         return super().phase_display_name(phase)
 
@@ -584,16 +438,6 @@ class ColmapTextModelTool(BaseStepWidget):
         if not self.scene_dir:
             return Path()
         return scene_output_dir(Path(self.scene_dir)) / "metashape_colmap"
-
-    def _work_dir(self) -> Path:
-        if not self.scene_dir:
-            return Path()
-        return step4_work_dir(Path(self.scene_dir)) / "metashape_colmap_import"
-
-    def _views_config_dir(self) -> Path:
-        if not self.scene_dir:
-            return Path()
-        return step4_meta_dir(Path(self.scene_dir)) / "metashape_colmap"
 
     def _profile_id(self) -> str:
         data = self.profile_combo.currentData()

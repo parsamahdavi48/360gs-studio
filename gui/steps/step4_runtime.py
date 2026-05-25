@@ -6,7 +6,6 @@ import json
 import math
 import re
 import shutil
-import sys
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
@@ -18,13 +17,12 @@ from core.orientation_correction import (
     FINAL_ORIENTATION_STAGE_DIRECT_FINALIZE,
     apply_final_orientation_to_dataset,
 )
-from core.scene_layout import scene_images_dir
+from core.scene_inventory import build_scene_image_label_path_lookup, resolve_scene_image_label
 from gui import i18n
 from gui.steps.step4_contracts import (
     _GENERATED_POINTCLOUD_NAME,
     _PIPELINE_STAGE_CONVERSION,
     _PIPELINE_STAGE_SFM,
-    _SUPPORTED_TRAINING_IMAGE_EXTS,
     is_colmap_gui_unavailable_output,
     is_spheresfm_rtx50_cuda_error_line,
 )
@@ -69,8 +67,7 @@ class Step4RuntimeMixin:
             "--import_path",
             str(model),
         ]
-        process_cls = getattr(sys.modules.get("gui.steps.step4_cubemap"), "QProcess", QProcess)
-        process = process_cls(self)
+        process = self._create_spheresfm_gui_process()
         process.setProgram(colmap)
         process.setArguments(args)
         process.setProcessChannelMode(QProcess.MergedChannels)
@@ -120,6 +117,9 @@ class Step4RuntimeMixin:
         )
         if process.state() == QProcess.NotRunning:
             self._on_spheresfm_gui_process_finished(process, colmap, str(model))
+
+    def _create_spheresfm_gui_process(self) -> QProcess:
+        return QProcess(self)
 
     @staticmethod
     def _qprocess_output_text(process: QProcess) -> str:
@@ -238,7 +238,7 @@ class Step4RuntimeMixin:
         if (
             not self._uses_lichtfeld_final_correction()
             and not self._is_realityscan_profile()
-            and not self._uses_mixed_metashape_nerf_writer()
+            and not self._uses_metashape_nerf_dataset_writer()
         ):
             source = self._resolve_ply_source()
             if source is not None:
@@ -290,7 +290,6 @@ class Step4RuntimeMixin:
             "spheresfm_cubemap": "PHASE_SPHERESFM_CUBEMAP",
             "training_lichtfeld": "PHASE_TRAINING_LICHTFELD",
             "training_postshot": "PHASE_TRAINING_POSTSHOT",
-            "training_custom": "PHASE_TRAINING_CUSTOM",
         }
         key = labels.get(phase)
         return i18n.t(key) if key else phase
@@ -519,7 +518,7 @@ class Step4RuntimeMixin:
             return None
         if self._xml_tag_name(root.tag) != "document":
             return None
-        image_names, image_stems = self._metashape_image_name_sets(scene_dir)
+        image_lookup = self._metashape_image_label_lookup(scene_dir)
         total_cameras = 0
         transformed_cameras = 0
         image_matches = 0
@@ -541,7 +540,7 @@ class Step4RuntimeMixin:
                 transform = self._xml_child(camera, "transform")
                 if self._xml_transform_has_16_numbers(transform):
                     transformed_cameras += 1
-                if self._metashape_label_matches_image(label, image_names, image_stems):
+                if self._metashape_label_matches_image(label, image_lookup):
                     image_matches += 1
         if total_cameras <= 0 or transformed_cameras <= 0:
             return None
@@ -590,23 +589,9 @@ class Step4RuntimeMixin:
         return all(math.isfinite(value) for value in values)
 
     @staticmethod
-    def _metashape_image_name_sets(scene_dir: Path) -> tuple[set[str], set[str]]:
-        images_dir = scene_images_dir(scene_dir)
-        if not images_dir.is_dir():
-            return set(), set()
-        names: set[str] = set()
-        stems: set[str] = set()
-        for image in images_dir.iterdir():
-            if not image.is_file() or image.suffix.lower() not in _SUPPORTED_TRAINING_IMAGE_EXTS:
-                continue
-            names.add(image.name)
-            stems.add(image.stem)
-        return names, stems
+    def _metashape_image_label_lookup(scene_dir: Path) -> dict[str, Path]:
+        return build_scene_image_label_path_lookup(scene_dir)
 
     @staticmethod
-    def _metashape_label_matches_image(label: str, image_names: set[str], image_stems: set[str]) -> bool:
-        if not image_names and not image_stems:
-            return False
-        name = label.replace("\\", "/").rsplit("/", 1)[-1]
-        stem = Path(name).stem
-        return name in image_names or stem in image_stems or label in image_names or label in image_stems
+    def _metashape_label_matches_image(label: str, image_lookup: dict[str, Path]) -> bool:
+        return resolve_scene_image_label(label, image_lookup) is not None

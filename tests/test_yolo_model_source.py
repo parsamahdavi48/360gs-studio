@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from yolo_mask import model_source
+from core.yolo_mask import model_source
 
 
 def test_model_source_prefers_models_ultralytics(tmp_path: Path) -> None:

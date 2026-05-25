@@ -3,18 +3,21 @@ from pathlib import Path
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PySide6.QtWidgets import QApplication, QLabel, QPushButton, QToolButton
+from PySide6.QtWidgets import QLabel, QPushButton, QToolButton
 
+from core.app_job import AppJob
 from core.extract_sessions import build_session_record, load_manifest, save_manifest
 from core.scene_layout import source_videos_path
 from core.scene_project import load_json, source_video_record, upsert_source_videos
 from gui import i18n
 from gui.app import MainWindow
+from gui.common import dialogs
 from gui.steps.step1_extract import ExtractStep
+from tests.helpers.gui import qt_app
 
 
 def _app():
-    return QApplication.instance() or QApplication([])
+    return qt_app()
 
 
 def _video_info() -> dict:
@@ -97,7 +100,10 @@ def test_extract_step_accepts_image_sequence_folder(tmp_path: Path) -> None:
     assert step.ready_status_label.text() == i18n.t("EXTRACT_READY_IMAGE_SEQUENCE_OK").format(n=2)
     commands = step.build_commands()
     assert commands[0][0] == "image_sequence_import"
-    assert commands[0][1][3:5] == [str(source), str(scene)]
+    cmd = commands[0][1]
+    assert isinstance(cmd, AppJob)
+    assert cmd.payload["source_dir"] == str(source)
+    assert cmd.payload["scene_dir"] == str(scene)
 
 
 def test_extract_run_enabled_when_required_inputs_are_ready(tmp_path: Path) -> None:
@@ -196,15 +202,9 @@ def test_extract_video_queue_adds_and_removes_videos_from_right_pane(tmp_path: P
     step.set_scene_dir(str(scene))
     monkeypatch.setattr(step, "_probe_video_info_for_path", lambda _path: _video_info())
 
-    monkeypatch.setattr(
-        "gui.steps.step1_extract.QFileDialog.getOpenFileNames",
-        lambda *_args, **_kwargs: ([str(video_a)], ""),
-    )
+    monkeypatch.setattr(dialogs, "get_open_file_names", lambda *_args, **_kwargs: ([str(video_a)], ""))
     step.add_video_btn.click()
-    monkeypatch.setattr(
-        "gui.steps.step1_extract.QFileDialog.getOpenFileNames",
-        lambda *_args, **_kwargs: ([str(video_b)], ""),
-    )
+    monkeypatch.setattr(dialogs, "get_open_file_names", lambda *_args, **_kwargs: ([str(video_b)], ""))
     step.add_video_btn.click()
 
     assert step._selected_video_paths() == [video_a, video_b]
@@ -240,15 +240,9 @@ def test_extract_source_queue_mixes_video_and_still_folder(tmp_path: Path, monke
     step.set_scene_dir(str(scene))
     monkeypatch.setattr(step, "_probe_video_info_for_path", lambda _path: _video_info())
 
-    monkeypatch.setattr(
-        "gui.steps.step1_extract.QFileDialog.getOpenFileNames",
-        lambda *_args, **_kwargs: ([str(video)], ""),
-    )
+    monkeypatch.setattr(dialogs, "get_open_file_names", lambda *_args, **_kwargs: ([str(video)], ""))
     step.add_video_btn.click()
-    monkeypatch.setattr(
-        "gui.steps.step1_extract.QFileDialog.getExistingDirectory",
-        lambda *_args, **_kwargs: str(still_dir),
-    )
+    monkeypatch.setattr(dialogs, "get_existing_directory", lambda *_args, **_kwargs: str(still_dir))
     step.add_image_sequence_btn.click()
 
     assert step.primary_action_enabled()
@@ -258,8 +252,13 @@ def test_extract_source_queue_mixes_video_and_still_folder(tmp_path: Path, monke
     assert "2" in step.video_queue_list.item(1).text()
     commands = step.build_commands()
     assert [phase for phase, _cmd in commands] == [f"extract: {video.name}", f"image_sequence_import: {still_dir.name}"]
-    assert commands[0][1][3] == str(video)
-    assert commands[1][1][3:5] == [str(still_dir), str(scene)]
+    video_cmd = commands[0][1]
+    still_cmd = commands[1][1]
+    assert isinstance(video_cmd, AppJob)
+    assert isinstance(still_cmd, AppJob)
+    assert video_cmd.payload["input_video"] == str(video)
+    assert still_cmd.payload["source_dir"] == str(still_dir)
+    assert still_cmd.payload["scene_dir"] == str(scene)
 
 
 def test_extract_source_queue_blocks_failed_video_probe_even_with_still_folder(tmp_path: Path, monkeypatch) -> None:
@@ -277,15 +276,9 @@ def test_extract_source_queue_blocks_failed_video_probe_even_with_still_folder(t
     step.set_scene_dir(str(scene))
     monkeypatch.setattr(step, "_probe_video_info_for_path", lambda _path: (_ for _ in ()).throw(RuntimeError("probe failed")))
 
-    monkeypatch.setattr(
-        "gui.steps.step1_extract.QFileDialog.getOpenFileNames",
-        lambda *_args, **_kwargs: ([str(video)], ""),
-    )
+    monkeypatch.setattr(dialogs, "get_open_file_names", lambda *_args, **_kwargs: ([str(video)], ""))
     step.add_video_btn.click()
-    monkeypatch.setattr(
-        "gui.steps.step1_extract.QFileDialog.getExistingDirectory",
-        lambda *_args, **_kwargs: str(still_dir),
-    )
+    monkeypatch.setattr(dialogs, "get_existing_directory", lambda *_args, **_kwargs: str(still_dir))
     step.add_image_sequence_btn.click()
 
     assert not step.primary_action_enabled()
@@ -561,8 +554,9 @@ def test_extract_replace_same_video_enables_run_and_sets_cli_mode(tmp_path: Path
     cmd = step._build_extract_cmd()
 
     assert step.primary_action_enabled()
-    assert cmd[cmd.index("--output-mode") + 1] == "replace-video"
-    assert "--allow-duplicate-video" not in cmd
+    assert isinstance(cmd, AppJob)
+    assert cmd.payload["output_mode"] == "replace-video"
+    assert not cmd.payload.get("allow_duplicate_video")
 
 
 def test_extract_multi_select_queues_only_unextracted_videos(tmp_path: Path) -> None:
@@ -581,9 +575,10 @@ def test_extract_multi_select_queues_only_unextracted_videos(tmp_path: Path) -> 
     assert len(commands) == 1
     assert commands[0][0] == "extract: b.MOV"
     cmd = commands[0][1]
-    assert cmd[3] == str(video_b)
-    assert cmd[cmd.index("--output-mode") + 1] == "append"
-    assert cmd[cmd.index("--filename-prefix") + 1] == "b"
+    assert isinstance(cmd, AppJob)
+    assert cmd.payload["input_video"] == str(video_b)
+    assert cmd.payload["output_mode"] == "append"
+    assert cmd.payload["filename_prefix"] == "b"
 
 
 def test_extract_multi_select_build_commands_rechecks_missing_videos(tmp_path: Path) -> None:
@@ -637,7 +632,10 @@ def test_extract_multi_select_replace_mode_queues_all_videos(tmp_path: Path) -> 
 
     assert step.primary_action_enabled()
     assert [phase for phase, _cmd in commands] == ["extract: a.mp4", "extract: b.mov"]
-    assert [cmd[cmd.index("--output-mode") + 1] for _phase, cmd in commands] == ["replace-video", "replace-video"]
+    assert [cmd.payload["output_mode"] for _phase, cmd in commands if isinstance(cmd, AppJob)] == [
+        "replace-video",
+        "replace-video",
+    ]
 
 
 def test_extract_phase_status_shows_video_queue_position() -> None:

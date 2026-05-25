@@ -675,7 +675,8 @@ def test_estimate_apriltag_scale_cli_rejects_equirectangular_input(tmp_path: Pat
     result = subprocess.run(
         [
             sys.executable,
-            "scripts/estimate_apriltag_scale.py",
+            "-m",
+            "core.apriltag_scale_estimate",
             str(transforms),
             "--tag-size-m",
             "0.16",
@@ -693,7 +694,7 @@ def test_estimate_apriltag_scale_cli_passes_colmap_image_root(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
-    import scripts.estimate_apriltag_scale as cli
+    import core.apriltag_scale_estimate as cli
 
     dataset = tmp_path / "colmap_dataset"
     image_root = tmp_path / "external_images"

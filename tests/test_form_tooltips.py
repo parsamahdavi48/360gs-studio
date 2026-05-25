@@ -8,6 +8,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PySide6.QtWidgets import QApplication, QLabel, QRadioButton, QToolButton, QWidget
 
+from core.app_job import AppJob
 from gui import i18n, theme
 from gui.common.drag_spinbox import DragDoubleSpinBox, DragSpinBox
 from gui.steps.base_step import SETTINGS_PANE_MARGINS, SETTINGS_PANE_WIDTH
@@ -287,7 +288,6 @@ def test_step5_japanese_training_copy_uses_learning_step_wording() -> None:
             "LAUNCH",
             "PHASE_TRAINING_LICHTFELD",
             "PHASE_TRAINING_POSTSHOT",
-            "PHASE_TRAINING_CUSTOM",
             "TRAINING_EXEC_NOT_FOUND",
             "TRAINING_REQUIRES_DATASET_OUTPUT",
             "TRAINING_OUTPUT",
@@ -624,37 +624,34 @@ def test_extract_command_uses_drag_spinbox_values(tmp_path: Path) -> None:
     step.interval_edit.setValue(1.25)
     step.jpg_quality_edit.setValue(4)
     fixed_cmd = step._build_extract_cmd()
-    assert fixed_cmd[fixed_cmd.index("--interval-sec") + 1] == "1.25"
-    assert fixed_cmd[fixed_cmd.index("--jpg-quality") + 1] == "4"
-    assert "--fixed-smart" in fixed_cmd
+    assert isinstance(fixed_cmd, AppJob)
+    assert fixed_cmd.payload["interval_sec"] == 1.25
+    assert fixed_cmd.payload["jpg_quality"] == 4
+    assert fixed_cmd.payload["fixed_smart"] is True
 
     step.min_gap_edit.setValue(0.5)
     step.max_gap_edit.setValue(3.0)
     smart_cmd = step._build_extract_cmd()
-    assert smart_cmd[smart_cmd.index("--pair-motion-profile") + 1] == "walk_standard"
-    assert smart_cmd[smart_cmd.index("--min-gap-sec") + 1] == "0.5"
-    assert smart_cmd[smart_cmd.index("--max-gap-sec") + 1] == "3"
+    assert isinstance(smart_cmd, AppJob)
+    assert smart_cmd.payload["pair_motion_profile"] == "walk_standard"
+    assert smart_cmd.payload["min_gap_sec"] == 0.5
+    assert smart_cmd.payload["max_gap_sec"] == 3.0
 
     step.pair_motion_profile_combo.setCurrentIndex(1)
     close_cmd = step._build_extract_cmd()
-    assert close_cmd[close_cmd.index("--pair-motion-profile") + 1] == "walk_close"
+    assert isinstance(close_cmd, AppJob)
+    assert close_cmd.payload["pair_motion_profile"] == "walk_close"
 
     step.smart_fixed_cb.setChecked(False)
     plain_cmd = step._build_extract_cmd()
-    assert "--fixed-smart" not in plain_cmd
-    assert "--min-gap-sec" not in plain_cmd
-    assert "--max-gap-sec" not in plain_cmd
+    assert isinstance(plain_cmd, AppJob)
+    assert plain_cmd.payload["fixed_smart"] is False
 
     step.quick_extract_cb.setChecked(True)
     quick_cmd = step._build_extract_cmd()
-    assert "--quick-extract" in quick_cmd
-    assert "--fixed-smart" not in quick_cmd
-    assert "--min-gap-sec" not in quick_cmd
-    assert "--max-gap-sec" not in quick_cmd
-    assert "--analysis-width" not in quick_cmd
-    assert "--quality-min-score" not in quick_cmd
-    assert "--quality-min-improvement" not in quick_cmd
-    assert "--pair-motion-profile" not in quick_cmd
+    assert isinstance(quick_cmd, AppJob)
+    assert quick_cmd.payload["quick_extract"] is True
+    assert quick_cmd.payload["fixed_smart"] is False
 
 
 def test_mask_numeric_labels_share_field_tooltips() -> None:

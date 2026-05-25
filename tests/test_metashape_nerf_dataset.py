@@ -9,7 +9,6 @@ from PIL import Image
 
 from core.metashape_coordinates import metashape_camera_matrix_to_output_world
 from core.metashape_nerf_dataset import export_metashape_nerf_dataset, metashape_model_requires_mixed_nerf_writer
-from vendor.metashape_360_lfs.metashape_360_lfs import transform_camera_matrix
 
 _IDENTITY = "1 0 0 0 0 1 0 0 0 0 1 0 0 0 0 1"
 
@@ -143,7 +142,7 @@ def test_export_metashape_nerf_dataset_expands_links_and_undistorts(tmp_path: Pa
     }
 
 
-def test_metashape_nerf_camera_transform_matches_legacy_vendor() -> None:
+def test_metashape_nerf_camera_transform_matches_coordinate_contract() -> None:
     transform = np.array(
         [
             [0.36, -0.48, 0.80, 1.25],
@@ -154,10 +153,16 @@ def test_metashape_nerf_camera_transform_matches_legacy_vendor() -> None:
         dtype=np.float64,
     )
 
-    assert np.allclose(
-        metashape_camera_matrix_to_output_world(transform),
-        transform_camera_matrix(transform.copy(), fix_upside_down=True),
+    expected = np.array(
+        [
+            [0.48, 0.64, 0.60, -3.75],
+            [-0.80, 0.60, 0.00, 2.50],
+            [-0.36, -0.48, 0.80, -1.25],
+            [0.0, 0.0, 0.0, 1.0],
+        ],
+        dtype=np.float64,
     )
+    assert np.allclose(metashape_camera_matrix_to_output_world(transform), expected)
 
 
 def test_export_metashape_nerf_dataset_blocks_multicamera_lichtfeld_target(tmp_path: Path) -> None:
@@ -185,7 +190,7 @@ def test_export_metashape_nerf_dataset_blocks_multicamera_lichtfeld_target(tmp_p
     assert not (scene / "output" / "metashape_cubemap" / "transforms.json").exists()
 
 
-def test_metashape_nerf_writer_detection_keeps_legacy_erp_route_for_simple_spherical(tmp_path: Path) -> None:
+def test_metashape_nerf_writer_detection_flags_models_requiring_projected_output(tmp_path: Path) -> None:
     simple = tmp_path / "simple.xml"
     mixed = tmp_path / "mixed.xml"
     _write_single_spherical_xml(simple)

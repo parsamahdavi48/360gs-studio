@@ -19,11 +19,11 @@ from core.colmap_rig_export import (
     prepare_views_for_colmap,
     write_rig_config_payload_json,
 )
-from core.cubemap_transforms_json import (
+from core.cubemap_image_conversion import (
     convert_images_colmap_rig,
-    load_custom_views,
     make_colmap_rig_jobs,
 )
+from core.cubemap_view_spec import load_views_json, views_to_dicts
 from core.dataset_writer_colmap import replace_file_with_link_or_copy
 from core.scene_inventory import SceneImage, SceneInventory, build_scene_inventory
 from core.sfm_input_plan import (
@@ -229,7 +229,7 @@ def _load_or_normalize_views(
     if views is None:
         if views_json is None:
             raise ValueError("views_json or views is required")
-        return load_custom_views(str(views_json))
+        return views_to_dicts(load_views_json(views_json))
 
     normalized: list[dict[str, Any]] = []
     used_names: set[str] = set()

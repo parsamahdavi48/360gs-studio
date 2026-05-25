@@ -6,6 +6,8 @@ import cv2
 import numpy as np
 from PIL import Image
 
+from core.cubemap_image_io import remap_with_channels
+from core.cubemap_remap import build_remap, rot4, rotation_matrix
 from core.orientation_correction import (
     REALITYSCAN_FINAL_ORIENTATION_MATRIX,
     final_orientation_writes_pointcloud,
@@ -18,7 +20,6 @@ from core.realityscan_xmp import (
     write_realityscan_mask_layers,
     write_realityscan_xmp_sidecars,
 )
-from cubemap_transforms_json import build_remap, remap_with_channels, rot4, rotation_matrix
 
 
 def _write_transforms(output: Path) -> None:

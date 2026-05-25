@@ -7,7 +7,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from extract_frames import (
+from core.extract_frames import (
     PairTrackMetrics,
     VideoInfo,
     analyze_pair_selection,

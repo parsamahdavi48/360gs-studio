@@ -583,14 +583,8 @@ class Step4PathMixin:
         return model
 
     def _validate_spheresfm_conversion_export(self) -> None:
-        transforms_script = self.base_dir / "scripts" / "spheresfm_to_transforms.py"
-        if not transforms_script.exists():
-            raise FileNotFoundError(f"spheresfm_to_transforms.py が見つかりません: {transforms_script}")
         if not self._uses_spheresfm_projected_output():
             return
-        cubemap_script = self.base_dir / "cubemap_transforms_json.py"
-        if not cubemap_script.exists():
-            raise FileNotFoundError(f"cubemap_transforms_json.py が見つかりません: {cubemap_script}")
         views = self.view_config.collect_views(include_disabled=True)
         enabled = sum(1 for v in views if v["enabled"])
         if enabled <= 0:

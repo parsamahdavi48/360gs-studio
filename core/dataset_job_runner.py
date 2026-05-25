@@ -1,0 +1,103 @@
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+from core.dataset_job_spec import (
+    JOB_KIND_METASHAPE_COLMAP,
+    JOB_KIND_METASHAPE_NERF,
+    JOB_KIND_REALITYSCAN_LFS_COLMAP,
+    load_dataset_job,
+    validate_dataset_job_payload,
+)
+from core.metashape_colmap_dataset import export_metashape_colmap_dataset
+from core.metashape_nerf_dataset import export_metashape_nerf_dataset
+from core.realityscan_to_lfs_colmap import convert as convert_realityscan_to_lfs_colmap
+
+
+def run_dataset_job_file(path: str | Path) -> None:
+    run_dataset_job_payload(load_dataset_job(path))
+
+
+def run_dataset_job_payload(job: dict) -> None:
+    validate_dataset_job_payload(job)
+    kind = str(job["kind"])
+    if kind == JOB_KIND_METASHAPE_COLMAP:
+        _run_metashape_colmap(job)
+    elif kind == JOB_KIND_METASHAPE_NERF:
+        _run_metashape_nerf(job)
+    elif kind == JOB_KIND_REALITYSCAN_LFS_COLMAP:
+        _run_realityscan_lfs_colmap(job)
+    else:
+        raise ValueError(f"Unsupported dataset job kind: {kind}")
+
+
+def _enabled_views(job: dict) -> list[dict]:
+    return [dict(item) for item in job.get("views", []) if isinstance(item, dict) and bool(item.get("enabled", True))]
+
+
+def _run_metashape_colmap(job: dict) -> None:
+    result = export_metashape_colmap_dataset(
+        scene_dir=Path(str(job["scene_dir"])),
+        images_dir=Path(str(job["images_dir"])),
+        masks_dir=Path(str(job["masks_dir"])) if str(job.get("masks_dir") or "") else None,
+        xml_path=Path(str(job["xml_path"])),
+        ply_path=Path(str(job["ply_path"])) if str(job.get("ply_path") or "") else None,
+        output_dir=Path(str(job["output_dir"])),
+        views=_enabled_views(job),
+        output_scale=float(job.get("output_scale", 1.0)),
+        output_format=str(job.get("output_format") or "jpg"),
+        output_bit_depth=str(job.get("output_bit_depth") or "8"),
+        jpg_quality=int(job.get("jpg_quality", 95)),
+        undistort_alpha=float(job.get("undistort_alpha", 1.0)),
+        axis_transform=str(job.get("axis_transform") or "none"),
+        final_orientation=str(job.get("final_orientation") or "none"),
+    )
+    print(f"Saved mixed Metashape COLMAP dataset: {result.output_dir}", flush=True)
+    print(f"Images: {result.image_count}", flush=True)
+    print(f"Cameras: {result.camera_count}", flush=True)
+    print(f"Actions: {json.dumps(result.action_counts, sort_keys=True)}", flush=True)
+
+
+def _run_metashape_nerf(job: dict) -> None:
+    result = export_metashape_nerf_dataset(
+        scene_dir=Path(str(job["scene_dir"])),
+        images_dir=Path(str(job["images_dir"])),
+        masks_dir=Path(str(job["masks_dir"])) if str(job.get("masks_dir") or "") else None,
+        xml_path=Path(str(job["xml_path"])),
+        ply_path=Path(str(job["ply_path"])) if str(job.get("ply_path") or "") else None,
+        output_dir=Path(str(job["output_dir"])),
+        views=_enabled_views(job),
+        output_scale=float(job.get("output_scale", 1.0)),
+        output_format=str(job.get("output_format") or "jpg"),
+        output_bit_depth=str(job.get("output_bit_depth") or "8"),
+        jpg_quality=int(job.get("jpg_quality", 95)),
+        undistort_alpha=float(job.get("undistort_alpha", 1.0)),
+        axis_transform=str(job.get("axis_transform") or "none"),
+        final_orientation=str(job.get("final_orientation") or "none"),
+    )
+    print(f"Saved mixed Metashape NeRF dataset: {result.output_dir}", flush=True)
+    print(f"transforms.json: {result.transforms_json}", flush=True)
+    if result.pointcloud:
+        print(f"pointcloud.ply: {result.pointcloud}", flush=True)
+    print(f"Frames: {result.frame_count}", flush=True)
+    print(f"Actions: {json.dumps(result.action_counts, sort_keys=True)}", flush=True)
+
+
+def _run_realityscan_lfs_colmap(job: dict) -> None:
+    result = convert_realityscan_to_lfs_colmap(
+        csv_path=Path(str(job["csv_path"])),
+        output_dir=Path(str(job["output_dir"])),
+        images_dir=Path(str(job["images_dir"])),
+        masks_dir=Path(str(job["masks_dir"])) if str(job.get("masks_dir") or "") else None,
+        ply_path=Path(str(job["ply_path"])) if str(job.get("ply_path") or "") else None,
+        skip_missing_images=bool(job.get("skip_missing_images")),
+        pre_undistort_distorted_images=bool(job.get("pre_undistort_distorted_images")),
+        undistort_alpha=float(job.get("undistort_alpha", 1.0)),
+        camera_rotation_x_deg=float(job.get("camera_rotation_x_deg", 90.0)),
+        pointcloud_rotation_x_deg=float(job.get("pointcloud_rotation_x_deg", 90.0)),
+    )
+    print(f"Wrote RealityScan LichtFeld COLMAP dataset: {result['output_dir']}", flush=True)
+    print(f"Images: {result['num_images']}", flush=True)
+    print(f"Cameras: {result['num_cameras']}", flush=True)
+    print(f"Skipped missing images: {result['num_missing_images']}", flush=True)

@@ -21,7 +21,7 @@ from typing import Any
 import numpy as np
 
 from core.pointcloud_io import load_point_cloud_sample
-from core.scene_import_contracts import IMAGE_EXTS
+from core.scene_inventory import build_scene_image_label_path_lookup, resolve_scene_image_label
 
 SCENE_PREVIEW_WORLD_UP = np.array([0.0, 1.0, 0.0], dtype=np.float64)
 
@@ -178,7 +178,7 @@ def load_colmap_preview_dataset(
     opengl_camera: bool = False,
     sphere_as_equirectangular: bool = True,
 ) -> ScenePreviewDataset:
-    from scripts.spheresfm_to_transforms import colmap_pose_to_c2w, read_model
+    from core.spheresfm_to_transforms import colmap_pose_to_c2w, read_model
 
     cameras_by_id, images_by_id, points_by_id, resolved_model_dir = read_model(Path(model_dir))
     root = Path(images_dir) if images_dir is not None else resolved_model_dir
@@ -555,21 +555,14 @@ def _resolve_path(root: Path, file_path: str) -> Path:
 
 
 def _image_lookup(root: Path) -> dict[str, Path]:
+    root = Path(root)
     if not root.is_dir():
         return {}
-    lookup: dict[str, Path] = {}
-    for path in root.rglob("*"):
-        if not path.is_file() or path.suffix.lower() not in IMAGE_EXTS:
-            continue
-        lookup.setdefault(path.name.lower(), path)
-        lookup.setdefault(path.stem.lower(), path)
-    return lookup
+    return build_scene_image_label_path_lookup(root.parent, images_dir=root)
 
 
 def _resolve_metashape_image(label: str, lookup: dict[str, Path]) -> Path | None:
-    if not lookup:
-        return None
-    return lookup.get(label.lower()) or lookup.get(Path(label).stem.lower())
+    return resolve_scene_image_label(label, lookup)
 
 
 def _tag_name(tag: str) -> str:

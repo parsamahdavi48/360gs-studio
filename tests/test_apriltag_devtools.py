@@ -9,7 +9,7 @@ import pytest
 from PIL import Image
 
 from core.apriltag_geometry import PinholeFrame, load_pinhole_frames
-from core.cubemap_transforms_json import build_remap
+from core.cubemap_remap import build_remap
 from devtools.apriltag.case import (
     AprilTagPlacement,
     create_case,

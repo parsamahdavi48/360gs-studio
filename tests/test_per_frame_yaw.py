@@ -10,17 +10,12 @@ from pathlib import Path
 import cv2
 import numpy as np
 
-import cubemap_transforms_json as cube
-from cubemap_transforms_json import (
-    _quantize_yaw_offset,
-    build_remap,
-    frame_yaw_offset,
-    get_remap_tables_for_offset,
-    resolve_remap_cache_limit,
-    resolve_worker_count,
-    transform_json,
-    worker_init,
-)
+import core.cubemap_image_conversion as cube
+import core.cubemap_worker_plan as worker_plan
+from core.cubemap_image_conversion import get_remap_tables_for_offset, worker_init
+from core.cubemap_remap import build_remap, quantize_yaw_offset
+from core.cubemap_transform_export import frame_yaw_offset, transform_json
+from core.cubemap_worker_plan import resolve_remap_cache_limit, resolve_worker_count
 
 # =============================================================================
 # frame_yaw_offset
@@ -69,17 +64,17 @@ def test_frame_yaw_offset_irrational_step():
 
 
 def test_quantize_yaw_offset_mod_360():
-    assert _quantize_yaw_offset(0.0) == 0.0
-    assert _quantize_yaw_offset(30.0) == 30.0
-    assert _quantize_yaw_offset(360.0) == 0.0
-    assert _quantize_yaw_offset(390.0) == 30.0
-    assert _quantize_yaw_offset(-30.0) == 330.0
+    assert quantize_yaw_offset(0.0) == 0.0
+    assert quantize_yaw_offset(30.0) == 30.0
+    assert quantize_yaw_offset(360.0) == 0.0
+    assert quantize_yaw_offset(390.0) == 30.0
+    assert quantize_yaw_offset(-30.0) == 330.0
 
 
 def test_quantize_yaw_offset_decimal_precision():
     """3 桁丸めでキャッシュキーが安定すること。"""
-    assert _quantize_yaw_offset(30.1234567) == 30.123
-    assert _quantize_yaw_offset(30.1235) == _quantize_yaw_offset(30.1235)
+    assert quantize_yaw_offset(30.1234567) == 30.123
+    assert quantize_yaw_offset(30.1235) == quantize_yaw_offset(30.1235)
 
 
 # =============================================================================
@@ -180,7 +175,7 @@ def test_table_cache_offset_30_equals_view_at_30(tmp_path):
 
 
 def test_auto_remap_cache_limit_uses_memory_budget(monkeypatch):
-    monkeypatch.setattr(cube, "_available_memory_bytes", lambda: 1_000_000)
+    monkeypatch.setattr(worker_plan, "available_memory_bytes", lambda: 1_000_000)
     offsets = [float(i * 30) for i in range(12)]
 
     limit = resolve_remap_cache_limit(
@@ -195,7 +190,7 @@ def test_auto_remap_cache_limit_uses_memory_budget(monkeypatch):
 
 
 def test_explicit_worker_count_is_respected(monkeypatch):
-    monkeypatch.setattr(cube, "_available_memory_bytes", lambda: 1)
+    monkeypatch.setattr(worker_plan, "available_memory_bytes", lambda: 1)
 
     workers = resolve_worker_count(
         "3",

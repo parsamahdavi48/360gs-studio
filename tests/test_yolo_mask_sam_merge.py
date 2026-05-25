@@ -3,7 +3,25 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-import yolo_mask
+import core.yolo_mask as yolo_mask
+
+
+def _runtime_context() -> yolo_mask.YoloMaskRuntimeContext:
+    recipe = yolo_mask.recipe_for("standard", "normal")
+    settings = yolo_mask.YoloMaskRuntimeSettings(
+        class_ids=(0,),
+        level=int(recipe.yolo_level),
+        quality="standard",
+        projection="normal",
+        expand=0,
+        bottom_conf=recipe.bottom_conf,
+        bottom_tta_rotations=len(recipe.bottom_rotations),
+        bottom_model=recipe.bottom_model,
+        bottom_filter=recipe.bottom_filter,
+        recipe=recipe,
+        profile_json=None,
+    )
+    return yolo_mask.create_runtime_context(settings)
 
 
 class FakeMaskData:
@@ -48,11 +66,15 @@ def test_add_sam_mask_merges_all_masks_in_one_pass(monkeypatch: pytest.MonkeyPat
         return [FakeResult(masks)]
 
     monkeypatch.setattr(yolo_mask, "sam", fake_sam)
-    monkeypatch.setattr(yolo_mask, "PROFILE", None)
 
     img = np.zeros((4, 4, 3), dtype=np.uint8)
     base_mask = np.zeros((4, 4), dtype=np.uint8)
-    merged, has_mask = yolo_mask.add_sam_mask(img, base_mask, [[0, 0, 1, 1], [2, 2, 3, 3]])
+    merged, has_mask = yolo_mask.add_sam_mask(
+        img,
+        base_mask,
+        [[0, 0, 1, 1], [2, 2, 3, 3]],
+        context=_runtime_context(),
+    )
 
     assert has_mask == 1
     assert merged[1, 1] == 255
@@ -68,11 +90,10 @@ def test_add_sam_mask_handles_single_mask_without_batch_reduce(monkeypatch: pyte
         return [FakeResult(masks)]
 
     monkeypatch.setattr(yolo_mask, "sam", fake_sam)
-    monkeypatch.setattr(yolo_mask, "PROFILE", None)
 
     img = np.zeros((4, 4, 3), dtype=np.uint8)
     base_mask = np.zeros((4, 4), dtype=np.uint8)
-    merged, has_mask = yolo_mask.add_sam_mask(img, base_mask, [[0, 0, 1, 1]])
+    merged, has_mask = yolo_mask.add_sam_mask(img, base_mask, [[0, 0, 1, 1]], context=_runtime_context())
 
     assert has_mask == 1
     assert merged[1, 2] == 255
