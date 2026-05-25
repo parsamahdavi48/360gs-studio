@@ -179,10 +179,24 @@ Detailed GUI docs:
 5. If masks still leak through, switch only the affected images to `Quality: Best` or regenerate them with SAM3.1. Mask2Former is also available when you want to try sky masks without setting up SAM3.1.
 6. Enable stitch seam, overexposure, and custom masks when they match the source material.
 7. Import the generated `masks/` folder into Metashape as per-image masks, then run SfM. Mixed sources can be aligned in Metashape as usual.
-8. In Step 4, choose `Use Existing SfM Result`. If Metashape already produced camera poses and sparse points, there is usually nothing else to run in this step.
-9. In Step 5, use the Metashape XML/PLY result to create the dataset format your training app expects: NeRF-style JSON/PLY, a COLMAP-format dataset, or RealityScan realignment data.
-10. To estimate scale with AprilTags, print and place the tags before capture. After creating a cubemap or COLMAP-style dataset, use Step 5 `Scale Adjustment`, enter the printed tag size and IDs, and apply the scale only when the estimate looks reasonable.
-11. Load the Step 5 output in LichtFeld Studio, Postshot, Brush, or another training app. When you want repeat runs or headless training through a compatible CLI, use Step 6 to launch LichtFeld Studio or Postshot with the dataset you just created.
+8. Export Metashape cameras as Agisoft XML and sparse points as Stanford PLY. Saving both files in the scene folder is recommended; otherwise select them manually in the GUI.
+9. In Step 4, choose `Use Existing SfM Result`. If Metashape already produced camera poses and sparse points, there is usually nothing else to run in this step.
+10. In Step 5, use the Metashape XML/PLY result to create the dataset format your training app expects: NeRF-style JSON/PLY, a COLMAP-format dataset, or RealityScan realignment data.
+11. To estimate scale with AprilTags, print and place the tags before capture. After creating a cubemap or COLMAP-style dataset, use Step 5 `Scale Adjustment`, enter the printed tag size and IDs, and apply the scale only when the estimate looks reasonable.
+12. Load the Step 5 output in LichtFeld Studio, Postshot, Brush, or another training app. When you want repeat runs or headless training through a compatible CLI, use Step 6 to launch LichtFeld Studio or Postshot with the dataset you just created.
+
+## Recommended Workflow: Metashape -> RealityScan -> LichtFeld
+
+Use this route when Metashape aligns the base 360° images well, but you want RealityScan to realign the cubemap result and attach additional normal-camera images before training in LichtFeld.
+
+1. Run Steps 1-3 and Metashape SfM as in the Metashape route.
+2. Export Agisoft XML and Stanford PLY from Metashape, preferably into the scene folder.
+3. In Step 4, run `Metashape -> RealityScan Data`. The app writes RealityScan input under `output/realityscan/`.
+4. In RealityScan, add `output/realityscan/images/` first and run Align until cameras and sparse points are generated.
+5. Add `output/realityscan/extra_images/` only after the cubemap component is stable, then run Align again. This usually gives more reliable normal-image registration than importing every image at once.
+6. Confirm the component you want to train from, then export the RealityScan camera CSV and PLY into `output/realityscan/`.
+7. In Step 5, run `RealityScan -> COLMAP Dataset`. The app merges CSV-registered `extra_images/` and `extra_masks/` into `output/realityscan/lfs_colmap/`.
+8. Open `output/realityscan/lfs_colmap/` in LichtFeld Studio as a Dataset with `GUT` off.
 
 ## COLMAP Route
 

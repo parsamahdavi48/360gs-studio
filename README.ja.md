@@ -179,10 +179,24 @@ Step 6は、対応するCLIを持つ学習アプリ向けの実行ショート�
 5. マスク漏れが残る場合は、該当画像だけ `品質: 最高` に上げるか、SAM3.1に切り替えて再生成します。SAM3.1を使わずに空だけ試したい場合はMask2Formerも選べます。
 6. 必要に応じてスティッチ境界マスク、白飛びマスク、カスタムマスクも有効にします。
 7. 生成された `masks/` フォルダをMetashapeにマスクとして読み込み、SfMを実行します。混在ソースを使う場合も、Metashape側で通常どおりアラインします。
-8. Step 4では `既存のSfM結果を使う` を選びます。Metashapeでカメラポーズと疎点群を作成済みなら、この工程で追加処理は不要です。
-9. Step 5でMetashapeのXML/PLYを使い、学習アプリに合わせてNeRF系JSON/PLY、COLMAP形式データセット、またはRealityScan再アライン用データを作成します。
-10. AprilTagでスケール推定する場合は、撮影前にタグを印刷して配置しておきます。CubemapまたはCOLMAP系データセット作成後、Step 5の `スケール調整` でタグ実寸とIDを入力し、結果が妥当な場合だけ反映します。
-11. Step 5の出力をLichtFeld Studio、Postshot、Brushなどに読み込んで学習します。対応CLIで再実行やヘッドレス学習を行いたい場合は、Step 6からLichtFeld StudioやPostshotを起動できます。
+8. MetashapeからカメラをAgisoft XML、疎点群をStanford PLYとしてエクスポートします。どちらもシーンフォルダに保存しておくと、このアプリから扱いやすくなります。別の場所に保存した場合はGUIで手動選択します。
+9. Step 4では `既存のSfM結果を使う` を選びます。Metashapeでカメラポーズと疎点群を作成済みなら、この工程で追加処理は不要です。
+10. Step 5でMetashapeのXML/PLYを使い、学習アプリに合わせてNeRF系JSON/PLY、COLMAP形式データセット、またはRealityScan再アライン用データを作成します。
+11. AprilTagでスケール推定する場合は、撮影前にタグを印刷して配置しておきます。CubemapまたはCOLMAP系データセット作成後、Step 5の `スケール調整` でタグ実寸とIDを入力し、結果が妥当な場合だけ反映します。
+12. Step 5の出力をLichtFeld Studio、Postshot、Brushなどに読み込んで学習します。対応CLIで再実行やヘッドレス学習を行いたい場合は、Step 6からLichtFeld StudioやPostshotを起動できます。
+
+## 推奨ワークフロー: Metashape → RealityScan → LichtFeld
+
+Metashapeでベースの360°画像を安定してSfMし、その結果をRealityScanで再アラインして通常画像も追加し、最後にLichtFeldで学習したい場合のルートです。
+
+1. Metashapeルートと同じように、Step 1からStep 3、Metashape SfMまで進めます。
+2. MetashapeからAgisoft XMLとStanford PLYをエクスポートします。保存先はシーンフォルダを推奨します。
+3. Step 4で `Metashape → RealityScan用データ作成` を実行します。RealityScan向け入力は `output/realityscan/` に作られます。
+4. RealityScanでは、まず `output/realityscan/images/` を追加してAlignし、カメラと疎点群が生成されるところまで進めます。
+5. Cubemap側のコンポーネントが安定してから `output/realityscan/extra_images/` を追加し、もう一度Alignします。最初から全画像をまとめて入れるより、通常画像が安定して登録されやすくなります。
+6. 学習に使いたいコンポーネントを確認し、RealityScanのカメラCSVとPLYを `output/realityscan/` にエクスポートします。
+7. Step 5で `RealityScan → COLMAPデータセット` を実行します。CSVに登録された `extra_images/` と `extra_masks/` は `output/realityscan/lfs_colmap/` の `images/` と `masks/` に統合されます。
+8. LichtFeld Studioでは `output/realityscan/lfs_colmap/` をDatasetとして開き、`GUT` はOFFで学習します。
 
 ## COLMAPルート
 

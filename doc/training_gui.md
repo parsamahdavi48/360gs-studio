@@ -111,6 +111,8 @@ For CLI launch from Step 6, use a LichtFeld Studio v0.5.2-compatible CLI as the 
 
 This is data created in Step 5 with image type `PINHOLE`. `Dataset` is normally `<scene>/output/metashape_cubemap/` for the Metashape route or `<scene>/output/spheresfm_cubemap/` for the SphereSfM route.
 
+`Metashape -> COLMAP Dataset` and `RealityScan -> COLMAP Dataset` are also PINHOLE-style dataset routes for LichtFeld. For the RealityScan route, use `<scene>/output/realityscan/lfs_colmap/` with `GUT` off.
+
 - Keep `GUT` off.
 - Usually keep `Undistort` off too.
 - If using masks, choose the LichtFeld mask mode that matches the result you want.

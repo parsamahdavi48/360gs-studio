@@ -24,6 +24,8 @@ Start by deciding whether camera poses already exist.
 
 Choose this when Metashape, RealityScan, COLMAP, SphereSfM, or another tool has already produced camera poses and sparse points. This route means "nothing to run here"; continue to Step 5 and choose the dataset format you need.
 
+For Metashape results, export cameras as Agisoft XML and sparse points as Stanford PLY. Saving both files in the scene folder is recommended because it keeps the SfM result together with the scene; if they are elsewhere, select the XML and PLY manually in the Step 5 card.
+
 ### Run COLMAP SfM
 
 Choose this when you want this app to run COLMAP or GLOMAP without using Metashape.
@@ -50,6 +52,8 @@ The SfM working folder is `output/spheresfm/`. Create JSON/PLY or cubemap datase
 Choose this when you have a Metashape camera XML and want to import cubemap images plus XMP camera data into RealityScan. This is useful when you want RealityScan to realign the scene, include extra image sources already registered in Steps 1-3, or export RealityScan CSV/PLY for downstream tools.
 
 The output is `output/realityscan/`. Images present in the Metashape XML are written to `images/` as cubemap images with XMP sidecars. Registered scene images missing from the XML are copied or hard-linked to `extra_images/` as unposed extra inputs. When a matching mask exists, it is also written as a RealityScan layer such as `image.jpg.mask.png`. In RealityScan, add `images/` first and run Align until sparse points are generated, then add `extra_images/` and run Align again. After exporting CSV and PLY from RealityScan, use Step 5 `RealityScan -> COLMAP Dataset` when LichtFeld needs a COLMAP-format Dataset.
+
+The staged RealityScan import is intentional. Aligning the cubemap images first creates a stable component from the Metashape result; adding normal images after that usually avoids more wrong placements and small disconnected components than importing all images at once.
 
 ### Inspect SfM Result
 
@@ -91,6 +95,8 @@ For LichtFeld with mixed Metashape sources, this is the safer route.
 Create a LichtFeld-readable COLMAP dataset from RealityScan Internal/External CSV and a PLY exported in the same coordinate state.
 
 Normally, use it when CSV, PLY, `images/`, and `masks/` are already under `output/realityscan/`. If `extra_images/` and `extra_masks/` exist, additional images listed in the CSV are also gathered into the output `images/` and `masks/` folders. Output goes to `output/realityscan/lfs_colmap/`.
+
+Before exporting from RealityScan, confirm the component you want to train from. The CSV should contain the cameras you expect; images that are not in the exported camera CSV are kept out of the COLMAP poses even if their files exist.
 
 Turn on `Undistort to PINHOLE` only when RealityScan includes normal-camera images with distortion and LichtFeld refuses to train on them. Cubemap-derived PINHOLE images are linked or copied into the output, while only distorted normal images are converted. Invalid image regions introduced by undistortion are also reflected in the masks.
 
@@ -142,6 +148,7 @@ The viewer can load output datasets, Metashape XML/PLY, COLMAP sparse models, an
 - For LichtFeld GUT, choose `ERP 360°` and enable GUT in the training app.
 - If a Metashape result mixes normal images or multiple ERP resolutions, use `Metashape -> COLMAP Dataset` for LichtFeld.
 - If RealityScan output is going to Postshot, CSV/PLY may be enough. If LichtFeld needs a Dataset folder, use `RealityScan -> COLMAP Dataset`.
+- For the Metashape -> RealityScan -> LichtFeld route, keep Metashape XML/PLY and RealityScan CSV/PLY with the scene, then train from `output/realityscan/lfs_colmap/`.
 - Treat SphereSfM as same-resolution ERP 360° only. Use COLMAP or Metashape for mixed sources.
 - To rebuild only images or masks, reopen the same dataset card, check the output settings, and run it again.
 

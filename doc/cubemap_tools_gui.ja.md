@@ -24,6 +24,8 @@ Step 5は、SfM結果を学習アプリで読み込めるデータセットへ�
 
 Metashape、RealityScan、COLMAP、SphereSfMなどで、すでにカメラポーズと疎点群を作ってある場合に選びます。このカードは「何もしないで次へ進む」ための選択肢です。次のStep 5で、その結果をどのデータセット形式へ変換するかを選びます。
 
+Metashape結果を使う場合は、カメラをAgisoft XML、疎点群をStanford PLYとしてエクスポートします。どちらもシーンフォルダに保存しておくと、SfM結果をシーンと一緒に管理しやすくなります。別の場所に保存した場合は、Step 5のカードでXMLとPLYを手動選択してください。
+
 ### COLMAPでSfMを実行
 
 Metashapeを使わず、このアプリからCOLMAPまたはGLOMAPでSfMしたい場合に選びます。
@@ -50,6 +52,8 @@ Metashapeを使わず、このアプリからCOLMAPまたはGLOMAPでSfMした�
 Metashapeで作ったカメラXMLから、RealityScanへ読み込ませるCubemap画像とXMPを作ります。RealityScanで再アラインしたい、ステップ1から3で登録済みの別ソース画像も一緒に投入したい、RealityScanのCSV/PLYを書き出して後段へ渡したい場合に使います。
 
 出力は `output/realityscan/` です。Metashape XMLにある画像はCubemap画像とXMPとして `images/` に書き出され、XMLにない登録済み画像は姿勢なしの追加画像として `extra_images/` へコピーまたはハードリンクされます。対応マスクがある場合はRealityScan用の `image.jpg.mask.png` 形式にも変換されます。RealityScanでは先に `images/` を追加してAlignし、点群まで生成してから `extra_images/` を追加して再度Alignします。その後、CSVとPLYを書き出し、LichtFeld用COLMAPデータセットが必要な場合はStep 5の `RealityScan → COLMAPデータセット` を使います。
+
+RealityScanへ段階的に投入するのは意図した使い方です。先にCubemap画像だけでMetashape由来の安定したコンポーネントを作り、その後で通常画像を追加するほうが、最初から全画像をまとめて入れるより誤配置や小さな別コンポーネントが起きにくくなります。
 
 ### SfM結果を確認
 
@@ -91,6 +95,8 @@ LichtFeldでMetashape混在結果を使う場合は、このルートが安全�
 RealityScanのRegistrationから書き出したInternal/External CSVと、同じ座標状態で書き出したPLYから、LichtFeldでDatasetとして開けるCOLMAPデータセットを作ります。
 
 通常は `output/realityscan/` 配下にCSV、PLY、`images/`、`masks/` がある状態で使います。`extra_images/` と `extra_masks/` がある場合は、CSVに載っている追加画像も出力先の `images/` と `masks/` に統合されます。出力先は `output/realityscan/lfs_colmap/` です。
+
+RealityScanからエクスポートする前に、学習に使うコンポーネントを確認してください。COLMAP側のカメラ姿勢として使われるのはCSVに含まれるカメラだけです。画像ファイルが存在していても、CSVにない画像には姿勢は付きません。
 
 `レンズ補正してPINHOLE化` は、RealityScanで通常画像も混ぜてアラインし、LichtFeldが歪みつきカメラを受け付けず止まる場合に使います。Cubemap由来のPINHOLE画像は出力先へリンクまたはコピーし、歪み係数を持つ通常画像だけを補正します。補正で生じる無効領域はマスクにも反映されます。
 
@@ -142,6 +148,7 @@ Step 4の `SfM結果を確認` から、点群、カメラ位置、画像、マ�
 - LichtFeldでGUTを試すなら、`ERP 360°` を選び、学習時にGUTをONにします。
 - Metashape結果に通常画像や複数解像度ERPが混ざるなら、LichtFeld向けには `Metashape → COLMAPデータセット` が安全です。
 - RealityScanからPostshotへ渡すだけならCSV/PLYで足りる場合があります。LichtFeldでDatasetとして読みたい場合は `RealityScan → COLMAPデータセット` を使います。
+- Metashape → RealityScan → LichtFeldのルートでは、Metashape XML/PLYとRealityScan CSV/PLYをシーンと一緒に管理し、最終的に `output/realityscan/lfs_colmap/` を学習に使います。
 - SphereSfMは同一解像度ERP 360°専用と考えてください。混在ソースはCOLMAPまたはMetashapeを使います。
 - 画像やマスクだけを作り直したい場合は、同じカードを開き、出力設定を確認して再実行します。
 

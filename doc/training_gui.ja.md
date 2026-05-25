@@ -111,6 +111,8 @@ Step 6からCLI起動する場合は、v0.5.2互換のLichtFeld Studio CLIを目
 
 Step 5で画像タイプ `PINHOLE` を選んだデータです。`入力データ` は通常、Metashapeルートでは `<scene>/output/metashape_cubemap/`、SphereSfMルートでは `<scene>/output/spheresfm_cubemap/` です。
 
+`Metashape → COLMAPデータセット` と `RealityScan → COLMAPデータセット` も、LichtFeldではPINHOLE系データセットとして扱います。RealityScanルートでは `<scene>/output/realityscan/lfs_colmap/` を指定し、`GUT` はOFFで使います。
+
 - `GUT` はOFFにします。
 - `Undistort` も通常はOFFです。
 - マスクを使う場合は、LichtFeld側のマスクモードを結果に合わせて選びます。
