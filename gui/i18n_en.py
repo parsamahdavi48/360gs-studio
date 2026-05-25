@@ -23,7 +23,7 @@ STRINGS: dict[str, str] = {
     "STEP2_NAV": "2\nReview",
     "STEP3_NAV": "3\nMask",
     "STEP4_NAV": "4\nSfM",
-    "STEP5_NAV": "5\nData",
+    "STEP5_NAV": "5\nDataset",
     "STEP6_NAV": "6\nTrain",
     # Common
     "BROWSE": "Browse...",
