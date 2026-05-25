@@ -79,6 +79,42 @@ def test_apply_runtime_settings_updates_global_runtime_state(monkeypatch: pytest
     assert yolo_mask.PROFILE is None
 
 
+def test_process_file_uses_explicit_runtime_context(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    source = tmp_path / "images"
+    output = tmp_path / "masks"
+    source.mkdir()
+    image_path = source / "frame_0001.jpg"
+    cv2.imwrite(str(image_path), np.full((8, 16, 3), 128, dtype=np.uint8))
+
+    args = yolo_mask.build_arg_parser().parse_args(
+        [
+            str(source),
+            str(output),
+            "--projection",
+            "normal",
+        ]
+    )
+    runtime = yolo_mask.build_runtime_settings(args)
+    context = yolo_mask.create_runtime_context(runtime.settings)
+
+    monkeypatch.setattr(yolo_mask, "PROJECTION", "equirect")
+    monkeypatch.setattr(yolo_mask, "LEVEL", 1)
+    monkeypatch.setattr(yolo_mask, "QUALITY", "standard")
+    monkeypatch.setattr(yolo_mask, "add_yolo_mask", lambda img, mask, *args, **kwargs: (mask, 0))
+    monkeypatch.setattr(
+        yolo_mask,
+        "get_bottom_from_pano",
+        lambda *_args, **_kwargs: pytest.fail("explicit normal context must skip bottom redetection"),
+    )
+
+    result = yolo_mask.process_file(str(source), str(output), image_path.name, add_ext=False, context=context)
+
+    assert result.output_path == output / "frame_0001.png"
+    written = cv2.imread(str(result.output_path), cv2.IMREAD_GRAYSCALE)
+    assert written is not None
+    assert np.all(written == 255)
+
+
 def test_profile_json_records_timing_without_changing_normal_masks(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,

@@ -37,7 +37,7 @@ Code checks performed:
 | Area | Status | Merge Blocker |
 | --- | --- | --- |
 | Runner/build command type contract | Complete | No |
-| YOLO/SAM mask runtime state | Pending | No |
+| YOLO/SAM mask runtime state | Complete | No |
 | Scene inventory helper audit | Pending | No |
 | Script/release surface cleanup | Pending | No |
 | Large GUI construction files | Deferred | No |
@@ -87,40 +87,50 @@ Result at completion: no matches.
 
 ## 2. YOLO/SAM Mask Runtime State
 
-Status: passed for current checkpoint; rerun before the next merge
+Status: complete at this checkpoint
 
 ### Code Evidence
 
-`core/yolo_mask.py` has `YoloMaskRuntimeSettings` and
-`apply_runtime_settings()`, but the processing path still reads compatibility
-globals such as `LEVEL`, `QUALITY`, `PROJECTION`, `EXPAND`, and `PROFILE`.
-Model cache globals (`yolo`, `yolo_models`, `sam`) are acceptable as per-process
-worker caches, but settings globals make preview/save consistency harder to
-reason about.
+`core/yolo_mask.py` now has `YoloMaskRuntimeContext`, which wraps
+`YoloMaskRuntimeSettings`, the optional `ProfileRecorder`, and per-run mutable
+state such as `proc_count`.
+
+The normal processing path now passes the context through `profile_timer()`,
+`profile_record_inference()`, `add_yolo_mask()`, `detect_yolo_bboxes()`,
+`detect_yolo_bboxes_batch()`, `add_sam_mask()`, `detect_bottom_mask()`,
+`process_image_path()`, and `process_file()`.
+
+Compatibility globals such as `LEVEL`, `QUALITY`, `PROJECTION`, `EXPAND`, and
+`PROFILE` remain for legacy direct calls and CLI adapter setup, but the image
+processing path uses `context.settings` and `context.profile`.
 
 ### Plan
 
-- Introduce an explicit runtime context dataclass that wraps
-  `YoloMaskRuntimeSettings`, active recipe, profile recorder, and process count.
-- Move image processing entry points toward accepting the runtime context
-  explicitly.
-- Preserve model caches as process-local caches.
-- Keep the current CLI adapter and worker process boundary, but make it a thin
-  creator of runtime context rather than the owner of global settings.
-- Keep mask polarity unchanged: white means usable, black means excluded.
+- Implemented `YoloMaskRuntimeContext` and `create_runtime_context()`.
+- `apply_runtime_settings()` now returns and activates a context while still
+  updating compatibility globals for old direct-call behavior.
+- Processing functions accept an explicit context and fall back to a
+  compatibility context only when no active context is supplied.
+- Model caches remain process-local globals.
+- The CLI adapter still owns argument parsing and worker process execution, but
+  it now creates one runtime context and passes it through the run.
+- Mask polarity remains unchanged: white means usable, black means excluded.
 
 ### Completion Criteria
 
-- Main processing functions no longer read `LEVEL`, `QUALITY`, `PROJECTION`,
-  `EXPAND`, or `PROFILE` directly.
-- Compatibility globals, if still present, are limited to CLI/backward adapter
-  setup or deleted.
-- Preview and saved-mask routes use the same runtime interpretation.
+- Complete. Main processing functions use `YoloMaskRuntimeContext` rather than
+  reading settings globals directly.
+- Complete. Compatibility globals remain only for adapter/fallback behavior and
+  existing direct-call tests.
+- Complete. Preview and saved-mask routes use the same runtime interpretation
+  through the worker command settings and context.
 
 ### Suggested Tests
 
-- `.\.venv\Scripts\python.exe -m pytest tests\test_yolo_mask_profile.py tests\test_step3_mask_guard.py tests\test_mask_preview.py -q`
-- `.\.venv\Scripts\python.exe -m pytest tests\test_custom_mask.py tests\test_stitch_mask.py tests\test_sky_mask.py -q`
+- Passed: `.\.venv\Scripts\python.exe -m ruff check core\yolo_mask.py tests\test_yolo_mask_bottom.py tests\test_yolo_mask_sam_merge.py tests\test_yolo_mask_profile.py`
+- Passed: `.\.venv\Scripts\python.exe -m pytest tests\test_yolo_mask_bottom.py tests\test_yolo_mask_sam_merge.py tests\test_yolo_mask_profile.py -q` (`15 passed`)
+- Passed: `.\.venv\Scripts\python.exe -m pytest tests\test_yolo_mask_profile.py tests\test_step3_mask_guard.py tests\test_mask_preview.py -q` (`86 passed`)
+- Passed: `.\.venv\Scripts\python.exe -m pytest tests\test_custom_mask.py tests\test_stitch_mask.py tests\test_sky_mask.py -q` (`31 passed`)
 
 ## 3. Scene Inventory Helper Audit
 
@@ -261,7 +271,7 @@ creates a clearer ownership boundary, not just to reduce line count.
 
 ## 6. Final Verification Before Next Merge
 
-Status: pending
+Status: passed for current checkpoint; rerun before the next merge
 
 Run this after implementing any of the above areas:
 
@@ -273,7 +283,7 @@ Run this after implementing any of the above areas:
 Latest checkpoint result:
 
 - Passed: `.\.venv\Scripts\python.exe -m ruff check .`
-- Passed: `.\.venv\Scripts\python.exe -m pytest -q` (`976 passed`)
+- Passed: `.\.venv\Scripts\python.exe -m pytest -q` (`977 passed`)
 
 Before release packaging changes, also run:
 
