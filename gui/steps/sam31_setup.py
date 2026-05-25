@@ -71,6 +71,7 @@ def ensure_sam31_checkpoint_available(
 
     result_path = ""
     error_text = ""
+    thread_finished = False
     loop = QEventLoop(parent)
     thread = QThread(parent)
     worker = Sam31DownloadWorker(token, checkpoint_path.parent)
@@ -82,14 +83,20 @@ def ensure_sam31_checkpoint_available(
         result_path = path
         error_text = error
         thread.quit()
+
+    def on_thread_finished() -> None:
+        nonlocal thread_finished
+        thread_finished = True
         loop.quit()
 
     thread.started.connect(worker.run)
     worker.finished.connect(on_finished)
     worker.finished.connect(worker.deleteLater)
+    thread.finished.connect(on_thread_finished)
     thread.finished.connect(thread.deleteLater)
     thread.start()
-    loop.exec()
+    if not thread_finished:
+        loop.exec()
     if thread.isRunning():
         thread.quit()
         thread.wait(3000)
