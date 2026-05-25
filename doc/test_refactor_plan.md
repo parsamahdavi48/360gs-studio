@@ -43,7 +43,7 @@ Code checks performed:
 | YOLO/SAM runtime-context tests | Complete | No |
 | Developer-only scripts test surface | Complete | No |
 | Shared GUI test fixtures | Complete | No |
-| Final verification pass | Pending | Yes, before merging this test refactor |
+| Final verification pass | Passed at T6 checkpoint | No |
 
 ## Implementation Queue
 
@@ -58,7 +58,7 @@ to this document.
 | T3 | Move YOLO/SAM behavior tests onto explicit runtime contexts | `tests/test_yolo_mask_profile.py`, `tests/test_yolo_mask_bottom.py`, `core/yolo_mask.py` tests | Complete: main tests build `YoloMaskRuntimeContext`; global mutation is limited to compatibility tests |
 | T4 | Normalize developer-only script tests | `tests/test_benchmark_yolo_mask.py`, benchmark/devtool modules | Complete: tests no longer import dev-only benchmark code through `scripts.*` |
 | T5 | Add shared GUI test fixtures where they reduce duplication | GUI-heavy tests, `tests/helpers/` | Complete: new/touched GUI tests use common app/theme/dialog/message helpers |
-| T6 | Run final audit and full verification | whole repo | Audit searches, ruff, and full pytest pass; this document records the final checkpoint |
+| T6 | Run final audit and full verification | whole repo | Complete: audit searches reviewed, ruff and full pytest pass, and this document records the final checkpoint |
 
 ### Per-Task Update Template
 
@@ -430,7 +430,7 @@ contracts evolve.
 
 ## 6. Final Verification
 
-Status: pending
+Status: passed at T6 checkpoint
 
 Run this after implementing any area above:
 
@@ -445,6 +445,28 @@ Before merging the whole test refactor, also rerun the audit searches:
 rg -n "tests can monkeypatch|sys\.modules|getattr\(sys\.modules|monkeypatch\.setattr\(step4_cubemap|monkeypatch\.setattr\(step3_mask_module" gui tests
 rg -n "from scripts|import scripts" tests
 ```
+
+### Implementation Notes
+
+- Final audit searches were rerun after T1-T5.
+- Remaining `sys.modules` match is `tests/test_sam31_download.py`, where a
+  fake module is intentionally injected to test SAM3.1 download/import handling.
+- Remaining `monkeypatch.setattr(step4_cubemap.os, "link", ...)` match is the
+  intentional Windows hardlink-failure fallback test in
+  `tests/test_step4_dataset_jobs.py`.
+- Remaining `scripts.*` imports are setup/release support tests only:
+  `check_venv`, `update_venv`, and `create_release_zip`.
+
+### Verification
+
+- `rg -n "tests can monkeypatch|sys\.modules|getattr\(sys\.modules|monkeypatch\.setattr\(step4_cubemap|monkeypatch\.setattr\(step3_mask_module" gui tests devtools` -> reviewed; only intentional matches remain.
+- `rg -n "from scripts|import scripts" tests` -> reviewed; only setup/release tests remain.
+- `.\.venv\Scripts\python.exe -m ruff check .` -> passed.
+- `.\.venv\Scripts\python.exe -m pytest -q` -> `985 passed`.
+
+### Deferred
+
+- None.
 
 ## Update Rules For Codex
 
