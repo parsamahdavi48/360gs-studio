@@ -62,6 +62,24 @@ def test_scene_inventory_reports_mismatched_masks(tmp_path: Path) -> None:
     assert inventory.images[0].mask.matches_image_size is False
 
 
+def test_scene_inventory_reuses_cache_until_scene_files_change(tmp_path: Path) -> None:
+    scene = tmp_path
+    _write_image(scene / "images" / "frame.jpg", (64, 32))
+
+    first = build_scene_inventory(scene)
+    second = build_scene_inventory(scene)
+
+    assert second is first
+    assert first.missing_masks
+
+    _write_mask(scene / "masks" / "frame.png", (64, 32))
+
+    third = build_scene_inventory(scene)
+
+    assert third is not second
+    assert third.missing_masks == ()
+
+
 def test_scene_inventory_reads_selected_frame_source_metadata(tmp_path: Path) -> None:
     scene = tmp_path
     image = scene / "images" / "seq_0001.jpg"

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import csv
-from collections import Counter
+from collections import Counter, OrderedDict
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -17,10 +17,19 @@ from core.projection_contract import (
     normalize_projection,
 )
 from core.scene_import_contracts import IMAGE_EXTS
-from core.scene_layout import scene_images_dir, scene_masks_dir, selected_frames_path, source_image_sets_path
+from core.scene_layout import (
+    normal_camera_defaults_path,
+    scene_images_dir,
+    scene_masks_dir,
+    selected_frames_path,
+    source_image_sets_path,
+    source_videos_path,
+)
 from core.scene_project import image_header_info, load_json, scene_image_projection_map
 
 MASK_POLARITY_WHITE_KEEP = "white_keep"
+_INVENTORY_CACHE_LIMIT = 8
+_INVENTORY_CACHE: OrderedDict[tuple, SceneInventory] = OrderedDict()
 
 
 @dataclass(frozen=True, slots=True)
@@ -164,6 +173,17 @@ def build_scene_inventory(
     images_root = Path(images_dir) if images_dir is not None else scene_images_dir(scene)
     masks_root = Path(masks_dir) if masks_dir is not None else scene_masks_dir(scene)
     image_paths = _iter_image_files(images_root)
+    cache_key = (
+        _cache_path_key(scene),
+        _cache_path_key(images_root),
+        _cache_path_key(masks_root),
+        _inventory_signature(scene, images_root, masks_root, image_paths),
+    )
+    cached = _INVENTORY_CACHE.get(cache_key)
+    if cached is not None:
+        _INVENTORY_CACHE.move_to_end(cache_key)
+        return cached
+
     projection_map = scene_image_projection_map(scene, image_paths) if image_paths else {}
     selected_map = _selected_frame_metadata(scene)
     image_set_map = _image_set_metadata(scene)
@@ -220,7 +240,16 @@ def build_scene_inventory(
             )
         )
 
-    return SceneInventory(scene_dir=scene, images_dir=images_root, masks_dir=masks_root, images=tuple(images))
+    inventory = SceneInventory(scene_dir=scene, images_dir=images_root, masks_dir=masks_root, images=tuple(images))
+    _INVENTORY_CACHE[cache_key] = inventory
+    _INVENTORY_CACHE.move_to_end(cache_key)
+    while len(_INVENTORY_CACHE) > _INVENTORY_CACHE_LIMIT:
+        _INVENTORY_CACHE.popitem(last=False)
+    return inventory
+
+
+def clear_scene_inventory_cache() -> None:
+    _INVENTORY_CACHE.clear()
 
 
 def build_scene_image_label_path_lookup(
@@ -323,6 +352,45 @@ def _iter_image_files(root: Path) -> list[Path]:
         (path for path in root.rglob("*") if path.is_file() and path.suffix.lower() in IMAGE_EXTS),
         key=lambda path: str(path).lower(),
     )
+
+
+def _inventory_signature(scene: Path, images_root: Path, masks_root: Path, image_paths: list[Path]) -> tuple:
+    metadata_paths = (
+        selected_frames_path(scene),
+        source_image_sets_path(scene),
+        source_videos_path(scene),
+        normal_camera_defaults_path(scene),
+    )
+    return (
+        tuple(_file_stat_token(path) for path in image_paths),
+        tuple(_file_stat_token(path) for path in metadata_paths),
+        tuple(_mask_stat_token(images_root, masks_root, path) for path in image_paths),
+    )
+
+
+def _file_stat_token(path: Path) -> tuple[str, int | None, int | None]:
+    key = _cache_path_key(path)
+    try:
+        st = path.stat()
+    except OSError:
+        return key, None, None
+    return key, int(st.st_size), int(st.st_mtime_ns)
+
+
+def _mask_stat_token(images_root: Path, masks_root: Path, image_path: Path) -> tuple[str, int | None, int | None] | None:
+    if not masks_root.is_dir():
+        return None
+    for candidate in _mask_candidates(images_root, masks_root, image_path):
+        if candidate.is_file():
+            return _file_stat_token(candidate)
+    return None
+
+
+def _cache_path_key(path: Path) -> str:
+    try:
+        return str(path.resolve(strict=False)).replace("\\", "/").casefold()
+    except OSError:
+        return str(path).replace("\\", "/").casefold()
 
 
 def _image_size(path: Path) -> tuple[int, int]:

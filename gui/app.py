@@ -328,7 +328,7 @@ class MainWindow(QWidget):
             step.background_status_changed.connect(self._on_background_status)
             step.background_task_finished.connect(self._on_background_task_finished)
 
-        self._on_scene_changed(self.scene_browse.text())
+        self._apply_scene_dir(self.scene_browse.text(), activate_current=True)
 
     def _current_step_widget(self):
         idx = self.stack.currentIndex()
@@ -337,14 +337,12 @@ class MainWindow(QWidget):
         return None
 
     def _on_scene_changed(self, path: str) -> None:
-        self._apply_scene_dir(path, activate_current=True)
+        self._apply_scene_dir(path, activate_current=True, defer_step_sync=bool(path))
 
     def _apply_scene_dir(self, path: str, *, activate_current: bool, defer_step_sync: bool = False) -> None:
         if not self._applying_scene_suggestion and path != self._auto_scene_from_input:
             self._auto_scene_from_input = None
-        if defer_step_sync:
-            for step in self.steps:
-                BaseStepWidget.set_scene_dir(step, path)
+        if defer_step_sync and path:
             self._deferred_scene_sync_path = path
             self._deferred_scene_sync_step_ids = {id(step) for step in self.steps}
         else:
@@ -503,6 +501,8 @@ class MainWindow(QWidget):
 
     def _set_current_step(self, index: int) -> None:
         if not 0 <= index < len(self.steps):
+            return
+        if index == self.stack.currentIndex() and not self._step_scene_sync_deferred(self.steps[index]):
             return
         self.stack.setCurrentIndex(index)
         for i, btn in enumerate(self.step_buttons):

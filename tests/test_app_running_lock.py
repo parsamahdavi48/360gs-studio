@@ -183,6 +183,57 @@ def test_scene_import_finish_defers_current_step_refresh(tmp_path: Path, monkeyp
         window.shutdown()
 
 
+def test_scene_selection_defers_inactive_step_refresh(tmp_path: Path, monkeypatch) -> None:
+    app = _app()
+    scene = tmp_path / "scene"
+    scene.mkdir()
+    window = MainWindow("")
+
+    calls = {"set_scene_dir": 0, "activated": 0}
+
+    def count_set_scene_dir(_path: str) -> None:
+        calls["set_scene_dir"] += 1
+
+    def count_activated() -> None:
+        calls["activated"] += 1
+
+    try:
+        monkeypatch.setattr(window.step3, "set_scene_dir", count_set_scene_dir)
+        monkeypatch.setattr(window.step3, "on_activated", count_activated)
+
+        window.scene_browse.set_text(str(scene))
+        app.processEvents()
+
+        assert window.step1.scene_dir == str(scene)
+        assert calls == {"set_scene_dir": 0, "activated": 0}
+        assert window._step_scene_sync_deferred(window.step3)
+
+        window._set_current_step(2)
+
+        assert calls == {"set_scene_dir": 1, "activated": 1}
+        assert not window._step_scene_sync_deferred(window.step3)
+    finally:
+        window.shutdown()
+
+
+def test_reselecting_current_step_does_not_repeat_activation(tmp_path: Path, monkeypatch) -> None:
+    _app()
+    window = MainWindow(str(tmp_path))
+    calls = {"activated": 0}
+
+    def count_activated() -> None:
+        calls["activated"] += 1
+
+    try:
+        monkeypatch.setattr(window.step1, "on_activated", count_activated)
+
+        window._set_current_step(0)
+
+        assert calls == {"activated": 0}
+    finally:
+        window.shutdown()
+
+
 def test_scene_import_cancel_requests_worker_and_keeps_metadata_unchanged(tmp_path: Path, monkeypatch) -> None:
     app = _app()
     window = MainWindow(str(tmp_path))
