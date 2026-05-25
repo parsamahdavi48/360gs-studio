@@ -21,6 +21,12 @@ def test_release_zip_excludes_tests_but_keeps_setup_scripts() -> None:
     assert include_in_release("core/scene_preview_cubemap.py")
     assert include_in_release("core/sky_mask.py")
     assert include_in_release("core/mask_view_recipes.py")
+    assert include_in_release("requirements/core.txt")
+    assert include_in_release("requirements/ml.txt")
+    assert include_in_release("requirements/sam31.txt")
+    assert include_in_release("requirements/torch-cu128.txt")
+    assert not include_in_release("requirements/test.txt")
+    assert not include_in_release("requirements/dev.txt")
     assert include_in_release("models/README.md")
     assert include_in_release("run_gui.bat")
 
@@ -49,6 +55,8 @@ def test_release_zip_script_surface_is_explicit() -> None:
         "export_settings_3dgut.json",
         "views_config.json",
         ".cache/update_venv.log",
+        "requirements/test.txt",
+        "requirements/dev.txt",
         "scene/_stechdrive/frames/selected_frames.csv",
         "pkg/__pycache__/mod.pyc",
         "scripts/estimate_apriltag_scale.py",

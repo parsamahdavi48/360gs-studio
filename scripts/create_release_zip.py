@@ -21,8 +21,18 @@ RELEASE_SCRIPT_PATHS = frozenset(
     }
 )
 
+RELEASE_REQUIREMENT_PATHS = frozenset(
+    {
+        "requirements/core.txt",
+        "requirements/ml.txt",
+        "requirements/sam31.txt",
+        "requirements/torch-cu128.txt",
+    }
+)
+
 EXCLUDED_PATHS = {
     "scripts/create_release_zip.py",
+    "requirements/test.txt",
 }
 
 UNWANTED_PARTS = (
@@ -78,6 +88,8 @@ def include_in_release(path: str) -> bool:
     normalized = path.replace("\\", "/")
     if normalized.startswith("scripts/"):
         return normalized in RELEASE_SCRIPT_PATHS
+    if normalized.startswith("requirements/"):
+        return normalized in RELEASE_REQUIREMENT_PATHS
     if normalized in EXCLUDED_PATHS:
         return False
     return not any(normalized.startswith(prefix) for prefix in EXCLUDED_PREFIXES)
@@ -89,6 +101,8 @@ def validate_release_member(path: str) -> None:
     parts = set(normalized.split("/"))
     if normalized.startswith("scripts/") and normalized not in RELEASE_SCRIPT_PATHS:
         raise ValueError(f"developer-only script would be included: {path}")
+    if normalized.startswith("requirements/") and normalized not in RELEASE_REQUIREMENT_PATHS:
+        raise ValueError(f"developer-only requirement file would be included: {path}")
     if normalized.startswith("models/") and normalized != "models/README.md":
         raise ValueError(f"unwanted local model file would be included: {path}")
     if normalized in UNWANTED_NAMES or name in UNWANTED_NAMES:

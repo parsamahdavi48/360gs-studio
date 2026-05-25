@@ -21,8 +21,12 @@ REQUIREMENTS_DIR = Path(__file__).resolve().parents[1] / "requirements"
 SAM31_SOURCE_OK_REQUIREMENTS = {"iopath"}
 
 
-def read_requirements_file(name: str) -> list[str]:
+def read_requirements_file(name: str, *, required: bool = True) -> list[str]:
     path = REQUIREMENTS_DIR / name
+    if not path.exists():
+        if required:
+            raise FileNotFoundError(path)
+        return []
     requirements: list[str] = []
     for raw in path.read_text(encoding="utf-8").splitlines():
         line = raw.strip()
@@ -54,7 +58,7 @@ LOCKED_CORE_REQUIREMENTS = read_requirements_file("core.txt")
 LOCKED_TORCH_REQUIREMENTS = read_requirements_file("torch-cu128.txt")
 LOCKED_ML_REQUIREMENTS = read_requirements_file("ml.txt")
 LOCKED_SAM31_REQUIREMENTS = read_requirements_file("sam31.txt")
-LOCKED_TEST_REQUIREMENTS = read_requirements_file("test.txt")
+LOCKED_TEST_REQUIREMENTS = read_requirements_file("test.txt", required=False)
 
 CORE_REQUIREMENTS = [unpin_requirement(req) for req in LOCKED_CORE_REQUIREMENTS]
 TORCH_REQUIREMENTS = [unpin_requirement(req) for req in LOCKED_TORCH_REQUIREMENTS]
@@ -633,7 +637,7 @@ def create_candidate_venv(
             run([py, "-m", "pip", "install", "--upgrade", *sam31_regular])
         if sam31_no_deps:
             run([py, "-m", "pip", "install", "--upgrade", "--no-deps", *sam31_no_deps])
-        if run_tests:
+        if run_tests and requirements.test:
             run([py, "-m", "pip", "install", "--upgrade", *requirements.test])
         run_pip_check(py)
 

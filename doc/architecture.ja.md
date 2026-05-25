@@ -10,7 +10,7 @@ root直下の互換 `*.py` ラッパーは、アプリ構造に含めません�
 
 ## リリースに含める範囲
 
-リリースZIPには、GUIランタイム、`core/`、`gui/`、ドキュメント、requirements、modelsメタデータ、セットアップ/検証用ファイルを含めます。`scripts/` 配下でエンドユーザー向けリリースに含めるのは、`setup_windows.bat` と `update_venv.bat` が使う `scripts/update_venv.py` と `scripts/check_venv.py` だけです。
+リリースZIPには、GUIランタイム、`core/`、`gui/`、ドキュメント、実行時requirements、modelsメタデータ、セットアップ/検証用ファイルを含めます。テスト用requirementsは開発者向けとして扱い、リリースZIPには含めません。`scripts/` 配下でエンドユーザー向けリリースに含めるのは、`setup_windows.bat` と `update_venv.bat` が使う `scripts/update_venv.py` と `scripts/check_venv.py` だけです。
 
 その他の `scripts/*.py` は、開発者向けの診断ツールまたは薄いCLIアダプタとしてリポジトリには残してよいものとします。ただし、リリースZIPからは除外します。GUIランタイムは引き続き、`scripts/` のファイルを起動せず、型付きcore jobまたは `python -m core.<module>` のworker境界を使います。
 

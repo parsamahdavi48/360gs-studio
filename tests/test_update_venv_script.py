@@ -55,6 +55,14 @@ def test_pytest_is_not_a_runtime_requirement() -> None:
     assert update_venv.LOCKED_TEST_REQUIREMENTS == ["pytest==9.0.3", "ruff==0.15.12"]
 
 
+def test_optional_test_requirements_can_be_absent(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    monkeypatch.setattr(update_venv, "REQUIREMENTS_DIR", tmp_path)
+
+    assert update_venv.read_requirements_file("test.txt", required=False) == []
+    with pytest.raises(FileNotFoundError):
+        update_venv.read_requirements_file("core.txt")
+
+
 def test_default_requirements_are_unpinned_for_latest_updates() -> None:
     requirements = (
         update_venv.CORE_REQUIREMENTS

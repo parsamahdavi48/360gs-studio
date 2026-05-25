@@ -18,8 +18,9 @@ GUI workflow unless a release note explicitly promises a specific wrapper.
 
 ## Release Surface
 
-Release ZIPs include the GUI runtime, `core/`, `gui/`, docs, requirements,
-models metadata, and setup/check support. Under `scripts/`, only
+Release ZIPs include the GUI runtime, `core/`, `gui/`, docs, runtime
+requirements, models metadata, and setup/check support. Test requirements are
+developer-only and stay out of the release ZIP. Under `scripts/`, only
 `scripts/update_venv.py` and `scripts/check_venv.py` are part of the end-user
 release surface because `setup_windows.bat` and `update_venv.bat` need them.
 
