@@ -246,10 +246,6 @@ numpy, opencv-python, Pillow, open3d, ultralytics, transformers, safetensors, tq
 
 `setup_windows.bat` は `requirements/` 以下の検証済み固定セットを使い、初回セットアップの再現性を優先します。`update_venv.bat` はデフォルトで互換する最新パッケージを解決し、固定セットで作り直したい場合だけ `--locked` を渡します。
 
-## 開発メモ
-
-通常ワークフローはGUI前提です。実行時の実装は `core/` に置き、GUIはroot直下の互換CLIスクリプトではなく、型付きジョブ経由でアプリ内部処理を呼び出します。`scripts/` 配下は開発・リリース用、または薄いCLI入口として扱います。
-
 ## ライセンス
 
 MIT License。詳細は [LICENSE](LICENSE) を参照してください。

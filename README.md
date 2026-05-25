@@ -246,10 +246,6 @@ numpy, opencv-python, Pillow, open3d, ultralytics, transformers, safetensors, tq
 
 `setup_windows.bat` uses the pinned verified package set under `requirements/` for reproducible first-time setup. `update_venv.bat` resolves the latest compatible packages by default; pass `--locked` when you want to rebuild from the pinned set instead.
 
-## Developer Notes
-
-The normal workflow is GUI-first. Runtime implementation lives under `core/`, and the GUI runs app-internal work through typed jobs instead of root-level compatibility scripts. Files under `scripts/` are developer, release, or thin CLI entry points.
-
 ## License
 
 MIT License. See [LICENSE](LICENSE).
