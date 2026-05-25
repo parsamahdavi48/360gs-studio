@@ -41,7 +41,7 @@ Code checks performed:
 | Explicit process and dialog seams | Complete | No |
 | Step 4 test responsibility split | Complete | No |
 | YOLO/SAM runtime-context tests | Complete | No |
-| Developer-only scripts test surface | Pending | No |
+| Developer-only scripts test surface | Complete | No |
 | Shared GUI test fixtures | Pending | No |
 | Final verification pass | Pending | Yes, before merging this test refactor |
 
@@ -56,7 +56,7 @@ to this document.
 | T1 | Replace test-only process/dialog monkeypatch seams with explicit seams | `gui/steps/step4_runtime.py`, `gui/steps/step1_input_sources.py`, Step 1/3/scene-viewer tests | Complete: runtime code has no `sys.modules` test lookup and tests patch named seams/providers |
 | T2 | Split Step 4 omnibus tests by responsibility | Step 4 focused tests and `tests/helpers/step4.py` | Complete: Step 4 tests are grouped by contract without reducing assertions |
 | T3 | Move YOLO/SAM behavior tests onto explicit runtime contexts | `tests/test_yolo_mask_profile.py`, `tests/test_yolo_mask_bottom.py`, `core/yolo_mask.py` tests | Complete: main tests build `YoloMaskRuntimeContext`; global mutation is limited to compatibility tests |
-| T4 | Normalize developer-only script tests | `tests/test_benchmark_yolo_mask.py`, benchmark/devtool modules | Tests no longer import dev-only benchmark code through `scripts.*` |
+| T4 | Normalize developer-only script tests | `tests/test_benchmark_yolo_mask.py`, benchmark/devtool modules | Complete: tests no longer import dev-only benchmark code through `scripts.*` |
 | T5 | Add shared GUI test fixtures where they reduce duplication | GUI-heavy tests, `tests/helpers/` | New/touched GUI tests use common app/theme/dialog/message helpers |
 | T6 | Run final audit and full verification | whole repo | Audit searches, ruff, and full pytest pass; this document records the final checkpoint |
 
@@ -308,7 +308,7 @@ still patch old module globals:
 
 ## 4. Developer-Only Scripts Test Surface
 
-Status: pending
+Status: complete at T4 checkpoint
 
 ### Code Evidence
 
@@ -340,15 +340,32 @@ Tests still import developer-only scripts directly:
 
 ### Completion Criteria
 
-- `rg "from scripts|import scripts" tests` shows only release/setup and release
-  packaging tests.
-- Developer benchmark tests import a developer/core module, not `scripts.*`.
-- Release ZIP tests still assert developer scripts are excluded.
+- Complete. `rg "from scripts|import scripts" tests` shows only release/setup
+  and release packaging tests.
+- Complete. Developer benchmark tests import `devtools.yolo_mask_benchmark`.
+- Complete. Release ZIP tests still assert developer scripts are excluded.
 
 ### Suggested Tests
 
 - `.\.venv\Scripts\python.exe -m pytest tests\test_benchmark_yolo_mask.py tests\test_release_zip.py -q`
 - `.\.venv\Scripts\python.exe -m pytest tests\test_check_venv.py tests\test_update_venv_script.py -q`
+
+### Implementation Notes
+
+- Moved the benchmark implementation to `devtools/yolo_mask_benchmark.py`.
+- Kept `scripts/benchmark_yolo_mask.py` as a thin local entry point.
+- Updated benchmark tests to import the developer module directly.
+
+### Verification
+
+- `.\.venv\Scripts\python.exe -m ruff check devtools\yolo_mask_benchmark.py scripts\benchmark_yolo_mask.py tests\test_benchmark_yolo_mask.py` -> passed
+- `.\.venv\Scripts\python.exe -m pytest tests\test_benchmark_yolo_mask.py tests\test_release_zip.py -q` -> `24 passed`
+- `.\.venv\Scripts\python.exe -m pytest tests\test_check_venv.py tests\test_update_venv_script.py -q` -> `12 passed`
+- `rg -n "from scripts|import scripts" tests` -> only setup/release tests remain
+
+### Deferred
+
+- None.
 
 ## 5. Shared GUI Test Fixtures
 

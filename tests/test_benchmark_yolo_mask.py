@@ -5,7 +5,7 @@ from pathlib import Path
 import cv2
 import numpy as np
 
-from scripts.benchmark_yolo_mask import compare_masks, select_configs
+from devtools.yolo_mask_benchmark import compare_masks, select_configs
 
 
 def test_select_configs_defaults_to_fast_representative_set() -> None:
