@@ -8,6 +8,7 @@ import pytest
 from PIL import Image
 
 import core.metashape_dataset_assets as asset_mod
+from core.cubemap_remap import rot4, rotation_matrix
 from core.dataset_export_plan import EXPORT_ACTION_EXPAND_ERP_TO_VIEWS, DatasetExportPlan, DatasetExportPlanItem
 from core.metashape_coordinates import metashape_camera_matrix_to_output_world, metashape_pointcloud_matrix
 from core.metashape_model import parse_metashape_model
@@ -16,6 +17,7 @@ from core.metashape_nerf_dataset import (
     axis_transform_matrix,
     export_metashape_nerf_dataset,
     metashape_model_requires_mixed_nerf_writer,
+    metashape_nerf_uses_camera_y180_precompensation,
 )
 from core.orientation_correction import final_orientation_matrix
 
@@ -255,14 +257,21 @@ def test_metashape_asset_image_size_uses_metadata_without_full_decode(
 
 
 @pytest.mark.parametrize("axis_transform", ["postshot", "brush"])
-def test_export_metashape_nerf_postshot_brush_apply_import_axis_to_cameras_only(
+def test_export_metashape_nerf_postshot_brush_match_legacy_camera_chain_with_raw_ply(
     tmp_path: Path,
     axis_transform: str,
 ) -> None:
     scene = tmp_path / "scene"
     _write_image(scene / "images" / "pano.jpg", (64, 32), (80, 120, 160))
-    raw_transform = np.eye(4, dtype=np.float64)
-    raw_transform[:3, 3] = [1.25, -2.5, 3.75]
+    raw_transform = np.array(
+        [
+            [0.36, -0.48, 0.80, 1.25],
+            [0.80, 0.60, 0.00, -2.50],
+            [-0.48, 0.64, 0.60, 3.75],
+            [0.0, 0.0, 0.0, 1.0],
+        ],
+        dtype=np.float64,
+    )
     xml = scene / "metashape.xml"
     ply = scene / "metashape.ply"
     output = scene / "output" / "metashape_cubemap"
@@ -278,7 +287,7 @@ def test_export_metashape_nerf_postshot_brush_apply_import_axis_to_cameras_only(
         xml_path=xml,
         ply_path=ply,
         output_dir=output,
-        views=[{"name": "pz", "yaw": 0.0, "pitch": 0.0}],
+        views=[{"name": "px", "yaw": 90.0, "pitch": 0.0}],
         output_scale=0.5,
         output_format="jpg",
         axis_transform=axis_transform,
@@ -288,25 +297,51 @@ def test_export_metashape_nerf_postshot_brush_apply_import_axis_to_cameras_only(
     transforms_json = output / f"transforms_{axis_transform}.json"
     data = json.loads(transforms_json.read_text(encoding="utf-8"))
     frame_transform = np.array(data["frames"][0]["transform_matrix"], dtype=np.float64)
-    expected_center = (axis_transform_matrix(axis_transform) @ metashape_pointcloud_matrix() @ raw_transform)[:3, 3]
-    lichtfeld_precompensated_center = (
+    expected_frame = (
         axis_transform_matrix(axis_transform)
-        @ np.diag([-1.0, 1.0, -1.0, 1.0])
-        @ metashape_pointcloud_matrix()
-        @ raw_transform
-    )[:3, 3]
+        @ metashape_camera_matrix_to_output_world(raw_transform, lichtfeld_camera_y180=True)
+        @ rot4(rotation_matrix(90.0, 0.0, True).T)
+    )
+    no_precompensation_center = (axis_transform_matrix(axis_transform) @ metashape_pointcloud_matrix() @ raw_transform)[
+        :3,
+        3,
+    ]
 
-    assert np.allclose(frame_transform[:3, 3], expected_center)
-    assert not np.allclose(frame_transform[:3, 3], lichtfeld_precompensated_center)
+    assert np.allclose(frame_transform, expected_frame)
+    assert not np.allclose(frame_transform[:3, 3], no_precompensation_center)
     raw_output_ply = output / f"pointcloud_{axis_transform}.ply"
     assert data["source"]["pointcloud_policy"] == "raw_metashape_ply"
     assert data["source"]["pointcloud_world_transform"] is None
+    assert data["source"]["metashape_camera_y180_precompensation"] is True
     assert data["source"]["raw_metashape_pointcloud_path"] == raw_output_ply.name
     assert "ply_file_path" not in data
     assert raw_output_ply.read_bytes() == ply.read_bytes()
     assert result.pointcloud == raw_output_ply
     assert not (output / "pointcloud.ply").exists()
     assert not (output / "metashape.ply").exists()
+
+
+@pytest.mark.parametrize(
+    ("axis_transform", "final_orientation", "expected"),
+    [
+        ("postshot", "none", True),
+        ("brush", "none", True),
+        ("none", "lichtfeld", True),
+        ("none", "none", False),
+    ],
+)
+def test_metashape_nerf_camera_y180_precompensation_is_profile_specific(
+    axis_transform: str,
+    final_orientation: str,
+    expected: bool,
+) -> None:
+    assert (
+        metashape_nerf_uses_camera_y180_precompensation(
+            axis_transform=axis_transform,
+            final_orientation=final_orientation,
+        )
+        is expected
+    )
 
 
 def test_export_metashape_nerf_can_reuse_existing_images_and_masks_for_pose_only_update(tmp_path: Path) -> None:

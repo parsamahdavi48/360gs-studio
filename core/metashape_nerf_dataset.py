@@ -109,6 +109,10 @@ def export_metashape_nerf_dataset(
     plan = build_metashape_dataset_export_plan(model, inventory)
     camera_by_id = {camera.camera_id: camera for camera in model.cameras}
     lichtfeld_target = is_lichtfeld_nerf_target(axis_transform=axis_transform, final_orientation=final_orientation)
+    camera_y180_precompensation = metashape_nerf_uses_camera_y180_precompensation(
+        axis_transform=axis_transform,
+        final_orientation=final_orientation,
+    )
     if lichtfeld_target:
         compatibility = analyze_metashape_nerf_compatibility(
             scene_dir=scene,
@@ -157,7 +161,7 @@ def export_metashape_nerf_dataset(
         c2w = world_transform @ metashape_camera_to_world(
             model,
             camera,
-            lichtfeld_camera_y180=lichtfeld_target,
+            lichtfeld_camera_y180=camera_y180_precompensation,
         )
         assets: tuple[MetashapeDatasetAsset, ...]
         if item.action == EXPORT_ACTION_EXPAND_ERP_TO_VIEWS:
@@ -247,6 +251,7 @@ def export_metashape_nerf_dataset(
             "transforms_json": transforms_name,
             "pointcloud_name": pointcloud_name,
             "dataset_world_transform": world_transform.tolist(),
+            "metashape_camera_y180_precompensation": camera_y180_precompensation,
             "pointcloud_policy": "dataset_pointcloud" if writes_dataset_pointcloud else "raw_metashape_ply",
             "pointcloud_world_transform": pointcloud_transform.tolist() if writes_dataset_pointcloud else None,
             "raw_metashape_pointcloud_path": "",
@@ -450,6 +455,13 @@ def is_lichtfeld_nerf_target(*, axis_transform: object, final_orientation: objec
         normalize_axis_transform(axis_transform) == AXIS_TRANSFORM_NONE
         and normalize_final_orientation(final_orientation) == FINAL_ORIENTATION_LICHTFELD
     )
+
+
+def metashape_nerf_uses_camera_y180_precompensation(*, axis_transform: object, final_orientation: object) -> bool:
+    mode = normalize_axis_transform(axis_transform)
+    if mode in {AXIS_TRANSFORM_POSTSHOT, AXIS_TRANSFORM_BRUSH}:
+        return True
+    return is_lichtfeld_nerf_target(axis_transform=mode, final_orientation=final_orientation)
 
 
 def lichtfeld_nerf_incompatible_message(compatibility: MetashapeNerfCompatibility) -> str:
