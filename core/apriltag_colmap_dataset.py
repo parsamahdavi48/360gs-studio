@@ -17,7 +17,6 @@ class ColmapAprilTagDataset:
     root: Path
     sparse_dir: Path
     images_dir: Path
-    pointcloud_ply: Path | None
     frame_count: int
     checked_image_count: int
     text_model: bool
@@ -180,12 +179,10 @@ def validate_colmap_apriltag_dataset(
     missing = [frame.image_path for frame in frames[:limit] if not frame.image_path.is_file()]
     if missing:
         raise ValueError(f"COLMAP image referenced by images.txt was not found: {missing[0]}")
-    pointcloud_ply = sparse_dir / "points3D.ply"
     return ColmapAprilTagDataset(
         root=root,
         sparse_dir=sparse_dir,
         images_dir=image_root,
-        pointcloud_ply=pointcloud_ply if pointcloud_ply.is_file() else None,
         frame_count=len(frames),
         checked_image_count=min(len(frames), limit),
         text_model=_model_files_kind(sparse_dir) == "text",

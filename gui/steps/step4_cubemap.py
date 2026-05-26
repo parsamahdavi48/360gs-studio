@@ -141,6 +141,7 @@ class CubemapStep(
         self._pipeline_notice_text = ""
         self._saved_projected_export_targets: tuple[bool, bool] | None = None
         self._input_image_count = 0
+        self._metashape_preview_action_counts: dict[str, int] | None = None
         self._spheresfm_phase_logs: dict[str, Path] = {}
         self._training_phase_logs: dict[str, Path] = {}
         self._spheresfm_rtx50_cuda_error_seen = False

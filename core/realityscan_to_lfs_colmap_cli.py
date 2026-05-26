@@ -40,7 +40,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
         "--pointcloud-rotation-x-deg",
         type=float,
         default=90.0,
-        help="X-axis rotation applied only to points3D.ply (default: 90)",
+        help="X-axis rotation applied only to the COLMAP point cloud (default: 90)",
     )
     parser.add_argument("--skip-missing-images", action="store_true", help="Skip CSV rows whose images are missing")
     parser.add_argument(
@@ -121,7 +121,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             f"generated {stats.get('generated_valid_masks', 0)} valid masks"
         )
     if result["pointcloud"]:
-        print(f"Saved LichtFeld points3D.ply: {result['pointcloud']}")
+        print(f"Saved COLMAP points3D.txt: {result['pointcloud']}")
     print(f"Images: {result['num_images']} / CSV rows: {result['num_csv_rows']}")
     print(f"Cameras: {result['num_cameras']}")
     print(f"Camera X rotation: {result['camera_rotation_x_deg']} deg")

@@ -641,21 +641,9 @@ def test_load_colmap_candidate_applies_display_transform(tmp_path: Path) -> None
     sparse.mkdir(parents=True)
     (sparse / "cameras.txt").write_text("1 PINHOLE 32 32 16 16 15.5 15.5\n", encoding="utf-8")
     (sparse / "images.txt").write_text("1 1 0 0 0 0 0 0 1 frame.png\n\n", encoding="utf-8")
-    (sparse / "points3D.txt").write_text("# Number of points: 0\n", encoding="utf-8")
-    (sparse / "points3D.ply").write_text(
-        "\n".join(
-            [
-                "ply",
-                "format ascii 1.0",
-                "element vertex 1",
-                "property float x",
-                "property float y",
-                "property float z",
-                "end_header",
-                "1 2 3",
-            ]
-        ),
-        encoding="ascii",
+    (sparse / "points3D.txt").write_text(
+        "# Number of points: 1\n1 1.0 2.0 3.0 255 255 255 0\n",
+        encoding="utf-8",
     )
     display_transform = ScenePreviewDisplayTransform(
         profile="test",
@@ -667,7 +655,6 @@ def test_load_colmap_candidate_applies_display_transform(tmp_path: Path) -> None
         kind="colmap",
         label="COLMAP",
         path=sparse,
-        pointcloud_path=sparse / "points3D.ply",
         display_transform=display_transform,
     )
 

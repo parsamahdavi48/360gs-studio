@@ -14,6 +14,7 @@ import pytest
 from core.transforms_to_colmap import (
     c2w_to_w2c,
     convert,
+    opengl_c2w_to_colmap_w2c,
     quaternion_from_matrix,
     read_ply_points,
     strip_prefix,
@@ -146,6 +147,13 @@ def test_c2w_to_w2c_invalid_shape():
         c2w_to_w2c(np.eye(3))
 
 
+def test_opengl_c2w_to_colmap_w2c_converts_camera_axes():
+    r, t = opengl_c2w_to_colmap_w2c(np.eye(4))
+
+    assert np.allclose(r, np.diag([1.0, -1.0, -1.0]))
+    assert np.allclose(t, [0.0, 0.0, 0.0])
+
+
 # =============================================================================
 # strip_prefix
 # =============================================================================
@@ -226,6 +234,10 @@ def test_write_images_basic(tmp_path: Path):
     assert len(data_lines) == 2
     parts = data_lines[0].split()
     assert parts[0] == "1"  # IMAGE_ID
+    assert float(parts[1]) == pytest.approx(0.0, abs=1e-10)
+    assert abs(float(parts[2])) == pytest.approx(1.0, abs=1e-10)
+    assert float(parts[3]) == pytest.approx(0.0, abs=1e-10)
+    assert float(parts[4]) == pytest.approx(0.0, abs=1e-10)
     assert parts[8] == "1"  # CAMERA_ID
     assert parts[9] == "a.jpg"  # NAME (prefix stripped)
 
@@ -410,8 +422,10 @@ def test_convert_end_to_end_with_ply(tmp_path: Path):
         image_prefix="images/",
     )
     assert result["num_points"] == 2
-    # PLY コピーも確認
-    assert (output_dir / "points3D.ply").is_file()
+    assert "1 0.000000 0.000000 0.000000 100 100 100 0" in (output_dir / "points3D.txt").read_text(
+        encoding="utf-8"
+    )
+    assert not (output_dir / "points3D.ply").exists()
 
 
 def test_convert_rejects_equirect(tmp_path: Path):

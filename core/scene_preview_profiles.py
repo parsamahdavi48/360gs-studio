@@ -130,20 +130,12 @@ def realityscan_lfs_colmap_display_transform() -> ScenePreviewDisplayTransform:
     )
 
 
-def realityscan_colmap_export_display_transform(
-    *,
-    pointcloud_is_lichtfeld_file: bool = False,
-) -> ScenePreviewDisplayTransform:
-    pointcloud_matrix = (
-        REALITYSCAN_LFS_FILE_TO_PREVIEW_Y_UP
-        if pointcloud_is_lichtfeld_file
-        else REALITYSCAN_Z_UP_TO_PREVIEW_Y_UP
-    )
+def realityscan_colmap_export_display_transform() -> ScenePreviewDisplayTransform:
     return ScenePreviewDisplayTransform(
         profile=COORDINATE_PROFILE_REALITYSCAN,
         note="colmap / realityscan_export / preview_y_up",
         camera_matrix=REALITYSCAN_Z_UP_TO_PREVIEW_Y_UP.copy(),
-        pointcloud_matrix=pointcloud_matrix.copy(),
+        pointcloud_matrix=REALITYSCAN_Z_UP_TO_PREVIEW_Y_UP.copy(),
     )
 
 

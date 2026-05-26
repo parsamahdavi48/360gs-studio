@@ -216,10 +216,6 @@ def load_colmap_preview_dataset(
             )
         )
     pointcloud = pointcloud or _pointcloud_from_colmap_points(points_by_id)
-    if pointcloud is None:
-        ply = Path(resolved_model_dir) / "points3D.ply"
-        if ply.is_file():
-            pointcloud = load_ply_preview_pointcloud(ply)
     return ScenePreviewDataset(
         source_kind="colmap",
         source_path=resolved_model_dir,

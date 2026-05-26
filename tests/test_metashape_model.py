@@ -16,6 +16,7 @@ from core.metashape_model import (
     CAMERA_MODEL_PINHOLE,
     parse_metashape_model,
 )
+from core.metashape_preview_targets import build_metashape_preview_targets, metashape_output_count_for_actions
 from core.scene_inventory import build_scene_inventory
 
 _IDENTITY = "1 0 0 0 0 1 0 0 0 0 1 0 0 0 0 1"
@@ -90,3 +91,46 @@ def test_metashape_export_plan_expands_only_erp_and_undistorts_distorted_frames(
         "images/frame.jpg",
         "images/distorted.jpg",
     ]
+
+
+def test_metashape_preview_targets_follow_xml_cameras_not_whole_folder(tmp_path: Path) -> None:
+    scene = tmp_path / "scene"
+    pano = scene / "images" / "pano.jpg"
+    frame = scene / "images" / "frame.jpg"
+    unused = scene / "images" / "unused.jpg"
+    _write_image(pano, (64, 32))
+    _write_image(frame, (40, 30))
+    _write_image(unused, (40, 30))
+    xml = tmp_path / "cameras.xml"
+    xml.write_text(
+        f"""<?xml version="1.0" encoding="UTF-8"?>
+<document>
+  <chunk>
+    <sensors>
+      <sensor id="0" type="spherical"><resolution width="64" height="32" /></sensor>
+      <sensor id="1" type="frame">
+        <resolution width="40" height="30" />
+        <calibration><f>35</f><cx>0</cx><cy>0</cy></calibration>
+      </sensor>
+    </sensors>
+    <cameras>
+      <camera id="0" label="pano.jpg" sensor_id="0"><transform>{_IDENTITY}</transform></camera>
+      <camera id="1" label="frame.jpg" sensor_id="1"><transform>{_IDENTITY}</transform></camera>
+    </cameras>
+  </chunk>
+</document>
+""",
+        encoding="utf-8",
+    )
+
+    targets = build_metashape_preview_targets(
+        scene_dir=scene,
+        images_dir=scene / "images",
+        masks_dir=None,
+        xml_path=xml,
+    )
+
+    assert targets.image_paths == (pano, frame)
+    assert targets.equirect_paths == (pano,)
+    assert metashape_output_count_for_actions(targets.action_counts, enabled_view_count=6) == 7
+    assert metashape_output_count_for_actions(targets.action_counts, enabled_view_count=6, direct_output=True) == 2

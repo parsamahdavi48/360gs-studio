@@ -1237,7 +1237,7 @@ TIPS: dict[str, str] = {
     "COLMAP_TEXT_IMAGES": "MetashapeでSfMに使った元画像フォルダです。通常はシーンの images/ を使います",
     "COLMAP_TEXT_MASKS": "対応するマスクフォルダです。存在する場合だけCOLMAPデータセットの masks/ に変換出力します",
     "COLMAP_TEXT_XML": "MetashapeからカメラとしてエクスポートしたXMLです。各カメラのラベルがimages内の画像名に対応している必要があります",
-    "COLMAP_TEXT_PLY": "MetashapeからXMLと同じ状態でエクスポートした点群PLYです。COLMAPのpoints3D.txtとpoints3D.plyの元になります",
+    "COLMAP_TEXT_PLY": "MetashapeからXMLと同じ状態でエクスポートした点群PLYです。COLMAPのpoints3D.txtに変換して出力します",
     "COLMAP_TEXT_SOURCE": "transforms.json があるPINHOLEデータセットフォルダです。通常は output/metashape_cubemap/ を使います",
     "COLMAP_TEXT_OUTPUT": "images / masks / sparse/0 を作成する出力データセットフォルダです。通常は output/metashape_colmap/ にします",
     "RS_LFS_CSV": "RealityScanのRegistrationからInternal/External形式で書き出したCSVです",

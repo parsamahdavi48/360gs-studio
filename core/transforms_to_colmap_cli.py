@@ -36,7 +36,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--ply",
-        help="Optional PLY file for points3D.txt and points3D.ply output",
+        help="Optional PLY file for points3D.txt output",
     )
     parser.add_argument(
         "--image-prefix",

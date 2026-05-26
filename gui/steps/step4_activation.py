@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from core.metashape_preview_targets import build_metashape_preview_targets
 from core.projection_contract import PROJECTION_EQUIRECTANGULAR
 from core.scene_inventory import build_scene_inventory
 from gui import i18n
@@ -66,8 +67,14 @@ class Step4ActivationMixin:
 
     def _sync_preview_perspective_paths(self) -> None:
         if not self.scene_dir:
+            self._metashape_preview_action_counts = None
+            self.preview.set_image_paths(None, refresh=False)
             self.preview.set_perspective_supported_paths(())
             return
+        if self._is_metashape_method() and self._sync_metashape_preview_targets():
+            return
+        self._metashape_preview_action_counts = None
+        self.preview.set_image_paths(None, refresh=False)
         try:
             inventory = build_scene_inventory(Path(self.scene_dir))
         except Exception:
@@ -77,3 +84,27 @@ class Step4ActivationMixin:
             image.path for image in inventory.images if image.projection == PROJECTION_EQUIRECTANGULAR
         )
 
+    def _sync_metashape_preview_targets(self) -> bool:
+        if not self.scene_dir:
+            return False
+        xml_text = self.ms_xml_browse.text().strip()
+        if not xml_text:
+            return False
+        xml = Path(xml_text)
+        if not xml.is_file():
+            return False
+        try:
+            images = self._metashape_images_dir()
+            masks = self._mask_dir()
+            targets = build_metashape_preview_targets(
+                scene_dir=Path(self.scene_dir),
+                images_dir=images,
+                masks_dir=masks if masks.is_dir() else None,
+                xml_path=xml,
+            )
+        except Exception:
+            return False
+        self._metashape_preview_action_counts = targets.action_counts
+        self.preview.set_perspective_supported_paths(targets.equirect_paths)
+        self.preview.set_image_paths(targets.image_paths, refresh=False)
+        return True

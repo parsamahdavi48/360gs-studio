@@ -271,10 +271,15 @@ def test_lichtfeld_output_name_rejects_paths(tmp_path: Path) -> None:
 
 
 def test_postshot_command_passes_images_sparse_and_project_file(tmp_path: Path) -> None:
+    sparse = tmp_path / "dataset" / "sparse" / "0"
+    sparse.mkdir(parents=True)
+    for name in ("cameras.txt", "images.txt", "points3D.txt"):
+        (sparse / name).write_text("", encoding="utf-8")
+    (sparse / "points3D.ply").write_text("ply\n", encoding="ascii")
     dataset = TrainingDataset(
         dataset_root=tmp_path / "dataset",
         images_dir=tmp_path / "dataset" / "images",
-        colmap_sparse_dir=tmp_path / "dataset" / "sparse" / "0",
+        colmap_sparse_dir=sparse,
     )
 
     cmd = build_postshot_training_cmd(
@@ -293,7 +298,9 @@ def test_postshot_command_passes_images_sparse_and_project_file(tmp_path: Path) 
         "train",
         "--import",
         str(dataset.images_dir),
-        str(dataset.colmap_sparse_dir),
+        str(sparse / "cameras.txt"),
+        str(sparse / "images.txt"),
+        str(sparse / "points3D.txt"),
         "--output",
         str(tmp_path / "training" / "scene.psht"),
         "--profile",

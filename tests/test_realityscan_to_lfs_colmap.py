@@ -8,7 +8,6 @@ import numpy as np
 import pytest
 from PIL import Image
 
-from core.pointcloud_io import load_point_cloud_sample
 from core.realityscan_to_lfs_colmap import (
     build_colmap_records,
     convert,
@@ -58,6 +57,19 @@ def camera_center_from_colmap(qvec: np.ndarray, tvec: np.ndarray) -> np.ndarray:
         dtype=np.float64,
     )
     return -r_cw.T @ tvec
+
+
+def read_points3d_txt(path: Path) -> tuple[np.ndarray, np.ndarray]:
+    points: list[list[float]] = []
+    colors: list[list[int]] = []
+    for line in path.read_text(encoding="utf-8").splitlines():
+        text = line.strip()
+        if not text or text.startswith("#"):
+            continue
+        parts = text.split()
+        points.append([float(parts[1]), float(parts[2]), float(parts[3])])
+        colors.append([int(parts[4]), int(parts[5]), int(parts[6])])
+    return np.asarray(points, dtype=np.float64), np.asarray(colors, dtype=np.uint8)
 
 
 def test_build_colmap_records_preserves_mixed_image_names_and_camera_groups(tmp_path: Path) -> None:
@@ -112,7 +124,7 @@ def test_build_colmap_records_can_keep_realityscan_world_without_lfs_rotation(tm
     assert camera_center_from_colmap(first.qvec, first.tvec) == pytest.approx([1.0, 2.0, 3.0])
 
 
-def test_convert_writes_lfs_colmap_sparse_and_rotated_points3d_ply(tmp_path: Path) -> None:
+def test_convert_writes_lfs_colmap_sparse_and_rotated_points3d_txt(tmp_path: Path) -> None:
     images = tmp_path / "images"
     write_image(images / "a.jpg", (80, 80))
     write_csv(tmp_path / "rs.csv", [{"#name": "a.jpg", "f_35mm": 18}])
@@ -139,18 +151,17 @@ def test_convert_writes_lfs_colmap_sparse_and_rotated_points3d_ply(tmp_path: Pat
     assert (sparse / "cameras.txt").is_file()
     assert (sparse / "images.txt").is_file()
     assert (sparse / "points3D.txt").is_file()
-    assert (sparse / "points3D.ply").is_file()
+    assert not (sparse / "points3D.ply").exists()
     assert "1.0 0.0 0.0" not in (sparse / "cameras.txt").read_text(encoding="utf-8")
     assert (sparse / "images.txt").read_text(encoding="utf-8").splitlines()[4].endswith(" 1 a.jpg")
 
-    sample = load_point_cloud_sample(sparse / "points3D.ply")
+    points, colors = read_points3d_txt(sparse / "points3D.txt")
     expected = transform_points(
         np.array([[1.0, 2.0, 3.0], [-4.0, 5.0, -6.0]]),
         lichtfeld_colmap_pointcloud_matrix(),
     )
-    assert np.allclose(sample.points, expected)
-    assert sample.colors is not None
-    assert sample.colors.tolist() == [[255, 0, 0], [0, 255, 0]]
+    assert np.allclose(points, expected)
+    assert colors.tolist() == [[255, 0, 0], [0, 255, 0]]
 
 
 def test_convert_rejects_lfs_json_marker_in_dataset_root(tmp_path: Path) -> None:

@@ -104,7 +104,6 @@ def discover_scene_preview_candidates(scene_dir: Path) -> tuple[ScenePreviewCand
                 path=sparse,
                 image_root=_colmap_images_dir(scene, colmap_root, sparse, manifest),
                 mask_root=_colmap_masks_dir(scene, colmap_root, sparse, manifest, settings, record),
-                pointcloud_path=_existing_file(sparse / "points3D.ply"),
                 display_transform=_colmap_display_transform(scene, colmap_root, sparse, manifest, record),
                 colmap_opengl_camera=_colmap_uses_app_camera_axes(scene, colmap_root, manifest, record),
             )
@@ -124,7 +123,6 @@ def discover_scene_preview_candidates(scene_dir: Path) -> tuple[ScenePreviewCand
                     root / "masks_colmap",
                     scene_masks_dir(scene),
                 ),
-                pointcloud_path=_existing_file(sparse / "points3D.ply"),
             )
         )
     for csv_path, ply_path, image_root, mask_root, label in _realityscan_inputs(scene, sfm_records):
@@ -578,9 +576,7 @@ def _colmap_display_transform(
     if _is_realityscan_lfs_colmap(scene, root, manifest, record):
         return realityscan_lfs_colmap_display_transform()
     if _same_path(root, scene_output_dir(scene) / "realityscan"):
-        return realityscan_colmap_export_display_transform(
-            pointcloud_is_lichtfeld_file=(sparse / "points3D.ply").is_file()
-        )
+        return realityscan_colmap_export_display_transform()
     return None
 
 

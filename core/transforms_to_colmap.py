@@ -80,6 +80,15 @@ def c2w_to_w2c(transform: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     return r_w2c, t_w2c
 
 
+def opengl_c2w_to_colmap_w2c(transform: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """OpenGL/NeRF c2w → COLMAP/OpenCV world-to-camera."""
+    if transform.shape != (4, 4):
+        raise ValueError(f"transform must be 4x4, got {transform.shape}")
+    converted = transform.copy()
+    converted[:3, 1:3] *= -1.0
+    return c2w_to_w2c(converted)
+
+
 def strip_prefix(path: str, prefix: str) -> str:
     """transforms.json 内の file_path から先頭 prefix を取り除く。"""
     if not prefix:
@@ -167,7 +176,7 @@ def write_images_txt(
                 _notify_progress(progress_callback, idx, total)
                 continue
 
-            r_w2c, t_w2c = c2w_to_w2c(t)
+            r_w2c, t_w2c = opengl_c2w_to_colmap_w2c(t)
             try:
                 qw, qx, qy, qz = quaternion_from_matrix(r_w2c)
             except ValueError:
@@ -401,13 +410,6 @@ def convert(
             write_empty_points3d_txt(points_path)
         else:
             num_points = write_points3d_txt(points_path, points, colors)
-            # PLY をそのまま COLMAP 慣例の points3D.ply としてもコピー出力
-            try:
-                import shutil
-
-                shutil.copy2(ply_path, output_dir / "points3D.ply")
-            except Exception:
-                pass
         _notify_progress(progress_callback, progress_total, progress_total)
     else:
         if ply_path is not None:

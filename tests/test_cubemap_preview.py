@@ -83,6 +83,28 @@ def test_cubemap_preview_does_not_scan_current_directory_without_scene(
     assert widget.tl_label.text() == "0 / 0"
 
 
+def test_cubemap_preview_can_use_explicit_image_paths(tmp_path: Path) -> None:
+    _app()
+    images = tmp_path / "images"
+    images.mkdir()
+    used_b = images / "used_b.png"
+    unused = images / "unused.png"
+    used_a = images / "used_a.png"
+    for path in (used_b, unused, used_a):
+        cv2.imwrite(str(path), np.full((16, 32, 3), 180, dtype=np.uint8))
+    widget = PreviewWidget()
+    widget.set_scene_dir(str(tmp_path), refresh=False)
+
+    widget.set_image_paths([used_b, used_a, used_b], refresh=True)
+
+    assert widget.preview_images == [used_b, used_a]
+    assert widget.current_image_path() == used_b
+
+    widget.set_image_paths(None, refresh=True)
+
+    assert widget.preview_images == [unused, used_a, used_b]
+
+
 def test_cubemap_preview_resolves_mask_from_mask_folder(tmp_path: Path) -> None:
     _app()
     image_path = tmp_path / "frame_000001.jpg"

@@ -64,6 +64,25 @@ def _write_mixed_metashape_xml(path: Path) -> None:
     )
 
 
+def _write_single_erp_metashape_xml(path: Path, label: str) -> None:
+    identity = "1 0 0 0 0 1 0 0 0 0 1 0 0 0 0 1"
+    path.write_text(
+        f"""<?xml version="1.0" encoding="UTF-8"?>
+<document>
+  <chunk>
+    <sensors>
+      <sensor id="0" type="spherical"><resolution width="64" height="32" /></sensor>
+    </sensors>
+    <cameras>
+      <camera id="0" label="{label}" sensor_id="0"><transform>{identity}</transform></camera>
+    </cameras>
+  </chunk>
+</document>
+""",
+        encoding="utf-8",
+    )
+
+
 def test_sfm_embedded_viewer_defers_scene_scan_until_viewer_is_opened(tmp_path: Path, monkeypatch) -> None:
     _app()
     calls = {"discover": 0}
@@ -471,9 +490,9 @@ def test_colmap_text_model_tool_defaults_and_builds_dataset_job(tmp_path: Path) 
     assert Path(tool.ply_browse.text()) == ply
     output = scene / "output" / "metashape_colmap"
     assert not hasattr(tool, "output_browse")
+    assert not hasattr(tool, "profile_combo")
     assert tool.primary_action_enabled()
     assert tool.settings_tabs.count() == 3
-    assert tool.profile_combo.currentData() == "lichtfeld"
 
     commands = tool.build_commands()
     assert [phase for phase, _cmd in commands] == ["metashape_colmap"]
@@ -489,15 +508,9 @@ def test_colmap_text_model_tool_defaults_and_builds_dataset_job(tmp_path: Path) 
     assert colmap_job["ply_path"] == str(ply)
     assert colmap_job["output_dir"] == str(output)
     assert colmap_job["axis_transform"] == "none"
-    assert colmap_job["final_orientation"] == "lichtfeld"
+    assert colmap_job["final_orientation"] == "none"
     assert colmap_job["output_bit_depth"] == "8"
     assert colmap_job["jpg_quality"] == 95
-
-    brush_idx = tool.profile_combo.findData("brush")
-    tool.profile_combo.setCurrentIndex(brush_idx)
-    brush_job = _workflow_job(tool.build_commands()[0][1])
-    assert brush_job["axis_transform"] == "brush"
-    assert brush_job["final_orientation"] == "none"
 
     custom_idx = tool.view_config.view_mode_combo.findData(VIEW_MODE_CUSTOM)
     tool.view_config.view_mode_combo.setCurrentIndex(custom_idx)
@@ -539,6 +552,25 @@ def test_colmap_text_model_preview_projection_toggle_is_enabled_only_for_erp_ima
     assert not tool.preview.projection_toggle_btn.isEnabled()
 
 
+def test_colmap_text_model_preview_uses_metashape_xml_camera_images(tmp_path: Path) -> None:
+    scene = tmp_path / "scene"
+    images = scene / "images"
+    images.mkdir(parents=True)
+    used = images / "pano_used.jpg"
+    unused = images / "normal_unused.jpg"
+    _write_image(used, size=(64, 32))
+    _write_image(unused, size=(40, 30))
+    _write_single_erp_metashape_xml(scene / "metashape.xml", used.name)
+    (scene / "metashape.ply").write_text("ply\n", encoding="ascii")
+
+    _app()
+    tool = ColmapTextModelTool(Path.cwd())
+    tool.set_scene_dir(str(scene))
+
+    assert tool.preview.preview_images == [used]
+    assert i18n.t("OUTPUT_IMAGE_COUNT_FORMAT").format(count=6) in tool.view_config.summary_text()
+
+
 def test_colmap_text_model_tool_uses_dataset_job_for_mixed_metashape_xml(tmp_path: Path) -> None:
     scene = tmp_path / "scene"
     images = scene / "images"
@@ -568,7 +600,7 @@ def test_colmap_text_model_tool_uses_dataset_job_for_mixed_metashape_xml(tmp_pat
     assert job["output_bit_depth"] == "8"
     assert job["jpg_quality"] == 95
     assert job["axis_transform"] == "none"
-    assert job["final_orientation"] == "lichtfeld"
+    assert job["final_orientation"] == "none"
 
 
 def test_realityscan_realign_profile_is_step4_only(tmp_path: Path) -> None:

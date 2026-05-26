@@ -46,9 +46,9 @@ from core.metashape_model import (
 )
 from core.metashape_nerf_dataset import AXIS_TRANSFORM_NONE, axis_transform_matrix, normalize_axis_transform
 from core.orientation_correction import FINAL_ORIENTATION_NONE, final_orientation_matrix, normalize_final_orientation
-from core.realityscan_to_transforms import transform_points, write_transformed_ply
+from core.realityscan_to_transforms import transform_points
 from core.scene_inventory import build_scene_inventory
-from core.transforms_to_colmap import read_ply_points, write_points3d_txt
+from core.transforms_to_colmap import opengl_c2w_to_colmap_w2c, read_ply_points, write_points3d_txt
 
 DEFAULT_FOV_DEG = 90.0
 DEFAULT_UNDISTORT_ALPHA = 1.0
@@ -315,7 +315,7 @@ def _append_colmap_image_record(
         camera_id = len(cameras) + 1
         camera_ids[signature] = camera_id
         cameras.append(ColmapCamera(camera_id, model, int(width), int(height), params))
-    r_cw, t_cw = _c2w_to_colmap_w2c(c2w)
+    r_cw, t_cw = opengl_c2w_to_colmap_w2c(c2w)
     images.append(
         ColmapImage(
             image_id=len(images) + 1,
@@ -325,15 +325,6 @@ def _append_colmap_image_record(
             name=output_image.relative_to(output_images).as_posix(),
         )
     )
-
-
-def _c2w_to_colmap_w2c(c2w: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
-    r_wc = c2w[:3, :3]
-    t_wc = c2w[:3, 3]
-    r_cw = r_wc.T
-    t_cw = -r_cw @ t_wc
-    return r_cw, t_cw
-
 
 def _pinhole_payload(sensor: MetashapeSensor, image_path: Path) -> tuple[int, int, tuple[float, ...]]:
     width, height = _image_size(image_path)
@@ -473,9 +464,7 @@ def _write_colmap_pointcloud_files(source_ply: Path, sparse_dir: Path, world_tra
     matrix = (np.eye(4, dtype=np.float64) if world_transform is None else world_transform) @ metashape_pointcloud_matrix()
     points, colors = read_ply_points(source_ply)
     transformed = transform_points(points, matrix)
-    count = write_points3d_txt(sparse_dir / "points3D.txt", transformed, colors)
-    write_transformed_ply(source_ply, sparse_dir / "points3D.ply", matrix)
-    return count
+    return write_points3d_txt(sparse_dir / "points3D.txt", transformed, colors)
 
 
 def dataset_world_transform(axis_transform: object, final_orientation: object) -> np.ndarray:

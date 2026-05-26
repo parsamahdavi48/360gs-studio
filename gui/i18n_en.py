@@ -1237,7 +1237,7 @@ TIPS: dict[str, str] = {
     "COLMAP_TEXT_IMAGES": "Source image folder used for Metashape SfM. Usually the scene images/ folder.",
     "COLMAP_TEXT_MASKS": "Optional matching mask folder. When present, converted masks are written to the Dataset masks/ folder.",
     "COLMAP_TEXT_XML": "Camera XML exported from Metashape. Camera labels must match image names in the source image folder.",
-    "COLMAP_TEXT_PLY": "Point-cloud PLY exported from Metashape in the same state as the XML. It is used for COLMAP points3D.txt and points3D.ply.",
+    "COLMAP_TEXT_PLY": "Point-cloud PLY exported from Metashape in the same state as the XML. It is converted to COLMAP points3D.txt.",
     "COLMAP_TEXT_SOURCE": "PINHOLE dataset folder containing transforms.json. Usually output/metashape_cubemap/.",
     "COLMAP_TEXT_OUTPUT": "Output Dataset folder containing images / masks / sparse/0. Usually output/metashape_colmap/.",
     "RS_LFS_CSV": "CSV exported from RealityScan Registration in Internal/External format.",

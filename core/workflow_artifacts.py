@@ -141,7 +141,6 @@ def _dataset_files(root: Path) -> dict[str, Path]:
         ("masks_dir", "masks"),
         ("colmap_sparse_dir", "sparse/0"),
         ("colmap_sparse_root", "sparse"),
-        ("colmap_points_ply", "sparse/0/points3D.ply"),
     ):
         candidate = root / rel
         if candidate.exists():

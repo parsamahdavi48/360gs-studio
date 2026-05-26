@@ -12,7 +12,6 @@ from core.metashape_colmap_dataset import (
     metashape_model_requires_mixed_colmap_writer,
 )
 from core.metashape_coordinates import metashape_camera_matrix_to_output_world, metashape_pointcloud_matrix
-from core.transforms_to_colmap import c2w_to_w2c
 
 _IDENTITY = "1 0 0 0 0 1 0 0 0 0 1 0 0 0 0 1"
 
@@ -130,7 +129,7 @@ def test_export_metashape_colmap_dataset_expands_only_erp_and_undistorts_distort
     assert (output / "sparse" / "0" / "cameras.txt").is_file()
     assert (output / "sparse" / "0" / "images.txt").read_text(encoding="utf-8").count("\n\n") == 4
     assert "# Number of points: 1" in (output / "sparse" / "0" / "points3D.txt").read_text(encoding="utf-8")
-    assert (output / "sparse" / "0" / "points3D.ply").is_file()
+    assert not (output / "sparse" / "0" / "points3D.ply").exists()
 
 
 def test_export_metashape_colmap_dataset_uses_explicit_image_root(tmp_path: Path) -> None:
@@ -210,7 +209,7 @@ def test_metashape_colmap_camera_transform_matches_coordinate_contract() -> None
     assert np.allclose(metashape_camera_matrix_to_output_world(transform), expected)
 
 
-def test_metashape_colmap_w2c_matches_transforms_to_colmap(tmp_path: Path) -> None:
+def test_metashape_colmap_writes_colmap_camera_axes(tmp_path: Path) -> None:
     scene = tmp_path / "scene"
     _write_image(scene / "images" / "pano.jpg", (64, 32), (80, 120, 160))
     xml = scene / "metashape.xml"
@@ -237,7 +236,10 @@ def test_metashape_colmap_w2c_matches_transforms_to_colmap(tmp_path: Path) -> No
     qvec = np.array([float(value) for value in parts[1:5]])
     tvec = np.array([float(value) for value in parts[5:8]])
     c2w = metashape_camera_matrix_to_output_world(np.eye(4))
-    expected_r, expected_t = c2w_to_w2c(c2w)
+    colmap_c2w = c2w.copy()
+    colmap_c2w[:3, 1:3] *= -1.0
+    expected_r = colmap_c2w[:3, :3].T
+    expected_t = -expected_r @ colmap_c2w[:3, 3]
 
     # Compare translation directly and rotation via quaternion-generated matrix.
     assert np.allclose(tvec, expected_t)

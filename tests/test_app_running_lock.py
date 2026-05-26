@@ -68,6 +68,36 @@ def test_main_window_locks_workflow_controls_while_process_runs(tmp_path: Path) 
             _process_events_until(app, lambda: not window.runner.is_running())
 
 
+def test_header_back_is_locked_while_process_runs(tmp_path: Path) -> None:
+    app = _app()
+    window = MainWindow(str(tmp_path))
+
+    try:
+        window._set_current_step(4)
+        window.dataset_step.card_grid.buttons["realityscan_lfs"].click()
+        assert window.dataset_step.current_tool() == "realityscan_lfs"
+        assert not window.step_back_btn.isHidden()
+        assert window.step_back_btn.isEnabled()
+
+        window.runner.start_queue([("sleep", [sys.executable, "-c", "import time; time.sleep(0.2)"])])
+        app.processEvents()
+
+        assert window.runner.is_running()
+        assert not window.step_back_btn.isHidden()
+        assert not window.step_back_btn.isEnabled()
+        window._on_step_header_back()
+        assert window.dataset_step.current_tool() == "realityscan_lfs"
+
+        assert _process_events_until(app, lambda: not window.runner.is_running())
+        assert not window.step_back_btn.isHidden()
+        assert window.step_back_btn.isEnabled()
+    finally:
+        window.shutdown()
+        if window.runner.is_running():
+            window.runner.cancel()
+            _process_events_until(app, lambda: not window.runner.is_running())
+
+
 def test_scene_import_runs_off_gui_thread_and_reports_start(tmp_path: Path, monkeypatch) -> None:
     app = _app()
     window = MainWindow(str(tmp_path))

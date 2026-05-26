@@ -312,7 +312,7 @@ def test_colmap_preview_opengl_camera_axes_do_not_depend_on_cubemap_filename(tmp
     assert np.allclose(camera.forward, [0.0, 0.0, 1.0])
 
 
-def test_colmap_preview_uses_points3d_ply_when_points_txt_is_empty(tmp_path: Path) -> None:
+def test_colmap_preview_ignores_points3d_ply_when_points_txt_is_empty(tmp_path: Path) -> None:
     sparse = tmp_path / "sparse" / "0"
     sparse.mkdir(parents=True)
     (sparse / "cameras.txt").write_text("1 PINHOLE 100 100 50 50 49.5 49.5\n", encoding="utf-8")
@@ -336,9 +336,7 @@ def test_colmap_preview_uses_points3d_ply_when_points_txt_is_empty(tmp_path: Pat
 
     dataset = load_colmap_preview_dataset(sparse)
 
-    assert dataset.pointcloud is not None
-    assert dataset.pointcloud.source_path == sparse / "points3D.ply"
-    assert dataset.pointcloud.points.tolist() == [[1.0, 2.0, 3.0]]
+    assert dataset.pointcloud is None
 
 
 def test_realityscan_preview_loads_csv_and_ply(tmp_path: Path) -> None:
@@ -618,7 +616,6 @@ def test_discover_scene_preview_candidates_finds_registered_refactor_artifacts(t
     (metashape_colmap / "masks").mkdir()
     for name in ("cameras.txt", "images.txt", "points3D.txt"):
         (sparse / name).write_text("", encoding="utf-8")
-    (sparse / "points3D.ply").write_text("ply\nformat ascii 1.0\nelement vertex 0\nend_header\n", encoding="ascii")
     register_dataset_artifact(
         tmp_path,
         artifact_id="metashape_colmap",
@@ -654,7 +651,7 @@ def test_discover_scene_preview_candidates_finds_registered_refactor_artifacts(t
     assert colmap_candidate.path == sparse
     assert colmap_candidate.image_root == metashape_colmap / "images"
     assert colmap_candidate.mask_root == metashape_colmap / "masks"
-    assert colmap_candidate.pointcloud_path == sparse / "points3D.ply"
+    assert colmap_candidate.pointcloud_path is None
     assert colmap_candidate.colmap_opengl_camera is False
     realityscan = next(candidate for candidate in candidates if candidate.kind == "realityscan")
     assert realityscan.path == csv
@@ -689,7 +686,6 @@ def test_discover_scene_preview_candidates_marks_realityscan_colmap_profiles(tmp
         sparse.mkdir(parents=True)
         for name in ("cameras.txt", "images.txt", "points3D.txt"):
             (sparse / name).write_text("", encoding="utf-8")
-        (sparse / "points3D.ply").write_text("ply\nformat ascii 1.0\nelement vertex 0\nend_header\n", encoding="ascii")
     (output / "realityscan" / "lfs_colmap" / "stechdrive_dataset_manifest.json").write_text(
         json.dumps({"kind": "lichtfeld_colmap", "source_kind": "realityscan_csv_ply"}),
         encoding="utf-8",
@@ -701,7 +697,7 @@ def test_discover_scene_preview_candidates_marks_realityscan_colmap_profiles(tmp
     lfs = next(candidate for candidate in candidates if candidate.label == "RealityScan LichtFeld COLMAP")
     assert direct.display_transform is not None
     assert np.allclose(direct.display_transform.camera_matrix, REALITYSCAN_Z_UP_TO_PREVIEW_Y_UP)
-    assert np.allclose(direct.display_transform.pointcloud_matrix, REALITYSCAN_LFS_FILE_TO_PREVIEW_Y_UP)
+    assert np.allclose(direct.display_transform.pointcloud_matrix, REALITYSCAN_Z_UP_TO_PREVIEW_Y_UP)
     assert direct.colmap_opengl_camera is False
     assert lfs.display_transform is not None
     assert np.allclose(lfs.display_transform.camera_matrix, REALITYSCAN_LFS_FILE_TO_PREVIEW_Y_UP)

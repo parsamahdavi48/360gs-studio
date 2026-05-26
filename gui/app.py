@@ -535,9 +535,9 @@ class MainWindow(QWidget):
         step = self._current_step_widget()
         title = step.header_title() if step is not None else ""
         self.step_header.setText(title or self.step_titles[index])
-        back_enabled = bool(step and step.header_back_enabled())
-        self.step_back_btn.setVisible(back_enabled)
-        self.step_back_btn.setEnabled(back_enabled)
+        back_visible = bool(step and step.header_back_enabled())
+        self.step_back_btn.setVisible(back_visible)
+        self.step_back_btn.setEnabled(back_visible and not self._workflow_busy())
         tooltip = step.header_back_tooltip() if step is not None else ""
         self.step_back_btn.setToolTip(tooltip)
         self.step_back_btn.setAccessibleName(tooltip)
@@ -546,6 +546,8 @@ class MainWindow(QWidget):
         self.step_subheader.setVisible(False)
 
     def _on_step_header_back(self) -> None:
+        if self._workflow_busy():
+            return
         step = self._current_step_widget()
         if step is None or not step.header_back_enabled():
             return

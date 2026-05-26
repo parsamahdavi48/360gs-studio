@@ -91,22 +91,6 @@ def _write_colmap_dataset(scene: Path) -> Path:
         ),
         encoding="utf-8",
     )
-    (output / "sparse" / "0" / "points3D.ply").write_text(
-        "\n".join(
-            [
-                "ply",
-                "format ascii 1.0",
-                "element vertex 1",
-                "property float x",
-                "property float y",
-                "property float z",
-                "end_header",
-                "2 4 6",
-                "",
-            ]
-        ),
-        encoding="ascii",
-    )
     return output
 
 
@@ -184,11 +168,9 @@ def test_validate_scale_output_dataset_accepts_colmap_dataset(tmp_path: Path) ->
 
 def test_apply_scene_output_scale_updates_colmap_text_dataset_with_backups(
     tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     output = _write_colmap_dataset(tmp_path)
     sparse = output / "sparse" / "0"
-    monkeypatch.setattr(scale_apply, "_scale_pointcloud_with_open3d", lambda _path, _scale: None)
 
     result = apply_scene_output_scale(tmp_path, 0.5, output_dir=output)
 
@@ -209,5 +191,3 @@ def test_apply_scene_output_scale_updates_colmap_text_dataset_with_backups(
     points_text = (sparse / "points3D.txt").read_text(encoding="utf-8")
     assert "1 0.5 1 1.5 10 20 30 0.1" in points_text
     assert "2 -0.5 -1 -1.5 40 50 60 0.2" in points_text
-    ply_text = (sparse / "points3D.ply").read_text(encoding="ascii")
-    assert "1 2 3" in ply_text

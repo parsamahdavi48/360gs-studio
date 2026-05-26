@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from core.metashape_preview_targets import metashape_output_count_for_actions
 from core.scene_layout import scene_images_dir
 from gui import i18n
 from gui.cubemap.view_config import _BLOCK_ENABLED_VIEWS, _WARN_ENABLED_VIEWS
@@ -72,7 +73,16 @@ class Step4PreviewCountsMixin:
         if self._uses_direct_equirect_output() or (
             self._spheresfm_runs_conversion() and self._uses_spheresfm_3dgut_output()
         ):
-            count_text = i18n.t("OUTPUT_IMAGE_COUNT_DIRECT_FORMAT").format(count=self._input_image_count)
+            action_counts = getattr(self, "_metashape_preview_action_counts", None)
+            if self._uses_direct_equirect_output() and action_counts is not None:
+                count = metashape_output_count_for_actions(
+                    action_counts,
+                    enabled_view_count=1,
+                    direct_output=True,
+                )
+            else:
+                count = self._input_image_count
+            count_text = i18n.t("OUTPUT_IMAGE_COUNT_DIRECT_FORMAT").format(count=count)
             self.view_config.set_output_count_text(f"{label}: {count_text}")
             self._update_lfs_auto_steps_scaler()
             return
@@ -83,8 +93,12 @@ class Step4PreviewCountsMixin:
             self._update_lfs_auto_steps_scaler()
             return
         enabled = sum(1 for v in views if v["enabled"])
-        sources = self._input_image_count
-        total = sources * enabled
+        action_counts = getattr(self, "_metashape_preview_action_counts", None)
+        if self._is_metashape_method() and action_counts is not None:
+            total = metashape_output_count_for_actions(action_counts, enabled_view_count=enabled)
+        else:
+            sources = self._input_image_count
+            total = sources * enabled
         warn = ""
         if enabled > _BLOCK_ENABLED_VIEWS:
             warn = " [超過]"
@@ -93,4 +107,3 @@ class Step4PreviewCountsMixin:
         count_text = i18n.t("OUTPUT_IMAGE_COUNT_FORMAT").format(count=total)
         self.view_config.set_output_count_text(f"{label}: {count_text}{warn}")
         self._update_lfs_auto_steps_scaler()
-

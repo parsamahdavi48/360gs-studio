@@ -360,19 +360,13 @@ def apply_scale_to_colmap_dataset(dataset_root: Path, scale: float) -> ScaleAppl
     backup_dir = _default_backup_dir(images_txt)
     images_backup = _copy_backup(images_txt, backup_dir)
     points_backup = _copy_backup(points_txt, backup_dir)
-    ply = sparse_dir / "points3D.ply"
-    ply_backup = _copy_backup(ply, backup_dir) if ply.is_file() else None
 
     try:
         frames_scaled = scale_colmap_images_txt(images_txt, value)
         points_scaled = scale_colmap_points3d_txt(points_txt, value)
-        if ply.is_file():
-            _scale_pointcloud(ply, value)
     except Exception:
         shutil.copy2(images_backup, images_txt)
         shutil.copy2(points_backup, points_txt)
-        if ply_backup is not None:
-            shutil.copy2(ply_backup, ply)
         raise
 
     return ScaleApplyResult(

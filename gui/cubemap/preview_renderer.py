@@ -492,6 +492,7 @@ class PreviewWidget(QWidget):
         self._current_image_path = ""
         self._scene_dir = ""
         self._image_dir_override = ""
+        self._image_paths_override: tuple[Path, ...] | None = None
         self._mask_overlay_visible = True
         self._preview_projection = PREVIEW_PROJECTION_EQUIRECT
         self._perspective_supported_paths: set[str] | None = None
@@ -554,11 +555,18 @@ class PreviewWidget(QWidget):
 
     def set_scene_dir(self, scene_dir: str, *, refresh: bool = True) -> None:
         self._scene_dir = scene_dir
+        self._image_paths_override = None
         if refresh:
             self.refresh_image_list(prefer_current=False)
 
     def set_image_dir(self, image_dir: str, *, refresh: bool = True) -> None:
         self._image_dir_override = image_dir
+        self._image_paths_override = None
+        if refresh:
+            self.refresh_image_list(prefer_current=False)
+
+    def set_image_paths(self, paths: Iterable[Path] | None, *, refresh: bool = True) -> None:
+        self._image_paths_override = None if paths is None else tuple(Path(path) for path in paths)
         if refresh:
             self.refresh_image_list(prefer_current=False)
 
@@ -870,6 +878,18 @@ class PreviewWidget(QWidget):
         return None
 
     def _iter_images(self) -> list[Path]:
+        exts = {".jpg", ".jpeg", ".png"}
+        if self._image_paths_override is not None:
+            result, seen = [], set()
+            for p in self._image_paths_override:
+                if not p.is_file() or p.suffix.lower() not in exts:
+                    continue
+                key = str(p.resolve()).lower()
+                if key not in seen:
+                    seen.add(key)
+                    result.append(p)
+            return result
+
         if self._image_dir_override:
             root = Path(self._image_dir_override)
             roots = [root] if root.is_dir() else []
@@ -880,7 +900,6 @@ class PreviewWidget(QWidget):
             images_dir = scene_dir / "images"
             roots = [images_dir] if images_dir.is_dir() else [scene_dir]
 
-        exts = {".jpg", ".jpeg", ".png"}
         result, seen = [], set()
         for root in roots:
             if not root.is_dir():

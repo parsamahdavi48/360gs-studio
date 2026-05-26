@@ -19,7 +19,11 @@ from PySide6.QtWidgets import (
 
 from core.app_job import dataset_app_job
 from core.dataset_job_spec import metashape_colmap_job, write_dataset_job
-from core.orientation_correction import FINAL_ORIENTATION_LICHTFELD, FINAL_ORIENTATION_NONE
+from core.metashape_preview_targets import (
+    build_metashape_preview_targets,
+    metashape_output_count_for_actions,
+)
+from core.orientation_correction import FINAL_ORIENTATION_NONE
 from core.projection_contract import PROJECTION_EQUIRECTANGULAR
 from core.scene_inventory import build_scene_inventory
 from core.scene_layout import (
@@ -44,13 +48,8 @@ from gui.cubemap.view_config import _BLOCK_ENABLED_VIEWS, _WARN_ENABLED_VIEWS, V
 from gui.steps.base_step import SETTINGS_PANE_MARGINS, SETTINGS_PANE_WIDTH, BaseStepWidget
 from gui.steps.output_reset import clear_path, path_has_contents
 from gui.steps.step4_contracts import (
-    _AXIS_BRUSH,
     _AXIS_NONE,
-    _AXIS_POSTSHOT,
     _NORMAL_OUTPUT_SCALE,
-    _PROFILE_BRUSH,
-    _PROFILE_LICHTFELD,
-    _PROFILE_POSTSHOT,
 )
 from gui.steps.step4_widgets import make_output_image_controls
 
@@ -67,6 +66,7 @@ class ColmapTextModelTool(BaseStepWidget):
         self._masks_user_edited = False
         self._xml_user_edited = False
         self._ply_user_edited = False
+        self._metashape_preview_action_counts: dict[str, int] | None = None
         self._build_ui()
 
     def _build_ui(self) -> None:
@@ -165,17 +165,6 @@ class ColmapTextModelTool(BaseStepWidget):
         layout = QVBoxLayout(tab)
         layout.setContentsMargins(8, 8, 8, 8)
         layout.setSpacing(6)
-        form = QFormLayout()
-        form.setSpacing(6)
-
-        self.profile_combo = QComboBox()
-        self.profile_combo.setToolTip(i18n.tip("TARGET_PROFILE"))
-        self.profile_combo.addItem(i18n.PROFILE_POSTSHOT, _PROFILE_POSTSHOT)
-        self.profile_combo.addItem(i18n.PROFILE_BRUSH, _PROFILE_BRUSH)
-        self.profile_combo.addItem(i18n.PROFILE_LICHTFELD, _PROFILE_LICHTFELD)
-        self.profile_combo.setCurrentIndex(self.profile_combo.findData(_PROFILE_LICHTFELD))
-        add_tooltip_row(form, i18n.TARGET_PROFILE, self.profile_combo, i18n.tip("TARGET_PROFILE"))
-        layout.addLayout(form)
 
         self.view_config = ViewConfigWidget(show_settings=True, show_summary=True)
 
@@ -242,7 +231,6 @@ class ColmapTextModelTool(BaseStepWidget):
         self.xml_browse.path_changed.connect(lambda _path: self._on_path_changed("xml"))
         self.ply_browse.path_changed.connect(lambda _path: self._on_path_changed("ply"))
 
-        self.profile_combo.currentIndexChanged.connect(self._on_output_option_changed)
         self.view_config.views_changed.connect(self._on_views_changed)
         self.view_config.hovered_view_changed.connect(lambda _name: self._render_preview())
         self.scale_combo.currentIndexChanged.connect(self._on_output_option_changed)
@@ -388,7 +376,7 @@ class ColmapTextModelTool(BaseStepWidget):
             return
         scene = Path(self.scene_dir)
         settings = {
-            "profile": self._profile_id(),
+            "profile": "colmap",
             "view_mode": self.view_config.view_mode(),
             "output_scale": float(self.scale_combo.currentData()),
         }
@@ -448,20 +436,11 @@ class ColmapTextModelTool(BaseStepWidget):
             return Path()
         return scene_output_dir(Path(self.scene_dir)) / "metashape_colmap"
 
-    def _profile_id(self) -> str:
-        data = self.profile_combo.currentData()
-        return data if data in {_PROFILE_POSTSHOT, _PROFILE_BRUSH, _PROFILE_LICHTFELD} else _PROFILE_LICHTFELD
-
     def _axis_transform_mode(self) -> str:
-        profile = self._profile_id()
-        if profile == _PROFILE_POSTSHOT:
-            return _AXIS_POSTSHOT
-        if profile == _PROFILE_BRUSH:
-            return _AXIS_BRUSH
         return _AXIS_NONE
 
     def _final_orientation(self) -> str:
-        return FINAL_ORIENTATION_LICHTFELD if self._profile_id() == _PROFILE_LICHTFELD else FINAL_ORIENTATION_NONE
+        return FINAL_ORIENTATION_NONE
 
     def _jpg_quality(self) -> int:
         try:
@@ -511,7 +490,7 @@ class ColmapTextModelTool(BaseStepWidget):
                 self._xml_user_edited = True
             elif field == "ply":
                 self._ply_user_edited = True
-        if field in {"images", "masks"}:
+        if field in {"images", "masks", "xml"}:
             self._sync_preview_inputs()
         self.primary_action_state_changed.emit()
 
@@ -527,8 +506,10 @@ class ColmapTextModelTool(BaseStepWidget):
 
     def _sync_preview_inputs(self) -> None:
         if not self.scene_dir:
+            self._metashape_preview_action_counts = None
             self.preview.set_scene_dir("", refresh=False)
             self.preview.set_perspective_supported_paths(())
+            self.preview.set_image_paths(None, refresh=False)
             self.preview.set_image_dir("", refresh=True)
             self._update_output_count()
             self._render_preview()
@@ -536,10 +517,35 @@ class ColmapTextModelTool(BaseStepWidget):
 
         self.preview.set_scene_dir(str(self.scene_dir), refresh=False)
         images = self._images_dir()
-        self._sync_preview_perspective_paths(images)
-        self.preview.set_image_dir(str(images) if images.is_dir() else "", refresh=True)
+        self.preview.set_image_dir(str(images) if images.is_dir() else "", refresh=False)
+        if not self._sync_metashape_preview_targets(images):
+            self._metashape_preview_action_counts = None
+            self.preview.set_image_paths(None, refresh=False)
+            self._sync_preview_perspective_paths(images)
+        self.preview.refresh_image_list(prefer_current=True)
         self._update_output_count()
         self._render_preview()
+
+    def _sync_metashape_preview_targets(self, images: Path) -> bool:
+        if not self.scene_dir or not images.is_dir():
+            return False
+        xml = self._xml_path()
+        if not xml.is_file():
+            return False
+        masks = self._masks_dir()
+        try:
+            targets = build_metashape_preview_targets(
+                scene_dir=self.scene_dir,
+                images_dir=images,
+                masks_dir=masks if masks.is_dir() else None,
+                xml_path=xml,
+            )
+        except Exception:
+            return False
+        self._metashape_preview_action_counts = targets.action_counts
+        self.preview.set_perspective_supported_paths(targets.equirect_paths)
+        self.preview.set_image_paths(targets.image_paths, refresh=False)
+        return True
 
     def _sync_preview_perspective_paths(self, images: Path) -> None:
         if not self.scene_dir or not images.is_dir():
@@ -571,7 +577,13 @@ class ColmapTextModelTool(BaseStepWidget):
             self.view_config.set_output_count_text(f"{i18n.t('OUTPUT_IMAGE_COUNT_LABEL')}: -")
             return
         enabled = sum(1 for view in views if view["enabled"])
-        total = len(getattr(self.preview, "preview_images", []) or []) * enabled
+        if self._metashape_preview_action_counts is not None:
+            total = metashape_output_count_for_actions(
+                self._metashape_preview_action_counts,
+                enabled_view_count=enabled,
+            )
+        else:
+            total = len(getattr(self.preview, "preview_images", []) or []) * enabled
         warn = ""
         if enabled > _BLOCK_ENABLED_VIEWS:
             warn = f" [{i18n.t('EXCEED')}]"

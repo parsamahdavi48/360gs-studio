@@ -314,6 +314,11 @@ class Step4RouteStateMixin:
             self._set_metashape_ply_approved(bool(self.ms_ply_browse.text().strip()))
         self._update_metashape_input_hint()
         self._update_path_labels()
+        self._sync_preview_perspective_paths()
+        self.preview.refresh_image_list(prefer_current=True)
+        self._refresh_input_image_count()
+        self._update_output_count()
+        self._render_preview()
         self.primary_action_state_changed.emit()
 
     def _on_metashape_ply_text_edited(self, _text: str) -> None:
@@ -522,4 +527,3 @@ class Step4RouteStateMixin:
         self.glomap_exec_row_label.setVisible(needs_glomap)
         self.glomap_exec_browse.setVisible(needs_glomap)
         self.glomap_exec_browse.setEnabled(needs_glomap)
-

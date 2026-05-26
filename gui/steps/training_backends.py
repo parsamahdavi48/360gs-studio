@@ -452,7 +452,7 @@ def build_postshot_training_cmd(options: PostshotTrainingOptions) -> list[str]:
     import_sources = [str(options.dataset.images_dir or options.dataset.dataset_root)]
     if options.use_imported_poses:
         if options.dataset.colmap_sparse_dir is not None:
-            import_sources.append(str(options.dataset.colmap_sparse_dir))
+            import_sources.extend(str(path) for path in _postshot_colmap_pose_sources(options.dataset.colmap_sparse_dir))
         else:
             if options.dataset.transforms_json is not None:
                 import_sources.append(str(options.dataset.transforms_json))
@@ -510,3 +510,21 @@ def build_postshot_training_cmd(options: PostshotTrainingOptions) -> list[str]:
     add_box("crop-box", options.crop_box_default, options.crop_box_min, options.crop_box_max)
     add_box("roi-box", options.roi_box_default, options.roi_box_min, options.roi_box_max)
     return cmd
+
+
+def _postshot_colmap_pose_sources(sparse_dir: Path) -> tuple[Path, ...]:
+    text_files = (
+        sparse_dir / "cameras.txt",
+        sparse_dir / "images.txt",
+        sparse_dir / "points3D.txt",
+    )
+    if all(path.is_file() for path in text_files):
+        return text_files
+    binary_files = (
+        sparse_dir / "cameras.bin",
+        sparse_dir / "images.bin",
+        sparse_dir / "points3D.bin",
+    )
+    if all(path.is_file() for path in binary_files):
+        return binary_files
+    return (sparse_dir,)

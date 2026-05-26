@@ -39,8 +39,9 @@ from core.realityscan_to_transforms import (
     row_has_distortion,
     row_to_transform,
     strip_leading_realityscan_asset_dir,
-    write_transformed_ply,
+    transform_points,
 )
+from core.transforms_to_colmap import read_ply_points, write_points3d_txt
 
 DEFAULT_DATASET_DIR_NAME = "lfs_colmap"
 DEFAULT_UNDISTORTED_DATASET_DIR_NAME = "lfs_colmap_undistorted"
@@ -748,8 +749,10 @@ def convert(
         ply_path = Path(ply_path)
         if not ply_path.is_file():
             raise FileNotFoundError(f"PLY not found: {ply_path}")
-        pointcloud_dest = sparse_dir / "points3D.ply"
-        write_transformed_ply(ply_path, pointcloud_dest, lichtfeld_colmap_pointcloud_matrix(pointcloud_rotation_x_deg))
+        pointcloud_dest = sparse_dir / "points3D.txt"
+        points, colors = read_ply_points(ply_path)
+        transformed = transform_points(points, lichtfeld_colmap_pointcloud_matrix(pointcloud_rotation_x_deg))
+        write_points3d_txt(pointcloud_dest, transformed, colors)
         pointcloud_output = str(pointcloud_dest)
         emit_progress(progress_total)
 

@@ -15,6 +15,8 @@ from tests.helpers.step4 import (
     _app,
     _ready_step,
     _workflow_job,
+    _write_ascii_ply,
+    _write_metashape_xml,
     _write_test_image,
     get_sfm_route_backend,
     get_sfm_route_spec,
@@ -168,6 +170,26 @@ def test_cubemap_step_refreshes_preview_when_activated_after_extraction(tmp_path
     assert step.preview.current_image_path() == image_path
     assert step.preview.image_label._source_pixmap is not None
     assert step._count_input_images() == 1
+    assert i18n.t("OUTPUT_IMAGE_COUNT_FORMAT").format(count=6) in step.view_config.summary_text()
+
+
+def test_metashape_preview_uses_xml_camera_images_not_entire_scene_folder(tmp_path: Path) -> None:
+    _app()
+    images = tmp_path / "images"
+    images.mkdir()
+    used = images / "erp_used.jpg"
+    unused = images / "normal_unused.jpg"
+    _write_test_image(used, size=(64, 32))
+    _write_test_image(unused, size=(40, 30))
+    _write_metashape_xml(tmp_path / "metashape.xml", labels=[used.name])
+    _write_ascii_ply(tmp_path / "metashape.ply", [(0.0, 0.0, 0.0)])
+    step = CubemapStep(Path.cwd())
+
+    step.set_scene_dir(str(tmp_path))
+    step.on_activated()
+
+    assert step.preview.preview_images == [used]
+    assert step._input_image_count == 1
     assert i18n.t("OUTPUT_IMAGE_COUNT_FORMAT").format(count=6) in step.view_config.summary_text()
 
 
