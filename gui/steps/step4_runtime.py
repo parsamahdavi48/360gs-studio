@@ -252,7 +252,7 @@ class Step4RuntimeMixin:
                     data["ply_file_path"] = dest.name
                     transforms.write_text(json.dumps(data, indent=2), encoding="utf-8")
 
-        if self._writes_any_view_assets():
+        if self._writes_any_view_assets() or self._uses_metashape_nerf_dataset_writer():
             self._write_export_settings()
         self._record_step4_runs(
             sfm_mode="metashape_import" if self.pipeline_stage_intent(_PIPELINE_STAGE_CONVERSION) else None,

@@ -78,6 +78,8 @@ def test_metashape_nerf_dataset_job_round_trips(tmp_path: Path) -> None:
         undistort_alpha=1.0,
         axis_transform="none",
         final_orientation="lichtfeld",
+        write_images=False,
+        write_masks=False,
     )
 
     path = write_dataset_job(tmp_path / "nerf_job.json", job)
@@ -85,6 +87,8 @@ def test_metashape_nerf_dataset_job_round_trips(tmp_path: Path) -> None:
 
     assert loaded["kind"] == JOB_KIND_METASHAPE_NERF
     assert loaded["final_orientation"] == "lichtfeld"
+    assert loaded["write_images"] is False
+    assert loaded["write_masks"] is False
 
 
 def test_dataset_job_rejects_view_without_orientation(tmp_path: Path) -> None:

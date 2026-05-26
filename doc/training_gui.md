@@ -158,7 +158,7 @@ For CLI launch from Step 6, use a Postshot v1.0/v1.1 Release Build CLI as the ba
 | --- | --- |
 | COLMAP | COLMAP sparse model |
 | SphereSfM | SphereSfM sparse model |
-| Metashape | `transforms.json` and the available Metashape point-cloud PLY |
+| Metashape | The selected profile's transforms JSON and point-cloud PLY, such as `transforms_postshot.json` and `pointcloud_postshot.ply` |
 
 If `Import` is selected and no camera poses are available, Step 6 stops before running. Either run SfM/conversion in Step 5 first, or switch to `Estimate` so Postshot estimates poses.
 

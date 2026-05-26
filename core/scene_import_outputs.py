@@ -5,6 +5,7 @@ import math
 from pathlib import Path
 from typing import Any
 
+from core.nerf_dataset_paths import find_nerf_pointcloud_path, find_nerf_transforms_path
 from core.scene_import_contracts import (
     EXTERNAL_IMPORT_KIND,
     IssueSummary,
@@ -41,23 +42,25 @@ def inspect_output_dataset(
     root_label = scene_relative(scene, output)
     images = iter_scene_images(output / "images", cancel_token)
     masks = iter_scene_images(output / "masks", cancel_token)
-    transforms = output / "transforms.json"
-    pointcloud = output / "pointcloud.ply"
+    transforms = find_nerf_transforms_path(output)
+    transforms_path = transforms or output / "transforms.json"
+    pointcloud = find_nerf_pointcloud_path(output, transforms_json=transforms) if transforms is not None else None
+    pointcloud_path = pointcloud or output / "pointcloud.ply"
     data: dict[str, Any] = {}
     camera_model = ""
     frames: list[Any] = []
-    if transforms.is_file():
+    if transforms is not None and transforms.is_file():
         try:
             data = json.loads(transforms.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError) as exc:
-            warnings.append(f"{root_label}/transforms.json could not be read: {exc}")
+            warnings.append(f"{root_label}/{transforms.name} could not be read: {exc}")
         if isinstance(data, dict):
             camera_model = str(data.get("camera_model") or "")
             raw_frames = data.get("frames")
             frames = raw_frames if isinstance(raw_frames, list) else []
     if cancel_token is not None:
         cancel_token.check_cancelled()
-    if not transforms.is_file() and output.exists() and (images or masks):
+    if transforms is None and output.exists() and (images or masks):
         warnings.append(f"{root_label}/ exists but {root_label}/transforms.json was not found.")
 
     output_shape = infer_output_shape(camera_model, images)
@@ -83,16 +86,16 @@ def inspect_output_dataset(
             sample_paths=image_sample,
             cancel_token=cancel_token,
         )
-    if output_shape == "equirect_3dgut" and not pointcloud.is_file():
+    if output_shape == "equirect_3dgut" and (pointcloud is None or not pointcloud.is_file()):
         warnings.append(f"3DGUT-style output was detected, but {root_label}/pointcloud.ply was not found.")
 
     return {
         "root": output,
-        "active": bool(images or transforms.is_file()),
+        "active": bool(images or (transforms is not None and transforms.is_file())),
         "images": images,
         "masks": masks,
-        "transforms_json": transforms,
-        "pointcloud": pointcloud,
+        "transforms_json": transforms_path,
+        "pointcloud": pointcloud_path,
         "camera_model": camera_model,
         "frames_count": len(frames),
         "output_shape": output_shape,
@@ -125,7 +128,7 @@ def _active_output_dataset_root(scene: Path) -> Path:
         legacy,
     ]
     for candidate in (path for path in candidates if path is not None):
-        if (candidate / "transforms.json").is_file():
+        if find_nerf_transforms_path(candidate) is not None:
             return candidate
     for candidate in (path for path in candidates if path is not None):
         if (candidate / "images").is_dir():
@@ -291,6 +294,8 @@ def validate_output_masks(
 def write_external_step4_settings(scene: Path, import_id: str, output_info: dict[str, Any]) -> None:
     output = Path(output_info.get("root") or scene_output_dir(scene))
     root_rel = scene_relative(scene, output)
+    transforms = find_nerf_transforms_path(output)
+    pointcloud = find_nerf_pointcloud_path(output, transforms_json=transforms) if transforms is not None else None
     output_shape = str(output_info.get("output_shape") or "")
     dataset_kind = str(output_info.get("dataset_kind") or "")
     active = bool(output_info.get("active"))
@@ -370,23 +375,23 @@ def write_external_step4_settings(scene: Path, import_id: str, output_info: dict
             "lichtfeld_config": "",
         },
         "inputs": {
-            "transforms_json": str(output / "transforms.json"),
+            "transforms_json": str(transforms or output / "transforms.json"),
             "masks_dir": str(scene_masks_dir(scene)),
-            "ply_source": str(output / "pointcloud.ply") if (output / "pointcloud.ply").is_file() else "",
+            "ply_source": str(pointcloud) if pointcloud is not None and pointcloud.is_file() else "",
         },
         "registered_assets": {
             "images_dir": f"{root_rel}/images" if (output / "images").is_dir() else "",
             "masks_dir": f"{root_rel}/masks" if (output / "masks").is_dir() else "",
-            "transforms_json": f"{root_rel}/transforms.json" if (output / "transforms.json").is_file() else "",
-            "pointcloud": f"{root_rel}/pointcloud.ply" if (output / "pointcloud.ply").is_file() else "",
+            "transforms_json": f"{root_rel}/{transforms.name}" if transforms is not None and transforms.is_file() else "",
+            "pointcloud": f"{root_rel}/{pointcloud.name}" if pointcloud is not None and pointcloud.is_file() else "",
         },
         "output_files": {
             "settings": "_stechdrive/step4/export_settings.json",
             "views_config": "",
-            "transforms_json": "transforms.json" if (output / "transforms.json").is_file() else "",
+            "transforms_json": transforms.name if transforms is not None and transforms.is_file() else "",
             "images_dir": "images" if (output / "images").is_dir() else "",
             "masks_dir": "masks" if (output / "masks").is_dir() else "",
-            "pointcloud": "pointcloud.ply" if (output / "pointcloud.ply").is_file() else "",
+            "pointcloud": pointcloud.name if pointcloud is not None and pointcloud.is_file() else "",
             "colmap_rig_dir": "colmap_rig",
         },
     }
@@ -404,6 +409,8 @@ def replace_external_dataset_run(scene: Path, import_id: str, output_info: dict[
         run_id = f"dataset_{import_id}"
         root = Path(output_info.get("root") or scene_output_dir(scene))
         root_rel = scene_relative(scene, root)
+        transforms = find_nerf_transforms_path(root)
+        pointcloud = find_nerf_pointcloud_path(root, transforms_json=transforms) if transforms is not None else None
         output_shape = str(output_info.get("output_shape") or "")
         kept.append(
             {
@@ -416,8 +423,8 @@ def replace_external_dataset_run(scene: Path, import_id: str, output_info: dict[
                 "origin": import_origin(import_id),
                 "artifacts": {
                     "root": root_rel,
-                    "transforms_json": file_identity(root / "transforms.json"),
-                    "pointcloud": file_identity(root / "pointcloud.ply"),
+                    "transforms_json": file_identity(transforms or root / "transforms.json"),
+                    "pointcloud": file_identity(pointcloud or root / "pointcloud.ply"),
                     "images_dir": file_identity(root / "images"),
                     "masks_dir": file_identity(root / "masks"),
                     "colmap_sparse_dir": file_identity(root / "sparse"),

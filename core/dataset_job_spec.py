@@ -75,6 +75,8 @@ def metashape_nerf_job(
     undistort_alpha: float,
     axis_transform: str,
     final_orientation: str,
+    write_images: bool = True,
+    write_masks: bool = True,
 ) -> dict[str, Any]:
     return {
         "schema_version": DATASET_JOB_SCHEMA_VERSION,
@@ -93,6 +95,8 @@ def metashape_nerf_job(
         "undistort_alpha": float(undistort_alpha),
         "axis_transform": str(axis_transform),
         "final_orientation": str(final_orientation),
+        "write_images": bool(write_images),
+        "write_masks": bool(write_masks),
     }
 
 
@@ -164,6 +168,9 @@ def _validate_metashape_dataset_job(payload: Mapping[str, Any]) -> None:
     require_str(payload, "ply_path", label="dataset", allow_empty=True)
     require_str(payload, "axis_transform", label="dataset")
     require_str(payload, "final_orientation", label="dataset")
+    for key in ("write_images", "write_masks"):
+        if key in payload:
+            require_bool(payload, key, label="dataset")
     require_views(payload, label="dataset")
     require_finite_float(payload, "output_scale", label="dataset", min_value=0.0, max_value=1.0, min_inclusive=False)
     require_finite_float(payload, "undistort_alpha", label="dataset", min_value=0.0, max_value=1.0)

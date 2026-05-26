@@ -63,7 +63,7 @@ Open a read-only viewer for point clouds, camera positions, selected camera imag
 
 ### Metashape -> NeRF Dataset (JSON/PLY)
 
-Create a NeRF/3DGS-style dataset using `transforms.json` and `pointcloud.ply` from a Metashape camera XML and point-cloud PLY.
+Create a NeRF/3DGS-style dataset from a Metashape camera XML and point-cloud PLY. PINHOLE output writes profile-specific JSON/PLY files such as `transforms_postshot.json` and `pointcloud_postshot.ply`.
 
 | Choice | Use when |
 | --- | --- |

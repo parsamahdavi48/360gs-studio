@@ -14,12 +14,10 @@ from core.metashape_model import parse_metashape_model
 from core.metashape_nerf_dataset import (
     analyze_metashape_nerf_compatibility,
     axis_transform_matrix,
-    dataset_pointcloud_transform,
     export_metashape_nerf_dataset,
     metashape_model_requires_mixed_nerf_writer,
 )
 from core.orientation_correction import final_orientation_matrix
-from core.transforms_to_colmap import read_ply_points
 
 _IDENTITY = "1 0 0 0 0 1 0 0 0 0 1 0 0 0 0 1"
 
@@ -169,7 +167,7 @@ def test_export_metashape_nerf_dataset_expands_links_and_undistorts(tmp_path: Pa
         progress_callback=lambda done, total: progress.append((done, total)),
     )
 
-    data = json.loads((output / "transforms.json").read_text(encoding="utf-8"))
+    data = json.loads(result.transforms_json.read_text(encoding="utf-8"))
     frames = data["frames"]
     assert progress == [(0, 5), (1, 5), (2, 5), (3, 5), (4, 5), (5, 5)]
     assert result.frame_count == 4
@@ -188,7 +186,8 @@ def test_export_metashape_nerf_dataset_expands_links_and_undistorts(tmp_path: Pa
     assert (output / "masks" / "pano_pz.png").is_file()
     assert (output / "masks" / "frame.png").is_file()
     assert (output / "masks" / "distorted_undistorted.png").is_file()
-    assert (output / "pointcloud.ply").is_file()
+    assert result.transforms_json == output / "transforms_custom.json"
+    assert (output / "pointcloud_custom.ply").is_file()
     assert all(frame["camera_model"] == "PINHOLE" for frame in frames)
     assert {frame["file_path"] for frame in frames} == {
         "images/pano_pz.jpg",
@@ -255,35 +254,43 @@ def test_metashape_asset_image_size_uses_metadata_without_full_decode(
     assert asset_mod.image_size(image) == (64, 32)
 
 
-def test_export_metashape_nerf_postshot_applies_import_axis_to_cameras_only(tmp_path: Path) -> None:
+@pytest.mark.parametrize("axis_transform", ["postshot", "brush"])
+def test_export_metashape_nerf_postshot_brush_apply_import_axis_to_cameras_only(
+    tmp_path: Path,
+    axis_transform: str,
+) -> None:
     scene = tmp_path / "scene"
     _write_image(scene / "images" / "pano.jpg", (64, 32), (80, 120, 160))
     raw_transform = np.eye(4, dtype=np.float64)
     raw_transform[:3, 3] = [1.25, -2.5, 3.75]
     xml = scene / "metashape.xml"
     ply = scene / "metashape.ply"
+    output = scene / "output" / "metashape_cubemap"
     _write_translated_spherical_xml(xml, raw_transform)
     _write_ply(ply)
+    output.mkdir(parents=True)
+    _write_ply(output / "pointcloud.ply")
 
-    export_metashape_nerf_dataset(
+    result = export_metashape_nerf_dataset(
         scene_dir=scene,
         images_dir=scene / "images",
         masks_dir=None,
         xml_path=xml,
         ply_path=ply,
-        output_dir=scene / "output" / "metashape_cubemap",
+        output_dir=output,
         views=[{"name": "pz", "yaw": 0.0, "pitch": 0.0}],
         output_scale=0.5,
         output_format="jpg",
-        axis_transform="postshot",
+        axis_transform=axis_transform,
         final_orientation="none",
     )
 
-    data = json.loads((scene / "output" / "metashape_cubemap" / "transforms.json").read_text(encoding="utf-8"))
+    transforms_json = output / f"transforms_{axis_transform}.json"
+    data = json.loads(transforms_json.read_text(encoding="utf-8"))
     frame_transform = np.array(data["frames"][0]["transform_matrix"], dtype=np.float64)
-    expected_center = (axis_transform_matrix("postshot") @ metashape_pointcloud_matrix() @ raw_transform)[:3, 3]
+    expected_center = (axis_transform_matrix(axis_transform) @ metashape_pointcloud_matrix() @ raw_transform)[:3, 3]
     lichtfeld_precompensated_center = (
-        axis_transform_matrix("postshot")
+        axis_transform_matrix(axis_transform)
         @ np.diag([-1.0, 1.0, -1.0, 1.0])
         @ metashape_pointcloud_matrix()
         @ raw_transform
@@ -291,14 +298,91 @@ def test_export_metashape_nerf_postshot_applies_import_axis_to_cameras_only(tmp_
 
     assert np.allclose(frame_transform[:3, 3], expected_center)
     assert not np.allclose(frame_transform[:3, 3], lichtfeld_precompensated_center)
-    assert data["source"]["pointcloud_world_transform"] == dataset_pointcloud_transform("none").tolist()
+    raw_output_ply = output / f"pointcloud_{axis_transform}.ply"
+    assert data["source"]["pointcloud_policy"] == "raw_metashape_ply"
+    assert data["source"]["pointcloud_world_transform"] is None
+    assert data["source"]["raw_metashape_pointcloud_path"] == raw_output_ply.name
+    assert "ply_file_path" not in data
+    assert raw_output_ply.read_bytes() == ply.read_bytes()
+    assert result.pointcloud == raw_output_ply
+    assert not (output / "pointcloud.ply").exists()
+    assert not (output / "metashape.ply").exists()
 
-    points, _colors = read_ply_points(scene / "output" / "metashape_cubemap" / "pointcloud.ply")
-    source_point = np.array([1.0, 2.0, 3.0, 1.0], dtype=np.float64)
-    expected_point = (dataset_pointcloud_transform("none") @ source_point)[:3]
-    postshot_axis_point = (axis_transform_matrix("postshot") @ dataset_pointcloud_transform("none") @ source_point)[:3]
-    assert np.allclose(points[0], expected_point)
-    assert not np.allclose(points[0], postshot_axis_point)
+
+def test_export_metashape_nerf_can_reuse_existing_images_and_masks_for_pose_only_update(tmp_path: Path) -> None:
+    scene = tmp_path / "scene"
+    _write_image(scene / "images" / "pano.jpg", (64, 32), (80, 120, 160))
+    _write_mask(scene / "masks" / "pano.png", (64, 32))
+    xml = scene / "metashape.xml"
+    ply = scene / "metashape.ply"
+    _write_single_spherical_xml(xml)
+    _write_ply(ply)
+    output = scene / "output" / "metashape_cubemap"
+
+    export_metashape_nerf_dataset(
+        scene_dir=scene,
+        images_dir=scene / "images",
+        masks_dir=scene / "masks",
+        xml_path=xml,
+        ply_path=ply,
+        output_dir=output,
+        views=[{"name": "pz", "yaw": 0.0, "pitch": 0.0}],
+        output_scale=0.5,
+        output_format="jpg",
+        axis_transform="postshot",
+        final_orientation="none",
+    )
+    output_image = output / "images" / "pano_pz.jpg"
+    output_mask = output / "masks" / "pano_pz.png"
+    image_bytes = output_image.read_bytes()
+    mask_bytes = output_mask.read_bytes()
+
+    export_metashape_nerf_dataset(
+        scene_dir=scene,
+        images_dir=scene / "images",
+        masks_dir=scene / "masks",
+        xml_path=xml,
+        ply_path=ply,
+        output_dir=output,
+        views=[{"name": "pz", "yaw": 0.0, "pitch": 0.0}],
+        output_scale=0.5,
+        output_format="jpg",
+        axis_transform="brush",
+        final_orientation="none",
+        write_images=False,
+        write_masks=False,
+    )
+
+    assert output_image.read_bytes() == image_bytes
+    assert output_mask.read_bytes() == mask_bytes
+    data = json.loads((output / "transforms_brush.json").read_text(encoding="utf-8"))
+    assert data["source"]["axis_transform"] == "brush"
+    assert data["frames"][0]["file_path"] == "images/pano_pz.jpg"
+    assert data["frames"][0]["mask_path"] == "masks/pano_pz.png"
+
+
+def test_export_metashape_nerf_reuse_mode_requires_existing_images(tmp_path: Path) -> None:
+    scene = tmp_path / "scene"
+    _write_image(scene / "images" / "pano.jpg", (64, 32), (80, 120, 160))
+    xml = scene / "metashape.xml"
+    _write_single_spherical_xml(xml)
+
+    with pytest.raises(ValueError, match="Existing output image"):
+        export_metashape_nerf_dataset(
+            scene_dir=scene,
+            images_dir=scene / "images",
+            masks_dir=None,
+            xml_path=xml,
+            ply_path=None,
+            output_dir=scene / "output" / "metashape_cubemap",
+            views=[{"name": "pz", "yaw": 0.0, "pitch": 0.0}],
+            output_scale=0.5,
+            output_format="jpg",
+            axis_transform="postshot",
+            final_orientation="none",
+            write_images=False,
+            write_masks=False,
+        )
 
 
 def test_export_metashape_nerf_lichtfeld_keeps_camera_y180_precompensation(tmp_path: Path) -> None:
@@ -323,7 +407,9 @@ def test_export_metashape_nerf_lichtfeld_keeps_camera_y180_precompensation(tmp_p
         final_orientation="lichtfeld",
     )
 
-    data = json.loads((scene / "output" / "metashape_cubemap" / "transforms.json").read_text(encoding="utf-8"))
+    data = json.loads(
+        (scene / "output" / "metashape_cubemap" / "transforms_lichtfeld.json").read_text(encoding="utf-8")
+    )
     frame_transform = np.array(data["frames"][0]["transform_matrix"], dtype=np.float64)
     expected_center = (
         final_orientation_matrix("lichtfeld")
@@ -428,7 +514,7 @@ def test_export_metashape_nerf_dataset_blocks_multicamera_lichtfeld_target(tmp_p
             final_orientation="lichtfeld",
         )
 
-    assert not (scene / "output" / "metashape_cubemap" / "transforms.json").exists()
+    assert not (scene / "output" / "metashape_cubemap" / "transforms_lichtfeld.json").exists()
 
 
 def test_metashape_nerf_writer_detection_flags_models_requiring_projected_output(tmp_path: Path) -> None:

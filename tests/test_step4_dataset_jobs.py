@@ -51,6 +51,8 @@ def test_metashape_projected_uses_dataset_job_writer(tmp_path: Path) -> None:
     assert job["xml_path"] == str(tmp_path / "metashape.xml")
     assert job["ply_path"] == str(tmp_path / "metashape.ply")
     assert job["output_dir"] == str(tmp_path / "output" / "metashape_cubemap")
+    assert job["write_images"] is True
+    assert job["write_masks"] is True
     assert stale.exists()
     assert not (tmp_path / "transforms.json").exists()
 
@@ -418,7 +420,7 @@ def test_lichtfeld_3dgut_direct_mode_restores_projection_export_targets(tmp_path
     step.output_shape_combo.setCurrentIndex(direct_idx)
     step.output_shape_combo.setCurrentIndex(projected_idx)
 
-    assert step.export_images_cb.isChecked() is True
+    assert step.export_images_cb.isChecked() is False
     assert step.export_masks_cb.isChecked() is True
     assert step.settings_tabs.isTabEnabled(step.view_export_tab_index)
     assert step.cubemap_path_summary_value.full_text() == "output/metashape_cubemap/"
@@ -667,9 +669,7 @@ def test_cubemap_build_resets_existing_output_when_confirmed(tmp_path: Path, mon
     assert not nested.exists()
 
 
-def test_metashape_dataset_writer_resets_existing_output_even_if_images_toggle_is_off(
-    tmp_path: Path, monkeypatch
-) -> None:
+def test_metashape_dataset_writer_can_preserve_existing_assets_for_pose_only_update(tmp_path: Path, monkeypatch) -> None:
     output = tmp_path / "output" / "metashape_cubemap"
     output.mkdir(parents=True)
     old_image_dir = output / "images"
@@ -684,7 +684,9 @@ def test_metashape_dataset_writer_resets_existing_output_even_if_images_toggle_i
     old_settings.parent.mkdir(parents=True, exist_ok=True)
     old_settings.write_text('{"old": true}\n', encoding="utf-8")
     step = _ready_step(tmp_path, metashape_inputs=True)
+    assert step.export_targets_row.isEnabled()
     step.export_images_cb.setChecked(False)
+    step.export_masks_cb.setChecked(False)
     monkeypatch.setattr(QMessageBox, "question", lambda *args, **kwargs: QMessageBox.Yes)
 
     commands = step.build_commands()
@@ -692,9 +694,15 @@ def test_metashape_dataset_writer_resets_existing_output_even_if_images_toggle_i
     assert [phase for phase, _cmd in commands] == ["metashape_nerf"]
     job = _workflow_job(commands[0][1])
     assert job["kind"] == "metashape_nerf_dataset"
-    assert not old_file.exists()
-    assert not old_mask.exists()
-    assert old_settings.read_text(encoding="utf-8") == '{"old": true}\n'
+    assert job["write_images"] is False
+    assert job["write_masks"] is False
+    assert old_file.exists()
+    assert old_mask.exists()
+    step._finalize_bundle()
+    settings = json.loads(old_settings.read_text(encoding="utf-8"))
+    assert settings["conversion"]["no_image"] is True
+    assert settings["conversion"]["write_images"] is False
+    assert settings["conversion"]["write_masks"] is False
 
 
 def test_cubemap_build_validates_before_resetting_output(tmp_path: Path, monkeypatch) -> None:
@@ -748,7 +756,8 @@ def test_cubemap_finalize_writes_export_settings(tmp_path: Path) -> None:
     assert settings["view_config"]["cube6_drop_bottom"] is False
     assert settings["metashape_import"]["use_ply"] is True
     assert settings["output_files"]["settings"] == "_stechdrive/step4/export_settings.json"
-    assert settings["output_files"]["pointcloud"] == "pointcloud.ply"
+    assert settings["output_files"]["transforms_json"] == "transforms_lichtfeld.json"
+    assert settings["output_files"]["pointcloud"] == "pointcloud_lichtfeld.ply"
     assert settings["postprocess"]["final_orientation"] == "lichtfeld"
     assert settings["postprocess"]["final_orientation_stage"] == "cubemap_cli"
     assert settings["postprocess"]["lichtfeld_final_orientation_stage"] == "cubemap_cli"

@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-import json
 from pathlib import Path
 from typing import Any
 
 from core.artifact_registry import ArtifactRecord, load_artifacts, make_artifact_record, upsert_artifact
+from core.nerf_dataset_paths import find_nerf_pointcloud_path, find_nerf_transforms_path, load_json_object
 
 SFM_KIND_METASHAPE_XML_PLY = "metashape_xml_ply"
 SFM_KIND_COLMAP_SPARSE = "colmap_sparse"
@@ -36,7 +36,7 @@ def detect_dataset_kind(root: str | Path, *, preferred_kind: str = "") -> str:
         return preferred_kind
     if _has_colmap_sparse(dataset_root):
         return DATASET_KIND_LICHTFELD_COLMAP if "lfs_colmap" in dataset_root.name.lower() else DATASET_KIND_COLMAP_DATASET
-    if (dataset_root / "transforms.json").is_file():
+    if find_nerf_transforms_path(dataset_root) is not None:
         return DATASET_KIND_NERF_JSON_PLY
     return ""
 
@@ -127,9 +127,16 @@ def latest_dataset_root(
 
 def _dataset_files(root: Path) -> dict[str, Path]:
     files: dict[str, Path] = {}
+    transforms = find_nerf_transforms_path(root)
+    if transforms is not None:
+        files["transforms_json"] = transforms
+        pointcloud = find_nerf_pointcloud_path(root, transforms_json=transforms)
+        if pointcloud is not None:
+            files["pointcloud_file"] = pointcloud
+        raw_metashape_pointcloud = _declared_raw_metashape_pointcloud(transforms)
+        if raw_metashape_pointcloud is not None:
+            files["raw_metashape_pointcloud_file"] = raw_metashape_pointcloud
     for key, rel in (
-        ("transforms_json", "transforms.json"),
-        ("pointcloud_file", "pointcloud.ply"),
         ("images_dir", "images"),
         ("masks_dir", "masks"),
         ("colmap_sparse_dir", "sparse/0"),
@@ -139,27 +146,21 @@ def _dataset_files(root: Path) -> dict[str, Path]:
         candidate = root / rel
         if candidate.exists():
             files[key] = candidate
-    declared_pointcloud = _declared_transforms_pointcloud(root)
-    if declared_pointcloud is not None:
-        files["pointcloud_file"] = declared_pointcloud
     return files
 
 
-def _declared_transforms_pointcloud(root: Path) -> Path | None:
-    transforms = root / "transforms.json"
+def _declared_raw_metashape_pointcloud(transforms: Path) -> Path | None:
     if not transforms.is_file():
         return None
-    try:
-        data = json.loads(transforms.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
+    data = load_json_object(transforms)
+    source = data.get("source") if isinstance(data, dict) else None
+    if not isinstance(source, dict):
         return None
-    if not isinstance(data, dict):
-        return None
-    raw = str(data.get("ply_file_path") or "").strip()
+    raw = str(source.get("raw_metashape_pointcloud_path") or "").strip()
     if not raw:
         return None
     path = Path(raw)
-    candidate = path if path.is_absolute() else root / path
+    candidate = path if path.is_absolute() else transforms.parent / path
     return candidate if candidate.is_file() else None
 
 

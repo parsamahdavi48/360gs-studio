@@ -376,10 +376,17 @@ def lichtfeld_output_name_stem(value: str) -> str:
 def build_lichtfeld_training_cmd(options: LichtFeldTrainingOptions) -> list[str]:
     output_name = lichtfeld_output_name_stem(options.output_name)
     write_lichtfeld_config(options)
+    data_path = options.dataset.dataset_root
+    if (
+        options.dataset.transforms_json is not None
+        and options.dataset.transforms_json.is_file()
+        and options.dataset.transforms_json.name not in {"transforms.json", "transforms_train.json"}
+    ):
+        data_path = options.dataset.transforms_json
     cmd = [
         options.executable,
         "--data-path",
-        str(options.dataset.dataset_root),
+        str(data_path),
         "--output-path",
         str(options.output_dir),
         "--config",

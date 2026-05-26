@@ -54,6 +54,21 @@ def test_register_dataset_artifact_uses_declared_pointcloud_file(tmp_path: Path)
     assert record.files["pointcloud_file"] == "output/custom_dataset/custom_points.ply"
 
 
+def test_register_dataset_artifact_records_raw_metashape_pointcloud_file(tmp_path: Path) -> None:
+    root = tmp_path / "output" / "metashape_cubemap"
+    root.mkdir(parents=True)
+    (root / "metashape.ply").write_text("ply\n", encoding="ascii")
+    (root / "transforms.json").write_text(
+        '{"source": {"type": "metashape_xml_ply", "raw_metashape_pointcloud_path": "metashape.ply"}}',
+        encoding="utf-8",
+    )
+
+    record = register_dataset_artifact(tmp_path, artifact_id="dataset_raw_metashape_ply", root=root)
+
+    assert record is not None
+    assert record.files["raw_metashape_pointcloud_file"] == "output/metashape_cubemap/metashape.ply"
+
+
 def test_register_dataset_artifact_can_mark_realityscan_realign_input(tmp_path: Path) -> None:
     root = tmp_path / "output" / "realityscan"
     root.mkdir(parents=True)

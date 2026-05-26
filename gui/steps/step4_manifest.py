@@ -7,6 +7,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from core.colmap_mixed_project import COLMAP_MIXED_MANIFEST
+from core.nerf_dataset_paths import pointcloud_name_for_profile, transforms_name_for_profile
 from core.orientation_correction import (
     FINAL_ORIENTATION_LICHTFELD,
     FINAL_ORIENTATION_NONE,
@@ -36,6 +37,8 @@ from core.workflow_artifacts import (
 from gui import i18n
 from gui.steps.cubemap_commands import views_config_payload, write_views_config
 from gui.steps.step4_contracts import (
+    _AXIS_BRUSH,
+    _AXIS_POSTSHOT,
     _COLMAP_MAPPER_INCREMENTAL,
     _COLMAP_MATCHER_SEQUENTIAL,
     _COLMAP_PROJECT_MANIFEST_NAME,
@@ -132,6 +135,15 @@ class Step4ManifestMixin:
             input_transforms_json = self._metashape_import_work_dir() / "transforms.json"
         else:
             input_transforms_json = scene / "transforms.json"
+        profile_transforms_json = "transforms.json"
+        profile_pointcloud = "pointcloud.ply"
+        profile_raw_pointcloud = ""
+        if self._is_metashape_method() and route_uses_view_export and effective_profile != _PROFILE_REALITYSCAN:
+            nerf_profile = self._metashape_nerf_output_profile(axis_transform, final_orientation)
+            profile_transforms_json = transforms_name_for_profile(nerf_profile)
+            profile_pointcloud = pointcloud_name_for_profile(nerf_profile)
+            if axis_transform in {_AXIS_POSTSHOT, _AXIS_BRUSH}:
+                profile_raw_pointcloud = profile_pointcloud
 
         return {
             "app": "stechdrive-3dgs-utils",
@@ -286,15 +298,19 @@ class Step4ManifestMixin:
             "output_files": {
                 "settings": f"{STEP4_META_DIR_NAME}/{_EXPORT_SETTINGS_NAME}",
                 "views_config": views_config_path,
-                "transforms_json": "" if spheresfm and not spheresfm_runs_conversion else "transforms.json",
+                "transforms_json": ""
+                if spheresfm and not spheresfm_runs_conversion
+                else profile_transforms_json,
                 "images_dir": "images",
                 "masks_dir": "masks",
-                "pointcloud": "pointcloud.ply"
+                "pointcloud": profile_pointcloud
                 if direct
                 or spheresfm_3dgut
                 or spheresfm_projected
+                or (self._is_metashape_method() and route_uses_view_export and effective_profile != _PROFILE_REALITYSCAN)
                 or (route_uses_view_export and final_orientation == FINAL_ORIENTATION_LICHTFELD)
                 else "",
+                "raw_metashape_pointcloud": profile_raw_pointcloud,
                 "colmap_rig_dir": "colmap_rig",
                 "colmap_rig_config": "colmap_rig/rig_config.json",
                 "colmap_project_manifest": f"{STEP4_META_DIR_NAME}/sfm/{_COLMAP_PROJECT_MANIFEST_NAME}",
@@ -302,6 +318,14 @@ class Step4ManifestMixin:
                 "spheresfm_project_manifest": f"{STEP4_META_DIR_NAME}/sfm/{_SPHERESFM_PROJECT_MANIFEST_NAME}",
             },
         }
+
+    @staticmethod
+    def _metashape_nerf_output_profile(axis_transform: str, final_orientation: str) -> str:
+        if axis_transform in {_AXIS_POSTSHOT, _AXIS_BRUSH}:
+            return axis_transform
+        if final_orientation == FINAL_ORIENTATION_LICHTFELD:
+            return "lichtfeld"
+        return "custom"
 
     def _collect_training_settings(self) -> dict:
         if hasattr(self, "lfs_strategy_combo"):
@@ -405,10 +429,16 @@ class Step4ManifestMixin:
 
     def _step4_artifact_snapshot(self, root: Path) -> dict:
         scene = Path(self.scene_dir)
+        settings = self._current_export_settings_snapshot()
+        output_files = settings.get("output_files") if isinstance(settings.get("output_files"), dict) else {}
+        transforms_name = str(output_files.get("transforms_json") or "transforms.json")
+        pointcloud_name = str(output_files.get("pointcloud") or "pointcloud.ply")
+        raw_pointcloud_name = str(output_files.get("raw_metashape_pointcloud") or "metashape.ply")
         return {
             "root": scene_relative(scene, root),
-            "transforms_json": file_identity(root / "transforms.json"),
-            "pointcloud": file_identity(root / "pointcloud.ply"),
+            "transforms_json": file_identity(root / transforms_name),
+            "pointcloud": file_identity(root / pointcloud_name),
+            "raw_metashape_pointcloud": file_identity(root / raw_pointcloud_name),
             "images_dir": file_identity(root / "images"),
             "masks_dir": file_identity(root / "masks"),
             "colmap_sparse_dir": file_identity(root / "sparse"),

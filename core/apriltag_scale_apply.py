@@ -16,6 +16,7 @@ from core.apriltag_colmap_dataset import (
     scale_colmap_points3d_txt,
     validate_colmap_apriltag_dataset,
 )
+from core.nerf_dataset_paths import find_nerf_pointcloud_path, find_nerf_transforms_path
 from core.scene_layout import scene_output_dir, step4_export_settings_path
 
 
@@ -79,8 +80,7 @@ def _pointcloud_path(transforms_json: Path, data: dict) -> Path | None:
         if not path.is_file():
             raise ValueError(f"Point cloud referenced by transforms.json was not found: {path}")
         return path
-    default = transforms_json.parent / "pointcloud.ply"
-    return default if default.is_file() else None
+    return find_nerf_pointcloud_path(transforms_json.parent, transforms_json=transforms_json)
 
 
 def _iter_frame_image_paths(transforms_json: Path, data: dict) -> tuple[Path, ...]:
@@ -128,8 +128,8 @@ def validate_scale_output_dataset(
     output = Path(output_dir) if output_dir is not None else _configured_output_dir(scene)
     if not output.is_dir():
         raise ValueError(f"Output folder was not found: {output}")
-    transforms_json = output / "transforms.json"
-    if not transforms_json.is_file():
+    transforms_json = find_nerf_transforms_path(output)
+    if transforms_json is None:
         try:
             colmap = validate_colmap_apriltag_dataset(output, max_image_checks=max_image_checks)
         except Exception as exc:
@@ -170,6 +170,8 @@ def validate_scale_output_dataset(
         frame_count=len(data.get("frames", [])),
         checked_image_count=min(len(image_paths), max(1, int(max_image_checks))),
         root=output,
+        geometry_label=transforms_json.name,
+        pointcloud_label=pointcloud.name if pointcloud is not None else "pointcloud",
     )
 
 
@@ -339,8 +341,8 @@ def apply_scale_to_transforms_and_pointcloud(
         frames_scaled=frames_scaled,
         points_scaled=points_scaled,
         kind="transforms",
-        geometry_label="transforms.json",
-        pointcloud_label="pointcloud",
+        geometry_label=transforms_json.name,
+        pointcloud_label=pointcloud.name if pointcloud is not None else "pointcloud",
     )
 
 

@@ -10,6 +10,11 @@ from pathlib import Path
 from typing import Literal
 
 from core.artifact_registry import ArtifactRecord, load_artifacts
+from core.nerf_dataset_paths import (
+    find_nerf_pointcloud_path,
+    iter_nerf_transforms_paths,
+    profile_from_transforms_name,
+)
 from core.scene_layout import (
     scene_images_dir,
     scene_masks_dir,
@@ -62,10 +67,7 @@ def discover_scene_preview_candidates(scene_dir: Path) -> tuple[ScenePreviewCand
     current_output = _current_step4_output_root(scene, settings)
     dataset_records = load_artifacts(scene, "dataset")
     sfm_records = load_artifacts(scene, "sfm")
-    for dataset_root, record in _transforms_dataset_roots(scene, settings, dataset_records):
-        output_transforms = dataset_root / "transforms.json"
-        if not output_transforms.is_file():
-            continue
+    for dataset_root, output_transforms, record in _transforms_dataset_roots(scene, settings, dataset_records):
         candidates.append(
             ScenePreviewCandidate(
                 kind="output",
@@ -283,20 +285,17 @@ def _transforms_dataset_roots(
     scene: Path,
     settings: dict,
     records: list[ArtifactRecord],
-) -> tuple[tuple[Path, ArtifactRecord | None], ...]:
-    roots: list[tuple[Path, ArtifactRecord | None]] = []
+) -> tuple[tuple[Path, Path, ArtifactRecord | None], ...]:
+    roots: list[tuple[Path, Path, ArtifactRecord | None]] = []
     for record in records:
         if record.kind not in {DATASET_KIND_NERF_JSON_PLY, DATASET_KIND_REALITYSCAN_REALIGN_INPUT} or record.status != "ready":
             continue
         root = artifact_root_path(scene, record)
-        if (root / "transforms.json").is_file():
-            roots.append((root, record))
+        roots.extend((root, transforms, record) for transforms in iter_nerf_transforms_paths(root))
     for root in _step4_dataset_roots(scene, settings):
-        if (root / "transforms.json").is_file():
-            roots.append((root, None))
-    for root in _shallow_dataset_dirs(scene_output_dir(scene), marker="transforms.json"):
-        roots.append((root, None))
-    return tuple(_dedupe_root_records(roots))
+        roots.extend((root, transforms, None) for transforms in iter_nerf_transforms_paths(root))
+    roots.extend((root, transforms, None) for root, transforms in _shallow_transforms_dataset_roots(scene_output_dir(scene)))
+    return tuple(_dedupe_transform_records(roots))
 
 
 def _colmap_dataset_roots(
@@ -404,15 +403,17 @@ def _dedupe_paths(paths: Iterable[Path]) -> list[Path]:
     return result
 
 
-def _dedupe_root_records(items: Iterable[tuple[Path, ArtifactRecord | None]]) -> list[tuple[Path, ArtifactRecord | None]]:
-    result: list[tuple[Path, ArtifactRecord | None]] = []
+def _dedupe_transform_records(
+    items: Iterable[tuple[Path, Path, ArtifactRecord | None]],
+) -> list[tuple[Path, Path, ArtifactRecord | None]]:
+    result: list[tuple[Path, Path, ArtifactRecord | None]] = []
     seen: set[str] = set()
-    for path, record in items:
-        key = _path_key(path)
+    for root, transforms, record in items:
+        key = _path_key(transforms)
         if key in seen:
             continue
         seen.add(key)
-        result.append((path, record))
+        result.append((root, transforms, record))
     return result
 
 
@@ -479,8 +480,10 @@ def _dataset_label(
         if record.kind == DATASET_KIND_REALITYSCAN_REALIGN_INPUT or _is_realityscan_realign_record(record):
             return f"RealityScan realign input ({record.id})"
         if record.kind == DATASET_KIND_NERF_JSON_PLY:
+            profile = _transforms_profile_label(transforms_json)
             suffix = "JSON/PLY" if _transforms_pointcloud_path(root, transforms_json) is not None else "JSON"
-            return f"Dataset: NeRF {suffix} ({record.id})"
+            prefix = f"NeRF {profile} " if profile else "NeRF "
+            return f"Dataset: {prefix}{suffix} ({record.id})"
         if record.kind == DATASET_KIND_LICHTFELD_COLMAP:
             return f"Dataset: LichtFeld COLMAP ({record.id})"
         if record.kind == DATASET_KIND_COLMAP_DATASET:
@@ -505,26 +508,14 @@ def _is_realityscan_realign_record(record: ArtifactRecord) -> bool:
 
 
 def _transforms_pointcloud_path(root: Path, transforms_json: Path | None = None) -> Path | None:
-    transforms = transforms_json or root / "transforms.json"
-    declared = _declared_transforms_pointcloud(root, transforms)
-    return declared or _existing_file(root / "pointcloud.ply")
+    return find_nerf_pointcloud_path(root, transforms_json=transforms_json)
 
 
-def _declared_transforms_pointcloud(root: Path, transforms_json: Path) -> Path | None:
-    if not transforms_json.is_file():
-        return None
-    try:
-        data = json.loads(transforms_json.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return None
-    if not isinstance(data, dict):
-        return None
-    raw = str(data.get("ply_file_path") or "").strip()
-    if not raw:
-        return None
-    path = Path(raw)
-    candidate = path if path.is_absolute() else root / path
-    return _existing_file(candidate)
+def _transforms_profile_label(transforms_json: Path | None) -> str:
+    if transforms_json is None:
+        return ""
+    profile = profile_from_transforms_name(transforms_json)
+    return profile.capitalize() if profile else ""
 
 
 def _load_dataset_manifest(root: Path) -> dict:
@@ -648,6 +639,35 @@ def _shallow_dataset_dirs(output: Path, *, marker: str) -> tuple[Path, ...]:
                 if grandchild.is_dir() and (grandchild / marker).is_file():
                     roots.append(grandchild)
     return tuple(_dedupe_paths(roots))
+
+
+def _shallow_transforms_dataset_roots(output: Path) -> tuple[tuple[Path, Path], ...]:
+    if not output.is_dir():
+        return ()
+    roots: list[tuple[Path, Path]] = []
+
+    def add_root(root: Path) -> None:
+        roots.extend((root, transforms) for transforms in iter_nerf_transforms_paths(root))
+
+    for child in output.iterdir():
+        if _is_preview_scan_excluded(child):
+            continue
+        if child.is_dir():
+            add_root(child)
+            for grandchild in child.iterdir():
+                if _is_preview_scan_excluded(grandchild):
+                    continue
+                if grandchild.is_dir():
+                    add_root(grandchild)
+    result: list[tuple[Path, Path]] = []
+    seen: set[str] = set()
+    for root, transforms in roots:
+        key = _path_key(transforms)
+        if key in seen:
+            continue
+        seen.add(key)
+        result.append((root, transforms))
+    return tuple(result)
 
 
 def _shallow_colmap_dataset_dirs(output: Path) -> tuple[Path, ...]:

@@ -158,7 +158,7 @@ Step 6からCLI起動する場合は、v1.0/v1.1 Release BuildのPostshot CLIを
 | --- | --- |
 | COLMAP | COLMAP sparseモデル |
 | SphereSfM | SphereSfM sparseモデル |
-| Metashape | `transforms.json` と、利用可能なMetashape点群PLY |
+| Metashape | `transforms_postshot.json` と `pointcloud_postshot.ply` など、選択中プリセットのカメラJSONと点群PLY |
 
 カメラポーズが見つからない状態で `Import` のまま起動すると、Step 6は実行前に止まります。先にStep 5でSfMまたは変換を実行するか、Postshot側に推定させるため `Estimate` に切り替えます。
 

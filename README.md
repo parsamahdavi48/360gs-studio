@@ -26,7 +26,7 @@ After extracting the ZIP, run `setup_windows.bat`, then `run_gui.bat`.
 
 Register 360° video from Insta360 / Osmo 360 or similar cameras, normal video from smartphones or mirrorless cameras, and still-image folders in the same scene. Review keep/drop decisions in Step 2, then mask people, the camera operator, tripods, sky, stitch seams, blown-out highlights, and similar areas in Step 3 before sending the images to Metashape, COLMAP, SphereSfM, or RealityScan.
 
-After Metashape SfM, create a NeRF-style `transforms.json` / `pointcloud.ply` dataset, a COLMAP-format dataset, or cubemap/XMP data for RealityScan realignment. In Step 5, choose the output format based on the training app you plan to use, such as LichtFeld Studio, Postshot, or Brush.
+After Metashape SfM, create a NeRF-style JSON/PLY dataset with profile-specific names such as `transforms_postshot.json` / `pointcloud_postshot.ply`, a COLMAP-format dataset, or cubemap/XMP data for RealityScan realignment. In Step 5, choose the output format based on the training app you plan to use, such as LichtFeld Studio, Postshot, or Brush.
 
 ### 2. Run SfM Inside the App
 

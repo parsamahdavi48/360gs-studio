@@ -63,7 +63,7 @@ RealityScanへ段階的に投入するのは意図した使い方です。先に
 
 ### Metashape → NeRFデータセット(JSON/PLY)
 
-MetashapeのカメラXMLと点群PLYから、`transforms.json` と `pointcloud.ply` を使うNeRF/3DGS系データセットを作ります。
+MetashapeのカメラXMLと点群PLYから、NeRF/3DGS系データセットを作ります。PINHOLE出力では `transforms_postshot.json` と `pointcloud_postshot.ply` のように、出力プリセット別のJSON/PLYを書き出します。
 
 | 選択 | 使う場面 |
 | --- | --- |

@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
+from core.nerf_dataset_paths import find_nerf_pointcloud_path, find_nerf_transforms_path, load_json_object
 from core.scene_layout import project_path, scene_images_dir, scene_output_dir, step4_meta_dir
 from core.scene_project import load_json
 from core.workflow_artifacts import (
@@ -65,7 +66,7 @@ class Step4TrainingDatasetMixin:
             self._training_backend() == _TRAINING_BACKEND_POSTSHOT
             and (self.postshot_camera_poses_combo.currentData() or "import") == "import"
             and dataset.colmap_sparse_dir is None
-            and not dataset.transforms_json.is_file()
+            and (dataset.transforms_json is None or not dataset.transforms_json.is_file())
         ):
             return i18n.t("POSTSHOT_IMPORT_POSES_NOT_FOUND")
         return None
@@ -95,8 +96,8 @@ class Step4TrainingDatasetMixin:
                 except OSError:
                     continue
 
-        transforms = dataset_root / "transforms.json"
-        if not transforms.is_file():
+        transforms = self._training_transforms_path(dataset_root)
+        if transforms is None or not transforms.is_file():
             return ""
         data = load_json(transforms, {})
         camera_model = str(data.get("camera_model") or "").strip().upper()
@@ -235,6 +236,7 @@ class Step4TrainingDatasetMixin:
 
     def _training_dataset(self) -> TrainingDataset:
         dataset_root = self._training_dataset_dir()
+        transforms_json = self._training_transforms_path(dataset_root)
         if self._is_colmap_method():
             images_dir = self._colmap_rig_images_dir()
             masks_dir = self._colmap_rig_masks_dir()
@@ -246,16 +248,89 @@ class Step4TrainingDatasetMixin:
             images_dir=images_dir,
             masks_dir=masks_dir,
             colmap_sparse_dir=self._training_sparse_model_dir(),
-            transforms_json=dataset_root / "transforms.json",
-            pointcloud_ply=self._training_pointcloud_source(dataset_root),
+            transforms_json=transforms_json,
+            pointcloud_ply=self._training_pointcloud_source(dataset_root, transforms_json=transforms_json),
             output_shape=self._output_shape(),
         )
 
-    def _training_pointcloud_source(self, dataset_root: Path) -> Path | None:
-        pointcloud = dataset_root / "pointcloud.ply"
-        if pointcloud.is_file():
+    def _training_preferred_profiles(self) -> tuple[str, ...]:
+        backend = self._training_backend()
+        if backend == _TRAINING_BACKEND_POSTSHOT:
+            return ("postshot",)
+        if backend == _TRAINING_BACKEND_LICHTFELD:
+            return ("lichtfeld",)
+        return ()
+
+    def _training_transforms_path(self, dataset_root: Path) -> Path | None:
+        return find_nerf_transforms_path(
+            dataset_root,
+            preferred_profiles=self._training_preferred_profiles(),
+        )
+
+    def _training_pointcloud_source(self, dataset_root: Path, *, transforms_json: Path | None = None) -> Path | None:
+        if self._training_uses_external_metashape_pointcloud(dataset_root, transforms_json=transforms_json):
+            return self._training_external_metashape_pointcloud(dataset_root, transforms_json=transforms_json)
+        pointcloud = find_nerf_pointcloud_path(
+            dataset_root,
+            transforms_json=transforms_json,
+            preferred_profiles=self._training_preferred_profiles(),
+        )
+        if pointcloud is not None:
             return pointcloud
         return self._resolve_ply_source()
+
+    def _training_uses_external_metashape_pointcloud(
+        self,
+        dataset_root: Path,
+        *,
+        transforms_json: Path | None = None,
+    ) -> bool:
+        if self._training_backend() != _TRAINING_BACKEND_POSTSHOT:
+            return False
+        transforms = transforms_json or self._training_transforms_path(dataset_root)
+        data = load_json_object(transforms) if transforms is not None and transforms.is_file() else {}
+        source = data.get("source") if isinstance(data, dict) else None
+        if not isinstance(source, dict):
+            return False
+        if source.get("type") != "metashape_xml_ply":
+            return False
+        axis_transform = str(source.get("axis_transform") or "").strip().lower().replace("_", "-")
+        pointcloud_policy = str(source.get("pointcloud_policy") or "").strip().lower()
+        return axis_transform in {"postshot", "brush"} or pointcloud_policy in {
+            "raw_metashape_ply",
+            "external_metashape_ply",
+        }
+
+    def _training_external_metashape_pointcloud(
+        self,
+        dataset_root: Path,
+        *,
+        transforms_json: Path | None = None,
+    ) -> Path | None:
+        transforms = transforms_json or self._training_transforms_path(dataset_root)
+        data = load_json_object(transforms) if transforms is not None and transforms.is_file() else {}
+        source = data.get("source") if isinstance(data, dict) else None
+        if not isinstance(source, dict):
+            return None
+        raw_path = str(
+            source.get("raw_metashape_pointcloud_path") or source.get("external_pointcloud_path") or ""
+        ).strip()
+        if raw_path:
+            path = Path(raw_path)
+            candidates = [path] if path.is_absolute() else [dataset_root / path]
+            if self.scene_dir:
+                candidates.append(Path(self.scene_dir) / path)
+            for candidate in candidates:
+                if candidate.is_file():
+                    return candidate
+        return self._raw_metashape_ply_source()
+
+    def _raw_metashape_ply_source(self) -> Path | None:
+        ply_text = self.ms_ply_browse.text().strip() if hasattr(self, "ms_ply_browse") else ""
+        if not ply_text:
+            return None
+        ply = Path(ply_text)
+        return ply if ply.is_file() else None
 
     def _training_dataset_available(self) -> bool:
         if not self.scene_dir or not hasattr(self, "training_dataset_browse"):

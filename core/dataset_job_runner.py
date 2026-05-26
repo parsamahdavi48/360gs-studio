@@ -105,6 +105,8 @@ def _run_metashape_nerf(job: dict, *, cancel_event: CancellationToken | None = N
         undistort_alpha=float(job.get("undistort_alpha", 1.0)),
         axis_transform=str(job.get("axis_transform") or "none"),
         final_orientation=str(job.get("final_orientation") or "none"),
+        write_images=bool(job.get("write_images", True)),
+        write_masks=bool(job.get("write_masks", True)),
         progress_callback=_progress_log_callback(cancel_event),
     )
     print(f"Saved mixed Metashape NeRF dataset: {result.output_dir}", flush=True)

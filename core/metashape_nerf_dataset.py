@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import shutil
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -27,6 +28,7 @@ from core.metashape_dataset_assets import (
     undistort_frame_to_pinhole_asset,
 )
 from core.metashape_model import CAMERA_MODEL_EQUIRECTANGULAR, parse_metashape_model
+from core.nerf_dataset_paths import pointcloud_name_for_profile, transforms_name_for_profile
 from core.orientation_correction import (
     FINAL_ORIENTATION_LICHTFELD,
     FINAL_ORIENTATION_NONE,
@@ -91,6 +93,8 @@ def export_metashape_nerf_dataset(
     undistort_alpha: float = DEFAULT_UNDISTORT_ALPHA,
     axis_transform: str = AXIS_TRANSFORM_NONE,
     final_orientation: str = FINAL_ORIENTATION_NONE,
+    write_images: bool = True,
+    write_masks: bool = True,
     progress_callback: ProgressCallback | None = None,
 ) -> MetashapeNerfExportResult:
     scene = Path(scene_dir)
@@ -125,12 +129,17 @@ def export_metashape_nerf_dataset(
     output_images.mkdir(parents=True, exist_ok=True)
     world_transform = dataset_world_transform(axis_transform, final_orientation)
     item_count = len(plan.items)
-    progress_total = max(1, item_count + 1 + (1 if ply_path else 0))
+    writes_dataset_pointcloud = metashape_nerf_writes_dataset_pointcloud(axis_transform, final_orientation)
+    profile_suffix = metashape_nerf_profile_suffix(axis_transform, final_orientation)
+    transforms_name = transforms_name_for_profile(profile_suffix)
+    pointcloud_name = pointcloud_name_for_profile(profile_suffix)
+    progress_total = max(1, item_count + 1 + (1 if ply_path and writes_dataset_pointcloud else 0))
     _notify_progress(progress_callback, 0, progress_total)
 
     frames: list[dict[str, Any]] = []
     action_counts: dict[str, int] = {}
     remap_cache = RemapTableCache(max_entries=max(1, sum(1 for view in views if bool(view.get("enabled", True)))))
+    pointcloud_transform = dataset_pointcloud_transform(axis_transform, final_orientation)
 
     for item_index, item in enumerate(plan.items, start=1):
         action_counts[item.action] = action_counts.get(item.action, 0) + 1
@@ -169,6 +178,8 @@ def export_metashape_nerf_dataset(
                 source_camera_id=item.camera_id,
                 source_camera_label=item.camera_label,
                 remap_cache=remap_cache,
+                write_images=write_images,
+                write_masks=write_masks,
             )
         elif item.action == EXPORT_ACTION_LINK_PINHOLE:
             assets = (
@@ -184,6 +195,8 @@ def export_metashape_nerf_dataset(
                     action=item.action,
                     source_camera_id=item.camera_id,
                     source_camera_label=item.camera_label,
+                    write_images=write_images,
+                    write_masks=write_masks,
                 ),
             )
         elif item.action == EXPORT_ACTION_UNDISTORT_FRAME_TO_PINHOLE:
@@ -203,6 +216,8 @@ def export_metashape_nerf_dataset(
                     action=item.action,
                     source_camera_id=item.camera_id,
                     source_camera_label=item.camera_label,
+                    write_images=write_images,
+                    write_masks=write_masks,
                 ),
             )
         else:
@@ -228,8 +243,13 @@ def export_metashape_nerf_dataset(
             "axis_transform": normalize_axis_transform(axis_transform),
             "axis_transform_matrix": axis_transform_matrix(axis_transform).tolist(),
             "final_orientation": normalize_final_orientation(final_orientation),
+            "target_profile": profile_suffix,
+            "transforms_json": transforms_name,
+            "pointcloud_name": pointcloud_name,
             "dataset_world_transform": world_transform.tolist(),
-            "pointcloud_world_transform": dataset_pointcloud_transform(final_orientation).tolist(),
+            "pointcloud_policy": "dataset_pointcloud" if writes_dataset_pointcloud else "raw_metashape_ply",
+            "pointcloud_world_transform": pointcloud_transform.tolist() if writes_dataset_pointcloud else None,
+            "raw_metashape_pointcloud_path": "",
             "per_frame_intrinsics": True,
             "per_frame_camera_model": True,
             "top_level_camera_group_count": top_camera_count,
@@ -243,32 +263,46 @@ def export_metashape_nerf_dataset(
         mark_final_orientation(payload, final_orientation, FINAL_ORIENTATION_STAGE_CUBEMAP_CLI)
 
     pointcloud_output: Path | None = None
-    if ply_path:
+    raw_pointcloud_output: Path | None = None
+    _remove_stale_legacy_outputs(output, protected_paths=[Path(ply_path)] if ply_path else [])
+    if ply_path and writes_dataset_pointcloud:
         ply = Path(ply_path)
         if ply.is_file():
-            pointcloud_output = output / "pointcloud.ply"
-            write_transformed_ply(ply, pointcloud_output, dataset_pointcloud_transform(final_orientation))
+            pointcloud_output = output / pointcloud_name
+            write_transformed_ply(ply, pointcloud_output, pointcloud_transform)
             payload["ply_file_path"] = pointcloud_output.name
         _notify_progress(progress_callback, item_count + 1, progress_total)
+    elif not writes_dataset_pointcloud:
+        ply = Path(ply_path) if ply_path else None
+        if ply is not None and ply.is_file():
+            raw_pointcloud_output = _copy_raw_metashape_ply(ply, output / pointcloud_name)
+            payload["source"]["raw_metashape_pointcloud_path"] = raw_pointcloud_output.relative_to(output).as_posix()
 
     write_result = write_nerf_json_ply_dataset(
         output,
         payload,
-        transforms_name="transforms.json",
-        pointcloud_name="pointcloud.ply",
+        transforms_name=transforms_name,
+        pointcloud_name=pointcloud_name,
         manifest={
             "source_kind": "metashape_xml_ply",
+            "target_profile": profile_suffix,
+            "transforms_json": transforms_name,
+            "pointcloud": (pointcloud_output or raw_pointcloud_output).name
+            if (pointcloud_output or raw_pointcloud_output) is not None
+            else "",
             "action_counts": action_counts,
             "warnings": list(plan.warnings),
             "images_dir": "images",
             "masks_dir": "masks",
+            "write_images": bool(write_images),
+            "write_masks": bool(write_masks),
         },
     )
     _notify_progress(progress_callback, progress_total, progress_total)
     return MetashapeNerfExportResult(
         output_dir=output,
         transforms_json=write_result.transforms_json,
-        pointcloud=pointcloud_output or write_result.pointcloud,
+        pointcloud=pointcloud_output or raw_pointcloud_output or write_result.pointcloud,
         frame_count=write_result.frame_count,
         action_counts=action_counts,
         warnings=plan.warnings,
@@ -497,12 +531,51 @@ def dataset_world_transform(axis_transform: object, final_orientation: object) -
     return matrix
 
 
-def dataset_pointcloud_transform(final_orientation: object) -> np.ndarray:
-    matrix = metashape_pointcloud_matrix()
+def dataset_pointcloud_transform(axis_transform: object, final_orientation: object) -> np.ndarray:
+    return dataset_world_transform(axis_transform, final_orientation) @ metashape_pointcloud_matrix()
+
+
+def metashape_nerf_writes_dataset_pointcloud(axis_transform: object, final_orientation: object) -> bool:
+    normalize_final_orientation(final_orientation)
+    return normalize_axis_transform(axis_transform) == AXIS_TRANSFORM_NONE
+
+
+def metashape_nerf_profile_suffix(axis_transform: object, final_orientation: object) -> str:
+    mode = normalize_axis_transform(axis_transform)
+    if mode in {AXIS_TRANSFORM_POSTSHOT, AXIS_TRANSFORM_BRUSH}:
+        return mode
     orientation = normalize_final_orientation(final_orientation)
-    if orientation != FINAL_ORIENTATION_NONE:
-        matrix = final_orientation_matrix(orientation) @ matrix
-    return matrix
+    if orientation == FINAL_ORIENTATION_LICHTFELD:
+        return "lichtfeld"
+    return "custom"
+
+
+def _remove_stale_legacy_outputs(output: Path, *, protected_paths: list[Path]) -> None:
+    protected = {_path_key(path) for path in protected_paths}
+    for name in ("transforms.json", "pointcloud.ply", "metashape.ply"):
+        path = output / name
+        if not path.exists() and not path.is_symlink():
+            continue
+        if _path_key(path) in protected:
+            continue
+        path.unlink()
+
+
+def _path_key(path: Path) -> str:
+    try:
+        return str(path.resolve()).casefold()
+    except OSError:
+        return str(path.absolute()).casefold()
+
+
+def _copy_raw_metashape_ply(source: Path, dest: Path) -> Path:
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    if source.resolve() == dest.resolve():
+        return dest
+    if dest.exists() or dest.is_symlink():
+        dest.unlink()
+    shutil.copy2(source, dest)
+    return dest
 
 
 def metashape_model_requires_mixed_nerf_writer(xml_path: str | Path) -> bool:

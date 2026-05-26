@@ -122,8 +122,6 @@ class Step4CommandPlanMixin:
                 if self.export_colmap_cb.isChecked():
                     raise ValueError(i18n.t("METASHAPE_MIXED_NERF_COLMAP_OPTION_UNSUPPORTED"))
                 nerf_cmd = self._build_metashape_nerf_cmd()
-                self.export_images_cb.setChecked(True)
-                self.export_masks_cb.setChecked(True)
                 if not self._prepare_output_dir():
                     return []
                 self._write_views_config(
@@ -387,6 +385,8 @@ class Step4CommandPlanMixin:
                 undistort_alpha=1.0,
                 axis_transform=self._axis_transform_mode(),
                 final_orientation=self._cubemap_final_orientation(),
+                write_images=self._writes_images(),
+                write_masks=self._writes_masks(),
             ),
         )
         return build_metashape_nerf_cmd(

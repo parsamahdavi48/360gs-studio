@@ -26,7 +26,7 @@ ZIPを展開したら、`setup_windows.bat`、続いて `run_gui.bat` を実行�
 
 Insta360 / Osmo 360などの360°動画、スマホやデジタル一眼の通常動画、既に切り出した連番静止画を同じシーンに登録できます。Step 2で採用/除外を確認し、Step 3で人物、撮影者、三脚、空、スティッチ境界、白飛びなどをマスクしてから、Metashape、COLMAP、SphereSfM、RealityScanなどへ渡せます。
 
-MetashapeでSfMした結果は、NeRF系の `transforms.json` / `pointcloud.ply`、COLMAP形式データセット、またはRealityScan再アライン用のCubemap/XMPへ変換できます。LichtFeld Studio、Postshot、Brushなど、読み込ませる学習アプリに合わせてStep 5で出力形式を選びます。
+MetashapeでSfMした結果は、`transforms_postshot.json` / `pointcloud_postshot.ply` のような出力プリセット別のNeRF系JSON/PLY、COLMAP形式データセット、またはRealityScan再アライン用のCubemap/XMPへ変換できます。LichtFeld Studio、Postshot、Brushなど、読み込ませる学習アプリに合わせてStep 5で出力形式を選びます。
 
 ### 2. アプリ内でSfMする
 
