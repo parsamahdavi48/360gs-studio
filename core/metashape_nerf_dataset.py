@@ -22,9 +22,7 @@ from core.metashape_dataset_assets import (
     RemapTableCache,
     distortion_coefficients,
     expand_erp_to_view_assets,
-    image_size,
     link_pinhole_asset,
-    pinhole_payload,
     resolve_inventory_path,
     undistort_frame_to_pinhole_asset,
 )
@@ -304,23 +302,21 @@ def analyze_metashape_nerf_compatibility(
         if camera is None or not item.image_rel_path:
             continue
         sensor = model.sensor_for_camera(camera)
-        source_image = resolve_inventory_path(scene, images_root, item.image_rel_path, standard_root_name="images")
         if item.action == EXPORT_ACTION_EXPAND_ERP_TO_VIEWS:
             frames.extend(
-                _planned_erp_frame_payloads(
-                    source_image=source_image,
+                _planned_erp_frame_payloads_for_sensor(
+                    sensor=sensor,
                     views=views,
                     output_scale=output_scale,
                     fov_deg=fov_deg,
                 )
             )
         elif item.action == EXPORT_ACTION_LINK_PINHOLE:
-            frames.append(_planned_pinhole_frame_payload(sensor=sensor, source_image=source_image))
+            frames.append(_planned_pinhole_frame_payload_for_sensor(sensor=sensor))
         elif item.action == EXPORT_ACTION_UNDISTORT_FRAME_TO_PINHOLE:
             frames.append(
-                _planned_undistorted_frame_payload(
+                _planned_undistorted_frame_payload_for_sensor(
                     sensor=sensor,
-                    source_image=source_image,
                     alpha=undistort_alpha,
                 )
             )
@@ -344,15 +340,14 @@ def analyze_metashape_nerf_compatibility(
     )
 
 
-def _planned_erp_frame_payloads(
+def _planned_erp_frame_payloads_for_sensor(
     *,
-    source_image: Path,
+    sensor: Any,
     views: list[dict[str, Any]],
     output_scale: float,
     fov_deg: float,
 ) -> list[dict[str, Any]]:
-    _width, height = image_size(source_image)
-    output_size = max(1, int(round(height * float(output_scale))))
+    output_size = max(1, int(round(int(sensor.height) * float(output_scale))))
     focal = output_size / 2.0 / np.tan(np.deg2rad(fov_deg) / 2.0)
     principal = (output_size - 1.0) / 2.0
     return [
@@ -370,8 +365,8 @@ def _planned_erp_frame_payloads(
     ]
 
 
-def _planned_pinhole_frame_payload(*, sensor: Any, source_image: Path) -> dict[str, Any]:
-    width, height, params = pinhole_payload(sensor, source_image)
+def _planned_pinhole_frame_payload_for_sensor(*, sensor: Any) -> dict[str, Any]:
+    width, height, params = _sensor_pinhole_payload(sensor)
     fl_x, fl_y, cx, cy = params[:4]
     return {
         "camera_model": "PINHOLE",
@@ -384,8 +379,8 @@ def _planned_pinhole_frame_payload(*, sensor: Any, source_image: Path) -> dict[s
     }
 
 
-def _planned_undistorted_frame_payload(*, sensor: Any, source_image: Path, alpha: float) -> dict[str, Any]:
-    width, height, params = pinhole_payload(sensor, source_image)
+def _planned_undistorted_frame_payload_for_sensor(*, sensor: Any, alpha: float) -> dict[str, Any]:
+    width, height, params = _sensor_pinhole_payload(sensor)
     matrix = np.array([[params[0], 0.0, params[2]], [0.0, params[1], params[3]], [0.0, 0.0, 1.0]], dtype=np.float64)
     distortion = distortion_coefficients(sensor)
     new_matrix, _roi = cv2.getOptimalNewCameraMatrix(matrix, distortion, (width, height), alpha, (width, height))
@@ -398,6 +393,16 @@ def _planned_undistorted_frame_payload(*, sensor: Any, source_image: Path, alpha
         "cx": float(new_matrix[0, 2]),
         "cy": float(new_matrix[1, 2]),
     }
+
+
+def _sensor_pinhole_payload(sensor: Any) -> tuple[int, int, tuple[float, ...]]:
+    width = int(sensor.width)
+    height = int(sensor.height)
+    fl_x = float(sensor.params.get("fl_x") or sensor.params.get("f") or width)
+    fl_y = float(sensor.params.get("fl_y") or fl_x)
+    cx = float(sensor.params.get("cx") or width / 2.0)
+    cy = float(sensor.params.get("cy") or height / 2.0)
+    return width, height, (fl_x, fl_y, cx, cy)
 
 
 def is_lichtfeld_nerf_target(*, axis_transform: object, final_orientation: object) -> bool:

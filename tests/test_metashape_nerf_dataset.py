@@ -8,8 +8,14 @@ import pytest
 from PIL import Image
 
 import core.metashape_dataset_assets as asset_mod
+from core.dataset_export_plan import EXPORT_ACTION_EXPAND_ERP_TO_VIEWS, DatasetExportPlan, DatasetExportPlanItem
 from core.metashape_coordinates import metashape_camera_matrix_to_output_world
-from core.metashape_nerf_dataset import export_metashape_nerf_dataset, metashape_model_requires_mixed_nerf_writer
+from core.metashape_model import parse_metashape_model
+from core.metashape_nerf_dataset import (
+    analyze_metashape_nerf_compatibility,
+    export_metashape_nerf_dataset,
+    metashape_model_requires_mixed_nerf_writer,
+)
 
 _IDENTITY = "1 0 0 0 0 1 0 0 0 0 1 0 0 0 0 1"
 
@@ -222,6 +228,54 @@ def test_metashape_asset_image_size_uses_metadata_without_full_decode(
     monkeypatch.setattr(asset_mod, "load_equirect", fail_load_equirect)
 
     assert asset_mod.image_size(image) == (64, 32)
+
+
+def test_metashape_nerf_lichtfeld_compatibility_uses_xml_sensor_sizes(tmp_path: Path) -> None:
+    scene = tmp_path / "scene"
+    scene.mkdir()
+    xml = scene / "metashape.xml"
+    _write_two_spherical_xml(xml)
+    model = parse_metashape_model(xml)
+    camera_by_id = {camera.camera_id: camera for camera in model.cameras}
+    plan = DatasetExportPlan(
+        source_kind="metashape_xml_ply",
+        items=(
+            DatasetExportPlanItem(
+                action=EXPORT_ACTION_EXPAND_ERP_TO_VIEWS,
+                camera_id="0",
+                camera_label="pano_a.jpg",
+                sensor_id="0",
+                camera_model="EQUIRECTANGULAR",
+                image_rel_path="images/missing_a.jpg",
+                mask_rel_path="",
+            ),
+            DatasetExportPlanItem(
+                action=EXPORT_ACTION_EXPAND_ERP_TO_VIEWS,
+                camera_id="1",
+                camera_label="pano_b.jpg",
+                sensor_id="0",
+                camera_model="EQUIRECTANGULAR",
+                image_rel_path="images/missing_b.jpg",
+                mask_rel_path="",
+            ),
+        ),
+    )
+
+    compatibility = analyze_metashape_nerf_compatibility(
+        scene_dir=scene,
+        images_dir=scene / "images",
+        masks_dir=None,
+        xml_path=xml,
+        views=[{"name": "pz", "yaw": 0.0, "pitch": 0.0}, {"name": "px", "yaw": 90.0, "pitch": 0.0}],
+        output_scale=0.5,
+        _model=model,
+        _plan=plan,
+        _camera_by_id=camera_by_id,
+    )
+
+    assert compatibility.lichtfeld_nerf_supported is True
+    assert compatibility.frame_count == 4
+    assert compatibility.camera_group_count == 1
 
 
 def test_metashape_nerf_camera_transform_matches_coordinate_contract() -> None:
