@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections import OrderedDict
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -20,6 +21,53 @@ from core.cubemap_remap import (
 )
 from core.dataset_writer_colmap import replace_file_with_link_or_copy
 from core.metashape_model import MetashapeSensor
+
+
+class RemapTableCache:
+    def __init__(self, max_entries: int) -> None:
+        self.max_entries = max(1, int(max_entries))
+        self._entries: OrderedDict[
+            tuple[int, int, int, float, float, float],
+            tuple[np.ndarray, np.ndarray],
+        ] = OrderedDict()
+
+    @staticmethod
+    def _key(
+        input_size: tuple[int, int],
+        output_size: int,
+        fov_deg: float,
+        yaw_deg: float,
+        pitch_deg: float,
+    ) -> tuple[int, int, int, float, float, float]:
+        return (
+            int(input_size[0]),
+            int(input_size[1]),
+            int(output_size),
+            round(float(fov_deg), 6),
+            round(float(yaw_deg), 6),
+            round(float(pitch_deg), 6),
+        )
+
+    def get(
+        self,
+        input_size: tuple[int, int],
+        output_size: int,
+        fov_deg: float,
+        yaw_deg: float,
+        pitch_deg: float,
+    ) -> tuple[np.ndarray, np.ndarray]:
+        key = self._key(input_size, output_size, fov_deg, yaw_deg, pitch_deg)
+        cached = self._entries.get(key)
+        if cached is not None:
+            self._entries.move_to_end(key)
+            return cached
+
+        tables = build_remap(input_size, fov_deg, yaw_deg, pitch_deg, output_size)
+        self._entries[key] = tables
+        self._entries.move_to_end(key)
+        while len(self._entries) > self.max_entries:
+            self._entries.popitem(last=False)
+        return tables
 
 
 @dataclass(frozen=True, slots=True)
@@ -83,6 +131,7 @@ def expand_erp_to_view_assets(
     action: str,
     source_camera_id: str,
     source_camera_label: str,
+    remap_cache: RemapTableCache | None = None,
 ) -> tuple[MetashapeDatasetAsset, ...]:
     source = load_equirect(str(source_image))
     input_size = (int(source.shape[1]), int(source.shape[0]))
@@ -98,7 +147,10 @@ def expand_erp_to_view_assets(
         name = str(view["name"])
         yaw = float(view["yaw"])
         pitch = float(view["pitch"])
-        map_x, map_y = build_remap(input_size, fov_deg, yaw, pitch, output_size)
+        if remap_cache is not None:
+            map_x, map_y = remap_cache.get(input_size, output_size, fov_deg, yaw, pitch)
+        else:
+            map_x, map_y = build_remap(input_size, fov_deg, yaw, pitch, output_size)
         output_image = output_images / rel.with_name(f"{rel.stem}_{name}{out_ext}")
         output_image.parent.mkdir(parents=True, exist_ok=True)
         save_image(
@@ -309,11 +361,18 @@ def relative_image_path(path: Path, root: Path) -> Path:
 
 
 def image_size(path: Path) -> tuple[int, int]:
-    image = cv2.imread(str(path), cv2.IMREAD_UNCHANGED)
-    if image is None:
-        image = load_equirect(str(path))
-    height, width = image.shape[:2]
-    return int(width), int(height)
+    try:
+        from PIL import Image
+
+        with Image.open(path) as image:
+            width, height = image.size
+            return int(width), int(height)
+    except Exception:
+        image = cv2.imread(str(path), cv2.IMREAD_UNCHANGED)
+        if image is None:
+            image = load_equirect(str(path))
+        height, width = image.shape[:2]
+        return int(width), int(height)
 
 
 def ensure_gray(image: np.ndarray) -> np.ndarray:

@@ -19,6 +19,7 @@ from core.dataset_writer_nerf import write_nerf_json_ply_dataset
 from core.metashape_coordinates import metashape_camera_to_world, metashape_pointcloud_matrix
 from core.metashape_dataset_assets import (
     MetashapeDatasetAsset,
+    RemapTableCache,
     distortion_coefficients,
     expand_erp_to_view_assets,
     image_size,
@@ -105,24 +106,22 @@ def export_metashape_nerf_dataset(
     inventory = build_scene_inventory(scene, images_dir=images_root, masks_dir=masks_root)
     plan = build_metashape_dataset_export_plan(model, inventory)
     camera_by_id = {camera.camera_id: camera for camera in model.cameras}
-    compatibility = analyze_metashape_nerf_compatibility(
-        scene_dir=scene,
-        images_dir=images_root,
-        masks_dir=masks_root,
-        xml_path=xml_path,
-        views=views,
-        output_scale=output_scale,
-        fov_deg=fov_deg,
-        undistort_alpha=undistort_alpha,
-        _model=model,
-        _plan=plan,
-        _camera_by_id=camera_by_id,
-    )
-    if (
-        is_lichtfeld_nerf_target(axis_transform=axis_transform, final_orientation=final_orientation)
-        and not compatibility.lichtfeld_nerf_supported
-    ):
-        raise ValueError(lichtfeld_nerf_incompatible_message(compatibility))
+    if is_lichtfeld_nerf_target(axis_transform=axis_transform, final_orientation=final_orientation):
+        compatibility = analyze_metashape_nerf_compatibility(
+            scene_dir=scene,
+            images_dir=images_root,
+            masks_dir=masks_root,
+            xml_path=xml_path,
+            views=views,
+            output_scale=output_scale,
+            fov_deg=fov_deg,
+            undistort_alpha=undistort_alpha,
+            _model=model,
+            _plan=plan,
+            _camera_by_id=camera_by_id,
+        )
+        if not compatibility.lichtfeld_nerf_supported:
+            raise ValueError(lichtfeld_nerf_incompatible_message(compatibility))
 
     output_images.mkdir(parents=True, exist_ok=True)
     world_transform = dataset_world_transform(axis_transform, final_orientation)
@@ -132,6 +131,7 @@ def export_metashape_nerf_dataset(
 
     frames: list[dict[str, Any]] = []
     action_counts: dict[str, int] = {}
+    remap_cache = RemapTableCache(max_entries=max(1, sum(1 for view in views if bool(view.get("enabled", True)))))
 
     for item_index, item in enumerate(plan.items, start=1):
         action_counts[item.action] = action_counts.get(item.action, 0) + 1
@@ -165,6 +165,7 @@ def export_metashape_nerf_dataset(
                 action=item.action,
                 source_camera_id=item.camera_id,
                 source_camera_label=item.camera_label,
+                remap_cache=remap_cache,
             )
         elif item.action == EXPORT_ACTION_LINK_PINHOLE:
             assets = (

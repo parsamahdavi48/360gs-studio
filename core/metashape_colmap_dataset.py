@@ -16,7 +16,6 @@ from core.cubemap_image_io import (
     save_image,
 )
 from core.cubemap_remap import (
-    build_remap,
     rot4,
     rotation_matrix,
 )
@@ -39,6 +38,7 @@ from core.metashape_coordinates import (
     metashape_camera_to_world,
     metashape_pointcloud_matrix,
 )
+from core.metashape_dataset_assets import RemapTableCache
 from core.metashape_model import (
     CAMERA_MODEL_EQUIRECTANGULAR,
     MetashapeSensor,
@@ -111,6 +111,7 @@ def export_metashape_colmap_dataset(
     camera_ids: dict[tuple[Any, ...], int] = {}
     action_counts: dict[str, int] = {}
     world_transform = dataset_world_transform(axis_transform, final_orientation)
+    remap_cache = RemapTableCache(max_entries=max(1, sum(1 for view in views if bool(view.get("enabled", True)))))
 
     camera_by_id = {camera.camera_id: camera for camera in model.cameras}
     for item_index, item in enumerate(plan.items, start=1):
@@ -143,6 +144,7 @@ def export_metashape_colmap_dataset(
                 cameras,
                 images,
                 camera_ids,
+                remap_cache,
             )
         elif item.action == EXPORT_ACTION_LINK_PINHOLE:
             output_image = _linked_or_copied_output(source_image, images_root, output_images)
@@ -246,6 +248,7 @@ def _append_expanded_erp_records(
     cameras: list[ColmapCamera],
     images: list[ColmapImage],
     camera_ids: dict[tuple[Any, ...], int],
+    remap_cache: RemapTableCache,
 ) -> None:
     source = load_equirect(str(source_image))
     input_size = (int(source.shape[1]), int(source.shape[0]))
@@ -256,7 +259,7 @@ def _append_expanded_erp_records(
         name = str(view["name"])
         yaw = float(view["yaw"])
         pitch = float(view["pitch"])
-        map_x, map_y = build_remap(input_size, fov_deg, yaw, pitch, output_size)
+        map_x, map_y = remap_cache.get(input_size, output_size, fov_deg, yaw, pitch)
         output_image = output_images / source_image.parent.name / f"{source_image.stem}_{name}{out_ext}"
         if source_image.parent.name == "images":
             output_image = output_images / f"{source_image.stem}_{name}{out_ext}"
@@ -423,11 +426,18 @@ def _relative_image_path(path: Path, root: Path) -> Path:
 
 
 def _image_size(path: Path) -> tuple[int, int]:
-    image = cv2.imread(str(path), cv2.IMREAD_UNCHANGED)
-    if image is None:
-        image = load_equirect(str(path))
-    height, width = image.shape[:2]
-    return int(width), int(height)
+    try:
+        from PIL import Image
+
+        with Image.open(path) as image:
+            width, height = image.size
+            return int(width), int(height)
+    except Exception:
+        image = cv2.imread(str(path), cv2.IMREAD_UNCHANGED)
+        if image is None:
+            image = load_equirect(str(path))
+        height, width = image.shape[:2]
+        return int(width), int(height)
 
 
 def _ensure_gray(image: np.ndarray) -> np.ndarray:

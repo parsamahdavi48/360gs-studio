@@ -7,6 +7,7 @@ import numpy as np
 import pytest
 from PIL import Image
 
+import core.metashape_dataset_assets as asset_mod
 from core.metashape_coordinates import metashape_camera_matrix_to_output_world
 from core.metashape_nerf_dataset import export_metashape_nerf_dataset, metashape_model_requires_mixed_nerf_writer
 
@@ -87,6 +88,27 @@ def _write_single_spherical_xml(path: Path) -> None:
     )
 
 
+def _write_two_spherical_xml(path: Path) -> None:
+    path.write_text(
+        f"""<?xml version="1.0" encoding="UTF-8"?>
+<document>
+  <chunk>
+    <sensors>
+      <sensor id="0" type="spherical">
+        <resolution width="64" height="32" />
+      </sensor>
+    </sensors>
+    <cameras>
+      <camera id="0" label="pano_a.jpg" sensor_id="0"><transform>{_IDENTITY}</transform></camera>
+      <camera id="1" label="pano_b.jpg" sensor_id="0"><transform>{_IDENTITY}</transform></camera>
+    </cameras>
+  </chunk>
+</document>
+""",
+        encoding="utf-8",
+    )
+
+
 def test_export_metashape_nerf_dataset_expands_links_and_undistorts(tmp_path: Path) -> None:
     scene = tmp_path / "scene"
     _write_image(scene / "images" / "pano.jpg", (64, 32), (80, 120, 160))
@@ -143,6 +165,63 @@ def test_export_metashape_nerf_dataset_expands_links_and_undistorts(tmp_path: Pa
         "images/frame.jpg",
         "images/distorted_undistorted.jpg",
     }
+
+
+def test_export_metashape_nerf_dataset_reuses_remap_tables_for_same_size_erp(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    scene = tmp_path / "scene"
+    _write_image(scene / "images" / "pano_a.jpg", (64, 32), (80, 120, 160))
+    _write_image(scene / "images" / "pano_b.jpg", (64, 32), (90, 130, 170))
+    xml = scene / "metashape.xml"
+    _write_two_spherical_xml(xml)
+    original_build_remap = asset_mod.build_remap
+    calls: list[tuple[tuple[int, int], float, float, int]] = []
+
+    def count_build_remap(
+        input_size: tuple[int, int],
+        fov_deg: float,
+        yaw_deg: float,
+        pitch_deg: float,
+        output_size: int,
+    ):
+        calls.append((input_size, yaw_deg, pitch_deg, output_size))
+        return original_build_remap(input_size, fov_deg, yaw_deg, pitch_deg, output_size)
+
+    monkeypatch.setattr(asset_mod, "build_remap", count_build_remap)
+
+    result = export_metashape_nerf_dataset(
+        scene_dir=scene,
+        images_dir=scene / "images",
+        masks_dir=None,
+        xml_path=xml,
+        ply_path=None,
+        output_dir=scene / "output" / "metashape_cubemap",
+        views=[{"name": "pz", "yaw": 0.0, "pitch": 0.0}, {"name": "px", "yaw": 90.0, "pitch": 0.0}],
+        output_scale=0.5,
+        output_format="jpg",
+        axis_transform="none",
+        final_orientation="none",
+    )
+
+    assert result.frame_count == 4
+    assert len(calls) == 2
+
+
+def test_metashape_asset_image_size_uses_metadata_without_full_decode(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    image = tmp_path / "frame.jpg"
+    _write_image(image, (64, 32), (80, 120, 160))
+
+    def fail_load_equirect(_path: str):
+        raise AssertionError("full image decode should not be needed for size metadata")
+
+    monkeypatch.setattr(asset_mod, "load_equirect", fail_load_equirect)
+
+    assert asset_mod.image_size(image) == (64, 32)
 
 
 def test_metashape_nerf_camera_transform_matches_coordinate_contract() -> None:
