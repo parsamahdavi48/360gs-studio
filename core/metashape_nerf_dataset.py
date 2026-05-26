@@ -104,7 +104,8 @@ def export_metashape_nerf_dataset(
     inventory = build_scene_inventory(scene, images_dir=images_root, masks_dir=masks_root)
     plan = build_metashape_dataset_export_plan(model, inventory)
     camera_by_id = {camera.camera_id: camera for camera in model.cameras}
-    if is_lichtfeld_nerf_target(axis_transform=axis_transform, final_orientation=final_orientation):
+    lichtfeld_target = is_lichtfeld_nerf_target(axis_transform=axis_transform, final_orientation=final_orientation)
+    if lichtfeld_target:
         compatibility = analyze_metashape_nerf_compatibility(
             scene_dir=scene,
             images_dir=images_root,
@@ -144,7 +145,11 @@ def export_metashape_nerf_dataset(
             if item.mask_rel_path
             else None
         )
-        c2w = world_transform @ metashape_camera_to_world(model, camera)
+        c2w = world_transform @ metashape_camera_to_world(
+            model,
+            camera,
+            lichtfeld_camera_y180=lichtfeld_target,
+        )
         assets: tuple[MetashapeDatasetAsset, ...]
         if item.action == EXPORT_ACTION_EXPAND_ERP_TO_VIEWS:
             assets = expand_erp_to_view_assets(

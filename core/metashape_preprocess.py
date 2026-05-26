@@ -45,6 +45,7 @@ def export_metashape_equirectangular_dataset(
     output_dir: str | Path,
     ply_path: str | Path | None = None,
     fix_upside_down: bool = True,
+    lichtfeld_camera_y180: bool = True,
     scale: float = 1.0,
     verbose: bool = False,
     progress_callback: ProgressCallback | None = None,
@@ -89,7 +90,12 @@ def export_metashape_equirectangular_dataset(
             _notify_progress(progress_callback, camera_index, progress_total)
             continue
 
-        transform = metashape_camera_to_world(model, camera, fix_upside_down=fix_upside_down)
+        transform = metashape_camera_to_world(
+            model,
+            camera,
+            fix_upside_down=fix_upside_down,
+            lichtfeld_camera_y180=lichtfeld_camera_y180,
+        )
         transform[:3, 3] *= float(scale)
         frame = {
             "file_path": output_file_path(image_path, images_root, output),
@@ -113,6 +119,7 @@ def export_metashape_equirectangular_dataset(
             "xml_path": str(xml),
             "images_dir": str(images_root),
             "fix_upside_down": bool(fix_upside_down),
+            "lichtfeld_camera_y180": bool(lichtfeld_camera_y180),
             "scale": float(scale),
             "writer": "core.metashape_preprocess",
             "warnings": warnings,

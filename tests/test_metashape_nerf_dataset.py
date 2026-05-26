@@ -9,13 +9,15 @@ from PIL import Image
 
 import core.metashape_dataset_assets as asset_mod
 from core.dataset_export_plan import EXPORT_ACTION_EXPAND_ERP_TO_VIEWS, DatasetExportPlan, DatasetExportPlanItem
-from core.metashape_coordinates import metashape_camera_matrix_to_output_world
+from core.metashape_coordinates import metashape_camera_matrix_to_output_world, metashape_pointcloud_matrix
 from core.metashape_model import parse_metashape_model
 from core.metashape_nerf_dataset import (
     analyze_metashape_nerf_compatibility,
+    axis_transform_matrix,
     export_metashape_nerf_dataset,
     metashape_model_requires_mixed_nerf_writer,
 )
+from core.orientation_correction import final_orientation_matrix
 
 _IDENTITY = "1 0 0 0 0 1 0 0 0 0 1 0 0 0 0 1"
 
@@ -86,6 +88,27 @@ def _write_single_spherical_xml(path: Path) -> None:
     </sensors>
     <cameras>
       <camera id="0" label="pano.jpg" sensor_id="0"><transform>{_IDENTITY}</transform></camera>
+    </cameras>
+  </chunk>
+</document>
+""",
+        encoding="utf-8",
+    )
+
+
+def _write_translated_spherical_xml(path: Path, transform: np.ndarray) -> None:
+    text = " ".join(str(float(value)) for value in transform.reshape(-1))
+    path.write_text(
+        f"""<?xml version="1.0" encoding="UTF-8"?>
+<document>
+  <chunk>
+    <sensors>
+      <sensor id="0" type="spherical">
+        <resolution width="64" height="32" />
+      </sensor>
+    </sensors>
+    <cameras>
+      <camera id="0" label="pano.jpg" sensor_id="0"><transform>{text}</transform></camera>
     </cameras>
   </chunk>
 </document>
@@ -230,6 +253,76 @@ def test_metashape_asset_image_size_uses_metadata_without_full_decode(
     assert asset_mod.image_size(image) == (64, 32)
 
 
+def test_export_metashape_nerf_postshot_camera_centers_match_pointcloud_basis(tmp_path: Path) -> None:
+    scene = tmp_path / "scene"
+    _write_image(scene / "images" / "pano.jpg", (64, 32), (80, 120, 160))
+    raw_transform = np.eye(4, dtype=np.float64)
+    raw_transform[:3, 3] = [1.25, -2.5, 3.75]
+    xml = scene / "metashape.xml"
+    _write_translated_spherical_xml(xml, raw_transform)
+
+    export_metashape_nerf_dataset(
+        scene_dir=scene,
+        images_dir=scene / "images",
+        masks_dir=None,
+        xml_path=xml,
+        ply_path=None,
+        output_dir=scene / "output" / "metashape_cubemap",
+        views=[{"name": "pz", "yaw": 0.0, "pitch": 0.0}],
+        output_scale=0.5,
+        output_format="jpg",
+        axis_transform="postshot",
+        final_orientation="none",
+    )
+
+    data = json.loads((scene / "output" / "metashape_cubemap" / "transforms.json").read_text(encoding="utf-8"))
+    frame_transform = np.array(data["frames"][0]["transform_matrix"], dtype=np.float64)
+    expected_center = (axis_transform_matrix("postshot") @ metashape_pointcloud_matrix() @ raw_transform)[:3, 3]
+    lichtfeld_precompensated_center = (
+        axis_transform_matrix("postshot")
+        @ np.diag([-1.0, 1.0, -1.0, 1.0])
+        @ metashape_pointcloud_matrix()
+        @ raw_transform
+    )[:3, 3]
+
+    assert np.allclose(frame_transform[:3, 3], expected_center)
+    assert not np.allclose(frame_transform[:3, 3], lichtfeld_precompensated_center)
+
+
+def test_export_metashape_nerf_lichtfeld_keeps_camera_y180_precompensation(tmp_path: Path) -> None:
+    scene = tmp_path / "scene"
+    _write_image(scene / "images" / "pano.jpg", (64, 32), (80, 120, 160))
+    raw_transform = np.eye(4, dtype=np.float64)
+    raw_transform[:3, 3] = [1.25, -2.5, 3.75]
+    xml = scene / "metashape.xml"
+    _write_translated_spherical_xml(xml, raw_transform)
+
+    export_metashape_nerf_dataset(
+        scene_dir=scene,
+        images_dir=scene / "images",
+        masks_dir=None,
+        xml_path=xml,
+        ply_path=None,
+        output_dir=scene / "output" / "metashape_cubemap",
+        views=[{"name": "pz", "yaw": 0.0, "pitch": 0.0}],
+        output_scale=0.5,
+        output_format="jpg",
+        axis_transform="none",
+        final_orientation="lichtfeld",
+    )
+
+    data = json.loads((scene / "output" / "metashape_cubemap" / "transforms.json").read_text(encoding="utf-8"))
+    frame_transform = np.array(data["frames"][0]["transform_matrix"], dtype=np.float64)
+    expected_center = (
+        final_orientation_matrix("lichtfeld")
+        @ np.diag([-1.0, 1.0, -1.0, 1.0])
+        @ metashape_pointcloud_matrix()
+        @ raw_transform
+    )[:3, 3]
+
+    assert np.allclose(frame_transform[:3, 3], expected_center)
+
+
 def test_metashape_nerf_lichtfeld_compatibility_uses_xml_sensor_sizes(tmp_path: Path) -> None:
     scene = tmp_path / "scene"
     scene.mkdir()
@@ -291,9 +384,9 @@ def test_metashape_nerf_camera_transform_matches_coordinate_contract() -> None:
 
     expected = np.array(
         [
-            [0.48, 0.64, 0.60, -3.75],
+            [-0.48, -0.64, -0.60, 3.75],
             [-0.80, 0.60, 0.00, 2.50],
-            [-0.36, -0.48, 0.80, -1.25],
+            [0.36, 0.48, -0.80, 1.25],
             [0.0, 0.0, 0.0, 1.0],
         ],
         dtype=np.float64,

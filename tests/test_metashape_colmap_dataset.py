@@ -171,9 +171,18 @@ def test_metashape_model_requires_mixed_writer_for_distortion(tmp_path: Path) ->
 def test_metashape_camera_transform_uses_pointcloud_basis_once() -> None:
     expected = metashape_pointcloud_matrix()
     expected[:, 1:3] *= -1.0
-    expected = np.diag([-1.0, 1.0, -1.0, 1.0]) @ expected
 
     actual = metashape_camera_matrix_to_output_world(np.eye(4))
+
+    assert np.allclose(actual, expected)
+
+
+def test_metashape_camera_transform_keeps_lichtfeld_y180_as_opt_in() -> None:
+    expected = metashape_pointcloud_matrix()
+    expected[:, 1:3] *= -1.0
+    expected = np.diag([-1.0, 1.0, -1.0, 1.0]) @ expected
+
+    actual = metashape_camera_matrix_to_output_world(np.eye(4), lichtfeld_camera_y180=True)
 
     assert np.allclose(actual, expected)
 
@@ -191,9 +200,9 @@ def test_metashape_colmap_camera_transform_matches_coordinate_contract() -> None
 
     expected = np.array(
         [
-            [0.26, 0.23, 0.94, -3.75],
+            [-0.26, -0.23, -0.94, 3.75],
             [-0.10, 0.97, -0.21, 2.50],
-            [-0.96, -0.02, 0.28, -1.25],
+            [0.96, 0.02, -0.28, 1.25],
             [0.0, 0.0, 0.0, 1.0],
         ],
         dtype=np.float64,

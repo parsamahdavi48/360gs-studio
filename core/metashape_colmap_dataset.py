@@ -127,7 +127,11 @@ def export_metashape_colmap_dataset(
             if item.mask_rel_path
             else None
         )
-        c2w = world_transform @ metashape_camera_to_world(model, camera)
+        c2w = world_transform @ metashape_camera_to_world(
+            model,
+            camera,
+            lichtfeld_camera_y180=False,
+        )
         if item.action == EXPORT_ACTION_EXPAND_ERP_TO_VIEWS:
             _append_expanded_erp_records(
                 source_image,

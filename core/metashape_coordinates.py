@@ -18,11 +18,15 @@ def metashape_camera_matrix_to_output_world(
     transform: np.ndarray,
     *,
     fix_upside_down: bool = True,
+    lichtfeld_camera_y180: bool = False,
 ) -> np.ndarray:
     """Convert a Metashape camera-to-world matrix to this app's output convention."""
     converted = metashape_pointcloud_matrix(fix_upside_down=fix_upside_down) @ transform
     converted[:, 1:3] *= -1.0
-    return _rot_y_180() @ converted
+    if lichtfeld_camera_y180:
+        # LichtFeld's NeRF loader applies this camera-only rotation internally.
+        converted = _rot_y_180() @ converted
+    return converted
 
 
 def metashape_camera_to_world(
@@ -30,6 +34,7 @@ def metashape_camera_to_world(
     camera: MetashapeCamera,
     *,
     fix_upside_down: bool = True,
+    lichtfeld_camera_y180: bool = False,
 ) -> np.ndarray:
     """Apply Metashape component transforms, then convert the camera pose."""
     transform = camera.transform.copy()
@@ -38,7 +43,11 @@ def metashape_camera_to_world(
         matrix, scale = component
         transform[:3, 3] *= float(scale)
         transform = matrix @ transform
-    return metashape_camera_matrix_to_output_world(transform, fix_upside_down=fix_upside_down)
+    return metashape_camera_matrix_to_output_world(
+        transform,
+        fix_upside_down=fix_upside_down,
+        lichtfeld_camera_y180=lichtfeld_camera_y180,
+    )
 
 
 def metashape_pointcloud_file_matrix(*, fix_upside_down: bool = True, scale: float = 1.0) -> np.ndarray:
