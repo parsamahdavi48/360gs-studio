@@ -348,6 +348,25 @@ def test_main_window_auto_sets_scene_from_single_video_when_scene_is_empty(tmp_p
     window.close()
 
 
+def test_main_window_scene_selection_autoloaded_video_enables_run(tmp_path: Path, monkeypatch) -> None:
+    app = _app()
+    scene = tmp_path / "scene"
+    scene.mkdir()
+    video = scene / "input.mp4"
+    video.write_bytes(b"dummy")
+    window = MainWindow()
+    monkeypatch.setattr(window.step1, "_probe_video_info_for_path", lambda _path: _video_info())
+
+    window.scene_browse.set_text(str(scene))
+    app.processEvents()
+
+    assert window.step1.video_browse.text() == str(video)
+    assert window.step1.primary_action_enabled()
+    assert not window._step_scene_sync_deferred(window.step1)
+    assert window.run_btn.isEnabled()
+    window.close()
+
+
 def test_main_window_auto_sets_scene_from_multiple_videos_in_same_folder(tmp_path: Path, monkeypatch) -> None:
     _app()
     video_a = tmp_path / "a.mp4"

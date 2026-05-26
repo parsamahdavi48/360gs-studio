@@ -354,8 +354,11 @@ class MainWindow(QWidget):
         if activate_current:
             step = self._current_step_widget()
             if step is not None:
+                was_deferred = self._step_scene_sync_deferred(step)
                 self._sync_step_scene_if_deferred(step)
                 step.on_activated()
+                if was_deferred:
+                    self._update_run_button()
         self._update_step_header()
 
     def _set_scene_browse_text_silently(self, path: str) -> None:
