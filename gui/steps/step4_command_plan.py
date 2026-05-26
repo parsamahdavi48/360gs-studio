@@ -236,6 +236,7 @@ class Step4CommandPlanMixin:
                 use_ply=self._preprocess_uses_ply(),
                 ply_path=ply if ply else None,
                 no_fix_rotation=self.ms_no_fix_rot_cb.isChecked(),
+                lichtfeld_camera_y180=self._uses_lichtfeld_final_correction(),
             ),
         )
         return build_workflow_job_cmd(self.base_dir, job_path)

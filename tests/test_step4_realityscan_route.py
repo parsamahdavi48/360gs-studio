@@ -59,6 +59,11 @@ def test_realityscan_profile_builds_xmp_export_command(tmp_path: Path) -> None:
     assert rig_job["realityscan_include_rig"] is True
     assert rig_job["realityscan_rig_name"] == "stechdrive-cubemap"
 
+    commands = step.build_commands()
+    preprocess_job = _workflow_job(commands[0][1])
+    assert preprocess_job["kind"] == "metashape_preprocess"
+    assert preprocess_job["lichtfeld_camera_y180"] is False
+
 
 def test_realityscan_profile_preserves_existing_shared_output(tmp_path: Path, monkeypatch) -> None:
     output = tmp_path / "output"

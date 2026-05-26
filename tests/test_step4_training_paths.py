@@ -436,9 +436,33 @@ def test_postshot_cli_options_are_grouped_and_conditional(tmp_path: Path) -> Non
     assert not step.postshot_crop_box_max_edit.isHidden()
 
 
-def test_postshot_training_imports_transforms_and_raw_ply_for_metashape(tmp_path: Path) -> None:
+def test_postshot_training_prefers_dataset_pointcloud_for_metashape_output(tmp_path: Path) -> None:
     step = _ready_step(tmp_path, metashape_inputs=True)
-    _write_output_dataset(tmp_path, output_shape="projected")
+    dataset_root = _write_output_dataset(tmp_path, output_shape="projected")
+    fake_postshot = tmp_path / "postshot-cli.exe"
+    fake_postshot.write_text("", encoding="utf-8")
+    postshot_idx = step.profile_combo.findData("postshot")
+    assert postshot_idx >= 0
+    step.profile_combo.setCurrentIndex(postshot_idx)
+
+    step._set_training_backend("postshot")
+    step.training_executable_browse.set_text(str(fake_postshot))
+    step.run_training_cb.setChecked(True)
+
+    phase, cmd = step.build_training_launch_commands()[0]
+
+    assert phase == "training_postshot"
+    import_index = cmd.index("--import")
+    assert cmd[import_index + 1 : import_index + 4] == [
+        str(tmp_path / "output" / "metashape_cubemap" / "images"),
+        str(tmp_path / "output" / "metashape_cubemap" / "transforms.json"),
+        str(dataset_root / "pointcloud.ply"),
+    ]
+
+
+def test_postshot_training_falls_back_to_raw_metashape_ply_without_dataset_pointcloud(tmp_path: Path) -> None:
+    step = _ready_step(tmp_path, metashape_inputs=True)
+    _write_output_dataset(tmp_path, output_shape="projected", pointcloud=False)
     fake_postshot = tmp_path / "postshot-cli.exe"
     fake_postshot.write_text("", encoding="utf-8")
     postshot_idx = step.profile_combo.findData("postshot")

@@ -190,6 +190,7 @@ def test_metashape_import_uses_scene_images_and_lf_ply(tmp_path: Path) -> None:
     assert job["images_dir"] == str(tmp_path / "images")
     assert job["xml_path"] == str(tmp_path / "metashape.xml")
     assert job["ply_path"] == str(tmp_path / "metashape.ply")
+    assert job["lichtfeld_camera_y180"] is True
 
 
 def test_profile_presets_sync_manual_axis_controls(tmp_path: Path) -> None:

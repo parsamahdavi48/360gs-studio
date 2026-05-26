@@ -111,6 +111,7 @@ def _run_metashape_preprocess(job: dict, *, cancel_event: CancellationToken | No
         output_dir=Path(str(job["output_dir"])),
         ply_path=Path(str(job["ply_path"])) if bool(job.get("use_ply")) and str(job.get("ply_path") or "") else None,
         fix_upside_down=not bool(job.get("no_fix_rotation")),
+        lichtfeld_camera_y180=bool(job.get("lichtfeld_camera_y180", True)),
         scale=float(job.get("scale", 1.0)),
         verbose=True,
         progress_callback=_progress_log_callback(cancel_event),

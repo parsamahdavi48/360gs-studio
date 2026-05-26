@@ -247,9 +247,15 @@ class Step4TrainingDatasetMixin:
             masks_dir=masks_dir,
             colmap_sparse_dir=self._training_sparse_model_dir(),
             transforms_json=dataset_root / "transforms.json",
-            pointcloud_ply=self._resolve_ply_source() or dataset_root / "pointcloud.ply",
+            pointcloud_ply=self._training_pointcloud_source(dataset_root),
             output_shape=self._output_shape(),
         )
+
+    def _training_pointcloud_source(self, dataset_root: Path) -> Path | None:
+        pointcloud = dataset_root / "pointcloud.ply"
+        if pointcloud.is_file():
+            return pointcloud
+        return self._resolve_ply_source()
 
     def _training_dataset_available(self) -> bool:
         if not self.scene_dir or not hasattr(self, "training_dataset_browse"):
@@ -340,4 +346,3 @@ class Step4TrainingDatasetMixin:
             self._apply_lfs_ui_state(self._lfs_strategy_states[active])
         finally:
             self._syncing_lfs_auto_fields = False
-

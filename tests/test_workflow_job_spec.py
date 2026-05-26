@@ -29,6 +29,7 @@ def test_workflow_job_builders_round_trip_core_conversion_jobs(tmp_path: Path) -
         use_ply=True,
         ply_path=tmp_path / "points.ply",
         no_fix_rotation=False,
+        lichtfeld_camera_y180=False,
     )
     cubemap = cubemap_conversion_job(
         input_dir=tmp_path / "work",
@@ -56,9 +57,9 @@ def test_workflow_job_builders_round_trip_core_conversion_jobs(tmp_path: Path) -
         ply_path=tmp_path / "output" / "pointcloud.ply",
     )
 
-    assert load_workflow_job(write_workflow_job(tmp_path / "metashape.json", metashape))["kind"] == (
-        JOB_KIND_METASHAPE_PREPROCESS
-    )
+    loaded_metashape = load_workflow_job(write_workflow_job(tmp_path / "metashape.json", metashape))
+    assert loaded_metashape["kind"] == JOB_KIND_METASHAPE_PREPROCESS
+    assert loaded_metashape["lichtfeld_camera_y180"] is False
     loaded_cubemap = load_workflow_job(
         write_workflow_job(tmp_path / "cubemap.json", cubemap),
         expected_kind=JOB_KIND_CUBEMAP_CONVERSION,

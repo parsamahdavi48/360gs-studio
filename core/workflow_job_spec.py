@@ -44,6 +44,7 @@ def metashape_preprocess_job(
     use_ply: bool,
     ply_path: str | Path | None,
     no_fix_rotation: bool,
+    lichtfeld_camera_y180: bool = True,
 ) -> dict[str, Any]:
     return {
         "schema_version": WORKFLOW_JOB_SCHEMA_VERSION,
@@ -55,6 +56,7 @@ def metashape_preprocess_job(
         "use_ply": bool(use_ply),
         "ply_path": str(ply_path) if ply_path else "",
         "no_fix_rotation": bool(no_fix_rotation),
+        "lichtfeld_camera_y180": bool(lichtfeld_camera_y180),
     }
 
 
