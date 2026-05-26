@@ -1,6 +1,6 @@
 # stechdrive-3dgs-utils
 
-**v1.22.2**
+**v1.22.3**
 
 360°動画、通常動画、連番静止画から、3D Gaussian Splatting (3DGS) のトレーニングに使いやすい画像・マスク・カメラデータを作るためのWindows向け統合GUIツールです。
 
@@ -10,7 +10,7 @@
 
 通常利用は、最新リリースZIPをダウンロードしてください。
 
-[stechdrive-3dgs-utils-v1.22.2.zip をダウンロード](https://github.com/stechdrive/stechdrive-3dgs-utils/releases/download/v1.22.2/stechdrive-3dgs-utils-v1.22.2.zip)
+[stechdrive-3dgs-utils-v1.22.3.zip をダウンロード](https://github.com/stechdrive/stechdrive-3dgs-utils/releases/download/v1.22.3/stechdrive-3dgs-utils-v1.22.3.zip)
 
 ZIPを展開したら、`setup_windows.bat`、続いて `run_gui.bat` を実行します。
 
@@ -68,7 +68,7 @@ run_gui.bat
 
 Pythonパッケージはこのアプリ専用の仮想環境に入れるため、普段使っているPython環境を汚しにくい構成です。セットアップ完了後は、通常 `run_gui.bat` を実行するだけでGUIを起動できます。
 
-### セットアップが内部で行うこと
+### セットアップ内容
 
 `setup_windows.bat` はPython 3.12とFFmpeg/FFprobeを探し、必要な場合はwinget経由で不足しているシステム依存を導入します。その後、リポジトリ内にこのアプリ専用の仮想環境 `.venv/` を作成し、PyTorch CUDA wheel、OpenCV、Pillow、Open3D、ultralytics、PySide6、SAM3.1実行用パッケージなどをインストールして検証します。
 
@@ -84,7 +84,7 @@ update_venv.bat
 
 `requirements/` の検証済み固定セットで作り直す場合は `update_venv.bat --locked`、環境を最初から作り直す場合は `setup_windows.bat --force` を使います。
 
-YOLO/SAM2、Mask2Former、SAM3.1のモデルファイルは初回利用時にダウンロードされる場合があります。ローカルのYOLO/SAM重みは `models/ultralytics/`、Mask2Former重みは `models/mask2former-swin-large-ade-semantic/`、SAM3.1プロンプトマスクは `models/sam3.1/sam3.1_multiplex.pt` を使います。リリースZIPにはモデル重み、生成データ、ユーザー設定、ローカルセットアップログは含めていません。これらの第三者ライブラリおよびモデル重みには別ライセンスが適用されます。詳細は [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md) を参照してください。
+YOLO/SAM2、Mask2Former、SAM3.1のモデルファイルは初回利用時にダウンロードされる場合があります。ローカルのYOLO/SAM重みは `models/ultralytics/`、Mask2Former重みは `models/mask2former-swin-large-ade-semantic/`、SAM3.1プロンプトマスクは `models/sam3.1/sam3.1_multiplex.pt` を使います。モデル重みはアプリに同梱しておらず、別ライセンスが適用されます。詳細は [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md) を参照してください。
 
 ### マスク生成モデルの使い分け
 
