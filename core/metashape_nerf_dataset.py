@@ -229,6 +229,7 @@ def export_metashape_nerf_dataset(
             "axis_transform_matrix": axis_transform_matrix(axis_transform).tolist(),
             "final_orientation": normalize_final_orientation(final_orientation),
             "dataset_world_transform": world_transform.tolist(),
+            "pointcloud_world_transform": dataset_pointcloud_transform(final_orientation).tolist(),
             "per_frame_intrinsics": True,
             "per_frame_camera_model": True,
             "top_level_camera_group_count": top_camera_count,
@@ -246,7 +247,7 @@ def export_metashape_nerf_dataset(
         ply = Path(ply_path)
         if ply.is_file():
             pointcloud_output = output / "pointcloud.ply"
-            write_transformed_ply(ply, pointcloud_output, world_transform @ metashape_pointcloud_matrix())
+            write_transformed_ply(ply, pointcloud_output, dataset_pointcloud_transform(final_orientation))
             payload["ply_file_path"] = pointcloud_output.name
         _notify_progress(progress_callback, item_count + 1, progress_total)
 
@@ -490,6 +491,14 @@ def axis_transform_matrix(value: object) -> np.ndarray:
 
 def dataset_world_transform(axis_transform: object, final_orientation: object) -> np.ndarray:
     matrix = axis_transform_matrix(axis_transform)
+    orientation = normalize_final_orientation(final_orientation)
+    if orientation != FINAL_ORIENTATION_NONE:
+        matrix = final_orientation_matrix(orientation) @ matrix
+    return matrix
+
+
+def dataset_pointcloud_transform(final_orientation: object) -> np.ndarray:
+    matrix = metashape_pointcloud_matrix()
     orientation = normalize_final_orientation(final_orientation)
     if orientation != FINAL_ORIENTATION_NONE:
         matrix = final_orientation_matrix(orientation) @ matrix

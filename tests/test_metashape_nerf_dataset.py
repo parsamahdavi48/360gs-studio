@@ -14,10 +14,12 @@ from core.metashape_model import parse_metashape_model
 from core.metashape_nerf_dataset import (
     analyze_metashape_nerf_compatibility,
     axis_transform_matrix,
+    dataset_pointcloud_transform,
     export_metashape_nerf_dataset,
     metashape_model_requires_mixed_nerf_writer,
 )
 from core.orientation_correction import final_orientation_matrix
+from core.transforms_to_colmap import read_ply_points
 
 _IDENTITY = "1 0 0 0 0 1 0 0 0 0 1 0 0 0 0 1"
 
@@ -253,20 +255,22 @@ def test_metashape_asset_image_size_uses_metadata_without_full_decode(
     assert asset_mod.image_size(image) == (64, 32)
 
 
-def test_export_metashape_nerf_postshot_camera_centers_match_pointcloud_basis(tmp_path: Path) -> None:
+def test_export_metashape_nerf_postshot_applies_import_axis_to_cameras_only(tmp_path: Path) -> None:
     scene = tmp_path / "scene"
     _write_image(scene / "images" / "pano.jpg", (64, 32), (80, 120, 160))
     raw_transform = np.eye(4, dtype=np.float64)
     raw_transform[:3, 3] = [1.25, -2.5, 3.75]
     xml = scene / "metashape.xml"
+    ply = scene / "metashape.ply"
     _write_translated_spherical_xml(xml, raw_transform)
+    _write_ply(ply)
 
     export_metashape_nerf_dataset(
         scene_dir=scene,
         images_dir=scene / "images",
         masks_dir=None,
         xml_path=xml,
-        ply_path=None,
+        ply_path=ply,
         output_dir=scene / "output" / "metashape_cubemap",
         views=[{"name": "pz", "yaw": 0.0, "pitch": 0.0}],
         output_scale=0.5,
@@ -287,6 +291,14 @@ def test_export_metashape_nerf_postshot_camera_centers_match_pointcloud_basis(tm
 
     assert np.allclose(frame_transform[:3, 3], expected_center)
     assert not np.allclose(frame_transform[:3, 3], lichtfeld_precompensated_center)
+    assert data["source"]["pointcloud_world_transform"] == dataset_pointcloud_transform("none").tolist()
+
+    points, _colors = read_ply_points(scene / "output" / "metashape_cubemap" / "pointcloud.ply")
+    source_point = np.array([1.0, 2.0, 3.0, 1.0], dtype=np.float64)
+    expected_point = (dataset_pointcloud_transform("none") @ source_point)[:3]
+    postshot_axis_point = (axis_transform_matrix("postshot") @ dataset_pointcloud_transform("none") @ source_point)[:3]
+    assert np.allclose(points[0], expected_point)
+    assert not np.allclose(points[0], postshot_axis_point)
 
 
 def test_export_metashape_nerf_lichtfeld_keeps_camera_y180_precompensation(tmp_path: Path) -> None:
