@@ -174,7 +174,10 @@ def _load_entries(path: Path) -> list[Any]:
         data = json.loads(text)
         return data if isinstance(data, list) else []
     if stripped.startswith("{"):
-        data = json.loads(text)
+        try:
+            data = json.loads(text)
+        except json.JSONDecodeError:
+            return _load_json_lines(text)
         if isinstance(data, dict):
             for key in ("images", "targets", "files", "items"):
                 value = data.get(key)

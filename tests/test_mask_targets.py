@@ -41,6 +41,32 @@ def test_image_list_resolves_scene_relative_image_and_mask_paths(tmp_path: Path)
     assert load_mask_paths_from_image_list(manifest, masks_root=masks) == [masks / "sub" / "frame.png"]
 
 
+def test_image_list_accepts_multiple_jsonl_object_lines(tmp_path: Path) -> None:
+    scene = tmp_path
+    images = scene / "images"
+    masks = scene / "masks"
+    images.mkdir()
+    cv2.imwrite(str(images / "a.jpg"), np.full((8, 16, 3), 128, dtype=np.uint8))
+    cv2.imwrite(str(images / "b.jpg"), np.full((8, 16, 3), 64, dtype=np.uint8))
+    manifest = scene / "_stechdrive" / "masks" / "work" / "list.jsonl"
+    manifest.parent.mkdir(parents=True)
+    manifest.write_text(
+        "\n".join(
+            [
+                json.dumps({"image": "images/a.jpg", "mask": "masks/a.png", "projection": "equirect"}),
+                json.dumps({"image": "images/b.jpg", "mask": "masks/b.png", "projection": "equirect"}),
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    _root, targets = collect_image_targets(images, masks, image_list=manifest)
+
+    assert [target.image_path for target in targets] == [images / "a.jpg", images / "b.jpg"]
+    assert [target.mask_path for target in targets] == [masks / "a.png", masks / "b.png"]
+
+
 def test_init_masks_image_list_writes_only_listed_outputs(tmp_path: Path) -> None:
     scene = tmp_path
     images = scene / "images"
