@@ -4,6 +4,16 @@ Step 4は、学習データセットの元になるカメラポーズと疎点�
 
 Step 5は、SfM結果を学習アプリで読み込めるデータセットへ変換する画面です。MetashapeやSphereSfMの結果からNeRF系JSON/PLYを作る、MetashapeやRealityScanの結果からCOLMAP形式データセットを作る、AprilTagでスケールを反映する、といった作業をここで行います。
 
+## 関連ツール
+
+| ツール | このアプリでの用途 |
+| --- | --- |
+| [COLMAP](https://github.com/colmap/colmap) | Step 4のCOLMAPルートとCOLMAP形式データセット出力 |
+| [SphereSfM](https://github.com/json87/SphereSfM) | Step 4の球面画像SfMルート |
+| [LichtFeld Studio](https://lichtfeld.io/) | LichtFeldプリセット、GUT出力、RealityScanからCOLMAPデータセットへの変換先 |
+| [Postshot](https://www.jawset.com/) | PostshotプリセットとStep 6のCLI起動 |
+| [Brush](https://github.com/ArthurBrussee/brush) | オープンソースのGaussian Splatting学習向けCubemap出力 |
+
 ## まず決めること
 
 最初に決めるのは、「カメラポーズはもうあるか」です。
@@ -28,7 +38,7 @@ Metashape結果を使う場合は、カメラをAgisoft XML、疎点群をStanfo
 
 ### COLMAPでSfMを実行
 
-Metashapeを使わず、このアプリからCOLMAPまたはGLOMAPでSfMしたい場合に選びます。
+Metashapeを使わず、このアプリから[COLMAP](https://github.com/colmap/colmap)またはGLOMAPでSfMしたい場合に選びます。
 
 - 360°画像はCubemap Rigへ展開します
 - 通常画像や通常動画フレームは通常カメラとして扱います
@@ -41,7 +51,7 @@ Metashapeを使わず、このアプリからCOLMAPまたはGLOMAPでSfMした�
 
 ### SphereSfMでSfMを実行
 
-エクイレクタングラー360°画像を球面カメラとしてSfMしたい場合に選びます。SphereSfMは同一解像度のERP 360°画像だけを入力にするのが安全です。通常画像や複数解像度ERPを混ぜたい場合はCOLMAPまたはMetashapeを使ってください。
+エクイレクタングラー360°画像を球面カメラとしてSfMしたい場合に選びます。[SphereSfM](https://github.com/json87/SphereSfM)は同一解像度のERP 360°画像だけを入力にするのが安全です。通常画像や複数解像度ERPを混ぜたい場合はCOLMAPまたはMetashapeを使ってください。
 
 通常のCOLMAPではなく、SphereSfM版の `colmap.exe` が必要です。RTX 50系GPUでは配布バイナリがCUDA SIFTで止まる場合があるため、その場合はRTX 50系に対応したビルドを指定します。
 
@@ -70,7 +80,7 @@ MetashapeのカメラXMLと点群PLYから、NeRF/3DGS系データセットを�
 | `PINHOLE` | 360°画像をCubemapへ展開して、Postshot / Brush / LichtFeldなどで扱いやすいデータにする |
 | `ERP 360°` | LichtFeldでGUTを使い、エクイレクタングラー画像を直接使う |
 
-通常は `PINHOLE` から始めます。通常画像や複数解像度ERPが混在するMetashape結果では、ERP 360°のまま安全に出力できないため、`PINHOLE` を使ってください。LichtFeldのJSON/PLY読み込みはフレームごとのカメラ内部パラメータを扱えないため、複数カメラ設定の混在結果では `Metashape → COLMAPデータセット` のほうが安全です。
+通常は `PINHOLE` から始めます。通常画像や複数解像度ERPが混在するMetashape結果では、ERP 360°のまま安全に出力できないため、`PINHOLE` を使ってください。[LichtFeld Studio](https://lichtfeld.io/)のJSON/PLY読み込みはフレームごとのカメラ内部パラメータを扱えないため、複数カメラ設定の混在結果では `Metashape → COLMAPデータセット` のほうが安全です。
 
 出力先は主に次の通りです。
 

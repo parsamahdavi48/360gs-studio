@@ -1,8 +1,8 @@
 # Step 6 Training GUI
 
-Step 6 launches training apps that provide a compatible CLI with the 3DGS dataset created in Step 5. With a compatible LichtFeld Studio or Postshot version, you can start repeat runs or headless training from the GUI.
+Step 6 launches training apps that provide a compatible CLI with the 3DGS dataset created in Step 5. With a compatible [LichtFeld Studio](https://lichtfeld.io/) or [Postshot](https://www.jawset.com/) version, you can start repeat runs or headless training from the GUI.
 
-When you want to inspect quality and tune model settings inside the training app, you can skip Step 6 and open the Step 5 output dataset directly in LichtFeld Studio, Postshot, Brush, or another 3DGS app. Step 6 does not run image conversion or SfM; dataset creation is handled by `Step 5: Dataset`.
+When you want to inspect quality and tune model settings inside the training app, you can skip Step 6 and open the Step 5 output dataset directly in [LichtFeld Studio](https://lichtfeld.io/), [Postshot](https://www.jawset.com/), [Brush](https://github.com/ArthurBrussee/brush), or another 3DGS app. Step 6 does not run image conversion or SfM; dataset creation is handled by `Step 5: Dataset`.
 
 ## Using the Dataset in Training Apps
 
@@ -55,7 +55,7 @@ The right side separates common settings from advanced parameters. Start with th
 
 ### Training App
 
-`LichtFeld Studio` and `Postshot` are available. If you want to build an arbitrary CLI command, run that CLI directly instead of using this screen.
+`LichtFeld Studio` and `Postshot` are available. See [LichtFeld Studio](https://lichtfeld.io/) and [Postshot](https://www.jawset.com/) for the supported apps. If you want to build an arbitrary CLI command, run that CLI directly instead of using this screen.
 
 ### Executable
 

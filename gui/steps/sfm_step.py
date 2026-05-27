@@ -6,7 +6,7 @@ import os
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from PySide6.QtCore import QTimer, Signal
+from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtOpenGLWidgets import QOpenGLWidget
 from PySide6.QtWidgets import (
     QCheckBox,
@@ -39,16 +39,19 @@ from core.normal_camera_metadata import (
 from core.scene_inventory import build_fast_scene_inventory, build_scene_inventory
 from gui import i18n
 from gui.common.browse_widget import BrowseWidget
+from gui.common.external_link import make_external_link
 from gui.common.form_rows import add_tooltip_row
 from gui.common.runner_types import StepCommandQueue
 from gui.steps.base_step import BaseStepWidget
 from gui.steps.sfm_route_specs import SFM_ROUTE_COLMAP, SFM_ROUTE_METASHAPE, SFM_ROUTE_SPHERESFM, normalize_sfm_route
 from gui.steps.step4_contracts import (
     _COLMAP_MAPPER_GLOMAP,
+    _COLMAP_REPOSITORY_URL,
     _OUTPUT_SHAPE_PROJECTED,
     _PIPELINE_STAGE_CONVERSION,
     _PIPELINE_STAGE_SFM,
     _PROFILE_REALITYSCAN,
+    _SPHERESFM_REPOSITORY_URL,
 )
 from gui.steps.workflow_cards import WorkflowCardGrid, WorkflowCardSpec
 
@@ -309,6 +312,13 @@ class SfmStep(BaseStepWidget):
         )
 
         layout.addLayout(form)
+        self.colmap_repo_link = make_external_link(
+            i18n.t("COLMAP_REPOSITORY_LINK"),
+            _COLMAP_REPOSITORY_URL,
+            i18n.tip("COLMAP_REPOSITORY_LINK"),
+            "sfmColmapRepositoryLink",
+        )
+        layout.addWidget(self.colmap_repo_link, alignment=Qt.AlignLeft)
         viewer_btn = QPushButton(i18n.t("SFM_OPEN_VIEWER"))
         viewer_btn.setObjectName("secondary")
         viewer_btn.setToolTip(i18n.tip("SFM_OPEN_VIEWER"))
@@ -370,6 +380,13 @@ class SfmStep(BaseStepWidget):
         )
 
         layout.addLayout(form)
+        self.spheresfm_repo_link = make_external_link(
+            i18n.t("SPHERESFM_REPOSITORY_LINK"),
+            _SPHERESFM_REPOSITORY_URL,
+            i18n.tip("SPHERESFM_REPOSITORY_LINK"),
+            "sfmSpheresfmRepositoryLink",
+        )
+        layout.addWidget(self.spheresfm_repo_link, alignment=Qt.AlignLeft)
         viewer_btn = QPushButton(i18n.t("SFM_OPEN_VIEWER"))
         viewer_btn.setObjectName("secondary")
         viewer_btn.setToolTip(i18n.tip("SFM_OPEN_VIEWER"))

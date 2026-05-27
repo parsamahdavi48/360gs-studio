@@ -153,7 +153,7 @@ _EXPORT_SETTINGS_NAME = STEP4_EXPORT_SETTINGS_JSON
 _COLMAP_PROJECT_MANIFEST_NAME = "stechdrive_colmap_project.json"
 _SPHERESFM_PROJECT_MANIFEST_NAME = "stechdrive_spheresfm_project.json"
 _COLMAP_REPOSITORY_URL = "https://github.com/colmap/colmap"
-_SPHERESFM_REPOSITORY_URL = "https://github.com/json87/spheresfm"
+_SPHERESFM_REPOSITORY_URL = "https://github.com/json87/SphereSfM"
 _USER_SETTINGS_SECTION = "step4_colmap"
 _LICHTFELD_FINAL_CORRECTION = LICHTFELD_FINAL_ORIENTATION_MATRIX
 

@@ -1,8 +1,8 @@
 # Step 6 学習GUI
 
-Step 6は、Step 5で作成した3DGS用データセットを使って、対応CLIを持つ学習アプリを起動する画面です。対応バージョンのLichtFeld StudioやPostshotを使うと、同じ設定の再実行やヘッドレス学習をGUIから始められます。
+Step 6は、Step 5で作成した3DGS用データセットを使って、対応CLIを持つ学習アプリを起動する画面です。対応バージョンの[LichtFeld Studio](https://lichtfeld.io/)や[Postshot](https://www.jawset.com/)を使うと、同じ設定の再実行やヘッドレス学習をGUIから始められます。
 
-学習アプリ側で画質やモデル設定を確認しながら進めたい場合は、Step 6を使わず、Step 5の出力データセットをLichtFeld Studio、Postshot、Brushなどで直接読み込んで学習できます。画像変換やSfMはStep 6では行いません。データセットを作る作業は `Step 5: データセット` です。
+学習アプリ側で画質やモデル設定を確認しながら進めたい場合は、Step 6を使わず、Step 5の出力データセットを[LichtFeld Studio](https://lichtfeld.io/)、[Postshot](https://www.jawset.com/)、[Brush](https://github.com/ArthurBrussee/brush)などで直接読み込んで学習できます。画像変換やSfMはStep 6では行いません。データセットを作る作業は `Step 5: データセット` です。
 
 ## 学習アプリで使う
 
@@ -55,7 +55,7 @@ Step 6では中央パネルを広く使うため、左右2カラムに整理し�
 
 ### 実行アプリ
 
-`LichtFeld Studio` と `Postshot` を選べます。任意CLIのコマンドを組み立てたい場合は、この画面ではなく各CLIを直接実行してください。
+`LichtFeld Studio` と `Postshot` を選べます。アプリ情報は [LichtFeld Studio](https://lichtfeld.io/) と [Postshot](https://www.jawset.com/) を参照してください。任意CLIのコマンドを組み立てたい場合は、この画面ではなく各CLIを直接実行してください。
 
 ### 実行ファイル
 

@@ -20,6 +20,14 @@ After extracting the ZIP, run `setup_windows.bat`, then `run_gui.bat`.
 
 ![STechDrive 3DGS Utils GUI](images/stechdrive-3dgs-utils-gui.jpg)
 
+## Related Tools
+
+- [COLMAP](https://github.com/colmap/colmap): SfM/MVS tool used by the COLMAP route and COLMAP-format dataset workflows.
+- [SphereSfM](https://github.com/json87/SphereSfM): COLMAP-based spherical-image SfM used by the SphereSfM route.
+- [LichtFeld Studio](https://lichtfeld.io/): 3DGS training app supported by the LichtFeld dataset presets and Step 6 CLI launcher.
+- [Postshot](https://www.jawset.com/): 3DGS training app supported by Postshot dataset presets and Step 6 CLI launcher.
+- [Brush](https://github.com/ArthurBrussee/brush): open-source Gaussian Splatting trainer that can use the cubemap-style outputs.
+
 ## What You Can Do
 
 ### 1. SfM Preprocessing for 360° and Normal Images
@@ -202,13 +210,13 @@ Use this route when Metashape aligns the base 360° images well, but you want Re
 
 1. Use Steps 1-3 in the same way as the Metashape route.
 2. In Step 4, choose `Run COLMAP SfM`. 360° images are expanded into cubemap rigs, while normal images remain normal cameras.
-3. Confirm the COLMAP or GLOMAP executable, matcher, and mapper, then run it.
+3. Confirm the [COLMAP](https://github.com/colmap/colmap) or GLOMAP executable, matcher, and mapper, then run it.
 4. After completion, pass `output/colmap_rig/` as a COLMAP dataset to COLMAP-compatible 3DGS tools. When no extra conversion is needed, you can skip Step 5 and continue to training.
 
 ## SphereSfM Route
 
 1. Use Steps 1-3 in the same way as the Metashape route. For SphereSfM, use same-resolution equirectangular 360° images only.
-2. In Step 4, choose `Run SphereSfM` and select SphereSfM's `colmap.exe` from a [json87/SphereSfM](https://github.com/json87/spheresfm) release or local build. Standard COLMAP cannot be used because it lacks the spherical-image SfM features.
+2. In Step 4, choose `Run SphereSfM` and select SphereSfM's `colmap.exe` from a [json87/SphereSfM](https://github.com/json87/SphereSfM) release or local build. Standard COLMAP cannot be used because it lacks the spherical-image SfM features.
 3. On RTX 50-series GPUs, the GitHub-distributed binary can stop during CUDA SIFT. For RTX 50-series systems, build SphereSfM locally with `CMAKE_CUDA_ARCHITECTURES=120` and select that `colmap.exe`.
 4. Start with `Matcher: Sequential` and `SfM Quality: Standard`.
 5. In Step 5, choose `SphereSfM -> NeRF Dataset (JSON/PLY)`, then choose PINHOLE cubemap output or ERP 360° data for LichtFeld.

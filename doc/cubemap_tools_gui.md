@@ -4,6 +4,16 @@ Step 4 is where you choose how camera poses and sparse points will be prepared f
 
 Step 5 converts SfM results into datasets that training apps can read. Use it to create NeRF-style JSON/PLY datasets from Metashape or SphereSfM, COLMAP-format datasets from Metashape or RealityScan, or to apply AprilTag scale to an existing dataset.
 
+## Related Tools
+
+| Tool | Use in this app |
+| --- | --- |
+| [COLMAP](https://github.com/colmap/colmap) | Step 4 COLMAP route and COLMAP-format dataset outputs |
+| [SphereSfM](https://github.com/json87/SphereSfM) | Step 4 spherical-image SfM route |
+| [LichtFeld Studio](https://lichtfeld.io/) | LichtFeld presets, GUT output, and RealityScan-to-COLMAP dataset use |
+| [Postshot](https://www.jawset.com/) | Postshot presets and Step 6 CLI launch |
+| [Brush](https://github.com/ArthurBrussee/brush) | Cubemap-style output for open-source Gaussian Splatting training |
+
 ## First Decision
 
 Start by deciding whether camera poses already exist.
@@ -28,7 +38,7 @@ For Metashape results, export cameras as Agisoft XML and sparse points as Stanfo
 
 ### Run COLMAP SfM
 
-Choose this when you want this app to run COLMAP or GLOMAP without using Metashape.
+Choose this when you want this app to run [COLMAP](https://github.com/colmap/colmap) or GLOMAP without using Metashape.
 
 - 360° images are expanded into cubemap rigs
 - normal images and normal video frames remain normal cameras
@@ -41,7 +51,7 @@ For normal images, start with automatic camera estimation. Only edit normal-came
 
 ### Run SphereSfM
 
-Choose this when you want to run SfM on equirectangular 360° images as spherical cameras. Treat SphereSfM as a route for same-resolution ERP 360° images only. Use COLMAP or Metashape when you need mixed normal images or multiple ERP resolutions.
+Choose this when you want to run SfM on equirectangular 360° images as spherical cameras. Treat [SphereSfM](https://github.com/json87/SphereSfM) as a route for same-resolution ERP 360° images only. Use COLMAP or Metashape when you need mixed normal images or multiple ERP resolutions.
 
 SphereSfM requires SphereSfM's own `colmap.exe`, not standard COLMAP. On RTX 50-series GPUs, some distributed binaries can fail during CUDA SIFT; in that case, select a build made for the RTX 50-series CUDA architecture.
 
@@ -70,7 +80,7 @@ Create a NeRF/3DGS-style dataset from a Metashape camera XML and point-cloud PLY
 | `PINHOLE` | You want cubemap-style perspective images for Postshot, Brush, LichtFeld, or similar tools |
 | `ERP 360°` | You want LichtFeld GUT to train directly on equirectangular images |
 
-Start with `PINHOLE` unless you specifically need LichtFeld GUT. If the Metashape result contains normal images or multiple ERP resolutions, direct ERP 360° output is not safe; use `PINHOLE`. For LichtFeld, mixed Metashape results with multiple camera settings are safer through `Metashape -> COLMAP Dataset` because LichtFeld's JSON/PLY import does not handle per-frame camera intrinsics.
+Start with `PINHOLE` unless you specifically need [LichtFeld Studio](https://lichtfeld.io/) GUT. If the Metashape result contains normal images or multiple ERP resolutions, direct ERP 360° output is not safe; use `PINHOLE`. For LichtFeld, mixed Metashape results with multiple camera settings are safer through `Metashape -> COLMAP Dataset` because LichtFeld's JSON/PLY import does not handle per-frame camera intrinsics.
 
 Typical outputs:
 

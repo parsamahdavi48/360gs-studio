@@ -177,6 +177,12 @@ def test_sfm_cards_open_in_step_sfm_pages_and_external_route_goes_to_dataset(tmp
         assert window.step4.pipeline_stage_intent("sfm") is True
         assert window.step4.pipeline_stage_intent("conversion") is True
         assert window.run_btn.text().strip() == i18n.t("SFM_RUN_COLMAP")
+        colmap_link = window.sfm_step.stack.currentWidget().findChild(QLabel, "sfmColmapRepositoryLink")
+        assert colmap_link is not None
+        assert colmap_link.openExternalLinks()
+        assert colmap_link.toolTip() == i18n.tip("COLMAP_REPOSITORY_LINK")
+        assert i18n.t("COLMAP_REPOSITORY_LINK") in colmap_link.text()
+        assert "https://github.com/colmap/colmap" in colmap_link.text()
 
         window.sfm_step.show_menu()
         assert window.run_btn.text().strip() == i18n.t("SFM_SELECT_ROUTE")
@@ -193,6 +199,12 @@ def test_sfm_cards_open_in_step_sfm_pages_and_external_route_goes_to_dataset(tmp
         viewer_buttons = [button for button in spheresfm_buttons if button.text() == i18n.t("SFM_OPEN_VIEWER")]
         assert len(viewer_buttons) == 1
         assert viewer_buttons[0].sizePolicy().horizontalPolicy() == QSizePolicy.Fixed
+        spheresfm_link = window.sfm_step.stack.currentWidget().findChild(QLabel, "sfmSpheresfmRepositoryLink")
+        assert spheresfm_link is not None
+        assert spheresfm_link.openExternalLinks()
+        assert spheresfm_link.toolTip() == i18n.tip("SPHERESFM_REPOSITORY_LINK")
+        assert i18n.t("SPHERESFM_REPOSITORY_LINK") in spheresfm_link.text()
+        assert "https://github.com/json87/SphereSfM" in spheresfm_link.text()
 
         window.sfm_step.show_menu()
         assert window.run_btn.text().strip() == i18n.t("SFM_SELECT_ROUTE")

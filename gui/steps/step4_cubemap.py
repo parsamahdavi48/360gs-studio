@@ -29,6 +29,7 @@ from gui import i18n
 from gui.common.browse_widget import BrowseWidget
 from gui.common.collapsible_section import CollapsibleSection
 from gui.common.drag_spinbox import DragDoubleSpinBox
+from gui.common.external_link import make_external_link
 from gui.common.form_rows import add_tooltip_row
 from gui.common.icons import scene_preview_icon
 from gui.cubemap.preview_renderer import PreviewWidget
@@ -96,15 +97,6 @@ _COLMAP_GLOBAL_BA_DONE_RE = re.compile(r"Global bundle adjustment iteration\s+(\
 _COLMAP_RETRIANGULATION_START_RE = re.compile(r"=== Running iterative retriangulation and refinement ===")
 _COLMAP_RETRIANGULATION_DONE_RE = re.compile(r"Iterative retriangulation and refinement done")
 _COLMAP_RECONSTRUCTION_DONE_RE = re.compile(r"Reconstruction done")
-
-
-def _make_external_link(text: str, url: str, tooltip: str, object_name: str) -> QLabel:
-    link = QLabel(f'<a href="{url}">{text}</a>')
-    link.setObjectName(object_name)
-    link.setOpenExternalLinks(True)
-    link.setTextInteractionFlags(Qt.TextBrowserInteraction)
-    link.setToolTip(tooltip)
-    return link
 
 
 class CubemapStep(
@@ -299,7 +291,7 @@ class CubemapStep(
 
         colmap_section_layout.addLayout(colmap_form)
         colmap_section_layout.addStretch()
-        self.colmap_repo_link = _make_external_link(
+        self.colmap_repo_link = make_external_link(
             i18n.t("COLMAP_REPOSITORY_LINK"),
             _COLMAP_REPOSITORY_URL,
             i18n.tip("COLMAP_REPOSITORY_LINK"),
@@ -374,7 +366,7 @@ class CubemapStep(
 
         spheresfm_layout.addLayout(spheresfm_form)
         spheresfm_layout.addStretch()
-        self.spheresfm_repo_link = _make_external_link(
+        self.spheresfm_repo_link = make_external_link(
             i18n.t("SPHERESFM_REPOSITORY_LINK"),
             _SPHERESFM_REPOSITORY_URL,
             i18n.tip("SPHERESFM_REPOSITORY_LINK"),

@@ -20,6 +20,14 @@ ZIPを展開したら、`setup_windows.bat`、続いて `run_gui.bat` を実行�
 
 ![STechDrive 3DGS Utils GUI](images/stechdrive-3dgs-utils-gui.jpg)
 
+## 関連ツール
+
+- [COLMAP](https://github.com/colmap/colmap): COLMAPルートとCOLMAP形式データセットで使うSfM/MVSツールです。
+- [SphereSfM](https://github.com/json87/SphereSfM): SphereSfMルートで使う、COLMAPベースの球面画像SfMです。
+- [LichtFeld Studio](https://lichtfeld.io/): LichtFeld向けデータセットプリセットとStep 6のCLI起動に対応する3DGS学習アプリです。
+- [Postshot](https://www.jawset.com/): Postshot向けデータセットプリセットとStep 6のCLI起動に対応する3DGS学習アプリです。
+- [Brush](https://github.com/ArthurBrussee/brush): Cubemap系出力を読み込める、オープンソースのGaussian Splattingトレーナーです。
+
 ## このアプリでできること
 
 ### 1. 360°/通常画像を混在させたSfM前処理
@@ -202,13 +210,13 @@ Metashapeでベースの360°画像を安定してSfMし、その結果をRealit
 
 1. Step 1からStep 3まではMetashapeルートと同じです。
 2. Step 4で `COLMAPでSfMを実行` を選びます。360°画像はCubemap Rigへ展開し、通常画像は通常カメラとして扱います。
-3. COLMAPまたはGLOMAPの実行ファイル、Matcher、Mapperを確認して実行します。
+3. [COLMAP](https://github.com/colmap/colmap)またはGLOMAPの実行ファイル、Matcher、Mapperを確認して実行します。
 4. 完了後は `output/colmap_rig/` をCOLMAPデータセットとして、COLMAP対応の3DGSアプリに渡します。追加変換が不要な場合はStep 5をスキップして学習へ進めます。
 
 ## SphereSfMルート
 
 1. Step 1からStep 3まではMetashapeルートと同じです。SphereSfMでは、同一解像度のエクイレクタングラー360°画像だけを入力にするのが安全です。
-2. Step 4で `SphereSfMでSfMを実行` を選び、[json87/SphereSfM](https://github.com/json87/spheresfm) のリリースまたはローカルビルドで用意したSphereSfM版 `colmap.exe` を指定します。通常のCOLMAPでは球面画像用の機能が足りないため使えません。
+2. Step 4で `SphereSfMでSfMを実行` を選び、[json87/SphereSfM](https://github.com/json87/SphereSfM) のリリースまたはローカルビルドで用意したSphereSfM版 `colmap.exe` を指定します。通常のCOLMAPでは球面画像用の機能が足りないため使えません。
 3. RTX 50系GPUでは、GitHub配布版バイナリはCUDA SIFTで停止することがあります。RTX 50系で使う場合は、SphereSfMを `CMAKE_CUDA_ARCHITECTURES=120` 付きで自前ビルドした `colmap.exe` を指定してください。
 4. `Matcher: Sequential`, `SfM品質: 標準` から始めます。
 5. Step 5で `SphereSfM → NeRFデータセット(JSON/PLY)` を選び、PINHOLEのCubemapデータにするか、LichtFeld向けのERP 360°データにするかを選びます。
