@@ -40,7 +40,6 @@ from gui import i18n
 from gui.common.browse_widget import BrowseWidget
 from gui.common.form_rows import add_tooltip_row
 from gui.common.runner_types import StepCommandQueue
-from gui.scene_preview.window import ScenePreviewWidget
 from gui.steps.base_step import BaseStepWidget
 from gui.steps.sfm_route_specs import SFM_ROUTE_COLMAP, SFM_ROUTE_METASHAPE, SFM_ROUTE_SPHERESFM, normalize_sfm_route
 from gui.steps.step4_contracts import (
@@ -53,6 +52,7 @@ from gui.steps.step4_contracts import (
 from gui.steps.workflow_cards import WorkflowCardGrid, WorkflowCardSpec
 
 if TYPE_CHECKING:
+    from gui.scene_preview.window import ScenePreviewWidget
     from gui.steps.step4_cubemap import CubemapStep
 
 _PAGE_MENU = "menu"
@@ -77,6 +77,7 @@ class SfmStep(BaseStepWidget):
         self._page = _PAGE_MENU
         self._page_indices: dict[str, int] = {}
         self._syncing_controls = False
+        self.scene_preview: ScenePreviewWidget | None = None
         self._build_ui()
         self._connect_child_signals()
 
@@ -102,9 +103,17 @@ class SfmStep(BaseStepWidget):
             )
         )
         self._page_indices[_PAGE_REALITYSCAN] = self.stack.addWidget(self._build_realityscan_detail_page())
-        self.scene_preview = ScenePreviewWidget(parent=self, show_scene_controls=False)
-        self._page_indices[_PAGE_VIEWER] = self.stack.addWidget(self.scene_preview)
         root.addWidget(self.stack)
+
+    def _ensure_scene_preview(self) -> ScenePreviewWidget:
+        if self.scene_preview is not None:
+            return self.scene_preview
+        from gui.scene_preview.window import ScenePreviewWidget
+
+        preview = ScenePreviewWidget(parent=self, show_scene_controls=False)
+        self.scene_preview = preview
+        self._page_indices[_PAGE_VIEWER] = self.stack.addWidget(preview)
+        return preview
 
     def _build_menu_page(self) -> QWidget:
         page = QWidget()
@@ -681,7 +690,8 @@ class SfmStep(BaseStepWidget):
         super().set_scene_dir(path)
         if self.cubemap_step.scene_dir != path:
             self.cubemap_step.set_scene_dir(path)
-        self.scene_preview.set_scene_dir(Path(path) if path else None, refresh=self._page == _PAGE_VIEWER)
+        if self.scene_preview is not None:
+            self.scene_preview.set_scene_dir(Path(path) if path else None, refresh=self._page == _PAGE_VIEWER)
         self._load_normal_camera_default()
 
     def on_activated(self) -> None:
@@ -690,7 +700,7 @@ class SfmStep(BaseStepWidget):
             self._prepare_current_route()
             self.cubemap_step.on_activated()
         elif self._page == _PAGE_VIEWER:
-            self.scene_preview.refresh()
+            self._ensure_scene_preview().refresh()
         self.primary_action_state_changed.emit()
 
     def show_menu(self) -> None:
@@ -724,7 +734,8 @@ class SfmStep(BaseStepWidget):
         self.primary_action_state_changed.emit()
 
     def show_viewer(self) -> None:
-        self.scene_preview.set_scene_dir(Path(self.scene_dir) if self.scene_dir else None, refresh=True)
+        scene_preview = self._ensure_scene_preview()
+        scene_preview.set_scene_dir(Path(self.scene_dir) if self.scene_dir else None, refresh=True)
         self._page = _PAGE_VIEWER
         self.stack.setCurrentIndex(self._page_indices[_PAGE_VIEWER])
         self.primary_action_state_changed.emit()

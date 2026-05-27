@@ -39,6 +39,18 @@ def make_output_file_path(file_path: str, view_name: str, output_format: str | N
     return f"{file_path}_{view_name}"
 
 
+def make_layer_output_file_path(
+    file_path: str,
+    view_name: str,
+    output_format: str | None = None,
+    *,
+    output_file_dir: str | None = None,
+) -> str:
+    output_name = make_output_file_path(os.path.basename(file_path), view_name, output_format)
+    prefix = str(output_file_dir or "").replace("\\", "/").strip("/")
+    return f"{prefix}/{output_name}" if prefix else output_name
+
+
 def frame_yaw_offset(frame_index: int, step_deg: float) -> float:
     if step_deg == 0.0:
         return 0.0
@@ -130,6 +142,7 @@ def transform_json(
     yaw_offset_per_frame: float = 0.0,
     final_orientation: str = FINAL_ORIENTATION_NONE,
     output_format: str | None = None,
+    output_file_dir: str | None = None,
 ) -> tuple[list[str], list[float], tuple[int, int], int]:
     json_path = os.path.join(input_dir, input_json)
     if not os.path.exists(json_path):
@@ -217,7 +230,12 @@ def transform_json(
             pitch = view["pitch"]
 
             new_frame: dict = {
-                "file_path": make_output_file_path(file_path, view_name, output_format),
+                "file_path": make_layer_output_file_path(
+                    file_path,
+                    view_name,
+                    output_format,
+                    output_file_dir=output_file_dir,
+                ),
                 "source_file_path": file_path,
                 "source_image_index": frame_index,
                 "view_name": view_name,

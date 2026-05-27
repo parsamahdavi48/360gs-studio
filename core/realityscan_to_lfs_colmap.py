@@ -26,6 +26,7 @@ from core.dataset_writer_colmap import (
 )
 from core.image_io import imread_unicode, imwrite_unicode
 from core.realityscan_dataset_plan import build_realityscan_lfs_dataset_plan
+from core.realityscan_layout import mask_lookup_candidates
 from core.realityscan_to_transforms import (
     REALITYSCAN_IMAGE_DIR_NAMES,
     REALITYSCAN_MASK_DIR_NAMES,
@@ -33,6 +34,7 @@ from core.realityscan_to_transforms import (
     camera_from_csv_row,
     image_size,
     read_realityscan_csv,
+    realityscan_image_asset_relative_path,
     related_realityscan_asset_roots,
     resolve_image_path,
     row_has_distortion,
@@ -46,7 +48,6 @@ DEFAULT_DATASET_DIR_NAME = "lfs_colmap"
 DEFAULT_UNDISTORTED_DATASET_DIR_NAME = "lfs_colmap_undistorted"
 DEFAULT_UNDISTORT_ALPHA = 1.0
 LICHTFELD_TRANSFORMS_MARKERS = ("transforms.json", "transforms_train.json")
-MASK_SEARCH_EXTENSIONS = (".png", ".jpg", ".jpeg", ".mask.png")
 IMAGE_WRITE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".bmp", ".tif", ".tiff", ".webp"}
 CameraPayload = tuple[str, int, int, tuple[float, ...]]
 ProgressCallback = Callable[[int, int], None]
@@ -164,37 +165,18 @@ def image_name_for_colmap(image_path: Path, images_dir: Path) -> str:
     return rel.as_posix()
 
 
-def _mask_lookup_candidates(image_name: str) -> list[Path]:
-    raw = Path(image_name)
-    bases = [
-        raw,
-        strip_leading_realityscan_asset_dir(raw, REALITYSCAN_IMAGE_DIR_NAMES),
-        strip_leading_realityscan_asset_dir(raw, REALITYSCAN_MASK_DIR_NAMES),
-    ]
-    candidates: list[Path] = []
-    for image_path in bases:
-        stem_path = image_path.parent / image_path.stem
-        candidates.append(image_path)
-        for ext in MASK_SEARCH_EXTENSIONS:
-            candidates.append(stem_path.with_suffix(ext))
-        for ext in MASK_SEARCH_EXTENSIONS:
-            candidates.append(Path(f"{image_path.as_posix()}{ext}"))
-
-    deduped: list[Path] = []
-    seen: set[str] = set()
-    for candidate in candidates:
-        key = candidate.as_posix().lower()
-        if key not in seen:
-            seen.add(key)
-            deduped.append(candidate)
-    return deduped
+def image_name_for_realityscan_asset(image_path: Path, images_dir: Path) -> str:
+    asset_rel = realityscan_image_asset_relative_path(image_path, images_dir)
+    if asset_rel is not None:
+        return asset_rel.as_posix()
+    return image_name_for_colmap(image_path, images_dir)
 
 
 def find_matching_mask(masks_dir: Path, image_name: str) -> Path | None:
     roots = tuple(root for root in related_realityscan_asset_roots(masks_dir, REALITYSCAN_MASK_DIR_NAMES) if root.is_dir())
     if not roots:
         return None
-    for rel in _mask_lookup_candidates(image_name):
+    for rel in mask_lookup_candidates(image_name):
         for root in roots:
             candidate = root / rel
             if candidate.is_file():
@@ -485,7 +467,7 @@ def prepare_undistorted_asset_dataset(
         )
         output_names.append(output_name)
         output_image = output_images_dir / output_name
-        source_mask = find_matching_mask(source_masks_dir, image_name_for_colmap(source_image, source_images_dir))
+        source_mask = find_matching_mask(source_masks_dir, image_name_for_realityscan_asset(source_image, source_images_dir))
         output_mask = output_masks_dir / mask_output_name(output_name, source_mask)
 
         if row_has_distortion(row):
@@ -568,7 +550,7 @@ def prepare_linked_asset_dataset(
         elif link_kind == "copy":
             stats["copied_images"] += 1
 
-        source_image_name = image_name_for_colmap(source_image, source_images_dir)
+        source_image_name = image_name_for_realityscan_asset(source_image, source_images_dir)
         source_mask = find_matching_mask(source_masks_dir, source_image_name)
         if source_mask is None:
             _notify_progress(progress_callback, row_index, row_total)

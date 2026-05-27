@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import shutil
 import uuid
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass
@@ -17,6 +16,14 @@ from pathlib import Path
 import numpy as np
 
 from core.dataset_writer_colmap import replace_file_with_link_or_copy
+from core.realityscan_layout import (
+    REALITYSCAN_EXTRA_IMAGE_DIR,
+    REALITYSCAN_GEOMETRY_LAYER_DIR,
+    REALITYSCAN_MASK_LAYER_DIR,
+    extra_geometry_dir,
+    extra_mask_dir,
+    mask_file_path_for_geometry,
+)
 from core.scene_import_contracts import IMAGE_EXTS
 from core.scene_inventory import SceneImage, build_scene_inventory
 
@@ -77,11 +84,11 @@ def xmp_sidecar_path(image_path: Path) -> Path:
 
 
 def mask_layer_path(image_path: Path) -> Path:
-    return Path(f"{image_path}.mask.png")
+    return mask_file_path_for_geometry(image_path)
 
 
 def standard_mask_path(output_dir: Path, image_path: Path) -> Path:
-    return output_dir / "masks" / f"{image_path.stem}.png"
+    return mask_file_path_for_geometry(image_path)
 
 
 def write_realityscan_mask_layer(source_mask: Path, layer_path: Path) -> None:
@@ -92,7 +99,9 @@ def write_realityscan_mask_layer(source_mask: Path, layer_path: Path) -> None:
     """
 
     layer_path.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copy2(source_mask, layer_path)
+    if _path_key(source_mask) == _path_key(layer_path):
+        return
+    replace_file_with_link_or_copy(source_mask, layer_path)
 
 
 def c2w_to_xmp_rotation_position(transform: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
@@ -330,7 +339,8 @@ def write_realityscan_xmp_sidecars(
     manifest = {
         "export_type": "realityscan_xmp",
         "transforms_json": transforms_name,
-        "images_dir": "images",
+        "images_dir": f"images/{REALITYSCAN_GEOMETRY_LAYER_DIR}",
+        "mask_layer_dir": f"images/{REALITYSCAN_MASK_LAYER_DIR}",
         "pose_prior": pose_prior,
         "calibration_prior": calibration_prior,
         "coordinates": coordinates,
@@ -416,8 +426,8 @@ def append_realityscan_unposed_scene_images(
         for rel in exclude_source_files
         if str(rel or "").strip()
     }
-    output_images_dir = output_dir / "extra_images"
-    output_masks_dir = output_dir / "extra_masks"
+    output_images_dir = extra_geometry_dir(output_dir)
+    output_masks_dir = extra_mask_dir(output_dir)
     output_images_dir.mkdir(parents=True, exist_ok=True)
     if include_masks and inventory.masks_dir.is_dir():
         output_masks_dir.mkdir(parents=True, exist_ok=True)
@@ -454,9 +464,7 @@ def append_realityscan_unposed_scene_images(
         link_counts[mask_link_kind] = link_counts.get(mask_link_kind, 0) + 1
         standard_masks.append(str(standard_mask.relative_to(output_dir).as_posix()))
 
-        layer = mask_layer_path(destination)
-        write_realityscan_mask_layer(image.mask.path, layer)
-        mask_layers.append(str(layer.relative_to(output_dir).as_posix()))
+        mask_layers.append(str(standard_mask.relative_to(output_dir).as_posix()))
 
     if manifest is None:
         manifest = {"export_type": "realityscan_xmp"}
@@ -468,8 +476,8 @@ def append_realityscan_unposed_scene_images(
     manifest["mask_layer_files"] = combined_mask_layers
     manifest["mask_layer_count"] = len(combined_mask_layers)
     manifest["unposed_image_count"] = len(copied_images)
-    manifest["unposed_images_dir"] = "extra_images"
-    manifest["unposed_masks_dir"] = "extra_masks"
+    manifest["unposed_images_dir"] = f"{REALITYSCAN_EXTRA_IMAGE_DIR}/{REALITYSCAN_GEOMETRY_LAYER_DIR}"
+    manifest["unposed_masks_dir"] = f"{REALITYSCAN_EXTRA_IMAGE_DIR}/{REALITYSCAN_MASK_LAYER_DIR}"
     manifest["unposed_mask_layer_count"] = len(mask_layers)
     manifest["unposed_standard_mask_count"] = len(standard_masks)
     manifest["unposed_mask_skipped_count"] = skipped_masks

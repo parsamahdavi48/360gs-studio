@@ -12,6 +12,7 @@ from typing import Any, BinaryIO
 
 import numpy as np
 
+from core import realityscan_layout as _rs_layout
 from core.dataset_writer_nerf import write_nerf_json_ply_dataset
 
 try:
@@ -23,8 +24,11 @@ except Exception:  # pragma: no cover - import error is reported when image size
 TARGET_PROFILE_REALITYSCAN = "realityscan"
 TARGET_PROFILE_LICHTFELD = "lichtfeld"
 TARGET_PROFILE_CHOICES = (TARGET_PROFILE_REALITYSCAN, TARGET_PROFILE_LICHTFELD)
-REALITYSCAN_IMAGE_DIR_NAMES = ("images", "extra_images")
-REALITYSCAN_MASK_DIR_NAMES = ("masks", "extra_masks")
+REALITYSCAN_IMAGE_DIR_NAMES = _rs_layout.REALITYSCAN_IMAGE_DIR_NAMES
+REALITYSCAN_MASK_DIR_NAMES = _rs_layout.REALITYSCAN_MASK_DIR_NAMES
+related_realityscan_asset_roots = _rs_layout.related_realityscan_asset_roots
+strip_leading_realityscan_asset_dir = _rs_layout.strip_leading_realityscan_asset_dir
+realityscan_image_asset_relative_path = _rs_layout.realityscan_image_asset_relative_path
 
 # The repository's RealityScan preset writes XMP poses in the coordinate frame
 # RealityScan exports back to CSV.  This maps that frame to the same LichtFeld
@@ -205,65 +209,8 @@ def output_file_path(path: Path, root_dir: Path, output_dir: Path, mode: str) ->
     raise ValueError(f"Unsupported image path mode: {mode}")
 
 
-def related_realityscan_asset_roots(asset_dir: Path, dir_names: tuple[str, ...]) -> tuple[Path, ...]:
-    asset_dir = Path(asset_dir)
-    names = {name.casefold() for name in dir_names}
-    roots: list[Path] = [asset_dir]
-    if asset_dir.name.casefold() in names:
-        roots.extend(asset_dir.parent / name for name in dir_names)
-    else:
-        roots.extend(asset_dir / name for name in dir_names)
-    return _dedupe_paths(roots)
-
-
-def strip_leading_realityscan_asset_dir(path: Path, dir_names: tuple[str, ...]) -> Path:
-    parts = path.parts
-    if parts and parts[0].casefold() in {name.casefold() for name in dir_names} and len(parts) > 1:
-        return Path(*parts[1:])
-    return path
-
-
 def resolve_image_path(images_dir: Path, name: str) -> Path:
-    raw = Path(name)
-    if raw.is_absolute():
-        return raw
-    stripped = strip_leading_realityscan_asset_dir(raw, REALITYSCAN_IMAGE_DIR_NAMES)
-    seen: set[str] = set()
-    for root in related_realityscan_asset_roots(images_dir, REALITYSCAN_IMAGE_DIR_NAMES):
-        for rel in (raw, stripped):
-            key = (root / rel).as_posix().casefold()
-            if key in seen:
-                continue
-            seen.add(key)
-            candidate = root / rel
-            if candidate.exists():
-                return candidate
-    return Path(images_dir) / raw
-
-
-def realityscan_image_asset_relative_path(path: Path, images_dir: Path) -> Path | None:
-    path = Path(path)
-    for root in related_realityscan_asset_roots(images_dir, REALITYSCAN_IMAGE_DIR_NAMES):
-        try:
-            rel = path.resolve().relative_to(root.resolve())
-        except ValueError:
-            continue
-        if root.name.casefold() in {name.casefold() for name in REALITYSCAN_IMAGE_DIR_NAMES}:
-            return Path(root.name) / rel
-        return rel
-    return None
-
-
-def _dedupe_paths(paths: list[Path]) -> tuple[Path, ...]:
-    deduped: list[Path] = []
-    seen: set[str] = set()
-    for path in paths:
-        key = path.resolve(strict=False).as_posix().casefold()
-        if key in seen:
-            continue
-        seen.add(key)
-        deduped.append(path)
-    return tuple(deduped)
+    return _rs_layout.resolve_realityscan_image_path(images_dir, name)
 
 
 def image_size(path: Path) -> tuple[int, int]:
@@ -377,9 +324,12 @@ def top_level_camera_payload(frames: list[dict[str, Any]]) -> tuple[dict[str, An
 
 def find_mask_path(image_path: Path, masks_dir: Path | None) -> Path | None:
     if masks_dir is not None:
-        candidate = masks_dir / f"{image_path.stem}.png"
-        if candidate.is_file():
-            return candidate
+        roots = tuple(root for root in related_realityscan_asset_roots(masks_dir, REALITYSCAN_MASK_DIR_NAMES) if root.is_dir())
+        for rel in _rs_layout.mask_lookup_candidates(realityscan_image_asset_relative_path(image_path, masks_dir) or image_path.name):
+            for root in roots:
+                candidate = root / rel
+                if candidate.is_file():
+                    return candidate
     layer = Path(f"{image_path}.mask.png")
     return layer if layer.is_file() else None
 
@@ -404,7 +354,10 @@ def convert(
     images_dir = Path(images_dir) if images_dir is not None else csv_path.parent / "images"
     masks_dir = Path(masks_dir) if masks_dir is not None else csv_path.parent / "masks"
     if not masks_dir.is_dir():
-        masks_dir = None
+        image_layer_masks = tuple(
+            root for root in related_realityscan_asset_roots(images_dir, REALITYSCAN_MASK_DIR_NAMES) if root.is_dir()
+        )
+        masks_dir = images_dir if image_layer_masks else None
 
     if image_path_mode not in IMAGE_PATH_MODES:
         raise ValueError(f"Unsupported image path mode: {image_path_mode}")

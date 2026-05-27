@@ -177,9 +177,8 @@ def test_convert_rejects_lfs_json_marker_in_dataset_root(tmp_path: Path) -> None
 def test_convert_dedicated_root_links_existing_images_and_masks(tmp_path: Path) -> None:
     source = tmp_path / "realityscan"
     images = source / "images"
-    masks = source / "masks"
-    write_image(images / "a.jpg", (80, 80))
-    write_image(masks / "a.png", (80, 80))
+    write_image(images / "_geometry" / "a.jpg", (80, 80))
+    write_image(images / "_mask" / "a.png", (80, 80))
     write_csv(source / "rs.csv", [{"#name": "a.jpg", "f_35mm": 18}])
     (source / "transforms.json").write_text("{}", encoding="utf-8")
 
@@ -197,10 +196,10 @@ def test_convert_dedicated_root_links_existing_images_and_masks(tmp_path: Path) 
 
 def test_convert_merges_realityscan_images_and_extra_images_into_dataset_images(tmp_path: Path) -> None:
     source = tmp_path / "realityscan"
-    write_image(source / "images" / "cube_px.jpg", (64, 64))
-    write_image(source / "extra_images" / "extra_normal.jpg", (80, 60))
-    write_image(source / "masks" / "cube_px.png", (64, 64))
-    write_image(source / "extra_masks" / "extra_normal.png", (80, 60))
+    write_image(source / "images" / "_geometry" / "cube_px.jpg", (64, 64))
+    write_image(source / "extra_images" / "_geometry" / "extra_normal.jpg", (80, 60))
+    write_image(source / "images" / "_mask" / "cube_px.png", (64, 64))
+    write_image(source / "extra_images" / "_mask" / "extra_normal.png", (80, 60))
     write_csv(
         source / "rs.csv",
         [
@@ -248,13 +247,13 @@ def test_convert_reports_row_based_progress(tmp_path: Path) -> None:
 
 def test_convert_accepts_prefixed_extra_image_csv_names(tmp_path: Path) -> None:
     source = tmp_path / "realityscan"
-    write_image(source / "images" / "cube_px.jpg", (64, 64))
-    write_image(source / "extra_images" / "normal.jpg", (80, 60))
+    write_image(source / "images" / "_geometry" / "cube_px.jpg", (64, 64))
+    write_image(source / "extra_images" / "_geometry" / "normal.jpg", (80, 60))
     write_csv(
         source / "rs.csv",
         [
-            {"#name": "images/cube_px.jpg", "f_35mm": 18},
-            {"#name": "extra_images/normal.jpg", "f_35mm": 24},
+            {"#name": "images/_geometry/cube_px.jpg", "f_35mm": 18},
+            {"#name": "extra_images/_geometry/normal.jpg", "f_35mm": 24},
         ],
     )
 

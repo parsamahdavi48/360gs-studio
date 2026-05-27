@@ -64,9 +64,9 @@ def test_target_profile_matrix_maps_realityscan_to_lichtfeld() -> None:
 
 def test_convert_keeps_mixed_cubemap_and_normal_images(tmp_path: Path) -> None:
     images_dir = tmp_path / "images"
-    masks_dir = tmp_path / "masks"
-    write_image(images_dir / "cube_px.jpg", (100, 100))
-    write_image(images_dir / "normal.png", (200, 100))
+    masks_dir = images_dir / "_mask"
+    write_image(images_dir / "_geometry" / "cube_px.jpg", (100, 100))
+    write_image(images_dir / "_geometry" / "normal.png", (200, 100))
     masks_dir.mkdir(parents=True)
     Image.new("L", (100, 100), 255).save(masks_dir / "cube_px.png")
 
@@ -130,14 +130,14 @@ def test_convert_keeps_mixed_cubemap_and_normal_images(tmp_path: Path) -> None:
     assert len(data["frames"]) == 2
 
     cube, normal = data["frames"]
-    assert cube["file_path"] == "images/cube_px.jpg"
+    assert cube["file_path"] == "images/_geometry/cube_px.jpg"
     assert cube["camera_model"] == "PINHOLE"
     assert cube["fl_x"] == 50.0
     assert cube["source_image_index"] == 7
-    assert cube["mask_path"] == "masks/cube_px.png"
+    assert cube["mask_path"] == "images/_mask/cube_px.png"
     assert np.allclose(np.array(cube["transform_matrix"])[:3, 3], [-1.0, 3.0, 2.0])
 
-    assert normal["file_path"] == "images/normal.png"
+    assert normal["file_path"] == "images/_geometry/normal.png"
     assert normal["camera_model"] == "OPENCV"
     assert normal["w"] == 200
     assert normal["h"] == 100
@@ -152,8 +152,8 @@ def test_convert_keeps_mixed_cubemap_and_normal_images(tmp_path: Path) -> None:
 def test_convert_resolves_sibling_extra_images_without_rewriting_path_to_images(tmp_path: Path) -> None:
     images_dir = tmp_path / "images"
     extra_images_dir = tmp_path / "extra_images"
-    write_image(images_dir / "cube_px.jpg", (100, 100))
-    write_image(extra_images_dir / "normal.jpg", (200, 100))
+    write_image(images_dir / "_geometry" / "cube_px.jpg", (100, 100))
+    write_image(extra_images_dir / "_geometry" / "normal.jpg", (200, 100))
     write_csv(
         tmp_path / "rs.csv",
         [
@@ -171,8 +171,8 @@ def test_convert_resolves_sibling_extra_images_without_rewriting_path_to_images(
 
     data = json.loads((tmp_path / "out" / "transforms.json").read_text(encoding="utf-8"))
     assert [frame["file_path"] for frame in data["frames"]] == [
-        "images/cube_px.jpg",
-        "extra_images/normal.jpg",
+        "images/_geometry/cube_px.jpg",
+        "extra_images/_geometry/normal.jpg",
     ]
 
 

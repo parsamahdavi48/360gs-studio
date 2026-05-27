@@ -167,15 +167,17 @@ def _image_files(root: Path | None) -> tuple[Path, ...]:
             continue
         if path.suffix.lower() not in IMAGE_EXTS:
             continue
-        if _is_mask_layer_name(path.name):
+        if _is_mask_layer_path(path):
             continue
         files.append(path)
     return tuple(sorted(files, key=lambda item: str(item).casefold()))
 
 
-def _is_mask_layer_name(name: str) -> bool:
-    lower = str(name or "").casefold()
-    return lower.endswith(".mask.png")
+def _is_mask_layer_path(path: Path) -> bool:
+    lower = path.name.casefold()
+    if lower.endswith(".mask.png"):
+        return True
+    return any(part.casefold() in {".mask", "_mask", "@mask", "#mask", "!mask"} for part in path.parts)
 
 
 def _image_keys(path: Path, image_root: Path | None) -> set[str]:

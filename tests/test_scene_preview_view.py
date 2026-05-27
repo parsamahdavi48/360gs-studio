@@ -154,6 +154,11 @@ def test_perspective_view_uses_crisp_texture_filter_when_zoomed() -> None:
 def test_perspective_view_resets_pan_zoom_when_source_changes() -> None:
     _app()
     view = PerspectiveImageView()
+    assert view._gpu_view is None
+    assert view.set_perspective_image_bgr(
+        np.full((32, 64, 3), 128, dtype=np.uint8),
+        PerspectiveParams(),
+    )
     assert view._gpu_view is not None
     view._gpu_view._zoom = 4.0
     view._gpu_view._pan = QPointF(50.0, -25.0)

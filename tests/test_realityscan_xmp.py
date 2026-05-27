@@ -23,8 +23,8 @@ from core.realityscan_xmp import (
 
 
 def _write_transforms(output: Path) -> None:
-    images = output / "images"
-    masks = output / "masks"
+    images = output / "images" / "_geometry"
+    masks = output / "images" / "_mask"
     images.mkdir(parents=True)
     masks.mkdir()
     (images / "frame_0001_pz.jpg").write_bytes(b"image")
@@ -43,7 +43,7 @@ def _write_transforms(output: Path) -> None:
         "cy": 49.5,
         "frames": [
             {
-                "file_path": "images/frame_0001_pz.jpg",
+                "file_path": "images/_geometry/frame_0001_pz.jpg",
                 "source_file_path": "images/frame_0001.jpg",
                 "source_image_index": 0,
                 "view_name": "pz",
@@ -74,7 +74,7 @@ def test_write_realityscan_xmp_sidecars(tmp_path: Path) -> None:
         rig_name="test-rig",
     )
 
-    xmp = output / "images" / "frame_0001_pz.xmp"
+    xmp = output / "images" / "_geometry" / "frame_0001_pz.xmp"
     assert xmp.is_file()
     assert manifest["xmp_count"] == 1
     assert manifest["focal_length_35mm"] == 18.0
@@ -106,7 +106,7 @@ def test_write_realityscan_xmp_sidecars_can_include_experimental_rig_metadata(tm
 
     manifest = write_realityscan_xmp_sidecars(output, include_rig=True, rig_name="test-rig")
 
-    root = ET.parse(output / "images" / "frame_0001_pz.xmp").getroot()
+    root = ET.parse(output / "images" / "_geometry" / "frame_0001_pz.xmp").getroot()
     desc = root.find(".//{http://www.w3.org/1999/02/22-rdf-syntax-ns#}Description")
     assert desc is not None
     assert manifest["rig_metadata"] is True
@@ -122,7 +122,7 @@ def test_write_realityscan_xmp_sidecars_defaults_to_exact_relative_pose_prior(tm
 
     write_realityscan_xmp_sidecars(output)
 
-    root = ET.parse(output / "images" / "frame_0001_pz.xmp").getroot()
+    root = ET.parse(output / "images" / "_geometry" / "frame_0001_pz.xmp").getroot()
     desc = root.find(".//{http://www.w3.org/1999/02/22-rdf-syntax-ns#}Description")
     assert desc is not None
     assert _xcr_attr(desc, "PosePrior") == "exact"
@@ -137,10 +137,10 @@ def test_write_realityscan_mask_layers(tmp_path: Path) -> None:
 
     manifest = write_realityscan_mask_layers(output)
 
-    layer = output / "images" / "frame_0001_pz.jpg.mask.png"
+    layer = output / "images" / "_mask" / "frame_0001_pz.png"
     assert np.array_equal(np.asarray(Image.open(layer)), np.array([[255, 0], [128, 64]], dtype=np.uint8))
     assert manifest["mask_layer_count"] == 1
-    assert manifest["mask_layer_files"] == ["images/frame_0001_pz.jpg.mask.png"]
+    assert manifest["mask_layer_files"] == ["images/_mask/frame_0001_pz.png"]
     assert manifest["mask_layer_polarity"] == "white_used_black_excluded"
     assert manifest["source_mask_polarity"] == "white_keep_black_exclude"
     assert manifest["mask_layers_inverted_for_realityscan"] is False
@@ -170,18 +170,17 @@ def test_append_realityscan_unposed_scene_images_excludes_metashape_sources(tmp_
         manifest=manifest,
     )
 
-    extra = output / "extra_images" / "extra_normal.jpg"
+    extra = output / "extra_images" / "_geometry" / "extra_normal.jpg"
     assert extra.is_file()
-    assert (output / "extra_masks" / "extra_normal.png").is_file()
-    assert (output / "extra_images" / "extra_normal.jpg.mask.png").is_file()
-    assert not (output / "images" / "extra_pano.jpg").exists()
-    assert manifest["unposed_images_dir"] == "extra_images"
-    assert manifest["unposed_masks_dir"] == "extra_masks"
+    assert (output / "extra_images" / "_mask" / "extra_normal.png").is_file()
+    assert not (output / "images" / "_geometry" / "extra_pano.jpg").exists()
+    assert manifest["unposed_images_dir"] == "extra_images/_geometry"
+    assert manifest["unposed_masks_dir"] == "extra_images/_mask"
     assert manifest["unposed_image_count"] == 1
     assert manifest["unposed_mask_layer_count"] == 1
     assert manifest["unposed_pose"] == "none"
     assert manifest["mask_layer_count"] == 2
-    assert "extra_images/extra_normal.jpg.mask.png" in manifest["mask_layer_files"]
+    assert "extra_images/_mask/extra_normal.png" in manifest["mask_layer_files"]
 
 
 def test_c2w_to_xmp_rotation_position_uses_world_to_camera_rotation() -> None:
@@ -353,12 +352,12 @@ def test_cubemap_faces_roundtrip_to_source_equirect_without_face_name_assumption
     assert float(np.mean(np.abs(reconstructed.astype(np.int16) - source.astype(np.int16)))) < 2.5
 
 
-def test_mask_layer_overwrites_existing_file(tmp_path: Path) -> None:
+def test_mask_layer_noops_when_generated_mask_is_already_in_layer(tmp_path: Path) -> None:
     output = tmp_path / "realityscan"
     _write_transforms(output)
-    layer = output / "images" / "frame_0001_pz.jpg.mask.png"
-    layer.write_bytes(b"old")
+    layer = output / "images" / "_mask" / "frame_0001_pz.png"
+    before = layer.read_bytes()
 
     write_realityscan_mask_layers(output)
 
-    assert np.array_equal(np.asarray(Image.open(layer)), np.array([[255, 0], [128, 64]], dtype=np.uint8))
+    assert layer.read_bytes() == before

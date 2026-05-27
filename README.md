@@ -192,10 +192,10 @@ Use this route when Metashape aligns the base 360° images well, but you want Re
 1. Run Steps 1-3 and Metashape SfM as in the Metashape route.
 2. Export Agisoft XML and Stanford PLY from Metashape, preferably into the scene folder.
 3. In Step 4, run `Metashape -> RealityScan Data`. The app writes RealityScan input under `output/realityscan/`.
-4. In RealityScan, add `output/realityscan/images/` first and run Align until cameras and sparse points are generated.
-5. Add `output/realityscan/extra_images/` only after the cubemap component is stable, then run Align again. This usually gives more reliable normal-image registration than importing every image at once.
+4. In RealityScan, add `output/realityscan/images/` first and run Align until cameras and sparse points are generated. Cubemap images live in its `_geometry` layer and masks live in its `_mask` layer.
+5. Add `output/realityscan/extra_images/` only after the cubemap component is stable, then run Align again. Extra images use the same `_geometry` / `_mask` layer layout. This usually gives more reliable normal-image registration than importing every image at once.
 6. Confirm the component you want to train from, then export the RealityScan camera CSV and PLY into `output/realityscan/`.
-7. In Step 5, run `RealityScan -> COLMAP Dataset`. The app merges CSV-registered `extra_images/` and `extra_masks/` into `output/realityscan/lfs_colmap/`.
+7. In Step 5, run `RealityScan -> COLMAP Dataset`. The app merges CSV-registered images from `images/_geometry` and `extra_images/_geometry`, with matching `_mask` layers, into `output/realityscan/lfs_colmap/`.
 8. Open `output/realityscan/lfs_colmap/` in LichtFeld Studio as a Dataset with `GUT` off.
 
 ## COLMAP Route

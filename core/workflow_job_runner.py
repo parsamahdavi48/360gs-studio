@@ -19,6 +19,7 @@ from core.cubemap_transform_export import frame_output_sizes_from_transforms, fr
 from core.dataset_writer_colmap import replace_file_with_link_or_copy
 from core.metashape_preprocess import export_metashape_equirectangular_dataset
 from core.orientation_correction import FINAL_ORIENTATION_NONE
+from core.realityscan_layout import primary_geometry_dir, primary_mask_dir
 from core.realityscan_xmp import (
     append_realityscan_unposed_scene_images,
     write_realityscan_mask_layers,
@@ -150,6 +151,9 @@ def _run_cubemap_conversion(job: dict, *, cancel_event: CancellationToken | None
     if image_only and bool(job.get("realityscan_xmp")):
         raise ValueError("RealityScan XMP requires transforms.json conversion, not image-only conversion")
 
+    realityscan_xmp_enabled = bool(job.get("realityscan_xmp"))
+    realityscan_output_image_dir = primary_geometry_dir(output_dir)
+    realityscan_output_mask_dir = primary_mask_dir(output_dir)
     if image_only:
         source_image_dir = input_dir / "images"
         if not source_image_dir.is_dir():
@@ -225,6 +229,7 @@ def _run_cubemap_conversion(job: dict, *, cancel_event: CancellationToken | None
             yaw_offset_per_frame=float(job.get("yaw_offset_per_frame", 0.0)),
             final_orientation=str(job.get("final_orientation") or FINAL_ORIENTATION_NONE),
             output_format=str(job.get("output_format") or "auto"),
+            output_file_dir="images/_geometry" if realityscan_xmp_enabled else None,
         )
         if not image_files:
             raise ValueError("No frames were converted from transforms.json")
@@ -234,7 +239,7 @@ def _run_cubemap_conversion(job: dict, *, cancel_event: CancellationToken | None
 
     raise_if_cancelled(cancel_event)
     realityscan_manifest = None
-    if bool(job.get("realityscan_xmp")):
+    if realityscan_xmp_enabled:
         realityscan_manifest = write_realityscan_xmp_sidecars(
             output_dir,
             pose_prior=str(job.get("realityscan_pose_prior") or "exact"),
@@ -285,21 +290,21 @@ def _run_cubemap_conversion(job: dict, *, cancel_event: CancellationToken | None
             return
         convert_images(
             **common,
-            output_image_dir=str(output_dir / "images"),
-            output_mask_dir=str(output_dir / "masks"),
+            output_image_dir=str(realityscan_output_image_dir if realityscan_xmp_enabled else output_dir / "images"),
+            output_mask_dir=str(realityscan_output_mask_dir if realityscan_xmp_enabled else output_dir / "masks"),
             frame_yaw_offsets=frame_yaw_offsets,
             frame_output_sizes=frame_output_sizes,
             cancel_event=cancel_event,
         )
 
     raise_if_cancelled(cancel_event)
-    if bool(job.get("realityscan_xmp")) and bool(job.get("realityscan_mask_layers", True)) and export_masks:
+    if realityscan_xmp_enabled and bool(job.get("realityscan_mask_layers", True)) and export_masks:
         realityscan_manifest = write_realityscan_mask_layers(output_dir, manifest=realityscan_manifest)
         print(f"RealityScan mask layers: {realityscan_manifest['mask_layer_count']}", flush=True)
 
     raise_if_cancelled(cancel_event)
     unposed_scene = str(job.get("realityscan_unposed_scene_dir") or "").strip()
-    if bool(job.get("realityscan_xmp")) and bool(job.get("realityscan_unposed_images")) and unposed_scene:
+    if realityscan_xmp_enabled and bool(job.get("realityscan_unposed_images")) and unposed_scene:
         realityscan_manifest = append_realityscan_unposed_scene_images(
             output_dir,
             scene_dir=Path(unposed_scene),

@@ -430,17 +430,19 @@ class Step4ManifestMixin:
     def _step4_artifact_snapshot(self, root: Path) -> dict:
         scene = Path(self.scene_dir)
         settings = self._current_export_settings_snapshot()
+        realityscan = settings.get("effective_profile") == _PROFILE_REALITYSCAN
         output_files = settings.get("output_files") if isinstance(settings.get("output_files"), dict) else {}
         transforms_name = str(output_files.get("transforms_json") or "transforms.json")
         pointcloud_name = str(output_files.get("pointcloud") or "pointcloud.ply")
         raw_pointcloud_name = str(output_files.get("raw_metashape_pointcloud") or "metashape.ply")
+        masks_dir = root / "images" / "_mask" if realityscan else root / "masks"
         return {
             "root": scene_relative(scene, root),
             "transforms_json": file_identity(root / transforms_name),
             "pointcloud": file_identity(root / pointcloud_name),
             "raw_metashape_pointcloud": file_identity(root / raw_pointcloud_name),
             "images_dir": file_identity(root / "images"),
-            "masks_dir": file_identity(root / "masks"),
+            "masks_dir": file_identity(masks_dir),
             "colmap_sparse_dir": file_identity(root / "sparse"),
         }
 
@@ -458,7 +460,7 @@ class Step4ManifestMixin:
             "pointcloud": output_files.get("pointcloud", ""),
             "raw_metashape_pointcloud": output_files.get("raw_metashape_pointcloud", ""),
             "images_dir": "images" if (root / "images").exists() else "",
-            "masks_dir": "masks" if (root / "masks").exists() else "",
+            "masks_dir": self._dataset_masks_dir(root, settings),
             "sparse_dir": "sparse/0" if (root / "sparse" / "0").exists() else "",
             "view_config": settings.get("view_config", {}),
             "conversion": {
@@ -469,6 +471,12 @@ class Step4ManifestMixin:
                 "write_masks": conversion.get("write_masks", True),
             },
         }
+
+    @staticmethod
+    def _dataset_masks_dir(root: Path, settings: dict) -> str:
+        if settings.get("effective_profile") == _PROFILE_REALITYSCAN and (root / "images" / "_mask").exists():
+            return "images/_mask"
+        return "masks" if (root / "masks").exists() else ""
 
     def _current_dataset_root_for_manifest(self) -> Path:
         if self._is_spheresfm_method():

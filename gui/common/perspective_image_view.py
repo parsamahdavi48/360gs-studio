@@ -618,22 +618,36 @@ class PerspectiveImageView(QWidget):
 
     def __init__(self, text: str = "", parent: QWidget | None = None) -> None:
         super().__init__(parent)
+        self._gpu_text = text
         self._cpu_view = ZoomableImageLabel(text)
-        self._gpu_view: PerspectiveGLImageView | None = PerspectiveGLImageView(text)
-        self._gpu_view.look_dragged.connect(self.look_dragged.emit)
-        self._gpu_view.image_clicked.connect(self.image_clicked.emit)
-        self._gpu_view.gpu_failed.connect(self._on_gpu_failed)
+        self._gpu_view: PerspectiveGLImageView | None = None
         self._gpu_failed = False
         self._drag_mode = "pan"
 
         self._stack = QStackedLayout(self)
         self._stack.setContentsMargins(0, 0, 0, 0)
         self._stack.addWidget(self._cpu_view)
-        self._stack.addWidget(self._gpu_view)
         self._stack.setCurrentWidget(self._cpu_view)
 
         self._cpu_view.look_dragged.connect(self.look_dragged.emit)
         self._cpu_view.image_clicked.connect(self.image_clicked.emit)
+
+    def _ensure_gpu_view(self) -> PerspectiveGLImageView | None:
+        if self._gpu_failed:
+            return None
+        if self._gpu_view is not None:
+            return self._gpu_view
+        view = PerspectiveGLImageView(self._gpu_text, self)
+        view.look_dragged.connect(self.look_dragged.emit)
+        view.image_clicked.connect(self.image_clicked.emit)
+        view.gpu_failed.connect(self._on_gpu_failed)
+        view.set_drag_mode(self._drag_mode)
+        style_sheet = self.styleSheet()
+        if style_sheet:
+            view.setStyleSheet(style_sheet)
+        self._stack.addWidget(view)
+        self._gpu_view = view
+        return view
 
     @property
     def _source_pixmap(self):  # noqa: ANN001 - compatibility with existing preview tests
@@ -646,6 +660,7 @@ class PerspectiveImageView(QWidget):
             self._gpu_view.setStyleSheet(style_sheet)
 
     def setText(self, text: str) -> None:  # noqa: N802 - Qt API
+        self._gpu_text = text
         self._cpu_view.setText(text)
         self._stack.setCurrentWidget(self._cpu_view)
 
@@ -675,16 +690,16 @@ class PerspectiveImageView(QWidget):
         logical_size: QSize | None = None,
         screen_x_sign: float = 1.0,
     ) -> bool:
-        if self._gpu_view is not None:
-            self._gpu_view.set_screen_x_sign(screen_x_sign)
-        if self._gpu_view is None or self._gpu_failed or self._gpu_view.failed():
+        gpu_view = self._ensure_gpu_view()
+        if gpu_view is None or gpu_view.failed():
             return False
+        gpu_view.set_screen_x_sign(screen_x_sign)
         size = logical_size or QSize(perspective_output_size(image), perspective_output_size(image))
-        self._gpu_view.set_drag_mode(self._drag_mode)
-        self._gpu_view.set_source_image(bgr_to_qimage(image), logical_size=size)
-        self._gpu_view.set_perspective_params(params)
-        self._gpu_view.set_label_overlays(overlays or [])
-        self._stack.setCurrentWidget(self._gpu_view)
+        gpu_view.set_drag_mode(self._drag_mode)
+        gpu_view.set_source_image(bgr_to_qimage(image), logical_size=size)
+        gpu_view.set_perspective_params(params)
+        gpu_view.set_label_overlays(overlays or [])
+        self._stack.setCurrentWidget(gpu_view)
         return True
 
     def set_perspective_params(self, params: PerspectiveParams) -> bool:

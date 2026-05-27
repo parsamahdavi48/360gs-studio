@@ -24,6 +24,7 @@ from core.cubemap_transforms_json import (
 )
 from core.cubemap_worker_plan import parse_positive_int_or_auto
 from core.orientation_correction import FINAL_ORIENTATION_CHOICES, FINAL_ORIENTATION_NONE
+from core.realityscan_layout import primary_geometry_dir, primary_mask_dir
 from core.realityscan_xmp import (
     REALITYSCAN_CALIBRATION_PRIORS,
     REALITYSCAN_COORDINATE_MODES,
@@ -267,8 +268,8 @@ def main(argv: Sequence[str] | None = None) -> None:
 
     image_dir = args.image_dir if args.image_dir else input_dir
     mask_dir = args.mask_dir if args.mask_dir else f"{input_dir}/masks"
-    output_image_dir = f"{output_dir}/images"
-    output_mask_dir = f"{output_dir}/masks"
+    output_image_dir = str(primary_geometry_dir(Path(output_dir))) if args.realityscan_xmp else f"{output_dir}/images"
+    output_mask_dir = str(primary_mask_dir(Path(output_dir))) if args.realityscan_xmp else f"{output_dir}/masks"
 
     if args.mask_dir and not os.path.isdir(mask_dir):
         _exit_error(f"mask_dir '{mask_dir}' not found")
@@ -371,6 +372,7 @@ def main(argv: Sequence[str] | None = None) -> None:
             yaw_offset_per_frame=args.yaw_offset_per_frame,
             final_orientation=args.final_orientation,
             output_format=args.output_format,
+            output_file_dir="images/_geometry" if args.realityscan_xmp else None,
         )
         frame_output_sizes = frame_output_sizes_from_transforms(Path(output_dir) / "transforms.json", image_files)
         if not frame_output_sizes:

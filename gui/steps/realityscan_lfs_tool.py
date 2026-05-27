@@ -17,6 +17,7 @@ from PySide6.QtWidgets import (
 
 from core.app_job import dataset_app_job
 from core.dataset_job_spec import realityscan_lfs_colmap_job, write_dataset_job
+from core.realityscan_layout import REALITYSCAN_GEOMETRY_LAYER_DIR, REALITYSCAN_MASK_LAYER_DIR
 from core.realityscan_to_lfs_colmap import DEFAULT_UNDISTORT_ALPHA
 from core.realityscan_to_transforms import (
     REALITYSCAN_IMAGE_DIR_NAMES,
@@ -296,9 +297,12 @@ class RealityScanLfsTool(BaseStepWidget):
                 images = root / "images"
                 self.images_browse.set_text(str(images if images.is_dir() else scene_images_dir(Path(self.scene_dir))))
             if not self._masks_user_edited:
-                masks = root / "masks"
+                masks = root / "images" / REALITYSCAN_MASK_LAYER_DIR
+                legacy_masks = root / "masks"
                 fallback = scene_masks_dir(Path(self.scene_dir))
-                self.masks_browse.set_text(str(masks if masks.is_dir() else fallback if fallback.is_dir() else ""))
+                self.masks_browse.set_text(
+                    str(masks if masks.is_dir() else legacy_masks if legacy_masks.is_dir() else fallback if fallback.is_dir() else "")
+                )
             if not self.output_browse.text() or not self._output_user_edited:
                 self.output_browse.set_text(str(self._default_output_dir()))
         finally:
@@ -326,7 +330,7 @@ class RealityScanLfsTool(BaseStepWidget):
             return
         try:
             camera_names = [row.name for row in read_realityscan_csv(csv_path)]
-            extra_images_dir = images_dir.parent / "extra_images" if images_dir.name.casefold() == "images" else images_dir / "extra_images"
+            extra_images_dir = self._extra_images_dir_for(images_dir)
             diagnostics = analyze_named_camera_images(
                 camera_names,
                 images_dir,
@@ -349,6 +353,14 @@ class RealityScanLfsTool(BaseStepWidget):
                 )
             )
         self.summary_note.setText(f"{description}\n\n" + "\n".join(parts))
+
+    @staticmethod
+    def _extra_images_dir_for(images_dir: Path) -> Path:
+        if images_dir.name == REALITYSCAN_GEOMETRY_LAYER_DIR and images_dir.parent.name.casefold() == "images":
+            return images_dir.parent.parent / "extra_images" / REALITYSCAN_GEOMETRY_LAYER_DIR
+        if images_dir.name.casefold() == "images":
+            return images_dir.parent / "extra_images"
+        return images_dir / "extra_images"
 
     def _update_extra_folder_hints(self) -> None:
         self._update_extra_folder_hint(
@@ -400,15 +412,50 @@ class RealityScanLfsTool(BaseStepWidget):
             for root in related_realityscan_asset_roots(base, dir_names)
             if root.is_dir() and not RealityScanLfsTool._paths_equivalent(root, base)
         ]
+        if dir_names == REALITYSCAN_IMAGE_DIR_NAMES:
+            roots = RealityScanLfsTool._display_realityscan_image_roots(base, roots)
+        elif dir_names == REALITYSCAN_MASK_DIR_NAMES:
+            roots = RealityScanLfsTool._display_realityscan_mask_roots(base, roots)
         if not roots:
             label.hide()
             label.setText("")
             label.setToolTip("")
             return
-        folders = " / ".join(root.name for root in roots)
+        folders = " / ".join(RealityScanLfsTool._display_folder_name(root) for root in roots)
         label.setText(message_template.format(folders=folders))
         label.setToolTip("\n".join(str(root) for root in roots))
         label.show()
+
+    @staticmethod
+    def _display_realityscan_image_roots(base: Path, roots: list[Path]) -> list[Path]:
+        base_key = base.resolve(strict=False).as_posix().casefold()
+        filtered: list[Path] = []
+        for root in roots:
+            key = root.resolve(strict=False).as_posix().casefold()
+            if key.startswith(base_key.rstrip("/") + "/") and root.name == REALITYSCAN_GEOMETRY_LAYER_DIR:
+                continue
+            filtered.append(root)
+        layer_roots = [root for root in filtered if root.name == REALITYSCAN_GEOMETRY_LAYER_DIR]
+        if layer_roots:
+            return layer_roots
+        return filtered
+
+    @staticmethod
+    def _display_realityscan_mask_roots(base: Path, roots: list[Path]) -> list[Path]:
+        base_key = base.resolve(strict=False).as_posix().casefold()
+        filtered: list[Path] = []
+        for root in roots:
+            key = root.resolve(strict=False).as_posix().casefold()
+            if key.startswith(base_key.rstrip("/") + "/") and root.name == REALITYSCAN_MASK_LAYER_DIR:
+                continue
+            filtered.append(root)
+        return filtered
+
+    @staticmethod
+    def _display_folder_name(root: Path) -> str:
+        if root.name in {REALITYSCAN_GEOMETRY_LAYER_DIR, REALITYSCAN_MASK_LAYER_DIR}:
+            return f"{root.parent.name}/{root.name}"
+        return root.name
 
     @staticmethod
     def _first_existing(root: Path, patterns: tuple[str, ...]) -> Path | None:

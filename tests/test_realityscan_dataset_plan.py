@@ -40,9 +40,9 @@ def _image(path: Path) -> None:
 
 def test_realityscan_dataset_plan_classifies_distorted_rows(tmp_path: Path) -> None:
     images = tmp_path / "images"
-    masks = tmp_path / "masks"
-    _image(images / "plain.jpg")
-    _image(images / "distorted.jpg")
+    masks = images / "_mask"
+    _image(images / "_geometry" / "plain.jpg")
+    _image(images / "_geometry" / "distorted.jpg")
     _image(masks / "plain.png")
 
     plan = build_realityscan_lfs_dataset_plan(
@@ -61,21 +61,22 @@ def test_realityscan_dataset_plan_classifies_distorted_rows(tmp_path: Path) -> N
 def test_realityscan_dataset_plan_finds_sibling_extra_images_and_masks(tmp_path: Path) -> None:
     root = tmp_path / "realityscan"
     images = root / "images"
-    masks = root / "masks"
     extra_images = root / "extra_images"
-    extra_masks = root / "extra_masks"
-    _image(images / "cube_px.jpg")
-    _image(extra_images / "normal.jpg")
-    _image(extra_masks / "normal.png")
+    _image(images / "_geometry" / "cube_px.jpg")
+    _image(extra_images / "_geometry" / "normal.jpg")
+    _image(extra_images / "_mask" / "normal.png")
 
     plan = build_realityscan_lfs_dataset_plan(
         [_row("cube_px.jpg"), _row("normal.jpg")],
         images,
-        masks,
+        images,
         pre_undistort_distorted_images=False,
         skip_missing_images=False,
     )
 
     assert plan.issues == ()
-    assert [item.image_path for item in plan.items] == [images / "cube_px.jpg", extra_images / "normal.jpg"]
-    assert plan.items[1].mask_path == extra_masks / "normal.png"
+    assert [item.image_path for item in plan.items] == [
+        images / "_geometry" / "cube_px.jpg",
+        extra_images / "_geometry" / "normal.jpg",
+    ]
+    assert plan.items[1].mask_path == extra_images / "_mask" / "normal.png"

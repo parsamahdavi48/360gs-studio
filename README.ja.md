@@ -192,10 +192,10 @@ Metashapeでベースの360°画像を安定してSfMし、その結果をRealit
 1. Metashapeルートと同じように、Step 1からStep 3、Metashape SfMまで進めます。
 2. MetashapeからAgisoft XMLとStanford PLYをエクスポートします。保存先はシーンフォルダを推奨します。
 3. Step 4で `Metashape → RealityScan用データ作成` を実行します。RealityScan向け入力は `output/realityscan/` に作られます。
-4. RealityScanでは、まず `output/realityscan/images/` を追加してAlignし、カメラと疎点群が生成されるところまで進めます。
-5. Cubemap側のコンポーネントが安定してから `output/realityscan/extra_images/` を追加し、もう一度Alignします。最初から全画像をまとめて入れるより、通常画像が安定して登録されやすくなります。
+4. RealityScanでは、まず `output/realityscan/images/` を追加してAlignし、カメラと疎点群が生成されるところまで進めます。Cubemap画像は `_geometry` layer、マスクは `_mask` layer に入ります。
+5. Cubemap側のコンポーネントが安定してから `output/realityscan/extra_images/` を追加し、もう一度Alignします。追加画像も同じ `_geometry` / `_mask` layer構成です。最初から全画像をまとめて入れるより、通常画像が安定して登録されやすくなります。
 6. 学習に使いたいコンポーネントを確認し、RealityScanのカメラCSVとPLYを `output/realityscan/` にエクスポートします。
-7. Step 5で `RealityScan → COLMAPデータセット` を実行します。CSVに登録された `extra_images/` と `extra_masks/` は `output/realityscan/lfs_colmap/` の `images/` と `masks/` に統合されます。
+7. Step 5で `RealityScan → COLMAPデータセット` を実行します。CSVに登録された `images/_geometry` と `extra_images/_geometry`、対応する `_mask` layerは `output/realityscan/lfs_colmap/` の `images/` と `masks/` に統合されます。
 8. LichtFeld Studioでは `output/realityscan/lfs_colmap/` をDatasetとして開き、`GUT` はOFFで学習します。
 
 ## COLMAPルート

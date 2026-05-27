@@ -51,7 +51,7 @@ Metashapeを使わず、このアプリからCOLMAPまたはGLOMAPでSfMした�
 
 Metashapeで作ったカメラXMLから、RealityScanへ読み込ませるCubemap画像とXMPを作ります。RealityScanで再アラインしたい、ステップ1から3で登録済みの別ソース画像も一緒に投入したい、RealityScanのCSV/PLYを書き出して後段へ渡したい場合に使います。
 
-出力は `output/realityscan/` です。Metashape XMLにある画像はCubemap画像とXMPとして `images/` に書き出され、XMLにない登録済み画像は姿勢なしの追加画像として `extra_images/` へコピーまたはハードリンクされます。対応マスクがある場合はRealityScan用の `image.jpg.mask.png` 形式にも変換されます。RealityScanでは先に `images/` を追加してAlignし、点群まで生成してから `extra_images/` を追加して再度Alignします。その後、CSVとPLYを書き出し、LichtFeld用COLMAPデータセットが必要な場合はStep 5の `RealityScan → COLMAPデータセット` を使います。
+出力は `output/realityscan/` です。Metashape XMLにある画像はCubemap画像とXMPとして `images/_geometry/` に書き出され、マスクは `images/_mask/` に入ります。XMLにない登録済み画像は姿勢なしの追加画像として `extra_images/_geometry/` へ可能ならハードリンク、必要ならコピーされ、対応マスクは `extra_images/_mask/` に入ります。RealityScanでは先に `images/` を追加してAlignし、点群まで生成してから `extra_images/` を追加して再度Alignします。その後、CSVとPLYを書き出し、LichtFeld用COLMAPデータセットが必要な場合はStep 5の `RealityScan → COLMAPデータセット` を使います。
 
 RealityScanへ段階的に投入するのは意図した使い方です。先にCubemap画像だけでMetashape由来の安定したコンポーネントを作り、その後で通常画像を追加するほうが、最初から全画像をまとめて入れるより誤配置や小さな別コンポーネントが起きにくくなります。
 
@@ -94,7 +94,7 @@ LichtFeldでMetashape混在結果を使う場合は、このルートが安全�
 
 RealityScanのRegistrationから書き出したInternal/External CSVと、同じ座標状態で書き出したPLYから、LichtFeldでDatasetとして開けるCOLMAPデータセットを作ります。
 
-通常は `output/realityscan/` 配下にCSV、PLY、`images/`、`masks/` がある状態で使います。`extra_images/` と `extra_masks/` がある場合は、CSVに載っている追加画像も出力先の `images/` と `masks/` に統合されます。出力先は `output/realityscan/lfs_colmap/` です。
+通常は `output/realityscan/` 配下にCSV、PLY、`images/`、必要に応じて `extra_images/` がある状態で使います。各 `_geometry` layerから画像を、対応する `_mask` layerからマスクを読み取り、CSVに載っている画像を出力先の `images/` と `masks/` に統合します。出力先は `output/realityscan/lfs_colmap/` です。
 
 RealityScanからエクスポートする前に、学習に使うコンポーネントを確認してください。COLMAP側のカメラ姿勢として使われるのはCSVに含まれるカメラだけです。画像ファイルが存在していても、CSVにない画像には姿勢は付きません。
 

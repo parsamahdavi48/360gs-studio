@@ -51,7 +51,7 @@ The SfM working folder is `output/spheresfm/`. Create JSON/PLY or cubemap datase
 
 Choose this when you have a Metashape camera XML and want to import cubemap images plus XMP camera data into RealityScan. This is useful when you want RealityScan to realign the scene, include extra image sources already registered in Steps 1-3, or export RealityScan CSV/PLY for downstream tools.
 
-The output is `output/realityscan/`. Images present in the Metashape XML are written to `images/` as cubemap images with XMP sidecars. Registered scene images missing from the XML are copied or hard-linked to `extra_images/` as unposed extra inputs. When a matching mask exists, it is also written as a RealityScan layer such as `image.jpg.mask.png`. In RealityScan, add `images/` first and run Align until sparse points are generated, then add `extra_images/` and run Align again. After exporting CSV and PLY from RealityScan, use Step 5 `RealityScan -> COLMAP Dataset` when LichtFeld needs a COLMAP-format Dataset.
+The output is `output/realityscan/`. Images present in the Metashape XML are written to `images/_geometry/` as cubemap images with XMP sidecars, and their masks are written to `images/_mask/`. Registered scene images missing from the XML are hard-linked when possible, otherwise copied, into `extra_images/_geometry/` as unposed extra inputs, with matching masks in `extra_images/_mask/`. In RealityScan, add `images/` first and run Align until sparse points are generated, then add `extra_images/` and run Align again. After exporting CSV and PLY from RealityScan, use Step 5 `RealityScan -> COLMAP Dataset` when LichtFeld needs a COLMAP-format Dataset.
 
 The staged RealityScan import is intentional. Aligning the cubemap images first creates a stable component from the Metashape result; adding normal images after that usually avoids more wrong placements and small disconnected components than importing all images at once.
 
@@ -94,7 +94,7 @@ For LichtFeld with mixed Metashape sources, this is the safer route.
 
 Create a LichtFeld-readable COLMAP dataset from RealityScan Internal/External CSV and a PLY exported in the same coordinate state.
 
-Normally, use it when CSV, PLY, `images/`, and `masks/` are already under `output/realityscan/`. If `extra_images/` and `extra_masks/` exist, additional images listed in the CSV are also gathered into the output `images/` and `masks/` folders. Output goes to `output/realityscan/lfs_colmap/`.
+Normally, use it when CSV, PLY, `images/`, and optionally `extra_images/` are already under `output/realityscan/`. The tool reads images from each `_geometry` layer and masks from the matching `_mask` layer, then gathers CSV-listed assets into the output `images/` and `masks/` folders. Output goes to `output/realityscan/lfs_colmap/`.
 
 Before exporting from RealityScan, confirm the component you want to train from. The CSV should contain the cameras you expect; images that are not in the exported camera CSV are kept out of the COLMAP poses even if their files exist.
 

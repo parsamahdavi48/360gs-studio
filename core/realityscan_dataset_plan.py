@@ -4,21 +4,19 @@ from collections import Counter
 from dataclasses import dataclass
 from pathlib import Path
 
+from core.realityscan_layout import mask_lookup_candidates
 from core.realityscan_to_transforms import (
-    REALITYSCAN_IMAGE_DIR_NAMES,
     REALITYSCAN_MASK_DIR_NAMES,
     RealityScanCameraRow,
+    realityscan_image_asset_relative_path,
     related_realityscan_asset_roots,
     resolve_image_path,
     row_has_distortion,
-    strip_leading_realityscan_asset_dir,
 )
 
 ACTION_LINK_OR_COPY_PINHOLE = "link_or_copy_pinhole"
 ACTION_UNDISTORT_TO_PINHOLE = "undistort_to_pinhole"
 ACTION_SKIP_MISSING_IMAGE = "skip_missing_image"
-
-MASK_SEARCH_EXTENSIONS = (".png", ".jpg", ".jpeg", ".mask.png")
 
 
 @dataclass(frozen=True, slots=True)
@@ -82,6 +80,9 @@ def build_realityscan_lfs_dataset_plan(
 
 
 def image_name_for_dataset(image_path: Path, images_dir: Path) -> str:
+    asset_rel = realityscan_image_asset_relative_path(image_path, images_dir)
+    if asset_rel is not None:
+        return asset_rel.as_posix()
     try:
         rel = image_path.resolve().relative_to(images_dir.resolve())
     except ValueError:
@@ -93,7 +94,7 @@ def find_matching_mask(masks_dir: Path, image_name: str) -> Path | None:
     roots = tuple(root for root in related_realityscan_asset_roots(masks_dir, REALITYSCAN_MASK_DIR_NAMES) if root.is_dir())
     if not roots:
         return None
-    candidates = _mask_lookup_candidates(image_name)
+    candidates = mask_lookup_candidates(image_name)
 
     seen: set[str] = set()
     for rel in candidates:
@@ -106,21 +107,3 @@ def find_matching_mask(masks_dir: Path, image_name: str) -> Path | None:
             if candidate.is_file():
                 return candidate
     return None
-
-
-def _mask_lookup_candidates(image_name: str) -> list[Path]:
-    raw = Path(image_name)
-    bases = [
-        raw,
-        strip_leading_realityscan_asset_dir(raw, REALITYSCAN_IMAGE_DIR_NAMES),
-        strip_leading_realityscan_asset_dir(raw, REALITYSCAN_MASK_DIR_NAMES),
-    ]
-    candidates: list[Path] = []
-    for image_path in bases:
-        stem_path = image_path.parent / image_path.stem
-        candidates.append(image_path)
-        for ext in MASK_SEARCH_EXTENSIONS:
-            candidates.append(stem_path.with_suffix(ext))
-        for ext in MASK_SEARCH_EXTENSIONS:
-            candidates.append(Path(f"{image_path.as_posix()}{ext}"))
-    return candidates

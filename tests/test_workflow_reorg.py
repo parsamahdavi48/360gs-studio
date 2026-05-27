@@ -96,13 +96,18 @@ def test_sfm_embedded_viewer_defers_scene_scan_until_viewer_is_opened(tmp_path: 
     try:
         window._set_current_step(window._sfm_step_index)
 
+        assert window.sfm_step.scene_preview is None
+        assert "viewer" not in window.sfm_step._page_indices
+
         window.sfm_step.set_scene_dir(str(tmp_path))
 
         assert calls == {"discover": 0}
+        assert window.sfm_step.scene_preview is None
 
         window.sfm_step.show_viewer()
 
         assert calls == {"discover": 1}
+        assert window.sfm_step.scene_preview is not None
 
         window.sfm_step.show_menu()
         window.sfm_step.set_scene_dir(str(tmp_path))
@@ -367,10 +372,10 @@ def test_colmap_sfm_route_saves_source_resolution_normal_camera_default(tmp_path
 def test_realityscan_lfs_tool_defaults_and_builds_cli_command(tmp_path: Path) -> None:
     scene = tmp_path / "scene"
     rs = scene / "output" / "realityscan"
-    (rs / "images").mkdir(parents=True)
-    (rs / "masks").mkdir()
-    (rs / "extra_images").mkdir()
-    (rs / "extra_masks").mkdir()
+    (rs / "images" / "_geometry").mkdir(parents=True)
+    (rs / "images" / "_mask").mkdir()
+    (rs / "extra_images" / "_geometry").mkdir(parents=True)
+    (rs / "extra_images" / "_mask").mkdir()
     csv = rs / "rs_scene.csv"
     ply = rs / "rs_scene.ply"
     csv.write_text("header\n", encoding="utf-8")
@@ -383,12 +388,14 @@ def test_realityscan_lfs_tool_defaults_and_builds_cli_command(tmp_path: Path) ->
     assert Path(tool.csv_browse.text()) == csv
     assert Path(tool.ply_browse.text()) == ply
     assert Path(tool.images_browse.text()) == rs / "images"
-    assert Path(tool.masks_browse.text()) == rs / "masks"
+    assert Path(tool.masks_browse.text()) == rs / "images" / "_mask"
     assert Path(tool.output_browse.text()) == rs / "lfs_colmap"
     assert tool.images_extra_hint.text() == i18n.t("RS_LFS_ADDITIONAL_IMAGES_USED").format(
-        folders="extra_images"
+        folders="extra_images/_geometry"
     )
-    assert tool.masks_extra_hint.text() == i18n.t("RS_LFS_ADDITIONAL_MASKS_USED").format(folders="extra_masks")
+    assert tool.masks_extra_hint.text() == i18n.t("RS_LFS_ADDITIONAL_MASKS_USED").format(
+        folders="extra_images/_mask"
+    )
     assert len([label for label in tool.findChildren(QLabel) if label.objectName() == "workflowNote"]) == 1
     assert tool.primary_action_enabled()
     assert not hasattr(tool, "undistort_alpha_edit")
@@ -406,7 +413,7 @@ def test_realityscan_lfs_tool_defaults_and_builds_cli_command(tmp_path: Path) ->
     assert job["csv_path"] == str(csv)
     assert job["output_dir"] == str(rs / "lfs_colmap")
     assert job["images_dir"] == str(rs / "images")
-    assert job["masks_dir"] == str(rs / "masks")
+    assert job["masks_dir"] == str(rs / "images" / "_mask")
     assert job["ply_path"] == str(ply)
 
     tool.pre_undistort_cb.setChecked(True)
@@ -428,8 +435,8 @@ def test_realityscan_lfs_tool_refreshes_defaults_when_scene_changes(tmp_path: Pa
     for name in ("scene_a", "scene_b"):
         scene = tmp_path / name
         rs = scene / "output" / "realityscan"
-        (rs / "images").mkdir(parents=True)
-        (rs / "masks").mkdir()
+        (rs / "images" / "_geometry").mkdir(parents=True)
+        (rs / "images" / "_mask").mkdir()
         (rs / f"rs_{name}.csv").write_text("header\n", encoding="utf-8")
         (rs / f"rs_{name}.ply").write_text("ply\n", encoding="ascii")
         scenes.append(scene)
@@ -443,7 +450,7 @@ def test_realityscan_lfs_tool_refreshes_defaults_when_scene_changes(tmp_path: Pa
     assert Path(tool.csv_browse.text()) == rs_b / "rs_scene_b.csv"
     assert Path(tool.ply_browse.text()) == rs_b / "rs_scene_b.ply"
     assert Path(tool.images_browse.text()) == rs_b / "images"
-    assert Path(tool.masks_browse.text()) == rs_b / "masks"
+    assert Path(tool.masks_browse.text()) == rs_b / "images" / "_mask"
     assert Path(tool.output_browse.text()) == rs_b / "lfs_colmap"
 
     manual_csv = scenes[1] / "manual.csv"
