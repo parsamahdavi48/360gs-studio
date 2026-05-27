@@ -5,6 +5,8 @@ from pathlib import Path
 
 from PIL import Image
 
+from core.frame_job_runner import run_frame_job_payload
+from core.frame_job_spec import refresh_scene_assets_job
 from core.normal_camera_metadata import (
     load_normal_camera_default,
     save_normal_camera_default,
@@ -14,12 +16,13 @@ from core.scene_inventory import (
     PROJECTION_EQUIRECTANGULAR,
     PROJECTION_NORMAL,
     PROJECTION_UNKNOWN,
+    build_fast_scene_inventory,
     build_scene_image_label_path_lookup,
     build_scene_image_label_path_lookup_with_warnings,
     build_scene_inventory,
     resolve_scene_image_label,
 )
-from core.scene_layout import selected_frames_path, source_image_sets_path
+from core.scene_layout import scene_asset_metadata_path, selected_frames_path, source_image_sets_path
 from core.scene_project import scene_image_projection_map
 
 
@@ -78,6 +81,64 @@ def test_scene_inventory_reuses_cache_until_scene_files_change(tmp_path: Path) -
 
     assert third is not second
     assert third.missing_masks == ()
+
+
+def test_strict_scene_inventory_writes_asset_metadata_for_fast_inventory(tmp_path: Path, monkeypatch) -> None:
+    scene = tmp_path
+    _write_image(scene / "images" / "pano.jpg", (64, 32))
+    _write_mask(scene / "masks" / "pano.png", (64, 32))
+
+    build_scene_inventory(scene)
+
+    assert scene_asset_metadata_path(scene).is_file()
+
+    def fail_probe(*_args, **_kwargs):
+        raise AssertionError("fast inventory should not open image or mask headers")
+
+    monkeypatch.setattr("core.scene_inventory._image_size", fail_probe)
+    monkeypatch.setattr("core.scene_inventory.image_header_info", fail_probe)
+    monkeypatch.setattr("core.scene_inventory.mask_file_summary", fail_probe)
+
+    fast = build_fast_scene_inventory(scene)
+
+    assert fast.image_sizes == {(64, 32)}
+    assert fast.projection_counts[PROJECTION_EQUIRECTANGULAR] == 1
+    assert fast.missing_masks == ()
+    assert fast.mismatched_masks == ()
+
+
+def test_refresh_scene_assets_frame_job_rebuilds_asset_metadata(tmp_path: Path) -> None:
+    scene = tmp_path
+    _write_image(scene / "images" / "pano.jpg", (64, 32))
+    _write_mask(scene / "masks" / "pano.png", (64, 32))
+
+    run_frame_job_payload(refresh_scene_assets_job(scene_dir=scene))
+
+    assert scene_asset_metadata_path(scene).is_file()
+    fast = build_fast_scene_inventory(scene)
+    assert fast.image_sizes == {(64, 32)}
+    assert fast.missing_masks == ()
+
+
+def test_fast_scene_inventory_marks_stale_assets_without_header_probe(tmp_path: Path, monkeypatch) -> None:
+    scene = tmp_path
+    image = scene / "images" / "pano.jpg"
+    _write_image(image, (64, 32))
+
+    build_scene_inventory(scene)
+    image.write_bytes(b"not the recorded image")
+
+    def fail_probe(*_args, **_kwargs):
+        raise AssertionError("stale fast inventory should not open image headers")
+
+    monkeypatch.setattr("core.scene_inventory._image_size", fail_probe)
+    monkeypatch.setattr("core.scene_inventory.image_header_info", fail_probe)
+
+    fast = build_fast_scene_inventory(scene)
+
+    assert fast.image_count == 1
+    assert fast.images[0].size is None
+    assert fast.images[0].projection == PROJECTION_UNKNOWN
 
 
 def test_scene_inventory_reads_selected_frame_source_metadata(tmp_path: Path) -> None:

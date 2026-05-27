@@ -13,6 +13,7 @@ from core.scene_inventory import (
     PROJECTION_NORMAL,
     PROJECTION_UNKNOWN,
     SceneInventory,
+    build_fast_scene_inventory,
     build_scene_inventory,
 )
 from core.scene_layout import (
@@ -112,31 +113,35 @@ class Step3MaskSceneMixin:
     def _projection(self) -> str:
         return self._project_projection
 
-    def _set_projection(self, projection: str) -> None:
+    def _set_projection(self, projection: str, *, sync_yolo_quality: bool = True) -> None:
         if projection not in {_PROJECTION_EQUIRECT, _PROJECTION_NORMAL}:
             projection = _PROJECTION_EQUIRECT
         self._project_projection = projection
-        self.yolo_level_combo.setCurrentIndex(0 if projection == _PROJECTION_NORMAL else 1)
+        if sync_yolo_quality:
+            self.yolo_level_combo.setCurrentIndex(0 if projection == _PROJECTION_NORMAL else 1)
         if hasattr(self, "mask_preview"):
             self._update_preview_projection_enabled()
         self._update_task_controls()
 
-    def _sync_projection_from_project(self) -> None:
+    def _sync_projection_from_project(self, *, preserve_user_quality: bool = False) -> None:
         if not self.scene_dir:
             self._projection_mixed = False
             self._projection_source = "default"
             self._image_projection_map = {}
-            self._set_projection(_PROJECTION_EQUIRECT)
+            self._set_projection(_PROJECTION_EQUIRECT, sync_yolo_quality=not preserve_user_quality)
             return
         inventory = self._cached_scene_inventory()
         self._image_projection_map = {image.rel_path: image.projection for image in inventory.images}
         projections = {image.projection for image in inventory.images if image.projection != PROJECTION_UNKNOWN}
         self._projection_mixed = len(projections) > 1
         self._projection_source = "project" if inventory.images else "default"
+        if not projections and preserve_user_quality:
+            self._set_projection(self._projection(), sync_yolo_quality=False)
+            return
         if self._projection_mixed or PROJECTION_EQUIRECTANGULAR in projections or not projections:
-            self._set_projection(_PROJECTION_EQUIRECT)
+            self._set_projection(_PROJECTION_EQUIRECT, sync_yolo_quality=not preserve_user_quality)
         else:
-            self._set_projection(_PROJECTION_NORMAL)
+            self._set_projection(_PROJECTION_NORMAL, sync_yolo_quality=not preserve_user_quality)
 
     def _refresh_mask_source_options(self) -> None:
         current = self._selected_mask_source_key() if hasattr(self, "mask_source_combo") else MASK_SOURCE_ALL
@@ -248,30 +253,33 @@ class Step3MaskSceneMixin:
         images_dir: Path | None = None,
         masks_dir: Path | None = None,
         refresh: bool = False,
+        strict: bool = False,
     ) -> SceneInventory:
         scene = Path(self.scene_dir)
         images = images_dir or scene_images_dir(scene)
         masks = masks_dir or scene_masks_dir(scene)
-        key = self._scene_inventory_cache_key_for(scene, images, masks)
+        key = self._scene_inventory_cache_key_for(scene, images, masks, strict=strict)
         if refresh or self._scene_inventory_cache is None or self._scene_inventory_cache_key != key:
-            self._scene_inventory_cache = build_scene_inventory(scene, images_dir=images, masks_dir=masks)
+            builder = build_scene_inventory if strict else build_fast_scene_inventory
+            self._scene_inventory_cache = builder(scene, images_dir=images, masks_dir=masks)
             self._scene_inventory_cache_key = key
             self._scene_inventory_refresh_token = self._scene_inventory_token(scene, images, masks)
         return self._scene_inventory_cache
 
-    def _refresh_scene_inventory_cache(self) -> None:
+    def _refresh_scene_inventory_cache(self, *, strict: bool = False) -> None:
         if self.scene_dir and Path(self.scene_dir).is_dir():
             scene = Path(self.scene_dir)
             images = scene_images_dir(scene)
             masks = scene_masks_dir(scene)
-            key = self._scene_inventory_cache_key_for(scene, images, masks)
+            key = self._scene_inventory_cache_key_for(scene, images, masks, strict=strict)
             token = self._scene_inventory_token(scene, images, masks)
             if (
                 self._scene_inventory_cache is None
                 or self._scene_inventory_cache_key != key
                 or self._scene_inventory_refresh_token != token
             ):
-                self._scene_inventory_cache = build_scene_inventory(scene, images_dir=images, masks_dir=masks)
+                builder = build_scene_inventory if strict else build_fast_scene_inventory
+                self._scene_inventory_cache = builder(scene, images_dir=images, masks_dir=masks)
                 self._scene_inventory_cache_key = key
                 self._scene_inventory_refresh_token = token
         else:
@@ -287,7 +295,7 @@ class Step3MaskSceneMixin:
         images = scene_images_dir(scene)
         masks = scene_masks_dir(scene)
         return (
-            self._scene_inventory_cache_key == self._scene_inventory_cache_key_for(scene, images, masks)
+            self._scene_inventory_cache_key == self._scene_inventory_cache_key_for(scene, images, masks, strict=False)
             and self._scene_inventory_refresh_token == self._scene_inventory_token(scene, images, masks)
         )
 
@@ -304,8 +312,16 @@ class Step3MaskSceneMixin:
         self._readiness_cache = (ready, reason)
         return self._readiness_cache
 
-    def _scene_inventory_cache_key_for(self, scene: Path, images: Path, masks: Path) -> tuple[str, str, str]:
+    def _scene_inventory_cache_key_for(
+        self,
+        scene: Path,
+        images: Path,
+        masks: Path,
+        *,
+        strict: bool,
+    ) -> tuple[str, str, str, str]:
         return (
+            "strict" if strict else "fast",
             self._path_cache_key(scene),
             self._path_cache_key(images),
             self._path_cache_key(masks),

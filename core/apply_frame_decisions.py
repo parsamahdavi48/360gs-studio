@@ -369,6 +369,12 @@ def apply_decisions(
             backup_dir=backup_dir,
             renumber_kept_images=renumber_kept_images,
         )
+        try:
+            from core.scene_asset_metadata import rebuild_scene_asset_metadata
+
+            rebuild_scene_asset_metadata(scene_dir)
+        except Exception as e:
+            print(f"Warning: scene asset metadata refresh failed: {e}")
         return
 
     rows = load_rows(csv_path)

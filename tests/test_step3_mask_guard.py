@@ -109,14 +109,14 @@ def test_mask_step_reuses_scene_inventory_between_unchanged_activations(
     import gui.steps.step3_mask_scene as mask_scene
 
     calls = 0
-    original = mask_scene.build_scene_inventory
+    original = mask_scene.build_fast_scene_inventory
 
-    def counted_build_scene_inventory(*args, **kwargs):
+    def counted_build_fast_scene_inventory(*args, **kwargs):
         nonlocal calls
         calls += 1
         return original(*args, **kwargs)
 
-    monkeypatch.setattr(mask_scene, "build_scene_inventory", counted_build_scene_inventory)
+    monkeypatch.setattr(mask_scene, "build_fast_scene_inventory", counted_build_fast_scene_inventory)
 
     step = MaskStep(Path.cwd())
     step.set_scene_dir(str(scene))

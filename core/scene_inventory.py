@@ -14,7 +14,15 @@ from core.projection_contract import (
     PROJECTION_EQUIRECTANGULAR,
     PROJECTION_NORMAL,
     PROJECTION_UNKNOWN,
+    infer_projection_from_size,
     normalize_projection,
+    projection_for_record,
+)
+from core.scene_asset_metadata import (
+    current_image_metadata,
+    current_mask_metadata_for_image,
+    load_scene_asset_metadata,
+    save_scene_asset_metadata_from_inventory,
 )
 from core.scene_import_contracts import IMAGE_EXTS
 from core.scene_layout import (
@@ -169,22 +177,47 @@ def build_scene_inventory(
     images_dir: str | Path | None = None,
     masks_dir: str | Path | None = None,
 ) -> SceneInventory:
+    return _build_scene_inventory(scene_dir, images_dir=images_dir, masks_dir=masks_dir, mode="strict")
+
+
+def build_fast_scene_inventory(
+    scene_dir: str | Path,
+    *,
+    images_dir: str | Path | None = None,
+    masks_dir: str | Path | None = None,
+) -> SceneInventory:
+    return _build_scene_inventory(scene_dir, images_dir=images_dir, masks_dir=masks_dir, mode="fast")
+
+
+def _build_scene_inventory(
+    scene_dir: str | Path,
+    *,
+    images_dir: str | Path | None,
+    masks_dir: str | Path | None,
+    mode: str,
+) -> SceneInventory:
     scene = Path(scene_dir)
     images_root = Path(images_dir) if images_dir is not None else scene_images_dir(scene)
     masks_root = Path(masks_dir) if masks_dir is not None else scene_masks_dir(scene)
     image_paths = _iter_image_files(images_root)
-    cache_key = (
-        _cache_path_key(scene),
-        _cache_path_key(images_root),
-        _cache_path_key(masks_root),
-        _inventory_signature(scene, images_root, masks_root, image_paths),
-    )
-    cached = _INVENTORY_CACHE.get(cache_key)
-    if cached is not None:
-        _INVENTORY_CACHE.move_to_end(cache_key)
-        return cached
 
-    projection_map = scene_image_projection_map(scene, image_paths) if image_paths else {}
+    fast = mode == "fast"
+    cache_key = None
+    if not fast:
+        cache_key = (
+            mode,
+            _cache_path_key(scene),
+            _cache_path_key(images_root),
+            _cache_path_key(masks_root),
+            _inventory_signature(scene, images_root, masks_root, image_paths),
+        )
+        cached = _INVENTORY_CACHE.get(cache_key)
+        if cached is not None:
+            _INVENTORY_CACHE.move_to_end(cache_key)
+            return cached
+
+    asset_metadata = load_scene_asset_metadata(scene) if fast else {}
+    projection_map = {} if fast or not image_paths else scene_image_projection_map(scene, image_paths)
     selected_map = _selected_frame_metadata(scene)
     image_set_map = _image_set_metadata(scene)
     normal_camera_defaults = load_normal_camera_defaults(scene)
@@ -192,12 +225,29 @@ def build_scene_inventory(
     images: list[SceneImage] = []
     for path in image_paths:
         rel_path = _inventory_rel_path(scene, images_root, path)
-        width, height = _image_size(path)
+        asset_record = current_image_metadata(asset_metadata, scene, path) if fast else None
+        if asset_record is not None:
+            width, height = _asset_image_size(asset_record)
+        elif fast:
+            width, height = 0, 0
+        else:
+            width, height = _image_size(path)
         metadata = _metadata_for(rel_path, selected_map, image_set_map)
-        projection = normalize_projection(projection_map.get(rel_path) or metadata.get("projection") or "")
-        if projection == PROJECTION_UNKNOWN:
+        projection = normalize_projection(
+            projection_map.get(rel_path)
+            or metadata.get("projection")
+            or (asset_record or {}).get("projection")
+            or ""
+        )
+        if projection == PROJECTION_UNKNOWN and fast and width > 0 and height > 0:
+            projection = normalize_projection(infer_projection_from_size(width, height, media_label="image")["projection"])
+        if projection == PROJECTION_UNKNOWN and not fast:
             projection = normalize_projection(image_header_info(path).get("detected_projection"))
-        projection_source = str(metadata.get("projection_source") or "project")
+        projection_source = str(
+            metadata.get("projection_source")
+            or (asset_record or {}).get("projection_source")
+            or ("asset_metadata" if asset_record is not None else "project")
+        )
         source_kind = str(metadata.get("source_kind") or "unknown")
         source_id = str(metadata.get("source_id") or "")
         sequence_index = _optional_int(metadata.get("sequence_index"))
@@ -220,7 +270,11 @@ def build_scene_inventory(
                 camera_model = normal_camera_default.camera_model
                 camera_params = normal_camera_default.camera_params
                 camera_source = normal_camera_default.camera_source
-        mask = _mask_artifact(scene, images_root, masks_root, path, image_size=(width, height))
+        mask = (
+            _fast_mask_artifact(scene, images_root, masks_root, path, image_size=(width, height), payload=asset_metadata)
+            if fast
+            else _mask_artifact(scene, images_root, masks_root, path, image_size=(width, height))
+        )
         images.append(
             SceneImage(
                 path=path,
@@ -241,10 +295,12 @@ def build_scene_inventory(
         )
 
     inventory = SceneInventory(scene_dir=scene, images_dir=images_root, masks_dir=masks_root, images=tuple(images))
-    _INVENTORY_CACHE[cache_key] = inventory
-    _INVENTORY_CACHE.move_to_end(cache_key)
-    while len(_INVENTORY_CACHE) > _INVENTORY_CACHE_LIMIT:
-        _INVENTORY_CACHE.popitem(last=False)
+    if not fast:
+        save_scene_asset_metadata_from_inventory(inventory)
+        _INVENTORY_CACHE[cache_key] = inventory
+        _INVENTORY_CACHE.move_to_end(cache_key)
+        while len(_INVENTORY_CACHE) > _INVENTORY_CACHE_LIMIT:
+            _INVENTORY_CACHE.popitem(last=False)
     return inventory
 
 
@@ -401,7 +457,26 @@ def _image_size(path: Path) -> tuple[int, int]:
         return 0, 0
 
 
+def _asset_image_size(record: dict[str, Any] | None) -> tuple[int, int]:
+    if not isinstance(record, dict):
+        return 0, 0
+    try:
+        width = int(record.get("width") or 0)
+        height = int(record.get("height") or 0)
+    except (TypeError, ValueError):
+        return 0, 0
+    return max(0, width), max(0, height)
+
+
 def _inventory_rel_path(scene: Path, images_root: Path, image_path: Path) -> str:
+    try:
+        return image_path.relative_to(scene).as_posix()
+    except ValueError:
+        pass
+    try:
+        return image_path.relative_to(images_root).as_posix()
+    except ValueError:
+        pass
     try:
         resolved = image_path.resolve()
         scene_root = scene.resolve()
@@ -442,11 +517,57 @@ def _mask_artifact(
     return None
 
 
+def _fast_mask_artifact(
+    scene: Path,
+    images_root: Path,
+    masks_root: Path,
+    image_path: Path,
+    *,
+    image_size: tuple[int, int],
+    payload: dict[str, Any],
+) -> MaskArtifact | None:
+    if not masks_root.is_dir():
+        return None
+    image_rel = _inventory_rel_path(scene, images_root, image_path)
+    for candidate in _mask_candidates(images_root, masks_root, image_path):
+        if not candidate.is_file():
+            continue
+        record = current_mask_metadata_for_image(payload, scene, image_rel, candidate)
+        if record is not None:
+            width, height = _asset_image_size(record)
+            readable = bool(record.get("readable"))
+            return MaskArtifact(
+                path=candidate,
+                rel_path=_mask_rel_path(scene, masks_root, candidate),
+                exists=True,
+                readable=readable,
+                width=width,
+                height=height,
+                matches_image_size=readable and (width, height) == image_size,
+                polarity=str(record.get("polarity") or MASK_POLARITY_WHITE_KEEP),
+            )
+        return MaskArtifact(
+            path=candidate,
+            rel_path=_mask_rel_path(scene, masks_root, candidate),
+            exists=True,
+            readable=False,
+            width=0,
+            height=0,
+            matches_image_size=False,
+        )
+    return None
+
+
 def _mask_candidates(images_root: Path, masks_root: Path, image_path: Path) -> list[Path]:
     try:
-        rel = image_path.resolve().relative_to(images_root.resolve())
-    except Exception:
-        rel = Path(image_path.name)
+        rel = image_path.relative_to(images_root)
+    except ValueError:
+        rel = None
+    if rel is None:
+        try:
+            rel = image_path.resolve().relative_to(images_root.resolve())
+        except Exception:
+            rel = Path(image_path.name)
     parent = rel.parent
     return [
         masks_root / parent / f"{rel.stem}.png",
@@ -456,6 +577,14 @@ def _mask_candidates(images_root: Path, masks_root: Path, image_path: Path) -> l
 
 
 def _mask_rel_path(scene: Path, masks_root: Path, mask_path: Path) -> str:
+    try:
+        return mask_path.relative_to(scene).as_posix()
+    except ValueError:
+        pass
+    try:
+        return mask_path.relative_to(masks_root).as_posix()
+    except ValueError:
+        pass
     try:
         return mask_path.resolve().relative_to(scene.resolve()).as_posix()
     except Exception:
@@ -470,6 +599,11 @@ def _selected_frame_metadata(scene: Path) -> dict[str, dict[str, Any]]:
     csv_path = selected_frames_path(scene)
     if not csv_path.is_file():
         return {}
+    video_projection = _source_video_projection_by_path(scene)
+    fallback_projection = ""
+    if video_projection:
+        unique_projections = set(video_projection.values())
+        fallback_projection = next(iter(unique_projections)) if len(unique_projections) == 1 else ""
     result: dict[str, dict[str, Any]] = {}
     try:
         with csv_path.open("r", encoding="utf-8-sig", newline="") as f:
@@ -478,14 +612,49 @@ def _selected_frame_metadata(scene: Path) -> dict[str, dict[str, Any]]:
                 rel = str(row.get("output_file") or "").replace("\\", "/").strip("/")
                 if not rel:
                     continue
+                source_video = _path_lookup_key(str(row.get("source_video") or ""))
+                projection = video_projection.get(source_video) or fallback_projection
                 result[rel] = {
                     "source_kind": row.get("source_type") or "video_extract",
                     "source_id": row.get("source_session") or row.get("import_id") or "",
                     "sequence_index": row.get("final_index") or row.get("seq") or "",
                 }
+                if projection:
+                    result[rel]["projection"] = projection
+                    result[rel]["projection_source"] = "source_video"
     except OSError:
         return {}
     return result
+
+
+def _source_video_projection_by_path(scene: Path) -> dict[str, str]:
+    data = load_json(source_videos_path(scene), {"videos": []})
+    videos = data.get("videos")
+    if not isinstance(videos, list):
+        return {}
+    result: dict[str, str] = {}
+    for item in videos:
+        if not isinstance(item, dict):
+            continue
+        projection = projection_for_record(item)
+        if projection == PROJECTION_UNKNOWN:
+            continue
+        source = item.get("source")
+        path_text = source.get("path") if isinstance(source, dict) else ""
+        key = _path_lookup_key(str(path_text or ""))
+        if key:
+            result[key] = projection
+    return result
+
+
+def _path_lookup_key(value: str) -> str:
+    text = value.replace("\\", "/").strip()
+    if not text:
+        return ""
+    try:
+        return str(Path(text).resolve()).replace("\\", "/").casefold()
+    except OSError:
+        return text.casefold()
 
 
 def _image_set_metadata(scene: Path) -> dict[str, dict[str, Any]]:

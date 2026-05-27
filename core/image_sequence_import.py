@@ -67,6 +67,12 @@ def import_image_sequence_folder(
     )
     append_source_image_set(scene, record)
     _append_selected_frames(scene, import_id, source.name, [dst for _src, dst in imported])
+    try:
+        from core.scene_asset_metadata import rebuild_scene_asset_metadata
+
+        rebuild_scene_asset_metadata(scene)
+    except Exception as e:
+        print(f"Warning: scene asset metadata refresh failed: {e}")
 
     return ImageSequenceImportResult(
         scene_dir=scene,

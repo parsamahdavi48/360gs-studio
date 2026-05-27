@@ -39,6 +39,8 @@ class Step3MaskBatchMixin:
         return i18n.t(key) if key else phase
 
     def build_commands(self) -> StepCommandQueue:
+        self._refresh_scene_inventory_cache(strict=True)
+        self._sync_projection_from_project(preserve_user_quality=True)
         ready, reason = self._readiness()
         if not ready:
             raise ValueError(reason)

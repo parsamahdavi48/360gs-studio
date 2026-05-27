@@ -121,6 +121,11 @@ def import_scene(
         errors=errors,
     )
     update_project_summary(scene, import_id, status, source_images, mask_count, output_info)
+    run_phase(
+        "refresh scene asset metadata",
+        lambda: _refresh_scene_asset_metadata(scene, emit),
+        cancellable_after=False,
+    )
 
     return SceneImportResult(
         scene_dir=scene,
@@ -139,6 +144,20 @@ def import_scene(
         selected_frames_csv=selected_csv,
         export_settings_json=step4_export_settings_path(scene),
     )
+
+
+def _refresh_scene_asset_metadata(scene: Path, emit: SceneImportProgressCallback | None = None) -> None:
+    try:
+        from core.scene_asset_metadata import rebuild_scene_asset_metadata
+
+        payload = rebuild_scene_asset_metadata(scene)
+        images = payload.get("images") if isinstance(payload.get("images"), dict) else {}
+        masks = payload.get("masks") if isinstance(payload.get("masks"), dict) else {}
+        if emit is not None:
+            emit(f"[scene import] scene asset metadata: {len(images)} images, {len(masks)} masks")
+    except Exception as exc:
+        if emit is not None:
+            emit(f"[scene import] scene asset metadata refresh failed: {exc}")
 
 
 def write_import_record(

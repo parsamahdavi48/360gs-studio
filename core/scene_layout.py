@@ -25,6 +25,8 @@ STEP4_METASHAPE_IMPORT_WORK_DIR_NAME = "metashape_import"
 ARTIFACTS_DIR_NAME = "artifacts"
 SFM_ARTIFACTS_JSON = "sfm_artifacts.json"
 DATASET_ARTIFACTS_JSON = "dataset_artifacts.json"
+ASSETS_DIR_NAME = "assets"
+SCENE_ASSETS_JSON = "scene_assets.json"
 JOBS_DIR_NAME = "jobs"
 
 SELECTED_FRAMES_CSV = "selected_frames.csv"
@@ -156,6 +158,14 @@ def scene_imports_path(scene_dir: Path) -> Path:
 
 def artifacts_dir(scene_dir: Path) -> Path:
     return app_dir(scene_dir) / ARTIFACTS_DIR_NAME
+
+
+def assets_dir(scene_dir: Path) -> Path:
+    return app_dir(scene_dir) / ASSETS_DIR_NAME
+
+
+def scene_asset_metadata_path(scene_dir: Path) -> Path:
+    return assets_dir(scene_dir) / SCENE_ASSETS_JSON
 
 
 def sfm_artifacts_path(scene_dir: Path) -> Path:

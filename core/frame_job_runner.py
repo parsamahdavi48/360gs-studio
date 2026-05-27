@@ -10,6 +10,7 @@ from core.frame_job_spec import (
     JOB_KIND_APPLY_FRAME_DECISIONS,
     JOB_KIND_EXTRACT_VIDEO,
     JOB_KIND_IMPORT_IMAGE_SEQUENCE,
+    JOB_KIND_REFRESH_SCENE_ASSETS,
     load_frame_job,
     validate_frame_job_payload,
 )
@@ -32,6 +33,9 @@ def run_frame_job_payload(job: dict[str, Any], *, cancel_event: CancellationToke
         return
     if kind == JOB_KIND_APPLY_FRAME_DECISIONS:
         _run_apply_frame_decisions(job, cancel_event=cancel_event)
+        return
+    if kind == JOB_KIND_REFRESH_SCENE_ASSETS:
+        _run_refresh_scene_assets(job, cancel_event=cancel_event)
         return
     raise ValueError(f"Unsupported frame job kind: {kind}")
 
@@ -109,3 +113,25 @@ def _run_apply_frame_decisions(job: dict[str, Any], *, cancel_event: Cancellatio
         renumber_kept_images=bool(job.get("renumber_kept_images")),
     )
     raise_if_cancelled(cancel_event)
+
+
+def _run_refresh_scene_assets(job: dict[str, Any], *, cancel_event: CancellationToken | None = None) -> None:
+    from core.scene_asset_metadata import rebuild_scene_asset_metadata
+
+    raise_if_cancelled(cancel_event)
+    scene = Path(str(job["scene_dir"])).resolve()
+    payload = rebuild_scene_asset_metadata(scene, cancel_event=cancel_event)
+    images = payload.get("images") if isinstance(payload.get("images"), dict) else {}
+    masks = payload.get("masks") if isinstance(payload.get("masks"), dict) else {}
+    print(
+        "SUMMARY_JSON:"
+        + json.dumps(
+            {
+                "scene": str(scene),
+                "image_count": len(images),
+                "mask_count": len(masks),
+            },
+            ensure_ascii=False,
+        ),
+        flush=True,
+    )

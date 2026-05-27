@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable, Sequence
 from pathlib import Path
 
+from core.scene_asset_metadata import update_scene_asset_mask_metadata
 from core.scene_project import append_mask_run, scene_relative, utc_now_iso, write_mask_item
 from gui.steps.mask_postprocess import mask_stats
 
@@ -43,6 +44,7 @@ def record_mask_outputs(
             run_id=run_id,
             stats=stats,
         )
+        update_scene_asset_mask_metadata(scene, image_path=image_path, mask_path=mask_path)
         generated.append(
             {
                 "image": scene_relative(scene, image_path),

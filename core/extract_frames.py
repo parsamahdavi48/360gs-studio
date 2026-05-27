@@ -1407,6 +1407,14 @@ def run_extract_frames(args: ExtractFramesOptions) -> int:
         resolved_prefix,
         summary["params"]["frame_number_digits"],
     )
+    try:
+        from core.scene_asset_metadata import rebuild_scene_asset_metadata
+
+        rebuild_scene_asset_metadata(scene_dir, cancel_event=args.cancel_event)
+    except AppJobCancelled:
+        raise
+    except Exception as e:
+        print(f"Warning: scene asset metadata refresh failed: {e}")
 
     novelty_added_count = sum(1 for r in enriched_rows if "novelty_added" in r.get("status", ""))
     blur_replacement_count = sum(1 for r in enriched_rows if "blur_replacement" in r.get("status", ""))
