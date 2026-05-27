@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from PySide6.QtCore import QTimer
+
 from core.metashape_preview_targets import build_metashape_preview_targets
 from core.projection_contract import PROJECTION_EQUIRECTANGULAR, PROJECTION_UNKNOWN
 from core.scene_inventory import build_fast_scene_inventory, build_scene_inventory
@@ -24,13 +26,30 @@ class Step4ActivationMixin:
         from gui.scene_preview.window import ScenePreviewWindow
 
         scene = Path(self.scene_dir) if self.scene_dir else None
+        was_visible = bool(self._scene_preview_window is not None and self._scene_preview_window.isVisible())
         if self._scene_preview_window is None:
-            self._scene_preview_window = ScenePreviewWindow(scene_dir=scene, parent=self)
+            self._scene_preview_window = ScenePreviewWindow(scene_dir=None, parent=self)
         else:
-            self._scene_preview_window.set_scene_dir(scene)
+            was_visible = self._scene_preview_window.isVisible()
+        self._scene_preview_window.set_scene_dir(scene, refresh=False)
         self._scene_preview_window.show()
         self._scene_preview_window.raise_()
-        self._scene_preview_window.activateWindow()
+        if was_visible:
+            self._scene_preview_window.activateWindow()
+        self._defer_scene_preview_window_refresh()
+
+    def _defer_scene_preview_window_refresh(self) -> None:
+        self._scene_preview_window_refresh_token = getattr(self, "_scene_preview_window_refresh_token", 0) + 1
+        token = self._scene_preview_window_refresh_token
+        QTimer.singleShot(0, lambda: self._refresh_scene_preview_window_if_current(token))
+
+    def _refresh_scene_preview_window_if_current(self, token: int) -> None:
+        if token != getattr(self, "_scene_preview_window_refresh_token", 0):
+            return
+        window = self._scene_preview_window
+        if window is None or not window.isVisible():
+            return
+        window.refresh()
 
     def primary_action_text(self) -> str:
         return i18n.t("RUN")

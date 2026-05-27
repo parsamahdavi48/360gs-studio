@@ -7,6 +7,7 @@ from pathlib import Path
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PIL import Image
+from PySide6.QtOpenGLWidgets import QOpenGLWidget
 from PySide6.QtWidgets import QApplication, QLabel, QPushButton, QSizePolicy
 
 from core.app_job import AppJob
@@ -84,7 +85,7 @@ def _write_single_erp_metashape_xml(path: Path, label: str) -> None:
 
 
 def test_sfm_embedded_viewer_defers_scene_scan_until_viewer_is_opened(tmp_path: Path, monkeypatch) -> None:
-    _app()
+    app = _app()
     calls = {"discover": 0}
 
     def fake_discover(_scene: Path) -> tuple:
@@ -98,6 +99,8 @@ def test_sfm_embedded_viewer_defers_scene_scan_until_viewer_is_opened(tmp_path: 
 
         assert window.sfm_step.scene_preview is None
         assert "viewer" not in window.sfm_step._page_indices
+        anchors = window.sfm_step.findChildren(QOpenGLWidget, "sfmOpenGLSurfaceAnchor")
+        assert len(anchors) == 1
 
         window.sfm_step.set_scene_dir(str(tmp_path))
 
@@ -105,6 +108,9 @@ def test_sfm_embedded_viewer_defers_scene_scan_until_viewer_is_opened(tmp_path: 
         assert window.sfm_step.scene_preview is None
 
         window.sfm_step.show_viewer()
+
+        assert calls == {"discover": 0}
+        app.processEvents()
 
         assert calls == {"discover": 1}
         assert window.sfm_step.scene_preview is not None

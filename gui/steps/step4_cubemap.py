@@ -911,7 +911,8 @@ class CubemapStep(
         self._metashape_preview_targets_cache_key = None
         self._metashape_preview_targets_cache = None
         if self._scene_preview_window is not None:
-            self._scene_preview_window.set_scene_dir(Path(path) if path else None)
+            self._scene_preview_window.set_scene_dir(Path(path) if path else None, refresh=False)
+            self._defer_scene_preview_window_refresh()
         try:
             if not path:
                 self.ms_images_path_label.setToolTip(i18n.tip("MS_IMAGES"))

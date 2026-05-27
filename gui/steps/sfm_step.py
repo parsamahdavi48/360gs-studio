@@ -6,7 +6,8 @@ import os
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from PySide6.QtCore import Signal
+from PySide6.QtCore import QTimer, Signal
+from PySide6.QtOpenGLWidgets import QOpenGLWidget
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -78,6 +79,8 @@ class SfmStep(BaseStepWidget):
         self._page_indices: dict[str, int] = {}
         self._syncing_controls = False
         self.scene_preview: ScenePreviewWidget | None = None
+        self._scene_preview_refresh_token = 0
+        self._opengl_surface_anchor: QOpenGLWidget | None = None
         self._normal_camera_defaults_scene = ""
         self._build_ui()
         self._connect_child_signals()
@@ -104,7 +107,17 @@ class SfmStep(BaseStepWidget):
             )
         )
         self._page_indices[_PAGE_REALITYSCAN] = self.stack.addWidget(self._build_realityscan_detail_page())
+        self._install_opengl_surface_anchor()
         root.addWidget(self.stack)
+
+    def _install_opengl_surface_anchor(self) -> None:
+        """Ensure the main window's native surface is OpenGL-ready before it is shown."""
+        anchor = QOpenGLWidget()
+        anchor.setObjectName("sfmOpenGLSurfaceAnchor")
+        anchor.setFixedSize(1, 1)
+        anchor.hide()
+        self._opengl_surface_anchor = anchor
+        self.stack.addWidget(anchor)
 
     def _ensure_scene_preview(self) -> ScenePreviewWidget:
         if self.scene_preview is not None:
@@ -709,7 +722,9 @@ class SfmStep(BaseStepWidget):
         if path != self._normal_camera_defaults_scene:
             self._normal_camera_defaults_scene = ""
         if self.scene_preview is not None:
-            self.scene_preview.set_scene_dir(Path(path) if path else None, refresh=self._page == _PAGE_VIEWER)
+            self.scene_preview.set_scene_dir(Path(path) if path else None, refresh=False)
+            if self._page == _PAGE_VIEWER:
+                self._defer_scene_preview_refresh()
         self._sync_route_scene()
 
     def on_activated(self) -> None:
@@ -721,7 +736,9 @@ class SfmStep(BaseStepWidget):
             if self._page == _PAGE_REALITYSCAN:
                 self.cubemap_step.on_activated()
         elif self._page == _PAGE_VIEWER:
-            self._ensure_scene_preview().refresh()
+            preview = self._ensure_scene_preview()
+            preview.set_scene_dir(Path(self.scene_dir) if self.scene_dir else None, refresh=False)
+            self._defer_scene_preview_refresh()
         self.primary_action_state_changed.emit()
 
     def show_menu(self) -> None:
@@ -757,10 +774,23 @@ class SfmStep(BaseStepWidget):
 
     def show_viewer(self) -> None:
         scene_preview = self._ensure_scene_preview()
-        scene_preview.set_scene_dir(Path(self.scene_dir) if self.scene_dir else None, refresh=True)
+        scene_preview.set_scene_dir(Path(self.scene_dir) if self.scene_dir else None, refresh=False)
         self._page = _PAGE_VIEWER
         self.stack.setCurrentIndex(self._page_indices[_PAGE_VIEWER])
         self.primary_action_state_changed.emit()
+        self._defer_scene_preview_refresh()
+
+    def _defer_scene_preview_refresh(self) -> None:
+        self._scene_preview_refresh_token += 1
+        token = self._scene_preview_refresh_token
+        QTimer.singleShot(0, lambda: self._refresh_scene_preview_if_current(token))
+
+    def _refresh_scene_preview_if_current(self, token: int) -> None:
+        if token != self._scene_preview_refresh_token:
+            return
+        if self._page != _PAGE_VIEWER or self.scene_preview is None:
+            return
+        self.scene_preview.refresh()
 
     def header_title(self) -> str:
         if self._page == _PAGE_COLMAP:

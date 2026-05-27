@@ -225,6 +225,56 @@ def test_cubemap_scene_sync_defers_and_caches_metashape_preview_targets(tmp_path
     assert step.preview.preview_images == [used]
 
 
+def test_scene_preview_window_open_shows_shell_before_refresh(tmp_path: Path, monkeypatch) -> None:
+    app = _app()
+    calls: list[tuple] = []
+    step = CubemapStep(Path.cwd())
+    step.scene_dir = str(tmp_path)
+
+    import gui.scene_preview.window as scene_preview_window
+
+    class FakeScenePreviewWindow:
+        def __init__(self, scene_dir=None, parent=None) -> None:
+            self.visible = False
+            calls.append(("init", scene_dir, parent is step))
+
+        def set_scene_dir(self, scene_dir, *, refresh: bool = True) -> None:
+            calls.append(("set_scene_dir", scene_dir, refresh))
+
+        def show(self) -> None:
+            self.visible = True
+            calls.append(("show",))
+
+        def raise_(self) -> None:
+            calls.append(("raise",))
+
+        def activateWindow(self) -> None:  # noqa: N802 - Qt API
+            calls.append(("activate",))
+
+        def isVisible(self) -> bool:  # noqa: N802 - Qt API
+            return self.visible
+
+        def refresh(self) -> None:
+            calls.append(("refresh",))
+
+    monkeypatch.setattr(scene_preview_window, "ScenePreviewWindow", FakeScenePreviewWindow)
+
+    step._open_scene_preview()
+
+    assert calls[:4] == [
+        ("init", None, True),
+        ("set_scene_dir", tmp_path, False),
+        ("show",),
+        ("raise",),
+    ]
+    assert ("activate",) not in calls
+    assert ("refresh",) not in calls
+
+    app.processEvents()
+
+    assert calls[-1] == ("refresh",)
+
+
 def test_cubemap_step_projection_toggle_is_in_preview_header() -> None:
     _app()
     step = CubemapStep(Path.cwd())
