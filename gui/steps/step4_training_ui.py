@@ -20,10 +20,17 @@ from PySide6.QtWidgets import (
 from gui import i18n
 from gui.common.browse_widget import BrowseWidget
 from gui.common.collapsible_section import CollapsibleSection
+from gui.common.external_link import make_external_link
 from gui.common.form_rows import add_tooltip_row
 from gui.steps.step4_contracts import _LFS_ADVANCED_FIELD_WIDTHS, _LFS_STRATEGIES
 from gui.steps.step4_widgets import CurrentPageStack
 from gui.steps.training_backend_selector import TrainingBackendSelector
+from gui.steps.training_backend_specs import (
+    TRAINING_BACKEND_BRUSH as _TRAINING_BACKEND_BRUSH,
+)
+from gui.steps.training_backend_specs import (
+    TRAINING_BACKEND_GSPLAT as _TRAINING_BACKEND_GSPLAT,
+)
 from gui.steps.training_backend_specs import (
     TRAINING_BACKEND_LICHTFELD as _TRAINING_BACKEND_LICHTFELD,
 )
@@ -32,6 +39,7 @@ from gui.steps.training_backend_specs import (
 )
 from gui.steps.training_backend_specs import (
     get_training_backend_spec,
+    training_backend_specs,
 )
 
 
@@ -132,13 +140,19 @@ class Step4TrainingUiMixin:
         )
 
         training_settings_layout.addWidget(self.training_common_fields_widget)
+        self.training_backend_links_widget = self._build_training_backend_links_widget()
+        training_settings_layout.addWidget(self.training_backend_links_widget)
 
         self.training_options_stack = CurrentPageStack()
         self.lichtfeld_training_options = self._build_lichtfeld_training_options()
         self.postshot_training_options = self._build_postshot_training_options()
+        self.brush_training_options = self._build_brush_training_options()
+        self.gsplat_training_options = self._build_gsplat_training_options()
         self.training_option_widgets = {
             _TRAINING_BACKEND_LICHTFELD: self.lichtfeld_training_options,
             _TRAINING_BACKEND_POSTSHOT: self.postshot_training_options,
+            _TRAINING_BACKEND_BRUSH: self.brush_training_options,
+            _TRAINING_BACKEND_GSPLAT: self.gsplat_training_options,
         }
         self.training_options_stack_indices: dict[str, int] = {}
         for backend, widget in sorted(
@@ -177,6 +191,7 @@ class Step4TrainingUiMixin:
         old_settings_layout = self.training_settings_content.layout()
         if old_settings_layout is not None:
             old_settings_layout.removeWidget(self.training_common_fields_widget)
+            old_settings_layout.removeWidget(self.training_backend_links_widget)
             old_settings_layout.removeWidget(self.training_options_stack)
         self.training_settings_scroll.takeWidget()
 
@@ -201,6 +216,7 @@ class Step4TrainingUiMixin:
         controls_layout.addWidget(self.training_run_options_row)
         controls_layout.addWidget(self.training_common_fields_widget)
         controls_layout.addStretch()
+        controls_layout.addWidget(self.training_backend_links_widget, alignment=Qt.AlignLeft)
 
         self.training_wide_body = QWidget()
         body_layout = QHBoxLayout(self.training_wide_body)
@@ -219,6 +235,34 @@ class Step4TrainingUiMixin:
         self.training_options_stack.updateGeometry()
         self.training_settings_content.updateGeometry()
         self.training_settings_content.adjustSize()
+
+    def _build_training_backend_links_widget(self) -> QWidget:
+        widget = QWidget()
+        widget.setObjectName("trainingBackendLinks")
+        layout = QVBoxLayout(widget)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(4)
+        self.training_backend_official_links = {}
+        for spec in training_backend_specs(visible_only=True):
+            if not spec.official_url or not spec.official_link_key:
+                continue
+            link = make_external_link(
+                i18n.t(spec.official_link_key),
+                spec.official_url,
+                i18n.tip(spec.official_link_key),
+                f"trainingBackendLink_{spec.backend_id}",
+            )
+            link.setVisible(False)
+            self.training_backend_official_links[spec.backend_id] = link
+            layout.addWidget(link, alignment=Qt.AlignLeft)
+        return widget
+
+    def _update_training_backend_link(self, backend: str) -> None:
+        links = getattr(self, "training_backend_official_links", {})
+        for link_backend, link in links.items():
+            link.setVisible(link_backend == backend)
+        if hasattr(self, "training_backend_links_widget"):
+            self.training_backend_links_widget.setVisible(bool(links))
 
     def _build_lichtfeld_training_options(self) -> QWidget:
         widget = QWidget()
@@ -865,4 +909,211 @@ class Step4TrainingUiMixin:
             lambda _idx: self._update_postshot_conditional_visibility()
         )
         self._update_postshot_conditional_visibility()
+        return widget
+
+    def _build_brush_training_options(self) -> QWidget:
+        widget = QWidget()
+        form = QFormLayout(widget)
+        form.setSpacing(6)
+        self.brush_options_form = form
+
+        self.brush_export_name_edit = QLineEdit("export_{iter}.ply")
+        self.brush_export_name_edit.setToolTip(i18n.tip("BRUSH_EXPORT_NAME"))
+        self.brush_export_name_edit.textEdited.connect(self._on_brush_export_name_edited)
+        add_tooltip_row(form, i18n.t("BRUSH_EXPORT_NAME"), self.brush_export_name_edit, i18n.tip("BRUSH_EXPORT_NAME"))
+
+        self.brush_iterations_edit = QLineEdit("30000")
+        self.brush_iterations_edit.setFixedWidth(96)
+        self.brush_iterations_edit.setToolTip(i18n.tip("BRUSH_ITERATIONS"))
+        add_tooltip_row(form, i18n.t("BRUSH_ITERATIONS"), self.brush_iterations_edit, i18n.tip("BRUSH_ITERATIONS"))
+
+        self.brush_export_every_edit = QLineEdit("5000")
+        self.brush_export_every_edit.setFixedWidth(96)
+        self.brush_export_every_edit.setToolTip(i18n.tip("BRUSH_EXPORT_EVERY"))
+        add_tooltip_row(
+            form,
+            i18n.t("BRUSH_EXPORT_EVERY"),
+            self.brush_export_every_edit,
+            i18n.tip("BRUSH_EXPORT_EVERY"),
+        )
+
+        self.brush_max_resolution_edit = QLineEdit("1920")
+        self.brush_max_resolution_edit.setFixedWidth(96)
+        self.brush_max_resolution_edit.setToolTip(i18n.tip("BRUSH_MAX_RESOLUTION"))
+        add_tooltip_row(
+            form,
+            i18n.t("BRUSH_MAX_RESOLUTION"),
+            self.brush_max_resolution_edit,
+            i18n.tip("BRUSH_MAX_RESOLUTION"),
+        )
+
+        self.brush_sh_degree_combo = QComboBox()
+        for degree in range(4):
+            self.brush_sh_degree_combo.addItem(str(degree), degree)
+        self.brush_sh_degree_combo.setCurrentIndex(3)
+        add_tooltip_row(form, i18n.t("BRUSH_SH_DEGREE"), self.brush_sh_degree_combo, i18n.tip("BRUSH_SH_DEGREE"))
+
+        self.brush_render_mode_combo = QComboBox()
+        self.brush_render_mode_combo.addItem(i18n.t("AUTO"), "auto")
+        self.brush_render_mode_combo.addItem("Default", "default")
+        self.brush_render_mode_combo.addItem("Mip", "mip")
+        add_tooltip_row(
+            form,
+            i18n.t("BRUSH_RENDER_MODE"),
+            self.brush_render_mode_combo,
+            i18n.tip("BRUSH_RENDER_MODE"),
+        )
+
+        self.brush_alpha_mode_combo = QComboBox()
+        self.brush_alpha_mode_combo.addItem(i18n.t("AUTO"), "auto")
+        self.brush_alpha_mode_combo.addItem(i18n.t("BRUSH_ALPHA_MASKED"), "masked")
+        self.brush_alpha_mode_combo.addItem(i18n.t("BRUSH_ALPHA_TRANSPARENT"), "transparent")
+        add_tooltip_row(
+            form,
+            i18n.t("BRUSH_ALPHA_MODE"),
+            self.brush_alpha_mode_combo,
+            i18n.tip("BRUSH_ALPHA_MODE"),
+        )
+
+        self.brush_with_viewer_cb = QCheckBox(i18n.t("BRUSH_WITH_VIEWER"))
+        self.brush_with_viewer_cb.setToolTip(i18n.tip("BRUSH_WITH_VIEWER"))
+        form.addRow("", self.brush_with_viewer_cb)
+
+        advanced = CollapsibleSection(i18n.t("BRUSH_ADVANCED_PARAMETERS"), expanded=False)
+        advanced.setToolTip(i18n.tip("BRUSH_ADVANCED_PARAMETERS"))
+        advanced.toggle_button.setToolTip(i18n.tip("BRUSH_ADVANCED_PARAMETERS"))
+        advanced_form = QFormLayout()
+        advanced_form.setSpacing(5)
+        advanced.content_layout.addLayout(advanced_form)
+
+        self.brush_refine_every_edit = QLineEdit("200")
+        self.brush_refine_every_edit.setFixedWidth(96)
+        add_tooltip_row(
+            advanced_form,
+            i18n.t("BRUSH_REFINE_EVERY"),
+            self.brush_refine_every_edit,
+            i18n.tip("BRUSH_REFINE_EVERY"),
+        )
+
+        self.brush_max_splats_edit = QLineEdit("10000000")
+        self.brush_max_splats_edit.setFixedWidth(112)
+        add_tooltip_row(
+            advanced_form,
+            i18n.t("BRUSH_MAX_SPLATS"),
+            self.brush_max_splats_edit,
+            i18n.tip("BRUSH_MAX_SPLATS"),
+        )
+
+        self.brush_eval_split_every_edit = QLineEdit("")
+        self.brush_eval_split_every_edit.setFixedWidth(96)
+        add_tooltip_row(
+            advanced_form,
+            i18n.t("BRUSH_EVAL_SPLIT_EVERY"),
+            self.brush_eval_split_every_edit,
+            i18n.tip("BRUSH_EVAL_SPLIT_EVERY"),
+        )
+
+        self.brush_subsample_frames_edit = QLineEdit("")
+        self.brush_subsample_frames_edit.setFixedWidth(96)
+        add_tooltip_row(
+            advanced_form,
+            i18n.t("BRUSH_SUBSAMPLE_FRAMES"),
+            self.brush_subsample_frames_edit,
+            i18n.tip("BRUSH_SUBSAMPLE_FRAMES"),
+        )
+
+        self.brush_subsample_points_edit = QLineEdit("")
+        self.brush_subsample_points_edit.setFixedWidth(96)
+        add_tooltip_row(
+            advanced_form,
+            i18n.t("BRUSH_SUBSAMPLE_POINTS"),
+            self.brush_subsample_points_edit,
+            i18n.tip("BRUSH_SUBSAMPLE_POINTS"),
+        )
+
+        form.addRow(advanced)
+        return widget
+
+    def _build_gsplat_training_options(self) -> QWidget:
+        widget = QWidget()
+        form = QFormLayout(widget)
+        form.setSpacing(6)
+        self.gsplat_options_form = form
+
+        self.gsplat_script_browse = BrowseWidget(
+            mode="file",
+            filter_str="Python (*.py);;All Files (*)",
+            placeholder=str(self._default_gsplat_script_path()),
+        )
+        self.gsplat_script_browse.setToolTip(i18n.tip("GSPLAT_SCRIPT"))
+        add_tooltip_row(form, i18n.t("GSPLAT_SCRIPT"), self.gsplat_script_browse, i18n.tip("GSPLAT_SCRIPT"))
+
+        self.gsplat_result_name_edit = QLineEdit("gsplat")
+        self.gsplat_result_name_edit.setToolTip(i18n.tip("GSPLAT_RESULT_NAME"))
+        self.gsplat_result_name_edit.textEdited.connect(self._on_gsplat_result_name_edited)
+        add_tooltip_row(
+            form,
+            i18n.t("GSPLAT_RESULT_NAME"),
+            self.gsplat_result_name_edit,
+            i18n.tip("GSPLAT_RESULT_NAME"),
+        )
+
+        self.gsplat_strategy_combo = QComboBox()
+        self.gsplat_strategy_combo.addItem("Default", "default")
+        self.gsplat_strategy_combo.addItem("MCMC", "mcmc")
+        add_tooltip_row(
+            form,
+            i18n.t("GSPLAT_STRATEGY"),
+            self.gsplat_strategy_combo,
+            i18n.tip("GSPLAT_STRATEGY"),
+        )
+
+        self.gsplat_max_steps_edit = QLineEdit("30000")
+        self.gsplat_max_steps_edit.setFixedWidth(96)
+        add_tooltip_row(
+            form,
+            i18n.t("GSPLAT_MAX_STEPS"),
+            self.gsplat_max_steps_edit,
+            i18n.tip("GSPLAT_MAX_STEPS"),
+        )
+
+        self.gsplat_data_factor_edit = QLineEdit("1")
+        self.gsplat_data_factor_edit.setFixedWidth(72)
+        add_tooltip_row(
+            form,
+            i18n.t("GSPLAT_DATA_FACTOR"),
+            self.gsplat_data_factor_edit,
+            i18n.tip("GSPLAT_DATA_FACTOR"),
+        )
+
+        self.gsplat_test_every_edit = QLineEdit("8")
+        self.gsplat_test_every_edit.setFixedWidth(72)
+        add_tooltip_row(
+            form,
+            i18n.t("GSPLAT_TEST_EVERY"),
+            self.gsplat_test_every_edit,
+            i18n.tip("GSPLAT_TEST_EVERY"),
+        )
+
+        checks = QWidget()
+        checks_layout = QGridLayout(checks)
+        checks_layout.setContentsMargins(0, 0, 0, 0)
+        checks_layout.setHorizontalSpacing(10)
+        checks_layout.setVerticalSpacing(3)
+        self.gsplat_save_ply_cb = QCheckBox(i18n.t("GSPLAT_SAVE_PLY"))
+        self.gsplat_save_ply_cb.setChecked(True)
+        self.gsplat_disable_viewer_cb = QCheckBox(i18n.t("GSPLAT_DISABLE_VIEWER"))
+        self.gsplat_disable_viewer_cb.setChecked(True)
+        self.gsplat_3dgut_cb = QCheckBox(i18n.t("GSPLAT_3DGUT"))
+        for index, (cb, tip_key) in enumerate(
+            (
+                (self.gsplat_save_ply_cb, "GSPLAT_SAVE_PLY"),
+                (self.gsplat_disable_viewer_cb, "GSPLAT_DISABLE_VIEWER"),
+                (self.gsplat_3dgut_cb, "GSPLAT_3DGUT"),
+            )
+        ):
+            cb.setToolTip(i18n.tip(tip_key))
+            checks_layout.addWidget(cb, index // 2, index % 2)
+        self.gsplat_3dgut_cb.toggled.connect(self._on_gsplat_3dgut_changed)
+        form.addRow("", checks)
         return widget

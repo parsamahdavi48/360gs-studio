@@ -11,14 +11,28 @@ from gui import i18n
 from gui.common.runner_types import ExternalCommandQueue
 from gui.steps.step4_contracts import _LFS_ADVANCED_INT_KEYS, _LFS_ADVANCED_LIST_KEYS
 from gui.steps.training_backend_specs import (
+    TRAINING_BACKEND_BRUSH as _TRAINING_BACKEND_BRUSH,
+)
+from gui.steps.training_backend_specs import (
+    TRAINING_BACKEND_GSPLAT as _TRAINING_BACKEND_GSPLAT,
+)
+from gui.steps.training_backend_specs import (
+    TRAINING_BACKEND_LICHTFELD as _TRAINING_BACKEND_LICHTFELD,
+)
+from gui.steps.training_backend_specs import (
     TRAINING_BACKEND_POSTSHOT as _TRAINING_BACKEND_POSTSHOT,
 )
 from gui.steps.training_backend_specs import (
     training_backend_phase_name,
 )
 from gui.steps.training_backends import (
+    BrushTrainingOptions,
+    GsplatTrainingOptions,
     LichtFeldTrainingOptions,
     PostshotTrainingOptions,
+    brush_export_filename,
+    build_brush_training_cmd,
+    build_gsplat_training_cmd,
     build_lichtfeld_training_cmd,
     build_postshot_training_cmd,
     lichtfeld_output_name_stem,
@@ -67,6 +81,12 @@ class Step4TrainingCommandsMixin:
         if value > 255:
             raise ValueError(f"{label} は0から255で指定してください")
         return value
+
+    def _parse_optional_positive_int(self, edit: QLineEdit, label: str) -> int | None:
+        raw = edit.text().strip()
+        if not raw:
+            return None
+        return self._parse_positive_int(edit, label)
 
     def _parse_postshot_box_coords(self, edit: QLineEdit, label: str) -> tuple[float, float, float]:
         raw = edit.text().replace(",", " ").strip()
@@ -246,6 +266,21 @@ class Step4TrainingCommandsMixin:
             )
             self._guard_training_output_target(output_dir / project_name)
             return
+        if backend == _TRAINING_BACKEND_BRUSH:
+            iterations = self._parse_positive_int(self.brush_iterations_edit, i18n.t("BRUSH_ITERATIONS"))
+            export_name = self._filename_only(
+                self.brush_export_name_edit.text().strip(),
+                i18n.t("BRUSH_EXPORT_NAME"),
+            )
+            self._guard_training_output_target(output_dir / brush_export_filename(export_name, iterations))
+            return
+        if backend == _TRAINING_BACKEND_GSPLAT:
+            result_name = self._filename_only(
+                self.gsplat_result_name_edit.text().strip() or self._default_gsplat_result_name(),
+                i18n.t("GSPLAT_RESULT_NAME"),
+            )
+            self._guard_training_output_target(output_dir / result_name)
+            return
 
         lfs_output_name = self._filename_only(
             self.lfs_output_name_edit.text().strip(),
@@ -270,6 +305,89 @@ class Step4TrainingCommandsMixin:
         output_dir.mkdir(parents=True, exist_ok=True)
         executable = self._resolve_training_executable()
         backend = self._training_backend()
+
+        if backend == _TRAINING_BACKEND_BRUSH:
+            iterations = self._parse_positive_int(self.brush_iterations_edit, i18n.t("BRUSH_ITERATIONS"))
+            export_name = self._filename_only(
+                self.brush_export_name_edit.text().strip(),
+                i18n.t("BRUSH_EXPORT_NAME"),
+            )
+            self._guard_training_output_target(output_dir / brush_export_filename(export_name, iterations))
+            cmd = build_brush_training_cmd(
+                BrushTrainingOptions(
+                    executable=executable,
+                    dataset=dataset,
+                    output_dir=output_dir,
+                    export_name=export_name,
+                    total_train_iters=iterations,
+                    export_every=self._parse_positive_int(
+                        self.brush_export_every_edit,
+                        i18n.t("BRUSH_EXPORT_EVERY"),
+                    ),
+                    max_resolution=self._parse_positive_int(
+                        self.brush_max_resolution_edit,
+                        i18n.t("BRUSH_MAX_RESOLUTION"),
+                    ),
+                    with_viewer=self.brush_with_viewer_cb.isChecked(),
+                    sh_degree=int(self.brush_sh_degree_combo.currentData()),
+                    render_mode=self.brush_render_mode_combo.currentData() or "auto",
+                    refine_every=self._parse_positive_int(
+                        self.brush_refine_every_edit,
+                        i18n.t("BRUSH_REFINE_EVERY"),
+                    ),
+                    max_splats=self._parse_positive_int(
+                        self.brush_max_splats_edit,
+                        i18n.t("BRUSH_MAX_SPLATS"),
+                    ),
+                    eval_split_every=self._parse_optional_positive_int(
+                        self.brush_eval_split_every_edit,
+                        i18n.t("BRUSH_EVAL_SPLIT_EVERY"),
+                    ),
+                    alpha_mode=self.brush_alpha_mode_combo.currentData() or "auto",
+                    subsample_frames=self._parse_optional_positive_int(
+                        self.brush_subsample_frames_edit,
+                        i18n.t("BRUSH_SUBSAMPLE_FRAMES"),
+                    ),
+                    subsample_points=self._parse_optional_positive_int(
+                        self.brush_subsample_points_edit,
+                        i18n.t("BRUSH_SUBSAMPLE_POINTS"),
+                    ),
+                )
+            )
+            return [(training_backend_phase_name(backend), cmd)]
+
+        if backend == _TRAINING_BACKEND_GSPLAT:
+            script_path = Path(self.gsplat_script_browse.text().strip() or str(self._default_gsplat_script_path()))
+            if not script_path.is_file():
+                raise ValueError(i18n.t("GSPLAT_SCRIPT_NOT_FOUND").format(path=str(script_path)))
+            result_name = self._filename_only(
+                self.gsplat_result_name_edit.text().strip() or self._default_gsplat_result_name(),
+                i18n.t("GSPLAT_RESULT_NAME"),
+            )
+            result_dir = output_dir / result_name
+            self._guard_training_output_target(result_dir)
+            cmd = build_gsplat_training_cmd(
+                GsplatTrainingOptions(
+                    executable=executable,
+                    script_path=script_path,
+                    dataset=dataset,
+                    result_dir=result_dir,
+                    strategy=self.gsplat_strategy_combo.currentData() or "default",
+                    max_steps=self._parse_positive_int(self.gsplat_max_steps_edit, i18n.t("GSPLAT_MAX_STEPS")),
+                    data_factor=self._parse_positive_int(
+                        self.gsplat_data_factor_edit,
+                        i18n.t("GSPLAT_DATA_FACTOR"),
+                    ),
+                    test_every=self._parse_positive_int(
+                        self.gsplat_test_every_edit,
+                        i18n.t("GSPLAT_TEST_EVERY"),
+                    ),
+                    save_ply=self.gsplat_save_ply_cb.isChecked(),
+                    disable_viewer=self.gsplat_disable_viewer_cb.isChecked(),
+                    with_3dgut=self.gsplat_3dgut_cb.isChecked(),
+                )
+            )
+            return [(training_backend_phase_name(backend), cmd)]
 
         if backend == _TRAINING_BACKEND_POSTSHOT:
             project_name = self._filename_only(
@@ -357,6 +475,9 @@ class Step4TrainingCommandsMixin:
                 )
             )
             return [(training_backend_phase_name(backend), cmd)]
+
+        if backend != _TRAINING_BACKEND_LICHTFELD:
+            raise ValueError(f"Unsupported training backend: {backend}")
 
         if self.lfs_auto_steps_scaler_cb.isChecked():
             self._save_lfs_active_state()

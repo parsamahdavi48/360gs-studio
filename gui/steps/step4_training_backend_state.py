@@ -4,6 +4,12 @@ from __future__ import annotations
 
 from gui import i18n
 from gui.steps.training_backend_specs import (
+    TRAINING_BACKEND_BRUSH as _TRAINING_BACKEND_BRUSH,
+)
+from gui.steps.training_backend_specs import (
+    TRAINING_BACKEND_GSPLAT as _TRAINING_BACKEND_GSPLAT,
+)
+from gui.steps.training_backend_specs import (
     TRAINING_BACKEND_LICHTFELD as _TRAINING_BACKEND_LICHTFELD,
 )
 from gui.steps.training_backend_specs import (
@@ -49,10 +55,15 @@ class Step4TrainingBackendStateMixin:
         self.training_executable_browse.line_edit.setPlaceholderText(self._default_training_executable(backend))
         self._apply_training_executable_for_backend(backend)
         self.training_headless_cb.setVisible(spec.supports_headless)
+        self._update_training_backend_link(backend)
         self._refresh_training_settings_layout()
         self._update_training_paths()
         if backend == _TRAINING_BACKEND_POSTSHOT:
             self._update_postshot_project_name()
+        if backend == _TRAINING_BACKEND_BRUSH:
+            self._update_brush_export_name()
+        if backend == _TRAINING_BACKEND_GSPLAT:
+            self._update_gsplat_result_name()
         if backend == _TRAINING_BACKEND_LICHTFELD:
             self._update_lfs_auto_steps_scaler()
         if getattr(self, "_user_preferences_enabled", False):
@@ -117,6 +128,25 @@ class Step4TrainingBackendStateMixin:
         if self._syncing_postshot_project_name:
             return
         self._postshot_project_name_user_edited = True
+        self._on_training_settings_changed()
+
+    def _on_brush_export_name_edited(self, _text: str) -> None:
+        if self._syncing_brush_export_name:
+            return
+        self._brush_export_name_user_edited = True
+        self._on_training_settings_changed()
+
+    def _on_gsplat_result_name_edited(self, _text: str) -> None:
+        if self._syncing_gsplat_result_name:
+            return
+        self._gsplat_result_name_user_edited = True
+        self._on_training_settings_changed()
+
+    def _on_gsplat_3dgut_changed(self, checked: bool) -> None:
+        if checked and hasattr(self, "gsplat_strategy_combo"):
+            mcmc_index = self.gsplat_strategy_combo.findData("mcmc")
+            if mcmc_index >= 0:
+                self.gsplat_strategy_combo.setCurrentIndex(mcmc_index)
         self._on_training_settings_changed()
 
     def _on_training_settings_changed(self, *_args) -> None:

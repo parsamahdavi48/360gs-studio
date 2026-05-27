@@ -43,15 +43,19 @@ from gui.common.external_link import make_external_link
 from gui.common.form_rows import add_tooltip_row
 from gui.common.runner_types import StepCommandQueue
 from gui.steps.base_step import BaseStepWidget
-from gui.steps.sfm_route_specs import SFM_ROUTE_COLMAP, SFM_ROUTE_METASHAPE, SFM_ROUTE_SPHERESFM, normalize_sfm_route
+from gui.steps.sfm_route_specs import (
+    SFM_ROUTE_COLMAP,
+    SFM_ROUTE_METASHAPE,
+    SFM_ROUTE_SPHERESFM,
+    get_sfm_route_spec,
+    normalize_sfm_route,
+)
 from gui.steps.step4_contracts import (
     _COLMAP_MAPPER_GLOMAP,
-    _COLMAP_REPOSITORY_URL,
     _OUTPUT_SHAPE_PROJECTED,
     _PIPELINE_STAGE_CONVERSION,
     _PIPELINE_STAGE_SFM,
     _PROFILE_REALITYSCAN,
-    _SPHERESFM_REPOSITORY_URL,
 )
 from gui.steps.workflow_cards import WorkflowCardGrid, WorkflowCardSpec
 
@@ -312,19 +316,14 @@ class SfmStep(BaseStepWidget):
         )
 
         layout.addLayout(form)
-        self.colmap_repo_link = make_external_link(
-            i18n.t("COLMAP_REPOSITORY_LINK"),
-            _COLMAP_REPOSITORY_URL,
-            i18n.tip("COLMAP_REPOSITORY_LINK"),
-            "sfmColmapRepositoryLink",
-        )
-        layout.addWidget(self.colmap_repo_link, alignment=Qt.AlignLeft)
         viewer_btn = QPushButton(i18n.t("SFM_OPEN_VIEWER"))
         viewer_btn.setObjectName("secondary")
         viewer_btn.setToolTip(i18n.tip("SFM_OPEN_VIEWER"))
         viewer_btn.clicked.connect(lambda _checked=False: self.open_scene_preview())
         layout.addWidget(self._build_action_row(viewer_btn))
         layout.addStretch()
+        self.colmap_repo_link = self._build_route_official_link(SFM_ROUTE_COLMAP, "sfmColmapRepositoryLink")
+        layout.addWidget(self.colmap_repo_link, alignment=Qt.AlignLeft)
         return page
 
     def _build_spheresfm_detail(self) -> QWidget:
@@ -380,20 +379,28 @@ class SfmStep(BaseStepWidget):
         )
 
         layout.addLayout(form)
-        self.spheresfm_repo_link = make_external_link(
-            i18n.t("SPHERESFM_REPOSITORY_LINK"),
-            _SPHERESFM_REPOSITORY_URL,
-            i18n.tip("SPHERESFM_REPOSITORY_LINK"),
-            "sfmSpheresfmRepositoryLink",
-        )
-        layout.addWidget(self.spheresfm_repo_link, alignment=Qt.AlignLeft)
         viewer_btn = QPushButton(i18n.t("SFM_OPEN_VIEWER"))
         viewer_btn.setObjectName("secondary")
         viewer_btn.setToolTip(i18n.tip("SFM_OPEN_VIEWER"))
         viewer_btn.clicked.connect(lambda _checked=False: self.open_scene_preview())
         layout.addWidget(self._build_action_row(viewer_btn))
         layout.addStretch()
+        self.spheresfm_repo_link = self._build_route_official_link(
+            SFM_ROUTE_SPHERESFM,
+            "sfmSpheresfmRepositoryLink",
+        )
+        layout.addWidget(self.spheresfm_repo_link, alignment=Qt.AlignLeft)
         return page
+
+    @staticmethod
+    def _build_route_official_link(route_id: str, object_name: str) -> QLabel:
+        spec = get_sfm_route_spec(route_id)
+        return make_external_link(
+            i18n.t(spec.official_link_key),
+            spec.official_url,
+            i18n.tip(spec.official_link_key),
+            object_name,
+        )
 
     @staticmethod
     def _build_action_row(*buttons: QPushButton) -> QWidget:

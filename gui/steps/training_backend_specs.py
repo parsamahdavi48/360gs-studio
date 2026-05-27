@@ -8,6 +8,8 @@ TrainingBackendCategory = Literal["primary", "other"]
 
 TRAINING_BACKEND_LICHTFELD = "lichtfeld"
 TRAINING_BACKEND_POSTSHOT = "postshot"
+TRAINING_BACKEND_BRUSH = "brush"
+TRAINING_BACKEND_GSPLAT = "gsplat"
 DEFAULT_TRAINING_BACKEND = TRAINING_BACKEND_LICHTFELD
 
 
@@ -24,6 +26,8 @@ class TrainingBackendSpec:
     default_executable_posix: str
     supports_headless: bool = False
     show_in_selector: bool = True
+    official_url: str = ""
+    official_link_key: str = ""
 
     def default_executable(self, *, windows: bool) -> str:
         return self.default_executable_windows if windows else self.default_executable_posix
@@ -41,6 +45,8 @@ _SPECS: tuple[TrainingBackendSpec, ...] = (
         default_executable_windows="LichtFeld-Studio.exe",
         default_executable_posix="LichtFeld-Studio",
         supports_headless=True,
+        official_url="https://lichtfeld.io/",
+        official_link_key="TRAINING_LINK_LICHTFELD",
     ),
     TrainingBackendSpec(
         backend_id=TRAINING_BACKEND_POSTSHOT,
@@ -52,6 +58,34 @@ _SPECS: tuple[TrainingBackendSpec, ...] = (
         phase_name="training_postshot",
         default_executable_windows="postshot-cli.exe",
         default_executable_posix="postshot-cli",
+        official_url="https://www.jawset.com/",
+        official_link_key="TRAINING_LINK_POSTSHOT",
+    ),
+    TrainingBackendSpec(
+        backend_id=TRAINING_BACKEND_BRUSH,
+        label_key="TRAINING_BACKEND_BRUSH",
+        short_label_key="TRAINING_BACKEND_BRUSH_SHORT",
+        tooltip_key="TRAINING_BACKEND_BRUSH",
+        category="primary",
+        stack_order=2,
+        phase_name="training_brush",
+        default_executable_windows="brush.exe",
+        default_executable_posix="brush",
+        official_url="https://github.com/ArthurBrussee/brush",
+        official_link_key="TRAINING_LINK_BRUSH",
+    ),
+    TrainingBackendSpec(
+        backend_id=TRAINING_BACKEND_GSPLAT,
+        label_key="TRAINING_BACKEND_GSPLAT",
+        short_label_key="TRAINING_BACKEND_GSPLAT_SHORT",
+        tooltip_key="TRAINING_BACKEND_GSPLAT",
+        category="primary",
+        stack_order=3,
+        phase_name="training_gsplat",
+        default_executable_windows="python.exe",
+        default_executable_posix="python",
+        official_url="https://github.com/nerfstudio-project/gsplat",
+        official_link_key="TRAINING_LINK_GSPLAT",
     ),
 )
 

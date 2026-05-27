@@ -134,8 +134,8 @@ def test_cubemap_step_uses_tab_path_summaries(tmp_path: Path) -> None:
     assert not hasattr(step, "training_backend_combo")
     assert set(step.export_method_buttons) == set(SFM_ROUTE_IDS)
     assert step.export_method_selector.current_route() == SFM_ROUTE_METASHAPE
-    assert set(step.training_backend_buttons) == {"lichtfeld", "postshot"}
-    assert set(step.training_backend_selector.primary_backend_buttons) == {"lichtfeld", "postshot"}
+    assert set(step.training_backend_buttons) == {"lichtfeld", "postshot", "brush", "gsplat"}
+    assert set(step.training_backend_selector.primary_backend_buttons) == {"lichtfeld", "postshot", "brush", "gsplat"}
     assert set(step.training_backend_selector.other_backend_actions) == set()
     assert step.training_backend_selector.other_picker.isHidden()
     assert not hasattr(step, "training_backend_other_row")

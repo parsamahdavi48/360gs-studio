@@ -1,6 +1,6 @@
 # Step 6 学習GUI
 
-Step 6は、Step 5で作成した3DGS用データセットを使って、対応CLIを持つ学習アプリを起動する画面です。対応バージョンの[LichtFeld Studio](https://lichtfeld.io/)や[Postshot](https://www.jawset.com/)を使うと、同じ設定の再実行やヘッドレス学習をGUIから始められます。
+Step 6は、Step 5で作成した3DGS用データセットを使って、対応CLIを持つ学習アプリを起動する画面です。対応バージョンの[LichtFeld Studio](https://lichtfeld.io/)、[Postshot](https://www.jawset.com/)、[Brush](https://github.com/ArthurBrussee/brush)、[gsplat](https://github.com/nerfstudio-project/gsplat)を使うと、同じ設定の再実行やヘッドレス学習をGUIから始められます。
 
 学習アプリ側で画質やモデル設定を確認しながら進めたい場合は、Step 6を使わず、Step 5の出力データセットを[LichtFeld Studio](https://lichtfeld.io/)、[Postshot](https://www.jawset.com/)、[Brush](https://github.com/ArthurBrussee/brush)などで直接読み込んで学習できます。画像変換やSfMはStep 6では行いません。データセットを作る作業は `Step 5: データセット` です。
 
@@ -13,7 +13,7 @@ Step 5の出力は、下流の3DGSアプリに渡すためのデータセット�
 | 学習アプリで直接読み込む | 初回確認、見た目を確認しながらの調整、学習アプリ固有の設定を細かく使う場合 |
 | Step 6からCLI起動する | 対応CLIで同じ条件を再実行したい場合、ヘッドレスで学習を走らせたい場合 |
 
-Step 6のCLI実行は、LichtFeld Studio v0.5.2互換CLIとPostshot v1.0/v1.1 Release BuildのCLIを目安にしています。CLIを使わない場合でも、Step 5の出力データセットは各学習アプリで直接使えます。
+Step 6のCLI実行は、LichtFeld Studio v0.5.2互換CLI、Postshot v1.0/v1.1 Release BuildのCLI、Brush CLI、gsplat `examples/simple_trainer.py` を目安にしています。CLIを使わない場合でも、Step 5の出力データセットは各学習アプリで直接使えます。
 
 ## まず決めること
 
@@ -24,6 +24,8 @@ Step 6を開いたら、最初に「どのアプリで、どのデータを試�
 | LichtFeldで通常のCubemapデータを学習したい | `LichtFeld Studio` | `入力データ`, `GUT` OFF, `出力PLY名`, `Strategy`, `Iterations` |
 | LichtFeldでERP 360° / GUTデータを試したい | `LichtFeld Studio` | `入力データ`, `GUT` ON, `pointcloud.ply` があること |
 | Postshotでプロジェクトを作りたい | `Postshot` | `入力データ`, `Camera Poses`, `プロジェクト名`, `Profile` |
+| Brushをヘッドレスで実行したい | `Brush` | `入力データ`, `出力PLY名`, `Iterations`, `Max Resolution` |
+| gsplatでCOLMAPデータを学習したい | `gsplat` | `COLMAP形式の入力データ`, `simple_trainer.py`, `Strategy`, `Max Steps`, `3DGUT` |
 
 `入力データ` は通常、自動設定のままで使います。登録済みのデータセット成果物があれば、Metashape、RealityScan、SphereSfM、COLMAPなどの最新データセットを `<scene>/output/` 配下から使います。`出力先` は既定で `<scene>/output/` です。データセットと学習結果を同じ `output/` 配下に置くことで、後から持ち出しやすくしています。
 
@@ -33,7 +35,7 @@ Step 6を開いたら、最初に「どのアプリで、どのデータを試�
 2. 学習アプリのGUIで調整したい場合は、Step 5の出力データセットを直接読み込みます。
 3. CLIで再実行またはヘッドレス実行したい場合は、`Step 6: 学習` を開きます。
 4. `入力データ` と `出力先` が意図したフォルダになっているか確認します。
-5. `LichtFeld Studio` または `Postshot` を選びます。
+5. `LichtFeld Studio`、`Postshot`、`Brush`、`gsplat` のカードを選びます。
 6. `実行ファイル` が空欄で自動検出できない場合は、インストール先のexeを指定します。
 7. 右側のアプリ別設定を確認します。
 8. `起動` を押します。
@@ -47,7 +49,7 @@ Step 6では中央パネルを広く使うため、左右2カラムに整理し�
 | 場所 | 内容 |
 | --- | --- |
 | 左側 | 実行アプリ、ヘッドレス実行、実行ファイル、入力データ、出力先 |
-| 右側 | LichtFeld / Postshotごとの設定 |
+| 右側 | 選択した学習アプリごとの設定 |
 
 右側の詳細パラメーターは、普段触る項目と、必要なときだけ開く詳細項目に分けています。まずは折りたたまれていない項目だけで実行し、結果を見てから詳細を調整する想定です。
 
@@ -55,7 +57,7 @@ Step 6では中央パネルを広く使うため、左右2カラムに整理し�
 
 ### 実行アプリ
 
-`LichtFeld Studio` と `Postshot` を選べます。アプリ情報は [LichtFeld Studio](https://lichtfeld.io/) と [Postshot](https://www.jawset.com/) を参照してください。任意CLIのコマンドを組み立てたい場合は、この画面ではなく各CLIを直接実行してください。
+`LichtFeld Studio`、`Postshot`、`Brush`、`gsplat` を選べます。任意CLIのコマンドを組み立てたい場合は、この画面ではなく各CLIを直接実行してください。
 
 ### 実行ファイル
 
@@ -65,6 +67,8 @@ Step 6では中央パネルを広く使うため、左右2カラムに整理し�
 | --- | --- |
 | LichtFeld Studio | `LichtFeld-Studio.exe` |
 | Postshot | `postshot-cli.exe` |
+| Brush | `brush.exe` |
+| gsplat | `python.exe` と `examples/simple_trainer.py` |
 
 ### 入力データ
 
@@ -86,7 +90,7 @@ Step 6では中央パネルを広く使うため、左右2カラムに整理し�
 
 学習結果やPostshotプロジェクトを書き込むフォルダです。既定では `<scene>/output/` です。
 
-LichtFeldの最終PLY、Postshotの `.psht`、Postshotの任意書き出しPLY/SPZが既に存在する場合、Step 6は上書きを避けるため実行前に止まります。出力名または出力先を変えてから再実行します。
+LichtFeldの最終PLY、Postshotの `.psht`、Brushの最終PLY、gsplatの結果フォルダ、Postshotの任意書き出しPLY/SPZが既に存在する場合、Step 6は上書きを避けるため実行前に止まります。出力名または出力先を変えてから再実行します。
 
 ## LichtFeld Studio
 
@@ -172,6 +176,35 @@ GPU、プロファイル依存のモデル上限、Anti-Aliasing、Sky Model、�
 
 Postshot v1.1.0では、露出、ホワイトバランス、周辺減光のばらつきを補正するPhotometric CompensationがPostshot GUIに追加されています。ただしPostshot v1.1.0時点の `postshot-cli.exe train --help` には対応するCLIオプションが出ていないため、この設定が必要な場合はPostshot側のGUIで有効にしてください。
 
+## Brush
+
+Brushでは、NeRF `transforms.json` 系またはCOLMAP形式のデータセットをCLIに渡して学習し、PLYを書き出します。OSSのBrush CLIをViewerなしで実行できます。
+
+| 設定 | 使い方 |
+| --- | --- |
+| `出力PLY名` | `{iter}` を含めると最終ステップ番号に置換されます。 |
+| `Iterations` | Brushの学習ステップ数です。 |
+| `Export Every` | PLYを書き出す間隔です。 |
+| `Max Resolution` | Brushへ読み込む画像の長辺上限です。 |
+| `Render Mode` | 通常はAuto。Mip比較をしたい場合だけ切り替えます。 |
+
+詳細パラメーターでは、Refine間隔、Gaussian上限、評価分割、画像や点群の間引きを指定できます。
+
+## gsplat
+
+gsplatでは、`python examples/simple_trainer.py` を起動します。入力データは `images/` と `sparse/0/` を含むCOLMAP形式データセットが必要です。MetashapeやRealityScanから使う場合は、Step 5でCOLMAPデータセットを作成してから選びます。
+
+PINHOLE画像の標準学習に加えて、魚眼・広角などのレンズ歪み補正前画像向けに3DGUTを使えます。LichtFeld用の `ERP 360° / GUT` データをそのまま渡す設定ではありません。
+
+| 設定 | 使い方 |
+| --- | --- |
+| `simple_trainer.py` | gsplatリポジトリ内の `examples/simple_trainer.py` を指定します。 |
+| `結果フォルダ名` | `ckpts/`, `stats/`, `ply/` などを保存するフォルダ名です。 |
+| `Strategy` | 通常はDefault。MCMCや3DGUTを試す場合はMCMCを使います。 |
+| `Max Steps` | 学習ステップ数です。 |
+| `Data Factor` | 画像縮小率です。1は縮小なしです。 |
+| `3DGUT` | レンズ歪み補正前画像向けの3DGUT経路を使います。MCMC Strategyで実行します。 |
+
 ## Step 5へ戻るべき状態
 
 Step 6はデータセットを作りません。直接読み込みでもCLI起動でも、次の状態では先にStep 5へ戻って変換を実行します。
@@ -188,7 +221,9 @@ Step 6はデータセットを作りません。直接読み込みでもCLI起�
 | 実行アプリ | 主な出力 |
 | --- | --- |
 | LichtFeld Studio | `出力先` に最終PLY。PPISP使用時は関連ファイルも出力されます。 |
-| Postshot | `出力先` に `.psht` プロジェクト。任意でPLY/SPZも書き出せます。 |
+| Postshot | `出力先` に `.psht` / `.ply` / `.spz`。 |
+| Brush | `出力先` に `.ply`。 |
+| gsplat | 結果フォルダ内の `ply/` に `.ply`。 |
 
 最終品質の差はStep 5で作ったデータ形状、学習アプリ側の設定、学習ステップ数、マスクの使い方に左右されます。同じデータセットから設定だけ変えて試す場合は、出力名を変えて結果を残しておくと比較しやすくなります。
 

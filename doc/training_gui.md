@@ -1,6 +1,6 @@
 # Step 6 Training GUI
 
-Step 6 launches training apps that provide a compatible CLI with the 3DGS dataset created in Step 5. With a compatible [LichtFeld Studio](https://lichtfeld.io/) or [Postshot](https://www.jawset.com/) version, you can start repeat runs or headless training from the GUI.
+Step 6 launches training apps that provide a compatible CLI with the 3DGS dataset created in Step 5. With a compatible [LichtFeld Studio](https://lichtfeld.io/), [Postshot](https://www.jawset.com/), [Brush](https://github.com/ArthurBrussee/brush), or [gsplat](https://github.com/nerfstudio-project/gsplat) setup, you can start repeat runs or headless training from the GUI.
 
 When you want to inspect quality and tune model settings inside the training app, you can skip Step 6 and open the Step 5 output dataset directly in [LichtFeld Studio](https://lichtfeld.io/), [Postshot](https://www.jawset.com/), [Brush](https://github.com/ArthurBrussee/brush), or another 3DGS app. Step 6 does not run image conversion or SfM; dataset creation is handled by `Step 5: Dataset`.
 
@@ -13,7 +13,7 @@ The Step 5 output is the dataset intended for downstream 3DGS apps. Open the mat
 | Open the dataset in the training app | First checks, visual tuning, app-specific training settings |
 | Launch from Step 6 | Repeatable CLI runs and headless training |
 
-Step 6 CLI launch targets a LichtFeld Studio v0.5.2-compatible CLI and the Postshot v1.0/v1.1 Release Build CLI. If you are not using CLI training, the Step 5 output dataset remains ready to open directly in each training app.
+Step 6 CLI launch targets a LichtFeld Studio v0.5.2-compatible CLI, the Postshot v1.0/v1.1 Release Build CLI, Brush CLI, and gsplat `examples/simple_trainer.py`. If you are not using CLI training, the Step 5 output dataset remains ready to open directly in each training app.
 
 ## First Choice
 
@@ -24,6 +24,8 @@ When you open Step 6, first decide which app you want to run and which dataset y
 | Train normal cubemap data in LichtFeld | `LichtFeld Studio` | `Dataset`, `GUT` off, output PLY name, `Strategy`, `Iterations` |
 | Try ERP 360° / GUT data in LichtFeld | `LichtFeld Studio` | `Dataset`, `GUT` on, confirm `pointcloud.ply` exists |
 | Create a Postshot project | `Postshot` | `Dataset`, `Camera Poses`, project name, `Profile` |
+| Run Brush headlessly | `Brush` | `Dataset`, output PLY name, `Iterations`, `Max Resolution` |
+| Train COLMAP data with gsplat | `gsplat` | COLMAP-format `Dataset`, `simple_trainer.py`, `Strategy`, `Max Steps`, `3DGUT` |
 
 Normally, leave `Dataset` on the automatic value. The app uses the latest registered dataset artifact when one exists, such as a Metashape, RealityScan, SphereSfM, or COLMAP dataset under `<scene>/output/`. `Training Output` defaults to `<scene>/output/`. Keeping datasets and training results under `output/` makes the scene easier to move later.
 
@@ -33,7 +35,7 @@ Normally, leave `Dataset` on the automatic value. The app uses the latest regist
 2. If you want to tune settings in the training app GUI, open the Step 5 output dataset directly there.
 3. If you want repeatable CLI launch or headless training, open `Step 6: Training`.
 4. Confirm that `Dataset` and `Training Output` point to the intended folders.
-5. Choose `LichtFeld Studio` or `Postshot`.
+5. Choose the `LichtFeld Studio`, `Postshot`, `Brush`, or `gsplat` card.
 6. If the executable cannot be found automatically, select the installed exe.
 7. Review the app-specific settings on the right.
 8. Press `Launch`.
@@ -47,7 +49,7 @@ Step 6 uses a wider center panel and is arranged as two columns.
 | Area | Contents |
 | --- | --- |
 | Left | Training app, Headless, executable, dataset, training output |
-| Right | LichtFeld / Postshot settings |
+| Right | Settings for the selected training app |
 
 The right side separates common settings from advanced parameters. Start with the visible settings, run once, then open the advanced sections only when you have a reason to compare a specific option.
 
@@ -55,7 +57,7 @@ The right side separates common settings from advanced parameters. Start with th
 
 ### Training App
 
-`LichtFeld Studio` and `Postshot` are available. See [LichtFeld Studio](https://lichtfeld.io/) and [Postshot](https://www.jawset.com/) for the supported apps. If you want to build an arbitrary CLI command, run that CLI directly instead of using this screen.
+`LichtFeld Studio`, `Postshot`, `Brush`, and `gsplat` are available. If you want to build an arbitrary CLI command, run that CLI directly instead of using this screen.
 
 ### Executable
 
@@ -65,6 +67,8 @@ When this field is empty, the GUI tries the default executable name or a known i
 | --- | --- |
 | LichtFeld Studio | `LichtFeld-Studio.exe` |
 | Postshot | `postshot-cli.exe` |
+| Brush | `brush.exe` |
+| gsplat | `python.exe` and `examples/simple_trainer.py` |
 
 ### Dataset
 
@@ -86,7 +90,7 @@ You can choose another folder manually. If you do, make sure it contains the fil
 
 This is where training results or project files are written. The default is `<scene>/output/`.
 
-If the final LichtFeld PLY, Postshot `.psht`, or optional Postshot PLY/SPZ export already exists, Step 6 stops before running so the result is not overwritten. Change the output name or output folder, then run again.
+If the final LichtFeld PLY, Postshot `.psht`, Brush final PLY, gsplat result folder, or optional Postshot PLY/SPZ export already exists, Step 6 stops before running so the result is not overwritten. Change the output name or output folder, then run again.
 
 ## LichtFeld Studio
 
@@ -172,6 +176,35 @@ GPU, profile-specific model limits, anti-aliasing, sky model, training-context s
 
 Postshot v1.1.0 adds Photometric Compensation in the Postshot GUI for exposure, white balance, and vignetting variation across images. As of Postshot v1.1.0, the `postshot-cli.exe train --help` output does not expose a matching CLI option, so enable that setting inside Postshot when you need it.
 
+## Brush
+
+Brush trains from a NeRF `transforms.json` style dataset or a COLMAP-format dataset and exports PLY files from the CLI. The open-source Brush CLI can run without opening its viewer.
+
+| Setting | How to use it |
+| --- | --- |
+| `Output PLY Name` | Include `{iter}` to insert the final step number. |
+| `Iterations` | Brush training step count. |
+| `Export Every` | PLY export interval. |
+| `Max Resolution` | Maximum long edge loaded by Brush. |
+| `Render Mode` | Keep Auto normally; switch only when comparing Mip behavior. |
+
+Advanced parameters cover refine interval, Gaussian limit, eval split, and image or point-cloud subsampling.
+
+## gsplat
+
+gsplat is launched through `python examples/simple_trainer.py`. The input dataset must be COLMAP-format data containing `images/` and `sparse/0/`. For Metashape or RealityScan sources, create a COLMAP dataset in Step 5 before selecting this card.
+
+Alongside standard PINHOLE-image training, 3DGUT can be used for fisheye or wide-angle images before lens undistortion. This is not the same as passing LichtFeld `ERP 360° / GUT` data directly to gsplat.
+
+| Setting | How to use it |
+| --- | --- |
+| `simple_trainer.py` | Select `examples/simple_trainer.py` from the gsplat repository. |
+| `Result Folder Name` | Folder for `ckpts/`, `stats/`, `ply/`, and related output. |
+| `Strategy` | Use Default normally. Use MCMC for MCMC or 3DGUT experiments. |
+| `Max Steps` | Training step count. |
+| `Data Factor` | Image downsample factor. 1 means full resolution. |
+| `3DGUT` | Use the 3DGUT path for images before lens undistortion. It runs with MCMC Strategy. |
+
 ## When To Return To Step 5
 
 Step 6 does not create datasets. Whether you open the dataset manually or launch through CLI, go back to Step 5 and run conversion first in these cases.
@@ -188,7 +221,9 @@ Step 6 does not create datasets. Whether you open the dataset manually or launch
 | Training app | Main outputs |
 | --- | --- |
 | LichtFeld Studio | Final PLY in `Training Output`. PPISP can add related files. |
-| Postshot | `.psht` project in `Training Output`. Optional PLY/SPZ export is also available. |
+| Postshot | `.psht` / `.ply` / `.spz` in `Training Output`. |
+| Brush | `.ply` in `Training Output`. |
+| gsplat | `.ply` under `ply/` in the result folder. |
 
 Final quality depends on the Step 5 dataset shape, training-app settings, step count, and mask usage. When comparing settings with the same dataset, change the output name so each result remains available.
 

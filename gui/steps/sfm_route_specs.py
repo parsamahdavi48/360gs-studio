@@ -26,6 +26,8 @@ class SfmRouteSpec:
     supports_projected_output: bool
     supports_3dgut_output: bool
     default_output_shape: str = OUTPUT_SHAPE_PROJECTED
+    official_url: str = ""
+    official_link_key: str = ""
 
     def supports_output_shape(self, output_shape: str) -> bool:
         if output_shape == OUTPUT_SHAPE_EQUIRECT_3DGUT:
@@ -53,6 +55,8 @@ _SPECS: tuple[SfmRouteSpec, ...] = (
         runs_sfm_in_app=True,
         supports_projected_output=True,
         supports_3dgut_output=False,
+        official_url="https://github.com/colmap/colmap",
+        official_link_key="COLMAP_REPOSITORY_LINK",
     ),
     SfmRouteSpec(
         route_id=SFM_ROUTE_SPHERESFM,
@@ -63,6 +67,8 @@ _SPECS: tuple[SfmRouteSpec, ...] = (
         runs_sfm_in_app=True,
         supports_projected_output=True,
         supports_3dgut_output=True,
+        official_url="https://github.com/json87/SphereSfM",
+        official_link_key="SPHERESFM_REPOSITORY_LINK",
     ),
 )
 

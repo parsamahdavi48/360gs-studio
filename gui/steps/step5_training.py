@@ -11,7 +11,6 @@ from gui.steps.base_step import BaseStepWidget
 from gui.steps.step4_cubemap import CubemapStep
 from gui.steps.training_backend_specs import (
     TRAINING_BACKEND_LICHTFELD,
-    TRAINING_BACKEND_POSTSHOT,
     training_backend_specs,
 )
 from gui.steps.workflow_cards import WorkflowCardGrid, WorkflowCardSpec
@@ -60,12 +59,8 @@ class TrainingStep(BaseStepWidget):
             for spec in training_backend_specs(category="primary", visible_only=True)
         )
         self.training_card_grid = WorkflowCardGrid(specs)
-        self.training_card_grid.buttons[TRAINING_BACKEND_LICHTFELD].clicked.connect(
-            lambda _checked=False: self.show_backend(TRAINING_BACKEND_LICHTFELD)
-        )
-        self.training_card_grid.buttons[TRAINING_BACKEND_POSTSHOT].clicked.connect(
-            lambda _checked=False: self.show_backend(TRAINING_BACKEND_POSTSHOT)
-        )
+        for backend_id, button in self.training_card_grid.buttons.items():
+            button.clicked.connect(lambda _checked=False, backend=backend_id: self.show_backend(backend))
         layout.addWidget(self.training_card_grid)
         layout.addStretch()
         return page

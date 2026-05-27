@@ -150,6 +150,10 @@ class CubemapStep(
         self._syncing_lfs_output_name = False
         self._postshot_project_name_user_edited = False
         self._syncing_postshot_project_name = False
+        self._brush_export_name_user_edited = False
+        self._syncing_brush_export_name = False
+        self._gsplat_result_name_user_edited = False
+        self._syncing_gsplat_result_name = False
         self._syncing_lfs_auto_fields = False
         self._yaw_per_frame_non_colmap_value = 30.0
         self._metashape_auto_xml_candidates: tuple[Path, ...] = ()
@@ -925,10 +929,14 @@ class CubemapStep(
                 self._training_output_user_edited = False
                 self._lfs_output_name_user_edited = False
                 self._postshot_project_name_user_edited = False
+                self._brush_export_name_user_edited = False
+                self._gsplat_result_name_user_edited = False
                 self._update_training_paths(force=True)
                 self._update_path_labels()
                 self._update_lfs_output_name(force=True)
                 self._update_postshot_project_name(force=True)
+                self._update_brush_export_name(force=True)
+                self._update_gsplat_result_name(force=True)
                 return
             p = Path(path)
             images_dir = str(self._metashape_images_dir())
@@ -954,12 +962,16 @@ class CubemapStep(
             self._training_output_user_edited = False
             self._lfs_output_name_user_edited = False
             self._postshot_project_name_user_edited = False
+            self._brush_export_name_user_edited = False
+            self._gsplat_result_name_user_edited = False
             restored = self._restore_project_settings(p)
             self.preview.set_scene_dir(path, refresh=False)
             self._input_image_count = 0
             self._update_training_paths(force=not restored)
             self._update_lfs_output_name(force=not restored)
             self._update_postshot_project_name(force=not restored)
+            self._update_brush_export_name(force=not restored)
+            self._update_gsplat_result_name(force=not restored)
             self._update_lfs_auto_steps_scaler()
             self._update_metashape_input_hint()
         finally:

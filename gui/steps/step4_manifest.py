@@ -412,6 +412,32 @@ class Step4ManifestMixin:
                 "roi_box_max": self.postshot_roi_box_max_edit.text().strip(),
                 "export_splat": self.postshot_export_splat_edit.text().strip(),
             },
+            "brush": {
+                "export_name": self.brush_export_name_edit.text().strip(),
+                "iterations": self.brush_iterations_edit.text().strip(),
+                "export_every": self.brush_export_every_edit.text().strip(),
+                "max_resolution": self.brush_max_resolution_edit.text().strip(),
+                "sh_degree": self.brush_sh_degree_combo.currentData(),
+                "render_mode": self.brush_render_mode_combo.currentData() or "auto",
+                "alpha_mode": self.brush_alpha_mode_combo.currentData() or "auto",
+                "with_viewer": self.brush_with_viewer_cb.isChecked(),
+                "refine_every": self.brush_refine_every_edit.text().strip(),
+                "max_splats": self.brush_max_splats_edit.text().strip(),
+                "eval_split_every": self.brush_eval_split_every_edit.text().strip(),
+                "subsample_frames": self.brush_subsample_frames_edit.text().strip(),
+                "subsample_points": self.brush_subsample_points_edit.text().strip(),
+            },
+            "gsplat": {
+                "script_path": self.gsplat_script_browse.text().strip(),
+                "result_name": self.gsplat_result_name_edit.text().strip(),
+                "strategy": self.gsplat_strategy_combo.currentData() or "default",
+                "max_steps": self.gsplat_max_steps_edit.text().strip(),
+                "data_factor": self.gsplat_data_factor_edit.text().strip(),
+                "test_every": self.gsplat_test_every_edit.text().strip(),
+                "save_ply": self.gsplat_save_ply_cb.isChecked(),
+                "disable_viewer": self.gsplat_disable_viewer_cb.isChecked(),
+                "with_3dgut": self.gsplat_3dgut_cb.isChecked(),
+            },
         }
 
     def _write_export_settings(self) -> None:

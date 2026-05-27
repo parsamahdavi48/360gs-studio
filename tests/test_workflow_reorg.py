@@ -183,6 +183,8 @@ def test_sfm_cards_open_in_step_sfm_pages_and_external_route_goes_to_dataset(tmp
         assert colmap_link.toolTip() == i18n.tip("COLMAP_REPOSITORY_LINK")
         assert i18n.t("COLMAP_REPOSITORY_LINK") in colmap_link.text()
         assert "https://github.com/colmap/colmap" in colmap_link.text()
+        colmap_detail_layout = colmap_link.parentWidget().layout()
+        assert colmap_detail_layout.indexOf(colmap_link) == colmap_detail_layout.count() - 1
 
         window.sfm_step.show_menu()
         assert window.run_btn.text().strip() == i18n.t("SFM_SELECT_ROUTE")
@@ -205,6 +207,8 @@ def test_sfm_cards_open_in_step_sfm_pages_and_external_route_goes_to_dataset(tmp
         assert spheresfm_link.toolTip() == i18n.tip("SPHERESFM_REPOSITORY_LINK")
         assert i18n.t("SPHERESFM_REPOSITORY_LINK") in spheresfm_link.text()
         assert "https://github.com/json87/SphereSfM" in spheresfm_link.text()
+        spheresfm_detail_layout = spheresfm_link.parentWidget().layout()
+        assert spheresfm_detail_layout.indexOf(spheresfm_link) == spheresfm_detail_layout.count() - 1
 
         window.sfm_step.show_menu()
         assert window.run_btn.text().strip() == i18n.t("SFM_SELECT_ROUTE")

@@ -44,10 +44,14 @@ def test_sfm_route_registry_describes_current_routes() -> None:
     assert colmap.runs_sfm_in_app
     assert colmap.supports_output_shape(OUTPUT_SHAPE_PROJECTED)
     assert not colmap.supports_output_shape(OUTPUT_SHAPE_EQUIRECT_3DGUT)
+    assert colmap.official_url == "https://github.com/colmap/colmap"
+    assert colmap.official_link_key == "COLMAP_REPOSITORY_LINK"
     assert spheresfm.kind == "in_app"
     assert spheresfm.runs_sfm_in_app
     assert spheresfm.supports_output_shape(OUTPUT_SHAPE_PROJECTED)
     assert spheresfm.supports_output_shape(OUTPUT_SHAPE_EQUIRECT_3DGUT)
+    assert spheresfm.official_url == "https://github.com/json87/SphereSfM"
+    assert spheresfm.official_link_key == "SPHERESFM_REPOSITORY_LINK"
     for route_id in SFM_ROUTE_IDS:
         assert get_sfm_route_backend(route_id).spec.route_id == route_id
     assert get_sfm_route_backend("missing").spec.route_id == SFM_ROUTE_METASHAPE

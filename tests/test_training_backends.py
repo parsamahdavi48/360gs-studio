@@ -7,6 +7,8 @@ from gui.steps.training_backend_specs import (
     DEFAULT_TRAINING_BACKEND,
     OTHER_TRAINING_BACKEND_IDS,
     PRIMARY_TRAINING_BACKEND_IDS,
+    TRAINING_BACKEND_BRUSH,
+    TRAINING_BACKEND_GSPLAT,
     TRAINING_BACKEND_LICHTFELD,
     TRAINING_BACKEND_POSTSHOT,
     get_training_backend_spec,
@@ -15,9 +17,14 @@ from gui.steps.training_backend_specs import (
     training_backend_specs,
 )
 from gui.steps.training_backends import (
+    BrushTrainingOptions,
+    GsplatTrainingOptions,
     LichtFeldTrainingOptions,
     PostshotTrainingOptions,
     TrainingDataset,
+    brush_export_filename,
+    build_brush_training_cmd,
+    build_gsplat_training_cmd,
     build_lichtfeld_config,
     build_lichtfeld_training_cmd,
     build_postshot_training_cmd,
@@ -33,7 +40,12 @@ def test_training_backend_specs_define_ui_order_and_command_metadata() -> None:
     visible_other_ids = tuple(spec.backend_id for spec in training_backend_specs(category="other", visible_only=True))
 
     assert DEFAULT_TRAINING_BACKEND == TRAINING_BACKEND_LICHTFELD
-    assert primary_ids == (TRAINING_BACKEND_LICHTFELD, TRAINING_BACKEND_POSTSHOT)
+    assert primary_ids == (
+        TRAINING_BACKEND_LICHTFELD,
+        TRAINING_BACKEND_POSTSHOT,
+        TRAINING_BACKEND_BRUSH,
+        TRAINING_BACKEND_GSPLAT,
+    )
     assert other_ids == ()
     assert visible_primary_ids == primary_ids
     assert visible_other_ids == ()
@@ -41,9 +53,19 @@ def test_training_backend_specs_define_ui_order_and_command_metadata() -> None:
     assert OTHER_TRAINING_BACKEND_IDS == other_ids
 
     ordered_specs = training_backend_specs()
-    assert [spec.stack_order for spec in ordered_specs] == [0, 1]
+    assert [spec.stack_order for spec in ordered_specs] == [0, 1, 2, 3]
     assert get_training_backend_spec(TRAINING_BACKEND_LICHTFELD).supports_headless is True
     assert get_training_backend_spec(TRAINING_BACKEND_POSTSHOT).supports_headless is False
+    assert get_training_backend_spec(TRAINING_BACKEND_BRUSH).supports_headless is False
+    assert get_training_backend_spec(TRAINING_BACKEND_GSPLAT).supports_headless is False
+    assert get_training_backend_spec(TRAINING_BACKEND_LICHTFELD).official_url == "https://lichtfeld.io/"
+    assert get_training_backend_spec(TRAINING_BACKEND_POSTSHOT).official_url == "https://www.jawset.com/"
+    assert get_training_backend_spec(TRAINING_BACKEND_BRUSH).official_url == "https://github.com/ArthurBrussee/brush"
+    assert (
+        get_training_backend_spec(TRAINING_BACKEND_GSPLAT).official_url
+        == "https://github.com/nerfstudio-project/gsplat"
+    )
+    assert get_training_backend_spec(TRAINING_BACKEND_BRUSH).official_link_key == "TRAINING_LINK_BRUSH"
     assert (
         training_backend_default_executable(
             TRAINING_BACKEND_LICHTFELD,
@@ -58,7 +80,11 @@ def test_training_backend_specs_define_ui_order_and_command_metadata() -> None:
         )
         == "postshot-cli"
     )
+    assert training_backend_default_executable(TRAINING_BACKEND_BRUSH, windows=True) == "brush.exe"
+    assert training_backend_default_executable(TRAINING_BACKEND_GSPLAT, windows=False) == "python"
     assert normalize_training_backend("POSTSHOT") == TRAINING_BACKEND_POSTSHOT
+    assert normalize_training_backend("Brush") == TRAINING_BACKEND_BRUSH
+    assert normalize_training_backend("GSPLAT") == TRAINING_BACKEND_GSPLAT
     assert normalize_training_backend("custom") == DEFAULT_TRAINING_BACKEND
     assert normalize_training_backend("missing") == DEFAULT_TRAINING_BACKEND
 
@@ -429,3 +455,119 @@ def test_postshot_command_imports_transforms_and_pointcloud_for_imported_poses(t
         "--output",
     ]
     assert "--pose-quality" not in cmd
+
+
+def test_brush_command_passes_cli_training_profile(tmp_path: Path) -> None:
+    dataset = TrainingDataset(dataset_root=tmp_path / "dataset")
+
+    cmd = build_brush_training_cmd(
+        BrushTrainingOptions(
+            executable="brush.exe",
+            dataset=dataset,
+            output_dir=tmp_path / "training",
+            export_name="scene_{iter}.ply",
+            total_train_iters=30000,
+            export_every=2500,
+            max_resolution=2048,
+            with_viewer=True,
+            sh_degree=2,
+            render_mode="mip",
+            refine_every=150,
+            max_splats=4_000_000,
+            eval_split_every=8,
+            alpha_mode="masked",
+            subsample_frames=2,
+            subsample_points=3,
+        )
+    )
+
+    assert brush_export_filename("scene_{iter}.ply", 30000) == "scene_30000.ply"
+    assert cmd == [
+        "brush.exe",
+        str(dataset.dataset_root),
+        "--total-train-iters",
+        "30000",
+        "--export-every",
+        "2500",
+        "--export-path",
+        str(tmp_path / "training"),
+        "--export-name",
+        "scene_{iter}.ply",
+        "--max-resolution",
+        "2048",
+        "--sh-degree",
+        "2",
+        "--refine-every",
+        "150",
+        "--max-splats",
+        "4000000",
+        "--with-viewer",
+        "--render-mode",
+        "mip",
+        "--eval-split-every",
+        "8",
+        "--alpha-mode",
+        "masked",
+        "--subsample-frames",
+        "2",
+        "--subsample-points",
+        "3",
+    ]
+
+
+def test_gsplat_command_passes_simple_trainer_options(tmp_path: Path) -> None:
+    dataset = TrainingDataset(dataset_root=tmp_path / "dataset")
+    script = tmp_path / "gsplat" / "examples" / "simple_trainer.py"
+
+    cmd = build_gsplat_training_cmd(
+        GsplatTrainingOptions(
+            executable="python.exe",
+            script_path=script,
+            dataset=dataset,
+            result_dir=tmp_path / "training" / "scene_gsplat",
+            strategy="mcmc",
+            max_steps=1200,
+            data_factor=2,
+            test_every=4,
+            save_ply=True,
+            disable_viewer=True,
+            with_3dgut=True,
+        )
+    )
+
+    assert cmd == [
+        "python.exe",
+        str(script),
+        "mcmc",
+        "--data_dir",
+        str(dataset.dataset_root),
+        "--result_dir",
+        str(tmp_path / "training" / "scene_gsplat"),
+        "--max_steps",
+        "1200",
+        "--data_factor",
+        "2",
+        "--test_every",
+        "4",
+        "--disable_viewer",
+        "--save_ply",
+        "--with_ut",
+        "--with_eval3d",
+    ]
+
+
+def test_gsplat_3dgut_requires_mcmc(tmp_path: Path) -> None:
+    dataset = TrainingDataset(dataset_root=tmp_path / "dataset")
+
+    with pytest.raises(ValueError, match="mcmc"):
+        build_gsplat_training_cmd(
+            GsplatTrainingOptions(
+                executable="python.exe",
+                script_path=tmp_path / "simple_trainer.py",
+                dataset=dataset,
+                result_dir=tmp_path / "training",
+                strategy="default",
+                max_steps=100,
+                with_3dgut=True,
+            )
+        )

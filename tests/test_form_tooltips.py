@@ -245,8 +245,8 @@ def test_step4_route_and_training_selectors_use_radio_buttons() -> None:
     assert step.training_backend_other_button.objectName() == "optionRadio"
     assert isinstance(step.training_backend_other_menu_button, QToolButton)
     assert step.training_backend_other_menu_button.objectName() == "optionMenuArrow"
-    assert set(step.training_backend_buttons) == {"lichtfeld", "postshot"}
-    assert set(step.training_backend_selector.primary_backend_buttons) == {"lichtfeld", "postshot"}
+    assert set(step.training_backend_buttons) == {"lichtfeld", "postshot", "brush", "gsplat"}
+    assert set(step.training_backend_selector.primary_backend_buttons) == {"lichtfeld", "postshot", "brush", "gsplat"}
     assert set(step.training_backend_selector.other_backend_actions) == set()
     assert step.training_backend_selector.other_picker.isHidden()
     assert step.training_backend_buttons["lichtfeld"].isChecked()
@@ -417,7 +417,12 @@ def test_step4_scrolls_tab_content_not_whole_settings_pane() -> None:
         step._set_training_backend("custom")
         app.processEvents()
         assert step.training_settings_scroll.verticalScrollBar().maximum() == 0
-        for row in (step.training_backend_row, step.training_run_options_row, step.training_common_fields_widget):
+        for row in (
+            step.training_backend_row,
+            step.training_run_options_row,
+            step.training_common_fields_widget,
+            step.training_backend_links_widget,
+        ):
             parent = row.parentWidget()
             while parent is not None:
                 assert not isinstance(parent, QScrollArea)
@@ -799,6 +804,22 @@ def test_cubemap_labels_share_field_tooltips() -> None:
     assert step.spheresfm_repo_link.openExternalLinks()
     assert step.spheresfm_repo_link.toolTip() == i18n.tip("SPHERESFM_REPOSITORY_LINK")
     assert i18n.t("SPHERESFM_REPOSITORY_LINK") in step.spheresfm_repo_link.text()
+    expected_training_links = {
+        "lichtfeld": ("TRAINING_LINK_LICHTFELD", "https://lichtfeld.io/"),
+        "postshot": ("TRAINING_LINK_POSTSHOT", "https://www.jawset.com/"),
+        "brush": ("TRAINING_LINK_BRUSH", "https://github.com/ArthurBrussee/brush"),
+        "gsplat": ("TRAINING_LINK_GSPLAT", "https://github.com/nerfstudio-project/gsplat"),
+    }
+    assert set(step.training_backend_official_links) == set(expected_training_links)
+    for backend, (key, url) in expected_training_links.items():
+        link = step.training_backend_official_links[backend]
+        assert link.openExternalLinks()
+        assert link.toolTip() == i18n.tip(key)
+        assert i18n.t(key) in link.text()
+        assert url in link.text()
+        step._set_training_backend(backend)
+        assert not link.isHidden()
+        assert link.parentWidget() is step.training_backend_links_widget
     assert not hasattr(step, "spheresfm_run_scope_combo")
     assert step.axis_transform_combo.toolTip() == i18n.tip("AXIS_TRANSFORM")
     assert step.axis_transform_combo.isHidden()

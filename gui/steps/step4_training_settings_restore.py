@@ -36,6 +36,8 @@ class Step4TrainingSettingsRestoreMixin:
 
         self._restore_lfs_settings(training.get("lichtfeld"))
         self._restore_postshot_settings(training.get("postshot"))
+        self._restore_brush_settings(training.get("brush"))
+        self._restore_gsplat_settings(training.get("gsplat"))
 
     def _restore_lfs_settings(self, payload: object) -> None:
         if not isinstance(payload, dict):
@@ -121,3 +123,53 @@ class Step4TrainingSettingsRestoreMixin:
             self.postshot_num_train_images_edit.setText(str(payload.get("num_train_images", "")))
         self._set_combo_data(self.postshot_pose_quality_combo, payload.get("pose_quality"))
         self._update_postshot_conditional_visibility()
+
+    def _restore_brush_settings(self, payload: object) -> None:
+        if not isinstance(payload, dict):
+            return
+        if "export_name" in payload:
+            self.brush_export_name_edit.setText(str(payload.get("export_name", "")))
+            self._brush_export_name_user_edited = bool(self.brush_export_name_edit.text().strip())
+        if "iterations" in payload:
+            self.brush_iterations_edit.setText(str(payload.get("iterations", "")))
+        if "export_every" in payload:
+            self.brush_export_every_edit.setText(str(payload.get("export_every", "")))
+        if "max_resolution" in payload:
+            self.brush_max_resolution_edit.setText(str(payload.get("max_resolution", "")))
+        self._set_combo_data(self.brush_sh_degree_combo, payload.get("sh_degree"))
+        self._set_combo_data(self.brush_render_mode_combo, str(payload.get("render_mode", "")).strip())
+        self._set_combo_data(self.brush_alpha_mode_combo, str(payload.get("alpha_mode", "")).strip())
+        if "with_viewer" in payload:
+            self.brush_with_viewer_cb.setChecked(bool(payload.get("with_viewer")))
+        if "refine_every" in payload:
+            self.brush_refine_every_edit.setText(str(payload.get("refine_every", "")))
+        if "max_splats" in payload:
+            self.brush_max_splats_edit.setText(str(payload.get("max_splats", "")))
+        if "eval_split_every" in payload:
+            self.brush_eval_split_every_edit.setText(str(payload.get("eval_split_every", "")))
+        if "subsample_frames" in payload:
+            self.brush_subsample_frames_edit.setText(str(payload.get("subsample_frames", "")))
+        if "subsample_points" in payload:
+            self.brush_subsample_points_edit.setText(str(payload.get("subsample_points", "")))
+
+    def _restore_gsplat_settings(self, payload: object) -> None:
+        if not isinstance(payload, dict):
+            return
+        if "script_path" in payload:
+            self.gsplat_script_browse.set_text(str(payload.get("script_path", "")))
+        if "result_name" in payload:
+            self.gsplat_result_name_edit.setText(str(payload.get("result_name", "")))
+            self._gsplat_result_name_user_edited = bool(self.gsplat_result_name_edit.text().strip())
+        self._set_combo_data(self.gsplat_strategy_combo, str(payload.get("strategy", "")).strip())
+        if "max_steps" in payload:
+            self.gsplat_max_steps_edit.setText(str(payload.get("max_steps", "")))
+        if "data_factor" in payload:
+            self.gsplat_data_factor_edit.setText(str(payload.get("data_factor", "")))
+        if "test_every" in payload:
+            self.gsplat_test_every_edit.setText(str(payload.get("test_every", "")))
+        if "save_ply" in payload:
+            self.gsplat_save_ply_cb.setChecked(bool(payload.get("save_ply")))
+        if "disable_viewer" in payload:
+            self.gsplat_disable_viewer_cb.setChecked(bool(payload.get("disable_viewer")))
+        if "with_3dgut" in payload:
+            self.gsplat_3dgut_cb.setChecked(bool(payload.get("with_3dgut")))

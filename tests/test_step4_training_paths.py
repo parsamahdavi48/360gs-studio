@@ -43,6 +43,26 @@ def test_training_launch_requires_existing_dataset_shape(tmp_path: Path) -> None
     assert step.training_primary_action_enabled() is True
 
 
+def test_step6_training_cards_show_output_artifact_footers(tmp_path: Path) -> None:
+    step = _ready_step(tmp_path, metashape_inputs=True)
+    training = TrainingStep(Path.cwd(), step)
+
+    expected_footer_keys = {
+        "lichtfeld": "TRAINING_TOOL_LICHTFELD_CARD_FOOTER",
+        "postshot": "TRAINING_TOOL_POSTSHOT_CARD_FOOTER",
+        "brush": "TRAINING_TOOL_BRUSH_CARD_FOOTER",
+        "gsplat": "TRAINING_TOOL_GSPLAT_CARD_FOOTER",
+    }
+
+    footers = {
+        backend: training.training_card_grid.buttons[backend].footer_label.text()
+        for backend in expected_footer_keys
+    }
+
+    assert footers == {backend: i18n.t(key) for backend, key in expected_footer_keys.items()}
+    assert len({footer.split(":", 1)[0] for footer in footers.values()}) == 1
+
+
 def test_training_status_checks_existing_output_shape_when_cube_is_skipped(tmp_path: Path) -> None:
     step = _ready_step(tmp_path, metashape_inputs=True)
     _write_output_dataset(tmp_path, output_shape="projected", legacy_root=True)
@@ -373,6 +393,75 @@ def test_postshot_training_defaults_to_scene_project_and_refuses_collision(tmp_p
     assert step.postshot_project_name_edit.text() == f"{tmp_path.name}.psht"
     with pytest.raises(ValueError, match=existing.name):
         step.build_training_launch_commands()
+
+
+def test_step6_launch_builds_brush_command(tmp_path: Path) -> None:
+    step = _ready_step(tmp_path, metashape_inputs=True)
+    _write_output_dataset(tmp_path, output_shape="projected")
+    fake_brush = tmp_path / "brush.exe"
+    fake_brush.write_text("", encoding="utf-8")
+
+    training = TrainingStep(Path.cwd(), step)
+    training.set_scene_dir(str(tmp_path))
+    training.show_backend("brush")
+    step.training_executable_browse.set_text(str(fake_brush))
+    step.brush_iterations_edit.setText("1200")
+    step.brush_export_every_edit.setText("300")
+    step.brush_max_resolution_edit.setText("1024")
+    step.brush_export_name_edit.setText("brush_{iter}.ply")
+    step.brush_with_viewer_cb.setChecked(True)
+
+    phase, cmd = training.build_commands()[0]
+
+    assert phase == "training_brush"
+    assert cmd[:2] == [str(fake_brush), str(tmp_path / "output" / "metashape_cubemap")]
+    assert "--with-viewer" in cmd
+    assert cmd[cmd.index("--total-train-iters") + 1] == "1200"
+    assert cmd[cmd.index("--export-every") + 1] == "300"
+    assert cmd[cmd.index("--export-path") + 1] == str(tmp_path / "output")
+    assert cmd[cmd.index("--export-name") + 1] == "brush_{iter}.ply"
+    assert cmd[cmd.index("--max-resolution") + 1] == "1024"
+
+
+def test_step6_launch_builds_gsplat_command_for_colmap_dataset(tmp_path: Path) -> None:
+    step = _ready_step(tmp_path, metashape_inputs=True)
+    dataset = tmp_path / "output" / "metashape_colmap"
+    images = dataset / "images"
+    sparse = dataset / "sparse" / "0"
+    images.mkdir(parents=True)
+    sparse.mkdir(parents=True)
+    _write_test_image(images / "frame_0001.jpg")
+    for name in ("cameras.txt", "images.txt", "points3D.txt"):
+        (sparse / name).write_text("", encoding="utf-8")
+    fake_python = tmp_path / "python.exe"
+    fake_python.write_text("", encoding="utf-8")
+    script = tmp_path / "gsplat" / "examples" / "simple_trainer.py"
+    script.parent.mkdir(parents=True)
+    script.write_text("", encoding="utf-8")
+
+    training = TrainingStep(Path.cwd(), step)
+    training.set_scene_dir(str(tmp_path))
+    training.show_backend("gsplat")
+    step.training_dataset_browse.set_text(str(dataset))
+    step.training_executable_browse.set_text(str(fake_python))
+    step.gsplat_script_browse.set_text(str(script))
+    step.gsplat_result_name_edit.setText("gsplat_run")
+    step.gsplat_max_steps_edit.setText("1200")
+    step.gsplat_data_factor_edit.setText("2")
+    step.gsplat_3dgut_cb.setChecked(True)
+
+    phase, cmd = training.build_commands()[0]
+
+    assert phase == "training_gsplat"
+    assert cmd[:3] == [str(fake_python), str(script), "mcmc"]
+    assert cmd[cmd.index("--data_dir") + 1] == str(dataset)
+    assert cmd[cmd.index("--result_dir") + 1] == str(tmp_path / "output" / "gsplat_run")
+    assert cmd[cmd.index("--max_steps") + 1] == "1200"
+    assert cmd[cmd.index("--data_factor") + 1] == "2"
+    assert "--disable_viewer" in cmd
+    assert "--save_ply" in cmd
+    assert "--with_ut" in cmd
+    assert "--with_eval3d" in cmd
 
 
 def test_postshot_cli_options_are_grouped_and_conditional(tmp_path: Path) -> None:

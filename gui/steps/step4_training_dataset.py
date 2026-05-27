@@ -23,6 +23,12 @@ from gui.steps.step4_contracts import (
 )
 from gui.steps.step4_settings import load_step4_export_settings
 from gui.steps.training_backend_specs import (
+    TRAINING_BACKEND_BRUSH as _TRAINING_BACKEND_BRUSH,
+)
+from gui.steps.training_backend_specs import (
+    TRAINING_BACKEND_GSPLAT as _TRAINING_BACKEND_GSPLAT,
+)
+from gui.steps.training_backend_specs import (
     TRAINING_BACKEND_LICHTFELD as _TRAINING_BACKEND_LICHTFELD,
 )
 from gui.steps.training_backend_specs import (
@@ -40,6 +46,8 @@ class Step4TrainingDatasetMixin:
         if backend == _TRAINING_BACKEND_LICHTFELD:
             return _OUTPUT_SHAPE_EQUIRECT_3DGUT if self.lfs_gut_cb.isChecked() else _OUTPUT_SHAPE_PROJECTED
         if backend == _TRAINING_BACKEND_POSTSHOT:
+            return _OUTPUT_SHAPE_PROJECTED
+        if backend in {_TRAINING_BACKEND_BRUSH, _TRAINING_BACKEND_GSPLAT}:
             return _OUTPUT_SHAPE_PROJECTED
         return ""
 
@@ -69,6 +77,8 @@ class Step4TrainingDatasetMixin:
             and (dataset.transforms_json is None or not dataset.transforms_json.is_file())
         ):
             return i18n.t("POSTSHOT_IMPORT_POSES_NOT_FOUND")
+        if self._training_backend() == _TRAINING_BACKEND_GSPLAT and dataset.colmap_sparse_dir is None:
+            return i18n.t("GSPLAT_COLMAP_DATASET_NOT_FOUND")
         return None
 
     def _training_dataset_export_shape(self, dataset_root: Path) -> str:
@@ -153,13 +163,19 @@ class Step4TrainingDatasetMixin:
         if not self.scene_dir:
             return None
         scene = Path(self.scene_dir)
-        artifact_root = latest_dataset_root(
-            scene,
-            accepted_kinds={
-                DATASET_KIND_NERF_JSON_PLY,
+        accepted_kinds = {
+            DATASET_KIND_NERF_JSON_PLY,
+            DATASET_KIND_COLMAP_DATASET,
+            DATASET_KIND_LICHTFELD_COLMAP,
+        }
+        if self._training_backend() == _TRAINING_BACKEND_GSPLAT:
+            accepted_kinds = {
                 DATASET_KIND_COLMAP_DATASET,
                 DATASET_KIND_LICHTFELD_COLMAP,
-            },
+            }
+        artifact_root = latest_dataset_root(
+            scene,
+            accepted_kinds=accepted_kinds,
         )
         if artifact_root is not None:
             return artifact_root
@@ -183,6 +199,23 @@ class Step4TrainingDatasetMixin:
             return "postshot.psht"
         return f"{Path(self.scene_dir).name}.psht"
 
+    def _default_brush_export_name(self) -> str:
+        if not self.scene_dir:
+            return "export_{iter}.ply"
+        return f"{Path(self.scene_dir).name}_brush_{{iter}}.ply"
+
+    def _default_gsplat_result_name(self) -> str:
+        if not self.scene_dir:
+            return "gsplat"
+        return f"{Path(self.scene_dir).name}_gsplat"
+
+    @staticmethod
+    def _default_gsplat_script_path() -> Path:
+        local_clone = Path(r"D:\GitHub\gsplat\examples\simple_trainer.py")
+        if local_clone.is_file():
+            return local_clone
+        return Path("examples") / "simple_trainer.py"
+
     def _update_lfs_output_name(self, *, force: bool = False) -> None:
         if not hasattr(self, "lfs_output_name_edit"):
             return
@@ -204,6 +237,28 @@ class Step4TrainingDatasetMixin:
                 self.postshot_project_name_edit.setText(default_name)
             finally:
                 self._syncing_postshot_project_name = False
+
+    def _update_brush_export_name(self, *, force: bool = False) -> None:
+        if not hasattr(self, "brush_export_name_edit"):
+            return
+        default_name = self._default_brush_export_name()
+        if force or not self._brush_export_name_user_edited or not self.brush_export_name_edit.text().strip():
+            self._syncing_brush_export_name = True
+            try:
+                self.brush_export_name_edit.setText(default_name)
+            finally:
+                self._syncing_brush_export_name = False
+
+    def _update_gsplat_result_name(self, *, force: bool = False) -> None:
+        if not hasattr(self, "gsplat_result_name_edit"):
+            return
+        default_name = self._default_gsplat_result_name()
+        if force or not self._gsplat_result_name_user_edited or not self.gsplat_result_name_edit.text().strip():
+            self._syncing_gsplat_result_name = True
+            try:
+                self.gsplat_result_name_edit.setText(default_name)
+            finally:
+                self._syncing_gsplat_result_name = False
 
     def _update_training_paths(self, *, force: bool = False) -> None:
         if not hasattr(self, "training_dataset_browse"):
@@ -234,6 +289,14 @@ class Step4TrainingDatasetMixin:
         output_colmap = self._display_output_dir() / "colmap"
         return output_colmap if output_colmap.is_dir() else None
 
+    @staticmethod
+    def _dataset_sparse_model_dir(dataset_root: Path) -> Path | None:
+        sparse_zero = dataset_root / "sparse" / "0"
+        if sparse_zero.is_dir():
+            return sparse_zero
+        sparse = dataset_root / "sparse"
+        return sparse if sparse.is_dir() else None
+
     def _training_dataset(self) -> TrainingDataset:
         dataset_root = self._training_dataset_dir()
         transforms_json = self._training_transforms_path(dataset_root)
@@ -243,11 +306,12 @@ class Step4TrainingDatasetMixin:
         else:
             images_dir = dataset_root / "images"
             masks_dir = dataset_root / "masks"
+        dataset_sparse_dir = self._dataset_sparse_model_dir(dataset_root)
         return TrainingDataset(
             dataset_root=dataset_root,
             images_dir=images_dir,
             masks_dir=masks_dir,
-            colmap_sparse_dir=self._training_sparse_model_dir(),
+            colmap_sparse_dir=dataset_sparse_dir or self._training_sparse_model_dir(),
             transforms_json=transforms_json,
             pointcloud_ply=self._training_pointcloud_source(dataset_root, transforms_json=transforms_json),
             output_shape=self._output_shape(),
@@ -259,6 +323,8 @@ class Step4TrainingDatasetMixin:
             return ("postshot",)
         if backend == _TRAINING_BACKEND_LICHTFELD:
             return ("lichtfeld",)
+        if backend == _TRAINING_BACKEND_BRUSH:
+            return ("brush",)
         return ()
 
     def _training_transforms_path(self, dataset_root: Path) -> Path | None:

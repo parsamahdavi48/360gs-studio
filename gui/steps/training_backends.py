@@ -13,6 +13,9 @@ _LICHTFELD_BG_MODES = {"solid_color", "modulation", "image", "random"}
 _POSTSHOT_PROFILES = {"Splat ADC", "Splat MCMC", "Splat3"}
 _POSTSHOT_IMAGE_SELECT_MODES = {"all", "best"}
 _POSTSHOT_MASK_MODES = {"background", "occluders"}
+_BRUSH_RENDER_MODES = {"auto", "default", "mip"}
+_BRUSH_ALPHA_MODES = {"auto", "masked", "transparent"}
+_GSPLAT_STRATEGIES = {"default", "mcmc"}
 _LICHTFELD_BASE_IMAGE_COUNT = 300
 _LICHTFELD_STEP_KEYS = {
     "iterations",
@@ -283,6 +286,41 @@ class PostshotTrainingOptions:
     export_splat_path: Path | None = None
 
 
+@dataclass(frozen=True)
+class BrushTrainingOptions:
+    executable: str
+    dataset: TrainingDataset
+    output_dir: Path
+    export_name: str
+    total_train_iters: int
+    export_every: int
+    max_resolution: int
+    with_viewer: bool = False
+    sh_degree: int = 3
+    render_mode: str = "auto"
+    refine_every: int = 200
+    max_splats: int = 10_000_000
+    eval_split_every: int | None = None
+    alpha_mode: str = "auto"
+    subsample_frames: int | None = None
+    subsample_points: int | None = None
+
+
+@dataclass(frozen=True)
+class GsplatTrainingOptions:
+    executable: str
+    script_path: Path
+    dataset: TrainingDataset
+    result_dir: Path
+    strategy: str
+    max_steps: int
+    data_factor: int = 1
+    test_every: int = 8
+    save_ply: bool = True
+    disable_viewer: bool = True
+    with_3dgut: bool = False
+
+
 def build_lichtfeld_config(options: LichtFeldTrainingOptions) -> dict:
     strategy = options.strategy.lower().strip()
     if strategy not in _LICHTFELD_REQUIRED_STRATEGIES:
@@ -509,6 +547,120 @@ def build_postshot_training_cmd(options: PostshotTrainingOptions) -> list[str]:
 
     add_box("crop-box", options.crop_box_default, options.crop_box_min, options.crop_box_max)
     add_box("roi-box", options.roi_box_default, options.roi_box_min, options.roi_box_max)
+    return cmd
+
+
+def brush_export_filename(export_name: str, total_train_iters: int) -> str:
+    name = export_name.strip()
+    if any(sep in name for sep in ("/", "\\")):
+        raise ValueError("Brush export name must be a file name, not a path")
+    if not name:
+        raise ValueError("Brush export name must not be empty")
+    if not name.lower().endswith(".ply"):
+        name = f"{name}.ply"
+    if "{iter}" in name:
+        if total_train_iters <= 0:
+            raise ValueError("Brush training iterations must be greater than 0")
+        digits = int(math.floor(math.log10(total_train_iters))) + 1 if total_train_iters > 0 else 1
+        name = name.replace("{iter}", f"{total_train_iters:0{digits}d}")
+    return name
+
+
+def build_brush_training_cmd(options: BrushTrainingOptions) -> list[str]:
+    if options.total_train_iters <= 0:
+        raise ValueError("Brush training iterations must be greater than 0")
+    if options.export_every <= 0:
+        raise ValueError("Brush export interval must be greater than 0")
+    if options.max_resolution <= 0:
+        raise ValueError("Brush max resolution must be greater than 0")
+    if options.sh_degree < 0 or options.sh_degree > 3:
+        raise ValueError("Brush SH degree must be between 0 and 3")
+    if options.refine_every <= 0:
+        raise ValueError("Brush refine interval must be greater than 0")
+    if options.max_splats <= 0:
+        raise ValueError("Brush max splats must be greater than 0")
+    if options.render_mode not in _BRUSH_RENDER_MODES:
+        raise ValueError(f"Unsupported Brush render mode: {options.render_mode}")
+    if options.alpha_mode not in _BRUSH_ALPHA_MODES:
+        raise ValueError(f"Unsupported Brush alpha mode: {options.alpha_mode}")
+    if options.eval_split_every is not None and options.eval_split_every <= 0:
+        raise ValueError("Brush eval split interval must be greater than 0")
+    if options.subsample_frames is not None and options.subsample_frames <= 0:
+        raise ValueError("Brush frame subsampling interval must be greater than 0")
+    if options.subsample_points is not None and options.subsample_points <= 0:
+        raise ValueError("Brush point subsampling interval must be greater than 0")
+
+    export_name = options.export_name.strip()
+    brush_export_filename(export_name, options.total_train_iters)
+    if not export_name.lower().endswith(".ply"):
+        export_name = f"{export_name}.ply"
+    cmd = [
+        options.executable,
+        str(options.dataset.dataset_root),
+        "--total-train-iters",
+        str(options.total_train_iters),
+        "--export-every",
+        str(options.export_every),
+        "--export-path",
+        str(options.output_dir),
+        "--export-name",
+        export_name,
+        "--max-resolution",
+        str(options.max_resolution),
+        "--sh-degree",
+        str(options.sh_degree),
+        "--refine-every",
+        str(options.refine_every),
+        "--max-splats",
+        str(options.max_splats),
+    ]
+    if options.with_viewer:
+        cmd.append("--with-viewer")
+    if options.render_mode != "auto":
+        cmd.extend(["--render-mode", options.render_mode])
+    if options.eval_split_every is not None:
+        cmd.extend(["--eval-split-every", str(options.eval_split_every)])
+    if options.alpha_mode != "auto":
+        cmd.extend(["--alpha-mode", options.alpha_mode])
+    if options.subsample_frames is not None:
+        cmd.extend(["--subsample-frames", str(options.subsample_frames)])
+    if options.subsample_points is not None:
+        cmd.extend(["--subsample-points", str(options.subsample_points)])
+    return cmd
+
+
+def build_gsplat_training_cmd(options: GsplatTrainingOptions) -> list[str]:
+    if options.strategy not in _GSPLAT_STRATEGIES:
+        raise ValueError(f"Unsupported gsplat strategy: {options.strategy}")
+    if options.with_3dgut and options.strategy != "mcmc":
+        raise ValueError("gsplat 3DGUT mode requires the mcmc strategy")
+    if options.max_steps <= 0:
+        raise ValueError("gsplat max steps must be greater than 0")
+    if options.data_factor <= 0:
+        raise ValueError("gsplat data factor must be greater than 0")
+    if options.test_every <= 0:
+        raise ValueError("gsplat test interval must be greater than 0")
+    cmd = [
+        options.executable,
+        str(options.script_path),
+        options.strategy,
+        "--data_dir",
+        str(options.dataset.dataset_root),
+        "--result_dir",
+        str(options.result_dir),
+        "--max_steps",
+        str(options.max_steps),
+        "--data_factor",
+        str(options.data_factor),
+        "--test_every",
+        str(options.test_every),
+    ]
+    if options.disable_viewer:
+        cmd.append("--disable_viewer")
+    if options.save_ply:
+        cmd.append("--save_ply")
+    if options.with_3dgut:
+        cmd.extend(["--with_ut", "--with_eval3d"])
     return cmd
 
 
