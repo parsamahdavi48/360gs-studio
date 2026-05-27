@@ -20,24 +20,6 @@ After extracting the ZIP, run `setup_windows.bat`, then `run_gui.bat`.
 
 ![STechDrive 3DGS Utils GUI](images/stechdrive-3dgs-utils-gui.jpg)
 
-## Related Tools
-
-- [COLMAP](https://github.com/colmap/colmap): SfM/MVS tool used by the COLMAP route and COLMAP-format dataset workflows.
-- [SphereSfM](https://github.com/json87/SphereSfM): COLMAP-based spherical-image SfM used by the SphereSfM route.
-- [LichtFeld Studio](https://lichtfeld.io/): 3DGS training app supported by the LichtFeld dataset presets and Step 6 CLI launcher.
-- [Postshot](https://www.jawset.com/): 3DGS training app supported by Postshot dataset presets and Step 6 CLI launcher.
-- [Brush](https://github.com/ArthurBrussee/brush): open-source Gaussian Splatting trainer that can use the cubemap-style outputs.
-- [gsplat](https://github.com/nerfstudio-project/gsplat): Python 3DGS library that can train from COLMAP-format datasets.
-
-## External Training Apps
-
-This app does not bundle LichtFeld Studio, Postshot, Brush, or gsplat itself. Step 6 is a launcher for passing the Step 5 dataset to training apps or Python environments that you provide.
-
-- LichtFeld Studio: use a v0.5.2-compatible CLI from the official build or from your own build.
-- Postshot: use a Release Build that includes `postshot-cli.exe`, matching the v1.0/v1.1 CLI behavior.
-- Brush: select a `brush.exe` from GitHub Releases or your own local build.
-- gsplat: this is not an EXE app. Prepare a Python environment with gsplat and the dependencies for `examples/simple_trainer.py`, then select that `python.exe` and the `simple_trainer.py` script in Step 6.
-
 ## What You Can Do
 
 ### 1. SfM Preprocessing for 360° and Normal Images
@@ -160,6 +142,24 @@ If the scene folder path contains non-ASCII characters, an extremely long path, 
 | 4. SfM | Choose how camera poses and sparse points are prepared | Existing SfM result / COLMAP / SphereSfM |
 | 5. Dataset | Create a training-app dataset from SfM results | Metashape / RealityScan / SphereSfM / COLMAP / Scale |
 | 6. Training | Launch a compatible CLI for an external 3DGS application with an existing dataset | LichtFeld Studio / Postshot / Brush / gsplat |
+
+## Related Tools
+
+- [COLMAP](https://github.com/colmap/colmap): SfM/MVS tool used by the COLMAP route and COLMAP-format dataset workflows.
+- [SphereSfM](https://github.com/json87/SphereSfM): COLMAP-based spherical-image SfM used by the SphereSfM route.
+- [LichtFeld Studio](https://lichtfeld.io/): 3DGS training app supported by the LichtFeld dataset presets and Step 6 CLI launcher.
+- [Postshot](https://www.jawset.com/): 3DGS training app supported by Postshot dataset presets and Step 6 CLI launcher.
+- [Brush](https://github.com/ArthurBrussee/brush): open-source Gaussian Splatting trainer that can use the cubemap-style outputs.
+- [gsplat](https://github.com/nerfstudio-project/gsplat): Python 3DGS library that can train from COLMAP-format datasets.
+
+## External Training Apps
+
+This app does not bundle LichtFeld Studio, Postshot, Brush, or gsplat itself. Step 6 is a launcher for passing the Step 5 dataset to training apps or Python environments that you provide.
+
+- LichtFeld Studio: use a v0.5.2-compatible CLI from the official build or from your own build.
+- Postshot: use a Release Build that includes `postshot-cli.exe`, matching the v1.0/v1.1 CLI behavior.
+- Brush: select a `brush.exe` from GitHub Releases or your own local build.
+- gsplat: this is not an EXE app. Prepare a Python environment with gsplat and the dependencies for `examples/simple_trainer.py`, then select that `python.exe` and the `simple_trainer.py` script in Step 6.
 
 ### Using the Dataset in Training Apps
 

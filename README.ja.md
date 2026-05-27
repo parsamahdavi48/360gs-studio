@@ -20,24 +20,6 @@ ZIPを展開したら、`setup_windows.bat`、続いて `run_gui.bat` を実行�
 
 ![STechDrive 3DGS Utils GUI](images/stechdrive-3dgs-utils-gui.jpg)
 
-## 関連ツール
-
-- [COLMAP](https://github.com/colmap/colmap): COLMAPルートとCOLMAP形式データセットで使うSfM/MVSツールです。
-- [SphereSfM](https://github.com/json87/SphereSfM): SphereSfMルートで使う、COLMAPベースの球面画像SfMです。
-- [LichtFeld Studio](https://lichtfeld.io/): LichtFeld向けデータセットプリセットとStep 6のCLI起動に対応する3DGS学習アプリです。
-- [Postshot](https://www.jawset.com/): Postshot向けデータセットプリセットとStep 6のCLI起動に対応する3DGS学習アプリです。
-- [Brush](https://github.com/ArthurBrussee/brush): Cubemap系出力を読み込める、オープンソースのGaussian Splattingトレーナーです。
-- [gsplat](https://github.com/nerfstudio-project/gsplat): COLMAP形式データセットをPythonから学習できる3DGSライブラリです。
-
-## 外部学習アプリについて
-
-このアプリは、LichtFeld Studio、Postshot、Brush、gsplat本体を同梱しません。Step 6は、ユーザーが用意した学習アプリやPython環境へ、Step 5で作成したデータセットを渡してCLI起動するための画面です。
-
-- LichtFeld Studio: v0.5.2互換CLIを想定しています。公式配布版、または自分でビルドしたものを指定します。
-- Postshot: v1.0/v1.1 Release BuildのCLIを想定しています。
-- Brush: GitHub Releasesなどから入手した `brush.exe`、または自分でビルドした `brush.exe` を指定します。
-- gsplat: EXEアプリではありません。gsplatと `examples/simple_trainer.py` の依存関係が入ったPython環境を用意し、その `python.exe` と `simple_trainer.py` をStep 6で指定します。
-
 ## このアプリでできること
 
 ### 1. 360°/通常画像を混在させたSfM前処理
@@ -160,6 +142,24 @@ checkpointを手動で `models/sam3.1/sam3.1_multiplex.pt` に置くこともで
 | 4. SfM | カメラポーズと疎点群をどう用意するかを選択 | 既存SfM結果 / COLMAP / SphereSfM |
 | 5. データセット | SfM結果から学習アプリ向けデータセットを作成 | Metashape / RealityScan / SphereSfM / COLMAP / スケール調整 |
 | 6. 学習 | 作成済みデータセットで、対応CLIを持つ外部3DGSアプリを起動 | LichtFeld Studio / Postshot / Brush / gsplat |
+
+## 関連ツール
+
+- [COLMAP](https://github.com/colmap/colmap): COLMAPルートとCOLMAP形式データセットで使うSfM/MVSツールです。
+- [SphereSfM](https://github.com/json87/SphereSfM): SphereSfMルートで使う、COLMAPベースの球面画像SfMです。
+- [LichtFeld Studio](https://lichtfeld.io/): LichtFeld向けデータセットプリセットとStep 6のCLI起動に対応する3DGS学習アプリです。
+- [Postshot](https://www.jawset.com/): Postshot向けデータセットプリセットとStep 6のCLI起動に対応する3DGS学習アプリです。
+- [Brush](https://github.com/ArthurBrussee/brush): Cubemap系出力を読み込める、オープンソースのGaussian Splattingトレーナーです。
+- [gsplat](https://github.com/nerfstudio-project/gsplat): COLMAP形式データセットをPythonから学習できる3DGSライブラリです。
+
+## 外部学習アプリについて
+
+このアプリは、LichtFeld Studio、Postshot、Brush、gsplat本体を同梱しません。Step 6は、ユーザーが用意した学習アプリやPython環境へ、Step 5で作成したデータセットを渡してCLI起動するための画面です。
+
+- LichtFeld Studio: v0.5.2互換CLIを想定しています。公式配布版、または自分でビルドしたものを指定します。
+- Postshot: v1.0/v1.1 Release BuildのCLIを想定しています。
+- Brush: GitHub Releasesなどから入手した `brush.exe`、または自分でビルドした `brush.exe` を指定します。
+- gsplat: EXEアプリではありません。gsplatと `examples/simple_trainer.py` の依存関係が入ったPython環境を用意し、その `python.exe` と `simple_trainer.py` をStep 6で指定します。
 
 ### 学習アプリで使う
 
