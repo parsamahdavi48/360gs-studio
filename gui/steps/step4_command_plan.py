@@ -625,7 +625,7 @@ class Step4CommandPlanMixin:
         return self._colmap_rig_feature_groups_from_manifest()
 
     def _colmap_rig_feature_groups_from_manifest(self) -> tuple[ColmapRigFeatureGroup, ...]:
-        path = self._colmap_rig_dir() / COLMAP_MIXED_MANIFEST
+        path = step4_meta_dir(Path(self.scene_dir)) / "sfm" / COLMAP_MIXED_MANIFEST
         if not path.is_file():
             return ()
         try:
@@ -651,7 +651,7 @@ class Step4CommandPlanMixin:
         return tuple(groups)
 
     def _colmap_normal_feature_groups_from_manifest(self) -> tuple[ColmapNormalFeatureGroup, ...]:
-        path = self._colmap_rig_dir() / COLMAP_MIXED_MANIFEST
+        path = step4_meta_dir(Path(self.scene_dir)) / "sfm" / COLMAP_MIXED_MANIFEST
         if not path.is_file():
             return ()
         try:

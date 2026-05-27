@@ -71,7 +71,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 1
     for warning in result.warnings:
         print(f"Warning: {warning}", flush=True)
-    print(f"Saved COLMAP mixed project manifest: {result.manifest_path}", flush=True)
+    print(f"Saved COLMAP mixed project metadata: {result.manifest_path}", flush=True)
     return 0
 
 

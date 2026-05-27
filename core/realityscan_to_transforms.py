@@ -526,6 +526,7 @@ def convert(
         "num_opencv_frames": opencv_frames,
         "num_mask_paths": mask_paths,
         "target_profile": target_profile,
+        "metadata": write_result.metadata,
     }
 
 

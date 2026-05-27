@@ -28,6 +28,7 @@ from core.cubemap_image_conversion import (
 from core.cubemap_view_spec import load_views_json, views_to_dicts
 from core.dataset_writer_colmap import replace_file_with_link_or_copy
 from core.scene_inventory import SceneImage, SceneInventory, build_scene_inventory
+from core.scene_layout import step4_meta_dir
 from core.sfm_input_plan import (
     SFM_ACTION_EXPAND_ERP_TO_RIG_VIEWS,
     SFM_ACTION_LINK_OR_COPY_NORMAL_IMAGE,
@@ -67,6 +68,7 @@ class ColmapMixedProjectResult:
     normal_source_count: int
     rig_image_count: int
     normal_image_count: int
+    metadata: dict[str, Any]
     warnings: tuple[str, ...] = ()
 
 
@@ -112,6 +114,7 @@ def prepare_colmap_mixed_project(
     raise_if_cancelled(cancel_event)
     rig_image_names: list[str] = []
     rig_groups: list[ColmapErpRigGroup] = []
+    rig_metadata: dict[str, Any] = {}
     warnings: list[str] = []
 
     if erp_images:
@@ -134,8 +137,7 @@ def prepare_colmap_mixed_project(
                 )
             )
         rig_path = write_rig_config_payload_json(output, rig_payload)
-        _write_colmap_multi_rig_metadata(
-            output_dir=output,
+        rig_metadata = _colmap_multi_rig_metadata_payload(
             image_dir=inventory.images_dir,
             mask_dir=inventory.masks_dir,
             groups=rig_groups,
@@ -196,7 +198,6 @@ def prepare_colmap_mixed_project(
     for group_id, image_names in sorted(normal_group_image_names.items()):
         _write_image_list(project_dir / _normal_group_image_list_name(group_id), image_names)
 
-    manifest_path = project_dir / COLMAP_MIXED_MANIFEST
     manifest = _manifest(
         project_dir=project_dir,
         inventory=inventory,
@@ -209,6 +210,10 @@ def prepare_colmap_mixed_project(
         warnings=warnings,
         rig_name=rig_name,
     )
+    if rig_metadata:
+        manifest["view_export_settings"] = rig_metadata
+    manifest_path = step4_meta_dir(scene) / "sfm" / COLMAP_MIXED_MANIFEST
+    manifest_path.parent.mkdir(parents=True, exist_ok=True)
     manifest_path.write_text(json.dumps(manifest, indent=2, ensure_ascii=False), encoding="utf-8")
     print(
         "COLMAP mixed project prepared: "
@@ -224,6 +229,7 @@ def prepare_colmap_mixed_project(
         normal_source_count=len(normal_images),
         rig_image_count=len(rig_image_names),
         normal_image_count=len(normal_image_names),
+        metadata=manifest,
         warnings=tuple(warnings),
     )
 
@@ -498,9 +504,8 @@ def _rig_name_for_group(base_name: str, index: int, total_groups: int) -> str:
     return f"{prefix}{index}"
 
 
-def _write_colmap_multi_rig_metadata(
+def _colmap_multi_rig_metadata_payload(
     *,
-    output_dir: Path,
     image_dir: Path,
     mask_dir: Path,
     groups: list[ColmapErpRigGroup],
@@ -508,8 +513,7 @@ def _write_colmap_multi_rig_metadata(
     output_scale: float,
     export_images: bool,
     export_masks: bool,
-) -> None:
-    root = colmap_rig_root(output_dir)
+) -> dict[str, Any]:
     payload = {
         "export_type": "colmap_rig",
         "camera_model": "PINHOLE",
@@ -556,5 +560,4 @@ def _write_colmap_multi_rig_metadata(
                 "source_images": list(group.image_files),
             }
         )
-    root.mkdir(parents=True, exist_ok=True)
-    (root / "view_export_settings.json").write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
+    return payload

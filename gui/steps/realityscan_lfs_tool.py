@@ -222,6 +222,10 @@ class RealityScanLfsTool(BaseStepWidget):
             source_artifact_id=sfm_record.id,
             source_inputs=[self.output_browse.text()],
             settings=settings,
+            metadata={
+                "source_kind": "realityscan_csv_ply",
+                "pre_undistort_distorted_images": self.pre_undistort_cb.isChecked(),
+            },
         )
 
     def _validate_inputs(self) -> None:

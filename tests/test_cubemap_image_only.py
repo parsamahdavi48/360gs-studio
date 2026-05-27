@@ -5,7 +5,6 @@ from pathlib import Path
 
 import cv2
 import numpy as np
-import pytest
 
 from core.transforms_to_colmap import read_ply_points
 
@@ -62,13 +61,7 @@ def test_image_only_export_writes_view_images_without_transforms(tmp_path: Path)
     assert (output / "images" / "frame_0001_front.png").is_file()
     assert not (output / "transforms.json").exists()
 
-    settings = json.loads((output / "view_export_settings.json").read_text(encoding="utf-8"))
-    assert settings["export_type"] == "image_only"
-    assert settings["camera_model"] == "PINHOLE"
-    assert settings["output_size"] == {"w": 16, "h": 16}
-    assert settings["source_images"] == ["frame_0001.png"]
-    assert settings["export_images"] is True
-    assert settings["export_masks"] is True
+    assert not (output / "view_export_settings.json").exists()
 
 
 def test_image_only_export_can_write_masks_without_images(tmp_path: Path) -> None:
@@ -111,9 +104,7 @@ def test_image_only_export_can_write_masks_without_images(tmp_path: Path) -> Non
     assert result.returncode == 0, result.stdout + result.stderr
     assert not (output / "images").exists()
     assert (output / "masks" / "frame_0001_front.png").is_file()
-    settings = json.loads((output / "view_export_settings.json").read_text(encoding="utf-8"))
-    assert settings["export_images"] is False
-    assert settings["export_masks"] is True
+    assert not (output / "view_export_settings.json").exists()
 
 
 def test_image_only_export_fails_when_mask_worker_fails(tmp_path: Path) -> None:
@@ -215,10 +206,7 @@ def test_colmap_rig_export_writes_camera_folders_masks_and_rig_config(tmp_path: 
     assert cameras[1]["image_prefix"] == "rig1/cam02/"
     assert cameras[1]["cam_from_rig_translation"] == [0.0, 0.0, 0.0]
 
-    settings = json.loads((rig_root / "view_export_settings.json").read_text(encoding="utf-8"))
-    assert settings["export_type"] == "colmap_rig"
-    assert settings["camera_params"] == pytest.approx([8.0, 8.0, 7.5, 7.5])
-    assert settings["yaw_offset_per_frame"] == 0.0
+    assert not (rig_root / "view_export_settings.json").exists()
 
 
 def test_lfs_final_orientation_writes_oriented_transforms_and_pointcloud(tmp_path: Path) -> None:

@@ -55,6 +55,7 @@ class MetashapeNerfExportResult:
     pointcloud: Path | None
     frame_count: int
     action_counts: dict[str, int] = field(default_factory=dict)
+    metadata: dict[str, Any] = field(default_factory=dict)
     warnings: tuple[str, ...] = ()
 
 
@@ -310,6 +311,7 @@ def export_metashape_nerf_dataset(
         pointcloud=pointcloud_output or raw_pointcloud_output or write_result.pointcloud,
         frame_count=write_result.frame_count,
         action_counts=action_counts,
+        metadata=write_result.metadata,
         warnings=plan.warnings,
     )
 

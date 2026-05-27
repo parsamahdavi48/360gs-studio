@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import math
 import shutil
 from collections.abc import Callable, Sequence
@@ -756,19 +755,11 @@ def convert(
         pointcloud_output = str(pointcloud_dest)
         emit_progress(progress_total)
 
-    _write_manifest(
-        output_dir,
-        {
-            "schema_version": 1,
-            "kind": "lichtfeld_colmap",
-            "source_kind": "realityscan_csv_ply",
-            "images_dir": "images",
-            "masks_dir": "masks" if effective_masks_dir.is_dir() else "",
-            "sparse_dir": SPARSE_RELATIVE_DIR.as_posix(),
-            "plan_action_counts": plan.action_counts,
-            "asset_stats": asset_stats,
-            "pre_undistort_distorted_images": bool(pre_undistort_distorted_images),
-        },
+    metadata = _dataset_metadata(
+        effective_masks_dir=effective_masks_dir,
+        plan_action_counts=plan.action_counts,
+        asset_stats=asset_stats,
+        pre_undistort_distorted_images=pre_undistort_distorted_images,
     )
 
     return {
@@ -789,14 +780,28 @@ def convert(
         "pointcloud_rotation_x_deg": float(pointcloud_rotation_x_deg),
         "pre_undistort_distorted_images": bool(pre_undistort_distorted_images),
         "undistort_alpha": float(undistort_alpha),
+        "metadata": metadata,
     }
 
 
-def _write_manifest(output_dir: Path, payload: dict[str, Any]) -> None:
-    (output_dir / "stechdrive_dataset_manifest.json").write_text(
-        json.dumps(payload, indent=2, ensure_ascii=False),
-        encoding="utf-8",
-    )
+def _dataset_metadata(
+    *,
+    effective_masks_dir: Path,
+    plan_action_counts: dict[str, int],
+    asset_stats: dict[str, int],
+    pre_undistort_distorted_images: bool,
+) -> dict[str, Any]:
+    return {
+        "schema_version": 1,
+        "kind": "lichtfeld_colmap",
+        "source_kind": "realityscan_csv_ply",
+        "images_dir": "images",
+        "masks_dir": "masks" if effective_masks_dir.is_dir() else "",
+        "sparse_dir": SPARSE_RELATIVE_DIR.as_posix(),
+        "plan_action_counts": plan_action_counts,
+        "asset_stats": asset_stats,
+        "pre_undistort_distorted_images": bool(pre_undistort_distorted_images),
+    }
 
 
 def parse_args(argv: list[str] | None = None):

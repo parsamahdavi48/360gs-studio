@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -62,6 +61,7 @@ class MetashapeColmapExportResult:
     image_count: int
     camera_count: int
     action_counts: dict[str, int] = field(default_factory=dict)
+    metadata: dict[str, Any] = field(default_factory=dict)
     warnings: tuple[str, ...] = ()
 
 
@@ -210,13 +210,14 @@ def export_metashape_colmap_dataset(
         if ply.is_file():
             _write_colmap_pointcloud_files(ply, sparse_dir, world_transform)
         _notify_progress(progress_callback, progress_total, progress_total)
-    _write_manifest(output, plan.source_kind, action_counts, plan.warnings)
+    metadata = _dataset_metadata(plan.source_kind, action_counts, plan.warnings)
     return MetashapeColmapExportResult(
         output_dir=output,
         sparse_dir=sparse_dir,
         image_count=len(images),
         camera_count=len(cameras),
         action_counts=action_counts,
+        metadata=metadata,
         warnings=plan.warnings,
     )
 
@@ -443,8 +444,8 @@ def _ensure_gray(image: np.ndarray) -> np.ndarray:
     return cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
 
 
-def _write_manifest(output: Path, source_kind: str, action_counts: dict[str, int], warnings: tuple[str, ...]) -> None:
-    payload = {
+def _dataset_metadata(source_kind: str, action_counts: dict[str, int], warnings: tuple[str, ...]) -> dict[str, Any]:
+    return {
         "schema_version": 1,
         "kind": "metashape_colmap_dataset",
         "source_kind": source_kind,
@@ -454,10 +455,6 @@ def _write_manifest(output: Path, source_kind: str, action_counts: dict[str, int
         "masks_dir": "masks",
         "sparse_dir": "sparse/0",
     }
-    (output / "stechdrive_dataset_manifest.json").write_text(
-        json.dumps(payload, indent=2, ensure_ascii=False),
-        encoding="utf-8",
-    )
 
 
 def _write_colmap_pointcloud_files(source_ply: Path, sparse_dir: Path, world_transform: np.ndarray | None = None) -> int:

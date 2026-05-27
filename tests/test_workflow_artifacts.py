@@ -39,6 +39,9 @@ def test_register_dataset_artifact_detects_nerf_and_files(tmp_path: Path) -> Non
     assert record.producer == DATASET_KIND_NERF_JSON_PLY
     assert record.files["transforms_json"] == "output/metashape_cubemap/transforms.json"
     assert record.files["images_dir"] == "output/metashape_cubemap/images"
+    assert record.metadata["kind"] == DATASET_KIND_NERF_JSON_PLY
+    assert record.metadata["transforms_json"] == "transforms.json"
+    assert record.metadata["pointcloud"] == "pointcloud.ply"
     assert load_artifacts(scene, "dataset")[0].id == "dataset_a"
 
 

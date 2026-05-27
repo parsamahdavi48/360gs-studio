@@ -444,6 +444,32 @@ class Step4ManifestMixin:
             "colmap_sparse_dir": file_identity(root / "sparse"),
         }
 
+    def _dataset_artifact_metadata(self, root: Path, settings: dict) -> dict:
+        output_files = settings.get("output_files") if isinstance(settings.get("output_files"), dict) else {}
+        conversion = settings.get("conversion") if isinstance(settings.get("conversion"), dict) else {}
+        return {
+            "schema_version": 1,
+            "export_method": settings.get("export_method", ""),
+            "output_shape": settings.get("output_shape", ""),
+            "target_profile": settings.get("target_profile", ""),
+            "effective_profile": settings.get("effective_profile", ""),
+            "axis_transform": settings.get("axis_transform", ""),
+            "transforms_json": output_files.get("transforms_json", ""),
+            "pointcloud": output_files.get("pointcloud", ""),
+            "raw_metashape_pointcloud": output_files.get("raw_metashape_pointcloud", ""),
+            "images_dir": "images" if (root / "images").exists() else "",
+            "masks_dir": "masks" if (root / "masks").exists() else "",
+            "sparse_dir": "sparse/0" if (root / "sparse" / "0").exists() else "",
+            "view_config": settings.get("view_config", {}),
+            "conversion": {
+                "yaw_offset_per_frame": conversion.get("yaw_offset_per_frame", 0.0),
+                "output_format": conversion.get("output_format", ""),
+                "output_bit_depth": conversion.get("output_bit_depth", ""),
+                "write_images": conversion.get("write_images", True),
+                "write_masks": conversion.get("write_masks", True),
+            },
+        }
+
     def _current_dataset_root_for_manifest(self) -> Path:
         if self._is_spheresfm_method():
             if self._uses_spheresfm_3dgut_output():
@@ -513,7 +539,14 @@ class Step4ManifestMixin:
             if self._is_metashape_method() and self._effective_profile() == _PROFILE_REALITYSCAN
             else ""
         )
-        register_dataset_artifact(scene, artifact_id=run_id, root=root, kind=dataset_kind, settings=settings)
+        register_dataset_artifact(
+            scene,
+            artifact_id=run_id,
+            root=root,
+            kind=dataset_kind,
+            settings=settings,
+            metadata=self._dataset_artifact_metadata(root, settings),
+        )
 
     def _register_step4_sfm_artifact(
         self,
@@ -541,6 +574,7 @@ class Step4ManifestMixin:
                 root=project_dir,
                 files=files,
                 settings=settings,
+                metadata=self._load_colmap_mixed_project_manifest(scene),
             )
         elif route == _METHOD_SPHERESFM:
             files = {
@@ -612,7 +646,7 @@ class Step4ManifestMixin:
         project = self._colmap_project_dir()
         sparse_model = self._find_colmap_sparse_model()
         manifest_path = step4_meta_dir(Path(self.scene_dir)) / "sfm" / _COLMAP_PROJECT_MANIFEST_NAME
-        mixed_manifest = self._load_colmap_mixed_project_manifest(project)
+        mixed_manifest = self._load_colmap_mixed_project_manifest(Path(self.scene_dir))
         payload = {
             "app": "stechdrive-3dgs-utils",
             "app_version": APP_VERSION,
@@ -651,8 +685,8 @@ class Step4ManifestMixin:
         )
 
     @staticmethod
-    def _load_colmap_mixed_project_manifest(project: Path) -> dict[str, object]:
-        path = project / COLMAP_MIXED_MANIFEST
+    def _load_colmap_mixed_project_manifest(scene: Path) -> dict[str, object]:
+        path = step4_meta_dir(scene) / "sfm" / COLMAP_MIXED_MANIFEST
         if not path.is_file():
             return {}
         try:

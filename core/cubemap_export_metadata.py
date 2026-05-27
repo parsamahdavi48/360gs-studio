@@ -1,12 +1,10 @@
 from __future__ import annotations
 
-import json
-import os
 from pathlib import Path
 
 from PIL import Image
 
-from core.colmap_rig_export import colmap_rig_root, pinhole_camera_params
+from core.colmap_rig_export import pinhole_camera_params
 from core.cubemap_image_io import RAW_IMAGE_EXTS
 
 
@@ -71,8 +69,8 @@ def write_image_only_metadata(
     export_images: bool = True,
     export_masks: bool = True,
     frame_output_sizes: list[int] | None = None,
-) -> None:
-    """Write a small manifest for SfM-oriented image-only exports."""
+) -> dict:
+    """Return image-only export metadata for app-side persistence."""
     payload = {
         "export_type": "image_only",
         "camera_model": "PINHOLE",
@@ -94,9 +92,7 @@ def write_image_only_metadata(
             for file_path, size in zip(image_files, frame_output_sizes, strict=True)
         ]
         payload["mixed_camera_intrinsics"] = len({int(size) for size in frame_output_sizes}) > 1
-    os.makedirs(output_dir, exist_ok=True)
-    with open(os.path.join(output_dir, "view_export_settings.json"), "w", encoding="utf-8") as f:
-        json.dump(payload, f, indent=2, ensure_ascii=False)
+    return payload
 
 
 def write_colmap_rig_metadata(
@@ -112,8 +108,7 @@ def write_colmap_rig_metadata(
     rig_name: str,
     export_images: bool = True,
     export_masks: bool = True,
-) -> None:
-    root = colmap_rig_root(output_dir)
+) -> dict:
     payload = {
         "export_type": "colmap_rig",
         "camera_model": "PINHOLE",
@@ -142,6 +137,4 @@ def write_colmap_rig_metadata(
         ],
         "source_images": image_files,
     }
-    root.mkdir(parents=True, exist_ok=True)
-    with open(root / "view_export_settings.json", "w", encoding="utf-8") as f:
-        json.dump(payload, f, indent=2, ensure_ascii=False)
+    return payload

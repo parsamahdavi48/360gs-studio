@@ -50,12 +50,15 @@ def register_dataset_artifact(
     source_artifact_id: str = "",
     source_inputs: list[str | Path] | tuple[str | Path, ...] | None = None,
     settings: dict[str, Any] | None = None,
+    metadata: dict[str, Any] | None = None,
     warnings: list[str] | tuple[str, ...] | None = None,
 ) -> ArtifactRecord | None:
     detected_kind = detect_dataset_kind(root, preferred_kind=kind)
     if not detected_kind:
         return None
     _require_known_kind(detected_kind, DATASET_ARTIFACT_KINDS, group="dataset")
+    metadata_payload = _dataset_metadata(Path(root), detected_kind)
+    metadata_payload.update(dict(metadata or {}))
     record = make_artifact_record(
         scene_dir,
         artifact_id=artifact_id,
@@ -66,6 +69,7 @@ def register_dataset_artifact(
         source_inputs=source_inputs,
         producer=detected_kind,
         settings=settings,
+        metadata=metadata_payload,
         warnings=warnings,
     )
     return upsert_artifact(scene_dir, "dataset", record)
@@ -80,6 +84,7 @@ def register_sfm_artifact(
     files: dict[str, str | Path] | None = None,
     source_inputs: list[str | Path] | tuple[str | Path, ...] | None = None,
     settings: dict[str, Any] | None = None,
+    metadata: dict[str, Any] | None = None,
     warnings: list[str] | tuple[str, ...] | None = None,
 ) -> ArtifactRecord:
     _require_known_kind(kind, SFM_ARTIFACT_KINDS, group="sfm")
@@ -92,6 +97,7 @@ def register_sfm_artifact(
         source_inputs=source_inputs,
         producer=kind,
         settings=settings,
+        metadata=metadata,
         warnings=warnings,
     )
     return upsert_artifact(scene_dir, "sfm", record)
@@ -146,6 +152,29 @@ def _dataset_files(root: Path) -> dict[str, Path]:
         if candidate.exists():
             files[key] = candidate
     return files
+
+
+def _dataset_metadata(root: Path, kind: str) -> dict[str, Any]:
+    metadata: dict[str, Any] = {
+        "schema_version": 1,
+        "kind": kind,
+    }
+    transforms = find_nerf_transforms_path(root)
+    if transforms is not None:
+        metadata["transforms_json"] = transforms.relative_to(root).as_posix()
+        pointcloud = find_nerf_pointcloud_path(root, transforms_json=transforms)
+        if pointcloud is not None:
+            metadata["pointcloud"] = pointcloud.relative_to(root).as_posix()
+    for key, rel in (
+        ("images_dir", "images"),
+        ("masks_dir", "masks"),
+        ("sparse_dir", "sparse/0"),
+        ("sparse_root", "sparse"),
+    ):
+        candidate = root / rel
+        if candidate.exists():
+            metadata[key] = rel
+    return metadata
 
 
 def _declared_raw_metashape_pointcloud(transforms: Path) -> Path | None:

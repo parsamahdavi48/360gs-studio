@@ -21,7 +21,7 @@ def test_colmap_writer_writes_sparse_contract(tmp_path: Path) -> None:
     assert (result.sparse_dir / "points3D.txt").is_file()
 
 
-def test_nerf_writer_writes_transforms_and_manifest(tmp_path: Path) -> None:
+def test_nerf_writer_writes_transforms_and_returns_metadata(tmp_path: Path) -> None:
     result = write_nerf_json_ply_dataset(
         tmp_path,
         {"frames": [{"file_path": "images/a.jpg", "transform_matrix": np.eye(4).tolist()}]},
@@ -29,4 +29,6 @@ def test_nerf_writer_writes_transforms_and_manifest(tmp_path: Path) -> None:
 
     assert result.transforms_json == tmp_path / "transforms.json"
     assert result.frame_count == 1
-    assert (tmp_path / "stechdrive_dataset_manifest.json").is_file()
+    assert result.metadata["kind"] == "nerf_json_ply"
+    assert result.metadata["frame_count"] == 1
+    assert not (tmp_path / "stechdrive_dataset_manifest.json").exists()

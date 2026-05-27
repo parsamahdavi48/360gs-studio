@@ -686,10 +686,6 @@ def test_discover_scene_preview_candidates_marks_realityscan_colmap_profiles(tmp
         sparse.mkdir(parents=True)
         for name in ("cameras.txt", "images.txt", "points3D.txt"):
             (sparse / name).write_text("", encoding="utf-8")
-    (output / "realityscan" / "lfs_colmap" / "stechdrive_dataset_manifest.json").write_text(
-        json.dumps({"kind": "lichtfeld_colmap", "source_kind": "realityscan_csv_ply"}),
-        encoding="utf-8",
-    )
 
     candidates = discover_scene_preview_candidates(tmp_path)
 

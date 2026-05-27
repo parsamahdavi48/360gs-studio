@@ -402,6 +402,7 @@ class ColmapTextModelTool(BaseStepWidget):
             source_artifact_id=sfm_record.id,
             source_inputs=[self._output_dir()],
             settings=settings,
+            metadata={"source_kind": "metashape_xml_ply"},
         )
 
     def _images_dir(self) -> Path:

@@ -361,15 +361,7 @@ def write_realityscan_xmp_sidecars(
         "mask_layer_count": 0,
         "xmp_files": [str(item.xmp_path.relative_to(output_dir).as_posix()) for item in written],
     }
-    write_realityscan_manifest(output_dir, manifest)
     return manifest
-
-
-def write_realityscan_manifest(output_dir: Path, manifest: dict) -> None:
-    (output_dir / "realityscan_export.json").write_text(
-        json.dumps(manifest, indent=2, ensure_ascii=False),
-        encoding="utf-8",
-    )
 
 
 def write_realityscan_mask_layers(output_dir: Path, *, manifest: dict | None = None) -> dict:
@@ -395,17 +387,12 @@ def write_realityscan_mask_layers(output_dir: Path, *, manifest: dict | None = N
         copied.append(str(layer_path.relative_to(output_dir).as_posix()))
 
     if manifest is None:
-        manifest_path = output_dir / "realityscan_export.json"
-        if manifest_path.is_file():
-            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-        else:
-            manifest = {"export_type": "realityscan_xmp"}
+        manifest = {"export_type": "realityscan_xmp"}
     manifest["mask_layer_count"] = len(copied)
     manifest["mask_layer_files"] = copied
     manifest["mask_layer_polarity"] = "white_used_black_excluded"
     manifest["source_mask_polarity"] = "white_keep_black_exclude"
     manifest["mask_layers_inverted_for_realityscan"] = False
-    write_realityscan_manifest(output_dir, manifest)
     return manifest
 
 
@@ -472,11 +459,7 @@ def append_realityscan_unposed_scene_images(
         mask_layers.append(str(layer.relative_to(output_dir).as_posix()))
 
     if manifest is None:
-        manifest_path = output_dir / "realityscan_export.json"
-        if manifest_path.is_file():
-            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-        else:
-            manifest = {"export_type": "realityscan_xmp"}
+        manifest = {"export_type": "realityscan_xmp"}
 
     existing_mask_layers = [str(path) for path in manifest.get("mask_layer_files") or []]
     if "cubemap_mask_layer_count" not in manifest:
@@ -496,7 +479,6 @@ def append_realityscan_unposed_scene_images(
     manifest["unposed_asset_links"] = link_counts
     manifest["unposed_pose"] = "none"
     manifest["unposed_source"] = "scene_images_not_in_metashape_xml"
-    write_realityscan_manifest(output_dir, manifest)
     return manifest
 
 

@@ -23,6 +23,7 @@ class ArtifactRecord:
     source_artifact_id: str = ""
     source_inputs: tuple[str, ...] = ()
     settings: dict[str, Any] = field(default_factory=dict)
+    metadata: dict[str, Any] = field(default_factory=dict)
     warnings: tuple[str, ...] = ()
 
     def to_json(self) -> dict[str, Any]:
@@ -38,6 +39,7 @@ class ArtifactRecord:
             "source_artifact_id": self.source_artifact_id,
             "source_inputs": list(self.source_inputs),
             "settings": dict(self.settings),
+            "metadata": dict(self.metadata),
             "warnings": list(self.warnings),
         }
 
@@ -46,6 +48,7 @@ class ArtifactRecord:
         files = payload.get("files")
         source_inputs = payload.get("source_inputs")
         settings = payload.get("settings")
+        metadata = payload.get("metadata")
         warnings = payload.get("warnings")
         return cls(
             id=str(payload.get("id") or ""),
@@ -58,6 +61,7 @@ class ArtifactRecord:
             source_artifact_id=str(payload.get("source_artifact_id") or ""),
             source_inputs=tuple(str(item) for item in source_inputs) if isinstance(source_inputs, list) else (),
             settings=dict(settings) if isinstance(settings, dict) else {},
+            metadata=dict(metadata) if isinstance(metadata, dict) else {},
             warnings=tuple(str(item) for item in warnings) if isinstance(warnings, list) else (),
         )
 
@@ -112,6 +116,7 @@ def make_artifact_record(
     status: str = "ready",
     producer: str = "",
     settings: dict[str, Any] | None = None,
+    metadata: dict[str, Any] | None = None,
     warnings: list[str] | tuple[str, ...] | None = None,
 ) -> ArtifactRecord:
     scene = Path(scene_dir)
@@ -131,6 +136,7 @@ def make_artifact_record(
         source_artifact_id=source_artifact_id,
         source_inputs=tuple(_portable_path(scene, value) for value in (source_inputs or ())),
         settings=dict(settings or {}),
+        metadata=dict(metadata or {}),
         warnings=tuple(warnings or ()),
     )
 

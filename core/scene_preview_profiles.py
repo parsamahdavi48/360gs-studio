@@ -133,7 +133,7 @@ def realityscan_lfs_colmap_display_transform() -> ScenePreviewDisplayTransform:
 def realityscan_colmap_export_display_transform() -> ScenePreviewDisplayTransform:
     return ScenePreviewDisplayTransform(
         profile=COORDINATE_PROFILE_REALITYSCAN,
-        note="colmap / realityscan_export / preview_y_up",
+        note="colmap / realityscan / preview_y_up",
         camera_matrix=REALITYSCAN_Z_UP_TO_PREVIEW_Y_UP.copy(),
         pointcloud_matrix=REALITYSCAN_Z_UP_TO_PREVIEW_Y_UP.copy(),
     )

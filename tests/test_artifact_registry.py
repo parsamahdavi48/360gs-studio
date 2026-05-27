@@ -18,6 +18,7 @@ def test_artifact_registry_writes_scene_relative_paths(tmp_path: Path) -> None:
         root=root,
         files={"xml": scene / "cameras.xml", "ply": scene / "pointcloud.ply"},
         settings={"profile": "test"},
+        metadata={"kind": "metashape_xml_ply"},
         warnings=["sample warning"],
     )
 
@@ -28,6 +29,7 @@ def test_artifact_registry_writes_scene_relative_paths(tmp_path: Path) -> None:
     assert loaded[0].root == "output/metashape_cubemap"
     assert loaded[0].files == {"xml": "cameras.xml", "ply": "pointcloud.ply"}
     assert loaded[0].settings == {"profile": "test"}
+    assert loaded[0].metadata == {"kind": "metashape_xml_ply"}
     assert loaded[0].warnings == ("sample warning",)
 
 

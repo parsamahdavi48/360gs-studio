@@ -14,6 +14,7 @@ class NerfDatasetWriteResult:
     transforms_json: Path
     pointcloud: Path | None
     frame_count: int
+    metadata: dict[str, Any]
 
 
 def write_nerf_json_ply_dataset(
@@ -42,27 +43,18 @@ def write_nerf_json_ply_dataset(
     elif (output / pointcloud_name).is_file():
         pointcloud_output = output / pointcloud_name
 
-    _write_manifest(
-        output,
-        {
-            "schema_version": 1,
-            "kind": "nerf_json_ply",
-            "transforms_json": transforms_path.name,
-            "pointcloud": pointcloud_output.name if pointcloud_output else "",
-            "frame_count": len(transforms_payload["frames"]),
-            **(manifest or {}),
-        },
-    )
+    metadata = {
+        "schema_version": 1,
+        "kind": "nerf_json_ply",
+        "transforms_json": transforms_path.name,
+        "pointcloud": pointcloud_output.name if pointcloud_output else "",
+        "frame_count": len(transforms_payload["frames"]),
+        **(manifest or {}),
+    }
     return NerfDatasetWriteResult(
         root=output,
         transforms_json=transforms_path,
         pointcloud=pointcloud_output,
         frame_count=len(transforms_payload["frames"]),
-    )
-
-
-def _write_manifest(output_dir: Path, payload: dict[str, Any]) -> None:
-    (output_dir / "stechdrive_dataset_manifest.json").write_text(
-        json.dumps(payload, indent=2, ensure_ascii=False),
-        encoding="utf-8",
+        metadata=metadata,
     )

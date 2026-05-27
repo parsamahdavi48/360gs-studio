@@ -68,7 +68,12 @@ def test_prepare_colmap_mixed_project_writes_rig_and_normal_lists(tmp_path: Path
     assert (project / "images" / normal_names[0]).is_file()
     assert (project / "masks" / f"{normal_names[0]}.png").is_file()
 
-    manifest = json.loads((project / "stechdrive_colmap_mixed_project.json").read_text(encoding="utf-8"))
+    assert not (project / "stechdrive_colmap_mixed_project.json").exists()
+    manifest = json.loads(
+        (scene / "_stechdrive" / "step4" / "sfm" / "stechdrive_colmap_mixed_project.json").read_text(
+            encoding="utf-8"
+        )
+    )
     assert manifest["export_type"] == "colmap_mixed_project"
     assert manifest["erp_source_count"] == 1
     assert manifest["normal_source_count"] == 1
@@ -139,7 +144,12 @@ def test_prepare_colmap_mixed_project_splits_multi_resolution_erp_into_rigs(tmp_
         9.5,
     ]
 
-    manifest = json.loads((project / "stechdrive_colmap_mixed_project.json").read_text(encoding="utf-8"))
+    assert not (project / "stechdrive_colmap_mixed_project.json").exists()
+    manifest = json.loads(
+        (scene / "_stechdrive" / "step4" / "sfm" / "stechdrive_colmap_mixed_project.json").read_text(
+            encoding="utf-8"
+        )
+    )
     assert [group["image_list"] for group in manifest["rig_camera_groups"]] == [
         "rig_image_list_rig1.txt",
         "rig_image_list_rig2.txt",
@@ -184,6 +194,11 @@ def test_prepare_colmap_mixed_project_accepts_job_json(tmp_path: Path) -> None:
     )
 
     assert result.returncode == 0, result.stdout + result.stderr
-    manifest = json.loads((output / "colmap_rig" / "stechdrive_colmap_mixed_project.json").read_text(encoding="utf-8"))
+    assert not (output / "colmap_rig" / "stechdrive_colmap_mixed_project.json").exists()
+    manifest = json.loads(
+        (scene / "_stechdrive" / "step4" / "sfm" / "stechdrive_colmap_mixed_project.json").read_text(
+            encoding="utf-8"
+        )
+    )
     assert manifest["normal_source_count"] == 1
     assert (output / "colmap_rig" / "normal_image_list.txt").read_text(encoding="utf-8").strip()

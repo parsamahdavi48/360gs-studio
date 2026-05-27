@@ -96,7 +96,7 @@ def discover_scene_preview_candidates(scene_dir: Path) -> tuple[ScenePreviewCand
         )
 
     for colmap_root, sparse, label, record in _colmap_dataset_roots(scene, settings, dataset_records, sfm_records):
-        manifest = _load_dataset_manifest(colmap_root)
+        manifest = _artifact_metadata(record)
         candidates.append(
             ScenePreviewCandidate(
                 kind="colmap",
@@ -516,15 +516,10 @@ def _transforms_profile_label(transforms_json: Path | None) -> str:
     return profile.capitalize() if profile else ""
 
 
-def _load_dataset_manifest(root: Path) -> dict:
-    path = root / "stechdrive_dataset_manifest.json"
-    if not path.is_file():
+def _artifact_metadata(record: ArtifactRecord | None) -> dict:
+    if record is None:
         return {}
-    try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return {}
-    return data if isinstance(data, dict) else {}
+    return dict(record.metadata)
 
 
 def _manifest_dir(scene: Path, dataset_root: Path, value: object) -> Path | None:
