@@ -205,8 +205,8 @@ class DatasetStep(BaseStepWidget):
 
     def on_activated(self) -> None:
         if self._page in _CUBEMAP_PAGES:
-            self._sync_child_scene(self.cubemap_step)
             self._configure_cubemap_tool(self._page)
+            self._sync_child_scene(self.cubemap_step)
         if self._page not in {_PAGE_MENU, _PAGE_COLMAP_READY}:
             self._sync_active_step_scene()
             self._active_step().on_activated()
@@ -219,8 +219,8 @@ class DatasetStep(BaseStepWidget):
             page = _PAGE_MENU
         self._page = page
         if page in _CUBEMAP_PAGES:
-            self._sync_child_scene(self.cubemap_step)
             self._configure_cubemap_tool(page)
+            self._sync_child_scene(self.cubemap_step)
         elif page not in {_PAGE_MENU, _PAGE_COLMAP_READY}:
             self._sync_active_step_scene()
         self.stack.setCurrentIndex(self._page_indices[page])

@@ -482,15 +482,16 @@ class ColmapTextModelTool(BaseStepWidget):
             self._syncing_paths = False
 
     def _on_path_changed(self, field: str) -> None:
-        if not self._syncing_paths:
-            if field == "images":
-                self._images_user_edited = True
-            elif field == "masks":
-                self._masks_user_edited = True
-            elif field == "xml":
-                self._xml_user_edited = True
-            elif field == "ply":
-                self._ply_user_edited = True
+        if self._syncing_paths:
+            return
+        if field == "images":
+            self._images_user_edited = True
+        elif field == "masks":
+            self._masks_user_edited = True
+        elif field == "xml":
+            self._xml_user_edited = True
+        elif field == "ply":
+            self._ply_user_edited = True
         if field in {"images", "masks", "xml"}:
             self._sync_preview_inputs()
         self.primary_action_state_changed.emit()

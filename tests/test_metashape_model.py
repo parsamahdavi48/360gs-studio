@@ -134,3 +134,40 @@ def test_metashape_preview_targets_follow_xml_cameras_not_whole_folder(tmp_path:
     assert targets.equirect_paths == (pano,)
     assert metashape_output_count_for_actions(targets.action_counts, enabled_view_count=6) == 7
     assert metashape_output_count_for_actions(targets.action_counts, enabled_view_count=6, direct_output=True) == 2
+
+
+def test_metashape_preview_targets_default_uses_lightweight_lookup(tmp_path: Path, monkeypatch) -> None:
+    scene = tmp_path / "scene"
+    pano = scene / "images" / "pano.jpg"
+    _write_image(pano, (64, 32))
+    xml = tmp_path / "cameras.xml"
+    xml.write_text(
+        f"""<?xml version="1.0" encoding="UTF-8"?>
+<document>
+  <chunk>
+    <sensors>
+      <sensor id="0" type="spherical"><resolution width="64" height="32" /></sensor>
+    </sensors>
+    <cameras>
+      <camera id="0" label="pano.jpg" sensor_id="0"><transform>{_IDENTITY}</transform></camera>
+    </cameras>
+  </chunk>
+</document>
+""",
+        encoding="utf-8",
+    )
+
+    def fail_inventory(*_args, **_kwargs):
+        raise AssertionError("preview target discovery should not build strict scene inventory")
+
+    monkeypatch.setattr("core.metashape_preview_targets.build_scene_inventory", fail_inventory)
+
+    targets = build_metashape_preview_targets(
+        scene_dir=scene,
+        images_dir=scene / "images",
+        masks_dir=None,
+        xml_path=xml,
+    )
+
+    assert targets.image_paths == (pano,)
+    assert targets.equirect_paths == (pano,)

@@ -35,7 +35,7 @@ from core.normal_camera_metadata import (
     save_normal_camera_group_default,
     validate_camera_params_for_model,
 )
-from core.scene_inventory import build_scene_inventory
+from core.scene_inventory import build_fast_scene_inventory, build_scene_inventory
 from gui import i18n
 from gui.common.browse_widget import BrowseWidget
 from gui.common.form_rows import add_tooltip_row
@@ -497,9 +497,13 @@ class SfmStep(BaseStepWidget):
     def _normal_camera_scopes(self) -> list[tuple[tuple[str, str, str, int, int], int]]:
         if not self.scene_dir:
             return []
-        inventory = build_scene_inventory(Path(self.scene_dir))
+        inventory = build_fast_scene_inventory(Path(self.scene_dir))
+        normal_images = inventory.normal_images()
+        if any(image.size is None for image in normal_images):
+            inventory = build_scene_inventory(Path(self.scene_dir))
+            normal_images = inventory.normal_images()
         counts: dict[tuple[str, str, str, int, int], int] = {}
-        for image in inventory.normal_images():
+        for image in normal_images:
             scope = (
                 "group",
                 image.source_kind or "unknown",
@@ -710,10 +714,12 @@ class SfmStep(BaseStepWidget):
 
     def on_activated(self) -> None:
         if self._page in _RUNNABLE_PAGES:
-            self._sync_route_scene()
-            self._sync_from_cubemap()
             self._prepare_current_route()
-            self.cubemap_step.on_activated()
+            self._sync_route_scene()
+            if self._page in {_PAGE_COLMAP, _PAGE_SPHERESFM}:
+                self._sync_from_cubemap()
+            if self._page == _PAGE_REALITYSCAN:
+                self.cubemap_step.on_activated()
         elif self._page == _PAGE_VIEWER:
             self._ensure_scene_preview().refresh()
         self.primary_action_state_changed.emit()
@@ -733,10 +739,9 @@ class SfmStep(BaseStepWidget):
             return
         self._page = route
         self.stack.setCurrentIndex(self._page_indices[route])
+        self._prepare_current_route()
         self._sync_route_scene()
         self._sync_from_cubemap()
-        self._prepare_current_route()
-        self.cubemap_step.on_activated()
         self.primary_action_state_changed.emit()
 
     def current_route(self) -> str:
@@ -745,8 +750,8 @@ class SfmStep(BaseStepWidget):
     def show_realityscan_realign(self) -> None:
         self._page = _PAGE_REALITYSCAN
         self.stack.setCurrentIndex(self._page_indices[_PAGE_REALITYSCAN])
-        self._sync_route_scene()
         self._prepare_realityscan_route()
+        self._sync_route_scene()
         self.cubemap_step.on_activated()
         self.primary_action_state_changed.emit()
 

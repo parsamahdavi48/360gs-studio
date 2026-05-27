@@ -163,8 +163,11 @@ class CubemapStep(
         self._metashape_auto_xml_candidates: tuple[Path, ...] = ()
         self._metashape_auto_ply_candidates: tuple[Path, ...] = ()
         self._syncing_metashape_auto_inputs = False
+        self._syncing_scene_dir = False
         self._metashape_ply_approved = False
         self._metashape_ply_auto_candidate = False
+        self._metashape_preview_targets_cache_key: tuple | None = None
+        self._metashape_preview_targets_cache = None
         self._init_apriltag_state()
         self._colmap_sparse_user_edited = False
         self._spheresfm_sparse_user_edited = False
@@ -904,57 +907,70 @@ class CubemapStep(
 
     def set_scene_dir(self, path: str) -> None:
         super().set_scene_dir(path)
+        self._syncing_scene_dir = True
+        self._metashape_preview_targets_cache_key = None
+        self._metashape_preview_targets_cache = None
         if self._scene_preview_window is not None:
             self._scene_preview_window.set_scene_dir(Path(path) if path else None)
-        if not path:
-            self.ms_images_path_label.setToolTip(i18n.tip("MS_IMAGES"))
-            self.ms_images_path_label.set_full_text("-")
-            self.ms_xml_browse.set_text("")
-            self.ms_ply_browse.set_text("")
-            self._metashape_auto_xml_candidates = ()
-            self._metashape_auto_ply_candidates = ()
-            self._set_metashape_ply_approved(False)
+        try:
+            if not path:
+                self.ms_images_path_label.setToolTip(i18n.tip("MS_IMAGES"))
+                self.ms_images_path_label.set_full_text("-")
+                self.ms_xml_browse.set_text("")
+                self.ms_ply_browse.set_text("")
+                self._metashape_auto_xml_candidates = ()
+                self._metashape_auto_ply_candidates = ()
+                self._set_metashape_ply_approved(False)
+                self._colmap_sparse_user_edited = False
+                self._spheresfm_sparse_user_edited = False
+                self._sync_sfm_input_paths(force=True)
+                self._update_metashape_input_hint()
+                self.preview.set_scene_dir("")
+                self.preview.set_perspective_supported_paths(())
+                self._refresh_input_image_count()
+                self._training_dataset_user_edited = False
+                self._training_output_user_edited = False
+                self._lfs_output_name_user_edited = False
+                self._postshot_project_name_user_edited = False
+                self._update_training_paths(force=True)
+                self._update_path_labels()
+                self._update_lfs_output_name(force=True)
+                self._update_postshot_project_name(force=True)
+                return
+            p = Path(path)
+            images_dir = str(self._metashape_images_dir())
+            self._update_path_labels()
+            self.ms_images_path_label.setToolTip(f"{i18n.tip('MS_IMAGES')}\n{images_dir}")
+            self.ms_images_path_label.set_full_text(images_dir)
+            if self._is_metashape_method():
+                self._apply_metashape_auto_inputs(p)
+            else:
+                self._syncing_metashape_auto_inputs = True
+                try:
+                    self.ms_xml_browse.set_text("")
+                    self.ms_ply_browse.set_text("")
+                finally:
+                    self._syncing_metashape_auto_inputs = False
+                self._metashape_auto_xml_candidates = ()
+                self._metashape_auto_ply_candidates = ()
+                self._set_metashape_ply_approved(False)
             self._colmap_sparse_user_edited = False
             self._spheresfm_sparse_user_edited = False
             self._sync_sfm_input_paths(force=True)
-            self._update_metashape_input_hint()
-            self.preview.set_scene_dir("")
-            self.preview.set_perspective_supported_paths(())
-            self._refresh_input_image_count()
             self._training_dataset_user_edited = False
             self._training_output_user_edited = False
             self._lfs_output_name_user_edited = False
             self._postshot_project_name_user_edited = False
-            self._update_training_paths(force=True)
-            self._update_path_labels()
-            self._update_lfs_output_name(force=True)
-            self._update_postshot_project_name(force=True)
-            self._update_output_count()
-            self._render_preview()
-            return
-        p = Path(path)
-        images_dir = str(self._metashape_images_dir())
-        self._update_path_labels()
-        self.ms_images_path_label.setToolTip(f"{i18n.tip('MS_IMAGES')}\n{images_dir}")
-        self.ms_images_path_label.set_full_text(images_dir)
-        self._apply_metashape_auto_inputs(p)
-        self._colmap_sparse_user_edited = False
-        self._spheresfm_sparse_user_edited = False
-        self._sync_sfm_input_paths(force=True)
-        self._training_dataset_user_edited = False
-        self._training_output_user_edited = False
-        self._lfs_output_name_user_edited = False
-        self._postshot_project_name_user_edited = False
-        restored = self._restore_project_settings(p)
-        self.preview.set_scene_dir(path, refresh=False)
-        self._input_image_count = 0
-        self._update_training_paths(force=not restored)
-        self._update_lfs_output_name(force=not restored)
-        self._update_postshot_project_name(force=not restored)
-        self._update_lfs_auto_steps_scaler()
-        self._sync_preview_perspective_paths()
-        self._update_output_count()
-        self._update_metashape_input_hint()
+            restored = self._restore_project_settings(p)
+            self.preview.set_scene_dir(path, refresh=False)
+            self._input_image_count = 0
+            self._update_training_paths(force=not restored)
+            self._update_lfs_output_name(force=not restored)
+            self._update_postshot_project_name(force=not restored)
+            self._update_lfs_auto_steps_scaler()
+            self._update_metashape_input_hint()
+        finally:
+            self._syncing_scene_dir = False
 
     # -- コマンド構築 --
 

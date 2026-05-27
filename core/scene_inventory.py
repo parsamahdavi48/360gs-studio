@@ -315,10 +315,41 @@ def build_scene_image_label_path_lookup(
     masks_dir: str | Path | None = None,
 ) -> dict[str, Path]:
     """Build case-insensitive Metashape/COLMAP-style image label lookup from scene inventory."""
+    return _build_scene_image_label_path_lookup(
+        scene_dir,
+        images_dir=images_dir,
+        masks_dir=masks_dir,
+        strict=True,
+    )
+
+
+def build_fast_scene_image_label_path_lookup(
+    scene_dir: str | Path,
+    *,
+    images_dir: str | Path | None = None,
+    masks_dir: str | Path | None = None,
+) -> dict[str, Path]:
+    """Build an image label lookup without probing every image header."""
+    return _build_scene_image_label_path_lookup(
+        scene_dir,
+        images_dir=images_dir,
+        masks_dir=masks_dir,
+        strict=False,
+    )
+
+
+def _build_scene_image_label_path_lookup(
+    scene_dir: str | Path,
+    *,
+    images_dir: str | Path | None,
+    masks_dir: str | Path | None,
+    strict: bool,
+) -> dict[str, Path]:
     lookup, _warnings = build_scene_image_label_path_lookup_with_warnings(
         scene_dir,
         images_dir=images_dir,
         masks_dir=masks_dir,
+        strict=strict,
     )
     return lookup
 
@@ -328,9 +359,11 @@ def build_scene_image_label_path_lookup_with_warnings(
     *,
     images_dir: str | Path | None = None,
     masks_dir: str | Path | None = None,
+    strict: bool = True,
 ) -> tuple[dict[str, Path], tuple[str, ...]]:
     """Build image label lookup and report ambiguous labels that were intentionally ignored."""
-    inventory = build_scene_inventory(scene_dir, images_dir=images_dir, masks_dir=masks_dir)
+    builder = build_scene_inventory if strict else build_fast_scene_inventory
+    inventory = builder(scene_dir, images_dir=images_dir, masks_dir=masks_dir)
     grouped: dict[str, list[Path]] = {}
     for image in inventory.images:
         for key in _image_label_keys(image, images_dir=inventory.images_dir):

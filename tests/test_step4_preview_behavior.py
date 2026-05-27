@@ -193,6 +193,38 @@ def test_metashape_preview_uses_xml_camera_images_not_entire_scene_folder(tmp_pa
     assert i18n.t("OUTPUT_IMAGE_COUNT_FORMAT").format(count=6) in step.view_config.summary_text()
 
 
+def test_cubemap_scene_sync_defers_and_caches_metashape_preview_targets(tmp_path: Path, monkeypatch) -> None:
+    _app()
+    images = tmp_path / "images"
+    images.mkdir()
+    used = images / "erp_used.jpg"
+    _write_test_image(used, size=(64, 32))
+    _write_metashape_xml(tmp_path / "metashape.xml", labels=[used.name])
+    _write_ascii_ply(tmp_path / "metashape.ply", [(0.0, 0.0, 0.0)])
+    step = CubemapStep(Path.cwd())
+    calls = {"preview_targets": 0}
+
+    import gui.steps.step4_activation as step4_activation
+
+    original = step4_activation.build_metashape_preview_targets
+
+    def count_preview_targets(*args, **kwargs):
+        calls["preview_targets"] += 1
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(step4_activation, "build_metashape_preview_targets", count_preview_targets)
+
+    step.set_scene_dir(str(tmp_path))
+
+    assert calls == {"preview_targets": 0}
+
+    step.on_activated()
+    step.on_activated()
+
+    assert calls == {"preview_targets": 1}
+    assert step.preview.preview_images == [used]
+
+
 def test_cubemap_step_projection_toggle_is_in_preview_header() -> None:
     _app()
     step = CubemapStep(Path.cwd())

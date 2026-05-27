@@ -5,8 +5,9 @@ from __future__ import annotations
 from pathlib import Path
 
 from core.metashape_preview_targets import build_metashape_preview_targets
-from core.projection_contract import PROJECTION_EQUIRECTANGULAR
-from core.scene_inventory import build_scene_inventory
+from core.projection_contract import PROJECTION_EQUIRECTANGULAR, PROJECTION_UNKNOWN
+from core.scene_inventory import build_fast_scene_inventory, build_scene_inventory
+from core.scene_layout import scene_asset_metadata_path
 from gui import i18n
 from gui.steps.step4_contracts import (
     _PIPELINE_STAGE_CONVERSION,
@@ -76,7 +77,12 @@ class Step4ActivationMixin:
         self._metashape_preview_action_counts = None
         self.preview.set_image_paths(None, refresh=False)
         try:
-            inventory = build_scene_inventory(Path(self.scene_dir))
+            inventory = build_fast_scene_inventory(Path(self.scene_dir))
+            if any(
+                image.projection == PROJECTION_UNKNOWN or image.size is None
+                for image in inventory.images
+            ):
+                inventory = build_scene_inventory(Path(self.scene_dir))
         except Exception:
             self.preview.set_perspective_supported_paths(())
             return
@@ -94,17 +100,54 @@ class Step4ActivationMixin:
         if not xml.is_file():
             return False
         try:
+            scene = Path(self.scene_dir)
             images = self._metashape_images_dir()
             masks = self._mask_dir()
-            targets = build_metashape_preview_targets(
-                scene_dir=Path(self.scene_dir),
-                images_dir=images,
-                masks_dir=masks if masks.is_dir() else None,
-                xml_path=xml,
-            )
+            masks_arg = masks if masks.is_dir() else None
+            cache_key = self._metashape_preview_targets_key(scene, images, masks_arg, xml)
+            targets = None
+            if cache_key == getattr(self, "_metashape_preview_targets_cache_key", None):
+                targets = getattr(self, "_metashape_preview_targets_cache", None)
+            if targets is None:
+                targets = build_metashape_preview_targets(
+                    scene_dir=scene,
+                    images_dir=images,
+                    masks_dir=masks_arg,
+                    xml_path=xml,
+                )
+                self._metashape_preview_targets_cache_key = cache_key
+                self._metashape_preview_targets_cache = targets
         except Exception:
             return False
         self._metashape_preview_action_counts = targets.action_counts
         self.preview.set_perspective_supported_paths(targets.equirect_paths)
         self.preview.set_image_paths(targets.image_paths, refresh=False)
         return True
+
+    @staticmethod
+    def _metashape_preview_targets_key(scene: Path, images: Path, masks: Path | None, xml: Path) -> tuple:
+        return (
+            Step4ActivationMixin._path_key(scene),
+            Step4ActivationMixin._path_key(images),
+            Step4ActivationMixin._path_key(masks) if masks is not None else "",
+            Step4ActivationMixin._file_token(images),
+            Step4ActivationMixin._file_token(masks) if masks is not None else ("", None, None),
+            Step4ActivationMixin._file_token(xml),
+            Step4ActivationMixin._file_token(scene_asset_metadata_path(scene)),
+        )
+
+    @staticmethod
+    def _path_key(path: Path) -> str:
+        try:
+            return str(path.resolve(strict=False)).replace("\\", "/").casefold()
+        except OSError:
+            return str(path).replace("\\", "/").casefold()
+
+    @staticmethod
+    def _file_token(path: Path) -> tuple[str, int | None, int | None]:
+        key = Step4ActivationMixin._path_key(path)
+        try:
+            stat = path.stat()
+        except OSError:
+            return key, None, None
+        return key, int(stat.st_size), int(stat.st_mtime_ns)

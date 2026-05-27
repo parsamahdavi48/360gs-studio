@@ -17,7 +17,9 @@ from core.orientation_correction import (
     FINAL_ORIENTATION_STAGE_DIRECT_FINALIZE,
     apply_final_orientation_to_dataset,
 )
-from core.scene_inventory import build_scene_image_label_path_lookup, resolve_scene_image_label
+from core.scene_import_contracts import IMAGE_EXTS
+from core.scene_inventory import resolve_scene_image_label
+from core.scene_layout import scene_images_dir
 from gui import i18n
 from gui.steps.step4_contracts import (
     _GENERATED_POINTCLOUD_NAME,
@@ -590,7 +592,46 @@ class Step4RuntimeMixin:
 
     @staticmethod
     def _metashape_image_label_lookup(scene_dir: Path) -> dict[str, Path]:
-        return build_scene_image_label_path_lookup(scene_dir)
+        images_dir = scene_images_dir(scene_dir)
+        roots = [images_dir] if images_dir.is_dir() else [scene_dir]
+        grouped: dict[str, list[Path]] = {}
+        for root in roots:
+            if not root.is_dir():
+                continue
+            for path in root.rglob("*"):
+                if not path.is_file() or path.suffix.lower() not in IMAGE_EXTS:
+                    continue
+                for key in Step4RuntimeMixin._metashape_label_keys(scene_dir, images_dir, path):
+                    grouped.setdefault(key.casefold(), []).append(path)
+        return {
+            key: paths[0]
+            for key, paths in grouped.items()
+            if len({str(path).replace("\\", "/").casefold() for path in paths}) == 1
+        }
+
+    @staticmethod
+    def _metashape_label_keys(scene_dir: Path, images_dir: Path, path: Path) -> set[str]:
+        keys = {path.name, path.stem}
+        try:
+            rel_scene = path.relative_to(scene_dir).as_posix()
+            keys.add(rel_scene)
+            keys.add(Path(rel_scene).name)
+            keys.add(Path(rel_scene).stem)
+        except ValueError:
+            pass
+        try:
+            rel_images = path.relative_to(images_dir).as_posix()
+            keys.add(rel_images)
+            keys.add(Path(rel_images).name)
+            keys.add(Path(rel_images).stem)
+            if images_dir.name:
+                root_rel = (Path(images_dir.name) / rel_images).as_posix()
+                keys.add(root_rel)
+                keys.add(Path(root_rel).name)
+                keys.add(Path(root_rel).stem)
+        except ValueError:
+            pass
+        return {key for key in keys if key}
 
     @staticmethod
     def _metashape_label_matches_image(label: str, image_lookup: dict[str, Path]) -> bool:

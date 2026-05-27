@@ -310,6 +310,12 @@ class Step4RouteStateMixin:
         )
 
     def _on_metashape_input_path_changed(self, *_args) -> None:
+        if (
+            self._syncing_metashape_auto_inputs
+            or getattr(self, "_syncing_scene_dir", False)
+            or getattr(self, "_syncing_project_settings", False)
+        ):
+            return
         if self.sender() is self.ms_ply_browse and not self._syncing_metashape_auto_inputs:
             self._set_metashape_ply_approved(bool(self.ms_ply_browse.text().strip()))
         self._update_metashape_input_hint()

@@ -285,6 +285,32 @@ def test_sfm_cards_open_in_step_sfm_pages_and_external_route_goes_to_dataset(tmp
         window.shutdown()
 
 
+def test_sfm_colmap_card_does_not_activate_hidden_cubemap_preview(tmp_path: Path, monkeypatch) -> None:
+    _app()
+    window = MainWindow(str(tmp_path))
+    calls = {"activated": 0}
+
+    def count_activation() -> None:
+        calls["activated"] += 1
+
+    try:
+        monkeypatch.setattr(window.step4, "on_activated", count_activation)
+        window._set_current_step(window._sfm_step_index)
+
+        window.sfm_step.card_grid.buttons["colmap"].click()
+
+        assert window.sfm_step.current_route() == "colmap"
+        assert calls == {"activated": 0}
+
+        window.sfm_step.show_menu()
+        window.sfm_step.card_grid.buttons["realityscan_realign"].click()
+
+        assert window.sfm_step.current_route() == "realityscan_realign"
+        assert calls == {"activated": 1}
+    finally:
+        window.shutdown()
+
+
 def test_colmap_sfm_route_saves_normal_camera_default(tmp_path: Path) -> None:
     _app()
     _write_image(tmp_path / "images" / "normal_0001.jpg", (40, 30))

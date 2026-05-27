@@ -218,7 +218,8 @@ class Step4PipelineMixin:
     def _metashape_input_missing_detail(self) -> str | None:
         if not self.scene_dir:
             return i18n.t("STEP4_PIPELINE_DETAIL_SCENE_REQUIRED")
-        self._refresh_metashape_auto_inputs_if_empty()
+        if not (getattr(self, "_syncing_scene_dir", False) or getattr(self, "_syncing_project_settings", False)):
+            self._refresh_metashape_auto_inputs_if_empty()
         self._update_metashape_input_hint()
         xml_text = self.ms_xml_browse.text().strip()
         if not xml_text:
