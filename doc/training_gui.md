@@ -15,6 +15,19 @@ The Step 5 output is the dataset intended for downstream 3DGS apps. Open the mat
 
 Step 6 CLI launch targets a LichtFeld Studio v0.5.2-compatible CLI, the Postshot v1.0/v1.1 Release Build CLI, Brush CLI, and gsplat `examples/simple_trainer.py`. If you are not using CLI training, the Step 5 output dataset remains ready to open directly in each training app.
 
+## What to Prepare
+
+This screen does not install the training app itself or a gsplat Python environment. Prepare the app you want to use so it can be launched from the command line.
+
+| Training app | What to provide |
+| --- | --- |
+| LichtFeld Studio | A LichtFeld Studio install with a v0.5.2-compatible CLI, from the official build or your own build. |
+| Postshot | A Postshot Release Build that includes `postshot-cli.exe`. |
+| Brush | A `brush.exe` from GitHub Releases or your own local build. |
+| gsplat | A Python environment with gsplat and the dependencies for `examples/simple_trainer.py`. In this screen, select that environment's `python.exe` and the `simple_trainer.py` script from the gsplat repository. |
+
+When `Executable` is blank, the app searches for the default command name. If you need a specific environment, select that executable explicitly.
+
 ## First Choice
 
 When you open Step 6, first decide which app you want to run and which dataset you want to test.
@@ -36,7 +49,7 @@ Normally, leave `Dataset` on the automatic value. The app uses the latest regist
 3. If you want repeatable CLI launch or headless training, open `Step 6: Training`.
 4. Confirm that `Dataset` and `Training Output` point to the intended folders.
 5. Choose the `LichtFeld Studio`, `Postshot`, `Brush`, or `gsplat` card.
-6. If the executable cannot be found automatically, select the installed exe.
+6. If the executable cannot be found automatically, select the app executable or Python you want to use.
 7. Review the app-specific settings on the right.
 8. Press `Launch`.
 
@@ -68,7 +81,7 @@ When this field is empty, the GUI tries the default executable name or a known i
 | LichtFeld Studio | `LichtFeld-Studio.exe` |
 | Postshot | `postshot-cli.exe` |
 | Brush | `brush.exe` |
-| gsplat | `python.exe` and `examples/simple_trainer.py` |
+| gsplat | `python.exe` from a Python environment that can run gsplat, plus `examples/simple_trainer.py` |
 
 ### Dataset
 
@@ -193,6 +206,8 @@ Advanced parameters cover refine interval, Gaussian limit, eval split, and image
 ## gsplat
 
 gsplat is launched through `python examples/simple_trainer.py`. The input dataset must be COLMAP-format data containing `images/` and `sparse/0/`. For Metashape or RealityScan sources, create a COLMAP dataset in Step 5 before selecting this card.
+
+gsplat is a Python trainer, not a standalone EXE app. Prepare a Python environment with gsplat and the sample trainer dependencies, then select that environment's `python.exe` as `Executable`.
 
 Alongside standard PINHOLE-image training, 3DGUT can be used for fisheye or wide-angle images before lens undistortion. This is not the same as passing LichtFeld `ERP 360° / GUT` data directly to gsplat.
 

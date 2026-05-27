@@ -15,6 +15,19 @@ Step 5の出力は、下流の3DGSアプリに渡すためのデータセット�
 
 Step 6のCLI実行は、LichtFeld Studio v0.5.2互換CLI、Postshot v1.0/v1.1 Release BuildのCLI、Brush CLI、gsplat `examples/simple_trainer.py` を目安にしています。CLIを使わない場合でも、Step 5の出力データセットは各学習アプリで直接使えます。
 
+## 使う前に用意するもの
+
+この画面は、学習アプリ本体やgsplat用Python環境をインストールしません。使いたい学習アプリをCLIから起動できる状態にしておきます。
+
+| 実行アプリ | 用意するもの |
+| --- | --- |
+| LichtFeld Studio | v0.5.2互換CLIを使えるLichtFeld Studio。公式配布版、または自分でビルドしたものを指定します。 |
+| Postshot | `postshot-cli.exe` を含むPostshot Release Build。 |
+| Brush | GitHub Releasesなどから入手した `brush.exe`、または自分でビルドした `brush.exe`。 |
+| gsplat | gsplatと `examples/simple_trainer.py` の依存関係が入ったPython環境。画面では、その環境の `python.exe` とgsplatリポジトリ内の `simple_trainer.py` を指定します。 |
+
+`実行ファイル` を空欄にした場合は既定名を探します。確実に使いたい環境がある場合は、その実行ファイルを明示的に指定してください。
+
 ## まず決めること
 
 Step 6を開いたら、最初に「どのアプリで、どのデータを試すか」を決めます。
@@ -36,7 +49,7 @@ Step 6を開いたら、最初に「どのアプリで、どのデータを試�
 3. CLIで再実行またはヘッドレス実行したい場合は、`Step 6: 学習` を開きます。
 4. `入力データ` と `出力先` が意図したフォルダになっているか確認します。
 5. `LichtFeld Studio`、`Postshot`、`Brush`、`gsplat` のカードを選びます。
-6. `実行ファイル` が空欄で自動検出できない場合は、インストール先のexeを指定します。
+6. `実行ファイル` が空欄で自動検出できない場合は、使いたいexeまたはPythonを指定します。
 7. 右側のアプリ別設定を確認します。
 8. `起動` を押します。
 
@@ -68,7 +81,7 @@ Step 6では中央パネルを広く使うため、左右2カラムに整理し�
 | LichtFeld Studio | `LichtFeld-Studio.exe` |
 | Postshot | `postshot-cli.exe` |
 | Brush | `brush.exe` |
-| gsplat | `python.exe` と `examples/simple_trainer.py` |
+| gsplat | gsplatを使えるPython環境の `python.exe` と `examples/simple_trainer.py` |
 
 ### 入力データ
 
@@ -193,6 +206,8 @@ Brushでは、NeRF `transforms.json` 系またはCOLMAP形式のデータセッ�
 ## gsplat
 
 gsplatでは、`python examples/simple_trainer.py` を起動します。入力データは `images/` と `sparse/0/` を含むCOLMAP形式データセットが必要です。MetashapeやRealityScanから使う場合は、Step 5でCOLMAPデータセットを作成してから選びます。
+
+gsplatは単体EXEではなく、Pythonから実行するトレーナーです。使いたいPython環境にgsplatとサンプルトレーナーの依存関係を用意し、その `python.exe` を `実行ファイル` に指定します。
 
 PINHOLE画像の標準学習に加えて、魚眼・広角などのレンズ歪み補正前画像向けに3DGUTを使えます。LichtFeld用の `ERP 360° / GUT` データをそのまま渡す設定ではありません。
 

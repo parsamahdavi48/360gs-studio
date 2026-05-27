@@ -1,6 +1,6 @@
 # stechdrive-3dgs-utils
 
-**v1.22.5**
+**v1.23.0**
 
 360°動画、通常動画、連番静止画から、3D Gaussian Splatting (3DGS) のトレーニングに使いやすい画像・マスク・カメラデータを作るためのWindows向け統合GUIツールです。
 
@@ -10,7 +10,7 @@
 
 通常利用は、最新リリースZIPをダウンロードしてください。
 
-[stechdrive-3dgs-utils-v1.22.5.zip をダウンロード](https://github.com/stechdrive/stechdrive-3dgs-utils/releases/download/v1.22.5/stechdrive-3dgs-utils-v1.22.5.zip)
+[stechdrive-3dgs-utils-v1.23.0.zip をダウンロード](https://github.com/stechdrive/stechdrive-3dgs-utils/releases/download/v1.23.0/stechdrive-3dgs-utils-v1.23.0.zip)
 
 ZIPを展開したら、`setup_windows.bat`、続いて `run_gui.bat` を実行します。
 
@@ -27,6 +27,16 @@ ZIPを展開したら、`setup_windows.bat`、続いて `run_gui.bat` を実行�
 - [LichtFeld Studio](https://lichtfeld.io/): LichtFeld向けデータセットプリセットとStep 6のCLI起動に対応する3DGS学習アプリです。
 - [Postshot](https://www.jawset.com/): Postshot向けデータセットプリセットとStep 6のCLI起動に対応する3DGS学習アプリです。
 - [Brush](https://github.com/ArthurBrussee/brush): Cubemap系出力を読み込める、オープンソースのGaussian Splattingトレーナーです。
+- [gsplat](https://github.com/nerfstudio-project/gsplat): COLMAP形式データセットをPythonから学習できる3DGSライブラリです。
+
+## 外部学習アプリについて
+
+このアプリは、LichtFeld Studio、Postshot、Brush、gsplat本体を同梱しません。Step 6は、ユーザーが用意した学習アプリやPython環境へ、Step 5で作成したデータセットを渡してCLI起動するための画面です。
+
+- LichtFeld Studio: v0.5.2互換CLIを想定しています。公式配布版、または自分でビルドしたものを指定します。
+- Postshot: v1.0/v1.1 Release BuildのCLIを想定しています。
+- Brush: GitHub Releasesなどから入手した `brush.exe`、または自分でビルドした `brush.exe` を指定します。
+- gsplat: EXEアプリではありません。gsplatと `examples/simple_trainer.py` の依存関係が入ったPython環境を用意し、その `python.exe` と `simple_trainer.py` をStep 6で指定します。
 
 ## このアプリでできること
 
@@ -139,7 +149,7 @@ checkpointを手動で `models/sam3.1/sam3.1_multiplex.pt` に置くこともで
       -> RealityScan CSV/PLYをLichtFeld用COLMAPへ変換する
       -> AprilTagでスケールを反映する
   -> Step 6: 学習
-      -> 対応CLIがある場合は、作成済みデータセットでLichtFeld Studio / Postshotを起動
+      -> 対応CLIがある場合は、作成済みデータセットでLichtFeld Studio / Postshot / Brush / gsplatを起動
 ```
 
 | Step | 内容 | 主なデフォルト |
@@ -149,7 +159,7 @@ checkpointを手動で `models/sam3.1/sam3.1_multiplex.pt` に置くこともで
 | 3. マスク生成 | 人物、スティッチ境界、白飛び、空、カスタムマスクを生成 | YOLO/SAM2.1、高品質設定 |
 | 4. SfM | カメラポーズと疎点群をどう用意するかを選択 | 既存SfM結果 / COLMAP / SphereSfM |
 | 5. データセット | SfM結果から学習アプリ向けデータセットを作成 | Metashape / RealityScan / SphereSfM / COLMAP / スケール調整 |
-| 6. 学習 | 作成済みデータセットで、対応CLIを持つ外部3DGSアプリを起動 | LichtFeld Studio / Postshot |
+| 6. 学習 | 作成済みデータセットで、対応CLIを持つ外部3DGSアプリを起動 | LichtFeld Studio / Postshot / Brush / gsplat |
 
 ### 学習アプリで使う
 
@@ -165,7 +175,7 @@ checkpointを手動で `models/sam3.1/sam3.1_multiplex.pt` に置くこともで
 | Metashape + COLMAP | `output/metashape_colmap/` |
 | RealityScan + LichtFeld COLMAP | `output/realityscan/lfs_colmap/` |
 
-Step 6は、対応するCLIを持つ学習アプリ向けの実行ショートカットです。LichtFeld Studio v0.5.2互換CLIやPostshot v1.0/v1.1 Release BuildのCLIを使える環境では、GUIからコマンドを組み立てて、同じ設定の再実行やヘッドレス学習を開始できます。CLIを使わない場合は、Step 5の出力データセットを各アプリで直接読み込んでください。
+Step 6は、対応するCLIを持つ学習アプリ向けの実行ショートカットです。LichtFeld Studio v0.5.2互換CLI、Postshot v1.0/v1.1 Release BuildのCLI、Brush CLI、gsplatのPythonトレーナーを使える環境では、GUIからコマンドを組み立てて、同じ設定の再実行やヘッドレス学習を開始できます。CLIを使わない場合は、Step 5の出力データセットを各アプリで直接読み込んでください。
 
 各ステップの詳しいGUI説明:
 
@@ -191,7 +201,7 @@ Step 6は、対応するCLIを持つ学習アプリ向けの実行ショート�
 9. Step 4では `既存のSfM結果を使う` を選びます。Metashapeでカメラポーズと疎点群を作成済みなら、この工程で追加処理は不要です。
 10. Step 5でMetashapeのXML/PLYを使い、学習アプリに合わせてNeRF系JSON/PLY、COLMAP形式データセット、またはRealityScan再アライン用データを作成します。
 11. AprilTagでスケール推定する場合は、撮影前にタグを印刷して配置しておきます。CubemapまたはCOLMAP系データセット作成後、Step 5の `スケール調整` でタグ実寸とIDを入力し、結果が妥当な場合だけ反映します。
-12. Step 5の出力をLichtFeld Studio、Postshot、Brushなどに読み込んで学習します。対応CLIで再実行やヘッドレス学習を行いたい場合は、Step 6からLichtFeld StudioやPostshotを起動できます。
+12. Step 5の出力をLichtFeld Studio、Postshot、Brushなどに読み込んで学習します。対応CLIで再実行やヘッドレス学習を行いたい場合は、Step 6からLichtFeld Studio、Postshot、Brush、gsplatを起動できます。
 
 ## 推奨ワークフロー: Metashape → RealityScan → LichtFeld
 

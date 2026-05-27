@@ -1,6 +1,6 @@
 # stechdrive-3dgs-utils
 
-**v1.22.5**
+**v1.23.0**
 
 A Windows-first integrated GUI tool for turning 360° video, normal video, and still-image sequences into images, masks, and camera data that are practical for 3D Gaussian Splatting (3DGS) training.
 
@@ -10,7 +10,7 @@ A Windows-first integrated GUI tool for turning 360° video, normal video, and s
 
 For normal use, download the latest release ZIP:
 
-[Download stechdrive-3dgs-utils-v1.22.5.zip](https://github.com/stechdrive/stechdrive-3dgs-utils/releases/download/v1.22.5/stechdrive-3dgs-utils-v1.22.5.zip)
+[Download stechdrive-3dgs-utils-v1.23.0.zip](https://github.com/stechdrive/stechdrive-3dgs-utils/releases/download/v1.23.0/stechdrive-3dgs-utils-v1.23.0.zip)
 
 After extracting the ZIP, run `setup_windows.bat`, then `run_gui.bat`.
 
@@ -27,6 +27,16 @@ After extracting the ZIP, run `setup_windows.bat`, then `run_gui.bat`.
 - [LichtFeld Studio](https://lichtfeld.io/): 3DGS training app supported by the LichtFeld dataset presets and Step 6 CLI launcher.
 - [Postshot](https://www.jawset.com/): 3DGS training app supported by Postshot dataset presets and Step 6 CLI launcher.
 - [Brush](https://github.com/ArthurBrussee/brush): open-source Gaussian Splatting trainer that can use the cubemap-style outputs.
+- [gsplat](https://github.com/nerfstudio-project/gsplat): Python 3DGS library that can train from COLMAP-format datasets.
+
+## External Training Apps
+
+This app does not bundle LichtFeld Studio, Postshot, Brush, or gsplat itself. Step 6 is a launcher for passing the Step 5 dataset to training apps or Python environments that you provide.
+
+- LichtFeld Studio: use a v0.5.2-compatible CLI from the official build or from your own build.
+- Postshot: use a Release Build that includes `postshot-cli.exe`, matching the v1.0/v1.1 CLI behavior.
+- Brush: select a `brush.exe` from GitHub Releases or your own local build.
+- gsplat: this is not an EXE app. Prepare a Python environment with gsplat and the dependencies for `examples/simple_trainer.py`, then select that `python.exe` and the `simple_trainer.py` script in Step 6.
 
 ## What You Can Do
 
@@ -139,7 +149,7 @@ If the scene folder path contains non-ASCII characters, an extremely long path, 
       -> convert RealityScan CSV/PLY to LichtFeld COLMAP format
       -> apply AprilTag scale to a dataset
   -> Step 6: training
-      -> launch LichtFeld Studio / Postshot when a compatible CLI is available
+      -> launch LichtFeld Studio / Postshot / Brush / gsplat when a compatible CLI is available
 ```
 
 | Step | Purpose | Current Default |
@@ -149,7 +159,7 @@ If the scene folder path contains non-ASCII characters, an extremely long path, 
 | 3. Mask Generation | Generate model-based masks plus optional stitch seam, overexposure, and custom masks | YOLO/SAM2.1, High quality |
 | 4. SfM | Choose how camera poses and sparse points are prepared | Existing SfM result / COLMAP / SphereSfM |
 | 5. Dataset | Create a training-app dataset from SfM results | Metashape / RealityScan / SphereSfM / COLMAP / Scale |
-| 6. Training | Launch a compatible CLI for an external 3DGS application with an existing dataset | LichtFeld Studio / Postshot |
+| 6. Training | Launch a compatible CLI for an external 3DGS application with an existing dataset | LichtFeld Studio / Postshot / Brush / gsplat |
 
 ### Using the Dataset in Training Apps
 
@@ -165,7 +175,7 @@ The main output of this app is the 3DGS dataset created in Step 5. Open the Step
 | Metashape + COLMAP | `output/metashape_colmap/` |
 | RealityScan + LichtFeld COLMAP | `output/realityscan/lfs_colmap/` |
 
-Step 6 is a launch shortcut for training apps that provide a compatible CLI. With a LichtFeld Studio v0.5.2-compatible CLI or a Postshot v1.0/v1.1 Release Build CLI, the GUI can build the command for repeat runs or headless training. If you are not using CLI training, load the Step 5 output dataset directly in the training app.
+Step 6 is a launch shortcut for training apps that provide a compatible CLI. With a LichtFeld Studio v0.5.2-compatible CLI, Postshot v1.0/v1.1 Release Build CLI, Brush CLI, or gsplat Python trainer, the GUI can build the command for repeat runs or headless training. If you are not using CLI training, load the Step 5 output dataset directly in the training app.
 
 Detailed GUI docs:
 
@@ -191,7 +201,7 @@ Detailed GUI docs:
 9. In Step 4, choose `Use Existing SfM Result`. If Metashape already produced camera poses and sparse points, there is usually nothing else to run in this step.
 10. In Step 5, use the Metashape XML/PLY result to create the dataset format your training app expects: NeRF-style JSON/PLY, a COLMAP-format dataset, or RealityScan realignment data.
 11. To estimate scale with AprilTags, print and place the tags before capture. After creating a cubemap or COLMAP-style dataset, use Step 5 `Scale Adjustment`, enter the printed tag size and IDs, and apply the scale only when the estimate looks reasonable.
-12. Load the Step 5 output in LichtFeld Studio, Postshot, Brush, or another training app. When you want repeat runs or headless training through a compatible CLI, use Step 6 to launch LichtFeld Studio or Postshot with the dataset you just created.
+12. Load the Step 5 output in LichtFeld Studio, Postshot, Brush, or another training app. When you want repeat runs or headless training through a compatible CLI, use Step 6 to launch LichtFeld Studio, Postshot, Brush, or gsplat with the dataset you just created.
 
 ## Recommended Workflow: Metashape -> RealityScan -> LichtFeld
 
