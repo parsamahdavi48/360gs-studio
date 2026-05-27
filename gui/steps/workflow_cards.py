@@ -43,25 +43,25 @@ class WorkflowCardButton(QPushButton):
         layout.setContentsMargins(16, 14, 16, 14)
         layout.setSpacing(8)
 
-        self.title_label = QLabel(spec.title)
+        self.title_label = QLabel(spec.title, self)
         self.title_label.setObjectName("workflowCardTitle")
         self.title_label.setWordWrap(True)
         self.title_label.setAttribute(Qt.WA_TransparentForMouseEvents)
         layout.addWidget(self.title_label)
 
-        self.body_label = QLabel(spec.body)
+        self.body_label = QLabel(spec.body, self)
         self.body_label.setObjectName("workflowCardBody")
         self.body_label.setWordWrap(True)
         self.body_label.setAttribute(Qt.WA_TransparentForMouseEvents)
         layout.addWidget(self.body_label)
         layout.addStretch(1)
 
-        self.footer_label = QLabel(spec.footer)
+        self.footer_label = QLabel(spec.footer, self)
         self.footer_label.setObjectName("workflowCardFooter")
         self.footer_label.setWordWrap(True)
         self.footer_label.setAttribute(Qt.WA_TransparentForMouseEvents)
-        self.footer_label.setVisible(bool(spec.footer))
         layout.addWidget(self.footer_label)
+        self.footer_label.setVisible(bool(spec.footer))
 
 
 class WorkflowCardGrid(QWidget):
@@ -74,7 +74,7 @@ class WorkflowCardGrid(QWidget):
         layout.setHorizontalSpacing(12)
         layout.setVerticalSpacing(12)
         for index, spec in enumerate(specs):
-            button = WorkflowCardButton(spec)
+            button = WorkflowCardButton(spec, self)
             self.buttons[spec.card_id] = button
             layout.addWidget(button, index // 2, index % 2)
         layout.setColumnStretch(0, 1)
