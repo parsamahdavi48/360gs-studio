@@ -91,19 +91,27 @@ class TrainingStep(BaseStepWidget):
 
     def set_scene_dir(self, path: str) -> None:
         super().set_scene_dir(path)
-        if self.dataset_step.scene_dir != path:
-            self.dataset_step.set_scene_dir(path)
+        if self._page == _PAGE_DETAIL:
+            self._sync_dataset_scene()
 
     def on_activated(self) -> None:
-        self.dataset_step.prepare_training_step()
+        if self._page == _PAGE_DETAIL:
+            self._sync_dataset_scene()
+            self.dataset_step.prepare_training_step()
 
     def show_backend(self, backend: str) -> None:
+        self._sync_dataset_scene()
         self._selected_backend = backend
         self.dataset_step._set_training_backend(backend)
+        self.dataset_step.prepare_training_step()
         self.training_detail_note.setText(i18n.t(f"TRAINING_TOOL_{backend.upper()}_DESC"))
         self._page = _PAGE_DETAIL
         self.stack.setCurrentIndex(self._page_indices[_PAGE_DETAIL])
         self.primary_action_state_changed.emit()
+
+    def _sync_dataset_scene(self) -> None:
+        if self.dataset_step.scene_dir != self.scene_dir:
+            self.dataset_step.set_scene_dir(self.scene_dir)
 
     def header_title(self) -> str:
         if self._page == _PAGE_DETAIL:
@@ -130,30 +138,40 @@ class TrainingStep(BaseStepWidget):
     def primary_action_enabled(self) -> bool:
         if self._page != _PAGE_DETAIL:
             return False
+        self._sync_dataset_scene()
         return self.dataset_step.training_primary_action_enabled()
 
     def build_commands(self) -> StepCommandQueue:
         if self._page != _PAGE_DETAIL:
             return []
+        self._sync_dataset_scene()
         return self.dataset_step.build_training_launch_commands()
 
     def process_log_dir(self) -> Path | None:
+        self._sync_dataset_scene()
         return self.dataset_step.training_process_log_dir()
 
     def phase_display_name(self, phase: str) -> str:
         return self.dataset_step.phase_display_name(phase)
 
     def on_line(self, line: str) -> tuple[int, int] | None:
+        self._sync_dataset_scene()
         return self.dataset_step.on_line(line)
 
     def on_phase_started(self, phase: str) -> tuple[int, int] | None:
+        self._sync_dataset_scene()
         return self.dataset_step.on_phase_started(phase)
 
     def on_phase_log_started(self, phase: str, path: str) -> None:
+        self._sync_dataset_scene()
         self.dataset_step.on_phase_log_started(phase, path)
 
     def on_phase_finished(self, phase: str, exit_code: int, canceled: bool) -> None:
+        self._sync_dataset_scene()
         self.dataset_step.on_phase_finished(phase, exit_code, canceled)
 
     def on_queue_finished(self, success: bool) -> None:
+        self._sync_dataset_scene()
+        if success:
+            self.dataset_step.prepare_training_step()
         self.dataset_step.on_training_queue_finished(success)

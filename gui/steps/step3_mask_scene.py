@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 from core.apply_frame_decisions import pending_drop_image_paths, untracked_image_paths
@@ -11,9 +12,17 @@ from core.scene_inventory import (
     PROJECTION_EQUIRECTANGULAR,
     PROJECTION_NORMAL,
     PROJECTION_UNKNOWN,
+    SceneInventory,
     build_scene_inventory,
 )
-from core.scene_layout import scene_images_dir, scene_masks_dir, selected_frames_path
+from core.scene_layout import (
+    normal_camera_defaults_path,
+    scene_images_dir,
+    scene_masks_dir,
+    selected_frames_path,
+    source_image_sets_path,
+    source_videos_path,
+)
 from core.scene_project import scene_relative
 from gui import i18n
 from gui.steps.step3_mask_plan import (
@@ -30,6 +39,8 @@ _PROJECTION_NORMAL = "normal"
 class Step3MaskSceneMixin:
     def set_scene_dir(self, path: str) -> None:
         super().set_scene_dir(path)
+        self._invalidate_scene_inventory_cache()
+        self._invalidate_readiness_cache()
         if path:
             scene = Path(path)
             self.images_path_label.setText(str(scene_images_dir(scene)))
@@ -42,6 +53,7 @@ class Step3MaskSceneMixin:
         self._on_images_dir_changed(self._images_dir_text())
         self._render_mask_preview()
         self._update_ready_status()
+        self._scene_inventory_synced_on_scene_change = self._scene_inventory_cache is not None
 
     def primary_action_text(self) -> str:
         return i18n.t("GENERATE")
@@ -55,6 +67,11 @@ class Step3MaskSceneMixin:
         return ready
 
     def on_activated(self) -> None:
+        if self._scene_inventory_synced_on_scene_change and self._scene_inventory_cache_is_current():
+            self._scene_inventory_synced_on_scene_change = False
+        else:
+            self._scene_inventory_synced_on_scene_change = False
+            self._refresh_scene_inventory_cache()
         self._refresh_mask_source_options()
         self.mask_preview.refresh_image_list(prefer_current=True)
         self._render_mask_preview()
@@ -111,7 +128,7 @@ class Step3MaskSceneMixin:
             self._image_projection_map = {}
             self._set_projection(_PROJECTION_EQUIRECT)
             return
-        inventory = build_scene_inventory(Path(self.scene_dir))
+        inventory = self._cached_scene_inventory()
         self._image_projection_map = {image.rel_path: image.projection for image in inventory.images}
         projections = {image.projection for image in inventory.images if image.projection != PROJECTION_UNKNOWN}
         self._projection_mixed = len(projections) > 1
@@ -128,7 +145,7 @@ class Step3MaskSceneMixin:
             self.mask_source_combo.clear()
             self.mask_source_combo.addItem(i18n.t("MASK_SOURCE_ALL"), MASK_SOURCE_ALL)
             if self.scene_dir and Path(self.scene_dir).is_dir():
-                inventory = build_scene_inventory(Path(self.scene_dir))
+                inventory = self._cached_scene_inventory()
                 for option in build_mask_source_options(Path(self.scene_dir), inventory.images):
                     label = i18n.t("MASK_SOURCE_ITEM").format(label=option.label, count=option.image_count)
                     self.mask_source_combo.addItem(label, option.key)
@@ -141,15 +158,14 @@ class Step3MaskSceneMixin:
         if not self.scene_dir:
             self._image_projection_map = {}
             return
-        scene = Path(self.scene_dir)
-        inventory = build_scene_inventory(scene)
+        inventory = self._cached_scene_inventory()
         self._image_projection_map = {image.rel_path: image.projection for image in inventory.images}
 
     def _scene_image_paths(self) -> list[Path]:
         if not self.scene_dir:
             return []
         images = Path(self._images_dir_text())
-        inventory = build_scene_inventory(Path(self.scene_dir), images_dir=images)
+        inventory = self._cached_scene_inventory(images_dir=images)
         return [image.path for image in inventory.images]
 
     def _projection_key_for_image(self, image_path: Path) -> str:
@@ -186,42 +202,162 @@ class Step3MaskSceneMixin:
         images = Path(self._images_dir_text())
         if not images.is_dir():
             return False
-        return build_scene_inventory(Path(self.scene_dir), images_dir=images).image_count > 0
+        return self._cached_scene_inventory(images_dir=images).image_count > 0
 
     def _readiness(self) -> tuple[bool, str]:
+        if self._readiness_cache is not None:
+            return self._readiness_cache
         if not self.scene_dir:
-            return False, i18n.t("SCENE_REQUIRED_ACTION_HINT")
+            return self._set_readiness_cache(False, i18n.t("SCENE_REQUIRED_ACTION_HINT"))
         if not Path(self.scene_dir).is_dir():
-            return False, i18n.t("MASK_READY_SCENE_NOT_FOUND")
+            return self._set_readiness_cache(False, i18n.t("MASK_READY_SCENE_NOT_FOUND"))
         images = Path(self._images_dir_text())
         if not images.is_dir():
-            return False, i18n.t("MASK_READY_NO_IMAGES_DIR")
+            return self._set_readiness_cache(False, i18n.t("MASK_READY_NO_IMAGES_DIR"))
         if not self._has_image_files():
-            return False, i18n.t("MASK_READY_NO_IMAGES")
+            return self._set_readiness_cache(False, i18n.t("MASK_READY_NO_IMAGES"))
         if self.run_custom_cb.isChecked():
             custom_mask = self._custom_mask_path_text()
             if not custom_mask:
-                return False, i18n.t("CUSTOM_MASK_REQUIRED")
+                return self._set_readiness_cache(False, i18n.t("CUSTOM_MASK_REQUIRED"))
             if not Path(custom_mask).is_file():
-                return False, i18n.t("CUSTOM_MASK_NOT_FOUND").format(path=custom_mask)
+                return self._set_readiness_cache(False, i18n.t("CUSTOM_MASK_NOT_FOUND").format(path=custom_mask))
         if not self._selected_mask_tasks():
-            return False, i18n.t("MASK_TASK_REQUIRED")
+            return self._set_readiness_cache(False, i18n.t("MASK_TASK_REQUIRED"))
         if self._projection_mixed:
-            return True, i18n.t("MASK_READY_MIXED_IMAGE_TYPES")
+            return self._set_readiness_cache(True, i18n.t("MASK_READY_MIXED_IMAGE_TYPES"))
         if not self._scene_csv_path().is_file():
-            return True, i18n.t("MASK_READY_EXTERNAL_IMAGES")
-        return True, i18n.t("MASK_READY_OK")
+            return self._set_readiness_cache(True, i18n.t("MASK_READY_EXTERNAL_IMAGES"))
+        return self._set_readiness_cache(True, i18n.t("MASK_READY_OK"))
 
     def _update_ready_status(self) -> None:
+        self._invalidate_readiness_cache()
         self._readiness()
         self.primary_action_state_changed.emit()
 
     def _source_filtered_image_paths(self) -> list[Path]:
         if not self.scene_dir:
             return []
-        inventory = build_scene_inventory(Path(self.scene_dir))
+        inventory = self._cached_scene_inventory()
         images = filter_images_by_source(inventory.images, self._selected_mask_source_key())
         return [image.path for image in images]
+
+    def _cached_scene_inventory(
+        self,
+        *,
+        images_dir: Path | None = None,
+        masks_dir: Path | None = None,
+        refresh: bool = False,
+    ) -> SceneInventory:
+        scene = Path(self.scene_dir)
+        images = images_dir or scene_images_dir(scene)
+        masks = masks_dir or scene_masks_dir(scene)
+        key = self._scene_inventory_cache_key_for(scene, images, masks)
+        if refresh or self._scene_inventory_cache is None or self._scene_inventory_cache_key != key:
+            self._scene_inventory_cache = build_scene_inventory(scene, images_dir=images, masks_dir=masks)
+            self._scene_inventory_cache_key = key
+            self._scene_inventory_refresh_token = self._scene_inventory_token(scene, images, masks)
+        return self._scene_inventory_cache
+
+    def _refresh_scene_inventory_cache(self) -> None:
+        if self.scene_dir and Path(self.scene_dir).is_dir():
+            scene = Path(self.scene_dir)
+            images = scene_images_dir(scene)
+            masks = scene_masks_dir(scene)
+            key = self._scene_inventory_cache_key_for(scene, images, masks)
+            token = self._scene_inventory_token(scene, images, masks)
+            if (
+                self._scene_inventory_cache is None
+                or self._scene_inventory_cache_key != key
+                or self._scene_inventory_refresh_token != token
+            ):
+                self._scene_inventory_cache = build_scene_inventory(scene, images_dir=images, masks_dir=masks)
+                self._scene_inventory_cache_key = key
+                self._scene_inventory_refresh_token = token
+        else:
+            self._invalidate_scene_inventory_cache()
+        self._invalidate_readiness_cache()
+
+    def _scene_inventory_cache_is_current(self) -> bool:
+        if self._scene_inventory_cache is None or not self.scene_dir:
+            return False
+        scene = Path(self.scene_dir)
+        if not scene.is_dir():
+            return False
+        images = scene_images_dir(scene)
+        masks = scene_masks_dir(scene)
+        return (
+            self._scene_inventory_cache_key == self._scene_inventory_cache_key_for(scene, images, masks)
+            and self._scene_inventory_refresh_token == self._scene_inventory_token(scene, images, masks)
+        )
+
+    def _invalidate_scene_inventory_cache(self) -> None:
+        self._scene_inventory_cache = None
+        self._scene_inventory_cache_key = None
+        self._scene_inventory_refresh_token = None
+        self._scene_inventory_synced_on_scene_change = False
+
+    def _invalidate_readiness_cache(self) -> None:
+        self._readiness_cache = None
+
+    def _set_readiness_cache(self, ready: bool, reason: str) -> tuple[bool, str]:
+        self._readiness_cache = (ready, reason)
+        return self._readiness_cache
+
+    def _scene_inventory_cache_key_for(self, scene: Path, images: Path, masks: Path) -> tuple[str, str, str]:
+        return (
+            self._path_cache_key(scene),
+            self._path_cache_key(images),
+            self._path_cache_key(masks),
+        )
+
+    @staticmethod
+    def _path_cache_key(path: Path) -> str:
+        try:
+            return str(path.resolve(strict=False)).replace("\\", "/").casefold()
+        except OSError:
+            return str(path).replace("\\", "/").casefold()
+
+    def _scene_inventory_token(self, scene: Path, images: Path, masks: Path) -> tuple:
+        metadata_paths = (
+            selected_frames_path(scene),
+            source_image_sets_path(scene),
+            source_videos_path(scene),
+            normal_camera_defaults_path(scene),
+        )
+        return (
+            self._directory_tree_token(images),
+            self._directory_tree_token(masks),
+            tuple(self._path_stat_token(path) for path in metadata_paths),
+        )
+
+    def _directory_tree_token(self, root: Path) -> tuple:
+        tokens = [self._path_stat_token(root)]
+        if not root.is_dir():
+            return tuple(tokens)
+        try:
+            for dirpath, dirnames, filenames in os.walk(root):
+                dirnames.sort(key=str.casefold)
+                filenames.sort(key=str.casefold)
+                tokens.append(
+                    (
+                        self._path_cache_key(Path(dirpath)),
+                        tuple(filename.casefold() for filename in filenames),
+                    )
+                )
+                for dirname in dirnames:
+                    tokens.append(self._path_stat_token(Path(dirpath) / dirname))
+        except OSError:
+            pass
+        return tuple(tokens)
+
+    def _path_stat_token(self, path: Path) -> tuple[str, bool, int | None, int | None]:
+        key = self._path_cache_key(path)
+        try:
+            stat = path.stat()
+        except OSError:
+            return key, False, None, None
+        return key, True, int(stat.st_size), int(stat.st_mtime_ns)
 
     def _mask_target_paths(self, image_paths: list[Path], *, settings: dict) -> list[Path]:
         if not self.scene_dir:

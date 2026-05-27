@@ -78,6 +78,7 @@ class SfmStep(BaseStepWidget):
         self._page_indices: dict[str, int] = {}
         self._syncing_controls = False
         self.scene_preview: ScenePreviewWidget | None = None
+        self._normal_camera_defaults_scene = ""
         self._build_ui()
         self._connect_child_signals()
 
@@ -425,6 +426,7 @@ class SfmStep(BaseStepWidget):
         return -1
 
     def _sync_from_cubemap(self) -> None:
+        self._sync_cubemap_scene()
         self._syncing_controls = True
         try:
             self.colmap_exec_browse.set_text(self.cubemap_step.colmap_exec_browse.text())
@@ -686,16 +688,29 @@ class SfmStep(BaseStepWidget):
         self.glomap_exec_row_label.setVisible(visible)
         self.glomap_exec_browse.setVisible(visible)
 
+    def _sync_cubemap_scene(self) -> None:
+        if self.cubemap_step.scene_dir != self.scene_dir:
+            self.cubemap_step.set_scene_dir(self.scene_dir)
+
+    def _sync_route_scene(self) -> None:
+        if self._page not in _RUNNABLE_PAGES:
+            return
+        self._sync_cubemap_scene()
+        if self._page == _PAGE_COLMAP and self._normal_camera_defaults_scene != self.scene_dir:
+            self._load_normal_camera_default()
+            self._normal_camera_defaults_scene = self.scene_dir
+
     def set_scene_dir(self, path: str) -> None:
         super().set_scene_dir(path)
-        if self.cubemap_step.scene_dir != path:
-            self.cubemap_step.set_scene_dir(path)
+        if path != self._normal_camera_defaults_scene:
+            self._normal_camera_defaults_scene = ""
         if self.scene_preview is not None:
             self.scene_preview.set_scene_dir(Path(path) if path else None, refresh=self._page == _PAGE_VIEWER)
-        self._load_normal_camera_default()
+        self._sync_route_scene()
 
     def on_activated(self) -> None:
         if self._page in _RUNNABLE_PAGES:
+            self._sync_route_scene()
             self._sync_from_cubemap()
             self._prepare_current_route()
             self.cubemap_step.on_activated()
@@ -718,6 +733,7 @@ class SfmStep(BaseStepWidget):
             return
         self._page = route
         self.stack.setCurrentIndex(self._page_indices[route])
+        self._sync_route_scene()
         self._sync_from_cubemap()
         self._prepare_current_route()
         self.cubemap_step.on_activated()
@@ -729,6 +745,7 @@ class SfmStep(BaseStepWidget):
     def show_realityscan_realign(self) -> None:
         self._page = _PAGE_REALITYSCAN
         self.stack.setCurrentIndex(self._page_indices[_PAGE_REALITYSCAN])
+        self._sync_route_scene()
         self._prepare_realityscan_route()
         self.cubemap_step.on_activated()
         self.primary_action_state_changed.emit()
@@ -791,11 +808,13 @@ class SfmStep(BaseStepWidget):
     def primary_action_enabled(self) -> bool:
         if self._page in {_PAGE_MENU, _PAGE_VIEWER}:
             return False
+        self._sync_route_scene()
         return self.cubemap_step.primary_action_enabled()
 
     def build_commands(self) -> StepCommandQueue:
         if self._page in {_PAGE_MENU, _PAGE_VIEWER}:
             return []
+        self._sync_route_scene()
         if self._page in {_PAGE_COLMAP, _PAGE_SPHERESFM}:
             self._apply_to_cubemap()
         if self._page == _PAGE_COLMAP:

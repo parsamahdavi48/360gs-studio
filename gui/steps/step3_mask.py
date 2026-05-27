@@ -391,6 +391,11 @@ class MaskStep(
         self._projection_mixed = False
         self._projection_source = "default"
         self._image_projection_map: dict[str, str] = {}
+        self._scene_inventory_cache = None
+        self._scene_inventory_cache_key: tuple[str, str, str] | None = None
+        self._scene_inventory_refresh_token: tuple | None = None
+        self._scene_inventory_synced_on_scene_change = False
+        self._readiness_cache: tuple[bool, str] | None = None
         self._mask_preview_render_pending = False
         self._mask_preview_render_timer = QTimer(self)
         self._mask_preview_render_timer.setSingleShot(True)

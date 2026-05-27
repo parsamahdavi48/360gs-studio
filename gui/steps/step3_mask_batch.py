@@ -155,6 +155,7 @@ class Step3MaskBatchMixin:
             self._mask_batch_phases = []
             self._mask_batch_targets = []
             return
+        self._invalidate_scene_inventory_cache()
         self.mask_preview.clear_yolo_preview_mask()
         self.mask_preview.refresh_image_list(prefer_current=True, force_thumbnails=True)
         self._render_mask_preview()

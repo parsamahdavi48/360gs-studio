@@ -96,6 +96,45 @@ def test_mask_step_uses_standard_scene_folders_without_browse_inputs(tmp_path: P
     assert step.mask_scope_combo.itemText(2) == i18n.t("MASK_SCOPE_ALL")
 
 
+def test_mask_step_reuses_scene_inventory_between_unchanged_activations(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _app()
+    scene = tmp_path
+    images = scene / "images"
+    images.mkdir()
+    (images / "frame_0001.jpg").write_bytes(b"one")
+
+    import gui.steps.step3_mask_scene as mask_scene
+
+    calls = 0
+    original = mask_scene.build_scene_inventory
+
+    def counted_build_scene_inventory(*args, **kwargs):
+        nonlocal calls
+        calls += 1
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(mask_scene, "build_scene_inventory", counted_build_scene_inventory)
+
+    step = MaskStep(Path.cwd())
+    step.set_scene_dir(str(scene))
+
+    assert calls == 1
+
+    step.on_activated()
+    step.on_activated()
+
+    assert calls == 1
+
+    time.sleep(0.01)
+    (images / "frame_0002.jpg").write_bytes(b"two")
+    step.on_activated()
+
+    assert calls == 2
+
+
 def test_mask_step_missing_scope_processes_only_unmasked_images(tmp_path: Path) -> None:
     _app()
     scene = tmp_path

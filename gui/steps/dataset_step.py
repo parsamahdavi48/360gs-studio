@@ -184,7 +184,7 @@ class DatasetStep(BaseStepWidget):
         viewer_btn = QPushButton(i18n.t("SFM_OPEN_VIEWER"))
         viewer_btn.setObjectName("secondary")
         viewer_btn.setToolTip(i18n.tip("SFM_OPEN_VIEWER"))
-        viewer_btn.clicked.connect(lambda _checked=False: self.cubemap_step.open_scene_preview())
+        viewer_btn.clicked.connect(lambda _checked=False: self._open_colmap_ready_viewer())
         layout.addWidget(viewer_btn, alignment=Qt.AlignLeft)
         layout.addStretch()
         return page
@@ -200,16 +200,15 @@ class DatasetStep(BaseStepWidget):
 
     def set_scene_dir(self, path: str) -> None:
         super().set_scene_dir(path)
-        if self.cubemap_step.scene_dir != path:
-            self.cubemap_step.set_scene_dir(path)
-        self.realityscan_tool.set_scene_dir(path)
-        self.scale_tool.set_scene_dir(path)
-        self.colmap_text_tool.set_scene_dir(path)
+        if self._page not in {_PAGE_MENU, _PAGE_COLMAP_READY}:
+            self._sync_active_step_scene()
 
     def on_activated(self) -> None:
         if self._page in _CUBEMAP_PAGES:
+            self._sync_child_scene(self.cubemap_step)
             self._configure_cubemap_tool(self._page)
         if self._page not in {_PAGE_MENU, _PAGE_COLMAP_READY}:
+            self._sync_active_step_scene()
             self._active_step().on_activated()
         self.primary_action_state_changed.emit()
 
@@ -220,7 +219,10 @@ class DatasetStep(BaseStepWidget):
             page = _PAGE_MENU
         self._page = page
         if page in _CUBEMAP_PAGES:
+            self._sync_child_scene(self.cubemap_step)
             self._configure_cubemap_tool(page)
+        elif page not in {_PAGE_MENU, _PAGE_COLMAP_READY}:
+            self._sync_active_step_scene()
         self.stack.setCurrentIndex(self._page_indices[page])
         if page not in {_PAGE_MENU, _PAGE_COLMAP_READY}:
             self._active_step().on_activated()
@@ -326,6 +328,20 @@ class DatasetStep(BaseStepWidget):
             return self.colmap_text_tool
         return self
 
+    def _sync_active_step_scene(self) -> None:
+        active = self._active_step()
+        if active is self:
+            return
+        self._sync_child_scene(active)
+
+    def _sync_child_scene(self, child: BaseStepWidget) -> None:
+        if child.scene_dir != self.scene_dir:
+            child.set_scene_dir(self.scene_dir)
+
+    def _open_colmap_ready_viewer(self) -> None:
+        self._sync_child_scene(self.cubemap_step)
+        self.cubemap_step.open_scene_preview()
+
     def primary_action_text(self) -> str:
         if self._page == _PAGE_MENU:
             return i18n.t("DATASET_SELECT_TOOL")
@@ -335,6 +351,7 @@ class DatasetStep(BaseStepWidget):
             return i18n.t("DATASET_RUN_METASHAPE")
         if self._page == _PAGE_SPHERESFM:
             return i18n.t("DATASET_RUN_SPHERESFM")
+        self._sync_active_step_scene()
         return self._active_step().primary_action_text()
 
     def primary_action_tooltip(self) -> str:
@@ -346,25 +363,33 @@ class DatasetStep(BaseStepWidget):
             return i18n.tip("DATASET_RUN_METASHAPE")
         if self._page == _PAGE_SPHERESFM:
             return i18n.tip("DATASET_RUN_SPHERESFM")
+        self._sync_active_step_scene()
         return self._active_step().primary_action_tooltip()
 
     def primary_action_enabled(self) -> bool:
         if self._page in {_PAGE_MENU, _PAGE_COLMAP_READY}:
             return False
+        self._sync_active_step_scene()
         return self._active_step().primary_action_enabled()
 
     def run_primary_action(self) -> bool:
         if self._page in {_PAGE_MENU, _PAGE_COLMAP_READY}:
             return False
         if self._page in _CUBEMAP_PAGES:
+            self._sync_child_scene(self.cubemap_step)
             self._configure_cubemap_tool(self._page)
+        else:
+            self._sync_active_step_scene()
         return self._active_step().run_primary_action()
 
     def build_commands(self) -> StepCommandQueue:
         if self._page in {_PAGE_MENU, _PAGE_COLMAP_READY}:
             return []
         if self._page in _CUBEMAP_PAGES:
+            self._sync_child_scene(self.cubemap_step)
             self._configure_cubemap_tool(self._page)
+        else:
+            self._sync_active_step_scene()
         return self._active_step().build_commands()
 
     def confirm_commands(self, commands: StepCommandQueue) -> bool:

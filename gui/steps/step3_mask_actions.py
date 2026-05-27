@@ -319,6 +319,7 @@ class Step3MaskActionsMixin(Step3MaskPreviewActionsMixin):
         self._current_reprocess_total = 0
         self._current_reprocess_completed = 0
         self._current_reprocess_last_success = None
+        self._invalidate_scene_inventory_cache()
         self.mask_preview.set_current_reprocess_running(False)
         self.mask_preview.refresh_image_list(prefer_current=True)
         self.mask_preview.invalidate_thumbnail_images(succeeded_images)
