@@ -20,6 +20,7 @@ from core.orientation_correction import (
     resolve_pointcloud_path,
     write_final_orientation_pointcloud,
 )
+from core.path_safety import is_path_inside
 
 _DEFAULT_INPUT_SIZE = (7840, 3920)
 
@@ -73,14 +74,26 @@ def _frame_input_size(frame: dict, image_dir: str, fallback: tuple[int, int]) ->
 
     file_path = frame.get("file_path")
     if isinstance(file_path, str) and file_path:
-        probe = os.path.join(image_dir, file_path)
-        if os.path.exists(probe):
+        try:
+            probe = _resolve_frame_source_path(file_path, image_dir)
+        except ValueError:
+            return fallback
+        if probe.exists():
             try:
                 with Image.open(probe) as image:
                     return int(image.width), int(image.height)
             except Exception:
                 pass
     return fallback
+
+
+def _resolve_frame_source_path(file_path: str, image_dir: str | Path) -> Path:
+    raw = Path(file_path)
+    root = Path(image_dir)
+    candidate = raw if raw.is_absolute() else root / raw
+    if not is_path_inside(candidate, root, allow_equal=False):
+        raise ValueError(f"transforms.json file_path escapes image_dir: {file_path}")
+    return candidate
 
 
 def _output_size_for_input(input_size: tuple[int, int], output_scale: float) -> int:
@@ -188,6 +201,11 @@ def transform_json(
         file_path = frame.get("file_path")
         if not isinstance(file_path, str) or not file_path:
             print("Skipped frame without file_path")
+            continue
+        try:
+            _resolve_frame_source_path(file_path, image_dir)
+        except ValueError as exc:
+            print(f"Skipped frame with unsafe file_path: {exc}")
             continue
 
         try:

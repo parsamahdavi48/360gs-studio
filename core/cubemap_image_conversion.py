@@ -37,6 +37,7 @@ from core.cubemap_worker_plan import (
     resolve_worker_count,
 )
 from core.image_io import imread_unicode
+from core.path_safety import is_path_inside
 
 _WORKER_REMAP_TABLES: dict[str, tuple[np.ndarray, np.ndarray]] | None = None
 _WORKER_VIEWS: list[dict] | None = None
@@ -64,6 +65,19 @@ _WORKER_OUTPUT_SIZE_BY_FRAME: dict[str, int] = {}
 
 def _frame_key(frame_file: str) -> str:
     return str(frame_file).replace("\\", "/").casefold()
+
+
+def _resolve_source_path(root: str | Path, frame_file: str | Path, *, kind: str) -> Path:
+    root_path = Path(root)
+    raw = Path(frame_file)
+    candidate = raw if raw.is_absolute() else root_path / raw
+    if not is_path_inside(candidate, root_path, allow_equal=False):
+        raise ValueError(f"{kind} path escapes input root: {frame_file}")
+    return candidate
+
+
+def _candidate_under_root(root: str | Path, candidate: Path) -> Path | None:
+    return candidate if is_path_inside(candidate, root, allow_equal=False) else None
 
 
 def _output_size_for_frame(frame_file: str) -> int:
@@ -213,9 +227,14 @@ def mask_candidates(mask_dir: str, frame_file: str) -> list[str]:
         variants.append(Path(*frame_path.parts[1:]))
 
     for rel in variants:
-        candidates.append(Path(mask_dir) / rel)
-        candidates.append(Path(mask_dir) / f"{rel.name}.png")
-        candidates.append(Path(mask_dir) / f"{rel.stem}.png")
+        for candidate in (
+            Path(mask_dir) / rel,
+            Path(mask_dir) / f"{rel.name}.png",
+            Path(mask_dir) / f"{rel.stem}.png",
+        ):
+            safe_candidate = _candidate_under_root(mask_dir, candidate)
+            if safe_candidate is not None:
+                candidates.append(safe_candidate)
 
     uniq: list[str] = []
     seen: set[str] = set()
@@ -363,12 +382,12 @@ def count_planned_outputs(
     mask_dir_exists = bool(mask_dir) and os.path.isdir(mask_dir)
 
     for frame_file in image_files:
-        image = os.path.join(image_dir, frame_file)
+        image = _resolve_source_path(image_dir, frame_file, kind="image")
         image_exists = os.path.exists(image)
         if image_exists:
             if export_images:
                 total += view_count
-            if export_masks and mask_from_alpha and _image_has_alpha(image):
+            if export_masks and mask_from_alpha and _image_has_alpha(str(image)):
                 total += view_count
 
         if not export_masks or mask_from_alpha or not mask_dir_exists:
@@ -388,7 +407,7 @@ def proc_convert_images(frame_file: str, yaw_offset: float = 0.0) -> int:
 
     written = 0
 
-    image = os.path.join(_WORKER_IMAGE_DIR, frame_file)
+    image = str(_resolve_source_path(_WORKER_IMAGE_DIR, frame_file, kind="image"))
     output_size = _output_size_for_frame(frame_file)
     if os.path.exists(image) and (_WORKER_EXPORT_IMAGES or (_WORKER_EXPORT_MASKS and _WORKER_MASK_FROM_ALPHA)):
         tables = get_remap_tables_for_file(image, yaw_offset, output_size)
@@ -458,7 +477,7 @@ def proc_convert_images_colmap_rig(job: tuple[str, str]) -> int:
     frame_file, output_filename = job
     written = 0
 
-    image = os.path.join(_WORKER_IMAGE_DIR, frame_file)
+    image = str(_resolve_source_path(_WORKER_IMAGE_DIR, frame_file, kind="image"))
     if os.path.exists(image) and (_WORKER_EXPORT_IMAGES or (_WORKER_EXPORT_MASKS and _WORKER_MASK_FROM_ALPHA)):
         print(f"Processing: {image}", flush=True)
         equi = load_equirect(image)

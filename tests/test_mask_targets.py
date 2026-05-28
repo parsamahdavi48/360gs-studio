@@ -5,6 +5,7 @@ from pathlib import Path
 
 import cv2
 import numpy as np
+import pytest
 
 from core.init_masks import run as init_masks_run
 from core.mask_targets import collect_image_targets, load_mask_paths_from_image_list
@@ -84,3 +85,50 @@ def test_init_masks_image_list_writes_only_listed_outputs(tmp_path: Path) -> Non
 
     assert not (masks / "a.png").exists()
     assert (masks / "custom" / "b.png").is_file()
+
+
+def test_image_list_rejects_external_image_path(tmp_path: Path) -> None:
+    scene = tmp_path / "scene"
+    images = scene / "images"
+    masks = scene / "masks"
+    outside = tmp_path / "outside.jpg"
+    images.mkdir(parents=True)
+    cv2.imwrite(str(outside), np.full((8, 16, 3), 128, dtype=np.uint8))
+    manifest = scene / "targets.jsonl"
+    manifest.write_text(json.dumps({"image": str(outside), "mask": "masks/out.png"}) + "\n", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="escapes"):
+        collect_image_targets(images, masks, image_list=manifest)
+
+
+def test_image_list_rejects_external_mask_path(tmp_path: Path) -> None:
+    scene = tmp_path / "scene"
+    images = scene / "images"
+    masks = scene / "masks"
+    images.mkdir(parents=True)
+    image_path = images / "frame.jpg"
+    cv2.imwrite(str(image_path), np.full((8, 16, 3), 128, dtype=np.uint8))
+    manifest = scene / "targets.jsonl"
+    manifest.write_text(
+        json.dumps({"image": "images/frame.jpg", "mask": str(tmp_path / "outside.png")}) + "\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="escapes"):
+        collect_image_targets(images, masks, image_list=manifest)
+
+
+def test_image_list_rejects_parent_mask_escape(tmp_path: Path) -> None:
+    scene = tmp_path / "scene"
+    images = scene / "images"
+    masks = scene / "masks"
+    images.mkdir(parents=True)
+    cv2.imwrite(str(images / "frame.jpg"), np.full((8, 16, 3), 128, dtype=np.uint8))
+    manifest = scene / "targets.jsonl"
+    manifest.write_text(
+        json.dumps({"image": "images/frame.jpg", "mask": "masks/../outside.png"}) + "\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="escapes"):
+        collect_image_targets(images, masks, image_list=manifest)

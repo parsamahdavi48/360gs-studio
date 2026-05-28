@@ -21,6 +21,7 @@ from typing import Any
 import numpy as np
 
 from core.pointcloud_io import load_point_cloud_sample
+from core.safe_xml import parse_xml_file
 from core.scene_inventory import build_scene_image_label_path_lookup, resolve_scene_image_label
 
 SCENE_PREVIEW_WORLD_UP = np.array([0.0, 1.0, 0.0], dtype=np.float64)
@@ -276,7 +277,7 @@ def load_metashape_preview_dataset(
     pointcloud: ScenePreviewPointCloud | None = None,
 ) -> ScenePreviewDataset:
     xml_path = Path(xml_path)
-    root = ET.parse(xml_path).getroot()
+    root = parse_xml_file(xml_path).getroot()
     chunk = _first_enabled_child(root, "chunk")
     if chunk is None:
         raise ValueError(f"Metashape XML has no chunk: {xml_path}")

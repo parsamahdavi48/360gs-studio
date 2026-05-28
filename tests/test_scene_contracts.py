@@ -43,7 +43,7 @@ def test_safe_clear_path_rejects_outside_allowed_roots(tmp_path: Path) -> None:
     assert outside.is_dir()
 
 
-def test_image_list_resolution_uses_manifest_directory_before_optional_cwd(tmp_path: Path) -> None:
+def test_image_list_resolution_rejects_manifest_local_images_outside_root(tmp_path: Path) -> None:
     images = tmp_path / "images"
     masks = tmp_path / "masks"
     manifest_dir = tmp_path / "lists"
@@ -52,7 +52,5 @@ def test_image_list_resolution_uses_manifest_directory_before_optional_cwd(tmp_p
     manifest = manifest_dir / "targets.jsonl"
     manifest.write_text('"local.jpg"\n', encoding="utf-8")
 
-    targets = load_image_targets(manifest, images_root=images, masks_root=masks)
-
-    assert len(targets) == 1
-    assert targets[0].image_path == manifest_dir / "local.jpg"
+    with pytest.raises(ValueError, match="escapes"):
+        load_image_targets(manifest, images_root=images, masks_root=masks)

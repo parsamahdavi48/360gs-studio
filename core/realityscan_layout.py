@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from core.path_safety import is_path_inside
+
 REALITYSCAN_PRIMARY_IMAGE_DIR = "images"
 REALITYSCAN_EXTRA_IMAGE_DIR = "extra_images"
 REALITYSCAN_IMAGE_DIR_NAMES = (REALITYSCAN_PRIMARY_IMAGE_DIR, REALITYSCAN_EXTRA_IMAGE_DIR)
@@ -107,20 +109,22 @@ def strip_leading_realityscan_asset_dir(path: Path, dir_names: tuple[str, ...]) 
 
 def resolve_realityscan_image_path(images_dir: Path, name: str) -> Path:
     raw = Path(name)
-    if raw.is_absolute():
-        return raw
     stripped = strip_leading_realityscan_asset_dir(raw, REALITYSCAN_IMAGE_DIR_NAMES)
     seen: set[str] = set()
-    for root in related_realityscan_image_roots(images_dir):
+    roots = related_realityscan_image_roots(images_dir)
+    for root in roots:
         for rel in (raw, stripped):
-            candidate = root / rel
+            candidate = rel if rel.is_absolute() else root / rel
             key = candidate.resolve(strict=False).as_posix().casefold()
             if key in seen:
                 continue
             seen.add(key)
+            _require_realityscan_image_root(candidate, roots, name)
             if candidate.exists():
                 return candidate
-    return Path(images_dir) / raw
+    fallback = raw if raw.is_absolute() else Path(images_dir) / raw
+    _require_realityscan_image_root(fallback, roots, name)
+    return fallback
 
 
 def realityscan_image_asset_relative_path(path: Path, images_dir: Path) -> Path | None:
@@ -247,6 +251,11 @@ def _dedupe_paths(paths: list[Path]) -> tuple[Path, ...]:
         seen.add(key)
         deduped.append(path)
     return tuple(deduped)
+
+
+def _require_realityscan_image_root(path: Path, roots: tuple[Path, ...], original_name: str) -> None:
+    if not any(is_path_inside(path, root, allow_equal=False) for root in roots):
+        raise ValueError(f"RealityScan image path escapes the selected image roots: {original_name}")
 
 
 def _dedupe_relative_paths(paths: list[Path]) -> list[Path]:

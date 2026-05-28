@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
 from PIL import Image
 
 from core.dataset_export_plan import (
@@ -68,6 +69,22 @@ def test_parse_metashape_model_preserves_mixed_sensor_types(tmp_path: Path) -> N
     assert model.sensors["1"].camera_model == CAMERA_MODEL_PINHOLE
     assert model.sensors["2"].camera_model == CAMERA_MODEL_OPENCV
     assert [camera.label for camera in model.cameras] == ["pano.jpg", "frame.jpg", "distorted.jpg"]
+
+
+def test_parse_metashape_model_rejects_xml_entities(tmp_path: Path) -> None:
+    xml = tmp_path / "cameras.xml"
+    xml.write_text(
+        """<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE document [
+  <!ENTITY payload "expanded">
+]>
+<document><chunk /></document>
+""",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="DOCTYPE"):
+        parse_metashape_model(xml)
 
 
 def test_metashape_export_plan_expands_only_erp_and_undistorts_distorted_frames(tmp_path: Path) -> None:

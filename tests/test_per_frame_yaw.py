@@ -9,6 +9,7 @@ from pathlib import Path
 
 import cv2
 import numpy as np
+import pytest
 
 import core.cubemap_image_conversion as cube
 import core.cubemap_worker_plan as worker_plan
@@ -261,6 +262,53 @@ def test_transform_json_returns_yaw_offsets(tmp_path: Path):
     assert len(image_files) == 5
     assert len(yaw_offsets) == 5
     assert yaw_offsets == [0.0, 30.0, 60.0, 90.0, 120.0]
+
+
+def test_transform_json_skips_frame_paths_outside_image_dir(tmp_path: Path):
+    input_dir = tmp_path / "input"
+    input_dir.mkdir()
+    data = {
+        "camera_model": "EQUIRECTANGULAR",
+        "frames": [
+            {
+                "file_path": "../outside.png",
+                "transform_matrix": np.eye(4).tolist(),
+            }
+        ],
+    }
+    (input_dir / "transforms.json").write_text(json.dumps(data), encoding="utf-8")
+
+    image_files, yaw_offsets, _, _ = transform_json(
+        input_dir=str(input_dir),
+        input_json="transforms.json",
+        image_dir=str(input_dir),
+        output_dir=str(tmp_path / "out"),
+        views=[{"name": "front", "yaw": 0.0, "pitch": 0.0}],
+        fov=90.0,
+        output_scale=0.5,
+        no_transform=True,
+        allow_duplicate=False,
+        brush_mode=False,
+    )
+
+    assert image_files == []
+    assert yaw_offsets == []
+
+
+def test_count_planned_outputs_rejects_frame_paths_outside_image_dir(tmp_path: Path):
+    image_dir = tmp_path / "images"
+    mask_dir = tmp_path / "masks"
+    image_dir.mkdir()
+    mask_dir.mkdir()
+
+    with pytest.raises(ValueError, match="escapes"):
+        cube.count_planned_outputs(
+            image_files=["../outside.png"],
+            views=[{"name": "front"}],
+            image_dir=str(image_dir),
+            mask_dir=str(mask_dir),
+            mask_from_alpha=False,
+        )
 
 
 def test_transform_json_zero_offset_legacy(tmp_path: Path):

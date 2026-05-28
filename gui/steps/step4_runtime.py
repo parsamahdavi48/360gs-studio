@@ -17,6 +17,7 @@ from core.orientation_correction import (
     FINAL_ORIENTATION_STAGE_DIRECT_FINALIZE,
     apply_final_orientation_to_dataset,
 )
+from core.safe_xml import parse_xml_file
 from core.scene_import_contracts import IMAGE_EXTS
 from core.scene_inventory import resolve_scene_image_label
 from core.scene_layout import scene_images_dir
@@ -517,8 +518,8 @@ class Step4RuntimeMixin:
 
     def _metashape_xml_candidate_score(self, path: Path, scene_dir: Path) -> tuple[Path, int, int, int] | None:
         try:
-            root = ET.parse(path).getroot()
-        except (ET.ParseError, OSError):
+            root = parse_xml_file(path).getroot()
+        except (ET.ParseError, OSError, ValueError):
             return None
         if self._xml_tag_name(root.tag) != "document":
             return None

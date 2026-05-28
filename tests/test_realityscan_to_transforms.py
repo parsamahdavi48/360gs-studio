@@ -16,6 +16,7 @@ from core.realityscan_to_transforms import (
     convert,
     pointcloud_target_profile_matrix,
     realityscan_rotation_matrix,
+    resolve_image_path,
     target_profile_matrix,
     transform_points,
 )
@@ -192,6 +193,19 @@ def test_convert_writes_relative_paths_to_external_output(tmp_path: Path) -> Non
     )
     data = json.loads((output / "transforms.json").read_text(encoding="utf-8"))
     assert data["frames"][0]["file_path"] == "../scene/images/normal.png"
+
+
+def test_realityscan_image_resolution_rejects_paths_outside_image_roots(tmp_path: Path) -> None:
+    images_dir = tmp_path / "images"
+    images_dir.mkdir()
+    outside = tmp_path / "outside.jpg"
+    write_image(outside, (80, 40))
+
+    with pytest.raises(ValueError, match="escapes"):
+        resolve_image_path(images_dir, str(outside))
+
+    with pytest.raises(ValueError, match="escapes"):
+        resolve_image_path(images_dir, "../outside.jpg")
 
 
 def test_write_transformed_binary_ply(tmp_path: Path) -> None:

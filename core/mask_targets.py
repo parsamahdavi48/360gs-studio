@@ -7,6 +7,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from core.path_safety import is_path_inside
+
 IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".tif", ".tiff"}
 
 
@@ -243,32 +245,38 @@ def _resolve_relative_path(
 ) -> Path:
     raw = Path(value)
     if raw.is_absolute():
-        return raw
+        return _require_path_inside(raw, _target_root(root), original=value)
 
     root_base = _target_root(root)
     parts = raw.parts
     if parts and parts[0].casefold() == root_base.name.casefold():
         candidate = root_base.parent / raw
         if candidate.exists():
-            return candidate
+            return _require_path_inside(candidate, root_base, original=value)
 
     candidate = root_base / raw
     if candidate.exists():
-        return candidate
+        return _require_path_inside(candidate, root_base, original=value)
 
     if manifest_base is not None:
         manifest_candidate = manifest_base / raw
         if manifest_candidate.exists():
-            return manifest_candidate
+            return _require_path_inside(manifest_candidate, root_base, original=value)
 
     if allow_cwd_fallback:
         cwd_candidate = Path.cwd() / raw
         if cwd_candidate.exists():
-            return cwd_candidate
+            return _require_path_inside(cwd_candidate, root_base, original=value)
 
     if parts and parts[0].casefold() == root_base.name.casefold():
-        return root_base.parent / raw
-    return default_base / raw
+        return _require_path_inside(root_base.parent / raw, root_base, original=value)
+    return _require_path_inside(default_base / raw, root_base, original=value)
+
+
+def _require_path_inside(path: Path, root: Path, *, original: str) -> Path:
+    if not is_path_inside(path, root, allow_equal=False):
+        raise ValueError(f"Image-list path escapes its allowed root: {original}")
+    return path
 
 
 def _relative_key(path: Path, root: Path) -> str:

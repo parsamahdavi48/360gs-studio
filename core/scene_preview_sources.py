@@ -15,6 +15,7 @@ from core.nerf_dataset_paths import (
     iter_nerf_transforms_paths,
     profile_from_transforms_name,
 )
+from core.safe_xml import parse_xml_file
 from core.scene_layout import (
     scene_images_dir,
     scene_masks_dir,
@@ -193,8 +194,8 @@ def _scene_xml_candidates(scene: Path) -> tuple[Path, ...]:
 
 def _looks_like_metashape_xml(path: Path) -> bool:
     try:
-        root = ET.parse(path).getroot()
-    except (ET.ParseError, OSError):
+        root = parse_xml_file(path).getroot()
+    except (ET.ParseError, OSError, ValueError):
         return False
     if _xml_tag_name(root.tag) != "document":
         return False

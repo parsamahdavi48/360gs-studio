@@ -6,6 +6,8 @@ from pathlib import Path
 
 import numpy as np
 
+from core.safe_xml import parse_xml_file
+
 CAMERA_MODEL_EQUIRECTANGULAR = "EQUIRECTANGULAR"
 CAMERA_MODEL_PINHOLE = "PINHOLE"
 CAMERA_MODEL_OPENCV = "OPENCV"
@@ -47,7 +49,7 @@ class MetashapeModel:
 
 
 def parse_metashape_model(xml_path: str | Path) -> MetashapeModel:
-    root = ET.parse(xml_path).getroot()
+    root = parse_xml_file(xml_path).getroot()
     chunk = _first_child(root, "chunk")
     if chunk is None and len(root):
         chunk = root[0]
