@@ -10,11 +10,14 @@ from core.frame_job_spec import (
     JOB_KIND_APPLY_FRAME_DECISIONS,
     JOB_KIND_EXTRACT_VIDEO,
     JOB_KIND_IMPORT_IMAGE_SEQUENCE,
+    JOB_KIND_IMPORT_SCENE,
     JOB_KIND_REFRESH_SCENE_ASSETS,
     load_frame_job,
     validate_frame_job_payload,
 )
 from core.image_sequence_import import import_image_sequence_folder
+from core.scene_import import import_scene
+from core.scene_import_contracts import SceneImportCancelled
 
 
 def run_frame_job_file(path: str | Path, *, cancel_event: CancellationToken | None = None) -> None:
@@ -30,6 +33,9 @@ def run_frame_job_payload(job: dict[str, Any], *, cancel_event: CancellationToke
         return
     if kind == JOB_KIND_IMPORT_IMAGE_SEQUENCE:
         _run_import_image_sequence(job, cancel_event=cancel_event)
+        return
+    if kind == JOB_KIND_IMPORT_SCENE:
+        _run_import_scene(job, cancel_event=cancel_event)
         return
     if kind == JOB_KIND_APPLY_FRAME_DECISIONS:
         _run_apply_frame_decisions(job, cancel_event=cancel_event)
@@ -88,6 +94,61 @@ def _run_import_image_sequence(job: dict[str, Any], *, cancel_event: Cancellatio
                 "import_id": result.import_id,
                 "image_count": result.image_count,
                 "output_files": list(result.output_files),
+            },
+            ensure_ascii=False,
+        ),
+        flush=True,
+    )
+    raise_if_cancelled(cancel_event)
+
+
+class _SceneImportJobCancelToken:
+    def __init__(self, cancel_event: CancellationToken | None) -> None:
+        self._cancel_event = cancel_event
+
+    def request_cancel(self) -> None:
+        pass
+
+    def is_cancelled(self) -> bool:
+        return bool(self._cancel_event is not None and self._cancel_event.is_set())
+
+    def check_cancelled(self) -> None:
+        if self.is_cancelled():
+            raise SceneImportCancelled("Scene import canceled.")
+
+
+def _run_import_scene(job: dict[str, Any], *, cancel_event: CancellationToken | None = None) -> None:
+    from core.cancellation import AppJobCancelled
+
+    raise_if_cancelled(cancel_event)
+    scene = Path(str(job["scene_dir"]))
+    token = _SceneImportJobCancelToken(cancel_event)
+    try:
+        result = import_scene(
+            scene,
+            cancel_token=token,
+            progress_callback=lambda message: print(message, flush=True),
+        )
+    except SceneImportCancelled as exc:
+        raise AppJobCancelled(str(exc)) from exc
+    for line in result.summary_lines():
+        print(line, flush=True)
+    print(
+        "SUMMARY_JSON:"
+        + json.dumps(
+            {
+                "kind": "scene_import",
+                "scene_dir": str(result.scene_dir),
+                "import_id": result.import_id,
+                "status": result.status,
+                "image_count": result.image_count,
+                "mask_count": result.mask_count,
+                "output_image_count": result.output_image_count,
+                "output_mask_count": result.output_mask_count,
+                "output_shape": result.output_shape,
+                "dataset_kind": result.dataset_kind,
+                "warnings": list(result.warnings),
+                "errors": list(result.errors),
             },
             ensure_ascii=False,
         ),

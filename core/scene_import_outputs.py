@@ -5,6 +5,7 @@ import math
 from pathlib import Path
 from typing import Any
 
+from core.artifact_registry import ArtifactRecord, load_artifacts, save_artifacts
 from core.nerf_dataset_paths import find_nerf_pointcloud_path, find_nerf_transforms_path
 from core.scene_import_contracts import (
     EXTERNAL_IMPORT_KIND,
@@ -28,6 +29,7 @@ from core.scene_layout import (
     step4_export_settings_path,
 )
 from core.scene_project import file_identity, load_json, scene_relative, update_project, utc_now_iso, write_json
+from core.workflow_artifacts import register_dataset_artifact
 
 
 def inspect_output_dataset(
@@ -433,4 +435,46 @@ def replace_external_dataset_run(scene: Path, import_id: str, output_info: dict[
             }
         )
         update_project(scene, "step4", {"last_dataset_run_id": run_id})
+        replace_external_dataset_artifact(scene, run_id, root, output_shape, load_json(step4_export_settings_path(scene), {}))
+    else:
+        remove_external_dataset_artifacts(scene)
     write_json(path, {"version": 1, "runs": kept[-200:]})
+
+
+def replace_external_dataset_artifact(
+    scene: Path,
+    artifact_id: str,
+    root: Path,
+    output_shape: str,
+    settings: dict[str, Any],
+) -> None:
+    kept = [record for record in load_artifacts(scene, "dataset") if not _is_external_dataset_artifact(record)]
+    save_artifacts(scene, "dataset", kept)
+    record = register_dataset_artifact(
+        scene,
+        artifact_id=artifact_id,
+        root=root,
+        settings=settings,
+        metadata={
+            "origin": settings.get("origin") if isinstance(settings.get("origin"), dict) else import_origin(artifact_id),
+            "output_shape": output_shape,
+            "imported_scene": True,
+        },
+    )
+    if record is None:
+        return
+
+
+def remove_external_dataset_artifacts(scene: Path) -> None:
+    kept = [record for record in load_artifacts(scene, "dataset") if not _is_external_dataset_artifact(record)]
+    save_artifacts(scene, "dataset", kept)
+
+
+def _is_external_dataset_artifact(record: ArtifactRecord) -> bool:
+    if record.id.startswith("dataset_import_"):
+        return True
+    for payload in (record.settings, record.metadata):
+        origin = payload.get("origin") if isinstance(payload, dict) else None
+        if isinstance(origin, dict) and origin.get("kind") == EXTERNAL_IMPORT_KIND:
+            return True
+    return False

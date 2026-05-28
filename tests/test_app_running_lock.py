@@ -122,7 +122,7 @@ def test_scene_import_runs_off_gui_thread_and_reports_start(tmp_path: Path, monk
             export_settings_json=scene / "_stechdrive" / "step4" / "export_settings.json",
         )
 
-    monkeypatch.setattr("gui.app.import_scene", fake_import)
+    monkeypatch.setattr("core.frame_job_runner.import_scene", fake_import)
 
     try:
         started_at = time.monotonic()
@@ -196,7 +196,17 @@ def test_scene_import_finish_defers_current_step_refresh(tmp_path: Path, monkeyp
         monkeypatch.setattr(window.step3, "set_scene_dir", count_set_scene_dir)
         monkeypatch.setattr(window.step3, "on_activated", count_activated)
 
-        window._on_scene_import_finished(result, "", False)
+        window._scene_import_running = True
+        window._scene_import_scene = str(scene)
+        window._scene_import_summary = {
+            "kind": "scene_import",
+            "scene_dir": str(result.scene_dir),
+            "image_count": result.image_count,
+            "mask_count": result.mask_count,
+            "output_image_count": result.output_image_count,
+            "errors": list(result.errors),
+        }
+        window._finish_scene_import_queue(True)
         app.processEvents()
 
         assert window.scene_browse.text() == str(scene)
@@ -264,7 +274,7 @@ def test_reselecting_current_step_does_not_repeat_activation(tmp_path: Path, mon
         window.shutdown()
 
 
-def test_scene_import_cancel_requests_worker_and_keeps_metadata_unchanged(tmp_path: Path, monkeypatch) -> None:
+def test_scene_import_cancel_requests_job_and_keeps_metadata_unchanged(tmp_path: Path, monkeypatch) -> None:
     app = _app()
     window = MainWindow(str(tmp_path))
 
@@ -277,7 +287,7 @@ def test_scene_import_cancel_requests_worker_and_keeps_metadata_unchanged(tmp_pa
         cancel_token.check_cancelled()
         raise AssertionError("unreachable")
 
-    monkeypatch.setattr("gui.app.import_scene", fake_import)
+    monkeypatch.setattr("core.frame_job_runner.import_scene", fake_import)
 
     try:
         window._start_scene_import(str(tmp_path))

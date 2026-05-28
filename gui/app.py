@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 from pathlib import Path
 
-from PySide6.QtCore import QSignalBlocker, QSize, Qt, QThread, QUrl
+from PySide6.QtCore import QSignalBlocker, QSize, Qt, QUrl
 from PySide6.QtGui import QAction, QCloseEvent, QDesktopServices, QIcon
 from PySide6.QtWidgets import (
     QApplication,
@@ -22,8 +23,9 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from core.app_job import frame_app_job
+from core.frame_job_spec import import_scene_job
 from core.path_safety import PathSafetyIssue, check_path_safety, normalized_path_text
-from core.scene_import import SceneImportResult, import_scene
 from gui import i18n
 from gui.common import dialogs
 from gui.common.browse_widget import BrowseWidget
@@ -31,7 +33,6 @@ from gui.common.icons import back_icon, folder_icon, help_icon, import_scene_ico
 from gui.common.log_panel import LogPanel
 from gui.common.process_runner import ProcessRunner
 from gui.common.progress_widget import ProgressWidget
-from gui.common.scene_import_worker import SceneImportWorker
 from gui.steps.base_step import BaseStepWidget
 from gui.steps.dataset_step import DatasetStep
 from gui.steps.sfm_step import SfmStep
@@ -81,8 +82,9 @@ class MainWindow(QWidget):
         self._shutdown = False
         self._scene_import_running = False
         self._scene_import_cancel_requested = False
-        self._scene_import_thread: QThread | None = None
-        self._scene_import_worker: SceneImportWorker | None = None
+        self._scene_import_canceled = False
+        self._scene_import_scene = ""
+        self._scene_import_summary: dict[str, object] | None = None
         self._deferred_scene_sync_path: str | None = None
         self._deferred_scene_sync_step_ids: set[int] = set()
 
@@ -434,73 +436,75 @@ class MainWindow(QWidget):
 
         self._scene_import_running = True
         self._scene_import_cancel_requested = False
+        self._scene_import_canceled = False
+        self._scene_import_scene = scene
+        self._scene_import_summary = None
         self.progress.reset()
         self.progress.start_phase()
         self.progress.set_status(i18n.t("IMPORT_SCENE_RUNNING"))
         self.log_panel.append_log(i18n.t("IMPORT_SCENE_STARTED").format(scene=scene))
         self._update_run_button()
 
-        thread = QThread(self)
-        worker = SceneImportWorker(Path(scene), importer=import_scene)
-        worker.moveToThread(thread)
-        thread.started.connect(worker.run)
-        worker.progress.connect(self.log_panel.append_log)
-        worker.finished.connect(self._on_scene_import_finished)
-        worker.finished.connect(thread.quit)
-        worker.finished.connect(worker.deleteLater)
-        thread.finished.connect(self._on_scene_import_thread_finished)
-        thread.finished.connect(thread.deleteLater)
-        self._scene_import_thread = thread
-        self._scene_import_worker = worker
-        thread.start()
+        self.runner.start_queue(
+            [("scene_import", frame_app_job(import_scene_job(scene_dir=scene)))],
+        )
 
-    def _on_scene_import_finished(self, result: object, error: str, canceled: bool) -> None:
+    def _capture_scene_import_summary(self, line: str) -> bool:
+        prefix = "SUMMARY_JSON:"
+        if not line.startswith(prefix):
+            return False
+        try:
+            payload = json.loads(line[len(prefix) :])
+        except json.JSONDecodeError:
+            return False
+        if not isinstance(payload, dict) or payload.get("kind") != "scene_import":
+            return False
+        self._scene_import_summary = payload
+        return True
+
+    def _finish_scene_import_queue(self, success: bool) -> None:
+        summary = self._scene_import_summary or {}
+        canceled = self._scene_import_cancel_requested or self._scene_import_canceled
+        scene = str(summary.get("scene_dir") or self._scene_import_scene).strip()
+        errors = summary.get("errors")
+        error_count = len(errors) if isinstance(errors, list) else 0
         self._scene_import_running = False
         self._scene_import_cancel_requested = False
+        self._scene_import_canceled = False
+        self._scene_import_scene = ""
+        self._scene_import_summary = None
+
         if canceled:
             self.progress.finish_phase(complete=False)
             self.log_panel.append_log(i18n.t("IMPORT_SCENE_CANCELED"))
             self.progress.set_status(i18n.STATUS_CANCELED)
             self._update_run_button()
             return
-        if error:
+
+        if not success and not summary:
             self.progress.finish_phase(complete=False)
-            self.log_panel.append_log(f"{i18n.t('IMPORT_SCENE_FAILED')}: {error}")
+            self.log_panel.append_log(i18n.t("IMPORT_SCENE_FAILED"))
             self.progress.set_status(i18n.STATUS_FAILED)
             self._update_run_button()
             return
 
-        if not isinstance(result, SceneImportResult):
-            self.progress.finish_phase(complete=False)
-            self.log_panel.append_log(f"{i18n.t('IMPORT_SCENE_FAILED')}: invalid worker result")
-            self.progress.set_status(i18n.STATUS_FAILED)
-            self._update_run_button()
-            return
-
-        scene = str(result.scene_dir)
-        for line in result.summary_lines():
-            self.log_panel.append_log(line)
-        self._auto_scene_from_input = None
-        self._set_scene_browse_text_silently(scene)
-        self._apply_scene_dir(scene, activate_current=False, defer_step_sync=True)
-        self.log_panel.append_log(i18n.t("IMPORT_SCENE_DEFERRED_REFRESH"))
-        self.progress.finish_phase(complete=not bool(result.errors))
-        if result.errors:
+        if scene:
+            self._auto_scene_from_input = None
+            self._set_scene_browse_text_silently(scene)
+            self._apply_scene_dir(scene, activate_current=False, defer_step_sync=True)
+            self.log_panel.append_log(i18n.t("IMPORT_SCENE_DEFERRED_REFRESH"))
+        self.progress.finish_phase(complete=success and error_count == 0)
+        if not success or error_count:
             self.progress.set_status(i18n.t("IMPORT_SCENE_FAILED"))
         else:
             self.progress.set_status(
                 i18n.t("IMPORT_SCENE_DONE").format(
-                    images=result.image_count,
-                    masks=result.mask_count,
-                    output_images=result.output_image_count,
+                    images=int(summary.get("image_count") or 0),
+                    masks=int(summary.get("mask_count") or 0),
+                    output_images=int(summary.get("output_image_count") or 0),
                 )
             )
         self._update_run_button()
-
-    def _on_scene_import_thread_finished(self) -> None:
-        if self.sender() is self._scene_import_thread:
-            self._scene_import_thread = None
-            self._scene_import_worker = None
 
     def _set_current_step(self, index: int) -> None:
         if not 0 <= index < len(self.steps):
@@ -681,8 +685,7 @@ class MainWindow(QWidget):
         if self._scene_import_running:
             if not self._scene_import_cancel_requested:
                 self._scene_import_cancel_requested = True
-                if self._scene_import_worker is not None:
-                    self._scene_import_worker.cancel()
+                self.runner.cancel()
                 self.log_panel.append_log(i18n.t("IMPORT_SCENE_CANCELING"))
                 self.progress.set_status(i18n.t("IMPORT_SCENE_CANCELING"))
             self._update_run_button()
@@ -696,7 +699,11 @@ class MainWindow(QWidget):
         self._update_run_button()
 
     def _on_line(self, line: str) -> None:
+        if self._scene_import_running and self._capture_scene_import_summary(line):
+            return
         self.log_panel.append_log(line)
+        if self._scene_import_running:
+            return
         step = self.steps[self._current_step] if 0 <= self._current_step < len(self.steps) else None
         if step:
             result = step.on_line(line)
@@ -705,6 +712,11 @@ class MainWindow(QWidget):
                 self.progress.set_progress(done, total)
 
     def _on_phase_started(self, phase: str) -> None:
+        if self._scene_import_running:
+            self.progress.start_phase()
+            self.progress.set_status(i18n.t("IMPORT_SCENE_RUNNING"))
+            self._update_run_button()
+            return
         step = self.steps[self._current_step] if 0 <= self._current_step < len(self.steps) else None
         self.progress.start_phase()
         if step:
@@ -719,11 +731,19 @@ class MainWindow(QWidget):
         self._update_run_button()
 
     def _on_phase_log_started(self, phase: str, path: str) -> None:
+        if self._scene_import_running:
+            return
         step = self.steps[self._current_step] if 0 <= self._current_step < len(self.steps) else None
         if step:
             step.on_phase_log_started(phase, path)
 
     def _on_phase_finished(self, phase: str, exit_code: int, canceled: bool) -> None:
+        if self._scene_import_running:
+            self._scene_import_canceled = canceled
+            self.progress.finish_phase(complete=exit_code == 0 and not canceled)
+            if canceled:
+                self.progress.set_status(i18n.STATUS_CANCELED)
+            return
         self.progress.finish_phase(complete=exit_code == 0 and not canceled)
         if canceled:
             self.progress.set_status(i18n.STATUS_CANCELED)
@@ -732,6 +752,9 @@ class MainWindow(QWidget):
             step.on_phase_finished(phase, exit_code, canceled)
 
     def _on_queue_finished(self, success: bool) -> None:
+        if self._scene_import_running:
+            self._finish_scene_import_queue(success)
+            return
         step = self.steps[self._current_step] if 0 <= self._current_step < len(self.steps) else None
         if step:
             step.on_queue_finished(success)
@@ -774,11 +797,6 @@ class MainWindow(QWidget):
         self._shutdown = True
         if self.runner.is_running():
             self.runner.cancel()
-        if self._scene_import_thread is not None and self._scene_import_thread.isRunning():
-            if self._scene_import_worker is not None:
-                self._scene_import_worker.cancel()
-            self._scene_import_thread.quit()
-            self._scene_import_thread.wait(3000)
         for step in self.steps:
             step.shutdown()
 

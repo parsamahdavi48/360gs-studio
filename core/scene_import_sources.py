@@ -20,6 +20,7 @@ from core.scene_import_contracts import (
     is_external_import_record,
 )
 from core.scene_layout import (
+    dataset_artifacts_path,
     mask_items_dir,
     mask_runs_path,
     normal_camera_defaults_path,
@@ -94,6 +95,7 @@ def backup_existing_import_metadata(scene: Path, import_id: str) -> Path | None:
         (mask_items_dir(scene), "masks/items"),
         (step4_export_settings_path(scene), "step4/export_settings.json"),
         (step4_dataset_runs_path(scene), "step4/dataset_runs.json"),
+        (dataset_artifacts_path(scene), "artifacts/dataset_artifacts.json"),
         (scene_imports_path(scene), "imports/scene_imports.json"),
     ]
     for source, rel in targets:

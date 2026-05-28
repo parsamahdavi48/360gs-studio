@@ -11,9 +11,11 @@ from core.frame_job_spec import (
     JOB_KIND_APPLY_FRAME_DECISIONS,
     JOB_KIND_EXTRACT_VIDEO,
     JOB_KIND_IMPORT_IMAGE_SEQUENCE,
+    JOB_KIND_IMPORT_SCENE,
     apply_frame_decisions_job,
     extract_video_job,
     import_image_sequence_job,
+    import_scene_job,
     load_frame_job,
     write_frame_job,
 )
@@ -115,6 +117,16 @@ def test_import_image_sequence_frame_job_round_trips(tmp_path: Path) -> None:
     assert loaded["kind"] == JOB_KIND_IMPORT_IMAGE_SEQUENCE
     assert loaded["source_dir"] == str(tmp_path / "frames")
     assert loaded["recursive"] is False
+
+
+def test_import_scene_frame_job_round_trips(tmp_path: Path) -> None:
+    payload = import_scene_job(scene_dir=tmp_path / "scene")
+
+    path = write_frame_job(tmp_path / "scene_import.json", payload)
+    loaded = load_frame_job(path, expected_kind=JOB_KIND_IMPORT_SCENE)
+
+    assert loaded["kind"] == JOB_KIND_IMPORT_SCENE
+    assert loaded["scene_dir"] == str(tmp_path / "scene")
 
 
 def test_apply_frame_decisions_frame_job_round_trips(tmp_path: Path) -> None:

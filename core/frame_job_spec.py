@@ -20,12 +20,14 @@ FRAME_JOB_SCHEMA_VERSION = 1
 JOB_KIND_APPLY_FRAME_DECISIONS = "apply_frame_decisions"
 JOB_KIND_EXTRACT_VIDEO = "extract_video"
 JOB_KIND_IMPORT_IMAGE_SEQUENCE = "import_image_sequence"
+JOB_KIND_IMPORT_SCENE = "import_scene"
 JOB_KIND_REFRESH_SCENE_ASSETS = "refresh_scene_assets"
 
 FRAME_JOB_KINDS = {
     JOB_KIND_APPLY_FRAME_DECISIONS,
     JOB_KIND_EXTRACT_VIDEO,
     JOB_KIND_IMPORT_IMAGE_SEQUENCE,
+    JOB_KIND_IMPORT_SCENE,
     JOB_KIND_REFRESH_SCENE_ASSETS,
 }
 
@@ -92,6 +94,17 @@ def import_image_sequence_job(
     }
 
 
+def import_scene_job(
+    *,
+    scene_dir: str | Path,
+) -> dict[str, Any]:
+    return {
+        "schema_version": FRAME_JOB_SCHEMA_VERSION,
+        "kind": JOB_KIND_IMPORT_SCENE,
+        "scene_dir": str(scene_dir),
+    }
+
+
 def apply_frame_decisions_job(
     *,
     scene_dir: str | Path,
@@ -149,6 +162,8 @@ def validate_frame_job_payload(payload: dict[str, Any]) -> None:
         _validate_extract_video_job(data)
     elif kind == JOB_KIND_IMPORT_IMAGE_SEQUENCE:
         _validate_import_image_sequence_job(data)
+    elif kind == JOB_KIND_IMPORT_SCENE:
+        _validate_import_scene_job(data)
     elif kind == JOB_KIND_APPLY_FRAME_DECISIONS:
         _validate_apply_frame_decisions_job(data)
     elif kind == JOB_KIND_REFRESH_SCENE_ASSETS:
@@ -187,6 +202,10 @@ def _validate_import_image_sequence_job(payload: Mapping[str, Any]) -> None:
         require_str(payload, key, label="frame")
     require_str(payload, "prefix", label="frame", allow_empty=True)
     require_bool(payload, "recursive", label="frame")
+
+
+def _validate_import_scene_job(payload: Mapping[str, Any]) -> None:
+    require_str(payload, "scene_dir", label="frame")
 
 
 def _validate_apply_frame_decisions_job(payload: Mapping[str, Any]) -> None:

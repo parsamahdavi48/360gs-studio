@@ -8,6 +8,7 @@ import numpy as np
 import pytest
 from PIL import Image
 
+from core.artifact_registry import load_artifacts
 from core.scene_import import import_scene
 from core.scene_import_contracts import SceneImportCancelled, SceneImportCancelToken, SceneImportOptions
 from core.scene_layout import (
@@ -18,6 +19,7 @@ from core.scene_layout import (
     step4_dataset_runs_path,
     step4_export_settings_path,
 )
+from core.workflow_artifacts import latest_dataset_root, register_dataset_artifact
 
 
 def _write_image(path: Path, size: tuple[int, int] = (64, 32), color: tuple[int, int, int] = (0, 0, 0)) -> None:
@@ -136,6 +138,13 @@ def test_scene_import_registers_route_specific_output_dataset(tmp_path: Path) ->
     assert dataset_runs[0]["dataset_root"] == "output/metashape_cubemap"
     assert dataset_runs[0]["artifacts"]["root"] == "output/metashape_cubemap"
 
+    artifacts = load_artifacts(scene, "dataset")
+    assert len(artifacts) == 1
+    assert artifacts[0].id == f"dataset_{result.import_id}"
+    assert artifacts[0].root == "output/metashape_cubemap"
+    assert artifacts[0].metadata["origin"]["kind"] == "external_import"
+    assert latest_dataset_root(scene) == output
+
 
 def test_scene_import_prefers_existing_settings_output_root(tmp_path: Path) -> None:
     scene = tmp_path
@@ -163,6 +172,42 @@ def test_scene_import_prefers_existing_settings_output_root(tmp_path: Path) -> N
     settings = json.loads(step4_export_settings_path(scene).read_text(encoding="utf-8"))
     assert settings["output_dir"] == str(spheresfm_output)
     assert settings["portable_output"]["root"] == "output/spheresfm_cubemap"
+
+
+def test_scene_import_registered_dataset_artifact_tracks_imported_output(tmp_path: Path) -> None:
+    scene = tmp_path
+    stale = scene / "output" / "old_dataset"
+    stale.mkdir(parents=True)
+    (stale / "transforms.json").write_text(json.dumps({"camera_model": "SIMPLE_PINHOLE", "frames": []}), encoding="utf-8")
+    assert register_dataset_artifact(scene, artifact_id="dataset_old", root=stale) is not None
+
+    output = scene / "output" / "metashape_cubemap"
+    _write_image(output / "images" / "frame_0001_px.jpg", size=(64, 64))
+    _write_transforms(output / "transforms.json")
+
+    result = import_scene(scene)
+
+    assert result.status == "ok"
+    assert latest_dataset_root(scene) == output
+    artifacts = load_artifacts(scene, "dataset")
+    assert [artifact.id for artifact in artifacts] == ["dataset_old", f"dataset_{result.import_id}"]
+
+
+def test_scene_import_removes_external_dataset_artifact_when_output_is_absent(tmp_path: Path) -> None:
+    scene = tmp_path
+    _write_image(scene / "images" / "frame_0001.jpg")
+    output = scene / "output" / "metashape_cubemap"
+    _write_image(output / "images" / "frame_0001_px.jpg", size=(64, 64))
+    _write_transforms(output / "transforms.json")
+    first = import_scene(scene)
+    assert [artifact.id for artifact in load_artifacts(scene, "dataset")] == [f"dataset_{first.import_id}"]
+
+    (output / "images" / "frame_0001_px.jpg").unlink()
+    (output / "transforms.json").unlink()
+    second = import_scene(scene)
+
+    assert second.status == "ok"
+    assert load_artifacts(scene, "dataset") == []
 
 
 def test_scene_import_rescan_replaces_previous_external_metadata(tmp_path: Path) -> None:
