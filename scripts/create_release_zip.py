@@ -4,6 +4,7 @@ import argparse
 import hashlib
 import json
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -73,6 +74,41 @@ UNWANTED_NAMES = {
 
 RELEASE_MANIFEST_NAME = "release_manifest.json"
 
+TEXT_CONTENT_SCAN_SUFFIXES = {
+    ".bat",
+    ".cfg",
+    ".cmd",
+    ".css",
+    ".html",
+    ".ini",
+    ".js",
+    ".json",
+    ".jsx",
+    ".md",
+    ".ps1",
+    ".py",
+    ".pyi",
+    ".toml",
+    ".ts",
+    ".tsx",
+    ".txt",
+    ".yaml",
+    ".yml",
+}
+
+WINDOWS_LOCAL_DEV_PATH_RE = re.compile(
+    r"(?ix)"
+    r"(?<![A-Za-z0-9_%])"
+    r"[A-Z]:"
+    r"[\\/]+"
+    r"(?:"
+    r"GitHub"
+    r"|source[\\/]+repos"
+    r"|Users[\\/]+[^\\/\s\"'<>:]+[\\/]+(?:AppData|Desktop|Documents|Downloads|GitHub|source|repos)"
+    r")"
+    r"(?:[\\/]+|$)"
+)
+
 
 def read_version(repo_root: Path) -> str:
     data = tomllib.loads((repo_root / "pyproject.toml").read_text(encoding="utf-8"))
@@ -128,6 +164,44 @@ def validate_release_member(path: str) -> None:
             raise ValueError(f"unwanted local directory would be included: {path}")
 
 
+def _literal_path_regex(path: Path) -> re.Pattern[str] | None:
+    text = str(path)
+    if not text:
+        return None
+    parts = [part for part in re.split(r"[\\/]+", text) if part]
+    if len(parts) < 2:
+        return None
+    return re.compile(r"[\\/]+".join(re.escape(part) for part in parts), re.IGNORECASE)
+
+
+def _release_content_path_patterns(repo_root: Path) -> tuple[tuple[str, re.Pattern[str]], ...]:
+    patterns: list[tuple[str, re.Pattern[str]]] = [("Windows local development path", WINDOWS_LOCAL_DEV_PATH_RE)]
+    for label, path in (
+        ("current checkout path", repo_root.resolve()),
+        ("current user home path", Path.home().resolve()),
+    ):
+        pattern = _literal_path_regex(path)
+        if pattern is not None:
+            patterns.append((label, pattern))
+    return tuple(patterns)
+
+
+def validate_release_file_contents(repo_root: Path, path: str) -> None:
+    normalized = path.replace("\\", "/")
+    if Path(normalized).suffix.lower() not in TEXT_CONTENT_SCAN_SUFFIXES:
+        return
+    member_path = repo_root / normalized
+    try:
+        text = member_path.read_text(encoding="utf-8")
+    except UnicodeDecodeError:
+        return
+    for label, pattern in _release_content_path_patterns(repo_root):
+        match = pattern.search(text)
+        if match:
+            snippet = match.group(0).replace("\r", "\\r").replace("\n", "\\n")
+            raise ValueError(f"local developer path would be included in release member: {path}: {label}: {snippet}")
+
+
 def create_release_zip(repo_root: Path, output: Path | None = None) -> Path:
     version = read_version(repo_root)
     prefix = f"stechdrive-3dgs-utils-v{version}/"
@@ -140,6 +214,7 @@ def create_release_zip(repo_root: Path, output: Path | None = None) -> Path:
 
     for path in files:
         validate_release_member(path)
+        validate_release_file_contents(repo_root, path)
 
     with zipfile.ZipFile(output_path, "w", compression=zipfile.ZIP_DEFLATED) as zf:
         for path in files:

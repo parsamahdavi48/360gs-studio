@@ -99,6 +99,32 @@ def test_release_zip_rejects_unwanted_members(path: str) -> None:
         validate_release_member(path)
 
 
+def test_release_zip_rejects_local_development_paths_in_text_members(tmp_path: Path) -> None:
+    member = tmp_path / "gui" / "bad_default.py"
+    member.parent.mkdir(parents=True)
+    local_checkout = "D:" + "\\GitHub\\gsplat\\examples\\simple_trainer.py"
+    member.write_text(f"DEFAULT_SCRIPT = {local_checkout!r}\n", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="local developer path"):
+        release_zip.validate_release_file_contents(tmp_path, "gui/bad_default.py")
+
+
+def test_release_zip_allows_generic_windows_example_paths(tmp_path: Path) -> None:
+    member = tmp_path / "README.md"
+    generic_scene = "D:" + "\\work\\scene01"
+    member.write_text(f"Use a short working path such as `{generic_scene}`.\n", encoding="utf-8")
+
+    release_zip.validate_release_file_contents(tmp_path, "README.md")
+
+
+def test_tracked_release_files_do_not_contain_local_development_paths() -> None:
+    repo_root = Path.cwd()
+
+    for path in release_zip.git_tracked_files(repo_root):
+        if include_in_release(path):
+            release_zip.validate_release_file_contents(repo_root, path)
+
+
 def test_release_setup_preflight_command_uses_extracted_batch_on_windows() -> None:
     cmd = release_setup_preflight_command(Path("pkg"), windows=True)
 
