@@ -1,18 +1,20 @@
 # stechdrive-3dgs-utils
 
-**v1.23.3**
+**v1.24.0**
 
 A Windows-first integrated GUI tool for turning 360° video, normal video, and still-image sequences into images, masks, and camera data that are practical for 3D Gaussian Splatting (3DGS) training.
 
-`setup_windows.bat` detects Python 3.12 and FFmpeg/FFprobe, installs missing system dependencies through winget when needed, creates a virtual environment, and installs the required runtime packages. Day-to-day launch is handled by `run_gui.bat`, so users do not need to run Python commands manually for the normal GUI workflow.
+`setup_windows.bat` detects Python 3.12 and FFmpeg/FFprobe, installs missing system dependencies through winget when needed, creates a virtual environment, and installs the required runtime packages. Day-to-day launch is handled by `run_gui.bat`, and release updates are handled by `update.bat`, so users do not need to run Python commands manually for the normal GUI workflow.
 
 ## Download
 
 For normal use, download the latest release ZIP:
 
-[Download stechdrive-3dgs-utils-v1.23.3.zip](https://github.com/stechdrive/stechdrive-3dgs-utils/releases/download/v1.23.3/stechdrive-3dgs-utils-v1.23.3.zip)
+[Download stechdrive-3dgs-utils-v1.24.0.zip](https://github.com/stechdrive/stechdrive-3dgs-utils/releases/download/v1.24.0/stechdrive-3dgs-utils-v1.24.0.zip)
 
 After extracting the ZIP, run `setup_windows.bat`, then `run_gui.bat`.
+
+If you are updating an older extracted release that does not yet have `update.bat`, close the GUI, open the new ZIP, enter its top-level `stechdrive-3dgs-utils-v...` folder, copy that folder's contents into your existing app folder with overwrite enabled, then run `update.bat` once from the existing app folder. It normalizes the app-managed files and keeps local state such as `.venv/`, `.cache/`, `models/`, scene folders, and other user folders.
 
 [JP 日本語の説明](README.ja.md)
 
@@ -53,7 +55,7 @@ For video or image sequences from DSLR, mirrorless, smartphone, or other normal 
 - In Step 5, convert Metashape, SphereSfM, RealityScan, or COLMAP results into NeRF-style JSON/PLY datasets, COLMAP-format datasets, LichtFeld-ready RealityScan conversions, or AprilTag scale-adjusted outputs.
 - Inspect SfM results and datasets in Scene Preview, with the point cloud, camera positions, selected camera image, and matching masks in one view. Open it from Step 4's viewer card.
 - If you print and place AprilTags before capture, Step 5 `Scale Adjustment` can estimate metric scale from an existing dataset. After reviewing the estimate, you can apply the same scale to the target dataset camera positions and point cloud.
-- Prepare the Windows environment with setup scripts that handle Python, FFmpeg/FFprobe, and the main Python packages. Normal use starts from `run_gui.bat`.
+- Prepare the Windows environment with setup scripts that handle Python, FFmpeg/FFprobe, and the main Python packages. Normal use starts from `run_gui.bat`, and release updates run through `update.bat`.
 
 ## Easy Setup
 
@@ -74,15 +76,15 @@ Python packages are installed into a virtual environment dedicated to this app, 
 
 Python packages are kept inside `.venv/`, so they are not normally installed into the system-wide Python environment or other projects. `.venv/` is an internal working directory, and you usually do not need to edit it manually.
 
-### Updating or Rebuilding the Environment
+### Updating the App or Environment
 
-This is usually unnecessary. To update an existing environment to the latest compatible package set, run:
+To update an extracted release, close the GUI and run:
 
 ```bat
-update_venv.bat
+update.bat
 ```
 
-To rebuild with the pinned verified package set from `requirements/`, run `update_venv.bat --locked`. To recreate the environment from scratch, run `setup_windows.bat --force`.
+`update.bat` updates the app files from the official GitHub release and only updates `.venv/` when the current environment does not match the release's recommended dependencies. It also removes obsolete app-managed files from older releases while preserving `.venv/`, `.cache/`, `models/`, scene folders, and other user folders. Use `update.bat --app-only` for app files only or `update.bat --deps-only` for dependencies only. To recreate the environment from scratch, run `setup_windows.bat --force`.
 
 YOLO/SAM2, Mask2Former, and SAM3.1 model weights may be downloaded on first use. Local YOLO/SAM weights can be placed under `models/ultralytics/`; local Mask2Former weights can be placed under `models/mask2former-swin-large-ade-semantic/`; SAM3.1 prompt masking uses `models/sam3.1/sam3.1_multiplex.pt`. Model weights are not bundled with the app and are governed by separate license terms; see [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md).
 
@@ -262,7 +264,7 @@ torch / torchvision / torchaudio from the CUDA 12.8 wheel index
 numpy, opencv-python, Pillow, open3d, ultralytics, transformers, safetensors, tqdm, PySide6, sam3
 ```
 
-`setup_windows.bat` uses the pinned verified package set under `requirements/` for reproducible first-time setup. `update_venv.bat` resolves the latest compatible packages by default; pass `--locked` when you want to rebuild from the pinned set instead.
+`setup_windows.bat` uses the pinned verified package set under `requirements/` for reproducible first-time setup. `update.bat` keeps the app and the existing `.venv/` aligned with the current release; pass `--latest-deps` only when you explicitly want to try the latest compatible dependency versions. For normal release users, `update.bat` is the only update command.
 
 ## License
 

@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
+import json
 import os
 import subprocess
 import sys
@@ -17,6 +19,8 @@ EXCLUDED_PREFIXES = (
 RELEASE_SCRIPT_PATHS = frozenset(
     {
         "scripts/check_venv.py",
+        "scripts/sync_venv.py",
+        "scripts/update_app.py",
         "scripts/update_venv.py",
     }
 )
@@ -35,6 +39,7 @@ EXCLUDED_PATHS = {
     "doc/architecture.md",
     "scripts/create_release_zip.py",
     "requirements/test.txt",
+    "update_venv.bat",
 }
 
 UNWANTED_PARTS = (
@@ -65,6 +70,8 @@ UNWANTED_NAMES = {
     "user_settings.json",
     "views_config.json",
 }
+
+RELEASE_MANIFEST_NAME = "release_manifest.json"
 
 
 def read_version(repo_root: Path) -> str:
@@ -137,7 +144,34 @@ def create_release_zip(repo_root: Path, output: Path | None = None) -> Path:
     with zipfile.ZipFile(output_path, "w", compression=zipfile.ZIP_DEFLATED) as zf:
         for path in files:
             zf.write(repo_root / path, prefix + path)
+        zf.writestr(prefix + RELEASE_MANIFEST_NAME, build_release_manifest(repo_root, version, prefix, files))
     return output_path
+
+
+def file_sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for block in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(block)
+    return digest.hexdigest()
+
+
+def build_release_manifest(repo_root: Path, version: str, root_prefix: str, files: list[str]) -> str:
+    manifest = {
+        "schema_version": 1,
+        "app": "stechdrive-3dgs-utils",
+        "version": version,
+        "root": root_prefix.rstrip("/"),
+        "files": [
+            {
+                "path": path,
+                "size": (repo_root / path).stat().st_size,
+                "sha256": file_sha256(repo_root / path),
+            }
+            for path in sorted(files)
+        ],
+    }
+    return json.dumps(manifest, indent=2) + "\n"
 
 
 def release_setup_preflight_command(
@@ -151,13 +185,10 @@ def release_setup_preflight_command(
         return [
             "cmd",
             "/c",
-            "update_venv.bat",
+            "update.bat",
             "--no-pause",
+            "--deps-only",
             "--dry-run",
-            "--locked",
-            "--candidates",
-            "3.12",
-            "--no-install-python",
         ]
     return [
         python_executable or sys.executable,

@@ -159,7 +159,7 @@ class Mask2FormerSkySegmenter:
         except ImportError as e:
             raise RuntimeError(
                 "Mask2Former sky masking requires transformers and safetensors. "
-                "Run setup_windows.bat or update_venv.bat."
+                "Run setup_windows.bat or update.bat."
             ) from e
 
         self.torch = torch

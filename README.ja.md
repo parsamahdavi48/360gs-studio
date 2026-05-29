@@ -1,18 +1,20 @@
 # stechdrive-3dgs-utils
 
-**v1.23.3**
+**v1.24.0**
 
 360°動画、通常動画、連番静止画から、3D Gaussian Splatting (3DGS) のトレーニングに使いやすい画像・マスク・カメラデータを作るためのWindows向け統合GUIツールです。
 
-`setup_windows.bat` がPython 3.12とFFmpeg/FFprobeの検出、必要に応じたwinget経由のインストール、仮想環境の作成、依存パッケージ導入まで行います。起動も `run_gui.bat` から行えるため、普段の作業ではPythonコマンドを直接打たずに使えます。
+`setup_windows.bat` がPython 3.12とFFmpeg/FFprobeの検出、必要に応じたwinget経由のインストール、仮想環境の作成、依存パッケージ導入まで行います。起動は `run_gui.bat`、リリース更新は `update.bat` から行えるため、普段の作業ではPythonコマンドを直接打たずに使えます。
 
 ## ダウンロード
 
 通常利用は、最新リリースZIPをダウンロードしてください。
 
-[stechdrive-3dgs-utils-v1.23.3.zip をダウンロード](https://github.com/stechdrive/stechdrive-3dgs-utils/releases/download/v1.23.3/stechdrive-3dgs-utils-v1.23.3.zip)
+[stechdrive-3dgs-utils-v1.24.0.zip をダウンロード](https://github.com/stechdrive/stechdrive-3dgs-utils/releases/download/v1.24.0/stechdrive-3dgs-utils-v1.24.0.zip)
 
 ZIPを展開したら、`setup_windows.bat`、続いて `run_gui.bat` を実行します。
+
+まだ `update.bat` が入っていない古い展開済みリリースから更新する場合は、GUIを閉じ、新しいZIPを開いて中の `stechdrive-3dgs-utils-v...` フォルダへ入り、その中身を今使っているアプリフォルダへ上書きコピーしてから、既存アプリフォルダの `update.bat` を一度実行します。アプリ管理ファイルは現行リリースに整理されますが、`.venv/`、`.cache/`、`models/`、シーンフォルダ、その他ユーザーが作ったフォルダは残します。
 
 [EN English](README.md)
 
@@ -53,7 +55,7 @@ RealityScanで再アラインしたCSV/PLYを、LichtFeldでDatasetとして開�
 - Step 5では、Metashape / SphereSfM / RealityScan / COLMAPの結果から、NeRF系JSON/PLY、COLMAP形式データセット、LichtFeld向けRealityScan変換、AprilTagスケール補正などを選んで実行できます。
 - シーンプレビューで、SfM結果やデータセットの点群、カメラ位置、選択カメラの画像、対応マスクを同じ画面で確認できます。Step 4のビューワーカードから開けます。
 - AprilTagを撮影前に印刷・配置しておけば、Step 5の `スケール調整` で出力済みデータセットからメートル換算のスケールを推定できます。推定値を確認してから、対象データセットのカメラ位置と点群へ同じscaleを反映できます。
-- Windows向けセットアップスクリプトで、Python環境、FFmpeg/FFprobe、主要Pythonパッケージの準備をまとめて行えます。通常利用は `run_gui.bat` から起動できます。
+- Windows向けセットアップスクリプトで、Python環境、FFmpeg/FFprobe、主要Pythonパッケージの準備をまとめて行えます。通常利用は `run_gui.bat` から起動し、リリース更新は `update.bat` から実行できます。
 
 ## かんたん導入
 
@@ -74,15 +76,15 @@ Pythonパッケージはこのアプリ専用の仮想環境に入れるため�
 
 Pythonパッケージは `.venv/` に閉じ込めるため、システム全体や他プロジェクトのPython環境には基本的にインストールしません。`.venv/` は内部用の作業場所なので、通常は手動で編集する必要はありません。
 
-### 環境を更新・作り直す場合
+### アプリや環境を更新する場合
 
-通常は不要です。既存環境を互換する最新パッケージへ更新する場合だけ、次を実行します。
+リリースZIPを展開した環境を更新する場合は、GUIを閉じて次を実行します。
 
 ```bat
-update_venv.bat
+update.bat
 ```
 
-`requirements/` の検証済み固定セットで作り直す場合は `update_venv.bat --locked`、環境を最初から作り直す場合は `setup_windows.bat --force` を使います。
+`update.bat` は公式GitHub Releaseからアプリ本体を更新し、現在の `.venv/` がリリース推奨の依存関係と一致しない場合だけ依存パッケージを更新します。古いリリースに残っていた不要なアプリ管理ファイルは削除しますが、`.venv/`、`.cache/`、`models/`、シーンフォルダ、その他ユーザーフォルダは残します。アプリ本体だけ更新する場合は `update.bat --app-only`、依存だけ更新する場合は `update.bat --deps-only` を使います。環境を最初から作り直す場合は `setup_windows.bat --force` を使います。
 
 YOLO/SAM2、Mask2Former、SAM3.1のモデルファイルは初回利用時にダウンロードされる場合があります。ローカルのYOLO/SAM重みは `models/ultralytics/`、Mask2Former重みは `models/mask2former-swin-large-ade-semantic/`、SAM3.1プロンプトマスクは `models/sam3.1/sam3.1_multiplex.pt` を使います。モデル重みはアプリに同梱しておらず、別ライセンスが適用されます。詳細は [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md) を参照してください。
 
@@ -262,7 +264,7 @@ torch / torchvision / torchaudio from the CUDA 12.8 wheel index
 numpy, opencv-python, Pillow, open3d, ultralytics, transformers, safetensors, tqdm, PySide6, sam3
 ```
 
-`setup_windows.bat` は `requirements/` 以下の検証済み固定セットを使い、初回セットアップの再現性を優先します。`update_venv.bat` はデフォルトで互換する最新パッケージを解決し、固定セットで作り直したい場合だけ `--locked` を渡します。
+`setup_windows.bat` は `requirements/` 以下の検証済み固定セットを使い、初回セットアップの再現性を優先します。`update.bat` はアプリ本体と既存の `.venv/` を現在のリリースに揃えます。互換する最新依存を明示的に試したい場合だけ `--latest-deps` を渡します。通常のリリース利用では、更新コマンドは `update.bat` だけです。
 
 ## ライセンス
 

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import zipfile
 from pathlib import Path
 
@@ -16,6 +17,8 @@ def test_release_zip_excludes_tests_but_keeps_setup_scripts() -> None:
     assert not include_in_release("doc/architecture.ja.md")
     assert not include_in_release("scripts/create_release_zip.py")
     assert include_in_release("scripts/update_venv.py")
+    assert include_in_release("scripts/update_app.py")
+    assert include_in_release("scripts/sync_venv.py")
     assert include_in_release("scripts/check_venv.py")
     assert not include_in_release("scripts/estimate_apriltag_scale.py")
     assert include_in_release("core/apriltag_scale_apply.py")
@@ -31,6 +34,8 @@ def test_release_zip_excludes_tests_but_keeps_setup_scripts() -> None:
     assert not include_in_release("requirements/dev.txt")
     assert include_in_release("models/README.md")
     assert include_in_release("run_gui.bat")
+    assert include_in_release("update.bat")
+    assert not include_in_release("update_venv.bat")
 
 
 def test_release_zip_script_surface_is_explicit() -> None:
@@ -39,6 +44,27 @@ def test_release_zip_script_surface_is_explicit() -> None:
     assert release_zip.RELEASE_SCRIPT_PATHS <= tracked_scripts
     for path in sorted(tracked_scripts):
         assert include_in_release(path) == (path in release_zip.RELEASE_SCRIPT_PATHS)
+
+
+def test_build_release_manifest_records_release_files(tmp_path: Path) -> None:
+    (tmp_path / "run_gui.bat").write_text("run", encoding="utf-8")
+    (tmp_path / "update.bat").write_text("update", encoding="utf-8")
+
+    manifest = json.loads(
+        release_zip.build_release_manifest(
+            tmp_path,
+            version="9.9.9",
+            root_prefix="stechdrive-3dgs-utils-v9.9.9/",
+            files=["update.bat", "run_gui.bat"],
+        )
+    )
+
+    assert manifest["schema_version"] == 1
+    assert manifest["app"] == "stechdrive-3dgs-utils"
+    assert manifest["version"] == "9.9.9"
+    assert manifest["root"] == "stechdrive-3dgs-utils-v9.9.9"
+    assert [item["path"] for item in manifest["files"]] == ["run_gui.bat", "update.bat"]
+    assert all(len(item["sha256"]) == 64 for item in manifest["files"])
 
 
 @pytest.mark.parametrize(
@@ -61,6 +87,7 @@ def test_release_zip_script_surface_is_explicit() -> None:
         "doc/architecture.ja.md",
         "requirements/test.txt",
         "requirements/dev.txt",
+        "update_venv.bat",
         "scene/_stechdrive/frames/selected_frames.csv",
         "pkg/__pycache__/mod.pyc",
         "scripts/estimate_apriltag_scale.py",
@@ -78,13 +105,10 @@ def test_release_setup_preflight_command_uses_extracted_batch_on_windows() -> No
     assert cmd == [
         "cmd",
         "/c",
-        "update_venv.bat",
+        "update.bat",
         "--no-pause",
+        "--deps-only",
         "--dry-run",
-        "--locked",
-        "--candidates",
-        "3.12",
-        "--no-install-python",
     ]
 
 
@@ -108,7 +132,7 @@ def test_release_setup_preflight_command_uses_extracted_script_on_posix() -> Non
 def test_verify_release_zip_setup_runs_from_extracted_root(monkeypatch, tmp_path: Path) -> None:
     zip_path = tmp_path / "release.zip"
     with zipfile.ZipFile(zip_path, "w") as zf:
-        zf.writestr("stechdrive-3dgs-utils-v9.9.9/update_venv.bat", "")
+        zf.writestr("stechdrive-3dgs-utils-v9.9.9/update.bat", "")
 
     calls: list[tuple[list[str], Path, bool]] = []
 
