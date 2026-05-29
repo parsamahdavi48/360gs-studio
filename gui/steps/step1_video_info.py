@@ -9,6 +9,7 @@ from pathlib import Path
 from PySide6.QtWidgets import QMessageBox
 
 from core.scene_project import source_video_record, upsert_source_videos
+from core.video_info import frame_rates_indicate_vfr
 from gui import i18n
 
 
@@ -161,9 +162,11 @@ class Step1VideoInfoMixin:
         s = streams[0]
         fmt = data.get("format") if isinstance(data.get("format"), dict) else {}
         w, h = int(s.get("width", 0)), int(s.get("height", 0))
-        fps = self._parse_fraction(s.get("avg_frame_rate", "0"))
+        avg_frame_rate = self._parse_fraction(s.get("avg_frame_rate", "0"))
+        r_frame_rate = self._parse_fraction(s.get("r_frame_rate", "0"))
+        fps = avg_frame_rate
         if fps <= 0:
-            fps = self._parse_fraction(s.get("r_frame_rate", "0"))
+            fps = r_frame_rate
         dur = float(s.get("duration") or fmt.get("duration") or 0.0)
         nb = int(s["nb_frames"]) if s.get("nb_frames", "").isdigit() else 0
 
@@ -176,10 +179,22 @@ class Step1VideoInfoMixin:
         if nb <= 0 and dur > 0:
             nb = max(1, int(round(dur * fps)))
 
+        variable_frame_rate = frame_rates_indicate_vfr(avg_frame_rate, r_frame_rate)
+        frame_rate_warning = ""
+        if variable_frame_rate:
+            frame_rate_warning = (
+                "Variable-frame-rate video suspected from ffprobe avg_frame_rate/r_frame_rate. "
+                "Frame selection remains frame-index based; timestamp_sec values are approximate."
+            )
+
         return {
             "width": w,
             "height": h,
             "fps": fps,
+            "avg_frame_rate": avg_frame_rate,
+            "r_frame_rate": r_frame_rate,
+            "variable_frame_rate": variable_frame_rate,
+            "frame_rate_warning": frame_rate_warning,
             "duration_sec": dur,
             "total_frames": nb,
             "tags": s.get("tags") if isinstance(s.get("tags"), dict) else {},

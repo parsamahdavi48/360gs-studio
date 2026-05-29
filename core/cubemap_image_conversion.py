@@ -180,7 +180,15 @@ def remap_image(
         view_name = view["name"]
         map_x, map_y = remap_tables[view_name]
 
-        converted = remap_with_channels(equi, map_x, map_y)
+        interpolation = cv2.INTER_NEAREST if is_grayscale else cv2.INTER_LINEAR
+        alpha_interpolation = cv2.INTER_NEAREST if mask_from_alpha and has_alpha else None
+        converted = remap_with_channels(
+            equi,
+            map_x,
+            map_y,
+            interpolation=interpolation,
+            alpha_interpolation=alpha_interpolation,
+        )
 
         if is_grayscale:
             # 2 値マスクとして閾値化
@@ -488,7 +496,12 @@ def proc_convert_images_colmap_rig(job: tuple[str, str]) -> int:
         for view in _WORKER_VIEWS:
             view_name = view["name"]
             map_x, map_y = tables[view_name]
-            converted = remap_with_channels(equi, map_x, map_y)
+            converted = remap_with_channels(
+                equi,
+                map_x,
+                map_y,
+                alpha_interpolation=cv2.INTER_NEAREST if _WORKER_EXPORT_MASKS and _WORKER_MASK_FROM_ALPHA and has_alpha else None,
+            )
 
             if _WORKER_EXPORT_IMAGES:
                 image_dir = _WORKER_COLMAP_RIG_IMAGE_DIRS[view_name]
@@ -537,7 +550,7 @@ def proc_convert_images_colmap_rig(job: tuple[str, str]) -> int:
         for view in _WORKER_VIEWS:
             view_name = view["name"]
             map_x, map_y = tables[view_name]
-            converted = remap_with_channels(equi_mask, map_x, map_y)
+            converted = remap_with_channels(equi_mask, map_x, map_y, interpolation=cv2.INTER_NEAREST)
             mask = _binary_mask_from_remapped(converted, _WORKER_INVERT_MASKS)
             mask_dir = _WORKER_COLMAP_RIG_MASK_DIRS[view_name]
             save_image(

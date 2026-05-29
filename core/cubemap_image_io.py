@@ -66,14 +66,28 @@ def to_uint8_image(arr: np.ndarray) -> np.ndarray:
     return arr.astype(np.uint8)
 
 
-def remap_with_channels(arr: np.ndarray, map_x: np.ndarray, map_y: np.ndarray) -> np.ndarray:
+def remap_with_channels(
+    arr: np.ndarray,
+    map_x: np.ndarray,
+    map_y: np.ndarray,
+    *,
+    interpolation: int = cv2.INTER_LINEAR,
+    alpha_interpolation: int | None = None,
+) -> np.ndarray:
+    alpha_interpolation = interpolation if alpha_interpolation is None else alpha_interpolation
     if arr.ndim == 3 and arr.shape[2] == 4:
         color = np.ascontiguousarray(arr[..., :3])
         alpha = np.ascontiguousarray(arr[..., 3])
-        remapped_color = cv2.remap(color, map_x, map_y, interpolation=cv2.INTER_LINEAR, borderMode=cv2.BORDER_WRAP)
-        remapped_alpha = cv2.remap(alpha, map_x, map_y, interpolation=cv2.INTER_LINEAR, borderMode=cv2.BORDER_WRAP)
+        remapped_color = cv2.remap(color, map_x, map_y, interpolation=interpolation, borderMode=cv2.BORDER_WRAP)
+        remapped_alpha = cv2.remap(
+            alpha,
+            map_x,
+            map_y,
+            interpolation=alpha_interpolation,
+            borderMode=cv2.BORDER_WRAP,
+        )
         return np.dstack([remapped_color, remapped_alpha])
-    return cv2.remap(arr, map_x, map_y, interpolation=cv2.INTER_LINEAR, borderMode=cv2.BORDER_WRAP)
+    return cv2.remap(arr, map_x, map_y, interpolation=interpolation, borderMode=cv2.BORDER_WRAP)
 
 
 def save_image(arr: np.ndarray, path: str, jpg_quality: int = 95, force_8bit: bool = False) -> None:

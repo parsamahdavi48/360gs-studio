@@ -468,6 +468,38 @@ class Step4PathMixin:
         rig_dir.mkdir(parents=True, exist_ok=True)
         return True
 
+    def _prepare_colmap_sfm_outputs(self) -> bool:
+        if not self.scene_dir:
+            raise ValueError(i18n.t("SCENE_REQUIRED_ACTION_HINT"))
+        output = self._output_dir()
+        rig_dir = self._colmap_rig_dir()
+
+        try:
+            resolved_rig = rig_dir.resolve()
+        except OSError:
+            resolved_rig = rig_dir.absolute()
+        if resolved_rig.parent != output.resolve():
+            raise ValueError(f"COLMAP Rig出力フォルダが不正です: {rig_dir}")
+
+        targets = [self._colmap_database_path(), self._colmap_sparse_dir()]
+        existing_targets = [p for p in targets if self._path_has_contents(p)]
+        if existing_targets:
+            target_text = "\n".join(str(p) for p in existing_targets)
+            result = QMessageBox.question(
+                self,
+                i18n.t("OUTPUT_PARTIAL_RESET_TITLE"),
+                i18n.t("OUTPUT_PARTIAL_RESET_MESSAGE").format(paths=target_text),
+                QMessageBox.Yes | QMessageBox.No,
+                QMessageBox.No,
+            )
+            if result != QMessageBox.Yes:
+                return False
+            for target in existing_targets:
+                self._clear_path(target)
+
+        rig_dir.mkdir(parents=True, exist_ok=True)
+        return True
+
     def _prepare_spheresfm_run_outputs(self, *, include_project: bool, include_conversion: bool) -> bool:
         self._validate_spheresfm_project_dir()
         targets: list[Path] = []

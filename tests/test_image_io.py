@@ -161,6 +161,18 @@ def test_remap_grayscale():
     assert out.dtype == np.uint8
 
 
+def test_remap_can_keep_binary_mask_edges_nearest():
+    arr = np.array([[0, 255]], dtype=np.uint8)
+    map_x = np.array([[0.49, 0.51]], dtype=np.float32)
+    map_y = np.zeros((1, 2), dtype=np.float32)
+
+    nearest = remap_with_channels(arr, map_x, map_y, interpolation=cv2.INTER_NEAREST)
+    linear = remap_with_channels(arr, map_x, map_y)
+
+    assert nearest.tolist() == [[0, 255]]
+    assert 0 < int(linear[0, 0]) < 255
+
+
 # =============================================================================
 # end-to-end remap_image
 # =============================================================================

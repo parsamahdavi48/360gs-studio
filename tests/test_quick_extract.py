@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import subprocess
 import sys
 from pathlib import Path
@@ -16,6 +17,8 @@ from core.extract_frames import (
     build_summary_from_counts,
     commit_staged_frame_outputs,
     extract_selected_frames,
+    frame_rates_indicate_vfr,
+    probe_video,
     run_cmd_with_ffmpeg_progress,
 )
 
@@ -87,6 +90,35 @@ def test_quick_extract_summary_marks_quality_mode_skipped(tmp_path: Path) -> Non
     assert summary["estimate_mode"] == "quick_extract"
     assert summary["analysis"]["pipeline"] == "quick"
     assert summary["params"]["quick_extract"] is True
+
+
+def test_probe_video_marks_variable_frame_rate_from_ffprobe_rates(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def fake_run_cmd(cmd: list[str], capture: bool = False) -> subprocess.CompletedProcess:
+        payload = {
+            "streams": [
+                {
+                    "width": 1920,
+                    "height": 1080,
+                    "avg_frame_rate": "24000/1001",
+                    "r_frame_rate": "30/1",
+                    "nb_frames": "240",
+                    "duration": "10.0",
+                }
+            ],
+            "format": {"duration": "10.0"},
+        }
+        return subprocess.CompletedProcess(cmd, 0, json.dumps(payload), "")
+
+    monkeypatch.setattr("core.extract_frames.run_cmd", fake_run_cmd)
+
+    info = probe_video(tmp_path / "vfr.mp4", "ffprobe")
+
+    assert frame_rates_indicate_vfr(info.avg_frame_rate, info.r_frame_rate)
+    assert info.variable_frame_rate is True
+    assert "Variable-frame-rate" in info.frame_rate_warning
 
 
 def test_quick_extract_allows_missing_trailing_frame_outputs(tmp_path: Path, monkeypatch) -> None:

@@ -4,6 +4,7 @@ from pathlib import Path
 
 import cv2
 import numpy as np
+from PIL import Image
 
 import core.overexposure_mask as overexposure_mask
 import core.stitch_mask as stitch_mask
@@ -36,6 +37,20 @@ def test_image_size_unicode_rejects_truncated_jpeg_with_valid_header(tmp_path: P
     path.write_bytes(data[: int(len(data) * 0.75)])
 
     assert image_size_unicode(path) is None
+
+
+def test_imread_unicode_ignores_exif_orientation_to_match_header_size(tmp_path: Path) -> None:
+    path = tmp_path / "oriented.jpg"
+    image = Image.new("RGB", (40, 20), color=(10, 20, 30))
+    exif = Image.Exif()
+    exif[274] = 6
+    image.save(path, exif=exif)
+
+    loaded = imread_unicode(path, cv2.IMREAD_COLOR)
+
+    assert loaded is not None
+    assert loaded.shape[:2] == (20, 40)
+    assert image_size_unicode(path) == (40, 20)
 
 
 def test_cubemap_remap_image_accepts_unicode_paths(tmp_path: Path) -> None:

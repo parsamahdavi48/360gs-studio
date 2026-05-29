@@ -48,7 +48,7 @@ from core.frame_pair_analysis import (
 )
 from core.path_safety import safe_clear_path
 from core.scene_layout import extract_report_path, frame_cache_dir, scene_images_dir, selected_frames_path
-from core.video_info import VideoInfo
+from core.video_info import VideoInfo, frame_rates_indicate_vfr
 
 
 @dataclass(frozen=True, slots=True)
@@ -300,9 +300,11 @@ def probe_video(video_path: Path, ffprobe_bin: str) -> VideoInfo:
     stream = streams[0]
     width = int(stream.get("width", 0))
     height = int(stream.get("height", 0))
-    fps = parse_fraction(stream.get("avg_frame_rate", "0"))
+    avg_frame_rate = parse_fraction(stream.get("avg_frame_rate", "0"))
+    r_frame_rate = parse_fraction(stream.get("r_frame_rate", "0"))
+    fps = avg_frame_rate
     if fps <= 0:
-        fps = parse_fraction(stream.get("r_frame_rate", "0"))
+        fps = r_frame_rate
 
     duration = float(stream.get("duration") or data.get("format", {}).get("duration") or 0.0)
     nb_frames_raw = stream.get("nb_frames")
@@ -317,7 +319,25 @@ def probe_video(video_path: Path, ffprobe_bin: str) -> VideoInfo:
     if total_frames <= 0 and duration > 0:
         total_frames = max(1, int(round(duration * fps)))
 
-    return VideoInfo(width=width, height=height, fps=fps, duration=duration, total_frames=total_frames)
+    variable_frame_rate = frame_rates_indicate_vfr(avg_frame_rate, r_frame_rate)
+    frame_rate_warning = ""
+    if variable_frame_rate:
+        frame_rate_warning = (
+            "Variable-frame-rate video suspected from ffprobe avg_frame_rate/r_frame_rate. "
+            "Frame selection remains frame-index based; timestamp_sec values are approximate."
+        )
+
+    return VideoInfo(
+        width=width,
+        height=height,
+        fps=fps,
+        duration=duration,
+        total_frames=total_frames,
+        avg_frame_rate=avg_frame_rate,
+        r_frame_rate=r_frame_rate,
+        variable_frame_rate=variable_frame_rate,
+        frame_rate_warning=frame_rate_warning,
+    )
 
 
 def select_fixed(total_frames: int, fps: float, interval_sec: float) -> tuple[list[int], int]:
@@ -691,6 +711,10 @@ def write_report(
             "width": video_info.width,
             "height": video_info.height,
             "fps": video_info.fps,
+            "avg_frame_rate": video_info.avg_frame_rate,
+            "r_frame_rate": video_info.r_frame_rate,
+            "variable_frame_rate": video_info.variable_frame_rate,
+            "frame_rate_warning": video_info.frame_rate_warning,
             "duration_sec": video_info.duration,
             "total_frames": video_info.total_frames,
         },
@@ -766,6 +790,10 @@ def build_summary_from_counts(
             "width": video_info.width,
             "height": video_info.height,
             "fps": video_info.fps,
+            "avg_frame_rate": video_info.avg_frame_rate,
+            "r_frame_rate": video_info.r_frame_rate,
+            "variable_frame_rate": video_info.variable_frame_rate,
+            "frame_rate_warning": video_info.frame_rate_warning,
             "duration_sec": video_info.duration,
             "total_frames": video_info.total_frames,
         },
@@ -855,6 +883,10 @@ def video_info_to_dict(video_info: VideoInfo) -> dict:
         "width": video_info.width,
         "height": video_info.height,
         "fps": video_info.fps,
+        "avg_frame_rate": video_info.avg_frame_rate,
+        "r_frame_rate": video_info.r_frame_rate,
+        "variable_frame_rate": video_info.variable_frame_rate,
+        "frame_rate_warning": video_info.frame_rate_warning,
         "duration_sec": video_info.duration,
         "total_frames": video_info.total_frames,
     }
@@ -1128,6 +1160,8 @@ def run_extract_frames(args: ExtractFramesOptions) -> int:
 
     print(f"Input video: {input_video}")
     print(f"Video: {video_info.width}x{video_info.height} @ {video_info.fps:.3f} fps")
+    if video_info.variable_frame_rate:
+        print(f"Warning: {video_info.frame_rate_warning}")
     resolved_prefix = sanitize_filename_prefix(args.filename_prefix)
     if not resolved_prefix:
         resolved_prefix = sanitize_filename_prefix(input_video.stem)

@@ -366,6 +366,52 @@ def test_colmap_export_can_queue_colmap_sfm_with_custom_executable(tmp_path: Pat
     assert commands[4][1][1] == "global_mapper"
 
 
+def test_colmap_sfm_only_resets_stale_database_and_sparse(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _app()
+    images = tmp_path / "images"
+    images.mkdir()
+    _write_test_image(images / "frame_0001.jpg")
+    rig = tmp_path / "output" / "colmap_rig"
+    rig_images = rig / "images"
+    rig_images.mkdir(parents=True)
+    _write_test_image(rig_images / "frame_0001.jpg")
+    database = rig / "database.db"
+    database.write_bytes(b"stale")
+    stale_sparse = rig / "sparse" / "0" / "old.txt"
+    stale_sparse.parent.mkdir(parents=True)
+    stale_sparse.write_text("stale", encoding="utf-8")
+    fake_colmap = tmp_path / "colmap.exe"
+    fake_colmap.write_text("", encoding="utf-8")
+    prompts: list[str] = []
+    monkeypatch.setattr(
+        QMessageBox,
+        "question",
+        lambda *_args, **_kwargs: prompts.append(_args[2]) or QMessageBox.Yes,
+    )
+    step = CubemapStep(Path.cwd())
+    step.set_scene_dir(str(tmp_path))
+    step._set_export_method("colmap")
+    step._set_colmap_stage_intents(run_sfm=True, run_conversion=False)
+    step.colmap_exec_browse.set_text(str(fake_colmap))
+
+    commands = step.build_commands()
+
+    assert [phase for phase, _cmd in commands] == [
+        "colmap_feature",
+        "colmap_rig_config",
+        "colmap_match",
+        "colmap_mapper",
+    ]
+    assert prompts
+    assert not database.exists()
+    assert not stale_sparse.exists()
+    assert rig_images.is_dir()
+    assert (rig / "sparse").is_dir()
+
+
 def test_colmap_export_can_queue_colmap_global_mapper(tmp_path: Path) -> None:
     _app()
     images = tmp_path / "images"

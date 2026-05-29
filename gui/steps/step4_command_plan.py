@@ -112,6 +112,8 @@ class Step4CommandPlanMixin:
             if run_sfm:
                 if not run_conversion and not self._colmap_rig_images_dir().is_dir():
                     raise ValueError(i18n.t("STEP4_PIPELINE_DETAIL_COLMAP_NEEDS_RIG"))
+                if not run_conversion and not self._prepare_colmap_sfm_outputs():
+                    return []
                 steps.extend(self._build_colmap_sfm_commands(plan=plan, prepared_this_run=run_conversion))
             return steps
 

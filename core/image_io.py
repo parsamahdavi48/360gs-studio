@@ -10,6 +10,17 @@ import numpy as np
 Pathish = str | PathLike[str]
 
 
+_IMREAD_IGNORE_ORIENTATION = int(getattr(cv2, "IMREAD_IGNORE_ORIENTATION", 128))
+
+
+def _ignore_exif_orientation_flags(flags: int) -> int:
+    """Keep image reads in raw-pixel orientation unless the caller asks for unchanged data."""
+    value = int(flags)
+    if value == int(cv2.IMREAD_UNCHANGED):
+        return value
+    return value | _IMREAD_IGNORE_ORIENTATION
+
+
 def imread_unicode(path: Pathish, flags: int = cv2.IMREAD_COLOR) -> np.ndarray | None:
     """Read an image without using OpenCV's Windows filename APIs."""
     try:
@@ -18,7 +29,7 @@ def imread_unicode(path: Pathish, flags: int = cv2.IMREAD_COLOR) -> np.ndarray |
         return None
     if data.size == 0:
         return None
-    return cv2.imdecode(data, flags)
+    return cv2.imdecode(data, _ignore_exif_orientation_flags(flags))
 
 
 def image_size_unicode(path: Pathish) -> tuple[int, int] | None:
