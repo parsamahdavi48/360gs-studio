@@ -211,9 +211,6 @@ class Step4TrainingDatasetMixin:
 
     @staticmethod
     def _default_gsplat_script_path() -> Path:
-        local_clone = Path(r"D:\GitHub\gsplat\examples\simple_trainer.py")
-        if local_clone.is_file():
-            return local_clone
         return Path("examples") / "simple_trainer.py"
 
     def _update_lfs_output_name(self, *, force: bool = False) -> None:

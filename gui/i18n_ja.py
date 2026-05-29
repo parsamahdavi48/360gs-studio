@@ -1437,7 +1437,7 @@ TIPS: dict[str, str] = {
     "TRAINING_LINK_POSTSHOT": "Postshot公式サイトを開きます。配布版やライセンス情報を確認できます",
     "TRAINING_LINK_BRUSH": "Brush公式GitHubリポジトリを開きます。インストール手順や対応オプションを確認できます",
     "TRAINING_LINK_GSPLAT": "gsplat公式GitHubリポジトリを開きます。インストール手順やexamplesを確認できます",
-    "GSPLAT_SCRIPT": "gsplatリポジトリの examples/simple_trainer.py を指定します。D:\\GitHub\\gsplat がある場合は自動候補にします",
+    "GSPLAT_SCRIPT": "gsplatリポジトリの examples/simple_trainer.py を指定します。手元のgsplatチェックアウトから選択してください",
     "GSPLAT_RESULT_NAME": "gsplatのckpts、stats、plyなどを保存する結果フォルダ名です。出力先の下に作成します",
     "GSPLAT_STRATEGY": "gsplatの学習方式です。通常はDefault、MCMCや3DGUTを試す場合はMCMCを使います",
     "GSPLAT_MAX_STEPS": "学習ステップ数です。初回確認では小さく、最終比較では増やします",

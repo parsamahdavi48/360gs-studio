@@ -63,6 +63,15 @@ def test_step6_training_cards_show_output_artifact_footers(tmp_path: Path) -> No
     assert len({footer.split(":", 1)[0] for footer in footers.values()}) == 1
 
 
+def test_gsplat_default_script_path_is_portable(tmp_path: Path) -> None:
+    step = _ready_step(tmp_path, metashape_inputs=True)
+    default_path = step._default_gsplat_script_path()
+
+    assert default_path == Path("examples") / "simple_trainer.py"
+    assert not default_path.is_absolute()
+    assert "D:\\GitHub" not in step.gsplat_script_browse.line_edit.placeholderText()
+
+
 def test_training_status_checks_existing_output_shape_when_cube_is_skipped(tmp_path: Path) -> None:
     step = _ready_step(tmp_path, metashape_inputs=True)
     _write_output_dataset(tmp_path, output_shape="projected", legacy_root=True)

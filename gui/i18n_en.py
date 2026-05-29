@@ -1437,7 +1437,7 @@ TIPS: dict[str, str] = {
     "TRAINING_LINK_POSTSHOT": "Open the official Postshot site for downloads and licensing information.",
     "TRAINING_LINK_BRUSH": "Open the official Brush GitHub repository for install instructions and supported options.",
     "TRAINING_LINK_GSPLAT": "Open the official gsplat GitHub repository for installation instructions and examples.",
-    "GSPLAT_SCRIPT": "Path to examples/simple_trainer.py in the gsplat repository. D:\\GitHub\\gsplat is used as the automatic candidate when present.",
+    "GSPLAT_SCRIPT": "Path to examples/simple_trainer.py in the gsplat repository. Select the script from your local gsplat checkout.",
     "GSPLAT_RESULT_NAME": "Folder name for gsplat ckpts, stats, ply, and related outputs. It is created under Training Output.",
     "GSPLAT_STRATEGY": "gsplat training strategy. Use Default normally; use MCMC for MCMC or 3DGUT experiments.",
     "GSPLAT_MAX_STEPS": "Training step count. Use smaller values for smoke checks and larger values for final comparisons.",
