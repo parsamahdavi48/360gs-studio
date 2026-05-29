@@ -1215,6 +1215,7 @@ STRINGS: dict[str, str] = {
     "APRILTAG_TAG_SIZE_INVALID": "Enter a positive number for the tag size.",
     "APRILTAG_RUNNING": "Estimating...",
     "APRILTAG_FAILED": "Estimation failed.\n{detail}",
+    "APRILTAG_ESTIMATE_STALE": "The estimate is no longer current. Run estimation again for the selected dataset and settings.",
     "APRILTAG_RESULT_FORMAT": "scale={scale}\nobservations={observations}\npairs={pairs}, inliers={inliers}\nRMS={rms:.6g} m",
     "APRILTAG_COPY_SCALE": "Copy scale",
     "APRILTAG_SCALE_COPIED": "Copied scale",

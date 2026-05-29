@@ -1219,6 +1219,7 @@ STRINGS: dict[str, str] = {
     "APRILTAG_TAG_SIZE_INVALID": "タグ実寸は正の数値で入力してください。",
     "APRILTAG_RUNNING": "推定中...",
     "APRILTAG_FAILED": "推定に失敗しました。\n{detail}",
+    "APRILTAG_ESTIMATE_STALE": "推定結果が現在の選択内容と一致しません。対象データセットと設定を確認して、もう一度推定してください。",
     "APRILTAG_RESULT_FORMAT": "scale={scale}\n観測={observations}\nペア={pairs}, inlier={inliers}\nRMS={rms:.6g} m",
     "APRILTAG_COPY_SCALE": "scaleをコピー",
     "APRILTAG_SCALE_COPIED": "scaleをコピーしました",

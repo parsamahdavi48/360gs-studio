@@ -10,6 +10,7 @@ APP_JOB_DATASET = "dataset"
 APP_JOB_FRAME = "frame"
 APP_JOB_SFM = "sfm"
 APP_JOB_WORKFLOW = "workflow"
+APP_JOB_APRILTAG = "apriltag"
 
 
 @dataclass(frozen=True, slots=True)
@@ -47,6 +48,10 @@ def sfm_app_job(payload: dict[str, Any], job_path: str | Path | None = None) -> 
     return AppJob(APP_JOB_SFM, dict(payload), Path(job_path) if job_path else None)
 
 
+def apriltag_app_job(payload: dict[str, Any], job_path: str | Path | None = None) -> AppJob:
+    return AppJob(APP_JOB_APRILTAG, dict(payload), Path(job_path) if job_path else None)
+
+
 def run_app_job(job: AppJob, *, cancel_event: CancellationToken | None = None) -> None:
     if job.job_type == APP_JOB_WORKFLOW:
         from core.workflow_job_runner import run_workflow_job_payload
@@ -67,5 +72,10 @@ def run_app_job(job: AppJob, *, cancel_event: CancellationToken | None = None) -
         from core.sfm_job_runner import run_sfm_job_payload
 
         run_sfm_job_payload(job.payload, cancel_event=cancel_event)
+        return
+    if job.job_type == APP_JOB_APRILTAG:
+        from core.apriltag_scale_job_runner import run_apriltag_scale_job_payload
+
+        run_apriltag_scale_job_payload(job.payload, cancel_event=cancel_event)
         return
     raise ValueError(f"Unsupported app job type: {job.job_type}")

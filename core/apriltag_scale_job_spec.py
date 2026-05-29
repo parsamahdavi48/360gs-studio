@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
@@ -85,6 +86,24 @@ def apriltag_scale_job_to_command(python_executable: str, payload: dict[str, Any
     if preset != CUBEMAP_POSE_PRESET_AUTO:
         cmd.extend(["--cubemap-pose-preset", preset])
     return cmd
+
+
+def write_apriltag_scale_job(path: str | Path, payload: dict[str, Any]) -> Path:
+    job_path = Path(path)
+    validate_apriltag_scale_job_payload(payload)
+    job_path.parent.mkdir(parents=True, exist_ok=True)
+    job_path.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
+    return job_path
+
+
+def load_apriltag_scale_job(path: str | Path, *, expected_kind: str = "") -> dict[str, Any]:
+    payload = json.loads(Path(path).read_text(encoding="utf-8"))
+    if not isinstance(payload, dict):
+        raise ValueError(f"AprilTag scale job must be a JSON object: {path}")
+    validate_apriltag_scale_job_payload(payload)
+    if expected_kind and payload["kind"] != expected_kind:
+        raise ValueError(f"AprilTag scale job kind must be {expected_kind}: {payload['kind']}")
+    return payload
 
 
 def _validate_estimate(payload: Mapping[str, Any]) -> None:

@@ -9,6 +9,7 @@ import pytest
 import core.apriltag_scale_apply as scale_apply
 from core.apriltag_scale_apply import apply_scene_output_scale, validate_scale_output_dataset
 from core.dataset_writer_colmap import ColmapCamera, ColmapImage, quaternion_from_matrix, write_colmap_text_dataset
+from core.scene_layout import step4_export_settings_path
 
 
 def _write_dataset(scene: Path, *, with_ply_file_path: bool = True) -> Path:
@@ -103,6 +104,49 @@ def test_validate_scale_output_dataset_checks_transforms_and_sample_images(tmp_p
     assert dataset.pointcloud_ply == tmp_path / "output" / "pointcloud.ply"
     assert dataset.frame_count == 2
     assert dataset.checked_image_count == 2
+
+
+def test_validate_scale_output_dataset_prefers_configured_profile_json(tmp_path: Path) -> None:
+    output = tmp_path / "output" / "metashape_cubemap"
+    images = output / "images"
+    images.mkdir(parents=True)
+    (images / "a.png").write_bytes(b"image-a")
+    base = {
+        "camera_model": "SIMPLE_PINHOLE",
+        "w": 10,
+        "h": 10,
+        "fl_x": 5.0,
+        "fl_y": 5.0,
+        "cx": 4.5,
+        "cy": 4.5,
+        "frames": [
+            {
+                "file_path": "images/a.png",
+                "transform_matrix": [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]],
+            }
+        ],
+    }
+    (output / "transforms_brush.json").write_text(json.dumps({**base, "profile_marker": "brush"}), encoding="utf-8")
+    postshot = output / "transforms_postshot.json"
+    postshot.write_text(json.dumps({**base, "profile_marker": "postshot"}), encoding="utf-8")
+    settings = step4_export_settings_path(tmp_path)
+    settings.parent.mkdir(parents=True)
+    settings.write_text(
+        json.dumps(
+            {
+                "output_dir": str(output),
+                "effective_profile": "postshot",
+                "target_profile": "postshot",
+                "output_files": {"transforms_json": "transforms_postshot.json"},
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    dataset = validate_scale_output_dataset(tmp_path, output_dir=output)
+
+    assert dataset.transforms_json == postshot
+    assert dataset.geometry_label == "transforms_postshot.json"
 
 
 def test_validate_scale_output_dataset_rejects_equirectangular_output(tmp_path: Path) -> None:

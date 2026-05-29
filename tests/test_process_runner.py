@@ -8,6 +8,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from PySide6.QtWidgets import QApplication
 
 from core.app_job import AppJob
+from core.apriltag_scale_job_spec import apriltag_scale_estimate_job
 from core.cancellation import AppJobCancelled
 from gui.common.process_runner import ProcessRunner, _external_command_for_app_job
 
@@ -218,6 +219,18 @@ def test_external_command_for_app_job_uses_workflow_job_script(tmp_path: Path) -
 
 def test_external_command_for_app_job_keeps_non_workflow_jobs_internal(tmp_path: Path) -> None:
     job = AppJob("frame", {"kind": "unit_test"}, tmp_path / "job.json")
+
+    assert _external_command_for_app_job(job) is None
+
+
+def test_external_command_for_app_job_keeps_apriltag_jobs_internal(tmp_path: Path) -> None:
+    payload = apriltag_scale_estimate_job(
+        dataset=tmp_path / "transforms.json",
+        report_json=tmp_path / "report.json",
+        tag_size_m=0.16,
+        family="tag36h11",
+    )
+    job = AppJob("apriltag", payload, tmp_path / "apriltag.json")
 
     assert _external_command_for_app_job(job) is None
 

@@ -116,6 +116,69 @@ def _configured_output_dir(scene: Path) -> Path:
     return scene_output_dir(scene)
 
 
+def _read_step4_settings(scene: Path) -> dict:
+    settings_path = step4_export_settings_path(scene)
+    if not settings_path.is_file():
+        return {}
+    try:
+        settings = json.loads(settings_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    return settings if isinstance(settings, dict) else {}
+
+
+def _same_path(a: Path, b: Path) -> bool:
+    try:
+        return a.resolve() == b.resolve()
+    except OSError:
+        return a.absolute() == b.absolute()
+
+
+def _settings_match_output(scene: Path, output: Path, settings: dict) -> bool:
+    output_dir = str(settings.get("output_dir") or "").strip()
+    if output_dir:
+        configured = Path(output_dir)
+        configured = configured if configured.is_absolute() else scene / configured
+        return _same_path(output, configured)
+    portable = settings.get("portable_output")
+    if isinstance(portable, dict):
+        root = str(portable.get("root") or "").strip()
+        if root:
+            return _same_path(output, scene / root)
+    return False
+
+
+def _settings_transforms_path(scene: Path, output: Path) -> Path | None:
+    settings = _read_step4_settings(scene)
+    if not settings or not _settings_match_output(scene, output, settings):
+        return None
+    output_files = settings.get("output_files")
+    if not isinstance(output_files, dict):
+        return None
+    raw = str(output_files.get("transforms_json") or "").strip()
+    if not raw:
+        return None
+    path = Path(raw)
+    candidate = path if path.is_absolute() else output / path
+    try:
+        candidate.resolve().relative_to(output.resolve())
+    except (OSError, ValueError):
+        return None
+    return candidate if candidate.is_file() else None
+
+
+def _settings_preferred_profiles(scene: Path, output: Path) -> tuple[str, ...]:
+    settings = _read_step4_settings(scene)
+    if not settings or not _settings_match_output(scene, output, settings):
+        return ()
+    profiles: list[str] = []
+    for key in ("effective_profile", "target_profile"):
+        profile = str(settings.get(key) or "").strip().lower()
+        if profile and profile not in profiles:
+            profiles.append(profile)
+    return tuple(profiles)
+
+
 def validate_scale_output_dataset(
     scene_dir: Path,
     *,
@@ -128,7 +191,10 @@ def validate_scale_output_dataset(
     output = Path(output_dir) if output_dir is not None else _configured_output_dir(scene)
     if not output.is_dir():
         raise ValueError(f"Output folder was not found: {output}")
-    transforms_json = find_nerf_transforms_path(output)
+    transforms_json = _settings_transforms_path(scene, output) or find_nerf_transforms_path(
+        output,
+        preferred_profiles=_settings_preferred_profiles(scene, output),
+    )
     if transforms_json is None:
         try:
             colmap = validate_colmap_apriltag_dataset(output, max_image_checks=max_image_checks)

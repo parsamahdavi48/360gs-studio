@@ -64,7 +64,11 @@ class AprilTagScaleTool(Step4AprilTagMixin, BaseStepWidget):
         root.addWidget(scroll)
 
     def set_scene_dir(self, path: str) -> None:
+        previous_scene = self.scene_dir
         super().set_scene_dir(path)
+        if path != previous_scene:
+            self._scale_output_user_edited = False
+            self._invalidate_apriltag_estimate()
         self._sync_default_scale_output()
 
     def on_activated(self) -> None:
@@ -78,8 +82,9 @@ class AprilTagScaleTool(Step4AprilTagMixin, BaseStepWidget):
         return i18n.tip("APRILTAG_APPLY_SCALE")
 
     def primary_action_enabled(self) -> bool:
+        running = self._apriltag_estimate_runner is not None and self._apriltag_estimate_runner.is_running()
         return (
-            self._apriltag_estimate_process is None
+            not running
             and self._apriltag_last_scale is not None
             and not self._apriltag_scale_applied
         )
@@ -99,6 +104,7 @@ class AprilTagScaleTool(Step4AprilTagMixin, BaseStepWidget):
     def _on_scale_output_changed(self, _path: str) -> None:
         if not self._syncing_scale_output:
             self._scale_output_user_edited = True
+            self._invalidate_apriltag_estimate()
 
     def _sync_default_scale_output(self) -> None:
         if not self.scene_dir or self._scale_output_user_edited:

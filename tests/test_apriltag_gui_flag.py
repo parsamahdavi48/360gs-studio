@@ -368,6 +368,135 @@ def test_apriltag_scale_tool_uses_shared_apply_action() -> None:
     assert result.returncode == 0, result.stdout + result.stderr
 
 
+def test_apriltag_scale_tool_invalidates_estimate_when_target_or_profile_changes(tmp_path: Path) -> None:
+    script = textwrap.dedent(
+        f"""
+        import os
+        from pathlib import Path
+
+        os.environ["QT_QPA_PLATFORM"] = "offscreen"
+
+        from PySide6.QtWidgets import QApplication
+
+        from gui import i18n
+        from gui.theme import apply_theme
+        from gui.steps.apriltag_scale_tool import AprilTagScaleTool
+
+        scene = Path({str(tmp_path)!r})
+        scene.mkdir(parents=True, exist_ok=True)
+
+        app = QApplication([])
+        apply_theme(app)
+        step = AprilTagScaleTool(Path.cwd())
+        step.set_scene_dir(str(scene))
+        step._show_apriltag_estimate_result(
+            1.25,
+            {{"observation_count": 2, "pair_count": 1, "inlier_count": 1, "rms_residual_m": 0.01}},
+        )
+        step._apriltag_last_signature = ("original",)
+        step._sync_apriltag_controls()
+        assert step.primary_action_enabled() is True
+
+        step.scale_output_browse.set_text(str(scene / "output" / "other_dataset"))
+        app.processEvents()
+        assert step.primary_action_enabled() is False
+        assert step._apriltag_last_scale is None
+        assert step._apriltag_last_signature is None
+        assert step.apriltag_result_label.text() == i18n.t("APRILTAG_RESULT_EMPTY")
+
+        step._show_apriltag_estimate_result(
+            1.25,
+            {{"observation_count": 2, "pair_count": 1, "inlier_count": 1, "rms_residual_m": 0.01}},
+        )
+        step._apriltag_last_signature = ("profile",)
+        step._sync_apriltag_controls()
+        assert step.primary_action_enabled() is True
+        preset_index = step.apriltag_conversion_preset_combo.findData("brush")
+        assert preset_index >= 0
+        step.apriltag_conversion_preset_combo.setCurrentIndex(preset_index)
+        app.processEvents()
+        assert step.primary_action_enabled() is False
+        assert step._apriltag_last_scale is None
+        assert step._apriltag_last_signature is None
+        """
+    )
+
+    env = os.environ.copy()
+    env["QT_QPA_PLATFORM"] = "offscreen"
+    result = subprocess.run([sys.executable, "-c", script], cwd=Path.cwd(), env=env, capture_output=True, text=True)
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_apriltag_apply_rejects_stale_estimate(tmp_path: Path) -> None:
+    transforms = {
+        "camera_model": "SIMPLE_PINHOLE",
+        "w": 10,
+        "h": 10,
+        "fl_x": 5.0,
+        "fl_y": 5.0,
+        "cx": 4.5,
+        "cy": 4.5,
+        "frames": [
+            {
+                "file_path": "images/a.png",
+                "transform_matrix": [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]],
+            }
+        ],
+    }
+    script = textwrap.dedent(
+        f"""
+        import json
+        import os
+        from pathlib import Path
+
+        os.environ["QT_QPA_PLATFORM"] = "offscreen"
+
+        from PySide6.QtWidgets import QApplication, QMessageBox
+
+        from gui import i18n
+        from gui.theme import apply_theme
+        from gui.steps.step4_cubemap import CubemapStep
+
+        scene = Path({str(tmp_path)!r})
+        output = scene / "output" / "metashape_cubemap"
+        (output / "images").mkdir(parents=True)
+        (output / "images" / "a.png").write_bytes(b"image")
+        (output / "transforms.json").write_text(json.dumps({transforms!r}), encoding="utf-8")
+
+        app = QApplication([])
+        apply_theme(app)
+        step = CubemapStep(Path.cwd())
+        step.set_scene_dir(str(scene))
+        step._apriltag_last_scale = 1.25
+        step._apriltag_last_signature = ("stale",)
+
+        captured = {{}}
+        def fake_warning(parent, title, text):
+            captured["title"] = title
+            captured["text"] = text
+            return QMessageBox.Ok
+
+        def fail_question(*_args, **_kwargs):
+            raise AssertionError("stale estimate must not ask for apply confirmation")
+
+        QMessageBox.warning = fake_warning
+        QMessageBox.question = fail_question
+
+        step._apply_apriltag_scale()
+
+        assert captured["title"] == i18n.t("STEP4_TAB_APRILTAG_SCALE")
+        assert captured["text"] == i18n.t("APRILTAG_ESTIMATE_STALE")
+        assert step._apriltag_last_scale is None
+        assert step._apriltag_last_signature is None
+        """
+    )
+
+    env = os.environ.copy()
+    env["QT_QPA_PLATFORM"] = "offscreen"
+    result = subprocess.run([sys.executable, "-c", script], cwd=Path.cwd(), env=env, capture_output=True, text=True)
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
 def test_apriltag_scale_apply_uses_main_window_primary_button(tmp_path: Path) -> None:
     script = textwrap.dedent(
         f"""

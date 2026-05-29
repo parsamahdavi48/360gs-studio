@@ -9,7 +9,7 @@ import re
 import sys
 from pathlib import Path
 
-from PySide6.QtCore import QProcess, QProcessEnvironment, QSignalBlocker, QSize, Qt
+from PySide6.QtCore import QSignalBlocker, QSize, Qt
 from PySide6.QtWidgets import (
     QApplication,
     QComboBox,
@@ -25,6 +25,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from core.app_job import AppJob, apriltag_app_job
 from core.apriltag_cubemap import (
     CUBEMAP_POSE_PRESET_AUTO,
     CUBEMAP_POSE_PRESET_BRUSH,
@@ -45,13 +46,18 @@ from core.apriltag_markers import (
 )
 from core.apriltag_printable import available_pages, create_printable_target
 from core.apriltag_scale_apply import ScaleApplyResult, apply_scene_output_scale, validate_scale_output_dataset
-from core.apriltag_scale_job_spec import apriltag_scale_estimate_job, apriltag_scale_job_to_command
-from core.scene_layout import scene_output_dir, step4_meta_dir
+from core.apriltag_scale_job_spec import (
+    apriltag_scale_estimate_job,
+    apriltag_scale_job_to_command,
+    write_apriltag_scale_job,
+)
+from core.scene_layout import jobs_dir, scene_output_dir, step4_meta_dir
 from gui import i18n
 from gui.common.collapsible_section import CollapsibleSection
 from gui.common.drag_spinbox import DragDoubleSpinBox, DragSpinBox
 from gui.common.form_rows import add_tooltip_row
 from gui.common.icons import copy_icon
+from gui.common.process_runner import ProcessRunner
 
 _APRILTAG_PROGRESS_RE = re.compile(r"^\[progress\]\s+(\d+)\s*/\s*(\d+)")
 
@@ -59,12 +65,14 @@ _APRILTAG_PROGRESS_RE = re.compile(r"^\[progress\]\s+(\d+)\s*/\s*(\d+)")
 class Step4AprilTagMixin:
     def _init_apriltag_state(self) -> None:
         self._apriltag_scale_ui_enabled = True
-        self._apriltag_estimate_process: QProcess | None = None
+        self._apriltag_estimate_runner: ProcessRunner | None = None
         self._apriltag_cancel_requested = False
         self._apriltag_output_buffer = ""
         self._apriltag_output_lines: list[str] = []
         self._apriltag_last_scale: float | None = None
         self._apriltag_last_scale_text = ""
+        self._apriltag_last_signature: tuple[str, ...] | None = None
+        self._apriltag_pending_signature: tuple[str, ...] | None = None
         self._apriltag_scale_applied = False
 
     def _build_apriltag_scale_tab(self) -> QWidget:
@@ -126,6 +134,12 @@ class Step4AprilTagMixin:
         self.apriltag_conversion_preset_combo.addItem(
             i18n.t("APRILTAG_CONVERSION_PRESET_STANDARD"),
             CUBEMAP_POSE_PRESET_STANDARD,
+        )
+        self.apriltag_tag_size_edit.valueChanged.connect(lambda _value: self._invalidate_apriltag_estimate())
+        self.apriltag_family_combo.currentIndexChanged.connect(lambda _index: self._invalidate_apriltag_estimate())
+        self.apriltag_id_edit.textChanged.connect(lambda _text: self._invalidate_apriltag_estimate())
+        self.apriltag_conversion_preset_combo.currentIndexChanged.connect(
+            lambda _index: self._invalidate_apriltag_estimate()
         )
         add_tooltip_row(
             form,
@@ -332,7 +346,7 @@ class Step4AprilTagMixin:
     def _sync_apriltag_controls(self) -> None:
         if not hasattr(self, "apriltag_estimate_btn"):
             return
-        running = self._apriltag_estimate_process is not None
+        running = self._apriltag_estimate_runner is not None and self._apriltag_estimate_runner.is_running()
         self.apriltag_estimate_btn.setEnabled(not running)
         self.apriltag_apply_btn.setEnabled(
             not running and self._apriltag_last_scale is not None and not self._apriltag_scale_applied
@@ -360,25 +374,74 @@ class Step4AprilTagMixin:
             raise ValueError(i18n.t("APRILTAG_TAG_SIZE_INVALID"))
         return value
 
-    def _build_apriltag_scale_cmd(self, report_path: Path) -> list[str]:
+    @staticmethod
+    def _apriltag_path_signature(path: Path | None) -> str:
+        if path is None:
+            return ""
+        try:
+            return str(path.resolve()).casefold()
+        except OSError:
+            return str(path.absolute()).casefold()
+
+    def _build_apriltag_scale_payload(self, report_path: Path) -> tuple[dict[str, object], tuple[str, ...]]:
         dataset = validate_scale_output_dataset(Path(self.scene_dir), output_dir=self._display_output_dir())
         tag_size = self._apriltag_tag_size_m()
         tag_ids = self._selected_apriltag_ids()
+        family = self._apriltag_current_family()
         pose_preset = str(self.apriltag_conversion_preset_combo.currentData() or CUBEMAP_POSE_PRESET_AUTO)
         payload = apriltag_scale_estimate_job(
             dataset=dataset.estimation_input,
             image_root=dataset.images_dir if dataset.kind == "colmap" else None,
             report_json=report_path,
             tag_size_m=tag_size,
-            family=self._apriltag_current_family(),
+            family=family,
             tag_ids=tag_ids,
             cubemap_pose_preset=pose_preset,
         )
+        signature = (
+            dataset.kind,
+            self._apriltag_path_signature(dataset.estimation_input),
+            self._apriltag_path_signature(dataset.images_dir),
+            f"{tag_size:.12g}",
+            family,
+            ",".join(str(tag_id) for tag_id in tag_ids),
+            pose_preset,
+        )
+        return payload, signature
+
+    def _build_apriltag_scale_job(self, report_path: Path) -> tuple[AppJob, tuple[str, ...]]:
+        payload, signature = self._build_apriltag_scale_payload(report_path)
+        job_path = jobs_dir(Path(self.scene_dir)) / "apriltag_scale_estimate_job.json"
+        write_apriltag_scale_job(job_path, payload)
+        return apriltag_app_job(payload, job_path), signature
+
+    def _build_apriltag_scale_cmd(self, report_path: Path) -> list[str]:
+        payload, _signature = self._build_apriltag_scale_payload(report_path)
         return apriltag_scale_job_to_command(sys.executable, payload)
+
+    def _invalidate_apriltag_estimate(self) -> None:
+        if self._apriltag_estimate_runner is not None and self._apriltag_estimate_runner.is_running():
+            return
+        if self._apriltag_last_scale is None and self._apriltag_last_signature is None:
+            return
+        self._apriltag_last_scale = None
+        self._apriltag_last_scale_text = ""
+        self._apriltag_last_signature = None
+        self._apriltag_pending_signature = None
+        self._apriltag_scale_applied = False
+        self._set_apriltag_result_text(i18n.t("APRILTAG_RESULT_EMPTY"))
+        self._sync_apriltag_controls()
 
     def _warn_apriltag(self, message: str) -> None:
         self._set_apriltag_result_text(message)
         QMessageBox.warning(self, i18n.t("STEP4_TAB_APRILTAG_SCALE"), message)
+
+    @staticmethod
+    def _message_detail_tail(detail: str, limit: int = 1800) -> str:
+        text = str(detail).strip()
+        if len(text) <= limit:
+            return text
+        return "...\n" + text[-limit:]
 
     def _set_apriltag_result_text(self, text: str, *, tooltip: str | None = None) -> None:
         self.apriltag_result_label.setText(text)
@@ -454,7 +517,7 @@ class Step4AprilTagMixin:
         )
 
     def _run_apriltag_scale_estimate(self) -> None:
-        if self._apriltag_estimate_process is not None:
+        if self._apriltag_estimate_runner is not None and self._apriltag_estimate_runner.is_running():
             return
         if not self.scene_dir:
             self._warn_apriltag(i18n.t("APRILTAG_SCENE_REQUIRED"))
@@ -462,58 +525,37 @@ class Step4AprilTagMixin:
         report_path = step4_meta_dir(Path(self.scene_dir)) / "apriltag_scale_report.json"
         try:
             report_path.parent.mkdir(parents=True, exist_ok=True)
-            cmd = self._build_apriltag_scale_cmd(report_path)
+            job, signature = self._build_apriltag_scale_job(report_path)
         except Exception as exc:
             self._warn_apriltag(str(exc))
             return
 
         self._apriltag_last_scale = None
         self._apriltag_last_scale_text = ""
+        self._apriltag_last_signature = None
+        self._apriltag_pending_signature = signature
         self._apriltag_scale_applied = False
         self._apriltag_cancel_requested = False
         self._apriltag_output_buffer = ""
         self._apriltag_output_lines = []
         self._set_apriltag_result_text(i18n.t("APRILTAG_RUNNING"))
-        process = QProcess(self)
-        self._apriltag_estimate_process = process
+        runner = ProcessRunner(self)
+        self._apriltag_estimate_runner = runner
         self._sync_apriltag_controls()
-        self.background_task_started.emit(f"{i18n.STATUS_RUNNING}: {i18n.t('STEP4_TAB_APRILTAG_SCALE')}")
-        self.background_line_received.emit("$ " + " ".join(cmd))
-        process.setProgram(cmd[0])
-        process.setArguments(cmd[1:])
-        env = QProcessEnvironment.systemEnvironment()
-        env.insert("PYTHONUTF8", "1")
-        env.insert("PYTHONIOENCODING", "utf-8")
-        process.setProcessEnvironment(env)
-        process.setProcessChannelMode(QProcess.MergedChannels)
-        process.readyReadStandardOutput.connect(self._on_apriltag_scale_output)
-        process.finished.connect(
-            lambda exit_code, status, path=report_path: self._on_apriltag_scale_finished(exit_code, status, path)
+        runner.phase_started.connect(
+            lambda _phase: self.background_task_started.emit(
+                f"{i18n.STATUS_RUNNING}: {i18n.t('STEP4_TAB_APRILTAG_SCALE')}"
+            )
         )
-        process.start()
-        if not process.waitForStarted(3000):
-            detail = process.errorString().strip() or "-"
-            self._apriltag_estimate_process = None
-            process.deleteLater()
-            self._set_apriltag_result_text(i18n.t("APRILTAG_FAILED").format(detail=detail))
-            self.background_line_received.emit(f"[apriltag_scale] start failed: {detail}")
-            self.background_task_finished.emit(False, False)
-            self._sync_apriltag_controls()
-
-    def _on_apriltag_scale_output(self) -> None:
-        process = self._apriltag_estimate_process
-        if process is None:
-            return
-        self._flush_apriltag_scale_output(process)
-
-    def _flush_apriltag_scale_output(self, process: QProcess) -> None:
-        data = bytes(process.readAllStandardOutput()).decode("utf-8", errors="replace")
-        if not data:
-            return
-        self._apriltag_output_buffer += data.replace("\r", "\n")
-        while "\n" in self._apriltag_output_buffer:
-            line, self._apriltag_output_buffer = self._apriltag_output_buffer.split("\n", 1)
-            self._handle_apriltag_output_line(line.rstrip("\r"))
+        runner.line_received.connect(self._handle_apriltag_output_line)
+        runner.phase_finished.connect(
+            lambda _phase, exit_code, canceled, path=report_path: self._on_apriltag_scale_finished(
+                exit_code,
+                canceled,
+                path,
+            )
+        )
+        runner.start_single(job, phase="apriltag_scale")
 
     def _handle_apriltag_output_line(self, line: str) -> None:
         if not line:
@@ -530,33 +572,32 @@ class Step4AprilTagMixin:
     def _on_apriltag_scale_finished(
         self,
         exit_code: int,
-        _status: QProcess.ExitStatus,
+        canceled: bool,
         report_path: Path,
     ) -> None:
-        process = self._apriltag_estimate_process
-        if process is not None:
-            self._flush_apriltag_scale_output(process)
         if self._apriltag_output_buffer.strip():
             for line in self._apriltag_output_buffer.strip().splitlines():
                 self._handle_apriltag_output_line(line.rstrip("\r"))
             self._apriltag_output_buffer = ""
         detail = "\n".join(self._apriltag_output_lines)
-        if process is not None:
-            process.deleteLater()
-        self._apriltag_estimate_process = None
-        canceled = self._apriltag_cancel_requested
+        runner = self._apriltag_estimate_runner
+        self._apriltag_estimate_runner = None
+        if runner is not None:
+            runner.deleteLater()
         self._apriltag_cancel_requested = False
         self.background_line_received.emit(f"[apriltag_scale] exit_code={exit_code} canceled={int(canceled)}")
         self.background_task_finished.emit(exit_code == 0 and not canceled, canceled)
 
         if canceled:
             self._set_apriltag_result_text(i18n.STATUS_CANCELED)
+            self._apriltag_pending_signature = None
             self._sync_apriltag_controls()
             return
         if exit_code != 0:
             self._set_apriltag_result_text(
                 i18n.t("APRILTAG_FAILED").format(detail=self._message_detail_tail(detail))
             )
+            self._apriltag_pending_signature = None
             self._sync_apriltag_controls()
             return
         try:
@@ -565,23 +606,26 @@ class Step4AprilTagMixin:
             scale = float(estimate["scale"])
         except Exception as exc:
             self._set_apriltag_result_text(i18n.t("APRILTAG_FAILED").format(detail=str(exc)))
+            self._apriltag_pending_signature = None
             self._sync_apriltag_controls()
             return
 
+        self._apriltag_last_signature = self._apriltag_pending_signature
+        self._apriltag_pending_signature = None
         self._show_apriltag_estimate_result(scale, estimate)
         self._sync_apriltag_controls()
 
     def has_background_task(self) -> bool:
-        return self._apriltag_estimate_process is not None
+        return self._apriltag_estimate_runner is not None and self._apriltag_estimate_runner.is_running()
 
     def cancel_background_task(self) -> None:
-        process = self._apriltag_estimate_process
-        if process is None or process.state() == QProcess.NotRunning:
+        runner = self._apriltag_estimate_runner
+        if runner is None or not runner.is_running():
             return
         self._apriltag_cancel_requested = True
         self.background_status_changed.emit(i18n.STATUS_CANCELED)
         self.background_line_received.emit("[apriltag_scale] cancel requested")
-        process.kill()
+        runner.cancel()
 
     def _apply_apriltag_scale(self) -> None:
         if self._apriltag_last_scale is None:
@@ -593,6 +637,17 @@ class Step4AprilTagMixin:
             dataset = validate_scale_output_dataset(Path(self.scene_dir), output_dir=self._display_output_dir())
         except Exception as exc:
             self._warn_apriltag(str(exc))
+            return
+        try:
+            _payload, signature = self._build_apriltag_scale_payload(
+                step4_meta_dir(Path(self.scene_dir)) / "apriltag_scale_report.json"
+            )
+        except Exception as exc:
+            self._warn_apriltag(str(exc))
+            return
+        if self._apriltag_last_signature is not None and signature != self._apriltag_last_signature:
+            self._invalidate_apriltag_estimate()
+            self._warn_apriltag(i18n.t("APRILTAG_ESTIMATE_STALE"))
             return
         if not dataset.can_apply_scale:
             self._warn_apriltag(i18n.t("APRILTAG_COLMAP_TEXT_REQUIRED"))
@@ -680,10 +735,8 @@ class Step4AprilTagMixin:
         )
 
     def shutdown(self) -> None:
-        process = self._apriltag_estimate_process
-        if process is not None:
+        runner = self._apriltag_estimate_runner
+        if runner is not None and runner.is_running():
             self._apriltag_cancel_requested = True
-            process.kill()
-            process.waitForFinished(3000)
-            process.deleteLater()
-            self._apriltag_estimate_process = None
+            runner.cancel()
+            self._apriltag_estimate_runner = None
