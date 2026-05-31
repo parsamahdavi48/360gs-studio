@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from pathlib import Path
 
 from PySide6.QtCore import Qt
@@ -50,11 +50,19 @@ class DatasetMaskStep(MaskStep):
         base_dir: Path,
         *,
         dataset_root_provider: Callable[[], Path],
+        link_mask_paths: bool = True,
+        mode_tip_keys: Mapping[str, str] | None = None,
         parent: QWidget | None = None,
     ) -> None:
         self._dataset_root_provider = dataset_root_provider
         self._dataset_projection = _PROJECTION_NORMAL
+        self._link_mask_paths = bool(link_mask_paths)
+        self._mode_tip_keys = dict(mode_tip_keys or {})
         super().__init__(base_dir, parent)
+        self.mask_preview.set_empty_messages(
+            no_scene=i18n.t("DATASET_MASK_PREVIEW_NO_DATASET"),
+            empty=i18n.t("DATASET_MASK_PREVIEW_EMPTY"),
+        )
         self._install_dataset_mode_controls()
         self._refresh_mask_source_options()
 
@@ -85,10 +93,13 @@ class DatasetMaskStep(MaskStep):
         ):
             self.dataset_mask_mode_combo.addItem(i18n.t(label_key), mode)
             index = self.dataset_mask_mode_combo.count() - 1
-            self.dataset_mask_mode_combo.setItemData(index, i18n.tip(f"DATASET_MASK_MODE_{mode.upper()}"), Qt.ToolTipRole)
+            self.dataset_mask_mode_combo.setItemData(index, i18n.tip(self._mode_tip_key(mode)), Qt.ToolTipRole)
         self.dataset_mask_mode_combo.currentIndexChanged.connect(lambda _index: self._on_dataset_mask_mode_changed())
         add_tooltip_row(form, i18n.t("DATASET_MASK_MODE"), self.dataset_mask_mode_combo, i18n.tip("DATASET_MASK_MODE"))
         self.settings_layout.insertLayout(0, form)
+
+    def _mode_tip_key(self, mode: str) -> str:
+        return self._mode_tip_keys.get(mode, f"DATASET_MASK_MODE_{mode.upper()}")
 
     def set_dataset_projection(self, projection: str) -> None:
         projection = projection if projection in {_PROJECTION_EQUIRECT, _PROJECTION_NORMAL} else _PROJECTION_NORMAL
@@ -109,6 +120,8 @@ class DatasetMaskStep(MaskStep):
         mode = self.mask_mode()
         if mode == DATASET_MASK_GENERATE_TRAINING:
             return i18n.t("DATASET_MASK_GENERATE_ACTION")
+        if not self._link_mask_paths:
+            return i18n.t("DATASET_MASK_RUN_DATASET_ACTION")
         if mode == DATASET_MASK_REUSE_EXISTING:
             return i18n.t("DATASET_MASK_ATTACH_ACTION")
         if mode == DATASET_MASK_NONE:
@@ -119,6 +132,8 @@ class DatasetMaskStep(MaskStep):
         mode = self.mask_mode()
         if mode == DATASET_MASK_GENERATE_TRAINING:
             return super().primary_action_tooltip()
+        if not self._link_mask_paths:
+            return i18n.tip("DATASET_MASK_RUN_DATASET_ACTION")
         ready, reason = self._dataset_mask_path_readiness()
         if mode == DATASET_MASK_REUSE_EXISTING:
             return i18n.tip("DATASET_MASK_ATTACH_ACTION") if ready else reason
@@ -130,6 +145,8 @@ class DatasetMaskStep(MaskStep):
         mode = self.mask_mode()
         if mode == DATASET_MASK_GENERATE_TRAINING:
             return super().primary_action_enabled()
+        if not self._link_mask_paths:
+            return False
         if mode in {DATASET_MASK_REUSE_EXISTING, DATASET_MASK_NONE}:
             ready, _reason = self._dataset_mask_path_readiness()
             return ready
@@ -138,7 +155,12 @@ class DatasetMaskStep(MaskStep):
     def build_commands(self) -> StepCommandQueue:
         mode = self.mask_mode()
         if mode == DATASET_MASK_GENERATE_TRAINING:
-            return [*super().build_commands(), self._attach_mask_paths_command()]
+            commands = [*super().build_commands()]
+            if self._link_mask_paths:
+                commands.append(self._attach_mask_paths_command())
+            return commands
+        if not self._link_mask_paths:
+            return []
         if mode == DATASET_MASK_REUSE_EXISTING:
             return [self._attach_mask_paths_command()]
         if mode == DATASET_MASK_NONE:
@@ -148,6 +170,12 @@ class DatasetMaskStep(MaskStep):
     def build_followup_commands(self, *, require_existing_images: bool) -> StepCommandQueue:
         mode = self.mask_mode()
         if mode == DATASET_MASK_CONVERT_SFM:
+            return []
+        if not self._link_mask_paths:
+            if mode == DATASET_MASK_GENERATE_TRAINING:
+                if require_existing_images:
+                    return [*super().build_commands()]
+                return [*self._build_pending_dataset_mask_commands()]
             return []
         if mode == DATASET_MASK_REUSE_EXISTING:
             return [self._attach_mask_paths_command()]

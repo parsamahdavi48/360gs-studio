@@ -124,6 +124,8 @@ class MaskPreviewWidget(QWidget):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._images_dir = ""
+        self._no_scene_help_text = i18n.t("MASK_PREVIEW_NO_SCENE_HELP")
+        self._empty_help_text = i18n.t("MASK_PREVIEW_EMPTY_HELP")
         self._pixmap: QPixmap | None = None
         self.preview_images: list[Path] = []
         self._slider_sync = False
@@ -165,7 +167,7 @@ class MaskPreviewWidget(QWidget):
 
         self.preview_stack = QStackedWidget()
 
-        self.image_label = PerspectiveImageView(i18n.t("MASK_PREVIEW_NO_SCENE_HELP"))
+        self.image_label = PerspectiveImageView(self._no_scene_help_text)
         self.image_label.setMinimumSize(640, 280)
         self.image_label.setStyleSheet("border: 1px solid palette(mid);")
         self.image_label.look_dragged.connect(self._on_perspective_dragged)
@@ -258,6 +260,12 @@ class MaskPreviewWidget(QWidget):
             return
         self._images_dir = images_dir
         self.refresh_image_list(prefer_current=False)
+
+    def set_empty_messages(self, *, no_scene: str | None = None, empty: str | None = None) -> None:
+        self._no_scene_help_text = no_scene or i18n.t("MASK_PREVIEW_NO_SCENE_HELP")
+        self._empty_help_text = empty or i18n.t("MASK_PREVIEW_EMPTY_HELP")
+        if not self._current_image_path.strip():
+            self.image_label.setText(self._empty_preview_message())
 
     def render(self, config: MaskPreviewConfig) -> None:
         self._last_config = config
@@ -434,8 +442,8 @@ class MaskPreviewWidget(QWidget):
 
     def _empty_preview_message(self) -> str:
         if not self._images_dir:
-            return i18n.t("MASK_PREVIEW_NO_SCENE_HELP")
-        return i18n.t("MASK_PREVIEW_EMPTY_HELP")
+            return self._no_scene_help_text
+        return self._empty_help_text
 
     def _set_index(self, idx: int, *, sync_thumbnail: bool = True, scroll_thumbnail: bool = False) -> None:
         if not self.preview_images:

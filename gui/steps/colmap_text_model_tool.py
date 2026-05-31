@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import re
+import shutil
 from pathlib import Path
 
 from PySide6.QtCore import Qt
@@ -12,6 +13,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QMessageBox,
     QSplitter,
+    QStackedWidget,
     QTabWidget,
     QVBoxLayout,
     QWidget,
@@ -19,6 +21,12 @@ from PySide6.QtWidgets import (
 
 from core.app_job import dataset_app_job
 from core.dataset_job_spec import metashape_colmap_job, write_dataset_job
+from core.dataset_mask_policy import (
+    DATASET_MASK_CONVERT_SFM,
+    DATASET_MASK_GENERATE_TRAINING,
+    DATASET_MASK_NONE,
+    DATASET_MASK_REUSE_EXISTING,
+)
 from core.metashape_preview_targets import (
     build_metashape_preview_targets,
     metashape_output_count_for_actions,
@@ -46,6 +54,7 @@ from gui.common.runner_types import StepCommandQueue
 from gui.cubemap.preview_renderer import PreviewWidget
 from gui.cubemap.view_config import _BLOCK_ENABLED_VIEWS, _WARN_ENABLED_VIEWS, ViewConfigWidget
 from gui.steps.base_step import SETTINGS_PANE_MARGINS, SETTINGS_PANE_WIDTH, BaseStepWidget
+from gui.steps.dataset_mask_step import DatasetMaskStep
 from gui.steps.output_reset import clear_path, path_has_contents
 from gui.steps.step4_contracts import (
     _AXIS_NONE,
@@ -67,6 +76,8 @@ class ColmapTextModelTool(BaseStepWidget):
         self._xml_user_edited = False
         self._ply_user_edited = False
         self._metashape_preview_action_counts: dict[str, int] | None = None
+        self._dataset_mask_step: DatasetMaskStep | None = None
+        self._dataset_mask_tab_index: int | None = None
         self._build_ui()
 
     def _build_ui(self) -> None:
@@ -90,7 +101,27 @@ class ColmapTextModelTool(BaseStepWidget):
         self.settings_tabs.addTab(self._build_input_tab(), i18n.t("STEP4_TAB_INPUT"))
         self.settings_tabs.addTab(self._build_output_tab(), i18n.t("STEP4_TAB_OUTPUT"))
         self.settings_tabs.addTab(self._build_details_tab(), i18n.t("STEP4_TAB_DETAILS"))
+        self._dataset_mask_step = DatasetMaskStep(
+            self.base_dir,
+            dataset_root_provider=self._output_dir,
+            link_mask_paths=False,
+            mode_tip_keys={
+                DATASET_MASK_CONVERT_SFM: "COLMAP_TEXT_MASK_MODE_CONVERT_SFM",
+                DATASET_MASK_GENERATE_TRAINING: "COLMAP_TEXT_MASK_MODE_GENERATE_TRAINING",
+                DATASET_MASK_REUSE_EXISTING: "COLMAP_TEXT_MASK_MODE_REUSE_EXISTING",
+                DATASET_MASK_NONE: "COLMAP_TEXT_MASK_MODE_NONE",
+            },
+            parent=self,
+        )
+        self._dataset_mask_step.primary_action_state_changed.connect(self.primary_action_state_changed)
+        self._dataset_mask_step.settings_scroll.setObjectName("step4TabScroll")
+        self._dataset_mask_tab_index = self.settings_tabs.addTab(
+            self._dataset_mask_step.settings_scroll,
+            i18n.t("STEP4_TAB_MASK_SETTINGS"),
+        )
+        self._dataset_mask_step.hide()
         left_layout.addWidget(self.settings_tabs, stretch=1)
+        self.settings_tabs.currentChanged.connect(lambda _index: self._on_settings_tab_changed())
 
         preview_pane = QWidget()
         preview_pane.setObjectName("workPane")
@@ -110,14 +141,20 @@ class ColmapTextModelTool(BaseStepWidget):
         preview_layout.addLayout(preview_header)
         preview_layout.addWidget(self.preview, stretch=1)
 
+        self.preview_pane = preview_pane
+        self.work_stack = QStackedWidget()
+        self.work_stack.addWidget(preview_pane)
+        self.work_stack.addWidget(self._dataset_mask_step.preview_pane)
+
         splitter.addWidget(left_pane)
-        splitter.addWidget(preview_pane)
+        splitter.addWidget(self.work_stack)
         splitter.setStretchFactor(0, 0)
         splitter.setStretchFactor(1, 1)
         splitter.setSizes([SETTINGS_PANE_WIDTH, 760])
         layout.addWidget(splitter)
 
         self._connect_signals()
+        self._sync_mask_settings_context()
         self._update_output_count()
 
     def _build_input_tab(self) -> QWidget:
@@ -251,22 +288,49 @@ class ColmapTextModelTool(BaseStepWidget):
         self.preview.set_scene_dir(path, refresh=False)
         self._refresh_default_paths()
         self._sync_preview_inputs()
+        self._sync_mask_settings_context()
 
     def on_activated(self) -> None:
         self._refresh_default_paths()
         self._sync_preview_inputs()
+        self._sync_mask_settings_context()
         self.primary_action_state_changed.emit()
 
     def focus_output_tab(self) -> None:
         self.settings_tabs.setCurrentIndex(1)
 
+    def _mask_tab_selected(self) -> bool:
+        return self._dataset_mask_tab_index is not None and self.settings_tabs.currentIndex() == self._dataset_mask_tab_index
+
+    def _on_settings_tab_changed(self) -> None:
+        self._sync_mask_settings_context()
+        if self._mask_tab_selected() and self._dataset_mask_step is not None:
+            self.work_stack.setCurrentWidget(self._dataset_mask_step.preview_pane)
+            self._dataset_mask_step.on_activated()
+        else:
+            self.work_stack.setCurrentWidget(self.preview_pane)
+        self.primary_action_state_changed.emit()
+
+    def _sync_mask_settings_context(self) -> None:
+        if self._dataset_mask_step is None:
+            return
+        if self.scene_dir and self._dataset_mask_step.scene_dir != self.scene_dir:
+            self._dataset_mask_step.set_scene_dir(self.scene_dir)
+        self._dataset_mask_step.set_dataset_projection("normal")
+
     def primary_action_text(self) -> str:
+        if self._mask_tab_selected() and self._dataset_mask_step is not None:
+            return self._dataset_mask_step.primary_action_text()
         return i18n.t("DATASET_RUN_COLMAP_TEXT")
 
     def primary_action_tooltip(self) -> str:
+        if self._mask_tab_selected() and self._dataset_mask_step is not None:
+            return self._dataset_mask_step.primary_action_tooltip()
         return i18n.tip("DATASET_RUN_COLMAP_TEXT")
 
     def primary_action_enabled(self) -> bool:
+        if self._mask_tab_selected() and self._dataset_mask_step is not None:
+            return self._dataset_mask_step.primary_action_enabled()
         return (
             bool(self.scene_dir)
             and self._images_dir().is_dir()
@@ -275,19 +339,24 @@ class ColmapTextModelTool(BaseStepWidget):
         )
 
     def build_commands(self) -> StepCommandQueue:
+        if self._mask_tab_selected() and self._dataset_mask_step is not None:
+            self._sync_mask_settings_context()
+            return self._dataset_mask_step.build_commands()
+
         images = self._images_dir()
         masks = self._masks_dir()
         xml = self._xml_path()
         ply = self._ply_path()
         output = self._output_dir()
-        self._validate_inputs(images, masks, xml, ply, output)
+        write_source_masks = self._writes_source_masks()
+        self._validate_inputs(images, masks, xml, ply, output, use_source_masks=write_source_masks)
         self._validate_output_options()
 
-        if not self._prepare_output_dir(output):
+        if not self._prepare_output_dir(output, preserve_masks=self._preserves_output_masks()):
             return []
 
         views = self.view_config.collect_views(include_disabled=True)
-        mask_dir = masks if masks.is_dir() else None
+        mask_dir = masks if write_source_masks and masks.is_dir() else None
         job_path = jobs_dir(Path(self.scene_dir)) / "metashape_colmap_job.json"
         payload = metashape_colmap_job(
             scene_dir=Path(self.scene_dir),
@@ -306,14 +375,27 @@ class ColmapTextModelTool(BaseStepWidget):
             final_orientation=self._final_orientation(),
         )
         write_dataset_job(job_path, payload)
-        return [("metashape_colmap", dataset_app_job(payload, job_path))]
+        commands: StepCommandQueue = [("metashape_colmap", dataset_app_job(payload, job_path))]
+        if self._dataset_mask_step is not None:
+            self._sync_mask_settings_context()
+            commands.extend(self._dataset_mask_step.build_followup_commands(require_existing_images=False))
+        return commands
 
-    def _validate_inputs(self, images: Path, masks: Path, xml: Path, ply: Path, output: Path) -> None:
+    def _validate_inputs(
+        self,
+        images: Path,
+        masks: Path,
+        xml: Path,
+        ply: Path,
+        output: Path,
+        *,
+        use_source_masks: bool,
+    ) -> None:
         if not self.scene_dir:
             raise ValueError(i18n.t("SCENE_REQUIRED_ACTION_HINT"))
         if not images.is_dir():
             raise ValueError(i18n.t("COLMAP_TEXT_IMAGES_NOT_FOUND").format(path=images))
-        if self.masks_browse.text().strip() and not masks.is_dir():
+        if use_source_masks and self.masks_browse.text().strip() and not masks.is_dir():
             raise ValueError(i18n.t("COLMAP_TEXT_MASKS_NOT_FOUND").format(path=masks))
         if not xml.is_file():
             raise ValueError(i18n.t("COLMAP_TEXT_XML_NOT_FOUND").format(path=xml))
@@ -341,11 +423,12 @@ class ColmapTextModelTool(BaseStepWidget):
             raise ValueError(f"ビュー数が多すぎます ({enabled})。{_BLOCK_ENABLED_VIEWS} 以下にしてください。")
         self._jpg_quality()
 
-    def _prepare_output_dir(self, output: Path) -> bool:
+    def _prepare_output_dir(self, output: Path, *, preserve_masks: bool = False) -> bool:
         if self.scene_dir is None:
             return False
         scene = Path(self.scene_dir)
         output_root = scene_output_dir(scene)
+        preserved_masks: Path | None = None
         if path_has_contents(output):
             result = QMessageBox.question(
                 self,
@@ -356,13 +439,34 @@ class ColmapTextModelTool(BaseStepWidget):
             )
             if result != QMessageBox.Yes:
                 return False
+            source_masks = output / "masks"
+            if preserve_masks and source_masks.is_dir():
+                preserved_masks = output_root / f".{output.name}_preserved_masks"
+                if preserved_masks.exists():
+                    clear_path(preserved_masks, allowed_roots=[output_root])
+                shutil.move(str(source_masks), str(preserved_masks))
             clear_path(output, allowed_roots=[output_root])
         output.mkdir(parents=True, exist_ok=True)
+        if preserved_masks is not None and preserved_masks.is_dir():
+            shutil.move(str(preserved_masks), str(output / "masks"))
         return True
+
+    def _dataset_mask_mode(self) -> str:
+        if self._dataset_mask_step is None:
+            return DATASET_MASK_CONVERT_SFM
+        return self._dataset_mask_step.mask_mode()
+
+    def _writes_source_masks(self) -> bool:
+        return self._dataset_mask_mode() == DATASET_MASK_CONVERT_SFM
+
+    def _preserves_output_masks(self) -> bool:
+        return self._dataset_mask_mode() == DATASET_MASK_REUSE_EXISTING
 
     def phase_display_name(self, phase: str) -> str:
         if phase == "metashape_colmap":
             return i18n.t("PHASE_COLMAP_TEXT_MODEL")
+        if self._dataset_mask_step is not None:
+            return self._dataset_mask_step.phase_display_name(phase)
         return super().phase_display_name(phase)
 
     def on_line(self, line: str) -> tuple[int, int] | None:
