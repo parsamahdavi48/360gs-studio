@@ -5,8 +5,10 @@ from collections.abc import Callable
 from pathlib import Path
 
 from core.cancellation import CancellationToken, raise_if_cancelled
+from core.colmap_nerfstudio_dataset import export_colmap_nerfstudio_dataset
 from core.dataset_job_spec import (
     JOB_KIND_ATTACH_DATASET_MASKS,
+    JOB_KIND_COLMAP_NERFSTUDIO,
     JOB_KIND_METASHAPE_COLMAP,
     JOB_KIND_METASHAPE_NERF,
     JOB_KIND_REALITYSCAN_LFS_COLMAP,
@@ -54,6 +56,8 @@ def run_dataset_job_payload(job: dict, *, cancel_event: CancellationToken | None
         _run_metashape_colmap(job, cancel_event=cancel_event)
     elif kind == JOB_KIND_METASHAPE_NERF:
         _run_metashape_nerf(job, cancel_event=cancel_event)
+    elif kind == JOB_KIND_COLMAP_NERFSTUDIO:
+        _run_colmap_nerfstudio(job, cancel_event=cancel_event)
     elif kind == JOB_KIND_REALITYSCAN_LFS_COLMAP:
         _run_realityscan_lfs_colmap(job, cancel_event=cancel_event)
     elif kind == JOB_KIND_ATTACH_DATASET_MASKS:
@@ -141,6 +145,30 @@ def _run_realityscan_lfs_colmap(job: dict, *, cancel_event: CancellationToken | 
     print(f"Images: {result['num_images']}", flush=True)
     print(f"Cameras: {result['num_cameras']}", flush=True)
     print(f"Skipped missing images: {result['num_missing_images']}", flush=True)
+    raise_if_cancelled(cancel_event)
+
+
+def _run_colmap_nerfstudio(job: dict, *, cancel_event: CancellationToken | None = None) -> None:
+    raise_if_cancelled(cancel_event)
+    result = export_colmap_nerfstudio_dataset(
+        colmap_root=Path(str(job["colmap_root"])),
+        output_dir=Path(str(job["output_dir"])),
+        images_dir=Path(str(job["images_dir"])) if str(job.get("images_dir") or "") else None,
+        masks_dir=Path(str(job["masks_dir"])) if str(job.get("masks_dir") or "") else None,
+        sparse_dir=Path(str(job["sparse_dir"])) if str(job.get("sparse_dir") or "") else None,
+        require_complete_masks=bool(job.get("require_complete_masks", True)),
+        progress_callback=_progress_log_callback(cancel_event),
+    )
+    print(f"Saved COLMAP Nerfstudio dataset: {result.output_dir}", flush=True)
+    print(f"transforms.json: {result.transforms_json}", flush=True)
+    print(f"pointcloud.ply: {result.pointcloud}", flush=True)
+    print(f"Sparse model: {result.sparse_dir}", flush=True)
+    print(f"Frames: {result.image_count}", flush=True)
+    print(f"Points: {result.point_count}", flush=True)
+    print(f"Masks: {result.mask_count}", flush=True)
+    print(f"Actions: {json.dumps(result.action_counts, sort_keys=True)}", flush=True)
+    for warning in result.warnings:
+        print(f"Warning: {warning}", flush=True)
     raise_if_cancelled(cancel_event)
 
 

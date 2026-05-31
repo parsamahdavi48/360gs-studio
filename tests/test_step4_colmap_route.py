@@ -366,6 +366,36 @@ def test_colmap_export_can_queue_colmap_sfm_with_custom_executable(tmp_path: Pat
     assert commands[4][1][1] == "global_mapper"
 
 
+def test_colmap_conversion_sfm_does_not_reuse_stale_masks_when_mask_output_is_off(tmp_path: Path) -> None:
+    _app()
+    images = tmp_path / "images"
+    images.mkdir()
+    _write_test_image(images / "frame_0001.jpg")
+    stale_masks = tmp_path / "output" / "colmap_rig" / "masks" / "rig1" / "cam01"
+    stale_masks.mkdir(parents=True)
+    _write_test_image(stale_masks / "frame_00001.jpg.png")
+    fake_colmap = tmp_path / "colmap.exe"
+    fake_colmap.write_text("", encoding="utf-8")
+    step = CubemapStep(Path.cwd())
+    step.set_scene_dir(str(tmp_path))
+    step._set_export_method("colmap")
+    step.set_pipeline_stage_intent("sfm", True)
+    step.colmap_exec_browse.set_text(str(fake_colmap))
+    step.export_masks_cb.setChecked(False)
+
+    commands = step.build_commands()
+
+    assert [phase for phase, _cmd in commands] == [
+        "colmap_rig_export",
+        "colmap_feature",
+        "colmap_rig_config",
+        "colmap_match",
+        "colmap_mapper",
+    ]
+    feature_cmd = commands[1][1]
+    assert "--ImageReader.mask_path" not in feature_cmd
+
+
 def test_colmap_sfm_only_resets_stale_database_and_sparse(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

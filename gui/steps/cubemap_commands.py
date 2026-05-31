@@ -51,6 +51,7 @@ class ColmapSfmCommand:
     writes_masks: bool
     matcher: str
     mapper: str
+    use_existing_masks: bool = True
     run_rig_feature: bool = True
     run_rig_config: bool = True
     run_normal_feature: bool = False
@@ -209,7 +210,7 @@ def _rig_feature_cmd(
     ]
     if image_list is not None:
         cmd.extend(["--image_list_path", str(image_list)])
-    if options.writes_masks or options.masks_dir.is_dir():
+    if _should_use_colmap_masks(options):
         cmd.extend(["--ImageReader.mask_path", str(options.masks_dir)])
     return cmd
 
@@ -234,9 +235,13 @@ def _normal_feature_cmd(
     ]
     if image_list is not None:
         cmd.extend(["--image_list_path", str(image_list)])
-    if options.writes_masks or options.masks_dir.is_dir():
+    if _should_use_colmap_masks(options):
         cmd.extend(["--ImageReader.mask_path", str(options.masks_dir)])
     return cmd
+
+
+def _should_use_colmap_masks(options: ColmapSfmCommand) -> bool:
+    return options.writes_masks or (options.use_existing_masks and options.masks_dir.is_dir())
 
 
 def _spheresfm_feature_options(preset: str) -> list[str]:

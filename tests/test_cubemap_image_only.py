@@ -197,6 +197,10 @@ def test_colmap_rig_export_writes_camera_folders_masks_and_rig_config(tmp_path: 
     assert (rig_root / "images" / "rig1" / "cam02" / "frame_00001.png").is_file()
     assert (rig_root / "masks" / "rig1" / "cam01" / "frame_00001.png.png").is_file()
     assert (rig_root / "masks" / "rig1" / "cam02" / "frame_00001.png.png").is_file()
+    assert (rig_root / "rig_image_list.txt").read_text(encoding="utf-8").splitlines() == [
+        "rig1/cam01/frame_00001.png",
+        "rig1/cam02/frame_00001.png",
+    ]
 
     rig_config = json.loads((rig_root / "rig_config.json").read_text(encoding="utf-8"))
     cameras = rig_config[0]["cameras"]

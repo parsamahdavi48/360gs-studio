@@ -190,7 +190,7 @@ def validate_colmap_apriltag_dataset(
 
 
 def _qvec_to_rotmat(qvec: np.ndarray) -> np.ndarray:
-    from core.spheresfm_to_transforms import qvec_to_rotmat
+    from core.colmap_sparse_model import qvec_to_rotmat
 
     return qvec_to_rotmat(qvec)
 

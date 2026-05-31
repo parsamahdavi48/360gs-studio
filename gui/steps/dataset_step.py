@@ -11,6 +11,7 @@ from gui import i18n
 from gui.common.runner_types import StepCommandQueue
 from gui.steps.apriltag_scale_tool import AprilTagScaleTool
 from gui.steps.base_step import BaseStepWidget
+from gui.steps.colmap_nerfstudio_tool import ColmapNerfstudioTool
 from gui.steps.colmap_text_model_tool import ColmapTextModelTool
 from gui.steps.realityscan_lfs_tool import RealityScanLfsTool
 from gui.steps.sfm_route_specs import SFM_ROUTE_COLMAP, SFM_ROUTE_METASHAPE, SFM_ROUTE_SPHERESFM, normalize_sfm_route
@@ -32,6 +33,7 @@ _PAGE_CUBEMAP_LEGACY = "cubemap"
 _PAGE_REALITYSCAN = "realityscan_lfs"
 _PAGE_SCALE = "scale"
 _PAGE_COLMAP_TEXT = "colmap_text_model"
+_PAGE_COLMAP_NERF = "colmap_nerfstudio"
 _CUBEMAP_PAGES = {_PAGE_METASHAPE, _PAGE_SPHERESFM}
 
 
@@ -46,6 +48,7 @@ class DatasetStep(BaseStepWidget):
         self.realityscan_tool = RealityScanLfsTool(base_dir)
         self.scale_tool = AprilTagScaleTool(base_dir)
         self.colmap_text_tool = ColmapTextModelTool(base_dir)
+        self.colmap_nerf_tool = ColmapNerfstudioTool(base_dir)
         self._page = _PAGE_MENU
         self._page_indices: dict[str, int] = {}
         self._build_ui()
@@ -77,6 +80,9 @@ class DatasetStep(BaseStepWidget):
                 self.colmap_text_tool,
                 header_extra=self._make_detail_note(i18n.t("DATASET_TOOL_COLMAP_TEXT_DESC")),
             )
+        )
+        self._page_indices[_PAGE_COLMAP_NERF] = self.stack.addWidget(
+            self._wrap_detail_page(i18n.t("DATASET_TOOL_COLMAP_NERF_TITLE"), self.colmap_nerf_tool)
         )
         root.addWidget(self.stack)
 
@@ -114,18 +120,25 @@ class DatasetStep(BaseStepWidget):
                 i18n.tip("DATASET_TOOL_SPHERESFM"),
             ),
             WorkflowCardSpec(
-                _PAGE_SCALE,
-                i18n.t("DATASET_TOOL_SCALE_TITLE"),
-                i18n.t("DATASET_TOOL_SCALE_CARD_BODY"),
-                i18n.t("DATASET_TOOL_SCALE_CARD_FOOTER"),
-                i18n.tip("DATASET_TOOL_SCALE"),
-            ),
-            WorkflowCardSpec(
                 _PAGE_COLMAP_TEXT,
                 i18n.t("DATASET_TOOL_COLMAP_TEXT_TITLE"),
                 i18n.t("DATASET_TOOL_COLMAP_TEXT_CARD_BODY"),
                 i18n.t("DATASET_TOOL_COLMAP_TEXT_CARD_FOOTER"),
                 i18n.tip("DATASET_TOOL_COLMAP_TEXT"),
+            ),
+            WorkflowCardSpec(
+                _PAGE_COLMAP_NERF,
+                i18n.t("DATASET_TOOL_COLMAP_NERF_TITLE"),
+                i18n.t("DATASET_TOOL_COLMAP_NERF_CARD_BODY"),
+                i18n.t("DATASET_TOOL_COLMAP_NERF_CARD_FOOTER"),
+                i18n.tip("DATASET_TOOL_COLMAP_NERF"),
+            ),
+            WorkflowCardSpec(
+                _PAGE_SCALE,
+                i18n.t("DATASET_TOOL_SCALE_TITLE"),
+                i18n.t("DATASET_TOOL_SCALE_CARD_BODY"),
+                i18n.t("DATASET_TOOL_SCALE_CARD_FOOTER"),
+                i18n.tip("DATASET_TOOL_SCALE"),
             ),
         )
         self.card_grid = WorkflowCardGrid(specs)
@@ -190,7 +203,13 @@ class DatasetStep(BaseStepWidget):
         return page
 
     def _connect_child_signals(self) -> None:
-        for child in (self.cubemap_step, self.realityscan_tool, self.scale_tool, self.colmap_text_tool):
+        for child in (
+            self.cubemap_step,
+            self.realityscan_tool,
+            self.scale_tool,
+            self.colmap_text_tool,
+            self.colmap_nerf_tool,
+        ):
             child.primary_action_state_changed.connect(self.primary_action_state_changed)
             child.background_task_started.connect(self.background_task_started)
             child.background_line_received.connect(self.background_line_received)
@@ -305,6 +324,8 @@ class DatasetStep(BaseStepWidget):
             return i18n.t("DATASET_TOOL_SCALE_TITLE")
         if self._page == _PAGE_COLMAP_TEXT:
             return i18n.t("DATASET_TOOL_COLMAP_TEXT_TITLE")
+        if self._page == _PAGE_COLMAP_NERF:
+            return i18n.t("DATASET_TOOL_COLMAP_NERF_TITLE")
         if self._page == _PAGE_COLMAP_READY:
             return i18n.t("DATASET_TOOL_COLMAP_READY_TITLE")
         return i18n.t("DATASET_MENU_TITLE")
@@ -327,6 +348,8 @@ class DatasetStep(BaseStepWidget):
             return self.scale_tool
         if self._page == _PAGE_COLMAP_TEXT:
             return self.colmap_text_tool
+        if self._page == _PAGE_COLMAP_NERF:
+            return self.colmap_nerf_tool
         return self
 
     def _sync_active_step_scene(self) -> None:

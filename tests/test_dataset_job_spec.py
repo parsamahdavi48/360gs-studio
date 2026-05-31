@@ -6,10 +6,12 @@ import pytest
 
 from core.dataset_job_spec import (
     JOB_KIND_ATTACH_DATASET_MASKS,
+    JOB_KIND_COLMAP_NERFSTUDIO,
     JOB_KIND_METASHAPE_COLMAP,
     JOB_KIND_METASHAPE_NERF,
     JOB_KIND_REALITYSCAN_LFS_COLMAP,
     attach_dataset_masks_job,
+    colmap_nerfstudio_job,
     load_dataset_job,
     metashape_colmap_job,
     metashape_nerf_job,
@@ -91,6 +93,25 @@ def test_metashape_nerf_dataset_job_round_trips(tmp_path: Path) -> None:
     assert loaded["final_orientation"] == "lichtfeld"
     assert loaded["write_images"] is False
     assert loaded["write_masks"] is False
+
+
+def test_colmap_nerfstudio_dataset_job_round_trips(tmp_path: Path) -> None:
+    job = colmap_nerfstudio_job(
+        scene_dir=tmp_path / "scene",
+        colmap_root=tmp_path / "scene" / "output" / "colmap_rig",
+        output_dir=tmp_path / "scene" / "output" / "colmap_nerfstudio",
+    )
+
+    path = write_dataset_job(tmp_path / "colmap_nerfstudio_job.json", job)
+    loaded = load_dataset_job(path, expected_kind=JOB_KIND_COLMAP_NERFSTUDIO)
+
+    assert loaded["kind"] == JOB_KIND_COLMAP_NERFSTUDIO
+    assert loaded["colmap_root"] == str(tmp_path / "scene" / "output" / "colmap_rig")
+    assert loaded["output_dir"] == str(tmp_path / "scene" / "output" / "colmap_nerfstudio")
+    assert loaded["images_dir"] == ""
+    assert loaded["masks_dir"] == ""
+    assert loaded["sparse_dir"] == ""
+    assert loaded["require_complete_masks"] is True
 
 
 def test_attach_dataset_masks_job_round_trips(tmp_path: Path) -> None:

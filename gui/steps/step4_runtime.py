@@ -303,6 +303,10 @@ class Step4RuntimeMixin:
         }
         if self._dataset_mask_phase(phase) and self._dataset_mask_step is not None:
             return self._dataset_mask_step.phase_display_name(phase)
+        if phase.startswith("colmap_feature_rig_"):
+            return i18n.t("PHASE_COLMAP_FEATURE_RIG")
+        if phase.startswith("colmap_feature_normal_"):
+            return i18n.t("PHASE_COLMAP_FEATURE_NORMAL")
         key = labels.get(phase)
         return i18n.t(key) if key else phase
 

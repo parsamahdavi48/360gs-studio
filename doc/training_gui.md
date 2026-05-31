@@ -15,6 +15,8 @@ The Step 5 output is the dataset intended for downstream 3DGS apps. Open the mat
 
 Step 6 CLI launch targets a LichtFeld Studio v0.5.2-compatible CLI, the Postshot v1.0/v1.1 Release Build CLI, Brush CLI, and gsplat `examples/simple_trainer.py`. If you are not using CLI training, the Step 5 output dataset remains ready to open directly in each training app.
 
+Nerfstudio datasets created by `COLMAP RIG -> NeRF Dataset (JSON/PLY)` are intended to be opened or trained from Nerfstudio itself. Step 6 does not launch Nerfstudio.
+
 ## What to Prepare
 
 This screen does not install the training app itself or a gsplat Python environment. Prepare the app you want to use so it can be launched from the command line.
@@ -94,6 +96,7 @@ This is the dataset folder passed to the training app. It is normally set from t
 | SphereSfM + PINHOLE cubemap | `<scene>/output/spheresfm_cubemap/` |
 | SphereSfM + ERP 360° / GUT | `<scene>/output/spheresfm_3dgut/` |
 | COLMAP Rig | `<scene>/output/colmap_rig/` |
+| COLMAP RIG -> NeRF Dataset (JSON/PLY) | `<scene>/output/colmap_nerfstudio/` for Nerfstudio outside Step 6 |
 | RealityScan -> COLMAP Dataset | `<scene>/output/realityscan/lfs_colmap/` |
 | Metashape -> COLMAP Dataset | `<scene>/output/metashape_colmap/` |
 

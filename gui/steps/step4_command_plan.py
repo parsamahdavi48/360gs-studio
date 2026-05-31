@@ -571,6 +571,7 @@ class Step4CommandPlanMixin:
                 camera_params=self._colmap_camera_params_arg(),
                 writes_images=self._writes_images(),
                 writes_masks=self._writes_masks(),
+                use_existing_masks=not prepared_this_run,
                 matcher=matcher,
                 mapper=mapper,
                 run_rig_feature=not use_split_lists or has_erp,

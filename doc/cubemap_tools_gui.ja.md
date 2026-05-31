@@ -2,7 +2,7 @@
 
 Step 4は、学習データセットの元になるカメラポーズと疎点群をどう用意するかを選ぶ画面です。すでにMetashape、RealityScan、COLMAP、SphereSfMなどでSfM済みなら、ここで追加作業をする必要はありません。これからこのアプリでCOLMAPやSphereSfMを実行したい場合、またはMetashape結果からRealityScan再アライン用データを作りたい場合だけ、対応するカードを開きます。
 
-Step 5は、SfM結果を学習アプリで読み込めるデータセットへ変換する画面です。MetashapeやSphereSfMの結果からNeRF系JSON/PLYを作る、MetashapeやRealityScanの結果からCOLMAP形式データセットを作る、AprilTagでスケールを反映する、といった作業をここで行います。
+Step 5は、SfM結果を学習アプリで読み込めるデータセットへ変換する画面です。Metashape、COLMAP、SphereSfMの結果からNeRF系JSON/PLYを作る、MetashapeやRealityScanの結果からCOLMAP形式データセットを作る、AprilTagでスケールを反映する、といった作業をここで行います。
 
 ## 関連ツール
 
@@ -22,7 +22,7 @@ Step 5は、SfM結果を学習アプリで読み込めるデータセットへ�
 | --- | --- |
 | MetashapeでSfM済み | Step 4は `既存のSfM結果を使う`。Step 5でMetashape系カードを選ぶ |
 | RealityScanで再アライン済み | Step 4は `既存のSfM結果を使う`。Step 5で `RealityScan → COLMAPデータセット` を選ぶ |
-| COLMAPのimages/masks/sparseがすでにある | Step 4は `既存のSfM結果を使う`。COLMAP対応アプリならそのまま学習へ進む |
+| COLMAPのimages/masks/sparseがすでにある | Step 4は `既存のSfM結果を使う`。COLMAP対応アプリならそのまま学習へ進み、Nerfstudio用JSON/PLYが必要なら `COLMAP RIG → NeRFデータセット(JSON/PLY)` を使う |
 | このアプリからCOLMAPでSfMしたい | Step 4で `COLMAPでSfMを実行` |
 | このアプリからSphereSfMでSfMしたい | Step 4で `SphereSfMでSfMを実行` |
 | Metashape結果をRealityScanで再アラインしたい | Step 4で `Metashape → RealityScan用データ作成` |
@@ -100,6 +100,14 @@ MetashapeのカメラXMLと点群PLYから、`images/`, `masks/`, `sparse/0/` �
 
 LichtFeldでMetashape混在結果を使う場合は、このルートが安全です。
 
+### COLMAP RIG → NeRFデータセット(JSON/PLY)
+
+このアプリのCOLMAP SfM出力、通常は `output/colmap_rig/` からNerfstudio形式のデータセットを作ります。出力は `output/colmap_nerfstudio/` で、`transforms.json`、`pointcloud.ply`、登録済みCOLMAP画像だけを含む `images/` を作成します。
+
+Nerfstudioの `transforms.json` にはリグ層がありません。このツールはCOLMAPの最終登録済み画像ポーズを `images.bin/txt` から読みます。COLMAPのリグ内センサー姿勢は、その時点ですでに各画像のポーズへ畳み込まれています。カメラ姿勢はCOLMAP/OpenCVカメラ軸からNerfstudio/OpenGLカメラ軸へ変換し、その後、カメラとPLY点群の両方へ同じNerfstudio向けワールド軸変換を適用するため、疎点群とカメラが同じ座標系に揃います。
+
+`output/colmap_rig/masks/` がある場合は、登録済み画像すべてに対応マスクがある時だけ `mask_path` を付けます。部分的なマスクセットは、フレームによってマスク有無が混ざるデータセットを作らないようエラーにします。
+
 ### RealityScan → COLMAPデータセット
 
 RealityScanのRegistrationから書き出したInternal/External CSVと、同じ座標状態で書き出したPLYから、LichtFeldでDatasetとして開けるCOLMAPデータセットを作ります。
@@ -157,6 +165,7 @@ Step 4の `SfM結果を確認` から、点群、カメラ位置、画像、マ�
 - Postshot / Brush / LichtFeldの通常学習へ渡すなら、まず `PINHOLE` + `Cubemap` を使います。
 - LichtFeldでGUTを試すなら、`ERP 360°` を選び、学習時にGUTをONにします。
 - Metashape結果に通常画像や複数解像度ERPが混ざるなら、LichtFeld向けには `Metashape → COLMAPデータセット` が安全です。
+- 完成済みCOLMAP結果をNerfstudioで学習したい場合は、`変換不要` カードではなく `COLMAP RIG → NeRFデータセット(JSON/PLY)` を使います。
 - RealityScanからPostshotへ渡すだけならCSV/PLYで足りる場合があります。LichtFeldでDatasetとして読みたい場合は `RealityScan → COLMAPデータセット` を使います。
 - Metashape → RealityScan → LichtFeldのルートでは、Metashape XML/PLYとRealityScan CSV/PLYをシーンと一緒に管理し、最終的に `output/realityscan/lfs_colmap/` を学習に使います。
 - SphereSfMは同一解像度ERP 360°専用と考えてください。混在ソースはCOLMAPまたはMetashapeを使います。

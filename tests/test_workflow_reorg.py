@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 from pathlib import Path
 
@@ -17,6 +18,7 @@ from gui import i18n
 from gui.app import MainWindow
 from gui.common.perspective_preview import PREVIEW_PROJECTION_EQUIRECT, PREVIEW_PROJECTION_PERSPECTIVE
 from gui.cubemap.view_config import VIEW_MODE_CUSTOM
+from gui.steps.colmap_nerfstudio_tool import ColmapNerfstudioTool
 from gui.steps.colmap_text_model_tool import ColmapTextModelTool
 from gui.steps.realityscan_lfs_tool import RealityScanLfsTool
 
@@ -143,6 +145,10 @@ def test_sfm_cards_open_in_step_sfm_pages_and_external_route_goes_to_dataset(tmp
             window.dataset_step.card_grid.buttons["realityscan_lfs"].title_label.text()
             == i18n.t("DATASET_TOOL_RS_LFS_TITLE")
         )
+        assert (
+            window.dataset_step.card_grid.buttons["colmap_nerfstudio"].title_label.text()
+            == i18n.t("DATASET_TOOL_COLMAP_NERF_TITLE")
+        )
         window._set_current_step(4)
         assert list(window.sfm_step.card_grid.buttons) == [
             "metashape",
@@ -155,8 +161,9 @@ def test_sfm_cards_open_in_step_sfm_pages_and_external_route_goes_to_dataset(tmp
             "metashape_dataset",
             "realityscan_lfs",
             "spheresfm_dataset",
-            "scale",
             "colmap_text_model",
+            "colmap_nerfstudio",
+            "scale",
         ]
         assert window.dataset_step.dataset_menu_note.text() == i18n.t("DATASET_MENU_DESC")
         dataset_menu_labels = window.dataset_step.stack.currentWidget().findChildren(QLabel)
@@ -297,6 +304,12 @@ def test_sfm_cards_open_in_step_sfm_pages_and_external_route_goes_to_dataset(tmp
         assert window.dataset_step.colmap_text_tool.settings_tabs.currentIndex() == 1
         colmap_text_labels = window.dataset_step.stack.currentWidget().findChildren(QLabel)
         assert any(label.text() == i18n.t("DATASET_TOOL_COLMAP_TEXT_DESC") for label in colmap_text_labels)
+
+        window.dataset_step.show_tool("colmap_nerfstudio")
+        assert window.dataset_step.current_tool() == "colmap_nerfstudio"
+        assert window.run_btn.text().strip() == i18n.t("DATASET_RUN_COLMAP_NERF")
+        colmap_nerf_labels = window.dataset_step.stack.currentWidget().findChildren(QLabel)
+        assert all(label.text() != i18n.t("DATASET_TOOL_COLMAP_NERF_DESC") for label in colmap_nerf_labels)
 
         window._open_dataset_route("colmap")
         assert window.dataset_step.current_tool() == "colmap_ready"
@@ -495,6 +508,48 @@ def test_colmap_text_model_tool_defaults_and_builds_dataset_job(tmp_path: Path) 
     tool.on_queue_finished(True)
     assert load_artifacts(scene, "sfm")[-1].kind == "metashape_xml_ply"
     assert load_artifacts(scene, "dataset")[-1].kind == "colmap_dataset"
+
+
+def test_colmap_nerfstudio_tool_defaults_and_builds_dataset_job(tmp_path: Path) -> None:
+    scene = tmp_path / "scene"
+    source = scene / "output" / "colmap_rig"
+    (source / "images" / "rig1" / "cam01").mkdir(parents=True)
+    (source / "images" / "rig1" / "cam01" / "frame_00001.jpg").write_bytes(b"image")
+    _write_colmap_sparse(source)
+
+    _app()
+    tool = ColmapNerfstudioTool(Path.cwd())
+    tool.set_scene_dir(str(scene))
+
+    output = scene / "output" / "colmap_nerfstudio"
+    assert Path(tool.source_browse.text()) == source
+    assert Path(tool.output_browse.text()) == output
+    assert tool.primary_action_enabled()
+
+    commands = tool.build_commands()
+    assert [phase for phase, _cmd in commands] == ["colmap_nerfstudio"]
+    assert tool.on_line("[progress] 2/4") == (2, 4)
+    assert tool.on_line("Frames: 2") is None
+
+    job = _workflow_job(commands[0][1])
+    assert job["kind"] == "colmap_nerfstudio_dataset"
+    assert job["scene_dir"] == str(scene)
+    assert job["colmap_root"] == str(source)
+    assert job["output_dir"] == str(output)
+    assert job["images_dir"] == ""
+    assert job["masks_dir"] == ""
+    assert job["sparse_dir"] == ""
+    assert job["require_complete_masks"] is True
+
+    (output / "transforms.json").write_text(
+        json.dumps({"camera_model": "OPENCV", "ply_file_path": "pointcloud.ply", "frames": []}),
+        encoding="utf-8",
+    )
+    (output / "pointcloud.ply").write_text("ply\n", encoding="ascii")
+    tool.on_queue_finished(True)
+
+    assert load_artifacts(scene, "sfm")[-1].kind == "colmap_sparse"
+    assert load_artifacts(scene, "dataset")[-1].kind == "nerf_json_ply"
 
 
 def test_colmap_text_model_training_mask_modes_control_dataset_masks(tmp_path: Path, monkeypatch) -> None:

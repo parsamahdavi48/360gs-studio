@@ -2,7 +2,7 @@
 
 Step 4 is where you choose how camera poses and sparse points will be prepared for the training dataset. If you already ran SfM in Metashape, RealityScan, COLMAP, or SphereSfM, there is usually nothing else to run in this step. Open a route card only when you want this app to run COLMAP/SphereSfM or when you want to create RealityScan realignment data from a Metashape result.
 
-Step 5 converts SfM results into datasets that training apps can read. Use it to create NeRF-style JSON/PLY datasets from Metashape or SphereSfM, COLMAP-format datasets from Metashape or RealityScan, or to apply AprilTag scale to an existing dataset.
+Step 5 converts SfM results into datasets that training apps can read. Use it to create NeRF-style JSON/PLY datasets from Metashape, COLMAP, or SphereSfM, COLMAP-format datasets from Metashape or RealityScan, or to apply AprilTag scale to an existing dataset.
 
 ## Related Tools
 
@@ -22,7 +22,7 @@ Start by deciding whether camera poses already exist.
 | --- | --- |
 | Metashape SfM is already done | In Step 4, choose `Use Existing SfM Result`. In Step 5, choose a Metashape dataset card |
 | RealityScan realignment is already done | In Step 4, choose `Use Existing SfM Result`. In Step 5, choose `RealityScan -> COLMAP Dataset` |
-| You already have a COLMAP images/masks/sparse dataset | In Step 4, choose `Use Existing SfM Result`. For COLMAP-compatible training apps, continue directly to training |
+| You already have a COLMAP images/masks/sparse dataset | In Step 4, choose `Use Existing SfM Result`. For COLMAP-compatible training apps, continue directly to training; for Nerfstudio JSON/PLY, use `COLMAP RIG -> NeRF Dataset (JSON/PLY)` |
 | You want this app to run COLMAP | In Step 4, choose `Run COLMAP SfM` |
 | You want this app to run SphereSfM | In Step 4, choose `Run SphereSfM` |
 | You want to realign a Metashape result in RealityScan | In Step 4, choose `Metashape -> RealityScan Data` |
@@ -100,6 +100,14 @@ Create a COLMAP-format dataset with `images/`, `masks/`, and `sparse/0/` from Me
 
 For LichtFeld with mixed Metashape sources, this is the safer route.
 
+### COLMAP RIG -> NeRF Dataset (JSON/PLY)
+
+Create a Nerfstudio-style dataset from this app's COLMAP SfM output, normally `output/colmap_rig/`. The output is `output/colmap_nerfstudio/` with `transforms.json`, `pointcloud.ply`, and an `images/` folder containing only registered COLMAP images.
+
+Nerfstudio has no rig layer in `transforms.json`. This tool reads the final COLMAP registered image poses from `images.bin/txt`; any rig sensor pose has already been folded into those per-image poses by COLMAP. Camera poses are converted from COLMAP/OpenCV camera axes to Nerfstudio/OpenGL axes, then the same Nerfstudio world-axis transform is applied to both cameras and PLY points so the sparse point cloud stays aligned with the cameras.
+
+If `output/colmap_rig/masks/` exists, masks are attached only when every registered image has a matching mask. A partial mask set fails rather than creating a dataset where some training frames are masked and others are not.
+
 ### RealityScan -> COLMAP Dataset
 
 Create a LichtFeld-readable COLMAP dataset from RealityScan Internal/External CSV and a PLY exported in the same coordinate state.
@@ -157,6 +165,7 @@ The viewer can load output datasets, Metashape XML/PLY, COLMAP sparse models, an
 - For normal Postshot / Brush / LichtFeld training, start with `PINHOLE` + `Cubemap`.
 - For LichtFeld GUT, choose `ERP 360°` and enable GUT in the training app.
 - If a Metashape result mixes normal images or multiple ERP resolutions, use `Metashape -> COLMAP Dataset` for LichtFeld.
+- If a finished COLMAP result needs to be trained in Nerfstudio, use `COLMAP RIG -> NeRF Dataset (JSON/PLY)` instead of the "conversion not needed" card.
 - If RealityScan output is going to Postshot, CSV/PLY may be enough. If LichtFeld needs a Dataset folder, use `RealityScan -> COLMAP Dataset`.
 - For the Metashape -> RealityScan -> LichtFeld route, keep Metashape XML/PLY and RealityScan CSV/PLY with the scene, then train from `output/realityscan/lfs_colmap/`.
 - Treat SphereSfM as same-resolution ERP 360° only. Use COLMAP or Metashape for mixed sources.

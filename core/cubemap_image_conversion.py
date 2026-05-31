@@ -13,6 +13,8 @@ from core.cancellation import CancellationToken, raise_if_cancelled
 from core.colmap_rig_export import (
     colmap_camera_image_dir,
     colmap_camera_mask_dir,
+    colmap_image_prefix,
+    colmap_rig_root,
     frame_filename,
 )
 from core.cubemap_image_io import (
@@ -745,6 +747,9 @@ def convert_images(
         )
 
 
+COLMAP_RIG_IMAGE_LIST = "rig_image_list.txt"
+
+
 def make_colmap_rig_jobs(
     image_files: list[str],
     output_format: str | None,
@@ -756,6 +761,38 @@ def make_colmap_rig_jobs(
         out_ext = resolve_output_ext(in_ext, output_format)
         jobs.append((frame_file, frame_filename(idx, total, out_ext)))
     return jobs
+
+
+def colmap_rig_image_names(
+    image_files: list[str],
+    views: list[dict],
+    output_format: str | None,
+    rig_name: str,
+) -> list[str]:
+    names: list[str] = []
+    jobs = make_colmap_rig_jobs(image_files, output_format)
+    for _source, output_filename in jobs:
+        for view in views:
+            names.append(f"{colmap_image_prefix(rig_name, str(view['camera_name']))}{output_filename}")
+    return names
+
+
+def write_colmap_rig_image_list(
+    output_dir: str | Path,
+    image_files: list[str],
+    views: list[dict],
+    output_format: str | None,
+    rig_name: str,
+    *,
+    list_name: str = COLMAP_RIG_IMAGE_LIST,
+) -> Path:
+    root = colmap_rig_root(output_dir)
+    root.mkdir(parents=True, exist_ok=True)
+    path = root / list_name
+    names = colmap_rig_image_names(image_files, views, output_format, rig_name)
+    text = "\n".join(names)
+    path.write_text(f"{text}\n" if text else "", encoding="utf-8")
+    return path
 
 
 def convert_images_colmap_rig(
@@ -778,6 +815,7 @@ def convert_images_colmap_rig(
     workers: str | int | None = "auto",
     remap_cache_limit: str | int | None = "auto",
     cancel_event: CancellationToken | None = None,
+    write_rig_image_list: bool = True,
 ) -> None:
     raise_if_cancelled(cancel_event)
     image_dirs_by_view = {
@@ -820,13 +858,22 @@ def convert_images_colmap_rig(
         len(views),
         resolved_cache_limit,
     )
+    jobs = make_colmap_rig_jobs(image_files, output_format)
     print(f"Workers: {max_workers} (remap cache limit={resolved_cache_limit})")
     print(f"[progress] 0/{total_outputs}", flush=True)
     if total_outputs <= 0:
+        if write_rig_image_list:
+            list_path = write_colmap_rig_image_list(
+                output_dir,
+                image_files,
+                views,
+                output_format,
+                rig_name,
+            )
+            print(f"Saved rig image list: {list_path}", flush=True)
         return
 
     raise_if_cancelled(cancel_event)
-    jobs = make_colmap_rig_jobs(image_files, output_format)
     with ProcessPoolExecutor(
         max_workers=max_workers,
         initializer=worker_init_colmap_rig,
@@ -858,3 +905,12 @@ def convert_images_colmap_rig(
             failure_context="COLMAP rig image conversion failed",
             cancel_event=cancel_event,
         )
+    if write_rig_image_list:
+        list_path = write_colmap_rig_image_list(
+            output_dir,
+            image_files,
+            views,
+            output_format,
+            rig_name,
+        )
+        print(f"Saved rig image list: {list_path}", flush=True)

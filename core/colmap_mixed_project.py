@@ -22,8 +22,8 @@ from core.colmap_rig_export import (
     write_rig_config_payload_json,
 )
 from core.cubemap_image_conversion import (
+    colmap_rig_image_names,
     convert_images_colmap_rig,
-    make_colmap_rig_jobs,
 )
 from core.cubemap_view_spec import load_views_json, views_to_dicts
 from core.dataset_writer_colmap import replace_file_with_link_or_copy
@@ -171,6 +171,7 @@ def prepare_colmap_mixed_project(
                 workers=workers,
                 remap_cache_limit=remap_cache_limit,
                 cancel_event=cancel_event,
+                write_rig_image_list=False,
             )
         print(f"COLMAP rig images prepared: {len(rig_image_names)} ({rig_path})", flush=True)
 
@@ -333,15 +334,10 @@ def _image_rel_to_images_root(inventory: SceneInventory, image: SceneImage) -> s
 def _rig_image_names(
     erp_files: list[str],
     prepared_views: list[dict[str, Any]],
-    output_format: str,
+    output_format: str | None,
     rig_name: str,
 ) -> list[str]:
-    names: list[str] = []
-    jobs = make_colmap_rig_jobs(erp_files, output_format)
-    for _source, output_filename in jobs:
-        for view in prepared_views:
-            names.append(f"{rig_name}/{view['camera_name']}/{output_filename}")
-    return names
+    return colmap_rig_image_names(erp_files, prepared_views, output_format, rig_name)
 
 
 def _link_normal_images(

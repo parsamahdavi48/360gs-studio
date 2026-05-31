@@ -19,6 +19,7 @@ from core.job_payload_validation import (
 DATASET_JOB_SCHEMA_VERSION = 1
 JOB_KIND_METASHAPE_COLMAP = "metashape_colmap_dataset"
 JOB_KIND_METASHAPE_NERF = "metashape_nerf_dataset"
+JOB_KIND_COLMAP_NERFSTUDIO = "colmap_nerfstudio_dataset"
 JOB_KIND_REALITYSCAN_LFS_COLMAP = "realityscan_lfs_colmap"
 JOB_KIND_ATTACH_DATASET_MASKS = "attach_dataset_masks"
 
@@ -130,6 +131,29 @@ def realityscan_lfs_colmap_job(
     }
 
 
+def colmap_nerfstudio_job(
+    *,
+    scene_dir: str | Path,
+    colmap_root: str | Path,
+    output_dir: str | Path,
+    images_dir: str | Path | None = None,
+    masks_dir: str | Path | None = None,
+    sparse_dir: str | Path | None = None,
+    require_complete_masks: bool = True,
+) -> dict[str, Any]:
+    return {
+        "schema_version": DATASET_JOB_SCHEMA_VERSION,
+        "kind": JOB_KIND_COLMAP_NERFSTUDIO,
+        "scene_dir": str(scene_dir),
+        "colmap_root": str(colmap_root),
+        "output_dir": str(output_dir),
+        "images_dir": str(images_dir) if images_dir else "",
+        "masks_dir": str(masks_dir) if masks_dir else "",
+        "sparse_dir": str(sparse_dir) if sparse_dir else "",
+        "require_complete_masks": bool(require_complete_masks),
+    }
+
+
 def attach_dataset_masks_job(
     *,
     dataset_root: str | Path,
@@ -173,6 +197,7 @@ def validate_dataset_job_payload(payload: dict[str, Any]) -> None:
         allowed={
             JOB_KIND_METASHAPE_COLMAP,
             JOB_KIND_METASHAPE_NERF,
+            JOB_KIND_COLMAP_NERFSTUDIO,
             JOB_KIND_REALITYSCAN_LFS_COLMAP,
             JOB_KIND_ATTACH_DATASET_MASKS,
         },
@@ -180,6 +205,8 @@ def validate_dataset_job_payload(payload: dict[str, Any]) -> None:
     )
     if kind in {JOB_KIND_METASHAPE_COLMAP, JOB_KIND_METASHAPE_NERF}:
         _validate_metashape_dataset_job(data)
+    elif kind == JOB_KIND_COLMAP_NERFSTUDIO:
+        _validate_colmap_nerfstudio_job(data)
     elif kind == JOB_KIND_REALITYSCAN_LFS_COLMAP:
         _validate_realityscan_lfs_colmap_job(data)
     elif kind == JOB_KIND_ATTACH_DATASET_MASKS:
@@ -212,6 +239,15 @@ def _validate_realityscan_lfs_colmap_job(payload: Mapping[str, Any]) -> None:
     require_finite_float(payload, "undistort_alpha", label="dataset", min_value=0.0, max_value=1.0)
     require_finite_float(payload, "camera_rotation_x_deg", label="dataset")
     require_finite_float(payload, "pointcloud_rotation_x_deg", label="dataset")
+
+
+def _validate_colmap_nerfstudio_job(payload: Mapping[str, Any]) -> None:
+    for key in ("scene_dir", "colmap_root", "output_dir"):
+        require_str(payload, key, label="dataset")
+    require_str(payload, "images_dir", label="dataset", allow_empty=True)
+    require_str(payload, "masks_dir", label="dataset", allow_empty=True)
+    require_str(payload, "sparse_dir", label="dataset", allow_empty=True)
+    require_bool(payload, "require_complete_masks", label="dataset")
 
 
 def _validate_attach_dataset_masks_job(payload: Mapping[str, Any]) -> None:

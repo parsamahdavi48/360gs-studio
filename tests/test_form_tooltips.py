@@ -400,6 +400,7 @@ def test_step4_scrolls_tab_content_not_whole_settings_pane() -> None:
         assert set(window.dataset_step.card_grid.buttons) == {
             "metashape_dataset",
             "spheresfm_dataset",
+            "colmap_nerfstudio",
             "realityscan_lfs",
             "scale",
             "colmap_text_model",

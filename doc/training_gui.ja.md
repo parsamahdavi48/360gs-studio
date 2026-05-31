@@ -15,6 +15,8 @@ Step 5の出力は、下流の3DGSアプリに渡すためのデータセット�
 
 Step 6のCLI実行は、LichtFeld Studio v0.5.2互換CLI、Postshot v1.0/v1.1 Release BuildのCLI、Brush CLI、gsplat `examples/simple_trainer.py` を目安にしています。CLIを使わない場合でも、Step 5の出力データセットは各学習アプリで直接使えます。
 
+`COLMAP RIG → NeRFデータセット(JSON/PLY)` で作成したNerfstudio用データセットは、Nerfstudio側で直接開くか学習に使います。Step 6からNerfstudioは起動しません。
+
 ## 使う前に用意するもの
 
 この画面は、学習アプリ本体やgsplat用Python環境をインストールしません。使いたい学習アプリをCLIから起動できる状態にしておきます。
@@ -94,6 +96,7 @@ Step 6では中央パネルを広く使うため、左右2カラムに整理し�
 | SphereSfM + PINHOLE Cubemap | `<scene>/output/spheresfm_cubemap/` |
 | SphereSfM + ERP 360° / GUT | `<scene>/output/spheresfm_3dgut/` |
 | COLMAP Rig | `<scene>/output/colmap_rig/` |
+| COLMAP RIG → NeRFデータセット(JSON/PLY) | `<scene>/output/colmap_nerfstudio/`。Nerfstudio側で直接使います |
 | RealityScan -> COLMAPデータセット | `<scene>/output/realityscan/lfs_colmap/` |
 | Metashape -> COLMAPデータセット | `<scene>/output/metashape_colmap/` |
 
