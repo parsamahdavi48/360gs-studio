@@ -436,17 +436,20 @@ class MaskStep(
         images_path_row.addWidget(self.images_path_label, stretch=1)
 
         add_tooltip_row(path_form, i18n.IMAGES_DIR, self.images_path_row, i18n.tip("IMAGES_DIR"))
+        self.images_path_row_label = path_form.labelForField(self.images_path_row)
         self.masks_path_label = QLabel("-")
         self.masks_path_label.setToolTip(i18n.tip("MASKS_DIR"))
         self.masks_path_label.setWordWrap(True)
         self.masks_path_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
         add_tooltip_row(path_form, i18n.MASKS_DIR, self.masks_path_label, i18n.tip("MASKS_DIR"))
+        self.masks_path_row_label = path_form.labelForField(self.masks_path_label)
 
         self.mask_source_combo = QComboBox()
         self.mask_source_combo.setToolTip(i18n.tip("MASK_SOURCE"))
         self.mask_source_combo.setFixedWidth(180)
         self.mask_source_combo.currentIndexChanged.connect(lambda _: self._on_mask_source_changed())
         add_tooltip_row(path_form, i18n.t("MASK_SOURCE"), self.mask_source_combo, i18n.tip("MASK_SOURCE"))
+        self.mask_source_row_label = path_form.labelForField(self.mask_source_combo)
 
         self.mask_scope_combo = QComboBox()
         self.mask_scope_combo.setToolTip(i18n.tip("MASK_SCOPE"))

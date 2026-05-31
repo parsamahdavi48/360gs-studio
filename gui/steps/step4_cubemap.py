@@ -951,6 +951,8 @@ class CubemapStep(
             if not enabled and self.settings_tabs.currentIndex() == self._dataset_mask_tab_index:
                 self.settings_tabs.setCurrentIndex(self.output_tab_index)
         self.export_masks_cb.setVisible(not enabled)
+        self.sfm_path_summary_row.setVisible(not enabled)
+        self.cubemap_path_summary_row.setVisible(not enabled)
         self.export_targets_row.setToolTip(
             i18n.tip("DATASET_EXPORT_TARGETS") if enabled else i18n.tip("EXPORT_TARGETS")
         )

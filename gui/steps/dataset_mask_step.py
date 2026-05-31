@@ -6,7 +6,7 @@ from collections.abc import Callable
 from pathlib import Path
 
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QButtonGroup, QHBoxLayout, QLabel, QPushButton, QSizePolicy, QWidget
+from PySide6.QtWidgets import QComboBox, QFormLayout, QWidget
 
 from core.app_job import dataset_app_job
 from core.dataset_job_spec import attach_dataset_masks_job, write_dataset_job
@@ -21,6 +21,7 @@ from core.mask_source_scope import MASK_SOURCE_ALL
 from core.nerf_dataset_paths import find_nerf_transforms_path
 from core.scene_layout import jobs_dir
 from gui import i18n
+from gui.common.form_rows import add_tooltip_row
 from gui.common.runner_types import StepCommandQueue
 from gui.steps.step3_mask import MaskStep
 from gui.steps.step3_mask_plan import (
@@ -58,50 +59,36 @@ class DatasetMaskStep(MaskStep):
         self._refresh_mask_source_options()
 
     def _install_dataset_mode_controls(self) -> None:
-        self.dataset_mask_note = QLabel(i18n.t("DATASET_MASK_NOTE"))
-        self.dataset_mask_note.setObjectName("datasetMaskHint")
-        self.dataset_mask_note.setWordWrap(True)
-        self.dataset_mask_note.setAlignment(Qt.AlignLeft | Qt.AlignTop)
-        self.dataset_mask_note.setToolTip(i18n.tip("DATASET_MASK_NOTE"))
-        self.metashape_notice.setObjectName("datasetMaskHint")
+        for field_name, label_name in (
+            ("images_path_row", "images_path_row_label"),
+            ("masks_path_label", "masks_path_row_label"),
+            ("mask_source_combo", "mask_source_row_label"),
+        ):
+            field = getattr(self, field_name, None)
+            if field is not None:
+                field.setVisible(False)
+            label = getattr(self, label_name, None)
+            if label is not None:
+                label.setVisible(False)
+        self.metashape_notice.setObjectName("")
+        self.metashape_notice.setVisible(False)
 
-        mode_row = QWidget()
-        mode_row.setObjectName("datasetMaskModeRow")
-        mode_layout = QHBoxLayout(mode_row)
-        mode_layout.setContentsMargins(0, 0, 0, 0)
-        mode_layout.setSpacing(8)
-        mode_label = QLabel(i18n.t("DATASET_MASK_MODE"))
-        mode_label.setToolTip(i18n.tip("DATASET_MASK_MODE"))
-        mode_layout.addWidget(mode_label)
-
-        self.dataset_mask_mode_control = QWidget()
-        self.dataset_mask_mode_control.setObjectName("segmentedControl")
-        self.dataset_mask_mode_control.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
-        button_layout = QHBoxLayout(self.dataset_mask_mode_control)
-        button_layout.setContentsMargins(2, 2, 2, 2)
-        button_layout.setSpacing(2)
-        self.dataset_mask_mode_group = QButtonGroup(self)
-        self.dataset_mask_mode_group.setExclusive(True)
-        self.dataset_mask_mode_buttons: dict[str, QPushButton] = {}
+        form = QFormLayout()
+        form.setSpacing(6)
+        self.dataset_mask_mode_combo = QComboBox()
+        self.dataset_mask_mode_combo.setToolTip(i18n.tip("DATASET_MASK_MODE"))
         for mode, label_key in (
             (DATASET_MASK_CONVERT_SFM, "DATASET_MASK_MODE_CONVERT_SFM"),
             (DATASET_MASK_GENERATE_TRAINING, "DATASET_MASK_MODE_GENERATE_TRAINING"),
             (DATASET_MASK_REUSE_EXISTING, "DATASET_MASK_MODE_REUSE_EXISTING"),
             (DATASET_MASK_NONE, "DATASET_MASK_MODE_NONE"),
         ):
-            button = QPushButton(i18n.t(label_key))
-            button.setObjectName("segmentedOption")
-            button.setCheckable(True)
-            button.setToolTip(i18n.tip(f"DATASET_MASK_MODE_{mode.upper()}"))
-            button.clicked.connect(lambda _checked=False: self._on_dataset_mask_mode_changed())
-            self.dataset_mask_mode_group.addButton(button)
-            self.dataset_mask_mode_buttons[mode] = button
-            button_layout.addWidget(button)
-        self.dataset_mask_mode_buttons[DATASET_MASK_CONVERT_SFM].setChecked(True)
-        mode_layout.addWidget(self.dataset_mask_mode_control, stretch=1)
-
-        self.settings_layout.insertWidget(0, self.dataset_mask_note)
-        self.settings_layout.insertWidget(0, mode_row)
+            self.dataset_mask_mode_combo.addItem(i18n.t(label_key), mode)
+            index = self.dataset_mask_mode_combo.count() - 1
+            self.dataset_mask_mode_combo.setItemData(index, i18n.tip(f"DATASET_MASK_MODE_{mode.upper()}"), Qt.ToolTipRole)
+        self.dataset_mask_mode_combo.currentIndexChanged.connect(lambda _index: self._on_dataset_mask_mode_changed())
+        add_tooltip_row(form, i18n.t("DATASET_MASK_MODE"), self.dataset_mask_mode_combo, i18n.tip("DATASET_MASK_MODE"))
+        self.settings_layout.insertLayout(0, form)
 
     def set_dataset_projection(self, projection: str) -> None:
         projection = projection if projection in {_PROJECTION_EQUIRECT, _PROJECTION_NORMAL} else _PROJECTION_NORMAL
@@ -109,16 +96,13 @@ class DatasetMaskStep(MaskStep):
         self._set_projection(projection, sync_yolo_quality=False)
 
     def mask_mode(self) -> str:
-        for mode, button in self.dataset_mask_mode_buttons.items():
-            if button.isChecked():
-                return normalize_dataset_mask_mode(mode)
-        return DATASET_MASK_CONVERT_SFM
+        return normalize_dataset_mask_mode(self.dataset_mask_mode_combo.currentData())
 
     def set_mask_mode(self, mode: object) -> None:
         normalized = normalize_dataset_mask_mode(mode)
-        button = self.dataset_mask_mode_buttons.get(normalized)
-        if button is not None:
-            button.setChecked(True)
+        index = self.dataset_mask_mode_combo.findData(normalized)
+        if index >= 0:
+            self.dataset_mask_mode_combo.setCurrentIndex(index)
             self._on_dataset_mask_mode_changed()
 
     def primary_action_text(self) -> str:

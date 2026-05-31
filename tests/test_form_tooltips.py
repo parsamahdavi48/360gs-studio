@@ -6,7 +6,8 @@ from pathlib import Path
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PySide6.QtWidgets import QApplication, QLabel, QPushButton, QRadioButton, QToolButton, QWidget
+from PySide6.QtCore import Qt
+from PySide6.QtWidgets import QApplication, QComboBox, QLabel, QRadioButton, QToolButton, QWidget
 
 from core.app_job import AppJob
 from core.dataset_mask_policy import (
@@ -279,30 +280,35 @@ def test_step4_scene_preview_launch_uses_icon_button() -> None:
     assert not step.scene_preview_btn.icon().isNull()
 
 
-def test_step5_dataset_mask_mode_uses_compact_segmented_buttons() -> None:
+def test_step5_dataset_mask_mode_uses_compact_combo_without_static_explanations() -> None:
     _app()
     step = CubemapStep(Path.cwd())
     step.enable_dataset_mask_settings()
     assert step._dataset_mask_step is not None
 
     mask_step = step._dataset_mask_step
-    assert mask_step.dataset_mask_note.objectName() == "datasetMaskHint"
-    assert mask_step.metashape_notice.objectName() == "datasetMaskHint"
-    assert mask_step.dataset_mask_mode_control.objectName() == "segmentedControl"
-    assert set(mask_step.dataset_mask_mode_buttons) == {
+    assert isinstance(mask_step.dataset_mask_mode_combo, QComboBox)
+    assert mask_step.dataset_mask_mode_combo.toolTip() == i18n.tip("DATASET_MASK_MODE")
+    assert {
+        mask_step.dataset_mask_mode_combo.itemData(index)
+        for index in range(mask_step.dataset_mask_mode_combo.count())
+    } == {
         DATASET_MASK_CONVERT_SFM,
         DATASET_MASK_GENERATE_TRAINING,
         DATASET_MASK_REUSE_EXISTING,
         DATASET_MASK_NONE,
     }
-    assert all(isinstance(button, QPushButton) for button in mask_step.dataset_mask_mode_buttons.values())
-    assert all(button.objectName() == "segmentedOption" for button in mask_step.dataset_mask_mode_buttons.values())
-    assert mask_step.dataset_mask_mode_buttons[DATASET_MASK_CONVERT_SFM].text() == i18n.t(
-        "DATASET_MASK_MODE_CONVERT_SFM"
+    assert mask_step.dataset_mask_mode_combo.itemText(0) == i18n.t("DATASET_MASK_MODE_CONVERT_SFM")
+    assert mask_step.dataset_mask_mode_combo.itemText(1) == i18n.t("DATASET_MASK_MODE_GENERATE_TRAINING")
+    assert mask_step.dataset_mask_mode_combo.itemData(0, Qt.ToolTipRole) == i18n.tip(
+        "DATASET_MASK_MODE_CONVERT_SFM_MASKS"
     )
-    assert mask_step.dataset_mask_mode_buttons[DATASET_MASK_GENERATE_TRAINING].text() == i18n.t(
-        "DATASET_MASK_MODE_GENERATE_TRAINING"
-    )
+    assert mask_step.dataset_mask_mode_combo.itemData(3, Qt.ToolTipRole) == i18n.tip("DATASET_MASK_MODE_NONE")
+    assert not hasattr(mask_step, "dataset_mask_note")
+    assert mask_step.metashape_notice.isHidden()
+    assert mask_step.images_path_row.isHidden()
+    assert mask_step.masks_path_label.isHidden()
+    assert mask_step.mask_source_combo.isHidden()
     assert not [
         label
         for label in mask_step.settings_scroll.findChildren(QLabel)
@@ -402,6 +408,8 @@ def test_step4_scrolls_tab_content_not_whole_settings_pane() -> None:
         assert step._export_method() == "metashape"
         assert not step.export_method_row.isVisible()
         assert step.findChildren(QScrollArea, "settingsScroll") == []
+        assert step.sfm_path_summary_row.isHidden()
+        assert step.cubemap_path_summary_row.isHidden()
 
         tab_scrolls = [step.settings_tabs.widget(index) for index in range(step.settings_tabs.count())]
         assert len(tab_scrolls) == 4
