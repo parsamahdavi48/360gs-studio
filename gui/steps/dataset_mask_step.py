@@ -19,10 +19,11 @@ from core.dataset_mask_policy import (
 )
 from core.mask_source_scope import MASK_SOURCE_ALL
 from core.nerf_dataset_paths import find_nerf_transforms_path
-from core.scene_layout import jobs_dir
+from core.scene_layout import jobs_dir, scene_images_dir, scene_masks_dir
 from gui import i18n
 from gui.common.form_rows import add_tooltip_row
 from gui.common.runner_types import StepCommandQueue
+from gui.mask.mask_preview import MaskPreviewConfig
 from gui.steps.step3_mask import MaskStep
 from gui.steps.step3_mask_plan import (
     MASK_COMMAND_CUSTOM,
@@ -65,6 +66,8 @@ class DatasetMaskStep(MaskStep):
         )
         self._install_dataset_mode_controls()
         self._refresh_mask_source_options()
+        self._sync_preview_roots_for_mode()
+        self._sync_preview_actions_for_mode()
 
     def _install_dataset_mode_controls(self) -> None:
         for field_name, label_name in (
@@ -231,17 +234,51 @@ class DatasetMaskStep(MaskStep):
     def _dataset_root(self) -> Path:
         return Path(self._dataset_root_provider())
 
+    def _preview_uses_sfm_masks(self) -> bool:
+        return hasattr(self, "dataset_mask_mode_combo") and self.mask_mode() == DATASET_MASK_CONVERT_SFM
+
     def _images_dir_for_scene(self, _scene: Path) -> Path:
+        if self._preview_uses_sfm_masks():
+            return scene_images_dir(_scene)
         return self._dataset_root() / "images"
 
     def _masks_dir_for_scene(self, _scene: Path) -> Path:
+        if self._preview_uses_sfm_masks():
+            return scene_masks_dir(_scene)
         return self._dataset_root() / "masks"
 
     def _projection_key_for_image(self, image_path: Path) -> str:
+        if self.scene_dir:
+            try:
+                return image_path.relative_to(Path(self.scene_dir)).as_posix()
+            except Exception:
+                pass
         try:
             return image_path.relative_to(Path(self._images_dir_text())).as_posix()
         except Exception:
             return image_path.name
+
+    def _mask_preview_config_from_controls(self) -> MaskPreviewConfig:
+        mode = self.mask_mode() if hasattr(self, "dataset_mask_mode_combo") else DATASET_MASK_GENERATE_TRAINING
+        if mode in {DATASET_MASK_CONVERT_SFM, DATASET_MASK_REUSE_EXISTING}:
+            return MaskPreviewConfig(
+                use_yolo=True,
+                use_stitch=False,
+                use_overexposure=False,
+                use_sky=False,
+                masks_dir=self._masks_dir_text(),
+                settings_key=("dataset-mask", mode, self._images_dir_text(), self._masks_dir_text()),
+            )
+        if mode == DATASET_MASK_NONE:
+            return MaskPreviewConfig(
+                use_yolo=False,
+                use_stitch=False,
+                use_overexposure=False,
+                use_sky=False,
+                masks_dir="",
+                settings_key=("dataset-mask", mode, self._images_dir_text()),
+            )
+        return super()._mask_preview_config_from_controls()
 
     def _sync_projection_from_project(self, *, preserve_user_quality: bool = False) -> None:
         self._set_projection(self._dataset_projection, sync_yolo_quality=not preserve_user_quality)
@@ -306,5 +343,26 @@ class DatasetMaskStep(MaskStep):
         return True, i18n.t("MASK_READY_OK")
 
     def _on_dataset_mask_mode_changed(self) -> None:
+        self._sync_preview_roots_for_mode()
+        self._sync_preview_actions_for_mode()
         self._update_task_controls()
         self._update_ready_status()
+
+    def _run_current_image_reprocess(self) -> None:
+        if self.mask_mode() != DATASET_MASK_GENERATE_TRAINING:
+            return
+        super()._run_current_image_reprocess()
+
+    def _sync_preview_roots_for_mode(self) -> None:
+        if not hasattr(self, "mask_preview"):
+            return
+        self._invalidate_scene_inventory_cache()
+        self._invalidate_readiness_cache()
+        self._on_images_dir_changed(self._images_dir_text())
+
+    def _sync_preview_actions_for_mode(self) -> None:
+        if not hasattr(self, "mask_preview"):
+            return
+        can_save_reprocess = self.mask_mode() == DATASET_MASK_GENERATE_TRAINING
+        self.mask_preview.reprocess_current_btn.setVisible(can_save_reprocess)
+        self.mask_preview.reprocess_current_btn.setEnabled(can_save_reprocess)

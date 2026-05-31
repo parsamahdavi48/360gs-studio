@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from core.dataset_mask_policy import DATASET_MASK_CONVERT_SFM
+from core.mask_view_recipes import recipe_for
 from tests.helpers.step4 import (
     STEP4_SETTINGS_VERSION,
     AppJob,
@@ -14,6 +16,7 @@ from tests.helpers.step4 import (
     _write_ascii_ply,
     _write_metashape_xml,
     _write_mixed_metashape_xml,
+    _write_output_dataset,
     _write_test_image,
     i18n,
     json,
@@ -29,6 +32,10 @@ from tests.helpers.step4 import (
     step4_meta_dir,
     step4_views_config_path,
 )
+
+
+def _command_arg(cmd: list[str], flag: str) -> str:
+    return cmd[cmd.index(flag) + 1]
 
 
 def test_metashape_projected_uses_dataset_job_writer(tmp_path: Path) -> None:
@@ -75,6 +82,131 @@ def test_dataset_mask_generate_mode_runs_after_dataset_writer(tmp_path: Path) ->
     assert attach_job["dataset_root"] == str(tmp_path / "output" / "metashape_cubemap")
     assert attach_job["masks_dir"] == str(tmp_path / "output" / "metashape_cubemap" / "masks")
     assert attach_job["clear"] is False
+
+
+def test_dataset_mask_convert_mode_previews_source_sfm_masks(tmp_path: Path) -> None:
+    step = _ready_step(tmp_path, metashape_inputs=True)
+    source_masks = tmp_path / "masks"
+    source_masks.mkdir()
+    _write_test_image(source_masks / "frame_0001.png", size=(64, 32))
+    _write_output_dataset(tmp_path, output_shape="projected")
+    step.enable_dataset_mask_settings()
+    assert step._dataset_mask_step is not None
+    mask_step = step._dataset_mask_step
+
+    mask_step.on_activated()
+    mask_step._render_mask_preview()
+
+    assert mask_step.mask_mode() == DATASET_MASK_CONVERT_SFM
+    assert mask_step._images_dir_text() == str(tmp_path / "images")
+    assert mask_step._masks_dir_text() == str(source_masks)
+    assert mask_step.mask_preview.current_image_path() == tmp_path / "images" / "frame_0001.jpg"
+    assert mask_step._mask_preview_config_from_controls().masks_dir == str(source_masks)
+    assert mask_step.mask_preview.status_label.text() == i18n.t("MASK_PREVIEW_YOLO_EXISTING")
+    assert mask_step.mask_preview.reprocess_current_btn.isHidden()
+
+    called = []
+    mask_step._build_current_reprocess_external_commands = lambda _image_path: called.append(True) or []  # type: ignore[method-assign]
+    mask_step._run_current_image_reprocess()
+    assert called == []
+
+
+def test_dataset_mask_generate_mode_previews_dataset_masks(tmp_path: Path) -> None:
+    step = _ready_step(tmp_path, metashape_inputs=True)
+    output = _write_output_dataset(tmp_path, output_shape="projected")
+    output_masks = output / "masks"
+    output_masks.mkdir()
+    _write_test_image(output_masks / "frame_0001.png", size=(64, 32))
+    step.enable_dataset_mask_settings()
+    assert step._dataset_mask_step is not None
+    mask_step = step._dataset_mask_step
+    mask_step.set_mask_mode("generate_training")
+
+    mask_step.on_activated()
+    mask_step._render_mask_preview()
+
+    assert mask_step._images_dir_text() == str(output / "images")
+    assert mask_step._masks_dir_text() == str(output_masks)
+    assert mask_step.mask_preview.current_image_path() == output / "images" / "frame_0001.jpg"
+    assert mask_step._mask_preview_config_from_controls().masks_dir == str(output_masks)
+    assert mask_step._mask_output_path_for_image(output / "images" / "frame_0001.jpg") == output_masks / "frame_0001.png"
+    assert mask_step.mask_preview.status_label.text() == i18n.t("MASK_PREVIEW_YOLO_EXISTING")
+    assert not mask_step.mask_preview.reprocess_current_btn.isHidden()
+
+
+def test_dataset_mask_generate_projected_high_quality_uses_normal_projection_without_stitch(tmp_path: Path) -> None:
+    step = _ready_step(tmp_path, metashape_inputs=True)
+    step.enable_dataset_mask_settings()
+    assert step._dataset_mask_step is not None
+    mask_step = step._dataset_mask_step
+    mask_step.set_mask_mode("generate_training")
+    mask_step.yolo_level_combo.setCurrentIndex(1)
+    mask_step.run_stitch_cb.setChecked(True)
+
+    commands = step.build_commands()
+
+    assert [phase for phase, _cmd in commands] == ["metashape_nerf", "yolo", "dataset_mask_paths"]
+    yolo_cmd = commands[1][1]
+    assert _command_arg(yolo_cmd, "--projection") == "normal"
+    assert _command_arg(yolo_cmd, "--quality") == "high"
+    recipe = recipe_for("high", "normal")
+    assert recipe.tile_spec is not None
+    assert recipe.top_view is False
+    assert recipe.bottom_view is False
+
+
+def test_dataset_mask_generate_equirect_high_quality_uses_erp_projection_and_stitch(tmp_path: Path) -> None:
+    step = _ready_step(tmp_path, metashape_inputs=True)
+    direct_idx = step.output_shape_combo.findData("equirect_3dgut")
+    assert direct_idx >= 0
+    step.output_shape_combo.setCurrentIndex(direct_idx)
+    step.enable_dataset_mask_settings()
+    assert step._dataset_mask_step is not None
+    mask_step = step._dataset_mask_step
+    mask_step.set_dataset_projection("equirect")
+    mask_step.set_mask_mode("generate_training")
+    mask_step.yolo_level_combo.setCurrentIndex(1)
+    mask_step.run_stitch_cb.setChecked(True)
+
+    commands = step.build_commands()
+
+    assert [phase for phase, _cmd in commands] == ["metashape", "yolo", "stitch", "dataset_mask_paths"]
+    yolo_cmd = commands[1][1]
+    assert _command_arg(yolo_cmd, "--projection") == "equirect"
+    assert _command_arg(yolo_cmd, "--quality") == "high"
+    assert "core.stitch_mask" in commands[2][1]
+    recipe = recipe_for("high", "equirect")
+    assert recipe.tile_spec is not None
+    assert recipe.top_view is True
+    assert recipe.bottom_view is True
+
+
+def test_dataset_mask_existing_projected_output_accepts_mixed_image_sizes(tmp_path: Path) -> None:
+    step = _ready_step(tmp_path, metashape_inputs=True)
+    output = _write_output_dataset(tmp_path, output_shape="projected")
+    (output / "images" / "nested").mkdir(parents=True)
+    _write_test_image(output / "images" / "nested" / "wide.jpg", size=(80, 30))
+    step.enable_dataset_mask_settings()
+    assert step._dataset_mask_step is not None
+    mask_step = step._dataset_mask_step
+    mask_step.set_dataset_projection("normal")
+    mask_step.set_mask_mode("generate_training")
+    mask_step.yolo_level_combo.setCurrentIndex(1)
+
+    commands = mask_step.build_commands()
+
+    assert [phase for phase, _cmd in commands] == ["yolo", "dataset_mask_paths"]
+    yolo_cmd = commands[0][1]
+    assert yolo_cmd[1:6] == [
+        "-u",
+        "-m",
+        "core.yolo_mask",
+        str(output / "images"),
+        str(output / "masks"),
+    ]
+    assert _command_arg(yolo_cmd, "--projection") == "normal"
+    assert _command_arg(yolo_cmd, "--quality") == "high"
+    assert "--image-list" not in yolo_cmd
 
 
 def test_dataset_mask_reuse_mode_attaches_existing_masks_without_converting_sfm_masks(tmp_path: Path) -> None:
