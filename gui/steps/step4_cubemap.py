@@ -16,6 +16,7 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QScrollArea,
     QSplitter,
+    QStackedWidget,
     QTabWidget,
     QToolButton,
     QVBoxLayout,
@@ -39,6 +40,7 @@ from gui.steps.base_step import (
     SETTINGS_PANE_WIDTH,
     BaseStepWidget,
 )
+from gui.steps.dataset_mask_step import DatasetMaskStep
 from gui.steps.sfm_route_selector import SfmRouteSelector
 from gui.steps.step4_activation import Step4ActivationMixin
 from gui.steps.step4_apriltag import Step4AprilTagMixin
@@ -169,6 +171,9 @@ class CubemapStep(
         self._spheresfm_sparse_user_edited = False
         self._syncing_sfm_input_paths = False
         self._scene_preview_window = None
+        self._dataset_mask_step: DatasetMaskStep | None = None
+        self._dataset_mask_tab_index: int | None = None
+        self._dataset_mask_settings_context_enabled = False
         self._preview_render_timer = QTimer(self)
         self._preview_render_timer.setSingleShot(True)
         self._preview_render_timer.setInterval(50)
@@ -785,7 +790,7 @@ class CubemapStep(
         self.spheresfm_tab_index = self.input_tab_index
         self.view_export_tab_index = self.output_tab_index
         self.spheresfm_convert_tab_index = self.output_tab_index
-        self.settings_tabs.currentChanged.connect(lambda _index: self.primary_action_state_changed.emit())
+        self.settings_tabs.currentChanged.connect(self._on_settings_tab_changed)
         left_layout.addWidget(self.settings_tabs, stretch=1)
 
         left_layout.addStretch()
@@ -831,11 +836,14 @@ class CubemapStep(
         preview_header.addWidget(self.scene_preview_btn)
         preview_layout.addLayout(preview_header)
         preview_layout.addWidget(self.preview, stretch=1)
+        self.cubemap_preview_pane = preview_pane
+        self.work_stack = QStackedWidget()
+        self.work_stack.addWidget(preview_pane)
 
         left_pane_layout.addWidget(top, stretch=1)
         left_pane_layout.addWidget(self.export_summary_bar)
         splitter.addWidget(left_pane)
-        splitter.addWidget(preview_pane)
+        splitter.addWidget(self.work_stack)
         splitter.setStretchFactor(0, 0)
         splitter.setStretchFactor(1, 1)
         splitter.setSizes([SETTINGS_PANE_WIDTH, 760])
@@ -901,6 +909,75 @@ class CubemapStep(
         layout.addWidget(output_value, stretch=1)
         return row, dataset_kind, dataset_value, output_kind, output_value
 
+    def enable_dataset_mask_settings(self) -> None:
+        self._set_dataset_mask_context_enabled(True)
+
+    def disable_dataset_mask_settings(self) -> None:
+        self._set_dataset_mask_context_enabled(False)
+
+    def _set_dataset_mask_context_enabled(self, enabled: bool) -> None:
+        if enabled:
+            self._ensure_dataset_mask_step()
+        self._dataset_mask_settings_context_enabled = bool(enabled)
+        self._sync_dataset_mask_context_ui()
+        self._on_settings_tab_changed(self.settings_tabs.currentIndex())
+
+    def _ensure_dataset_mask_step(self) -> DatasetMaskStep:
+        if self._dataset_mask_step is not None:
+            return self._dataset_mask_step
+        step = DatasetMaskStep(
+            self.base_dir,
+            dataset_root_provider=self._current_dataset_root_for_manifest,
+            parent=self,
+        )
+        step.primary_action_state_changed.connect(self.primary_action_state_changed)
+        step.settings_scroll.setObjectName("step4TabScroll")
+        if self.scene_dir:
+            step.set_scene_dir(self.scene_dir)
+        self._dataset_mask_step = step
+        self._dataset_mask_tab_index = self.settings_tabs.addTab(
+            step.settings_scroll,
+            i18n.t("STEP4_TAB_MASK_SETTINGS"),
+        )
+        self.work_stack.addWidget(step.preview_pane)
+        step.hide()
+        return step
+
+    def _sync_dataset_mask_context_ui(self) -> None:
+        enabled = self._dataset_mask_settings_context_enabled and self._dataset_mask_tab_index is not None
+        if self._dataset_mask_tab_index is not None:
+            self.settings_tabs.setTabVisible(self._dataset_mask_tab_index, enabled)
+            self.settings_tabs.setTabEnabled(self._dataset_mask_tab_index, enabled)
+            if not enabled and self.settings_tabs.currentIndex() == self._dataset_mask_tab_index:
+                self.settings_tabs.setCurrentIndex(self.output_tab_index)
+        self.export_masks_cb.setVisible(not enabled)
+        self.export_targets_row.setToolTip(
+            i18n.tip("DATASET_EXPORT_TARGETS") if enabled else i18n.tip("EXPORT_TARGETS")
+        )
+        self.export_images_cb.setToolTip(i18n.tip("DATASET_EXPORT_IMAGES") if enabled else i18n.tip("EXPORT_IMAGES"))
+        self.export_masks_cb.setToolTip(i18n.tip("EXPORT_MASKS"))
+
+    def _dataset_mask_tab_selected(self) -> bool:
+        return (
+            self._dataset_mask_settings_context_enabled
+            and self._dataset_mask_tab_index is not None
+            and self.settings_tabs.currentIndex() == self._dataset_mask_tab_index
+        )
+
+    def _on_settings_tab_changed(self, _index: int) -> None:
+        if self._dataset_mask_tab_selected() and self._dataset_mask_step is not None:
+            self.work_stack.setCurrentWidget(self._dataset_mask_step.preview_pane)
+            self._dataset_mask_step.set_dataset_projection(self._dataset_output_projection())
+            self._dataset_mask_step.on_activated()
+        elif hasattr(self, "work_stack"):
+            self.work_stack.setCurrentWidget(self.cubemap_preview_pane)
+        self.primary_action_state_changed.emit()
+
+    def _dataset_output_projection(self) -> str:
+        if self._uses_direct_equirect_output() or self._uses_spheresfm_3dgut_output():
+            return "equirect"
+        return "normal"
+
     def set_scene_dir(self, path: str) -> None:
         super().set_scene_dir(path)
         self._syncing_scene_dir = True
@@ -923,6 +1000,8 @@ class CubemapStep(
                 self._sync_sfm_input_paths(force=True)
                 self._update_metashape_input_hint()
                 self.preview.set_scene_dir("")
+                if self._dataset_mask_step is not None:
+                    self._dataset_mask_step.set_scene_dir("")
                 self.preview.set_perspective_supported_paths(())
                 self._refresh_input_image_count()
                 self._training_dataset_user_edited = False
@@ -966,6 +1045,9 @@ class CubemapStep(
             self._gsplat_result_name_user_edited = False
             restored = self._restore_project_settings(p)
             self.preview.set_scene_dir(path, refresh=False)
+            if self._dataset_mask_step is not None:
+                self._dataset_mask_step.set_scene_dir(path)
+                self._dataset_mask_step.set_dataset_projection(self._dataset_output_projection())
             self._input_image_count = 0
             self._update_training_paths(force=not restored)
             self._update_lfs_output_name(force=not restored)

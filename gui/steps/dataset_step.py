@@ -242,6 +242,7 @@ class DatasetStep(BaseStepWidget):
 
     def _configure_cubemap_tool(self, page: str) -> None:
         self._attach_cubemap_step()
+        self.cubemap_step.enable_dataset_mask_settings()
         self.cubemap_step.export_method_row.setVisible(False)
         self._set_metashape_training_profile_controls_visible()
         if page == _PAGE_SPHERESFM:

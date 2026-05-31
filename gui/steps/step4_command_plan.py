@@ -68,6 +68,10 @@ from gui.steps.workflow_job_commands import build_workflow_job_cmd
 
 class Step4CommandPlanMixin:
     def build_commands(self) -> StepCommandQueue:
+        if self._dataset_mask_tab_selected() and self._dataset_mask_step is not None:
+            self._dataset_mask_step.set_dataset_projection(self._dataset_output_projection())
+            return self._dataset_mask_step.build_commands()
+
         if self._is_spheresfm_method():
             self._reset_spheresfm_rtx50_diagnostics()
             run_sfm = self._spheresfm_runs_sfm()
@@ -79,7 +83,7 @@ class Step4CommandPlanMixin:
                 self._validate_spheresfm_conversion_export()
                 if not self._prepare_spheresfm_run_outputs(include_project=False, include_conversion=True):
                     return []
-                return self._build_spheresfm_conversion_commands()
+                return [*self._build_spheresfm_conversion_commands(), *self._dataset_mask_followup_commands()]
 
             steps: StepCommandQueue = []
             if run_sfm:
@@ -92,6 +96,7 @@ class Step4CommandPlanMixin:
             if run_conversion:
                 self._validate_spheresfm_conversion_export()
                 steps.extend(self._build_spheresfm_conversion_commands())
+                steps.extend(self._dataset_mask_followup_commands())
             return steps
 
         if self._is_colmap_method():
@@ -130,7 +135,7 @@ class Step4CommandPlanMixin:
                     step4_meta_dir(Path(self.scene_dir)),
                     self.view_config.collect_views(include_disabled=True),
                 )
-                return [("metashape_nerf", nerf_cmd)]
+                return [("metashape_nerf", nerf_cmd), *self._dataset_mask_followup_commands()]
             if self._uses_direct_equirect_output() and self._metashape_model_requires_projected_writer():
                 raise ValueError(i18n.t("METASHAPE_MIXED_NERF_DIRECT_OUTPUT_UNSUPPORTED"))
             preprocess_cmd = self._build_preprocess_cmd()
@@ -141,7 +146,7 @@ class Step4CommandPlanMixin:
         if self._uses_direct_equirect_output():
             if not self._prepare_3dgut_output_dir():
                 return []
-            return [("metashape", preprocess_cmd)]
+            return [("metashape", preprocess_cmd), *self._dataset_mask_followup_commands()]
 
         if not self._prepare_output_dir():
             return []
@@ -151,7 +156,19 @@ class Step4CommandPlanMixin:
         steps.append(("cubemap", self._build_cubemap_cmd()))
         if self.export_colmap_cb.isChecked():
             steps.append(("colmap", self._build_colmap_cmd()))
+        steps.extend(self._dataset_mask_followup_commands())
         return steps
+
+    def _dataset_mask_followup_commands(self) -> StepCommandQueue:
+        if (
+            not getattr(self, "_dataset_mask_settings_context_enabled", False)
+            or getattr(self, "_dataset_mask_step", None) is None
+        ):
+            return []
+        self._dataset_mask_step.set_dataset_projection(self._dataset_output_projection())
+        if self.scene_dir and self._dataset_mask_step.scene_dir != self.scene_dir:
+            self._dataset_mask_step.set_scene_dir(self.scene_dir)
+        return self._dataset_mask_step.build_followup_commands(require_existing_images=not self._writes_images())
 
     def _uses_metashape_nerf_dataset_writer(self) -> bool:
         return (

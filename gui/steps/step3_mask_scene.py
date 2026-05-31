@@ -44,8 +44,8 @@ class Step3MaskSceneMixin:
         self._invalidate_readiness_cache()
         if path:
             scene = Path(path)
-            self.images_path_label.setText(str(scene_images_dir(scene)))
-            self.masks_path_label.setText(str(scene_masks_dir(scene)))
+            self.images_path_label.setText(str(self._images_dir_for_scene(scene)))
+            self.masks_path_label.setText(str(self._masks_dir_for_scene(scene)))
         else:
             self.images_path_label.setText("-")
             self.masks_path_label.setText("-")
@@ -81,12 +81,18 @@ class Step3MaskSceneMixin:
     def _images_dir_text(self) -> str:
         if not self.scene_dir:
             return ""
-        return str(scene_images_dir(Path(self.scene_dir)))
+        return str(self._images_dir_for_scene(Path(self.scene_dir)))
 
     def _masks_dir_text(self) -> str:
         if not self.scene_dir:
             return ""
-        return str(scene_masks_dir(Path(self.scene_dir)))
+        return str(self._masks_dir_for_scene(Path(self.scene_dir)))
+
+    def _images_dir_for_scene(self, scene: Path) -> Path:
+        return scene_images_dir(scene)
+
+    def _masks_dir_for_scene(self, scene: Path) -> Path:
+        return scene_masks_dir(scene)
 
     def _selected_mask_tasks(self) -> list[str]:
         requested_steps = [MASK_TASK_YOLO]
@@ -256,8 +262,8 @@ class Step3MaskSceneMixin:
         strict: bool = False,
     ) -> SceneInventory:
         scene = Path(self.scene_dir)
-        images = images_dir or scene_images_dir(scene)
-        masks = masks_dir or scene_masks_dir(scene)
+        images = images_dir or self._images_dir_for_scene(scene)
+        masks = masks_dir or self._masks_dir_for_scene(scene)
         key = self._scene_inventory_cache_key_for(scene, images, masks, strict=strict)
         if refresh or self._scene_inventory_cache is None or self._scene_inventory_cache_key != key:
             builder = build_scene_inventory if strict else build_fast_scene_inventory
@@ -269,8 +275,8 @@ class Step3MaskSceneMixin:
     def _refresh_scene_inventory_cache(self, *, strict: bool = False) -> None:
         if self.scene_dir and Path(self.scene_dir).is_dir():
             scene = Path(self.scene_dir)
-            images = scene_images_dir(scene)
-            masks = scene_masks_dir(scene)
+            images = self._images_dir_for_scene(scene)
+            masks = self._masks_dir_for_scene(scene)
             key = self._scene_inventory_cache_key_for(scene, images, masks, strict=strict)
             token = self._scene_inventory_token(scene, images, masks)
             if (
@@ -292,8 +298,8 @@ class Step3MaskSceneMixin:
         scene = Path(self.scene_dir)
         if not scene.is_dir():
             return False
-        images = scene_images_dir(scene)
-        masks = scene_masks_dir(scene)
+        images = self._images_dir_for_scene(scene)
+        masks = self._masks_dir_for_scene(scene)
         return (
             self._scene_inventory_cache_key == self._scene_inventory_cache_key_for(scene, images, masks, strict=False)
             and self._scene_inventory_refresh_token == self._scene_inventory_token(scene, images, masks)

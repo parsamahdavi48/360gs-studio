@@ -57,6 +57,42 @@ def test_metashape_projected_uses_dataset_job_writer(tmp_path: Path) -> None:
     assert not (tmp_path / "transforms.json").exists()
 
 
+def test_dataset_mask_generate_mode_runs_after_dataset_writer(tmp_path: Path) -> None:
+    step = _ready_step(tmp_path, metashape_inputs=True)
+    step.enable_dataset_mask_settings()
+    assert step._dataset_mask_step is not None
+    step._dataset_mask_step.set_mask_mode("generate_training")
+
+    commands = step.build_commands()
+
+    assert [phase for phase, _cmd in commands] == ["metashape_nerf", "yolo", "dataset_mask_paths"]
+    dataset_job = _workflow_job(commands[0][1])
+    assert dataset_job["kind"] == "metashape_nerf_dataset"
+    assert dataset_job["write_images"] is True
+    assert dataset_job["write_masks"] is False
+    attach_job = _workflow_job(commands[-1][1])
+    assert attach_job["kind"] == "attach_dataset_masks"
+    assert attach_job["dataset_root"] == str(tmp_path / "output" / "metashape_cubemap")
+    assert attach_job["masks_dir"] == str(tmp_path / "output" / "metashape_cubemap" / "masks")
+    assert attach_job["clear"] is False
+
+
+def test_dataset_mask_reuse_mode_attaches_existing_masks_without_converting_sfm_masks(tmp_path: Path) -> None:
+    step = _ready_step(tmp_path, metashape_inputs=True)
+    step.enable_dataset_mask_settings()
+    assert step._dataset_mask_step is not None
+    step._dataset_mask_step.set_mask_mode("reuse_existing")
+
+    commands = step.build_commands()
+
+    assert [phase for phase, _cmd in commands] == ["metashape_nerf", "dataset_mask_paths"]
+    dataset_job = _workflow_job(commands[0][1])
+    assert dataset_job["write_masks"] is False
+    attach_job = _workflow_job(commands[-1][1])
+    assert attach_job["kind"] == "attach_dataset_masks"
+    assert attach_job["clear"] is False
+
+
 def test_mixed_metashape_projected_uses_nerf_job_writer(tmp_path: Path) -> None:
     step = _ready_step(tmp_path, metashape_inputs=True)
     postshot_index = step.profile_combo.findData("postshot")

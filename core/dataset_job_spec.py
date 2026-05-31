@@ -20,6 +20,7 @@ DATASET_JOB_SCHEMA_VERSION = 1
 JOB_KIND_METASHAPE_COLMAP = "metashape_colmap_dataset"
 JOB_KIND_METASHAPE_NERF = "metashape_nerf_dataset"
 JOB_KIND_REALITYSCAN_LFS_COLMAP = "realityscan_lfs_colmap"
+JOB_KIND_ATTACH_DATASET_MASKS = "attach_dataset_masks"
 
 
 def metashape_colmap_job(
@@ -129,6 +130,23 @@ def realityscan_lfs_colmap_job(
     }
 
 
+def attach_dataset_masks_job(
+    *,
+    dataset_root: str | Path,
+    transforms_json: str | Path | None = None,
+    masks_dir: str | Path | None = None,
+    clear: bool = False,
+) -> dict[str, Any]:
+    return {
+        "schema_version": DATASET_JOB_SCHEMA_VERSION,
+        "kind": JOB_KIND_ATTACH_DATASET_MASKS,
+        "dataset_root": str(dataset_root),
+        "transforms_json": str(transforms_json) if transforms_json else "",
+        "masks_dir": str(masks_dir) if masks_dir else "",
+        "clear": bool(clear),
+    }
+
+
 def write_dataset_job(path: str | Path, payload: dict[str, Any]) -> Path:
     job_path = Path(path)
     validate_dataset_job_payload(payload)
@@ -152,13 +170,20 @@ def validate_dataset_job_payload(payload: dict[str, Any]) -> None:
     require_schema_version(data, expected=DATASET_JOB_SCHEMA_VERSION, label="dataset")
     kind = require_kind(
         data,
-        allowed={JOB_KIND_METASHAPE_COLMAP, JOB_KIND_METASHAPE_NERF, JOB_KIND_REALITYSCAN_LFS_COLMAP},
+        allowed={
+            JOB_KIND_METASHAPE_COLMAP,
+            JOB_KIND_METASHAPE_NERF,
+            JOB_KIND_REALITYSCAN_LFS_COLMAP,
+            JOB_KIND_ATTACH_DATASET_MASKS,
+        },
         label="dataset",
     )
     if kind in {JOB_KIND_METASHAPE_COLMAP, JOB_KIND_METASHAPE_NERF}:
         _validate_metashape_dataset_job(data)
     elif kind == JOB_KIND_REALITYSCAN_LFS_COLMAP:
         _validate_realityscan_lfs_colmap_job(data)
+    elif kind == JOB_KIND_ATTACH_DATASET_MASKS:
+        _validate_attach_dataset_masks_job(data)
 
 
 def _validate_metashape_dataset_job(payload: Mapping[str, Any]) -> None:
@@ -187,3 +212,10 @@ def _validate_realityscan_lfs_colmap_job(payload: Mapping[str, Any]) -> None:
     require_finite_float(payload, "undistort_alpha", label="dataset", min_value=0.0, max_value=1.0)
     require_finite_float(payload, "camera_rotation_x_deg", label="dataset")
     require_finite_float(payload, "pointcloud_rotation_x_deg", label="dataset")
+
+
+def _validate_attach_dataset_masks_job(payload: Mapping[str, Any]) -> None:
+    require_str(payload, "dataset_root", label="dataset")
+    require_str(payload, "transforms_json", label="dataset", allow_empty=True)
+    require_str(payload, "masks_dir", label="dataset", allow_empty=True)
+    require_bool(payload, "clear", label="dataset")

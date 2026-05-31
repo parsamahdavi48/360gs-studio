@@ -163,6 +163,13 @@ QLabel#workflowNote {{
     padding: 12px;
     font-size: 9pt;
 }}
+QLabel#datasetMaskHint {{
+    background-color: transparent;
+    border: none;
+    color: {TEXT_DIM};
+    padding: 1px 0px;
+    font-size: 8pt;
+}}
 QLabel#assetFolderHint {{
     color: {TEXT_DIM};
     font-size: 8pt;

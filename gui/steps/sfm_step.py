@@ -680,6 +680,7 @@ class SfmStep(BaseStepWidget):
             self._prepare_realityscan_route()
 
     def _prepare_colmap_route(self) -> None:
+        self.cubemap_step.disable_dataset_mask_settings()
         self.cubemap_step._set_export_method(SFM_ROUTE_COLMAP)
         self.cubemap_step.export_images_cb.setChecked(True)
         self.cubemap_step.set_pipeline_stage_intent(_PIPELINE_STAGE_SFM, True)
@@ -687,12 +688,14 @@ class SfmStep(BaseStepWidget):
         self.cubemap_step.activate_pipeline_stage(_PIPELINE_STAGE_SFM)
 
     def _prepare_spheresfm_route(self) -> None:
+        self.cubemap_step.disable_dataset_mask_settings()
         self.cubemap_step._set_export_method(SFM_ROUTE_SPHERESFM)
         self.cubemap_step.set_pipeline_stage_intent(_PIPELINE_STAGE_SFM, True)
         self.cubemap_step.set_pipeline_stage_intent(_PIPELINE_STAGE_CONVERSION, False)
         self.cubemap_step.activate_pipeline_stage(_PIPELINE_STAGE_SFM)
 
     def _prepare_realityscan_route(self) -> None:
+        self.cubemap_step.disable_dataset_mask_settings()
         self._attach_realityscan_cubemap_step()
         self.cubemap_step.export_method_row.setVisible(False)
         self._set_realityscan_profile_visible(True)

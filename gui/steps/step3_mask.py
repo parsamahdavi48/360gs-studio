@@ -418,6 +418,9 @@ class MaskStep(
         layout = QVBoxLayout(settings)
         layout.setContentsMargins(*SETTINGS_PANE_MARGINS)
         layout.setSpacing(8)
+        self.settings_scroll = settings_scroll
+        self.settings_content = settings
+        self.settings_layout = layout
 
         # --- 標準フォルダ ---
         path_form = QFormLayout()

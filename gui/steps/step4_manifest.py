@@ -7,6 +7,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from core.colmap_mixed_project import COLMAP_MIXED_MANIFEST
+from core.dataset_mask_policy import dataset_mask_mode_from_legacy_write_masks
 from core.nerf_dataset_paths import pointcloud_name_for_profile, transforms_name_for_profile
 from core.orientation_correction import (
     FINAL_ORIENTATION_LICHTFELD,
@@ -102,6 +103,7 @@ class Step4ManifestMixin:
             views_config_path = f"{STEP4_META_DIR_NAME}/{STEP4_VIEWS_CONFIG_JSON}"
         writes_view_images = route_uses_view_export and self._writes_images()
         writes_view_masks = route_uses_view_export and self._writes_masks()
+        dataset_mask_mode = self._dataset_mask_mode_for_settings()
         portable_dataset_kind = "3dgut" if direct_source_output else "projection_views"
         uses_lichtfeld_final_orientation = (
             self._uses_lichtfeld_final_correction() or self._uses_spheresfm_lichtfeld_final_correction()
@@ -199,6 +201,13 @@ class Step4ManifestMixin:
                 "uses_source_images": direct_source_output,
                 "uses_source_masks": direct_source_output and self._mask_dir().is_dir(),
                 "export_colmap": self._is_metashape_method() and self.export_colmap_cb.isChecked(),
+            },
+            "dataset_masks": {
+                "mode": dataset_mask_mode,
+                "images_dir": "images" if route_uses_view_export or direct_source_output else "",
+                "masks_dir": "masks" if dataset_mask_mode != "none" else "",
+                "source_masks_dir": str(self._mask_dir()),
+                "write_converted_sfm_masks": writes_view_masks,
             },
             "postprocess": {
                 "final_orientation": final_orientation,
@@ -440,6 +449,14 @@ class Step4ManifestMixin:
             },
         }
 
+    def _dataset_mask_mode_for_settings(self) -> str:
+        if (
+            getattr(self, "_dataset_mask_settings_context_enabled", False)
+            and getattr(self, "_dataset_mask_step", None) is not None
+        ):
+            return self._dataset_mask_step.mask_mode()
+        return dataset_mask_mode_from_legacy_write_masks(self.export_masks_cb.isChecked())
+
     def _write_export_settings(self) -> None:
         payload = self._collect_export_settings()
         write_step4_export_settings(Path(self.scene_dir), payload)
@@ -475,6 +492,7 @@ class Step4ManifestMixin:
     def _dataset_artifact_metadata(self, root: Path, settings: dict) -> dict:
         output_files = settings.get("output_files") if isinstance(settings.get("output_files"), dict) else {}
         conversion = settings.get("conversion") if isinstance(settings.get("conversion"), dict) else {}
+        dataset_masks = settings.get("dataset_masks") if isinstance(settings.get("dataset_masks"), dict) else {}
         return {
             "schema_version": 1,
             "export_method": settings.get("export_method", ""),
@@ -496,6 +514,7 @@ class Step4ManifestMixin:
                 "write_images": conversion.get("write_images", True),
                 "write_masks": conversion.get("write_masks", True),
             },
+            "dataset_masks": dataset_masks,
         }
 
     @staticmethod

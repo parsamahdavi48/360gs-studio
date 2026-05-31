@@ -5,9 +5,11 @@ from pathlib import Path
 import pytest
 
 from core.dataset_job_spec import (
+    JOB_KIND_ATTACH_DATASET_MASKS,
     JOB_KIND_METASHAPE_COLMAP,
     JOB_KIND_METASHAPE_NERF,
     JOB_KIND_REALITYSCAN_LFS_COLMAP,
+    attach_dataset_masks_job,
     load_dataset_job,
     metashape_colmap_job,
     metashape_nerf_job,
@@ -89,6 +91,22 @@ def test_metashape_nerf_dataset_job_round_trips(tmp_path: Path) -> None:
     assert loaded["final_orientation"] == "lichtfeld"
     assert loaded["write_images"] is False
     assert loaded["write_masks"] is False
+
+
+def test_attach_dataset_masks_job_round_trips(tmp_path: Path) -> None:
+    job = attach_dataset_masks_job(
+        dataset_root=tmp_path / "scene" / "output" / "metashape_cubemap",
+        masks_dir=tmp_path / "scene" / "output" / "metashape_cubemap" / "masks",
+        clear=True,
+    )
+
+    path = write_dataset_job(tmp_path / "attach_job.json", job)
+    loaded = load_dataset_job(path, expected_kind=JOB_KIND_ATTACH_DATASET_MASKS)
+
+    assert loaded["kind"] == JOB_KIND_ATTACH_DATASET_MASKS
+    assert loaded["dataset_root"] == str(tmp_path / "scene" / "output" / "metashape_cubemap")
+    assert loaded["masks_dir"] == str(tmp_path / "scene" / "output" / "metashape_cubemap" / "masks")
+    assert loaded["clear"] is True
 
 
 def test_dataset_job_rejects_view_without_orientation(tmp_path: Path) -> None:

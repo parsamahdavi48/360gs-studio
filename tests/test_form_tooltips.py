@@ -6,9 +6,15 @@ from pathlib import Path
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PySide6.QtWidgets import QApplication, QLabel, QRadioButton, QToolButton, QWidget
+from PySide6.QtWidgets import QApplication, QLabel, QPushButton, QRadioButton, QToolButton, QWidget
 
 from core.app_job import AppJob
+from core.dataset_mask_policy import (
+    DATASET_MASK_CONVERT_SFM,
+    DATASET_MASK_GENERATE_TRAINING,
+    DATASET_MASK_NONE,
+    DATASET_MASK_REUSE_EXISTING,
+)
 from gui import i18n, theme
 from gui.common.drag_spinbox import DragDoubleSpinBox, DragSpinBox
 from gui.steps.base_step import SETTINGS_PANE_MARGINS, SETTINGS_PANE_WIDTH
@@ -273,6 +279,37 @@ def test_step4_scene_preview_launch_uses_icon_button() -> None:
     assert not step.scene_preview_btn.icon().isNull()
 
 
+def test_step5_dataset_mask_mode_uses_compact_segmented_buttons() -> None:
+    _app()
+    step = CubemapStep(Path.cwd())
+    step.enable_dataset_mask_settings()
+    assert step._dataset_mask_step is not None
+
+    mask_step = step._dataset_mask_step
+    assert mask_step.dataset_mask_note.objectName() == "datasetMaskHint"
+    assert mask_step.metashape_notice.objectName() == "datasetMaskHint"
+    assert mask_step.dataset_mask_mode_control.objectName() == "segmentedControl"
+    assert set(mask_step.dataset_mask_mode_buttons) == {
+        DATASET_MASK_CONVERT_SFM,
+        DATASET_MASK_GENERATE_TRAINING,
+        DATASET_MASK_REUSE_EXISTING,
+        DATASET_MASK_NONE,
+    }
+    assert all(isinstance(button, QPushButton) for button in mask_step.dataset_mask_mode_buttons.values())
+    assert all(button.objectName() == "segmentedOption" for button in mask_step.dataset_mask_mode_buttons.values())
+    assert mask_step.dataset_mask_mode_buttons[DATASET_MASK_CONVERT_SFM].text() == i18n.t(
+        "DATASET_MASK_MODE_CONVERT_SFM"
+    )
+    assert mask_step.dataset_mask_mode_buttons[DATASET_MASK_GENERATE_TRAINING].text() == i18n.t(
+        "DATASET_MASK_MODE_GENERATE_TRAINING"
+    )
+    assert not [
+        label
+        for label in mask_step.settings_scroll.findChildren(QLabel)
+        if label.objectName() == "workflowNote"
+    ]
+
+
 def test_step5_japanese_training_copy_uses_learning_step_wording() -> None:
     script = textwrap.dedent(
         """
@@ -338,7 +375,7 @@ def test_step4_scrolls_tab_content_not_whole_settings_pane() -> None:
         os.environ["QT_QPA_PLATFORM"] = "offscreen"
 
         from PySide6.QtCore import Qt
-        from PySide6.QtWidgets import QApplication, QScrollArea
+        from PySide6.QtWidgets import QApplication, QScrollArea, QTabBar
 
         from gui import i18n
         from gui.app import MainWindow
@@ -367,11 +404,15 @@ def test_step4_scrolls_tab_content_not_whole_settings_pane() -> None:
         assert step.findChildren(QScrollArea, "settingsScroll") == []
 
         tab_scrolls = [step.settings_tabs.widget(index) for index in range(step.settings_tabs.count())]
-        assert len(tab_scrolls) == 3
+        assert len(tab_scrolls) == 4
         assert all(isinstance(scroll, QScrollArea) for scroll in tab_scrolls)
         assert all(scroll.objectName() == "step4TabScroll" for scroll in tab_scrolls)
         assert all(scroll.horizontalScrollBarPolicy() == Qt.ScrollBarAlwaysOff for scroll in tab_scrolls)
         assert all(scroll.verticalScrollBarPolicy() == Qt.ScrollBarAsNeeded for scroll in tab_scrolls)
+        tab_bar = step.settings_tabs.tabBar()
+        for index in range(tab_bar.count()):
+            center = tab_bar.mapToGlobal(tab_bar.tabRect(index).center())
+            assert isinstance(QApplication.widgetAt(center), QTabBar)
 
         parent = step.export_method_row.parentWidget()
         found_route_scroll = False

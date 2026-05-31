@@ -165,6 +165,8 @@ class Step4RuntimeMixin:
             self._training_phase_logs[phase] = Path(path)
 
     def on_phase_finished(self, phase: str, exit_code: int, canceled: bool) -> None:
+        if self._dataset_mask_phase(phase) and self._dataset_mask_step is not None:
+            self._dataset_mask_step.on_phase_finished(phase, exit_code, canceled)
         if (
             phase.startswith("spheresfm_")
             and exit_code != 0
@@ -186,6 +188,8 @@ class Step4RuntimeMixin:
         )
 
     def on_queue_finished(self, success: bool) -> None:
+        if self._dataset_mask_step is not None:
+            self._dataset_mask_step.on_queue_finished(success)
         if success:
             try:
                 self._finalize_bundle()
@@ -295,12 +299,17 @@ class Step4RuntimeMixin:
             "training_postshot": "PHASE_TRAINING_POSTSHOT",
             "training_brush": "PHASE_TRAINING_BRUSH",
             "training_gsplat": "PHASE_TRAINING_GSPLAT",
+            "dataset_mask_paths": "PHASE_DATASET_MASK_PATHS",
         }
+        if self._dataset_mask_phase(phase) and self._dataset_mask_step is not None:
+            return self._dataset_mask_step.phase_display_name(phase)
         key = labels.get(phase)
         return i18n.t(key) if key else phase
 
     def on_phase_started(self, phase: str) -> tuple[int, int] | None:
         self._active_runner_phase = phase
+        if self._dataset_mask_phase(phase) and self._dataset_mask_step is not None:
+            return self._dataset_mask_step.on_phase_started(phase)
         if phase == "colmap_rig_export":
             self._converted_total = 0
             self._processed = 0
@@ -347,6 +356,10 @@ class Step4RuntimeMixin:
         return None
 
     def on_line(self, line: str) -> tuple[int, int] | None:
+        if self._dataset_mask_phase(self._active_runner_phase) and self._dataset_mask_step is not None:
+            progress = self._dataset_mask_step.on_line(line)
+            if progress is not None:
+                return progress
         if self._is_spheresfm_method() and is_spheresfm_rtx50_cuda_error_line(line):
             self._spheresfm_rtx50_cuda_error_seen = True
             if self._active_runner_phase.startswith("spheresfm_"):
@@ -411,6 +424,19 @@ class Step4RuntimeMixin:
             return self._processed, self._converted_total
 
         return None
+
+    @staticmethod
+    def _dataset_mask_phase(phase: str) -> bool:
+        return phase in {
+            "yolo",
+            "yolo_equirect",
+            "yolo_normal",
+            "stitch",
+            "stitch_equirect",
+            "overexposure",
+            "custom",
+            "init_masks",
+        }
 
     def _colmap_global_ba_progress(
         self,

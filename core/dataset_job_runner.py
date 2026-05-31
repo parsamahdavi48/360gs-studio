@@ -6,12 +6,14 @@ from pathlib import Path
 
 from core.cancellation import CancellationToken, raise_if_cancelled
 from core.dataset_job_spec import (
+    JOB_KIND_ATTACH_DATASET_MASKS,
     JOB_KIND_METASHAPE_COLMAP,
     JOB_KIND_METASHAPE_NERF,
     JOB_KIND_REALITYSCAN_LFS_COLMAP,
     load_dataset_job,
     validate_dataset_job_payload,
 )
+from core.dataset_mask_paths import attach_nerf_mask_paths, clear_nerf_mask_paths
 from core.metashape_colmap_dataset import export_metashape_colmap_dataset
 from core.metashape_nerf_dataset import export_metashape_nerf_dataset
 from core.realityscan_to_lfs_colmap import convert as convert_realityscan_to_lfs_colmap
@@ -54,6 +56,8 @@ def run_dataset_job_payload(job: dict, *, cancel_event: CancellationToken | None
         _run_metashape_nerf(job, cancel_event=cancel_event)
     elif kind == JOB_KIND_REALITYSCAN_LFS_COLMAP:
         _run_realityscan_lfs_colmap(job, cancel_event=cancel_event)
+    elif kind == JOB_KIND_ATTACH_DATASET_MASKS:
+        _run_attach_dataset_masks(job, cancel_event=cancel_event)
     else:
         raise ValueError(f"Unsupported dataset job kind: {kind}")
 
@@ -137,4 +141,29 @@ def _run_realityscan_lfs_colmap(job: dict, *, cancel_event: CancellationToken | 
     print(f"Images: {result['num_images']}", flush=True)
     print(f"Cameras: {result['num_cameras']}", flush=True)
     print(f"Skipped missing images: {result['num_missing_images']}", flush=True)
+    raise_if_cancelled(cancel_event)
+
+
+def _run_attach_dataset_masks(job: dict, *, cancel_event: CancellationToken | None = None) -> None:
+    raise_if_cancelled(cancel_event)
+    dataset_root = Path(str(job["dataset_root"]))
+    transforms_json = Path(str(job["transforms_json"])) if str(job.get("transforms_json") or "") else None
+    if bool(job.get("clear")):
+        result = clear_nerf_mask_paths(dataset_root=dataset_root, transforms_json=transforms_json)
+        print(f"Cleared dataset mask paths: {result.transforms_json}", flush=True)
+        print(f"Frames: {result.frame_count}", flush=True)
+        print(f"Removed: {result.missing_mask_count}", flush=True)
+        raise_if_cancelled(cancel_event)
+        return
+
+    masks_dir = Path(str(job["masks_dir"])) if str(job.get("masks_dir") or "") else None
+    result = attach_nerf_mask_paths(
+        dataset_root=dataset_root,
+        transforms_json=transforms_json,
+        masks_dir=masks_dir,
+    )
+    print(f"Attached dataset mask paths: {result.transforms_json}", flush=True)
+    print(f"Frames: {result.frame_count}", flush=True)
+    print(f"Masks: {result.mask_path_count}", flush=True)
+    print(f"Missing masks: {result.missing_mask_count}", flush=True)
     raise_if_cancelled(cancel_event)
