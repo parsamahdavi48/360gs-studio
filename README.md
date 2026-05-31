@@ -2,9 +2,11 @@
 
 **v1.24.1**
 
-A Windows-first integrated GUI tool for turning 360° video, normal video, and still-image sequences into images, masks, and camera data that are practical for 3D Gaussian Splatting (3DGS) training.
+## What Is This?
 
-`setup_windows.bat` detects Python 3.12 and FFmpeg/FFprobe, installs missing system dependencies through winget when needed, creates a virtual environment, and installs the required runtime packages. Day-to-day launch is handled by `run_gui.bat`, and release updates are handled by `update.bat`, so users do not need to run Python commands manually for the normal GUI workflow.
+A Windows GUI app that prepares images, masks, and camera data for 3D Gaussian Splatting (3DGS) training from 360° video, normal video, and still-image sequences.
+
+The main workflow is to organize and mask ERP/equirectangular footage from cameras such as Insta360 / Osmo 360, run SfM in Metashape, then convert the result into datasets for Postshot, Brush, LichtFeld Studio, COLMAP-format workflows, or RealityScan realignment. It also supports normal-camera images/video, in-app COLMAP/SphereSfM, and RealityScan-to-LichtFeld conversion.
 
 ## Download
 
@@ -14,13 +16,11 @@ For normal use, download the latest release ZIP:
 
 After extracting the ZIP, run `setup_windows.bat`, then `run_gui.bat`.
 
-If you are updating an older extracted release that does not yet have `update.bat`, close the GUI, open the new ZIP, enter its top-level `stechdrive-3dgs-utils-v...` folder, copy that folder's contents into your existing app folder with overwrite enabled, then run `update.bat` once from the existing app folder. It normalizes the app-managed files and keeps local state such as `.venv/`, `.cache/`, `models/`, scene folders, and other user folders.
-
 [JP 日本語の説明](README.ja.md)
 
-![STechDrive 3DGS Utils workflow](images/stechdrive-3dgs-workflow-en.png)
-
 ![STechDrive 3DGS Utils GUI](images/stechdrive-3dgs-utils-gui.jpg)
+
+![STechDrive 3DGS Utils workflow](images/stechdrive-3dgs-workflow-en.png)
 
 ## What You Can Do
 
@@ -85,6 +85,8 @@ update.bat
 ```
 
 `update.bat` updates the app files from the official GitHub release and only updates `.venv/` when the current environment does not match the release's recommended dependencies. It also removes obsolete app-managed files from older releases while preserving `.venv/`, `.cache/`, `models/`, scene folders, and other user folders. Use `update.bat --app-only` for app files only or `update.bat --deps-only` for dependencies only. To recreate the environment from scratch, run `setup_windows.bat --force`.
+
+If you are updating an older extracted release that does not yet have `update.bat`, close the GUI, open the new ZIP, enter its top-level `stechdrive-3dgs-utils-v...` folder, copy that folder's contents into your existing app folder with overwrite enabled, then run `update.bat` once from the existing app folder.
 
 YOLO/SAM2, Mask2Former, and SAM3.1 model weights may be downloaded on first use. Local YOLO/SAM weights can be placed under `models/ultralytics/`; local Mask2Former weights can be placed under `models/mask2former-swin-large-ade-semantic/`; SAM3.1 prompt masking uses `models/sam3.1/sam3.1_multiplex.pt`. Model weights are not bundled with the app and are governed by separate license terms; see [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md).
 

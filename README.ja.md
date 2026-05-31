@@ -2,9 +2,11 @@
 
 **v1.24.1**
 
-360°動画、通常動画、連番静止画から、3D Gaussian Splatting (3DGS) のトレーニングに使いやすい画像・マスク・カメラデータを作るためのWindows向け統合GUIツールです。
+## これは何？
 
-`setup_windows.bat` がPython 3.12とFFmpeg/FFprobeの検出、必要に応じたwinget経由のインストール、仮想環境の作成、依存パッケージ導入まで行います。起動は `run_gui.bat`、リリース更新は `update.bat` から行えるため、普段の作業ではPythonコマンドを直接打たずに使えます。
+360°動画、通常動画、連番静止画から、3D Gaussian Splatting (3DGS) 向けの画像・マスク・カメラデータを作るWindows GUIアプリです。
+
+主な用途は、Insta360 / Osmo 360などのERP/エクイレクタングラー素材を整理・マスクしてMetashapeでSfMし、その結果をPostshot、Brush、LichtFeld Studio、COLMAP形式、RealityScan再アライン向けデータへ変換するワークフローです。通常画像/動画、アプリ内COLMAP/SphereSfM、RealityScanからLichtFeldへの変換にも対応しています。
 
 ## ダウンロード
 
@@ -14,13 +16,11 @@
 
 ZIPを展開したら、`setup_windows.bat`、続いて `run_gui.bat` を実行します。
 
-まだ `update.bat` が入っていない古い展開済みリリースから更新する場合は、GUIを閉じ、新しいZIPを開いて中の `stechdrive-3dgs-utils-v...` フォルダへ入り、その中身を今使っているアプリフォルダへ上書きコピーしてから、既存アプリフォルダの `update.bat` を一度実行します。アプリ管理ファイルは現行リリースに整理されますが、`.venv/`、`.cache/`、`models/`、シーンフォルダ、その他ユーザーが作ったフォルダは残します。
-
 [EN English](README.md)
 
-![STechDrive 3DGS Utils ワークフロー](images/stechdrive-3dgs-workflow-ja.png)
-
 ![STechDrive 3DGS Utils GUI](images/stechdrive-3dgs-utils-gui.jpg)
+
+![STechDrive 3DGS Utils ワークフロー](images/stechdrive-3dgs-workflow-ja.png)
 
 ## このアプリでできること
 
@@ -85,6 +85,8 @@ update.bat
 ```
 
 `update.bat` は公式GitHub Releaseからアプリ本体を更新し、現在の `.venv/` がリリース推奨の依存関係と一致しない場合だけ依存パッケージを更新します。古いリリースに残っていた不要なアプリ管理ファイルは削除しますが、`.venv/`、`.cache/`、`models/`、シーンフォルダ、その他ユーザーフォルダは残します。アプリ本体だけ更新する場合は `update.bat --app-only`、依存だけ更新する場合は `update.bat --deps-only` を使います。環境を最初から作り直す場合は `setup_windows.bat --force` を使います。
+
+まだ `update.bat` が入っていない古い展開済みリリースから更新する場合は、GUIを閉じ、新しいZIPを開いて中の `stechdrive-3dgs-utils-v...` フォルダへ入り、その中身を今使っているアプリフォルダへ上書きコピーしてから、既存アプリフォルダの `update.bat` を一度実行します。
 
 YOLO/SAM2、Mask2Former、SAM3.1のモデルファイルは初回利用時にダウンロードされる場合があります。ローカルのYOLO/SAM重みは `models/ultralytics/`、Mask2Former重みは `models/mask2former-swin-large-ade-semantic/`、SAM3.1プロンプトマスクは `models/sam3.1/sam3.1_multiplex.pt` を使います。モデル重みはアプリに同梱しておらず、別ライセンスが適用されます。詳細は [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md) を参照してください。
 
