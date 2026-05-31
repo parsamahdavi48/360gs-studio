@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import struct
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
@@ -181,21 +182,24 @@ def transform_colmap_point_to_nerfstudio(point: Point3D) -> tuple[float, float, 
 def write_nerfstudio_pointcloud_ply(path: Path, points: dict[int, Point3D]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     ordered = [points[key] for key in sorted(points)]
-    with path.open("w", encoding="ascii", newline="\n") as f:
-        f.write("ply\n")
-        f.write("format ascii 1.0\n")
-        f.write(f"element vertex {len(ordered)}\n")
-        f.write("property float x\n")
-        f.write("property float y\n")
-        f.write("property float z\n")
-        f.write("property uchar red\n")
-        f.write("property uchar green\n")
-        f.write("property uchar blue\n")
-        f.write("end_header\n")
+    with path.open("wb") as f:
+        header = (
+            "ply\n"
+            "format binary_little_endian 1.0\n"
+            f"element vertex {len(ordered)}\n"
+            "property float x\n"
+            "property float y\n"
+            "property float z\n"
+            "property uchar red\n"
+            "property uchar green\n"
+            "property uchar blue\n"
+            "end_header\n"
+        )
+        f.write(header.encode("ascii"))
         for point in ordered:
             x, y, z = transform_colmap_point_to_nerfstudio(point)
             r, g, b = point.rgb
-            f.write(f"{x:.10g} {y:.10g} {z:.10g} {r:d} {g:d} {b:d}\n")
+            f.write(struct.pack("<fffBBB", float(x), float(y), float(z), int(r), int(g), int(b)))
 
 
 def _resolve_sparse_source(root: Path) -> Path:

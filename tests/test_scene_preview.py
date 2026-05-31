@@ -6,6 +6,7 @@ from pathlib import Path
 
 import numpy as np
 
+from core.dataset_writer_colmap import quaternion_from_matrix
 from core.pointcloud_io import load_point_cloud_sample
 from core.scene_preview import (
     SCENE_PREVIEW_WORLD_UP,
@@ -281,6 +282,58 @@ def test_colmap_preview_uses_image_up_for_screen_up_and_loads_points(tmp_path: P
     assert dataset.pointcloud.points.shape == (1, 3)
     assert dataset.pointcloud.colors is not None
     assert dataset.pointcloud.colors[0].tolist() == [255, 128, 64]
+
+
+def test_colmap_preview_preserves_nontrivial_colmap_world_pose_and_points(tmp_path: Path) -> None:
+    sparse = tmp_path / "sparse"
+    sparse.mkdir()
+    (sparse / "cameras.txt").write_text(
+        "1 PINHOLE 100 80 50 50 49.5 39.5\n",
+        encoding="utf-8",
+    )
+    center = np.array([1.0, 2.0, 3.0], dtype=np.float64)
+    right = np.array([0.0, 0.0, 1.0], dtype=np.float64)
+    image_down = np.array([0.0, -1.0, 0.0], dtype=np.float64)
+    forward = np.array([1.0, 0.0, 0.0], dtype=np.float64)
+    c2w_colmap = np.column_stack([right, image_down, forward])
+    r_cw = c2w_colmap.T
+    t_cw = -r_cw @ center
+    qw, qx, qy, qz = quaternion_from_matrix(r_cw)
+    (sparse / "images.txt").write_text(
+        f"1 {qw} {qx} {qy} {qz} {t_cw[0]} {t_cw[1]} {t_cw[2]} 1 frame_0001.jpg\n\n",
+        encoding="utf-8",
+    )
+    point_center = center + forward * 4.0
+    point_up = center + forward * 4.0 + np.array([0.0, 0.5, 0.0], dtype=np.float64)
+    point_right = center + forward * 4.0 + right * 0.25
+    (sparse / "points3D.txt").write_text(
+        "\n".join(
+            [
+                "# Number of points: 3",
+                f"1 {point_center[0]} {point_center[1]} {point_center[2]} 255 0 0 0",
+                f"2 {point_up[0]} {point_up[1]} {point_up[2]} 0 255 0 0",
+                f"3 {point_right[0]} {point_right[1]} {point_right[2]} 0 0 255 0",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    dataset = load_colmap_preview_dataset(sparse)
+    camera = dataset.cameras[0]
+
+    assert np.allclose(camera.position, center)
+    assert np.allclose(camera.right, right)
+    assert np.allclose(camera.up, -image_down)
+    assert np.allclose(camera.forward, forward)
+    assert dataset.pointcloud is not None
+    assert np.allclose(dataset.pointcloud.points, np.vstack([point_center, point_up, point_right]))
+
+    projected = camera.project_world_points(np.vstack([point_center, point_up, point_right]))
+
+    assert projected is not None
+    assert np.allclose(projected[0], [49.5, 39.5])
+    assert projected[1, 1] < 39.5
+    assert projected[2, 0] > 49.5
 
 
 def test_colmap_preview_can_read_app_opengl_camera_axes(tmp_path: Path) -> None:

@@ -7,6 +7,7 @@ import numpy as np
 import pytest
 
 from core.colmap_nerfstudio_dataset import export_colmap_nerfstudio_dataset
+from core.pointcloud_io import load_point_cloud_sample
 
 
 def _write_sparse_text_model(
@@ -93,7 +94,11 @@ def test_export_colmap_rig_result_to_nerfstudio_json_ply_with_aligned_points(tmp
 
     assert (result.output_dir / "images" / "rig1" / "cam01" / "frame_00001.jpg").is_file()
     assert (result.output_dir / "masks" / "rig1" / "cam01" / "frame_00001.jpg.png").is_file()
-    assert "1 3 -2 4 5 6" in result.pointcloud.read_text(encoding="ascii")
+    assert b"format binary_little_endian 1.0\n" in result.pointcloud.read_bytes().split(b"end_header\n", 1)[0]
+    pointcloud = load_point_cloud_sample(result.pointcloud)
+    np.testing.assert_allclose(pointcloud.points, np.array([[1.0, 3.0, -2.0]], dtype=np.float32))
+    assert pointcloud.colors is not None
+    assert pointcloud.colors.tolist() == [[4, 5, 6]]
 
 
 def test_export_colmap_nerfstudio_rejects_mixed_projection_families(tmp_path: Path) -> None:

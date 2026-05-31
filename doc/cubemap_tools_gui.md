@@ -102,7 +102,7 @@ For LichtFeld with mixed Metashape sources, this is the safer route.
 
 ### COLMAP RIG -> NeRF Dataset (JSON/PLY)
 
-Create a Nerfstudio-style dataset from this app's COLMAP SfM output, normally `output/colmap_rig/`. The output is `output/colmap_nerfstudio/` with `transforms.json`, `pointcloud.ply`, and an `images/` folder containing only registered COLMAP images.
+Create a Nerfstudio-style dataset from this app's COLMAP SfM output, normally `output/colmap_rig/`. The output is `output/colmap_nerfstudio/` with `transforms.json`, binary little-endian `pointcloud.ply`, and an `images/` folder containing only registered COLMAP images.
 
 Nerfstudio has no rig layer in `transforms.json`. This tool reads the final COLMAP registered image poses from `images.bin/txt`; any rig sensor pose has already been folded into those per-image poses by COLMAP. Camera poses are converted from COLMAP/OpenCV camera axes to Nerfstudio/OpenGL axes, then the same Nerfstudio world-axis transform is applied to both cameras and PLY points so the sparse point cloud stays aligned with the cameras.
 
@@ -136,6 +136,17 @@ Use printed AprilTags to correct the metric scale of an existing dataset. Tags m
 Scale application multiplies the target dataset's camera positions and point cloud by the same factor. A backup is created before files are changed.
 
 ## Output Choices
+
+### Mask Output
+
+The Step 5 mask setting is for the training dataset output. Step 3 `masks/` can stay as the broad SfM mask source while the dataset output keeps a separate training mask layer.
+
+| Mode | Use when |
+| --- | --- |
+| `Create from SfM Masks` | The Step 3 masks should also be used for training. This converts them to match the dataset images. |
+| `Regenerate Training Masks` | SfM needed broad masks, but 3DGS training should use different targets such as people only. Masks are regenerated from the Step 5 output images. |
+| `Use Output Masks` | The dataset output already has the masks you want, and you only need to update dataset files or `mask_path` entries. |
+| `No Masks` | Training should run without dataset mask links, or masks will be handled manually in the training app. |
 
 ### Image Type
 

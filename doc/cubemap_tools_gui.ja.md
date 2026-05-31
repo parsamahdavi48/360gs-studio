@@ -102,7 +102,7 @@ LichtFeldでMetashape混在結果を使う場合は、このルートが安全�
 
 ### COLMAP RIG → NeRFデータセット(JSON/PLY)
 
-このアプリのCOLMAP SfM出力、通常は `output/colmap_rig/` からNerfstudio形式のデータセットを作ります。出力は `output/colmap_nerfstudio/` で、`transforms.json`、`pointcloud.ply`、登録済みCOLMAP画像だけを含む `images/` を作成します。
+このアプリのCOLMAP SfM出力、通常は `output/colmap_rig/` からNerfstudio形式のデータセットを作ります。出力は `output/colmap_nerfstudio/` で、`transforms.json`、binary little-endian の `pointcloud.ply`、登録済みCOLMAP画像だけを含む `images/` を作成します。
 
 Nerfstudioの `transforms.json` にはリグ層がありません。このツールはCOLMAPの最終登録済み画像ポーズを `images.bin/txt` から読みます。COLMAPのリグ内センサー姿勢は、その時点ですでに各画像のポーズへ畳み込まれています。カメラ姿勢はCOLMAP/OpenCVカメラ軸からNerfstudio/OpenGLカメラ軸へ変換し、その後、カメラとPLY点群の両方へ同じNerfstudio向けワールド軸変換を適用するため、疎点群とカメラが同じ座標系に揃います。
 
@@ -136,6 +136,17 @@ AprilTagの実寸から、作成済みデータセットのスケールを補正
 スケール反映は対象データセットのカメラ位置と点群に同じ倍率をかけます。反映前にはバックアップを作ります。
 
 ## 出力設定の選び方
+
+### マスク出力
+
+Step 5のマスク設定は、学習データセット出力専用です。Step 3の `masks/` はSfM用の広いマスクとして残し、学習用マスクだけを出力データセット側で別管理できます。
+
+| モード | 使う場面 |
+| --- | --- |
+| `SfM用マスクから作成` | Step 3で作ったマスクを学習にも使う場合。データセット画像に合わせて変換します。 |
+| `学習用マスクを再生成` | SfMでは広めに隠し、3DGS学習では人物など必要な対象だけをマスクしたい場合。Step 5の出力画像から作り直します。 |
+| `出力済みマスクを使用` | 出力データセットの `masks/` を残し、他の出力や `mask_path` だけ更新したい場合。 |
+| `マスクなし` | マスクなしで学習する場合、または学習アプリ側で別途マスクを扱う場合。 |
 
 ### 画像タイプ
 
