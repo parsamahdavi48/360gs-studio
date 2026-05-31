@@ -14,29 +14,11 @@ from PySide6.QtWidgets import (
     QFormLayout,
     QHBoxLayout,
     QLabel,
-    QLineEdit,
-    QMessageBox,
-    QPushButton,
-    QSizePolicy,
     QStackedWidget,
     QVBoxLayout,
     QWidget,
 )
 
-from core.normal_camera_metadata import (
-    COLMAP_NORMAL_CAMERA_MODELS,
-    NormalCameraDefault,
-    clear_normal_camera_default,
-    clear_normal_camera_group_default,
-    load_normal_camera_default,
-    load_normal_camera_defaults,
-    normal_camera_default_for_group,
-    parse_camera_params,
-    save_normal_camera_default,
-    save_normal_camera_group_default,
-    validate_camera_params_for_model,
-)
-from core.scene_inventory import build_fast_scene_inventory, build_scene_inventory
 from gui import i18n
 from gui.common.browse_widget import BrowseWidget
 from gui.common.external_link import make_external_link
@@ -71,7 +53,6 @@ _PAGE_VIEWER = "viewer"
 _CARD_VIEWER = "viewer"
 _DATASET_MENU_ROUTE = "dataset_menu"
 _RUNNABLE_PAGES = {_PAGE_COLMAP, _PAGE_SPHERESFM, _PAGE_REALITYSCAN}
-_NORMAL_CAMERA_SCOPE_DEFAULT = ("default",)
 
 
 class SfmStep(BaseStepWidget):
@@ -88,7 +69,6 @@ class SfmStep(BaseStepWidget):
         self.scene_preview: ScenePreviewWidget | None = None
         self._scene_preview_refresh_token = 0
         self._opengl_surface_anchor: QOpenGLWidget | None = None
-        self._normal_camera_defaults_scene = ""
         self._build_ui()
         self._connect_child_signals()
 
@@ -280,47 +260,15 @@ class SfmStep(BaseStepWidget):
         self.glomap_exec_row_label.setToolTip(i18n.tip("GLOMAP_EXECUTABLE"))
         form.addRow(self.glomap_exec_row_label, self.glomap_exec_browse)
 
-        self.colmap_normal_camera_scope_combo = QComboBox()
-        self.colmap_normal_camera_scope_combo.setToolTip(i18n.tip("COLMAP_NORMAL_CAMERA"))
-        self.colmap_normal_camera_scope_combo.setFixedWidth(220)
-
-        self.colmap_normal_camera_model_combo = QComboBox()
-        self.colmap_normal_camera_model_combo.setToolTip(i18n.tip("COLMAP_NORMAL_CAMERA"))
-        self.colmap_normal_camera_model_combo.addItem(i18n.t("COLMAP_NORMAL_CAMERA_AUTO"), "")
-        for model in COLMAP_NORMAL_CAMERA_MODELS:
-            self.colmap_normal_camera_model_combo.addItem(model, model)
-        self.colmap_normal_camera_model_combo.setFixedWidth(150)
-
-        self.colmap_normal_camera_params_edit = QLineEdit()
-        self.colmap_normal_camera_params_edit.setPlaceholderText(i18n.t("COLMAP_NORMAL_CAMERA_PARAMS_PLACEHOLDER"))
-        self.colmap_normal_camera_params_edit.setToolTip(i18n.tip("COLMAP_NORMAL_CAMERA"))
-        self.colmap_normal_camera_params_edit.setMinimumWidth(220)
-
-        normal_camera_row = QWidget()
-        normal_camera_layout = QHBoxLayout(normal_camera_row)
-        normal_camera_layout.setContentsMargins(0, 0, 0, 0)
-        normal_camera_layout.setSpacing(8)
-        normal_camera_layout.addWidget(self.colmap_normal_camera_scope_combo)
-        normal_camera_layout.addWidget(self.colmap_normal_camera_model_combo)
-        normal_camera_layout.addWidget(self.colmap_normal_camera_params_edit)
-        self.colmap_normal_camera_apply_btn = QPushButton(i18n.t("COLMAP_NORMAL_CAMERA_APPLY"))
-        self.colmap_normal_camera_apply_btn.setObjectName("secondary")
-        self.colmap_normal_camera_apply_btn.setToolTip(i18n.tip("COLMAP_NORMAL_CAMERA"))
-        normal_camera_layout.addWidget(self.colmap_normal_camera_apply_btn)
-        normal_camera_layout.addStretch()
-        add_tooltip_row(
-            form,
-            i18n.t("COLMAP_NORMAL_CAMERA"),
-            normal_camera_row,
-            i18n.tip("COLMAP_NORMAL_CAMERA"),
-        )
+        # Normal-image intrinsics are intentionally not exposed as free-form UI.
+        # Most users only have smartphone/JPEG/video frames, not calibrated
+        # per-source/per-resolution fx/fy/cx/cy/distortion values. A visible
+        # manual field made the common workflow look riskier than it is. The
+        # lower-level normal_camera_metadata contract remains for imported
+        # calibrated metadata; reintroduce UI only as a group-aware or
+        # calibration-file import flow, not as a scene-wide params textbox.
 
         layout.addLayout(form)
-        viewer_btn = QPushButton(i18n.t("SFM_OPEN_VIEWER"))
-        viewer_btn.setObjectName("secondary")
-        viewer_btn.setToolTip(i18n.tip("SFM_OPEN_VIEWER"))
-        viewer_btn.clicked.connect(lambda _checked=False: self.open_scene_preview())
-        layout.addWidget(self._build_action_row(viewer_btn))
         layout.addStretch()
         self.colmap_repo_link = self._build_route_official_link(SFM_ROUTE_COLMAP, "sfmColmapRepositoryLink")
         layout.addWidget(self.colmap_repo_link, alignment=Qt.AlignLeft)
@@ -379,11 +327,6 @@ class SfmStep(BaseStepWidget):
         )
 
         layout.addLayout(form)
-        viewer_btn = QPushButton(i18n.t("SFM_OPEN_VIEWER"))
-        viewer_btn.setObjectName("secondary")
-        viewer_btn.setToolTip(i18n.tip("SFM_OPEN_VIEWER"))
-        viewer_btn.clicked.connect(lambda _checked=False: self.open_scene_preview())
-        layout.addWidget(self._build_action_row(viewer_btn))
         layout.addStretch()
         self.spheresfm_repo_link = self._build_route_official_link(
             SFM_ROUTE_SPHERESFM,
@@ -402,19 +345,6 @@ class SfmStep(BaseStepWidget):
             object_name,
         )
 
-    @staticmethod
-    def _build_action_row(*buttons: QPushButton) -> QWidget:
-        row = QWidget()
-        row.setObjectName("detailActionRow")
-        row_layout = QHBoxLayout(row)
-        row_layout.setContentsMargins(0, 0, 0, 0)
-        row_layout.setSpacing(8)
-        for button in buttons:
-            button.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
-            row_layout.addWidget(button)
-        row_layout.addStretch()
-        return row
-
     def _connect_child_signals(self) -> None:
         self.cubemap_step.primary_action_state_changed.connect(self.primary_action_state_changed)
         for widget in (
@@ -428,14 +358,10 @@ class SfmStep(BaseStepWidget):
             self.colmap_scale_combo,
             self.colmap_matcher_combo,
             self.colmap_mapper_combo,
-            self.colmap_normal_camera_model_combo,
             self.spheresfm_matcher_combo,
             self.spheresfm_quality_combo,
         ):
             combo.currentIndexChanged.connect(self._on_detail_control_changed)
-        self.colmap_normal_camera_scope_combo.currentIndexChanged.connect(self._on_normal_camera_scope_changed)
-        self.colmap_normal_camera_params_edit.textChanged.connect(self._on_detail_control_changed)
-        self.colmap_normal_camera_apply_btn.clicked.connect(self._on_normal_camera_apply_clicked)
         self.colmap_mapper_combo.currentIndexChanged.connect(self._sync_colmap_glomap_visibility)
         self.spheresfm_use_masks_cb.toggled.connect(self._on_detail_control_changed)
 
@@ -505,163 +431,6 @@ class SfmStep(BaseStepWidget):
             self.spheresfm_quality_combo.currentData(),
         )
         self.cubemap_step.spheresfm_pose_browse.set_text(self.spheresfm_pose_browse.text())
-
-    def _load_normal_camera_default(self) -> None:
-        self._refresh_normal_camera_scope_options()
-        self._load_normal_camera_scope_value()
-
-    def _refresh_normal_camera_scope_options(self) -> None:
-        current = (
-            self.colmap_normal_camera_scope_combo.currentData()
-            if self.colmap_normal_camera_scope_combo.count()
-            else _NORMAL_CAMERA_SCOPE_DEFAULT
-        )
-        self._syncing_controls = True
-        try:
-            self.colmap_normal_camera_scope_combo.clear()
-            self.colmap_normal_camera_scope_combo.addItem(
-                i18n.t("COLMAP_NORMAL_CAMERA_SCOPE_DEFAULT"),
-                _NORMAL_CAMERA_SCOPE_DEFAULT,
-            )
-            for scope, count in self._normal_camera_scopes():
-                self.colmap_normal_camera_scope_combo.addItem(self._normal_camera_scope_label(scope, count), scope)
-            if self._find_combo_data(self.colmap_normal_camera_scope_combo, current) < 0:
-                current = _NORMAL_CAMERA_SCOPE_DEFAULT
-            self._set_combo_data(self.colmap_normal_camera_scope_combo, current)
-        finally:
-            self._syncing_controls = False
-
-    def _normal_camera_scopes(self) -> list[tuple[tuple[str, str, str, int, int], int]]:
-        if not self.scene_dir:
-            return []
-        inventory = build_fast_scene_inventory(Path(self.scene_dir))
-        normal_images = inventory.normal_images()
-        if any(image.size is None for image in normal_images):
-            inventory = build_scene_inventory(Path(self.scene_dir))
-            normal_images = inventory.normal_images()
-        counts: dict[tuple[str, str, str, int, int], int] = {}
-        for image in normal_images:
-            scope = (
-                "group",
-                image.source_kind or "unknown",
-                image.source_id or "",
-                int(image.width),
-                int(image.height),
-            )
-            counts[scope] = counts.get(scope, 0) + 1
-        return sorted(counts.items(), key=lambda item: (item[0][1], item[0][2], item[0][3], item[0][4]))
-
-    @staticmethod
-    def _normal_camera_scope_label(scope: tuple[str, str, str, int, int], count: int) -> str:
-        _kind, source_kind, source_id, width, height = scope
-        source = source_id or source_kind or "unknown"
-        return i18n.t("COLMAP_NORMAL_CAMERA_SCOPE_GROUP_FORMAT").format(
-            source=source,
-            size=f"{width}x{height}",
-            count=count,
-        )
-
-    def _load_normal_camera_scope_value(self) -> None:
-        self._syncing_controls = True
-        try:
-            camera = self._selected_normal_camera_default()
-            model = camera.camera_model
-            if model and self.colmap_normal_camera_model_combo.findData(model) < 0:
-                self.colmap_normal_camera_model_combo.addItem(model, model)
-            self._set_combo_data(self.colmap_normal_camera_model_combo, model)
-            params = ",".join(f"{value:.12g}" for value in camera.camera_params)
-            self.colmap_normal_camera_params_edit.setText(params)
-        finally:
-            self._syncing_controls = False
-
-    def _selected_normal_camera_default(self):
-        if not self.scene_dir:
-            return NormalCameraDefault()
-        scope = self._selected_normal_camera_scope()
-        if scope == _NORMAL_CAMERA_SCOPE_DEFAULT:
-            return load_normal_camera_default(Path(self.scene_dir))
-        _kind, source_kind, source_id, width, height = scope
-        return normal_camera_default_for_group(
-            load_normal_camera_defaults(Path(self.scene_dir)),
-            source_kind=source_kind,
-            source_id=source_id,
-            width=width,
-            height=height,
-            fallback=False,
-        )
-
-    def _selected_normal_camera_scope(self) -> tuple:
-        scope = self.colmap_normal_camera_scope_combo.currentData()
-        if isinstance(scope, tuple) and scope:
-            return scope
-        return _NORMAL_CAMERA_SCOPE_DEFAULT
-
-    def _save_normal_camera_default(self) -> None:
-        if not self.scene_dir:
-            return
-        model = str(self.colmap_normal_camera_model_combo.currentData() or "").strip().upper()
-        params_text = self.colmap_normal_camera_params_edit.text().strip()
-        try:
-            params = parse_camera_params(params_text)
-            validate_camera_params_for_model(model, params)
-        except ValueError as exc:
-            raise ValueError(
-                i18n.t("COLMAP_NORMAL_CAMERA_PARAMS_INVALID").format(value=params_text, detail=str(exc))
-            ) from exc
-        if not model:
-            if params:
-                raise ValueError(i18n.t("COLMAP_NORMAL_CAMERA_MODEL_REQUIRED"))
-            self._clear_selected_normal_camera_default()
-            return
-        scope = self._selected_normal_camera_scope()
-        if scope == _NORMAL_CAMERA_SCOPE_DEFAULT:
-            save_normal_camera_default(
-                Path(self.scene_dir),
-                camera_model=model,
-                camera_params=params,
-                camera_source="gui_default",
-            )
-            return
-        _kind, source_kind, source_id, width, height = scope
-        save_normal_camera_group_default(
-            Path(self.scene_dir),
-            source_kind=source_kind,
-            source_id=source_id,
-            width=width,
-            height=height,
-            camera_model=model,
-            camera_params=params,
-            camera_source="gui_group",
-        )
-
-    def _clear_selected_normal_camera_default(self) -> None:
-        scope = self._selected_normal_camera_scope()
-        if scope == _NORMAL_CAMERA_SCOPE_DEFAULT:
-            clear_normal_camera_default(Path(self.scene_dir))
-            return
-        _kind, source_kind, source_id, width, height = scope
-        clear_normal_camera_group_default(
-            Path(self.scene_dir),
-            source_kind=source_kind,
-            source_id=source_id,
-            width=width,
-            height=height,
-        )
-
-    def _on_normal_camera_scope_changed(self, *_args) -> None:
-        if self._syncing_controls:
-            return
-        self._load_normal_camera_scope_value()
-        self.primary_action_state_changed.emit()
-
-    def _on_normal_camera_apply_clicked(self, *_args) -> None:
-        try:
-            self._save_normal_camera_default()
-        except ValueError as exc:
-            QMessageBox.warning(self, i18n.t("COLMAP_NORMAL_CAMERA"), str(exc))
-            return
-        self._refresh_normal_camera_scope_options()
-        self.primary_action_state_changed.emit()
 
     def _on_detail_control_changed(self, *_args) -> None:
         if self._syncing_controls:
@@ -740,14 +509,9 @@ class SfmStep(BaseStepWidget):
         if self._page not in _RUNNABLE_PAGES:
             return
         self._sync_cubemap_scene()
-        if self._page == _PAGE_COLMAP and self._normal_camera_defaults_scene != self.scene_dir:
-            self._load_normal_camera_default()
-            self._normal_camera_defaults_scene = self.scene_dir
 
     def set_scene_dir(self, path: str) -> None:
         super().set_scene_dir(path)
-        if path != self._normal_camera_defaults_scene:
-            self._normal_camera_defaults_scene = ""
         if self.scene_preview is not None:
             self.scene_preview.set_scene_dir(Path(path) if path else None, refresh=False)
             if self._page == _PAGE_VIEWER:
@@ -879,8 +643,6 @@ class SfmStep(BaseStepWidget):
         self._sync_route_scene()
         if self._page in {_PAGE_COLMAP, _PAGE_SPHERESFM}:
             self._apply_to_cubemap()
-        if self._page == _PAGE_COLMAP:
-            self._save_normal_camera_default()
         self._prepare_current_route()
         return self.cubemap_step.build_commands()
 

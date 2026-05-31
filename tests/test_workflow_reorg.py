@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 import os
 from pathlib import Path
 
@@ -9,13 +8,11 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from PIL import Image
 from PySide6.QtCore import Qt
 from PySide6.QtOpenGLWidgets import QOpenGLWidget
-from PySide6.QtWidgets import QApplication, QLabel, QMessageBox, QPushButton, QSizePolicy
+from PySide6.QtWidgets import QApplication, QLabel, QMessageBox, QPushButton
 
 from core.app_job import AppJob
 from core.artifact_registry import load_artifacts
 from core.dataset_mask_policy import DATASET_MASK_GENERATE_TRAINING, DATASET_MASK_REUSE_EXISTING
-from core.normal_camera_metadata import load_normal_camera_default
-from core.scene_layout import source_image_sets_path
 from gui import i18n
 from gui.app import MainWindow
 from gui.common.perspective_preview import PREVIEW_PROJECTION_EQUIRECT, PREVIEW_PROJECTION_PERSPECTIVE
@@ -187,6 +184,9 @@ def test_sfm_cards_open_in_step_sfm_pages_and_external_route_goes_to_dataset(tmp
         assert "https://github.com/colmap/colmap" in colmap_link.text()
         colmap_detail_layout = colmap_link.parentWidget().layout()
         assert colmap_detail_layout.indexOf(colmap_link) == colmap_detail_layout.count() - 1
+        colmap_buttons = window.sfm_step.stack.currentWidget().findChildren(QPushButton)
+        assert all(button.text() != i18n.t("SFM_OPEN_VIEWER") for button in colmap_buttons)
+        assert not hasattr(window.sfm_step, "colmap_normal_camera_model_combo")
 
         window.sfm_step.show_menu()
         assert window.run_btn.text().strip() == i18n.t("SFM_SELECT_ROUTE")
@@ -200,9 +200,7 @@ def test_sfm_cards_open_in_step_sfm_pages_and_external_route_goes_to_dataset(tmp
         assert window.run_btn.text().strip() == i18n.t("SFM_RUN_SPHERESFM")
         spheresfm_buttons = window.sfm_step.stack.currentWidget().findChildren(QPushButton)
         assert all(button.text() != i18n.t("SPHERESFM_OPEN_GUI") for button in spheresfm_buttons)
-        viewer_buttons = [button for button in spheresfm_buttons if button.text() == i18n.t("SFM_OPEN_VIEWER")]
-        assert len(viewer_buttons) == 1
-        assert viewer_buttons[0].sizePolicy().horizontalPolicy() == QSizePolicy.Fixed
+        assert all(button.text() != i18n.t("SFM_OPEN_VIEWER") for button in spheresfm_buttons)
         spheresfm_link = window.sfm_step.stack.currentWidget().findChild(QLabel, "sfmSpheresfmRepositoryLink")
         assert spheresfm_link is not None
         assert spheresfm_link.openExternalLinks()
@@ -331,90 +329,6 @@ def test_sfm_colmap_card_does_not_activate_hidden_cubemap_preview(tmp_path: Path
 
         assert window.sfm_step.current_route() == "realityscan_realign"
         assert calls == {"activated": 1}
-    finally:
-        window.shutdown()
-
-
-def test_colmap_sfm_route_saves_normal_camera_default(tmp_path: Path) -> None:
-    _app()
-    _write_image(tmp_path / "images" / "normal_0001.jpg", (40, 30))
-    fake_colmap = tmp_path / "colmap.exe"
-    fake_colmap.write_text("", encoding="utf-8")
-    window = MainWindow(str(tmp_path))
-    try:
-        window.sfm_step.show_route("colmap")
-        window.sfm_step.colmap_exec_browse.set_text(str(fake_colmap))
-        model_index = window.sfm_step.colmap_normal_camera_model_combo.findData("PINHOLE")
-        assert model_index >= 0
-        window.sfm_step.colmap_normal_camera_model_combo.setCurrentIndex(model_index)
-        window.sfm_step.colmap_normal_camera_params_edit.setText("20,21,19.5,14.5")
-
-        commands = window.sfm_step.build_commands()
-
-        camera = load_normal_camera_default(tmp_path)
-        assert camera.camera_model == "PINHOLE"
-        assert camera.camera_params == (20.0, 21.0, 19.5, 14.5)
-        normal_feature = commands[1][1]
-        assert normal_feature[normal_feature.index("--ImageReader.camera_model") + 1] == "PINHOLE"
-        assert normal_feature[normal_feature.index("--ImageReader.camera_params") + 1] == "20,21,19.5,14.5"
-    finally:
-        window.shutdown()
-
-
-def test_colmap_sfm_route_saves_source_resolution_normal_camera_default(tmp_path: Path) -> None:
-    _app()
-    _write_image(tmp_path / "images" / "a.jpg", (40, 30))
-    _write_image(tmp_path / "images" / "b.jpg", (80, 60))
-    source_sets = source_image_sets_path(tmp_path)
-    source_sets.parent.mkdir(parents=True, exist_ok=True)
-    source_sets.write_text(
-        json.dumps(
-            {
-                "version": 1,
-                "image_sets": [
-                    {
-                        "id": "cam_a",
-                        "source_type": "image_sequence",
-                        "projection": "normal",
-                        "files": [{"scene_path": "images/a.jpg"}],
-                    },
-                    {
-                        "id": "cam_b",
-                        "source_type": "image_sequence",
-                        "projection": "normal",
-                        "files": [{"scene_path": "images/b.jpg"}],
-                    },
-                ],
-            }
-        ),
-        encoding="utf-8",
-    )
-    fake_colmap = tmp_path / "colmap.exe"
-    fake_colmap.write_text("", encoding="utf-8")
-    window = MainWindow(str(tmp_path))
-    try:
-        window.sfm_step.show_route("colmap")
-        window.sfm_step.colmap_exec_browse.set_text(str(fake_colmap))
-        target_scope = ("group", "image_sequence", "cam_a", 40, 30)
-        scope_index = window.sfm_step._find_combo_data(window.sfm_step.colmap_normal_camera_scope_combo, target_scope)
-        assert scope_index >= 0
-        window.sfm_step.colmap_normal_camera_scope_combo.setCurrentIndex(scope_index)
-        model_index = window.sfm_step.colmap_normal_camera_model_combo.findData("PINHOLE")
-        assert model_index >= 0
-        window.sfm_step.colmap_normal_camera_model_combo.setCurrentIndex(model_index)
-        window.sfm_step.colmap_normal_camera_params_edit.setText("20,21,19.5,14.5")
-        window.sfm_step.colmap_normal_camera_apply_btn.click()
-
-        commands = window.sfm_step.build_commands()
-
-        normal_features = [cmd for phase, cmd in commands if phase.startswith("colmap_feature_normal")]
-        assert len(normal_features) == 2
-        camera_models = [cmd[cmd.index("--ImageReader.camera_model") + 1] for cmd in normal_features]
-        assert "PINHOLE" in camera_models
-        assert "SIMPLE_RADIAL" in camera_models
-        pinhole_cmd = next(cmd for cmd in normal_features if cmd[cmd.index("--ImageReader.camera_model") + 1] == "PINHOLE")
-        assert pinhole_cmd[pinhole_cmd.index("--ImageReader.camera_params") + 1] == "20,21,19.5,14.5"
-        assert any("normal_image_list_cam_a_40x30_pinhole_20_21_19p5_14p5.txt" in part for part in pinhole_cmd)
     finally:
         window.shutdown()
 

@@ -47,7 +47,7 @@ Choose this when you want this app to run [COLMAP](https://github.com/colmap/col
 
 For video-like input, start with `Sequential` matching. For a smaller unordered photo set, consider `Exhaustive`.
 
-For normal images, start with automatic camera estimation. Only edit normal-camera settings when you need to explicitly control focal length or distortion model.
+Normal images use automatic camera estimation in the GUI. If you need explicit calibrated intrinsics, prepare them as external metadata before import rather than entering per-image camera parameters in this step.
 
 ### Run SphereSfM
 

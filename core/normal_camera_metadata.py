@@ -17,6 +17,14 @@ COLMAP_CAMERA_PARAM_COUNTS = {
     "OPENCV": 8,
 }
 
+# This metadata contract is intentionally kept out of the normal Step 4 UI.
+# In practice, most users of this app do not have reliable per-source,
+# per-resolution camera calibration for smartphone/JPEG/video frames, and a
+# visible free-form intrinsics field made the workflow feel more fragile than
+# it is. Keep this module for source manifests, scene import, tests, and a
+# future calibration-file import path. If a GUI returns, it should be
+# group-aware and import-driven, not a scene-wide manual params textbox.
+
 
 @dataclass(frozen=True, slots=True)
 class NormalCameraDefault:
