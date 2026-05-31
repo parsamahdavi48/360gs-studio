@@ -12,7 +12,7 @@ The main workflow is to organize and mask ERP/equirectangular footage from camer
 
 For normal use, download the latest release ZIP:
 
-[Download stechdrive-3dgs-utils-v1.24.4.zip](https://github.com/stechdrive/stechdrive-3dgs-utils/releases/download/v1.24.4/stechdrive-3dgs-utils-v1.24.4.zip)
+[Download stechdrive-3dgs-utils-v1.24.5.zip](https://github.com/stechdrive/stechdrive-3dgs-utils/releases/download/v1.24.5/stechdrive-3dgs-utils-v1.24.5.zip)
 
 After extracting the ZIP, run `setup_windows.bat`, then `run_gui.bat`.
 

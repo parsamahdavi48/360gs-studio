@@ -112,7 +112,7 @@ if "%DO_APP%"=="1" (
     )
 
     echo [INFO] Updating application files...
-    %PYTHON_CMD% "%~dp0scripts\update_app.py" %APP_ARGS%
+    !PYTHON_CMD! "%~dp0scripts\update_app.py" !APP_ARGS!
     if errorlevel 1 (
         set "EXIT_CODE=%errorlevel%"
         set "UPDATE_RESULT=failed; application update did not complete"
@@ -131,7 +131,7 @@ if "%DO_DEPS%"=="1" (
                 goto finish
             )
             echo [INFO] .venv was not found. Checking whether the recommended dependencies can be installed...
-            %PYTHON_CMD% "%~dp0scripts\update_venv.py" !PREFLIGHT_ARGS!
+            !PYTHON_CMD! "%~dp0scripts\update_venv.py" !PREFLIGHT_ARGS!
             if errorlevel 1 (
                 set "EXIT_CODE=%errorlevel%"
                 set "UPDATE_RESULT=failed; dependency preflight did not complete"

@@ -138,6 +138,15 @@ def test_release_setup_preflight_command_uses_extracted_batch_on_windows() -> No
     ]
 
 
+def test_update_batch_uses_delayed_python_command_expansion() -> None:
+    text = Path("update.bat").read_text(encoding="utf-8")
+
+    assert '%PYTHON_CMD% "%~dp0scripts\\update_app.py"' not in text
+    assert '%PYTHON_CMD% "%~dp0scripts\\update_venv.py"' not in text
+    assert '!PYTHON_CMD! "%~dp0scripts\\update_app.py" !APP_ARGS!' in text
+    assert '!PYTHON_CMD! "%~dp0scripts\\update_venv.py" !PREFLIGHT_ARGS!' in text
+
+
 def test_release_setup_preflight_command_uses_extracted_script_on_posix() -> None:
     root = Path("pkg")
     cmd = release_setup_preflight_command(root, windows=False, python_executable="python")
