@@ -1001,6 +1001,8 @@ STRINGS: dict[str, str] = {
     "MASK_PREVIEW_EMPTY_HELP": "Run Step 1 frame extraction or place images in images/ to show mask previews here.",
     "DATASET_MASK_PREVIEW_NO_DATASET": "Create the dataset output to show images from its images/ folder here.",
     "DATASET_MASK_PREVIEW_EMPTY": "The output dataset images/ folder has no images. Create the dataset first.",
+    "DATASET_MASK_PREVIEW_GENERATE_EMPTY": "Training-mask previews use images/ from an existing dataset output. Run conversion first, then regenerate individual masks while checking those output images.",
+    "DATASET_MASK_PREVIEW_TRAINING_PENDING": "No saved training mask: preview or dataset run will generate it",
     "MASK_PREVIEW_YOLO_EXISTING": "Primary: existing mask",
     "MASK_PREVIEW_YOLO_TEMP": "Primary: preview result",
     "MASK_PREVIEW_YOLO_PENDING": "Primary: after generation",

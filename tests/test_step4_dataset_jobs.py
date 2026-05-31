@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 from core.dataset_mask_policy import DATASET_MASK_CONVERT_SFM
+from core.mask_refresh_plan import MASK_SCOPE_STALE
 from core.mask_view_recipes import recipe_for
+from core.scene_layout import mask_runs_path
+from core.scene_project import mask_item_path
 from tests.helpers.step4 import (
     STEP4_SETTINGS_VERSION,
     AppJob,
@@ -132,6 +135,107 @@ def test_dataset_mask_generate_mode_previews_dataset_masks(tmp_path: Path) -> No
     assert mask_step._mask_output_path_for_image(output / "images" / "frame_0001.jpg") == output_masks / "frame_0001.png"
     assert mask_step.mask_preview.status_label.text() == i18n.t("MASK_PREVIEW_YOLO_EXISTING")
     assert not mask_step.mask_preview.reprocess_current_btn.isHidden()
+
+
+def test_dataset_mask_generate_mode_explains_missing_saved_dataset_masks(tmp_path: Path) -> None:
+    step = _ready_step(tmp_path, metashape_inputs=True)
+    output = _write_output_dataset(tmp_path, output_shape="projected")
+    step.enable_dataset_mask_settings()
+    assert step._dataset_mask_step is not None
+    mask_step = step._dataset_mask_step
+    mask_step.set_mask_mode("generate_training")
+
+    mask_step.on_activated()
+    mask_step._render_mask_preview()
+
+    assert mask_step._images_dir_text() == str(output / "images")
+    assert mask_step._masks_dir_text() == str(output / "masks")
+    assert mask_step.mask_preview.current_image_path() == output / "images" / "frame_0001.jpg"
+    assert mask_step.mask_preview.status_label.text() == i18n.t("DATASET_MASK_PREVIEW_TRAINING_PENDING")
+
+
+def test_dataset_mask_generate_mode_explains_missing_dataset_images(tmp_path: Path) -> None:
+    step = _ready_step(tmp_path, metashape_inputs=True)
+    step.enable_dataset_mask_settings()
+    assert step._dataset_mask_step is not None
+    mask_step = step._dataset_mask_step
+    mask_step.set_mask_mode("generate_training")
+
+    mask_step.on_activated()
+
+    assert mask_step.mask_preview.preview_images == []
+    assert mask_step.mask_preview._empty_help_text == i18n.t("DATASET_MASK_PREVIEW_GENERATE_EMPTY")
+
+
+def test_dataset_mask_generate_mode_records_dataset_mask_metadata(tmp_path: Path) -> None:
+    step = _ready_step(tmp_path, metashape_inputs=True)
+    output = _write_output_dataset(tmp_path, output_shape="projected")
+    output_masks = output / "masks"
+    output_masks.mkdir()
+    image = output / "images" / "frame_0001.jpg"
+    mask = output_masks / "frame_0001.png"
+    _write_test_image(mask, size=(64, 32))
+    step.enable_dataset_mask_settings()
+    assert step._dataset_mask_step is not None
+    mask_step = step._dataset_mask_step
+    mask_step.set_mask_mode("generate_training")
+    settings = mask_step._mask_settings_snapshot()
+
+    mask_step._record_mask_outputs(
+        [image],
+        mode="batch",
+        settings=settings,
+        phases=["yolo"],
+        run_id="dataset_mask_test",
+    )
+
+    runs = json.loads(mask_runs_path(tmp_path).read_text(encoding="utf-8"))["runs"]
+    assert runs[0]["id"] == "dataset_mask_test"
+    assert runs[0]["mode"] == "dataset_batch"
+    assert runs[0]["generated"][0]["image"] == "output/metashape_cubemap/images/frame_0001.jpg"
+    assert runs[0]["generated"][0]["mask"] == "output/metashape_cubemap/masks/frame_0001.png"
+    item = json.loads(
+        mask_item_path(tmp_path, "output/metashape_cubemap/images/frame_0001.jpg").read_text(encoding="utf-8")
+    )
+    assert item["image"] == "output/metashape_cubemap/images/frame_0001.jpg"
+    assert item["mask"] == "output/metashape_cubemap/masks/frame_0001.png"
+    assert item["settings"]["dataset_mask"] == {
+        "mode": "generate_training",
+        "dataset_root": "output/metashape_cubemap",
+        "projection": "normal",
+    }
+
+
+def test_dataset_mask_generate_scope_uses_dataset_mask_metadata(tmp_path: Path) -> None:
+    step = _ready_step(tmp_path, metashape_inputs=True)
+    output = _write_output_dataset(tmp_path, output_shape="projected")
+    _write_test_image(output / "images" / "frame_0002.jpg", size=(64, 32))
+    output_masks = output / "masks"
+    output_masks.mkdir()
+    _write_test_image(output_masks / "frame_0001.png", size=(64, 32))
+    step.enable_dataset_mask_settings()
+    assert step._dataset_mask_step is not None
+    mask_step = step._dataset_mask_step
+    mask_step.set_mask_mode("generate_training")
+    mask_step._record_mask_outputs(
+        [output / "images" / "frame_0001.jpg"],
+        mode="batch",
+        settings=mask_step._mask_settings_snapshot(),
+        phases=["yolo"],
+        run_id="dataset_mask_current",
+    )
+    stale_index = mask_step.mask_scope_combo.findData(MASK_SCOPE_STALE)
+    assert stale_index >= 0
+    mask_step.mask_scope_combo.setCurrentIndex(stale_index)
+
+    commands = mask_step.build_commands()
+
+    assert [phase for phase, _cmd in commands] == ["yolo", "dataset_mask_paths"]
+    yolo_cmd = commands[0][1]
+    image_list = Path(_command_arg(yolo_cmd, "--image-list"))
+    rows = [json.loads(line) for line in image_list.read_text(encoding="utf-8").splitlines()]
+    assert [row["image"] for row in rows] == ["output/metashape_cubemap/images/frame_0002.jpg"]
+    assert [row["mask"] for row in rows] == ["output/metashape_cubemap/masks/frame_0002.png"]
 
 
 def test_dataset_mask_generate_projected_high_quality_uses_normal_projection_without_stitch(tmp_path: Path) -> None:

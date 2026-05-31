@@ -1005,6 +1005,8 @@ STRINGS: dict[str, str] = {
     "MASK_PREVIEW_EMPTY_HELP": "Step 1でフレームを抽出するか、images/ に画像を配置すると、ここにマスクプレビューを表示します。",
     "DATASET_MASK_PREVIEW_NO_DATASET": "データセット出力を作成すると、出力先 images/ の画像をここに表示します。",
     "DATASET_MASK_PREVIEW_EMPTY": "出力データセットの images/ に画像がありません。先にデータセット作成を実行してください。",
+    "DATASET_MASK_PREVIEW_GENERATE_EMPTY": "学習用マスクのプレビューは、出力済みデータセットの images/ に対して表示します。先に変換を実行すると、出力画像を見ながら個別に再生成できます。",
+    "DATASET_MASK_PREVIEW_TRAINING_PENDING": "保存済み学習マスクなし: プレビューまたは変換実行で生成",
     "MASK_PREVIEW_YOLO_EXISTING": "主マスク: 既存",
     "MASK_PREVIEW_YOLO_TEMP": "主マスク: プレビュー",
     "MASK_PREVIEW_YOLO_PENDING": "主マスク: 実行後に反映",

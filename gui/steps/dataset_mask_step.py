@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping
+from dataclasses import replace
 from pathlib import Path
 
 from PySide6.QtCore import Qt
@@ -38,6 +39,7 @@ from gui.steps.step3_mask_plan import (
     MaskCommandSpec,
     build_uniform_mask_command_specs,
 )
+from gui.steps.step3_mask_records import record_mask_outputs
 
 _PROJECTION_EQUIRECT = "equirect"
 _PROJECTION_NORMAL = "normal"
@@ -66,6 +68,7 @@ class DatasetMaskStep(MaskStep):
         )
         self._install_dataset_mode_controls()
         self._refresh_mask_source_options()
+        self._sync_preview_messages_for_mode()
         self._sync_preview_roots_for_mode()
         self._sync_preview_actions_for_mode()
 
@@ -278,7 +281,13 @@ class DatasetMaskStep(MaskStep):
                 masks_dir="",
                 settings_key=("dataset-mask", mode, self._images_dir_text()),
             )
-        return super()._mask_preview_config_from_controls()
+        return replace(
+            super()._mask_preview_config_from_controls(),
+            missing_primary_status=i18n.t("DATASET_MASK_PREVIEW_TRAINING_PENDING"),
+        )
+
+    def _mask_settings_snapshot(self) -> dict:
+        return self._with_dataset_mask_settings(super()._mask_settings_snapshot())
 
     def _sync_projection_from_project(self, *, preserve_user_quality: bool = False) -> None:
         self._set_projection(self._dataset_projection, sync_yolo_quality=not preserve_user_quality)
@@ -311,7 +320,35 @@ class DatasetMaskStep(MaskStep):
         phases: list[str],
         run_id: str | None = None,
     ) -> None:
-        return
+        if not self.scene_dir or not image_paths:
+            return
+        scene = Path(self.scene_dir)
+        effective_settings = self._with_dataset_mask_settings(settings or self._mask_settings_snapshot())
+        record_mask_outputs(
+            scene,
+            image_paths,
+            mode=f"dataset_{mode}",
+            settings=effective_settings,
+            phases=phases,
+            mask_path_for_image=self._mask_output_path_for_image,
+            run_id=run_id,
+            run_id_factory=self._new_mask_run_id,
+        )
+
+    def on_queue_finished(self, success: bool) -> None:
+        if not self._mask_batch_phases and not self._mask_batch_targets:
+            return
+        super().on_queue_finished(success)
+
+    def _with_dataset_mask_settings(self, settings: dict) -> dict:
+        effective = dict(settings)
+        scene = Path(self.scene_dir) if self.scene_dir else self._dataset_root().parent
+        effective["dataset_mask"] = {
+            "mode": self.mask_mode(),
+            "dataset_root": _scene_relative_or_path(scene, self._dataset_root()),
+            "projection": self._dataset_projection,
+        }
+        return effective
 
     def _attach_mask_paths_command(self) -> tuple[str, object]:
         return self._mask_paths_command(clear=False)
@@ -343,6 +380,7 @@ class DatasetMaskStep(MaskStep):
         return True, i18n.t("MASK_READY_OK")
 
     def _on_dataset_mask_mode_changed(self) -> None:
+        self._sync_preview_messages_for_mode()
         self._sync_preview_roots_for_mode()
         self._sync_preview_actions_for_mode()
         self._update_task_controls()
@@ -356,6 +394,7 @@ class DatasetMaskStep(MaskStep):
     def _sync_preview_roots_for_mode(self) -> None:
         if not hasattr(self, "mask_preview"):
             return
+        self._sync_preview_messages_for_mode()
         self._invalidate_scene_inventory_cache()
         self._invalidate_readiness_cache()
         self._on_images_dir_changed(self._images_dir_text())
@@ -366,3 +405,30 @@ class DatasetMaskStep(MaskStep):
         can_save_reprocess = self.mask_mode() == DATASET_MASK_GENERATE_TRAINING
         self.mask_preview.reprocess_current_btn.setVisible(can_save_reprocess)
         self.mask_preview.reprocess_current_btn.setEnabled(can_save_reprocess)
+
+    def _sync_preview_messages_for_mode(self) -> None:
+        if not hasattr(self, "mask_preview"):
+            return
+        mode = self.mask_mode() if hasattr(self, "dataset_mask_mode_combo") else DATASET_MASK_GENERATE_TRAINING
+        if mode == DATASET_MASK_CONVERT_SFM:
+            self.mask_preview.set_empty_messages(
+                no_scene=i18n.t("MASK_PREVIEW_NO_SCENE_HELP"),
+                empty=i18n.t("MASK_PREVIEW_EMPTY_HELP"),
+            )
+            return
+        empty_key = (
+            "DATASET_MASK_PREVIEW_GENERATE_EMPTY"
+            if mode == DATASET_MASK_GENERATE_TRAINING
+            else "DATASET_MASK_PREVIEW_EMPTY"
+        )
+        self.mask_preview.set_empty_messages(
+            no_scene=i18n.t("DATASET_MASK_PREVIEW_NO_DATASET"),
+            empty=i18n.t(empty_key),
+        )
+
+
+def _scene_relative_or_path(scene: Path, path: Path) -> str:
+    try:
+        return path.resolve(strict=False).relative_to(scene.resolve(strict=False)).as_posix()
+    except (OSError, ValueError):
+        return str(path)

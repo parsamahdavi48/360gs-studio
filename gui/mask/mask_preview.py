@@ -74,6 +74,7 @@ class MaskPreviewConfig:
     masks_dir: str = ""
     custom_mask_path: str = ""
     settings_key: tuple = ()
+    missing_primary_status: str = ""
 
 
 class ElidedStatusLabel(QLabel):
@@ -321,7 +322,7 @@ class MaskPreviewWidget(QWidget):
                 yolo_mask = self._load_existing_mask(image_path, config, combined.shape)
                 yolo_status = i18n.t("MASK_PREVIEW_YOLO_EXISTING") if yolo_mask is not None else ""
             if yolo_mask is None:
-                status_parts.append(i18n.t("MASK_PREVIEW_YOLO_PENDING"))
+                status_parts.append(config.missing_primary_status or i18n.t("MASK_PREVIEW_YOLO_PENDING"))
             else:
                 if yolo_mask.shape != combined.shape:
                     yolo_mask = cv2.resize(yolo_mask, (w, h), interpolation=cv2.INTER_NEAREST)
