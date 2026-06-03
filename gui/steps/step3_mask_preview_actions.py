@@ -10,7 +10,7 @@ from PySide6.QtCore import QProcess
 
 from gui import i18n
 from gui.mask.mask_preview import MaskPreviewConfig
-from gui.steps.mask_commands import SAM31_MERGE_REPLACE
+from gui.steps.mask_commands import MASK_APPLY_REPLACE
 
 _PROJECTION_EQUIRECT = "equirect"
 
@@ -62,10 +62,10 @@ class Step3MaskPreviewActionsMixin:
             self.yolo_level_combo.currentIndex(),
             int(self.yolo_expand_edit.value()),
             tuple(self._selected_classes()),
-            tuple(self._selected_ade_labels()),
+            tuple(self._selected_semantic_labels()),
             tuple(self._selected_sam_prompts()),
             tuple(self._selected_sam_subtract_prompts()),
-            self._sam31_merge_mode_arg(),
+            self._mask_merge_mode_arg(),
             self._sky_backend_arg(),
             self._sky_inference_size_arg(),
             int(self.sky_expand_edit.value()),
@@ -74,8 +74,8 @@ class Step3MaskPreviewActionsMixin:
             bool(self.sky_top_connected_cb.isChecked()),
         )
 
-    def _seed_sam31_preview_base_mask(self, image_path: Path, output_path: Path) -> None:
-        if not self._person_uses_sam31() or self._sam31_merge_mode_arg() == SAM31_MERGE_REPLACE:
+    def _seed_merge_preview_base_mask(self, image_path: Path, output_path: Path) -> None:
+        if self._mask_merge_mode_arg() == MASK_APPLY_REPLACE:
             return
         existing_path = self._mask_output_path_for_image(image_path)
         if not existing_path.is_file():
@@ -116,7 +116,7 @@ class Step3MaskPreviewActionsMixin:
         self._mask_preview_temp = tempfile.TemporaryDirectory(prefix="stechdrive_mask_preview_")
         masks_root = Path(self._mask_preview_temp.name)
         output_path = self._mask_output_path_for_image(image_path, masks_root=masks_root)
-        self._seed_sam31_preview_base_mask(image_path, output_path)
+        self._seed_merge_preview_base_mask(image_path, output_path)
 
         try:
             commands = self._build_image_external_commands(image_path, masks_root=masks_root)

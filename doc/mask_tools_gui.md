@@ -10,7 +10,7 @@ Mask polarity is **white = use, black = exclude**. Creating masks before Metasha
 | --- | --- |
 | Mask people or the camera operator in 360° frames | Confirm `Image Type: 360°`, then use `Model: YOLO/SAM2.1`, `Quality: High` |
 | Get higher-accuracy person or sky masks | `Model: SAM3.1` |
-| Try sky masks without SAM3.1 | `Model: Mask2Former`, target `sky` |
+| Mask sky, roads, vehicles, vegetation, or other urban street-scene classes | `Model: YOLO26-sem`, choose Cityscapes targets |
 | Process normal photos or normal video frames | Add or copy them into the scene and confirm `Image Type: Normal` |
 | Process only the source you just added | Choose that video or still folder in `Source` |
 | Keep existing masks untouched | Choose `Scope: Images without masks only` |
@@ -19,7 +19,7 @@ Mask polarity is **white = use, black = exclude**. Creating masks before Metasha
 | Exclude blown-out windows or lights | `Overexp` ON |
 | Apply your own fixed mask to every image | `Custom` ON |
 
-When unsure, start with `YOLO/SAM2.1` + `High` + `person` for 360° images, then regenerate only problem images with higher quality or a different model.
+For urban roadside 360° images, start with `YOLO26-sem` + `High` and the Cityscapes targets you need. Keep `YOLO/SAM2.1` available when you specifically want fast person-focused COCO object detection with SAM2.1 refinement.
 
 ## Basic Flow
 
@@ -40,27 +40,29 @@ Step 3 stops before running if images marked for removal still remain, or if unr
 
 | Model | Best for |
 | --- | --- |
-| `YOLO/SAM2.1` | Recommended route for fast person masking |
+| `YOLO/SAM2.1` | Legacy COCO object detection refined with SAM2.1, mainly for people |
+| `YOLO26-sem` | Urban street scenes. Fast Cityscapes semantic masks for sky, roads, buildings, vehicles, and vegetation |
 | `SAM3.1` | Higher-accuracy English-prompt masks for people, sky, tripods, hands, phones, and cleanup |
-| `Mask2Former` | Trying semantic masks such as sky without SAM3.1 |
 
 ### YOLO/SAM2.1
 
 This is the recommended route when you want fast person masks. YOLO detects the selected targets, then SAM2.1 refines their shapes. The usual target is `person` only. Add vehicles or other available targets only when you also want to mask them.
 
+### YOLO26-sem
+
+YOLO26-sem uses the 19-class semantic model trained on Cityscapes for urban street scenes. It predicts a class ID for each pixel, so the final black/white mask can be built directly without a separate SAM refinement step. It can quickly create mask candidates for classes such as sky, roads, buildings, vehicles, and vegetation. Turn on `vegetation` when moving trees or leaves are hurting SfM; leave static classes such as `building`, `road`, and `sidewalk` off unless you intentionally want to remove them.
+
+For 360° images, the quality setting controls projection assist. High quality combines direct equirectangular inference with top and bottom views to reduce misses caused by ERP distortion near the vertical extremes.
+
 ### SAM3.1
 
 SAM3.1 is prompt-driven rather than a fixed class list. You describe what to mask with English prompts. Single words such as `person`, `sky`, or `tripod` work, and short natural-language phrases such as `selfie stick`, `cell phone`, `person wearing a red jacket`, `hand holding a phone`, or `tripod legs near the floor` can also be used. The checkboxes are shortcuts for common prompts, so you do not have to type them manually. Add any missing targets in the extra prompt field.
 
-After generation, select only images with misses or false detections and combine prompts with the mask regeneration mode to add regions to the current mask or remove unwanted targets such as `logo` or `sign` from the masked area.
+After generation, select only images with misses or false detections and combine prompts with Method to add regions to the current mask, or exclude unwanted targets such as `logo` or `sign` inside SAM3.1 candidate generation.
 
-Use add prompts to pick up targets that were not masked. For example, enter `tripod legs near the floor` for a missed tripod near the feet, or `hand holding a phone` for a missed phone, set the mode to `Add`, and regenerate only the affected images. Use subtract prompts when areas you do not want masked were picked up by mistake. For example, enter `male icon`, `female icon`, `logo`, or `sign`, set the mode to `Subtract`, and remove those targets from the masked area.
+Use add prompts to pick up targets that were not masked. For example, enter `tripod legs near the floor` for a missed tripod near the feet, or `hand holding a phone` for a missed phone, set Method to `Add`, and regenerate only the affected images. Use exclude prompts to remove targets from SAM3.1's candidate mask. For example, enter `male icon`, `female icon`, `logo`, or `sign` when those should not be part of the generated candidate.
 
 On first use, if `models/sam3.1/sam3.1_multiplex.pt` is missing, Hugging Face access approval and SAM License acceptance are required. GUI downloads use a `Read` token from the approved account. This app does not save the token.
-
-### Mask2Former
-
-Mask2Former uses ADE20K semantic classes. Use it when you want to try semantic targets such as sky without setting up SAM3.1.
 
 ## Quality And Expansion
 
@@ -69,10 +71,22 @@ Mask2Former uses ADE20K semantic classes. Use it when you want to try semantic t
 | Quality | Use when |
 | --- | --- |
 | `Standard` | Quick checks. Also a reasonable starting point for normal images |
-| `High` | Recommended starting point for 360° images. Adds person-oriented tiles and top/bottom assist |
+| `High` | Recommended starting point for 360° images. Adds ERP tiles and top/bottom projection assist |
 | `Best` | Targeted fixes for images that still leak. Slower |
 
 `Mask Expand` grows or shrinks mask boundaries. Positive values make black excluded regions larger; negative values make them tighter. Increase it when silhouettes leak through, and decrease it when masks remove too much.
+
+## Method
+
+`Method` chooses how the candidate mask from this run is applied to existing masks.
+
+| Method | Behavior |
+| --- | --- |
+| `Replace` | Rebuild the mask without using the existing mask |
+| `Add` | Add detected regions as exclusions to the existing mask |
+| `Restore` | Turn detected regions back to white in the existing mask |
+
+SAM3.1 add/exclude prompts are internal instructions for building the candidate mask. `Method` is the global setting that decides how that candidate is applied to the saved mask.
 
 ## Optional Masks
 
@@ -82,7 +96,7 @@ After the model-based mask, Step 3 can merge extra masks. The order is always mo
 | --- | --- |
 | `Stitch` | Excluding stitch seams in 360° images |
 | `Overexp` | Excluding blown-out windows, lights, or reflections |
-| `Custom` | AND-merging your own PNG mask into every output |
+| `Custom` | Applying your own PNG mask to every output |
 
 If stitch seams are barely visible, keep stitch masks off or use a narrow seam mask first. Usually keep it off for stabilized, direction-locked, or AI-stitched footage where seam positions move.
 
@@ -98,13 +112,7 @@ Custom masks use PNG input. White means use, black means exclude. They apply onl
 
 ### Regenerate Mask
 
-`Regenerate Mask` saves a new mask to `masks/` for the current image, or for selected images in thumbnail mode.
-
-With SAM3.1, choose how prompt detections are applied to the saved mask:
-
-- `Replace`: rebuild the mask from current settings
-- `Add`: add detected targets to the masked area
-- `Subtract`: remove detected targets from the masked area
+`Regenerate Mask` saves a mask to `masks/` for the current image, or for selected images in thumbnail mode, using the current settings and Method.
 
 It is usually faster to generate the full set at Standard/High quality, then regenerate only images with visible misses.
 
@@ -120,9 +128,9 @@ Generated `masks/` can be imported into Metashape, COLMAP, or SphereSfM, and Ste
 
 ## Common Decisions
 
-- Start with `YOLO/SAM2.1` + `High` + `person`.
-- Use `SAM3.1` when you also need sky, tripods, hands, or prompt-based cleanup.
-- Use `Mask2Former` for a quick sky-mask test without SAM3.1.
+- In urban street scenes, start with `YOLO26-sem` + `High` for the Cityscapes targets you need, such as sky, vehicles, and vegetation.
+- Keep `YOLO/SAM2.1` for the legacy COCO person/object route when it works better on a specific scene.
+- Use `SAM3.1` when you need tripods, hands, selfie sticks, phones, or prompt-based cleanup.
 - If the camera operator or tripod remains near the bottom of a 360° image, raise quality or use SAM3.1 prompts such as `tripod`, `hand`, or `selfie stick` to add those areas to the mask.
 - Turn `Overexp` on only for footage where blown-out areas are actually harmful; it can remove too much in some interiors.
 - Normal images do not use stitch seam masks or 360° pole projection assist.

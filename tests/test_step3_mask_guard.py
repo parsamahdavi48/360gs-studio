@@ -324,13 +324,13 @@ def test_mask_step_yolo_class_presets_and_class_label_are_removed() -> None:
     assert i18n.CLASS_PRESET_CLEAR not in buttons
     assert i18n.t("YOLO_CLASS_LIST_SECTION") in tool_buttons
     assert step.yolo_class_list_section.toggle_button.text().strip() == i18n.t("DETECTION_TARGET_SECTION")
-    assert step.ade_class_list_section.toggle_button.text().strip() == i18n.t("DETECTION_TARGET_SECTION")
+    assert step.semantic_class_list_section.toggle_button.text().strip() == i18n.t("DETECTION_TARGET_SECTION")
     assert step.sam_prompt_section.toggle_button.text().strip() == i18n.t("DETECTION_TARGET_SECTION")
     assert step.yolo_class_list_section.content_widget.isHidden()
-    assert step.ade_class_list_section.content_widget.isHidden()
+    assert step.semantic_class_list_section.content_widget.isHidden()
     assert step.sam_prompt_section.content_widget.isHidden()
     assert step.yolo_class_list_section.toggle_button.toolTip() == i18n.tip("YOLO_CLASS_LIST_SECTION")
-    assert step.ade_class_list_section.toggle_button.toolTip() == i18n.tip("ADE20K_CLASS_LIST_SECTION")
+    assert step.semantic_class_list_section.toggle_button.toolTip() == i18n.tip("CITYSCAPES_CLASS_LIST_SECTION")
     assert step.sam_prompt_section.toggle_button.toolTip() == i18n.tip("SAM31_PROMPT_SECTION")
 
 
@@ -344,7 +344,7 @@ def test_mask_step_yolo_level_and_expand_share_compact_row() -> None:
     assert step.yolo_level_combo.currentIndex() == 1
     assert step.person_backend_label.toolTip() == i18n.tip("PERSON_MODEL")
     assert step.person_backend_combo.itemText(0) == i18n.t("PERSON_MODEL_YOLO_SAM")
-    assert step.person_backend_combo.itemText(1) == i18n.t("SKY_MODEL_MASK2FORMER")
+    assert step.person_backend_combo.itemText(1) == i18n.t("SKY_MODEL_YOLO26_SEM")
     assert step.person_backend_combo.itemText(2) == i18n.t("PERSON_MODEL_SAM31")
     assert step.yolo_level_label.toolTip() == i18n.tip("MASK_QUALITY")
     assert step.yolo_level_combo.itemText(0) == i18n.t("MASK_QUALITY_STANDARD")
@@ -356,7 +356,7 @@ def test_mask_step_yolo_level_and_expand_share_compact_row() -> None:
     assert not hasattr(step, "projection_label")
 
 
-def test_mask_step_sam31_apply_mode_shares_compact_settings_row(tmp_path: Path, monkeypatch) -> None:
+def test_mask_step_apply_mode_shares_compact_settings_row(tmp_path: Path, monkeypatch) -> None:
     _app()
     scene = _write_scene(tmp_path, drop_exists=False)
     step = MaskStep(Path.cwd())
@@ -370,11 +370,11 @@ def test_mask_step_sam31_apply_mode_shares_compact_settings_row(tmp_path: Path, 
 
     content_width = SETTINGS_PANE_WIDTH - SETTINGS_PANE_MARGINS[2]
     assert step.yolo_settings_row.sizeHint().width() <= content_width
-    assert not step.sam_apply_mode_label.isHidden()
-    assert step.sam_apply_mode_label.toolTip() == i18n.tip("SAM31_APPLY_MODE")
-    assert step.sam_apply_mode_combo.itemData(0) == "replace"
-    assert step.sam_apply_mode_combo.itemData(1) == "add"
-    assert step.sam_apply_mode_combo.itemData(2) == "subtract"
+    assert not step.mask_apply_mode_label.isHidden()
+    assert step.mask_apply_mode_label.toolTip() == i18n.tip("MASK_APPLY_MODE")
+    assert step.mask_apply_mode_combo.itemData(0) == "replace"
+    assert step.mask_apply_mode_combo.itemData(1) == "add"
+    assert step.mask_apply_mode_combo.itemData(2) == "subtract"
     assert step.sam_custom_prompt_icon.pixmap() is not None
     assert step.sam_custom_prompt_icon.toolTip() == i18n.tip("SAM31_CUSTOM_PROMPT")
     assert step.sam_subtract_prompt_icon.pixmap() is not None
@@ -698,15 +698,17 @@ def test_mask_step_custom_mask_builds_final_command(tmp_path: Path) -> None:
             sys.executable,
             "-u",
             "-m",
-            "core.custom_mask",
-            str(scene / "images"),
-            str(scene / "masks"),
-            str(custom_path),
-        ],
-    )
+                "core.custom_mask",
+                str(scene / "images"),
+                str(scene / "masks"),
+                str(custom_path),
+                "--merge-mode",
+                "add",
+            ],
+        )
 
 
-def test_mask_step_mask2former_primary_builds_final_command(tmp_path: Path) -> None:
+def test_mask_step_yolo26_sem_primary_builds_final_command(tmp_path: Path) -> None:
     _app()
     scene = _write_scene(tmp_path, drop_exists=False)
     step = MaskStep(Path.cwd())
@@ -727,11 +729,11 @@ def test_mask_step_mask2former_primary_builds_final_command(tmp_path: Path) -> N
         str(scene / "images"),
         str(scene / "masks"),
     ]
-    assert cmd[cmd.index("--backend") + 1] == "mask2former"
+    assert cmd[cmd.index("--backend") + 1] == "yolo26_sem"
     assert cmd[cmd.index("--projection") + 1] == "equirect"
     assert cmd[cmd.index("--quality") + 1] == "high"
     assert cmd[cmd.index("--inference-size") + 1] == "768"
-    assert cmd[cmd.index("--labels") + 1] == "sky,person"
+    assert cmd[cmd.index("--labels") + 1] == "sky,person,rider,car,truck,bus,train,motorcycle,bicycle"
     assert "--replace" in cmd
 
 
@@ -813,7 +815,7 @@ def test_mask_step_sam31_preview_add_mode_seeds_existing_mask(tmp_path: Path, mo
     step.sam_apply_mode_combo.setCurrentIndex(1)
     preview_mask = tmp_path / "preview" / "frame_0001.png"
 
-    step._seed_sam31_preview_base_mask(image_path, preview_mask)
+    step._seed_merge_preview_base_mask(image_path, preview_mask)
 
     assert preview_mask.is_file()
 
@@ -983,7 +985,7 @@ def test_mask_step_current_reprocess_external_commands_target_preview_image_subf
     assert commands[0][1][5] == str(scene / "masks" / "extra")
 
 
-def test_mask_step_current_reprocess_mask2former_uses_primary_replace(tmp_path: Path) -> None:
+def test_mask_step_current_reprocess_yolo26_sem_uses_primary_replace(tmp_path: Path) -> None:
     _app()
     scene = tmp_path
     images = scene / "images"
@@ -997,7 +999,7 @@ def test_mask_step_current_reprocess_mask2former_uses_primary_replace(tmp_path: 
     commands = step._build_current_reprocess_external_commands(image_path)
 
     assert [phase for phase, _cmd in commands] == ["yolo"]
-    assert commands[0][1][commands[0][1].index("--backend") + 1] == "mask2former"
+    assert commands[0][1][commands[0][1].index("--backend") + 1] == "yolo26_sem"
     assert "--replace" in commands[0][1]
 
 
@@ -1193,7 +1195,7 @@ def test_mask_step_quality_best_is_forwarded_to_primary_command(tmp_path: Path) 
     assert "--bottom-filter" not in yolo_cmd
 
 
-def test_mask_step_quality_is_shared_by_mask2former(tmp_path: Path) -> None:
+def test_mask_step_quality_is_shared_by_yolo26_sem(tmp_path: Path) -> None:
     _app()
     scene = _write_scene(tmp_path, drop_exists=False)
     step = MaskStep(Path.cwd())
@@ -1203,7 +1205,7 @@ def test_mask_step_quality_is_shared_by_mask2former(tmp_path: Path) -> None:
 
     yolo_cmd = step.build_commands()[0][1]
 
-    assert yolo_cmd[yolo_cmd.index("--backend") + 1] == "mask2former"
+    assert yolo_cmd[yolo_cmd.index("--backend") + 1] == "yolo26_sem"
     assert yolo_cmd[yolo_cmd.index("--quality") + 1] == "standard"
 
 

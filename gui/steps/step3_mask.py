@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import os
 import tempfile
 from pathlib import Path
@@ -29,6 +28,7 @@ from core.mask_refresh_plan import (
     MASK_SCOPE_MISSING,
     MASK_SCOPE_STALE,
 )
+from core.sky_mask import CITYSCAPES_CLASS_NAMES
 from gui import i18n
 from gui.common.collapsible_section import CollapsibleSection
 from gui.common.drag_spinbox import DragDoubleSpinBox, DragSpinBox
@@ -158,157 +158,16 @@ _SAM31_PROMPT_PRESETS: tuple[tuple[str, str], ...] = (
     ("cell phone", "スマホ"),
     ("car", "車"),
 )
-_ADE20K_FALLBACK_CLASSES = (
-    "wall",
-    "building",
+_SEMANTIC_DEFAULT_SELECTED_CLASSES = (
     "sky",
-    "floor",
-    "tree",
-    "ceiling",
-    "road",
-    "bed ",
-    "windowpane",
-    "grass",
-    "cabinet",
-    "sidewalk",
     "person",
-    "earth",
-    "door",
-    "table",
-    "mountain",
-    "plant",
-    "curtain",
-    "chair",
+    "rider",
     "car",
-    "water",
-    "painting",
-    "sofa",
-    "shelf",
-    "house",
-    "sea",
-    "mirror",
-    "rug",
-    "field",
-    "armchair",
-    "seat",
-    "fence",
-    "desk",
-    "rock",
-    "wardrobe",
-    "lamp",
-    "bathtub",
-    "railing",
-    "cushion",
-    "base",
-    "box",
-    "column",
-    "signboard",
-    "chest of drawers",
-    "counter",
-    "sand",
-    "sink",
-    "skyscraper",
-    "fireplace",
-    "refrigerator",
-    "grandstand",
-    "path",
-    "stairs",
-    "runway",
-    "case",
-    "pool table",
-    "pillow",
-    "screen door",
-    "stairway",
-    "river",
-    "bridge",
-    "bookcase",
-    "blind",
-    "coffee table",
-    "toilet",
-    "flower",
-    "book",
-    "hill",
-    "bench",
-    "countertop",
-    "stove",
-    "palm",
-    "kitchen island",
-    "computer",
-    "swivel chair",
-    "boat",
-    "bar",
-    "arcade machine",
-    "hovel",
-    "bus",
-    "towel",
-    "light",
     "truck",
-    "tower",
-    "chandelier",
-    "awning",
-    "streetlight",
-    "booth",
-    "television receiver",
-    "airplane",
-    "dirt track",
-    "apparel",
-    "pole",
-    "land",
-    "bannister",
-    "escalator",
-    "ottoman",
-    "bottle",
-    "buffet",
-    "poster",
-    "stage",
-    "van",
-    "ship",
-    "fountain",
-    "conveyer belt",
-    "canopy",
-    "washer",
-    "plaything",
-    "swimming pool",
-    "stool",
-    "barrel",
-    "basket",
-    "waterfall",
-    "tent",
-    "bag",
-    "minibike",
-    "cradle",
-    "oven",
-    "ball",
-    "food",
-    "step",
-    "tank",
-    "trade name",
-    "microwave",
-    "pot",
-    "animal",
+    "bus",
+    "train",
+    "motorcycle",
     "bicycle",
-    "lake",
-    "dishwasher",
-    "screen",
-    "blanket",
-    "sculpture",
-    "hood",
-    "sconce",
-    "vase",
-    "traffic light",
-    "tray",
-    "ashcan",
-    "fan",
-    "pier",
-    "crt screen",
-    "plate",
-    "monitor",
-    "bulletin board",
-    "shower",
-    "radiator",
-    "glass",
-    "clock",
-    "flag",
 )
 _OVEREXP_THRESHOLD_MIN = 1
 _OVEREXP_THRESHOLD_MAX = 254
@@ -336,19 +195,6 @@ def _fit_combo_width_to_items(combo: QComboBox, *, min_width: int, max_width: in
     metrics = combo.fontMetrics()
     widest = max((metrics.horizontalAdvance(combo.itemText(index)) for index in range(combo.count())), default=0)
     combo.setFixedWidth(min(max_width, max(min_width, widest + _COMBO_TEXT_PADDING)))
-
-
-def _ade20k_class_names(base_dir: Path) -> tuple[str, ...]:
-    config_path = base_dir / "models" / "mask2former-swin-large-ade-semantic" / "config.json"
-    if config_path.is_file():
-        try:
-            config = json.loads(config_path.read_text(encoding="utf-8"))
-            labels = config.get("id2label", {})
-            if labels:
-                return tuple(str(labels[str(idx)]) for idx in range(len(labels)))
-        except Exception:
-            pass
-    return _ADE20K_FALLBACK_CLASSES
 
 
 class MaskStep(
@@ -515,12 +361,12 @@ class MaskStep(
         self.person_backend_combo.addItems(
             [
                 i18n.t("PERSON_MODEL_YOLO_SAM"),
-                i18n.t("SKY_MODEL_MASK2FORMER"),
+                i18n.t("SKY_MODEL_YOLO26_SEM"),
                 i18n.t("PERSON_MODEL_SAM31"),
             ]
         )
         self.person_backend_combo.setItemData(0, i18n.tip("PERSON_MODEL_YOLO_SAM"), Qt.ToolTipRole)
-        self.person_backend_combo.setItemData(1, i18n.tip("SKY_MODEL_MASK2FORMER"), Qt.ToolTipRole)
+        self.person_backend_combo.setItemData(1, i18n.tip("SKY_MODEL_YOLO26_SEM"), Qt.ToolTipRole)
         self.person_backend_combo.setItemData(2, i18n.tip("PERSON_MODEL_SAM31"), Qt.ToolTipRole)
         self.person_backend_combo.setFixedWidth(132)
         person_backend_row.addWidget(self.person_backend_combo)
@@ -577,20 +423,29 @@ class MaskStep(
         self.yolo_expand_edit.setFixedWidth(74)
         yolo_settings_row.addWidget(self.yolo_expand_edit)
 
-        self.sam_apply_mode_label = QLabel(i18n.t("SAM31_APPLY_MODE"))
-        self.sam_apply_mode_label.setToolTip(i18n.tip("SAM31_APPLY_MODE"))
-        yolo_settings_row.addWidget(self.sam_apply_mode_label)
-
-        self.sam_apply_mode_combo = QComboBox()
-        self.sam_apply_mode_combo.setToolTip(i18n.tip("SAM31_APPLY_MODE"))
-        self.sam_apply_mode_combo.addItem(i18n.t("SAM31_APPLY_REPLACE"), _SAM31_MERGE_REPLACE)
-        self.sam_apply_mode_combo.addItem(i18n.t("SAM31_APPLY_ADD"), _SAM31_MERGE_ADD)
-        self.sam_apply_mode_combo.addItem(i18n.t("SAM31_APPLY_SUBTRACT"), _SAM31_MERGE_SUBTRACT)
-        self.sam_apply_mode_combo.setFixedWidth(106)
-        yolo_settings_row.addWidget(self.sam_apply_mode_combo)
         yolo_settings_row.addStretch()
         self.yolo_settings_row = yolo_settings_row_widget
         yolo_layout.addWidget(yolo_settings_row_widget)
+
+        mask_apply_row_widget = QWidget()
+        mask_apply_row = QHBoxLayout(mask_apply_row_widget)
+        mask_apply_row.setContentsMargins(0, 0, 0, 0)
+        mask_apply_row.setSpacing(6)
+        self.mask_apply_mode_label = QLabel(i18n.t("MASK_APPLY_MODE"))
+        self.mask_apply_mode_label.setToolTip(i18n.tip("MASK_APPLY_MODE"))
+        mask_apply_row.addWidget(self.mask_apply_mode_label)
+        self.mask_apply_mode_combo = QComboBox()
+        self.mask_apply_mode_combo.setToolTip(i18n.tip("MASK_APPLY_MODE"))
+        self.mask_apply_mode_combo.addItem(i18n.t("MASK_APPLY_REPLACE"), _SAM31_MERGE_REPLACE)
+        self.mask_apply_mode_combo.addItem(i18n.t("MASK_APPLY_ADD"), _SAM31_MERGE_ADD)
+        self.mask_apply_mode_combo.addItem(i18n.t("MASK_APPLY_SUBTRACT"), _SAM31_MERGE_SUBTRACT)
+        self.mask_apply_mode_combo.setFixedWidth(118)
+        mask_apply_row.addWidget(self.mask_apply_mode_combo)
+        mask_apply_row.addStretch()
+        self.mask_apply_row = mask_apply_row_widget
+        self.sam_apply_mode_label = self.mask_apply_mode_label
+        self.sam_apply_mode_combo = self.mask_apply_mode_combo
+        yolo_layout.addWidget(mask_apply_row_widget)
 
         bottom_settings_row_widget = QWidget()
         bottom_settings_row = QHBoxLayout(bottom_settings_row_widget)
@@ -641,27 +496,27 @@ class MaskStep(
         yolo_layout.addWidget(class_list_section)
         self.mask_settings_tabs.addTab(self.yolo_section, i18n.t("MASK_TAB_YOLO"))
 
-        self.ade_class_list_section = CollapsibleSection(i18n.t("DETECTION_TARGET_SECTION"), expanded=False)
-        self.ade_class_list_section.setToolTip(i18n.tip("ADE20K_CLASS_LIST_SECTION"))
-        self.ade_class_list_section.toggle_button.setToolTip(i18n.tip("ADE20K_CLASS_LIST_SECTION"))
-        ade_scroll = QScrollArea()
-        ade_scroll.setWidgetResizable(True)
-        ade_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        ade_scroll.setMaximumHeight(180)
-        ade_grid_widget = QWidget()
-        ade_grid = QGridLayout(ade_grid_widget)
-        ade_grid.setSpacing(2)
-        self.ade_class_names = _ade20k_class_names(self.base_dir)
-        self.ade_class_cbs: list[QCheckBox] = []
-        for idx, name in enumerate(self.ade_class_names):
+        self.semantic_class_list_section = CollapsibleSection(i18n.t("DETECTION_TARGET_SECTION"), expanded=False)
+        self.semantic_class_list_section.setToolTip(i18n.tip("CITYSCAPES_CLASS_LIST_SECTION"))
+        self.semantic_class_list_section.toggle_button.setToolTip(i18n.tip("CITYSCAPES_CLASS_LIST_SECTION"))
+        semantic_scroll = QScrollArea()
+        semantic_scroll.setWidgetResizable(True)
+        semantic_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        semantic_scroll.setMaximumHeight(180)
+        semantic_grid_widget = QWidget()
+        semantic_grid = QGridLayout(semantic_grid_widget)
+        semantic_grid.setSpacing(2)
+        self.semantic_class_names = CITYSCAPES_CLASS_NAMES
+        self.semantic_class_cbs: list[QCheckBox] = []
+        for idx, name in enumerate(self.semantic_class_names):
             cb = QCheckBox(f"{idx}: {name.strip()}")
-            if name.strip().lower() in {"person", "sky"}:
+            if name.strip().lower() in _SEMANTIC_DEFAULT_SELECTED_CLASSES:
                 cb.setChecked(True)
-            self.ade_class_cbs.append(cb)
-            ade_grid.addWidget(cb, idx // cols, idx % cols)
-        ade_scroll.setWidget(ade_grid_widget)
-        self.ade_class_list_section.content_layout.addWidget(ade_scroll)
-        yolo_layout.addWidget(self.ade_class_list_section)
+            self.semantic_class_cbs.append(cb)
+            semantic_grid.addWidget(cb, idx // cols, idx % cols)
+        semantic_scroll.setWidget(semantic_grid_widget)
+        self.semantic_class_list_section.content_layout.addWidget(semantic_scroll)
+        yolo_layout.addWidget(self.semantic_class_list_section)
 
         self.sam_prompt_section = CollapsibleSection(i18n.t("DETECTION_TARGET_SECTION"), expanded=False)
         self.sam_prompt_section.setToolTip(i18n.tip("SAM31_PROMPT_SECTION"))
@@ -831,11 +686,11 @@ class MaskStep(
         self.sky_backend_combo = QComboBox()
         self.sky_backend_combo.addItems(
             [
-                i18n.t("SKY_MODEL_MASK2FORMER"),
+                i18n.t("SKY_MODEL_YOLO26_SEM"),
                 i18n.t("SKY_MODEL_SAM31"),
             ]
         )
-        self.sky_backend_combo.setItemData(0, i18n.tip("SKY_MODEL_MASK2FORMER"), Qt.ToolTipRole)
+        self.sky_backend_combo.setItemData(0, i18n.tip("SKY_MODEL_YOLO26_SEM"), Qt.ToolTipRole)
         self.sky_backend_combo.setItemData(1, i18n.tip("SKY_MODEL_SAM31"), Qt.ToolTipRole)
         self.sky_backend_combo.setToolTip(i18n.tip("SKY_MODEL"))
         self.sky_backend_combo.setFixedWidth(132)
@@ -981,13 +836,13 @@ class MaskStep(
         self.yolo_bottom_enhance_combo.currentIndexChanged.connect(lambda _: self._schedule_render_mask_preview())
         for cb in self.class_cbs:
             cb.toggled.connect(lambda _checked=False: self._schedule_render_mask_preview())
-        for cb in self.ade_class_cbs:
+        for cb in self.semantic_class_cbs:
             cb.toggled.connect(lambda _checked=False: self._schedule_render_mask_preview())
         for _prompt, cb in self.sam_prompt_cbs:
             cb.toggled.connect(lambda _checked=False: self._schedule_render_mask_preview())
         self.sam_custom_prompt_edit.textChanged.connect(lambda _text: self._schedule_render_mask_preview())
         self.sam_subtract_prompt_edit.textChanged.connect(lambda _text: self._schedule_render_mask_preview())
-        self.sam_apply_mode_combo.currentIndexChanged.connect(lambda _: self._schedule_render_mask_preview())
+        self.mask_apply_mode_combo.currentIndexChanged.connect(lambda _: self._schedule_render_mask_preview())
         self.overexp_threshold_edit.valueChanged.connect(lambda _: self._schedule_render_mask_preview())
         self.overexp_dilate_edit.valueChanged.connect(lambda _: self._schedule_render_mask_preview())
         self.sky_backend_combo.currentIndexChanged.connect(lambda _: self._on_sky_backend_changed())

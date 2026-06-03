@@ -10,13 +10,15 @@ from PySide6.QtCore import QProcess, QTimer
 from gui import i18n
 from gui.common.runner_types import ExternalCommandQueue
 from gui.steps.mask_commands import (
+    MASK_APPLY_ADD,
+    MASK_APPLY_REPLACE,
     build_custom_cmd,
     build_init_masks_cmd,
-    build_mask2former_cmd,
     build_overexposure_cmd,
     build_primary_mask_cmd,
     build_sam31_prompt_cmd,
     build_stitch_cmd,
+    build_yolo26_sem_cmd,
 )
 from gui.steps.mask_postprocess import MaskPostprocessOptions, apply_mask_postprocess
 from gui.steps.step3_mask_preview_actions import Step3MaskPreviewActionsMixin
@@ -114,7 +116,7 @@ class Step3MaskActionsMixin(Step3MaskPreviewActionsMixin):
             image_list=image_list,
         )
 
-    def _build_mask2former_cmd(
+    def _build_yolo26_sem_cmd(
         self,
         images: str | Path,
         masks: str | Path,
@@ -123,7 +125,7 @@ class Step3MaskActionsMixin(Step3MaskPreviewActionsMixin):
         projection: str | None = None,
         image_list: str | Path | None = None,
     ) -> list[str]:
-        return build_mask2former_cmd(
+        return build_yolo26_sem_cmd(
             self._mask_command_context(projection=projection),
             images,
             masks,
@@ -370,6 +372,7 @@ class Step3MaskActionsMixin(Step3MaskPreviewActionsMixin):
                 overexposure_dilate=int(self.overexp_dilate_edit.value()),
                 apply_custom=self.run_custom_cb.isChecked(),
                 custom_mask_path=self._custom_mask_path_text(),
+                merge_mode=self._postprocess_merge_mode(),
                 replace=replace,
                 preview_load_fail_message=i18n.t("PREVIEW_LOAD_FAIL"),
                 custom_required_message=i18n.t("CUSTOM_MASK_REQUIRED"),
@@ -386,6 +389,7 @@ class Step3MaskActionsMixin(Step3MaskPreviewActionsMixin):
         self,
         *,
         replace: bool = False,
+        merge_mode: str | None = None,
         image_list: str | Path | None = None,
     ) -> list[str]:
         images = self._images_dir_text()
@@ -395,6 +399,7 @@ class Step3MaskActionsMixin(Step3MaskPreviewActionsMixin):
             images,
             masks,
             replace=replace,
+            merge_mode=merge_mode,
             image_list=image_list,
         )
 
@@ -402,6 +407,7 @@ class Step3MaskActionsMixin(Step3MaskPreviewActionsMixin):
         self,
         *,
         replace: bool = False,
+        merge_mode: str | None = None,
         image_list: str | Path | None = None,
     ) -> list[str]:
         images = self._images_dir_text()
@@ -414,7 +420,12 @@ class Step3MaskActionsMixin(Step3MaskPreviewActionsMixin):
             images,
             masks,
             replace=replace,
+            merge_mode=merge_mode,
             image_list=image_list,
         )
+
+    def _postprocess_merge_mode(self) -> str:
+        merge_mode = self._mask_merge_mode_arg()
+        return MASK_APPLY_ADD if merge_mode == MASK_APPLY_REPLACE else merge_mode
 
     # -- プログレス解析 --

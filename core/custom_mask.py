@@ -17,6 +17,7 @@ import cv2
 import numpy as np
 
 from core.image_io import image_size_unicode, imread_unicode, imwrite_unicode
+from core.mask_merge import MASK_MERGE_ADD, MASK_MERGE_REPLACE, merge_mask_arrays, normalize_mask_merge_mode
 from core.mask_targets import IMAGE_EXTS, collect_image_targets
 
 
@@ -106,6 +107,7 @@ def merge_custom_mask_for_image(
     masks_dir: Path,
     custom_mask: np.ndarray,
     *,
+    merge_mode: str = MASK_MERGE_ADD,
     replace: bool = False,
     mask_output_path: Path | None = None,
 ) -> CustomMaskMergeResult:
@@ -123,7 +125,12 @@ def merge_custom_mask_for_image(
         )
 
     mask_out = mask_output_path or mask_output_path_for_image(image_path, images_dir, masks_dir)
-    existing = None if replace else imread_unicode(mask_out, cv2.IMREAD_GRAYSCALE) if mask_out.is_file() else None
+    effective_merge_mode = MASK_MERGE_REPLACE if replace else normalize_mask_merge_mode(merge_mode)
+    existing = (
+        None
+        if effective_merge_mode == MASK_MERGE_REPLACE
+        else imread_unicode(mask_out, cv2.IMREAD_GRAYSCALE) if mask_out.is_file() else None
+    )
     if existing is not None:
         if existing.shape != custom_mask.shape:
             return CustomMaskMergeResult(
@@ -133,9 +140,7 @@ def merge_custom_mask_for_image(
                     f"existing={existing.shape[1]}x{existing.shape[0]} custom={custom_mask.shape[1]}x{custom_mask.shape[0]}"
                 ),
             )
-        output = cv2.bitwise_and(existing, custom_mask)
-    else:
-        output = custom_mask
+    output = merge_mask_arrays(existing, custom_mask, merge_mode=effective_merge_mode)
 
     mask_out.parent.mkdir(parents=True, exist_ok=True)
     if not imwrite_unicode(mask_out, output):
@@ -148,6 +153,7 @@ def run(
     masks_dir: str | Path,
     custom_mask_path: str | Path,
     *,
+    merge_mode: str = MASK_MERGE_ADD,
     replace: bool = False,
     image_list: str | Path | None = None,
 ) -> CustomMaskRunResult:
@@ -168,7 +174,8 @@ def run(
         print(f"No images found in {images_path}")
         return CustomMaskRunResult()
 
-    print(f"Applying custom mask to {len(targets)} images (replace={replace})")
+    effective_merge_mode = MASK_MERGE_REPLACE if replace else normalize_mask_merge_mode(merge_mode)
+    print(f"Applying custom mask to {len(targets)} images (merge_mode={effective_merge_mode})")
     print(loaded_custom.description)
     print(f"[progress] 0/{len(targets)}", flush=True)
     result = CustomMaskRunResult(total=len(targets))
@@ -178,6 +185,7 @@ def run(
             images_path,
             masks_path,
             custom,
+            merge_mode=effective_merge_mode,
             replace=replace,
             mask_output_path=target.mask_path,
         )
@@ -207,11 +215,22 @@ def main() -> None:
     parser.add_argument("masks_dir", help="Mask output directory")
     parser.add_argument("custom_mask", help="PNG custom mask to apply to every source image")
     parser.add_argument("--replace", action="store_true", help="Ignore existing masks and write custom-only masks")
+    parser.add_argument(
+        "--merge-mode",
+        choices=("replace", "add", "subtract"),
+        default=MASK_MERGE_ADD,
+        help="How to merge generated masks with existing masks: replace, add, or subtract.",
+    )
     parser.add_argument("--image-list", default=None, help="JSON or JSONL list of images to process")
     args = parser.parse_args()
 
     result = run(
-        args.images_dir, args.masks_dir, args.custom_mask, replace=bool(args.replace), image_list=args.image_list
+        args.images_dir,
+        args.masks_dir,
+        args.custom_mask,
+        merge_mode=args.merge_mode,
+        replace=bool(args.replace),
+        image_list=args.image_list,
     )
     if not result.ok:
         sys.exit(1)

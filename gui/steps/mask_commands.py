@@ -5,8 +5,8 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from core.mask_job_spec import (
-    BACKEND_MASK2FORMER,
     BACKEND_SAM31,
+    BACKEND_YOLO26_SEM,
     custom_mask_job,
     init_masks_job,
     mask_job_to_command,
@@ -15,14 +15,19 @@ from core.mask_job_spec import (
     stitch_mask_job,
     yolo_sam_mask_job,
 )
+from core.mask_merge import MASK_MERGE_ADD, MASK_MERGE_REPLACE, MASK_MERGE_SUBTRACT, SUPPORTED_MERGE_MODES
 
 PERSON_BACKEND_YOLO_SAM = "yolo_sam"
-PERSON_BACKEND_MASK2FORMER = "mask2former"
+PERSON_BACKEND_YOLO26_SEM = "yolo26_sem"
 PERSON_BACKEND_SAM31 = "sam31"
-SAM31_MERGE_REPLACE = "replace"
-SAM31_MERGE_ADD = "add"
-SAM31_MERGE_SUBTRACT = "subtract"
-SAM31_MERGE_MODES = (SAM31_MERGE_REPLACE, SAM31_MERGE_ADD, SAM31_MERGE_SUBTRACT)
+MASK_APPLY_REPLACE = MASK_MERGE_REPLACE
+MASK_APPLY_ADD = MASK_MERGE_ADD
+MASK_APPLY_SUBTRACT = MASK_MERGE_SUBTRACT
+MASK_APPLY_MODES = SUPPORTED_MERGE_MODES
+SAM31_MERGE_REPLACE = MASK_APPLY_REPLACE
+SAM31_MERGE_ADD = MASK_APPLY_ADD
+SAM31_MERGE_SUBTRACT = MASK_APPLY_SUBTRACT
+SAM31_MERGE_MODES = MASK_APPLY_MODES
 PERSON_SAM31_INFERENCE_SIZE = "1008"
 PERSON_SAM31_MIN_SCORE = "0.5"
 
@@ -45,10 +50,10 @@ class MaskCommandContext:
     custom_mask: str = ""
     yolo_classes: tuple[int, ...] = ()
     yolo_extra_args: tuple[str, ...] = ()
-    ade_labels: tuple[str, ...] = ()
+    semantic_labels: tuple[str, ...] = ()
     sam_prompts: tuple[str, ...] = ()
     sam_subtract_prompts: tuple[str, ...] = ()
-    sam31_merge_mode: str = SAM31_MERGE_REPLACE
+    mask_merge_mode: str = MASK_APPLY_REPLACE
 
 
 def _require_images_masks(images: str | Path, masks: str | Path) -> tuple[str, str]:
@@ -69,8 +74,8 @@ def build_primary_mask_cmd(
     backend: str,
     image_list: str | Path | None = None,
 ) -> list[str]:
-    if backend == PERSON_BACKEND_MASK2FORMER:
-        return build_mask2former_cmd(context, images, masks, replace=True, image_list=image_list)
+    if backend == PERSON_BACKEND_YOLO26_SEM:
+        return build_yolo26_sem_cmd(context, images, masks, image_list=image_list)
     if backend == PERSON_BACKEND_SAM31:
         return build_sam31_prompt_cmd(
             context,
@@ -78,7 +83,7 @@ def build_primary_mask_cmd(
             masks,
             prompts=list(context.sam_prompts),
             subtract_prompts=list(context.sam_subtract_prompts),
-            merge_mode=context.sam31_merge_mode,
+            merge_mode=context.mask_merge_mode,
             image_list=image_list,
         )
     return build_yolo_sam_cmd(context, images, masks, image_list=image_list)
@@ -92,6 +97,7 @@ def build_yolo_sam_cmd(
     image_list: str | Path | None = None,
 ) -> list[str]:
     images_text, masks_text = _require_images_masks(images, masks)
+    effective_merge_mode = _effective_merge_mode(context)
     return mask_job_to_command(
         context.python_executable,
         yolo_sam_mask_job(
@@ -102,6 +108,7 @@ def build_yolo_sam_cmd(
             projection=context.projection,
             classes=context.yolo_classes or (0,),
             extra_args=context.yolo_extra_args,
+            merge_mode=effective_merge_mode,
             image_list=image_list,
         ),
     )
@@ -119,9 +126,7 @@ def build_sam31_prompt_cmd(
     image_list: str | Path | None = None,
 ) -> list[str]:
     images_text, masks_text = _require_images_masks(images, masks)
-    effective_merge_mode = SAM31_MERGE_REPLACE if replace else (merge_mode or context.sam31_merge_mode)
-    if effective_merge_mode not in SAM31_MERGE_MODES:
-        effective_merge_mode = SAM31_MERGE_REPLACE
+    effective_merge_mode = _effective_merge_mode(context, merge_mode=merge_mode, replace=replace)
 
     safe_batch = False
     try:
@@ -145,14 +150,14 @@ def build_sam31_prompt_cmd(
             sam_prompts=prompts,
             sam_subtract_prompts=subtract_prompts or (),
             merge_mode=effective_merge_mode,
-            replace=effective_merge_mode == SAM31_MERGE_REPLACE,
+            replace=effective_merge_mode == MASK_APPLY_REPLACE,
             safe_batch=safe_batch,
             image_list=image_list,
         ),
     )
 
 
-def build_mask2former_cmd(
+def build_yolo26_sem_cmd(
     context: MaskCommandContext,
     images: str | Path,
     masks: str | Path,
@@ -161,12 +166,13 @@ def build_mask2former_cmd(
     image_list: str | Path | None = None,
 ) -> list[str]:
     images_text, masks_text = _require_images_masks(images, masks)
+    effective_merge_mode = _effective_merge_mode(context, replace=replace)
     return mask_job_to_command(
         context.python_executable,
         sky_mask_job(
             images=images_text,
             masks=masks_text,
-            backend=BACKEND_MASK2FORMER,
+            backend=BACKEND_YOLO26_SEM,
             projection=context.projection,
             quality=context.quality,
             inference_size=int(context.sky_inference_size),
@@ -174,9 +180,9 @@ def build_mask2former_cmd(
             min_score=float(context.sky_min_score),
             min_area_ratio=float(context.sky_min_area_ratio),
             top_connected=context.sky_top_connected,
-            labels=context.ade_labels,
-            merge_mode=SAM31_MERGE_ADD,
-            replace=replace,
+            labels=context.semantic_labels,
+            merge_mode=effective_merge_mode,
+            replace=effective_merge_mode == MASK_APPLY_REPLACE,
             image_list=image_list,
         ),
     )
@@ -222,9 +228,11 @@ def build_overexposure_cmd(
     masks: str | Path,
     *,
     replace: bool = False,
+    merge_mode: str | None = None,
     image_list: str | Path | None = None,
 ) -> list[str]:
     images_text, masks_text = _require_images_masks(images, masks)
+    effective_merge_mode = _effective_merge_mode(context, merge_mode=merge_mode, replace=replace)
     return mask_job_to_command(
         context.python_executable,
         overexposure_mask_job(
@@ -233,7 +241,8 @@ def build_overexposure_cmd(
             threshold=int(context.overexposure_threshold),
             dilate=int(context.overexposure_dilate),
             workers=int(context.stitch_workers),
-            replace=replace,
+            merge_mode=effective_merge_mode,
+            replace=effective_merge_mode == MASK_APPLY_REPLACE,
             image_list=image_list,
         ),
     )
@@ -245,18 +254,33 @@ def build_custom_cmd(
     masks: str | Path,
     *,
     replace: bool = False,
+    merge_mode: str | None = None,
     image_list: str | Path | None = None,
 ) -> list[str]:
     images_text, masks_text = _require_images_masks(images, masks)
     if not context.custom_mask:
         raise ValueError("CUSTOM_MASK_REQUIRED")
+    effective_merge_mode = _effective_merge_mode(context, merge_mode=merge_mode, replace=replace)
     return mask_job_to_command(
         context.python_executable,
         custom_mask_job(
             images=images_text,
             masks=masks_text,
             custom_mask=context.custom_mask,
-            replace=replace,
+            merge_mode=effective_merge_mode,
+            replace=effective_merge_mode == MASK_APPLY_REPLACE,
             image_list=image_list,
         ),
     )
+
+
+def _effective_merge_mode(
+    context: MaskCommandContext,
+    *,
+    merge_mode: str | None = None,
+    replace: bool = False,
+) -> str:
+    if replace:
+        return MASK_APPLY_REPLACE
+    candidate = merge_mode or context.mask_merge_mode
+    return candidate if candidate in MASK_APPLY_MODES else MASK_APPLY_REPLACE

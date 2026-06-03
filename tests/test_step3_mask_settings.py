@@ -6,6 +6,7 @@ from pathlib import Path
 from gui.steps.mask_commands import SAM31_MERGE_REPLACE
 from gui.steps.step3_mask_settings import (
     Step3MaskSettingsState,
+    normalize_mask_merge_mode,
     normalize_sam31_merge_mode,
     split_sam_prompt_text,
 )
@@ -23,10 +24,10 @@ def _settings_state() -> Step3MaskSettingsState:
         yolo_expand="4",
         yolo_classes=(0, 2),
         yolo_extra_args=("--bottom-enhance",),
-        ade_labels=("person", "sky"),
+        semantic_labels=("person", "sky"),
         sam_prompts=("person", "tripod"),
         sam_subtract_prompts=("male icon",),
-        sam31_merge_mode="add",
+        mask_merge_mode="add",
         sky_backend="sam31",
         sky_inference_size="1008",
         sky_min_score="0.5",
@@ -55,6 +56,7 @@ def test_split_sam_prompt_text_accepts_common_separators() -> None:
 
 
 def test_normalize_sam31_merge_mode_rejects_unknown_values() -> None:
+    assert normalize_mask_merge_mode("subtract") == "subtract"
     assert normalize_sam31_merge_mode("subtract") == "subtract"
     assert normalize_sam31_merge_mode("unexpected") == SAM31_MERGE_REPLACE
     assert normalize_sam31_merge_mode(None) == SAM31_MERGE_REPLACE
@@ -74,7 +76,9 @@ def test_step3_mask_settings_state_builds_command_context_with_projection_overri
     assert context.projection == "normal"
     assert context.quality == "high"
     assert context.yolo_classes == (0, 2)
+    assert context.semantic_labels == ("person", "sky")
     assert context.sam_prompts == ("person", "tripod")
+    assert context.mask_merge_mode == "add"
     assert context.sky_top_connected is True
     assert context.stitch_boundary_width == 5.0
     assert context.custom_mask == "D:/masks/custom.png"
@@ -94,7 +98,9 @@ def test_step3_mask_settings_state_snapshot_preserves_refresh_contract() -> None
         "classes": [0, 2],
         "extra_args": ["--bottom-enhance"],
     }
-    assert snapshot["sam31"]["merge_mode"] == "add"
+    assert snapshot["semantic"]["labels"] == ["person", "sky"]
+    assert snapshot["mask_operation"]["merge_mode"] == "add"
+    assert "merge_mode" not in snapshot["sam31"]
     assert snapshot["sky"]["top_connected"] is True
     assert snapshot["stitch"]["enabled"] is True
     assert snapshot["overexposure"]["threshold"] == "254"

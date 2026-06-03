@@ -14,20 +14,20 @@ from gui.steps import mask_commands as mask_command_defs
 from gui.steps.mask_commands import MaskCommandContext
 from gui.steps.step3_mask_settings import (
     Step3MaskSettingsState,
-    normalize_sam31_merge_mode,
+    normalize_mask_merge_mode,
     split_sam_prompt_text,
 )
 
 _PERSON_BACKENDS = (
     mask_command_defs.PERSON_BACKEND_YOLO_SAM,
-    mask_command_defs.PERSON_BACKEND_MASK2FORMER,
+    mask_command_defs.PERSON_BACKEND_YOLO26_SEM,
     mask_command_defs.PERSON_BACKEND_SAM31,
 )
 _PERSON_SAM31_PROMPT = "person"
 _SKY_INFERENCE_SIZES = ("512", "768", "1008", "1024")
 _SKY_INFERENCE_SIZE_DEFAULT_INDEX = 1
 _SKY_SAM31_INFERENCE_SIZE = "1008"
-_SKY_BACKENDS = ("mask2former", "sam31")
+_SKY_BACKENDS = ("yolo26_sem", "sam31")
 _SKY_SAM31_CHECKPOINT = Path("models") / "sam3.1" / "sam3.1_multiplex.pt"
 
 
@@ -35,11 +35,13 @@ class Step3MaskControlsMixin:
     def _selected_classes(self) -> list[int]:
         return [i for i, cb in enumerate(self.class_cbs) if cb.isChecked()]
 
-    def _selected_ade_labels(self) -> list[str]:
+    def _selected_semantic_labels(self) -> list[str]:
         labels = [
-            name.strip() for name, cb in zip(self.ade_class_names, self.ade_class_cbs, strict=True) if cb.isChecked()
+            name.strip()
+            for name, cb in zip(self.semantic_class_names, self.semantic_class_cbs, strict=True)
+            if cb.isChecked()
         ]
-        return [label for label in labels if label] or ["person", "sky"]
+        return [label for label in labels if label] or ["sky"]
 
     _split_sam_prompt_text = staticmethod(split_sam_prompt_text)
 
@@ -51,8 +53,10 @@ class Step3MaskControlsMixin:
     def _selected_sam_subtract_prompts(self) -> list[str]:
         return list(dict.fromkeys(split_sam_prompt_text(self.sam_subtract_prompt_edit.text())))
 
-    def _sam31_merge_mode_arg(self) -> str:
-        return normalize_sam31_merge_mode(self.sam_apply_mode_combo.currentData())
+    def _mask_merge_mode_arg(self) -> str:
+        return normalize_mask_merge_mode(self.mask_apply_mode_combo.currentData())
+
+    _sam31_merge_mode_arg = _mask_merge_mode_arg
 
     def _person_backend_arg(self) -> str:
         idx = self.person_backend_combo.currentIndex()
@@ -61,11 +65,11 @@ class Step3MaskControlsMixin:
     def _person_uses_sam31(self) -> bool:
         return self._person_backend_arg() == "sam31"
 
-    def _person_uses_mask2former(self) -> bool:
-        return self._person_backend_arg() == "mask2former"
+    def _person_uses_yolo26_sem(self) -> bool:
+        return self._person_backend_arg() == "yolo26_sem"
 
     def _on_person_backend_changed(self) -> None:
-        if self._person_uses_mask2former():
+        if self._person_uses_yolo26_sem():
             self.sky_backend_combo.setCurrentIndex(0)
         elif self._person_uses_sam31():
             self.sky_backend_combo.setCurrentIndex(1)
@@ -151,12 +155,12 @@ class Step3MaskControlsMixin:
         self._update_person_backend_availability()
         model = self._person_backend_arg()
         person_sam31 = self._person_uses_sam31()
-        person_mask2former = self._person_uses_mask2former()
+        person_yolo26_sem = self._person_uses_yolo26_sem()
         yolo_sam_enabled = model == "yolo_sam"
-        semantic_enabled = model in {"mask2former", "sam31"}
+        semantic_enabled = model in {"yolo26_sem", "sam31"}
         self.yolo_section.setEnabled(True)
         self.sky_section.setVisible(semantic_enabled)
-        self.ade_class_list_section.setVisible(person_mask2former)
+        self.semantic_class_list_section.setVisible(person_yolo26_sem)
         self.sam_prompt_section.setVisible(person_sam31)
         self.yolo_class_list_section.setVisible(yolo_sam_enabled)
         self.yolo_level_label.setVisible(True)
@@ -165,20 +169,20 @@ class Step3MaskControlsMixin:
         self.yolo_level_combo.setEnabled(True)
         self.yolo_expand_label.setEnabled(True)
         self.yolo_expand_edit.setEnabled(True)
-        self.sam_apply_mode_label.setVisible(person_sam31)
-        self.sam_apply_mode_combo.setVisible(person_sam31)
+        self.mask_apply_mode_label.setVisible(True)
+        self.mask_apply_mode_combo.setVisible(True)
         self.yolo_bottom_settings_row.setVisible(False)
         self.yolo_bottom_settings_row.setEnabled(False)
         self.yolo_bottom_enhance_label.setEnabled(False)
         self.yolo_bottom_enhance_combo.setEnabled(False)
         self.yolo_class_list_section.setEnabled(yolo_sam_enabled)
-        self.sky_inference_size_combo.setEnabled(person_mask2former)
-        self.sky_inference_size_label.setEnabled(person_mask2former)
-        self.sky_model_details_section.setVisible(person_mask2former)
+        self.sky_inference_size_combo.setEnabled(person_yolo26_sem)
+        self.sky_inference_size_label.setEnabled(person_yolo26_sem)
+        self.sky_model_details_section.setVisible(False)
         self.sky_postprocess_section.setVisible(semantic_enabled)
-        self.sky_min_score_edit.setVisible(person_mask2former)
+        self.sky_min_score_edit.setVisible(False)
         if self.sky_min_score_label is not None:
-            self.sky_min_score_label.setVisible(person_mask2former)
+            self.sky_min_score_label.setVisible(False)
         self.run_stitch_cb.setEnabled(equirect)
         self.run_stitch_cb.setToolTip(
             i18n.tip("MASK_TASK_STITCH") if equirect else i18n.tip("MASK_TASK_STITCH_DISABLED_NORMAL")
@@ -287,10 +291,10 @@ class Step3MaskControlsMixin:
             yolo_expand=self._yolo_expand_arg(),
             yolo_classes=tuple(self._selected_classes()),
             yolo_extra_args=tuple(self._bottom_enhance_args()),
-            ade_labels=tuple(self._selected_ade_labels()),
+            semantic_labels=tuple(self._selected_semantic_labels()),
             sam_prompts=tuple(self._selected_sam_prompts()),
             sam_subtract_prompts=tuple(self._selected_sam_subtract_prompts()),
-            sam31_merge_mode=self._sam31_merge_mode_arg(),
+            mask_merge_mode=self._mask_merge_mode_arg(),
             sky_backend=self._sky_backend_arg(),
             sky_inference_size=self._sky_inference_size_arg(),
             sky_min_score=f"{float(self.sky_min_score_edit.value()):g}",

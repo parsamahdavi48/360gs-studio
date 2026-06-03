@@ -10,6 +10,7 @@ import numpy as np
 
 from core.custom_mask import load_custom_mask
 from core.image_io import imread_unicode, imwrite_unicode
+from core.mask_merge import MASK_MERGE_ADD, merge_mask_arrays, normalize_mask_merge_mode
 from core.mask_metadata import PIXEL_STATS_SKIPPED
 from core.overexposure_mask import detect_overexposure, read_image_preserve_depth
 from core.stitch_mask import boundary_width_to_limit_angle, create_angular_stitched_mask
@@ -26,6 +27,7 @@ class MaskPostprocessOptions:
     overexposure_dilate: int
     apply_custom: bool
     custom_mask_path: str
+    merge_mode: str = MASK_MERGE_ADD
     replace: bool = False
     preview_load_fail_message: str = "Failed to load preview image"
     custom_required_message: str = "Custom mask is required"
@@ -43,6 +45,7 @@ def mask_stats(mask_path: Path) -> dict:
 def apply_mask_postprocess(image_path: Path, mask_path: Path, options: MaskPostprocessOptions) -> None:
     source_img: np.ndarray | None = None
     mask: np.ndarray | None = None
+    merge_mode = normalize_mask_merge_mode(options.merge_mode)
 
     def load_source() -> np.ndarray:
         nonlocal source_img
@@ -77,7 +80,7 @@ def apply_mask_postprocess(image_path: Path, mask_path: Path, options: MaskPostp
             h,
             boundary_width_to_limit_angle(options.stitch_boundary_width),
         )
-        mask = cv2.bitwise_and(base, stitch)
+        mask = merge_mask_arrays(base, stitch, merge_mode=merge_mode, resize_existing=True)
 
     if options.apply_overexposure:
         source = load_source()
@@ -86,7 +89,7 @@ def apply_mask_postprocess(image_path: Path, mask_path: Path, options: MaskPostp
             threshold=options.overexposure_threshold,
             dilate_px=options.overexposure_dilate,
         )
-        mask = cv2.bitwise_and(current_mask(overexp.shape), overexp)
+        mask = merge_mask_arrays(current_mask(overexp.shape), overexp, merge_mode=merge_mode, resize_existing=True)
 
     if options.apply_custom:
         if not options.custom_mask_path:
@@ -101,7 +104,7 @@ def apply_mask_postprocess(image_path: Path, mask_path: Path, options: MaskPostp
                 f"image={source_shape[1]}x{source_shape[0]} "
                 f"custom={loaded_custom.mask.shape[1]}x{loaded_custom.mask.shape[0]}"
             )
-        mask = cv2.bitwise_and(current_mask(loaded_custom.mask.shape), loaded_custom.mask)
+        mask = merge_mask_arrays(current_mask(loaded_custom.mask.shape), loaded_custom.mask, merge_mode=merge_mode)
 
     if mask is not None:
         mask_path.parent.mkdir(parents=True, exist_ok=True)

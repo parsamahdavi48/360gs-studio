@@ -13,6 +13,11 @@ from core.job_payload_validation import (
     require_schema_version,
     require_str,
 )
+from core.mask_merge import (
+    MASK_MERGE_ADD,
+    MASK_MERGE_REPLACE,
+    SUPPORTED_MERGE_MODES,
+)
 from core.mask_view_recipes import PROJECTION_EQUIRECT, PROJECTION_NORMAL, QUALITY_CHOICES
 
 MASK_JOB_SCHEMA_VERSION = 1
@@ -22,13 +27,9 @@ MASK_JOB_INIT = "init_masks"
 MASK_JOB_STITCH = "stitch_mask"
 MASK_JOB_OVEREXPOSURE = "overexposure_mask"
 MASK_JOB_CUSTOM = "custom_mask"
-BACKEND_MASK2FORMER = "mask2former"
+BACKEND_YOLO26_SEM = "yolo26_sem"
 BACKEND_SAM31 = "sam31"
-MASK_MERGE_REPLACE = "replace"
-MASK_MERGE_ADD = "add"
-MASK_MERGE_SUBTRACT = "subtract"
-SUPPORTED_BACKENDS = (BACKEND_MASK2FORMER, BACKEND_SAM31)
-SUPPORTED_MERGE_MODES = (MASK_MERGE_REPLACE, MASK_MERGE_ADD, MASK_MERGE_SUBTRACT)
+SUPPORTED_BACKENDS = (BACKEND_YOLO26_SEM, BACKEND_SAM31)
 
 MASK_JOB_KINDS = {
     MASK_JOB_YOLO_SAM,
@@ -49,6 +50,7 @@ def yolo_sam_mask_job(
     projection: str,
     classes: Sequence[int],
     extra_args: Sequence[str] = (),
+    merge_mode: str = MASK_MERGE_REPLACE,
     image_list: str | Path | None = None,
 ) -> dict[str, Any]:
     return {
@@ -61,6 +63,7 @@ def yolo_sam_mask_job(
         "projection": str(projection),
         "classes": [int(item) for item in classes],
         "extra_args": [str(item) for item in extra_args],
+        "merge_mode": str(merge_mode),
         "image_list": str(image_list) if image_list else "",
     }
 
@@ -80,7 +83,7 @@ def sky_mask_job(
     labels: Sequence[str] = (),
     sam_prompts: Sequence[str] = (),
     sam_subtract_prompts: Sequence[str] = (),
-    merge_mode: str = "add",
+    merge_mode: str = MASK_MERGE_ADD,
     replace: bool = False,
     safe_batch: bool = False,
     image_list: str | Path | None = None,
@@ -147,6 +150,7 @@ def overexposure_mask_job(
     threshold: int,
     dilate: int,
     workers: int,
+    merge_mode: str = MASK_MERGE_ADD,
     replace: bool = False,
     image_list: str | Path | None = None,
 ) -> dict[str, Any]:
@@ -158,6 +162,7 @@ def overexposure_mask_job(
         "threshold": int(threshold),
         "dilate": int(dilate),
         "workers": int(workers),
+        "merge_mode": str(merge_mode),
         "replace": bool(replace),
         "image_list": str(image_list) if image_list else "",
     }
@@ -168,6 +173,7 @@ def custom_mask_job(
     images: str | Path,
     masks: str | Path,
     custom_mask: str | Path,
+    merge_mode: str = MASK_MERGE_ADD,
     replace: bool = False,
     image_list: str | Path | None = None,
 ) -> dict[str, Any]:
@@ -177,6 +183,7 @@ def custom_mask_job(
         "images": str(images),
         "masks": str(masks),
         "custom_mask": str(custom_mask),
+        "merge_mode": str(merge_mode),
         "replace": bool(replace),
         "image_list": str(image_list) if image_list else "",
     }
@@ -226,6 +233,9 @@ def _validate_yolo_sam(payload: Mapping[str, Any]) -> None:
     if any(item < 0 for item in classes):
         raise ValueError("mask job field 'classes' must contain non-negative integers")
     _require_str_list(payload, "extra_args", allow_empty=True)
+    merge_mode = require_str(payload, "merge_mode", label="mask")
+    if merge_mode not in SUPPORTED_MERGE_MODES:
+        raise ValueError(f"mask job field 'merge_mode' is invalid: {merge_mode}")
     require_str(payload, "image_list", label="mask", allow_empty=True)
 
 
@@ -245,11 +255,11 @@ def _validate_sky(payload: Mapping[str, Any]) -> None:
     merge_mode = require_str(payload, "merge_mode", label="mask")
     if merge_mode not in SUPPORTED_MERGE_MODES:
         raise ValueError(f"mask job field 'merge_mode' is invalid: {merge_mode}")
-    labels = _require_str_list(payload, "labels", allow_empty=backend != BACKEND_MASK2FORMER)
+    labels = _require_str_list(payload, "labels", allow_empty=backend != BACKEND_YOLO26_SEM)
     sam_prompts = _require_str_list(payload, "sam_prompts", allow_empty=backend != BACKEND_SAM31)
     _require_str_list(payload, "sam_subtract_prompts", allow_empty=True)
-    if backend == BACKEND_MASK2FORMER and not labels:
-        raise ValueError("mask job field 'labels' is required for mask2former")
+    if backend == BACKEND_YOLO26_SEM and not labels:
+        raise ValueError("mask job field 'labels' is required for yolo26_sem")
     if backend == BACKEND_SAM31 and not sam_prompts:
         raise ValueError("mask job field 'sam_prompts' is required for sam31")
     require_str(payload, "image_list", label="mask", allow_empty=True)
@@ -273,6 +283,9 @@ def _validate_overexposure(payload: Mapping[str, Any]) -> None:
     require_int_range(payload, "dilate", label="mask", min_value=0)
     require_int_range(payload, "workers", label="mask", min_value=1)
     require_bool(payload, "replace", label="mask")
+    merge_mode = require_str(payload, "merge_mode", label="mask")
+    if merge_mode not in SUPPORTED_MERGE_MODES:
+        raise ValueError(f"mask job field 'merge_mode' is invalid: {merge_mode}")
     require_str(payload, "image_list", label="mask", allow_empty=True)
 
 
@@ -280,6 +293,9 @@ def _validate_custom(payload: Mapping[str, Any]) -> None:
     _require_images_masks(payload)
     require_str(payload, "custom_mask", label="mask")
     require_bool(payload, "replace", label="mask")
+    merge_mode = require_str(payload, "merge_mode", label="mask")
+    if merge_mode not in SUPPORTED_MERGE_MODES:
+        raise ValueError(f"mask job field 'merge_mode' is invalid: {merge_mode}")
     require_str(payload, "image_list", label="mask", allow_empty=True)
 
 
@@ -347,6 +363,8 @@ def _yolo_sam_command(python_executable: str, payload: Mapping[str, Any]) -> lis
         str(payload["expand"]),
         "--projection",
         str(payload["projection"]),
+        "--merge-mode",
+        str(payload["merge_mode"]),
     ]
     classes = _require_int_list(payload, "classes", allow_empty=False)
     if classes:
@@ -374,12 +392,11 @@ def _sky_command(python_executable: str, payload: Mapping[str, Any]) -> list[str
         "--min-score",
         _format_float(float(payload["min_score"])),
     ]
-    if payload["backend"] == BACKEND_SAM31:
-        cmd.extend(["--merge-mode", str(payload["merge_mode"])])
+    cmd.extend(["--merge-mode", str(payload["merge_mode"])])
     cmd.extend(["--min-area-ratio", _format_float(float(payload["min_area_ratio"]))])
     if bool(payload["top_connected"]):
         cmd.append("--top-connected")
-    if payload["backend"] == BACKEND_MASK2FORMER:
+    if payload["backend"] == BACKEND_YOLO26_SEM:
         cmd.extend(["--labels", ",".join(_require_str_list(payload, "labels", allow_empty=False))])
     for prompt in _require_str_list(payload, "sam_prompts", allow_empty=True):
         cmd.extend(["--sam-prompt", prompt])
@@ -424,6 +441,8 @@ def _overexposure_command(python_executable: str, payload: Mapping[str, Any]) ->
         str(payload["dilate"]),
         "--workers",
         str(payload["workers"]),
+        "--merge-mode",
+        str(payload["merge_mode"]),
     ]
     if bool(payload["replace"]):
         cmd.append("--replace")
@@ -437,6 +456,8 @@ def _custom_command(python_executable: str, payload: Mapping[str, Any]) -> list[
         str(payload["images"]),
         str(payload["masks"]),
         str(payload["custom_mask"]),
+        "--merge-mode",
+        str(payload["merge_mode"]),
     ]
     if bool(payload["replace"]):
         cmd.append("--replace")

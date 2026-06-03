@@ -13,7 +13,7 @@ from gui.user_settings import load_user_settings_section, update_user_settings_s
 _LICENSE_NOTICE_SECTION = "license_notices"
 _YOLO_SAM_NOTICE_VERSION = 3
 _YOLO_SAM_NOTICE_KEY = "yolo_sam_models_ack_version"
-_SKY_NOTICE_VERSION = 2
+_SKY_NOTICE_VERSION = 3
 _SKY_NOTICE_KEY = "sky_models_ack_version"
 
 

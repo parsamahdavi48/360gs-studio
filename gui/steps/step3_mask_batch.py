@@ -62,7 +62,11 @@ class Step3MaskBatchMixin:
 
         if self._projection_mixed:
             manifests = self._write_projection_manifests(image_paths=target_paths)
-            specs = build_mixed_mask_command_specs(requested_steps, manifests=manifests)
+            specs = build_mixed_mask_command_specs(
+                requested_steps,
+                manifests=manifests,
+                merge_mode=self._mask_merge_mode_arg(),
+            )
         else:
             target_manifest = (
                 self._write_mask_target_manifest(target_paths)
@@ -73,7 +77,11 @@ class Step3MaskBatchMixin:
                 )
                 else None
             )
-            specs = build_uniform_mask_command_specs(requested_steps, target_manifest=target_manifest)
+            specs = build_uniform_mask_command_specs(
+                requested_steps,
+                target_manifest=target_manifest,
+                merge_mode=self._mask_merge_mode_arg(),
+            )
 
         steps = [(spec.phase, self._command_from_mask_spec(spec)) for spec in specs]
         self._mask_batch_settings = settings
@@ -89,9 +97,17 @@ class Step3MaskBatchMixin:
         if spec.command == MASK_COMMAND_STITCH:
             return self._build_stitch_cmd(image_list=spec.image_list)
         if spec.command == MASK_COMMAND_OVEREXPOSURE:
-            return self._build_overexposure_cmd(replace=spec.replace, image_list=spec.image_list)
+            return self._build_overexposure_cmd(
+                replace=spec.replace,
+                merge_mode=spec.merge_mode,
+                image_list=spec.image_list,
+            )
         if spec.command == MASK_COMMAND_CUSTOM:
-            return self._build_custom_cmd(replace=spec.replace, image_list=spec.image_list)
+            return self._build_custom_cmd(
+                replace=spec.replace,
+                merge_mode=spec.merge_mode,
+                image_list=spec.image_list,
+            )
         raise ValueError(f"Unknown mask command spec: {spec.command}")
 
     def _write_projection_manifests(self, *, image_paths: list[Path] | None = None) -> dict[str, Path]:

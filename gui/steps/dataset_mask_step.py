@@ -203,7 +203,11 @@ class DatasetMaskStep(MaskStep):
         requested_steps = self._selected_dataset_mask_tasks()
         if not requested_steps:
             raise ValueError(i18n.t("MASK_TASK_REQUIRED"))
-        specs = build_uniform_mask_command_specs(requested_steps, target_manifest=None)
+        specs = build_uniform_mask_command_specs(
+            requested_steps,
+            target_manifest=None,
+            merge_mode=self._mask_merge_mode_arg(),
+        )
         steps = [(spec.phase, self._command_from_mask_spec(spec)) for spec in specs]
         self._mask_batch_settings = self._mask_settings_snapshot()
         self._mask_batch_phases = [phase for phase, _cmd in steps]
@@ -229,9 +233,17 @@ class DatasetMaskStep(MaskStep):
         if spec.command == MASK_COMMAND_STITCH:
             return self._build_stitch_cmd(image_list=spec.image_list)
         if spec.command == MASK_COMMAND_OVEREXPOSURE:
-            return self._build_overexposure_cmd(replace=spec.replace, image_list=spec.image_list)
+            return self._build_overexposure_cmd(
+                replace=spec.replace,
+                merge_mode=spec.merge_mode,
+                image_list=spec.image_list,
+            )
         if spec.command == MASK_COMMAND_CUSTOM:
-            return self._build_custom_cmd(replace=spec.replace, image_list=spec.image_list)
+            return self._build_custom_cmd(
+                replace=spec.replace,
+                merge_mode=spec.merge_mode,
+                image_list=spec.image_list,
+            )
         raise ValueError(f"Unknown mask command spec: {spec.command}")
 
     def _dataset_root(self) -> Path:

@@ -56,7 +56,7 @@ def test_resized_existing_mask_stays_binary(tmp_path) -> None:
     output_mask = tmp_path / "output.png"
     cv2.imwrite(str(image_path), np.full((3, 3, 3), 128, dtype=np.uint8))
     cv2.imwrite(str(existing_mask), np.array([[0, 255], [255, 0]], dtype=np.uint8))
-    _init_worker(254, 0)
+    _init_worker(254, 0, "add")
 
     assert _process_one((str(image_path), str(output_mask), str(existing_mask))) is None
 
@@ -80,4 +80,25 @@ def test_overexposure_replace_ignores_existing_mask(tmp_path) -> None:
     written = cv2.imread(str(masks / "frame.png"), cv2.IMREAD_GRAYSCALE)
     assert written is not None
     assert written[1, 2] == 0
+    assert written[3, 5] == 255
+
+
+def test_overexposure_subtract_restores_detected_pixels(tmp_path) -> None:
+    images = tmp_path / "images"
+    masks = tmp_path / "masks"
+    images.mkdir()
+    masks.mkdir()
+    image = np.full((4, 6, 3), 120, dtype=np.uint8)
+    image[1, 2] = 255
+    cv2.imwrite(str(images / "frame.png"), image)
+    existing = np.zeros((4, 6), dtype=np.uint8)
+    existing[3, 5] = 255
+    cv2.imwrite(str(masks / "frame.png"), existing)
+
+    run(str(images), str(masks), threshold=254, dilate_px=0, workers=1, merge_mode="subtract")
+
+    written = cv2.imread(str(masks / "frame.png"), cv2.IMREAD_GRAYSCALE)
+    assert written is not None
+    assert written[1, 2] == 255
+    assert written[0, 0] == 0
     assert written[3, 5] == 255

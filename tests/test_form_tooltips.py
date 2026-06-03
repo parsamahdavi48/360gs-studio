@@ -745,18 +745,18 @@ def test_mask_yolo_compact_row_preserves_width_in_english() -> None:
         step = MaskStep(Path.cwd())
         content_width = SETTINGS_PANE_WIDTH - SETTINGS_PANE_MARGINS[2]
         assert step.person_backend_combo.itemText(0) == "YOLO/SAM2.1"
-        assert step.person_backend_combo.itemText(1) == "Mask2Former"
+        assert step.person_backend_combo.itemText(1) == "YOLO26-sem"
         assert step.person_backend_combo.itemText(2) == "SAM3.1"
         assert step.yolo_settings_row.sizeHint().width() <= content_width
         assert step.yolo_level_combo.itemText(0) == "Standard"
         assert step.yolo_level_combo.itemText(1) == "High"
         assert step.yolo_level_combo.itemText(2) == "Best"
-        step.sam_apply_mode_label.setVisible(True)
-        step.sam_apply_mode_combo.setVisible(True)
+        step.mask_apply_mode_label.setVisible(True)
+        step.mask_apply_mode_combo.setVisible(True)
         assert step.yolo_settings_row.sizeHint().width() <= content_width
         assert step.yolo_level_label.text() == "Qual."
         assert step.yolo_expand_label.text() == "Exp."
-        assert step.sam_apply_mode_label.text() == "Op."
+        assert step.mask_apply_mode_label.text() == "Method"
         assert step.yolo_bottom_settings_row.isHidden()
         """
     )

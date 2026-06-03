@@ -12,6 +12,7 @@ import cv2
 import numpy as np
 
 from core.image_io import imread_unicode, imwrite_unicode
+from core.mask_merge import MASK_MERGE_REPLACE, merge_mask_file, normalize_mask_merge_mode
 from core.mask_targets import collect_image_targets
 from core.mask_view_recipes import (
     QUALITY_CHOICES,
@@ -68,6 +69,7 @@ class YoloMaskRuntimeSettings:
     bottom_filter: bool
     recipe: MaskViewRecipe
     profile_json: str | None
+    merge_mode: str = MASK_MERGE_REPLACE
 
 
 @dataclass(frozen=True)
@@ -320,6 +322,17 @@ def build_arg_parser() -> argparse.ArgumentParser:
         default="equirect",
         help="Source image projection. equirect enables 360 panorama-specific bottom re-detection; normal disables it.",
     )
+    parser.add_argument(
+        "--merge-mode",
+        choices=("replace", "add", "subtract"),
+        default=MASK_MERGE_REPLACE,
+        help="How to merge generated masks with existing masks: replace, add, or subtract.",
+    )
+    parser.add_argument(
+        "--replace",
+        action="store_true",
+        help="Compatibility alias for --merge-mode replace.",
+    )
     parser.add_argument("--bottom-conf", type=float, default=None, help="Override bottom-view YOLO confidence")
     parser.add_argument(
         "--bottom-tta-rotations",
@@ -374,6 +387,7 @@ def build_runtime_settings(args: argparse.Namespace) -> YoloMaskRuntimeBuild:
     bottom_model = recipe.bottom_model if args.bottom_model is None else str(args.bottom_model)
     bottom_filter = bool(recipe.bottom_filter or args.bottom_filter)
     class_ids = tuple(parse_classes(args.classes))
+    merge_mode = MASK_MERGE_REPLACE if bool(args.replace) else normalize_mask_merge_mode(args.merge_mode)
     settings = YoloMaskRuntimeSettings(
         class_ids=class_ids,
         level=int(recipe.yolo_level),
@@ -384,6 +398,7 @@ def build_runtime_settings(args: argparse.Namespace) -> YoloMaskRuntimeBuild:
         bottom_tta_rotations=bottom_tta_rotations,
         bottom_model=bottom_model,
         bottom_filter=bottom_filter,
+        merge_mode=merge_mode,
         recipe=recipe,
         profile_json=args.profile_json,
     )
@@ -846,6 +861,8 @@ def process_image_path(
     # ---------- 保存 ----------
     out_path = Path(output_path)
     out_path.parent.mkdir(parents=True, exist_ok=True)
+    with profile_timer("mask.existing_merge", context=runtime):
+        mask = merge_mask_file(out_path, mask, merge_mode=settings.merge_mode, resize_existing=True)
     with profile_timer("image.write", context=runtime):
         if not imwrite_unicode(out_path, mask):
             raise OSError(f"Failed to write mask: {out_path}")
@@ -902,6 +919,7 @@ def main(argv: list[str] | None = None) -> int:
     print("YOLO classes:", ",".join(str(x) for x in settings.class_ids), flush=True)
     print(f"Projection: {settings.projection}", flush=True)
     print(f"Quality: {settings.quality}", flush=True)
+    print(f"Merge mode: {settings.merge_mode}", flush=True)
     print(
         "Bottom detection:",
         f"conf={settings.bottom_conf:g}",
@@ -928,6 +946,7 @@ def main(argv: list[str] | None = None) -> int:
                 "bottom_model": settings.bottom_model,
                 "effective_bottom_model": effective_bottom_model,
                 "bottom_filter": bool(settings.bottom_filter),
+                "merge_mode": settings.merge_mode,
                 "view_recipe": {
                     "direct": recipe.direct,
                     "tile_spec": recipe.tile_spec.__dict__ if recipe.tile_spec is not None else None,

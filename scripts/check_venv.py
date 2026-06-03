@@ -32,6 +32,7 @@ import cv2
 import PIL
 import open3d
 import ultralytics
+import ultralytics.nn.tasks as ultralytics_tasks
 import tqdm
 import PySide6
 import sam3
@@ -54,6 +55,12 @@ print("timm", timm.__version__)
 
 if REQUIRE_CUDA and not torch.cuda.is_available():
     raise SystemExit("CUDA is not available to PyTorch")
+
+if not hasattr(ultralytics_tasks, "SemanticSegmentationModel"):
+    raise SystemExit(
+        "Ultralytics does not support YOLO26 semantic segmentation in this environment. "
+        "Reinstall requirements/ml.txt."
+    )
 """
 
 

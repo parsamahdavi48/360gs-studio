@@ -17,6 +17,7 @@ import cv2
 import numpy as np
 
 from core.image_io import imread_unicode, imwrite_unicode
+from core.mask_merge import MASK_MERGE_ADD, MASK_MERGE_REPLACE, merge_mask_arrays, normalize_mask_merge_mode
 from core.mask_targets import collect_image_targets
 
 try:
@@ -75,12 +76,14 @@ def read_image_preserve_depth(path: str) -> np.ndarray | None:
 # -- ワーカー用グローバル --
 _worker_threshold: int = 254
 _worker_dilate: int = 1
+_worker_merge_mode: str = MASK_MERGE_ADD
 
 
-def _init_worker(threshold: int, dilate_px: int) -> None:
-    global _worker_threshold, _worker_dilate
+def _init_worker(threshold: int, dilate_px: int, merge_mode: str = MASK_MERGE_ADD) -> None:
+    global _worker_threshold, _worker_dilate, _worker_merge_mode
     _worker_threshold = threshold
     _worker_dilate = dilate_px
+    _worker_merge_mode = normalize_mask_merge_mode(merge_mode)
 
 
 def _process_one(args: tuple[str, str, str | None]) -> str | None:
@@ -93,16 +96,8 @@ def _process_one(args: tuple[str, str, str | None]) -> str | None:
 
     overexp = detect_overexposure(img, _worker_threshold, _worker_dilate)
 
-    if existing_mask is not None:
-        mask = imread_unicode(existing_mask, cv2.IMREAD_GRAYSCALE)
-        if mask is not None:
-            if mask.shape != overexp.shape:
-                mask = cv2.resize(
-                    mask,
-                    (overexp.shape[1], overexp.shape[0]),
-                    interpolation=cv2.INTER_NEAREST,
-                )
-            overexp = cv2.bitwise_and(mask, overexp)
+    existing = imread_unicode(existing_mask, cv2.IMREAD_GRAYSCALE) if existing_mask is not None else None
+    overexp = merge_mask_arrays(existing, overexp, merge_mode=_worker_merge_mode, resize_existing=True)
 
     Path(mask_out).parent.mkdir(parents=True, exist_ok=True)
     if not imwrite_unicode(mask_out, overexp):
@@ -130,6 +125,7 @@ def run(
     threshold: int = 254,
     dilate_px: int = 1,
     workers: int | None = None,
+    merge_mode: str = MASK_MERGE_ADD,
     replace: bool = False,
     image_list: str | Path | None = None,
 ) -> None:
@@ -139,6 +135,7 @@ def run(
 
     if workers is None:
         workers = os.cpu_count() or 4
+    effective_merge_mode = MASK_MERGE_REPLACE if replace else normalize_mask_merge_mode(merge_mode)
 
     _images_root, targets = collect_image_targets(
         images_path,
@@ -156,17 +153,20 @@ def run(
         mask_out = str(target.mask_path)
         # 既存マスクがあればAND合成
         existing = target.mask_path
-        existing_str = None if replace else str(existing) if existing.is_file() else None
+        existing_str = None if effective_merge_mode == MASK_MERGE_REPLACE else str(existing) if existing.is_file() else None
 
         tasks.append((str(img_path), mask_out, existing_str))
 
-    print(f"Processing {len(tasks)} images (threshold={threshold}, dilate={dilate_px}px, replace={replace})")
+    print(
+        f"Processing {len(tasks)} images "
+        f"(threshold={threshold}, dilate={dilate_px}px, merge_mode={effective_merge_mode})"
+    )
     print(f"[progress] 0/{len(tasks)}", flush=True)
 
     with ProcessPoolExecutor(
         max_workers=workers,
         initializer=_init_worker,
-        initargs=(threshold, dilate_px),
+        initargs=(threshold, dilate_px, effective_merge_mode),
     ) as executor:
         results = []
         for done, result in enumerate(tqdm(executor.map(_process_one, tasks), total=len(tasks), unit="img"), start=1):
@@ -208,6 +208,12 @@ def main() -> None:
         action="store_true",
         help="Ignore existing masks and write overexposure-only masks",
     )
+    parser.add_argument(
+        "--merge-mode",
+        choices=("replace", "add", "subtract"),
+        default=MASK_MERGE_ADD,
+        help="How to merge generated masks with existing masks: replace, add, or subtract.",
+    )
     parser.add_argument("--image-list", default=None, help="JSON or JSONL list of images to process")
     args = parser.parse_args()
 
@@ -221,6 +227,7 @@ def main() -> None:
         threshold=args.threshold,
         dilate_px=args.dilate,
         workers=args.workers,
+        merge_mode=args.merge_mode,
         replace=bool(args.replace),
         image_list=args.image_list,
     )

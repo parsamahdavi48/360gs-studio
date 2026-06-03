@@ -13,7 +13,6 @@ import json
 import os
 import subprocess
 import sys
-import warnings
 from contextlib import nullcontext
 from dataclasses import dataclass
 from pathlib import Path
@@ -51,15 +50,15 @@ from core.mask_view_recipes import (
 )
 
 IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".tif", ".tiff"}
-BACKEND_MASK2FORMER = "mask2former"
+BACKEND_YOLO26_SEM = "yolo26_sem"
 BACKEND_SAM31 = "sam31"
-SUPPORTED_BACKENDS = (BACKEND_MASK2FORMER, BACKEND_SAM31)
-DEFAULT_BACKEND = BACKEND_MASK2FORMER
-DEFAULT_MODEL_ID = "facebook/mask2former-swin-large-ade-semantic"
-DEFAULT_MASK2FORMER_MODEL_ID = DEFAULT_MODEL_ID
+SUPPORTED_BACKENDS = (BACKEND_YOLO26_SEM, BACKEND_SAM31)
+DEFAULT_BACKEND = BACKEND_YOLO26_SEM
+DEFAULT_YOLO26_SEM_MODEL_NAME = "yolo26s-sem.pt"
+DEFAULT_MODEL_ID = DEFAULT_YOLO26_SEM_MODEL_NAME
 REPO_ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_LOCAL_MODEL_DIR = REPO_ROOT / "models" / "mask2former-swin-large-ade-semantic"
-DEFAULT_MASK2FORMER_LOCAL_MODEL_DIR = DEFAULT_LOCAL_MODEL_DIR
+DEFAULT_LOCAL_MODEL_DIR = REPO_ROOT / "models" / "ultralytics" / DEFAULT_YOLO26_SEM_MODEL_NAME
+DEFAULT_YOLO26_SEM_LOCAL_MODEL = DEFAULT_LOCAL_MODEL_DIR
 DEFAULT_SAM31_LOCAL_MODEL_DIR = REPO_ROOT / "models" / "sam3.1"
 DEFAULT_SAM31_CHECKPOINT_NAME = "sam3.1_multiplex.pt"
 DEFAULT_SAM31_PROMPT = "sky"
@@ -79,7 +78,41 @@ SUPPORTED_MODES = ("direct", "top", "bottom", "hybrid", "full")
 DEFAULT_EXPAND = 0
 DEFAULT_MIN_SCORE = 0.0
 DEFAULT_MIN_AREA_RATIO = 0.0
-DEFAULT_MASK2FORMER_LABELS = ("sky",)
+CITYSCAPES_CLASS_NAMES: tuple[str, ...] = (
+    "road",
+    "sidewalk",
+    "building",
+    "wall",
+    "fence",
+    "pole",
+    "traffic light",
+    "traffic sign",
+    "vegetation",
+    "terrain",
+    "sky",
+    "person",
+    "rider",
+    "car",
+    "truck",
+    "bus",
+    "train",
+    "motorcycle",
+    "bicycle",
+)
+DEFAULT_SEMANTIC_LABELS = ("sky",)
+CITYSCAPES_LABEL_ALIASES = {
+    "trees": "vegetation",
+    "tree": "vegetation",
+    "plant": "vegetation",
+    "plants": "vegetation",
+    "grass": "terrain",
+    "ground": "terrain",
+    "motorbike": "motorcycle",
+    "bike": "bicycle",
+    "cycle": "bicycle",
+    "trafficlight": "traffic light",
+    "trafficsign": "traffic sign",
+}
 
 _top_extract_cache: dict[tuple[int, int, int], tuple[np.ndarray, np.ndarray]] = {}
 _top_back_cache: dict[tuple[int, int, int], tuple[np.ndarray, np.ndarray, np.ndarray]] = {}
@@ -102,7 +135,7 @@ class SkyMaskOptions:
     replace: bool = False
     merge_mode: str = MASK_MERGE_ADD
     sam_prompt: str = DEFAULT_SAM31_PROMPT
-    labels: tuple[str, ...] = DEFAULT_MASK2FORMER_LABELS
+    labels: tuple[str, ...] = DEFAULT_SEMANTIC_LABELS
     sam_prompts: tuple[str, ...] = ()
     sam_subtract_prompts: tuple[str, ...] = ()
 
@@ -149,89 +182,102 @@ class MaskOutOfMemoryError(RuntimeError):
     """Fatal CUDA memory pressure while running a mask backend."""
 
 
-class Mask2FormerSkySegmenter:
-    """Thin wrapper around a Mask2Former semantic segmentation model."""
+def _normalize_label_name(value: object) -> str:
+    return " ".join(str(value).strip().lower().replace("_", " ").replace("-", " ").split())
+
+
+def _ensure_yolo26_semantic_support(ultralytics_module: object, tasks_module: object) -> None:
+    if hasattr(tasks_module, "SemanticSegmentationModel"):
+        return
+    version = getattr(ultralytics_module, "__version__", "unknown")
+    module_path = getattr(tasks_module, "__file__", "unknown location")
+    raise RuntimeError(
+        "YOLO26 semantic masking requires an Ultralytics build with SemanticSegmentationModel support. "
+        f"Installed ultralytics is {version} from {module_path}. "
+        "Run update.bat --deps-only or install requirements/ml.txt again."
+    )
+
+
+class Yolo26SemanticSegmenter:
+    """Cityscapes semantic mask backend backed by Ultralytics YOLO26-sem."""
 
     def __init__(self, model_source: str | Path, *, device: str = "auto") -> None:
         try:
             import torch
-            from transformers import AutoImageProcessor, Mask2FormerForUniversalSegmentation
+            import ultralytics
+            import ultralytics.nn.tasks as ultralytics_tasks
+            from ultralytics import YOLO
         except ImportError as e:
             raise RuntimeError(
-                "Mask2Former sky masking requires transformers and safetensors. "
+                "YOLO26 semantic masking requires ultralytics with semantic segmentation support. "
                 "Run setup_windows.bat or update.bat."
             ) from e
 
+        _ensure_yolo26_semantic_support(ultralytics, ultralytics_tasks)
         self.torch = torch
         self.device = self._resolve_device(device)
-        source_text = str(model_source)
-        local_files_only = Path(source_text).exists()
-        with warnings.catch_warnings():
-            warnings.filterwarnings("ignore", message="The following named arguments are not valid")
-            self.processor = AutoImageProcessor.from_pretrained(
-                source_text,
-                local_files_only=local_files_only,
-                use_fast=False,
-            )
-        self.model = Mask2FormerForUniversalSegmentation.from_pretrained(
-            source_text,
-            local_files_only=local_files_only,
-        )
-        self.model.to(self.device)
-        self.model.eval()
-        self.sky_label_id = self._find_label_id("sky")
-        self.label_name_to_id = {
-            str(label).strip().lower(): int(idx) for idx, label in getattr(self.model.config, "id2label", {}).items()
-        }
+        self.model = YOLO(str(model_source))
+        try:
+            self.model.to(self.device)
+        except Exception:
+            pass
+        self.label_name_to_id = self._label_name_map()
+        self.sky_label_id = self._resolve_label_id("sky")
 
     def _resolve_device(self, device: str) -> str:
         value = str(device).strip().lower()
         if value == "auto":
             return "cuda" if self.torch.cuda.is_available() else "cpu"
         if value == "cuda" and not self.torch.cuda.is_available():
-            raise RuntimeError("CUDA was requested for sky masking, but CUDA is not available.")
+            raise RuntimeError("CUDA was requested for YOLO26 semantic masking, but CUDA is not available.")
         if value not in {"cpu", "cuda"}:
             raise ValueError("--device must be auto, cpu, or cuda")
         return value
 
-    def _find_label_id(self, label_name: str) -> int:
-        labels = getattr(self.model.config, "id2label", {})
-        for idx, label in labels.items():
-            if str(label).strip().lower() == label_name:
-                return int(idx)
-        raise RuntimeError(f"Mask2Former model does not expose a '{label_name}' label.")
+    def _label_name_map(self) -> dict[str, int]:
+        mapping = {_normalize_label_name(label): idx for idx, label in enumerate(CITYSCAPES_CLASS_NAMES)}
+        mapping.update({_normalize_label_name(alias): mapping[_normalize_label_name(target)] for alias, target in CITYSCAPES_LABEL_ALIASES.items()})
+
+        model_names = getattr(self.model, "names", None) or {}
+        for idx, label in model_names.items():
+            try:
+                idx_value = int(idx)
+            except (TypeError, ValueError):
+                continue
+            if 0 <= idx_value < len(CITYSCAPES_CLASS_NAMES):
+                mapping.setdefault(_normalize_label_name(label), idx_value)
+        return mapping
 
     def detect_sky(self, bgr: np.ndarray, options: SkyMaskOptions) -> np.ndarray:
         return self.detect_labels(bgr, options, labels=options.labels)
 
-    def _resolve_label_ids(self, labels: tuple[str, ...]) -> list[int]:
-        return self._resolve_label_ids_impl(labels, default_to_sky=True)
+    def _resolve_label_id(self, label: str) -> int:
+        text = str(label).strip()
+        if not text:
+            raise RuntimeError("YOLO26 semantic label cannot be empty.")
+        if text.isdigit():
+            idx = int(text)
+            if not 0 <= idx < len(CITYSCAPES_CLASS_NAMES):
+                raise RuntimeError(f"YOLO26 semantic model does not expose label id {idx}.")
+            return idx
+        name = _normalize_label_name(text)
+        idx = self.label_name_to_id.get(name)
+        if idx is None:
+            available = ", ".join(CITYSCAPES_CLASS_NAMES)
+            raise RuntimeError(f"YOLO26 semantic model does not expose label '{text}'. Available labels: {available}")
+        return idx
 
     def _resolve_label_ids_impl(self, labels: tuple[str, ...], *, default_to_sky: bool) -> list[int]:
-        resolved: list[int] = []
-        available = getattr(self.model.config, "id2label", {})
-        label_source = labels if labels else (DEFAULT_MASK2FORMER_LABELS if default_to_sky else ())
-        for label in label_source:
-            text = str(label).strip()
-            if not text:
-                continue
-            if text.isdigit():
-                idx = int(text)
-                if idx not in {int(k) for k in available.keys()}:
-                    raise RuntimeError(f"Mask2Former model does not expose label id {idx}.")
-                resolved.append(idx)
-                continue
-            idx = self.label_name_to_id.get(text.lower())
-            if idx is None:
-                raise RuntimeError(f"Mask2Former model does not expose label '{text}'.")
-            resolved.append(idx)
+        label_source = labels if labels else (DEFAULT_SEMANTIC_LABELS if default_to_sky else ())
+        resolved = [self._resolve_label_id(label) for label in label_source if str(label).strip()]
         if not resolved and default_to_sky:
             resolved.append(self.sky_label_id)
         return sorted(set(resolved))
 
     def _label_name_for_id(self, idx: int) -> str:
-        labels = getattr(self.model.config, "id2label", {})
-        return str(labels.get(int(idx), "")).strip().lower()
+        if 0 <= int(idx) < len(CITYSCAPES_CLASS_NAMES):
+            return CITYSCAPES_CLASS_NAMES[int(idx)]
+        return ""
 
     def is_sky_label(self, label: str) -> bool:
         text = str(label).strip()
@@ -239,12 +285,12 @@ class Mask2FormerSkySegmenter:
             return False
         if text.isdigit():
             return self._label_name_for_id(int(text)) == "sky"
-        return text.lower() == "sky"
+        return self._resolve_label_id(text) == self.sky_label_id
 
     def split_labels(self, labels: tuple[str, ...]) -> tuple[tuple[str, ...], tuple[str, ...]]:
         sky_labels: list[str] = []
         other_labels: list[str] = []
-        for label in labels or DEFAULT_MASK2FORMER_LABELS:
+        for label in labels or DEFAULT_SEMANTIC_LABELS:
             if self.is_sky_label(label):
                 sky_labels.append(label)
             else:
@@ -263,59 +309,58 @@ class Mask2FormerSkySegmenter:
         sky_labels: tuple[str, ...],
         other_labels: tuple[str, ...],
     ) -> DetectedRegionMasks:
-        rgb = bgr_to_rgb8(bgr)
-        pil = Image.fromarray(rgb)
         sky_label_ids = self._resolve_label_ids_impl(sky_labels, default_to_sky=False)
         other_label_ids = self._resolve_label_ids_impl(other_labels, default_to_sky=False)
         label_ids = sorted(set(sky_label_ids + other_label_ids))
         if not label_ids:
             label_ids = [self.sky_label_id]
             sky_label_ids = [self.sky_label_id]
-        inputs = self.processor(
-            images=pil,
-            return_tensors="pt",
-            size={"height": options.inference_size, "width": options.inference_size},
-        )
-        inputs = {key: value.to(self.device) for key, value in inputs.items()}
-        with self.torch.inference_mode():
-            outputs = self.model(**inputs)
-            class_queries = outputs.class_queries_logits
-            mask_queries = outputs.masks_queries_logits
-            target_hw = tuple(int(v) for v in inputs["pixel_values"].shape[-2:])
-            mask_queries = self.torch.nn.functional.interpolate(
-                mask_queries,
-                size=target_hw,
-                mode="bilinear",
-                align_corners=False,
-            )
-            class_probs = class_queries.softmax(dim=-1)[..., :-1]
-            mask_probs = mask_queries.sigmoid()
-            scores = self.torch.einsum("bqc,bqhw->bchw", class_probs, mask_probs)[0]
-            predicted_labels = scores.argmax(dim=0)
-            sky_small = self._select_label_mask(scores, predicted_labels, sky_label_ids, options)
-            other_small = self._select_label_mask(scores, predicted_labels, other_label_ids, options)
-        h, w = bgr.shape[:2]
-        if sky_small.shape != (h, w):
-            sky_small = cv2.resize(sky_small, (w, h), interpolation=cv2.INTER_NEAREST)
-        if other_small.shape != (h, w):
-            other_small = cv2.resize(other_small, (w, h), interpolation=cv2.INTER_NEAREST)
-        return DetectedRegionMasks(sky_small.astype(bool), other_small.astype(bool))
+        del label_ids
+        class_map = self._predict_class_map(bgr, options)
+        sky = np.isin(class_map, np.asarray(sky_label_ids, dtype=np.int32)) if sky_label_ids else np.zeros_like(class_map, dtype=bool)
+        other = np.isin(class_map, np.asarray(other_label_ids, dtype=np.int32)) if other_label_ids else np.zeros_like(class_map, dtype=bool)
+        return DetectedRegionMasks(sky.astype(bool), other.astype(bool))
 
-    def _select_label_mask(
-        self,
-        scores: Any,
-        predicted_labels: Any,
-        label_ids: list[int],
-        options: SkyMaskOptions,
-    ) -> np.ndarray:
-        if not label_ids:
-            return np.zeros(tuple(int(v) for v in predicted_labels.shape), dtype=np.uint8)
-        selected_ids = self.torch.tensor(label_ids, device=predicted_labels.device)
-        selected = (predicted_labels[..., None] == selected_ids).any(dim=-1)
-        selected_scores = scores[label_ids].amax(dim=0)
-        if options.min_score > 0.0:
-            selected = selected & (selected_scores >= float(options.min_score))
-        return selected.detach().to("cpu").numpy().astype(np.uint8)
+    def _predict_class_map(self, bgr: np.ndarray, options: SkyMaskOptions) -> np.ndarray:
+        results = self.model(
+            bgr,
+            imgsz=int(options.inference_size),
+            device=self.device,
+            verbose=False,
+        )
+        if not results:
+            return np.zeros(bgr.shape[:2], dtype=np.int32)
+        result = results[0]
+        semantic_mask = getattr(result, "semantic_mask", None)
+        if semantic_mask is None:
+            raise RuntimeError("YOLO26 semantic result did not include semantic_mask data.")
+        data = getattr(semantic_mask, "data", semantic_mask)
+        if callable(data):
+            data = data()
+        if hasattr(data, "detach"):
+            data = data.detach()
+        if hasattr(data, "to"):
+            data = data.to("cpu")
+        if hasattr(data, "numpy"):
+            data = data.numpy()
+        class_map = np.asarray(data)
+        if class_map.ndim == 3:
+            if class_map.shape[0] == 1:
+                class_map = class_map[0]
+            elif class_map.shape[-1] == 1:
+                class_map = class_map[..., 0]
+            elif class_map.shape[0] == len(CITYSCAPES_CLASS_NAMES):
+                class_map = class_map.argmax(axis=0)
+            elif class_map.shape[-1] == len(CITYSCAPES_CLASS_NAMES):
+                class_map = class_map.argmax(axis=-1)
+            else:
+                class_map = class_map.argmax(axis=0)
+        if class_map.ndim != 2:
+            raise RuntimeError(f"YOLO26 semantic result has unsupported shape: {class_map.shape}")
+        h, w = bgr.shape[:2]
+        if class_map.shape != (h, w):
+            class_map = cv2.resize(class_map.astype(np.int32), (w, h), interpolation=cv2.INTER_NEAREST)
+        return class_map.astype(np.int32, copy=False)
 
 
 class Sam31SkySegmenter:
@@ -441,7 +486,7 @@ class Sam31SkySegmenter:
         return prompt_mask
 
 
-SkySegmenter = Mask2FormerSkySegmenter
+SkySegmenter = Yolo26SemanticSegmenter
 
 
 def resolve_model_source(
@@ -456,9 +501,20 @@ def resolve_model_source(
         if backend == BACKEND_SAM31 and path.is_dir():
             checkpoint = path / DEFAULT_SAM31_CHECKPOINT_NAME
             return str(checkpoint if checkpoint.exists() else path)
+        if backend == BACKEND_YOLO26_SEM and path.is_dir():
+            checkpoint = path / DEFAULT_YOLO26_SEM_MODEL_NAME
+            return str(checkpoint if checkpoint.exists() else path)
         return str(path)
 
     root = repo_root or REPO_ROOT
+    if backend == BACKEND_YOLO26_SEM:
+        local = root / "models" / "ultralytics" / DEFAULT_YOLO26_SEM_MODEL_NAME
+        if local.exists():
+            return str(local)
+        if DEFAULT_YOLO26_SEM_LOCAL_MODEL.exists():
+            return str(DEFAULT_YOLO26_SEM_LOCAL_MODEL)
+        return DEFAULT_YOLO26_SEM_MODEL_NAME
+
     if backend == BACKEND_SAM31:
         local = root / "models" / "sam3.1"
         checkpoint = local / DEFAULT_SAM31_CHECKPOINT_NAME
@@ -468,19 +524,13 @@ def resolve_model_source(
         if default_checkpoint.exists():
             return str(default_checkpoint)
         return str(checkpoint)
-
-    local = root / "models" / "mask2former-swin-large-ade-semantic"
-    if local.exists():
-        return str(local)
-    if DEFAULT_MASK2FORMER_LOCAL_MODEL_DIR.exists():
-        return str(DEFAULT_MASK2FORMER_LOCAL_MODEL_DIR)
-    return DEFAULT_MASK2FORMER_MODEL_ID
+    raise ValueError(f"Unsupported sky backend: {backend}")
 
 
 def normalize_backend(backend: str) -> str:
-    value = str(backend).strip().lower().replace("-", "").replace(".", "")
-    if value in {"mask2former", "m2f"}:
-        return BACKEND_MASK2FORMER
+    value = str(backend).strip().lower().replace("-", "").replace(".", "").replace("_", "")
+    if value in {"yolo26sem", "yolosem", "semantic", "sem"}:
+        return BACKEND_YOLO26_SEM
     if value in {"sam31", "sam3", "sam"}:
         return BACKEND_SAM31
     raise ValueError(f"--backend must be one of: {', '.join(SUPPORTED_BACKENDS)}")
@@ -488,8 +538,8 @@ def normalize_backend(backend: str) -> str:
 
 def create_sky_segmenter(backend: str, model_source: str | Path, *, device: str = "auto") -> Any:
     backend = normalize_backend(backend)
-    if backend == BACKEND_MASK2FORMER:
-        return Mask2FormerSkySegmenter(model_source, device=device)
+    if backend == BACKEND_YOLO26_SEM:
+        return Yolo26SemanticSegmenter(model_source, device=device)
     if backend == BACKEND_SAM31:
         return Sam31SkySegmenter(model_source, device=device)
     raise ValueError(f"Unsupported sky backend: {backend}")
@@ -1410,7 +1460,7 @@ def run_safe_batch(args: argparse.Namespace, options: SkyMaskOptions) -> int:
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Detect sky regions or SAM3.1 prompt regions and merge masks.")
+    parser = argparse.ArgumentParser(description="Detect YOLO26 semantic regions or SAM3.1 prompt regions and merge masks.")
     parser.add_argument("images", help="Source image file or directory")
     parser.add_argument("masks_dir", help="Mask output directory")
     parser.add_argument("--backend", choices=SUPPORTED_BACKENDS, default=DEFAULT_BACKEND, help="Segmentation backend")
@@ -1438,8 +1488,8 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--labels",
-        default=",".join(DEFAULT_MASK2FORMER_LABELS),
-        help="Comma-separated Mask2Former label names or ids",
+        default=",".join(DEFAULT_SEMANTIC_LABELS),
+        help="Comma-separated YOLO26-sem Cityscapes label names or ids",
     )
     parser.add_argument(
         "--sam-prompt",

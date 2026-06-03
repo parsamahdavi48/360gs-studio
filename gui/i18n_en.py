@@ -405,14 +405,18 @@ STRINGS: dict[str, str] = {
     "CLASS_PRESET_CLEAR": "Clear",
     "DETECTION_TARGET_SECTION": "Detection Targets",
     "YOLO_CLASS_LIST_SECTION": "Detection Targets",
-    "ADE20K_CLASS_LIST_SECTION": "Detection Targets",
+    "CITYSCAPES_CLASS_LIST_SECTION": "Detection Targets",
     "SAM31_PROMPT_SECTION": "Detection Targets",
-    "SAM31_APPLY_MODE": "Op.",
+    "MASK_APPLY_MODE": "Method",
+    "MASK_APPLY_REPLACE": "Replace",
+    "MASK_APPLY_ADD": "Add",
+    "MASK_APPLY_SUBTRACT": "Restore",
+    "SAM31_APPLY_MODE": "Method",
     "SAM31_APPLY_REPLACE": "Replace",
     "SAM31_APPLY_ADD": "Add",
-    "SAM31_APPLY_SUBTRACT": "Subtract",
+    "SAM31_APPLY_SUBTRACT": "Restore",
     "SAM31_CUSTOM_PROMPT_PLACEHOLDER": "Add prompts: tripod, hand; selfie stick; cell phone",
-    "SAM31_SUBTRACT_PROMPT_PLACEHOLDER": "Subtract prompts: male icon, female icon; logo; sign",
+    "SAM31_SUBTRACT_PROMPT_PLACEHOLDER": "Exclude prompts: male icon, female icon; logo; sign",
     "SAM31_DOWNLOAD_TITLE": "Prepare SAM3.1 Model",
     "SAM31_DOWNLOAD_BODY": (
         "The SAM3.1 checkpoint is not available yet.\n\n"
@@ -435,7 +439,7 @@ STRINGS: dict[str, str] = {
     "OVEREXPOSURE_DILATE_COMPACT": "Dilate",
     "RUN_OVEREXPOSURE": "Run Overexposure Mask",
     "SKY_MODEL": "Model",
-    "SKY_MODEL_MASK2FORMER": "Mask2Former",
+    "SKY_MODEL_YOLO26_SEM": "YOLO26-sem",
     "SKY_MODEL_SAM31": "SAM3.1",
     "SKY_MODEL_SAM31_MISSING": "SAM3.1 checkpoint not found: models/sam3.1/sam3.1_multiplex.pt",
     "SKY_MODE": "Mode",
@@ -1025,15 +1029,14 @@ STRINGS: dict[str, str] = {
     "YOLO_SAM_LICENSE_NOTICE_CANCELED": "YOLO/SAM run canceled",
     "SKY_LICENSE_NOTICE_TITLE": "Semantic Mask Model Terms",
     "SKY_LICENSE_NOTICE_BODY": (
-        "The semantic/prompt mask feature uses third-party Mask2Former ADE20K model files, "
-        "Transformers-related libraries, or a Meta SAM3.1 checkpoint and sam3 package.\n\n"
+        "The semantic/prompt mask feature uses third-party Ultralytics YOLO26 semantic model files "
+        "or a Meta SAM3.1 checkpoint and sam3 package.\n\n"
         "This application's own source code is licensed under the MIT License, but the models, SAM Materials, "
         "related libraries, and training dataset used by mask generation are governed by separate license terms.\n\n"
-        "- Mask2Former: MIT License\n"
-        "- Transformers / safetensors: Apache License 2.0\n"
+        "- Ultralytics YOLO / ultralytics: AGPL-3.0 or Ultralytics Enterprise License\n"
         "- Meta SAM3.1: SAM License\n"
-        "- ADE20K dataset: governed by the dataset provider's terms\n\n"
-        "Model weights are not included with this application. Mask2Former may be downloaded to the user's environment on first use. "
+        "- Cityscapes dataset: governed by the dataset provider's terms\n\n"
+        "Model weights are not included with this application. YOLO26-sem weights may be downloaded to the user's environment on first use. "
         "SAM3.1 checkpoints can be downloaded after Hugging Face access approval and SAM License acceptance.\n\n"
         "Users are responsible for confirming compliance for commercial use, redistribution, internal deployment, or product integration."
     ),
@@ -1370,13 +1373,13 @@ TIPS: dict[str, str] = {
     "REVIEW_BLUR_DETECTION": "If images that look usable are being marked as blurred, choose Low sensitivity",
     "IMAGES_DIR": "Automatically uses images/ inside the scene folder. This is the standard output folder from Step 1.",
     "MASKS_DIR": "Automatically uses masks/ inside the scene folder. It is created during generation if missing.",
-    "RUN_MASKS": "Run the primary mask generator and currently enabled extra mask steps for images selected by Scope. Use Images without masks only when you do not want existing masks overwritten.",
+    "RUN_MASKS": "Run the primary mask generator and currently enabled extra mask steps for images selected by Scope. Choose how results affect existing masks with Method.",
     "MASK_TASK_YOLO": "The primary mask generator always runs. Choose its model and targets in the Mask Settings tab",
     "MASK_TASK_STITCH": "Add stitch seam masks. Usually keep OFF for stabilized, direction-locked, or AI-stitched footage where seam positions move",
     "MASK_TASK_STITCH_DISABLED_NORMAL": "Stitch seam masks are only for equirectangular 360° images and are not used for normal images",
     "MASK_TASK_OVEREXPOSURE": "Detect blown-out pixels and add them to masks",
     "MASK_TASK_SKY": "Detect sky regions with the selected sky model and add them to masks. Use this to avoid sky features before SfM",
-    "MASK_TASK_CUSTOM": "AND-merge a user-provided static PNG mask as the final step. 8-bit/16-bit grayscale, RGB, or RGBA inputs are binarized to 0/255. White means keep and black means exclude. It applies only to images with matching dimensions; mismatches are skipped",
+    "MASK_TASK_CUSTOM": "Apply a user-provided static PNG mask as the final step. 8-bit/16-bit grayscale, RGB, or RGBA inputs are binarized to 0/255. White means keep and black means exclude. It applies only to images with matching dimensions; mismatches are skipped",
     "CUSTOM_MASK_FILE": "PNG custom mask merged across frames. White means keep and black means exclude. It applies only to frames with matching image dimensions",
     "CUSTOM_MASK_BROWSE": "Select a PNG custom mask. Selecting a file also enables custom processing",
     "CUSTOM_MASK_CLEAR": "Clear the selected custom mask and disable custom processing",
@@ -1415,34 +1418,35 @@ TIPS: dict[str, str] = {
     "COLMAP_TEXT_MASK_MODE_REUSE_EXISTING": "Keep output/metashape_colmap/masks/ and update only the images, sparse/0, and other dataset outputs. Choose this when training masks were already created.",
     "COLMAP_TEXT_MASK_MODE_NONE": "For COLMAP datasets, the masks/ folder itself is the mask contract. When rebuilding without masks, output masks/ is not kept. Step 3 masks/ is not deleted.",
     "PREVIEW_PROJECTION_DISABLED_NORMAL": "90° FOV perspective preview is unavailable for normal images",
-    "RUN_ALL": "Run YOLO person detection, stitch mask, and overexposure mask in sequence",
-    "RUN_YOLO_STITCH": "Run YOLO person detection then stitch mask (no overexposure)",
-    "PERSON_MODEL": "Use YOLO/SAM2.1 for fast person-only masks. Use SAM3.1 for higher-accuracy person or sky masks. Use Mask2Former to try sky masks without SAM3.1",
+    "RUN_ALL": "Run the primary mask, stitch mask, and overexposure mask in sequence",
+    "RUN_YOLO_STITCH": "Run the primary mask then stitch mask (no overexposure)",
+    "PERSON_MODEL": "Use YOLO/SAM2.1 for existing COCO object masks. Use YOLO26-sem for Cityscapes semantic masks trained for urban street scenes. Use SAM3.1 for prompt-based high-accuracy masks",
     "PERSON_MODEL_YOLO_SAM": "Choose this when you want fast person-only masks. Sky is not included",
-    "SKY_MODEL_MASK2FORMER": "Choose this to try sky masks without installing SAM3.1",
-    "PERSON_MODEL_SAM31": "Choose this for higher-accuracy person or sky masks. Prompts can also add or subtract detections",
+    "SKY_MODEL_YOLO26_SEM": "YOLO26 semantic model trained on Cityscapes for urban street scenes. It quickly creates mask candidates for classes such as sky, road, buildings, vehicles, and vegetation",
+    "PERSON_MODEL_SAM31": "Choose this for higher-accuracy person or sky masks. Prompts can specify both included and excluded targets",
     "SAM31_CHECKPOINT_DOWNLOAD": "If the SAM3.1 checkpoint is missing, it can be downloaded from Hugging Face on first use. Access approval and SAM License acceptance are required",
-    "SAM31_APPLY_MODE": "SAM3.1 only. Choose how to write generated results. Replace rebuilds the mask, Add adds detected regions to an existing mask, and Subtract removes detected regions from it. Use this to fix misses or false detections after generation",
-    "SAM31_CUSTOM_PROMPT": "English prompts for extra targets to detect with SAM3.1. Use this to pick up missed objects and add them to the mask after generation. Separate prompts with commas, semicolons, or new lines",
-    "SAM31_SUBTRACT_PROMPT": "English prompts for targets to remove from the SAM3.1 result. Use this to detect false positives such as logos or signs and subtract them from an existing mask. Separators match the add prompt field",
-    "YOLO_LEVEL": "Detection strength for the YOLO/SAM2.1 person backend. For 360° images, start with 2 Quality. Use 1 Standard for faster checks, and 3 Best only if people still leak through. For normal images, start with 1 Standard. Not used by Mask2Former/SAM3.1",
+    "MASK_APPLY_MODE": "Choose how the candidate mask from this run is applied to existing masks. Replace rebuilds the mask, Add adds detected regions as exclusions, and Restore turns detected regions back to white. White means used and black means excluded",
+    "SAM31_APPLY_MODE": "Choose how the candidate mask from this run is applied to existing masks. Replace rebuilds the mask, Add adds detected regions as exclusions, and Restore turns detected regions back to white. White means used and black means excluded",
+    "SAM31_CUSTOM_PROMPT": "English prompts for targets to include in the SAM3.1 candidate mask. Separate prompts with commas, semicolons, or new lines. Use Method to decide how the candidate is applied to saved masks",
+    "SAM31_SUBTRACT_PROMPT": "English prompts for targets to exclude from the SAM3.1 candidate mask. Use this for logos, signs, or other targets that should not be part of the generated candidate. Separators match the add prompt field",
+    "YOLO_LEVEL": "Controls the projection-assist recipe for the selected mask backend. For 360° images, start with High. Use Standard for faster checks, and Best only when people, sky, or vegetation still leak through",
     "MASK_QUALITY": "Choose the balance between mask accuracy and processing time. Start with Standard or High for a quick pass, then select only images with missed areas and regenerate them at a higher quality. Best is slower, so use it for targeted fixes",
     "YOLO_EXPAND": "Grow or shrink mask boundaries by the specified number of pixels. Positive values mask a wider area; negative values make it tighter. Default is 0px. Safe range: -16 to 32px",
-    "YOLO_BOTTOM_ENHANCE": "With YOLO/SAM2.1, reduces missed masks near the bottom of 360° images, such as top-down photographers, tripods, and hands. Use Standard when the bottom is already masked well. Use High when top-down photographers remain. Use Max only if they still remain. Mask2Former/SAM3.1 use projection assist instead",
+    "YOLO_BOTTOM_ENHANCE": "With YOLO/SAM2.1, reduces missed masks near the bottom of 360° images, such as top-down photographers, tripods, and hands. Use Standard when the bottom is already masked well. Use High when top-down photographers remain. Use Max only if they still remain. YOLO26-sem/SAM3.1 use projection assist instead",
     "YOLO_ADD_EXT": "Name mask files as image.jpg.png (keeping the original extension)",
     "YOLO_CLASS_LIST_SECTION": "YOLO/SAM2.1 detects and masks selected targets from the built-in COCO class list. Add classes only when you also want to remove non-person objects",
-    "ADE20K_CLASS_LIST_SECTION": "Mask2Former detects and masks selected targets from the built-in ADE20K class list. Use it when you want to try targets such as sky without SAM3.1",
-    "SAM31_PROMPT_SECTION": "SAM3.1 is controlled with English prompts. The checkboxes are shortcuts for common prompts. Add/Subtract prompts let you add missed objects after generation or remove false detections from the mask",
+    "CITYSCAPES_CLASS_LIST_SECTION": "YOLO26-sem detects selected targets from the Cityscapes 19-class semantic list for urban street scenes. Sky-only cleanup is not applied to other targets",
+    "SAM31_PROMPT_SECTION": "SAM3.1 is controlled with English prompts. The checkboxes are shortcuts for common prompts. Add and exclude prompts adjust the candidate mask before it is applied",
     "STITCH_BOUNDARY_WIDTH": "Total stitch seam band to exclude. Drag horizontally to adjust. The GUI clamps this to 0-30 degrees for safety. 5 degrees equals legacy FOV 175",
     "STITCH_WORKERS": "Number of parallel workers. Drag horizontally to adjust. Use CPU core count as a guide",
     "OVEREXPOSURE_THRESHOLD": "Pixels with all RGB channels above this 8-bit-equivalent value are flagged as blown-out. 16-bit images are scaled to the same ratio. GUI range: 1-254",
     "OVEREXPOSURE_DILATE": "Dilate blown-out regions by N pixels. Default is 1px. 0 = disabled; GUI range: 0-128",
     "SKY_MODEL": "Choose the primary mask model in the model field above",
-    "SKY_MODEL_SAM31": "Choose this for higher-accuracy person or sky masks. Prompts can also add or subtract detections",
+    "SKY_MODEL_SAM31": "Choose this for higher-accuracy person or sky masks. Prompts can specify both included and excluded targets",
     "SKY_MODE": "Projection-assist mode. High Quality combines direct equirectangular inference with top and bottom projection views",
-    "SKY_INFERENCE_SIZE": "Larger values can improve detail and boundaries but use more GPU memory and time. Only Mask2Former can be changed here. YOLO/SAM2.1 and SAM3.1 use fixed processing sizes",
+    "SKY_INFERENCE_SIZE": "Larger values can improve YOLO26-sem detail and boundaries but use more GPU memory and time. YOLO/SAM2.1 and SAM3.1 use fixed processing sizes",
     "SKY_EXPAND": "Expand or shrink the detected sky mask in pixels. Positive values exclude more sky; negative values keep a tighter boundary",
-    "SKY_MIN_SCORE": "Mask2Former only. Class-confidence threshold from 0.00 to 1.00. 0 disables it. Higher values reject ambiguous pixels but can increase misses",
+    "SKY_MIN_SCORE": "Reserved for semantic backends that expose class-confidence maps. YOLO26-sem currently uses the predicted class map directly",
     "SKY_MIN_AREA": "Applies only to the sky mask. Removes sky candidates smaller than this image-area ratio. 0% disables it. Use 0% when you want to keep thin sky gaps",
     "SKY_TOP_CONNECTED": "Applies only to the sky mask. Keeps only sky components touching the top image edge. This is a strong filter and is never applied to people or other targets",
     "OUTPUT_DIR_CUBEMAP": "Metashape cubemap output is written to output/metashape_cubemap/. JSON/PLY files are saved there with profile-specific names.",
@@ -1648,7 +1652,7 @@ TIPS: dict[str, str] = {
     "MASK_PREVIEW_CLEAR_BUTTON": "Discard the temporary preview and return to the saved mask display",
     "MASK_PREVIEW_VISIBILITY_BUTTON": "Switch between the generated temporary preview and the saved display from masks/. ON shows the preview result; OFF shows the saved mask, or the image alone when no saved mask exists. The preview is kept",
     "YOLO_PREVIEW_BUTTON": "Run YOLO/SAM for the currently displayed image only and overlay the result. It is not saved to the mask folder",
-    "MASK_REPROCESS_CURRENT_BUTTON": "In single preview, regenerate the current image. In thumbnails, regenerate selected images with the current settings and save to masks/. With SAM3.1 Add/Subtract mode, the current detections are applied to the existing mask.",
+    "MASK_REPROCESS_CURRENT_BUTTON": "In single preview, process the current image. In thumbnails, process selected images with the current settings and save to masks/. Add/Restore methods apply current detections to the existing mask.",
     "MASK_OVERLAY_TOGGLE": "Toggle the red mask overlay. When visible, opacity is fixed at 45%.",
     "MASK_OPACITY": "Red overlay opacity for masked regions in preview (0=hidden, 100=opaque)",
     "MASK_IMAGE": "Manually specify a mask image. Leave empty for auto-detection from mask folder",

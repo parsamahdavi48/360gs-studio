@@ -2,7 +2,7 @@
 
 The quality level controls which source views are fed to the selected model.
 Projection-specific helpers keep 360-degree pole handling out of individual
-backends so YOLO/SAM2.1, Mask2Former, and SAM3.1 can share the same inputs.
+backends so YOLO/SAM2.1, YOLO26-sem, and SAM3.1 can share the same inputs.
 """
 from __future__ import annotations
 

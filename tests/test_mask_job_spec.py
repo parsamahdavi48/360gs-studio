@@ -5,8 +5,8 @@ from pathlib import Path
 import pytest
 
 from core.mask_job_spec import (
-    BACKEND_MASK2FORMER,
     BACKEND_SAM31,
+    BACKEND_YOLO26_SEM,
     custom_mask_job,
     init_masks_job,
     mask_job_to_command,
@@ -43,6 +43,8 @@ def test_yolo_mask_job_builds_command(tmp_path: Path) -> None:
         "5",
         "--projection",
         "equirect",
+        "--merge-mode",
+        "replace",
         "--classes",
         "0,2,3",
         "--image-list",
@@ -81,11 +83,36 @@ def test_sam31_mask_job_builds_safe_batch_command(tmp_path: Path) -> None:
     assert "--safe-batch" in cmd
 
 
-def test_mask2former_job_requires_labels(tmp_path: Path) -> None:
+def test_yolo26_sem_mask_job_builds_label_command(tmp_path: Path) -> None:
     payload = sky_mask_job(
         images=tmp_path / "images",
         masks=tmp_path / "masks",
-        backend=BACKEND_MASK2FORMER,
+        backend=BACKEND_YOLO26_SEM,
+        projection="equirect",
+        quality="high",
+        inference_size=768,
+        expand=1,
+        min_score=0.0,
+        min_area_ratio=0.0,
+        top_connected=True,
+        labels=("sky", "person", "vegetation"),
+        replace=True,
+    )
+
+    cmd = mask_job_to_command("python.exe", payload)
+
+    assert cmd[cmd.index("--backend") + 1] == "yolo26_sem"
+    assert cmd[cmd.index("--merge-mode") + 1] == "add"
+    assert cmd[cmd.index("--labels") + 1] == "sky,person,vegetation"
+    assert "--top-connected" in cmd
+    assert "--replace" in cmd
+
+
+def test_yolo26_sem_job_requires_labels(tmp_path: Path) -> None:
+    payload = sky_mask_job(
+        images=tmp_path / "images",
+        masks=tmp_path / "masks",
+        backend=BACKEND_YOLO26_SEM,
         projection="equirect",
         quality="high",
         inference_size=768,
@@ -124,13 +151,22 @@ def test_mask_helper_jobs_build_commands(tmp_path: Path) -> None:
         "--workers",
         "2",
     ]
-    assert "--replace" in mask_job_to_command(
+    overexp_cmd = mask_job_to_command(
         "python.exe",
-        overexposure_mask_job(images=images, masks=masks, threshold=250, dilate=2, workers=4, replace=True),
+        overexposure_mask_job(
+            images=images,
+            masks=masks,
+            threshold=250,
+            dilate=2,
+            workers=4,
+            merge_mode="subtract",
+            replace=False,
+        ),
     )
+    assert overexp_cmd[overexp_cmd.index("--merge-mode") + 1] == "subtract"
     assert mask_job_to_command(
         "python.exe",
-        custom_mask_job(images=images, masks=masks, custom_mask=tmp_path / "custom.png"),
+        custom_mask_job(images=images, masks=masks, custom_mask=tmp_path / "custom.png", merge_mode="add"),
     )[:7] == ["python.exe", "-u", "-m", "core.custom_mask", str(images), str(masks), str(tmp_path / "custom.png")]
 
 

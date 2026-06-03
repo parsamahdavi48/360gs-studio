@@ -9,9 +9,14 @@ import numpy as np
 import core.sky_mask as sky_mask
 from core.sky_mask import (
     BACKEND_SAM31,
+    BACKEND_YOLO26_SEM,
+    CITYSCAPES_CLASS_NAMES,
     DEFAULT_SAM31_CHECKPOINT_NAME,
+    DEFAULT_YOLO26_SEM_MODEL_NAME,
     DetectedRegionMasks,
     SkyMaskOptions,
+    Yolo26SemanticSegmenter,
+    _ensure_yolo26_semantic_support,
     auto_view_size,
     detect_sky_mask,
     mask_output_path_for_image,
@@ -125,6 +130,52 @@ def test_sam31_subtract_prompt_removes_prompt_from_detection() -> None:
 
     assert mask[3, 3] == 0
     assert mask[5, 8] == 255
+
+
+def test_yolo26_semantic_segmenter_splits_cityscapes_sky_and_other_labels() -> None:
+    class FakeModel:
+        names = {idx: name for idx, name in enumerate(CITYSCAPES_CLASS_NAMES)}
+
+        def __call__(self, bgr: np.ndarray, **_kwargs):
+            class_map = np.zeros(bgr.shape[:2], dtype=np.int64)
+            class_map[:4, :] = 10  # sky
+            class_map[6:8, 2:5] = 8  # vegetation
+            class_map[8:10, 7:10] = 11  # person
+            return [SimpleNamespace(semantic_mask=SimpleNamespace(data=class_map))]
+
+    segmenter = object.__new__(Yolo26SemanticSegmenter)
+    segmenter.model = FakeModel()
+    segmenter.device = "cpu"
+    segmenter.label_name_to_id = segmenter._label_name_map()
+    segmenter.sky_label_id = segmenter._resolve_label_id("sky")
+
+    masks = segmenter.detect_label_masks(
+        np.zeros((12, 16, 3), dtype=np.uint8),
+        SkyMaskOptions(projection="normal", mode="direct", labels=("sky", "vegetation", "person")),
+        sky_labels=("sky",),
+        other_labels=("vegetation", "person"),
+    )
+
+    assert masks.sky[1, 1]
+    assert not masks.sky[7, 3]
+    assert masks.other[7, 3]
+    assert masks.other[9, 8]
+
+
+def test_yolo26_semantic_support_check_reports_old_ultralytics() -> None:
+    ultralytics = SimpleNamespace(__version__="8.4.46")
+    tasks = SimpleNamespace(__file__="ultralytics/nn/tasks.py")
+
+    try:
+        _ensure_yolo26_semantic_support(ultralytics, tasks)
+    except RuntimeError as exc:
+        message = str(exc)
+    else:
+        raise AssertionError("expected missing SemanticSegmentationModel to fail")
+
+    assert "SemanticSegmentationModel" in message
+    assert "8.4.46" in message
+    assert "requirements/ml.txt" in message
 
 
 def test_sky_mask_subtract_merge_restores_detected_existing_pixels(tmp_path: Path) -> None:
@@ -347,11 +398,12 @@ def test_sky_mask_output_path_preserves_subfolders(tmp_path: Path) -> None:
     assert mask_output_path_for_image(image, images, masks) == masks / "nested" / "frame.png"
 
 
-def test_sky_mask_resolve_model_source_prefers_local_models_dir(tmp_path: Path) -> None:
-    model_dir = tmp_path / "models" / "mask2former-swin-large-ade-semantic"
-    model_dir.mkdir(parents=True)
+def test_sky_mask_resolve_model_source_prefers_local_yolo26_sem_weight(tmp_path: Path) -> None:
+    model_path = tmp_path / "models" / "ultralytics" / DEFAULT_YOLO26_SEM_MODEL_NAME
+    model_path.parent.mkdir(parents=True)
+    model_path.write_bytes(b"weights")
 
-    assert resolve_model_source(repo_root=tmp_path) == str(model_dir)
+    assert resolve_model_source(repo_root=tmp_path, backend=BACKEND_YOLO26_SEM) == str(model_path)
 
 
 def test_sky_mask_resolve_model_source_prefers_local_sam31_checkpoint(tmp_path: Path) -> None:

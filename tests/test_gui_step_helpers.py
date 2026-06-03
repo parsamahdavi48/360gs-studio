@@ -29,7 +29,7 @@ def _mask_context(base_dir: Path) -> MaskCommandContext:
         stitch_workers="4",
         overexposure_threshold="254",
         overexposure_dilate="1",
-        sam31_merge_mode="replace",
+        mask_merge_mode="replace",
     )
 
 

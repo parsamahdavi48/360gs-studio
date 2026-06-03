@@ -12,8 +12,8 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from gui.steps.mask_commands import (
-    SAM31_MERGE_MODES,
-    SAM31_MERGE_REPLACE,
+    MASK_APPLY_MODES,
+    MASK_APPLY_REPLACE,
     MaskCommandContext,
 )
 
@@ -23,9 +23,12 @@ def split_sam_prompt_text(text: str) -> list[str]:
     return [part.strip() for part in re.split(r"[,;\n]", text) if part.strip()]
 
 
-def normalize_sam31_merge_mode(mode: object) -> str:
-    text = str(mode or SAM31_MERGE_REPLACE)
-    return text if text in SAM31_MERGE_MODES else SAM31_MERGE_REPLACE
+def normalize_mask_merge_mode(mode: object) -> str:
+    text = str(mode or MASK_APPLY_REPLACE)
+    return text if text in MASK_APPLY_MODES else MASK_APPLY_REPLACE
+
+
+normalize_sam31_merge_mode = normalize_mask_merge_mode
 
 
 @dataclass(frozen=True)
@@ -40,10 +43,10 @@ class Step3MaskSettingsState:
     yolo_expand: str
     yolo_classes: tuple[int, ...]
     yolo_extra_args: tuple[str, ...]
-    ade_labels: tuple[str, ...]
+    semantic_labels: tuple[str, ...]
     sam_prompts: tuple[str, ...]
     sam_subtract_prompts: tuple[str, ...]
-    sam31_merge_mode: str
+    mask_merge_mode: str
     sky_backend: str
     sky_inference_size: str
     sky_min_score: str
@@ -84,10 +87,10 @@ class Step3MaskSettingsState:
             custom_mask=self.custom_mask,
             yolo_classes=self.yolo_classes,
             yolo_extra_args=self.yolo_extra_args,
-            ade_labels=self.ade_labels,
+            semantic_labels=self.semantic_labels,
             sam_prompts=self.sam_prompts,
             sam_subtract_prompts=self.sam_subtract_prompts,
-            sam31_merge_mode=self.sam31_merge_mode,
+            mask_merge_mode=self.mask_merge_mode,
         )
 
     def snapshot(self) -> dict:
@@ -104,13 +107,15 @@ class Step3MaskSettingsState:
                 "classes": list(self.yolo_classes),
                 "extra_args": list(self.yolo_extra_args),
             },
-            "mask2former": {
-                "ade_labels": list(self.ade_labels),
+            "semantic": {
+                "labels": list(self.semantic_labels),
+            },
+            "mask_operation": {
+                "merge_mode": self.mask_merge_mode,
             },
             "sam31": {
                 "prompts": list(self.sam_prompts),
                 "subtract_prompts": list(self.sam_subtract_prompts),
-                "merge_mode": self.sam31_merge_mode,
             },
             "sky": {
                 "backend": self.sky_backend,
