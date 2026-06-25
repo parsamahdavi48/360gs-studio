@@ -1,6 +1,6 @@
 # stechdrive-3dgs-utils
 
-**v1.24.3**
+**v1.24.5**
 
 ## What Is This?
 
