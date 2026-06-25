@@ -1433,7 +1433,7 @@ TIPS: dict[str, str] = {
     "SAM31_SUBTRACT_PROMPT": "English prompts for targets to exclude from the SAM3.1 candidate mask. Use this for logos, signs, or other targets that should not be part of the generated candidate. Separators match the add prompt field",
     "YOLO_LEVEL": "Controls the projection-assist recipe for the selected mask backend. For 360° images, start with High. Use Standard for faster checks, and Best only when people, sky, or vegetation still leak through",
     "MASK_QUALITY": "Choose the balance between mask accuracy and processing time. Start with Standard or High for a quick pass, then select only images with missed areas and regenerate them at a higher quality. Best is slower, so use it for targeted fixes",
-    "YOLO_EXPAND": "Grow or shrink mask boundaries by the specified number of pixels. Positive values mask a wider area; negative values make it tighter. Default is 0px. Safe range: -16 to 32px",
+    "YOLO_EXPAND": "Grow mask boundaries by the specified number of pixels. Increase this when silhouettes or thin target edges still leak through. Default is 0px. Safe range: 0 to 32px",
     "YOLO_BOTTOM_ENHANCE": "With YOLO/SAM2.1, reduces missed masks near the bottom of 360° images, such as top-down photographers, tripods, and hands. Use Standard when the bottom is already masked well. Use High when top-down photographers remain. Use Max only if they still remain. YOLO26-sem/SAM3.1 use projection assist instead",
     "YOLO_ADD_EXT": "Name mask files as image.jpg.png (keeping the original extension)",
     "YOLO_CLASS_LIST_SECTION": "YOLO/SAM2.1 detects and masks selected targets from the built-in COCO class list. Add classes only when you also want to remove non-person objects",

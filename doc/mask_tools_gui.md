@@ -74,7 +74,7 @@ On first use, if `models/sam3.1/sam3.1_multiplex.pt` is missing, Hugging Face ac
 | `High` | Recommended starting point for 360° images. Adds ERP tiles and top/bottom projection assist |
 | `Best` | Targeted fixes for images that still leak. Slower |
 
-`Mask Expand` grows or shrinks mask boundaries. Positive values make black excluded regions larger; negative values make them tighter. Increase it when silhouettes leak through, and decrease it when masks remove too much.
+`Mask Expand` grows mask boundaries. Larger values make black excluded regions wider. Increase it when silhouettes or thin target edges leak through; leave it at `0` when the default mask already covers the target well.
 
 ## Method
 

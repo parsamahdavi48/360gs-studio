@@ -351,6 +351,8 @@ def test_mask_step_yolo_level_and_expand_share_compact_row() -> None:
     assert step.yolo_level_combo.itemText(1) == i18n.t("MASK_QUALITY_HIGH")
     assert step.yolo_level_combo.itemText(2) == i18n.t("MASK_QUALITY_BEST")
     assert step.yolo_expand_label.toolTip() == i18n.tip("YOLO_EXPAND")
+    assert step.yolo_expand_edit.minimum() == 0
+    assert step.yolo_expand_edit.maximum() == 32
     assert step.yolo_expand_edit.value() == 0
     assert step.yolo_bottom_settings_row.isHidden()
     assert not hasattr(step, "projection_label")
