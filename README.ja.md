@@ -1,6 +1,6 @@
 # stechdrive-3dgs-utils
 
-**v1.24.5**
+**v1.24.6**
 
 ## これは何？
 
@@ -12,7 +12,7 @@
 
 通常利用は、最新リリースZIPをダウンロードしてください。
 
-[stechdrive-3dgs-utils-v1.24.5.zip をダウンロード](https://github.com/stechdrive/stechdrive-3dgs-utils/releases/download/v1.24.5/stechdrive-3dgs-utils-v1.24.5.zip)
+[stechdrive-3dgs-utils-v1.24.6.zip をダウンロード](https://github.com/stechdrive/stechdrive-3dgs-utils/releases/download/v1.24.6/stechdrive-3dgs-utils-v1.24.6.zip)
 
 ZIPを展開したら、`setup_windows.bat`、続いて `run_gui.bat` を実行します。
 
@@ -40,16 +40,16 @@ RealityScanで再アラインしたCSV/PLYを、LichtFeldでDatasetとして開�
 
 ### 4. 通常の静止画・動画向けのマスク前処理
 
-デジタル一眼・スマホなどで撮影した通常動画、または通常画像の連番画像に対しても、YOLO/SAM2.1による高速な人物・車両などのマスク、SAM3.1による人物・空などの高精度マスク、補助的なMask2Former空マスク、白飛びマスクを作成できます。360°画像と通常画像が混在していても、画像タイプに合わせて処理します。
+デジタル一眼・スマホなどで撮影した通常動画、または通常画像の連番画像に対しても、YOLO/SAM2.1による高速な人物・車両などのマスク、YOLO26-semによるCityscapesセマンティックマスク、SAM3.1による人物・空などの高精度プロンプトマスク、白飛びマスクを作成できます。360°画像と通常画像が混在していても、画像タイプに合わせて処理します。
 
 ## 主な特徴
 
 - 360°動画、通常動画、連番静止画を同じシーンの入力ソースとして登録できます。動画はフレーム抽出し、静止画フォルダは `images/` にコピーして、以降の確認・マスク・SfM工程で同じように扱えます。
 - 抽出したフレームは、1枚表示またはサムネイル一覧で確認できます。不要なフレームを採用/除外として整理でき、ブレ候補は自動除外と要確認に分かれます。問題ないように見える画像までブレ候補になる場合は、Step 2でブレ判定を標準/低感度から選べます。360°画像はFOV90°の透視投影表示で細部を確認できます。
-- 人物、撮影者、三脚、手元、車両、空、白飛び、スティッチ境界など、SfMや3DGSで邪魔になりやすい領域をマスクできます。人物だけを高速に処理したい場合はYOLO/SAM2.1、人物と空を高精度に処理し、後から漏れや誤検出も直したい場合はSAM3.1を使えます。
+- 人物、撮影者、三脚、手元、車両、空、白飛び、スティッチ境界など、SfMや3DGSで邪魔になりやすい領域をマスクできます。人物だけを高速に処理したい場合はYOLO/SAM2.1、都市部のCityscapesセマンティック対象はYOLO26-sem、高精度なプロンプト処理と後からの漏れ/誤検出補正にはSAM3.1を使えます。
 - マスク結果は保存前にプレビューでき、サムネイル一覧でも確認できます。漏れや誤検出がある画像だけを選んで再生成できるため、全画像を最初からやり直す必要がありません。
 - SAM3.1では、既存マスクに対して「三脚を追加する」「看板やロゴの誤検出を外す」といった加算/減算の補正ができます。手作業で塗り直す量を減らせます。
-- Mask2Formerは、SAM3.1を使わずに空マスクを試したい場合の補助的な選択肢として利用できます。
+- YOLO26-semの初期ターゲットは `person` と `sky` です。車両、植生、その他のCityscapesクラスは、素材に必要な場合だけ追加します。
 - 360°画像だけでなく、通常動画からのフレーム抽出や通常画像の連番画像にも使えます。人物・車両・空・白飛びなどを、SfMに渡す前のマスク前処理としてまとめて作成できます。
 - Step 4では、外部SfM結果を使うか、COLMAP/SphereSfMをこのアプリから実行するかを選びます。COLMAPは360°画像のCubemap Rigと通常画像カメラの混在に対応し、SphereSfMは同一解像度のエクイレクタングラー360°画像だけを扱うルートです。
 - Step 5では、Metashape / SphereSfM / RealityScan / COLMAPの結果から、NeRF系JSON/PLY、COLMAP形式データセット、LichtFeld向けRealityScan変換、AprilTagスケール補正などを選んで実行できます。
@@ -88,13 +88,13 @@ update.bat
 
 まだ `update.bat` が入っていない古い展開済みリリースから更新する場合は、GUIを閉じ、新しいZIPを開いて中の `stechdrive-3dgs-utils-v...` フォルダへ入り、その中身を今使っているアプリフォルダへ上書きコピーしてから、既存アプリフォルダの `update.bat` を一度実行します。
 
-YOLO/SAM2、Mask2Former、SAM3.1のモデルファイルは初回利用時にダウンロードされる場合があります。ローカルのYOLO/SAM重みは `models/ultralytics/`、Mask2Former重みは `models/mask2former-swin-large-ade-semantic/`、SAM3.1プロンプトマスクは `models/sam3.1/sam3.1_multiplex.pt` を使います。モデル重みはアプリに同梱しておらず、別ライセンスが適用されます。詳細は [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md) を参照してください。
+YOLO/SAM2.1、YOLO26-sem、SAM3.1のモデルファイルは初回利用時にダウンロードされる場合があります。ローカルのYOLO/SAMとYOLO26-sem重みは `models/ultralytics/` に配置できます。既定のセマンティックモデルファイルは `yolo26s-sem.pt` です。SAM3.1プロンプトマスクは `models/sam3.1/sam3.1_multiplex.pt` を使います。モデル重みはアプリに同梱しておらず、別ライセンスが適用されます。詳細は [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md) を参照してください。
 
 ### マスク生成モデルの使い分け
 
 - 人物だけを高速にマスクしたい場合は YOLO/SAM2.1 が向いています。
-- 人物や空をできるだけ高精度にマスクしたい場合は SAM3.1 を推奨します。プロンプトで対象を指定できるため、生成後に漏れた対象だけを加算したり、誤検出だけを減算できます。
-- Mask2Former は、SAM3.1を導入していない環境でも空マスクを手軽に試したい場合の選択肢です。
+- 都市部の道路景観でセマンティックマスクを作る場合は YOLO26-sem を使います。初期値は `person` と `sky` で、車両や植生などのCityscapesクラスは必要な場合だけ追加します。
+- プロンプトで対象を指定して高精度に処理したい場合は SAM3.1 を推奨します。生成後に漏れた対象だけを加算したり、誤検出だけを減算できます。
 
 ### SAM3.1プロンプトマスク
 
@@ -198,7 +198,7 @@ Step 6は、対応するCLIを持つ学習アプリ向けの実行ショート�
 2. Step 1でSfM向けフレームを抽出、または静止画フォルダを登録します。
 3. Step 2で低品質候補や不要フレームを確認して除外します。
 4. Step 3で人物・撮影者・三脚・空など、SfMに使いたくない領域のマスクを生成します。`品質: 高品質` が推奨開始点です。
-5. マスク漏れが残る場合は、該当画像だけ `品質: 最高` に上げるか、SAM3.1に切り替えて再生成します。SAM3.1を使わずに空だけ試したい場合はMask2Formerも選べます。
+5. マスク漏れが残る場合は、該当画像だけ `品質: 最高` に上げるか、空や植生などのCityscapes対象にはYOLO26-semを使うか、SAM3.1プロンプトで再生成します。
 6. 必要に応じてスティッチ境界マスク、白飛びマスク、カスタムマスクも有効にします。
 7. 生成された `masks/` フォルダをMetashapeにマスクとして読み込み、SfMを実行します。混在ソースを使う場合も、Metashape側で通常どおりアラインします。
 8. MetashapeからカメラをAgisoft XML、疎点群をStanford PLYとしてエクスポートします。どちらもシーンフォルダに保存しておくと、このアプリから扱いやすくなります。別の場所に保存した場合はGUIで手動選択します。
@@ -263,7 +263,7 @@ Metashapeでベースの360°画像を安定してSfMし、その結果をRealit
 
 ```text
 torch / torchvision / torchaudio from the CUDA 12.8 wheel index
-numpy, opencv-python, Pillow, open3d, ultralytics, transformers, safetensors, tqdm, PySide6, sam3
+numpy, opencv-python, Pillow, open3d, ultralytics, tqdm, PySide6, sam3, timm, huggingface-hub, pycocotools
 ```
 
 `setup_windows.bat` は `requirements/` 以下の検証済み固定セットを使い、初回セットアップの再現性を優先します。`update.bat` はアプリ本体と既存の `.venv/` を現在のリリースに揃えます。互換する最新依存を明示的に試したい場合だけ `--latest-deps` を渡します。通常のリリース利用では、更新コマンドは `update.bat` だけです。

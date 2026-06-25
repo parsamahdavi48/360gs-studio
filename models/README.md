@@ -15,14 +15,12 @@ models/
     sam2.1_l.pt
 ```
 
-Mask2Former sky-mask placement:
+YOLO26-sem semantic-mask placement:
 
 ```text
 models/
-  mask2former-swin-large-ade-semantic/
-    config.json
-    preprocessor_config.json
-    model.safetensors
+  ultralytics/
+    yolo26s-sem.pt
 ```
 
 SAM3.1 prompt-mask placement:
@@ -51,7 +49,7 @@ YOLO/SAMの新しい標準配置は `models/ultralytics/` です。既存互換�
 リポジトリ直下の `.pt` も引き続き読み込みますが、新しく配置する場合は
 `models/ultralytics/` を使ってください。
 
-Mask2Formerセマンティックマスクは `models/mask2former-swin-large-ade-semantic/`、
+YOLO26-semセマンティックマスクは `models/ultralytics/yolo26s-sem.pt`、
 SAM3.1プロンプトマスクは `models/sam3.1/sam3.1_multiplex.pt` を使います。
 SAM3.1は、Hugging Faceで `facebook/sam3.1` の利用申請とSAM Licenseへの同意が
 完了していれば、GUIからこの場所へダウンロードできます。手動配置も引き続き使えます。

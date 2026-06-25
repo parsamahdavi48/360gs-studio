@@ -1,6 +1,6 @@
 # stechdrive-3dgs-utils
 
-**v1.24.5**
+**v1.24.6**
 
 ## What Is This?
 
@@ -12,7 +12,7 @@ The main workflow is to organize and mask ERP/equirectangular footage from camer
 
 For normal use, download the latest release ZIP:
 
-[Download stechdrive-3dgs-utils-v1.24.5.zip](https://github.com/stechdrive/stechdrive-3dgs-utils/releases/download/v1.24.5/stechdrive-3dgs-utils-v1.24.5.zip)
+[Download stechdrive-3dgs-utils-v1.24.6.zip](https://github.com/stechdrive/stechdrive-3dgs-utils/releases/download/v1.24.6/stechdrive-3dgs-utils-v1.24.6.zip)
 
 After extracting the ZIP, run `setup_windows.bat`, then `run_gui.bat`.
 
@@ -40,16 +40,16 @@ After RealityScan realignment, convert RealityScan CSV/PLY exports into a COLMAP
 
 ### 4. Mask Preprocessing for Normal Photos or Video Frames
 
-For video or image sequences from DSLR, mirrorless, smartphone, or other normal cameras, Step 3 can generate fast YOLO/SAM2.1 masks for people, vehicles, and other selectable object types, higher-accuracy SAM3.1 prompt masks for people and sky, optional Mask2Former sky masks, plus overexposure masks. Mixed 360° and normal sources are processed according to their image type.
+For video or image sequences from DSLR, mirrorless, smartphone, or other normal cameras, Step 3 can generate fast YOLO/SAM2.1 masks for people, vehicles, and other selectable object types, YOLO26-sem Cityscapes semantic masks, higher-accuracy SAM3.1 prompt masks for people and sky, plus overexposure masks. Mixed 360° and normal sources are processed according to their image type.
 
 ## Highlights
 
 - Register 360° video, normal video, and still-image sequences as input sources in the same scene. Videos are extracted into frames, and still-image folders are copied into `images/` so later review, masking, and SfM steps treat them consistently.
 - Review extracted frames in a large single-image view or a thumbnail list, then mark unwanted frames as keep/drop decisions. Blur candidates are split into automatic drops and review-only warnings. If usable-looking images are marked as blur, Step 2 can switch blur detection between Standard and Low sensitivity. For 360° images, the 90° FOV perspective view lets you inspect details in a normal-camera-like view.
-- Generate masks for people, the camera operator, tripods, hands, vehicles, sky, blown-out highlights, and stitch seams. Use YOLO/SAM2.1 when you want fast person-focused masks, or SAM3.1 when you want higher-accuracy people and sky masks plus prompt-based cleanup after generation.
+- Generate masks for people, the camera operator, tripods, hands, vehicles, sky, blown-out highlights, and stitch seams. Use YOLO/SAM2.1 when you want fast person-focused masks, YOLO26-sem for urban Cityscapes semantic targets, or SAM3.1 when you want higher-accuracy prompt masks plus cleanup after generation.
 - Preview mask results before saving and inspect them in the thumbnail list. When only a few frames have misses or false detections, regenerate just those frames instead of rerunning the whole image set.
 - With SAM3.1, add missed targets such as tripods or subtract false detections such as signs and logos from existing masks. This reduces the amount of manual mask painting needed after the first pass.
-- Mask2Former remains available as a helper option when you want to try sky masks without setting up SAM3.1.
+- YOLO26-sem starts with `person` and `sky`; add vehicles, vegetation, or other Cityscapes classes only when the source material needs them.
 - Use the same mask-preparation workflow for normal-camera video after Step 1 extraction and for normal photo or image-sequence sets, not only 360° images. This is useful before sending images to SfM software.
 - In Step 4, choose how camera poses and sparse points will be prepared: use an existing SfM result, run COLMAP or SphereSfM from this app, or create RealityScan realignment data from a Metashape result.
 - In Step 5, convert Metashape, SphereSfM, RealityScan, or COLMAP results into NeRF-style JSON/PLY datasets, COLMAP-format datasets, LichtFeld-ready RealityScan conversions, or AprilTag scale-adjusted outputs.
@@ -88,13 +88,13 @@ update.bat
 
 If you are updating an older extracted release that does not yet have `update.bat`, close the GUI, open the new ZIP, enter its top-level `stechdrive-3dgs-utils-v...` folder, copy that folder's contents into your existing app folder with overwrite enabled, then run `update.bat` once from the existing app folder.
 
-YOLO/SAM2, Mask2Former, and SAM3.1 model weights may be downloaded on first use. Local YOLO/SAM weights can be placed under `models/ultralytics/`; local Mask2Former weights can be placed under `models/mask2former-swin-large-ade-semantic/`; SAM3.1 prompt masking uses `models/sam3.1/sam3.1_multiplex.pt`. Model weights are not bundled with the app and are governed by separate license terms; see [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md).
+YOLO/SAM2.1, YOLO26-sem, and SAM3.1 model weights may be downloaded on first use. Local YOLO/SAM and YOLO26-sem weights can be placed under `models/ultralytics/`; the default semantic model file is `yolo26s-sem.pt`. SAM3.1 prompt masking uses `models/sam3.1/sam3.1_multiplex.pt`. Model weights are not bundled with the app and are governed by separate license terms; see [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md).
 
 ### Mask Generation Model Guide
 
 - Use YOLO/SAM2.1 when you want fast person-only masks.
-- Use SAM3.1 when you want the highest practical accuracy for people or sky. Because it is prompt-controlled, you can add missed targets after generation or subtract false detections.
-- Use Mask2Former when you want to try sky masks without setting up SAM3.1.
+- Use YOLO26-sem for urban street-scene semantic masks. It defaults to `person` and `sky`; add vehicles, vegetation, or other Cityscapes classes only when needed.
+- Use SAM3.1 when you want the highest practical accuracy for prompt-controlled targets. Because it is prompt-controlled, you can add missed targets after generation or subtract false detections.
 
 ### SAM3.1 Prompt Masks
 
@@ -198,7 +198,7 @@ Detailed GUI docs:
 2. Extract SfM-friendly frames or register still-image folders in Step 1.
 3. Review low-quality or unnecessary frames in Step 2.
 4. Generate masks for people, camera operators, tripods, sky, or similar SfM-unfriendly regions in Step 3. `Quality: High` is the recommended starting point.
-5. If masks still leak through, switch only the affected images to `Quality: Best` or regenerate them with SAM3.1. Mask2Former is also available when you want to try sky masks without setting up SAM3.1.
+5. If masks still leak through, switch only the affected images to `Quality: Best`, use YOLO26-sem for Cityscapes semantic targets such as sky or vegetation, or regenerate them with SAM3.1 prompts.
 6. Enable stitch seam, overexposure, and custom masks when they match the source material.
 7. Import the generated `masks/` folder into Metashape as per-image masks, then run SfM. Mixed sources can be aligned in Metashape as usual.
 8. Export Metashape cameras as Agisoft XML and sparse points as Stanford PLY. Saving both files in the scene folder is recommended; otherwise select them manually in the GUI.
@@ -263,7 +263,7 @@ Main Python packages resolved by `setup_windows.bat`:
 
 ```text
 torch / torchvision / torchaudio from the CUDA 12.8 wheel index
-numpy, opencv-python, Pillow, open3d, ultralytics, transformers, safetensors, tqdm, PySide6, sam3
+numpy, opencv-python, Pillow, open3d, ultralytics, tqdm, PySide6, sam3, timm, huggingface-hub, pycocotools
 ```
 
 `setup_windows.bat` uses the pinned verified package set under `requirements/` for reproducible first-time setup. `update.bat` keeps the app and the existing `.venv/` aligned with the current release; pass `--latest-deps` only when you explicitly want to try the latest compatible dependency versions. For normal release users, `update.bat` is the only update command.
