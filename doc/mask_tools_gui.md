@@ -19,7 +19,7 @@ Mask polarity is **white = use, black = exclude**. Creating masks before Metasha
 | Exclude blown-out windows or lights | `Overexp` ON |
 | Apply your own fixed mask to every image | `Custom` ON |
 
-For urban roadside 360° images, start with `YOLO26-sem` + `High` and the Cityscapes targets you need. Keep `YOLO/SAM2.1` available when you specifically want fast person-focused COCO object detection with SAM2.1 refinement.
+For urban roadside 360° images, start with `YOLO26-sem` + `High`. The default Cityscapes targets are `person` and `sky`; add vehicles, vegetation, or other classes only when you need them. Keep `YOLO/SAM2.1` available when you specifically want fast person-focused COCO object detection with SAM2.1 refinement.
 
 ## Basic Flow
 
@@ -50,7 +50,7 @@ This is the recommended route when you want fast person masks. YOLO detects the 
 
 ### YOLO26-sem
 
-YOLO26-sem uses the 19-class semantic model trained on Cityscapes for urban street scenes. It predicts a class ID for each pixel, so the final black/white mask can be built directly without a separate SAM refinement step. It can quickly create mask candidates for classes such as sky, roads, buildings, vehicles, and vegetation. Turn on `vegetation` when moving trees or leaves are hurting SfM; leave static classes such as `building`, `road`, and `sidewalk` off unless you intentionally want to remove them.
+YOLO26-sem uses the 19-class semantic model trained on Cityscapes for urban street scenes. It predicts a class ID for each pixel, so the final black/white mask can be built directly without a separate SAM refinement step. The default targets are `person` and `sky`. Add `vegetation` when moving trees or leaves are hurting SfM; leave static classes such as `building`, `road`, and `sidewalk` off unless you intentionally want to remove them.
 
 For 360° images, the quality setting controls projection assist. High quality combines direct equirectangular inference with top and bottom views to reduce misses caused by ERP distortion near the vertical extremes.
 
@@ -128,7 +128,7 @@ Generated `masks/` can be imported into Metashape, COLMAP, or SphereSfM, and Ste
 
 ## Common Decisions
 
-- In urban street scenes, start with `YOLO26-sem` + `High` for the Cityscapes targets you need, such as sky, vehicles, and vegetation.
+- In urban street scenes, start with `YOLO26-sem` + `High` and the default `person` + `sky` targets. Add vehicles, vegetation, or other classes only when needed.
 - Keep `YOLO/SAM2.1` for the legacy COCO person/object route when it works better on a specific scene.
 - Use `SAM3.1` when you need tripods, hands, selfie sticks, phones, or prompt-based cleanup.
 - If the camera operator or tripod remains near the bottom of a 360° image, raise quality or use SAM3.1 prompts such as `tripod`, `hand`, or `selfie stick` to add those areas to the mask.

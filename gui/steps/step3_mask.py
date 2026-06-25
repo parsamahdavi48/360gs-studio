@@ -28,7 +28,7 @@ from core.mask_refresh_plan import (
     MASK_SCOPE_MISSING,
     MASK_SCOPE_STALE,
 )
-from core.sky_mask import CITYSCAPES_CLASS_NAMES
+from core.sky_mask import CITYSCAPES_CLASS_NAMES, DEFAULT_SEMANTIC_LABELS
 from gui import i18n
 from gui.common.collapsible_section import CollapsibleSection
 from gui.common.drag_spinbox import DragDoubleSpinBox, DragSpinBox
@@ -158,17 +158,7 @@ _SAM31_PROMPT_PRESETS: tuple[tuple[str, str], ...] = (
     ("cell phone", "スマホ"),
     ("car", "車"),
 )
-_SEMANTIC_DEFAULT_SELECTED_CLASSES = (
-    "sky",
-    "person",
-    "rider",
-    "car",
-    "truck",
-    "bus",
-    "train",
-    "motorcycle",
-    "bicycle",
-)
+_SEMANTIC_DEFAULT_SELECTED_CLASSES = frozenset(label.lower() for label in DEFAULT_SEMANTIC_LABELS)
 _OVEREXP_THRESHOLD_MIN = 1
 _OVEREXP_THRESHOLD_MAX = 254
 _OVEREXP_THRESHOLD_DEFAULT = 254

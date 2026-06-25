@@ -735,7 +735,8 @@ def test_mask_step_yolo26_sem_primary_builds_final_command(tmp_path: Path) -> No
     assert cmd[cmd.index("--projection") + 1] == "equirect"
     assert cmd[cmd.index("--quality") + 1] == "high"
     assert cmd[cmd.index("--inference-size") + 1] == "768"
-    assert cmd[cmd.index("--labels") + 1] == "sky,person,rider,car,truck,bus,train,motorcycle,bicycle"
+    assert step._selected_semantic_labels() == ["person", "sky"]
+    assert cmd[cmd.index("--labels") + 1] == "person,sky"
     assert "--replace" in cmd
 
 

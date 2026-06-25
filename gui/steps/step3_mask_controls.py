@@ -8,6 +8,7 @@ from pathlib import Path
 from PySide6.QtCore import Qt
 
 from core.mask_view_recipes import QUALITY_CHOICES
+from core.sky_mask import DEFAULT_SEMANTIC_LABELS
 from gui import i18n
 from gui.common import dialogs
 from gui.steps import mask_commands as mask_command_defs
@@ -36,12 +37,18 @@ class Step3MaskControlsMixin:
         return [i for i, cb in enumerate(self.class_cbs) if cb.isChecked()]
 
     def _selected_semantic_labels(self) -> list[str]:
-        labels = [
+        selected = {
             name.strip()
             for name, cb in zip(self.semantic_class_names, self.semantic_class_cbs, strict=True)
             if cb.isChecked()
-        ]
-        return [label for label in labels if label] or ["sky"]
+        }
+        labels = [label for label in DEFAULT_SEMANTIC_LABELS if label in selected]
+        labels.extend(
+            label
+            for label in (name.strip() for name in self.semantic_class_names)
+            if label in selected and label not in labels
+        )
+        return labels or list(DEFAULT_SEMANTIC_LABELS)
 
     _split_sam_prompt_text = staticmethod(split_sam_prompt_text)
 

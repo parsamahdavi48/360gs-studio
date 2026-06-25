@@ -99,7 +99,7 @@ CITYSCAPES_CLASS_NAMES: tuple[str, ...] = (
     "motorcycle",
     "bicycle",
 )
-DEFAULT_SEMANTIC_LABELS = ("sky",)
+DEFAULT_SEMANTIC_LABELS = ("person", "sky")
 CITYSCAPES_LABEL_ALIASES = {
     "trees": "vegetation",
     "tree": "vegetation",
