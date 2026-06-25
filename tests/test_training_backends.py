@@ -100,10 +100,12 @@ def test_lichtfeld_config_overrides_visible_training_parameters(tmp_path: Path) 
         iterations=46800,
         max_gaussians=5_000_000,
         sh_degree=2,
-        tile_mode=4,
         steps_scaler=1.56,
         bilateral_grid=True,
-        mask_mode="segment",
+        mask_mode="segment_and_ignore",
+        depth_loss=True,
+        depth_loss_mode="pearson",
+        depth_loss_weight=3.5,
         sparsity=True,
         gut=True,
         undistort=True,
@@ -125,10 +127,13 @@ def test_lichtfeld_config_overrides_visible_training_parameters(tmp_path: Path) 
     assert config["iterations"] == 30000
     assert config["max_cap"] == 5_000_000
     assert config["sh_degree"] == 2
-    assert config["tile_mode"] == 4
+    assert "tile_mode" not in config
     assert config["steps_scaler"] == pytest.approx(1.56)
     assert config["use_bilateral_grid"] is True
-    assert config["mask_mode"] == "segment"
+    assert config["mask_mode"] == "segment_and_ignore"
+    assert config["use_depth_loss"] is True
+    assert config["depth_loss_mode"] == "pearson"
+    assert config["depth_loss_weight"] == pytest.approx(3.5)
     assert config["enable_sparsity"] is True
     assert config["gut"] is True
     assert config["undistort"] is True
@@ -231,7 +236,6 @@ def test_lichtfeld_auto_steps_scaler_matches_image_count(tmp_path: Path) -> None
         iterations=46800,
         max_gaussians=5_000_000,
         sh_degree=3,
-        tile_mode=1,
         steps_scaler=9.99,
         image_count=468,
         auto_steps_scaler=True,
@@ -256,11 +260,10 @@ def test_lichtfeld_command_includes_dataset_cli_overrides(tmp_path: Path) -> Non
         iterations=30000,
         max_gaussians=5_000_000,
         sh_degree=3,
-        tile_mode=1,
         steps_scaler=1.0,
         output_name="scene_final.ply",
         dataset_resize_factor="2",
-        dataset_max_width=2048,
+        dataset_max_width=0,
         dataset_use_cpu_cache=False,
         dataset_use_fs_cache=False,
         dataset_test_every=12,
@@ -270,7 +273,7 @@ def test_lichtfeld_command_includes_dataset_cli_overrides(tmp_path: Path) -> Non
 
     assert cmd[cmd.index("--output-name") + 1] == "scene_final"
     assert cmd[cmd.index("--resize_factor") + 1] == "2"
-    assert cmd[cmd.index("--max-width") + 1] == "2048"
+    assert cmd[cmd.index("--max-width") + 1] == "0"
     assert "--no-cpu-cache" in cmd
     assert "--no-fs-cache" in cmd
     assert cmd[cmd.index("--test-every") + 1] == "12"
@@ -287,7 +290,6 @@ def test_lichtfeld_output_name_rejects_paths(tmp_path: Path) -> None:
         iterations=30000,
         max_gaussians=5_000_000,
         sh_degree=3,
-        tile_mode=1,
         steps_scaler=1.0,
         output_name="nested/final",
     )

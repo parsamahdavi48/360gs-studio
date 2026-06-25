@@ -106,10 +106,12 @@ class Step4TrainingLfsStateMixin:
             "iterations": self._format_lfs_int(defaults.get("iterations", 30000)),
             "max_gaussians": self._format_lfs_int(defaults.get("max_cap", 1_000_000)),
             "sh_degree": int(defaults.get("sh_degree", 3)),
-            "tile_mode": int(defaults.get("tile_mode", 1)),
             "steps_scaler": self._format_lfs_float("steps_scaler", defaults.get("steps_scaler", 1.0)),
             "bilateral_grid": bool(defaults.get("use_bilateral_grid", False)),
             "mask_mode": str(defaults.get("mask_mode", "none")),
+            "depth_loss": bool(defaults.get("use_depth_loss", False)),
+            "depth_loss_mode": str(defaults.get("depth_loss_mode", "adaptive-warped-l1")),
+            "depth_loss_weight": self._format_lfs_float("depth_loss_weight", defaults.get("depth_loss_weight", 2.0)),
             "invert_masks": bool(defaults.get("invert_masks", False)),
             "mask_threshold": self._format_lfs_float("mask_threshold", defaults.get("mask_threshold", 0.5)),
             "use_alpha_as_mask": bool(defaults.get("use_alpha_as_mask", True)),
@@ -160,10 +162,12 @@ class Step4TrainingLfsStateMixin:
             "iterations": self.lfs_iterations_edit.text().strip(),
             "max_gaussians": self.lfs_max_gaussians_edit.text().strip(),
             "sh_degree": int(self.lfs_sh_degree_combo.currentData()),
-            "tile_mode": int(self.lfs_tile_mode_combo.currentData()),
             "steps_scaler": self.lfs_steps_scaler_edit.text().strip(),
             "bilateral_grid": self.lfs_bilateral_grid_cb.isChecked(),
             "mask_mode": self.lfs_mask_mode_combo.currentData() or "none",
+            "depth_loss": self.lfs_depth_loss_cb.isChecked(),
+            "depth_loss_mode": self.lfs_depth_loss_mode_combo.currentData() or "adaptive-warped-l1",
+            "depth_loss_weight": self.lfs_depth_loss_weight_edit.text().strip(),
             "invert_masks": self.lfs_invert_masks_cb.isChecked(),
             "mask_threshold": self.lfs_mask_threshold_edit.text().strip(),
             "use_alpha_as_mask": self.lfs_use_alpha_as_mask_cb.isChecked(),
@@ -199,10 +203,12 @@ class Step4TrainingLfsStateMixin:
             self.lfs_iterations_edit.setText(str(state.get("iterations", "30,000")))
             self.lfs_max_gaussians_edit.setText(str(state.get("max_gaussians", "1,000,000")))
             self._set_combo_data(self.lfs_sh_degree_combo, int(state.get("sh_degree", 3)))
-            self._set_combo_data(self.lfs_tile_mode_combo, int(state.get("tile_mode", 1)))
             self.lfs_steps_scaler_edit.setText(str(state.get("steps_scaler", "1.00")))
             self.lfs_bilateral_grid_cb.setChecked(bool(state.get("bilateral_grid", False)))
             self._set_combo_data(self.lfs_mask_mode_combo, str(state.get("mask_mode", "none")))
+            self.lfs_depth_loss_cb.setChecked(bool(state.get("depth_loss", False)))
+            self._set_combo_data(self.lfs_depth_loss_mode_combo, str(state.get("depth_loss_mode", "adaptive-warped-l1")))
+            self.lfs_depth_loss_weight_edit.setText(str(state.get("depth_loss_weight", "2.000")))
             self.lfs_invert_masks_cb.setChecked(bool(state.get("invert_masks", False)))
             self.lfs_mask_threshold_edit.setText(str(state.get("mask_threshold", "0.500")))
             self.lfs_use_alpha_as_mask_cb.setChecked(bool(state.get("use_alpha_as_mask", True)))
@@ -390,12 +396,15 @@ class Step4TrainingLfsStateMixin:
 
         mask_mode = self.lfs_mask_mode_combo.currentData() or "none"
         has_mask = mask_mode != "none"
-        segment_mask = mask_mode == "segment"
+        segment_mask = mask_mode in {"segment", "segment_and_ignore"}
         self._set_lfs_form_row_visible(self.lfs_mask_invert_row, has_mask)
         self._set_lfs_form_row_visible(self.lfs_mask_threshold_row, has_mask)
         self._set_lfs_form_row_visible(self.lfs_use_alpha_as_mask_row, has_mask)
         self._set_lfs_form_row_visible(self.lfs_mask_opacity_penalty_weight_row, segment_mask)
         self._set_lfs_form_row_visible(self.lfs_mask_opacity_penalty_power_row, segment_mask)
+        depth_loss = self.lfs_depth_loss_cb.isChecked()
+        self._set_lfs_form_row_visible(self.lfs_depth_loss_mode_row, depth_loss)
+        self._set_lfs_form_row_visible(self.lfs_depth_loss_weight_row, depth_loss)
 
         ppisp = self.lfs_ppisp_cb.isChecked()
         ppisp_sidecar = ppisp and self.lfs_ppisp_freeze_from_sidecar_cb.isChecked()
@@ -413,7 +422,6 @@ class Step4TrainingLfsStateMixin:
         if is_igs and self.lfs_gut_cb.isChecked():
             self.lfs_gut_cb.setChecked(False)
         self.lfs_gut_cb.setEnabled(not is_igs)
-        self._set_lfs_form_row_visible(self.lfs_tile_mode_row, self.lfs_gut_cb.isChecked())
 
         self.lfs_advanced_sections["LFS_SECTION_BILATERAL"].setVisible(self.lfs_bilateral_grid_cb.isChecked())
         self.lfs_advanced_sections["LFS_SECTION_PRUNING_GROWING"].setVisible(is_igs)

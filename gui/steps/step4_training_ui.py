@@ -311,13 +311,6 @@ class Step4TrainingUiMixin:
         self.lfs_sh_degree_combo.setCurrentIndex(3)
         add_tooltip_row(form, i18n.t("LFS_SH_DEGREE"), self.lfs_sh_degree_combo, i18n.tip("LFS_SH_DEGREE"))
 
-        self.lfs_tile_mode_combo = QComboBox()
-        self.lfs_tile_mode_combo.addItem("1 (Full)", 1)
-        self.lfs_tile_mode_combo.addItem("2", 2)
-        self.lfs_tile_mode_combo.addItem("4", 4)
-        self.lfs_tile_mode_row = form.rowCount()
-        add_tooltip_row(form, i18n.t("LFS_TILE_MODE"), self.lfs_tile_mode_combo, i18n.tip("LFS_TILE_MODE"))
-
         self.lfs_steps_scaler_edit = QLineEdit("1.0")
         self.lfs_steps_scaler_edit.setFixedWidth(72)
         self.lfs_steps_scaler_edit.setToolTip(i18n.tip("LFS_STEPS_SCALER"))
@@ -349,8 +342,32 @@ class Step4TrainingUiMixin:
         self.lfs_mask_mode_combo.addItem("None", "none")
         self.lfs_mask_mode_combo.addItem("Segment", "segment")
         self.lfs_mask_mode_combo.addItem("Ignore", "ignore")
+        self.lfs_mask_mode_combo.addItem("Segment + Ignore", "segment_and_ignore")
         self.lfs_mask_mode_combo.addItem("Alpha Consistent", "alpha_consistent")
         add_tooltip_row(form, i18n.t("LFS_MASK_MODE"), self.lfs_mask_mode_combo, i18n.tip("LFS_MASK_MODE"))
+
+        self.lfs_depth_loss_cb = QCheckBox()
+        self.lfs_depth_loss_row = form.rowCount()
+        add_tooltip_row(form, i18n.t("LFS_DEPTH_LOSS"), self.lfs_depth_loss_cb, i18n.tip("LFS_DEPTH_LOSS"))
+        self.lfs_depth_loss_mode_combo = QComboBox()
+        self.lfs_depth_loss_mode_combo.addItem("Pearson Correlation", "pearson")
+        self.lfs_depth_loss_mode_combo.addItem("Adaptive Warped L1", "adaptive-warped-l1")
+        self.lfs_depth_loss_mode_row = form.rowCount()
+        add_tooltip_row(
+            form,
+            i18n.t("LFS_DEPTH_LOSS_MODE"),
+            self.lfs_depth_loss_mode_combo,
+            i18n.tip("LFS_DEPTH_LOSS_MODE"),
+        )
+        self.lfs_depth_loss_weight_edit = QLineEdit("2.000")
+        self.lfs_depth_loss_weight_edit.setFixedWidth(_LFS_ADVANCED_FIELD_WIDTHS.get("depth_loss_weight", 86))
+        self.lfs_depth_loss_weight_row = form.rowCount()
+        add_tooltip_row(
+            form,
+            i18n.t("LFS_DEPTH_LOSS_WEIGHT"),
+            self.lfs_depth_loss_weight_edit,
+            i18n.tip("LFS_DEPTH_LOSS_WEIGHT"),
+        )
 
         self.lfs_mask_invert_row = form.rowCount()
         self.lfs_invert_masks_cb = QCheckBox()
@@ -680,6 +697,7 @@ class Step4TrainingUiMixin:
         self.lfs_steps_scaler_edit.editingFinished.connect(self._on_lfs_steps_scaler_editing_finished)
         self.lfs_bilateral_grid_cb.toggled.connect(lambda _checked: self._update_lfs_conditional_visibility())
         self.lfs_mask_mode_combo.currentIndexChanged.connect(lambda _idx: self._update_lfs_conditional_visibility())
+        self.lfs_depth_loss_cb.toggled.connect(lambda _checked: self._update_lfs_conditional_visibility())
         self.lfs_sparsity_cb.toggled.connect(lambda _checked: self._update_lfs_conditional_visibility())
         self.lfs_gut_cb.toggled.connect(self._on_lfs_gut_changed)
         self.lfs_ppisp_cb.toggled.connect(lambda _checked: self._update_lfs_conditional_visibility())

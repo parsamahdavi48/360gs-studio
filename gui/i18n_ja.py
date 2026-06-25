@@ -803,10 +803,12 @@ STRINGS: dict[str, str] = {
     "LFS_MAX_GAUSSIANS": "Max Gaussians",
     "LFS_OUTPUT_PLY_NAME": "出力PLY名",
     "LFS_SH_DEGREE": "SH Degree",
-    "LFS_TILE_MODE": "Tile Mode",
     "LFS_STEPS_SCALER": "Steps Scaler",
     "LFS_BILATERAL_GRID": "Bilateral Grid",
     "LFS_MASK_MODE": "Mask Mode",
+    "LFS_DEPTH_LOSS": "Depth Loss",
+    "LFS_DEPTH_LOSS_MODE": "Depth Mode",
+    "LFS_DEPTH_LOSS_WEIGHT": "Depth Weight",
     "LFS_SPARSITY": "Sparsity",
     "LFS_GUT": "GUT",
     "LFS_UNDISTORT": "Undistort",
@@ -1500,13 +1502,16 @@ TIPS: dict[str, str] = {
     "LFS_MAX_GAUSSIANS": "生成するGaussian数の上限。高解像・大規模シーンでは増やす余地がありますが、VRAM使用量も増えます",
     "LFS_OUTPUT_PLY_NAME": "LichtFeldが最終保存するPLYのファイル名です。拡張子 .ply は自動で付くため、入力しても重複しないように除去して渡します",
     "LFS_SH_DEGREE": "球面調和関数の次数。通常は3。低くすると軽くなりますが、見た目の表現力は下がります",
-    "LFS_TILE_MODE": "画像を分割して処理する方式。1はFull。VRAMが厳しい場合に大きい値を試します",
     "LFS_STEPS_SCALER": "LichtFeld側のスケジュール全体に掛ける倍率。Autoでは出力されるトレーニング画像数から、300枚以下は1.0、超過時は画像数/300で計算します",
     "LFS_STEPS_SCALER_AUTO": "出力されるトレーニング画像数からSteps Scalerを自動計算します。LichtFeld StudioのGUIでデータセット読み込み時に行われる調整と同じ基準です",
     "LFS_MASK_MODE": (
         "標準のマスク値は白=使用、黒=背景/除外対象。None: 不使用。Ignore: 黒を色の学習から除外。"
-        "Alpha Consistent: アルファ値に生成結果の透明度を合わせる。Segment: 黒を除外し透明側へ寄せる"
+        "Segment + Ignore: SegmentとIgnoreを併用。Alpha Consistent: アルファ値に生成結果の透明度を合わせる。"
+        "Segment: 黒を除外し透明側へ寄せる"
     ),
+    "LFS_DEPTH_LOSS": "データセット内のdepth mapsを読み込み、深度マップの教師信号として使います",
+    "LFS_DEPTH_LOSS_MODE": "深度マップに使う深度教師Lossです",
+    "LFS_DEPTH_LOSS_WEIGHT": "深度マップLossに掛ける重みです",
     "LFS_INVERT_MASKS": "白黒の意味を反転します。黒=使用、白=背景/除外対象のマスクを使う場合だけONにします",
     "LFS_BILATERAL_GRID": "LichtFeldのBilateral Grid補正を有効にします。露出や色の差が目立つ場合に試します",
     "LFS_BG_MODE": "トレーニング時の背景の扱いを選びます。通常はColorの黒から始めます",
@@ -1685,7 +1690,7 @@ TIPS.update(
         "LFS_MEANS_LR": "Gaussian位置の動きやすさです。大きいと形が早く合いますが、ふらつきやノイズが出やすくなります",
         "LFS_MEANS_LR_END": "終盤の位置調整の小ささです。低いほど最後は安定しますが、終盤の修正力は弱くなります",
         "LFS_RESIZE_FACTOR": "入力画像を読み込み時だけ縦横で割ります。元画像は変えずにVRAMと時間を減らせますが、細部解像は下がります",
-        "LFS_MAX_WIDTH": "読み込み時の画像長辺上限です。大きい画像だけ抑えられるため、VRAM不足時に画質低下を限定しやすい設定です",
+        "LFS_MAX_WIDTH": "読み込み時の画像長辺上限です。大きい画像だけ抑えられるため、VRAM不足時に画質低下を限定しやすい設定です。0は制限なしです",
         "LFS_CPU_CACHE": "読み込んだ画像をメモリに保持して再利用します。再読み込みが速くなりますが、PC本体のメモリ使用量が増えます",
         "LFS_FS_CACHE": "縮小済み画像をディスク側に保持して再利用します。次回以降が速くなりますが、作業フォルダの容量を使います",
         "LFS_TEST_EVERY": "評価用に取り分ける画像間隔です。小さいほど評価は増えますが、学習に使う画像が減り、処理時間も増えます",

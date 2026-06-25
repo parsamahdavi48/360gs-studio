@@ -124,9 +124,11 @@ def test_lfs_mask_mode_tooltip_guides_app_generated_masks() -> None:
     assert "通常はNone" not in ja_tip
     assert "標準のマスク値は白=使用、黒=背景/除外対象" in ja_tip
     assert "Ignore" in ja_tip
+    assert "Segment + Ignore" in ja_tip
     assert "色の学習から除外" in ja_tip
     assert "アルファ値に生成結果の透明度を合わせる" in ja_tip
     assert "Standard mask values are white=used and black=background/exclusion target" in en_tip
+    assert "Segment + Ignore" in en_tip
     assert "exclude black from color training" in en_tip
     assert "match rendered opacity to alpha values" in en_tip
 
@@ -821,6 +823,9 @@ def test_cubemap_labels_share_field_tooltips() -> None:
         (step.lfs_use_alpha_as_mask_cb, "LFS_USE_ALPHA_AS_MASK"),
         (step.lfs_mask_opacity_penalty_weight_edit, "LFS_MASK_OPACITY_PENALTY_WEIGHT"),
         (step.lfs_mask_opacity_penalty_power_edit, "LFS_MASK_OPACITY_PENALTY_POWER"),
+        (step.lfs_depth_loss_cb, "LFS_DEPTH_LOSS"),
+        (step.lfs_depth_loss_mode_combo, "LFS_DEPTH_LOSS_MODE"),
+        (step.lfs_depth_loss_weight_edit, "LFS_DEPTH_LOSS_WEIGHT"),
         (step.lfs_ppisp_freeze_from_sidecar_cb, "LFS_PPISP_FREEZE_FROM_SIDECAR"),
         (step.lfs_ppisp_sidecar_browse, "LFS_PPISP_SIDECAR_PATH"),
         (step.lfs_ppisp_use_controller_cb, "LFS_PPISP_USE_CONTROLLER"),

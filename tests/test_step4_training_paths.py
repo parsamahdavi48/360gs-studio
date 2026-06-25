@@ -229,9 +229,16 @@ def test_step5_launch_builds_lichtfeld_command_and_writes_config(tmp_path: Path)
     step.lfs_iterations_edit.setText("46,700")
     step.lfs_max_gaussians_edit.setText("5,000,000")
     step.lfs_bilateral_grid_cb.setChecked(True)
-    mask_mode_idx = step.lfs_mask_mode_combo.findData("ignore")
+    mask_mode_idx = step.lfs_mask_mode_combo.findData("segment_and_ignore")
     assert mask_mode_idx >= 0
     step.lfs_mask_mode_combo.setCurrentIndex(mask_mode_idx)
+    step.lfs_mask_opacity_penalty_weight_edit.setText("1.250")
+    step.lfs_mask_opacity_penalty_power_edit.setText("2.500")
+    step.lfs_depth_loss_cb.setChecked(True)
+    depth_mode_idx = step.lfs_depth_loss_mode_combo.findData("pearson")
+    assert depth_mode_idx >= 0
+    step.lfs_depth_loss_mode_combo.setCurrentIndex(depth_mode_idx)
+    step.lfs_depth_loss_weight_edit.setText("3.500")
     step.lfs_invert_masks_cb.setChecked(True)
     step.lfs_mask_threshold_edit.setText("0.250")
     step.lfs_use_alpha_as_mask_cb.setChecked(False)
@@ -292,13 +299,18 @@ def test_step5_launch_builds_lichtfeld_command_and_writes_config(tmp_path: Path)
     assert config["iterations"] == 29936
     assert config["max_cap"] == 5_000_000
     assert config["sh_degree"] == 3
-    assert config["tile_mode"] == 1
+    assert "tile_mode" not in config
     assert config["steps_scaler"] == pytest.approx(1.56)
     assert config["use_bilateral_grid"] is True
-    assert config["mask_mode"] == "ignore"
+    assert config["mask_mode"] == "segment_and_ignore"
     assert config["invert_masks"] is True
     assert config["mask_threshold"] == pytest.approx(0.25)
     assert config["use_alpha_as_mask"] is False
+    assert config["mask_opacity_penalty_weight"] == pytest.approx(1.25)
+    assert config["mask_opacity_penalty_power"] == pytest.approx(2.5)
+    assert config["use_depth_loss"] is True
+    assert config["depth_loss_mode"] == "pearson"
+    assert config["depth_loss_weight"] == pytest.approx(3.5)
     assert config["use_ppisp"] is True
     assert config["ppisp_freeze_from_sidecar"] is True
     assert config["ppisp_sidecar_path"] == str(tmp_path / "frozen.ppisp")

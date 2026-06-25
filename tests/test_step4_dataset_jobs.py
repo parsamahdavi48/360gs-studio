@@ -820,7 +820,6 @@ def test_lichtfeld_advanced_parameters_are_nested_collapsible_sections(tmp_path:
     assert not step.lfs_advanced_sections["LFS_SECTION_MRNF"].isHidden()
     assert step.lfs_advanced_sections["LFS_SECTION_SPARSITY"].isHidden()
     assert step.lfs_advanced_edits["init_num_pts"].isHidden()
-    assert step.lfs_tile_mode_combo.isHidden()
 
     step.lfs_bilateral_grid_cb.setChecked(True)
     step.lfs_sparsity_cb.setChecked(True)
@@ -832,7 +831,6 @@ def test_lichtfeld_advanced_parameters_are_nested_collapsible_sections(tmp_path:
     assert not step.lfs_advanced_sections["LFS_SECTION_SPARSITY"].isHidden()
     assert not step.lfs_advanced_edits["init_num_pts"].isHidden()
     assert not step.lfs_dataset_test_every_edit.isHidden()
-    assert not step.lfs_tile_mode_combo.isHidden()
 
     igs_idx = step.lfs_strategy_combo.findData("igs+")
     assert igs_idx >= 0
@@ -844,7 +842,6 @@ def test_lichtfeld_advanced_parameters_are_nested_collapsible_sections(tmp_path:
     assert not step.lfs_advanced_edits["prune_opacity"].isHidden()
     assert step.lfs_gut_cb.isChecked() is False
     assert step.lfs_gut_cb.isEnabled() is False
-    assert step.lfs_tile_mode_combo.isHidden()
 
 
 def test_lichtfeld_basic_conditional_parameters_follow_source_visibility(tmp_path: Path) -> None:
@@ -855,6 +852,8 @@ def test_lichtfeld_basic_conditional_parameters_follow_source_visibility(tmp_pat
     assert step.lfs_use_alpha_as_mask_cb.isHidden()
     assert step.lfs_mask_opacity_penalty_weight_edit.isHidden()
     assert step.lfs_mask_opacity_penalty_power_edit.isHidden()
+    assert step.lfs_depth_loss_mode_combo.isHidden()
+    assert step.lfs_depth_loss_weight_edit.isHidden()
     assert step.lfs_ppisp_freeze_from_sidecar_cb.isHidden()
     assert step.lfs_ppisp_sidecar_browse.isHidden()
     assert step.lfs_ppisp_use_controller_cb.isHidden()
@@ -876,6 +875,18 @@ def test_lichtfeld_basic_conditional_parameters_follow_source_visibility(tmp_pat
 
     assert not step.lfs_mask_opacity_penalty_weight_edit.isHidden()
     assert not step.lfs_mask_opacity_penalty_power_edit.isHidden()
+
+    segment_ignore_idx = step.lfs_mask_mode_combo.findData("segment_and_ignore")
+    assert segment_ignore_idx >= 0
+    step.lfs_mask_mode_combo.setCurrentIndex(segment_ignore_idx)
+
+    assert not step.lfs_mask_opacity_penalty_weight_edit.isHidden()
+    assert not step.lfs_mask_opacity_penalty_power_edit.isHidden()
+
+    step.lfs_depth_loss_cb.setChecked(True)
+
+    assert not step.lfs_depth_loss_mode_combo.isHidden()
+    assert not step.lfs_depth_loss_weight_edit.isHidden()
 
     step.lfs_ppisp_cb.setChecked(True)
 

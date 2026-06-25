@@ -160,7 +160,7 @@ If the scene folder path contains non-ASCII characters, an extremely long path, 
 
 This app does not bundle LichtFeld Studio, Postshot, Brush, or gsplat itself. Step 6 is a launcher for passing the Step 5 dataset to training apps or Python environments that you provide.
 
-- LichtFeld Studio: use a v0.5.2-compatible CLI from the official build or from your own build.
+- LichtFeld Studio: use a v0.5.3-compatible CLI from the official build or from your own build.
 - Postshot: use a Release Build that includes `postshot-cli.exe`, matching the v1.0/v1.1 CLI behavior.
 - Brush: select a `brush.exe` from GitHub Releases or your own local build.
 - gsplat: this is not an EXE app. Prepare a Python environment with gsplat and the dependencies for `examples/simple_trainer.py`, then select that `python.exe` and the `simple_trainer.py` script in Step 6.
@@ -179,7 +179,7 @@ The main output of this app is the 3DGS dataset created in Step 5. Open the Step
 | Metashape + COLMAP | `output/metashape_colmap/` |
 | RealityScan + LichtFeld COLMAP | `output/realityscan/lfs_colmap/` |
 
-Step 6 is a launch shortcut for training apps that provide a compatible CLI. With a LichtFeld Studio v0.5.2-compatible CLI, Postshot v1.0/v1.1 Release Build CLI, Brush CLI, or gsplat Python trainer, the GUI can build the command for repeat runs or headless training. If you are not using CLI training, load the Step 5 output dataset directly in the training app.
+Step 6 is a launch shortcut for training apps that provide a compatible CLI. With a LichtFeld Studio v0.5.3-compatible CLI, Postshot v1.0/v1.1 Release Build CLI, Brush CLI, or gsplat Python trainer, the GUI can build the command for repeat runs or headless training. If you are not using CLI training, load the Step 5 output dataset directly in the training app.
 
 Detailed GUI docs:
 

@@ -184,6 +184,16 @@ class Step4TrainingCommandsMixin:
         add_bool("invert_masks", self.lfs_invert_masks_cb.isChecked())
         add_float("mask_threshold", self.lfs_mask_threshold_edit, i18n.t("LFS_MASK_THRESHOLD"))
         add_bool("use_alpha_as_mask", self.lfs_use_alpha_as_mask_cb.isChecked())
+        add_bool("use_depth_loss", self.lfs_depth_loss_cb.isChecked(), state_key="depth_loss")
+        depth_loss_mode = self.lfs_depth_loss_mode_combo.currentData() or "adaptive-warped-l1"
+        if depth_loss_mode != str(default_state.get("depth_loss_mode", "adaptive-warped-l1")):
+            overrides["depth_loss_mode"] = depth_loss_mode
+        add_float(
+            "depth_loss_weight",
+            self.lfs_depth_loss_weight_edit,
+            i18n.t("LFS_DEPTH_LOSS_WEIGHT"),
+            state_key="depth_loss_weight",
+        )
         add_float(
             "mask_opacity_penalty_weight",
             self.lfs_mask_opacity_penalty_weight_edit,
@@ -494,7 +504,7 @@ class Step4TrainingCommandsMixin:
                 self._guard_training_output_target(output_dir / f"{lfs_output_stem}.ppisp")
 
         lfs_dataset_resize_factor = self.lfs_dataset_resize_factor_combo.currentData()
-        lfs_dataset_max_width = self._parse_positive_int(self.lfs_dataset_max_width_edit, i18n.t("LFS_MAX_WIDTH"))
+        lfs_dataset_max_width = self._parse_nonnegative_int(self.lfs_dataset_max_width_edit, i18n.t("LFS_MAX_WIDTH"))
         lfs_dataset_test_every = (
             self._parse_positive_int(self.lfs_dataset_test_every_edit, i18n.t("LFS_TEST_EVERY"))
             if self.lfs_advanced_checks["enable_eval"].isChecked()
@@ -511,12 +521,17 @@ class Step4TrainingCommandsMixin:
                 iterations=self._parse_positive_int(self.lfs_iterations_edit, i18n.t("LFS_ITERATIONS")),
                 max_gaussians=self._parse_positive_int(self.lfs_max_gaussians_edit, i18n.t("LFS_MAX_GAUSSIANS")),
                 sh_degree=int(self.lfs_sh_degree_combo.currentData()),
-                tile_mode=int(self.lfs_tile_mode_combo.currentData()),
                 steps_scaler=self._parse_float(self.lfs_steps_scaler_edit, i18n.t("LFS_STEPS_SCALER")),
                 image_count=self._training_image_count(dataset),
                 auto_steps_scaler=self.lfs_auto_steps_scaler_cb.isChecked(),
                 bilateral_grid=self.lfs_bilateral_grid_cb.isChecked(),
                 mask_mode=self.lfs_mask_mode_combo.currentData() or "none",
+                depth_loss=self.lfs_depth_loss_cb.isChecked(),
+                depth_loss_mode=self.lfs_depth_loss_mode_combo.currentData() or "adaptive-warped-l1",
+                depth_loss_weight=self._parse_float(
+                    self.lfs_depth_loss_weight_edit,
+                    i18n.t("LFS_DEPTH_LOSS_WEIGHT"),
+                ),
                 sparsity=self.lfs_sparsity_cb.isChecked(),
                 gut=self.lfs_gut_cb.isChecked(),
                 undistort=self.lfs_undistort_cb.isChecked(),

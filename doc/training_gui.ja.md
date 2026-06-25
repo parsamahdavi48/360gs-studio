@@ -13,7 +13,7 @@ Step 5の出力は、下流の3DGSアプリに渡すためのデータセット�
 | 学習アプリで直接読み込む | 初回確認、見た目を確認しながらの調整、学習アプリ固有の設定を細かく使う場合 |
 | Step 6からCLI起動する | 対応CLIで同じ条件を再実行したい場合、ヘッドレスで学習を走らせたい場合 |
 
-Step 6のCLI実行は、LichtFeld Studio v0.5.2互換CLI、Postshot v1.0/v1.1 Release BuildのCLI、Brush CLI、gsplat `examples/simple_trainer.py` を目安にしています。CLIを使わない場合でも、Step 5の出力データセットは各学習アプリで直接使えます。
+Step 6のCLI実行は、LichtFeld Studio v0.5.3互換CLI、Postshot v1.0/v1.1 Release BuildのCLI、Brush CLI、gsplat `examples/simple_trainer.py` を目安にしています。CLIを使わない場合でも、Step 5の出力データセットは各学習アプリで直接使えます。
 
 `COLMAP RIG → NeRFデータセット(JSON/PLY)` で作成したNerfstudio用データセットは、Nerfstudio側で直接開くか学習に使います。Step 6からNerfstudioは起動しません。
 
@@ -23,7 +23,7 @@ Step 6のCLI実行は、LichtFeld Studio v0.5.2互換CLI、Postshot v1.0/v1.1 Re
 
 | 実行アプリ | 用意するもの |
 | --- | --- |
-| LichtFeld Studio | v0.5.2互換CLIを使えるLichtFeld Studio。公式配布版、または自分でビルドしたものを指定します。 |
+| LichtFeld Studio | v0.5.3互換CLIを使えるLichtFeld Studio。公式配布版、または自分でビルドしたものを指定します。 |
 | Postshot | `postshot-cli.exe` を含むPostshot Release Build。 |
 | Brush | GitHub Releasesなどから入手した `brush.exe`、または自分でビルドした `brush.exe`。 |
 | gsplat | gsplatと `examples/simple_trainer.py` の依存関係が入ったPython環境。画面では、その環境の `python.exe` とgsplatリポジトリ内の `simple_trainer.py` を指定します。 |
@@ -112,7 +112,7 @@ LichtFeldの最終PLY、Postshotの `.psht`、Brushの最終PLY、gsplatの結�
 
 LichtFeld Studioでは、データセット、出力先、学習設定を指定して学習を開始します。
 
-Step 6からCLI起動する場合は、v0.5.2互換のLichtFeld Studio CLIを目安にします。学習設定をLichtFeld Studio側で確認しながら進めたい場合は、Step 5で作成したCubemapデータまたはERP 360° / GUTデータをLichtFeld Studioで直接読み込んでください。
+Step 6からCLI起動する場合は、v0.5.3互換のLichtFeld Studio CLIを目安にします。学習設定をLichtFeld Studio側で確認しながら進めたい場合は、Step 5で作成したCubemapデータまたはERP 360° / GUTデータをLichtFeld Studioで直接読み込んでください。
 
 ### まず確認する項目
 
@@ -123,9 +123,12 @@ Step 6からCLI起動する場合は、v0.5.2互換のLichtFeld Studio CLIを目
 | `Max Gaussians` | ガウシアン数の上限です。品質とVRAM/速度のバランスに効きます。 |
 | `出力PLY名` | LichtFeldが保存するPLY名です。既定ではシーンフォルダ名になります。 |
 | `SH Degree` | 通常は3です。軽量化したい場合だけ下げます。 |
-| `Tile Mode` | VRAMや速度に合わせて調整します。 |
 | `Steps Scaler` | `Auto` ではデータセット画像数から自動計算します。 |
+| `Bilateral Grid` | LichtFeldの色/露出補正グリッドを有効にします。画像ごとの見た目差が大きい場合に試します。 |
+| `Mask Mode` | マスクと狙う結果に合わせて `None`、`Segment`、`Ignore`、`Segment + Ignore`、`Alpha Consistent` を選びます。 |
+| `Depth Loss` | データセット内のdepth mapsを読み込み、深度マップの教師信号を加えます。ON時に `Depth Mode` と `Depth Weight` を指定します。 |
 | `GUT` | ERP 360°画像を直接使うGUT用データのときだけONにします。 |
+| `Max Width` | データセット読み込み時の長辺上限です。v0.5.3互換CLIでは `0` で制限なしにできます。 |
 
 ### Cubemapデータを学習する場合
 

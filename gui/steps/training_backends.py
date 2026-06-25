@@ -7,8 +7,8 @@ from dataclasses import dataclass
 from pathlib import Path
 
 _LICHTFELD_REQUIRED_STRATEGIES = {"mrnf", "mcmc", "igs+"}
-_LICHTFELD_MASK_MODES = {"none", "segment", "ignore", "alpha_consistent"}
-_LICHTFELD_TILE_MODES = {1, 2, 4}
+_LICHTFELD_MASK_MODES = {"none", "segment", "ignore", "segment_and_ignore", "alpha_consistent"}
+_LICHTFELD_DEPTH_LOSS_MODES = {"pearson", "adaptive-warped-l1"}
 _LICHTFELD_BG_MODES = {"solid_color", "modulation", "image", "random"}
 _POSTSHOT_PROFILES = {"Splat ADC", "Splat MCMC", "Splat3"}
 _POSTSHOT_IMAGE_SELECT_MODES = {"all", "best"}
@@ -79,8 +79,10 @@ def _base_defaults() -> dict:
         "random": False,
         "init_num_pts": 100000,
         "init_extent": 3.0,
-        "tile_mode": 1,
         "mask_mode": "none",
+        "use_depth_loss": False,
+        "depth_loss_mode": "adaptive-warped-l1",
+        "depth_loss_weight": 2.0,
         "invert_masks": False,
         "mask_opacity_penalty_weight": 1.0,
         "mask_opacity_penalty_power": 2.0,
@@ -228,13 +230,15 @@ class LichtFeldTrainingOptions:
     iterations: int
     max_gaussians: int
     sh_degree: int
-    tile_mode: int
     steps_scaler: float
     output_name: str = ""
     image_count: int | None = None
     auto_steps_scaler: bool = False
     bilateral_grid: bool = False
     mask_mode: str = "none"
+    depth_loss: bool = False
+    depth_loss_mode: str = "adaptive-warped-l1"
+    depth_loss_weight: float = 2.0
     sparsity: bool = False
     gut: bool = False
     undistort: bool = False
@@ -325,10 +329,12 @@ def build_lichtfeld_config(options: LichtFeldTrainingOptions) -> dict:
     strategy = options.strategy.lower().strip()
     if strategy not in _LICHTFELD_REQUIRED_STRATEGIES:
         raise ValueError(f"Unsupported LichtFeld strategy: {options.strategy}")
-    if options.tile_mode not in _LICHTFELD_TILE_MODES:
-        raise ValueError("LichtFeld tile mode must be 1, 2, or 4")
     if options.mask_mode not in _LICHTFELD_MASK_MODES:
         raise ValueError(f"Unsupported LichtFeld mask mode: {options.mask_mode}")
+    if options.depth_loss_mode not in _LICHTFELD_DEPTH_LOSS_MODES:
+        raise ValueError(f"Unsupported LichtFeld depth loss mode: {options.depth_loss_mode}")
+    if not math.isfinite(options.depth_loss_weight) or options.depth_loss_weight < 0.0:
+        raise ValueError("LichtFeld depth loss weight must be a finite value greater than or equal to 0")
     if strategy == "igs+" and options.gut:
         raise ValueError("LichtFeld igs+ strategy cannot be used with GUT")
     if options.iterations <= 0:
@@ -368,10 +374,12 @@ def build_lichtfeld_config(options: LichtFeldTrainingOptions) -> dict:
             "iterations": config_iterations,
             "max_cap": int(options.max_gaussians),
             "sh_degree": int(options.sh_degree),
-            "tile_mode": int(options.tile_mode),
             "steps_scaler": float(steps_scaler),
             "use_bilateral_grid": bool(options.bilateral_grid),
             "mask_mode": options.mask_mode,
+            "use_depth_loss": bool(options.depth_loss),
+            "depth_loss_mode": options.depth_loss_mode,
+            "depth_loss_weight": float(options.depth_loss_weight),
             "enable_sparsity": bool(options.sparsity),
             "gut": bool(options.gut),
             "undistort": bool(options.undistort),
@@ -436,8 +444,8 @@ def build_lichtfeld_training_cmd(options: LichtFeldTrainingOptions) -> list[str]
     if options.dataset_resize_factor:
         cmd.extend(["--resize_factor", options.dataset_resize_factor])
     if options.dataset_max_width is not None:
-        if options.dataset_max_width <= 0 or options.dataset_max_width > 4096:
-            raise ValueError("LichtFeld max width must be between 1 and 4096")
+        if options.dataset_max_width < 0 or options.dataset_max_width > 4096:
+            raise ValueError("LichtFeld max width must be between 0 and 4096")
         cmd.extend(["--max-width", str(options.dataset_max_width)])
     if not options.dataset_use_cpu_cache:
         cmd.append("--no-cpu-cache")

@@ -13,7 +13,7 @@ The Step 5 output is the dataset intended for downstream 3DGS apps. Open the mat
 | Open the dataset in the training app | First checks, visual tuning, app-specific training settings |
 | Launch from Step 6 | Repeatable CLI runs and headless training |
 
-Step 6 CLI launch targets a LichtFeld Studio v0.5.2-compatible CLI, the Postshot v1.0/v1.1 Release Build CLI, Brush CLI, and gsplat `examples/simple_trainer.py`. If you are not using CLI training, the Step 5 output dataset remains ready to open directly in each training app.
+Step 6 CLI launch targets a LichtFeld Studio v0.5.3-compatible CLI, the Postshot v1.0/v1.1 Release Build CLI, Brush CLI, and gsplat `examples/simple_trainer.py`. If you are not using CLI training, the Step 5 output dataset remains ready to open directly in each training app.
 
 Nerfstudio datasets created by `COLMAP RIG -> NeRF Dataset (JSON/PLY)` are intended to be opened or trained from Nerfstudio itself. Step 6 does not launch Nerfstudio.
 
@@ -23,7 +23,7 @@ This screen does not install the training app itself or a gsplat Python environm
 
 | Training app | What to provide |
 | --- | --- |
-| LichtFeld Studio | A LichtFeld Studio install with a v0.5.2-compatible CLI, from the official build or your own build. |
+| LichtFeld Studio | A LichtFeld Studio install with a v0.5.3-compatible CLI, from the official build or your own build. |
 | Postshot | A Postshot Release Build that includes `postshot-cli.exe`. |
 | Brush | A `brush.exe` from GitHub Releases or your own local build. |
 | gsplat | A Python environment with gsplat and the dependencies for `examples/simple_trainer.py`. In this screen, select that environment's `python.exe` and the `simple_trainer.py` script from the gsplat repository. |
@@ -112,7 +112,7 @@ If the final LichtFeld PLY, Postshot `.psht`, Brush final PLY, gsplat result fol
 
 For LichtFeld Studio, Step 6 starts training with the selected dataset, output folder, and training settings.
 
-For CLI launch from Step 6, use a LichtFeld Studio v0.5.2-compatible CLI as the baseline. If you want to review training settings inside LichtFeld Studio, open the cubemap or ERP 360° / GUT dataset created in Step 5 directly in LichtFeld Studio.
+For CLI launch from Step 6, use a LichtFeld Studio v0.5.3-compatible CLI as the baseline. If you want to review training settings inside LichtFeld Studio, open the cubemap or ERP 360° / GUT dataset created in Step 5 directly in LichtFeld Studio.
 
 ### Main Settings
 
@@ -123,9 +123,12 @@ For CLI launch from Step 6, use a LichtFeld Studio v0.5.2-compatible CLI as the 
 | `Max Gaussians` | Upper limit for gaussian count. It affects quality, VRAM, and speed. |
 | `Output PLY Name` | File name LichtFeld writes. It defaults to the scene folder name. |
 | `SH Degree` | Usually 3. Lower it only for lighter tests. |
-| `Tile Mode` | Adjust for VRAM and speed. |
 | `Steps Scaler` | `Auto` computes the multiplier from the dataset image count. |
+| `Bilateral Grid` | Enables LichtFeld's color/exposure correction grid. Try it when image appearance varies. |
+| `Mask Mode` | Choose `None`, `Segment`, `Ignore`, `Segment + Ignore`, or `Alpha Consistent` to match the masks and result you want. |
+| `Depth Loss` | Loads dataset depth maps and adds depth-map supervision. Choose `Depth Mode` and `Depth Weight` when enabled. |
 | `GUT` | Turn this on only for GUT datasets that use ERP 360° images directly. |
+| `Max Width` | Dataset load-time long-edge cap. The v0.5.3-compatible CLI accepts `0` for no cap. |
 
 ### Training Cubemap Data
 

@@ -799,10 +799,12 @@ STRINGS: dict[str, str] = {
     "LFS_MAX_GAUSSIANS": "Max Gaussians",
     "LFS_OUTPUT_PLY_NAME": "Output PLY Name",
     "LFS_SH_DEGREE": "SH Degree",
-    "LFS_TILE_MODE": "Tile Mode",
     "LFS_STEPS_SCALER": "Steps Scaler",
     "LFS_BILATERAL_GRID": "Bilateral Grid",
     "LFS_MASK_MODE": "Mask Mode",
+    "LFS_DEPTH_LOSS": "Depth Loss",
+    "LFS_DEPTH_LOSS_MODE": "Depth Mode",
+    "LFS_DEPTH_LOSS_WEIGHT": "Depth Weight",
     "LFS_SPARSITY": "Sparsity",
     "LFS_GUT": "GUT",
     "LFS_UNDISTORT": "Undistort",
@@ -1500,13 +1502,16 @@ TIPS: dict[str, str] = {
     "LFS_MAX_GAUSSIANS": "Upper limit for generated Gaussians. Larger scenes may benefit from more, but VRAM use also rises.",
     "LFS_OUTPUT_PLY_NAME": "Final PLY file name written by LichtFeld. The .ply extension is added automatically; if entered here it is stripped before launching the CLI.",
     "LFS_SH_DEGREE": "Spherical harmonics degree. 3 is the normal quality setting. Lower values are lighter but less expressive.",
-    "LFS_TILE_MODE": "Image tiling mode. 1 means Full. Try larger values when VRAM is tight.",
     "LFS_STEPS_SCALER": "Multiplier for LichtFeld's training schedule. Auto uses the emitted training image count: 1.0 for up to 300 images, then image_count/300.",
     "LFS_STEPS_SCALER_AUTO": "Compute Steps Scaler from the emitted training image count, matching the adjustment LichtFeld Studio applies when a dataset is loaded in its GUI.",
     "LFS_MASK_MODE": (
         "Standard mask values are white=used and black=background/exclusion target. None: no masks. Ignore: exclude black from color training. "
-        "Alpha Consistent: match rendered opacity to alpha values. Segment: exclude black and push it toward transparent."
+        "Segment + Ignore: combine Segment and Ignore. Alpha Consistent: match rendered opacity to alpha values. "
+        "Segment: exclude black and push it toward transparent."
     ),
+    "LFS_DEPTH_LOSS": "Load dataset depth maps and use them for depth-map supervision during training.",
+    "LFS_DEPTH_LOSS_MODE": "Depth supervision loss used for depth maps.",
+    "LFS_DEPTH_LOSS_WEIGHT": "Weight applied to the depth-map loss.",
     "LFS_INVERT_MASKS": "Invert the white/black meaning. Turn this on only for masks where black=used and white=background/exclusion target.",
     "LFS_BILATERAL_GRID": "Enable LichtFeld's bilateral grid correction. Try this when exposure or color differences are visible.",
     "LFS_BG_MODE": "Background mode used during training. Color with black is the normal starting point.",
@@ -1684,7 +1689,7 @@ TIPS.update(
         "LFS_MEANS_LR": "How quickly Gaussian positions move. Higher values fit shape faster, but can introduce jitter or noise.",
         "LFS_MEANS_LR_END": "Final position adjustment strength. Lower values make the end of training steadier, but reduce late correction ability.",
         "LFS_RESIZE_FACTOR": "Divides input image width and height only at load time. It leaves source files unchanged and reduces VRAM/time, but lowers detail resolution.",
-        "LFS_MAX_WIDTH": "Limits the long edge when images are loaded. This is a targeted way to reduce VRAM for large images while leaving smaller images unchanged.",
+        "LFS_MAX_WIDTH": "Limits the long edge when images are loaded. This is a targeted way to reduce VRAM for large images while leaving smaller images unchanged. 0 means no limit.",
         "LFS_CPU_CACHE": "Keeps loaded images in system memory for reuse. It speeds repeated access, but uses more RAM.",
         "LFS_FS_CACHE": "Keeps resized images on disk for reuse. It can speed later runs, but uses workspace storage.",
         "LFS_TEST_EVERY": "Uses every Nth image for evaluation. Smaller values evaluate more often, but reduce training images and add evaluation time.",
